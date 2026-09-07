@@ -75,6 +75,39 @@ tiedostoa, palautuspistettä, päivityspakettia, allekirjoitusavainta,
 backup-salasanaa, kryptografista avainmateriaalia, paikallista
 yritysprofiilia tai installerin konekohtaista journalia.
 
+### Omistajan tietojen julkaisuraja
+
+Omistajan henkilötiedot ja koneeseen liittyvät havainnot ovat paikallisia,
+vaikka yksittäinen arvo ei olisi salaisuus tai yksilöivä tunniste. Kielto
+kattaa ohjelma- ja ajurinimet, valmistajat, asennetut versiot, käyttöjärjestelmän
+ja laitteiston tiedot, paikalliset polut, käyttäjä- ja prosessitunnisteet,
+verkko- ja suojausasetukset sekä näihin sidotut mittaukset ja päätelmät.
+Pelkkä anonymisointi, hash tai valmistajan korvaaminen ohjelmaluokalla ei
+oikeuta konekohtaisen tiedon julkaisemista.
+
+Sama raja koskee Git-tiedostoja ja historiaa, commit-viestejä, PR- ja
+issue-tekstejä, kommentteja, CI-lokeja ja ladattavia artifacteja. Raakaloki,
+kuvakaappaus, tapahtumajälki tai sen konekohtainen tiivistelmä ei kuulu näihin.
+Tutkimusaineisto ja paikalliset komennot säilyvät vain jo olemassa olevissa
+Gitistä ohitetuissa paikallisissa paikoissa. Paikallinen runbook ja
+työkalujen inventaario eivät ole jaettavia projektidokumentteja.
+
+Julkinen raportti saa kuvata projektin vastuut, testisopimukset, korjauksen,
+hyväksyntätilan ja puuttuvan portin. Git-revisiot, repositorysuhteelliset
+lähdepolut ja hyväksytyn synteettisen CI-artifactin identiteetti ovat
+projektitietoa; niitä ei yhdistetä yksityiseen koneinventaarioon. Projektin
+lukittu riippuvuus tai CI-runnerin vaatimus ei ole raportti omistajan
+koneelle asennetuista ohjelmista. Diagnostiikan suoritus- tai lukulupa ei
+ole julkaisulupa.
+
+Ennen committia ja pushia katselmoidaan tiedostolista, staged diff sekä
+julkaistavat viestit. `git check-ignore` ja `git ls-files` tarkistetaan
+erikseen: ohitussääntö ei poista aiemmin versionoitua sisältöä. Julkaistu
+poikkeama kerrotaan omistajalle toistamatta yksityisiä arvoja. Nykyversion
+korjaus, vanha historia ja mahdolliset etäkopiot käsitellään erillisinä;
+historiaa ei kirjoiteta uudelleen eikä väitetä poistuneeksi ilman erillistä
+päätöstä ja varmennusta.
+
 ## Backup-, restore- ja päivitysturvallisuus
 
 - siirrettävä business-datan varmuuskopio on aina autentikoidusti salattu

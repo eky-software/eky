@@ -7,6 +7,8 @@ namespace Eky.WindowsProcessSupervisor;
 internal static class NativeMethods
 {
     internal const uint CreateSuspended = 0x00000004;
+    internal const uint ExtendedStartupInfoPresent = 0x00080000;
+    internal const int JobListAttribute = 0x0002000d;
     internal const uint HandleFlagInherit = 0x00000001;
     internal const uint Infinite = 0xffffffff;
     internal const uint JobObjectLimitKillOnJobClose = 0x00002000;
@@ -51,19 +53,12 @@ internal static class NativeMethods
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool AssignProcessToJobObject(
-        SafeJobHandle job,
-        SafeProcessHandle process
-    );
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool TerminateJobObject(
         SafeJobHandle job,
         uint exitCode
     );
 
-    [DllImport("kernel32.dll", SetLastError = true)]
+    [DllImport("kernel32.dll", EntryPoint = "CreateProcessW", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool CreateProcess(
         string applicationName,
@@ -74,9 +69,23 @@ internal static class NativeMethods
         uint creationFlags,
         IntPtr environment,
         string currentDirectory,
-        ref StartupInfo startupInfo,
+        ref StartupInfoEx startupInfo,
         out ProcessInformation processInformation
     );
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool InitializeProcThreadAttributeList(
+        IntPtr list, int count, uint flags, ref nuint size);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool UpdateProcThreadAttribute(
+        IntPtr list, uint flags, nuint attribute, IntPtr value, nuint size,
+        IntPtr previousValue, IntPtr returnSize);
+
+    [DllImport("kernel32.dll")]
+    internal static extern void DeleteProcThreadAttributeList(IntPtr list);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     internal static extern uint ResumeThread(SafeWaitHandle thread);
@@ -98,13 +107,6 @@ internal static class NativeMethods
     internal static extern bool GetExitCodeProcess(
         SafeProcessHandle process,
         out uint exitCode
-    );
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool TerminateProcess(
-        SafeProcessHandle process,
-        uint exitCode
     );
 
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -141,6 +143,13 @@ internal static class NativeMethods
         internal IntPtr Thread;
         internal uint ProcessId;
         internal uint ThreadId;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct StartupInfoEx
+    {
+        internal StartupInfo StartupInfo;
+        internal IntPtr AttributeList;
     }
 
     [StructLayout(LayoutKind.Sequential)]

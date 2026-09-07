@@ -8,6 +8,16 @@ on:
       - eky_software/apps/desktop/package.json
       - eky_software/docs/architecture/windows-installer-acceptance-harness-v2.md
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Contract acceptance or diagnostic comparison (not acceptance)
+        type: choice
+        default: contracts
+        options:
+          - contracts
+          - window-startup-diagnostic
+          - legacy-contracts-diagnostic
+          - legacy-worker-diagnostic
 
 permissions:
   contents: read
@@ -18,14 +28,14 @@ concurrency:
 
 jobs:
   job-object-feasibility:
-    name: Windows Job Object feasibility run ${{ matrix.repetition }}
+    name: ${{ inputs.mode == 'window-startup-diagnostic' && 'V2.5 window startup diagnostic (not acceptance)' || inputs.mode == 'legacy-worker-diagnostic' && format('V2.5 worker diagnostic run {0} (not acceptance)', matrix.repetition) || inputs.mode == 'legacy-contracts-diagnostic' && format('V2.5 contracts diagnostic run {0} (not acceptance)', matrix.repetition) || format('Windows Job Object feasibility run {0}', matrix.repetition) }}
     runs-on: windows-latest
     timeout-minutes: 10
 
     strategy:
       fail-fast: false
       matrix:
-        repetition: [1, 2]
+        repetition: ${{ fromJSON(inputs.mode == 'window-startup-diagnostic' && '[1]' || '[1, 2]') }}
 
     defaults:
       run:
@@ -48,18 +58,60 @@ jobs:
         with:
           dotnet-version: 10.0.302
 
-      - name: Verify exact .NET SDK
+      - name: Bind the verified SDK executable for all process contracts
         shell: pwsh
         run: |
-          if ((dotnet --version) -ne '10.0.302') {
+          $dotnet = (Get-Command dotnet.exe -CommandType Application -ErrorAction Stop).Source
+          if (-not [IO.Path]::IsPathFullyQualified($dotnet) -or (& $dotnet --version) -ne '10.0.302') {
             throw 'WINDOWS_ACCEPTANCE_SUPERVISOR_DOTNET_SDK_INVALID'
           }
+          "EKY_DOTNET_EXE=$dotnet" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Build Windows process supervisor
+        if: inputs.mode != 'legacy-contracts-diagnostic'
         run: node installer/windows-process-supervisor/buildWindowsAcceptanceSupervisor.mjs
 
       - name: Run supervisor unit and process contracts
+        if: inputs.mode != 'window-startup-diagnostic' && inputs.mode != 'legacy-contracts-diagnostic' && inputs.mode != 'legacy-worker-diagnostic'
         run: >-
           node --test --test-concurrency=1
           installer/windows-process-supervisor/tests/windowsAcceptanceSupervisorResult.test.mjs
           installer/windows-process-supervisor/tests/windowsAcceptanceSupervisor.contract.test.mjs
+
+      - name: Diagnose one native window startup without MSI or acceptance matrix
+        if: inputs.mode == 'window-startup-diagnostic'
+        run: >-
+          node --test --test-concurrency=1
+          --test-name-pattern="^native close observation: visible$"
+          installer/windows-acceptance-harness/requestWindowsApplicationClose.test.mjs
+
+      - name: Enable existing package manager for diagnostic contracts
+        if: inputs.mode == 'legacy-contracts-diagnostic'
+        run: corepack enable
+
+      - name: Record diagnostic revision and runner image
+        if: inputs.mode == 'legacy-contracts-diagnostic' || inputs.mode == 'legacy-worker-diagnostic'
+        shell: pwsh
+        env:
+          DIAGNOSTIC_REPETITION: ${{ matrix.repetition }}
+        run: |
+          [ordered]@{
+            schemaVersion = 1
+            diagnosticOnly = $true
+            harnessRevision = $env:GITHUB_SHA
+            repetition = [int]$env:DIAGNOSTIC_REPETITION
+            runnerImage = $env:ImageOS
+            runnerImageVersion = $env:ImageVersion
+            nodeVersion = (node --version)
+            dotnetVersion = (dotnet --version)
+          } | ConvertTo-Json -Compress
+
+      - name: Diagnose full V2.5 contract suite with unchanged default budgets
+        if: inputs.mode == 'legacy-contracts-diagnostic'
+        run: pnpm installer:test:windows-supervisor-v2-legacy
+
+      - name: Diagnose legacy worker live-child contract without MSI or acceptance matrix
+        if: inputs.mode == 'legacy-worker-diagnostic'
+        run: >-
+          node --test --test-concurrency=1
+          installer/windows-acceptance-harness/runLegacyUpgradeWorker.test.mjs

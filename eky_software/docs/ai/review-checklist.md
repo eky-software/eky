@@ -222,6 +222,15 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
 
 ## Dokumentaatio
 
+- Onko raportista poistettu omistajaan tai hänen koneeseensa liittyvä
+  ohjelma-, ajuri-, laitteisto-, käyttöjärjestelmä-, verkko- ja suojaustieto
+  sekä yksityiskohtainen paikallinen diagnostiikka, ei vain nimet ja polut?
+- Sisältävätkö commit-viesti, PR-kuvaus, kommentit ja julkaistavat artifactit
+  vain projektitietoa, eivät paikallisen runbookin tai jälkien sisältöä?
+- Tarkistettiinko staged diff sekä paikallisten tiedostojen `git check-ignore`
+  ja `git ls-files` erikseen? Ohitus ei suojaa jo versionoitua sisältöä.
+- Jos yksityistä tietoa on jo julkaistu, raportoitiinko nykyversion,
+  Git-historian ja etäkopioiden tila erikseen ilman uusia yksityisiä arvoja?
 - Muuttuiko arkkitehtuuri?
 - Muuttuiko moduuliraja?
 - Muuttuiko teknologiapäätös?

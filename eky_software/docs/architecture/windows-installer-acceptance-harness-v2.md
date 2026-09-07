@@ -9,9 +9,17 @@ tietokanta-, laskutus- tai Electron-runtime-semanticsia. Se ei myöskään anna
 lupaa uudelle riippuvuudelle, GitHub Actionille, native-helperille,
 versiomuutokselle tai release-artifactille.
 
-## Lähtötilanne
+Ajantasainen etenemispäätös ja tilataulukko ovat kohdassa
+[Nykyinen päätös](#nykyinen-päätös). Historialliset checkpointit eivät korvaa
+nykyisen revision hyväksyntää. Tämä on projektin suunnitelma, ei omistajan
+koneen diagnostiikkapäiväkirja. Yksityinen aineisto kuuluu vain Gitistä
+ohitettuihin paikallisiin paikkoihin; epäonnistuneita testituloksia ei kumota.
 
-Katselmus tehtiin 3.9.2026 seuraavasta puhtaasta checkpointista:
+## Historiallinen lähtötilanne
+
+Katselmus tehtiin 3.9.2026 seuraavasta puhtaasta checkpointista. Tämän luvun
+SHA:t, testimäärät ja vanhojen prosessiketjujen kuvaus ovat historiallinen
+lähtötilanne, eivät myöhempien V2-checkpointtien hyväksyntätodiste:
 
 - `origin/main`: `c1d010263ccf4dc490a709f58ea8a4a5b34fa03a`
 - PR #258:n head: `bc875f17b63c117d9966a087a0a72af8831ae93a`
@@ -578,7 +586,8 @@ checkpointissa.
 V2.1-supervisorin pitää:
 
 - käynnistää suora worker `CreateProcessW`-kutsulla `CREATE_SUSPENDED`-tilassa
-- liittää worker nimeämättömään Job Objectiin ennen `ResumeThread`-kutsua
+- liittää worker nimeämättömään Job Objectiin atomisesti prosessinluonnissa
+  `PROC_THREAD_ATTRIBUTE_JOB_LIST`-attribuutilla ennen `ResumeThread`-kutsua
 - käyttää ei-periytyvää job-kahvaa ja `KILL_ON_JOB_CLOSE`-rajaa
 - olla asettamatta `BREAKAWAY_OK`- tai `SILENT_BREAKAWAY_OK`-rajaa
 - omistaa yksi prosessipuu, yksi supervisor ja yksi monotonisesta kellosta
@@ -595,8 +604,10 @@ V2.1-supervisorin pitää:
 Request ja terminal result ovat strict, versionoituja sopimuksia. Molemmat
 sidotaan 64-merkkiseen lowercase-hex-ajononceen, skenaarioon ja immutable
 artifact descriptorin SHA-256-tiivisteeseen. Supervisor onnistuu vain, kun
-workerin exit code on nolla, terminal result on nykyiseen ajoon sidottu ja
-jobin aktiivisten prosessien määrä on nolla.
+workerin exit code on nolla, terminal result on nykyiseen ajoon sidottu,
+juuriprosessin kahva on signaloitu ja jobin aktiivisten prosessien määrä on
+nolla. Job-laskuri ja prosessikahva ovat erillisiä havaintoja; hetkellinen
+ero ei ole onnistuminen eikä sellaisenaan `processStateInvalid`-virhe.
 
 Workerin ensisijainen scenario-tulos, supervisorin prosessitulos, cleanup-
 tulos ja verifierin postcondition-tulos säilyvät eri kenttinä. Cleanup-virhe
@@ -612,12 +623,41 @@ Silloin caller hylkää ajon puuttuvan terminal-resultin vuoksi, ja ei-periytyv�
 job-kahvan sulkeutuminen aktivoi `KILL_ON_JOB_CLOSE`-suojan omistetulle
 prosessipuulle. Puuttuva result ei koskaan merkitse onnistumista.
 
+Prosessinluonti kuuluu samaan absoluuttiseen deadlineen. Nykyinen supervisor
+odottaa native-luontia taustatehtävän completionista, mutta vain sen pääsäie
+saa kutsua `ResumeThread`-metodia. Deadlineen myöhästyvää workeria ei
+käynnistetä. Cleanup-reservin sisällä palautuva suspended-prosessi poistetaan
+saman Jobin kautta. Jos native-kutsu ei palaa kokonaisbudjetissa, supervisor
+pyytää saman Jobin lopetusta ja kirjoittaa `deadlineExceeded` /
+`cleanupUnverified` / `processTreeAbsent: false` ennen virhe-exitiä. Jobin
+hetkellinen nolla ei todista puun poissaoloa, kun luonti on vielä kesken.
+Job-attribuutin kahvareferenssi säilyy native-kutsun ajan. Sama supervisor
+rekisteröi keskeneräisen tehtävän completioniin vastaanottajan, joka sulkee
+myöhäiset process/thread-kahvat tai vastaanottaa myöhäisen poikkeuksen.
+Vastaanottaja ei kutsu resumea, aloita uutta cleanupia eikä muuta jo palautettua
+virhetulosta. Attribuutin vapauttama viimeinen Job-kahva lopettaa myöhäisen
+suspended-jäsenen `KILL_ON_JOB_CLOSE`-rajalla. Koko supervisor-prosessin exit
+sulkee resurssit myös silloin, kun native-kutsu ei koskaan palaa. Tätä ei saa
+kuvata native-kutsun onnistuneeksi cooperative cancellationiksi tai
+vahvistetuksi cleanupiksi. Caller ei jatka business-verifieriin eikä hyväksy
+ajoa tällaisella tuloksella.
+
 Safe evidence käyttää `schemaVersion: 1` -sopimusta ja on best effort -
 diagnostiikkaa. Evidenssivirta ei saa muuttaa workerin, supervisorin tai
 cleanupin terminal-tulosta. Validin requestin jälkeinen odottamaton virhe
 yrittää kirjoittaa strict `unexpectedFailure`-resultin ennen exit-koodia 1;
 result-writerin oma epäonnistuminen jää erilliseksi `resultWriteFailed`-
 tilaksi, jonka caller käsittelee puuttuvana tai epävalidina terminal-tuloksena.
+
+Virheellisen pyynnön evidence käyttää samaa ei-estävää taustakirjoitusta.
+Validoimaton pyyntö ei anna luotettua flush-aikabudjettia tai result-polkua:
+komento poistuu virhekoodilla odottamatta tulostuskohdetta, eikä se käynnistä
+workeria tai kirjoita pyynnön nimeämää terminal-resultia. Best-effort-
+diagnostiikkarivi saa puuttua; caller ei tulkitse puuttuvaa tulosta
+onnistumiseksi. Regressio sitoo estyvän writerin tapahtumaan ja vaatii
+oikean komentoprosessin exitin, puuttuvat worker-sivuvaikutukset sekä
+vieraan verrokkiprosessin säilymisen. Tämä ei muuta validin pyynnön
+process-, worker-, cleanup- tai postcondition-sopimusta.
 
 ### Fixture- ja riskisopimus
 
@@ -922,6 +962,379 @@ tarkistavat saman ulkoisesti välitetyn descriptor-hashin sekä kaikki kolme
 MSI-hashia ennen ja jälkeen lifecyclen. Artifact säilytetään yhden vuorokauden
 ajan, eikä se ole release, pilot-bundle tai käyttäjälle jaettava paketti.
 
+## V2.5 historical legacy -checkpoint
+
+V2.5 siirtää historiallisen `0.2.6 -> 0.2.7` -yhteensopivuustodisteen saman
+V2.1-supervisorin ja build-once-rajan päälle. Checkpoint toteutetaan kahdessa
+itsenäisesti vihreässä osassa. V2.5A rakentaa ja varmistaa immutable artifactin;
+V2.5B lisää yhden workerin elinkaaren, erillisen postcondition-verifierin ja
+CI-consumerit. V2.5A ei vielä korvaa vanhaa W6B legacy acceptance -porttia.
+
+V2.5A:n portable producer rakentaa historical-source-rebuild-luokan lähteen
+täsmälleen commitista `6ed99f5319c328f4d3cfbc03b912f21dbc4d1032` ja
+nykyisestä puhtaasta HEADista targetin versiona `0.2.7`. Lähteen provenance
+säilyttää hyväksytyn source commit-, tree- ja source archive manifest
+-identiteetin. Descriptor tarkistaa source-artifactin luokituksen suoraan
+MSI-hashista; producerin ilmoittamaan luokitusbooleaniin ei luoteta.
+
+Siirrettävän artifactin juuressa sallitaan vain:
+
+```text
+legacy-upgrade-artifact.json
+source/
+  installer.manifest.json
+  Eky-0.2.6-x64.msi
+  historical-fixture-provenance.json
+target/
+  installer.manifest.json
+  Eky-0.2.7-x64.msi
+```
+
+Descriptor sitoo targetin täyteen Git-revisioon, yhteiseen UpgradeCodeen,
+molempien roolien ProductCodeen, manifesti- ja MSI-hasheihin sekä lähteen
+provenance-hashiin. Targetin packaged payloadista lasketaan lisäksi suljettu
+`packagedApp`-inventory-identiteetti, tiedostomäärä ja tavumäärä. Inventory
+lasketaan ennen MSI-buildia ja sen jälkeen, jotta build ei saa muuttaa
+payloadia. Koko unpacked payloadia ei kopioida artifactiin; V2.5B:n verifier
+laskee saman identiteetin asennetusta payloadista.
+
+Kaikki artifactin tiedostot ovat tavallisia itsenäisiä tiedostoja. Descriptor,
+manifesti, MSI tai provenance ei saa olla symlinkki tai hardlinkki.
+Tuntematon tiedosto, tuntematon avain, väärä hash, virheellinen provenance,
+epäjatkuva versio tai muuttunut canonical `package.json` /
+`installer-release.json` torjutaan fail closed. Artifact ei sisällä profiilia,
+business-dataa, backupia, lokia, salaisuutta tai paikallista release-arkistoa.
+
+V2.5A:n paikallinen build-once-järjestys on:
+
+```text
+pnpm --filter @eky/desktop installer:v2-legacy-artifact:build --artifact-root <absolute-new-artifact-root> --summary-path <absolute-summary-path-outside-artifact-root>
+pnpm --filter @eky/desktop installer:v2-legacy-artifact:verify --artifact-root <absolute-artifact-root> --expected-descriptor-sha256 <producer-descriptor-sha256> --expected-build-revision <producer-git-revision>
+```
+
+Artifact-juuri sijoitetaan ajokohtaiseen OS TEMP -hakemistoon. Producerin
+ulkoinen summary ja paikalliset tutkimuslokit säilytetään Gitistä ohitetussa
+`.eky-local`-kansiossa, ei paketoijan omistamissa cleanup-juurissa.
+Normaali target-paketointi tyhjentää `apps/desktop/.stage`- ja `out`-juuret:
+artifactia, sen jo muodostettua source-roolia tai säilytettävää todistusaineistoa
+ei saa sijoittaa niiden alle. Producerin ja consumerin ajopaikat tarkistetaan
+ennen käynnistystä; tämä ei muuta paketoijan cleanup-semanttiikkaa.
+Producer torjuu artifact- ja summary-kohteen päällekkäisyyden näiden
+cleanup-juurien kanssa ennen ensimmäistä buildia tai kirjoitusta.
+
+Asennusjälkien read-only-tarkistin säilyttää ensimmäisen hylkäyksen
+roolikohtaisella suljetulla virhekoodilla: asennusjuuri, executable tai
+pikakuvake sekä metatietoluku, symlink, väärä tyyppi tai tiedoston
+linkkimäärä. Puuttuminen säilyy tilahavaintona; lifecycle ratkaisee,
+edellyttääkö nykyinen vaihe asennettua vai poissa olevaa tuotetta.
+Koodi kulkee muuttumattomana workerin ja callerin virherajan läpi, vaikka
+myöhempi semanttinen cleanup onnistuu. Tarkistin ei korjaa, kirjoita tai
+poista tutkittavaa jälkeä eikä löysennä single-link-ehtoa. Polku ja raaka
+käyttöjärjestelmävirhe eivät kuulu julkiseen tulokseen.
+
+V2.5B saa käyttää tätä artifactia vain validoidun descriptorin kautta. Se ei
+saa rakentaa tai ladata paketteja workerissa, kutsua vanhaa W6B-orkestrointia
+eikä lisätä uutta timeout-, cleanup-, PID-, CIM-, retry- tai wrapper-omistajaa.
+Historical Electronin kahden vaiheen packaged-smoke on rajattu OS-adapteri
+saman Job Objectin sisällä; supervisor yksin omistaa absoluuttisen deadlinen ja
+pakotetun prosessipuun cleanupin.
+
+V2.5B:n worker käyttää vain validoitua artifact-descriptoria ja ajokohtaista
+synteettistä profiilia. Sen lifecycle on suljettu seuraavaan järjestykseen:
+
+1. source- ja target-ProductCodejen sekä yhteisen installer-footprintin puhdas
+   preflight
+2. historiallisen source-MSI:n asennus ja exact source-product-postcondition
+3. historiallisen `--desktop-smoke`-polun initial- ja restored-sukupolvi saman
+   Job Objectin sisällä
+4. historiallisen source-version erillinen normaali käynnistys, accepted-build-
+   readiness ja hallittu shutdown samalla profiililla
+5. source-profiilin accepted-build-, SQLite-, business- ja PDF-evidence
+6. target-MSI:n major upgrade ja exact target-product- sekä payload-evidence
+7. targetin ensimmäinen normaali käynnistys, legacy-adoptio ja hallittu
+   sovellusikkunan sulkeminen
+8. targetin toinen normaali käynnistys samalla profiililla ja hallittu
+   sovellusikkunan sulkeminen
+9. artifact-tavujen uudelleentarkistus.
+
+Historical smoke käynnistetään initial-sukupolvena täsmälleen kerran. Kun
+historiallinen runtime päättyy `restoreRestart`-vaiheeseen, worker käynnistää
+täsmälleen yhden restored-sukupolven historiallisen smoke-sopimuksen mukaisesti
+ja vaatii siltä terminal `shutdown/ok` -evidencen. Tavoiteversion readiness ja
+shutdown tunnistetaan versionoidusta operational JSONL -evidencestä;
+kiinteää odotusaikaa, pollingia tai retryä ei käytetä. Yksi rajattu
+PowerShell-adapteri saa pyytää workerin suoraan käynnistämää Electron-prosessia
+sulkemaan pääikkunansa kerran. `desktop.started` ei yksin takaa näkyvää
+ikkunaa. Sulkuadapterin ikkunavalmius erotetaan siksi runtime-readinessista:
+rajattu Win32-tapahtumatilaus sidotaan jo käynnistettyyn prosessiin ennen
+ensimmäistä ikkunatarkistusta. Prosessin kahva pidetään avoimena tarkistuksen
+ja yhden sulkupyynnön ajan. Jo näkyvä ikkuna ja myöhemmin näkyvä ikkuna
+noudattavat samaa sopimusta.
+
+Adapteri saa odottaa vain kyseisen prosessin ikkunatapahtumaa tai exitia.
+Sillä ei ole omaa deadlinea, pollingia, retryä, prosessihakua tai kill-oikeutta;
+myös puuttuvan ikkunan tapauksessa nykyinen Job-supervisor omistaa ajan ja
+pakotetun cleanupin. Jos startup epäonnistuu, worker kirjoittaa epäonnistuneen
+tuloksen ja poistuu ei-nolla-koodilla. Se ei käynnistä toista best-effort-
+sulkuadapteria, joka voisi peittää alkuperäisen virheen.
+
+Smoke-palautuksen jälkeen source-version erillinen normaali käynnistys kuuluu
+legacy-invarianttiin: se todistaa, että palautettu profiili avautuu tavallisessa
+ajossa, accepted-build on valmis ja runtime sulkeutuu hallitusti ennen
+target-MSI:n asentamista. Tätä vaihetta ei korvata pelkällä elossa olevalla
+prosessilla tai smoke-resultilla.
+
+Worker-result säilyttää vain strict turvallisen lopputuloksen. Yksityiseen
+scenario-juureen kirjoitettu evidence sitoo source- ja target-identiteetit,
+business-inventaarion, hyväksytyn lasku-PDF:n, workspace-adoption,
+runtime-sessionit ja toisen käynnistyksen idempotenssin. Näitä yksilöiviä
+arvoja ei tulosteta konsoliin tai CI-lokiin.
+
+V2.5-worker kirjoittaa scenario-resultin ja worker-resultin loppuun ennen
+prosessin exitia. Onnistuminen palauttaa `0`, epäonnistunut skenaario tai
+result-writer `1` ja virheellinen request `64`. Epäonnistunutta skenaariota ei
+saa palauttaa exit `0`:na: eloon jäänyt jälkeläinen siirtäisi silloin
+supervisorin cleanupin tarpeettomasti deadlineen asti. Ei-nolla-exit käyttää
+nykyisen Job Object -supervisorin olemassa olevaa failure-cleanupia.
+
+Post-supervisor-raja saa lukea strict runNonce/artifact-sidotun epäonnistuneen
+scenario-resultin workerin exit `1`:n jälkeen ja säilyttää sen alkuperäisen
+virhekoodin. Supervisorin process-, worker- ja cleanup-tulokset pysyvät
+erillisinä. Puuttuva tai onnistumista väittävä scenario-result ei peitä
+prosessivirhettä; deadline pysyy ensisijaisena eikä sitä tulkita workerin
+hallittuna virheenä. Preflightin torjunta ei anna lupaa poistaa ennestään
+asennettua tuotetta.
+
+Supervisorin todistettua `processTreeAbsent`-tilan erillinen postcondition-
+verifier tarkistaa ennen semanttista cleanupia:
+
+- source-profiilin legacy-data ja storage säilyivät muuttumattomina
+- targetissa on yksi ready-workspace ja kertaluonteinen adoptio ilman
+  journal- tai operation-jäämiä
+- ensimmäinen ja toinen käynnistys käyttävät samaa workspacea ja samaa
+  business-inventaarioa mutta eri runtime-sessionia
+- asennetun target-payloadin inventory vastaa immutable descriptorin
+  inventorya
+- source- ja target-artifactien tavut ovat edelleen muuttumattomat.
+
+Scenario-result, supervisor-result, semanttinen proof, exact ProductCode
+-cleanup ja lopullinen postcondition pysyvät eri tuloksina. Ensisijainen virhe
+ei peity cleanup-virheeseen. Semanttinen cleanup käyttää jo olemassa olevaa
+V2.4:n ProductCode-kohtaista, rajattua post-supervisor-adapteria eikä lisää
+toista deadline-, cleanup-, PID-, CIM-, retry-, wrapper- tai process-tree-
+omistajaa. Normaali `%APPDATA%\Eky` inventoidaan vain read-only ennen ja jälkeen
+ajon, eikä yksittäisiä polkuja tai tiivisteitä tulosteta.
+
+V2.5B:n paikallinen consumer-komento on:
+
+```text
+pnpm --filter @eky/desktop installer:v2-legacy --artifact-descriptor <absolute-artifact-root>/legacy-upgrade-artifact.json
+```
+
+### V2.5:n hyväksytty suoritusympäristö
+
+Omistajan hyväksymä rajaus koskee vain V2.5:n vaihehyväksyntää: kaksi
+paketoitua consumer-ajoa suoritetaan kahdessa toisistaan eristetyssä
+GitHub Windows -jobissa samalla puhtaan revision build-once-artifactilla.
+Tämä korvaa aiemman vaatimuksen kahdesta paikallisesta packaged-consumerista;
+se ei poista paikallisia kohde-, normaali- tai artifact-sopimustestejä eikä
+desktopin typecheck/build-portteja. Paikallinen consumer-komento säilyy
+käytettävissä samoilla turvallisuusehdoilla, mutta sen ajo ei ole tämän
+vaiheen pakollinen hyväksyntäportti.
+
+- Producer ja molemmat consumerit on sidottava täsmälliseen harness-revisioon.
+  Descriptor ja kummankin MSI:n SHA-256 tarkistetaan ennen ja jälkeen
+  kummankin consumerin; eri buildien byte-identtisyyttä ei oleteta.
+- Molempien consumerien pitää valmistua ensimmäisellä yrityksellä nykyisten
+  worker-, process-, semantic proof-, cleanup- ja postcondition-sopimusten
+  mukaisesti. Tuntematon tila, puuttuva tulos tai rerun-only-vihreä ei riitä.
+- Artifactien ja asennetun footprintin single-link-, symlink-, containment-,
+  identiteetti- ja sisältötarkistukset säilyvät. GUI-fixturen poikkeusta ei
+  siirretä asennettuun payloadiin, eikä vendor-allowlistiä lisätä.
+- Epäonnistunut paikallinen tai CI-ajo säilyy epäonnistuneena. Ympäristön
+  rajaus ei selitä aiempia virheitä eikä muuta niitä hyväksyntätodisteiksi.
+- Päätös ei muuta koko V2:n valmis-määritelmää, päähaaran required checkejä,
+  cutoveria, release-portteja tai pilotin paikallista testausta.
+
+Pelkkä dokumentaatiomuutos ei vaadi uutta MSI-buildia tai saman muuttumattoman
+koodirevision manuaalista CI-uusintaa. Raportissa erotetaan testattu
+harness-/artifact-revisio dokumentaation HEADista ja varmennetaan, ettei
+toteutus tai testikytkentä muuttunut niiden välillä. Automaattisia nykyisiä
+PR-tarkistuksia ei ohiteta, peruta tai korvata vanhan revision tuloksilla.
+
+V2.5 ei vielä poista, muuta tai kutsu vanhaa W6B legacy acceptance -harnessia.
+Cutover tehdään vasta, kun kaikki vanhan portin invariantit on nimetty,
+V2-vastineet ovat terminal ja koko V2:n erikseen määritellyt paikalliset ja
+GitHub-portit ovat hyväksytysti vihreät. Vaiheen suoritusympäristöpäätös
+ei yksin valtuuta vanhan polun poistamista.
+
+### V2.5-invarianttien siirtokartta
+
+Taulukko kuvaa kattavuuden omistajuutta, ei anna vielä lupaa vanhan polun
+poistamiseen. V2.5:n vaihekohtaiset portit ovat yllä hyväksytyn ympäristörajan
+mukaiset paikalliset sopimustestit ja kaksi ensimmäisen yrityksen
+GitHub-consumeria samalle puhtaan revision artifactille.
+
+| Vanhan legacy-portin invariantti | V2.5-vastine ja kohdetesti | Poiston ehto |
+| --- | --- | --- |
+| Historiallinen source-identiteetti ja muuttumattomat MSI-tavut | `legacyUpgradeArtifact` ja sen testit; build-once producer/consumer | Paikalliset artifact-sopimustestit ja molempien CI-consumerien ennen/jälkeen-varmennus samoille tavuille |
+| Puhdas kone ja exact ProductCode/payload | `legacyUpgradeLifecycle`, `legacyUpgradeWindowsRuntime`, `legacyUpgradePostcondition` | Täysi install/upgrade ja erillinen jälkitarkistus |
+| Initial -> restoreRestart -> restored -> shutdown | `legacyUpgradeSourceSmoke` ja ketjutestit | Historiallisen paketin täysi kaksiprosessinen smoke |
+| Source avautuu normaalisti ennen päivitystä | `runSourceStartup`, `legacyUpgradeLifecycle.test`, `legacyUpgradeStartupObserver.test` | Normaali source-start ja graceful shutdown packaged-ajossa |
+| Näkyvä ikkuna suljetaan kerran ilman kiinteää viivettä | `WindowsApplicationCloseRequest` ja native `requestWindowsApplicationClose.test` | Jo näkyvä / tapahtumasta näkyvä ikkuna, exit ja puuttuva ikkuna testattu nykyisen Jobin alla; lisäksi packaged consumer |
+| Accepted-buildin ristiriidat torjutaan | `legacyUpgradeProfileEvidence.test` | Deterministiset slotit, korruptio- ja konfliktitestit sekä runtime-evidence |
+| SQLite/storage/PDF säilyvät; yksi adoptio ja uusi runtime toisella käynnistyksellä | `legacyUpgradeProfileEvidence` ja `legacyUpgradePostcondition` testeineen | Historiallisen smoken business-fixture ja täysi target-start kahdesti; hash-inventaario ei yksin korvaa business-fixturen todistetta |
+| Worker failure, deadline ja koko omistetun puun cleanup | Nykyinen V2.1-supervisor, `runLegacyUpgradeWorker.test` sekä contract-sarjan `context cleanup` -regressiot | Ei uutta valvojaa; live-child cleanup ja foreign sentinel säilyvät; testituen cleanup-virhe säilyttää aineiston ja muut omistetut kahvat käsitellään |
+| Alkuperäinen virhe ei katoa cleanupiin | `legacyUpgradeFailureBoundary.test` | Missing result, worker non-zero, preflight-esto ja cleanup failure testattu erikseen |
+| Normaali profiili ja source-artifact säilyvät | `runLegacyUpgrade`, `closedDirectoryInventory` ja artifact-verifier | In-memory ennen/jälkeen-vertailu sekä artifactin uudelleenvarmennus |
+
+`legacyUpgradeWindowsRuntime.test` sisältää lisäksi lähdekoodiin kohdistuvia
+arkkitehtuurirajoja. Ne eivät todista ikkunan näkyvyyttä tai sulkeutumista;
+nämä todisteet kuuluvat packaged consumerille. `desktop.started` kertoo
+runtimen käynnistymisestä, ei yksin renderöidyn ikkunan valmiudesta.
+
+#### Historiallinen ikkunavalmiuden välitila
+
+Seuraavat välitulokset säilyttävät aiemman checkpointin historian. Nykyinen
+suoritusympäristö ja hyväksyntätila on määritelty erikseen tässä dokumentissa.
+
+Workerin failure-boundary-checkpointin kohdesarja läpäisi 81/81 testiä,
+ja live-child failure/cleanup -sopimus viisi peräkkäistä paikallista ajoa.
+Ikkunaobserverin erillinen native-sarja läpäisi 6/6 testiä. Se käyttää
+etukäteen TEMPiin käännettyä synteettistä GUI-executablea suoraan nykyisen
+supervisorin workerina, ei runtime-käännöstä tai Node -> PowerShell -ketjua.
+Fixture ei rakenna MSI:tä eikä lisää prosessiomistajaa.
+
+Testifixturen valmistelun deadlinea ei saa tulkita todisteeksi puuttuvan
+ikkunan oikeasta käsittelystä. Fixture todistaa sisältäpäin, että tapahtuma-
+tilaus ja ensimmäinen tyhjä ikkunatarkistus on tehty. Viivästetty ikkuna
+vapautetaan vasta tämän jälkeen. Myös prosessin poistuminen jo alkaneen
+odotuksen aikana testataan erikseen.
+
+Native-sarja ei todista PowerShell-adapterin käynnistymistä oikeassa worker-
+ympäristössä. Tuolloin vaadittiin kaksi paikallista ja kaksi GitHub-consumeria.
+Nykyinen suoritusympäristöpäätös korvaa paikallisen consumer-vaatimuksen;
+alemman tason testejä ei edelleenkään merkitä packaged-todisteeksi.
+
+Ikkunavalmiuden muutos on vielä paikallista keskeneräistä työtä. Laajennetun
+kohdesarjan tulos oli 85/86: jo näkyvän ikkunan tapaus päättyi deadlineen.
+Erillinen 6/6-ajo tai myöhempi yksittäinen diagnostinen onnistuminen ei kumoa
+tätä tulosta. Tuossa epäonnistuneessa ajossa fixturen puuttuva vaihemerkintä
+ei vielä erottanut käynnistymistä, `Shown`-odotusta ja sulkemista; juurisyytä
+ei ole vahvistettu. Fixtureen lisätyt turvalliset vaiheet tarkentavat jatkorajausta.
+
+### Ikkunavalmiuden ja virherajojen sopimukset
+
+Tämä luku säilyttää toteutuksen vastuut ja hyväksytyt
+rajaukset; konekohtaiset tutkimuspäiväkirjat ja mittaukset eivät kuulu
+versionoituun suunnitelmaan. Niitä käsitellään vain Gitistä ohitetussa
+paikallisessa aineistossa. Yksityisyyskorjaus ei muuta testituloksia,
+aikabudjetteja, tuotantosemantiikkaa tai invarianttien siirtokarttaa.
+
+#### Failure-boundary ja testijuuren säilytys
+
+- `legacyUpgradeFailureBoundary` luokittelee myös onnistuneen supervisorin
+  jälkeen puuttuvan tai lukukelvottoman scenario-resultin. Alkuperäinen virhe,
+  semanttinen cleanup ja jälkiehto säilyvät erillisinä. Puuttuva tulos ei
+  valtuuta uninstallia: caller tarvitsee ennen ajoa varmennetun
+  exact-products-absent-esiehdon. Epäselvä prosessipuu estää uuden verifierin
+  ja semanttisen cleanupin.
+- `runLegacyUpgrade` ei poista käynnistetyn ajon testijuurta ehdottomasti
+  `finally`ssa. Poisto vaatii varmennetun prosessipuun poissaolon sekä
+  onnistuneen cleanupin ja exact-products-absent-jälkiehdon. Turvallinen
+  ennen käynnistysyritystä tehtävä cleanup on tästä erillinen vastuu.
+  Puuttuva supervisor-result tai turvallisuuspoikkeama säilyttää aineiston.
+- `runLegacyUpgrade.test.mjs` vaatii completed-tapaukselta poikkeuksettoman
+  paluun ja oikean result-koodin. Virhetapaukset vaativat oman odotetun
+  poikkeuksensa; onnistunut cleanup ei yksin hyväksy skenaariota.
+- `supervisorContractTestSupport.cleanupRunContext` säilyttää aineiston,
+  jos prosessi-, result-, identiteetti- tai marker-tarkistus epäonnistuu.
+  `terminateChildHandles` käsittelee muutkin omistetut kahvat ensimmäisestä
+  virheestä huolimatta. Ensimmäinen cleanup-virhe säilyy erillään testin
+  alkuperäisestä virheestä. Uutta cleanup-manageria ei ole.
+- Julkinen päätetulos kertoo `fixtureCleanupResultCode`- ja
+  `fixtureRemoved`-arvot, ei yksityistä polkua. Myöhempi yleinen
+  nollaprosessikysely ei muuta `cleanupUnverified`-tulosta onnistumiseksi.
+
+#### Prosessinluonti ja komentotason omistajuus
+
+`fixtures/buildWindowsApplicationCloseFixture.mjs` käyttää valmistelussa
+nykyistä Job-supervisoria ja Windowsin .NET Framework C# -kääntäjää. Kääntäjä
+ja jälkeläiset kuuluvat samaan omistettuun Jobiin. Tämä ei ole scenario-
+workerin sisäinen supervisor. Käännöksen alkuperäinen virhe, timeout,
+jälkeläisten poissaolo ja foreign sentinel testataan erikseen.
+
+Nykyinen Win32-adapteri käyttää `PROC_THREAD_ATTRIBUTE_JOB_LIST`-attribuuttia
+atomiseen Job-jäsenyyteen prosessin luonnissa. Se korvaa erillisen create-
+Assign-välin ja sen direct-process-termination-haaran, ei takaa natiivikutsun
+nopeutta. Attribuuttimuisti ja Jobin SafeHandle-referenssi säilyvät
+natiivikutsun valmistumiseen asti; prosessi- ja thread-kahvoilla on omistaja.
+Injektoitu myöhäinen paluu ei saa resumeta epäonnistuneen ajon workeria.
+
+`ProcessBoundaryContract` todistaa suspended-jäsenyyden, cancelin ennen
+luontia, myöhäisen paluun, kesken jäävän luonnin, alkuperäiset virheet ja
+root-exit/Job-empty-havaintojen molemmat järjestykset. Nämä havainnot eivät
+ole yksi atominen snapshot. Nested Job -regressiot kattavat normaalin exitin
+ja jälkeläisen timeout-cleanupin; mielivaltaisten ulkoisten Job-rajoitusten
+yhteensopivuutta ei oleteta.
+
+`LateProcessCreationContract` todistaa myöhäisen kahvan käsittelyn Run-rajan
+jälkeen. Sen erillinen komentotason regressio tarkkailee oikeaa result-write/
+exit-järjestystä ulkopuolelta: strict result on luettavissa komentoprosessin
+ollessa elossa, fixturen vapautus johtaa exit 1:een ja alkuperäinen
+`deadlineExceeded / cleanupUnverified / processTreeAbsent: false` säilyy.
+Injektoidun viiveen todistus ei väitä keskeyttävänsä Windowsin kernel-kutsua.
+
+Mittauspisteet erottavat valmistelun, natiivikutsun, kahvojen vastaanoton ja
+fixturen readinessin. Niiden välissä ei kirjoiteta konsoliin tai tiedostoon.
+Mittauksen kirjoitusvirhe ei muuta process-, worker- tai cleanup-tulosta.
+Tarkat paikalliset havainnot eivät kuulu julkiseen raporttiin.
+
+#### GUI-fixturen hyväksytty sopimus
+
+Omistajan hyväksymä rajaus koskee vain kerran käännettyä
+`WindowContract.exe`-testifixtureä:
+
+- tunnetut lähteet, kääntäjä, argumentit ja onnistunut omistettu käännös
+  sitovat alkuperän; executable on itsenäinen tiedosto
+- `windowsApplicationCloseFixtureIdentity` tarkistaa kanonisen juuren ja
+  polun, regular-file-tyypin, symlink-rajan, root/file-id:n, koon ja SHA-256:n
+- tiedostokahvan stat sidotaan ennen/jälkeen-polkuhavaintoihin; myös juuren
+  identiteetin vaihtuminen hylätään, vaikka leaf-file-id ja tavut säilyisivät
+- ajonaikainen linkkimäärä on erillinen havainto, ei yksin GUI-testin hylkäys;
+  tämä ei salli harnessin tekemää executable-hardlink-kloonausta
+- ikkunan valmius ja sulkeminen, worker-result, root-exit, Job-empty,
+  foreign sentinel ja cleanup ovat erillisiä pakollisia tuloksia
+- normaali testi ei tutki koneen muita ohjelmia eikä käytä vendor-allowlistiä.
+
+Tuotannon, releasen, backupin ja updaten linkki- ja containment-politiikat
+eivät muutu. Tilapäinen `EKY_V25_SHARED_FIXTURE`-valinta on poistettu.
+Hyväksyntä käyttää normaalia kerran käännettyä fixtureä, ei säilytettyä
+tutkimusfixtureä tai lämmitysajoa.
+
+Readiness perustuu tapahtumaan tai tilaehtoon, ei kiinteään odotukseen.
+Omistajan hyväksymä `visible`-, `delayed`-, `exited`- ja `exitWhileWaiting`-
+tapausten kokonaisbudjetti on 30000 ms. Nykyinen 1000 ms cleanup-varaus
+säilyy, joten työn määräaika on 29000 ms. Tämä on nimetty GUI-integraation
+testisopimus, ei suorituskyky-SLO tai kiinteä odotus. Jaettu `createRequest`-
+oletus, `absent`-tapaus sekä keinotekoiset timeout-, late-creation- ja
+cleanup-regressiot eivät muutu.
+
+#### Watcher ja worker-fixture
+
+`legacyUpgradeStartupObserver` sekä `legacyUpgradeSourceSmoke` antavat
+Windowsin native-watcherille kanonisen realpath-polun vasta lstat- ja saman
+hakemiston dev/ino-tarkistusten jälkeen. Oikean 8.3-aliasin regressio kattaa
+libuv-assertion, linkit torjutaan ja varhainen child-rejection sidotaan heti.
+Ei polling-fallbackia, retryä tai uutta omistajaa.
+
+Live-child-fixture vaatii requestin lukemisen, lapsen käynnistyskuittauksen,
+workerin paluun ja lapsen elossaolon ennen parentin exitia. Synteettisen
+lapsen `detached: true` estää Noden oman kill-on-parent-exit-Jobin kilpailun
+supervisorin kanssa; breakaway-lippua ei käytetä. Supervisorin peritty
+Job-omistajuus, alkuperäinen worker-virhe, cleanup ja foreign sentinel
+todistetaan edelleen.
+
 ## Migraatiojärjestys
 
 V2 toteutetaan pieninä, itsenäisesti vihreinä checkpointteina:
@@ -959,6 +1372,52 @@ Ensimmäisiä katselmuskohteita ovat yli 800-riviset, useita selvästi nimettäv
 vastuita sisältävät backend-, API-client-, desktop update- ja E2E-
 testitiedostot. Pelkkä pituus ei ole poistoperuste.
 
+## Hyväksynnän kolme tasoa
+
+### Vaihekohtainen checkpoint
+
+V2.1-V2.8-vaiheen hyväksyntä koskee vain sen nimettyjä invariantteja ja
+täsmällistä harness-revisiota. Kohdetestit ja vaiheelle sovitut paikalliset
+sekä CI-ajot on saatettava terminal-tilaan. Artifact-vaiheissa kirjataan
+erikseen producer-revisio, descriptorin ja MSI-tavujen identiteetit sekä
+consumerien harness-revisio. Likainen työpuu, puuttuva terminal-result tai
+myöhemmän muutoksen epäonnistunut sarja ei peri aiemman checkpointin vihreyttä.
+Rerun-only-vihreä ei sulje epäonnistunutta hyväksyntää.
+
+Valmis vaihe jätetään katselmoitavaksi pinotuksi draft-PR:ksi ennen seuraavan
+vaiheen aloittamista. Se ei vaihda päähaaran portteja, poista vanhaa harnessia,
+hyväksy koko V2:ta tai tuota käyttäjälle pilot-pakettia.
+
+### Koko V2:n hyväksyntä
+
+Koko V2:n hyväksyntä edellyttää kaikkien vaiheiden yhteistä näyttöä,
+invarianttien siirtokartan kattavuutta ja alla olevan valmis-määritelmän
+täyttymistä samalla lopullisella integraatiorevisiolla. Vanha ja korvaava
+portti verrataan ennen poistoa. Yksittäinen legacy-, success- tai rollback-
+checkpoint ei yksin täytä tätä tasoa.
+
+### Hallittu käyttöönotto päähaaraan
+
+Käyttöönotto valmistellaan myöhemmin erikseen ajantasaista `main`-revisiota
+vasten. Jäädytettyjä PR:iä #257/#258 ei muuteta tai mergeä oikopolkuna.
+Integraatiosuunnitelma nimeää:
+
+1. päivitetyn main-baselinen, V2-integraatiorevision ja mahdolliset ristiriidat
+2. jokaisen poistettavan vanhan invariantin vihreän V2-vastineen
+3. riskiperusteisen CI-kytkennän, vakaan aggregaattorin sekä required checkien
+   nykyiset ja ehdotetut nimet
+4. poistettavat päällekkäiset prosessi-, timeout- ja cleanup-omistajat sekä
+   jäljelle jäävän auktoritatiivisen komennon
+5. integraatiorevision paikalliset ja ensimmäisen yrityksen CI-portit sekä
+   merge-commitin oman main-ajon tarkistuksen.
+
+Required checkien korvaaminen tai repository-asetusten muutos vaatii näkyvän
+omistajapäätöksen. Porttia ei ohiteta eikä vanhaa poisteta ennen vastaavaa
+todistettua kattavuutta. Koodin, komentojen, CI:n ja dokumentaation vaihto
+tehdään yhtenä katselmoitavana cutover-kokonaisuutena. Versionosto ja
+käyttäjälle toimitettava pilot-artifact ovat vasta tämän jälkeinen erillinen
+julkaisuvaihe.
+
 ## Valmis-määritelmä
 
 V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
@@ -982,17 +1441,330 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 
 ## Nykyinen päätös
 
-Katselmus ja V2-suunnitelma ovat valmiit. V2.1-feasibility ja V2.2 clean
-install / uninstall on toteutettu pinottuina draft-checkpointteina. V2.3
-erottaa build-once artifact producer/consumer -rajan ennen upgrade-polun
-migraatiota. PR #257 ja PR #258 sekä nykyiset W6B-, W6B.2A- ja W6B.2B-
-toteutukset säilytetään muuttumattomina. V2-checkpointit eivät vielä vaihda
-nykyisen acceptance-harnessin auktoritatiivista ajopolkua.
+V2.5:n vaihekohtainen loppukatselmus on hyväksytty. Testattu harness- ja
+artifact-revisio on `47847f9dcac5eb296ee93deac65b2440f80614cd` yllä olevan
+hyväksytyn suoritusympäristörajauksen mukaisesti. Katselmuksen lähtö-HEAD
+`362d08ed2e9b013805b7b2a2ca2ea376baaf8fd7` muuttaa sen jälkeen vain
+dokumentaatiota; toteutus ja testikytkennät ovat muuttumattomat. Sen kaikki
+kahdeksan automaattista PR-tarkistusta ovat vihreitä ensimmäisellä yrityksellä.
+PR #263 säilyy draft-checkpointina. Tämä on vaiheen hyväksyntä, ei koko V2:n,
+päähaaran käyttöönoton tai julkaisun hyväksyntä.
+
+Loppukatselmus vertasi yllä olevan invarianttien siirtokartan vastuut
+toteutukseen, käyttäytymisregressioihin ja täsmärevision näyttöön. Strict
+artifact- ja footprint-rajat, kaksivaiheinen historical smoke, source- ja
+target-startup, adoption idempotenssi sekä erilliset process-, worker-,
+semantic proof-, cleanup- ja postcondition-tulokset säilyvät. Puuttuva tulos
+tai varmentamaton siivous ei oikeuta onnistumiseen tai testijuuren poistoon.
+Tarkistetuissa rajoissa ei todettu uutta vaihetta estävää löydöstä.
+
+Ei-estävä katselmointikohta säilyy avoimena: `runLegacyUpgrade`-kutsun
+`requireLegacyUpgradeProductPrecondition` muuntaa tarkistimen epäonnistumisen
+yleiseksi `WINDOWS_ACCEPTANCE_LEGACY_PRECONDITION_FAILED`-koodiksi. Ennen
+yhteistä käyttöönottoa suljettu alkuperäinen tarkistinvirhe on säilytettävä
+nykyisessä vastuussa ja lukittava käyttäytymisregressiolla. Puuttuva tulos ei
+saa valtuuttaa ennestään asennetun tuotteen siivousta. Tätä havaintoa ei
+nimetä ratkaistuksi eikä yhdistetä aiempiin käynnistysviiveisiin.
+
+Omistajan hyväksymä jatko aloittaa V2.6:n omassa pinotussa haarassa tämän
+katselmoidun checkpointin päältä. PR:iä ei mergeä mekaanisesti toisiinsa tai
+`main`iin. V2.6:n ja V2.7:n suoritusympäristöstä tarvitaan oma päätös ennen
+raskaita ajoja; V2.5:n rajaus ei siirry niihin automaattisesti. Vanhan
+orkestroinnin poisto, CI-porttien vaihto ja päähaaran integraatio säilyvät
+erillisenä cutover-kokonaisuutena ennen julkaisuvaihetta.
+
+| Portti | Revision `47847f9` näyttö |
+| --- | --- |
+| Paikallinen normaali V2.5-sarja | 166/166, ei epäonnistuneita, peruutettuja tai ohitettuja testejä |
+| Artifact-/työnkulkusopimukset | 12/12; desktopin typecheck/build läpäisseet, niiden jälkeen ei desktop-toteutusmuutoksia |
+| CI-sopimukset | [Vaiheajo 34127535051](https://github.com/eky-software/eky/actions/runs/34127535051): molemmat sarjat 166/166, attempt 1 |
+| CI-producer | Samassa vaiheajossa yksi varmennettu historical source / synthetic target -artifact, attempt 1 |
+| CI-consumerit | Kaksi eristettyä Windows-jobia: `historicalLegacyUpgradeCompleted`, attempt 1, samat tavut ennen/jälkeen |
+| Semanttiset jälkiehdot | Molemmissa business-evidence, yksi adoptio ja idempotentti toinen käynnistys; `businessDataPreserved`, `processTreeAbsent` ja `fixtureRemoved` kaikki `true` |
+| Jaetut V2-portit | [Supervisor](https://github.com/eky-software/eky/actions/runs/34127539610), [clean artifact](https://github.com/eky-software/eky/actions/runs/34127539680) ja [upgrade artifact](https://github.com/eky-software/eky/actions/runs/34127539566) valmistuivat vihreinä |
+
+| CI-artifactin identiteetti, producer `47847f9` | SHA-256 |
+| --- | --- |
+| Descriptor | `994b1bb3cc3973c38cc0fdf32c45ca24c3973f367cc83fe959866c7cdcc0bce4` |
+| Historical-source-rebuild 0.2.6 MSI | `98eeffe5a55965121ea78f455c9c1f61848a525aaa73c86d81b44b1b667c74eb` |
+| Synteettinen 0.2.7 target MSI | `5722cd006b062d4cf6065fadd8dd827863a921bfda7c09446106cc4dc40ebe3a` |
+
+Nämä ovat tämän repositoryn CI-artifactin tunnisteita, eivät paikallisen
+buildin tai käyttäjälle annettavan julkaisun tunnisteita. Dokumentaation
+myöhempi commit ei saa itselleen uutta artifact-hyväksyntää näillä hasheilla.
+Konekohtaisia havaintoja tai mittauksia ei sisällytetä tähän päätökseen.
+
+### Aiempi päätöstila ennen suoritusympäristön rajausta
+
+Seuraava osuus säilyttää aiemmat hyväksyntätilat historiallisina. Sen avoimia
+paikallisia consumer-vaatimuksia ei tulkita uuden ympäristöpäätöksen rinnalle
+uusiksi porteiksi, eikä sen epäonnistuneita ajoja nimetä onnistuneiksi.
+
+V2.5:n hyväksyntä on edelleen avoin haarassa
+`codex/test-harness-v2-legacy-upgrade`. Nykyinen rajattu checkpoint tarkentaa
+footprint-virheen roolin ja ehdon sekä estää artifactin sijoittamisen buildin
+cleanup-juureen; käyttäytymisregressiot 59/59. Revisio `7bfab86` läpäisi
+normaalin pnpm-sarjan 166/166, artifact-sopimukset 11/11 ja desktopin
+typecheck/buildin. Paketoitu hyväksyntä on edelleen kesken. Yksityiskohtainen
+diagnoosi säilyy vain paikallisena aineistona. Single-link-sopimus säilyy;
+sen mahdollinen muutos tarvitsee omistajapäätöksen. GUI-fixturen poikkeusta
+ei laajenneta asennettuun payloadiin tällä checkpointilla.
+Checkpoint voidaan julkaista keskeneräisenä draft-katselmukseen. Uutta
+lopullista artifactia tai kahta paikallista hyväksyntäconsumeria ei ajeta
+tämän avoimen rajan yli. CI:n mahdollinen vihreys ei korvaa tätä puutetta.
+
+Jaetun feasibility-työnkulun on sidottava varmennettu, absoluuttinen
+`EKY_DOTNET_EXE` ennen kaikkia process-contract-ajotiloja, ei vain
+diagnostiikkaa. Sama sidonta tehdään kerran. Rajattu regressio todistaa
+puuttuvan sidonnan hylkäyksen ja korjatun kytkennän; supervisorin
+absoluuttisen komentopolun ehto säilyy muuttumattomana. Kohdetestit 2/2,
+supervisor-sopimukset 45/45 ja artifact-/työnkulkusopimukset 12/12.
+
+Revision `5b727b9` ensimmäinen vaihehyväksyntäkierros
+([34125812197](https://github.com/eky-software/eky/actions/runs/34125812197))
+läpäisi molemmat 166/166-sopimussarjat ja producerin. Consumer 1 läpäisi,
+consumer 2 hylättiin ennen skenaarion käynnistystä koodilla
+`WINDOWS_ACCEPTANCE_LEGACY_PRECONDITION_FAILED`. Tämä ei ole hyväksytty
+consumer-pari. Yleinen precondition-koodi ei yksin osoita hylkäyksen syytä;
+sitä ei käsitellä asennetun footprintin havainnon selityksenä.
+
+Edellisen checkpointin normaali pnpm-sarja revisiolta
+`c859c5ab9c6723ca08529173e4a2e87b34c9bcd7` läpäisi 151/151 ilman
+peruutettuja tai ohitettuja testejä. Artifact-sopimukset 10/10 sekä desktopin
+typecheck/build ja locked restore läpäisivät. Ensimmäinen consumer hylättiin
+`targetPostcondition`-vaiheessa. Toista consumeria ja uutta CI-kierrosta ei
+ajettu epäonnistumisen yli. Aiempi diagnostinen CI kuuluu revisiolle
+`fea84837ce218a09455c8c170b6ba6698fc9a9ce`; sitä ei siirretä uuden
+checkpointin hyväksynnäksi. Erillinen checkpoint `4f5a4db` poistaa
+virheellisen pyynnön estävän evidence-kirjoituksen. Omistaja on hyväksynyt
+yllä kuvatun neljän GUI-tapauksen 30000 ms kokonaisbudjetin. Prosessiomistajuus,
+tuotantokoodi, muut aikarajat ja tulosten hyväksymisehdot eivät muutu.
+
+| Vastuu | Projektin hyväksyntätila |
+| --- | --- |
+| Startup- ja smoke-watcher | Kanonisointi, linkkirajat ja varhainen child-rejection on katettu regressioilla; viimeisin kohdesarja 49/49 |
+| Worker-fixturen cleanup | Kilpaileva Job-cleanup on poistettu synteettisestä fixturestä; live-child ja foreign sentinel säilyvät pakollisina |
+| Supervisorin evidence-output | Myös invalid-request käyttää ei-estävää writera; regressio epäonnistui ennen korjausta, kohdesarja 45/45 ja kaksi invalid-request-regressiota 20/20 kierrosta ilman retryä |
+| GUI-testisopimus | Neljän onnistumispolun hyväksytty 30000 ms kokonaisbudjetti, 1000 ms cleanup-varaus; kohdetestit 6/6, myös muuttumaton `absent`-regressio |
+| Normaali V2.5-sarja | `7bfab86`: 166/166; aiempi `fea8483`: 149/150 pysyy epäonnistuneena, eikä `cleanupUnverified` ole hyväksytty cleanup |
+| Artifact | `c859c5a`: producer ja erillinen ennen/jälkeen-verifier läpäisivät; canonical- ja locked-inputit muuttumattomat |
+| Consumer 1 | `c859c5a`: `WINDOWS_ACCEPTANCE_LEGACY_FOOTPRINT_INSPECTION_FAILED`; major upgrade valmistui, mutta target-postcondition hylättiin ennen targetin käynnistystä |
+| Consumerin failure boundary | Alkuperäinen virhe säilyi; `processTreeAbsent=true`, `semanticCleanupCompleted`, `exactProductsAbsentAfterCleanup`, `fixtureRemoved=true` |
+| Suora Node-kontrolli nykyisen buildin jälkeen | `fea8483`: 150/150, vain diagnostiikkaa; ei korvaa normaalia pnpm-komentoa tai todista juurisyytä |
+| Diagnostinen CI | `fea8483`, ajo `34065428142`: kaksi 150/150-sarjaa, yksi producer ja kaksi consumeria ensimmäisellä yrityksellä |
+| Puuttuva hyväksyntä | Asennetun payloadin testisopimuksen katselmus, lopullisen revision kaksi vihreää paikallista consumeria sekä tuore CI ovat edelleen avoinna |
+
+Nykyinen `windows-acceptance-v2-legacy-diagnostic.yml` säilyy samana
+työnkulkuna, mutta sen uusi ajotarkoitus on **V2.5-vaihehyväksyntä**:
+kaksi sopimussarjaa, yksi producer ja kaksi saman artifactin consumeria.
+Historiallisia diagnostisia ajoja ei nimetä jälkikäteen hyväksynnöiksi.
+Jobit, komennot, aikarajat, SHA-lukitut actionit ja yhden päivän
+artifact-retentio säilyvät; ei uutta rinnakkaista CI-putkea. Tämä ei ole
+koko V2:n hyväksyntä, päähaaran cutover tai release-portti, eikä muuta
+nykyisiä required check -ehtoja. Lopullinen vaihehyväksyntä vaatii myös
+alla mainitut paikalliset portit.
+
+Konekohtaisen tutkimuksen aineisto, ympäristöhavainnot ja yksityiskohtaiset
+mittaukset säilytetään vain Gitistä ohitettuina. Niiden poistaminen tästä
+suunnitelmasta ei poista epäonnistuneita testituloksia eikä osoita juurisyytä
+julkisen CI-ajon virheelle. Tutkimuslupa ei ole julkaisulupa.
+
+Nykyisen [diagnostisen ajon 34065428142](https://github.com/eky-software/eky/actions/runs/34065428142)
+kaikki viisi jobia valmistuivat ilman rerunia tai ulkoista timeoutia.
+Sopimussarjoissa ei ollut epäonnistuneita, peruutettuja tai ohitettuja testejä.
+
+| Job | Tulos | GitHub-jobin kesto |
+| --- | --- | --- |
+| Sopimussarja 1 | 150/150 | 2 min 28 s |
+| Sopimussarja 2 | 150/150 | 2 min 47 s |
+| Producer | Yksi tarkistettu source/target-artifact | 8 min 15 s |
+| Consumer 1 | `historicalLegacyUpgradeCompleted` | 2 min 58 s |
+| Consumer 2 | `historicalLegacyUpgradeCompleted` | 3 min 11 s |
+
+| Nykyisen CI-artifactin identiteetti | SHA-256 |
+| --- | --- |
+| Descriptor | `933b1c7035f51ce048260c05da9f363da1b4045b18b24d0c76dc39dfdefab500` |
+| Source MSI | `4d2d327057d8da7e37cf4f0c5b21b527c3b8792e2035a92d1eba08b5cc8c5716` |
+| Target MSI | `35d629d5c60fdf905803352477f3bde7a1d474f4aabb1f6338411dd5a38d5171` |
+
+Molemmat consumerit varmensivat saman descriptorin ja pakettitavut ennen
+ajoa ja sen jälkeen. Source on `historical-source-rebuild` 0.2.6, target
+synteettinen 0.2.7, ei exact-local-release tai käyttäjälle jaettava pilotti.
+Kummankin strict terminal vahvisti legacy business -todisteen, yhden adoptoidun
+työtilan, idempotentin toisen käynnistyksen, `businessDataPreserved=true`,
+`processTreeAbsent=true` ja `fixtureRemoved=true`. CI-profiilin tiedostomäärä
+oli 0 -> 0. Completed-polku edellyttää onnistunutta semanttista cleanupia ja
+erillistä `exactProductsAbsent`-jälkiehtoa; omistettuja orpoprosesseja jäi 0.
+Omistajan profiilia tai yksityistä tutkimusaineistoa ei siirretty CI:hin.
+
+Hyväksytty kertaluonteinen pnpm-ketjun mittaus on suoritettu ja sen
+väliaikainen muutos palautettu. Se ei muuta normaalia hyväksyntää.
+Invalid-request-evidence-korjaus on itsenäinen eikä selitä natiivikäynnistystä.
+Erillinen omistajapäätös hyväksyy GUI-integraation rajatun aikabudjetin
+muutoksen; mittauslupaa ei käytetä hyväksyntänä. Onnistuminen edellyttää edelleen
+todellisia readiness-, worker-, process-tree- ja cleanup-tuloksia.
+Tarkoitukselliset timeout-, puuttuvan ikkunan ja myöhäisen prosessinluonnin
+regressiot säilyvät ennallaan. Normaali sarja on vihreä, mutta packaged-
+hyväksyntä ei ole valmis. Aiempi footprint-lukijan yhteinen hylkäyskoodi on
+nyt tarkennettu rooli-/ehtoluokaksi. Luokitus osoittaa hylätyn tarkistuksen,
+ei tiedostomuutoksen tekijää. Linkki- tai containment-rajaa ei löysennetä
+eikä uutta supervisor- tai cleanup-omistajaa lisätä. Uutta laajaa sarjaa tai
+CI-uusintaa ei käytetä avoimen luottamusrajan päätöksen korvikkeena.
+
+### Historialliset hyväksyntäyritykset
+
+Aiemman vihreän diagnostisen artifactin alkuperäinen testirevisio on
+`43128e6763cc59472e4a9a3f91c5957a8fd3bf88`. Sitä seuranneet `e8d2f5f` ja
+`3c68cbd` olivat dokumentaatiocheckpointeja, eivät uusia testirevisioita.
+Niiden tuloksia ei yhdistetä nykyiseen hyväksyntäyritykseen.
+
+Aiemmat 85/86-, 96/97-, 102/103-, 136/137-, 138/139-, 140/141- ja
+146/147-sarjat säilyvät epäonnistuneina; yksittäinen vihreä diagnostiikka ei
+korvaa niitä. Alkuperäisten kokeiden konekohtaiset yksityiskohdat ovat
+paikallista aineistoa, eivät projektin julkinen tapahtumapäiväkirja.
+
+| CI-revisio ja ajo | Historiallinen päätetulos |
+| --- | --- |
+| `50225e5`, [33966600849](https://github.com/eky-software/eky/actions/runs/33966600849) | Yksi visible-diagnoosi läpäisi; ei V2.5-hyväksyntä |
+| `eba5ac2`, [34000831989](https://github.com/eky-software/eky/actions/runs/34000831989) | Molemmat sarjat epäonnistuivat: 132/136; SDK-kytkentä, watcher ja worker-fixture rajattiin erikseen |
+| `082f26f`, [34026267089](https://github.com/eky-software/eky/actions/runs/34026267089) | Worker-diagnoosi osoitti cleanup-kilpailun; ei hyväksytty kokonaisuus |
+| `65829a9`, [34026639207](https://github.com/eky-software/eky/actions/runs/34026639207) | Worker-kohde 4/4 kahdesti ensimmäisellä yrityksellä |
+| `ff514fd`, [34035122217](https://github.com/eky-software/eky/actions/runs/34035122217) | Kaksi 141/141-sarjaa, diagnostinen tulos |
+| `7ce39f0`, [34039443687](https://github.com/eky-software/eky/actions/runs/34039443687) | Sopimukset läpäisivät; producerin latausvirhe esti artifactin ja consumerit |
+| `7ce39f0`, [34040016182](https://github.com/eky-software/eky/actions/runs/34040016182) | Erillinen diagnoosi: consumer 2 source-smoke-virhe ja varmennettu cleanup; consumer 1 ulkoinen timeout ilman omaa terminal- tai cleanup-todistetta |
+| `c71f625`, [34052822072](https://github.com/eky-software/eky/actions/runs/34052822072) | Molemmat sarjat kaatuivat watcher-assertioon; producer ja consumerit jäivät ajamatta |
+
+Consumer 1:n viimeinen turvallinen vaihe oli
+`historicalLegacyUpgradeLifecycle / majorUpgrade / started`.
+Se ei todista MSI:n valmistumista, target first startia, semanttista cleanupia
+tai nollaa orpoprosessia. Nykyinen vihreä diagnoosi ei korjaa vanhan ajon
+puuttuvaa todistetta.
+
+### Nykyisten korjausten vastuut
+
+Historiallinen source kirjoittaa smoke-resultin muodossa JSON + LF.
+`legacyUpgradeSourceSmoke` sallii nykyisen tapahtumapolun odottaa tyhjää
+tai keskeneräistä truncate/write-välitilaa. Valmis virheellinen JSON,
+liian suuri tai linkitetty tiedosto sekä prosessin exit ilman kokonaista
+resultia torjutaan. Historiallista lähdekoodia ei ole muutettu.
+
+`SafeEvidenceWriter` käytti synkronista kirjoitusta samalla säikeellä,
+joka ohjaa deadlinea ja Job-cleanupia. Injektoitu pysyvästi odottava
+TextWriter todisti sopimusvirheen. Nykyinen kirjoittaja käyttää rajattua
+128 rivin ei-odottavaa jonoa ja yhtä prosessin sisäistä background-output-
+säiettä. Täysi jono saa pudottaa diagnostiikkaa, ei muuttaa tulosta.
+Strict supervisor-result kirjoitetaan erikseen; loppudrain käyttää vain
+saman requestin jäljellä olevaa aikaa. Invalid-request-polku ennen Jobin
+käynnistystä ei kuulu tämän kokeen kattavuuteen.
+
+Prosessipuun ainoa omistaja säilyy `WindowsJobProcessSupervisor`issa.
+`runLegacyUpgrade.mjs` omistaa erilliset postcondition-, profiili- ja
+fixture-tarkistukset. Worker ei saa uutta deadline- tai cleanup-omistajaa.
+Todistettu output-virhe ei yksin nimeä vanhan CI-timeoutin juurisyytä.
+
+### Historiallinen diagnostinen artifact-raja
+
+Työnkulun aiempi diagnostinen versio käytti samaa build-once-mallia.
+Sen ajot eivät muodostaneet hyväksyntäporttia. Nykyinen vaihehyväksynnän
+tarkoitus on kuvattu yllä; aiempia ajoja ei nimetä uudelleen.
+Kaksi normaalia pnpm-sopimussarjaa läpäisee ennen produceria.
+Kaikki jobit käyttävät samaa revisiota. Producer lähettää vain descriptorin
+suljetun synteettisen tiedostojoukon SHA-lukituilla actioneilla yhden
+vuorokauden retentionilla. Consumerit tarkistavat tavut ennen lifecycleä
+ja sen jälkeen, myös virheessä. Profiilit ja yksityiset lokit eivät kuulu
+artifactiin. Nykyiset job-/step-rajat ja workerin budjetti säilyvät.
+
+### Historiallinen vihreä packaged-checkpoint
+
+[Diagnostinen ajo 34054510669](https://github.com/eky-software/eky/actions/runs/34054510669)
+käytti revisiota `43128e6763cc59472e4a9a3f91c5957a8fd3bf88`.
+Kaikki viisi jobia läpäisivät ensimmäisellä yrityksellä ilman rerunia tai
+ulkoista timeoutia.
+
+| Job | Tulos | GitHub-jobin kesto |
+| --- | --- | --- |
+| Sopimussarja 1 | 150/150 | 2 min 21 s |
+| Sopimussarja 2 | 150/150 | 2 min 28 s |
+| Producer | Yksi tarkistettu source/target-artifact | 7 min 45 s |
+| Consumer 1 | `historicalLegacyUpgradeCompleted` | 2 min 45 s |
+| Consumer 2 | `historicalLegacyUpgradeCompleted` | 3 min 3 s |
+
+Artifact on historical-source-rebuild: source 0.2.6 revisiosta `6ed99f5`
+ja target 0.2.7 testirevisiosta. Se ei ole exact-local-release-todiste eikä
+käyttäjälle jaettava pilot-paketti.
+
+| CI-artifact | SHA-256 |
+| --- | --- |
+| Descriptor | `1183bc32627edd0f934fa6d0557abe526bfc42e1148e9c1add31982524362ac1` |
+| Source MSI | `6f2511171fb5e56d1e4d7daa2a2c0e03ad10eb7cf47a6ec12171e8af9ac957c1` |
+| Target MSI | `f269ca927db487bb5d51ae44ea2d2ac66d0e30ae320da7ba1bca905f63622c42` |
+
+Molemmat consumerit tarkistivat samat tavut ennen ajoa ja sen jälkeen.
+Source install, historiallinen smoke, normaali source-start, legacy
+business evidence, major upgrade sekä targetin ensimmäinen ja toinen
+käynnistys läpäisivät. Molemmat strict caller-terminalit vahvistivat
+`legacyBusinessFixtureValidated=true`, yhden adoptoidun työtilan,
+`idempotentSecondStartup=true`, `businessDataPreserved=true`,
+`processTreeAbsent=true` ja `fixtureRemoved=true`. Puhtaiden CI-runnerien
+normaalin profiilin tiedostomäärä oli 0 -> 0; omistajan profiilia ei käytetty.
+
+Completed-tulos edellyttää onnistunutta semanttista cleanupia ja erillistä
+exact ProductCode -jälkiehtoa `exactProductsAbsent`. Omistettuja
+orpoprosesseja jäi näissä kahdessa CI-ajossa 0. Tämä ei korvaa aiempien ajojen
+puuttuvaa cleanupia tai avoimia paikallisia hyväksyntäportteja.
+
+### V2.5:n hyväksyntään käytetty etenemisjärjestys
+
+Seuraava järjestys kuvaa yllä suljetun V2.5-työpaketin hyväksyntää samassa
+`codex/test-harness-v2-legacy-upgrade`-haarassa. Se ei aloita jo varmennettuja
+muuttumattoman koodin ajoja uudelleen dokumentaation vuoksi:
+
+1. Tarkista työpuu, local/remote SHA, työkalut ja prosessit. Commitoi vain
+   rajattu katselmoitu muutos ja aja puhtaalta revisiolta normaali
+   `pnpm --filter @eky/desktop installer:test:windows-supervisor-v2-legacy`.
+   Sarja valmistelee normaalit uudet fixturet; retained/shared-fixture-
+   diagnostiikkaa ei injektoida normaaliin polkuun.
+2. Vihreän normaalin sarjan jälkeen katselmoi diff ja aja artifact-
+   kohdetestit sekä desktopin typecheck/build. V2.5:n paketoitu hyväksyntä
+   tehdään yllä hyväksytyssä kahden eristetyn Windows-jobin ympäristössä;
+   kahta paikallista consumeria tai uutta paikallista MSI-buildia ei vaadita.
+3. Pushaa sama revisio normaalisti. Nykyinen V2.5-työnkulku ajaa kaksi
+   kokonaista sopimussarjaa, niiden jälkeen yhden producerin ja kaksi
+   consumeria ensimmäisellä yrityksellä. Älä käynnistä erillistä
+   feasibility- tai diagnostista uusintaa saman hyväksynnän rinnalle.
+   Kirjaa pass/fail/cancelled/skipped sekä terminal/cleanup-tulos;
+   testitiedoston kaatumisen pienentämä kokonaismäärä ei ole ohitus.
+   Älä pushaa tai dispatchaa uudelleen kesken kierroksen.
+4. CI:n producer rakentaa oman artifactinsa kerran. Kaksi consumeria
+   tarkistaa ja käyttää sen täsmälleen samoja tavuja ennen/jälkeen-ajossa.
+   V2.5-vaihe hyväksytään vasta pakollisten paikallisten sopimus- ja
+   build-porttien sekä molempien CI-consumerien valmistuttua;
+   alkuperäinen virhe ja puuttuva cleanup säilyvät hylkäyksinä.
+   Päivitä invarianttien siirtokartta. Muuttumattoman toteutuksen jo varmennettu
+   näyttö säilyy omalla revisiollaan; pelkkä sopimuksen dokumentointi ei
+   käynnistä manuaalista uusintaa. Nykyiset automaattiset PR-checkit säilyvät.
+
+Tuntematon prosessilopputila tai `cleanupUnverified` pysyy virheenä eikä
+myöhempi yleinen nollaprosessikysely muuta sitä onnistumiseksi. Epäonnistuneen
+ajon tarpeellinen aineisto säilyy yksityisesti; epäselvässä ympäristössä ei
+jatketa MSI-ajoihin. Omistajan erikseen hyväksymä GUI-onnistumispolkujen
+30 sekunnin kokonaisbudjetti ja tarkoituksella lyhyet timeout-regressiot
+ovat eri sopimuksia; jälkimmäisiä ei muuteta. Konekohtaisen diagnoosin
+yksityiskohdat eivät muodosta uutta hyväksyntäporttia eikä niitä julkaista
+tässä suunnitelmassa.
+
+V2.1-V2.5:n pinotut checkpointit, mukaan lukien jäädytetty draft-PR #262 ja
+vaihekohtaisesti katselmoitu PR #263, säilyvät. V2.6 etenee vain omassa
+haarassaan yllä kuvatulla rajauksella. Ei mergeä, versionostoa, pilot-pakettia,
+W6-poistoa, tuotantosemantiikan muutosta tai uutta prosessi-/cleanup-omistajaa.
+PR #257/#258 ja nykyiset required check -ehdot eivät muutu.
 
 ## Ulkoiset tekniset lähteet
 
 - Node.js child process: <https://nodejs.org/api/child_process.html>
 - Microsoft nested jobs: <https://learn.microsoft.com/en-us/windows/win32/procthread/nested-jobs>
 - Microsoft `TerminateJobObject`: <https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-terminatejobobject>
+- Microsoft `SetWinEventHook`: <https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwineventhook>
+- Microsoft `MsgWaitForMultipleObjects`: <https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-msgwaitformultipleobjects>
 - GitHub Actions workflow artifacts: <https://docs.github.com/en/actions/concepts/workflows-and-actions/workflow-artifacts>
 - GitHub Actions concurrency: <https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency>

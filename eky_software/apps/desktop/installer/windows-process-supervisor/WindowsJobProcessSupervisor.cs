@@ -4,11 +4,15 @@ namespace Eky.WindowsProcessSupervisor;
 
 internal sealed class WindowsJobProcessSupervisor(
     Stopwatch stopwatch,
-    SafeEvidenceWriter evidence
+    SafeEvidenceWriter evidence,
+    Func<SupervisorRequest, WindowsJob, CancellationToken, SuspendedWindowsProcess>? createProcess = null,
+    Func<SuspendedWindowsProcess, bool>? observeRootExit = null
 )
 {
     private const int WaitSliceMilliseconds = 100;
     private const int HeartbeatMilliseconds = 60_000;
+
+    internal Task LateCreationRelease { get; private set; } = Task.CompletedTask;
 
     internal SupervisorOutcome Run(SupervisorRequest request)
     {
@@ -23,35 +27,48 @@ internal sealed class WindowsJobProcessSupervisor(
         evidence.Write("jobHandlePolicy", "completed", "nonInheritableKillOnClose");
 
         evidence.Write("hostStarted", "started");
+        using var cancellation = new CancellationTokenSource();
+        var creation = Task.Run(() =>
+            createProcess is null
+                ? SuspendedWindowsProcess.Start(request, job, cancellation.Token)
+                : createProcess(request, job, cancellation.Token));
+        var workDeadline = request.TimeoutMilliseconds - request.CleanupReserveMilliseconds;
+        if (!WaitForCreation(creation, workDeadline))
+        {
+            evidence.Write("deadlineExceeded", "failed", errorCode: "deadlineExceeded");
+            cancellation.Cancel();
+            return CleanupPendingCreation(job, creation, request);
+        }
         SuspendedWindowsProcess child;
         try
         {
-            child = SuspendedWindowsProcess.Start(request);
+            child = creation.GetAwaiter().GetResult();
         }
-        catch (SupervisorFailure failure)
+        catch (Exception error)
         {
+            var failure = error as SupervisorFailure ?? new SupervisorFailure("processStartFailed");
             evidence.Write(
                 "hostStarted",
                 "failed",
                 errorCode: failure.ErrorCode,
                 win32ErrorCode: failure.Win32ErrorCode
             );
-            return SupervisorOutcome.Failed(
-                failure.ErrorCode,
-                "notRequired",
-                true,
-                processWin32ErrorCode: failure.Win32ErrorCode
-            );
+            return FailAfterCleanup(job, request, failure.ErrorCode, null, null) with
+            {
+                ProcessWin32ErrorCode = failure.Win32ErrorCode,
+            };
         }
 
         using (child)
         {
-            var assigned = false;
+            evidence.Write("hostAssigned", "completed");
+            if (stopwatch.ElapsedMilliseconds >= workDeadline)
+            {
+                evidence.Write("deadlineExceeded", "failed", errorCode: "deadlineExceeded");
+                return FailAfterCleanup(job, request, "deadlineExceeded", null, child);
+            }
             try
             {
-                job.Assign(child.Process);
-                assigned = true;
-                evidence.Write("hostAssigned", "completed");
                 child.Resume();
             }
             catch (SupervisorFailure failure)
@@ -62,19 +79,64 @@ internal sealed class WindowsJobProcessSupervisor(
                     errorCode: failure.ErrorCode,
                     win32ErrorCode: failure.Win32ErrorCode
                 );
-                return CleanupStartFailure(
-                    job,
-                    child,
-                    request,
-                    assigned,
-                    failure
-                );
+                return FailAfterCleanup(job, request, failure.ErrorCode, null, child) with
+                {
+                    ProcessWin32ErrorCode = failure.Win32ErrorCode,
+                };
             }
 
             evidence.Write("hostStarted", "completed");
             evidence.Write("waitStarted", "started");
             return WaitForTerminalProcessState(job, child, request);
         }
+    }
+
+    private bool WaitForCreation(Task<SuspendedWindowsProcess> creation, long deadline)
+    {
+        var remaining = deadline - stopwatch.ElapsedMilliseconds;
+        if (!creation.IsCompleted && remaining > 0)
+            Task.WaitAny([creation], (int)Math.Min(int.MaxValue, remaining));
+        return creation.IsCompleted;
+    }
+
+    private SupervisorOutcome CleanupPendingCreation(
+        WindowsJob job, Task<SuspendedWindowsProcess> creation, SupervisorRequest request)
+    {
+        evidence.Write("cleanupStarted", "started");
+        // A zero Job count is not absence while the native call can still create a suspended member.
+        if (!WaitForCreation(creation, request.TimeoutMilliseconds))
+        {
+            // This owner receives late handles without resuming the failed run or changing its result.
+            LateCreationRelease = creation.ContinueWith(completed =>
+            {
+                if (completed.Status == TaskStatus.RanToCompletion) completed.Result.Dispose();
+                else _ = completed.Exception;
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            try { job.Terminate(); }
+            catch (SupervisorFailure failure)
+            {
+                evidence.Write("cleanupCompleted", "failed", errorCode: "cleanupFailed",
+                    win32ErrorCode: failure.Win32ErrorCode);
+                return SupervisorOutcome.Failed("deadlineExceeded", "cleanupFailed", false,
+                    cleanupWin32ErrorCode: failure.Win32ErrorCode);
+            }
+            evidence.Write("cleanupCompleted", "failed", errorCode: "cleanupUnverified");
+            // The attribute retains the Job through creation; final close kills any late suspended member.
+            // Host exit also closes the Job if native creation never returns. Absence is not yet proven.
+            return SupervisorOutcome.Failed("deadlineExceeded", "cleanupUnverified", false);
+        }
+        SuspendedWindowsProcess? child = null;
+        try
+        {
+            child = creation.GetAwaiter().GetResult();
+        }
+        catch (Exception)
+        {
+            // Creation cancellation/failure does not replace the original deadline.
+        }
+        using (child)
+            return FailAfterCleanup(job, request, "deadlineExceeded", null, child,
+                cleanupStarted: true);
     }
 
     private SupervisorOutcome WaitForTerminalProcessState(
@@ -98,7 +160,7 @@ internal sealed class WindowsJobProcessSupervisor(
                 evidence.Write("processTreeObserved", "completed", "descendantObserved");
             }
 
-            if (!rootExited && child.Wait(0))
+            if (!rootExited && (observeRootExit?.Invoke(child) ?? child.Wait(0)))
             {
                 rootExited = true;
                 childExitCode = child.GetExitCode();
@@ -110,24 +172,9 @@ internal sealed class WindowsJobProcessSupervisor(
                 );
             }
 
-            if (activeProcessCount == 0)
+            // Job accounting and the process handle are separate observations during termination.
+            if (activeProcessCount == 0 && rootExited)
             {
-                if (!rootExited)
-                {
-                    rootExited = child.Wait(0);
-                    if (!rootExited)
-                    {
-                        throw new SupervisorFailure("processStateInvalid");
-                    }
-                    childExitCode = child.GetExitCode();
-                    evidence.Write(
-                        "hostExited",
-                        childExitCode == 0 ? "completed" : "failed",
-                        childExitCode == 0 ? "hostExited" : null,
-                        childExitCode == 0 ? null : "processExitFailed"
-                    );
-                }
-
                 evidence.Write("waitStarted", "completed");
                 evidence.Write("processTreeAbsent", "completed");
                 if (childExitCode != 0)
@@ -149,7 +196,7 @@ internal sealed class WindowsJobProcessSupervisor(
                     workerResult.IsSuccessful ? null : workerResult.ResultCode
                 );
                 return workerResult.IsSuccessful
-                    ? SupervisorOutcome.Completed(childExitCode.Value)
+                    ? SupervisorOutcome.Completed(childExitCode!.Value)
                     : SupervisorOutcome.Failed(
                         "processCompleted",
                         "notRequired",
@@ -165,7 +212,8 @@ internal sealed class WindowsJobProcessSupervisor(
                     job,
                     request,
                     "processExitFailed",
-                    childExitCode
+                    childExitCode,
+                    child
                 );
             }
 
@@ -192,83 +240,22 @@ internal sealed class WindowsJobProcessSupervisor(
         }
 
         evidence.Write("deadlineExceeded", "failed", errorCode: "deadlineExceeded");
-        return FailAfterCleanup(job, request, "deadlineExceeded", childExitCode);
-    }
-
-    private SupervisorOutcome CleanupStartFailure(
-        WindowsJob job,
-        SuspendedWindowsProcess child,
-        SupervisorRequest request,
-        bool assigned,
-        SupervisorFailure failure
-    )
-    {
-        evidence.Write("cleanupStarted", "started");
-        try
-        {
-            if (assigned)
-            {
-                job.Terminate();
-                return AwaitCleanup(
-                    job,
-                    request,
-                    failure.ErrorCode,
-                    null,
-                    failure.Win32ErrorCode
-                );
-            }
-
-            child.TerminateDirectProcess();
-            var remaining = request.TimeoutMilliseconds - stopwatch.ElapsedMilliseconds;
-            if (remaining > 0 && child.Wait((int)Math.Min(int.MaxValue, remaining)))
-            {
-                evidence.Write("cleanupCompleted", "completed");
-                evidence.Write("processTreeAbsent", "completed");
-                return SupervisorOutcome.Failed(
-                    failure.ErrorCode,
-                    "processTreeAbsent",
-                    true,
-                    processWin32ErrorCode: failure.Win32ErrorCode
-                );
-            }
-        }
-        catch (SupervisorFailure cleanupFailure)
-        {
-            evidence.Write(
-                "cleanupCompleted",
-                "failed",
-                errorCode: "cleanupFailed",
-                win32ErrorCode: cleanupFailure.Win32ErrorCode
-            );
-            return SupervisorOutcome.Failed(
-                failure.ErrorCode,
-                "cleanupFailed",
-                false,
-                processWin32ErrorCode: failure.Win32ErrorCode,
-                cleanupWin32ErrorCode: cleanupFailure.Win32ErrorCode
-            );
-        }
-
-        evidence.Write("cleanupCompleted", "failed", errorCode: "cleanupFailed");
-        return SupervisorOutcome.Failed(
-            failure.ErrorCode,
-            "cleanupFailed",
-            false,
-            processWin32ErrorCode: failure.Win32ErrorCode
-        );
+        return FailAfterCleanup(job, request, "deadlineExceeded", childExitCode, child);
     }
 
     private SupervisorOutcome FailAfterCleanup(
         WindowsJob job,
         SupervisorRequest request,
         string failureCode,
-        int? childExitCode
+        int? childExitCode,
+        SuspendedWindowsProcess? child,
+        bool cleanupStarted = false
     )
     {
-        evidence.Write("cleanupStarted", "started");
+        if (!cleanupStarted) evidence.Write("cleanupStarted", "started");
         try
         {
-            if (job.GetActiveProcessCount() == 0)
+            if (job.GetActiveProcessCount() == 0 && (child is null || child.Wait(0)))
             {
                 evidence.Write("cleanupCompleted", "completed");
                 evidence.Write("processTreeAbsent", "completed");
@@ -280,7 +267,7 @@ internal sealed class WindowsJobProcessSupervisor(
                 );
             }
             job.Terminate();
-            return AwaitCleanup(job, request, failureCode, childExitCode);
+            return AwaitCleanup(job, request, failureCode, childExitCode, child);
         }
         catch (SupervisorFailure cleanupFailure)
         {
@@ -305,12 +292,12 @@ internal sealed class WindowsJobProcessSupervisor(
         SupervisorRequest request,
         string failureCode,
         int? childExitCode,
-        int? processWin32ErrorCode = null
+        SuspendedWindowsProcess? child
     )
     {
         while (stopwatch.ElapsedMilliseconds < request.TimeoutMilliseconds)
         {
-            if (job.GetActiveProcessCount() == 0)
+            if (job.GetActiveProcessCount() == 0 && (child is null || child.Wait(0)))
             {
                 evidence.Write("cleanupCompleted", "completed");
                 evidence.Write("processTreeAbsent", "completed");
@@ -318,8 +305,7 @@ internal sealed class WindowsJobProcessSupervisor(
                     failureCode,
                     "processTreeAbsent",
                     true,
-                    childExitCode,
-                    processWin32ErrorCode: processWin32ErrorCode
+                    childExitCode
                 );
             }
 
@@ -328,7 +314,10 @@ internal sealed class WindowsJobProcessSupervisor(
             {
                 break;
             }
-            job.Wait((int)Math.Min(WaitSliceMilliseconds, remaining));
+            if (child is not null && !child.Wait(0))
+                child.Wait((int)Math.Min(WaitSliceMilliseconds, remaining));
+            else
+                job.Wait((int)Math.Min(WaitSliceMilliseconds, remaining));
         }
 
         evidence.Write("cleanupCompleted", "failed", errorCode: "cleanupFailed");
@@ -336,8 +325,7 @@ internal sealed class WindowsJobProcessSupervisor(
             failureCode,
             "cleanupFailed",
             false,
-            childExitCode,
-            processWin32ErrorCode: processWin32ErrorCode
+            childExitCode
         );
     }
 }

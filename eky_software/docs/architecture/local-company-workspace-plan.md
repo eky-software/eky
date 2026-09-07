@@ -1279,23 +1279,26 @@ dependency-, schema-, migration SQL- tai backup-formaattimuutosta.
 In-app update testataan erikseen vain, jos `localUnsignedPilot`-polku on
 kyseisessä checkpointissa hyväksytty. MSI-gate ei piilota in-app update -puutetta.
 
-**Release-raja:** ensimmäinen käyttäjälle näkyvä versio on `0.2.7` vain, jos
-W1-W5B muodostavat koherentin käytettävän kokonaisuuden ja koko W6-portti on
-vihreä. Pelkästä registry- tai sisäisestä checkpointista ei nosteta versiota.
+**Release-raja:** nykyinen omistajan tavoite on korjattu `0.2.8`-pilotti.
+W1-W5B:n käytettävä kokonaisuus, W6-invarianttien korvaava V2-kattavuus ja
+katselmoitu harnessin käyttöönotto pitää hyväksyä ennen erillistä
+julkaisuvaihetta. Pelkästä registry- tai sisäisestä checkpointista ei nosteta
+versiota. Historiallisten ja synteettisten fixturejen versiot säilyvät;
+tämä tiekarttatavoite ei muuta niitä tai canonical-version tiedostoja.
 
 **Commit/PR/release:** testihardening omana PR:nään; versionosto viimeisenä
 erillisenä commitina vihreästä lähdepuusta.
 
 ## W7: Workspace deletion
 
-**Tila:** 0.2.8-versioon rajattu erillinen jatkotyö.
+**Tila:** erillinen myöhempi jatkotyö, alustava versiotavoite `0.2.9`.
 
 Poisto suunnitellaan erikseen vasta ensimmäisen multi-workspace-releasen
 jälkeen. Se vaatii ADR-0011:n quarantine-, backup-, typed confirmation-,
 native confirmation-, secret-, recovery- ja external artifact -rajat.
 
-W7 ei saa tulla mukaan W1-W6-PR:iin tai 0.2.7-releaseen sivutoimintona.
-0.2.8-tavoite ei vielä hyväksy toteutuksen yksityiskohtia, schema- tai
+W7 ei saa tulla mukaan W1-W6-PR:iin tai korjattuun 0.2.8-pilottiin sivutoimintona.
+Alustava 0.2.9-tavoite ei vielä hyväksy toteutuksen yksityiskohtia, schema- tai
 backup-formaattimuutosta eikä poiston turvallisuussopimusta ilman omaa
 suunnittelu- ja hyväksyntäporttia.
 

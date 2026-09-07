@@ -4,6 +4,11 @@ Tämä tiedosto on pakollinen lähtökohta kaikelle AI-avusteiselle työlle täs
 
 Lue tämä tiedosto aina ennen kuin teet muutoksia projektiin.
 
+Omistajan ja hänen koneensa tiedot pysyvät paikallisina. Noudata kaikessa
+raportoinnissa ja julkaisemisessa tämän tiedoston
+[konekohtaisten tietojen julkaisukieltoa](#konekohtaisten-tietojen-julkaisukielto).
+Tutkimus- tai lukulupa ei ole julkaisulupa.
+
 Eky-projektissa tekoäly ei saa arvata arkkitehtuuria, liiketoimintasääntöjä, turvallisuussääntöjä tai moduulien vastuita. Jos jokin asia on epäselvä, työ rajataan pienemmäksi tai kysytään lisäohje.
 
 ## Projektin tavoite
@@ -307,6 +312,31 @@ alemman tason testien lisäksi hardened Windows packaged backup -> inspect ->
 restore -> restart -> compare -todistuksen synteettisellä profiililla.
 Installer ja automaattipäivitys ovat tästä erillisiä hyväksyntäportteja.
 
+## Konekohtaisten tietojen julkaisukielto
+
+Omistajaan tai hänen tietokoneeseensa liittyvät tiedot pidetään paikallisina.
+Kielto koskee myös ei-salaisia tietoja: asennettuja ohjelmia, ajureita,
+valmistajia, versioita, käyttöjärjestelmä- ja laitteistoinventaariota,
+suojaus- ja verkkoasetuksia sekä näistä tehtyjä havaintoja. Pelkkä nimen,
+polun tai tunnisteen poistaminen ei tee konekohtaisesta raportista julkista.
+
+Näitä tietoja ei kirjoiteta versionoituihin tiedostoihin, commit-viesteihin,
+PR-kuvauksiin tai kommentteihin, issueihin, CI-lokeihin eikä ladattaviin
+artifacteihin. Raakajäljet, komentotulosteet ja yksityiskohtaiset paikalliset
+mittaukset kuuluvat vain jo olemassa oleviin Gitistä ohitettuihin paikkoihin.
+Myöskään paikallinen runbook tai työkalujen inventaario ei kuulu Gitiin.
+
+Yhteiseen dokumentaatioon kirjataan vain projektin yleiset sopimukset,
+korjattu käyttäytyminen, testien hyväksyntätila ja avoin jatkotyö ilman
+omistajaan tai koneeseen yhdistettävää diagnostiikkaa. Tarkempi raja on
+`docs/architecture/security-principles.md`-dokumentin julkaisusäännössä.
+
+Ennen committia ja pushia tarkista tiedostolistan lisäksi raporttien sisältö,
+staged diff ja viestit. Git-ohitus ei suojaa jo versionoitua tiedostoa eikä
+toiseen raporttiin kopioitua sisältöä. Jos tietoa on jo julkaistu, pysäytä
+sen levitys ja kerro omistajalle; nykyversion siivous ei poista Git-historiaa.
+Historian uudelleenkirjoitus tai muu laaja etäpoisto vaatii erillisen päätöksen.
+
 ## Dokumentaation roolit
 
 `docs/product/` kertoo mitä yritys tekee ja miksi ohjelmisto rakennetaan.
@@ -437,6 +467,8 @@ Tarkista:
 8. Tarvitaanko dokumentaatiopäivitys?
 9. Syntyikö uusi riippuvuus?
 10. Muuttuiko jokin arkkitehtuuripäätös?
+11. Onko julkaistavan sisällön yksityisyys tarkistettu julkaisukiellon mukaan,
+    mukaan lukien raportit, staged diff, viestit ja artifactit?
 
 Jos muutos rikkoo projektin periaatteita, älä tee sitä ilman erillistä hyväksyntää.
 

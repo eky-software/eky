@@ -19,38 +19,60 @@ internal sealed class SuspendedWindowsProcess : IDisposable
     }
 
     internal SafeProcessHandle Process { get; }
+    internal bool HandlesClosed => Process.IsClosed && thread.IsClosed;
 
-    internal static SuspendedWindowsProcess Start(SupervisorRequest request)
+    internal static SuspendedWindowsProcess Start(
+        SupervisorRequest request, WindowsJob job, CancellationToken cancellationToken,
+        Action<string>? observeCreation = null)
     {
-        var startupInfo = new NativeMethods.StartupInfo
+        Observe("preparationStarted");
+        cancellationToken.ThrowIfCancellationRequested();
+        using var attribute = job.CreateProcessAttribute();
+        var startupInfo = new NativeMethods.StartupInfoEx
         {
-            Size = (uint)Marshal.SizeOf<NativeMethods.StartupInfo>(),
+            StartupInfo = new NativeMethods.StartupInfo
+            {
+                Size = (uint)Marshal.SizeOf<NativeMethods.StartupInfoEx>(),
+            },
+            AttributeList = attribute.List,
         };
         var commandLine = new StringBuilder(
             WindowsCommandLine.Build(request.Command, request.Arguments)
         );
-        if (!NativeMethods.CreateProcess(
+        Observe("nativeCallStarted");
+        var created = NativeMethods.CreateProcess(
                 request.Command,
                 commandLine,
                 IntPtr.Zero,
                 IntPtr.Zero,
                 false,
-                NativeMethods.CreateSuspended,
+                NativeMethods.CreateSuspended | NativeMethods.ExtendedStartupInfoPresent,
                 IntPtr.Zero,
                 request.WorkingDirectory,
                 ref startupInfo,
-                out var processInformation))
+                out var processInformation);
+        var creationError = created ? 0 : Marshal.GetLastWin32Error();
+        Observe("nativeCallReturned");
+        if (!created)
         {
             throw new SupervisorFailure(
                 "processStartFailed",
-                Marshal.GetLastWin32Error()
+                creationError
             );
         }
 
-        return new SuspendedWindowsProcess(
+        var child = new SuspendedWindowsProcess(
             new SafeProcessHandle(processInformation.Process, true),
             new SafeWaitHandle(processInformation.Thread, true)
         );
+        Observe("handlesCaptured");
+        return child;
+
+        void Observe(string phase)
+        {
+            try { observeCreation?.Invoke(phase); }
+            catch { /* Measurement must not change native process ownership or its result. */ }
+        }
     }
 
     internal void Resume()
@@ -94,22 +116,6 @@ internal sealed class SuspendedWindowsProcess : IDisposable
             throw new SupervisorFailure("processExitReadFailed");
         }
         return unchecked((int)exitCode);
-    }
-
-    internal void TerminateDirectProcess()
-    {
-        if (!NativeMethods.TerminateProcess(Process, 1))
-        {
-            var terminateErrorCode = Marshal.GetLastWin32Error();
-            var waitResult = NativeMethods.WaitForSingleObject(Process, 0);
-            if (waitResult != NativeMethods.WaitObject0)
-            {
-                throw new SupervisorFailure(
-                    "processTerminateFailed",
-                    terminateErrorCode
-                );
-            }
-        }
     }
 
     public void Dispose()

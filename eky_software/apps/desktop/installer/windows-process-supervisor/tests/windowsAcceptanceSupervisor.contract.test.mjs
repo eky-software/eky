@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { once } from 'node:events';
-import { access, readFile } from 'node:fs/promises';
+import { EventEmitter, once } from 'node:events';
+import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import {
@@ -60,6 +60,270 @@ async function readCompletedExecution(context, execution) {
 test('the supervisor binary is available', WINDOWS_ONLY, async () => {
   await access(SUPERVISOR_DLL);
 });
+
+test('context cleanup removes the root only after its owned process exits', WINDOWS_ONLY, async (t) => {
+  const context = await contextFor(t, 'context-cleanup-completed');
+  const sentinel = await startForeignSentinel(context);
+  await assert.doesNotReject(cleanupRunContext(context));
+  assert.equal(isProcessAlive(sentinel.marker.processId), false);
+  await assert.rejects(access(context.testRoot), { code: 'ENOENT' });
+});
+
+test('context cleanup can retain failed-run evidence without skipping owned handles', WINDOWS_ONLY, async (t) => {
+  const context = await contextFor(t, 'context-cleanup-retained-result');
+  const evidence = JSON.stringify({ processTreeAbsent: false, cleanupResultCode: 'cleanupUnverified' });
+  await writeFile(context.resultPath, evidence, { flag: 'wx' });
+  const sentinel = await startForeignSentinel(context);
+
+  await assert.doesNotReject(cleanupRunContext(context, { preserveEvidence: true }));
+  assert.equal(isProcessAlive(sentinel.marker.processId), false);
+  assert.equal(await readFile(context.resultPath, 'utf8'), evidence);
+  await access(context.testRoot);
+});
+
+for (const preserveEvidence of [false, true]) {
+  test(`context cleanup preserves marker failure and closes owned handles: retain=${preserveEvidence}`, WINDOWS_ONLY, async (t) => {
+    const context = await createRunContext('context-cleanup-invalid-marker');
+    const markerPath = join(context.runRoot, 'root.ready.json');
+    t.after(async () => {
+      await rm(markerPath, { force: true });
+      await cleanupRunContext(context);
+    });
+    const sentinel = await startForeignSentinel(context);
+    const invalidMarker = JSON.stringify({ runNonce: 'invalid', processId: sentinel.marker.processId });
+    await writeFile(markerPath, invalidMarker, { flag: 'wx' });
+
+    await assert.rejects(cleanupRunContext(context, { preserveEvidence }), {
+      message: 'WINDOWS_ACCEPTANCE_FIXTURE_MARKER_INVALID',
+    });
+    assert.equal(isProcessAlive(sentinel.marker.processId), false);
+    assert.equal(await readFile(markerPath, 'utf8'), invalidMarker);
+  });
+}
+
+test('context cleanup preserves evidence after handle timeout and still closes remaining handles', WINDOWS_ONLY, async (t) => {
+  const context = await createRunContext('context-cleanup-handle-timeout');
+  const unresponsive = Object.assign(new EventEmitter(), {
+    exitCode: null, signalCode: null, kill: t.mock.fn(() => true),
+  });
+  const remaining = Object.assign(new EventEmitter(), { exitCode: null, signalCode: null });
+  remaining.kill = t.mock.fn(() => {
+    remaining.exitCode = 0;
+    queueMicrotask(() => remaining.emit('close', 0, null));
+    return true;
+  });
+  context.supervisorProcesses.add(unresponsive);
+  context.supervisorProcesses.add(remaining);
+  t.after(async () => {
+    t.mock.timers.reset();
+    unresponsive.exitCode = 1;
+    remaining.exitCode = 0;
+    await cleanupRunContext(context);
+  });
+  const evidencePath = join(context.testRoot, 'retained-evidence.json');
+  await writeFile(evidencePath, 'synthetic evidence', { flag: 'wx' });
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+
+  const rejected = assert.rejects(cleanupRunContext(context), {
+    message: 'WINDOWS_ACCEPTANCE_FIXTURE_HANDLE_CLEANUP_TIMEOUT',
+  });
+  t.mock.timers.tick(10_000);
+  await rejected;
+  assert.equal(unresponsive.kill.mock.callCount(), 1);
+  assert.equal(remaining.kill.mock.callCount(), 1);
+  assert.equal(await readFile(evidencePath, 'utf8'), 'synthetic evidence');
+});
+
+test('context cleanup preserves a handle error and still closes the next process group', WINDOWS_ONLY, async (t) => {
+  const context = await createRunContext('context-cleanup-handle-error');
+  const handleError = new Error('syntheticHandleError');
+  const failing = Object.assign(new EventEmitter(), { exitCode: null, signalCode: null });
+  failing.kill = t.mock.fn(() => {
+    failing.exitCode = 1;
+    queueMicrotask(() => failing.emit('close', 1, null));
+    throw handleError;
+  });
+  const remaining = Object.assign(new EventEmitter(), { exitCode: null, signalCode: null });
+  remaining.kill = t.mock.fn(() => {
+    remaining.exitCode = 0;
+    queueMicrotask(() => remaining.emit('close', 0, null));
+    return true;
+  });
+  context.supervisorProcesses.add(failing);
+  context.fixtureProcesses.add(remaining);
+  t.after(async () => {
+    failing.exitCode = 1;
+    remaining.exitCode = 0;
+    await cleanupRunContext(context);
+  });
+  const evidencePath = join(context.testRoot, 'retained-evidence.json');
+  await writeFile(evidencePath, 'synthetic evidence', { flag: 'wx' });
+
+  await assert.rejects(cleanupRunContext(context), (error) => error === handleError);
+  assert.equal(failing.kill.mock.callCount(), 1);
+  assert.equal(remaining.kill.mock.callCount(), 1);
+  assert.equal(await readFile(evidencePath, 'utf8'), 'synthetic evidence');
+});
+
+test('creation measurement output failure preserves process and cleanup results', WINDOWS_ONLY, async (t) => {
+  const context = await contextFor(t, 'measurement-write-failure');
+  await mkdir(join(context.testRoot, 'creation-measurement.json'));
+  await writeRequest(context, createRequest(context, 'exitNonZero'));
+  const { result, completion } = await readCompletedExecution(context,
+    startProgramFailureFixture(context, 'measureCreation'));
+  assert.equal(completion.exitCode, 1);
+  assert.equal(result.processResultCode, 'processExitFailed');
+  assert.equal(result.childExitCode, 23);
+  assert.equal(result.cleanupResultCode, 'notRequired');
+  assert.equal(result.processTreeAbsent, true);
+});
+
+for (const mode of [
+  'atomicMembership', 'creationCancelled', 'creationLate', 'creationPending',
+  'creationFailure', 'creationUnexpectedFailure',
+]) {
+  test(`process creation boundary: ${mode}`, WINDOWS_ONLY, async (testContext) => {
+    const context = await contextFor(testContext, mode);
+    const sentinel = await startForeignSentinel(context);
+    const deadlineExpected = ['creationCancelled', 'creationLate', 'creationPending'].includes(mode);
+    await writeRequest(context, createRequest(context, 'exitZero', deadlineExpected
+      ? { timeoutMilliseconds: 2_000, cleanupReserveMilliseconds: 1_000 }
+      : undefined));
+    const terminal = await readCompletedExecution(context, startProgramFailureFixture(context, mode));
+    const { result, completion } = terminal;
+    assert.equal(result.processResultCode, mode === 'atomicMembership' ? 'processCompleted'
+      : deadlineExpected ? 'deadlineExceeded' : 'processStartFailed');
+    assert.equal(completion.exitCode, mode === 'atomicMembership' ? 0 : 1);
+    assert.equal(result.processTreeAbsent, mode !== 'creationPending');
+    assert.equal(result.cleanupResultCode, mode === 'creationPending' ? 'cleanupUnverified'
+      : ['creationLate', 'creationUnexpectedFailure'].includes(mode) ? 'processTreeAbsent' : 'notRequired');
+    assert.equal(result.processWin32ErrorCode, mode === 'creationFailure' ? 2 : null);
+    assert.equal(isProcessAlive(sentinel.marker.processId), true);
+    if (mode !== 'creationFailure') {
+      const boundary = JSON.parse(await readFile(join(context.testRoot, 'process-boundary.json'), 'utf8'));
+      if (mode === 'creationCancelled') {
+        assert.equal(boundary.boundary, 'creationEntered');
+      } else {
+        assert.equal(boundary.boundary, 'createdSuspended');
+        assert.equal(boundary.activeProcessCount, 1);
+        assert.ok(Number.isInteger(boundary.processId) && boundary.processId > 0);
+        await waitForProcessAbsent(boundary.processId);
+      }
+    }
+    if (mode !== 'atomicMembership') {
+      await assert.rejects(access(join(context.runRoot, 'root.ready.json')), { code: 'ENOENT' });
+      await assert.rejects(access(context.workerResultPath), { code: 'ENOENT' });
+      assert.equal(completion.evidence.some((entry) =>
+        entry.phase === 'hostStarted' && entry.status === 'completed'), false);
+    }
+  });
+}
+
+for (const mode of ['nativeAfterTerminal', 'handlesAfterTerminal', 'failureAfterTerminal']) {
+  test(`late creation ownership after terminal: ${mode}`, WINDOWS_ONLY, async (testContext) => {
+    const context = await contextFor(testContext, mode);
+    const sentinel = await startForeignSentinel(context);
+    await writeRequest(context, createRequest(context, 'exitZero', {
+      timeoutMilliseconds: 2_000, cleanupReserveMilliseconds: 1_000,
+    }));
+    const { result, completion } = await readCompletedExecution(
+      context, startProgramFailureFixture(context, mode));
+    assert.equal(completion.exitCode, 1);
+    assert.equal(result.processResultCode, 'deadlineExceeded');
+    assert.equal(result.workerResultCode, 'notChecked');
+    assert.equal(result.cleanupResultCode, 'cleanupUnverified');
+    assert.equal(result.processTreeAbsent, false);
+    assert.deepEqual(JSON.parse(await readFile(join(context.testRoot, 'late-creation.json'), 'utf8')), {
+      terminalBeforeRelease: true,
+      countBeforeNative: mode === 'nativeAfterTerminal' ? 0 : null,
+      lateHandlesClosed: true,
+      exactLateProcessExited: true,
+      originalAbsenceUnverified: true,
+    });
+    assert.equal(isProcessAlive(sentinel.marker.processId), true);
+    await assert.rejects(access(join(context.runRoot, 'root.ready.json')), { code: 'ENOENT' });
+    await assert.rejects(access(context.workerResultPath), { code: 'ENOENT' });
+    assert.equal(completion.evidence.some((entry) =>
+      entry.phase === 'hostStarted' && entry.status === 'completed'), false);
+  });
+}
+
+test('command writes the failed result and exits with native creation still pending', WINDOWS_ONLY, async (t) => {
+  const context = await contextFor(t, 'native-pending-command-exit');
+  const sentinel = await startForeignSentinel(context);
+  await writeRequest(context, createRequest(context, 'exitZero', {
+    timeoutMilliseconds: 2_000, cleanupReserveMilliseconds: 1_000,
+  }));
+  const execution = startProgramFailureFixture(context, 'nativePendingAtCommandExit');
+  const exit = once(execution.child, 'exit');
+  const marker = await waitForMarker(context, 'command');
+  assert.equal(marker.executeReturned, true);
+  assert.equal(marker.resultWritten, true);
+  assert.equal(marker.creationStillPending, true);
+  assert.equal(execution.child.exitCode, null);
+  const resultBeforeExit = await readWindowsAcceptanceSupervisorResult(context.resultPath, {
+    ...context, supervisorExitCode: 1,
+  });
+  assert.equal(resultBeforeExit.processResultCode, 'deadlineExceeded');
+  assert.equal(resultBeforeExit.workerResultCode, 'notChecked');
+  assert.equal(resultBeforeExit.cleanupResultCode, 'cleanupUnverified');
+  assert.equal(resultBeforeExit.processTreeAbsent, false);
+  assert.equal(execution.child.exitCode, null);
+  await releaseFixture(context, 'command');
+  assert.deepEqual(await exit, [1, null]);
+  const { result, completion } = await readCompletedExecution(context, execution);
+  assert.deepEqual(result, resultBeforeExit);
+  assert.equal(completion.evidence.some((entry) => entry.phase === 'resultWritten' && entry.status === 'completed'), true);
+  assert.equal(completion.evidence.some((entry) => entry.phase === 'hostStarted' && entry.status === 'completed'), false);
+  assert.equal(isProcessAlive(sentinel.marker.processId), true);
+  await assert.rejects(access(join(context.runRoot, 'root.ready.json')), { code: 'ENOENT' });
+  await assert.rejects(access(context.workerResultPath), { code: 'ENOENT' });
+});
+
+for (const mode of ['exitZero', 'spawnGrandchildAndHold']) {
+  test(`atomic Job assignment inside an inherited Job: ${mode}`, WINDOWS_ONLY, async (testContext) => {
+    // The outer instance is only the test container, representing an existing runner Job.
+    const outer = await contextFor(testContext, 'nested-container');
+    const inner = await contextFor(testContext, 'nested-worker');
+    const sentinel = await startForeignSentinel(outer);
+    await writeRequest(inner, createRequest(inner, mode, mode === 'exitZero' ? undefined : {
+      timeoutMilliseconds: 2_500, cleanupReserveMilliseconds: 1_000,
+    }));
+    const containerRequest = createRequest(outer, 'exitZero');
+    containerRequest.command = process.env.EKY_DOTNET_EXE || 'dotnet';
+    containerRequest.arguments = [SUPERVISOR_DLL, '--request', inner.requestPath];
+    await writeRequest(outer, containerRequest);
+    const { result } = await readCompletedExecution(outer, startSupervisor(outer));
+    const innerResult = await readWindowsAcceptanceSupervisorResult(inner.resultPath, {
+      artifactDescriptorSha256: inner.artifactDescriptorSha256,
+      runNonce: inner.runNonce,
+      scenario: inner.scenario,
+      supervisorExitCode: mode === 'exitZero' ? 0 : 1,
+    });
+    assert.equal(innerResult.processResultCode, mode === 'exitZero' ? 'processCompleted' : 'deadlineExceeded');
+    assert.equal(innerResult.cleanupResultCode, mode === 'exitZero' ? 'notRequired' : 'processTreeAbsent');
+    assert.equal(innerResult.processTreeAbsent, true);
+    assert.equal(result.processResultCode, mode === 'exitZero' ? 'processCompleted' : 'processExitFailed');
+    assert.equal(result.processTreeAbsent, true);
+    // There is deliberately no outer worker result: an inner success must not be substituted for it.
+    assert.equal(result.workerResultCode, mode === 'exitZero' ? 'workerResultMissing' : 'notChecked');
+    assert.equal(isProcessAlive(sentinel.marker.processId), true);
+  });
+}
+
+for (const mode of ['exitZero', 'exitNonZero']) {
+  test(`empty Job before exit observation preserves ${mode}`, WINDOWS_ONLY, async (testContext) => {
+    const context = await contextFor(testContext, 'exit-observation-' + mode);
+    await writeRequest(context, createRequest(context, mode));
+    const { result, completion } = await readCompletedExecution(
+      context, startProgramFailureFixture(context, 'exitObservationLate'));
+    assert.deepEqual(JSON.parse(await readFile(join(context.testRoot, 'process-boundary.json'), 'utf8')),
+      { boundary: 'jobEmptyBeforeExitObserved', exitObservedLater: true });
+    assert.equal(result.processResultCode, mode === 'exitZero' ? 'processCompleted' : 'processExitFailed');
+    assert.equal(result.processTreeAbsent, true);
+    assert.equal(completion.exitCode, mode === 'exitZero' ? 0 : 1);
+  });
+}
 
 test(
   'assigns the direct child before it runs and returns normal exit zero',
@@ -406,10 +670,14 @@ test(
     const completion = await execution.completion;
     assert.equal(completion.exitCode, 1);
     assert.equal(await access(context.resultPath).then(() => true, () => false), false);
-    assert.equal(
-      completion.evidence.at(-1)?.errorCode,
-      'requestSchemaInvalid',
-    );
+    // Invalid input supplies no trusted flush budget; any delivered evidence stays strict.
+    for (const entry of completion.evidence) {
+      assert.deepEqual(entry, {
+        schemaVersion: 1, operation: 'windowsAcceptanceSupervisor',
+        phase: 'requestValidated', status: 'failed', durationMs: 0, elapsedMs: 0,
+        errorCode: 'requestSchemaInvalid',
+      });
+    }
     assert.equal(
       await access(context.runRoot).then(() => true, () => false),
       false,
@@ -445,6 +713,75 @@ test(
     assert.equal(execution.result.processTreeAbsent, true);
   },
 );
+
+test(
+  'malformed request exits even when its safe evidence output blocks',
+  { ...WINDOWS_ONLY, timeout: 10_000 },
+  async (testContext) => {
+    const context = await contextFor(testContext, 'blocked-invalid-request-evidence');
+    const foreign = await contextFor(testContext, 'invalid-request-foreign');
+    const sentinel = await startForeignSentinel(foreign);
+    await writeRequest(context, createRequest(context, 'exitZero'));
+    const execution = startProgramFailureFixture(context, 'blockedInvalidRequestEvidence');
+    const blocked = await waitForMarker(context, 'output');
+    assert.equal(blocked.writerBlocked, true);
+    assert.equal(blocked.errorCode, 'requestSchemaInvalid');
+    const completion = await execution.completion;
+    assert.equal(completion.exitCode, 1);
+    assert.equal(completion.signal, null);
+    assert.equal(isProcessAlive(blocked.processId), false);
+    assert.equal(isProcessAlive(sentinel.marker.processId), true);
+    for (const file of [context.resultPath, context.workerResultPath,
+      join(context.runRoot, 'root.ready.json')]) {
+      await assert.rejects(access(file), { code: 'ENOENT' });
+    }
+    assert.equal(context.supervisorProcesses.size, 0);
+  },
+);
+
+for (const mode of ['exitZero', 'exitNonZero', 'spawnGrandchildAndHold']) {
+  test(
+    `blocked safe evidence cannot prevent the command terminal result: ${mode}`,
+    { ...WINDOWS_ONLY, timeout: 10_000 },
+    async (testContext) => {
+      const context = await contextFor(testContext, 'blocked-evidence-' + mode);
+      const sentinel = await startForeignSentinel(context);
+      const deadlineExpected = mode === 'spawnGrandchildAndHold';
+      await writeRequest(
+        context,
+        createRequest(context, mode, {
+          timeoutMilliseconds: 2_500,
+          cleanupReserveMilliseconds: 1_000,
+        }),
+      );
+      const execution = startProgramFailureFixture(context, 'blockedEvidence');
+      const blocked = await waitForMarker(context, 'output');
+      assert.equal(blocked.writerBlocked, true);
+      const grandchild = deadlineExpected
+        ? await waitForMarker(context, 'grandchild') : null;
+      const { result, completion } = await readCompletedExecution(context, execution);
+      assert.equal(completion.exitCode, mode === 'exitZero' ? 0 : 1);
+      assert.equal(
+        result.processResultCode,
+        deadlineExpected ? 'deadlineExceeded'
+          : mode === 'exitZero' ? 'processCompleted' : 'processExitFailed',
+      );
+      assert.equal(
+        result.workerResultCode,
+        mode === 'exitZero' ? 'workerResultValidated' : 'notChecked',
+      );
+      assert.equal(
+        result.cleanupResultCode,
+        deadlineExpected ? 'processTreeAbsent' : 'notRequired',
+      );
+      assert.equal(result.processTreeAbsent, true);
+      if (mode === 'exitNonZero') assert.equal(result.childExitCode, 23);
+      assert.equal(isProcessAlive(blocked.processId), false);
+      if (grandchild !== null) await waitForProcessAbsent(grandchild.processId);
+      assert.equal(isProcessAlive(sentinel.marker.processId), true);
+    },
+  );
+}
 
 test(
   'disabled or failed safe observability cannot change the terminal result',

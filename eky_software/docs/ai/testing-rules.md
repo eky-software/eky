@@ -123,6 +123,22 @@ Testi-infrastruktuurissa noudatetaan lisäksi seuraavia vastuurajoja:
 Windows installer -harnessin tavoiterakenne ja migraatio määritellään
 `docs/architecture/windows-installer-acceptance-harness-v2.md`-dokumentissa.
 
+V2.5:n omistajan hyväksymä vaihekohtainen ympäristöraja käyttää kahta
+eristettyä Windows CI -consumeria samalle build-once-artifactille kahden
+paikallisen packaged-ajon sijaan. Paikalliset sopimustestit ja muut vaiheelle
+sovitut portit säilyvät pakollisina. Rajaus ei muuta testien turvallisuusehtoja,
+epäonnistuneiden ajojen tuloksia, muiden vaiheiden hyväksyntää tai release-
+portteja. Täsmällinen sopimus ja revision näyttö ovat samassa V2-suunnitelmassa.
+
+Testiraportin julkaisuraja määräytyy
+`docs/architecture/security-principles.md`-dokumentista. Omistajan koneen
+ohjelma-, ajuri- ja ympäristöhavainnot sekä yksityiskohtaiset paikalliset
+mittaukset pidetään Gitistä ohitettuina; niitä ei kopioida yhteiseen
+suunnitelmaan, PR:ään tai CI-artifactiin edes ilman nimiä tai polkuja.
+Julkinen hyväksyntätila ja avoimet testisopimukset raportoidaan silti
+rehellisesti. Yksityisyys ei muuta epäonnistunutta tai varmentamatonta ajoa
+onnistumiseksi. Diagnostiikan lupa ei anna lupaa tulosten julkaisemiseen.
+
 ## Tiedostoidentiteetti Testeissä
 
 Packaged-, installer-, rollback- ja release-fixturet muodostavat itsenäiset
@@ -138,6 +154,15 @@ toiminnon semantiikka. Tällöin lähde, kohde, containment, linkkimäärä,
 same-volume-ehto, rollback ja virhetilat validoidaan erikseen. Turvallisuustesti
 saa luoda haitallisen hardlinkin todistaakseen torjunnan, mutta se ei saa käyttää
 sitä release-payloadin monistamiseen.
+
+V2.5:n `WindowContract.exe`-GUI-fixturen omistajan hyväksymässä sopimuksessa
+ulkopuolinen ajonaikainen linkkimäärän muutos on erillinen havainto, ei yksin
+ikkunan sulkemistestin hylkäys. Alkuperä, kanoninen polku ja testijuurisidos,
+regular-file-tyyppi, symlink-raja, root/file-id, koko, SHA-256 sekä toiminta- ja
+cleanup-tulokset tarkistetaan edelleen. Tämä ei salli harnessin tekemää
+executable-hardlink-kloonausta eikä muuta tuotannon tai release-artifactin
+linkkipolitiikkaa. Rajaus ja näyttö ovat samassa V2-harness-suunnitelmassa;
+vendor-allowlistiä ei lisätä normaaleihin testeihin.
 
 ## Mitä testataan aina
 

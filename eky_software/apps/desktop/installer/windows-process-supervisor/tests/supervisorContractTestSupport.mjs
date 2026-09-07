@@ -379,7 +379,7 @@ export async function startForeignSentinel(context) {
   return { child, marker };
 }
 
-export async function cleanupRunContext(context) {
+export async function cleanupRunContext(context, { preserveEvidence = false } = {}) {
   let cleanupFailure;
   for (const processes of [
     context.supervisorProcesses,
@@ -412,13 +412,11 @@ export async function cleanupRunContext(context) {
     }
   }
 
-  try {
-    await rm(context.testRoot, { force: true, recursive: true });
-  } catch (error) {
-    cleanupFailure ??= error;
-  }
   if (cleanupFailure) {
     throw cleanupFailure;
+  }
+  if (!preserveEvidence) {
+    await rm(context.testRoot, { force: true, recursive: true });
   }
 }
 
@@ -454,13 +452,25 @@ function onceClose(child, timeoutMilliseconds = 10_000) {
 }
 
 async function terminateChildHandles(processes) {
+  let cleanupFailure;
   for (const child of [...processes]) {
     if (child.exitCode !== null || child.signalCode !== null) {
       continue;
     }
     const completion = onceClose(child);
-    child.kill();
-    await completion;
+    try {
+      child.kill();
+    } catch (error) {
+      cleanupFailure ??= error;
+    }
+    try {
+      await completion;
+    } catch (error) {
+      cleanupFailure ??= error;
+    }
+  }
+  if (cleanupFailure) {
+    throw cleanupFailure;
   }
 }
 
