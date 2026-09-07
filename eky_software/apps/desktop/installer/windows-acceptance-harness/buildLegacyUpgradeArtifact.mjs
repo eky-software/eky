@@ -44,6 +44,14 @@ function isPathInside(parent, candidate) {
   return relation === '' || (!relation.startsWith('..') && !isAbsolute(relation));
 }
 
+function requireOutsidePackageCleanupRoots(path) {
+  for (const root of [resolve(DESKTOP_ROOT, '.stage'), resolve(DESKTOP_ROOT, 'out')]) {
+    if (isPathInside(root, path) || isPathInside(path, root)) {
+      throw new Error('WINDOWS_ACCEPTANCE_LEGACY_ARTIFACT_BUILD_CLEANUP_OVERLAP');
+    }
+  }
+}
+
 async function requireCanonicalInputsUnchanged(packageSource, releaseSource) {
   if (
     (await readFile(CANONICAL_PACKAGE_PATH, 'utf8')) !== packageSource ||
@@ -72,6 +80,8 @@ export function parseLegacyUpgradeArtifactBuildArguments(arguments_) {
   if (isPathInside(artifactRoot, summaryPath)) {
     throw new Error('WINDOWS_ACCEPTANCE_LEGACY_ARTIFACT_BUILD_ARGUMENTS_INVALID');
   }
+  requireOutsidePackageCleanupRoots(artifactRoot);
+  requireOutsidePackageCleanupRoots(summaryPath);
   return Object.freeze({ artifactRoot, summaryPath });
 }
 
@@ -214,6 +224,7 @@ export async function buildLegacyUpgradeArtifact({
   readGitState = readInstallerReleaseGitState,
 }) {
   const artifactRoot = resolve(artifactRootInput);
+  requireOutsidePackageCleanupRoots(artifactRoot);
   let artifactCreated = false;
   const packageSource = await readFile(CANONICAL_PACKAGE_PATH, 'utf8');
   const releaseSource = await readFile(CANONICAL_RELEASE_PATH, 'utf8');

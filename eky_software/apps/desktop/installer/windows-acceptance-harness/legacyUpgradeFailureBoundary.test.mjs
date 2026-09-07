@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { LEGACY_FOOTPRINT_ERROR_CODES } from './legacyUpgradeContracts.mjs';
 
 import {
   legacyUpgradeFailureDetails,
@@ -35,6 +36,38 @@ function products(resultCode) {
     installerRegistryPresent: resultCode !== 'exactProductsAbsent',
   };
 }
+
+test('closed footprint cause remains primary after successful semantic cleanup', async () => {
+  for (const [errorCode, publicCode] of Object.entries(LEGACY_FOOTPRINT_ERROR_CODES)) {
+    const inspections = [products('targetProductPresent'), products('exactProductsAbsent')];
+    let cleanupCalls = 0;
+    await assert.rejects(resolveLegacyUpgradeTerminalOutcome({
+      productPrecondition: products('exactProductsAbsent'),
+      supervisorResult: supervisor({
+        status: 'failed', processResultCode: 'processExitFailed',
+        workerResultCode: 'notChecked', childExitCode: 1,
+      }),
+      readScenarioResult: async () => scenario({
+        status: 'failed', resultCode: 'historicalLegacyUpgradeFailed', errorCode,
+      }),
+      verifyExactProductStates: async () => inspections.shift(),
+      verifySemanticPostcondition: () => assert.fail('No target proof after footprint rejection'),
+      cleanupExactProducts: async () => {
+        cleanupCalls += 1;
+        return { status: 'completed', resultCode: 'semanticCleanupCompleted' };
+      },
+    }), (error) => {
+      const failure = legacyUpgradeFailureDetails(error);
+      assert.equal(failure.status, 'failed');
+      assert.equal(failure.errorCode, publicCode);
+      assert.equal(failure.processTreeAbsent, true);
+      assert.equal(failure.semanticCleanupResultCode, 'semanticCleanupCompleted');
+      assert.equal(failure.postconditionResultCode, 'exactProductsAbsentAfterCleanup');
+      return true;
+    });
+    assert.equal(cleanupCalls, 1);
+  }
+});
 
 test('successful legacy proof validates semantics before exact cleanup', async () => {
   const order = [];

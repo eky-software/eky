@@ -1,6 +1,7 @@
-import { LEGACY_UPGRADE_WORKER_EXIT_CODES } from './legacyUpgradeContracts.mjs';
+import { LEGACY_FOOTPRINT_ERROR_CODES, LEGACY_UPGRADE_WORKER_EXIT_CODES } from './legacyUpgradeContracts.mjs';
 
 const SCENARIO_ERROR_CODES = Object.freeze({
+  ...LEGACY_FOOTPRINT_ERROR_CODES,
   artifactVerificationFailed:
     'WINDOWS_ACCEPTANCE_LEGACY_ARTIFACT_VERIFICATION_FAILED',
   installerFootprintInspectionFailed:

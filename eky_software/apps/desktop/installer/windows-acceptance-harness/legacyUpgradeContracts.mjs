@@ -12,6 +12,31 @@ export const LEGACY_UPGRADE_WORKER_EXIT_CODES = Object.freeze({
   invalidRequest: 64,
 });
 
+export const LEGACY_FOOTPRINT_ERROR_CODES = Object.freeze({
+  installerFootprintInstallRootMetadataReadFailed:
+    'WINDOWS_ACCEPTANCE_LEGACY_FOOTPRINT_INSTALL_ROOT_METADATA_READ_FAILED',
+  installerFootprintInstallRootSymbolicLink:
+    'WINDOWS_ACCEPTANCE_LEGACY_FOOTPRINT_INSTALL_ROOT_SYMBOLIC_LINK',
+  installerFootprintInstallRootTypeInvalid:
+    'WINDOWS_ACCEPTANCE_LEGACY_FOOTPRINT_INSTALL_ROOT_TYPE_INVALID',
+  installerFootprintExecutableMetadataReadFailed:
+    'WINDOWS_ACCEPTANCE_LEGACY_FOOTPRINT_EXECUTABLE_METADATA_READ_FAILED',
+  installerFootprintExecutableSymbolicLink:
+    'WINDOWS_ACCEPTANCE_LEGACY_FOOTPRINT_EXECUTABLE_SYMBOLIC_LINK',
+  installerFootprintExecutableTypeInvalid:
+    'WINDOWS_ACCEPTANCE_LEGACY_FOOTPRINT_EXECUTABLE_TYPE_INVALID',
+  installerFootprintExecutableLinkCountInvalid:
+    'WINDOWS_ACCEPTANCE_LEGACY_FOOTPRINT_EXECUTABLE_LINK_COUNT_INVALID',
+  installerFootprintShortcutMetadataReadFailed:
+    'WINDOWS_ACCEPTANCE_LEGACY_FOOTPRINT_SHORTCUT_METADATA_READ_FAILED',
+  installerFootprintShortcutSymbolicLink:
+    'WINDOWS_ACCEPTANCE_LEGACY_FOOTPRINT_SHORTCUT_SYMBOLIC_LINK',
+  installerFootprintShortcutTypeInvalid:
+    'WINDOWS_ACCEPTANCE_LEGACY_FOOTPRINT_SHORTCUT_TYPE_INVALID',
+  installerFootprintShortcutLinkCountInvalid:
+    'WINDOWS_ACCEPTANCE_LEGACY_FOOTPRINT_SHORTCUT_LINK_COUNT_INVALID',
+});
+
 const SHA_256_PATTERN = /^[0-9a-f]{64}$/;
 const SAFE_CODE_PATTERN = /^[a-z][A-Za-z0-9]{0,63}$/;
 const REQUEST_KEYS = [

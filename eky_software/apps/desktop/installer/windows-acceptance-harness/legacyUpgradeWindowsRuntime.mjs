@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import { inspectPackageArtifactInventory } from '../../scripts/package-artifact-inventory.mjs';
 import { validateInstallerProductStateResult } from './cleanInstallUninstallWindowsRuntime.mjs';
+import { LEGACY_FOOTPRINT_ERROR_CODES } from './legacyUpgradeContracts.mjs';
 import {
   LEGACY_FIRST_START_EVIDENCE_FILENAME,
   LEGACY_SECOND_START_EVIDENCE_FILENAME,
@@ -83,17 +84,42 @@ async function runOwnedProcess(command, arguments_, options = {}) {
   return (await startOwnedProcess(command, arguments_, options)).completion;
 }
 
-async function pathKind(path) {
+async function pathKind(path, role, expectedKind, readMetadata) {
+  function fail(condition) {
+    const code = `installerFootprint${role}${condition}`;
+    throw new Error(Object.hasOwn(LEGACY_FOOTPRINT_ERROR_CODES, code)
+      ? code : 'installerFootprintInspectionFailed');
+  }
+  let metadata;
   try {
-    const metadata = await lstat(path, { bigint: true });
-    if (metadata.isSymbolicLink()) return 'invalid';
-    if (metadata.isDirectory()) return 'directory';
-    if (metadata.isFile() && metadata.nlink === 1n) return 'file';
-    return 'invalid';
+    metadata = await readMetadata(path, { bigint: true });
   } catch (error) {
     if (error?.code === 'ENOENT') return 'absent';
-    throw new Error('installerStateInspectionFailed');
+    fail('MetadataReadFailed');
   }
+  if (metadata.isSymbolicLink()) fail('SymbolicLink');
+  if (expectedKind === 'directory') {
+    if (!metadata.isDirectory()) fail('TypeInvalid');
+    return 'directory';
+  }
+  if (!metadata.isFile()) fail('TypeInvalid');
+  if (metadata.nlink !== 1n) fail('LinkCountInvalid');
+  return 'file';
+}
+
+export async function inspectLegacyInstallerFootprint(
+  { installRoot, executablePath, shortcutPath },
+  { readMetadata = lstat } = {},
+) {
+  // Serial reads retain the first rejection; cleanup must not replace it.
+  const installRootKind = await pathKind(installRoot, 'InstallRoot', 'directory', readMetadata);
+  const executableKind = await pathKind(executablePath, 'Executable', 'file', readMetadata);
+  const shortcutKind = await pathKind(shortcutPath, 'Shortcut', 'file', readMetadata);
+  return Object.freeze({
+    installRootExists: installRootKind === 'directory',
+    executableExists: executableKind === 'file',
+    shortcutExists: shortcutKind === 'file',
+  });
 }
 
 function withoutElectronNodeMode(overrides) {
@@ -222,23 +248,9 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact) {
   async function inspectState() {
     const source = await inspectExactProduct('source');
     const target = await inspectExactProduct('target');
-    let installRootKind;
-    let executableKind;
-    let shortcutKind;
-    try {
-      installRootKind = await pathKind(installRoot);
-      executableKind = await pathKind(executablePath);
-      shortcutKind = await pathKind(shortcutPath);
-    } catch {
-      throw new Error('installerFootprintInspectionFailed');
-    }
-    if (
-      !['absent', 'directory'].includes(installRootKind) ||
-      !['absent', 'file'].includes(executableKind) ||
-      !['absent', 'file'].includes(shortcutKind)
-    ) {
-      throw new Error('installerFootprintInspectionFailed');
-    }
+    const footprint = await inspectLegacyInstallerFootprint({
+      installRoot, executablePath, shortcutPath,
+    });
     if (
       source.ownedRegistryExists !== target.ownedRegistryExists ||
       source.ekyProcessCount !== target.ekyProcessCount
@@ -248,9 +260,7 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact) {
     return Object.freeze({
       source,
       target,
-      installRootExists: installRootKind === 'directory',
-      executableExists: executableKind === 'file',
-      shortcutExists: shortcutKind === 'file',
+      ...footprint,
       installerRegistryExists: source.ownedRegistryExists,
       ekyProcessCount: source.ekyProcessCount,
     });

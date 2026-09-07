@@ -10,7 +10,8 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 import { createInstallerProductCode } from '../installerIdentity.mjs';
@@ -38,6 +39,34 @@ import {
 import { parseLegacyUpgradeArtifactVerifierArguments } from './verifyLegacyUpgradeArtifact.mjs';
 
 const TARGET_BUILD_REVISION = 'a'.repeat(40);
+const DESKTOP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+test('legacy producer rejects artifact and summary overlap before any build or deletion', async () => {
+  const outside = resolve(tmpdir(), 'synthetic-legacy-artifact');
+  const summary = resolve(tmpdir(), 'synthetic-legacy-summary.json');
+  for (const unsafePath of [DESKTOP_ROOT, ...['.stage', 'out'].flatMap((name) => [
+    resolve(DESKTOP_ROOT, name), resolve(DESKTOP_ROOT, name, 'preserved-evidence'),
+  ])]) {
+    assert.throws(() => parseLegacyUpgradeArtifactBuildArguments([
+      '--artifact-root', unsafePath, '--summary-path', summary,
+    ]), /WINDOWS_ACCEPTANCE_LEGACY_ARTIFACT_BUILD_CLEANUP_OVERLAP/);
+    assert.throws(() => parseLegacyUpgradeArtifactBuildArguments([
+      '--artifact-root', outside, '--summary-path', unsafePath,
+    ]), /WINDOWS_ACCEPTANCE_LEGACY_ARTIFACT_BUILD_CLEANUP_OVERLAP/);
+    await assert.rejects(buildLegacyUpgradeArtifact({
+      artifactRoot: unsafePath,
+      readGitState: () => assert.fail('No build preflight inside cleanup root'),
+      materializeSourceRole: () => assert.fail('No source build'),
+      materializeTargetRole: () => assert.fail('No target build'),
+    }), /WINDOWS_ACCEPTANCE_LEGACY_ARTIFACT_BUILD_CLEANUP_OVERLAP/);
+  }
+  for (const name of ['.stage-sibling', 'out-sibling']) {
+    const artifactRoot = resolve(DESKTOP_ROOT, name);
+    assert.equal(parseLegacyUpgradeArtifactBuildArguments([
+      '--artifact-root', artifactRoot, '--summary-path', summary,
+    ]).artifactRoot, artifactRoot);
+  }
+});
 const SOURCE_ARCHIVE_SHA256 = 'b'.repeat(64);
 const RELEASE_TEMPLATE = Object.freeze({
   appIdentity: 'Eky',

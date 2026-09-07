@@ -1019,6 +1019,18 @@ Normaali target-paketointi tyhjentää `apps/desktop/.stage`- ja `out`-juuret:
 artifactia, sen jo muodostettua source-roolia tai säilytettävää todistusaineistoa
 ei saa sijoittaa niiden alle. Producerin ja consumerin ajopaikat tarkistetaan
 ennen käynnistystä; tämä ei muuta paketoijan cleanup-semanttiikkaa.
+Producer torjuu artifact- ja summary-kohteen päällekkäisyyden näiden
+cleanup-juurien kanssa ennen ensimmäistä buildia tai kirjoitusta.
+
+Asennusjälkien read-only-tarkistin säilyttää ensimmäisen hylkäyksen
+roolikohtaisella suljetulla virhekoodilla: asennusjuuri, executable tai
+pikakuvake sekä metatietoluku, symlink, väärä tyyppi tai tiedoston
+linkkimäärä. Puuttuminen säilyy tilahavaintona; lifecycle ratkaisee,
+edellyttääkö nykyinen vaihe asennettua vai poissa olevaa tuotetta.
+Koodi kulkee muuttumattomana workerin ja callerin virherajan läpi, vaikka
+myöhempi semanttinen cleanup onnistuu. Tarkistin ei korjaa, kirjoita tai
+poista tutkittavaa jälkeä eikä löysennä single-link-ehtoa. Polku ja raaka
+käyttöjärjestelmävirhe eivät kuulu julkiseen tulokseen.
 
 V2.5B saa käyttää tätä artifactia vain validoidun descriptorin kautta. Se ei
 saa rakentaa tai ladata paketteja workerissa, kutsua vanhaa W6B-orkestrointia
@@ -1392,7 +1404,10 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 ## Nykyinen päätös
 
 V2.5:n hyväksyntä on edelleen avoin haarassa
-`codex/test-harness-v2-legacy-upgrade`. Normaali pnpm-sarja revisiolta
+`codex/test-harness-v2-legacy-upgrade`. Nykyinen rajattu checkpoint tarkentaa
+footprint-virheen roolin ja ehdon sekä estää artifactin sijoittamisen buildin
+cleanup-juureen; käyttäytymisregressiot 59/59. Paketoitu diagnoosi ja uuden
+revision hyväksyntä ovat vielä avoimet. Normaali pnpm-sarja revisiolta
 `c859c5ab9c6723ca08529173e4a2e87b34c9bcd7` läpäisi 151/151 ilman
 peruutettuja tai ohitettuja testejä. Artifact-sopimukset 10/10 sekä desktopin
 typecheck/build ja locked restore läpäisivät. Ensimmäinen consumer hylättiin

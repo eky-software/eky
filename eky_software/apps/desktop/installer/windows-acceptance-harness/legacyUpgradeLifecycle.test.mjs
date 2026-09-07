@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { executeLegacyUpgradeLifecycle } from './legacyUpgradeLifecycle.mjs';
+import { LEGACY_FOOTPRINT_ERROR_CODES } from './legacyUpgradeContracts.mjs';
 
 const VERSIONS = Object.freeze({ source: '0.2.6', target: '0.2.7' });
 
@@ -115,6 +116,27 @@ test('legacy lifecycle preserves a closed product inspection failure class', asy
   );
   assert.equal(result.status, 'failed');
   assert.equal(result.errorCode, 'installerTargetProductInspectionFailed');
+});
+
+test('every closed footprint rejection survives lifecycle progress and blocks target startup', async () => {
+  for (const errorCode of Object.keys(LEGACY_FOOTPRINT_ERROR_CODES)) {
+    let inspection = 0;
+    const entries = [];
+    const dependencies = successfulDependencies({
+      async inspectState() {
+        if (++inspection === 1) return state();
+        if (inspection === 2) return state('source');
+        throw new Error(errorCode);
+      },
+      reportProgress: (entry) => entries.push(entry),
+    });
+    const result = await executeLegacyUpgradeLifecycle(dependencies);
+    assert.equal(result.status, 'failed');
+    assert.equal(result.errorCode, errorCode);
+    assert.equal(result.targetFirstStartupValidated, false);
+    assert.equal(dependencies.calls.includes('first'), false);
+    assert.equal(entries.find((entry) => entry.phase === 'targetPostcondition' && entry.status === 'failed').errorCode, errorCode);
+  }
 });
 
 for (const [dependency, errorCode, forbiddenCall] of [

@@ -1,4 +1,7 @@
+import { LEGACY_FOOTPRINT_ERROR_CODES } from './legacyUpgradeContracts.mjs';
+
 const FAILURE_CODES = new Set([
+  ...Object.keys(LEGACY_FOOTPRINT_ERROR_CODES),
   'artifactVerificationFailed',
   'installerFootprintInspectionFailed',
   'installerSourceProductInspectionFailed',
