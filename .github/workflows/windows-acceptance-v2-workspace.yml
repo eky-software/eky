@@ -1,4 +1,4 @@
-name: Windows acceptance V2 workspace artifact contracts
+name: Windows acceptance V2 workspace contracts
 
 on:
   pull_request:
@@ -26,7 +26,7 @@ concurrency:
 
 jobs:
   workspace_artifact_contracts:
-    name: Verify V2.6 artifact contracts
+    name: Verify V2.6 artifact and runtime contracts
     runs-on: windows-latest
     timeout-minutes: 10
     defaults:
@@ -52,3 +52,6 @@ jobs:
 
       - name: Verify workspace artifact behavior and workflow contract
         run: pnpm --filter @eky/desktop installer:test:windows-acceptance-workspace-artifact
+
+      - name: Verify workspace lifecycle and read-only Windows adapters
+        run: pnpm --filter @eky/desktop installer:test:windows-acceptance-workspace

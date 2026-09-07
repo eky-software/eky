@@ -30,3 +30,14 @@ test('V2.6 fast checkpoint runs its executable contracts, not a packaged accepta
   assert.equal(script, 'node --test --test-concurrency=1 installer/windows-acceptance-harness/workspaceSuccessArtifact.test.mjs installer/windows-acceptance-harness/workspaceSuccessArtifactWorkflow.test.mjs');
   assert.doesNotMatch(source, /installer:v2-workspace-artifact:build|msiexec|upload-artifact|installer:w6b2/);
 });
+
+test('V2.6 runtime checkpoint executes lifecycle, failure and read-only Windows adapter behavior', async () => {
+  const source = await readFile(WORKFLOW, 'utf8');
+  const desktop = JSON.parse(await readFile(resolve(ROOT, '../../package.json'), 'utf8'));
+  assert.match(source, /pnpm --filter @eky\/desktop installer:test:windows-acceptance-workspace\s/);
+  const script = desktop.scripts['installer:test:windows-acceptance-workspace'];
+  assert.equal(script, 'node --test --test-concurrency=1 ' + [
+    'workspaceSuccessContracts', 'workspaceSuccessLifecycle', 'workspaceSuccessWindowsRuntime',
+    'workspaceSuccessFailureBoundary', 'inspectWorkspaceSuccessMsiActivity',
+  ].map((name) => `installer/windows-acceptance-harness/${name}.test.mjs`).join(' '));
+});

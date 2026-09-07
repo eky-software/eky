@@ -1390,10 +1390,55 @@ pnpm --filter @eky/desktop installer:v2-workspace-artifact:verify --artifact-roo
 ```
 
 Tämä on artifact-rajan sopimuscheckpoint, ei vielä V2.6:n hyväksyntä.
-Oikean producerin artifact-todiste, supervised worker, read-only jälkiehdot
-ja kaksi CI-consumeria ovat seuraava työ. Worker ei rakenna paketteja, luo
+Oikean producerin artifact-todiste, supervised workerin ajokytkentä,
+read-only business-jälkiehdot ja kaksi CI-consumeria ovat seuraava työ.
+Worker ei rakenna paketteja, luo
 uutta prosessivalvojaa tai omista emergency cleanupia. Nykyinen Job Object
 -supervisor säilyttää prosessipuun ainoan omistajuuden.
+
+### Lifecycle- ja virherajasopimuksen checkpoint
+
+Seuraava rajattu checkpoint lisää ajoketjun portit ja käyttäytymistestit:
+
+- `workspaceSuccessContracts.mjs` sitoo pyynnön ja tuloksen skenaarioon,
+  nonceen sekä artifact-tiivisteeseen. Vain järjestyksessä valmistuneiden
+  vaiheiden yhtenäinen alkuosa hyväksytään; ensimmäinen virhe pysäyttää ketjun.
+  Tuloslukija vaatii rajatun, kanonisen, itsenäisen tiedoston ja muuttumattoman
+  tiedostoidentiteetin saman lukukahvan ympärillä.
+- `workspaceSuccessLifecycle.mjs` pitää source-asennuksen, A:n päivityksen,
+  B:n aktivointimigraation, ensimmäisen normaalin B-käynnistyksen ja sen
+  jälkeisen uudelleenkäynnistyksen erillisinä vaiheina. C:n hylkäys on oma
+  jälkiehtonsa. Source-handoffin jälkeen ei käynnistetä toista MSI-operaatiota.
+- `workspaceSuccessWindowsRuntime.mjs` kytkee nimetyt nykyiset private proof-
+  ja profile-portit sekä payload-/ProductCode-tarkistukset. Aliprosessin
+  adapteri vain odottaa exit-tapahtumaa; sillä ei ole omaa aikarajaa,
+  pakotettua sulkemista tai prosessipuun rekisteriä. Prosessipuun valvonta
+  kuuluu edelleen olemassa olevalle supervisorille.
+- `inspectWorkspaceSuccessMsiActivity.ps1` palauttaa vain saman istunnon
+  MSI-clientien määrän. Tämä read-only-havainto ei anna prosessiomistajuutta
+  eikä valtuuta minkään prosessin sulkemista. Todellisia ehtoja havainnoiva
+  odotus ei käynnistä installeria uudelleen eikä lisää kiinteää onnistumisviivettä.
+- `workspaceSuccessFailureBoundary.mjs` säilyttää alkuperäisen virheen,
+  supervisorin tulokset, business-jälkiehdon, exact-product-cleanupin ja
+  asennusjälkien poiston erillään. Semanttinen cleanup edellyttää varmennettua
+  tyhjää prosessipuuta ja ennen ajoa todistettua puhdasta ProductCode-alkutilaa.
+  Puuttuva scenario-result ei itsessään valtuuta poistoa. Epäonnistunut cleanup
+  pysyy virheenä, vaikka tuotteet olisivat myöhemmässä tarkistuksessa poissa.
+  Käynnistetyn ajon juurta ei saa poistaa, jos näistä jää jokin varmistamatta.
+
+Rajattu sarja ajetaan komennolla:
+
+```text
+pnpm --filter @eky/desktop installer:test:windows-acceptance-workspace
+```
+
+CI:n nykyinen rajattu Windows-jobi ajaa artifact- ja lifecycle-sopimukset.
+Windows-adapterin testit suorittavat vain read-only-kyselyn; muut uudet testit
+käyttävät synteettisiä tiedostoja ja injektoituja portteja. Ne eivät asenna
+MSI:tä tai todista paketoidun yritysdatan jatkuvuutta. V2.6 pysyy kesken:
+worker/caller-kytkentä, vaihe-evidencen business-verifier sekä build-once-
+producer ja kaksi eristettyä consumeria puuttuvat. Vanhaa W6B.2A-porttia ei
+poisteta eikä uuden sopimussarjan vihreyttä lasketa packaged-hyväksynnäksi.
 
 ### W6B.2A-invarianttien siirtokartta
 
@@ -1402,14 +1447,14 @@ uutta prosessivalvojaa tai omista emergency cleanupia. Nykyinen Job Object
 | Sama source/target-revisio, erilliset MSI-versiot ja muuttumattomat tavut | Strict artifact descriptor, materialisointi ja read-only verifier; molempien consumerien ennen/jälkeen-varmennus vielä kytkettävä | Artifact-sopimus toteutettu; packaged-näyttö avoin |
 | Source/target MSI ProductCode, install-root, rekisteröinti ja payload | Nykyinen V2 exact-product/postcondition-adapteri ja molempien descriptor-payload-inventaarioiden vertailu | Ajokytkentä avoin |
 | A/B/C:n yritys, asiakas, hyväksytty lasku ja authoritative PDF/katalogi | Nykyiset `w6b2PackagedWorkspaceFixtures` ja `w6b2PackagedWorkspaceProfile`-portit; valmistelun erottaminen asennus-/prosessivastuusta | Siirrettävä, vanha todiste säilyy |
-| Main-owned sourceHandoff ja hyväksytty target first-start | Nykyisen `w6b2PackagedProofController`-portin käyttö ilman rinnakkaista update-moottoria | Ajokytkentä avoin |
+| Main-owned sourceHandoff ja hyväksytty target first-start | Nykyisen `w6b2PackagedProofController`-portin käyttö ilman rinnakkaista update-moottoria | Lifecycle/runtime-portit toteutettu; worker ja packaged-näyttö avoin |
 | Aktiivinen A migroidaan ensin ja target hyväksytään vasta readinessin jälkeen | A:n migration-, accepted-build-, journal- ja business-jälkiehdot | Siirrettävä |
-| Passiivinen B pysyy byte-identtisenä aktivointiin asti; migraatio vain aktivoinnissa; seuraava käynnistys idempotentti | B:n ennen aktivointia / aktivoinnin jälkeen / toisen käynnistyksen jälkeen otettavat erilliset todisteet | Siirrettävä |
+| Passiivinen B pysyy byte-identtisenä aktivointiin asti; migraatio vain aktivoinnissa; seuraava käynnistys idempotentti | B:n ennen aktivointia / aktivoinnin jälkeen / toisen käynnistyksen jälkeen otettavat erilliset todisteet | Erillinen vaiheistus testattu; business-verifier ja packaged-näyttö avoin |
 | C:n ehjä SQLite mutta invalidHistory estää aktivoinnin; A ja C pysyvät muuttumattomina | C:n strict recoveryRequired-todiste, active pointer sekä database/PDF-katalogin ja business-sisällön jatkuvuus | Siirrettävä |
 | Secret-, archive- ja recovery-namespacejen eristys, installation-state ei vaihdu työtilan mukana | Olemassa oleva yksityinen profile-evidence, ei raakasisältöä julkiseen resultiin | Siirrettävä |
 | Uusi runtime-session, vanhan sessionin hylkäys ja vanhan runtimen poistuminen | Nykyiset main/backend-readiness-portit ja supervisorin prosessitodiste erillisinä | Siirrettävä |
 | Normaali profiili muuttumaton ja tarkka ProductCode-cleanup | Muistissa tehtävä read-only inventaario, erillinen semantic cleanup ja postcondition verifier vasta varmennetun prosessipuun poistumisen jälkeen | Siirrettävä |
-| Alkuperäinen virhe ei katoa cleanupin alle; tuntematon tila hylätään | Erilliset process-, worker-, scenario-, semantic-cleanup-, postcondition- ja fixture-cleanup-tulokset nykyisellä V2-mallilla | Siirrettävä |
+| Alkuperäinen virhe ei katoa cleanupin alle; tuntematon tila hylätään | Erilliset process-, worker-, scenario-, semantic-cleanup-, postcondition- ja fixture-cleanup-tulokset nykyisellä V2-mallilla | Virheraja ja juuren säilytyspäätös käyttäytymistestattu; caller-kytkentä avoin |
 
 Siirtokartta ei vielä valtuuta vanhan W6B.2A-koodin tai testien poistamista.
 Poisto kuuluu myöhempään hallittuun cutoveriin vasta vastaavan käyttäytymisen
