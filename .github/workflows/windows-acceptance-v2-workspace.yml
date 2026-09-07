@@ -1,0 +1,54 @@
+name: Windows acceptance V2 workspace artifact contracts
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/windows-acceptance-v2-workspace.yml
+      - eky_software/apps/desktop/installer/windows-acceptance-harness/**
+      - eky_software/apps/desktop/installer/installerIdentity.mjs
+      - eky_software/apps/desktop/installer/installerManifest.mjs
+      - eky_software/apps/desktop/installer/installerReleaseContext.mjs
+      - eky_software/apps/desktop/installer/installerVersion.mjs
+      - eky_software/apps/desktop/installer/scripts/*W6b2*.*
+      - eky_software/apps/desktop/installer/scripts/w6b2*.*
+      - eky_software/apps/desktop/scripts/package-artifact-inventory.mjs
+      - eky_software/apps/desktop/scripts/packageWindowsApplication.mjs
+      - eky_software/apps/desktop/package.json
+      - eky_software/docs/architecture/windows-installer-acceptance-harness-v2.md
+      - eky_software/docs/ai/testing-rules.md
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-acceptance-v2-workspace-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  workspace_artifact_contracts:
+    name: Verify V2.6 artifact contracts
+    runs-on: windows-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: eky_software
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: eky_software/.node-version
+          package-manager-cache: false
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify workspace artifact behavior and workflow contract
+        run: pnpm --filter @eky/desktop installer:test:windows-acceptance-workspace-artifact
