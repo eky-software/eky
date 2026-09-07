@@ -40,7 +40,6 @@ function fixture({ failPhase, badProof, progressThrows = false } = {}) {
       async installSource() { record('installSource'); installed = 'source'; return 0; },
       async validatePayload(role) { record(`payload:${role}`); },
       async prepareProfile() { record('prepareProfile'); },
-      async verifyProfile(operation) { record(`verifyProfile:${operation}`); },
       async captureCheckpoint(checkpoint) { record(`checkpoint:${checkpoint}`); },
       async runProofPhase(proofPhase, status) {
         record(`proof:${proofPhase}:${status}`);
@@ -61,14 +60,20 @@ test('success consumes the application handoff and separates B migration, first 
     'inspect', 'artifact', 'installSource', 'inspect', 'payload:source',
     'prepareProfile', 'checkpoint:sourceBaseline', 'proof:sourceHandoff:completed',
     'observeHandoffInstall', 'inspect', 'payload:target', 'artifact',
-    'proof:targetFirstStart:completed', 'verifyProfile:targetFirstStart', 'checkpoint:targetFirstStart',
+    'proof:targetFirstStart:completed', 'checkpoint:targetFirstStart',
     'proof:switchToB:relaunching', 'checkpoint:beforeBMigration',
     'proof:verifyBRestart:relaunching', 'proof:verifyBRestart:completed',
-    'verifyProfile:verifyBRestart', 'checkpoint:firstBStartup',
-    'proof:verifyBRestart:completed', 'verifyProfile:verifyBRestart', 'checkpoint:secondBStartup',
+    'checkpoint:firstBStartup',
+    'proof:verifyBRestart:completed', 'checkpoint:secondBStartup',
     'proof:switchToA:relaunching', 'proof:rejectC:completed',
-    'verifyProfile:rejectC', 'checkpoint:rejectedC', 'artifact',
+    'checkpoint:rejectedC', 'artifact',
   ]);
+});
+
+test('checkpoint observation never calls the legacy profile verifier that can repair stores', async () => {
+  const value = fixture();
+  value.runtime.verifyProfile = async () => assert.fail('repairing profile verifier must not run');
+  assert.equal((await executeWorkspaceSuccessLifecycle(value.runtime)).status, 'completed');
 });
 
 for (const [index, phase] of WORKSPACE_SUCCESS_PHASES.entries()) {

@@ -151,8 +151,8 @@ test('profile preparation uses the existing named profile entrypoint and environ
 });
 
 test('profile result from a different operation cannot be reused', async (context) => {
-  const value = await fixture(context, { profileResult: { formatVersion: 1, operation: 'prepare', status: 'completed' } });
-  await assert.rejects(() => value.runtime.verifyProfile('rejectC'), { message: 'profileResultInvalid' });
+  const value = await fixture(context, { profileResult: { formatVersion: 1, operation: 'rejectC', status: 'completed' } });
+  await assert.rejects(() => value.runtime.prepareProfile(), { message: 'profileResultInvalid' });
 });
 
 test('payload comparison and byte verification keep both immutable bindings', async (context) => {

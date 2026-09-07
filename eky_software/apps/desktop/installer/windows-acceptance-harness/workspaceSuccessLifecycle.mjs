@@ -88,7 +88,6 @@ export async function executeWorkspaceSuccessLifecycle(runtime) {
     });
     await step('targetFirstStart', 'targetFirstStartFailed', async () => {
       await proof('targetFirstStart', 'completed');
-      await runtime.verifyProfile('targetFirstStart');
       await runtime.captureCheckpoint('targetFirstStart');
     });
     await step('switchToB', 'switchToBFailed', async () => {
@@ -98,18 +97,15 @@ export async function executeWorkspaceSuccessLifecycle(runtime) {
     await step('migrateB', 'migrationBFailed', () => proof('verifyBRestart', 'relaunching'));
     await step('verifyBFirstStart', 'firstStartBFailed', async () => {
       await proof('verifyBRestart', 'completed');
-      await runtime.verifyProfile('verifyBRestart');
       await runtime.captureCheckpoint('firstBStartup');
     });
     await step('verifyBRestart', 'restartBFailed', async () => {
       await proof('verifyBRestart', 'completed');
-      await runtime.verifyProfile('verifyBRestart');
       await runtime.captureCheckpoint('secondBStartup');
     });
     await step('switchToA', 'switchToAFailed', () => proof('switchToA', 'relaunching'));
     await step('rejectC', 'rejectionCFailed', async () => {
       await proof('rejectC', 'completed');
-      await runtime.verifyProfile('rejectC');
       await runtime.captureCheckpoint('rejectedC');
     });
     await step('artifactAfterStartup', 'artifactInvalid', runtime.verifyArtifact);

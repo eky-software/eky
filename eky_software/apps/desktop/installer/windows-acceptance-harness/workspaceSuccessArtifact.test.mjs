@@ -18,6 +18,9 @@ import {
   validateWorkspaceSuccessArtifactDescriptor,
 } from './workspaceSuccessArtifactDescriptor.mjs';
 import { parseWorkspaceSuccessArtifactVerifyArguments } from './verifyWorkspaceSuccessArtifact.mjs';
+import { materializeWorkspaceSuccessArtifactFixture, prepareWorkspaceSuccessRunFixture,
+  workspaceSuccessRunContext } from './workspaceSuccessRunFixture.mjs';
+import { createWorkspaceSuccessRequest } from './workspaceSuccessContracts.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const REVISION = '0123456789abcdef0123456789abcdef01234567';
@@ -94,6 +97,42 @@ test('build-once pair is independently copied and verified twice without buildin
   }
   assert.deepEqual(await readFile(f.descriptorPath), before);
   assert.equal(f.getBuildCount(), 1);
+});
+
+test('consumer materialization binds independent artifact and private proof copies without building again', async (t) => {
+  const f = await fixture(t);
+  const runRoot = resolve(f.root, 'run');
+  await mkdir(runRoot);
+  const copied = await materializeWorkspaceSuccessArtifactFixture(f.verification, resolve(runRoot, 'fixture'));
+  const scenarioRoot = resolve(runRoot, 'scenario');
+  await mkdir(scenarioRoot);
+  const request = createWorkspaceSuccessRequest({ fixtureRoot: copied.artifactRoot, buildRevision: copied.buildRevision,
+    artifactDescriptorSha256: copied.descriptorSha256 });
+  const context = workspaceSuccessRunContext(resolve(scenarioRoot, 'worker-request.json'), request, copied);
+  await prepareWorkspaceSuccessRunFixture(context);
+  for (const role of ['source', 'target']) {
+    const paths = [f.pair[role].installerPath, copied[role].installerPath, context.runFixture[role].installerPath];
+    const identities = [];
+    for (const path of paths) {
+      const metadata = await lstat(path, { bigint: true });
+      assert.equal(metadata.nlink, 1n);
+      identities.push(`${metadata.dev}:${metadata.ino}`);
+      assert.deepEqual(await readFile(path), await readFile(paths[0]));
+    }
+    assert.equal(new Set(identities).size, paths.length);
+  }
+  assert.deepEqual(await readdir(resolve(context.proofRoot, 'user-data')), []);
+  assert.equal(f.getBuildCount(), 1);
+  await verifyWorkspaceSuccessArtifact(f.verification);
+  await assert.rejects(prepareWorkspaceSuccessRunFixture(context));
+});
+
+test('consumer rejects an artifact identity mismatch without creating its fixture root', async (t) => {
+  const f = await fixture(t);
+  const destination = resolve(f.root, 'rejected-copy');
+  await assert.rejects(materializeWorkspaceSuccessArtifactFixture({ ...f.verification,
+    expectedDescriptorSha256: 'f'.repeat(64) }, destination));
+  await assert.rejects(lstat(destination), { code: 'ENOENT' });
 });
 
 for (const [name, change] of [

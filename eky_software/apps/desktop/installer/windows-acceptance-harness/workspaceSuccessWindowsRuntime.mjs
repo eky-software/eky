@@ -152,7 +152,6 @@ export async function createWorkspaceSuccessWindowsRuntime({
       }
     },
     prepareProfile: () => runProfile('prepare'),
-    verifyProfile: runProfile,
     captureCheckpoint,
     async runProofPhase(phase) {
       await writePhase(runFixture.proofRoot, phase);
