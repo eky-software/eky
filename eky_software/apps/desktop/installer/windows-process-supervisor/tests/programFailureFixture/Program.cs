@@ -12,6 +12,18 @@ if (
 }
 
 var mode = args[1];
+if (mode == "blockedInvalidRequestEvidence")
+{
+    // Read only the valid fixture binding before presenting malformed input to the program.
+    var request = SupervisorRequestReader.Read(args[2..]);
+    var malformedPath = Path.Combine(request.WorkingDirectory, "malformed-request.json");
+    File.WriteAllText(malformedPath, "{}");
+    using var writeEntered = new ManualResetEventSlim(false);
+    Console.SetOut(new BlockedEvidenceWriter(Console.Out, request, writeEntered));
+    var exitCode = SupervisorProgram.Run(["--request", malformedPath]);
+    // Observe the output attempt even when best-effort delivery races command return.
+    return writeEntered.Wait(TimeSpan.FromSeconds(5)) ? exitCode : 65;
+}
 if (mode == "blockedEvidence")
 {
     var request = SupervisorRequestReader.Read(args[2..]);
@@ -53,7 +65,9 @@ return SupervisorProgram.Run(
     }
 );
 
-internal sealed class BlockedEvidenceWriter(TextWriter output, SupervisorRequest request) : TextWriter
+internal sealed class BlockedEvidenceWriter(
+    TextWriter output, SupervisorRequest request, ManualResetEventSlim? invalidWriteEntered = null
+) : TextWriter
 {
     public override Encoding Encoding => Encoding.UTF8;
 
@@ -61,8 +75,10 @@ internal sealed class BlockedEvidenceWriter(TextWriter output, SupervisorRequest
     {
         using var document = JsonDocument.Parse(value!);
         var root = document.RootElement;
-        if (root.GetProperty("phase").GetString() == "waitStarted" &&
-            root.GetProperty("status").GetString() == "started")
+        var expectedPhase = invalidWriteEntered is null ? "waitStarted" : "requestValidated";
+        var expectedStatus = invalidWriteEntered is null ? "started" : "failed";
+        if (root.GetProperty("phase").GetString() == expectedPhase &&
+            root.GetProperty("status").GetString() == expectedStatus)
         {
             var runRoot = Path.Combine(request.WorkingDirectory, request.RunNonce);
             Directory.CreateDirectory(runRoot);
@@ -74,8 +90,11 @@ internal sealed class BlockedEvidenceWriter(TextWriter output, SupervisorRequest
                 role = "output",
                 processId = Environment.ProcessId,
                 writerBlocked = true,
+                errorCode = root.TryGetProperty("errorCode", out var errorCode)
+                    ? errorCode.GetString() : null,
             }));
             File.Move(marker + ".next", marker);
+            invalidWriteEntered?.Set();
             // Model a consumer that never drains its pipe; only this owned fixture blocks.
             using var neverDrained = new ManualResetEvent(false);
             neverDrained.WaitOne();

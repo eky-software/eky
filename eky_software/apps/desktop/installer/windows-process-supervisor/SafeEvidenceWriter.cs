@@ -8,14 +8,14 @@ internal sealed class SafeEvidenceWriter
 {
     private const string Operation = "windowsAcceptanceSupervisor";
     private const int MaximumPendingLines = 128;
-    private readonly string scenario;
+    private readonly string? scenario;
     private readonly Stopwatch stopwatch;
     private readonly BlockingCollection<string> pendingLines = new(MaximumPendingLines);
     private readonly Thread outputThread;
     private long lastElapsedMilliseconds;
     private readonly Dictionary<string, long> phaseStartedAt = new(StringComparer.Ordinal);
 
-    internal SafeEvidenceWriter(string scenario, Stopwatch stopwatch)
+    internal SafeEvidenceWriter(string? scenario, Stopwatch stopwatch)
     {
         this.scenario = scenario;
         this.stopwatch = stopwatch;
@@ -71,17 +71,24 @@ internal sealed class SafeEvidenceWriter
         int? win32ErrorCode = null
     )
     {
-        TryWrite(new
+        try
         {
-            schemaVersion = 1,
-            operation = Operation,
-            phase = "requestValidated",
-            status = "failed",
-            durationMs = 0,
-            elapsedMs = 0,
-            errorCode,
-            win32ErrorCode,
-        });
+            var evidence = new SafeEvidenceWriter(null, Stopwatch.StartNew());
+            evidence.TryEnqueue(new
+            {
+                schemaVersion = 1,
+                operation = Operation,
+                phase = "requestValidated",
+                status = "failed",
+                durationMs = 0,
+                elapsedMs = 0,
+                errorCode,
+                win32ErrorCode,
+            });
+            // Invalid input supplies no trusted budget; never wait for its diagnostics.
+            evidence.CompleteWithinRequestBudget(0);
+        }
+        catch { /* Invalid-request rejection does not depend on diagnostic delivery. */ }
     }
 
     internal void CompleteWithinRequestBudget(long deadlineMilliseconds)
@@ -101,18 +108,6 @@ internal sealed class SafeEvidenceWriter
     {
         try { pendingLines.TryAdd(JsonSerializer.Serialize(value, JsonOptions)); }
         catch { /* Full or unavailable output is diagnostic loss, not a process failure. */ }
-    }
-
-    private static void TryWrite(object value)
-    {
-        try
-        {
-            Console.WriteLine(JsonSerializer.Serialize(value, JsonOptions));
-        }
-        catch
-        {
-            // Observability is best effort and never changes the terminal result.
-        }
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()

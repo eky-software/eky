@@ -649,6 +649,16 @@ yrittää kirjoittaa strict `unexpectedFailure`-resultin ennen exit-koodia 1;
 result-writerin oma epäonnistuminen jää erilliseksi `resultWriteFailed`-
 tilaksi, jonka caller käsittelee puuttuvana tai epävalidina terminal-tuloksena.
 
+Virheellisen pyynnön evidence käyttää samaa ei-estävää taustakirjoitusta.
+Validoimaton pyyntö ei anna luotettua flush-aikabudjettia tai result-polkua:
+komento poistuu virhekoodilla odottamatta tulostuskohdetta, eikä se käynnistä
+workeria tai kirjoita pyynnön nimeämää terminal-resultia. Best-effort-
+diagnostiikkarivi saa puuttua; caller ei tulkitse puuttuvaa tulosta
+onnistumiseksi. Regressio sitoo estyvän writerin tapahtumaan ja vaatii
+oikean komentoprosessin exitin, puuttuvat worker-sivuvaikutukset sekä
+vieraan verrokkiprosessin säilymisen. Tämä ei muuta validin pyynnön
+process-, worker-, cleanup- tai postcondition-sopimusta.
+
 ### Fixture- ja riskisopimus
 
 Yhdellä fixtureperheellä on yksi producer. W6B legacy, W6B.2A ja W6B.2B
@@ -1371,19 +1381,19 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 
 ## Nykyinen päätös
 
-V2.5:n hyväksyntä on edelleen avoin. Nykyinen katselmoitu testi- ja
-diagnostiikkarevisio on `fea84837ce218a09455c8c170b6ba6698fc9a9ce` haarassa
-`codex/test-harness-v2-legacy-upgrade`. Sen normaali pnpm-sarja epäonnistui,
-mutta yksi uusi diagnostinen CI-kierros valmistui kokonaan ensimmäisellä
-yrityksellä. Tässä checkpointissa ei muutettu testitoteutusta, supervisoria,
-tuotantokoodia, aikarajoja tai hyväksymisehtoja. Tämä tulosraportti ei ole
-uusi artifact-revisio; historialliset tulokset kuuluvat alkuperäisille SHA:ille.
+V2.5:n hyväksyntä on edelleen avoin haarassa
+`codex/test-harness-v2-legacy-upgrade`. Viimeisin normaali pnpm-sarja ja
+diagnostinen CI kuuluvat revisiolle
+`fea84837ce218a09455c8c170b6ba6698fc9a9ce`; niitä ei siirretä uuden
+checkpointin hyväksynnäksi. Nykyinen rajattu korjaus poistaa virheellisen
+pyynnön estävän evidence-kirjoituksen. Prosessiomistajuus, tuotantokoodi,
+normaalit aikarajat ja hyväksymisehdot eivät muutu.
 
 | Vastuu | Projektin hyväksyntätila |
 | --- | --- |
 | Startup- ja smoke-watcher | Kanonisointi, linkkirajat ja varhainen child-rejection on katettu regressioilla; viimeisin kohdesarja 49/49 |
 | Worker-fixturen cleanup | Kilpaileva Job-cleanup on poistettu synteettisestä fixturestä; live-child ja foreign sentinel säilyvät pakollisina |
-| Supervisorin evidence-output | Estetty output ei saa estää strict resultia tai Job-cleanupia; supervisorin kohdesarja 44/44 ja deadline/cleanup-toisto 20/20 |
+| Supervisorin evidence-output | Myös invalid-request käyttää ei-estävää writera; regressio epäonnistui ennen korjausta, kohdesarja 45/45 ja kaksi invalid-request-regressiota 20/20 kierrosta ilman retryä |
 | Normaali V2.5-sarja | `fea8483`: 149/150, epäonnistunut; `deadlineExceeded / cleanupUnverified` ei ole hyväksytty cleanup |
 | Suora Node-kontrolli nykyisen buildin jälkeen | `fea8483`: 150/150, vain diagnostiikkaa; ei korvaa normaalia pnpm-komentoa tai todista juurisyytä |
 | Diagnostinen CI | `fea8483`, ajo `34065428142`: kaksi 150/150-sarjaa, yksi producer ja kaksi consumeria ensimmäisellä yrityksellä |
@@ -1422,12 +1432,15 @@ oli 0 -> 0. Completed-polku edellyttää onnistunutta semanttista cleanupia ja
 erillistä `exactProductsAbsent`-jälkiehtoa; omistettuja orpoprosesseja jäi 0.
 Omistajan profiilia tai yksityistä tutkimusaineistoa ei siirretty CI:hin.
 
-Seuraava avoin päätös koskee käynnistysviiveen erottavaa diagnostiikkaa,
-ei uutta supervisor-kerrosta tai yleistä testiuudistusta. Vihreä suora
-kontrolli ja diagnostinen CI eivät hyväksy epäonnistunutta normaalia sarjaa.
-Mahdollinen erillinen mittausbudjetti tarvitsee omistajan päätöksen eikä muuta
-hyväksyntärajaa tai tarkoituksellisia timeout- ja cleanup-regressioita.
-Paikallisia MSI-consumereita ei ajettu epävarman cleanupin yli.
+Hyväksytty kertaluonteinen pnpm-ketjun mittaus on suoritettu ja sen
+väliaikainen muutos palautettu. Se ei muuta normaalia hyväksyntää.
+Invalid-request-evidence-korjaus on itsenäinen eikä selitä natiivikäynnistystä.
+Seuraava päätös koskee GUI-integraation normaalia aikabudjettia; erillinen
+mittauslupa ei hyväksy sen muuttamista. Onnistuminen edellyttää edelleen
+todellisia readiness-, worker-, process-tree- ja cleanup-tuloksia.
+Tarkoitukselliset timeout-, puuttuvan ikkunan ja myöhäisen prosessinluonnin
+regressiot säilyvät ennallaan. Uutta saman revision diagnostista CI-kierrosta
+tai paikallista MSI-consumeria ei ajeta tämän päätöksen tilalle.
 
 ### Historialliset hyväksyntäyritykset
 

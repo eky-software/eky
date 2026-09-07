@@ -670,10 +670,14 @@ test(
     const completion = await execution.completion;
     assert.equal(completion.exitCode, 1);
     assert.equal(await access(context.resultPath).then(() => true, () => false), false);
-    assert.equal(
-      completion.evidence.at(-1)?.errorCode,
-      'requestSchemaInvalid',
-    );
+    // Invalid input supplies no trusted flush budget; any delivered evidence stays strict.
+    for (const entry of completion.evidence) {
+      assert.deepEqual(entry, {
+        schemaVersion: 1, operation: 'windowsAcceptanceSupervisor',
+        phase: 'requestValidated', status: 'failed', durationMs: 0, elapsedMs: 0,
+        errorCode: 'requestSchemaInvalid',
+      });
+    }
     assert.equal(
       await access(context.runRoot).then(() => true, () => false),
       false,
@@ -707,6 +711,31 @@ test(
       'workerResultBindingInvalid',
     );
     assert.equal(execution.result.processTreeAbsent, true);
+  },
+);
+
+test(
+  'malformed request exits even when its safe evidence output blocks',
+  { ...WINDOWS_ONLY, timeout: 10_000 },
+  async (testContext) => {
+    const context = await contextFor(testContext, 'blocked-invalid-request-evidence');
+    const foreign = await contextFor(testContext, 'invalid-request-foreign');
+    const sentinel = await startForeignSentinel(foreign);
+    await writeRequest(context, createRequest(context, 'exitZero'));
+    const execution = startProgramFailureFixture(context, 'blockedInvalidRequestEvidence');
+    const blocked = await waitForMarker(context, 'output');
+    assert.equal(blocked.writerBlocked, true);
+    assert.equal(blocked.errorCode, 'requestSchemaInvalid');
+    const completion = await execution.completion;
+    assert.equal(completion.exitCode, 1);
+    assert.equal(completion.signal, null);
+    assert.equal(isProcessAlive(blocked.processId), false);
+    assert.equal(isProcessAlive(sentinel.marker.processId), true);
+    for (const file of [context.resultPath, context.workerResultPath,
+      join(context.runRoot, 'root.ready.json')]) {
+      await assert.rejects(access(file), { code: 'ENOENT' });
+    }
+    assert.equal(context.supervisorProcesses.size, 0);
   },
 );
 
