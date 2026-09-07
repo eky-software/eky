@@ -1432,7 +1432,7 @@ Rajattu sarja ajetaan komennolla:
 pnpm --filter @eky/desktop installer:test:windows-acceptance-workspace
 ```
 
-CI:n nykyinen rajattu Windows-jobi ajaa artifact- ja lifecycle-sopimukset.
+CI:n nopea Windows-jobi ajaa artifact- ja lifecycle-sopimukset.
 Windows-adapterin testit suorittavat vain read-only-kyselyn; muut uudet testit
 käyttävät synteettisiä tiedostoja ja injektoituja portteja. Ne eivät asenna
 MSI:tä tai todista paketoidun yritysdatan jatkuvuutta. Alla oleva seuraava
@@ -1480,7 +1480,8 @@ migraatio, B:n toisen käynnistyksen byte-idempotenssi, C:n muuttumattomuus,
 lineage-/registry-raja ja asennustasoisen päivitysidentiteetin säilyminen
 ovat erillisiä ehtoja. Rajatut lifecycle-eventit todistavat eri startup-
 identiteetit ja graceful shutdownin; session-salaisuutta ei tallenneta.
-Tämä ei yksin korvaa backendin session-rejection-portin packaged-todistusta.
+Tämä ei yksin korvaa backendin session-rejection-portin packaged-todistusta;
+sen erillinen muistikanavasopimus kuvataan jäljempänä.
 
 Neljä vanhan profiiliverifierin Electron-käynnistystä poistuvat tästä uudesta
 ajoketjusta: verifier käytti myös palautuvia `Store.read()`-polkuja. Nykyinen
@@ -1491,9 +1492,12 @@ Kohdesarja käyttää normaalia `e2e:build`-käännöstä ennen testituen lataam
 Sopimustestit kattavat myös puuttuvat/ristiriitaiset tulokset, väärän ajo-
 identiteetin, vaaralliset linkit ennen SQLite-avausta, epäonnistuneen cleanupin,
 fixture-juuren säilyttämisen ja turvallisen tuloksen ilman raakavirheitä.
-Lopullinen kohdesarja läpäisee 172/172, artifact-sarja 53/53 ja käytettyjen
-profiili-/adapterivastuiden regressiot 49/49. Desktopin typecheck ja build
-läpäisevät. Lifecycle-jälkiehto hylkää myös sulkemisen ilman vastaavaa
+Muistikanavan ja CI-kytkennän kohdesarja läpäisee 192/192, artifact-sarja
+54/54 ja proof-konfiguraation, proof-controllerin sekä session-validationin
+regressiot 45/45. Edeltävän composition-checkpointin profiili-/adapterisarja
+kattoi 49/49. Desktopin koko sarjassa 1493 testiä läpäisee ja kolme aiempaa
+testiä on ohitettu; typecheck ja build läpäisevät. Lifecycle-jälkiehto
+hylkää myös sulkemisen ilman vastaavaa
 käynnistystä sekä käynnistyksestä poikkeavan sulkemisversion.
 Artifactin materialisointitesti käyttää ajokomennon tavoin kanonista
 väliaikaisjuurta ennen strict request -sidontaa. Windows-polun vaihtoehtoinen
@@ -1509,11 +1513,83 @@ Seuraava portti rakentaa artifactin puhtaalta revisiolta kerran ja ajaa tämän
 komennon kahdella eristetyllä Windows-consumerilla samoille tavuille.
 Vanhan toteutuksen invariantteja ei poisteta ennen paketoitua näyttöä.
 
+### Yksityinen session-rejection-todiste
+
+Omistajan erillinen päätös sallii vain synteettisen testipaketin muistikanavan
+vanhan runtime-sessionin säilyttämiseen käynnistysten välillä. Nykyinen
+private proof -marker ja validoitu testijuuri pysyvät aktivoinnin ehtoina.
+`w6b2PackagedProof` hyväksyy onnistumisskenaarion suljettuun control-sopimukseen
+valinnaisen ajokohtaisen kanavan noncen. Tavallinen paketti ja vanha control
+ilman noncea eivät avaa kanavaa; fault-controlin sopimus ei muutu.
+
+`w6b2PackagedSessionProbe.ts` välittää mainin jo luoman sessionin, portin ja
+runtime-identiteetin yhteen ajokohtaiseen Windows named pipe -kanavaan.
+Yksi enintään 1024 tavun versionoitu kehys ja kuittaus validoidaan täsmällisin
+avaimin. Polkuja, sessionia tai mielivaltaista HTTP-osoitetta ei oteta
+rendereriltä. Kanavan nonce ei ole runtime-session. Kanava ei käytä
+stdout/stderriä, levytiedostoa tai uutta HTTP-rajapintaa.
+
+`workspaceSuccessSessionProof.mjs` omistaa vain tämän kanavan socketit ja
+muistissa säilytetyt synteettiset sessionit. Se vaatii nykyiseltä sessionilta
+onnistuneen vastauksen nykyiseen loopback-backendin `/customers`-lukureittiin
+ja jokaiselta aiemmalta sessionilta 401-hylkäyksen. Vastauksen business-runkoa
+ei lueta. Seitsemän normaalia käynnistystä tuottavat seitsemän eri sessionia
+ja runtime-identiteettiä; B:n migraation relaunch-vaihe ei ole normaali startup.
+Puuttuva, ylimääräinen tai väärään vaiheeseen sidottu yhteys, hyväksytty vanha
+session ja uudelleenkäytetty identiteetti hylkäävät ajon.
+
+Worker sulkee omat socketinsa ja keskeyttää keskeneräisen HTTP-lukunsa lapsen
+poistuttua. Nykyinen Job-supervisor omistaa edelleen koko prosessipuun ja
+määräajan. Uutta prosessien valvojaa, PID-rekisteriä, retryä tai cleanup-
+aikarajaa ei lisätä. Kanavan siivousvirhe ei korvaa alkuperäistä
+sovellusvirhettä. Session-viitteet vapautetaan workerin valmistuessa; sessionia tai
+sen tiivistettä ei kirjoiteta tiedostoon, lokiin tai rendererille.
+
+Riippumaton jälkiehto yhdistää turvallisen ajoon ja artifactiin sidotun
+session-proofin lifecycle-eventteihin. Evidence sisältää vain vaiheen,
+runtime-identiteetin ja hylättyjen aiempien sessioiden lukumäärän. Kohdetestit
+kattavat oikean named pipe -kehystyksen, hylkäykset, viestirajat, puuttuvat ja
+kahdentuneet yhteydet sekä keskeytyneen kyselyn siivouksen. Backendin todellinen
+session-rejection todistetaan vasta kahdella paketoidulla consumerilla.
+
+Muutos koskee testiharnessin lisäksi desktopin olemassa olevaa private proof
+-koukkua ja composition-kutsua. Tuotannon sessionin luontia, HTTP-
+autentikointia, business-logiikkaa tai supervisorin semantiikkaa ei muuteta.
+
+### Build-once ja kaksi Windows-consumeria
+
+`windows-acceptance-v2-workspace.yml` kytkee nopeiden sopimustestien jälkeen
+yhden producerin ja kaksi erillistä ensimmäisen yrityksen consumeria.
+Producer rakentaa source/target-parin kerran puhtaalta revisiolta ja julkaisee
+vain strictin artifact-juuren. Hyväksytyt SHA-lukitut artifact-actionit
+siirtävät saman immutable artifact-ID:n molemmille consumereille yhden päivän
+säilytyksellä. Profiilit, yksityinen evidence ja lokit eivät kuulu artifactiin.
+
+Consumer ei rakenna MSI:tä. Se varmistaa täyden harness-revision sekä
+descriptorin ja payloadien tavut ennen yhtä skenaariota ja uudelleen sen
+jälkeen, myös epäonnistuneen skenaarion jälkeen. Oma V2-kutsuja todistaa
+normaalin profiilin muuttumattomuuden, tyhjän Job-puun, exact ProductCode
+-siivouksen ja asennusjälkien poissaolon. Kahden consumerin sopimustulos
+ei korvaa niiden varsinaista packaged-terminal-tulosta.
+
+Uuden producer-jobin raja on 30 minuuttia ja build-stepin 22 minuuttia.
+Consumer-jobin raja on 30 minuuttia ja skenaariokomennon stepin 25 minuuttia.
+Nykyinen 720 sekunnin Job-raja sisältää edelleen 30 sekunnin cleanup-varauksen.
+Erilliset nykyiset exact-product-kyselyt ja semanttiset poistot varaavat
+enintään noin 530 sekuntia ennen ja jälkeen Jobin. Stepin loppuvara kattaa
+supervisor-buildin, materialisoinnin ja jälkiehdot; jobiin jää lisäksi
+asennus- ja artifactin uudelleenvarmennusvara. Sisäisiä määräaikoja tai vanhojen
+jobien rajoja ei kasvateta. Ulkoinen timeout tai puuttuva terminal-result on
+epäonnistuminen, ei lupa uuteen wrapperiin tai hyväksyttyyn reruniin.
+
+Tämän kytkennän packaged-hyväksyntä on vielä avoin. Vaihe suljetaan vasta
+producerin ja molempien consumerien terminal-tuloksista samalla revisiolla.
+
 ### W6B.2A-invarianttien siirtokartta
 
 | Vanhan portin invariantti | V2.6-vastine / rajattu jatkotyö | Tila tässä checkpointissa |
 | --- | --- | --- |
-| Sama source/target-revisio, erilliset MSI-versiot ja muuttumattomat tavut | Strict artifact descriptor, materialisointi ja read-only verifier; molempien consumerien ennen/jälkeen-varmennus vielä kytkettävä | Artifact-sopimus toteutettu; packaged-näyttö avoin |
+| Sama source/target-revisio, erilliset MSI-versiot ja muuttumattomat tavut | Strict artifact descriptor, materialisointi ja read-only verifier; producer ja molempien consumerien ennen/jälkeen-varmennus kytketty | Artifact-sopimus toteutettu; packaged-näyttö avoin |
 | Source/target MSI ProductCode, install-root, rekisteröinti ja payload | Nykyinen V2 exact-product/postcondition-adapteri ja molempien descriptor-payload-inventaarioiden vertailu | Kytketty; packaged-näyttö avoin |
 | A/B/C:n yritys, asiakas, hyväksytty lasku ja authoritative PDF/katalogi | Nykyiset fixture- ja evidence-portit sekä read-only `workspaceSuccessPostcondition` | Sopimukset testattu; packaged-näyttö avoin |
 | Main-owned sourceHandoff ja hyväksytty target first-start | Nykyisen `w6b2PackagedProofController`-portin käyttö ilman rinnakkaista update-moottoria | Worker kytketty; packaged-näyttö avoin |
@@ -1521,7 +1597,7 @@ Vanhan toteutuksen invariantteja ei poisteta ennen paketoitua näyttöä.
 | Passiivinen B pysyy byte-identtisenä aktivointiin asti; migraatio vain aktivoinnissa; seuraava käynnistys idempotentti | Kuusi erillistä read-only-checkpointia ja niiden vertailu | Sopimukset testattu; packaged-näyttö avoin |
 | C:n ehjä SQLite mutta invalidHistory estää aktivoinnin; A ja C pysyvät muuttumattomina | C:n strict recoveryRequired-todiste, active pointer sekä database/PDF-katalogin ja business-sisällön jatkuvuus | Sopimukset testattu; packaged-näyttö avoin |
 | Secret-, archive- ja recovery-namespacejen eristys, installation-state ei vaihdu työtilan mukana | Yksityinen read-only-evidence ja exact installation-journal; ei raakasisältöä julkiseen resultiin | Sopimukset testattu; packaged-näyttö avoin |
-| Uusi runtime-session, vanhan sessionin hylkäys ja vanhan runtimen poistuminen | Nykyiset main/backend-readiness-portit ja supervisorin prosessitodiste erillisinä | Siirrettävä |
+| Uusi runtime-session, vanhan sessionin hylkäys ja vanhan runtimen poistuminen | Yksityinen muistikanava, nykyisen backendin session-rejection sekä riippumaton lifecycle- ja supervisor-todiste | Sopimukset testattu; packaged-näyttö avoin |
 | Normaali profiili muuttumaton ja tarkka ProductCode-cleanup | Muistissa tehtävä read-only inventaario, erillinen semantic cleanup ja postcondition verifier vasta varmennetun prosessipuun poistumisen jälkeen | Caller kytketty ja käyttäytymistestattu; packaged-näyttö avoin |
 | Alkuperäinen virhe ei katoa cleanupin alle; tuntematon tila hylätään | Erilliset process-, worker-, scenario-, semantic-cleanup-, postcondition- ja fixture-cleanup-tulokset nykyisellä V2-mallilla | Caller kytketty ja käyttäytymistestattu; packaged-näyttö avoin |
 

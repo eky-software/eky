@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 
 import { hasWorkspaceSuccessExactKeys, readWorkspaceSuccessObject } from './workspaceSuccessContracts.mjs';
+import { verifyWorkspaceSuccessSessionEvidence } from './workspaceSuccessSessionProof.mjs';
 import {
   WORKSPACE_SUCCESS_CHECKPOINTS, captureWorkspaceSuccessProfileEvidence,
   readWorkspaceSuccessProfileState, workspaceSuccessCheckpointPath,
@@ -107,6 +108,7 @@ export function verifyWorkspaceSuccessCheckpoints({ request, artifact, state, ch
 
 export async function verifyWorkspaceSuccessSemanticPostcondition(input, {
   captureCurrent = captureWorkspaceSuccessProfileEvidence,
+  verifySessions = verifyWorkspaceSuccessSessionEvidence,
 } = {}) {
   try {
     const state = await readWorkspaceSuccessProfileState(input.proofRoot, input.support);
@@ -116,6 +118,7 @@ export async function verifyWorkspaceSuccessSemanticPostcondition(input, {
         'profileEvidenceInvalid'));
     }
     const result = verifyWorkspaceSuccessCheckpoints({ ...input, state, checkpoints });
+    await verifySessions(input, checkpoints.at(-1).events);
     const current = await captureCurrent({ ...input, checkpoint: 'rejectedC' });
     if (!isDeepStrictEqual(current, checkpoints.at(-1))) invalid();
     return result;

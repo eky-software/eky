@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { access, link, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { access, link, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, resolve } from 'node:path';
 import test from 'node:test';
@@ -12,6 +12,7 @@ import {
 
 async function fixture(context, changes = {}) {
   const root = await mkdtemp(resolve(await realpath(tmpdir()), 'eky-v26-runtime-contract-'));
+  await mkdir(resolve(root, 'control'));
   context.after(() => rm(root, { recursive: true, force: true }));
   const calls = [];
   let phase = 'sourceHandoff';
@@ -27,6 +28,10 @@ async function fixture(context, changes = {}) {
     artifactDescriptorSha256: 'c'.repeat(64), fixtureRoot: resolve(root, 'artifact') },
   artifact, temporaryRoot: root, scenarioRoot: root, runFixture: { proofRoot: root, token },
   profileRuntime: { executablePath: resolve(root, 'electron.exe'), applicationPath: resolve(root, 'profile') },
+  sessionProof: { async start() { return { nonce: 'd'.repeat(64), async finish(value) {
+    calls.push({ sessionFinished: value });
+    if (changes.sessionFailure) throw new Error('sessionProofInvalid');
+  } }; } },
   proofProtocol: {
     W6B2_PACKAGED_PROOF_SWITCH: 'w6b2-packaged-proof',
     createW6b2PackagedProofBootstrapConfiguration: () => ({ root, userDataPath: resolve(root, 'user-data') }),
@@ -148,6 +153,26 @@ test('profile preparation uses the existing named profile entrypoint and environ
   assert.deepEqual(call.args, [value.inputs.profileRuntime.applicationPath]);
   assert.equal(call.options.env.EKY_W6B2_PROFILE_OPERATION, 'prepare');
   assert.equal(call.options.env.TEMP, value.root);
+});
+
+test('session proof failure rejects an otherwise completed application result', async (context) => {
+  const value = await fixture(context, { sessionFailure: true });
+  await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: 'sessionProofInvalid' });
+  const control = JSON.parse(await readFile(resolve(value.root, 'control', 'phase.json'), 'utf8'));
+  assert.deepEqual(control, { formatVersion: 1, phase: 'sourceHandoff', sessionProbeNonce: 'd'.repeat(64) });
+  assert.deepEqual(value.calls.at(-1), { sessionFinished: { allowMissing: false } });
+});
+
+test('session channel cleanup does not erase the original application failure', async (context) => {
+  const value = await fixture(context, { exitCode: 1, sessionFailure: true });
+  await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: 'proofResultInvalid' });
+  assert.deepEqual(value.calls.at(-1), { sessionFinished: { allowMissing: false } });
+});
+
+test('only the migration relaunch may exit before a backend session exists', async (context) => {
+  const value = await fixture(context, { proofResult: { formatVersion: 1, phase: 'verifyBRestart', status: 'relaunching' } });
+  await value.runtime.runProofPhase('verifyBRestart');
+  assert.deepEqual(value.calls.at(-1), { sessionFinished: { allowMissing: true } });
 });
 
 test('profile result from a different operation cannot be reused', async (context) => {

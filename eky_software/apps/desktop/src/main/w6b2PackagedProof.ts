@@ -70,6 +70,7 @@ export interface W6b2PackagedProofBootstrapConfiguration {
 
 export interface W6b2PackagedSuccessProofConfiguration {
   readonly controlFormatVersion: 1;
+  readonly sessionProbeNonce?: string;
   readonly enabled: true;
   readonly phase: W6b2PackagedProofPhase;
   readonly resultFilePath: string;
@@ -181,6 +182,7 @@ const proofTokenPattern = /^[0-9a-f]{64}$/u;
 const maximumControlBytes = 4 * 1024;
 const markerKeys = ['appVersion', 'formatVersion', 'role'] as const;
 const controlKeys = ['formatVersion', 'phase'] as const;
+const sessionControlKeys = ['formatVersion', 'phase', 'sessionProbeNonce'] as const;
 const faultControlKeys = [
   'faultScenario',
   'formatVersion',
@@ -324,6 +326,7 @@ export async function readW6b2PackagedProofConfiguration(input: {
       ...paths,
       controlFormatVersion: 1,
       phase: control.phase,
+      ...('sessionProbeNonce' in control ? { sessionProbeNonce: control.sessionProbeNonce } : {}),
     });
   }
   return Object.freeze({
@@ -469,6 +472,7 @@ type W6b2PackagedProofControl = Readonly<
   | {
       readonly formatVersion: 1;
       readonly phase: W6b2PackagedProofPhase;
+      readonly sessionProbeNonce?: string;
     }
   | {
       readonly faultScenario: W6b2PackagedFaultScenario;
@@ -486,6 +490,10 @@ function parseControl(value: unknown): W6b2PackagedProofControl {
       formatVersion: 1,
       phase: parsePhase(value.phase),
     });
+  }
+  if (value.formatVersion === 1 && hasExactKeys(value, sessionControlKeys) &&
+    typeof value.sessionProbeNonce === 'string' && proofTokenPattern.test(value.sessionProbeNonce)) {
+    return Object.freeze({ formatVersion: 1, phase: parsePhase(value.phase), sessionProbeNonce: value.sessionProbeNonce });
   }
   if (value.formatVersion === 2 && hasExactKeys(value, faultControlKeys)) {
     const faultScenario = parseFaultScenario(value.faultScenario);

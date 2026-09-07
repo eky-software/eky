@@ -96,6 +96,7 @@ import {
 } from './w6b2PackagedFaultInjection.js';
 import { runW6b2PackagedFaultProofController } from './w6b2PackagedFaultProofController.js';
 import { runW6b2PackagedProofController } from './w6b2PackagedProofController.js';
+import { runW6b2PackagedSessionProbe } from './w6b2PackagedSessionProbe.js';
 import { restoreWindowInputFocus } from './windowInputFocus.js';
 import { resolveDesktopWorkspaceStartup } from './resolveDesktopWorkspaceStartup.js';
 import type { DesktopBuildInfo } from '../release/desktopBuildInfo.js';
@@ -1910,6 +1911,14 @@ async function startDesktopCompositionRuntime({
 
   if (options.w6b2PackagedProof !== undefined) {
     const proof = options.w6b2PackagedProof;
+    if (proof.configuration.controlFormatVersion === 1) {
+      await runW6b2PackagedSessionProbe({
+        configuration: proof.configuration,
+        backendPort: backendHandle.port,
+        runtimeInstanceId: options.runtimeInstanceId,
+        runtimeSessionSecret,
+      });
+    }
     const result =
       localUpdatePackageCache === undefined || handoffCoordinator === undefined
         ? proof.configuration.controlFormatVersion === 1

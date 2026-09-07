@@ -13,6 +13,8 @@ import { executeWorkspaceSuccessLifecycle } from './workspaceSuccessLifecycle.mj
 import { createWorkspaceSuccessWindowsRuntime } from './workspaceSuccessWindowsRuntime.mjs';
 import { workspaceSuccessRunContext } from './workspaceSuccessRunFixture.mjs';
 import { loadWorkspaceSuccessProfileSupport, writeWorkspaceSuccessCheckpoint } from './workspaceSuccessProfileEvidence.mjs';
+import { createWorkspaceSuccessSessionProof, loadWorkspaceSuccessSessionProtocol,
+  writeWorkspaceSuccessSessionEvidence } from './workspaceSuccessSessionProof.mjs';
 
 const DESKTOP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -23,12 +25,15 @@ export async function createWorkspaceSuccessWorkerRuntime(requestPath, request, 
   const profileProtocol = await import(pathToFileURL(resolve(DESKTOP_ROOT, 'e2e-dist/e2e/w6b2PackagedWorkspaceProfileCommand.js')).href);
   const support = await loadWorkspaceSuccessProfileSupport();
   const electron = resolveElectronDevelopmentRuntime({ desktopPackageJsonPath: resolve(DESKTOP_ROOT, 'package.json') });
-  return createWorkspaceSuccessWindowsRuntime({ ...context, proofProtocol, profileProtocol,
+  const sessionProof = createWorkspaceSuccessSessionProof(await loadWorkspaceSuccessSessionProtocol());
+  const runtime = await createWorkspaceSuccessWindowsRuntime({ ...context, proofProtocol, profileProtocol, sessionProof,
     profileRuntime: { executablePath: electron.executablePath, applicationPath: resolve(DESKTOP_ROOT, 'e2e-dist/w6b2-profile') },
-    captureCheckpoint: (checkpoint) => writeWorkspaceSuccessCheckpoint({
-      request, proofRoot: context.proofRoot, checkpoint, support,
-    }),
+    async captureCheckpoint(checkpoint) {
+      if (checkpoint === 'rejectedC') await writeWorkspaceSuccessSessionEvidence(context, sessionProof);
+      await writeWorkspaceSuccessCheckpoint({ request, proofRoot: context.proofRoot, checkpoint, support });
+    },
   });
+  return { ...runtime, disposeSessionEvidence: () => sessionProof.dispose() };
 }
 
 export async function runWorkspaceSuccessWorker(arguments_, {
@@ -48,7 +53,9 @@ export async function runWorkspaceSuccessWorker(arguments_, {
     const artifact = await verifyArtifact({ artifactRoot: request.fixtureRoot,
       expectedDescriptorSha256: request.artifactDescriptorSha256, expectedBuildRevision: request.buildRevision });
     const runtime = await createRuntime(requestPath, request, artifact);
-    result = await execute({ ...runtime, reportProgress });
+    try {
+      result = await execute({ ...runtime, reportProgress });
+    } finally { runtime.disposeSessionEvidence(); }
   } catch (error) {
     result = { schemaVersion: 1, status: 'failed', resultCode: 'workspaceSuccessFailed',
       errorCode: workspaceSuccessErrorCode(error), failedPhase: WORKSPACE_SUCCESS_PHASES[0], completedPhases: [] };

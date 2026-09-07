@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { lstat, mkdir, rm } from 'node:fs/promises';
+import { lstat, mkdir, rename, rm } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as pollNextObservation } from 'node:timers/promises';
@@ -11,7 +11,7 @@ import {
 import { validateInstallerProductStateResult } from './cleanInstallUninstallWindowsRuntime.mjs';
 import { inspectLegacyInstallerFootprint } from './legacyUpgradeWindowsRuntime.mjs';
 import { verifyWorkspaceSuccessArtifact } from './workspaceSuccessArtifact.mjs';
-import { hasWorkspaceSuccessExactKeys, readWorkspaceSuccessObject } from './workspaceSuccessContracts.mjs';
+import { hasWorkspaceSuccessExactKeys, readWorkspaceSuccessObject, writeJsonAtomicExclusive } from './workspaceSuccessContracts.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const PRODUCT_INSPECTOR = resolve(DIRECTORY, 'inspectWindowsInstallerProductState.ps1');
@@ -53,7 +53,7 @@ export async function removeWorkspaceSuccessPreviousResult(path) {
 
 export async function createWorkspaceSuccessWindowsRuntime({
   request, artifact, runFixture, temporaryRoot, scenarioRoot, profileRuntime,
-  proofProtocol, profileProtocol, captureCheckpoint,
+  proofProtocol, profileProtocol, captureCheckpoint, sessionProof,
 }, {
   environment = process.env,
   runCommand = runWorkspaceSuccessOwnedCommand,
@@ -67,7 +67,7 @@ export async function createWorkspaceSuccessWindowsRuntime({
   nextObservation = () => pollNextObservation(250),
 } = {}) {
   if (!environment.APPDATA || !environment.LOCALAPPDATA || !environment.SystemRoot ||
-    typeof captureCheckpoint !== 'function') throw new Error('requestInvalid');
+    typeof captureCheckpoint !== 'function' || typeof sessionProof?.start !== 'function') throw new Error('requestInvalid');
   const installRoot = resolve(environment.LOCALAPPDATA, 'Programs', 'Eky');
   const executablePath = resolve(installRoot, 'Eky.exe');
   const shortcutPath = resolve(environment.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Eky', 'Eky.lnk');
@@ -161,11 +161,23 @@ export async function createWorkspaceSuccessWindowsRuntime({
       if (bootstrap.root !== runFixture.proofRoot) throw new Error('proofResultInvalid');
       const resultPath = resolve(bootstrap.root, 'result', 'w6b2-proof-result.json');
       await removePreviousResult(resultPath);
-      const code = await runCommand(executablePath, [
-        `--${proofProtocol.W6B2_PACKAGED_PROOF_SWITCH}`, `--user-data-dir=${bootstrap.userDataPath}`,
-      ], { cwd: scenarioRoot, env: applicationEnvironment });
-      const result = proofProtocol.parseW6b2PackagedProofResult(await readObject(resultPath, 'proofResultInvalid'));
-      if (code !== 0 || result.phase !== phase || result.status === 'failed') throw new Error('proofResultInvalid');
+      const probe = await sessionProof.start(phase);
+      let result;
+      let originalError;
+      try {
+        const controlPath = resolve(bootstrap.root, 'control', 'phase.json');
+        const nextPath = resolve(bootstrap.root, 'control', 'session-phase.next.json');
+        await writeJsonAtomicExclusive(nextPath, { formatVersion: 1, phase, sessionProbeNonce: probe.nonce });
+        await rename(nextPath, controlPath);
+        const code = await runCommand(executablePath, [
+          `--${proofProtocol.W6B2_PACKAGED_PROOF_SWITCH}`, `--user-data-dir=${bootstrap.userDataPath}`,
+        ], { cwd: scenarioRoot, env: applicationEnvironment });
+        result = proofProtocol.parseW6b2PackagedProofResult(await readObject(resultPath, 'proofResultInvalid'));
+        if (code !== 0 || result.phase !== phase || result.status === 'failed') throw new Error('proofResultInvalid');
+      } catch (error) { originalError = error; }
+      try { await probe.finish({ allowMissing: phase === 'verifyBRestart' && result?.status === 'relaunching' }); }
+      catch (error) { originalError ??= error; }
+      if (originalError) throw originalError;
       return result;
     },
     async waitForTargetInstallation() {

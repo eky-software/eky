@@ -14,7 +14,7 @@ function fixture() {
   const options = { platform: 'win32',
     readRequest: async () => request,
     verifyArtifact: async (input) => { calls.push(['verify', input]); return {}; },
-    createRuntime: async () => { calls.push(['runtime']); return {}; },
+    createRuntime: async () => { calls.push(['runtime']); return { disposeSessionEvidence: () => calls.push(['disposeSessions']) }; },
     execute: async () => { calls.push(['execute']); return result; },
     writeResult: async (path, value) => { calls.push(['write', path, value]); },
   };
@@ -24,7 +24,7 @@ function fixture() {
 test('worker verifies exact revision and writes both bound results before successful exit', async () => {
   const f = fixture();
   assert.equal(await f.run(), 0);
-  assert.deepEqual(f.calls.map((entry) => entry[0]), ['verify', 'runtime', 'execute', 'write', 'write']);
+  assert.deepEqual(f.calls.map((entry) => entry[0]), ['verify', 'runtime', 'execute', 'disposeSessions', 'write', 'write']);
   assert.equal(f.calls[0][1].expectedBuildRevision, f.request.buildRevision);
   assert.equal(f.calls[0][1].expectedDescriptorSha256, f.request.artifactDescriptorSha256);
   const writes = f.calls.filter((entry) => entry[0] === 'write');

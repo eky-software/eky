@@ -16,9 +16,12 @@ test('V2.6 contract checkpoint is a bounded read-only-permission Windows job wit
   assert.match(source, /persist-credentials: false/);
   assert.match(source, /pnpm install --frozen-lockfile/);
   const actions = [...source.matchAll(/uses: ([^\s]+)/g)].map((match) => match[1]);
-  assert.deepEqual(actions, [
+  assert.deepEqual([...new Set(actions)], [
     'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
     'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
+    'actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1',
+    'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
+    'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c',
   ]);
 });
 
@@ -28,7 +31,8 @@ test('V2.6 fast checkpoint runs its executable contracts, not a packaged accepta
   assert.match(source, /pnpm --filter @eky\/desktop installer:test:windows-acceptance-workspace-artifact/);
   const script = desktop.scripts['installer:test:windows-acceptance-workspace-artifact'];
   assert.equal(script, 'node --test --test-concurrency=1 installer/windows-acceptance-harness/workspaceSuccessArtifact.test.mjs installer/windows-acceptance-harness/workspaceSuccessArtifactWorkflow.test.mjs');
-  assert.doesNotMatch(source, /installer:v2-workspace-artifact:build|msiexec|upload-artifact|installer:w6b2/);
+  const contracts = source.split('  workspace_artifact_producer:')[0];
+  assert.doesNotMatch(contracts, /installer:v2-workspace-artifact:build|msiexec|upload-artifact|installer:w6b2/);
 });
 
 test('V2.6 runtime checkpoint executes lifecycle, failure and read-only Windows adapter behavior', async () => {
@@ -40,8 +44,35 @@ test('V2.6 runtime checkpoint executes lifecycle, failure and read-only Windows 
     'workspaceSuccessContracts', 'workspaceSuccessLifecycle', 'workspaceSuccessWindowsRuntime',
     'workspaceSuccessFailureBoundary', 'inspectWorkspaceSuccessMsiActivity',
     'workspaceSuccessProfileEvidence', 'workspaceSuccessPostcondition',
+    'workspaceSuccessSessionProof',
     'runWorkspaceSuccessWorker', 'runWorkspaceSuccess',
   ].map((name) => `installer/windows-acceptance-harness/${name}.test.mjs`).join(' '));
   assert.equal(desktop.scripts['installer:v2-workspace-success'],
     'pnpm installer:supervisor:build && pnpm e2e:build && node installer/windows-acceptance-harness/runWorkspaceSuccess.mjs');
+});
+
+test('producer publishes exactly one immutable pair and consumers use the same artifact ID and descriptor binding', async () => {
+  const source = await readFile(WORKFLOW, 'utf8');
+  const producer = source.split('  workspace_artifact_producer:')[1].split('  workspace_consumer:')[0];
+  const consumer = source.split('  workspace_consumer:')[1];
+  assert.match(producer, /needs: workspace_artifact_contracts/);
+  assert.match(producer, /installer:verify-restore-lock/);
+  assert.equal(producer.match(/installer:v2-workspace-artifact:build/g).length, 1);
+  assert.match(producer, /artifact_id: \$\{\{ steps.upload.outputs.artifact-id \}\}/);
+  assert.match(producer, /retention-days: 1/);
+  assert.match(producer, /overwrite: false/);
+  assert.match(producer, /include-hidden-files: false/);
+  assert.match(consumer, /needs: workspace_artifact_producer/);
+  assert.match(consumer, /repetition: \[1, 2\]/);
+  assert.match(consumer, /fail-fast: false/);
+  assert.match(consumer, /artifact-ids: \$\{\{ needs.workspace_artifact_producer.outputs.artifact_id \}\}/);
+  assert.match(consumer, /merge-multiple: true/);
+  assert.doesNotMatch(consumer, /installer:v2-workspace-artifact:build|installer:w6b2|msiexec|upload-artifact|retry|rerun/);
+  assert.equal(consumer.match(/installer:v2-workspace-success --artifact-descriptor/g).length, 1);
+  assert.equal(consumer.match(/installer:v2-workspace-artifact:verify/g).length, 2);
+  assert.match(consumer, /always\(\) && steps.download.outcome == 'success'/);
+  for (const command of consumer.split('\n').filter((line) => /pnpm.*installer:v2/.test(line))) {
+    assert.match(command, /--expected-descriptor-sha256 \$env:EXPECTED_DESCRIPTOR_SHA256/);
+    assert.match(command, /--expected-build-revision \$env:EXPECTED_BUILD_REVISION/);
+  }
 });

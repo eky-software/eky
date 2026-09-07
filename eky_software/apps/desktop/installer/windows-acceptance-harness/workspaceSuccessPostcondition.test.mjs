@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { createWorkspaceSuccessEvidenceTestFixture } from './workspaceSuccessEvidenceTestFixture.mjs';
 import { verifyWorkspaceSuccessCheckpoints, verifyWorkspaceSuccessSemanticPostcondition } from './workspaceSuccessPostcondition.mjs';
 import { workspaceSuccessCheckpointPath } from './workspaceSuccessProfileEvidence.mjs';
+import { writeWorkspaceSuccessSessionEvidence } from './workspaceSuccessSessionProof.mjs';
 
 test('six bound checkpoints prove business continuity and distinct idempotent B startups', async () => {
   assert.deepEqual(verifyWorkspaceSuccessCheckpoints(await createWorkspaceSuccessEvidenceTestFixture()),
@@ -68,12 +69,19 @@ for (const [name, mutate] of Object.entries(mutations)) {
   });
 }
 
-for (const mode of ['completed', 'currentChanged', 'missingCheckpoint', 'foreignCheckpoint', 'readFailure']) {
+for (const mode of ['completed', 'currentChanged', 'missingCheckpoint', 'foreignCheckpoint', 'readFailure', 'missingSessions']) {
   test(`independent final verifier rereads persisted evidence and current profile: ${mode}`, async (t) => {
     const fixture = await createWorkspaceSuccessEvidenceTestFixture();
     const proofRoot = await mkdtemp(resolve(await realpath(tmpdir()), 'eky-v26-postcondition-'));
     t.after(() => rm(proofRoot, { recursive: true, force: true }));
     await mkdir(resolve(proofRoot, 'evidence'));
+    if (mode !== 'missingSessions') {
+      const phases = ['sourceHandoff', 'targetFirstStart', 'switchToB', 'verifyBRestart', 'verifyBRestart', 'switchToA', 'rejectC'];
+      await writeWorkspaceSuccessSessionEvidence({ ...fixture, proofRoot }, {
+        evidence: () => fixture.checkpoints.at(-1).events.filter((event) => event.eventName === 'desktop.started')
+          .map((event, index) => ({ phase: phases[index], runtimeInstanceId: event.runtimeInstanceId, priorSessionsRejected: index })),
+      });
+    }
     await writeFile(resolve(proofRoot, 'evidence', 'w6b2-profile-state-v1.json'), JSON.stringify(fixture.state));
     for (const checkpoint of fixture.checkpoints) {
       if (mode === 'missingCheckpoint' && checkpoint.checkpoint === 'firstBStartup') continue;
@@ -93,6 +101,6 @@ for (const mode of ['completed', 'currentChanged', 'missingCheckpoint', 'foreign
     });
     if (mode === 'completed') assert.deepEqual(await verify(), { status: 'completed', resultCode: 'workspaceSemanticProofValidated' });
     else await assert.rejects(verify, /^Error: profileEvidenceInvalid$/);
-    assert.equal(reads, ['missingCheckpoint', 'foreignCheckpoint'].includes(mode) ? 0 : 1);
+    assert.equal(reads, ['missingCheckpoint', 'foreignCheckpoint', 'missingSessions'].includes(mode) ? 0 : 1);
   });
 }
