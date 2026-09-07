@@ -7,6 +7,25 @@ const WORKFLOW_URL = new URL(
   import.meta.url,
 );
 
+test('shared feasibility binds the verified SDK before every process-contract mode', async () => {
+  const source = await readFile(new URL(
+    '../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml',
+    import.meta.url,
+  ), 'utf8');
+  const bindingIndex = source.indexOf('      - name: Bind the verified SDK executable for all process contracts');
+  assert.ok(bindingIndex >= 0);
+  const nextStep = source.indexOf('\n      - name:', bindingIndex + 1);
+  const binding = source.slice(bindingIndex, nextStep);
+  assert.doesNotMatch(binding, /\bif:\s|inputs\.mode/u);
+  assert.match(binding, /Get-Command dotnet\.exe -CommandType Application -ErrorAction Stop/u);
+  assert.match(binding, /IsPathFullyQualified\(\$dotnet\)/u);
+  assert.match(binding, /& \$dotnet --version/u);
+  assert.match(binding, /EKY_DOTNET_EXE=\$dotnet/u);
+  assert.equal(source.match(/EKY_DOTNET_EXE=\$dotnet/gu)?.length, 1);
+  assert.ok(bindingIndex < source.indexOf('      - name: Build Windows process supervisor'));
+  assert.ok(bindingIndex < source.indexOf('      - name: Run supervisor unit and process contracts'));
+});
+
 test('V2.5 phase acceptance requires the same revision full contracts before its producer', async () => {
   const source = await readFile(WORKFLOW_URL, 'utf8');
   const contracts = source.slice(source.indexOf('  legacy_contracts:'), source.indexOf('  legacy_artifact_producer:'));

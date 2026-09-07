@@ -1416,6 +1416,21 @@ Checkpoint voidaan julkaista keskeneräisenä draft-katselmukseen. Uutta
 lopullista artifactia tai kahta paikallista hyväksyntäconsumeria ei ajeta
 tämän avoimen rajan yli. CI:n mahdollinen vihreys ei korvaa tätä puutetta.
 
+Jaetun feasibility-työnkulun on sidottava varmennettu, absoluuttinen
+`EKY_DOTNET_EXE` ennen kaikkia process-contract-ajotiloja, ei vain
+diagnostiikkaa. Sama sidonta tehdään kerran. Rajattu regressio todistaa
+puuttuvan sidonnan hylkäyksen ja korjatun kytkennän; supervisorin
+absoluuttisen komentopolun ehto säilyy muuttumattomana. Kohdetestit 2/2,
+supervisor-sopimukset 45/45 ja artifact-/työnkulkusopimukset 12/12.
+
+Revision `5b727b9` ensimmäinen vaihehyväksyntäkierros
+([34125812197](https://github.com/eky-software/eky/actions/runs/34125812197))
+läpäisi molemmat 166/166-sopimussarjat ja producerin. Consumer 1 läpäisi,
+consumer 2 hylättiin ennen skenaarion käynnistystä koodilla
+`WINDOWS_ACCEPTANCE_LEGACY_PRECONDITION_FAILED`. Tämä ei ole hyväksytty
+consumer-pari. Yleinen precondition-koodi ei yksin osoita hylkäyksen syytä;
+sitä ei käsitellä asennetun footprintin havainnon selityksenä.
+
 Edellisen checkpointin normaali pnpm-sarja revisiolta
 `c859c5ab9c6723ca08529173e4a2e87b34c9bcd7` läpäisi 151/151 ilman
 peruutettuja tai ohitettuja testejä. Artifact-sopimukset 10/10 sekä desktopin
