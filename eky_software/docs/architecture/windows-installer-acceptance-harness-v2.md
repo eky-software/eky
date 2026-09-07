@@ -1441,11 +1441,37 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 
 ## Nykyinen päätös
 
-V2.5:n tekniset portit täyttyvät revisiolla
-`47847f9dcac5eb296ee93deac65b2440f80614cd` omistajan hyväksymän yllä olevan
-suoritusympäristörajauksen mukaisesti. Vaiheen lopullinen katselmus on vielä
-kesken ja PR #263 pysyy draftina. Ei mergeä, V2.6:ta, vanhan harnessin
-poistamista, versionostoa tai pilot-pakettia tässä checkpointissa.
+V2.5:n vaihekohtainen loppukatselmus on hyväksytty. Testattu harness- ja
+artifact-revisio on `47847f9dcac5eb296ee93deac65b2440f80614cd` yllä olevan
+hyväksytyn suoritusympäristörajauksen mukaisesti. Katselmuksen lähtö-HEAD
+`362d08ed2e9b013805b7b2a2ca2ea376baaf8fd7` muuttaa sen jälkeen vain
+dokumentaatiota; toteutus ja testikytkennät ovat muuttumattomat. Sen kaikki
+kahdeksan automaattista PR-tarkistusta ovat vihreitä ensimmäisellä yrityksellä.
+PR #263 säilyy draft-checkpointina. Tämä on vaiheen hyväksyntä, ei koko V2:n,
+päähaaran käyttöönoton tai julkaisun hyväksyntä.
+
+Loppukatselmus vertasi yllä olevan invarianttien siirtokartan vastuut
+toteutukseen, käyttäytymisregressioihin ja täsmärevision näyttöön. Strict
+artifact- ja footprint-rajat, kaksivaiheinen historical smoke, source- ja
+target-startup, adoption idempotenssi sekä erilliset process-, worker-,
+semantic proof-, cleanup- ja postcondition-tulokset säilyvät. Puuttuva tulos
+tai varmentamaton siivous ei oikeuta onnistumiseen tai testijuuren poistoon.
+Tarkistetuissa rajoissa ei todettu uutta vaihetta estävää löydöstä.
+
+Ei-estävä katselmointikohta säilyy avoimena: `runLegacyUpgrade`-kutsun
+`requireLegacyUpgradeProductPrecondition` muuntaa tarkistimen epäonnistumisen
+yleiseksi `WINDOWS_ACCEPTANCE_LEGACY_PRECONDITION_FAILED`-koodiksi. Ennen
+yhteistä käyttöönottoa suljettu alkuperäinen tarkistinvirhe on säilytettävä
+nykyisessä vastuussa ja lukittava käyttäytymisregressiolla. Puuttuva tulos ei
+saa valtuuttaa ennestään asennetun tuotteen siivousta. Tätä havaintoa ei
+nimetä ratkaistuksi eikä yhdistetä aiempiin käynnistysviiveisiin.
+
+Omistajan hyväksymä jatko aloittaa V2.6:n omassa pinotussa haarassa tämän
+katselmoidun checkpointin päältä. PR:iä ei mergeä mekaanisesti toisiinsa tai
+`main`iin. V2.6:n ja V2.7:n suoritusympäristöstä tarvitaan oma päätös ennen
+raskaita ajoja; V2.5:n rajaus ei siirry niihin automaattisesti. Vanhan
+orkestroinnin poisto, CI-porttien vaihto ja päähaaran integraatio säilyvät
+erillisenä cutover-kokonaisuutena ennen julkaisuvaihetta.
 
 | Portti | Revision `47847f9` näyttö |
 | --- | --- |
@@ -1687,9 +1713,11 @@ exact ProductCode -jälkiehtoa `exactProductsAbsent`. Omistettuja
 orpoprosesseja jäi näissä kahdessa CI-ajossa 0. Tämä ei korvaa aiempien ajojen
 puuttuvaa cleanupia tai avoimia paikallisia hyväksyntäportteja.
 
-### Hyväksytty etenemisjärjestys
+### V2.5:n hyväksyntään käytetty etenemisjärjestys
 
-Työpaketti etenee samassa `codex/test-harness-v2-legacy-upgrade`-haarassa:
+Seuraava järjestys kuvaa yllä suljetun V2.5-työpaketin hyväksyntää samassa
+`codex/test-harness-v2-legacy-upgrade`-haarassa. Se ei aloita jo varmennettuja
+muuttumattoman koodin ajoja uudelleen dokumentaation vuoksi:
 
 1. Tarkista työpuu, local/remote SHA, työkalut ja prosessit. Commitoi vain
    rajattu katselmoitu muutos ja aja puhtaalta revisiolta normaali
@@ -1725,11 +1753,11 @@ ovat eri sopimuksia; jälkimmäisiä ei muuteta. Konekohtaisen diagnoosin
 yksityiskohdat eivät muodosta uutta hyväksyntäporttia eikä niitä julkaista
 tässä suunnitelmassa.
 
-V2.1-V2.4:n pinotut checkpointit, mukaan lukien jäädytetty draft-PR #262,
-säilyvät. Ei V2.6:ta, mergeä, versionostoa, pilot-pakettia, W6-poistoa,
-tuotantosemantiikan muutosta tai uutta prosessi-/cleanup-omistajaa.
-PR #257/#258 ja nykyiset required check -ehdot eivät muutu. Valmis V2.5
-jätetään erikseen katselmoitavaksi draft-PR:ksi.
+V2.1-V2.5:n pinotut checkpointit, mukaan lukien jäädytetty draft-PR #262 ja
+vaihekohtaisesti katselmoitu PR #263, säilyvät. V2.6 etenee vain omassa
+haarassaan yllä kuvatulla rajauksella. Ei mergeä, versionostoa, pilot-pakettia,
+W6-poistoa, tuotantosemantiikan muutosta tai uutta prosessi-/cleanup-omistajaa.
+PR #257/#258 ja nykyiset required check -ehdot eivät muutu.
 
 ## Ulkoiset tekniset lähteet
 
