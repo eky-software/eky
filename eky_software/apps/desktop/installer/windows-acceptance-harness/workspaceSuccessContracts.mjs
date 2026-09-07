@@ -19,7 +19,7 @@ export const WORKSPACE_SUCCESS_ERRORS = Object.freeze([
   'sourceHandoffFailed', 'targetInstallFailed', 'targetStateInvalid',
   'targetFirstStartFailed', 'switchToBFailed', 'migrationBFailed',
   'firstStartBFailed', 'restartBFailed', 'switchToAFailed', 'rejectionCFailed',
-  'proofResultInvalid', 'profileResultInvalid', 'profileEvidenceInvalid', 'sessionProofInvalid',
+  'proofResultInvalid', 'profileResultInvalid', 'profileEvidenceInvalid', 'sessionProofInvalid', 'electronRuntimeUnavailable',
   'ownedProcessStartFailed', 'ownedProcessExitInvalid', 'productInspectionFailed',
 ]);
 const SHA = /^[0-9a-f]{64}$/;

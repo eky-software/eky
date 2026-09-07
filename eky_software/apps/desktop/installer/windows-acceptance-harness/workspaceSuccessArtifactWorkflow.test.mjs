@@ -40,7 +40,7 @@ test('V2.6 runtime checkpoint executes lifecycle, failure and read-only Windows 
   const desktop = JSON.parse(await readFile(resolve(ROOT, '../../package.json'), 'utf8'));
   assert.match(source, /pnpm --filter @eky\/desktop installer:test:windows-acceptance-workspace\s/);
   const script = desktop.scripts['installer:test:windows-acceptance-workspace'];
-  assert.equal(script, 'pnpm e2e:build && node --test --test-concurrency=1 ' + [
+  assert.equal(script, 'pnpm e2e:prepare-electron-runtime && pnpm e2e:build && node --test --test-concurrency=1 ' + [
     'workspaceSuccessContracts', 'workspaceSuccessLifecycle', 'workspaceSuccessWindowsRuntime',
     'workspaceSuccessFailureBoundary', 'inspectWorkspaceSuccessMsiActivity',
     'workspaceSuccessProfileEvidence', 'workspaceSuccessPostcondition',
@@ -48,7 +48,7 @@ test('V2.6 runtime checkpoint executes lifecycle, failure and read-only Windows 
     'runWorkspaceSuccessWorker', 'runWorkspaceSuccess',
   ].map((name) => `installer/windows-acceptance-harness/${name}.test.mjs`).join(' '));
   assert.equal(desktop.scripts['installer:v2-workspace-success'],
-    'pnpm installer:supervisor:build && pnpm e2e:build && node installer/windows-acceptance-harness/runWorkspaceSuccess.mjs');
+    'pnpm installer:supervisor:build && pnpm e2e:prepare-electron-runtime && pnpm e2e:build && node installer/windows-acceptance-harness/runWorkspaceSuccess.mjs');
 });
 
 test('producer publishes exactly one immutable pair and consumers use the same artifact ID and descriptor binding', async () => {

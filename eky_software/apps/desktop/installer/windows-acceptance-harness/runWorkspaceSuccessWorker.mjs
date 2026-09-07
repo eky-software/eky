@@ -18,13 +18,17 @@ import { createWorkspaceSuccessSessionProof, loadWorkspaceSuccessSessionProtocol
 
 const DESKTOP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
-export async function createWorkspaceSuccessWorkerRuntime(requestPath, request, artifact) {
+export async function createWorkspaceSuccessWorkerRuntime(requestPath, request, artifact, {
+  resolveElectronRuntime = resolveElectronDevelopmentRuntime,
+} = {}) {
   const context = workspaceSuccessRunContext(requestPath, request, artifact);
   await verifyW6b2PackagedSuccessRunFixture({ ...context.runFixture, temporaryRoot: context.temporaryRoot });
   const proofProtocol = await import(pathToFileURL(resolve(DESKTOP_ROOT, 'e2e-dist/src/main/w6b2PackagedProof.js')).href);
   const profileProtocol = await import(pathToFileURL(resolve(DESKTOP_ROOT, 'e2e-dist/e2e/w6b2PackagedWorkspaceProfileCommand.js')).href);
   const support = await loadWorkspaceSuccessProfileSupport();
-  const electron = resolveElectronDevelopmentRuntime({ desktopPackageJsonPath: resolve(DESKTOP_ROOT, 'package.json') });
+  let electron;
+  try { electron = resolveElectronRuntime({ desktopPackageJsonPath: resolve(DESKTOP_ROOT, 'package.json') }); }
+  catch { throw new Error('electronRuntimeUnavailable'); }
   const sessionProof = createWorkspaceSuccessSessionProof(await loadWorkspaceSuccessSessionProtocol());
   const runtime = await createWorkspaceSuccessWindowsRuntime({ ...context, proofProtocol, profileProtocol, sessionProof,
     profileRuntime: { executablePath: electron.executablePath, applicationPath: resolve(DESKTOP_ROOT, 'e2e-dist/w6b2-profile') },

@@ -1488,11 +1488,14 @@ ajoketjusta: verifier käytti myös palautuvia `Store.read()`-polkuja. Nykyinen
 lukuevidence ja jälkiehto korvaavat nämä tarkistukset ilman sivuvaikutuksia.
 Vanhaa W6-harnessia tai tuotannon store-semanttiikkaa ei muuteta.
 
-Kohdesarja käyttää normaalia `e2e:build`-käännöstä ennen testituen lataamista.
+Kohdesarja ja consumer-komento käyttävät nykyistä
+`e2e:prepare-electron-runtime`-porttia ja normaalia `e2e:build`-käännöstä ennen
+testituen lataamista. Pelkkä pakettiriippuvuuksien palautus ei materialisoi
+on-demand-Electron-runtimea.
 Sopimustestit kattavat myös puuttuvat/ristiriitaiset tulokset, väärän ajo-
 identiteetin, vaaralliset linkit ennen SQLite-avausta, epäonnistuneen cleanupin,
 fixture-juuren säilyttämisen ja turvallisen tuloksen ilman raakavirheitä.
-Muistikanavan ja CI-kytkennän kohdesarja läpäisee 192/192, artifact-sarja
+Muistikanavan ja CI-kytkennän kohdesarja läpäisi 192/192, artifact-sarja
 54/54 ja proof-konfiguraation, proof-controllerin sekä session-validationin
 regressiot 45/45. Edeltävän composition-checkpointin profiili-/adapterisarja
 kattoi 49/49. Desktopin koko sarjassa 1493 testiä läpäisee ja kolme aiempaa
@@ -1584,6 +1587,24 @@ epäonnistuminen, ei lupa uuteen wrapperiin tai hyväksyttyyn reruniin.
 
 Tämän kytkennän packaged-hyväksyntä on vielä avoin. Vaihe suljetaan vasta
 producerin ja molempien consumerien terminal-tuloksista samalla revisiolla.
+
+Ensimmäisen kytkentärevision `59030f5` [CI-ajo](https://github.com/eky-software/eky/actions/runs/34165035014)
+rakensi ja varmisti artifactin, mutta molemmat consumerit päättyivät workerin
+preflight-virheeseen ennen asennusta. Tyhjä prosessipuu, exact-products- ja
+asennusjälkien poissaolo, normaali profiili sekä fixture-poisto varmistuivat.
+Tämä ei ole packaged-hyväksyntä. Consumer-komennosta löytyi puuttuva nykyisen
+Electron-runtimen valmistelu; se lisätään sekä pysyvään komentoon että oikean
+worker-compositionin kohdesarjaan. Puuttuva runtime saa oman suljetun
+`electronRuntimeUnavailable`-virheluokan. Alustuksen regressio käyttää samaa
+pientä artifact-fixtureä kuin artifact-testit, lataa oikeat portit ja todistaa
+tyhjän userDatan ilman MSI-asennusta tai sovelluksen käynnistystä. Fixture-
+builder on erotettu yhteiseen nimettyyn testitukitiedostoon ilman behavior-
+muutosta; uutta prosessi- tai cleanup-omistajaa ei lisätä.
+Korjatun valmisteluketjun kohdesarja läpäisee 194/194 ja artifact-sarja 54/54;
+workerin alustusrajan ja nykyisen Electron-resolverin regressiot läpäisevät
+18/18. Desktopin typecheck ja build läpäisevät. Uusi packaged-kierros tarvitaan
+korjatulle puhtaalle revisiolle; edellisen kierroksen epäonnistumista ei
+lasketa hyväksynnäksi.
 
 ### W6B.2A-invarianttien siirtokartta
 
