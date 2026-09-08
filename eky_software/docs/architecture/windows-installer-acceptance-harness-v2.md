@@ -1342,6 +1342,12 @@ omassa pinotussa haarassa `codex/test-harness-v2-workspace-success`.
 V2.5:n testattu harness/artifact-revisio pysyy `47847f9`:ssä. PR #263 ja
 aiemmat checkpointit säilyvät draftina; tämä ei ole päähaaran käyttöönotto.
 
+V2.6:n success-kattavuus on nyt todistettu jäljempänä nimetyssä packaged-
+checkpointissa. Alla olevat aiempien toteutusvaiheiden epäonnistumiset ovat
+historiallista näyttöä, eivät hyväksyttyjä uusintoja. Myöhemmän revision
+hyväksyntä edellyttää edelleen sen omia ensimmäisen yrityksen CI-portteja;
+PR #264 pysyy draftina loppukatselmusta varten.
+
 ### Suoritusympäristö ja hyväksyntäraja
 
 Omistajan erillinen päätös hyväksyy V2.6:lle ja myöhemmin V2.7:lle kaksi
@@ -1391,7 +1397,8 @@ pnpm --filter @eky/desktop installer:v2-workspace-artifact:verify --artifact-roo
 
 Tämä ensimmäinen checkpoint kattoi artifact-rajan, ei V2.6:n hyväksyntää.
 Workerin ajokytkentä ja read-only business-jälkiehdot kuvataan jäljempänä.
-Oikean producerin artifact-todiste ja kaksi CI-consumeria ovat edelleen avoin portti.
+Oikean producerin artifact-todiste ja kaksi CI-consumeria olivat tässä
+ensimmäisessä checkpointissa vielä avoin portti.
 Worker ei rakenna paketteja, luo
 uutta prosessivalvojaa tai omista emergency cleanupia. Nykyinen Job Object
 -supervisor säilyttää prosessipuun ainoan omistajuuden.
@@ -1437,8 +1444,8 @@ Windows-adapterin testit suorittavat vain read-only-kyselyn; muut uudet testit
 käyttävät synteettisiä tiedostoja ja injektoituja portteja. Ne eivät asenna
 MSI:tä tai todista paketoidun yritysdatan jatkuvuutta. Alla oleva seuraava
 checkpoint kytkee workerin ja callerin sekä read-only business-verifierin.
-V2.6 pysyy kesken: build-once-producerin ja kahden eristetyn consumerin
-paketoitu hyväksyntä puuttuu. Vanhaa W6B.2A-porttia ei
+Tässä lifecycle-checkpointissa build-once-producerin ja kahden eristetyn
+consumerin paketoitu hyväksyntä vielä puuttui. Vanhaa W6B.2A-porttia ei
 poisteta eikä uuden sopimussarjan vihreyttä lasketa packaged-hyväksynnäksi.
 
 ### Worker, caller ja read-only-jälkiehto
@@ -1585,7 +1592,7 @@ asennus- ja artifactin uudelleenvarmennusvara. Sisäisiä määräaikoja tai van
 jobien rajoja ei kasvateta. Ulkoinen timeout tai puuttuva terminal-result on
 epäonnistuminen, ei lupa uuteen wrapperiin tai hyväksyttyyn reruniin.
 
-Tämän kytkennän packaged-hyväksyntä on vielä avoin. Vaihe suljetaan vasta
+Kytkennän alkuvaiheessa packaged-hyväksyntä oli avoin. Vaihe suljetaan vasta
 producerin ja molempien consumerien terminal-tuloksista samalla revisiolla.
 
 Ensimmäisen kytkentärevision `59030f5` [CI-ajo](https://github.com/eky-software/eky/actions/runs/34165035014)
@@ -1720,7 +1727,7 @@ Kyselytesti vaatii nyt samassa assertiossa myös nykyisen adapterin tarkan
 `resultCode`-arvon; alkuperäinen timeout- tai käynnistysvirhe ei saa peittyä
 yleisen `status`-vertailun alle. Kysely, aikarajat ja siivous eivät muutu.
 Tämä on raportointikorjaus, ei osoitus ajoitusvirheen juurisyystä tai sen
-ratkeamisesta. V2.6:n packaged-hyväksyntä säilyy avoimena.
+ratkeamisesta. Kyseinen kierros ei ole V2.6:n packaged-hyväksyntä.
 
 Tuottajan ja oikean tiedostologgerin yhdistävä regressio paljasti erillisen
 lukupolkuvirheen: lifecycle-lukija odottaa `runtime/logs/desktop`-kansiota,
@@ -1736,21 +1743,57 @@ ohita aiempaa linkkien torjuntaa. Sama regressio kattaa tämän hylkäyksen.
 Ennen korjausta kohde epäonnistuu, korjattuna tapahtuma-, jälkiehto- ja
 session-kohdesarja läpäisee 71/71. Packaged-todennus vaaditaan edelleen.
 
+### Varmennettu packaged-checkpoint
+
+Lähde-HEAD `6479178bf2e697f161626f14ed42f0640e62b30a` läpäisi
+[V2.6-portin](https://github.com/eky-software/eky/actions/runs/34231575496),
+[supervisor-portin](https://github.com/eky-software/eky/actions/runs/34231575523),
+[clean lifecycle -portin](https://github.com/eky-software/eky/actions/runs/34231575561)
+ja [upgrade/rollback-portin](https://github.com/eky-software/eky/actions/runs/34231575699).
+Kaikki 12 jobia valmistuivat ensimmäisellä yrityksellä, ilman rerunia.
+CI:n todellinen checkout ja artifactin build-identiteetti olivat
+`a7761033ef37e3b9536d651bae3d155cd98dbb6d`, eivät lähde-HEAD.
+
+Yksi producer rakensi synteettisen `0.2.7 -> 0.2.8`-parin. Molemmat
+eristetyt consumerit varmistivat samat tavut ennen ajoa ja sen jälkeen:
+
+| CI-artifact | SHA-256 |
+| --- | --- |
+| Descriptor | `6c5da423dec8b60dcca5585c493341ca5cf60f5b548ac76c655db21891116b7d` |
+| Source MSI | `877d96c351b7a15a1a0a6d6c43b28a6dfd6c6ef1219046bfdf487ab6364d2c9b` |
+| Target MSI | `1fad6aaef6d5ae75b6a3647d7e31193ea5b0acca6815a7425ba33509c545148d` |
+
+Molempien strict terminal oli `workspaceSuccessCompleted` ja riippumaton
+jälkiehto `workspaceSemanticProofValidated`. Tämä kattaa myös seitsemän
+eri runtime-sessionin todellisen HTTP-hylkäystodisteen ja sen sidonnan
+mainin lifecycle-tapahtumiin. Prosessipuu oli poissa, semantic cleanup
+valmistui, exact ProductCodet ja asennusjäljet poistuivat, normaali profiili
+säilyi muuttumattomana ja fixture poistettiin. Omistettuja orpoprosesseja 0.
+Näitä erillisiä tuloksia ei korvata pelkällä workerin onnistumisella.
+
+Tämän jälkeen tehty streamin kanonisen emopolun tarkennus `d8ff11c` säilyttää
+samat hyväksymisehdot. Sen kohdesarja on 71/71, V2.6-sopimussarja 263/263 ja
+artifact-sarja 54/54; desktopin typecheck/build läpäisevät. Seuraava push
+varmennetaan uudella producerilla ja kahdella consumerilla, ei yllä olevan
+artifactin tavuilla. Yllä oleva näyttö säilyy oman täsmärevisionsa näyttönä.
+Tämä vaihekohtainen checkpoint ei hyväksy koko V2:ta, vanhan harnessin
+poistamista, päähaaraan käyttöönottoa tai käyttäjälle jaettavaa julkaisua.
+
 ### W6B.2A-invarianttien siirtokartta
 
-| Vanhan portin invariantti | V2.6-vastine / rajattu jatkotyö | Tila tässä checkpointissa |
+| Vanhan portin invariantti | V2.6-vastine / rajattu jatkotyö | Varmennettu näyttö yllä olevassa checkpointissa |
 | --- | --- | --- |
-| Sama source/target-revisio, erilliset MSI-versiot ja muuttumattomat tavut | Strict artifact descriptor, materialisointi ja read-only verifier; producer ja molempien consumerien ennen/jälkeen-varmennus kytketty | Artifact-sopimus toteutettu; packaged-näyttö avoin |
-| Source/target MSI ProductCode, install-root, rekisteröinti ja payload | Nykyinen V2 exact-product/postcondition-adapteri ja molempien descriptor-payload-inventaarioiden vertailu | Kytketty; packaged-näyttö avoin |
-| A/B/C:n yritys, asiakas, hyväksytty lasku ja authoritative PDF/katalogi | Nykyiset fixture- ja evidence-portit sekä read-only `workspaceSuccessPostcondition` | Sopimukset testattu; packaged-näyttö avoin |
-| Main-owned sourceHandoff ja hyväksytty target first-start | Nykyisen `w6b2PackagedProofController`-portin käyttö ilman rinnakkaista update-moottoria | Worker kytketty; packaged-näyttö avoin |
-| Aktiivinen A migroidaan ensin ja target hyväksytään vasta readinessin jälkeen | A:n migration-, accepted-build-, journal- ja business-jälkiehdot | Sopimukset testattu; packaged-näyttö avoin |
-| Passiivinen B pysyy byte-identtisenä aktivointiin asti; migraatio vain aktivoinnissa; seuraava käynnistys idempotentti | Kuusi erillistä read-only-checkpointia ja niiden vertailu | Sopimukset testattu; packaged-näyttö avoin |
-| C:n ehjä SQLite mutta invalidHistory estää aktivoinnin; A ja C pysyvät muuttumattomina | C:n strict recoveryRequired-todiste, active pointer sekä database/PDF-katalogin ja business-sisällön jatkuvuus | Sopimukset testattu; packaged-näyttö avoin |
-| Secret-, archive- ja recovery-namespacejen eristys, installation-state ei vaihdu työtilan mukana | Yksityinen read-only-evidence ja exact installation-journal; ei raakasisältöä julkiseen resultiin | Sopimukset testattu; packaged-näyttö avoin |
-| Uusi runtime-session, vanhan sessionin hylkäys ja vanhan runtimen poistuminen | Yksityinen muistikanava, nykyisen backendin session-rejection sekä riippumaton lifecycle- ja supervisor-todiste | Sopimukset testattu; packaged-näyttö avoin |
-| Normaali profiili muuttumaton ja tarkka ProductCode-cleanup | Muistissa tehtävä read-only inventaario, erillinen semantic cleanup ja postcondition verifier vasta varmennetun prosessipuun poistumisen jälkeen | Caller kytketty ja käyttäytymistestattu; packaged-näyttö avoin |
-| Alkuperäinen virhe ei katoa cleanupin alle; tuntematon tila hylätään | Erilliset process-, worker-, scenario-, semantic-cleanup-, postcondition- ja fixture-cleanup-tulokset nykyisellä V2-mallilla | Caller kytketty ja käyttäytymistestattu; packaged-näyttö avoin |
+| Sama source/target-revisio, erilliset MSI-versiot ja muuttumattomat tavut | Strict artifact descriptor, materialisointi ja read-only verifier; producer ja molempien consumerien ennen/jälkeen-varmennus | Sopimukset ja packaged 2/2 |
+| Source/target MSI ProductCode, install-root, rekisteröinti ja payload | Nykyinen V2 exact-product/postcondition-adapteri ja molempien descriptor-payload-inventaarioiden vertailu | Sopimukset ja packaged 2/2 |
+| A/B/C:n yritys, asiakas, hyväksytty lasku ja authoritative PDF/katalogi | Nykyiset fixture- ja evidence-portit sekä read-only `workspaceSuccessPostcondition` | Sopimukset ja packaged 2/2 |
+| Main-owned sourceHandoff ja hyväksytty target first-start | Nykyisen `w6b2PackagedProofController`-portin käyttö ilman rinnakkaista update-moottoria | Packaged 2/2 |
+| Aktiivinen A migroidaan ensin ja target hyväksytään vasta readinessin jälkeen | A:n migration-, accepted-build-, journal- ja business-jälkiehdot | Sopimukset ja packaged 2/2 |
+| Passiivinen B pysyy byte-identtisenä aktivointiin asti; migraatio vain aktivoinnissa; seuraava käynnistys idempotentti | Kuusi erillistä read-only-checkpointia ja niiden vertailu | Sopimukset ja packaged 2/2 |
+| C:n ehjä SQLite mutta invalidHistory estää aktivoinnin; A ja C pysyvät muuttumattomina | C:n strict recoveryRequired-todiste, active pointer sekä database/PDF-katalogin ja business-sisällön jatkuvuus | Sopimukset ja packaged 2/2 |
+| Secret-, archive- ja recovery-namespacejen eristys, installation-state ei vaihdu työtilan mukana | Yksityinen read-only-evidence ja exact installation-journal; ei raakasisältöä julkiseen resultiin | Sopimukset ja packaged 2/2 |
+| Uusi runtime-session, vanhan sessionin hylkäys ja vanhan runtimen poistuminen | Yksityinen muistikanava, nykyisen backendin session-rejection sekä riippumaton lifecycle- ja supervisor-todiste | Sopimukset ja packaged 2/2 |
+| Normaali profiili muuttumaton ja tarkka ProductCode-cleanup | Muistissa tehtävä read-only inventaario, erillinen semantic cleanup ja postcondition verifier vasta varmennetun prosessipuun poistumisen jälkeen | Virherajaregressiot ja packaged 2/2 |
+| Alkuperäinen virhe ei katoa cleanupin alle; tuntematon tila hylätään | Erilliset process-, worker-, scenario-, semantic-cleanup-, postcondition- ja fixture-cleanup-tulokset nykyisellä V2-mallilla | Käyttäytymisregressiot; fault/rollback-matriisi kuuluu V2.7:ään |
 
 Siirtokartta ei vielä valtuuta vanhan W6B.2A-koodin tai testien poistamista.
 Poisto kuuluu myöhempään hallittuun cutoveriin vasta vastaavan käyttäytymisen
