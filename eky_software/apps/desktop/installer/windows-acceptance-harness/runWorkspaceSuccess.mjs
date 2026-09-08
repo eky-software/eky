@@ -9,7 +9,12 @@ import { verifyWorkspaceSuccessArtifact } from './workspaceSuccessArtifact.mjs';
 import { createWorkspaceSuccessRequest, readWorkspaceSuccessResult, workspaceSuccessResultPath,
   workspaceSuccessErrorCode, writeJsonAtomicExclusive } from './workspaceSuccessContracts.mjs';
 import { requireWorkspaceSuccessProductPrecondition, resolveWorkspaceSuccessTerminalOutcome,
-  workspaceSuccessRunRootRemovable } from './workspaceSuccessFailureBoundary.mjs';
+  resolveWorkspaceFaultTerminalOutcome, workspaceSuccessRunRootRemovable } from './workspaceSuccessFailureBoundary.mjs';
+import { WORKSPACE_FAULT_SCENARIO, createWorkspaceFaultRequest, readWorkspaceFaultResult, workspaceFaultResultPath,
+  workspaceFaultErrorCode, workspaceFaultPlan } from './workspaceFaultContracts.mjs';
+import { loadWorkspaceFaultProfileSupport } from './workspaceFaultProfileEvidence.mjs';
+import { verifyWorkspaceFaultSemanticPostcondition } from './workspaceFaultPostcondition.mjs';
+import { verifyWorkspaceFaultSessionEvidence } from './workspaceFaultSessionEvidence.mjs';
 import { materializeWorkspaceSuccessArtifactFixture, prepareWorkspaceSuccessRunFixture,
   WORKSPACE_SUCCESS_RUN_ROOT_PREFIX, workspaceSuccessRunContext } from './workspaceSuccessRunFixture.mjs';
 import { loadWorkspaceSuccessProfileSupport } from './workspaceSuccessProfileEvidence.mjs';
@@ -39,6 +44,13 @@ export function parseWorkspaceSuccessArguments(args) {
   const descriptor = parseAbsoluteWindowsAcceptancePath(args[1], 'requestInvalid');
   if (resolve(dirname(descriptor), WORKSPACE_SUCCESS_DESCRIPTOR_FILENAME) !== descriptor) throw new Error('requestInvalid');
   return { artifactRoot: dirname(descriptor), expectedDescriptorSha256: args[3], expectedBuildRevision: args[5] };
+}
+
+export function parseWorkspaceFaultArguments(args) {
+  if (args.length !== 8 || args[6] !== '--fault-scenario') throw new Error('requestInvalid');
+  try { workspaceFaultPlan(args[7]); }
+  catch { throw new Error('requestInvalid'); }
+  return { ...parseWorkspaceSuccessArguments(args.slice(0, 6)), faultScenario: args[7] };
 }
 
 async function requireSupervisor() {
@@ -73,23 +85,38 @@ async function verifyRemoval(environment) {
   return { status: 'completed', resultCode: 'installerFootprintAbsent' };
 }
 
-function commandError(error) {
+export function workspaceCommandErrorCode(error, fault = false) {
   return ['supervisorBinaryInvalid', 'supervisorStartFailed', 'supervisorExitInvalid', 'supervisorResultUnavailable',
     'productStateVerificationFailed', 'productStateVerificationTimedOut', 'productStateVerificationProcessRemains']
-    .includes(error?.message) ? error.message : workspaceSuccessErrorCode(error);
+    .includes(error?.message) ? error.message : (fault ? workspaceFaultErrorCode : workspaceSuccessErrorCode)(error);
 }
 
-export async function runWorkspaceSuccess(args, {
+export async function runWorkspaceSuccess(args, options) {
+  return runWorkspaceAcceptance(parseWorkspaceSuccessArguments(args), options);
+}
+
+export async function runWorkspaceFault(args, options) {
+  return runWorkspaceAcceptance(parseWorkspaceFaultArguments(args), options);
+}
+
+// One caller owns supervisor invocation and post-supervisor cleanup for both
+// closed workspace contracts. Workers cannot add another process owner.
+async function runWorkspaceAcceptance(artifactInput, {
   platform = process.platform, environment = process.env, checkSupervisor = requireSupervisor,
   materializeFixture = materializeWorkspaceSuccessArtifactFixture, prepareFixture = prepareWorkspaceSuccessRunFixture,
   verifyArtifact = verifyWorkspaceSuccessArtifact, inventoryProfile = createClosedDirectoryInventory,
   createProductRuntime = createUpgradeRollbackPostSupervisorWindowsRuntime, startSupervisor = launchSupervisor,
-  readSupervisor = readWindowsAcceptanceSupervisorResult, readScenario = readWorkspaceSuccessResult,
-  verifySemantic = async (input) => verifyWorkspaceSuccessSemanticPostcondition({ ...input, support: await loadWorkspaceSuccessProfileSupport() }),
+  readSupervisor = readWindowsAcceptanceSupervisorResult, readScenario,
+  verifySemantic, verifySessions = verifyWorkspaceFaultSessionEvidence,
   verifyFootprint = verifyRemoval, removeRunRoot = (root) => rm(root, { recursive: true, force: true }),
 } = {}) {
   if (platform !== 'win32' || !environment.APPDATA || !environment.LOCALAPPDATA) throw new Error('requestInvalid');
-  const artifactInput = parseWorkspaceSuccessArguments(args);
+  const { faultScenario } = artifactInput;
+  const fault = faultScenario !== undefined;
+  readScenario ??= fault ? readWorkspaceFaultResult : readWorkspaceSuccessResult;
+  verifySemantic ??= async (input) => fault
+    ? verifyWorkspaceFaultSemanticPostcondition({ ...input, support: await loadWorkspaceFaultProfileSupport() })
+    : verifyWorkspaceSuccessSemanticPostcondition({ ...input, support: await loadWorkspaceSuccessProfileSupport() });
   await checkSupervisor();
   const temporaryRoot = await realpath(tmpdir());
   const runRoot = await mkdtemp(resolve(temporaryRoot, WORKSPACE_SUCCESS_RUN_ROOT_PREFIX));
@@ -117,7 +144,7 @@ export async function runWorkspaceSuccess(args, {
     const scenarioRoot = resolve(runRoot, 'scenario');
     await mkdir(scenarioRoot);
     const workerRequestPath = resolve(scenarioRoot, 'worker-request.json');
-    const request = createWorkspaceSuccessRequest({ fixtureRoot: artifact.artifactRoot,
+    const request = (fault ? createWorkspaceFaultRequest : createWorkspaceSuccessRequest)({ faultScenario, fixtureRoot: artifact.artifactRoot,
       buildRevision: artifact.buildRevision, artifactDescriptorSha256: artifact.descriptorSha256 });
     context = workspaceSuccessRunContext(workerRequestPath, request, artifact);
     const runtime = createProductRuntime({ artifact: { roles: { source: artifact.source, target: artifact.target } }, scenarioRoot });
@@ -128,7 +155,7 @@ export async function runWorkspaceSuccess(args, {
     await writeJsonAtomicExclusive(supervisorRequestPath, {
       schemaVersion: 1, scenario: request.scenario, runNonce: request.runNonce,
       artifactDescriptorSha256: request.artifactDescriptorSha256, command: process.execPath,
-      arguments: [resolve(DIRECTORY, 'runWorkspaceSuccessWorker.mjs'), '--request', workerRequestPath],
+      arguments: [resolve(DIRECTORY, fault ? 'runWorkspaceFaultWorker.mjs' : 'runWorkspaceSuccessWorker.mjs'), '--request', workerRequestPath],
       workingDirectory: scenarioRoot, timeoutMilliseconds: WORKSPACE_SUCCESS_TIMEOUT_MILLISECONDS,
       cleanupReserveMilliseconds: WORKSPACE_SUCCESS_CLEANUP_RESERVE_MILLISECONDS,
     });
@@ -143,13 +170,15 @@ export async function runWorkspaceSuccess(args, {
         artifactDescriptorSha256: request.artifactDescriptorSha256, supervisorExitCode,
       });
     } catch { errorCode = 'supervisorResultUnavailable'; }
-    terminal = await resolveWorkspaceSuccessTerminalOutcome({ ...runtime, request, productPrecondition, supervisorResult,
-      readScenarioResult: () => readScenario(workspaceSuccessResultPath(workerRequestPath), request),
+    terminal = await (fault ? resolveWorkspaceFaultTerminalOutcome : resolveWorkspaceSuccessTerminalOutcome)({
+      ...runtime, request, productPrecondition, supervisorResult,
+      readScenarioResult: () => readScenario((fault ? workspaceFaultResultPath : workspaceSuccessResultPath)(workerRequestPath), request),
       verifySemanticPostcondition: () => verifySemantic(context),
+      verifySessionPostcondition: () => verifySessions(context),
       verifyRemovalPostcondition: () => verifyFootprint(environment),
     });
     errorCode ??= terminal.errorCode;
-  } catch (error) { errorCode ??= commandError(error); }
+  } catch (error) { errorCode ??= workspaceCommandErrorCode(error, fault); }
   finally {
     process.off('SIGINT', stopSupervisor);
     process.off('SIGTERM', stopSupervisor);
@@ -177,7 +206,8 @@ export async function runWorkspaceSuccess(args, {
       } catch { fixtureCleanupResultCode = 'fixtureCleanupFailed'; errorCode ??= 'fixtureCleanupFailed'; }
     }
   }
-  const result = { schemaVersion: 1, scenario: 'packagedWorkspaceSuccess', ...terminal,
+  const result = { schemaVersion: 1, scenario: fault ? WORKSPACE_FAULT_SCENARIO : 'packagedWorkspaceSuccess',
+    ...(fault ? { faultScenario } : {}), ...terminal,
     status: errorCode === null && safetyErrorCode === null && fixtureRemoved ? 'completed' : 'failed',
     errorCode: errorCode ?? safetyErrorCode, safetyErrorCode, fixtureCleanupResultCode, fixtureRemoved,
     businessDataPreserved: profileBefore !== null && profileAfter !== null && profilePresentBefore === profilePresentAfter &&
@@ -196,7 +226,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   try { console.log(JSON.stringify(await runWorkspaceSuccess(process.argv.slice(2)))); }
   catch (error) {
     console.error(JSON.stringify(workspaceSuccessCommandFailureDetails(error) ?? {
-      schemaVersion: 1, scenario: 'packagedWorkspaceSuccess', status: 'failed', errorCode: commandError(error),
+      schemaVersion: 1, scenario: 'packagedWorkspaceSuccess', status: 'failed', errorCode: workspaceCommandErrorCode(error),
     }));
     process.exitCode = 1;
   }

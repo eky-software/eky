@@ -1824,9 +1824,9 @@ vaiheprefixin; tuntematon tila, vieras tulos ja ylimääräiset kentät hylätä
 | Exact source/target -asennustilan lukuassertio | `workspaceInstalledState.mjs`, siirretty V2.6-ketjusta muuttumattomana molempien käyttöön |
 | Windows-asennustilan havainnointi ja yksityiset proof-käynnistykset | `workspaceSuccessWindowsRuntime.mjs`: sama adapteri nimettyjen success/fault-factoryjen kautta |
 | Worker-porttien kokoaminen | `workspaceWorkerRuntime.mjs`, success/fault-factoryt saman Windows-adapterin päälle |
-| Työn rajaus ja prosessipuun cleanup | Nykyinen Job Object -supervisor; V2.7:n caller-kytkentä vielä avoin |
+| Työn rajaus ja prosessipuun cleanup | Nykyinen Job Object -supervisor, yhteinen caller `runWorkspaceSuccess.mjs`:n success/fault-entrypointeille |
 | Riippumaton business-jälkitarkastus | `workspaceFaultProfileEvidence.mjs` ja `workspaceFaultPostcondition.mjs`, jaettu vain lukeva snapshot-raja |
-| Asennuksen poisto ja sen jälkiehdot | Nykyiset V2-portit; V2.7:n caller-/terminal-composition vielä avoin |
+| Asennuksen poisto ja sen jälkiehdot | Nykyiset exact ProductCode -portit ja yhteinen `workspaceSuccessFailureBoundary.mjs`:n terminal-raja |
 
 ### W6B.2B-invarianttien siirtokartta
 
@@ -1987,6 +1987,44 @@ ja footprint-/fixture-jälkiehdot. Sen jälkeen yksi uusi build-once-pari
 ja kaksi ensimmäisen yrityksen Windows-consumeria todistavat kaikki viisi
 skenaariota samoilla tavuilla. V2.7:n hyväksyntä on edelleen kesken.
 
+### V2.7:n caller- ja terminal-checkpoint
+
+`runWorkspaceFault.mjs` on nimetty CLI-entrypoint nykyiseen yhteiseen
+workspace-calleriin, ei uusi prosessivalvoja. Se hyväksyy vain nykyisen
+immutable descriptorin polun, odotetun SHA-256:n, täydellisen build-revision
+ja yhden viidestä sallitusta `--fault-scenario`-arvosta. Worker ja sen
+työhakemisto johdetaan tästä validoidusta sopimuksesta. Yksi nykyinen Job
+Object omistaa edelleen skenaarion 720 sekunnin rajan, josta 30 sekuntia
+on varattu cleanupille. Vanhat timeoutit tai prosessiomistajat eivät muutu.
+
+`workspaceSuccessFailureBoundary.mjs` käsittelee molempien nimettyjen
+vaiheiden terminal-tulokset saman cleanup-rajan kautta. Fault-suunnitelma
+määrää, pitääkö asennettuna olla source vai target. Scenario-result,
+supervisorin process-/worker-/cleanup-tulos, business-jälkiehto ja
+`sessionProofResultCode` pysyvät erillisinä. Business- ja istuntotarkastuksen
+epäonnistuessa molemmat kirjataan, mutta jälkimmäinen ei korvaa ensimmäistä
+virhettä. Semantic cleanup ei muuta alkuperäistä virhettä onnistumiseksi.
+
+Puuttuva supervisor-tulos tai varmistamaton prosessipuu estää MSI-siivoamisen.
+Puuttuva scenario-result ei valtuuta poistamaan ennestään asennettua tuotetta:
+siivous vaatii ennen ajoa todistetun exact-products-absence-tilan ja nykyisen
+rajatun ProductCode-tarkistuksen. Testijuuri poistetaan vasta, kun puun
+poissaolo, semantic cleanup, tuotteiden poissaolo ja installer-footprint
+on varmennettu. Muuten yksityinen aineisto säilyy vain paikallisessa
+testijuuressa. Normaalin profiilin inventaario jää prosessimuistiin.
+
+Yhden skenaarion dokumentoitu komento on:
+
+```text
+pnpm --filter @eky/desktop installer:v2-workspace-fault --artifact-descriptor <descriptor> --expected-descriptor-sha256 <sha256> --expected-build-revision <revision> --fault-scenario <scenario>
+```
+
+Komentotason kohdetestit läpäisevät 77/77. Kanoninen fault-sarja läpäisee
+289/289, yhteinen success-regressiosarja 298/298 ja artifact-sarja 54/54;
+desktopin typecheck/build läpäisevät. Asennus-/prosessikutsut ovat näissä
+sopimustesteissä injektoituja. Uusi producer sekä molemmat kaikki viisi
+skenaariota ajavat Windows-consumerit ovat vielä avoin hyväksyntäportti.
+
 ## Migraatiojärjestys
 
 V2 toteutetaan pieninä, itsenäisesti vihreinä checkpointteina:
@@ -2095,10 +2133,10 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 
 V2.6:n tarkistettu vaihekohtainen lähtörevisio on `2f2118e`.
 V2.7:n sopimus-/vaiheketjucheckpoint, hyväksytty muistikanavan käynnistysraja,
-jaetun Windows-adapterin worker-kytkentä ja riippumattomat business-/session-
-jälkitarkastukset on toteutettu yllä kuvatusti. Caller-/terminal-composition,
-erillinen asennussiivous sekä build-once- ja kahden consumerin hyväksyntä
-ovat vielä avoimia.
+jaetun Windows-adapterin worker-kytkentä, riippumattomat business-/session-
+jälkitarkastukset sekä yhteinen caller-/terminal-composition on toteutettu
+yllä kuvatusti. Erillisen asennussiivouksen packaged-todiste sekä build-once-
+ja kahden consumerin hyväksyntä ovat vielä avoimia.
 Vaihe ei ole valmis eikä vanhan harnessin poistamiseen ole vielä vastaavaa
 kokonaisnäyttöä. Migraatiojärjestys, yhden supervisorin omistajuus ja
 hyväksynnän kolme tasoa säilyvät.
