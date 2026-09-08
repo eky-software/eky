@@ -2333,6 +2333,65 @@ Vanhan harnessin poistamiseen ei vielä ole koko V2:n integraationäyttöä.
 Migraatiojärjestys, yhden supervisorin omistajuus ja hyväksynnän kolme tasoa
 säilyvät.
 
+### V2.7:n rajattu vaihekirjoittimen sopimus
+
+Omistaja on hyväksynyt yhden vain suljettuja vaihehavaintoja välittävän
+Node-apuprosessin. Sopimus todistetaan käyttäytymistesteillä ennen success-
+ja fault-calleriin kytkemistä. Kirjoitin ei ole supervisor, skenaariotyöntekijä
+tai yleinen lokipalvelu, eikä sitä toimiteta sovelluspaketissa.
+
+- Lähetys validoi suljetun versionoidun havaintomuodon molemmissa päissä.
+  Vain nimetyt skenaariot, vaiheet, tilat ja ei-negatiiviset kestot sallitaan;
+  vapaita tekstejä, virheolioita, polkuja, tunnisteita tai business-dataa ei
+  välitetä. Yksi JSONL-viesti on enintään 512 tavua.
+- Caller ei odota kirjoituskuittausta. Enintään yksi enintään 512 tavun viesti
+  on lähetyksessä ja 16 jonossa. Täysi jono tai rikkoutunut kanava pudottaa
+  havaintoja; ei uudelleenkäynnistystä, retryä tai synkronista varatulostusta.
+  Lähetyksen valmistuminen ei todista vastaanottajan lukeneen viestiä.
+- Lopetus hylkää jonon ja katkaisee lähetyspään odottamatta tyhjentymistä.
+  Sama olemassa oleva rajattu Windows-prosessiadapteri omistaa tämän yhden
+  lehtiprosessin lopetuksen ja close-todisteen. Adapterin olemassa oleva
+  suoritusraja ja erillinen lopetusvaraus säilyvät; kirjoitin ei omista
+  supervisorin Jobia, workeria tai MSI-prosesseja. Hallittu peruutus käyttää
+  samaa lopetuspolkua. Kanavavirhe ei todista prosessin poistumista.
+- Menetetty havainto on diagnostiikan puute. Varmentamaton kirjoittimen
+  poistuminen on erillinen cleanup-virhe, jota myöhempi havainto ei nollaa.
+  Alkuperäinen skenaariovirhe ja kaikki nykyiset semanttiset tulokset säilyvät.
+- Pakollinen callerin lopputulos ei kuulu tähän vapaaehtoiseen kanavaan.
+  Nykyisten CLI-entrypointien suora konsoliyhteenveto on erillinen avoin
+  valmistumisraja: sitä ei poisteta, pudoteta jonosta tai tulkita tämän
+  kirjoittimen avulla varmennetuksi. Kytkentä hyväksyntäajoihin odottaa myös
+  pakollisen lopputuloksen rajattua julkaisu- ja vastaanottosopimusta.
+
+Kohdesarja todistaa koko komentoprosessin poistumisen ja tarkan omistettujen
+resurssien lopputilan normaalilla tulosteella, lukemattomalla vastaanottajalla,
+kanavakatkolla, kirjoittimen kaatumisella ja hallitulla peruutuksella. Erillinen
+injektoitu epäonnistunut lopetus säilyy varmentamattomana. Tämä ei nimeä
+runnerin yhteyskatkon syytä eikä muuta V2.7:n hyväksyntätilaa.
+
+Rajattu käyttäytymissarja ajetaan komennolla
+`pnpm --filter @eky/desktop installer:test:windows-acceptance-phase-writer`.
+Se rakentaa nykyisen supervisorin ja käyttää sen olemassa olevaa Job Object
+-sopimustukea vain testifixturen turvarajana. Ajossa ei rakenneta MSI:tä,
+asenneta sovellusta tai käynnistetä packaged-matriisia. Vaihekirjoitinta ei
+vielä kytketä normaaliin calleriin tai CI:n consumer-vaiheisiin.
+
+Kirjoittimen erillinen sopimussarja läpäisee 25/25, joista kahdeksan käyttää
+todellista komentoprosessia nykyisen Job Object -testituen sisällä. Kaikissa
+kahdeksassa omistettu prosessipuu poistuu; puuttuva pakollinen worker-tulos
+hylätään myös onnistuneen vaiheviestin jälkeen. Jaettu caller-/virherajan
+kohdesarja läpäisee 88/88, clean 38/38, success 305/305 ja fault 295/295 sekä
+desktop typecheck/build. Tämä on kytkemättömän kirjoitin-checkpointin
+sopimusnäyttö, ei CLI:n loppuyhteenvedon eikä V2.7:n packaged-hyväksyntä.
+
+Seuraava päätös koskee nykyisen CLI-yhteenvedon pakollista säilymistä:
+ehdotus on erillinen strict ajokohtainen caller-result, jonka olemassaolo,
+sisältö ja sidonta tarkistetaan komennon poistumisen lisäksi. Sen rajattu
+julkaisu, alkuperäisen virheen säilyminen ja cleanup-tulokset pitää todistaa
+ennen kytkentää. Tätä sopimusmuutosta ei toteuteta vielä; suora nykyinen
+konsoliyhteenveto sekä consumer-komennot ovat ennallaan, eikä uutta CI-
+kierrosta ole käynnistetty tämän avoimen rajan yli.
+
 ### V2.5:n hyväksytty historiallinen päätös
 
 V2.5:n vaihekohtainen loppukatselmus on hyväksytty. Testattu harness- ja

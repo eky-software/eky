@@ -17,6 +17,7 @@ export function runBoundedWindowsAdapterProcess({
   command,
   cwd,
   now = () => performance.now(),
+  signal,
   spawnProcess = spawn,
   terminationTimeoutMilliseconds,
   timeoutMilliseconds,
@@ -38,6 +39,14 @@ export function runBoundedWindowsAdapterProcess({
   }
   requireTimeout(timeoutMilliseconds);
   requireTimeout(terminationTimeoutMilliseconds);
+  if (signal !== undefined && !(signal instanceof AbortSignal)) {
+    throw new Error('WINDOWS_ACCEPTANCE_ADAPTER_REQUEST_INVALID');
+  }
+  if (signal?.aborted) {
+    return Promise.resolve(Object.freeze({
+      status: 'failed', resultCode: 'cancelled', exitCode: null, directProcessAbsent: true,
+    }));
+  }
   const deadline = now() + timeoutMilliseconds;
 
   return new Promise((resolvePromise) => {
@@ -49,12 +58,14 @@ export function runBoundedWindowsAdapterProcess({
     let started = false;
     let processError = false;
     let terminationStarted = false;
+    let cancelled = false;
 
     function complete(result) {
       if (settled) {
         return;
       }
       settled = true;
+      signal?.removeEventListener('abort', cancel);
       if (deadlineTimer !== null) {
         clearTimeout(deadlineTimer);
       }
@@ -93,6 +104,11 @@ export function runBoundedWindowsAdapterProcess({
           directProcessAbsent: false,
         });
       }, terminationTimeoutMilliseconds);
+    }
+
+    function cancel() {
+      cancelled = true;
+      terminateDirectProcess();
     }
 
     try {
@@ -150,6 +166,13 @@ export function runBoundedWindowsAdapterProcess({
         });
         return;
       }
+      if (cancelled) {
+        complete({
+          status: 'failed', resultCode: 'cancelled',
+          exitCode: Number.isInteger(exitCode) ? exitCode : null, directProcessAbsent: true,
+        });
+        return;
+      }
       if (signal !== null || !Number.isInteger(exitCode)) {
         complete({
           status: 'failed',
@@ -166,6 +189,10 @@ export function runBoundedWindowsAdapterProcess({
         directProcessAbsent: true,
       });
     });
+
+    signal?.addEventListener('abort', cancel, { once: true });
+    if (signal?.aborted) cancel();
+    if (settled || terminationStarted) return;
 
     function expireDeadline() {
       timedOut = true;
