@@ -1832,11 +1832,15 @@ vaiheprefixin; tuntematon tila, vieras tulos ja ylimääräiset kentät hylätä
 
 | Olemassa oleva fault-sopimus | V2.7:n vaiheketjun loppuehto | Packaged-todiste |
 | --- | --- | --- |
-| preUpdate-palautuspiste epäonnistuu ennen handoffia | Ei target-asennusta; source säilyy; `verifyPreUpdateFailure` | Avoin |
-| Aktiivisen A:n first start epäonnistuu | Business rollback ennen source-binaarien palautumisen tarkistusta ja `rollbackFirstStart`-käynnistystä; `verifyActiveRollback` | Avoin |
-| Registry-siirtymän jälkeinen hyväksyntä katkeaa | Täsmällinen `interrupted`-todiste, recovery ja erillinen restart; `verifyAcceptanceRecovery` | Avoin |
-| Passiivisen B:n migraatio epäonnistuu | Paluu A:han ilman binary rollbackia; target säilyy; `verifyPassiveRecovery` | Avoin |
-| Binary rollback epäonnistuu | Ei uutta yritystä tai source-käynnistystä; target jää recovery-only-tilaan; `verifyBinaryFailedSafe` | Avoin |
+| preUpdate-palautuspiste epäonnistuu ennen handoffia | Ei target-asennusta; source säilyy; `verifyPreUpdateFailure` | 2/2, alla nimetty `0a7ea01`-kierros |
+| Aktiivisen A:n first start epäonnistuu | Business rollback ennen source-binaarien palautumisen tarkistusta ja `rollbackFirstStart`-käynnistystä; `verifyActiveRollback` | 2/2, sama kierros |
+| Registry-siirtymän jälkeinen hyväksyntä katkeaa | Täsmällinen `interrupted`-todiste, recovery ja erillinen restart; `verifyAcceptanceRecovery` | 2/2, sama kierros |
+| Passiivisen B:n migraatio epäonnistuu | Paluu A:han ilman binary rollbackia; target säilyy; `verifyPassiveRecovery` | 2/2, sama kierros |
+| Binary rollback epäonnistuu | Ei uutta yritystä tai source-käynnistystä; target jää recovery-only-tilaan; `verifyBinaryFailedSafe` | 2/2, sama kierros |
+
+Taulukko nimeää toteutuneen packaged-näytön revision, ei siirrä sen
+hyväksyntää myöhempään koodimuutokseen. Alla oleva loppukatselmus erottaa
+tästä yhteisen tilalukijan korjauksen ja sen oman hyväksyntärajan.
 
 Vaiheketju kutsuu vain nykyisen sovelluksen yksityisiä fault-kytkentöjä.
 Worker saa asentaa sourcen kerran. Päivityksen ja binary rollbackin
@@ -2119,10 +2123,64 @@ Uusi kytkentäregressio hylkäsi vanhan toteutuksen ja läpäisi korjauksen.
 Upgrade-artifactin kohdesarja läpäisee 14/14, workspace-artifactin 56/56
 sekä desktop typecheck ja build. Nämä eivät korvaa paketoitua CI-todistetta.
 
-Uusi korjausrevisio tarvitsee oman commit-pohjaisen CI-kierroksensa ja sen
-producerien samoja tavuja käyttävät consumerit. Edellisen revision näyttö
-ei korvaa tätä porttia. Vaihehyväksyntä ja loppukatselmus ovat vielä avoimia;
-PR säilyy draftina eikä vanhaa orkestrointia poisteta.
+Revision `0a7ea0115cfd7c804694b64134cba8478c76a740` uusi commit-pohjainen
+kierros läpäisi kaikki 14 jobia ensimmäisellä yrityksellä:
+[workspace success 2/2 ja fault 10/10](https://github.com/eky-software/eky/actions/runs/34257928868),
+[upgrade/rollback 2/2](https://github.com/eky-software/eky/actions/runs/34257928869),
+[clean lifecycle 2/2](https://github.com/eky-software/eky/actions/runs/34257928879)
+ja [supervisorin kaksi toistoa](https://github.com/eky-software/eky/actions/runs/34257929170).
+CI:n todellinen checkout-/koemerge- ja artifact-build-revisio oli
+`47dd192160dc97c34e86c09e943ef03faf0e88f2`, ei PR-head.
+Consumerit varmistivat omien produceriensa muuttumattomat artifact-tavut.
+Prosessipuun poissaolo, semanttinen tarkistus ja cleanup, exact ProductCode
+-tila, asennusjäljet, istuntotodiste sekä normaalin profiilin muuttumattomuus
+säilyivät erillisinä onnistuneina tuloksina. Kierroksessa ei käytetty uusintaa.
+
+### V2.7:n loppukatselmus ja tilalukijan virheraja
+
+Loppukatselmus vertasi viisi fault-ketjua vanhan W6B.2B:n vastaaviin
+vaatimuksiin, jaetun worker-/caller-rajan virhepolkuihin sekä business- ja
+session-jälkitarkastuksiin. Yksi Job Object omistaa prosessipuun. Worker ei
+rakenna paketteja tai omista emergency-cleanupia. Mainin nonceen sidottu
+fault-session-tarkistus pysyy vain hyväksytyissä terveissä proof-vaiheissa;
+tavallisen käynnistyksen tai `desktop.started`-tapahtuman merkitys ei muutu.
+
+Katselmuksessa löytyi vanhastakin testituesta periytynyt virhe yhteisessä
+`inspectWindowsInstallerProductState.ps1`-lukijassa: `ProductState`-kyselyn
+poikkeus muutettiin arvoksi `-1`, jolloin tuntematon tarkistustulos saattoi
+näyttää puuttuvalta tuotteelta. Korjaus poistaa tämän poikkeuksen nielevän
+lohkon. Vain onnistunut kysely saa tuottaa tilan; poikkeus käyttää nykyistä
+exit 1 -rajaa eikä julkaise tulostiedostoa. Caller säilyttää epäonnistuneen
+tilatarkistuksen erillään alkuperäisestä skenaariovirheestä ja estää
+varmistamattoman siivouksen hyväksymisen. Uutta tulosskeemaa, valvojaa tai
+aikarajaa ei lisätä.
+
+Nykyisen Windows-käyttäytymistestin COM-fixture aiheuttaa kyselypoikkeuksen
+mutta säilyttää oikean vapautettavan COM-kahvan. Regressio hylkäsi vanhan
+lukijan ja hyväksyy korjatun: virhe ei tuota absent-tulosta. Sama testi
+säilyttää oikeasti puuttuvan tuotteen, kanonisen tulospolun ja virheellisen
+polun tapaukset. Tämä ei ole uusi asennus- tai päivitysskenaario.
+
+Korjatun lukijan ja sen käyttäjien rajattu virhe-/siivoussarja läpäisee
+87/87, canonical clean-sopimussarja 29/29, fault-sarja 295/295,
+success-sarja 303/303, workspace-artifact-sarja 56/56 ja upgrade-artifact-
+sarja 14/14. Desktop typecheck/build ja `git diff --check` ovat erilliset
+checkpoint-portit; nämä kohdetulokset eivät korvaa alla vaadittua CI-näyttöä.
+
+Vanhan harnessin ARP:ksi nimeämä tarkistus käyttää samaa ProductCodeen
+sidottua Windows Installerin `ProductState`/`ProductInfo`-rekisteröintiä kuin
+V2. Erillistä Windowsin uninstall-rekisteriavainten inventaariota ei väitetä
+vanhan eikä uuden testin todistamaksi. Jaettu Eky-installeravain, shortcut ja
+asennusjuuri tarkistetaan tästä erillään.
+
+Tilalukija on jaettu clean-, upgrade-, legacy- ja workspace-rajoille.
+Siksi sen korjausta ei hyväksytä vain yllä olevan `0a7ea01`-kierroksen
+perusteella: kohderegressioiden jälkeen tarvitaan puhtaan korjausrevision
+nykyiset artifact-/consumer-portit ensimmäisellä yrityksellä.
+[PR #265](https://github.com/eky-software/eky/pull/265) kirjaa tämän revision,
+todellisen checkoutin, artifact-identiteetit ja erilliset terminal-tulokset.
+PR pysyy draftina; vaihehyväksyntä ei poista vanhaa orkestrointia eikä
+aloita V2.8:aa, päähaaran käyttöönottoa tai julkaisua.
 
 ## Migraatiojärjestys
 
@@ -2235,13 +2293,15 @@ V2.7:n sopimus-/vaiheketjucheckpoint, hyväksytty muistikanavan käynnistysraja,
 jaetun Windows-adapterin worker-kytkentä, riippumattomat business-/session-
 jälkitarkastukset sekä yhteinen caller-/terminal-composition on toteutettu
 yllä kuvatusti. Yhteisen producerin ja kahden fault-consumerin CI-kytkentä
-on toteutettu. Revision `1f5b807` fault-matriisi todisti 10/10 sekä tarkat
-siivous- ja jälkiehdot; success-polut läpäisivät 2/2 yllä kuvatulla rajatulla
-infrastruktuuriuusintapoikkeuksella. Päivitystestien artifact-viittauksen
-korjaus odottaa uuden revision CI-todennusta ja vaiheen loppukatselmusta.
-Vaihe ei ole vielä valmis eikä vanhan harnessin poistamiseen ole vastaavaa
-kokonaisnäyttöä. Migraatiojärjestys, yhden supervisorin omistajuus ja
-hyväksynnän kolme tasoa säilyvät.
+on toteutettu. Artifact-viittauksen korjausrevisio `0a7ea01` läpäisi kaikki
+14 CI-jobia ensimmäisellä yrityksellä, mukaan lukien fault 10/10 ja success
+2/2. Loppukatselmuksessa rajattu yhteisen tilalukijan virhe on korjattu yllä
+kuvatusti. Sen täsmärevision hyväksyntä kirjataan PR #265:een erillään
+aiemman revision näytöstä. V2.7:n sulkeminen vaatii korjauksen kohdetestit ja
+oman puhtaan CI-kierroksen; pelkkä katselmus tai aiempi vihreys ei riitä.
+Vanhan harnessin poistamiseen ei vielä ole koko V2:n integraationäyttöä.
+Migraatiojärjestys, yhden supervisorin omistajuus ja hyväksynnän kolme tasoa
+säilyvät.
 
 ### V2.5:n hyväksytty historiallinen päätös
 
