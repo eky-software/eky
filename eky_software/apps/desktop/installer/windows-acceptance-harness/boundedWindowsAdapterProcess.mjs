@@ -16,6 +16,7 @@ export function runBoundedWindowsAdapterProcess({
   arguments: arguments_,
   command,
   cwd,
+  now = () => performance.now(),
   spawnProcess = spawn,
   terminationTimeoutMilliseconds,
   timeoutMilliseconds,
@@ -37,6 +38,7 @@ export function runBoundedWindowsAdapterProcess({
   }
   requireTimeout(timeoutMilliseconds);
   requireTimeout(terminationTimeoutMilliseconds);
+  const deadline = now() + timeoutMilliseconds;
 
   return new Promise((resolvePromise) => {
     let child;
@@ -44,6 +46,9 @@ export function runBoundedWindowsAdapterProcess({
     let settled = false;
     let terminationTimer = null;
     let timedOut = false;
+    let started = false;
+    let processError = false;
+    let terminationStarted = false;
 
     function complete(result) {
       if (settled) {
@@ -57,6 +62,37 @@ export function runBoundedWindowsAdapterProcess({
         clearTimeout(terminationTimer);
       }
       resolvePromise(Object.freeze(result));
+    }
+
+    function terminateDirectProcess() {
+      if (settled || terminationStarted) {
+        return;
+      }
+      terminationStarted = true;
+      let terminationRequested = false;
+      try {
+        terminationRequested = child.kill();
+      } catch { /* Only close can confirm absence after a failed signal. */ }
+      if (settled) {
+        return;
+      }
+      if (!terminationRequested) {
+        complete({
+          status: 'failed',
+          resultCode: 'terminationFailed',
+          exitCode: null,
+          directProcessAbsent: false,
+        });
+        return;
+      }
+      terminationTimer = setTimeout(() => {
+        complete({
+          status: 'failed',
+          resultCode: 'terminationUnconfirmed',
+          exitCode: null,
+          directProcessAbsent: false,
+        });
+      }, terminationTimeoutMilliseconds);
     }
 
     try {
@@ -75,19 +111,40 @@ export function runBoundedWindowsAdapterProcess({
       return;
     }
 
-    child.once('error', () => {
-      complete({
-        status: 'failed',
-        resultCode: 'startFailed',
-        exitCode: null,
-        directProcessAbsent: true,
-      });
+    started = Number.isInteger(child.pid);
+    child.once('spawn', () => { started = true; });
+    child.on('error', () => {
+      if (settled) {
+        return;
+      }
+      if (!started && !Number.isInteger(child.pid) && !terminationStarted) {
+        complete({
+          status: 'failed',
+          resultCode: 'startFailed',
+          exitCode: null,
+          directProcessAbsent: true,
+        });
+        return;
+      }
+      // Node also emits error for failed kill/send operations on a live child.
+      // Retain the exact ChildProcess handle; an error is not an exit receipt.
+      processError = true;
+      terminateDirectProcess();
     });
     child.once('close', (exitCode, signal) => {
       if (timedOut) {
         complete({
           status: 'failed',
           resultCode: 'timedOut',
+          exitCode: Number.isInteger(exitCode) ? exitCode : null,
+          directProcessAbsent: true,
+        });
+        return;
+      }
+      if (processError) {
+        complete({
+          status: 'failed',
+          resultCode: 'processError',
           exitCode: Number.isInteger(exitCode) ? exitCode : null,
           directProcessAbsent: true,
         });
@@ -110,31 +167,15 @@ export function runBoundedWindowsAdapterProcess({
       });
     });
 
-    deadlineTimer = setTimeout(() => {
+    function expireDeadline() {
       timedOut = true;
-      let terminationRequested = false;
-      try {
-        terminationRequested = child.kill();
-      } catch {
-        terminationRequested = false;
-      }
-      if (!terminationRequested) {
-        complete({
-          status: 'failed',
-          resultCode: 'terminationFailed',
-          exitCode: null,
-          directProcessAbsent: false,
-        });
-        return;
-      }
-      terminationTimer = setTimeout(() => {
-        complete({
-          status: 'failed',
-          resultCode: 'terminationUnconfirmed',
-          exitCode: null,
-          directProcessAbsent: false,
-        });
-      }, terminationTimeoutMilliseconds);
-    }, timeoutMilliseconds);
+      terminateDirectProcess();
+    }
+    const remaining = deadline - now();
+    if (remaining <= 0) {
+      expireDeadline();
+    } else {
+      deadlineTimer = setTimeout(expireDeadline, remaining);
+    }
   });
 }

@@ -2295,10 +2295,40 @@ jälkitarkastukset sekä yhteinen caller-/terminal-composition on toteutettu
 yllä kuvatusti. Yhteisen producerin ja kahden fault-consumerin CI-kytkentä
 on toteutettu. Artifact-viittauksen korjausrevisio `0a7ea01` läpäisi kaikki
 14 CI-jobia ensimmäisellä yrityksellä, mukaan lukien fault 10/10 ja success
-2/2. Loppukatselmuksessa rajattu yhteisen tilalukijan virhe on korjattu yllä
-kuvatusti. Sen täsmärevision hyväksyntä kirjataan PR #265:een erillään
-aiemman revision näytöstä. V2.7:n sulkeminen vaatii korjauksen kohdetestit ja
-oman puhtaan CI-kierroksen; pelkkä katselmus tai aiempi vihreys ei riitä.
+2/2. Tilalukijan korjausrevision `237e581` CI-checkout ja artifact-revisio
+on `8388b8f`. Sen 13 muuta jobia läpäisivät ensimmäisen yrityksen, mutta
+[fault-consumer 2](https://github.com/eky-software/eky/actions/runs/34264280577/job/102192632310)
+päättyi epäonnistuneeksi GitHubin ilmoittaman runner-yhteyden menetyksen
+jälkeen. Lopullinen loki ei ole saatavilla, eikä callerin terminal- tai
+cleanup-tulosta ole varmennettu. Tulos säilyy epäonnistuneena ja
+varmentamattomana; supervisorin viimeinen `completed`-rivi ei todista
+prosessin exit/closea tai jälkitarkastusten valmistumista.
+
+Erillinen rajattu korjaus muuttaa olemassa olevan Windows-adapterin
+`error`-tulkintaa: vain todettu käynnistyksen epäonnistuminen ennen
+prosessin syntyä voi tarkoittaa `startFailed` / `directProcessAbsent: true`.
+Jo käynnistetyn lapsen virhe käyttää samaa täsmällisen prosessikahvan
+lopetuspolkua. Epäonnistunut tai varmentamaton lopetus säilyy virheenä;
+myöhempi close tai yleinen tuotetilan poissaolo ei muuta jo palautettua
+varmentamatonta tulosta eikä oikeuta fixturen poistamiseen. Luonnin aikana
+kulunut aika vähennetään saman adapterin odotusbudjetista. Tämä ei keskeytä
+synkronista natiivikäynnistystä eikä kata adapteria edeltävää valmistelua;
+olemassa oleva lopetusvaraus säilyy erillisenä ja muuttumattomana.
+
+Adapterin regressiot läpäisevät 9/9, jaetun virherajan ja jälkitarkastuksen
+kohdesarja 42/42, clean-sopimukset 34/34, workspace success 305/305 sekä
+workspace fault 295/295. Desktop typecheck ja build läpäisevät. Nämä ovat
+korjauksen sopimustuloksia, eivät uuden revision packaged-hyväksyntä.
+Korjausta ei ole osoitettu runner-yhteyden menetyksen syyksi.
+
+Nykyisen callerin exit/close-, tulosvalidointi-, semanttisen tarkistuksen,
+uninstallin ja fixture-poiston erottavat ei-estävät vaihekuittaukset ovat
+vielä avoin viimeistelyraja. Diagnostiikan valmistuminen ei saa muodostua
+uudeksi onnistumisehdoksi, estäväksi kirjoituspoluksi tai prosessipuun
+valvojaksi. Uutta täyttä CI-kierrosta ei käynnistetä pelkän viimeisen
+supervisor-rivin perusteella. V2.7:n sulkeminen vaatii tämän rajan sekä
+korjatun puhtaan revision koko consumer- ja artifact-hyväksynnän; aiempi
+vihreys ei riitä.
 Vanhan harnessin poistamiseen ei vielä ole koko V2:n integraationäyttöä.
 Migraatiojärjestys, yhden supervisorin omistajuus ja hyväksynnän kolme tasoa
 säilyvät.
