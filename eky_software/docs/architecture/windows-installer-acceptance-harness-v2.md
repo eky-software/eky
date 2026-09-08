@@ -2089,6 +2089,41 @@ hyväksynnän; tuotannon rollback-apuria tai toimintasemantiikkaa ei muuteta.
 Korjauksen fault-sopimukset läpäisevät 295/295, success-regressiot 303/303,
 artifact-/workflow-sopimukset 56/56 sekä desktop typecheck ja build.
 
+### Artifact-latauksen rajattu korjaus
+
+Revision `1f5b807` [workspace-kierros](https://github.com/eky-software/eky/actions/runs/34250816513)
+todisti fault-matriisin 10/10 ensimmäisellä yrityksellä. Toinen success-
+consumer pysähtyi ennen skenaariota artifact-palvelun HTTP 403 -virheeseen.
+Omistajan erikseen hyväksymä infrastruktuuriuusinta ajoi vain tämän
+consumerin samoilla alkuperäisillä pakettitavuilla. Se läpäisi; success-
+näyttö on 2/2 tällä nimenomaisella poikkeuksella. Produceria ei rakennettu
+uudelleen. Molempien kierrosten alkuperäiset tulokset säilyvät erillisinä.
+
+Saman revision [upgrade-kierroksen](https://github.com/eky-software/eky/actions/runs/34250816532)
+molemmat consumerit pysähtyivät myös lataukseen ennen skenaariota. Niitä ei
+uusittu, koska latausnimi johdettiin consumerin `github.run_attempt`-arvosta:
+consumer-only-uusinta etsisi eri nimeä kuin säilytetty producer-artifact.
+Tämä on erillinen viittausvirhe, ei osoitettu syy alkuperäiseen HTTP 403:een.
+
+Hyväksytty rajattu korjaus välittää upload-stepin `artifact-id`-tuloksen
+producerin job-outputiksi ja valitsee sen consumerin `artifact-ids`-syötteessä,
+kuten workspace-workflow jo tekee. Consumer ei johda latausvalintaa nimestä,
+yritysnumerosta tai pattern-hausta. Paketin sisältö puretaan samaan nykyiseen
+juureen; descriptor-, build-revisio- ja MSI-tarkistukset ennen ajoa ja sen
+jälkeen säilyvät. Nykyinen workflow-sopimustesti lukitsee tämän kytkennän.
+Uusia action-versioita, käyttöoikeuksia, aikarajoja tai automaattisia
+uusintoja ei lisätä. Korjaus ei itsessään anna lupaa epäonnistuneen testin
+uusintaan eikä muuta ensimmäisen yrityksen hyväksyntäsääntöä.
+
+Uusi kytkentäregressio hylkäsi vanhan toteutuksen ja läpäisi korjauksen.
+Upgrade-artifactin kohdesarja läpäisee 14/14, workspace-artifactin 56/56
+sekä desktop typecheck ja build. Nämä eivät korvaa paketoitua CI-todistetta.
+
+Uusi korjausrevisio tarvitsee oman commit-pohjaisen CI-kierroksensa ja sen
+producerien samoja tavuja käyttävät consumerit. Edellisen revision näyttö
+ei korvaa tätä porttia. Vaihehyväksyntä ja loppukatselmus ovat vielä avoimia;
+PR säilyy draftina eikä vanhaa orkestrointia poisteta.
+
 ## Migraatiojärjestys
 
 V2 toteutetaan pieninä, itsenäisesti vihreinä checkpointteina:
@@ -2200,9 +2235,11 @@ V2.7:n sopimus-/vaiheketjucheckpoint, hyväksytty muistikanavan käynnistysraja,
 jaetun Windows-adapterin worker-kytkentä, riippumattomat business-/session-
 jälkitarkastukset sekä yhteinen caller-/terminal-composition on toteutettu
 yllä kuvatusti. Yhteisen producerin ja kahden fault-consumerin CI-kytkentä
-on toteutettu. Erillisen asennussiivouksen packaged-todiste sekä uuden
-artifactin ja kahden consumerin hyväksyntänäyttö ovat vielä avoimia.
-Vaihe ei ole valmis eikä vanhan harnessin poistamiseen ole vielä vastaavaa
+on toteutettu. Revision `1f5b807` fault-matriisi todisti 10/10 sekä tarkat
+siivous- ja jälkiehdot; success-polut läpäisivät 2/2 yllä kuvatulla rajatulla
+infrastruktuuriuusintapoikkeuksella. Päivitystestien artifact-viittauksen
+korjaus odottaa uuden revision CI-todennusta ja vaiheen loppukatselmusta.
+Vaihe ei ole vielä valmis eikä vanhan harnessin poistamiseen ole vastaavaa
 kokonaisnäyttöä. Migraatiojärjestys, yhden supervisorin omistajuus ja
 hyväksynnän kolme tasoa säilyvät.
 
