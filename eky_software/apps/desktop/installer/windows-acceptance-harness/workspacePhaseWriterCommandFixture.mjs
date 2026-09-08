@@ -3,14 +3,19 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { readFile, writeFile } from 'node:fs/promises';
 import { setImmediate } from 'node:timers/promises';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { createWorkspacePhaseWriter } from './workspacePhaseWriter.mjs';
 import { WORKSPACE_PHASE_MAX_BYTES } from './workspacePhaseObservation.mjs';
+import { runWorkspaceCallerCli } from './workspaceCallerCli.mjs';
+import { parseWorkspaceSuccessArguments } from './runWorkspaceSuccess.mjs';
 
 // Contract fixture only. The existing Job Object test support contains this
 // command and its writer even when an assertion fails before terminal evidence.
 const input = JSON.parse(await readFile(process.argv[2], 'utf8'));
-assert(['normal', 'unread', 'brokenChannel', 'brokenOutput', 'writerCrash', 'cancelled', 'invalidFields', 'missingResult'].includes(input.mode));
+assert(['normal', 'unread', 'brokenChannel', 'brokenOutput', 'writerCrash', 'cancelled', 'invalidFields', 'missingResult',
+  'callerFailure', 'invalidCallerResult'].includes(input.mode));
 const cancellation = new AbortController();
 let child;
 let childClosed = false;
@@ -102,8 +107,37 @@ assert.equal(childClosed, true);
 assert.equal(child.stdin.destroyed, true);
 assert.equal(starts, 1);
 assert.equal(output.join(''), JSON.stringify(observation) + '\n');
+const outcome = {
+  schemaVersion: 1, scenario: 'packagedWorkspaceSuccess', status: 'completed', errorCode: null,
+  safetyErrorCode: null, failedPhase: null, processTreeAbsent: true, fixtureRemoved: true, businessDataPreserved: true,
+  phaseWriterResultCode: result.writerResultCode, phaseDiagnosticResultCode: result.diagnosticResultCode,
+  fixtureCleanupResultCode: 'fixtureRemoved', supervisorProcessResultCode: 'processCompleted',
+  supervisorWorkerResultCode: 'workerResultValidated', supervisorCleanupResultCode: 'notRequired',
+  scenarioResultCode: 'workspaceSuccessCompleted', initialProductStateResultCode: 'targetProductPresent',
+  postconditionResultCode: 'exactProductsAbsent', removalPostconditionResultCode: 'installerFootprintAbsent',
+  semanticCleanupResultCode: 'semanticCleanupCompleted', semanticProofResultCode: 'workspaceSemanticProofValidated',
+  buildRevision: 'a'.repeat(40), artifactDescriptorSha256: input.artifactDescriptorSha256,
+  sourcePackageSha256: 'c'.repeat(64), targetPackageSha256: 'd'.repeat(64), profileFileCountBefore: 0, profileFileCountAfter: 0,
+};
+if (input.mode === 'callerFailure') Object.assign(outcome, { status: 'failed', errorCode: 'scenarioResultInvalid' });
+if (input.mode === 'invalidCallerResult') outcome.session = 'synthetic-private';
+const callerExit = await runWorkspaceCallerCli([
+  '--artifact-descriptor', resolve('workspace-success-artifact.json'), '--expected-descriptor-sha256', input.artifactDescriptorSha256,
+  '--expected-build-revision', 'a'.repeat(40), '--result-path', input.callerResultPath,
+], { parseScenario: parseWorkspaceSuccessArguments,
+  runScenario: async () => { if (input.mode === 'callerFailure') throw new Error('synthetic-original'); return outcome; },
+  failureDetails: () => outcome, errorCode: () => 'unexpectedFailure',
+});
+// The enclosing contract Job remains the only emergency owner of this command.
+const verifier = spawn(process.execPath, [fileURLToPath(new URL('./verifyWorkspaceCallerResult.mjs', import.meta.url)),
+  '--artifact-descriptor', resolve('workspace-success-artifact.json'), '--expected-descriptor-sha256', input.artifactDescriptorSha256,
+  '--expected-build-revision', 'a'.repeat(40), '--result-path', input.callerResultPath, '--command-exit', String(callerExit),
+], { stdio: 'ignore', windowsHide: true, shell: false });
+const [verificationExit, verificationSignal] = await once(verifier, 'close');
+assert.equal(verificationSignal, null);
+assert.equal(verificationExit, callerExit === 0 ? 0 : 1);
 await writeFile(input.reportPath, JSON.stringify({
-  result, blocked, childClosed, inputDestroyed: child.stdin.destroyed, starts, output,
+  result, blocked, childClosed, inputDestroyed: child.stdin.destroyed, starts, output, callerExit, verificationExit,
 }), { flag: 'wx' });
 
 // Required worker evidence is deliberately separate from optional phase output.
@@ -115,3 +149,4 @@ if (input.mode !== 'missingResult') {
     status: 'completed', resultCode: 'phaseWriterContractCompleted', errorCode: null,
   }), { flag: 'wx' });
 }
+process.exitCode = callerExit;

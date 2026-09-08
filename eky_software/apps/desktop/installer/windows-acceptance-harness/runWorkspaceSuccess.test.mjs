@@ -7,6 +7,7 @@ import { WORKSPACE_SUCCESS_PHASES } from './workspaceSuccessContracts.mjs';
 import { WORKSPACE_FAULT_PLANS } from './workspaceFaultContracts.mjs';
 import { runWorkspaceSuccess, parseWorkspaceFaultArguments, workspaceSuccessCommandFailureDetails } from './runWorkspaceSuccess.mjs';
 import { runWorkspaceFault } from './runWorkspaceFault.mjs';
+import { validateWorkspaceCallerResult } from './workspaceCallerResult.mjs';
 
 function products(present) {
   return { status: 'completed', resultCode: present ? 'targetProductPresent' : 'exactProductsAbsent',
@@ -16,15 +17,22 @@ function products(present) {
 for (const fault of [false, true]) {
 for (const mode of ['completed', 'preconditionFailed', 'prepareFailed', 'launchFailed', 'supervisorMissing',
   'deadline', 'treeUnverified', 'scenarioMissing', 'businessFailed', 'cleanupFailed', 'footprintFailed',
-  'profileChanged', 'artifactChanged', 'fixtureRemovalFailed', ...(fault ? ['sessionFailed'] : [])]) {
+  'profileChanged', 'artifactChanged', 'fixtureRemovalFailed', 'writerUnverified', 'writerUnverifiedAfterScenarioFailure',
+  ...(fault ? ['sessionFailed'] : [])]) {
   test(`${fault ? 'fault' : 'success'} workspace command preserves outcomes and exact cleanup: ${mode}`, async (t) => {
     let root, context;
     let started = 0, inspections = 0, cleanups = 0, removals = 0, profileReads = 0;
+    const phases = [];
+    let writerFinished = false;
     t.after(async () => { if (root) await rm(root, { recursive: true, force: true }); });
     const artifact = { artifactRoot: '', descriptorSha256: 'b'.repeat(64), buildRevision: 'a'.repeat(40),
       source: { manifest: { packageFilename: 'Eky-0.2.7-x64.msi' }, packageSha256: 'd'.repeat(64) },
       target: { manifest: { packageFilename: 'Eky-0.2.8-x64.msi' }, packageSha256: 'e'.repeat(64) } };
     const options = {
+      createPhaseWriter: () => ({ send: (value) => { phases.push(value); return true; }, finish: async () => {
+        writerFinished = true;
+        return { writerResultCode: mode.startsWith('writerUnverified') ? 'writerExitUnverified' : 'writerAbsent', diagnosticResultCode: 'deliveryUnverified' };
+      } }),
       platform: 'win32', environment: { APPDATA: resolve('synthetic-appdata'), LOCALAPPDATA: resolve('synthetic-local-appdata') },
       checkSupervisor: async () => undefined,
       inventoryProfile: async () => ++profileReads === 2 && mode === 'profileChanged'
@@ -59,7 +67,7 @@ for (const mode of ['completed', 'preconditionFailed', 'prepareFailed', 'launchF
           processTreeAbsent: mode !== 'treeUnverified' };
       },
       readScenario: async () => {
-        if (mode === 'scenarioMissing') throw new Error('private path');
+        if (['scenarioMissing', 'writerUnverifiedAfterScenarioFailure'].includes(mode)) throw new Error('private path');
         return { schemaVersion: 1, scenario: context.request.scenario, runNonce: context.request.runNonce,
           artifactDescriptorSha256: context.request.artifactDescriptorSha256, status: 'completed',
           ...(fault ? { faultScenario: 'acceptanceInterruption' } : {}),
@@ -80,6 +88,7 @@ for (const mode of ['completed', 'preconditionFailed', 'prepareFailed', 'launchF
         return { status: 'completed', resultCode: 'installerFootprintAbsent' };
       },
       removeRunRoot: async (path) => { removals += 1;
+        assert.equal(writerFinished, true);
         if (mode === 'fixtureRemovalFailed') throw new Error('private path');
         await rm(path, { recursive: true, force: true }); },
     };
@@ -101,10 +110,15 @@ for (const mode of ['completed', 'preconditionFailed', 'prepareFailed', 'launchF
         return true;
       });
     }
+    const binding = { schemaVersion: 1, invocationId: '0'.repeat(32), scenario: outcome.scenario,
+      faultScenario: fault ? 'acceptanceInterruption' : null, buildRevision: 'a'.repeat(40), artifactDescriptorSha256: 'b'.repeat(64) };
+    assert.doesNotThrow(() => validateWorkspaceCallerResult({ binding, outcome }, binding));
+    if (mode === 'profileChanged') assert.equal(phases.findLast((item) => item.phase === 'normalProfileVerification').status, 'failed');
     const noStart = ['preconditionFailed', 'prepareFailed'].includes(mode);
     const noCleanup = noStart || ['launchFailed', 'supervisorMissing', 'treeUnverified'].includes(mode);
     const retained = ['launchFailed', 'supervisorMissing', 'treeUnverified', 'cleanupFailed',
-      'footprintFailed', 'profileChanged', 'artifactChanged', 'fixtureRemovalFailed'].includes(mode);
+      'footprintFailed', 'profileChanged', 'artifactChanged', 'fixtureRemovalFailed',
+      'writerUnverified', 'writerUnverifiedAfterScenarioFailure'].includes(mode);
     assert.equal(started, noStart ? 0 : 1);
     assert.equal(cleanups, noCleanup ? 0 : 1);
     assert.equal(removals, retained && mode !== 'fixtureRemovalFailed' ? 0 : 1);
@@ -112,6 +126,13 @@ for (const mode of ['completed', 'preconditionFailed', 'prepareFailed', 'launchF
     if (retained) assert.equal((await lstat(root)).isDirectory(), true);
     else await assert.rejects(lstat(root), { code: 'ENOENT' });
     if (mode === 'cleanupFailed') assert.equal(outcome.semanticCleanupResultCode, 'semanticCleanupFailed');
+    assert.equal(writerFinished, true);
+    assert.equal(phases.at(-1).phase, 'fixtureCleanup');
+    assert.equal(outcome.phaseWriterResultCode, mode.startsWith('writerUnverified') ? 'writerExitUnverified' : 'writerAbsent');
+    if (mode === 'writerUnverifiedAfterScenarioFailure') {
+      assert.equal(outcome.errorCode, 'scenarioResultInvalid');
+      assert.equal(outcome.safetyErrorCode, 'phaseWriterExitUnverified');
+    }
     if (mode === 'deadline') assert.equal(outcome.errorCode, 'supervisorDeadlineExceeded');
     if (mode === 'supervisorMissing') assert.equal(outcome.semanticCleanupResultCode, 'blockedByOwnedProcessTree');
     if (mode === 'sessionFailed') {

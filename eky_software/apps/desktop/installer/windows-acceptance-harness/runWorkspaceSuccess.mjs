@@ -24,6 +24,8 @@ import { inspectLegacyInstallerFootprint } from './legacyUpgradeWindowsRuntime.m
 import { createClosedDirectoryInventory, inventoriesMatch } from './closedDirectoryInventory.mjs';
 import { parseAbsoluteWindowsAcceptancePath } from './windowsAcceptancePathArgument.mjs';
 import { readWindowsAcceptanceSupervisorResult } from '../windows-process-supervisor/windowsAcceptanceSupervisorResult.mjs';
+import { createWorkspacePhaseWriter } from './workspacePhaseWriter.mjs';
+import { runWorkspaceCallerCli } from './workspaceCallerCli.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const SUPERVISOR_DLL = resolve(DIRECTORY, '../bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll');
@@ -65,14 +67,18 @@ async function profileRootExists(path) {
   catch (error) { if (error?.code === 'ENOENT') return false; throw error; }
 }
 
-function launchSupervisor(path, root) {
+function launchSupervisor(path, root, observe = () => {}) {
   const child = spawn(process.env.EKY_DOTNET_EXE || 'dotnet', [SUPERVISOR_DLL, '--request', path], {
     cwd: root, stdio: 'inherit', windowsHide: true, shell: false,
   });
   const completion = new Promise((resolvePromise, rejectPromise) => {
+    child.once('exit', (code) => observe('supervisorExit', code === 0 ? 'completed' : 'failed'));
     child.once('error', () => rejectPromise(new Error('supervisorStartFailed')));
-    child.once('close', (code, signal) => signal !== null || !Number.isInteger(code)
-      ? rejectPromise(new Error('supervisorExitInvalid')) : resolvePromise(code));
+    child.once('close', (code, signal) => {
+      observe('supervisorClose', code === 0 && signal === null ? 'completed' : 'failed');
+      if (signal !== null || !Number.isInteger(code)) rejectPromise(new Error('supervisorExitInvalid'));
+      else resolvePromise(code);
+    });
   });
   return { child, completion };
 }
@@ -87,7 +93,8 @@ async function verifyRemoval(environment) {
 
 export function workspaceCommandErrorCode(error, fault = false) {
   return ['supervisorBinaryInvalid', 'supervisorStartFailed', 'supervisorExitInvalid', 'supervisorResultUnavailable',
-    'productStateVerificationFailed', 'productStateVerificationTimedOut', 'productStateVerificationProcessRemains']
+    'productStateVerificationFailed', 'productStateVerificationTimedOut', 'productStateVerificationProcessRemains',
+    'phaseWriterExitUnverified', 'commandCancelled']
     .includes(error?.message) ? error.message : (fault ? workspaceFaultErrorCode : workspaceSuccessErrorCode)(error);
 }
 
@@ -109,6 +116,7 @@ async function runWorkspaceAcceptance(artifactInput, {
   readSupervisor = readWindowsAcceptanceSupervisorResult, readScenario,
   verifySemantic, verifySessions = verifyWorkspaceFaultSessionEvidence,
   verifyFootprint = verifyRemoval, removeRunRoot = (root) => rm(root, { recursive: true, force: true }),
+  createPhaseWriter = createWorkspacePhaseWriter,
 } = {}) {
   if (platform !== 'win32' || !environment.APPDATA || !environment.LOCALAPPDATA) throw new Error('requestInvalid');
   const { faultScenario } = artifactInput;
@@ -132,11 +140,43 @@ async function runWorkspaceAcceptance(artifactInput, {
   let profilePresentAfter = null;
   let fixtureRemoved = false;
   let fixtureCleanupResultCode = 'retainedUnverified';
+  let phaseWriter = null;
+  let writerAttempted = false;
+  let phaseWriterOutcome = { writerResultCode: 'notStarted', diagnosticResultCode: 'notSent' };
+  let writerStopped = false;
+  let cancelled = false;
+  const begun = performance.now();
+  const phaseStarts = new Map();
+  const observe = (phase, status) => {
+    if (writerStopped) return;
+    try {
+      if (!writerAttempted) {
+        writerAttempted = true;
+        phaseWriterOutcome = { writerResultCode: 'writerExitUnverified', diagnosticResultCode: 'channelFailed' };
+        phaseWriter = createPhaseWriter({ timeoutMilliseconds: 600_000, terminationTimeoutMilliseconds: 5_000 });
+      }
+      if (!phaseWriter) return;
+      const now = performance.now();
+      if (status === 'started') phaseStarts.set(phase, now);
+      phaseWriter.send({ schemaVersion: 1, operation: 'workspaceAcceptanceCaller',
+        scenario: fault ? WORKSPACE_FAULT_SCENARIO : 'packagedWorkspaceSuccess', phase, status,
+        durationMs: Math.max(0, Math.floor(now - (phaseStarts.get(phase) ?? now))), elapsedMs: Math.floor(now - begun) });
+    } catch { /* Diagnostics never replace a scenario result. */ }
+  };
+  const observed = (phase, operation) => async (...args) => {
+    observe(phase, 'started');
+    try {
+      const value = await operation(...args);
+      observe(phase, value?.status === 'failed' ? 'failed' : 'completed');
+      return value;
+    } catch (error) { observe(phase, 'failed'); throw error; }
+  };
   const stopSupervisor = () => {
     if (supervisor?.child.exitCode === null && supervisor.child.signalCode === null) supervisor.child.kill();
   };
-  process.once('SIGINT', stopSupervisor);
-  process.once('SIGTERM', stopSupervisor);
+  const cancel = () => { cancelled = true; stopSupervisor(); };
+  process.once('SIGINT', cancel);
+  process.once('SIGTERM', cancel);
   try {
     profilePresentBefore = await profileRootExists(resolve(environment.APPDATA, 'Eky'));
     profileBefore = await inventoryProfile(resolve(environment.APPDATA, 'Eky'));
@@ -160,43 +200,56 @@ async function runWorkspaceAcceptance(artifactInput, {
       cleanupReserveMilliseconds: WORKSPACE_SUCCESS_CLEANUP_RESERVE_MILLISECONDS,
     });
     supervisorAttempted = true;
-    supervisor = startSupervisor(supervisorRequestPath, scenarioRoot);
+    supervisor = startSupervisor(supervisorRequestPath, scenarioRoot, observe);
     const supervisorExitCode = await supervisor.completion;
     supervisor = null;
     let supervisorResult = null;
     try {
-      supervisorResult = await readSupervisor(resolve(scenarioRoot, 'result.json'), {
+      supervisorResult = await observed('supervisorResult', readSupervisor)(resolve(scenarioRoot, 'result.json'), {
         scenario: request.scenario, runNonce: request.runNonce,
         artifactDescriptorSha256: request.artifactDescriptorSha256, supervisorExitCode,
       });
     } catch { errorCode = 'supervisorResultUnavailable'; }
+    let postSupervisorInspections = 0;
     terminal = await (fault ? resolveWorkspaceFaultTerminalOutcome : resolveWorkspaceSuccessTerminalOutcome)({
       ...runtime, request, productPrecondition, supervisorResult,
-      readScenarioResult: () => readScenario((fault ? workspaceFaultResultPath : workspaceSuccessResultPath)(workerRequestPath), request),
-      verifySemanticPostcondition: () => verifySemantic(context),
-      verifySessionPostcondition: () => verifySessions(context),
-      verifyRemovalPostcondition: () => verifyFootprint(environment),
+      verifyExactProductStates: (...args) => observed(postSupervisorInspections++ === 0 ? 'initialProductState' : 'finalProductState',
+        runtime.verifyExactProductStates)(...args),
+      cleanupExactProducts: observed('installationCleanup', runtime.cleanupExactProducts),
+      readScenarioResult: observed('scenarioResult', () => readScenario((fault ? workspaceFaultResultPath : workspaceSuccessResultPath)(workerRequestPath), request)),
+      verifySemanticPostcondition: observed('semanticPostcondition', () => verifySemantic(context)),
+      verifySessionPostcondition: observed('sessionPostcondition', () => verifySessions(context)),
+      verifyRemovalPostcondition: observed('removalPostcondition', () => verifyFootprint(environment)),
     });
     errorCode ??= terminal.errorCode;
   } catch (error) { errorCode ??= workspaceCommandErrorCode(error, fault); }
   finally {
-    process.off('SIGINT', stopSupervisor);
-    process.off('SIGTERM', stopSupervisor);
     stopSupervisor();
     if (supervisor) await supervisor.completion.catch(() => undefined);
     if (context) {
       try {
-        await verifyArtifact(artifactInput);
-        await verifyArtifact({ ...artifactInput, artifactRoot: context.artifact.artifactRoot });
+        await observed('artifactVerification', async () => {
+          await verifyArtifact(artifactInput);
+          await verifyArtifact({ ...artifactInput, artifactRoot: context.artifact.artifactRoot });
+        })();
       } catch { safetyErrorCode = 'artifactChanged'; }
     }
     if (profileBefore !== null) {
       try {
-        profileAfter = await inventoryProfile(resolve(environment.APPDATA, 'Eky'));
-        profilePresentAfter = await profileRootExists(resolve(environment.APPDATA, 'Eky'));
-        if (profilePresentBefore !== profilePresentAfter || !inventoriesMatch(profileBefore, profileAfter)) throw new Error();
+        await observed('normalProfileVerification', async () => {
+          profileAfter = await inventoryProfile(resolve(environment.APPDATA, 'Eky'));
+          profilePresentAfter = await profileRootExists(resolve(environment.APPDATA, 'Eky'));
+          if (profilePresentBefore !== profilePresentAfter || !inventoriesMatch(profileBefore, profileAfter)) throw new Error();
+        })();
       } catch { safetyErrorCode ??= 'normalProfileChanged'; }
     }
+    observe('fixtureCleanup', 'started');
+    writerStopped = true;
+    if (phaseWriter) {
+      try { phaseWriterOutcome = await phaseWriter.finish(); }
+      catch { phaseWriterOutcome = { writerResultCode: 'writerExitUnverified', diagnosticResultCode: 'channelFailed' }; }
+    }
+    if (writerAttempted && phaseWriterOutcome.writerResultCode !== 'writerAbsent') safetyErrorCode ??= 'phaseWriterExitUnverified';
     if (safetyErrorCode === null && workspaceSuccessRunRootRemovable({ supervisorAttempted, terminal })) {
       try {
         await removeRunRoot(runRoot);
@@ -205,11 +258,15 @@ async function runWorkspaceAcceptance(artifactInput, {
         fixtureCleanupResultCode = 'fixtureRemoved';
       } catch { fixtureCleanupResultCode = 'fixtureCleanupFailed'; errorCode ??= 'fixtureCleanupFailed'; }
     }
+    process.off('SIGINT', cancel);
+    process.off('SIGTERM', cancel);
+    if (cancelled) errorCode ??= 'commandCancelled';
   }
   const result = { schemaVersion: 1, scenario: fault ? WORKSPACE_FAULT_SCENARIO : 'packagedWorkspaceSuccess',
     ...(fault ? { faultScenario } : {}), ...terminal,
     status: errorCode === null && safetyErrorCode === null && fixtureRemoved ? 'completed' : 'failed',
     errorCode: errorCode ?? safetyErrorCode, safetyErrorCode, fixtureCleanupResultCode, fixtureRemoved,
+    phaseWriterResultCode: phaseWriterOutcome.writerResultCode, phaseDiagnosticResultCode: phaseWriterOutcome.diagnosticResultCode,
     businessDataPreserved: profileBefore !== null && profileAfter !== null && profilePresentBefore === profilePresentAfter &&
       inventoriesMatch(profileBefore, profileAfter),
     profileFileCountBefore: profileBefore?.filter((entry) => entry.kind === 'file').length ?? null,
@@ -223,11 +280,6 @@ async function runWorkspaceAcceptance(artifactInput, {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  try { console.log(JSON.stringify(await runWorkspaceSuccess(process.argv.slice(2)))); }
-  catch (error) {
-    console.error(JSON.stringify(workspaceSuccessCommandFailureDetails(error) ?? {
-      schemaVersion: 1, scenario: 'packagedWorkspaceSuccess', status: 'failed', errorCode: workspaceCommandErrorCode(error),
-    }));
-    process.exitCode = 1;
-  }
+  process.exitCode = await runWorkspaceCallerCli(process.argv.slice(2), { parseScenario: parseWorkspaceSuccessArguments,
+    runScenario: runWorkspaceSuccess, failureDetails: workspaceSuccessCommandFailureDetails, errorCode: workspaceCommandErrorCode });
 }

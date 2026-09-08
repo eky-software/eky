@@ -118,3 +118,28 @@ test('V2.7 canonical commands retain the same worker, terminal, session and read
       'workspaceSuccessProfileEvidence', 'workspaceSuccessLifecycle', 'workspaceSuccessWindowsRuntime',
     ].map((name) => `installer/windows-acceptance-harness/${name}.test.mjs`).join(' '));
 });
+
+test('each workspace consumer requires its own bound caller result and the actual command exit', async () => {
+  const source = await readFile(WORKFLOW, 'utf8');
+  const contracts = source.split('  workspace_artifact_producer:')[0];
+  assert.match(contracts, /installer:test:windows-acceptance-phase-writer/);
+  const desktop = JSON.parse(await readFile(resolve(ROOT, '../../package.json'), 'utf8'));
+  for (const name of ['workspaceCallerResult', 'workspacePhaseWriter', 'workspacePhaseWriter.process']) {
+    assert.ok(desktop.scripts['installer:test:windows-acceptance-phase-writer'].includes(`${name}.test.mjs`));
+  }
+  const blocks = source.split('      - name:').filter((block) =>
+    /installer:v2-workspace-success --artifact-descriptor|runWorkspaceFault.mjs --artifact-descriptor/.test(block));
+  assert.equal(blocks.length, 6);
+  for (const block of blocks) {
+    assert.match(block, /eky-workspace-caller-.*\[Guid\]::NewGuid\(\)\.ToString\('N'\)/);
+    const lines = block.split('\n');
+    const caller = lines.findIndex((line) => /installer:v2-workspace-success --artifact-descriptor|runWorkspaceFault.mjs --artifact-descriptor/.test(line));
+    assert.match(lines[caller], /--result-path \$resultPath$/);
+    assert.equal(lines[caller + 1].trim(), '$commandExit = $LASTEXITCODE');
+    assert.match(lines[caller + 2], /verifyWorkspaceCallerResult.mjs .*--result-path \$resultPath --command-exit \$commandExit$/);
+    assert.match(lines[caller + 3], /if \(\$commandExit -ne 0 -or \$LASTEXITCODE -ne 0\)/);
+    assert.equal(lines[caller].split(' --artifact-descriptor ')[1],
+      lines[caller + 2].split(' --artifact-descriptor ')[1].replace(' --command-exit $commandExit', ''));
+    assert.doesNotMatch(block, /Get-Content|Write-Output|continue-on-error|upload-artifact/);
+  }
+});

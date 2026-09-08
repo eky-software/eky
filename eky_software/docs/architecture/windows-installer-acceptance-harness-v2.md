@@ -1515,7 +1515,7 @@ kirjainkoko on oma regressionsa; polkujen turvallisuustarkistuksia ei löysennet
 Paketoidun consumerin pysyvä komento on:
 
 ```text
-pnpm --filter @eky/desktop installer:v2-workspace-success --artifact-descriptor <descriptor> --expected-descriptor-sha256 <sha256> --expected-build-revision <full-revision>
+pnpm --filter @eky/desktop installer:v2-workspace-success --artifact-descriptor <descriptor> --expected-descriptor-sha256 <sha256> --expected-build-revision <full-revision> --result-path <run-local-caller-result>
 ```
 
 Tämä on ajokytkennän sopimuscheckpoint, ei vielä V2.6:n vaihehyväksyntä.
@@ -2020,7 +2020,7 @@ testijuuressa. Normaalin profiilin inventaario jää prosessimuistiin.
 Yhden skenaarion dokumentoitu komento on:
 
 ```text
-pnpm --filter @eky/desktop installer:v2-workspace-fault --artifact-descriptor <descriptor> --expected-descriptor-sha256 <sha256> --expected-build-revision <revision> --fault-scenario <scenario>
+pnpm --filter @eky/desktop installer:v2-workspace-fault --artifact-descriptor <descriptor> --expected-descriptor-sha256 <sha256> --expected-build-revision <revision> --fault-scenario <scenario> --result-path <run-local-caller-result>
 ```
 
 Komentotason kohdetestit läpäisevät 77/77. Kanoninen fault-sarja läpäisee
@@ -2321,14 +2321,13 @@ workspace fault 295/295. Desktop typecheck ja build läpäisevät. Nämä ovat
 korjauksen sopimustuloksia, eivät uuden revision packaged-hyväksyntä.
 Korjausta ei ole osoitettu runner-yhteyden menetyksen syyksi.
 
-Nykyisen callerin exit/close-, tulosvalidointi-, semanttisen tarkistuksen,
-uninstallin ja fixture-poiston erottavat ei-estävät vaihekuittaukset ovat
-vielä avoin viimeistelyraja. Diagnostiikan valmistuminen ei saa muodostua
-uudeksi onnistumisehdoksi, estäväksi kirjoituspoluksi tai prosessipuun
-valvojaksi. Uutta täyttä CI-kierrosta ei käynnistetä pelkän viimeisen
-supervisor-rivin perusteella. V2.7:n sulkeminen vaatii tämän rajan sekä
-korjatun puhtaan revision koko consumer- ja artifact-hyväksynnän; aiempi
-vihreys ei riitä.
+Nykyinen rajattu korjaus kytkee callerin exit/close-, tulosvalidointi-,
+semanttisen tarkistuksen, uninstallin ja fixture-poiston aloittamisen
+erottavat ei-estävät vaihekuittaukset. Omistaja hyväksyi pakollisen
+CLI-lopputuloksen erilliseen strict tulostiedostoon: CI vaatii sen sidonnan,
+sisällön ja komennon todellisen onnistuneen poistumisen. Diagnostiikka ei
+päätä hyväksynnästä. V2.7:n sulkeminen vaatii korjatun puhtaan revision koko
+consumer- ja artifact-hyväksynnän; aiempi vihreys ei riitä.
 Vanhan harnessin poistamiseen ei vielä ole koko V2:n integraationäyttöä.
 Migraatiojärjestys, yhden supervisorin omistajuus ja hyväksynnän kolme tasoa
 säilyvät.
@@ -2358,10 +2357,9 @@ tai yleinen lokipalvelu, eikä sitä toimiteta sovelluspaketissa.
   poistuminen on erillinen cleanup-virhe, jota myöhempi havainto ei nollaa.
   Alkuperäinen skenaariovirhe ja kaikki nykyiset semanttiset tulokset säilyvät.
 - Pakollinen callerin lopputulos ei kuulu tähän vapaaehtoiseen kanavaan.
-  Nykyisten CLI-entrypointien suora konsoliyhteenveto on erillinen avoin
-  valmistumisraja: sitä ei poisteta, pudoteta jonosta tai tulkita tämän
-  kirjoittimen avulla varmennetuksi. Kytkentä hyväksyntäajoihin odottaa myös
-  pakollisen lopputuloksen rajattua julkaisu- ja vastaanottosopimusta.
+  Omistajan hyväksymä tulostiedosto korvaa CLI-entrypointin suoran
+  konsoliyhteenvedon. Pelkkä vaiheviesti tai tulostiedosto ilman komennon
+  poistumista ei ole hyväksyntä.
 
 Kohdesarja todistaa koko komentoprosessin poistumisen ja tarkan omistettujen
 resurssien lopputilan normaalilla tulosteella, lukemattomalla vastaanottajalla,
@@ -2373,8 +2371,8 @@ Rajattu käyttäytymissarja ajetaan komennolla
 `pnpm --filter @eky/desktop installer:test:windows-acceptance-phase-writer`.
 Se rakentaa nykyisen supervisorin ja käyttää sen olemassa olevaa Job Object
 -sopimustukea vain testifixturen turvarajana. Ajossa ei rakenneta MSI:tä,
-asenneta sovellusta tai käynnistetä packaged-matriisia. Vaihekirjoitinta ei
-vielä kytketä normaaliin calleriin tai CI:n consumer-vaiheisiin.
+asenneta sovellusta tai käynnistetä packaged-matriisia. Sama kohdesarja kuuluu
+CI:n nopeaan sopimusjobiin ennen artifact-produceria.
 
 Kirjoittimen erillinen sopimussarja läpäisee 25/25, joista kahdeksan käyttää
 todellista komentoprosessia nykyisen Job Object -testituen sisällä. Kaikissa
@@ -2384,13 +2382,46 @@ kohdesarja läpäisee 88/88, clean 38/38, success 305/305 ja fault 295/295 sekä
 desktop typecheck/build. Tämä on kytkemättömän kirjoitin-checkpointin
 sopimusnäyttö, ei CLI:n loppuyhteenvedon eikä V2.7:n packaged-hyväksyntä.
 
-Seuraava päätös koskee nykyisen CLI-yhteenvedon pakollista säilymistä:
-ehdotus on erillinen strict ajokohtainen caller-result, jonka olemassaolo,
-sisältö ja sidonta tarkistetaan komennon poistumisen lisäksi. Sen rajattu
-julkaisu, alkuperäisen virheen säilyminen ja cleanup-tulokset pitää todistaa
-ennen kytkentää. Tätä sopimusmuutosta ei toteuteta vielä; suora nykyinen
-konsoliyhteenveto sekä consumer-komennot ovat ennallaan, eikä uutta CI-
-kierrosta ole käynnistetty tämän avoimen rajan yli.
+### Pakollinen workspace-callerin lopputulos
+
+CLI vaatii viimeiseksi `--result-path`-argumentiksi uuden ajokohtaisen
+`<TEMP>/eky-workspace-caller-<32-hex>/result.json`-kohteen. Windowsin TEMP
+ja CI:n RUNNER_TEMP hyväksytään vain kanonisina juurina. Kiinteä rajattu
+tiedostoadapteri varaa hakemiston yksinomaisesti ennen skenaariota ja sitoo
+sen invocationId-, skenaario-, fault-skenaario-, buildRevision- ja
+descriptor-SHA-arvoihin. Hakemiston uudelleenkäyttö, linkit, tuntemattomat
+kentät ja epävalidi tai puuttuva tulos torjutaan.
+
+Sama tiedostoadapteri julkaisee enintään 8192 tavun suljetun yhteenvedon
+atomisesti ilman olemassa olevan tuloksen korvaamista. Se käyttää nykyistä
+rajattua Windows-adapteria: 30 sekunnin operaatioraja ja erillinen 5 sekunnin
+lopetusvaraus. Malli ei keskeytä synkronista natiivikäynnistystä eikä väitä
+kattavansa koko scenario-komennon valmistelua. Adapteri ei lue yritysdataa,
+omista skenaariota, käynnistä MSI:tä tai poista fixtureä.
+
+Vaihekirjoitin lopetetaan ja sen poissaolo varmennetaan ennen fixture-poistoa.
+Siksi poiston lopullinen tulos kuuluu pakolliseen tiedostoon, ei jonon
+tyhjentymistä odottavaan viimeiseen konsoliviestiin. Varmentamaton kirjoittimen
+poistuminen säilyttää fixturen ja erillisen safety-virheen alkuperäisen
+skenaariovirheen rinnalla. Tulosjulkaisun virhe ei muuta näitä tuloksia;
+puuttuva julkaisu estää hyväksynnän ja sen oma aineisto säilyy paikallisesti.
+
+CI varaa jokaiselle success- ja fault-ajolle uuden kohteen. Komennon
+exit-koodi talletetaan heti, minkä jälkeen `verifyWorkspaceCallerResult.mjs`
+tarkistaa saman argumenttisidonnan, strict tuloksen ja exit-koodin. Molempien
+komentojen pitää päättyä onnistuneesti. Verifier ei tulosta raakaa tiedostoa
+eikä console-output ole kontrolliprotokolla. Producer, artifact-ID, MSI-tavut
+ja alkuperäiset skenaarion jälkiehdot pysyvät ennallaan. Uuden kytkennän
+packaged-hyväksyntä on edelleen avoin, eikä runner-yhteyskatkon syytä ole
+osoitettu tällä korjauksella.
+
+Kytkennän kohdesarja läpäisee 39/39, mukaan lukien kymmenen oikeaa
+komentoprosessia, niiden pakollinen caller-result ja kaikkien omistettujen
+Job-puiden poistuminen. Jaetut success-regressiot läpäisevät 309/309,
+fault-regressiot 299/299, artifact-/workflow-sopimukset 57/57 ja clean 38/38.
+Desktop typecheck/build läpäisevät. Nämä ovat korjauspinnan sopimustuloksia;
+puhtaan revision commit-pohjainen CI ja sen kokonaiset consumerit ovat
+seuraava hyväksyntäportti.
 
 ### V2.5:n hyväksytty historiallinen päätös
 

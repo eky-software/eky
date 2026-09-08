@@ -66,6 +66,14 @@ jobs:
       - name: Verify workspace fault lifecycle and terminal contracts
         run: pnpm --filter @eky/desktop installer:test:windows-acceptance-workspace-fault
 
+      - name: Set up .NET SDK for command contracts
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: 10.0.302
+
+      - name: Verify mandatory caller results and bounded phase writer
+        run: pnpm --filter @eky/desktop installer:test:windows-acceptance-phase-writer
+
   workspace_artifact_producer:
     name: Build workspace acceptance artifact once
     needs: workspace_artifact_contracts
@@ -221,8 +229,12 @@ jobs:
           EXPECTED_DESCRIPTOR_SHA256: ${{ needs.workspace_artifact_producer.outputs.descriptor_sha256 }}
         run: |
           $descriptorPath = Join-Path $env:RUNNER_TEMP 'eky-v2-workspace-artifact\workspace-success-artifact.json'
-          pnpm --filter @eky/desktop installer:v2-workspace-success --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION
-          if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_WORKSPACE_LIFECYCLE_FAILED' }
+          $resultPath = Join-Path (Join-Path $env:RUNNER_TEMP ('eky-workspace-caller-' + [Guid]::NewGuid().ToString('N'))) 'result.json'
+          $PSNativeCommandUseErrorActionPreference = $false
+          pnpm --filter @eky/desktop installer:v2-workspace-success --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath
+          $commandExit = $LASTEXITCODE
+          pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/verifyWorkspaceCallerResult.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath --command-exit $commandExit
+          if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_WORKSPACE_LIFECYCLE_FAILED' }
       - name: Reverify downloaded workspace artifact
         if: ${{ always() && steps.download.outcome == 'success' }}
         shell: pwsh
@@ -306,36 +318,56 @@ jobs:
         timeout-minutes: 25
         run: |
           $descriptorPath = Join-Path $env:RUNNER_TEMP 'eky-v2-workspace-artifact\workspace-success-artifact.json'
-          pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/runWorkspaceFault.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario preUpdateRecoveryPointFailure
-          if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_WORKSPACE_FAULT_LIFECYCLE_FAILED' }
+          $resultPath = Join-Path (Join-Path $env:RUNNER_TEMP ('eky-workspace-caller-' + [Guid]::NewGuid().ToString('N'))) 'result.json'
+          $PSNativeCommandUseErrorActionPreference = $false
+          pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/runWorkspaceFault.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario preUpdateRecoveryPointFailure --result-path $resultPath
+          $commandExit = $LASTEXITCODE
+          pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/verifyWorkspaceCallerResult.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario preUpdateRecoveryPointFailure --result-path $resultPath --command-exit $commandExit
+          if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_WORKSPACE_FAULT_LIFECYCLE_FAILED' }
       - name: Verify active workspace business and binary rollback
         shell: pwsh
         timeout-minutes: 25
         run: |
           $descriptorPath = Join-Path $env:RUNNER_TEMP 'eky-v2-workspace-artifact\workspace-success-artifact.json'
-          pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/runWorkspaceFault.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario activeWorkspaceFirstStartFailure
-          if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_WORKSPACE_FAULT_LIFECYCLE_FAILED' }
+          $resultPath = Join-Path (Join-Path $env:RUNNER_TEMP ('eky-workspace-caller-' + [Guid]::NewGuid().ToString('N'))) 'result.json'
+          $PSNativeCommandUseErrorActionPreference = $false
+          pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/runWorkspaceFault.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario activeWorkspaceFirstStartFailure --result-path $resultPath
+          $commandExit = $LASTEXITCODE
+          pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/verifyWorkspaceCallerResult.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario activeWorkspaceFirstStartFailure --result-path $resultPath --command-exit $commandExit
+          if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_WORKSPACE_FAULT_LIFECYCLE_FAILED' }
       - name: Verify interrupted acceptance recovery and restart
         shell: pwsh
         timeout-minutes: 25
         run: |
           $descriptorPath = Join-Path $env:RUNNER_TEMP 'eky-v2-workspace-artifact\workspace-success-artifact.json'
-          pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/runWorkspaceFault.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario acceptanceInterruption
-          if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_WORKSPACE_FAULT_LIFECYCLE_FAILED' }
+          $resultPath = Join-Path (Join-Path $env:RUNNER_TEMP ('eky-workspace-caller-' + [Guid]::NewGuid().ToString('N'))) 'result.json'
+          $PSNativeCommandUseErrorActionPreference = $false
+          pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/runWorkspaceFault.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario acceptanceInterruption --result-path $resultPath
+          $commandExit = $LASTEXITCODE
+          pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/verifyWorkspaceCallerResult.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario acceptanceInterruption --result-path $resultPath --command-exit $commandExit
+          if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_WORKSPACE_FAULT_LIFECYCLE_FAILED' }
       - name: Verify passive workspace migration recovery
         shell: pwsh
         timeout-minutes: 25
         run: |
           $descriptorPath = Join-Path $env:RUNNER_TEMP 'eky-v2-workspace-artifact\workspace-success-artifact.json'
-          pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/runWorkspaceFault.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario passiveWorkspaceMigrationFailure
-          if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_WORKSPACE_FAULT_LIFECYCLE_FAILED' }
+          $resultPath = Join-Path (Join-Path $env:RUNNER_TEMP ('eky-workspace-caller-' + [Guid]::NewGuid().ToString('N'))) 'result.json'
+          $PSNativeCommandUseErrorActionPreference = $false
+          pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/runWorkspaceFault.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario passiveWorkspaceMigrationFailure --result-path $resultPath
+          $commandExit = $LASTEXITCODE
+          pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/verifyWorkspaceCallerResult.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario passiveWorkspaceMigrationFailure --result-path $resultPath --command-exit $commandExit
+          if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_WORKSPACE_FAULT_LIFECYCLE_FAILED' }
       - name: Verify binary rollback failure stays recovery-only
         shell: pwsh
         timeout-minutes: 25
         run: |
           $descriptorPath = Join-Path $env:RUNNER_TEMP 'eky-v2-workspace-artifact\workspace-success-artifact.json'
-          pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/runWorkspaceFault.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario binaryRollbackFailure
-          if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_WORKSPACE_FAULT_LIFECYCLE_FAILED' }
+          $resultPath = Join-Path (Join-Path $env:RUNNER_TEMP ('eky-workspace-caller-' + [Guid]::NewGuid().ToString('N'))) 'result.json'
+          $PSNativeCommandUseErrorActionPreference = $false
+          pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/runWorkspaceFault.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario binaryRollbackFailure --result-path $resultPath
+          $commandExit = $LASTEXITCODE
+          pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/verifyWorkspaceCallerResult.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario binaryRollbackFailure --result-path $resultPath --command-exit $commandExit
+          if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_WORKSPACE_FAULT_LIFECYCLE_FAILED' }
       - name: Reverify downloaded workspace artifact
         if: ${{ always() && steps.download.outcome == 'success' }}
         shell: pwsh
