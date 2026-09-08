@@ -1697,6 +1697,22 @@ typecheck/build läpäisevät. Muuttunut paketoitu main vaatii uuden puhtaan
 revision build-once-artifactin ja kaksi ensimmäisen yrityksen consumeria;
 aiemman MSI-parin näyttö ei hyväksy tätä muutosta.
 
+Revision `19cc970` [uudessa packaged-kierroksessa](https://github.com/eky-software/eky/actions/runs/34225413235)
+molemmat workerit suorittivat success-ketjun, mutta riippumaton semanttinen
+jälkiehto hylkäsi aineiston. Supervisor vahvisti prosessipuun poistumisen,
+ja erilliset uninstall- ja footprint-tarkistukset läpäisivät. Vaihe ei ole
+vielä hyväksytty. CI:n checkout- ja artifact-revisio oli
+`f64cb46032346dcd7f77bfcfcb309aa0cd76d6e5`, ei PR:n lähde-HEAD.
+
+Nykyinen jälkitarkastin säilyttää jatkossa suljetun hylkäyssyyn myös oman
+ulkoreunansa ja callerin virherajan läpi. Rekisteri, hyväksytty build,
+päivitysjournal, business-sisältö, migraatio, uudelleenkäynnistyksen
+idempotenssi, lifecycle, session-todiste ja muuttunut lopputila erotetaan
+ilman yksityisen aineiston tulostamista. Tuntematon virhe pysyy yleisenä
+hylkäyksenä. Nykyiset negatiiviset käyttäytymistestit vaativat täsmällisen
+syyn; alkuperäinen virhe säilyy myös siivouksen epäonnistuessa. Vertailuja,
+hyväksymisehtoja tai prosessi- ja siivousvastuita ei muuteta.
+
 ### W6B.2A-invarianttien siirtokartta
 
 | Vanhan portin invariantti | V2.6-vastine / rajattu jatkotyö | Tila tässä checkpointissa |

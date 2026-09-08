@@ -1,5 +1,6 @@
 import {
-  hasWorkspaceSuccessExactKeys, validateWorkspaceSuccessResult, workspaceSuccessErrorCode,
+  WORKSPACE_SUCCESS_POSTCONDITION_ERRORS, hasWorkspaceSuccessExactKeys,
+  validateWorkspaceSuccessResult, workspaceSuccessErrorCode,
 } from './workspaceSuccessContracts.mjs';
 
 const PRODUCT_FAILURES = Object.freeze([
@@ -104,9 +105,10 @@ export async function resolveWorkspaceSuccessTerminalOutcome({
         if (!hasWorkspaceSuccessExactKeys(proof, ['status', 'resultCode']) ||
           proof.status !== 'completed' || proof.resultCode !== 'workspaceSemanticProofValidated') throw new Error();
         result.semanticProofResultCode = proof.resultCode;
-      } catch {
+      } catch (error) {
         result.semanticProofResultCode = 'workspaceSemanticProofFailed';
-        result.errorCode = 'profileEvidenceInvalid';
+        result.errorCode = WORKSPACE_SUCCESS_POSTCONDITION_ERRORS.includes(error?.message)
+          ? error.message : 'profileEvidenceInvalid';
       }
     }
   }

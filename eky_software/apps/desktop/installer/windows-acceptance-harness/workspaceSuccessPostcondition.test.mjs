@@ -61,15 +61,44 @@ const mutations = {
   'duplicate lifecycle event': (f) => { f.checkpoints[4].events.push(f.checkpoints[4].events[0]); },
   'session secret in evidence': (f) => { f.checkpoints[4].events[0].session = 'synthetic-secret'; },
 };
+const expectedErrors = {
+  'changed lineage': 'profileRegistryMismatch',
+  'wrong active pointer': 'profileRegistryMismatch',
+  'C not recovery required': 'profileRegistryMismatch',
+  'premature B migration': 'profileMigrationMismatch',
+  'missing A migration': 'profileMigrationMismatch',
+  'missing B migration': 'profileMigrationMismatch',
+  'C database changed': 'profileMigrationMismatch',
+  'B restart changes database again': 'profileRestartNotIdempotent',
+  'changed A after return': 'profileRestartNotIdempotent',
+  'business rows changed': 'profileBusinessContentChanged',
+  'PDF changed': 'profileBusinessContentChanged',
+  'archive changed': 'profileBusinessContentChanged',
+  'secret namespace changed': 'profileBusinessContentChanged',
+  'recovery namespace changed': 'profileBusinessContentChanged',
+  'missing accepted journal': 'profileJournalMismatch',
+  'wrong journal package': 'profileJournalMismatch',
+  'accepted metadata rewritten on switch': 'profileAcceptedBuildMismatch',
+  'installation journal changed on switch': 'profileJournalMismatch',
+  'missing new B runtime': 'profileLifecycleInvalid',
+  'missing target readiness': 'profileLifecycleInvalid',
+  'source and target share a runtime': 'profileLifecycleInvalid',
+  'B runtime identity reused': 'profileLifecycleInvalid',
+  'missing graceful shutdown': 'profileLifecycleInvalid',
+  'shutdown without a matching startup': 'profileLifecycleInvalid',
+  'shutdown reports a different version': 'profileLifecycleInvalid',
+};
 for (const [name, mutate] of Object.entries(mutations)) {
   test(`rejects ${name}`, async () => {
     const fixture = await createWorkspaceSuccessEvidenceTestFixture();
     mutate(fixture);
-    assert.throws(() => verifyWorkspaceSuccessCheckpoints(fixture), /^Error: profileEvidenceInvalid$/);
+    assert.throws(() => verifyWorkspaceSuccessCheckpoints(fixture), {
+      message: expectedErrors[name] ?? 'profileEvidenceInvalid',
+    });
   });
 }
 
-for (const mode of ['completed', 'currentChanged', 'missingCheckpoint', 'foreignCheckpoint', 'readFailure', 'missingSessions']) {
+for (const mode of ['completed', 'currentChanged', 'missingCheckpoint', 'foreignCheckpoint', 'readFailure', 'missingSessions', 'journalChanged']) {
   test(`independent final verifier rereads persisted evidence and current profile: ${mode}`, async (t) => {
     const fixture = await createWorkspaceSuccessEvidenceTestFixture();
     const proofRoot = await mkdtemp(resolve(await realpath(tmpdir()), 'eky-v26-postcondition-'));
@@ -87,6 +116,7 @@ for (const mode of ['completed', 'currentChanged', 'missingCheckpoint', 'foreign
       if (mode === 'missingCheckpoint' && checkpoint.checkpoint === 'firstBStartup') continue;
       const value = structuredClone(checkpoint);
       if (mode === 'foreignCheckpoint') value.runNonce = 'f'.repeat(64);
+      if (mode === 'journalChanged' && checkpoint.checkpoint === 'secondBStartup') value.journal.revision += 1;
       await writeFile(workspaceSuccessCheckpointPath(proofRoot, value.checkpoint), JSON.stringify(value));
     }
     let reads = 0;
@@ -100,7 +130,10 @@ for (const mode of ['completed', 'currentChanged', 'missingCheckpoint', 'foreign
       },
     });
     if (mode === 'completed') assert.deepEqual(await verify(), { status: 'completed', resultCode: 'workspaceSemanticProofValidated' });
-    else await assert.rejects(verify, /^Error: profileEvidenceInvalid$/);
-    assert.equal(reads, ['missingCheckpoint', 'foreignCheckpoint', 'missingSessions'].includes(mode) ? 0 : 1);
+    else await assert.rejects(verify, { message: {
+      currentChanged: 'profileCurrentStateChanged', missingSessions: 'sessionProofInvalid',
+      journalChanged: 'profileJournalMismatch',
+    }[mode] ?? 'profileEvidenceInvalid' });
+    assert.equal(reads, ['missingCheckpoint', 'foreignCheckpoint', 'missingSessions', 'journalChanged'].includes(mode) ? 0 : 1);
   });
 }

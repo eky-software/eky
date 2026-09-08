@@ -115,6 +115,32 @@ test('original worker error survives failed semantic cleanup', async () => {
   assert.equal(result.semanticProofResultCode, 'notChecked');
 });
 
+for (const [errorCode, cleanupFails, expectedCode] of [
+  ['sessionProofInvalid', false, 'sessionProofInvalid'],
+  ['profileMigrationMismatch', true, 'profileMigrationMismatch'],
+  ['sourceInstallFailed', false, 'profileEvidenceInvalid'],
+]) {
+  test(`semantic rejection retains only its own closed code through cleanup: ${errorCode}`, async () => {
+    const value = fixture({
+      async verifySemanticPostcondition() { throw new Error(errorCode); },
+      async cleanupExactProducts() {
+        if (cleanupFails) throw new Error('PRIVATE cleanup');
+        return { status: 'completed', resultCode: 'semanticCleanupCompleted' };
+      },
+    });
+    const result = await resolveWorkspaceSuccessTerminalOutcome(value.input);
+    assert.equal(result.status, 'failed');
+    assert.equal(result.errorCode, expectedCode);
+    assert.equal(result.scenarioResultCode, 'workspaceSuccessCompleted');
+    assert.equal(result.semanticProofResultCode, 'workspaceSemanticProofFailed');
+    assert.equal(result.semanticCleanupResultCode, cleanupFails ? 'semanticCleanupFailed' : 'semanticCleanupCompleted');
+    assert.equal(result.postconditionResultCode, 'exactProductsAbsent');
+    assert.equal(result.processTreeAbsent, true);
+    assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: true, terminal: result }), !cleanupFails);
+    assert.doesNotMatch(JSON.stringify(result), /PRIVATE/);
+  });
+}
+
 test('a failed worker cannot authorize cleanup after a rejected caller precondition', async () => {
   const value = fixture({ productPrecondition: target,
     supervisorResult: { ...supervisor, status: 'failed', processResultCode: 'processExitFailed', childExitCode: 1 },

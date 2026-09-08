@@ -61,13 +61,19 @@ export const WORKSPACE_SUCCESS_PROOF_ERRORS = Object.freeze([
   'W6B2_PROOF_UNEXPECTED',
   'W6B2_PROOF_WORKSPACE_STATE_INVALID',
 ]);
+export const WORKSPACE_SUCCESS_POSTCONDITION_ERRORS = Object.freeze([
+  'profileEvidenceInvalid', 'profileRegistryMismatch', 'profileAcceptedBuildMismatch',
+  'profileJournalMismatch', 'profileBusinessContentChanged', 'profileMigrationMismatch',
+  'profileRestartNotIdempotent', 'profileLifecycleInvalid', 'sessionProofInvalid',
+  'profileCurrentStateChanged',
+]);
 export const WORKSPACE_SUCCESS_ERRORS = Object.freeze([
   'requestInvalid', 'unexpectedFailure', 'preconditionFailed', 'artifactInvalid',
   'sourceInstallFailed', 'sourceStateInvalid', 'profilePreparationFailed',
   'sourceHandoffFailed', 'targetInstallFailed', 'targetStateInvalid',
   'targetFirstStartFailed', 'switchToBFailed', 'migrationBFailed',
   'firstStartBFailed', 'restartBFailed', 'switchToAFailed', 'rejectionCFailed',
-  'proofResultInvalid', 'profileResultInvalid', 'profileEvidenceInvalid', 'sessionProofInvalid', 'electronRuntimeUnavailable',
+  'proofResultInvalid', 'profileResultInvalid', ...WORKSPACE_SUCCESS_POSTCONDITION_ERRORS, 'electronRuntimeUnavailable',
   'ownedProcessStartFailed', 'ownedProcessExitInvalid', 'productInspectionFailed',
   'profileResultUnreadable', ...Object.values(WORKSPACE_SUCCESS_PROFILE_ERRORS),
   'proofResultUnreadable', ...WORKSPACE_SUCCESS_PROOF_ERRORS,
