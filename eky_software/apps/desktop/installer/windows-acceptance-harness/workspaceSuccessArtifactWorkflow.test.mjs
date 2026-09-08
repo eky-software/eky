@@ -54,7 +54,7 @@ test('V2.6 runtime checkpoint executes lifecycle, failure and read-only Windows 
 test('producer publishes exactly one immutable pair and consumers use the same artifact ID and descriptor binding', async () => {
   const source = await readFile(WORKFLOW, 'utf8');
   const producer = source.split('  workspace_artifact_producer:')[1].split('  workspace_consumer:')[0];
-  const consumer = source.split('  workspace_consumer:')[1];
+  const consumer = source.split('  workspace_consumer:')[1].split('  workspace_fault_consumer:')[0];
   assert.match(producer, /needs: workspace_artifact_contracts/);
   assert.match(producer, /installer:verify-restore-lock/);
   assert.equal(producer.match(/installer:v2-workspace-artifact:build/g).length, 1);
@@ -75,4 +75,46 @@ test('producer publishes exactly one immutable pair and consumers use the same a
     assert.match(command, /--expected-descriptor-sha256 \$env:EXPECTED_DESCRIPTOR_SHA256/);
     assert.match(command, /--expected-build-revision \$env:EXPECTED_BUILD_REVISION/);
   }
+});
+
+test('V2.7 uses two consumers of the same producer and all five existing fault contracts without rebuilding packages', async () => {
+  const source = await readFile(WORKFLOW, 'utf8');
+  const contracts = source.split('  workspace_artifact_producer:')[0];
+  assert.match(contracts, /installer:test:windows-acceptance-workspace-fault/);
+  const consumer = source.split('  workspace_fault_consumer:')[1];
+  assert.match(consumer, /needs: workspace_artifact_producer/);
+  assert.match(consumer, /repetition: \[1, 2\]/);
+  assert.match(consumer, /fail-fast: false/);
+  assert.match(consumer, /artifact-ids: \$\{\{ needs.workspace_artifact_producer.outputs.artifact_id \}\}/);
+  assert.match(consumer, /always\(\) && steps.download.outcome == 'success'/);
+  assert.doesNotMatch(consumer, /installer:v2-workspace-artifact:build|installer:w6b2|msiexec|upload-artifact|retry|rerun|continue-on-error/);
+  assert.equal(consumer.match(/installer:supervisor:build/g).length, 1);
+  assert.equal(consumer.match(/ e2e:build/g).length, 1);
+  assert.equal(consumer.match(/installer:v2-workspace-artifact:verify/g).length, 2);
+  const commands = consumer.split('\n').filter((line) => line.includes('runWorkspaceFault.mjs'));
+  assert.equal(commands.length, 5);
+  assert.deepEqual(commands.map((command) => command.match(/--fault-scenario (\w+)/)[1]), [
+    'preUpdateRecoveryPointFailure', 'activeWorkspaceFirstStartFailure', 'acceptanceInterruption',
+    'passiveWorkspaceMigrationFailure', 'binaryRollbackFailure',
+  ]);
+  for (const command of commands) {
+    assert.match(command, /pnpm --filter @eky\/desktop exec node installer\/windows-acceptance-harness\/runWorkspaceFault.mjs/);
+    assert.match(command, /--artifact-descriptor \$descriptorPath/);
+    assert.match(command, /--expected-descriptor-sha256 \$env:EXPECTED_DESCRIPTOR_SHA256/);
+    assert.match(command, /--expected-build-revision \$env:EXPECTED_BUILD_REVISION/);
+  }
+  assert.equal(consumer.match(/timeout-minutes: 25/g).length, 5);
+  assert.match(consumer, /timeout-minutes: 140/);
+});
+
+test('V2.7 canonical commands retain the same worker, terminal, session and readonly contracts used by CI', async () => {
+  const desktop = JSON.parse(await readFile(resolve(ROOT, '../../package.json'), 'utf8'));
+  assert.equal(desktop.scripts['installer:v2-workspace-fault'],
+    'pnpm installer:supervisor:build && pnpm e2e:prepare-electron-runtime && pnpm e2e:build && node installer/windows-acceptance-harness/runWorkspaceFault.mjs');
+  assert.equal(desktop.scripts['installer:test:windows-acceptance-workspace-fault'],
+    'pnpm e2e:prepare-electron-runtime && pnpm e2e:build && node --test --test-concurrency=1 ' + [
+      'workspaceFaultContracts', 'workspaceFaultLifecycle', 'workspaceFaultSessionProof', 'workspaceFaultSessionEvidence',
+      'workspaceFaultPostcondition', 'workspaceFaultFailureBoundary', 'runWorkspaceFaultWorker', 'runWorkspaceSuccess',
+      'workspaceSuccessProfileEvidence', 'workspaceSuccessLifecycle', 'workspaceSuccessWindowsRuntime',
+    ].map((name) => `installer/windows-acceptance-harness/${name}.test.mjs`).join(' '));
 });

@@ -2025,6 +2025,34 @@ desktopin typecheck/build läpäisevät. Asennus-/prosessikutsut ovat näissä
 sopimustesteissä injektoituja. Uusi producer sekä molemmat kaikki viisi
 skenaariota ajavat Windows-consumerit ovat vielä avoin hyväksyntäportti.
 
+### V2.7:n CI-kytkentä
+
+Nykyinen workspace-workflow ajaa ennen produceria sekä V2.6:n että V2.7:n
+sopimukset. Sama producer rakentaa yhden source/target-parin. Kahden
+success-consumerin lisäksi kaksi eristettyä fault-consumeria lataa saman
+artifact-ID:n ja tarkistaa descriptorin SHA-256:n sekä todellisen
+checkout-revision ennen ajoa. Workerit tai consumerit eivät rakenna MSI:tä.
+
+Jokainen fault-consumer valmistelee nykyisen supervisorin ja proof-lukijat
+kerran ja ajaa viisi nimettyä skenaariota järjestyksessä, kukin omalla
+synteettisellä profiililla. Ensimmäinen virhe estää myöhemmät skenaariot.
+Artifact tarkistetaan uudelleen myös epäonnistumisen jälkeen. Uusinta ei
+korvaa ensimmäisen yrityksen hyväksyntää. Raakoja profiileja, lokeja tai
+istuntoaineistoa ei julkaista artifacteina.
+
+Yksittäisen skenaarion 720 sekunnin Job-raja ja siihen kuuluva 30 sekunnin
+cleanup-varaus säilyvät. Myös consumer-stepin ulompi 25 minuutin varaus on
+sama kuin success-ajossa. Uuden viisi skenaariota ajavan jobin varaus on
+140 minuuttia: viisi 25 minuutin step-varaa sekä 15 minuuttia valmistelulle
+ja uudelleenvarmennukselle. Tämä on vaiheiden yhteenlaskettu scheduler-raja,
+ei skenaarion aikarajan nosto, uusi watchdog tai hyväksyntätodiste.
+Aiemman success-jobin rajoja ei muuteta. Ulomman rajan katkaisema ajo
+ilman omaa terminal-tulosta pysyy hylättynä.
+
+Artifact-/workflow-sopimukset läpäisevät 56/56. Varsinainen V2.7-hyväksyntä
+odottaa tämän kytkennän puhdasta lähderevisiota, uutta produceria ja
+molempien consumerien viittä onnistunutta terminal-tulosta.
+
 ## Migraatiojärjestys
 
 V2 toteutetaan pieninä, itsenäisesti vihreinä checkpointteina:
@@ -2135,8 +2163,9 @@ V2.6:n tarkistettu vaihekohtainen lähtörevisio on `2f2118e`.
 V2.7:n sopimus-/vaiheketjucheckpoint, hyväksytty muistikanavan käynnistysraja,
 jaetun Windows-adapterin worker-kytkentä, riippumattomat business-/session-
 jälkitarkastukset sekä yhteinen caller-/terminal-composition on toteutettu
-yllä kuvatusti. Erillisen asennussiivouksen packaged-todiste sekä build-once-
-ja kahden consumerin hyväksyntä ovat vielä avoimia.
+yllä kuvatusti. Yhteisen producerin ja kahden fault-consumerin CI-kytkentä
+on toteutettu. Erillisen asennussiivouksen packaged-todiste sekä uuden
+artifactin ja kahden consumerin hyväksyntänäyttö ovat vielä avoimia.
 Vaihe ei ole valmis eikä vanhan harnessin poistamiseen ole vielä vastaavaa
 kokonaisnäyttöä. Migraatiojärjestys, yhden supervisorin omistajuus ja
 hyväksynnän kolme tasoa säilyvät.
