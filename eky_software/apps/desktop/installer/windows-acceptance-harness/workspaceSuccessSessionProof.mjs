@@ -13,7 +13,17 @@ const PHASES = ['sourceHandoff', 'targetFirstStart', 'switchToB', 'verifyBRestar
 export const loadWorkspaceSuccessSessionProtocol = () => import(pathToFileURL(resolve(
   DIRECTORY, '../../e2e-dist/src/main/w6b2PackagedSessionProbe.js')).href);
 
-export function createWorkspaceSuccessSessionProof(protocol, { request = fetch } = {}) {
+export function createWorkspaceSuccessSessionProof(protocol, options) {
+  return createWorkspaceSessionProof(protocol, PHASES, options, true);
+}
+
+export async function createWorkspaceFaultSessionProof(protocol, faultScenario, options) {
+  const { getW6b2PackagedFaultSessionPhases } = await import(pathToFileURL(resolve(
+    DIRECTORY, '../../e2e-dist/src/main/w6b2PackagedProof.js')).href);
+  return createWorkspaceSessionProof(protocol, getW6b2PackagedFaultSessionPhases(faultScenario), options);
+}
+
+function createWorkspaceSessionProof(protocol, phases, { request = fetch } = {}, canSkipMissing = false) {
   const sessions = [];
   const proofs = [];
   let active = false;
@@ -27,7 +37,7 @@ export function createWorkspaceSuccessSessionProof(protocol, { request = fetch }
   }
 
   async function start(phase) {
-    if (active || phase !== PHASES[sessions.length]) invalid();
+    if (active || sessions.length >= phases.length || phase !== phases[sessions.length]) invalid();
     active = true;
     const nonce = randomBytes(32).toString('hex');
     const sockets = new Set();
@@ -81,7 +91,8 @@ export function createWorkspaceSuccessSessionProof(protocol, { request = fetch }
         await Promise.all(tasks);
         await new Promise((done) => server.close(done));
         active = false;
-        if (failed || (count === 0 ? !allowMissing : count !== 1 || !accepted)) invalid();
+        if (failed || (allowMissing && !canSkipMissing) ||
+          (count === 0 ? !allowMissing : count !== 1 || !accepted)) invalid();
       },
     });
   }

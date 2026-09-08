@@ -1,10 +1,10 @@
 import { createDesktopOperationalEvent } from '../observability/createDesktopOperationalEvent.js';
 import type { DesktopOperationalIdentity } from '../observability/desktopOperationalEvent.js';
 import type { DesktopOperationalLogger } from '../observability/desktopOperationalLogger.js';
-import type {
-  W6b2PackagedProofConfiguration,
-  W6b2PackagedProofResult,
-  W6b2PackagedSuccessProofConfiguration,
+import {
+  assertW6b2PackagedFaultSessionProbe,
+  type W6b2PackagedProofConfiguration,
+  type W6b2PackagedProofResult,
 } from './w6b2PackagedProof.js';
 
 interface DesktopStartupEventOptions {
@@ -30,7 +30,7 @@ export async function runPackagedDesktopStartupProof(
     readonly configuration: Readonly<W6b2PackagedProofConfiguration>;
     readonly controllerAvailable: boolean;
     validateSession(
-      configuration: Readonly<W6b2PackagedSuccessProofConfiguration>,
+      configuration: Readonly<W6b2PackagedProofConfiguration>,
     ): Promise<void>;
     runController(): Promise<W6b2PackagedProofResult>;
   },
@@ -43,6 +43,12 @@ export async function runPackagedDesktopStartupProof(
     ) {
       reportDesktopStarted(options);
     }
+  } else if (options.configuration.sessionProbeNonce !== undefined) {
+    assertW6b2PackagedFaultSessionProbe(options.configuration);
+    if (!options.controllerAvailable) {
+      throw new Error('W6B2_PROOF_SESSION_VALIDATION_FAILED');
+    }
+    await options.validateSession(options.configuration);
   }
   return options.runController();
 }

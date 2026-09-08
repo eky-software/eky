@@ -1844,7 +1844,7 @@ Edistymistulosteen virhe ei muuta vaiheketjun tulosta.
 
 Rajattu sopimuskomento on
 `pnpm --filter @eky/desktop installer:test:windows-acceptance-workspace-fault`.
-Sarja läpäisee 52/52. Yhteisen tarkistuksen regressioina V2.6-sarja läpäisee
+Ensimmäisessä vaiheketju-checkpointissa sarja läpäisi 52/52. Yhteisen tarkistuksen regressioina V2.6-sarja läpäisee
 263/263 ja artifact-sarja 54/54; desktopin typecheck/build läpäisevät.
 Komento testaa vaiheketjut injektoiduilla porteilla, ei aja MSI:tä. Siksi sen
 vihreys ei todista tietokantojen säilymistä, oikeaa rollbackia tai
@@ -1859,14 +1859,55 @@ skenaariota. Yhteiset V2.6-portit ajetaan muuttuneiden vastuiden regressioina.
 Ei aikarajamuutosta, tuotantosemantiikan muutosta, versionostoa, pilotia tai
 vanhan W6-harnessin poistoa tässä checkpointissa.
 
-Vanhan runtime-sessionin todellinen HTTP-hylkäys säilyy V2.7:n avoimena
-invarianttina. Nykyinen muistikanava ja `desktop.started`-kytkentä hyväksyvät
-vain V2.6:n format-1-success-proofin; format-2-fault ei saa tätä oikeutta
-implisiittisesti. Mahdollinen muistikanavan käyttö erikseen nimetyissä
-terveissä palautumiskäynnistyksissä tarvitsee rajatun turvallisuuspäätöksen.
-Virheellistä tai recovery-only-käynnistystä ei merkitä yleisellä
-`desktop.started`-onnistumistapahtumalla. Tämän checkpointin toteutus ei
-muuta kyseistä rajaa tai session-koodia.
+### V2.7:n rajattu istuntokanavapäätös
+
+Omistaja hyväksyi nykyisen yksityisen muistikanavan käytön vain seuraavissa
+format-2-proofin terveissä käynnistysvaiheissa. Taulukon järjestys on samalla
+kanavan suljettu vaihejärjestys; sitä ei anneta CLI:stä tai ympäristöstä.
+
+| Skenaario | Muistikanavan sallitut vaiheet |
+| --- | --- |
+| `preUpdateRecoveryPointFailure` | `sourceHandoff` |
+| `activeWorkspaceFirstStartFailure` | `sourceHandoff`, `rollbackFirstStart` |
+| `acceptanceInterruption` | `sourceHandoff`, `targetAcceptanceRestart` |
+| `passiveWorkspaceMigrationFailure` | `sourceHandoff`, `targetFirstStart`, `switchToB`, `passiveWorkspaceRecovery` |
+| `binaryRollbackFailure` | `sourceHandoff` |
+
+Yksi sallittujen vaiheiden määrittely on nykyisessä
+`w6b2PackagedProof.ts`-vastuussa. Paketin yksityinen marker, bootstrap,
+source/target-rooli, exact control keys ja ajokohtainen nonce validoidaan
+ennen kanavan avaamista. Mainin nykyinen käynnistyskytkentä vaatii
+istuntotarkistuksen ennen proof-controlleria. Hylkäys säilyy virheenä eikä
+käynnistä controllerin sivuvaikutuksia. Vanha format-2-kontrolli ilman
+noncea säilyttää nykyisen käyttäytymisensä.
+
+`workspaceSuccessSessionProof.mjs` käyttää yhtä muistikanavan toteutusta
+kahden nimetyn success/fault-factoryn kautta. Salaisuus pysyy mainin ja
+workerin muistissa. Uudelta terveeltä backendiltä vaaditaan nykyiselle
+istunnolle HTTP 200 ja jokaiselle saman ajon aiemmalle istunnolle HTTP 401.
+Puuttuva yhteys ei ole fault-kanavassa ohitettavissa. Kanava omistaa vain
+omat socketit ja HTTP-pyynnöt, ei prosessipuuta tai uutta aikarajaa.
+
+Fault injection-, keskeytys- ja recovery-only-vaiheet eivät saa noncea.
+Myös `targetAcceptanceRecovery` jää ulkopuolelle: sen jälkeinen erillinen
+`targetAcceptanceRestart` todistaa terveen istunnon. `desktop.started`
+pysyy vain aiemmin hyväksytyn V2.6 format-1-success-kytkennän tapahtumana;
+sitä ei yleistetä fault-poluille. Tavallisen sovelluksen istunnonluonti,
+HTTP-valtuutus, lokituspolitiikka ja prosessiomistus eivät muutu.
+
+Rajauksen kohdetestit läpäisevät 26/26 ja fault-sopimuskomento 60/60.
+Kanavan käyttäytymistä testataan oikeilla muistikanava- ja loopback-HTTP-
+yhteyksillä, mutta synteettisellä HTTP-sopimuspäätepisteellä. Tämä ei vielä
+korvaa paketoidun sovelluksen backendin HTTP-hylkäystodistetta. V2.6:n
+263/263, artifact-sarjan 54/54 sekä desktopin typecheck/build säilyvät
+regressioportteina.
+
+Yhden terveen käynnistyksen skenaariot eivät väitä todistavansa vanhan
+istunnon HTTP-hylkäystä olemattomalta toiselta backendiltä. Niiden
+prosessipuun poistuminen, source-/recovery-only-lopputila ja semanttinen
+jälkitarkastus ovat erillisiä paketoidun hyväksynnän vaatimuksia.
+V2.7:n worker-kytkentä, skenaariokohtainen riippumaton jälkitarkastus sekä
+uuden artifactin producer/kaksi consumeria ovat edelleen avoinna.
 
 ## Migraatiojärjestys
 
@@ -1975,8 +2016,8 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 ## Nykyinen päätös
 
 V2.6:n tarkistettu vaihekohtainen lähtörevisio on `2f2118e`.
-V2.7:n ensimmäinen rajattu sopimus-/vaiheketjucheckpoint on toteutettu
-yllä kuvatusti. V2.7:n Windows-worker, riippumaton business-jälkitarkastus
+V2.7:n rajattu sopimus-/vaiheketjucheckpoint ja hyväksytty muistikanavan
+käynnistysraja on toteutettu yllä kuvatusti. V2.7:n Windows-worker, riippumaton business-jälkitarkastus
 sekä build-once- ja kahden consumerin hyväksyntä ovat vielä avoimia.
 Vaihe ei ole valmis eikä vanhan harnessin poistamiseen ole vielä vastaavaa
 kokonaisnäyttöä. Migraatiojärjestys, yhden supervisorin omistajuus ja

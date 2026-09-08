@@ -87,6 +87,56 @@ describe('desktop startup completion wiring', () => {
     expect(fixture.events).toHaveLength(1);
     expect(fixture.options.runController).not.toHaveBeenCalled();
   });
+
+  it('validates an allowed fault session before the controller without emitting a startup event', async () => {
+    const fixture = createFixture();
+    fixture.options.configuration = {
+      ...fixture.configuration, controlFormatVersion: 2,
+      faultScenario: 'acceptanceInterruption', phase: 'targetAcceptanceRestart',
+    };
+    let acceptSession!: () => void;
+    fixture.options.validateSession = async () => {
+      await new Promise<void>((resolve) => { acceptSession = resolve; });
+      fixture.order.push('sessionValidated');
+    };
+    const pending = runPackagedDesktopStartupProof(fixture.options);
+    expect(fixture.options.runController).not.toHaveBeenCalled();
+    expect(fixture.events).toEqual([]);
+    acceptSession();
+    await expect(pending).resolves.toEqual(fixture.result);
+    expect(fixture.order).toEqual(['sessionValidated', 'controllerShutdown']);
+    expect(fixture.events).toEqual([]);
+  });
+
+  it('preserves a fault session rejection without starting the fault controller', async () => {
+    const fixture = createFixture();
+    fixture.options.configuration = {
+      ...fixture.configuration, controlFormatVersion: 2,
+      faultScenario: 'passiveWorkspaceMigrationFailure', phase: 'passiveWorkspaceRecovery',
+    };
+    const failure = new Error('W6B2_PROOF_SESSION_VALIDATION_FAILED');
+    fixture.options.validateSession = async () => { throw failure; };
+    await expect(runPackagedDesktopStartupProof(fixture.options)).rejects.toBe(failure);
+    expect(fixture.options.runController).not.toHaveBeenCalled();
+    expect(fixture.events).toEqual([]);
+  });
+
+  it('rejects a fault-phase nonce or unavailable controller before accessing the session', async () => {
+    const fixture = createFixture();
+    const configuration = {
+      ...fixture.configuration, controlFormatVersion: 2 as const,
+      faultScenario: 'acceptanceInterruption' as const, phase: 'targetAcceptanceRestart' as const,
+    };
+    fixture.options.validateSession = vi.fn(async () => undefined);
+    fixture.options.configuration = { ...configuration, phase: 'targetAcceptanceRecovery' };
+    await expect(runPackagedDesktopStartupProof(fixture.options)).rejects.toThrow('W6B2_PROOF_SESSION_VALIDATION_FAILED');
+    fixture.options.configuration = configuration;
+    fixture.options.controllerAvailable = false;
+    await expect(runPackagedDesktopStartupProof(fixture.options)).rejects.toThrow('W6B2_PROOF_SESSION_VALIDATION_FAILED');
+    expect(fixture.options.validateSession).not.toHaveBeenCalled();
+    expect(fixture.options.runController).not.toHaveBeenCalled();
+    expect(fixture.events).toEqual([]);
+  });
 });
 
 function createFixture() {

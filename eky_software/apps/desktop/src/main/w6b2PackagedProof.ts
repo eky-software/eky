@@ -62,6 +62,40 @@ export const w6b2PackagedFaultPhases = Object.freeze([
 export type W6b2PackagedFaultPhase =
   (typeof w6b2PackagedFaultPhases)[number];
 
+const faultSessionPhases: Readonly<
+  Record<W6b2PackagedFaultScenario, readonly W6b2PackagedFaultPhase[]>
+> = Object.freeze({
+  preUpdateRecoveryPointFailure: Object.freeze(['sourceHandoff'] as const),
+  activeWorkspaceFirstStartFailure: Object.freeze(['sourceHandoff', 'rollbackFirstStart'] as const),
+  acceptanceInterruption: Object.freeze(['sourceHandoff', 'targetAcceptanceRestart'] as const),
+  passiveWorkspaceMigrationFailure: Object.freeze([
+    'sourceHandoff', 'targetFirstStart', 'switchToB', 'passiveWorkspaceRecovery',
+  ] as const),
+  binaryRollbackFailure: Object.freeze(['sourceHandoff'] as const),
+});
+
+export function getW6b2PackagedFaultSessionPhases(
+  scenario: W6b2PackagedFaultScenario,
+): readonly W6b2PackagedFaultPhase[] {
+  return faultSessionPhases[parseFaultScenario(scenario)];
+}
+
+export function assertW6b2PackagedFaultSessionProbe(
+  configuration: Readonly<W6b2PackagedFaultProofConfiguration>,
+): void {
+  if (
+    configuration.controlFormatVersion !== 2 || configuration.enabled !== true ||
+    typeof configuration.sessionProbeNonce !== 'string' ||
+    !proofTokenPattern.test(configuration.sessionProbeNonce) ||
+    !w6b2PackagedFaultScenarios.includes(configuration.faultScenario) ||
+    !getW6b2PackagedFaultSessionPhases(configuration.faultScenario).includes(configuration.phase) ||
+    !(['source', 'target'] as const).includes(configuration.role) ||
+    !roleAllowsFaultPhase(configuration.role, configuration.phase)
+  ) {
+    throw new Error('W6B2_PROOF_SESSION_VALIDATION_FAILED');
+  }
+}
+
 export interface W6b2PackagedProofBootstrapConfiguration {
   readonly enabled: boolean;
   readonly root: string | undefined;
@@ -83,6 +117,7 @@ export interface W6b2PackagedSuccessProofConfiguration {
 
 export interface W6b2PackagedFaultProofConfiguration {
   readonly controlFormatVersion: 2;
+  readonly sessionProbeNonce?: string;
   readonly enabled: true;
   readonly faultScenario: W6b2PackagedFaultScenario;
   readonly phase: W6b2PackagedFaultPhase;
@@ -334,6 +369,7 @@ export async function readW6b2PackagedProofConfiguration(input: {
     controlFormatVersion: 2,
     faultScenario: control.faultScenario,
     phase: control.phase,
+    ...('sessionProbeNonce' in control ? { sessionProbeNonce: control.sessionProbeNonce } : {}),
   });
 }
 
@@ -478,6 +514,7 @@ type W6b2PackagedProofControl = Readonly<
       readonly faultScenario: W6b2PackagedFaultScenario;
       readonly formatVersion: 2;
       readonly phase: W6b2PackagedFaultPhase;
+      readonly sessionProbeNonce?: string;
     }
 >;
 
@@ -495,11 +532,19 @@ function parseControl(value: unknown): W6b2PackagedProofControl {
     typeof value.sessionProbeNonce === 'string' && proofTokenPattern.test(value.sessionProbeNonce)) {
     return Object.freeze({ formatVersion: 1, phase: parsePhase(value.phase), sessionProbeNonce: value.sessionProbeNonce });
   }
-  if (value.formatVersion === 2 && hasExactKeys(value, faultControlKeys)) {
+  if (value.formatVersion === 2 &&
+    (hasExactKeys(value, faultControlKeys) || hasExactKeys(value, [...faultControlKeys, 'sessionProbeNonce']))) {
     const faultScenario = parseFaultScenario(value.faultScenario);
     const phase = parseFaultPhase(value.phase);
     if (!faultScenarioAllowsPhase(faultScenario, phase)) {
       throw new Error('W6B2_PROOF_CONFIGURATION_INVALID');
+    }
+    if (Object.hasOwn(value, 'sessionProbeNonce')) {
+      if (typeof value.sessionProbeNonce !== 'string' || !proofTokenPattern.test(value.sessionProbeNonce) ||
+        !getW6b2PackagedFaultSessionPhases(faultScenario).includes(phase)) {
+        throw new Error('W6B2_PROOF_CONFIGURATION_INVALID');
+      }
+      return Object.freeze({ faultScenario, formatVersion: 2, phase, sessionProbeNonce: value.sessionProbeNonce });
     }
     return Object.freeze({ faultScenario, formatVersion: 2, phase });
   }
