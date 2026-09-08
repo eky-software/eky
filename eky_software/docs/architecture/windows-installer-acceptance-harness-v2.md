@@ -1800,6 +1800,74 @@ Poisto kuuluu myöhempään hallittuun cutoveriin vasta vastaavan käyttäytymis
 ja virhepolkujen todistamisen jälkeen. V2.7:n fault/rollback-skenaarioita ei
 aloiteta tämän checkpointin mukana.
 
+## V2.7: fault/rollback-vaiheketjujen checkpoint
+
+V2.7 jatkuu omassa pinotussa haarassa
+`codex/test-harness-v2-workspace-fault-rollback`. Lähtökohta on V2.6:n
+`2f2118e9a2c5a45cd37d0655e4fa38620a5836b9`, jonka
+[workspace-vaiheajo](https://github.com/eky-software/eky/actions/runs/34233531762)
+läpäisi sopimukset, producerin ja molemmat consumerit ensimmäisellä
+yrityksellä. Tämä korvaa yllä olevan aiemman V2.6-checkpointin avoimen
+final-revision portin, mutta ei siirrä sen artifact-näyttöä V2.7:ään.
+
+Ensimmäinen V2.7-checkpoint omistaa vain versionoidun request/result-rajan
+ja viiden olemassa olevan fault-polun vaiheketjut. Se ei käynnistä uutta
+prosessivalvojaa, rakenna artifactia tai toteuta sovelluksen päivitysmoottoria.
+Request sitoo skenaarion, ajokohtaisen noncen, descriptor-tiivisteen ja
+build-revision. Tulos hyväksyy vain oman skenaarionsa täsmällisen
+vaiheprefixin; tuntematon tila, vieras tulos ja ylimääräiset kentät hylätään.
+
+| Vastuu | Nykyinen omistaja |
+| --- | --- |
+| Viisi sallittua fault-skenaariota, vaiheprefixit ja turvallinen tulos | `workspaceFaultContracts.mjs` |
+| Nykyisten main-owned proof-kutsujen järjestys | `workspaceFaultLifecycle.mjs` |
+| Exact source/target -asennustilan lukuassertio | `workspaceInstalledState.mjs`, siirretty V2.6-ketjusta muuttumattomana molempien käyttöön |
+| Työn rajaus ja prosessipuun cleanup | Nykyinen Job Object -supervisor; V2.7-workerin kytkentä vielä avoin |
+| Riippumaton business-jälkitarkastus ja asennuksen poisto | Nykyiset V2-portit; V2.7:n skenaariokohtainen composition vielä avoin |
+
+### W6B.2B-invarianttien siirtokartta
+
+| Olemassa oleva fault-sopimus | V2.7:n vaiheketjun loppuehto | Packaged-todiste |
+| --- | --- | --- |
+| preUpdate-palautuspiste epäonnistuu ennen handoffia | Ei target-asennusta; source säilyy; `verifyPreUpdateFailure` | Avoin |
+| Aktiivisen A:n first start epäonnistuu | Business rollback ennen source-binaarien palautumisen tarkistusta ja `rollbackFirstStart`-käynnistystä; `verifyActiveRollback` | Avoin |
+| Registry-siirtymän jälkeinen hyväksyntä katkeaa | Täsmällinen `interrupted`-todiste, recovery ja erillinen restart; `verifyAcceptanceRecovery` | Avoin |
+| Passiivisen B:n migraatio epäonnistuu | Paluu A:han ilman binary rollbackia; target säilyy; `verifyPassiveRecovery` | Avoin |
+| Binary rollback epäonnistuu | Ei uutta yritystä tai source-käynnistystä; target jää recovery-only-tilaan; `verifyBinaryFailedSafe` | Avoin |
+
+Vaiheketju kutsuu vain nykyisen sovelluksen yksityisiä fault-kytkentöjä.
+Worker saa asentaa sourcen kerran. Päivityksen ja binary rollbackin
+MSI-käynnistykset kuuluvat edelleen Electron mainin omistamalle handoffille;
+worker odottaa havaittua asennustilaa, ei käynnistä samaa MSI:tä uudelleen.
+Odottamaton prosessivirhe ei korvaa odotetun keskeytyksen proof-tulosta.
+Edistymistulosteen virhe ei muuta vaiheketjun tulosta.
+
+Rajattu sopimuskomento on
+`pnpm --filter @eky/desktop installer:test:windows-acceptance-workspace-fault`.
+Sarja läpäisee 52/52. Yhteisen tarkistuksen regressioina V2.6-sarja läpäisee
+263/263 ja artifact-sarja 54/54; desktopin typecheck/build läpäisevät.
+Komento testaa vaiheketjut injektoiduilla porteilla, ei aja MSI:tä. Siksi sen
+vihreys ei todista tietokantojen säilymistä, oikeaa rollbackia tai
+prosessi-/semantic-cleanupin onnistumista. Nämä jäävät erillisiksi
+paketoidun hyväksynnän jälkiehdoiksi.
+
+Seuraava checkpoint kytkee ketjut nykyiseen Windows-adapteriin ja yhden
+supervisorin workeriin sekä riippumattomaan, vain lukevaan jälkitarkastukseen.
+Hyväksyntä käyttää yhtä puhtaasta revisiosta rakennettua source/target-paria
+ja kahta ensimmäisen yrityksen Windows-consumeria, kumpikin kaikki viisi
+skenaariota. Yhteiset V2.6-portit ajetaan muuttuneiden vastuiden regressioina.
+Ei aikarajamuutosta, tuotantosemantiikan muutosta, versionostoa, pilotia tai
+vanhan W6-harnessin poistoa tässä checkpointissa.
+
+Vanhan runtime-sessionin todellinen HTTP-hylkäys säilyy V2.7:n avoimena
+invarianttina. Nykyinen muistikanava ja `desktop.started`-kytkentä hyväksyvät
+vain V2.6:n format-1-success-proofin; format-2-fault ei saa tätä oikeutta
+implisiittisesti. Mahdollinen muistikanavan käyttö erikseen nimetyissä
+terveissä palautumiskäynnistyksissä tarvitsee rajatun turvallisuuspäätöksen.
+Virheellistä tai recovery-only-käynnistystä ei merkitä yleisellä
+`desktop.started`-onnistumistapahtumalla. Tämän checkpointin toteutus ei
+muuta kyseistä rajaa tai session-koodia.
+
 ## Migraatiojärjestys
 
 V2 toteutetaan pieninä, itsenäisesti vihreinä checkpointteina:
@@ -1905,6 +1973,16 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 - dependency- ja lockfile-muutoksia ei ole ilman erillistä hyväksyntää
 
 ## Nykyinen päätös
+
+V2.6:n tarkistettu vaihekohtainen lähtörevisio on `2f2118e`.
+V2.7:n ensimmäinen rajattu sopimus-/vaiheketjucheckpoint on toteutettu
+yllä kuvatusti. V2.7:n Windows-worker, riippumaton business-jälkitarkastus
+sekä build-once- ja kahden consumerin hyväksyntä ovat vielä avoimia.
+Vaihe ei ole valmis eikä vanhan harnessin poistamiseen ole vielä vastaavaa
+kokonaisnäyttöä. Migraatiojärjestys, yhden supervisorin omistajuus ja
+hyväksynnän kolme tasoa säilyvät.
+
+### V2.5:n hyväksytty historiallinen päätös
 
 V2.5:n vaihekohtainen loppukatselmus on hyväksytty. Testattu harness- ja
 artifact-revisio on `47847f9dcac5eb296ee93deac65b2440f80614cd` yllä olevan
