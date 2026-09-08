@@ -12,7 +12,7 @@ import { validateInstallerProductStateResult } from './cleanInstallUninstallWind
 import { inspectLegacyInstallerFootprint } from './legacyUpgradeWindowsRuntime.mjs';
 import { verifyWorkspaceSuccessArtifact } from './workspaceSuccessArtifact.mjs';
 import {
-  WORKSPACE_SUCCESS_PROFILE_ERRORS, hasWorkspaceSuccessExactKeys,
+  WORKSPACE_SUCCESS_PROFILE_ERRORS, WORKSPACE_SUCCESS_PROOF_ERRORS, hasWorkspaceSuccessExactKeys,
   readWorkspaceSuccessObject, writeJsonAtomicExclusive,
 } from './workspaceSuccessContracts.mjs';
 
@@ -183,8 +183,15 @@ export async function createWorkspaceSuccessWindowsRuntime({
         const code = await runCommand(executablePath, [
           `--${proofProtocol.W6B2_PACKAGED_PROOF_SWITCH}`, `--user-data-dir=${bootstrap.userDataPath}`,
         ], { cwd: scenarioRoot, env: applicationEnvironment });
-        result = proofProtocol.parseW6b2PackagedProofResult(await readObject(resultPath, 'proofResultInvalid'));
-        if (code !== 0 || result.phase !== phase || result.status === 'failed') throw new Error('proofResultInvalid');
+        const value = await readObject(resultPath, 'proofResultUnreadable');
+        try { result = proofProtocol.parseW6b2PackagedProofResult(value); }
+        catch { throw new Error('proofResultInvalid'); }
+        if (result.formatVersion !== 1 || result.phase !== phase) throw new Error('proofResultInvalid');
+        if (result.status === 'failed') {
+          throw new Error(WORKSPACE_SUCCESS_PROOF_ERRORS.includes(result.errorCode)
+            ? result.errorCode : 'proofResultInvalid');
+        }
+        if (code !== 0) throw new Error('proofResultInvalid');
       } catch (error) { originalError = error; }
       try { await probe.finish({ allowMissing: phase === 'verifyBRestart' && result?.status === 'relaunching' }); }
       catch (error) { originalError ??= error; }

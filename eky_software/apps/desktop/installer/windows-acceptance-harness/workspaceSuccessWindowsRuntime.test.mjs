@@ -5,10 +5,11 @@ import { tmpdir } from 'node:os';
 import { basename, resolve } from 'node:path';
 import test from 'node:test';
 
-import { WORKSPACE_SUCCESS_PROFILE_ERRORS, workspaceSuccessErrorCode } from './workspaceSuccessContracts.mjs';
+import { WORKSPACE_SUCCESS_PROFILE_ERRORS, WORKSPACE_SUCCESS_PROOF_ERRORS, workspaceSuccessErrorCode } from './workspaceSuccessContracts.mjs';
 import { WORKSPACE_SUCCESS_RUN_ROOT_PREFIX, workspaceSuccessRunContext } from './workspaceSuccessRunFixture.mjs';
 
 const profileProtocol = await import(new URL('../../e2e-dist/e2e/w6b2PackagedWorkspaceProfileCommand.js', import.meta.url));
+const proofProtocol = await import(new URL('../../e2e-dist/src/main/w6b2PackagedProof.js', import.meta.url));
 const { createDesktopProfilePaths } = await import(new URL('../../e2e-dist/src/runtime/desktopProfilePaths.js', import.meta.url));
 const { deriveWorkspaceRoot } = await import(new URL('../../e2e-dist/src/workspaces/registry/deriveWorkspaceRoot.js', import.meta.url));
 const { createProfileSnapshotRuntimePaths } = await import(new URL('../../e2e-dist/src/profileBackup/profileSnapshotRuntimePaths.js', import.meta.url));
@@ -61,7 +62,7 @@ async function fixture(context, changes = {}) {
   proofProtocol: {
     W6B2_PACKAGED_PROOF_SWITCH: 'w6b2-packaged-proof',
     createW6b2PackagedProofBootstrapConfiguration: () => ({ root, userDataPath: resolve(root, 'user-data') }),
-    parseW6b2PackagedProofResult: (value) => value,
+    parseW6b2PackagedProofResult: proofProtocol.parseW6b2PackagedProofResult,
   },
   profileProtocol,
   captureCheckpoint: async (checkpoint) => { calls.push({ checkpoint }); } };
@@ -79,7 +80,10 @@ async function fixture(context, changes = {}) {
       return changes.exitCode ?? 0;
     },
     async readObject(path, errorCode) {
-      if (path.endsWith('w6b2-proof-result.json')) return changes.proofResult ?? { formatVersion: 1, phase, status: 'completed' };
+      if (path.endsWith('w6b2-proof-result.json')) {
+        if (changes.proofUnreadable) throw new Error(errorCode);
+        return changes.proofResult ?? { formatVersion: 1, phase, status: 'completed' };
+      }
       if (path.endsWith(profileProtocol.W6B2_PACKAGED_PROFILE_RESULT_FILE)) {
         if (changes.profileUnreadable) throw new Error(errorCode);
         return changes.profileResult ?? { formatVersion: 1, operation, status: 'completed' };
@@ -169,6 +173,58 @@ for (const changes of [
     await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: 'proofResultInvalid' });
   });
 }
+
+for (const errorCode of WORKSPACE_SUCCESS_PROOF_ERRORS) {
+  test(`proof failure retains the strict protocol code ${errorCode}`, async (context) => {
+    const value = await fixture(context, { proofResult: {
+      formatVersion: 1, phase: 'sourceHandoff', status: 'failed', errorCode,
+    }, sessionFailure: true });
+    await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), (error) => {
+      assert.equal(error.message, errorCode);
+      assert.equal(workspaceSuccessErrorCode(error), errorCode);
+      return true;
+    });
+    assert.equal(value.calls.filter((call) => call.command).length, 1);
+    assert.deepEqual(value.calls.at(-1), { sessionFinished: { allowMissing: false } });
+  });
+}
+
+for (const [name, change] of [
+  ['unknown code', { errorCode: 'PRIVATE_PATH_OR_SECRET' }],
+  ['unknown key', { session: 'PRIVATE_PATH_OR_SECRET' }],
+  ['wrong phase', { phase: 'rejectC' }],
+  ['wrong version', { formatVersion: 2 }],
+  ['contradictory completed result', { status: 'completed' }],
+]) {
+  test(`proof reader rejects ${name} without exposing untrusted fields`, async (context) => {
+    const value = await fixture(context, { proofResult: {
+      formatVersion: 1, phase: 'sourceHandoff', status: 'failed',
+      errorCode: 'W6B2_PROOF_UNEXPECTED', ...change,
+    } });
+    await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: 'proofResultInvalid' });
+  });
+}
+
+test('a valid fault protocol result cannot be used for the success matrix', async (context) => {
+  const value = await fixture(context, { proofResult: {
+    formatVersion: 2, faultScenario: 'preUpdateRecoveryPointFailure',
+    phase: 'sourceHandoff', status: 'completed',
+  } });
+  await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: 'proofResultInvalid' });
+});
+
+test('unreadable proof result remains distinct while the session channel closes', async (context) => {
+  const value = await fixture(context, { proofUnreadable: true, sessionFailure: true });
+  await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: 'proofResultUnreadable' });
+  assert.deepEqual(value.calls.at(-1), { sessionFinished: { allowMissing: false } });
+});
+
+test('a failed application exit preserves its valid failed proof result', async (context) => {
+  const value = await fixture(context, { exitCode: 1, proofResult: {
+    formatVersion: 1, phase: 'sourceHandoff', status: 'failed', errorCode: 'W6B2_PROOF_UNEXPECTED',
+  } });
+  await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: 'W6B2_PROOF_UNEXPECTED' });
+});
 
 test('profile preparation uses the existing named profile entrypoint and environment', async (context) => {
   const value = await fixture(context);

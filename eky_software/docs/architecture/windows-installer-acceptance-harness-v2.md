@@ -1639,6 +1639,25 @@ Korjauksen kohdesarja läpäisee 220/220, artifact-sarja 54/54 ja profiilin
 kohdetestit 12/12; desktopin typecheck ja build läpäisevät. Kahden eristetyn
 packaged-consumerin on vielä vahvistettava korjaus.
 
+Revision `aed9b7c` [packaged-kierroksessa](https://github.com/eky-software/eky/actions/runs/34215418660)
+molemmat consumerit läpäisivät profiilin valmistelun. Seuraava vaihe,
+`sourceHandoff`, päättyi `proofResultInvalid`-virheeseen. Molempien
+terminal-tulos varmisti prosessipuun poissaolon, semanttisen siivouksen,
+normaalin profiilin muuttumattomuuden ja fixture-poiston. Tämä vahvistaa
+profiilivalmistelun polkukorjauksen, ei vielä koko matriisin hyväksyntää.
+
+Myös sovelluksen proof-tuloksen lukija säilyttää nyt nykyisen strictin
+success-protokollan suljetut virhekoodit. Puuttuva tai lukukelvoton tulos
+erottuu virheellisestä DTO:sta. Fault-protokollaa, väärää vaihetta tai
+lisäkenttiä ei hyväksytä success-tulokseksi. Kelvollinen alkuperäinen
+virhekoodi säilyy myös session-kanavan sulkemisen epäonnistuessa;
+onnistuminen vaatii edelleen onnistuneen prosessin, oikean proof-tuloksen
+ja session-todisteen. Prosessi-, deadline- ja cleanup-vastuut eivät muutu.
+Regressiot käyttävät oikeaa nykyistä proof-parseria: kohdesarja läpäisee
+257/257 ja artifact-sarja 54/54; desktopin typecheck ja build läpäisevät.
+Päivityksen luovutuksen täsmällinen epäonnistuminen ja koko
+packaged-hyväksyntä ovat vielä avoinna.
+
 ### W6B.2A-invarianttien siirtokartta
 
 | Vanhan portin invariantti | V2.6-vastine / rajattu jatkotyö | Tila tässä checkpointissa |
