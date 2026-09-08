@@ -24,8 +24,9 @@ async function fixture(context) {
         cwd: root, timeoutMilliseconds: 30_000, terminationTimeoutMilliseconds: 5_000,
       });
       removable = result.directProcessAbsent === true;
-      assert.equal(removable, true, 'read-only query process must exit before removing its fixture');
-      assert.equal(result.status, 'completed');
+      assert.deepEqual({ status: result.status, resultCode: result.resultCode, directProcessAbsent: result.directProcessAbsent },
+        { status: 'completed', resultCode: 'processCompleted', directProcessAbsent: true },
+        'read-only query must complete and exit before removing its fixture');
       return result.exitCode;
     } };
 }

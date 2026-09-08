@@ -1713,6 +1713,15 @@ hylkäyksenä. Nykyiset negatiiviset käyttäytymistestit vaativat täsmällisen
 syyn; alkuperäinen virhe säilyy myös siivouksen epäonnistuessa. Vertailuja,
 hyväksymisehtoja tai prosessi- ja siivousvastuita ei muuteta.
 
+Revision `a34d616` [sopimusportti](https://github.com/eky-software/eky/actions/runs/34228423878)
+keskeytti packaged-vaiheen ennen produceria: MSI-aktiivisuuden read-only
+kysely ei valmistunut rajassaan (261/262). Prosessin poistuminen varmistui.
+Kyselytesti vaatii nyt samassa assertiossa myös nykyisen adapterin tarkan
+`resultCode`-arvon; alkuperäinen timeout- tai käynnistysvirhe ei saa peittyä
+yleisen `status`-vertailun alle. Kysely, aikarajat ja siivous eivät muutu.
+Tämä on raportointikorjaus, ei osoitus ajoitusvirheen juurisyystä tai sen
+ratkeamisesta. V2.6:n packaged-hyväksyntä säilyy avoimena.
+
 ### W6B.2A-invarianttien siirtokartta
 
 | Vanhan portin invariantti | V2.6-vastine / rajattu jatkotyö | Tila tässä checkpointissa |
