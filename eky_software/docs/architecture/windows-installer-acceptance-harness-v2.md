@@ -1722,6 +1722,17 @@ yleisen `status`-vertailun alle. Kysely, aikarajat ja siivous eivät muutu.
 Tämä on raportointikorjaus, ei osoitus ajoitusvirheen juurisyystä tai sen
 ratkeamisesta. V2.6:n packaged-hyväksyntä säilyy avoimena.
 
+Tuottajan ja oikean tiedostologgerin yhdistävä regressio paljasti erillisen
+lukupolkuvirheen: lifecycle-lukija odottaa `runtime/logs/desktop`-kansiota,
+mutta V2.6:n profile-evidence antoi sille `runtime/logs`-juuren. Lukija ei
+siis nähnyt mainin kirjoittamia tapahtumia. Korjaus kohdistaa nykyisen
+lukijan oikeaan streamiin, kuten legacy-adapteri jo tekee. Se ei laajenna
+hakua, kirjoita tapahtumia verifierissä tai löysennä puuttuvan tapahtuman
+hylkäystä. Regressio käyttää mainin nykyistä tuottajaa, oikeaa loggeria ja
+muuttamatonta lukijaa; se varmistaa myös read-only-inventaarion säilymisen.
+Ennen korjausta kohde epäonnistuu, korjattuna tapahtuma-, jälkiehto- ja
+session-kohdesarja läpäisee 71/71. Packaged-todennus vaaditaan edelleen.
+
 ### W6B.2A-invarianttien siirtokartta
 
 | Vanhan portin invariantti | V2.6-vastine / rajattu jatkotyö | Tila tässä checkpointissa |

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { link, lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
@@ -56,6 +57,33 @@ test('capture uses existing read-only adapters and leaves profile bytes unchange
   assert.equal(result.checkpoint, 'sourceBaseline');
   assert.equal(result.profileState.fixtures.length, 3);
   assert.equal(f.sqlReads(), 3);
+  assert.deepEqual(await createClosedDirectoryInventory(f.root), before);
+});
+
+test('capture reads main startup and shutdown events from the real logger stream without mutation', async (t) => {
+  const f = await createProfile(t);
+  const { JsonLineDesktopOperationalLogger } = await import(new URL(
+    '../../e2e-dist/src/observability/infrastructure/jsonLineDesktopOperationalLogger.js', import.meta.url));
+  const { createDesktopOperationalEvent } = await import(new URL(
+    '../../e2e-dist/src/observability/createDesktopOperationalEvent.js', import.meta.url));
+  const { reportDesktopStarted } = await import(new URL(
+    '../../e2e-dist/src/main/desktopStartupCompletion.js', import.meta.url));
+  const profile = f.support.createDesktopProfilePaths(resolve(f.root, 'user-data'));
+  let writeFailures = 0;
+  const logger = new JsonLineDesktopOperationalLogger({ logsRoot: resolve(profile.runtimeRoot, 'logs'),
+    failureSink: { recordFailure() { writeFailures += 1; } } });
+  const identity = { appVersion: f.state.targetVersion, buildRevision: f.state.buildRevision, runtimeInstanceId: randomUUID() };
+  reportDesktopStarted({ identity, logger, startedAt: Date.now() });
+  const shutdown = createDesktopOperationalEvent({ eventName: 'desktop.shutdownCompleted' }, identity);
+  logger.write(shutdown);
+  assert.equal(writeFailures, 0);
+  const before = await createClosedDirectoryInventory(f.root);
+  const result = await captureWorkspaceSuccessProfileEvidence({ ...f.input, checkpoint: 'targetFirstStart' });
+  assert.deepEqual(result.events.map(({ eventId, ...event }) => event), [
+    { ...identity, eventName: 'desktop.started' }, { ...identity, eventName: 'desktop.shutdownCompleted' },
+  ]);
+  assert.equal(result.events[1].eventId, shutdown.eventId);
+  assert.notEqual(result.events[0].eventId, shutdown.eventId);
   assert.deepEqual(await createClosedDirectoryInventory(f.root), before);
 });
 

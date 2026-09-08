@@ -118,7 +118,7 @@ export async function captureWorkspaceSuccessProfileEvidence({
       fixtures.push({ ...persisted, baseline: evidence });
     }
     const events = checkpoint === 'sourceBaseline' ? []
-      : await readLifecycleEvents(resolve(profile.runtimeRoot, 'logs'));
+      : await readLifecycleEvents(resolve(profile.runtimeRoot, 'logs', 'desktop'));
     return {
       schemaVersion: 1, checkpoint, runNonce: request.runNonce,
       artifactDescriptorSha256: request.artifactDescriptorSha256,
