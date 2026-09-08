@@ -14,6 +14,8 @@ import {
   W6B2_PACKAGED_PROOF_DIRECTORY_NAME,
   W6B2_PACKAGED_PROOF_PATH_TOKEN_LENGTH,
   writeW6b2PackagedProofResult,
+  type W6b2PackagedFaultScenario,
+  type W6b2PackagedFaultPhase,
 } from './w6b2PackagedProof.js';
 
 const temporaryRoots: string[] = [];
@@ -28,6 +30,70 @@ afterEach(async () => {
 });
 
 describe('W6B.2 packaged proof configuration', () => {
+  it('allows fault session probes only for the closed healthy-startup scenario and package pairs', async () => {
+    const cases: readonly [W6b2PackagedFaultScenario, readonly W6b2PackagedFaultPhase[]][] = [
+      ['preUpdateRecoveryPointFailure', ['sourceHandoff']],
+      ['activeWorkspaceFirstStartFailure', ['sourceHandoff', 'rollbackFirstStart']],
+      ['acceptanceInterruption', ['sourceHandoff', 'targetAcceptanceRestart']],
+      ['passiveWorkspaceMigrationFailure', ['sourceHandoff', 'targetFirstStart', 'switchToB', 'passiveWorkspaceRecovery']],
+      ['binaryRollbackFailure', ['sourceHandoff']],
+    ];
+    for (const [faultScenario, phases] of cases) for (const phase of phases) {
+      const role = phase === 'sourceHandoff' || phase === 'rollbackFirstStart' ? 'source' : 'target';
+      const proof = await createFaultProofFiles({ faultScenario, phase, role });
+      await writeFile(join(proof.root, 'control', 'phase.json'), JSON.stringify({
+        formatVersion: 2, faultScenario, phase, sessionProbeNonce: token,
+      }));
+      await expect(readW6b2PackagedProofConfiguration({ bootstrap: proof.bootstrap,
+        resourcesPath: proof.resourcesPath, appVersion: role === 'source' ? '0.2.7' : '0.2.8',
+      })).resolves.toMatchObject({ controlFormatVersion: 2, faultScenario, phase, role, sessionProbeNonce: token });
+    }
+  });
+
+  it('rejects session probes in fault injection and recovery-only phases', async () => {
+    const cases: readonly [W6b2PackagedFaultScenario, W6b2PackagedFaultPhase][] = [
+      ['activeWorkspaceFirstStartFailure', 'targetFirstStartFailure'],
+      ['activeWorkspaceFirstStartFailure', 'businessRollback'],
+      ['acceptanceInterruption', 'targetAcceptanceInterruption'],
+      ['acceptanceInterruption', 'targetAcceptanceRecovery'],
+      ['passiveWorkspaceMigrationFailure', 'passiveWorkspaceMigrationFailure'],
+      ['binaryRollbackFailure', 'targetFirstStartFailure'],
+      ['binaryRollbackFailure', 'businessRollback'],
+      ['binaryRollbackFailure', 'binaryRollbackFailure'],
+      ['binaryRollbackFailure', 'failedSafeVerification'],
+    ];
+    for (const [faultScenario, phase] of cases) {
+      const proof = await createFaultProofFiles({ faultScenario, phase, role: 'target' });
+      const input = { bootstrap: proof.bootstrap, resourcesPath: proof.resourcesPath, appVersion: '0.2.8' };
+      await expect(readW6b2PackagedProofConfiguration(input)).resolves.toMatchObject({ phase });
+      await writeFile(join(proof.root, 'control', 'phase.json'), JSON.stringify({
+        formatVersion: 2, faultScenario, phase, sessionProbeNonce: token,
+      }));
+      await expect(readW6b2PackagedProofConfiguration(input)).rejects.toThrow('W6B2_PROOF_CONFIGURATION_INVALID');
+    }
+  });
+
+  it('rejects malformed fault nonce controls, foreign package roles and a missing private marker', async () => {
+    const faultScenario = 'acceptanceInterruption';
+    const phase = 'targetAcceptanceRestart';
+    const proof = await createFaultProofFiles({ faultScenario, phase, role: 'target' });
+    const input = { bootstrap: proof.bootstrap, resourcesPath: proof.resourcesPath, appVersion: '0.2.8' };
+    const control = { formatVersion: 2, faultScenario, phase, sessionProbeNonce: token };
+    const phasePath = join(proof.root, 'control', 'phase.json');
+    for (const invalid of [
+      { ...control, sessionProbeNonce: '' }, { ...control, sessionProbeNonce: token.toUpperCase() },
+      { ...control, sessionProbeNonce: 1 }, { ...control, sessionProbeNonce: null },
+      { ...control, port: 3000 }, { ...control, session: 'forbidden' },
+      { ...control, phase: 'sourceHandoff' }, { ...control, faultScenario: 'binaryRollbackFailure' },
+    ]) {
+      await writeFile(phasePath, JSON.stringify(invalid));
+      await expect(readW6b2PackagedProofConfiguration(input)).rejects.toThrow('W6B2_PROOF_CONFIGURATION_INVALID');
+    }
+    await writeFile(phasePath, JSON.stringify(control));
+    await rm(join(proof.resourcesPath, 'backend', 'w6b2-private-proof-v1.json'));
+    await expect(readW6b2PackagedProofConfiguration(input)).rejects.toThrow('W6B2_PROOF_CONFIGURATION_INVALID');
+  });
+
   it('allows a session probe nonce only inside the marker-validated success control', async () => {
     const proof = await createProofFiles({ phase: 'sourceHandoff', role: 'source' });
     const phasePath = join(proof.root, 'control', 'phase.json');

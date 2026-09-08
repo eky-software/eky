@@ -11,6 +11,7 @@ class FakeChild extends EventEmitter {
     super();
     this.closeOnKill = closeOnKill;
     this.killCount = 0;
+    this.pid = 1234;
   }
 
   kill() {
@@ -94,4 +95,119 @@ test('bounded adapter rejects malformed requests before spawn', async () => {
       }),
     /WINDOWS_ACCEPTANCE_ADAPTER_REQUEST_INVALID/,
   );
+});
+
+test('a kill error cannot claim that the started process is absent', async () => {
+  const child = new FakeChild({ closeOnKill: false });
+  child.kill = () => {
+    child.killCount += 1;
+    child.emit('error', new Error('synthetic signal failure'));
+    return false;
+  };
+  const result = await runWithChild(child, { timeoutMilliseconds: 5 });
+  assert.deepEqual(result, {
+    status: 'failed', resultCode: 'terminationFailed', exitCode: null, directProcessAbsent: false,
+  });
+  assert.equal(child.killCount, 1);
+  child.emit('close', 0, null);
+  assert.equal(result.directProcessAbsent, false);
+});
+
+test('a started process error keeps failure even after exact termination succeeds', async () => {
+  const child = new FakeChild();
+  const completion = runWithChild(child);
+  child.emit('spawn');
+  child.emit('error', new Error('synthetic process failure'));
+  const result = await completion;
+  assert.deepEqual(result, {
+    status: 'failed', resultCode: 'processError', exitCode: null, directProcessAbsent: true,
+  });
+  assert.equal(child.killCount, 1);
+});
+
+test('repeated errors during unsuccessful termination retain unverified cleanup', async () => {
+  const child = new FakeChild({ closeOnKill: false });
+  child.kill = () => {
+    child.killCount += 1;
+    child.emit('error', new Error('synthetic kill failure'));
+    return true;
+  };
+  const completion = runWithChild(child, { terminationTimeoutMilliseconds: 5 });
+  child.emit('spawn');
+  child.emit('error', new Error('synthetic process failure'));
+  const result = await completion;
+  assert.equal(result.status, 'failed');
+  assert.equal(result.resultCode, 'terminationUnconfirmed');
+  assert.equal(result.directProcessAbsent, false);
+  assert.equal(child.killCount, 1);
+});
+
+test('an actual spawn rejection proves no direct process was created', async () => {
+  const child = new FakeChild();
+  child.pid = undefined;
+  const completion = runWithChild(child);
+  child.emit('error', new Error('synthetic spawn failure'));
+  assert.deepEqual(await completion, {
+    status: 'failed', resultCode: 'startFailed', exitCode: null, directProcessAbsent: true,
+  });
+  assert.equal(child.killCount, 0);
+});
+
+test('time spent in process creation is charged before the wait begins', async () => {
+  const child = new FakeChild();
+  let clock = 0;
+  const completion = runWithChild(child, {
+    now: () => clock,
+    timeoutMilliseconds: 100,
+    spawnProcess() { clock = 101; return child; },
+  });
+  assert.equal(child.killCount, 1);
+  assert.equal((await completion).resultCode, 'timedOut');
+});
+
+test('cancellation before start creates no process', async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const result = await runWithChild(null, {
+    signal: controller.signal,
+    spawnProcess() { assert.fail('No process may be created'); },
+  });
+  assert.equal(result.resultCode, 'cancelled');
+  assert.equal(result.directProcessAbsent, true);
+});
+
+test('cancellation uses the existing exact child termination once', async () => {
+  const controller = new AbortController();
+  const child = new FakeChild();
+  const completion = runWithChild(child, { signal: controller.signal });
+  controller.abort();
+  controller.abort();
+  const result = await completion;
+  assert.equal(result.resultCode, 'cancelled');
+  assert.equal(result.directProcessAbsent, true);
+  assert.equal(child.killCount, 1);
+});
+
+test('cancellation does not turn unconfirmed cleanup into success', async () => {
+  const controller = new AbortController();
+  const child = new FakeChild({ closeOnKill: false });
+  const completion = runWithChild(child, { signal: controller.signal, terminationTimeoutMilliseconds: 5 });
+  controller.abort();
+  const result = await completion;
+  assert.equal(result.resultCode, 'terminationUnconfirmed');
+  assert.equal(result.directProcessAbsent, false);
+  child.emit('close', 0, null);
+  assert.equal(result.directProcessAbsent, false);
+  assert.equal(child.killCount, 1);
+});
+
+test('cancellation during creation is handled before waiting', async () => {
+  const controller = new AbortController();
+  const child = new FakeChild();
+  const completion = runWithChild(child, {
+    signal: controller.signal,
+    spawnProcess() { controller.abort(); return child; },
+  });
+  assert.equal((await completion).resultCode, 'cancelled');
+  assert.equal(child.killCount, 1);
 });

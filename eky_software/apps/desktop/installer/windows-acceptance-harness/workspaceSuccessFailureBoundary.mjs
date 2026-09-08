@@ -2,6 +2,9 @@ import {
   WORKSPACE_SUCCESS_POSTCONDITION_ERRORS, hasWorkspaceSuccessExactKeys,
   validateWorkspaceSuccessResult, workspaceSuccessErrorCode,
 } from './workspaceSuccessContracts.mjs';
+import { validateWorkspaceFaultRequest, validateWorkspaceFaultResult,
+  workspaceFaultErrorCode, workspaceFaultPlan } from './workspaceFaultContracts.mjs';
+import { WORKSPACE_FAULT_POSTCONDITION_ERRORS } from './workspaceFaultPostcondition.mjs';
 
 const PRODUCT_FAILURES = Object.freeze([
   'productStateVerificationFailed', 'productStateVerificationTimedOut', 'productStateVerificationProcessRemains',
@@ -46,12 +49,25 @@ async function cleanup(remove) {
   return { status: 'failed', errorCode: 'semanticCleanupFailed' };
 }
 
-export async function resolveWorkspaceSuccessTerminalOutcome({
+export function resolveWorkspaceSuccessTerminalOutcome(input) {
+  return resolveWorkspaceTerminalOutcome(input);
+}
+
+export function resolveWorkspaceFaultTerminalOutcome(input) {
+  const request = validateWorkspaceFaultRequest(input.request);
+  return resolveWorkspaceTerminalOutcome({ ...input, request }, request.faultScenario);
+}
+
+async function resolveWorkspaceTerminalOutcome({
   request, supervisorResult, productPrecondition, readScenarioResult,
-  verifyExactProductStates, verifySemanticPostcondition, cleanupExactProducts, verifyRemovalPostcondition,
-}) {
+  verifyExactProductStates, verifySemanticPostcondition, verifySessionPostcondition,
+  cleanupExactProducts, verifyRemovalPostcondition,
+}, faultScenario) {
+  const fault = faultScenario !== undefined;
+  const installedRole = fault ? workspaceFaultPlan(faultScenario).installedRole : 'target';
   const result = {
-    schemaVersion: 1, scenario: 'packagedWorkspaceSuccess', status: 'failed',
+    schemaVersion: 1, scenario: fault ? request.scenario : 'packagedWorkspaceSuccess', status: 'failed',
+    ...(fault ? { faultScenario, sessionProofResultCode: 'notChecked' } : {}),
     errorCode: 'supervisorResultUnavailable', processTreeAbsent: supervisorResult?.processTreeAbsent === true,
     supervisorProcessResultCode: supervisorResult?.processResultCode ?? 'notAvailable',
     supervisorWorkerResultCode: supervisorResult?.workerResultCode ?? 'notAvailable',
@@ -79,10 +95,10 @@ export async function resolveWorkspaceSuccessTerminalOutcome({
     (supervisorResult.processResultCode === 'processCompleted' && supervisorResult.workerResultCode === 'workerReportedFailure') ||
     (supervisorResult.processResultCode === 'processExitFailed' && supervisorResult.childExitCode === 1)) {
     try {
-      const scenario = validateWorkspaceSuccessResult(await readScenarioResult(), request);
+      const scenario = (fault ? validateWorkspaceFaultResult : validateWorkspaceSuccessResult)(await readScenarioResult(), request);
       result.scenarioResultCode = scenario.resultCode;
       result.failedPhase = scenario.failedPhase;
-      if (scenario.status === 'failed') result.errorCode = workspaceSuccessErrorCode({ message: scenario.errorCode });
+      if (scenario.status === 'failed') result.errorCode = (fault ? workspaceFaultErrorCode : workspaceSuccessErrorCode)({ message: scenario.errorCode });
       else if (supervisorResult.status !== 'completed') result.errorCode ??= 'supervisorFailed';
     } catch {
       result.scenarioResultCode = 'missingOrInvalid';
@@ -98,17 +114,28 @@ export async function resolveWorkspaceSuccessTerminalOutcome({
     return Object.freeze(result);
   }
   if (result.errorCode === null) {
-    if (initial.resultCode !== 'targetProductPresent' || !initial.installerRegistryPresent) result.errorCode = 'targetStateInvalid';
+    if (initial.resultCode !== `${installedRole}ProductPresent` || !initial.installerRegistryPresent) result.errorCode = `${installedRole}StateInvalid`;
     else {
       try {
         const proof = await verifySemanticPostcondition();
         if (!hasWorkspaceSuccessExactKeys(proof, ['status', 'resultCode']) ||
-          proof.status !== 'completed' || proof.resultCode !== 'workspaceSemanticProofValidated') throw new Error();
+          proof.status !== 'completed' || proof.resultCode !== (fault ? 'workspaceFaultSemanticProofValidated' : 'workspaceSemanticProofValidated')) throw new Error();
         result.semanticProofResultCode = proof.resultCode;
       } catch (error) {
-        result.semanticProofResultCode = 'workspaceSemanticProofFailed';
-        result.errorCode = WORKSPACE_SUCCESS_POSTCONDITION_ERRORS.includes(error?.message)
+        result.semanticProofResultCode = fault ? 'workspaceFaultSemanticProofFailed' : 'workspaceSemanticProofFailed';
+        result.errorCode = (fault ? WORKSPACE_FAULT_POSTCONDITION_ERRORS : WORKSPACE_SUCCESS_POSTCONDITION_ERRORS).includes(error?.message)
           ? error.message : 'profileEvidenceInvalid';
+      }
+      if (fault) {
+        try {
+          const proof = await verifySessionPostcondition();
+          if (!hasWorkspaceSuccessExactKeys(proof, ['status', 'resultCode']) ||
+            proof.status !== 'completed' || proof.resultCode !== 'workspaceFaultSessionsValidated') throw new Error();
+          result.sessionProofResultCode = proof.resultCode;
+        } catch {
+          result.sessionProofResultCode = 'workspaceFaultSessionsFailed';
+          result.errorCode ??= 'sessionProofInvalid';
+        }
       }
     }
   }

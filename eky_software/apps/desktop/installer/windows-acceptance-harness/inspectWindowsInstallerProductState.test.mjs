@@ -12,7 +12,30 @@ const SCRIPT_PATH = resolve(
   'inspectWindowsInstallerProductState.ps1',
 );
 
-function runInspector(powershell, resultPath) {
+function runInspector(powershell, resultPath, { failProductState = false } = {}) {
+  const queryFailureCommand = `
+    function New-Object {
+      param([string]$ComObject)
+      if ($ComObject -cne 'WindowsInstaller.Installer') { throw 'unexpectedComRequest' }
+      # A real COM handle without ProductState exercises the query failure and release.
+      Microsoft.PowerShell.Utility\\New-Object -ComObject Scripting.Dictionary
+    }
+    & $env:EKY_TEST_INSPECTOR_SCRIPT -ProductCode '{00000000-0000-0000-0000-000000000000}' -ResultPath $env:EKY_TEST_INSPECTOR_RESULT
+    exit $LASTEXITCODE
+  `;
+  const invocation = failProductState
+    ? [
+        '-EncodedCommand',
+        Buffer.from(queryFailureCommand, 'utf16le').toString('base64'),
+      ]
+    : [
+        '-File',
+        SCRIPT_PATH,
+        '-ProductCode',
+        '{00000000-0000-0000-0000-000000000000}',
+        '-ResultPath',
+        resultPath,
+      ];
   const child = spawn(
     powershell,
     [
@@ -20,14 +43,17 @@ function runInspector(powershell, resultPath) {
       '-NonInteractive',
       '-ExecutionPolicy',
       'Bypass',
-      '-File',
-      SCRIPT_PATH,
-      '-ProductCode',
-      '{00000000-0000-0000-0000-000000000000}',
-      '-ResultPath',
-      resultPath,
+      ...invocation,
     ],
-    { stdio: 'ignore', windowsHide: true },
+    {
+      stdio: 'ignore',
+      windowsHide: true,
+      env: {
+        ...process.env,
+        EKY_TEST_INSPECTOR_SCRIPT: SCRIPT_PATH,
+        EKY_TEST_INSPECTOR_RESULT: resultPath,
+      },
+    },
   );
   const completion = new Promise((resolvePromise, rejectPromise) => {
     child.once('error', rejectPromise);
@@ -37,7 +63,7 @@ function runInspector(powershell, resultPath) {
 }
 
 test(
-  'Windows PowerShell 5.1 inspector writes a strict absent-product result',
+  'Windows PowerShell 5.1 inspector distinguishes absent products from query failure',
   WINDOWS_ONLY,
   async (testContext) => {
     const root = await mkdtemp(join(tmpdir(), 'eky-v2-state-inspector-'));
@@ -93,5 +119,13 @@ test(
     children.add(rejectedRun.child);
     assert.equal(await rejectedRun.completion, 64);
     await assert.rejects(access(join(root, 'rejected.json')), { code: 'ENOENT' });
+
+    const failedResultPath = join(root, 'query-failed.json');
+    const failedRun = runInspector(powershell, failedResultPath, {
+      failProductState: true,
+    });
+    children.add(failedRun.child);
+    assert.equal(await failedRun.completion, 1);
+    await assert.rejects(access(failedResultPath), { code: 'ENOENT' });
   },
 );

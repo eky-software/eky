@@ -29,12 +29,7 @@ try {
   $ResultPath = $resolvedResultPath
 
   $installer = New-Object -ComObject WindowsInstaller.Installer
-  try {
-    $productState = [int]$installer.ProductState($ProductCode)
-  }
-  catch {
-    $productState = -1
-  }
+  $productState = [int]$installer.ProductState($ProductCode)
 
   $productName = $null
   $productVersion = $null

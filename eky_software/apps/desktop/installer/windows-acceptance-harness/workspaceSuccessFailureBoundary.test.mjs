@@ -90,6 +90,7 @@ test('completed supervisor with unreadable scenario still enters controlled exac
 
 for (const cleanupResult of [
   { status: 'failed', errorCode: 'semanticCleanupTimedOut' },
+  { status: 'failed', errorCode: 'semanticCleanupProcessRemains' },
   { status: 'failed', errorCode: 'PRIVATE path' },
   { status: 'completed', resultCode: 'semanticCleanupCompleted', path: 'PRIVATE' },
 ]) {
@@ -113,6 +114,21 @@ test('original worker error survives failed semantic cleanup', async () => {
   assert.equal(result.semanticCleanupResultCode, 'semanticCleanupFailed');
   assert.equal(result.supervisorProcessResultCode, 'processExitFailed');
   assert.equal(result.semanticProofResultCode, 'notChecked');
+});
+
+test('an unverified cleanup process cannot be erased by a later absent product state', async () => {
+  const value = fixture({
+    async readScenarioResult() { return failedScenario; },
+    async cleanupExactProducts() {
+      return { status: 'failed', errorCode: 'semanticCleanupProcessRemains' };
+    },
+  });
+  const result = await resolveWorkspaceSuccessTerminalOutcome(value.input);
+  assert.equal(result.status, 'failed');
+  assert.equal(result.errorCode, 'firstStartBFailed');
+  assert.equal(result.semanticCleanupResultCode, 'semanticCleanupProcessRemains');
+  assert.equal(result.postconditionResultCode, 'exactProductsAbsent');
+  assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: true, terminal: result }), false);
 });
 
 for (const [errorCode, cleanupFails, expectedCode] of [

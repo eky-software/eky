@@ -57,6 +57,21 @@ test('V2.4 workflow uses only approved immutable artifact actions', async () => 
   assert.equal(source.match(/actions\/download-artifact@/gu)?.length, 1);
 });
 
+test('V2.4 consumers select the producer artifact ID independently of the consumer attempt', async () => {
+  const source = await readFile(WORKFLOW_PATH, 'utf8');
+  const [producer, consumer] = source.split('  upgrade_consumer:');
+  assert.match(producer, /artifact_id: \$\{\{ steps\.upload\.outputs\.artifact-id \}\}/u);
+  assert.match(producer, /name: Upload exact upgrade artifact\s+id: upload\s+uses: actions\/upload-artifact@/u);
+  assert.match(producer, /overwrite: false/u);
+  assert.match(consumer, /needs: upgrade_artifact_producer/u);
+  const download = consumer.split('      - name: Download exact upgrade artifact')[1]
+    .split('      - name: Verify downloaded artifact bytes')[0];
+  assert.match(download, /artifact-ids: \$\{\{ needs\.upgrade_artifact_producer\.outputs\.artifact_id \}\}/u);
+  assert.match(download, /merge-multiple: true/u);
+  assert.doesNotMatch(download, /\b(?:name|pattern):/u);
+  assert.doesNotMatch(consumer, /github\.run_attempt|EKY_V2_UPGRADE_ARTIFACT_NAME|upload-artifact|installer:v2-upgrade-artifact:build/u);
+});
+
 test('V2.4 consumers verify checkout and artifact before and after lifecycle', async () => {
   const source = await readFile(WORKFLOW_PATH, 'utf8');
   assert.match(source, /git rev-parse HEAD/u);

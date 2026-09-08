@@ -1515,7 +1515,7 @@ kirjainkoko on oma regressionsa; polkujen turvallisuustarkistuksia ei löysennet
 Paketoidun consumerin pysyvä komento on:
 
 ```text
-pnpm --filter @eky/desktop installer:v2-workspace-success --artifact-descriptor <descriptor> --expected-descriptor-sha256 <sha256> --expected-build-revision <full-revision>
+pnpm --filter @eky/desktop installer:v2-workspace-success --artifact-descriptor <descriptor> --expected-descriptor-sha256 <sha256> --expected-build-revision <full-revision> --result-path <run-local-caller-result>
 ```
 
 Tämä on ajokytkennän sopimuscheckpoint, ei vielä V2.6:n vaihehyväksyntä.
@@ -1800,6 +1800,388 @@ Poisto kuuluu myöhempään hallittuun cutoveriin vasta vastaavan käyttäytymis
 ja virhepolkujen todistamisen jälkeen. V2.7:n fault/rollback-skenaarioita ei
 aloiteta tämän checkpointin mukana.
 
+## V2.7: fault/rollback-vaiheketjujen checkpoint
+
+V2.7 jatkuu omassa pinotussa haarassa
+`codex/test-harness-v2-workspace-fault-rollback`. Lähtökohta on V2.6:n
+`2f2118e9a2c5a45cd37d0655e4fa38620a5836b9`, jonka
+[workspace-vaiheajo](https://github.com/eky-software/eky/actions/runs/34233531762)
+läpäisi sopimukset, producerin ja molemmat consumerit ensimmäisellä
+yrityksellä. Tämä korvaa yllä olevan aiemman V2.6-checkpointin avoimen
+final-revision portin, mutta ei siirrä sen artifact-näyttöä V2.7:ään.
+
+Ensimmäinen V2.7-checkpoint omistaa vain versionoidun request/result-rajan
+ja viiden olemassa olevan fault-polun vaiheketjut. Se ei käynnistä uutta
+prosessivalvojaa, rakenna artifactia tai toteuta sovelluksen päivitysmoottoria.
+Request sitoo skenaarion, ajokohtaisen noncen, descriptor-tiivisteen ja
+build-revision. Tulos hyväksyy vain oman skenaarionsa täsmällisen
+vaiheprefixin; tuntematon tila, vieras tulos ja ylimääräiset kentät hylätään.
+
+| Vastuu | Nykyinen omistaja |
+| --- | --- |
+| Viisi sallittua fault-skenaariota, vaiheprefixit ja turvallinen tulos | `workspaceFaultContracts.mjs` |
+| Nykyisten main-owned proof-kutsujen järjestys | `workspaceFaultLifecycle.mjs` |
+| Exact source/target -asennustilan lukuassertio | `workspaceInstalledState.mjs`, siirretty V2.6-ketjusta muuttumattomana molempien käyttöön |
+| Windows-asennustilan havainnointi ja yksityiset proof-käynnistykset | `workspaceSuccessWindowsRuntime.mjs`: sama adapteri nimettyjen success/fault-factoryjen kautta |
+| Worker-porttien kokoaminen | `workspaceWorkerRuntime.mjs`, success/fault-factoryt saman Windows-adapterin päälle |
+| Työn rajaus ja prosessipuun cleanup | Nykyinen Job Object -supervisor, yhteinen caller `runWorkspaceSuccess.mjs`:n success/fault-entrypointeille |
+| Riippumaton business-jälkitarkastus | `workspaceFaultProfileEvidence.mjs` ja `workspaceFaultPostcondition.mjs`, jaettu vain lukeva snapshot-raja |
+| Asennuksen poisto ja sen jälkiehdot | Nykyiset exact ProductCode -portit ja yhteinen `workspaceSuccessFailureBoundary.mjs`:n terminal-raja |
+
+### W6B.2B-invarianttien siirtokartta
+
+| Olemassa oleva fault-sopimus | V2.7:n vaiheketjun loppuehto | Packaged-todiste |
+| --- | --- | --- |
+| preUpdate-palautuspiste epäonnistuu ennen handoffia | Ei target-asennusta; source säilyy; `verifyPreUpdateFailure` | 2/2, alla nimetty `0a7ea01`-kierros |
+| Aktiivisen A:n first start epäonnistuu | Business rollback ennen source-binaarien palautumisen tarkistusta ja `rollbackFirstStart`-käynnistystä; `verifyActiveRollback` | 2/2, sama kierros |
+| Registry-siirtymän jälkeinen hyväksyntä katkeaa | Täsmällinen `interrupted`-todiste, recovery ja erillinen restart; `verifyAcceptanceRecovery` | 2/2, sama kierros |
+| Passiivisen B:n migraatio epäonnistuu | Paluu A:han ilman binary rollbackia; target säilyy; `verifyPassiveRecovery` | 2/2, sama kierros |
+| Binary rollback epäonnistuu | Ei uutta yritystä tai source-käynnistystä; target jää recovery-only-tilaan; `verifyBinaryFailedSafe` | 2/2, sama kierros |
+
+Taulukko nimeää toteutuneen packaged-näytön revision, ei siirrä sen
+hyväksyntää myöhempään koodimuutokseen. Alla oleva loppukatselmus erottaa
+tästä yhteisen tilalukijan korjauksen ja sen oman hyväksyntärajan.
+
+Vaiheketju kutsuu vain nykyisen sovelluksen yksityisiä fault-kytkentöjä.
+Worker saa asentaa sourcen kerran. Päivityksen ja binary rollbackin
+MSI-käynnistykset kuuluvat edelleen Electron mainin omistamalle handoffille;
+worker odottaa havaittua asennustilaa, ei käynnistä samaa MSI:tä uudelleen.
+Odottamaton prosessivirhe ei korvaa odotetun keskeytyksen proof-tulosta.
+Edistymistulosteen virhe ei muuta vaiheketjun tulosta.
+
+Rajattu sopimuskomento on
+`pnpm --filter @eky/desktop installer:test:windows-acceptance-workspace-fault`.
+Ensimmäisessä vaiheketju-checkpointissa sarja läpäisi 52/52. Yhteisen tarkistuksen regressioina V2.6-sarja läpäisee
+263/263 ja artifact-sarja 54/54; desktopin typecheck/build läpäisevät.
+Komento testaa vaiheketjut injektoiduilla porteilla, ei aja MSI:tä. Siksi sen
+vihreys ei todista tietokantojen säilymistä, oikeaa rollbackia tai
+prosessi-/semantic-cleanupin onnistumista. Nämä jäävät erillisiksi
+paketoidun hyväksynnän jälkiehdoiksi.
+
+Seuraava checkpoint kytkee ketjut jaetun Windows-adapterin kautta yhden
+supervisorin workeriin sekä riippumattomaan, vain lukevaan jälkitarkastukseen.
+Hyväksyntä käyttää yhtä puhtaasta revisiosta rakennettua source/target-paria
+ja kahta ensimmäisen yrityksen Windows-consumeria, kumpikin kaikki viisi
+skenaariota. Yhteiset V2.6-portit ajetaan muuttuneiden vastuiden regressioina.
+Ei aikarajamuutosta, tuotantosemantiikan muutosta, versionostoa, pilotia tai
+vanhan W6-harnessin poistoa tässä checkpointissa.
+
+### V2.7:n rajattu istuntokanavapäätös
+
+Omistaja hyväksyi nykyisen yksityisen muistikanavan käytön vain seuraavissa
+format-2-proofin terveissä käynnistysvaiheissa. Taulukon järjestys on samalla
+kanavan suljettu vaihejärjestys; sitä ei anneta CLI:stä tai ympäristöstä.
+
+| Skenaario | Muistikanavan sallitut vaiheet |
+| --- | --- |
+| `preUpdateRecoveryPointFailure` | `sourceHandoff` |
+| `activeWorkspaceFirstStartFailure` | `sourceHandoff`, `rollbackFirstStart` |
+| `acceptanceInterruption` | `sourceHandoff`, `targetAcceptanceRestart` |
+| `passiveWorkspaceMigrationFailure` | `sourceHandoff`, `targetFirstStart`, `switchToB`, `passiveWorkspaceRecovery` |
+| `binaryRollbackFailure` | `sourceHandoff` |
+
+Yksi sallittujen vaiheiden määrittely on nykyisessä
+`w6b2PackagedProof.ts`-vastuussa. Paketin yksityinen marker, bootstrap,
+source/target-rooli, exact control keys ja ajokohtainen nonce validoidaan
+ennen kanavan avaamista. Mainin nykyinen käynnistyskytkentä vaatii
+istuntotarkistuksen ennen proof-controlleria. Hylkäys säilyy virheenä eikä
+käynnistä controllerin sivuvaikutuksia. Vanha format-2-kontrolli ilman
+noncea säilyttää nykyisen käyttäytymisensä.
+
+`workspaceSuccessSessionProof.mjs` käyttää yhtä muistikanavan toteutusta
+kahden nimetyn success/fault-factoryn kautta. Salaisuus pysyy mainin ja
+workerin muistissa. Uudelta terveeltä backendiltä vaaditaan nykyiselle
+istunnolle HTTP 200 ja jokaiselle saman ajon aiemmalle istunnolle HTTP 401.
+Puuttuva yhteys ei ole fault-kanavassa ohitettavissa. Kanava omistaa vain
+omat socketit ja HTTP-pyynnöt, ei prosessipuuta tai uutta aikarajaa.
+
+Fault injection-, keskeytys- ja recovery-only-vaiheet eivät saa noncea.
+Myös `targetAcceptanceRecovery` jää ulkopuolelle: sen jälkeinen erillinen
+`targetAcceptanceRestart` todistaa terveen istunnon. `desktop.started`
+pysyy vain aiemmin hyväksytyn V2.6 format-1-success-kytkennän tapahtumana;
+sitä ei yleistetä fault-poluille. Tavallisen sovelluksen istunnonluonti,
+HTTP-valtuutus, lokituspolitiikka ja prosessiomistus eivät muutu.
+
+Rajauksen kohdetestit läpäisevät 26/26 ja fault-sopimuskomento 60/60.
+Kanavan käyttäytymistä testataan oikeilla muistikanava- ja loopback-HTTP-
+yhteyksillä, mutta synteettisellä HTTP-sopimuspäätepisteellä. Tämä ei vielä
+korvaa paketoidun sovelluksen backendin HTTP-hylkäystodistetta. V2.6:n
+263/263, artifact-sarjan 54/54 sekä desktopin typecheck/build säilyvät
+regressioportteina.
+
+Yhden terveen käynnistyksen skenaariot eivät väitä todistavansa vanhan
+istunnon HTTP-hylkäystä olemattomalta toiselta backendiltä. Niiden
+prosessipuun poistuminen, source-/recovery-only-lopputila ja semanttinen
+jälkitarkastus ovat erillisiä paketoidun hyväksynnän vaatimuksia.
+Tämän istuntokanava-checkpointin jälkeinen worker-kytkentä ja riippumaton
+jälkitarkastus kuvataan alla. Uuden artifactin producer/kaksi consumeria
+ovat edelleen avoinna.
+
+### V2.7:n Windows-adapterin checkpoint
+
+`createWorkspaceFaultWindowsRuntime` käyttää nykyisen V2.6-adapterin
+source-asennusta, payload-varmennusta, yksityistä profiilin valmistelua ja
+MSI-tilalukijaa. `createWorkspaceSuccessWindowsRuntime` säilyttää oman
+format-1-sopimuksensa; siihen ei voi antaa fault-requestia. Kummallakaan
+ei ole omaa prosessipuun valvontaa tai emergency-cleanupia.
+
+Fault-profiilin valmistelu käyttää nykyisen valmisteluentrypointin
+vaatimaa source/format-1-kontrollia. Format-2-fault-kontrolli asetetaan vasta
+nimettyyn sovelluksen proof-käynnistykseen nykyisellä yksityisellä
+phase-writerilla. Vain hyväksytty terve vaihe saa muistikanavan noncen.
+Vieras skenaario, vaihe, formaatti tai tuntematon tuloskenttä hylätään.
+Odotettu `interrupted` vaatii sekä sovelluksen oman strict proof-tuloksen
+että onnistuneen prosessipoistumisen; tavallinen kaatuminen ei riitä.
+Istuntokanavan siivous ei peitä alkuperäistä sovellusvirhettä.
+
+Target-asennus ja palautettu source havaitaan yhdellä nykyisellä
+asennustilan odotusvastuulla. Adapteri ei aja päivitystä tai rollback-MSI:tä
+uudelleen. Tuntematon rooli tai poistuneen installerin väärä lopputila
+päättyy virheeseen. Varsinainen deadline ja puun cleanup kuuluvat edelleen
+yhdelle supervisorille, asennuksen poisto erilliselle semantic cleanupille.
+
+Kohdetestit läpäisevät 125/125. Kanoninen fault-sopimussarja läpäisee
+161/161, jaetun runtime-vastuun sisältävä success-regressiosarja 277/277 ja
+artifact-sarja 54/54; desktopin typecheck/build läpäisevät. Windows-kutsut
+ovat tässä adapteritestissä injektoituja. Tämä ei ole MSI- tai V2.7-
+packaged-hyväksyntä; worker, riippumaton jälkitarkastus ja kaksi täydellistä
+viiden skenaarion consumeria ovat edelleen seuraavat portit.
+
+### V2.7:n worker- ja jälkitarkastuscheckpoint
+
+`runWorkspaceFaultWorker.mjs` sitoo yhden sallitun fault-skenaarion
+requestiin ja julkaisee erikseen strict scenario-resultin sekä nykyisen
+supervisorin worker-resultin. Molempien kirjoitusten on onnistuttava ennen
+onnistunutta poistumista. Väärä vaiheprefixi, puuttuva tulos tai
+julkaisun epäonnistuminen ei tuota onnistumista. Worker ei rakenna paketteja,
+valvo prosessipuuta tai omista asennuksen emergency-cleanupia.
+
+`workspaceWorkerRuntime.mjs` kokoaa success- ja fault-workerien yhteiset
+Windows-portit. Se korvaa aiemmin success-workerissa olleen kokoamiskoodin;
+rinnakkaista Windows-runtimea ei kopioida fault-workerille. Istuntosalaisuudet
+vapautetaan muistista myös kytkennän tai skenaarion epäonnistuessa.
+
+Yksi `captureWorkspaceProfileSnapshot` lukee molempien vaiheiden profiilit.
+Se säilyttää kanoniset polut, regular-file-/single-link-rajat, ennen
+SQLite-avausta tehtävän varmennuksen sekä keskeneräisten metadata-slotien
+hylkäyksen ilman niiden korjaamista. Fault-checkpoint sitoo vain
+`sourceBaseline`- ja `faultTerminal`-tilat, skenaarion, ajon ja artifactin.
+Se ei keksi fault-poluille `desktop.started`-tapahtumia.
+
+`workspaceFaultPostcondition.mjs` käyttää olemassa olevan fault-profiilin
+puhtaita assertioita sekä descriptorin täsmällisiä package-identiteettejä.
+Se tarkistaa business-/PDF-/katalogijatkuvuuden, odotetut SQLite-muutokset,
+registry-/lineage-tilan, accepted-buildin ja journalin. Lopuksi nykytila
+luetaan uudelleen: tallennettu checkpoint ei yksin riitä todisteeksi.
+Istuntokanavan turvallinen aineisto validoidaan erikseen
+`workspaceFaultSessionEvidence.mjs`-vastuussa. Vain terveiden käynnistysten
+suljettu järjestys, erilliset runtime-tunnisteet ja aiempien istuntojen
+hylkäysmäärät sallitaan; salaisuuksia, portteja tai tapahtumalokeja ei
+kirjoiteta tähän aineistoon.
+
+Kanoninen fault-sopimussarja läpäisee 240/240, yhteisten vastuiden
+success-regressiosarja 282/282 ja artifact-sarja 54/54. Desktopin
+typecheck/build läpäisevät. Mukana ovat workerin todellisen compositionin
+sivuvaikutukseton kytkentä, virheellisen evidenssin hylkäykset ja yhteisen
+lukijan linkki-/slot-/muutosregressiot. Nämä eivät ole MSI-hyväksyntäajoja.
+
+Seuraava portti kytkee nykyiseen caller-/terminal-rajaan workerin,
+riippumattomat business- ja session-tulokset, exact ProductCode -siivouksen
+ja footprint-/fixture-jälkiehdot. Sen jälkeen yksi uusi build-once-pari
+ja kaksi ensimmäisen yrityksen Windows-consumeria todistavat kaikki viisi
+skenaariota samoilla tavuilla. V2.7:n hyväksyntä on edelleen kesken.
+
+### V2.7:n caller- ja terminal-checkpoint
+
+`runWorkspaceFault.mjs` on nimetty CLI-entrypoint nykyiseen yhteiseen
+workspace-calleriin, ei uusi prosessivalvoja. Se hyväksyy vain nykyisen
+immutable descriptorin polun, odotetun SHA-256:n, täydellisen build-revision
+ja yhden viidestä sallitusta `--fault-scenario`-arvosta. Worker ja sen
+työhakemisto johdetaan tästä validoidusta sopimuksesta. Yksi nykyinen Job
+Object omistaa edelleen skenaarion 720 sekunnin rajan, josta 30 sekuntia
+on varattu cleanupille. Vanhat timeoutit tai prosessiomistajat eivät muutu.
+
+`workspaceSuccessFailureBoundary.mjs` käsittelee molempien nimettyjen
+vaiheiden terminal-tulokset saman cleanup-rajan kautta. Fault-suunnitelma
+määrää, pitääkö asennettuna olla source vai target. Scenario-result,
+supervisorin process-/worker-/cleanup-tulos, business-jälkiehto ja
+`sessionProofResultCode` pysyvät erillisinä. Business- ja istuntotarkastuksen
+epäonnistuessa molemmat kirjataan, mutta jälkimmäinen ei korvaa ensimmäistä
+virhettä. Semantic cleanup ei muuta alkuperäistä virhettä onnistumiseksi.
+
+Puuttuva supervisor-tulos tai varmistamaton prosessipuu estää MSI-siivoamisen.
+Puuttuva scenario-result ei valtuuta poistamaan ennestään asennettua tuotetta:
+siivous vaatii ennen ajoa todistetun exact-products-absence-tilan ja nykyisen
+rajatun ProductCode-tarkistuksen. Testijuuri poistetaan vasta, kun puun
+poissaolo, semantic cleanup, tuotteiden poissaolo ja installer-footprint
+on varmennettu. Muuten yksityinen aineisto säilyy vain paikallisessa
+testijuuressa. Normaalin profiilin inventaario jää prosessimuistiin.
+
+Yhden skenaarion dokumentoitu komento on:
+
+```text
+pnpm --filter @eky/desktop installer:v2-workspace-fault --artifact-descriptor <descriptor> --expected-descriptor-sha256 <sha256> --expected-build-revision <revision> --fault-scenario <scenario> --result-path <run-local-caller-result>
+```
+
+Komentotason kohdetestit läpäisevät 77/77. Kanoninen fault-sarja läpäisee
+289/289, yhteinen success-regressiosarja 298/298 ja artifact-sarja 54/54;
+desktopin typecheck/build läpäisevät. Asennus-/prosessikutsut ovat näissä
+sopimustesteissä injektoituja. Uusi producer sekä molemmat kaikki viisi
+skenaariota ajavat Windows-consumerit ovat vielä avoin hyväksyntäportti.
+
+### V2.7:n CI-kytkentä
+
+Nykyinen workspace-workflow ajaa ennen produceria sekä V2.6:n että V2.7:n
+sopimukset. Sama producer rakentaa yhden source/target-parin. Kahden
+success-consumerin lisäksi kaksi eristettyä fault-consumeria lataa saman
+artifact-ID:n ja tarkistaa descriptorin SHA-256:n sekä todellisen
+checkout-revision ennen ajoa. Workerit tai consumerit eivät rakenna MSI:tä.
+
+Jokainen fault-consumer valmistelee nykyisen supervisorin ja proof-lukijat
+kerran ja ajaa viisi nimettyä skenaariota järjestyksessä, kukin omalla
+synteettisellä profiililla. Ensimmäinen virhe estää myöhemmät skenaariot.
+Artifact tarkistetaan uudelleen myös epäonnistumisen jälkeen. Uusinta ei
+korvaa ensimmäisen yrityksen hyväksyntää. Raakoja profiileja, lokeja tai
+istuntoaineistoa ei julkaista artifacteina.
+
+Yksittäisen skenaarion 720 sekunnin Job-raja ja siihen kuuluva 30 sekunnin
+cleanup-varaus säilyvät. Myös consumer-stepin ulompi 25 minuutin varaus on
+sama kuin success-ajossa. Uuden viisi skenaariota ajavan jobin varaus on
+140 minuuttia: viisi 25 minuutin step-varaa sekä 15 minuuttia valmistelulle
+ja uudelleenvarmennukselle. Tämä on vaiheiden yhteenlaskettu scheduler-raja,
+ei skenaarion aikarajan nosto, uusi watchdog tai hyväksyntätodiste.
+Aiemman success-jobin rajoja ei muuteta. Ulomman rajan katkaisema ajo
+ilman omaa terminal-tulosta pysyy hylättynä.
+
+Artifact-/workflow-sopimukset läpäisevät 56/56. Varsinainen V2.7-hyväksyntä
+odottaa tämän kytkennän puhdasta lähderevisiota, uutta produceria ja
+molempien consumerien viittä onnistunutta terminal-tulosta.
+
+Ensimmäinen [V2.7:n CI-kierros](https://github.com/eky-software/eky/actions/runs/34245778412)
+hylättiin fault-sopimuksissa ennen produceria (288/289); consumerit jäivät
+ajamatta. Fault-requestin JSON-testifixture käytti kanonisoimatonta
+TEMP-juurta. Fixture noudattaa nyt muiden vastaavien testien `realpath`-
+valmistelua. Rajattu junction-regressio todistaa samalla, että lukija yhä
+hylkää aliaksen ja hyväksyy saman tiedoston kanonisen polun. Kohdesarja
+läpäisee 26/26. Lukijan turvallisuusrajaa, timeoutia tai supervisorin
+omistajuutta ei muuteta. [Korjausrevision CI](https://github.com/eky-software/eky/actions/runs/34247574179)
+läpäisi sopimusportin, producerin ja molemmat success-consumerit.
+
+Saman kierroksen fault-consumerit läpäisivät pre-update-palautuspisteen
+virhetilanteen, mutta hylkäsivät aktiivisen workspacen rollbackin vaiheessa
+`sourceRollbackInstall`. Molemmat tuottivat oman virhetuloksen,
+`processTreeAbsent: true`, `semanticCleanupCompleted`, `exactProductsAbsent`
+ja `businessDataPreserved: true`. V2.7 ei ole tämän perusteella hyväksytty.
+
+Rajattu havainnointikorjaus säilyttää nykyisen Windows-adapterin ja sen yhden
+supervisorin rajan. MSI-inaktiviteetti ei yksin todista binääripalautuksen
+valmistumista: palautusapuri voi vielä käynnistyä tai olla uninstall- ja
+install-komentojen välissä. Source-rollback lukee apurin jo tuottaman
+rajatun JSONL-sopimuksen nykyisellä V2.4-lukijalla. Vasta oikean terminal-
+tuloksen jälkeen tarkistetaan MSI-inaktiviteetti ja exact ProductCodet.
+Epäonnistuneen rollbackin mahdollinen repair saa päättyä ennen virhetulosta;
+repair ei muuta epäonnistumista onnistumiseksi. Puuttuva tulos jää nykyisen
+supervisorin deadlinen piiriin, ristiriitainen tai taaksepäin muuttuva
+evidence hylätään. Uutta prosessi-, cleanup- tai timeout-omistajaa ei lisätä.
+
+Kohderegressiot kattavat viivästyneen apurin, komentojen väliset tyhjät
+MSI-havainnot, puuttuvan tuloksen, korruptoituvan evidence-prefixin,
+hardlink-hylkäyksen sekä epäonnistuneen palautuksen jälkeisen repairin.
+Niiden ja nykyisten lifecycle/failure-boundary-sopimusten kohdesarja
+läpäisee 148/148. Korjaus tarvitsee uuden puhtaan revision packaged-
+hyväksynnän; tuotannon rollback-apuria tai toimintasemantiikkaa ei muuteta.
+Korjauksen fault-sopimukset läpäisevät 295/295, success-regressiot 303/303,
+artifact-/workflow-sopimukset 56/56 sekä desktop typecheck ja build.
+
+### Artifact-latauksen rajattu korjaus
+
+Revision `1f5b807` [workspace-kierros](https://github.com/eky-software/eky/actions/runs/34250816513)
+todisti fault-matriisin 10/10 ensimmäisellä yrityksellä. Toinen success-
+consumer pysähtyi ennen skenaariota artifact-palvelun HTTP 403 -virheeseen.
+Omistajan erikseen hyväksymä infrastruktuuriuusinta ajoi vain tämän
+consumerin samoilla alkuperäisillä pakettitavuilla. Se läpäisi; success-
+näyttö on 2/2 tällä nimenomaisella poikkeuksella. Produceria ei rakennettu
+uudelleen. Molempien kierrosten alkuperäiset tulokset säilyvät erillisinä.
+
+Saman revision [upgrade-kierroksen](https://github.com/eky-software/eky/actions/runs/34250816532)
+molemmat consumerit pysähtyivät myös lataukseen ennen skenaariota. Niitä ei
+uusittu, koska latausnimi johdettiin consumerin `github.run_attempt`-arvosta:
+consumer-only-uusinta etsisi eri nimeä kuin säilytetty producer-artifact.
+Tämä on erillinen viittausvirhe, ei osoitettu syy alkuperäiseen HTTP 403:een.
+
+Hyväksytty rajattu korjaus välittää upload-stepin `artifact-id`-tuloksen
+producerin job-outputiksi ja valitsee sen consumerin `artifact-ids`-syötteessä,
+kuten workspace-workflow jo tekee. Consumer ei johda latausvalintaa nimestä,
+yritysnumerosta tai pattern-hausta. Paketin sisältö puretaan samaan nykyiseen
+juureen; descriptor-, build-revisio- ja MSI-tarkistukset ennen ajoa ja sen
+jälkeen säilyvät. Nykyinen workflow-sopimustesti lukitsee tämän kytkennän.
+Uusia action-versioita, käyttöoikeuksia, aikarajoja tai automaattisia
+uusintoja ei lisätä. Korjaus ei itsessään anna lupaa epäonnistuneen testin
+uusintaan eikä muuta ensimmäisen yrityksen hyväksyntäsääntöä.
+
+Uusi kytkentäregressio hylkäsi vanhan toteutuksen ja läpäisi korjauksen.
+Upgrade-artifactin kohdesarja läpäisee 14/14, workspace-artifactin 56/56
+sekä desktop typecheck ja build. Nämä eivät korvaa paketoitua CI-todistetta.
+
+Revision `0a7ea0115cfd7c804694b64134cba8478c76a740` uusi commit-pohjainen
+kierros läpäisi kaikki 14 jobia ensimmäisellä yrityksellä:
+[workspace success 2/2 ja fault 10/10](https://github.com/eky-software/eky/actions/runs/34257928868),
+[upgrade/rollback 2/2](https://github.com/eky-software/eky/actions/runs/34257928869),
+[clean lifecycle 2/2](https://github.com/eky-software/eky/actions/runs/34257928879)
+ja [supervisorin kaksi toistoa](https://github.com/eky-software/eky/actions/runs/34257929170).
+CI:n todellinen checkout-/koemerge- ja artifact-build-revisio oli
+`47dd192160dc97c34e86c09e943ef03faf0e88f2`, ei PR-head.
+Consumerit varmistivat omien produceriensa muuttumattomat artifact-tavut.
+Prosessipuun poissaolo, semanttinen tarkistus ja cleanup, exact ProductCode
+-tila, asennusjäljet, istuntotodiste sekä normaalin profiilin muuttumattomuus
+säilyivät erillisinä onnistuneina tuloksina. Kierroksessa ei käytetty uusintaa.
+
+### V2.7:n loppukatselmus ja tilalukijan virheraja
+
+Loppukatselmus vertasi viisi fault-ketjua vanhan W6B.2B:n vastaaviin
+vaatimuksiin, jaetun worker-/caller-rajan virhepolkuihin sekä business- ja
+session-jälkitarkastuksiin. Yksi Job Object omistaa prosessipuun. Worker ei
+rakenna paketteja tai omista emergency-cleanupia. Mainin nonceen sidottu
+fault-session-tarkistus pysyy vain hyväksytyissä terveissä proof-vaiheissa;
+tavallisen käynnistyksen tai `desktop.started`-tapahtuman merkitys ei muutu.
+
+Katselmuksessa löytyi vanhastakin testituesta periytynyt virhe yhteisessä
+`inspectWindowsInstallerProductState.ps1`-lukijassa: `ProductState`-kyselyn
+poikkeus muutettiin arvoksi `-1`, jolloin tuntematon tarkistustulos saattoi
+näyttää puuttuvalta tuotteelta. Korjaus poistaa tämän poikkeuksen nielevän
+lohkon. Vain onnistunut kysely saa tuottaa tilan; poikkeus käyttää nykyistä
+exit 1 -rajaa eikä julkaise tulostiedostoa. Caller säilyttää epäonnistuneen
+tilatarkistuksen erillään alkuperäisestä skenaariovirheestä ja estää
+varmistamattoman siivouksen hyväksymisen. Uutta tulosskeemaa, valvojaa tai
+aikarajaa ei lisätä.
+
+Nykyisen Windows-käyttäytymistestin COM-fixture aiheuttaa kyselypoikkeuksen
+mutta säilyttää oikean vapautettavan COM-kahvan. Regressio hylkäsi vanhan
+lukijan ja hyväksyy korjatun: virhe ei tuota absent-tulosta. Sama testi
+säilyttää oikeasti puuttuvan tuotteen, kanonisen tulospolun ja virheellisen
+polun tapaukset. Tämä ei ole uusi asennus- tai päivitysskenaario.
+
+Korjatun lukijan ja sen käyttäjien rajattu virhe-/siivoussarja läpäisee
+87/87, canonical clean-sopimussarja 29/29, fault-sarja 295/295,
+success-sarja 303/303, workspace-artifact-sarja 56/56 ja upgrade-artifact-
+sarja 14/14. Desktop typecheck/build ja `git diff --check` ovat erilliset
+checkpoint-portit; nämä kohdetulokset eivät korvaa alla vaadittua CI-näyttöä.
+
+Vanhan harnessin ARP:ksi nimeämä tarkistus käyttää samaa ProductCodeen
+sidottua Windows Installerin `ProductState`/`ProductInfo`-rekisteröintiä kuin
+V2. Erillistä Windowsin uninstall-rekisteriavainten inventaariota ei väitetä
+vanhan eikä uuden testin todistamaksi. Jaettu Eky-installeravain, shortcut ja
+asennusjuuri tarkistetaan tästä erillään.
+
+Tilalukija on jaettu clean-, upgrade-, legacy- ja workspace-rajoille.
+Siksi sen korjausta ei hyväksytä vain yllä olevan `0a7ea01`-kierroksen
+perusteella: kohderegressioiden jälkeen tarvitaan puhtaan korjausrevision
+nykyiset artifact-/consumer-portit ensimmäisellä yrityksellä.
+[PR #265](https://github.com/eky-software/eky/pull/265) kirjaa tämän revision,
+todellisen checkoutin, artifact-identiteetit ja erilliset terminal-tulokset.
+PR pysyy draftina; vaihehyväksyntä ei poista vanhaa orkestrointia eikä
+aloita V2.8:aa, päähaaran käyttöönottoa tai julkaisua.
+
 ## Migraatiojärjestys
 
 V2 toteutetaan pieninä, itsenäisesti vihreinä checkpointteina:
@@ -1905,6 +2287,143 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 - dependency- ja lockfile-muutoksia ei ole ilman erillistä hyväksyntää
 
 ## Nykyinen päätös
+
+V2.6:n tarkistettu vaihekohtainen lähtörevisio on `2f2118e`.
+V2.7:n sopimus-/vaiheketjucheckpoint, hyväksytty muistikanavan käynnistysraja,
+jaetun Windows-adapterin worker-kytkentä, riippumattomat business-/session-
+jälkitarkastukset sekä yhteinen caller-/terminal-composition on toteutettu
+yllä kuvatusti. Yhteisen producerin ja kahden fault-consumerin CI-kytkentä
+on toteutettu. Artifact-viittauksen korjausrevisio `0a7ea01` läpäisi kaikki
+14 CI-jobia ensimmäisellä yrityksellä, mukaan lukien fault 10/10 ja success
+2/2. Tilalukijan korjausrevision `237e581` CI-checkout ja artifact-revisio
+on `8388b8f`. Sen 13 muuta jobia läpäisivät ensimmäisen yrityksen, mutta
+[fault-consumer 2](https://github.com/eky-software/eky/actions/runs/34264280577/job/102192632310)
+päättyi epäonnistuneeksi GitHubin ilmoittaman runner-yhteyden menetyksen
+jälkeen. Lopullinen loki ei ole saatavilla, eikä callerin terminal- tai
+cleanup-tulosta ole varmennettu. Tulos säilyy epäonnistuneena ja
+varmentamattomana; supervisorin viimeinen `completed`-rivi ei todista
+prosessin exit/closea tai jälkitarkastusten valmistumista.
+
+Erillinen rajattu korjaus muuttaa olemassa olevan Windows-adapterin
+`error`-tulkintaa: vain todettu käynnistyksen epäonnistuminen ennen
+prosessin syntyä voi tarkoittaa `startFailed` / `directProcessAbsent: true`.
+Jo käynnistetyn lapsen virhe käyttää samaa täsmällisen prosessikahvan
+lopetuspolkua. Epäonnistunut tai varmentamaton lopetus säilyy virheenä;
+myöhempi close tai yleinen tuotetilan poissaolo ei muuta jo palautettua
+varmentamatonta tulosta eikä oikeuta fixturen poistamiseen. Luonnin aikana
+kulunut aika vähennetään saman adapterin odotusbudjetista. Tämä ei keskeytä
+synkronista natiivikäynnistystä eikä kata adapteria edeltävää valmistelua;
+olemassa oleva lopetusvaraus säilyy erillisenä ja muuttumattomana.
+
+Adapterin regressiot läpäisevät 9/9, jaetun virherajan ja jälkitarkastuksen
+kohdesarja 42/42, clean-sopimukset 34/34, workspace success 305/305 sekä
+workspace fault 295/295. Desktop typecheck ja build läpäisevät. Nämä ovat
+korjauksen sopimustuloksia, eivät uuden revision packaged-hyväksyntä.
+Korjausta ei ole osoitettu runner-yhteyden menetyksen syyksi.
+
+Nykyinen rajattu korjaus kytkee callerin exit/close-, tulosvalidointi-,
+semanttisen tarkistuksen, uninstallin ja fixture-poiston aloittamisen
+erottavat ei-estävät vaihekuittaukset. Omistaja hyväksyi pakollisen
+CLI-lopputuloksen erilliseen strict tulostiedostoon: CI vaatii sen sidonnan,
+sisällön ja komennon todellisen onnistuneen poistumisen. Diagnostiikka ei
+päätä hyväksynnästä. V2.7:n sulkeminen vaatii korjatun puhtaan revision koko
+consumer- ja artifact-hyväksynnän; aiempi vihreys ei riitä.
+Vanhan harnessin poistamiseen ei vielä ole koko V2:n integraationäyttöä.
+Migraatiojärjestys, yhden supervisorin omistajuus ja hyväksynnän kolme tasoa
+säilyvät.
+
+### V2.7:n rajattu vaihekirjoittimen sopimus
+
+Omistaja on hyväksynyt yhden vain suljettuja vaihehavaintoja välittävän
+Node-apuprosessin. Sopimus todistetaan käyttäytymistesteillä ennen success-
+ja fault-calleriin kytkemistä. Kirjoitin ei ole supervisor, skenaariotyöntekijä
+tai yleinen lokipalvelu, eikä sitä toimiteta sovelluspaketissa.
+
+- Lähetys validoi suljetun versionoidun havaintomuodon molemmissa päissä.
+  Vain nimetyt skenaariot, vaiheet, tilat ja ei-negatiiviset kestot sallitaan;
+  vapaita tekstejä, virheolioita, polkuja, tunnisteita tai business-dataa ei
+  välitetä. Yksi JSONL-viesti on enintään 512 tavua.
+- Caller ei odota kirjoituskuittausta. Enintään yksi enintään 512 tavun viesti
+  on lähetyksessä ja 16 jonossa. Täysi jono tai rikkoutunut kanava pudottaa
+  havaintoja; ei uudelleenkäynnistystä, retryä tai synkronista varatulostusta.
+  Lähetyksen valmistuminen ei todista vastaanottajan lukeneen viestiä.
+- Lopetus hylkää jonon ja katkaisee lähetyspään odottamatta tyhjentymistä.
+  Sama olemassa oleva rajattu Windows-prosessiadapteri omistaa tämän yhden
+  lehtiprosessin lopetuksen ja close-todisteen. Adapterin olemassa oleva
+  suoritusraja ja erillinen lopetusvaraus säilyvät; kirjoitin ei omista
+  supervisorin Jobia, workeria tai MSI-prosesseja. Hallittu peruutus käyttää
+  samaa lopetuspolkua. Kanavavirhe ei todista prosessin poistumista.
+- Menetetty havainto on diagnostiikan puute. Varmentamaton kirjoittimen
+  poistuminen on erillinen cleanup-virhe, jota myöhempi havainto ei nollaa.
+  Alkuperäinen skenaariovirhe ja kaikki nykyiset semanttiset tulokset säilyvät.
+- Pakollinen callerin lopputulos ei kuulu tähän vapaaehtoiseen kanavaan.
+  Omistajan hyväksymä tulostiedosto korvaa CLI-entrypointin suoran
+  konsoliyhteenvedon. Pelkkä vaiheviesti tai tulostiedosto ilman komennon
+  poistumista ei ole hyväksyntä.
+
+Kohdesarja todistaa koko komentoprosessin poistumisen ja tarkan omistettujen
+resurssien lopputilan normaalilla tulosteella, lukemattomalla vastaanottajalla,
+kanavakatkolla, kirjoittimen kaatumisella ja hallitulla peruutuksella. Erillinen
+injektoitu epäonnistunut lopetus säilyy varmentamattomana. Tämä ei nimeä
+runnerin yhteyskatkon syytä eikä muuta V2.7:n hyväksyntätilaa.
+
+Rajattu käyttäytymissarja ajetaan komennolla
+`pnpm --filter @eky/desktop installer:test:windows-acceptance-phase-writer`.
+Se rakentaa nykyisen supervisorin ja käyttää sen olemassa olevaa Job Object
+-sopimustukea vain testifixturen turvarajana. Ajossa ei rakenneta MSI:tä,
+asenneta sovellusta tai käynnistetä packaged-matriisia. Sama kohdesarja kuuluu
+CI:n nopeaan sopimusjobiin ennen artifact-produceria.
+
+Kirjoittimen erillinen sopimussarja läpäisee 25/25, joista kahdeksan käyttää
+todellista komentoprosessia nykyisen Job Object -testituen sisällä. Kaikissa
+kahdeksassa omistettu prosessipuu poistuu; puuttuva pakollinen worker-tulos
+hylätään myös onnistuneen vaiheviestin jälkeen. Jaettu caller-/virherajan
+kohdesarja läpäisee 88/88, clean 38/38, success 305/305 ja fault 295/295 sekä
+desktop typecheck/build. Tämä on kytkemättömän kirjoitin-checkpointin
+sopimusnäyttö, ei CLI:n loppuyhteenvedon eikä V2.7:n packaged-hyväksyntä.
+
+### Pakollinen workspace-callerin lopputulos
+
+CLI vaatii viimeiseksi `--result-path`-argumentiksi uuden ajokohtaisen
+`<TEMP>/eky-workspace-caller-<32-hex>/result.json`-kohteen. Windowsin TEMP
+ja CI:n RUNNER_TEMP hyväksytään vain kanonisina juurina. Kiinteä rajattu
+tiedostoadapteri varaa hakemiston yksinomaisesti ennen skenaariota ja sitoo
+sen invocationId-, skenaario-, fault-skenaario-, buildRevision- ja
+descriptor-SHA-arvoihin. Hakemiston uudelleenkäyttö, linkit, tuntemattomat
+kentät ja epävalidi tai puuttuva tulos torjutaan.
+
+Sama tiedostoadapteri julkaisee enintään 8192 tavun suljetun yhteenvedon
+atomisesti ilman olemassa olevan tuloksen korvaamista. Se käyttää nykyistä
+rajattua Windows-adapteria: 30 sekunnin operaatioraja ja erillinen 5 sekunnin
+lopetusvaraus. Malli ei keskeytä synkronista natiivikäynnistystä eikä väitä
+kattavansa koko scenario-komennon valmistelua. Adapteri ei lue yritysdataa,
+omista skenaariota, käynnistä MSI:tä tai poista fixtureä.
+
+Vaihekirjoitin lopetetaan ja sen poissaolo varmennetaan ennen fixture-poistoa.
+Siksi poiston lopullinen tulos kuuluu pakolliseen tiedostoon, ei jonon
+tyhjentymistä odottavaan viimeiseen konsoliviestiin. Varmentamaton kirjoittimen
+poistuminen säilyttää fixturen ja erillisen safety-virheen alkuperäisen
+skenaariovirheen rinnalla. Tulosjulkaisun virhe ei muuta näitä tuloksia;
+puuttuva julkaisu estää hyväksynnän ja sen oma aineisto säilyy paikallisesti.
+
+CI varaa jokaiselle success- ja fault-ajolle uuden kohteen. Komennon
+exit-koodi talletetaan heti, minkä jälkeen `verifyWorkspaceCallerResult.mjs`
+tarkistaa saman argumenttisidonnan, strict tuloksen ja exit-koodin. Molempien
+komentojen pitää päättyä onnistuneesti. Verifier ei tulosta raakaa tiedostoa
+eikä console-output ole kontrolliprotokolla. Producer, artifact-ID, MSI-tavut
+ja alkuperäiset skenaarion jälkiehdot pysyvät ennallaan. Uuden kytkennän
+packaged-hyväksyntä on edelleen avoin, eikä runner-yhteyskatkon syytä ole
+osoitettu tällä korjauksella.
+
+Kytkennän kohdesarja läpäisee 39/39, mukaan lukien kymmenen oikeaa
+komentoprosessia, niiden pakollinen caller-result ja kaikkien omistettujen
+Job-puiden poistuminen. Jaetut success-regressiot läpäisevät 309/309,
+fault-regressiot 299/299, artifact-/workflow-sopimukset 57/57 ja clean 38/38.
+Desktop typecheck/build läpäisevät. Nämä ovat korjauspinnan sopimustuloksia;
+puhtaan revision commit-pohjainen CI ja sen kokonaiset consumerit ovat
+seuraava hyväksyntäportti.
+
+### V2.5:n hyväksytty historiallinen päätös
 
 V2.5:n vaihekohtainen loppukatselmus on hyväksytty. Testattu harness- ja
 artifact-revisio on `47847f9dcac5eb296ee93deac65b2440f80614cd` yllä olevan

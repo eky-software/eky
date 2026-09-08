@@ -16,6 +16,8 @@ export function runBoundedWindowsAdapterProcess({
   arguments: arguments_,
   command,
   cwd,
+  now = () => performance.now(),
+  signal,
   spawnProcess = spawn,
   terminationTimeoutMilliseconds,
   timeoutMilliseconds,
@@ -37,6 +39,15 @@ export function runBoundedWindowsAdapterProcess({
   }
   requireTimeout(timeoutMilliseconds);
   requireTimeout(terminationTimeoutMilliseconds);
+  if (signal !== undefined && !(signal instanceof AbortSignal)) {
+    throw new Error('WINDOWS_ACCEPTANCE_ADAPTER_REQUEST_INVALID');
+  }
+  if (signal?.aborted) {
+    return Promise.resolve(Object.freeze({
+      status: 'failed', resultCode: 'cancelled', exitCode: null, directProcessAbsent: true,
+    }));
+  }
+  const deadline = now() + timeoutMilliseconds;
 
   return new Promise((resolvePromise) => {
     let child;
@@ -44,12 +55,17 @@ export function runBoundedWindowsAdapterProcess({
     let settled = false;
     let terminationTimer = null;
     let timedOut = false;
+    let started = false;
+    let processError = false;
+    let terminationStarted = false;
+    let cancelled = false;
 
     function complete(result) {
       if (settled) {
         return;
       }
       settled = true;
+      signal?.removeEventListener('abort', cancel);
       if (deadlineTimer !== null) {
         clearTimeout(deadlineTimer);
       }
@@ -57,6 +73,42 @@ export function runBoundedWindowsAdapterProcess({
         clearTimeout(terminationTimer);
       }
       resolvePromise(Object.freeze(result));
+    }
+
+    function terminateDirectProcess() {
+      if (settled || terminationStarted) {
+        return;
+      }
+      terminationStarted = true;
+      let terminationRequested = false;
+      try {
+        terminationRequested = child.kill();
+      } catch { /* Only close can confirm absence after a failed signal. */ }
+      if (settled) {
+        return;
+      }
+      if (!terminationRequested) {
+        complete({
+          status: 'failed',
+          resultCode: 'terminationFailed',
+          exitCode: null,
+          directProcessAbsent: false,
+        });
+        return;
+      }
+      terminationTimer = setTimeout(() => {
+        complete({
+          status: 'failed',
+          resultCode: 'terminationUnconfirmed',
+          exitCode: null,
+          directProcessAbsent: false,
+        });
+      }, terminationTimeoutMilliseconds);
+    }
+
+    function cancel() {
+      cancelled = true;
+      terminateDirectProcess();
     }
 
     try {
@@ -75,13 +127,25 @@ export function runBoundedWindowsAdapterProcess({
       return;
     }
 
-    child.once('error', () => {
-      complete({
-        status: 'failed',
-        resultCode: 'startFailed',
-        exitCode: null,
-        directProcessAbsent: true,
-      });
+    started = Number.isInteger(child.pid);
+    child.once('spawn', () => { started = true; });
+    child.on('error', () => {
+      if (settled) {
+        return;
+      }
+      if (!started && !Number.isInteger(child.pid) && !terminationStarted) {
+        complete({
+          status: 'failed',
+          resultCode: 'startFailed',
+          exitCode: null,
+          directProcessAbsent: true,
+        });
+        return;
+      }
+      // Node also emits error for failed kill/send operations on a live child.
+      // Retain the exact ChildProcess handle; an error is not an exit receipt.
+      processError = true;
+      terminateDirectProcess();
     });
     child.once('close', (exitCode, signal) => {
       if (timedOut) {
@@ -90,6 +154,22 @@ export function runBoundedWindowsAdapterProcess({
           resultCode: 'timedOut',
           exitCode: Number.isInteger(exitCode) ? exitCode : null,
           directProcessAbsent: true,
+        });
+        return;
+      }
+      if (processError) {
+        complete({
+          status: 'failed',
+          resultCode: 'processError',
+          exitCode: Number.isInteger(exitCode) ? exitCode : null,
+          directProcessAbsent: true,
+        });
+        return;
+      }
+      if (cancelled) {
+        complete({
+          status: 'failed', resultCode: 'cancelled',
+          exitCode: Number.isInteger(exitCode) ? exitCode : null, directProcessAbsent: true,
         });
         return;
       }
@@ -110,31 +190,19 @@ export function runBoundedWindowsAdapterProcess({
       });
     });
 
-    deadlineTimer = setTimeout(() => {
+    signal?.addEventListener('abort', cancel, { once: true });
+    if (signal?.aborted) cancel();
+    if (settled || terminationStarted) return;
+
+    function expireDeadline() {
       timedOut = true;
-      let terminationRequested = false;
-      try {
-        terminationRequested = child.kill();
-      } catch {
-        terminationRequested = false;
-      }
-      if (!terminationRequested) {
-        complete({
-          status: 'failed',
-          resultCode: 'terminationFailed',
-          exitCode: null,
-          directProcessAbsent: false,
-        });
-        return;
-      }
-      terminationTimer = setTimeout(() => {
-        complete({
-          status: 'failed',
-          resultCode: 'terminationUnconfirmed',
-          exitCode: null,
-          directProcessAbsent: false,
-        });
-      }, terminationTimeoutMilliseconds);
-    }, timeoutMilliseconds);
+      terminateDirectProcess();
+    }
+    const remaining = deadline - now();
+    if (remaining <= 0) {
+      expireDeadline();
+    } else {
+      deadlineTimer = setTimeout(expireDeadline, remaining);
+    }
   });
 }

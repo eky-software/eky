@@ -1,8 +1,6 @@
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
 
-import { resolveElectronDevelopmentRuntime } from '../../scripts/electron-development-runtime.mjs';
-import { verifyW6b2PackagedSuccessRunFixture } from '../scripts/w6b2PackagedSuccessRunFixture.mjs';
 import { verifyWorkspaceSuccessArtifact } from './workspaceSuccessArtifact.mjs';
 import {
   WORKSPACE_SUCCESS_EXIT_CODES, WORKSPACE_SUCCESS_PHASES, readWorkspaceSuccessRequest,
@@ -10,35 +8,8 @@ import {
   workspaceSuccessWorkerResult, writeJsonAtomicExclusive,
 } from './workspaceSuccessContracts.mjs';
 import { executeWorkspaceSuccessLifecycle } from './workspaceSuccessLifecycle.mjs';
-import { createWorkspaceSuccessWindowsRuntime } from './workspaceSuccessWindowsRuntime.mjs';
-import { workspaceSuccessRunContext } from './workspaceSuccessRunFixture.mjs';
-import { loadWorkspaceSuccessProfileSupport, writeWorkspaceSuccessCheckpoint } from './workspaceSuccessProfileEvidence.mjs';
-import { createWorkspaceSuccessSessionProof, loadWorkspaceSuccessSessionProtocol,
-  writeWorkspaceSuccessSessionEvidence } from './workspaceSuccessSessionProof.mjs';
-
-const DESKTOP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-
-export async function createWorkspaceSuccessWorkerRuntime(requestPath, request, artifact, {
-  resolveElectronRuntime = resolveElectronDevelopmentRuntime,
-} = {}) {
-  const context = workspaceSuccessRunContext(requestPath, request, artifact);
-  await verifyW6b2PackagedSuccessRunFixture({ ...context.runFixture, temporaryRoot: context.temporaryRoot });
-  const proofProtocol = await import(pathToFileURL(resolve(DESKTOP_ROOT, 'e2e-dist/src/main/w6b2PackagedProof.js')).href);
-  const profileProtocol = await import(pathToFileURL(resolve(DESKTOP_ROOT, 'e2e-dist/e2e/w6b2PackagedWorkspaceProfileCommand.js')).href);
-  const support = await loadWorkspaceSuccessProfileSupport();
-  let electron;
-  try { electron = resolveElectronRuntime({ desktopPackageJsonPath: resolve(DESKTOP_ROOT, 'package.json') }); }
-  catch { throw new Error('electronRuntimeUnavailable'); }
-  const sessionProof = createWorkspaceSuccessSessionProof(await loadWorkspaceSuccessSessionProtocol());
-  const runtime = await createWorkspaceSuccessWindowsRuntime({ ...context, proofProtocol, profileProtocol, sessionProof,
-    profileRuntime: { executablePath: electron.executablePath, applicationPath: resolve(DESKTOP_ROOT, 'e2e-dist/w6b2-profile') },
-    async captureCheckpoint(checkpoint) {
-      if (checkpoint === 'rejectedC') await writeWorkspaceSuccessSessionEvidence(context, sessionProof);
-      await writeWorkspaceSuccessCheckpoint({ request, proofRoot: context.proofRoot, checkpoint, support });
-    },
-  });
-  return { ...runtime, disposeSessionEvidence: () => sessionProof.dispose() };
-}
+import { createWorkspaceSuccessWorkerRuntime } from './workspaceWorkerRuntime.mjs';
+export { createWorkspaceSuccessWorkerRuntime } from './workspaceWorkerRuntime.mjs';
 
 export async function runWorkspaceSuccessWorker(arguments_, {
   platform = process.platform, readRequest = readWorkspaceSuccessRequest,

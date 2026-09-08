@@ -1,6 +1,9 @@
 import { createConnection, type Socket } from 'node:net';
 
-import type { W6b2PackagedSuccessProofConfiguration } from './w6b2PackagedProof.js';
+import {
+  assertW6b2PackagedFaultSessionProbe,
+  type W6b2PackagedProofConfiguration,
+} from './w6b2PackagedProof.js';
 import { createBackendRequestHeaders } from './protocolPolicy.js';
 
 const failure = () => new Error('W6B2_PROOF_SESSION_VALIDATION_FAILED');
@@ -60,13 +63,16 @@ export function parsePackagedSessionProbeRequest(value: unknown, nonce: string, 
 }
 
 export async function runW6b2PackagedSessionProbe(input: {
-  configuration: Readonly<W6b2PackagedSuccessProofConfiguration>;
+  configuration: Readonly<W6b2PackagedProofConfiguration>;
   backendPort: number;
   runtimeInstanceId: string;
   runtimeSessionSecret: string;
 }): Promise<void> {
   const nonce = input.configuration.sessionProbeNonce;
   if (nonce === undefined) return;
+  if (input.configuration.controlFormatVersion === 2) {
+    assertW6b2PackagedFaultSessionProbe(input.configuration);
+  }
   const request = { schemaVersion: 1, nonce, phase: input.configuration.phase,
     runtimeInstanceId: input.runtimeInstanceId, port: input.backendPort, session: input.runtimeSessionSecret };
   parsePackagedSessionProbeRequest(request, nonce, input.configuration.phase);
