@@ -11,7 +11,7 @@ import { createWorkspaceSuccessRequest, readWorkspaceSuccessResult, workspaceSuc
 import { requireWorkspaceSuccessProductPrecondition, resolveWorkspaceSuccessTerminalOutcome,
   workspaceSuccessRunRootRemovable } from './workspaceSuccessFailureBoundary.mjs';
 import { materializeWorkspaceSuccessArtifactFixture, prepareWorkspaceSuccessRunFixture,
-  workspaceSuccessRunContext } from './workspaceSuccessRunFixture.mjs';
+  WORKSPACE_SUCCESS_RUN_ROOT_PREFIX, workspaceSuccessRunContext } from './workspaceSuccessRunFixture.mjs';
 import { loadWorkspaceSuccessProfileSupport } from './workspaceSuccessProfileEvidence.mjs';
 import { verifyWorkspaceSuccessSemanticPostcondition } from './workspaceSuccessPostcondition.mjs';
 import { createUpgradeRollbackPostSupervisorWindowsRuntime } from './upgradeRollbackPostSupervisorWindowsRuntime.mjs';
@@ -92,7 +92,7 @@ export async function runWorkspaceSuccess(args, {
   const artifactInput = parseWorkspaceSuccessArguments(args);
   await checkSupervisor();
   const temporaryRoot = await realpath(tmpdir());
-  const runRoot = await mkdtemp(resolve(temporaryRoot, 'eky-windows-acceptance-v2-workspace-'));
+  const runRoot = await mkdtemp(resolve(temporaryRoot, WORKSPACE_SUCCESS_RUN_ROOT_PREFIX));
   let context = null;
   let supervisor = null;
   let supervisorAttempted = false;

@@ -1622,6 +1622,23 @@ palauteta. Prosessiomistajuus ja siivousrajat eivät muutu. Lukijakorjauksen
 kohdesarja läpäisee 219/219 ja artifact-sarja 54/54; packaged-valmistelun
 juurisyy ja kahden consumerin hyväksyntä ovat vielä avoinna.
 
+Revision `6cb396b` [packaged-kierroksessa](https://github.com/eky-software/eky/actions/runs/34212971811)
+molemmat consumerit säilyttivät täsmällisen `profileFixtureAFailed`-tuloksen.
+Prosessipuun poissaolo, tuotteiden ja asennusjälkien siivous, normaalin
+profiilin muuttumattomuus sekä fixture-poisto varmistuivat. Hyväksyntä jäi
+kesken, vaikka muut V2-workflowt läpäisivät.
+
+Consumerin ajokohtaisen testijuuren nimien pitää jättää tilaa workspace- ja
+snapshot-alihakemistoille myös käyttäjäkohtaisessa Windows-Temp-juuressa.
+V2.6 lyhentää vain omia väliaikaisia hakemistonimiään; production-polut,
+nonce, containment, snapshotin nykyinen pituusraja ja cleanup-omistajuus
+säilyvät. Käyttäytymisregressio todistaa ylipitkän polun hylkäyksen ennen
+candidate-runtimen käynnistystä, ja consumerin todellisista polkuporteista
+koottu regressio varmistaa korjatun rakenteen mahtumisen samaan rajaan.
+Korjauksen kohdesarja läpäisee 220/220, artifact-sarja 54/54 ja profiilin
+kohdetestit 12/12; desktopin typecheck ja build läpäisevät. Kahden eristetyn
+packaged-consumerin on vielä vahvistettava korjaus.
+
 ### W6B.2A-invarianttien siirtokartta
 
 | Vanhan portin invariantti | V2.6-vastine / rajattu jatkotyö | Tila tässä checkpointissa |

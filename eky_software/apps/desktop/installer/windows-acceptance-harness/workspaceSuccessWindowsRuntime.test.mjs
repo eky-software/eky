@@ -6,8 +6,30 @@ import { basename, resolve } from 'node:path';
 import test from 'node:test';
 
 import { WORKSPACE_SUCCESS_PROFILE_ERRORS, workspaceSuccessErrorCode } from './workspaceSuccessContracts.mjs';
+import { WORKSPACE_SUCCESS_RUN_ROOT_PREFIX, workspaceSuccessRunContext } from './workspaceSuccessRunFixture.mjs';
 
 const profileProtocol = await import(new URL('../../e2e-dist/e2e/w6b2PackagedWorkspaceProfileCommand.js', import.meta.url));
+const { createDesktopProfilePaths } = await import(new URL('../../e2e-dist/src/runtime/desktopProfilePaths.js', import.meta.url));
+const { deriveWorkspaceRoot } = await import(new URL('../../e2e-dist/src/workspaces/registry/deriveWorkspaceRoot.js', import.meta.url));
+const { createProfileSnapshotRuntimePaths } = await import(new URL('../../e2e-dist/src/profileBackup/profileSnapshotRuntimePaths.js', import.meta.url));
+
+test('consumer layout leaves room for workspace snapshots in a user-scoped Windows temp root', {
+  skip: process.platform !== 'win32',
+}, () => {
+  const root = resolve('C:/Users/synthetic-user/AppData/Local/Temp', `${WORKSPACE_SUCCESS_RUN_ROOT_PREFIX}ABCDEF`);
+  const artifact = { source: { manifest: { packageFilename: 'source.msi' } },
+    target: { manifest: { packageFilename: 'target.msi' } } };
+  const context = workspaceSuccessRunContext(resolve(root, 'scenario/worker-request.json'), {
+    fixtureRoot: resolve(root, 'fixture'), runNonce: 'a'.repeat(64),
+  }, artifact);
+  const id = '11111111-1111-4111-8111-111111111111';
+  const workspace = deriveWorkspaceRoot(resolve(context.proofRoot, 'user-data'), id, 1);
+  const profile = createDesktopProfilePaths(workspace.workspaceRoot);
+  const snapshot = resolve(createProfileSnapshotRuntimePaths(profile.runtimeRoot).stagingRoot, id, 'profile.sqlite');
+  assert.ok(snapshot.length < 260, 'consumer layout exceeds the existing fixture snapshot budget');
+  assert.equal(context.proofRoot.startsWith(`${root}\\`), true);
+  assert.equal(context.temporaryRoot.startsWith(`${root}\\`), true);
+});
 
 import {
   createWorkspaceSuccessWindowsRuntime, runWorkspaceSuccessOwnedCommand,

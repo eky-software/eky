@@ -9,6 +9,9 @@ import {
 import { verifyWorkspaceSuccessArtifact } from './workspaceSuccessArtifact.mjs';
 import { WORKSPACE_SUCCESS_DESCRIPTOR_FILENAME } from './workspaceSuccessArtifactDescriptor.mjs';
 
+// Leave room for workspace UUIDs and snapshot staging under user-scoped TEMP.
+export const WORKSPACE_SUCCESS_RUN_ROOT_PREFIX = 'eky-v26-';
+
 export async function materializeWorkspaceSuccessArtifactFixture(input, fixtureRoot) {
   const source = await verifyWorkspaceSuccessArtifact(input);
   await mkdir(fixtureRoot, { recursive: false });
@@ -28,7 +31,7 @@ export async function materializeWorkspaceSuccessArtifactFixture(input, fixtureR
 export function workspaceSuccessRunContext(requestPath, request, artifact) {
   const scenarioRoot = dirname(requestPath);
   if (resolve(scenarioRoot, '../fixture') !== request.fixtureRoot) throw new Error('requestInvalid');
-  const temporaryRoot = resolve(scenarioRoot, 'proof-temp');
+  const temporaryRoot = resolve(scenarioRoot, 'proof');
   const proofRoot = resolve(temporaryRoot, w6b2PackagedProofDirectoryName,
     request.runNonce.slice(0, w6b2PackagedProofPathTokenLength));
   const runFixture = { proofRoot, token: request.runNonce };
