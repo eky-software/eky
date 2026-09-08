@@ -17,10 +17,14 @@ export function createWorkspaceSuccessSessionProof(protocol, options) {
   return createWorkspaceSessionProof(protocol, PHASES, options, true);
 }
 
-export async function createWorkspaceFaultSessionProof(protocol, faultScenario, options) {
+export async function loadWorkspaceFaultSessionPhases(faultScenario) {
   const { getW6b2PackagedFaultSessionPhases } = await import(pathToFileURL(resolve(
     DIRECTORY, '../../e2e-dist/src/main/w6b2PackagedProof.js')).href);
-  return createWorkspaceSessionProof(protocol, getW6b2PackagedFaultSessionPhases(faultScenario), options);
+  return getW6b2PackagedFaultSessionPhases(faultScenario);
+}
+
+export async function createWorkspaceFaultSessionProof(protocol, faultScenario, options) {
+  return createWorkspaceSessionProof(protocol, await loadWorkspaceFaultSessionPhases(faultScenario), options);
 }
 
 function createWorkspaceSessionProof(protocol, phases, { request = fetch } = {}, canSkipMissing = false) {

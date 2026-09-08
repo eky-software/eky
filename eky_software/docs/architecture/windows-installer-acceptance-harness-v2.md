@@ -1823,8 +1823,10 @@ vaiheprefixin; tuntematon tila, vieras tulos ja ylimääräiset kentät hylätä
 | Nykyisten main-owned proof-kutsujen järjestys | `workspaceFaultLifecycle.mjs` |
 | Exact source/target -asennustilan lukuassertio | `workspaceInstalledState.mjs`, siirretty V2.6-ketjusta muuttumattomana molempien käyttöön |
 | Windows-asennustilan havainnointi ja yksityiset proof-käynnistykset | `workspaceSuccessWindowsRuntime.mjs`: sama adapteri nimettyjen success/fault-factoryjen kautta |
-| Työn rajaus ja prosessipuun cleanup | Nykyinen Job Object -supervisor; V2.7-workerin kytkentä vielä avoin |
-| Riippumaton business-jälkitarkastus ja asennuksen poisto | Nykyiset V2-portit; V2.7:n skenaariokohtainen composition vielä avoin |
+| Worker-porttien kokoaminen | `workspaceWorkerRuntime.mjs`, success/fault-factoryt saman Windows-adapterin päälle |
+| Työn rajaus ja prosessipuun cleanup | Nykyinen Job Object -supervisor; V2.7:n caller-kytkentä vielä avoin |
+| Riippumaton business-jälkitarkastus | `workspaceFaultProfileEvidence.mjs` ja `workspaceFaultPostcondition.mjs`, jaettu vain lukeva snapshot-raja |
+| Asennuksen poisto ja sen jälkiehdot | Nykyiset V2-portit; V2.7:n caller-/terminal-composition vielä avoin |
 
 ### W6B.2B-invarianttien siirtokartta
 
@@ -1907,8 +1909,9 @@ Yhden terveen käynnistyksen skenaariot eivät väitä todistavansa vanhan
 istunnon HTTP-hylkäystä olemattomalta toiselta backendiltä. Niiden
 prosessipuun poistuminen, source-/recovery-only-lopputila ja semanttinen
 jälkitarkastus ovat erillisiä paketoidun hyväksynnän vaatimuksia.
-V2.7:n worker-kytkentä, skenaariokohtainen riippumaton jälkitarkastus sekä
-uuden artifactin producer/kaksi consumeria ovat edelleen avoinna.
+Tämän istuntokanava-checkpointin jälkeinen worker-kytkentä ja riippumaton
+jälkitarkastus kuvataan alla. Uuden artifactin producer/kaksi consumeria
+ovat edelleen avoinna.
 
 ### V2.7:n Windows-adapterin checkpoint
 
@@ -1939,6 +1942,50 @@ artifact-sarja 54/54; desktopin typecheck/build läpäisevät. Windows-kutsut
 ovat tässä adapteritestissä injektoituja. Tämä ei ole MSI- tai V2.7-
 packaged-hyväksyntä; worker, riippumaton jälkitarkastus ja kaksi täydellistä
 viiden skenaarion consumeria ovat edelleen seuraavat portit.
+
+### V2.7:n worker- ja jälkitarkastuscheckpoint
+
+`runWorkspaceFaultWorker.mjs` sitoo yhden sallitun fault-skenaarion
+requestiin ja julkaisee erikseen strict scenario-resultin sekä nykyisen
+supervisorin worker-resultin. Molempien kirjoitusten on onnistuttava ennen
+onnistunutta poistumista. Väärä vaiheprefixi, puuttuva tulos tai
+julkaisun epäonnistuminen ei tuota onnistumista. Worker ei rakenna paketteja,
+valvo prosessipuuta tai omista asennuksen emergency-cleanupia.
+
+`workspaceWorkerRuntime.mjs` kokoaa success- ja fault-workerien yhteiset
+Windows-portit. Se korvaa aiemmin success-workerissa olleen kokoamiskoodin;
+rinnakkaista Windows-runtimea ei kopioida fault-workerille. Istuntosalaisuudet
+vapautetaan muistista myös kytkennän tai skenaarion epäonnistuessa.
+
+Yksi `captureWorkspaceProfileSnapshot` lukee molempien vaiheiden profiilit.
+Se säilyttää kanoniset polut, regular-file-/single-link-rajat, ennen
+SQLite-avausta tehtävän varmennuksen sekä keskeneräisten metadata-slotien
+hylkäyksen ilman niiden korjaamista. Fault-checkpoint sitoo vain
+`sourceBaseline`- ja `faultTerminal`-tilat, skenaarion, ajon ja artifactin.
+Se ei keksi fault-poluille `desktop.started`-tapahtumia.
+
+`workspaceFaultPostcondition.mjs` käyttää olemassa olevan fault-profiilin
+puhtaita assertioita sekä descriptorin täsmällisiä package-identiteettejä.
+Se tarkistaa business-/PDF-/katalogijatkuvuuden, odotetut SQLite-muutokset,
+registry-/lineage-tilan, accepted-buildin ja journalin. Lopuksi nykytila
+luetaan uudelleen: tallennettu checkpoint ei yksin riitä todisteeksi.
+Istuntokanavan turvallinen aineisto validoidaan erikseen
+`workspaceFaultSessionEvidence.mjs`-vastuussa. Vain terveiden käynnistysten
+suljettu järjestys, erilliset runtime-tunnisteet ja aiempien istuntojen
+hylkäysmäärät sallitaan; salaisuuksia, portteja tai tapahtumalokeja ei
+kirjoiteta tähän aineistoon.
+
+Kanoninen fault-sopimussarja läpäisee 240/240, yhteisten vastuiden
+success-regressiosarja 282/282 ja artifact-sarja 54/54. Desktopin
+typecheck/build läpäisevät. Mukana ovat workerin todellisen compositionin
+sivuvaikutukseton kytkentä, virheellisen evidenssin hylkäykset ja yhteisen
+lukijan linkki-/slot-/muutosregressiot. Nämä eivät ole MSI-hyväksyntäajoja.
+
+Seuraava portti kytkee nykyiseen caller-/terminal-rajaan workerin,
+riippumattomat business- ja session-tulokset, exact ProductCode -siivouksen
+ja footprint-/fixture-jälkiehdot. Sen jälkeen yksi uusi build-once-pari
+ja kaksi ensimmäisen yrityksen Windows-consumeria todistavat kaikki viisi
+skenaariota samoilla tavuilla. V2.7:n hyväksyntä on edelleen kesken.
 
 ## Migraatiojärjestys
 
@@ -2047,10 +2094,11 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 ## Nykyinen päätös
 
 V2.6:n tarkistettu vaihekohtainen lähtörevisio on `2f2118e`.
-V2.7:n sopimus-/vaiheketjucheckpoint, hyväksytty muistikanavan käynnistysraja
-ja jaetun Windows-adapterin fault-kytkentä on toteutettu yllä kuvatusti.
-V2.7:n Windows-worker, riippumaton business-jälkitarkastus
-sekä build-once- ja kahden consumerin hyväksyntä ovat vielä avoimia.
+V2.7:n sopimus-/vaiheketjucheckpoint, hyväksytty muistikanavan käynnistysraja,
+jaetun Windows-adapterin worker-kytkentä ja riippumattomat business-/session-
+jälkitarkastukset on toteutettu yllä kuvatusti. Caller-/terminal-composition,
+erillinen asennussiivous sekä build-once- ja kahden consumerin hyväksyntä
+ovat vielä avoimia.
 Vaihe ei ole valmis eikä vanhan harnessin poistamiseen ole vielä vastaavaa
 kokonaisnäyttöä. Migraatiojärjestys, yhden supervisorin omistajuus ja
 hyväksynnän kolme tasoa säilyvät.

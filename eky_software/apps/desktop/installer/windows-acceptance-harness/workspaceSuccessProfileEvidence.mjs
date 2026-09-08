@@ -71,11 +71,8 @@ export async function readWorkspaceSuccessProfileState(proofRoot, support) {
     resolve(proofRoot, 'evidence', 'w6b2-profile-state-v1.json'), 'profileEvidenceInvalid'));
 }
 
-export async function captureWorkspaceSuccessProfileEvidence({
-  request, proofRoot, checkpoint, support,
-}, { readLifecycleEvents = readDesktopLifecycleEvents } = {}) {
+export async function captureWorkspaceProfileSnapshot({ request, proofRoot, support }) {
   try {
-    if (!WORKSPACE_SUCCESS_CHECKPOINTS.includes(checkpoint)) invalid();
     await directory(proofRoot);
     const userDataRoot = resolve(proofRoot, 'user-data');
     await directory(userDataRoot);
@@ -117,13 +114,24 @@ export async function captureWorkspaceSuccessProfileEvidence({
       }
       fixtures.push({ ...persisted, baseline: evidence });
     }
+    return { profileState: { ...state, fixtures }, registry, accepted, journal };
+  } catch { invalid(); }
+}
+
+export async function captureWorkspaceSuccessProfileEvidence(input,
+  { readLifecycleEvents = readDesktopLifecycleEvents } = {}) {
+  try {
+    const { request, proofRoot, checkpoint, support } = input;
+    if (!WORKSPACE_SUCCESS_CHECKPOINTS.includes(checkpoint)) invalid();
+    const snapshot = await captureWorkspaceProfileSnapshot(input);
+    const profile = support.createDesktopProfilePaths(resolve(proofRoot, 'user-data'));
     const logDirectory = resolve(profile.runtimeRoot, 'logs', 'desktop');
     if (checkpoint !== 'sourceBaseline') await directory(logDirectory);
     const events = checkpoint === 'sourceBaseline' ? [] : await readLifecycleEvents(logDirectory);
     return {
       schemaVersion: 1, checkpoint, runNonce: request.runNonce,
       artifactDescriptorSha256: request.artifactDescriptorSha256,
-      profileState: { ...state, fixtures }, registry, accepted, journal, events,
+      ...snapshot, events,
     };
   } catch { invalid(); }
 }

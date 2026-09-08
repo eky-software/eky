@@ -7,6 +7,9 @@ import test from 'node:test';
 
 import { createClosedDirectoryInventory } from './closedDirectoryInventory.mjs';
 import { createWorkspaceSuccessEvidenceTestFixture } from './workspaceSuccessEvidenceTestFixture.mjs';
+import { createWorkspaceFaultRequest } from './workspaceFaultContracts.mjs';
+import { captureWorkspaceFaultProfileEvidence, writeWorkspaceFaultCheckpoint,
+  workspaceFaultCheckpointPath } from './workspaceFaultProfileEvidence.mjs';
 import {
   captureWorkspaceSuccessProfileEvidence, readWorkspaceSuccessSettledSlot,
   workspaceSuccessCheckpointPath, writeWorkspaceSuccessCheckpoint, loadWorkspaceSuccessProfileSupport,
@@ -183,3 +186,41 @@ test('optional absence does not treat malformed JSON as absent', async (t) => {
   await writeFile(path, '{invalid');
   await assert.rejects(readWorkspaceSuccessSettledSlot(path, (value) => value, true), /profileEvidenceInvalid/);
 });
+
+for (const mode of ['completed', 'hardlink', 'junction', 'unsettledSlot', 'mutation']) {
+  test(`fault capture uses the same readonly file boundary without lifecycle claims: ${mode}`, async (t) => {
+    const f = await createProfile(t);
+    const input = { ...f.input, checkpoint: 'faultTerminal', request: createWorkspaceFaultRequest({
+      ...f.request, faultScenario: 'acceptanceInterruption',
+    }) };
+    if (mode === 'hardlink') await link(f.databasePaths[0], resolve(f.root, 'alias'));
+    if (mode === 'junction') {
+      const runtime = dirname(dirname(f.databasePaths[0]));
+      const alias = resolve(f.root, 'runtime-alias');
+      await rename(runtime, alias); await symlink(alias, runtime, 'junction');
+    }
+    if (mode === 'unsettledSlot') await writeFile(f.acceptedPath + '.next', await readFile(f.acceptedPath));
+    if (mode === 'mutation') {
+      const snapshot = f.support.snapshotW6b2PackagedWorkspaceEvidence;
+      f.support.snapshotW6b2PackagedWorkspaceEvidence = async (persisted) => {
+        await writeFile(f.databasePaths[0], 'changed by synthetic faulty reader'); return snapshot(persisted);
+      };
+    }
+    const before = await createClosedDirectoryInventory(f.root).catch(() => null);
+    if (mode === 'completed') {
+      const value = await captureWorkspaceFaultProfileEvidence(input);
+      assert.equal(value.faultScenario, input.request.faultScenario);
+      assert.equal(Object.hasOwn(value, 'events'), false);
+      assert.deepEqual(await createClosedDirectoryInventory(f.root), before);
+      await writeWorkspaceFaultCheckpoint(input);
+      const path = workspaceFaultCheckpointPath(f.root, 'faultTerminal');
+      const bytes = await readFile(path);
+      await assert.rejects(writeWorkspaceFaultCheckpoint(input));
+      assert.deepEqual(await readFile(path), bytes);
+    } else {
+      await assert.rejects(captureWorkspaceFaultProfileEvidence(input), { message: 'profileEvidenceInvalid' });
+      assert.equal(f.sqlReads(), mode === 'mutation' ? 1 : 0);
+      if (before !== null && mode !== 'mutation') assert.deepEqual(await createClosedDirectoryInventory(f.root), before);
+    }
+  });
+}
