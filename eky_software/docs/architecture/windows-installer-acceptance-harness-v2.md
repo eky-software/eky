@@ -1672,6 +1672,31 @@ edellyttää edelleen kahta ensimmäisen yrityksen consumeria.
 Korjauksen kohdesarja läpäisee 258/258 ja artifact-sarja 54/54;
 desktopin typecheck ja build läpäisevät.
 
+### Mainin käynnistystapahtuman kytkentä
+
+Revision `360c0c2` [packaged-kierroksessa](https://github.com/eky-software/eky/actions/runs/34219525063)
+molemmat workerit suorittivat kaikki success-vaiheet, mutta riippumaton
+jälkiehto hylkäsi puuttuvan käynnistystodisteen. V2.6:n private proof -haara
+palasi ennen tavallisen main-polun `desktop.started`-kirjausta.
+
+`desktopStartupCompletion` käyttää nykyistä tapahtumatehdasta, loggeria ja
+runtime-identiteettiä. Main kutsuu sitä vasta olemassa olevien profiili-,
+backend- ja update-tarkistusten jälkeen. Vain validoidun success-controlin
+session-kanavalla varmennettu V2.6-käynnistys saa tapahtuman ennen controllerin
+mahdollista shutdownia tai handoffia. Puuttuva controller tai epäonnistunut
+session-varmennus ei tuota onnistumista. Tavallinen käynnistys säilyttää yhden
+tapahtuman alkuperäisessä kohdassaan; smoke-, fault- ja migraatiopolkuja ei
+laajenneta. Loggerin kirjoitus- tai failure-politiikka ei muutu.
+
+Kytkentäregressio todistaa tapahtumajärjestyksen, virhepolun ja tavallisen
+käynnistyksen yhden tapahtuman. Nykyinen seitsemän sessionin kanavatesti
+käyttää samaa mainin tuottajaa oletettujen lifecycle-eventtien sijaan.
+Jälkiehto hylkää edelleen puuttuvan, ylimääräisen ja väärän runtimen
+tapahtuman. Kohdesarja on 258/258, artifact-sarja 54/54 ja desktopin
+typecheck/build läpäisevät. Muuttunut paketoitu main vaatii uuden puhtaan
+revision build-once-artifactin ja kaksi ensimmäisen yrityksen consumeria;
+aiemman MSI-parin näyttö ei hyväksy tätä muutosta.
+
 ### W6B.2A-invarianttien siirtokartta
 
 | Vanhan portin invariantti | V2.6-vastine / rajattu jatkotyö | Tila tässä checkpointissa |

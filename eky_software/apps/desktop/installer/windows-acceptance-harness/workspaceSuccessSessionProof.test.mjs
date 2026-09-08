@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import test from 'node:test';
 
+import { runPackagedDesktopStartupProof } from '../../e2e-dist/src/main/desktopStartupCompletion.js';
+
 import { createWorkspaceSuccessSessionProof, loadWorkspaceSuccessSessionProtocol,
   verifyWorkspaceSuccessSessionEvidence, writeWorkspaceSuccessSessionEvidence } from './workspaceSuccessSessionProof.mjs';
 
@@ -30,10 +32,36 @@ test('real memory channel validates seven new sessions and rejects every retaine
   } });
   t.after(() => proof.dispose());
   const secrets = [];
+  const events = [];
   for (const phase of phases) {
     current = secret(); secrets.push(current);
     const channel = await proof.start(phase);
-    try { await client(channel, phase, current); }
+    const identity = { appVersion: phase === 'sourceHandoff' ? '0.2.7' : '0.2.8',
+      buildRevision: 'b'.repeat(40), runtimeInstanceId: randomUUID() };
+    const previousEventCount = events.length;
+    let sessionValidated = false;
+    try {
+      const result = await runPackagedDesktopStartupProof({
+        configuration: { controlFormatVersion: 1, sessionProbeNonce: channel.nonce, phase },
+        controllerAvailable: true, identity, startedAt: Date.now(),
+        logger: { write(event) { assert.equal(sessionValidated, true); events.push(event); } },
+        async validateSession() {
+          await client(channel, phase, current, identity.runtimeInstanceId);
+          sessionValidated = true;
+        },
+        async runController() {
+          assert.equal(events.length, previousEventCount + 1);
+          const event = events.at(-1);
+          assert.equal(event.eventName, 'desktop.started');
+          assert.equal(event.outcome, 'success');
+          for (const key of Object.keys(identity)) assert.equal(event[key], identity[key]);
+          assert.equal(JSON.stringify(event).includes(current), false);
+          assert.equal(JSON.stringify(event).includes(channel.nonce), false);
+          return { formatVersion: 1, phase, status: 'completed' };
+        },
+      });
+      assert.deepEqual(result, { formatVersion: 1, phase, status: 'completed' });
+    }
     finally { await channel.finish(); }
   }
   assert.equal(calls.length, 28);
@@ -47,8 +75,11 @@ test('real memory channel validates seven new sessions and rejects every retaine
   const text = await readFile(path, 'utf8');
   for (const token of secrets) assert.equal(text.includes(token), false);
   assert.doesNotMatch(text, /port|session"|http:|pipe|password/);
-  const events = proof.evidence().map((p) => ({ eventName: 'desktop.started', runtimeInstanceId: p.runtimeInstanceId }));
   await assert.doesNotReject(() => verifyWorkspaceSuccessSessionEvidence(input, events));
+  for (const invalidEvents of [events.slice(1), [...events, events[0]],
+    events.map((event, index) => index === 0 ? { ...event, runtimeInstanceId: randomUUID() } : event)]) {
+    await assert.rejects(() => verifyWorkspaceSuccessSessionEvidence(input, invalidEvents), /sessionProofInvalid/);
+  }
   for (const change of [
     (v) => { v.proofs.pop(); },
     (v) => { v.proofs[1].priorSessionsRejected = 0; },
