@@ -28,6 +28,23 @@ afterEach(async () => {
 });
 
 describe('W6B.2 packaged proof configuration', () => {
+  it('allows a session probe nonce only inside the marker-validated success control', async () => {
+    const proof = await createProofFiles({ phase: 'sourceHandoff', role: 'source' });
+    const phasePath = join(proof.root, 'control', 'phase.json');
+    const input = { appVersion: '0.2.7', bootstrap: proof.bootstrap, resourcesPath: proof.resourcesPath };
+    await writeFile(phasePath, JSON.stringify({ formatVersion: 1, phase: 'sourceHandoff', sessionProbeNonce: token }));
+    await expect(readW6b2PackagedProofConfiguration(input)).resolves.toMatchObject({ sessionProbeNonce: token });
+    for (const sessionProbeNonce of ['', token.toUpperCase(), 'x'.repeat(64), 1, { path: 'untrusted' }]) {
+      await writeFile(phasePath, JSON.stringify({ formatVersion: 1, phase: 'sourceHandoff', sessionProbeNonce }));
+      await expect(readW6b2PackagedProofConfiguration(input)).rejects.toThrow('W6B2_PROOF_CONFIGURATION_INVALID');
+    }
+    await writeFile(phasePath, JSON.stringify({ formatVersion: 1, phase: 'sourceHandoff', sessionProbeNonce: token, port: 1 }));
+    await expect(readW6b2PackagedProofConfiguration(input)).rejects.toThrow('W6B2_PROOF_CONFIGURATION_INVALID');
+    await writeFile(phasePath, JSON.stringify({ formatVersion: 1, phase: 'sourceHandoff', sessionProbeNonce: token }));
+    await rm(join(proof.resourcesPath, 'backend', 'w6b2-private-proof-v1.json'));
+    await expect(readW6b2PackagedProofConfiguration(input)).rejects.toThrow('W6B2_PROOF_CONFIGURATION_INVALID');
+  });
+
   it('derives rollback progress only for the private active rollback phase', () => {
     const configuration = {
       controlFormatVersion: 2 as const,

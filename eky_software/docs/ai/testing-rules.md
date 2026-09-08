@@ -130,6 +130,14 @@ sovitut portit säilyvät pakollisina. Rajaus ei muuta testien turvallisuusehtoj
 epäonnistuneiden ajojen tuloksia, muiden vaiheiden hyväksyntää tai release-
 portteja. Täsmällinen sopimus ja revision näyttö ovat samassa V2-suunnitelmassa.
 
+Omistaja on hyväksynyt vastaavan rajauksen erikseen myös V2.6:n ja V2.7:n
+vaihehyväksyntään. Kumpikin vaihe tarvitsee omat kaksi eristettyä GitHub
+Windows -consumeriaan, jotka käyttävät saman producerin samoja varmennettuja
+artifact-tavuja ensimmäisellä yrityksellä. Paikalliset sopimustestit,
+fail-closed-tulokset, single-link-tarkistus, profiilin muuttumattomuus ja
+tarkka cleanup säilyvät. Tämä ei hyväksy vaiheita etukäteen eikä muuta koko
+V2:n käyttöönotto- tai julkaisuportteja.
+
 Testiraportin julkaisuraja määräytyy
 `docs/architecture/security-principles.md`-dokumentista. Omistajan koneen
 ohjelma-, ajuri- ja ympäristöhavainnot sekä yksityiskohtaiset paikalliset

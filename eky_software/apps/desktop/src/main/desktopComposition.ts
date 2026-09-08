@@ -96,6 +96,11 @@ import {
 } from './w6b2PackagedFaultInjection.js';
 import { runW6b2PackagedFaultProofController } from './w6b2PackagedFaultProofController.js';
 import { runW6b2PackagedProofController } from './w6b2PackagedProofController.js';
+import { runW6b2PackagedSessionProbe } from './w6b2PackagedSessionProbe.js';
+import {
+  reportDesktopStarted,
+  runPackagedDesktopStartupProof,
+} from './desktopStartupCompletion.js';
 import { restoreWindowInputFocus } from './windowInputFocus.js';
 import { resolveDesktopWorkspaceStartup } from './resolveDesktopWorkspaceStartup.js';
 import type { DesktopBuildInfo } from '../release/desktopBuildInfo.js';
@@ -1910,44 +1915,60 @@ async function startDesktopCompositionRuntime({
 
   if (options.w6b2PackagedProof !== undefined) {
     const proof = options.w6b2PackagedProof;
-    const result =
-      localUpdatePackageCache === undefined || handoffCoordinator === undefined
-        ? proof.configuration.controlFormatVersion === 1
-          ? {
-              errorCode: 'W6B2_PROOF_CONFIGURATION_INVALID' as const,
-              formatVersion: 1 as const,
-              phase: proof.configuration.phase,
-              status: 'failed' as const,
-            }
-          : {
-              errorCode: 'W6B2_FAULT_PROOF_UNEXPECTED' as const,
-              faultScenario: proof.configuration.faultScenario,
-              formatVersion: 2 as const,
-              phase: proof.configuration.phase,
-              status: 'failed' as const,
-            }
-        : proof.configuration.controlFormatVersion === 1
-          ? await runW6b2PackagedProofController({
-            cache: localUpdatePackageCache,
-            configuration: proof.configuration,
-            handoff: handoffCoordinator,
-            isQuitRequested: proof.isQuitRequested,
-            isRelaunchRequested: proof.isRelaunchRequested,
-            lifecycle: lifecycleHandle,
-            readRecoveryPointFailureCode: () =>
-              recoveryPointService.getStatus().lastSafeErrorCode,
-            workspaceManagement: workspaceManagementComposition.service,
-          })
-          : await runW6b2PackagedFaultProofController({
-              cache: localUpdatePackageCache,
-              configuration: proof.configuration,
-              handoff: handoffCoordinator,
-              isQuitRequested: proof.isQuitRequested,
-              isRelaunchRequested: proof.isRelaunchRequested,
-              journalStore: updateJournalStore,
-              lifecycle: lifecycleHandle,
-              workspaceManagement: workspaceManagementComposition.service,
-            });
+    const result = await runPackagedDesktopStartupProof({
+      configuration: proof.configuration,
+      controllerAvailable:
+        localUpdatePackageCache !== undefined &&
+        handoffCoordinator !== undefined,
+      identity: desktopOperationalIdentity,
+      logger: desktopOperationalLogger,
+      startedAt: desktopStartedAt,
+      validateSession: (configuration) =>
+        runW6b2PackagedSessionProbe({
+          configuration,
+          backendPort: backendHandle.port,
+          runtimeInstanceId: options.runtimeInstanceId,
+          runtimeSessionSecret,
+        }),
+      runController: async () =>
+        localUpdatePackageCache === undefined || handoffCoordinator === undefined
+          ? proof.configuration.controlFormatVersion === 1
+            ? {
+                errorCode: 'W6B2_PROOF_CONFIGURATION_INVALID' as const,
+                formatVersion: 1 as const,
+                phase: proof.configuration.phase,
+                status: 'failed' as const,
+              }
+            : {
+                errorCode: 'W6B2_FAULT_PROOF_UNEXPECTED' as const,
+                faultScenario: proof.configuration.faultScenario,
+                formatVersion: 2 as const,
+                phase: proof.configuration.phase,
+                status: 'failed' as const,
+              }
+          : proof.configuration.controlFormatVersion === 1
+            ? await runW6b2PackagedProofController({
+                cache: localUpdatePackageCache,
+                configuration: proof.configuration,
+                handoff: handoffCoordinator,
+                isQuitRequested: proof.isQuitRequested,
+                isRelaunchRequested: proof.isRelaunchRequested,
+                lifecycle: lifecycleHandle,
+                readRecoveryPointFailureCode: () =>
+                  recoveryPointService.getStatus().lastSafeErrorCode,
+                workspaceManagement: workspaceManagementComposition.service,
+              })
+            : await runW6b2PackagedFaultProofController({
+                cache: localUpdatePackageCache,
+                configuration: proof.configuration,
+                handoff: handoffCoordinator,
+                isQuitRequested: proof.isQuitRequested,
+                isRelaunchRequested: proof.isRelaunchRequested,
+                journalStore: updateJournalStore,
+                lifecycle: lifecycleHandle,
+                workspaceManagement: workspaceManagementComposition.service,
+              }),
+    });
     await proof.reportResult(result);
     return lifecycleHandle;
   }
@@ -2078,15 +2099,11 @@ async function startDesktopCompositionRuntime({
     }
   }
 
-  desktopOperationalLogger.write(
-    createDesktopOperationalEvent(
-      {
-        durationMs: Date.now() - desktopStartedAt,
-        eventName: 'desktop.started',
-      },
-      desktopOperationalIdentity,
-    ),
-  );
+  reportDesktopStarted({
+    identity: desktopOperationalIdentity,
+    logger: desktopOperationalLogger,
+    startedAt: desktopStartedAt,
+  });
 
   void loadApplicationWindow(mainWindow).catch(() => {
     dependencies.showErrorBox(
