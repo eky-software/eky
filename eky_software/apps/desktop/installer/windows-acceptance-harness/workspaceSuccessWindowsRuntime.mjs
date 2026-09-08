@@ -11,7 +11,10 @@ import {
 import { validateInstallerProductStateResult } from './cleanInstallUninstallWindowsRuntime.mjs';
 import { inspectLegacyInstallerFootprint } from './legacyUpgradeWindowsRuntime.mjs';
 import { verifyWorkspaceSuccessArtifact } from './workspaceSuccessArtifact.mjs';
-import { hasWorkspaceSuccessExactKeys, readWorkspaceSuccessObject, writeJsonAtomicExclusive } from './workspaceSuccessContracts.mjs';
+import {
+  WORKSPACE_SUCCESS_PROFILE_ERRORS, hasWorkspaceSuccessExactKeys,
+  readWorkspaceSuccessObject, writeJsonAtomicExclusive,
+} from './workspaceSuccessContracts.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const PRODUCT_INSPECTOR = resolve(DIRECTORY, 'inspectWindowsInstallerProductState.ps1');
@@ -126,10 +129,18 @@ export async function createWorkspaceSuccessWindowsRuntime({
       cwd: scenarioRoot, env: { ...applicationEnvironment,
         [profileProtocol.W6B2_PACKAGED_PROFILE_OPERATION_ENV]: operation },
     });
-    const result = profileProtocol.parseW6b2PackagedProfileCommandResult(
-      await readObject(resultPath, 'profileResultInvalid'));
-    if (code !== 0 || result.operation !== operation || result.status !== 'completed') {
+    const value = await readObject(resultPath, 'profileResultUnreadable');
+    let result;
+    try { result = profileProtocol.parseW6b2PackagedProfileCommandResult(value); }
+    catch { throw new Error('profileResultInvalid'); }
+    if (result.operation !== operation ||
+      (code === 0) !== (result.status === 'completed')) {
       throw new Error('profileResultInvalid');
+    }
+    if (result.status === 'failed') {
+      const errorCode = Object.hasOwn(WORKSPACE_SUCCESS_PROFILE_ERRORS, result.failureStage)
+        ? WORKSPACE_SUCCESS_PROFILE_ERRORS[result.failureStage] : 'profileResultInvalid';
+      throw new Error(errorCode);
     }
   }
 

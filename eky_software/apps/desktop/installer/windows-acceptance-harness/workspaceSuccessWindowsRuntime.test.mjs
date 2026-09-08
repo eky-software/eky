@@ -5,6 +5,10 @@ import { tmpdir } from 'node:os';
 import { basename, resolve } from 'node:path';
 import test from 'node:test';
 
+import { WORKSPACE_SUCCESS_PROFILE_ERRORS, workspaceSuccessErrorCode } from './workspaceSuccessContracts.mjs';
+
+const profileProtocol = await import(new URL('../../e2e-dist/e2e/w6b2PackagedWorkspaceProfileCommand.js', import.meta.url));
+
 import {
   createWorkspaceSuccessWindowsRuntime, runWorkspaceSuccessOwnedCommand,
   workspaceSuccessApplicationEnvironment, removeWorkspaceSuccessPreviousResult,
@@ -37,11 +41,7 @@ async function fixture(context, changes = {}) {
     createW6b2PackagedProofBootstrapConfiguration: () => ({ root, userDataPath: resolve(root, 'user-data') }),
     parseW6b2PackagedProofResult: (value) => value,
   },
-  profileProtocol: {
-    W6B2_PACKAGED_PROFILE_RESULT_FILE: 'profile-result.json',
-    W6B2_PACKAGED_PROFILE_OPERATION_ENV: 'EKY_W6B2_PROFILE_OPERATION',
-    parseW6b2PackagedProfileCommandResult: (value) => value,
-  },
+  profileProtocol,
   captureCheckpoint: async (checkpoint) => { calls.push({ checkpoint }); } };
   let inspectionRole = 'source';
   let activityQuery = false;
@@ -56,9 +56,12 @@ async function fixture(context, changes = {}) {
       if (options.env.EKY_W6B2_PROFILE_OPERATION) operation = options.env.EKY_W6B2_PROFILE_OPERATION;
       return changes.exitCode ?? 0;
     },
-    async readObject(path) {
+    async readObject(path, errorCode) {
       if (path.endsWith('w6b2-proof-result.json')) return changes.proofResult ?? { formatVersion: 1, phase, status: 'completed' };
-      if (path.endsWith('profile-result.json')) return changes.profileResult ?? { formatVersion: 1, operation, status: 'completed' };
+      if (path.endsWith(profileProtocol.W6B2_PACKAGED_PROFILE_RESULT_FILE)) {
+        if (changes.profileUnreadable) throw new Error(errorCode);
+        return changes.profileResult ?? { formatVersion: 1, operation, status: 'completed' };
+      }
       if (activityQuery) return changes.activity?.shift() ?? { schemaVersion: 1, msiClientCount: 0 };
       const installed = changes.noTarget !== true && inspectionRole === 'target';
       return { schemaVersion: 1, productState: installed ? 5 : -1,
@@ -153,6 +156,53 @@ test('profile preparation uses the existing named profile entrypoint and environ
   assert.deepEqual(call.args, [value.inputs.profileRuntime.applicationPath]);
   assert.equal(call.options.env.EKY_W6B2_PROFILE_OPERATION, 'prepare');
   assert.equal(call.options.env.TEMP, value.root);
+});
+
+test('profile failure mapping covers exactly the existing strict protocol stages', () => {
+  assert.deepEqual(Object.keys(WORKSPACE_SUCCESS_PROFILE_ERRORS), [...profileProtocol.w6b2PackagedProfileFailureStages]);
+});
+
+for (const failureStage of profileProtocol.w6b2PackagedProfileFailureStages) {
+  test(`profile preparation preserves the safe ${failureStage} failure`, async (context) => {
+    const value = await fixture(context, { exitCode: 1, profileResult: {
+      formatVersion: 1, operation: 'prepare', status: 'failed',
+      errorCode: 'W6B2_PROFILE_PREPARATION_FAILED', failureStage,
+    } });
+    await assert.rejects(value.runtime.prepareProfile, (error) => {
+      assert.equal(error.message, WORKSPACE_SUCCESS_PROFILE_ERRORS[failureStage]);
+      assert.equal(workspaceSuccessErrorCode(error), error.message);
+      return true;
+    });
+    assert.equal(value.calls.length, 1);
+  });
+}
+
+test('missing or unreadable profile evidence remains a distinct safe failure', async (context) => {
+  const value = await fixture(context, { exitCode: 1, profileUnreadable: true });
+  await assert.rejects(value.runtime.prepareProfile, { message: 'profileResultUnreadable' });
+});
+
+for (const [name, change, exitCode] of [
+  ['unknown stage', { failureStage: 'PRIVATE_PATH_OR_SECRET' }, 1],
+  ['unknown key', { path: 'PRIVATE_PATH_OR_SECRET' }, 1],
+  ['wrong operation', { operation: 'rejectC', errorCode: 'W6B2_PROFILE_VERIFICATION_FAILED' }, 1],
+  ['wrong error code', { errorCode: 'PRIVATE_PATH_OR_SECRET' }, 1],
+  ['wrong version', { formatVersion: 2 }, 1],
+  ['contradictory successful exit', {}, 0],
+  ['contradictory completed result', { status: 'completed' }, 1],
+]) {
+  test(`profile result rejects ${name} without leaking raw fields`, async (context) => {
+    const value = await fixture(context, { exitCode, profileResult: {
+      formatVersion: 1, operation: 'prepare', status: 'failed',
+      errorCode: 'W6B2_PROFILE_PREPARATION_FAILED', failureStage: 'profileInput', ...change,
+    } });
+    await assert.rejects(value.runtime.prepareProfile, { message: 'profileResultInvalid' });
+  });
+}
+
+test('nonzero exit cannot accept an otherwise valid completed profile result', async (context) => {
+  const value = await fixture(context, { exitCode: 1 });
+  await assert.rejects(value.runtime.prepareProfile, { message: 'profileResultInvalid' });
 });
 
 test('session proof failure rejects an otherwise completed application result', async (context) => {

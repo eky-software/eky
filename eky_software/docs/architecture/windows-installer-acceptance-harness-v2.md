@@ -1606,6 +1606,22 @@ workerin alustusrajan ja nykyisen Electron-resolverin regressiot läpäisevät
 korjatulle puhtaalle revisiolle; edellisen kierroksen epäonnistumista ei
 lasketa hyväksynnäksi.
 
+Revision `d1b37e7` [packaged-kierros](https://github.com/eky-software/eky/actions/runs/34166633384)
+eteni molemmissa consumereissa source-asennuksen ja payload-jälkiehdon läpi,
+mutta profiilin valmistelu epäonnistui. Molemmat ajot tuottivat terminal-
+tuloksen: tyhjä prosessipuu, exact-product- ja asennusjälkien poisto,
+normaalin profiilin muuttumattomuus sekä fixture-poisto varmistuivat.
+Tämä kierros ei ole V2.6-hyväksyntä.
+
+Profiilituloksen lukija säilyttää nykyisen strictin profile-protokollan
+virhevaiheen suljettuna V2-virhekoodina. Lukukelvoton tai puuttuva tiedosto,
+virheellinen DTO ja valmistelijan ilmoittama epäonnistuminen erotetaan.
+Väärä operaatio, tuntematon vaihe tai lisäkenttä sekä ristiriita exit-koodin
+ja tuloksen välillä hylätään. Raakavirhettä, polkua tai salaisuutta ei
+palauteta. Prosessiomistajuus ja siivousrajat eivät muutu. Lukijakorjauksen
+kohdesarja läpäisee 219/219 ja artifact-sarja 54/54; packaged-valmistelun
+juurisyy ja kahden consumerin hyväksyntä ovat vielä avoinna.
+
 ### W6B.2A-invarianttien siirtokartta
 
 | Vanhan portin invariantti | V2.6-vastine / rajattu jatkotyö | Tila tässä checkpointissa |

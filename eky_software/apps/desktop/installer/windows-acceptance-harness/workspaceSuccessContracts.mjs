@@ -13,6 +13,23 @@ export const WORKSPACE_SUCCESS_PHASES = Object.freeze([
   'switchToB', 'migrateB', 'verifyBFirstStart', 'verifyBRestart',
   'switchToA', 'rejectC', 'artifactAfterStartup',
 ]);
+export const WORKSPACE_SUCCESS_PROFILE_ERRORS = Object.freeze({
+  electronReady: 'profileElectronReadyFailed',
+  installedApplication: 'profileInstalledApplicationFailed',
+  proofConfiguration: 'profileProofConfigurationFailed',
+  buildIdentity: 'profileBuildIdentityFailed',
+  profileInput: 'profileInputFailed',
+  runtimePaths: 'profileRuntimePathsFailed',
+  fixtureA: 'profileFixtureAFailed',
+  fixtureB: 'profileFixtureBFailed',
+  fixtureC: 'profileFixtureCFailed',
+  migrationHistory: 'profileMigrationHistoryFailed',
+  registry: 'profileRegistryFailed',
+  acceptedBuild: 'profileAcceptedBuildFailed',
+  evidence: 'profileEvidenceFailed',
+  profileState: 'profileStateFailed',
+  profileOperation: 'profileOperationFailed',
+});
 export const WORKSPACE_SUCCESS_ERRORS = Object.freeze([
   'requestInvalid', 'unexpectedFailure', 'preconditionFailed', 'artifactInvalid',
   'sourceInstallFailed', 'sourceStateInvalid', 'profilePreparationFailed',
@@ -21,6 +38,7 @@ export const WORKSPACE_SUCCESS_ERRORS = Object.freeze([
   'firstStartBFailed', 'restartBFailed', 'switchToAFailed', 'rejectionCFailed',
   'proofResultInvalid', 'profileResultInvalid', 'profileEvidenceInvalid', 'sessionProofInvalid', 'electronRuntimeUnavailable',
   'ownedProcessStartFailed', 'ownedProcessExitInvalid', 'productInspectionFailed',
+  'profileResultUnreadable', ...Object.values(WORKSPACE_SUCCESS_PROFILE_ERRORS),
 ]);
 const SHA = /^[0-9a-f]{64}$/;
 const REVISION = /^[0-9a-f]{40}$/;
