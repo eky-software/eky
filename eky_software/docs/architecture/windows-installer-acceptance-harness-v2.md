@@ -1658,6 +1658,20 @@ Regressiot käyttävät oikeaa nykyistä proof-parseria: kohdesarja läpäisee
 Päivityksen luovutuksen täsmällinen epäonnistuminen ja koko
 packaged-hyväksyntä ovat vielä avoinna.
 
+Revision `d4251fb` [packaged-kierroksen](https://github.com/eky-software/eky/actions/runs/34217489091)
+molemmat consumerit säilyttivät alkuperäisen
+`W6B2_PROOF_PREPARATION_RECOVERY_POINT_SNAPSHOT_DATABASE_FAILED`-virheen.
+SQLite-kopion kohdepolun pitää jättää tilaa myös journal-sivutiedostolle;
+pelkän tietokantapolun mahtuminen Windows-rajaan ei riitä. Consumerin
+väliaikaisia nimiä tiivistetään tämän varauksen vuoksi. Snapshot-adapteria,
+tuotantopolkuja tai SQLiten asetuksia ei muuteta. Regressio käyttää samaa
+nykyistä backendin SQLite-ajuria ja consumerin todellisia polkuportteja:
+kopiointi ja integrity-tarkistus onnistuvat, mutta journal-varauksen
+ylittävä synteettinen kohde hylätään. Paketoidun päivitysketjun hyväksyntä
+edellyttää edelleen kahta ensimmäisen yrityksen consumeria.
+Korjauksen kohdesarja läpäisee 258/258 ja artifact-sarja 54/54;
+desktopin typecheck ja build läpäisevät.
+
 ### W6B.2A-invarianttien siirtokartta
 
 | Vanhan portin invariantti | V2.6-vastine / rajattu jatkotyö | Tila tässä checkpointissa |

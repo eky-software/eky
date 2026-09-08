@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { access, link, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, resolve } from 'node:path';
+import { basename, dirname, resolve } from 'node:path';
+import { createRequire } from 'node:module';
 import test from 'node:test';
 
 import { WORKSPACE_SUCCESS_PROFILE_ERRORS, WORKSPACE_SUCCESS_PROOF_ERRORS, workspaceSuccessErrorCode } from './workspaceSuccessContracts.mjs';
@@ -14,10 +15,7 @@ const { createDesktopProfilePaths } = await import(new URL('../../e2e-dist/src/r
 const { deriveWorkspaceRoot } = await import(new URL('../../e2e-dist/src/workspaces/registry/deriveWorkspaceRoot.js', import.meta.url));
 const { createProfileSnapshotRuntimePaths } = await import(new URL('../../e2e-dist/src/profileBackup/profileSnapshotRuntimePaths.js', import.meta.url));
 
-test('consumer layout leaves room for workspace snapshots in a user-scoped Windows temp root', {
-  skip: process.platform !== 'win32',
-}, () => {
-  const root = resolve('C:/Users/synthetic-user/AppData/Local/Temp', `${WORKSPACE_SUCCESS_RUN_ROOT_PREFIX}ABCDEF`);
+function workspaceSnapshotFixturePaths(root) {
   const artifact = { source: { manifest: { packageFilename: 'source.msi' } },
     target: { manifest: { packageFilename: 'target.msi' } } };
   const context = workspaceSuccessRunContext(resolve(root, 'scenario/worker-request.json'), {
@@ -27,9 +25,45 @@ test('consumer layout leaves room for workspace snapshots in a user-scoped Windo
   const workspace = deriveWorkspaceRoot(resolve(context.proofRoot, 'user-data'), id, 1);
   const profile = createDesktopProfilePaths(workspace.workspaceRoot);
   const snapshot = resolve(createProfileSnapshotRuntimePaths(profile.runtimeRoot).stagingRoot, id, 'profile.sqlite');
-  assert.ok(snapshot.length < 260, 'consumer layout exceeds the existing fixture snapshot budget');
+  return { context, snapshot };
+}
+
+test('consumer layout leaves room for workspace snapshots and their SQLite journal in a user-scoped Windows temp root', {
+  skip: process.platform !== 'win32',
+}, () => {
+  const root = resolve('C:/Users/synthetic-user/AppData/Local/Temp', `${WORKSPACE_SUCCESS_RUN_ROOT_PREFIX}ABCDEF`);
+  const { context, snapshot } = workspaceSnapshotFixturePaths(root);
+  assert.ok(Buffer.byteLength(`${snapshot}-journal`) < 260,
+    'consumer layout exceeds the SQLite snapshot and journal budget');
   assert.equal(context.proofRoot.startsWith(`${root}\\`), true);
   assert.equal(context.temporaryRoot.startsWith(`${root}\\`), true);
+});
+
+test('the consumer snapshot path supports a real SQLite backup and integrity check', {
+  skip: process.platform !== 'win32',
+}, async (context) => {
+  const root = await mkdtemp(resolve(await realpath(tmpdir()), WORKSPACE_SUCCESS_RUN_ROOT_PREFIX));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const { snapshot } = workspaceSnapshotFixturePaths(root);
+  const Database = createRequire(new URL('../../../backend/package.json', import.meta.url))('better-sqlite3');
+  const source = new Database(':memory:');
+  try {
+    source.pragma('user_version = 1');
+    await mkdir(dirname(snapshot), { recursive: true });
+    await source.backup(snapshot);
+    const copied = new Database(snapshot, { readonly: true, fileMustExist: true });
+    try {
+      assert.equal(copied.pragma('integrity_check', { simple: true }), 'ok');
+      assert.equal(copied.pragma('user_version', { simple: true }), 1);
+    } finally { copied.close(); }
+
+    // A database filename alone may fit while SQLite cannot open its journal.
+    const oldSuffix = '/profile.sqlite';
+    const oldSnapshot = resolve(root, 'x'.repeat(255 - Buffer.byteLength(root) - oldSuffix.length - 1), 'profile.sqlite');
+    assert.equal(Buffer.byteLength(oldSnapshot), 255);
+    await mkdir(dirname(oldSnapshot), { recursive: true });
+    await assert.rejects(() => source.backup(oldSnapshot), { code: 'SQLITE_CANTOPEN' });
+  } finally { source.close(); }
 });
 
 import {
