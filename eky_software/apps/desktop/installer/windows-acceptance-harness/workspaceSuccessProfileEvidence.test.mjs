@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { link, lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { link, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import test from 'node:test';
@@ -85,6 +85,13 @@ test('capture reads main startup and shutdown events from the real logger stream
   assert.equal(result.events[1].eventId, shutdown.eventId);
   assert.notEqual(result.events[0].eventId, shutdown.eventId);
   assert.deepEqual(await createClosedDirectoryInventory(f.root), before);
+  const logsRoot = resolve(profile.runtimeRoot, 'logs');
+  const alias = resolve(f.root, 'aliased-logs');
+  await rename(logsRoot, alias);
+  await symlink(alias, logsRoot, 'junction');
+  await assert.rejects(captureWorkspaceSuccessProfileEvidence({ ...f.input, checkpoint: 'targetFirstStart' }),
+    { message: 'profileEvidenceInvalid' });
+  assert.equal((await lstat(logsRoot)).isSymbolicLink(), true);
 });
 
 test('profile inspection loads only named readers, parsers and path derivations', async () => {

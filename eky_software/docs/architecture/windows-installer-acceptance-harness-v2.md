@@ -1730,6 +1730,9 @@ lukijan oikeaan streamiin, kuten legacy-adapteri jo tekee. Se ei laajenna
 hakua, kirjoita tapahtumia verifierissä tai löysennä puuttuvan tapahtuman
 hylkäystä. Regressio käyttää mainin nykyistä tuottajaa, oikeaa loggeria ja
 muuttamatonta lukijaa; se varmistaa myös read-only-inventaarion säilymisen.
+Nykyinen kanonisen hakemiston tarkistin varmistaa streamin koko polun ennen
+lukemista. Myös emohakemiston junction hylätään, eikä alikansioon siirtyminen
+ohita aiempaa linkkien torjuntaa. Sama regressio kattaa tämän hylkäyksen.
 Ennen korjausta kohde epäonnistuu, korjattuna tapahtuma-, jälkiehto- ja
 session-kohdesarja läpäisee 71/71. Packaged-todennus vaaditaan edelleen.
 
