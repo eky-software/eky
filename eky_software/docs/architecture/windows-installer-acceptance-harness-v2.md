@@ -2060,7 +2060,34 @@ TEMP-juurta. Fixture noudattaa nyt muiden vastaavien testien `realpath`-
 valmistelua. Rajattu junction-regressio todistaa samalla, että lukija yhä
 hylkää aliaksen ja hyväksyy saman tiedoston kanonisen polun. Kohdesarja
 läpäisee 26/26. Lukijan turvallisuusrajaa, timeoutia tai supervisorin
-omistajuutta ei muuteta; korjaus tarvitsee uuden revision CI-todisteen.
+omistajuutta ei muuteta. [Korjausrevision CI](https://github.com/eky-software/eky/actions/runs/34247574179)
+läpäisi sopimusportin, producerin ja molemmat success-consumerit.
+
+Saman kierroksen fault-consumerit läpäisivät pre-update-palautuspisteen
+virhetilanteen, mutta hylkäsivät aktiivisen workspacen rollbackin vaiheessa
+`sourceRollbackInstall`. Molemmat tuottivat oman virhetuloksen,
+`processTreeAbsent: true`, `semanticCleanupCompleted`, `exactProductsAbsent`
+ja `businessDataPreserved: true`. V2.7 ei ole tämän perusteella hyväksytty.
+
+Rajattu havainnointikorjaus säilyttää nykyisen Windows-adapterin ja sen yhden
+supervisorin rajan. MSI-inaktiviteetti ei yksin todista binääripalautuksen
+valmistumista: palautusapuri voi vielä käynnistyä tai olla uninstall- ja
+install-komentojen välissä. Source-rollback lukee apurin jo tuottaman
+rajatun JSONL-sopimuksen nykyisellä V2.4-lukijalla. Vasta oikean terminal-
+tuloksen jälkeen tarkistetaan MSI-inaktiviteetti ja exact ProductCodet.
+Epäonnistuneen rollbackin mahdollinen repair saa päättyä ennen virhetulosta;
+repair ei muuta epäonnistumista onnistumiseksi. Puuttuva tulos jää nykyisen
+supervisorin deadlinen piiriin, ristiriitainen tai taaksepäin muuttuva
+evidence hylätään. Uutta prosessi-, cleanup- tai timeout-omistajaa ei lisätä.
+
+Kohderegressiot kattavat viivästyneen apurin, komentojen väliset tyhjät
+MSI-havainnot, puuttuvan tuloksen, korruptoituvan evidence-prefixin,
+hardlink-hylkäyksen sekä epäonnistuneen palautuksen jälkeisen repairin.
+Niiden ja nykyisten lifecycle/failure-boundary-sopimusten kohdesarja
+läpäisee 148/148. Korjaus tarvitsee uuden puhtaan revision packaged-
+hyväksynnän; tuotannon rollback-apuria tai toimintasemantiikkaa ei muuteta.
+Korjauksen fault-sopimukset läpäisevät 295/295, success-regressiot 303/303,
+artifact-/workflow-sopimukset 56/56 sekä desktop typecheck ja build.
 
 ## Migraatiojärjestys
 

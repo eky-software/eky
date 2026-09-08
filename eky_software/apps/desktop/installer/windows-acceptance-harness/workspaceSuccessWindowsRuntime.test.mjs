@@ -77,6 +77,7 @@ import {
 async function fixture(context, changes = {}) {
   const root = await mkdtemp(resolve(await realpath(tmpdir()), 'eky-v26-runtime-contract-'));
   await mkdir(resolve(root, 'control'));
+  await mkdir(resolve(root, 'result'));
   context.after(() => rm(root, { recursive: true, force: true }));
   const calls = [];
   let phase = 'sourceHandoff';
@@ -99,6 +100,7 @@ async function fixture(context, changes = {}) {
   } }; } },
   proofProtocol: {
     W6B2_PACKAGED_PROOF_SWITCH: 'w6b2-packaged-proof',
+    W6B2_PACKAGED_ROLLBACK_PROGRESS_FILE: proofProtocol.W6B2_PACKAGED_ROLLBACK_PROGRESS_FILE,
     createW6b2PackagedProofBootstrapConfiguration: () => ({ root, userDataPath: resolve(root, 'user-data') }),
     parseW6b2PackagedProofResult: proofProtocol.parseW6b2PackagedProofResult,
     getW6b2PackagedFaultSessionPhases: proofProtocol.getW6b2PackagedFaultSessionPhases,
@@ -149,7 +151,10 @@ async function fixture(context, changes = {}) {
       phase = value; calls.push({ phase });
       if (changes.faultScenario) await writeW6b2PackagedSuccessPhase(root, value);
     },
-    async nextObservation() { calls.push({ observation: true }); },
+    async nextObservation() {
+      calls.push({ observation: true });
+      await changes.onObservation?.({ root, calls });
+    },
   };
   return { root, calls, inputs, dependencies,
     runtime: await (changes.faultScenario ? createWorkspaceFaultWindowsRuntime : createWorkspaceSuccessWindowsRuntime)(inputs, dependencies) };
@@ -198,6 +203,7 @@ for (const role of ['source', 'target']) {
   test(`fault ${role} handoff observes the existing installation without reinstalling`, async (context) => {
     const value = await fixture(context, { faultScenario: 'activeWorkspaceFirstStartFailure', installedRole: role,
       activity: [{ schemaVersion: 1, msiClientCount: 1 }, { schemaVersion: 1, msiClientCount: 0 }] });
+    if (role === 'source') await writeRollbackProgress(value.root, completedRollbackProgress());
     await value.runtime.waitForInstallation(role);
     assert.equal(value.calls.filter((call) => call.observation).length, 1);
     assert.equal(value.calls.filter((call) => call.command).length, 6);
@@ -208,8 +214,81 @@ for (const role of ['source', 'target']) {
 
 test('an absent source after rollback is a terminal failure without a second installer or cleanup owner', async (context) => {
   const value = await fixture(context, { faultScenario: 'activeWorkspaceFirstStartFailure' });
+  await writeRollbackProgress(value.root, completedRollbackProgress());
   await assert.rejects(() => value.runtime.waitForInstallation('source'), /sourceRollbackInstallFailed/);
   assert.equal(value.calls.some((call) => call.observation || basename(call.command ?? '') === 'msiexec.exe'), false);
+});
+
+function completedRollbackProgress() {
+  return ['inputValidation', 'launcherExitWait', 'failedPackageUninstall', 'rollbackPackageInstall']
+    .flatMap((phase, index) => [
+      { phase, event: 'started', durationMs: 0, elapsedMs: index * 2 },
+      { phase, event: 'completed', durationMs: 1, elapsedMs: index * 2 + 1 },
+    ]);
+}
+
+async function writeRollbackProgress(root, records) {
+  await writeFile(resolve(root, 'result', proofProtocol.W6B2_PACKAGED_ROLLBACK_PROGRESS_FILE),
+    records.map((record) => JSON.stringify(record)).join('\n') + '\n');
+}
+
+test('source rollback observes delayed helper and inter-MSI gaps until actual terminal evidence', async (context) => {
+  const complete = completedRollbackProgress();
+  const observations = [[], complete.slice(0, 4), complete.slice(0, 6), complete.slice(0, 7), complete];
+  const changes = { faultScenario: 'activeWorkspaceFirstStartFailure', installedRole: 'target',
+    async onObservation({ root }) {
+      assert.ok(observations.length > 0, 'no extra observation after terminal rollback');
+      const next = observations.shift();
+      await writeRollbackProgress(root, next);
+      if (next.length === complete.length) changes.installedRole = 'source';
+    } };
+  const value = await fixture(context, changes);
+  await assert.doesNotReject(value.runtime.waitForInstallation('source'));
+  assert.equal(observations.length, 0);
+  assert.equal(value.calls.filter((call) => call.observation).length, 5);
+  assert.equal(value.calls.filter((call) => call.command).length, 3);
+  assert.ok(value.calls.filter((call) => call.command).every((call) => basename(call.command) === 'powershell.exe'));
+});
+
+test('missing rollback progress cannot complete the wait and leaves cancellation to the existing owner', async (context) => {
+  const cancellation = new Error('existingOwnerCancelled');
+  const value = await fixture(context, { faultScenario: 'activeWorkspaceFirstStartFailure', installedRole: 'source',
+    onObservation() { throw cancellation; } });
+  await assert.rejects(value.runtime.waitForInstallation('source'), (error) => error === cancellation);
+  assert.equal(value.calls.filter((call) => call.observation).length, 1);
+  assert.equal(value.calls.some((call) => call.command), false);
+});
+
+test('rollback failure waits for the helpers repair terminal without accepting the repaired target', async (context) => {
+  const failed = completedRollbackProgress();
+  failed.at(-1).event = 'failed';
+  const repairStarted = [...failed, { phase: 'failedPackageRepair', event: 'started', durationMs: 0, elapsedMs: 8 }];
+  const value = await fixture(context, { faultScenario: 'activeWorkspaceFirstStartFailure',
+    async onObservation({ root, calls }) {
+      assert.equal(calls.filter((call) => call.observation).length, 1);
+      await writeRollbackProgress(root, [...repairStarted,
+        { phase: 'failedPackageRepair', event: 'completed', durationMs: 1, elapsedMs: 9 }]);
+    } });
+  await writeRollbackProgress(value.root, repairStarted);
+  await assert.rejects(value.runtime.waitForInstallation('source'), { message: 'sourceRollbackInstallFailed' });
+  assert.equal(value.calls.some((call) => call.command), false);
+});
+
+test('rollback progress cannot disappear or change its already observed prefix', async (context) => {
+  const value = await fixture(context, { faultScenario: 'activeWorkspaceFirstStartFailure',
+    async onObservation({ root }) { await writeRollbackProgress(root, []); } });
+  await writeRollbackProgress(value.root, completedRollbackProgress().slice(0, 4));
+  await assert.rejects(value.runtime.waitForInstallation('source'), { message: 'sourceRollbackInstallFailed' });
+  assert.equal(value.calls.filter((call) => call.observation).length, 1);
+  assert.equal(value.calls.some((call) => call.command), false);
+});
+
+test('rollback completion must be regular single-link strict progress before ProductCode inspection', async (context) => {
+  const value = await fixture(context, { faultScenario: 'activeWorkspaceFirstStartFailure', installedRole: 'source' });
+  await writeRollbackProgress(value.root, completedRollbackProgress());
+  await link(resolve(value.root, 'result', proofProtocol.W6B2_PACKAGED_ROLLBACK_PROGRESS_FILE), resolve(value.root, 'alias.jsonl'));
+  await assert.rejects(value.runtime.waitForInstallation('source'), { message: 'sourceRollbackInstallFailed' });
+  assert.equal(value.calls.some((call) => call.command || call.observation), false);
 });
 
 for (const change of [

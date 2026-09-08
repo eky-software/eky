@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { lstat, mkdir, rename, rm } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 import { setTimeout as pollNextObservation } from 'node:timers/promises';
 
 import { inspectPackageArtifactInventory } from '../../scripts/package-artifact-inventory.mjs';
@@ -11,6 +12,7 @@ import {
 import { writeW6b2PackagedFaultPhase } from '../scripts/w6b2PackagedFaultRunFixture.mjs';
 import { validateInstallerProductStateResult } from './cleanInstallUninstallWindowsRuntime.mjs';
 import { inspectLegacyInstallerFootprint } from './legacyUpgradeWindowsRuntime.mjs';
+import { readUpgradeRollbackProgress } from './upgradeRollbackProgress.mjs';
 import { verifyWorkspaceSuccessArtifact } from './workspaceSuccessArtifact.mjs';
 import {
   WORKSPACE_SUCCESS_PROFILE_ERRORS, WORKSPACE_SUCCESS_PROOF_ERRORS, hasWorkspaceSuccessExactKeys,
@@ -235,9 +237,32 @@ async function createWorkspaceWindowsRuntime({
 
   async function waitForInstallation(role) {
     if (role !== 'source' && role !== 'target') throw new Error('requestInvalid');
+    if (role === 'source' && faultScenario !== 'activeWorkspaceFirstStartFailure') throw new Error('requestInvalid');
+    let previousRollbackProgress = [];
     // Observation is not installer ownership. The one Job deadline bounds both
     // these OS queries and the application's existing installer handoff.
     while (true) {
+      if (role === 'source') {
+        // MSI inactivity is also possible before the helper starts or between
+        // its uninstall/install commands. Require its existing terminal proof
+        // before sampling ProductCodes; a failed rollback may still be repairing.
+        const path = resolve(runFixture.proofRoot, 'result', proofProtocol.W6B2_PACKAGED_ROLLBACK_PROGRESS_FILE);
+        let present = false;
+        try { await lstat(path); present = true; }
+        catch (error) { if (error?.code !== 'ENOENT') throw new Error('sourceRollbackInstallFailed'); }
+        let records;
+        try { records = present ? await readUpgradeRollbackProgress(path) : []; }
+        catch { throw new Error('sourceRollbackInstallFailed'); }
+        if (!isDeepStrictEqual(records.slice(0, previousRollbackProgress.length), previousRollbackProgress)) {
+          throw new Error('sourceRollbackInstallFailed');
+        }
+        previousRollbackProgress = records;
+        const last = records.at(-1);
+        const terminal = (last?.event === 'failed' && last.phase !== 'rollbackPackageInstall') ||
+          (last?.event === 'completed' && ['rollbackPackageInstall', 'failedPackageRepair'].includes(last.phase));
+        if (!terminal) { await nextObservation(); continue; }
+        if (records.some((record) => record.event === 'failed')) throw new Error('sourceRollbackInstallFailed');
+      }
       const state = await inspectProducts();
       const idle = await requireMsiIdle();
       if (idle) {
