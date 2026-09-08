@@ -2053,6 +2053,15 @@ Artifact-/workflow-sopimukset läpäisevät 56/56. Varsinainen V2.7-hyväksyntä
 odottaa tämän kytkennän puhdasta lähderevisiota, uutta produceria ja
 molempien consumerien viittä onnistunutta terminal-tulosta.
 
+Ensimmäinen [V2.7:n CI-kierros](https://github.com/eky-software/eky/actions/runs/34245778412)
+hylättiin fault-sopimuksissa ennen produceria (288/289); consumerit jäivät
+ajamatta. Fault-requestin JSON-testifixture käytti kanonisoimatonta
+TEMP-juurta. Fixture noudattaa nyt muiden vastaavien testien `realpath`-
+valmistelua. Rajattu junction-regressio todistaa samalla, että lukija yhä
+hylkää aliaksen ja hyväksyy saman tiedoston kanonisen polun. Kohdesarja
+läpäisee 26/26. Lukijan turvallisuusrajaa, timeoutia tai supervisorin
+omistajuutta ei muuteta; korjaus tarvitsee uuden revision CI-todisteen.
+
 ## Migraatiojärjestys
 
 V2 toteutetaan pieninä, itsenäisesti vihreinä checkpointteina:

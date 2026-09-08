@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import test from 'node:test';
@@ -84,7 +84,7 @@ test('each result binds the exact request and only its own complete ordered phas
 });
 
 test('private JSON readers reject missing, duplicate-key and mismatched results', async (t) => {
-  const root = await mkdtemp(resolve(tmpdir(), 'eky-v27-contract-'));
+  const root = await mkdtemp(resolve(await realpath(tmpdir()), 'eky-v27-contract-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const path = resolve(root, 'request.json');
   const expected = request();
@@ -98,6 +98,21 @@ test('private JSON readers reject missing, duplicate-key and mismatched results'
   await assert.rejects(readWorkspaceFaultResult(resultPath, expected));
   await writeFile(resultPath, JSON.stringify(completed(request('binaryRollbackFailure'))));
   await assert.rejects(readWorkspaceFaultResult(resultPath, expected));
+});
+
+test('fault request fixture uses canonical paths while the reader still rejects an aliased root', async (t) => {
+  const root = await mkdtemp(resolve(await realpath(tmpdir()), 'eky-v27-canonical-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const actual = resolve(root, 'actual');
+  const alias = resolve(root, 'alias');
+  await mkdir(actual);
+  await symlink(actual, alias, 'junction');
+  const expected = request();
+  await writeFile(resolve(actual, 'request.json'), JSON.stringify(expected));
+  await assert.rejects(readWorkspaceFaultRequest(resolve(alias, 'request.json')),
+    { message: 'WINDOWS_ACCEPTANCE_WORKSPACE_FAULT_REQUEST_INVALID' });
+  const canonical = resolve(await realpath(alias), 'request.json');
+  assert.deepEqual(await readWorkspaceFaultRequest(canonical), expected);
 });
 
 test('safe error mapping retains known proof failures and never returns arbitrary fallback text', () => {
