@@ -8,6 +8,7 @@ import { inspectPackageArtifactInventory } from '../../scripts/package-artifact-
 import {
   verifyW6b2PackagedSuccessRunFixture, writeW6b2PackagedSuccessPhase,
 } from '../scripts/w6b2PackagedSuccessRunFixture.mjs';
+import { writeW6b2PackagedFaultPhase } from '../scripts/w6b2PackagedFaultRunFixture.mjs';
 import { validateInstallerProductStateResult } from './cleanInstallUninstallWindowsRuntime.mjs';
 import { inspectLegacyInstallerFootprint } from './legacyUpgradeWindowsRuntime.mjs';
 import { verifyWorkspaceSuccessArtifact } from './workspaceSuccessArtifact.mjs';
@@ -15,6 +16,7 @@ import {
   WORKSPACE_SUCCESS_PROFILE_ERRORS, WORKSPACE_SUCCESS_PROOF_ERRORS, hasWorkspaceSuccessExactKeys,
   readWorkspaceSuccessObject, writeJsonAtomicExclusive,
 } from './workspaceSuccessContracts.mjs';
+import { WORKSPACE_FAULT_ERRORS, WORKSPACE_FAULT_SCENARIO, workspaceFaultPlan } from './workspaceFaultContracts.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const PRODUCT_INSPECTOR = resolve(DIRECTORY, 'inspectWindowsInstallerProductState.ps1');
@@ -54,7 +56,18 @@ export async function removeWorkspaceSuccessPreviousResult(path) {
   await rm(path);
 }
 
-export async function createWorkspaceSuccessWindowsRuntime({
+export function createWorkspaceSuccessWindowsRuntime(input, dependencies) {
+  if (Object.hasOwn(input.request, 'faultScenario')) throw new Error('requestInvalid');
+  return createWorkspaceWindowsRuntime(input, dependencies);
+}
+
+export function createWorkspaceFaultWindowsRuntime(input, dependencies) {
+  if (input.request.scenario !== WORKSPACE_FAULT_SCENARIO) throw new Error('requestInvalid');
+  workspaceFaultPlan(input.request.faultScenario);
+  return createWorkspaceWindowsRuntime(input, dependencies, input.request.faultScenario);
+}
+
+async function createWorkspaceWindowsRuntime({
   request, artifact, runFixture, temporaryRoot, scenarioRoot, profileRuntime,
   proofProtocol, profileProtocol, captureCheckpoint, sessionProof,
 }, {
@@ -66,9 +79,10 @@ export async function createWorkspaceSuccessWindowsRuntime({
   verifyArtifact = verifyWorkspaceSuccessArtifact,
   verifyRunFixture = verifyW6b2PackagedSuccessRunFixture,
   writePhase = writeW6b2PackagedSuccessPhase,
+  writeFaultPhase = writeW6b2PackagedFaultPhase,
   removePreviousResult = removeWorkspaceSuccessPreviousResult,
   nextObservation = () => pollNextObservation(250),
-} = {}) {
+} = {}, faultScenario) {
   if (!environment.APPDATA || !environment.LOCALAPPDATA || !environment.SystemRoot ||
     typeof captureCheckpoint !== 'function' || typeof sessionProof?.start !== 'function') throw new Error('requestInvalid');
   const installRoot = resolve(environment.LOCALAPPDATA, 'Programs', 'Eky');
@@ -83,6 +97,8 @@ export async function createWorkspaceSuccessWindowsRuntime({
   const logRoot = resolve(scenarioRoot, 'msi-logs');
   await mkdir(logRoot, { recursive: false });
   let inspectionSequence = 0;
+  const sessionPhases = faultScenario === undefined ? undefined
+    : proofProtocol.getW6b2PackagedFaultSessionPhases(faultScenario);
 
   async function inspectResult(script, arguments_, code) {
     const resultPath = resolve(scenarioRoot, `workspace-inspection-${inspectionSequence++}.json`);
@@ -162,56 +178,76 @@ export async function createWorkspaceSuccessWindowsRuntime({
         throw new Error(role === 'source' ? 'sourceStateInvalid' : 'targetStateInvalid');
       }
     },
-    prepareProfile: () => runProfile('prepare'),
+    async prepareProfile() {
+      // The existing preparation entrypoint requires the source success control.
+      // Fault control begins only when the first application proof is launched.
+      if (faultScenario !== undefined) await writePhase(runFixture.proofRoot, 'sourceHandoff');
+      await runProfile('prepare');
+    },
     captureCheckpoint,
     async runProofPhase(phase) {
-      await writePhase(runFixture.proofRoot, phase);
+      if (faultScenario === undefined) await writePhase(runFixture.proofRoot, phase);
+      else await writeFaultPhase({ proofRoot: runFixture.proofRoot, faultScenario, phase });
       const bootstrap = proofProtocol.createW6b2PackagedProofBootstrapConfiguration({
         hasProofSwitch: true, tempPath: temporaryRoot, tokenValue: request.runNonce,
       });
       if (bootstrap.root !== runFixture.proofRoot) throw new Error('proofResultInvalid');
       const resultPath = resolve(bootstrap.root, 'result', 'w6b2-proof-result.json');
       await removePreviousResult(resultPath);
-      const probe = await sessionProof.start(phase);
+      const probe = sessionPhases === undefined || sessionPhases.includes(phase)
+        ? await sessionProof.start(phase) : undefined;
       let result;
       let originalError;
       try {
-        const controlPath = resolve(bootstrap.root, 'control', 'phase.json');
-        const nextPath = resolve(bootstrap.root, 'control', 'session-phase.next.json');
-        await writeJsonAtomicExclusive(nextPath, { formatVersion: 1, phase, sessionProbeNonce: probe.nonce });
-        await rename(nextPath, controlPath);
+        if (probe !== undefined) {
+          const controlPath = resolve(bootstrap.root, 'control', 'phase.json');
+          const nextPath = resolve(bootstrap.root, 'control', 'session-phase.next.json');
+          await writeJsonAtomicExclusive(nextPath, {
+            ...(faultScenario === undefined ? { formatVersion: 1 } : { formatVersion: 2, faultScenario }),
+            phase, sessionProbeNonce: probe.nonce,
+          });
+          await rename(nextPath, controlPath);
+        }
         const code = await runCommand(executablePath, [
           `--${proofProtocol.W6B2_PACKAGED_PROOF_SWITCH}`, `--user-data-dir=${bootstrap.userDataPath}`,
         ], { cwd: scenarioRoot, env: applicationEnvironment });
         const value = await readObject(resultPath, 'proofResultUnreadable');
         try { result = proofProtocol.parseW6b2PackagedProofResult(value); }
         catch { throw new Error('proofResultInvalid'); }
-        if (result.formatVersion !== 1 || result.phase !== phase) throw new Error('proofResultInvalid');
+        if (result.phase !== phase || (faultScenario === undefined ? result.formatVersion !== 1
+          : result.formatVersion !== 2 || result.faultScenario !== faultScenario)) throw new Error('proofResultInvalid');
         if (result.status === 'failed') {
-          throw new Error(WORKSPACE_SUCCESS_PROOF_ERRORS.includes(result.errorCode)
+          const errors = faultScenario === undefined ? WORKSPACE_SUCCESS_PROOF_ERRORS : WORKSPACE_FAULT_ERRORS;
+          throw new Error(errors.includes(result.errorCode)
             ? result.errorCode : 'proofResultInvalid');
         }
         if (code !== 0) throw new Error('proofResultInvalid');
       } catch (error) { originalError = error; }
-      try { await probe.finish({ allowMissing: phase === 'verifyBRestart' && result?.status === 'relaunching' }); }
+      try { await probe?.finish({ allowMissing: faultScenario === undefined &&
+        phase === 'verifyBRestart' && result?.status === 'relaunching' }); }
       catch (error) { originalError ??= error; }
       if (originalError) throw originalError;
       return result;
     },
-    async waitForTargetInstallation() {
-      // Observation is not installer ownership. The one Job deadline bounds both
-      // these OS queries and the application's existing installer handoff.
-      while (true) {
-        const state = await inspectProducts();
-        const idle = await requireMsiIdle();
-        if (idle) {
-          if (state.source.productState >= 1 || state.target.productState < 1 || state.ekyProcessCount !== 0) {
-            throw new Error('targetInstallFailed');
-          }
-          return;
-        }
-        await nextObservation();
-      }
-    },
+    ...(faultScenario === undefined ? { waitForTargetInstallation: () => waitForInstallation('target') }
+      : { waitForInstallation }),
   });
+
+  async function waitForInstallation(role) {
+    if (role !== 'source' && role !== 'target') throw new Error('requestInvalid');
+    // Observation is not installer ownership. The one Job deadline bounds both
+    // these OS queries and the application's existing installer handoff.
+    while (true) {
+      const state = await inspectProducts();
+      const idle = await requireMsiIdle();
+      if (idle) {
+        const other = role === 'source' ? 'target' : 'source';
+        if (state[other].productState >= 1 || state[role].productState < 1 || state.ekyProcessCount !== 0) {
+          throw new Error(role === 'source' ? 'sourceRollbackInstallFailed' : 'targetInstallFailed');
+        }
+        return;
+      }
+      await nextObservation();
+    }
+  }
 }

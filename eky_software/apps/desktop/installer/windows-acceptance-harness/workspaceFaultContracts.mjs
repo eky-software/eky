@@ -39,7 +39,7 @@ export const WORKSPACE_FAULT_ERRORS = Object.freeze([
   'requestInvalid', 'unexpectedFailure', 'preconditionFailed', 'artifactInvalid',
   'sourceInstallFailed', 'sourceStateInvalid', 'profilePreparationFailed',
   'sourceHandoffFailed', 'targetInstallFailed', 'targetStateInvalid',
-  'faultProofFailed', 'proofResultInvalid', 'productInspectionFailed',
+  'faultProofFailed', 'proofResultInvalid', 'productInspectionFailed', 'sessionProofInvalid',
   'sourceRollbackInstallFailed', 'profileEvidenceInvalid',
   'ownedProcessStartFailed', 'ownedProcessExitInvalid', 'electronRuntimeUnavailable',
   'profileResultInvalid', 'profileResultUnreadable', 'proofResultUnreadable',

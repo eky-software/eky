@@ -1822,6 +1822,7 @@ vaiheprefixin; tuntematon tila, vieras tulos ja ylimääräiset kentät hylätä
 | Viisi sallittua fault-skenaariota, vaiheprefixit ja turvallinen tulos | `workspaceFaultContracts.mjs` |
 | Nykyisten main-owned proof-kutsujen järjestys | `workspaceFaultLifecycle.mjs` |
 | Exact source/target -asennustilan lukuassertio | `workspaceInstalledState.mjs`, siirretty V2.6-ketjusta muuttumattomana molempien käyttöön |
+| Windows-asennustilan havainnointi ja yksityiset proof-käynnistykset | `workspaceSuccessWindowsRuntime.mjs`: sama adapteri nimettyjen success/fault-factoryjen kautta |
 | Työn rajaus ja prosessipuun cleanup | Nykyinen Job Object -supervisor; V2.7-workerin kytkentä vielä avoin |
 | Riippumaton business-jälkitarkastus ja asennuksen poisto | Nykyiset V2-portit; V2.7:n skenaariokohtainen composition vielä avoin |
 
@@ -1851,7 +1852,7 @@ vihreys ei todista tietokantojen säilymistä, oikeaa rollbackia tai
 prosessi-/semantic-cleanupin onnistumista. Nämä jäävät erillisiksi
 paketoidun hyväksynnän jälkiehdoiksi.
 
-Seuraava checkpoint kytkee ketjut nykyiseen Windows-adapteriin ja yhden
+Seuraava checkpoint kytkee ketjut jaetun Windows-adapterin kautta yhden
 supervisorin workeriin sekä riippumattomaan, vain lukevaan jälkitarkastukseen.
 Hyväksyntä käyttää yhtä puhtaasta revisiosta rakennettua source/target-paria
 ja kahta ensimmäisen yrityksen Windows-consumeria, kumpikin kaikki viisi
@@ -1908,6 +1909,36 @@ prosessipuun poistuminen, source-/recovery-only-lopputila ja semanttinen
 jälkitarkastus ovat erillisiä paketoidun hyväksynnän vaatimuksia.
 V2.7:n worker-kytkentä, skenaariokohtainen riippumaton jälkitarkastus sekä
 uuden artifactin producer/kaksi consumeria ovat edelleen avoinna.
+
+### V2.7:n Windows-adapterin checkpoint
+
+`createWorkspaceFaultWindowsRuntime` käyttää nykyisen V2.6-adapterin
+source-asennusta, payload-varmennusta, yksityistä profiilin valmistelua ja
+MSI-tilalukijaa. `createWorkspaceSuccessWindowsRuntime` säilyttää oman
+format-1-sopimuksensa; siihen ei voi antaa fault-requestia. Kummallakaan
+ei ole omaa prosessipuun valvontaa tai emergency-cleanupia.
+
+Fault-profiilin valmistelu käyttää nykyisen valmisteluentrypointin
+vaatimaa source/format-1-kontrollia. Format-2-fault-kontrolli asetetaan vasta
+nimettyyn sovelluksen proof-käynnistykseen nykyisellä yksityisellä
+phase-writerilla. Vain hyväksytty terve vaihe saa muistikanavan noncen.
+Vieras skenaario, vaihe, formaatti tai tuntematon tuloskenttä hylätään.
+Odotettu `interrupted` vaatii sekä sovelluksen oman strict proof-tuloksen
+että onnistuneen prosessipoistumisen; tavallinen kaatuminen ei riitä.
+Istuntokanavan siivous ei peitä alkuperäistä sovellusvirhettä.
+
+Target-asennus ja palautettu source havaitaan yhdellä nykyisellä
+asennustilan odotusvastuulla. Adapteri ei aja päivitystä tai rollback-MSI:tä
+uudelleen. Tuntematon rooli tai poistuneen installerin väärä lopputila
+päättyy virheeseen. Varsinainen deadline ja puun cleanup kuuluvat edelleen
+yhdelle supervisorille, asennuksen poisto erilliselle semantic cleanupille.
+
+Kohdetestit läpäisevät 125/125. Kanoninen fault-sopimussarja läpäisee
+161/161, jaetun runtime-vastuun sisältävä success-regressiosarja 277/277 ja
+artifact-sarja 54/54; desktopin typecheck/build läpäisevät. Windows-kutsut
+ovat tässä adapteritestissä injektoituja. Tämä ei ole MSI- tai V2.7-
+packaged-hyväksyntä; worker, riippumaton jälkitarkastus ja kaksi täydellistä
+viiden skenaarion consumeria ovat edelleen seuraavat portit.
 
 ## Migraatiojärjestys
 
@@ -2016,8 +2047,9 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 ## Nykyinen päätös
 
 V2.6:n tarkistettu vaihekohtainen lähtörevisio on `2f2118e`.
-V2.7:n rajattu sopimus-/vaiheketjucheckpoint ja hyväksytty muistikanavan
-käynnistysraja on toteutettu yllä kuvatusti. V2.7:n Windows-worker, riippumaton business-jälkitarkastus
+V2.7:n sopimus-/vaiheketjucheckpoint, hyväksytty muistikanavan käynnistysraja
+ja jaetun Windows-adapterin fault-kytkentä on toteutettu yllä kuvatusti.
+V2.7:n Windows-worker, riippumaton business-jälkitarkastus
 sekä build-once- ja kahden consumerin hyväksyntä ovat vielä avoimia.
 Vaihe ei ole valmis eikä vanhan harnessin poistamiseen ole vielä vastaavaa
 kokonaisnäyttöä. Migraatiojärjestys, yhden supervisorin omistajuus ja
