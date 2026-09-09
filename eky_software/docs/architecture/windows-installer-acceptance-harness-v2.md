@@ -2242,7 +2242,8 @@ ja `Windows MSI release gate`. Näitä ei poisteta tämän checkpointin mukana.
 toista V2-matriisia. Main-push, päivittäinen ajastus ja manuaalinen
 release-valmistelun kokonaisajo valitsevat kaikki portit kahdella toistolla.
 Ajastus tulee käyttöön vasta workflowin päähaaraan käyttöönoton jälkeen.
-Kytkennän CI-hyväksyntä on vielä kesken; aiempi checkpoint ei hyväksy tätä revisiota.
+Kytkentächeckpoint on PR #266:ssa katselmoitavana. Sen hyväksyntä vaatii
+saman revision koko valitun CI-ajon; aiempi checkpoint ei hyväksy uutta revisiota.
 
 | Muutos | V2:n ajama kattavuus |
 | --- | --- |
@@ -2263,6 +2264,8 @@ rakentaa oman artifactinsa kerran; consumer valitsee producerin artifact-ID:n
 ja varmentaa descriptorin, revision ja tavut ennen käyttöä ja sen jälkeen.
 Workspace-success ja fault käyttävät samaa paria. Skenaarioiden pakollisia
 tulostiedostoja, exit-, session-, cleanup- tai jälkiehtoja ei muuteta.
+Erillinen installer-sopimusjobi säilyttää täyden Git-historian, koska sen
+olemassa olevat testit lukevat lukitun historiallisen lähdecommitin.
 
 Vakaa `V2 acceptance` suoritetaan `always()`-ehdolla. `ciRunAcceptance.mjs`
 tarkistaa valittujen workflowien lopputilat ja `ciJobCoverage.mjs` saman
