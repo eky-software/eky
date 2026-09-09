@@ -58,15 +58,21 @@ test('result file refuses reuse and preserves separate failed scenario and clean
   const input = await fixture(t);
   await workspaceCallerResultFile('prepare', input.resultPath, input.binding);
   await assert.rejects(workspaceCallerResultFile('prepare', input.resultPath, input.binding));
-  const payload = { binding: input.binding, outcome: { ...input.outcome, status: 'failed', errorCode: 'scenarioResultInvalid',
+  const payload = { binding: input.binding, outcome: { ...input.outcome, status: 'failed', errorCode: 'sourceProductResultInvalid',
+    failedPhase: 'targetInstall', scenarioResultCode: 'workspaceSuccessFailed',
     phaseWriterResultCode: 'writerExitUnverified', safetyErrorCode: 'phaseWriterExitUnverified',
     fixtureRemoved: false, fixtureCleanupResultCode: 'retainedUnverified' } };
   await workspaceCallerResultFile('publish', input.resultPath, payload);
   const bytes = await readFile(input.resultPath);
-  assert.equal(parseWorkspaceCallerResult(bytes, input.binding).outcome.errorCode, 'scenarioResultInvalid');
+  const published = parseWorkspaceCallerResult(bytes, input.binding).outcome;
+  assert.equal(published.errorCode, 'sourceProductResultInvalid');
+  assert.equal(published.failedPhase, 'targetInstall');
+  assert.equal(published.safetyErrorCode, 'phaseWriterExitUnverified');
+  assert.equal(published.fixtureCleanupResultCode, 'retainedUnverified');
   await assert.rejects(workspaceCallerResultFile('publish', input.resultPath, input.payload));
   assert.deepEqual(await readFile(input.resultPath), bytes);
   await assert.rejects(workspaceCallerResultFile('verify', input.resultPath, input.binding, 0));
+  await assert.rejects(workspaceCallerResultFile('verify', input.resultPath, input.binding, 1));
 });
 
 test('verifier rejects absent result and nonzero exit even with successful bytes', async (t) => {

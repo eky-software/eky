@@ -1,3 +1,5 @@
+import { WORKSPACE_INSTALLATION_INSPECTION_ERRORS as inspectionErrors } from './workspaceSuccessContracts.mjs';
+
 function fail(code) { throw new Error(code); }
 
 function present(product) {
@@ -7,9 +9,8 @@ function present(product) {
 
 // Shared read-only assertion, not a process or installer owner.
 export function requireWorkspaceInstalledState(state, installed, versions) {
-  if (state.ekyProcessCount !== 0 || state.source.ownedRegistryExists !== state.target.ownedRegistryExists) {
-    fail('productInspectionFailed');
-  }
+  if (state.ekyProcessCount !== 0) fail(inspectionErrors.processRemains);
+  if (state.source.ownedRegistryExists !== state.target.ownedRegistryExists) fail(inspectionErrors.registryMismatch);
   for (const role of ['source', 'target']) {
     const product = state[role];
     if (role === installed) {

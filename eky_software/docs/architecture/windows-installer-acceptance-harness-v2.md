@@ -2253,6 +2253,29 @@ E2E-ympäristödokumentissa. Vaihe-erottelu ei yksin selitä aikaisempaa
 `ARCHIVE-PDF-CONFLICT-001`-flakea; hyväksyntä vaatii edelleen nykyisen revision
 Electron critical -portin ja valitun CI-kierroksen ilman flaky-tulosta.
 
+Nykyinen avoin raja on workspace-success-consumerin `targetInstall`-
+asennushavainto. Electron-portin läpäissyt
+[CI-ajo](https://github.com/eky-software/eky/actions/runs/34349188420)
+hylkäsi yhden success-consumerin koodilla `productInspectionFailed`.
+Kutsu päättyi virheeseen, ei ulkoiseen aikakatkaisuun. Komennon ja
+pakollisen tulosverifierin exit 1 eivät yksin osoita tulostiedoston puuttumista:
+myös kelvollinen epäonnistumistulos hylätään. Aiemman revision vihreitä
+consumer-tuloksia ei siirretä korjatulle revisiolle.
+
+Jaettu Windows-adapteri tarkistaa nyt MSI:n aktiivisuuden ennen erillisiä
+ProductCode-kyselyitä ja niiden jälkeen. Aktiivisen MSI:n kanssa päällekkäiset
+kelvolliset havainnot jäävät nykyisen odotussilmukan käsiteltäviksi; niitä ei
+verrata lopullisena tilana. Kyselyvirhe ja virheellinen tulos hylätään heti,
+eivätkä ne muutu odottamiseksi. Ilman havaittua MSI-aktiivisuutta ristiriitaiset
+havainnot hylätään edelleen. Tarkistukset eivät muodosta atomista
+asennussnapshotia. Kysely-, tulos-, prosessi- ja registry-virheet säilyvät
+erillisinä suljettuina koodeina workerin ja callerin pakollisessa tuloksessa;
+väliaikaisen kyselytuloksen poistovirhe ei peitä alkuperäistä virhettä.
+Käyttäytymisregressio todistaa aiemman vertailujärjestyksen virheen, mutta
+ei yksin nimeä edellisen CI-hylkäyksen juurisyytä. Supervisor, määräajat,
+lopulliset asennus- ja cleanup-ehdot sekä sovelluksen tuotantopolut säilyvät.
+Checkpoint tarvitsee vielä uuden revision sovitut consumer- ja CI-portit.
+
 | Muutos | V2:n ajama kattavuus |
 | --- | --- |
 | Tavallinen web/domain/application tai yleinen dokumentaatio | Testit, typecheck/build, system security, web critical ja riskisopimukset molemmilla käyttöjärjestelmillä |
