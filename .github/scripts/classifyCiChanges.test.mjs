@@ -105,9 +105,14 @@ test('actual CLI writes the required plan and exits; unsupported input fails wit
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test('cadence workflow proves only policy contracts and does not replace any acceptance gate', async () => {
+test('one cadence entry calls existing owners and always aggregates without replacing required checks', async () => {
   const source = await readFile(new URL('../workflows/ci-cadence-contracts.yml', import.meta.url), 'utf8');
-  assert.match(source, /name: V2 cadence policy contracts/);
+  assert.match(source, /name: V2 risk-based CI/);
+  assert.match(source, /push:\s+branches: \[main\]/);
+  assert.match(source, /schedule:\s+- cron:/);
+  assert.match(source, /name: V2 acceptance\s+if: always\(\)/);
+  assert.match(source, /CI_NEEDS: \$\{\{ toJSON\(needs\) \}\}/);
+  assert.match(source, /actions: read/);
   assert.match(source, /contents: read/);
   assert.match(source, /fetch-depth: 0/);
   assert.match(source, /persist-credentials: false/);
@@ -117,6 +122,12 @@ test('cadence workflow proves only policy contracts and does not replace any acc
   assert.match(source, /CI_HEAD_SHA: \$\{\{ github.event.pull_request.head.sha \}\}/);
   assert.doesNotMatch(source, /pull_request_target|continue-on-error|msiexec|installer:|upload-artifact|: write/);
   for (const action of [...source.matchAll(/uses: (\S+)/g)].map((match) => match[1])) {
+    if (action.startsWith('./.github/workflows/')) {
+      const child = await readFile(new URL(`../../${action}`, import.meta.url), 'utf8');
+      assert.match(child, /workflow_call:/);
+      if (!action.endsWith('/ci.yml')) assert.doesNotMatch(child.split('permissions:')[0], /pull_request:|push:/);
+      continue;
+    }
     assert.ok(['actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
       'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020'].includes(action));
   }

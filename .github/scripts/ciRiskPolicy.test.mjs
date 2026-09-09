@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { existsSync } from 'node:fs';
 
 import { classifyCiRisk, CI_GATES, CI_FAULT_SCENARIOS, validateCiRiskPlan } from './ciRiskPolicy.mjs';
 
@@ -27,6 +28,30 @@ test('desktop non-lifecycle changes add Windows tests without claiming compatibi
   }
   assert.equal(plan.gates.legacyUpgrade, false);
   assert.equal(plan.gates.workspaceFault, false);
+});
+
+test('actual backup, restore, recovery and runtime ownership paths retain compatibility coverage', () => {
+  const files = [
+    'profileBackup/profileBackupComposition.ts',
+    'profileBackup/restore/profileRestoreStartupRecovery.ts',
+    'profileBackup/recoveryPoint/recoveryPointService.ts',
+    'runtime/backendShutdown.ts', 'runtime/desktopProfilePaths.ts', 'runtime/runtimeSession.ts',
+    'secrets/secretBrokerMain.ts', 'release/desktopPackageModeReader.ts',
+    'invoicePdfArchive/invoicePdfArchiveJournal.ts',
+    'observability/infrastructure/jsonLineDesktopOperationalLogger.ts',
+    'security/electronPermissionPolicy.ts',
+  ];
+  for (const file of files) {
+    const repositoryPath = path(`apps/desktop/src/${file}`);
+    assert.ok(existsSync(new URL(`../../${repositoryPath}`, import.meta.url)), file);
+    const plan = classifyCiRisk(input([repositoryPath]));
+    assert.equal(plan.risk, 'installer', file);
+    assert.equal(plan.repetitions, 1, file);
+    assert.equal(plan.gates.legacyUpgrade, true, file);
+    assert.deepEqual(plan.faultScenarios, CI_FAULT_SCENARIOS, file);
+  }
+  assert.equal(classifyCiRisk(input([path('apps/web/src/features/customers/CustomerForm.tsx')])).risk, 'fast');
+  assert.equal(classifyCiRisk(input([path('apps/desktop/src/diagnostics/view.ts')])).gates.legacyUpgrade, false);
 });
 
 for (const file of ['apps/desktop/src/update/firstStartUpdateCoordinator.ts',

@@ -32,10 +32,11 @@ test('V2.5 phase acceptance requires the same revision full contracts before its
   const producer = source.slice(source.indexOf('  legacy_artifact_producer:'), source.indexOf('  legacy_consumer:'));
   assert.match(source, /name: V2\.5 packaged legacy phase acceptance/u);
   assert.match(source, /acceptanceScope = 'V2\.5-phase'/u);
-  assert.match(source, /branches:\s+- codex\/test-harness-v2-legacy-upgrade/u);
+  assert.match(source, /workflow_call:\s+inputs:\s+risk_plan:/u);
+  assert.doesNotMatch(source.split('permissions:')[0], /push:/u);
   assert.doesNotMatch(source, /pull_request:|\bmain\b|continue-on-error|retry|workflow_run:/u);
   assert.match(source, /cancel-in-progress: false/u);
-  assert.match(contracts, /repetition: \[1, 2\]/u);
+  assert.ok(contracts.includes("repetition: ${{ fromJSON(inputs.risk_plan != '' && fromJSON(inputs.risk_plan).repetitions == 1 && '[1]' || '[1, 2]') }}"));
   assert.match(contracts, /run: pnpm installer:test:windows-supervisor-v2-legacy/u);
   assert.match(producer, /needs: legacy_contracts/u);
   assert.equal(source.match(/ref: \$\{\{ github\.sha \}\}/gu)?.length, 3);
@@ -48,7 +49,7 @@ test('V2.5 phase acceptance builds once and both consumers only verify and consu
   assert.equal(source.match(/installer:v2-legacy-artifact:build /gu)?.length, 1);
   assert.equal(source.match(/installer:v2-legacy-artifact:verify /gu)?.length, 3);
   assert.match(consumer, /needs: legacy_artifact_producer/u);
-  assert.match(consumer, /repetition: \[1, 2\]/u);
+  assert.ok(consumer.includes("repetition: ${{ fromJSON(inputs.risk_plan != '' && fromJSON(inputs.risk_plan).repetitions == 1 && '[1]' || '[1, 2]') }}"));
   assert.match(consumer, /max-parallel: 2/u);
   assert.equal(consumer.match(/installer:v2-legacy --artifact-descriptor/gu)?.length, 1);
   assert.doesNotMatch(consumer, /artifact:build|package:windows|installer:release/u);
@@ -60,10 +61,12 @@ test('V2.5 phase acceptance builds once and both consumers only verify and consu
 
 test('V2.5 phase acceptance transfers only the verified short lived artifact with approved actions', async () => {
   const source = await readFile(WORKFLOW_URL, 'utf8');
+  const consumer = source.slice(source.indexOf('  legacy_consumer:'));
   assert.equal(source.match(/actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a/gu)?.length, 1);
   assert.equal(source.match(/actions\/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c/gu)?.length, 1);
   assert.match(source, /EKY_V25_ARTIFACT_NAME: eky-v25-phase-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/u);
-  assert.equal(source.match(/name: \$\{\{ env\.EKY_V25_ARTIFACT_NAME \}\}/gu)?.length, 2);
+  assert.equal(source.match(/name: \$\{\{ env\.EKY_V25_ARTIFACT_NAME \}\}/gu)?.length, 1);
+  assert.match(consumer, /artifact-ids: \$\{\{ needs\.legacy_artifact_producer\.outputs\.artifact_id \}\}/u);
   assert.equal(source.match(/path: \$\{\{ runner\.temp \}\}\/eky-v25-legacy-artifact/gu)?.length, 2);
   for (const setting of ['retention-days: 1', 'compression-level: 0', 'if-no-files-found: error', 'overwrite: false', 'include-hidden-files: false']) {
     assert.ok(source.includes(setting));

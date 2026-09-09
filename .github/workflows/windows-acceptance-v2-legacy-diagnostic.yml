@@ -1,14 +1,11 @@
 name: V2.5 packaged legacy phase acceptance
 
 on:
-  push:
-    branches:
-      - codex/test-harness-v2-legacy-upgrade
-    paths:
-      - .github/workflows/windows-acceptance-v2-legacy-diagnostic.yml
-      - eky_software/apps/desktop/installer/windows-acceptance-harness/**
-      - eky_software/apps/desktop/installer/windows-process-supervisor/**
-      - eky_software/apps/desktop/package.json
+  workflow_call:
+    inputs:
+      risk_plan:
+        type: string
+        required: true
   workflow_dispatch:
 
 permissions:
@@ -29,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        repetition: [1, 2]
+        repetition: ${{ fromJSON(inputs.risk_plan != '' && fromJSON(inputs.risk_plan).repetitions == 1 && '[1]' || '[1, 2]') }}
     defaults:
       run:
         working-directory: eky_software/apps/desktop
@@ -85,6 +82,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
       build_revision: ${{ steps.produce.outputs.build_revision }}
       descriptor_sha256: ${{ steps.produce.outputs.descriptor_sha256 }}
       source_package_sha256: ${{ steps.produce.outputs.source_package_sha256 }}
@@ -191,6 +189,7 @@ jobs:
           }
 
       - name: Upload only verified phase artifact bytes
+        id: upload
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ env.EKY_V25_ARTIFACT_NAME }}
@@ -210,7 +209,7 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        repetition: [1, 2]
+        repetition: ${{ fromJSON(inputs.risk_plan != '' && fromJSON(inputs.risk_plan).repetitions == 1 && '[1]' || '[1, 2]') }}
     defaults:
       run:
         working-directory: eky_software
@@ -252,7 +251,8 @@ jobs:
         id: download
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ${{ env.EKY_V25_ARTIFACT_NAME }}
+          artifact-ids: ${{ needs.legacy_artifact_producer.outputs.artifact_id }}
+          merge-multiple: true
           path: ${{ runner.temp }}/eky-v25-legacy-artifact
 
       - name: Verify downloaded artifact and checkout identity

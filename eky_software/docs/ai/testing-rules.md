@@ -127,10 +127,13 @@ V2.8:n riskiluokituksen ja tulosten yhdistämisen kohdesopimukset ajetaan
 kanonisesta lähdejuuresta komennolla `pnpm test:ci`. Repositoryjuuren
 `.github/scripts/` omistaa vain CI-politiikan, ei skenaarioita, niiden
 prosesseja tai artifactien rakentamista. `ci-cadence-contracts.yml` todistaa
-sopimukset Linuxissa ja Windowsissa ja luokittelee PR-diffin ilman porttien
-ohittamista. Tämä ensimmäinen checkpoint ei vielä vaihda nykyistä CI-kadenssia
-tai required check -asetuksia. Kytkentä ja vanhojen komentojen poisto vaativat
-V2-suunnitelman erillisen käyttöönoton.
+sopimukset Linuxissa ja Windowsissa sekä kutsuu nykyiset V2-workflowit saman
+validoidun riskisuunnitelman mukaan. Vakaa `V2 acceptance` vaatii saman ajon
+ja yrityksen kaikki valitut jobit, toistot ja pakolliset testivaiheet; pelkkä
+matriisin osittainen onnistuminen ei riitä. Main-, ajastettu ja manuaalinen
+release-valmistelun ajo säilyvät täysinä. Feature-push ei toista PR:n V2-matriisia.
+Tämä ei muuta required check -asetuksia eikä poista vanhoja W6-komentoja:
+niiden korvaaminen vaatii V2-suunnitelman erillisen käyttöönoton.
 
 V2.5:n omistajan hyväksymä vaihekohtainen ympäristöraja käyttää kahta
 eristettyä Windows CI -consumeria samalle build-once-artifactille kahden

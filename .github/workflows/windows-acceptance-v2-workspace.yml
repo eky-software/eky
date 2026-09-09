@@ -1,25 +1,12 @@
 name: Windows acceptance V2 workspace success and fault recovery
 
 on:
-  pull_request:
-    paths:
-      - .github/workflows/windows-acceptance-v2-workspace.yml
-      - eky_software/apps/desktop/installer/windows-acceptance-harness/**
-      - eky_software/apps/desktop/installer/windows-process-supervisor/**
-      - eky_software/apps/desktop/src/**
-      - eky_software/apps/desktop/e2e/**
-      - eky_software/apps/backend/src/**
-      - eky_software/apps/desktop/installer/installerIdentity.mjs
-      - eky_software/apps/desktop/installer/installerManifest.mjs
-      - eky_software/apps/desktop/installer/installerReleaseContext.mjs
-      - eky_software/apps/desktop/installer/installerVersion.mjs
-      - eky_software/apps/desktop/installer/scripts/*W6b2*.*
-      - eky_software/apps/desktop/installer/scripts/w6b2*.*
-      - eky_software/apps/desktop/scripts/package-artifact-inventory.mjs
-      - eky_software/apps/desktop/scripts/packageWindowsApplication.mjs
-      - eky_software/apps/desktop/package.json
-      - eky_software/docs/architecture/windows-installer-acceptance-harness-v2.md
-      - eky_software/docs/ai/testing-rules.md
+  workflow_call:
+    inputs:
+      risk_plan:
+        type: string
+        required: true
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -174,7 +161,7 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        repetition: [1, 2]
+        repetition: ${{ fromJSON(inputs.risk_plan != '' && fromJSON(inputs.risk_plan).repetitions == 1 && '[1]' || '[1, 2]') }}
     defaults:
       run:
         working-directory: eky_software
@@ -247,6 +234,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_WORKSPACE_ARTIFACT_POST_VERIFICATION_FAILED' }
 
   workspace_fault_consumer:
+    if: inputs.risk_plan == '' || fromJSON(inputs.risk_plan).gates.workspaceFault
     name: Verify packaged workspace fault recovery run ${{ matrix.repetition }}
     needs: workspace_artifact_producer
     runs-on: windows-latest
@@ -257,7 +245,7 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        repetition: [1, 2]
+        repetition: ${{ fromJSON(inputs.risk_plan != '' && fromJSON(inputs.risk_plan).repetitions == 1 && '[1]' || '[1, 2]') }}
     defaults:
       run:
         working-directory: eky_software

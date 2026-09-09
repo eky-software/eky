@@ -21,7 +21,7 @@ test('V2.4 workflow builds once and fans identical bytes to two consumers', asyn
   const source = await readFile(WORKFLOW_PATH, 'utf8');
   assert.match(source, /upgrade_artifact_producer:/u);
   assert.match(source, /upgrade_consumer:/u);
-  assert.match(source, /repetition: \[1, 2\]/u);
+  assert.ok(source.includes("repetition: ${{ fromJSON(inputs.risk_plan != '' && fromJSON(inputs.risk_plan).repetitions == 1 && '[1]' || '[1, 2]') }}"));
   assert.match(source, /max-parallel: 2/u);
   assert.equal(
     source.match(/installer:v2-upgrade-artifact:build/gu)?.length,

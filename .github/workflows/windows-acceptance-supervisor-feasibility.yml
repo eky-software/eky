@@ -1,12 +1,7 @@
 name: Windows acceptance supervisor feasibility
 
 on:
-  pull_request:
-    paths:
-      - .github/workflows/windows-acceptance-supervisor-feasibility.yml
-      - eky_software/apps/desktop/installer/windows-process-supervisor/**
-      - eky_software/apps/desktop/package.json
-      - eky_software/docs/architecture/windows-installer-acceptance-harness-v2.md
+  workflow_call:
   workflow_dispatch:
     inputs:
       mode:

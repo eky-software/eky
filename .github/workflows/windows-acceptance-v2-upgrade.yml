@@ -1,20 +1,11 @@
 name: Windows acceptance V2 upgrade artifact
 
 on:
-  pull_request:
-    paths:
-      - .github/workflows/windows-acceptance-v2-upgrade.yml
-      - eky_software/apps/desktop/installer/windows-acceptance-harness/**
-      - eky_software/apps/desktop/installer/windows-process-supervisor/**
-      - eky_software/apps/desktop/installer/installerIdentity.mjs
-      - eky_software/apps/desktop/installer/installerManifest.mjs
-      - eky_software/apps/desktop/installer/installerReleaseContext.mjs
-      - eky_software/apps/desktop/installer/installerVersion.mjs
-      - eky_software/apps/desktop/installer/scripts/buildWindowsInstaller.mjs
-      - eky_software/apps/desktop/resources/update/rollbackWindowsInstaller.ps1
-      - eky_software/apps/desktop/scripts/packageWindowsApplication.mjs
-      - eky_software/apps/desktop/package.json
-      - eky_software/docs/architecture/windows-installer-acceptance-harness-v2.md
+  workflow_call:
+    inputs:
+      risk_plan:
+        type: string
+        required: true
   workflow_dispatch:
 
 permissions:
@@ -180,7 +171,7 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        repetition: [1, 2]
+        repetition: ${{ fromJSON(inputs.risk_plan != '' && fromJSON(inputs.risk_plan).repetitions == 1 && '[1]' || '[1, 2]') }}
 
     defaults:
       run:

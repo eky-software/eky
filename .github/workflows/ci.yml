@@ -9,6 +9,11 @@ on:
     branches:
       - main
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      risk_plan:
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -63,6 +68,7 @@ jobs:
   e2e-system-security:
     name: System security E2E
     if: >-
+      inputs.risk_plan != '' ||
       github.event_name == 'pull_request' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main')
@@ -97,6 +103,7 @@ jobs:
   e2e-web-critical:
     name: Web critical E2E
     if: >-
+      inputs.risk_plan != '' ||
       github.event_name == 'pull_request' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main')
@@ -134,9 +141,10 @@ jobs:
   e2e-electron-windows-critical:
     name: Windows Electron critical E2E
     if: >-
-      github.event_name == 'pull_request' ||
+      (inputs.risk_plan != '' && fromJSON(inputs.risk_plan).gates.electronCritical) ||
+      (inputs.risk_plan == '' && (github.event_name == 'pull_request' ||
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')))
     runs-on: windows-latest
     timeout-minutes: 25
 
@@ -174,12 +182,43 @@ jobs:
       - name: Run critical Electron E2E journeys
         run: pnpm test:e2e:electron:critical
 
+  windows-contracts:
+    name: Windows installer contract tests
+    if: inputs.risk_plan != '' && fromJSON(inputs.risk_plan).gates.windowsContracts
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: eky_software
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: eky_software/.node-version
+          package-manager-cache: false
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: 10.0.302
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run deterministic installer tests
+        run: pnpm --filter @eky/desktop installer:test:unit
+      - name: Run Windows process-contract tests serially
+        run: pnpm --filter @eky/desktop installer:test:windows-process
+
   installer-windows:
     name: Windows MSI release gate
     if: >-
-      github.event_name == 'pull_request' ||
+      inputs.risk_plan == '' && (github.event_name == 'pull_request' ||
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      (github.event_name == 'push' && github.ref == 'refs/heads/main'))
     runs-on: windows-latest
     timeout-minutes: 45
 
@@ -247,9 +286,9 @@ jobs:
   installer-w6b-legacy-windows:
     name: Windows W6B legacy acceptance
     if: >-
-      github.event_name == 'pull_request' ||
+      inputs.risk_plan == '' && (github.event_name == 'pull_request' ||
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      (github.event_name == 'push' && github.ref == 'refs/heads/main'))
     runs-on: windows-latest
     timeout-minutes: 30
 
@@ -290,9 +329,9 @@ jobs:
   installer-w6b2-success-windows-run:
     name: Windows W6B.2A packaged workspace run ${{ matrix.repetition }}
     if: >-
-      github.event_name == 'pull_request' ||
+      inputs.risk_plan == '' && (github.event_name == 'pull_request' ||
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      (github.event_name == 'push' && github.ref == 'refs/heads/main'))
     runs-on: windows-latest
     timeout-minutes: 30
 
@@ -343,7 +382,7 @@ jobs:
   installer-w6b2-success-windows:
     name: Windows W6B.2A packaged workspace acceptance
     if: >-
-      always() &&
+      always() && inputs.risk_plan == '' &&
       (github.event_name == 'pull_request' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main'))
@@ -360,9 +399,9 @@ jobs:
   installer-w6b2-fault-rollback-windows-run:
     name: Windows W6B.2B ${{ matrix.scenario }} run ${{ matrix.repetition }}
     if: >-
-      github.event_name == 'pull_request' ||
+      inputs.risk_plan == '' && (github.event_name == 'pull_request' ||
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      (github.event_name == 'push' && github.ref == 'refs/heads/main'))
     runs-on: windows-latest
     timeout-minutes: 30
 
@@ -421,7 +460,7 @@ jobs:
   installer-w6b2-fault-rollback-windows:
     name: Windows W6B.2B packaged workspace fault and rollback
     if: >-
-      always() &&
+      always() && inputs.risk_plan == '' &&
       (github.event_name == 'pull_request' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main'))

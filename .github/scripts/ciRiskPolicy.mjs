@@ -10,6 +10,11 @@ const FAST_GATES = ['verify', 'systemSecurity', 'webCritical'];
 const WINDOWS_GATES = ['electronCritical', 'windowsContracts', 'packageSmoke',
   'cleanLifecycle', 'upgradeRollback', 'workspaceSuccess'];
 const ROOT = 'eky_software/';
+const DESKTOP_COMPATIBILITY_ROOTS = [
+  'installer/', 'scripts/', 'e2e/', 'src/main/', 'src/update/', 'src/workspaces/',
+  'src/profileBackup/', 'src/runtime/', 'src/secrets/', 'src/release/',
+  'src/invoicePdfArchive/', 'src/observability/', 'src/security/',
+];
 const POLICY_FILES = new Set([
   `${ROOT}docs/ai/testing-rules.md`, `${ROOT}docs/architecture/windows-installer-acceptance-harness-v2.md`,
 ]);
@@ -31,7 +36,8 @@ function pathRisk(path) {
     name.startsWith('tsconfig') || /\.(?:sql|csproj|wixproj|wxs)$/.test(name)) return 'full';
   if (path.startsWith(`${ROOT}apps/desktop/`)) {
     // Shared lifecycle boundaries conservatively select all five fault contracts.
-    return /\/(?:installer|scripts|e2e|update|workspaces|backup|main)\//.test(path) ? 'compatibility' : 'installer';
+    const relative = path.slice(`${ROOT}apps/desktop/`.length);
+    return DESKTOP_COMPATIBILITY_ROOTS.some((root) => relative.startsWith(root)) ? 'compatibility' : 'installer';
   }
   if (path.startsWith(`${ROOT}apps/e2e/`) || path.startsWith(`${ROOT}apps/web/src/desktop/`)) return 'compatibility';
   if (path.startsWith(`${ROOT}apps/backend/src/`)) {

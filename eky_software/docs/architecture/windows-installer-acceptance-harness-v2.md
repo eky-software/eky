@@ -2184,9 +2184,9 @@ aloita V2.8:aa, päähaaran käyttöönottoa tai julkaisua.
 
 ## Migraatiojärjestys
 
-### V2.8:n riskisopimuksen ensimmäinen checkpoint
+### V2.8:n riskisopimuksen ensimmäinen checkpoint (historia)
 
-V2.8 jatkuu haarassa `codex/test-harness-v2-ci-cadence`. Ensimmäinen
+V2.8 alkoi haarassa `codex/test-harness-v2-ci-cadence`. Ensimmäinen
 checkpoint ei muuta vanhaa `ci.yml`:ää, V2-artifact-workfloweja, skenaarioita
 tai GitHubin required check -asetuksia. Se toteuttaa CI:n oman pienen
 politiikkarajan ilman riippuvuutta tai uutta prosessivalvojaa:
@@ -2229,13 +2229,58 @@ Ensimmäisen checkpointin kohdesarja läpäisee 34/34; desktop typecheck ja
 build läpäisevät. Workflow-kytkennän Linux/Windows-todennus on oma
 commit-pohjainen porttinsa. Nämä eivät vielä sulje koko V2.8:aa.
 
-Seuraava kytkentächeckpoint liittää politiikan nykyisiin producer/consumer-
-vastuisiin ja aina valmistuvaan yhteenvetojobiin. Samalla nimetään vanhojen
-porttien korvaavat invariantit, varmistetaan release-/nightly-kytkentä ja
-esitetään required checkien täsmällinen vaihto omistajalle. Nykyisessä
+Kytkentächeckpoint liittää politiikan nykyisiin producer/consumer-
+vastuisiin. Required checkien täsmällinen vaihto esitetään erikseen omistajalle. Nykyisessä
 main-rulesetissä ovat `Test, typecheck and build`, `System security E2E`,
 `Web critical E2E`, `Windows Electron critical E2E`, `Audit dependencies`
 ja `Windows MSI release gate`. Näitä ei poisteta tämän checkpointin mukana.
+
+### V2.8:n workflow-kytkentä
+
+`ci-cadence-contracts.yml` on V2:n yksi automaattinen sisääntulo nimellä
+`V2 risk-based CI`. PR käynnistää riskiajon; feature-haaran push ei käynnistä
+toista V2-matriisia. Main-push, päivittäinen ajastus ja manuaalinen
+release-valmistelun kokonaisajo valitsevat kaikki portit kahdella toistolla.
+Ajastus tulee käyttöön vasta workflowin päähaaraan käyttöönoton jälkeen.
+Kytkennän CI-hyväksyntä on vielä kesken; aiempi checkpoint ei hyväksy tätä revisiota.
+
+| Muutos | V2:n ajama kattavuus |
+| --- | --- |
+| Tavallinen web/domain/application tai yleinen dokumentaatio | Testit, typecheck/build, system security, web critical ja riskisopimukset molemmilla käyttöjärjestelmillä |
+| Desktop ilman yhteisen elinkaaren muutosta | Edelliset, Electron critical, packaged smoke, Windows installer/process contracts, supervisor sekä clean-, upgrade/rollback- ja workspace-success-consumer kerran |
+| Yhteinen elinkaari tai yhteensopivuus | Edelliset sekä legacy ja kaikki viisi workspace-fault-skenaariota kerran |
+| CI/build/dependency/SQL, tuntematon polku tai puutteellinen diff | Koko matriisi; consumerit kahdesti ja viisi fault-skenaariota kummassakin |
+| Main, ajastettu tai manuaalinen release-valmistelun ajo | Koko matriisi riippumatta diffistä |
+
+Yhteisiin desktop-rajoihin kuuluvat todelliset `profileBackup/` (myös restore
+ja recoveryPoint), `runtime/`, `main/`, `update/`, `workspaces/`, `secrets/`,
+`release/`, `invoicePdfArchive/`, `observability/` ja `security/`.
+Poistettu tai siirretty kriittinen polku säilyy luokittelun syötteenä.
+
+Nykyiset artifact-workflowit ovat uudelleenkäytettäviä `workflow_call`-vastuita.
+Sama validoitu suunnitelma ohjaa valintaa ja toistomäärää. Kukin producer
+rakentaa oman artifactinsa kerran; consumer valitsee producerin artifact-ID:n
+ja varmentaa descriptorin, revision ja tavut ennen käyttöä ja sen jälkeen.
+Workspace-success ja fault käyttävät samaa paria. Skenaarioiden pakollisia
+tulostiedostoja, exit-, session-, cleanup- tai jälkiehtoja ei muuteta.
+
+Vakaa `V2 acceptance` suoritetaan `always()`-ehdolla. `ciRunAcceptance.mjs`
+tarkistaa valittujen workflowien lopputilat ja `ciJobCoverage.mjs` saman
+run-ID:n ja attemptin täsmälliset jobit sekä pakolliset testivaiheet.
+Matriisin viimeisen onnistuneen jäsenen output ei ole matriisin hyväksyntä.
+Puuttuva, peruutettu, epäonnistunut tai odottamatta ohitettu job/step,
+ylimääräinen toisto, duplikaatti tai epäonnistunut luokittelu hylätään.
+`verifyCiRun.mjs` lukee vain rajatun GitHub jobs -vastauksen read-only-tokenilla;
+epäonnistunut tai puutteellinen API-luku ei anna vihreää tulosta. Koonti
+julkaisee vain suljetun tulosluokan, ei API:n raakadataa.
+
+Vanhan `ci.yml`:n suorat triggerit, required check -nimet ja W6-komennot
+säilyvät. V2-kutsutila käyttää sen nykyisiä core-testejä ja installer-
+sopimustestejä, mutta ei käynnistä niiden rinnalle vanhaa MSI/W6-matriisia.
+Päähaaraan kohdistuvassa siirtokatselmuksessa vanha ja uusi ketju voivat vielä
+ajaa rinnakkain tarkoituksellisena vertailuna. Tämän päällekkäisyyden poisto,
+required checkien vaihto ja main-käyttöönotto vaativat oman hyväksynnän.
+Dependency security säilyy erillisenä porttina. Tämä ei sulje koko V2:ta tai julkaisua.
 
 ### Vaiheiden järjestys
 

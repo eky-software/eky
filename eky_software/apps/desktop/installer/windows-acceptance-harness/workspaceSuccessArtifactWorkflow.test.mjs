@@ -63,7 +63,7 @@ test('producer publishes exactly one immutable pair and consumers use the same a
   assert.match(producer, /overwrite: false/);
   assert.match(producer, /include-hidden-files: false/);
   assert.match(consumer, /needs: workspace_artifact_producer/);
-  assert.match(consumer, /repetition: \[1, 2\]/);
+  assert.ok(consumer.includes("repetition: ${{ fromJSON(inputs.risk_plan != '' && fromJSON(inputs.risk_plan).repetitions == 1 && '[1]' || '[1, 2]') }}"));
   assert.match(consumer, /fail-fast: false/);
   assert.match(consumer, /artifact-ids: \$\{\{ needs.workspace_artifact_producer.outputs.artifact_id \}\}/);
   assert.match(consumer, /merge-multiple: true/);
@@ -83,7 +83,7 @@ test('V2.7 uses two consumers of the same producer and all five existing fault c
   assert.match(contracts, /installer:test:windows-acceptance-workspace-fault/);
   const consumer = source.split('  workspace_fault_consumer:')[1];
   assert.match(consumer, /needs: workspace_artifact_producer/);
-  assert.match(consumer, /repetition: \[1, 2\]/);
+  assert.ok(consumer.includes("repetition: ${{ fromJSON(inputs.risk_plan != '' && fromJSON(inputs.risk_plan).repetitions == 1 && '[1]' || '[1, 2]') }}"));
   assert.match(consumer, /fail-fast: false/);
   assert.match(consumer, /artifact-ids: \$\{\{ needs.workspace_artifact_producer.outputs.artifact_id \}\}/);
   assert.match(consumer, /always\(\) && steps.download.outcome == 'success'/);
