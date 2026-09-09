@@ -2432,16 +2432,25 @@ hyväksyntä, required-check-siirto, vanhan orkestroinnin poisto ja julkaisu
 ovat edelleen avoinna. Alla oleva V2.7-hyväksyntä on historiallinen lähtökohta,
 ei nykyisen revision hyväksyntä.
 
-Viimeisimmän CI-ajon lähde-HEAD `39f62d88a345499d335cf36cf2785c5a36cbed6f` ja CI:n checkout /
-artifact-build `14d97eb83f2c4220036c7303243cfbab50e9f906` ovat eri revisiot.
-[Ajo 34389045909](https://github.com/eky-software/eky/actions/runs/34389045909)
-päättyi epäonnistuneena ensimmäisellä yrityksellä: clean-, upgrade- ja
-legacy-consumerit läpäisivät, samoin molemmat fault-consumerit. Molemmat
-workspace-success-consumerit katkaistiin GitHub-jobin aikarajaan; niiden
-lopullista caller-, cleanup- ja poistotulosta ei ole varmennettu.
-Vanhan W6:n `observerFailure` on erillinen Windows process-contract -virhe,
-ei tämän revision V2-legacy-consumerin hylkäys. Uusintaa ei käytetä näiden
-avoimien rajojen korjauksen korvikkeena.
+Viimeisimmän CI-ajon lähde-HEAD `25cbe183ab08bc0846f1347b18e83f6a87d283e5` ja CI:n checkout
+`2850f6b73a093e5cea944b15f8cb2373010bf706` ovat eri revisiot.
+[Ajo 34416786931](https://github.com/eky-software/eky/actions/runs/34416786931)
+päättyi epäonnistuneena ensimmäisellä yrityksellä. Clean- ja
+upgrade-consumerit läpäisivät kumpikin 2/2, samoin supervisorin sopimusajot.
+Electron critical ja Windows installer -sopimukset ovat vihreät.
+Workspace-haara pysähtyi ennen produceria: kirjoittimen command-fixturen
+synteettisestä caller-tuloksesta puuttui pakollinen `productProcessAbsent`.
+Fixture on korjattu nykyiseen strict-sopimukseen; alkuperäiset poistumis-,
+kanavavirhe- ja pakollisen tuloksen regressiot säilyvät. Korjaus on
+kohdetesteillä hyväksytty, mutta sen uusi CI-näyttö on vielä avoin.
+
+Legacy-sopimussarjoista vain toinen läpäisi. Toisessa ikkunafixturen
+käännösvalmistelu ylitti nykyisen 10 sekunnin kokonaisrajan jo yhteisessä
+valmistelussa; varsinaisia ikkunatapauksia ei päästy ajamaan. Tämä ei ole
+30 sekunnin GUI-havainnointirajan eikä MSI-upgraden hylkäys. Valmistelun
+sisäinen pysähtymisraja on vielä paikantamatta. Onnistunut toinen runner
+ei korvaa epäonnistunutta sarjaa. Aikarajoja ei ole muutettu, eikä uutta
+packaged-kierrosta käytetä tämän puuttuvan havainnon korvikkeena.
 
 ### Apuoperaatioiden yhteinen sopimus ja tulostoimituksen varaus
 

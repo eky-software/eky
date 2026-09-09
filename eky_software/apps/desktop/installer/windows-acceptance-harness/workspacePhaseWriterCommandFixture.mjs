@@ -109,7 +109,8 @@ assert.equal(starts, 1);
 assert.equal(output.join(''), JSON.stringify(observation) + '\n');
 const outcome = {
   schemaVersion: 1, scenario: 'packagedWorkspaceSuccess', status: 'completed', errorCode: null,
-  safetyErrorCode: null, failedPhase: null, processTreeAbsent: true, fixtureRemoved: true, businessDataPreserved: true,
+  safetyErrorCode: null, failedPhase: null, processTreeAbsent: true, productProcessAbsent: true,
+  fixtureRemoved: true, businessDataPreserved: true,
   phaseWriterResultCode: result.writerResultCode, phaseDiagnosticResultCode: result.diagnosticResultCode,
   fixtureCleanupResultCode: 'fixtureRemoved', supervisorProcessResultCode: 'processCompleted',
   supervisorWorkerResultCode: 'workerResultValidated', supervisorCleanupResultCode: 'notRequired',
