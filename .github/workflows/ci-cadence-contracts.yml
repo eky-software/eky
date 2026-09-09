@@ -1,0 +1,45 @@
+name: V2 cadence policy contracts
+
+on:
+  pull_request:
+    paths:
+      - .github/scripts/**
+      - .github/workflows/ci-cadence-contracts.yml
+      - eky_software/apps/desktop/installer/windows-acceptance-harness/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v2-cadence-contracts-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  cadence_contracts:
+    name: V2 cadence contracts (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: eky_software/.node-version
+          package-manager-cache: false
+      - name: Verify risk and result contracts
+        run: node --test --test-concurrency=1 .github/scripts/ciRiskPolicy.test.mjs .github/scripts/ciAcceptanceResult.test.mjs .github/scripts/classifyCiChanges.test.mjs
+      - name: Classify this change without skipping existing gates
+        id: preview
+        env:
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CI_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node .github/scripts/classifyCiChanges.mjs

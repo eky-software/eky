@@ -10,6 +10,7 @@
   "scripts": {
     "support:inspect": "node apps/desktop/scripts/inspect-support-bundle.mjs",
     "test": "pnpm --recursive test",
+    "test:ci": "node --test --test-concurrency=1 ../.github/scripts/ciRiskPolicy.test.mjs ../.github/scripts/ciAcceptanceResult.test.mjs ../.github/scripts/classifyCiChanges.test.mjs",
     "typecheck": "pnpm --recursive typecheck",
     "test:e2e:system": "pnpm --filter @eky/e2e e2e:system",
     "test:e2e:web": "pnpm --filter @eky/e2e e2e:web",

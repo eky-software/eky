@@ -123,6 +123,15 @@ Testi-infrastruktuurissa noudatetaan lisäksi seuraavia vastuurajoja:
 Windows installer -harnessin tavoiterakenne ja migraatio määritellään
 `docs/architecture/windows-installer-acceptance-harness-v2.md`-dokumentissa.
 
+V2.8:n riskiluokituksen ja tulosten yhdistämisen kohdesopimukset ajetaan
+kanonisesta lähdejuuresta komennolla `pnpm test:ci`. Repositoryjuuren
+`.github/scripts/` omistaa vain CI-politiikan, ei skenaarioita, niiden
+prosesseja tai artifactien rakentamista. `ci-cadence-contracts.yml` todistaa
+sopimukset Linuxissa ja Windowsissa ja luokittelee PR-diffin ilman porttien
+ohittamista. Tämä ensimmäinen checkpoint ei vielä vaihda nykyistä CI-kadenssia
+tai required check -asetuksia. Kytkentä ja vanhojen komentojen poisto vaativat
+V2-suunnitelman erillisen käyttöönoton.
+
 V2.5:n omistajan hyväksymä vaihekohtainen ympäristöraja käyttää kahta
 eristettyä Windows CI -consumeria samalle build-once-artifactille kahden
 paikallisen packaged-ajon sijaan. Paikalliset sopimustestit ja muut vaiheelle

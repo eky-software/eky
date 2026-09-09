@@ -2184,6 +2184,61 @@ aloita V2.8:aa, päähaaran käyttöönottoa tai julkaisua.
 
 ## Migraatiojärjestys
 
+### V2.8:n riskisopimuksen ensimmäinen checkpoint
+
+V2.8 jatkuu haarassa `codex/test-harness-v2-ci-cadence`. Ensimmäinen
+checkpoint ei muuta vanhaa `ci.yml`:ää, V2-artifact-workfloweja, skenaarioita
+tai GitHubin required check -asetuksia. Se toteuttaa CI:n oman pienen
+politiikkarajan ilman riippuvuutta tai uutta prosessivalvojaa:
+
+- `.github/scripts/ciRiskPolicy.mjs` valitsee nimetyt portit validoiduista
+  repositorysuhteellisista muutospoluista. Tavallinen web-, domain- ja
+  application-muutos säilyttää build-, system security- ja web critical
+  -portit ilman Windows-matriisia. Desktop-muutos lisää Windows-portit;
+  yhteinen installer-, startup-, update-, workspace-, persistence- tai
+  E2E-raja lisää legacy-testin ja kaikki viisi fault-skenaariota.
+  Skenaarionimet luetaan omistavan `workspaceFaultContracts.mjs`-moduulin
+  suljetusta sopimuksesta; CI ei ylläpidä siitä rinnakkaista listaa.
+- SQL, riippuvuudet, CI- ja build-konfiguraatio sekä tuntematon polku
+  valitsevat koko matriisin. Tämä checkpoint on yhteisillä rajoilla
+  tarkoituksella konservatiivinen: fault-kattavuutta ei arvata yksittäisen
+  funktion nimestä. Tarkempi osajoukko vaatii nimetyn invarianttikartan.
+- `.github/scripts/classifyCiChanges.mjs` lukee Gitin NUL-erotellun
+  merge-base-diffin ilman rename-yhdistelyä, jotta myös poistetun tai
+  siirretyn tiedoston vanha riskipolku huomioidaan. Molemmat SHA:t ovat
+  tapahtuman täsmällisiä 40-hex-arvoja. Puuttuva historia, keskeytynyt tai
+  liian suuri diff, virheellinen UTF-8 ja tyhjä vertailu eivät valitse
+  kevyempää ajoa. Konsoliin tai job-outputiin ei tule tiedostolistaa.
+- `.github/scripts/ciAcceptanceResult.mjs` yhdistää saman workflow-ajon
+  nimetyt lopputilat. Jokaisen valitun portin pitää olla `success`;
+  `failure`, `cancelled`, puuttuva tai tuntematon tulos estää hyväksynnän.
+  `skipped` sallitaan vain luokittimen nimenomaisesti pois valitsemalle
+  portille. Luokittimen epäonnistuminen ei voi muuttua vihreäksi.
+- Main-push, ajastettu ajo ja manuaalinen kokonaisajo valitsevat täyden
+  matriisin ja kaksi toistoa. PR:n riskiajo suunnittelee yhden toiston;
+  tämä ei muuta V2-vaihehyväksyntöjen nykyisiä kahden consumerin portteja.
+
+`pnpm test:ci` ajaa näiden vastuiden käyttäytymisregressiot. Erillinen
+`V2 cadence policy contracts` -workflow todistaa saman sarjan Windowsissa ja
+Linuxissa sekä tuottaa tämän PR:n luokittelun vain kytkennän valmisteluksi.
+Se ei väitä packaged-hyväksyntää eikä käytä luokittelua vanhojen jobien
+ohittamiseen. Artifact-, prosessi-, cleanup- ja postcondition-omistajuus
+säilyvät ennallaan. Dependency security säilyy itsenäisenä porttina.
+
+Ensimmäisen checkpointin kohdesarja läpäisee 34/34; desktop typecheck ja
+build läpäisevät. Workflow-kytkennän Linux/Windows-todennus on oma
+commit-pohjainen porttinsa. Nämä eivät vielä sulje koko V2.8:aa.
+
+Seuraava kytkentächeckpoint liittää politiikan nykyisiin producer/consumer-
+vastuisiin ja aina valmistuvaan yhteenvetojobiin. Samalla nimetään vanhojen
+porttien korvaavat invariantit, varmistetaan release-/nightly-kytkentä ja
+esitetään required checkien täsmällinen vaihto omistajalle. Nykyisessä
+main-rulesetissä ovat `Test, typecheck and build`, `System security E2E`,
+`Web critical E2E`, `Windows Electron critical E2E`, `Audit dependencies`
+ja `Windows MSI release gate`. Näitä ei poisteta tämän checkpointin mukana.
+
+### Vaiheiden järjestys
+
 V2 toteutetaan pieninä, itsenäisesti vihreinä checkpointteina:
 
 1. V2.1: synteettinen supervisor-, timeout-, cancellation- ja
