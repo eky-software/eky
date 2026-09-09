@@ -85,16 +85,31 @@ test('every selected job is mandatory even when reusable workflow result claims 
   }
 });
 
-test('all five fault results and artifact revalidation are mandatory within each consumer', () => {
+test('preparation, all five fault results and artifact revalidation are mandatory within each consumer', () => {
   const plan = planFor([critical], 'push');
   const original = evidence(plan);
   const index = original.jobs.findIndex((job) => job.name.endsWith('fault recovery run 2'));
-  assert.equal(original.jobs[index].steps.length, 6);
-  for (let step = 0; step < 6; step++) {
+  assert.equal(original.jobs[index].steps.length, 7);
+  for (let step = 0; step < 7; step++) {
     for (const conclusion of ['missing', 'failure', 'cancelled', 'skipped']) {
       const { needs, jobs } = structuredClone(original);
       if (conclusion === 'missing') jobs[index].steps.splice(step, 1);
       else jobs[index].steps[step].conclusion = conclusion;
+      assert.equal(evaluateCiRun(plan, needs, jobs).resultCode, 'CI_REQUIRED_STEP_INCOMPLETE');
+    }
+  }
+});
+
+test('success consumers cannot pass with missing or unsuccessful reader preparation', () => {
+  const plan = planFor([critical], 'push');
+  for (const repetition of [1, 2]) {
+    for (const conclusion of ['missing', 'failure', 'cancelled', 'skipped']) {
+      const { needs, jobs } = evidence(plan);
+      const job = jobs.find((value) => value.name.endsWith(`workspace success run ${repetition}`));
+      const step = job.steps.findIndex((value) => value.name === 'Prepare existing supervisor and proof readers once');
+      assert.ok(step >= 0);
+      if (conclusion === 'missing') job.steps.splice(step, 1);
+      else job.steps[step].conclusion = conclusion;
       assert.equal(evaluateCiRun(plan, needs, jobs).resultCode, 'CI_REQUIRED_STEP_INCOMPLETE');
     }
   }

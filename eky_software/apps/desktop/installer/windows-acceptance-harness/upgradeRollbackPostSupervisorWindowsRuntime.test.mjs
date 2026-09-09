@@ -8,11 +8,12 @@ import { classifyUpgradeRollbackProductStates, createUpgradeRollbackPostSupervis
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 
-const exited = { status: 'completed', resultCode: 'processCompleted', exitCode: 0, directProcessAbsent: true };
+const exited = { status: 'completed', resultCode: 'processCompleted', exitCode: 0, directProcessAbsent: true,
+  state: { productState: 5, productName: 'Synthetic', productVersion: '0.2.8',
+    localPackagePresent: true, ownedRegistryExists: true } };
 const uncertain = { status: 'failed', resultCode: 'terminationUnconfirmed', exitCode: null, directProcessAbsent: false };
 function productRuntime(results) {
   const calls = [];
-  const removals = [];
   const runtime = createUpgradeRollbackPostSupervisorWindowsRuntime({ scenarioRoot: DIRECTORY,
     artifact: { roles: { source: { productCode: '00000000-0000-0000-0000-000000000001' },
       target: { productCode: '00000000-0000-0000-0000-000000000002' } } },
@@ -25,18 +26,14 @@ function productRuntime(results) {
       if (result instanceof Error) throw result;
       return result;
     },
-    readResult: async () => ({ productState: 5, productName: 'Synthetic', productVersion: '0.2.8',
-      localPackagePresent: true, ownedRegistryExists: true }),
-    removeResult: async (path) => { removals.push(path); },
   });
-  return { runtime, calls, removals };
+  return { runtime, calls };
 }
 
-test('unverified inspector stops all later product operations and retains its result', async () => {
-  const { runtime, calls, removals } = productRuntime([uncertain, exited]);
+test('unverified inspector stops all later product operations', async () => {
+  const { runtime, calls } = productRuntime([uncertain, exited]);
   assert.equal((await runtime.verifyExactProductStates()).errorCode, 'productStateVerificationProcessRemains');
   assert.equal(calls.length, 1);
-  assert.equal(removals.length, 0);
   assert.equal(runtime.outcome().productProcessAbsent, false);
   assert.equal((await runtime.cleanupExactProducts()).status, 'failed');
   assert.equal((await runtime.verifyExactProductStates()).status, 'failed');
@@ -60,11 +57,10 @@ test('a known exited uninstall failure permits independent cleanup but remains f
   assert.equal(runtime.outcome().productProcessAbsent, true);
 });
 
-test('a rejected adapter invocation is not proof of absence or permission to remove its result', async () => {
-  const { runtime, calls, removals } = productRuntime([new Error('synthetic adapter failure'), exited]);
+test('a rejected adapter invocation is not proof of absence', async () => {
+  const { runtime, calls } = productRuntime([new Error('synthetic adapter failure'), exited]);
   assert.equal((await runtime.verifyExactProductStates()).errorCode, 'productStateVerificationProcessRemains');
   assert.equal(calls.length, 1);
-  assert.equal(removals.length, 0);
   assert.equal(runtime.outcome().productProcessAbsent, false);
 });
 

@@ -11,15 +11,18 @@ import { readWindowsAcceptanceSupervisorResult } from '../windows-process-superv
 import { createLegacyUpgradeFilesystemRuntime } from './legacyUpgradeFilesystemRuntime.mjs';
 import { runBoundedWindowsAdapterProcess } from './boundedWindowsAdapterProcess.mjs';
 import { createUpgradeRollbackPostSupervisorWindowsRuntime } from './upgradeRollbackPostSupervisorWindowsRuntime.mjs';
+import { runInstallerProductOperation } from './installerProductOperationProcess.mjs';
 
 // Only the existing contract Job contains this command. The inner production
 // supervisor still owns the scenario; no test code scans or kills its tree.
 const input = JSON.parse(await readFile(process.argv[2], 'utf8'));
 assert(['hold', 'unread', 'cleanupUnverified', 'missingSupervisor', 'cleanupFailed', 'writerUnverified', 'filesystemHold',
-  'productHold', 'productUnverified'].includes(input.mode));
+  'productHold', 'productUnverified', 'productPreparationHold', 'productReadHold', 'productRemoveHold',
+  'productCleanupFailure'].includes(input.mode));
 const events = [];
 let supervisorResult;
-const persist = async (outcome) => writeFile(input.reportPath, JSON.stringify({ events, supervisorResult, outcome }));
+const productResults = [];
+const persist = async (outcome) => writeFile(input.reportPath, JSON.stringify({ events, supervisorResult, productResults, outcome }));
 const absent = { status: 'completed', resultCode: 'exactProductsAbsent', sourcePresent: false,
   targetPresent: false, installerRegistryPresent: false };
 let root;
@@ -64,27 +67,42 @@ const ports = {
     return supervisorResult;
   },
 };
-if (['productHold', 'productUnverified'].includes(input.mode)) {
+const productStages = { productHold: 'Command', productUnverified: 'Command', productPreparationHold: 'Preparation',
+  productReadHold: 'Read', productRemoveHold: 'Remove', productCleanupFailure: 'CleanupFailure' };
+if (productStages[input.mode]) {
   ports.createProductRuntime = ({ scenarioRoot }) => {
     const runtime = createUpgradeRollbackPostSupervisorWindowsRuntime({ scenarioRoot,
       artifact: { roles: { source: { productCode: '00000000-0000-0000-0000-000000000001' },
         target: { productCode: '00000000-0000-0000-0000-000000000002' } } },
     }, {
       async runProcess(options) {
-        const result = await runBoundedWindowsAdapterProcess({ ...options,
-          command: process.execPath,
-          arguments: [fileURLToPath(new URL('./legacyCommandWorkerFixture.mjs', import.meta.url)), 'hold'],
-          timeoutMilliseconds: 1_000, terminationTimeoutMilliseconds: 1_000,
+        let productRequest;
+        const result = await runInstallerProductOperation({ ...options,
+          timeoutMilliseconds: 2_000, terminationTimeoutMilliseconds: 1_000, deliveryReserveMilliseconds: 200,
+        }, {
           spawnProcess(command, args, settings) {
-            const child = spawn(command, args, settings);
+            productRequest = JSON.parse(Buffer.from(args[2], 'base64').toString('utf8'));
+            const dll = resolve(dirname(fileURLToPath(import.meta.url)),
+              '../bin/windows-process-supervisor-contract-fixture/Release/net10.0/Eky.WindowsProcessSupervisor.ContractFixture.dll');
+            const child = spawn(command, [dll, '--mode', `productOperation${productStages[input.mode]}`,
+              '--request', args[2]], settings);
             child.once('exit', () => events.push('productExit'));
             child.once('close', () => events.push('productClose'));
             return child;
           },
         });
-        assert.equal(result.resultCode, 'timedOut');
+        assert.equal(result.resultCode, input.mode === 'productCleanupFailure' ? 'processExitFailed' : 'timedOut');
         assert.equal(result.directProcessAbsent, true);
-        // Inject uncertainty only after proving the real child's removal. This
+        if (input.mode === 'productCleanupFailure') {
+          assert.equal(result.worker.errorCode, 'commandFailed');
+          assert.equal(result.worker.resultCleanup, 'failed');
+        } else {
+          const boundary = JSON.parse(await readFile(resolve(scenarioRoot, `product-boundary-${productRequest.nonce}.json`), 'utf8'));
+          assert.equal(boundary.phase, { Command: 'command', Preparation: 'preparation', Read: 'resultRead', Remove: 'resultCleanup' }[productStages[input.mode]]);
+          if (productStages[input.mode] === 'Command') assert.equal(boundary.descendantStarted, true);
+        }
+        productResults.push(result.supervisor);
+        // Inject uncertainty only after proving the real Job's removal. This
         // tests retention, not a claim that native cleanup failed in this run.
         return input.mode === 'productUnverified'
           ? { ...result, resultCode: 'terminationUnconfirmed', directProcessAbsent: false } : result;

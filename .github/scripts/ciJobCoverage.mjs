@@ -37,9 +37,9 @@ export function requiredCiJobs(plan) {
     legacyUpgrade: [...repeat('V2.5 phase contracts run', ['Run unchanged full legacy contracts']), job('Build one historical source and target phase artifact'),
       ...repeat('V2.5 packaged legacy phase run', ['Run existing supervised legacy lifecycle once', 'Reverify phase artifact bytes after lifecycle'])],
     workspaceSuccess: [...workspaceProducer, ...repeat('Verify packaged workspace success run',
-      ['Run supervised workspace success once', 'Reverify downloaded workspace artifact'])],
+      ['Prepare existing supervisor and proof readers once', 'Run supervised workspace success once', 'Reverify downloaded workspace artifact'])],
     workspaceFault: [...workspaceProducer, ...repeat('Verify packaged workspace fault recovery run',
-      [...plan.faultScenarios.map((scenario) => FAULT_STEPS[scenario]), 'Reverify downloaded workspace artifact'])],
+      ['Prepare existing supervisor and proof readers once', ...plan.faultScenarios.map((scenario) => FAULT_STEPS[scenario]), 'Reverify downloaded workspace artifact'])],
   };
 }
 

@@ -6,7 +6,8 @@ internal sealed class WindowsJobProcessSupervisor(
     Stopwatch stopwatch,
     SafeEvidenceWriter evidence,
     Func<SupervisorRequest, WindowsJob, CancellationToken, SuspendedWindowsProcess>? createProcess = null,
-    Func<SuspendedWindowsProcess, bool>? observeRootExit = null
+    Func<SuspendedWindowsProcess, bool>? observeRootExit = null,
+    Func<SupervisorRequest, WorkerTerminalResultValidation>? validateWorkerResult = null
 )
 {
     private const int WaitSliceMilliseconds = 100;
@@ -188,7 +189,8 @@ internal sealed class WindowsJobProcessSupervisor(
                 }
 
                 evidence.Write("workerResultValidated", "started");
-                var workerResult = WorkerTerminalResultReader.Validate(request);
+                var workerResult = validateWorkerResult?.Invoke(request) ??
+                    WorkerTerminalResultReader.Validate(request);
                 evidence.Write(
                     "workerResultValidated",
                     workerResult.IsSuccessful ? "completed" : "failed",

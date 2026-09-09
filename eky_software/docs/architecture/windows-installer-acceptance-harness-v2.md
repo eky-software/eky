@@ -2443,7 +2443,7 @@ Vanhan W6:n `observerFailure` on erillinen Windows process-contract -virhe,
 ei tämän revision V2-legacy-consumerin hylkäys. Uusintaa ei käytetä näiden
 avoimien rajojen korjauksen korvikkeena.
 
-### Apuoperaatioiden yhteinen sopimus ja avoin aikaraja
+### Apuoperaatioiden yhteinen sopimus ja tulostoimituksen varaus
 
 Skenaariopuun Job-tulos ei yksin todista sitä ennen tai sen jälkeen
 käynnistettyjen apuprosessien poistumista. Korjattu
@@ -2473,34 +2473,60 @@ koko komentoprosessin poistumisen. Erikseen injektoitu epävarma adapteritulos
 todentaa aineiston säilytyksen; sitä ei tulkita aidoksi natiivin cleanupin
 epäonnistumiseksi.
 
-Product-adapterin nykyinen aikaraja päättyy ennen tulostiedoston
-`lstat`/`readFile`/`rm`-käsittelyä. Mahdollisesti estävä tiedostotyö
-ryhmitellään nykyisen rajatun adapterimallin mukaan; puhdas JSON- ja
-liiketoimintavalidointi ei saa siirtyä yleiseen ajuriin. Promise-aikakatkaisu
-ei todista taustatyön peruuntumista. Node-kutsujan event-loop-ajastin ei
-myöskään voi keskeyttää sen omaa vielä palautumatonta natiivista spawn-kutsua.
-Tämä raja pitää erottaa tavallisesta hitaasta valmistumisesta ja raportoida
-rehellisesti; uutta sisäkkäistä valvojaa ei lisätä sen peittämiseksi.
+Omistaja on hyväksynyt product-operaation direct-child-omistajan korvaamisen
+nykyisellä Job Object -supervisorilla. Työpuun toteutus käyttää samaa
+`WindowsJobProcessSupervisor`-luokkaa; siihen ei lisätä rinnakkaista
+emergency-cleanup-omistajaa. Preflight-operaatio valmistuu ennen skenaariota.
+Skenaarion jälkeinen product-operaatio sallitaan vasta sen Jobin varmennetun
+poistumisen jälkeen. Viisi nykyistä calleria säilyttävät omat product-state-
+ja siivouspäätöksensä.
 
-Jäljellä oleva päätös koskee koko apuoperaation rajaa, ei pidempää timeoutia.
-Ehdotus on korvata asennustilan kyselyn ja sen tulostiedoston käsittelyn
-erilliset vastuut yhdellä rajatulla työvaiheella nykyisen Job Object
--supervisorin alla. Tämä korvaisi kyseisen operaation direct-child-omistajan,
-ei lisäisi sen rinnalle uutta valvojaa. Alkuperäinen skenaario-Job on ensin
-todistettava päättyneeksi; apuoperaation prosessi-, tulos- ja cleanup-tulos
-pysyvät erillisinä. Puhdas JSON- ja skenaariokohtainen validointi säilyvät
-omissa vastuissaan. Vaiheittainen budjetti sisältäisi valmistelun,
-käynnistyksen, tulostoimituksen ja tiedostotyön, ei vain lapsen odotusta.
-Prosessiomistajuuden korvaus vaatii omistajan päätöksen ennen toteutusta.
-Nykyiseen checkpointiin ei ole lisätty tätä korvausta, uutta supervisoria,
-`Promise.race`-aikakatkaisua tai muutettu normaaleja aikarajoja.
+`installerProductOperationWorker` ryhmittelee juuren tarkistuksen, oman
+väliaikaishakemiston luonnin, nykyisen PowerShell-kyselyn tai exact-uninstallin,
+tuloksen tiedostoluvun ja oman väliaikaistuloksen poiston samaan Jobiin.
+Kutsuja ei tee näitä tiedosto-operaatioita. Puhdas strict-JSON- ja product-state-
+validointi säilyvät nykyisissä validoijissa. Työn ja prosessisiivouksen tulokset
+eivät korvaa toisiaan; myöhempi tulosvirhe ei peitä jo validoitua prosessivirhettä.
+
+Product-operaation rajattu yksityinen muistikanava välittää worker-tuloksen
+ja nykyisen supervisor-result-skeeman. Konsoli ei ole kontrollikanava.
+Kutsuja kuittaa rajatun kokonaisen viestin vastaanoton, ei testin onnistumista.
+Vasta supervisorin todellinen `exit`/`close`, strict tulos ja Job-poissaolo
+valtuuttavat jatkamisen. EOF:n rajatonta odotusta, synkronista varatulostusta,
+uutta tiedostolukijaprosessia tai uutta yleistä ajuria ei lisätä.
+Puuttuva tulos tai epävarma poistuminen säilyttää testijuuren.
+
+Korvauksen koko hyväksyntä on vielä kesken. Kohdesarja kattaa
+myös todellisen komentoprosessin valmistumisen, pysähtyvän valmistelun,
+kyselyn jälkeläisen, tulosluvun ja tulospoiston sekä alkuperäisen virheen
+säilymisen siivousvirheen rinnalla. Erillinen regressio osoitti toimitusrajan:
+koko cleanup-varauksen kuluminen jätti pakollisen supervisor-tuloksen ilman
+toimitusaikaa. Korjattu testi vaatii alkuperäisen deadline-virheen ja
+`cleanupUnverified`-tuloksen toimituksen sekä komentoprosessin poistumisen.
+Epävarmuus säilyy epäonnistumisena. Tätä havaintoa ei nimetä aiempien
+CI-katkaisujen syyksi.
+
+Omistajan hyväksymä jako varaa nykyisestä viiden sekunnin loppuvarauksesta
+neljä sekuntia Job-cleanupiin ja yhden sekunnin tulostoimitukseen. Normaalit
+työrajat (kysely 30 s, uninstall 120 s) ja kokonaisvaraukset (35 s / 125 s)
+säilyvät. Sama exhaustion-regressio on korjauksen jälkeen hyväksytty.
+Keinotekoinen exhaustion-testi ei väitä todentavansa aitoa natiivin cleanupin
+epäonnistumista. Tulostoimitus ei saa muuttaa epävarmaa siivousta onnistuneeksi.
+
+Supervisorin oman bootstrapin alustariippuvainen viive pysyy erillisenä
+V2-rajana: Jobin aikaraja alkaa supervisorissa eikä voi valvoa sen omaa
+syntymistä. Promise-aikakatkaisu ei todista natiivin operaation peruuntumista.
+Ulkoista katkaisua ei hyväksytä terminal-todisteeksi eikä sen peittämiseksi
+lisätä uutta watchdogia.
 
 Workspace-komennon nykyiset konfiguroidut prosessi- ja tulostoimitusvaraukset
 ovat `70 + 720 + 460 + 105 + 5 = 1360` sekuntia. Tämä ei sisällä vielä
-rajaamatonta tiedostotyötä eikä consumerin valmistelua. Success-stepin
-25 minuutin varaukseen sisältyy nykyisin myös supervisor-/proof-reader-build;
-fault-consumer valmistelee nämä erikseen. Valmisteluvastuu yhtenäistetään
-ilman MSI-rebuildia. Komentotavan ero ei ole todistettu CI-jumin syy.
+rajaamatonta tiedostotyötä eikä consumerin valmistelua. Success- ja
+fault-consumer valmistelevat supervisorin ja proof-readerit samanlaisessa
+erillisessä vaiheessa ennen skenaariota. Success-stepin 25 minuutin raja ja
+jobien rajat säilyvät. Consumer ei rakenna MSI:tä uudelleen; valmisteluvaiheen
+onnistuminen kuuluu loppukoontiin. Aiempi komentotavan ero ei ole todistettu
+CI-jumin syy.
 
 Normaali onnistuminen palautuu tapahtumasta tai valmiista tilasta, ei
 kiinteän odotuksen täyttymisestä. Koko komennon varauksille ja valmistelulle
@@ -2572,8 +2598,10 @@ Normaali paikallinen `installer:v2-legacy` säilyttää käännöskytkentänsä.
 Nämä ovat konfiguroituja varauksia, eivät paikallisia mittauksia tai väite
 kaikkien OS-jumien keskeyttämisestä: Node-kutsujan synkronista natiivispawnia
 ei voi katkaista event-loop-ajastimella. Pienet request-/result-JSON-tiedostojen
-luvut ja product-adapterin tulostiedoston käsittely säilyvät nykyisillä
-omistajilla. Ulkoinen katkaisu tai puuttuva terminal-tulos ei ole hyväksyntä.
+luvut säilyvät nykyisillä omistajilla. Product-operaation tiedostotyö kuuluu
+nyt edellä kuvatun Job-workerin sisään; sen loppuvaraus jakautuu cleanupin ja
+pakollisen tulostoimituksen kesken. Ulkoinen katkaisu tai puuttuva
+terminal-tulos ei ole hyväksyntä.
 
 `legacyUpgradeFilesystem` vastaanottaa yhden suljetun yksityisen IPC-pyynnön
 ja palauttaa yhden vastauksen. Se käyttää olemassa olevia inventaario-,

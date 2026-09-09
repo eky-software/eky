@@ -4,6 +4,24 @@ namespace Eky.WindowsProcessSupervisor;
 
 internal static class SupervisorResultWriter
 {
+    internal static object CreateValue(SupervisorRequest request, SupervisorOutcome outcome,
+        long durationMilliseconds) => new
+    {
+        schemaVersion = 1,
+        runNonce = request.RunNonce,
+        scenario = request.Scenario,
+        artifactDescriptorSha256 = request.ArtifactDescriptorSha256,
+        status = outcome.Status,
+        processResultCode = outcome.ProcessResultCode,
+        workerResultCode = outcome.WorkerResultCode,
+        cleanupResultCode = outcome.CleanupResultCode,
+        processTreeAbsent = outcome.ProcessTreeAbsent,
+        durationMs = Math.Max(0, durationMilliseconds),
+        childExitCode = outcome.ChildExitCode,
+        processWin32ErrorCode = outcome.ProcessWin32ErrorCode,
+        cleanupWin32ErrorCode = outcome.CleanupWin32ErrorCode,
+    };
+
     internal static void Write(
         SupervisorRequest request,
         SupervisorOutcome outcome,
@@ -25,22 +43,7 @@ internal static class SupervisorResultWriter
                 FileOptions.WriteThrough
             ))
             {
-                JsonSerializer.Serialize(stream, new
-                {
-                    schemaVersion = 1,
-                    runNonce = request.RunNonce,
-                    scenario = request.Scenario,
-                    artifactDescriptorSha256 = request.ArtifactDescriptorSha256,
-                    status = outcome.Status,
-                    processResultCode = outcome.ProcessResultCode,
-                    workerResultCode = outcome.WorkerResultCode,
-                    cleanupResultCode = outcome.CleanupResultCode,
-                    processTreeAbsent = outcome.ProcessTreeAbsent,
-                    durationMs = Math.Max(0, durationMilliseconds),
-                    childExitCode = outcome.ChildExitCode,
-                    processWin32ErrorCode = outcome.ProcessWin32ErrorCode,
-                    cleanupWin32ErrorCode = outcome.CleanupWin32ErrorCode,
-                });
+                JsonSerializer.Serialize(stream, CreateValue(request, outcome, durationMilliseconds));
                 stream.Flush(true);
             }
             File.Move(temporaryPath, request.ResultPath, false);

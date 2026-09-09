@@ -68,10 +68,10 @@ test('producer publishes exactly one immutable pair and consumers use the same a
   assert.match(consumer, /artifact-ids: \$\{\{ needs.workspace_artifact_producer.outputs.artifact_id \}\}/);
   assert.match(consumer, /merge-multiple: true/);
   assert.doesNotMatch(consumer, /installer:v2-workspace-artifact:build|installer:w6b2|msiexec|upload-artifact|retry|rerun/);
-  assert.equal(consumer.match(/installer:v2-workspace-success --artifact-descriptor/g).length, 1);
+  assert.equal(consumer.match(/runWorkspaceSuccess.mjs --artifact-descriptor/g).length, 1);
   assert.equal(consumer.match(/installer:v2-workspace-artifact:verify/g).length, 2);
   assert.match(consumer, /always\(\) && steps.download.outcome == 'success'/);
-  for (const command of consumer.split('\n').filter((line) => /pnpm.*installer:v2/.test(line))) {
+  for (const command of consumer.split('\n').filter((line) => /pnpm.*(?:installer:v2|runWorkspaceSuccess.mjs)/.test(line))) {
     assert.match(command, /--expected-descriptor-sha256 \$env:EXPECTED_DESCRIPTOR_SHA256/);
     assert.match(command, /--expected-build-revision \$env:EXPECTED_BUILD_REVISION/);
   }
@@ -119,6 +119,31 @@ test('V2.7 canonical commands retain the same worker, terminal, session and read
     ].map((name) => `installer/windows-acceptance-harness/${name}.test.mjs`).join(' '));
 });
 
+test('both consumers prepare the same readers once outside lifecycle execution without rebuilding the artifact', async () => {
+  const source = await readFile(WORKFLOW, 'utf8');
+  const consumers = [source.split('  workspace_consumer:')[1].split('  workspace_fault_consumer:')[0],
+    source.split('  workspace_fault_consumer:')[1]];
+  const preparation = consumers.map((consumer) => consumer.split('      - name:')
+    .find((block) => block.startsWith(' Prepare existing supervisor and proof readers once')));
+  assert.ok(preparation.every(Boolean));
+  assert.equal(preparation[0], preparation[1]);
+  for (const consumer of consumers) {
+    for (const command of ['installer:supervisor:build', ' e2e:prepare-electron-runtime', ' e2e:build']) {
+      assert.equal(consumer.split(command).length - 1, 1);
+    }
+    const preparedIndex = consumer.indexOf(preparation[0]);
+    const lifecycleIndex = consumer.indexOf('timeout-minutes: 25');
+    assert.ok(preparedIndex >= 0 && preparedIndex < lifecycleIndex);
+    assert.doesNotMatch(consumer.slice(lifecycleIndex), /installer:supervisor:build| e2e:build|installer:v2-workspace-(success|fault) /);
+  }
+  const desktop = JSON.parse(await readFile(resolve(ROOT, '../../package.json'), 'utf8'));
+  const script = desktop.scripts['installer:test:windows-supervisor-v2-legacy'];
+  for (const name of ['installerProductOperationWorker', 'installerProductOperationProcess',
+    'installerProductOperationDeadline.process', 'legacyCommandCompletion.process']) {
+    assert.equal(script.split(`installer/windows-acceptance-harness/${name}.test.mjs`).length - 1, 1);
+  }
+});
+
 test('each workspace consumer requires its own bound caller result and the actual command exit', async () => {
   const source = await readFile(WORKFLOW, 'utf8');
   const contracts = source.split('  workspace_artifact_producer:')[0];
@@ -128,12 +153,12 @@ test('each workspace consumer requires its own bound caller result and the actua
     assert.ok(desktop.scripts['installer:test:windows-acceptance-phase-writer'].includes(`${name}.test.mjs`));
   }
   const blocks = source.split('      - name:').filter((block) =>
-    /installer:v2-workspace-success --artifact-descriptor|runWorkspaceFault.mjs --artifact-descriptor/.test(block));
+    /runWorkspaceSuccess.mjs --artifact-descriptor|runWorkspaceFault.mjs --artifact-descriptor/.test(block));
   assert.equal(blocks.length, 6);
   for (const block of blocks) {
     assert.match(block, /eky-workspace-caller-.*\[Guid\]::NewGuid\(\)\.ToString\('N'\)/);
     const lines = block.split('\n');
-    const caller = lines.findIndex((line) => /installer:v2-workspace-success --artifact-descriptor|runWorkspaceFault.mjs --artifact-descriptor/.test(line));
+    const caller = lines.findIndex((line) => /runWorkspaceSuccess.mjs --artifact-descriptor|runWorkspaceFault.mjs --artifact-descriptor/.test(line));
     assert.match(lines[caller], /--result-path \$resultPath$/);
     assert.equal(lines[caller + 1].trim(), '$commandExit = $LASTEXITCODE');
     assert.match(lines[caller + 2], /verifyWorkspaceCallerResult.mjs .*--result-path \$resultPath --command-exit \$commandExit$/);
