@@ -1128,7 +1128,7 @@ ajon, eikä yksittäisiä polkuja tai tiivisteitä tulosteta.
 V2.5B:n paikallinen consumer-komento on:
 
 ```text
-pnpm --filter @eky/desktop installer:v2-legacy --artifact-descriptor <absolute-artifact-root>/legacy-upgrade-artifact.json
+pnpm --filter @eky/desktop installer:v2-legacy --artifact-descriptor <absolute-artifact-root>/legacy-upgrade-artifact.json --expected-descriptor-sha256 <descriptor-sha256> --expected-build-revision <producer-revision> --result-path <canonical-temp>/eky-legacy-caller-<new-32-hex>/result.json
 ```
 
 ### V2.5:n hyväksytty suoritusympäristö
@@ -2421,6 +2421,75 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 - dependency- ja lockfile-muutoksia ei ole ilman erillistä hyväksyntää
 
 ## Nykyinen päätös
+
+V2.8:n riskikytkentä sekä Electron- ja workspace-korjaukset säilyvät PR #266:ssa.
+Nykyinen rajattu työ sulkee legacy-komennon tulostoimituksen. V2:n yhteinen
+hyväksyntä, required-check-siirto, vanhan orkestroinnin poisto ja julkaisu
+ovat edelleen avoinna. Alla oleva V2.7-hyväksyntä on historiallinen lähtökohta,
+ei nykyisen revision hyväksyntä.
+
+Todellinen komentoprosessiregressio osoittaa legacy-CLI:n suoran
+konsoliyhteenvedon voivan estää poistumisen lukemattomaan putkeen: supervisor
+on jo kirjoittanut strict deadline-tuloksen, poistanut Job-puun ja poistunut.
+Korjaus korvaa vain tämän pakollisen tuloksen toimituksen tiedostolla.
+Workerin suoran vaihekirjoituksen estyminen jää nykyisen Job-deadlinen piiriin;
+regressio erottaa sen supervisorin ja callerin poistumisesta. Tämä mekanismi
+ei yksin osoita aiemman CI-katkaisun syytä. `majorUpgrade started` on
+vaihehavainto ennen MSI-kutsua, ei todiste spawnista tai viimeisestä operaatiosta.
+
+`callerResultCli`, `callerResultFile` ja `callerResultProcess` erottavat
+workspace-toteutuksesta vain teknisen toimitusvastuun. Legacyllä on oma
+strict tulossopimus, ajokohtainen `eky-legacy-caller-<32-hex>`-juuri ja
+verifier. Identiteetti sitoo producer-revision, descriptor-SHA:n ja ajon;
+materiaali varmennetaan myös ennen skenaarion käynnistystä. Pakollinen
+enintään 8192 tavun tulos ja todellinen command exit tarkistetaan yhdessä.
+Vaihekirjoitin välittää vain suljetun `legacyAcceptanceCaller`-nimiavaruuden
+havaintoja: ei kuittausodotusta tai konsolivarapolkua. Epävarma kirjoittimen
+poistuminen säilyttää fixturen ja erillisen safety-tuloksen.
+
+### Legacy-komennon valmistumisrajat
+
+| Odotus | Nykyinen omistaja ja raja |
+| --- | --- |
+| Worker-vaihehavainto, MSI spawn/close | `legacyUpgradeLifecycle` ja `legacyUpgradeWindowsRuntime`; worker ja jälkeläiset saman Job-supervisorin sisällä. MSI käyttää ignored stdiota; vaihekirjoitus ei ole kontrolliprotokolla. |
+| Supervisorin tulos ja loppulokitus | Nykyinen supervisor; 600000 ms kokonaisraja, siitä 30000 ms cleanup-varaus, työn raja 570000 ms. Strict tiedosto on erillinen ei-estävästä diagnostiikasta. |
+| Supervisorin exit/close | `startLegacyUpgradeSupervisor`; odottaa todellista closea, ei viimeistä lokiriviä. Erilliset turvalliset exit/close-havainnot. Ei uutta ulkopuolista valvojaa. |
+| Tulosluku ja semanttinen vertailu | Caller ja `legacyUpgradeFailureBoundary`; strict supervisor-/scenario-tulokset ennen business-jälkiehtoja. Suorat tiedostoluvut/inventaariot eivät vielä ole yhteisen komentodeadlinen sisällä. |
+| Exact-tuotetilan tarkistus | Nykyinen post-supervisor Windows-adapteri: kaksi sarjallista kyselyä, kummallakin 30000 ms ja 5000 ms lopetusvaraus. |
+| Asennussiivous ja jälkiehto | Sama product-runtime: uusi kahden tuotteen tarkistus, enintään kaksi exact-uninstallia (120000 + 5000 ms kumpikin), lopuksi erillinen tarkistus. Ei uutta process-tree-omistajaa. |
+| Artifact, normaali profiili, fixture-poisto | Nykyinen caller; erilliset tulokset. Varmentamaton prosessipuu, cleanup tai kirjoitin estää fixturen poistamisen. Rekursiivisilla tiedosto-operaatioilla ei vielä ole yhteistä valmistumisrajaa. |
+| Pakollinen command-result | Nykyinen rajattu tiedostoadapteri: prepare/publish/verify kukin 30000 + 5000 ms; vain tekninen toimitus, ei skenaariota tai sen cleanupia. Vaihekirjoittimen lopetusvaraus enintään 5000 ms. |
+
+Budjettikatselmus erotetaan korjauksen hyväksynnästä. Supervisorin jälkeisen
+virhepolun konfiguroidut odotusvaraukset ovat enintään
+`70 + (70 + 2 * 125) + 70 = 460` sekuntia. Precondition 70 sekuntia ja
+supervisor 600 sekuntia nostavat summan 1130 sekuntiin jo ennen tiedostotyötä.
+Uuden tulostoimituksen kolme 35 sekunnin varausta ja kirjoittimen 5 sekuntia
+nostavat vastaavan laskelman 1240 sekuntiin. Nämä ovat sopimusbudjetteja,
+eivät mitattuja kestoja tai koko komennon todistettuja ylärajoja: synkroninen
+natiivikäynnistys ja suora tiedostotyö eivät saa tästä keskeytystakuuta.
+Nykyinen lifecycle-step on 720 sekuntia ja consumer-job 1080 sekuntia.
+Niitä ei muuteta tässä korjauksessa. Budjettien yhteensovitus ja vielä
+rajaamattomien alustaryhmien valmistumissopimus vaativat päätöksen ennen
+uutta packaged-hyväksyntää; pelkkä normaaliajon vihreys ei todista virhepolkua.
+
+Kohderegressiot käyttävät nykyistä supervisoria ja callerin todellista
+käynnistystä, mutta vain synteettistä workeria ilman MSI:tä. Ne todistavat
+jumittuvan workerin, lukemattoman tulosteen, puuttuvan supervisor-tuloksen,
+epävarman cleanupin, semantic-cleanup-virheen ja kirjoittimen epävarman
+poistumisen. Injektoidut virheluokat erotetaan todellisesta Job-tuloksesta.
+Alkuperäinen virhe säilyy, epävarma aineisto säilytetään eikä onnistunut
+jälkisiivous muuta skenaariota onnistuneeksi. Lopputulos varmennetaan
+komentoprosessin ulkopuolelta; pelkkä Promisen palautuminen ei riitä.
+
+Korjauspinnan legacy-sopimukset läpäisevät 193/193, jaetun kirjoittimen ja
+tulosvälityksen regressiot 39/39, workspace success 321/321, fault 312/312 ja
+legacy-artifact-sopimukset 12/12. Testifixturen oman loppusiivousjärjestyksen
+viimeistelyn jälkeen komento-/tuloskohdesarja läpäisee 30/30. Desktopin
+typecheck/build läpäisevät. Tämä on paikallinen sopimuscheckpoint, ei uusi
+packaged- tai CI-hyväksyntä. Aikarajoja, tuotantoa tai omistajuutta ei muuteta.
+
+### V2.7:n hyväksytty lähtökohta
 
 V2.7:n loppukatselmus on suljettu lähderevisiolle
 `b593614d99ee1c17cb70ce4f0aa41c23ceaac70d`. CI:n todellinen checkout ja

@@ -22,8 +22,10 @@ function requireObservation(input) {
   }
   const value = Object.fromEntries(KEYS.map((key) => [key, properties[key].value]));
   if (
-    value.schemaVersion !== 1 || value.operation !== 'workspaceAcceptanceCaller' ||
-    !SCENARIOS.has(value.scenario) || !PHASES.has(value.phase) || !STATUSES.has(value.status) ||
+    value.schemaVersion !== 1 ||
+    !(value.operation === 'workspaceAcceptanceCaller' && SCENARIOS.has(value.scenario) ||
+      value.operation === 'legacyAcceptanceCaller' && value.scenario === 'historicalLegacyUpgrade') ||
+    !PHASES.has(value.phase) || !STATUSES.has(value.status) ||
     !Number.isSafeInteger(value.durationMs) || value.durationMs < 0 ||
     !Number.isSafeInteger(value.elapsedMs) || value.elapsedMs < 0) {
     throw new Error('WINDOWS_ACCEPTANCE_PHASE_OBSERVATION_INVALID');

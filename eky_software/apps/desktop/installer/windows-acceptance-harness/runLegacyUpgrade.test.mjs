@@ -12,6 +12,7 @@ import {
   runLegacyUpgrade,
 } from './runLegacyUpgrade.mjs';
 import { legacyUpgradeFailureDetails } from './legacyUpgradeFailureBoundary.mjs';
+import { validateLegacyCallerResult } from './legacyCallerResult.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 
@@ -22,6 +23,7 @@ function productState(present = false) {
 
 for (const [mode, expectedErrorCode] of Object.entries({
   completed: null,
+  artifactBindingMismatch: 'WINDOWS_ACCEPTANCE_LEGACY_ARTIFACT_VERIFICATION_FAILED',
   preflightFailed: 'WINDOWS_ACCEPTANCE_LEGACY_PRECONDITION_FAILED',
   launchFailed: 'WINDOWS_ACCEPTANCE_SUPERVISOR_START_FAILED',
   missingSupervisor: 'WINDOWS_ACCEPTANCE_SUPERVISOR_TERMINAL_RESULT_MISSING',
@@ -43,14 +45,16 @@ for (const [mode, expectedErrorCode] of Object.entries({
       processTreeAbsent: true,
     };
     const ports = {
+      expectedArtifact: { buildRevision: 'b'.repeat(40), artifactDescriptorSha256: 'a'.repeat(64) },
       inventoryProfile: async () => [],
       materializeFixture: async (_, destination) => {
         root = dirname(destination);
         await mkdir(destination);
         await writeFile(resolve(destination, 'private-evidence'), 'synthetic evidence');
         return { descriptorSha256: 'a'.repeat(64), artifactRoot: destination,
-          source: { artifactClass: 'historical-source-rebuild', appVersion: '0.2.6' },
-          target: { appVersion: '0.2.7' } };
+          buildRevision: (mode === 'artifactBindingMismatch' ? 'c' : 'b').repeat(40),
+          source: { artifactClass: 'historical-source-rebuild', appVersion: '0.2.6', packageSha256: 'c'.repeat(64) },
+          target: { appVersion: '0.2.7', packageSha256: 'd'.repeat(64) } };
       },
       verifyArtifact: async () => undefined,
       createProductRuntime: () => ({
@@ -73,7 +77,8 @@ for (const [mode, expectedErrorCode] of Object.entries({
         if (['scenarioUnreadable', 'fixtureCleanupFailed'].includes(mode)) throw new Error('private result');
         return { status: 'completed', resultCode: 'historicalLegacyUpgradeCompleted' };
       },
-      verifySemanticPostcondition: async () => ({ status: 'completed', resultCode: 'legacySemanticProofValidated' }),
+      verifySemanticPostcondition: async () => ({ status: 'completed', resultCode: 'legacySemanticProofValidated',
+        businessDataPreserved: true, adoptedWorkspaceCount: 1, idempotentSecondStartup: true }),
       removeRunRoot: async (path) => {
         removals += 1;
         if (mode === 'fixtureCleanupFailed') throw new Error('private filesystem');
@@ -94,6 +99,8 @@ for (const [mode, expectedErrorCode] of Object.entries({
       assert.equal(result.status, 'completed');
       assert.equal(result.resultCode, 'historicalLegacyUpgradeCompleted');
       assert.equal(result.fixtureRemoved, true);
+      const binding = { schemaVersion: 1, invocationId: 'a'.repeat(32), scenario: 'historicalLegacyUpgrade', ...ports.expectedArtifact };
+      assert.doesNotThrow(() => validateLegacyCallerResult({ binding, outcome: result }, binding));
     } else {
       await assert.rejects(execute, (error) => {
         failure = legacyUpgradeFailureDetails(error);
@@ -103,11 +110,11 @@ for (const [mode, expectedErrorCode] of Object.entries({
         return true;
       });
     }
-    const removed = ['completed', 'preflightFailed', 'scenarioUnreadable'].includes(mode);
+    const removed = ['completed', 'artifactBindingMismatch', 'preflightFailed', 'scenarioUnreadable'].includes(mode);
     if (removed) await assert.rejects(lstat(root), { code: 'ENOENT' });
     else assert.equal(await readFile(resolve(root, 'fixture', 'private-evidence'), 'utf8'), 'synthetic evidence');
     assert.equal(removals, removed || mode === 'fixtureCleanupFailed' ? 1 : 0);
-    assert.equal(launched, mode !== 'preflightFailed');
+    assert.equal(launched, !['preflightFailed', 'artifactBindingMismatch'].includes(mode));
     assert.equal(cleanups, ['completed', 'scenarioUnreadable', 'semanticCleanupFailed', 'fixtureCleanupFailed'].includes(mode) ? 1 : 0);
     if (failure) {
       assert.equal(failure.fixtureRemoved, removed);

@@ -52,6 +52,14 @@ test('V2.5 phase acceptance builds once and both consumers only verify and consu
   assert.ok(consumer.includes("repetition: ${{ fromJSON(inputs.risk_plan != '' && fromJSON(inputs.risk_plan).repetitions == 1 && '[1]' || '[1, 2]') }}"));
   assert.match(consumer, /max-parallel: 2/u);
   assert.equal(consumer.match(/installer:v2-legacy --artifact-descriptor/gu)?.length, 1);
+  const command = consumer.slice(consumer.indexOf('      - name: Run existing supervised legacy lifecycle once'),
+    consumer.indexOf('      - name:', consumer.indexOf('      - name: Run existing supervised legacy lifecycle once') + 1));
+  assert.match(command, /\$commandExit = \$LASTEXITCODE/u);
+  assert.match(command, /verifyLegacyCallerResult\.mjs.*--command-exit \$commandExit/u);
+  assert.equal(command.match(/--expected-descriptor-sha256 \$env:EXPECTED_DESCRIPTOR_SHA256/gu)?.length, 2);
+  assert.equal(command.match(/--expected-build-revision \$env:EXPECTED_BUILD_REVISION/gu)?.length, 2);
+  assert.equal(command.match(/--result-path \$resultPath/gu)?.length, 2);
+  assert.match(command, /\$commandExit -ne 0 -or \$LASTEXITCODE -ne 0/u);
   assert.doesNotMatch(consumer, /artifact:build|package:windows|installer:release/u);
   assert.match(consumer, /always\(\) && steps\.download\.outcome == 'success'/u);
   assert.match(consumer, /needs\.legacy_artifact_producer\.outputs\.descriptor_sha256/u);

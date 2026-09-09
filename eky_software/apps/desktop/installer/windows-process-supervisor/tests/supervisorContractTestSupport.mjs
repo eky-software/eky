@@ -159,6 +159,7 @@ export function startSupervisor(
   context,
   {
     captureOutput = true,
+    unreadOutput = false,
     dotnetArguments = ['--request', context.requestPath],
     dotnetAssembly = SUPERVISOR_DLL,
   } = {},
@@ -174,7 +175,7 @@ export function startSupervisor(
     [dotnetAssembly, ...dotnetArguments],
     {
       cwd: context.testRoot,
-      stdio: captureOutput ? ['ignore', 'pipe', 'pipe'] : 'ignore',
+      stdio: captureOutput || unreadOutput ? ['ignore', 'pipe', 'pipe'] : 'ignore',
       windowsHide: true,
     },
   );

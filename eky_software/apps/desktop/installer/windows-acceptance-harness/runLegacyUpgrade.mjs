@@ -13,6 +13,7 @@ import {
 } from './legacyUpgradeContracts.mjs';
 import {
   LegacyUpgradeCommandFailure,
+  LEGACY_COMMAND_ERROR_CODES,
   legacyUpgradeFailureDetails,
   resolveLegacyUpgradeTerminalOutcome,
 } from './legacyUpgradeFailureBoundary.mjs';
@@ -29,6 +30,10 @@ import {
 } from './closedDirectoryInventory.mjs';
 import { parseAbsoluteWindowsAcceptancePath } from './windowsAcceptancePathArgument.mjs';
 import { readWindowsAcceptanceSupervisorResult } from '../windows-process-supervisor/windowsAcceptanceSupervisorResult.mjs';
+import { runCallerResultCli } from './callerResultCli.mjs';
+import { parseLegacyCallerArguments, validateLegacyCallerResult } from './legacyCallerResult.mjs';
+import { runLegacyCallerResultProcess } from './legacyCallerResultProcess.mjs';
+import { createWorkspacePhaseWriter } from './workspacePhaseWriter.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const SUPERVISOR_DLL = resolve(
@@ -81,7 +86,7 @@ export function parseLegacyUpgradeArguments(arguments_) {
   return Object.freeze({ descriptorPath });
 }
 
-function startSupervisor(requestPath, scenarioRoot) {
+export function startLegacyUpgradeSupervisor(requestPath, scenarioRoot, observe = () => {}) {
   const child = spawn(
     DOTNET_EXECUTABLE,
     [SUPERVISOR_DLL, '--request', requestPath],
@@ -92,10 +97,12 @@ function startSupervisor(requestPath, scenarioRoot) {
     },
   );
   const completion = new Promise((resolvePromise, rejectPromise) => {
+    child.once('exit', (code) => observe('supervisorExit', code === 0 ? 'completed' : 'failed'));
     child.once('error', () =>
       rejectPromise(new Error('WINDOWS_ACCEPTANCE_SUPERVISOR_START_FAILED')),
     );
     child.once('close', (exitCode, signal) => {
+      observe('supervisorClose', signal === null && exitCode === 0 ? 'completed' : 'failed');
       if (signal !== null || !Number.isInteger(exitCode)) {
         rejectPromise(new Error('WINDOWS_ACCEPTANCE_SUPERVISOR_EXIT_INVALID'));
         return;
@@ -107,10 +114,7 @@ function startSupervisor(requestPath, scenarioRoot) {
 }
 
 function safeErrorCode(error) {
-  return (
-    typeof error?.message === 'string' &&
-    /^[A-Z][A-Z0-9_]{2,95}$/.test(error.message)
-  )
+  return LEGACY_COMMAND_ERROR_CODES.includes(error?.message)
     ? error.message
     : 'WINDOWS_ACCEPTANCE_LEGACY_UNEXPECTED_FAILURE';
 }
@@ -152,12 +156,14 @@ export async function runLegacyUpgrade(arguments_, {
   materializeFixture = materializeLegacyUpgradeArtifactFixture,
   inventoryProfile = createClosedDirectoryInventory,
   createProductRuntime = createUpgradeRollbackPostSupervisorWindowsRuntime,
-  launchSupervisor = startSupervisor,
+  launchSupervisor = startLegacyUpgradeSupervisor,
   readSupervisorResult = readWindowsAcceptanceSupervisorResult,
   readScenarioResult = readLegacyUpgradeResult,
   verifySemanticPostcondition = verifyLegacyUpgradeSemanticPostcondition,
   verifyArtifact = verifyLegacyUpgradeArtifactSourceFixture,
   removeRunRoot = (root) => rm(root, { force: true, recursive: true }),
+  expectedArtifact,
+  createPhaseWriter = createWorkspacePhaseWriter,
 } = {}) {
   if (process.platform !== 'win32') {
     throw new Error('WINDOWS_ACCEPTANCE_LEGACY_WINDOWS_REQUIRED');
@@ -188,6 +194,35 @@ export async function runLegacyUpgrade(arguments_, {
   let supervisorAttempted = false;
   let fixtureRemoved = false;
   let fixtureCleanupResultCode = 'retainedUnverified';
+  let phaseWriter = null;
+  let writerAttempted = false;
+  let writerStopped = false;
+  let writerOutcome = { writerResultCode: 'notStarted', diagnosticResultCode: 'notSent' };
+  const begun = performance.now();
+  const phaseStarts = new Map();
+  const observe = (phase, status) => {
+    if (writerStopped) return;
+    try {
+      if (!writerAttempted) {
+        writerAttempted = true;
+        writerOutcome = { writerResultCode: 'writerExitUnverified', diagnosticResultCode: 'channelFailed' };
+        phaseWriter = createPhaseWriter({ timeoutMilliseconds: 600_000, terminationTimeoutMilliseconds: 5_000 });
+      }
+      const now = performance.now();
+      if (status === 'started') phaseStarts.set(phase, now);
+      phaseWriter?.send({ schemaVersion: 1, operation: 'legacyAcceptanceCaller', scenario: LEGACY_UPGRADE_SCENARIO,
+        phase, status, durationMs: Math.max(0, Math.floor(now - (phaseStarts.get(phase) ?? now))),
+        elapsedMs: Math.floor(now - begun) });
+    } catch { /* Optional observations cannot replace the required result. */ }
+  };
+  const observed = async (phase, task) => {
+    observe(phase, 'started');
+    try {
+      const value = await task();
+      observe(phase, value?.status === 'failed' ? 'failed' : 'completed');
+      return value;
+    } catch (error) { observe(phase, 'failed'); throw error; }
+  };
   const stopActiveSupervisor = () => {
     if (
       activeSupervisor?.child.exitCode === null &&
@@ -204,6 +239,10 @@ export async function runLegacyUpgrade(arguments_, {
       descriptorPath,
       resolve(runRoot, 'fixture'),
     );
+    if (expectedArtifact && (artifact.descriptorSha256 !== expectedArtifact.artifactDescriptorSha256 ||
+      artifact.buildRevision !== expectedArtifact.buildRevision)) {
+      throw new Error('WINDOWS_ACCEPTANCE_LEGACY_ARTIFACT_VERIFICATION_FAILED');
+    }
     const scenarioRoot = resolve(runRoot, 'scenario');
     await mkdir(scenarioRoot, { recursive: false });
     const productRuntime = createProductRuntime({
@@ -232,10 +271,10 @@ export async function runLegacyUpgrade(arguments_, {
     });
 
     supervisorAttempted = true;
-    activeSupervisor = launchSupervisor(supervisorRequestPath, scenarioRoot);
+    activeSupervisor = launchSupervisor(supervisorRequestPath, scenarioRoot, observe);
     const supervisorExitCode = await activeSupervisor.completion;
     activeSupervisor = null;
-    supervisorResult = await readSupervisorResult(
+    supervisorResult = await observed('supervisorResult', () => readSupervisorResult(
       resolve(scenarioRoot, 'result.json'),
       {
         artifactDescriptorSha256: artifact.descriptorSha256,
@@ -243,22 +282,26 @@ export async function runLegacyUpgrade(arguments_, {
         scenario: LEGACY_UPGRADE_SCENARIO,
         supervisorExitCode,
       },
-    );
+    ));
+    let inspections = 0;
     terminal = await resolveLegacyUpgradeTerminalOutcome({
       ...productRuntime,
+      verifyExactProductStates: () => observed(inspections++ === 0 ? 'initialProductState' : 'finalProductState',
+        productRuntime.verifyExactProductStates),
+      cleanupExactProducts: () => observed('installationCleanup', productRuntime.cleanupExactProducts),
       productPrecondition,
       supervisorResult,
       readScenarioResult: () =>
-        readScenarioResult(
+        observed('scenarioResult', () => readScenarioResult(
           legacyUpgradeResultPathForRequest(workerRequestPath),
           workerRequest,
-        ),
+        )),
       verifySemanticPostcondition: () =>
-        verifySemanticPostcondition({
+        observed('semanticPostcondition', () => verifySemanticPostcondition({
           artifact,
           runNonce: workerRequest.runNonce,
           runtimeRoot: dirname(artifact.artifactRoot),
-        }),
+        })),
     });
   } catch (error) {
     primaryError = error;
@@ -274,7 +317,7 @@ export async function runLegacyUpgrade(arguments_, {
     }
     if (artifact !== null) {
       try {
-        await verifyArtifact(artifact);
+        await observed('artifactVerification', () => verifyArtifact(artifact));
       } catch {
         safetyError ??= new Error(
           'WINDOWS_ACCEPTANCE_LEGACY_LOCAL_FIXTURE_CHANGED',
@@ -283,13 +326,22 @@ export async function runLegacyUpgrade(arguments_, {
     }
     if (profileBefore !== null) {
       try {
-        profileAfter = await inventoryProfile(profileRoot);
-        if (!inventoriesMatch(profileBefore, profileAfter)) {
-          throw new Error('WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED');
-        }
+        await observed('normalProfileVerification', async () => {
+          profileAfter = await inventoryProfile(profileRoot);
+          if (!inventoriesMatch(profileBefore, profileAfter)) throw new Error('WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED');
+        });
       } catch {
         safetyError ??= new Error('WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED');
       }
+    }
+    observe('fixtureCleanup', 'started');
+    writerStopped = true;
+    if (phaseWriter) {
+      try { writerOutcome = await phaseWriter.finish(); }
+      catch { writerOutcome = { writerResultCode: 'writerExitUnverified', diagnosticResultCode: 'channelFailed' }; }
+    }
+    if (writerAttempted && writerOutcome.writerResultCode !== 'writerAbsent') {
+      safetyError ??= new Error('WINDOWS_ACCEPTANCE_LEGACY_PHASE_WRITER_EXIT_UNVERIFIED');
     }
     const failure = legacyUpgradeFailureDetails(primaryError);
     const cleanupVerified = terminal !== null || (
@@ -331,6 +383,8 @@ export async function runLegacyUpgrade(arguments_, {
       safetyErrorCode: safetyError === null ? null : safeErrorCode(safetyError),
       fixtureCleanupResultCode,
       fixtureRemoved,
+      phaseWriterResultCode: writerOutcome.writerResultCode,
+      phaseDiagnosticResultCode: writerOutcome.diagnosticResultCode,
     });
   }
   return Object.freeze({
@@ -353,31 +407,30 @@ export async function runLegacyUpgrade(arguments_, {
     profileFileCountAfter: profileAfter.filter((entry) => entry.kind === 'file')
       .length,
     processTreeAbsent: supervisorResult.processTreeAbsent,
+    supervisorProcessResultCode: supervisorResult.processResultCode,
+    supervisorWorkerResultCode: supervisorResult.workerResultCode,
+    supervisorCleanupResultCode: supervisorResult.cleanupResultCode,
+    scenarioResultCode: terminal.scenarioResult.resultCode,
+    semanticProofResultCode: terminal.semanticProof.resultCode,
+    semanticCleanupResultCode: 'semanticCleanupCompleted',
+    postconditionResultCode: 'exactProductsAbsent',
+    fixtureCleanupResultCode,
     fixtureRemoved,
+    phaseWriterResultCode: writerOutcome.writerResultCode,
+    phaseDiagnosticResultCode: writerOutcome.diagnosticResultCode,
   });
 }
 
-async function main() {
-  try {
-    console.log(JSON.stringify(await runLegacyUpgrade(process.argv.slice(2))));
-  } catch (error) {
-    console.error(
-      JSON.stringify(
-        legacyUpgradeFailureDetails(error) ?? {
-          schemaVersion: 1,
-          scenario: LEGACY_UPGRADE_SCENARIO,
-          status: 'failed',
-          errorCode: safeErrorCode(error),
-        },
-      ),
-    );
-    process.exitCode = 1;
-  }
+export function runLegacyUpgradeCli(args, { runScenario = (input, expectedArtifact) => runLegacyUpgrade(input, { expectedArtifact }),
+  resultProcess = runLegacyCallerResultProcess } = {}) {
+  return runCallerResultCli(args, { runScenario, resultProcess,
+    parseArguments: (input) => parseLegacyCallerArguments(input, parseLegacyUpgradeArguments),
+    validateResult: validateLegacyCallerResult, failureDetails: legacyUpgradeFailureDetails, errorCode: safeErrorCode });
 }
 
 if (
   process.argv[1] !== undefined &&
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
-  await main();
+  process.exitCode = await runLegacyUpgradeCli(process.argv.slice(2));
 }

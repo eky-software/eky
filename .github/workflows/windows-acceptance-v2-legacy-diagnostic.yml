@@ -274,10 +274,16 @@ jobs:
       - name: Run existing supervised legacy lifecycle once
         shell: pwsh
         timeout-minutes: 12
+        env:
+          EXPECTED_BUILD_REVISION: ${{ needs.legacy_artifact_producer.outputs.build_revision }}
+          EXPECTED_DESCRIPTOR_SHA256: ${{ needs.legacy_artifact_producer.outputs.descriptor_sha256 }}
         run: |
           $descriptorPath = Join-Path $env:RUNNER_TEMP 'eky-v25-legacy-artifact\legacy-upgrade-artifact.json'
-          pnpm --filter @eky/desktop installer:v2-legacy --artifact-descriptor $descriptorPath
-          if ($LASTEXITCODE -ne 0) {
+          $resultPath = Join-Path (Join-Path $env:RUNNER_TEMP ('eky-legacy-caller-' + [Guid]::NewGuid().ToString('N'))) 'result.json'
+          pnpm --filter @eky/desktop installer:v2-legacy --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath
+          $commandExit = $LASTEXITCODE
+          pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/verifyLegacyCallerResult.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath --command-exit $commandExit
+          if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0) {
             throw 'WINDOWS_ACCEPTANCE_LEGACY_LIFECYCLE_FAILED'
           }
 
