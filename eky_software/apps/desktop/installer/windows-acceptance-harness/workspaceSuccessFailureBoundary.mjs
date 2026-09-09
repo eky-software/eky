@@ -5,6 +5,7 @@ import {
 import { validateWorkspaceFaultRequest, validateWorkspaceFaultResult,
   workspaceFaultErrorCode, workspaceFaultPlan } from './workspaceFaultContracts.mjs';
 import { WORKSPACE_FAULT_POSTCONDITION_ERRORS } from './workspaceFaultPostcondition.mjs';
+import { areProductProcessesAbsent } from './installerProductOperationRuntime.mjs';
 
 const PRODUCT_FAILURES = Object.freeze([
   'productStateVerificationFailed', 'productStateVerificationTimedOut', 'productStateVerificationProcessRemains',
@@ -62,6 +63,7 @@ async function resolveWorkspaceTerminalOutcome({
   request, supervisorResult, productPrecondition, readScenarioResult,
   verifyExactProductStates, verifySemanticPostcondition, verifySessionPostcondition,
   cleanupExactProducts, verifyRemovalPostcondition,
+  outcome: productProcessOutcome,
 }, faultScenario) {
   const fault = faultScenario !== undefined;
   const installedRole = fault ? workspaceFaultPlan(faultScenario).installedRole : 'target';
@@ -151,6 +153,11 @@ async function resolveWorkspaceTerminalOutcome({
     const outcome = await cleanup(cleanupExactProducts);
     result.semanticCleanupResultCode = outcome.status === 'completed' ? outcome.resultCode : outcome.errorCode;
     result.errorCode ??= outcome.status === 'completed' ? null : outcome.errorCode;
+    if (productProcessOutcome && !areProductProcessesAbsent({ outcome: productProcessOutcome })) {
+      result.postconditionResultCode = 'productStateVerificationProcessRemains';
+      result.errorCode ??= 'semanticCleanupProcessRemains';
+      return Object.freeze(result);
+    }
     finalState = await inspect(verifyExactProductStates);
   }
   result.postconditionResultCode = finalState.status === 'completed' ? finalState.resultCode : finalState.errorCode;
@@ -171,7 +178,8 @@ async function resolveWorkspaceTerminalOutcome({
   return Object.freeze(result);
 }
 
-export function workspaceSuccessRunRootRemovable({ supervisorAttempted, terminal }) {
+export function workspaceSuccessRunRootRemovable({ supervisorAttempted, terminal, productProcessAbsent }) {
+  if (productProcessAbsent !== true) return false;
   if (!supervisorAttempted) return true;
   return terminal?.processTreeAbsent === true && terminal.postconditionResultCode === 'exactProductsAbsent' &&
     ['notRequired', 'semanticCleanupCompleted'].includes(terminal.semanticCleanupResultCode) &&

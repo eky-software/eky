@@ -1,5 +1,6 @@
 import { LEGACY_FOOTPRINT_ERROR_CODES, LEGACY_UPGRADE_WORKER_EXIT_CODES } from './legacyUpgradeContracts.mjs';
 import { LEGACY_FILESYSTEM_ERROR_CODES } from './legacyUpgradeFilesystem.mjs';
+import { areProductProcessesAbsent } from './installerProductOperationRuntime.mjs';
 
 const SCENARIO_ERROR_CODES = Object.freeze({
   ...LEGACY_FOOTPRINT_ERROR_CODES,
@@ -44,6 +45,7 @@ const SUPERVISOR_ERROR_CODES = Object.freeze({
 
 export const LEGACY_COMMAND_ERROR_CODES = Object.freeze([
   ...LEGACY_FILESYSTEM_ERROR_CODES,
+  'WINDOWS_ACCEPTANCE_LEGACY_PRODUCT_PROCESS_UNVERIFIED',
   'WINDOWS_ACCEPTANCE_LEGACY_PHASE_WRITER_EXIT_UNVERIFIED',
   'WINDOWS_ACCEPTANCE_LEGACY_LOCAL_FIXTURE_INVALID',
   ...Object.values(SCENARIO_ERROR_CODES), ...Object.values(SUPERVISOR_ERROR_CODES),
@@ -237,9 +239,12 @@ export async function resolveLegacyUpgradeTerminalOutcome({
   productPrecondition,
   readScenarioResult,
   supervisorResult,
-  verifyExactProductStates,
+  verifyExactProductStates: verifyProducts,
   verifySemanticPostcondition,
+  outcome,
 }) {
+  const verifyExactProductStates = () => outcome && !areProductProcessesAbsent({ outcome })
+    ? { status: 'failed', errorCode: 'productStateVerificationProcessRemains' } : verifyProducts();
   const preconditionValidated =
     productPrecondition?.status === 'completed' &&
     productPrecondition.resultCode === 'exactProductsAbsent' &&

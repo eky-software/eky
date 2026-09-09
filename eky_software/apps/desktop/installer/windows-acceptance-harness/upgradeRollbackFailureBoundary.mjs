@@ -1,3 +1,5 @@
+import { areProductProcessesAbsent } from './installerProductOperationRuntime.mjs';
+
 const SCENARIO_ERROR_CODES = Object.freeze({
   artifactVerificationFailed:
     'WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_VERIFICATION_FAILED',
@@ -185,6 +187,11 @@ async function recoverAndThrow({
   supervisorResult,
   verifyExactProductStates,
 }) {
+  if (!supervisorResult.processTreeAbsent) {
+    throw new UpgradeRollbackCommandFailure(failureDetails({ errorCode, scenarioResultCode,
+      initialProductStateResultCode: 'notChecked', postconditionResultCode: 'notChecked',
+      semanticCleanupResultCode: 'blockedByOwnedProcessTree', supervisorResult }));
+  }
   const initial =
     initialInspection ?? (await inspectProducts(verifyExactProductStates));
   let initialProductStateResultCode =
@@ -197,9 +204,6 @@ async function recoverAndThrow({
   ) {
     if (!semanticCleanupAllowed) {
       semanticCleanupResultCode = 'blockedByPrecondition';
-    } else if (!supervisorResult.processTreeAbsent) {
-      semanticCleanupResultCode = 'blockedByOwnedProcessTree';
-      postconditionResultCode = 'notChecked';
     } else {
       const cleanup = await cleanupProducts(cleanupExactProducts);
       semanticCleanupResultCode =
@@ -235,8 +239,11 @@ export async function resolveUpgradeRollbackTerminalOutcome({
   cleanupExactProducts,
   readScenarioResult,
   supervisorResult,
-  verifyExactProductStates,
+  verifyExactProductStates: verifyProducts,
+  outcome,
 }) {
+  const verifyExactProductStates = () => outcome && !areProductProcessesAbsent({ outcome })
+    ? { status: 'failed', errorCode: 'productStateVerificationProcessRemains' } : verifyProducts();
   if (supervisorResult.status === 'completed') {
     const scenarioResult = await readScenarioResult();
     if (scenarioResult.status !== 'completed') {

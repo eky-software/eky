@@ -16,7 +16,7 @@ const ERRORS = new Set([...WORKSPACE_SUCCESS_ERRORS, ...WORKSPACE_FAULT_ERRORS,
   'productStateVerificationFailed', 'productStateVerificationTimedOut', 'productStateVerificationProcessRemains',
   'semanticCleanupFailed', 'semanticCleanupTimedOut', 'semanticCleanupProcessRemains',
   'productRemovalUnverified', 'installerFootprintUnverified', 'artifactChanged', 'normalProfileChanged',
-  'fixtureCleanupFailed', 'phaseWriterExitUnverified', 'commandCancelled',
+  'fixtureCleanupFailed', 'phaseWriterExitUnverified', 'commandCancelled', 'productProcessUnverified',
 ]);
 const CODES = {
   supervisorProcessResultCode: ['notAvailable', 'deadlineExceeded', 'jobAssignFailed', 'jobConfigureFailed',
@@ -47,7 +47,7 @@ CODES.initialProductStateResultCode = PRODUCT_CODES;
 CODES.postconditionResultCode = PRODUCT_CODES;
 const HASH_KEYS = ['artifactDescriptorSha256', 'sourcePackageSha256', 'targetPackageSha256'];
 const OUTCOME_KEYS = new Set(['schemaVersion', 'scenario', 'faultScenario', 'status', 'errorCode', 'safetyErrorCode',
-  'processTreeAbsent', 'fixtureRemoved', 'businessDataPreserved', 'profileFileCountBefore', 'profileFileCountAfter',
+  'processTreeAbsent', 'productProcessAbsent', 'fixtureRemoved', 'businessDataPreserved', 'profileFileCountBefore', 'profileFileCountAfter',
   'buildRevision', 'failedPhase', ...HASH_KEYS, ...Object.keys(CODES)]);
 const PHASES = new Set([...WORKSPACE_SUCCESS_PHASES, ...Object.values(WORKSPACE_FAULT_PLANS).flatMap((plan) => plan.phases)]);
 
@@ -102,14 +102,15 @@ export function validateWorkspaceCallerResult(value, expected) {
     if (HASH_KEYS.includes(key) && (typeof data !== 'string' || !SHA.test(data))) invalid();
     if (key === 'buildRevision' && data !== expected.buildRevision) invalid();
     if (key === 'artifactDescriptorSha256' && data !== expected.artifactDescriptorSha256) invalid();
-    if (['processTreeAbsent', 'fixtureRemoved', 'businessDataPreserved'].includes(key) && typeof data !== 'boolean') invalid();
+    if (['processTreeAbsent', 'productProcessAbsent', 'fixtureRemoved', 'businessDataPreserved'].includes(key) && typeof data !== 'boolean') invalid();
     if (['profileFileCountBefore', 'profileFileCountAfter'].includes(key) && data !== null && (!Number.isSafeInteger(data) || data < 0)) invalid();
     if (key === 'failedPhase' && data !== null && !PHASES.has(data)) invalid();
     if (key === 'safetyErrorCode' && data !== null && !ERRORS.has(data)) invalid();
   }
+  if (outcome.fixtureRemoved === true && outcome.productProcessAbsent !== true) invalid();
   if (outcome.status === 'failed' ? outcome.errorCode === null :
     outcome.errorCode !== null || outcome.safetyErrorCode !== null || outcome.failedPhase !== null ||
-    outcome.processTreeAbsent !== true || outcome.fixtureRemoved !== true || outcome.businessDataPreserved !== true ||
+    outcome.processTreeAbsent !== true || outcome.productProcessAbsent !== true || outcome.fixtureRemoved !== true || outcome.businessDataPreserved !== true ||
     outcome.phaseWriterResultCode !== 'writerAbsent' || outcome.fixtureCleanupResultCode !== 'fixtureRemoved' ||
     outcome.supervisorProcessResultCode !== 'processCompleted' || outcome.supervisorWorkerResultCode !== 'workerResultValidated' ||
     !['notRequired', 'processTreeAbsent'].includes(outcome.supervisorCleanupResultCode) ||

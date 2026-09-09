@@ -12,6 +12,7 @@ import {
   writeJsonAtomicExclusive,
 } from './upgradeRollbackContracts.mjs';
 import {
+  UpgradeRollbackCommandFailure,
   upgradeRollbackFailureDetails,
   resolveUpgradeRollbackTerminalOutcome,
 } from './upgradeRollbackFailureBoundary.mjs';
@@ -21,6 +22,7 @@ import {
 } from './upgradeRollbackArtifactFixture.mjs';
 import { UPGRADE_ROLLBACK_DESCRIPTOR_FILENAME } from './upgradeRollbackArtifact.mjs';
 import { createUpgradeRollbackPostSupervisorWindowsRuntime } from './upgradeRollbackPostSupervisorWindowsRuntime.mjs';
+import { areProductProcessesAbsent } from './installerProductOperationRuntime.mjs';
 import { createClosedDirectoryInventory, inventoriesMatch } from './closedDirectoryInventory.mjs';
 import { parseAbsoluteWindowsAcceptancePath } from './windowsAcceptancePathArgument.mjs';
 import { readWindowsAcceptanceSupervisorResult } from '../windows-process-supervisor/windowsAcceptanceSupervisorResult.mjs';
@@ -137,7 +139,16 @@ export async function resolveUpgradeRollbackTemporaryRoot(
   }
 }
 
-export async function runUpgradeRollback(arguments_) {
+export async function runUpgradeRollback(arguments_, {
+  inventoryProfile = createClosedDirectoryInventory,
+  materializeFixture = materializeUpgradeRollbackArtifactFixture,
+  verifyArtifact = verifyUpgradeRollbackArtifactSourceFixture,
+  createProductRuntime = createUpgradeRollbackPostSupervisorWindowsRuntime,
+  launchSupervisor = startSupervisor,
+  readSupervisorResult = readWindowsAcceptanceSupervisorResult,
+  readScenarioResult = readUpgradeRollbackResult,
+  removeRunRoot = (path) => rm(path, { force: true, recursive: true }),
+} = {}) {
   if (process.platform !== 'win32') {
     throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_WINDOWS_REQUIRED');
   }
@@ -158,6 +169,11 @@ export async function runUpgradeRollback(arguments_) {
   const profileRoot = resolve(appData, 'Eky');
   let activeSupervisor = null;
   let artifact = null;
+  let productRuntime = null;
+  let supervisorAttempted = false;
+  let terminal = null;
+  let fixtureRemoved = false;
+  let fixtureCleanupResultCode = 'retainedUnverified';
   let primaryError = null;
   let profileBefore = null;
   let profileAfter = null;
@@ -174,20 +190,21 @@ export async function runUpgradeRollback(arguments_) {
   process.once('SIGINT', stopActiveSupervisor);
   process.once('SIGTERM', stopActiveSupervisor);
   try {
-    profileBefore = await createClosedDirectoryInventory(profileRoot);
-    artifact = await materializeUpgradeRollbackArtifactFixture(
+    profileBefore = await inventoryProfile(profileRoot);
+    artifact = await materializeFixture(
       descriptorPath,
       resolve(runRoot, 'fixture'),
     );
     const scenarioRoot = resolve(runRoot, 'scenario');
     await mkdir(scenarioRoot, { recursive: false });
-    const productRuntime = createUpgradeRollbackPostSupervisorWindowsRuntime({
+    productRuntime = createProductRuntime({
       artifact,
       scenarioRoot,
     });
     requireUpgradeRollbackProductPrecondition(
       await productRuntime.verifyExactProductStates(),
     );
+    if (!areProductProcessesAbsent(productRuntime)) throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_PRODUCT_PROCESS_UNVERIFIED');
     const workerRequestPath = resolve(scenarioRoot, 'worker-request.json');
     const supervisorRequestPath = resolve(scenarioRoot, 'request.json');
     const workerRequest = createUpgradeRollbackWorkerRequest({
@@ -207,10 +224,11 @@ export async function runUpgradeRollback(arguments_) {
       cleanupReserveMilliseconds: SUPERVISOR_CLEANUP_RESERVE_MILLISECONDS,
     });
 
-    activeSupervisor = startSupervisor(supervisorRequestPath, scenarioRoot);
+    supervisorAttempted = true;
+    activeSupervisor = launchSupervisor(supervisorRequestPath, scenarioRoot);
     const supervisorExitCode = await activeSupervisor.completion;
     activeSupervisor = null;
-    supervisorResult = await readWindowsAcceptanceSupervisorResult(
+    supervisorResult = await readSupervisorResult(
       resolve(scenarioRoot, 'result.json'),
       {
         artifactDescriptorSha256: artifact.descriptorSha256,
@@ -219,11 +237,11 @@ export async function runUpgradeRollback(arguments_) {
         supervisorExitCode,
       },
     );
-    await resolveUpgradeRollbackTerminalOutcome({
+    terminal = await resolveUpgradeRollbackTerminalOutcome({
       ...productRuntime,
       supervisorResult,
       readScenarioResult: () =>
-        readUpgradeRollbackResult(
+        readScenarioResult(
           upgradeRollbackResultPathForRequest(workerRequestPath),
           workerRequest,
         ),
@@ -240,18 +258,19 @@ export async function runUpgradeRollback(arguments_) {
       activeSupervisor.child.kill();
       await activeSupervisor.completion.catch(() => undefined);
     }
-    if (artifact !== null) {
+    if (!areProductProcessesAbsent(productRuntime)) safetyError ??= new Error('WINDOWS_ACCEPTANCE_UPGRADE_PRODUCT_PROCESS_UNVERIFIED');
+    if (artifact !== null && areProductProcessesAbsent(productRuntime)) {
       try {
-        await verifyUpgradeRollbackArtifactSourceFixture(artifact);
+        await verifyArtifact(artifact);
       } catch {
         safetyError ??= new Error(
           'WINDOWS_ACCEPTANCE_UPGRADE_LOCAL_FIXTURE_CHANGED',
         );
       }
     }
-    if (profileBefore !== null) {
+    if (profileBefore !== null && areProductProcessesAbsent(productRuntime)) {
       try {
-        profileAfter = await createClosedDirectoryInventory(profileRoot);
+        profileAfter = await inventoryProfile(profileRoot);
         if (!inventoriesMatch(profileBefore, profileAfter)) {
           throw new Error('WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED');
         }
@@ -259,33 +278,43 @@ export async function runUpgradeRollback(arguments_) {
         safetyError ??= new Error('WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED');
       }
     }
-    try {
-      await rm(runRoot, { force: true, recursive: true });
-      await lstat(runRoot).then(
-        () => {
-          throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_FIXTURE_CLEANUP_FAILED');
-        },
-        (error) => {
-          if (error?.code !== 'ENOENT') {
-            throw error;
-          }
-        },
-      );
-    } catch {
-      primaryError ??= new Error(
-        'WINDOWS_ACCEPTANCE_UPGRADE_FIXTURE_CLEANUP_FAILED',
-      );
+    const failure = upgradeRollbackFailureDetails(primaryError);
+    const cleanupVerified = terminal !== null || (
+      ['notRequired', 'semanticCleanupCompleted'].includes(failure?.semanticCleanupResultCode) &&
+      ['exactProductsAbsent', 'exactProductsAbsentAfterCleanup'].includes(failure?.postconditionResultCode)
+    );
+    if (safetyError === null && (!supervisorAttempted || (supervisorResult?.processTreeAbsent === true && cleanupVerified))) {
+      try {
+        await removeRunRoot(runRoot);
+        await lstat(runRoot).then(
+          () => {
+            throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_FIXTURE_CLEANUP_FAILED');
+          },
+          (error) => {
+            if (error?.code !== 'ENOENT') {
+              throw error;
+            }
+          },
+        );
+        fixtureRemoved = true;
+        fixtureCleanupResultCode = 'fixtureRemoved';
+      } catch {
+        fixtureCleanupResultCode = 'fixtureCleanupFailed';
+        primaryError ??= new Error(
+          'WINDOWS_ACCEPTANCE_UPGRADE_FIXTURE_CLEANUP_FAILED',
+        );
+      }
     }
   }
 
-  if (safetyError) {
-    throw new Error(safeErrorCode(safetyError));
-  }
-  if (primaryError) {
-    if (upgradeRollbackFailureDetails(primaryError) !== null) {
-      throw primaryError;
-    }
-    throw new Error(safeErrorCode(primaryError));
+  if (primaryError || safetyError) {
+    throw new UpgradeRollbackCommandFailure({ schemaVersion: 1, scenario: UPGRADE_ROLLBACK_SCENARIO,
+      status: 'failed', errorCode: safeErrorCode(primaryError ?? safetyError),
+      ...upgradeRollbackFailureDetails(primaryError),
+      processTreeAbsent: supervisorResult?.processTreeAbsent === true,
+      productProcessAbsent: areProductProcessesAbsent(productRuntime),
+      safetyErrorCode: safetyError === null ? null : safeErrorCode(safetyError),
+      fixtureRemoved, fixtureCleanupResultCode });
   }
   return Object.freeze({
     schemaVersion: 1,
@@ -304,7 +333,8 @@ export async function runUpgradeRollback(arguments_) {
     profileFileCountAfter: profileAfter.filter((entry) => entry.kind === 'file')
       .length,
     processTreeAbsent: supervisorResult.processTreeAbsent,
-    fixtureRemoved: true,
+    productProcessAbsent: areProductProcessesAbsent(productRuntime),
+    fixtureRemoved, fixtureCleanupResultCode,
   });
 }
 

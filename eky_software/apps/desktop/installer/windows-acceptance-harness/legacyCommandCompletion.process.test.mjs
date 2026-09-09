@@ -11,7 +11,8 @@ import { cleanupRunContext, createRunContext, createRequest, startSupervisor, wr
 import { readWindowsAcceptanceSupervisorResult } from '../windows-process-supervisor/windowsAcceptanceSupervisorResult.mjs';
 import { legacyCallerResultIdentity, parseLegacyCallerResult } from './legacyCallerResult.mjs';
 
-for (const mode of ['hold', 'unread', 'cleanupUnverified', 'missingSupervisor', 'cleanupFailed', 'writerUnverified', 'filesystemHold']) {
+for (const mode of ['hold', 'unread', 'cleanupUnverified', 'missingSupervisor', 'cleanupFailed', 'writerUnverified', 'filesystemHold',
+  'productHold', 'productUnverified']) {
   test(`legacy whole command terminates after scenario deadline: ${mode}`, {
     skip: process.platform !== 'win32', timeout: 60_000,
   }, async (t) => {
@@ -64,6 +65,17 @@ for (const mode of ['hold', 'unread', 'cleanupUnverified', 'missingSupervisor', 
     if (mode === 'cleanupFailed') assert.equal(report.outcome.semanticCleanupResultCode, 'semanticCleanupFailed');
     if (mode === 'writerUnverified') assert.equal(report.outcome.safetyErrorCode, 'WINDOWS_ACCEPTANCE_LEGACY_PHASE_WRITER_EXIT_UNVERIFIED');
     const expectedEvents = ['supervisorExit', 'supervisorClose', 'supervisorResultValidated'];
+    if (['productHold', 'productUnverified'].includes(mode)) {
+      expectedEvents.push('productExit', 'productClose');
+      if (mode === 'productHold') expectedEvents.push('productExit', 'productClose');
+      assert.equal(report.outcome.productProcessAbsent, mode === 'productHold');
+      assert.equal(report.outcome.initialProductStateResultCode, mode === 'productHold'
+        ? 'productStateVerificationTimedOut' : 'productStateVerificationProcessRemains');
+      assert.equal(report.outcome.fixtureCleanupResultCode, 'retainedUnverified');
+      if (mode === 'productUnverified') {
+        assert.equal(report.outcome.safetyErrorCode, 'WINDOWS_ACCEPTANCE_LEGACY_PRODUCT_PROCESS_UNVERIFIED');
+      }
+    }
     if (mode === 'filesystemHold') {
       expectedEvents.push('filesystemExit', 'filesystemClose');
       assert.equal(report.outcome.safetyErrorCode, 'WINDOWS_ACCEPTANCE_LEGACY_FILESYSTEM_TIMED_OUT');

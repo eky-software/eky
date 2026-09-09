@@ -159,6 +159,10 @@ export async function resolveCleanInstallUninstallTerminalOutcome({
 
   let productStateVerificationResultCode = 'notChecked';
   let semanticCleanupResultCode = 'notRequired';
+  if (!supervisorResult.processTreeAbsent) {
+    throw new CleanInstallUninstallCommandFailure(createFailureDetails({ errorCode, scenarioResultCode,
+      productStateVerificationResultCode, semanticCleanupResultCode: 'blockedByOwnedProcessTree', supervisorResult }));
+  }
   const initialInspection = await inspectExactProduct(verifyExactProductState);
   if (initialInspection.status === 'failed') {
     productStateVerificationResultCode = initialInspection.errorCode;

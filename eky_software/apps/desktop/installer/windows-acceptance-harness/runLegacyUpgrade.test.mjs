@@ -26,6 +26,9 @@ for (const [mode, expectedErrorCode] of Object.entries({
   completed: null,
   artifactBindingMismatch: 'WINDOWS_ACCEPTANCE_LEGACY_ARTIFACT_VERIFICATION_FAILED',
   preflightFailed: 'WINDOWS_ACCEPTANCE_LEGACY_PRECONDITION_FAILED',
+  preflightUnverified: 'WINDOWS_ACCEPTANCE_LEGACY_PRECONDITION_FAILED',
+  cleanupUnverified: 'WINDOWS_ACCEPTANCE_LEGACY_FINAL_CLEANUP_FAILED',
+  scenarioAndCleanupUnverified: 'WINDOWS_ACCEPTANCE_LEGACY_SCENARIO_RESULT_INVALID',
   launchFailed: 'WINDOWS_ACCEPTANCE_SUPERVISOR_START_FAILED',
   missingSupervisor: 'WINDOWS_ACCEPTANCE_SUPERVISOR_TERMINAL_RESULT_MISSING',
   processTreeUnverified: 'WINDOWS_ACCEPTANCE_SUPERVISOR_DEADLINE_EXCEEDED',
@@ -40,6 +43,7 @@ for (const [mode, expectedErrorCode] of Object.entries({
     let inspections = 0;
     let cleanups = 0;
     let removals = 0;
+    let productProcessAbsent = true;
     t.after(async () => { if (root) await rm(root, { force: true, recursive: true }); });
     const supervisor = {
       status: 'completed', processResultCode: 'processCompleted',
@@ -60,12 +64,22 @@ for (const [mode, expectedErrorCode] of Object.entries({
       },
       verifyArtifact: async () => undefined,
       createProductRuntime: () => ({
+        outcome: () => ({ productProcessAbsent }),
         verifyExactProductStates: async () => {
+          assert.equal(productProcessAbsent, true);
+          if (mode === 'preflightUnverified') {
+            productProcessAbsent = false;
+            return { status: 'failed', errorCode: 'productStateVerificationProcessRemains' };
+          }
           if (mode === 'preflightFailed') return productState(true);
           return productState(inspections++ === 1);
         },
         cleanupExactProducts: async () => {
           cleanups += 1;
+          if (['cleanupUnverified', 'scenarioAndCleanupUnverified'].includes(mode)) {
+            productProcessAbsent = false;
+            return { status: 'failed', errorCode: 'semanticCleanupProcessRemains' };
+          }
           if (mode === 'semanticCleanupFailed') throw new Error('private cleanup');
           return { status: 'completed', resultCode: 'semanticCleanupCompleted' };
         },
@@ -76,7 +90,7 @@ for (const [mode, expectedErrorCode] of Object.entries({
         return { child: { exitCode: 0, signalCode: null }, completion: Promise.resolve(0) };
       },
       readScenarioResult: async () => {
-        if (['scenarioUnreadable', 'fixtureCleanupFailed', 'filesystemUnverified'].includes(mode)) throw new Error('private result');
+        if (['scenarioUnreadable', 'fixtureCleanupFailed', 'filesystemUnverified', 'scenarioAndCleanupUnverified'].includes(mode)) throw new Error('private result');
         return { status: 'completed', resultCode: 'historicalLegacyUpgradeCompleted' };
       },
       verifySemanticPostcondition: async () => ({ status: 'completed', resultCode: 'legacySemanticProofValidated',
@@ -120,9 +134,16 @@ for (const [mode, expectedErrorCode] of Object.entries({
     if (removed) await assert.rejects(lstat(root), { code: 'ENOENT' });
     else assert.equal(await readFile(resolve(root, 'fixture', 'private-evidence'), 'utf8'), 'synthetic evidence');
     assert.equal(removals, removed || mode === 'fixtureCleanupFailed' ? 1 : 0);
-    assert.equal(launched, !['preflightFailed', 'artifactBindingMismatch'].includes(mode));
-    assert.equal(cleanups, ['completed', 'scenarioUnreadable', 'semanticCleanupFailed', 'fixtureCleanupFailed', 'filesystemUnverified'].includes(mode) ? 1 : 0);
+    assert.equal(launched, !['preflightFailed', 'preflightUnverified', 'artifactBindingMismatch'].includes(mode));
+    assert.equal(cleanups, ['completed', 'scenarioUnreadable', 'semanticCleanupFailed', 'fixtureCleanupFailed', 'filesystemUnverified',
+      'cleanupUnverified', 'scenarioAndCleanupUnverified'].includes(mode) ? 1 : 0);
     if (failure) {
+      assert.equal(failure.productProcessAbsent, productProcessAbsent);
+      if (!productProcessAbsent) assert.equal(failure.safetyErrorCode, 'WINDOWS_ACCEPTANCE_LEGACY_PRODUCT_PROCESS_UNVERIFIED');
+      if (mode === 'scenarioAndCleanupUnverified') {
+        assert.equal(failure.semanticCleanupResultCode, 'semanticCleanupProcessRemains');
+        assert.equal(failure.postconditionResultCode, 'productStateVerificationProcessRemains');
+      }
       assert.equal(failure.fixtureRemoved, removed);
       assert.equal(failure.fixtureCleanupResultCode, removed ? 'fixtureRemoved'
         : mode === 'fixtureCleanupFailed' ? 'fixtureCleanupFailed' : 'retainedUnverified');

@@ -21,7 +21,7 @@ async function fixture(t) {
   const args = [...artifactArgs, '--result-path', resultPath];
   const binding = parseWorkspaceCallerCliArguments(args, parseWorkspaceSuccessArguments).binding;
   const outcome = { schemaVersion: 1, scenario: 'packagedWorkspaceSuccess', status: 'completed', errorCode: null,
-    safetyErrorCode: null, failedPhase: null, processTreeAbsent: true, fixtureRemoved: true, businessDataPreserved: true,
+    safetyErrorCode: null, failedPhase: null, processTreeAbsent: true, productProcessAbsent: true, fixtureRemoved: true, businessDataPreserved: true,
     phaseWriterResultCode: 'writerAbsent', phaseDiagnosticResultCode: 'deliveryUnverified', fixtureCleanupResultCode: 'fixtureRemoved',
     supervisorProcessResultCode: 'processCompleted', supervisorWorkerResultCode: 'workerResultValidated',
     supervisorCleanupResultCode: 'notRequired', scenarioResultCode: 'workspaceSuccessCompleted',
@@ -40,11 +40,14 @@ test('caller result is closed, bound to this invocation and requires every succe
     assert.throws(() => validateWorkspaceCallerResult({ ...payload, outcome: { ...payload.outcome, [key]: 'private' } }, binding));
   }
   for (const [key, value] of [['phaseWriterResultCode', 'writerExitUnverified'], ['fixtureRemoved', false],
-    ['businessDataPreserved', false], ['processTreeAbsent', false], ['postconditionResultCode', 'notChecked'],
+    ['businessDataPreserved', false], ['processTreeAbsent', false], ['productProcessAbsent', false],
+    ['productProcessAbsent', undefined], ['productProcessAbsent', 'true'], ['postconditionResultCode', 'notChecked'],
     ['semanticCleanupResultCode', 'semanticCleanupProcessRemains'], ['errorCode', 'private']]) {
     assert.throws(() => validateWorkspaceCallerResult({ ...payload, outcome: { ...payload.outcome, [key]: value } }, binding));
   }
   assert.throws(() => validateWorkspaceCallerResult(payload, { ...binding, invocationId: '0'.repeat(32) }));
+  assert.throws(() => validateWorkspaceCallerResult({ ...payload, outcome: { ...payload.outcome,
+    status: 'failed', errorCode: 'scenarioResultInvalid', productProcessAbsent: false } }, binding));
   assert.throws(() => parseWorkspaceCallerResult(Buffer.from('{"binding":{},"binding":{}}'), binding));
   assert.throws(() => parseWorkspaceCallerResult(Buffer.alloc(8193), binding));
   let accessed = false;

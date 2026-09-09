@@ -39,7 +39,7 @@ test('success requires semantic proof, exact removal and footprint after an empt
   assert.equal(result.status, 'completed');
   assert.equal(result.errorCode, null);
   assert.deepEqual(value.calls, ['scenario', 'inspect', 'proof', 'cleanup', 'inspect', 'footprint']);
-  assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: true, terminal: result }), true);
+  assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: true, terminal: result, productProcessAbsent: true }), true);
 });
 
 for (const supervisorResult of [null, { ...supervisor, processTreeAbsent: false },
@@ -52,7 +52,7 @@ for (const supervisorResult of [null, { ...supervisor, processTreeAbsent: false 
     assert.equal(typeof result.errorCode, 'string');
     assert.deepEqual(value.calls, []);
     assert.equal(result.semanticCleanupResultCode, 'blockedByOwnedProcessTree');
-    assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: true, terminal: result }), false);
+    assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: true, terminal: result, productProcessAbsent: true }), false);
   });
 }
 
@@ -75,7 +75,7 @@ for (const productPrecondition of [undefined, target, { ...absent, targetPresent
     assert.equal(result.scenarioResultCode, 'missingOrInvalid');
     assert.equal(result.semanticCleanupResultCode, 'blockedByPrecondition');
     assert.equal(value.calls.includes('cleanup'), false);
-    assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: true, terminal: result }), false);
+    assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: true, terminal: result, productProcessAbsent: true }), false);
   });
 }
 
@@ -99,7 +99,7 @@ for (const cleanupResult of [
     const result = await resolveWorkspaceSuccessTerminalOutcome(value.input);
     assert.equal(result.status, 'failed');
     assert.equal(result.postconditionResultCode, 'exactProductsAbsent');
-    assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: true, terminal: result }), false);
+    assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: true, terminal: result, productProcessAbsent: true }), false);
     assert.doesNotMatch(JSON.stringify(result), /PRIVATE/);
   });
 }
@@ -128,7 +128,7 @@ test('an unverified cleanup process cannot be erased by a later absent product s
   assert.equal(result.errorCode, 'firstStartBFailed');
   assert.equal(result.semanticCleanupResultCode, 'semanticCleanupProcessRemains');
   assert.equal(result.postconditionResultCode, 'exactProductsAbsent');
-  assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: true, terminal: result }), false);
+  assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: true, terminal: result, productProcessAbsent: true }), false);
 });
 
 for (const [errorCode, cleanupFails, expectedCode] of [
@@ -152,7 +152,7 @@ for (const [errorCode, cleanupFails, expectedCode] of [
     assert.equal(result.semanticCleanupResultCode, cleanupFails ? 'semanticCleanupFailed' : 'semanticCleanupCompleted');
     assert.equal(result.postconditionResultCode, 'exactProductsAbsent');
     assert.equal(result.processTreeAbsent, true);
-    assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: true, terminal: result }), !cleanupFails);
+    assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: true, terminal: result, productProcessAbsent: true }), !cleanupFails);
     assert.doesNotMatch(JSON.stringify(result), /PRIVATE/);
   });
 }
@@ -195,7 +195,7 @@ test('wrong product state after cleanup is not removed from the evidence root', 
   const value = fixture({ async verifyExactProductStates() { return target; } });
   const result = await resolveWorkspaceSuccessTerminalOutcome(value.input);
   assert.equal(result.errorCode, 'productRemovalUnverified');
-  assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: true, terminal: result }), false);
+  assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: true, terminal: result, productProcessAbsent: true }), false);
 });
 
 test('target product without its installer registration cannot pass the semantic gate', async () => {
@@ -219,6 +219,23 @@ test('precondition preserves a specific bounded inspector failure and rejects co
 });
 
 test('prelaunch fixture cleanup is separate from a launched scenario without terminal evidence', () => {
-  assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: false, terminal: null }), true);
-  assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: true, terminal: null }), false);
+  assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: false, terminal: null, productProcessAbsent: true }), true);
+  assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: true, terminal: null, productProcessAbsent: true }), false);
+  for (const productProcessAbsent of [false, undefined]) {
+    assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: false, terminal: null, productProcessAbsent }), false);
+  }
+});
+
+test('unverified product cleanup blocks the next inspection and preserves the original error', async () => {
+  const value = fixture({
+    readScenarioResult: async () => failedScenario,
+    outcome: () => ({ productProcessAbsent: false }),
+    cleanupExactProducts: async () => ({ status: 'failed', errorCode: 'semanticCleanupProcessRemains' }),
+  });
+  const result = await resolveWorkspaceSuccessTerminalOutcome(value.input);
+  assert.equal(result.errorCode, 'firstStartBFailed');
+  assert.equal(result.semanticCleanupResultCode, 'semanticCleanupProcessRemains');
+  assert.equal(result.postconditionResultCode, 'productStateVerificationProcessRemains');
+  assert.deepEqual(value.calls, ['inspect']);
+  assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: true, terminal: result, productProcessAbsent: false }), false);
 });

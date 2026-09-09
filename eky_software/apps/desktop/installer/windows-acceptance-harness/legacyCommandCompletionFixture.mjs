@@ -10,11 +10,13 @@ import { legacyUpgradeFailureDetails } from './legacyUpgradeFailureBoundary.mjs'
 import { readWindowsAcceptanceSupervisorResult } from '../windows-process-supervisor/windowsAcceptanceSupervisorResult.mjs';
 import { createLegacyUpgradeFilesystemRuntime } from './legacyUpgradeFilesystemRuntime.mjs';
 import { runBoundedWindowsAdapterProcess } from './boundedWindowsAdapterProcess.mjs';
+import { createUpgradeRollbackPostSupervisorWindowsRuntime } from './upgradeRollbackPostSupervisorWindowsRuntime.mjs';
 
 // Only the existing contract Job contains this command. The inner production
 // supervisor still owns the scenario; no test code scans or kills its tree.
 const input = JSON.parse(await readFile(process.argv[2], 'utf8'));
-assert(['hold', 'unread', 'cleanupUnverified', 'missingSupervisor', 'cleanupFailed', 'writerUnverified', 'filesystemHold'].includes(input.mode));
+assert(['hold', 'unread', 'cleanupUnverified', 'missingSupervisor', 'cleanupFailed', 'writerUnverified', 'filesystemHold',
+  'productHold', 'productUnverified'].includes(input.mode));
 const events = [];
 let supervisorResult;
 const persist = async (outcome) => writeFile(input.reportPath, JSON.stringify({ events, supervisorResult, outcome }));
@@ -33,7 +35,8 @@ const ports = {
       target: { appVersion: '0.2.7' } };
   },
   verifyArtifact: async () => undefined,
-  createProductRuntime: () => ({ verifyExactProductStates: async () => input.mode === 'cleanupFailed' && inspections++ > 0
+  createProductRuntime: () => ({ outcome: () => ({ productProcessAbsent: true }),
+    verifyExactProductStates: async () => input.mode === 'cleanupFailed' && inspections++ > 0
     ? { ...absent, resultCode: 'targetProductPresent', targetPresent: true, installerRegistryPresent: true } : absent,
     cleanupExactProducts: async () => { throw new Error('SYNTHETIC_CLEANUP_FAILURE'); } }),
   launchSupervisor(requestPath, root, observe) {
@@ -61,6 +64,39 @@ const ports = {
     return supervisorResult;
   },
 };
+if (['productHold', 'productUnverified'].includes(input.mode)) {
+  ports.createProductRuntime = ({ scenarioRoot }) => {
+    const runtime = createUpgradeRollbackPostSupervisorWindowsRuntime({ scenarioRoot,
+      artifact: { roles: { source: { productCode: '00000000-0000-0000-0000-000000000001' },
+        target: { productCode: '00000000-0000-0000-0000-000000000002' } } },
+    }, {
+      async runProcess(options) {
+        const result = await runBoundedWindowsAdapterProcess({ ...options,
+          command: process.execPath,
+          arguments: [fileURLToPath(new URL('./legacyCommandWorkerFixture.mjs', import.meta.url)), 'hold'],
+          timeoutMilliseconds: 1_000, terminationTimeoutMilliseconds: 1_000,
+          spawnProcess(command, args, settings) {
+            const child = spawn(command, args, settings);
+            child.once('exit', () => events.push('productExit'));
+            child.once('close', () => events.push('productClose'));
+            return child;
+          },
+        });
+        assert.equal(result.resultCode, 'timedOut');
+        assert.equal(result.directProcessAbsent, true);
+        // Inject uncertainty only after proving the real child's removal. This
+        // tests retention, not a claim that native cleanup failed in this run.
+        return input.mode === 'productUnverified'
+          ? { ...result, resultCode: 'terminationUnconfirmed', directProcessAbsent: false } : result;
+      },
+    });
+    let preflight = true;
+    return { ...runtime, verifyExactProductStates() {
+      if (preflight) { preflight = false; return absent; }
+      return runtime.verifyExactProductStates();
+    } };
+  };
+}
 if (input.mode === 'filesystemHold') {
   // Block the existing grouped filesystem boundary after the scenario's real
   // deadline. Its existing adapter, not the fixture, owns exact termination.

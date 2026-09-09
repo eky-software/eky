@@ -2253,8 +2253,8 @@ E2E-ympäristödokumentissa. Vaihe-erottelu ei yksin selitä aikaisempaa
 `ARCHIVE-PDF-CONFLICT-001`-flakea; hyväksyntä vaatii edelleen nykyisen revision
 Electron critical -portin ja valitun CI-kierroksen ilman flaky-tulosta.
 
-Nykyinen avoin raja on workspace-success-consumerin `targetInstall`-
-asennushavainto. Electron-portin läpäissyt
+Aiemman kytkentächeckpointin avoin raja oli workspace-success-consumerin
+`targetInstall`-asennushavainto. Electron-portin läpäissyt
 [CI-ajo](https://github.com/eky-software/eky/actions/runs/34349188420)
 hylkäsi yhden success-consumerin koodilla `productInspectionFailed`.
 Kutsu päättyi virheeseen, ei ulkoiseen aikakatkaisuun. Komennon ja
@@ -2274,7 +2274,8 @@ väliaikaisen kyselytuloksen poistovirhe ei peitä alkuperäistä virhettä.
 Käyttäytymisregressio todistaa aiemman vertailujärjestyksen virheen, mutta
 ei yksin nimeä edellisen CI-hylkäyksen juurisyytä. Supervisor, määräajat,
 lopulliset asennus- ja cleanup-ehdot sekä sovelluksen tuotantopolut säilyvät.
-Checkpoint tarvitsee vielä uuden revision sovitut consumer- ja CI-portit.
+Tämän korjauksen jälkeinen hyväksyntätila ja jäljellä oleva yhteinen
+valmistumisraja ovat jäljempänä kohdassa **Nykyinen päätös**.
 
 | Muutos | V2:n ajama kattavuus |
 | --- | --- |
@@ -2423,11 +2424,100 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 ## Nykyinen päätös
 
 V2.8:n riskikytkentä sekä Electron- ja workspace-korjaukset säilyvät PR #266:ssa.
-Nykyinen rajattu työ sulkee legacy-komennon tulostoimituksen ja sovittaa
-sen virhepolun valmistumisvaraukset CI:n rajoihin. V2:n yhteinen
+Legacy-komennon tulostoimitus ja sen virhepolun konfiguroidut varaukset on
+korjattu. Nykyinen avoin työ on apuoperaatioiden valmistumis- ja
+aineiston säilytyssopimus kaikissa sen kuluttajissa, ei uusi testialusta.
+V2:n yhteinen
 hyväksyntä, required-check-siirto, vanhan orkestroinnin poisto ja julkaisu
 ovat edelleen avoinna. Alla oleva V2.7-hyväksyntä on historiallinen lähtökohta,
 ei nykyisen revision hyväksyntä.
+
+Viimeisimmän CI-ajon lähde-HEAD `39f62d88a345499d335cf36cf2785c5a36cbed6f` ja CI:n checkout /
+artifact-build `14d97eb83f2c4220036c7303243cfbab50e9f906` ovat eri revisiot.
+[Ajo 34389045909](https://github.com/eky-software/eky/actions/runs/34389045909)
+päättyi epäonnistuneena ensimmäisellä yrityksellä: clean-, upgrade- ja
+legacy-consumerit läpäisivät, samoin molemmat fault-consumerit. Molemmat
+workspace-success-consumerit katkaistiin GitHub-jobin aikarajaan; niiden
+lopullista caller-, cleanup- ja poistotulosta ei ole varmennettu.
+Vanhan W6:n `observerFailure` on erillinen Windows process-contract -virhe,
+ei tämän revision V2-legacy-consumerin hylkäys. Uusintaa ei käytetä näiden
+avoimien rajojen korjauksen korvikkeena.
+
+### Apuoperaatioiden yhteinen sopimus ja avoin aikaraja
+
+Skenaariopuun Job-tulos ei yksin todista sitä ennen tai sen jälkeen
+käynnistettyjen apuprosessien poistumista. Korjattu
+`installerProductOperationRuntime` säilyttää tämän tiedon erikseen
+`productProcessAbsent`-kentässä. Epävarma poistuminen estää seuraavan
+kyselyn ja uninstallin sekä tulostiedoston poistamisen. Havaittu
+jatkopäätösvirhe on korjattu, mutta se ei osoita, mihin alustakutsuun
+katkaistut CI-ajot jäivät. Nykyisen korjauksen packaged- ja CI-hyväksyntä
+ovat vielä avoinna.
+
+| Nykyinen kuluttaja | Yhteisen sopimuksen käyttö |
+| --- | --- |
+| Clean | Käyttää samaa teknistä product-operaatiota mutta säilyttää oman ProductState-tulkintansa. Root-poisto vaatii varmennetun lopputilan; alkuperäinen virhe, safety-tulos ja fixture-poisto raportoidaan erikseen. |
+| Upgrade/rollback | Sama tekninen product-operaatio ja erillinen source/target-tulkinta. Root-poisto vaatii apuprosessin poissaolon sekä käynnistetyn skenaarion Job- ja asennussiivouksen todisteet. |
+| Legacy | Tiedostoryhmien ja product-apuprosessien epävarmuus säilyvät erillisinä. Myös ennen supervisoria tapahtuva epävarmuus säilyttää testijuuren. |
+| Workspace success ja fault | Yksi yhteinen caller. `supervisorAttempted=false` ei yksin valtuuta root-poistoa. Strict caller-result vaatii apuprosessin poissaolon ennen onnistumista tai fixture-poiston hyväksymistä. |
+
+Korjaus käyttää nykyisiä teknisiä omistajia: apuprosessin poistumistieto
+säilyy erillisenä alkuperäisestä operaatiovirheestä ja cleanup-tuloksesta.
+Varmasti poistuneen prosessin tavallinen virhe ei estä erikseen sallittua
+riippumatonta siivousta. Epävarman prosessin tulostiedostoa tai testijuurta
+ei poisteta eikä epävarmuutta nollata myöhemmällä yleisellä prosessikyselyllä.
+Puhtaat päätöstestit eivät yksin todista koko komentoprosessin poistumista;
+niiden rinnalla nykyinen legacy-command-fixture todentaa apuprosessin
+deadlinen, todelliset `exit`/`close`-havainnot, pakollisen caller-resultin ja
+koko komentoprosessin poistumisen. Erikseen injektoitu epävarma adapteritulos
+todentaa aineiston säilytyksen; sitä ei tulkita aidoksi natiivin cleanupin
+epäonnistumiseksi.
+
+Product-adapterin nykyinen aikaraja päättyy ennen tulostiedoston
+`lstat`/`readFile`/`rm`-käsittelyä. Mahdollisesti estävä tiedostotyö
+ryhmitellään nykyisen rajatun adapterimallin mukaan; puhdas JSON- ja
+liiketoimintavalidointi ei saa siirtyä yleiseen ajuriin. Promise-aikakatkaisu
+ei todista taustatyön peruuntumista. Node-kutsujan event-loop-ajastin ei
+myöskään voi keskeyttää sen omaa vielä palautumatonta natiivista spawn-kutsua.
+Tämä raja pitää erottaa tavallisesta hitaasta valmistumisesta ja raportoida
+rehellisesti; uutta sisäkkäistä valvojaa ei lisätä sen peittämiseksi.
+
+Jäljellä oleva päätös koskee koko apuoperaation rajaa, ei pidempää timeoutia.
+Ehdotus on korvata asennustilan kyselyn ja sen tulostiedoston käsittelyn
+erilliset vastuut yhdellä rajatulla työvaiheella nykyisen Job Object
+-supervisorin alla. Tämä korvaisi kyseisen operaation direct-child-omistajan,
+ei lisäisi sen rinnalle uutta valvojaa. Alkuperäinen skenaario-Job on ensin
+todistettava päättyneeksi; apuoperaation prosessi-, tulos- ja cleanup-tulos
+pysyvät erillisinä. Puhdas JSON- ja skenaariokohtainen validointi säilyvät
+omissa vastuissaan. Vaiheittainen budjetti sisältäisi valmistelun,
+käynnistyksen, tulostoimituksen ja tiedostotyön, ei vain lapsen odotusta.
+Prosessiomistajuuden korvaus vaatii omistajan päätöksen ennen toteutusta.
+Nykyiseen checkpointiin ei ole lisätty tätä korvausta, uutta supervisoria,
+`Promise.race`-aikakatkaisua tai muutettu normaaleja aikarajoja.
+
+Workspace-komennon nykyiset konfiguroidut prosessi- ja tulostoimitusvaraukset
+ovat `70 + 720 + 460 + 105 + 5 = 1360` sekuntia. Tämä ei sisällä vielä
+rajaamatonta tiedostotyötä eikä consumerin valmistelua. Success-stepin
+25 minuutin varaukseen sisältyy nykyisin myös supervisor-/proof-reader-build;
+fault-consumer valmistelee nämä erikseen. Valmisteluvastuu yhtenäistetään
+ilman MSI-rebuildia. Komentotavan ero ei ole todistettu CI-jumin syy.
+
+Normaali onnistuminen palautuu tapahtumasta tai valmiista tilasta, ei
+kiinteän odotuksen täyttymisestä. Koko komennon varauksille ja valmistelulle
+lasketaan erillinen CI-marginaali; normaalia budjettia ei muuteta ennen tätä
+perustetta ja omistajan päätöstä. Tarkoituksella lyhyet timeout-, myöhäisen
+käynnistyksen ja epävarman cleanupin regressiot säilyvät erillisinä.
+Korjaus ei tarvitse omaa ajoituspalvelua, uutta supervisoria tai yleistä
+riippuvuusgraafia.
+
+Poistettu päällekkäisyys on clean/upgrade-product-adapterien yhteinen tekninen
+kyselyvastuu ja callerien ehdoton root-poisto. Skenaarioiden semanttiset verifierit säilyvät
+erillisinä. Vanhan W6-ketjun poistoehto säilyy yllä olevassa invarianttien
+siirtokartassa; `observerFailure`-testin odotusarvoa ei vaihdeta vain vihreyden
+vuoksi. Ennen seuraavaa packaged-kierrosta tarvitaan punaisesta vihreäksi
+todennetut kohderegressiot ja yhteisten kuluttajien sopimustestit.
+
+### Legacy-tulostoimituksen korjattu vastuu
 
 Todellinen komentoprosessiregressio osoittaa legacy-CLI:n suoran
 konsoliyhteenvedon voivan estää poistumisen lukemattomaan putkeen: supervisor
@@ -2515,8 +2605,9 @@ yksityisen IPC-rajan läpi materialisoidun descriptorin ja provenienssin,
 itsenäiset pakettitavut sekä muuttuneen lähteen hylkäyksen. Desktopin
 typecheck/build läpäisevät. Tämä on sopimuscheckpoint, ei uusi packaged- tai
 CI-hyväksyntä. Tuotantoa, riippuvuuksia tai Job-prosessipuun omistajuutta ei
-muuteta. Seuraava portti on tämän revision commit-pohjainen producer ja
-molemmat consumerit ilman rerunia; vanhaa CI-vihreyttä ei siirretä sille.
+muuteta. Tämän checkpointin myöhempi CI-tulos ja vielä avoimet
+apuoperaatioiden sopimukset on eroteltu yllä; aiempia kohdetestituloksia ei
+tulkita koko V2.8:n hyväksynnäksi.
 
 ### V2.7:n hyväksytty lähtökohta
 

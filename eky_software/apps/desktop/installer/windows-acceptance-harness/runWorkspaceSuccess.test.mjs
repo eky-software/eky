@@ -18,12 +18,14 @@ for (const fault of [false, true]) {
 for (const mode of ['completed', 'preconditionFailed', 'prepareFailed', 'launchFailed', 'supervisorMissing',
   'deadline', 'treeUnverified', 'scenarioMissing', 'businessFailed', 'cleanupFailed', 'footprintFailed',
   'profileChanged', 'artifactChanged', 'fixtureRemovalFailed', 'writerUnverified', 'writerUnverifiedAfterScenarioFailure',
+  'preconditionUnverified', 'cleanupUnverified', 'scenarioAndCleanupUnverified',
   ...(fault ? ['sessionFailed'] : [])]) {
   test(`${fault ? 'fault' : 'success'} workspace command preserves outcomes and exact cleanup: ${mode}`, async (t) => {
     let root, context;
     let started = 0, inspections = 0, cleanups = 0, removals = 0, profileReads = 0;
     const phases = [];
     let writerFinished = false;
+    let productProcessAbsent = true;
     t.after(async () => { if (root) await rm(root, { recursive: true, force: true }); });
     const artifact = { artifactRoot: '', descriptorSha256: 'b'.repeat(64), buildRevision: 'a'.repeat(40),
       source: { manifest: { packageFilename: 'Eky-0.2.7-x64.msi' }, packageSha256: 'd'.repeat(64) },
@@ -42,8 +44,20 @@ for (const mode of ['completed', 'preconditionFailed', 'prepareFailed', 'launchF
       prepareFixture: async (value) => { context = value; if (mode === 'prepareFailed') throw new Error('artifactInvalid'); },
       verifyArtifact: async () => { if (mode === 'artifactChanged') throw new Error('private content'); },
       createProductRuntime: () => ({
-        verifyExactProductStates: async () => products(mode === 'preconditionFailed' || inspections++ === 1),
+        outcome: () => ({ productProcessAbsent }),
+        verifyExactProductStates: async () => {
+          assert.equal(productProcessAbsent, true, 'No inspection after an unverified uninstall');
+          if (mode === 'preconditionUnverified') {
+            productProcessAbsent = false;
+            return { status: 'failed', errorCode: 'productStateVerificationProcessRemains' };
+          }
+          return products(mode === 'preconditionFailed' || inspections++ === 1);
+        },
         cleanupExactProducts: async () => { cleanups += 1;
+          if (['cleanupUnverified', 'scenarioAndCleanupUnverified'].includes(mode)) {
+            productProcessAbsent = false;
+            return { status: 'failed', errorCode: 'semanticCleanupProcessRemains' };
+          }
           if (mode === 'cleanupFailed') throw new Error('private cleanup error');
           return { status: 'completed', resultCode: 'semanticCleanupCompleted' }; },
       }),
@@ -67,7 +81,7 @@ for (const mode of ['completed', 'preconditionFailed', 'prepareFailed', 'launchF
           processTreeAbsent: mode !== 'treeUnverified' };
       },
       readScenario: async () => {
-        if (['scenarioMissing', 'writerUnverifiedAfterScenarioFailure'].includes(mode)) throw new Error('private path');
+        if (['scenarioMissing', 'writerUnverifiedAfterScenarioFailure', 'scenarioAndCleanupUnverified'].includes(mode)) throw new Error('private path');
         return { schemaVersion: 1, scenario: context.request.scenario, runNonce: context.request.runNonce,
           artifactDescriptorSha256: context.request.artifactDescriptorSha256, status: 'completed',
           ...(fault ? { faultScenario: 'acceptanceInterruption' } : {}),
@@ -114,15 +128,25 @@ for (const mode of ['completed', 'preconditionFailed', 'prepareFailed', 'launchF
       faultScenario: fault ? 'acceptanceInterruption' : null, buildRevision: 'a'.repeat(40), artifactDescriptorSha256: 'b'.repeat(64) };
     assert.doesNotThrow(() => validateWorkspaceCallerResult({ binding, outcome }, binding));
     if (mode === 'profileChanged') assert.equal(phases.findLast((item) => item.phase === 'normalProfileVerification').status, 'failed');
-    const noStart = ['preconditionFailed', 'prepareFailed'].includes(mode);
+    const noStart = ['preconditionFailed', 'prepareFailed', 'preconditionUnverified'].includes(mode);
     const noCleanup = noStart || ['launchFailed', 'supervisorMissing', 'treeUnverified'].includes(mode);
     const retained = ['launchFailed', 'supervisorMissing', 'treeUnverified', 'cleanupFailed',
       'footprintFailed', 'profileChanged', 'artifactChanged', 'fixtureRemovalFailed',
-      'writerUnverified', 'writerUnverifiedAfterScenarioFailure'].includes(mode);
+      'writerUnverified', 'writerUnverifiedAfterScenarioFailure', 'preconditionUnverified',
+      'cleanupUnverified', 'scenarioAndCleanupUnverified'].includes(mode);
     assert.equal(started, noStart ? 0 : 1);
     assert.equal(cleanups, noCleanup ? 0 : 1);
     assert.equal(removals, retained && mode !== 'fixtureRemovalFailed' ? 0 : 1);
     assert.equal(outcome.fixtureRemoved, !retained);
+    assert.equal(outcome.productProcessAbsent, productProcessAbsent);
+    if (!productProcessAbsent) {
+      assert.equal(profileReads, 1);
+      assert.equal(outcome.safetyErrorCode, 'productProcessUnverified');
+    }
+    if (mode === 'scenarioAndCleanupUnverified') {
+      assert.equal(outcome.errorCode, 'scenarioResultInvalid');
+      assert.equal(outcome.semanticCleanupResultCode, 'semanticCleanupProcessRemains');
+    }
     if (retained) assert.equal((await lstat(root)).isDirectory(), true);
     else await assert.rejects(lstat(root), { code: 'ENOENT' });
     if (mode === 'cleanupFailed') assert.equal(outcome.semanticCleanupResultCode, 'semanticCleanupFailed');

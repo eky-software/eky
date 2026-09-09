@@ -22,6 +22,7 @@ import { LEGACY_SUPERVISOR_TIMEOUT_MS, LEGACY_SUPERVISOR_CLEANUP_MS,
   LEGACY_PHASE_WRITER_TIMEOUT_MS, LEGACY_PHASE_WRITER_TERMINATION_MS } from './legacyUpgradeBudget.mjs';
 import { LEGACY_UPGRADE_DESCRIPTOR_FILENAME } from './legacyUpgradeArtifact.mjs';
 import { createUpgradeRollbackPostSupervisorWindowsRuntime } from './upgradeRollbackPostSupervisorWindowsRuntime.mjs';
+import { areProductProcessesAbsent } from './installerProductOperationRuntime.mjs';
 import {
   inventoriesMatch,
 } from './closedDirectoryInventory.mjs';
@@ -181,6 +182,7 @@ export async function runLegacyUpgrade(arguments_, {
   const profileRoot = resolve(appData, 'Eky');
   let activeSupervisor = null;
   let artifact = null;
+  let productRuntime = null;
   let primaryError = null;
   let profileBefore = null;
   let profileAfter = null;
@@ -242,12 +244,13 @@ export async function runLegacyUpgrade(arguments_, {
     }
     const scenarioRoot = resolve(runRoot, 'scenario');
     await mkdir(scenarioRoot, { recursive: false });
-    const productRuntime = createProductRuntime({
+    productRuntime = createProductRuntime({
       artifact: asProductRuntimeArtifact(artifact),
       scenarioRoot,
     });
     const productPrecondition = await productRuntime.verifyExactProductStates();
     requireLegacyUpgradeProductPrecondition(productPrecondition);
+    if (!areProductProcessesAbsent(productRuntime)) throw new Error('WINDOWS_ACCEPTANCE_LEGACY_PRODUCT_PROCESS_UNVERIFIED');
     const workerRequestPath = resolve(scenarioRoot, 'worker-request.json');
     const supervisorRequestPath = resolve(scenarioRoot, 'request.json');
     const workerRequest = createLegacyUpgradeWorkerRequest({
@@ -312,7 +315,8 @@ export async function runLegacyUpgrade(arguments_, {
       activeSupervisor.child.kill();
       await activeSupervisor.completion.catch(() => undefined);
     }
-    if (artifact !== null) {
+    if (!areProductProcessesAbsent(productRuntime)) safetyError ??= new Error('WINDOWS_ACCEPTANCE_LEGACY_PRODUCT_PROCESS_UNVERIFIED');
+    if (artifact !== null && areProductProcessesAbsent(productRuntime)) {
       try {
         await observed('artifactVerification', () => verifyArtifact(artifact));
       } catch {
@@ -321,7 +325,7 @@ export async function runLegacyUpgrade(arguments_, {
         );
       }
     }
-    if (profileBefore !== null) {
+    if (profileBefore !== null && areProductProcessesAbsent(productRuntime)) {
       try {
         await observed('normalProfileVerification', async () => {
           profileAfter = await inventoryProfile(profileRoot);
@@ -383,6 +387,7 @@ export async function runLegacyUpgrade(arguments_, {
       safetyErrorCode: safetyError === null ? null : safeErrorCode(safetyError),
       fixtureCleanupResultCode,
       fixtureRemoved,
+      productProcessAbsent: areProductProcessesAbsent(productRuntime),
       phaseWriterResultCode: writerOutcome.writerResultCode,
       phaseDiagnosticResultCode: writerOutcome.diagnosticResultCode,
       ...filesystem.outcome(),
@@ -408,6 +413,7 @@ export async function runLegacyUpgrade(arguments_, {
     profileFileCountAfter: profileAfter.filter((entry) => entry.kind === 'file')
       .length,
     processTreeAbsent: supervisorResult.processTreeAbsent,
+    productProcessAbsent: areProductProcessesAbsent(productRuntime),
     supervisorProcessResultCode: supervisorResult.processResultCode,
     supervisorWorkerResultCode: supervisorResult.workerResultCode,
     supervisorCleanupResultCode: supervisorResult.cleanupResultCode,

@@ -20,6 +20,7 @@ import { materializeWorkspaceSuccessArtifactFixture, prepareWorkspaceSuccessRunF
 import { loadWorkspaceSuccessProfileSupport } from './workspaceSuccessProfileEvidence.mjs';
 import { verifyWorkspaceSuccessSemanticPostcondition } from './workspaceSuccessPostcondition.mjs';
 import { createUpgradeRollbackPostSupervisorWindowsRuntime } from './upgradeRollbackPostSupervisorWindowsRuntime.mjs';
+import { areProductProcessesAbsent } from './installerProductOperationRuntime.mjs';
 import { inspectLegacyInstallerFootprint } from './legacyUpgradeWindowsRuntime.mjs';
 import { createClosedDirectoryInventory, inventoriesMatch } from './closedDirectoryInventory.mjs';
 import { parseAbsoluteWindowsAcceptancePath } from './windowsAcceptancePathArgument.mjs';
@@ -130,6 +131,7 @@ async function runWorkspaceAcceptance(artifactInput, {
   const runRoot = await mkdtemp(resolve(temporaryRoot, WORKSPACE_SUCCESS_RUN_ROOT_PREFIX));
   let context = null;
   let supervisor = null;
+  let productRuntime = null;
   let supervisorAttempted = false;
   let terminal = null;
   let errorCode = null;
@@ -187,8 +189,9 @@ async function runWorkspaceAcceptance(artifactInput, {
     const request = (fault ? createWorkspaceFaultRequest : createWorkspaceSuccessRequest)({ faultScenario, fixtureRoot: artifact.artifactRoot,
       buildRevision: artifact.buildRevision, artifactDescriptorSha256: artifact.descriptorSha256 });
     context = workspaceSuccessRunContext(workerRequestPath, request, artifact);
-    const runtime = createProductRuntime({ artifact: { roles: { source: artifact.source, target: artifact.target } }, scenarioRoot });
+    const runtime = productRuntime = createProductRuntime({ artifact: { roles: { source: artifact.source, target: artifact.target } }, scenarioRoot });
     const productPrecondition = requireWorkspaceSuccessProductPrecondition(await runtime.verifyExactProductStates());
+    if (!areProductProcessesAbsent(runtime)) throw new Error('productStateVerificationProcessRemains');
     await prepareFixture(context);
     await writeJsonAtomicExclusive(workerRequestPath, request);
     const supervisorRequestPath = resolve(scenarioRoot, 'request.json');
@@ -226,7 +229,8 @@ async function runWorkspaceAcceptance(artifactInput, {
   finally {
     stopSupervisor();
     if (supervisor) await supervisor.completion.catch(() => undefined);
-    if (context) {
+    if (!areProductProcessesAbsent(productRuntime)) safetyErrorCode ??= 'productProcessUnverified';
+    if (context && areProductProcessesAbsent(productRuntime)) {
       try {
         await observed('artifactVerification', async () => {
           await verifyArtifact(artifactInput);
@@ -234,7 +238,7 @@ async function runWorkspaceAcceptance(artifactInput, {
         })();
       } catch { safetyErrorCode = 'artifactChanged'; }
     }
-    if (profileBefore !== null) {
+    if (profileBefore !== null && areProductProcessesAbsent(productRuntime)) {
       try {
         await observed('normalProfileVerification', async () => {
           profileAfter = await inventoryProfile(resolve(environment.APPDATA, 'Eky'));
@@ -250,7 +254,8 @@ async function runWorkspaceAcceptance(artifactInput, {
       catch { phaseWriterOutcome = { writerResultCode: 'writerExitUnverified', diagnosticResultCode: 'channelFailed' }; }
     }
     if (writerAttempted && phaseWriterOutcome.writerResultCode !== 'writerAbsent') safetyErrorCode ??= 'phaseWriterExitUnverified';
-    if (safetyErrorCode === null && workspaceSuccessRunRootRemovable({ supervisorAttempted, terminal })) {
+    if (safetyErrorCode === null && workspaceSuccessRunRootRemovable({ supervisorAttempted, terminal,
+      productProcessAbsent: areProductProcessesAbsent(productRuntime) })) {
       try {
         await removeRunRoot(runRoot);
         await lstat(runRoot).then(() => { throw new Error(); }, (error) => { if (error?.code !== 'ENOENT') throw error; });
@@ -272,6 +277,7 @@ async function runWorkspaceAcceptance(artifactInput, {
     profileFileCountBefore: profileBefore?.filter((entry) => entry.kind === 'file').length ?? null,
     profileFileCountAfter: profileAfter?.filter((entry) => entry.kind === 'file').length ?? null,
     processTreeAbsent: terminal?.processTreeAbsent === true,
+    productProcessAbsent: areProductProcessesAbsent(productRuntime),
     ...(context ? { buildRevision: context.request.buildRevision, artifactDescriptorSha256: context.request.artifactDescriptorSha256,
       sourcePackageSha256: context.artifact.source.packageSha256, targetPackageSha256: context.artifact.target.packageSha256 } : {}),
   };

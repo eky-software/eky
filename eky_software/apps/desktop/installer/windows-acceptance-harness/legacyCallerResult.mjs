@@ -33,7 +33,7 @@ const CODES = {
     'semanticCleanupCompleted', 'semanticCleanupFailed', 'semanticCleanupTimedOut', 'semanticCleanupProcessRemains', ...PRODUCT],
   fixtureCleanupResultCode: ['retainedUnverified', 'fixtureRemoved', 'fixtureCleanupFailed'],
 };
-const BOOLEANS = ['processTreeAbsent', 'filesystemProcessAbsent', 'fixtureRemoved', 'legacyBusinessFixtureValidated',
+const BOOLEANS = ['processTreeAbsent', 'productProcessAbsent', 'filesystemProcessAbsent', 'fixtureRemoved', 'legacyBusinessFixtureValidated',
   'idempotentSecondStartup', 'businessDataPreserved'];
 const COUNTS = ['adoptedWorkspaceCount', 'profileFileCountBefore', 'profileFileCountAfter'];
 const KEYS = new Set(['schemaVersion', 'scenario', 'status', 'errorCode', 'safetyErrorCode', 'resultCode',
@@ -83,6 +83,7 @@ export function validateLegacyCallerResult(value, expected) {
     if (key === 'resultCode' && data !== 'historicalLegacyUpgradeCompleted') invalid();
   }
   if (outcome.status === 'failed') {
+    if (outcome.fixtureRemoved === true && outcome.productProcessAbsent !== true) invalid();
     if (!ERRORS.has(outcome.errorCode)) invalid();
   } else if (outcome.resultCode !== 'historicalLegacyUpgradeCompleted' || outcome.errorCode != null ||
     outcome.safetyErrorCode != null || outcome.phaseWriterResultCode !== 'writerAbsent' || BOOLEANS.some((key) => outcome[key] !== true) ||
