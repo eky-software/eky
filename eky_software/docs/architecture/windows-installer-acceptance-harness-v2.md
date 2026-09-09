@@ -1832,7 +1832,7 @@ vaiheprefixin; tuntematon tila, vieras tulos ja ylimääräiset kentät hylätä
 
 | Olemassa oleva fault-sopimus | V2.7:n vaiheketjun loppuehto | Packaged-todiste |
 | --- | --- | --- |
-| preUpdate-palautuspiste epäonnistuu ennen handoffia | Ei target-asennusta; source säilyy; `verifyPreUpdateFailure` | 2/2, alla nimetty `0a7ea01`-kierros |
+| preUpdate-palautuspiste epäonnistuu ennen handoffia | Ei target-asennusta; source säilyy; `verifyPreUpdateFailure` | 2/2, nykytilassa nimetty `b593614` / `9436d2f` -kierros |
 | Aktiivisen A:n first start epäonnistuu | Business rollback ennen source-binaarien palautumisen tarkistusta ja `rollbackFirstStart`-käynnistystä; `verifyActiveRollback` | 2/2, sama kierros |
 | Registry-siirtymän jälkeinen hyväksyntä katkeaa | Täsmällinen `interrupted`-todiste, recovery ja erillinen restart; `verifyAcceptanceRecovery` | 2/2, sama kierros |
 | Passiivisen B:n migraatio epäonnistuu | Paluu A:han ilman binary rollbackia; target säilyy; `verifyPassiveRecovery` | 2/2, sama kierros |
@@ -2287,6 +2287,38 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 - dependency- ja lockfile-muutoksia ei ole ilman erillistä hyväksyntää
 
 ## Nykyinen päätös
+
+V2.7:n loppukatselmus on suljettu lähderevisiolle
+`b593614d99ee1c17cb70ce4f0aa41c23ceaac70d`. CI:n todellinen checkout ja
+artifactin build-revisio ovat `9436d2fdce7f2e18c96b71c5e7978ace700f8351`;
+nämä ovat eri identiteettejä. [PR #265](https://github.com/eky-software/eky/pull/265)
+säilyy katselmoitavana draft-checkpointina, ei main- tai julkaisuhyväksyntänä.
+
+| Portti | Tarkistetun revision näyttö |
+| --- | --- |
+| [Workspace producer ja consumerit](https://github.com/eky-software/eky/actions/runs/34284727210) | Success 2/2 ja viisi fault-skenaariota kahdesti, 10/10; ensimmäinen yritys |
+| [Clean lifecycle](https://github.com/eky-software/eky/actions/runs/34284727215) | Producer ja consumerit 2/2, ensimmäinen yritys |
+| [Upgrade ja rollback](https://github.com/eky-software/eky/actions/runs/34284727228) | Producer ja consumerit 2/2, ensimmäinen yritys |
+| [Supervisor](https://github.com/eky-software/eky/actions/runs/34284727192) | Molemmat toistot vihreitä, ensimmäinen yritys |
+| Pakollinen caller-tulos | Ajokohtainen sidonta, komennon todellinen exit ja lopputulos varmennettu; konsoliviesti ei korvaa niitä |
+| Eristys ja cleanup | Prosessipuu ja kirjoitin poissa, normaalin profiilin inventaario ennallaan, exact-tuotteet ja installer-footprint poistettu, fixture poistettu |
+| Artifact | Sama producerin pari kaikissa neljässä workspace-consumerissa, identiteetti varmennettu ennen ja jälkeen |
+| Loppukatselmuksen kohderegressiot | Kirjoitin/caller 39/39, success 309/309 ja fault 299/299; ei ohituksia tai peruutuksia |
+
+Katselmus tarkisti viiden fault-ketjun siirtokartan, alkuperäisen virheen ja
+cleanupin erottelun, tiedostotuloksen sidonnan sekä yksityisen session-proofin.
+Uutta vaiheen sulkemisen estävää löydöstä ei todettu. Tuntematon lopputila
+säilyy virheenä eikä oikeuta fixturen poistamiseen. Aiemman runner-yhteyskatkon
+syytä ei väitetä tällä näytöllä ratkaistuksi.
+
+Omistajan hyväksymä jatko aloittaa V2.8:n omassa pinotussa haarassa:
+riskiluokitus, vakaa CI-aggregaattori ja niiden käyttäytymisregressiot.
+Nykyiset required checkit, vanhat W6-komennot ja release-portit säilyvät,
+kunnes erillinen käyttöönotto on katselmoitu. Ennen yhteistä käyttöönottoa
+säilyy myös jäljempänä kirjattu V2.5:n precondition-virheluokituksen viimeistely.
+Ei main-mergeä, versionostoa tai pilot-pakettia tässä vaiheessa.
+
+### Historiallinen tila ennen caller-korjauksen hyväksyntää
 
 V2.6:n tarkistettu vaihekohtainen lähtörevisio on `2f2118e`.
 V2.7:n sopimus-/vaiheketjucheckpoint, hyväksytty muistikanavan käynnistysraja,
