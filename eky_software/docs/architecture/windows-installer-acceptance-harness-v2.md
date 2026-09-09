@@ -2474,7 +2474,7 @@ todentaa aineiston säilytyksen; sitä ei tulkita aidoksi natiivin cleanupin
 epäonnistumiseksi.
 
 Omistaja on hyväksynyt product-operaation direct-child-omistajan korvaamisen
-nykyisellä Job Object -supervisorilla. Työpuun toteutus käyttää samaa
+nykyisellä Job Object -supervisorilla. Rajattu checkpoint käyttää samaa
 `WindowsJobProcessSupervisor`-luokkaa; siihen ei lisätä rinnakkaista
 emergency-cleanup-omistajaa. Preflight-operaatio valmistuu ennen skenaariota.
 Skenaarion jälkeinen product-operaatio sallitaan vasta sen Jobin varmennetun
@@ -2529,7 +2529,11 @@ onnistuminen kuuluu loppukoontiin. Aiempi komentotavan ero ei ole todistettu
 CI-jumin syy.
 
 Normaali onnistuminen palautuu tapahtumasta tai valmiista tilasta, ei
-kiinteän odotuksen täyttymisestä. Koko komennon varauksille ja valmistelulle
+kiinteän odotuksen täyttymisestä. V2:n Job-supervisor tarkistaa erikseen
+prosessikahvan poistumissignaalin, Jobin aktiivisten prosessien määrän ja
+strict worker-resultin. Lyhyt rajattu tilakysely täydentää alustatapahtumia;
+se ei ole onnistumisen kelloehto tai yksittäisten säikeiden ajastusmoottori.
+Koko komennon varauksille ja valmistelulle
 lasketaan erillinen CI-marginaali; normaalia budjettia ei muuteta ennen tätä
 perustetta ja omistajan päätöstä. Tarkoituksella lyhyet timeout-, myöhäisen
 käynnistyksen ja epävarman cleanupin regressiot säilyvät erillisinä.
@@ -2540,8 +2544,21 @@ Poistettu päällekkäisyys on clean/upgrade-product-adapterien yhteinen teknine
 kyselyvastuu ja callerien ehdoton root-poisto. Skenaarioiden semanttiset verifierit säilyvät
 erillisinä. Vanhan W6-ketjun poistoehto säilyy yllä olevassa invarianttien
 siirtokartassa; `observerFailure`-testin odotusarvoa ei vaihdeta vain vihreyden
-vuoksi. Ennen seuraavaa packaged-kierrosta tarvitaan punaisesta vihreäksi
-todennetut kohderegressiot ja yhteisten kuluttajien sopimustestit.
+vuoksi. Hyväksytty rajattu korjaus jätetään nykyisen W6-omistajuuslukijan
+vastuulle: todistetusti nykyistä vanhempaansa vanhempi vieras prosessi ei
+ole tämän lapsi, eikä siitä tai sen jälkeläisistä muodosteta siivouksen
+omistajuutta. Aiempi testikohtainen snapshot-suodatin ja reader-override
+poistetaan. Uutta kirjanpitoa, odotusta tai prosessivalvojaa ei lisätä.
+Syntymätunnisteet validoidaan ennen vertailua; tuntematon tunniste,
+ristiriitainen ehdokas, muuttunut executable-identiteetti tai ristiriita jo
+omistetun prosessin kanssa säilyy virheenä. Regressio vertaa oikean lukijan
+omistamia ja siivoukseen valittavia identiteettejä sekä todentaa alkuperäisen
+observer-virheen todellisessa prosessiketjussa. Korjauksen kohderegressiot,
+installer-unitit, koko Windows process-contract -sarja, V2-legacy-sopimukset,
+jaettujen callerien regressiot, CI-kytkentätestit sekä desktopin typecheck ja
+build on hyväksytty. Aiemmat epäonnistuneet sarjat säilyvät epäonnistuneina.
+Tämän checkpointin packaged- ja CI-hyväksyntä ovat vielä avoinna; ne vaativat
+puhtaan revision ja siihen sidotut artifactit.
 
 ### Legacy-tulostoimituksen korjattu vastuu
 

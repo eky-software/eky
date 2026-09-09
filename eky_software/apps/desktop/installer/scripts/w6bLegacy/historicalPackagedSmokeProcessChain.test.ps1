@@ -195,6 +195,64 @@ function Assert-EkyHistoricalStaleParentPidIgnored {
   if ($ownedIdentities.Count -ne 1) {
     throw 'W6B_LEGACY_STALE_PARENT_PID_WAS_ADOPTED'
   }
+
+  $root = [pscustomobject]@{
+    processId = $staleParent.processId; parentProcessId = 0
+    creationToken = $staleParent.creationToken; executablePath = $executablePath
+  }
+  $foreign = $snapshot[0]
+  $foreignChild = $foreign.PSObject.Copy()
+  $foreignChild.processId += 1; $foreignChild.parentProcessId = $foreign.processId
+  $foreignChild.creationToken = '3000'
+  $child = $root.PSObject.Copy()
+  $child.processId += 1; $child.parentProcessId = $root.processId
+  $grandchild = $child.PSObject.Copy()
+  $grandchild.processId += 1; $grandchild.parentProcessId = $child.processId
+  $grandchild.creationToken = '3000'
+  $foreignUnderChild = $foreign.PSObject.Copy()
+  $foreignUnderChild.processId += 2; $foreignUnderChild.parentProcessId = $child.processId
+  $snapshot = @($foreignChild, $grandchild, $foreignUnderChild, $root, $foreign, $child)
+  Add-EkyHistoricalOwnedProcessIdentities $ownedIdentities $snapshot
+  $remaining = @(Get-EkyHistoricalRemainingOwnedProcesses $ownedIdentities $snapshot)
+  if ($ownedIdentities.Count -ne 3 -or $remaining.Count -ne 3) {
+    throw 'W6B_LEGACY_STALE_PARENT_PID_SELECTION_INVALID'
+  }
+  foreach ($record in @($root, $child, $grandchild)) {
+    if (!$ownedIdentities.ContainsKey((Get-EkyHistoricalProcessIdentityKey $record))) {
+      throw 'W6B_LEGACY_OWNED_DESCENDANT_NOT_PRESERVED'
+    }
+  }
+  foreach ($record in @($foreign, $foreignChild, $foreignUnderChild)) {
+    if ($ownedIdentities.ContainsKey((Get-EkyHistoricalProcessIdentityKey $record))) {
+      throw 'W6B_LEGACY_STALE_PARENT_PID_WAS_ADOPTED'
+    }
+  }
+
+  $wrongPath = $root.PSObject.Copy()
+  $wrongPath.executablePath = Join-Path $env:SystemRoot 'System32\cmd.exe'
+  $invalidSnapshots = @(
+    [pscustomobject]@{ records = @($root, $root, $foreign); alreadyOwned = $false },
+    [pscustomobject]@{ records = @($root, $foreign, $foreign); alreadyOwned = $false },
+    [pscustomobject]@{ records = @($wrongPath, $foreign); alreadyOwned = $false },
+    [pscustomobject]@{ records = @($root, $foreign); alreadyOwned = $true }
+  )
+  foreach ($token in @($null, '', 'unknown', '-1', '9223372036854775808')) {
+    $invalid = $foreign.PSObject.Copy(); $invalid.creationToken = $token
+    $invalidSnapshots += [pscustomobject]@{ records = @($root, $invalid); alreadyOwned = $false }
+  }
+  foreach ($case in $invalidSnapshots) {
+    $owned = @{ (Get-EkyHistoricalProcessIdentityKey $staleParent) = $staleParent }
+    if ($case.alreadyOwned) {
+      $owned[(Get-EkyHistoricalProcessIdentityKey $foreign)] = $foreign
+    }
+    try {
+      Add-EkyHistoricalOwnedProcessIdentities $owned $case.records
+      throw 'W6B_LEGACY_PROCESS_IDENTITY_GUARD_MISSING'
+    }
+    catch {
+      if ($_.Exception.Message -cne 'W6B_LEGACY_SOURCE_PROCESS_IDENTITY_INVALID') { throw }
+    }
+  }
 }
 
 function Start-EkyHistoricalSyntheticProcessGeneration {
@@ -680,6 +738,7 @@ finally {
 }
 
 function Invoke-EkyHistoricalObserverFailure {
+  Assert-EkyHistoricalStaleParentPidIgnored
   $script:ObserverFailureState = $null
   try {
     Invoke-HistoricalPackagedSmokeProcessChain `

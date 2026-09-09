@@ -151,10 +151,27 @@ function Add-EkyHistoricalOwnedProcessIdentities {
       if ($null -eq $parent) {
         continue
       }
+      $candidateBirth = [Int64]0
+      $parentBirth = [Int64]0
       if (
-        [Int64]$candidate.creationToken -lt [Int64]$parent.creationToken
+        [string]$candidate.creationToken -cnotmatch '^[0-9]+$' -or
+        [string]$parent.creationToken -cnotmatch '^[0-9]+$' -or
+        ![Int64]::TryParse([string]$candidate.creationToken, [ref]$candidateBirth) -or
+        ![Int64]::TryParse([string]$parent.creationToken, [ref]$parentBirth) -or
+        @($ProcessSnapshot | Where-Object {
+          $_.processId -eq $candidate.processId
+        }).Count -ne 1
       ) {
         throw 'W6B_LEGACY_SOURCE_PROCESS_IDENTITY_INVALID'
+      }
+      if ($candidateBirth -lt $parentBirth) {
+        if ($OwnedIdentities.ContainsKey(
+          (Get-EkyHistoricalProcessIdentityKey -Identity $candidate)
+        )) {
+          throw 'W6B_LEGACY_SOURCE_PROCESS_IDENTITY_INVALID'
+        }
+        # A reused parent PID does not make an older foreign process our child.
+        continue
       }
       if (
         [string]::IsNullOrWhiteSpace([string]$candidate.executablePath)
