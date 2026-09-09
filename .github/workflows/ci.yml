@@ -182,6 +182,17 @@ jobs:
       - name: Run critical Electron E2E journeys
         run: pnpm test:e2e:electron:critical
 
+      - name: Preserve safe Electron lifecycle evidence from every failed attempt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: electron-lifecycle-${{ github.run_id }}-${{ github.run_attempt }}
+          path: eky_software/apps/e2e/test-results/*/electron-lifecycle.json
+          if-no-files-found: ignore
+          retention-days: 1
+          overwrite: false
+          include-hidden-files: false
+
   windows-contracts:
     name: Windows installer contract tests
     if: inputs.risk_plan != '' && fromJSON(inputs.risk_plan).gates.windowsContracts

@@ -2245,6 +2245,14 @@ Ajastus tulee käyttöön vasta workflowin päähaaraan käyttöönoton jälkeen
 Kytkentächeckpoint on PR #266:ssa katselmoitavana. Sen hyväksyntä vaatii
 saman revision koko valitun CI-ajon; aiempi checkpoint ei hyväksy uutta revisiota.
 
+Kytkennän jälkeinen rajattu Electron-fixture-korjaus erottaa Playwright-
+yhteyden, ensimmäisen ikkunan ja DOM-valmiuden virheet sekä säilyttää
+testijuuren epävarmassa loppusiivouksessa. Käynnistysbudjetit, V2:n
+prosessiomistajuus ja hyväksymisehdot säilyvät. Käyttäytymissopimus on
+E2E-ympäristödokumentissa. Vaihe-erottelu ei yksin selitä aikaisempaa
+`ARCHIVE-PDF-CONFLICT-001`-flakea; hyväksyntä vaatii edelleen nykyisen revision
+Electron critical -portin ja valitun CI-kierroksen ilman flaky-tulosta.
+
 | Muutos | V2:n ajama kattavuus |
 | --- | --- |
 | Tavallinen web/domain/application tai yleinen dokumentaatio | Testit, typecheck/build, system security, web critical ja riskisopimukset molemmilla käyttöjärjestelmillä |
