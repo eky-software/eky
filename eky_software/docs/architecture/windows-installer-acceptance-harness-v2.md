@@ -2423,7 +2423,8 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 ## Nykyinen päätös
 
 V2.8:n riskikytkentä sekä Electron- ja workspace-korjaukset säilyvät PR #266:ssa.
-Nykyinen rajattu työ sulkee legacy-komennon tulostoimituksen. V2:n yhteinen
+Nykyinen rajattu työ sulkee legacy-komennon tulostoimituksen ja sovittaa
+sen virhepolun valmistumisvaraukset CI:n rajoihin. V2:n yhteinen
 hyväksyntä, required-check-siirto, vanhan orkestroinnin poisto ja julkaisu
 ovat edelleen avoinna. Alla oleva V2.7-hyväksyntä on historiallinen lähtökohta,
 ei nykyisen revision hyväksyntä.
@@ -2454,24 +2455,46 @@ poistuminen säilyttää fixturen ja erillisen safety-tuloksen.
 | Worker-vaihehavainto, MSI spawn/close | `legacyUpgradeLifecycle` ja `legacyUpgradeWindowsRuntime`; worker ja jälkeläiset saman Job-supervisorin sisällä. MSI käyttää ignored stdiota; vaihekirjoitus ei ole kontrolliprotokolla. |
 | Supervisorin tulos ja loppulokitus | Nykyinen supervisor; 600000 ms kokonaisraja, siitä 30000 ms cleanup-varaus, työn raja 570000 ms. Strict tiedosto on erillinen ei-estävästä diagnostiikasta. |
 | Supervisorin exit/close | `startLegacyUpgradeSupervisor`; odottaa todellista closea, ei viimeistä lokiriviä. Erilliset turvalliset exit/close-havainnot. Ei uutta ulkopuolista valvojaa. |
-| Tulosluku ja semanttinen vertailu | Caller ja `legacyUpgradeFailureBoundary`; strict supervisor-/scenario-tulokset ennen business-jälkiehtoja. Suorat tiedostoluvut/inventaariot eivät vielä ole yhteisen komentodeadlinen sisällä. |
+| Tulosluku ja semanttinen vertailu | Caller ja `legacyUpgradeFailureBoundary`; strict supervisor-/scenario-tulokset ennen business-jälkiehtoja. Rekursiivinen semanttisen aineiston keruu nykyisen tiedostoadapterin sisällä; puhtaat validaattorit säilyvät erillisinä funktioina. |
 | Exact-tuotetilan tarkistus | Nykyinen post-supervisor Windows-adapteri: kaksi sarjallista kyselyä, kummallakin 30000 ms ja 5000 ms lopetusvaraus. |
 | Asennussiivous ja jälkiehto | Sama product-runtime: uusi kahden tuotteen tarkistus, enintään kaksi exact-uninstallia (120000 + 5000 ms kumpikin), lopuksi erillinen tarkistus. Ei uutta process-tree-omistajaa. |
-| Artifact, normaali profiili, fixture-poisto | Nykyinen caller; erilliset tulokset. Varmentamaton prosessipuu, cleanup tai kirjoitin estää fixturen poistamisen. Rekursiivisilla tiedosto-operaatioilla ei vielä ole yhteistä valmistumisrajaa. |
+| Artifact, normaali profiili, fixture-poisto | Caller päättää järjestyksen ja poistamisen luvan. `legacyUpgradeFilesystemRuntime` ajaa rekursiiviset ryhmät nykyisellä `runBoundedWindowsAdapterProcess`-vastuulla. Yksi kiinteä Node-lehti per ryhmä, ei uutta supervisoria tai prosessia jokaiselle tiedostolle. Epävarma adapterin poistuminen estää jatkotiedostotyön ja aineiston poiston. |
 | Pakollinen command-result | Nykyinen rajattu tiedostoadapteri: prepare/publish/verify kukin 30000 + 5000 ms; vain tekninen toimitus, ei skenaariota tai sen cleanupia. Vaihekirjoittimen lopetusvaraus enintään 5000 ms. |
 
-Budjettikatselmus erotetaan korjauksen hyväksynnästä. Supervisorin jälkeisen
+Omistajan hyväksymä budjettikorjaus erotetaan packaged-hyväksynnästä.
+Supervisorin jälkeisen
 virhepolun konfiguroidut odotusvaraukset ovat enintään
 `70 + (70 + 2 * 125) + 70 = 460` sekuntia. Precondition 70 sekuntia ja
 supervisor 600 sekuntia nostavat summan 1130 sekuntiin jo ennen tiedostotyötä.
 Uuden tulostoimituksen kolme 35 sekunnin varausta ja kirjoittimen 5 sekuntia
-nostavat vastaavan laskelman 1240 sekuntiin. Nämä ovat sopimusbudjetteja,
-eivät mitattuja kestoja tai koko komennon todistettuja ylärajoja: synkroninen
-natiivikäynnistys ja suora tiedostotyö eivät saa tästä keskeytystakuuta.
-Nykyinen lifecycle-step on 720 sekuntia ja consumer-job 1080 sekuntia.
-Niitä ei muuteta tässä korjauksessa. Budjettien yhteensovitus ja vielä
-rajaamattomien alustaryhmien valmistumissopimus vaativat päätöksen ennen
-uutta packaged-hyväksyntää; pelkkä normaaliajon vihreys ei todista virhepolkua.
+nostavat vastaavan laskelman 1240 sekuntiin. Kuusi tiedostoryhmäajoa
+varaavat lisäksi 300 sekuntia: inventaario ennen ja jälkeen 30+5 sekuntia
+kumpikin, materialisointi 120+5 ja semanttinen tarkistus, lähde-artifactin
+uusintavarmennus sekä poisto kukin 30+5. Summa on 1540 sekuntia.
+`legacyUpgradeBudget` johtaa laskelman nykyisten omistajien vakioista;
+regressio sitoo sen CI-asetuksiin. Supervisorin 600/30 sekunnin rajat sekä
+product- ja tulostoimitusadapterien rajat säilyvät ennallaan.
+
+Lifecycle-step on 27 minuuttia ja consumer-job 37 minuuttia. Supervisorin
+käännös on erillinen enintään kolmen minuutin vaihe; lifecycle käyttää samaa
+jo käännettyä supervisoria ja producerin varmennettuja artifact-tavuja.
+Normaali paikallinen `installer:v2-legacy` säilyttää käännöskytkentänsä.
+Nämä ovat konfiguroituja varauksia, eivät paikallisia mittauksia tai väite
+kaikkien OS-jumien keskeyttämisestä: Node-kutsujan synkronista natiivispawnia
+ei voi katkaista event-loop-ajastimella. Pienet request-/result-JSON-tiedostojen
+luvut ja product-adapterin tulostiedoston käsittely säilyvät nykyisillä
+omistajilla. Ulkoinen katkaisu tai puuttuva terminal-tulos ei ole hyväksyntä.
+
+`legacyUpgradeFilesystem` vastaanottaa yhden suljetun yksityisen IPC-pyynnön
+ja palauttaa yhden vastauksen. Se käyttää olemassa olevia inventaario-,
+artifact- ja semanttisen tarkistuksen funktioita; ei käynnistä jälkeläisiä,
+asentimia tai skenaarioita. Prosessinluonti, IPC-odotus ja tiedostotyö kuuluvat
+saman adapteriajan sisään, ja erillinen lopetusvaraus varmentaa todellisen
+closen. Onnistunut viesti yksin ei riitä. Polut ja inventaariot pysyvät
+yksityisessä muistikanavassa; konsoliin ei kirjoiteta niitä. Pakollinen
+caller-tulos erottaa `filesystemProcessAbsent`, ensimmäisen epäonnistuneen
+`filesystemOperation`-ryhmän ja suljetun `filesystemErrorCode`-arvon.
+Myöhempi onnistuminen ei nollaa aiempaa virhettä tai epävarmaa poistumista.
 
 Kohderegressiot käyttävät nykyistä supervisoria ja callerin todellista
 käynnistystä, mutta vain synteettistä workeria ilman MSI:tä. Ne todistavat
@@ -2479,15 +2502,21 @@ jumittuvan workerin, lukemattoman tulosteen, puuttuvan supervisor-tuloksen,
 epävarman cleanupin, semantic-cleanup-virheen ja kirjoittimen epävarman
 poistumisen. Injektoidut virheluokat erotetaan todellisesta Job-tuloksesta.
 Alkuperäinen virhe säilyy, epävarma aineisto säilytetään eikä onnistunut
-jälkisiivous muuta skenaariota onnistuneeksi. Lopputulos varmennetaan
+jälkisiivous muuta skenaariota onnistuneeksi. Lisäksi komentoprosessiregressio
+jumittaa tiedostoryhmän skenaarion deadline-virheen jälkeen: alkuperäinen
+virhe säilyy, adapterin exit/close varmennetaan, fixture jää talteen ja
+komento päättyy virheeseen ilman ulkopuolista aikakatkaisua. Lopputulos varmennetaan
 komentoprosessin ulkopuolelta; pelkkä Promisen palautuminen ei riitä.
 
-Korjauspinnan legacy-sopimukset läpäisevät 193/193, jaetun kirjoittimen ja
+Korjauspinnan legacy-sopimukset läpäisevät 208/208, jaetun kirjoittimen ja
 tulosvälityksen regressiot 39/39, workspace success 321/321, fault 312/312 ja
-legacy-artifact-sopimukset 12/12. Testifixturen oman loppusiivousjärjestyksen
-viimeistelyn jälkeen komento-/tuloskohdesarja läpäisee 30/30. Desktopin
-typecheck/build läpäisevät. Tämä on paikallinen sopimuscheckpoint, ei uusi
-packaged- tai CI-hyväksyntä. Aikarajoja, tuotantoa tai omistajuutta ei muuteta.
+legacy-artifact-sopimukset 13/13. Artifact-regressio todistaa myös uuden
+yksityisen IPC-rajan läpi materialisoidun descriptorin ja provenienssin,
+itsenäiset pakettitavut sekä muuttuneen lähteen hylkäyksen. Desktopin
+typecheck/build läpäisevät. Tämä on sopimuscheckpoint, ei uusi packaged- tai
+CI-hyväksyntä. Tuotantoa, riippuvuuksia tai Job-prosessipuun omistajuutta ei
+muuteta. Seuraava portti on tämän revision commit-pohjainen producer ja
+molemmat consumerit ilman rerunia; vanhaa CI-vihreyttä ei siirretä sille.
 
 ### V2.7:n hyväksytty lähtökohta
 

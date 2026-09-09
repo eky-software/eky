@@ -51,7 +51,7 @@ test('V2.5 phase acceptance builds once and both consumers only verify and consu
   assert.match(consumer, /needs: legacy_artifact_producer/u);
   assert.ok(consumer.includes("repetition: ${{ fromJSON(inputs.risk_plan != '' && fromJSON(inputs.risk_plan).repetitions == 1 && '[1]' || '[1, 2]') }}"));
   assert.match(consumer, /max-parallel: 2/u);
-  assert.equal(consumer.match(/installer:v2-legacy --artifact-descriptor/gu)?.length, 1);
+  assert.equal(consumer.match(/runLegacyUpgrade\.mjs --artifact-descriptor/gu)?.length, 1);
   const command = consumer.slice(consumer.indexOf('      - name: Run existing supervised legacy lifecycle once'),
     consumer.indexOf('      - name:', consumer.indexOf('      - name: Run existing supervised legacy lifecycle once') + 1));
   assert.match(command, /\$commandExit = \$LASTEXITCODE/u);
@@ -83,9 +83,9 @@ test('V2.5 phase acceptance transfers only the verified short lived artifact wit
   assert.ok(source.indexOf('Verify produced artifact before upload') < source.indexOf('uses: actions/upload-artifact@'));
 });
 
-test('V2.5 phase acceptance preserves existing V2 job bounds and locked toolchain', async () => {
+test('V2.5 phase acceptance preserves bounded V2 jobs and locked toolchain', async () => {
   const source = await readFile(WORKFLOW_URL, 'utf8');
-  for (const minutes of [10, 30, 22, 18, 12]) {
+  for (const minutes of [10, 30, 22, 37, 27, 3]) {
     assert.match(source, new RegExp(`timeout-minutes: ${minutes}\\b`, 'u'));
   }
   assert.equal(source.match(/pnpm install --frozen-lockfile/gu)?.length, 2);

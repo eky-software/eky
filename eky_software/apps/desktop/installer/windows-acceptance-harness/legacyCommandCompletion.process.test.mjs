@@ -11,7 +11,7 @@ import { cleanupRunContext, createRunContext, createRequest, startSupervisor, wr
 import { readWindowsAcceptanceSupervisorResult } from '../windows-process-supervisor/windowsAcceptanceSupervisorResult.mjs';
 import { legacyCallerResultIdentity, parseLegacyCallerResult } from './legacyCallerResult.mjs';
 
-for (const mode of ['hold', 'unread', 'cleanupUnverified', 'missingSupervisor', 'cleanupFailed', 'writerUnverified']) {
+for (const mode of ['hold', 'unread', 'cleanupUnverified', 'missingSupervisor', 'cleanupFailed', 'writerUnverified', 'filesystemHold']) {
   test(`legacy whole command terminates after scenario deadline: ${mode}`, {
     skip: process.platform !== 'win32', timeout: 60_000,
   }, async (t) => {
@@ -63,7 +63,16 @@ for (const mode of ['hold', 'unread', 'cleanupUnverified', 'missingSupervisor', 
     }
     if (mode === 'cleanupFailed') assert.equal(report.outcome.semanticCleanupResultCode, 'semanticCleanupFailed');
     if (mode === 'writerUnverified') assert.equal(report.outcome.safetyErrorCode, 'WINDOWS_ACCEPTANCE_LEGACY_PHASE_WRITER_EXIT_UNVERIFIED');
-    assert.deepEqual(report.events.slice(0, 4), ['supervisorExit', 'supervisorClose', 'supervisorResultValidated', 'callerOutcome']);
+    const expectedEvents = ['supervisorExit', 'supervisorClose', 'supervisorResultValidated'];
+    if (mode === 'filesystemHold') {
+      expectedEvents.push('filesystemExit', 'filesystemClose');
+      assert.equal(report.outcome.safetyErrorCode, 'WINDOWS_ACCEPTANCE_LEGACY_FILESYSTEM_TIMED_OUT');
+      assert.equal(report.outcome.filesystemErrorCode, 'WINDOWS_ACCEPTANCE_LEGACY_FILESYSTEM_TIMED_OUT');
+      assert.equal(report.outcome.filesystemOperation, 'artifact');
+      assert.equal(report.outcome.filesystemProcessAbsent, true);
+    }
+    expectedEvents.push('callerOutcome', 'cliReturned');
+    assert.deepEqual(report.events, expectedEvents);
     assert.equal(outer.processTreeAbsent, true);
     assert.equal(outer.processResultCode, 'processExitFailed');
     assert.equal(outer.childExitCode, 1);

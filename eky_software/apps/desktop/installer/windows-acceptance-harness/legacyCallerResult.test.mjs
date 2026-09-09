@@ -23,6 +23,7 @@ async function fixture(t) {
     sourceVersion: '0.2.6', targetVersion: '0.2.7', sourcePackageSha256: 'c'.repeat(64), targetPackageSha256: 'd'.repeat(64),
     legacyBusinessFixtureValidated: true, adoptedWorkspaceCount: 1, idempotentSecondStartup: true, businessDataPreserved: true,
     profileFileCountBefore: 0, profileFileCountAfter: 0, processTreeAbsent: true, fixtureRemoved: true,
+    filesystemProcessAbsent: true, filesystemOperation: 'notFailed', filesystemErrorCode: null,
     phaseWriterResultCode: 'writerAbsent', phaseDiagnosticResultCode: 'deliveryUnverified', fixtureCleanupResultCode: 'fixtureRemoved',
     supervisorProcessResultCode: 'processCompleted', supervisorWorkerResultCode: 'workerResultValidated',
     supervisorCleanupResultCode: 'notRequired', scenarioResultCode: 'historicalLegacyUpgradeCompleted',
@@ -37,7 +38,8 @@ test('legacy mandatory result is bound, closed and preserves its own success con
   for (const key of ['path', 'session', 'companyId', 'pid', 'stack', 'journal', 'metadata']) {
     assert.throws(() => validateLegacyCallerResult({ ...payload, outcome: { ...payload.outcome, [key]: 'private' } }, binding));
   }
-  for (const [key, value] of [['processTreeAbsent', false], ['phaseWriterResultCode', 'writerExitUnverified'],
+  for (const [key, value] of [['processTreeAbsent', false], ['filesystemProcessAbsent', false],
+    ['filesystemErrorCode', 'WINDOWS_ACCEPTANCE_LEGACY_FILESYSTEM_TIMED_OUT'], ['phaseWriterResultCode', 'writerExitUnverified'],
     ['supervisorCleanupResultCode', 'cleanupUnverified'], ['fixtureRemoved', false], ['businessDataPreserved', false],
     ['idempotentSecondStartup', false], ['adoptedWorkspaceCount', 2], ['profileFileCountAfter', 1],
     ['sourcePackageSha256', 'private'], ['postconditionResultCode', 'targetProductPresent'], ['semanticCleanupResultCode', 'notRequired']]) {

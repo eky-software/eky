@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { lstat, mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -17,15 +17,12 @@ import {
   legacyUpgradeFailureDetails,
   resolveLegacyUpgradeTerminalOutcome,
 } from './legacyUpgradeFailureBoundary.mjs';
-import {
-  materializeLegacyUpgradeArtifactFixture,
-  verifyLegacyUpgradeArtifactSourceFixture,
-} from './legacyUpgradeArtifactFixture.mjs';
+import { createLegacyUpgradeFilesystemRuntime } from './legacyUpgradeFilesystemRuntime.mjs';
+import { LEGACY_SUPERVISOR_TIMEOUT_MS, LEGACY_SUPERVISOR_CLEANUP_MS,
+  LEGACY_PHASE_WRITER_TIMEOUT_MS, LEGACY_PHASE_WRITER_TERMINATION_MS } from './legacyUpgradeBudget.mjs';
 import { LEGACY_UPGRADE_DESCRIPTOR_FILENAME } from './legacyUpgradeArtifact.mjs';
-import { verifyLegacyUpgradeSemanticPostcondition } from './legacyUpgradePostcondition.mjs';
 import { createUpgradeRollbackPostSupervisorWindowsRuntime } from './upgradeRollbackPostSupervisorWindowsRuntime.mjs';
 import {
-  createClosedDirectoryInventory,
   inventoriesMatch,
 } from './closedDirectoryInventory.mjs';
 import { parseAbsoluteWindowsAcceptancePath } from './windowsAcceptancePathArgument.mjs';
@@ -47,8 +44,6 @@ const SUPERVISOR_DLL = resolve(
 );
 const WORKER_PATH = resolve(DIRECTORY, 'runLegacyUpgradeWorker.mjs');
 const DOTNET_EXECUTABLE = process.env.EKY_DOTNET_EXE || 'dotnet';
-const SUPERVISOR_TIMEOUT_MILLISECONDS = 600_000;
-const SUPERVISOR_CLEANUP_RESERVE_MILLISECONDS = 30_000;
 
 async function requireStandaloneRegularFile(path, errorCode) {
   try {
@@ -153,15 +148,16 @@ function asProductRuntimeArtifact(artifact) {
 }
 
 export async function runLegacyUpgrade(arguments_, {
-  materializeFixture = materializeLegacyUpgradeArtifactFixture,
-  inventoryProfile = createClosedDirectoryInventory,
+  filesystem = createLegacyUpgradeFilesystemRuntime(),
+  materializeFixture = filesystem.materializeFixture,
+  inventoryProfile = filesystem.inventoryProfile,
   createProductRuntime = createUpgradeRollbackPostSupervisorWindowsRuntime,
   launchSupervisor = startLegacyUpgradeSupervisor,
   readSupervisorResult = readWindowsAcceptanceSupervisorResult,
   readScenarioResult = readLegacyUpgradeResult,
-  verifySemanticPostcondition = verifyLegacyUpgradeSemanticPostcondition,
-  verifyArtifact = verifyLegacyUpgradeArtifactSourceFixture,
-  removeRunRoot = (root) => rm(root, { force: true, recursive: true }),
+  verifySemanticPostcondition = filesystem.verifySemanticPostcondition,
+  verifyArtifact = filesystem.verifyArtifact,
+  removeRunRoot = filesystem.removeRunRoot,
   expectedArtifact,
   createPhaseWriter = createWorkspacePhaseWriter,
 } = {}) {
@@ -206,7 +202,8 @@ export async function runLegacyUpgrade(arguments_, {
       if (!writerAttempted) {
         writerAttempted = true;
         writerOutcome = { writerResultCode: 'writerExitUnverified', diagnosticResultCode: 'channelFailed' };
-        phaseWriter = createPhaseWriter({ timeoutMilliseconds: 600_000, terminationTimeoutMilliseconds: 5_000 });
+        phaseWriter = createPhaseWriter({ timeoutMilliseconds: LEGACY_PHASE_WRITER_TIMEOUT_MS,
+          terminationTimeoutMilliseconds: LEGACY_PHASE_WRITER_TERMINATION_MS });
       }
       const now = performance.now();
       if (status === 'started') phaseStarts.set(phase, now);
@@ -266,8 +263,8 @@ export async function runLegacyUpgrade(arguments_, {
       command: process.execPath,
       arguments: [WORKER_PATH, '--request', workerRequestPath],
       workingDirectory: scenarioRoot,
-      timeoutMilliseconds: SUPERVISOR_TIMEOUT_MILLISECONDS,
-      cleanupReserveMilliseconds: SUPERVISOR_CLEANUP_RESERVE_MILLISECONDS,
+      timeoutMilliseconds: LEGACY_SUPERVISOR_TIMEOUT_MS,
+      cleanupReserveMilliseconds: LEGACY_SUPERVISOR_CLEANUP_MS,
     });
 
     supervisorAttempted = true;
@@ -320,7 +317,7 @@ export async function runLegacyUpgrade(arguments_, {
         await observed('artifactVerification', () => verifyArtifact(artifact));
       } catch {
         safetyError ??= new Error(
-          'WINDOWS_ACCEPTANCE_LEGACY_LOCAL_FIXTURE_CHANGED',
+          filesystem.outcome().filesystemErrorCode ?? 'WINDOWS_ACCEPTANCE_LEGACY_LOCAL_FIXTURE_CHANGED',
         );
       }
     }
@@ -331,8 +328,11 @@ export async function runLegacyUpgrade(arguments_, {
           if (!inventoriesMatch(profileBefore, profileAfter)) throw new Error('WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED');
         });
       } catch {
-        safetyError ??= new Error('WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED');
+        safetyError ??= new Error(filesystem.outcome().filesystemErrorCode ?? 'WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED');
       }
+    }
+    if (filesystem.outcome().filesystemErrorCode !== null) {
+      safetyError ??= new Error(filesystem.outcome().filesystemErrorCode);
     }
     observe('fixtureCleanup', 'started');
     writerStopped = true;
@@ -385,6 +385,7 @@ export async function runLegacyUpgrade(arguments_, {
       fixtureRemoved,
       phaseWriterResultCode: writerOutcome.writerResultCode,
       phaseDiagnosticResultCode: writerOutcome.diagnosticResultCode,
+      ...filesystem.outcome(),
     });
   }
   return Object.freeze({
@@ -418,6 +419,7 @@ export async function runLegacyUpgrade(arguments_, {
     fixtureRemoved,
     phaseWriterResultCode: writerOutcome.writerResultCode,
     phaseDiagnosticResultCode: writerOutcome.diagnosticResultCode,
+    ...filesystem.outcome(),
   });
 }
 

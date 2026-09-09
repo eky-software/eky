@@ -13,6 +13,7 @@ import {
 } from './runLegacyUpgrade.mjs';
 import { legacyUpgradeFailureDetails } from './legacyUpgradeFailureBoundary.mjs';
 import { validateLegacyCallerResult } from './legacyCallerResult.mjs';
+import { createLegacyUpgradeFilesystemRuntime } from './legacyUpgradeFilesystemRuntime.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 
@@ -31,6 +32,7 @@ for (const [mode, expectedErrorCode] of Object.entries({
   scenarioUnreadable: 'WINDOWS_ACCEPTANCE_LEGACY_SCENARIO_RESULT_INVALID',
   semanticCleanupFailed: 'WINDOWS_ACCEPTANCE_LEGACY_FINAL_CLEANUP_FAILED',
   fixtureCleanupFailed: 'WINDOWS_ACCEPTANCE_LEGACY_SCENARIO_RESULT_INVALID',
+  filesystemUnverified: 'WINDOWS_ACCEPTANCE_LEGACY_SCENARIO_RESULT_INVALID',
 })) {
   test(`legacy command retains evidence only when needed: ${mode}`, { skip: process.platform !== 'win32' }, async (t) => {
     let root;
@@ -74,7 +76,7 @@ for (const [mode, expectedErrorCode] of Object.entries({
         return { child: { exitCode: 0, signalCode: null }, completion: Promise.resolve(0) };
       },
       readScenarioResult: async () => {
-        if (['scenarioUnreadable', 'fixtureCleanupFailed'].includes(mode)) throw new Error('private result');
+        if (['scenarioUnreadable', 'fixtureCleanupFailed', 'filesystemUnverified'].includes(mode)) throw new Error('private result');
         return { status: 'completed', resultCode: 'historicalLegacyUpgradeCompleted' };
       },
       verifySemanticPostcondition: async () => ({ status: 'completed', resultCode: 'legacySemanticProofValidated',
@@ -85,6 +87,10 @@ for (const [mode, expectedErrorCode] of Object.entries({
         await rm(path, { recursive: true, force: true });
       },
     };
+    if (mode === 'filesystemUnverified') {
+      ports.filesystem = createLegacyUpgradeFilesystemRuntime({ runProcess: async () => ({ directProcessAbsent: false }) });
+      ports.verifyArtifact = ports.filesystem.verifyArtifact;
+    }
     // The missing-supervisor case uses the actual strict filesystem reader.
     if (mode !== 'missingSupervisor') ports.readSupervisorResult = async () => mode === 'processTreeUnverified'
       ? { ...supervisor, status: 'failed', processResultCode: 'deadlineExceeded',
@@ -115,7 +121,7 @@ for (const [mode, expectedErrorCode] of Object.entries({
     else assert.equal(await readFile(resolve(root, 'fixture', 'private-evidence'), 'utf8'), 'synthetic evidence');
     assert.equal(removals, removed || mode === 'fixtureCleanupFailed' ? 1 : 0);
     assert.equal(launched, !['preflightFailed', 'artifactBindingMismatch'].includes(mode));
-    assert.equal(cleanups, ['completed', 'scenarioUnreadable', 'semanticCleanupFailed', 'fixtureCleanupFailed'].includes(mode) ? 1 : 0);
+    assert.equal(cleanups, ['completed', 'scenarioUnreadable', 'semanticCleanupFailed', 'fixtureCleanupFailed', 'filesystemUnverified'].includes(mode) ? 1 : 0);
     if (failure) {
       assert.equal(failure.fixtureRemoved, removed);
       assert.equal(failure.fixtureCleanupResultCode, removed ? 'fixtureRemoved'
@@ -126,6 +132,11 @@ for (const [mode, expectedErrorCode] of Object.entries({
       if (mode === 'semanticCleanupFailed') assert.equal(failure.semanticCleanupResultCode, 'semanticCleanupFailed');
       if (mode === 'processTreeUnverified') assert.equal(failure.processTreeAbsent, false);
       if (mode === 'missingSupervisor') assert.equal(failure.processTreeAbsent, false);
+      if (mode === 'filesystemUnverified') {
+        assert.equal(failure.filesystemProcessAbsent, false);
+        assert.equal(failure.filesystemErrorCode, 'WINDOWS_ACCEPTANCE_LEGACY_FILESYSTEM_PROCESS_REMAINS');
+        assert.equal(failure.fixtureCleanupResultCode, 'retainedUnverified');
+      }
     }
   });
 }

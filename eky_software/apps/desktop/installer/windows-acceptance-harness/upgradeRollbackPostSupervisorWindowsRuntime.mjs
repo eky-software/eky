@@ -7,9 +7,9 @@ import { runBoundedWindowsAdapterProcess } from './boundedWindowsAdapterProcess.
 import { validateInstallerProductStateResult } from './cleanInstallUninstallWindowsRuntime.mjs';
 import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
 
-const INSPECTOR_TIMEOUT_MILLISECONDS = 30_000;
-const SEMANTIC_CLEANUP_TIMEOUT_MILLISECONDS = 120_000;
-const DIRECT_PROCESS_TERMINATION_TIMEOUT_MILLISECONDS = 5_000;
+export const INSPECTOR_TIMEOUT_MILLISECONDS = 30_000;
+export const SEMANTIC_CLEANUP_TIMEOUT_MILLISECONDS = 120_000;
+export const DIRECT_PROCESS_TERMINATION_TIMEOUT_MILLISECONDS = 5_000;
 const INSPECTOR_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
   'inspectWindowsInstallerProductState.ps1',

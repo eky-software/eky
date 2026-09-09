@@ -1,5 +1,6 @@
 import { basename, dirname, resolve } from 'node:path';
 import { LEGACY_COMMAND_ERROR_CODES } from './legacyUpgradeFailureBoundary.mjs';
+import { LEGACY_FILESYSTEM_ERROR_CODES } from './legacyUpgradeFilesystem.mjs';
 import { LEGACY_UPGRADE_SCENARIO } from './legacyUpgradeContracts.mjs';
 import { LEGACY_SEMANTIC_POSTCONDITION_FAILURE_CODES } from './legacyUpgradePostcondition.mjs';
 import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
@@ -14,6 +15,8 @@ const PRODUCT = ['notChecked', 'sourceProductPresent', 'targetProductPresent', '
   'installerRegistryPresent', 'exactProductsAbsent', 'exactProductsAbsentAfterCleanup',
   'productStateVerificationFailed', 'productStateVerificationTimedOut', 'productStateVerificationProcessRemains'];
 const CODES = {
+  filesystemOperation: ['notFailed', 'inventory', 'materialize', 'semantic', 'artifact', 'remove'],
+  filesystemErrorCode: [null, ...LEGACY_FILESYSTEM_ERROR_CODES],
   phaseWriterResultCode: ['notStarted', 'writerAbsent', 'writerExitUnverified'],
   phaseDiagnosticResultCode: ['notSent', 'channelFailed', 'messagesDropped', 'deliveryUnverified'],
   supervisorProcessResultCode: ['deadlineExceeded', 'jobAssignFailed', 'jobConfigureFailed', 'jobCreateFailed',
@@ -30,7 +33,7 @@ const CODES = {
     'semanticCleanupCompleted', 'semanticCleanupFailed', 'semanticCleanupTimedOut', 'semanticCleanupProcessRemains', ...PRODUCT],
   fixtureCleanupResultCode: ['retainedUnverified', 'fixtureRemoved', 'fixtureCleanupFailed'],
 };
-const BOOLEANS = ['processTreeAbsent', 'fixtureRemoved', 'legacyBusinessFixtureValidated',
+const BOOLEANS = ['processTreeAbsent', 'filesystemProcessAbsent', 'fixtureRemoved', 'legacyBusinessFixtureValidated',
   'idempotentSecondStartup', 'businessDataPreserved'];
 const COUNTS = ['adoptedWorkspaceCount', 'profileFileCountBefore', 'profileFileCountAfter'];
 const KEYS = new Set(['schemaVersion', 'scenario', 'status', 'errorCode', 'safetyErrorCode', 'resultCode',
@@ -87,7 +90,7 @@ export function validateLegacyCallerResult(value, expected) {
     !['notRequired', 'processTreeAbsent'].includes(outcome.supervisorCleanupResultCode) ||
     outcome.scenarioResultCode !== 'historicalLegacyUpgradeCompleted' || outcome.semanticProofResultCode !== 'legacySemanticProofValidated' ||
     outcome.semanticCleanupResultCode !== 'semanticCleanupCompleted' || outcome.postconditionResultCode !== 'exactProductsAbsent' ||
-    outcome.fixtureCleanupResultCode !== 'fixtureRemoved' ||
+    outcome.fixtureCleanupResultCode !== 'fixtureRemoved' || outcome.filesystemErrorCode !== null || outcome.filesystemOperation !== 'notFailed' ||
     outcome.adoptedWorkspaceCount !== 1 || !Number.isSafeInteger(outcome.profileFileCountBefore) ||
     outcome.profileFileCountBefore !== outcome.profileFileCountAfter ||
     !SHA.test(outcome.sourcePackageSha256) || !SHA.test(outcome.targetPackageSha256) ||

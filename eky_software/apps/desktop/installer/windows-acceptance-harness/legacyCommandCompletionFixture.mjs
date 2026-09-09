@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -7,11 +8,13 @@ import { fileURLToPath } from 'node:url';
 import { runLegacyUpgrade, runLegacyUpgradeCli, startLegacyUpgradeSupervisor } from './runLegacyUpgrade.mjs';
 import { legacyUpgradeFailureDetails } from './legacyUpgradeFailureBoundary.mjs';
 import { readWindowsAcceptanceSupervisorResult } from '../windows-process-supervisor/windowsAcceptanceSupervisorResult.mjs';
+import { createLegacyUpgradeFilesystemRuntime } from './legacyUpgradeFilesystemRuntime.mjs';
+import { runBoundedWindowsAdapterProcess } from './boundedWindowsAdapterProcess.mjs';
 
 // Only the existing contract Job contains this command. The inner production
 // supervisor still owns the scenario; no test code scans or kills its tree.
 const input = JSON.parse(await readFile(process.argv[2], 'utf8'));
-assert(['hold', 'unread', 'cleanupUnverified', 'missingSupervisor', 'cleanupFailed', 'writerUnverified'].includes(input.mode));
+assert(['hold', 'unread', 'cleanupUnverified', 'missingSupervisor', 'cleanupFailed', 'writerUnverified', 'filesystemHold'].includes(input.mode));
 const events = [];
 let supervisorResult;
 const persist = async (outcome) => writeFile(input.reportPath, JSON.stringify({ events, supervisorResult, outcome }));
@@ -58,6 +61,21 @@ const ports = {
     return supervisorResult;
   },
 };
+if (input.mode === 'filesystemHold') {
+  // Block the existing grouped filesystem boundary after the scenario's real
+  // deadline. Its existing adapter, not the fixture, owns exact termination.
+  ports.filesystem = createLegacyUpgradeFilesystemRuntime({
+    runProcess: (options) => runBoundedWindowsAdapterProcess({ ...options,
+      timeoutMilliseconds: 1_000, terminationTimeoutMilliseconds: 1_000 }),
+    spawnProcess(command, _, options) {
+      const child = spawn(command, [fileURLToPath(new URL('./legacyCommandWorkerFixture.mjs', import.meta.url)), 'hold'], options);
+      child.once('exit', () => events.push('filesystemExit'));
+      child.once('close', () => events.push('filesystemClose'));
+      return child;
+    },
+  });
+  ports.verifyArtifact = ports.filesystem.verifyArtifact;
+}
 if (input.mode === 'writerUnverified') ports.createPhaseWriter = () => ({ send() {}, async finish() {
   return { writerResultCode: 'writerExitUnverified', diagnosticResultCode: 'channelFailed' };
 } });
