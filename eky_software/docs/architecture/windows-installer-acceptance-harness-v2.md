@@ -2849,8 +2849,18 @@ kutsua. Nykyinen vapaaehtoinen havaintokanava erottaa nyt `productChannelSetup`,
 `productSupervisorWait`, `productSupervisorExit`, `productSupervisorClose` ja
 `productChannelCleanup`-rajat. Uutta ajastinta, siivousomistajaa tai tulosehtoa
 ei lisätä. Käyttäytymissarja 47/47 ja jaetut caller-regressiot 156/156 sekä
-desktopin typecheck/build läpäisivät; paketoitu workspace-todennus ja normaali
-kokonaisportti ovat yhä auki.
+desktopin typecheck/build läpäisivät.
+
+Revision `a24533e90c1e300e32ee35ba9dea1d9a732de539`
+[workspace-diagnostiikka 34520110820](https://github.com/eky-software/eky/actions/runs/34520110820)
+läpäisi koko callerin ja pakollisen lopputulosverifierin. Poiston kanavan
+avaaminen, supervisorin exit/close ja kanavan sulkeminen valmistuivat tässä
+järjestyksessä; artifact `10161685548` varmistettiin muuttumattomaksi ennen
+ja jälkeen ajon. Käytetyn buildin revisio oli edelleen `c5017ac760c76d25d96daa2a32d75b6b3e63c810`.
+Aiempi jumi ei toistunut; pelkkä vaihehavaintojen lisäys ei ole sen
+juurisyykorjaus. Peruutetun ajon näyttö säilyy epäonnistuneena ja
+varmentamattomana. Seuraava portti on normaali commit-pohjainen PR-kierros,
+ei diagnostisen uusinnan käyttäminen lopullisena hyväksyntänä.
 
 Nykyisen feasibility-workflow'n `packaged-boundary-diagnostic` on erikseen
 käynnistettävä diagnostiikka, ei required-check-hyväksyntä. Se ajaa vain
