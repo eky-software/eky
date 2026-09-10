@@ -2400,6 +2400,90 @@ tehdään yhtenä katselmoitavana cutover-kokonaisuutena. Versionosto ja
 käyttäjälle toimitettava pilot-artifact ovat vasta tämän jälkeinen erillinen
 julkaisuvaihe.
 
+### Käyttöönottokatselmus V2.8-checkpointin jälkeen
+
+Katselmuksen lähde on `1d22a0d4d4a202ce76cecb1ec06192ed9a20d604` ja
+main-baseline `c1d010263ccf4dc490a709f58ea8a4a5b34fa03a`. Main on tämän
+V2-haaran esi-isä; välissä on 106 committia ja 252 muuttunutta tiedostopolkua.
+Luvut kuvaavat tätä tarkistusta, eivät myöhemmän integraation pysyvää pohjaa.
+PR:t #259-#266 muodostavat draft-pinon. Sen pohjana on myös jäädytetyn
+#258:n testiharness-muutoksia. #257/#258:aa ei mergeä eikä historiaa kirjoiteta
+uudelleen tämän katselmuksen perusteella. Integraatiossa arvioidaan koko
+main-vertailu, ei vain viimeisen PR:n diffi.
+
+Koko pinossa on myös desktopin lähdekoodia: `desktopComposition.ts` käyttää
+`desktopStartupCompletion.ts`:n yhteistä tapahtuman tuottajaa ja validoidun
+synteettisen proof-polun session-varmennusta. `w6b2PackagedProof.ts` ja
+`w6b2PackagedSessionProbe.ts` omistavat yksityisen proof-sopimuksen. Tavallisen
+käynnistyksen tapahtuma säilyy nykyisessä kohdassaan, mutta yhteisen
+composition-kytkennän vuoksi pinoa ei kuvata pelkäksi irrallisten testien
+muutokseksi. V2.6/V2.7:n session- ja käynnistysregressiot kuuluvat myös
+integraation hyväksyntään. Package-muutokset ovat testikomentoja;
+desktop-versio pysyy tässä vertailussa 0.2.7:ssä.
+
+Vihreä V2.8-kierros ei vielä todista seuraavia vanhan MSI-portin vaatimuksia:
+
+| Säilytettävä vaatimus | Vanha todiste | Nykyisen V2:n puute ja seuraava vastuu |
+| --- | --- | --- |
+| Vaurioituneen asennuksen repair palauttaa täsmälleen oikean payloadin | `testWindowsInstallerLifecycle.ps1` poistaa asennetun backend-tiedoston ja ajaa `/fa`-korjauksen sekä payload-vertailun | `cleanInstallUninstallLifecycle.mjs` sisältää vain install/uninstall-ketjun. Repair siirretään sen nykyiseen lifecycle-/Windows-adapterirajaan omine jälkiehtoineen. |
+| Uninstallin jälkeinen reinstall säilyttää saman profiilin datan ja poistuu puhtaasti | Sama vanha lifecycle asentaa, korjaa, poistaa, asentaa uudelleen ja poistaa uudelleen | Kaksi erillistä V2-clean-consumeria ei ole saman profiilin reinstall-todiste. Ketju ja datan säilyminen lisätään samaan clean-vastuuseen. |
+| Suora Setup-päivitys sovelluksen ollessa käynnissä | `testWindowsInstallerUpgrade.ps1` käynnistää MSI:n elävän Ekyn rinnalle ja tarkistaa odotuksen tai hallitun eston sekä lopullisen version ja datan | `upgradeRollbackLifecycle.mjs` ei käynnistä source-sovellusta ennen major upgradea. Workspace-handoffin hallittu sulkeminen ei korvaa tätä tapausta. Todiste kuuluu nykyisen upgrade-vastuun alle. |
+
+Näille ei luoda uutta supervisoria tai ajokehystä. Korvaavan ketjun pitää
+käyttää samaa prosessiomistajaa, muuttumattomia artifact-tavuja ja erillisiä
+alkuperäisen virheen, cleanupin ja jälkiehtojen tuloksia. Ensin tehdään
+käyttäytymisregressiot nykyisiin vastuisiin, sitten sovitut clean/upgrade-
+consumerit. Vanhoja lifecycle-/upgrade-tiedostoja ei poisteta ennen näyttöä.
+Clean-siirtoon kuuluu myös asennetun payloadin täysi vertailu installin,
+repairin ja reinstallin jälkeen. Nykyinen V2-clean tarkistaa tuotetilan,
+keskeisten asennuspolkujen olemassaolon ja lähde-MSI:n eheyden, mutta ei
+vertaa koko asennettua payloadia vanhan `Assert-EkyInstalledPayload`-portin
+tavoin. Ehjä lähdeartifact ei yksin todista asennettujen tiedostojen eheyttä.
+
+Julkaisuvastuita ei myöskään kadoteta vanhan jobin mukana. V2-clean-producer
+käyttää nykyistä pilot-paketointia, locked-restore-tarkistusta ja
+`releaseWindowsInstaller.mjs`:n MSI-inspector-/sidecar-varmennusta;
+consumerit varmentavat artifactin ennen ja jälkeen. Core ajaa erikseen
+`smoke:windows`-portin. `installer:local-pilot-bundle` suoritetaan tällä
+hetkellä vain vanhassa MSI-jobissa, ei V2-ketjussa. Sen lopullinen kytkentä
+release-porttiin pitää nimetä ja todentaa ennen vanhan jobin poistoa.
+Pelkkä builderin yksikkötesti ei korvaa hyväksyttyjen julkaisutavujen
+bundle-varmennusta. Tässä katselmuksessa ei rakenneta pilot-bundlea.
+
+| Vastuu | Poiston tai säilyttämisen ehto |
+| --- | --- |
+| Vanhat W6/W6B.2-komento- ja scenario-orkestroijat | Poistoehdokkaita vasta invarianttikohtaisen V2-näytön sekä CLI-, workflow- ja import-viittausten siirron jälkeen. Niiden mukana poistetaan vain korvatun orkestroinnin omat testit. |
+| `windowsInstallerTestSupport.ps1` ja vanhat prosessi-/odotusapurit | Ei poisteta niin kauan kuin repair/reinstall/running-upgrade tai jokin muu säilyvä kuluttaja tarvitsee niitä. Viittaustarkistus tehdään uudelleen poiston commitilla. |
+| `buildWindowsInstaller.mjs`, `releaseWindowsInstaller.mjs`, historical builder/provenance ja `buildW6b2PackagedSuccessInstallers.mjs` | V2-producerien käyttämiä paketointi-/fixture-vastuita, eivät automaattisia poistokohteita. |
+| `w6b2PackagedSuccessRunFixture.mjs` ja `w6b2PackagedFaultRunFixture.mjs` | Nykyinen V2-workspace-runtime käyttää näitä suoraan; säilytetään ilman nimeen perustuvaa yleissiivousta. |
+| Desktopin private proof, business-verifierit ja package smoke | Säilytetään. Vanhan harnessin poistaminen ei poista niiden invariantteja tai tuotannon käynnistyskytkentöjä. |
+
+Required-check-siirron ehdotus, ei vielä hyväksytty asetusmuutos:
+
+- Nykyiset kuusi pakollista nimeä ovat yllä luetellut core/E2E-, dependency-
+  ja MSI-checkit. Korvaavaksi yhdistelmäksi ehdotetaan `V2 acceptance` ja
+  itsenäinen `Audit dependencies`; V2-koonti tarkistaa riskin valitsemat
+  yksittäiset jobit, vaiheet ja kaikki vaaditut toistot.
+- Strict-ajantasaisuus, vaadittu PR ja GitHub Actions -tuottajaan sidonta
+  säilyvät. Vanhaa checkiä ei vapauteta ennen korvaavaa vihreää kattavuutta
+  ja omistajan erillistä päätöstä. Suojauksia ei väliaikaisesti poisteta.
+- V2:n reusable-core-jobien nimet ovat prefiksoituja. Vanhojen suorien
+  triggerien poiston yhteydessä ei jätetä pakolliseksi nimeä, jota uusi
+  workflow ei tuota. Nimet ja triggerit tarkistetaan yhdessä samalla
+  integraatiorevisiolla ennen asetusten vaihtoa.
+- Kattavuusaukkojen sulkemisen jälkeen valmistellaan ajantasaiseen mainiin
+  kohdistuva integraatiokatselmus, vanhan/uuden vertailu ja ehdotettu
+  poistodiffi. Vasta hyväksytyssä siirrossa muutetaan required checkit ja
+  poistetaan korvattu orkestrointi. Merge vaatii oman hyväksynnän ja sen
+  jälkeen merge-commitin täyden main-ajon; PR:n tulos ei korvaa sitä.
+
+Alla olevan koko V2:n valmis-määritelmän kaksi paikallista täyttä kierrosta
+ja kaksi GitHub-kierrosta säilyvät. V2.5-V2.7:n rajatut ympäristöpäätökset
+koskevat vaihehyväksyntää, eivät automaattisesti tätä lopullista siirtoa.
+Saman CI-ajon kaksi consumeria eivät ole kaksi erillistä kokonaiskierrosta.
+Jos integraation ympäristöraja tarvitsee muutoksen, omistajalta pyydetään
+yksi nimenomainen päätös ennen lopullisten ajojen tilaamista.
+
 ## Valmis-määritelmä
 
 V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
@@ -2423,16 +2507,40 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 
 ## Nykyinen päätös
 
-V2.8:n riskikytkentä sekä Electron- ja workspace-korjaukset säilyvät PR #266:ssa.
-Legacy-komennon tulostoimitus ja sen virhepolun konfiguroidut varaukset on
-korjattu. Nykyinen avoin työ on apuoperaatioiden valmistumis- ja
-aineiston säilytyssopimus kaikissa sen kuluttajissa, ei uusi testialusta.
-V2:n yhteinen
-hyväksyntä, required-check-siirto, vanhan orkestroinnin poisto ja julkaisu
-ovat edelleen avoinna. Alla oleva V2.7-hyväksyntä on historiallinen lähtökohta,
-ei nykyisen revision hyväksyntä.
+PR #266:n V2.8-checkpointin normaali commit-pohjainen
+[CI-ajo 34462106934](https://github.com/eky-software/eky/actions/runs/34462106934)
+valmistui ensimmäisellä yrityksellä vihreäksi. Lähde-HEAD on
+`1d22a0d4d4a202ce76cecb1ec06192ed9a20d604`; CI:n todellinen checkout ja
+artifactien build-revisio ovat `65cdccde9c1eae4944add7503646c8b7c907c4e2`.
+Kaikki 28 valittua jobia läpäisivät ja vakaa koonti palautti `ciAccepted`.
+Kuusi V2-kutsutilan ohittamaa vanhaa MSI/W6-jobia eivät ole hyväksyttyjä ajoja.
 
-Viimeisimmän CI-ajon lähde-HEAD `25cbe183ab08bc0846f1347b18e83f6a87d283e5` ja CI:n checkout
+CI todisti installer-unitit 165/165, Windows process contracts 77/77,
+legacy-sopimukset 239/239 kummallakin runnerilla ja Electron criticalin
+38 onnistunutta testiä ilman flaky-tulosta. Clean-, upgrade-, legacy- ja
+workspace-success-consumerit läpäisivät kukin 2/2; fault-matriisi läpäisi
+10/10. Kymmenen consumerin ennen/jälkeen-varmennukset vastasivat omien
+producerien artifact-identiteettejä. Pakolliset tulosverifierit hyväksyivät
+prosessipoistumisen, erilliset siivous- ja semanttiset jälkiehdot sekä
+session-proofit soveltuvissa skenaarioissa. Vaiheloki ei korvannut
+pakollista tulostodistetta.
+
+Apuoperaatioiden valmistumis- ja aineiston säilytyskorjaus on tällä
+revisiolla todennettu nykyisissä kuluttajissa. Aiempi valmistelun viive ei
+toistunut; sen natiivisyytä ei ole osoitettu eikä budjetteja muutettu.
+V2.8:n vaihecheckpointin jälkeen avoinna ovat edellä nimetyt vanhan MSI-portin
+kattavuusaukot ja release-kytkentä, lopullisen integraation hyväksyntä,
+required-check-siirto ja korvatun orkestroinnin poisto. PR pysyy draftina.
+Koko V2 ja käyttäjän 0.2.8-pilotti eivät ole vielä valmiita.
+
+Tämä dokumentaation päivitys ei ole uusi koodirevision hyväksyntä eikä
+syy toistaa muuttumatonta raskasta matriisia. Alla olevat aiemmat hylkäykset
+ja diagnoosit säilyvät historiallisina havaintoina, eivät nykyisen CI-ajon
+tilana. Niitä ei muuteta jälkikäteen hyväksytyiksi.
+
+### Aiempi hylkäys ja erillinen diagnoosi
+
+Aiemman CI-ajon lähde-HEAD `25cbe183ab08bc0846f1347b18e83f6a87d283e5` ja CI:n checkout
 `2850f6b73a093e5cea944b15f8cb2373010bf706` ovat eri revisiot.
 [Ajo 34416786931](https://github.com/eky-software/eky/actions/runs/34416786931)
 päättyi epäonnistuneena ensimmäisellä yrityksellä. Clean- ja
@@ -2442,13 +2550,13 @@ Workspace-haara pysähtyi ennen produceria: kirjoittimen command-fixturen
 synteettisestä caller-tuloksesta puuttui pakollinen `productProcessAbsent`.
 Fixture on korjattu nykyiseen strict-sopimukseen; alkuperäiset poistumis-,
 kanavavirhe- ja pakollisen tuloksen regressiot säilyvät. Korjaus on
-kohdetesteillä hyväksytty, mutta sen uusi CI-näyttö on vielä avoin.
+kohdetesteillä hyväksytty ja myöhemmin yllä yksilöidyssä normaalissa CI-ajossa.
 
 Legacy-sopimussarjoista vain toinen läpäisi. Toisessa ikkunafixturen
 käännösvalmistelu ylitti nykyisen 10 sekunnin kokonaisrajan jo yhteisessä
 valmistelussa; varsinaisia ikkunatapauksia ei päästy ajamaan. Tämä ei ole
 30 sekunnin GUI-havainnointirajan eikä MSI-upgraden hylkäys. Valmistelun
-sisäinen pysähtymisraja on vielä paikantamatta. Onnistunut toinen runner
+sisäinen pysähtymisraja jäi paikantamatta. Onnistunut toinen runner
 ei korvaa epäonnistunutta sarjaa. Aikarajoja ei ole muutettu, eikä uutta
 packaged-kierrosta käytetä tämän puuttuvan havainnon korvikkeena.
 
@@ -2478,7 +2586,8 @@ valmistelun prosessit poistuivat normaalisti ilman pakotettua cleanupia.
 MSI-artifacteja ei rakennettu eikä consumereita ajettu. Aiempi viive ei toistunut, mutta
 sen syy ei tällä näytöllä ratkea. Supervisoria ja budjetteja ei muuteta tämän
 diagnoosin perusteella. PR:n puhtaan revision varsinainen hyväksyntämatriisi
-on edelleen erillinen avoin portti; diagnostiikka ei korvaa sitä.
+valmistui erikseen yllä yksilöidyssä normaalissa CI-ajossa; diagnostiikka ei
+korvannut sitä.
 
 ### Apuoperaatioiden yhteinen sopimus ja tulostoimituksen varaus
 
@@ -2488,8 +2597,8 @@ käynnistettyjen apuprosessien poistumista. Korjattu
 `productProcessAbsent`-kentässä. Epävarma poistuminen estää seuraavan
 kyselyn ja uninstallin sekä tulostiedoston poistamisen. Havaittu
 jatkopäätösvirhe on korjattu, mutta se ei osoita, mihin alustakutsuun
-katkaistut CI-ajot jäivät. Nykyisen korjauksen packaged- ja CI-hyväksyntä
-ovat vielä avoinna.
+katkaistut CI-ajot jäivät. Korjauksen packaged- ja CI-näyttö on yllä kohdassa
+**Nykyinen päätös**; koko V2:n käyttöönottoraja säilyy erillisenä.
 
 | Nykyinen kuluttaja | Yhteisen sopimuksen käyttö |
 | --- | --- |
@@ -2533,7 +2642,7 @@ valtuuttavat jatkamisen. EOF:n rajatonta odotusta, synkronista varatulostusta,
 uutta tiedostolukijaprosessia tai uutta yleistä ajuria ei lisätä.
 Puuttuva tulos tai epävarma poistuminen säilyttää testijuuren.
 
-Korvauksen koko hyväksyntä on vielä kesken. Kohdesarja kattaa
+Korvauksen kohdesarja kattaa
 myös todellisen komentoprosessin valmistumisen, pysähtyvän valmistelun,
 kyselyn jälkeläisen, tulosluvun ja tulospoiston sekä alkuperäisen virheen
 säilymisen siivousvirheen rinnalla. Erillinen regressio osoitti toimitusrajan:
@@ -2594,8 +2703,8 @@ observer-virheen todellisessa prosessiketjussa. Korjauksen kohderegressiot,
 installer-unitit, koko Windows process-contract -sarja, V2-legacy-sopimukset,
 jaettujen callerien regressiot, CI-kytkentätestit sekä desktopin typecheck ja
 build on hyväksytty. Aiemmat epäonnistuneet sarjat säilyvät epäonnistuneina.
-Tämän checkpointin packaged- ja CI-hyväksyntä ovat vielä avoinna; ne vaativat
-puhtaan revision ja siihen sidotut artifactit.
+Tämän checkpointin packaged- ja CI-hyväksyntä toteutuivat yllä yksilöidyllä
+puhtaalla revisiolla ja siihen sidotuilla artifacteilla.
 
 ### Legacy-tulostoimituksen korjattu vastuu
 
