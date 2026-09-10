@@ -56,6 +56,11 @@ function createSuccessfulDependencies(overrides = {}) {
     invokeBinaryRollback: async () => 0,
     removeRollbackBlocker: async () => undefined,
     reportProgress: () => undefined,
+    verifyPayload: async () => undefined,
+    runRunningUpgrade: async () => {
+      operations.push('majorUpgrade');
+      return { status: 'completed', exitCode: 0, cleanupResultCode: 'completed' };
+    },
     runMsiOperation: async (operation) => {
       operations.push(operation);
       return {
@@ -92,6 +97,8 @@ test('lifecycle proves upgrade, downgrade, both rollback paths, and final absenc
   assert.equal(dependencies.getVerifyCount(), 5);
   assert.equal(result.binaryRollbackRestoredSource, true);
   assert.equal(result.windowsInstallerRollbackRestoredSource, true);
+  assert.equal(result.runningApplicationUpgradeValidated, true);
+  assert.equal(result.installedPayloadValidated, true);
 });
 
 test('accepted downgrade fails closed and cleans the exact target product', async () => {
@@ -118,7 +125,6 @@ test('accepted downgrade fails closed and cleans the exact target product', asyn
   assert.equal(result.cleanupResultCode, 'cleanupCompleted');
   assert.deepEqual(operations, [
     'sourceInstall',
-    'majorUpgrade',
     'downgrade',
     'cleanupTarget',
   ]);
@@ -135,12 +141,12 @@ test('cleanup failure never replaces the primary lifecycle error', async () => {
       }
       return next;
     },
-    runMsiOperation: async (operation) =>
-      operation === 'majorUpgrade' ? 1603 : 0,
+    runRunningUpgrade: async () => ({ status: 'failed', exitCode: 1603,
+      errorCode: 'runningUpgradeMsiFailed', cleanupResultCode: 'completed' }),
   });
 
   assert.equal(result.status, 'failed');
-  assert.equal(result.errorCode, 'majorUpgradeFailed');
+  assert.equal(result.errorCode, 'runningUpgradeMsiFailed');
   assert.equal(result.cleanupResultCode, 'cleanupFailed');
 });
 
@@ -177,4 +183,16 @@ test('binary rollback keeps a safe production exit category as primary', async (
   assert.equal(result.status, 'failed');
   assert.equal(result.errorCode, 'binaryRollbackTargetPackagePathInvalid');
   assert.equal(result.cleanupResultCode, 'cleanupCompleted');
+});
+
+test('uncertain running application cleanup blocks worker-side semantic uninstall', async () => {
+  const f = createSuccessfulDependencies({
+    runRunningUpgrade: async () => ({ status: 'failed', errorCode: 'runningUpgradeValidationInvalid',
+      cleanupResultCode: 'cleanupUnverified', exitCode: null }),
+  });
+  const result = await executeUpgradeRollbackLifecycle(f);
+  assert.equal(result.errorCode, 'runningUpgradeValidationInvalid');
+  assert.equal(result.applicationCleanupResultCode, 'cleanupUnverified');
+  assert.equal(result.cleanupResultCode, 'cleanupFailed');
+  assert.deepEqual(f.operations, ['sourceInstall']);
 });

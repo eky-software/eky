@@ -39,6 +39,7 @@ import { writeJsonAtomicExclusive } from './cleanInstallUninstallContracts.mjs';
 import { parseUpgradeRollbackArtifactVerifierArguments } from './verifyUpgradeRollbackArtifact.mjs';
 
 const BUILD_REVISION = 'a'.repeat(40);
+const PAYLOAD = Object.freeze({ stage: 'packagedApp', identity: 'b'.repeat(64), fileCount: 1, totalByteSize: 1 });
 const RELEASE_TEMPLATE = Object.freeze({
   appIdentity: 'Eky',
   appVersion: '0.2.7',
@@ -68,7 +69,7 @@ async function createRole(root, roleName, version, packageBytes) {
     release: releaseFor(version),
   });
   await writeInstallerManifest(manifestPath, manifest);
-  return Object.freeze({ manifest, manifestPath });
+  return Object.freeze({ manifest, manifestPath, payload: PAYLOAD });
 }
 
 async function createArtifact(testContext) {
@@ -99,6 +100,7 @@ async function createArtifact(testContext) {
       msiProductVersion: role.manifest.msiProductVersion,
       packageSha256: role.manifest.packageSha256,
       packageSize: role.manifest.packageSize,
+      payload: role.payload,
       productCode: createInstallerProductCode(role.manifest.msiProductVersion),
     };
   }

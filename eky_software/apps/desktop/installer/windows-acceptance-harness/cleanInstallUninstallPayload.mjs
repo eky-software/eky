@@ -1,16 +1,11 @@
 import { lstat, realpath, unlink } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-import { inspectPackageArtifactInventory } from '../../scripts/package-artifact-inventory.mjs';
+import { verifyInstalledPackagePayload } from './installedPackagePayload.mjs';
 
 export async function verifyCleanInstalledPayload(root, expected) {
-  const metadata = await lstat(root);
-  if (!metadata.isDirectory() || metadata.isSymbolicLink()) throw new Error('cleanPayloadInvalid');
-  const actual = await inspectPackageArtifactInventory({ root, stage: 'packagedApp' });
-  if (actual.identity !== expected.identity || actual.fileCount !== expected.fileCount ||
-    actual.totalByteSize !== expected.totalByteSize || expected.stage !== actual.stage) {
-    throw new Error('cleanPayloadInvalid');
-  }
+  try { await verifyInstalledPackagePayload(root, expected); }
+  catch { throw new Error('cleanPayloadInvalid'); }
 }
 
 // Only this release-owned leaf may be damaged, after the entire installed tree is verified.

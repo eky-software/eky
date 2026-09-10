@@ -280,6 +280,7 @@ export async function runUpgradeRollback(arguments_, {
     }
     const failure = upgradeRollbackFailureDetails(primaryError);
     const cleanupVerified = terminal !== null || (
+      failure?.applicationCleanupResultCode !== 'cleanupUnverified' &&
       ['notRequired', 'semanticCleanupCompleted'].includes(failure?.semanticCleanupResultCode) &&
       ['exactProductsAbsent', 'exactProductsAbsentAfterCleanup'].includes(failure?.postconditionResultCode)
     );

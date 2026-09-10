@@ -17,6 +17,7 @@ const REQUEST_KEYS = [
   'schemaVersion',
 ];
 const RESULT_KEYS = [
+  'applicationCleanupResultCode',
   'artifactBytesValidated',
   'artifactDescriptorSha256',
   'binaryRollbackExitCode',
@@ -27,9 +28,11 @@ const RESULT_KEYS = [
   'errorCode',
   'finalStateValidated',
   'finalUninstallExitCode',
+  'installedPayloadValidated',
   'majorUpgradeValidated',
   'resultCode',
   'runNonce',
+  'runningApplicationUpgradeValidated',
   'scenario',
   'schemaVersion',
   'sourceInstallExitCode',
@@ -125,6 +128,9 @@ export function validateUpgradeRollbackResult(value, expected) {
     !validExitCode(value.finalUninstallExitCode) ||
     typeof value.sourceInstalledStateValidated !== 'boolean' ||
     typeof value.majorUpgradeValidated !== 'boolean' ||
+    typeof value.runningApplicationUpgradeValidated !== 'boolean' ||
+    typeof value.installedPayloadValidated !== 'boolean' ||
+    !['notRequired', 'completed', 'cleanupUnverified'].includes(value.applicationCleanupResultCode) ||
     typeof value.downgradeRejected !== 'boolean' ||
     typeof value.binaryRollbackRestoredSource !== 'boolean' ||
     typeof value.windowsInstallerRollbackRestoredSource !== 'boolean' ||
@@ -149,6 +155,9 @@ export function validateUpgradeRollbackResult(value, expected) {
     value.finalUninstallExitCode === 0 &&
     value.sourceInstalledStateValidated &&
     value.majorUpgradeValidated &&
+    value.runningApplicationUpgradeValidated &&
+    value.installedPayloadValidated &&
+    value.applicationCleanupResultCode === 'completed' &&
     value.downgradeRejected &&
     value.binaryRollbackRestoredSource &&
     value.windowsInstallerRollbackRestoredSource &&

@@ -21,6 +21,14 @@ const FAILURE_CODES = new Set([
   'installerStateInspectionFailed',
   'majorUpgradeFailed',
   'majorUpgradeStateInvalid',
+  'upgradePayloadInvalid',
+  'runningUpgradeApplicationExitedEarly',
+  'runningUpgradeApplicationFailed',
+  'runningUpgradeShutdownFailed',
+  'runningUpgradeMsiFailed',
+  'runningUpgradeValidationInvalid',
+  'runningUpgradeBlockedSourceChanged',
+  'runningUpgradeFailed',
   'rollbackBlockerFailed',
   'sourceInstallFailed',
   'sourceInstalledStateInvalid',
@@ -170,7 +178,7 @@ function createProgressObserver(reportProgress) {
   return Object.freeze({ emit, lifecycleStartedAt, step });
 }
 
-function initialResult() {
+export function initialUpgradeRollbackResult() {
   return {
     schemaVersion: 1,
     status: 'failed',
@@ -185,6 +193,9 @@ function initialResult() {
     finalUninstallExitCode: null,
     sourceInstalledStateValidated: false,
     majorUpgradeValidated: false,
+    runningApplicationUpgradeValidated: false,
+    applicationCleanupResultCode: 'notRequired',
+    installedPayloadValidated: false,
     downgradeRejected: false,
     binaryRollbackRestoredSource: false,
     windowsInstallerRollbackRestoredSource: false,
@@ -272,11 +283,13 @@ export async function executeUpgradeRollbackLifecycle({
   reportProgress,
   removeRollbackBlocker,
   runMsiOperation,
+  runRunningUpgrade,
+  verifyPayload,
   createRollbackBlocker,
   verifyArtifact,
   versions,
 }) {
-  const result = initialResult();
+  const result = initialUpgradeRollbackResult();
   const progress = createProgressObserver(reportProgress);
   progress.emit('lifecycle', 'started', progress.lifecycleStartedAt, {
     resultCode: 'started',
@@ -324,17 +337,25 @@ export async function executeUpgradeRollbackLifecycle({
       'sourceInstalledStateInvalid',
     );
     result.sourceInstalledStateValidated = true;
+    await progress.step('sourcePayload', 'payloadValidated', 'upgradePayloadInvalid', () => verifyPayload('source'));
 
     result.upgradeExitCode = await progress.step(
       'majorUpgrade',
       'majorUpgradeCompleted',
       'majorUpgradeFailed',
       async () => {
-        const exitCode = await runMsiOperation('majorUpgrade');
-        if (exitCode !== 0) {
-          fail('majorUpgradeFailed');
+        result.applicationCleanupResultCode = 'cleanupUnverified';
+        const outcome = await runRunningUpgrade();
+        if (!['completed', 'cleanupUnverified'].includes(outcome?.cleanupResultCode)) {
+          result.applicationCleanupResultCode = 'cleanupUnverified';
+          fail('runningUpgradeFailed');
         }
-        return exitCode;
+        result.applicationCleanupResultCode = outcome.cleanupResultCode;
+        if (outcome.status !== 'completed' || outcome.exitCode !== 0 || outcome.cleanupResultCode !== 'completed') {
+          fail(FAILURE_CODES.has(outcome.errorCode) ? outcome.errorCode : 'runningUpgradeFailed');
+        }
+        result.runningApplicationUpgradeValidated = true;
+        return outcome.exitCode;
       },
     );
     requireTargetInstalled(
@@ -348,6 +369,7 @@ export async function executeUpgradeRollbackLifecycle({
       'majorUpgradeStateInvalid',
     );
     result.majorUpgradeValidated = true;
+    await progress.step('targetPayload', 'payloadValidated', 'upgradePayloadInvalid', () => verifyPayload('target'));
     await progress.step(
       'artifactAfterUpgrade',
       'artifactValidated',
@@ -378,6 +400,7 @@ export async function executeUpgradeRollbackLifecycle({
       'downgradeStateInvalid',
     );
     result.downgradeRejected = true;
+    await progress.step('downgradePayload', 'payloadValidated', 'upgradePayloadInvalid', () => verifyPayload('target'));
 
     result.binaryRollbackExitCode = await progress.step(
       'binaryRollback',
@@ -402,6 +425,7 @@ export async function executeUpgradeRollbackLifecycle({
       'binaryRollbackStateInvalid',
     );
     result.binaryRollbackRestoredSource = true;
+    await progress.step('binaryRollbackPayload', 'payloadValidated', 'upgradePayloadInvalid', () => verifyPayload('source'));
     await progress.step(
       'artifactAfterBinaryRollback',
       'artifactValidated',
@@ -459,6 +483,8 @@ export async function executeUpgradeRollbackLifecycle({
       fail('windowsInstallerRollbackStateInvalid');
     }
     result.windowsInstallerRollbackRestoredSource = true;
+    await progress.step('windowsRollbackPayload', 'payloadValidated', 'upgradePayloadInvalid', () => verifyPayload('source'));
+    result.installedPayloadValidated = true;
     await progress.step(
       'artifactAfterWindowsRollback',
       'artifactValidated',
@@ -504,7 +530,9 @@ export async function executeUpgradeRollbackLifecycle({
     return Object.freeze(result);
   } catch (error) {
     result.errorCode = errorCodeOf(error);
-    if (installationAttempted) {
+    if (installationAttempted && result.applicationCleanupResultCode === 'cleanupUnverified') {
+      result.cleanupResultCode = 'cleanupFailed';
+    } else if (installationAttempted) {
       result.cleanupResultCode = await attemptFailureCleanup({
         inspectState,
         progress,

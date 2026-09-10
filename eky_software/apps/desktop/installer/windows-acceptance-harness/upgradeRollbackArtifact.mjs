@@ -17,6 +17,7 @@ import {
   parseNumericAppVersion,
 } from '../installerVersion.mjs';
 import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
+import { validateInstalledPayloadSummary } from './installedPackagePayload.mjs';
 
 export const UPGRADE_ROLLBACK_ARTIFACT_KIND =
   'windowsAcceptanceUpgradeRollback';
@@ -46,6 +47,7 @@ const ROLE_KEYS = [
   'msiProductVersion',
   'packageSha256',
   'packageSize',
+  'payload',
   'productCode',
 ];
 
@@ -99,13 +101,14 @@ function validateRole(roleName, value) {
   try {
     parseNumericAppVersion(value.appVersion);
     parseMsiProductVersion(value.msiProductVersion);
+    validateInstalledPayloadSummary(value.payload);
   } catch {
     throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_DESCRIPTOR_INVALID');
   }
   if (value.productCode !== createInstallerProductCode(value.msiProductVersion)) {
     throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_DESCRIPTOR_INVALID');
   }
-  return Object.freeze({ ...value });
+  return Object.freeze({ ...value, payload: Object.freeze({ ...value.payload }) });
 }
 
 export function validateUpgradeRollbackArtifactDescriptor(value) {

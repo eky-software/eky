@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { lstat, readFile } from 'node:fs/promises';
 
 import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
+import { validateInstalledPayloadSummary } from './installedPackagePayload.mjs';
 
 export const CLEAN_ARTIFACT_DESCRIPTOR_FILENAME = 'clean-install-artifact.json';
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -16,15 +17,11 @@ export function validateWindowsAcceptanceArtifactDescriptor(value) {
   if (!exactKeys(value, ['schemaVersion', 'buildRevision', 'manifestSha256', 'payload']) ||
     value.schemaVersion !== 1 || typeof value.buildRevision !== 'string' ||
     !/^[0-9a-f]{40}$/.test(value.buildRevision) || typeof value.manifestSha256 !== 'string' ||
-    !SHA256.test(value.manifestSha256) ||
-    !exactKeys(value.payload, ['stage', 'fileCount', 'identity', 'totalByteSize']) ||
-    value.payload.stage !== 'packagedApp' || !Number.isSafeInteger(value.payload.fileCount) ||
-    value.payload.fileCount < 1 || typeof value.payload.identity !== 'string' ||
-    !SHA256.test(value.payload.identity) || !Number.isSafeInteger(value.payload.totalByteSize) ||
-    value.payload.totalByteSize < 1) {
+    !SHA256.test(value.manifestSha256)) {
     throw invalid();
   }
-  return Object.freeze({ ...value, payload: Object.freeze({ ...value.payload }) });
+  try { return Object.freeze({ ...value, payload: validateInstalledPayloadSummary(value.payload) }); }
+  catch { throw invalid(); }
 }
 
 export async function readWindowsAcceptanceArtifactDescriptor(path, expectedSha256) {

@@ -8,6 +8,11 @@ import { validateInstallerProductStateResult } from './cleanInstallUninstallWind
 import { verifyUpgradeRollbackArtifact } from './upgradeRollbackArtifact.mjs';
 import { coordinateUpgradeRollbackBinaryHandoff } from './upgradeRollbackBinaryHandoff.mjs';
 import { createUpgradeRollbackProgressWaiter } from './upgradeRollbackProgress.mjs';
+import { coordinateRunningApplicationUpgrade } from './upgradeRunningApplication.mjs';
+import { createInstallerValidationObserver } from './upgradeInstallerValidationObserver.mjs';
+import { verifyInstalledPackagePayload } from './installedPackagePayload.mjs';
+import { captureDesktopLifecycleBaseline, requireTargetShutdownCompleted,
+  waitForTargetDesktopStarted } from './legacyUpgradeStartupObserver.mjs';
 
 const INSPECTOR_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -25,8 +30,9 @@ function bracedProductCode(productCode) {
 async function startOwnedProcess(command, arguments_, options = {}) {
   const child = spawn(command, arguments_, {
     cwd: options.cwd,
+    env: options.env,
     stdio: options.stdio ?? 'ignore',
-    windowsHide: true,
+    windowsHide: options.windowsHide ?? true,
   });
   let processId = null;
   const started = new Promise((resolvePromise, rejectPromise) => {
@@ -236,6 +242,7 @@ export async function createUpgradeRollbackWindowsRuntime(request, artifact) {
   const operations = Object.freeze({
     sourceInstall: ['/i', artifact.roles.source.installerPath],
     majorUpgrade: ['/i', artifact.roles.target.installerPath],
+    majorUpgradeAfterClose: ['/i', artifact.roles.target.installerPath],
     downgrade: ['/i', artifact.roles.source.installerPath],
     windowsInstallerRollback: [
       '/i',
@@ -360,6 +367,62 @@ export async function createUpgradeRollbackWindowsRuntime(request, artifact) {
     }
   }
 
+  async function verifyPayload(role) {
+    try { await verifyInstalledPackagePayload(installRoot, artifact.roles[role].payload); }
+    catch { throw new Error('upgradePayloadInvalid'); }
+  }
+
+  async function runRunningUpgrade() {
+    const appDataRoot = resolve(runRoot, 'running-upgrade-app-data');
+    const userDataRoot = resolve(appDataRoot, 'Eky');
+    const logDirectory = resolve(userDataRoot, 'runtime', 'logs', 'desktop');
+    const validationLog = resolve(logRoot, 'running-upgrade.log');
+    return coordinateRunningApplicationUpgrade({
+      async startApplication() {
+        await mkdir(logDirectory, { recursive: true });
+        const baselineEventIds = await captureDesktopLifecycleBaseline(logDirectory);
+        const expectedIdentity = { appVersion: artifact.roles.source.appVersion, buildRevision: artifact.buildRevision };
+        const env = { ...process.env, APPDATA: appDataRoot };
+        delete env.ELECTRON_RUN_AS_NODE;
+        const owned = await startOwnedProcess(executablePath, [`--user-data-dir=${userDataRoot}`],
+          { cwd: runRoot, env, windowsHide: false });
+        let started;
+        const ready = waitForTargetDesktopStarted({ baselineEventIds, childCompletion: owned.completion,
+          expectedIdentity, logDirectory }).then((event) => { started = event; },
+          () => { throw new Error('runningUpgradeApplicationFailed'); });
+        ready.catch(() => undefined);
+        return Object.freeze({ ready, completion: owned.completion,
+          isRunning: () => owned.child.exitCode === null && owned.child.signalCode === null,
+          async close() {
+            if (owned.child.exitCode === null && owned.child.signalCode === null) {
+              const close = await runOwnedProcess(powershell, ['-NoProfile', '-NonInteractive',
+                '-ExecutionPolicy', 'Bypass', '-File', resolve(dirname(INSPECTOR_PATH), 'requestWindowsApplicationClose.ps1'),
+                '-ProcessId', String(owned.processId), '-ExpectedExecutablePath', executablePath], { cwd: runRoot });
+              if (close.exitCode !== 0) throw new Error('runningUpgradeShutdownFailed');
+            }
+            if ((await owned.completion).exitCode !== 0) throw new Error('runningUpgradeApplicationFailed');
+          },
+          async verifyShutdown() {
+            try { await requireTargetShutdownCompleted({ baselineEventIds, expectedIdentity, logDirectory,
+              runtimeInstanceId: started.runtimeInstanceId }); }
+            catch { throw new Error('runningUpgradeShutdownFailed'); }
+          },
+        });
+      },
+      createValidationObserver: () => createInstallerValidationObserver(validationLog),
+      startUpgrade: () => startOwnedProcess(msiexec, [...operations.majorUpgrade, '/qn', '/norestart',
+        '/l*v', validationLog], { cwd: runRoot }),
+      async verifyBlockedSource() {
+        const state = await inspectState();
+        if (state.source.productState < 1 || state.source.productVersion !== artifact.roles.source.msiProductVersion ||
+          state.target.productState >= 1 || state.ekyProcessCount !== 0) throw new Error('runningUpgradeBlockedSourceChanged');
+        try { await verifyPayload('source'); }
+        catch { throw new Error('runningUpgradeBlockedSourceChanged'); }
+      },
+      resumeUpgrade: () => runMsiOperation('majorUpgradeAfterClose'),
+    });
+  }
+
   async function createRollbackBlocker() {
     if ((await pathKind(rollbackBlockerPath)) !== 'absent') {
       throw new Error('rollbackBlockerFailed');
@@ -405,6 +468,8 @@ export async function createUpgradeRollbackWindowsRuntime(request, artifact) {
     invokeBinaryRollback,
     removeRollbackBlocker,
     runMsiOperation,
+    runRunningUpgrade,
+    verifyPayload,
     verifyArtifact,
   });
 }

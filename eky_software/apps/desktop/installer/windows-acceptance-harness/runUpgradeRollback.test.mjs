@@ -29,7 +29,7 @@ const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 for (const clean of [true, false]) {
   for (const mode of ['completed', 'prepareFailed', 'supervisorMissing', 'treeUnverified',
     'cleanupUnverified', 'cleanupFailed', 'deadlineRecovered', 'scenarioAndProfileFailed', 'scenarioAndRemovalFailed',
-    'preconditionUnverified', 'preconditionPresent']) {
+    'preconditionUnverified', 'preconditionPresent', ...(!clean ? ['applicationCleanupUnverified'] : [])]) {
     test(`${clean ? 'clean' : 'upgrade'} caller preserves independent failure and retention: ${mode}`,
       { skip: process.platform !== 'win32' }, async (t) => {
         let root, started = 0, removals = 0, cleanups = 0, inspections = 0, profileReads = 0;
@@ -82,12 +82,16 @@ for (const clean of [true, false]) {
           readSupervisorResult: async () => {
             if (mode === 'supervisorMissing') throw new Error('WINDOWS_ACCEPTANCE_SUPERVISOR_TERMINAL_RESULT_MISSING');
             return { status: mode === 'completed' ? 'completed' : 'failed',
-              processResultCode: mode === 'completed' ? 'processCompleted' : 'deadlineExceeded',
-              workerResultCode: mode === 'completed' ? 'workerResultValidated' : 'notChecked',
+              processResultCode: ['completed', 'applicationCleanupUnverified'].includes(mode) ? 'processCompleted' : 'deadlineExceeded',
+              workerResultCode: mode === 'completed' ? 'workerResultValidated'
+                : mode === 'applicationCleanupUnverified' ? 'workerReportedFailure' : 'notChecked',
               cleanupResultCode: mode === 'treeUnverified' ? 'cleanupUnverified' : 'processTreeAbsent',
               processTreeAbsent: mode !== 'treeUnverified' };
           },
-          readScenarioResult: async () => ({ status: 'completed',
+          readScenarioResult: async () => mode === 'applicationCleanupUnverified'
+            ? { status: 'failed', resultCode: 'upgradeRollbackFailed', errorCode: 'runningUpgradeValidationInvalid',
+                applicationCleanupResultCode: 'cleanupUnverified' }
+            : ({ status: 'completed',
             resultCode: clean ? 'cleanInstallUninstallCompleted' : 'upgradeRollbackCompleted' }),
           removeRunRoot: async (path) => {
             removals += 1;
@@ -103,6 +107,7 @@ for (const clean of [true, false]) {
           result = (clean ? cleanInstallUninstallFailureDetails : upgradeRollbackFailureDetails)(error);
           assert.ok(result);
           const expected = mode === 'prepareFailed' ? 'SYNTHETIC_PREPARATION_FAILED'
+              : mode === 'applicationCleanupUnverified' ? 'WINDOWS_ACCEPTANCE_UPGRADE_VALIDATION_OBSERVATION_INVALID'
               : ['preconditionUnverified', 'preconditionPresent'].includes(mode)
                 ? (clean ? 'WINDOWS_ACCEPTANCE_CLEAN_PRECONDITION_FAILED' : 'WINDOWS_ACCEPTANCE_UPGRADE_PRECONDITION_FAILED')
               : mode === 'supervisorMissing' ? 'WINDOWS_ACCEPTANCE_SUPERVISOR_TERMINAL_RESULT_MISSING'
@@ -119,7 +124,8 @@ for (const clean of [true, false]) {
         assert.equal(removals, removed || mode === 'scenarioAndRemovalFailed' ? 1 : 0);
         assert.equal(started, ['prepareFailed', 'preconditionUnverified', 'preconditionPresent'].includes(mode) ? 0 : 1);
         assert.equal(cleanups, ['cleanupUnverified', 'cleanupFailed', 'deadlineRecovered',
-          'scenarioAndProfileFailed', 'scenarioAndRemovalFailed'].includes(mode) ? 1 : 0);
+          'scenarioAndProfileFailed', 'scenarioAndRemovalFailed', 'applicationCleanupUnverified'].includes(mode) ? 1 : 0);
+        if (mode === 'applicationCleanupUnverified') assert.equal(result.applicationCleanupResultCode, 'cleanupUnverified');
         if (mode === 'scenarioAndProfileFailed') assert.equal(result.safetyErrorCode, 'WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED');
         if (!productProcessAbsent) {
           assert.equal(profileReads, 1);

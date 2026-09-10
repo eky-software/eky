@@ -34,6 +34,9 @@ function successfulResult(request) {
     finalUninstallExitCode: 0,
     sourceInstalledStateValidated: true,
     majorUpgradeValidated: true,
+    runningApplicationUpgradeValidated: true,
+    installedPayloadValidated: true,
+    applicationCleanupResultCode: 'completed',
     downgradeRejected: true,
     binaryRollbackRestoredSource: true,
     windowsInstallerRollbackRestoredSource: true,
@@ -80,9 +83,13 @@ test('successful result requires each upgrade and rollback invariant', () => {
   });
   const result = successfulResult(request);
   assert.deepEqual(validateUpgradeRollbackResult(result, request), result);
+  assert.throws(() => validateUpgradeRollbackResult({ ...result, applicationCleanupResultCode: 'cleanupUnverified' }, request),
+    /WINDOWS_ACCEPTANCE_UPGRADE_RESULT_INVALID/);
   for (const field of [
     'sourceInstalledStateValidated',
     'majorUpgradeValidated',
+    'runningApplicationUpgradeValidated',
+    'installedPayloadValidated',
     'downgradeRejected',
     'binaryRollbackRestoredSource',
     'windowsInstallerRollbackRestoredSource',

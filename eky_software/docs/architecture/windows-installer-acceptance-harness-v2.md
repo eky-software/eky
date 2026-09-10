@@ -864,8 +864,8 @@ artifactin, todistaa checkoutin saman Git-revision, varmistaa descriptorin ja
 MSI:n ennen V2.2-lifecyclea ja sen jälkeen sekä ajaa lifecyclen kerran.
 Consumer ei kutsu paketoijaa tai installer-builderia. Siirto käyttää vain
 hyväksyttyjä SHA-lukittuja artifact-actioneita, yhden vuorokauden retentionia
-ja pakkaamatonta siirtoa; artifactissa sallitaan edelleen vain descriptor ja
-sen nimeämä synteettinen allekirjoittamaton MSI.
+ja pakkaamatonta siirtoa; artifactissa sallitaan vain testidescriptor,
+muuttumaton tuotantomanifesti ja sen nimeämä allekirjoittamaton MSI.
 
 ## V2.4 upgrade- ja rollback-checkpoint
 
@@ -896,6 +896,9 @@ Jokaisessa roolihakemistossa sallitaan vain versionoitu
 ovat tavallisia itsenäisiä tiedostoja. Tuntematon inventory, symlinkki,
 hardlinkki, väärä hash, väärä build-revision, epäjatkuva versio tai targetin ja
 rollback-proben virheellinen identiteetti torjutaan ennen MSI-operaatiota.
+Roolikohtainen `payload` sitoo nykyisen package-inventoryn tiivisteen,
+tavumäärän ja tiedostomäärän. Sama pieni asennetun payloadin vertailuvastuu
+palvelee clean- ja upgrade-ketjua; installerin tuotantomanifesti ei muutu.
 
 Paketoinnin native SQLite -validointi lataa stagingin `.node`-tiedoston
 producer-prosessiin. Siksi producer ei yritä poistaa kiinteää, Gitistä
@@ -908,7 +911,9 @@ Yksi strict worker suorittaa seuraavan järjestyksen:
 
 1. source- ja target-ProductCodejen sekä yhteisen footprintin puhdas preflight
 2. source N:n asennus ja exact postcondition
-3. N -> N+1 major upgrade ja source/target-tilan exact postcondition
+3. source-sovelluksen todistettu normaali käynnistyminen eristettyyn
+   testiprofiiliin, N -> N+1 major upgrade elävän sovelluksen rinnalla ja
+   source/target-tilan exact postcondition
 4. N-paketin downgrade-yritys, jonka pitää epäonnistua targetia muuttamatta
 5. paketoidun tuotannon `rollbackWindowsInstaller.ps1`-polun binary rollback
    takaisin source-versioon
@@ -916,6 +921,30 @@ Yksi strict worker suorittaa seuraavan järjestyksen:
    ja Windows Installerin pitää säilyttää source-versio
 7. source-version täsmällinen poisto ja kaikkien jälkien poissaolo
 8. artifact-tavujen uudelleentarkistus.
+
+V2.8:n running-Setup-siirto käyttää olemassa olevaa desktop.started- ja
+shutdownCompleted-lukijaa, nykyistä native close -pyyntöä sekä samaa workerin
+Job Objectia. MSI:n execute-sekvenssin `InstallValidate`-aloitushavainto tai
+sovelluksen/MSI:n todellinen poistuminen vapauttaa hallitun sulkemisen.
+Viiden sekunnin oletusodotusta ei kopioida. Yksityisen MSI-lokin tiedostovahti
+ei omista prosessia, aikarajaa tai onnistumispäätöstä; se suljetaan ja sen
+keskeneräinen luku odotetaan saman Job-rajan sisällä. MSI:n nykyiseen
+lokikirjoitukseen ei lisätä pakotettua flushia tai synkronista varatulostusta.
+
+[InstallValidate](https://learn.microsoft.com/en-us/windows/win32/msi/installvalidate-action)
+on Windows Installerin tilan ja käytössä olevien tiedostojen tarkistusvaihe.
+Havainto todistaa tässä vain vaiheeseen saapumisen, ei tiedostolukon syytä tai
+onnistunutta päivitystä. Hyväksyntä vaatii edelleen oikean exit-koodin,
+asennetun payloadin täyden vertailun, exact tuotetilan, desktopin onnistuneen
+shutdown-todisteen ja erilliset callerin jälkiehdot.
+
+Vanhan running-Setup-sopimuksen 1603-haara saa jatkaa kerran vasta sulkemisen
+ja lähdeasennuksen muuttumattomuuden tarkistuksen jälkeen. Se ei ole yleinen
+retry: muu virhe, reboot-vaatimus tai muuttunut source hylätään. Alkuperäinen
+virhe ja `applicationCleanupResultCode` säilyvät erillisinä. Varmentamaton
+sulkeminen estää workerin semanttisen poiston ja aineiston poiston; Job pysyy
+ainoana pakotetun prosessisiivouksen omistajana. Kaikkien onnistuneiden
+asennus-, upgrade-, downgrade- ja rollback-siirtymien payloadit varmennetaan.
 
 Worker ei rakenna paketteja, käynnistä toista supervisoria, käytä W6-koodia tai
 omista prosessipuun emergency cleanupia. Se saa tehdä virheen jälkeen vain
@@ -2439,9 +2468,9 @@ Vihreä V2.8-kierros ei vielä todista seuraavia vanhan MSI-portin vaatimuksia:
 
 | Säilytettävä vaatimus | Vanha todiste | Nykyisen V2:n puute ja seuraava vastuu |
 | --- | --- | --- |
-| Vaurioituneen asennuksen repair palauttaa täsmälleen oikean payloadin | `testWindowsInstallerLifecycle.ps1` poistaa asennetun backend-tiedoston ja ajaa `/fa`-korjauksen sekä payload-vertailun | Toteutettu nykyiseen clean-lifecycle-/Windows-adapteriin. Sopimukset ja käyttäytymisregressiot vihreät; uusi immutable artifact ja native-consumer-näyttö vielä vaaditaan. |
-| Uninstallin jälkeinen reinstall säilyttää saman profiilin datan ja poistuu puhtaasti | Sama vanha lifecycle asentaa, korjaa, poistaa, asentaa uudelleen ja poistaa uudelleen | Toteutettu samaan clean-ketjuun profiilin jokaisen siirtymän varmennuksella. Kaksi erillistä clean-consumeria ei korvaa ketjun pakollista reinstall-tulosta. Native-hyväksyntä vielä avoin. |
-| Suora Setup-päivitys sovelluksen ollessa käynnissä | `testWindowsInstallerUpgrade.ps1` käynnistää MSI:n elävän Ekyn rinnalle ja tarkistaa odotuksen tai hallitun eston sekä lopullisen version ja datan | `upgradeRollbackLifecycle.mjs` ei käynnistä source-sovellusta ennen major upgradea. Workspace-handoffin hallittu sulkeminen ei korvaa tätä tapausta. Todiste kuuluu nykyisen upgrade-vastuun alle. |
+| Vaurioituneen asennuksen repair palauttaa täsmälleen oikean payloadin | `testWindowsInstallerLifecycle.ps1` poistaa asennetun backend-tiedoston ja ajaa `/fa`-korjauksen sekä payload-vertailun | Toteutettu nykyiseen clean-lifecycle-/Windows-adapteriin. Kohdetestit ja kaksi paikallista native-consumeria vihreät; uuden integraatiorevision CI-näyttö vielä vaaditaan. |
+| Uninstallin jälkeinen reinstall säilyttää saman profiilin datan ja poistuu puhtaasti | Sama vanha lifecycle asentaa, korjaa, poistaa, asentaa uudelleen ja poistaa uudelleen | Toteutettu samaan clean-ketjuun profiilin jokaisen siirtymän varmennuksella, paikalliset consumerit 2/2. Kumpikin todistaa ketjun pakollisen reinstall-tuloksen; lopullinen CI-hyväksyntä vielä avoin. |
+| Suora Setup-päivitys sovelluksen ollessa käynnissä | `testWindowsInstallerUpgrade.ps1` käynnistää MSI:n elävän Ekyn rinnalle ja tarkistaa odotuksen tai hallitun eston sekä lopullisen version ja datan | Toteutus nykyisen upgrade-vastuun alla, readiness-/MSI-/shutdown-regressiot vihreät. Uusi build-once-artifact ja native-consumer-todiste vielä avoinna. Workspace-handoff ei korvaa tätä tapausta. |
 
 Näille ei luoda uutta supervisoria tai ajokehystä. Korvaavan ketjun pitää
 käyttää samaa prosessiomistajaa, muuttumattomia artifact-tavuja ja erillisiä

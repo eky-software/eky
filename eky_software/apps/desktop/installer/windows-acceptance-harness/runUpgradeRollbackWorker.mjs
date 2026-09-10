@@ -9,7 +9,7 @@ import {
   validateUpgradeRollbackResult,
   writeJsonAtomicExclusive,
 } from './upgradeRollbackContracts.mjs';
-import { executeUpgradeRollbackLifecycle } from './upgradeRollbackLifecycle.mjs';
+import { executeUpgradeRollbackLifecycle, initialUpgradeRollbackResult } from './upgradeRollbackLifecycle.mjs';
 import { verifyUpgradeRollbackArtifact } from './upgradeRollbackArtifact.mjs';
 import { createUpgradeRollbackWindowsRuntime } from './upgradeRollbackWindowsRuntime.mjs';
 
@@ -24,24 +24,8 @@ function safeCode(error, fallback) {
 
 function failedResult(errorCode) {
   return Object.freeze({
-    schemaVersion: 1,
-    status: 'failed',
-    resultCode: 'upgradeRollbackFailed',
+    ...initialUpgradeRollbackResult(),
     errorCode,
-    cleanupResultCode: 'notRequired',
-    sourceInstallExitCode: null,
-    upgradeExitCode: null,
-    downgradeExitCode: null,
-    binaryRollbackExitCode: null,
-    windowsInstallerRollbackExitCode: null,
-    finalUninstallExitCode: null,
-    sourceInstalledStateValidated: false,
-    majorUpgradeValidated: false,
-    downgradeRejected: false,
-    binaryRollbackRestoredSource: false,
-    windowsInstallerRollbackRestoredSource: false,
-    finalStateValidated: false,
-    artifactBytesValidated: false,
   });
 }
 
