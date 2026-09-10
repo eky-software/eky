@@ -23,6 +23,7 @@ const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 for (const mode of ['success', 'nonzero', 'spawnFailure', 'postSpawnError']) {
   test(`legacy supervisor completion retains error and waits for close: ${mode}`, async () => {
     const child = new EventEmitter();
+    child.kill = () => true;
     const phases = [];
     const execution = startLegacyUpgradeSupervisor('request', 'root', (phase) => {
       phases.push(phase);

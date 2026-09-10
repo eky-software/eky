@@ -147,6 +147,7 @@ test('an actual spawn rejection proves no direct process was created', async () 
   child.pid = undefined;
   const completion = runWithChild(child);
   child.emit('error', new Error('synthetic spawn failure'));
+  child.emit('close', -1, null);
   assert.deepEqual(await completion, {
     status: 'failed', resultCode: 'startFailed', exitCode: null, directProcessAbsent: true,
   });

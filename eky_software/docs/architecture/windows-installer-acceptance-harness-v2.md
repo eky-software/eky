@@ -2784,14 +2784,14 @@ lisätä uutta watchdogia.
 | Raja | Käynnistäjä ja nykyinen omistaja | Määräajan alku ja valmistumisen todiste |
 | --- | --- | --- |
 | Legacy `majorUpgrade` | `legacyUpgradeWindowsRuntime` käynnistää `msiexec`-prosessin; skenaarion nykyinen Job omistaa workerin ja sen jälkeläiset. | Supervisorin alussa käynnistetty kello: 570 s työlle ja 30 s siivoukselle. MSI:n `close` ja todellinen exit code edeltävät worker-resultia. `majorUpgrade started` ei ole spawn-kuittaus. |
-| Legacy-komennon jatko | `startLegacyUpgradeSupervisor` odottaa supervisorin `exit`/`close`-tapahtumia; caller lukee strict supervisor-resultin ja erillisen scenario-resultin. | Supervisorin omaa poistumista odottavalla callerilla ei ole erillistä valmistumisrajaa. Tulos tai lokirivi ei yksin valtuuta jatkamista. |
-| Workspace `installationCleanup`: esitarkistus | `cleanupExactProducts` kysyy source- ja target-ProductCoden ennen poistopäätöstä. Yhteinen product-operaatio käyttää nykyistä Job-supervisoria sarjallisesti. | Kummankin kyselyn varaus on 30 s + 5 s; kello alkaa apuoperaation supervisorissa. Rajattu vastaus, vastaanottokuittaus, prosessin poistuminen ja strict tulos ovat eri asioita. |
+| Legacy-komennon jatko | `startLegacyUpgradeSupervisor` odottaa supervisorin `exit`/`close`-tapahtumia ja käynnistyssäikeen poistumista; caller lukee strict supervisor-resultin ja erillisen scenario-resultin. | Caller rajaa supervisorin nykyisellä bounded-adapterilla. Tulos tai lokirivi ei yksin valtuuta jatkamista; pakotettu poistuminen ei todista worker-puun lopputilaa. |
+| Workspace `installationCleanup`: esitarkistus | `cleanupExactProducts` kysyy source- ja target-ProductCoden ennen poistopäätöstä. Yhteinen product-operaatio käyttää nykyistä Job-supervisoria sarjallisesti. | Kummankin kyselyn Job-varaus on 30 s + 5 s. Caller lisää alla kuvatun host-varauksen. Rajattu vastaus, vastaanottokuittaus, prosessin poistuminen ja strict tulos ovat eri asioita. |
 | Workspace `installationCleanup`: poisto | Sama vastuu poistaa vain esitarkistuksessa todetun targetin ja sitten sourcen. | Kumpikin uninstall varaa 120 s + 5 s. Epävarma apuprosessi estää seuraavan kyselyn, poiston ja fixture-poiston. Ryhmän aloitushavainto ei todista uninstallin aloitusta. |
 | Valmistelu ja viimeistely | Nykyiset filesystem- ja caller-result-adapterit käsittelevät omat tiedostoryhmänsä. Callerissa on lisäksi suoria juuren tarkistuksia, hakemistoluonteja ja supervisor-pyynnön kirjoitus. | Adapterien varaukset eivät automaattisesti kata callerin suoria alustakutsuja tai niiden omaa käynnistystä. Tulosjulkaisu ja fixture-poisto vaativat erilliset onnistumistodisteet. |
 
-Legacy-varaus on konfiguraation mukaan 1540 s ja lifecycle-step 1620 s:
-80 s erotus ei ole todiste koko kutsun rajatusta kestosta. Workspace-varaus
-on alla 1360 s ja lifecycle-step 1500 s. Molempien ulkopuolelle voi jäädä
+Legacy-varaus on konfiguraation mukaan 1600 s ja lifecycle-step 1620 s:
+20 s erotus ei ole todiste koko kutsun rajatusta kestosta. Workspace-varaus
+on alla 1420 s ja lifecycle-step 1500 s. Molempien ulkopuolelle voi jäädä
 suora alustakutsu tai supervisorin poistumisen odotus. Näitä summia ei saa
 esittää todistettuna komentotason deadlinena.
 
@@ -2805,14 +2805,46 @@ ja jaettujen virhepolkujen sekä budjettisopimusten kohdesarja on 161/161;
 desktopin typecheck ja build läpäisivät. Tämä ei ole paketoitu
 hyväksyntä eikä sulje seuraavaa komentotason puutetta.
 
-Avoin päätösraja on supervisorin itsensä elinkaari: nykyinen product-caller
-voi jäädä odottamaan `close`-tapahtumaa tulostoimituksen jälkeenkin.
-Supervisorin Job hallitsee worker-puuta, ei supervisor-prosessia itseään.
-Tätä rajaa ei suljeta ulkoisella CI-katkaisulla, onnistuneella uusinnalla tai
-uudella rinnakkaisella valvojalla. Callerille mahdollisesti annettava
-rajattu supervisor-prosessin keskeytysvastuu vaatii omistajuuspäätöksen ja
-erillisen käynnistys-, poistumis- ja aineiston säilytysregression. CI-ajon
-todellista pysähtynyttä alustakutsua ei ole vielä osoitettu.
+Omistaja hyväksyi callerille rajatun vastuun sen käynnistämän supervisorin
+eliniästä. Nykyinen Job-supervisor pysyy worker-puun ainoana omistajana.
+Toteutuksessa oleva korjaus käyttää nykyistä bounded-adapteria ja callerin
+taustasäiettä natiivikäynnistykseen: säie säilyttää täsmällisen prosessikahvan.
+Anonyymin stdin-putken kertaluonteinen lupa edeltää supervisorin dispatchia;
+peruutettu tai myöhässä syntynyt prosessi ei saa aloittaa työtä. EOF, väärä
+lupa tai viiden sekunnin lupapuute torjutaan ennen Jobin käynnistämistä.
+Tämä sisäinen testikytkentä ei ole sovelluksen turvallisuus- tai HTTP-portti.
+
+Caller varaa supervisorin nykyisen kokonaisrajan lisäksi viisi sekuntia
+käynnistyksen ja poistumisen toimitusmarginaaliin sekä tarvittaessa viisi
+sekuntia täsmällisen host-kahvan keskeytyksen varmentamiseen. Jobin työ- ja
+cleanup-rajat eivät kasva. Ensimmäinen pakotettu host-poistuminen katkaisee
+mutatoivan ketjun: aiempi tulos ei yksin todista worker-puun lopullista
+poissaoloa. Varmentamaton poistuminen säilyttää aineiston ja virheen, eikä
+myöhempi yleinen prosessikysely muuta sitä onnistumiseksi. Taustasäiettä ei
+tapeta kesken natiivikäynnistyksen; sen myöhäinen kahva jää peruutetuksi ja
+työlupa evätään. Caller voi päättyä vain epäonnistuneena, jos säikeen tai
+supervisorin poistumista ei saada varmennetuksi.
+
+Kanoninen legacy-kohdesarja on 255/255; erillinen jaettujen
+success/fault-rajojen sarja 184/184. Regressio todistaa nyt koko callerin
+virhepoistumisen myös tuloksen toimittaneen mutta eloon jäävän supervisorin
+tapauksessa. Myöhäinen käynnistys ei saa työlupaa, ja varmentamaton lopputila
+säilyttää aineiston. Käynnistyssäikeen poikkeus ei tuota tekaistua
+close-kuittausta. CI-ajon todellista pysähtynyttä alustakutsua ei ole vielä
+osoitettu; tämä ei ole sen ympäristötekijän tai MSI:n juurisyyväite.
+Paketoitu diagnostiikka ja täsmärevision normaali hyväksyntä ovat vielä auki.
+
+Nykyisen feasibility-workflow'n `packaged-boundary-diagnostic` on erikseen
+käynnistettävä diagnostiikka, ei required-check-hyväksyntä. Se ajaa vain
+valitun legacy- tai workspace-callerin ja pakollisen tulosverifierin,
+varmentaa aiemman artifactin ennen ja jälkeen ajon eikä rakenna MSI:tä.
+Producer-run, artifact-ID, descriptor-SHA ja artifactin build-revisio sidotaan
+syötteeseen; harnessin checkout-revisio raportoidaan erikseen. Rooli on
+suljettu kahteen olemassa olevaan consumeriin. Job- ja lifecycle-rajat eivät
+kasva. Saman repositoryn aiemman artifactin lataus käyttää vain
+`actions: read` -oikeutta; sama read-katto annetaan workflow'n kutsujalle,
+jotta tavallinen workflow-call ei yritä korottaa oikeuksia. Kirjoitusoikeutta,
+uutta salaisuutta, ulkopuolista repositorya tai automaattista uusintaa ei lisätä.
 
 ### Infrastruktuuriuusinnan rajattu ehdotus
 
@@ -2831,7 +2863,10 @@ Mahdollinen vaikutus required-check-koontiin päätetään erikseen näkyvästi;
 vihreä uusintakuvake ei yksin valtuuta mergeä tai julkaisua.
 
 Workspace-komennon nykyiset konfiguroidut prosessi- ja tulostoimitusvaraukset
-ovat `70 + 720 + 460 + 105 + 5 = 1360` sekuntia. Tämä ei sisällä vielä
+ovat `70 + 720 + 460 + 105 + 5 + 60 = 1420` sekuntia. Lisäys kattaa
+kymmenen product-kutsun ja yhden skenaariohostin toimitusmarginaalit sekä
+yhden pakotetun host-poistumisen varauksen. Ensimmäinen pakotettu poisto
+estää myöhemmät mutatoivat operaatiot. Tämä ei sisällä vielä
 rajaamatonta tiedostotyötä eikä consumerin valmistelua. Success- ja
 fault-consumer valmistelevat supervisorin ja proof-readerit samanlaisessa
 erillisessä vaiheessa ennen skenaariota. Success-stepin 25 minuutin raja ja

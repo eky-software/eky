@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 
-const MAX_TIMEOUT_MILLISECONDS = 600_000;
+const MAX_TIMEOUT_MILLISECONDS = 725_000;
 
 function requireTimeout(value) {
   if (
@@ -57,6 +57,7 @@ export function runBoundedWindowsAdapterProcess({
     let timedOut = false;
     let started = false;
     let processError = false;
+    let startRejected = false;
     let terminationStarted = false;
     let cancelled = false;
 
@@ -72,6 +73,7 @@ export function runBoundedWindowsAdapterProcess({
       if (terminationTimer !== null) {
         clearTimeout(terminationTimer);
       }
+      if (!result.directProcessAbsent) child?.unref?.();
       resolvePromise(Object.freeze(result));
     }
 
@@ -133,13 +135,8 @@ export function runBoundedWindowsAdapterProcess({
       if (settled) {
         return;
       }
-      if (!started && !Number.isInteger(child.pid) && !terminationStarted) {
-        complete({
-          status: 'failed',
-          resultCode: 'startFailed',
-          exitCode: null,
-          directProcessAbsent: true,
-        });
+      if (!started && !Number.isInteger(child.pid) && child.spawnPending !== true && !terminationStarted) {
+        startRejected = true;
         return;
       }
       // Node also emits error for failed kill/send operations on a live child.
@@ -148,6 +145,10 @@ export function runBoundedWindowsAdapterProcess({
       terminateDirectProcess();
     });
     child.once('close', (exitCode, signal) => {
+      if (startRejected && !timedOut && !cancelled) {
+        complete({ status: 'failed', resultCode: 'startFailed', exitCode: null, directProcessAbsent: true });
+        return;
+      }
       if (timedOut) {
         complete({
           status: 'failed',

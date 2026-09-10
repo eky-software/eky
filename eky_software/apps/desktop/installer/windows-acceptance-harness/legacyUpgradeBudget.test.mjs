@@ -8,7 +8,7 @@ import { LEGACY_COMMAND_RESERVATION_MS, LEGACY_CONSUMER_JOB_MINUTES,
 test('legacy lifecycle fits existing process waits plus grouped filesystem and result delivery reservations', () => {
   assert.equal(LEGACY_SUPERVISOR_TIMEOUT_MS, 600_000);
   assert.equal(LEGACY_SUPERVISOR_CLEANUP_MS, 30_000);
-  assert.equal(LEGACY_COMMAND_RESERVATION_MS, 1_540_000);
+  assert.equal(LEGACY_COMMAND_RESERVATION_MS, 1_600_000);
   assert.ok(LEGACY_COMMAND_RESERVATION_MS < LEGACY_LIFECYCLE_STEP_MINUTES * 60_000);
   assert.ok(LEGACY_LIFECYCLE_STEP_MINUTES + LEGACY_SUPERVISOR_BUILD_MINUTES < LEGACY_CONSUMER_JOB_MINUTES);
 });

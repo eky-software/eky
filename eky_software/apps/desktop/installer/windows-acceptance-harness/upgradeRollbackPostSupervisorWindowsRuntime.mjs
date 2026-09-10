@@ -21,12 +21,22 @@ export function classifyUpgradeRollbackProductStates(source, target) {
   return Object.freeze({ status: 'completed', resultCode, sourcePresent, targetPresent, installerRegistryPresent });
 }
 
-export function createUpgradeRollbackPostSupervisorWindowsRuntime({ artifact, scenarioRoot }, dependencies) {
+export function createUpgradeRollbackPostSupervisorWindowsRuntime({ artifact, scenarioRoot, observe = () => {} }, dependencies) {
   const operations = createInstallerProductOperationRuntime({ scenarioRoot,
     environmentErrorCode: 'WINDOWS_ACCEPTANCE_UPGRADE_ENVIRONMENT_INVALID' }, dependencies);
   const code = (roleName) => `{${artifact.roles[roleName].productCode}}`;
+  const notify = (phase, status) => { try { observe(phase, status); } catch { /* Observation is not control. */ } };
+  async function observed(phase, task) {
+    notify(phase, 'started');
+    try {
+      const result = await task();
+      notify(phase, result.status === 'completed' ? 'completed' : 'failed');
+      return result;
+    } catch (error) { notify(phase, 'failed'); throw error; }
+  }
   async function inspectProduct(roleName) {
-    const result = await operations.inspect(code(roleName));
+    const result = await observed(roleName === 'source' ? 'sourceProductInspection' : 'targetProductInspection',
+      () => operations.inspect(code(roleName)));
     if (result.status !== 'completed') return result;
     const present = exactProductPresent(result.state);
     return Object.freeze({ status: 'completed', resultCode: present ? 'exactProductPresent' : 'exactProductAbsent',
@@ -45,7 +55,8 @@ export function createUpgradeRollbackPostSupervisorWindowsRuntime({ artifact, sc
     let failure = null;
     for (const [roleName, present] of [['target', state.targetPresent], ['source', state.sourcePresent]]) {
       if (!present) continue;
-      const result = await operations.uninstall(code(roleName));
+      const result = await observed(roleName === 'source' ? 'sourceProductUninstall' : 'targetProductUninstall',
+        () => operations.uninstall(code(roleName)));
       if (result.status === 'failed') failure ??= result;
       if (!operations.outcome().productProcessAbsent) break;
     }

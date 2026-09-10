@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { Worker } from 'node:worker_threads';
 
 import { runLegacyUpgrade, runLegacyUpgradeCli, startLegacyUpgradeSupervisor } from './runLegacyUpgrade.mjs';
 import { legacyUpgradeFailureDetails } from './legacyUpgradeFailureBoundary.mjs';
@@ -12,13 +13,15 @@ import { createLegacyUpgradeFilesystemRuntime } from './legacyUpgradeFilesystemR
 import { runBoundedWindowsAdapterProcess } from './boundedWindowsAdapterProcess.mjs';
 import { createUpgradeRollbackPostSupervisorWindowsRuntime } from './upgradeRollbackPostSupervisorWindowsRuntime.mjs';
 import { runInstallerProductOperation } from './installerProductOperationProcess.mjs';
+import { spawnSupervisorProcess } from './supervisorProcessLaunch.mjs';
 
 // Only the existing contract Job contains this command. The inner production
 // supervisor still owns the scenario; no test code scans or kills its tree.
 const input = JSON.parse(await readFile(process.argv[2], 'utf8'));
 assert(['hold', 'unread', 'cleanupUnverified', 'missingSupervisor', 'cleanupFailed', 'writerUnverified', 'filesystemHold',
   'productHold', 'productUnverified', 'productPreparationHold', 'productReadHold', 'productRemoveHold',
-  'productCleanupFailure', 'productMissingResult', 'productOpenResultChannel', 'productResultBeforeExit'].includes(input.mode));
+  'productCleanupFailure', 'productMissingResult', 'productOpenResultChannel', 'productResultBeforeExit',
+  'productSupervisorHeld', 'supervisorLaunchPending'].includes(input.mode));
 const events = [];
 let supervisorResult;
 const productResults = [];
@@ -50,7 +53,18 @@ const ports = {
     request.cleanupReserveMilliseconds = 1_000;
     request.arguments = [fileURLToPath(new URL('./legacyCommandWorkerFixture.mjs', import.meta.url)), input.mode === 'unread' ? 'unread' : 'hold'];
     writeFileSync(requestPath, JSON.stringify(request));
-    const execution = startLegacyUpgradeSupervisor(requestPath, root, observe);
+    const execution = startLegacyUpgradeSupervisor(requestPath, root, observe, {
+      timeoutMilliseconds: request.timeoutMilliseconds, terminationTimeoutMilliseconds: 1_000,
+      ...(input.mode === 'supervisorLaunchPending' ? {
+        spawnProcess: (command, args, options) => spawnSupervisorProcess(command, args, options, {
+          createWorker(_, settings) {
+            return new Worker(new URL('./fixtures/supervisorLateLaunchWorkerFixture.mjs', import.meta.url), {
+              ...settings, workerData: { ...settings.workerData, delayMilliseconds: 10_000 },
+            });
+          },
+        }),
+      } : {}),
+    });
     execution.child.once('exit', () => events.push('supervisorExit'));
     execution.child.once('close', () => events.push('supervisorClose'));
     return execution;
@@ -69,7 +83,8 @@ const ports = {
 };
 const productStages = { productHold: 'Command', productUnverified: 'Command', productPreparationHold: 'Preparation',
   productReadHold: 'Read', productRemoveHold: 'Remove', productCleanupFailure: 'CleanupFailure',
-  productMissingResult: 'MissingResult', productOpenResultChannel: 'OpenResultChannel', productResultBeforeExit: 'ResultBeforeExit' };
+  productMissingResult: 'MissingResult', productOpenResultChannel: 'OpenResultChannel', productResultBeforeExit: 'ResultBeforeExit',
+  productSupervisorHeld: 'SupervisorHeld' };
 if (productStages[input.mode]) {
   ports.createProductRuntime = ({ scenarioRoot }) => {
     const runtime = createUpgradeRollbackPostSupervisorWindowsRuntime({ scenarioRoot,
@@ -85,7 +100,7 @@ if (productStages[input.mode]) {
             productRequest = JSON.parse(Buffer.from(args[2], 'base64').toString('utf8'));
             const dll = resolve(dirname(fileURLToPath(import.meta.url)),
               '../bin/windows-process-supervisor-contract-fixture/Release/net10.0/Eky.WindowsProcessSupervisor.ContractFixture.dll');
-            const child = spawn(command, [dll, '--mode', `productOperation${productStages[input.mode]}`,
+            const child = spawnSupervisorProcess(command, [dll, '--mode', `productOperation${productStages[input.mode]}`,
               '--request', args[2]], settings);
             child.once('exit', () => events.push('productExit'));
             child.once('close', () => events.push('productClose'));
@@ -94,8 +109,14 @@ if (productStages[input.mode]) {
         });
         productResults.push(result.supervisor ?? result);
         assert.equal(result.resultCode, input.mode === 'productCleanupFailure' ? 'processExitFailed'
-          : input.mode === 'productMissingResult' ? 'processCompleted' : 'timedOut');
-        assert.equal(result.directProcessAbsent, true);
+          : ['productMissingResult', 'productSupervisorHeld'].includes(input.mode) ? 'processCompleted' : 'timedOut');
+        assert.equal(result.directProcessAbsent, input.mode !== 'productSupervisorHeld');
+        if (input.mode === 'productSupervisorHeld') {
+          assert.equal(result.invocation.resultCode, 'timedOut');
+          assert.equal(result.invocation.directProcessAbsent, true);
+          assert.equal(result.status, 'failed');
+          return result;
+        }
         if (input.mode === 'productCleanupFailure') {
           assert.equal(result.worker.errorCode, 'commandFailed');
           assert.equal(result.worker.resultCleanup, 'failed');

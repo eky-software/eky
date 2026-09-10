@@ -21,9 +21,31 @@ test('shared feasibility binds the verified SDK before every process-contract mo
   assert.match(binding, /IsPathFullyQualified\(\$dotnet\)/u);
   assert.match(binding, /& \$dotnet --version/u);
   assert.match(binding, /EKY_DOTNET_EXE=\$dotnet/u);
-  assert.equal(source.match(/EKY_DOTNET_EXE=\$dotnet/gu)?.length, 1);
+  const contractJob = source.slice(source.indexOf('  job-object-feasibility:'), source.indexOf('  packaged-boundary-diagnostic:'));
+  assert.equal(contractJob.match(/EKY_DOTNET_EXE=\$dotnet/gu)?.length, 1);
   assert.ok(bindingIndex < source.indexOf('      - name: Build Windows process supervisor'));
   assert.ok(bindingIndex < source.indexOf('      - name: Run supervisor unit and process contracts'));
+});
+
+test('packaged boundary diagnostic reuses exact artifacts without becoming a normal acceptance gate', async () => {
+  const source = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
+  const diagnostic = source.slice(source.indexOf('  packaged-boundary-diagnostic:'));
+  assert.match(diagnostic, /github\.event_name == 'workflow_dispatch' && inputs\.mode == 'packaged-boundary-diagnostic'/u);
+  assert.match(source, /job-object-feasibility:\s+if: inputs\.mode != 'packaged-boundary-diagnostic'/u);
+  assert.match(diagnostic, /diagnosticOnly = \$true/u);
+  assert.match(diagnostic, /harnessRevision = \$head; artifactBuildRevision = \$env:EXPECTED_BUILD_REVISION/u);
+  assert.match(diagnostic, /artifact-ids: \$\{\{ inputs\.artifact_id \}\}/u);
+  assert.match(diagnostic, /run-id: \$\{\{ inputs\.artifact_run_id \}\}/u);
+  assert.match(diagnostic, /repository: \$\{\{ github\.repository \}\}/u);
+  assert.match(diagnostic, /actions\/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c/u);
+  assert.doesNotMatch(diagnostic, /artifact:build|package:windows|upload-artifact|retry|continue-on-error|permissions:\s+contents: write/u);
+  assert.ok(diagnostic.indexOf('Validate closed diagnostic identity') < diagnostic.indexOf('uses: actions/download-artifact'));
+  assert.match(diagnostic, /\$commandExit = \$LASTEXITCODE/u);
+  assert.match(diagnostic, /--command-exit \$commandExit/u);
+  assert.match(diagnostic, /\$commandExit -ne 0 -or \$LASTEXITCODE -ne 0/u);
+  assert.match(diagnostic, /always\(\) && steps\.download\.outcome == 'success'/u);
+  assert.match(diagnostic, /inputs\.artifact_kind == 'legacy' && 37 \|\| 30/u);
+  assert.match(diagnostic, /inputs\.artifact_kind == 'legacy' && 27 \|\| 25/u);
 });
 
 test('V2.5 phase acceptance requires the same revision full contracts before its producer', async () => {

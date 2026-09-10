@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { startSupervisorInvocation } from './supervisorProcessLaunch.mjs';
 import { lstat, mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
@@ -69,19 +69,15 @@ async function profileRootExists(path) {
 }
 
 function launchSupervisor(path, root, observe = () => {}) {
-  const child = spawn(process.env.EKY_DOTNET_EXE || 'dotnet', [SUPERVISOR_DLL, '--request', path], {
-    cwd: root, stdio: 'inherit', windowsHide: true, shell: false,
+  const invocation = startSupervisorInvocation({
+    command: process.env.EKY_DOTNET_EXE || 'dotnet', arguments: [SUPERVISOR_DLL, '--request', path],
+    cwd: root, observe, timeoutMilliseconds: WORKSPACE_SUCCESS_TIMEOUT_MILLISECONDS,
   });
-  const completion = new Promise((resolvePromise, rejectPromise) => {
-    child.once('exit', (code) => observe('supervisorExit', code === 0 ? 'completed' : 'failed'));
-    child.once('error', () => rejectPromise(new Error('supervisorStartFailed')));
-    child.once('close', (code, signal) => {
-      observe('supervisorClose', code === 0 && signal === null ? 'completed' : 'failed');
-      if (signal !== null || !Number.isInteger(code)) rejectPromise(new Error('supervisorExitInvalid'));
-      else resolvePromise(code);
-    });
-  });
-  return { child, completion };
+  return { child: invocation.child, completion: invocation.completion.then((result) => {
+    if (result.status !== 'completed') throw new Error(result.resultCode === 'startFailed'
+      ? 'supervisorStartFailed' : 'supervisorExitInvalid');
+    return result.exitCode;
+  }) };
 }
 
 async function verifyRemoval(environment) {
@@ -189,7 +185,7 @@ async function runWorkspaceAcceptance(artifactInput, {
     const request = (fault ? createWorkspaceFaultRequest : createWorkspaceSuccessRequest)({ faultScenario, fixtureRoot: artifact.artifactRoot,
       buildRevision: artifact.buildRevision, artifactDescriptorSha256: artifact.descriptorSha256 });
     context = workspaceSuccessRunContext(workerRequestPath, request, artifact);
-    const runtime = productRuntime = createProductRuntime({ artifact: { roles: { source: artifact.source, target: artifact.target } }, scenarioRoot });
+    const runtime = productRuntime = createProductRuntime({ artifact: { roles: { source: artifact.source, target: artifact.target } }, scenarioRoot, observe });
     const productPrecondition = requireWorkspaceSuccessProductPrecondition(await runtime.verifyExactProductStates());
     if (!areProductProcessesAbsent(runtime)) throw new Error('productStateVerificationProcessRemains');
     await prepareFixture(context);

@@ -12,9 +12,9 @@ const exited = { status: 'completed', resultCode: 'processCompleted', exitCode: 
   state: { productState: 5, productName: 'Synthetic', productVersion: '0.2.8',
     localPackagePresent: true, ownedRegistryExists: true } };
 const uncertain = { status: 'failed', resultCode: 'terminationUnconfirmed', exitCode: null, directProcessAbsent: false };
-function productRuntime(results) {
+function productRuntime(results, observe) {
   const calls = [];
-  const runtime = createUpgradeRollbackPostSupervisorWindowsRuntime({ scenarioRoot: DIRECTORY,
+  const runtime = createUpgradeRollbackPostSupervisorWindowsRuntime({ scenarioRoot: DIRECTORY, observe,
     artifact: { roles: { source: { productCode: '00000000-0000-0000-0000-000000000001' },
       target: { productCode: '00000000-0000-0000-0000-000000000002' } } },
   }, {
@@ -55,6 +55,22 @@ test('a known exited uninstall failure permits independent cleanup but remains f
   assert.equal((await runtime.cleanupExactProducts()).errorCode, 'semanticCleanupFailed');
   assert.equal(calls.length, 4);
   assert.equal(runtime.outcome().productProcessAbsent, true);
+});
+
+test('safe observations separate product inspection from uninstall without changing failure or ownership', async () => {
+  const phases = [];
+  const { runtime, calls } = productRuntime([exited, exited, uncertain], (phase, status) => {
+    phases.push([phase, status]);
+    throw new Error('synthetic diagnostic failure');
+  });
+  assert.equal((await runtime.cleanupExactProducts()).errorCode, 'semanticCleanupProcessRemains');
+  assert.equal(runtime.outcome().productProcessAbsent, false);
+  assert.equal(calls.length, 3);
+  assert.deepEqual(phases, [
+    ['sourceProductInspection', 'started'], ['sourceProductInspection', 'completed'],
+    ['targetProductInspection', 'started'], ['targetProductInspection', 'completed'],
+    ['targetProductUninstall', 'started'], ['targetProductUninstall', 'failed'],
+  ]);
 });
 
 test('a rejected adapter invocation is not proof of absence', async () => {

@@ -1,4 +1,5 @@
-import { spawn } from 'node:child_process';
+import { runBoundedWindowsAdapterProcess } from './boundedWindowsAdapterProcess.mjs';
+import { spawnSupervisorProcess } from './supervisorProcessLaunch.mjs';
 import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
 import { dirname, resolve } from 'node:path';
@@ -54,10 +55,10 @@ export function validateProductOperationReply(bytes, request, exitCode) {
   }
 }
 
-// No direct-child timer/kill owner: the existing supervisor owns the entire auxiliary Job.
+// The caller bounds its supervisor; that supervisor alone owns the auxiliary Job.
 export async function runInstallerProductOperation({ operation, productCode, scenarioRoot,
   timeoutMilliseconds, terminationTimeoutMilliseconds, deliveryReserveMilliseconds = 1_000 },
-{ spawnProcess = spawn, observe = () => {} } = {}) {
+{ spawnProcess = spawnSupervisorProcess, observe = () => {} } = {}) {
   const nonce = randomBytes(32).toString('hex');
   const request = validateProductOperationRequest({ schemaVersion: 1, nonce, operation, productCode, scenarioRoot,
     nodeExecutable: process.execPath, workerPath: WORKER,
@@ -92,17 +93,32 @@ export async function runInstallerProductOperation({ operation, productCode, sce
         server.off('error', reject); ready();
       });
     });
-    const child = spawnProcess(process.env.EKY_DOTNET_EXE || 'dotnet',
-      [SUPERVISOR, '--product-operation', Buffer.from(JSON.stringify(request)).toString('base64')],
-      { cwd: DIRECTORY, windowsHide: true, stdio: 'ignore' });
-    await new Promise((done) => {
-      child.once('exit', () => notify('supervisorExit'));
-      child.on('error', () => { errorSeen = true; });
-      child.once('close', (code, signal) => {
-        closed = true; supervisorExitCode = signal === null ? code : null;
-        notify('supervisorClose'); done();
-      });
+    const invocation = await runBoundedWindowsAdapterProcess({
+      command: process.env.EKY_DOTNET_EXE || 'dotnet',
+      arguments: [SUPERVISOR, '--product-operation', Buffer.from(JSON.stringify(request)).toString('base64')],
+      cwd: DIRECTORY, timeoutMilliseconds: request.timeoutMilliseconds + terminationTimeoutMilliseconds,
+      terminationTimeoutMilliseconds,
+      spawnProcess(command, args, options) {
+        const child = spawnProcess(command, args, options);
+        child.once('exit', () => notify('supervisorExit'));
+        child.on('error', () => { errorSeen = true; });
+        child.once('close', (code, signal) => {
+          closed = true; supervisorExitCode = signal === null ? code : null;
+          notify('supervisorClose');
+        });
+        return child;
+      },
     });
+    if (invocation.status !== 'completed') {
+      // Even an acknowledged reply cannot prove final Job cleanup after forced host exit.
+      let delivered = null;
+      if (!channelFailed && messageReceived) {
+        try { delivered = validateProductOperationReply(Buffer.concat(bytes), request, 1); } catch { /* Untrusted reply. */ }
+      }
+      return Object.freeze({ ...delivered, status: 'failed',
+        resultCode: delivered?.status === 'failed' ? delivered.resultCode : invocation.resultCode,
+        exitCode: supervisorExitCode, directProcessAbsent: false, invocation });
+    }
     if (!closed || errorSeen || channelFailed || connections !== 1 || !messageReceived) invalid();
     return validateProductOperationReply(Buffer.concat(bytes), request, supervisorExitCode);
   } catch {

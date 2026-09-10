@@ -2,6 +2,8 @@ using Eky.WindowsProcessSupervisor;
 using System.Text;
 using System.Text.Json;
 
+if (!SupervisorCallerAdmission.TryAccept(ref args)) return 64;
+
 if (
     args.Length != 4 ||
     !string.Equals(args[0], "--mode", StringComparison.Ordinal) ||
@@ -12,6 +14,11 @@ if (
 }
 
 var mode = args[1];
+if (mode == "callerAdmission")
+{
+    File.WriteAllText(args[3], "{}");
+    return 0;
+}
 if (mode == "nativeMsiContract")
 {
     return await NativeMsiAdapterContract.Run(args[3]);
@@ -31,11 +38,18 @@ if (mode.StartsWith("productOperation", StringComparison.Ordinal))
 {
     var stage = mode["productOperation".Length..];
     if (stage is not ("Command" or "Preparation" or "Read" or "Remove" or "CleanupFailure" or
-        "MissingResult" or "OpenResultChannel" or "ResultBeforeExit")) return 64;
+        "MissingResult" or "OpenResultChannel" or "ResultBeforeExit" or "SupervisorHeld")) return 64;
     using var input = JsonDocument.Parse(Convert.FromBase64String(args[3]));
     var worker = input.RootElement.GetProperty("workerPath").GetString()!;
-    return InstallerProductOperationProgram.Run(["--product-operation", args[3]],
-        Path.Combine(Path.GetDirectoryName(worker)!, "fixtures", "installerProductOperationWorkerFixture.mjs"), stage);
+    var result = InstallerProductOperationProgram.Run(["--product-operation", args[3]],
+        Path.Combine(Path.GetDirectoryName(worker)!, "fixtures", "installerProductOperationWorkerFixture.mjs"),
+        stage == "SupervisorHeld" ? "MissingResult" : stage);
+    if (stage == "SupervisorHeld")
+    {
+        using var heldAfterReply = new ManualResetEvent(false);
+        heldAfterReply.WaitOne();
+    }
+    return result;
 }
 if (mode == "blockedInvalidRequestEvidence")
 {

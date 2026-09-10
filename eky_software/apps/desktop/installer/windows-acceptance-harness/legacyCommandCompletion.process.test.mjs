@@ -13,7 +13,8 @@ import { legacyCallerResultIdentity, parseLegacyCallerResult } from './legacyCal
 
 for (const mode of ['hold', 'unread', 'cleanupUnverified', 'missingSupervisor', 'cleanupFailed', 'writerUnverified', 'filesystemHold',
   'productHold', 'productUnverified', 'productPreparationHold', 'productReadHold', 'productRemoveHold', 'productCleanupFailure',
-  'productMissingResult', 'productOpenResultChannel', 'productResultBeforeExit']) {
+  'productMissingResult', 'productOpenResultChannel', 'productResultBeforeExit', 'productSupervisorHeld',
+  'supervisorLaunchPending']) {
   test(`legacy whole command terminates after scenario deadline: ${mode}`, {
     skip: process.platform !== 'win32', timeout: 60_000,
   }, async (t) => {
@@ -48,10 +49,18 @@ for (const mode of ['hold', 'unread', 'cleanupUnverified', 'missingSupervisor', 
     const report = JSON.parse(await readFile(reportPath, 'utf8'));
     assert.equal(outer.processTreeAbsent, true);
     treeAbsent = true;
-    assert.equal(report.supervisorResult.processResultCode, 'deadlineExceeded');
-    assert.equal(report.supervisorResult.cleanupResultCode, 'processTreeAbsent');
-    assert.equal(report.supervisorResult.processTreeAbsent, true);
-    assert.equal(report.outcome.errorCode, mode === 'missingSupervisor' ? 'WINDOWS_ACCEPTANCE_SUPERVISOR_TERMINAL_RESULT_MISSING'
+    if (mode === 'supervisorLaunchPending') {
+      assert.equal(report.supervisorResult, undefined);
+      assert.equal(report.outcome.processTreeAbsent, false);
+      const root = await readFile(rootPath, 'utf8');
+      await assert.rejects(readFile(join(root, 'scenario', 'result.json')), { code: 'ENOENT' });
+    } else {
+      assert.equal(report.supervisorResult.processResultCode, 'deadlineExceeded');
+      assert.equal(report.supervisorResult.cleanupResultCode, 'processTreeAbsent');
+      assert.equal(report.supervisorResult.processTreeAbsent, true);
+    }
+    assert.equal(report.outcome.errorCode, mode === 'supervisorLaunchPending' ? 'WINDOWS_ACCEPTANCE_SUPERVISOR_EXIT_INVALID'
+      : mode === 'missingSupervisor' ? 'WINDOWS_ACCEPTANCE_SUPERVISOR_TERMINAL_RESULT_MISSING'
       : 'WINDOWS_ACCEPTANCE_SUPERVISOR_DEADLINE_EXCEEDED');
     const removed = ['hold', 'unread'].includes(mode);
     assert.equal(report.outcome.fixtureRemoved, removed);
@@ -65,22 +74,23 @@ for (const mode of ['hold', 'unread', 'cleanupUnverified', 'missingSupervisor', 
     }
     if (mode === 'cleanupFailed') assert.equal(report.outcome.semanticCleanupResultCode, 'semanticCleanupFailed');
     if (mode === 'writerUnverified') assert.equal(report.outcome.safetyErrorCode, 'WINDOWS_ACCEPTANCE_LEGACY_PHASE_WRITER_EXIT_UNVERIFIED');
-    const expectedEvents = ['supervisorExit', 'supervisorClose', 'supervisorResultValidated'];
+    const expectedEvents = mode === 'supervisorLaunchPending' ? [] : ['supervisorExit', 'supervisorClose', 'supervisorResultValidated'];
     if (mode.startsWith('product')) {
+      const unverified = ['productUnverified', 'productSupervisorHeld'].includes(mode);
       expectedEvents.push('productExit', 'productClose');
-      if (mode !== 'productUnverified') expectedEvents.push('productExit', 'productClose');
-      assert.equal(report.outcome.productProcessAbsent, mode !== 'productUnverified');
-      assert.equal(report.outcome.initialProductStateResultCode, mode === 'productUnverified'
+      if (!unverified) expectedEvents.push('productExit', 'productClose');
+      assert.equal(report.outcome.productProcessAbsent, !unverified);
+      assert.equal(report.outcome.initialProductStateResultCode, unverified
         ? 'productStateVerificationProcessRemains' : ['productCleanupFailure', 'productMissingResult'].includes(mode)
           ? 'productStateVerificationFailed' : 'productStateVerificationTimedOut');
-      assert.equal(report.productResults.length, mode === 'productUnverified' ? 1 : 2);
+      assert.equal(report.productResults.length, unverified ? 1 : 2);
       for (const result of report.productResults) {
         assert.equal(result.processTreeAbsent, true);
         assert.equal(result.processResultCode, mode === 'productCleanupFailure' ? 'processExitFailed'
-          : mode === 'productMissingResult' ? 'processCompleted' : 'deadlineExceeded');
+          : ['productMissingResult', 'productSupervisorHeld'].includes(mode) ? 'processCompleted' : 'deadlineExceeded');
       }
       assert.equal(report.outcome.fixtureCleanupResultCode, 'retainedUnverified');
-      if (mode === 'productUnverified') {
+      if (unverified) {
         assert.equal(report.outcome.safetyErrorCode, 'WINDOWS_ACCEPTANCE_LEGACY_PRODUCT_PROCESS_UNVERIFIED');
       }
     }

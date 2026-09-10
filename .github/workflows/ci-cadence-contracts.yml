@@ -71,6 +71,9 @@ jobs:
   supervisor:
     needs: classification
     if: fromJSON(needs.classification.outputs.plan).gates.windowsContracts
+    permissions:
+      contents: read
+      actions: read
     uses: ./.github/workflows/windows-acceptance-supervisor-feasibility.yml
 
   clean:

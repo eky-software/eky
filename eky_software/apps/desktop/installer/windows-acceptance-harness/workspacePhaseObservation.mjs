@@ -7,6 +7,7 @@ const PHASES = new Set([
   'supervisorExit', 'supervisorClose', 'supervisorResult', 'scenarioResult',
   'initialProductState', 'semanticPostcondition', 'sessionPostcondition',
   'installationCleanup', 'finalProductState', 'removalPostcondition',
+  'sourceProductInspection', 'targetProductInspection', 'sourceProductUninstall', 'targetProductUninstall',
   'artifactVerification', 'normalProfileVerification', 'fixtureCleanup', 'callerTerminal',
 ]);
 const STATUSES = new Set(['started', 'completed', 'failed']);

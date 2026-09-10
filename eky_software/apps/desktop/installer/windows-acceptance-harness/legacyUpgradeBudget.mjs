@@ -1,6 +1,7 @@
 import { INSPECTOR_TIMEOUT_MILLISECONDS, SEMANTIC_CLEANUP_TIMEOUT_MILLISECONDS,
   DIRECT_PROCESS_TERMINATION_TIMEOUT_MILLISECONDS } from './upgradeRollbackPostSupervisorWindowsRuntime.mjs';
 import { CALLER_RESULT_TIMEOUT_MS, CALLER_RESULT_TERMINATION_MS } from './callerResultProcess.mjs';
+import { SUPERVISOR_EXIT_RESERVE_MS } from './supervisorProcessLaunch.mjs';
 
 // These are sequential reservations, not successful-readiness waits.
 export const LEGACY_SUPERVISOR_TIMEOUT_MS = 600_000;
@@ -24,7 +25,10 @@ export const LEGACY_COMMAND_RESERVATION_MS =
   3 * (CALLER_RESULT_TIMEOUT_MS + CALLER_RESULT_TERMINATION_MS) + LEGACY_PHASE_WRITER_TERMINATION_MS +
   2 * (LEGACY_FILESYSTEM_TIMEOUT_MS.inventory + LEGACY_FILESYSTEM_TERMINATION_MS) +
   ['materialize', 'semantic', 'artifact', 'remove'].reduce((sum, key) =>
-    sum + LEGACY_FILESYSTEM_TIMEOUT_MS[key] + LEGACY_FILESYSTEM_TERMINATION_MS, 0);
+    sum + LEGACY_FILESYSTEM_TIMEOUT_MS[key] + LEGACY_FILESYSTEM_TERMINATION_MS, 0) +
+  // Ten product calls and one scenario host. The first forced host stop blocks
+  // all later product operations, so only one additional stop reserve is possible.
+  12 * SUPERVISOR_EXIT_RESERVE_MS;
 export const LEGACY_LIFECYCLE_STEP_MINUTES = 27;
 export const LEGACY_SUPERVISOR_BUILD_MINUTES = 3;
 export const LEGACY_CONSUMER_JOB_MINUTES = 37;

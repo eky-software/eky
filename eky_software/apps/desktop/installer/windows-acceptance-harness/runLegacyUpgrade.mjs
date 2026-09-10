@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { startSupervisorInvocation, spawnSupervisorProcess } from './supervisorProcessLaunch.mjs';
 import { lstat, mkdir, mkdtemp, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -82,33 +82,19 @@ export function parseLegacyUpgradeArguments(arguments_) {
   return Object.freeze({ descriptorPath });
 }
 
-export function startLegacyUpgradeSupervisor(requestPath, scenarioRoot, observe = () => {}, { spawnProcess = spawn } = {}) {
-  const child = spawnProcess(
-    DOTNET_EXECUTABLE,
-    [SUPERVISOR_DLL, '--request', requestPath],
-    {
-      cwd: scenarioRoot,
-      stdio: 'inherit',
-      windowsHide: true,
-    },
-  );
-  let started = false, failed = false;
-  const notify = (phase, status) => { try { observe(phase, status); } catch { /* Observation is not control. */ } };
-  const completion = new Promise((resolvePromise, rejectPromise) => {
-    child.once('spawn', () => { started = true; });
-    child.once('exit', (code) => notify('supervisorExit', code === 0 ? 'completed' : 'failed'));
-    child.on('error', () => { failed = true; });
-    child.once('close', (exitCode, signal) => {
-      notify('supervisorClose', !failed && signal === null && exitCode === 0 ? 'completed' : 'failed');
-      if (failed || signal !== null || !Number.isInteger(exitCode)) {
-        rejectPromise(new Error(failed && !started ? 'WINDOWS_ACCEPTANCE_SUPERVISOR_START_FAILED'
-          : 'WINDOWS_ACCEPTANCE_SUPERVISOR_EXIT_INVALID'));
-        return;
-      }
-      resolvePromise(exitCode);
-    });
+export function startLegacyUpgradeSupervisor(requestPath, scenarioRoot, observe = () => {}, {
+  spawnProcess = spawnSupervisorProcess, timeoutMilliseconds = LEGACY_SUPERVISOR_TIMEOUT_MS,
+  terminationTimeoutMilliseconds,
+} = {}) {
+  const invocation = startSupervisorInvocation({
+    command: DOTNET_EXECUTABLE, arguments: [SUPERVISOR_DLL, '--request', requestPath],
+    cwd: scenarioRoot, observe, spawnProcess, timeoutMilliseconds, terminationTimeoutMilliseconds,
   });
-  return Object.freeze({ child, completion });
+  return Object.freeze({ child: invocation.child, completion: invocation.completion.then((result) => {
+    if (result.status !== 'completed') throw new Error(result.resultCode === 'startFailed'
+      ? 'WINDOWS_ACCEPTANCE_SUPERVISOR_START_FAILED' : 'WINDOWS_ACCEPTANCE_SUPERVISOR_EXIT_INVALID');
+    return result.exitCode;
+  }) });
 }
 
 function safeErrorCode(error) {
@@ -249,6 +235,7 @@ export async function runLegacyUpgrade(arguments_, {
     productRuntime = createProductRuntime({
       artifact: asProductRuntimeArtifact(artifact),
       scenarioRoot,
+      observe,
     });
     const productPrecondition = await productRuntime.verifyExactProductStates();
     requireLegacyUpgradeProductPrecondition(productPrecondition);
