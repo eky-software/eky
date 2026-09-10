@@ -2595,6 +2595,12 @@ Rajattu toteutus läpäisi upgrade-sopimussarjan 141/141, artifact-sopimukset
 14/14 sekä desktopin typecheckin ja buildin. Native-record-, kanava- ja
 koordinaatiotestit todistavat tapahtuman, virhepolut ja todellisen prosessin
 poistumisen ilman MSI-asennusta; tämä ei korvaa paketoitua hyväksyntää.
+Paketoitu hyväksyntäyritys jäi epäonnistuneeksi asennustilan
+jälkitarkastuksessa. Alkuperäinen MSI-tulos ja varmennettu siivous eivät muuta
+tätä hyväksytyksi. Erillinen tiedostotilapoikkeama on edelleen avoin;
+diagnostiikkaa ei lasketa hyväksyntätoistoksi. Rajattu toteutus voidaan viedä
+draft-katselmukseen ja commit-pohjaiseen CI-todennukseen, mutta koko V2:n
+hyväksyntä-, käyttöönotto- ja julkaisuportit säilyvät ennallaan.
 
 PR #266:n V2.8-checkpointin normaali commit-pohjainen
 [CI-ajo 34462106934](https://github.com/eky-software/eky/actions/runs/34462106934)
