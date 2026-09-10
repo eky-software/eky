@@ -67,13 +67,13 @@ async function requireStandaloneRegularFile(path, errorCode) {
 export function parseCleanInstallUninstallArguments(arguments_) {
   if (
     arguments_.length !== 2 ||
-    arguments_[0] !== '--fixture-manifest' ||
+    arguments_[0] !== '--artifact-descriptor' ||
     typeof arguments_[1] !== 'string' ||
     arguments_[1].includes('\0')
   ) {
     throw new Error('WINDOWS_ACCEPTANCE_CLEAN_ARGUMENTS_INVALID');
   }
-  return Object.freeze({ manifestPath: resolve(arguments_[1]) });
+  return Object.freeze({ descriptorPath: resolve(arguments_[1]) });
 }
 
 function startSupervisor(requestPath, scenarioRoot) {
@@ -123,7 +123,7 @@ export async function runCleanInstallUninstall(arguments_, {
   if (process.platform !== 'win32') {
     throw new Error('WINDOWS_ACCEPTANCE_CLEAN_WINDOWS_REQUIRED');
   }
-  const { manifestPath } = parseCleanInstallUninstallArguments(arguments_);
+  const { descriptorPath } = parseCleanInstallUninstallArguments(arguments_);
   const appData = process.env.APPDATA;
   if (!appData) {
     throw new Error('WINDOWS_ACCEPTANCE_CLEAN_ENVIRONMENT_INVALID');
@@ -159,7 +159,7 @@ export async function runCleanInstallUninstall(arguments_, {
   process.once('SIGTERM', stopActiveSupervisor);
   try {
     profileBefore = await inventoryProfile(profileRoot);
-    fixture = await materializeFixture(manifestPath, runRoot);
+    fixture = await materializeFixture(descriptorPath, runRoot);
     const scenarioRoot = resolve(runRoot, 'scenario');
     await mkdir(scenarioRoot, { recursive: false });
     const workerRequestPath = resolve(scenarioRoot, 'worker-request.json');

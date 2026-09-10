@@ -13,6 +13,8 @@ import {
   readInstallerManifest,
   verifyInstallerManifestPackage,
 } from '../installerManifest.mjs';
+import { verifyWindowsAcceptanceArtifact } from './verifyWindowsAcceptanceArtifact.mjs';
+import { CLEAN_ARTIFACT_DESCRIPTOR_FILENAME, readWindowsAcceptanceArtifactDescriptor } from './windowsAcceptanceArtifactDescriptor.mjs';
 
 async function hashFile(path) {
   const hash = createHash('sha256');
@@ -153,16 +155,39 @@ export async function materializeImmutableInstallerFixture(
 }
 
 export async function materializeLocalImmutableFixture(
-  manifestInputPath,
+  descriptorInputPath,
   runRoot,
 ) {
-  return materializeImmutableInstallerFixture(
-    manifestInputPath,
+  await requireStandaloneRegularFile(descriptorInputPath, 'WINDOWS_ACCEPTANCE_LOCAL_FIXTURE_INVALID');
+  const sourceDescriptorPath = await realpath(descriptorInputPath);
+  const { descriptor, sha256 } = await readWindowsAcceptanceArtifactDescriptor(sourceDescriptorPath);
+  const verified = await verifyWindowsAcceptanceArtifact({
+    artifactRoot: dirname(sourceDescriptorPath), expectedDescriptorSha256: sha256,
+    expectedBuildRevision: descriptor.buildRevision,
+  });
+  if (sourceDescriptorPath !== verified.descriptorPath) throw new Error('WINDOWS_ACCEPTANCE_LOCAL_FIXTURE_INVALID');
+  const fixture = await materializeImmutableInstallerFixture(
+    verified.manifestPath,
     resolve(runRoot, 'fixture'),
   );
+  try {
+    await copyFile(sourceDescriptorPath, resolve(fixture.fixtureRoot, CLEAN_ARTIFACT_DESCRIPTOR_FILENAME), constants.COPYFILE_EXCL);
+    await verifyWindowsAcceptanceArtifact({ artifactRoot: fixture.fixtureRoot,
+      expectedDescriptorSha256: sha256, expectedBuildRevision: descriptor.buildRevision });
+    return Object.freeze({ ...fixture, artifactDescriptorSha256: sha256,
+      sourceDescriptorPath, buildRevision: descriptor.buildRevision });
+  } catch (error) {
+    // The caller still owns pre-launch root cleanup and its separate outcome.
+    await rm(fixture.fixtureRoot, { recursive: true, force: true }).catch(() => undefined);
+    throw error;
+  }
 }
 
 export async function verifyLocalImmutableSourceFixture(fixture) {
+  if (fixture.sourceDescriptorPath !== undefined) {
+    await verifyWindowsAcceptanceArtifact({ artifactRoot: dirname(fixture.sourceDescriptorPath),
+      expectedDescriptorSha256: fixture.artifactDescriptorSha256, expectedBuildRevision: fixture.buildRevision });
+  }
   await requireStandaloneRegularFile(
     fixture.sourceManifestPath,
     'WINDOWS_ACCEPTANCE_LOCAL_FIXTURE_CHANGED',

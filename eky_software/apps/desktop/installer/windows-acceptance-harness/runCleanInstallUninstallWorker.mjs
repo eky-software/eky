@@ -14,10 +14,12 @@ import {
 } from './cleanInstallUninstallContracts.mjs';
 import {
   executeCleanInstallUninstallLifecycle,
+  initialCleanLifecycleResult,
 } from './cleanInstallUninstallLifecycle.mjs';
 import {
   createCleanInstallUninstallWindowsRuntime,
 } from './cleanInstallUninstallWindowsRuntime.mjs';
+import { readWindowsAcceptanceArtifactDescriptor, CLEAN_ARTIFACT_DESCRIPTOR_FILENAME } from './windowsAcceptanceArtifactDescriptor.mjs';
 
 function safeCode(error, fallback) {
   return (
@@ -65,7 +67,10 @@ export async function runCleanInstallUninstallWorker(arguments_) {
   let result;
   try {
     const manifestPath = resolve(request.fixtureRoot, 'installer.manifest.json');
-    if ((await hashFile(manifestPath)) !== request.artifactDescriptorSha256) {
+    const { descriptor } = await readWindowsAcceptanceArtifactDescriptor(
+      resolve(request.fixtureRoot, CLEAN_ARTIFACT_DESCRIPTOR_FILENAME), request.artifactDescriptorSha256,
+    );
+    if ((await hashFile(manifestPath)) !== descriptor.manifestSha256) {
       throw new Error('fixtureVerificationFailed');
     }
     const manifest = await readInstallerManifest(manifestPath);
@@ -86,15 +91,8 @@ export async function runCleanInstallUninstallWorker(arguments_) {
     });
   } catch (error) {
     result = Object.freeze({
-      schemaVersion: 1,
-      status: 'failed',
-      resultCode: 'cleanInstallUninstallFailed',
+      ...initialCleanLifecycleResult(),
       errorCode: safeCode(error, 'unexpectedFailure'),
-      cleanupResultCode: 'notRequired',
-      installExitCode: null,
-      uninstallExitCode: null,
-      installedStateValidated: false,
-      uninstalledStateValidated: false,
     });
   }
 

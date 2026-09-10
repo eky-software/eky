@@ -222,8 +222,8 @@ jobs:
         shell: pwsh
         timeout-minutes: 7
         run: |
-          $manifestPath = Join-Path $env:RUNNER_TEMP 'eky-v2-clean-artifact\installer.manifest.json'
-          pnpm --filter @eky/desktop installer:v2-clean --fixture-manifest $manifestPath
+          $descriptorPath = Join-Path $env:RUNNER_TEMP 'eky-v2-clean-artifact\clean-install-artifact.json'
+          pnpm --filter @eky/desktop installer:v2-clean --artifact-descriptor $descriptorPath
           if ($LASTEXITCODE -ne 0) {
             throw 'WINDOWS_ACCEPTANCE_CLEAN_LIFECYCLE_FAILED'
           }

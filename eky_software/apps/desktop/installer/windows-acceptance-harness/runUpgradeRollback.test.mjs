@@ -95,7 +95,7 @@ for (const clean of [true, false]) {
             await rm(path, { recursive: true, force: true });
           },
         };
-        const run = () => clean ? runCleanInstallUninstall(['--fixture-manifest', resolve('fixture.manifest.json')], ports)
+        const run = () => clean ? runCleanInstallUninstall(['--artifact-descriptor', resolve('clean-install-artifact.json')], ports)
           : runUpgradeRollback(['--artifact-descriptor', resolve('upgrade-rollback-artifact.json')], ports);
         let result;
         if (mode === 'completed') await assert.doesNotReject(async () => { result = await run(); });

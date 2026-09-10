@@ -5,6 +5,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readInstallerReleaseGitState } from '../installerReleaseContext.mjs';
 import { createWindowsInstallerRelease } from '../scripts/releaseWindowsInstaller.mjs';
 import { packageDefaultWindowsApplication } from '../../scripts/packageWindowsApplication.mjs';
+import { inspectPackageArtifactInventory } from '../../scripts/package-artifact-inventory.mjs';
+import {
+  CLEAN_ARTIFACT_DESCRIPTOR_FILENAME,
+  readWindowsAcceptanceArtifactDescriptor,
+  validateWindowsAcceptanceArtifactDescriptor,
+} from './windowsAcceptanceArtifactDescriptor.mjs';
 import { writeJsonAtomicExclusive } from './cleanInstallUninstallContracts.mjs';
 import { detachWindowsInstallerBuildOutput } from './detachWindowsInstallerBuildOutput.mjs';
 import {
@@ -54,6 +60,7 @@ export async function buildWindowsAcceptanceArtifact({
   createInstallerRelease = createWindowsInstallerRelease,
   packageApplication = packageDefaultWindowsApplication,
   readReleaseGitState = readInstallerReleaseGitState,
+  inspectPayload = inspectPackageArtifactInventory,
 }) {
   let fixture = null;
   try {
@@ -74,15 +81,25 @@ export async function buildWindowsAcceptanceArtifact({
     ) {
       throw new Error('WINDOWS_ACCEPTANCE_ARTIFACT_BUILD_IDENTITY_MISMATCH');
     }
+    const payload = await inspectPayload({ root: packagedApplication.packagedPath, stage: 'packagedApp' });
     const release = await createInstallerRelease({ buildRevision });
+    const payloadAfter = await inspectPayload({ root: packagedApplication.packagedPath, stage: 'packagedApp' });
+    if (JSON.stringify(payloadAfter) !== JSON.stringify(payload)) {
+      throw new Error('WINDOWS_ACCEPTANCE_ARTIFACT_BUILD_IDENTITY_MISMATCH');
+    }
     await detachWindowsInstallerBuildOutput(release.manifestPath);
     fixture = await materializeImmutableInstallerFixture(
       release.manifestPath,
       artifactRoot,
     );
+    const descriptorPath = resolve(artifactRoot, CLEAN_ARTIFACT_DESCRIPTOR_FILENAME);
+    await writeJsonAtomicExclusive(descriptorPath, validateWindowsAcceptanceArtifactDescriptor({
+      schemaVersion: 1, buildRevision, manifestSha256: fixture.artifactDescriptorSha256, payload,
+    }));
+    const { sha256: descriptorSha256 } = await readWindowsAcceptanceArtifactDescriptor(descriptorPath);
     const verified = await verifyWindowsAcceptanceArtifact({
       artifactRoot,
-      expectedDescriptorSha256: fixture.artifactDescriptorSha256,
+      expectedDescriptorSha256: descriptorSha256,
       expectedBuildRevision: buildRevision,
     });
     if (verified.appVersion !== packagedApplication.appVersion) {

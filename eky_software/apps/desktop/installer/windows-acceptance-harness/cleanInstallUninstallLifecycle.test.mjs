@@ -34,9 +34,9 @@ function installedState(overrides = {}) {
   });
 }
 
-test('clean lifecycle installs, verifies, uninstalls, and verifies absence in order', async () => {
+test('clean lifecycle verifies payload and profile across repair and same-profile reinstall', async () => {
   const events = [];
-  const states = [absentState(), installedState(), absentState()];
+  const states = [absentState(), installedState(), installedState(), absentState(), installedState(), absentState()];
   const result = await executeCleanInstallUninstallLifecycle({
     expectedVersion: '0.2.7',
     inspectState: async (label) => {
@@ -48,6 +48,9 @@ test('clean lifecycle installs, verifies, uninstalls, and verifies absence in or
       return 0;
     },
     verifyFixture: async () => events.push('fixture'),
+    verifyPayload: async () => events.push('payload'),
+    damageRepairPayload: async () => events.push('damage'),
+    verifyProfile: async () => events.push('profile'),
   });
 
   assert.equal(result.status, 'completed');
@@ -56,11 +59,19 @@ test('clean lifecycle installs, verifies, uninstalls, and verifies absence in or
     'fixture',
     'msi:install',
     'state:installed',
+    'payload', 'profile',
     'fixture',
+    'damage', 'msi:repair', 'state:repaired', 'payload', 'profile',
     'msi:uninstall',
     'state:uninstalled',
+    'profile',
     'fixture',
+    'msi:reinstall', 'state:reinstalled', 'payload', 'profile',
+    'msi:finalUninstall', 'state:final', 'profile', 'fixture',
   ]);
+  for (const key of ['repairValidated', 'reinstallValidated', 'payloadValidated', 'profilePreserved']) {
+    assert.equal(result[key], true);
+  }
 });
 
 test('a dirty precondition is rejected without mutating the existing install', async () => {
@@ -131,13 +142,16 @@ test('dependency failures retain their allowlisted lifecycle classification', as
 
 test('safe progress uses schema version 1 and cannot alter the terminal result', async () => {
   async function execute(reportProgress) {
-    const states = [absentState(), installedState(), absentState()];
+    const states = [absentState(), installedState(), installedState(), absentState(), installedState(), absentState()];
     return executeCleanInstallUninstallLifecycle({
       expectedVersion: '0.2.7',
       inspectState: async () => states.shift(),
       reportProgress,
       runMsiOperation: async () => 0,
       verifyFixture: async () => undefined,
+      verifyPayload: async () => undefined,
+      damageRepairPayload: async () => undefined,
+      verifyProfile: async () => undefined,
     });
   }
 
@@ -160,4 +174,35 @@ test('safe progress uses schema version 1 and cannot alter the terminal result',
   );
   assert.equal(evidence.at(-1).phase, 'lifecycle');
   assert.equal(evidence.at(-1).status, 'completed');
+});
+
+test('repair, reinstall, payload and profile failures remain failures after exact cleanup', async () => {
+  for (const failure of ['repair', 'reinstall', 'payload', 'profile', 'cleanup']) {
+    let installed = false;
+    const operations = [];
+    const result = await executeCleanInstallUninstallLifecycle({
+      expectedVersion: '0.2.7',
+      inspectState: async () => installed ? installedState() : absentState(),
+      async runMsiOperation(operation) {
+        operations.push(operation);
+        if (operation === failure || (failure === 'cleanup' && ['repair', 'cleanup'].includes(operation))) {
+          installed = true;
+          return 1603;
+        }
+        installed = ['install', 'repair', 'reinstall'].includes(operation);
+        return 0;
+      },
+      verifyFixture: async () => undefined,
+      damageRepairPayload: async () => undefined,
+      verifyPayload: async () => { if (failure === 'payload') throw new Error('cleanPayloadInvalid'); },
+      verifyProfile: async () => { if (failure === 'profile') throw new Error('cleanProfileChanged'); },
+    });
+    assert.equal(result.status, 'failed', failure);
+    assert.equal(result.errorCode, { repair: 'cleanRepairFailed', reinstall: 'cleanReinstallFailed',
+      payload: 'cleanPayloadInvalid', profile: 'cleanProfileChanged', cleanup: 'cleanRepairFailed' }[failure]);
+    assert.equal(result.cleanupResultCode, failure === 'cleanup' ? 'cleanupFailed' : 'cleanupCompleted');
+    assert.equal(result.profilePreserved, false);
+    assert.equal(operations.at(-1), 'cleanup');
+    assert.equal(installed, failure === 'cleanup');
+  }
 });

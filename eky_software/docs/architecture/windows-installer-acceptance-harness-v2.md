@@ -715,7 +715,7 @@ V2.2 todistaa yhden jo rakennetun paikallisen MSI-fixturen puhtaan asennuksen
 ja poiston. Se ei rakenna pakettia, käynnistä Ekyä, käytä normaalia profiilia
 testifixturena eikä muuta nykyisiä W6B-, W6B.2A- tai W6B.2B-komentoja.
 
-Kutsu saa fixtureksi vain eksplisiittisen installer-manifestin. Ennen ajoa
+Kutsu saa fixtureksi vain eksplisiittisen clean-artifact-descriptorin. Ennen ajoa
 manifestin ja MSI:n pitää olla tavallisia itsenäisiä tiedostoja, niiden
 manifestisidoksen pitää täsmätä ja lähdetiedostot kopioidaan uusina tavuina
 ajokohtaiseen TEMP-juureen. Symlinkki, hardlinkki, tuntematon manifesttikenttä,
@@ -729,10 +729,15 @@ Clean lifecycle etenee yhdessä strict worker -sopimuksessa:
 2. immutable fixture varmennetaan
 3. MSI asennetaan hiljaisesti ilman uudelleenkäynnistystä
 4. asennettu versio, payload ja rekisteröinti varmennetaan
-5. sama fixture varmennetaan uudelleen
-6. täsmällinen tuote poistetaan ProductCodella
-7. kaikki ensimmäisen kohdan jäljet todistetaan poissa oleviksi
-8. fixture varmennetaan vielä kerran.
+5. vain varmennetun payloadin backend-entry poistetaan ja exact ProductCode
+   korjataan `/fa`-operaatiolla; koko asennettu payload verrataan uudelleen
+6. täsmällinen tuote poistetaan ProductCodella ja poissaolo varmennetaan
+7. samat MSI-tavut asennetaan uudelleen samalla muuttumattomalla profiililla;
+   tuotetila ja koko payload varmennetaan
+8. tuote poistetaan uudelleen ja kaikki ensimmäisen kohdan jäljet todistetaan
+   poissa oleviksi; profiili ja lähdeartifact varmennetaan jokaisen siirtymän
+   jälkeen. Repair-, reinstall-, payload- ja profiilitodisteet ovat pakollisia
+   strict scenario-resultin onnistumisessa.
 
 Supervisor käynnistää vain yhden workerin ja omistaa sen jälkeläispuun sekä
 absoluuttisen deadlinen. Workerilla ei ole rinnakkaista watchdogia, retryä,
@@ -772,7 +777,7 @@ vain tiedostomäärät ja `businessDataPreserved: true` -tuloksen.
 Paikallinen komento on:
 
 ```text
-pnpm --filter @eky/desktop installer:v2-clean --fixture-manifest <manifest-path>
+pnpm --filter @eky/desktop installer:v2-clean --artifact-descriptor <descriptor-path>
 ```
 
 V2.2 ei vielä käytä GitHub artifact -actioneita eikä ole nykyisen release-
@@ -783,12 +788,15 @@ skenaarioiden migraatiota.
 
 ## V2.3 build-once artifact -checkpoint
 
-V2.3:n clean lifecycle käyttää descriptorina nykyistä versionoitua
-`installer.manifest.json`-sopimusta. Uutta rinnakkaista release- tai
-descriptor-formaattia ei luoda. Manifesti sitoo app- ja MSI-version,
-build-revisionin, paketin nimen, koon ja SHA-256-tiivisteen. Producer laskee
-lisäksi descriptor-tiedoston oman SHA-256-tiivisteen, joka välitetään
-consumerille artifactin ulkopuolisena job-output-arvona.
+V2.3:n alkuperäinen clean descriptor oli suoraan `installer.manifest.json`.
+V2.8:n repair/reinstall-siirrossa testikohtainen `clean-install-artifact.json`
+sitoo tämän muuttumattoman tuotantomanifestin SHA-256:n, build-revisionin sekä
+nykyisen package-inventory-vastuun koko payloadin tiivisteen, tiedostomäärän
+ja tavumäärän. Näin consumer voi todistaa asennetut tavut ilman erillistä
+payload-kopiota tai uusia tuotantomanifestin kenttiä. Tiukka testisopimus ei
+muuta julkaisuformaattia tai pakettiin toimitettavia komponentteja.
+Producerin descriptor-SHA välitetään consumerille artifactin ulkopuolisena
+job-output-arvona.
 
 Producer:
 
@@ -801,8 +809,8 @@ Producer:
   ulkoinen fixture tai consumer-artifact ei saa koskaan olla hardlinkki
 - kopioi descriptorin ja MSI:n itsenäisinä tavuina ajokohtaiseen artifact-
   juureen ilman hardlinkkiä
-- hyväksyy artifact-juureen vain tiedostot `installer.manifest.json` ja
-  descriptorin nimeämän MSI:n
+- hyväksyy artifact-juureen vain `clean-install-artifact.json`-descriptorin,
+  `installer.manifest.json`-tiedoston ja manifestin nimeämän MSI:n
 - varmistaa lähdeartifactin muuttumattomuuden sekä kopion descriptor- ja
   package-hashit ennen luovutusta
 - ei sisällytä profiilia, lokeja, salaisuuksia, backupia, business-dataa tai
@@ -823,7 +831,7 @@ Paikallinen producer/consumer-järjestys on:
 ```text
 pnpm --filter @eky/desktop installer:v2-artifact:build --artifact-root <absolute-new-artifact-root> --summary-path <absolute-summary-path-outside-artifact-root>
 pnpm --filter @eky/desktop installer:v2-artifact:verify --artifact-root <absolute-artifact-root> --expected-descriptor-sha256 <producer-descriptor-sha256> --expected-build-revision <producer-git-revision>
-pnpm --filter @eky/desktop installer:v2-clean --fixture-manifest <absolute-artifact-root>/installer.manifest.json
+pnpm --filter @eky/desktop installer:v2-clean --artifact-descriptor <absolute-artifact-root>/clean-install-artifact.json
 ```
 
 Verifier ajetaan sekä ennen V2.2-lifecyclea että sen jälkeen. Artifact-juuren
@@ -2425,8 +2433,8 @@ Vihreä V2.8-kierros ei vielä todista seuraavia vanhan MSI-portin vaatimuksia:
 
 | Säilytettävä vaatimus | Vanha todiste | Nykyisen V2:n puute ja seuraava vastuu |
 | --- | --- | --- |
-| Vaurioituneen asennuksen repair palauttaa täsmälleen oikean payloadin | `testWindowsInstallerLifecycle.ps1` poistaa asennetun backend-tiedoston ja ajaa `/fa`-korjauksen sekä payload-vertailun | `cleanInstallUninstallLifecycle.mjs` sisältää vain install/uninstall-ketjun. Repair siirretään sen nykyiseen lifecycle-/Windows-adapterirajaan omine jälkiehtoineen. |
-| Uninstallin jälkeinen reinstall säilyttää saman profiilin datan ja poistuu puhtaasti | Sama vanha lifecycle asentaa, korjaa, poistaa, asentaa uudelleen ja poistaa uudelleen | Kaksi erillistä V2-clean-consumeria ei ole saman profiilin reinstall-todiste. Ketju ja datan säilyminen lisätään samaan clean-vastuuseen. |
+| Vaurioituneen asennuksen repair palauttaa täsmälleen oikean payloadin | `testWindowsInstallerLifecycle.ps1` poistaa asennetun backend-tiedoston ja ajaa `/fa`-korjauksen sekä payload-vertailun | Toteutettu nykyiseen clean-lifecycle-/Windows-adapteriin. Sopimukset ja käyttäytymisregressiot vihreät; uusi immutable artifact ja native-consumer-näyttö vielä vaaditaan. |
+| Uninstallin jälkeinen reinstall säilyttää saman profiilin datan ja poistuu puhtaasti | Sama vanha lifecycle asentaa, korjaa, poistaa, asentaa uudelleen ja poistaa uudelleen | Toteutettu samaan clean-ketjuun profiilin jokaisen siirtymän varmennuksella. Kaksi erillistä clean-consumeria ei korvaa ketjun pakollista reinstall-tulosta. Native-hyväksyntä vielä avoin. |
 | Suora Setup-päivitys sovelluksen ollessa käynnissä | `testWindowsInstallerUpgrade.ps1` käynnistää MSI:n elävän Ekyn rinnalle ja tarkistaa odotuksen tai hallitun eston sekä lopullisen version ja datan | `upgradeRollbackLifecycle.mjs` ei käynnistä source-sovellusta ennen major upgradea. Workspace-handoffin hallittu sulkeminen ei korvaa tätä tapausta. Todiste kuuluu nykyisen upgrade-vastuun alle. |
 
 Näille ei luoda uutta supervisoria tai ajokehystä. Korvaavan ketjun pitää
@@ -2434,11 +2442,13 @@ käyttää samaa prosessiomistajaa, muuttumattomia artifact-tavuja ja erillisiä
 alkuperäisen virheen, cleanupin ja jälkiehtojen tuloksia. Ensin tehdään
 käyttäytymisregressiot nykyisiin vastuisiin, sitten sovitut clean/upgrade-
 consumerit. Vanhoja lifecycle-/upgrade-tiedostoja ei poisteta ennen näyttöä.
-Clean-siirtoon kuuluu myös asennetun payloadin täysi vertailu installin,
-repairin ja reinstallin jälkeen. Nykyinen V2-clean tarkistaa tuotetilan,
-keskeisten asennuspolkujen olemassaolon ja lähde-MSI:n eheyden, mutta ei
-vertaa koko asennettua payloadia vanhan `Assert-EkyInstalledPayload`-portin
-tavoin. Ehjä lähdeartifact ei yksin todista asennettujen tiedostojen eheyttä.
+Clean-siirto vertaa koko asennetun payloadin installin, repairin ja
+reinstallin jälkeen producerin nykyisellä package-inventory-vastuulla
+laskettuun tiivisteeseen. Puuttuva, muuttunut tai ylimääräinen tiedosto
+torjutaan. Uusi testidescriptor sitoo inventoryn tuotantomanifestiin;
+tuotantomanifesti, paketointi ja versio säilyvät ennallaan. Ehjä lähdeartifact
+ei yksin todista asennettujen tiedostojen eheyttä. Vanhaa vihreää artifactia
+ei käytetä tämän laajennetun ketjun hyväksyntänä.
 
 Julkaisuvastuita ei myöskään kadoteta vanhan jobin mukana. V2-clean-producer
 käyttää nykyistä pilot-paketointia, locked-restore-tarkistusta ja

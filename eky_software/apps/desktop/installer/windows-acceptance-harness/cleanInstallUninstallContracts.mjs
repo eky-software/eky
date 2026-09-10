@@ -22,6 +22,10 @@ const RESULT_KEYS = [
   'errorCode',
   'installExitCode',
   'installedStateValidated',
+  'payloadValidated',
+  'profilePreserved',
+  'reinstallValidated',
+  'repairValidated',
   'resultCode',
   'runNonce',
   'scenario',
@@ -115,7 +119,9 @@ export function validateCleanInstallUninstallResult(value, expected) {
         value.uninstallExitCode < -2_147_483_648 ||
         value.uninstallExitCode > 2_147_483_647)) ||
     typeof value.installedStateValidated !== 'boolean' ||
-    typeof value.uninstalledStateValidated !== 'boolean'
+    typeof value.uninstalledStateValidated !== 'boolean' ||
+    !['repairValidated', 'reinstallValidated', 'payloadValidated', 'profilePreserved']
+      .every((key) => typeof value[key] === 'boolean')
   ) {
     throw new Error('WINDOWS_ACCEPTANCE_CLEAN_RESULT_INVALID');
   }
@@ -128,7 +134,8 @@ export function validateCleanInstallUninstallResult(value, expected) {
     value.installExitCode === 0 &&
     value.uninstallExitCode === 0 &&
     value.installedStateValidated &&
-    value.uninstalledStateValidated
+    value.uninstalledStateValidated && value.repairValidated && value.reinstallValidated &&
+    value.payloadValidated && value.profilePreserved
   ) {
     return Object.freeze({ ...value });
   }

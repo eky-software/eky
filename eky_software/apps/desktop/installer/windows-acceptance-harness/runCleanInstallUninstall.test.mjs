@@ -9,12 +9,12 @@ import {
   runCleanInstallUninstallWorker,
 } from './runCleanInstallUninstallWorker.mjs';
 
-test('command line accepts exactly one explicit local manifest', () => {
+test('command line accepts exactly one explicit clean artifact descriptor', () => {
   assert.equal(
     parseCleanInstallUninstallArguments([
-      '--fixture-manifest',
+      '--artifact-descriptor',
       join(process.cwd(), 'fixture.manifest.json'),
-    ]).manifestPath,
+    ]).descriptorPath,
     join(process.cwd(), 'fixture.manifest.json'),
   );
   assert.throws(
@@ -24,7 +24,7 @@ test('command line accepts exactly one explicit local manifest', () => {
   assert.throws(
     () =>
       parseCleanInstallUninstallArguments([
-        '--fixture-manifest',
+        '--artifact-descriptor',
         'manifest.json',
         '--extra',
       ]),
@@ -34,7 +34,7 @@ test('command line accepts exactly one explicit local manifest', () => {
     () =>
       parseCleanInstallUninstallArguments([
         '--',
-        '--fixture-manifest',
+        '--artifact-descriptor',
         'manifest.json',
       ]),
     /WINDOWS_ACCEPTANCE_CLEAN_ARGUMENTS_INVALID/,

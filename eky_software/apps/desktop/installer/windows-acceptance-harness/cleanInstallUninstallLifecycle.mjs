@@ -4,6 +4,11 @@ const FAILURE_CODES = new Set([
   'cleanLifecyclePreconditionFailed',
   'cleanUninstallFailed',
   'cleanUninstalledStateInvalid',
+  'cleanPayloadInvalid',
+  'cleanProfileChanged',
+  'cleanRepairFailed',
+  'cleanRepairPreparationFailed',
+  'cleanReinstallFailed',
   'fixtureVerificationFailed',
   'installerStateInspectionFailed',
   'unexpectedFailure',
@@ -58,8 +63,9 @@ function requireInstalledState(state, expectedVersion) {
 }
 
 function errorCodeOf(error) {
-  return error instanceof CleanLifecycleFailure && FAILURE_CODES.has(error.code)
-    ? error.code
+  const code = error instanceof CleanLifecycleFailure ? error.code : error?.message;
+  return FAILURE_CODES.has(code)
+    ? code
     : 'unexpectedFailure';
 }
 
@@ -129,13 +135,26 @@ function createProgressObserver(reportProgress) {
   });
 }
 
+export function initialCleanLifecycleResult() {
+  return { schemaVersion: 1, status: 'failed', resultCode: 'cleanInstallUninstallFailed',
+    errorCode: 'unexpectedFailure', cleanupResultCode: 'notRequired',
+    installExitCode: null, uninstallExitCode: null, installedStateValidated: false,
+    uninstalledStateValidated: false, repairValidated: false, reinstallValidated: false,
+    payloadValidated: false, profilePreserved: false };
+}
+
 export async function executeCleanInstallUninstallLifecycle({
   expectedVersion,
   inspectState,
   reportProgress,
   runMsiOperation,
   verifyFixture,
+  verifyPayload,
+  damageRepairPayload,
+  verifyProfile,
 }) {
+  const proof = { repairValidated: false, reinstallValidated: false,
+    payloadValidated: false, profilePreserved: false };
   let installAttempted = false;
   let installExitCode = null;
   let installedStateValidated = false;
@@ -186,12 +205,25 @@ export async function executeCleanInstallUninstallLifecycle({
         ),
     );
     installedStateValidated = true;
+    await progress.step('installedPayload', 'payloadValidated', 'cleanPayloadInvalid', verifyPayload);
+    await progress.step('installedProfile', 'profilePreserved', 'cleanProfileChanged', verifyProfile);
     await progress.step(
       'fixtureAfterInstall',
       'fixtureValidated',
       'fixtureVerificationFailed',
       verifyFixture,
     );
+
+    await progress.step('repairPreparation', 'repairPrepared', 'cleanRepairPreparationFailed', damageRepairPayload);
+    await progress.step('repair', 'repairCompleted', 'cleanRepairFailed', async () => {
+      if (await runMsiOperation('repair') !== 0) fail('cleanRepairFailed');
+    });
+    await progress.step('repairPostcondition', 'repairValidated', 'cleanPayloadInvalid', async () => {
+      requireInstalledState(await inspectState('repaired'), expectedVersion);
+      await verifyPayload();
+      await verifyProfile();
+    });
+    proof.repairValidated = true;
 
     uninstallExitCode = await progress.step(
       'uninstall',
@@ -216,12 +248,35 @@ export async function executeCleanInstallUninstallLifecycle({
         ),
     );
     uninstalledStateValidated = true;
+    await progress.step('uninstalledProfile', 'profilePreserved', 'cleanProfileChanged', verifyProfile);
     await progress.step(
       'fixtureAfterUninstall',
       'fixtureValidated',
       'fixtureVerificationFailed',
       verifyFixture,
     );
+
+    uninstalledStateValidated = false;
+    await progress.step('reinstall', 'reinstallCompleted', 'cleanReinstallFailed', async () => {
+      if (await runMsiOperation('reinstall') !== 0) fail('cleanReinstallFailed');
+    });
+    await progress.step('reinstallPostcondition', 'reinstallValidated', 'cleanPayloadInvalid', async () => {
+      requireInstalledState(await inspectState('reinstalled'), expectedVersion);
+      await verifyPayload();
+      await verifyProfile();
+    });
+    proof.reinstallValidated = true;
+    proof.payloadValidated = true;
+    await progress.step('finalUninstall', 'uninstallCompleted', 'cleanUninstallFailed', async () => {
+      if (await runMsiOperation('finalUninstall') !== 0) fail('cleanUninstallFailed');
+    });
+    await progress.step('finalPostcondition', 'uninstalledStateValidated', 'cleanUninstalledStateInvalid', async () => {
+      requireAbsentState(await inspectState('final'), 'cleanUninstalledStateInvalid');
+    });
+    uninstalledStateValidated = true;
+    await progress.step('finalProfile', 'profilePreserved', 'cleanProfileChanged', verifyProfile);
+    proof.profilePreserved = true;
+    await progress.step('fixtureFinal', 'fixtureValidated', 'fixtureVerificationFailed', verifyFixture);
     progress.completed();
 
     return Object.freeze({
@@ -234,6 +289,7 @@ export async function executeCleanInstallUninstallLifecycle({
       uninstallExitCode,
       installedStateValidated,
       uninstalledStateValidated,
+      ...proof,
     });
   } catch (error) {
     const errorCode = errorCodeOf(error);
@@ -291,6 +347,7 @@ export async function executeCleanInstallUninstallLifecycle({
       uninstallExitCode,
       installedStateValidated,
       uninstalledStateValidated,
+      ...proof,
     });
   }
 }
