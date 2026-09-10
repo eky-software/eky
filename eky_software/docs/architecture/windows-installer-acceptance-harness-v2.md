@@ -924,12 +924,29 @@ Yksi strict worker suorittaa seuraavan järjestyksen:
 
 V2.8:n running-Setup-siirto käyttää olemassa olevaa desktop.started- ja
 shutdownCompleted-lukijaa, nykyistä native close -pyyntöä sekä samaa workerin
-Job Objectia. MSI:n execute-sekvenssin `InstallValidate`-aloitushavainto tai
-sovelluksen/MSI:n todellinen poistuminen vapauttaa hallitun sulkemisen.
-Viiden sekunnin oletusodotusta ei kopioida. Yksityisen MSI-lokin tiedostovahti
-ei omista prosessia, aikarajaa tai onnistumispäätöstä; se suljetaan ja sen
-keskeneräinen luku odotetaan saman Job-rajan sisällä. MSI:n nykyiseen
-lokikirjoitukseen ei lisätä pakotettua flushia tai synkronista varatulostusta.
+Job Objectia. Nykyisen, vielä hyväksymättömän toteutuksen hallittu sulkeminen
+odottaa MSI-lokista `InstallValidate`-aloitushavaintoa tai sovelluksen/MSI:n
+todellista poistumista. Tätä lokiriippuvuutta ei hyväksytä valmiiksi
+ajoitussopimukseksi: puskuroidun lokin tai tiedostomuutoksen toimitus ei
+takaa, että havainto saadaan ennen MSI-vaiheen valmistumista.
+
+Microsoftin [MSI-lokitus](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/msiexec)
+ja [tiedostomuutosten ilmoitukset](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-readdirectorychangesw)
+erottavat kirjoittamisen, flushin ja muutoksen havaitsemisen. Suljetun
+testilokitiedoston onnistunut lukeminen ei siis yksin todista käynnissä olevan
+MSI:n ohjausrajaa. Viiden sekunnin oletusodotusta, pakotettua flushia tai
+uutta timeout-/cleanup-omistajaa ei lisätä tämän puutteen peittämiseksi.
+Nykyinen tiedostovahti suljetaan ja sen keskeneräinen luku odotetaan saman
+Job-rajan sisällä.
+
+Rajattu päätösehdotus on korvata tämän testin lokiin sidottu ohjaus Windows
+Installerin varsinaisella vaihe-callbackilla nykyisen workerin alla.
+[MsiSetExternalUIRecord](https://learn.microsoft.com/en-us/windows/win32/api/msi/nf-msi-msisetexternaluirecord)
+kuuluu asennuksen käynnistävälle clientille, ei jo käynnissä olevaan
+`msiexec`-prosessiin liitettäväksi. Siksi mahdollinen native-adapteri ja
+sen suhde suoran komentorivikäynnistyksen kattavuuteen edellyttävät omistajan
+päätöstä ennen toteutusta. API-käynnistystä ei nimetä hiljaisesti samaksi
+todisteeksi kuin suora `msiexec`-käynnistys. Muut installer-polut säilyvät.
 
 [InstallValidate](https://learn.microsoft.com/en-us/windows/win32/msi/installvalidate-action)
 on Windows Installerin tilan ja käytössä olevien tiedostojen tarkistusvaihe.
@@ -2470,7 +2487,7 @@ Vihreä V2.8-kierros ei vielä todista seuraavia vanhan MSI-portin vaatimuksia:
 | --- | --- | --- |
 | Vaurioituneen asennuksen repair palauttaa täsmälleen oikean payloadin | `testWindowsInstallerLifecycle.ps1` poistaa asennetun backend-tiedoston ja ajaa `/fa`-korjauksen sekä payload-vertailun | Toteutettu nykyiseen clean-lifecycle-/Windows-adapteriin. Kohdetestit ja kaksi paikallista native-consumeria vihreät; uuden integraatiorevision CI-näyttö vielä vaaditaan. |
 | Uninstallin jälkeinen reinstall säilyttää saman profiilin datan ja poistuu puhtaasti | Sama vanha lifecycle asentaa, korjaa, poistaa, asentaa uudelleen ja poistaa uudelleen | Toteutettu samaan clean-ketjuun profiilin jokaisen siirtymän varmennuksella, paikalliset consumerit 2/2. Kumpikin todistaa ketjun pakollisen reinstall-tuloksen; lopullinen CI-hyväksyntä vielä avoin. |
-| Suora Setup-päivitys sovelluksen ollessa käynnissä | `testWindowsInstallerUpgrade.ps1` käynnistää MSI:n elävän Ekyn rinnalle ja tarkistaa odotuksen tai hallitun eston sekä lopullisen version ja datan | Toteutus nykyisen upgrade-vastuun alla, readiness-/MSI-/shutdown-regressiot vihreät. Uusi build-once-artifact valmistui, mutta ensimmäinen native-consumer epäonnistui päivitysvaiheessa; hyväksyntä on avoin. Workspace-handoff ei korvaa tätä tapausta. |
+| Suora Setup-päivitys sovelluksen ollessa käynnissä | `testWindowsInstallerUpgrade.ps1` käynnistää MSI:n elävän Ekyn rinnalle ja tarkistaa odotuksen tai hallitun eston sekä lopullisen version ja datan | Toteutus nykyisen upgrade-vastuun alla; ensimmäinen native-consumer epäonnistui. Lokihavaintoon sidottu ohjausraja on hyväksymättä, ja sen korvaamista koskeva rajattu päätös on avoin. Diagnostiikka ei korvaa hyväksyntää. Workspace-handoff ei korvaa tätä tapausta. |
 
 Näille ei luoda uutta supervisoria tai ajokehystä. Korvaavan ketjun pitää
 käyttää samaa prosessiomistajaa, muuttumattomia artifact-tavuja ja erillisiä
