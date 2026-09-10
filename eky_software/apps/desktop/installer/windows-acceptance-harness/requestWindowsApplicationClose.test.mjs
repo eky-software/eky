@@ -32,7 +32,7 @@ async function verifyFixtureIdentity(t, phase) {
     fixtureSha256: current.sha256, ...comparison }));
 }
 
-before(async () => {
+before(async (t) => {
   if (process.platform !== 'win32') return;
   buildContext = await createRunContext('native-window-compilation');
   fixtureExecutable = resolve(buildContext.runRoot, 'WindowContract.exe');
@@ -46,9 +46,18 @@ before(async () => {
   const result = await readWindowsAcceptanceSupervisorResult(buildContext.resultPath, {
     ...buildContext, supervisorExitCode: completion.exitCode,
   });
-  assert.equal(result.processResultCode, 'processCompleted');
-  assert.equal(result.workerResultCode, 'workerResultValidated');
-  assert.equal(result.processTreeAbsent, true);
+  const preparationDetails = JSON.stringify({
+    schemaVersion: 1,
+    operation: 'nativeFixtureCompilation',
+    process: result.processResultCode, worker: result.workerResultCode,
+    cleanup: result.cleanupResultCode, processTreeAbsent: result.processTreeAbsent,
+    childExitCode: result.childExitCode,
+    phases: completion.evidence.map(({ phase, status, elapsedMs }) => ({ phase, status, elapsedMs })),
+  });
+  t.diagnostic(preparationDetails);
+  assert.equal(result.processResultCode, 'processCompleted', preparationDetails);
+  assert.equal(result.workerResultCode, 'workerResultValidated', preparationDetails);
+  assert.equal(result.processTreeAbsent, true, preparationDetails);
   fixtureIdentity = await readFixtureIdentity();
 });
 

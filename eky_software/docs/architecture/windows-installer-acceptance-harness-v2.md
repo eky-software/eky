@@ -2452,6 +2452,18 @@ sisäinen pysähtymisraja on vielä paikantamatta. Onnistunut toinen runner
 ei korvaa epäonnistunutta sarjaa. Aikarajoja ei ole muutettu, eikä uutta
 packaged-kierrosta käytetä tämän puuttuvan havainnon korvikkeena.
 
+Ikkunafixturen valmistelu raportoi nyt nykyisen supervisorin validoidusta
+tuloksesta erikseen process-, worker- ja cleanup-tuloksen, prosessipuun
+poissaolon sekä suljetut vaihehavainnot ennen onnistumisassertioita.
+Raportointi tapahtuu valmistumisen jälkeen eikä ohjaa suoritusta tai lisää
+uutta odotusta. Valmistelun 10 sekunnin kokonaisrajasta 1 sekunti kuuluu
+edelleen siivoukselle; työn määräaika on 9 sekuntia. Valmistelun timeout-
+regressio vaatii virheen säilymisen, omistetun puun poistumisen ja koko
+komennon päättymisen. Epävarmaa siivousta ei hyväksytä onnistumiseksi.
+Tämä tarkennus ei vielä ratkaise CI:ssä havaittua valmisteluviivettä eikä
+muuta epäonnistuneen hyväksyntäajon tulosta. Seuraava päätös koskee rajattua
+CI-valmisteludiagnoosia ilman paketointia, ei uutta täyttä matriisia.
+
 ### Apuoperaatioiden yhteinen sopimus ja tulostoimituksen varaus
 
 Skenaariopuun Job-tulos ei yksin todista sitä ennen tai sen jälkeen
