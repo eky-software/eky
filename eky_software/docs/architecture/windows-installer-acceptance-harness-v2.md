@@ -2470,13 +2470,18 @@ Vihreä V2.8-kierros ei vielä todista seuraavia vanhan MSI-portin vaatimuksia:
 | --- | --- | --- |
 | Vaurioituneen asennuksen repair palauttaa täsmälleen oikean payloadin | `testWindowsInstallerLifecycle.ps1` poistaa asennetun backend-tiedoston ja ajaa `/fa`-korjauksen sekä payload-vertailun | Toteutettu nykyiseen clean-lifecycle-/Windows-adapteriin. Kohdetestit ja kaksi paikallista native-consumeria vihreät; uuden integraatiorevision CI-näyttö vielä vaaditaan. |
 | Uninstallin jälkeinen reinstall säilyttää saman profiilin datan ja poistuu puhtaasti | Sama vanha lifecycle asentaa, korjaa, poistaa, asentaa uudelleen ja poistaa uudelleen | Toteutettu samaan clean-ketjuun profiilin jokaisen siirtymän varmennuksella, paikalliset consumerit 2/2. Kumpikin todistaa ketjun pakollisen reinstall-tuloksen; lopullinen CI-hyväksyntä vielä avoin. |
-| Suora Setup-päivitys sovelluksen ollessa käynnissä | `testWindowsInstallerUpgrade.ps1` käynnistää MSI:n elävän Ekyn rinnalle ja tarkistaa odotuksen tai hallitun eston sekä lopullisen version ja datan | Toteutus nykyisen upgrade-vastuun alla, readiness-/MSI-/shutdown-regressiot vihreät. Uusi build-once-artifact ja native-consumer-todiste vielä avoinna. Workspace-handoff ei korvaa tätä tapausta. |
+| Suora Setup-päivitys sovelluksen ollessa käynnissä | `testWindowsInstallerUpgrade.ps1` käynnistää MSI:n elävän Ekyn rinnalle ja tarkistaa odotuksen tai hallitun eston sekä lopullisen version ja datan | Toteutus nykyisen upgrade-vastuun alla, readiness-/MSI-/shutdown-regressiot vihreät. Uusi build-once-artifact valmistui, mutta ensimmäinen native-consumer epäonnistui päivitysvaiheessa; hyväksyntä on avoin. Workspace-handoff ei korvaa tätä tapausta. |
 
 Näille ei luoda uutta supervisoria tai ajokehystä. Korvaavan ketjun pitää
 käyttää samaa prosessiomistajaa, muuttumattomia artifact-tavuja ja erillisiä
 alkuperäisen virheen, cleanupin ja jälkiehtojen tuloksia. Ensin tehdään
 käyttäytymisregressiot nykyisiin vastuisiin, sitten sovitut clean/upgrade-
 consumerit. Vanhoja lifecycle-/upgrade-tiedostoja ei poisteta ennen näyttöä.
+Asennustilan lukijan tunnettu virhe säilytetään päivityskoordinaattorin läpi
+omana virheluokkanaan; sitä ei korvata yleisellä päivitysvirheellä. Tämä
+käyttäytymisregressiolla todistettu tarkennus ei yksin selitä avoimen
+native-ajon syytä. Varmennettu jälkisiivous ei muuta epäonnistunutta
+skenaariota hyväksytyksi eikä valtuuta hyväksyntäuusintaa.
 Clean-siirto vertaa koko asennetun payloadin installin, repairin ja
 reinstallin jälkeen producerin nykyisellä package-inventory-vastuulla
 laskettuun tiivisteeseen. Puuttuva, muuttunut tai ylimääräinen tiedosto

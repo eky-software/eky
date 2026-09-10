@@ -43,7 +43,7 @@ export async function coordinateRunningApplicationUpgrade({
     }
     if (exitCode !== 0) failure('runningUpgradeMsiFailed');
   } catch (error) {
-    errorCode = ['runningUpgradeApplicationExitedEarly', 'runningUpgradeApplicationFailed',
+    errorCode = ['installerStateInspectionFailed', 'runningUpgradeApplicationExitedEarly', 'runningUpgradeApplicationFailed',
       'runningUpgradeShutdownFailed', 'runningUpgradeMsiFailed', 'runningUpgradeValidationInvalid',
       'runningUpgradeBlockedSourceChanged'].includes(error?.message) ? error.message : 'runningUpgradeFailed';
   } finally {

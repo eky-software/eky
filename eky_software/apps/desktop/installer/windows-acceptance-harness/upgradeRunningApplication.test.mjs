@@ -84,6 +84,17 @@ test('failed unchanged-source proof never resumes the blocked installer', async 
   assert.equal(f.events.includes('upgradeAfterClose'), false);
 });
 
+test('failed installed-state inspection retains its known error and forbids continuation', async () => {
+  const f = fixture('blocked');
+  f.ports.verifyBlockedSource = async () => { throw new Error('installerStateInspectionFailed'); };
+  const result = await coordinateRunningApplicationUpgrade(f.ports);
+  assert.equal(result.status, 'failed');
+  assert.equal(result.errorCode, 'installerStateInspectionFailed');
+  assert.equal(result.cleanupResultCode, 'completed');
+  assert.equal(f.events.includes('upgradeAfterClose'), false);
+  assert.deepEqual(f.resources(), { applicationRunning: false, observerOpen: false });
+});
+
 test('failed application startup never starts MSI but still closes the owned application', async () => {
   const f = fixture('startupFailed');
   const result = await coordinateRunningApplicationUpgrade(f.ports);
