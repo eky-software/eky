@@ -92,6 +92,7 @@ for (const clean of [true, false]) {
             ? { status: 'failed', resultCode: 'upgradeRollbackFailed', errorCode: 'runningUpgradeValidationInvalid',
                 applicationCleanupResultCode: 'cleanupUnverified' }
             : ({ status: 'completed',
+            runningUpgradeInitialExitCode: 1603, upgradeExitCode: 0,
             resultCode: clean ? 'cleanInstallUninstallCompleted' : 'upgradeRollbackCompleted' }),
           removeRunRoot: async (path) => {
             removals += 1;
@@ -116,6 +117,10 @@ for (const clean of [true, false]) {
           assert.doesNotMatch(JSON.stringify(result), /PRIVATE/);
           return true;
         });
+        if (mode === 'completed' && !clean) {
+          assert.equal(result.runningUpgradeInitialExitCode, 1603);
+          assert.equal(result.upgradeExitCode, 0);
+        }
         const removed = ['completed', 'prepareFailed', 'deadlineRecovered', 'preconditionPresent'].includes(mode);
         assert.equal(result.fixtureRemoved, removed);
         assert.equal(result.fixtureCleanupResultCode, removed ? 'fixtureRemoved'

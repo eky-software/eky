@@ -105,6 +105,7 @@ test('worker scenario failure stays primary when semantic cleanup fails', async 
     resultCode: 'upgradeRollbackFailed',
     errorCode: 'majorUpgradeFailed',
     cleanupResultCode: 'cleanupFailed',
+    runningUpgradeInitialExitCode: 1603,
   });
   await assert.rejects(
     resolveUpgradeRollbackTerminalOutcome({
@@ -126,6 +127,7 @@ test('worker scenario failure stays primary when semantic cleanup fails', async 
         'WINDOWS_ACCEPTANCE_UPGRADE_MAJOR_UPGRADE_FAILED',
       );
       assert.equal(details.semanticCleanupResultCode, 'semanticCleanupFailed');
+      assert.equal(details.runningUpgradeInitialExitCode, 1603);
       assert.equal(details.postconditionResultCode, 'sourceProductPresent');
       return true;
     },

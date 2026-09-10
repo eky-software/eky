@@ -322,6 +322,8 @@ export async function runUpgradeRollback(arguments_, {
     scenario: UPGRADE_ROLLBACK_SCENARIO,
     status: 'completed',
     resultCode: 'upgradeRollbackCompleted',
+    runningUpgradeInitialExitCode: terminal.runningUpgradeInitialExitCode,
+    upgradeExitCode: terminal.upgradeExitCode,
     sourceVersion: artifact.roles.source.appVersion,
     targetVersion: artifact.roles.target.appVersion,
     sourcePackageSha256: artifact.roles.source.packageSha256,

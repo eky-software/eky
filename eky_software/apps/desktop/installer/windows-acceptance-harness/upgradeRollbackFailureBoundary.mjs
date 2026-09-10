@@ -164,6 +164,7 @@ async function cleanupProducts(cleanupExactProducts) {
 
 function failureDetails({
   applicationCleanupResultCode = 'notChecked',
+  runningUpgradeInitialExitCode = null,
   errorCode,
   initialProductStateResultCode,
   postconditionResultCode,
@@ -181,6 +182,7 @@ function failureDetails({
     supervisorCleanupResultCode: supervisorResult.cleanupResultCode,
     processTreeAbsent: supervisorResult.processTreeAbsent,
     applicationCleanupResultCode,
+    runningUpgradeInitialExitCode,
     scenarioResultCode,
     initialProductStateResultCode,
     semanticCleanupResultCode,
@@ -190,6 +192,7 @@ function failureDetails({
 
 async function recoverAndThrow({
   applicationCleanupResultCode = 'notChecked',
+  runningUpgradeInitialExitCode = null,
   cleanupExactProducts,
   errorCode,
   initialInspection,
@@ -200,7 +203,7 @@ async function recoverAndThrow({
 }) {
   if (!supervisorResult.processTreeAbsent) {
     throw new UpgradeRollbackCommandFailure(failureDetails({ errorCode, scenarioResultCode,
-      applicationCleanupResultCode,
+      applicationCleanupResultCode, runningUpgradeInitialExitCode,
       initialProductStateResultCode: 'notChecked', postconditionResultCode: 'notChecked',
       semanticCleanupResultCode: 'blockedByOwnedProcessTree', supervisorResult }));
   }
@@ -238,6 +241,7 @@ async function recoverAndThrow({
   throw new UpgradeRollbackCommandFailure(
     failureDetails({
       applicationCleanupResultCode,
+      runningUpgradeInitialExitCode,
       errorCode,
       initialProductStateResultCode,
       postconditionResultCode,
@@ -262,6 +266,7 @@ export async function resolveUpgradeRollbackTerminalOutcome({
     if (scenarioResult.status !== 'completed') {
       await recoverAndThrow({
         applicationCleanupResultCode: scenarioResult.applicationCleanupResultCode,
+        runningUpgradeInitialExitCode: scenarioResult.runningUpgradeInitialExitCode,
         cleanupExactProducts,
         errorCode: scenarioErrorCode(scenarioResult),
         scenarioResultCode: scenarioResult.resultCode,
@@ -280,6 +285,7 @@ export async function resolveUpgradeRollbackTerminalOutcome({
         cleanupExactProducts,
         errorCode: 'WINDOWS_ACCEPTANCE_UPGRADE_POSTCONDITION_FAILED',
         initialInspection: postcondition,
+        runningUpgradeInitialExitCode: scenarioResult.runningUpgradeInitialExitCode,
         scenarioResultCode: scenarioResult.resultCode,
         supervisorResult,
         verifyExactProductStates,
@@ -291,6 +297,7 @@ export async function resolveUpgradeRollbackTerminalOutcome({
   let errorCode = supervisorErrorCode(supervisorResult);
   let scenarioResultCode = 'notAvailable';
   let applicationCleanupResultCode = 'notChecked';
+  let runningUpgradeInitialExitCode = null;
   let semanticCleanupAllowed = true;
   if (
     supervisorResult.processResultCode === 'processCompleted' &&
@@ -302,6 +309,7 @@ export async function resolveUpgradeRollbackTerminalOutcome({
         errorCode = scenarioErrorCode(scenarioResult);
         scenarioResultCode = scenarioResult.resultCode;
         applicationCleanupResultCode = scenarioResult.applicationCleanupResultCode ?? 'notChecked';
+        runningUpgradeInitialExitCode = scenarioResult.runningUpgradeInitialExitCode ?? null;
         semanticCleanupAllowed =
           scenarioResult.errorCode !== 'upgradeLifecyclePreconditionFailed';
       }
@@ -311,6 +319,7 @@ export async function resolveUpgradeRollbackTerminalOutcome({
   }
   await recoverAndThrow({
     applicationCleanupResultCode,
+    runningUpgradeInitialExitCode,
     cleanupExactProducts,
     errorCode,
     scenarioResultCode,
