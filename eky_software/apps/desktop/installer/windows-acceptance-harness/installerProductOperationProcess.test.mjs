@@ -58,6 +58,7 @@ for (const mode of ['normal', 'socketStillOpen', 'missing', 'errorBeforeClose', 
       observe: (phase, status) => { events.push([phase, status]); throw new Error('ignored diagnostic failure'); },
       spawnProcess(_, args) {
         const child = new EventEmitter();
+        queueMicrotask(() => child.emit('spawn'));
         const input = JSON.parse(Buffer.from(args[2], 'base64').toString('utf8'));
         const finish = () => {
           child.emit('exit', 0, null);
@@ -89,7 +90,9 @@ for (const mode of ['normal', 'socketStillOpen', 'missing', 'errorBeforeClose', 
     });
     assert.deepEqual(events, [
       ['productChannelSetup', 'started'], ['productChannelSetup', 'completed'],
-      ['productSupervisorWait', 'started'], ['productSupervisorExit', 'completed'],
+      ['productSupervisorWait', 'started'], ['productHostLaunch', 'started'], ['productHostLaunch', 'completed'],
+      ['productHostDeadline', 'started'], ['productHostSpawn', 'completed'], ['productSupervisorExit', 'completed'],
+      ...(mode === 'errorBeforeClose' ? [['productHostTermination', 'started'], ['productHostTermination', 'failed']] : []),
       ['productSupervisorClose', 'completed'],
       ['productSupervisorWait', mode === 'errorBeforeClose' ? 'failed' : 'completed'],
       ['productChannelCleanup', 'started'], ['productChannelCleanup', 'completed'],

@@ -39,7 +39,9 @@ function runWithChild(child, overrides = {}) {
 
 test('bounded adapter reports normal direct-child exit', async () => {
   const child = new FakeChild();
-  const completion = runWithChild(child);
+  const events = [];
+  const completion = runWithChild(child, { observe: (phase, status) => events.push([phase, status]) });
+  child.emit('spawn');
   child.emit('close', 0, null);
 
   assert.deepEqual(await completion, {
@@ -49,6 +51,8 @@ test('bounded adapter reports normal direct-child exit', async () => {
     directProcessAbsent: true,
   });
   assert.equal(child.killCount, 0);
+  assert.deepEqual(events, [['launch', 'started'], ['launch', 'completed'],
+    ['deadline', 'started'], ['spawn', 'completed']]);
 });
 
 test('bounded adapter terminates only its direct child at deadline', async () => {
@@ -69,9 +73,11 @@ test('bounded adapter terminates only its direct child at deadline', async () =>
 
 test('bounded adapter keeps unconfirmed direct-child cleanup visible', async () => {
   const child = new FakeChild({ closeOnKill: false });
+  const events = [];
   const result = await runWithChild(child, {
     timeoutMilliseconds: 5,
     terminationTimeoutMilliseconds: 5,
+    observe(phase, status) { events.push([phase, status]); throw new Error('synthetic observation failure'); },
   });
 
   assert.deepEqual(result, {
@@ -81,6 +87,8 @@ test('bounded adapter keeps unconfirmed direct-child cleanup visible', async () 
     directProcessAbsent: false,
   });
   assert.equal(child.killCount, 1);
+  assert.deepEqual(events, [['launch', 'started'], ['launch', 'completed'], ['deadline', 'started'],
+    ['deadline', 'failed'], ['termination', 'started'], ['termination', 'completed']]);
 });
 
 test('bounded adapter rejects malformed requests before spawn', async () => {
@@ -157,13 +165,21 @@ test('an actual spawn rejection proves no direct process was created', async () 
 test('time spent in process creation is charged before the wait begins', async () => {
   const child = new FakeChild();
   let clock = 0;
+  const events = [];
   const completion = runWithChild(child, {
     now: () => clock,
     timeoutMilliseconds: 100,
-    spawnProcess() { clock = 101; return child; },
+    observe: (phase, status) => events.push([phase, status]),
+    spawnProcess() {
+      assert.deepEqual(events, [['launch', 'started']]);
+      clock = 101;
+      return child;
+    },
   });
   assert.equal(child.killCount, 1);
   assert.equal((await completion).resultCode, 'timedOut');
+  assert.deepEqual(events, [['launch', 'started'], ['launch', 'completed'],
+    ['deadline', 'failed'], ['termination', 'started'], ['termination', 'completed']]);
 });
 
 test('cancellation before start creates no process', async () => {

@@ -2881,6 +2881,16 @@ kutsua. Nykyinen vapaaehtoinen havaintokanava erottaa nyt `productChannelSetup`,
 ei lisätä. Käyttäytymissarja 47/47 ja jaetut caller-regressiot 156/156 sekä
 desktopin typecheck/build läpäisivät.
 
+Host-odotuksen sisällä `productHostLaunch` erottaa käynnistysfunktion kutsun
+ja palautumisen, `productHostSpawn` todellisen spawn-tapahtuman ja
+`productHostDeadline` nykyisen ajastimen asettamisen sekä sen laukeamisen.
+`productHostTermination` kertoo vain täsmälliselle host-kahvalle lähetetyn
+pysäytyspyynnön käsittelyn, ei prosessin poissaoloa. Exit/close, strict tulos
+ja Job-puun siivous pysyvät erillisinä vaatimuksina. Havaintojen toimitusvirhe
+ei muuta tulosta; puuttuva kuittaus ei yksin osoita jumittunutta kutsua.
+Nämä havainnot eivät muuta aikarajoja tai omistajuutta eivätkä yksin korjaa
+vielä paikantamatonta CI-jumia.
+
 Revision `a24533e90c1e300e32ee35ba9dea1d9a732de539`
 [workspace-diagnostiikka 34520110820](https://github.com/eky-software/eky/actions/runs/34520110820)
 läpäisi koko callerin ja pakollisen lopputulosverifierin. Poiston kanavan

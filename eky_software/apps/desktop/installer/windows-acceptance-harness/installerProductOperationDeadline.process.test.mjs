@@ -24,7 +24,8 @@ test('exhausted cleanup still delivers the original deadline and unverified clea
   // isolates delivery after the owner exhausts its deadline, using the real CLI.
   assert.deepEqual(events, [
     ['productChannelSetup', 'started'], ['productChannelSetup', 'completed'],
-    ['productSupervisorWait', 'started'], ['productSupervisorExit', 'completed'],
+    ['productSupervisorWait', 'started'], ['productHostLaunch', 'started'], ['productHostLaunch', 'completed'],
+    ['productHostDeadline', 'started'], ['productHostSpawn', 'completed'], ['productSupervisorExit', 'completed'],
     ['productSupervisorClose', 'completed'], ['productSupervisorWait', 'completed'],
     ['productChannelCleanup', 'started'], ['productChannelCleanup', 'completed'],
   ]);

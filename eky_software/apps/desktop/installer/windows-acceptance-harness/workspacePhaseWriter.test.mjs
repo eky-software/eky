@@ -33,7 +33,8 @@ function writerFixture({ closeOnKill = true } = {}) {
 test('phase observation has exact versioned fields and safe values', () => {
   assert.deepEqual(parseWorkspacePhaseObservation(encodeWorkspacePhaseObservation(observation)), observation);
   for (const phase of ['productChannelSetup', 'productSupervisorWait', 'productSupervisorExit',
-    'productSupervisorClose', 'productChannelCleanup']) {
+    'productSupervisorClose', 'productChannelCleanup', 'productHostLaunch', 'productHostSpawn',
+    'productHostDeadline', 'productHostTermination']) {
     const value = { ...observation, phase };
     assert.deepEqual(parseWorkspacePhaseObservation(encodeWorkspacePhaseObservation(value)), value);
   }

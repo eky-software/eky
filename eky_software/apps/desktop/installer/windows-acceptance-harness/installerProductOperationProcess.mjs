@@ -13,6 +13,8 @@ const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const SUPERVISOR = resolve(DIRECTORY, '../bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll');
 const WORKER = resolve(DIRECTORY, 'installerProductOperationWorker.mjs');
 const MAX_BYTES = 192 * 1024;
+const HOST_PHASES = Object.freeze({ launch: 'productHostLaunch', spawn: 'productHostSpawn',
+  deadline: 'productHostDeadline', termination: 'productHostTermination' });
 const invalid = () => { throw new Error('productOperationResultInvalid'); };
 const exact = (value, keys) => value && Object.keys(value).sort().join(',') === keys.sort().join(',');
 
@@ -101,6 +103,7 @@ export async function runInstallerProductOperation({ operation, productCode, sce
       arguments: [SUPERVISOR, '--product-operation', Buffer.from(JSON.stringify(request)).toString('base64')],
       cwd: DIRECTORY, timeoutMilliseconds: request.timeoutMilliseconds + terminationTimeoutMilliseconds,
       terminationTimeoutMilliseconds,
+      observe: (phase, status) => notify(HOST_PHASES[phase], status),
       spawnProcess(command, args, options) {
         const child = spawnProcess(command, args, options);
         child.once('exit', () => notify('productSupervisorExit', 'completed'));

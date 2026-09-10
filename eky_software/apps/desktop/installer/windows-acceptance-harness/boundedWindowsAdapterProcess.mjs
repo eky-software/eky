@@ -17,6 +17,7 @@ export function runBoundedWindowsAdapterProcess({
   command,
   cwd,
   now = () => performance.now(),
+  observe = () => {},
   signal,
   spawnProcess = spawn,
   terminationTimeoutMilliseconds,
@@ -48,6 +49,9 @@ export function runBoundedWindowsAdapterProcess({
     }));
   }
   const deadline = now() + timeoutMilliseconds;
+  const notify = (phase, status) => {
+    try { observe(phase, status); } catch { /* Observations do not settle ownership. */ }
+  };
 
   return new Promise((resolvePromise) => {
     let child;
@@ -83,9 +87,11 @@ export function runBoundedWindowsAdapterProcess({
       }
       terminationStarted = true;
       let terminationRequested = false;
+      notify('termination', 'started');
       try {
         terminationRequested = child.kill();
       } catch { /* Only close can confirm absence after a failed signal. */ }
+      notify('termination', terminationRequested ? 'completed' : 'failed');
       if (settled) {
         return;
       }
@@ -114,12 +120,15 @@ export function runBoundedWindowsAdapterProcess({
     }
 
     try {
+      notify('launch', 'started');
       child = spawnProcess(command, arguments_, {
         cwd,
         stdio: 'ignore',
         windowsHide: true,
       });
+      notify('launch', 'completed');
     } catch {
+      notify('launch', 'failed');
       complete({
         status: 'failed',
         resultCode: 'startFailed',
@@ -130,7 +139,7 @@ export function runBoundedWindowsAdapterProcess({
     }
 
     started = Number.isInteger(child.pid);
-    child.once('spawn', () => { started = true; });
+    child.once('spawn', () => { started = true; notify('spawn', 'completed'); });
     child.on('error', () => {
       if (settled) {
         return;
@@ -197,6 +206,7 @@ export function runBoundedWindowsAdapterProcess({
 
     function expireDeadline() {
       timedOut = true;
+      notify('deadline', 'failed');
       terminateDirectProcess();
     }
     const remaining = deadline - now();
@@ -204,6 +214,7 @@ export function runBoundedWindowsAdapterProcess({
       expireDeadline();
     } else {
       deadlineTimer = setTimeout(expireDeadline, remaining);
+      notify('deadline', 'started');
     }
   });
 }
