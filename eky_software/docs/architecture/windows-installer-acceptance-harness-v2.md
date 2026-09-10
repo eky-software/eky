@@ -2461,8 +2461,24 @@ edelleen siivoukselle; työn määräaika on 9 sekuntia. Valmistelun timeout-
 regressio vaatii virheen säilymisen, omistetun puun poistumisen ja koko
 komennon päättymisen. Epävarmaa siivousta ei hyväksytä onnistumiseksi.
 Tämä tarkennus ei vielä ratkaise CI:ssä havaittua valmisteluviivettä eikä
-muuta epäonnistuneen hyväksyntäajon tulosta. Seuraava päätös koskee rajattua
-CI-valmisteludiagnoosia ilman paketointia, ei uutta täyttä matriisia.
+muuta epäonnistuneen hyväksyntäajon tulosta. Omistajan hyväksymä rajattu
+CI-diagnoosi käyttää nykyisen `windows-acceptance-supervisor-feasibility.yml`-
+workflow'n `legacy-contracts-diagnostic`-tilaa. Se säilyttää kanonisen pnpm-
+sopimussarjan, testijärjestyksen ja budjetit, mutta ei rakenna MSI-artifacteja
+eikä käynnistä consumereita. Erillinen diagnostiikkahaara sitoo tarkan
+revision ilman PR-matriisin käynnistystä tai required checkien ohitusta.
+Diagnostiikan tulos ei ole packaged- tai release-hyväksyntä.
+
+[Diagnostiikka 34460670404](https://github.com/eky-software/eky/actions/runs/34460670404)
+läpäisi 239/239 sopimustestiä kummallakin runnerilla ensimmäisellä yrityksellä.
+Sekä lähde-HEAD että kummankin jobin todellinen checkout olivat
+`e2373e56dd9ccb6b70820ab1941c501d93a4bfd3`. Valmistelu ilmoitti molemmissa
+`processCompleted`, `workerResultValidated` ja `processTreeAbsent: true`;
+valmistelun prosessit poistuivat normaalisti ilman pakotettua cleanupia.
+MSI-artifacteja ei rakennettu eikä consumereita ajettu. Aiempi viive ei toistunut, mutta
+sen syy ei tällä näytöllä ratkea. Supervisoria ja budjetteja ei muuteta tämän
+diagnoosin perusteella. PR:n puhtaan revision varsinainen hyväksyntämatriisi
+on edelleen erillinen avoin portti; diagnostiikka ei korvaa sitä.
 
 ### Apuoperaatioiden yhteinen sopimus ja tulostoimituksen varaus
 
