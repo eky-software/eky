@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { lstat, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -133,7 +133,15 @@ export async function runCleanInstallUninstall(arguments_, {
     SUPERVISOR_DLL,
     'WINDOWS_ACCEPTANCE_SUPERVISOR_BINARY_INVALID',
   );
-  const runRoot = await mkdtemp(join(tmpdir(), 'eky-windows-acceptance-v2-'));
+  let temporaryRoot;
+  try {
+    temporaryRoot = await realpath(tmpdir());
+    const metadata = await lstat(temporaryRoot);
+    if (!metadata.isDirectory() || metadata.isSymbolicLink()) throw new Error();
+  } catch {
+    throw new Error('WINDOWS_ACCEPTANCE_CLEAN_TEMP_ROOT_INVALID');
+  }
+  const runRoot = await mkdtemp(join(temporaryRoot, 'eky-windows-acceptance-v2-'));
   const profileRoot = resolve(appData, 'Eky');
   let activeSupervisor = null;
   let fixture = null;

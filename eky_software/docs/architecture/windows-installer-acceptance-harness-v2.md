@@ -2602,6 +2602,23 @@ diagnostiikkaa ei lasketa hyväksyntätoistoksi. Rajattu toteutus voidaan viedä
 draft-katselmukseen ja commit-pohjaiseen CI-todennukseen, mutta koko V2:n
 hyväksyntä-, käyttöönotto- ja julkaisuportit säilyvät ennallaan.
 
+[CI-ajon 34499523220](https://github.com/eky-software/eky/actions/runs/34499523220)
+running-upgrade-consumerit läpäisivät 2/2 ensimmäisellä yrityksellä. Lähde on
+`3fc28875b20f2ac3fc63f46563151ee3b781f019` ja todellinen checkout sekä artifactin
+build-revisio `c5017ac760c76d25d96daa2a32d75b6b3e63c810`. Molemmat varmensivat
+alkuperäisen MSI-tuloksen 0, datan säilymisen, prosessi- ja asennussiivouksen
+sekä samat artifact-tavut ennen ja jälkeen ajon. Tämä ei sulje erillistä avointa
+tiedostotilapoikkeamaa eikä koko V2:n hyväksyntää.
+
+Saman ajon clean-consumerit hylättiin esitarkistuksessa. Clean-caller johtaa nyt
+työjuuren kanonisesta tilapäishakemistosta ennen fixtureä ja tuotekyselyä,
+samoin kuin upgrade-caller. Tuotekyselyn kanonisuus- ja linkkirajoja ei muuteta.
+Aliaksen kautta tehty oikea read-only-tuotekysely toisti vanhan hylkäyksen;
+korjattu kytkentä saavuttaa worker-rajan käynnistämättä testissä MSI:tä.
+Puuttuva tilapäisjuuri hylätään ennen fixturetyötä. Kohdesarja 43/43,
+kanoninen clean-sarja 47/47, artifact-sarja 13/13 sekä typecheck/build ovat
+vihreitä. Korjatun clean-callerin packaged- ja CI-portit ovat vielä avoinna.
+
 PR #266:n V2.8-checkpointin normaali commit-pohjainen
 [CI-ajo 34462106934](https://github.com/eky-software/eky/actions/runs/34462106934)
 valmistui ensimmäisellä yrityksellä vihreäksi. Lähde-HEAD on
