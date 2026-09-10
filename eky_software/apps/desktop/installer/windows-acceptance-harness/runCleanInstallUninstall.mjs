@@ -162,6 +162,15 @@ export async function runCleanInstallUninstall(arguments_, {
     fixture = await materializeFixture(descriptorPath, runRoot);
     const scenarioRoot = resolve(runRoot, 'scenario');
     await mkdir(scenarioRoot, { recursive: false });
+    productRuntime = createProductRuntime({ manifest: fixture.manifest, scenarioRoot });
+    const precondition = await productRuntime.verifyExactProductState();
+    if (precondition?.status !== 'completed' || precondition.resultCode !== 'exactProductAbsent' ||
+      precondition.exactProductPresent !== false) {
+      throw new Error('WINDOWS_ACCEPTANCE_CLEAN_PRECONDITION_FAILED');
+    }
+    if (!areProductProcessesAbsent(productRuntime)) {
+      throw new Error('WINDOWS_ACCEPTANCE_CLEAN_PRODUCT_PROCESS_UNVERIFIED');
+    }
     const workerRequestPath = resolve(scenarioRoot, 'worker-request.json');
     const supervisorRequestPath = resolve(scenarioRoot, 'request.json');
     const workerRequest = createCleanInstallUninstallWorkerRequest({
@@ -194,10 +203,6 @@ export async function runCleanInstallUninstall(arguments_, {
         supervisorExitCode,
       },
     );
-    productRuntime = createProductRuntime({
-      manifest: fixture.manifest,
-      scenarioRoot,
-    });
     terminal = await resolveCleanInstallUninstallTerminalOutcome({
       ...productRuntime,
       supervisorResult,

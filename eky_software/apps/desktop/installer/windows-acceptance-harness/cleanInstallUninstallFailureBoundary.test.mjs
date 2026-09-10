@@ -209,3 +209,27 @@ test('completed supervisor still requires the bound scenario result', async () =
     result,
   );
 });
+
+test('worker precondition rejection cannot authorize removal of an existing product', async () => {
+  const details = await captureFailure({
+    supervisorResult: failedSupervisor({ processResultCode: 'processCompleted', workerResultCode: 'workerReportedFailure' }),
+    readScenarioResult: async () => ({ status: 'failed', resultCode: 'cleanInstallUninstallFailed',
+      errorCode: 'cleanLifecyclePreconditionFailed', cleanupResultCode: 'notRequired' }),
+    verifyExactProductState: async () => assert.fail('precondition rejection is not recovery authority'),
+    cleanupExactProduct: async () => assert.fail('existing installation is not owned'),
+  });
+  assert.equal(details.errorCode, 'WINDOWS_ACCEPTANCE_CLEAN_PRECONDITION_FAILED');
+  assert.equal(details.semanticCleanupResultCode, 'blockedByPrecondition');
+});
+
+test('repair failure remains the primary command error after successful cleanup', async () => {
+  const details = await captureFailure({
+    supervisorResult: failedSupervisor({ processResultCode: 'processCompleted', workerResultCode: 'workerReportedFailure' }),
+    readScenarioResult: async () => ({ status: 'failed', resultCode: 'cleanInstallUninstallFailed',
+      errorCode: 'cleanRepairFailed', cleanupResultCode: 'cleanupCompleted' }),
+    verifyExactProductState: async () => ({ status: 'completed', resultCode: 'exactProductAbsent', exactProductPresent: false }),
+    cleanupExactProduct: async () => assert.fail('already absent'),
+  });
+  assert.equal(details.errorCode, 'WINDOWS_ACCEPTANCE_CLEAN_REPAIR_FAILED');
+  assert.equal(details.supervisorProcessResultCode, 'processCompleted');
+});

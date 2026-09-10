@@ -29,7 +29,7 @@ const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 for (const clean of [true, false]) {
   for (const mode of ['completed', 'prepareFailed', 'supervisorMissing', 'treeUnverified',
     'cleanupUnverified', 'cleanupFailed', 'deadlineRecovered', 'scenarioAndProfileFailed', 'scenarioAndRemovalFailed',
-    ...(!clean ? ['preconditionUnverified'] : [])]) {
+    'preconditionUnverified', 'preconditionPresent']) {
     test(`${clean ? 'clean' : 'upgrade'} caller preserves independent failure and retention: ${mode}`,
       { skip: process.platform !== 'win32' }, async (t) => {
         let root, started = 0, removals = 0, cleanups = 0, inspections = 0, profileReads = 0;
@@ -44,7 +44,7 @@ for (const clean of [true, false]) {
             productProcessAbsent = false;
             return { status: 'failed', errorCode: 'productStateVerificationProcessRemains' };
           }
-          const present = mode !== 'completed' && inspections++ === (clean ? 0 : 1);
+          const present = mode === 'preconditionPresent' || (mode !== 'completed' && inspections++ === 1);
           return clean ? { status: 'completed', resultCode: present ? 'exactProductPresent' : 'exactProductAbsent',
             exactProductPresent: present } : products(present);
         };
@@ -103,20 +103,21 @@ for (const clean of [true, false]) {
           result = (clean ? cleanInstallUninstallFailureDetails : upgradeRollbackFailureDetails)(error);
           assert.ok(result);
           const expected = mode === 'prepareFailed' ? 'SYNTHETIC_PREPARATION_FAILED'
-            : mode === 'preconditionUnverified' ? 'WINDOWS_ACCEPTANCE_UPGRADE_PRECONDITION_FAILED'
+              : ['preconditionUnverified', 'preconditionPresent'].includes(mode)
+                ? (clean ? 'WINDOWS_ACCEPTANCE_CLEAN_PRECONDITION_FAILED' : 'WINDOWS_ACCEPTANCE_UPGRADE_PRECONDITION_FAILED')
               : mode === 'supervisorMissing' ? 'WINDOWS_ACCEPTANCE_SUPERVISOR_TERMINAL_RESULT_MISSING'
                 : 'WINDOWS_ACCEPTANCE_SUPERVISOR_DEADLINE_EXCEEDED';
           assert.equal(result.errorCode, expected);
           assert.doesNotMatch(JSON.stringify(result), /PRIVATE/);
           return true;
         });
-        const removed = ['completed', 'prepareFailed', 'deadlineRecovered'].includes(mode);
+        const removed = ['completed', 'prepareFailed', 'deadlineRecovered', 'preconditionPresent'].includes(mode);
         assert.equal(result.fixtureRemoved, removed);
         assert.equal(result.fixtureCleanupResultCode, removed ? 'fixtureRemoved'
           : mode === 'scenarioAndRemovalFailed' ? 'fixtureCleanupFailed' : 'retainedUnverified');
         assert.equal(result.productProcessAbsent, productProcessAbsent);
         assert.equal(removals, removed || mode === 'scenarioAndRemovalFailed' ? 1 : 0);
-        assert.equal(started, ['prepareFailed', 'preconditionUnverified'].includes(mode) ? 0 : 1);
+        assert.equal(started, ['prepareFailed', 'preconditionUnverified', 'preconditionPresent'].includes(mode) ? 0 : 1);
         assert.equal(cleanups, ['cleanupUnverified', 'cleanupFailed', 'deadlineRecovered',
           'scenarioAndProfileFailed', 'scenarioAndRemovalFailed'].includes(mode) ? 1 : 0);
         if (mode === 'scenarioAndProfileFailed') assert.equal(result.safetyErrorCode, 'WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED');

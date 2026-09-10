@@ -724,6 +724,12 @@ varmennetaan uudelleen ajon jälkeen eikä sitä poisteta tai muuteta.
 
 Clean lifecycle etenee yhdessä strict worker -sopimuksessa:
 
+Caller tarkistaa exact-tuotteen poissaolon nykyisellä read-only-adapterilla
+jo ennen supervisorin käynnistämistä. Epäonnistunut tai varmentamaton
+ennakkotarkistus ei valtuuta uninstallia. Myös workerin myöhempi
+precondition-hylkäys estää semantic cleanupin: toinen asennus ei muutu
+testin omaksi pelkän virhetuloksen vuoksi.
+
 1. exact ProductCode, installer-rekisteröinti, install-root, executable,
    shortcut ja Eky-prosessit todistetaan puhtaiksi
 2. immutable fixture varmennetaan
