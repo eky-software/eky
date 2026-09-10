@@ -2585,6 +2585,36 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 
 ## Nykyinen päätös
 
+[Normaali CI 34520903697](https://github.com/eky-software/eky/actions/runs/34520903697)
+epäonnistui ensimmäisellä yrityksellä. Lähde-HEAD on
+`3c884033a4e6b13cdf588c58fffd4209809f00b7`; todellinen checkout ja artifact-build
+ovat `cffb6e0458bc4397208755cc5131cdbf844d845e`. Clean- ja upgrade-consumerit
+läpäisivät 2/2 sekä molemmat workspace-fault-consumerit. Workspace-success
+run 2 läpäisi, mutta run 1 katkesi GitHubin vahvistamaan 30 minuutin job-rajaan.
+Callerin terminal-tulos, product-prosessien poissaolo, asennussiivous ja
+fixture-poisto jäivät tässä consumerissa varmentamatta.
+
+Viimeinen saatavilla oleva havainto on `productSupervisorWait started`
+targetin poistossa; molemmat tuotekyselyt ja poistokutsun `productChannelSetup`
+valmistuivat. Kanavan avaaminen ei siis selitä tätä havaittua pysähtymisrajaa.
+Havainto ei todista natiivin MSI-prosessin syntymistä tai viimeistä suoritettua
+operaatiota. Nykyinen adapteri laskee määräajan ennen käynnistysfunktiota,
+mutta aktivoi ajastimen vasta funktion palattua. Avoin erottava näyttö koskee
+käynnistysfunktion paluuta, todellista spawnia ja määräajan käsittelyä; pelkkä
+optional-lokin puuttuminen ei ratkaise niiden keskinäistä järjestystä.
+Uutta täyttä matriisia ei käynnistetä saman puuttuvan terminal-sopimuksen yli.
+
+Molemmat legacy-sopimussarjat hylättiin erillisestä vanhentuneesta
+vaihelista-assertiosta (254/255), joten legacy-producer ja packaged-consumerit
+eivät käynnistyneet. Korjaus `0e20e47decea119478fb6b92eeca199b9cfa3106`
+tarkistaa nykyisen kahdeksan havainnon järjestyksen muuttamatta alkuperäisen
+`deadlineExceeded`-virheen tai `cleanupUnverified`-tuloksen vaatimuksia.
+Korjauksen kohdetesti ja 255/255-sarja läpäisivät; korjaus ei vielä sisälly
+yllä olevaan CI-revisioon eikä selitä workspace-poiston pysähtymistä.
+PR #266 pysyy draftina. Ei mergeä, käyttöönottoa tai pilot-julkaisua.
+
+### Aiemmat rajatut korjaukset ja niiden näyttö
+
 Running-upgrade-korjauksen rajaus on hyväksytty: native-MSI-client välittää
 nykyiselle workerille rajatun InstallValidate-signaalin, eikä lokivahtia jätetä
 varareitiksi. Ensimmäisen MSI-operaation paluukoodi säilyy omana tuloksenaan
@@ -2857,10 +2887,10 @@ läpäisi koko callerin ja pakollisen lopputulosverifierin. Poiston kanavan
 avaaminen, supervisorin exit/close ja kanavan sulkeminen valmistuivat tässä
 järjestyksessä; artifact `10161685548` varmistettiin muuttumattomaksi ennen
 ja jälkeen ajon. Käytetyn buildin revisio oli edelleen `c5017ac760c76d25d96daa2a32d75b6b3e63c810`.
-Aiempi jumi ei toistunut; pelkkä vaihehavaintojen lisäys ei ole sen
-juurisyykorjaus. Peruutetun ajon näyttö säilyy epäonnistuneena ja
-varmentamattomana. Seuraava portti on normaali commit-pohjainen PR-kierros,
-ei diagnostisen uusinnan käyttäminen lopullisena hyväksyntänä.
+Aiempi jumi ei toistunut tässä diagnostiikassa; pelkkä vaihehavaintojen lisäys
+ei ole sen juurisyykorjaus. Peruutetun ajon näyttö säilyy epäonnistuneena ja
+varmentamattomana. Tämän jälkeisen normaalin PR-kierroksen epäonnistuminen on
+kirjattu nykytilaan; diagnostiikka ei korvaa lopullista hyväksyntää.
 
 Nykyisen feasibility-workflow'n `packaged-boundary-diagnostic` on erikseen
 käynnistettävä diagnostiikka, ei required-check-hyväksyntä. Se ajaa vain
