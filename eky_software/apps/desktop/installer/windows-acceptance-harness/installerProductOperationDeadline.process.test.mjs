@@ -14,7 +14,7 @@ test('exhausted cleanup still delivers the original deadline and unverified clea
     productCode: '{00000000-0000-0000-0000-000000000001}', scenarioRoot: root,
     timeoutMilliseconds: 400, terminationTimeoutMilliseconds: 400, deliveryReserveMilliseconds: 200,
   }, {
-    observe: (phase) => events.push(phase),
+    observe: (phase, status) => events.push([phase, status]),
     spawnProcess(command, args, options) {
       const fixture = resolve(root, '../bin/windows-process-supervisor-contract-fixture/Release/net10.0/Eky.WindowsProcessSupervisor.ContractFixture.dll');
       return spawn(command, [fixture, '--mode', 'productOperationExhaustedCleanup', '--request', args[2]], options);
@@ -22,7 +22,12 @@ test('exhausted cleanup still delivers the original deadline and unverified clea
   });
   // The injected outcome is not a claim of native cleanup failure. This contract
   // isolates delivery after the owner exhausts its deadline, using the real CLI.
-  assert.deepEqual(events, ['supervisorExit', 'supervisorClose']);
+  assert.deepEqual(events, [
+    ['productChannelSetup', 'started'], ['productChannelSetup', 'completed'],
+    ['productSupervisorWait', 'started'], ['productSupervisorExit', 'completed'],
+    ['productSupervisorClose', 'completed'], ['productSupervisorWait', 'completed'],
+    ['productChannelCleanup', 'started'], ['productChannelCleanup', 'completed'],
+  ]);
   assert.equal(result.status, 'failed');
   assert.equal(result.directProcessAbsent, false);
   assert.equal(result.supervisor?.processResultCode, 'deadlineExceeded');
