@@ -33,6 +33,7 @@ const RESULT_KEYS = [
   'resultCode',
   'runNonce',
   'runningApplicationUpgradeValidated',
+  'runningUpgradeInitialExitCode',
   'scenario',
   'schemaVersion',
   'sourceInstallExitCode',
@@ -122,6 +123,7 @@ export function validateUpgradeRollbackResult(value, expected) {
     ) ||
     !validExitCode(value.sourceInstallExitCode) ||
     !validExitCode(value.upgradeExitCode) ||
+    !validExitCode(value.runningUpgradeInitialExitCode) ||
     !validExitCode(value.downgradeExitCode) ||
     !validExitCode(value.binaryRollbackExitCode) ||
     !validExitCode(value.windowsInstallerRollbackExitCode) ||
@@ -147,6 +149,7 @@ export function validateUpgradeRollbackResult(value, expected) {
     value.cleanupResultCode === 'notRequired' &&
     value.sourceInstallExitCode === 0 &&
     value.upgradeExitCode === 0 &&
+    [0, 1603].includes(value.runningUpgradeInitialExitCode) &&
     value.downgradeExitCode !== 0 &&
     ![1641, 3010].includes(value.downgradeExitCode) &&
     value.binaryRollbackExitCode === 0 &&

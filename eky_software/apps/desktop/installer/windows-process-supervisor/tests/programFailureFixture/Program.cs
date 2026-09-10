@@ -12,6 +12,10 @@ if (
 }
 
 var mode = args[1];
+if (mode == "nativeMsiContract")
+{
+    return await NativeMsiAdapterContract.Run(args[3]);
+}
 if (mode == "productOperationExhaustedCleanup")
 {
     return InstallerProductOperationProgram.Run(["--product-operation", args[3]], execute: (request, clock, _) =>

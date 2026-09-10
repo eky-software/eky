@@ -37,6 +37,7 @@ function successfulResult(request) {
     runningApplicationUpgradeValidated: true,
     installedPayloadValidated: true,
     applicationCleanupResultCode: 'completed',
+    runningUpgradeInitialExitCode: 0,
     downgradeRejected: true,
     binaryRollbackRestoredSource: true,
     windowsInstallerRollbackRestoredSource: true,

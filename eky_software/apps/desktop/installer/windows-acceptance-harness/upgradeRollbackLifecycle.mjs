@@ -187,6 +187,7 @@ export function initialUpgradeRollbackResult() {
     cleanupResultCode: 'notRequired',
     sourceInstallExitCode: null,
     upgradeExitCode: null,
+    runningUpgradeInitialExitCode: null,
     downgradeExitCode: null,
     binaryRollbackExitCode: null,
     windowsInstallerRollbackExitCode: null,
@@ -351,7 +352,9 @@ export async function executeUpgradeRollbackLifecycle({
           fail('runningUpgradeFailed');
         }
         result.applicationCleanupResultCode = outcome.cleanupResultCode;
-        if (outcome.status !== 'completed' || outcome.exitCode !== 0 || outcome.cleanupResultCode !== 'completed') {
+        result.runningUpgradeInitialExitCode = outcome.initialExitCode ?? null;
+        if (outcome.status !== 'completed' || outcome.exitCode !== 0 || outcome.cleanupResultCode !== 'completed' ||
+            ![0, 1603].includes(result.runningUpgradeInitialExitCode)) {
           fail(FAILURE_CODES.has(outcome.errorCode) ? outcome.errorCode : 'runningUpgradeFailed');
         }
         result.runningApplicationUpgradeValidated = true;

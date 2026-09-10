@@ -9,7 +9,7 @@ import { verifyUpgradeRollbackArtifact } from './upgradeRollbackArtifact.mjs';
 import { coordinateUpgradeRollbackBinaryHandoff } from './upgradeRollbackBinaryHandoff.mjs';
 import { createUpgradeRollbackProgressWaiter } from './upgradeRollbackProgress.mjs';
 import { coordinateRunningApplicationUpgrade } from './upgradeRunningApplication.mjs';
-import { createInstallerValidationObserver } from './upgradeInstallerValidationObserver.mjs';
+import { startNativeMsiUpgrade } from './nativeMsiUpgradeProcess.mjs';
 import { verifyInstalledPackagePayload } from './installedPackagePayload.mjs';
 import { captureDesktopLifecycleBaseline, requireTargetShutdownCompleted,
   waitForTargetDesktopStarted } from './legacyUpgradeStartupObserver.mjs';
@@ -409,9 +409,8 @@ export async function createUpgradeRollbackWindowsRuntime(request, artifact) {
           },
         });
       },
-      createValidationObserver: () => createInstallerValidationObserver(validationLog),
-      startUpgrade: () => startOwnedProcess(msiexec, [...operations.majorUpgrade, '/qn', '/norestart',
-        '/l*v', validationLog], { cwd: runRoot }),
+      startUpgrade: () => startNativeMsiUpgrade({ packagePath: artifact.roles.target.installerPath,
+        logPath: validationLog, cwd: runRoot, launch: startOwnedProcess }),
       async verifyBlockedSource() {
         const state = await inspectState();
         if (state.source.productState < 1 || state.source.productVersion !== artifact.roles.source.msiProductVersion ||

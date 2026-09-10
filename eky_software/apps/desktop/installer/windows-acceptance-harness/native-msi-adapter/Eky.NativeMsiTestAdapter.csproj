@@ -6,10 +6,9 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <InvariantGlobalization>true</InvariantGlobalization>
-    <AssemblyName>Eky.WindowsProcessSupervisor.ContractFixture</AssemblyName>
+    <AssemblyName>Eky.NativeMsiTestAdapter</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\Eky.WindowsProcessSupervisor.csproj" />
-    <ProjectReference Include="..\..\..\windows-acceptance-harness\native-msi-adapter\Eky.NativeMsiTestAdapter.csproj" />
+    <InternalsVisibleTo Include="Eky.WindowsProcessSupervisor.ContractFixture" />
   </ItemGroup>
 </Project>

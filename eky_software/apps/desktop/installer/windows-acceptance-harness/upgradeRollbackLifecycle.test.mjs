@@ -59,7 +59,7 @@ function createSuccessfulDependencies(overrides = {}) {
     verifyPayload: async () => undefined,
     runRunningUpgrade: async () => {
       operations.push('majorUpgrade');
-      return { status: 'completed', exitCode: 0, cleanupResultCode: 'completed' };
+      return { status: 'completed', exitCode: 0, initialExitCode: 0, cleanupResultCode: 'completed' };
     },
     runMsiOperation: async (operation) => {
       operations.push(operation);
@@ -99,6 +99,7 @@ test('lifecycle proves upgrade, downgrade, both rollback paths, and final absenc
   assert.equal(result.windowsInstallerRollbackRestoredSource, true);
   assert.equal(result.runningApplicationUpgradeValidated, true);
   assert.equal(result.installedPayloadValidated, true);
+  assert.equal(result.runningUpgradeInitialExitCode, 0);
 });
 
 test('accepted downgrade fails closed and cleans the exact target product', async () => {

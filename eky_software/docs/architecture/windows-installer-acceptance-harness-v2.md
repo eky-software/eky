@@ -924,29 +924,40 @@ Yksi strict worker suorittaa seuraavan järjestyksen:
 
 V2.8:n running-Setup-siirto käyttää olemassa olevaa desktop.started- ja
 shutdownCompleted-lukijaa, nykyistä native close -pyyntöä sekä samaa workerin
-Job Objectia. Nykyisen, vielä hyväksymättömän toteutuksen hallittu sulkeminen
-odottaa MSI-lokista `InstallValidate`-aloitushavaintoa tai sovelluksen/MSI:n
-todellista poistumista. Tätä lokiriippuvuutta ei hyväksytä valmiiksi
-ajoitussopimukseksi: puskuroidun lokin tai tiedostomuutoksen toimitus ei
-takaa, että havainto saadaan ennen MSI-vaiheen valmistumista.
+Job Objectia. Omistaja on hyväksynyt rajatun testikohtaisen native-MSI-adapterin.
+Sen hyväksyntä on vielä kesken. Adapteri korvaa tämän osatestin lokivahdin;
+puskuroidun lokin toimitus ei ole ohjausprotokolla eikä automaattinen fallback.
 
-Microsoftin [MSI-lokitus](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/msiexec)
-ja [tiedostomuutosten ilmoitukset](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-readdirectorychangesw)
-erottavat kirjoittamisen, flushin ja muutoksen havaitsemisen. Suljetun
-testilokitiedoston onnistunut lukeminen ei siis yksin todista käynnissä olevan
-MSI:n ohjausrajaa. Viiden sekunnin oletusodotusta, pakotettua flushia tai
-uutta timeout-/cleanup-omistajaa ei lisätä tämän puutteen peittämiseksi.
-Nykyinen tiedostovahti suljetaan ja sen keskeneräinen luku odotetaan saman
-Job-rajan sisällä.
+Täsmällinen sulkemisraja on `INSTALLMESSAGE_ACTIONSTART` (0x08000000), jonka
+MSI-recordin ensimmäinen kenttä on `InstallValidate`. Ennen sitä saman clientin
+on havaittava `CostFinalize`. Sulkeminen pyydetään vain ensimmäisestä tällaisesta
+tapahtumasta ja vain yhä elävältä, valmiiksi todistetulta sovellukselta.
+Myöhemmät sisäkkäisen poiston validointivaiheet eivät pyydä sulkemista uudelleen.
+Väärä järjestys tai puuttuva tapahtuma ei hyväksy päivitystä.
 
-Rajattu päätösehdotus on korvata tämän testin lokiin sidottu ohjaus Windows
-Installerin varsinaisella vaihe-callbackilla nykyisen workerin alla.
+MSI-client lukitsee sisäisen UI:n arvoon `INSTALLUILEVEL_NONE` (2), ulkoisen
+callbackin suodattimeksi vain `INSTALLLOGMODE_ACTIONSTART` (0x100) ja
+asennusominaisuuksiksi `REBOOT=ReallySuppress`. Validi action-callback palauttaa
+`IDOK` (1), virheellinen record tai järjestys -1 ja suodattimen ulkopuolinen
+viesti 0. `RMFILESINUSE`-viestiä ei tilata eikä siihen palauteta shutdownin
+valtuuttavaa `IDOK`- tai lukkojen ohittavaa `IDIGNORE`-vastausta. Restart Managerin
+ominaisuuksia tai tuotannon sulkemisvastuuta ei muuteta.
+
+Callback lukee vain action-nimen ja julkaisee yhden muistissa olevan signaalin;
+se ei tee I/O:ta eikä odota. Erillinen jatko välittää yksityiseen pipeen enintään
+kaksi suljettua viestiä: validointirajan ja varsinaisen MSI-tuloksen. Kanava,
+adapteri ja MSI kuuluvat nykyisen workerin Job-rajaan. Kanavan epäonnistuminen
+hylkää protokollan; lokia tai konsolia ei käytetä varareittinä. Adapteri rakennetaan
+hyväksytyllä .NET-työkaluketjulla installer-testituen yhteydessä, eikä sitä kopioida
+tavalliseen desktop-pakettiin tai MSI-payloadiin.
+
 [MsiSetExternalUIRecord](https://learn.microsoft.com/en-us/windows/win32/api/msi/nf-msi-msisetexternaluirecord)
 kuuluu asennuksen käynnistävälle clientille, ei jo käynnissä olevaan
-`msiexec`-prosessiin liitettäväksi. Siksi mahdollinen native-adapteri ja
-sen suhde suoran komentorivikäynnistyksen kattavuuteen edellyttävät omistajan
-päätöstä ennen toteutusta. API-käynnistystä ei nimetä hiljaisesti samaksi
-todisteeksi kuin suora `msiexec`-käynnistys. Muut installer-polut säilyvät.
+`msiexec`-prosessiin liitettäväksi. Tämä osatesti todistaa API-clientistä tehdyn
+MSI-päivityksen elävän Ekyn rinnalla, ei identtistä suoran komentorivi-Setupin
+ajoitusta. Source-asennus, downgrade, Windows Installer rollback, poisto ja
+erillinen clean lifecycle säilyttävät suoran `msiexec`-kattavuuden. Vanhan
+running-Setup-ketjun poisto odottaa siirtokartan lopullista hyväksyntää.
 
 [InstallValidate](https://learn.microsoft.com/en-us/windows/win32/msi/installvalidate-action)
 on Windows Installerin tilan ja käytössä olevien tiedostojen tarkistusvaihe.
@@ -2487,7 +2498,7 @@ Vihreä V2.8-kierros ei vielä todista seuraavia vanhan MSI-portin vaatimuksia:
 | --- | --- | --- |
 | Vaurioituneen asennuksen repair palauttaa täsmälleen oikean payloadin | `testWindowsInstallerLifecycle.ps1` poistaa asennetun backend-tiedoston ja ajaa `/fa`-korjauksen sekä payload-vertailun | Toteutettu nykyiseen clean-lifecycle-/Windows-adapteriin. Kohdetestit ja kaksi paikallista native-consumeria vihreät; uuden integraatiorevision CI-näyttö vielä vaaditaan. |
 | Uninstallin jälkeinen reinstall säilyttää saman profiilin datan ja poistuu puhtaasti | Sama vanha lifecycle asentaa, korjaa, poistaa, asentaa uudelleen ja poistaa uudelleen | Toteutettu samaan clean-ketjuun profiilin jokaisen siirtymän varmennuksella, paikalliset consumerit 2/2. Kumpikin todistaa ketjun pakollisen reinstall-tuloksen; lopullinen CI-hyväksyntä vielä avoin. |
-| Suora Setup-päivitys sovelluksen ollessa käynnissä | `testWindowsInstallerUpgrade.ps1` käynnistää MSI:n elävän Ekyn rinnalle ja tarkistaa odotuksen tai hallitun eston sekä lopullisen version ja datan | Toteutus nykyisen upgrade-vastuun alla; ensimmäinen native-consumer epäonnistui. Lokihavaintoon sidottu ohjausraja on hyväksymättä, ja sen korvaamista koskeva rajattu päätös on avoin. Diagnostiikka ei korvaa hyväksyntää. Workspace-handoff ei korvaa tätä tapausta. |
+| Setup-päivitys sovelluksen ollessa käynnissä | `testWindowsInstallerUpgrade.ps1` käynnistää MSI:n elävän Ekyn rinnalle ja tarkistaa odotuksen tai hallitun eston sekä lopullisen version ja datan | Omistajan hyväksymä testikohtainen MSI API -adapteri korvaa lokiohjauksen nykyisen upgrade-vastuun alla. Käyttäytymisregressiot ovat vihreät; puhtaan revision consumer- ja CI-hyväksyntä odottavat. Suora CLI-kattavuus säilyy muissa installer-poluissa, mutta API-testi ei väitä todistavansa CLI:n identtistä rinnakkaisajoitusta. Ensimmäinen epäonnistunut consumer ja erillinen tiedostotilahavainto säilyvät avoimina. |
 
 Näille ei luoda uutta supervisoria tai ajokehystä. Korvaavan ketjun pitää
 käyttää samaa prosessiomistajaa, muuttumattomia artifact-tavuja ja erillisiä
@@ -2573,6 +2584,17 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 - dependency- ja lockfile-muutoksia ei ole ilman erillistä hyväksyntää
 
 ## Nykyinen päätös
+
+Running-upgrade-korjauksen rajaus on hyväksytty: native-MSI-client välittää
+nykyiselle workerille rajatun InstallValidate-signaalin, eikä lokivahtia jätetä
+varareitiksi. Ensimmäisen MSI-operaation paluukoodi säilyy omana tuloksenaan
+mahdollisen sallitun 1603-jatkon rinnalla. Prosessiomistajuus, aikarajat,
+tuotantosovellus ja jaettava payload eivät muutu. Tämä uusi koodirevisio vaatii
+vielä oman paketoidun hyväksynnän; alla oleva vihreä CI on aiempi checkpoint.
+Rajattu toteutus läpäisi upgrade-sopimussarjan 141/141, artifact-sopimukset
+14/14 sekä desktopin typecheckin ja buildin. Native-record-, kanava- ja
+koordinaatiotestit todistavat tapahtuman, virhepolut ja todellisen prosessin
+poistumisen ilman MSI-asennusta; tämä ei korvaa paketoitua hyväksyntää.
 
 PR #266:n V2.8-checkpointin normaali commit-pohjainen
 [CI-ajo 34462106934](https://github.com/eky-software/eky/actions/runs/34462106934)

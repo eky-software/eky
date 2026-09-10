@@ -2,17 +2,18 @@ function failure(code) { throw new Error(code); }
 
 // Coordinates only this scenario's graceful handoff. The existing Job owns all forced cleanup.
 export async function coordinateRunningApplicationUpgrade({
-  startApplication, createValidationObserver, startUpgrade, verifyBlockedSource, resumeUpgrade,
+  startApplication, startUpgrade, verifyBlockedSource, resumeUpgrade,
 }) {
-  let application, installer, observer;
+  let application, installer;
   let applicationClosed = false, applicationCloseAttempted = false, installerClosed = false;
   let errorCode = null, cleanupResultCode = 'completed', exitCode = null;
-  let boundary = null;
+  let boundary = null, initialExitCode = null;
   const closeApplication = async () => {
     if (application && !applicationClosed) {
       if (applicationCloseAttempted) failure('runningUpgradeShutdownFailed');
       applicationCloseAttempted = true;
-      await application.close();
+      try { await application.close(); }
+      catch { failure('runningUpgradeShutdownFailed'); }
       applicationClosed = true;
     }
   };
@@ -20,19 +21,22 @@ export async function coordinateRunningApplicationUpgrade({
     application = await startApplication();
     await application.ready;
     if (!application.isRunning()) failure('runningUpgradeApplicationExitedEarly');
-    observer = await createValidationObserver();
-    if (!application.isRunning()) failure('runningUpgradeApplicationExitedEarly');
     installer = await startUpgrade();
     const first = await Promise.race([
-      observer.completion.then(() => 'validationObserved'),
+      installer.validation.then(() => 'validationObserved'),
       installer.completion.then(() => 'installerExited'),
       application.completion.then(() => 'applicationExited'),
     ]);
     boundary = first;
+    if (first === 'applicationExited') failure('runningUpgradeApplicationExitedEarly');
+    if (first === 'validationObserved' && !application.isRunning()) failure('runningUpgradeApplicationExitedEarly');
     await closeApplication();
     await application.verifyShutdown();
     const initial = await installer.completion;
+    initialExitCode = initial.exitCode;
     installerClosed = true;
+    if (!initial.protocolValid || !initial.validationObserved || !initial.callbackValid)
+      failure('runningUpgradeValidationInvalid');
     if (initial.exitCode === 1603) {
       // An explicit blocked-Setup continuation, not a retry of an unexplained failure.
       await verifyBlockedSource();
@@ -47,12 +51,12 @@ export async function coordinateRunningApplicationUpgrade({
       'runningUpgradeShutdownFailed', 'runningUpgradeMsiFailed', 'runningUpgradeValidationInvalid',
       'runningUpgradeBlockedSourceChanged'].includes(error?.message) ? error.message : 'runningUpgradeFailed';
   } finally {
-    try { await observer?.close(); } catch { errorCode ??= 'runningUpgradeValidationInvalid'; }
     try { await closeApplication(); } catch { cleanupResultCode = 'cleanupUnverified'; }
     if (installer && !installerClosed) {
-      try { await installer.completion; } catch { cleanupResultCode = 'cleanupUnverified'; }
+      try { initialExitCode = (await installer.completion).exitCode; }
+      catch { cleanupResultCode = 'cleanupUnverified'; }
     }
   }
   return Object.freeze({ status: errorCode === null ? 'completed' : 'failed', errorCode,
-    cleanupResultCode, exitCode, boundary });
+    cleanupResultCode, exitCode, initialExitCode, boundary });
 }
