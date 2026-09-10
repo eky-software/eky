@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import { setImmediate } from 'node:timers/promises';
 import { lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -10,12 +12,38 @@ import {
   requireLegacyUpgradeProductPrecondition,
   resolveLegacyUpgradeTemporaryRoot,
   runLegacyUpgrade,
+  startLegacyUpgradeSupervisor,
 } from './runLegacyUpgrade.mjs';
 import { legacyUpgradeFailureDetails } from './legacyUpgradeFailureBoundary.mjs';
 import { validateLegacyCallerResult } from './legacyCallerResult.mjs';
 import { createLegacyUpgradeFilesystemRuntime } from './legacyUpgradeFilesystemRuntime.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
+
+for (const mode of ['success', 'nonzero', 'spawnFailure', 'postSpawnError']) {
+  test(`legacy supervisor completion retains error and waits for close: ${mode}`, async () => {
+    const child = new EventEmitter();
+    const phases = [];
+    const execution = startLegacyUpgradeSupervisor('request', 'root', (phase) => {
+      phases.push(phase);
+      throw new Error('private observer failure');
+    }, { spawnProcess: () => child });
+    let completed = false;
+    const outcome = execution.completion.then((code) => { completed = true; return code; }, (error) => {
+      completed = true; return error.message;
+    });
+    if (mode !== 'spawnFailure') child.emit('spawn');
+    if (['spawnFailure', 'postSpawnError'].includes(mode)) child.emit('error', new Error('private process error'));
+    if (mode !== 'spawnFailure') child.emit('exit', mode === 'nonzero' ? 1 : 0, null);
+    await setImmediate();
+    assert.equal(completed, false);
+    child.emit('close', mode === 'nonzero' ? 1 : 0, null);
+    assert.equal(await outcome, { success: 0, nonzero: 1,
+      spawnFailure: 'WINDOWS_ACCEPTANCE_SUPERVISOR_START_FAILED',
+      postSpawnError: 'WINDOWS_ACCEPTANCE_SUPERVISOR_EXIT_INVALID' }[mode]);
+    assert.deepEqual(phases, mode === 'spawnFailure' ? ['supervisorClose'] : ['supervisorExit', 'supervisorClose']);
+  });
+}
 
 function productState(present = false) {
   return { status: 'completed', resultCode: present ? 'targetProductPresent' : 'exactProductsAbsent',

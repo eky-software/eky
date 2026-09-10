@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
+import { connect } from 'node:net';
 import { resolve } from 'node:path';
 import { executeProductOperation, sendProductOperationResult, validateProductOperationRequest }
   from '../installerProductOperationWorker.mjs';
@@ -29,5 +30,17 @@ if (stage === 'CleanupFailure') {
   ports.removeResult = () => { throw new Error('synthetic cleanup failure'); };
 }
 const result = await executeProductOperation(request, ports);
-await sendProductOperationResult(request, result);
-process.exitCode = result.status === 'completed' ? 0 : 1;
+if (stage === 'MissingResult') {
+  writeFileSync(marker, JSON.stringify({ phase: 'missingResult' }));
+  process.exit(0);
+}
+if (stage === 'OpenResultChannel') {
+  // The server is read-only; keep the write half open after its read half ends.
+  const socket = connect({ path: `\\\\.\\pipe\\eky-product-worker-${request.nonce}`, allowHalfOpen: true });
+  socket.once('connect', () => socket.write(JSON.stringify(result), () => block('openResultChannel')));
+  socket.once('error', () => process.exit(1));
+} else {
+  await sendProductOperationResult(request, result);
+  if (stage === 'ResultBeforeExit') block('resultBeforeExit');
+  process.exitCode = result.status === 'completed' ? 0 : 1;
+}

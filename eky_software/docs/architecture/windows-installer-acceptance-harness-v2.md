@@ -2617,7 +2617,9 @@ Aliaksen kautta tehty oikea read-only-tuotekysely toisti vanhan hylkäyksen;
 korjattu kytkentä saavuttaa worker-rajan käynnistämättä testissä MSI:tä.
 Puuttuva tilapäisjuuri hylätään ennen fixturetyötä. Kohdesarja 43/43,
 kanoninen clean-sarja 47/47, artifact-sarja 13/13 sekä typecheck/build ovat
-vihreitä. Korjatun clean-callerin packaged- ja CI-portit ovat vielä avoinna.
+vihreitä. Korjatun clean-callerin paikallinen packaged-todennus on 2/2;
+sen CI-portti on vielä avoinna. Tämä ei muuta saman CI-ajon legacy run 1:n
+ja workspace success run 2:n ulkoisia aikakatkaisuja hyväksytyiksi.
 
 PR #266:n V2.8-checkpointin normaali commit-pohjainen
 [CI-ajo 34462106934](https://github.com/eky-software/eky/actions/runs/34462106934)
@@ -2776,6 +2778,57 @@ V2-rajana: Jobin aikaraja alkaa supervisorissa eikä voi valvoa sen omaa
 syntymistä. Promise-aikakatkaisu ei todista natiivin operaation peruuntumista.
 Ulkoista katkaisua ei hyväksytä terminal-todisteeksi eikä sen peittämiseksi
 lisätä uutta watchdogia.
+
+### Nykyisten MSI-kutsurajojen odotuskartta
+
+| Raja | Käynnistäjä ja nykyinen omistaja | Määräajan alku ja valmistumisen todiste |
+| --- | --- | --- |
+| Legacy `majorUpgrade` | `legacyUpgradeWindowsRuntime` käynnistää `msiexec`-prosessin; skenaarion nykyinen Job omistaa workerin ja sen jälkeläiset. | Supervisorin alussa käynnistetty kello: 570 s työlle ja 30 s siivoukselle. MSI:n `close` ja todellinen exit code edeltävät worker-resultia. `majorUpgrade started` ei ole spawn-kuittaus. |
+| Legacy-komennon jatko | `startLegacyUpgradeSupervisor` odottaa supervisorin `exit`/`close`-tapahtumia; caller lukee strict supervisor-resultin ja erillisen scenario-resultin. | Supervisorin omaa poistumista odottavalla callerilla ei ole erillistä valmistumisrajaa. Tulos tai lokirivi ei yksin valtuuta jatkamista. |
+| Workspace `installationCleanup`: esitarkistus | `cleanupExactProducts` kysyy source- ja target-ProductCoden ennen poistopäätöstä. Yhteinen product-operaatio käyttää nykyistä Job-supervisoria sarjallisesti. | Kummankin kyselyn varaus on 30 s + 5 s; kello alkaa apuoperaation supervisorissa. Rajattu vastaus, vastaanottokuittaus, prosessin poistuminen ja strict tulos ovat eri asioita. |
+| Workspace `installationCleanup`: poisto | Sama vastuu poistaa vain esitarkistuksessa todetun targetin ja sitten sourcen. | Kumpikin uninstall varaa 120 s + 5 s. Epävarma apuprosessi estää seuraavan kyselyn, poiston ja fixture-poiston. Ryhmän aloitushavainto ei todista uninstallin aloitusta. |
+| Valmistelu ja viimeistely | Nykyiset filesystem- ja caller-result-adapterit käsittelevät omat tiedostoryhmänsä. Callerissa on lisäksi suoria juuren tarkistuksia, hakemistoluonteja ja supervisor-pyynnön kirjoitus. | Adapterien varaukset eivät automaattisesti kata callerin suoria alustakutsuja tai niiden omaa käynnistystä. Tulosjulkaisu ja fixture-poisto vaativat erilliset onnistumistodisteet. |
+
+Legacy-varaus on konfiguraation mukaan 1540 s ja lifecycle-step 1620 s:
+80 s erotus ei ole todiste koko kutsun rajatusta kestosta. Workspace-varaus
+on alla 1360 s ja lifecycle-step 1500 s. Molempien ulkopuolelle voi jäädä
+suora alustakutsu tai supervisorin poistumisen odotus. Näitä summia ei saa
+esittää todistettuna komentotason deadlinena.
+
+Legacy-prosessikutsun `error` ei enää tarkoita poistumista: virhe säilyy,
+mutta valmistuminen odottaa `close`-havaintoa. Sama erottelu koskee
+legacy-supervisorin käynnistyskutsua. Diagnostiikan virhe ei muuta tulosta.
+Contract-fixture kattaa puuttuvan worker-tuloksen, avoimen tuloskanavan ja
+ennen workerin poistumista toimitetun tuloksen. Pakollinen caller-result ja
+koko komentoprosessin poistuminen tarkistetaan erikseen. Muuttuneen vastuun
+ja jaettujen virhepolkujen sekä budjettisopimusten kohdesarja on 161/161;
+desktopin typecheck ja build läpäisivät. Tämä ei ole paketoitu
+hyväksyntä eikä sulje seuraavaa komentotason puutetta.
+
+Avoin päätösraja on supervisorin itsensä elinkaari: nykyinen product-caller
+voi jäädä odottamaan `close`-tapahtumaa tulostoimituksen jälkeenkin.
+Supervisorin Job hallitsee worker-puuta, ei supervisor-prosessia itseään.
+Tätä rajaa ei suljeta ulkoisella CI-katkaisulla, onnistuneella uusinnalla tai
+uudella rinnakkaisella valvojalla. Callerille mahdollisesti annettava
+rajattu supervisor-prosessin keskeytysvastuu vaatii omistajuuspäätöksen ja
+erillisen käynnistys-, poistumis- ja aineiston säilytysregression. CI-ajon
+todellista pysähtynyttä alustakutsua ei ole vielä osoitettu.
+
+### Infrastruktuuriuusinnan rajattu ehdotus
+
+Automaattista uusintaa ei kytketä käyttöön tässä checkpointissa. Mahdollinen
+myöhemmin hyväksyttävä politiikka sallisi enintään yhden kohdennetun ajon
+uudella runnerilla vain GitHubin erikseen osoittamasta infrastruktuuriviasta.
+Pelkät aikakatkaisu, puuttuva loki, connection loss -epäily tai paikallinen
+onnistuminen eivät riitä luokitteluun. Assertion, puuttuva pakollinen tulos,
+epävarma cleanup tai tuntematon MSI-lopputila eivät kuulu uusintaehtoon.
+
+Uusinta sitoisi saman todellisen checkout-revision, artifact-ID:t,
+descriptor-tiivisteet ja build-revision; uudet tavut ovat uusi hyväksyntä.
+Ensimmäinen epäonnistuminen, annotation ja uusinnan syy säilyvät raportissa.
+Diagnostinen uusinta ei korvaa ensimmäisen yrityksen hyväksynnän ehtoa.
+Mahdollinen vaikutus required-check-koontiin päätetään erikseen näkyvästi;
+vihreä uusintakuvake ei yksin valtuuta mergeä tai julkaisua.
 
 Workspace-komennon nykyiset konfiguroidut prosessi- ja tulostoimitusvaraukset
 ovat `70 + 720 + 460 + 105 + 5 = 1360` sekuntia. Tämä ei sisällä vielä

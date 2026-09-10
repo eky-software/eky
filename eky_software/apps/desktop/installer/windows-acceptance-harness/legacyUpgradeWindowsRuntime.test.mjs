@@ -1,13 +1,53 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import { setImmediate } from 'node:timers/promises';
 import { link, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
-import { inspectLegacyInstallerFootprint } from './legacyUpgradeWindowsRuntime.mjs';
+import { inspectLegacyInstallerFootprint, startLegacyOwnedProcess } from './legacyUpgradeWindowsRuntime.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
+
+test('legacy owned process retains a post-spawn error until actual close', async () => {
+  const child = new EventEmitter();
+  child.pid = 1;
+  const started = startLegacyOwnedProcess('synthetic', [], {}, {
+    spawnProcess() { queueMicrotask(() => child.emit('spawn')); return child; },
+  });
+  const execution = await started;
+  let settled = false;
+  const outcome = execution.completion.then(() => { settled = true; }, (error) => {
+    settled = true; return error.message;
+  });
+  child.emit('error', new Error('private failed send or kill'));
+  await setImmediate();
+  const settledBeforeClose = settled;
+  child.emit('exit', 0, null);
+  await setImmediate();
+  const settledBeforeStreamsClosed = settled;
+  child.emit('close', 0, null);
+  const code = await outcome;
+  assert.equal(settledBeforeClose, false);
+  assert.equal(settledBeforeStreamsClosed, false);
+  assert.equal(code, 'ownedProcessOperationFailed');
+});
+
+test('legacy owned process rejects failed creation only after the close receipt', async () => {
+  const child = new EventEmitter();
+  let settled = false;
+  const outcome = startLegacyOwnedProcess('synthetic', [], {}, {
+    spawnProcess() { return child; },
+  }).then(() => { settled = true; }, (error) => { settled = true; return error.message; });
+  child.emit('error', new Error('private spawn failure'));
+  await setImmediate();
+  const beforeClose = settled;
+  child.emit('close', -2, null);
+  assert.equal(await outcome, 'ownedProcessStartFailed');
+  assert.equal(beforeClose, false);
+});
 
 const FOOTPRINT_PATHS = Object.freeze({
   installRoot: 'synthetic-install-root',

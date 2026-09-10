@@ -30,7 +30,8 @@ if (mode == "productOperationExhaustedCleanup")
 if (mode.StartsWith("productOperation", StringComparison.Ordinal))
 {
     var stage = mode["productOperation".Length..];
-    if (stage is not ("Command" or "Preparation" or "Read" or "Remove" or "CleanupFailure")) return 64;
+    if (stage is not ("Command" or "Preparation" or "Read" or "Remove" or "CleanupFailure" or
+        "MissingResult" or "OpenResultChannel" or "ResultBeforeExit")) return 64;
     using var input = JsonDocument.Parse(Convert.FromBase64String(args[3]));
     var worker = input.RootElement.GetProperty("workerPath").GetString()!;
     return InstallerProductOperationProgram.Run(["--product-operation", args[3]],

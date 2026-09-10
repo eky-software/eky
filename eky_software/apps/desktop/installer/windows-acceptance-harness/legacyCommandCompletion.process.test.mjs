@@ -12,7 +12,8 @@ import { readWindowsAcceptanceSupervisorResult } from '../windows-process-superv
 import { legacyCallerResultIdentity, parseLegacyCallerResult } from './legacyCallerResult.mjs';
 
 for (const mode of ['hold', 'unread', 'cleanupUnverified', 'missingSupervisor', 'cleanupFailed', 'writerUnverified', 'filesystemHold',
-  'productHold', 'productUnverified', 'productPreparationHold', 'productReadHold', 'productRemoveHold', 'productCleanupFailure']) {
+  'productHold', 'productUnverified', 'productPreparationHold', 'productReadHold', 'productRemoveHold', 'productCleanupFailure',
+  'productMissingResult', 'productOpenResultChannel', 'productResultBeforeExit']) {
   test(`legacy whole command terminates after scenario deadline: ${mode}`, {
     skip: process.platform !== 'win32', timeout: 60_000,
   }, async (t) => {
@@ -70,12 +71,13 @@ for (const mode of ['hold', 'unread', 'cleanupUnverified', 'missingSupervisor', 
       if (mode !== 'productUnverified') expectedEvents.push('productExit', 'productClose');
       assert.equal(report.outcome.productProcessAbsent, mode !== 'productUnverified');
       assert.equal(report.outcome.initialProductStateResultCode, mode === 'productUnverified'
-        ? 'productStateVerificationProcessRemains' : mode === 'productCleanupFailure'
+        ? 'productStateVerificationProcessRemains' : ['productCleanupFailure', 'productMissingResult'].includes(mode)
           ? 'productStateVerificationFailed' : 'productStateVerificationTimedOut');
       assert.equal(report.productResults.length, mode === 'productUnverified' ? 1 : 2);
       for (const result of report.productResults) {
         assert.equal(result.processTreeAbsent, true);
-        assert.equal(result.processResultCode, mode === 'productCleanupFailure' ? 'processExitFailed' : 'deadlineExceeded');
+        assert.equal(result.processResultCode, mode === 'productCleanupFailure' ? 'processExitFailed'
+          : mode === 'productMissingResult' ? 'processCompleted' : 'deadlineExceeded');
       }
       assert.equal(report.outcome.fixtureCleanupResultCode, 'retainedUnverified');
       if (mode === 'productUnverified') {

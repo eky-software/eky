@@ -82,8 +82,8 @@ export function parseLegacyUpgradeArguments(arguments_) {
   return Object.freeze({ descriptorPath });
 }
 
-export function startLegacyUpgradeSupervisor(requestPath, scenarioRoot, observe = () => {}) {
-  const child = spawn(
+export function startLegacyUpgradeSupervisor(requestPath, scenarioRoot, observe = () => {}, { spawnProcess = spawn } = {}) {
+  const child = spawnProcess(
     DOTNET_EXECUTABLE,
     [SUPERVISOR_DLL, '--request', requestPath],
     {
@@ -92,15 +92,17 @@ export function startLegacyUpgradeSupervisor(requestPath, scenarioRoot, observe 
       windowsHide: true,
     },
   );
+  let started = false, failed = false;
+  const notify = (phase, status) => { try { observe(phase, status); } catch { /* Observation is not control. */ } };
   const completion = new Promise((resolvePromise, rejectPromise) => {
-    child.once('exit', (code) => observe('supervisorExit', code === 0 ? 'completed' : 'failed'));
-    child.once('error', () =>
-      rejectPromise(new Error('WINDOWS_ACCEPTANCE_SUPERVISOR_START_FAILED')),
-    );
+    child.once('spawn', () => { started = true; });
+    child.once('exit', (code) => notify('supervisorExit', code === 0 ? 'completed' : 'failed'));
+    child.on('error', () => { failed = true; });
     child.once('close', (exitCode, signal) => {
-      observe('supervisorClose', signal === null && exitCode === 0 ? 'completed' : 'failed');
-      if (signal !== null || !Number.isInteger(exitCode)) {
-        rejectPromise(new Error('WINDOWS_ACCEPTANCE_SUPERVISOR_EXIT_INVALID'));
+      notify('supervisorClose', !failed && signal === null && exitCode === 0 ? 'completed' : 'failed');
+      if (failed || signal !== null || !Number.isInteger(exitCode)) {
+        rejectPromise(new Error(failed && !started ? 'WINDOWS_ACCEPTANCE_SUPERVISOR_START_FAILED'
+          : 'WINDOWS_ACCEPTANCE_SUPERVISOR_EXIT_INVALID'));
         return;
       }
       resolvePromise(exitCode);

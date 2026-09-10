@@ -18,7 +18,7 @@ import { runInstallerProductOperation } from './installerProductOperationProcess
 const input = JSON.parse(await readFile(process.argv[2], 'utf8'));
 assert(['hold', 'unread', 'cleanupUnverified', 'missingSupervisor', 'cleanupFailed', 'writerUnverified', 'filesystemHold',
   'productHold', 'productUnverified', 'productPreparationHold', 'productReadHold', 'productRemoveHold',
-  'productCleanupFailure'].includes(input.mode));
+  'productCleanupFailure', 'productMissingResult', 'productOpenResultChannel', 'productResultBeforeExit'].includes(input.mode));
 const events = [];
 let supervisorResult;
 const productResults = [];
@@ -68,7 +68,8 @@ const ports = {
   },
 };
 const productStages = { productHold: 'Command', productUnverified: 'Command', productPreparationHold: 'Preparation',
-  productReadHold: 'Read', productRemoveHold: 'Remove', productCleanupFailure: 'CleanupFailure' };
+  productReadHold: 'Read', productRemoveHold: 'Remove', productCleanupFailure: 'CleanupFailure',
+  productMissingResult: 'MissingResult', productOpenResultChannel: 'OpenResultChannel', productResultBeforeExit: 'ResultBeforeExit' };
 if (productStages[input.mode]) {
   ports.createProductRuntime = ({ scenarioRoot }) => {
     const runtime = createUpgradeRollbackPostSupervisorWindowsRuntime({ scenarioRoot,
@@ -91,17 +92,20 @@ if (productStages[input.mode]) {
             return child;
           },
         });
-        assert.equal(result.resultCode, input.mode === 'productCleanupFailure' ? 'processExitFailed' : 'timedOut');
+        productResults.push(result.supervisor ?? result);
+        assert.equal(result.resultCode, input.mode === 'productCleanupFailure' ? 'processExitFailed'
+          : input.mode === 'productMissingResult' ? 'processCompleted' : 'timedOut');
         assert.equal(result.directProcessAbsent, true);
         if (input.mode === 'productCleanupFailure') {
           assert.equal(result.worker.errorCode, 'commandFailed');
           assert.equal(result.worker.resultCleanup, 'failed');
         } else {
           const boundary = JSON.parse(await readFile(resolve(scenarioRoot, `product-boundary-${productRequest.nonce}.json`), 'utf8'));
-          assert.equal(boundary.phase, { Command: 'command', Preparation: 'preparation', Read: 'resultRead', Remove: 'resultCleanup' }[productStages[input.mode]]);
+          assert.equal(boundary.phase, { Command: 'command', Preparation: 'preparation', Read: 'resultRead', Remove: 'resultCleanup',
+            MissingResult: 'missingResult', OpenResultChannel: 'openResultChannel', ResultBeforeExit: 'resultBeforeExit' }[productStages[input.mode]]);
           if (productStages[input.mode] === 'Command') assert.equal(boundary.descendantStarted, true);
         }
-        productResults.push(result.supervisor);
+        if (input.mode === 'productMissingResult') assert.equal(result.supervisor.workerResultCode, 'workerResultMissing');
         // Inject uncertainty only after proving the real Job's removal. This
         // tests retention, not a claim that native cleanup failed in this run.
         return input.mode === 'productUnverified'
