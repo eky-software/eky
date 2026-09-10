@@ -19,7 +19,8 @@ function productRuntime(results, observe) {
       target: { productCode: '00000000-0000-0000-0000-000000000002' } } },
   }, {
     systemRoot: DIRECTORY,
-    runProcess: async (request) => {
+    runProcess: async (request, dependencies) => {
+      if (observe) assert.equal(dependencies.observe, observe);
       calls.push(request);
       assert.ok(results.length, 'No real process may be started by this fixture');
       const result = results.shift();

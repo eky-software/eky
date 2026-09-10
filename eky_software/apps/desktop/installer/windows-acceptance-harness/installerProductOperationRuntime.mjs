@@ -19,6 +19,7 @@ function failure(result, operation) {
 export function createInstallerProductOperationRuntime({ scenarioRoot, environmentErrorCode }, {
   runProcess = runInstallerProductOperation,
   systemRoot = process.env.SystemRoot,
+  observe = () => {},
 } = {}) {
   if (!systemRoot) throw new Error(environmentErrorCode);
   let productProcessAbsent = true;
@@ -28,7 +29,7 @@ export function createInstallerProductOperationRuntime({ scenarioRoot, environme
     productProcessAbsent = false;
     try {
       const result = await runProcess({ operation, productCode, scenarioRoot, timeoutMilliseconds,
-        terminationTimeoutMilliseconds: DIRECT_PROCESS_TERMINATION_TIMEOUT_MILLISECONDS });
+        terminationTimeoutMilliseconds: DIRECT_PROCESS_TERMINATION_TIMEOUT_MILLISECONDS }, { observe });
       productProcessAbsent = result?.directProcessAbsent === true;
       return result;
     } catch {

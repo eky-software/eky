@@ -55,7 +55,7 @@ for (const mode of ['normal', 'socketStillOpen', 'missing', 'errorBeforeClose', 
     const result = await runInstallerProductOperation({ operation: 'inspect', productCode: '{00000000-0000-0000-0000-000000000001}',
       scenarioRoot: resolve('synthetic'), timeoutMilliseconds: 2_000, terminationTimeoutMilliseconds: 1_000,
       deliveryReserveMilliseconds: 200 }, {
-      observe: (phase) => { events.push(phase); throw new Error('ignored diagnostic failure'); },
+      observe: (phase, status) => { events.push([phase, status]); throw new Error('ignored diagnostic failure'); },
       spawnProcess(_, args) {
         const child = new EventEmitter();
         const input = JSON.parse(Buffer.from(args[2], 'base64').toString('utf8'));
@@ -87,7 +87,13 @@ for (const mode of ['normal', 'socketStillOpen', 'missing', 'errorBeforeClose', 
         return child;
       },
     });
-    assert.deepEqual(events, ['supervisorExit', 'supervisorClose']);
+    assert.deepEqual(events, [
+      ['productChannelSetup', 'started'], ['productChannelSetup', 'completed'],
+      ['productSupervisorWait', 'started'], ['productSupervisorExit', 'completed'],
+      ['productSupervisorClose', 'completed'],
+      ['productSupervisorWait', mode === 'errorBeforeClose' ? 'failed' : 'completed'],
+      ['productChannelCleanup', 'started'], ['productChannelCleanup', 'completed'],
+    ]);
     if (['normal', 'socketStillOpen'].includes(mode)) {
       assert.equal(acknowledged, true);
       assert.equal(result.status, 'completed');

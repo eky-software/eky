@@ -23,7 +23,7 @@ export function classifyUpgradeRollbackProductStates(source, target) {
 
 export function createUpgradeRollbackPostSupervisorWindowsRuntime({ artifact, scenarioRoot, observe = () => {} }, dependencies) {
   const operations = createInstallerProductOperationRuntime({ scenarioRoot,
-    environmentErrorCode: 'WINDOWS_ACCEPTANCE_UPGRADE_ENVIRONMENT_INVALID' }, dependencies);
+    environmentErrorCode: 'WINDOWS_ACCEPTANCE_UPGRADE_ENVIRONMENT_INVALID' }, { ...dependencies, observe });
   const code = (roleName) => `{${artifact.roles[roleName].productCode}}`;
   const notify = (phase, status) => { try { observe(phase, status); } catch { /* Observation is not control. */ } };
   async function observed(phase, task) {

@@ -8,6 +8,7 @@ const PHASES = new Set([
   'initialProductState', 'semanticPostcondition', 'sessionPostcondition',
   'installationCleanup', 'finalProductState', 'removalPostcondition',
   'sourceProductInspection', 'targetProductInspection', 'sourceProductUninstall', 'targetProductUninstall',
+  'productChannelSetup', 'productSupervisorWait', 'productSupervisorExit', 'productSupervisorClose', 'productChannelCleanup',
   'artifactVerification', 'normalProfileVerification', 'fixtureCleanup', 'callerTerminal',
 ]);
 const STATUSES = new Set(['started', 'completed', 'failed']);

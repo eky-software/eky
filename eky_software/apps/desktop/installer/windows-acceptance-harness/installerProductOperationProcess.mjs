@@ -59,13 +59,14 @@ export function validateProductOperationReply(bytes, request, exitCode) {
 export async function runInstallerProductOperation({ operation, productCode, scenarioRoot,
   timeoutMilliseconds, terminationTimeoutMilliseconds, deliveryReserveMilliseconds = 1_000 },
 { spawnProcess = spawnSupervisorProcess, observe = () => {} } = {}) {
+  const notify = (phase, status) => { try { observe(phase, status); } catch { /* Observation is not control. */ } };
+  notify('productChannelSetup', 'started');
   const nonce = randomBytes(32).toString('hex');
   const request = validateProductOperationRequest({ schemaVersion: 1, nonce, operation, productCode, scenarioRoot,
     nodeExecutable: process.execPath, workerPath: WORKER,
     timeoutMilliseconds: timeoutMilliseconds + terminationTimeoutMilliseconds,
     cleanupReserveMilliseconds: terminationTimeoutMilliseconds, deliveryReserveMilliseconds });
   const sockets = new Set();
-  const notify = (phase) => { try { observe(phase); } catch { /* Observation is not control. */ } };
   let channelFailed = false, connections = 0, size = 0, bytes = [], messageReceived = false;
   let closed = false, supervisorExitCode = null, errorSeen = false;
   const server = createServer((socket) => {
@@ -93,6 +94,8 @@ export async function runInstallerProductOperation({ operation, productCode, sce
         server.off('error', reject); ready();
       });
     });
+    notify('productChannelSetup', 'completed');
+    notify('productSupervisorWait', 'started');
     const invocation = await runBoundedWindowsAdapterProcess({
       command: process.env.EKY_DOTNET_EXE || 'dotnet',
       arguments: [SUPERVISOR, '--product-operation', Buffer.from(JSON.stringify(request)).toString('base64')],
@@ -100,15 +103,16 @@ export async function runInstallerProductOperation({ operation, productCode, sce
       terminationTimeoutMilliseconds,
       spawnProcess(command, args, options) {
         const child = spawnProcess(command, args, options);
-        child.once('exit', () => notify('supervisorExit'));
+        child.once('exit', () => notify('productSupervisorExit', 'completed'));
         child.on('error', () => { errorSeen = true; });
         child.once('close', (code, signal) => {
           closed = true; supervisorExitCode = signal === null ? code : null;
-          notify('supervisorClose');
+          notify('productSupervisorClose', 'completed');
         });
         return child;
       },
     });
+    notify('productSupervisorWait', invocation.status === 'completed' ? 'completed' : 'failed');
     if (invocation.status !== 'completed') {
       // Even an acknowledged reply cannot prove final Job cleanup after forced host exit.
       let delivered = null;
@@ -125,8 +129,10 @@ export async function runInstallerProductOperation({ operation, productCode, sce
     return Object.freeze({ status: 'failed', resultCode: 'productOperationUnverified', exitCode: supervisorExitCode,
       directProcessAbsent: false });
   } finally {
+    notify('productChannelCleanup', 'started');
     for (const socket of sockets) socket.destroy();
     if (server.listening) await new Promise((done) => server.close(done));
     bytes = [];
+    notify('productChannelCleanup', 'completed');
   }
 }

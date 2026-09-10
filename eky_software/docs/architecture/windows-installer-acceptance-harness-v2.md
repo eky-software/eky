@@ -2807,7 +2807,7 @@ hyväksyntä eikä sulje seuraavaa komentotason puutetta.
 
 Omistaja hyväksyi callerille rajatun vastuun sen käynnistämän supervisorin
 eliniästä. Nykyinen Job-supervisor pysyy worker-puun ainoana omistajana.
-Toteutuksessa oleva korjaus käyttää nykyistä bounded-adapteria ja callerin
+Checkpointin korjaus käyttää nykyistä bounded-adapteria ja callerin
 taustasäiettä natiivikäynnistykseen: säie säilyttää täsmällisen prosessikahvan.
 Anonyymin stdin-putken kertaluonteinen lupa edeltää supervisorin dispatchia;
 peruutettu tai myöhässä syntynyt prosessi ei saa aloittaa työtä. EOF, väärä
@@ -2832,7 +2832,25 @@ tapauksessa. Myöhäinen käynnistys ei saa työlupaa, ja varmentamaton lopputil
 säilyttää aineiston. Käynnistyssäikeen poikkeus ei tuota tekaistua
 close-kuittausta. CI-ajon todellista pysähtynyttä alustakutsua ei ole vielä
 osoitettu; tämä ei ole sen ympäristötekijän tai MSI:n juurisyyväite.
-Paketoitu diagnostiikka ja täsmärevision normaali hyväksyntä ovat vielä auki.
+Harness-revision `dc3c2b7ff9c7ecfa98612a5dff25dfc32a02f740`
+legacy-diagnostiikka [34516392234](https://github.com/eky-software/eky/actions/runs/34516392234)
+läpäisi callerin, pakollisen tulosverifierin ja artifactin jälkivarmennuksen.
+Workspace-diagnostiikka [34516395551](https://github.com/eky-software/eky/actions/runs/34516395551)
+peruutettiin; käytettävissä oleva viimeinen vaihe on `targetProductUninstall`
+`started`, molempien esitarkistusten valmistuttua. Callerin terminal-tulos,
+siivous ja artifactin jälkivarmennus jäivät varmentamatta. Peruutusta ei
+luokitella infrastruktuuriviaksi eikä aiempaa vihreää näyttöä siirretä tälle
+ajolle. Molemmat käyttivät artifact-buildia `c5017ac760c76d25d96daa2a32d75b6b3e63c810`;
+diagnostiikka ei korvaa uuden revision normaalia hyväksyntää.
+
+Poistokutsun tuloskanavan avaaminen ja sulkeminen ovat nykyisen host-odotuksen
+ulkopuolella. Tämä kattavuusaukko ei yksin osoita peruutetun ajon jumittunutta
+kutsua. Nykyinen vapaaehtoinen havaintokanava erottaa nyt `productChannelSetup`,
+`productSupervisorWait`, `productSupervisorExit`, `productSupervisorClose` ja
+`productChannelCleanup`-rajat. Uutta ajastinta, siivousomistajaa tai tulosehtoa
+ei lisätä. Käyttäytymissarja 47/47 ja jaetut caller-regressiot 156/156 sekä
+desktopin typecheck/build läpäisivät; paketoitu workspace-todennus ja normaali
+kokonaisportti ovat yhä auki.
 
 Nykyisen feasibility-workflow'n `packaged-boundary-diagnostic` on erikseen
 käynnistettävä diagnostiikka, ei required-check-hyväksyntä. Se ajaa vain
