@@ -38,9 +38,9 @@ function evidence(plan) {
 
 test('light, lifecycle, mixed and full-event changes select exact coverage and complete', () => {
   for (const [paths, event, count] of [
-    [[fast], 'pull_request', 5], [[critical], 'pull_request', 21],
-    [[fast, critical], 'pull_request', 21], [[fast], 'push', 28],
-    [[fast], 'schedule', 28], [[fast], 'workflow_dispatch', 28],
+    [[fast], 'pull_request', 5], [[critical], 'pull_request', 24],
+    [[fast, critical], 'pull_request', 24], [[fast], 'push', 34],
+    [[fast], 'schedule', 34], [[fast], 'workflow_dispatch', 34],
   ]) {
     const plan = planFor(paths, event);
     const { needs, jobs } = evidence(plan);
@@ -53,11 +53,12 @@ test('light, lifecycle, mixed and full-event changes select exact coverage and c
     'Verify packaged workspace fault recovery run 2']) assert.ok(full.includes(`caller / ${name}`));
 });
 
-test('legacy coverage requires both contract groups and every selected repetition before its producer', () => {
+test('legacy coverage requires every responsibility group and selected repetition before its producer', () => {
   for (const event of ['pull_request', 'push']) {
     const plan = planFor([critical], event);
     const expected = Array.from({ length: plan.repetitions }, (_, index) =>
-      ['core', 'commands'].map((group) => `caller / V2.5 ${group} contracts run ${index + 1}`)).flat();
+      ['core', 'commands', 'legacy-entry', 'workspace-success-entry', 'workspace-fault-entry']
+        .map((group) => `caller / V2.5 ${group} contracts run ${index + 1}`)).flat();
     const original = evidence(plan);
     assert.deepEqual(original.jobs.filter((job) => /V2\.5 .* contracts run/.test(job.name))
       .map((job) => job.name).sort(), expected.sort());
@@ -69,8 +70,8 @@ test('legacy coverage requires both contract groups and every selected repetitio
         else jobs[index].conclusion = outcome;
         assert.equal(evaluateCiRun(plan, needs, jobs).resultCode, 'CI_REQUIRED_JOB_INCOMPLETE');
       }
-      for (const stepName of ['Build existing supervisor once',
-        name.includes('core contracts') ? 'Run legacy core contracts' : 'Run legacy commands contracts']) {
+      const group = name.match(/V2\.5 (.+) contracts run/)[1];
+      for (const stepName of ['Prepare locked package manager', 'Build existing supervisor once', `Run legacy ${group} contracts`]) {
         const { needs, jobs } = structuredClone(original);
         const job = jobs.find((value) => value.name === name);
         job.steps = job.steps.filter((step) => step.name !== stepName);

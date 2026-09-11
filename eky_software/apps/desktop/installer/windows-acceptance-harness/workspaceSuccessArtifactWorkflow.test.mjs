@@ -137,7 +137,7 @@ test('both consumers prepare the same readers once outside lifecycle execution w
     assert.doesNotMatch(consumer.slice(lifecycleIndex), /installer:supervisor:build| e2e:build|installer:v2-workspace-(success|fault) /);
   }
   const desktop = JSON.parse(await readFile(resolve(ROOT, '../../package.json'), 'utf8'));
-  const script = ['core', 'commands'].map((group) =>
+  const script = ['core', 'commands', 'legacy-entry', 'workspace-success-entry', 'workspace-fault-entry'].map((group) =>
     desktop.scripts[`installer:test:windows-supervisor-v2-legacy-${group}`]).join(' ');
   for (const name of ['installerProductOperationWorker', 'installerProductOperationProcess',
     'installerProductOperationDeadline.process', 'legacyCommandCompletion.process']) {

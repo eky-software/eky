@@ -22,8 +22,7 @@ if (mode == "legacyCommandEntry")
     if (blocked) Console.SetOut(new BlockedEvidenceWriter(Console.Out,
         SupervisorRequestReader.Read(["--request", evidenceRequest.GetString()!])));
     return AcceptanceCommandProgram.Run(input.RootElement.GetProperty("arguments").EnumerateArray()
-        .Select(value => value.GetString()!).ToArray(), input.RootElement.GetProperty("worker").GetString(), 4_000,
-        blocked ? 20_000 : null);
+        .Select(value => value.GetString()!).ToArray(), input.RootElement.GetProperty("worker").GetString(), 4_000);
 }
 if (mode.StartsWith("phaseContinuation", StringComparison.Ordinal))
 {

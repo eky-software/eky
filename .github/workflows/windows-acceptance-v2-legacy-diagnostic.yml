@@ -26,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [core, commands]
+        group: [core, commands, legacy-entry, workspace-success-entry, workspace-fault-entry]
         repetition: ${{ fromJSON(inputs.risk_plan != '' && fromJSON(inputs.risk_plan).repetitions == 1 && '[1]' || '[1, 2]') }}
     defaults:
       run:
@@ -60,6 +60,15 @@ jobs:
 
       - name: Enable existing package manager
         run: corepack enable
+
+      - name: Prepare locked package manager
+        shell: pwsh
+        run: |
+          $expected = ((Get-Content ../../package.json -Raw | ConvertFrom-Json).packageManager -split '@')[1]
+          $actual = pnpm --version
+          if ($LASTEXITCODE -ne 0 -or $actual.Trim() -cne $expected) {
+            throw 'WINDOWS_ACCEPTANCE_LEGACY_PACKAGE_MANAGER_UNAVAILABLE'
+          }
 
       - name: Record phase revision and runner image
         shell: pwsh

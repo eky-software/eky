@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { registerAcceptanceCommandEntrypointContracts } from './acceptanceCommandEntrypointContract.mjs';
 
 const WORKFLOW_URL = new URL(
   '../../../../../.github/workflows/windows-acceptance-v2-legacy-diagnostic.yml',
@@ -48,7 +49,7 @@ test('packaged boundary diagnostic reuses exact artifacts without becoming a nor
   assert.match(diagnostic, /inputs\.artifact_kind == 'legacy' && 27 \|\| 25/u);
 });
 
-test('V2.5 phase acceptance requires both same-revision contract groups before its producer', async () => {
+test('V2.5 phase acceptance requires all same-revision contract groups before its producer', async () => {
   const source = await readFile(WORKFLOW_URL, 'utf8');
   const contracts = source.slice(source.indexOf('  legacy_contracts:'), source.indexOf('  legacy_artifact_producer:'));
   const producer = source.slice(source.indexOf('  legacy_artifact_producer:'), source.indexOf('  legacy_consumer:'));
@@ -59,11 +60,14 @@ test('V2.5 phase acceptance requires both same-revision contract groups before i
   assert.doesNotMatch(source, /pull_request:|\bmain\b|continue-on-error|retry|workflow_run:/u);
   assert.match(source, /cancel-in-progress: false/u);
   assert.ok(contracts.includes("repetition: ${{ fromJSON(inputs.risk_plan != '' && fromJSON(inputs.risk_plan).repetitions == 1 && '[1]' || '[1, 2]') }}"));
-  assert.match(contracts, /group: \[core, commands\]/u);
+  assert.match(contracts, /group: \[core, commands, legacy-entry, workspace-success-entry, workspace-fault-entry\]/u);
   assert.ok(contracts.includes('name: V2.5 ${{ matrix.group }} contracts run ${{ matrix.repetition }}'));
   assert.ok(contracts.includes('name: Run legacy ${{ matrix.group }} contracts'));
   assert.ok(contracts.includes('run: pnpm installer:test:windows-supervisor-v2-legacy-${{ matrix.group }}'));
   assert.equal(contracts.match(/run: pnpm installer:supervisor:build/gu)?.length, 1);
+  assert.ok(contracts.indexOf('name: Prepare locked package manager') < contracts.indexOf('name: Build existing supervisor once'));
+  assert.match(contracts, /\$actual = pnpm --version/u);
+  assert.match(contracts, /Get-Content ..\/..\/package.json -Raw/u);
   assert.match(contracts, /fail-fast: false/u);
   assert.match(producer, /needs: legacy_contracts/u);
   assert.equal(source.match(/ref: \$\{\{ github\.sha \}\}/gu)?.length, 3);
@@ -73,8 +77,9 @@ test('V2.5 phase acceptance requires both same-revision contract groups before i
 test('legacy contract groups partition the complete existing inventory without omissions or duplicates', async () => {
   const { scripts } = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'));
   const command = 'installer:test:windows-supervisor-v2-legacy';
-  assert.equal(scripts[command], `pnpm installer:supervisor:build && pnpm ${command}-core && pnpm ${command}-commands`);
-  const groups = ['core', 'commands'].map((name) => {
+  const names = ['core', 'commands', 'legacy-entry', 'workspace-success-entry', 'workspace-fault-entry'];
+  assert.equal(scripts[command], ['pnpm installer:supervisor:build', ...names.map((name) => `pnpm ${command}-${name}`)].join(' && '));
+  const groups = names.map((name) => {
     const parts = scripts[`${command}-${name}`].split(' ');
     assert.deepEqual(parts.splice(0, 3), ['node', '--test', '--test-concurrency=1']);
     return parts;
@@ -84,6 +89,7 @@ test('legacy contract groups partition the complete existing inventory without o
       'buildWindowsApplicationCloseFixture', 'closedDirectoryInventory', 'inspectWindowsInstallerProductState',
       'installerProductOperationWorker', 'installerProductOperationProcess', 'installerProductOperationResult',
       'installerProductOperationDeadline.process', 'legacyCallerResult', 'legacyCommandCompletion.process',
+      'legacyCommandEntrypoint.process', 'workspaceSuccessCommandEntrypoint.process', 'workspaceFaultCommandEntrypoint.process',
       'legacyUpgradeBudget', 'legacyUpgradeFilesystem', 'legacyUpgradeContracts', 'legacyUpgradeFailureBoundary',
       'legacyUpgradeLifecycle', 'legacyUpgradePostcondition', 'legacyUpgradeProfileEvidence', 'legacyUpgradeSourceSmoke',
       'legacyUpgradeStartupObserver', 'legacyUpgradeWindowsRuntime', 'fixtures/windowsApplicationCloseFixtureIdentity',
@@ -96,6 +102,38 @@ test('legacy contract groups partition the complete existing inventory without o
   assert.deepEqual(groups.flat().sort(), expected.sort());
   assert.deepEqual(groups[1], ['installerProductOperationDeadline.process', 'legacyCommandCompletion.process']
     .map((name) => `installer/windows-acceptance-harness/${name}.test.mjs`));
+  assert.deepEqual(groups.slice(2), ['legacyCommandEntrypoint', 'workspaceSuccessCommandEntrypoint', 'workspaceFaultCommandEntrypoint']
+    .map((name) => [`installer/windows-acceptance-harness/${name}.process.test.mjs`]));
+});
+
+test('entrypoint groups register every original command contract exactly once', async () => {
+  const original = ['completed', 'blockedEvidence', 'preparationHold', 'productInspectionHold', 'scenarioHold',
+    'uninstallHold', 'resultBeforeExit', 'cleanupFailed', 'scenarioAndCleanupFailed', 'removalHold',
+    'publicationBeforeExit', 'productMissingResult', 'preconditionFailed', 'scenarioMissing', 'businessFailed',
+    'profileChanged', 'artifactChanged'];
+  const all = [];
+  for (const [file, kind, extra] of [
+    ['legacyCommandEntrypoint', 'legacy', []],
+    ['workspaceSuccessCommandEntrypoint', 'workspace-success', ['footprintFailed', 'blockedEvidencePhaseWork']],
+    ['workspaceFaultCommandEntrypoint', 'workspace-fault', ['footprintFailed', 'sessionFailed']],
+  ]) {
+    const registrations = [];
+    registerAcceptanceCommandEntrypointContracts(kind, (name, options, callback) => {
+      registrations.push(name);
+      assert.equal(typeof callback, 'function');
+      assert.equal(options.timeout, name.includes('public command') ? 60_000 : 90_000);
+    });
+    assert.deepEqual(registrations, [
+      `${kind} public command resolves the real worker and rejects an invalid artifact before installation`,
+      ...[...original, ...extra].map((name) => `${kind} fixed command entrypoint completes the real phase chain: ${name}`),
+    ]);
+    const source = await readFile(new URL(`./${file}.process.test.mjs`, import.meta.url), 'utf8');
+    assert.equal(source.match(/registerAcceptanceCommandEntrypointContracts\('/gu)?.length, 1);
+    assert.ok(source.includes(`registerAcceptanceCommandEntrypointContracts('${kind}');`));
+    all.push(...registrations);
+  }
+  assert.equal(all.length, 58);
+  assert.equal(new Set(all).size, all.length);
 });
 
 test('V2.5 phase acceptance builds once and both consumers only verify and consume', async () => {

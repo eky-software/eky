@@ -1,166 +1,53 @@
 import assert from 'node:assert/strict';
-import { lstat, mkdir, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
-import { randomBytes } from 'node:crypto';
+import { lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
-import { cleanupRunContext, createRunContext, createRequest, startProgramFailureFixture, startSupervisor, writeRequest }
+import { cleanupRunContext, createRunContext, createRequest, startProgramFailureFixture, writeRequest }
   from '../windows-process-supervisor/tests/supervisorContractTestSupport.mjs';
 import { readWindowsAcceptanceSupervisorResult } from '../windows-process-supervisor/windowsAcceptanceSupervisorResult.mjs';
-import { legacyCallerResultIdentity, parseLegacyCallerResult } from './legacyCallerResult.mjs';
-import { workspaceCallerResultIdentity, parseWorkspaceCallerResult } from './workspaceCallerResult.mjs';
-import { legacyCallerResultFile } from './legacyCallerResultFile.mjs';
-import { workspaceCallerResultFile } from './workspaceCallerResultFile.mjs';
 
-for (const kind of ['legacy', 'workspace-success', 'workspace-fault']) {
-  test(`${kind} public command resolves the real worker and rejects an invalid artifact before installation`, {
-    skip: process.platform !== 'win32', timeout: 60_000,
-  }, async (t) => {
-    const context = await createRunContext(kind + '-public-entry');
-    let verified = false;
-    t.after(() => cleanupRunContext(context, { preserveEvidence: !verified }));
-    const temp = join(context.testRoot, 'temporary');
-    const profile = join(context.testRoot, 'synthetic-appdata');
-    await mkdir(temp);
-    await mkdir(profile);
-    const workspace = kind !== 'legacy';
-    const resultPath = join(temp, `eky-${workspace ? 'workspace' : 'legacy'}-caller-` + randomBytes(16).toString('hex'), 'result.json');
-    const descriptor = join(context.testRoot, workspace ? 'workspace-success-artifact.json' : 'legacy-upgrade-artifact.json');
-    await writeFile(descriptor, '{}');
-    const environment = { ...process.env, TEMP: temp, TMP: temp, APPDATA: profile, LOCALAPPDATA: profile };
-    delete environment.npm_node_execpath;
-    const execution = startSupervisor(context, { captureOutput: false, environment, dotnetArguments: [
-      `--${kind}-command`, '--artifact-descriptor', descriptor, '--expected-descriptor-sha256', 'a'.repeat(64),
-      '--expected-build-revision', 'b'.repeat(40), ...(kind === 'workspace-fault' ? ['--fault-scenario', 'acceptanceInterruption'] : []),
-      '--result-path', resultPath,
-    ] });
-    const receipts = [];
-    execution.child.once('exit', () => receipts.push('exit'));
-    execution.child.once('close', () => receipts.push('close'));
-    const completion = await execution.completion;
-    assert.deepEqual(receipts, ['exit', 'close']);
-    assert.equal(completion.signal, null);
-    assert.equal(completion.exitCode, 1);
-    const roots = (await readdir(temp)).filter((name) => /^eky-acceptance-command-[0-9a-f]{32}$/.test(name));
-    assert.equal(roots.length, 1);
-    const commandRoot = join(temp, roots[0]);
-    const report = JSON.parse(await readFile(join(commandRoot, 'materialize', 'result.json'), 'utf8'));
-    assert.equal(report.processResultCode, 'processExitFailed');
-    assert.equal(report.processTreeAbsent, true);
-    await assert.rejects(lstat(join(commandRoot, 'inspectSourceBefore')), { code: 'ENOENT' });
-    const result = JSON.parse(await readFile(resultPath, 'utf8'));
-    assert.equal(result.outcome.status, 'failed');
-    assert.equal(result.outcome.fixtureRemoved, false);
-    assert.deepEqual(await readdir(profile), []);
-    verified = true;
-  });
-}
+import { describeCommandPhases, reportCommandFailure } from './acceptanceCommandEntrypointContract.mjs';
 
-for (const kind of ['legacy', 'workspace-success', 'workspace-fault']) {
-for (const testCase of ['completed', 'blockedEvidence', 'preparationHold', 'productInspectionHold', 'scenarioHold', 'uninstallHold', 'resultBeforeExit', 'cleanupFailed', 'scenarioAndCleanupFailed', 'removalHold',
-  'publicationBeforeExit', 'productMissingResult', 'preconditionFailed', 'scenarioMissing', 'businessFailed', 'profileChanged', 'artifactChanged',
-  ...(kind === 'legacy' ? [] : ['footprintFailed']), ...(kind === 'workspace-fault' ? ['sessionFailed'] : [])]) {
-  const workspace = kind !== 'legacy';
-  const succeeded = ['completed', 'blockedEvidence'].includes(testCase);
-  const faultScenario = kind === 'workspace-fault' ? 'acceptanceInterruption' : undefined;
-  test(`${kind} fixed command entrypoint completes the real phase chain: ${testCase}`, {
-    skip: process.platform !== 'win32', timeout: 90_000,
-  }, async (t) => {
-    const context = await createRunContext(kind + '-entry-' + testCase);
-    const callerRoot = join(await realpath(tmpdir()), `eky-${workspace ? 'workspace' : 'legacy'}-caller-` + randomBytes(16).toString('hex'));
-    const resultPath = join(callerRoot, 'result.json');
-    const descriptor = join(context.testRoot, workspace ? 'workspace-success-artifact.json' : 'legacy-upgrade-artifact.json');
-    let verified = false;
-    t.after(async () => {
-      await cleanupRunContext(context, { preserveEvidence: !verified || testCase !== 'completed' });
-      if (verified && testCase === 'completed') await rm(callerRoot, { recursive: true });
-    });
-    await writeFile(descriptor, JSON.stringify({ testCase }));
-    const evidenceRequestPath = join(context.testRoot, 'evidence-request.json');
-    if (testCase === 'blockedEvidence') await writeFile(evidenceRequestPath, JSON.stringify(createRequest(context, 'exitZero')));
-    await writeFile(context.requestPath, JSON.stringify({ node: process.execPath,
-      ...(testCase === 'blockedEvidence' ? { evidenceRequestPath } : {}),
-      worker: fileURLToPath(new URL('./legacyCommandWorkerFixture.mjs', import.meta.url)),
-      arguments: [`--${kind}-command`, '--artifact-descriptor', descriptor, '--expected-descriptor-sha256', 'a'.repeat(64),
-        '--expected-build-revision', 'b'.repeat(40), ...(faultScenario ? ['--fault-scenario', faultScenario] : []), '--result-path', resultPath] }));
-    const execution = startSupervisor(context, { captureOutput: false,
-      dotnetAssembly: fileURLToPath(new URL('../bin/windows-process-supervisor-contract-fixture/Release/net10.0/Eky.WindowsProcessSupervisor.ContractFixture.dll', import.meta.url)),
-      dotnetArguments: ['--mode', 'legacyCommandEntry', '--request', context.requestPath] });
-    const events = [];
-    execution.child.once('exit', () => events.push('exit'));
-    execution.child.once('close', () => events.push('close'));
-    const completion = await execution.completion;
-    assert.deepEqual(events, ['exit', 'close']);
-    assert.equal(completion.signal, null);
-    assert.equal(completion.exitCode, succeeded ? 0 : 1);
-    const commandRoot = await readFile(join(context.testRoot, 'command-root.txt'), 'utf8');
-    const phase = { preparationHold: 'prepare', productInspectionHold: 'inspectSourceBefore', scenarioHold: 'scenario', uninstallHold: 'uninstallTarget',
-      resultBeforeExit: 'uninstallTarget', removalHold: 'fixtureCleanup', publicationBeforeExit: 'publish' }[testCase];
-    if (phase) {
-      const outcome = JSON.parse(await readFile(join(commandRoot, phase, 'result.json'), 'utf8'));
-      assert.equal(outcome.processResultCode, 'deadlineExceeded');
-      assert.equal(outcome.processTreeAbsent, true);
-      assert.equal(outcome.cleanupResultCode, 'processTreeAbsent');
-    }
-    if (testCase === 'preparationHold') await assert.rejects(lstat(resultPath), { code: 'ENOENT' });
-    else {
-      const binding = workspace ? workspaceCallerResultIdentity(resultPath, { expectedBuildRevision: 'b'.repeat(40),
-        expectedDescriptorSha256: 'a'.repeat(64), faultScenario })
-        : legacyCallerResultIdentity(resultPath, { buildRevision: 'b'.repeat(40), artifactDescriptorSha256: 'a'.repeat(64) });
-      const result = (workspace ? parseWorkspaceCallerResult : parseLegacyCallerResult)(await readFile(resultPath), binding);
-      assert.equal(result.outcome.status, succeeded || testCase === 'publicationBeforeExit' ? 'completed' : 'failed');
-      if (!succeeded) await assert.rejects((workspace ? workspaceCallerResultFile : legacyCallerResultFile)(
-        'verify', resultPath, binding, completion.exitCode));
-      if (succeeded) assert.equal(result.outcome.fixtureRemoved, true);
-      if (testCase === 'scenarioAndCleanupFailed') {
-        assert.equal(result.outcome.errorCode, workspace ? 'sourceInstallFailed' : 'WINDOWS_ACCEPTANCE_LEGACY_SOURCE_SMOKE_FAILED');
-        assert.equal(result.outcome.semanticCleanupResultCode, 'semanticCleanupFailed');
-        assert.equal(result.outcome.fixtureRemoved, false);
-      }
-      if (['cleanupFailed', 'scenarioAndCleanupFailed'].includes(testCase)) {
-        await assert.rejects(lstat(join(commandRoot, 'uninstallSource')), { code: 'ENOENT' });
-        assert.equal(result.outcome.fixtureRemoved, false);
-      }
-      if (['uninstallHold', 'resultBeforeExit'].includes(testCase)) {
-        assert.equal(result.outcome.errorCode, workspace ? 'supervisorDeadlineExceeded' : 'WINDOWS_ACCEPTANCE_SUPERVISOR_DEADLINE_EXCEEDED');
-        assert.equal(result.outcome.fixtureRemoved, false);
-        await assert.rejects(lstat(join(commandRoot, 'uninstallSource')), { code: 'ENOENT' });
-      }
-      if (testCase === 'preconditionFailed') {
-        assert.equal(result.outcome.errorCode, workspace ? 'preconditionFailed' : 'WINDOWS_ACCEPTANCE_LEGACY_PRECONDITION_FAILED');
-        await assert.rejects(lstat(join(commandRoot, 'scenario')), { code: 'ENOENT' });
-        await assert.rejects(lstat(join(commandRoot, 'uninstallTarget')), { code: 'ENOENT' });
-      }
-      if (testCase === 'productInspectionHold') {
-        assert.equal(result.outcome.errorCode, workspace ? 'supervisorDeadlineExceeded' : 'WINDOWS_ACCEPTANCE_SUPERVISOR_DEADLINE_EXCEEDED');
-        assert.equal(result.outcome.fixtureRemoved, false);
-        await assert.rejects(lstat(join(commandRoot, 'scenario')), { code: 'ENOENT' });
-        await assert.rejects(lstat(join(commandRoot, 'uninstallTarget')), { code: 'ENOENT' });
-      }
-      if (testCase === 'productMissingResult') {
-        const report = JSON.parse(await readFile(join(commandRoot, 'uninstallTarget', 'result.json'), 'utf8'));
-        assert.equal(report.processResultCode, 'processCompleted');
-        assert.equal(report.workerResultCode, 'workerResultMissing');
-        assert.equal(report.processTreeAbsent, true);
-        await assert.rejects(lstat(join(commandRoot, 'uninstallSource')), { code: 'ENOENT' });
-      }
-      if (['scenarioMissing', 'businessFailed', 'sessionFailed'].includes(testCase)) {
-        assert.equal(result.outcome.semanticCleanupResultCode, 'semanticCleanupCompleted');
-        assert.equal(result.outcome.fixtureRemoved, true);
-      }
-      if (testCase === 'sessionFailed') assert.equal(result.outcome.errorCode, 'sessionProofInvalid');
-      if (['profileChanged', 'artifactChanged', 'footprintFailed', 'preconditionFailed', 'productMissingResult'].includes(testCase)) {
-        assert.equal(result.outcome.fixtureRemoved, false);
-        const { state } = JSON.parse(await readFile(join(commandRoot, 'prepare', 'phase-state.json'), 'utf8'));
-        assert.equal((await lstat(state.runRoot)).isDirectory(), true);
-      }
-    }
-    verified = true;
+test('command failure diagnostics preserve missing results and reject raw fields', async () => {
+  const root = join(tmpdir(), 'synthetic-command');
+  const evidence = await describeCommandPhases(root, 'legacy', async (path) => {
+    const phase = basename(dirname(path));
+    if (!['prepare', 'scenario', 'publishFailure'].includes(phase)) throw Object.assign(new Error('private'), { code: 'ENOENT' });
+    if (basename(path) === 'request.json') return {};
+    if (phase === 'scenario') throw Object.assign(new Error('private'), { code: 'ENOENT' });
+    throw new Error('private path and raw failure');
   });
-}
-}
+  assert.deepEqual(evidence, [
+    { phase: 'prepare', result: 'invalidOrUnreadable' },
+    { phase: 'scenario', result: 'missing' },
+    { phase: 'publishFailure', result: 'invalidOrUnreadable' },
+  ]);
+  const original = new Error('original assertion');
+  assert.throws(() => reportCommandFailure({ diagnostic() { throw new Error('output failed'); } }, evidence, original),
+    (error) => error === original);
+});
+
+test('command failure diagnostics keep worker loss separate from unverified cleanup', async () => {
+  const request = { runNonce: 'c'.repeat(64), scenario: 'acceptanceCommandPhase', artifactDescriptorSha256: 'a'.repeat(64) };
+  const evidence = await describeCommandPhases(join(tmpdir(), 'synthetic-command'), 'legacy', async (path) => {
+    const phase = basename(dirname(path));
+    if (!['prepare', 'scenario'].includes(phase)) throw Object.assign(new Error(), { code: 'ENOENT' });
+    if (basename(path) === 'request.json') return request;
+    return { ...request, schemaVersion: 1, status: 'failed', durationMs: 1,
+      processResultCode: phase === 'prepare' ? 'processCompleted' : 'deadlineExceeded',
+      childExitCode: phase === 'prepare' ? 0 : null,
+      workerResultCode: phase === 'prepare' ? 'workerResultMissing' : 'notChecked',
+      cleanupResultCode: phase === 'prepare' ? 'notRequired' : 'cleanupUnverified',
+      processTreeAbsent: phase === 'prepare', processWin32ErrorCode: null, cleanupWin32ErrorCode: null };
+  });
+  assert.deepEqual(evidence, [
+    { phase: 'prepare', result: 'validated', process: 'processCompleted', worker: 'workerResultMissing', cleanup: 'notRequired', processTreeAbsent: true },
+    { phase: 'scenario', result: 'validated', process: 'deadlineExceeded', worker: 'notChecked', cleanup: 'cleanupUnverified', processTreeAbsent: false },
+  ]);
+});
 
 for (const stage of ['WorkerReadHold', 'ResultWriteHold', 'ResultWriteHoldAfterFailure']) {
   test(`command owner exits after its own result I/O stalls: ${stage}`, {

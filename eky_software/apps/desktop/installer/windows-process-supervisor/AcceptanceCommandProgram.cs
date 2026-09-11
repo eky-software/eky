@@ -14,7 +14,7 @@ internal static class AcceptanceCommandProgram
         catch { SafeEvidenceWriter.WriteInvalidRequest("unexpectedFailure"); return 1; }
     }
 
-    internal static int Run(string[] arguments, string? contractWorker, int? contractTimeout = null, int? contractReservation = null)
+    internal static int Run(string[] arguments, string? contractWorker, int? contractTimeout = null)
     {
         var clock = Stopwatch.StartNew();
         var kind = arguments.FirstOrDefault() switch
@@ -43,7 +43,7 @@ internal static class AcceptanceCommandProgram
         using var budgets = JsonDocument.Parse(budgetStream);
         var exitReserve = budgets.RootElement.GetProperty("exitReserveMilliseconds").GetInt32();
         var plan = budgets.RootElement.GetProperty(kind == "legacy" ? "legacyCommand" : "workspaceCommand");
-        var deadline = contractReservation ?? plan.GetProperty("reservationMilliseconds").GetInt32();
+        var deadline = plan.GetProperty("reservationMilliseconds").GetInt32();
         var phases = plan.GetProperty("phases").EnumerateArray().Select(value =>
             (Name: value[0].GetString()!, Timeout: value[1].GetInt32(), Cleanup: value[2].GetInt32())).ToArray();
         var publication = phases[^1];

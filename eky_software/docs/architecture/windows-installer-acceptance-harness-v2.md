@@ -2632,7 +2632,58 @@ komentotesti ei ole MSI-hyväksyntä tai näyttö tietyn CI-jumin natiivisyystä
 PR #266 pysyy draftina. Vanhan polun epäonnistunut hyväksyntä ja alempana
 kirjattu CI-tulos eivät muutu vihreiksi uuden kytkennän perusteella.
 
-### Jaetun sopimussarjan CI
+### Komentofixturen varaus ja vastuukohtainen CI
+
+Estyneen diagnostiikkatulostuksen fixture käytti aiemmin poikkeavaa
+20 sekunnin kokonaisvarausta. Kaksi viiden sekunnin poistumisvarausta ja
+neljän sekunnin julkaisuvaihe jättivät tavallisten vaiheiden käyttöön vain
+kuusi sekuntia. Tulostuskohteen estyminen ei oikeuta muuttamaan komennon
+työbudjettia. Poikkeava fixture-valinta on poistettu: jokainen komentotapaus
+käyttää samaa nykyistä komentosuunnitelmaa, mutta tarkoitukselliset lyhyet
+vaihekohtaiset timeout- ja cleanup-regressiot säilyvät ennallaan.
+
+Käyttäytymisregressio kuormittaa neljää tavallista vaihetta hallitusti niiden
+omien rajojen sisällä ja todistaa samalla kirjoittimen todella estyneen.
+Vanha varaus hylkäsi tämän ketjun; korjattu ketju vaatii onnistuneen
+caller-tuloksen, komentoprosessin exit/close-havainnot ja varmennetun
+fixture-siivoamisen. Testin ulompi pakkokatkaisu ei kelpaa tulokseksi.
+Tämä osoittaa fixture-budjetin virheen, ei kaikkien aikaisempien CI-virheiden
+yhteistä natiivisyytä. `productMissingResult` säilyttää pakollisen
+caller-tuloksen vaatimuksen; aiemman CI-tuloksen puuttumisen syy on erillinen
+avoin havainto. Työkalun latausvirhe ennen testejä ei ole assertion-tulos.
+
+Komentoregressio välittää nykyisten vaiheiden suljetut process-, worker- ja
+cleanup-luokitukset ennen yleisen assertion-virheen raportointia.
+Puuttuva tai lukukelvoton tulos pysyy erillisenä; diagnostiikan epäonnistuminen
+ei korvaa alkuperäistä testivirhettä. Raakavirheitä tai paikallisia tunnisteita
+ei lisätä raporttiin.
+
+Kanoninen `installer:test:windows-supervisor-v2-legacy` kääntää nykyisen
+supervisorin kerran ja ajaa viisi ryhmää sarjallisesti: `core`, `commands`,
+`legacy-entry`, `workspace-success-entry` ja `workspace-fault-entry`.
+`commands` omistaa yhteiset prosessi- ja vaihejatkumisen sopimukset;
+kolme sisääntuloryhmää käyttävät samaa testirekisteröintiä omalle oikealle
+komennolleen. Uutta ajomoottoria tai fallbackia ei lisätä.
+
+CI ajaa jokaisen ryhmän eristetyssä jobissa samoilla nykyisillä aikarajoilla.
+Täysi portti vaatii kaikki kymmenen ryhmätulosta ennen legacy-produceria.
+Kattavuustesti vaatii myös lukitun pakettityökalun valmistelun, buildin ja
+testivaiheen. Tiedosto- ja tapausinventaario todistavat alkuperäisten testien
+säilymisen ilman kaksoissuoritusta. Pakettityökalun lataus on erotettu
+valmisteluvaiheeksi; versioita tai automaattista uusintaa ei muuteta.
+Ryhmien jako on työmäärän jakoa, ei jumittuvan operaation lisäaika.
+Uusi hyväksyntä edellyttää lisäksi legacy-producerin ja molempien
+consumerien todellista valmistumista puhtaalta revisiolta.
+
+Korjatun checkpointin kanoninen sopimussarja läpäisi 309/309:
+`core` 227/227, yhteiset komennot 24/24 ja kolme sisääntuloryhmää
+18/18, 20/20 ja 20/20. Kaikki valmistuivat ilman ohituksia tai uusintoja.
+Jaetut workspace-success- ja fault-sopimukset läpäisivät 289/289 ja 279/279;
+legacy- ja workspace-artifact-sopimukset 16/16 ja 58/58 sekä CI-sopimukset
+48/48. Osin päällekkäisiä sarjoja ei summata. Tämä on regressioiden näyttö,
+ei vielä uuden revision packaged- tai CI-hyväksyntä.
+
+### Jaetun sopimussarjan edellinen CI
 
 Lähde-HEAD `447dd169835a38b136b8abd2f0caf31d58b950c4` käynnisti
 [CI-ajon 34627151146](https://github.com/eky-software/eky/actions/runs/34627151146).
@@ -2660,11 +2711,10 @@ seuraavan `phaseContinuationBlockedEvidence`-tapauksen loppu ja omistettu
 siivous jäivät varmentamatta. GitHubin oma orphan-cleanup ei korvaa tätä
 näyttöä. Legacy-producer ja packaged-consumerit eivät käynnistyneet.
 
-Komentoryhmän jako ei vielä sovi tämän sarjan havaittuun kokonaiskuormaan.
-Se ei myöskään selitä kolmea varsinaista hylkäystä. Seuraava päätös rajataan
-nykyisen komentofixturen vaihevirheen erittelyyn ja testien työmäärään, ei
-uuteen valvojaan tai sokkona nostettuun aikarajaan. Ulkoisen katkaisun yli
-ei ajeta uutta täyttä kierrosta. PR #266 pysyy draftina; koko V2:n hyväksyntä,
+Tämän revision kahden ryhmän jako ei sopinut havaittuun kokonaiskuormaan
+eikä selitä kolmea varsinaista hylkäystä. Yllä kuvattu fixture-korjaus ja
+viiden vastuun ryhmittely tarvitsevat oman hyväksyntänsä; ne eivät muuta
+tätä ajoa onnistuneeksi. PR #266 pysyy draftina; koko V2:n hyväksyntä,
 käyttöönotto ja pilot-julkaisu ovat edelleen kesken.
 
 ### Komentosiirron aiempi CI ja rajattu fixture-korjaus
@@ -2699,20 +2749,21 @@ Windowsin prosessisopimukset kahdesti 77/77 sekä desktopin typecheck ja build.
 Aliaskorjaus ei selitä toisen CI-sarjan kahta fixed-command-epäonnistumista
 eikä GUI-fixturen käännöksen määräaikaa. Käännöksen virhe säilyi virheenä ja
 sen Job-siivoaminen valmistui; sama valmisteluvirhe esti kuusi GUI-testiä.
-Omistajan hyväksymä CI-jako erottaa nykyisen sarjan kahteen vastuuseen:
+Tämän aiemman checkpointin CI-jako erotti sarjan kahteen vastuuseen:
 `core` omistaa supervisorin, artifactin, skenaarion ja virherajojen
 sopimukset; `commands` omistaa product-operaation ja kolmen varsinaisen
 komennon koko prosessielinkaaren. Kaikki alkuperäiset 29 testitiedostoa
 säilyvät täsmälleen kerran. Uutta ajomoottoria ei lisätä eikä testien tai
 jobien aikarajoja kasvateta.
 
-Kanoninen paikallinen komento säilyy
+Checkpointin kanoninen paikallinen komento oli
 `pnpm --filter @eky/desktop installer:test:windows-supervisor-v2-legacy`:
-se kääntää supervisorin kerran ja ajaa molemmat ryhmät sarjallisesti.
-CI kääntää supervisorin kerran kussakin eristetyssä ryhmäjobissa. Molemmat
-ryhmät ajetaan riskisuunnitelman jokaisella valitsemalla toistolla; täysi
-portti vaatii neljä ryhmätulosta ennen produceria. `fail-fast: false`
-säilyttää muiden ryhmien näytön epäonnistumisen jälkeen.
+se käänsi supervisorin kerran ja ajoi molemmat ryhmät sarjallisesti.
+CI käänsi supervisorin kerran kussakin eristetyssä ryhmäjobissa. Molemmat
+ryhmät ajettiin riskisuunnitelman jokaisella valitsemalla toistolla; täysi
+portti vaati neljä ryhmätulosta ennen produceria. Nykyinen viiden ryhmän
+jako on kuvattu yllä; `fail-fast: false` säilyttää edelleen muiden ryhmien
+näytön epäonnistumisen jälkeen.
 
 Kattavuusregressio hylkää puuttuvan, ohitetun, peruutetun tai epäonnistuneen
 ryhmän sekä puuttuvan build- tai testivaiheen. Tiedostoinventaarion testi
@@ -3091,7 +3142,7 @@ Korvaavien invarianttien kartta:
 
 | Korvattu tarkistus | Nykyinen vastine |
 | --- | --- |
-| Node-callerin Promise ja exit/close | `legacyCommandCompletion.process.test`: kaikki kolme todellista komentosuunnitelmaa, ulkopuolelta havaittu komento-exit ja close |
+| Node-callerin Promise ja exit/close | `legacyCommandCompletion.process.test`: yhteinen vaihejatkumo; `legacyCommandEntrypoint`, `workspaceSuccessCommandEntrypoint` ja `workspaceFaultCommandEntrypoint`: kaikki kolme todellista komentosuunnitelmaa, ulkopuolelta havaittu komento-exit ja close |
 | Käynnistyssäikeen permit/cancel/unref ja avoin product-kanava | Nykyisen .NET-fixturen Preparation/NativeWait/Read/Remove, myöhäisen luonnin ja result-I/O:n kokeet; siirretyllä polulla ei enää ole kyseistä säiettä tai kanavaa |
 | Skenaario jumittuu tai tulosteen vastaanottaja ei lue | Kiinteän komennon scenarioHold/blockedEvidence; onnistuminen ei odota diagnostista flushia |
 | Tulos ennen prosessin poistumista | resultBeforeExit/publicationBeforeExit; validi caller-tiedosto ei korvaa komennon onnistunutta poistumista |
