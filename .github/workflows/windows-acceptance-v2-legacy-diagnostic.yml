@@ -20,12 +20,13 @@ env:
 
 jobs:
   legacy_contracts:
-    name: V2.5 phase contracts run ${{ matrix.repetition }}
+    name: V2.5 ${{ matrix.group }} contracts run ${{ matrix.repetition }}
     runs-on: windows-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
+        group: [core, commands]
         repetition: ${{ fromJSON(inputs.risk_plan != '' && fromJSON(inputs.risk_plan).repetitions == 1 && '[1]' || '[1, 2]') }}
     defaults:
       run:
@@ -73,8 +74,11 @@ jobs:
             dotnetVersion = (dotnet --version)
           } | ConvertTo-Json -Compress
 
-      - name: Run unchanged full legacy contracts
-        run: pnpm installer:test:windows-supervisor-v2-legacy
+      - name: Build existing supervisor once
+        run: pnpm installer:supervisor:build
+
+      - name: Run legacy ${{ matrix.group }} contracts
+        run: pnpm installer:test:windows-supervisor-v2-legacy-${{ matrix.group }}
 
   legacy_artifact_producer:
     name: Build one historical source and target phase artifact

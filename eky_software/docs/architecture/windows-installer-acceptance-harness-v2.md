@@ -2664,12 +2664,34 @@ Windowsin prosessisopimukset kahdesti 77/77 sekä desktopin typecheck ja build.
 Aliaskorjaus ei selitä toisen CI-sarjan kahta fixed-command-epäonnistumista
 eikä GUI-fixturen käännöksen määräaikaa. Käännöksen virhe säilyi virheenä ja
 sen Job-siivoaminen valmistui; sama valmisteluvirhe esti kuusi GUI-testiä.
-Seuraava päätös koskee nykyisen sopimussarjan CI-jakoa nimettyjen vastuiden
-mukaan, ei uutta ajomoottoria tai aikarajojen kasvattamista. Ehdotettu jako
-säilyttää koko nykyisen tiedostoluettelon, molemmat toistot ja koontiportin
-vaatimuksen kaikista tuloksista. Jakoa ei ole toteutettu eikä uutta täyttä
-kierrosta käynnistetä ulkoisen katkaisun yli. Yksittäisten virheiden syy ja
-niiden regressiot on suljettava erikseen.
+Omistajan hyväksymä CI-jako erottaa nykyisen sarjan kahteen vastuuseen:
+`core` omistaa supervisorin, artifactin, skenaarion ja virherajojen
+sopimukset; `commands` omistaa product-operaation ja kolmen varsinaisen
+komennon koko prosessielinkaaren. Kaikki alkuperäiset 29 testitiedostoa
+säilyvät täsmälleen kerran. Uutta ajomoottoria ei lisätä eikä testien tai
+jobien aikarajoja kasvateta.
+
+Kanoninen paikallinen komento säilyy
+`pnpm --filter @eky/desktop installer:test:windows-supervisor-v2-legacy`:
+se kääntää supervisorin kerran ja ajaa molemmat ryhmät sarjallisesti.
+CI kääntää supervisorin kerran kussakin eristetyssä ryhmäjobissa. Molemmat
+ryhmät ajetaan riskisuunnitelman jokaisella valitsemalla toistolla; täysi
+portti vaatii neljä ryhmätulosta ennen produceria. `fail-fast: false`
+säilyttää muiden ryhmien näytön epäonnistumisen jälkeen.
+
+Kattavuusregressio hylkää puuttuvan, ohitetun, peruutetun tai epäonnistuneen
+ryhmän sekä puuttuvan build- tai testivaiheen. Tiedostoinventaarion testi
+estää jaossa syntyvän testikadon tai kaksoissuorituksen. Jaettu kanoninen
+sarja läpäisi 227/227 ja 79/79, CI-kytkennän sopimukset 48/48 sekä legacy-
+ja workspace-artifactien workflow-sopimukset 15/15. Näitä osin päällekkäisiä
+sarjoja ei summata. Tämä on testikytkennän regressiotulos, ei uusi Windows-
+consumer-hyväksyntä. Yksittäisten aiempien virheiden syy ja regressiot on
+suljettava erikseen; jako ei itsessään selitä käynnistysviivettä.
+
+Electronin rajattu kolmen käyttäjäpolun toisto läpäisi 9/9 samalla
+valmistellulla buildillä, ja koko critical-sarja läpäisi 38/38 ilman retryä.
+Aiempi `firstWindow`-virhe ei toistunut tässä todennuksessa; sille ei ole
+osoitettu juurisyytä eikä Electronin aikarajoja tai lähdekoodia muutettu.
 
 [Erillinen diagnostiikka 34620133500](https://github.com/eky-software/eky/actions/runs/34620133500)
 käytti aiempia varmennettuja artifact-tavuja. Se hylättiin

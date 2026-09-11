@@ -38,9 +38,9 @@ function evidence(plan) {
 
 test('light, lifecycle, mixed and full-event changes select exact coverage and complete', () => {
   for (const [paths, event, count] of [
-    [[fast], 'pull_request', 5], [[critical], 'pull_request', 20],
-    [[fast, critical], 'pull_request', 20], [[fast], 'push', 26],
-    [[fast], 'schedule', 26], [[fast], 'workflow_dispatch', 26],
+    [[fast], 'pull_request', 5], [[critical], 'pull_request', 21],
+    [[fast, critical], 'pull_request', 21], [[fast], 'push', 28],
+    [[fast], 'schedule', 28], [[fast], 'workflow_dispatch', 28],
   ]) {
     const plan = planFor(paths, event);
     const { needs, jobs } = evidence(plan);
@@ -51,6 +51,33 @@ test('light, lifecycle, mixed and full-event changes select exact coverage and c
   for (const name of ['Verify clean lifecycle run 2', 'Verify upgrade and rollback run 2',
     'V2.5 packaged legacy phase run 2', 'Verify packaged workspace success run 2',
     'Verify packaged workspace fault recovery run 2']) assert.ok(full.includes(`caller / ${name}`));
+});
+
+test('legacy coverage requires both contract groups and every selected repetition before its producer', () => {
+  for (const event of ['pull_request', 'push']) {
+    const plan = planFor([critical], event);
+    const expected = Array.from({ length: plan.repetitions }, (_, index) =>
+      ['core', 'commands'].map((group) => `caller / V2.5 ${group} contracts run ${index + 1}`)).flat();
+    const original = evidence(plan);
+    assert.deepEqual(original.jobs.filter((job) => /V2\.5 .* contracts run/.test(job.name))
+      .map((job) => job.name).sort(), expected.sort());
+    for (const name of expected) {
+      for (const outcome of ['missing', 'cancelled', 'skipped', 'failure']) {
+        const { needs, jobs } = structuredClone(original);
+        const index = jobs.findIndex((job) => job.name === name);
+        if (outcome === 'missing') jobs.splice(index, 1);
+        else jobs[index].conclusion = outcome;
+        assert.equal(evaluateCiRun(plan, needs, jobs).resultCode, 'CI_REQUIRED_JOB_INCOMPLETE');
+      }
+      for (const stepName of ['Build existing supervisor once',
+        name.includes('core contracts') ? 'Run legacy core contracts' : 'Run legacy commands contracts']) {
+        const { needs, jobs } = structuredClone(original);
+        const job = jobs.find((value) => value.name === name);
+        job.steps = job.steps.filter((step) => step.name !== stepName);
+        assert.equal(evaluateCiRun(plan, needs, jobs).resultCode, 'CI_REQUIRED_STEP_INCOMPLETE');
+      }
+    }
+  }
 });
 
 test('deleted and moved critical paths flow from Git diff into required consumers', () => {

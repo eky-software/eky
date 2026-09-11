@@ -48,7 +48,7 @@ test('packaged boundary diagnostic reuses exact artifacts without becoming a nor
   assert.match(diagnostic, /inputs\.artifact_kind == 'legacy' && 27 \|\| 25/u);
 });
 
-test('V2.5 phase acceptance requires the same revision full contracts before its producer', async () => {
+test('V2.5 phase acceptance requires both same-revision contract groups before its producer', async () => {
   const source = await readFile(WORKFLOW_URL, 'utf8');
   const contracts = source.slice(source.indexOf('  legacy_contracts:'), source.indexOf('  legacy_artifact_producer:'));
   const producer = source.slice(source.indexOf('  legacy_artifact_producer:'), source.indexOf('  legacy_consumer:'));
@@ -59,10 +59,43 @@ test('V2.5 phase acceptance requires the same revision full contracts before its
   assert.doesNotMatch(source, /pull_request:|\bmain\b|continue-on-error|retry|workflow_run:/u);
   assert.match(source, /cancel-in-progress: false/u);
   assert.ok(contracts.includes("repetition: ${{ fromJSON(inputs.risk_plan != '' && fromJSON(inputs.risk_plan).repetitions == 1 && '[1]' || '[1, 2]') }}"));
-  assert.match(contracts, /run: pnpm installer:test:windows-supervisor-v2-legacy/u);
+  assert.match(contracts, /group: \[core, commands\]/u);
+  assert.ok(contracts.includes('name: V2.5 ${{ matrix.group }} contracts run ${{ matrix.repetition }}'));
+  assert.ok(contracts.includes('name: Run legacy ${{ matrix.group }} contracts'));
+  assert.ok(contracts.includes('run: pnpm installer:test:windows-supervisor-v2-legacy-${{ matrix.group }}'));
+  assert.equal(contracts.match(/run: pnpm installer:supervisor:build/gu)?.length, 1);
+  assert.match(contracts, /fail-fast: false/u);
   assert.match(producer, /needs: legacy_contracts/u);
   assert.equal(source.match(/ref: \$\{\{ github\.sha \}\}/gu)?.length, 3);
   assert.equal(source.match(/EKY_DOTNET_EXE=\$dotnet/gu)?.length, 3);
+});
+
+test('legacy contract groups partition the complete existing inventory without omissions or duplicates', async () => {
+  const { scripts } = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'));
+  const command = 'installer:test:windows-supervisor-v2-legacy';
+  assert.equal(scripts[command], `pnpm installer:supervisor:build && pnpm ${command}-core && pnpm ${command}-commands`);
+  const groups = ['core', 'commands'].map((name) => {
+    const parts = scripts[`${command}-${name}`].split(' ');
+    assert.deepEqual(parts.splice(0, 3), ['node', '--test', '--test-concurrency=1']);
+    return parts;
+  });
+  const expected = [
+    ...['acceptanceCommandPhaseInput', 'boundedWindowsAdapterProcess', 'supervisorProcessLaunch',
+      'buildWindowsApplicationCloseFixture', 'closedDirectoryInventory', 'inspectWindowsInstallerProductState',
+      'installerProductOperationWorker', 'installerProductOperationProcess', 'installerProductOperationResult',
+      'installerProductOperationDeadline.process', 'legacyCallerResult', 'legacyCommandCompletion.process',
+      'legacyUpgradeBudget', 'legacyUpgradeFilesystem', 'legacyUpgradeContracts', 'legacyUpgradeFailureBoundary',
+      'legacyUpgradeLifecycle', 'legacyUpgradePostcondition', 'legacyUpgradeProfileEvidence', 'legacyUpgradeSourceSmoke',
+      'legacyUpgradeStartupObserver', 'legacyUpgradeWindowsRuntime', 'fixtures/windowsApplicationCloseFixtureIdentity',
+      'requestWindowsApplicationClose', 'legacyUpgradeAdmission', 'runLegacyUpgradeWorker',
+      'upgradeRollbackPostSupervisorWindowsRuntime'].map((name) => `installer/windows-acceptance-harness/${name}.test.mjs`),
+    ...['windowsAcceptanceSupervisorResult', 'windowsAcceptanceSupervisor.contract']
+      .map((name) => `installer/windows-process-supervisor/tests/${name}.test.mjs`),
+  ];
+  assert.equal(new Set(groups.flat()).size, expected.length);
+  assert.deepEqual(groups.flat().sort(), expected.sort());
+  assert.deepEqual(groups[1], ['installerProductOperationDeadline.process', 'legacyCommandCompletion.process']
+    .map((name) => `installer/windows-acceptance-harness/${name}.test.mjs`));
 });
 
 test('V2.5 phase acceptance builds once and both consumers only verify and consume', async () => {
