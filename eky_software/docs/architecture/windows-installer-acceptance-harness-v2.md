@@ -2632,7 +2632,42 @@ komentotesti ei ole MSI-hyväksyntä tai näyttö tietyn CI-jumin natiivisyystä
 PR #266 pysyy draftina. Vanhan polun epäonnistunut hyväksyntä ja alempana
 kirjattu CI-tulos eivät muutu vihreiksi uuden kytkennän perusteella.
 
-### Komentosiirron CI ja rajattu fixture-korjaus
+### Jaetun sopimussarjan CI
+
+Lähde-HEAD `447dd169835a38b136b8abd2f0caf31d58b950c4` käynnisti
+[CI-ajon 34627151146](https://github.com/eky-software/eky/actions/runs/34627151146).
+Todellinen checkout ja consumerien varmentama artifact-build on
+`d2ef02bcc110e0fab00ea8c1e9ad0d0b1b4fe45c`. Ensimmäinen yritys päättyi
+hylättynä; uusintaa ei ajettu. Molemmat core-sopimusryhmät läpäisivät 227/227.
+Electron critical läpäisi 38/38 ilman flaky-tulosta, installer-unitit 165/165
+ja Windows-prosessisopimukset 77/77. Clean-, upgrade/rollback- ja workspace-
+success-consumerit läpäisivät kukin 2/2 sekä workspace-fault-matriisi 10/10.
+Artifactien ennen/jälkeen-varmennukset ja pakolliset consumer-verifierit
+säilyivät suoritettuina hyväksyntäehtoina.
+
+Ensimmäisen commands-ryhmän Corepack-lataus katkesi `ECONNRESET`-virheeseen
+ennen supervisorin käännöstä ja testejä. Toisessa oli kolme testivirhettä:
+workspace-success- ja workspace-fault-`blockedEvidence` palauttivat
+odottamattoman exit 1:n; workspace-success-`productMissingResult` ei saanut
+pakollista caller-tulosta. Näiden komentoprosessien exit ja close havaittiin,
+mutta sisäisen vaiheen virhetulos ei välittynyt testin assertion raporttiin.
+Syytä ei nimetä ilman tätä erottavaa näyttöä.
+
+GitHub katkaisi jälkimmäisen jobin sen 10 minuutin rajaan testien yhä
+valmistuessa: 64 hyväksyttyä, 3 epäonnistunutta ja 1 keskeytynyt testi.
+Viimeinen valmistunut tapaus oli `phaseContinuationRequestInvalid`;
+seuraavan `phaseContinuationBlockedEvidence`-tapauksen loppu ja omistettu
+siivous jäivät varmentamatta. GitHubin oma orphan-cleanup ei korvaa tätä
+näyttöä. Legacy-producer ja packaged-consumerit eivät käynnistyneet.
+
+Komentoryhmän jako ei vielä sovi tämän sarjan havaittuun kokonaiskuormaan.
+Se ei myöskään selitä kolmea varsinaista hylkäystä. Seuraava päätös rajataan
+nykyisen komentofixturen vaihevirheen erittelyyn ja testien työmäärään, ei
+uuteen valvojaan tai sokkona nostettuun aikarajaan. Ulkoisen katkaisun yli
+ei ajeta uutta täyttä kierrosta. PR #266 pysyy draftina; koko V2:n hyväksyntä,
+käyttöönotto ja pilot-julkaisu ovat edelleen kesken.
+
+### Komentosiirron aiempi CI ja rajattu fixture-korjaus
 
 Lähde-HEAD `681c577c806e132e958f821f07632c59a14535af` käynnisti
 [CI-ajon 34620003920](https://github.com/eky-software/eky/actions/runs/34620003920).
