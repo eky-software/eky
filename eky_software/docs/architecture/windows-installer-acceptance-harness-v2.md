@@ -2683,6 +2683,47 @@ legacy- ja workspace-artifact-sopimukset 16/16 ja 58/58 sekä CI-sopimukset
 48/48. Osin päällekkäisiä sarjoja ei summata. Tämä on regressioiden näyttö,
 ei vielä uuden revision packaged- tai CI-hyväksyntä.
 
+### Komentoryhmien CI ja erillinen inspector-havainto
+
+Lähde-HEAD `0e0af6c0e39c675a1f614d39f6b3b974ad2c05ac` käynnisti
+[CI-ajon 34635578251](https://github.com/eky-software/eky/actions/runs/34635578251).
+Todellinen checkout ja workspace-artifactin build-revisio ovat
+`6a31f8bf4b156e5c5bded0a68064a6460d98d88b`. Kaikki kolme varsinaista
+komentoryhmää sekä yhteinen komentoryhmä läpäisivät molemmat toistot
+ensimmäisellä yrityksellä. Myös aiemmat `blockedEvidence`- ja
+`productMissingResult`-tapaukset läpäisivät. Kokonaisportti ei silti täyty:
+core-ryhmän toinen toisto päätyi tulokseen 226 hyväksyttyä ja yksi
+keskeytynyt testi. Legacy-producer ja molemmat consumerit jäivät ajamatta.
+
+Kierros päättyi hylättynä ilman uusintaa. Electron critical läpäisi 38/38,
+clean-, upgrade/rollback- ja workspace-success-consumerit kukin 2/2 sekä
+workspace-fault-matriisi 10/10. Pakolliset caller-verifierit ja artifactien
+ennen/jälkeen-varmennukset valmistuivat. Clean- ja upgrade-lopputulokset
+vahvistivat datan säilymisen, prosessien poissaolon ja fixture-poiston.
+Core-testin varmentamatonta siivousta ei muuteta onnistumiseksi muiden
+jobien tuloksilla. PR #266 pysyy draftina; V2:n kokonaisportti ei täyty.
+
+Keskeytynyt `inspectWindowsInstallerProductState.test.mjs` ajaa neljä
+PowerShell-tarkistusta yhteisen 20 sekunnin testirajan sisällä. Nykyinen
+CI-aineisto ei erota, mikä neljästä tarkistuksesta jäi kesken tai tapahtuiko
+viive käynnistyksessä, COM-kyselyssä vai poistumisessa. Testin vanha
+loppusiivous pyysi lopetusta odottamatta prosessin poistumista ja poisti
+testijuuren myös epäonnistumisen jälkeen. Tätä ei lasketa varmennetuksi
+siivoukseksi eikä viivettä nimetä infrastruktuuriviaksi.
+
+Rajattu jatkokorjaus käyttää nykyistä `cleanupRunContext`-vastuuta samoille
+omistetuille prosessikahvoille. Testijuuri säilyy epäonnistumisessa tai
+varmentamattomassa siivouksessa, ja neljän tarkistuksen turvalliset
+vaiheluokitukset raportoidaan erikseen siivoustuloksesta. Peruutus estää
+seuraavan kyselyn käynnistämisen myös myöhäisen valmistumisen jälkeen.
+Uutta valvojaa tai aikarajaa ei lisätä. Siivoustuen ja myöhäisen valmistumisen
+regressiot eivät korvaa inspectorin koko aikarajan hyväksyntää. Vaihetulos
+erottaa käynnistyskutsun keston, spawn-havainnon ja sulkeutumisen sekä
+siivoustuloksen. Hyväksyntä on edelleen kesken: onnistunut yksittäinen
+vertailu ei kumoa keskeytynyttä sarjaa eikä osoita natiiviviiveen syytä.
+Ennen mahdollista budjettipäätöstä tarvitaan nämä vaihtoehdot erottava näyttö.
+Erillistä uutta CI-diagnoosivalintaa tai uusintaa ei otettu käyttöön.
+
 ### Jaetun sopimussarjan edellinen CI
 
 Lähde-HEAD `447dd169835a38b136b8abd2f0caf31d58b950c4` käynnisti
