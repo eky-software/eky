@@ -1,11 +1,55 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import test from 'node:test';
 import commandBudgets from '../windows-process-supervisor/supervisorCommandBudgets.json' with { type: 'json' };
+import { cleanupRunContext, createRunContext, startProgramFailureFixture }
+  from '../windows-process-supervisor/tests/supervisorContractTestSupport.mjs';
 import { CALLER_RESULT_TIMEOUT_MS, CALLER_RESULT_TERMINATION_MS } from './callerResultProcess.mjs';
 import { LEGACY_COMMAND_RESERVATION_MS, LEGACY_CONSUMER_JOB_MINUTES,
   LEGACY_LIFECYCLE_STEP_MINUTES, LEGACY_SUPERVISOR_BUILD_MINUTES,
   LEGACY_SUPERVISOR_TIMEOUT_MS, LEGACY_SUPERVISOR_CLEANUP_MS } from './legacyUpgradeBudget.mjs';
+
+test('the real command budget separates work, publication and exit at controlled elapsed times', {
+  skip: process.platform !== 'win32', timeout: 30_000,
+}, async (t) => {
+  const context = await createRunContext('command-budget');
+  let verified = false;
+  t.after(() => cleanupRunContext(context, { preserveEvidence: !verified }));
+  const base = { commandReservation: 20_000, exitReserve: commandBudgets.exitReserveMilliseconds,
+    phaseTimeout: 4_000, publicationTimeout: 4_000, publishing: false };
+  const workspace = commandBudgets.workspaceCommand;
+  const materialization = { commandReservation: workspace.reservationMilliseconds,
+    phaseTimeout: workspace.phases.find(([name]) => name === 'materialize')[1],
+    publicationTimeout: workspace.phases.at(-1)[1] };
+  const cases = [
+    { elapsed: 0, expected: 4_000 },
+    { elapsed: 3_500, expected: 2_500 },
+    { elapsed: 5_000, expected: 1_000 },
+    { elapsed: 6_000, expected: 0 },
+    { elapsed: 6_001, expected: -1 },
+    { elapsed: 6_000, publishing: true, expected: 4_000 },
+    { elapsed: 12_000, publishing: true, expected: 3_000 },
+    { elapsed: 15_000, publishing: true, expected: 0 },
+    { elapsed: 15_001, publishing: true, expected: -1 },
+    { commandReservation: commandBudgets.workspaceCommand.reservationMilliseconds, elapsed: 6_000, expected: 4_000 },
+    { commandReservation: commandBudgets.legacyCommand.reservationMilliseconds, elapsed: 6_000, expected: 4_000 },
+    { ...materialization, elapsed: 1_200_000, expected: 125_000 },
+    { ...materialization, elapsed: 1_300_000, expected: 95_000 },
+  ];
+  await writeFile(context.requestPath, JSON.stringify(cases.map(({ expected, ...input }) => ({ ...base, ...input }))));
+  const execution = startProgramFailureFixture(context, 'commandBudget');
+  const events = [];
+  execution.child.once('exit', () => events.push('exit'));
+  execution.child.once('close', () => events.push('close'));
+  const result = await execution.completion;
+  assert.deepEqual(events, ['exit', 'close']);
+  assert.equal(result.signal, null);
+  assert.equal(result.exitCode, 0);
+  assert.deepEqual(JSON.parse(await readFile(join(context.testRoot, 'command-budget-result.json'), 'utf8')),
+    cases.map(({ expected }) => expected));
+  verified = true;
+});
 
 test('legacy lifecycle fits existing process waits plus grouped filesystem and result delivery reservations', () => {
   assert.equal(LEGACY_SUPERVISOR_TIMEOUT_MS, 600_000);

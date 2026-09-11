@@ -114,7 +114,7 @@ test('entrypoint groups register every original command contract exactly once', 
   const all = [];
   for (const [file, kind, extra] of [
     ['legacyCommandEntrypoint', 'legacy', []],
-    ['workspaceSuccessCommandEntrypoint', 'workspace-success', ['footprintFailed', 'blockedEvidencePhaseWork']],
+    ['workspaceSuccessCommandEntrypoint', 'workspace-success', ['footprintFailed']],
     ['workspaceFaultCommandEntrypoint', 'workspace-fault', ['footprintFailed', 'sessionFailed']],
   ]) {
     const registrations = [];
@@ -132,7 +132,7 @@ test('entrypoint groups register every original command contract exactly once', 
     assert.ok(source.includes(`registerAcceptanceCommandEntrypointContracts('${kind}');`));
     all.push(...registrations);
   }
-  assert.equal(all.length, 58);
+  assert.equal(all.length, 57);
   assert.equal(new Set(all).size, all.length);
 });
 

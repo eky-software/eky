@@ -92,10 +92,9 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
   });
   for (const testCase of ['completed', 'blockedEvidence', 'preparationHold', 'productInspectionHold', 'scenarioHold', 'uninstallHold', 'resultBeforeExit', 'cleanupFailed', 'scenarioAndCleanupFailed', 'removalHold',
     'publicationBeforeExit', 'productMissingResult', 'preconditionFailed', 'scenarioMissing', 'businessFailed', 'profileChanged', 'artifactChanged',
-    ...(kind === 'legacy' ? [] : ['footprintFailed']), ...(kind === 'workspace-fault' ? ['sessionFailed'] : []),
-    ...(kind === 'workspace-success' ? ['blockedEvidencePhaseWork'] : [])]) {
+    ...(kind === 'legacy' ? [] : ['footprintFailed']), ...(kind === 'workspace-fault' ? ['sessionFailed'] : [])]) {
     const workspace = kind !== 'legacy';
-    const blocked = testCase.startsWith('blockedEvidence');
+    const blocked = testCase === 'blockedEvidence';
     const succeeded = testCase === 'completed' || blocked;
     const faultScenario = kind === 'workspace-fault' ? 'acceptanceInterruption' : undefined;
     register(`${kind} fixed command entrypoint completes the real phase chain: ${testCase}`, {

@@ -2642,13 +2642,22 @@ työbudjettia. Poikkeava fixture-valinta on poistettu: jokainen komentotapaus
 käyttää samaa nykyistä komentosuunnitelmaa, mutta tarkoitukselliset lyhyet
 vaihekohtaiset timeout- ja cleanup-regressiot säilyvät ennallaan.
 
-Käyttäytymisregressio kuormittaa neljää tavallista vaihetta hallitusti niiden
-omien rajojen sisällä ja todistaa samalla kirjoittimen todella estyneen.
-Vanha varaus hylkäsi tämän ketjun; korjattu ketju vaatii onnistuneen
-caller-tuloksen, komentoprosessin exit/close-havainnot ja varmennetun
-fixture-siivoamisen. Testin ulompi pakkokatkaisu ei kelpaa tulokseksi.
-Tämä osoittaa fixture-budjetin virheen, ei kaikkien aikaisempien CI-virheiden
-yhteistä natiivisyytä. `productMissingResult` säilyttää pakollisen
+Budjettimatematiikan regressio kutsuu nykyisen `AcceptanceCommandProgram`-
+luokan oikeasti käyttämää `CalculatePhaseTimeout`-funktiota hallituilla
+kuluneen ajan arvoilla. Testissä ei ole laskentakaavan kopiota eikä oikeaa
+odotusta: se tarkistaa normaalin vaiherajan, julkaisun ja kahden
+poistumisvarauksen vaikutuksen sekä nolla- ja negatiivisen jäännösajan.
+Vanhan 20 sekunnin varauksen kuuden sekunnin työvara erotetaan nykyisten
+komentosuunnitelmien työvarasta. Kolmen oikean sisääntulon `blockedEvidence`
+todistaa erikseen todella estyneen kirjoittimen, onnistuneen caller-tuloksen,
+komentoprosessin exit/close-havainnot ja varmennetun fixture-siivoamisen.
+Sen rinnalla aiemmin ollut neljän 1,5 sekunnin keinoviiveen tapaus on
+korvattu laskentatestillä. Oikeat timeout-, myöhäisen valmistumisen ja
+varmentamattoman siivouksen prosessitestit säilyvät. Testin ulompi
+pakkokatkaisu ei kelpaa komennon omaksi loppuratkaisuksi.
+Tämä erottaa fixture-budjetin virheen käyttöjärjestelmän ajoitusvaihtelusta,
+mutta ei nimeä kaikkien aiempien CI-virheiden yhteistä natiivisyytä.
+`productMissingResult` säilyttää pakollisen
 caller-tuloksen vaatimuksen; aiemman CI-tuloksen puuttumisen syy on erillinen
 avoin havainto. Työkalun latausvirhe ennen testejä ei ole assertion-tulos.
 
@@ -2685,7 +2694,7 @@ ei vielä uuden revision packaged- tai CI-hyväksyntä.
 
 ### Komentoryhmien CI ja erillinen inspector-havainto
 
-Nykyinen varmennettu kierros on lähde-HEAD
+Edellinen varmennettu kierros on lähde-HEAD
 `226ad2d0c4e0b5870bed143f05860a0f5cf1346d`,
 [CI 34640956869](https://github.com/eky-software/eky/actions/runs/34640956869),
 checkout/build-revisio `d5b08e9ebc4b3422e1838ca82363681adcb18dd6`.
@@ -2778,6 +2787,60 @@ upgrade 2/2, workspace success 2/2 ja fault/rollback 10/10 läpäisivät,
 mutta core-ryhmän keskeytyminen esti legacy-producerin ja sen consumerit.
 Hyväksytty testijako tarvitsee oman puhtaan revision CI-näytön, mukaan
 lukien todella käynnistyvä legacy-producer ja molemmat consumerit.
+
+### Budjettilaskennan ja prosessitodisteen erottaminen
+
+Revision `68e1e77b365e135cab18234b2373bce2243afafa`
+[CI 34645826140](https://github.com/eky-software/eky/actions/runs/34645826140)
+valmistui hylättynä. Checkout ja artifact-build olivat
+`e72df924e10d821243c3abcb50b45b562d866ae8`. Molemmat core-ryhmät läpäisivät
+231/231, mutta toisen workspace-success-sisääntuloryhmän keinoviivetesti
+hylättiin vaiheessa `inspectSourceBefore`: deadline ylittyi, prosessipuun
+poissaolo varmennettiin ja komento poistui virheellä. Tulostuksen estyminen
+todistettiin ennen exit-assertiota. Epäonnistuminen ei ollut jobin ulkoinen
+katkaisu; legacy-producer ja consumerit jäivät sen vuoksi ajamatta.
+Clean, upgrade ja workspace success läpäisivät 2/2 sekä fault/rollback 10/10.
+
+Erillinen Electron `ARCHIVE-PDF-RECOVERY-001` epäonnistui ensimmäisessä
+yrityksessä Playwright-yhteyden jälkeen `firstWindow`-aikakatkaisuun.
+Säilytetty ensimmäisen yrityksen näyttö vahvisti runtimen siivouksen,
+portin vapautumisen ja testijuuren poiston. Retry läpäisi, mutta portti jäi
+37 passed / 1 flaky -tuloksella hylätyksi. Syy on avoin eikä tätä nimetä
+budjettilaskennan virheen seuraukseksi.
+
+Mittausrajat säilyvät:
+
+- komentokello alkaa komentorajassa ja rajaa koko kiinteän vaiheketjun
+- vaiheen kello alkaa ennen request-valmistelua; sen aika sisältyy
+  työ-/cleanup-rajaan, ja valmistelulla on nykyinen oma rajattu odotus
+- prosessinluonti, työn odotus ja worker-tuloksen luku käyttävät vaiheen
+  työosuutta; cleanup-varaus kuuluu saman vaiheen kokonaisrajaan
+- supervisor-resultin julkaisu käyttää enintään nykyisen viiden sekunnin
+  poistumisvarauksen, ei uutta työn lisäaikaa
+- caller-resultin julkaisu on oma nykyinen valvottu vaihe, jolle sekä
+  komennon poistumiselle jätetään tilaa ennen tavallisen vaiheen aloitusta
+- synteettisen komentofixturen 4 sekunnin vaiheesta 1 sekunti on siivousta;
+  oikean komennon työbudjetteja ei korvata näillä testiluvuilla
+- ulompi testiturva ja CI-jobi eivät ole valmistumissignaaleja: niiden
+  katkaisu on hylkäys eikä korvaa prosessin omaa loppu- ja cleanup-tulosta.
+
+Viiverytmiä tai aikarajoja ei muuteta tämän laskennan erotuksen mukana.
+Edellisen CI:n supervisor-build kesti ryhmissä 14-17 sekuntia, sopimusvaiheet
+67-135 sekuntia ja kokonaiset jobit 148-232 sekuntia. Ryhmän nykyinen
+10 minuutin ulkoraja ei katkaissut sisäistä virheenkäsittelyä. Tarkoitukselliset
+timeout-tapaukset säilyvät erillisinä 90 sekunnin testiturvan sisällä;
+mitatut kestot eivät ole lupaus käyttöjärjestelmän enimmäisviiveestä tai
+syy kasvattaa sisäisiä rajoja automaattisesti.
+
+Korjauksen kohdetodennus läpäisi koko kanonisen sarjan 313/313, artifact- ja
+workflow-testit 16/16, CI-politiikan testit 48/48 sekä desktopin typecheckin
+ja buildin. Erillinen arkistotestien todennus läpäisi 3/3 ja samalla
+valmistellulla buildillä Electron critical 38/38 ilman uusintoja. Aiempi
+Electron-häiriö ei toistunut; sen syytä ei silti katsota osoitetuksi.
+Uusi laskentatesti korvaa yhden sisääntulotapauksen; muita
+invariantteja tai toistoja ei poisteta. Tämä ei vielä hyväksy uutta revisiota:
+tarvitaan yksi tuore commit-pohjainen kokonaiskierros sekä siinä todella
+käynnistyvä legacy-producer ja molemmat consumerit.
 
 ### Jaetun sopimussarjan edellinen CI
 

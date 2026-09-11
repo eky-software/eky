@@ -16,12 +16,6 @@ if (mode === '--phase-request') {
   const fixtureRoot = dirname(input.commandArguments[1]);
   const { testCase } = JSON.parse(await readFile(input.commandArguments[1], 'utf8'));
   if (input.phase === 'prepare') await writeFile(join(fixtureRoot, 'command-root.txt'), dirname(phaseRoot));
-  if (testCase === 'blockedEvidencePhaseWork' &&
-      ['inventoryBefore', 'materialize', 'inspectSourceBefore', 'inspectTargetBefore'].includes(input.phase)) {
-    // Deliberate bounded work, below each phase's deadline. The aggregate must
-    // not confuse the publication/exit reservation with time available to work.
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1_500);
-  }
   const role = { productCode: '00000000-0000-0000-0000-000000000001' };
   const hold = () => spawnSync(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore' });
   if (testCase === 'preparationHold' && input.phase === 'prepare') hold();

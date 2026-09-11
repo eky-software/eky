@@ -14,6 +14,17 @@ if (
 }
 
 var mode = args[1];
+if (mode == "commandBudget")
+{
+    using var input = JsonDocument.Parse(File.ReadAllText(args[3]));
+    var results = input.RootElement.EnumerateArray().Select(value =>
+        AcceptanceCommandProgram.CalculatePhaseTimeout(
+            value.GetProperty("commandReservation").GetInt32(), value.GetProperty("elapsed").GetInt64(),
+            value.GetProperty("exitReserve").GetInt32(), value.GetProperty("phaseTimeout").GetInt32(),
+            value.GetProperty("publicationTimeout").GetInt32(), value.GetProperty("publishing").GetBoolean())).ToArray();
+    File.WriteAllText(Path.Combine(Path.GetDirectoryName(args[3])!, "command-budget-result.json"), JsonSerializer.Serialize(results));
+    return 0;
+}
 if (mode == "legacyCommandEntry")
 {
     using var input = JsonDocument.Parse(File.ReadAllText(args[3]));

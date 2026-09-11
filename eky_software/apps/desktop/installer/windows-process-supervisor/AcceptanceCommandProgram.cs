@@ -54,9 +54,8 @@ internal static class AcceptanceCommandProgram
             try { evidence = new SafeEvidenceWriter(scenario, clock); } catch { /* Optional diagnostics. */ }
             foreach (var phase in phases)
             {
-                var remaining = deadline - clock.ElapsedMilliseconds - exitReserve -
-                    (phase.Name == "publish" ? 0 : (contractTimeout ?? publication.Timeout) + exitReserve);
-                var timeout = (int)Math.Min(contractTimeout ?? phase.Timeout, remaining);
+                var timeout = CalculatePhaseTimeout(deadline, clock.ElapsedMilliseconds, exitReserve,
+                    contractTimeout ?? phase.Timeout, contractTimeout ?? publication.Timeout, phase.Name == "publish");
                 var cleanup = contractTimeout.HasValue ? 1_000 : phase.Cleanup;
                 if (timeout <= cleanup) return PublishFailure(context,
                     (int)Math.Min(publication.Timeout, deadline - clock.ElapsedMilliseconds - exitReserve), publication.Cleanup, evidence);
@@ -80,6 +79,14 @@ internal static class AcceptanceCommandProgram
             return failed ? 1 : 0;
         }
         finally { evidence?.CompleteWithinRequestBudget(0); }
+    }
+
+    internal static int CalculatePhaseTimeout(int commandReservation, long elapsed, int exitReserve,
+        int phaseTimeout, int publicationTimeout, bool publishing)
+    {
+        var remaining = commandReservation - elapsed - exitReserve -
+            (publishing ? 0 : publicationTimeout + exitReserve);
+        return (int)Math.Min(phaseTimeout, remaining);
     }
 
     private static int PublishFailure(CommandContext context, int timeout, int cleanup, SafeEvidenceWriter? evidence)
