@@ -9,6 +9,7 @@
     <AssemblyName>Eky.WindowsProcessSupervisor</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="supervisorCommandBudgets.json" LogicalName="supervisorCommandBudgets.json" />
     <Compile Remove="tests\programFailureFixture\**\*.cs" />
     <InternalsVisibleTo Include="Eky.WindowsProcessSupervisor.ContractFixture" />
   </ItemGroup>

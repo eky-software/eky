@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import test from 'node:test';
 
-import { parseWorkspaceSuccessArguments } from './runWorkspaceSuccess.mjs';
+import { parseWorkspaceSuccessArguments } from './workspaceCommandAdmission.mjs';
 import { parseWorkspaceCallerCliArguments, parseWorkspaceCallerResult, validateWorkspaceCallerResult } from './workspaceCallerResult.mjs';
 import { workspaceCallerResultFile } from './workspaceCallerResultFile.mjs';
 import { runWorkspaceCallerCli } from './workspaceCallerCli.mjs';

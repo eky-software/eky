@@ -4,6 +4,7 @@ import { connect } from 'node:net';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
+import { writeJsonAtomicExclusive } from './cleanInstallUninstallContracts.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const MAX_BYTES = 64 * 1024;
@@ -105,13 +106,64 @@ export async function sendProductOperationResult(request, result) {
   });
 }
 
+// The command-entrypoint migration uses the existing supervisor's worker-result
+// contract. Preparation, operation, publication and their failure paths all run
+// inside its Job; this worker does not start a supervisor or own emergency cleanup.
+export async function runOwnedProductOperation(input, {
+  operationDependencies,
+  publishResult = writeJsonAtomicExclusive,
+} = {}) {
+  const exactKeys = (value, keys) => value && !Array.isArray(value) &&
+    Object.keys(value).sort().join(',') === [...keys].sort().join(',');
+  if (!exactKeys(input, ['request', 'binding'])) throw new Error('productRequestInvalid');
+  const request = validateProductOperationRequest(input.request);
+  const binding = input.binding;
+  if (!exactKeys(binding, ['schemaVersion', 'runNonce', 'scenario', 'artifactDescriptorSha256']) ||
+    binding.schemaVersion !== 1 || binding.runNonce !== request.nonce ||
+    binding.scenario !== 'installerProductOperation' ||
+    typeof binding.artifactDescriptorSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(binding.artifactDescriptorSha256)) {
+    throw new Error('productRequestInvalid');
+  }
+  await prepare(request.scenarioRoot);
+  const productResultPath = resolve(request.scenarioRoot, 'product-result.json');
+  const terminalPath = resolve(request.scenarioRoot, 'worker-result.json');
+  for (const path of [productResultPath, terminalPath]) {
+    await lstat(path).then(
+      () => { throw new Error('productResultPathOccupied'); },
+      (error) => { if (error?.code !== 'ENOENT') throw new Error('productResultPathInvalid'); },
+    );
+  }
+  const result = await executeProductOperation(request, operationDependencies);
+  // The detailed original failure survives a later terminal-publication failure.
+  await publishResult(productResultPath, { binding, result });
+  await publishResult(terminalPath, {
+    ...binding, status: result.status,
+    resultCode: result.status === 'completed' ? 'productCompleted' : 'productFailed',
+    errorCode: result.errorCode,
+  });
+  return result.status === 'completed' ? 0 : 1;
+}
+
+async function readOwnedRequest(path) {
+  if (!isAbsolute(path) || path.includes('\0')) throw new Error('productRequestInvalid');
+  const metadata = await lstat(path, { bigint: true });
+  if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.nlink !== 1n ||
+    metadata.size < 2n || metadata.size > BigInt(MAX_BYTES)) throw new Error('productRequestInvalid');
+  return parseStrictJsonObjectBytes(await readFile(path),
+    { errorCode: 'productRequestInvalid', maximumBytes: MAX_BYTES });
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
-    if (process.argv.length !== 3) throw new Error('productRequestInvalid');
-    const request = validateProductOperationRequest(parseStrictJsonObjectBytes(Buffer.from(process.argv[2], 'base64'),
-      { errorCode: 'productRequestInvalid' }));
-    const result = await executeProductOperation(request);
-    await sendProductOperationResult(request, result);
-    process.exitCode = result.status === 'completed' ? 0 : 1;
+    if (process.argv.length === 4 && process.argv[2] === '--owned-request') {
+      process.exitCode = await runOwnedProductOperation(await readOwnedRequest(process.argv[3]));
+    } else {
+      if (process.argv.length !== 3) throw new Error('productRequestInvalid');
+      const request = validateProductOperationRequest(parseStrictJsonObjectBytes(Buffer.from(process.argv[2], 'base64'),
+        { errorCode: 'productRequestInvalid' }));
+      const result = await executeProductOperation(request);
+      await sendProductOperationResult(request, result);
+      process.exitCode = result.status === 'completed' ? 0 : 1;
+    }
   } catch { process.exitCode = 1; }
 }

@@ -162,6 +162,7 @@ export function startSupervisor(
     unreadOutput = false,
     dotnetArguments = ['--request', context.requestPath],
     dotnetAssembly = SUPERVISOR_DLL,
+    environment = process.env,
   } = {},
 ) {
   const evidence = [];
@@ -177,6 +178,7 @@ export function startSupervisor(
       cwd: context.testRoot,
       stdio: captureOutput || unreadOutput ? ['ignore', 'pipe', 'pipe'] : 'ignore',
       windowsHide: true,
+      env: environment,
     },
   );
   activeSupervisorProcesses.add(child);

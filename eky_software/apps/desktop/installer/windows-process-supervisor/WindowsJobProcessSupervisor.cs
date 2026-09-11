@@ -189,8 +189,22 @@ internal sealed class WindowsJobProcessSupervisor(
                 }
 
                 evidence.Write("workerResultValidated", "started");
-                var workerResult = validateWorkerResult?.Invoke(request) ??
-                    WorkerTerminalResultReader.Validate(request);
+                var validation = Task.Run(() => validateWorkerResult?.Invoke(request) ??
+                    WorkerTerminalResultReader.Validate(request));
+                var readRemaining = workDeadline - stopwatch.ElapsedMilliseconds;
+                if (!validation.IsCompleted && readRemaining > 0)
+                    Task.WaitAny([validation], (int)Math.Min(int.MaxValue, readRemaining));
+                if (!validation.IsCompleted)
+                {
+                    _ = validation.ContinueWith(completed => { _ = completed.Exception; },
+                        TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
+                    evidence.Write("deadlineExceeded", "failed", errorCode: "deadlineExceeded");
+                    return SupervisorOutcome.Failed("deadlineExceeded", "notRequired", true,
+                        childExitCode) with { HostOperationsCompleted = false };
+                }
+                WorkerTerminalResultValidation workerResult;
+                try { workerResult = validation.GetAwaiter().GetResult(); }
+                catch { workerResult = new(false, "workerResultInvalid"); }
                 evidence.Write(
                     "workerResultValidated",
                     workerResult.IsSuccessful ? "completed" : "failed",

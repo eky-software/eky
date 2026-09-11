@@ -1,7 +1,8 @@
 import { INSPECTOR_TIMEOUT_MILLISECONDS, SEMANTIC_CLEANUP_TIMEOUT_MILLISECONDS,
   DIRECT_PROCESS_TERMINATION_TIMEOUT_MILLISECONDS } from './upgradeRollbackPostSupervisorWindowsRuntime.mjs';
 import { CALLER_RESULT_TIMEOUT_MS, CALLER_RESULT_TERMINATION_MS } from './callerResultProcess.mjs';
-import { SUPERVISOR_EXIT_RESERVE_MS } from './supervisorProcessLaunch.mjs';
+import commandBudgets from '../windows-process-supervisor/supervisorCommandBudgets.json' with { type: 'json' };
+const SUPERVISOR_EXIT_RESERVE_MS = commandBudgets.exitReserveMilliseconds;
 
 // These are sequential reservations, not successful-readiness waits.
 export const LEGACY_SUPERVISOR_TIMEOUT_MS = 600_000;

@@ -4,8 +4,7 @@ import { readFile, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import test from 'node:test';
-import { runLegacyUpgradeCli, parseLegacyUpgradeArguments } from './runLegacyUpgrade.mjs';
-import { LegacyUpgradeCommandFailure } from './legacyUpgradeFailureBoundary.mjs';
+import { parseLegacyUpgradeArguments } from './legacyUpgradeAdmission.mjs';
 import { parseLegacyCallerArguments, parseLegacyCallerResult, validateLegacyCallerResult } from './legacyCallerResult.mjs';
 import { legacyCallerResultFile } from './legacyCallerResultFile.mjs';
 import { runLegacyCallerResultProcess } from './legacyCallerResultProcess.mjs';
@@ -76,44 +75,6 @@ test('legacy required result preserves every closed semantic failure without acc
   }
 });
 
-for (const mode of ['completed', 'scenarioFailed', 'prepareFailed', 'publishFailed', 'publicationUnverified', 'invalidOutcome']) {
-  test(`legacy CLI publication has separate command and delivery outcomes: ${mode}`, async (t) => {
-    const input = await fixture(t);
-    const original = { schemaVersion: 1, scenario: 'historicalLegacyUpgrade', status: 'failed',
-      errorCode: 'WINDOWS_ACCEPTANCE_SUPERVISOR_DEADLINE_EXCEEDED', processTreeAbsent: false,
-      supervisorProcessResultCode: 'deadlineExceeded', supervisorWorkerResultCode: 'notChecked',
-      supervisorCleanupResultCode: 'cleanupUnverified', semanticCleanupResultCode: 'blockedByOwnedProcessTree',
-      fixtureCleanupResultCode: 'retainedUnverified', fixtureRemoved: false };
-    let started = false;
-    let supplied;
-    const code = await runLegacyUpgradeCli(input.args, {
-      async runScenario(args, binding) {
-        started = true;
-        assert.deepEqual(args, input.scenarioArgs);
-        assert.deepEqual(binding, input.binding);
-        if (mode === 'completed') return input.outcome;
-        if (mode === 'invalidOutcome') return { ...input.outcome, path: 'private' };
-        throw new LegacyUpgradeCommandFailure(original);
-      },
-      async resultProcess(request) {
-        if (request.operation === 'publish') supplied = request.payload;
-        if (mode === 'prepareFailed' || request.operation === 'publish' && ['publishFailed', 'publicationUnverified'].includes(mode)) {
-          return { status: 'failed', exitCode: null, directProcessAbsent: mode !== 'publicationUnverified' };
-        }
-        await legacyCallerResultFile(request.operation, request.resultPath, request.payload);
-        return { status: 'completed', exitCode: 0, directProcessAbsent: true };
-      },
-    });
-    assert.equal(code, mode === 'completed' ? 0 : mode === 'scenarioFailed' ? 1 : 2);
-    assert.equal(started, mode !== 'prepareFailed');
-    if (['scenarioFailed', 'publishFailed', 'publicationUnverified'].includes(mode)) assert.deepEqual(supplied.outcome, original);
-    if (mode === 'scenarioFailed') {
-      const saved = parseLegacyCallerResult(await readFile(input.resultPath), input.binding);
-      assert.deepEqual(saved.outcome, original);
-      await assert.rejects(legacyCallerResultFile('verify', input.resultPath, input.binding, 0));
-    }
-  });
-}
 
 test('legacy result delivery reuses the bounded leaf without changing its result', async (t) => {
   const input = await fixture(t);

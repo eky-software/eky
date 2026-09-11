@@ -1,4 +1,4 @@
-import { parseLegacyUpgradeArguments } from './runLegacyUpgrade.mjs';
+import { parseLegacyUpgradeArguments } from './legacyUpgradeAdmission.mjs';
 import { parseLegacyCallerArguments } from './legacyCallerResult.mjs';
 import { runLegacyCallerResultProcess } from './legacyCallerResultProcess.mjs';
 

@@ -14,6 +14,21 @@ if (
 }
 
 var mode = args[1];
+if (mode == "legacyCommandEntry")
+{
+    using var input = JsonDocument.Parse(File.ReadAllText(args[3]));
+    Environment.SetEnvironmentVariable("npm_node_execpath", input.RootElement.GetProperty("node").GetString());
+    var blocked = input.RootElement.TryGetProperty("evidenceRequestPath", out var evidenceRequest);
+    if (blocked) Console.SetOut(new BlockedEvidenceWriter(Console.Out,
+        SupervisorRequestReader.Read(["--request", evidenceRequest.GetString()!])));
+    return AcceptanceCommandProgram.Run(input.RootElement.GetProperty("arguments").EnumerateArray()
+        .Select(value => value.GetString()!).ToArray(), input.RootElement.GetProperty("worker").GetString(), 4_000,
+        blocked ? 20_000 : null);
+}
+if (mode.StartsWith("phaseContinuation", StringComparison.Ordinal))
+{
+    return SupervisorPhaseContinuationContract.Run(mode, args[3]);
+}
 if (mode == "callerAdmission")
 {
     File.WriteAllText(args[3], "{}");

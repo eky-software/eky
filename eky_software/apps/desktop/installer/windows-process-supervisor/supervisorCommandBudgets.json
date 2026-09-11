@@ -1,0 +1,54 @@
+{
+  "exitReserveMilliseconds": 5000,
+  "workspaceCommand": {
+    "reservationMilliseconds": 1440000,
+    "phases": [
+      ["prepare", 35000, 5000],
+      ["inventoryBefore", 35000, 5000],
+      ["materialize", 125000, 5000],
+      ["inspectSourceBefore", 35000, 5000],
+      ["inspectTargetBefore", 35000, 5000],
+      ["scenarioPreparation", 125000, 5000],
+      ["scenario", 720000, 30000],
+      ["inspectSourceAfter", 35000, 5000],
+      ["inspectTargetAfter", 35000, 5000],
+      ["semantic", 35000, 5000],
+      ["inspectSourceCleanup", 35000, 5000],
+      ["inspectTargetCleanup", 35000, 5000],
+      ["uninstallTarget", 125000, 5000],
+      ["uninstallSource", 125000, 5000],
+      ["inspectSourceFinal", 35000, 5000],
+      ["inspectTargetFinal", 35000, 5000],
+      ["removal", 35000, 5000],
+      ["artifact", 35000, 5000],
+      ["inventoryAfter", 35000, 5000],
+      ["fixtureCleanup", 35000, 5000],
+      ["publish", 35000, 5000]
+    ]
+  },
+  "legacyCommand": {
+    "reservationMilliseconds": 1565000,
+    "phases": [
+      ["prepare", 35000, 5000],
+      ["inventoryBefore", 35000, 5000],
+      ["materialize", 125000, 5000],
+      ["inspectSourceBefore", 35000, 5000],
+      ["inspectTargetBefore", 35000, 5000],
+      ["scenarioPreparation", 35000, 5000],
+      ["scenario", 600000, 30000],
+      ["inspectSourceAfter", 35000, 5000],
+      ["inspectTargetAfter", 35000, 5000],
+      ["semantic", 35000, 5000],
+      ["inspectSourceCleanup", 35000, 5000],
+      ["inspectTargetCleanup", 35000, 5000],
+      ["uninstallTarget", 125000, 5000],
+      ["uninstallSource", 125000, 5000],
+      ["inspectSourceFinal", 35000, 5000],
+      ["inspectTargetFinal", 35000, 5000],
+      ["artifact", 35000, 5000],
+      ["inventoryAfter", 35000, 5000],
+      ["fixtureCleanup", 35000, 5000],
+      ["publish", 35000, 5000]
+    ]
+  }
+}

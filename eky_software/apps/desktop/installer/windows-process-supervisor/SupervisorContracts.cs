@@ -28,6 +28,10 @@ internal sealed record SupervisorOutcome(
     int? CleanupWin32ErrorCode
 )
 {
+    // A pending host-side read has no child process, but still forbids an
+    // in-process phase continuation. Command exit closes the pending handle.
+    internal bool HostOperationsCompleted { get; init; } = true;
+
     internal static SupervisorOutcome Completed(int childExitCode) =>
         new(
             "completed",

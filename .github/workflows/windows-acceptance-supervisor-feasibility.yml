@@ -229,13 +229,16 @@ jobs:
         run: |
           $legacy = $env:ARTIFACT_KIND -ceq 'legacy'
           $descriptor = if ($legacy) { 'legacy-upgrade-artifact.json' } else { 'workspace-success-artifact.json' }
-          $caller = if ($legacy) { 'runLegacyUpgrade.mjs' } else { 'runWorkspaceSuccess.mjs' }
           $verifier = if ($legacy) { 'verifyLegacyCallerResult.mjs' } else { 'verifyWorkspaceCallerResult.mjs' }
           $prefix = if ($legacy) { 'eky-legacy-caller-' } else { 'eky-workspace-caller-' }
           $descriptorPath = Join-Path (Join-Path $env:RUNNER_TEMP 'eky-existing-boundary-artifact') $descriptor
           $resultPath = Join-Path (Join-Path $env:RUNNER_TEMP ($prefix + [Guid]::NewGuid().ToString('N'))) 'result.json'
           $PSNativeCommandUseErrorActionPreference = $false
-          pnpm --filter @eky/desktop exec node "installer/windows-acceptance-harness/$caller" --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath
+          if ($legacy) {
+            pnpm --filter @eky/desktop exec dotnet installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --legacy-command --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath
+          } else {
+            pnpm --filter @eky/desktop exec dotnet installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --workspace-success-command --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath
+          }
           $commandExit = $LASTEXITCODE
           pnpm --filter @eky/desktop exec node "installer/windows-acceptance-harness/$verifier" --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath --command-exit $commandExit
           if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED' }

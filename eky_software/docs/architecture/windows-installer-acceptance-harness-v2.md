@@ -2585,6 +2585,55 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 
 ## Nykyinen päätös
 
+Nykyinen työ siirtää legacy-, workspace-success- ja workspace-fault-komentojen
+sisääntulon olemassa olevaan .NET Job -omistajaan. `AcceptanceCommandProgram`
+ajaa suljetun vaihelistan; se ei tulkitse yritysdataa eikä vastaanota workerilta
+uutta komentoa tai riippuvuusgraafia. Paketointi, julkaisun hyväksyntä ja
+required-checkien vaihto eivät kuulu tähän siirtoon.
+
+`legacyCommandPhase` ja `workspaceCommandPhase` käyttävät nykyisiä artifact-,
+skenaario-, semantiikka- ja tuotekyselyvastuita. Yhteinen vaiheaineiston lukija
+validoi sidonnat, toteutuneen järjestyksen ja edeltävät prosessitulokset.
+Tallennettu tilannekuva ei ole cleanup-lupa: nykyinen skenaariokohtainen
+päätösfunktio arvioidaan uudelleen ennen exact ProductCode -poistoa.
+Tuoteidentiteetti varmennetaan muuttumattomasta artifactista jokaisella
+operaatiorajalla. Epäonnistunutta poistoa ei seuraa uusi mutatoiva operaatio.
+
+Komentojen tukemat pnpm- ja CI-sisääntulot valitsevat .NETin suoraan.
+Siirretty kutsuketju ei käytä Node-käynnistyssäiettä, callerin named pipe
+-palvelinta eikä sisäkkäistä product-supervisoria. Korvatut Node-sisääntulot
+ja niiden rinnakkainen komentofixture on poistettu. Alempana oleva
+invarianttikartta nimeää korvaavat testit. Muiden kuluttajien yhteinen tuki
+ja sen testit säilyvät niiden omiin siirtovaiheisiin asti.
+
+Jokainen vaihe vaatii erikseen worker-resultin, prosessin poistumisen,
+Job-puun poissaolon sekä isännän luku- ja julkaisutoimintojen valmistumisen.
+`cleanupUnverified` tai keskeneräinen isännän operaatio estää jatkon.
+Pakollinen caller-result julkaistaan omassa valvotussa vaiheessa;
+lokirivi ei korvaa sitä tai komentoprosessin todellista poistumista.
+Alkuperäinen virhe, semanttinen siivous, lopputila ja fixture-poiston lupa
+säilyvät erillisinä.
+
+Vaiheketju käyttää yhtä nykyistä vapaaehtoisten havaintojen kirjoitinta.
+Vaiheen lopussa ei odoteta diagnostisen jonon tyhjentymistä. Komennon
+loppuminen ei odota estynyttä konsolia; pakollinen tulostiedosto ei kulje
+tätä reittiä. Tulosteen estymisen regressio vaatii onnistuneen työn pysyvän
+onnistuneena ja komentoprosessin poistuvan itse.
+
+Siirron rajattu kokonaiskomentotodennus läpäisi 89/89, installer-unitit
+165/165, Windowsin prosessisopimukset 77/77 ja CI-kytkennän sopimukset 47/47.
+Lopullinen kanoninen legacy-sopimussarja läpäisi 302/302 ilman uusintoja,
+ohituksia tai keskeytyneitä testejä. Jaetun valvojan clean- ja
+upgrade-sopimukset läpäisivät 47/47 ja 142/142.
+Jaetut workspace-success- ja fault-sopimukset sekä artifact-verifierit
+läpäisivät; desktopin typecheck ja build onnistuivat. Nämä osin päällekkäiset
+sarjat eivät muodosta yhtä yhteenlaskettua testimäärää. Synteettinen
+komentotesti ei ole MSI-hyväksyntä tai näyttö tietyn CI-jumin natiivisyystä.
+PR #266 pysyy draftina. Vanhan polun epäonnistunut hyväksyntä ja alempana
+kirjattu CI-tulos eivät muutu vihreiksi uuden kytkennän perusteella.
+
+### Viimeisin etähyväksyntä ennen komentosiirtoa
+
 [Normaali CI 34520903697](https://github.com/eky-software/eky/actions/runs/34520903697)
 epäonnistui ensimmäisellä yrityksellä. Lähde-HEAD on
 `3c884033a4e6b13cdf588c58fffd4209809f00b7`; todellinen checkout ja artifact-build
@@ -2809,7 +2858,11 @@ syntymistä. Promise-aikakatkaisu ei todista natiivin operaation peruuntumista.
 Ulkoista katkaisua ei hyväksytä terminal-todisteeksi eikä sen peittämiseksi
 lisätä uutta watchdogia.
 
-### Nykyisten MSI-kutsurajojen odotuskartta
+### Korvatun MSI-kutsuketjun odotuskartta
+
+Seuraava kartta kuvaa korvauspäätöksen lähtötilannetta. Nykyiset komennot
+ja poistettujen vastuiden vastineet ovat kohdassa **Product-komentorajan
+korvauspäätös**; vanhoja kutsunimiä ei käytetä nykyisenä ajo-ohjeena.
 
 | Raja | Käynnistäjä ja nykyinen omistaja | Määräajan alku ja valmistumisen todiste |
 | --- | --- | --- |
@@ -2891,6 +2944,72 @@ ei muuta tulosta; puuttuva kuittaus ei yksin osoita jumittunutta kutsua.
 Nämä havainnot eivät muuta aikarajoja tai omistajuutta eivätkä yksin korjaa
 vielä paikantamatonta CI-jumia.
 
+### Product-komentorajan korvauspäätös
+
+Korvatun Node-callerin `server.listen` ja `server.close` jäivät
+host-adapterin määräajan ulkopuolelle. Käynnistyssäikeen `unref` ei ollut
+säikeen poistumiskuittaus: palautumaton natiivikutsu saattoi estää koko
+Node-komennon poistumisen. Vanhan `productLaunchNativeWait`-kokeen ulompi
+pakkokatkaisu jäi epäonnistuneeksi hyväksynnäksi. Tämä havainto perusteli
+omistajan hyväksymän korvauksen, ei uutta sisäkkäistä valvojaa.
+
+`AcceptanceCommandProgram` on nyt kolmen varsinaisen komennon sisääntulo:
+`--legacy-command`, `--workspace-success-command` ja
+`--workspace-fault-command`. Kiinteät vaiheet tulevat isännän omasta
+`supervisorCommandBudgets.json`-resurssista. Node-vaihe ei saa valita
+seuraavaa komentoa, uutta executablea tai toista ajosuunnitelmaa.
+Skenaario ja jokainen apuvaihe käyttävät nykyistä `SupervisorProgram.RunPhase`
+-rajaa. Valmistelu, prosessinluonti, worker, tulosluku ja tuloksen julkaisu
+kuuluvat sen rajattuun elinkaareen. Isännän keskeneräinen tulos-I/O estää
+jatkon silloinkin, kun lapsen Job on jo tyhjä.
+
+Skenaariokohtainen Node-vastuu käyttää edelleen nykyisiä business-,
+artifact- ja jälkiehtoverifiereitä. Tuotetarkistus ja poisto suorittavat
+nykyisen `executeProductOperation`-operaation saman omistetun vaiheen
+sisällä, ilman named pipe -palvelinta tai sisäkkäistä supervisoria.
+`acceptanceCommandPhaseInput` lukee vain sidottua vaiheaineistoa;
+`acceptanceProductFacts` tulkitsee tuotehavaintoja. Kumpikaan ei käynnistä
+prosesseja eikä myönnä poistolupaa. Skenaarion nykyinen päätösfunktio
+arvioidaan uudelleen varmennetuista havainnoista ennen mutaatiota.
+
+Siirretyltä polulta poistettiin `runLegacyUpgrade.mjs`,
+`runWorkspaceSuccess.mjs`, `runWorkspaceFault.mjs`,
+`legacyCommandCompletionFixture.mjs` ja käyttämätön
+`startSupervisorInvocation`. Niitä ei jätetä fallbackiksi.
+Jaettu `spawnSupervisorProcess`/product-kanava säilyy vielä muiden
+siirtämättömien clean/upgrade-kuluttajien tukena; sitä ei väitetä koko
+repositoriosta poistetuksi. Sen sopimustestejä ei poisteta tämän mukana.
+
+Korvaavien invarianttien kartta:
+
+| Korvattu tarkistus | Nykyinen vastine |
+| --- | --- |
+| Node-callerin Promise ja exit/close | `legacyCommandCompletion.process.test`: kaikki kolme todellista komentosuunnitelmaa, ulkopuolelta havaittu komento-exit ja close |
+| Käynnistyssäikeen permit/cancel/unref ja avoin product-kanava | Nykyisen .NET-fixturen Preparation/NativeWait/Read/Remove, myöhäisen luonnin ja result-I/O:n kokeet; siirretyllä polulla ei enää ole kyseistä säiettä tai kanavaa |
+| Skenaario jumittuu tai tulosteen vastaanottaja ei lue | Kiinteän komennon scenarioHold/blockedEvidence; onnistuminen ei odota diagnostista flushia |
+| Tulos ennen prosessin poistumista | resultBeforeExit/publicationBeforeExit; validi caller-tiedosto ei korvaa komennon onnistunutta poistumista |
+| Puuttuva supervisor-/worker-tulos tai cleanupUnverified | Vaihejatkon PublicationFailed/CleanupUnverified/RequestInvalid, productMissingResult ja sidotun vaiheaineiston lukutestit; jatko ja fixture-poisto estyvät |
+| Ennestään asennettu tuote tai väärä skenaario | legacy/workspace admission -testit ja preconditionFailed koko komentorajalla; skenaariota tai uninstallia ei käynnistetä |
+| Alkuperäinen virhe ja epäonnistunut cleanup | scenarioAndCleanupFailed ja nykyiset failure-boundary-testit; ensimmäinen virhe säilyy, seuraava poisto ei ala |
+| Puuttuva skenaariotulos, business- tai session-hylkäys | scenarioMissing/businessFailed/sessionFailed oikeassa vaiheketjussa sekä nykyiset semanttiset verifier-testit |
+| Muuttunut profiili/artifact, jäljellä oleva footprint tai estynyt fixture-poisto | profileChanged/artifactChanged/footprintFailed/removalHold; epävarma aineisto säilytetään |
+
+Normaalisti valmistunut vaihe on erillinen prosessitulos, ei koko komennon
+hyväksyntä. Pakollinen caller-result syntyy omassa valvotussa
+julkaisuvaiheessa, ja nykyinen erillinen verifier vaatii myös todellisen
+komennon exit-koodin. Diagnostiikan toimituksen menetys ei muuta tulosta.
+Jos julkaisun jälkeinen prosessi jää eloon, komento epäonnistuu myös silloin,
+kun caller-tiedosto sisältää onnistumisen.
+
+Runtime-fixturen poisto vaatii nykyiset semanttiset ja prosessijälkiehdot.
+Komentorajalle syntyvät yksityiset vaihepyynnöt ja tulostiedostot säilyvät
+erillisessä paikallisessa väliaikaisjuuressa; `fixtureRemoved` tarkoittaa
+runtime-fixturen poistoa, ei kaikkien diagnostiikkatiedostojen hävittämistä.
+Niitä ei lisätä Gitiin tai CI-artifactiin. Epävarma lopputila ei valtuuta
+uuteen mutaatioon tai tutkimusaineiston poistamiseen.
+
+### Aiempi product-kanavan diagnostiikka
+
 Revision `a24533e90c1e300e32ee35ba9dea1d9a732de539`
 [workspace-diagnostiikka 34520110820](https://github.com/eky-software/eky/actions/runs/34520110820)
 läpäisi koko callerin ja pakollisen lopputulosverifierin. Poiston kanavan
@@ -2930,17 +3049,25 @@ Diagnostinen uusinta ei korvaa ensimmäisen yrityksen hyväksynnän ehtoa.
 Mahdollinen vaikutus required-check-koontiin päätetään erikseen näkyvästi;
 vihreä uusintakuvake ei yksin valtuuta mergeä tai julkaisua.
 
-Workspace-komennon nykyiset konfiguroidut prosessi- ja tulostoimitusvaraukset
-ovat `70 + 720 + 460 + 105 + 5 + 60 = 1420` sekuntia. Lisäys kattaa
-kymmenen product-kutsun ja yhden skenaariohostin toimitusmarginaalit sekä
-yhden pakotetun host-poistumisen varauksen. Ensimmäinen pakotettu poisto
-estää myöhemmät mutatoivat operaatiot. Tämä ei sisällä vielä
-rajaamatonta tiedostotyötä eikä consumerin valmistelua. Success- ja
-fault-consumer valmistelevat supervisorin ja proof-readerit samanlaisessa
-erillisessä vaiheessa ennen skenaariota. Success-stepin 25 minuutin raja ja
-jobien rajat säilyvät. Consumer ei rakenna MSI:tä uudelleen; valmisteluvaiheen
-onnistuminen kuuluu loppukoontiin. Aiempi komentotavan ero ei ole todistettu
-CI-jumin syy.
+Korvatun workspace-ketjun prosessivarauksien summa oli 1420 sekuntia,
+mutta se ei rajannut kaikkea tiedostotyötä. Nykyinen kiinteä komentosuunnitelma
+käyttää 1440 sekunnin kokonaisvarausta olemassa olevan 1500 sekunnin
+lifecycle-stepin sisällä. Se kattaa myös vaihevalmistelun, tiedostotyön,
+semanttisen siivouksen ja tuloksen julkaisun. Julkaisulle sekä isännän
+poistumiselle jätetään varaus ennen edeltävän vaiheen käynnistystä;
+yksittäisen vaiheen enimmäisaikaa lyhennetään jäljellä olevaan budjettiin.
+Erillinen mandatory-result-verifier saa nykyiset 30 + 5 sekuntia:
+`1440 + 35 < 1500`. Rajan loppuminen ei muutu cleanup-onnistumiseksi.
+
+Legacy-lifecycle säilyttää 1600 sekunnin varauksensa: komento saa 1565
+sekuntia ja erillinen mandatory-result-verifier nykyiset 30 + 5 sekuntia.
+`1565 + 35 = 1600 < 1620`; verifieriä ei lasketa kahdesti tai jätetä
+lifecycle-stepin ulkopuolelle. Skenaarioiden
+600/30 ja 720/30 sekunnin kokonais-/cleanup-rajat säilyvät. Kaikkien vaiheiden
+enimmäisaikoja ei voi kuluttaa peräkkäin kokonaisrajan yli. Supervisor ja
+proof-readerit rakennetaan erillisessä valmisteluvaiheessa, eivät tässä
+komentobudjetissa; consumer ei rakenna MSI:tä. CI:n step- tai job-aikarajoja
+ei nosteta. Valmisteluvaiheen onnistuminen kuuluu edelleen loppukoontiin.
 
 Normaali onnistuminen palautuu tapahtumasta tai valmiista tilasta, ei
 kiinteän odotuksen täyttymisestä. V2:n Job-supervisor tarkistaa erikseen

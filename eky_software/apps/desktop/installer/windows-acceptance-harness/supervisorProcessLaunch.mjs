@@ -1,40 +1,9 @@
 import { EventEmitter } from 'node:events';
 import { Worker } from 'node:worker_threads';
-import { runBoundedWindowsAdapterProcess } from './boundedWindowsAdapterProcess.mjs';
+import commandBudgets from '../windows-process-supervisor/supervisorCommandBudgets.json' with { type: 'json' };
 
-export const SUPERVISOR_EXIT_RESERVE_MS = 5_000;
+export const SUPERVISOR_EXIT_RESERVE_MS = commandBudgets.exitReserveMilliseconds;
 
-export function startSupervisorInvocation({ command, arguments: args, cwd, timeoutMilliseconds,
-  terminationTimeoutMilliseconds = SUPERVISOR_EXIT_RESERVE_MS, spawnProcess = spawnSupervisorProcess,
-  observe = () => {} }) {
-  const cancellation = new AbortController();
-  let processHandle;
-  const child = new EventEmitter();
-  Object.defineProperties(child, {
-    exitCode: { get: () => processHandle?.exitCode ?? null },
-    signalCode: { get: () => processHandle?.signalCode ?? null },
-  });
-  child.kill = () => cancellation.abort();
-  const completion = runBoundedWindowsAdapterProcess({
-    command, arguments: args, cwd, timeoutMilliseconds: timeoutMilliseconds + terminationTimeoutMilliseconds,
-    terminationTimeoutMilliseconds,
-    signal: cancellation.signal,
-    spawnProcess(executable, arguments_, options) {
-      processHandle = spawnProcess(executable, arguments_, { ...options, stdio: 'inherit' });
-      for (const [event, phase] of [['exit', 'supervisorExit'], ['close', 'supervisorClose']]) {
-        processHandle.once(event, (code, signal) => {
-          child.emit(event, code, signal);
-          try { observe(phase, code === 0 && signal === null ? 'completed' : 'failed'); }
-          catch { /* Optional observations do not settle process ownership. */ }
-        });
-      }
-      return processHandle;
-    },
-  });
-  return Object.freeze({ child, completion });
-}
-
-// This is the caller's exact supervisor handle, not an owner of its Job children.
 export function spawnSupervisorProcess(command, args, options, { createWorker = (url, input) => new Worker(url, input) } = {}) {
   const state = new Int32Array(new SharedArrayBuffer(4));
   const child = new EventEmitter();

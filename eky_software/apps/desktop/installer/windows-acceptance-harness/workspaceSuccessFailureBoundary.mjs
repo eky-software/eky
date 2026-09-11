@@ -54,16 +54,28 @@ export function resolveWorkspaceSuccessTerminalOutcome(input) {
   return resolveWorkspaceTerminalOutcome(input);
 }
 
+export function prepareWorkspaceSuccessTerminalOutcome(input) {
+  return prepareWorkspaceTerminalOutcome(input);
+}
+
+export function prepareWorkspaceFaultTerminalOutcome(input) {
+  const request = validateWorkspaceFaultRequest(input.request);
+  return prepareWorkspaceTerminalOutcome({ ...input, request }, request.faultScenario);
+}
+
 export function resolveWorkspaceFaultTerminalOutcome(input) {
   const request = validateWorkspaceFaultRequest(input.request);
   return resolveWorkspaceTerminalOutcome({ ...input, request }, request.faultScenario);
 }
 
-async function resolveWorkspaceTerminalOutcome({
+async function resolveWorkspaceTerminalOutcome(input, faultScenario) {
+  const plan = await prepareWorkspaceTerminalOutcome(input, faultScenario);
+  return completeWorkspaceTerminalOutcome(plan, input);
+}
+
+async function prepareWorkspaceTerminalOutcome({
   request, supervisorResult, productPrecondition, readScenarioResult,
   verifyExactProductStates, verifySemanticPostcondition, verifySessionPostcondition,
-  cleanupExactProducts, verifyRemovalPostcondition,
-  outcome: productProcessOutcome,
 }, faultScenario) {
   const fault = faultScenario !== undefined;
   const installedRole = fault ? workspaceFaultPlan(faultScenario).installedRole : 'target';
@@ -87,7 +99,7 @@ async function resolveWorkspaceTerminalOutcome({
   // A missing supervisor result cannot prove an empty Job or authorize MSI cleanup.
   if (!result.processTreeAbsent) {
     result.errorCode ??= 'supervisorFailed';
-    return Object.freeze(result);
+    return { result, initial: null, cleanupAllowed: false, terminal: true };
   }
   const precondition = productState(productPrecondition);
   const cleanupAllowed = precondition.status === 'completed' && precondition.resultCode === 'exactProductsAbsent';
@@ -113,7 +125,7 @@ async function resolveWorkspaceTerminalOutcome({
   if (initial.status !== 'completed') {
     result.semanticCleanupResultCode = 'blockedByProductInspection';
     result.errorCode ??= initial.errorCode;
-    return Object.freeze(result);
+    return { result, initial, cleanupAllowed: false, terminal: true };
   }
   if (result.errorCode === null) {
     if (initial.resultCode !== `${installedRole}ProductPresent` || !initial.installerRegistryPresent) result.errorCode = `${installedRole}StateInvalid`;
@@ -142,6 +154,18 @@ async function resolveWorkspaceTerminalOutcome({
     }
   }
 
+  return { result, initial, cleanupAllowed, terminal: false };
+}
+
+// A plan is an internal read-only result, not a transferable cleanup permit.
+// The fixed command reevaluates preparation from bound facts before mutation.
+export async function completeWorkspaceTerminalOutcome(plan, {
+  cleanupExactProducts, verifyExactProductStates, verifyRemovalPostcondition,
+  outcome: productProcessOutcome,
+}) {
+  const { initial, cleanupAllowed } = plan;
+  const result = { ...plan.result };
+  if (plan.terminal) return Object.freeze(result);
   result.semanticCleanupResultCode = 'notRequired';
   let finalState = initial;
   if (initial.resultCode !== 'exactProductsAbsent') {

@@ -45,10 +45,10 @@ test('V2.6 runtime checkpoint executes lifecycle, failure and read-only Windows 
     'workspaceSuccessFailureBoundary', 'inspectWorkspaceSuccessMsiActivity',
     'workspaceSuccessProfileEvidence', 'workspaceSuccessPostcondition',
     'workspaceSuccessSessionProof',
-    'runWorkspaceSuccessWorker', 'runWorkspaceSuccess',
+    'runWorkspaceSuccessWorker', 'workspaceCommandAdmission',
   ].map((name) => `installer/windows-acceptance-harness/${name}.test.mjs`).join(' '));
   assert.equal(desktop.scripts['installer:v2-workspace-success'],
-    'pnpm installer:supervisor:build && pnpm e2e:prepare-electron-runtime && pnpm e2e:build && node installer/windows-acceptance-harness/runWorkspaceSuccess.mjs');
+    'pnpm installer:supervisor:build && pnpm e2e:prepare-electron-runtime && pnpm e2e:build && dotnet installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --workspace-success-command');
 });
 
 test('producer publishes exactly one immutable pair and consumers use the same artifact ID and descriptor binding', async () => {
@@ -68,10 +68,10 @@ test('producer publishes exactly one immutable pair and consumers use the same a
   assert.match(consumer, /artifact-ids: \$\{\{ needs.workspace_artifact_producer.outputs.artifact_id \}\}/);
   assert.match(consumer, /merge-multiple: true/);
   assert.doesNotMatch(consumer, /installer:v2-workspace-artifact:build|installer:w6b2|msiexec|upload-artifact|retry|rerun/);
-  assert.equal(consumer.match(/runWorkspaceSuccess.mjs --artifact-descriptor/g).length, 1);
+  assert.equal(consumer.match(/--workspace-success-command --artifact-descriptor/g).length, 1);
   assert.equal(consumer.match(/installer:v2-workspace-artifact:verify/g).length, 2);
   assert.match(consumer, /always\(\) && steps.download.outcome == 'success'/);
-  for (const command of consumer.split('\n').filter((line) => /pnpm.*(?:installer:v2|runWorkspaceSuccess.mjs)/.test(line))) {
+  for (const command of consumer.split('\n').filter((line) => /pnpm.*(?:installer:v2|--workspace-success-command)/.test(line))) {
     assert.match(command, /--expected-descriptor-sha256 \$env:EXPECTED_DESCRIPTOR_SHA256/);
     assert.match(command, /--expected-build-revision \$env:EXPECTED_BUILD_REVISION/);
   }
@@ -91,14 +91,14 @@ test('V2.7 uses two consumers of the same producer and all five existing fault c
   assert.equal(consumer.match(/installer:supervisor:build/g).length, 1);
   assert.equal(consumer.match(/ e2e:build/g).length, 1);
   assert.equal(consumer.match(/installer:v2-workspace-artifact:verify/g).length, 2);
-  const commands = consumer.split('\n').filter((line) => line.includes('runWorkspaceFault.mjs'));
+  const commands = consumer.split('\n').filter((line) => line.includes('--workspace-fault-command'));
   assert.equal(commands.length, 5);
   assert.deepEqual(commands.map((command) => command.match(/--fault-scenario (\w+)/)[1]), [
     'preUpdateRecoveryPointFailure', 'activeWorkspaceFirstStartFailure', 'acceptanceInterruption',
     'passiveWorkspaceMigrationFailure', 'binaryRollbackFailure',
   ]);
   for (const command of commands) {
-    assert.match(command, /pnpm --filter @eky\/desktop exec node installer\/windows-acceptance-harness\/runWorkspaceFault.mjs/);
+    assert.match(command, /pnpm --filter @eky\/desktop exec dotnet installer\/bin\/windows-process-supervisor\/Release\/net10\.0\/Eky\.WindowsProcessSupervisor\.dll --workspace-fault-command/);
     assert.match(command, /--artifact-descriptor \$descriptorPath/);
     assert.match(command, /--expected-descriptor-sha256 \$env:EXPECTED_DESCRIPTOR_SHA256/);
     assert.match(command, /--expected-build-revision \$env:EXPECTED_BUILD_REVISION/);
@@ -110,11 +110,11 @@ test('V2.7 uses two consumers of the same producer and all five existing fault c
 test('V2.7 canonical commands retain the same worker, terminal, session and readonly contracts used by CI', async () => {
   const desktop = JSON.parse(await readFile(resolve(ROOT, '../../package.json'), 'utf8'));
   assert.equal(desktop.scripts['installer:v2-workspace-fault'],
-    'pnpm installer:supervisor:build && pnpm e2e:prepare-electron-runtime && pnpm e2e:build && node installer/windows-acceptance-harness/runWorkspaceFault.mjs');
+    'pnpm installer:supervisor:build && pnpm e2e:prepare-electron-runtime && pnpm e2e:build && dotnet installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --workspace-fault-command');
   assert.equal(desktop.scripts['installer:test:windows-acceptance-workspace-fault'],
     'pnpm e2e:prepare-electron-runtime && pnpm e2e:build && node --test --test-concurrency=1 ' + [
       'workspaceFaultContracts', 'workspaceFaultLifecycle', 'workspaceFaultSessionProof', 'workspaceFaultSessionEvidence',
-      'workspaceFaultPostcondition', 'workspaceFaultFailureBoundary', 'runWorkspaceFaultWorker', 'runWorkspaceSuccess',
+      'workspaceFaultPostcondition', 'workspaceFaultFailureBoundary', 'runWorkspaceFaultWorker', 'workspaceCommandAdmission',
       'workspaceSuccessProfileEvidence', 'workspaceSuccessLifecycle', 'workspaceSuccessWindowsRuntime',
     ].map((name) => `installer/windows-acceptance-harness/${name}.test.mjs`).join(' '));
 });
@@ -153,12 +153,12 @@ test('each workspace consumer requires its own bound caller result and the actua
     assert.ok(desktop.scripts['installer:test:windows-acceptance-phase-writer'].includes(`${name}.test.mjs`));
   }
   const blocks = source.split('      - name:').filter((block) =>
-    /runWorkspaceSuccess.mjs --artifact-descriptor|runWorkspaceFault.mjs --artifact-descriptor/.test(block));
+    /--workspace-success-command --artifact-descriptor|--workspace-fault-command --artifact-descriptor/.test(block));
   assert.equal(blocks.length, 6);
   for (const block of blocks) {
     assert.match(block, /eky-workspace-caller-.*\[Guid\]::NewGuid\(\)\.ToString\('N'\)/);
     const lines = block.split('\n');
-    const caller = lines.findIndex((line) => /runWorkspaceSuccess.mjs --artifact-descriptor|runWorkspaceFault.mjs --artifact-descriptor/.test(line));
+    const caller = lines.findIndex((line) => /--workspace-success-command --artifact-descriptor|--workspace-fault-command --artifact-descriptor/.test(line));
     assert.match(lines[caller], /--result-path \$resultPath$/);
     assert.equal(lines[caller + 1].trim(), '$commandExit = $LASTEXITCODE');
     assert.match(lines[caller + 2], /verifyWorkspaceCallerResult.mjs .*--result-path \$resultPath --command-exit \$commandExit$/);

@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
-import { executeProductOperation, validateProductOperationRequest } from './installerProductOperationWorker.mjs';
+import { executeProductOperation, runOwnedProductOperation, validateProductOperationRequest } from './installerProductOperationWorker.mjs';
+import { writeJsonAtomicExclusive } from './cleanInstallUninstallContracts.mjs';
 
 const request = { schemaVersion: 1, nonce: 'a'.repeat(64), operation: 'inspect',
   productCode: '{00000000-0000-0000-0000-000000000001}', scenarioRoot: resolve('synthetic'),
@@ -70,4 +73,50 @@ test('uninstall uses only the exact product and its own temporary namespace', as
   assert.deepEqual(events, ['prepare', 'create', 'uninstall', 'removeDirectory']);
   assert.deepEqual(result, { schemaVersion: 1, nonce: request.nonce, operation: 'uninstall',
     status: 'completed', state: null, errorCode: null, resultCleanup: 'completed' });
+});
+
+test('owned product worker rejects invalid binding and occupied output before executing', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'eky-product-worker-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const input = { request: { ...request, scenarioRoot: root }, binding: { schemaVersion: 1,
+    runNonce: request.nonce, scenario: 'installerProductOperation', artifactDescriptorSha256: 'b'.repeat(64) } };
+  let operations = 0;
+  const dependencies = { operationDependencies: { prepareRoot: async () => { operations++; } } };
+  for (const changed of [{ ...input, extra: true }, { ...input, binding: { ...input.binding, extra: true } },
+    { ...input, binding: { ...input.binding, runNonce: 'c'.repeat(64) } },
+    { ...input, binding: { ...input.binding, scenario: 'foreign' } },
+    { ...input, binding: { ...input.binding, artifactDescriptorSha256: 'invalid' } }]) {
+    await assert.rejects(runOwnedProductOperation(changed, dependencies), /productRequestInvalid/);
+  }
+  const occupied = join(root, 'worker-result.json');
+  await writeFile(occupied, 'original');
+  await assert.rejects(runOwnedProductOperation(input, dependencies), /productResultPathOccupied/);
+  assert.equal(operations, 0);
+  assert.equal(await readFile(occupied, 'utf8'), 'original');
+});
+
+test('owned product worker preserves operation and cleanup failures when terminal publication fails', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'eky-product-worker-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const binding = { schemaVersion: 1, runNonce: request.nonce, scenario: 'installerProductOperation',
+    artifactDescriptorSha256: 'b'.repeat(64) };
+  const writes = [];
+  await assert.rejects(runOwnedProductOperation({ request: { ...request, scenarioRoot: root }, binding }, {
+    operationDependencies: { systemRoot: root, prepareRoot: async () => {}, createDirectory: async () => {},
+      execute: async () => { throw new Error('private original'); },
+      removeResult: async () => { throw new Error('private cleanup'); } },
+    publishResult: async (path, value) => {
+      writes.push(path);
+      if (path.endsWith('worker-result.json')) throw new Error('syntheticPublicationFailed');
+      await writeJsonAtomicExclusive(path, value);
+    },
+  }), /syntheticPublicationFailed/);
+  assert.deepEqual(writes, [join(root, 'product-result.json'), join(root, 'worker-result.json')]);
+  const bytes = await readFile(writes[0], 'utf8');
+  const result = JSON.parse(bytes);
+  assert.deepEqual(result.binding, binding);
+  assert.equal(result.result.errorCode, 'commandFailed');
+  assert.equal(result.result.resultCleanup, 'failed');
+  assert.ok(!bytes.includes('private'));
+  await assert.rejects(readFile(writes[1]), { code: 'ENOENT' });
 });

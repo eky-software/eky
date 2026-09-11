@@ -4,10 +4,9 @@ import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validateWindowsAcceptanceSupervisorResult } from '../windows-process-supervisor/windowsAcceptanceSupervisorResult.mjs';
 import { validateProductOperationRequest } from './installerProductOperationWorker.mjs';
-import { validateInstallerProductStateResult } from './cleanInstallUninstallWindowsRuntime.mjs';
-import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
+import { validateProductOperationReply } from './installerProductOperationResult.mjs';
+export { validateProductOperationReply } from './installerProductOperationResult.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const SUPERVISOR = resolve(DIRECTORY, '../bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll');
@@ -16,46 +15,6 @@ const MAX_BYTES = 192 * 1024;
 const HOST_PHASES = Object.freeze({ launch: 'productHostLaunch', spawn: 'productHostSpawn',
   deadline: 'productHostDeadline', termination: 'productHostTermination' });
 const invalid = () => { throw new Error('productOperationResultInvalid'); };
-const exact = (value, keys) => value && Object.keys(value).sort().join(',') === keys.sort().join(',');
-
-export function validateProductOperationReply(bytes, request, exitCode) {
-  const reply = parseStrictJsonObjectBytes(bytes, { errorCode: 'productOperationResultInvalid', maximumBytes: MAX_BYTES });
-  if (!exact(reply, ['schemaVersion', 'nonce', 'operation', 'supervisor', 'worker']) ||
-    reply.schemaVersion !== 1 || reply.nonce !== request.nonce || reply.operation !== request.operation) invalid();
-  const supervisor = validateWindowsAcceptanceSupervisorResult(reply.supervisor, {
-    runNonce: request.nonce, scenario: 'installerProductOperation', artifactDescriptorSha256: request.nonce,
-    supervisorExitCode: exitCode,
-  });
-  let worker = null;
-  try {
-    if (reply.worker !== null) {
-      if (typeof reply.worker !== 'string' || !/^[A-Za-z0-9+/]*={0,2}$/.test(reply.worker)) invalid();
-      worker = parseStrictJsonObjectBytes(Buffer.from(reply.worker, 'base64'),
-        { errorCode: 'productOperationResultInvalid', maximumBytes: 128 * 1024 });
-      if (!exact(worker, ['schemaVersion', 'nonce', 'operation', 'status', 'state', 'errorCode', 'resultCleanup']) ||
-        worker.schemaVersion !== 1 || worker.nonce !== request.nonce || worker.operation !== request.operation ||
-        !['completed', 'failed'].includes(worker.status) || !['completed', 'failed'].includes(worker.resultCleanup) ||
-        (worker.status === 'completed' ? worker.errorCode !== null || worker.resultCleanup !== 'completed'
-          : !['preparationFailed', 'commandFailed', 'resultReadFailed', 'resultCleanupFailed'].includes(worker.errorCode))) invalid();
-    }
-    if (supervisor.status === 'completed' && worker?.status !== 'completed') invalid();
-    let state;
-    if (supervisor.status === 'completed' && request.operation === 'inspect') {
-      if (typeof worker.state !== 'string') invalid();
-      state = validateInstallerProductStateResult(parseStrictJsonObjectBytes(Buffer.from(worker.state, 'base64'),
-        { errorCode: 'productOperationResultInvalid' }));
-    }
-    if (request.operation === 'uninstall' && worker !== null && worker.state !== null) invalid();
-    return Object.freeze({ status: supervisor.status,
-      resultCode: supervisor.processResultCode === 'deadlineExceeded' ? 'timedOut' : supervisor.processResultCode,
-      exitCode, directProcessAbsent: supervisor.processTreeAbsent, state, supervisor, worker });
-  } catch {
-    return Object.freeze({ status: 'failed',
-      resultCode: supervisor.processResultCode === 'deadlineExceeded' ? 'timedOut'
-        : supervisor.status === 'failed' ? supervisor.processResultCode : 'workerResultInvalid',
-      exitCode, directProcessAbsent: supervisor.processTreeAbsent, supervisor, worker: null });
-  }
-}
 
 // The caller bounds its supervisor; that supervisor alone owns the auxiliary Job.
 export async function runInstallerProductOperation({ operation, productCode, scenarioRoot,

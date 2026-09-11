@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { createWorkspacePhaseWriter } from './workspacePhaseWriter.mjs';
 import { WORKSPACE_PHASE_MAX_BYTES } from './workspacePhaseObservation.mjs';
 import { runWorkspaceCallerCli } from './workspaceCallerCli.mjs';
-import { parseWorkspaceSuccessArguments } from './runWorkspaceSuccess.mjs';
+import { parseWorkspaceSuccessArguments } from './workspaceCommandAdmission.mjs';
 
 // Contract fixture only. The existing Job Object test support contains this
 // command and its writer even when an assertion fails before terminal evidence.

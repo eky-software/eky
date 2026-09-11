@@ -56,7 +56,7 @@ test('actual backup, restore, recovery and runtime ownership paths retain compat
 
 for (const file of ['apps/desktop/src/update/firstStartUpdateCoordinator.ts',
   'apps/desktop/src/workspaces/registry.ts', 'apps/desktop/src/main/index.ts',
-  'apps/desktop/installer/windows-acceptance-harness/runWorkspaceFault.mjs',
+  'apps/desktop/installer/windows-acceptance-harness/workspaceCommandPhase.mjs',
   'apps/backend/src/modules/invoicing/infrastructure/pdf/render.ts',
   'apps/backend/src/modules/customers/ports/snapshot.ts', 'apps/backend/src/bootstrap.ts',
   'apps/e2e/src/fixtures/isolatedElectronTest.ts', 'apps/web/src/desktop/bridge.ts']) {
