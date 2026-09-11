@@ -29,6 +29,54 @@ const UNSAFE_ROOTS = [
   resolve(DESKTOP_ROOT, '.stage'),
   resolve(DESKTOP_ROOT, 'out'),
 ];
+const SAFE_BUILD_FAILURES = new Set([
+  'WINDOWS_ACCEPTANCE_WORKSPACE_ARTIFACT_ARGUMENTS_INVALID',
+  'WINDOWS_ACCEPTANCE_WORKSPACE_ARTIFACT_ROOT_INVALID',
+  'WINDOWS_ACCEPTANCE_WORKSPACE_ARTIFACT_STAGE_OVERLAP_INVALID',
+  'WINDOWS_ACCEPTANCE_WORKSPACE_ARTIFACT_BUILD_IDENTITY_INVALID',
+  'WINDOWS_ACCEPTANCE_WORKSPACE_ARTIFACT_STAGED_IDENTITY_INVALID',
+  'WINDOWS_ACCEPTANCE_WORKSPACE_ARTIFACT_PAYLOAD_CHANGED',
+  'WINDOWS_ACCEPTANCE_WORKSPACE_ARTIFACT_CANONICAL_CHANGED',
+  'W6B2_CANONICAL_RELEASE_INVALID',
+  'W6B2_CANONICAL_RELEASE_CHANGED',
+  'W6B2_PACKAGED_APPLICATION_PAIR_INVALID',
+  'W6B2_INSTALLER_PAIR_INVALID',
+  'W6B2_INSTALLER_IDENTITY_INVALID',
+]);
+const SAFE_INVENTORY_REASONS = new Set([
+  'STAGE', 'FILE_COUNT', 'LOGICAL_PATH', 'DIRECTORY_DEPTH', 'PROJECT_FILE_SIZE',
+  'SIZE', 'SYMLINK', 'FILE_TYPE', 'UNAPPROVED_UPDATE_RUNTIME_ARTIFACT',
+  'PRIVATE_KEY_ARTIFACT', 'SERVICE_ACCOUNT_ARTIFACT', 'DATABASE',
+  'BUSINESS_OR_DIAGNOSTIC_ARTIFACT', 'ENVIRONMENT_FILE', 'SECRET_BLOB',
+  'GENERATED_TEST_OR_SUPPORT_ARTIFACT', 'SOURCE_OR_TEST_ARTIFACT',
+  'PROJECT_SOURCE_MAP', 'PROJECT_RUNTIME_OR_SENSITIVE_ARTIFACT',
+  'VENDOR_SENSITIVE_ARTIFACT_REVIEW_REQUIRED', 'UNAPPROVED_SMOKE_HELPER',
+]);
+const SAFE_PLATFORM_FAILURES = new Set([
+  'ENOENT', 'EEXIST', 'EACCES', 'EPERM', 'EBUSY', 'ENOSPC', 'EIO',
+  'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN',
+]);
+
+function classifyBuildFailure(error) {
+  if (SAFE_BUILD_FAILURES.has(error?.message)) return error.message;
+  const prefix = 'PACKAGE_ARTIFACT_INVENTORY_INVALID:';
+  if (typeof error?.message === 'string' && error.message.startsWith(prefix) &&
+      SAFE_INVENTORY_REASONS.has(error.message.slice(prefix.length))) return error.message;
+  if (SAFE_PLATFORM_FAILURES.has(error?.code)) return error.code;
+  return 'unclassifiedBuildFailure';
+}
+
+export function workspaceArtifactBuildFailureSummary(error) {
+  const cleanupFailed = error instanceof AggregateError &&
+    error.message === 'WINDOWS_ACCEPTANCE_WORKSPACE_ARTIFACT_BUILD_CLEANUP_FAILED' &&
+    error.errors.length === 2;
+  return Object.freeze({
+    schemaVersion: 1, status: 'failed',
+    errorCode: 'WINDOWS_ACCEPTANCE_WORKSPACE_ARTIFACT_BUILD_FAILED',
+    failureCode: classifyBuildFailure(cleanupFailed ? error.errors[0] : error),
+    cleanupFailureCode: cleanupFailed ? classifyBuildFailure(error.errors[1]) : null,
+  });
+}
 
 function contains(parent, candidate) {
   const path = relative(parent, candidate);
@@ -176,12 +224,13 @@ async function main() {
     const result = await buildWorkspaceSuccessArtifact(args);
     await writeJsonAtomicExclusive(args.summaryPath, result);
     console.log(JSON.stringify(result));
-  } catch {
-    console.error(JSON.stringify({
-      schemaVersion: 1, status: 'failed',
-      errorCode: 'WINDOWS_ACCEPTANCE_WORKSPACE_ARTIFACT_BUILD_FAILED',
-    }));
+  } catch (error) {
     process.exitCode = 1;
+    try {
+      console.error(JSON.stringify(workspaceArtifactBuildFailureSummary(error)));
+    } catch {
+      // Failure evidence cannot replace the build's unsuccessful exit.
+    }
   }
 }
 

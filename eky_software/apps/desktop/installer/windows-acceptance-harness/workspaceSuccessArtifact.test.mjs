@@ -8,7 +8,8 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 import { createWorkspaceSuccessArtifactTestFixture as fixture } from './workspaceSuccessArtifactTestFixture.mjs';
-import { buildWorkspaceSuccessArtifact, parseWorkspaceSuccessArtifactBuildArguments } from './buildWorkspaceSuccessArtifact.mjs';
+import { buildWorkspaceSuccessArtifact, parseWorkspaceSuccessArtifactBuildArguments,
+  workspaceArtifactBuildFailureSummary } from './buildWorkspaceSuccessArtifact.mjs';
 import { hashWorkspaceSuccessArtifactFile, verifyWorkspaceSuccessArtifact } from './workspaceSuccessArtifact.mjs';
 import {
   WORKSPACE_SUCCESS_DESCRIPTOR_FILENAME,
@@ -205,6 +206,73 @@ test('build failure preserves its original error and does not remove sibling dat
   }), (error) => error === original);
   await assert.rejects(lstat(f.artifactRoot), { code: 'ENOENT' });
   assert.equal(await readFile(sentinel, 'utf8'), 'preserved');
+});
+
+test('producer failure preserves its original platform error and exposes only its closed code', async (t) => {
+  const f = await fixture(t, { build: false });
+  const original = Object.assign(new Error('synthetic private path and command'), {
+    code: 'ENOENT', path: 'synthetic-private-path',
+  });
+  let observed;
+  await assert.rejects(buildWorkspaceSuccessArtifact({
+    ...f.options, createInstallerPair: async () => { throw original; },
+  }), (error) => { observed = error; return error === original; });
+  assert.deepEqual(workspaceArtifactBuildFailureSummary(observed), {
+    schemaVersion: 1, status: 'failed',
+    errorCode: 'WINDOWS_ACCEPTANCE_WORKSPACE_ARTIFACT_BUILD_FAILED',
+    failureCode: 'ENOENT', cleanupFailureCode: null,
+  });
+  await assert.rejects(lstat(f.artifactRoot), { code: 'ENOENT' });
+  assert.equal((await lstat(f.pair.source.installerPath)).isFile(), true);
+});
+
+test('producer diagnostics separate inventory rejection, unknown failure and secondary cleanup failure', () => {
+  const original = new Error('PACKAGE_ARTIFACT_INVENTORY_INVALID:FILE_COUNT');
+  const cleanup = Object.assign(new Error('synthetic private cleanup detail'), { code: 'EBUSY' });
+  const aggregate = new AggregateError([original, cleanup],
+    'WINDOWS_ACCEPTANCE_WORKSPACE_ARTIFACT_BUILD_CLEANUP_FAILED');
+  assert.deepEqual(workspaceArtifactBuildFailureSummary(aggregate), {
+    schemaVersion: 1, status: 'failed',
+    errorCode: 'WINDOWS_ACCEPTANCE_WORKSPACE_ARTIFACT_BUILD_FAILED',
+    failureCode: original.message, cleanupFailureCode: 'EBUSY',
+  });
+  assert.equal(aggregate.errors[0], original);
+  assert.equal(aggregate.errors[1], cleanup);
+  for (const message of ['synthetic private detail',
+    'PACKAGE_ARTIFACT_INVENTORY_INVALID:PRIVATE_UNREVIEWED_VALUE',
+    'WINDOWS_ACCEPTANCE_WORKSPACE_ARTIFACT_PRIVATE_UNREVIEWED_VALUE']) {
+    const error = Object.assign(new Error(message), { code: 'UNREVIEWED_PRIVATE_CODE' });
+    const result = workspaceArtifactBuildFailureSummary(error);
+    assert.equal(result.failureCode, 'unclassifiedBuildFailure');
+    assert.equal(JSON.stringify(result).includes(message), false);
+  }
+});
+
+test('producer CLI keeps failure exit and reports only safe argument classification', () => {
+  const result = spawnSync(process.execPath,
+    [resolve(ROOT, 'buildWorkspaceSuccessArtifact.mjs'), '--synthetic-private-argument'],
+    { encoding: 'utf8', timeout: 10_000, windowsHide: true });
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, '');
+  assert.deepEqual(JSON.parse(result.stderr), {
+    schemaVersion: 1, status: 'failed',
+    errorCode: 'WINDOWS_ACCEPTANCE_WORKSPACE_ARTIFACT_BUILD_FAILED',
+    failureCode: 'WINDOWS_ACCEPTANCE_WORKSPACE_ARTIFACT_ARGUMENTS_INVALID',
+    cleanupFailureCode: null,
+  });
+});
+
+test('producer CLI diagnostic delivery failure cannot replace the failed build exit', () => {
+  const entry = new URL('./buildWorkspaceSuccessArtifact.mjs', import.meta.url);
+  const script = `console.error = () => { throw new Error('synthetic output failure'); };
+    process.argv = [process.execPath, ${JSON.stringify(fileURLToPath(entry))}];
+    await import(${JSON.stringify(entry.href)});`;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+    encoding: 'utf8', timeout: 10_000, windowsHide: true,
+  });
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, '');
+  assert.equal(result.stderr, '');
 });
 
 test('rejected Git preflight does not build or create an artifact', async (t) => {

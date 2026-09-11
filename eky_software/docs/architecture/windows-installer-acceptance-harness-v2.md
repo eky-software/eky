@@ -2685,6 +2685,30 @@ ei vielä uuden revision packaged- tai CI-hyväksyntä.
 
 ### Komentoryhmien CI ja erillinen inspector-havainto
 
+Nykyinen varmennettu kierros on lähde-HEAD
+`226ad2d0c4e0b5870bed143f05860a0f5cf1346d`,
+[CI 34640956869](https://github.com/eky-software/eky/actions/runs/34640956869),
+checkout/build-revisio `d5b08e9ebc4b3422e1838ca82363681adcb18dd6`.
+Kaikki kymmenen komentoryhmää läpäisivät ensimmäisellä yrityksellä:
+core 228/228 ja yhteiset komennot 24/24 sekä sisääntuloryhmät 18/18,
+20/20 ja 20/20 kummassakin toistossa. Legacy-producer ja molemmat
+legacy-consumerit valmistuivat; myös clean- ja upgrade-consumerit läpäisivät
+2/2. Tämä ei vielä täytä kokonaisporttia: workspace-producer epäonnistui
+ennen artifactin julkaisemista ja sen consumerit jäivät ajamatta.
+V2 acceptance hylkäsi kierroksen oikein. Uusintaa ei ajettu.
+
+Workspace-producerin yleinen virhekoodi ei erottanut alkuperäistä
+paketointivirhettä. Nykyisen rakentajan virheraja välittää tämän vuoksi vain
+ennalta luetellut projektivirheet, inventory-hylkäykset ja alustavirhekoodit.
+Tuntematon virhe jää luokittelemattomaksi; alkuperäinen build-virhe ja
+mahdollinen jälkisiivouksen virhe säilyvät erillisinä. Tulostuksen
+epäonnistuminen ei muuta epäonnistunutta exit-tulosta. Tämä tarkennus ei
+muuta paketointia, inventory-rajoja, hyväksyntäehtoja eikä aikarajoja.
+Rakennusvirheen syy on vielä avoin, eikä sitä luokitella lataus- tai
+infrastruktuurihäiriöksi pelkän viimeisen lokirivin perusteella.
+
+Edellisen kierroksen historiallinen näyttö:
+
 Lähde-HEAD `0e0af6c0e39c675a1f614d39f6b3b974ad2c05ac` käynnisti
 [CI-ajon 34635578251](https://github.com/eky-software/eky/actions/runs/34635578251).
 Todellinen checkout ja workspace-artifactin build-revisio ovat
