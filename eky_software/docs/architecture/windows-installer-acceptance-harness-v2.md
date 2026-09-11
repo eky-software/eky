@@ -2632,6 +2632,56 @@ komentotesti ei ole MSI-hyväksyntä tai näyttö tietyn CI-jumin natiivisyystä
 PR #266 pysyy draftina. Vanhan polun epäonnistunut hyväksyntä ja alempana
 kirjattu CI-tulos eivät muutu vihreiksi uuden kytkennän perusteella.
 
+### Komentosiirron CI ja rajattu fixture-korjaus
+
+Lähde-HEAD `681c577c806e132e958f821f07632c59a14535af` käynnisti
+[CI-ajon 34620003920](https://github.com/eky-software/eky/actions/runs/34620003920).
+Consumerien varmentama artifact-build on
+`e2ffb3af4f8c65a6909e929b44ea97faa204c8c4`, ei lähde-HEAD.
+Workspace-success-consumerit läpäisivät 2/2 ja fault-matriisi 10/10
+pakollisen caller-verifierin ja ennen/jälkeen-tavuvarmennuksen kanssa.
+Molemmat clean-consumerit läpäisivät. Koko CI-kierros ja vakaa
+`V2 acceptance` päättyivät hylättyinä. Legacy-sopimusten ensimmäinen sarja
+epäonnistui (290/302); toisen GitHub katkaisi jobin 10 minuutin rajaan
+(227 hyväksyttyä, 20 epäonnistunutta, 4 keskeytynyttä). Testejä valmistui
+katkaisuun asti, joten tämä ei ole näyttö yhteen MSI-kutsuun juuttumisesta.
+Historiallisia paketteja ja consumereita ei ajettu. Electron-portti hylättiin
+ja upgrade-consumereista vain toinen läpäisi.
+
+Legacy-sopimusten fixture välitti tilapäishakemiston aliaksen kanonista
+juurta vaativalle product-workerille. Fixture luodaan nyt kanonisesta
+tilapäisjuuresta, kuten nykyiset varsinaiset callerit. Worker ei hyväksy
+aliasta, symlinkkiä tai väärää identiteettiä tämän korjauksen vuoksi.
+Käyttäytymisregressio käyttää testin omaa hakemistoaliasta. Lisäksi nykyinen
+kolmen komennon fixture todistaa esitarkistukseen pysähtyneen vaiheen
+määräajan, todellisen exit/close-rajan, alkuperäisen virheen toimituksen,
+prosessisiivouksen sekä seuraavan mutaation ja fixture-poiston estämisen.
+Korjattu kanoninen legacy-sopimussarja läpäisi 306/306 ilman uusintoja,
+ohituksia tai keskeytyksiä. Tämä on fixture-korjauksen regressiotulos,
+ei vielä uusi paketoitu tai CI-hyväksyntä. Installer-unitit läpäisivät 165/165,
+Windowsin prosessisopimukset kahdesti 77/77 sekä desktopin typecheck ja build.
+
+Aliaskorjaus ei selitä toisen CI-sarjan kahta fixed-command-epäonnistumista
+eikä GUI-fixturen käännöksen määräaikaa. Käännöksen virhe säilyi virheenä ja
+sen Job-siivoaminen valmistui; sama valmisteluvirhe esti kuusi GUI-testiä.
+Seuraava päätös koskee nykyisen sopimussarjan CI-jakoa nimettyjen vastuiden
+mukaan, ei uutta ajomoottoria tai aikarajojen kasvattamista. Ehdotettu jako
+säilyttää koko nykyisen tiedostoluettelon, molemmat toistot ja koontiportin
+vaatimuksen kaikista tuloksista. Jakoa ei ole toteutettu eikä uutta täyttä
+kierrosta käynnistetä ulkoisen katkaisun yli. Yksittäisten virheiden syy ja
+niiden regressiot on suljettava erikseen.
+
+[Erillinen diagnostiikka 34620133500](https://github.com/eky-software/eky/actions/runs/34620133500)
+käytti aiempia varmennettuja artifact-tavuja. Se hylättiin
+`inspectSourceBefore`-vaiheen määräaikaan ennen asennusta; Job-siivoaminen
+ja komentoprosessin päättyminen valmistuivat. Natiivin viiveen syytä ei ole
+osoitettu. Se ei ole uusi hyväksyntä eikä normaali 2/2-tulos muuta tätä
+diagnostiikkaa onnistuneeksi. Electronin ensimmäisen yrityksen turvallinen
+aineisto erottaa onnistuneen yhteyden, `firstWindow`-timeoutin ja onnistuneen
+runtime-/porttisiivouksen. Upgrade-virheen `cleanupUnverified` säilyy
+hylkäyksenä ja aineisto säilytetään. Näitä erillisiä havaintoja ei nimetä
+yhdeksi infrastruktuuriviaksi eikä aikarajoja muuteta.
+
 ### Viimeisin etähyväksyntä ennen komentosiirtoa
 
 [Normaali CI 34520903697](https://github.com/eky-software/eky/actions/runs/34520903697)

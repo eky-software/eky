@@ -59,7 +59,7 @@ for (const kind of ['legacy', 'workspace-success', 'workspace-fault']) {
 }
 
 for (const kind of ['legacy', 'workspace-success', 'workspace-fault']) {
-for (const testCase of ['completed', 'blockedEvidence', 'preparationHold', 'scenarioHold', 'uninstallHold', 'resultBeforeExit', 'cleanupFailed', 'scenarioAndCleanupFailed', 'removalHold',
+for (const testCase of ['completed', 'blockedEvidence', 'preparationHold', 'productInspectionHold', 'scenarioHold', 'uninstallHold', 'resultBeforeExit', 'cleanupFailed', 'scenarioAndCleanupFailed', 'removalHold',
   'publicationBeforeExit', 'productMissingResult', 'preconditionFailed', 'scenarioMissing', 'businessFailed', 'profileChanged', 'artifactChanged',
   ...(kind === 'legacy' ? [] : ['footprintFailed']), ...(kind === 'workspace-fault' ? ['sessionFailed'] : [])]) {
   const workspace = kind !== 'legacy';
@@ -96,7 +96,7 @@ for (const testCase of ['completed', 'blockedEvidence', 'preparationHold', 'scen
     assert.equal(completion.signal, null);
     assert.equal(completion.exitCode, succeeded ? 0 : 1);
     const commandRoot = await readFile(join(context.testRoot, 'command-root.txt'), 'utf8');
-    const phase = { preparationHold: 'prepare', scenarioHold: 'scenario', uninstallHold: 'uninstallTarget',
+    const phase = { preparationHold: 'prepare', productInspectionHold: 'inspectSourceBefore', scenarioHold: 'scenario', uninstallHold: 'uninstallTarget',
       resultBeforeExit: 'uninstallTarget', removalHold: 'fixtureCleanup', publicationBeforeExit: 'publish' }[testCase];
     if (phase) {
       const outcome = JSON.parse(await readFile(join(commandRoot, phase, 'result.json'), 'utf8'));
@@ -130,6 +130,12 @@ for (const testCase of ['completed', 'blockedEvidence', 'preparationHold', 'scen
       }
       if (testCase === 'preconditionFailed') {
         assert.equal(result.outcome.errorCode, workspace ? 'preconditionFailed' : 'WINDOWS_ACCEPTANCE_LEGACY_PRECONDITION_FAILED');
+        await assert.rejects(lstat(join(commandRoot, 'scenario')), { code: 'ENOENT' });
+        await assert.rejects(lstat(join(commandRoot, 'uninstallTarget')), { code: 'ENOENT' });
+      }
+      if (testCase === 'productInspectionHold') {
+        assert.equal(result.outcome.errorCode, workspace ? 'supervisorDeadlineExceeded' : 'WINDOWS_ACCEPTANCE_SUPERVISOR_DEADLINE_EXCEEDED');
+        assert.equal(result.outcome.fixtureRemoved, false);
         await assert.rejects(lstat(join(commandRoot, 'scenario')), { code: 'ENOENT' });
         await assert.rejects(lstat(join(commandRoot, 'uninstallTarget')), { code: 'ENOENT' });
       }

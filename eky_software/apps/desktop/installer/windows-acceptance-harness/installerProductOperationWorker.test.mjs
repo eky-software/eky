@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { executeProductOperation, runOwnedProductOperation, validateProductOperationRequest } from './installerProductOperationWorker.mjs';
@@ -76,7 +76,7 @@ test('uninstall uses only the exact product and its own temporary namespace', as
 });
 
 test('owned product worker rejects invalid binding and occupied output before executing', async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'eky-product-worker-'));
+  const root = await mkdtemp(join(await realpath(tmpdir()), 'eky-product-worker-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const input = { request: { ...request, scenarioRoot: root }, binding: { schemaVersion: 1,
     runNonce: request.nonce, scenario: 'installerProductOperation', artifactDescriptorSha256: 'b'.repeat(64) } };
@@ -96,7 +96,7 @@ test('owned product worker rejects invalid binding and occupied output before ex
 });
 
 test('owned product worker preserves operation and cleanup failures when terminal publication fails', async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'eky-product-worker-'));
+  const root = await mkdtemp(join(await realpath(tmpdir()), 'eky-product-worker-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const binding = { schemaVersion: 1, runNonce: request.nonce, scenario: 'installerProductOperation',
     artifactDescriptorSha256: 'b'.repeat(64) };

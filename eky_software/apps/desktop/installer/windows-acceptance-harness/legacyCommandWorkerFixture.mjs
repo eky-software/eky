@@ -19,6 +19,7 @@ if (mode === '--phase-request') {
   const role = { productCode: '00000000-0000-0000-0000-000000000001' };
   const hold = () => spawnSync(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore' });
   if (testCase === 'preparationHold' && input.phase === 'prepare') hold();
+  if (testCase === 'productInspectionHold' && input.phase === 'inspectSourceBefore') hold();
   const code = input.commandKind !== 'legacy'
     ? await (await import('./workspaceCommandPhase.mjs')).runWorkspaceCommandPhase(process.argv.slice(2),
       (await import('./workspaceCommandFixture.mjs')).workspaceCommandFixture(input, testCase, hold))
