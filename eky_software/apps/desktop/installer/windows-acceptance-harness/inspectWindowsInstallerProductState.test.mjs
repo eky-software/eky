@@ -7,8 +7,9 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { cleanupRunContext, createRunContext }
   from '../windows-process-supervisor/tests/supervisorContractTestSupport.mjs';
+import { INSPECTOR_TIMEOUT_MILLISECONDS } from './installerProductOperationRuntime.mjs';
 
-const WINDOWS_ONLY = { skip: process.platform !== 'win32', timeout: 20_000 };
+const WINDOWS_ONLY = { skip: process.platform !== 'win32', timeout: INSPECTOR_TIMEOUT_MILLISECONDS };
 const SCRIPT_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
   'inspectWindowsInstallerProductState.ps1',
@@ -120,18 +121,17 @@ test('inspector cancellation preserves late completion and prevents the next que
   assert.deepEqual([...context.fixtureProcesses], [child]);
 });
 
-test(
-  'Windows PowerShell 5.1 inspector distinguishes absent products from query failure',
+for (const phase of ['canonical', 'transported', 'rejectedPath', 'queryFailure']) test(
+  `Windows PowerShell 5.1 inspector contract: ${phase}`,
   WINDOWS_ONLY,
   async (testContext) => {
     const context = await createRunContext('state-inspector');
     const root = context.testRoot;
-    const resultPath = join(root, 'state.json');
-    const transportedResultPath = join(root, 'transported-state.json').replaceAll(
-      '\\',
-      '\\\\',
-    );
-    const rejectedResultPath = `${join(root, 'parent')}\\..\\rejected.json`;
+    const expectedResultPath = join(root, 'state.json');
+    const resultPath = phase === 'transported'
+      ? expectedResultPath.replaceAll('\\', '\\\\')
+      : phase === 'rejectedPath' ? `${join(root, 'parent')}\\..\\state.json`
+        : expectedResultPath;
     const powershell = resolve(
       process.env.SystemRoot,
       'System32',
@@ -152,41 +152,25 @@ test(
         catch { /* Diagnostics cannot replace the test or cleanup failure. */ }
       }
     });
-    const inspect = (phase, path, options) => observeInspection(
+    const exitCode = await observeInspection(
       context, testContext.signal, phases, phase,
-      () => runInspector(powershell, path, options),
+      () => runInspector(powershell, resultPath, { failProductState: phase === 'queryFailure' }),
     );
-
-    const exitCode = await inspect('canonical', resultPath);
-    assert.equal(exitCode, 0);
-    const expected = {
-      schemaVersion: 1,
-      productState: -1,
-      productName: null,
-      productVersion: null,
-      localPackagePresent: false,
-      ownedRegistryExists: false,
-      ekyProcessCount: 0,
-    };
-    assert.deepEqual(JSON.parse(await readFile(resultPath, 'utf8')), expected);
-
-    assert.equal(await inspect('transported', transportedResultPath), 0);
-    assert.deepEqual(
-      JSON.parse(
-        await readFile(join(root, 'transported-state.json'), 'utf8'),
-      ),
-      expected,
-    );
-
-    assert.equal(await inspect('rejectedPath', rejectedResultPath), 64);
-    await assert.rejects(access(join(root, 'rejected.json')), { code: 'ENOENT' });
-
-    const failedResultPath = join(root, 'query-failed.json');
-    const failedExit = await inspect('queryFailure', failedResultPath, {
-      failProductState: true,
-    });
-    assert.equal(failedExit, 1);
-    await assert.rejects(access(failedResultPath), { code: 'ENOENT' });
+    const expectedExit = phase === 'rejectedPath' ? 64 : phase === 'queryFailure' ? 1 : 0;
+    assert.equal(exitCode, expectedExit);
+    if (expectedExit === 0) {
+      assert.deepEqual(JSON.parse(await readFile(expectedResultPath, 'utf8')), {
+        schemaVersion: 1,
+        productState: -1,
+        productName: null,
+        productVersion: null,
+        localPackagePresent: false,
+        ownedRegistryExists: false,
+        ekyProcessCount: 0,
+      });
+    } else {
+      await assert.rejects(access(expectedResultPath), { code: 'ENOENT' });
+    }
     verified = true;
   },
 );

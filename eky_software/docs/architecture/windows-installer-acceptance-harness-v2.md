@@ -2748,6 +2748,37 @@ vertailu ei kumoa keskeytynyttä sarjaa eikä osoita natiiviviiveen syytä.
 Ennen mahdollista budjettipäätöstä tarvitaan nämä vaihtoehdot erottava näyttö.
 Erillistä uutta CI-diagnoosivalintaa tai uusintaa ei otettu käyttöön.
 
+Seuraavan revision `41e5293a5d6bd54f918b2fab5b65b655f950c2d5`
+[CI 34643084341](https://github.com/eky-software/eky/actions/runs/34643084341)
+toisti inspectorin 20 sekunnin hylkäyksen. Turvallinen vaihehavainto osoitti
+ensimmäisen kyselyn käynnistyskutsun valmistuneen 3 millisekunnissa;
+spawn havaittiin, mutta kysely ei valmistunut ennen testin peruutusta.
+Omistettu siivous varmennettiin. Havainto rajaa viiveen käynnistyskutsun
+jälkeiseen työhön, mutta ei yksin erota PowerShell-valmistelua, COM-kyselyä
+ja viimeistelyä. Tätä ei nimetä natiivikäynnistyksen tai infrastruktuurin
+juurisyyksi.
+
+Omistaja hyväksyi neljän olemassa olevan inspector-tapauksen erottamisen
+itsenäisiksi testeiksi. Kunkin raja johdetaan nykyisestä
+`INSPECTOR_TIMEOUT_MILLISECONDS`-sopimuksesta (30 sekuntia), jota varsinainen
+product-operation käyttää. V2:n komentovaihe varaa samalle työlle 30 sekuntia
+ja erikseen 5 sekuntia siivoukseen. Testituen nykyinen prosessikahvojen
+siivous säilyy ennallaan. Neljä erillistä kyselyä eivät enää jaa lyhyempää
+20 sekunnin yhteisrajaa; jokaisella on oma eristetty aineisto ja jälkiehto.
+Kyselyn valmistuminen, ei odotusajan kuluminen, ratkaisee onnistumisen.
+MSI-, job-, supervisor- ja tarkoituksellisten timeout-regressioiden rajoja
+ei muuteta. Myös uuden kyselyrajan ylitys on edelleen virhe, ei peruste
+automaattiselle lisäajalle tai uusinnalle. Tämä korjaa testin erillisen
+aikavaatimuksen ristiriidan, ei vielä selitä alustan viivettä.
+
+Rajattu viiden testin sarja ja koko 231 testin core-sopimusryhmä läpäisivät
+muutoksen jälkeen; myös desktopin typecheck ja build läpäisivät.
+Revision `41e5293` CI jäi silti hylätyksi: muut valitut ryhmät, clean 2/2,
+upgrade 2/2, workspace success 2/2 ja fault/rollback 10/10 läpäisivät,
+mutta core-ryhmän keskeytyminen esti legacy-producerin ja sen consumerit.
+Hyväksytty testijako tarvitsee oman puhtaan revision CI-näytön, mukaan
+lukien todella käynnistyvä legacy-producer ja molemmat consumerit.
+
 ### Jaetun sopimussarjan edellinen CI
 
 Lähde-HEAD `447dd169835a38b136b8abd2f0caf31d58b950c4` käynnisti
