@@ -2670,7 +2670,17 @@ tapahtumahävikki tai tuntematon tila hylkää tallennuksen, mutta sen oma
 lopetus yritetään silti. Tämä tilannekuva ei lupaa aukotonta tapahtumahistoriaa:
 analyysin kattavuus on edelleen `boundedCaptureNotFullHistory`.
 Lukijan, kokorajojen ja workflow-kytkennän kohdesopimukset läpäisevät
-`13/13`. Uuden tallennustavan CI-todennus on vielä kesken.
+`13/13`. Rajattu FILE-diagnoosi
+[34701559605](https://github.com/eky-software/eky/actions/runs/34701559605)
+ajettiin ensimmäisellä yrityksellä harness-revisiolla
+`f831a8e3ac480c887b2d683a4b7295a192893df2` ja samalla artifact-ID:llä
+`10286568864`. Caller, pakollinen tulosvarmennus, artifactien ennen/jälkeen-
+tarkistus sekä tallennuksen käynnistys ja lopetus läpäisivät. Keräinten
+tilatarkistus läpäisi. Koko diagnoosi jäi epäonnistuneeksi: WPA-vienti
+palautti `eventExport / INSPECTOR_CAPTURE_TOOL_FAILED` ennen tapahtumaluvun
+alkua. Tämä ei osoita prosessitietojen säilymistä eikä selitä alkuperäistä
+legacy-viivettä. Avoin erottava tieto on vientityökalun tarkempi virheluokka;
+nykyinen suljettu loki ei sitä sisällä. Raaka-aineistoa ei siirretty runnerilta.
 Muistirenkaan ylikirjoitus on mahdollinen selitys puuttuvalle historialle,
 ei tällä näytöllä todistettu syy. Tallennusmallin vaihto ei ole testin
 hyväksymisehdon väljennys. Ks.
