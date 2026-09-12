@@ -323,6 +323,7 @@ export async function runUpgradeRollback(arguments_, {
     status: 'completed',
     resultCode: 'upgradeRollbackCompleted',
     runningUpgradeInitialExitCode: terminal.runningUpgradeInitialExitCode,
+    runningUpgradeObservation: terminal.runningUpgradeObservation,
     upgradeExitCode: terminal.upgradeExitCode,
     sourceVersion: artifact.roles.source.appVersion,
     targetVersion: artifact.roles.target.appVersion,

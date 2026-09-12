@@ -10,6 +10,7 @@ import { coordinateUpgradeRollbackBinaryHandoff } from './upgradeRollbackBinaryH
 import { createUpgradeRollbackProgressWaiter } from './upgradeRollbackProgress.mjs';
 import { coordinateRunningApplicationUpgrade } from './upgradeRunningApplication.mjs';
 import { startNativeMsiUpgrade } from './nativeMsiUpgradeProcess.mjs';
+import { readRunningUpgradeObservation } from './runningUpgradeObservation.mjs';
 import { verifyInstalledPackagePayload } from './installedPackagePayload.mjs';
 import { captureDesktopLifecycleBaseline, requireTargetShutdownCompleted,
   waitForTargetDesktopStarted } from './legacyUpgradeStartupObserver.mjs';
@@ -377,7 +378,8 @@ export async function createUpgradeRollbackWindowsRuntime(request, artifact) {
     const userDataRoot = resolve(appDataRoot, 'Eky');
     const logDirectory = resolve(userDataRoot, 'runtime', 'logs', 'desktop');
     const validationLog = resolve(logRoot, 'running-upgrade.log');
-    return coordinateRunningApplicationUpgrade({
+    const moments = { started: Date.now() };
+    const outcome = await coordinateRunningApplicationUpgrade({
       async startApplication() {
         await mkdir(logDirectory, { recursive: true });
         const baselineEventIds = await captureDesktopLifecycleBaseline(logDirectory);
@@ -386,6 +388,7 @@ export async function createUpgradeRollbackWindowsRuntime(request, artifact) {
         delete env.ELECTRON_RUN_AS_NODE;
         const owned = await startOwnedProcess(executablePath, [`--user-data-dir=${userDataRoot}`],
           { cwd: runRoot, env, windowsHide: false });
+        owned.child.once('exit', () => { moments.applicationExitObserved = Date.now(); });
         let started;
         const ready = waitForTargetDesktopStarted({ baselineEventIds, childCompletion: owned.completion,
           expectedIdentity, logDirectory }).then((event) => { started = event; },
@@ -395,6 +398,7 @@ export async function createUpgradeRollbackWindowsRuntime(request, artifact) {
           isRunning: () => owned.child.exitCode === null && owned.child.signalCode === null,
           async close() {
             if (owned.child.exitCode === null && owned.child.signalCode === null) {
+              moments.closeRequested = Date.now();
               const close = await runOwnedProcess(powershell, ['-NoProfile', '-NonInteractive',
                 '-ExecutionPolicy', 'Bypass', '-File', resolve(dirname(INSPECTOR_PATH), 'requestWindowsApplicationClose.ps1'),
                 '-ProcessId', String(owned.processId), '-ExpectedExecutablePath', executablePath], { cwd: runRoot });
@@ -409,8 +413,12 @@ export async function createUpgradeRollbackWindowsRuntime(request, artifact) {
           },
         });
       },
-      startUpgrade: () => startNativeMsiUpgrade({ packagePath: artifact.roles.target.installerPath,
-        logPath: validationLog, cwd: runRoot, launch: startOwnedProcess }),
+      async startUpgrade() {
+        const installer = await startNativeMsiUpgrade({ packagePath: artifact.roles.target.installerPath,
+          logPath: validationLog, cwd: runRoot, launch: startOwnedProcess });
+        installer.completion.then(() => { moments.msiCompleted = Date.now(); }, () => undefined);
+        return installer;
+      },
       async verifyBlockedSource() {
         const state = await inspectState();
         if (state.source.productState < 1 || state.source.productVersion !== artifact.roles.source.msiProductVersion ||
@@ -420,6 +428,10 @@ export async function createUpgradeRollbackWindowsRuntime(request, artifact) {
       },
       resumeUpgrade: () => runMsiOperation('majorUpgradeAfterClose'),
     });
+    moments.finished = Date.now();
+    // Read the completed verbose log inside the existing worker Job, before fixture removal.
+    const observation = await readRunningUpgradeObservation(validationLog, moments);
+    return Object.freeze({ ...outcome, observation });
   }
 
   async function createRollbackBlocker() {

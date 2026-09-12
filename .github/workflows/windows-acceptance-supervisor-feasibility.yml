@@ -19,7 +19,7 @@ on:
       artifact_kind:
         description: Existing artifact consumer (diagnostic only)
         type: choice
-        options: [legacy, workspace]
+        options: [legacy, workspace, upgrade]
       artifact_run_id:
         description: Original artifact producer run ID
         type: string
@@ -219,7 +219,7 @@ jobs:
           if ($env:INSPECTOR_CAPTURE -ceq 'true' -and $env:ARTIFACT_KIND -cne 'legacy') {
             throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CAPTURE_SCOPE_INVALID'
           }
-          if ($env:ARTIFACT_KIND -cnotin @('legacy', 'workspace') -or
+          if ($env:ARTIFACT_KIND -cnotin @('legacy', 'workspace', 'upgrade') -or
               $env:ARTIFACT_RUN_ID -cnotmatch '^[1-9][0-9]{0,19}$' -or
               $env:ARTIFACT_ID -cnotmatch '^[1-9][0-9]{0,19}$' -or
               $env:EXPECTED_BUILD_REVISION -cnotmatch '^[0-9a-f]{40}$' -or
@@ -270,7 +270,11 @@ jobs:
 
       - name: Verify existing artifact before diagnostic
         run: |
-          $verifier = if ($env:ARTIFACT_KIND -ceq 'legacy') { 'verifyLegacyUpgradeArtifact.mjs' } else { 'verifyWorkspaceSuccessArtifact.mjs' }
+          $verifier = switch -CaseSensitive ($env:ARTIFACT_KIND) {
+            'legacy' { 'verifyLegacyUpgradeArtifact.mjs' }
+            'workspace' { 'verifyWorkspaceSuccessArtifact.mjs' }
+            'upgrade' { 'verifyUpgradeRollbackArtifact.mjs' }
+          }
           $root = Join-Path $env:RUNNER_TEMP 'eky-existing-boundary-artifact'
           pnpm --filter @eky/desktop exec node "installer/windows-acceptance-harness/$verifier" --artifact-root $root --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION
           if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_ARTIFACT_INVALID' }
@@ -296,6 +300,12 @@ jobs:
       - name: Run existing caller and mandatory result verifier once
         timeout-minutes: ${{ inputs.artifact_kind == 'legacy' && 27 || 25 }}
         run: |
+          if ($env:ARTIFACT_KIND -ceq 'upgrade') {
+            $descriptorPath = Join-Path (Join-Path $env:RUNNER_TEMP 'eky-existing-boundary-artifact') 'upgrade-rollback-artifact.json'
+            pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/runUpgradeRollback.mjs --artifact-descriptor $descriptorPath
+            if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED' }
+            exit 0
+          }
           $legacy = $env:ARTIFACT_KIND -ceq 'legacy'
           $descriptor = if ($legacy) { 'legacy-upgrade-artifact.json' } else { 'workspace-success-artifact.json' }
           $verifier = if ($legacy) { 'verifyLegacyCallerResult.mjs' } else { 'verifyWorkspaceCallerResult.mjs' }
@@ -321,7 +331,11 @@ jobs:
       - name: Reverify immutable artifact after diagnostic
         if: always() && steps.download.outcome == 'success'
         run: |
-          $verifier = if ($env:ARTIFACT_KIND -ceq 'legacy') { 'verifyLegacyUpgradeArtifact.mjs' } else { 'verifyWorkspaceSuccessArtifact.mjs' }
+          $verifier = switch -CaseSensitive ($env:ARTIFACT_KIND) {
+            'legacy' { 'verifyLegacyUpgradeArtifact.mjs' }
+            'workspace' { 'verifyWorkspaceSuccessArtifact.mjs' }
+            'upgrade' { 'verifyUpgradeRollbackArtifact.mjs' }
+          }
           $root = Join-Path $env:RUNNER_TEMP 'eky-existing-boundary-artifact'
           pnpm --filter @eky/desktop exec node "installer/windows-acceptance-harness/$verifier" --artifact-root $root --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION
           if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_ARTIFACT_CHANGED' }

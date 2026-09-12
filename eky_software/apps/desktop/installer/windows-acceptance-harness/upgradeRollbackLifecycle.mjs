@@ -188,6 +188,7 @@ export function initialUpgradeRollbackResult() {
     sourceInstallExitCode: null,
     upgradeExitCode: null,
     runningUpgradeInitialExitCode: null,
+    runningUpgradeObservation: null,
     downgradeExitCode: null,
     binaryRollbackExitCode: null,
     windowsInstallerRollbackExitCode: null,
@@ -353,6 +354,7 @@ export async function executeUpgradeRollbackLifecycle({
         }
         result.applicationCleanupResultCode = outcome.cleanupResultCode;
         result.runningUpgradeInitialExitCode = outcome.initialExitCode ?? null;
+        result.runningUpgradeObservation = outcome.observation ?? null;
         if (outcome.status !== 'completed' || outcome.exitCode !== 0 || outcome.cleanupResultCode !== 'completed' ||
             ![0, 1603].includes(result.runningUpgradeInitialExitCode)) {
           fail(FAILURE_CODES.has(outcome.errorCode) ? outcome.errorCode : 'runningUpgradeFailed');

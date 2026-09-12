@@ -23,6 +23,7 @@ import {
 import { runCleanInstallUninstall } from './runCleanInstallUninstall.mjs';
 import { upgradeRollbackFailureDetails } from './upgradeRollbackFailureBoundary.mjs';
 import { cleanInstallUninstallFailureDetails } from './cleanInstallUninstallFailureBoundary.mjs';
+import { classifyRunningUpgradeLog } from './runningUpgradeObservation.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 
@@ -32,6 +33,7 @@ for (const clean of [true, false]) {
     'preconditionUnverified', 'preconditionPresent', ...(!clean ? ['applicationCleanupUnverified'] : [])]) {
     test(`${clean ? 'clean' : 'upgrade'} caller preserves independent failure and retention: ${mode}`,
       { skip: process.platform !== 'win32' }, async (t) => {
+        const observation = classifyRunningUpgradeLog('', {});
         let root, started = 0, removals = 0, cleanups = 0, inspections = 0, profileReads = 0;
         let productProcessAbsent = true;
         t.after(async () => { if (root) await rm(root, { force: true, recursive: true }); });
@@ -90,9 +92,10 @@ for (const clean of [true, false]) {
           },
           readScenarioResult: async () => mode === 'applicationCleanupUnverified'
             ? { status: 'failed', resultCode: 'upgradeRollbackFailed', errorCode: 'runningUpgradeValidationInvalid',
-                applicationCleanupResultCode: 'cleanupUnverified' }
+                applicationCleanupResultCode: 'cleanupUnverified', runningUpgradeObservation: observation }
             : ({ status: 'completed',
             runningUpgradeInitialExitCode: 1603, upgradeExitCode: 0,
+            runningUpgradeObservation: observation,
             resultCode: clean ? 'cleanInstallUninstallCompleted' : 'upgradeRollbackCompleted' }),
           removeRunRoot: async (path) => {
             removals += 1;
@@ -120,6 +123,7 @@ for (const clean of [true, false]) {
         if (mode === 'completed' && !clean) {
           assert.equal(result.runningUpgradeInitialExitCode, 1603);
           assert.equal(result.upgradeExitCode, 0);
+          assert.deepEqual(result.runningUpgradeObservation, observation);
         }
         const removed = ['completed', 'prepareFailed', 'deadlineRecovered', 'preconditionPresent'].includes(mode);
         assert.equal(result.fixtureRemoved, removed);
@@ -130,7 +134,10 @@ for (const clean of [true, false]) {
         assert.equal(started, ['prepareFailed', 'preconditionUnverified', 'preconditionPresent'].includes(mode) ? 0 : 1);
         assert.equal(cleanups, ['cleanupUnverified', 'cleanupFailed', 'deadlineRecovered',
           'scenarioAndProfileFailed', 'scenarioAndRemovalFailed', 'applicationCleanupUnverified'].includes(mode) ? 1 : 0);
-        if (mode === 'applicationCleanupUnverified') assert.equal(result.applicationCleanupResultCode, 'cleanupUnverified');
+        if (mode === 'applicationCleanupUnverified') {
+          assert.equal(result.applicationCleanupResultCode, 'cleanupUnverified');
+          assert.deepEqual(result.runningUpgradeObservation, observation);
+        }
         if (mode === 'scenarioAndProfileFailed') assert.equal(result.safetyErrorCode, 'WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED');
         if (!productProcessAbsent) {
           assert.equal(profileReads, 1);

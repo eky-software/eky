@@ -966,6 +966,35 @@ onnistunutta päivitystä. Hyväksyntä vaatii edelleen oikean exit-koodin,
 asennetun payloadin täyden vertailun, exact tuotetilan, desktopin onnistuneen
 shutdown-todisteen ja erilliset callerin jälkiehdot.
 
+Asynkroninen `InstallValidate`-ilmoitus ei pysäytä MSI:tä sovelluksen
+sulkeutumisen ajaksi. Sulkemispyyntö ja sovelluksen havaittu poistuminen ovat
+eri tapahtumat: nykyinen `close`-portti odottaa myös poistumista, ja
+käyttäytymisregressio vaatii tämän, vaikka MSI olisi jo valmistunut. Callbackin
+odotukseton politiikka säilyy; ajoitusikkuna on tutkittava vaihtoehto, ei
+sellaisenaan osoitettu uudelleenkäynnistystarpeen syy.
+
+Running-upgrade-worker luokittelee valmistuneen verbose-lokin ennen aineiston
+poistoa nykyisen Job-rajan sisällä. Suljettu `runningUpgradeObservation`
+säilyttää vain tiedosto käytössä / ajastettu poisto / korvattu käytössä oleva
+tiedosto / reboot-pending -havainnot, sallitun MSI-vaiheen ja järjestyksen
+suhteessa sulkemispyyntöön sekä havaittuun poistumiseen. Ajattoman lokirivin
+ajankohta on viereisten aikaleimojen väli, ei tarkka hetki. Puuttuva, ristiriitainen
+tai rajauksen ulkopuolinen aikajärjestys jää tuntemattomaksi. Puuttuva loki on
+puuttuvaa diagnostiikkaa; se ei peitä MSI- tai cleanup-tulosta. Raakalokia,
+tiedostonimiä, aikoja tai prosessitunnisteita ei sisällytetä tulokseen. Lukija
+ei ohjaa sulkemista eikä muuta hyväksyntää.
+
+Nykyisen normaalin integraatioajon jäljellä oleva upgrade-hylkäys on MSI 3010.
+Se tuotti hallitun virhetuloksen ja varmennetun siivouksen, eikä osoita uutta
+supervisorin aikakatkaisua. Alkuperäistä verbose-lokia ei säilytetty, joten
+syy on avoin. Yksi ennalta rajattu `packaged-boundary-diagnostic`-ajo käyttää
+nykyistä upgrade-komentoa ja saman producerin artifact-ID:tä sekä descriptor-
+ja MSI-tiivisteitä. Paketteja ei rakenneta kokeeseen uudelleen. Artifact
+varmennetaan ennen ja jälkeen; diagnostiikkarevisio ja artifactin build-revisio
+raportoidaan erikseen. Koe ei korvaa normaaleja consumereita tai hyväksyntää,
+eikä 3010:n hyväksyminen, sokkouusinta tai callback/UI-politiikan muutos kuulu
+tähän diagnoosiin.
+
 Vanhan running-Setup-sopimuksen 1603-haara saa jatkaa kerran vasta sulkemisen
 ja lähdeasennuksen muuttumattomuuden tarkistuksen jälkeen. Se ei ole yleinen
 retry: muu virhe, reboot-vaatimus tai muuttunut source hylätään. Alkuperäinen

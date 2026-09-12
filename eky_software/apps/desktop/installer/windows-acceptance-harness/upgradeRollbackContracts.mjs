@@ -4,6 +4,7 @@ import { dirname, isAbsolute, resolve } from 'node:path';
 
 import { writeJsonAtomicExclusive } from './cleanInstallUninstallContracts.mjs';
 import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
+import { validateRunningUpgradeObservation } from './runningUpgradeObservation.mjs';
 
 export const UPGRADE_ROLLBACK_SCENARIO = 'upgradeRollback';
 
@@ -34,6 +35,7 @@ const RESULT_KEYS = [
   'runNonce',
   'runningApplicationUpgradeValidated',
   'runningUpgradeInitialExitCode',
+  'runningUpgradeObservation',
   'scenario',
   'schemaVersion',
   'sourceInstallExitCode',
@@ -141,6 +143,9 @@ export function validateUpgradeRollbackResult(value, expected) {
   ) {
     throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_RESULT_INVALID');
   }
+
+  try { validateRunningUpgradeObservation(value.runningUpgradeObservation); }
+  catch { throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_RESULT_INVALID'); }
 
   if (
     value.status === 'completed' &&

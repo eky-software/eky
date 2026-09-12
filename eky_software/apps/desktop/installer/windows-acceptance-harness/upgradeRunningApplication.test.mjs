@@ -79,6 +79,36 @@ test('blocked Setup resumes once only after graceful exit and unchanged source p
   assert.equal(f.events.filter((event) => event === 'upgradeAfterClose').length, 1);
 });
 
+test('MSI completion during a pending graceful close does not acknowledge application exit', async () => {
+  const f = fixture('invalidExit');
+  const requested = deferred(), exited = deferred();
+  const close = f.ports.startApplication;
+  f.ports.startApplication = async () => {
+    const application = await close();
+    return { ...application, async close() {
+      requested.resolve();
+      await exited.promise;
+      await application.close();
+    } };
+  };
+  let completed = false;
+  const completion = coordinateRunningApplicationUpgrade(f.ports).then(result => {
+    completed = true;
+    return result;
+  });
+  await requested.promise;
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(completed, false);
+  assert.equal(f.events.includes('shutdownVerified'), false);
+  assert.equal(f.resources().applicationRunning, true);
+  exited.resolve();
+  const result = await completion;
+  assert.equal(result.errorCode, 'runningUpgradeMsiFailed');
+  assert.equal(result.initialExitCode, 3010);
+  assert.equal(result.cleanupResultCode, 'completed');
+  assert.equal(f.resources().applicationRunning, false);
+});
+
 test('failed unchanged-source proof never resumes the blocked installer', async () => {
   const f = fixture('blocked');
   f.ports.verifyBlockedSource = async () => { throw new Error('runningUpgradeBlockedSourceChanged'); };

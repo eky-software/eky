@@ -83,3 +83,15 @@ test('V2.4 consumers verify checkout and artifact before and after lifecycle', a
   assert.match(source, /expected-descriptor-sha256/u);
   assert.match(source, /expected-build-revision/u);
 });
+
+test('existing diagnostic can consume the exact upgrade artifact without rebuilding or changing the normal matrix', async () => {
+  const source = await readFile(resolve(dirname(WORKFLOW_PATH), 'windows-acceptance-supervisor-feasibility.yml'), 'utf8');
+  const diagnostic = source.split('  packaged-boundary-diagnostic:')[1];
+  assert.match(source, /options: \[legacy, workspace, upgrade\]/u);
+  assert.equal(diagnostic.match(/'upgrade' \{ 'verifyUpgradeRollbackArtifact\.mjs' \}/gu)?.length, 2);
+  assert.equal(diagnostic.match(/runUpgradeRollback\.mjs --artifact-descriptor/gu)?.length, 1);
+  assert.match(diagnostic, /artifact-ids: \$\{\{ inputs\.artifact_id \}\}/u);
+  assert.match(diagnostic, /run-id: \$\{\{ inputs\.artifact_run_id \}\}/u);
+  assert.match(diagnostic, /if \(\$LASTEXITCODE -ne 0\) \{ throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED' \}/u);
+  assert.doesNotMatch(diagnostic, /installer:v2-upgrade-artifact:build|upload-artifact|continue-on-error/u);
+});

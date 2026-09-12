@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import test from 'node:test';
+import { classifyRunningUpgradeLog } from './runningUpgradeObservation.mjs';
 
 import {
   createUpgradeRollbackWorkerRequest,
@@ -38,6 +39,7 @@ function successfulResult(request) {
     installedPayloadValidated: true,
     applicationCleanupResultCode: 'completed',
     runningUpgradeInitialExitCode: 0,
+    runningUpgradeObservation: null,
     downgradeRejected: true,
     binaryRollbackRestoredSource: true,
     windowsInstallerRollbackRestoredSource: true,
@@ -84,6 +86,12 @@ test('successful result requires each upgrade and rollback invariant', () => {
   });
   const result = successfulResult(request);
   assert.deepEqual(validateUpgradeRollbackResult(result, request), result);
+  const observation = classifyRunningUpgradeLog('', {});
+  assert.deepEqual(validateUpgradeRollbackResult({ ...result, runningUpgradeObservation: observation }, request)
+    .runningUpgradeObservation, observation);
+  assert.throws(() => validateUpgradeRollbackResult({ ...result,
+    runningUpgradeObservation: { ...observation, path: 'private-path' } }, request),
+  /WINDOWS_ACCEPTANCE_UPGRADE_RESULT_INVALID/);
   assert.throws(() => validateUpgradeRollbackResult({ ...result, applicationCleanupResultCode: 'cleanupUnverified' }, request),
     /WINDOWS_ACCEPTANCE_UPGRADE_RESULT_INVALID/);
   for (const field of [
