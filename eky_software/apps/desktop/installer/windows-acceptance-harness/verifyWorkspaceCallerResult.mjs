@@ -1,6 +1,6 @@
 import { runWorkspaceCallerResultProcess } from './workspaceCallerResultProcess.mjs';
 import { parseWorkspaceCallerCliArguments } from './workspaceCallerResult.mjs';
-import { parseWorkspaceSuccessArguments, parseWorkspaceFaultArguments } from './runWorkspaceSuccess.mjs';
+import { parseWorkspaceSuccessArguments, parseWorkspaceFaultArguments } from './workspaceCommandAdmission.mjs';
 
 try {
   const args = process.argv.slice(2);

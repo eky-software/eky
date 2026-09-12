@@ -6,7 +6,8 @@ import { basename, dirname, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import test from 'node:test';
 
-import { WORKSPACE_SUCCESS_PROFILE_ERRORS, WORKSPACE_SUCCESS_PROOF_ERRORS, workspaceSuccessErrorCode } from './workspaceSuccessContracts.mjs';
+import { WORKSPACE_SUCCESS_PROFILE_ERRORS, WORKSPACE_SUCCESS_PROOF_ERRORS,
+  WORKSPACE_INSTALLATION_INSPECTION_ERRORS as inspectionErrors, workspaceSuccessErrorCode } from './workspaceSuccessContracts.mjs';
 import { WORKSPACE_SUCCESS_RUN_ROOT_PREFIX, workspaceSuccessRunContext } from './workspaceSuccessRunFixture.mjs';
 import { WORKSPACE_FAULT_SCENARIO, workspaceFaultErrorCode } from './workspaceFaultContracts.mjs';
 import { writeW6b2PackagedSuccessPhase } from '../scripts/w6b2PackagedSuccessRunFixture.mjs';
@@ -116,6 +117,9 @@ async function fixture(context, changes = {}) {
       if (basename(command) === 'powershell.exe') {
         activityQuery = args.some((arg) => arg.endsWith('inspectWorkspaceSuccessMsiActivity.ps1'));
         inspectionRole = args.includes('{SOURCE}') ? 'source' : 'target';
+        if (changes.inspectionCommand) return changes.inspectionCommand({
+          kind: activityQuery ? 'activity' : inspectionRole, resultPath: args.at(-1),
+        });
       }
       if (options.env.EKY_W6B2_PROFILE_OPERATION) operation = options.env.EKY_W6B2_PROFILE_OPERATION;
       if (changes.faultScenario && basename(command) === 'Eky.exe') {
@@ -136,15 +140,17 @@ async function fixture(context, changes = {}) {
         if (changes.profileUnreadable) throw new Error(errorCode);
         return changes.profileResult ?? { formatVersion: 1, operation, status: 'completed' };
       }
-      if (activityQuery) return changes.activity?.shift() ?? { schemaVersion: 1, msiClientCount: 0 };
+      if (activityQuery) return changes.activity?.length ? changes.activity.shift() : { schemaVersion: 1, msiClientCount: 0 };
       const installedRole = changes.installedRole ?? 'target';
       const installed = changes.noTarget !== true && inspectionRole === installedRole;
-      return { schemaVersion: 1, productState: installed ? 5 : -1,
+      const result = { schemaVersion: 1, productState: installed ? 5 : -1,
         productName: installed ? 'Eky' : null, productVersion: installed ? artifact[installedRole].msiProductVersion : null,
         localPackagePresent: installed, ownedRegistryExists: true, ekyProcessCount: 0 };
+      return changes.productObservation ? changes.productObservation(inspectionRole, result) : result;
     },
     async inspectPayload() { return changes.payload ?? { identity: 'target' }; },
-    async inspectFootprint() { return { installRootExists: true, executableExists: true, shortcutExists: true }; },
+    async inspectFootprint() { calls.push({ footprint: true });
+      return { installRootExists: true, executableExists: true, shortcutExists: true }; },
     async verifyArtifact(value) { calls.push({ artifact: value }); },
     async verifyRunFixture(value) { calls.push({ fixture: value }); },
     async writePhase(root, value) {
@@ -206,7 +212,7 @@ for (const role of ['source', 'target']) {
     if (role === 'source') await writeRollbackProgress(value.root, completedRollbackProgress());
     await value.runtime.waitForInstallation(role);
     assert.equal(value.calls.filter((call) => call.observation).length, 1);
-    assert.equal(value.calls.filter((call) => call.command).length, 6);
+    assert.equal(value.calls.filter((call) => call.command).length, 5);
     assert.ok(value.calls.filter((call) => call.command).every((call) => basename(call.command) === 'powershell.exe'));
     await assert.rejects(() => value.runtime.waitForInstallation('foreign'), /requestInvalid/);
   });
@@ -246,7 +252,7 @@ test('source rollback observes delayed helper and inter-MSI gaps until actual te
   await assert.doesNotReject(value.runtime.waitForInstallation('source'));
   assert.equal(observations.length, 0);
   assert.equal(value.calls.filter((call) => call.observation).length, 5);
-  assert.equal(value.calls.filter((call) => call.command).length, 3);
+  assert.equal(value.calls.filter((call) => call.command).length, 4);
   assert.ok(value.calls.filter((call) => call.command).every((call) => basename(call.command) === 'powershell.exe'));
 });
 
@@ -351,8 +357,133 @@ test('handoff waits for observed MSI inactivity without starting or killing a pr
   ] });
   await value.runtime.waitForTargetInstallation();
   assert.equal(value.calls.filter((call) => call.observation).length, 1);
-  assert.equal(value.calls.filter((call) => call.command).length, 6);
+  assert.equal(value.calls.filter((call) => call.command).length, 5);
   assert.ok(value.calls.filter((call) => call.command).every((call) => basename(call.command) === 'powershell.exe'));
+});
+
+test('handoff discards product observations that overlap an active MSI transition', async (context) => {
+  const roles = [];
+  let settled = false;
+  const value = await fixture(context, {
+    activity: [0, 1, 0, 0].map((msiClientCount) => ({ schemaVersion: 1, msiClientCount })),
+    productObservation(role, result) {
+      roles.push(role);
+      return { ...result, ownedRegistryExists: settled || role === 'target' };
+    },
+    onObservation({ calls }) {
+      assert.equal(calls.filter((call) => call.observation).length, 1);
+      assert.deepEqual(roles, ['source', 'target']);
+      settled = true;
+    },
+  });
+  await assert.doesNotReject(value.runtime.waitForTargetInstallation());
+  assert.equal(settled, true);
+  assert.deepEqual(roles, ['source', 'target', 'source', 'target']);
+  assert.equal(value.calls.some((call) => basename(call.command ?? '') === 'msiexec.exe'), false);
+});
+
+test('handoff does not query products while the MSI is already observed active', async (context) => {
+  const roles = [];
+  const value = await fixture(context, {
+    activity: [1, 0, 0].map((msiClientCount) => ({ schemaVersion: 1, msiClientCount })),
+    productObservation(role, result) { roles.push(role); return result; },
+    onObservation({ calls }) {
+      assert.equal(calls.filter((call) => call.observation).length, 1);
+      assert.deepEqual(roles, []);
+    },
+  });
+  await assert.doesNotReject(value.runtime.waitForTargetInstallation());
+  assert.deepEqual(roles, ['source', 'target']);
+});
+
+for (const [field, change, expected] of [
+  ['ownedRegistryExists', false, inspectionErrors.registryMismatch],
+  ['ekyProcessCount', 1, inspectionErrors.processMismatch],
+]) {
+  test(`idle product ${field} disagreement is terminal, not a retriable MSI transition`, async (context) => {
+    const value = await fixture(context, { productObservation(role, result) {
+      return role === 'source' ? { ...result, [field]: change } : result;
+    } });
+    await assert.rejects(value.runtime.waitForTargetInstallation(), { message: expected });
+    assert.equal(value.calls.some((call) => call.observation || call.footprint), false);
+  });
+}
+
+for (const role of ['source', 'target']) {
+  test(`${role} inspector failure or malformed evidence is not treated as MSI activity`, async (context) => {
+    for (const mode of ['exit', 'throw', 'unreadable', 'unknownKey', 'null']) {
+      const changes = {
+        activity: [0, 1].map((msiClientCount) => ({ schemaVersion: 1, msiClientCount })),
+        inspectionCommand({ kind }) {
+          if (kind === role && mode === 'throw') throw new Error('PRIVATE process detail');
+          return kind === role && mode === 'exit' ? 1 : 0;
+        },
+        productObservation(kind, result) {
+          if (kind !== role) return result;
+          if (mode === 'unreadable') throw new Error('PRIVATE file detail');
+          if (mode === 'unknownKey') return { ...result, session: 'PRIVATE' };
+          return mode === 'null' ? null : result;
+        },
+      };
+      const value = await fixture(context, changes);
+      const expected = inspectionErrors[`${role}${['exit', 'throw'].includes(mode) ? 'Command' : 'Result'}`];
+      await assert.rejects(value.runtime.waitForTargetInstallation(), { message: expected });
+      assert.equal(value.calls.some((call) => call.observation || call.footprint), false);
+      assert.equal(changes.activity.length, 1, 'a later busy observation must not hide the original failure');
+      assert.equal(workspaceSuccessErrorCode(new Error(expected)), expected);
+      assert.equal(workspaceFaultErrorCode(new Error(expected)), expected);
+    }
+  });
+}
+
+test('MSI inspector nonzero exit is distinct before and after the product observations', async (context) => {
+  for (const failAt of [1, 2]) {
+    let activities = 0;
+    const value = await fixture(context, { inspectionCommand({ kind }) {
+      return kind === 'activity' && ++activities === failAt ? 1 : 0;
+    } });
+    await assert.rejects(value.runtime.waitForTargetInstallation(), { message: inspectionErrors.activityCommand });
+    assert.equal(value.calls.some((call) => call.observation || call.footprint), false);
+    assert.equal(activities, failAt);
+  }
+});
+
+test('inspection file cleanup fails closed and does not replace an earlier query failure', async (context) => {
+  for (const exitCode of [0, 1]) {
+    let resultDirectory;
+    const value = await fixture(context, { async inspectionCommand({ kind, resultPath }) {
+      if (kind === 'source') {
+        resultDirectory = resultPath;
+        await mkdir(resultPath);
+        return exitCode;
+      }
+      return 0;
+    } });
+    await assert.rejects(value.runtime.waitForTargetInstallation(), {
+      message: exitCode === 0 ? inspectionErrors.cleanup : inspectionErrors.sourceCommand,
+    });
+    await assert.doesNotReject(access(resultDirectory));
+    assert.equal(value.calls.some((call) => call.observation || call.footprint), false);
+  }
+});
+
+test('postcondition inspection never accepts or waits on an active MSI sample', async (context) => {
+  for (const counts of [[1], [0, 1]]) {
+    const value = await fixture(context, { activity: counts.map((msiClientCount) => ({ schemaVersion: 1, msiClientCount })) });
+    await assert.rejects(value.runtime.inspectState(), { message: inspectionErrors.activityBusy });
+    assert.equal(value.calls.some((call) => call.observation || call.footprint), false);
+  }
+});
+
+test('a pending MSI observation leaves cancellation with the existing owner', async (context) => {
+  const cancellation = new Error('existingOwnerCancelled');
+  const value = await fixture(context, {
+    activity: [{ schemaVersion: 1, msiClientCount: 1 }],
+    onObservation() { throw cancellation; },
+  });
+  await assert.rejects(value.runtime.waitForTargetInstallation(), (error) => error === cancellation);
+  assert.equal(value.calls.filter((call) => call.observation).length, 1);
+  assert.equal(value.calls.filter((call) => call.command).length, 1);
 });
 
 test('an exited installer with no target is a terminal failure, not another install attempt', async (context) => {
@@ -363,11 +494,12 @@ test('an exited installer with no target is a terminal failure, not another inst
 
 for (const activity of [
   { schemaVersion: 1, msiClientCount: -1 }, { schemaVersion: 1, msiClientCount: 0, pid: 123 },
-  { schemaVersion: 1, msiClientCount: 0.5 }, { schemaVersion: 2, msiClientCount: 0 },
+  { schemaVersion: 1, msiClientCount: 0.5 }, { schemaVersion: 2, msiClientCount: 0 }, null,
 ]) {
   test('unknown MSI activity cannot authorize the next startup', async (context) => {
     const value = await fixture(context, { activity: [activity] });
-    await assert.rejects(value.runtime.waitForTargetInstallation, { message: 'productInspectionFailed' });
+    await assert.rejects(value.runtime.waitForTargetInstallation, { message: inspectionErrors.activityResult });
+    assert.equal(value.calls.some((call) => call.observation || call.footprint), false);
   });
 }
 

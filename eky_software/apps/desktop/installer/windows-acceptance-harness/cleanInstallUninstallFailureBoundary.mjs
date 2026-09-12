@@ -7,6 +7,11 @@ const SCENARIO_ERROR_CODES = Object.freeze({
   cleanUninstallFailed: 'WINDOWS_ACCEPTANCE_CLEAN_UNINSTALL_FAILED',
   cleanUninstalledStateInvalid:
     'WINDOWS_ACCEPTANCE_CLEAN_UNINSTALLED_STATE_INVALID',
+  cleanPayloadInvalid: 'WINDOWS_ACCEPTANCE_CLEAN_PAYLOAD_INVALID',
+  cleanProfileChanged: 'WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED',
+  cleanRepairFailed: 'WINDOWS_ACCEPTANCE_CLEAN_REPAIR_FAILED',
+  cleanRepairPreparationFailed: 'WINDOWS_ACCEPTANCE_CLEAN_REPAIR_PREPARATION_FAILED',
+  cleanReinstallFailed: 'WINDOWS_ACCEPTANCE_CLEAN_REINSTALL_FAILED',
   fixtureVerificationFailed:
     'WINDOWS_ACCEPTANCE_CLEAN_FIXTURE_VERIFICATION_FAILED',
   installerStateInspectionFailed:
@@ -142,6 +147,7 @@ export async function resolveCleanInstallUninstallTerminalOutcome({
 
   let errorCode = supervisorErrorCode(supervisorResult);
   let scenarioResultCode = 'notAvailable';
+  let preconditionRejected = false;
   if (
     supervisorResult.processResultCode === 'processCompleted' &&
     supervisorResult.workerResultCode === 'workerReportedFailure'
@@ -151,6 +157,7 @@ export async function resolveCleanInstallUninstallTerminalOutcome({
       if (scenarioResult.status === 'failed') {
         errorCode = scenarioErrorCode(scenarioResult);
         scenarioResultCode = scenarioResult.resultCode;
+        preconditionRejected = scenarioResult.errorCode === 'cleanLifecyclePreconditionFailed';
       }
     } catch {
       scenarioResultCode = 'missingOrInvalid';
@@ -159,6 +166,14 @@ export async function resolveCleanInstallUninstallTerminalOutcome({
 
   let productStateVerificationResultCode = 'notChecked';
   let semanticCleanupResultCode = 'notRequired';
+  if (preconditionRejected) {
+    throw new CleanInstallUninstallCommandFailure(createFailureDetails({ errorCode, scenarioResultCode,
+      productStateVerificationResultCode, semanticCleanupResultCode: 'blockedByPrecondition', supervisorResult }));
+  }
+  if (!supervisorResult.processTreeAbsent) {
+    throw new CleanInstallUninstallCommandFailure(createFailureDetails({ errorCode, scenarioResultCode,
+      productStateVerificationResultCode, semanticCleanupResultCode: 'blockedByOwnedProcessTree', supervisorResult }));
+  }
   const initialInspection = await inspectExactProduct(verifyExactProductState);
   if (initialInspection.status === 'failed') {
     productStateVerificationResultCode = initialInspection.errorCode;

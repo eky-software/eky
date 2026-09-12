@@ -2,7 +2,8 @@ import { randomBytes } from 'node:crypto';
 import { dirname, isAbsolute, resolve } from 'node:path';
 
 import {
-  WORKSPACE_SUCCESS_PROFILE_ERRORS, hasWorkspaceSuccessExactKeys as exactKeys, readWorkspaceSuccessObject,
+  WORKSPACE_SUCCESS_PROFILE_ERRORS, WORKSPACE_INSTALLATION_INSPECTION_ERRORS,
+  hasWorkspaceSuccessExactKeys as exactKeys, readWorkspaceSuccessObject,
 } from './workspaceSuccessContracts.mjs';
 
 export const WORKSPACE_FAULT_SCENARIO = 'packagedWorkspaceFaultRollback';
@@ -40,6 +41,7 @@ export const WORKSPACE_FAULT_ERRORS = Object.freeze([
   'sourceInstallFailed', 'sourceStateInvalid', 'profilePreparationFailed',
   'sourceHandoffFailed', 'targetInstallFailed', 'targetStateInvalid',
   'faultProofFailed', 'proofResultInvalid', 'productInspectionFailed', 'sessionProofInvalid',
+  ...Object.values(WORKSPACE_INSTALLATION_INSPECTION_ERRORS),
   'sourceRollbackInstallFailed', 'profileEvidenceInvalid',
   'ownedProcessStartFailed', 'ownedProcessExitInvalid', 'electronRuntimeUnavailable',
   'profileResultInvalid', 'profileResultUnreadable', 'proofResultUnreadable',

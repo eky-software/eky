@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import {
   link,
   lstat,
   mkdir,
   mkdtemp,
+  readFile,
   readdir,
   rm,
   unlink,
@@ -17,6 +19,7 @@ import {
   createInstallerManifest,
   writeInstallerManifest,
 } from '../installerManifest.mjs';
+import { createLocalPilotReleaseBundle } from '../scripts/createLocalPilotReleaseBundle.mjs';
 import {
   buildWindowsAcceptanceArtifact,
   parseWindowsAcceptanceArtifactBuildArguments,
@@ -29,6 +32,7 @@ import {
   parseWindowsAcceptanceArtifactVerifierArguments,
   verifyWindowsAcceptanceArtifact,
 } from './verifyWindowsAcceptanceArtifact.mjs';
+import { CLEAN_ARTIFACT_DESCRIPTOR_FILENAME, validateWindowsAcceptanceArtifactDescriptor } from './windowsAcceptanceArtifactDescriptor.mjs';
 
 const RELEASE = Object.freeze({
   appIdentity: 'Eky',
@@ -39,6 +43,7 @@ const RELEASE = Object.freeze({
   releaseChannel: 'pilot',
 });
 const BUILD_REVISION = 'a'.repeat(40);
+const PAYLOAD = Object.freeze({ stage: 'packagedApp', fileCount: 1, totalByteSize: 1, identity: 'c'.repeat(64) });
 
 function createPackagedApplication(
   buildRevision = BUILD_REVISION,
@@ -54,7 +59,7 @@ async function createSourceFixture(root) {
   const sourceRoot = resolve(root, 'source');
   await mkdir(sourceRoot, { recursive: false });
   const installerPath = resolve(sourceRoot, 'Eky-9.8.7-x64.msi');
-  const manifestPath = resolve(sourceRoot, 'source.manifest.json');
+  const manifestPath = resolve(sourceRoot, 'Eky-9.8.7-x64.manifest.json');
   await writeFile(installerPath, 'synthetic-msi-bytes');
   const manifest = await createInstallerManifest({
     buildRevision: BUILD_REVISION,
@@ -62,7 +67,7 @@ async function createSourceFixture(root) {
     release: RELEASE,
   });
   await writeInstallerManifest(manifestPath, manifest);
-  return Object.freeze({ installerPath, manifestPath });
+  return Object.freeze({ installerPath, manifestPath, release: RELEASE });
 }
 
 async function createArtifactFixture(testContext) {
@@ -74,7 +79,11 @@ async function createArtifactFixture(testContext) {
     source.manifestPath,
     artifactRoot,
   );
-  return Object.freeze({ artifactRoot, fixture, root, source });
+  const descriptor = JSON.stringify({ schemaVersion: 1, buildRevision: BUILD_REVISION,
+    manifestSha256: fixture.artifactDescriptorSha256, payload: PAYLOAD });
+  await writeFile(resolve(artifactRoot, CLEAN_ARTIFACT_DESCRIPTOR_FILENAME), descriptor);
+  return Object.freeze({ artifactRoot, fixture: { ...fixture,
+    artifactDescriptorSha256: createHash('sha256').update(descriptor).digest('hex') }, root, source });
 }
 
 test('producer materializes one SHA-locked installer descriptor and package', async (testContext) => {
@@ -87,6 +96,7 @@ test('producer materializes one SHA-locked installer descriptor and package', as
 
   assert.deepEqual((await readdir(artifactRoot)).sort(), [
     'Eky-9.8.7-x64.msi',
+    'clean-install-artifact.json',
     'installer.manifest.json',
   ]);
   assert.equal(verified.appVersion, '9.8.7');
@@ -165,6 +175,37 @@ test('consumer rejects a hardlinked package even when bytes match', async (testC
   );
 });
 
+test('clean payload evidence is strict and bound to the immutable descriptor', async (t) => {
+  const { artifactRoot, fixture } = await createArtifactFixture(t);
+  const value = { schemaVersion: 1, buildRevision: BUILD_REVISION,
+    manifestSha256: 'a'.repeat(64), payload: PAYLOAD };
+  assert.deepEqual(validateWindowsAcceptanceArtifactDescriptor(value), value);
+  for (const invalid of [{ ...value, extra: true }, { ...value, payload: { ...PAYLOAD, identity: '../escape' } },
+    { ...value, payload: { ...PAYLOAD, fileCount: 0 } }, { ...value, payload: { ...PAYLOAD, stage: 'backendStage' } }]) {
+    assert.throws(() => validateWindowsAcceptanceArtifactDescriptor(invalid), /WINDOWS_ACCEPTANCE_ARTIFACT_INVALID/);
+  }
+  await writeFile(resolve(artifactRoot, CLEAN_ARTIFACT_DESCRIPTOR_FILENAME), JSON.stringify(value));
+  await assert.rejects(verifyWindowsAcceptanceArtifact({ artifactRoot,
+    expectedDescriptorSha256: fixture.artifactDescriptorSha256, expectedBuildRevision: BUILD_REVISION }),
+  /WINDOWS_ACCEPTANCE_ARTIFACT_IDENTITY_MISMATCH/);
+});
+
+test('producer rejects payload changes during MSI creation without publishing an artifact', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'eky-v2-payload-drift-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const source = await createSourceFixture(root);
+  let inspections = 0;
+  const artifactRoot = resolve(root, 'artifact');
+  await assert.rejects(buildWindowsAcceptanceArtifact({ artifactRoot,
+    readReleaseGitState: async () => BUILD_REVISION,
+    packageApplication: async () => createPackagedApplication(),
+    createInstallerRelease: async () => ({ manifestPath: source.manifestPath }),
+    inspectPayload: async () => ++inspections === 1 ? PAYLOAD : { ...PAYLOAD, identity: 'd'.repeat(64) },
+  }), /WINDOWS_ACCEPTANCE_ARTIFACT_BUILD_IDENTITY_MISMATCH/);
+  assert.equal(inspections, 2);
+  await assert.rejects(readdir(artifactRoot), { code: 'ENOENT' });
+});
+
 test('producer detaches a hardlinked trusted build output before transfer', async (testContext) => {
   const root = await mkdtemp(join(tmpdir(), 'eky-v2-detach-test-'));
   testContext.after(() => rm(root, { force: true, recursive: true }));
@@ -179,8 +220,8 @@ test('producer detaches a hardlinked trusted build output before transfer', asyn
   assert.equal((await lstat(source.installerPath)).nlink, 1);
   assert.equal((await lstat(intermediatePath)).nlink, 1);
   assert.deepEqual((await readdir(resolve(root, 'source'))).sort(), [
+    'Eky-9.8.7-x64.manifest.json',
     'Eky-9.8.7-x64.msi',
-    'source.manifest.json',
   ]);
 });
 
@@ -192,9 +233,11 @@ test('build orchestration invokes each package producer exactly once', async (te
   let gitStateReadCount = 0;
   let applicationBuildCount = 0;
   let releaseBuildCount = 0;
+  let bundleCount = 0;
 
   const result = await buildWindowsAcceptanceArtifact({
     artifactRoot,
+    inspectPayload: async () => PAYLOAD,
     async readReleaseGitState() {
       gitStateReadCount += 1;
       return BUILD_REVISION;
@@ -210,15 +253,70 @@ test('build orchestration invokes each package producer exactly once', async (te
     async createInstallerRelease({ buildRevision }) {
       releaseBuildCount += 1;
       assert.equal(buildRevision, BUILD_REVISION);
-      return { manifestPath: source.manifestPath };
+      return source;
+    },
+    async createPilotBundle(options) {
+      bundleCount += 1;
+      assert.equal(options.buildRevision, BUILD_REVISION);
+      assert.equal(options.installerPath, source.installerPath);
+      assert.equal(options.manifestPath, source.manifestPath);
+      assert.equal(options.outputRoot, resolve(artifactRoot, 'pilot-bundle-verification'));
+      const bundle = await createLocalPilotReleaseBundle(options);
+      assert.deepEqual(await readFile(bundle.installerPath), await readFile(source.installerPath));
+      assert.deepEqual(await readFile(bundle.manifestPath), await readFile(source.manifestPath));
+      return bundle;
     },
   });
 
   assert.equal(gitStateReadCount, 1);
   assert.equal(applicationBuildCount, 1);
   assert.equal(releaseBuildCount, 1);
+  assert.equal(bundleCount, 1);
+  assert.equal(result.pilotBundleResultCode, 'pilotBundleVerified');
   assert.equal(result.resultCode, 'windowsAcceptanceArtifactBuilt');
   assert.equal(result.appVersion, '9.8.7');
+  assert.deepEqual((await readdir(artifactRoot)).sort(), [
+    'Eky-9.8.7-x64.msi', 'clean-install-artifact.json', 'installer.manifest.json',
+  ]);
+});
+
+test('producer rejects failed or altered pilot bundle verification without releasing an artifact', async (t) => {
+  for (const fault of ['builderFailure', 'checksumDrift', 'differentValidPackage']) {
+    await t.test(fault, async (subtest) => {
+      const root = await mkdtemp(join(tmpdir(), 'eky-v2-bundle-contract-'));
+      subtest.after(() => rm(root, { recursive: true, force: true }));
+      const source = await createSourceFixture(root);
+      const artifactRoot = resolve(root, 'artifact');
+      const failure = new Error('SYNTHETIC_BUNDLE_FAILURE');
+      await assert.rejects(buildWindowsAcceptanceArtifact({
+        artifactRoot,
+        inspectPayload: async () => PAYLOAD,
+        readReleaseGitState: async () => BUILD_REVISION,
+        packageApplication: async () => createPackagedApplication(),
+        createInstallerRelease: async () => source,
+        async createPilotBundle(options) {
+          if (fault === 'builderFailure') throw failure;
+          const bundle = await createLocalPilotReleaseBundle(options);
+          if (fault === 'checksumDrift') {
+            await writeFile(bundle.checksumPath, 'invalid-checksum');
+          } else {
+            await writeFile(bundle.installerPath, 'different-valid-msi');
+            const manifest = await createInstallerManifest({
+              buildRevision: BUILD_REVISION, installerPath: bundle.installerPath, release: RELEASE,
+            });
+            await unlink(bundle.manifestPath);
+            await writeInstallerManifest(bundle.manifestPath, manifest);
+            await writeFile(bundle.checksumPath, `${manifest.packageSha256}  ${manifest.packageFilename}\n`);
+          }
+          return bundle;
+        },
+      }), fault === 'builderFailure' ? (error) => error === failure :
+        fault === 'checksumDrift' ? /INSTALLER_PILOT_BUNDLE_CHECKSUM_INVALID/ :
+          /WINDOWS_ACCEPTANCE_ARTIFACT_PILOT_BUNDLE_MISMATCH/);
+      await assert.rejects(readdir(artifactRoot), { code: 'ENOENT' });
+      assert.equal(await readFile(source.installerPath, 'utf8'), 'synthetic-msi-bytes');
+    });
+  }
 });
 
 test('producer rejects a descriptor from a different build revision', async (testContext) => {
@@ -230,6 +328,7 @@ test('producer rejects a descriptor from a different build revision', async (tes
   await assert.rejects(
     buildWindowsAcceptanceArtifact({
       artifactRoot,
+      inspectPayload: async () => PAYLOAD,
       async readReleaseGitState() {
         return 'b'.repeat(40);
       },
@@ -256,6 +355,7 @@ test('producer never removes a pre-existing artifact root', async (testContext) 
   await assert.rejects(
     buildWindowsAcceptanceArtifact({
       artifactRoot,
+      inspectPayload: async () => PAYLOAD,
       async readReleaseGitState() {
         return BUILD_REVISION;
       },

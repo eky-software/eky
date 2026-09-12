@@ -192,7 +192,9 @@ test('isolates W6B acceptance jobs from the regular MSI release gate', async () 
     /needs: installer-w6b2-fault-rollback-windows-run/u,
   );
   assert.doesNotMatch(faultRollbackAggregator, /actions\/checkout@/u);
-  assert.equal(ci.split('fetch-depth: 0').length - 1, 4);
+  for (const job of [installerJob, legacyJob, packagedSuccessWorker, faultRollbackWorker]) {
+    assert.equal(job.split('fetch-depth: 0').length - 1, 1);
+  }
   assert.equal(ci.split(legacyAcceptance).length - 1, 1);
   assert.equal(ci.split(packagedSuccessAcceptance).length - 1, 1);
   assert.equal(ci.split(faultRollbackAcceptance).length - 1, 1);

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import test from 'node:test';
 
-import { parseWorkspaceSuccessArguments } from './runWorkspaceSuccess.mjs';
+import { parseWorkspaceSuccessArguments } from './workspaceCommandAdmission.mjs';
 import { parseWorkspaceCallerCliArguments, parseWorkspaceCallerResult, validateWorkspaceCallerResult } from './workspaceCallerResult.mjs';
 import { workspaceCallerResultFile } from './workspaceCallerResultFile.mjs';
 import { runWorkspaceCallerCli } from './workspaceCallerCli.mjs';
@@ -21,7 +21,7 @@ async function fixture(t) {
   const args = [...artifactArgs, '--result-path', resultPath];
   const binding = parseWorkspaceCallerCliArguments(args, parseWorkspaceSuccessArguments).binding;
   const outcome = { schemaVersion: 1, scenario: 'packagedWorkspaceSuccess', status: 'completed', errorCode: null,
-    safetyErrorCode: null, failedPhase: null, processTreeAbsent: true, fixtureRemoved: true, businessDataPreserved: true,
+    safetyErrorCode: null, failedPhase: null, processTreeAbsent: true, productProcessAbsent: true, fixtureRemoved: true, businessDataPreserved: true,
     phaseWriterResultCode: 'writerAbsent', phaseDiagnosticResultCode: 'deliveryUnverified', fixtureCleanupResultCode: 'fixtureRemoved',
     supervisorProcessResultCode: 'processCompleted', supervisorWorkerResultCode: 'workerResultValidated',
     supervisorCleanupResultCode: 'notRequired', scenarioResultCode: 'workspaceSuccessCompleted',
@@ -40,11 +40,14 @@ test('caller result is closed, bound to this invocation and requires every succe
     assert.throws(() => validateWorkspaceCallerResult({ ...payload, outcome: { ...payload.outcome, [key]: 'private' } }, binding));
   }
   for (const [key, value] of [['phaseWriterResultCode', 'writerExitUnverified'], ['fixtureRemoved', false],
-    ['businessDataPreserved', false], ['processTreeAbsent', false], ['postconditionResultCode', 'notChecked'],
+    ['businessDataPreserved', false], ['processTreeAbsent', false], ['productProcessAbsent', false],
+    ['productProcessAbsent', undefined], ['productProcessAbsent', 'true'], ['postconditionResultCode', 'notChecked'],
     ['semanticCleanupResultCode', 'semanticCleanupProcessRemains'], ['errorCode', 'private']]) {
     assert.throws(() => validateWorkspaceCallerResult({ ...payload, outcome: { ...payload.outcome, [key]: value } }, binding));
   }
   assert.throws(() => validateWorkspaceCallerResult(payload, { ...binding, invocationId: '0'.repeat(32) }));
+  assert.throws(() => validateWorkspaceCallerResult({ ...payload, outcome: { ...payload.outcome,
+    status: 'failed', errorCode: 'scenarioResultInvalid', productProcessAbsent: false } }, binding));
   assert.throws(() => parseWorkspaceCallerResult(Buffer.from('{"binding":{},"binding":{}}'), binding));
   assert.throws(() => parseWorkspaceCallerResult(Buffer.alloc(8193), binding));
   let accessed = false;
@@ -58,15 +61,21 @@ test('result file refuses reuse and preserves separate failed scenario and clean
   const input = await fixture(t);
   await workspaceCallerResultFile('prepare', input.resultPath, input.binding);
   await assert.rejects(workspaceCallerResultFile('prepare', input.resultPath, input.binding));
-  const payload = { binding: input.binding, outcome: { ...input.outcome, status: 'failed', errorCode: 'scenarioResultInvalid',
+  const payload = { binding: input.binding, outcome: { ...input.outcome, status: 'failed', errorCode: 'sourceProductResultInvalid',
+    failedPhase: 'targetInstall', scenarioResultCode: 'workspaceSuccessFailed',
     phaseWriterResultCode: 'writerExitUnverified', safetyErrorCode: 'phaseWriterExitUnverified',
     fixtureRemoved: false, fixtureCleanupResultCode: 'retainedUnverified' } };
   await workspaceCallerResultFile('publish', input.resultPath, payload);
   const bytes = await readFile(input.resultPath);
-  assert.equal(parseWorkspaceCallerResult(bytes, input.binding).outcome.errorCode, 'scenarioResultInvalid');
+  const published = parseWorkspaceCallerResult(bytes, input.binding).outcome;
+  assert.equal(published.errorCode, 'sourceProductResultInvalid');
+  assert.equal(published.failedPhase, 'targetInstall');
+  assert.equal(published.safetyErrorCode, 'phaseWriterExitUnverified');
+  assert.equal(published.fixtureCleanupResultCode, 'retainedUnverified');
   await assert.rejects(workspaceCallerResultFile('publish', input.resultPath, input.payload));
   assert.deepEqual(await readFile(input.resultPath), bytes);
   await assert.rejects(workspaceCallerResultFile('verify', input.resultPath, input.binding, 0));
+  await assert.rejects(workspaceCallerResultFile('verify', input.resultPath, input.binding, 1));
 });
 
 test('verifier rejects absent result and nonzero exit even with successful bytes', async (t) => {

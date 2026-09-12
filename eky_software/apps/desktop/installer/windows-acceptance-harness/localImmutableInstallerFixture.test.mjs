@@ -39,10 +39,14 @@ async function writeFixture(root) {
       timestamped: false,
     },
   };
-  const manifestPath = join(root, 'fixture.manifest.json');
+  const manifestPath = join(root, 'installer.manifest.json');
   await writeFile(join(root, packageFilename), packageBytes);
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-  return { manifestPath, packageSha256 };
+  const descriptorPath = join(root, 'clean-install-artifact.json');
+  const manifestSha256 = createHash('sha256').update(`${JSON.stringify(manifest, null, 2)}\n`).digest('hex');
+  await writeFile(descriptorPath, JSON.stringify({ schemaVersion: 1, buildRevision: manifest.buildRevision,
+    manifestSha256, payload: { stage: 'packagedApp', fileCount: 1, totalByteSize: 1, identity: 'b'.repeat(64) } }));
+  return { manifestPath: descriptorPath, packageSha256 };
 }
 
 test('local fixture is copied as independent bytes and bound to its manifest', async (testContext) => {

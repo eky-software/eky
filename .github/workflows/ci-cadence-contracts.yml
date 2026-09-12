@@ -1,0 +1,136 @@
+name: V2 risk-based CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '23 2 * * *'
+  workflow_dispatch:
+    inputs:
+      inspector_capture:
+        description: Record bounded inspector observations in legacy consumer 1 only
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v2-cadence-contracts-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  classification:
+    name: Classify CI risk
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      plan: ${{ steps.risk.outputs.plan }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: eky_software/.node-version
+          package-manager-cache: false
+      - name: Produce the closed risk plan
+        id: risk
+        env:
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CI_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node .github/scripts/classifyCiChanges.mjs
+
+  cadence_contracts:
+    name: V2 cadence contracts (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: eky_software/.node-version
+          package-manager-cache: false
+      - name: Verify risk and result contracts
+        run: node --test --test-concurrency=1 .github/scripts/ciRiskPolicy.test.mjs .github/scripts/ciAcceptanceResult.test.mjs .github/scripts/classifyCiChanges.test.mjs .github/scripts/ciRunAcceptance.test.mjs .github/scripts/verifyCiRun.test.mjs .github/scripts/legacyCaptureObservation.test.mjs
+
+  core:
+    needs: classification
+    uses: ./.github/workflows/ci.yml
+    with:
+      risk_plan: ${{ needs.classification.outputs.plan }}
+
+  supervisor:
+    needs: classification
+    if: fromJSON(needs.classification.outputs.plan).gates.windowsContracts
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/windows-acceptance-supervisor-feasibility.yml
+
+  clean:
+    needs: classification
+    if: fromJSON(needs.classification.outputs.plan).gates.cleanLifecycle
+    uses: ./.github/workflows/windows-acceptance-v2-clean.yml
+    with:
+      risk_plan: ${{ needs.classification.outputs.plan }}
+
+  upgrade:
+    needs: classification
+    if: fromJSON(needs.classification.outputs.plan).gates.upgradeRollback
+    uses: ./.github/workflows/windows-acceptance-v2-upgrade.yml
+    with:
+      risk_plan: ${{ needs.classification.outputs.plan }}
+
+  legacy:
+    needs: classification
+    if: fromJSON(needs.classification.outputs.plan).gates.legacyUpgrade
+    uses: ./.github/workflows/windows-acceptance-v2-legacy-diagnostic.yml
+    with:
+      risk_plan: ${{ needs.classification.outputs.plan }}
+      inspector_capture: ${{ github.event_name == 'workflow_dispatch' && inputs.inspector_capture }}
+
+  workspace:
+    needs: classification
+    if: fromJSON(needs.classification.outputs.plan).gates.workspaceSuccess
+    uses: ./.github/workflows/windows-acceptance-v2-workspace.yml
+    with:
+      risk_plan: ${{ needs.classification.outputs.plan }}
+
+  acceptance:
+    name: V2 acceptance
+    if: always()
+    needs: [classification, cadence_contracts, core, supervisor, clean, upgrade, legacy, workspace]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: eky_software/.node-version
+          package-manager-cache: false
+      - name: Require exact selected jobs and matrix members
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/scripts/verifyCiRun.mjs

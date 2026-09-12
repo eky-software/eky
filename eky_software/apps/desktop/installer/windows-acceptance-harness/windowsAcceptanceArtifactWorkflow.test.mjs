@@ -53,10 +53,15 @@ test('CI transfers one exact short-lived artifact to two isolated consumers', as
   );
   assert.match(producer, /timeout-minutes: 25/u);
   assert.match(producer, /timeout-minutes: 15/u);
+  assert.match(producer, /'pilotBundleResultCode'/u);
+  assert.match(producer, /\$summary\.pilotBundleResultCode -cne 'pilotBundleVerified'/u);
   assert.doesNotMatch(producer, /installer:v2-clean/u);
 
   assert.match(consumer, /needs: artifact_producer/u);
-  assert.match(consumer, /repetition: \[1, 2\]/u);
+  assert.match(producer, /artifact_id: \$\{\{ steps\.upload\.outputs\.artifact-id \}\}/u);
+  assert.match(consumer, /artifact-ids: \$\{\{ needs\.artifact_producer\.outputs\.artifact_id \}\}/u);
+  assert.match(consumer, /merge-multiple: true/u);
+  assert.ok(consumer.includes("repetition: ${{ fromJSON(inputs.risk_plan != '' && fromJSON(inputs.risk_plan).repetitions == 1 && '[1]' || '[1, 2]') }}"));
   assert.match(consumer, /max-parallel: 2/u);
   assert.equal(occurrenceCount(consumer, 'timeout-minutes: 12'), 1);
   assert.equal(occurrenceCount(consumer, 'timeout-minutes: 7'), 1);

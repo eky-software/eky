@@ -16,6 +16,7 @@ import { readUpgradeRollbackProgress } from './upgradeRollbackProgress.mjs';
 import { verifyWorkspaceSuccessArtifact } from './workspaceSuccessArtifact.mjs';
 import {
   WORKSPACE_SUCCESS_PROFILE_ERRORS, WORKSPACE_SUCCESS_PROOF_ERRORS, hasWorkspaceSuccessExactKeys,
+  WORKSPACE_INSTALLATION_INSPECTION_ERRORS as inspectionErrors,
   readWorkspaceSuccessObject, writeJsonAtomicExclusive,
 } from './workspaceSuccessContracts.mjs';
 import { WORKSPACE_FAULT_ERRORS, WORKSPACE_FAULT_SCENARIO, workspaceFaultPlan } from './workspaceFaultContracts.mjs';
@@ -102,36 +103,60 @@ async function createWorkspaceWindowsRuntime({
   const sessionPhases = faultScenario === undefined ? undefined
     : proofProtocol.getW6b2PackagedFaultSessionPhases(faultScenario);
 
-  async function inspectResult(script, arguments_, code) {
+  async function inspectResult(script, arguments_, { commandError, resultError, validate }) {
     const resultPath = resolve(scenarioRoot, `workspace-inspection-${inspectionSequence++}.json`);
+    let result;
+    let failure;
     try {
-      const exitCode = await runCommand(powershell, [
-        '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script,
-        ...arguments_, '-ResultPath', resultPath,
-      ], commandOptions);
-      if (exitCode !== 0) throw new Error(code);
-      return await readObject(resultPath, code, 64 * 1024);
-    } finally { await rm(resultPath, { force: true }); }
+      try {
+        const exitCode = await runCommand(powershell, [
+          '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script,
+          ...arguments_, '-ResultPath', resultPath,
+        ], commandOptions);
+        if (exitCode !== 0) throw new Error(commandError);
+      } catch { throw new Error(commandError); }
+      try { result = validate(await readObject(resultPath, resultError, 64 * 1024)); }
+      catch { throw new Error(resultError); }
+    } catch (error) { failure = error; }
+    try { await rm(resultPath, { force: true }); }
+    catch { failure ??= new Error(inspectionErrors.cleanup); }
+    if (failure) throw failure;
+    return result;
   }
 
-  async function inspectProducts() {
-    const source = validateInstallerProductStateResult(await inspectResult(PRODUCT_INSPECTOR,
-      ['-ProductCode', `{${artifact.source.productCode}}`], 'productInspectionFailed'));
-    const target = validateInstallerProductStateResult(await inspectResult(PRODUCT_INSPECTOR,
-      ['-ProductCode', `{${artifact.target.productCode}}`], 'productInspectionFailed'));
-    if (source.ekyProcessCount !== target.ekyProcessCount ||
-      source.ownedRegistryExists !== target.ownedRegistryExists) throw new Error('productInspectionFailed');
+  async function inspectIdleProducts() {
+    // ProductCode queries are separate observations, not an atomic snapshot.
+    // Only compare valid observations bracketed by MSI inactivity. A busy
+    // sample stays pending; malformed evidence and inspection failures do not.
+    if (!await requireMsiIdle()) return null;
+    const source = await inspectResult(PRODUCT_INSPECTOR,
+      ['-ProductCode', `{${artifact.source.productCode}}`], {
+        commandError: inspectionErrors.sourceCommand, resultError: inspectionErrors.sourceResult,
+        validate: validateInstallerProductStateResult,
+      });
+    const target = await inspectResult(PRODUCT_INSPECTOR,
+      ['-ProductCode', `{${artifact.target.productCode}}`], {
+        commandError: inspectionErrors.targetCommand, resultError: inspectionErrors.targetResult,
+        validate: validateInstallerProductStateResult,
+      });
+    if (!await requireMsiIdle()) return null;
+    if (source.ekyProcessCount !== target.ekyProcessCount) throw new Error(inspectionErrors.processMismatch);
+    if (source.ownedRegistryExists !== target.ownedRegistryExists) throw new Error(inspectionErrors.registryMismatch);
     return { source, target, ekyProcessCount: source.ekyProcessCount,
       installerRegistryExists: source.ownedRegistryExists };
   }
 
   async function requireMsiIdle() {
-    const value = await inspectResult(MSI_ACTIVITY_INSPECTOR, [], 'productInspectionFailed');
-    if (!hasWorkspaceSuccessExactKeys(value, ['schemaVersion', 'msiClientCount']) ||
-      value.schemaVersion !== 1 || !Number.isSafeInteger(value.msiClientCount) || value.msiClientCount < 0) {
-      throw new Error('productInspectionFailed');
-    }
-    return value.msiClientCount === 0;
+    return inspectResult(MSI_ACTIVITY_INSPECTOR, [], {
+      commandError: inspectionErrors.activityCommand, resultError: inspectionErrors.activityResult,
+      validate(value) {
+        if (!hasWorkspaceSuccessExactKeys(value, ['schemaVersion', 'msiClientCount']) ||
+          value.schemaVersion !== 1 || !Number.isSafeInteger(value.msiClientCount) || value.msiClientCount < 0) {
+          throw new Error(inspectionErrors.activityResult);
+        }
+        return value.msiClientCount === 0;
+      },
+    });
   }
 
   async function verifyBytes() {
@@ -165,8 +190,8 @@ async function createWorkspaceWindowsRuntime({
   return Object.freeze({
     versions: { source: artifact.source.msiProductVersion, target: artifact.target.msiProductVersion },
     async inspectState() {
-      const state = await inspectProducts();
-      if (!await requireMsiIdle()) throw new Error('productInspectionFailed');
+      const state = await inspectIdleProducts();
+      if (state === null) throw new Error(inspectionErrors.activityBusy);
       return { ...state, ...await inspectFootprint({ installRoot, executablePath, shortcutPath }) };
     },
     verifyArtifact: verifyBytes,
@@ -263,9 +288,8 @@ async function createWorkspaceWindowsRuntime({
         if (!terminal) { await nextObservation(); continue; }
         if (records.some((record) => record.event === 'failed')) throw new Error('sourceRollbackInstallFailed');
       }
-      const state = await inspectProducts();
-      const idle = await requireMsiIdle();
-      if (idle) {
+      const state = await inspectIdleProducts();
+      if (state !== null) {
         const other = role === 'source' ? 'target' : 'source';
         if (state[other].productState >= 1 || state[role].productState < 1 || state.ekyProcessCount !== 0) {
           throw new Error(role === 'source' ? 'sourceRollbackInstallFailed' : 'targetInstallFailed');

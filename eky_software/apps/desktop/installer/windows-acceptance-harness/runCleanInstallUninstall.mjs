@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { lstat, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -16,12 +16,14 @@ import {
   inventoriesMatch,
 } from './closedDirectoryInventory.mjs';
 import {
+  CleanInstallUninstallCommandFailure,
   cleanInstallUninstallFailureDetails,
   resolveCleanInstallUninstallTerminalOutcome,
 } from './cleanInstallUninstallFailureBoundary.mjs';
 import {
   createCleanInstallUninstallPostSupervisorWindowsRuntime,
 } from './cleanInstallUninstallPostSupervisorWindowsRuntime.mjs';
+import { areProductProcessesAbsent } from './installerProductOperationRuntime.mjs';
 import {
   readWindowsAcceptanceSupervisorResult,
 } from '../windows-process-supervisor/windowsAcceptanceSupervisorResult.mjs';
@@ -65,13 +67,13 @@ async function requireStandaloneRegularFile(path, errorCode) {
 export function parseCleanInstallUninstallArguments(arguments_) {
   if (
     arguments_.length !== 2 ||
-    arguments_[0] !== '--fixture-manifest' ||
+    arguments_[0] !== '--artifact-descriptor' ||
     typeof arguments_[1] !== 'string' ||
     arguments_[1].includes('\0')
   ) {
     throw new Error('WINDOWS_ACCEPTANCE_CLEAN_ARGUMENTS_INVALID');
   }
-  return Object.freeze({ manifestPath: resolve(arguments_[1]) });
+  return Object.freeze({ descriptorPath: resolve(arguments_[1]) });
 }
 
 function startSupervisor(requestPath, scenarioRoot) {
@@ -108,11 +110,20 @@ function safeErrorCode(error) {
     : 'WINDOWS_ACCEPTANCE_CLEAN_UNEXPECTED_FAILURE';
 }
 
-export async function runCleanInstallUninstall(arguments_) {
+export async function runCleanInstallUninstall(arguments_, {
+  inventoryProfile = createClosedDirectoryInventory,
+  materializeFixture = materializeLocalImmutableFixture,
+  verifyArtifact = verifyLocalImmutableSourceFixture,
+  createProductRuntime = createCleanInstallUninstallPostSupervisorWindowsRuntime,
+  launchSupervisor = startSupervisor,
+  readSupervisorResult = readWindowsAcceptanceSupervisorResult,
+  readScenarioResult = readCleanInstallUninstallResult,
+  removeRunRoot = (path) => rm(path, { force: true, recursive: true }),
+} = {}) {
   if (process.platform !== 'win32') {
     throw new Error('WINDOWS_ACCEPTANCE_CLEAN_WINDOWS_REQUIRED');
   }
-  const { manifestPath } = parseCleanInstallUninstallArguments(arguments_);
+  const { descriptorPath } = parseCleanInstallUninstallArguments(arguments_);
   const appData = process.env.APPDATA;
   if (!appData) {
     throw new Error('WINDOWS_ACCEPTANCE_CLEAN_ENVIRONMENT_INVALID');
@@ -122,10 +133,23 @@ export async function runCleanInstallUninstall(arguments_) {
     SUPERVISOR_DLL,
     'WINDOWS_ACCEPTANCE_SUPERVISOR_BINARY_INVALID',
   );
-  const runRoot = await mkdtemp(join(tmpdir(), 'eky-windows-acceptance-v2-'));
+  let temporaryRoot;
+  try {
+    temporaryRoot = await realpath(tmpdir());
+    const metadata = await lstat(temporaryRoot);
+    if (!metadata.isDirectory() || metadata.isSymbolicLink()) throw new Error();
+  } catch {
+    throw new Error('WINDOWS_ACCEPTANCE_CLEAN_TEMP_ROOT_INVALID');
+  }
+  const runRoot = await mkdtemp(join(temporaryRoot, 'eky-windows-acceptance-v2-'));
   const profileRoot = resolve(appData, 'Eky');
   let activeSupervisor = null;
   let fixture = null;
+  let productRuntime = null;
+  let supervisorAttempted = false;
+  let terminal = null;
+  let fixtureRemoved = false;
+  let fixtureCleanupResultCode = 'retainedUnverified';
   let primaryError = null;
   let profileAfter = null;
   let profileBefore = null;
@@ -142,10 +166,19 @@ export async function runCleanInstallUninstall(arguments_) {
   process.once('SIGINT', stopActiveSupervisor);
   process.once('SIGTERM', stopActiveSupervisor);
   try {
-    profileBefore = await createClosedDirectoryInventory(profileRoot);
-    fixture = await materializeLocalImmutableFixture(manifestPath, runRoot);
+    profileBefore = await inventoryProfile(profileRoot);
+    fixture = await materializeFixture(descriptorPath, runRoot);
     const scenarioRoot = resolve(runRoot, 'scenario');
     await mkdir(scenarioRoot, { recursive: false });
+    productRuntime = createProductRuntime({ manifest: fixture.manifest, scenarioRoot });
+    const precondition = await productRuntime.verifyExactProductState();
+    if (precondition?.status !== 'completed' || precondition.resultCode !== 'exactProductAbsent' ||
+      precondition.exactProductPresent !== false) {
+      throw new Error('WINDOWS_ACCEPTANCE_CLEAN_PRECONDITION_FAILED');
+    }
+    if (!areProductProcessesAbsent(productRuntime)) {
+      throw new Error('WINDOWS_ACCEPTANCE_CLEAN_PRODUCT_PROCESS_UNVERIFIED');
+    }
     const workerRequestPath = resolve(scenarioRoot, 'worker-request.json');
     const supervisorRequestPath = resolve(scenarioRoot, 'request.json');
     const workerRequest = createCleanInstallUninstallWorkerRequest({
@@ -165,10 +198,11 @@ export async function runCleanInstallUninstall(arguments_) {
       cleanupReserveMilliseconds: SUPERVISOR_CLEANUP_RESERVE_MILLISECONDS,
     });
 
-    activeSupervisor = startSupervisor(supervisorRequestPath, scenarioRoot);
+    supervisorAttempted = true;
+    activeSupervisor = launchSupervisor(supervisorRequestPath, scenarioRoot);
     const supervisorExitCode = await activeSupervisor.completion;
     activeSupervisor = null;
-    supervisorResult = await readWindowsAcceptanceSupervisorResult(
+    supervisorResult = await readSupervisorResult(
       resolve(scenarioRoot, 'result.json'),
       {
         artifactDescriptorSha256: fixture.artifactDescriptorSha256,
@@ -177,16 +211,11 @@ export async function runCleanInstallUninstall(arguments_) {
         supervisorExitCode,
       },
     );
-    const postSupervisorRuntime =
-      createCleanInstallUninstallPostSupervisorWindowsRuntime({
-        manifest: fixture.manifest,
-        scenarioRoot,
-      });
-    await resolveCleanInstallUninstallTerminalOutcome({
-      ...postSupervisorRuntime,
+    terminal = await resolveCleanInstallUninstallTerminalOutcome({
+      ...productRuntime,
       supervisorResult,
       readScenarioResult: () =>
-        readCleanInstallUninstallResult(
+        readScenarioResult(
           cleanResultPathForRequest(workerRequestPath),
           workerRequest,
         ),
@@ -203,16 +232,17 @@ export async function runCleanInstallUninstall(arguments_) {
       activeSupervisor.child.kill();
       await activeSupervisor.completion.catch(() => undefined);
     }
-    if (fixture !== null) {
+    if (!areProductProcessesAbsent(productRuntime)) safetyError ??= new Error('WINDOWS_ACCEPTANCE_CLEAN_PRODUCT_PROCESS_UNVERIFIED');
+    if (fixture !== null && areProductProcessesAbsent(productRuntime)) {
       try {
-        await verifyLocalImmutableSourceFixture(fixture);
+        await verifyArtifact(fixture);
       } catch {
         safetyError ??= new Error('WINDOWS_ACCEPTANCE_LOCAL_FIXTURE_CHANGED');
       }
     }
-    if (profileBefore !== null) {
+    if (profileBefore !== null && areProductProcessesAbsent(productRuntime)) {
       try {
-        profileAfter = await createClosedDirectoryInventory(profileRoot);
+        profileAfter = await inventoryProfile(profileRoot);
         if (!inventoriesMatch(profileBefore, profileAfter)) {
           throw new Error('WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED');
         }
@@ -220,31 +250,41 @@ export async function runCleanInstallUninstall(arguments_) {
         safetyError ??= new Error('WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED');
       }
     }
-    try {
-      await rm(runRoot, { force: true, recursive: true });
-      await lstat(runRoot).then(
-        () => {
-          throw new Error('WINDOWS_ACCEPTANCE_FIXTURE_CLEANUP_FAILED');
-        },
-        (error) => {
-          if (error?.code !== 'ENOENT') {
-            throw error;
-          }
-        },
-      );
-    } catch {
-      primaryError ??= new Error('WINDOWS_ACCEPTANCE_FIXTURE_CLEANUP_FAILED');
+    const failure = cleanInstallUninstallFailureDetails(primaryError);
+    const cleanupVerified = terminal !== null || (
+      ['notRequired', 'semanticCleanupCompleted'].includes(failure?.semanticCleanupResultCode) &&
+      ['exactProductAbsent', 'exactProductAbsentAfterCleanup'].includes(failure?.productStateVerificationResultCode)
+    );
+    if (safetyError === null && (!supervisorAttempted || (supervisorResult?.processTreeAbsent === true && cleanupVerified))) {
+      try {
+        await removeRunRoot(runRoot);
+        await lstat(runRoot).then(
+          () => {
+            throw new Error('WINDOWS_ACCEPTANCE_FIXTURE_CLEANUP_FAILED');
+          },
+          (error) => {
+            if (error?.code !== 'ENOENT') {
+              throw error;
+            }
+          },
+        );
+        fixtureRemoved = true;
+        fixtureCleanupResultCode = 'fixtureRemoved';
+      } catch {
+        fixtureCleanupResultCode = 'fixtureCleanupFailed';
+        primaryError ??= new Error('WINDOWS_ACCEPTANCE_FIXTURE_CLEANUP_FAILED');
+      }
     }
   }
 
-  if (safetyError) {
-    throw new Error(safeErrorCode(safetyError));
-  }
-  if (primaryError) {
-    if (cleanInstallUninstallFailureDetails(primaryError) !== null) {
-      throw primaryError;
-    }
-    throw new Error(safeErrorCode(primaryError));
+  if (primaryError || safetyError) {
+    throw new CleanInstallUninstallCommandFailure({ schemaVersion: 1, scenario: CLEAN_INSTALL_UNINSTALL_SCENARIO,
+      status: 'failed', errorCode: safeErrorCode(primaryError ?? safetyError),
+      ...cleanInstallUninstallFailureDetails(primaryError),
+      processTreeAbsent: supervisorResult?.processTreeAbsent === true,
+      productProcessAbsent: areProductProcessesAbsent(productRuntime),
+      safetyErrorCode: safetyError === null ? null : safeErrorCode(safetyError),
+      fixtureRemoved, fixtureCleanupResultCode });
   }
   return Object.freeze({
     schemaVersion: 1,
@@ -261,7 +301,8 @@ export async function runCleanInstallUninstall(arguments_) {
       (entry) => entry.kind === 'file',
     ).length,
     processTreeAbsent: supervisorResult.processTreeAbsent,
-    fixtureRemoved: true,
+    productProcessAbsent: areProductProcessesAbsent(productRuntime),
+    fixtureRemoved, fixtureCleanupResultCode,
   });
 }
 

@@ -4,6 +4,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   readdir,
   rm,
   unlink,
@@ -37,6 +38,7 @@ import {
   verifyLegacyUpgradeArtifact,
 } from './legacyUpgradeArtifact.mjs';
 import { parseLegacyUpgradeArtifactVerifierArguments } from './verifyLegacyUpgradeArtifact.mjs';
+import { createLegacyUpgradeFilesystemRuntime } from './legacyUpgradeFilesystemRuntime.mjs';
 
 const TARGET_BUILD_REVISION = 'a'.repeat(40);
 const DESKTOP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -186,9 +188,9 @@ async function createRoles(artifactRoot) {
   });
 }
 
-async function createArtifact(testContext) {
+async function createArtifact(testContext, canCleanup = () => true) {
   const root = await mkdtemp(resolve(tmpdir(), 'eky-v2-legacy-artifact-'));
-  testContext.after(() => rm(root, { force: true, recursive: true }));
+  testContext.after(() => canCleanup() ? rm(root, { force: true, recursive: true }) : undefined);
   const artifactRoot = resolve(root, 'artifact');
   await mkdir(artifactRoot);
   const roles = await createRoles(artifactRoot);
@@ -233,6 +235,26 @@ test('legacy artifact binds one historical source and one current target', async
     HISTORICAL_WINDOWS_INSTALLER_FIXTURE.expectedCommit,
   );
   assert.equal(verified.target.payloadInventory.identity, 'c'.repeat(64));
+});
+
+test('legacy filesystem leaf materializes the same artifact identity and preserves verifier failures', async (t) => {
+  const runtime = createLegacyUpgradeFilesystemRuntime();
+  const canCleanup = () => runtime.outcome().filesystemProcessAbsent;
+  const artifact = await createArtifact(t, canCleanup);
+  const root = await mkdtemp(resolve(await realpath(tmpdir()), 'eky-windows-acceptance-v2-legacy-'));
+  t.after(() => canCleanup() ? rm(root, { force: true, recursive: true }) : undefined);
+  const fixture = await runtime.materializeFixture(artifact.descriptorPath, resolve(root, 'fixture'));
+  assert.equal(fixture.descriptorSha256, artifact.descriptorSha256);
+  assert.equal(fixture.buildRevision, TARGET_BUILD_REVISION);
+  assert.equal(fixture.source.provenance.expectedCommit, HISTORICAL_WINDOWS_INSTALLER_FIXTURE.expectedCommit);
+  await runtime.verifyArtifact(fixture);
+  assert.deepEqual(await runtime.verifySemanticPostcondition({ artifact: fixture, runNonce: 'a'.repeat(64), runtimeRoot: root }),
+    { status: 'failed', errorCode: 'legacySourceEvidenceReadFailed' });
+  await writeFile(resolve(artifact.artifactRoot, 'target', 'Eky-0.2.7-x64.msi'), 'changed source');
+  await assert.rejects(runtime.verifyArtifact(fixture), /LEGACY_LOCAL_FIXTURE_CHANGED/);
+  assert.equal(await readFile(fixture.target.installerPath, 'utf8'), 'current target');
+  assert.equal(runtime.outcome().filesystemProcessAbsent, true);
+  assert.equal(runtime.outcome().filesystemErrorCode, 'WINDOWS_ACCEPTANCE_LEGACY_LOCAL_FIXTURE_CHANGED');
 });
 
 test('legacy descriptor rejects drifted identity and unknown fields', async (testContext) => {

@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
+import { resolve } from 'node:path';
 import test from 'node:test';
 
 import { executeWorkspaceSuccessLifecycle } from './workspaceSuccessLifecycle.mjs';
-import { WORKSPACE_SUCCESS_PHASES } from './workspaceSuccessContracts.mjs';
+import { WORKSPACE_INSTALLATION_INSPECTION_ERRORS, WORKSPACE_SUCCESS_PHASES,
+  createWorkspaceSuccessRequest, validateWorkspaceSuccessResult } from './workspaceSuccessContracts.mjs';
 
 function fixture({ failPhase, badProof, progressThrows = false } = {}) {
   let phase;
@@ -90,17 +92,19 @@ for (const [index, phase] of WORKSPACE_SUCCESS_PHASES.entries()) {
   });
 }
 
-for (const [name, change] of [
-  ['foreign installed product', (state) => { state.source.productName = 'Other'; }],
-  ['unknown footprint', (state) => { state.installRootExists = undefined; }],
-  ['existing Eky process', (state) => { state.ekyProcessCount = 1; }],
-  ['mismatched registry snapshot', (state) => { state.target.ownedRegistryExists = true; }],
+for (const [name, change, errorCode] of [
+  ['foreign installed product', (state) => { state.source.productName = 'Other'; }, 'preconditionFailed'],
+  ['unknown footprint', (state) => { state.installRootExists = undefined; }, 'preconditionFailed'],
+  ['existing Eky process', (state) => { state.ekyProcessCount = 1; }, 'installedProcessRemains'],
+  ['mismatched registry snapshot', (state) => { state.target.ownedRegistryExists = true; }, 'productRegistryObservationMismatch'],
 ]) {
   test(`${name} rejects before install`, async () => {
     const value = fixture();
     const inspect = value.runtime.inspectState;
     value.runtime.inspectState = async () => { const state = await inspect(); change(state); return state; };
-    assert.equal((await executeWorkspaceSuccessLifecycle(value.runtime)).status, 'failed');
+    const result = await executeWorkspaceSuccessLifecycle(value.runtime);
+    assert.equal(result.status, 'failed');
+    assert.equal(result.errorCode, errorCode);
     assert.deepEqual(value.calls, ['inspect']);
   });
 }
@@ -111,6 +115,23 @@ test('non-zero MSI result cannot advance to profile creation', async () => {
   const result = await executeWorkspaceSuccessLifecycle(value.runtime);
   assert.equal(result.errorCode, 'sourceInstallFailed');
   assert.equal(value.calls.includes('prepareProfile'), false);
+});
+
+test('installation inspection failures remain exact in progress and strict worker results', async () => {
+  const request = createWorkspaceSuccessRequest({ fixtureRoot: resolve('synthetic-artifact'),
+    artifactDescriptorSha256: 'a'.repeat(64), buildRevision: 'b'.repeat(40) });
+  for (const errorCode of Object.values(WORKSPACE_INSTALLATION_INSPECTION_ERRORS)) {
+    const value = fixture();
+    value.runtime.waitForTargetInstallation = async () => { throw new Error(errorCode); };
+    const result = await executeWorkspaceSuccessLifecycle(value.runtime);
+    assert.equal(result.status, 'failed');
+    assert.equal(result.failedPhase, 'targetInstall');
+    assert.equal(result.errorCode, errorCode);
+    assert.equal(value.evidence.at(-1).errorCode, errorCode);
+    assert.equal(value.calls.includes('proof:targetFirstStart:completed'), false);
+    assert.doesNotThrow(() => validateWorkspaceSuccessResult({ ...result, scenario: request.scenario,
+      runNonce: request.runNonce, artifactDescriptorSha256: request.artifactDescriptorSha256 }, request));
+  }
 });
 
 for (const proof of [

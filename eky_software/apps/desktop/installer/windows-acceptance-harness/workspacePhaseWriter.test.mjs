@@ -32,6 +32,12 @@ function writerFixture({ closeOnKill = true } = {}) {
 
 test('phase observation has exact versioned fields and safe values', () => {
   assert.deepEqual(parseWorkspacePhaseObservation(encodeWorkspacePhaseObservation(observation)), observation);
+  for (const phase of ['productChannelSetup', 'productSupervisorWait', 'productSupervisorExit',
+    'productSupervisorClose', 'productChannelCleanup', 'productHostLaunch', 'productHostSpawn',
+    'productHostDeadline', 'productHostTermination']) {
+    const value = { ...observation, phase };
+    assert.deepEqual(parseWorkspacePhaseObservation(encodeWorkspacePhaseObservation(value)), value);
+  }
   const forbidden = ['path', 'pid', 'command', 'session', 'companyId', 'error', 'stack', 'metadata', 'resultCode'];
   for (const key of forbidden) {
     assert.throws(() => encodeWorkspacePhaseObservation({ ...observation, [key]: 'synthetic-private' }));

@@ -67,6 +67,19 @@ export const WORKSPACE_SUCCESS_POSTCONDITION_ERRORS = Object.freeze([
   'profileRestartNotIdempotent', 'profileLifecycleInvalid', 'sessionProofInvalid',
   'profileCurrentStateChanged',
 ]);
+export const WORKSPACE_INSTALLATION_INSPECTION_ERRORS = Object.freeze({
+  sourceCommand: 'sourceProductInspectionFailed',
+  sourceResult: 'sourceProductResultInvalid',
+  targetCommand: 'targetProductInspectionFailed',
+  targetResult: 'targetProductResultInvalid',
+  activityCommand: 'msiActivityInspectionFailed',
+  activityResult: 'msiActivityResultInvalid',
+  activityBusy: 'msiActivityNotIdle',
+  processMismatch: 'productProcessObservationMismatch',
+  registryMismatch: 'productRegistryObservationMismatch',
+  processRemains: 'installedProcessRemains',
+  cleanup: 'inspectionResultCleanupFailed',
+});
 export const WORKSPACE_SUCCESS_ERRORS = Object.freeze([
   'requestInvalid', 'unexpectedFailure', 'preconditionFailed', 'artifactInvalid',
   'sourceInstallFailed', 'sourceStateInvalid', 'profilePreparationFailed',
@@ -75,6 +88,7 @@ export const WORKSPACE_SUCCESS_ERRORS = Object.freeze([
   'firstStartBFailed', 'restartBFailed', 'switchToAFailed', 'rejectionCFailed',
   'proofResultInvalid', 'profileResultInvalid', ...WORKSPACE_SUCCESS_POSTCONDITION_ERRORS, 'electronRuntimeUnavailable',
   'ownedProcessStartFailed', 'ownedProcessExitInvalid', 'productInspectionFailed',
+  ...Object.values(WORKSPACE_INSTALLATION_INSPECTION_ERRORS),
   'profileResultUnreadable', ...Object.values(WORKSPACE_SUCCESS_PROFILE_ERRORS),
   'proofResultUnreadable', ...WORKSPACE_SUCCESS_PROOF_ERRORS,
 ]);

@@ -26,6 +26,12 @@ const SEMANTIC_VALIDATION_FAILURE_CODES = new Set([
   'legacyTargetPayloadChanged',
 ]);
 
+export const LEGACY_SEMANTIC_POSTCONDITION_FAILURE_CODES = Object.freeze([
+  ...Object.values(POSTCONDITION_FAILURE_CODES),
+  ...SEMANTIC_VALIDATION_FAILURE_CODES,
+  'legacySemanticProofFailed',
+]);
+
 function equal(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }

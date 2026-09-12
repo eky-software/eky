@@ -11,6 +11,9 @@ import {
   verifyInstallerManifestPackage,
 } from '../installerManifest.mjs';
 import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
+import { readWindowsAcceptanceArtifactDescriptor, CLEAN_ARTIFACT_DESCRIPTOR_FILENAME } from './windowsAcceptanceArtifactDescriptor.mjs';
+import { verifyCleanInstalledPayload, damageCleanRepairPayload } from './cleanInstallUninstallPayload.mjs';
+import { createClosedDirectoryInventory, inventoriesMatch } from './closedDirectoryInventory.mjs';
 
 const INSPECTOR_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -128,11 +131,19 @@ export async function createCleanInstallUninstallWindowsRuntime(
   );
   const logRoot = resolve(dirname(request.fixtureRoot), 'msi-logs');
   await mkdir(logRoot, { recursive: false });
+  const { descriptor } = await readWindowsAcceptanceArtifactDescriptor(
+    resolve(request.fixtureRoot, CLEAN_ARTIFACT_DESCRIPTOR_FILENAME), request.artifactDescriptorSha256,
+  );
+  const profileRoot = resolve(appData, 'Eky');
+  const profileBefore = await createClosedDirectoryInventory(profileRoot);
   let stateSequence = 0;
 
   async function verifyFixture() {
     try {
-      if ((await hashFile(manifestPath)) !== request.artifactDescriptorSha256) {
+      await readWindowsAcceptanceArtifactDescriptor(
+        resolve(request.fixtureRoot, CLEAN_ARTIFACT_DESCRIPTOR_FILENAME), request.artifactDescriptorSha256,
+      );
+      if ((await hashFile(manifestPath)) !== descriptor.manifestSha256) {
         throw new Error('fixtureVerificationFailed');
       }
       const currentManifest = await readInstallerManifest(manifestPath);
@@ -201,12 +212,13 @@ export async function createCleanInstallUninstallWindowsRuntime(
   }
 
   async function runMsiOperation(operation) {
-    if (!['cleanup', 'install', 'uninstall'].includes(operation)) {
+    if (!['cleanup', 'install', 'uninstall', 'repair', 'reinstall', 'finalUninstall'].includes(operation)) {
       throw new Error('unexpectedFailure');
     }
     const msiexec = resolve(systemRoot, 'System32', 'msiexec.exe');
     const operationArguments =
-      operation === 'install' ? ['/i', installerPath] : ['/x', productCode];
+      ['install', 'reinstall'].includes(operation) ? ['/i', installerPath] :
+        operation === 'repair' ? ['/fa', productCode] : ['/x', productCode];
     const logPath = resolve(logRoot, `${operation}.log`);
     try {
       return await runOwnedProcess(msiexec, [
@@ -221,5 +233,13 @@ export async function createCleanInstallUninstallWindowsRuntime(
     }
   }
 
-  return Object.freeze({ inspectState, runMsiOperation, verifyFixture });
+  return Object.freeze({ inspectState, runMsiOperation, verifyFixture,
+    verifyPayload: () => verifyCleanInstalledPayload(installRoot, descriptor.payload),
+    damageRepairPayload: () => damageCleanRepairPayload(installRoot, descriptor.payload),
+    async verifyProfile() {
+      if (!inventoriesMatch(profileBefore, await createClosedDirectoryInventory(profileRoot))) {
+        throw new Error('cleanProfileChanged');
+      }
+    },
+  });
 }

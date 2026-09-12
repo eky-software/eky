@@ -88,6 +88,37 @@ juuriprosessin todellista exit-tapahtumaa. Pakotettu prosessipuun cleanup on
 rajattu varmistus vain silloin, kun tapahtumaa ei saada turvallisen
 enimmäisajan sisällä; kiinteä odotus ei ole onnistumissignaali.
 
+Electron-fixture erottaa `playwrightConnect`-, `firstWindow`- ja
+`domContentLoaded`-vaiheet. Virheen luokka perustuu Playwrightin timeout-tyyppiin
+tai havaittuun prosessin poistumiseen / sivun sulkeutumiseen; tuntematon syy
+säilyy tuntemattomana. Vaihehavainto ei muuta aikarajoja eikä toimi readiness-
+signaalina. Runtime- ja prosessikahva siirtyvät fixturen omistukseen heti
+yhteyden valmistuttua, ennen ikkunan odottamista. Sama prosessikahva säilyy
+virheluokitusta ja siivousta varten; sitä ei haeta uudelleen jo suljetun
+Playwright-yhteyden kautta. Myös restart käyttää nykyistä omistetun runtimen
+sulkemista ennen uuden sukupolven käynnistämistä.
+Sovelluksen oman relaunchin jo sulkema kahva käsitellään olemassa olevalla
+suljetun kahvan siivouspolulla vasta havaitun `close`-tapahtuman jälkeen.
+Tapahtuma ei korvaa prosessisiivouksen tai portin vapautumisen tarkistusta.
+
+Epäonnistuneen yrityksen `electron-lifecycle`-liite sisältää vain version,
+yritysnumeron, rajatun vaiheluettelon ja erilliset API-, runtime-, portti- ja
+testijuuren siivoustulokset. Se kerätään myös ensimmäisestä yrityksestä,
+ei vain retrystä. Raakavirheitä, URL:eja, sessionia, prosessitulostetta tai
+ympäristöä ei kopioida liitteeseen. Playwrightin testivirhe säilyy ensisijaisena;
+myöhempi siivous ei muuta sitä onnistumiseksi.
+Sama turvallinen sisältö tallentuu yrityskohtaiseen
+`electron-lifecycle.json`-tiedostoon. Electron-CI säilyttää vain nämä tiedostot
+yhden päivän artifactina, myös ensimmäisestä epäonnistumisesta ennen retryä.
+Koko `test-results`-kansiota, tracea, profiilia tai raakaa lokia ei julkaista.
+
+Testijuurta ei poisteta, jos runtimen, portin tai API-kahvan siivous jäi
+varmentamatta. Yhteyden epäonnistuessa ennen runtime-kahvan saamista sen
+omistajuutta ei arvata portin vapautumisen perusteella. Aiemman epävarman
+siivouksen jälkeinen onnistunut loppuyritys ei myöskään oikeuta aineiston
+poistoon. Säilytetty aineisto jää yksityiseen testijuureen; se ei ole
+julkaistava CI-artifact tai yleinen retention-järjestelmä.
+
 System-fixture voi hallitussa recovery-testissä pysäyttää backendin ja
 käynnistää sen uudelleen samalla testikohtaisella SQLite-kannalla ja samalla
 loopback-portilla. Uusi runtime saa aina uuden sessionin ja

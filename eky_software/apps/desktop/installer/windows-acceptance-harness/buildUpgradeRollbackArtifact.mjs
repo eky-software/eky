@@ -222,6 +222,7 @@ async function buildRoleInstaller({
   return Object.freeze({
     manifestPath,
     payloadFileCount: installer.payloadFileCount,
+    payload: installer.inventory,
   });
 }
 
@@ -353,6 +354,7 @@ async function materializeRole(stagedRole, artifactRoot, roleName) {
     msiProductVersion: fixture.manifest.msiProductVersion,
     packageSha256: fixture.manifest.packageSha256,
     packageSize: fixture.manifest.packageSize,
+    payload: stagedRole.payload,
     productCode: createInstallerProductCode(fixture.manifest.msiProductVersion),
   });
 }

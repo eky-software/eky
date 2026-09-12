@@ -33,14 +33,15 @@ function bracedProductCode(productCode) {
   return `{${productCode}}`;
 }
 
-async function startOwnedProcess(command, arguments_, options = {}) {
-  const child = spawn(command, arguments_, {
+export async function startLegacyOwnedProcess(command, arguments_, options = {}, { spawnProcess = spawn } = {}) {
+  const child = spawnProcess(command, arguments_, {
     cwd: options.cwd,
     env: options.env,
     stdio: options.stdio ?? 'ignore',
     windowsHide: options.windowsHide ?? true,
   });
   let processId = null;
+  let processError = false;
   const started = new Promise((resolvePromise, rejectPromise) => {
     child.once('spawn', () => {
       if (!Number.isInteger(child.pid)) {
@@ -55,14 +56,20 @@ async function startOwnedProcess(command, arguments_, options = {}) {
     );
   });
   const completion = new Promise((resolvePromise, rejectPromise) => {
-    child.once('error', () =>
-      rejectPromise(new Error('ownedProcessStartFailed')),
-    );
+    // An error can follow spawn (for example a failed send/kill); it is not an exit receipt.
+    child.on('error', () => { processError = true; });
     child.once('close', (exitCode, signal) => {
+      if (!Number.isInteger(processId)) {
+        rejectPromise(new Error('ownedProcessStartFailed'));
+        return;
+      }
+      if (processError) {
+        rejectPromise(new Error('ownedProcessOperationFailed'));
+        return;
+      }
       if (
         signal !== null ||
-        !Number.isInteger(exitCode) ||
-        !Number.isInteger(processId)
+        !Number.isInteger(exitCode)
       ) {
         rejectPromise(new Error('ownedProcessExitInvalid'));
         return;
@@ -81,7 +88,7 @@ async function startOwnedProcess(command, arguments_, options = {}) {
 }
 
 async function runOwnedProcess(command, arguments_, options = {}) {
-  return (await startOwnedProcess(command, arguments_, options)).completion;
+  return (await startLegacyOwnedProcess(command, arguments_, options)).completion;
 }
 
 async function pathKind(path, role, expectedKind, readMetadata) {
@@ -329,7 +336,7 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact) {
     await runHistoricalPackagedSmokeProcessChain({
       resultPath: smokeResultPath,
       startGeneration(phase) {
-        return startOwnedProcess(
+        return startLegacyOwnedProcess(
           executablePath,
           phase === 'initial'
             ? ['--desktop-smoke']
@@ -377,7 +384,7 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact) {
   async function runInstalledApplication(expectedIdentity) {
     const logDirectory = resolve(userDataRoot, 'runtime', 'logs', 'desktop');
     const baselineEventIds = await captureDesktopLifecycleBaseline(logDirectory);
-    const application = await startOwnedProcess(
+    const application = await startLegacyOwnedProcess(
       executablePath,
       [`--user-data-dir=${userDataRoot}`],
       {

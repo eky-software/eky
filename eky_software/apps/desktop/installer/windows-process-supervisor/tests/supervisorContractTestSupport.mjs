@@ -7,6 +7,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   rm,
   writeFile,
 } from 'node:fs/promises';
@@ -67,7 +68,7 @@ async function pathExists(path) {
 }
 
 export async function createRunContext(label) {
-  const testRoot = await mkdtemp(join(tmpdir(), 'eky supervisor '));
+  const testRoot = await mkdtemp(join(await realpath(tmpdir()), 'eky supervisor '));
   const runNonce = randomBytes(32).toString('hex');
   const runRoot = join(testRoot, runNonce);
   const requestPath = join(testRoot, 'request.json');
@@ -159,8 +160,10 @@ export function startSupervisor(
   context,
   {
     captureOutput = true,
+    unreadOutput = false,
     dotnetArguments = ['--request', context.requestPath],
     dotnetAssembly = SUPERVISOR_DLL,
+    environment = process.env,
   } = {},
 ) {
   const evidence = [];
@@ -174,8 +177,9 @@ export function startSupervisor(
     [dotnetAssembly, ...dotnetArguments],
     {
       cwd: context.testRoot,
-      stdio: captureOutput ? ['ignore', 'pipe', 'pipe'] : 'ignore',
+      stdio: captureOutput || unreadOutput ? ['ignore', 'pipe', 'pipe'] : 'ignore',
       windowsHide: true,
+      env: environment,
     },
   );
   activeSupervisorProcesses.add(child);

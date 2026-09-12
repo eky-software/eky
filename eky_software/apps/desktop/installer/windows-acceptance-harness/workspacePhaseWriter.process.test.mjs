@@ -61,6 +61,7 @@ for (const mode of ['normal', 'unread', 'brokenChannel', 'brokenOutput', 'writer
       });
       const result = parseWorkspaceCallerResult(await readFile(callerResultPath), binding);
       assert.equal(result.outcome.status, callerExit === 0 ? 'completed' : 'failed');
+      assert.equal(result.outcome.productProcessAbsent, true);
       if (callerExit !== 0) assert.equal(result.outcome.errorCode, 'scenarioResultInvalid');
     }
     assert.equal(report.verificationExit, callerExit === 0 ? 0 : 1);

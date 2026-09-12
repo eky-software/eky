@@ -4,6 +4,7 @@ import test from 'node:test';
 
 import { WORKSPACE_FAULT_PLANS, createWorkspaceFaultRequest, validateWorkspaceFaultResult } from './workspaceFaultContracts.mjs';
 import { executeWorkspaceFaultLifecycle } from './workspaceFaultLifecycle.mjs';
+import { WORKSPACE_INSTALLATION_INSPECTION_ERRORS } from './workspaceSuccessContracts.mjs';
 
 function fixture(faultScenario, { failPhase, progressThrows = false } = {}) {
   let currentPhase;
@@ -124,6 +125,24 @@ test('non-zero source install cannot prepare a profile', async () => {
   const result = await executeWorkspaceFaultLifecycle('acceptanceInterruption', value.runtime);
   assert.equal(result.errorCode, 'sourceInstallFailed');
   assert.equal(value.calls.includes('prepare'), false);
+});
+
+test('shared installation inspection failures survive fault progress and strict worker validation', async () => {
+  const scenario = 'acceptanceInterruption';
+  const request = createWorkspaceFaultRequest({ faultScenario: scenario, fixtureRoot: resolve('synthetic-artifact'),
+    artifactDescriptorSha256: 'a'.repeat(64), buildRevision: 'b'.repeat(40) });
+  for (const errorCode of Object.values(WORKSPACE_INSTALLATION_INSPECTION_ERRORS)) {
+    const value = fixture(scenario);
+    value.runtime.waitForInstallation = async () => { throw new Error(errorCode); };
+    const result = await executeWorkspaceFaultLifecycle(scenario, value.runtime);
+    assert.equal(result.status, 'failed');
+    assert.equal(result.failedPhase, 'targetInstall');
+    assert.equal(result.errorCode, errorCode);
+    assert.equal(value.evidence.at(-1).errorCode, errorCode);
+    assert.equal(value.calls.includes('proof:targetAcceptanceInterruption:interrupted'), false);
+    assert.doesNotThrow(() => validateWorkspaceFaultResult({ ...result, scenario: request.scenario,
+      faultScenario: scenario, runNonce: request.runNonce, artifactDescriptorSha256: request.artifactDescriptorSha256 }, request));
+  }
 });
 
 test('wrong format, scenario, phase, status, absent proof and extra private fields all stop handoff', async () => {

@@ -4,6 +4,7 @@ import { dirname, isAbsolute, resolve } from 'node:path';
 
 import { writeJsonAtomicExclusive } from './cleanInstallUninstallContracts.mjs';
 import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
+import { validateRunningUpgradeObservation } from './runningUpgradeObservation.mjs';
 
 export const UPGRADE_ROLLBACK_SCENARIO = 'upgradeRollback';
 
@@ -17,6 +18,7 @@ const REQUEST_KEYS = [
   'schemaVersion',
 ];
 const RESULT_KEYS = [
+  'applicationCleanupResultCode',
   'artifactBytesValidated',
   'artifactDescriptorSha256',
   'binaryRollbackExitCode',
@@ -27,9 +29,13 @@ const RESULT_KEYS = [
   'errorCode',
   'finalStateValidated',
   'finalUninstallExitCode',
+  'installedPayloadValidated',
   'majorUpgradeValidated',
   'resultCode',
   'runNonce',
+  'runningApplicationUpgradeValidated',
+  'runningUpgradeInitialExitCode',
+  'runningUpgradeObservation',
   'scenario',
   'schemaVersion',
   'sourceInstallExitCode',
@@ -119,12 +125,16 @@ export function validateUpgradeRollbackResult(value, expected) {
     ) ||
     !validExitCode(value.sourceInstallExitCode) ||
     !validExitCode(value.upgradeExitCode) ||
+    !validExitCode(value.runningUpgradeInitialExitCode) ||
     !validExitCode(value.downgradeExitCode) ||
     !validExitCode(value.binaryRollbackExitCode) ||
     !validExitCode(value.windowsInstallerRollbackExitCode) ||
     !validExitCode(value.finalUninstallExitCode) ||
     typeof value.sourceInstalledStateValidated !== 'boolean' ||
     typeof value.majorUpgradeValidated !== 'boolean' ||
+    typeof value.runningApplicationUpgradeValidated !== 'boolean' ||
+    typeof value.installedPayloadValidated !== 'boolean' ||
+    !['notRequired', 'completed', 'cleanupUnverified'].includes(value.applicationCleanupResultCode) ||
     typeof value.downgradeRejected !== 'boolean' ||
     typeof value.binaryRollbackRestoredSource !== 'boolean' ||
     typeof value.windowsInstallerRollbackRestoredSource !== 'boolean' ||
@@ -134,6 +144,9 @@ export function validateUpgradeRollbackResult(value, expected) {
     throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_RESULT_INVALID');
   }
 
+  try { validateRunningUpgradeObservation(value.runningUpgradeObservation); }
+  catch { throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_RESULT_INVALID'); }
+
   if (
     value.status === 'completed' &&
     value.resultCode === 'upgradeRollbackCompleted' &&
@@ -141,6 +154,7 @@ export function validateUpgradeRollbackResult(value, expected) {
     value.cleanupResultCode === 'notRequired' &&
     value.sourceInstallExitCode === 0 &&
     value.upgradeExitCode === 0 &&
+    [0, 1603].includes(value.runningUpgradeInitialExitCode) &&
     value.downgradeExitCode !== 0 &&
     ![1641, 3010].includes(value.downgradeExitCode) &&
     value.binaryRollbackExitCode === 0 &&
@@ -149,6 +163,9 @@ export function validateUpgradeRollbackResult(value, expected) {
     value.finalUninstallExitCode === 0 &&
     value.sourceInstalledStateValidated &&
     value.majorUpgradeValidated &&
+    value.runningApplicationUpgradeValidated &&
+    value.installedPayloadValidated &&
+    value.applicationCleanupResultCode === 'completed' &&
     value.downgradeRejected &&
     value.binaryRollbackRestoredSource &&
     value.windowsInstallerRollbackRestoredSource &&

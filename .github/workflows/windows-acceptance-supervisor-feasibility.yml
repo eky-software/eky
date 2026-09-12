@@ -1,12 +1,7 @@
 name: Windows acceptance supervisor feasibility
 
 on:
-  pull_request:
-    paths:
-      - .github/workflows/windows-acceptance-supervisor-feasibility.yml
-      - eky_software/apps/desktop/installer/windows-process-supervisor/**
-      - eky_software/apps/desktop/package.json
-      - eky_software/docs/architecture/windows-installer-acceptance-harness-v2.md
+  workflow_call:
   workflow_dispatch:
     inputs:
       mode:
@@ -18,24 +13,48 @@ on:
           - window-startup-diagnostic
           - legacy-contracts-diagnostic
           - legacy-worker-diagnostic
+          - inspector-analysis-diagnostic
+          - inspector-external-diagnostic
+          - packaged-boundary-diagnostic
+      artifact_kind:
+        description: Existing artifact consumer (diagnostic only)
+        type: choice
+        options: [legacy, workspace, upgrade]
+      artifact_run_id:
+        description: Original artifact producer run ID
+        type: string
+      artifact_id:
+        description: Exact immutable artifact ID
+        type: string
+      artifact_build_revision:
+        description: Original artifact build revision
+        type: string
+      artifact_descriptor_sha256:
+        description: Expected original descriptor SHA-256
+        type: string
+      inspector_capture:
+        description: One opt-in legacy diagnostic; raw WPR data stays in runner temp
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: windows-acceptance-supervisor-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
+  group: windows-acceptance-supervisor-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}-${{ inputs.mode == 'packaged-boundary-diagnostic' && inputs.artifact_kind || '' }}
   cancel-in-progress: true
 
 jobs:
   job-object-feasibility:
-    name: ${{ inputs.mode == 'window-startup-diagnostic' && 'V2.5 window startup diagnostic (not acceptance)' || inputs.mode == 'legacy-worker-diagnostic' && format('V2.5 worker diagnostic run {0} (not acceptance)', matrix.repetition) || inputs.mode == 'legacy-contracts-diagnostic' && format('V2.5 contracts diagnostic run {0} (not acceptance)', matrix.repetition) || format('Windows Job Object feasibility run {0}', matrix.repetition) }}
+    if: inputs.mode != 'packaged-boundary-diagnostic'
+    name: ${{ inputs.mode == 'inspector-external-diagnostic' && 'External inspector capture (no MSI, not acceptance)' || inputs.mode == 'inspector-analysis-diagnostic' && 'Inspector analysis diagnostic (no MSI, not acceptance)' || inputs.mode == 'window-startup-diagnostic' && 'V2.5 window startup diagnostic (not acceptance)' || inputs.mode == 'legacy-worker-diagnostic' && format('V2.5 worker diagnostic run {0} (not acceptance)', matrix.repetition) || inputs.mode == 'legacy-contracts-diagnostic' && format('V2.5 contracts diagnostic run {0} (not acceptance)', matrix.repetition) || format('Windows Job Object feasibility run {0}', matrix.repetition) }}
     runs-on: windows-latest
     timeout-minutes: 10
 
     strategy:
       fail-fast: false
       matrix:
-        repetition: ${{ fromJSON(inputs.mode == 'window-startup-diagnostic' && '[1]' || '[1, 2]') }}
+        repetition: ${{ fromJSON((inputs.mode == 'window-startup-diagnostic' || inputs.mode == 'inspector-analysis-diagnostic' || inputs.mode == 'inspector-external-diagnostic') && '[1]' || '[1, 2]') }}
 
     defaults:
       run:
@@ -72,7 +91,7 @@ jobs:
         run: node installer/windows-process-supervisor/buildWindowsAcceptanceSupervisor.mjs
 
       - name: Run supervisor unit and process contracts
-        if: inputs.mode != 'window-startup-diagnostic' && inputs.mode != 'legacy-contracts-diagnostic' && inputs.mode != 'legacy-worker-diagnostic'
+        if: inputs.mode != 'window-startup-diagnostic' && inputs.mode != 'legacy-contracts-diagnostic' && inputs.mode != 'legacy-worker-diagnostic' && inputs.mode != 'inspector-analysis-diagnostic' && inputs.mode != 'inspector-external-diagnostic'
         run: >-
           node --test --test-concurrency=1
           installer/windows-process-supervisor/tests/windowsAcceptanceSupervisorResult.test.mjs
@@ -115,3 +134,213 @@ jobs:
         run: >-
           node --test --test-concurrency=1
           installer/windows-acceptance-harness/runLegacyUpgradeWorker.test.mjs
+
+      - name: Start bounded inspector analysis fixture capture
+        id: inspector_analysis_start
+        if: inputs.mode == 'inspector-analysis-diagnostic' || inputs.mode == 'inspector-external-diagnostic'
+        timeout-minutes: 1
+        shell: pwsh
+        run: ./installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode start
+
+      - name: Exercise existing native hold command without MSI
+        if: inputs.mode == 'inspector-analysis-diagnostic'
+        timeout-minutes: 2
+        run: >-
+          node --test --test-concurrency=1
+          --test-name-pattern="^legacy fixed command entrypoint completes the real phase chain: productInspectionNativeHold$"
+          installer/windows-acceptance-harness/legacyCommandEntrypoint.process.test.mjs
+
+      - name: Exercise one real read-only inspector without an internal listener
+        if: inputs.mode == 'inspector-external-diagnostic'
+        timeout-minutes: 2
+        run: >-
+          node --test --test-concurrency=1
+          --test-name-pattern="^legacy fixed command entrypoint completes the real phase chain: productInspectionReadOnly$"
+          installer/windows-acceptance-harness/legacyCommandEntrypoint.process.test.mjs
+
+      - name: Stop bounded inspector analysis fixture capture
+        id: inspector_analysis_stop
+        if: always() && (inputs.mode == 'inspector-analysis-diagnostic' || inputs.mode == 'inspector-external-diagnostic') && steps.inspector_analysis_start.outcome != 'skipped'
+        timeout-minutes: 2
+        shell: pwsh
+        run: ./installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode stop
+
+      - name: Verify exporter reader and intentional wait without MSI
+        if: always() && inputs.mode == 'inspector-analysis-diagnostic' && steps.inspector_analysis_stop.outcome == 'success'
+        timeout-minutes: 3
+        shell: pwsh
+        run: |
+          $output = & ./installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode analyze
+          $exitCode = $LASTEXITCODE
+          $output | Write-Output
+          if ($exitCode -ne 0) { throw 'INSPECTOR_ANALYSIS_DIAGNOSTIC_FAILED' }
+          $summaries = @($output | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object { $_.phase -ceq 'analysis' })
+          if ($summaries.Count -ne 1 -or $summaries[0].firstBoundary -cne 'scriptStarted' -or
+              $summaries[0].lastBoundary -cne 'comCreationStarted' -or
+              $summaries[0].schedulingObservation -cne 'switchIntervalAfterLastEvent' -or
+              $summaries[0].scriptFinishedObserved -ne $false) {
+            throw 'INSPECTOR_SYNTHETIC_WAIT_UNVERIFIED'
+          }
+
+      - name: Compare two event views on the same stopped trace
+        if: always() && inputs.mode == 'inspector-external-diagnostic' && steps.inspector_analysis_stop.outcome == 'success'
+        timeout-minutes: 3
+        shell: pwsh
+        run: ./installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode compareEvents
+
+  packaged-boundary-diagnostic:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'packaged-boundary-diagnostic'
+    name: Existing ${{ inputs.artifact_kind }} artifact caller diagnostic (not acceptance)
+    runs-on: windows-latest
+    timeout-minutes: ${{ inputs.artifact_kind == 'legacy' && 37 || 30 }}
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        working-directory: eky_software
+        shell: pwsh
+    env:
+      ARTIFACT_KIND: ${{ inputs.artifact_kind }}
+      ARTIFACT_RUN_ID: ${{ inputs.artifact_run_id }}
+      ARTIFACT_ID: ${{ inputs.artifact_id }}
+      EXPECTED_BUILD_REVISION: ${{ inputs.artifact_build_revision }}
+      EXPECTED_DESCRIPTOR_SHA256: ${{ inputs.artifact_descriptor_sha256 }}
+      INSPECTOR_CAPTURE: ${{ inputs.inspector_capture }}
+    steps:
+      - name: Check out exact diagnostic harness revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Validate closed diagnostic identity before download
+        run: |
+          if ($env:INSPECTOR_CAPTURE -ceq 'true' -and $env:ARTIFACT_KIND -cne 'legacy') {
+            throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CAPTURE_SCOPE_INVALID'
+          }
+          if ($env:ARTIFACT_KIND -cnotin @('legacy', 'workspace', 'upgrade') -or
+              $env:ARTIFACT_RUN_ID -cnotmatch '^[1-9][0-9]{0,19}$' -or
+              $env:ARTIFACT_ID -cnotmatch '^[1-9][0-9]{0,19}$' -or
+              $env:EXPECTED_BUILD_REVISION -cnotmatch '^[0-9a-f]{40}$' -or
+              $env:EXPECTED_DESCRIPTOR_SHA256 -cnotmatch '^[0-9a-f]{64}$') {
+            throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_IDENTITY_INVALID'
+          }
+          $head = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $head -cne $env:GITHUB_SHA) {
+            throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CHECKOUT_INVALID'
+          }
+          [ordered]@{ schemaVersion = 1; diagnosticOnly = $true;
+            harnessRevision = $head; artifactBuildRevision = $env:EXPECTED_BUILD_REVISION;
+            artifactRunId = $env:ARTIFACT_RUN_ID; artifactId = $env:ARTIFACT_ID;
+            descriptorSha256 = $env:EXPECTED_DESCRIPTOR_SHA256 } | ConvertTo-Json -Compress
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: eky_software/.node-version
+          package-manager-cache: false
+
+      - name: Set up existing .NET SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: 10.0.302
+
+      - name: Bind verified SDK and install existing locked dependencies
+        run: |
+          $dotnet = (Get-Command dotnet.exe -CommandType Application -ErrorAction Stop).Source
+          if (-not [IO.Path]::IsPathFullyQualified($dotnet) -or (& $dotnet --version) -cne '10.0.302') {
+            throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_SDK_INVALID'
+          }
+          "EKY_DOTNET_EXE=$dotnet" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          corepack enable
+          pnpm install --frozen-lockfile
+          if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_PREPARATION_FAILED' }
+
+      - name: Download only the specified existing artifact
+        id: download
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          artifact-ids: ${{ inputs.artifact_id }}
+          run-id: ${{ inputs.artifact_run_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/eky-existing-boundary-artifact
+
+      - name: Verify existing artifact before diagnostic
+        run: |
+          $verifier = switch -CaseSensitive ($env:ARTIFACT_KIND) {
+            'legacy' { 'verifyLegacyUpgradeArtifact.mjs' }
+            'workspace' { 'verifyWorkspaceSuccessArtifact.mjs' }
+            'upgrade' { 'verifyUpgradeRollbackArtifact.mjs' }
+          }
+          $root = Join-Path $env:RUNNER_TEMP 'eky-existing-boundary-artifact'
+          pnpm --filter @eky/desktop exec node "installer/windows-acceptance-harness/$verifier" --artifact-root $root --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION
+          if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_ARTIFACT_INVALID' }
+
+      - name: Prepare existing supervisor and only the required proof readers
+        timeout-minutes: 3
+        run: |
+          pnpm --filter @eky/desktop installer:supervisor:build
+          if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_PREPARATION_FAILED' }
+          if ($env:ARTIFACT_KIND -ceq 'workspace') {
+            pnpm --filter @eky/desktop e2e:prepare-electron-runtime
+            if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_PREPARATION_FAILED' }
+            pnpm --filter @eky/desktop e2e:build
+            if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_PREPARATION_FAILED' }
+          }
+
+      - name: Start opt-in external inspector capture
+        id: capture
+        if: inputs.inspector_capture && inputs.artifact_kind == 'legacy'
+        timeout-minutes: 1
+        run: ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode start
+
+      - name: Run existing caller and mandatory result verifier once
+        timeout-minutes: ${{ inputs.artifact_kind == 'legacy' && 27 || 25 }}
+        run: |
+          if ($env:ARTIFACT_KIND -ceq 'upgrade') {
+            $descriptorPath = Join-Path (Join-Path $env:RUNNER_TEMP 'eky-existing-boundary-artifact') 'upgrade-rollback-artifact.json'
+            pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/runUpgradeRollback.mjs --artifact-descriptor $descriptorPath
+            if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED' }
+            exit 0
+          }
+          $legacy = $env:ARTIFACT_KIND -ceq 'legacy'
+          $descriptor = if ($legacy) { 'legacy-upgrade-artifact.json' } else { 'workspace-success-artifact.json' }
+          $verifier = if ($legacy) { 'verifyLegacyCallerResult.mjs' } else { 'verifyWorkspaceCallerResult.mjs' }
+          $prefix = if ($legacy) { 'eky-legacy-caller-' } else { 'eky-workspace-caller-' }
+          $descriptorPath = Join-Path (Join-Path $env:RUNNER_TEMP 'eky-existing-boundary-artifact') $descriptor
+          $resultPath = Join-Path (Join-Path $env:RUNNER_TEMP ($prefix + [Guid]::NewGuid().ToString('N'))) 'result.json'
+          $PSNativeCommandUseErrorActionPreference = $false
+          if ($legacy) {
+            pnpm --filter @eky/desktop exec dotnet installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --legacy-command --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath
+          } else {
+            pnpm --filter @eky/desktop exec dotnet installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --workspace-success-command --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath
+          }
+          $commandExit = $LASTEXITCODE
+          pnpm --filter @eky/desktop exec node "installer/windows-acceptance-harness/$verifier" --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath --command-exit $commandExit
+          if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED' }
+
+      - name: Stop only the diagnostic recording
+        id: capture_stop
+        if: always() && (steps.capture.outcome == 'success' || steps.capture.outcome == 'failure' || steps.capture.outcome == 'cancelled')
+        timeout-minutes: 2
+        run: ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode stop
+
+      - name: Reverify immutable artifact after diagnostic
+        if: always() && steps.download.outcome == 'success'
+        run: |
+          $verifier = switch -CaseSensitive ($env:ARTIFACT_KIND) {
+            'legacy' { 'verifyLegacyUpgradeArtifact.mjs' }
+            'workspace' { 'verifyWorkspaceSuccessArtifact.mjs' }
+            'upgrade' { 'verifyUpgradeRollbackArtifact.mjs' }
+          }
+          $root = Join-Path $env:RUNNER_TEMP 'eky-existing-boundary-artifact'
+          pnpm --filter @eky/desktop exec node "installer/windows-acceptance-harness/$verifier" --artifact-root $root --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION
+          if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_ARTIFACT_CHANGED' }
+
+      - name: Extract closed inspector observations without publishing raw trace
+        if: always() && steps.capture_stop.outcome == 'success'
+        timeout-minutes: 3
+        run: ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode analyze

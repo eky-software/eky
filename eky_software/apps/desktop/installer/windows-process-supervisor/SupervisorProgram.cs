@@ -1,18 +1,43 @@
 using System.Diagnostics;
+using System.Text.Json;
 
 namespace Eky.WindowsProcessSupervisor;
 
 internal static class SupervisorProgram
 {
-    internal static int Run(string[] arguments) => Run(
+    private static readonly int ExitReserveMilliseconds = ReadExitReserve();
+
+    private static int ReadExitReserve()
+    {
+        using var stream = typeof(SupervisorProgram).Assembly.GetManifestResourceStream("supervisorCommandBudgets.json")!;
+        using var json = JsonDocument.Parse(stream);
+        return json.RootElement.GetProperty("exitReserveMilliseconds").GetInt32();
+    }
+
+    internal static int Run(string[] arguments) => RunPhase(arguments).ExitCode;
+
+    internal static int Run(
+        string[] arguments,
+        Func<SupervisorRequest, Stopwatch, SafeEvidenceWriter, SupervisorOutcome> execute
+    ) => RunPhase(arguments, execute).ExitCode;
+
+    internal static SupervisorPhaseCompletion RunPhase(string[] arguments) => RunPhase(
         arguments,
         static (request, stopwatch, evidence) =>
             new WindowsJobProcessSupervisor(stopwatch, evidence).Run(request)
     );
 
-    internal static int Run(
+    internal static SupervisorPhaseCompletion RunPhase(
         string[] arguments,
-        Func<SupervisorRequest, Stopwatch, SafeEvidenceWriter, SupervisorOutcome> execute
+        Func<SupervisorRequest, Stopwatch, SafeEvidenceWriter, SupervisorOutcome> execute,
+        Action<SupervisorRequest, SupervisorOutcome, long>? writeResult = null
+    ) => RunPhase(() => SupervisorRequestReader.Read(arguments), execute, writeResult);
+
+    internal static SupervisorPhaseCompletion RunPhase(
+        Func<SupervisorRequest> prepareRequest,
+        Func<SupervisorRequest, Stopwatch, SafeEvidenceWriter, SupervisorOutcome>? execute = null,
+        Action<SupervisorRequest, SupervisorOutcome, long>? writeResult = null,
+        SafeEvidenceWriter? commandEvidence = null
     )
     {
         var stopwatch = Stopwatch.StartNew();
@@ -21,15 +46,24 @@ internal static class SupervisorProgram
 
         try
         {
-            request = SupervisorRequestReader.Read(arguments);
-            evidence = new SafeEvidenceWriter(request.Scenario, stopwatch);
+            var admission = Task.Run(prepareRequest);
+            if (Task.WaitAny([admission], ExitReserveMilliseconds) != 0)
+            {
+                _ = admission.ContinueWith(completed => { _ = completed.Exception; },
+                    TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
+                throw new SupervisorFailure("requestFileInvalid");
+            }
+            request = admission.GetAwaiter().GetResult();
+            evidence = commandEvidence ?? new SafeEvidenceWriter(request.Scenario, stopwatch);
             evidence.Write("requestValidated", "completed");
 
-            var outcome = execute(request, stopwatch, evidence);
-            if (!TryWriteResult(request, outcome, stopwatch, evidence))
+            var outcome = execute is null
+                ? new WindowsJobProcessSupervisor(stopwatch, evidence).Run(request)
+                : execute(request, stopwatch, evidence);
+            if (!TryWriteResult(request, outcome, stopwatch, evidence, writeResult))
             {
                 evidence.Write("supervisor", "failed", errorCode: "resultWriteFailed");
-                return 1;
+                return new(outcome, false);
             }
             evidence.Write(
                 "supervisor",
@@ -38,20 +72,21 @@ internal static class SupervisorProgram
                 outcome.Status == "failed" ? outcome.ProcessResultCode : null,
                 outcome.ProcessWin32ErrorCode
             );
-            return outcome.Status == "completed" ? 0 : 1;
+            return new(outcome, true);
         }
         catch (SupervisorFailure failure)
         {
             if (request is not null)
             {
                 var outcome = SupervisorOutcome.UnverifiedFailure(failure);
-                TryWriteResult(request, outcome, stopwatch, evidence);
+                var resultWritten = TryWriteResult(request, outcome, stopwatch, evidence, writeResult);
                 evidence?.Write(
                     "supervisor",
                     "failed",
                     errorCode: failure.ErrorCode,
                     win32ErrorCode: failure.Win32ErrorCode
                 );
+                return new(outcome, resultWritten);
             }
             else
             {
@@ -60,7 +95,7 @@ internal static class SupervisorProgram
                     failure.Win32ErrorCode
                 );
             }
-            return 1;
+            return new(null, false, failure.ErrorCode);
         }
         catch
         {
@@ -71,22 +106,23 @@ internal static class SupervisorProgram
                     "cleanupUnverified",
                     false
                 );
-                TryWriteResult(request, outcome, stopwatch, evidence);
+                var resultWritten = TryWriteResult(request, outcome, stopwatch, evidence, writeResult);
                 evidence?.Write(
                     "supervisor",
                     "failed",
                     errorCode: "unexpectedFailure"
                 );
+                return new(outcome, resultWritten);
             }
             else
             {
                 SafeEvidenceWriter.WriteInvalidRequest("unexpectedFailure");
             }
-            return 1;
+            return new(null, false, "unexpectedFailure");
         }
         finally
         {
-            if (request is not null)
+            if (request is not null && commandEvidence is null)
                 evidence?.CompleteWithinRequestBudget(request.TimeoutMilliseconds);
         }
     }
@@ -95,20 +131,32 @@ internal static class SupervisorProgram
         SupervisorRequest request,
         SupervisorOutcome outcome,
         Stopwatch stopwatch,
-        SafeEvidenceWriter? evidence
+        SafeEvidenceWriter? evidence,
+        Action<SupervisorRequest, SupervisorOutcome, long>? writeResult
     )
     {
         try
         {
-            SupervisorResultWriter.Write(
-                request,
-                outcome,
-                stopwatch.ElapsedMilliseconds
-            );
+            // Use the existing caller exit reservation, never extend the
+            // process work/cleanup allowance. A late write cannot authorize
+            // another phase; the command exits with resultWritten=false.
+            var duration = stopwatch.ElapsedMilliseconds;
+            var remaining = Math.Min(ExitReserveMilliseconds,
+                request.TimeoutMilliseconds + (long)ExitReserveMilliseconds - duration);
+            if (remaining <= 0) throw new SupervisorResultWriteFailure();
+            var publication = Task.Run(() =>
+                (writeResult ?? SupervisorResultWriter.Write)(request, outcome, duration));
+            if (Task.WaitAny([publication], (int)remaining) != 0)
+            {
+                _ = publication.ContinueWith(completed => { _ = completed.Exception; },
+                    TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
+                throw new SupervisorResultWriteFailure();
+            }
+            publication.GetAwaiter().GetResult();
             evidence?.Write("resultWritten", "completed");
             return true;
         }
-        catch (SupervisorResultWriteFailure)
+        catch
         {
             evidence?.Write(
                 "resultWritten",
@@ -118,4 +166,22 @@ internal static class SupervisorProgram
             return false;
         }
     }
+}
+
+internal sealed record SupervisorPhaseCompletion(
+    SupervisorOutcome? Outcome,
+    bool ResultWritten,
+    string? RequestErrorCode = null
+)
+{
+    internal int ExitCode => ResultWritten && Outcome?.Status == "completed" ? 0 : 1;
+
+    // This is only the process boundary. It never authorizes MSI mutation or
+    // fixture removal; the scenario's existing postconditions still own those.
+    internal bool ProcessBoundaryVerified => ResultWritten && Outcome is
+    {
+        ProcessTreeAbsent: true,
+        CleanupResultCode: "notRequired" or "processTreeAbsent",
+        HostOperationsCompleted: true,
+    };
 }

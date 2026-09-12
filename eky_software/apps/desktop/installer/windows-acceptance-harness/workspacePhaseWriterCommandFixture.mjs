@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { createWorkspacePhaseWriter } from './workspacePhaseWriter.mjs';
 import { WORKSPACE_PHASE_MAX_BYTES } from './workspacePhaseObservation.mjs';
 import { runWorkspaceCallerCli } from './workspaceCallerCli.mjs';
-import { parseWorkspaceSuccessArguments } from './runWorkspaceSuccess.mjs';
+import { parseWorkspaceSuccessArguments } from './workspaceCommandAdmission.mjs';
 
 // Contract fixture only. The existing Job Object test support contains this
 // command and its writer even when an assertion fails before terminal evidence.
@@ -109,7 +109,8 @@ assert.equal(starts, 1);
 assert.equal(output.join(''), JSON.stringify(observation) + '\n');
 const outcome = {
   schemaVersion: 1, scenario: 'packagedWorkspaceSuccess', status: 'completed', errorCode: null,
-  safetyErrorCode: null, failedPhase: null, processTreeAbsent: true, fixtureRemoved: true, businessDataPreserved: true,
+  safetyErrorCode: null, failedPhase: null, processTreeAbsent: true, productProcessAbsent: true,
+  fixtureRemoved: true, businessDataPreserved: true,
   phaseWriterResultCode: result.writerResultCode, phaseDiagnosticResultCode: result.diagnosticResultCode,
   fixtureCleanupResultCode: 'fixtureRemoved', supervisorProcessResultCode: 'processCompleted',
   supervisorWorkerResultCode: 'workerResultValidated', supervisorCleanupResultCode: 'notRequired',

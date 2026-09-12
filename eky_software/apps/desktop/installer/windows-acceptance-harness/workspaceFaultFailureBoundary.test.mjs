@@ -41,7 +41,7 @@ for (const scenario of Object.keys(WORKSPACE_FAULT_PLANS)) {
     assert.equal(result.sessionProofResultCode, 'workspaceFaultSessionsValidated');
     assert.equal(result.initialProductStateResultCode, `${WORKSPACE_FAULT_PLANS[scenario].installedRole}ProductPresent`);
     assert.deepEqual(f.calls, ['scenario', 'inspect', 'business', 'sessions', 'cleanup', 'inspect', 'footprint']);
-    assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: true, terminal: result }), true);
+    assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: true, terminal: result, productProcessAbsent: true }), true);
   });
 }
 
@@ -85,7 +85,7 @@ for (const mode of ['missingSupervisor', 'unverifiedTree', 'deadline', 'missingS
     assert.doesNotMatch(JSON.stringify(result), /PRIVATE/);
     const blocked = ['missingSupervisor', 'unverifiedTree', 'noPrecondition', 'foreignPrecondition', 'unknownProductState'].includes(mode);
     assert.equal(f.calls.includes('cleanup'), !blocked);
-    assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: true, terminal: result }),
+    assert.equal(workspaceSuccessRunRootRemovable({ supervisorAttempted: true, terminal: result, productProcessAbsent: true }),
       !blocked && !['cleanupFails', 'workerAndCleanupFail', 'footprintFails'].includes(mode));
     if (['missingSupervisor', 'unverifiedTree'].includes(mode)) assert.deepEqual(f.calls, []);
     if (mode === 'deadline') assert.equal(result.errorCode, 'supervisorDeadlineExceeded');

@@ -4,9 +4,9 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  readdirSync,
 } from 'node:fs';
 import { spawn } from 'node:child_process';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import {
@@ -16,6 +16,7 @@ import {
   type APIRequestContext,
   type ElectronApplication,
   type Page,
+  type TestInfo,
 } from '@playwright/test';
 
 import {
@@ -44,9 +45,10 @@ import {
   stopOwnedElectronRuntime,
 } from './stopOwnedElectronRuntime.js';
 import {
-  ELECTRON_E2E_FIRST_WINDOW_TIMEOUT_MILLISECONDS,
-  ELECTRON_E2E_PROCESS_CONNECT_TIMEOUT_MILLISECONDS,
-} from './electronLaunchBudgets.js';
+  launchElectronRuntime,
+  type ElectronLaunchObservation,
+} from './launchElectronRuntime.js';
+import { ELECTRON_E2E_PROCESS_CONNECT_TIMEOUT_MILLISECONDS } from './electronLaunchBudgets.js';
 
 export interface IsolatedElectronHarness {
   api: APIRequestContext;
@@ -90,6 +92,8 @@ type ElectronChildProcess = ReturnType<typeof spawn> & {
     listener: (code: number | null) => void,
   ): ElectronChildProcess;
 };
+
+const MAX_ELECTRON_LAUNCH_OBSERVATIONS = 64;
 
 export const test = base.extend<
   IsolatedElectronFixtures & IsolatedElectronOptions
@@ -172,21 +176,85 @@ export const test = base.extend<
     }
     let api: APIRequestContext | undefined;
     let electronApp: ElectronApplication | undefined;
-    let electronStderr = '';
-    let electronStdout = '';
+    let electronProcess: ReturnType<ElectronApplication['process']> | undefined;
+    let connectionPending = false;
+    let runtimeCleanupUnverified = false;
+    let portReleaseUnverified = false;
+    let failure: { error: unknown } | undefined;
+    const launchObservations: ElectronLaunchObservation[] = [];
+    let observationsTruncated = false;
+
+    async function launchCurrentRuntime() {
+      assertElectronRuntimeLaunchPrerequisites(runtime, runRoot);
+      connectionPending = true;
+      electronApp = undefined;
+      electronProcess = undefined;
+      return launchElectronRuntime({
+        launch: () =>
+          electron.launch({
+            args: [resolveElectronE2eApplicationPath()],
+            cwd: runRoot,
+            env: createElectronEnvironment({
+              configPath: runtime.configPath,
+              profile: runtime.profile,
+              runRoot: runtime.runtimeRoot,
+            }),
+            executablePath: resolveElectronE2eExecutable(),
+            timeout: ELECTRON_E2E_PROCESS_CONNECT_TIMEOUT_MILLISECONDS,
+          }),
+        connected(application, child) {
+          electronApp = application;
+          electronProcess = child;
+          connectionPending = false;
+          child.stdout?.resume();
+          child.stderr?.resume();
+        },
+        observe(observation) {
+          if (launchObservations.length < MAX_ELECTRON_LAUNCH_OBSERVATIONS) {
+            launchObservations.push(observation);
+          } else {
+            observationsTruncated = true;
+          }
+        },
+      });
+    }
+
+    async function closeCurrentRuntime(alreadyClosed = false): Promise<void> {
+      try {
+        if (electronApp !== undefined) {
+          if (electronProcess === undefined) {
+            throw new Error('E2E_ELECTRON_RUNTIME_CLEANUP_UNVERIFIED');
+          }
+          const closeRuntime = alreadyClosed
+            ? stopOwnedElectronRuntime
+            : closeOwnedElectronRuntime;
+          await closeRuntime(electronApp, electronProcess);
+          electronApp = undefined;
+          electronProcess = undefined;
+        }
+        if (connectionPending || runtimeCleanupUnverified) {
+          throw new Error('E2E_ELECTRON_RUNTIME_CLEANUP_UNVERIFIED');
+        }
+      } catch {
+        runtimeCleanupUnverified = true;
+        throw new Error('E2E_ELECTRON_RUNTIME_CLEANUP_UNVERIFIED');
+      }
+    }
+
+    async function releaseCurrentPort(): Promise<void> {
+      try {
+        await waitForLoopbackPortRelease(backendPort);
+        if (portReleaseUnverified) {
+          throw new Error('E2E_ELECTRON_PORT_RELEASE_UNVERIFIED');
+        }
+      } catch {
+        portReleaseUnverified = true;
+        throw new Error('E2E_ELECTRON_PORT_RELEASE_UNVERIFIED');
+      }
+    }
 
     try {
-      const launched = await launchElectronRuntime({
-        appendStderr(chunk) {
-          electronStderr = appendBoundedOutput(electronStderr, chunk);
-        },
-        appendStdout(chunk) {
-          electronStdout = appendBoundedOutput(electronStdout, chunk);
-        },
-        runRoot,
-        runtime,
-      });
-      electronApp = launched.electronApp;
+      const launched = await launchCurrentRuntime();
       api = await createElectronApi(backendPort, runtime.sessionSecret);
 
       async function launchNextRuntime(): Promise<void> {
@@ -202,19 +270,7 @@ export const test = base.extend<
             ? {}
             : { workspaceBackupPath: workspaceBackupFixture.backupPath }),
         });
-        electronStderr = '';
-        electronStdout = '';
-        const restarted = await launchElectronRuntime({
-          appendStderr(chunk) {
-            electronStderr = appendBoundedOutput(electronStderr, chunk);
-          },
-          appendStdout(chunk) {
-            electronStdout = appendBoundedOutput(electronStdout, chunk);
-          },
-          runRoot,
-          runtime,
-        });
-        electronApp = restarted.electronApp;
+        const restarted = await launchCurrentRuntime();
         api = await createElectronApi(backendPort, runtime.sessionSecret);
         harness.api = api;
         harness.electronApp = restarted.electronApp;
@@ -224,7 +280,7 @@ export const test = base.extend<
 
       const harness: IsolatedElectronHarness = {
         api,
-        electronApp,
+        electronApp: launched.electronApp,
         launchSecondInstance: () =>
           launchSecondElectronInstance(runtime, runRoot),
         page: launched.page,
@@ -254,7 +310,8 @@ export const test = base.extend<
             throw new Error('Electron workspace relaunch did not close.');
           }
           await harness.api.dispose();
-          await waitForLoopbackPortRelease(backendPort);
+          await closeCurrentRuntime(true);
+          await releaseCurrentPort();
           if (
             countWorkspaceRelaunchRequests(runtime.observationsPath) !==
             previousRelaunchCount + 1
@@ -272,8 +329,8 @@ export const test = base.extend<
           const previousSessionSecret = runtime.sessionSecret;
 
           await harness.api.dispose();
-          await harness.electronApp.close().catch(() => undefined);
-          await waitForLoopbackPortRelease(backendPort);
+          await closeCurrentRuntime();
+          await releaseCurrentPort();
           await launchNextRuntime();
 
           return { previousRuntimeInstanceId, previousSessionSecret };
@@ -286,27 +343,32 @@ export const test = base.extend<
       };
 
       await use(harness);
+    } catch (error) {
+      failure = { error };
     } finally {
-      await api?.dispose();
-      const electronProcess = electronApp?.process();
-      let runtimeCleanupFailed = false;
-      try {
-        if (electronApp !== undefined && electronProcess !== undefined) {
-          await closeOwnedElectronRuntime(electronApp, electronProcess);
-        } else {
-          await electronApp?.close().catch(() => undefined);
-        }
-      } catch {
-        runtimeCleanupFailed = true;
-      }
-      try {
-        await waitForLoopbackPortRelease(backendPort);
-      } finally {
-        await removeE2eRunRoot(runRoot);
-      }
-      if (runtimeCleanupFailed) {
-        throw new Error('Electron E2E runtime cleanup failed.');
-      }
+      await finishIsolatedElectronTest({
+        failure,
+        testAlreadyFailed: testInfo.errors.length > 0,
+        disposeApi: async () => {
+          await api?.dispose();
+        },
+        closeRuntime: closeCurrentRuntime,
+        releasePort: releaseCurrentPort,
+        removeRoot: () => removeE2eRunRoot(runRoot),
+        async report(cleanup) {
+          if (
+            failure !== undefined ||
+            testInfo.errors.length > 0 ||
+            cleanup.runRoot !== 'removed'
+          ) {
+            await reportElectronLifecycleEvidence(testInfo, {
+              launch: launchObservations,
+              observationsTruncated,
+              cleanup,
+            });
+          }
+        },
+      });
     }
   },
 });
@@ -332,69 +394,98 @@ function seedLegacyWorkspaceForActiveReplacement(input: {
   cpSync(input.sourceDocumentsRoot, documentsRoot, { recursive: true });
 }
 
-async function launchElectronRuntime(input: {
-  appendStderr(chunk: Buffer): void;
-  appendStdout(chunk: Buffer): void;
-  runRoot: string;
-  runtime: ElectronE2eRuntime;
-}): Promise<{ electronApp: ElectronApplication; page: Page }> {
-  assertElectronRuntimeLaunchPrerequisites(input.runtime, input.runRoot);
-  let electronApp: ElectronApplication;
-  try {
-    electronApp = await electron.launch({
-      args: [resolveElectronE2eApplicationPath()],
-      cwd: input.runRoot,
-      env: createElectronEnvironment({
-        configPath: input.runtime.configPath,
-        profile: input.runtime.profile,
-        runRoot: input.runtime.runtimeRoot,
-      }),
-      executablePath: resolveElectronE2eExecutable(),
-      timeout: ELECTRON_E2E_PROCESS_CONNECT_TIMEOUT_MILLISECONDS,
-    });
-  } catch {
-    throw createSafeElectronLaunchError(
-      input.runtime.userDataPath,
-      input.runtime.observationsPath,
-    );
-  }
-  const electronProcess = electronApp.process();
-  electronProcess.stderr?.on('data', input.appendStderr);
-  electronProcess.stdout?.on('data', input.appendStdout);
-
-  try {
-    const page = await electronApp.firstWindow({
-      timeout: ELECTRON_E2E_FIRST_WINDOW_TIMEOUT_MILLISECONDS,
-    });
-    await page.waitForLoadState('domcontentloaded');
-    return { electronApp, page };
-  } catch {
-    const safeDiagnostics = readSafeElectronDiagnostics(
-      input.runtime.userDataPath,
-      input.runtime.observationsPath,
-    );
-    await stopOwnedElectronRuntime(electronApp, electronProcess);
-    throw new Error(
-      safeDiagnostics === ''
-        ? 'Electron E2E window was not created.'
-        : `Electron E2E window was not created.\n${safeDiagnostics}`,
-    );
-  }
+interface ElectronCleanupResult {
+  api: 'completed' | 'failed';
+  runtime: 'completed' | 'unverified';
+  port: 'released' | 'unverified';
+  runRoot: 'removed' | 'retained' | 'removalFailed';
 }
 
-function createSafeElectronLaunchError(
-  userDataPath: string,
-  observationsPath: string,
-): Error {
-  const safeDiagnostics = readSafeElectronDiagnostics(
-    userDataPath,
-    observationsPath,
+export async function reportElectronLifecycleEvidence(
+  testInfo: TestInfo,
+  evidence: {
+    launch: readonly ElectronLaunchObservation[];
+    observationsTruncated: boolean;
+    cleanup: Readonly<ElectronCleanupResult>;
+  },
+): Promise<void> {
+  const path = testInfo.outputPath('electron-lifecycle.json');
+  await writeFile(
+    path,
+    JSON.stringify({
+      schemaVersion: 1,
+      attempt: testInfo.retry,
+      launch: evidence.launch,
+      observationsTruncated: evidence.observationsTruncated,
+      cleanup: evidence.cleanup,
+    }),
+    { encoding: 'utf8', flag: 'wx', mode: 0o600 },
   );
-  return new Error(
-    safeDiagnostics === ''
-      ? 'Electron E2E process exited before connecting.'
-      : `Electron E2E process exited before connecting.\n${safeDiagnostics}`,
-  );
+  await testInfo.attach('electron-lifecycle', {
+    contentType: 'application/json',
+    path,
+  });
+}
+
+export async function finishIsolatedElectronTest(input: {
+  failure: { error: unknown } | undefined;
+  testAlreadyFailed: boolean;
+  disposeApi(): Promise<void>;
+  closeRuntime(): Promise<void>;
+  releasePort(): Promise<void>;
+  removeRoot(): Promise<void>;
+  report(result: Readonly<ElectronCleanupResult>): Promise<void>;
+}): Promise<void> {
+  const result: ElectronCleanupResult = {
+    api: 'completed',
+    runtime: 'completed',
+    port: 'released',
+    runRoot: 'retained',
+  };
+  try {
+    await input.disposeApi();
+  } catch {
+    result.api = 'failed';
+  }
+  try {
+    await input.closeRuntime();
+  } catch {
+    result.runtime = 'unverified';
+  }
+  try {
+    await input.releasePort();
+  } catch {
+    result.port = 'unverified';
+  }
+  if (
+    result.api === 'completed' &&
+    result.runtime === 'completed' &&
+    result.port === 'released'
+  ) {
+    try {
+      await input.removeRoot();
+      result.runRoot = 'removed';
+    } catch {
+      result.runRoot = 'removalFailed';
+    }
+  }
+  let reportFailed = false;
+  try {
+    await input.report(Object.freeze(result));
+  } catch {
+    reportFailed = true;
+  }
+  // Playwright records body failures before fixture teardown. Never replace
+  // that failure, or a setup exception, with a secondary cleanup exception.
+  if (input.failure !== undefined) throw input.failure.error;
+  if (!input.testAlreadyFailed && result.runRoot !== 'removed') {
+    throw new Error(
+      `E2E_ELECTRON_CLEANUP_FAILED runtime=${result.runtime} port=${result.port} root=${result.runRoot}`,
+    );
+  }
+  if (!input.testAlreadyFailed && reportFailed) {
+    throw new Error('E2E_ELECTRON_EVIDENCE_FAILED');
+  }
 }
 
 function createElectronApi(
@@ -529,79 +620,6 @@ function assertElectronRuntimeLaunchPrerequisites(
     profileDirectories: listElectronE2eProfileDirectories(runtime.profile),
     runRoot,
   });
-}
-
-function appendBoundedOutput(current: string, chunk: Buffer): string {
-  return `${current}${chunk.toString('utf8')}`.slice(-64 * 1024);
-}
-
-function readSafeElectronDiagnostics(
-  userDataPath: string,
-  observationsPath: string,
-): string {
-  const summaries: string[] = [];
-  const logsRoot = join(userDataPath, 'runtime', 'logs');
-
-  for (const directoryName of ['desktop-warning-error', 'desktop-info']) {
-    const directoryPath = join(logsRoot, directoryName);
-    if (!existsSync(directoryPath)) {
-      continue;
-    }
-    for (const entry of readdirSync(directoryPath, { withFileTypes: true })) {
-      if (!entry.isFile() || !entry.name.endsWith('.jsonl')) {
-        continue;
-      }
-      appendSafeJsonLineSummaries(
-        summaries,
-        readFileSync(join(directoryPath, entry.name), 'utf8'),
-        ['eventName', 'errorCode', 'stage'],
-      );
-    }
-  }
-
-  if (existsSync(observationsPath)) {
-    appendSafeJsonLineSummaries(
-      summaries,
-      readFileSync(observationsPath, 'utf8'),
-      ['operation', 'reason', 'errorCode'],
-    );
-  }
-
-  return summaries.length === 0
-    ? ''
-    : `Safe Electron diagnostics:\n${summaries.slice(-20).join('\n')}`;
-}
-
-function appendSafeJsonLineSummaries(
-  destination: string[],
-  content: string,
-  allowedFields: readonly string[],
-): void {
-  for (const line of content.split(/\r?\n/u).filter(Boolean)) {
-    try {
-      const parsed = JSON.parse(line) as unknown;
-      if (
-        typeof parsed !== 'object' ||
-        parsed === null ||
-        Array.isArray(parsed)
-      ) {
-        continue;
-      }
-      const record = parsed as Record<string, unknown>;
-      const summary = allowedFields
-        .flatMap((field) =>
-          typeof record[field] === 'string'
-            ? [`${field}=${record[field]}`]
-            : [],
-        )
-        .join(' ');
-      if (summary !== '') {
-        destination.push(summary);
-      }
-    } catch {
-      // Invalid test diagnostics are omitted instead of exposing raw content.
-    }
-  }
 }
 
 export { expect } from '@playwright/test';

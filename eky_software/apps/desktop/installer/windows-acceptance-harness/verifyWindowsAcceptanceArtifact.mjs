@@ -11,8 +11,12 @@ import {
 import {
   parseAbsoluteWindowsAcceptancePath,
 } from './windowsAcceptancePathArgument.mjs';
+import {
+  CLEAN_ARTIFACT_DESCRIPTOR_FILENAME,
+  readWindowsAcceptanceArtifactDescriptor,
+} from './windowsAcceptanceArtifactDescriptor.mjs';
 
-const DESCRIPTOR_FILENAME = 'installer.manifest.json';
+const MANIFEST_FILENAME = 'installer.manifest.json';
 const BUILD_REVISION_PATTERN = /^[0-9a-f]{40}$/;
 const SHA_256_PATTERN = /^[0-9a-f]{64}$/;
 
@@ -89,27 +93,33 @@ export async function verifyWindowsAcceptanceArtifact({
   }
   const artifactRoot = resolve(artifactRootInput);
   await requireClosedArtifactRoot(artifactRoot);
-  const descriptorPath = resolve(artifactRoot, DESCRIPTOR_FILENAME);
+  const descriptorPath = resolve(artifactRoot, CLEAN_ARTIFACT_DESCRIPTOR_FILENAME);
   await requireStandaloneRegularFile(descriptorPath);
   const descriptorBefore = await hashFile(descriptorPath);
   if (descriptorBefore.sha256 !== expectedDescriptorSha256) {
     throw new Error('WINDOWS_ACCEPTANCE_ARTIFACT_IDENTITY_MISMATCH');
   }
+  const { descriptor } = await readWindowsAcceptanceArtifactDescriptor(descriptorPath, expectedDescriptorSha256);
+  const manifestPath = resolve(artifactRoot, MANIFEST_FILENAME);
+  await requireStandaloneRegularFile(manifestPath);
+  if ((await hashFile(manifestPath)).sha256 !== descriptor.manifestSha256) {
+    throw new Error('WINDOWS_ACCEPTANCE_ARTIFACT_IDENTITY_MISMATCH');
+  }
 
   let manifest;
   try {
-    manifest = await readInstallerManifest(descriptorPath);
+    manifest = await readInstallerManifest(manifestPath);
   } catch {
     throw new Error('WINDOWS_ACCEPTANCE_ARTIFACT_INVALID');
   }
-  if (manifest.buildRevision !== expectedBuildRevision) {
+  if (manifest.buildRevision !== expectedBuildRevision || descriptor.buildRevision !== expectedBuildRevision) {
     throw new Error('WINDOWS_ACCEPTANCE_ARTIFACT_BUILD_IDENTITY_MISMATCH');
   }
   const installerPath = resolve(artifactRoot, manifest.packageFilename);
   if (dirname(installerPath) !== artifactRoot) {
     throw new Error('WINDOWS_ACCEPTANCE_ARTIFACT_INVALID');
   }
-  const expectedNames = [DESCRIPTOR_FILENAME, manifest.packageFilename].sort();
+  const expectedNames = [CLEAN_ARTIFACT_DESCRIPTOR_FILENAME, MANIFEST_FILENAME, manifest.packageFilename].sort();
   let entries;
   try {
     entries = (await readdir(artifactRoot, { withFileTypes: true }))
@@ -132,11 +142,13 @@ export async function verifyWindowsAcceptanceArtifact({
   }
 
   await requireStandaloneRegularFile(descriptorPath);
+  await requireStandaloneRegularFile(manifestPath);
   await requireStandaloneRegularFile(installerPath);
   const descriptorAfter = await hashFile(descriptorPath);
   if (
     descriptorAfter.sha256 !== descriptorBefore.sha256 ||
-    descriptorAfter.size !== descriptorBefore.size
+    descriptorAfter.size !== descriptorBefore.size ||
+    (await hashFile(manifestPath)).sha256 !== descriptor.manifestSha256
   ) {
     throw new Error('WINDOWS_ACCEPTANCE_ARTIFACT_IDENTITY_MISMATCH');
   }
@@ -154,7 +166,9 @@ export async function verifyWindowsAcceptanceArtifact({
     buildRevision: manifest.buildRevision,
     descriptorSha256: descriptorAfter.sha256,
     packageSha256: manifest.packageSha256,
-    manifestPath: descriptorPath,
+    manifestPath,
+    descriptorPath,
+    payload: descriptor.payload,
   });
 }
 

@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 
-const MAX_TIMEOUT_MILLISECONDS = 600_000;
+const MAX_TIMEOUT_MILLISECONDS = 725_000;
 
 function requireTimeout(value) {
   if (
@@ -17,6 +17,7 @@ export function runBoundedWindowsAdapterProcess({
   command,
   cwd,
   now = () => performance.now(),
+  observe = () => {},
   signal,
   spawnProcess = spawn,
   terminationTimeoutMilliseconds,
@@ -48,6 +49,9 @@ export function runBoundedWindowsAdapterProcess({
     }));
   }
   const deadline = now() + timeoutMilliseconds;
+  const notify = (phase, status) => {
+    try { observe(phase, status); } catch { /* Observations do not settle ownership. */ }
+  };
 
   return new Promise((resolvePromise) => {
     let child;
@@ -57,6 +61,7 @@ export function runBoundedWindowsAdapterProcess({
     let timedOut = false;
     let started = false;
     let processError = false;
+    let startRejected = false;
     let terminationStarted = false;
     let cancelled = false;
 
@@ -72,6 +77,7 @@ export function runBoundedWindowsAdapterProcess({
       if (terminationTimer !== null) {
         clearTimeout(terminationTimer);
       }
+      if (!result.directProcessAbsent) child?.unref?.();
       resolvePromise(Object.freeze(result));
     }
 
@@ -81,9 +87,11 @@ export function runBoundedWindowsAdapterProcess({
       }
       terminationStarted = true;
       let terminationRequested = false;
+      notify('termination', 'started');
       try {
         terminationRequested = child.kill();
       } catch { /* Only close can confirm absence after a failed signal. */ }
+      notify('termination', terminationRequested ? 'completed' : 'failed');
       if (settled) {
         return;
       }
@@ -112,12 +120,15 @@ export function runBoundedWindowsAdapterProcess({
     }
 
     try {
+      notify('launch', 'started');
       child = spawnProcess(command, arguments_, {
         cwd,
         stdio: 'ignore',
         windowsHide: true,
       });
+      notify('launch', 'completed');
     } catch {
+      notify('launch', 'failed');
       complete({
         status: 'failed',
         resultCode: 'startFailed',
@@ -128,18 +139,13 @@ export function runBoundedWindowsAdapterProcess({
     }
 
     started = Number.isInteger(child.pid);
-    child.once('spawn', () => { started = true; });
+    child.once('spawn', () => { started = true; notify('spawn', 'completed'); });
     child.on('error', () => {
       if (settled) {
         return;
       }
-      if (!started && !Number.isInteger(child.pid) && !terminationStarted) {
-        complete({
-          status: 'failed',
-          resultCode: 'startFailed',
-          exitCode: null,
-          directProcessAbsent: true,
-        });
+      if (!started && !Number.isInteger(child.pid) && child.spawnPending !== true && !terminationStarted) {
+        startRejected = true;
         return;
       }
       // Node also emits error for failed kill/send operations on a live child.
@@ -148,6 +154,10 @@ export function runBoundedWindowsAdapterProcess({
       terminateDirectProcess();
     });
     child.once('close', (exitCode, signal) => {
+      if (startRejected && !timedOut && !cancelled) {
+        complete({ status: 'failed', resultCode: 'startFailed', exitCode: null, directProcessAbsent: true });
+        return;
+      }
       if (timedOut) {
         complete({
           status: 'failed',
@@ -196,6 +206,7 @@ export function runBoundedWindowsAdapterProcess({
 
     function expireDeadline() {
       timedOut = true;
+      notify('deadline', 'failed');
       terminateDirectProcess();
     }
     const remaining = deadline - now();
@@ -203,6 +214,7 @@ export function runBoundedWindowsAdapterProcess({
       expireDeadline();
     } else {
       deadlineTimer = setTimeout(expireDeadline, remaining);
+      notify('deadline', 'started');
     }
   });
 }

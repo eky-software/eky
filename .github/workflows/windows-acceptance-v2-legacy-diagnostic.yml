@@ -1,15 +1,20 @@
 name: V2.5 packaged legacy phase acceptance
 
 on:
-  push:
-    branches:
-      - codex/test-harness-v2-legacy-upgrade
-    paths:
-      - .github/workflows/windows-acceptance-v2-legacy-diagnostic.yml
-      - eky_software/apps/desktop/installer/windows-acceptance-harness/**
-      - eky_software/apps/desktop/installer/windows-process-supervisor/**
-      - eky_software/apps/desktop/package.json
+  workflow_call:
+    inputs:
+      risk_plan:
+        type: string
+        required: true
+      inspector_capture:
+        type: boolean
+        default: false
   workflow_dispatch:
+    inputs:
+      inspector_capture:
+        description: Record bounded inspector observations in consumer 1; consumer 2 remains unrecorded
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -23,13 +28,14 @@ env:
 
 jobs:
   legacy_contracts:
-    name: V2.5 phase contracts run ${{ matrix.repetition }}
+    name: V2.5 ${{ matrix.group }} contracts run ${{ matrix.repetition }}
     runs-on: windows-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        repetition: [1, 2]
+        group: [core, commands, legacy-entry, workspace-success-entry, workspace-fault-entry]
+        repetition: ${{ fromJSON(inputs.risk_plan != '' && fromJSON(inputs.risk_plan).repetitions == 1 && '[1]' || '[1, 2]') }}
     defaults:
       run:
         working-directory: eky_software/apps/desktop
@@ -63,6 +69,15 @@ jobs:
       - name: Enable existing package manager
         run: corepack enable
 
+      - name: Prepare locked package manager
+        shell: pwsh
+        run: |
+          $expected = ((Get-Content ../../package.json -Raw | ConvertFrom-Json).packageManager -split '@')[1]
+          $actual = pnpm --version
+          if ($LASTEXITCODE -ne 0 -or $actual.Trim() -cne $expected) {
+            throw 'WINDOWS_ACCEPTANCE_LEGACY_PACKAGE_MANAGER_UNAVAILABLE'
+          }
+
       - name: Record phase revision and runner image
         shell: pwsh
         run: |
@@ -76,8 +91,11 @@ jobs:
             dotnetVersion = (dotnet --version)
           } | ConvertTo-Json -Compress
 
-      - name: Run unchanged full legacy contracts
-        run: pnpm installer:test:windows-supervisor-v2-legacy
+      - name: Build existing supervisor once
+        run: pnpm installer:supervisor:build
+
+      - name: Run legacy ${{ matrix.group }} contracts
+        run: pnpm installer:test:windows-supervisor-v2-legacy-${{ matrix.group }}
 
   legacy_artifact_producer:
     name: Build one historical source and target phase artifact
@@ -85,6 +103,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
       build_revision: ${{ steps.produce.outputs.build_revision }}
       descriptor_sha256: ${{ steps.produce.outputs.descriptor_sha256 }}
       source_package_sha256: ${{ steps.produce.outputs.source_package_sha256 }}
@@ -191,6 +210,7 @@ jobs:
           }
 
       - name: Upload only verified phase artifact bytes
+        id: upload
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ env.EKY_V25_ARTIFACT_NAME }}
@@ -205,12 +225,14 @@ jobs:
     name: V2.5 packaged legacy phase run ${{ matrix.repetition }}
     needs: legacy_artifact_producer
     runs-on: windows-latest
-    timeout-minutes: 18
+    timeout-minutes: ${{ inputs.inspector_capture && matrix.repetition == 1 && (inputs.risk_plan == '' || fromJSON(inputs.risk_plan).repetitions == 2) && 43 || 37 }}
+    env:
+      LEGACY_CAPTURE_ENABLED: ${{ inputs.inspector_capture && matrix.repetition == 1 && (inputs.risk_plan == '' || fromJSON(inputs.risk_plan).repetitions == 2) && 'true' || 'false' }}
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
-        repetition: [1, 2]
+        repetition: ${{ fromJSON(inputs.risk_plan != '' && fromJSON(inputs.risk_plan).repetitions == 1 && '[1]' || '[1, 2]') }}
     defaults:
       run:
         working-directory: eky_software
@@ -252,7 +274,8 @@ jobs:
         id: download
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ${{ env.EKY_V25_ARTIFACT_NAME }}
+          artifact-ids: ${{ needs.legacy_artifact_producer.outputs.artifact_id }}
+          merge-multiple: true
           path: ${{ runner.temp }}/eky-v25-legacy-artifact
 
       - name: Verify downloaded artifact and checkout identity
@@ -271,17 +294,45 @@ jobs:
             throw 'WINDOWS_ACCEPTANCE_LEGACY_ARTIFACT_VERIFICATION_FAILED'
           }
 
-      - name: Run existing supervised legacy lifecycle once
+      - name: Build legacy consumer supervisor
+        timeout-minutes: 3
+        run: pnpm --filter @eky/desktop installer:supervisor:build
+
+      - name: Start optional bounded inspector capture
+        id: capture_start
+        if: env.LEGACY_CAPTURE_ENABLED == 'true'
+        continue-on-error: true
+        timeout-minutes: 1
         shell: pwsh
-        timeout-minutes: 12
+        run: ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode start
+
+      - name: Run existing supervised legacy lifecycle once
+        id: lifecycle
+        shell: pwsh
+        timeout-minutes: 27
+        env:
+          EXPECTED_BUILD_REVISION: ${{ needs.legacy_artifact_producer.outputs.build_revision }}
+          EXPECTED_DESCRIPTOR_SHA256: ${{ needs.legacy_artifact_producer.outputs.descriptor_sha256 }}
         run: |
           $descriptorPath = Join-Path $env:RUNNER_TEMP 'eky-v25-legacy-artifact\legacy-upgrade-artifact.json'
-          pnpm --filter @eky/desktop installer:v2-legacy --artifact-descriptor $descriptorPath
-          if ($LASTEXITCODE -ne 0) {
+          $resultPath = Join-Path (Join-Path $env:RUNNER_TEMP ('eky-legacy-caller-' + [Guid]::NewGuid().ToString('N'))) 'result.json'
+          pnpm --filter @eky/desktop exec dotnet installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --legacy-command --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath
+          $commandExit = $LASTEXITCODE
+          pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/verifyLegacyCallerResult.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath --command-exit $commandExit
+          if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0) {
             throw 'WINDOWS_ACCEPTANCE_LEGACY_LIFECYCLE_FAILED'
           }
 
+      - name: Stop optional bounded inspector capture
+        id: capture_stop
+        if: ${{ always() && env.LEGACY_CAPTURE_ENABLED == 'true' && (steps.capture_start.outcome == 'success' || steps.capture_start.outcome == 'failure' || steps.capture_start.outcome == 'cancelled') }}
+        continue-on-error: true
+        timeout-minutes: 2
+        shell: pwsh
+        run: ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode stop
+
       - name: Reverify phase artifact bytes after lifecycle
+        id: artifact_after
         if: ${{ always() && steps.download.outcome == 'success' }}
         shell: pwsh
         env:
@@ -292,4 +343,33 @@ jobs:
           pnpm --filter @eky/desktop installer:v2-legacy-artifact:verify --artifact-root $artifactRoot --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION
           if ($LASTEXITCODE -ne 0) {
             throw 'WINDOWS_ACCEPTANCE_LEGACY_ARTIFACT_POST_VERIFICATION_FAILED'
+          }
+
+      - name: Analyze and report optional inspector capture
+        if: ${{ always() && env.LEGACY_CAPTURE_ENABLED == 'true' && steps.capture_start.outcome != 'skipped' }}
+        continue-on-error: true
+        timeout-minutes: 3
+        shell: pwsh
+        env:
+          LEGACY_TEST_OUTCOME: ${{ steps.lifecycle.outcome }}
+          LEGACY_ARTIFACT_OUTCOME: ${{ steps.artifact_after.outcome }}
+          LEGACY_CAPTURE_START_OUTCOME: ${{ steps.capture_start.outcome }}
+          LEGACY_CAPTURE_STOP_OUTCOME: ${{ steps.capture_stop.outcome }}
+          LEGACY_CAPTURE_ANALYSIS_OUTCOME: unknown
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          if ($env:LEGACY_CAPTURE_STOP_OUTCOME -cne 'success') {
+            $env:LEGACY_CAPTURE_ANALYSIS_OUTCOME = 'skipped'
+          }
+          node ../.github/scripts/legacyCaptureObservation.mjs
+          if ($env:LEGACY_CAPTURE_STOP_OUTCOME -ceq 'success') {
+            $analysisExit = 1
+            $env:LEGACY_CAPTURE_ANALYSIS_OUTCOME = 'failure'
+            try {
+              & ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode analyze
+              $analysisExit = $LASTEXITCODE
+              if ($analysisExit -eq 0) { $env:LEGACY_CAPTURE_ANALYSIS_OUTCOME = 'success' }
+            } catch { $analysisExit = 1 }
+            node ../.github/scripts/legacyCaptureObservation.mjs
+            if ($analysisExit -ne 0 -or $LASTEXITCODE -ne 0) { exit 1 }
           }

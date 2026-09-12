@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { classifyRunningUpgradeLog } from './runningUpgradeObservation.mjs';
 
 import {
   resolveUpgradeRollbackTerminalOutcome,
@@ -100,11 +101,14 @@ test('deadline remains primary while cleanup and postcondition stay separate', a
 });
 
 test('worker scenario failure stays primary when semantic cleanup fails', async () => {
+  const observation = classifyRunningUpgradeLog('', {});
   const failedScenario = scenario({
     status: 'failed',
     resultCode: 'upgradeRollbackFailed',
     errorCode: 'majorUpgradeFailed',
     cleanupResultCode: 'cleanupFailed',
+    runningUpgradeInitialExitCode: 1603,
+    runningUpgradeObservation: observation,
   });
   await assert.rejects(
     resolveUpgradeRollbackTerminalOutcome({
@@ -126,6 +130,8 @@ test('worker scenario failure stays primary when semantic cleanup fails', async 
         'WINDOWS_ACCEPTANCE_UPGRADE_MAJOR_UPGRADE_FAILED',
       );
       assert.equal(details.semanticCleanupResultCode, 'semanticCleanupFailed');
+      assert.equal(details.runningUpgradeInitialExitCode, 1603);
+      assert.deepEqual(details.runningUpgradeObservation, observation);
       assert.equal(details.postconditionResultCode, 'sourceProductPresent');
       return true;
     },

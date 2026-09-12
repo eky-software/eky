@@ -35,6 +35,7 @@ function completedResult() {
     uninstallExitCode: 0,
     installedStateValidated: true,
     uninstalledStateValidated: true,
+    repairValidated: true, reinstallValidated: true, payloadValidated: true, profilePreserved: true,
   };
 }
 
@@ -65,6 +66,12 @@ test('clean lifecycle result requires exact successful postconditions', () => {
     validateCleanInstallUninstallResult(result, expectedBinding()).status,
     'completed',
   );
+  for (const key of ['repairValidated', 'reinstallValidated', 'payloadValidated', 'profilePreserved']) {
+    const missing = { ...result }; delete missing[key];
+    for (const invalid of [missing, { ...result, [key]: false }]) {
+      assert.throws(() => validateCleanInstallUninstallResult(invalid, expectedBinding()), /WINDOWS_ACCEPTANCE_CLEAN_RESULT_INVALID/);
+    }
+  }
   assert.throws(
     () =>
       validateCleanInstallUninstallResult(

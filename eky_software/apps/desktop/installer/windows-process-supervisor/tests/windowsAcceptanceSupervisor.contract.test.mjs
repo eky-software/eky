@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { EventEmitter, once } from 'node:events';
-import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import {
@@ -59,6 +59,29 @@ async function readCompletedExecution(context, execution) {
 
 test('the supervisor binary is available', WINDOWS_ONLY, async () => {
   await access(SUPERVISOR_DLL);
+});
+
+test('contract fixtures resolve a temporary directory alias before creating owned paths', WINDOWS_ONLY, async (t) => {
+  const parent = await contextFor(t, 'temporary-alias');
+  const target = join(await realpath(parent.testRoot), 'target');
+  const alias = join(parent.testRoot, 'alias');
+  await mkdir(target);
+  await symlink(target, alias, 'junction');
+  const previous = { TEMP: process.env.TEMP, TMP: process.env.TMP };
+  let context;
+  try {
+    process.env.TEMP = alias;
+    process.env.TMP = alias;
+    context = await createRunContext('canonical-owned-paths');
+  } finally {
+    for (const key of ['TEMP', 'TMP']) {
+      if (previous[key] === undefined) delete process.env[key];
+      else process.env[key] = previous[key];
+    }
+  }
+  t.after(() => cleanupRunContext(context));
+  assert.ok(context.testRoot === await realpath(context.testRoot), 'Fixture root must be canonical');
+  assert.equal(context.requestPath, join(context.testRoot, 'request.json'));
 });
 
 test('context cleanup removes the root only after its owned process exits', WINDOWS_ONLY, async (t) => {
