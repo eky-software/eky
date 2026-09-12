@@ -187,7 +187,7 @@ for (const phase of ['canonical', 'transported', 'rejectedPath', 'queryFailure']
   },
 );
 
-for (const mode of ['completed', 'queryFailure', 'observerFailure']) test(
+for (const mode of ['completed', 'queryFailure', 'observerFailure', 'foreignProvider']) test(
   `inspector emits payload-free native boundaries without changing its outcome: ${mode}`,
   WINDOWS_ONLY,
   async (t) => {

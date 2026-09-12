@@ -2708,6 +2708,16 @@ vanhan ETL:n uudelleenanalyysi korvaa alkuperäisen legacy-odotuksen selitystä
 tai avaa release-porttia. Vasta analyysiketjun todennuksen jälkeen jatketaan
 ennalta rajattuun alkuperäisen polun kokeeseen.
 
+Analyysidiagnoosi
+[34703812875](https://github.com/eky-software/eky/actions/runs/34703812875)
+revisiolla `d2cffc684f217c277c494543d49e327c9a280eb2` varmisti tallentimen
+lopetuksen, viennin, lukijan ja tarkoituksellisen odotuksen. Koko koe jäi
+silti epäonnistuneeksi: fixturen EventListener-kuittaus sisälsi vieraan
+providerin tapahtuman. Kuittaus rajataan nyt myös vastaanotossa tarkkaan
+inspector-provideriin. Vieras provider ei kelpaa edes samalla tapahtumanimellä.
+Virheenjulkaisuvaiheen ei-nolla-exit on erillinen pakollisen caller-tuloksen
+sisällöstä; epäonnistuneen komennon julkaisu saa itsessään palauttaa virheen.
+
 Nykyinen työ siirtää legacy-, workspace-success- ja workspace-fault-komentojen
 sisääntulon olemassa olevaan .NET Job -omistajaan. `AcceptanceCommandProgram`
 ajaa suljetun vaihelistan; se ei tulkitse yritysdataa eikä vastaanota workerilta

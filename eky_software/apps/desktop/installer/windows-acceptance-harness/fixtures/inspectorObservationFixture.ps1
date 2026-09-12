@@ -2,7 +2,7 @@ param(
   [Parameter(Mandatory = $true)][string]$ResultPath,
   [Parameter(Mandatory = $true)][string]$ObservationPath,
   [Parameter(Mandatory = $true)]
-  [ValidateSet('completed', 'queryFailure', 'observerFailure', 'comHold')][string]$Mode
+  [ValidateSet('completed', 'queryFailure', 'observerFailure', 'foreignProvider', 'comHold')][string]$Mode
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -19,6 +19,7 @@ class InspectorContractListener : System.Diagnostics.Tracing.EventListener {
     }
   }
   [void] OnEventWritten([System.Diagnostics.Tracing.EventWrittenEventArgs]$event) {
+    if ($event.EventSource.Name -cne 'Eky-InstallerProductInspection-V1') { return }
     if ($event.EventName -ceq 'EventSourceMessage') { return }
     [InspectorContractListener]::Events.Add([ordered]@{
       phase = $event.EventName
@@ -34,6 +35,14 @@ class InspectorContractListener : System.Diagnostics.Tracing.EventListener {
 [InspectorContractListener]::FailObserver = $Mode -ceq 'observerFailure'
 $listener = [InspectorContractListener]::new()
 try {
+  if ($Mode -ceq 'foreignProvider') {
+    $foreign = [Diagnostics.Tracing.EventSource]::new('Eky-SyntheticForeignProvider')
+    try {
+      $listener.EnableEvents($foreign, [Diagnostics.Tracing.EventLevel]::Verbose)
+      $foreign.Write('scriptStarted')
+      $foreign.Write('TargetFrameworkSet')
+    } finally { $foreign.Dispose() }
+  }
   function New-Object {
     param([string]$ComObject)
     if ($ComObject -cne 'WindowsInstaller.Installer') { throw 'unexpectedComRequest' }
