@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 
 function Resolve-InspectorTraceErrorCode([string]$Message) {
   $allowed = @('INSPECTOR_CAPTURE_TOOL_FAILED', 'INSPECTOR_CAPTURE_STOP_UNVERIFIED',
+    'INSPECTOR_CAPTURE_ARGUMENTS_INVALID', 'INSPECTOR_CAPTURE_TOOL_EXIT_UNVERIFIED',
     'INSPECTOR_CAPTURE_CONTEXT_INVALID', 'INSPECTOR_CAPTURE_ROOT_OCCUPIED',
     'INSPECTOR_CAPTURE_TOOL_UNAVAILABLE', 'INSPECTOR_CAPTURE_NOT_STARTED',
     'INSPECTOR_CAPTURE_PROFILE_INVALID', 'INSPECTOR_CAPTURE_SPACE_INSUFFICIENT',
@@ -131,6 +132,17 @@ function Read-InspectorTraceTable([string]$Path) {
   } finally { $parser.Dispose() }
 }
 
+function ConvertFrom-InspectorTraceSeconds([string]$Value, [string]$ErrorCode) {
+  # Exported seconds are ungrouped decimals. Never treat a decimal comma as a
+  # thousands separator when exporter and reader cultures differ.
+  $seconds = 0.0
+  if ($Value -cnotmatch '^[0-9]+(?:[.,][0-9]+)?$' -or
+      ![double]::TryParse($Value.Replace(',', '.'), [Globalization.NumberStyles]::AllowDecimalPoint,
+        [Globalization.CultureInfo]::InvariantCulture, [ref]$seconds) -or
+      [double]::IsNaN($seconds) -or [double]::IsInfinity($seconds)) { throw $ErrorCode }
+  return $seconds
+}
+
 function Get-InspectorTraceEvents([object[]]$Rows) {
   $allowed = @('scriptStarted', 'requestValidated', 'requestRejected', 'comCreationStarted',
     'comCreationCompleted', 'productStateStarted', 'productStateCompleted', 'productNameStarted',
@@ -157,12 +169,7 @@ function Get-InspectorTraceEvents([object[]]$Rows) {
       $failure.Data['processLabelShape'] = @(Get-InspectorProcessLabelShape $event.Process)
       throw $failure
     }
-    $seconds = 0.0
-    if (![double]::TryParse($event.'Time (s)', [Globalization.NumberStyles]::Float -bor [Globalization.NumberStyles]::AllowThousands,
-        [Globalization.CultureInfo]::CurrentCulture, [ref]$seconds) -or
-        [double]::IsNaN($seconds) -or [double]::IsInfinity($seconds) -or $seconds -lt 0) {
-      throw 'INSPECTOR_TRACE_EVENT_TIME_INVALID'
-    }
+    $seconds = ConvertFrom-InspectorTraceSeconds $event.'Time (s)' 'INSPECTOR_TRACE_EVENT_TIME_INVALID'
     [pscustomobject]@{ phase = $event.'Event Name'; process = $event.Process; thread = $event.ThreadId; seconds = $seconds }
   }
 }
@@ -223,11 +230,9 @@ function Get-InspectorTraceSummary([object[]]$Events, [object[]]$Switches) {
     })
     $wait = 'notObserved'
     foreach ($row in $matched) {
-      $culture = [Globalization.CultureInfo]::CurrentCulture
-      $start = [double]::Parse($row.'Last Switch-Out Time (s)', $culture)
-      $end = [double]::Parse($row.'Switch-In Time (s)', $culture)
-      if ([double]::IsNaN($start) -or [double]::IsInfinity($start) -or
-          [double]::IsNaN($end) -or [double]::IsInfinity($end) -or $start -gt $end) { throw 'INSPECTOR_TRACE_SWITCH_INVALID' }
+      $start = ConvertFrom-InspectorTraceSeconds $row.'Last Switch-Out Time (s)' 'INSPECTOR_TRACE_SWITCH_INVALID'
+      $end = ConvertFrom-InspectorTraceSeconds $row.'Switch-In Time (s)' 'INSPECTOR_TRACE_SWITCH_INVALID'
+      if ($start -gt $end) { throw 'INSPECTOR_TRACE_SWITCH_INVALID' }
       # Only classify a wait spanning the final uncompleted boundary. No names,
       # stacks, IDs or elapsed timings cross this publication boundary.
       if ($start -ge $last.seconds -and $end -gt $start -and $last.phase -cne 'scriptFinished') {

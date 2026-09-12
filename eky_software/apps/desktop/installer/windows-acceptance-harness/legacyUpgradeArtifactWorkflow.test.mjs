@@ -62,6 +62,25 @@ test('external inspector capture is opt-in and never replaces command or artifac
   assert.doesNotMatch(diagnostic, /continue-on-error|upload-artifact|wpr.*-cancel|symbols/u);
 });
 
+test('inspector analysis diagnosis reuses one native hold without a packaged lifecycle', async () => {
+  const source = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
+  const job = source.slice(source.indexOf('  job-object-feasibility:'), source.indexOf('  packaged-boundary-diagnostic:'));
+  const steps = job.slice(job.indexOf('      - name: Start bounded inspector analysis fixture capture'));
+  assert.match(job, /inputs\.mode == 'inspector-analysis-diagnostic'\) && '\[1\]'/u);
+  assert.match(steps, /--test-name-pattern="\^legacy fixed command entrypoint completes the real phase chain: productInspectionNativeHold\$"/u);
+  assert.match(steps, /legacyCommandEntrypoint\.process\.test\.mjs/u);
+  assert.ok(steps.indexOf('-Mode start') < steps.indexOf('node --test'));
+  assert.ok(steps.indexOf('-Mode stop') > steps.indexOf('node --test'));
+  assert.ok(steps.indexOf('-Mode analyze') > steps.indexOf('-Mode stop'));
+  assert.match(steps, /always\(\).*steps\.inspector_analysis_start\.outcome != 'skipped'/u);
+  assert.match(steps, /always\(\).*steps\.inspector_analysis_stop\.outcome == 'success'/u);
+  assert.match(steps, /\$exitCode = \$LASTEXITCODE/u);
+  assert.match(steps, /\$summaries\.Count -ne 1/u);
+  assert.match(steps, /comCreationStarted/u);
+  assert.match(steps, /switchIntervalAfterLastEvent/u);
+  assert.doesNotMatch(job, /download-artifact|upload-artifact|package:windows|artifact:build|continue-on-error|retry/u);
+});
+
 test('V2.5 phase acceptance requires all same-revision contract groups before its producer', async () => {
   const source = await readFile(WORKFLOW_URL, 'utf8');
   const contracts = source.slice(source.indexOf('  legacy_contracts:'), source.indexOf('  legacy_artifact_producer:'));

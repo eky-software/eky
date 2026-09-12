@@ -2687,6 +2687,27 @@ hyväksymisehdon väljennys. Ks.
 [WPR logging mode](https://learn.microsoft.com/en-us/windows-hardware/test/wpt/logging-mode)
 ja [MaximumFileSize](https://learn.microsoft.com/en-us/windows-hardware/test/wpt/maximumfilesize).
 
+Analyysiketju varmennetaan erillään alkuperäisestä legacy-kokeesta. Nykyinen
+työkalukutsuja odottaa käynnistämänsä työkalun prosessikahvasta poistumisen ja
+lukee sen exit-koodin; aiempi shellin `LASTEXITCODE` ei ole työkalun tulos.
+Työkalun stdout ja stderr ohjataan erillisiin yksityisiin tiedostoihin.
+Epäonnistumisesta voidaan julkaista vain sallittu raja ja numeerinen
+työkalun exit-koodi, ei tulosteen sisältöä. Nykyiset workflow-vaiheiden rajat
+säilyvät, eikä uusi valvoja tai automaattinen fallback käynnisty.
+CSV-lukija käsittelee sekuntiarvot ryhmittelemättöminä desimaaleina pisteellä
+tai pilkulla, riippumatta lukijaprosessin kulttuurista. Sekoitettu tai
+virheellinen luku hylätään; desimaalipilkkua ei poisteta tuhaterottimena.
+
+Nykyisen työnkulun `inspector-analysis-diagnostic` käyttää kerran olemassa
+olevaa `productInspectionNativeHold`-komentofixtureä ja samaa rajattua
+tallennusta ilman MSI:tä, artifact-siirtoa tai täyttä hyväksyntämatriisia.
+Testin caller-/cleanup-tulos, tallentimen lopetus ja analyysin tulos ovat
+eri vaiheita. Analyysi vaatii tunnetun vaiheketjun, tarkan prosessi-/säiesidonnan
+ja tarkoituksellisen odotuksen löytymisen. Tämä diagnoosi eikä onnistunut
+vanhan ETL:n uudelleenanalyysi korvaa alkuperäisen legacy-odotuksen selitystä
+tai avaa release-porttia. Vasta analyysiketjun todennuksen jälkeen jatketaan
+ennalta rajattuun alkuperäisen polun kokeeseen.
+
 Nykyinen työ siirtää legacy-, workspace-success- ja workspace-fault-komentojen
 sisääntulon olemassa olevaan .NET Job -omistajaan. `AcceptanceCommandProgram`
 ajaa suljetun vaihelistan; se ei tulkitse yritysdataa eikä vastaanota workerilta

@@ -12,8 +12,23 @@ $readerLoaded = $false
 # Invoked only by the opt-in diagnostic workflow. Its existing step limits
 # bound recorder/exporter commands; this file never starts or stops a test.
 function Invoke-CaptureTool([string]$Tool, [string[]]$Arguments, [string]$Label) {
-  & $Tool @Arguments *> (Join-Path $root "$Label.private.log")
-  if ($LASTEXITCODE -ne 0) { throw 'INSPECTOR_CAPTURE_TOOL_FAILED' }
+  # These fixed tool arguments contain paths/switches, never quoted commands.
+  # Start-Process joins ArgumentList; reject unsupported quoting before launch.
+  if ($Arguments.Count -eq 0 -or @($Arguments | Where-Object {
+    $_ -match '["\r\n\x00]' -or $_.EndsWith('\')
+  }).Count -ne 0) { throw 'INSPECTOR_CAPTURE_ARGUMENTS_INVALID' }
+  $argumentLine = ($Arguments | ForEach-Object { '"' + $_ + '"' }) -join ' '
+  $process = Start-Process -FilePath $Tool -ArgumentList $argumentLine -Wait -PassThru -NoNewWindow `
+    -RedirectStandardOutput (Join-Path $root "$Label.private.log") `
+    -RedirectStandardError (Join-Path $root "$Label.stderr.private.log")
+  try {
+    if (!$process.HasExited) { throw 'INSPECTOR_CAPTURE_TOOL_EXIT_UNVERIFIED' }
+    if ($process.ExitCode -ne 0) {
+      $failure = [InvalidOperationException]::new('INSPECTOR_CAPTURE_TOOL_FAILED')
+      $failure.Data['toolExitCode'] = $process.ExitCode
+      throw $failure
+    }
+  } finally { $process.Dispose() }
 }
 
 function Confirm-RecorderStopped([string]$Label) {
@@ -121,6 +136,7 @@ try {
   }
   [ordered]@{ schemaVersion = 1; operation = 'installerProductInspectionCapture'; phase = $Mode;
     status = 'completed'; resultCode = 'diagnosticOnly' } | ConvertTo-Json -Compress
+  exit 0
 } catch {
   $failure = $_.Exception
   $code = if ($readerLoaded) { Resolve-InspectorTraceErrorCode $failure.Message } else { 'INSPECTOR_CAPTURE_UNEXPECTED_FAILURE' }
@@ -132,6 +148,9 @@ try {
   if ($readerLoaded) {
     $shape = @(Get-InspectorTraceFailureShape $failure)
     if ($shape.Count -gt 0) { $result.processLabelShape = $shape }
+  }
+  if ($code -ceq 'INSPECTOR_CAPTURE_TOOL_FAILED' -and $failure.Data['toolExitCode'] -is [int]) {
+    $result.toolExitCode = $failure.Data['toolExitCode']
   }
   $result | ConvertTo-Json -Compress
   exit 1

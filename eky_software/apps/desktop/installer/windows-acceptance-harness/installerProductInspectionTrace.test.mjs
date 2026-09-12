@@ -14,7 +14,7 @@ const SWITCH_HEADERS = ['New Process', 'New Thread Id', 'Switch-In Time (s)', 'L
 const event = (phase, time, provider = PROVIDER) => [provider, 'synthetic.exe (123)', '456', phase, time, time, 'PRIVATE-FIXTURE-DATA'];
 const csv = (rows) => rows.map((row) => row.map((field) => `"${String(field).replaceAll('"', '""')}"`).join(',')).join('\r\n');
 
-for (const kind of ['completed', 'interrupted', 'invalid', 'capture']) test(
+for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal', 'toolExit']) test(
   `external inspector trace keeps ${kind} evidence closed and separate from acceptance`,
   { skip: process.platform !== 'win32', timeout: INSPECTOR_TIMEOUT_MILLISECONDS },
   async (t) => {
@@ -43,10 +43,77 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture']) test(
       ['synthetic.exe (123)', '456', '30', '3.1', 'PRIVATE-STACK'],
       ['foreign.exe (789)', '456', '90', '3.1', 'PRIVATE-FOREIGN-STACK'],
     ]));
+    if (kind === 'toolExit') await writeFile(join(context.testRoot, 'capture tool.mjs'),
+      "if (process.argv[2] !== 'value with spaces' || process.argv[3] !== '') process.exit(8);\n" +
+      "process.stdout.write('known output'); process.stderr.write('known error');\n");
     const command = `
       $ErrorActionPreference = 'Stop'
       [Threading.Thread]::CurrentThread.CurrentCulture = [Globalization.CultureInfo]::InvariantCulture
       . $env:EKY_TRACE_TEST_SCRIPT
+      if ($env:EKY_TRACE_TEST_KIND -ceq 'toolExit') {
+        $tokens = $null
+        $errors = $null
+        $captureScript = Join-Path (Split-Path $env:EKY_TRACE_TEST_SCRIPT -Parent) 'captureInstallerProductInspection.ps1'
+        $ast = [Management.Automation.Language.Parser]::ParseFile($captureScript, [ref]$tokens, [ref]$errors)
+        $function = $ast.Find({ param($node)
+          $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Invoke-CaptureTool'
+        }, $false)
+        if ($errors.Count -ne 0 -or $null -eq $function) { throw 'captureInvocationMissing' }
+        . ([scriptblock]::Create($function.Extent.Text))
+        $root = $env:EKY_TRACE_TEST_ROOT
+        $rejected = $false
+        try { Invoke-CaptureTool $env:EKY_TRACE_TEST_NODE @('-e', 'process.exit(7)') 'failed-tool' }
+        catch {
+          $rejected = $_.Exception.Message -ceq 'INSPECTOR_CAPTURE_TOOL_FAILED' -and
+            $_.Exception.Data['toolExitCode'] -is [int] -and $_.Exception.Data['toolExitCode'] -eq 7
+        }
+        if (!$rejected) { throw 'nativeExitNotPreserved' }
+        $global:LASTEXITCODE = 99
+        Invoke-CaptureTool $env:EKY_TRACE_TEST_NODE @((Join-Path $root 'capture tool.mjs'), 'value with spaces', '') 'completed-tool'
+        if ([IO.File]::ReadAllText((Join-Path $root 'completed-tool.private.log')) -cne 'known output' -or
+            [IO.File]::ReadAllText((Join-Path $root 'completed-tool.stderr.private.log')) -cne 'known error') {
+          throw 'nativeToolOutputInvalid'
+        }
+        foreach ($argument in @('embedded"quote', 'trailing\\', "line\nbreak")) {
+          $rejected = $false
+          try { Invoke-CaptureTool $env:EKY_TRACE_TEST_NODE @($argument) 'must-not-start' }
+          catch { $rejected = $_.Exception.Message -ceq 'INSPECTOR_CAPTURE_ARGUMENTS_INVALID' }
+          if (!$rejected -or (Test-Path -LiteralPath (Join-Path $root 'must-not-start.private.log'))) { throw 'toolArgumentNotRejected' }
+        }
+        [IO.File]::WriteAllText($env:EKY_TRACE_TEST_RESULT, '{"status":"validated"}')
+        exit 0
+      }
+      if ($env:EKY_TRACE_TEST_KIND -ceq 'decimal') {
+        foreach ($culture in @('en-US', 'fi-FI')) {
+          [Threading.Thread]::CurrentThread.CurrentCulture = [Globalization.CultureInfo]::GetCultureInfo($culture)
+          foreach ($separator in @('.', ',')) {
+            $event = [pscustomobject]@{ 'Provider Name' = '${PROVIDER}'; Process = 'synthetic.exe (123)';
+              ThreadId = '456'; 'Event Name' = 'comCreationStarted'; 'Time (s)' = ('3' + $separator + '125000000') }
+            $events = @(Get-InspectorTraceEvents @($event))
+            if ($events.Count -ne 1 -or $events[0].seconds -ne 3.125) { throw 'traceDecimalValueInvalid' }
+            $switch = [pscustomobject]@{ 'New Process' = 'synthetic.exe (123)'; 'New Thread Id' = '456';
+              'Switch-In Time (s)' = ('4' + $separator + '000000000');
+              'Last Switch-Out Time (s)' = ('3' + $separator + '500000000') }
+            $summary = @(Get-InspectorTraceSummary $events @($switch))
+            if ($summary[0].schedulingObservation -cne 'switchIntervalAfterLastEvent') { throw 'traceDecimalWaitInvalid' }
+            foreach ($invalid in @('1,234.5', '1.234,5', '1,234,567', 'NaN', 'Infinity', '-1', '1e999', '')) {
+              $event.'Time (s)' = $invalid
+              $rejected = $false
+              try { [void](Get-InspectorTraceEvents @($event)) }
+              catch { $rejected = $_.Exception.Message -ceq 'INSPECTOR_TRACE_EVENT_TIME_INVALID' }
+              if (!$rejected) { throw 'traceEventTimeNotRejected' }
+              if ($invalid -ceq '') { continue }
+              $switch.'Switch-In Time (s)' = $invalid
+              $rejected = $false
+              try { [void](Get-InspectorTraceSummary $events @($switch)) }
+              catch { $rejected = $_.Exception.Message -ceq 'INSPECTOR_TRACE_SWITCH_INVALID' }
+              if (!$rejected) { throw 'traceSwitchTimeNotRejected' }
+            }
+          }
+        }
+        [IO.File]::WriteAllText($env:EKY_TRACE_TEST_RESULT, '{"status":"validated"}')
+        exit 0
+      }
       if ($env:EKY_TRACE_TEST_KIND -ceq 'capture') {
         [xml]$inputProfile = '<WindowsPerformanceRecorder><Profiles>' +
           '<SystemCollector Id="System" Name="Synthetic system"><BufferSize Value="1024"/><Buffers Value="20"/></SystemCollector>' +
@@ -155,6 +222,7 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture']) test(
         EKY_TRACE_TEST_CASES: String(cases.length), EKY_TRACE_TEST_RESULT: context.resultPath,
         EKY_TRACE_TEST_PROFILE: String(kind === 'completed'),
         EKY_TRACE_TEST_KIND: kind,
+        EKY_TRACE_TEST_NODE: process.execPath,
       } });
     context.fixtureProcesses.add(child);
     const exit = await new Promise((resolvePromise, rejectPromise) => {
@@ -165,7 +233,7 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture']) test(
     const output = await readFile(context.resultPath, 'utf8');
     assert.doesNotMatch(output, /PRIVATE|synthetic\.exe|foreign\.exe|123|456|789/);
     const results = JSON.parse(output);
-    if (kind === 'capture') {
+    if (['capture', 'decimal', 'toolExit'].includes(kind)) {
       assert.deepEqual(results, { status: 'validated' });
     } else if (kind === 'invalid') {
       assert.deepEqual(results, ['INSPECTOR_TRACE_EVENT_NAME_INVALID', 'INSPECTOR_TRACE_PROVIDER_INVALID',

@@ -13,6 +13,7 @@ on:
           - window-startup-diagnostic
           - legacy-contracts-diagnostic
           - legacy-worker-diagnostic
+          - inspector-analysis-diagnostic
           - packaged-boundary-diagnostic
       artifact_kind:
         description: Existing artifact consumer (diagnostic only)
@@ -45,14 +46,14 @@ concurrency:
 jobs:
   job-object-feasibility:
     if: inputs.mode != 'packaged-boundary-diagnostic'
-    name: ${{ inputs.mode == 'window-startup-diagnostic' && 'V2.5 window startup diagnostic (not acceptance)' || inputs.mode == 'legacy-worker-diagnostic' && format('V2.5 worker diagnostic run {0} (not acceptance)', matrix.repetition) || inputs.mode == 'legacy-contracts-diagnostic' && format('V2.5 contracts diagnostic run {0} (not acceptance)', matrix.repetition) || format('Windows Job Object feasibility run {0}', matrix.repetition) }}
+    name: ${{ inputs.mode == 'inspector-analysis-diagnostic' && 'Inspector analysis diagnostic (no MSI, not acceptance)' || inputs.mode == 'window-startup-diagnostic' && 'V2.5 window startup diagnostic (not acceptance)' || inputs.mode == 'legacy-worker-diagnostic' && format('V2.5 worker diagnostic run {0} (not acceptance)', matrix.repetition) || inputs.mode == 'legacy-contracts-diagnostic' && format('V2.5 contracts diagnostic run {0} (not acceptance)', matrix.repetition) || format('Windows Job Object feasibility run {0}', matrix.repetition) }}
     runs-on: windows-latest
     timeout-minutes: 10
 
     strategy:
       fail-fast: false
       matrix:
-        repetition: ${{ fromJSON(inputs.mode == 'window-startup-diagnostic' && '[1]' || '[1, 2]') }}
+        repetition: ${{ fromJSON((inputs.mode == 'window-startup-diagnostic' || inputs.mode == 'inspector-analysis-diagnostic') && '[1]' || '[1, 2]') }}
 
     defaults:
       run:
@@ -89,7 +90,7 @@ jobs:
         run: node installer/windows-process-supervisor/buildWindowsAcceptanceSupervisor.mjs
 
       - name: Run supervisor unit and process contracts
-        if: inputs.mode != 'window-startup-diagnostic' && inputs.mode != 'legacy-contracts-diagnostic' && inputs.mode != 'legacy-worker-diagnostic'
+        if: inputs.mode != 'window-startup-diagnostic' && inputs.mode != 'legacy-contracts-diagnostic' && inputs.mode != 'legacy-worker-diagnostic' && inputs.mode != 'inspector-analysis-diagnostic'
         run: >-
           node --test --test-concurrency=1
           installer/windows-process-supervisor/tests/windowsAcceptanceSupervisorResult.test.mjs
@@ -132,6 +133,45 @@ jobs:
         run: >-
           node --test --test-concurrency=1
           installer/windows-acceptance-harness/runLegacyUpgradeWorker.test.mjs
+
+      - name: Start bounded inspector analysis fixture capture
+        id: inspector_analysis_start
+        if: inputs.mode == 'inspector-analysis-diagnostic'
+        timeout-minutes: 1
+        shell: pwsh
+        run: ./installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode start
+
+      - name: Exercise existing native hold command without MSI
+        if: inputs.mode == 'inspector-analysis-diagnostic'
+        timeout-minutes: 2
+        run: >-
+          node --test --test-concurrency=1
+          --test-name-pattern="^legacy fixed command entrypoint completes the real phase chain: productInspectionNativeHold$"
+          installer/windows-acceptance-harness/legacyCommandEntrypoint.process.test.mjs
+
+      - name: Stop bounded inspector analysis fixture capture
+        id: inspector_analysis_stop
+        if: always() && inputs.mode == 'inspector-analysis-diagnostic' && steps.inspector_analysis_start.outcome != 'skipped'
+        timeout-minutes: 2
+        shell: pwsh
+        run: ./installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode stop
+
+      - name: Verify exporter reader and intentional wait without MSI
+        if: always() && inputs.mode == 'inspector-analysis-diagnostic' && steps.inspector_analysis_stop.outcome == 'success'
+        timeout-minutes: 3
+        shell: pwsh
+        run: |
+          $output = & ./installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode analyze
+          $exitCode = $LASTEXITCODE
+          $output | Write-Output
+          if ($exitCode -ne 0) { throw 'INSPECTOR_ANALYSIS_DIAGNOSTIC_FAILED' }
+          $summaries = @($output | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object { $_.phase -ceq 'analysis' })
+          if ($summaries.Count -ne 1 -or $summaries[0].firstBoundary -cne 'scriptStarted' -or
+              $summaries[0].lastBoundary -cne 'comCreationStarted' -or
+              $summaries[0].schedulingObservation -cne 'switchIntervalAfterLastEvent' -or
+              $summaries[0].scriptFinishedObserved -ne $false) {
+            throw 'INSPECTOR_SYNTHETIC_WAIT_UNVERIFIED'
+          }
 
   packaged-boundary-diagnostic:
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'packaged-boundary-diagnostic'
