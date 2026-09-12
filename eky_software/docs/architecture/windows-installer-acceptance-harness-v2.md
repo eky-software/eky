@@ -995,6 +995,16 @@ raportoidaan erikseen. Koe ei korvaa normaaleja consumereita tai hyväksyntää,
 eikä 3010:n hyväksyminen, sokkouusinta tai callback/UI-politiikan muutos kuulu
 tähän diagnoosiin.
 
+Rajattu koe [34721039114](https://github.com/eky-software/eky/actions/runs/34721039114)
+valmistui ensimmäisellä yrityksellä: harness ja checkout olivat `0fe829b`,
+artifactin build-revisio `63be868` ja alkuperäinen artifact-ID `10304808865`.
+MSI palautti 0, suljettu lukija ei havainnut reboot-syymerkintöjä ja MSI:n
+valmistuminen havaittiin sovelluksen poistumisen jälkeen. Koko upgrade-ketju,
+prosessien poissaolo, asennuksen poisto ja artifactin ennen/jälkeen-varmennus
+läpäisivät. Koe todistaa uuden havainnon kulun fixture-poiston yli, ei aiemman
+3010:n juurisyytä. Callback- ja tuotantokäyttäytyminen pysyvät ennallaan;
+aiempi epäonnistuminen säilyy avoimena normaalin integraatiohyväksynnän rinnalla.
+
 Vanhan running-Setup-sopimuksen 1603-haara saa jatkaa kerran vasta sulkemisen
 ja lähdeasennuksen muuttumattomuuden tarkistuksen jälkeen. Se ei ole yleinen
 retry: muu virhe, reboot-vaatimus tai muuttunut source hylätään. Alkuperäinen
