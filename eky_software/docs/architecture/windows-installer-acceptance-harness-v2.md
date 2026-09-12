@@ -2644,6 +2644,16 @@ tarkennetaan suljetuksi alavaiheeksi ja virhekoodiksi, ja CSV-vienti rajataan
 yhteenvedon käyttämiin sarakkeisiin. Tämä korjaus ei muuta callerin tulosta;
 sen CI-varmennus on vielä avoin.
 
+[Korjatun lukijan CI 34696778818](https://github.com/eky-software/eky/actions/runs/34696778818)
+revisiolla `046f65e27dd670245e84fb7b98eb4deb6c813982` läpäisi saman
+artifactin legacy-komennon, pakollisen tulosvarmennuksen, jälkivarmennuksen
+ja tallennuksen lopetuksen. Analyysi hylkäsi tapahtumarivin rajalla
+`eventRead / INSPECTOR_TRACE_EVENT_INVALID`; koko diagnostinen jobi pysyi
+epäonnistuneena. Tapahtumarivin lähde-, nimi-, säie-, prosessi- ja aikakentän
+hylkäykset erotetaan lukijassa suljetuiksi virhekoodeiksi ilman raakasisältöä.
+Tämä tarkentaa diagnoosia, ei muuta rivin hyväksymisehtoja eikä selitä
+alkuperäistä legacy-viivettä. Uusi kenttäerottelu ei ole vielä CI-varmennettu.
+
 Nykyinen työ siirtää legacy-, workspace-success- ja workspace-fault-komentojen
 sisääntulon olemassa olevaan .NET Job -omistajaan. `AcceptanceCommandProgram`
 ajaa suljetun vaihelistan; se ei tulkitse yritysdataa eikä vastaanota workerilta

@@ -7,7 +7,9 @@ function Resolve-InspectorTraceErrorCode([string]$Message) {
     'INSPECTOR_CAPTURE_TOOL_UNAVAILABLE', 'INSPECTOR_CAPTURE_NOT_STARTED',
     'INSPECTOR_CAPTURE_STOP_FAILED', 'INSPECTOR_TRACE_TABLE_LIMIT',
     'INSPECTOR_TRACE_TABLE_INVALID', 'INSPECTOR_TRACE_EVENTS_MISSING',
-    'INSPECTOR_TRACE_EVENT_INVALID', 'INSPECTOR_TRACE_THREADS_INVALID',
+    'INSPECTOR_TRACE_PROVIDER_INVALID', 'INSPECTOR_TRACE_EVENT_NAME_INVALID',
+    'INSPECTOR_TRACE_EVENT_THREAD_INVALID', 'INSPECTOR_TRACE_EVENT_PROCESS_INVALID',
+    'INSPECTOR_TRACE_EVENT_TIME_INVALID', 'INSPECTOR_TRACE_THREADS_INVALID',
     'INSPECTOR_TRACE_STREAMS_INVALID', 'INSPECTOR_TRACE_SWITCH_INVALID')
   if ($Message -cin $allowed) { return $Message }
   return 'INSPECTOR_CAPTURE_UNEXPECTED_FAILURE'
@@ -53,11 +55,16 @@ function Get-InspectorTraceEvents([object[]]$Rows) {
   $events = @($Rows | Where-Object { $_.'Event Name' -ne '' })
   if ($events.Count -eq 0 -or $events.Count -gt 2048) { throw 'INSPECTOR_TRACE_EVENTS_MISSING' }
   foreach ($event in $events) {
-    if ($event.'Provider Name' -cne 'Eky-InstallerProductInspection-V1' -or
-        $event.'Event Name' -cnotin $allowed -or $event.ThreadId -notmatch '^[1-9][0-9]{0,9}$' -or
-        $event.Process -notmatch '^.+ \([1-9][0-9]{0,9}\)$') { throw 'INSPECTOR_TRACE_EVENT_INVALID' }
-    $seconds = [double]::Parse($event.'Time (s)', [Globalization.CultureInfo]::CurrentCulture)
-    if ([double]::IsNaN($seconds) -or [double]::IsInfinity($seconds) -or $seconds -lt 0) { throw 'INSPECTOR_TRACE_EVENT_INVALID' }
+    if ($event.'Provider Name' -cne 'Eky-InstallerProductInspection-V1') { throw 'INSPECTOR_TRACE_PROVIDER_INVALID' }
+    if ($event.'Event Name' -cnotin $allowed) { throw 'INSPECTOR_TRACE_EVENT_NAME_INVALID' }
+    if ($event.ThreadId -notmatch '^[1-9][0-9]{0,9}$') { throw 'INSPECTOR_TRACE_EVENT_THREAD_INVALID' }
+    if ($event.Process -notmatch '^.+ \([1-9][0-9]{0,9}\)$') { throw 'INSPECTOR_TRACE_EVENT_PROCESS_INVALID' }
+    $seconds = 0.0
+    if (![double]::TryParse($event.'Time (s)', [Globalization.NumberStyles]::Float -bor [Globalization.NumberStyles]::AllowThousands,
+        [Globalization.CultureInfo]::CurrentCulture, [ref]$seconds) -or
+        [double]::IsNaN($seconds) -or [double]::IsInfinity($seconds) -or $seconds -lt 0) {
+      throw 'INSPECTOR_TRACE_EVENT_TIME_INVALID'
+    }
     [pscustomobject]@{ phase = $event.'Event Name'; process = $event.Process; thread = $event.ThreadId; seconds = $seconds }
   }
 }
