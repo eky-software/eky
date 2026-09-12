@@ -30,6 +30,10 @@ on:
       artifact_descriptor_sha256:
         description: Expected original descriptor SHA-256
         type: string
+      inspector_capture:
+        description: One opt-in legacy diagnostic; raw WPR data stays in runner temp
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -147,6 +151,7 @@ jobs:
       ARTIFACT_ID: ${{ inputs.artifact_id }}
       EXPECTED_BUILD_REVISION: ${{ inputs.artifact_build_revision }}
       EXPECTED_DESCRIPTOR_SHA256: ${{ inputs.artifact_descriptor_sha256 }}
+      INSPECTOR_CAPTURE: ${{ inputs.inspector_capture }}
     steps:
       - name: Check out exact diagnostic harness revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -156,6 +161,9 @@ jobs:
 
       - name: Validate closed diagnostic identity before download
         run: |
+          if ($env:INSPECTOR_CAPTURE -ceq 'true' -and $env:ARTIFACT_KIND -cne 'legacy') {
+            throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CAPTURE_SCOPE_INVALID'
+          }
           if ($env:ARTIFACT_KIND -cnotin @('legacy', 'workspace') -or
               $env:ARTIFACT_RUN_ID -cnotmatch '^[1-9][0-9]{0,19}$' -or
               $env:ARTIFACT_ID -cnotmatch '^[1-9][0-9]{0,19}$' -or
@@ -224,6 +232,12 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_PREPARATION_FAILED' }
           }
 
+      - name: Start opt-in external inspector capture
+        id: capture
+        if: inputs.inspector_capture && inputs.artifact_kind == 'legacy'
+        timeout-minutes: 1
+        run: ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode start
+
       - name: Run existing caller and mandatory result verifier once
         timeout-minutes: ${{ inputs.artifact_kind == 'legacy' && 27 || 25 }}
         run: |
@@ -243,6 +257,12 @@ jobs:
           pnpm --filter @eky/desktop exec node "installer/windows-acceptance-harness/$verifier" --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath --command-exit $commandExit
           if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED' }
 
+      - name: Stop only the diagnostic recording
+        id: capture_stop
+        if: always() && (steps.capture.outcome == 'success' || steps.capture.outcome == 'failure' || steps.capture.outcome == 'cancelled')
+        timeout-minutes: 2
+        run: ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode stop
+
       - name: Reverify immutable artifact after diagnostic
         if: always() && steps.download.outcome == 'success'
         run: |
@@ -250,3 +270,8 @@ jobs:
           $root = Join-Path $env:RUNNER_TEMP 'eky-existing-boundary-artifact'
           pnpm --filter @eky/desktop exec node "installer/windows-acceptance-harness/$verifier" --artifact-root $root --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION
           if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_ARTIFACT_CHANGED' }
+
+      - name: Extract closed inspector observations without publishing raw trace
+        if: always() && steps.capture_stop.outcome == 'success'
+        timeout-minutes: 3
+        run: ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode analyze

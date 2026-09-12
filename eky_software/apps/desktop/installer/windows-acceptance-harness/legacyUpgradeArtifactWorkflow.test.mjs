@@ -49,6 +49,19 @@ test('packaged boundary diagnostic reuses exact artifacts without becoming a nor
   assert.match(diagnostic, /inputs\.artifact_kind == 'legacy' && 27 \|\| 25/u);
 });
 
+test('external inspector capture is opt-in and never replaces command or artifact outcomes', async () => {
+  const source = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
+  const diagnostic = source.slice(source.indexOf('  packaged-boundary-diagnostic:'));
+  assert.match(source, /inspector_capture:[\s\S]*?type: boolean\s+default: false/u);
+  assert.match(diagnostic, /if: inputs\.inspector_capture && inputs\.artifact_kind == 'legacy'/u);
+  assert.ok(diagnostic.indexOf('-Mode start') < diagnostic.indexOf('Run existing caller and mandatory result verifier once'));
+  assert.ok(diagnostic.indexOf('-Mode stop') > diagnostic.indexOf('--command-exit $commandExit'));
+  assert.match(diagnostic, /always\(\) && \(steps\.capture\.outcome == 'success' \|\| steps\.capture\.outcome == 'failure' \|\| steps\.capture\.outcome == 'cancelled'\)/u);
+  assert.match(diagnostic, /always\(\) && steps\.capture_stop\.outcome == 'success'/u);
+  assert.ok(diagnostic.indexOf('Reverify immutable artifact') < diagnostic.indexOf('-Mode analyze'));
+  assert.doesNotMatch(diagnostic, /continue-on-error|upload-artifact|wpr.*-cancel|symbols/u);
+});
+
 test('V2.5 phase acceptance requires all same-revision contract groups before its producer', async () => {
   const source = await readFile(WORKFLOW_URL, 'utf8');
   const contracts = source.slice(source.indexOf('  legacy_contracts:'), source.indexOf('  legacy_artifact_producer:'));
@@ -86,7 +99,7 @@ test('legacy contract groups partition the complete existing inventory without o
   });
   const expected = [
     ...['acceptanceCommandPhaseInput', 'boundedWindowsAdapterProcess', 'supervisorProcessLaunch',
-      'buildWindowsApplicationCloseFixture', 'closedDirectoryInventory', 'inspectWindowsInstallerProductState',
+      'buildWindowsApplicationCloseFixture', 'closedDirectoryInventory', 'inspectWindowsInstallerProductState', 'installerProductInspectionTrace',
       'installerProductOperationWorker', 'installerProductOperationProcess', 'installerProductOperationResult',
       'installerProductOperationDeadline.process', 'legacyCallerResult', 'legacyCommandCompletion.process',
       'legacyCommandEntrypoint.process', 'workspaceSuccessCommandEntrypoint.process', 'workspaceFaultCommandEntrypoint.process',
@@ -113,7 +126,7 @@ test('entrypoint groups register every original command contract exactly once', 
     'profileChanged', 'artifactChanged'];
   const all = [];
   for (const [file, kind, extra] of [
-    ['legacyCommandEntrypoint', 'legacy', []],
+    ['legacyCommandEntrypoint', 'legacy', ['productInspectionNativeHold']],
     ['workspaceSuccessCommandEntrypoint', 'workspace-success', ['footprintFailed']],
     ['workspaceFaultCommandEntrypoint', 'workspace-fault', ['footprintFailed', 'sessionFailed']],
   ]) {
@@ -132,7 +145,7 @@ test('entrypoint groups register every original command contract exactly once', 
     assert.ok(source.includes(`registerAcceptanceCommandEntrypointContracts('${kind}');`));
     all.push(...registrations);
   }
-  assert.equal(all.length, 57);
+  assert.equal(all.length, 58);
   assert.equal(new Set(all).size, all.length);
 });
 

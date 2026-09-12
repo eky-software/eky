@@ -2616,6 +2616,24 @@ CI-epäonnistumisen selitykseksi. Seuraava avoin portti on rajattu vertailu
 epäonnistuneessa ajopolussa. Tallennus-, siirto- ja oikeuspäätökset säilyvät
 erillisinä. Uutta täyttä MSI-matriisia ei ajeta pelkän diagnoosilisäyksen vuoksi.
 
+Nykyisen `packaged-boundary-diagnostic`-työnkulun valinnainen
+`inspector_capture` koskee vain yhtä legacy-consumeria ja olemassa olevaa,
+uudelleen varmennettua artifact-ID:tä. Se käyttää ajajan valmiita Windows-
+tallennus- ja analyysityökaluja; puuttuvaa työkalua ei asenneta. Tallennus
+alkaa ennen muuttumatonta komentoa, pysähtyy erillisessä rajatussa
+`always()`-vaiheessa ja käsitellään vasta pakollisen tulosvarmennuksen jälkeen.
+Raaka ETL, CSV, työkalutulosteet ja johdetut profiilit jäävät runnerin
+väliaikaishakemistoon, eikä niitä siirretä workflow-artifactiin. Uutta
+skenaarioajuria, prosessiomistajaa tai testin onnistumisehtoa ei lisätä.
+
+Julkinen diagnoosi sisältää vain suljetut vaihe- ja tulosluokat. Prosessi-
+tai säietunnisteet, pinot, polut ja raakavirheet eivät ylitä tätä rajaa.
+Muistirengas ei takaa koko ajohistorian säilymistä: puuttuva vaihtotapahtuma
+tai `scriptFinished` ei yksin todista odotusta tai prosessin poistumista.
+Tallennuksen epäonnistuminen, callerin tulos ja asennuksen siivous säilyvät
+erillisinä. Tämä kertaluonteinen vertailu ei muuta nykyistä epäonnistunutta
+hyväksyntätilaa eikä käynnistä normaalia matriisia.
+
 Nykyinen työ siirtää legacy-, workspace-success- ja workspace-fault-komentojen
 sisääntulon olemassa olevaan .NET Job -omistajaan. `AcceptanceCommandProgram`
 ajaa suljetun vaihelistan; se ei tulkitse yritysdataa eikä vastaanota workerilta
