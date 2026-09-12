@@ -2608,10 +2608,12 @@ Normaalit budjetit, hyväksymisehdot ja prosessiomistajuus säilyvät.
 
 Tuotetarkistuksen rajattu diagnoosivalmius erottaa nyt PowerShell-lukijan
 sisäiset rajat payloadittomilla ETW-tapahtumilla. Tämä ei ole edellä kuvatun
-CI-viiveen juurisyykorjaus tai uusi hyväksytty kokonaiskierros. Ennen seuraavaa
-vertailua pitää todentaa ulkoisen tallennuksen ja odotusanalyysin toiminta
-synteettisessä pysähdyksessä; testin oma EventListener-kuittaus ei yksin
-todista WPR-tallennusta. Tallennus-, siirto- ja oikeuspäätökset säilyvät
+CI-viiveen juurisyykorjaus tai uusi hyväksytty kokonaiskierros. Ulkoisen
+tallennuksen, odotusanalyysin ja komentoketjun poistumisen synteettinen
+koetodiste on varmennettu. Testin oma EventListener-kuittaus ei korvaa
+ulkoista näyttöä, eikä synteettisen pysähdyksen syytä siirretä aidon
+CI-epäonnistumisen selitykseksi. Seuraava avoin portti on rajattu vertailu
+epäonnistuneessa ajopolussa. Tallennus-, siirto- ja oikeuspäätökset säilyvät
 erillisinä. Uutta täyttä MSI-matriisia ei ajeta pelkän diagnoosilisäyksen vuoksi.
 
 Nykyinen työ siirtää legacy-, workspace-success- ja workspace-fault-komentojen
