@@ -2718,6 +2718,33 @@ inspector-provideriin. Vieras provider ei kelpaa edes samalla tapahtumanimellä.
 Virheenjulkaisuvaiheen ei-nolla-exit on erillinen pakollisen caller-tuloksen
 sisällöstä; epäonnistuneen komennon julkaisu saa itsessään palauttaa virheen.
 
+Korjattu synteettinen diagnoosi
+[34704430398](https://github.com/eky-software/eky/actions/runs/34704430398)
+läpäisi ensimmäisellä yrityksellä revisiolla
+`d35cfc04a4af55c2d76e1f77cde5445eaff5be70`: komentoregressio, pakollinen
+caller-tulos, prosessisiivous, tallentimen lopetus ja tarkoituksellisen
+odotuksen analyysi onnistuivat. Aiempi epäonnistuminen säilyy yllä erillisenä.
+
+Sen jälkeen tehty yksi alkuperäisen polun diagnoosi
+[34704669848](https://github.com/eky-software/eky/actions/runs/34704669848)
+käytti samaa lähde-/checkout-revisiota ja artifact-ID:tä `10286568864`
+(build-revisio `1a78b3137c15dc4b358affcf915ee30449041935`). Legacy-komento,
+pakollinen caller-varmennus, prosessisiivous, asennuksen poisto, jälkiehdot,
+fixture-poisto, artifactin ennen/jälkeen-varmennus ja tallentimen lopetus
+läpäisivät. Koko diagnoosi silti epäonnistui erilliseen
+`eventExport / INSPECTOR_CAPTURE_TOOL_FAILED` -tulokseen; vientiprosessin
+exit-koodi oli `-2147008507`. Tapahtumien lukija ei käynnistynyt.
+Tämä ei todista tapahtumien puuttumista, jäljen vioittumista tai
+alkuperäisen legacy-viiveen syytä.
+
+Seuraava erottava näyttö tarvitaan analyysirajalta, ei uudesta MSI-kierroksesta:
+vientivirheen suljettu luokitus ja ulkoisen tapahtumaviennin toimivuus
+suoraan käynnistetystä nykyisestä inspectorista ilman fixturen omaa
+EventListeneria. Nykyinen synteettinen todistus sisältää tämän kuuntelijan;
+sen mahdollista vaikutusta ulkoiseen tallennukseen ei ole osoitettu.
+Raakatulosteet pysyvät yksityisinä. Sama exit-koodi tai vihreä uusinta ei
+yksin sulje kumpaakaan avointa kysymystä eikä avaa julkaisuporttia.
+
 Nykyinen työ siirtää legacy-, workspace-success- ja workspace-fault-komentojen
 sisääntulon olemassa olevaan .NET Job -omistajaan. `AcceptanceCommandProgram`
 ajaa suljetun vaihelistan; se ei tulkitse yritysdataa eikä vastaanota workerilta
