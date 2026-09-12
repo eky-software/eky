@@ -60,7 +60,7 @@ jobs:
           node-version-file: eky_software/.node-version
           package-manager-cache: false
       - name: Verify risk and result contracts
-        run: node --test --test-concurrency=1 .github/scripts/ciRiskPolicy.test.mjs .github/scripts/ciAcceptanceResult.test.mjs .github/scripts/classifyCiChanges.test.mjs .github/scripts/ciRunAcceptance.test.mjs .github/scripts/verifyCiRun.test.mjs
+        run: node --test --test-concurrency=1 .github/scripts/ciRiskPolicy.test.mjs .github/scripts/ciAcceptanceResult.test.mjs .github/scripts/classifyCiChanges.test.mjs .github/scripts/ciRunAcceptance.test.mjs .github/scripts/verifyCiRun.test.mjs .github/scripts/legacyCaptureObservation.test.mjs
 
   core:
     needs: classification

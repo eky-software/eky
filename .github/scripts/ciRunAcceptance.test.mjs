@@ -5,6 +5,7 @@ import { classifyCiChanges } from './classifyCiChanges.mjs';
 import { classifyCiRisk } from './ciRiskPolicy.mjs';
 import { requiredCiJobs } from './ciJobCoverage.mjs';
 import { CI_WORKFLOWS, evaluateCiRun } from './ciRunAcceptance.mjs';
+import { summarizeLegacyCapture } from './legacyCaptureObservation.mjs';
 
 const fast = 'eky_software/apps/web/src/features/customers/CustomerList.tsx';
 const critical = 'eky_software/apps/desktop/src/profileBackup/restore/profileRestoreStartupRecovery.ts';
@@ -98,6 +99,37 @@ test('deleted and moved critical paths flow from Git diff into required consumer
   const { needs, jobs } = evidence(full);
   needs.classification.result = 'failure';
   assert.equal(evaluateCiRun(full, needs, jobs).resultCode, 'classificationNotSuccessful');
+});
+
+test('optional legacy capture cannot replace either consumer or its mandatory results', () => {
+  const plan = planFor([critical], 'push');
+  for (const captureOutcome of ['success', 'failure', 'cancelled', 'skipped']) {
+    const { needs, jobs } = evidence(plan);
+    const consumer = jobs.find((job) => job.name.endsWith('legacy phase run 1'));
+    const observation = summarizeLegacyCapture({ enabled: true, testOutcome: 'success',
+      artifactOutcome: 'success', startOutcome: captureOutcome, stopOutcome: captureOutcome,
+      analysisOutcome: captureOutcome });
+    consumer.steps.push({ name: 'Optional inspector capture', status: 'completed',
+      conclusion: 'success', outcome: captureOutcome });
+    assert.equal(observation.testOutcome, 'success');
+    assert.equal(evaluateCiRun(plan, needs, jobs).status, 'completed');
+    jobs.splice(jobs.findIndex((job) => job.name.endsWith('legacy phase run 2')), 1);
+    assert.equal(evaluateCiRun(plan, needs, jobs).resultCode, 'CI_REQUIRED_JOB_INCOMPLETE');
+  }
+
+  for (const stepName of ['Run existing supervised legacy lifecycle once',
+    'Reverify phase artifact bytes after lifecycle']) {
+    for (const outcome of ['failure', 'cancelled', 'skipped', 'missing']) {
+      const { needs, jobs } = evidence(plan);
+      const consumer = jobs.find((job) => job.name.endsWith('legacy phase run 1'));
+      consumer.steps.push({ name: 'Optional inspector capture', status: 'completed', conclusion: 'success' });
+      const index = consumer.steps.findIndex((step) => step.name === stepName);
+      assert.ok(index >= 0);
+      if (outcome === 'missing') consumer.steps.splice(index, 1);
+      else consumer.steps[index].conclusion = outcome;
+      assert.equal(evaluateCiRun(plan, needs, jobs).resultCode, 'CI_REQUIRED_STEP_INCOMPLETE');
+    }
+  }
 });
 
 test('every selected job is mandatory even when reusable workflow result claims success', () => {

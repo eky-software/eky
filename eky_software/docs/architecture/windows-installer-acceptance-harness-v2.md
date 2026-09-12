@@ -2792,6 +2792,49 @@ numerokoodi tai ei-fataali virheteksti ei yksin selitä viennin epäonnistumista
 Puuttuva, liian suuri tai lukukelvoton diagnostiikka ei peitä vientivirhettä.
 Keräinmalli, aikarajat, prosessiomistajuus ja normaalit hyväksyntäehdot säilyvät.
 
+### Valinnainen keruu normaalissa legacy-consumerissa
+
+Seuraava integraatiocheckpoint valmistelee nykyisen WPR-keruun valinnaiseksi
+CI-havainnoinniksi. Se ei korvaa normaaleja consumereita diagnostisilla
+uusinnoilla. Valinta on oletuksena pois päältä; kahden consumerin ajossa vain
+ensimmäinen saa tallennuksen ja toinen säilyy ilman raskasta keruuta.
+Yhden consumerin riskiajossa keruuta ei aktivoida.
+
+- Aloitus tapahtuu artifactin varmennuksen ja supervisor-buildin jälkeen,
+  ennen muuttumatonta legacy-komentoa. Keruun virhe ei ohita testikomentoa.
+- Pysäytys yrittää sulkea vain tämän ajon nimetyn tallennuksen myös testin tai
+  aloituksen epäonnistuttua. Se ei sulje testiprosesseja tai poista asennuksia.
+- Nykyiset rajat säilyvät: aloitus 1 min, pysäytys 2 min ja analyysi 3 min.
+  Analyysin vaihe sisältää myös rajatun, sallituista kentistä muodostetun
+  yhteenvedon. Testin 27 minuutin vaihe ja sisäiset määräajat eivät muutu.
+- Keräinten nykyiset per-tiedosto-rajat ovat CPU-järjestelmäkeräimelle
+  1024 MiB, CPU-tapahtumakeräimelle 1024 MiB ja inspectorille 16 MiB;
+  esitarkistus vaatii vähintään 6 GiB vapaata tilaa. Rajan täyttyminen,
+  puuttuva keräin tai tapahtumahävikki eivät tuota täyden keruun todistetta.
+- Aloitus-, pysäytys- ja analyysivaiheen alkuperäiset `outcome`-arvot
+  säilytetään erillään testin ja artifactin jälkivarmennuksen tuloksista.
+  Valinnaisen havainnoinnin virhe ei muuta onnistunutta testiä epäonnistuneeksi
+  eikä epäonnistunutta onnistuneeksi. Tuntematon tallentimen lopputila
+  merkitään varmentamattomaksi; siitä ei johdeta testin cleanup-tulosta.
+- Raaka ETL, CSV ja yksityiset työkalutulosteet pysyvät runnerin tilapäisessä
+  tallennusjuuressa. Niitä ei julkaista artifactina. Runnerin täydellinen
+  katoaminen voi estää sekä lopetuksen että aineiston saamisen talteen.
+
+Tallentavan jobin erillinen kuuden minuutin havainnointivaraus on vielä
+omistajapäätöksen takana ennen kytkentää: ehdotus on 43 min tallentavalle ja
+nykyinen 37 min tallentamattomalle jobille. Varausta ei oteta skenaarion
+työstä, prosessisiivouksesta tai pakollisesta tulosvarmennuksesta.
+
+Valmistelun CI-sopimukset läpäisevät 52/52 ja nykyiset legacy-workflow-
+sopimukset 11/11. Suljettu havaintoyhteenveto säilyttää alkuperäiset tulokset,
+ja sen komentotesti todistaa raportoinnin poistumisen myös epäonnistuneen
+testin ja analyysin jälkeen. Kattavuuskoonti torjuu edelleen puuttuvan toisen
+consumerin sekä puuttuvat tai epäonnistuneet pakolliset vaiheet.
+Keruu ei vielä ole kytketty normaaliin consumeriin; nämä kohdetestit eivät
+korvaa kytkennän todennusta tai normaalia kokonaishyväksyntää.
+
+### Nykyinen komentoraja
+
 Nykyinen työ siirtää legacy-, workspace-success- ja workspace-fault-komentojen
 sisääntulon olemassa olevaan .NET Job -omistajaan. `AcceptanceCommandProgram`
 ajaa suljetun vaihelistan; se ei tulkitse yritysdataa eikä vastaanota workerilta
