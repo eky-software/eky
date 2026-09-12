@@ -2634,6 +2634,16 @@ Tallennuksen epäonnistuminen, callerin tulos ja asennuksen siivous säilyvät
 erillisinä. Tämä kertaluonteinen vertailu ei muuta nykyistä epäonnistunutta
 hyväksyntätilaa eikä käynnistä normaalia matriisia.
 
+[Rajattu CI 34694122623](https://github.com/eky-software/eky/actions/runs/34694122623)
+käytti harness-revisiota `ada48aecdc8bd2afbd1a27c1593b211593455653` ja samaa
+artifact-ID:tä `10286568864`. Legacy-komento, pakollinen tulosvarmennus,
+artifactin jälkivarmennus ja tallennuksen lopetus läpäisivät. Erillinen
+analyysivaihe palautui virheeseen `captureUnverified`; koko diagnostinen jobi
+on hylätty eikä alkuperäistä CI-viivettä selitetty. Analyysin virheraja
+tarkennetaan suljetuksi alavaiheeksi ja virhekoodiksi, ja CSV-vienti rajataan
+yhteenvedon käyttämiin sarakkeisiin. Tämä korjaus ei muuta callerin tulosta;
+sen CI-varmennus on vielä avoin.
+
 Nykyinen työ siirtää legacy-, workspace-success- ja workspace-fault-komentojen
 sisääntulon olemassa olevaan .NET Job -omistajaan. `AcceptanceCommandProgram`
 ajaa suljetun vaihelistan; se ei tulkitse yritysdataa eikä vastaanota workerilta

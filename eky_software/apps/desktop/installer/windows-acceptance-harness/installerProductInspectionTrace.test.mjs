@@ -42,14 +42,30 @@ for (const kind of ['completed', 'interrupted', 'invalid']) test(
       $ErrorActionPreference = 'Stop'
       [Threading.Thread]::CurrentThread.CurrentCulture = [Globalization.CultureInfo]::InvariantCulture
       . $env:EKY_TRACE_TEST_SCRIPT
+      if ($env:EKY_TRACE_TEST_PROFILE -ceq 'true') {
+        $names = @('New Process', 'New Thread Id', 'Switch-In Time', 'Last Switch-Out Time', 'New Thread Stack', 'Ready Thread Stack', 'Readying Process')
+        $columns = ($names | ForEach-Object { '<Column Name="' + $_ + '" IsVisible="true" />' }) -join ''
+        [xml]$catalog = '<Profile xmlns="urn:fixture"><Content><Views><View><Graphs><Graph Guid="c58f5fea-0319-4046-932d-e695ebe20b47"><Preset><Columns>' + $columns + '</Columns></Preset></Graph></Graphs></View></Views></Content></Profile>'
+        $catalogPath = Join-Path $env:EKY_TRACE_TEST_ROOT 'catalog.xml'
+        $profilePath = Join-Path $env:EKY_TRACE_TEST_ROOT 'projection.xml'
+        $catalog.Save($catalogPath)
+        New-InspectorTraceProfile $catalogPath $profilePath @('456', '789')
+        [xml]$profile = [IO.File]::ReadAllText($profilePath)
+        $ns = [Xml.XmlNamespaceManager]::new($profile.NameTable)
+        $ns.AddNamespace('p', 'urn:fixture')
+        $visible = @($profile.SelectNodes('//p:Column[@IsVisible="true"]', $ns) | ForEach-Object { $_.GetAttribute('Name') })
+        if (($visible -join ',') -cne 'New Process,New Thread Id,Switch-In Time,Last Switch-Out Time') { throw 'projectionContractFailed' }
+      }
       $results = @()
       for ($index = 0; $index -lt [int]$env:EKY_TRACE_TEST_CASES; $index++) {
         try {
           $events = @(Get-InspectorTraceEvents @(Read-InspectorTraceTable (Join-Path $env:EKY_TRACE_TEST_ROOT "events-$index.csv")))
           $switches = @(Read-InspectorTraceTable (Join-Path $env:EKY_TRACE_TEST_ROOT 'switches.csv'))
           $results += @{ status = 'read'; summaries = @(Get-InspectorTraceSummary $events $switches) }
-        } catch { $results += @{ status = 'rejected' } }
+        } catch { $results += @{ status = 'rejected'; errorCode = Resolve-InspectorTraceErrorCode $_.Exception.Message } }
       }
+      if ((Resolve-InspectorTraceErrorCode 'PRIVATE-PATH-OR-STACK') -cne 'INSPECTOR_CAPTURE_UNEXPECTED_FAILURE' -or
+          (Resolve-InspectorTraceErrorCode 'INSPECTOR_TRACE_TABLE_LIMIT') -cne 'INSPECTOR_TRACE_TABLE_LIMIT') { throw 'errorClassificationFailed' }
       [IO.File]::WriteAllText($env:EKY_TRACE_TEST_RESULT, (ConvertTo-Json -InputObject $results -Depth 8 -Compress))
     `;
     const child = spawn(resolve(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
@@ -57,6 +73,7 @@ for (const kind of ['completed', 'interrupted', 'invalid']) test(
       { stdio: 'ignore', windowsHide: true, env: { ...process.env,
         EKY_TRACE_TEST_ROOT: context.testRoot, EKY_TRACE_TEST_SCRIPT: SCRIPT,
         EKY_TRACE_TEST_CASES: String(cases.length), EKY_TRACE_TEST_RESULT: context.resultPath,
+        EKY_TRACE_TEST_PROFILE: String(kind === 'completed'),
       } });
     context.fixtureProcesses.add(child);
     const exit = await new Promise((resolvePromise, rejectPromise) => {
@@ -68,7 +85,9 @@ for (const kind of ['completed', 'interrupted', 'invalid']) test(
     assert.doesNotMatch(output, /PRIVATE|synthetic\.exe|foreign\.exe|123|456|789/);
     const results = JSON.parse(output);
     if (kind === 'invalid') {
-      assert.deepEqual(results, cases.map(() => ({ status: 'rejected' })));
+      assert.deepEqual(results, ['INSPECTOR_TRACE_EVENT_INVALID', 'INSPECTOR_TRACE_EVENT_INVALID',
+        'INSPECTOR_TRACE_EVENT_INVALID', 'INSPECTOR_TRACE_EVENTS_MISSING', 'INSPECTOR_TRACE_TABLE_INVALID']
+        .map((errorCode) => ({ status: 'rejected', errorCode })));
     } else {
       assert.deepEqual(results, [{ status: 'read', summaries: [{
         schemaVersion: 1, operation: 'installerProductInspectionCapture', phase: 'analysis',

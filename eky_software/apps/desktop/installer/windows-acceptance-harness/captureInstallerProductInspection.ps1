@@ -6,6 +6,8 @@ $PSNativeCommandUseErrorActionPreference = $false
 $root = $null
 $instance = $null
 $wpr = $null
+$boundary = 'context'
+$readerLoaded = $false
 
 # Invoked only by the opt-in diagnostic workflow. Its existing step limits
 # bound recorder/exporter commands; this file never starts or stops a test.
@@ -32,8 +34,10 @@ try {
   $exporter = Join-Path $toolkit 'wpaexporter.exe'
   $catalog = Join-Path $toolkit 'Catalog/AppLaunch.wpaProfile'
   . (Join-Path $PSScriptRoot 'installerProductInspectionTrace.ps1')
+  $readerLoaded = $true
 
   if ($Mode -ceq 'start') {
+    $boundary = 'preparation'
     if (Test-Path -LiteralPath $root) { throw 'INSPECTOR_CAPTURE_ROOT_OCCUPIED' }
     [void][IO.Directory]::CreateDirectory($root)
     foreach ($path in @($wpr, $exporter, $catalog)) {
@@ -59,8 +63,10 @@ try {
 '@)
     Confirm-RecorderStopped 'before'
     [IO.File]::WriteAllText((Join-Path $root 'start-attempted'), '')
+    $boundary = 'recorderStart'
     Invoke-CaptureTool $wpr @('-start', 'CPU', '-start', "$profile!EkyInspector", '-instancename', $instance) 'start'
   } elseif ($Mode -ceq 'stop') {
+    $boundary = 'recorderStop'
     if (!(Test-Path -LiteralPath (Join-Path $root 'start-attempted'))) { throw 'INSPECTOR_CAPTURE_NOT_STARTED' }
     try {
       Invoke-CaptureTool $wpr @('-stop', (Join-Path $root 'capture.etl'), '-instancename', $instance) 'stop'
@@ -73,15 +79,22 @@ try {
       throw 'INSPECTOR_CAPTURE_STOP_FAILED'
     }
   } else {
+    $boundary = 'stopVerification'
     if (!(Test-Path -LiteralPath (Join-Path $root 'stopped'))) { throw 'INSPECTOR_CAPTURE_STOP_UNVERIFIED' }
+    $boundary = 'eventExport'
     Invoke-CaptureTool $exporter @('-i', (Join-Path $root 'capture.etl'), '-profile',
       (Join-Path $root 'events.wpaProfile'), '-outputfolder', $root) 'events-export'
+    $boundary = 'eventRead'
     $events = @(Get-InspectorTraceEvents @(Read-InspectorTraceTable (Join-Path $root 'Generic_Events_Inspector.csv')))
     $threads = @($events.thread | Select-Object -Unique)
+    $boundary = 'schedulingProfile'
     New-InspectorTraceProfile $catalog (Join-Path $root 'threads.wpaProfile') $threads
+    $boundary = 'schedulingExport'
     Invoke-CaptureTool $exporter @('-i', (Join-Path $root 'capture.etl'), '-profile',
       (Join-Path $root 'threads.wpaProfile'), '-outputfolder', $root) 'threads-export'
+    $boundary = 'schedulingRead'
     $switches = @(Read-InspectorTraceTable (Join-Path $root 'CPU_Usage_(Precise)_Inspector.csv'))
+    $boundary = 'summaryValidation'
     $summaries = @(Get-InspectorTraceSummary $events $switches)
     # Validate the complete extraction before releasing any observation.
     foreach ($summary in $summaries) { $summary | ConvertTo-Json -Compress }
@@ -89,10 +102,11 @@ try {
   [ordered]@{ schemaVersion = 1; operation = 'installerProductInspectionCapture'; phase = $Mode;
     status = 'completed'; resultCode = 'diagnosticOnly' } | ConvertTo-Json -Compress
 } catch {
+  $code = if ($readerLoaded) { Resolve-InspectorTraceErrorCode $_.Exception.Message } else { 'INSPECTOR_CAPTURE_UNEXPECTED_FAILURE' }
   if ($null -ne $root -and (Test-Path -LiteralPath $root -PathType Container)) {
     try { [IO.File]::WriteAllText((Join-Path $root "$Mode.failure.private.txt"), $_.ToString()) } catch { }
   }
   [ordered]@{ schemaVersion = 1; operation = 'installerProductInspectionCapture'; phase = $Mode;
-    status = 'failed'; resultCode = 'captureUnverified' } | ConvertTo-Json -Compress
+    status = 'failed'; resultCode = 'captureUnverified'; failureBoundary = $boundary; errorCode = $code } | ConvertTo-Json -Compress
   exit 1
 }

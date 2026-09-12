@@ -1,6 +1,18 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Resolve-InspectorTraceErrorCode([string]$Message) {
+  $allowed = @('INSPECTOR_CAPTURE_TOOL_FAILED', 'INSPECTOR_CAPTURE_STOP_UNVERIFIED',
+    'INSPECTOR_CAPTURE_CONTEXT_INVALID', 'INSPECTOR_CAPTURE_ROOT_OCCUPIED',
+    'INSPECTOR_CAPTURE_TOOL_UNAVAILABLE', 'INSPECTOR_CAPTURE_NOT_STARTED',
+    'INSPECTOR_CAPTURE_STOP_FAILED', 'INSPECTOR_TRACE_TABLE_LIMIT',
+    'INSPECTOR_TRACE_TABLE_INVALID', 'INSPECTOR_TRACE_EVENTS_MISSING',
+    'INSPECTOR_TRACE_EVENT_INVALID', 'INSPECTOR_TRACE_THREADS_INVALID',
+    'INSPECTOR_TRACE_STREAMS_INVALID', 'INSPECTOR_TRACE_SWITCH_INVALID')
+  if ($Message -cin $allowed) { return $Message }
+  return 'INSPECTOR_CAPTURE_UNEXPECTED_FAILURE'
+}
+
 # This diagnostic reader never controls the test or infers Job membership.
 function Read-InspectorTraceTable([string]$Path) {
   if ((Get-Item -LiteralPath $Path).Length -gt 32MB) { throw 'INSPECTOR_TRACE_TABLE_LIMIT' }
@@ -80,14 +92,16 @@ function New-InspectorTraceProfile([string]$Catalog, [string]$Destination, [stri
       [void]$columns.RemoveChild($column)
       [void]$columns.PrependChild($column)
     }
-    $visible = @('Last Switch-Out Time', 'New Prev Wait Reason', 'New Thread Stack', 'Ready Thread Stack')
+    $visible = @('New Process', 'New Thread Id', 'Switch-In Time', 'Last Switch-Out Time')
   } else {
     $preset.SetAttribute('InitialFilterQuery', '[Provider Name]:="Eky-InstallerProductInspection-V1"')
     $preset.SetAttribute('InitialExpansionQuery', '[Series Name]:="Process"')
     $visible = @('Provider Name', 'Task Name', 'ThreadId', 'Event Name', 'Opcode Name')
   }
   foreach ($column in $preset.SelectNodes('p:Columns/p:Column', $ns)) {
-    if ($column.GetAttribute('Name') -in $visible) { $column.SetAttribute('IsVisible', 'true') }
+    if ($cpu) {
+      $column.SetAttribute('IsVisible', $(if ($column.GetAttribute('Name') -in $visible) { 'true' } else { 'false' }))
+    } elseif ($column.GetAttribute('Name') -in $visible) { $column.SetAttribute('IsVisible', 'true') }
   }
   $document.Save($Destination)
 }
