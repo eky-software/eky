@@ -9,7 +9,7 @@ $wpr = $null
 $boundary = 'context'
 $readerLoaded = $false
 
-# Invoked only by the opt-in diagnostic workflow. Its existing step limits
+# Invoked only by opt-in CI observation steps. Their existing step limits
 # bound recorder/exporter commands; this file never starts or stops a test.
 function Invoke-CaptureTool([string]$Tool, [string[]]$Arguments, [string]$Label) {
   # These fixed tool arguments contain paths/switches, never quoted commands.

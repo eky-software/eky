@@ -7,6 +7,11 @@ on:
   schedule:
     - cron: '23 2 * * *'
   workflow_dispatch:
+    inputs:
+      inspector_capture:
+        description: Record bounded inspector observations in legacy consumer 1 only
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -96,6 +101,7 @@ jobs:
     uses: ./.github/workflows/windows-acceptance-v2-legacy-diagnostic.yml
     with:
       risk_plan: ${{ needs.classification.outputs.plan }}
+      inspector_capture: ${{ github.event_name == 'workflow_dispatch' && inputs.inspector_capture }}
 
   workspace:
     needs: classification

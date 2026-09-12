@@ -66,11 +66,12 @@ test('legacy lifecycle fits existing process waits plus grouped filesystem and r
 test('legacy consumer separates build time from the bounded lifecycle and preserves mandatory result verification', async () => {
   const source = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-v2-legacy-diagnostic.yml', import.meta.url), 'utf8');
   const consumer = source.slice(source.indexOf('  legacy_consumer:'));
-  const build = consumer.slice(consumer.indexOf('      - name: Build legacy consumer supervisor'),
-    consumer.indexOf('      - name: Run existing supervised legacy lifecycle once'));
-  const lifecycle = consumer.slice(consumer.indexOf('      - name: Run existing supervised legacy lifecycle once'),
-    consumer.indexOf('      - name: Reverify phase artifact bytes after lifecycle'));
-  assert.ok(consumer.includes(`timeout-minutes: ${LEGACY_CONSUMER_JOB_MINUTES}\n`));
+  const steps = consumer.split('      - name: ');
+  const build = steps.find((step) => step.startsWith('Build legacy consumer supervisor\n'));
+  const lifecycle = steps.find((step) => step.startsWith('Run existing supervised legacy lifecycle once\n'));
+  const captureCondition = "inputs.inspector_capture && matrix.repetition == 1 && (inputs.risk_plan == '' || fromJSON(inputs.risk_plan).repetitions == 2)";
+  assert.ok(consumer.includes(`timeout-minutes: \${{ ${captureCondition} && 43 || ${LEGACY_CONSUMER_JOB_MINUTES} }}\n`));
+  assert.equal(43 - LEGACY_CONSUMER_JOB_MINUTES, 1 + 2 + 3);
   assert.ok(build.includes(`timeout-minutes: ${LEGACY_SUPERVISOR_BUILD_MINUTES}\n`));
   assert.ok(build.includes('installer:supervisor:build'));
   assert.ok(lifecycle.includes(`timeout-minutes: ${LEGACY_LIFECYCLE_STEP_MINUTES}\n`));

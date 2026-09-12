@@ -6,7 +6,15 @@ on:
       risk_plan:
         type: string
         required: true
+      inspector_capture:
+        type: boolean
+        default: false
   workflow_dispatch:
+    inputs:
+      inspector_capture:
+        description: Record bounded inspector observations in consumer 1; consumer 2 remains unrecorded
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -217,7 +225,9 @@ jobs:
     name: V2.5 packaged legacy phase run ${{ matrix.repetition }}
     needs: legacy_artifact_producer
     runs-on: windows-latest
-    timeout-minutes: 37
+    timeout-minutes: ${{ inputs.inspector_capture && matrix.repetition == 1 && (inputs.risk_plan == '' || fromJSON(inputs.risk_plan).repetitions == 2) && 43 || 37 }}
+    env:
+      LEGACY_CAPTURE_ENABLED: ${{ inputs.inspector_capture && matrix.repetition == 1 && (inputs.risk_plan == '' || fromJSON(inputs.risk_plan).repetitions == 2) && 'true' || 'false' }}
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -288,7 +298,16 @@ jobs:
         timeout-minutes: 3
         run: pnpm --filter @eky/desktop installer:supervisor:build
 
+      - name: Start optional bounded inspector capture
+        id: capture_start
+        if: env.LEGACY_CAPTURE_ENABLED == 'true'
+        continue-on-error: true
+        timeout-minutes: 1
+        shell: pwsh
+        run: ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode start
+
       - name: Run existing supervised legacy lifecycle once
+        id: lifecycle
         shell: pwsh
         timeout-minutes: 27
         env:
@@ -304,7 +323,16 @@ jobs:
             throw 'WINDOWS_ACCEPTANCE_LEGACY_LIFECYCLE_FAILED'
           }
 
+      - name: Stop optional bounded inspector capture
+        id: capture_stop
+        if: ${{ always() && env.LEGACY_CAPTURE_ENABLED == 'true' && (steps.capture_start.outcome == 'success' || steps.capture_start.outcome == 'failure' || steps.capture_start.outcome == 'cancelled') }}
+        continue-on-error: true
+        timeout-minutes: 2
+        shell: pwsh
+        run: ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode stop
+
       - name: Reverify phase artifact bytes after lifecycle
+        id: artifact_after
         if: ${{ always() && steps.download.outcome == 'success' }}
         shell: pwsh
         env:
@@ -315,4 +343,33 @@ jobs:
           pnpm --filter @eky/desktop installer:v2-legacy-artifact:verify --artifact-root $artifactRoot --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION
           if ($LASTEXITCODE -ne 0) {
             throw 'WINDOWS_ACCEPTANCE_LEGACY_ARTIFACT_POST_VERIFICATION_FAILED'
+          }
+
+      - name: Analyze and report optional inspector capture
+        if: ${{ always() && env.LEGACY_CAPTURE_ENABLED == 'true' && steps.capture_start.outcome != 'skipped' }}
+        continue-on-error: true
+        timeout-minutes: 3
+        shell: pwsh
+        env:
+          LEGACY_TEST_OUTCOME: ${{ steps.lifecycle.outcome }}
+          LEGACY_ARTIFACT_OUTCOME: ${{ steps.artifact_after.outcome }}
+          LEGACY_CAPTURE_START_OUTCOME: ${{ steps.capture_start.outcome }}
+          LEGACY_CAPTURE_STOP_OUTCOME: ${{ steps.capture_stop.outcome }}
+          LEGACY_CAPTURE_ANALYSIS_OUTCOME: unknown
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          if ($env:LEGACY_CAPTURE_STOP_OUTCOME -cne 'success') {
+            $env:LEGACY_CAPTURE_ANALYSIS_OUTCOME = 'skipped'
+          }
+          node ../.github/scripts/legacyCaptureObservation.mjs
+          if ($env:LEGACY_CAPTURE_STOP_OUTCOME -ceq 'success') {
+            $analysisExit = 1
+            $env:LEGACY_CAPTURE_ANALYSIS_OUTCOME = 'failure'
+            try {
+              & ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode analyze
+              $analysisExit = $LASTEXITCODE
+              if ($analysisExit -eq 0) { $env:LEGACY_CAPTURE_ANALYSIS_OUTCOME = 'success' }
+            } catch { $analysisExit = 1 }
+            node ../.github/scripts/legacyCaptureObservation.mjs
+            if ($analysisExit -ne 0 -or $LASTEXITCODE -ne 0) { exit 1 }
           }

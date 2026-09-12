@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { join, resolve } from 'node:path';
 import test from 'node:test';
 import { registerAcceptanceCommandEntrypointContracts } from './acceptanceCommandEntrypointContract.mjs';
+import { cleanupRunContext, createRunContext } from '../windows-process-supervisor/tests/supervisorContractTestSupport.mjs';
 
 const WORKFLOW_URL = new URL(
   '../../../../../.github/workflows/windows-acceptance-v2-legacy-diagnostic.yml',
@@ -101,7 +104,8 @@ test('V2.5 phase acceptance requires all same-revision contract groups before it
   assert.match(source, /acceptanceScope = 'V2\.5-phase'/u);
   assert.match(source, /workflow_call:\s+inputs:\s+risk_plan:/u);
   assert.doesNotMatch(source.split('permissions:')[0], /push:/u);
-  assert.doesNotMatch(source, /pull_request:|\bmain\b|continue-on-error|retry|workflow_run:/u);
+  assert.doesNotMatch(source, /pull_request:|\bmain\b|retry|workflow_run:/u);
+  assert.doesNotMatch(contracts + producer, /continue-on-error/u);
   assert.match(source, /cancel-in-progress: false/u);
   assert.ok(contracts.includes("repetition: ${{ fromJSON(inputs.risk_plan != '' && fromJSON(inputs.risk_plan).repetitions == 1 && '[1]' || '[1, 2]') }}"));
   assert.match(contracts, /group: \[core, commands, legacy-entry, workspace-success-entry, workspace-fault-entry\]/u);
@@ -222,7 +226,7 @@ test('V2.5 phase acceptance transfers only the verified short lived artifact wit
 
 test('V2.5 phase acceptance preserves bounded V2 jobs and locked toolchain', async () => {
   const source = await readFile(WORKFLOW_URL, 'utf8');
-  for (const minutes of [10, 30, 22, 37, 27, 3]) {
+  for (const minutes of [10, 30, 22, 27, 3]) {
     assert.match(source, new RegExp(`timeout-minutes: ${minutes}\\b`, 'u'));
   }
   assert.equal(source.match(/pnpm install --frozen-lockfile/gu)?.length, 2);
@@ -232,4 +236,107 @@ test('V2.5 phase acceptance preserves bounded V2 jobs and locked toolchain', asy
   assert.match(source, /sourceArtifactClass -cne 'historical-source-rebuild'/u);
   assert.match(source, /targetPayloadIdentity -cnotmatch/u);
   assert.doesNotMatch(source, /permissions:\s+contents: write|pull-requests: write/u);
+});
+
+test('optional normal capture uses separate bounded steps without weakening lifecycle or artifact acceptance', async () => {
+  const source = await readFile(WORKFLOW_URL, 'utf8');
+  const consumer = source.slice(source.indexOf('  legacy_consumer:'));
+  const captureSelection = "inputs.inspector_capture && matrix.repetition == 1 && (inputs.risk_plan == '' || fromJSON(inputs.risk_plan).repetitions == 2)";
+  assert.ok(consumer.includes(`timeout-minutes: \${{ ${captureSelection} && 43 || 37 }}`));
+  assert.ok(consumer.includes(`LEGACY_CAPTURE_ENABLED: \${{ ${captureSelection} && 'true' || 'false' }}`));
+  assert.equal(source.match(/type: boolean\s+default: false/gu)?.length, 2);
+  const blocks = consumer.split('      - name: ').slice(1);
+  const step = (name) => {
+    const matches = blocks.filter((block) => block.startsWith(`${name}\n`));
+    assert.equal(matches.length, 1);
+    return matches[0];
+  };
+  const start = step('Start optional bounded inspector capture');
+  const stop = step('Stop optional bounded inspector capture');
+  const analysis = step('Analyze and report optional inspector capture');
+  for (const [block, minutes] of [[start, 1], [stop, 2], [analysis, 3]]) {
+    assert.ok(block.includes('continue-on-error: true'));
+    assert.ok(block.includes(`timeout-minutes: ${minutes}`));
+  }
+  assert.equal(source.match(/continue-on-error:/gu)?.length, 3);
+  assert.match(start, /if: env\.LEGACY_CAPTURE_ENABLED == 'true'/u);
+  assert.match(stop, /always\(\).*steps\.capture_start\.outcome == 'success'.*steps\.capture_start\.outcome == 'failure'.*steps\.capture_start\.outcome == 'cancelled'/u);
+  assert.match(analysis, /always\(\).*steps\.capture_start\.outcome != 'skipped'/u);
+  assert.doesNotMatch(start + stop + analysis, /steps\.[a-z_]+\.conclusion|upload-artifact|processTreeAbsent|Stop-Process|Remove-Item/u);
+  for (const name of ['Run existing supervised legacy lifecycle once', 'Reverify phase artifact bytes after lifecycle']) {
+    assert.doesNotMatch(step(name), /continue-on-error|inspector_capture|LEGACY_CAPTURE/u);
+  }
+  assert.match(step('Run existing supervised legacy lifecycle once'), /timeout-minutes: 27/u);
+  for (const [first, second] of [
+    ['Build legacy consumer supervisor', 'Start optional bounded inspector capture'],
+    ['Start optional bounded inspector capture', 'Run existing supervised legacy lifecycle once'],
+    ['Run existing supervised legacy lifecycle once', 'Stop optional bounded inspector capture'],
+    ['Stop optional bounded inspector capture', 'Reverify phase artifact bytes after lifecycle'],
+    ['Reverify phase artifact bytes after lifecycle', 'Analyze and report optional inspector capture'],
+  ]) assert.ok(consumer.indexOf(first) < consumer.indexOf(second));
+  assert.match(analysis, /LEGACY_TEST_OUTCOME: \$\{\{ steps\.lifecycle\.outcome \}\}/u);
+  assert.match(analysis, /LEGACY_ARTIFACT_OUTCOME: \$\{\{ steps\.artifact_after\.outcome \}\}/u);
+  const entry = await readFile(new URL('../../../../../.github/workflows/ci-cadence-contracts.yml', import.meta.url), 'utf8');
+  assert.match(entry, /inspector_capture: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.inspector_capture \}\}/u);
+});
+
+test('the optional analysis step exits and preserves original outcomes when analysis or reporting fails', {
+  skip: process.platform !== 'win32', timeout: 60_000,
+}, async (t) => {
+  const workflow = await readFile(WORKFLOW_URL, 'utf8');
+  const step = workflow.split('      - name: Analyze and report optional inspector capture\n')[1];
+  assert.ok(step);
+  const body = step.split('        run: |\n')[1].trimEnd().split('\n')
+    .map((line) => { assert.ok(line.startsWith('          ')); return line.slice(10); }).join('\n');
+  let passed = false;
+  for (const [testOutcome, artifactOutcome, stop, analysis, reportExit, expectedExit, expectedReports] of [
+    ['success', 'success', 'success', '0', '0', 0, ['unknown', 'success']],
+    ['failure', 'success', 'success', '1', '0', 1, ['unknown', 'failure']],
+    ['success', 'failure', 'success', 'throw', '0', 1, ['unknown', 'failure']],
+    ['cancelled', 'skipped', 'failure', 'throw', '0', 0, ['skipped']],
+    ['failure', 'failure', 'success', '0', '1', 1, ['unknown', 'success']],
+  ]) {
+    const context = await createRunContext('capture-workflow');
+    t.after(() => cleanupRunContext(context, { preserveEvidence: !passed || t.signal.aborted }));
+    const directory = join(context.testRoot, 'apps/desktop/installer/windows-acceptance-harness');
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, 'captureInstallerProductInspection.ps1'), `
+param([string]$Mode)
+if ($Mode -cne 'analyze') { throw 'UNEXPECTED_MODE' }
+if ($env:TEST_ANALYSIS -ceq 'throw') { throw 'private-analysis-error' }
+exit ([int]$env:TEST_ANALYSIS)
+`);
+    const script = join(context.testRoot, 'step.ps1');
+    await writeFile(script, `
+$ErrorActionPreference = 'Stop'
+function node {
+  if ($args.Count -ne 1 -or $args[0] -cne '../.github/scripts/legacyCaptureObservation.mjs') { throw 'UNEXPECTED_REPORTER' }
+  $report = [ordered]@{ test = $env:LEGACY_TEST_OUTCOME; artifact = $env:LEGACY_ARTIFACT_OUTCOME;
+    analysis = $env:LEGACY_CAPTURE_ANALYSIS_OUTCOME } | ConvertTo-Json -Compress
+  [IO.File]::AppendAllText($env:TEST_REPORT_PATH, $report + [Environment]::NewLine)
+  $global:LASTEXITCODE = [int]$env:TEST_REPORT_EXIT
+}
+${body}
+exit $LASTEXITCODE
+`);
+    const child = spawn(resolve(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script], {
+        cwd: context.testRoot, stdio: 'ignore', windowsHide: true,
+        env: { ...process.env, LEGACY_TEST_OUTCOME: testOutcome, LEGACY_ARTIFACT_OUTCOME: artifactOutcome,
+          LEGACY_CAPTURE_STOP_OUTCOME: stop, LEGACY_CAPTURE_ANALYSIS_OUTCOME: 'unknown',
+          TEST_ANALYSIS: analysis, TEST_REPORT_EXIT: reportExit, TEST_REPORT_PATH: context.resultPath },
+      });
+    context.fixtureProcesses.add(child);
+    const result = await new Promise((resolvePromise, rejectPromise) => {
+      child.once('error', rejectPromise);
+      child.once('close', (code, signal) => resolvePromise({ code, signal }));
+    });
+    assert.deepEqual(result, { code: expectedExit, signal: null });
+    const output = await readFile(context.resultPath, 'utf8');
+    const reports = output.trim().split(/\r?\n/u).map((line) => JSON.parse(line));
+    assert.deepEqual(reports, expectedReports.map((value) => ({ test: testOutcome,
+      artifact: artifactOutcome, analysis: value })));
+    assert.doesNotMatch(output, /private-analysis-error|cleanup|processTreeAbsent/u);
+  }
+  passed = true;
 });

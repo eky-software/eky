@@ -2585,7 +2585,20 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 
 ## Nykyinen päätös
 
-Hyväksyntä on edelleen kesken lähde-revisiolla
+V2:n normaali kokonaishyväksyntä on kesken. Ulkoinen inspector-keruu ja
+legacy-analyysiketju on todistettu erillisessä diagnoosissa, ei aiemman
+häiriön juurisyykorjauksena. Nykyinen integraatio lisää vain valinnaisen
+keruun normaaliin legacy-consumeriin alla määritellyllä sopimuksella.
+Testin, artifactin, prosessisiivouksen ja havainnoinnin tulokset säilyvät
+erillisinä. Seuraava portti on katselmoidun integraatiorevision normaali
+kokonaishyväksyntä; aiempaa diagnostista vihreyttä ei siirretä sille.
+
+Korvatun orkestroinnin poisto, required-checkien vaihto, main-käyttöönotto ja
+0.2.8-pilotti säilyvät siirtokartan erillisten hyväksyntärajojen takana.
+
+### Historiallinen hyväksyntä ja rajattu diagnoosi
+
+Hyväksyntä jäi kesken lähde-revisiolla
 `05242e856c5f8826adcfc3bf877787290fce3728`, checkout/build-revisiolla
 `1a78b3137c15dc4b358affcf915ee30449041935`.
 [CI 34650330864](https://github.com/eky-software/eky/actions/runs/34650330864)
@@ -2794,8 +2807,8 @@ Keräinmalli, aikarajat, prosessiomistajuus ja normaalit hyväksyntäehdot säil
 
 ### Valinnainen keruu normaalissa legacy-consumerissa
 
-Seuraava integraatiocheckpoint valmistelee nykyisen WPR-keruun valinnaiseksi
-CI-havainnoinniksi. Se ei korvaa normaaleja consumereita diagnostisilla
+Nykyinen WPR-keruu on kytketty valinnaiseksi CI-havainnoinniksi
+`inspector_capture`-valinnalla. Se ei korvaa normaaleja consumereita diagnostisilla
 uusinnoilla. Valinta on oletuksena pois päältä; kahden consumerin ajossa vain
 ensimmäinen saa tallennuksen ja toinen säilyy ilman raskasta keruuta.
 Yhden consumerin riskiajossa keruuta ei aktivoida.
@@ -2811,8 +2824,8 @@ Yhden consumerin riskiajossa keruuta ei aktivoida.
   1024 MiB, CPU-tapahtumakeräimelle 1024 MiB ja inspectorille 16 MiB;
   esitarkistus vaatii vähintään 6 GiB vapaata tilaa. Rajan täyttyminen,
   puuttuva keräin tai tapahtumahävikki eivät tuota täyden keruun todistetta.
-- Aloitus-, pysäytys- ja analyysivaiheen alkuperäiset `outcome`-arvot
-  säilytetään erillään testin ja artifactin jälkivarmennuksen tuloksista.
+- Aloitus- ja pysäytysvaiheen alkuperäiset `outcome`-arvot sekä analyysin
+  oma paluutulos säilytetään erillään testin ja artifactin jälkivarmennuksesta.
   Valinnaisen havainnoinnin virhe ei muuta onnistunutta testiä epäonnistuneeksi
   eikä epäonnistunutta onnistuneeksi. Tuntematon tallentimen lopputila
   merkitään varmentamattomaksi; siitä ei johdeta testin cleanup-tulosta.
@@ -2820,18 +2833,32 @@ Yhden consumerin riskiajossa keruuta ei aktivoida.
   tallennusjuuressa. Niitä ei julkaista artifactina. Runnerin täydellinen
   katoaminen voi estää sekä lopetuksen että aineiston saamisen talteen.
 
-Tallentavan jobin erillinen kuuden minuutin havainnointivaraus on vielä
-omistajapäätöksen takana ennen kytkentää: ehdotus on 43 min tallentavalle ja
-nykyinen 37 min tallentamattomalle jobille. Varausta ei oteta skenaarion
+Omistajan hyväksymä erillinen kuuden minuutin havainnointivaraus nostaa vain
+tallentavan jobin kokonaisrajan 43 minuuttiin. Tallentamaton jobi säilyy
+37 minuutissa. Varausta ei oteta skenaarion
 työstä, prosessisiivouksesta tai pakollisesta tulosvarmennuksesta.
 
-Valmistelun CI-sopimukset läpäisevät 52/52 ja nykyiset legacy-workflow-
-sopimukset 11/11. Suljettu havaintoyhteenveto säilyttää alkuperäiset tulokset,
-ja sen komentotesti todistaa raportoinnin poistumisen myös epäonnistuneen
-testin ja analyysin jälkeen. Kattavuuskoonti torjuu edelleen puuttuvan toisen
-consumerin sekä puuttuvat tai epäonnistuneet pakolliset vaiheet.
-Keruu ei vielä ole kytketty normaaliin consumeriin; nämä kohdetestit eivät
-korvaa kytkennän todennusta tai normaalia kokonaishyväksyntää.
+Keruun kolme CI-vaihetta ovat valinnaisia (`continue-on-error`), mutta
+legacy-komento ja artifactin jälkivarmennus eivät ole. V2-loppukoonti vaatii
+edelleen molemmat valitut consumerit ja niiden pakolliset tulokset.
+Analyysiyhteenveto julkaistaan ensin tilassa `unknown` ja vasta analyysin
+palautumisen jälkeen sen todellisella tuloksella. Näin analyysin katkeaminen
+ei jätä näkyviin väitettä onnistumisesta; vaihekatkaisu näkyy lisäksi CI:n
+omana tuloksena. Analyysiä ja raportointia rajaa sama kolmen minuutin vaihe.
+PR- ja ajastettu normaaliajo eivät kytke keruuta automaattisesti päälle.
+
+CI-sopimukset läpäisevät 52/52; keruun workflow- ja budjettisopimusten
+kohdesarja läpäisee 17/17. Normaali legacy-sopimussarja läpäisee 327/327
+ja legacy-artifact-sarja 21/21. Projektin testikomento, tyyppitarkistukset
+sekä backendin, webin ja desktopin buildit läpäisevät.
+Käyttäytymistesti suorittaa workflow'n todellisen
+analyysi- ja raportointikutsun synteettisillä riippuvuuksilla ja tarkistaa
+komentoprosessin poistumisen. Analyysin paluuvirhe, poikkeus, epäonnistunut
+pysäytys ja raportointivirhe eivät korvaa alkuperäisiä testin ja artifactin
+tuloksia. Suljettu havaintoyhteenveto torjuu ylimääräiset kentät.
+Kattavuuskoonti torjuu edelleen puuttuvan toisen consumerin sekä puuttuvat
+tai epäonnistuneet pakolliset vaiheet. Kohdetestit eivät korvaa normaalia
+kokonaishyväksyntää.
 
 ### Nykyinen komentoraja
 
