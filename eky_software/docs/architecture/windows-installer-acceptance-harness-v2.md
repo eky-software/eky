@@ -2737,13 +2737,27 @@ exit-koodi oli `-2147008507`. Tapahtumien lukija ei käynnistynyt.
 Tämä ei todista tapahtumien puuttumista, jäljen vioittumista tai
 alkuperäisen legacy-viiveen syytä.
 
-Seuraava erottava näyttö tarvitaan analyysirajalta, ei uudesta MSI-kierroksesta:
-vientivirheen suljettu luokitus ja ulkoisen tapahtumaviennin toimivuus
-suoraan käynnistetystä nykyisestä inspectorista ilman fixturen omaa
-EventListeneria. Nykyinen synteettinen todistus sisältää tämän kuuntelijan;
-sen mahdollista vaikutusta ulkoiseen tallennukseen ei ole osoitettu.
-Raakatulosteet pysyvät yksityisinä. Sama exit-koodi tai vihreä uusinta ei
-yksin sulje kumpaakaan avointa kysymystä eikä avaa julkaisuporttia.
+Ulkoinen tapahtumavienti ilman fixturen EventListeneria on nyt todennettu
+rajatussa CI-ajossa
+[34707057716](https://github.com/eky-software/eky/actions/runs/34707057716),
+yritys 1, lähde- ja todellinen checkout-revisio
+`92fc3fb92cc34ae6b6e1d6be13be933855ac8c39`.
+Yksi oikea read-only-inspectorin komentotesti läpäisi: pakollinen caller-tulos,
+komentoprosessin exit/close, prosessipuun poissaolo ja fixture-poisto
+varmennettiin. Tallennuksen aloitus ja lopetus onnistuivat. Nykyinen ja
+minimaalinen vientinäkymä tuottivat kumpikin 19 odotettua tapahtumaa;
+minimaalinen näkymä varmisti provider-sidonnan ja koko read-only-vaiheketjun.
+ETL:n SHA-256 säilyi samana. MSI-asennuksia tai uusia paketteja ei tehty.
+
+Tämä sulkee ulkoisen keruun todistusaukon, mutta ei selitä aiemman
+`eventExport`-virheen syytä. Aiemman epäonnistuneen viennin yksityinen
+stdout/stderr ja ETL eivät ole enää saatavilla; uusi onnistuminen ei korvaa
+niitä. Seuraava erottava havainto on epäonnistuvan viennin samassa ajossa
+luettu suljettu virheluokitus tai alkuperäisen legacy-odotuksen paikantava
+jälki. Pelkkä stderr-sisältö tai exit-numero ei riitä syyn nimeämiseen.
+Alkuperäisen legacy-komennon normaali hyväksyntä on edelleen kesken.
+Diagnostiikan vihreys ei avaa julkaisuporttia eikä oikeuta automaattiseen
+uusintakierteeseen. Raakatulosteet pysyvät yksityisinä.
 
 Tämän rajan hyväksytty `inspector-external-diagnostic` tekee yhden oikean
 read-only-tuotekyselyn nykyisen .NET-komentorajan sisällä. Muut fixturevaiheet
