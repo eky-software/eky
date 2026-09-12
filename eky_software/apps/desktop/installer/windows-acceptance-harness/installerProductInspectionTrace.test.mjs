@@ -67,10 +67,21 @@ for (const kind of ['completed', 'interrupted', 'invalid']) test(
           $events = @(Get-InspectorTraceEvents @(Read-InspectorTraceTable (Join-Path $env:EKY_TRACE_TEST_ROOT "events-$index.csv")))
           $switches = @(Read-InspectorTraceTable (Join-Path $env:EKY_TRACE_TEST_ROOT 'switches.csv'))
           $results += @{ status = 'read'; summaries = @(Get-InspectorTraceSummary $events $switches) }
-        } catch { $results += @{ status = 'rejected'; errorCode = Resolve-InspectorTraceErrorCode $_.Exception.Message } }
+        } catch {
+          $results += @{ status = 'rejected'; errorCode = Resolve-InspectorTraceErrorCode $_.Exception.Message;
+            shape = @(Get-InspectorTraceFailureShape $_.Exception) }
+        }
       }
       if ((Resolve-InspectorTraceErrorCode 'PRIVATE-PATH-OR-STACK') -cne 'INSPECTOR_CAPTURE_UNEXPECTED_FAILURE' -or
           (Resolve-InspectorTraceErrorCode 'INSPECTOR_TRACE_TABLE_LIMIT') -cne 'INSPECTOR_TRACE_TABLE_LIMIT') { throw 'errorClassificationFailed' }
+      $shape = @(Get-InspectorProcessLabelShape '[123] PRIVATE.exe')
+      if (($shape -join ',') -cne 'squareOpen,number,squareClose,space,text,dot,text') { throw 'shapeContractFailed' }
+      if ((@(Get-InspectorProcessLabelShape ('PRIVATE/123/' * 30)) -join ',') -cne 'shapeLimit') { throw 'shapeLimitContractFailed' }
+      $failure = [InvalidOperationException]::new('INSPECTOR_TRACE_EVENT_PROCESS_INVALID')
+      $failure.Data['processLabelShape'] = $shape
+      if ((@(Get-InspectorTraceFailureShape $failure) -join ',') -cne ($shape -join ',')) { throw 'shapeDeliveryFailed' }
+      $failure.Data['processLabelShape'] = @('PRIVATE-RAW-VALUE')
+      if (@(Get-InspectorTraceFailureShape $failure).Count -ne 0) { throw 'shapePrivacyFailed' }
       [IO.File]::WriteAllText($env:EKY_TRACE_TEST_RESULT, (ConvertTo-Json -InputObject $results -Depth 8 -Compress))
     `;
     const child = spawn(resolve(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
@@ -96,7 +107,8 @@ for (const kind of ['completed', 'interrupted', 'invalid']) test(
         'INSPECTOR_TRACE_EVENT_PROCESS_MISSING', 'INSPECTOR_TRACE_EVENT_PROCESS_NUMERIC',
         'INSPECTOR_TRACE_EVENT_PROCESS_COMPACT', 'INSPECTOR_TRACE_EVENT_PROCESS_GROUPED',
         'INSPECTOR_TRACE_EVENTS_MISSING', 'INSPECTOR_TRACE_TABLE_INVALID']
-        .map((errorCode) => ({ status: 'rejected', errorCode })));
+        .map((errorCode) => ({ status: 'rejected', errorCode,
+          shape: errorCode === 'INSPECTOR_TRACE_EVENT_PROCESS_INVALID' ? ['text', 'hyphen', 'text'] : [] })));
     } else {
       assert.deepEqual(results, [{ status: 'read', summaries: [{
         schemaVersion: 1, operation: 'installerProductInspectionCapture', phase: 'analysis',

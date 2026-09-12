@@ -17,6 +17,33 @@ function Resolve-InspectorTraceErrorCode([string]$Message) {
   return 'INSPECTOR_CAPTURE_UNEXPECTED_FAILURE'
 }
 
+function Get-InspectorProcessLabelShape([string]$Label) {
+  $shape = [Collections.Generic.List[string]]::new()
+  $punctuation = @{ '(' = 'roundOpen'; ')' = 'roundClose'; '[' = 'squareOpen'; ']' = 'squareClose';
+    '<' = 'angleOpen'; '>' = 'angleClose'; ':' = 'colon'; ',' = 'comma'; '.' = 'dot';
+    '/' = 'slash'; '\' = 'backslash'; '-' = 'hyphen' }
+  foreach ($character in $Label.ToCharArray()) {
+    $token = if ([char]::IsLetter($character)) { 'text' }
+      elseif ([char]::IsDigit($character)) { 'number' }
+      elseif ([char]::IsWhiteSpace($character)) { 'space' }
+      elseif ($punctuation.ContainsKey([string]$character)) { $punctuation[[string]$character] }
+      else { 'other' }
+    if ($shape.Count -eq 0 -or $shape[$shape.Count - 1] -cne $token) { $shape.Add($token) }
+    if ($shape.Count -gt 24) { return @('shapeLimit') }
+  }
+  return $shape.ToArray()
+}
+
+function Get-InspectorTraceFailureShape([Exception]$Failure) {
+  if ((Resolve-InspectorTraceErrorCode $Failure.Message) -cne 'INSPECTOR_TRACE_EVENT_PROCESS_INVALID') { return @() }
+  $shape = @($Failure.Data['processLabelShape'])
+  $allowed = @('text', 'number', 'space', 'roundOpen', 'roundClose', 'squareOpen', 'squareClose',
+    'angleOpen', 'angleClose', 'colon', 'comma', 'dot', 'slash', 'backslash', 'hyphen', 'other', 'shapeLimit')
+  if ($shape.Count -gt 0 -and $shape.Count -le 24 -and
+      @($shape | Where-Object { $_ -cnotin $allowed }).Count -eq 0) { return $shape }
+  return @()
+}
+
 # This diagnostic reader never controls the test or infers Job membership.
 function Read-InspectorTraceTable([string]$Path) {
   if ((Get-Item -LiteralPath $Path).Length -gt 32MB) { throw 'INSPECTOR_TRACE_TABLE_LIMIT' }
@@ -66,7 +93,9 @@ function Get-InspectorTraceEvents([object[]]$Rows) {
       if ($event.Process -match '^[1-9][0-9]{0,9}$') { throw 'INSPECTOR_TRACE_EVENT_PROCESS_NUMERIC' }
       if ($event.Process -match '^.+\([1-9][0-9]{0,9}\)$') { throw 'INSPECTOR_TRACE_EVENT_PROCESS_COMPACT' }
       if ($event.Process -match '^.+ \([1-9][0-9]{0,2}(?:,[0-9]{3}){1,3}\)$') { throw 'INSPECTOR_TRACE_EVENT_PROCESS_GROUPED' }
-      throw 'INSPECTOR_TRACE_EVENT_PROCESS_INVALID'
+      $failure = [InvalidOperationException]::new('INSPECTOR_TRACE_EVENT_PROCESS_INVALID')
+      $failure.Data['processLabelShape'] = @(Get-InspectorProcessLabelShape $event.Process)
+      throw $failure
     }
     $seconds = 0.0
     if (![double]::TryParse($event.'Time (s)', [Globalization.NumberStyles]::Float -bor [Globalization.NumberStyles]::AllowThousands,

@@ -102,11 +102,17 @@ try {
   [ordered]@{ schemaVersion = 1; operation = 'installerProductInspectionCapture'; phase = $Mode;
     status = 'completed'; resultCode = 'diagnosticOnly' } | ConvertTo-Json -Compress
 } catch {
-  $code = if ($readerLoaded) { Resolve-InspectorTraceErrorCode $_.Exception.Message } else { 'INSPECTOR_CAPTURE_UNEXPECTED_FAILURE' }
+  $failure = $_.Exception
+  $code = if ($readerLoaded) { Resolve-InspectorTraceErrorCode $failure.Message } else { 'INSPECTOR_CAPTURE_UNEXPECTED_FAILURE' }
   if ($null -ne $root -and (Test-Path -LiteralPath $root -PathType Container)) {
     try { [IO.File]::WriteAllText((Join-Path $root "$Mode.failure.private.txt"), $_.ToString()) } catch { }
   }
-  [ordered]@{ schemaVersion = 1; operation = 'installerProductInspectionCapture'; phase = $Mode;
-    status = 'failed'; resultCode = 'captureUnverified'; failureBoundary = $boundary; errorCode = $code } | ConvertTo-Json -Compress
+  $result = [ordered]@{ schemaVersion = 1; operation = 'installerProductInspectionCapture'; phase = $Mode;
+    status = 'failed'; resultCode = 'captureUnverified'; failureBoundary = $boundary; errorCode = $code }
+  if ($readerLoaded) {
+    $shape = @(Get-InspectorTraceFailureShape $failure)
+    if ($shape.Count -gt 0) { $result.processLabelShape = $shape }
+  }
+  $result | ConvertTo-Json -Compress
   exit 1
 }

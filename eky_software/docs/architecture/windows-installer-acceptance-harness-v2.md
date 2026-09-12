@@ -2661,6 +2661,14 @@ tulosvarmennus, artifact ja tallennuksen lopetus läpäisivät; diagnostinen
 jobi pysyi epäonnistuneena. Puuttuva prosessitieto erotetaan muotoerosta
 ennen mahdollista lukijan korjausta. Tuntematonta identiteettiä ei arvata.
 
+[Esitysmuodon CI 34697909739](https://github.com/eky-software/eky/actions/runs/34697909739)
+revisiolla `4e6a0e00756b01f786c3fa3c85c260ff8c2bb5ce` säilytti saman
+rajauksen: komento ja siivous läpäisivät, mutta prosessin esitysmuoto jäi
+tuntemattomaksi. Diagnostiikka saa palauttaa hylätystä kentästä vain
+pituudeltaan rajatun luokkajonon (esimerkiksi teksti, numero, välilyönti ja
+suljemerkkiluokka), ei nimen, tunnisteen tai kentän alkuperäisiä merkkejä.
+Tämä ei valtuuta tuntemattoman identiteetin yhdistämistä CPU-havaintoon.
+
 Nykyinen työ siirtää legacy-, workspace-success- ja workspace-fault-komentojen
 sisääntulon olemassa olevaan .NET Job -omistajaan. `AcceptanceCommandProgram`
 ajaa suljetun vaihelistan; se ei tulkitse yritysdataa eikä vastaanota workerilta
