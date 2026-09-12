@@ -766,7 +766,7 @@ korvataan viittauksella uuteen hyväksyttyyn ADR- tai moduulisuunnitelmaan.
 | Company Settings -composition | Valmis | `a0325d1` | `6109130` | Reitit, salaisuusauditointi ja repositoryn sidonta eristetty; Invoicing saa vain `InvoiceEmailSettingsReader`-portin |
 | Featurekohtainen i18n-jako | Valinnainen P3 | - | - | Tehdään vain, jos nykyinen `uiText`-sopimus säilyy ja jako vähentää todellisia merge-konflikteja |
 | `packages/ui` | Passiivinen | - | - | Skeletonia ei aktivoida eikä sinne lisätä React-komponentteja ilman dokumentoitua usean itsenäisen UI:n tarvetta |
-| Windows release-testiharnessin vastuurajojen katselmus | Katselmoitu, päätösportti avoin | `bc875f1` | - | Nykyinen prosessi-, paketointi-, timeout-, cleanup-, evidence- ja CI-rakenne on inventoitu dokumentissa `windows-installer-acceptance-harness-v2.md`; V2-koodi odottaa artifact-action- ja Job Object -päätöksiä |
+| Windows release-testiharnessin vastuurajojen katselmus | V2.8:n normaali CI-checkpoint vihreä, cutover kesken | `bc875f1` | - | V2 on toteutettu hyväksytyn Job Object- ja build-once-mallin päälle. Nykyinen näyttö, bundle-portin siirto, poistettava orkestrointi ja erilliset käyttöönottoehdot ovat dokumentin `windows-installer-acceptance-harness-v2.md` nykytilassa; muu koodipohjan yleissiivous ei ala tämän rinnalla. |
 | Release gate | Seuraava erillinen kokonaisuus | - | - | Backup/restore, migraatioiden eheys ja Windows-jakelun portit eivät kuulu käyttäytymisen säilyttävään ydinsiivoukseen |
 
 Roadmapia ei käytetä vanhojen ADR-päätösten historian uudelleenkirjoittamiseen.

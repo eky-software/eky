@@ -53,6 +53,8 @@ test('CI transfers one exact short-lived artifact to two isolated consumers', as
   );
   assert.match(producer, /timeout-minutes: 25/u);
   assert.match(producer, /timeout-minutes: 15/u);
+  assert.match(producer, /'pilotBundleResultCode'/u);
+  assert.match(producer, /\$summary\.pilotBundleResultCode -cne 'pilotBundleVerified'/u);
   assert.doesNotMatch(producer, /installer:v2-clean/u);
 
   assert.match(consumer, /needs: artifact_producer/u);

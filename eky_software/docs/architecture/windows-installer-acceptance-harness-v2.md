@@ -925,7 +925,9 @@ Yksi strict worker suorittaa seuraavan järjestyksen:
 V2.8:n running-Setup-siirto käyttää olemassa olevaa desktop.started- ja
 shutdownCompleted-lukijaa, nykyistä native close -pyyntöä sekä samaa workerin
 Job Objectia. Omistaja on hyväksynyt rajatun testikohtaisen native-MSI-adapterin.
-Sen hyväksyntä on vielä kesken. Adapteri korvaa tämän osatestin lokivahdin;
+Normaali CI-kierros on läpäissyt adapteriketjun kahdella consumerilla;
+koko V2:n käyttöönotto odottaa edelleen alla nimettyjä portteja.
+Adapteri korvaa tämän osatestin lokivahdin;
 puskuroidun lokin toimitus ei ole ohjausprotokolla eikä automaattinen fallback.
 
 Täsmällinen sulkemisraja on `INSTALLMESSAGE_ACTIONSTART` (0x08000000), jonka
@@ -982,9 +984,12 @@ ajankohta on viereisten aikaleimojen väli, ei tarkka hetki. Puuttuva, ristiriit
 tai rajauksen ulkopuolinen aikajärjestys jää tuntemattomaksi. Puuttuva loki on
 puuttuvaa diagnostiikkaa; se ei peitä MSI- tai cleanup-tulosta. Raakalokia,
 tiedostonimiä, aikoja tai prosessitunnisteita ei sisällytetä tulokseen. Lukija
-ei ohjaa sulkemista eikä muuta hyväksyntää.
+ei ohjaa sulkemista eikä muuta hyväksyntää. Tunnettujen merkintöjen puuttuminen
+ei todista kaikkien mahdollisten uudelleenkäynnistyssyiden poissaoloa.
 
-Nykyisen normaalin integraatioajon jäljellä oleva upgrade-hylkäys on MSI 3010.
+Aiempaan normaaliin integraatioajoon
+[34715796076](https://github.com/eky-software/eky/actions/runs/34715796076)
+jäi upgrade-hylkäys MSI-tuloksella 3010.
 Se tuotti hallitun virhetuloksen ja varmennetun siivouksen, eikä osoita uutta
 supervisorin aikakatkaisua. Alkuperäistä verbose-lokia ei säilytetty, joten
 syy on avoin. Yksi ennalta rajattu `packaged-boundary-diagnostic`-ajo käyttää
@@ -2512,9 +2517,10 @@ julkaisuvaihe.
 
 ### Käyttöönottokatselmus V2.8-checkpointin jälkeen
 
-Katselmuksen lähde on `1d22a0d4d4a202ce76cecb1ec06192ed9a20d604` ja
+Päivitetyn vastuu- ja kattavuuskatselmuksen lähde on
+`b69baa561fb21bda693f0876bfca33ed14053eae` ja
 main-baseline `c1d010263ccf4dc490a709f58ea8a4a5b34fa03a`. Main on tämän
-V2-haaran esi-isä; välissä on 106 committia ja 252 muuttunutta tiedostopolkua.
+V2-haaran esi-isä; välissä on 153 committia ja 292 muuttunutta tiedostopolkua.
 Luvut kuvaavat tätä tarkistusta, eivät myöhemmän integraation pysyvää pohjaa.
 PR:t #259-#266 muodostavat draft-pinon. Sen pohjana on myös jäädytetyn
 #258:n testiharness-muutoksia. #257/#258:aa ei mergeä eikä historiaa kirjoiteta
@@ -2531,13 +2537,27 @@ muutokseksi. V2.6/V2.7:n session- ja käynnistysregressiot kuuluvat myös
 integraation hyväksyntään. Package-muutokset ovat testikomentoja;
 desktop-versio pysyy tässä vertailussa 0.2.7:ssä.
 
-Vihreä V2.8-kierros ei vielä todista seuraavia vanhan MSI-portin vaatimuksia:
+Tiedostopintojen luokittelu kattaa koko main-vertailun: CI 20,
+V2-harness 201, supervisor ja sen testit 32, muu installer-testituki 16,
+E2E 4, desktop-lähdekoodi ja sen testit 6, dokumentaatio 11 ja
+package-scriptit 2. Neljä varsinaista desktop-lähdetiedostoa ovat yllä
+nimetyt composition-, startup completion-, proof- ja session probe -vastuut;
+loput kaksi ovat niiden testejä. `FirstStartUpdateCoordinator`,
+`LocalUpdateHandoffCoordinator`, main-entrypoint, backendin business-koodi,
+lockfile ja canonical release-konfiguraatio eivät muutu tässä vertailussa.
+Lähdekoodikatselmus tarkisti uuden session-portin marker-, rooli-, vaihe- ja
+nonce-rajat sekä tapahtuman järjestyksen suhteessa session-varmennukseen ja
+proof-controlleriin. Tavallinen startup käyttää samaa nykyistä tapahtuman
+tuottajaa entisessä kohdassaan. Tämä rajattu katselmus ei korvaa lopullisen
+poistodiffin, CI-kytkennän tai koko pinon integraation hyväksyntää.
+
+Vanhan MSI-portin siirtovaatimusten ajantasainen näyttö:
 
 | Säilytettävä vaatimus | Vanha todiste | Nykyisen V2:n puute ja seuraava vastuu |
 | --- | --- | --- |
-| Vaurioituneen asennuksen repair palauttaa täsmälleen oikean payloadin | `testWindowsInstallerLifecycle.ps1` poistaa asennetun backend-tiedoston ja ajaa `/fa`-korjauksen sekä payload-vertailun | Toteutettu nykyiseen clean-lifecycle-/Windows-adapteriin. Kohdetestit ja kaksi paikallista native-consumeria vihreät; uuden integraatiorevision CI-näyttö vielä vaaditaan. |
-| Uninstallin jälkeinen reinstall säilyttää saman profiilin datan ja poistuu puhtaasti | Sama vanha lifecycle asentaa, korjaa, poistaa, asentaa uudelleen ja poistaa uudelleen | Toteutettu samaan clean-ketjuun profiilin jokaisen siirtymän varmennuksella, paikalliset consumerit 2/2. Kumpikin todistaa ketjun pakollisen reinstall-tuloksen; lopullinen CI-hyväksyntä vielä avoin. |
-| Setup-päivitys sovelluksen ollessa käynnissä | `testWindowsInstallerUpgrade.ps1` käynnistää MSI:n elävän Ekyn rinnalle ja tarkistaa odotuksen tai hallitun eston sekä lopullisen version ja datan | Omistajan hyväksymä testikohtainen MSI API -adapteri korvaa lokiohjauksen nykyisen upgrade-vastuun alla. Käyttäytymisregressiot ovat vihreät; puhtaan revision consumer- ja CI-hyväksyntä odottavat. Suora CLI-kattavuus säilyy muissa installer-poluissa, mutta API-testi ei väitä todistavansa CLI:n identtistä rinnakkaisajoitusta. Ensimmäinen epäonnistunut consumer ja erillinen tiedostotilahavainto säilyvät avoimina. |
+| Vaurioituneen asennuksen repair palauttaa täsmälleen oikean payloadin | `testWindowsInstallerLifecycle.ps1` poistaa asennetun backend-tiedoston ja ajaa `/fa`-korjauksen sekä payload-vertailun | Nykyinen clean-lifecycle vertaa koko payloadin. Normaalin CI 34721403661:n consumerit 2/2 läpäisivät; lopullisen cutover-revision näyttö tarvitaan erikseen. |
+| Uninstallin jälkeinen reinstall säilyttää saman profiilin datan ja poistuu puhtaasti | Sama vanha lifecycle asentaa, korjaa, poistaa, asentaa uudelleen ja poistaa uudelleen | Nykyinen clean-ketju tarkistaa profiilin siirtymien yli. Sama CI 2/2 läpäisi pakollisen reinstall-tuloksen, poistot ja artifactin jälkivarmennuksen. |
+| Setup-päivitys sovelluksen ollessa käynnissä | `testWindowsInstallerUpgrade.ps1` käynnistää MSI:n elävän Ekyn rinnalle ja tarkistaa odotuksen tai hallitun eston sekä lopullisen version ja datan | Hyväksytyn MSI API -adapterin normaali CI 34721403661 läpäisi 2/2, molemmissa alkuperäinen MSI-tulos 0. API-testi ei väitä todistavansa suoran CLI:n identtistä rinnakkaisajoitusta; suora CLI-kattavuus säilyy muissa installer-poluissa. Aiempi 3010 ja erillinen tiedostotilahavainto eivät saa tästä juurisyykorjausta. |
 
 Näille ei luoda uutta supervisoria tai ajokehystä. Korvaavan ketjun pitää
 käyttää samaa prosessiomistajaa, muuttumattomia artifact-tavuja ja erillisiä
@@ -2561,11 +2581,23 @@ Julkaisuvastuita ei myöskään kadoteta vanhan jobin mukana. V2-clean-producer
 käyttää nykyistä pilot-paketointia, locked-restore-tarkistusta ja
 `releaseWindowsInstaller.mjs`:n MSI-inspector-/sidecar-varmennusta;
 consumerit varmentavat artifactin ennen ja jälkeen. Core ajaa erikseen
-`smoke:windows`-portin. `installer:local-pilot-bundle` suoritetaan tällä
-hetkellä vain vanhassa MSI-jobissa, ei V2-ketjussa. Sen lopullinen kytkentä
-release-porttiin pitää nimetä ja todentaa ennen vanhan jobin poistoa.
-Pelkkä builderin yksikkötesti ei korvaa hyväksyttyjen julkaisutavujen
-bundle-varmennusta. Tässä katselmuksessa ei rakenneta pilot-bundlea.
+`smoke:windows`-portin. Vanhan `installer:local-pilot-bundle`-portin
+korvaava kytkentä on hyväksytty rajattuna muutoksena: clean-producer käyttää
+`buildWindowsAcceptanceArtifact`-vastuuta ja olemassa olevia
+`createLocalPilotReleaseBundle`-/`verifyLocalPilotReleaseBundle`-funktioita.
+Tarkistuskopio käyttää kerran rakennettua MSI:tä ja sidecaria; MSI-hash
+verrataan consumerille toimitettavaan artifactiin. Kopio poistetaan ennen
+suljetun artifact-inventoryn loppuvarmennusta eikä bundlea ladata artifactiksi
+tai käyttäjäjakeluun. Epäonnistunut varmennus tai kopion poisto estää
+producerin onnistumisen. Pakollinen `pilotBundleVerified`-tulos tarkistetaan
+workflowssa; build-, varmennus- ja upload-vaiheet vaaditaan CI-koonnissa.
+Puuttuva, epäonnistunut, peruutettu tai ohitettu vaihe hylätään myös silloin,
+kun jobin ylätason tulos väittää onnistumista.
+
+Kytkentä on toteutettu; kohderegressiot ja uuden revision normaali CI-näyttö
+kuuluvat tämän checkpointin hyväksyntään. Vanhaa MSI-jobia ei poisteta tämän
+muutoksen mukana. Pelkkä builderin yksikkötesti ei korvaa CI:n todellisten
+MSI-tavujen varmennusta eikä käyttäjäjulkaisun erillistä exact-byte-hyväksyntää.
 
 | Vastuu | Poiston tai säilyttämisen ehto |
 | --- | --- |
@@ -2577,8 +2609,10 @@ bundle-varmennusta. Tässä katselmuksessa ei rakenneta pilot-bundlea.
 
 Required-check-siirron ehdotus, ei vielä hyväksytty asetusmuutos:
 
-- Nykyiset kuusi pakollista nimeä ovat yllä luetellut core/E2E-, dependency-
-  ja MSI-checkit. Korvaavaksi yhdistelmäksi ehdotetaan `V2 acceptance` ja
+- Nykyisen aktiivisen main-rulesetin kuusi pakollista nimeä ovat
+  `Test, typecheck and build`, `System security E2E`, `Web critical E2E`,
+  `Windows Electron critical E2E`, `Audit dependencies` ja
+  `Windows MSI release gate`. Korvaavaksi yhdistelmäksi ehdotetaan `V2 acceptance` ja
   itsenäinen `Audit dependencies`; V2-koonti tarkistaa riskin valitsemat
   yksittäiset jobit, vaiheet ja kaikki vaaditut toistot.
 - Strict-ajantasaisuus, vaadittu PR ja GitHub Actions -tuottajaan sidonta
@@ -2624,13 +2658,62 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 
 ## Nykyinen päätös
 
-V2:n normaali kokonaishyväksyntä on kesken. Ulkoinen inspector-keruu ja
-legacy-analyysiketju on todistettu erillisessä diagnoosissa, ei aiemman
-häiriön juurisyykorjauksena. Nykyinen integraatio lisää vain valinnaisen
-keruun normaaliin legacy-consumeriin alla määritellyllä sopimuksella.
-Testin, artifactin, prosessisiivouksen ja havainnoinnin tulokset säilyvät
-erillisinä. Seuraava portti on katselmoidun integraatiorevision normaali
-kokonaishyväksyntä; aiempaa diagnostista vihreyttä ei siirretä sille.
+Normaali integraatio-CI
+[34721403661](https://github.com/eky-software/eky/actions/runs/34721403661)
+valmistui ensimmäisellä yrityksellä hyväksytysti: 36 onnistunutta jobia,
+7 riskisuunnitelman tai valinnaisen diagnoosin mukaista ohitusta ja
+`V2 acceptance`: `ciAccepted`, `failedGates: []`. Lähde-HEAD on
+`b69baa561fb21bda693f0876bfca33ed14053eae`; todellinen CI-checkout ja
+artifact-build ovat `cf9af63738c7b60c58226da2518d116802729e2f`.
+Tämä on yhden normaalin kokonaiskierroksen näyttö, ei koko V2:n cutover
+tai käyttäjälle toimitettavan 0.2.8:n hyväksyntä. Tallennusta tai rerunia
+ei käytetty tämän kierroksen hyväksynnän korvikkeena.
+
+| Perhe | Tämän CI-kierroksen tulos |
+| --- | --- |
+| Clean install, repair, uninstall ja reinstall | 2/2 |
+| Running upgrade, downgrade, binary rollback ja MSI rollback | 2/2, alkuperäiset MSI-tulokset 0 |
+| Historical legacy | 2/2 ilman valinnaista WPR-keruuta |
+| Packaged workspace success | 2/2 |
+| Workspace fault/rollback | Viisi skenaariota kahdesti, 10/10 |
+| Core, sopimukset, Electron-, web- ja security-portit | Kaikki valitut pakolliset vaiheet läpäisivät |
+
+Consumerien pakolliset tulokset, prosessien poistuminen, semanttiset
+jälkiehdot, asennussiivous, fixture-poisto ja artifactin ennen/jälkeen-
+varmennus pysyvät erillisinä ehtoina. Legacy-/workspace-verifierin
+onnistunut exit todistaa sen vaatiman tulostiedoston validoinnin; pelkkää
+vaihelokia ei käytetä tämän korvikkeena. Kaksi consumeria yhdessä workflowssa
+eivät ole kaksi erillistä kokonaiskierrosta.
+
+Jäljellä ovat uuden hyväksytyn bundle-kytkennän normaali CI-näyttö,
+koko main-pinon lopullinen kattavuus- ja poistokatselmus, samaan lopulliseen
+revisioon sidotut kaksi paikallista täyttä kierrosta ja kaksi GitHub-
+kokonaiskierrosta sekä erikseen hyväksyttävä required-check-/main-siirto.
+Lopullista poistorevisiota ei ole vielä muodostettu. Aiemmat vaihekohtaiset
+ympäristöpäätökset eivät muuta näitä ehtoja automaattisesti.
+
+### Avoimen 3010-havainnon päätösesitys
+
+Aiempi CI 34715796076 palautti running-upgrade-testistä 3010:n ja hallitun
+virhetuloksen varmennetulla siivouksella. Alkuperäisen verbose-lokin
+puuttuessa uudelleenkäynnistystarpeen syy ja sen järjestys sulkemiseen nähden
+ovat tuntemattomia. Uusi lukija korjaa rajatun syyluokituksen säilymisen;
+vihreä diagnoosi tai uudempi normaali kierros ei todista vanhaa syytä
+korjatuksi. Tuotannon `LocalUpdateHandoffCoordinator` odottaa
+`shutdownRuntime()`-valmistumista ennen `launchInstaller()`-kutsua, mutta
+tämä eri aloitusjärjestys ei yksin sulje pois yhteistä MSI-riskiä.
+
+Ehdotus on säilyttää nykyinen 3010:n hylkäys ja suorittaa seuraavaksi vain
+suunnitellut lopullisen revision hyväksyntäportit, ei satunnaisia
+diagnoosiuusintoja. Jos 3010 toistuu, kyseinen hyväksyntä jää epäonnistuneeksi;
+suljettu havainto, alkuperäinen MSI-tulos, prosessisiivous ja tuotetila
+säilytetään erillisinä. Raakalokia ei julkaista eikä epävarmasti siivottua
+ympäristöä käytetä seuraavaan mutatoivaan ajoon. Tarkka uusi havainto rajaa
+seuraavan korjauksen. Ennen pilotin jakelua tarvitaan lisäksi täsmällisten
+julkaisutavujen asennus-, päivitys- ja restart-näyttö. Jos syy jää senkin
+jälkeen avoimeksi, jäljellä olevan riskin hyväksyminen pyydetään omistajalta
+erikseen; sitä ei päätellä jatkamisluvasta eikä sillä muuteta vanhan ajon
+tulosta onnistuneeksi.
 
 Korvatun orkestroinnin poisto, required-checkien vaihto, main-käyttöönotto ja
 0.2.8-pilotti säilyvät siirtokartan erillisten hyväksyntärajojen takana.

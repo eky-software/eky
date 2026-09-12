@@ -145,6 +145,28 @@ test('every selected job is mandatory even when reusable workflow result claims 
   }
 });
 
+test('clean producer requires bundle verification and exact artifact delivery even when its job claims success', () => {
+  const plan = planFor([critical], 'push');
+  const original = evidence(plan);
+  const producerName = 'caller / Build Windows acceptance artifact once';
+  const requiredSteps = ['Build acceptance artifact once', 'Verify produced artifact bytes',
+    'Upload exact acceptance artifact'];
+  assert.deepEqual(original.jobs.find((job) => job.name === producerName).steps.map((step) => step.name),
+    requiredSteps);
+  assert.equal(evaluateCiRun(plan, original.needs, original.jobs).status, 'completed');
+  for (const stepName of requiredSteps) {
+    for (const outcome of ['missing', 'failure', 'cancelled', 'skipped']) {
+      const { needs, jobs } = structuredClone(original);
+      const producer = jobs.find((job) => job.name === producerName);
+      const index = producer.steps.findIndex((step) => step.name === stepName);
+      if (outcome === 'missing') producer.steps.splice(index, 1);
+      else producer.steps[index].conclusion = outcome;
+      assert.equal(evaluateCiRun(plan, needs, jobs).resultCode, 'CI_REQUIRED_STEP_INCOMPLETE',
+        `${stepName}:${outcome}`);
+    }
+  }
+});
+
 test('preparation, all five fault results and artifact revalidation are mandatory within each consumer', () => {
   const plan = planFor([critical], 'push');
   const original = evidence(plan);

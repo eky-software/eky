@@ -4,6 +4,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { readInstallerReleaseGitState } from '../installerReleaseContext.mjs';
 import { createWindowsInstallerRelease } from '../scripts/releaseWindowsInstaller.mjs';
+import {
+  createLocalPilotReleaseBundle,
+  verifyLocalPilotReleaseBundle,
+} from '../scripts/createLocalPilotReleaseBundle.mjs';
 import { packageDefaultWindowsApplication } from '../../scripts/packageWindowsApplication.mjs';
 import { inspectPackageArtifactInventory } from '../../scripts/package-artifact-inventory.mjs';
 import {
@@ -61,6 +65,7 @@ export async function buildWindowsAcceptanceArtifact({
   packageApplication = packageDefaultWindowsApplication,
   readReleaseGitState = readInstallerReleaseGitState,
   inspectPayload = inspectPackageArtifactInventory,
+  createPilotBundle = createLocalPilotReleaseBundle,
 }) {
   let fixture = null;
   try {
@@ -105,6 +110,31 @@ export async function buildWindowsAcceptanceArtifact({
     if (verified.appVersion !== packagedApplication.appVersion) {
       throw new Error('WINDOWS_ACCEPTANCE_ARTIFACT_BUILD_IDENTITY_MISMATCH');
     }
+
+    // Exercise the release-byte contract without publishing a pilot bundle.
+    // The producer owns this temporary copy; consumers receive only the artifact.
+    const bundleRoot = resolve(artifactRoot, 'pilot-bundle-verification');
+    const bundle = await createPilotBundle({
+      buildRevision,
+      installerPath: release.installerPath,
+      manifestPath: release.manifestPath,
+      outputRoot: bundleRoot,
+      release: release.release,
+    });
+    const bundled = await verifyLocalPilotReleaseBundle({
+      buildRevision,
+      bundleDirectory: bundle.bundleDirectory,
+      release: release.release,
+    });
+    if (bundled.manifest.packageSha256 !== verified.packageSha256) {
+      throw new Error('WINDOWS_ACCEPTANCE_ARTIFACT_PILOT_BUNDLE_MISMATCH');
+    }
+    await rm(bundleRoot, { recursive: true });
+    await verifyWindowsAcceptanceArtifact({
+      artifactRoot,
+      expectedDescriptorSha256: descriptorSha256,
+      expectedBuildRevision: buildRevision,
+    });
     await verifyLocalImmutableSourceFixture(fixture);
     return Object.freeze({
       schemaVersion: 1,
@@ -114,6 +144,7 @@ export async function buildWindowsAcceptanceArtifact({
       buildRevision: verified.buildRevision,
       descriptorSha256: verified.descriptorSha256,
       packageSha256: verified.packageSha256,
+      pilotBundleResultCode: 'pilotBundleVerified',
     });
   } catch (error) {
     if (fixture !== null) {

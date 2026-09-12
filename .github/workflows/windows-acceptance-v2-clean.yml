@@ -93,6 +93,7 @@ jobs:
             'buildRevision',
             'descriptorSha256',
             'packageSha256',
+            'pilotBundleResultCode',
             'resultCode',
             'schemaVersion',
             'status'
@@ -105,6 +106,7 @@ jobs:
             $summary.schemaVersion -ne 1 -or
             $summary.status -cne 'completed' -or
             $summary.resultCode -cne 'windowsAcceptanceArtifactBuilt' -or
+            $summary.pilotBundleResultCode -cne 'pilotBundleVerified' -or
             $summary.appVersion -notmatch '^\d+\.\d+\.\d+$' -or
             $summary.buildRevision -notmatch '^[0-9a-f]{40}$' -or
             $summary.descriptorSha256 -notmatch '^[0-9a-f]{64}$' -or
