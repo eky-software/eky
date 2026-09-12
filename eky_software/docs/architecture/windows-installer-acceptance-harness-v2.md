@@ -2652,7 +2652,14 @@ ja tallennuksen lopetuksen. Analyysi hylkäsi tapahtumarivin rajalla
 epäonnistuneena. Tapahtumarivin lähde-, nimi-, säie-, prosessi- ja aikakentän
 hylkäykset erotetaan lukijassa suljetuiksi virhekoodeiksi ilman raakasisältöä.
 Tämä tarkentaa diagnoosia, ei muuta rivin hyväksymisehtoja eikä selitä
-alkuperäistä legacy-viivettä. Uusi kenttäerottelu ei ole vielä CI-varmennettu.
+alkuperäistä legacy-viivettä.
+
+[Kenttäerottelun CI 34697391790](https://github.com/eky-software/eky/actions/runs/34697391790)
+revisiolla `32c1cf1ddcad47c863ef24c5e304dc71763480ab` rajasi hylkäyksen
+prosessin esitysmuotoon (`INSPECTOR_TRACE_EVENT_PROCESS_INVALID`). Caller,
+tulosvarmennus, artifact ja tallennuksen lopetus läpäisivät; diagnostinen
+jobi pysyi epäonnistuneena. Puuttuva prosessitieto erotetaan muotoerosta
+ennen mahdollista lukijan korjausta. Tuntematonta identiteettiä ei arvata.
 
 Nykyinen työ siirtää legacy-, workspace-success- ja workspace-fault-komentojen
 sisääntulon olemassa olevaan .NET Job -omistajaan. `AcceptanceCommandProgram`

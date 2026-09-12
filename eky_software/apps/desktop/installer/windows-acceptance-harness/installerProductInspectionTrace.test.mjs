@@ -29,6 +29,8 @@ for (const kind of ['completed', 'interrupted', 'invalid']) test(
           [event('scriptStarted', 'PRIVATE-TIME')],
           [[PROVIDER, 'synthetic.exe (123)', 'PRIVATE-THREAD', 'scriptStarted', '1', '1', '']],
           [[PROVIDER, 'PRIVATE-PROCESS', '456', 'scriptStarted', '1', '1', '']],
+          ...['', '123', 'synthetic.exe(123)', 'synthetic.exe (1,234)'].map((processLabel) =>
+            [[PROVIDER, processLabel, '456', 'scriptStarted', '1', '1', '']]),
           [],
           [['truncated']],
         ]
@@ -91,6 +93,8 @@ for (const kind of ['completed', 'interrupted', 'invalid']) test(
       assert.deepEqual(results, ['INSPECTOR_TRACE_EVENT_NAME_INVALID', 'INSPECTOR_TRACE_PROVIDER_INVALID',
         'INSPECTOR_TRACE_EVENT_TIME_INVALID', 'INSPECTOR_TRACE_EVENT_TIME_INVALID',
         'INSPECTOR_TRACE_EVENT_THREAD_INVALID', 'INSPECTOR_TRACE_EVENT_PROCESS_INVALID',
+        'INSPECTOR_TRACE_EVENT_PROCESS_MISSING', 'INSPECTOR_TRACE_EVENT_PROCESS_NUMERIC',
+        'INSPECTOR_TRACE_EVENT_PROCESS_COMPACT', 'INSPECTOR_TRACE_EVENT_PROCESS_GROUPED',
         'INSPECTOR_TRACE_EVENTS_MISSING', 'INSPECTOR_TRACE_TABLE_INVALID']
         .map((errorCode) => ({ status: 'rejected', errorCode })));
     } else {

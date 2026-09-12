@@ -9,6 +9,8 @@ function Resolve-InspectorTraceErrorCode([string]$Message) {
     'INSPECTOR_TRACE_TABLE_INVALID', 'INSPECTOR_TRACE_EVENTS_MISSING',
     'INSPECTOR_TRACE_PROVIDER_INVALID', 'INSPECTOR_TRACE_EVENT_NAME_INVALID',
     'INSPECTOR_TRACE_EVENT_THREAD_INVALID', 'INSPECTOR_TRACE_EVENT_PROCESS_INVALID',
+    'INSPECTOR_TRACE_EVENT_PROCESS_MISSING', 'INSPECTOR_TRACE_EVENT_PROCESS_NUMERIC',
+    'INSPECTOR_TRACE_EVENT_PROCESS_COMPACT', 'INSPECTOR_TRACE_EVENT_PROCESS_GROUPED',
     'INSPECTOR_TRACE_EVENT_TIME_INVALID', 'INSPECTOR_TRACE_THREADS_INVALID',
     'INSPECTOR_TRACE_STREAMS_INVALID', 'INSPECTOR_TRACE_SWITCH_INVALID')
   if ($Message -cin $allowed) { return $Message }
@@ -58,7 +60,14 @@ function Get-InspectorTraceEvents([object[]]$Rows) {
     if ($event.'Provider Name' -cne 'Eky-InstallerProductInspection-V1') { throw 'INSPECTOR_TRACE_PROVIDER_INVALID' }
     if ($event.'Event Name' -cnotin $allowed) { throw 'INSPECTOR_TRACE_EVENT_NAME_INVALID' }
     if ($event.ThreadId -notmatch '^[1-9][0-9]{0,9}$') { throw 'INSPECTOR_TRACE_EVENT_THREAD_INVALID' }
-    if ($event.Process -notmatch '^.+ \([1-9][0-9]{0,9}\)$') { throw 'INSPECTOR_TRACE_EVENT_PROCESS_INVALID' }
+    if ($event.Process -notmatch '^.+ \([1-9][0-9]{0,9}\)$') {
+      # Classify only the representation, never return a label or identifier.
+      if ([string]::IsNullOrWhiteSpace($event.Process)) { throw 'INSPECTOR_TRACE_EVENT_PROCESS_MISSING' }
+      if ($event.Process -match '^[1-9][0-9]{0,9}$') { throw 'INSPECTOR_TRACE_EVENT_PROCESS_NUMERIC' }
+      if ($event.Process -match '^.+\([1-9][0-9]{0,9}\)$') { throw 'INSPECTOR_TRACE_EVENT_PROCESS_COMPACT' }
+      if ($event.Process -match '^.+ \([1-9][0-9]{0,2}(?:,[0-9]{3}){1,3}\)$') { throw 'INSPECTOR_TRACE_EVENT_PROCESS_GROUPED' }
+      throw 'INSPECTOR_TRACE_EVENT_PROCESS_INVALID'
+    }
     $seconds = 0.0
     if (![double]::TryParse($event.'Time (s)', [Globalization.NumberStyles]::Float -bor [Globalization.NumberStyles]::AllowThousands,
         [Globalization.CultureInfo]::CurrentCulture, [ref]$seconds) -or
