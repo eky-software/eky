@@ -2585,6 +2585,27 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 
 ## Nykyinen päätös
 
+Hyväksyntä on edelleen kesken lähde-revisiolla
+`05242e856c5f8826adcfc3bf877787290fce3728`, checkout/build-revisiolla
+`1a78b3137c15dc4b358affcf915ee30449041935`.
+[CI 34650330864](https://github.com/eky-software/eky/actions/runs/34650330864)
+ei ole hyväksytty kokonaiskierros. Kolmannen yrityksen täydessä toistossa
+legacy run 1 palautui `inspectSourceBefore`-aikakatkaisuun varmennetun
+prosessisiivouksen jälkeen; legacy run 2 päätyi ulkoiseen katkaisuun ilman
+saatavilla olevaa komennon lopputulosta. Nämä ovat erillisiä havaintoja.
+Neljännen yrityksen rajattu legacy run 2 -diagnoosi läpäisi koko komennon,
+pakollisen tulosvarmennuksen ja artifactien jälkivarmennuksen samalla
+artifact-ID:llä `10286568864`. Muut jobit eivät olleet uusia hyväksyntäajoja;
+kokonaisportti säilyi hylättynä. Onnistunut diagnoosi ei selitä aiempaa vikaa.
+
+Pää- ja alatyönkulun concurrency-avaimet ovat erilliset. Tutkitulla
+peruutusvälillä ei havaittu uutta saman haaran workflow-käynnistystä;
+asetusta ei tämän perusteella nimetä syyksi eikä peruutuspolitiikkaa muuteta.
+Avoin erottava näyttö on epäonnistuvan tuotetarkistuksen viimeinen sisäinen
+vaihe sekä ulkoisesti katkaistun ajon komentoprosessin ja runnerin
+peruutustila. Valmiin ajon debug-loki ei korvaa puuttuvan ajon näyttöä.
+Normaalit budjetit, hyväksymisehdot ja prosessiomistajuus säilyvät.
+
 Nykyinen työ siirtää legacy-, workspace-success- ja workspace-fault-komentojen
 sisääntulon olemassa olevaan .NET Job -omistajaan. `AcceptanceCommandProgram`
 ajaa suljetun vaihelistan; se ei tulkitse yritysdataa eikä vastaanota workerilta
