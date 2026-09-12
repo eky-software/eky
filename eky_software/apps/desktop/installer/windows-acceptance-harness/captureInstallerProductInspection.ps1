@@ -39,11 +39,17 @@ try {
   if ($Mode -ceq 'start') {
     $boundary = 'preparation'
     if (Test-Path -LiteralPath $root) { throw 'INSPECTOR_CAPTURE_ROOT_OCCUPIED' }
+    Confirm-InspectorCaptureSpace ([IO.DriveInfo]::new([IO.Path]::GetPathRoot($root)).AvailableFreeSpace)
     [void][IO.Directory]::CreateDirectory($root)
     foreach ($path in @($wpr, $exporter, $catalog)) {
       if (!(Test-Path -LiteralPath $path -PathType Leaf)) { throw 'INSPECTOR_CAPTURE_TOOL_UNAVAILABLE' }
     }
     New-InspectorTraceProfile $catalog (Join-Path $root 'events.wpaProfile')
+    $cpuExport = Join-Path $root 'cpu-export.private.wprp'
+    $cpuProfile = Join-Path $root 'cpu-bounded.private.wprp'
+    Invoke-CaptureTool $wpr @('-exportprofile', 'CPU', $cpuExport, '-filemode') 'cpu-export'
+    $bounded = New-InspectorCpuCaptureProfile ([xml][IO.File]::ReadAllText($cpuExport))
+    $bounded.Save($cpuProfile)
     $profile = Join-Path $root 'inspector.wprp'
     [IO.File]::WriteAllText($profile, @'
 <?xml version="1.0" encoding="utf-8"?>
@@ -51,9 +57,10 @@ try {
   <Profiles>
     <EventCollector Id="InspectorCollector" Name="Eky inspector observations">
       <BufferSize Value="64" /><Buffers Value="8" />
+      <MaximumFileSize Value="16" FileMode="Sequential" />
     </EventCollector>
     <EventProvider Id="InspectorProvider" Name="*Eky-InstallerProductInspection-V1" />
-    <Profile Id="EkyInspector.Verbose.Memory" Name="EkyInspector" Description="Inspector boundary diagnosis" LoggingMode="Memory" DetailLevel="Verbose">
+    <Profile Id="EkyInspector.Verbose.File" Name="EkyInspector" Description="Inspector boundary diagnosis" LoggingMode="File" DetailLevel="Verbose">
       <Collectors><EventCollectorId Value="InspectorCollector"><EventProviders>
         <EventProviderId Value="InspectorProvider" />
       </EventProviders></EventCollectorId></Collectors>
@@ -61,23 +68,36 @@ try {
   </Profiles>
 </WindowsPerformanceRecorder>
 '@)
+    Invoke-CaptureTool $wpr @('-profiles', $cpuProfile) 'cpu-profile-validation'
+    Invoke-CaptureTool $wpr @('-profiles', $profile) 'inspector-profile-validation'
+    $recordingRoot = Join-Path $root 'recording'
+    [void][IO.Directory]::CreateDirectory($recordingRoot)
     Confirm-RecorderStopped 'before'
     [IO.File]::WriteAllText((Join-Path $root 'start-attempted'), '')
     $boundary = 'recorderStart'
-    Invoke-CaptureTool $wpr @('-start', 'CPU', '-start', "$profile!EkyInspector", '-instancename', $instance) 'start'
+    Invoke-CaptureTool $wpr @('-start', "$cpuProfile!CPU", '-start', "$profile!EkyInspector",
+      '-filemode', '-recordtempto', $recordingRoot, '-instancename', $instance) 'start'
   } elseif ($Mode -ceq 'stop') {
     $boundary = 'recorderStop'
     if (!(Test-Path -LiteralPath (Join-Path $root 'start-attempted'))) { throw 'INSPECTOR_CAPTURE_NOT_STARTED' }
+    $collectorFailure = $null
+    try {
+      Invoke-CaptureTool $wpr @('-status', 'collectors', '-instancename', $instance) 'collectors-before-stop'
+      Confirm-InspectorCaptureCollectors ([IO.File]::ReadAllText((Join-Path $root 'collectors-before-stop.private.log')))
+    } catch { $collectorFailure = $_.Exception }
     try {
       Invoke-CaptureTool $wpr @('-stop', (Join-Path $root 'capture.etl'), '-instancename', $instance) 'stop'
       Confirm-RecorderStopped 'after'
-      [IO.File]::WriteAllText((Join-Path $root 'stopped'), '')
     } catch {
       # Cancel only this recording, never another WPR session or test process.
       Invoke-CaptureTool $wpr @('-cancel', '-instancename', $instance) 'cancel'
       Confirm-RecorderStopped 'after-cancel'
       throw 'INSPECTOR_CAPTURE_STOP_FAILED'
     }
+    # A cap-stopped/missing collector or event loss cannot be cured by a merge.
+    # Recorder cleanup is still mandatory when this diagnostic check fails.
+    if ($null -ne $collectorFailure) { throw $collectorFailure }
+    [IO.File]::WriteAllText((Join-Path $root 'stopped'), '')
   } else {
     $boundary = 'stopVerification'
     if (!(Test-Path -LiteralPath (Join-Path $root 'stopped'))) { throw 'INSPECTOR_CAPTURE_STOP_UNVERIFIED' }

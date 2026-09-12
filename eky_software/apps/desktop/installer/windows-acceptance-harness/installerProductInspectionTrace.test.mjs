@@ -14,7 +14,7 @@ const SWITCH_HEADERS = ['New Process', 'New Thread Id', 'Switch-In Time (s)', 'L
 const event = (phase, time, provider = PROVIDER) => [provider, 'synthetic.exe (123)', '456', phase, time, time, 'PRIVATE-FIXTURE-DATA'];
 const csv = (rows) => rows.map((row) => row.map((field) => `"${String(field).replaceAll('"', '""')}"`).join(',')).join('\r\n');
 
-for (const kind of ['completed', 'interrupted', 'invalid']) test(
+for (const kind of ['completed', 'interrupted', 'invalid', 'capture']) test(
   `external inspector trace keeps ${kind} evidence closed and separate from acceptance`,
   { skip: process.platform !== 'win32', timeout: INSPECTOR_TIMEOUT_MILLISECONDS },
   async (t) => {
@@ -47,6 +47,68 @@ for (const kind of ['completed', 'interrupted', 'invalid']) test(
       $ErrorActionPreference = 'Stop'
       [Threading.Thread]::CurrentThread.CurrentCulture = [Globalization.CultureInfo]::InvariantCulture
       . $env:EKY_TRACE_TEST_SCRIPT
+      if ($env:EKY_TRACE_TEST_KIND -ceq 'capture') {
+        [xml]$inputProfile = '<WindowsPerformanceRecorder><Profiles>' +
+          '<SystemCollector Id="System" Name="Synthetic system"><BufferSize Value="1024"/><Buffers Value="20"/></SystemCollector>' +
+          '<EventCollector Id="Events" Name="Synthetic events"><BufferSize Value="1024"/><Buffers Value="20"/><StackCaching/></EventCollector>' +
+          '<SystemProvider Id="Kernel"><Keywords><Keyword Value="ProcessThread"/></Keywords></SystemProvider>' +
+          '<EventProvider Id="Provider" Name="Synthetic provider"/>' +
+          '<Profile Id="CPU.Verbose.File" Name="CPU" LoggingMode="File" DetailLevel="Verbose"><Collectors>' +
+          '<SystemCollectorId Value="System"><SystemProviderId Value="Kernel"/></SystemCollectorId>' +
+          '<EventCollectorId Value="Events"><EventProviders><EventProviderId Value="Provider"/></EventProviders></EventCollectorId>' +
+          '</Collectors></Profile></Profiles></WindowsPerformanceRecorder>'
+        $original = $inputProfile.OuterXml
+        $bounded = New-InspectorCpuCaptureProfile $inputProfile
+        $limits = @($bounded.SelectNodes('//MaximumFileSize'))
+        if ($limits.Count -ne 2 -or @($limits | Where-Object {
+          $_.GetAttribute('Value') -cne '1024' -or $_.GetAttribute('FileMode') -cne 'Sequential'
+        }).Count -ne 0) { throw 'captureLimitsInvalid' }
+        if ($limits[0].PreviousSibling.Name -cne 'Buffers' -or
+            $limits[1].PreviousSibling.Name -cne 'StackCaching') { throw 'captureLimitOrderInvalid' }
+        foreach ($limit in $limits) { [void]$limit.ParentNode.RemoveChild($limit) }
+        if ($bounded.OuterXml -cne $original -or $inputProfile.OuterXml -cne $original) { throw 'captureProvidersChanged' }
+        $mutations = @(
+          { param($xml) $xml.SelectSingleNode('//Profile').SetAttribute('LoggingMode', 'Memory') },
+          { param($xml) $xml.SelectSingleNode('//Profile').SetAttribute('Name', 'Unknown') },
+          { param($xml) $xml.SelectSingleNode('//SystemCollector').SetAttribute('Base', 'Unknown') },
+          { param($xml) $xml.SelectSingleNode('//SystemCollectorId').SetAttribute('Value', 'Unknown') },
+          { param($xml) [void]$xml.SelectSingleNode('//Profiles').AppendChild($xml.SelectSingleNode('//EventCollector').CloneNode($true)) },
+          { param($xml) [void]$xml.SelectSingleNode('//Collectors').AppendChild($xml.CreateElement('HeapEventCollectorId')) },
+          { param($xml) [void]$xml.SelectSingleNode('//EventCollector').AppendChild($xml.CreateElement('MaximumFileSize')) }
+        )
+        foreach ($mutation in $mutations) {
+          [xml]$invalid = $original
+          & $mutation $invalid
+          $rejected = $false
+          try { [void](New-InspectorCpuCaptureProfile $invalid) }
+          catch { $rejected = $_.Exception.Message -ceq 'INSPECTOR_CAPTURE_PROFILE_INVALID' }
+          if (!$rejected) { throw 'captureProfileNotRejected' }
+        }
+        Confirm-InspectorCaptureSpace 6GB
+        $rejected = $false
+        try { Confirm-InspectorCaptureSpace (6GB - 1) }
+        catch { $rejected = $_.Exception.Message -ceq 'INSPECTOR_CAPTURE_SPACE_INSUFFICIENT' }
+        if (!$rejected) { throw 'captureSpaceNotRejected' }
+        $header = "Logging mode : File\nActively recording collectors:\n"
+        $first = "Collector Name : synthetic-system\nEvents Lost : 0\n"
+        $second = "Collector Name : synthetic-events\nEvents Lost : 0\n"
+        $third = "Collector Name : synthetic-inspector\nEvents Lost : 0\n"
+        Confirm-InspectorCaptureCollectors ($header + $first + $second + $third)
+        foreach ($invalidStatus in @('WPR is not recording', ($header + $first + $second),
+          ($header + $first + $first + $third),
+          (($header + $first + $second + $third).Replace('File', 'Memory')))) {
+          $rejected = $false
+          try { Confirm-InspectorCaptureCollectors $invalidStatus }
+          catch { $rejected = $_.Exception.Message -ceq 'INSPECTOR_CAPTURE_COLLECTORS_UNVERIFIED' }
+          if (!$rejected) { throw 'captureStoppedCollectorNotRejected' }
+        }
+        $rejected = $false
+        try { Confirm-InspectorCaptureCollectors ($header + $first + $second + $third.Replace('Lost : 0', 'Lost : 1')) }
+        catch { $rejected = $_.Exception.Message -ceq 'INSPECTOR_CAPTURE_EVENTS_LOST' }
+        if (!$rejected) { throw 'captureLostEventsNotRejected' }
+        [IO.File]::WriteAllText($env:EKY_TRACE_TEST_RESULT, '{"status":"validated"}')
+        exit 0
+      }
       if ($env:EKY_TRACE_TEST_PROFILE -ceq 'true') {
         $names = @('New Process', 'New Thread Id', 'Switch-In Time', 'Last Switch-Out Time', 'New Thread Stack', 'Ready Thread Stack', 'Readying Process')
         $columns = ($names | ForEach-Object { '<Column Name="' + $_ + '" IsVisible="true" />' }) -join ''
@@ -84,12 +146,15 @@ for (const kind of ['completed', 'interrupted', 'invalid']) test(
       if (@(Get-InspectorTraceFailureShape $failure).Count -ne 0) { throw 'shapePrivacyFailed' }
       [IO.File]::WriteAllText($env:EKY_TRACE_TEST_RESULT, (ConvertTo-Json -InputObject $results -Depth 8 -Compress))
     `;
+    const commandPath = join(context.testRoot, 'trace-contract.ps1');
+    await writeFile(commandPath, command);
     const child = spawn(resolve(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(command, 'utf16le').toString('base64')],
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', commandPath],
       { stdio: 'ignore', windowsHide: true, env: { ...process.env,
         EKY_TRACE_TEST_ROOT: context.testRoot, EKY_TRACE_TEST_SCRIPT: SCRIPT,
         EKY_TRACE_TEST_CASES: String(cases.length), EKY_TRACE_TEST_RESULT: context.resultPath,
         EKY_TRACE_TEST_PROFILE: String(kind === 'completed'),
+        EKY_TRACE_TEST_KIND: kind,
       } });
     context.fixtureProcesses.add(child);
     const exit = await new Promise((resolvePromise, rejectPromise) => {
@@ -100,7 +165,9 @@ for (const kind of ['completed', 'interrupted', 'invalid']) test(
     const output = await readFile(context.resultPath, 'utf8');
     assert.doesNotMatch(output, /PRIVATE|synthetic\.exe|foreign\.exe|123|456|789/);
     const results = JSON.parse(output);
-    if (kind === 'invalid') {
+    if (kind === 'capture') {
+      assert.deepEqual(results, { status: 'validated' });
+    } else if (kind === 'invalid') {
       assert.deepEqual(results, ['INSPECTOR_TRACE_EVENT_NAME_INVALID', 'INSPECTOR_TRACE_PROVIDER_INVALID',
         'INSPECTOR_TRACE_EVENT_TIME_INVALID', 'INSPECTOR_TRACE_EVENT_TIME_INVALID',
         'INSPECTOR_TRACE_EVENT_THREAD_INVALID', 'INSPECTOR_TRACE_EVENT_PROCESS_INVALID',
@@ -116,7 +183,7 @@ for (const kind of ['completed', 'interrupted', 'invalid']) test(
         lastBoundary: kind === 'completed' ? 'scriptFinished' : 'comCreationStarted',
         scriptFinishedObserved: kind === 'completed',
         schedulingObservation: kind === 'completed' ? 'notObserved' : 'switchIntervalAfterLastEvent',
-        traceCoverage: 'boundedRingNotFullHistory',
+        traceCoverage: 'boundedCaptureNotFullHistory',
         processExit: 'notInferred', cause: 'notEstablished',
       }] }]);
     }

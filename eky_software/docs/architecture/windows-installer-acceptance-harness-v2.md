@@ -2656,13 +2656,21 @@ prosessin yhdistämistä säiehavaintoon. Lukijan ja workflow-kytkennän
 kohdesopimukset läpäisevät; tallennuksen puutteellinen prosessisidonta
 ja alkuperäinen legacy-viive ovat edelleen eri avoimia kysymyksiä.
 
-Seuraava tallennusta koskeva päätösehdotus on rajattu, peräkkäinen
-tiedostotallennus saman tallentimen nykyisillä CPU- ja inspector-providereilla:
+Omistaja hyväksyi rajatun, peräkkäisen
+tiedostotallennuksen saman tallentimen nykyisillä CPU- ja inspector-providereilla:
 system- ja event-keräimelle enintään 1024 MB kummallekin ja inspectorille
 16 MB, vähintään 6 GiB vapaata tilaa ennen aloitusta. Keräin pysähtyy
 kokorajaan; sitä ei uusita eikä osittaista jälkeä merkitä täydelliseksi.
 Nykyiset workflow-vaiheiden aikarajat, nimetty tallennus ja runner-only-
-aineistoraja säilyvät. Ehdotusta ei ole vielä kytketty tai ajettu.
+aineistoraja säilyvät. CPU-profiili johdetaan runnerin omasta WPR-exportista
+XML-rakennetta käyttäen; tuntematon keräinrakenne tai periytyminen hylätään.
+Providerit säilyvät ennallaan. Ennen lopetusta tarkistetaan nimetyn tallennuksen
+kolme aktiivista keräintä ja nolla hävinnyttä tapahtumaa. Puuttuva keräin,
+tapahtumahävikki tai tuntematon tila hylkää tallennuksen, mutta sen oma
+lopetus yritetään silti. Tämä tilannekuva ei lupaa aukotonta tapahtumahistoriaa:
+analyysin kattavuus on edelleen `boundedCaptureNotFullHistory`.
+Lukijan, kokorajojen ja workflow-kytkennän kohdesopimukset läpäisevät
+`13/13`. Uuden tallennustavan CI-todennus on vielä kesken.
 Muistirenkaan ylikirjoitus on mahdollinen selitys puuttuvalle historialle,
 ei tällä näytöllä todistettu syy. Tallennusmallin vaihto ei ole testin
 hyväksymisehdon väljennys. Ks.
