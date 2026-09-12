@@ -14,7 +14,7 @@ const SWITCH_HEADERS = ['New Process', 'New Thread Id', 'Switch-In Time (s)', 'L
 const event = (phase, time, provider = PROVIDER) => [provider, 'synthetic.exe (123)', '456', phase, time, time, 'PRIVATE-FIXTURE-DATA'];
 const csv = (rows) => rows.map((row) => row.map((field) => `"${String(field).replaceAll('"', '""')}"`).join(',')).join('\r\n');
 
-for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal', 'toolExit']) test(
+for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal', 'toolExit', 'exportOutput', 'externalView']) test(
   `external inspector trace keeps ${kind} evidence closed and separate from acceptance`,
   { skip: process.platform !== 'win32', timeout: INSPECTOR_TIMEOUT_MILLISECONDS },
   async (t) => {
@@ -50,6 +50,67 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
       $ErrorActionPreference = 'Stop'
       [Threading.Thread]::CurrentThread.CurrentCulture = [Globalization.CultureInfo]::InvariantCulture
       . $env:EKY_TRACE_TEST_SCRIPT
+      if ($env:EKY_TRACE_TEST_KIND -ceq 'exportOutput') {
+        $stdout = Join-Path $env:EKY_TRACE_TEST_ROOT 'stdout.txt'
+        $stderr = Join-Path $env:EKY_TRACE_TEST_ROOT 'stderr.txt'
+        [IO.File]::WriteAllText($stdout, "Exporting Profile: PRIVATE-PATH\nExporting entire trace time range\n")
+        [IO.File]::WriteAllText($stderr, 'PRIVATE-IDENTITY time inversions; lost events; No data; could not load profile; System.OutOfMemoryException')
+        $report = Get-InspectorExportLogObservation $stdout $stderr
+        if ($report.logRead -cne 'completed' -or !$report.stdoutPresent -or !$report.stderrPresent -or
+            @($report.signals.Values | Where-Object { $_ -ne $true }).Count -ne 0) { throw 'exportOutputSignalsInvalid' }
+        if (($report | ConvertTo-Json -Depth 5) -match 'PRIVATE') { throw 'exportOutputLeaked' }
+        [IO.File]::WriteAllText($stderr, 'unrecognized private output')
+        $report = Get-InspectorExportLogObservation $stdout $stderr
+        if ($report.signals.noDataMessage -ne $false -or $report.signals.memoryFailureMessage -ne $false) { throw 'exportCauseGuessed' }
+        [IO.File]::WriteAllText($stderr, ('X' * (1MB + 1)))
+        $report = Get-InspectorExportLogObservation $stdout $stderr
+        if ($report.logRead -cne 'unavailable' -or $null -ne $report.signals) { throw 'exportLogUnbounded' }
+        $report = Get-InspectorExportLogObservation $stdout (Join-Path $env:EKY_TRACE_TEST_ROOT 'missing')
+        if ($report.logRead -cne 'unavailable') { throw 'exportReadFailureEscaped' }
+        [IO.File]::WriteAllText($env:EKY_TRACE_TEST_RESULT, '{"status":"validated"}')
+        exit 0
+      }
+      if ($env:EKY_TRACE_TEST_KIND -ceq 'externalView') {
+        $names = @('Provider Name', 'Provider Id', 'Process', 'ThreadId', 'Event Name', 'Time', 'Field 1', 'Time')
+        $columns = ($names | ForEach-Object { '<Column Name="' + $_ + '" SortPriority="3" IsVisible="true" />' }) -join ''
+        [xml]$catalog = '<Profile xmlns="urn:fixture"><Content><Views><View><Graphs><Graph Guid="04f69f98-176e-4d1c-b44e-97f734996ab8"><Preset KeyColumnCount="4" GraphColumnCount="35"><Columns>' + $columns + '</Columns></Preset></Graph></Graphs></View></Views><ModifiedGraphs><PrivateGraph/></ModifiedGraphs></Content></Profile>'
+        $catalogPath = Join-Path $env:EKY_TRACE_TEST_ROOT 'catalog.xml'
+        $profilePath = Join-Path $env:EKY_TRACE_TEST_ROOT 'minimal.xml'
+        $catalog.Save($catalogPath)
+        New-InspectorTraceProfile $catalogPath $profilePath -MinimalEvents
+        [xml]$profile = [IO.File]::ReadAllText($profilePath)
+        $ns = [Xml.XmlNamespaceManager]::new($profile.NameTable); $ns.AddNamespace('p', 'urn:fixture')
+        $preset = $profile.SelectSingleNode('//p:Preset', $ns)
+        if ($preset.GetAttribute('KeyColumnCount') -cne '0' -or
+            $preset.GetAttribute('InitialFilterQuery') -cne '[Provider Name]:="${PROVIDER}"' -or
+            $profile.SelectNodes('//p:ModifiedGraphs', $ns).Count -ne 0 -or
+            $profile.SelectNodes('//p:Column', $ns).Count -ne 6 -or
+            $profile.SelectNodes('//p:Column[@IsVisible="true"]', $ns).Count -ne 6) { throw 'minimalViewInvalid' }
+        $provider = [Diagnostics.Tracing.EventSource]::new('${PROVIDER}')
+        $providerId = $provider.Guid.ToString(); $provider.Dispose()
+        $phases = @('scriptStarted', 'requestValidated', 'comCreationStarted', 'comCreationCompleted',
+          'productStateStarted', 'productStateCompleted', 'registryInspectionStarted', 'registryInspectionCompleted',
+          'processInspectionStarted', 'processInspectionCompleted', 'resultSerializeStarted', 'resultSerializeCompleted',
+          'resultWriteStarted', 'resultWriteCompleted', 'resultPublishStarted', 'resultPublishCompleted',
+          'comReleaseStarted', 'comReleaseCompleted', 'scriptFinished')
+        $rows = @(for ($i = 0; $i -lt $phases.Count; $i++) {
+          [pscustomobject]@{ 'Provider Name' = '${PROVIDER}'; 'Provider Id' = $providerId;
+            Process = 'synthetic.exe (123)'; ThreadId = '456'; 'Time (s)' = [string]$i; 'Event Name' = $phases[$i] }
+        })
+        Confirm-InspectorExternalReadOnlyEvents $rows
+        $rows[0].'Provider Id' = [guid]::Empty.ToString()
+        $rejected = $false
+        try { Confirm-InspectorExternalReadOnlyEvents $rows }
+        catch { $rejected = $_.Exception.Message -ceq 'INSPECTOR_TRACE_EXTERNAL_BINDING_INVALID' }
+        if (!$rejected) { throw 'externalProviderNotBound' }
+        $rows[0].'Provider Id' = $providerId
+        $rejected = $false
+        try { Confirm-InspectorExternalReadOnlyEvents $rows[0..17] }
+        catch { $rejected = $_.Exception.Message -ceq 'INSPECTOR_TRACE_BOUNDARIES_INVALID' }
+        if (!$rejected) { throw 'externalFinishNotRequired' }
+        [IO.File]::WriteAllText($env:EKY_TRACE_TEST_RESULT, '{"status":"validated"}')
+        exit 0
+      }
       if ($env:EKY_TRACE_TEST_KIND -ceq 'toolExit') {
         $tokens = $null
         $errors = $null
@@ -233,7 +294,7 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
     const output = await readFile(context.resultPath, 'utf8');
     assert.doesNotMatch(output, /PRIVATE|synthetic\.exe|foreign\.exe|123|456|789/);
     const results = JSON.parse(output);
-    if (['capture', 'decimal', 'toolExit'].includes(kind)) {
+    if (['capture', 'decimal', 'toolExit', 'exportOutput', 'externalView'].includes(kind)) {
       assert.deepEqual(results, { status: 'validated' });
     } else if (kind === 'invalid') {
       assert.deepEqual(results, ['INSPECTOR_TRACE_EVENT_NAME_INVALID', 'INSPECTOR_TRACE_PROVIDER_INVALID',

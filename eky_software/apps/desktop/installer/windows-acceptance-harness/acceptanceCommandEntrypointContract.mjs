@@ -92,10 +92,10 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
   });
   for (const testCase of ['completed', 'blockedEvidence', 'preparationHold', 'productInspectionHold', 'scenarioHold', 'uninstallHold', 'resultBeforeExit', 'cleanupFailed', 'scenarioAndCleanupFailed', 'removalHold',
     'publicationBeforeExit', 'productMissingResult', 'preconditionFailed', 'scenarioMissing', 'businessFailed', 'profileChanged', 'artifactChanged',
-    ...(kind === 'legacy' ? ['productInspectionNativeHold'] : ['footprintFailed']), ...(kind === 'workspace-fault' ? ['sessionFailed'] : [])]) {
+    ...(kind === 'legacy' ? ['productInspectionNativeHold', 'productInspectionReadOnly'] : ['footprintFailed']), ...(kind === 'workspace-fault' ? ['sessionFailed'] : [])]) {
     const workspace = kind !== 'legacy';
     const blocked = testCase === 'blockedEvidence';
-    const succeeded = testCase === 'completed' || blocked;
+    const succeeded = testCase === 'completed' || blocked || testCase === 'productInspectionReadOnly';
     const faultScenario = kind === 'workspace-fault' ? 'acceptanceInterruption' : undefined;
     register(`${kind} fixed command entrypoint completes the real phase chain: ${testCase}`, {
       skip: process.platform !== 'win32', timeout: 90_000,
@@ -106,15 +106,16 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
       const descriptor = join(context.testRoot, workspace ? 'workspace-success-artifact.json' : 'legacy-upgrade-artifact.json');
       let verified = false;
       t.after(async () => {
-        await cleanupRunContext(context, { preserveEvidence: !verified || testCase !== 'completed' });
-        if (verified && testCase === 'completed') await rm(callerRoot, { recursive: true });
+        const removePassed = ['completed', 'productInspectionReadOnly'].includes(testCase);
+        await cleanupRunContext(context, { preserveEvidence: !verified || !removePassed });
+        if (verified && removePassed) await rm(callerRoot, { recursive: true });
       });
       await writeFile(descriptor, JSON.stringify({ testCase }));
       const evidenceRequestPath = join(context.testRoot, 'evidence-request.json');
       if (blocked) await writeFile(evidenceRequestPath, JSON.stringify(createRequest(context, 'exitZero')));
       await writeFile(context.requestPath, JSON.stringify({ node: process.execPath,
         ...(blocked ? { evidenceRequestPath } : {}),
-        ...(testCase === 'productInspectionNativeHold' ? { useCanonicalBudgets: true } : {}),
+        ...(['productInspectionNativeHold', 'productInspectionReadOnly'].includes(testCase) ? { useCanonicalBudgets: true } : {}),
         worker: fileURLToPath(new URL('./legacyCommandWorkerFixture.mjs', import.meta.url)),
         arguments: [`--${kind}-command`, '--artifact-descriptor', descriptor, '--expected-descriptor-sha256', 'a'.repeat(64),
           '--expected-build-revision', 'b'.repeat(40), ...(faultScenario ? ['--fault-scenario', faultScenario] : []), '--result-path', resultPath] }));
@@ -157,6 +158,13 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
           assert.deepEqual(observation, { schemaVersion: 1, events:
             ['scriptStarted', 'requestValidated', 'comCreationStarted'].map((name) => ({ phase: name, payloadCount: 0 })) });
           await assert.rejects(lstat(join(commandRoot, phase, 'worker-result.json')), { code: 'ENOENT' });
+        }
+        if (testCase === 'productInspectionReadOnly') {
+          const outcome = JSON.parse(await readFile(join(commandRoot, 'inspectSourceBefore', 'result.json'), 'utf8'));
+          assert.equal(outcome.processResultCode, 'processCompleted');
+          assert.equal(outcome.workerResultCode, 'workerResultValidated');
+          assert.equal(outcome.processTreeAbsent, true);
+          await assert.rejects(lstat(join(commandRoot, 'inspectSourceBefore', 'inspector-observation.json')), { code: 'ENOENT' });
         }
         if (testCase === 'productMissingResult') {
           const report = JSON.parse(await readFile(join(commandRoot, 'uninstallTarget', 'result.json'), 'utf8'));

@@ -66,7 +66,7 @@ test('inspector analysis diagnosis reuses one native hold without a packaged lif
   const source = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
   const job = source.slice(source.indexOf('  job-object-feasibility:'), source.indexOf('  packaged-boundary-diagnostic:'));
   const steps = job.slice(job.indexOf('      - name: Start bounded inspector analysis fixture capture'));
-  assert.match(job, /inputs\.mode == 'inspector-analysis-diagnostic'\) && '\[1\]'/u);
+  assert.match(job, /inputs\.mode == 'inspector-external-diagnostic'\) && '\[1\]'/u);
   assert.match(steps, /--test-name-pattern="\^legacy fixed command entrypoint completes the real phase chain: productInspectionNativeHold\$"/u);
   assert.match(steps, /legacyCommandEntrypoint\.process\.test\.mjs/u);
   assert.ok(steps.indexOf('-Mode start') < steps.indexOf('node --test'));
@@ -79,6 +79,18 @@ test('inspector analysis diagnosis reuses one native hold without a packaged lif
   assert.match(steps, /comCreationStarted/u);
   assert.match(steps, /switchIntervalAfterLastEvent/u);
   assert.doesNotMatch(job, /download-artifact|upload-artifact|package:windows|artifact:build|continue-on-error|retry/u);
+});
+
+test('external-only inspector diagnosis uses one real query and two views of one stopped trace', async () => {
+  const source = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
+  const job = source.slice(source.indexOf('  job-object-feasibility:'), source.indexOf('  packaged-boundary-diagnostic:'));
+  assert.match(job, /inputs\.mode == 'inspector-external-diagnostic'\) && '\[1\]'/u);
+  assert.match(job, /--test-name-pattern="\^legacy fixed command entrypoint completes the real phase chain: productInspectionReadOnly\$"/u);
+  assert.ok(job.indexOf('-Mode start') < job.indexOf('productInspectionReadOnly'));
+  assert.ok(job.indexOf('-Mode stop') > job.indexOf('productInspectionReadOnly'));
+  assert.ok(job.indexOf('-Mode compareEvents') > job.indexOf('-Mode stop'));
+  assert.match(job, /always\(\) && inputs\.mode == 'inspector-external-diagnostic' && steps\.inspector_analysis_stop\.outcome == 'success'/u);
+  assert.doesNotMatch(job, /download-artifact|upload-artifact|artifact:build|package:windows|continue-on-error|retry/u);
 });
 
 test('V2.5 phase acceptance requires all same-revision contract groups before its producer', async () => {
@@ -145,7 +157,7 @@ test('entrypoint groups register every original command contract exactly once', 
     'profileChanged', 'artifactChanged'];
   const all = [];
   for (const [file, kind, extra] of [
-    ['legacyCommandEntrypoint', 'legacy', ['productInspectionNativeHold']],
+    ['legacyCommandEntrypoint', 'legacy', ['productInspectionNativeHold', 'productInspectionReadOnly']],
     ['workspaceSuccessCommandEntrypoint', 'workspace-success', ['footprintFailed']],
     ['workspaceFaultCommandEntrypoint', 'workspace-fault', ['footprintFailed', 'sessionFailed']],
   ]) {
@@ -164,7 +176,7 @@ test('entrypoint groups register every original command contract exactly once', 
     assert.ok(source.includes(`registerAcceptanceCommandEntrypointContracts('${kind}');`));
     all.push(...registrations);
   }
-  assert.equal(all.length, 58);
+  assert.equal(all.length, 59);
   assert.equal(new Set(all).size, all.length);
 });
 

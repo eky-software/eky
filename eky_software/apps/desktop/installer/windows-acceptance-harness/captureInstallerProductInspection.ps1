@@ -1,4 +1,4 @@
-param([Parameter(Mandatory = $true)][ValidateSet('start', 'stop', 'analyze')][string]$Mode)
+param([Parameter(Mandatory = $true)][ValidateSet('start', 'stop', 'analyze', 'compareEvents')][string]$Mode)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -113,6 +113,53 @@ try {
     # Recorder cleanup is still mandatory when this diagnostic check fails.
     if ($null -ne $collectorFailure) { throw $collectorFailure }
     [IO.File]::WriteAllText((Join-Path $root 'stopped'), '')
+  } elseif ($Mode -ceq 'compareEvents') {
+    $boundary = 'stopVerification'
+    if (!(Test-Path -LiteralPath (Join-Path $root 'stopped'))) { throw 'INSPECTOR_CAPTURE_STOP_UNVERIFIED' }
+    $etl = Join-Path $root 'capture.etl'
+    $traceHash = (Get-FileHash -LiteralPath $etl -Algorithm SHA256).Hash
+    $comparisonFailed = $false
+    foreach ($view in @('current', 'minimal')) {
+      $boundary = 'eventExport'
+      $outputRoot = Join-Path $root "comparison-$view"
+      if (Test-Path -LiteralPath $outputRoot) { throw 'INSPECTOR_CAPTURE_ROOT_OCCUPIED' }
+      [void][IO.Directory]::CreateDirectory($outputRoot)
+      $profile = Join-Path $outputRoot 'events.wpaProfile'
+      New-InspectorTraceProfile $catalog $profile -MinimalEvents:($view -ceq 'minimal')
+      $label = "comparison-$view"
+      $report = [ordered]@{ schemaVersion = 1; operation = 'installerProductInspectionCapture';
+        phase = 'eventViewComparison'; view = $view; status = 'failed'; resultCode = 'diagnosticUnverified' }
+      try {
+        Invoke-CaptureTool $exporter @('-i', $etl, '-profile', $profile, '-outputfolder', $outputRoot) $label
+        $report.toolExitCode = 0
+        $boundary = 'eventRead'
+        $table = if ($view -ceq 'minimal') { 'Generic_Events_InspectorMinimal.csv' } else { 'Generic_Events_Inspector.csv' }
+        $rows = @(Read-InspectorTraceTable (Join-Path $outputRoot $table))
+        $events = @(Get-InspectorTraceEvents $rows)
+        $report.eventCount = $events.Count
+        if ($view -ceq 'minimal') {
+          $boundary = 'externalProof'
+          Confirm-InspectorExternalReadOnlyEvents $rows
+          $report.providerBinding = 'validated'
+          $report.readOnlyBoundaries = 'validated'
+        }
+        $report.status = 'completed'
+        $report.resultCode = 'diagnosticOnly'
+      } catch {
+        $comparisonFailed = $true
+        $report.failureBoundary = $boundary
+        $report.errorCode = Resolve-InspectorTraceErrorCode $_.Exception.Message
+        if ($_.Exception.Data['toolExitCode'] -is [int]) { $report.toolExitCode = $_.Exception.Data['toolExitCode'] }
+        try { [IO.File]::WriteAllText((Join-Path $outputRoot 'failure.private.txt'), $_.ToString()) } catch { }
+      }
+      $report.exportOutput = Get-InspectorExportLogObservation (Join-Path $root "$label.private.log") (Join-Path $root "$label.stderr.private.log")
+      $report | ConvertTo-Json -Depth 5 -Compress
+    }
+    $boundary = 'traceIdentity'
+    if ((Get-FileHash -LiteralPath $etl -Algorithm SHA256).Hash -cne $traceHash) { throw 'INSPECTOR_TRACE_CHANGED' }
+    [ordered]@{ schemaVersion = 1; operation = 'installerProductInspectionCapture'; phase = 'traceIdentity';
+      status = 'completed'; resultCode = 'sameTraceBytes' } | ConvertTo-Json -Compress
+    if ($comparisonFailed) { throw 'INSPECTOR_TRACE_COMPARISON_FAILED' }
   } else {
     $boundary = 'stopVerification'
     if (!(Test-Path -LiteralPath (Join-Path $root 'stopped'))) { throw 'INSPECTOR_CAPTURE_STOP_UNVERIFIED' }
@@ -152,6 +199,10 @@ try {
   if ($code -ceq 'INSPECTOR_CAPTURE_TOOL_FAILED' -and $failure.Data['toolExitCode'] -is [int]) {
     $result.toolExitCode = $failure.Data['toolExitCode']
   }
-  $result | ConvertTo-Json -Compress
+  if ($boundary -cin @('eventExport', 'schedulingExport')) {
+    $label = if ($boundary -ceq 'eventExport') { 'events-export' } else { 'threads-export' }
+    $result.exportOutput = Get-InspectorExportLogObservation (Join-Path $root "$label.private.log") (Join-Path $root "$label.stderr.private.log")
+  }
+  $result | ConvertTo-Json -Depth 5 -Compress
   exit 1
 }

@@ -15,7 +15,9 @@ function Resolve-InspectorTraceErrorCode([string]$Message) {
     'INSPECTOR_TRACE_EVENT_PROCESS_MISSING', 'INSPECTOR_TRACE_EVENT_PROCESS_NUMERIC',
     'INSPECTOR_TRACE_EVENT_PROCESS_COMPACT', 'INSPECTOR_TRACE_EVENT_PROCESS_GROUPED',
     'INSPECTOR_TRACE_EVENT_TIME_INVALID', 'INSPECTOR_TRACE_THREADS_INVALID',
-    'INSPECTOR_TRACE_STREAMS_INVALID', 'INSPECTOR_TRACE_SWITCH_INVALID')
+    'INSPECTOR_TRACE_STREAMS_INVALID', 'INSPECTOR_TRACE_SWITCH_INVALID',
+    'INSPECTOR_TRACE_EXTERNAL_BINDING_INVALID', 'INSPECTOR_TRACE_BOUNDARIES_INVALID',
+    'INSPECTOR_TRACE_CHANGED', 'INSPECTOR_TRACE_COMPARISON_FAILED')
   if ($Message -cin $allowed) { return $Message }
   return 'INSPECTOR_CAPTURE_UNEXPECTED_FAILURE'
 }
@@ -105,6 +107,31 @@ function Get-InspectorTraceFailureShape([Exception]$Failure) {
   return @()
 }
 
+function Get-InspectorExportLogObservation([string]$OutputPath, [string]$ErrorPath) {
+  # Messages are observations, not a causal classification of the exit code.
+  # A successful exporter may also contain non-fatal error messages.
+  try {
+    $texts = @($OutputPath, $ErrorPath | ForEach-Object {
+      if ((Get-Item -LiteralPath $_).Length -gt 1MB) { throw 'privateOutputLimit' }
+      [IO.File]::ReadAllText($_)
+    })
+    $text = $texts -join "`n"
+    $signals = [ordered]@{
+      profileSelected = $text -match '(?m)^Exporting Profile:'
+      traceRangeSelected = $text -match 'Exporting entire trace time range'
+      timeInversionMessage = $text -match '(?i)time inversions?'
+      eventLossMessage = $text -match '(?i)(events? (?:were |was )?lost|lost events?)'
+      noDataMessage = $text -match '(?i)(no (?:matching |exportable )?(?:data|tables)|no events (?:found|available))'
+      profileFailureMessage = $text -match '(?i)(?:failed|unable|cannot|could not) (?:to )?(?:load|parse|read) (?:the )?profile'
+      memoryFailureMessage = $text -match 'System\.OutOfMemoryException|(?i)not enough memory'
+    }
+    return [ordered]@{ logRead = 'completed'; stdoutPresent = $texts[0].Length -gt 0;
+      stderrPresent = $texts[1].Length -gt 0; signals = $signals }
+  } catch {
+    return [ordered]@{ logRead = 'unavailable'; stdoutPresent = $null; stderrPresent = $null; signals = $null }
+  }
+}
+
 # This diagnostic reader never controls the test or infers Job membership.
 function Read-InspectorTraceTable([string]$Path) {
   if ((Get-Item -LiteralPath $Path).Length -gt 32MB) { throw 'INSPECTOR_TRACE_TABLE_LIMIT' }
@@ -174,11 +201,34 @@ function Get-InspectorTraceEvents([object[]]$Rows) {
   }
 }
 
-function New-InspectorTraceProfile([string]$Catalog, [string]$Destination, [string[]]$Threads = @()) {
+function Confirm-InspectorExternalReadOnlyEvents([object[]]$Rows) {
+  $events = @(Get-InspectorTraceEvents $Rows | Sort-Object seconds)
+  $expected = @('scriptStarted', 'requestValidated', 'comCreationStarted', 'comCreationCompleted',
+    'productStateStarted', 'productStateCompleted', 'registryInspectionStarted', 'registryInspectionCompleted',
+    'processInspectionStarted', 'processInspectionCompleted', 'resultSerializeStarted', 'resultSerializeCompleted',
+    'resultWriteStarted', 'resultWriteCompleted', 'resultPublishStarted', 'resultPublishCompleted',
+    'comReleaseStarted', 'comReleaseCompleted', 'scriptFinished')
+  if (($events.phase -join ',') -cne ($expected -join ',') -or
+      @($events.process | Select-Object -Unique).Count -ne 1 -or
+      @($events.thread | Select-Object -Unique).Count -ne 1) { throw 'INSPECTOR_TRACE_BOUNDARIES_INVALID' }
+  # Derive the provider's platform identity after capture; no listener is added.
+  $provider = [Diagnostics.Tracing.EventSource]::new('Eky-InstallerProductInspection-V1')
+  try {
+    foreach ($row in $Rows) {
+      $id = [guid]::Empty
+      if (![guid]::TryParse($row.'Provider Id', [ref]$id) -or $id -ne $provider.Guid) {
+        throw 'INSPECTOR_TRACE_EXTERNAL_BINDING_INVALID'
+      }
+    }
+  } finally { $provider.Dispose() }
+}
+
+function New-InspectorTraceProfile([string]$Catalog, [string]$Destination, [string[]]$Threads = @(), [switch]$MinimalEvents) {
   [xml]$document = [IO.File]::ReadAllText($Catalog)
   $ns = [Xml.XmlNamespaceManager]::new($document.NameTable)
   $ns.AddNamespace('p', $document.DocumentElement.NamespaceURI)
   $cpu = $Threads.Count -gt 0
+  if ($cpu -and $MinimalEvents) { throw 'INSPECTOR_CAPTURE_PROFILE_INVALID' }
   $guid = if ($cpu) { 'c58f5fea-0319-4046-932d-e695ebe20b47' } else { '04f69f98-176e-4d1c-b44e-97f734996ab8' }
   $graph = $document.SelectSingleNode("//p:View/p:Graphs/p:Graph[@Guid='$guid']", $ns).CloneNode($true)
   $views = $document.SelectSingleNode('//p:Content/p:Views', $ns)
@@ -214,6 +264,32 @@ function New-InspectorTraceProfile([string]$Catalog, [string]$Destination, [stri
     if ($cpu) {
       $column.SetAttribute('IsVisible', $(if ($column.GetAttribute('Name') -in $visible) { 'true' } else { 'false' }))
     } elseif ($column.GetAttribute('Name') -in $visible) { $column.SetAttribute('IsVisible', 'true') }
+  }
+  if ($MinimalEvents) {
+    # Explicit comparison view only. It is not an automatic export fallback.
+    $preset.SetAttribute('Name', 'InspectorMinimal')
+    foreach ($attribute in @($preset.Attributes)) {
+      if ($attribute.Name -cnotin @('Name', 'InitialFilterQuery', 'InitialFilterShouldKeep')) {
+        $preset.RemoveAttribute($attribute.Name)
+      }
+    }
+    $preset.SetAttribute('KeyColumnCount', '0')
+    $preset.SetAttribute('GraphColumnCount', '0')
+    $kept = @{}
+    foreach ($column in @($preset.SelectNodes('p:Columns/p:Column', $ns))) {
+      $name = $column.GetAttribute('Name')
+      if ($name -cnotin @('Provider Name', 'Provider Id', 'Process', 'ThreadId', 'Event Name', 'Time') -or $kept.ContainsKey($name)) {
+        [void]$column.ParentNode.RemoveChild($column)
+      } else {
+        $kept[$name] = $true
+        $column.SetAttribute('IsVisible', 'true')
+        $column.RemoveAttribute('SortPriority')
+      }
+    }
+    if ($kept.Count -ne 6) { throw 'INSPECTOR_CAPTURE_PROFILE_INVALID' }
+    foreach ($modified in @($document.SelectNodes('//p:ModifiedGraphs', $ns))) {
+      [void]$modified.ParentNode.RemoveChild($modified)
+    }
   }
   $document.Save($Destination)
 }

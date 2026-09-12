@@ -51,6 +51,10 @@ if (mode === '--phase-request') {
     },
     async verifyProductArtifact() { return { source: role, target: { ...role, productCode: '00000000-0000-0000-0000-000000000002' } }; },
     async executeProduct(request) {
+      if (testCase === 'productInspectionReadOnly' && input.phase === 'inspectSourceBefore') {
+        // One real read-only query; every install/uninstall remains synthetic.
+        return executeProductOperation(request);
+      }
       if (testCase === 'productInspectionNativeHold' && input.phase === 'inspectSourceBefore') {
         return executeProductOperation(request, {
           execute(command, args, cwd) {

@@ -14,6 +14,7 @@ on:
           - legacy-contracts-diagnostic
           - legacy-worker-diagnostic
           - inspector-analysis-diagnostic
+          - inspector-external-diagnostic
           - packaged-boundary-diagnostic
       artifact_kind:
         description: Existing artifact consumer (diagnostic only)
@@ -46,14 +47,14 @@ concurrency:
 jobs:
   job-object-feasibility:
     if: inputs.mode != 'packaged-boundary-diagnostic'
-    name: ${{ inputs.mode == 'inspector-analysis-diagnostic' && 'Inspector analysis diagnostic (no MSI, not acceptance)' || inputs.mode == 'window-startup-diagnostic' && 'V2.5 window startup diagnostic (not acceptance)' || inputs.mode == 'legacy-worker-diagnostic' && format('V2.5 worker diagnostic run {0} (not acceptance)', matrix.repetition) || inputs.mode == 'legacy-contracts-diagnostic' && format('V2.5 contracts diagnostic run {0} (not acceptance)', matrix.repetition) || format('Windows Job Object feasibility run {0}', matrix.repetition) }}
+    name: ${{ inputs.mode == 'inspector-external-diagnostic' && 'External inspector capture (no MSI, not acceptance)' || inputs.mode == 'inspector-analysis-diagnostic' && 'Inspector analysis diagnostic (no MSI, not acceptance)' || inputs.mode == 'window-startup-diagnostic' && 'V2.5 window startup diagnostic (not acceptance)' || inputs.mode == 'legacy-worker-diagnostic' && format('V2.5 worker diagnostic run {0} (not acceptance)', matrix.repetition) || inputs.mode == 'legacy-contracts-diagnostic' && format('V2.5 contracts diagnostic run {0} (not acceptance)', matrix.repetition) || format('Windows Job Object feasibility run {0}', matrix.repetition) }}
     runs-on: windows-latest
     timeout-minutes: 10
 
     strategy:
       fail-fast: false
       matrix:
-        repetition: ${{ fromJSON((inputs.mode == 'window-startup-diagnostic' || inputs.mode == 'inspector-analysis-diagnostic') && '[1]' || '[1, 2]') }}
+        repetition: ${{ fromJSON((inputs.mode == 'window-startup-diagnostic' || inputs.mode == 'inspector-analysis-diagnostic' || inputs.mode == 'inspector-external-diagnostic') && '[1]' || '[1, 2]') }}
 
     defaults:
       run:
@@ -90,7 +91,7 @@ jobs:
         run: node installer/windows-process-supervisor/buildWindowsAcceptanceSupervisor.mjs
 
       - name: Run supervisor unit and process contracts
-        if: inputs.mode != 'window-startup-diagnostic' && inputs.mode != 'legacy-contracts-diagnostic' && inputs.mode != 'legacy-worker-diagnostic' && inputs.mode != 'inspector-analysis-diagnostic'
+        if: inputs.mode != 'window-startup-diagnostic' && inputs.mode != 'legacy-contracts-diagnostic' && inputs.mode != 'legacy-worker-diagnostic' && inputs.mode != 'inspector-analysis-diagnostic' && inputs.mode != 'inspector-external-diagnostic'
         run: >-
           node --test --test-concurrency=1
           installer/windows-process-supervisor/tests/windowsAcceptanceSupervisorResult.test.mjs
@@ -136,7 +137,7 @@ jobs:
 
       - name: Start bounded inspector analysis fixture capture
         id: inspector_analysis_start
-        if: inputs.mode == 'inspector-analysis-diagnostic'
+        if: inputs.mode == 'inspector-analysis-diagnostic' || inputs.mode == 'inspector-external-diagnostic'
         timeout-minutes: 1
         shell: pwsh
         run: ./installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode start
@@ -149,9 +150,17 @@ jobs:
           --test-name-pattern="^legacy fixed command entrypoint completes the real phase chain: productInspectionNativeHold$"
           installer/windows-acceptance-harness/legacyCommandEntrypoint.process.test.mjs
 
+      - name: Exercise one real read-only inspector without an internal listener
+        if: inputs.mode == 'inspector-external-diagnostic'
+        timeout-minutes: 2
+        run: >-
+          node --test --test-concurrency=1
+          --test-name-pattern="^legacy fixed command entrypoint completes the real phase chain: productInspectionReadOnly$"
+          installer/windows-acceptance-harness/legacyCommandEntrypoint.process.test.mjs
+
       - name: Stop bounded inspector analysis fixture capture
         id: inspector_analysis_stop
-        if: always() && inputs.mode == 'inspector-analysis-diagnostic' && steps.inspector_analysis_start.outcome != 'skipped'
+        if: always() && (inputs.mode == 'inspector-analysis-diagnostic' || inputs.mode == 'inspector-external-diagnostic') && steps.inspector_analysis_start.outcome != 'skipped'
         timeout-minutes: 2
         shell: pwsh
         run: ./installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode stop
@@ -172,6 +181,12 @@ jobs:
               $summaries[0].scriptFinishedObserved -ne $false) {
             throw 'INSPECTOR_SYNTHETIC_WAIT_UNVERIFIED'
           }
+
+      - name: Compare two event views on the same stopped trace
+        if: always() && inputs.mode == 'inspector-external-diagnostic' && steps.inspector_analysis_stop.outcome == 'success'
+        timeout-minutes: 3
+        shell: pwsh
+        run: ./installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode compareEvents
 
   packaged-boundary-diagnostic:
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'packaged-boundary-diagnostic'

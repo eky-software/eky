@@ -2745,6 +2745,24 @@ sen mahdollista vaikutusta ulkoiseen tallennukseen ei ole osoitettu.
 Raakatulosteet pysyvät yksityisinä. Sama exit-koodi tai vihreä uusinta ei
 yksin sulje kumpaakaan avointa kysymystä eikä avaa julkaisuporttia.
 
+Tämän rajan hyväksytty `inspector-external-diagnostic` tekee yhden oikean
+read-only-tuotekyselyn nykyisen .NET-komentorajan sisällä. Muut fixturevaiheet
+ovat synteettisiä: MSI:tä ei rakenneta, asenneta eikä poisteta. Tarkistimeen
+ei lisätä EventListeneria, eikä sisäinen havaintotiedosto kelpaa ulkoisen
+keruun todisteeksi. Tallennuksen pysäytyksen jälkeen `compareEvents` vie saman
+ETL:n nykyisellä ja yhdellä minimaalisella tapahtumanäkymällä. Molempien
+tulokset raportoidaan erikseen; toinen ei ole ensimmäisen fallback tai
+virheen kuittaus. ETL:n tavut varmennetaan ennen ja jälkeen vertailun.
+Minimaalinen näkymä vaatii providerin nimen ja GUID-sidonnan sekä yhden
+säikeen koko odotetun read-only-vaiheketjun `scriptFinished`-tapahtumaan asti.
+Komennon poistuminen ja cleanup todistetaan edelleen nykyisellä omistajalla.
+
+Vientityökalun yksityinen stdout/stderr luetaan rajatusti ennen runnerin
+poistumista. Julkinen tulos sisältää vain suljetut viestihavaintojen luokat;
+numerokoodi tai ei-fataali virheteksti ei yksin selitä viennin epäonnistumista.
+Puuttuva, liian suuri tai lukukelvoton diagnostiikka ei peitä vientivirhettä.
+Keräinmalli, aikarajat, prosessiomistajuus ja normaalit hyväksyntäehdot säilyvät.
+
 Nykyinen työ siirtää legacy-, workspace-success- ja workspace-fault-komentojen
 sisääntulon olemassa olevaan .NET Job -omistajaan. `AcceptanceCommandProgram`
 ajaa suljetun vaihelistan; se ei tulkitse yritysdataa eikä vastaanota workerilta
