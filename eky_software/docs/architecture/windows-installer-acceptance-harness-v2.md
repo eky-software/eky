@@ -2749,13 +2749,28 @@ minimaalinen vientinäkymä tuottivat kumpikin 19 odotettua tapahtumaa;
 minimaalinen näkymä varmisti provider-sidonnan ja koko read-only-vaiheketjun.
 ETL:n SHA-256 säilyi samana. MSI-asennuksia tai uusia paketteja ei tehty.
 
-Tämä sulkee ulkoisen keruun todistusaukon, mutta ei selitä aiemman
-`eventExport`-virheen syytä. Aiemman epäonnistuneen viennin yksityinen
+Tätä seurannut yksi alkuperäisen legacy-polun diagnoosi
+[34707834249](https://github.com/eky-software/eky/actions/runs/34707834249)
+läpäisi ensimmäisellä yrityksellä. Lähde- ja checkout-revisio olivat
+`9efdebb119433a046ad0ed8b4169698c0f66dacb`; sama artifact `10286568864`
+säilytti yllä kirjatun build-identiteetin eikä MSI:tä rakennettu uudelleen.
+`majorUpgrade`, pakollinen caller-varmennus, omistettujen prosessien
+poistuminen, semanttiset jälkiehdot, asennussiivous ja fixture-poisto
+läpäisivät. Artifactin ennen/jälkeen-varmennukset vastasivat toisiaan.
+Tallennuksen lopetus sekä tapahtuma- ja ajoitusanalyysi onnistuivat;
+kaikissa 14 kerätyssä tarkistinvirrassa havaittiin `scriptFinished`.
+Analyysin rajattu kattavuus ei yksin todista prosessien poistumista:
+siitä vastaavat edelleen komennon omistaja ja pakollinen tulosvarmennus.
+
+Tämä sulkee ulkoisen keruun ja alkuperäisen polun analyysiketjun
+toimivuuden todistusaukot, mutta ei selitä aiemman `eventExport`-virheen
+tai satunnaisen legacy-odotuksen syytä. Aiemman epäonnistuneen viennin yksityinen
 stdout/stderr ja ETL eivät ole enää saatavilla; uusi onnistuminen ei korvaa
 niitä. Seuraava erottava havainto on epäonnistuvan viennin samassa ajossa
 luettu suljettu virheluokitus tai alkuperäisen legacy-odotuksen paikantava
 jälki. Pelkkä stderr-sisältö tai exit-numero ei riitä syyn nimeämiseen.
-Alkuperäisen legacy-komennon normaali hyväksyntä on edelleen kesken.
+Diagnoosissa kumpikaan epäonnistuminen ei toistunut. Lopullisen revision
+normaali kokonaishyväksyntä on edelleen erillinen portti.
 Diagnostiikan vihreys ei avaa julkaisuporttia eikä oikeuta automaattiseen
 uusintakierteeseen. Raakatulosteet pysyvät yksityisinä.
 
