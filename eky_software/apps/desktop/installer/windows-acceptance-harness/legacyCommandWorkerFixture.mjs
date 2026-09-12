@@ -5,6 +5,8 @@ import { spawnSync } from 'node:child_process';
 import { setInterval } from 'node:timers';
 import { readOwnedProductOperationResult } from './installerProductOperationResult.mjs';
 import { writeJsonAtomicExclusive } from './cleanInstallUninstallContracts.mjs';
+import { executeProductOperation, runInstallerProductCommand } from './installerProductOperationWorker.mjs';
+import { fileURLToPath } from 'node:url';
 
 const mode = process.argv[2];
 assert(['hold', 'unread', 'consumeOwnedProduct', '--phase-request'].includes(mode));
@@ -49,6 +51,17 @@ if (mode === '--phase-request') {
     },
     async verifyProductArtifact() { return { source: role, target: { ...role, productCode: '00000000-0000-0000-0000-000000000002' } }; },
     async executeProduct(request) {
+      if (testCase === 'productInspectionNativeHold' && input.phase === 'inspectSourceBefore') {
+        return executeProductOperation(request, {
+          execute(command, args, cwd) {
+            const resultPath = args[args.indexOf('-ResultPath') + 1];
+            return runInstallerProductCommand(command,
+              [...args.slice(0, args.indexOf('-File') + 1),
+                fileURLToPath(new URL('./fixtures/inspectorObservationFixture.ps1', import.meta.url)),
+                '-ResultPath', resultPath, '-ObservationPath', join(phaseRoot, 'inspector-observation.json'), '-Mode', 'comHold'], cwd);
+          },
+        });
+      }
       if (testCase === 'uninstallHold' && input.phase === 'uninstallTarget') hold();
       const installed = input.phase.endsWith('After') || input.phase.endsWith('Cleanup') || testCase === 'preconditionFailed';
       const present = installed && input.phase.includes('Target');

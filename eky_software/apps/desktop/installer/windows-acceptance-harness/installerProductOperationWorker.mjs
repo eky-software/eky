@@ -26,7 +26,7 @@ export function validateProductOperationRequest(value) {
   return Object.freeze({ ...value });
 }
 
-function runCommand(command, args, cwd) {
+export function runInstallerProductCommand(command, args, cwd) {
   return new Promise((done, reject) => {
     let failed = false;
     const child = spawn(command, args, { cwd, windowsHide: true, stdio: 'ignore' });
@@ -55,7 +55,7 @@ async function readState(path) {
 
 // The Job owns native query, result I/O and failure-path removal, not just the child wait.
 export async function executeProductOperation(input, {
-  prepareRoot = prepare, execute = runCommand, readResult = readState,
+  prepareRoot = prepare, execute = runInstallerProductCommand, readResult = readState,
   createDirectory = mkdir, removeDirectory = rmdir,
   removeResult = (path) => rm(path, { force: true }), systemRoot = process.env.SystemRoot,
 } = {}) {

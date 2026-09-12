@@ -33,7 +33,8 @@ if (mode == "legacyCommandEntry")
     if (blocked) Console.SetOut(new BlockedEvidenceWriter(Console.Out,
         SupervisorRequestReader.Read(["--request", evidenceRequest.GetString()!])));
     return AcceptanceCommandProgram.Run(input.RootElement.GetProperty("arguments").EnumerateArray()
-        .Select(value => value.GetString()!).ToArray(), input.RootElement.GetProperty("worker").GetString(), 4_000);
+        .Select(value => value.GetString()!).ToArray(), input.RootElement.GetProperty("worker").GetString(),
+        input.RootElement.TryGetProperty("useCanonicalBudgets", out var canonical) && canonical.GetBoolean() ? null : 4_000);
 }
 if (mode.StartsWith("phaseContinuation", StringComparison.Ordinal))
 {

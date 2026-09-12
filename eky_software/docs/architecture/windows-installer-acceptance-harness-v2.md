@@ -2606,6 +2606,14 @@ vaihe sekä ulkoisesti katkaistun ajon komentoprosessin ja runnerin
 peruutustila. Valmiin ajon debug-loki ei korvaa puuttuvan ajon näyttöä.
 Normaalit budjetit, hyväksymisehdot ja prosessiomistajuus säilyvät.
 
+Tuotetarkistuksen rajattu diagnoosivalmius erottaa nyt PowerShell-lukijan
+sisäiset rajat payloadittomilla ETW-tapahtumilla. Tämä ei ole edellä kuvatun
+CI-viiveen juurisyykorjaus tai uusi hyväksytty kokonaiskierros. Ennen seuraavaa
+vertailua pitää todentaa ulkoisen tallennuksen ja odotusanalyysin toiminta
+synteettisessä pysähdyksessä; testin oma EventListener-kuittaus ei yksin
+todista WPR-tallennusta. Tallennus-, siirto- ja oikeuspäätökset säilyvät
+erillisinä. Uutta täyttä MSI-matriisia ei ajeta pelkän diagnoosilisäyksen vuoksi.
+
 Nykyinen työ siirtää legacy-, workspace-success- ja workspace-fault-komentojen
 sisääntulon olemassa olevaan .NET Job -omistajaan. `AcceptanceCommandProgram`
 ajaa suljetun vaihelistan; se ei tulkitse yritysdataa eikä vastaanota workerilta
@@ -3438,6 +3446,49 @@ jaettujen callerien regressiot, CI-kytkentätestit sekä desktopin typecheck ja
 build on hyväksytty. Aiemmat epäonnistuneet sarjat säilyvät epäonnistuneina.
 Tämän checkpointin packaged- ja CI-hyväksyntä toteutuivat yllä yksilöidyllä
 puhtaalla revisiolla ja siihen sidotuilla artifacteilla.
+
+### Tuotetarkistuksen diagnoosiraja
+
+`inspectSourceBefore` kuuluu nykyisen komentoisännän 35 sekunnin
+vaiherajaan, josta 5 sekuntia on siivousvarausta. Rajan alku ei ole
+PowerShellin tai COM-kutsun alku. Sama Job omistaa koko seuraavan ketjun:
+
+| Vastuu | Valmistuminen ja havainto |
+| --- | --- |
+| `legacyCommandPhase.runProduct` | Artifactin uudelleenvarmennus ennen tuoteoperaatiota; vaihehavainto ei vielä todista PowerShellin käynnistystä. |
+| `executeProductOperation` | Juuren tarkistus ja oman hakemiston luonti ennen lapsiprosessia. |
+| `runInstallerProductCommand` | Nykyinen spawn ja `close`; lapsen stdio on `ignore`. `scriptStarted` erottaa skriptin aloituksen sitä edeltävästä ketjusta, jos tallennuksen eheys on varmistettu. |
+| PowerShell-lukija | `comCreation`, `productState`, tuotetiedot, tiedosto-, rekisteri- ja prosessitarkistukset erotetaan alkamis- ja valmistumistapahtumilla. |
+| Lukijan tulos ja lopetus | Serialisointi, kirjoitus, atominen julkaisu ja COM-vapautus erotetaan. `scriptFinished` ei todista prosessin poistumista. |
+| Node-workerin viimeistely | Prosessin `close`, strict tulosluku, väliaikaisen tuloksen poisto ja worker-result säilyvät nykyisinä vastuina. |
+| .NET-komentoisäntä | Worker-result, root-exit, Job-puun poissaolo ja caller-result ovat erillisiä pakollisia todisteita. |
+
+Vain testiharnessin lukija tuottaa nimetyn
+`Eky-InstallerProductInspection-V1`-EventSourcen tapahtumat. Versio on
+providerin nimessä; tapahtumanimet ovat kiinteitä eikä niillä ole payloadia.
+Niihin ei liitetä ProductCodea, polkua, tulossisältöä tai raakavirhettä.
+Nykyinen Windowsin ETW-tallennus voi vastaanottaa tapahtumat ilman uutta
+prosessia, konsoli-/tiedostokirjoitinta, vastaanottokuittausta tai fallbackia.
+Tapahtumatuottajan poikkeus ei korvaa tarkistuksen virhettä tai muuta tulosta.
+Tallennus ei ole päällä automaattisesti eikä tapahtuma valtuuta jatkamaan testiä.
+
+Kytkentäregressiot todentavat normaalin tapahtumajärjestyksen, payloadin
+puuttumisen, alkuperäisen kyselyvirheen ja epäonnistuvan testikuuntelijan
+vaikutuksettomuuden. Olemassa oleva komentofixture pysäyttää lisäksi todellisen
+tuoteworkerin COM-luontiriippuvuuden: viimeinen vaihehavainto säilyy, nykyinen
+deadline poistaa omistetun puun, pakollinen caller-result jää epäonnistuneeksi
+ja komentoprosessin `exit` sekä `close` havaitaan. Asennusta ei aloiteta eikä
+säilytettävää fixture-juurta poisteta. Tämä tapaus käyttää yllä olevaa
+normaalia vaiherajaa; lyhyet synteettiset deadline-regressiot säilyvät erillään.
+
+Testikuuntelija on vain synteettinen vastaanotin, ei ajopolun tiedostologitus.
+Se ei todista aidon COM-kutsun viivettä tai ulkoisen tallennuksen toimintaa.
+ETW:n omat otsakkeet ja CPU-/odotusjälki voivat sisältää yksilöiviä tietoja
+payloadittomuudesta huolimatta. Profiili, ETL, analyysi ja tarkat mittaukset
+pysyvät Gitistä ohitettuina; niitä ei ladata automaattisesti CI-artifactiksi.
+Keruussa tarkistetaan tapahtuma-/puskurihävikki ja prosessien tapahtumajärjestys
+ennen puuttuvasta tapahtumasta päättelyä. Node-valmistelun tarkempi vaihe tai
+natiivin odotuksen kohde rajataan jäljestä, ei arvata viimeisen lokirivin mukaan.
 
 ### Legacy-tulostoimituksen korjattu vastuu
 

@@ -15,7 +15,7 @@ const SCRIPT_PATH = resolve(
   'inspectWindowsInstallerProductState.ps1',
 );
 
-function runInspector(powershell, resultPath, { failProductState = false } = {}) {
+function runInspector(powershell, resultPath, { failProductState = false, observationMode, observationPath } = {}) {
   const queryFailureCommand = `
     function New-Object {
       param([string]$ComObject)
@@ -26,7 +26,10 @@ function runInspector(powershell, resultPath, { failProductState = false } = {})
     & $env:EKY_TEST_INSPECTOR_SCRIPT -ProductCode '{00000000-0000-0000-0000-000000000000}' -ResultPath $env:EKY_TEST_INSPECTOR_RESULT
     exit $LASTEXITCODE
   `;
-  const invocation = failProductState
+  const invocation = observationMode
+    ? ['-File', join(dirname(SCRIPT_PATH), 'fixtures', 'inspectorObservationFixture.ps1'),
+        '-ResultPath', resultPath, '-ObservationPath', observationPath, '-Mode', observationMode]
+    : failProductState
     ? [
         '-EncodedCommand',
         Buffer.from(queryFailureCommand, 'utf16le').toString('base64'),
@@ -64,6 +67,15 @@ function runInspector(powershell, resultPath, { failProductState = false } = {})
   });
   return Object.freeze({ child, completion });
 }
+
+const ABSENT_PRODUCT_PHASES = [
+  'scriptStarted', 'requestValidated', 'comCreationStarted', 'comCreationCompleted',
+  'productStateStarted', 'productStateCompleted',
+  'registryInspectionStarted', 'registryInspectionCompleted',
+  'processInspectionStarted', 'processInspectionCompleted',
+  'resultSerializeStarted', 'resultSerializeCompleted', 'resultWriteStarted', 'resultWriteCompleted',
+  'resultPublishStarted', 'resultPublishCompleted', 'comReleaseStarted', 'comReleaseCompleted', 'scriptFinished',
+];
 
 async function observeInspection(context, signal, phases, phase, start) {
   signal.throwIfAborted();
@@ -171,6 +183,37 @@ for (const phase of ['canonical', 'transported', 'rejectedPath', 'queryFailure']
     } else {
       await assert.rejects(access(expectedResultPath), { code: 'ENOENT' });
     }
+    verified = true;
+  },
+);
+
+for (const mode of ['completed', 'queryFailure', 'observerFailure']) test(
+  `inspector emits payload-free native boundaries without changing its outcome: ${mode}`,
+  WINDOWS_ONLY,
+  async (t) => {
+    const context = await createRunContext('inspector-observation-' + mode);
+    let verified = false;
+    t.after(() => cleanupRunContext(context, { preserveEvidence: !verified }));
+    const resultPath = join(context.testRoot, 'state.json');
+    const observationPath = join(context.testRoot, 'observation.json');
+    const powershell = resolve(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe');
+    const execution = runInspector(powershell, resultPath, { observationMode: mode, observationPath });
+    context.fixtureProcesses.add(execution.child);
+    const receipts = [];
+    execution.child.once('exit', () => receipts.push('exit'));
+    execution.child.once('close', () => receipts.push('close'));
+    assert.equal(await execution.completion, mode === 'queryFailure' ? 1 : 0);
+    assert.deepEqual(receipts, ['exit', 'close']);
+    const observation = JSON.parse(await readFile(observationPath, 'utf8'));
+    const expected = mode === 'queryFailure'
+      ? [...ABSENT_PRODUCT_PHASES.slice(0, 5), 'inspectionFailed', 'comReleaseStarted', 'comReleaseCompleted', 'scriptFinished']
+      : ABSENT_PRODUCT_PHASES;
+    assert.deepEqual(observation, { schemaVersion: 1, events: expected.map((phase) => ({ phase, payloadCount: 0 })) });
+    if (mode === 'queryFailure') await assert.rejects(access(resultPath), { code: 'ENOENT' });
+    else assert.deepEqual(JSON.parse(await readFile(resultPath, 'utf8')), {
+      schemaVersion: 1, productState: -1, productName: null, productVersion: null,
+      localPackagePresent: false, ownedRegistryExists: false, ekyProcessCount: 0,
+    });
     verified = true;
   },
 );
