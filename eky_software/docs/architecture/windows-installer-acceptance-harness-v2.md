@@ -2634,40 +2634,40 @@ Tallennuksen epäonnistuminen, callerin tulos ja asennuksen siivous säilyvät
 erillisinä. Tämä kertaluonteinen vertailu ei muuta nykyistä epäonnistunutta
 hyväksyntätilaa eikä käynnistä normaalia matriisia.
 
-[Rajattu CI 34694122623](https://github.com/eky-software/eky/actions/runs/34694122623)
-käytti harness-revisiota `ada48aecdc8bd2afbd1a27c1593b211593455653` ja samaa
-artifact-ID:tä `10286568864`. Legacy-komento, pakollinen tulosvarmennus,
-artifactin jälkivarmennus ja tallennuksen lopetus läpäisivät. Erillinen
-analyysivaihe palautui virheeseen `captureUnverified`; koko diagnostinen jobi
-on hylätty eikä alkuperäistä CI-viivettä selitetty. Analyysin virheraja
-tarkennetaan suljetuksi alavaiheeksi ja virhekoodiksi, ja CSV-vienti rajataan
-yhteenvedon käyttämiin sarakkeisiin. Tämä korjaus ei muuta callerin tulosta;
-sen CI-varmennus on vielä avoin.
+Rajatut diagnoosit käyttivät samaa artifact-ID:tä `10286568864`, eivät uutta
+MSI-buildiä. Jokaisessa caller, pakollinen tulosvarmennus, artifactin
+jälkivarmennus ja tallennuksen lopetus läpäisivät, mutta erillinen analyysi
+epäonnistui. Nämä eivät ole hyväksyntäkierroksia tai alkuperäisen viiveen
+juurisyykorjauksia. Tarkentuneen diagnoosin historia säilyy erillisenä:
 
-[Korjatun lukijan CI 34696778818](https://github.com/eky-software/eky/actions/runs/34696778818)
-revisiolla `046f65e27dd670245e84fb7b98eb4deb6c813982` läpäisi saman
-artifactin legacy-komennon, pakollisen tulosvarmennuksen, jälkivarmennuksen
-ja tallennuksen lopetuksen. Analyysi hylkäsi tapahtumarivin rajalla
-`eventRead / INSPECTOR_TRACE_EVENT_INVALID`; koko diagnostinen jobi pysyi
-epäonnistuneena. Tapahtumarivin lähde-, nimi-, säie-, prosessi- ja aikakentän
-hylkäykset erotetaan lukijassa suljetuiksi virhekoodeiksi ilman raakasisältöä.
-Tämä tarkentaa diagnoosia, ei muuta rivin hyväksymisehtoja eikä selitä
-alkuperäistä legacy-viivettä.
+| CI | Harness-revisio | Analyysin hylkäys |
+| --- | --- | --- |
+| [34694122623](https://github.com/eky-software/eky/actions/runs/34694122623) | `ada48aecdc8bd2afbd1a27c1593b211593455653` | `captureUnverified`, sisäinen raja puuttui |
+| [34696778818](https://github.com/eky-software/eky/actions/runs/34696778818) | `046f65e27dd670245e84fb7b98eb4deb6c813982` | `eventRead / INSPECTOR_TRACE_EVENT_INVALID` |
+| [34697391790](https://github.com/eky-software/eky/actions/runs/34697391790) | `32c1cf1ddcad47c863ef24c5e304dc71763480ab` | `eventRead / INSPECTOR_TRACE_EVENT_PROCESS_INVALID` |
+| [34697909739](https://github.com/eky-software/eky/actions/runs/34697909739) | `4e6a0e00756b01f786c3fa3c85c260ff8c2bb5ce` | sama prosessikentän hylkäys |
+| [34698564142](https://github.com/eky-software/eky/actions/runs/34698564142) | `ce06d07ee2b75cc40777326a58e1e926f01a96b9` | sama hylkäys; syntaksiluokka vain `text`, ei numeerista tunnistetta |
 
-[Kenttäerottelun CI 34697391790](https://github.com/eky-software/eky/actions/runs/34697391790)
-revisiolla `32c1cf1ddcad47c863ef24c5e304dc71763480ab` rajasi hylkäyksen
-prosessin esitysmuotoon (`INSPECTOR_TRACE_EVENT_PROCESS_INVALID`). Caller,
-tulosvarmennus, artifact ja tallennuksen lopetus läpäisivät; diagnostinen
-jobi pysyi epäonnistuneena. Puuttuva prosessitieto erotetaan muotoerosta
-ennen mahdollista lukijan korjausta. Tuntematonta identiteettiä ei arvata.
+Lukija erottaa lähde-, nimi-, säie-, prosessi- ja aikakentän hylkäykset.
+Tuntemattomasta prosessikentästä saa palauttaa vain rajatun luokkajonon,
+ei alkuperäisiä merkkejä, nimeä tai tunnistetta. CPU-vienti sisältää vain
+käytetyt sarakkeet. Kentän hylkäys säilyy: teksti ei yksin valtuuta
+prosessin yhdistämistä säiehavaintoon. Lukijan ja workflow-kytkennän
+kohdesopimukset läpäisevät; tallennuksen puutteellinen prosessisidonta
+ja alkuperäinen legacy-viive ovat edelleen eri avoimia kysymyksiä.
 
-[Esitysmuodon CI 34697909739](https://github.com/eky-software/eky/actions/runs/34697909739)
-revisiolla `4e6a0e00756b01f786c3fa3c85c260ff8c2bb5ce` säilytti saman
-rajauksen: komento ja siivous läpäisivät, mutta prosessin esitysmuoto jäi
-tuntemattomaksi. Diagnostiikka saa palauttaa hylätystä kentästä vain
-pituudeltaan rajatun luokkajonon (esimerkiksi teksti, numero, välilyönti ja
-suljemerkkiluokka), ei nimen, tunnisteen tai kentän alkuperäisiä merkkejä.
-Tämä ei valtuuta tuntemattoman identiteetin yhdistämistä CPU-havaintoon.
+Seuraava tallennusta koskeva päätösehdotus on rajattu, peräkkäinen
+tiedostotallennus saman tallentimen nykyisillä CPU- ja inspector-providereilla:
+system- ja event-keräimelle enintään 1024 MB kummallekin ja inspectorille
+16 MB, vähintään 6 GiB vapaata tilaa ennen aloitusta. Keräin pysähtyy
+kokorajaan; sitä ei uusita eikä osittaista jälkeä merkitä täydelliseksi.
+Nykyiset workflow-vaiheiden aikarajat, nimetty tallennus ja runner-only-
+aineistoraja säilyvät. Ehdotusta ei ole vielä kytketty tai ajettu.
+Muistirenkaan ylikirjoitus on mahdollinen selitys puuttuvalle historialle,
+ei tällä näytöllä todistettu syy. Tallennusmallin vaihto ei ole testin
+hyväksymisehdon väljennys. Ks.
+[WPR logging mode](https://learn.microsoft.com/en-us/windows-hardware/test/wpt/logging-mode)
+ja [MaximumFileSize](https://learn.microsoft.com/en-us/windows-hardware/test/wpt/maximumfilesize).
 
 Nykyinen työ siirtää legacy-, workspace-success- ja workspace-fault-komentojen
 sisääntulon olemassa olevaan .NET Job -omistajaan. `AcceptanceCommandProgram`
