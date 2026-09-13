@@ -14,7 +14,7 @@ const SWITCH_HEADERS = ['New Process', 'New Thread Id', 'Switch-In Time (s)', 'L
 const event = (phase, time, provider = PROVIDER) => [provider, 'synthetic.exe (123)', '456', phase, time, time, 'PRIVATE-FIXTURE-DATA'];
 const csv = (rows) => rows.map((row) => row.map((field) => `"${String(field).replaceAll('"', '""')}"`).join(',')).join('\r\n');
 
-for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal', 'toolExit', 'exportOutput', 'externalView', 'commandLifetimes', 'commandAnalysis']) test(
+for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal', 'toolExit', 'exportOutput', 'externalView', 'commandLifetimes', 'commandAnalysis', 'commandExportFailure', 'commandExportFailureUnreadable']) test(
   `external inspector trace keeps ${kind} evidence closed and separate from acceptance`,
   { skip: process.platform !== 'win32', timeout: INSPECTOR_TIMEOUT_MILLISECONDS },
   async (t) => {
@@ -70,10 +70,35 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
     if (kind === 'toolExit') await writeFile(join(context.testRoot, 'capture tool.mjs'),
       "if (process.argv[2] !== 'value with spaces' || process.argv[3] !== '') process.exit(8);\n" +
       "process.stdout.write('known output'); process.stderr.write('known error');\n");
+    const commandExportFailure = kind.startsWith('commandExportFailure');
+    if (commandExportFailure) await writeFile(join(context.testRoot, 'failed-export.mjs'),
+      "process.stdout.write('PRIVATE-PROCESS-DATA'); process.stderr.write('PRIVATE-PATH time inversions'); process.exitCode = 23;\n");
     const command = `
       $ErrorActionPreference = 'Stop'
       [Threading.Thread]::CurrentThread.CurrentCulture = [Globalization.CultureInfo]::InvariantCulture
       . $env:EKY_TRACE_TEST_SCRIPT
+      if ($env:EKY_TRACE_TEST_KIND -cin @('commandExportFailure', 'commandExportFailureUnreadable')) {
+        $tokens = $null; $errors = $null
+        $ast = [Management.Automation.Language.Parser]::ParseFile(
+          (Join-Path (Split-Path $env:EKY_TRACE_TEST_SCRIPT -Parent) 'captureInstallerProductInspection.ps1'), [ref]$tokens, [ref]$errors)
+        $invocation = $ast.Find({ param($node)
+          $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Invoke-CaptureTool'
+        }, $false)
+        $outerTry = @($ast.EndBlock.Statements | Where-Object { $_ -is [Management.Automation.Language.TryStatementAst] })
+        if ($errors.Count -ne 0 -or $null -eq $invocation -or $outerTry.Count -ne 1) { throw 'captureBoundaryMissing' }
+        . ([scriptblock]::Create($invocation.Extent.Text))
+        $handler = [scriptblock]::Create(($outerTry[0].CatchClauses[0].Body.Statements.Extent.Text -join "\n"))
+        $root = $env:EKY_TRACE_TEST_ROOT; $readerLoaded = $true; $boundary = 'commandExport'; $Mode = 'analyze'
+        try {
+          Invoke-CaptureTool $env:EKY_TRACE_TEST_NODE @((Join-Path $root 'failed-export.mjs')) 'command-export'
+        } catch {
+          if ($env:EKY_TRACE_TEST_KIND -ceq 'commandExportFailureUnreadable') {
+            Remove-Item -LiteralPath (Join-Path $root 'command-export.stderr.private.log')
+          }
+          . $handler
+        }
+        throw 'expectedExportFailureMissing'
+      }
       if ($env:EKY_TRACE_TEST_KIND -ceq 'commandAnalysis') {
         $tokens = $null; $errors = $null
         $ast = [Management.Automation.Language.Parser]::ParseFile(
@@ -413,7 +438,7 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
     await writeFile(commandPath, command);
     const child = spawn(resolve(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', commandPath],
-      { stdio: 'ignore', windowsHide: true, env: { ...process.env,
+      { stdio: commandExportFailure ? ['ignore', 'pipe', 'ignore'] : 'ignore', windowsHide: true, env: { ...process.env,
         EKY_TRACE_TEST_ROOT: context.testRoot, EKY_TRACE_TEST_SCRIPT: SCRIPT,
         EKY_TRACE_TEST_CASES: String(cases.length), EKY_TRACE_TEST_RESULT: context.resultPath,
         EKY_TRACE_TEST_PROFILE: String(kind === 'completed'),
@@ -421,15 +446,29 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
         EKY_TRACE_TEST_NODE: process.execPath,
       } });
     context.fixtureProcesses.add(child);
+    const observations = [];
+    child.stdout?.on('data', (chunk) => observations.push(chunk));
     const exit = await new Promise((resolvePromise, rejectPromise) => {
       child.once('error', rejectPromise);
       child.once('close', resolvePromise);
     });
-    assert.equal(exit, 0);
-    const output = await readFile(context.resultPath, 'utf8');
+    assert.equal(exit, commandExportFailure ? 1 : 0);
+    const output = commandExportFailure ? Buffer.concat(observations).toString('utf8') : await readFile(context.resultPath, 'utf8');
     assert.doesNotMatch(output, /PRIVATE|synthetic\.exe|foreign\.exe|123|456|789/);
     const results = JSON.parse(output);
-    if (['capture', 'decimal', 'toolExit', 'exportOutput', 'externalView', 'commandLifetimes', 'commandAnalysis'].includes(kind)) {
+    if (commandExportFailure) {
+      assert.deepEqual(results, {
+        schemaVersion: 1, operation: 'installerProductInspectionCapture', phase: 'analyze',
+        status: 'failed', resultCode: 'captureUnverified', failureBoundary: 'commandExport',
+        errorCode: 'INSPECTOR_CAPTURE_TOOL_FAILED', toolExitCode: 23,
+        exportOutput: kind === 'commandExportFailureUnreadable'
+          ? { logRead: 'unavailable', stdoutPresent: null, stderrPresent: null, signals: null }
+          : { logRead: 'completed', stdoutPresent: true, stderrPresent: true, signals: {
+              profileSelected: false, traceRangeSelected: false, timeInversionMessage: true,
+              eventLossMessage: false, noDataMessage: false, profileFailureMessage: false, memoryFailureMessage: false,
+            } },
+      });
+    } else if (['capture', 'decimal', 'toolExit', 'exportOutput', 'externalView', 'commandLifetimes', 'commandAnalysis'].includes(kind)) {
       assert.deepEqual(results, { status: 'validated' });
     } else if (kind === 'invalid') {
       assert.deepEqual(results, ['INSPECTOR_TRACE_EVENT_NAME_INVALID', 'INSPECTOR_TRACE_PROVIDER_INVALID',

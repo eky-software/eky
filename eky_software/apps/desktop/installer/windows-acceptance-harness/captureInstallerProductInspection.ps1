@@ -236,8 +236,12 @@ try {
   if ($code -ceq 'INSPECTOR_TRACE_TABLE_LIMIT' -and $failure.Data['tableLimitKind'] -cin @('bytes', 'rows')) {
     $result.tableLimitKind = $failure.Data['tableLimitKind']
   }
-  if ($boundary -cin @('eventExport', 'schedulingExport')) {
-    $label = if ($boundary -ceq 'eventExport') { 'events-export' } else { 'threads-export' }
+  if ($boundary -cin @('commandExport', 'eventExport', 'schedulingExport')) {
+    $label = switch -CaseSensitive ($boundary) {
+      'commandExport' { 'command-export' }
+      'eventExport' { 'events-export' }
+      'schedulingExport' { 'threads-export' }
+    }
     $result.exportOutput = Get-InspectorExportLogObservation (Join-Path $root "$label.private.log") (Join-Path $root "$label.stderr.private.log")
   }
   $result | ConvertTo-Json -Depth 5 -Compress

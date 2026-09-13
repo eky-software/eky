@@ -2752,14 +2752,34 @@ säietunnisteen sijaan. Uudelleen käytetty säietunniste ei saa tuoda toisen
 prosessin tapahtumia tutkittavan komennon vientiin. Lukijan elinkaaritarkistus
 säilyy tämän lisäksi. Muodostettu suodatin torjuu tuntemattomat arvot ja
 pyydetyn säikeen hiljaisen poisjättämisen; se ei ota otosta tapahtumista.
-Tämän myöhemmän korjauksen näyttö on kohdetesteistä ja rajatun viennin
-vertailusta, ei yllä mainitusta aiemman revision CI-ajosta. Uutta MSI-koetta
-ei ajeta vain lukijan vuoksi. Vielä ei ole osoitettu, että tarkempi suodatus
-poistaisi juuri tuon CI-ajon kokorajan ylityksen. Seuraava hyväksyntäraja on
-uuden revision koko analyysin valmistuminen normaalien resurssirajojen
-sisällä; rajaa ei kasvateta tai ylitystä kuitata onnistumiseksi.
-Alkuperäinen legacy-jumi ei toistunut tässä kokeessa; juurisyy ja normaali
-kokonaishyväksyntä ovat edelleen avoimia.
+Korjauksen rajattu CI-koe
+[34755435437](https://github.com/eky-software/eky/actions/runs/34755435437)
+ajettiin ensimmäisellä yrityksellä lähde- ja checkout-revisiolla
+`b6746719c434c4e25d52ecf97021edf518efeca3`. Artifact-ID `10307233138`,
+alkuperäinen build ja ennen/jälkeen-tiivisteet säilyivät samoina.
+Legacy-komento ja pakollinen verifier läpäisivät 2 min 16 s vaiheessa;
+major upgrade, asennussiivous, lopputarkistukset, fixture-poisto ja
+tuloksen julkaisu valmistuivat. Tallennuksen lopetus läpäisi.
+Koko jobi kesti 4 min 15 s, mutta analyysi epäonnistui nyt jo
+`commandExport / INSPECTOR_CAPTURE_TOOL_FAILED`-rajalla ennen lukijaa.
+Tämä ei ole aiemman kokorajan korjauksen CI-varmennus eikä uusi MSI-jumi.
+
+Nykyinen pieni raportointikorjaus kytkee myös `commandExport`-virheen
+olemassa olevaan rajattuun, sallittuja havaintoluokkia palauttavaan
+työkalutulosteen lukijaan. Raakatuloste jää yksityiseksi. Työkalun alkuperäinen
+virhekoodi ja analyysin epäonnistuminen säilyvät, vaikka loki puuttuu tai
+sen lukeminen ei onnistu. Kaksi käyttäytymisregressiota suorittaa nykyisen
+työkalukutsun ja ylimmän virhekäsittelyn sekä vaatii komentoprosessin
+todellisen virhepoistumisen; koko kohdesarja läpäisee 12/12.
+
+Uutta MSI-koetta ei ajeta vain virheraportoinnin vuoksi. Tarkempi vientivirheen
+viesti puuttuu tämän päättyneen runnerin sallitusta yhteenvedosta;
+raakajälkeä tai yksityisiä työkalulokeja ei julkaistu. Pelkästä numerokoodista
+ei päätellä jäljen vioittumista, tapahtumahävikkiä tai aikajärjestysvirhettä.
+Vientityökalun toleransseja, lukurajoja tai hyväksymisehtoja ei muuteta.
+Koko analyysin valmistuminen normaalien resurssirajojen sisällä on edelleen
+avoin portti. Alkuperäinen legacy-jumi ei toistunut kummassakaan kokeessa;
+sen juurisyy ja normaali kokonaishyväksyntä ovat edelleen avoimia.
 
 ### Edellinen normaali kokonaiskierros
 
