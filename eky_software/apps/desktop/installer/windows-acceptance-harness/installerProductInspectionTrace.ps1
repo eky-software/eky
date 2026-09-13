@@ -135,8 +135,14 @@ function Get-InspectorExportLogObservation([string]$OutputPath, [string]$ErrorPa
 }
 
 # This diagnostic reader never controls the test or infers Job membership.
+function Stop-InspectorTraceTableLimit([ValidateSet('bytes', 'rows')][string]$Kind) {
+  $failure = [InvalidOperationException]::new('INSPECTOR_TRACE_TABLE_LIMIT')
+  $failure.Data['tableLimitKind'] = $Kind
+  throw $failure
+}
+
 function Read-InspectorTraceTable([string]$Path) {
-  if ((Get-Item -LiteralPath $Path).Length -gt 32MB) { throw 'INSPECTOR_TRACE_TABLE_LIMIT' }
+  if ((Get-Item -LiteralPath $Path).Length -gt 32MB) { Stop-InspectorTraceTableLimit 'bytes' }
   Add-Type -AssemblyName Microsoft.VisualBasic
   $parser = [Microsoft.VisualBasic.FileIO.TextFieldParser]::new($Path, [Text.Encoding]::UTF8)
   try {
@@ -151,7 +157,7 @@ function Read-InspectorTraceTable([string]$Path) {
     }
     $count = 0
     while (!$parser.EndOfData) {
-      if (++$count -gt 100000) { throw 'INSPECTOR_TRACE_TABLE_LIMIT' }
+      if (++$count -gt 100000) { Stop-InspectorTraceTableLimit 'rows' }
       $fields = $parser.ReadFields()
       if ($fields.Length -ne $headers.Length) { throw 'INSPECTOR_TRACE_TABLE_INVALID' }
       $row = [ordered]@{}
@@ -165,7 +171,7 @@ function Read-InspectorTraceTable([string]$Path) {
 # records. Command lines are an opaque, unquoted remainder, not CSV strings.
 # This projection is diagnostic only: neither parentage nor ETW exit is a Job proof.
 function Read-LegacyCommandTrace([string]$Path, [switch]$ContractFixture) {
-  if ((Get-Item -LiteralPath $Path).Length -gt 32MB) { throw 'INSPECTOR_TRACE_TABLE_LIMIT' }
+  if ((Get-Item -LiteralPath $Path).Length -gt 32MB) { Stop-InspectorTraceTableLimit 'bytes' }
   Add-Type -AssemblyName Microsoft.VisualBasic
   $parser = [Microsoft.VisualBasic.FileIO.TextFieldParser]::new($Path, [Text.Encoding]::UTF8)
   $processes = [Collections.Generic.List[object]]::new()
@@ -180,7 +186,7 @@ function Read-LegacyCommandTrace([string]$Path, [switch]$ContractFixture) {
     $owner = $null
     $count = 0
     while (!$parser.EndOfData) {
-      if (++$count -gt 100000) { throw 'INSPECTOR_TRACE_TABLE_LIMIT' }
+      if (++$count -gt 100000) { Stop-InspectorTraceTableLimit 'rows' }
       $fields = $parser.ReadFields()
       if ($fields.Count -lt 8 -or $fields[4] -notmatch '^(.+) \(\s*([0-9]{1,10})\)$') { throw 'INSPECTOR_TRACE_TABLE_INVALID' }
       $name = $Matches[1]; $identifier = $Matches[2]
@@ -252,10 +258,10 @@ function Read-LegacyCommandTrace([string]$Path, [switch]$ContractFixture) {
   return [pscustomobject]@{ processes = $projection; schedulingThreads = $scheduling }
 }
 
-function Get-LegacyCommandTraceSummary([object]$Projection, [object[]]$Switches) {
+function Get-LegacyCommandTraceSummary([object]$Projection, [object[]]$Switches, [switch]$LifetimeOnly) {
   foreach ($process in $Projection.processes) {
     $scheduling = 'notProjected'
-    if ($process.phase -cin @('command', 'scenario')) {
+    if (!$LifetimeOnly -and $process.phase -cin @('command', 'scenario')) {
       $scheduling = 'notObserved'
       foreach ($row in $Switches) {
         if ($row.'New Process' -cne $process.process -or $row.'Switch-In Time (s)' -ceq '') { continue }
@@ -269,7 +275,8 @@ function Get-LegacyCommandTraceSummary([object]$Projection, [object[]]$Switches)
         if ($threads.Count -eq 1 -and $end -gt $start) { $scheduling = 'descheduledIntervalObserved' }
       }
     }
-    [ordered]@{ schemaVersion = 1; operation = 'installerProductInspectionCapture'; phase = 'commandAnalysis';
+    [ordered]@{ schemaVersion = 1; operation = 'installerProductInspectionCapture';
+      phase = $(if ($LifetimeOnly) { 'commandLifetimeAnalysis' } else { 'commandAnalysis' });
       status = 'completed'; resultCode = 'diagnosticOnly'; commandPhase = $process.phase;
       processExit = $(if ([double]::IsInfinity($process.end)) { 'notObservedBeforeTraceEnd' } else { 'observedInTrace' });
       threadExit = $(if (@($process.threads | Where-Object { [double]::IsInfinity($_.end) }).Count -gt 0) { 'notAllObservedBeforeTraceEnd' } else { 'allProjectedExitsObserved' });
@@ -342,12 +349,14 @@ function Confirm-InspectorExternalReadOnlyEvents([object[]]$Rows) {
   } finally { $provider.Dispose() }
 }
 
-function New-InspectorTraceProfile([string]$Catalog, [string]$Destination, [string[]]$Threads = @(), [switch]$MinimalEvents) {
+function New-InspectorTraceProfile([string]$Catalog, [string]$Destination, [string[]]$Threads = @(),
+  [switch]$MinimalEvents, [object[]]$Streams = @()) {
   [xml]$document = [IO.File]::ReadAllText($Catalog)
   $ns = [Xml.XmlNamespaceManager]::new($document.NameTable)
   $ns.AddNamespace('p', $document.DocumentElement.NamespaceURI)
   $cpu = $Threads.Count -gt 0
   if ($cpu -and $MinimalEvents) { throw 'INSPECTOR_CAPTURE_PROFILE_INVALID' }
+  if (!$cpu -and $Streams.Count -gt 0) { throw 'INSPECTOR_TRACE_STREAMS_INVALID' }
   $guid = if ($cpu) { 'c58f5fea-0319-4046-932d-e695ebe20b47' } else { '04f69f98-176e-4d1c-b44e-97f734996ab8' }
   $graph = $document.SelectSingleNode("//p:View/p:Graphs/p:Graph[@Guid='$guid']", $ns).CloneNode($true)
   $views = $document.SelectSingleNode('//p:Content/p:Views', $ns)
@@ -364,6 +373,19 @@ function New-InspectorTraceProfile([string]$Catalog, [string]$Destination, [stri
   if ($cpu) {
     if ($Threads.Count -gt 64 -or @($Threads | Where-Object { $_ -notmatch '^[1-9][0-9]{0,9}$' }).Count -ne 0) { throw 'INSPECTOR_TRACE_THREADS_INVALID' }
     $query = ($Threads | ForEach-Object { "[New Thread Id]:=$_" }) -join ' OR '
+    if ($Streams.Count -gt 0) {
+      if ($Streams.Count -gt 64) { throw 'INSPECTOR_TRACE_STREAMS_INVALID' }
+      foreach ($stream in $Streams) {
+        if ($stream.process -cnotmatch '^[a-zA-Z0-9_.-]+ \([1-9][0-9]{0,9}\)$' -or
+            $stream.thread -cnotin $Threads) { throw 'INSPECTOR_TRACE_STREAMS_INVALID' }
+      }
+      if (@($Threads | Where-Object { $_ -cnotin @($Streams.thread) }).Count -ne 0) { throw 'INSPECTOR_TRACE_STREAMS_INVALID' }
+      # Exact process + thread identity avoids exporting a recycled thread ID
+      # from an unrelated process. Lifetime matching is still required on read.
+      $query = ($Streams | ForEach-Object {
+        '([New Process]:="' + $_.process + '" AND [New Thread Id]:=' + $_.thread + ')'
+      }) -join ' OR '
+    }
     $preset.SetAttribute('InitialFilterQuery', $query)
     $preset.SetAttribute('InitialExpansionQuery', $query)
     $preset.SetAttribute('KeyColumnCount', '3')

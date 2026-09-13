@@ -173,6 +173,11 @@ try {
       Invoke-CaptureTool $xperf @('-i', (Join-Path $root 'capture.etl'), '-a', 'process', '-thread', '-withcmdline') 'command-export'
       $boundary = 'commandRead'
       $commandProjection = Read-LegacyCommandTrace (Join-Path $root 'command-export.private.log')
+      # Scheduling export is a separate observation. Its failure must not erase
+      # already validated lifetimes or turn them into acceptance/cleanup proof.
+      foreach ($summary in @(Get-LegacyCommandTraceSummary $commandProjection @() -LifetimeOnly)) {
+        $summary | ConvertTo-Json -Compress
+      }
     }
     $eventFailure = $null
     $boundary = 'eventExport'
@@ -191,7 +196,10 @@ try {
     if ($null -ne $commandProjection) { $threadValues += @($commandProjection.schedulingThreads.thread) }
     $threads = @($threadValues | Select-Object -Unique)
     $boundary = 'schedulingProfile'
-    New-InspectorTraceProfile $catalog (Join-Path $root 'threads.wpaProfile') $threads
+    $streams = @($events | Select-Object process, thread)
+    if ($null -ne $commandProjection) { $streams += @($commandProjection.schedulingThreads | Select-Object process, thread) }
+    $streams = @($streams | Sort-Object process, thread -Unique)
+    New-InspectorTraceProfile $catalog (Join-Path $root 'threads.wpaProfile') $threads -Streams $streams
     $boundary = 'schedulingExport'
     Invoke-CaptureTool $exporter @('-i', (Join-Path $root 'capture.etl'), '-profile',
       (Join-Path $root 'threads.wpaProfile'), '-outputfolder', $root) 'threads-export'
@@ -224,6 +232,9 @@ try {
   }
   if ($code -ceq 'INSPECTOR_CAPTURE_TOOL_FAILED' -and $failure.Data['toolExitCode'] -is [int]) {
     $result.toolExitCode = $failure.Data['toolExitCode']
+  }
+  if ($code -ceq 'INSPECTOR_TRACE_TABLE_LIMIT' -and $failure.Data['tableLimitKind'] -cin @('bytes', 'rows')) {
+    $result.tableLimitKind = $failure.Data['tableLimitKind']
   }
   if ($boundary -cin @('eventExport', 'schedulingExport')) {
     $label = if ($boundary -ceq 'eventExport') { 'events-export' } else { 'threads-export' }

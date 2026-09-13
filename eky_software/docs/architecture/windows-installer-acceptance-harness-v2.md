@@ -2728,9 +2728,38 @@ Lukijan ja analyysikytkennän rajatut käyttäytymisregressiot läpäisevät 10/
 CI-kytkennän kohdesarja läpäisee 27/27, CI-politiikka 53/53 ja
 legacy-artifact-sarja 22/22; desktopin typecheck ja build läpäisevät.
 Sarjojen yhteisiä testejä ei summata erilliseksi kattavuudeksi.
-Seuraava portti on yksi olemassa olevan artifactin tallentava legacy-diagnoosi;
-tämä ei vielä korjaa aiempaa komennon puuttuvaa lopputulosta eikä sulje
-normaalia hyväksyntää.
+Rajattu tallentava CI-diagnoosi
+[34753986972](https://github.com/eky-software/eky/actions/runs/34753986972)
+valmistui ensimmäisellä yrityksellä epäonnistuneeksi vain analyysin osalta.
+Lähde- ja checkout-revisio oli `8ce861d9bc50c172f9f0ad5115808f398067557b`;
+artifact-ID `10307233138` ja build
+`1abab82f46e95b59476bdb537d8677ab7cd0fd00` säilyivät alkuperäisinä.
+Legacy-komento ja pakollinen tulosverifier läpäisivät 2 min 14 s vaiheessa:
+myös major upgrade, molemmat target-käynnistykset, semantiikka,
+asennussiivous, lopputarkistukset ja fixture-poisto valmistuivat.
+Tallennus pysähtyi ja artifactin ennen/jälkeen-tiivisteet täsmäsivät.
+Koko jobi kesti 5 min 9 s. Analyysi hylkäsi ajoitustaulukon
+`schedulingRead`-rajalla: `INSPECTOR_TRACE_TABLE_LIMIT`. Tämä ei ollut uusi
+MSI- tai supervisor-aikakatkaisu, mutta diagnoosia ei merkitä vihreäksi.
+
+Tämän havainnon jälkeinen rajattu lukijakorjaus julkaisee varmennetut
+prosessielinkaaret ennen riippumatonta ajoitusvientiä. Taulukon tavu- ja
+rivirajojen virheluokat erotetaan paljastamatta aineistoa tai määriä.
+Molemmat ylitykset säilyttävät elinkaarihavaintojen lisäksi analyysin
+virhetuloksen; kohdesarja läpäisee 10/10. Rajat eivät muutu.
+Samalla vientisuodatus sidotaan prosessin ja säikeen yhdistelmään pelkän
+säietunnisteen sijaan. Uudelleen käytetty säietunniste ei saa tuoda toisen
+prosessin tapahtumia tutkittavan komennon vientiin. Lukijan elinkaaritarkistus
+säilyy tämän lisäksi. Muodostettu suodatin torjuu tuntemattomat arvot ja
+pyydetyn säikeen hiljaisen poisjättämisen; se ei ota otosta tapahtumista.
+Tämän myöhemmän korjauksen näyttö on kohdetesteistä ja rajatun viennin
+vertailusta, ei yllä mainitusta aiemman revision CI-ajosta. Uutta MSI-koetta
+ei ajeta vain lukijan vuoksi. Vielä ei ole osoitettu, että tarkempi suodatus
+poistaisi juuri tuon CI-ajon kokorajan ylityksen. Seuraava hyväksyntäraja on
+uuden revision koko analyysin valmistuminen normaalien resurssirajojen
+sisällä; rajaa ei kasvateta tai ylitystä kuitata onnistumiseksi.
+Alkuperäinen legacy-jumi ei toistunut tässä kokeessa; juurisyy ja normaali
+kokonaishyväksyntä ovat edelleen avoimia.
 
 ### Edellinen normaali kokonaiskierros
 
@@ -3039,6 +3068,15 @@ tilan ja rajatun ajoitushavainnon. Lukurajat ovat 32 MiB / 100 000 riviä ja
 CPU-projektion nykyinen enintään 64 säiettä. Ylitys ei johda hiljaiseen
 otantaan tai laajempaan keruuseen. Read-only-inspectorin erillinen analyysi
 ei vaadi legacy-komentoprosessia.
+`commandLifetimeAnalysis` on riippumaton ajoitusviennistä: sen havaitut
+poistumiset eivät todista luonnollista poistumissyytä tai Job-siivoamista.
+`commandAnalysis` täydentää elinkaaret vain onnistuneella ajoitusluvulla;
+taulukkorajan ylitys säilyy erillisenä analyysivirheenä.
+Vientisuodatus käyttää WPA:n dokumentoitua tarkan arvon ja `AND`/`OR`-ehtojen
+yhdistelmää: [WPA query syntax](https://learn.microsoft.com/en-us/windows-hardware/test/wpt/wpa-query-syntax).
+Raaka prosessitunniste kuuluu vain yksityiseen vientiprofiiliin, ei
+CI-yhteenvetoon. Vienti ja lukija rajaavat tiedon erikseen; vientisuodatin
+ei korvaa lukijan elinkaarisidontaa.
 
 Omistajan hyväksymä erillinen kuuden minuutin havainnointivaraus nostaa vain
 tallentavan jobin kokonaisrajan 43 minuuttiin. Tallentamaton jobi säilyy

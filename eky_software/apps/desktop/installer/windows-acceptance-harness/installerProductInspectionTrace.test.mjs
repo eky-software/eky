@@ -90,21 +90,43 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
         function Invoke-CaptureTool([string]$Tool, [string[]]$Arguments, [string]$Label) {
           if ($Label -ceq 'command-export') {
             Copy-Item -LiteralPath (Join-Path $root 'command-completed.txt') -Destination (Join-Path $root 'command-export.private.log')
-          } elseif ($Label -ceq 'events-export') { throw 'INSPECTOR_CAPTURE_TOOL_FAILED' }
+          } elseif ($Label -ceq 'events-export') {
+            if ($analysisCase -ceq 'eventExport') { throw 'INSPECTOR_CAPTURE_TOOL_FAILED' }
+            Copy-Item -LiteralPath (Join-Path $root 'events-0.csv') -Destination (Join-Path $root 'Generic_Events_Inspector.csv')
+          }
           elseif ($Label -ceq 'threads-export') {
-            Copy-Item -LiteralPath (Join-Path $root 'switches.csv') -Destination (Join-Path $root 'CPU_Usage_(Precise)_Inspector.csv')
+            $path = Join-Path $root 'CPU_Usage_(Precise)_Inspector.csv'
+            if ($analysisCase -ceq 'bytes') {
+              $file = [IO.File]::Create($path)
+              try { $file.SetLength(32MB + 1) } finally { $file.Dispose() }
+            } elseif ($analysisCase -ceq 'rows') {
+              [IO.File]::WriteAllText($path, "Header\n" + ("value\n" * 100001))
+            } else { Copy-Item -LiteralPath (Join-Path $root 'switches.csv') -Destination $path }
           } else { throw 'unexpectedAnalysisTool' }
         }
-        function New-InspectorTraceProfile([string]$Catalog, [string]$Destination, [string[]]$Threads) {
-          if (($Threads -join ',') -cne '456,567') { throw 'commandThreadsNotProjected' }
+        function New-InspectorTraceProfile([string]$Catalog, [string]$Destination, [string[]]$Threads, [object[]]$Streams) {
+          if (($Threads -join ',') -cne '456,567' -or
+              @($Streams | Where-Object { $_.process -ceq 'dotnet.exe (123)' -and $_.thread -ceq '456' }).Count -ne 1 -or
+              @($Streams | Where-Object { $_.process -ceq 'node.exe (234)' -and $_.thread -ceq '567' }).Count -ne 1) {
+            throw 'commandThreadsNotProjected'
+          }
         }
-        $observations = [Collections.Generic.List[object]]::new()
-        $rejected = $false
-        try { . $analysis | ForEach-Object { $observations.Add(($_ | ConvertFrom-Json)) } }
-        catch { $rejected = $_.Exception.Message -ceq 'INSPECTOR_CAPTURE_TOOL_FAILED' }
-        if (!$rejected -or $boundary -cne 'eventExport' -or $observations.Count -ne 2 -or
-            @($observations | Where-Object { $_.phase -cne 'commandAnalysis' -or $_.cleanup -cne 'notInferred' }).Count -ne 0) {
-          throw 'missingInspectorErasedCommandEvidence'
+        foreach ($analysisCase in @('eventExport', 'bytes', 'rows')) {
+          $observations = [Collections.Generic.List[object]]::new()
+          $rejected = $false
+          try { . $analysis | ForEach-Object { $observations.Add(($_ | ConvertFrom-Json)) } }
+          catch {
+            $rejected = if ($analysisCase -ceq 'eventExport') { $_.Exception.Message -ceq 'INSPECTOR_CAPTURE_TOOL_FAILED' }
+              else { $_.Exception.Message -ceq 'INSPECTOR_TRACE_TABLE_LIMIT' -and $_.Exception.Data['tableLimitKind'] -ceq $analysisCase }
+          }
+          $expectedCount = if ($analysisCase -ceq 'eventExport') { 4 } else { 2 }
+          $expectedBoundary = if ($analysisCase -ceq 'eventExport') { 'eventExport' } else { 'schedulingRead' }
+          if (!$rejected -or $boundary -cne $expectedBoundary -or $observations.Count -ne $expectedCount -or
+              @($observations | Where-Object { $_.cleanup -cne 'notInferred' }).Count -ne 0 -or
+              @($observations | Where-Object { $_.phase -ceq 'commandLifetimeAnalysis' -and
+                $_.schedulingObservation -ceq 'notProjected' }).Count -ne 2) {
+            throw 'failedSchedulingErasedCommandEvidence'
+          }
         }
         [IO.File]::WriteAllText($env:EKY_TRACE_TEST_RESULT, '{"status":"validated"}')
         exit 0
@@ -346,6 +368,23 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
         $ns.AddNamespace('p', 'urn:fixture')
         $visible = @($profile.SelectNodes('//p:Column[@IsVisible="true"]', $ns) | ForEach-Object { $_.GetAttribute('Name') })
         if (($visible -join ',') -cne 'New Process,New Thread Id,Switch-In Time,Last Switch-Out Time') { throw 'projectionContractFailed' }
+        $streams = @([pscustomobject]@{ process = 'synthetic.exe (123)'; thread = '456' },
+          [pscustomobject]@{ process = 'synthetic.exe (234)'; thread = '789' })
+        New-InspectorTraceProfile $catalogPath $profilePath @('456', '789') -Streams $streams
+        [xml]$bound = [IO.File]::ReadAllText($profilePath)
+        $query = $bound.SelectSingleNode('//p:Preset', $ns).GetAttribute('InitialFilterQuery')
+        if ($query -cne '([New Process]:="synthetic.exe (123)" AND [New Thread Id]:=456) OR ([New Process]:="synthetic.exe (234)" AND [New Thread Id]:=789)') {
+          throw 'processThreadBindingMissing'
+        }
+        $streams[0].process = 'private" OR [New Thread Id]:>0'
+        $rejected = $false
+        try { New-InspectorTraceProfile $catalogPath $profilePath @('456', '789') -Streams $streams }
+        catch { $rejected = $_.Exception.Message -ceq 'INSPECTOR_TRACE_STREAMS_INVALID' }
+        if (!$rejected) { throw 'queryInputNotRejected' }
+        $rejected = $false
+        try { New-InspectorTraceProfile $catalogPath $profilePath @('456', '789') -Streams @($streams[1]) }
+        catch { $rejected = $_.Exception.Message -ceq 'INSPECTOR_TRACE_STREAMS_INVALID' }
+        if (!$rejected) { throw 'projectionSilentlyDroppedThread' }
       }
       $results = @()
       for ($index = 0; $index -lt [int]$env:EKY_TRACE_TEST_CASES; $index++) {
