@@ -151,6 +151,15 @@ eikä koko riippuvuuspuun puhtaan auditin todiste.
 | `hono` | `4.13.1` | `4.13.5` | Backendin production HTTP-adapteri; kolme advisorya |
 | `vitest` ja transitiivinen `@vitest/mocker` | `4.1.10` | `4.1.11` | Kehityksen testityökalu; sama advisory kahdella paketilla |
 
+Viisi GitHub-hälytystä vastaa neljää eri GHSA-tunnusta:
+
+| GHSA | Paketti ja lukittu -> korjausversio | Runtime/dev | Käytännön vaikutus nykyisessä lähdekoodissa |
+| --- | --- | --- | --- |
+| GHSA-crvj-82cr-hjcx | hono 4.13.1 -> 4.13.5 | runtime | Query-lukijoita käytetään; literal-fragmentin pääsy adapterin läpi on todistamatta. Tulkintaeroa ei merkitä vaikutuksettomaksi. |
+| GHSA-gqvv-2mrq-wpjv | hono 4.13.1 -> 4.13.5 | runtime | SSG:n polkurajaus; toSSG-toimintoa ei käytetä tarkistetussa lähteessä. |
+| GHSA-g6gw-c38x-mqfc | hono 4.13.1 -> 4.13.5 | runtime | Piste-erotellun parseBody-rakenteen muistinkäyttö; kyseistä parseria ei käytetä nykyisessä JSON-rajassa. |
+| GHSA-82fw-gwwq-j7x9 | vitest ja @vitest/mocker 4.1.10 -> 4.1.11 | dev | Redirect-mockin tiedostoluku; tarkistetusta lähteestä ei löytynyt mockerPlugin-/interceptorPlugin-kytkentää. |
+
 Honon korjaukset koskevat
 [fragmentin jälkeistä query-tulkintaa](https://github.com/advisories/GHSA-crvj-82cr-hjcx),
 [SSG-tulosteen polkurajausta](https://github.com/advisories/GHSA-gqvv-2mrq-wpjv)
