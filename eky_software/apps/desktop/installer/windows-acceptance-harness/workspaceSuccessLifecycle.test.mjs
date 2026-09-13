@@ -134,16 +134,16 @@ test('installation inspection failures remain exact in progress and strict worke
   }
 });
 
-for (const proof of [
-  undefined, { formatVersion: 1, phase: 'sourceHandoff', status: 'relaunching' },
-  { formatVersion: 1, phase: 'targetFirstStart', status: 'completed' },
-  { formatVersion: 1, phase: 'sourceHandoff', status: 'completed', password: 'PRIVATE' },
+for (const [proof, errorCode] of [
+  [undefined, 'proofSchemaInvalid'], [{ formatVersion: 1, phase: 'sourceHandoff', status: 'relaunching' }, 'proofStatusMismatch'],
+  [{ formatVersion: 1, phase: 'targetFirstStart', status: 'completed' }, 'proofBindingMismatch'],
+  [{ formatVersion: 1, phase: 'sourceHandoff', status: 'completed', password: 'PRIVATE' }, 'proofSchemaInvalid'],
 ]) {
   test(`invalid handoff proof ${JSON.stringify(proof)} cannot advance`, async () => {
     const value = fixture();
     value.runtime.runProofPhase = async () => proof;
     const result = await executeWorkspaceSuccessLifecycle(value.runtime);
-    assert.equal(result.errorCode, 'proofResultInvalid');
+    assert.equal(result.errorCode, errorCode);
     assert.equal(result.failedPhase, 'sourceHandoff');
     assert.equal(value.calls.includes('observeHandoffInstall'), false);
   });

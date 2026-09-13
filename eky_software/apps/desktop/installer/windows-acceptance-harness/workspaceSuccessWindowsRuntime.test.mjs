@@ -103,7 +103,7 @@ async function fixture(context, changes = {}) {
     W6B2_PACKAGED_PROOF_SWITCH: 'w6b2-packaged-proof',
     W6B2_PACKAGED_ROLLBACK_PROGRESS_FILE: proofProtocol.W6B2_PACKAGED_ROLLBACK_PROGRESS_FILE,
     createW6b2PackagedProofBootstrapConfiguration: () => ({ root, userDataPath: resolve(root, 'user-data') }),
-    parseW6b2PackagedProofResult: proofProtocol.parseW6b2PackagedProofResult,
+    parseW6b2PackagedProofResult: changes.parseProof ?? proofProtocol.parseW6b2PackagedProofResult,
     getW6b2PackagedFaultSessionPhases: proofProtocol.getW6b2PackagedFaultSessionPhases,
   },
   profileProtocol,
@@ -297,16 +297,16 @@ test('rollback completion must be regular single-link strict progress before Pro
   assert.equal(value.calls.some((call) => call.command || call.observation), false);
 });
 
-for (const change of [
-  { proofResult: { formatVersion: 1, phase: 'sourceHandoff', status: 'completed' } },
-  { proofResult: { formatVersion: 2, faultScenario: 'binaryRollbackFailure', phase: 'sourceHandoff', status: 'completed' } },
-  { proofResult: { formatVersion: 2, faultScenario: 'acceptanceInterruption', phase: 'targetAcceptanceInterruption', status: 'completed', secret: 'private' } },
-  { exitCode: 1 },
+for (const [change, errorCode] of [
+  [{ proofResult: { formatVersion: 1, phase: 'sourceHandoff', status: 'completed' } }, 'proofBindingMismatch'],
+  [{ proofResult: { formatVersion: 2, faultScenario: 'binaryRollbackFailure', phase: 'sourceHandoff', status: 'completed' } }, 'proofBindingMismatch'],
+  [{ proofResult: { formatVersion: 2, faultScenario: 'acceptanceInterruption', phase: 'targetAcceptanceInterruption', status: 'completed', secret: 'private' } }, 'proofSchemaInvalid'],
+  [{ exitCode: 1 }, 'proofProcessExitFailed'],
 ]) {
   test('fault exit and strict result must independently prove the requested interruption', async (context) => {
     const value = await fixture(context, { faultScenario: 'acceptanceInterruption',
       proofStatus: () => 'interrupted', ...change });
-    await assert.rejects(() => value.runtime.runProofPhase('targetAcceptanceInterruption'), /proofResultInvalid/);
+    await assert.rejects(() => value.runtime.runProofPhase('targetAcceptanceInterruption'), { message: errorCode });
     assert.equal(value.calls.some((call) => call.sessionStarted || call.sessionFinished), false);
   });
 }
@@ -514,13 +514,14 @@ test('private proof launches only the isolated profile and consumes the requeste
   assert.equal(call.options.env.EKY_W6B2_PROOF_TOKEN, value.inputs.request.runNonce);
 });
 
-for (const changes of [
-  { exitCode: 1 }, { proofResult: { formatVersion: 1, phase: 'sourceHandoff', status: 'failed' } },
-  { proofResult: { formatVersion: 1, phase: 'rejectC', status: 'completed' } },
+for (const [changes, errorCode] of [
+  [{ exitCode: 1 }, 'proofProcessExitFailed'],
+  [{ proofResult: { formatVersion: 1, phase: 'sourceHandoff', status: 'failed' } }, 'proofSchemaInvalid'],
+  [{ proofResult: { formatVersion: 1, phase: 'rejectC', status: 'completed' } }, 'proofBindingMismatch'],
 ]) {
   test('exit and result must both prove the requested application operation', async (context) => {
     const value = await fixture(context, changes);
-    await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: 'proofResultInvalid' });
+    await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: errorCode });
   });
 }
 
@@ -539,19 +540,19 @@ for (const errorCode of WORKSPACE_SUCCESS_PROOF_ERRORS) {
   });
 }
 
-for (const [name, change] of [
-  ['unknown code', { errorCode: 'PRIVATE_PATH_OR_SECRET' }],
-  ['unknown key', { session: 'PRIVATE_PATH_OR_SECRET' }],
-  ['wrong phase', { phase: 'rejectC' }],
-  ['wrong version', { formatVersion: 2 }],
-  ['contradictory completed result', { status: 'completed' }],
+for (const [name, change, errorCode] of [
+  ['unknown code', { errorCode: 'PRIVATE_PATH_OR_SECRET' }, 'proofSchemaInvalid'],
+  ['unknown key', { session: 'PRIVATE_PATH_OR_SECRET' }, 'proofSchemaInvalid'],
+  ['wrong phase', { phase: 'rejectC' }, 'proofBindingMismatch'],
+  ['wrong version', { formatVersion: 2 }, 'proofSchemaInvalid'],
+  ['contradictory completed result', { status: 'completed' }, 'proofSchemaInvalid'],
 ]) {
   test(`proof reader rejects ${name} without exposing untrusted fields`, async (context) => {
     const value = await fixture(context, { proofResult: {
       formatVersion: 1, phase: 'sourceHandoff', status: 'failed',
       errorCode: 'W6B2_PROOF_UNEXPECTED', ...change,
     } });
-    await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: 'proofResultInvalid' });
+    await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: errorCode });
   });
 }
 
@@ -560,7 +561,7 @@ test('a valid fault protocol result cannot be used for the success matrix', asyn
     formatVersion: 2, faultScenario: 'preUpdateRecoveryPointFailure',
     phase: 'sourceHandoff', status: 'completed',
   } });
-  await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: 'proofResultInvalid' });
+  await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: 'proofBindingMismatch' });
 });
 
 test('unreadable proof result remains distinct while the session channel closes', async (context) => {
@@ -574,6 +575,39 @@ test('a failed application exit preserves its valid failed proof result', async 
     formatVersion: 1, phase: 'sourceHandoff', status: 'failed', errorCode: 'W6B2_PROOF_UNEXPECTED',
   } });
   await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: 'W6B2_PROOF_UNEXPECTED' });
+});
+
+test('business rollback distinguishes proof parsing, binding and process exit without opening a healthy-session probe', async (context) => {
+  const faultScenario = 'activeWorkspaceFirstStartFailure';
+  const phase = 'businessRollback';
+  const proof = { formatVersion: 2, faultScenario, phase, status: 'relaunching' };
+  for (const [changes, errorCode] of [
+    [{ proofResult: { ...proof, secret: 'PRIVATE' } }, 'proofSchemaInvalid'],
+    [{ proofResult: { ...proof, phase: 'targetFirstStartFailure' } }, 'proofBindingMismatch'],
+    [{ proofResult: { ...proof, faultScenario: 'binaryRollbackFailure', phase: 'binaryRollbackFailure' } }, 'proofBindingMismatch'],
+    [{ proofResult: proof, exitCode: 1 }, 'proofProcessExitFailed'],
+    [{ proofUnreadable: true }, 'proofResultUnreadable'],
+    [{ proofResult: { ...proof, status: 'failed', errorCode: 'W6B2_FAULT_PROOF_HANDOFF_FAILED' }, exitCode: 1 },
+      'W6B2_FAULT_PROOF_HANDOFF_FAILED'],
+  ]) {
+    const value = await fixture(context, { faultScenario, ...changes });
+    await assert.rejects(() => value.runtime.runProofPhase(phase), (error) => {
+      assert.equal(error.message, errorCode);
+      assert.equal(workspaceFaultErrorCode(error), errorCode);
+      return true;
+    });
+    assert.equal(value.calls.filter((call) => call.command).length, 1);
+    assert.equal(value.calls.some((call) => call.sessionStarted || call.sessionFinished), false);
+  }
+});
+
+test('a parser extension cannot publish a failure code outside the harness allowlist', async (context) => {
+  const value = await fixture(context, {
+    parseProof: () => ({ formatVersion: 1, phase: 'sourceHandoff', status: 'failed', errorCode: 'PRIVATE' }),
+    sessionFailure: true,
+  });
+  await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: 'proofFailureCodeUnknown' });
+  assert.deepEqual(value.calls.at(-1), { sessionFinished: { allowMissing: false } });
 });
 
 test('profile preparation uses the existing named profile entrypoint and environment', async (context) => {
@@ -643,7 +677,7 @@ test('session proof failure rejects an otherwise completed application result', 
 
 test('session channel cleanup does not erase the original application failure', async (context) => {
   const value = await fixture(context, { exitCode: 1, sessionFailure: true });
-  await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: 'proofResultInvalid' });
+  await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: 'proofProcessExitFailed' });
   assert.deepEqual(value.calls.at(-1), { sessionFinished: { allowMissing: false } });
 });
 

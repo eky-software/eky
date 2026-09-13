@@ -4,7 +4,7 @@ import test from 'node:test';
 
 import { WORKSPACE_FAULT_PLANS, createWorkspaceFaultRequest, validateWorkspaceFaultResult } from './workspaceFaultContracts.mjs';
 import { executeWorkspaceFaultLifecycle } from './workspaceFaultLifecycle.mjs';
-import { WORKSPACE_INSTALLATION_INSPECTION_ERRORS } from './workspaceSuccessContracts.mjs';
+import { WORKSPACE_INSTALLATION_INSPECTION_ERRORS, WORKSPACE_PROOF_REJECTION_ERRORS } from './workspaceSuccessContracts.mjs';
 
 function fixture(faultScenario, { failPhase, progressThrows = false } = {}) {
   let currentPhase;
@@ -147,13 +147,15 @@ test('shared installation inspection failures survive fault progress and strict 
 
 test('wrong format, scenario, phase, status, absent proof and extra private fields all stop handoff', async () => {
   const valid = { formatVersion: 2, faultScenario: 'acceptanceInterruption', phase: 'sourceHandoff', status: 'completed' };
-  for (const proof of [undefined, { ...valid, formatVersion: 1 },
-    { ...valid, faultScenario: 'binaryRollbackFailure' }, { ...valid, phase: 'targetAcceptanceRestart' },
-    { ...valid, status: 'relaunching' }, { ...valid, path: 'PRIVATE' }, { ...valid, errorCode: 'PRIVATE' }]) {
+  for (const [proof, errorCode] of [[undefined, 'proofSchemaInvalid'], [{ ...valid, formatVersion: 1 }, 'proofBindingMismatch'],
+    [{ ...valid, faultScenario: 'binaryRollbackFailure' }, 'proofBindingMismatch'],
+    [{ ...valid, phase: 'targetAcceptanceRestart' }, 'proofBindingMismatch'],
+    [{ ...valid, status: 'relaunching' }, 'proofStatusMismatch'],
+    [{ ...valid, path: 'PRIVATE' }, 'proofSchemaInvalid'], [{ ...valid, errorCode: 'PRIVATE' }, 'proofSchemaInvalid']]) {
     const value = fixture('acceptanceInterruption');
     value.runtime.runProofPhase = async () => proof;
     const result = await executeWorkspaceFaultLifecycle('acceptanceInterruption', value.runtime);
-    assert.equal(result.errorCode, 'proofResultInvalid');
+    assert.equal(result.errorCode, errorCode);
     assert.equal(result.failedPhase, 'sourceHandoff');
     assert.equal(value.calls.some((call) => call.startsWith('observe:')), false);
   }
@@ -168,6 +170,26 @@ test('expected interruption needs the exact interrupted proof, not an arbitrary 
   assert.equal(result.errorCode, 'ownedProcessExitInvalid');
   assert.equal(result.failedPhase, 'targetAcceptanceInterruption');
   assert.equal(value.calls.includes('proof:targetAcceptanceRecovery:relaunching'), false);
+});
+
+test('business rollback rejection survives progress and result validation and forbids the next install observation', async () => {
+  const scenario = 'activeWorkspaceFirstStartFailure';
+  const request = createWorkspaceFaultRequest({ faultScenario: scenario, fixtureRoot: resolve('synthetic-artifact'),
+    artifactDescriptorSha256: 'a'.repeat(64), buildRevision: 'b'.repeat(40) });
+  for (const errorCode of WORKSPACE_PROOF_REJECTION_ERRORS) {
+    const value = fixture(scenario);
+    const proof = value.runtime.runProofPhase;
+    value.runtime.runProofPhase = (phase, status) => phase === 'businessRollback'
+      ? Promise.reject(new Error(errorCode)) : proof(phase, status);
+    const result = await executeWorkspaceFaultLifecycle(scenario, value.runtime);
+    assert.equal(result.status, 'failed');
+    assert.equal(result.failedPhase, 'businessRollback');
+    assert.equal(result.errorCode, errorCode);
+    assert.equal(value.evidence.at(-1).errorCode, errorCode);
+    assert.equal(value.calls.includes('observe:source'), false);
+    assert.doesNotThrow(() => validateWorkspaceFaultResult({ ...result, scenario: request.scenario,
+      faultScenario: scenario, runNonce: request.runNonce, artifactDescriptorSha256: request.artifactDescriptorSha256 }, request));
+  }
 });
 
 test('unobserved fault preserves the original closed error and cannot pass as recovery', async () => {

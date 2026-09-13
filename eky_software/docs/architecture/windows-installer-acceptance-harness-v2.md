@@ -2658,6 +2658,43 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 
 ## Nykyinen päätös
 
+Uudempi normaali CI
+[34724571256](https://github.com/eky-software/eky/actions/runs/34724571256)
+epäonnistui lähde-HEADilla `c3ff7f66572c69e1ddae268c4bd285b255609344`.
+Todellinen checkout ja artifact-build olivat
+`1abab82f46e95b59476bdb537d8677ab7cd0fd00`. Bundle-varmennus, clean 2/2,
+upgrade 2/2 ja workspace success 2/2 läpäisivät. Fault-matriisissa läpäisi
+kuusi skenaariota, yksi epäonnistui ja kolme jäi ajamatta. Yhden consumerin
+`activeWorkspaceFirstStartFailure` hylättiin `businessRollback`-vaiheessa
+koodilla `proofResultInvalid`; toisen consumerin onnistuminen samoilla
+tavuilla ei korjaa epäonnistumista.
+
+Molempien legacy-jobien GitHub-annotaatio ilmoittaa 37 minuutin job-rajan
+ylityksen. Komennon lopputulosta ja siivousta ei saatu varmennettua;
+`majorUpgrade started` ei todista MSI:n käynnistymistä. Aiempi vihreä
+kierros säilyy historiallisena näyttönä, ei tämän revision hyväksyntänä.
+Ei uutta täyttä matriisia ennen näitä vaihtoehtoja erottavaa kohdennettua
+näyttöä tai osoitettua korjausta.
+
+Nykyinen rajattu korjaus erottaa proof-lukijan hylkäyskohdat: tulosrakenne,
+vaihe-/skenaariosidos, tuntematon virhekoodi, prosessin epäonnistunut
+poistuminen ja odotetun tilan ristiriita. Ne kulkevat nykyisen suljetun
+virheluettelon, vaihehavaintojen ja pakollisen tuloksen kautta. Parserin
+ehdot, prosessin `close`-odotus, istuntotodiste ja alkuperäisen virheen
+etusija eivät muutu. Turvallinen luokitus on diagnoosin korjaus, ei vielä
+osoitus alkuperäisen rollback-vian korjaantumisesta.
+
+Olemassa olevan manuaalisen artifact-diagnoosin `workspace-fault`-valinta
+ajaa vain `preUpdateRecoveryPointFailure`- ja
+`activeWorkspaceFirstStartFailure`-skenaariot tässä järjestyksessä, saman
+varmennetun artifactin erillisissä ajotiloissa. Kummankin komennon ja
+pakollisen verifierin pitää valmistua ennen seuraavaa skenaariota.
+Tämä ei lisää normaaliin matriisiin uusintoja eikä muuta hyväksyntäporttia.
+Muuttunut harness-revisio ja alkuperäinen artifact-build raportoidaan
+erikseen. Raaka-aineisto ei kuulu julkaisuun.
+
+### Edellinen normaali kokonaiskierros
+
 Normaali integraatio-CI
 [34721403661](https://github.com/eky-software/eky/actions/runs/34721403661)
 valmistui ensimmäisellä yrityksellä hyväksytysti: 36 onnistunutta jobia,
@@ -2685,7 +2722,7 @@ onnistunut exit todistaa sen vaatiman tulostiedoston validoinnin; pelkkää
 vaihelokia ei käytetä tämän korvikkeena. Kaksi consumeria yhdessä workflowssa
 eivät ole kaksi erillistä kokonaiskierrosta.
 
-Jäljellä ovat uuden hyväksytyn bundle-kytkennän normaali CI-näyttö,
+Jäljellä ovat uudemman epäonnistuneen kierroksen rajattujen vikojen sulkeminen,
 koko main-pinon lopullinen kattavuus- ja poistokatselmus, samaan lopulliseen
 revisioon sidotut kaksi paikallista täyttä kierrosta ja kaksi GitHub-
 kokonaiskierrosta sekä erikseen hyväksyttävä required-check-/main-siirto.

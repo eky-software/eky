@@ -240,15 +240,15 @@ async function createWorkspaceWindowsRuntime({
         ], { cwd: scenarioRoot, env: applicationEnvironment });
         const value = await readObject(resultPath, 'proofResultUnreadable');
         try { result = proofProtocol.parseW6b2PackagedProofResult(value); }
-        catch { throw new Error('proofResultInvalid'); }
+        catch { throw new Error('proofSchemaInvalid'); }
         if (result.phase !== phase || (faultScenario === undefined ? result.formatVersion !== 1
-          : result.formatVersion !== 2 || result.faultScenario !== faultScenario)) throw new Error('proofResultInvalid');
+          : result.formatVersion !== 2 || result.faultScenario !== faultScenario)) throw new Error('proofBindingMismatch');
         if (result.status === 'failed') {
           const errors = faultScenario === undefined ? WORKSPACE_SUCCESS_PROOF_ERRORS : WORKSPACE_FAULT_ERRORS;
           throw new Error(errors.includes(result.errorCode)
-            ? result.errorCode : 'proofResultInvalid');
+            ? result.errorCode : 'proofFailureCodeUnknown');
         }
-        if (code !== 0) throw new Error('proofResultInvalid');
+        if (code !== 0) throw new Error('proofProcessExitFailed');
       } catch (error) { originalError = error; }
       try { await probe?.finish({ allowMissing: faultScenario === undefined &&
         phase === 'verifyBRestart' && result?.status === 'relaunching' }); }

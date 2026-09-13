@@ -43,9 +43,13 @@ export async function executeWorkspaceFaultLifecycle(faultScenario, runtime) {
   async function proof(phase, status) {
     await step(phase, phase === 'sourceHandoff' ? 'sourceHandoffFailed' : 'faultProofFailed', async () => {
       const result = await runtime.runProofPhase(phase, status);
-      if (!hasWorkspaceSuccessExactKeys(result, ['formatVersion', 'faultScenario', 'phase', 'status']) ||
-        result.formatVersion !== 2 || result.faultScenario !== faultScenario ||
-        result.phase !== phase || result.status !== status) throw new Error('proofResultInvalid');
+      if (!hasWorkspaceSuccessExactKeys(result, ['formatVersion', 'faultScenario', 'phase', 'status'])) {
+        throw new Error('proofSchemaInvalid');
+      }
+      if (result.formatVersion !== 2 || result.faultScenario !== faultScenario || result.phase !== phase) {
+        throw new Error('proofBindingMismatch');
+      }
+      if (result.status !== status) throw new Error('proofStatusMismatch');
     });
   }
   try {

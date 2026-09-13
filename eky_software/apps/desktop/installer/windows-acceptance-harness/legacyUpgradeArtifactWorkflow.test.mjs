@@ -65,6 +65,63 @@ test('external inspector capture is opt-in and never replaces command or artifac
   assert.doesNotMatch(diagnostic, /continue-on-error|upload-artifact|wpr.*-cancel|symbols/u);
 });
 
+test('bounded rollback diagnostic executes the existing ordered commands and stops on either failed result', {
+  skip: process.platform !== 'win32', timeout: 60_000,
+}, async (t) => {
+  const source = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
+  const diagnostic = source.split('  packaged-boundary-diagnostic:')[1];
+  const step = diagnostic.split('      - name: Run existing caller and mandatory result verifier once\n')[1]
+    .split('\n      - name:')[0];
+  const body = step.split('        run: |\n')[1].trimEnd().split('\n')
+    .map((line) => { assert.ok(line.startsWith('          ')); return line.slice(10); }).join('\n');
+  for (const [commandExit, verifierExit, expectedCount] of [[0, 0, 4], [1, 0, 2], [0, 1, 2], [1, 1, 2]]) {
+    const context = await createRunContext('rollback-diagnostic-workflow');
+    let passed = false;
+    t.after(() => cleanupRunContext(context, { preserveEvidence: !passed || t.signal.aborted }));
+    const script = join(context.testRoot, 'step.ps1');
+    await writeFile(script, `
+$ErrorActionPreference = 'Stop'
+function pnpm {
+  [IO.File]::AppendAllText($env:TEST_CALLS, (ConvertTo-Json -InputObject @($args) -Compress) + [Environment]::NewLine)
+  $global:LASTEXITCODE = if ($args[3] -ceq 'dotnet') { [int]$env:TEST_COMMAND_EXIT } else { [int]$env:TEST_VERIFIER_EXIT }
+}
+${body}
+`);
+    const child = spawn(resolve(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script], {
+        cwd: context.testRoot, stdio: 'ignore', windowsHide: true,
+        env: { ...process.env, ARTIFACT_KIND: 'workspace-fault', RUNNER_TEMP: context.testRoot,
+          EXPECTED_BUILD_REVISION: 'a'.repeat(40), EXPECTED_DESCRIPTOR_SHA256: 'b'.repeat(64),
+          TEST_CALLS: context.resultPath, TEST_COMMAND_EXIT: String(commandExit), TEST_VERIFIER_EXIT: String(verifierExit) },
+      });
+    context.fixtureProcesses.add(child);
+    const exited = await new Promise((resolvePromise, rejectPromise) => {
+      child.once('error', rejectPromise);
+      child.once('close', (code, signal) => resolvePromise({ code, signal }));
+    });
+    assert.deepEqual(exited, { code: commandExit || verifierExit ? 1 : 0, signal: null });
+    const calls = (await readFile(context.resultPath, 'utf8')).trim().split(/\r?\n/u).map(JSON.parse);
+    assert.equal(calls.length, expectedCount);
+    const argument = (call, key) => call[call.indexOf(key) + 1];
+    for (let index = 0; index < calls.length; index += 2) {
+      const [command, verifier] = calls.slice(index, index + 2);
+      assert.equal(command[3], 'dotnet');
+      assert.ok(command.includes('--workspace-fault-command'));
+      assert.equal(verifier[3], 'node');
+      assert.ok(verifier[4].endsWith('/verifyWorkspaceCallerResult.mjs'));
+      for (const call of [command, verifier]) {
+        assert.equal(argument(call, '--fault-scenario'), index === 0 ? 'preUpdateRecoveryPointFailure' : 'activeWorkspaceFirstStartFailure');
+        assert.equal(argument(call, '--expected-build-revision'), 'a'.repeat(40));
+        assert.equal(argument(call, '--expected-descriptor-sha256'), 'b'.repeat(64));
+      }
+      assert.equal(argument(command, '--result-path'), argument(verifier, '--result-path'));
+      assert.equal(String(argument(verifier, '--command-exit')), String(commandExit));
+    }
+    if (calls.length === 4) assert.notEqual(argument(calls[0], '--result-path'), argument(calls[2], '--result-path'));
+    passed = true;
+  }
+});
+
 test('inspector analysis diagnosis reuses one native hold without a packaged lifecycle', async () => {
   const source = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
   const job = source.slice(source.indexOf('  job-object-feasibility:'), source.indexOf('  packaged-boundary-diagnostic:'));

@@ -38,8 +38,9 @@ export async function executeWorkspaceSuccessLifecycle(runtime) {
   }
   async function proof(phase, status) {
     const result = await runtime.runProofPhase(phase, status);
-    if (result?.formatVersion !== 1 || result.phase !== phase || result.status !== status ||
-      Object.keys(result).sort().join(',') !== 'formatVersion,phase,status') fail('proofResultInvalid');
+    if (result == null || Object.keys(result).sort().join(',') !== 'formatVersion,phase,status') fail('proofSchemaInvalid');
+    if (result.formatVersion !== 1 || result.phase !== phase) fail('proofBindingMismatch');
+    if (result.status !== status) fail('proofStatusMismatch');
   }
   try {
     await step('preflight', 'preconditionFailed', async () =>
