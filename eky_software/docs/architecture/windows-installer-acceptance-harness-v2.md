@@ -2855,8 +2855,54 @@ Priorisoidut löydökset ja sulkemisehdot:
    säilymisregressio 1/1. CI-listan vanha job-lukumäärä korjattiin kuuden ryhmän
    karttaan; sen koko sopimussarja on 54/54. Desktop typecheck/build läpäisevät.
    Ensimmäiset hylkäykset eivät muutu hyväksytyiksi uusinta-ajolla. Tämä
-   kohdetodennus ei sisällä MSI-asennusta; uusi paketoitu CI ja koko V2:n
-   lopullinen hyväksyntä ovat vielä avoinna.
+   kohdetodennus ei sisältänyt MSI-asennusta. Sen jälkeinen normaali
+   [CI-kierros 34774919910](https://github.com/eky-software/eky/actions/runs/34774919910)
+   läpäisi ensimmäisellä yrityksellä ilman raskasta tallennusta. Lähde-HEAD,
+   kaikkien producerien ja consumerien todellinen checkout sekä artifactien
+   build-revisio olivat `e1701050d424c8a88d0945a989a73592c8c5a4d6`.
+   Clean-siirto on commitissa `4908cad830c02bcef561d6c7867ff8be014d0906` ja
+   upgrade-siirto sekä korvautuvan sillan poisto tämän kierroksen HEADissa.
+
+   Tiukka loppukoonti ja sama job-/vaihekatteen lukija vahvistivat 36/36
+   vaadittua jobia. Koko ajossa onnistui 38 jobia; seitsemän vanhan tai
+   erillisen diagnostisen polun ohitusta eivät korvanneet vaadittua näyttöä.
+   Kaikki kuusi komentorajaryhmää läpäisivät molemmat toistot, samoin core-,
+   security-, Electron- ja packaged-smoke-portit.
+
+   | Paketoitu perhe | Tulos | Consumer-jobien CI-kestot |
+   | --- | --- | --- |
+   | Clean, repair/reinstall ja uninstall | 2/2 | 3 min 23 s / 3 min 40 s |
+   | Upgrade, downgrade-torjunta, rollbackit ja running application | 2/2 | 4 min 2 s / 3 min 28 s |
+   | Historical legacy | 2/2 | 3 min 12 s / 2 min 45 s |
+   | Workspace success | 2/2 | 4 min 7 s / 4 min 19 s |
+   | Workspace fault/rollback | 5 x 2 / 10 | 13 min 19 s / 16 min 20 s |
+
+   Pakolliset sidotut caller-resultit hyväksyttiin komennon todellisen exitin
+   jälkeen, ja jokaisen consumerin artifact-jälkivarmennus läpäisi. Vaiheiden
+   prosessipuut todettiin poissa oleviksi. Tulosverifierit vaativat erikseen
+   semanttiset jälkiehdot, normaalin profiilin muuttumattomuuden ja sallitun
+   fixture-poiston; vaiheviestin `completed` ei korvannut näitä ehtoja.
+
+   | Synteettinen CI-artifact | Artifact-ID | Descriptor SHA-256 |
+   | --- | --- | --- |
+   | Clean | `10323305974` | `11e5058ee487100b33a5a6fc25e534adb213810b743e88a08219a1a1bdac5889` |
+   | Upgrade | `10322904472` | `3e5b02850451ef0d241c99762982d1e167bd2ba4711145cf8534a9c051281b45` |
+   | Historical legacy | `10322829841` | `122f55ebec2a6dfccc375da2089d7cccb26c2a9b62dc84b60f72b7b1ffbafbdd` |
+   | Workspace success/fault | `10322799949` | `2b7556d54a16e4f2ccbc1c7d52ad3694d5faec7b69b177194f68b65989f3aa1f` |
+
+   | Siirretyn perheen MSI | SHA-256 |
+   | --- | --- |
+   | Clean | `2ccec07eeb16348a4710021882292ed2595732d7cd0f40c7915397ac0d48a50e` |
+   | Upgrade source | `1c96aa09f61ce7fda42bbb5762cf7022c055ff79459fe861c054797162fd23c2` |
+   | Upgrade target | `d567dba0d27c3d69e4b65ad0963042b1d9f5918f51d6d7eef24a9f327b1677db` |
+   | Upgrade Windows Installer rollback | `89eeb9926a30dd819d5a9d9f23a2a82221b9993255531c71b25180ac29312f93` |
+
+   Clean-producerin samojen MSI-tavujen bundle-varmennus läpäisi
+   (`pilotBundleVerified`); tarkistuskopiota ei julkaistu pilot-pakettina.
+   Tämä sulkee clean/upgrade-komentosiirron CI-checkpointin. Se ei selitä
+   aiempaa legacy-/runner-katkeamista, siirrä näyttöä muuttuneille MSI-tavuille
+   eikä korvaa lopullisen integraation toista normaalia kierrosta,
+   riippuvuusturvan porttia, päähaaran käyttöönottoa tai 0.2.8-julkaisua.
 3. **Normaalin hyväksynnän avoimet virheet.** Alla nimetty legacy-terminalin
    puute ja fault-rollback-hylkäys säilyvät avoimina. Diagnostinen onnistuminen
    samoilla tavuilla ei ole niiden juurisyykorjaus. Myös aiempi MSI 3010- ja
