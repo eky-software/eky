@@ -2693,6 +2693,32 @@ Tämä ei lisää normaaliin matriisiin uusintoja eikä muuta hyväksyntäportti
 Muuttunut harness-revisio ja alkuperäinen artifact-build raportoidaan
 erikseen. Raaka-aineisto ei kuulu julkaisuun.
 
+Rajattu CI-diagnoosi
+[34751078853](https://github.com/eky-software/eky/actions/runs/34751078853)
+läpäisi ensimmäisellä yrityksellä molemmat yllä nimetyt skenaariot.
+Harnessin lähde- ja checkout-revisio oli
+`7de5d27c218086d32ba6a92a1ab0de46befae1f4`; artifactin alkuperäinen
+build pysyi revisiona `1abab82f46e95b59476bdb537d8677ab7cd0fd00`.
+Artifact-ID `10307761466`, descriptorin tiiviste ja molempien MSI-tiedostojen
+tiivisteet säilyivät ennen/jälkeen-varmennuksessa. Komentojen pakolliset
+tulosverifierit läpäisivät, myös rollback, asennussiivous ja fixture-poisto.
+Tämä todistaa rajatun diagnoosin kytkennän ja tulostoimituksen, ei aiemman
+`proofResultInvalid`-virheen juurisyytä tai koko V2:n hyväksyntää.
+Kohdesarjat: workspace 291/291, fault 282/282, legacy-artifact 22/22,
+upgrade-artifact 15/15 ja CI-politiikka 53/53. Desktopin typecheck ja build
+läpäisevät. Sarjoissa on yhteisiä testejä; lukuja ei summata erillisiksi
+invarianteiksi. Katselmuksen viimeinen runtime-testin täsmennys läpäisee
+119/119.
+
+Legacyssä seuraava tarvittava erotus on koko komennon elinkaari:
+komentoprosessin ja skenaariotyöntekijän poistuminen sekä niiden säikeiden
+odotukset. Nykyinen automaattinen WPR-yhteenveto rajaa ajoitusviennin
+inspector-tapahtumista johdettuihin säikeisiin; se ei vielä vastaa tähän
+kysymykseen. Ennen seuraavaa tallentavaa legacy-koetta nykyisen lukijan
+rajattu komentoprosessin näkymä pitää todentaa säilytetyllä tai synteettisellä
+jäljellä. Keruun määrää, prosessiomistajuutta tai aikarajoja ei tämän vuoksi
+muuteta. Jälkihavainto ei koskaan korvaa pakollista cleanup-tulosta.
+
 ### Edellinen normaali kokonaiskierros
 
 Normaali integraatio-CI
