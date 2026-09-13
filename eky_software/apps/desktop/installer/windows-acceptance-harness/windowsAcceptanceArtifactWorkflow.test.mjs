@@ -21,6 +21,27 @@ function occurrenceCount(source, value) {
   return source.split(value).length - 1;
 }
 
+test('exact-release route reuses the V2 producer and command without rebuilding approved bytes', async () => {
+  const workflow = await readFile(resolve(WORKSPACE_ROOT, '.github/workflows/ci.yml'), 'utf8');
+  const release = workflow.slice(workflow.indexOf('  installer-windows:'), workflow.indexOf('  installer-w6b-legacy-windows:'));
+  assert.equal(occurrenceCount(release, 'installer:v2-artifact:build'), 1);
+  assert.equal(occurrenceCount(release, ' --clean-command '), 1);
+  assert.equal(occurrenceCount(release, 'verifyCleanCallerResult.mjs'), 1);
+  assert.equal(occurrenceCount(release, 'installer:v2-artifact:verify'), 2);
+  assert.equal(occurrenceCount(release, 'installer:verify-release'), 2);
+  assert.match(release, /\$summary\.pilotBundleResultCode -cne 'pilotBundleVerified'/u);
+  assert.match(release, /\$commandExit -ne 0 -or \$LASTEXITCODE -ne 0/u);
+  assert.match(release, /--command-exit \$commandExit/u);
+  assert.match(release, /timeout-minutes: 45/u);
+  assert.match(release, /timeout-minutes: 17/u);
+  assert.match(release, /timeout-minutes: 3/u);
+  assert.doesNotMatch(release, /package:windows|installer:release(?:\s|$)|installer:(?:release-)?lifecycle/u);
+  const steps = ['installer:verify-restore-lock', 'installer:v2-artifact:build',
+    'installer:verify-release', ' --clean-command ', 'verifyCleanCallerResult.mjs',
+    'installer:build-upgrade-fixture', 'installer:upgrade', 'installer:local-pilot-bundle'];
+  assert.deepEqual(steps.map((step) => release.indexOf(step)), steps.map((step) => release.indexOf(step)).sort((a, b) => a - b));
+});
+
 test('CI transfers one exact short-lived artifact to two isolated consumers', async () => {
   const workflow = await readFile(WORKFLOW_PATH, 'utf8');
   const producerIndex = workflow.indexOf('  artifact_producer:');
