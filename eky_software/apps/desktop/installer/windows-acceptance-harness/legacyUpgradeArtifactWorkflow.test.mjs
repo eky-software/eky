@@ -358,8 +358,8 @@ test('the optional analysis step exits and preserves original outcomes when anal
     const directory = join(context.testRoot, 'apps/desktop/installer/windows-acceptance-harness');
     await mkdir(directory, { recursive: true });
     await writeFile(join(directory, 'captureInstallerProductInspection.ps1'), `
-param([string]$Mode)
-if ($Mode -cne 'analyze') { throw 'UNEXPECTED_MODE' }
+param([string]$Mode, [switch]$LegacyCommand)
+if ($Mode -cne 'analyze' -or !$LegacyCommand) { throw 'UNEXPECTED_MODE' }
 if ($env:TEST_ANALYSIS -ceq 'throw') { throw 'private-analysis-error' }
 exit ([int]$env:TEST_ANALYSIS)
 `);

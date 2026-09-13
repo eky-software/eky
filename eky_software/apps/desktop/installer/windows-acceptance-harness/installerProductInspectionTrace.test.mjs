@@ -14,7 +14,7 @@ const SWITCH_HEADERS = ['New Process', 'New Thread Id', 'Switch-In Time (s)', 'L
 const event = (phase, time, provider = PROVIDER) => [provider, 'synthetic.exe (123)', '456', phase, time, time, 'PRIVATE-FIXTURE-DATA'];
 const csv = (rows) => rows.map((row) => row.map((field) => `"${String(field).replaceAll('"', '""')}"`).join(',')).join('\r\n');
 
-for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal', 'toolExit', 'exportOutput', 'externalView']) test(
+for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal', 'toolExit', 'exportOutput', 'externalView', 'commandLifetimes', 'commandAnalysis']) test(
   `external inspector trace keeps ${kind} evidence closed and separate from acceptance`,
   { skip: process.platform !== 'win32', timeout: INSPECTOR_TIMEOUT_MILLISECONDS },
   async (t) => {
@@ -43,6 +43,30 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
       ['synthetic.exe (123)', '456', '30', '3.1', 'PRIVATE-STACK'],
       ['foreign.exe (789)', '456', '90', '3.1', 'PRIVATE-FOREIGN-STACK'],
     ]));
+    if (['commandLifetimes', 'commandAnalysis'].includes(kind)) {
+      const header = [
+        'Start Time, End Time, Process, DataPtr, Process Name ( PID), ParentPID, SessionID, UniqueKey, Command Line',
+        'Start Time, End Time, Thread, DataPtr, Process Name ( PID), ThreadID, StackBase, StackLimit, UsrStkBase, UsrStkLmt, TebBase, StartAddr',
+      ];
+      const root = '1000000, 9000000, Process, 0x1, dotnet.exe ( 123), 10, 1, 0x123, "X:\\private, source\\dotnet.exe" "X:\\private, source\\Eky.WindowsProcessSupervisor.dll" --legacy-command --artifact-descriptor PRIVATE';
+      const thread = '1100000, 8900000, Thread, 0x2, dotnet.exe ( 123), 456, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0';
+      const worker = '2000000, 8000000, Process, 0x3, node.exe ( 234), 123, 1, 0x234, node.exe "X:\\private, source\\legacyCommandPhase.mjs" --phase-request "X:\\private, source\\scenario\\phase-input.json"';
+      const workerThread = '2100000, 7900000, Thread, 0x4, node.exe ( 234), 567, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0';
+      const fixtures = {
+        completed: [root, thread, worker, workerThread],
+        clipped: [root.replace('9000000', 'MAX'), thread.replace('8900000', 'MAX'), worker.replace('8000000', 'MAX'), workerThread.replace('7900000', 'MAX')],
+        missing: [root.replace('--legacy-command', '--workspace-success-command'), thread],
+        ambiguous: [root, thread, root.replace('0x123', '0x124'), thread],
+        invalidThread: [root, thread.replace('1100000', '900000')],
+        invalidPhase: [root, thread, worker.replace('scenario\\phase-input', 'PRIVATE\\phase-input'), workerThread],
+        truncated: [root, thread.split(',').slice(0, 6).join(',')],
+        reused: [root, thread, root.replace('1000000', '10000000').replace('9000000', '19000000').replace('--legacy-command', '--unrelated').replace('0x123', '0x124'),
+          thread.replace('1100000', '10100000').replace('8900000', '18900000')],
+        overlapping: [root, thread, root.replace('--legacy-command', '--unrelated').replace('0x123', '0x124'), thread],
+        fixture: [root.replace('Eky.WindowsProcessSupervisor.dll', 'Eky.WindowsProcessSupervisor.ContractFixture.dll').replace('--legacy-command', '--mode legacyCommandEntry'), thread],
+      };
+      for (const [name, rows] of Object.entries(fixtures)) await writeFile(join(context.testRoot, `command-${name}.txt`), [...header, ...rows].join('\r\n'));
+    }
     if (kind === 'toolExit') await writeFile(join(context.testRoot, 'capture tool.mjs'),
       "if (process.argv[2] !== 'value with spaces' || process.argv[3] !== '') process.exit(8);\n" +
       "process.stdout.write('known output'); process.stderr.write('known error');\n");
@@ -50,6 +74,78 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
       $ErrorActionPreference = 'Stop'
       [Threading.Thread]::CurrentThread.CurrentCulture = [Globalization.CultureInfo]::InvariantCulture
       . $env:EKY_TRACE_TEST_SCRIPT
+      if ($env:EKY_TRACE_TEST_KIND -ceq 'commandAnalysis') {
+        $tokens = $null; $errors = $null
+        $ast = [Management.Automation.Language.Parser]::ParseFile(
+          (Join-Path (Split-Path $env:EKY_TRACE_TEST_SCRIPT -Parent) 'captureInstallerProductInspection.ps1'), [ref]$tokens, [ref]$errors)
+        $branch = $ast.Find({ param($node)
+          $node -is [Management.Automation.Language.IfStatementAst] -and $null -ne $node.ElseClause -and
+            $node.ElseClause.Extent.Text.Contains('$commandProjection = $null')
+        }, $true)
+        if ($errors.Count -ne 0 -or $null -eq $branch) { throw 'analysisBranchMissing' }
+        $analysis = [scriptblock]::Create(($branch.ElseClause.Statements.Extent.Text -join "\n"))
+        $root = $env:EKY_TRACE_TEST_ROOT; $xperf = $env:EKY_TRACE_TEST_NODE
+        $exporter = $xperf; $catalog = ''; $LegacyCommand = $true; $boundary = 'stopVerification'
+        [IO.File]::WriteAllText((Join-Path $root 'stopped'), '')
+        function Invoke-CaptureTool([string]$Tool, [string[]]$Arguments, [string]$Label) {
+          if ($Label -ceq 'command-export') {
+            Copy-Item -LiteralPath (Join-Path $root 'command-completed.txt') -Destination (Join-Path $root 'command-export.private.log')
+          } elseif ($Label -ceq 'events-export') { throw 'INSPECTOR_CAPTURE_TOOL_FAILED' }
+          elseif ($Label -ceq 'threads-export') {
+            Copy-Item -LiteralPath (Join-Path $root 'switches.csv') -Destination (Join-Path $root 'CPU_Usage_(Precise)_Inspector.csv')
+          } else { throw 'unexpectedAnalysisTool' }
+        }
+        function New-InspectorTraceProfile([string]$Catalog, [string]$Destination, [string[]]$Threads) {
+          if (($Threads -join ',') -cne '456,567') { throw 'commandThreadsNotProjected' }
+        }
+        $observations = [Collections.Generic.List[object]]::new()
+        $rejected = $false
+        try { . $analysis | ForEach-Object { $observations.Add(($_ | ConvertFrom-Json)) } }
+        catch { $rejected = $_.Exception.Message -ceq 'INSPECTOR_CAPTURE_TOOL_FAILED' }
+        if (!$rejected -or $boundary -cne 'eventExport' -or $observations.Count -ne 2 -or
+            @($observations | Where-Object { $_.phase -cne 'commandAnalysis' -or $_.cleanup -cne 'notInferred' }).Count -ne 0) {
+          throw 'missingInspectorErasedCommandEvidence'
+        }
+        [IO.File]::WriteAllText($env:EKY_TRACE_TEST_RESULT, '{"status":"validated"}')
+        exit 0
+      }
+      if ($env:EKY_TRACE_TEST_KIND -ceq 'commandLifetimes') {
+        $projection = Read-LegacyCommandTrace (Join-Path $env:EKY_TRACE_TEST_ROOT 'command-completed.txt')
+        if ($projection.processes.Count -ne 2 -or $projection.schedulingThreads.Count -ne 2 -or
+            ($projection.processes.phase -join ',') -cne 'command,scenario') { throw 'commandSelectionInvalid' }
+        $switches = @([pscustomobject]@{ 'New Process' = 'dotnet.exe (123)'; 'New Thread Id' = '456';
+          'Switch-In Time (s)' = '5'; 'Last Switch-Out Time (s)' = '2' })
+        $summaries = @(Get-LegacyCommandTraceSummary $projection $switches)
+        if ($summaries[0].schedulingObservation -cne 'descheduledIntervalObserved' -or
+            $summaries[1].schedulingObservation -cne 'notObserved' -or
+            @($summaries | Where-Object { $_.processExit -cne 'observedInTrace' -or
+              $_.threadExit -cne 'allProjectedExitsObserved' -or $_.cleanup -cne 'notInferred' -or
+              $_.cause -cne 'notEstablished' }).Count -ne 0) { throw 'commandSummaryInvalid' }
+        if (($summaries | ConvertTo-Json) -match 'PRIVATE|source|123|234|456|567|dotnet.exe|node.exe') { throw 'commandSummaryLeaked' }
+        $projection = Read-LegacyCommandTrace (Join-Path $env:EKY_TRACE_TEST_ROOT 'command-clipped.txt')
+        $summaries = @(Get-LegacyCommandTraceSummary $projection $switches)
+        if (@($summaries | Where-Object { $_.processExit -cne 'notObservedBeforeTraceEnd' -or
+            $_.threadExit -cne 'notAllObservedBeforeTraceEnd' }).Count -ne 0) { throw 'clippedExitGuessed' }
+        $projection = Read-LegacyCommandTrace (Join-Path $env:EKY_TRACE_TEST_ROOT 'command-reused.txt')
+        $switches[0].'Switch-In Time (s)' = '15'; $switches[0].'Last Switch-Out Time (s)' = '12'
+        $summaries = @(Get-LegacyCommandTraceSummary $projection $switches)
+        if ($projection.processes.Count -ne 1 -or $summaries[0].schedulingObservation -cne 'notObserved') { throw 'reusedIdentifierMisbound' }
+        foreach ($case in @(
+          @('missing', 'INSPECTOR_TRACE_COMMAND_MISSING'), @('ambiguous', 'INSPECTOR_TRACE_COMMAND_AMBIGUOUS'),
+          @('invalidThread', 'INSPECTOR_TRACE_LIFETIME_INVALID'), @('invalidPhase', 'INSPECTOR_TRACE_PHASE_INVALID'),
+          @('truncated', 'INSPECTOR_TRACE_TABLE_INVALID'), @('overlapping', 'INSPECTOR_TRACE_LIFETIME_INVALID'),
+          @('fixture', 'INSPECTOR_TRACE_COMMAND_MISSING')
+        )) {
+          $rejected = $false
+          try { [void](Read-LegacyCommandTrace (Join-Path $env:EKY_TRACE_TEST_ROOT ('command-' + $case[0] + '.txt'))) }
+          catch { $rejected = (Resolve-InspectorTraceErrorCode $_.Exception.Message) -ceq $case[1] }
+          if (!$rejected) { throw ('commandBoundaryNotRejected:' + $case[0]) }
+        }
+        $projection = Read-LegacyCommandTrace (Join-Path $env:EKY_TRACE_TEST_ROOT 'command-fixture.txt') -ContractFixture
+        if ($projection.processes.Count -ne 1) { throw 'retainedFixtureNotSelected' }
+        [IO.File]::WriteAllText($env:EKY_TRACE_TEST_RESULT, '{"status":"validated"}')
+        exit 0
+      }
       if ($env:EKY_TRACE_TEST_KIND -ceq 'exportOutput') {
         $stdout = Join-Path $env:EKY_TRACE_TEST_ROOT 'stdout.txt'
         $stderr = Join-Path $env:EKY_TRACE_TEST_ROOT 'stderr.txt'
@@ -294,7 +390,7 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
     const output = await readFile(context.resultPath, 'utf8');
     assert.doesNotMatch(output, /PRIVATE|synthetic\.exe|foreign\.exe|123|456|789/);
     const results = JSON.parse(output);
-    if (['capture', 'decimal', 'toolExit', 'exportOutput', 'externalView'].includes(kind)) {
+    if (['capture', 'decimal', 'toolExit', 'exportOutput', 'externalView', 'commandLifetimes', 'commandAnalysis'].includes(kind)) {
       assert.deepEqual(results, { status: 'validated' });
     } else if (kind === 'invalid') {
       assert.deepEqual(results, ['INSPECTOR_TRACE_EVENT_NAME_INVALID', 'INSPECTOR_TRACE_PROVIDER_INVALID',

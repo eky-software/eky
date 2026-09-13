@@ -1,4 +1,5 @@
-param([Parameter(Mandatory = $true)][ValidateSet('start', 'stop', 'analyze', 'compareEvents')][string]$Mode)
+param([Parameter(Mandatory = $true)][ValidateSet('start', 'stop', 'analyze', 'compareEvents')][string]$Mode,
+  [switch]$LegacyCommand)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -47,9 +48,11 @@ try {
   $wpr = Join-Path $env:SystemRoot 'System32/wpr.exe'
   $toolkit = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10/Windows Performance Toolkit'
   $exporter = Join-Path $toolkit 'wpaexporter.exe'
+  $xperf = Join-Path $toolkit 'xperf.exe'
   $catalog = Join-Path $toolkit 'Catalog/AppLaunch.wpaProfile'
   . (Join-Path $PSScriptRoot 'installerProductInspectionTrace.ps1')
   $readerLoaded = $true
+  if ($LegacyCommand -and $Mode -cne 'analyze') { throw 'INSPECTOR_CAPTURE_ARGUMENTS_INVALID' }
 
   if ($Mode -ceq 'start') {
     $boundary = 'preparation'
@@ -163,12 +166,30 @@ try {
   } else {
     $boundary = 'stopVerification'
     if (!(Test-Path -LiteralPath (Join-Path $root 'stopped'))) { throw 'INSPECTOR_CAPTURE_STOP_UNVERIFIED' }
+    $commandProjection = $null
+    if ($LegacyCommand) {
+      $boundary = 'commandExport'
+      if (!(Test-Path -LiteralPath $xperf -PathType Leaf)) { throw 'INSPECTOR_CAPTURE_TOOL_UNAVAILABLE' }
+      Invoke-CaptureTool $xperf @('-i', (Join-Path $root 'capture.etl'), '-a', 'process', '-thread', '-withcmdline') 'command-export'
+      $boundary = 'commandRead'
+      $commandProjection = Read-LegacyCommandTrace (Join-Path $root 'command-export.private.log')
+    }
+    $eventFailure = $null
     $boundary = 'eventExport'
-    Invoke-CaptureTool $exporter @('-i', (Join-Path $root 'capture.etl'), '-profile',
-      (Join-Path $root 'events.wpaProfile'), '-outputfolder', $root) 'events-export'
-    $boundary = 'eventRead'
-    $events = @(Get-InspectorTraceEvents @(Read-InspectorTraceTable (Join-Path $root 'Generic_Events_Inspector.csv')))
-    $threads = @($events.thread | Select-Object -Unique)
+    $events = @()
+    try {
+      Invoke-CaptureTool $exporter @('-i', (Join-Path $root 'capture.etl'), '-profile',
+        (Join-Path $root 'events.wpaProfile'), '-outputfolder', $root) 'events-export'
+      $boundary = 'eventRead'
+      $events = @(Get-InspectorTraceEvents @(Read-InspectorTraceTable (Join-Path $root 'Generic_Events_Inspector.csv')))
+    } catch {
+      if ($null -eq $commandProjection) { throw }
+      $eventFailure = $_.Exception
+      $eventFailureBoundary = $boundary
+    }
+    $threadValues = @($events | ForEach-Object { $_.thread })
+    if ($null -ne $commandProjection) { $threadValues += @($commandProjection.schedulingThreads.thread) }
+    $threads = @($threadValues | Select-Object -Unique)
     $boundary = 'schedulingProfile'
     New-InspectorTraceProfile $catalog (Join-Path $root 'threads.wpaProfile') $threads
     $boundary = 'schedulingExport'
@@ -177,9 +198,14 @@ try {
     $boundary = 'schedulingRead'
     $switches = @(Read-InspectorTraceTable (Join-Path $root 'CPU_Usage_(Precise)_Inspector.csv'))
     $boundary = 'summaryValidation'
-    $summaries = @(Get-InspectorTraceSummary $events $switches)
+    $summaries = @()
+    if ($null -ne $commandProjection) { $summaries += @(Get-LegacyCommandTraceSummary $commandProjection $switches) }
+    if ($events.Count -gt 0) { $summaries += @(Get-InspectorTraceSummary $events $switches) }
     # Validate the complete extraction before releasing any observation.
     foreach ($summary in $summaries) { $summary | ConvertTo-Json -Compress }
+    # Missing inspector observations must not erase an independently read
+    # command lifetime. They still make this diagnostic extraction incomplete.
+    if ($null -ne $eventFailure) { $boundary = $eventFailureBoundary; throw $eventFailure }
   }
   [ordered]@{ schemaVersion = 1; operation = 'installerProductInspectionCapture'; phase = $Mode;
     status = 'completed'; resultCode = 'diagnosticOnly' } | ConvertTo-Json -Compress

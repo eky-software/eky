@@ -17,7 +17,9 @@ function Resolve-InspectorTraceErrorCode([string]$Message) {
     'INSPECTOR_TRACE_EVENT_TIME_INVALID', 'INSPECTOR_TRACE_THREADS_INVALID',
     'INSPECTOR_TRACE_STREAMS_INVALID', 'INSPECTOR_TRACE_SWITCH_INVALID',
     'INSPECTOR_TRACE_EXTERNAL_BINDING_INVALID', 'INSPECTOR_TRACE_BOUNDARIES_INVALID',
-    'INSPECTOR_TRACE_CHANGED', 'INSPECTOR_TRACE_COMPARISON_FAILED')
+    'INSPECTOR_TRACE_CHANGED', 'INSPECTOR_TRACE_COMPARISON_FAILED',
+    'INSPECTOR_TRACE_COMMAND_MISSING', 'INSPECTOR_TRACE_COMMAND_AMBIGUOUS',
+    'INSPECTOR_TRACE_LIFETIME_INVALID', 'INSPECTOR_TRACE_PHASE_INVALID')
   if ($Message -cin $allowed) { return $Message }
   return 'INSPECTOR_CAPTURE_UNEXPECTED_FAILURE'
 }
@@ -157,6 +159,123 @@ function Read-InspectorTraceTable([string]$Path) {
       [pscustomobject]$row
     }
   } finally { $parser.Dispose() }
+}
+
+# xperf's process action emits two fixed headers and interleaved process/thread
+# records. Command lines are an opaque, unquoted remainder, not CSV strings.
+# This projection is diagnostic only: neither parentage nor ETW exit is a Job proof.
+function Read-LegacyCommandTrace([string]$Path, [switch]$ContractFixture) {
+  if ((Get-Item -LiteralPath $Path).Length -gt 32MB) { throw 'INSPECTOR_TRACE_TABLE_LIMIT' }
+  Add-Type -AssemblyName Microsoft.VisualBasic
+  $parser = [Microsoft.VisualBasic.FileIO.TextFieldParser]::new($Path, [Text.Encoding]::UTF8)
+  $processes = [Collections.Generic.List[object]]::new()
+  try {
+    $parser.SetDelimiters(',')
+    $parser.HasFieldsEnclosedInQuotes = $false
+    $parser.TrimWhiteSpace = $true
+    if (($parser.ReadFields() -join ',') -cne 'Start Time,End Time,Process,DataPtr,Process Name ( PID),ParentPID,SessionID,UniqueKey,Command Line' -or
+        ($parser.ReadFields() -join ',') -cne 'Start Time,End Time,Thread,DataPtr,Process Name ( PID),ThreadID,StackBase,StackLimit,UsrStkBase,UsrStkLmt,TebBase,StartAddr') {
+      throw 'INSPECTOR_TRACE_TABLE_INVALID'
+    }
+    $owner = $null
+    $count = 0
+    while (!$parser.EndOfData) {
+      if (++$count -gt 100000) { throw 'INSPECTOR_TRACE_TABLE_LIMIT' }
+      $fields = $parser.ReadFields()
+      if ($fields.Count -lt 8 -or $fields[4] -notmatch '^(.+) \(\s*([0-9]{1,10})\)$') { throw 'INSPECTOR_TRACE_TABLE_INVALID' }
+      $name = $Matches[1]; $identifier = $Matches[2]
+      $label = "$name ($identifier)"
+      $times = @(for ($index = 0; $index -lt 2; $index++) {
+        if ($index -eq 0 -and $fields[$index] -ceq 'MIN') { [double]::NegativeInfinity }
+        elseif ($index -eq 1 -and $fields[$index] -ceq 'MAX') { [double]::PositiveInfinity }
+        elseif ($fields[$index] -cmatch '^[0-9]{1,16}$') { [double]$fields[$index] / 1000000 }
+        else { throw 'INSPECTOR_TRACE_LIFETIME_INVALID' }
+      })
+      if ($times[0] -gt $times[1] -or $fields[5] -cnotmatch '^[0-9]{1,10}$') { throw 'INSPECTOR_TRACE_LIFETIME_INVALID' }
+      if ($fields[2] -ceq 'Process' -and $fields.Count -ge 9) {
+        if ($fields[7] -notmatch '^0x[0-9a-f]+$') { throw 'INSPECTOR_TRACE_LIFETIME_INVALID' }
+        $owner = [pscustomobject]@{ label = $label; identifier = $identifier; name = $name;
+          start = $times[0]; end = $times[1]; parent = $fields[5]; key = $fields[7];
+          commandLine = $fields[8..($fields.Count - 1)] -join ',';
+          threads = [Collections.Generic.List[object]]::new() }
+        $processes.Add($owner)
+      } elseif ($fields[2] -ceq 'Thread' -and $fields.Count -eq 12 -and $null -ne $owner -and $owner.label -ceq $label) {
+        $owner.threads.Add([pscustomobject]@{ process = $label; thread = $fields[5]; start = $times[0]; end = $times[1] })
+      } else { throw 'INSPECTOR_TRACE_TABLE_INVALID' }
+    }
+  } finally { $parser.Dispose() }
+
+  $hostToken = '(?:"[^"\r\n]*[\\/]dotnet(?:\.exe)?"|[^\s"]*dotnet(?:\.exe)?)'
+  $assembly = if ($ContractFixture) { 'Eky.WindowsProcessSupervisor.ContractFixture.dll' } else { 'Eky.WindowsProcessSupervisor.dll' }
+  $entry = if ($ContractFixture) { '--mode legacyCommandEntry' } else { '--legacy-command' }
+  $assemblyToken = '(?:"[^"\r\n]*[\\/]' + [regex]::Escape($assembly) + '"|[^\s"]*[\\/]' + [regex]::Escape($assembly) + ')'
+  $commands = @($processes | Where-Object {
+    $_.name -ieq 'dotnet.exe' -and $_.commandLine -match ('^' + $hostToken + '\s+' + $assemblyToken + '\s+' + $entry + '(?:\s|$)')
+  })
+  if ($commands.Count -eq 0) { throw 'INSPECTOR_TRACE_COMMAND_MISSING' }
+  if ($commands.Count -ne 1) { throw 'INSPECTOR_TRACE_COMMAND_AMBIGUOUS' }
+  $command = $commands[0]
+  if ([double]::IsInfinity($command.start)) { throw 'INSPECTOR_TRACE_LIFETIME_INVALID' }
+  $selected = [Collections.Generic.List[object]]::new()
+  $command | Add-Member -NotePropertyName phase -NotePropertyValue 'command'
+  $selected.Add($command)
+  $budgets = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../windows-process-supervisor/supervisorCommandBudgets.json') -Raw | ConvertFrom-Json
+  $phases = @($budgets.legacyCommand.phases | ForEach-Object { $_[0] }) + 'publishFailure'
+  $worker = if ($ContractFixture) { 'legacyCommandWorkerFixture.mjs' } else { 'legacyCommandPhase.mjs' }
+  $workerToken = '(?:"[^"\r\n]*[\\/]' + [regex]::Escape($worker) + '"|[^\s"]*[\\/]' + [regex]::Escape($worker) + ')'
+  foreach ($process in $processes) {
+    if ($process.parent -cne $command.identifier -or $process.start -lt $command.start -or $process.start -gt $command.end) { continue }
+    if ($process.name -ine 'node.exe' -or $process.commandLine -notmatch ('^(?:"[^"\r\n]*[\\/]node\.exe"|[^\s"]*node\.exe)\s+' + $workerToken + '\s+--phase-request\s+"?[^"\r\n]*[\\/]([a-zA-Z]+)[\\/]phase-input\.json"?$')) { continue }
+    $phase = $Matches[1]
+    if ($phase -cnotin $phases -or @($selected | Where-Object { $_.phase -ceq $phase }).Count -ne 0) { throw 'INSPECTOR_TRACE_PHASE_INVALID' }
+    $process | Add-Member -NotePropertyName phase -NotePropertyValue $phase
+    $selected.Add($process)
+  }
+  foreach ($process in $selected) {
+    # A reused PID is allowed only with disjoint lifetimes. Missing lifetime
+    # boundaries cannot silently bind a child or scheduling row to this command.
+    if (@($processes | Where-Object {
+      $_ -ne $process -and $_.identifier -ceq $process.identifier -and
+      $_.start -le $process.end -and $_.end -ge $process.start
+    }).Count -ne 0 -or $process.threads.Count -eq 0 -or $process.threads.Count -gt 64) { throw 'INSPECTOR_TRACE_LIFETIME_INVALID' }
+    foreach ($thread in $process.threads) {
+      if ($thread.start -lt $process.start -or $thread.end -gt $process.end -or $thread.thread -ceq '0' -or
+          @($process.threads | Where-Object { $_ -ne $thread -and $_.thread -ceq $thread.thread -and
+            $_.start -le $thread.end -and $_.end -ge $thread.start }).Count -ne 0) { throw 'INSPECTOR_TRACE_LIFETIME_INVALID' }
+    }
+  }
+  $projection = @($selected | Sort-Object start | ForEach-Object {
+    [pscustomobject]@{ phase = $_.phase; process = $_.label; start = $_.start; end = $_.end; threads = $_.threads.ToArray() }
+  })
+  $scheduling = @($projection | Where-Object { $_.phase -cin @('command', 'scenario') } | ForEach-Object { $_.threads })
+  if ($scheduling.Count -gt 64) { throw 'INSPECTOR_TRACE_THREADS_INVALID' }
+  return [pscustomobject]@{ processes = $projection; schedulingThreads = $scheduling }
+}
+
+function Get-LegacyCommandTraceSummary([object]$Projection, [object[]]$Switches) {
+  foreach ($process in $Projection.processes) {
+    $scheduling = 'notProjected'
+    if ($process.phase -cin @('command', 'scenario')) {
+      $scheduling = 'notObserved'
+      foreach ($row in $Switches) {
+        if ($row.'New Process' -cne $process.process -or $row.'Switch-In Time (s)' -ceq '') { continue }
+        $end = ConvertFrom-InspectorTraceSeconds $row.'Switch-In Time (s)' 'INSPECTOR_TRACE_SWITCH_INVALID'
+        $start = ConvertFrom-InspectorTraceSeconds $row.'Last Switch-Out Time (s)' 'INSPECTOR_TRACE_SWITCH_INVALID'
+        if ($start -gt $end) { throw 'INSPECTOR_TRACE_SWITCH_INVALID' }
+        $threads = @($process.threads | Where-Object {
+          $_.thread -ceq $row.'New Thread Id' -and $start -ge $_.start -and $end -le $_.end
+        })
+        if ($threads.Count -gt 1) { throw 'INSPECTOR_TRACE_LIFETIME_INVALID' }
+        if ($threads.Count -eq 1 -and $end -gt $start) { $scheduling = 'descheduledIntervalObserved' }
+      }
+    }
+    [ordered]@{ schemaVersion = 1; operation = 'installerProductInspectionCapture'; phase = 'commandAnalysis';
+      status = 'completed'; resultCode = 'diagnosticOnly'; commandPhase = $process.phase;
+      processExit = $(if ([double]::IsInfinity($process.end)) { 'notObservedBeforeTraceEnd' } else { 'observedInTrace' });
+      threadExit = $(if (@($process.threads | Where-Object { [double]::IsInfinity($_.end) }).Count -gt 0) { 'notAllObservedBeforeTraceEnd' } else { 'allProjectedExitsObserved' });
+      schedulingObservation = $scheduling; traceCoverage = 'boundedCaptureNotFullHistory';
+      cleanup = 'notInferred'; cause = 'notEstablished' }
+  }
 }
 
 function ConvertFrom-InspectorTraceSeconds([string]$Value, [string]$ErrorCode) {

@@ -2712,12 +2712,25 @@ invarianteiksi. Katselmuksen viimeinen runtime-testin täsmennys läpäisee
 
 Legacyssä seuraava tarvittava erotus on koko komennon elinkaari:
 komentoprosessin ja skenaariotyöntekijän poistuminen sekä niiden säikeiden
-odotukset. Nykyinen automaattinen WPR-yhteenveto rajaa ajoitusviennin
-inspector-tapahtumista johdettuihin säikeisiin; se ei vielä vastaa tähän
-kysymykseen. Ennen seuraavaa tallentavaa legacy-koetta nykyisen lukijan
-rajattu komentoprosessin näkymä pitää todentaa säilytetyllä tai synteettisellä
-jäljellä. Keruun määrää, prosessiomistajuutta tai aikarajoja ei tämän vuoksi
-muuteta. Jälkihavainto ei koskaan korvaa pakollista cleanup-tulosta.
+odotukset. Nykyinen valinnainen analyysi täydentää inspector-näkymää saman
+jäljen prosessi- ja säie-elinkaarilla. Se valitsee vain tunnetun
+legacy-komentorajan ja sen suorat, nimetyt vaihetyöntekijät. Tuntematon tai
+moniselitteinen prosessielinkaari hylätään; tunnisteen uudelleenkäyttö ei saa
+sitoa vieraita tapahtumia tähän komentoon. Komennon ja skenaariotyöntekijän
+ajoitusnäkymä käyttää nykyistä rajattua CPU-vientiä. Tallennuksen loppuun
+avoimeksi jäänyt prosessi tai säie erotetaan jäljessä havaitusta poistumisesta.
+Puuttuva inspector-vienti ei hävitä riippumatonta komentotason havaintoa,
+mutta analyysin puute säilyy virheenä. Keruun määrää, prosessiomistajuutta
+tai aikarajoja ei muuteta. Jälkihavainto ei koskaan korvaa pakollista
+cleanup-tulosta eikä osoita odotuksen syytä ilman erillistä näyttöä.
+
+Lukijan ja analyysikytkennän rajatut käyttäytymisregressiot läpäisevät 10/10.
+CI-kytkennän kohdesarja läpäisee 27/27, CI-politiikka 53/53 ja
+legacy-artifact-sarja 22/22; desktopin typecheck ja build läpäisevät.
+Sarjojen yhteisiä testejä ei summata erilliseksi kattavuudeksi.
+Seuraava portti on yksi olemassa olevan artifactin tallentava legacy-diagnoosi;
+tämä ei vielä korjaa aiempaa komennon puuttuvaa lopputulosta eikä sulje
+normaalia hyväksyntää.
 
 ### Edellinen normaali kokonaiskierros
 
@@ -3017,6 +3030,15 @@ Yhden consumerin riskiajossa keruuta ei aktivoida.
 - Raaka ETL, CSV ja yksityiset työkalutulosteet pysyvät runnerin tilapäisessä
   tallennusjuuressa. Niitä ei julkaista artifactina. Runnerin täydellinen
   katoaminen voi estää sekä lopetuksen että aineiston saamisen talteen.
+
+Legacy-analyysin `-LegacyCommand`-valinta lukee nykyisen xperf-työkalun
+prosessi-/säieviennin samasta ETL:stä. Komentorivit, prosessitunnisteet,
+polut, tarkat ajat ja säieaineisto jäävät yksityiseen vientiin. Suljettu
+yhteenveto kertoo vain tunnetun komentovaiheen, havaittujen poistumisten
+tilan ja rajatun ajoitushavainnon. Lukurajat ovat 32 MiB / 100 000 riviä ja
+CPU-projektion nykyinen enintään 64 säiettä. Ylitys ei johda hiljaiseen
+otantaan tai laajempaan keruuseen. Read-only-inspectorin erillinen analyysi
+ei vaadi legacy-komentoprosessia.
 
 Omistajan hyväksymä erillinen kuuden minuutin havainnointivaraus nostaa vain
 tallentavan jobin kokonaisrajan 43 minuuttiin. Tallentamaton jobi säilyy
