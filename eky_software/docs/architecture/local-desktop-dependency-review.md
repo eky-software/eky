@@ -139,14 +139,28 @@ on päätetty.
 
 ### V2-Julkaisun Avoin Riippuvuustarkistus
 
-13.9.2026 tarkistettu V2-lähderevisio on
+Omistaja on hyväksynyt rajatun päivityksen Hono `4.13.5`:een sekä Vitest ja
+sen nykyisen `@vitest/*`-pakettiperheen `4.1.11`:een. Molemmat suorat
+riippuvuudet sidotaan manifestissa täsmäversioon; myös lockfile käyttää
+näitä versioita. Lockfile-muutos sisältää vain Honon, Vitestin ja seitsemän
+nykyisen `@vitest/*`-paketin päivitykset sekä niiden nykyiset peer-sidokset.
+Uusia paketteja, overrideja tai muiden apupakettien versionostoja ei lisätä.
+Nykyiset yksikkö-/integraatio- ja packaging-kohteet läpäisevät: 3754 testiä
+sekä kahdeksan ennestään määriteltyä alustakohtaista ohitusta. System E2E
+on 86/86, web critical 35/35 ja Electron critical 38/38. Workspace-typecheck
+sekä backendin, webin ja desktopin buildit läpäisevät. Testien käyttäytymistä
+tai aikarajoja ei muutettu päivityksen mukana.
+Audit-, signature- ja uuden artifactin hyväksyntä ovat erillisiä avoimia
+portteja; nämä kohdetulokset eivät vielä sulje niitä.
+
+Advisory-katselmuksen historiallinen lähtörevisio on
 `e5689b3d84b2b1586f5304edc32778c69ea03d50`. Sen lockfile ja päähaaran
 `c1d010263ccf4dc490a709f58ea8a4a5b34fa03a` lockfile ovat samat.
-GitHubin viisi avointa moderate-hälytystä koskevat seuraavia lukittuja
-riippuvuuksia. Tämä on advisory-/lähdekatselmus, ei uusi hyväksytty päivitys
-eikä koko riippuvuuspuun puhtaan auditin todiste.
+Tuolloin GitHubin viisi avointa moderate-hälytystä koskivat seuraavia
+lukittuja riippuvuuksia. Alla oleva advisory-/lähdekatselmus ei ole koko
+päivitetyn riippuvuuspuun puhtaan auditin todiste.
 
-| Riippuvuus | Lukittu versio | Rajattu korjausehdotus | Vastuu |
+| Riippuvuus | Aiempi lukittu versio | Hyväksytty korjausversio | Vastuu |
 | --- | --- | --- | --- |
 | `hono` | `4.13.1` | `4.13.5` | Backendin production HTTP-adapteri; kolme advisorya |
 | `vitest` ja transitiivinen `@vitest/mocker` | `4.1.10` | `4.1.11` | Kehityksen testityökalu; sama advisory kahdella paketilla |

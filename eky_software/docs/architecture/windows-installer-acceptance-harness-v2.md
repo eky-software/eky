@@ -2931,15 +2931,18 @@ Priorisoidut löydökset ja sulkemisehdot:
    muutos tarvitsee näkyvän päätöksen. Vanhojen toteutussuunnitelmien
    lähtötilatekstit erotetaan nykytilasta ennen cutoveria; uusi rinnakkainen
    suunnitelma ei korjaa dokumentaation ristiriitaa.
-6. **Riippuvuusturvan julkaisueste.** Nykyisen lockfilen Hono `4.13.1` sekä
-   Vitest/`@vitest/mocker` `4.1.10` kuuluvat avoimiin advisoryihin. Päähaaran
-   ja tämän lähderevision lockfilet ovat samat. Rajattu käsittely ja
-   korjausehdotus ovat
+6. **Riippuvuusturvan julkaisuportti.** Omistaja on hyväksynyt Hono
+   `4.13.1 -> 4.13.5`- ja Vitest/`@vitest/mocker` `4.1.10 -> 4.1.11`
+   -päivityksen. Manifestit käyttävät hyväksyttyjä täsmäversioita; lukon
+   muu pakettijoukko säilyy. Advisory-katselmus, hyväksytty rajaus ja
+   todennuksen tila ovat
    [dependency review'ssa](local-desktop-dependency-review.md#v2-julkaisun-avoin-riippuvuustarkistus).
    V2:n vihreät prosessitestit eivät korvaa tätä porttia. Honon päivitys
    muuttaa paketoitavaa backendia ja edellyttää uuden build-identiteetin
-   mukaista artifact-hyväksyntää. Riippuvuuksia ei muuteta tämän katselmuksen
-   yhteydessä, eikä havaintoa nimetä legacy-jumin selitykseksi.
+   mukaista artifact-hyväksyntää. Auditit, rekisteriallekirjoitukset ja
+   uuden revision normaali kokonaiskierros ovat vielä avoinna. Päivitystä
+   ei nimetä legacy-jumin selitykseksi eikä aiempaa vihreää MSI-näyttöä
+   siirretä uusille tavuille.
 
 Diagnostiikan laajuus jäädytetään nykyiseen keruu-/vientivastuuseen.
 Analyysikorjaus testataan säilytetyllä tai synteettisellä aineistolla.
