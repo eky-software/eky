@@ -231,13 +231,15 @@ test('entrypoint groups register every original command contract exactly once', 
     assert.deepEqual(registrations, [
       `${kind} public command resolves the real worker and rejects an invalid artifact before installation`,
       ...[...original, ...extra].map((name) => `${kind} fixed command entrypoint completes the real phase chain: ${name}`),
+      ...(kind === 'legacy' ? ['completed', 'blockedEvidence', 'productMissingResult', 'uninstallHold', 'scenarioAndCleanupFailed'] : ['completed'])
+        .map((name) => `${kind} CI launch chain completes the real phase chain: ${name}`),
     ]);
     const source = await readFile(new URL(`./${file}.process.test.mjs`, import.meta.url), 'utf8');
     assert.equal(source.match(/registerAcceptanceCommandEntrypointContracts\('/gu)?.length, 1);
     assert.ok(source.includes(`registerAcceptanceCommandEntrypointContracts('${kind}');`));
     all.push(...registrations);
   }
-  assert.equal(all.length, 59);
+  assert.equal(all.length, 66);
   assert.equal(new Set(all).size, all.length);
 });
 

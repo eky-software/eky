@@ -10,7 +10,8 @@ lupaa uudelle riippuvuudelle, GitHub Actionille, native-helperille,
 versiomuutokselle tai release-artifactille.
 
 Ajantasainen etenemispäätös ja tilataulukko ovat kohdassa
-[Nykyinen päätös](#nykyinen-päätös). Historialliset checkpointit eivät korvaa
+[Nykyinen päätös](#nykyinen-päätös), jonka testikartta erottaa toteutetut
+vastuut vielä siirtämättömistä. Historialliset checkpointit eivät korvaa
 nykyisen revision hyväksyntää. Tämä on projektin suunnitelma, ei omistajan
 koneen diagnostiikkapäiväkirja. Yksityinen aineisto kuuluu vain Gitistä
 ohitettuihin paikallisiin paikkoihin; epäonnistuneita testituloksia ei kumota.
@@ -42,7 +43,10 @@ erillistä hyväksyntää.
 
 ## Koko testikannan katselmus
 
-Nykyisessä lähdepuussa on 659 varsinaista `*.test.*`- tai `*.spec.*`-tiedostoa
+Tämä ja seuraavat vanhaa W6-ketjua kuvaavat luvut kuuluvat yllä nimettyyn
+historialliseen lähtötilanteeseen. Ne eivät ole nykyisen V2-revision inventaario.
+
+Lähtötilanteen lähdepuussa oli 659 varsinaista `*.test.*`- tai `*.spec.*`-tiedostoa
 ja noin 129 200 testiriviä. Generoituja `dist`, `e2e-dist`, `.stage`, `out`,
 installer-artifacti-, Playwright result- tai `.eky-local`-tiedostoja ei ole
 laskettu mukaan.
@@ -2657,6 +2661,132 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 - dependency- ja lockfile-muutoksia ei ole ilman erillistä hyväksyntää
 
 ## Nykyinen päätös
+
+### Ajantasainen testikartta ja avoimet rajat
+
+Kartan lähdekatselmuksen perusta on `08eed10d36781a8a893776282ea18c02e93f9ec3`.
+Se kuvaa toteutusta, ei tämän revision kokonaishyväksyntää. Alla olevat
+ajat ovat versionoituja sopimusrajoja, eivät konekohtaisia mittauksia.
+Kanoniset komennot löytyvät juuri-, desktop- ja E2E-`package.json`-tiedostoista;
+CI-kytkentä sijaitsee repositoryn `.github/workflows`-kansiossa.
+
+| Perhe | Tarkoitus ja nykyinen vastuu | Komento tai CI-raja |
+| --- | --- | --- |
+| Yksikkö- ja integraatiotestit | Domain, backend, web ja desktop: käyttäytyminen omistavan moduulin vieressä; ei paketoidun Windows-ketjun korvike | `pnpm test`, `pnpm typecheck`, sovellusten buildit; core-job 15 min |
+| CI-politiikan sopimukset | Oikeat repositorypolut, riskiluokitus, vaaditut jobit ja vaiheet, puuttuvan tai osittaisen matriisin hylkäys | `pnpm test:ci`; `ciRiskPolicy.mjs` ja `ciJobCoverage.mjs` |
+| System security / web critical | Rajapinta-, turvallisuus- ja selainpolut synteettisillä profiileilla | Omat 10/15 min CI-jobit; Playwrightin hallitsemat käyttäjäpolut |
+| Electron critical | Development-runtime, ikkuna, latautuminen, restart ja käyttäjäpolut; fixture omistaa oman runtimen ja portin | `e2e:electron:critical`; yksi worker, ensimmäisen epäonnistumisen näyttö säilyy ja flaky hylätään |
+| Supervisor- ja komentorajaregressiot | Root-exit, Job-empty, worker-result, cleanup sekä kiinteiden komentojen virhepolut | `installer:test:windows-supervisor` ja `installer:test:windows-supervisor-v2-legacy`; jälkimmäisen viisi vastuuryhmää ajetaan CI:ssä kahdesti, 10 min / job |
+| V2 clean | Asennus, käytön jälkiehdot ja poisto; Node-caller sekä skenaarion Job Object -supervisor | `installer:v2-clean`; skenaario 300 s sisältäen 30 s siivousvarauksen; CI-step 7 min, job 12 min |
+| V2 upgrade / rollback | N -> N+1, downgrade-torjunta, Windows Installer rollback, binary rollback ja käynnissä olevan sovelluksen päivitys | `installer:v2-upgrade-rollback`; Node-caller, skenaario 600 s / siivousvaraus 30 s; CI-step 12 min, job 18 min |
+| V2 historical legacy | Historiallinen 0.2.6-artifact, oikea käynnistys, major upgrade, uusi käynnistys ja datan säilyminen | `.NET --legacy-command` ja erillinen pakollinen caller-result-verifier; komentoraja 1 565 s, CI-step 27 min, normaali job 37 min |
+| V2 workspace success | Synteettisen paketin päivitys, työtilojen eristys, restart, virheellisen historian torjunta ja vanhan session HTTP-hylkäys | `.NET --workspace-success-command` ja result-verifier; komentoraja 1 440 s, CI-step 25 min, job 30 min |
+| V2 workspace fault | Viisi nimettyä fault/rollback-skenaariota samoilla varmennetuilla artifact-tavuilla | `.NET --workspace-fault-command` ja result-verifier; 25 min / skenaariovaihe, 140 min / consumer; täysi matriisi 5 x 2 |
+| Valinnainen diagnostiikka | Nykyinen ulkoinen tallennus, vienti ja suljettu analyysi; ei hyväksynnän tai prosessisiivouksen omistaja | Erilliset start/stop/analyze-rajat; normaalissa opt-in-legacyssä 1/2/3 min lisävaraus, ei skenaarion työajasta |
+
+Build-once-producerit omistavat paketoinnin ja immutable descriptorin.
+Consumer ei rakenna MSI-paria uudelleen. Clean-producer varmentaa myös
+samojen MSI-tavujen pilot-bundlen nykyisellä työkalulla ja poistaa
+tarkistuskopion; tämä ei julkaise pilot-bundlea. Workspace success ja fault
+jakavat saman producer-artifactin. Revisiosta raportoidaan erikseen
+lähde-HEAD, CI:n todellinen checkout ja artifactin build-identiteetti.
+
+Nykyinen legacy/workspace-käynnistysketju on GitHubin `pwsh` ->
+`pnpm --filter @eky/desktop exec dotnet` -> kiinteä .NET-komento ->
+nimetyt vaihetyöntekijät. Tämän jälkeen sama CI-step suorittaa
+`pnpm exec node verify...CallerResult.mjs`-verifierin ja tarkistaa sekä
+komennon että verifierin exit-koodin. Runnerin step-/job-valmistuminen on
+tämän yläpuolella, ei sama asia kuin .NET-komennon lopputulos.
+
+`.NET AcceptanceCommandProgram` käyttää nykyistä vaihelistaa ja samaa
+Job Object -supervisoria. Työ, vaiheen cleanup-varaus, pakollinen julkaisu
+ja komennon poistumisvaraus erotetaan `supervisorCommandBudgets.json`- ja
+`CalculatePhaseTimeout`-vastuissa. Budjettimatematiikan regressio käyttää
+toteutuksen laskentaa; oikeat estymis- ja poistumistestit pysyvät erillään.
+Legacy-stepin 27 minuuttiin jää komentorajan ulkopuolelle 55 s ja
+workspace-stepiin 60 s käynnistysketjulle ja verifierille. Tämä laskennallinen
+ero ei yksin todista niiden valmistumista eikä oikeuta aikarajan nostoa.
+
+Eristys perustuu synteettiseen ajokohtaiseen profiiliin, erillisiin
+tiedostotavuihin, tarkkoihin tuoteidentiteetteihin ja artifact-varmennukseen.
+Normaalia profiilia ei käytetä fixtureksi. Prosessin poissaolo, semanttinen
+siivous, asennuksen lopputila ja aineiston poistamislupa pysyvät erillisinä.
+Tuntematon cleanup säilyy virheenä ja aineisto säilytetään. Vaihehavainto
+ei korvaa pakollista tulostiedostoa eikä prosessin todellista poistumista.
+
+Riskikytkentä on toteutettu, mutta ei vielä koko repositoryn cutover:
+
+- Kevyt, tunnistettu moduuli-/web-muutos valitsee core-, security- ja
+  web-portit ilman raskasta Windows-matriisia.
+- Muu desktop-muutos valitsee Windowsin perustason: Electron, sopimukset,
+  smoke, clean, upgrade ja workspace success.
+- Yhteinen elinkaariraja, kuten `profileBackup`, `runtime`, `update`,
+  `workspaces`, turvallisuus tai paketointi, lisää legacy- ja fault-perheet.
+- CI-politiikka, lukitut työkalusyötteet ja tuntematon polku valitsevat
+  täyden matriisin. Main-, ajastettu ja manuaalinen täysi ajo säilyvät.
+  Täysi suunnitelma vaatii kaksi consumeria; kevyempi Windows-suunnitelma
+  yhden. Puuttuva, peruutettu tai odottamatta ohitettu valittu tulos hylätään.
+- V2-feature-push ei käynnistä raskasta PR-ajon kaksoiskappaletta. Vanha
+  `ci.yml` käynnistyy kuitenkin vielä erikseen mainiin kohdistuvista PR:istä
+  ja main-pushista. V2:n reusable-kutsun W6-ohitus ei poista tätä erillistä
+  vanhaa käynnistystä.
+
+Priorisoidut löydökset ja sulkemisehdot:
+
+1. **Ylemmän käynnistysketjun kattavuus.** Katselmuksen lähtötilassa
+   `acceptanceCommandEntrypointContract.mjs` käynnisti .NET-komennon suoraan
+   ja workflow-käyttäytymistesti käytti stubattua pnpm-kutsua. Nykyistä
+   synteettistä fixtureä on täydennetty seitsemällä oikean CI-ketjun tapauksella:
+   legacyssä onnistuminen, estyvä diagnostiikkakirjoitus, puuttuva worker-tulos,
+   jumittuva poistovaihe sekä skenaariovirhe yhdessä epäonnistuneen siivouksen
+   kanssa; lisäksi molempien workspace-komentojen onnistuminen. Testi käyttää
+   versionoidun workflow'n kutsu- ja exit-tulkintaa, oikeaa pwsh/pnpm-ketjua,
+   nykyistä .NET-komentoa injektoidulla skenaariolla ja oikeaa result-verifieriä.
+   Vaihetulokset, pnpm-kutsujen paluu sekä ulomman PowerShell-prosessin exit/close
+   tarkistetaan erikseen. Ulompi pakkokatkaisu ei läpäise testiä. Epävarman
+   lopputilan aineisto säilyy. Alkuperäiset suoran komennon regressiot säilyvät.
+   Konsolitallenne jää yksityiseksi; estymistodiste käyttää nykyistä .NET-fixturen
+   estyvää kirjoitinta. Tämä ei vielä testaa GitHub-runnerin lokikuljetusta tai
+   selitä alkuperäistä legacy-jobin katkeamista. Normaali CI-hyväksyntä on auki.
+2. **Clean/upgrade-valmistelun ja viimeistelyn raja.** Näiden Node-callereiden
+   suorat tiedosto-operaatiot ja supervisorin jälkeinen `finally`/`close`
+   eivät kuulu legacy/workspace-komentorajaan. Tuoteoperaatiot käyttävät
+   edelleen `installerProductOperationProcess`-vastuuta, käynnistyssäiesiltaa
+   ja tuloskanavaa; kanavan valmistelu ja sulkeminen on arvioitava erikseen
+   bounded supervisor -odotuksesta. Todista aukko kohdetestillä ennen
+   korjausta. Vanhaa siltaa ei saa poistaa ennen näiden käyttäjien siirtoa.
+   Tämä ei osoita nykyisen legacy-virheen syytä eikä valtuuta uutta omistajaa.
+3. **Normaalin hyväksynnän avoimet virheet.** Alla nimetty legacy-terminalin
+   puute ja fault-rollback-hylkäys säilyvät avoimina. Diagnostinen onnistuminen
+   samoilla tavuilla ei ole niiden juurisyykorjaus. Myös aiempi MSI 3010- ja
+   erillinen tiedostotilahavainto on suljettava tai luokiteltava omalla näytöllä.
+4. **Cutover ja päällekkäisyys.** Vanhoilla W6-komennoilla, installer-contract
+   -testeillä ja CI-jobeilla on vielä käyttäjiä. Poisto vaatii alla olevan
+   invarianttien siirtokartan, korvaavan kattavuuden ja required-check-päätöksen.
+   Jaettua fixture-builderia ei poisteta vanhan orkestroinnin mukana vain nimen
+   perusteella. Koko sovelluksen yleissiivous ei kuulu tähän muutokseen.
+5. **Hyväksynnän ja dokumentoinnin päätösraja.** Koko V2:n nykyinen DoD sisältää
+   kaksi paikallista ja kaksi GitHubin täyttä kierrosta. Vaihekohtaiset
+   ympäristörajaukset eivät poista tätä vaatimusta hiljaisesti. Mahdollinen
+   muutos tarvitsee näkyvän päätöksen. Vanhojen toteutussuunnitelmien
+   lähtötilatekstit erotetaan nykytilasta ennen cutoveria; uusi rinnakkainen
+   suunnitelma ei korjaa dokumentaation ristiriitaa.
+
+Diagnostiikan laajuus jäädytetään nykyiseen keruu-/vientivastuuseen.
+Analyysikorjaus testataan säilytetyllä tai synteettisellä aineistolla.
+Vientivirhe ei peitä komento- ja artifact-näyttöä. Tavallinen säikeen odotus
+ei yksin ole syy. Seuraava koe joko erottaa avoimet vaihtoehdot tai johtaa
+nimettyyn päätökseen; uutta samanlaista MSI-kierrosta ei aloiteta vain siksi,
+että edellinen diagnoosi ei toistanut vikaa.
+
+Rajattu checkpoint-varmennus: nykyiset komentoryhmät legacy 25/25,
+workspace success 20/20 ja workspace fault 21/21 läpäisevät. Analyysirajan
+synteettiset testit 12/12, legacy-artifact-/workflow-sopimukset 22/22 ja
+CI-politiikka 53/53 läpäisevät. Tämä ei ole paketoidun matriisin tulos eikä
+normaalin hyväksynnän korvike. Desktopin typecheck ja build läpäisevät;
+tuotantokoodia tai aikarajoja ei muuteta. Tarkempi tutkimusaineisto pysyy yksityisenä.
+
+### Nykyisen revision näyttö
 
 Uudempi normaali CI
 [34724571256](https://github.com/eky-software/eky/actions/runs/34724571256)

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { lstat, mkdir, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { lstat, mkdir, open, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
@@ -16,6 +17,70 @@ import { legacyCallerResultFile } from './legacyCallerResultFile.mjs';
 import { workspaceCallerResultFile } from './workspaceCallerResultFile.mjs';
 
 const commandBudgets = JSON.parse(await readFile(new URL('../windows-process-supervisor/supervisorCommandBudgets.json', import.meta.url)));
+const contractAssembly = fileURLToPath(new URL('../bin/windows-process-supervisor-contract-fixture/Release/net10.0/Eky.WindowsProcessSupervisor.ContractFixture.dll', import.meta.url));
+
+// Exercise the checked-in CI step with its real pnpm and result verifier.
+// Only the installed-package worker is replaced by the existing synthetic fixture.
+async function startCiCommand(context, kind, descriptor, resultPath, signal) {
+  const workflow = await readFile(new URL(kind === 'legacy'
+    ? '../../../../../.github/workflows/windows-acceptance-v2-legacy-diagnostic.yml'
+    : '../../../../../.github/workflows/windows-acceptance-v2-workspace.yml', import.meta.url), 'utf8');
+  const lines = workflow.split(/\r?\n/u);
+  const commandIndex = lines.findIndex((line) => line.trim().startsWith('pnpm --filter @eky/desktop exec dotnet ')
+    && line.includes(` --${kind}-command `)
+    && (kind !== 'workspace-fault' || line.includes('--fault-scenario acceptanceInterruption')));
+  assert.ok(commandIndex >= 0);
+  const following = lines.slice(commandIndex);
+  const boundary = following.findIndex((line) => line.trim() !== '' && !line.startsWith('          '));
+  assert.ok(boundary >= 4);
+  const [command, returned, verifier, ...outcomeLines] = following.slice(0, boundary).map((line) => line.slice(10));
+  const outcome = outcomeLines.join('\n');
+  assert.equal(returned, '$commandExit = $LASTEXITCODE');
+  assert.ok(verifier.startsWith('pnpm --filter @eky/desktop exec node '));
+  assert.ok(verifier.includes('--command-exit $commandExit'));
+  assert.ok(outcome.startsWith('if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0)'));
+  const script = join(context.testRoot, 'ci-step.ps1');
+  await writeFile(script, [
+    "$ErrorActionPreference = 'Stop'",
+    '$PSNativeCommandUseErrorActionPreference = $false',
+    '$descriptorPath = $env:TEST_DESCRIPTOR', '$resultPath = $env:TEST_RESULT',
+    command.slice(0, command.indexOf(' dotnet ') + ' dotnet '.length)
+      + '$env:TEST_COMMAND_ASSEMBLY --mode legacyCommandEntry --request $env:TEST_REQUEST',
+    returned,
+    '[IO.File]::WriteAllText($env:TEST_COMMAND_RETURN, [string]$commandExit)',
+    verifier,
+    '[IO.File]::WriteAllText($env:TEST_VERIFIER_RETURN, [string]$LASTEXITCODE)',
+    outcome,
+  ].join('\n'));
+  const output = await open(join(context.testRoot, 'ci-step.stdout.private'), 'wx');
+  let errors;
+  try {
+    errors = await open(join(context.testRoot, 'ci-step.stderr.private'), 'wx');
+    const child = spawn('pwsh.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script], {
+      cwd: fileURLToPath(new URL('../../../..', import.meta.url)),
+      stdio: ['ignore', output.fd, errors.fd], windowsHide: true, signal,
+      env: { ...process.env, TEST_DESCRIPTOR: descriptor, TEST_RESULT: resultPath,
+        TEST_COMMAND_ASSEMBLY: contractAssembly, TEST_REQUEST: context.requestPath,
+        TEST_COMMAND_RETURN: join(context.testRoot, 'command-return.txt'),
+        TEST_VERIFIER_RETURN: join(context.testRoot, 'verifier-return.txt'),
+        EXPECTED_DESCRIPTOR_SHA256: 'a'.repeat(64), EXPECTED_BUILD_REVISION: 'b'.repeat(40) },
+    });
+    const events = [];
+    context.fixtureProcesses.add(child);
+    child.once('exit', () => events.push('exit'));
+    child.once('close', () => { events.push('close'); context.fixtureProcesses.delete(child); });
+    const completion = new Promise((resolvePromise, rejectPromise) => {
+      child.once('error', rejectPromise);
+      child.once('close', (exitCode, terminationSignal) => resolvePromise({ exitCode, signal: terminationSignal }));
+    });
+    // Keep spawn errors observed while the parent's capture handles close.
+    completion.catch(() => undefined);
+    return { child, completion, events };
+  } finally {
+    await output.close();
+    if (errors) await errors.close();
+  }
+}
 
 export async function describeCommandPhases(commandRoot, kind, read = readCommandPhaseJson) {
   const phases = commandBudgets[kind === 'legacy' ? 'legacyCommand' : 'workspaceCommand'].phases;
@@ -90,14 +155,17 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
     assert.deepEqual(await readdir(profile), []);
     verified = true;
   });
-  for (const testCase of ['completed', 'blockedEvidence', 'preparationHold', 'productInspectionHold', 'scenarioHold', 'uninstallHold', 'resultBeforeExit', 'cleanupFailed', 'scenarioAndCleanupFailed', 'removalHold',
+  const directCases = ['completed', 'blockedEvidence', 'preparationHold', 'productInspectionHold', 'scenarioHold', 'uninstallHold', 'resultBeforeExit', 'cleanupFailed', 'scenarioAndCleanupFailed', 'removalHold',
     'publicationBeforeExit', 'productMissingResult', 'preconditionFailed', 'scenarioMissing', 'businessFailed', 'profileChanged', 'artifactChanged',
-    ...(kind === 'legacy' ? ['productInspectionNativeHold', 'productInspectionReadOnly'] : ['footprintFailed']), ...(kind === 'workspace-fault' ? ['sessionFailed'] : [])]) {
+    ...(kind === 'legacy' ? ['productInspectionNativeHold', 'productInspectionReadOnly'] : ['footprintFailed']), ...(kind === 'workspace-fault' ? ['sessionFailed'] : [])];
+  const ciCases = kind === 'legacy'
+    ? ['completed', 'blockedEvidence', 'productMissingResult', 'uninstallHold', 'scenarioAndCleanupFailed'] : ['completed'];
+  for (const [testCase, ciChain] of [...directCases.map((name) => [name, false]), ...ciCases.map((name) => [name, true])]) {
     const workspace = kind !== 'legacy';
     const blocked = testCase === 'blockedEvidence';
     const succeeded = testCase === 'completed' || blocked || testCase === 'productInspectionReadOnly';
     const faultScenario = kind === 'workspace-fault' ? 'acceptanceInterruption' : undefined;
-    register(`${kind} fixed command entrypoint completes the real phase chain: ${testCase}`, {
+    register(`${kind} ${ciChain ? 'CI launch chain' : 'fixed command entrypoint'} completes the real phase chain: ${testCase}`, {
       skip: process.platform !== 'win32', timeout: 90_000,
     }, async (t) => {
       const context = await createRunContext(kind + '-entry-' + testCase);
@@ -119,12 +187,15 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
         worker: fileURLToPath(new URL('./legacyCommandWorkerFixture.mjs', import.meta.url)),
         arguments: [`--${kind}-command`, '--artifact-descriptor', descriptor, '--expected-descriptor-sha256', 'a'.repeat(64),
           '--expected-build-revision', 'b'.repeat(40), ...(faultScenario ? ['--fault-scenario', faultScenario] : []), '--result-path', resultPath] }));
-      const execution = startSupervisor(context, { captureOutput: false,
-        dotnetAssembly: fileURLToPath(new URL('../bin/windows-process-supervisor-contract-fixture/Release/net10.0/Eky.WindowsProcessSupervisor.ContractFixture.dll', import.meta.url)),
+      const execution = ciChain ? await startCiCommand(context, kind, descriptor, resultPath, t.signal)
+        : startSupervisor(context, { captureOutput: false,
+        dotnetAssembly: contractAssembly,
         dotnetArguments: ['--mode', 'legacyCommandEntry', '--request', context.requestPath] });
-      const events = [];
-      execution.child.once('exit', () => events.push('exit'));
-      execution.child.once('close', () => events.push('close'));
+      const events = execution.events ?? [];
+      if (!ciChain) {
+        execution.child.once('exit', () => events.push('exit'));
+        execution.child.once('close', () => events.push('close'));
+      }
       const completion = await execution.completion;
       let phaseEvidence;
       try {
@@ -136,11 +207,25 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
       try {
         assert.deepEqual(events, ['exit', 'close']);
         assert.equal(completion.signal, null);
+        if (ciChain) {
+          assert.ok(Array.isArray(phaseEvidence) && phaseEvidence.length > 0, 'Required phase results must be readable');
+          for (const phase of phaseEvidence) {
+            assert.equal(phase.result, 'validated');
+            assert.equal(phase.processTreeAbsent, true);
+          }
+          if (succeeded) assert.deepEqual(phaseEvidence.map(({ phase }) => phase),
+            commandBudgets[workspace ? 'workspaceCommand' : 'legacyCommand'].phases.map(([phase]) => phase));
+          const receipt = (name) => readFile(join(context.testRoot, name + '-return.txt'), 'utf8')
+            .catch(() => 'receiptMissingOrUnreadable');
+          assert.equal(await receipt('command'), succeeded ? '0' : '1');
+          assert.equal(await receipt('verifier'), succeeded ? '0' : '1');
+        }
         if (blocked) {
           const marker = JSON.parse(await readFile(join(context.runRoot, 'output.ready.json'), 'utf8'));
           assert.equal(marker.schemaVersion, 1);
           assert.equal(marker.runNonce, context.runNonce);
-          assert.equal(marker.processId, execution.child.pid);
+          if (!ciChain) assert.equal(marker.processId, execution.child.pid);
+          else assert.ok(Number.isSafeInteger(marker.processId) && marker.processId > 0);
           assert.equal(marker.writerBlocked, true);
         }
         assert.equal(completion.exitCode, succeeded ? 0 : 1);
