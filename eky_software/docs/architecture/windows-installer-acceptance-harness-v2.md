@@ -2611,9 +2611,22 @@ MSI-tavujen varmennusta eikä käyttäjäjulkaisun erillistä exact-byte-hyväks
 | --- | --- |
 | Vanhat W6/W6B.2-komento- ja scenario-orkestroijat | Poistoehdokkaita vasta invarianttikohtaisen V2-näytön sekä CLI-, workflow- ja import-viittausten siirron jälkeen. Niiden mukana poistetaan vain korvatun orkestroinnin omat testit. |
 | `windowsInstallerTestSupport.ps1` ja vanhat prosessi-/odotusapurit | Ei poisteta niin kauan kuin repair/reinstall/running-upgrade tai jokin muu säilyvä kuluttaja tarvitsee niitä. Viittaustarkistus tehdään uudelleen poiston commitilla. |
+| `runWindowsInstallerReleaseLifecycle.mjs` ja `testWindowsInstallerLifecycle.ps1` | `installer:release-lifecycle` on edelleen vanhan MSI-jobin ja desktop-README:n exact-release-byte-komento. V2-cleanin consumer on korvaava lifecycle-todiste, mutta tämän erillisen julkaisukutsun ja sen dokumentoitujen käyttäjien siirto tarvitaan ennen tiedostojen poistoa. |
 | `buildWindowsInstaller.mjs`, `releaseWindowsInstaller.mjs`, historical builder/provenance ja `buildW6b2PackagedSuccessInstallers.mjs` | V2-producerien käyttämiä paketointi-/fixture-vastuita, eivät automaattisia poistokohteita. |
 | `w6b2PackagedSuccessRunFixture.mjs` ja `w6b2PackagedFaultRunFixture.mjs` | Nykyinen V2-workspace-runtime käyttää näitä suoraan; säilytetään ilman nimeen perustuvaa yleissiivousta. |
 | Desktopin private proof, business-verifierit ja package smoke | Säilytetään. Vanhan harnessin poistaminen ei poista niiden invariantteja tai tuotannon käynnistyskytkentöjä. |
+
+Komentosiirron jälkeinen viittaustarkistus revisiolla `ae63e29` erottaa
+V2-clean/upgrade-komennot tästä vielä vanhasta julkaisukutsusta. Sen nykyinen
+Node-wrapper lukee release-identiteetin, varmentaa MSI-sidecarin ja kutsuu
+PowerShell-lifecycleä. Cutoverissa julkaisupolku sidotaan nykyisen V2-clean-
+producerin kerran rakentamiin, consumerin testaamiin MSI-tavuihin ja
+pakolliseen caller-resultiin; uutta MSI:tä ei rakenneta hyväksytyn tilalle.
+V2:n nykyiset artifact-/bundle-työkalut säilyvät nimettyinä vastuina.
+Vanhan wrapperin säilyttäminen tässä välivaiheessa ei ole V2-komennon
+automaattinen fallback eikä lupa jättää kahta auktoritatiivista julkaisupolkua.
+Vanhojen `installer:w6b-*`-/`installer:w6b2-*`-komentojen lisäksi cutoverin
+komento-, CI- ja README-diffin pitää kattaa tämä julkaisuportti.
 
 Required-check-siirron ehdotus, ei vielä hyväksytty asetusmuutos:
 
