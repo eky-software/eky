@@ -137,6 +137,54 @@ on päätetty.
 - Artifact ei ole loppukäyttäjälle jaettava tuotantoversio ennen code signingia,
   release-putken jäljellä olevia tarkistuksia ja erillistä jakelupäätöstä.
 
+### V2-Julkaisun Avoin Riippuvuustarkistus
+
+13.9.2026 tarkistettu V2-lähderevisio on
+`e5689b3d84b2b1586f5304edc32778c69ea03d50`. Sen lockfile ja päähaaran
+`c1d010263ccf4dc490a709f58ea8a4a5b34fa03a` lockfile ovat samat.
+GitHubin viisi avointa moderate-hälytystä koskevat seuraavia lukittuja
+riippuvuuksia. Tämä on advisory-/lähdekatselmus, ei uusi hyväksytty päivitys
+eikä koko riippuvuuspuun puhtaan auditin todiste.
+
+| Riippuvuus | Lukittu versio | Rajattu korjausehdotus | Vastuu |
+| --- | --- | --- | --- |
+| `hono` | `4.13.1` | `4.13.5` | Backendin production HTTP-adapteri; kolme advisorya |
+| `vitest` ja transitiivinen `@vitest/mocker` | `4.1.10` | `4.1.11` | Kehityksen testityökalu; sama advisory kahdella paketilla |
+
+Honon korjaukset koskevat
+[fragmentin jälkeistä query-tulkintaa](https://github.com/advisories/GHSA-crvj-82cr-hjcx),
+[SSG-tulosteen polkurajausta](https://github.com/advisories/GHSA-gqvv-2mrq-wpjv)
+ja [lomakkeen piste-erotellun rakenteen muistinkäyttöä](https://github.com/advisories/GHSA-g6gw-c38x-mqfc).
+Backendin nykyinen lähdekoodi ei käytä `toSSG()`- tai `parseBody()`-toimintoja;
+JSON-syöte luetaan `readJsonRequestBody`-vastuussa. Se käyttää kuitenkin
+Honon query-lukijoita. Literal `#` -merkin kulkeutumista nykyisen HTTP-adapterin
+läpi ei ole tässä katselmuksessa todistettu, joten query-löydöstä ei merkitä
+vaikutuksettomaksi. Loopback- ja istuntorajat eivät korvaa korjattua riippuvuutta.
+
+[Vitestin advisory](https://github.com/advisories/GHSA-82fw-gwwq-j7x9) koskee
+redirect-mockin tiedostolukua dev-palvelimen kautta. Eky käyttää `vitest run`
+-komentoja; tarkistetusta lähteestä ei löytynyt `mockerPlugin`- tai
+`interceptorPlugin`-kytkentää. Tämä rajaa nykyistä käyttötapaa, mutta ei ole
+peruste säilyttää korjattavissa olevaa versiota. Vitest ei kuulu paketoidun
+backendin production-riippuvuuksiin.
+
+Päähaaran [Dependency security -ajo 34745632370](https://github.com/eky-software/eky/actions/runs/34745632370)
+epäonnistui `Audit production dependencies` -vaiheessa. Koko puun audit ja
+rekisteriallekirjoitusten tarkistus jäivät ajamatta. Virheloki nimeää yllä
+mainitut kolme Hono-advisorya. Tulos kuuluu yllä
+nimetylle päähaaran revisiolle, ei V2:n uudelle kokonaishyväksynnälle.
+
+Korjauksessa päivitetään vain nimetyt nykyiset paketit ja niiden välttämätön
+lukittu ketju, ei Electronia, SQLitea, Nodea, pnpm:ää tai uusia testipalvelimia.
+Honon muutos tulee paketoituun backendiin ja vaatii uudet artifact-tavut;
+vanhan MSI-parin näyttö ei hyväksy sitä. Vitestin muutos varmennetaan
+nykyisillä yksikkö-/integraatiotesteillä. Molemmat vaativat lockfile-diffin
+katselmuksen, production- ja full auditin, rekisteriallekirjoitukset,
+typecheckin/buildin sekä sovitut turvallisuus-, E2E- ja paketoidut portit.
+Merkittävä uusi transitiivinen riippuvuus edellyttää erillistä päätöstä.
+Löydöksiä ei dismissata eikä audit-porttia ohiteta. Nämä advisoryt eivät
+osoita MSI- tai komentoprosessijumien syytä.
+
 ## Lisenssit Ja Ylläpito
 
 - `electron`: MIT

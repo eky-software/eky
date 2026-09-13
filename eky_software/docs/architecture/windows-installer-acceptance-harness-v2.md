@@ -2756,6 +2756,31 @@ Priorisoidut löydökset ja sulkemisehdot:
    bounded supervisor -odotuksesta. Todista aukko kohdetestillä ennen
    korjausta. Vanhaa siltaa ei saa poistaa ennen näiden käyttäjien siirtoa.
    Tämä ei osoita nykyisen legacy-virheen syytä eikä valtuuta uutta omistajaa.
+
+   Tarkennettu katselmus: molemmat callerit odottavat skenaarion supervisorin
+   `completion`-lupausta ilman callerin kokonaisrajaa. Myös virhepolun `finally`
+   odottaa samaa lupausta lopetuspyynnön jälkeen. Skenaarion sisäinen määräaika
+   ei kata supervisorin oman poistumisen estymistä, callerin valmistelua tai
+   jälkitarkastuksia. Nykyisten caller-regressioiden injektoitu supervisor
+   valmistuu heti; niiden vihreys ei todista tätä koko komentoprosessin rajaa.
+
+   **Rajattu päätösehdotus, ei vielä hyväksytty siirto:** clean- ja
+   upgrade-komentojen elinkaari siirretään nykyisen `AcceptanceCommandProgram`-
+   vastuun nimetyiksi kiinteiksi vaiheiksi. Sama supervisor omistaa kulloisenkin
+   vaiheen prosessipuun. Artifact-, skenaario-, tuotetila- ja business-sopimukset
+   säilyvät nykyisissä vastuissaan; vaiheiden työ-, cleanup- ja julkaisuvaraukset
+   on sovitettava nykyisiin hyväksyttyihin kokonaisrajoihin ennen kytkentää.
+   Tämä korvaisi näiden callerien Node-prosessikäynnistyksen, signaalikäsittelyn
+   ja rajattoman `finally`-odotuksen sekä viimeiset tuoteoperaatioiden
+   käynnistyssäiesillan/tuloskanavan ajokäyttäjät. Vanhaa polkua ei jätetä
+   fallbackiksi. Puhtaat tuotetilan luokittelut ja tulossopimukset säilytetään:
+   niillä on myös legacy/workspace-käyttäjiä, joten tiedostonimi ei ole
+   poistoperuste. Siirron edellytys on nykyiseen synteettiseen fixtureen tehty
+   oikean komentorajan regressio: tuloksen toimittanut mutta elävä isäntä,
+   estyvä valmistelu tai viimeistely, puuttuva tulos ja epävarma cleanup.
+   Ulomman testiturvan pakkokatkaisu on epäonnistuminen, ei hyväksytty poistuminen.
+   Tuotannon semantiikka, MSI:n hyväksytyt tulokset ja fixture-poiston lupa
+   eivät muutu. Uutta supervisoria, yleistä vaihegraafia tai riippuvuutta ei lisätä.
 3. **Normaalin hyväksynnän avoimet virheet.** Alla nimetty legacy-terminalin
    puute ja fault-rollback-hylkäys säilyvät avoimina. Diagnostinen onnistuminen
    samoilla tavuilla ei ole niiden juurisyykorjaus. Myös aiempi MSI 3010- ja
@@ -2771,6 +2796,15 @@ Priorisoidut löydökset ja sulkemisehdot:
    muutos tarvitsee näkyvän päätöksen. Vanhojen toteutussuunnitelmien
    lähtötilatekstit erotetaan nykytilasta ennen cutoveria; uusi rinnakkainen
    suunnitelma ei korjaa dokumentaation ristiriitaa.
+6. **Riippuvuusturvan julkaisueste.** Nykyisen lockfilen Hono `4.13.1` sekä
+   Vitest/`@vitest/mocker` `4.1.10` kuuluvat avoimiin advisoryihin. Päähaaran
+   ja tämän lähderevision lockfilet ovat samat. Rajattu käsittely ja
+   korjausehdotus ovat
+   [dependency review'ssa](local-desktop-dependency-review.md#v2-julkaisun-avoin-riippuvuustarkistus).
+   V2:n vihreät prosessitestit eivät korvaa tätä porttia. Honon päivitys
+   muuttaa paketoitavaa backendia ja edellyttää uuden build-identiteetin
+   mukaista artifact-hyväksyntää. Riippuvuuksia ei muuteta tämän katselmuksen
+   yhteydessä, eikä havaintoa nimetä legacy-jumin selitykseksi.
 
 Diagnostiikan laajuus jäädytetään nykyiseen keruu-/vientivastuuseen.
 Analyysikorjaus testataan säilytetyllä tai synteettisellä aineistolla.
