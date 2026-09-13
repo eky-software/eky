@@ -2507,8 +2507,11 @@ Tämä osuus erottaa nykyisen julkaisutyön historiallisesta tutkimusnäytöstä
 
 #### Ajantasaiset julkaisuesteet ja päätökset
 
-Lähtöcheckpoint on `df179ff1460af77f9e1b719745b45ef96085dc99`;
-sen toiminnallinen näyttö on `a186668cf6d5b6dc6e745b1e8448ed94e7ae8abc` /
+Exact-release-siirron testattu lähde-, checkout- ja artifact-revisio on
+`46f1b0aca3ecdd7b29ad803a955d23b245b9a4c0` /
+[34784991143](https://github.com/eky-software/eky/actions/runs/34784991143).
+Edellinen normaali V2-kokonaiskierros on edelleen erillinen
+`a186668cf6d5b6dc6e745b1e8448ed94e7ae8abc` /
 [34779534322](https://github.com/eky-software/eky/actions/runs/34779534322).
 Dokumentaatiocommit ei ole uusi testattu artifact-revisio. Alla oleva lista
 on käyttöönoton nykyinen työjärjestys; alempien tutkimuskappaleiden luvut
@@ -2517,7 +2520,7 @@ kuvaavat niiden nimettyjä historiallisia revisioita.
 | Portti | Jäljellä oleva työ tai päätös |
 | --- | --- |
 | Riippuvuusturva | Hyväksytyt Hono/Vitest-patchit ja niiden normaali V2-CI ovat vihreät. Tuotanto- ja koko puun audit sekä rekisteriallekirjoitukset puuttuvat; auditoinnin erillistä tiedonsiirtolupaa ei kierretä. Uusi löydös vaatii rajatun vaikutusarvion ja tarvittaessa oman riippuvuuspäätöksen. |
-| Exact-release-byte-reitti | Vanha Node/PowerShell-lifecycle on korvattu nykyisellä V2-producerilla, `--clean-command`-komennolla ja pakollisella `verifyCleanCallerResult`-tarkistuksella. Kohdetestit ovat vihreät; puhtaan checkpointin Windows-varmennus on vielä avoin. Producer rakentaa kerran; release-, consumer- ja bundle-MSI:n hashien pitää vastata toisiaan. |
+| Exact-release-byte-reitti | Vanha Node/PowerShell-lifecycle on korvattu nykyisellä V2-producerilla, `--clean-command`-komennolla ja pakollisella `verifyCleanCallerResult`-tarkistuksella. Kohdetestit sekä puhtaan checkpointin samaa clean-ketjua käyttävät Windows-consumerit 2/2 läpäisivät. Koko jäljellä olevan vanhan MSI-jobin ja lopullisen cutoverin näyttö ei siirry tästä automaattisesti. Producer rakentaa kerran; release-, consumer- ja bundle-MSI:n hashien pitää vastata toisiaan. |
 | Korvatun orkestroinnin poisto | Poistetaan vain siirtokartan invariantit, CLI-/workflow-käyttäjät ja saman revision regressiot kattavat tiedostot. Shared builderit, fixturet ja tarkistimet säilyvät. Vanha required MSI-jobi jää nimeltään käyttöön asetuspäätökseen asti. |
 | Lopullinen ympäristö ja toistot | Voimassa on kaksi paikallista täyttä release-kierrosta ja kaksi normaalia GitHub-kierrosta samalla lopullisella integraatiorevisiolla ilman retryä. Yhden kierroksen kaksi consumeria eivät korvaa kahta kierrosta. Vaihekohtaiset CI-ympäristöpäätökset eivät muuta tätä; mahdollinen poikkeus päätetään ennen lopullisia ajoja. |
 | Main-integraatio | Main-baseline on tarkistettu `c1d010263ccf4dc490a709f58ea8a4a5b34fa03a`:ksi. Koko main-diffi, myös pinon desktop-kytkennät, katselmoidaan uudelleen poistodiffin valmistuttua. Jäädytettyjä PR:iä #257/#258 ei mergeä. |
@@ -2649,9 +2652,9 @@ MSI-tavujen varmennusta eikä käyttäjäjulkaisun erillistä exact-byte-hyväks
 
 | Vastuu | Poiston tai säilyttämisen ehto |
 | --- | --- |
-| Vanhat W6/W6B.2-komento- ja scenario-orkestroijat | Poistoehdokkaita vasta invarianttikohtaisen V2-näytön sekä CLI-, workflow- ja import-viittausten siirron jälkeen. Niiden mukana poistetaan vain korvatun orkestroinnin omat testit. |
+| Vanhat W6/W6B.2-komento- ja scenario-orkestroijat | `installer:w6b-legacy`, `installer:w6b2-success` ja `installer:w6b2-fault-rollback` ovat yhä `ci.yml`:n kolmen vanhan W6-jobin käyttämiä. Poistoehdokkaita vasta invarianttikohtaisen V2-näytön sekä CLI-, workflow- ja import-viittausten siirron jälkeen. Niiden mukana poistetaan vain korvatun orkestroinnin omat testit. `installer:upgrade` ja sen fixture-kytkentä käsitellään samoin MSI-jobin siirrossa. |
 | `windowsInstallerTestSupport.ps1` ja vanhat prosessi-/odotusapurit | Ei poisteta niin kauan kuin repair/reinstall/running-upgrade tai jokin muu säilyvä kuluttaja tarvitsee niitä. Viittaustarkistus tehdään uudelleen poiston commitilla. |
-| `runWindowsInstallerReleaseLifecycle.mjs`, sen argumenttitesti ja `testWindowsInstallerLifecycle.ps1` | Julkaisureitti siirretty nykyiseen V2-produceriin ja clean-komentoon; kolme tiedostoa sekä `installer:lifecycle`/`installer:release-lifecycle` poistettu. MSI-jobin ja README:n käyttäjät siirretty samalla. Paketoitu näyttö ennen poistoa: `a186668` / CI 34779534322, clean 2/2. Muuttuneen revision kohteet 44/44 ja todellinen komentoraja 26/26; puhtaan poistorevision CI-varmennus vielä tarvitaan. |
+| `runWindowsInstallerReleaseLifecycle.mjs`, sen argumenttitesti ja `testWindowsInstallerLifecycle.ps1` | Julkaisureitti siirretty nykyiseen V2-produceriin ja clean-komentoon; kolme tiedostoa sekä `installer:lifecycle`/`installer:release-lifecycle` poistettu. MSI-jobin ja README:n käyttäjät siirretty samalla. Paketoitu näyttö ennen poistoa: `a186668` / CI 34779534322, clean 2/2. Poistorevision `46f1b0a` kohteet 44/44, todellinen komentoraja 26/26 ja CI 34784991143:n clean 2/2 läpäisivät. |
 | `buildWindowsInstaller.mjs`, `releaseWindowsInstaller.mjs`, historical builder/provenance ja `buildW6b2PackagedSuccessInstallers.mjs` | V2-producerien käyttämiä paketointi-/fixture-vastuita, eivät automaattisia poistokohteita. |
 | `w6b2PackagedSuccessRunFixture.mjs` ja `w6b2PackagedFaultRunFixture.mjs` | Nykyinen V2-workspace-runtime käyttää näitä suoraan; säilytetään ilman nimeen perustuvaa yleissiivousta. |
 | Desktopin private proof, business-verifierit ja package smoke | Säilytetään. Vanhan harnessin poistaminen ei poista niiden invariantteja tai tuotannon käynnistyskytkentöjä. |
@@ -2683,7 +2686,19 @@ fixturet ja turvallisuustarkistukset säilyvät nimettyinä vastuina.
 Poiston jälkeiset installer-unitit 164/164 ja Windows-prosessisopimukset
 77/77 läpäisevät, samoin CI-politiikan testit sekä desktopin typecheck/build.
 Kohderyhmän 44/44 ja clean-komennon 26/26 ovat käyttäytymis- ja
-kytkentänäyttöä, eivät vielä tämän poistorevision MSI-consumerien hyväksyntä.
+kytkentänäyttöä. Poistorevision rajattu CI 34784991143 läpäisi ensimmäisellä
+yrityksellä: producer 4 min 51 s, clean run 1 3 min 34 s ja run 2 3 min 27 s.
+Molemmat consumerit käyttivät artifactia `10326063522`, jonka descriptor on
+`f7aa78aba3aa2b3b4cb8f304227504a82451826ad15481421b6fdb22bf168431` ja MSI
+`f10b4d1f715864323b74305bf22d64d33e5874070587be66849d2a4a0825f78b` (SHA-256).
+Samat identiteetit varmennettiin producerissa sekä ennen ja jälkeen
+kummankin consumerin. Bundle-tarkistuskopio hyväksyttiin ja poistettiin;
+käyttäjäbundlea ei julkaistu. Install, repair, uninstall/reinstall, payload,
+profiilin säilyminen, semanttiset jälkiehdot, fixture-poisto ja publish
+valmistuivat. Pakollinen caller-tulos tarkistettiin komennon poistumisen
+jälkeen; kaikki 14 vaihekohtaista Job-puun poissaolohavaintoa kummassakin
+consumerissa valmistuivat. Tämä on yhden siirretyn perheen näyttö, ei kaksi
+V2-kokonaiskierrosta eikä vanhan koko MSI-jobin ajobudjetin hyväksyntä.
 Tuotantokoodia, riippuvuuksia, testibudjetteja tai required-check-asetuksia
 ei muutettu tässä siirrossa.
 
