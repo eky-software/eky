@@ -90,3 +90,14 @@ test('workspace command reserves mandatory publication within the existing lifec
   assert.equal(new Set(budget.phases.map(([name]) => name)).size, budget.phases.length);
   assert.ok(budget.phases.every(([, timeout, cleanup]) => timeout > cleanup && cleanup >= commandBudgets.exitReserveMilliseconds));
 });
+
+test('clean command uses the approved separate preparation, scenario and publication budgets', () => {
+  const budget = commandBudgets.cleanCommand;
+  assert.equal(budget.reservationMilliseconds, 965_000);
+  assert.deepEqual(budget.phases.find(([name]) => name === 'scenario'), ['scenario', 300_000, 30_000]);
+  assert.deepEqual(budget.phases.at(-1), ['publish', 35_000, 5_000]);
+  assert.equal(budget.phases.reduce((sum, [, timeout]) => sum + timeout, 0), 935_000);
+  assert.equal(17 * 60_000 - budget.reservationMilliseconds - 35_000, 20_000);
+  assert.equal(new Set(budget.phases.map(([phase]) => phase)).size, budget.phases.length);
+  assert.ok(budget.phases.every(([, timeout, cleanup]) => timeout > cleanup && cleanup >= commandBudgets.exitReserveMilliseconds));
+});

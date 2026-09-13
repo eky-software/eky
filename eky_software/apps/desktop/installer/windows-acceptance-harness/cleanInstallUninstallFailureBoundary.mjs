@@ -26,6 +26,15 @@ const SUPERVISOR_ERROR_CODES = Object.freeze({
   unexpectedFailure: 'WINDOWS_ACCEPTANCE_SUPERVISOR_UNEXPECTED_FAILURE',
 });
 
+export const CLEAN_COMMAND_ERROR_CODES = Object.freeze([...new Set([
+  ...Object.values(SCENARIO_ERROR_CODES), ...Object.values(SUPERVISOR_ERROR_CODES),
+  'WINDOWS_ACCEPTANCE_SUPERVISOR_PROCESS_FAILED', 'WINDOWS_ACCEPTANCE_CLEAN_SCENARIO_FAILED',
+  'WINDOWS_ACCEPTANCE_CLEAN_RESULT_MISSING_OR_INVALID', 'WINDOWS_ACCEPTANCE_CLEAN_ARGUMENTS_INVALID',
+  'WINDOWS_ACCEPTANCE_CLEAN_TEMP_ROOT_INVALID', 'WINDOWS_ACCEPTANCE_CLEAN_ENVIRONMENT_INVALID',
+  'WINDOWS_ACCEPTANCE_CLEAN_FINAL_CLEANUP_FAILED', 'WINDOWS_ACCEPTANCE_LOCAL_FIXTURE_CHANGED',
+  'WINDOWS_ACCEPTANCE_FIXTURE_CLEANUP_FAILED', 'WINDOWS_ACCEPTANCE_CLEAN_ARTIFACT_VERIFICATION_FAILED',
+])]);
+
 export class CleanInstallUninstallCommandFailure extends Error {
   constructor(details) {
     super(details.errorCode);
@@ -123,14 +132,20 @@ function createFailureDetails({
   });
 }
 
-export async function resolveCleanInstallUninstallTerminalOutcome({
-  cleanupExactProduct,
+export async function prepareCleanInstallUninstallTerminalOutcome({
   readScenarioResult,
   supervisorResult,
   verifyExactProductState,
 }) {
   if (supervisorResult.status === 'completed') {
-    const scenarioResult = await readScenarioResult();
+    let scenarioResult;
+    try { scenarioResult = await readScenarioResult(); }
+    catch {
+      return Object.freeze({ supervisorResult, scenarioResult: null,
+        errorCode: 'WINDOWS_ACCEPTANCE_CLEAN_RESULT_MISSING_OR_INVALID',
+        scenarioResultCode: 'missingOrInvalid', productStateVerificationResultCode: 'notChecked',
+        semanticCleanupResultCode: 'notRequired', cleanupAction: 'blocked' });
+    }
     if (scenarioResult.status !== 'completed') {
       throw new CleanInstallUninstallCommandFailure(
         createFailureDetails({
@@ -142,7 +157,7 @@ export async function resolveCleanInstallUninstallTerminalOutcome({
         }),
       );
     }
-    return scenarioResult;
+    return Object.freeze({ supervisorResult, scenarioResult, errorCode: null, cleanupAction: 'notRequired' });
   }
 
   let errorCode = supervisorErrorCode(supervisorResult);
@@ -167,54 +182,52 @@ export async function resolveCleanInstallUninstallTerminalOutcome({
   let productStateVerificationResultCode = 'notChecked';
   let semanticCleanupResultCode = 'notRequired';
   if (preconditionRejected) {
-    throw new CleanInstallUninstallCommandFailure(createFailureDetails({ errorCode, scenarioResultCode,
-      productStateVerificationResultCode, semanticCleanupResultCode: 'blockedByPrecondition', supervisorResult }));
+    return Object.freeze({ errorCode, scenarioResultCode, productStateVerificationResultCode,
+      semanticCleanupResultCode: 'blockedByPrecondition', supervisorResult, cleanupAction: 'blocked' });
   }
   if (!supervisorResult.processTreeAbsent) {
-    throw new CleanInstallUninstallCommandFailure(createFailureDetails({ errorCode, scenarioResultCode,
-      productStateVerificationResultCode, semanticCleanupResultCode: 'blockedByOwnedProcessTree', supervisorResult }));
+    return Object.freeze({ errorCode, scenarioResultCode, productStateVerificationResultCode,
+      semanticCleanupResultCode: 'blockedByOwnedProcessTree', supervisorResult, cleanupAction: 'blocked' });
   }
   const initialInspection = await inspectExactProduct(verifyExactProductState);
   if (initialInspection.status === 'failed') {
     productStateVerificationResultCode = initialInspection.errorCode;
   } else {
     productStateVerificationResultCode = initialInspection.resultCode;
-    if (initialInspection.exactProductPresent) {
-      if (!supervisorResult.processTreeAbsent) {
-        semanticCleanupResultCode = 'blockedByOwnedProcessTree';
-      } else {
-        const cleanupResult = await runSemanticCleanup(cleanupExactProduct);
-        if (cleanupResult.status === 'failed') {
-          semanticCleanupResultCode = cleanupResult.errorCode;
-        } else {
-          const finalInspection = await inspectExactProduct(
-            verifyExactProductState,
-          );
-          if (finalInspection.status === 'failed') {
-            productStateVerificationResultCode = finalInspection.errorCode;
-            semanticCleanupResultCode = 'semanticCleanupPostconditionFailed';
-          } else if (finalInspection.exactProductPresent) {
-            productStateVerificationResultCode = finalInspection.resultCode;
-            semanticCleanupResultCode = 'semanticCleanupPostconditionFailed';
-          } else {
-            productStateVerificationResultCode =
-              'exactProductAbsentAfterCleanup';
-            semanticCleanupResultCode = cleanupResult.resultCode;
-          }
-        }
-      }
+  }
+  return Object.freeze({ errorCode, productStateVerificationResultCode, scenarioResultCode,
+    semanticCleanupResultCode, supervisorResult, cleanupAction: initialInspection.status === 'completed' &&
+      initialInspection.exactProductPresent ? 'cleanupThenVerify' : 'notRequired' });
+}
+
+// Cleanup is an explicit phase result, never executed by the decision reader.
+export function completeCleanInstallUninstallTerminalOutcome(plan, { cleanup, postcondition } = {}) {
+  if (plan.errorCode === null) return plan.scenarioResult;
+  let { semanticCleanupResultCode, productStateVerificationResultCode } = plan;
+  if (plan.cleanupAction === 'cleanupThenVerify') {
+    if (cleanup?.status !== 'completed' || cleanup.resultCode !== 'semanticCleanupCompleted') {
+      semanticCleanupResultCode = cleanup?.errorCode ?? 'semanticCleanupFailed';
+    } else if (postcondition?.status !== 'completed' || postcondition.exactProductPresent !== false ||
+      postcondition.resultCode !== 'exactProductAbsent') {
+      productStateVerificationResultCode = postcondition?.errorCode ?? postcondition?.resultCode ?? 'productStateVerificationFailed';
+      semanticCleanupResultCode = 'semanticCleanupPostconditionFailed';
+    } else {
+      productStateVerificationResultCode = 'exactProductAbsentAfterCleanup';
+      semanticCleanupResultCode = 'semanticCleanupCompleted';
     }
   }
+  throw new CleanInstallUninstallCommandFailure(createFailureDetails({ ...plan,
+    semanticCleanupResultCode, productStateVerificationResultCode }));
+}
 
-  throw new CleanInstallUninstallCommandFailure(
-    createFailureDetails({
-      errorCode,
-      productStateVerificationResultCode,
-      scenarioResultCode,
-      semanticCleanupResultCode,
-      supervisorResult,
-    }),
-  );
+export async function resolveCleanInstallUninstallTerminalOutcome(options) {
+  const plan = await prepareCleanInstallUninstallTerminalOutcome(options);
+  let cleanup, postcondition;
+  if (plan.cleanupAction === 'cleanupThenVerify') {
+    cleanup = await runSemanticCleanup(options.cleanupExactProduct);
+    if (cleanup.status === 'completed') postcondition = await inspectExactProduct(options.verifyExactProductState);
+  }
+  return completeCleanInstallUninstallTerminalOutcome(plan, { cleanup, postcondition });
 }
 
 export function cleanInstallUninstallFailureDetails(error) {

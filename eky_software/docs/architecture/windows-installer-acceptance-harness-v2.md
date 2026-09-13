@@ -787,7 +787,7 @@ vain tiedostomäärät ja `businessDataPreserved: true` -tuloksen.
 Paikallinen komento on:
 
 ```text
-pnpm --filter @eky/desktop installer:v2-clean --artifact-descriptor <descriptor-path>
+pnpm --filter @eky/desktop installer:v2-clean --artifact-descriptor <descriptor-path> --expected-descriptor-sha256 <producer-descriptor-sha256> --expected-build-revision <producer-git-revision> --result-path <temporary-root>/eky-clean-caller-<new-32-hex-id>/result.json
 ```
 
 V2.2 ei vielä käytä GitHub artifact -actioneita eikä ole nykyisen release-
@@ -841,10 +841,14 @@ Paikallinen producer/consumer-järjestys on:
 ```text
 pnpm --filter @eky/desktop installer:v2-artifact:build --artifact-root <absolute-new-artifact-root> --summary-path <absolute-summary-path-outside-artifact-root>
 pnpm --filter @eky/desktop installer:v2-artifact:verify --artifact-root <absolute-artifact-root> --expected-descriptor-sha256 <producer-descriptor-sha256> --expected-build-revision <producer-git-revision>
-pnpm --filter @eky/desktop installer:v2-clean --artifact-descriptor <absolute-artifact-root>/clean-install-artifact.json
+pnpm --filter @eky/desktop installer:v2-clean --artifact-descriptor <absolute-artifact-root>/clean-install-artifact.json --expected-descriptor-sha256 <producer-descriptor-sha256> --expected-build-revision <producer-git-revision> --result-path <temporary-root>/eky-clean-caller-<new-32-hex-id>/result.json
 ```
 
-Verifier ajetaan sekä ennen V2.2-lifecyclea että sen jälkeen. Artifact-juuren
+Artifact-verifier ajetaan sekä ennen V2.2-lifecyclea että sen jälkeen.
+Nykyinen clean-komento edellyttää lisäksi erillistä `verifyCleanCallerResult.mjs`
+-varmennusta samoilla sidonta-argumenteilla ja komennon todellisella
+`--command-exit`-arvolla. CI tekee tämän samassa lifecycle-stepissä;
+pelkkä valmis result-tiedosto ei ole komennon onnistuminen. Artifact-juuren
 pitää olla producerille uusi ja tyhjäksi oletettu polku; producer ei poista tai
 korvaa ennalta olemassa olevaa juurta. Summary-polku ei kuulu siirrettävään
 artifact-inventoryyn. CLI:n polkuraja hyväksyy package manager -kuljetuksen
@@ -2677,7 +2681,7 @@ CI-kytkentä sijaitsee repositoryn `.github/workflows`-kansiossa.
 | System security / web critical | Rajapinta-, turvallisuus- ja selainpolut synteettisillä profiileilla | Omat 10/15 min CI-jobit; Playwrightin hallitsemat käyttäjäpolut |
 | Electron critical | Development-runtime, ikkuna, latautuminen, restart ja käyttäjäpolut; fixture omistaa oman runtimen ja portin | `e2e:electron:critical`; yksi worker, ensimmäisen epäonnistumisen näyttö säilyy ja flaky hylätään |
 | Supervisor- ja komentorajaregressiot | Root-exit, Job-empty, worker-result, cleanup sekä kiinteiden komentojen virhepolut | `installer:test:windows-supervisor` ja `installer:test:windows-supervisor-v2-legacy`; jälkimmäisen viisi vastuuryhmää ajetaan CI:ssä kahdesti, 10 min / job |
-| V2 clean | Asennus, käytön jälkiehdot ja poisto; Node-caller sekä skenaarion Job Object -supervisor | `installer:v2-clean`; skenaario 300 s sisältäen 30 s siivousvarauksen; CI-step 7 min, job 12 min |
+| V2 clean | Asennus, repair/reinstall ja poisto; nykyisen .NET-komennon kiinteät vaiheet, nimetty skenaarioworker ja erillinen result-verifier | `installer:v2-clean`; komento 965 s, skenaario edelleen 300 s / cleanup 30 s; CI-step 17 min, erillinen build 3 min, job 27 min |
 | V2 upgrade / rollback | N -> N+1, downgrade-torjunta, Windows Installer rollback, binary rollback ja käynnissä olevan sovelluksen päivitys | `installer:v2-upgrade-rollback`; Node-caller, skenaario 600 s / siivousvaraus 30 s; CI-step 12 min, job 18 min |
 | V2 historical legacy | Historiallinen 0.2.6-artifact, oikea käynnistys, major upgrade, uusi käynnistys ja datan säilyminen | `.NET --legacy-command` ja erillinen pakollinen caller-result-verifier; komentoraja 1 565 s, CI-step 27 min, normaali job 37 min |
 | V2 workspace success | Synteettisen paketin päivitys, työtilojen eristys, restart, virheellisen historian torjunta ja vanhan session HTTP-hylkäys | `.NET --workspace-success-command` ja result-verifier; komentoraja 1 440 s, CI-step 25 min, job 30 min |
@@ -2691,7 +2695,7 @@ tarkistuskopion; tämä ei julkaise pilot-bundlea. Workspace success ja fault
 jakavat saman producer-artifactin. Revisiosta raportoidaan erikseen
 lähde-HEAD, CI:n todellinen checkout ja artifactin build-identiteetti.
 
-Nykyinen legacy/workspace-käynnistysketju on GitHubin `pwsh` ->
+Nykyinen clean/legacy/workspace-käynnistysketju on GitHubin `pwsh` ->
 `pnpm --filter @eky/desktop exec dotnet` -> kiinteä .NET-komento ->
 nimetyt vaihetyöntekijät. Tämän jälkeen sama CI-step suorittaa
 `pnpm exec node verify...CallerResult.mjs`-verifierin ja tarkistaa sekä
@@ -2764,7 +2768,7 @@ Priorisoidut löydökset ja sulkemisehdot:
    jälkitarkastuksia. Nykyisten caller-regressioiden injektoitu supervisor
    valmistuu heti; niiden vihreys ei todista tätä koko komentoprosessin rajaa.
 
-   **Omistajan hyväksymä korvaava siirto, kytkentä vielä tekemättä:** clean- ja
+   **Omistajan hyväksymä korvaava siirto, clean kytketty ja upgrade avoinna:** clean- ja
    upgrade-komentojen elinkaari siirretään nykyisen `AcceptanceCommandProgram`-
    vastuun nimetyiksi kiinteiksi vaiheiksi. Sama supervisor omistaa kulloisenkin
    vaiheen prosessipuun. Artifact-, skenaario-, tuotetila- ja business-sopimukset
@@ -2794,14 +2798,14 @@ Priorisoidut löydökset ja sulkemisehdot:
    Korvaavan kytkennän on läpäistävä nykyiset komentorajaregressiot ilman
    ulomman testiturvan katkaisua; tämä karakterisointi poistuu vanhan callerin mukana.
 
-   **Aikapolitiikan erillinen päätös on vielä avoin.** Nykyiset 7/12 minuutin
+   **Aikapolitiikan erillinen päätös on hyväksytty.** Aiemmat 7/12 minuutin
    lifecycle-stepit jättävät 300/600 sekunnin skenaarioiden lisäksi vain
    120 sekuntia. Jo cleanin virhepolun exact-tuotetarkistus, mahdollinen
    uninstall ja jälkitarkistus tarvitsevat nykyisillä apuoperaatiorajoilla
    35 + 125 + 35 sekunnin enimmäisvaraukset. Valmistelu, tuloksen julkaisu
    ja fixture-poisto tulevat lisäksi. Näitä ei puristeta skenaarion sisään.
 
-   Ehdotettu kiinteä vaihe- ja budjettikartta käyttää olemassa olevia V2-rajoja:
+   Hyväksytty kiinteä vaihe- ja budjettikartta käyttää olemassa olevia V2-rajoja:
 
    | Vastuu | Omistaja | Clean | Upgrade |
    | --- | --- | --- | --- |
@@ -2812,26 +2816,50 @@ Priorisoidut löydökset ja sulkemisehdot:
    | Artifact-varmennus, loppuprofiilin inventory, sallittu fixture-poisto ja pakollinen julkaisu | Nimetyt nykyiset tarkistimet ja result-file-vastuu | 4 x 35 s | 4 x 35 s |
 
    Kaikki 35/125 sekunnin vaihevaraukset sisältävät nykyisen 5 sekunnin
-   cleanup-varan. Ehdotuksen vaihekattojen summat ovat 935/1535 sekuntia;
+   cleanup-varan. Vaihekattojen summat ovat 935/1535 sekuntia;
    normaalisti vaihe palautuu heti ehdon täytyttyä, ei katon täytyttyä.
    Nykyisen legacy-komentomallin 30 sekunnin summan ylittävä liikkumavara
    antaa clean-komennolle 965 s ja upgrade-komennolle 1565 s.
    `CalculatePhaseTimeout` säilyttää nykyisen erillisen julkaisu- ja
    poistumisvarauksen. Komennon ulkopuolinen pakollinen result-verifier
-   varaa 35 s. Ehdotettu lifecycle-step on cleanissa 17 min ja upgradessa
+   varaa 35 s. Hyväksytty lifecycle-step on cleanissa 17 min ja upgradessa
    27 min, jolloin kummassakin jää 20 s ylemmän käynnistysketjun liikkumavaraa.
    Supervisor-build erotetaan nykyisen mallin mukaiseksi 3 minuutin stepiksi;
-   consumer-jobien ehdotus on 27/37 min (lifecycle + build + 7 min muulle
+   consumer-jobien rajat ovat 27/37 min (lifecycle + build + 7 min muulle
    valmistelulle ja artifact-jälkitarkistukselle). Producerien tai tavallisen
    MSI-release-gaten rajoja ei muuteta.
 
    Tämä on enimmäisvarausten laskelma, ei mittaus normaalin ajon kestosta
-   eikä lupa pidentää jumittuvan MSI-operaation aikaa. Nykyisiä aikarajoja,
-   komentoja, CI-kytkentää tai siirtämättömiä siltavastuita ei ole muutettu.
-   Omistajan budjettipäätöksen jälkeen siirto tehdään clean ensin, upgrade
+   eikä lupa pidentää jumittuvan MSI-operaation aikaa. Clean-komento ja sen
+   CI-kytkentä käyttävät nyt tätä karttaa. Siirto tehdään clean ensin, upgrade
    toisena, ja korvautuvat Node-/käynnistyssäiepolut poistetaan käyttäjien ja
    invarianttien siirryttyä. Jos yksittäisen vaiheen sallittu työ tai
    hyväksymisehto muuttuisi, tarvitaan siitä uusi päätös.
+
+   Cleanin `cleanCommandPhase` kokoaa nykyiset nimettyjen vaiheiden portit;
+   `cleanInstallUninstallFailureBoundary` erottaa siivouspäätöksen ja jo
+   suoritetun siivouksen tuloksen. Se ei käynnistä prosessia. Asennus,
+   repair/reinstall ja payload-tarkistus säilyvät nykyisessä lifecycle-workerissa.
+   Sen julkaisema epäonnistunut tulos säilyy epäonnistumisena myös silloin,
+   kun worker on poistunut nollakoodilla. `cleanCallerResult` ja nykyinen
+   result-file-toimitus sitovat pakollisen lopputuloksen revisioon, descriptorin
+   SHA-256:een ja yhteen ajokertaan. Cleanin ProductState-luokittelu ei muutu
+   upgrade-pair-luokitteluksi. Normaali profiili, artifactit, MSI-paluuarvot,
+   prosessipuun poissaolo ja fixture-poistolupa pysyvät erillisinä.
+
+   Korvaavan kattavuuden kartta: vanhan callerin Promise-/finally-odotus ->
+   yhteisen komentorajasarjan clean-tapaukset; tilapäisjuuren alias ja oikea
+   read-only-esitarkistus -> `temporaryRootAlias`; puuttuva juurihakemisto ->
+   `cleanCommandPhase.test`; ProductState-only -> saman tiedoston puhdas
+   luokittelutesti; puuttuva tulos, ensivirhe ja epävarma cleanup -> nykyiset
+   failure-boundary-, phase-continuation- ja caller-result-regressiot.
+   Vanha clean-caller on toistaiseksi vain siirron lähtötilatestien käyttäjä,
+   ei kanoninen komento tai automaattinen fallback. Se ja viimeiset yhteiset
+   käynnistyssillat poistetaan upgrade-kytkennän yhteydessä, kun kaikki käyttäjät
+   on siirretty. Cleanin ja jaettujen legacy/workspace-vastuiden rajattu sarja
+   läpäisi 214/214; viimeistelyn linkki- ja CI-listaregressiot 18/18. Näyttö
+   sisältää oikean komentoprosessin poistumisen ja pakollisen tuloksen, ei
+   MSI-asennusta. Uusi paketoitu hyväksyntä on vielä avoin.
 3. **Normaalin hyväksynnän avoimet virheet.** Alla nimetty legacy-terminalin
    puute ja fault-rollback-hylkäys säilyvät avoimina. Diagnostinen onnistuminen
    samoilla tavuilla ei ole niiden juurisyykorjaus. Myös aiempi MSI 3010- ja

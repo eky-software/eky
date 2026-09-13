@@ -87,7 +87,10 @@ if (mode === 'unboundedCaller') {
   const hold = () => spawnSync(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore' });
   if (testCase === 'preparationHold' && input.phase === 'prepare') hold();
   if (testCase === 'productInspectionHold' && input.phase === 'inspectSourceBefore') hold();
-  const code = input.commandKind !== 'legacy'
+  const code = input.commandKind === 'clean'
+    ? await (await import('./cleanCommandPhase.mjs')).runCleanCommandPhase(process.argv.slice(2),
+      (await import('./cleanCommandFixture.mjs')).cleanCommandFixture(input, testCase, hold))
+    : input.commandKind !== 'legacy'
     ? await (await import('./workspaceCommandPhase.mjs')).runWorkspaceCommandPhase(process.argv.slice(2),
       (await import('./workspaceCommandFixture.mjs')).workspaceCommandFixture(input, testCase, hold))
     : await runLegacyCommandPhase(process.argv.slice(2), {
@@ -154,9 +157,10 @@ if (mode === 'unboundedCaller') {
         targetSecondStartupValidated: !failed, artifactBytesValidated: true });
     },
   });
-  if (testCase === 'resultBeforeExit' && input.phase === 'uninstallTarget') hold();
+  const uninstallPhase = input.commandKind === 'clean' ? 'uninstallSource' : 'uninstallTarget';
+  if (testCase === 'resultBeforeExit' && input.phase === uninstallPhase) hold();
   if (testCase === 'publicationBeforeExit' && input.phase === 'publish') hold();
-  if (testCase === 'productMissingResult' && input.phase === 'uninstallTarget')
+  if (testCase === 'productMissingResult' && input.phase === uninstallPhase)
     await rm(join(phaseRoot, 'worker-result.json'));
   process.exitCode = code;
 } else if (mode === 'consumeOwnedProduct') {

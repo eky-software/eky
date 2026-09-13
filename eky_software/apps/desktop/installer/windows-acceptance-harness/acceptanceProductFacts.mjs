@@ -26,7 +26,7 @@ function inspection(value) {
   const state = validateInstallerProductStateResult(parseStrictJsonObjectBytes(Buffer.from(value.state, 'base64'), {
     maximumBytes: 65536, errorCode: 'productOperationResultInvalid',
   }));
-  return { exactProductPresent: state.productState >= 1 || state.productName !== null ||
+  return { productState: state.productState, exactProductPresent: state.productState >= 1 || state.productName !== null ||
     state.productVersion !== null || state.localPackagePresent, installerRegistryPresent: state.ownedRegistryExists };
 }
 
@@ -35,6 +35,15 @@ export function acceptanceProductPair(products, suffix) {
   const target = inspection(products[`inspectTarget${suffix}`]);
   return source && target ? classifyUpgradeRollbackProductStates(source, target)
     : { status: 'failed', errorCode: 'productStateVerificationFailed' };
+}
+
+export function acceptanceSingleProduct(products, suffix) {
+  const source = inspection(products[`inspectSource${suffix}`]);
+  if (!source) return { status: 'failed', errorCode: 'productStateVerificationFailed' };
+  // Clean's existing failure boundary classifies the exact ProductState only;
+  // the pair classifier and the scenario's registry checks remain separate.
+  const present = source.productState >= 1;
+  return { status: 'completed', resultCode: present ? 'exactProductPresent' : 'exactProductAbsent', exactProductPresent: present };
 }
 
 export function acceptanceProductCleanup(products) {

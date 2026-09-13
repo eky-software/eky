@@ -3,6 +3,8 @@ import test from 'node:test';
 
 import {
   CleanInstallUninstallCommandFailure,
+  prepareCleanInstallUninstallTerminalOutcome,
+  completeCleanInstallUninstallTerminalOutcome,
   resolveCleanInstallUninstallTerminalOutcome,
 } from './cleanInstallUninstallFailureBoundary.mjs';
 
@@ -55,6 +57,33 @@ test('missing scenario result cannot mask a supervisor deadline', async () => {
   assert.equal(details.supervisorProcessResultCode, 'deadlineExceeded');
   assert.equal(details.productStateVerificationResultCode, 'exactProductAbsent');
   assert.equal(details.semanticCleanupResultCode, 'notRequired');
+});
+
+test('cleanup decision is separate from execution and requires its verified final result', async () => {
+  const plan = await prepareCleanInstallUninstallTerminalOutcome({ supervisorResult: failedSupervisor(),
+    readScenarioResult: async () => assert.fail('deadline is primary'),
+    verifyExactProductState: async () => ({ status: 'completed', resultCode: 'exactProductPresent', exactProductPresent: true }) });
+  assert.equal(plan.cleanupAction, 'cleanupThenVerify');
+  for (const cleanup of [undefined, { status: 'failed', errorCode: 'semanticCleanupTimedOut' }]) {
+    assert.throws(() => completeCleanInstallUninstallTerminalOutcome(plan, { cleanup }), (error) => {
+      assert.equal(error.details.errorCode, 'WINDOWS_ACCEPTANCE_SUPERVISOR_DEADLINE_EXCEEDED');
+      assert.notEqual(error.details.semanticCleanupResultCode, 'semanticCleanupCompleted');
+      return true;
+    });
+  }
+  assert.throws(() => completeCleanInstallUninstallTerminalOutcome(plan, {
+    cleanup: { status: 'completed', resultCode: 'semanticCleanupCompleted' },
+    postcondition: { status: 'completed', resultCode: 'exactProductPresent', exactProductPresent: true },
+  }), (error) => error.details.semanticCleanupResultCode === 'semanticCleanupPostconditionFailed');
+});
+
+test('missing result after a completed supervisor does not authorize product removal', async () => {
+  const details = await captureFailure({ supervisorResult: failedSupervisor({ status: 'completed', processResultCode: 'processCompleted' }),
+    readScenarioResult: async () => { throw new Error('missing'); },
+    verifyExactProductState: async () => assert.fail('missing result is not cleanup authority'),
+    cleanupExactProduct: async () => assert.fail('missing result is not cleanup authority') });
+  assert.equal(details.errorCode, 'WINDOWS_ACCEPTANCE_CLEAN_RESULT_MISSING_OR_INVALID');
+  assert.equal(details.scenarioResultCode, 'missingOrInvalid');
 });
 
 test('hard timeout verifies and removes only the exact present product', async () => {

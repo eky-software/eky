@@ -20,6 +20,7 @@ internal static class AcceptanceCommandProgram
         var kind = arguments.FirstOrDefault() switch
         {
             "--legacy-command" => "legacy",
+            "--clean-command" => "clean",
             "--workspace-success-command" => "workspaceSuccess",
             "--workspace-fault-command" => "workspaceFault",
             _ => null,
@@ -33,6 +34,7 @@ internal static class AcceptanceCommandProgram
         var scenario = kind switch
         {
             "legacy" => "historicalLegacyUpgrade",
+            "clean" => "cleanInstallUninstall",
             "workspaceSuccess" => "packagedWorkspaceSuccess",
             _ => "packagedWorkspaceFaultRollback",
         };
@@ -42,7 +44,8 @@ internal static class AcceptanceCommandProgram
         using var budgetStream = typeof(AcceptanceCommandProgram).Assembly.GetManifestResourceStream("supervisorCommandBudgets.json")!;
         using var budgets = JsonDocument.Parse(budgetStream);
         var exitReserve = budgets.RootElement.GetProperty("exitReserveMilliseconds").GetInt32();
-        var plan = budgets.RootElement.GetProperty(kind == "legacy" ? "legacyCommand" : "workspaceCommand");
+        var plan = budgets.RootElement.GetProperty(kind switch {
+            "legacy" => "legacyCommand", "clean" => "cleanCommand", _ => "workspaceCommand" });
         var deadline = plan.GetProperty("reservationMilliseconds").GetInt32();
         var phases = plan.GetProperty("phases").EnumerateArray().Select(value =>
             (Name: value[0].GetString()!, Timeout: value[1].GetInt32(), Cleanup: value[2].GetInt32())).ToArray();
@@ -99,6 +102,7 @@ internal static class AcceptanceCommandProgram
         SafeEvidenceWriter? evidence) =>
         SupervisorProgram.RunPhase(() =>
         {
+            if (!Directory.Exists(Path.GetTempPath())) throw new SupervisorFailure("requestWorkingDirectoryInvalid");
             var phaseRoot = Path.Combine(context.Root, phase);
             Directory.CreateDirectory(phaseRoot);
             var inputPath = Path.Combine(phaseRoot, "phase-input.json");
@@ -106,7 +110,8 @@ internal static class AcceptanceCommandProgram
                 scenarioRunNonce = context.ScenarioRunNonce, commandArguments = context.Input, history = context.History });
             var requestPath = Path.Combine(phaseRoot, "request.json");
             var worker = context.ContractWorker ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-                "../../../../windows-acceptance-harness", context.Kind == "legacy" ? "legacyCommandPhase.mjs" : "workspaceCommandPhase.mjs"));
+                "../../../../windows-acceptance-harness", context.Kind switch {
+                    "legacy" => "legacyCommandPhase.mjs", "clean" => "cleanCommandPhase.mjs", _ => "workspaceCommandPhase.mjs" }));
             WriteExclusive(requestPath, new { schemaVersion = 1, runNonce = nonce,
                 scenario = phase == "scenario" ? context.Scenario : "acceptanceCommandPhase",
                 artifactDescriptorSha256 = context.Input[3], command = ResolveNodeExecutable(),

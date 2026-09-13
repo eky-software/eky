@@ -1,5 +1,24 @@
 {
   "exitReserveMilliseconds": 5000,
+  "cleanCommand": {
+    "reservationMilliseconds": 965000,
+    "phases": [
+      ["prepare", 35000, 5000],
+      ["inventoryBefore", 35000, 5000],
+      ["materialize", 125000, 5000],
+      ["inspectSourceBefore", 35000, 5000],
+      ["scenarioPreparation", 35000, 5000],
+      ["scenario", 300000, 30000],
+      ["inspectSourceAfter", 35000, 5000],
+      ["semantic", 35000, 5000],
+      ["uninstallSource", 125000, 5000],
+      ["inspectSourceFinal", 35000, 5000],
+      ["artifact", 35000, 5000],
+      ["inventoryAfter", 35000, 5000],
+      ["fixtureCleanup", 35000, 5000],
+      ["publish", 35000, 5000]
+    ]
+  },
   "workspaceCommand": {
     "reservationMilliseconds": 1440000,
     "phases": [

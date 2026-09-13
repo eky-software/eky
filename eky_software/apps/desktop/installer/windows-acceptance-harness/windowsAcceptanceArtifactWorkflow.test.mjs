@@ -63,9 +63,14 @@ test('CI transfers one exact short-lived artifact to two isolated consumers', as
   assert.match(consumer, /merge-multiple: true/u);
   assert.ok(consumer.includes("repetition: ${{ fromJSON(inputs.risk_plan != '' && fromJSON(inputs.risk_plan).repetitions == 1 && '[1]' || '[1, 2]') }}"));
   assert.match(consumer, /max-parallel: 2/u);
-  assert.equal(occurrenceCount(consumer, 'timeout-minutes: 12'), 1);
-  assert.equal(occurrenceCount(consumer, 'timeout-minutes: 7'), 1);
-  assert.equal(occurrenceCount(consumer, 'installer:v2-clean'), 1);
+  assert.equal(occurrenceCount(consumer, 'timeout-minutes: 27'), 1);
+  assert.equal(occurrenceCount(consumer, 'timeout-minutes: 17'), 1);
+  assert.equal(occurrenceCount(consumer, 'timeout-minutes: 3'), 1);
+  assert.equal(occurrenceCount(consumer, 'installer:supervisor:build'), 1);
+  assert.equal(occurrenceCount(consumer, ' --clean-command '), 1);
+  assert.equal(occurrenceCount(consumer, 'verifyCleanCallerResult.mjs'), 1);
+  assert.match(consumer, /\$commandExit -ne 0 -or \$LASTEXITCODE -ne 0/u);
+  assert.doesNotMatch(consumer, /runCleanInstallUninstall\.mjs/u);
   assert.equal(
     occurrenceCount(consumer, 'installer:v2-artifact:verify'),
     2,

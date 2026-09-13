@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { link, lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { link, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import test from 'node:test';
@@ -65,3 +65,17 @@ test('command state rejects a hardlink or an unbound snapshot without deleting e
   await assert.rejects(readLegacyCommandPhase(f.path));
   assert.equal((await lstat(f.runRoot)).isDirectory(), true);
 });
+
+for (const target of ['command', 'phase']) {
+  test(`a temporary-parent alias does not authorize a linked ${target} directory`, async (t) => {
+    const f = await fixture(t);
+    const path = target === 'command' ? f.root : resolve(f.root, 'inventoryBefore');
+    const saved = `${path}-retained`;
+    await rename(path, saved);
+    t.after(async () => { await rm(path, { recursive: true, force: true }); await rm(saved, { recursive: true, force: true }); });
+    await symlink(saved, path, process.platform === 'win32' ? 'junction' : 'dir');
+    await assert.rejects(readLegacyCommandPhase(f.path), /commandPhaseInputInvalid/);
+    assert.equal((await lstat(f.runRoot)).isDirectory(), true);
+    assert.equal((await lstat(saved)).isDirectory(), true);
+  });
+}

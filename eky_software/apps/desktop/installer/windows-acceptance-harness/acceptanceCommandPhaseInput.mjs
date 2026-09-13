@@ -39,6 +39,12 @@ async function requireDirectory(path) {
 
 export async function readAcceptanceCommandPhase(inputPath, { commandKind, phases, parseArguments, createState, validateState }) {
   if (inputPath !== resolve(inputPath) || basename(inputPath) !== 'phase-input.json') invalid();
+  const suppliedPhaseRoot = dirname(inputPath);
+  const temporaryRoot = resolve(tmpdir()), canonicalTemporaryRoot = await realpath(temporaryRoot);
+  // Resolve only the configured temporary parent. The command/phase directories
+  // and result files still have to be standalone, canonical and link-free.
+  if (dirname(dirname(suppliedPhaseRoot)) === temporaryRoot)
+    inputPath = resolve(canonicalTemporaryRoot, basename(dirname(suppliedPhaseRoot)), basename(suppliedPhaseRoot), basename(inputPath));
   const phaseRoot = dirname(inputPath), commandRoot = dirname(phaseRoot);
   if (!/^eky-acceptance-command-[0-9a-f]{32}$/.test(basename(commandRoot)) ||
     dirname(commandRoot) !== await realpath(tmpdir())) invalid();
@@ -69,7 +75,7 @@ export async function readAcceptanceCommandPhase(inputPath, { commandKind, phase
   }
   const request = await readCommandPhaseJson(resolve(phaseRoot, 'request.json'));
   if (request.artifactDescriptorSha256 !== parsed.binding.artifactDescriptorSha256 ||
-    request.workingDirectory !== phaseRoot || !/^[0-9a-f]{64}$/.test(request.runNonce) ||
+    ![phaseRoot, suppliedPhaseRoot].includes(request.workingDirectory) || !/^[0-9a-f]{64}$/.test(request.runNonce) ||
     request.scenario !== (input.phase === 'scenario' ? parsed.binding.scenario : 'acceptanceCommandPhase') ||
     (input.phase === 'scenario' && request.runNonce !== input.scenarioRunNonce)) invalid();
   const binding = { schemaVersion: 1, runNonce: request.runNonce, scenario: request.scenario,

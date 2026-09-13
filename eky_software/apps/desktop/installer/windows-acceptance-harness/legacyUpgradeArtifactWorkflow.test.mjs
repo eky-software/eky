@@ -191,6 +191,7 @@ test('legacy contract groups partition the complete existing inventory without o
   });
   const expected = [
     ...['acceptanceCommandPhaseInput', 'boundedWindowsAdapterProcess', 'supervisorProcessLaunch',
+      'cleanCallerResult', 'cleanCommandPhase', 'cleanInstallUninstallFailureBoundary', 'cleanCommandEntrypoint.process',
       'buildWindowsApplicationCloseFixture', 'closedDirectoryInventory', 'inspectWindowsInstallerProductState', 'installerProductInspectionTrace',
       'installerProductOperationWorker', 'installerProductOperationProcess', 'installerProductOperationResult',
       'installerProductOperationDeadline.process', 'legacyCallerResult', 'legacyCommandCompletion.process',
@@ -207,17 +208,18 @@ test('legacy contract groups partition the complete existing inventory without o
   assert.deepEqual(groups.flat().sort(), expected.sort());
   assert.deepEqual(groups[1], ['installerProductOperationDeadline.process', 'legacyCommandCompletion.process']
     .map((name) => `installer/windows-acceptance-harness/${name}.test.mjs`));
-  assert.deepEqual(groups.slice(2), ['legacyCommandEntrypoint', 'workspaceSuccessCommandEntrypoint', 'workspaceFaultCommandEntrypoint']
-    .map((name) => [`installer/windows-acceptance-harness/${name}.process.test.mjs`]));
+  assert.deepEqual(groups.slice(2), [['legacyCommandEntrypoint', 'cleanCommandEntrypoint'], ['workspaceSuccessCommandEntrypoint'], ['workspaceFaultCommandEntrypoint']]
+    .map((names) => names.map((name) => `installer/windows-acceptance-harness/${name}.process.test.mjs`)));
 });
 
-test('entrypoint groups register every original command contract exactly once', async () => {
+test('entrypoint groups register original and migrated command contracts exactly once', async () => {
   const original = ['completed', 'blockedEvidence', 'preparationHold', 'productInspectionHold', 'scenarioHold',
     'uninstallHold', 'resultBeforeExit', 'cleanupFailed', 'scenarioAndCleanupFailed', 'removalHold',
     'publicationBeforeExit', 'productMissingResult', 'preconditionFailed', 'scenarioMissing', 'businessFailed',
     'profileChanged', 'artifactChanged'];
   const all = [];
   for (const [file, kind, extra] of [
+    ['cleanCommandEntrypoint', 'clean', ['temporaryRootAlias', 'scenarioAndProfileFailed', 'scenarioAndRemovalFailed']],
     ['legacyCommandEntrypoint', 'legacy', ['productInspectionNativeHold', 'productInspectionReadOnly']],
     ['workspaceSuccessCommandEntrypoint', 'workspace-success', ['footprintFailed']],
     ['workspaceFaultCommandEntrypoint', 'workspace-fault', ['footprintFailed', 'sessionFailed']],
@@ -231,7 +233,7 @@ test('entrypoint groups register every original command contract exactly once', 
     assert.deepEqual(registrations, [
       `${kind} public command resolves the real worker and rejects an invalid artifact before installation`,
       ...[...original, ...extra].map((name) => `${kind} fixed command entrypoint completes the real phase chain: ${name}`),
-      ...(kind === 'legacy' ? ['completed', 'blockedEvidence', 'productMissingResult', 'uninstallHold', 'scenarioAndCleanupFailed'] : ['completed'])
+      ...(['legacy', 'clean'].includes(kind) ? ['completed', 'blockedEvidence', 'productMissingResult', 'uninstallHold', 'scenarioAndCleanupFailed'] : ['completed'])
         .map((name) => `${kind} CI launch chain completes the real phase chain: ${name}`),
     ]);
     const source = await readFile(new URL(`./${file}.process.test.mjs`, import.meta.url), 'utf8');
@@ -239,7 +241,7 @@ test('entrypoint groups register every original command contract exactly once', 
     assert.ok(source.includes(`registerAcceptanceCommandEntrypointContracts('${kind}');`));
     all.push(...registrations);
   }
-  assert.equal(all.length, 66);
+  assert.equal(all.length, 92);
   assert.equal(new Set(all).size, all.length);
 });
 

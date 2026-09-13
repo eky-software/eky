@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { lstat, mkdir, open, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
@@ -15,6 +15,8 @@ import { legacyCallerResultIdentity, parseLegacyCallerResult } from './legacyCal
 import { workspaceCallerResultIdentity, parseWorkspaceCallerResult } from './workspaceCallerResult.mjs';
 import { legacyCallerResultFile } from './legacyCallerResultFile.mjs';
 import { workspaceCallerResultFile } from './workspaceCallerResultFile.mjs';
+import { cleanCallerResultIdentity, parseCleanCallerResult } from './cleanCallerResult.mjs';
+import { cleanCallerResultFile } from './cleanCallerResultFile.mjs';
 
 const commandBudgets = JSON.parse(await readFile(new URL('../windows-process-supervisor/supervisorCommandBudgets.json', import.meta.url)));
 const contractAssembly = fileURLToPath(new URL('../bin/windows-process-supervisor-contract-fixture/Release/net10.0/Eky.WindowsProcessSupervisor.ContractFixture.dll', import.meta.url));
@@ -24,6 +26,7 @@ const contractAssembly = fileURLToPath(new URL('../bin/windows-process-superviso
 async function startCiCommand(context, kind, descriptor, resultPath, signal) {
   const workflow = await readFile(new URL(kind === 'legacy'
     ? '../../../../../.github/workflows/windows-acceptance-v2-legacy-diagnostic.yml'
+    : kind === 'clean' ? '../../../../../.github/workflows/windows-acceptance-v2-clean.yml'
     : '../../../../../.github/workflows/windows-acceptance-v2-workspace.yml', import.meta.url), 'utf8');
   const lines = workflow.split(/\r?\n/u);
   const commandIndex = lines.findIndex((line) => line.trim().startsWith('pnpm --filter @eky/desktop exec dotnet ')
@@ -83,7 +86,7 @@ async function startCiCommand(context, kind, descriptor, resultPath, signal) {
 }
 
 export async function describeCommandPhases(commandRoot, kind, read = readCommandPhaseJson) {
-  const phases = commandBudgets[kind === 'legacy' ? 'legacyCommand' : 'workspaceCommand'].phases;
+  const phases = commandBudgets[kind === 'legacy' ? 'legacyCommand' : kind === 'clean' ? 'cleanCommand' : 'workspaceCommand'].phases;
   const evidence = [];
   for (const phase of [...phases.map(([name]) => name), 'publishFailure']) {
     let request;
@@ -113,7 +116,15 @@ export function reportCommandFailure(t, evidence, original) {
 // Registers the same command contract for each fixed entrypoint; it does not
 // execute or supervise processes until the existing test callback runs.
 export function registerAcceptanceCommandEntrypointContracts(kind, register = test) {
-  assert.ok(['legacy', 'workspace-success', 'workspace-fault'].includes(kind));
+  assert.ok(['legacy', 'clean', 'workspace-success', 'workspace-fault'].includes(kind));
+  const clean = kind === 'clean';
+  const workspace = kind.startsWith('workspace-');
+  const family = workspace ? 'workspace' : kind;
+  const descriptorName = clean ? 'clean-install-artifact.json' : workspace ? 'workspace-success-artifact.json' : 'legacy-upgrade-artifact.json';
+  const uninstallPhase = clean ? 'uninstallSource' : 'uninstallTarget';
+  const followingCleanupPhase = clean ? 'inspectSourceFinal' : 'uninstallSource';
+  const parseResult = clean ? parseCleanCallerResult : workspace ? parseWorkspaceCallerResult : parseLegacyCallerResult;
+  const resultFile = clean ? cleanCallerResultFile : workspace ? workspaceCallerResultFile : legacyCallerResultFile;
   register(`${kind} public command resolves the real worker and rejects an invalid artifact before installation`, {
     skip: process.platform !== 'win32', timeout: 60_000,
   }, async (t) => {
@@ -124,9 +135,8 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
     const profile = join(context.testRoot, 'synthetic-appdata');
     await mkdir(temp);
     await mkdir(profile);
-    const workspace = kind !== 'legacy';
-    const resultPath = join(temp, `eky-${workspace ? 'workspace' : 'legacy'}-caller-` + randomBytes(16).toString('hex'), 'result.json');
-    const descriptor = join(context.testRoot, workspace ? 'workspace-success-artifact.json' : 'legacy-upgrade-artifact.json');
+    const resultPath = join(temp, `eky-${family}-caller-` + randomBytes(16).toString('hex'), 'result.json');
+    const descriptor = join(context.testRoot, descriptorName);
     await writeFile(descriptor, '{}');
     const environment = { ...process.env, TEMP: temp, TMP: temp, APPDATA: profile, LOCALAPPDATA: profile };
     delete environment.npm_node_execpath;
@@ -157,38 +167,49 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
   });
   const directCases = ['completed', 'blockedEvidence', 'preparationHold', 'productInspectionHold', 'scenarioHold', 'uninstallHold', 'resultBeforeExit', 'cleanupFailed', 'scenarioAndCleanupFailed', 'removalHold',
     'publicationBeforeExit', 'productMissingResult', 'preconditionFailed', 'scenarioMissing', 'businessFailed', 'profileChanged', 'artifactChanged',
-    ...(kind === 'legacy' ? ['productInspectionNativeHold', 'productInspectionReadOnly'] : ['footprintFailed']), ...(kind === 'workspace-fault' ? ['sessionFailed'] : [])];
-  const ciCases = kind === 'legacy'
+    ...(kind === 'legacy' ? ['productInspectionNativeHold', 'productInspectionReadOnly'] : workspace ? ['footprintFailed']
+      : ['temporaryRootAlias', 'scenarioAndProfileFailed', 'scenarioAndRemovalFailed']), ...(kind === 'workspace-fault' ? ['sessionFailed'] : [])];
+  const ciCases = kind === 'legacy' || clean
     ? ['completed', 'blockedEvidence', 'productMissingResult', 'uninstallHold', 'scenarioAndCleanupFailed'] : ['completed'];
   for (const [testCase, ciChain] of [...directCases.map((name) => [name, false]), ...ciCases.map((name) => [name, true])]) {
-    const workspace = kind !== 'legacy';
     const blocked = testCase === 'blockedEvidence';
-    const succeeded = testCase === 'completed' || blocked || testCase === 'productInspectionReadOnly';
+    const succeeded = testCase === 'completed' || blocked || ['productInspectionReadOnly', 'temporaryRootAlias'].includes(testCase);
     const faultScenario = kind === 'workspace-fault' ? 'acceptanceInterruption' : undefined;
     register(`${kind} ${ciChain ? 'CI launch chain' : 'fixed command entrypoint'} completes the real phase chain: ${testCase}`, {
       skip: process.platform !== 'win32', timeout: 90_000,
     }, async (t) => {
       const context = await createRunContext(kind + '-entry-' + testCase);
-      const callerRoot = join(await realpath(tmpdir()), `eky-${workspace ? 'workspace' : 'legacy'}-caller-` + randomBytes(16).toString('hex'));
+      let commandTemp = await realpath(tmpdir());
+      let environment = process.env;
+      if (testCase === 'temporaryRootAlias') {
+        // Keep this alias contract independent of PowerShell's path-length
+        // boundary; do not add the fixture's nested root to every result path.
+        commandTemp = await mkdtemp(join(commandTemp, 'eky-t-'));
+        const alias = join(context.testRoot, 'alias');
+        await symlink(commandTemp, alias, 'junction');
+        environment = { ...process.env, TEMP: alias, TMP: alias };
+      }
+      const callerRoot = join(commandTemp, `eky-${family}-caller-` + randomBytes(16).toString('hex'));
       const resultPath = join(callerRoot, 'result.json');
-      const descriptor = join(context.testRoot, workspace ? 'workspace-success-artifact.json' : 'legacy-upgrade-artifact.json');
+      const descriptor = join(context.testRoot, descriptorName);
       let verified = false;
       t.after(async () => {
-        const removePassed = ['completed', 'productInspectionReadOnly'].includes(testCase);
-        await cleanupRunContext(context, { preserveEvidence: !verified || !removePassed });
+        const removePassed = ['completed', 'productInspectionReadOnly', 'temporaryRootAlias'].includes(testCase);
         if (verified && removePassed) await rm(callerRoot, { recursive: true });
+        await cleanupRunContext(context, { preserveEvidence: !verified || !removePassed });
+        if (verified && testCase === 'temporaryRootAlias') await rm(commandTemp, { recursive: true });
       });
       await writeFile(descriptor, JSON.stringify({ testCase }));
       const evidenceRequestPath = join(context.testRoot, 'evidence-request.json');
       if (blocked) await writeFile(evidenceRequestPath, JSON.stringify(createRequest(context, 'exitZero')));
       await writeFile(context.requestPath, JSON.stringify({ node: process.execPath,
         ...(blocked ? { evidenceRequestPath } : {}),
-        ...(['productInspectionNativeHold', 'productInspectionReadOnly'].includes(testCase) ? { useCanonicalBudgets: true } : {}),
+        ...(['productInspectionNativeHold', 'productInspectionReadOnly', 'temporaryRootAlias'].includes(testCase) ? { useCanonicalBudgets: true } : {}),
         worker: fileURLToPath(new URL('./legacyCommandWorkerFixture.mjs', import.meta.url)),
         arguments: [`--${kind}-command`, '--artifact-descriptor', descriptor, '--expected-descriptor-sha256', 'a'.repeat(64),
           '--expected-build-revision', 'b'.repeat(40), ...(faultScenario ? ['--fault-scenario', faultScenario] : []), '--result-path', resultPath] }));
       const execution = ciChain ? await startCiCommand(context, kind, descriptor, resultPath, t.signal)
-        : startSupervisor(context, { captureOutput: false,
+        : startSupervisor(context, { captureOutput: false, environment,
         dotnetAssembly: contractAssembly,
         dotnetArguments: ['--mode', 'legacyCommandEntry', '--request', context.requestPath] });
       const events = execution.events ?? [];
@@ -200,7 +221,7 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
       let phaseEvidence;
       try {
         const root = await readFile(join(context.testRoot, 'command-root.txt'), 'utf8');
-        assert.equal(dirname(root), await realpath(tmpdir()));
+        assert.equal(await realpath(dirname(root)), await realpath(commandTemp));
         assert.match(basename(root), /^eky-acceptance-command-[0-9a-f]{32}$/);
         phaseEvidence = await describeCommandPhases(root, kind);
       } catch { phaseEvidence = 'unavailable'; }
@@ -214,7 +235,7 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
             assert.equal(phase.processTreeAbsent, true);
           }
           if (succeeded) assert.deepEqual(phaseEvidence.map(({ phase }) => phase),
-            commandBudgets[workspace ? 'workspaceCommand' : 'legacyCommand'].phases.map(([phase]) => phase));
+            commandBudgets[workspace ? 'workspaceCommand' : `${kind}Command`].phases.map(([phase]) => phase));
           const receipt = (name) => readFile(join(context.testRoot, name + '-return.txt'), 'utf8')
             .catch(() => 'receiptMissingOrUnreadable');
           assert.equal(await receipt('command'), succeeded ? '0' : '1');
@@ -230,8 +251,8 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
         }
         assert.equal(completion.exitCode, succeeded ? 0 : 1);
         const commandRoot = await readFile(join(context.testRoot, 'command-root.txt'), 'utf8');
-        const phase = { preparationHold: 'prepare', productInspectionHold: 'inspectSourceBefore', productInspectionNativeHold: 'inspectSourceBefore', scenarioHold: 'scenario', uninstallHold: 'uninstallTarget',
-          resultBeforeExit: 'uninstallTarget', removalHold: 'fixtureCleanup', publicationBeforeExit: 'publish' }[testCase];
+        const phase = { preparationHold: 'prepare', productInspectionHold: 'inspectSourceBefore', productInspectionNativeHold: 'inspectSourceBefore', scenarioHold: 'scenario', uninstallHold: uninstallPhase,
+          resultBeforeExit: uninstallPhase, removalHold: 'fixtureCleanup', publicationBeforeExit: 'publish' }[testCase];
         if (phase) {
           const outcome = JSON.parse(await readFile(join(commandRoot, phase, 'result.json'), 'utf8'));
           assert.equal(outcome.processResultCode, 'deadlineExceeded');
@@ -252,57 +273,63 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
           await assert.rejects(lstat(join(commandRoot, 'inspectSourceBefore', 'inspector-observation.json')), { code: 'ENOENT' });
         }
         if (testCase === 'productMissingResult') {
-          const report = JSON.parse(await readFile(join(commandRoot, 'uninstallTarget', 'result.json'), 'utf8'));
+          const report = JSON.parse(await readFile(join(commandRoot, uninstallPhase, 'result.json'), 'utf8'));
           assert.equal(report.processResultCode, 'processCompleted');
           assert.equal(report.workerResultCode, 'workerResultMissing');
           assert.equal(report.processTreeAbsent, true);
-          await assert.rejects(lstat(join(commandRoot, 'uninstallSource')), { code: 'ENOENT' });
+          await assert.rejects(lstat(join(commandRoot, followingCleanupPhase)), { code: 'ENOENT' });
         }
         if (testCase === 'preparationHold') await assert.rejects(lstat(resultPath), { code: 'ENOENT' });
         else {
           const binding = workspace ? workspaceCallerResultIdentity(resultPath, { expectedBuildRevision: 'b'.repeat(40),
             expectedDescriptorSha256: 'a'.repeat(64), faultScenario })
-            : legacyCallerResultIdentity(resultPath, { buildRevision: 'b'.repeat(40), artifactDescriptorSha256: 'a'.repeat(64) });
+            : (clean ? cleanCallerResultIdentity : legacyCallerResultIdentity)(resultPath, { buildRevision: 'b'.repeat(40), artifactDescriptorSha256: 'a'.repeat(64) });
           const callerRead = await readFile(resultPath).then((bytes) => ({ status: 'read', bytes }),
             (error) => ({ status: error.code === 'ENOENT' ? 'missing' : 'unreadable' }));
           assert.equal(callerRead.status, 'read', 'Mandatory caller result is independent of worker-result absence');
-          const result = (workspace ? parseWorkspaceCallerResult : parseLegacyCallerResult)(callerRead.bytes, binding);
+          const result = parseResult(callerRead.bytes, binding);
           assert.equal(result.outcome.status, succeeded || testCase === 'publicationBeforeExit' ? 'completed' : 'failed');
-          if (!succeeded) await assert.rejects((workspace ? workspaceCallerResultFile : legacyCallerResultFile)(
+          if (!succeeded) await assert.rejects(resultFile(
             'verify', resultPath, binding, completion.exitCode));
           if (succeeded) assert.equal(result.outcome.fixtureRemoved, true);
           if (testCase === 'scenarioAndCleanupFailed') {
-            assert.equal(result.outcome.errorCode, workspace ? 'sourceInstallFailed' : 'WINDOWS_ACCEPTANCE_LEGACY_SOURCE_SMOKE_FAILED');
+            assert.equal(result.outcome.errorCode, workspace ? 'sourceInstallFailed' : clean ? 'WINDOWS_ACCEPTANCE_CLEAN_INSTALL_FAILED' : 'WINDOWS_ACCEPTANCE_LEGACY_SOURCE_SMOKE_FAILED');
             assert.equal(result.outcome.semanticCleanupResultCode, 'semanticCleanupFailed');
             assert.equal(result.outcome.fixtureRemoved, false);
           }
           if (['cleanupFailed', 'scenarioAndCleanupFailed'].includes(testCase)) {
-            await assert.rejects(lstat(join(commandRoot, 'uninstallSource')), { code: 'ENOENT' });
+            await assert.rejects(lstat(join(commandRoot, followingCleanupPhase)), { code: 'ENOENT' });
             assert.equal(result.outcome.fixtureRemoved, false);
           }
           if (['uninstallHold', 'resultBeforeExit'].includes(testCase)) {
-            assert.equal(result.outcome.errorCode, workspace ? 'supervisorDeadlineExceeded' : 'WINDOWS_ACCEPTANCE_SUPERVISOR_DEADLINE_EXCEEDED');
+            assert.equal(result.outcome.errorCode, workspace ? 'supervisorDeadlineExceeded' : clean ? 'WINDOWS_ACCEPTANCE_CLEAN_INSTALL_FAILED' : 'WINDOWS_ACCEPTANCE_SUPERVISOR_DEADLINE_EXCEEDED');
             assert.equal(result.outcome.fixtureRemoved, false);
-            await assert.rejects(lstat(join(commandRoot, 'uninstallSource')), { code: 'ENOENT' });
+            await assert.rejects(lstat(join(commandRoot, followingCleanupPhase)), { code: 'ENOENT' });
           }
           if (testCase === 'preconditionFailed') {
-            assert.equal(result.outcome.errorCode, workspace ? 'preconditionFailed' : 'WINDOWS_ACCEPTANCE_LEGACY_PRECONDITION_FAILED');
+            assert.equal(result.outcome.errorCode, workspace ? 'preconditionFailed' : clean ? 'WINDOWS_ACCEPTANCE_CLEAN_PRECONDITION_FAILED' : 'WINDOWS_ACCEPTANCE_LEGACY_PRECONDITION_FAILED');
             await assert.rejects(lstat(join(commandRoot, 'scenario')), { code: 'ENOENT' });
-            await assert.rejects(lstat(join(commandRoot, 'uninstallTarget')), { code: 'ENOENT' });
+            await assert.rejects(lstat(join(commandRoot, uninstallPhase)), { code: 'ENOENT' });
           }
           if (['productInspectionHold', 'productInspectionNativeHold'].includes(testCase)) {
             assert.equal(result.outcome.errorCode, workspace ? 'supervisorDeadlineExceeded' : 'WINDOWS_ACCEPTANCE_SUPERVISOR_DEADLINE_EXCEEDED');
             assert.equal(result.outcome.fixtureRemoved, false);
             await assert.rejects(lstat(join(commandRoot, 'scenario')), { code: 'ENOENT' });
-            await assert.rejects(lstat(join(commandRoot, 'uninstallTarget')), { code: 'ENOENT' });
+            await assert.rejects(lstat(join(commandRoot, uninstallPhase)), { code: 'ENOENT' });
             const { state } = JSON.parse(await readFile(join(commandRoot, 'materialize', 'phase-state.json'), 'utf8'));
             assert.equal((await lstat(state.runRoot)).isDirectory(), true);
           }
           if (['scenarioMissing', 'businessFailed', 'sessionFailed'].includes(testCase)) {
-            assert.equal(result.outcome.semanticCleanupResultCode, 'semanticCleanupCompleted');
+            assert.equal(result.outcome.semanticCleanupResultCode, clean && testCase === 'businessFailed' ? 'notRequired' : 'semanticCleanupCompleted');
             assert.equal(result.outcome.fixtureRemoved, true);
           }
           if (testCase === 'sessionFailed') assert.equal(result.outcome.errorCode, 'sessionProofInvalid');
+          if (['scenarioAndProfileFailed', 'scenarioAndRemovalFailed'].includes(testCase)) {
+            assert.equal(result.outcome.errorCode, 'WINDOWS_ACCEPTANCE_CLEAN_INSTALL_FAILED');
+            assert.equal(result.outcome.fixtureRemoved, false);
+            if (testCase === 'scenarioAndProfileFailed') assert.equal(result.outcome.safetyErrorCode, 'WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED');
+            else assert.equal(result.outcome.fixtureCleanupResultCode, 'fixtureCleanupFailed');
+          }
           if (['profileChanged', 'artifactChanged', 'footprintFailed', 'preconditionFailed', 'productMissingResult'].includes(testCase)) {
             assert.equal(result.outcome.fixtureRemoved, false);
             const { state } = JSON.parse(await readFile(join(commandRoot, 'prepare', 'phase-state.json'), 'utf8'));
