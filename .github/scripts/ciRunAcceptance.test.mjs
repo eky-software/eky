@@ -39,9 +39,9 @@ function evidence(plan) {
 
 test('light, lifecycle, mixed and full-event changes select exact coverage and complete', () => {
   for (const [paths, event, count] of [
-    [[fast], 'pull_request', 5], [[critical], 'pull_request', 24],
-    [[fast, critical], 'pull_request', 24], [[fast], 'push', 34],
-    [[fast], 'schedule', 34], [[fast], 'workflow_dispatch', 34],
+    [[fast], 'pull_request', 5], [[critical], 'pull_request', 25],
+    [[fast, critical], 'pull_request', 25], [[fast], 'push', 36],
+    [[fast], 'schedule', 36], [[fast], 'workflow_dispatch', 36],
   ]) {
     const plan = planFor(paths, event);
     const { needs, jobs } = evidence(plan);
@@ -58,7 +58,7 @@ test('legacy coverage requires every responsibility group and selected repetitio
   for (const event of ['pull_request', 'push']) {
     const plan = planFor([critical], event);
     const expected = Array.from({ length: plan.repetitions }, (_, index) =>
-      ['core', 'commands', 'legacy-entry', 'workspace-success-entry', 'workspace-fault-entry']
+      ['core', 'commands', 'legacy-entry', 'clean-upgrade-entry', 'workspace-success-entry', 'workspace-fault-entry']
         .map((group) => `caller / V2.5 ${group} contracts run ${index + 1}`)).flat();
     const original = evidence(plan);
     assert.deepEqual(original.jobs.filter((job) => /V2\.5 .* contracts run/.test(job.name))
@@ -178,6 +178,23 @@ test('preparation, all five fault results and artifact revalidation are mandator
       if (conclusion === 'missing') jobs[index].steps.splice(step, 1);
       else jobs[index].steps[step].conclusion = conclusion;
       assert.equal(evaluateCiRun(plan, needs, jobs).resultCode, 'CI_REQUIRED_STEP_INCOMPLETE');
+    }
+  }
+});
+
+test('clean and upgrade consumers require the separated supervisor build in both repetitions', () => {
+  const plan = planFor([critical], 'push');
+  for (const family of ['Verify clean lifecycle run', 'Verify upgrade and rollback run']) {
+    for (const repetition of [1, 2]) {
+      for (const conclusion of ['missing', 'failure', 'cancelled', 'skipped']) {
+        const { needs, jobs } = evidence(plan);
+        const job = jobs.find((value) => value.name.endsWith(`${family} ${repetition}`));
+        const step = job.steps.findIndex((value) => value.name === 'Build acceptance supervisor');
+        assert.ok(step >= 0);
+        if (conclusion === 'missing') job.steps.splice(step, 1);
+        else job.steps[step].conclusion = conclusion;
+        assert.equal(evaluateCiRun(plan, needs, jobs).resultCode, 'CI_REQUIRED_STEP_INCOMPLETE');
+      }
     }
   }
 });

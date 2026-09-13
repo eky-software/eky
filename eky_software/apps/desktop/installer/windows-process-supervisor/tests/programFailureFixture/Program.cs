@@ -14,18 +14,6 @@ if (
 }
 
 var mode = args[1];
-if (mode == "completedSupervisorHeld")
-{
-    var exitCode = SupervisorProgram.Run(args[2..]);
-    if (exitCode != 0) return exitCode;
-    File.WriteAllText(Path.Combine(Path.GetDirectoryName(args[3])!, "supervisor-returned.json"),
-        JsonSerializer.Serialize(new { schemaVersion = 1, exitCode }));
-    // Intentional fixture fault: the caller must not confuse a valid result
-    // with this command's exit. Only the existing outer test Job ends it.
-    using var heldAfterResult = new ManualResetEvent(false);
-    heldAfterResult.WaitOne();
-    return exitCode;
-}
 if (mode == "commandBudget")
 {
     using var input = JsonDocument.Parse(File.ReadAllText(args[3]));
@@ -60,34 +48,6 @@ if (mode == "callerAdmission")
 if (mode == "nativeMsiContract")
 {
     return await NativeMsiAdapterContract.Run(args[3]);
-}
-if (mode == "productOperationExhaustedCleanup")
-{
-    return InstallerProductOperationProgram.Run(["--product-operation", args[3]], execute: (request, clock, _) =>
-    {
-        // Deterministically model a cleanup that consumes its entire existing allowance.
-        using var boundary = new ManualResetEvent(false);
-        var remaining = request.TimeoutMilliseconds - clock.ElapsedMilliseconds;
-        if (remaining > 0) boundary.WaitOne((int)remaining);
-        return SupervisorOutcome.Failed("deadlineExceeded", "cleanupUnverified", false);
-    });
-}
-if (mode.StartsWith("productOperation", StringComparison.Ordinal))
-{
-    var stage = mode["productOperation".Length..];
-    if (stage is not ("Command" or "Preparation" or "Read" or "Remove" or "CleanupFailure" or
-        "MissingResult" or "OpenResultChannel" or "ResultBeforeExit" or "SupervisorHeld")) return 64;
-    using var input = JsonDocument.Parse(Convert.FromBase64String(args[3]));
-    var worker = input.RootElement.GetProperty("workerPath").GetString()!;
-    var result = InstallerProductOperationProgram.Run(["--product-operation", args[3]],
-        Path.Combine(Path.GetDirectoryName(worker)!, "fixtures", "installerProductOperationWorkerFixture.mjs"),
-        stage == "SupervisorHeld" ? "MissingResult" : stage);
-    if (stage == "SupervisorHeld")
-    {
-        using var heldAfterReply = new ManualResetEvent(false);
-        heldAfterReply.WaitOne();
-    }
-    return result;
 }
 if (mode == "blockedInvalidRequestEvidence")
 {

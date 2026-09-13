@@ -34,7 +34,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [core, commands, legacy-entry, workspace-success-entry, workspace-fault-entry]
+        group: [core, commands, legacy-entry, clean-upgrade-entry, workspace-success-entry, workspace-fault-entry]
         repetition: ${{ fromJSON(inputs.risk_plan != '' && fromJSON(inputs.risk_plan).repetitions == 1 && '[1]' || '[1, 2]') }}
     defaults:
       run:

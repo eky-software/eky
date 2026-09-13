@@ -72,6 +72,16 @@ const SUPERVISOR_ERROR_CODES = Object.freeze({
   unexpectedFailure: 'WINDOWS_ACCEPTANCE_SUPERVISOR_UNEXPECTED_FAILURE',
 });
 
+export const UPGRADE_COMMAND_ERROR_CODES = Object.freeze([...new Set([
+  ...Object.values(SCENARIO_ERROR_CODES), ...Object.values(SUPERVISOR_ERROR_CODES),
+  'WINDOWS_ACCEPTANCE_SUPERVISOR_PROCESS_FAILED', 'WINDOWS_ACCEPTANCE_UPGRADE_SCENARIO_FAILED',
+  'WINDOWS_ACCEPTANCE_UPGRADE_POSTCONDITION_FAILED', 'WINDOWS_ACCEPTANCE_UPGRADE_RESULT_MISSING_OR_INVALID',
+  'WINDOWS_ACCEPTANCE_UPGRADE_ARGUMENTS_INVALID', 'WINDOWS_ACCEPTANCE_UPGRADE_TEMP_ROOT_INVALID',
+  'WINDOWS_ACCEPTANCE_UPGRADE_LOCAL_FIXTURE_INVALID', 'WINDOWS_ACCEPTANCE_UPGRADE_LOCAL_FIXTURE_CHANGED',
+  'WINDOWS_ACCEPTANCE_UPGRADE_FIXTURE_CLEANUP_FAILED', 'WINDOWS_ACCEPTANCE_UPGRADE_FINAL_CLEANUP_FAILED',
+  'WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED',
+])]);
+
 export class UpgradeRollbackCommandFailure extends Error {
   constructor(details) {
     super(details.errorCode);
@@ -192,11 +202,10 @@ function failureDetails({
   });
 }
 
-async function recoverAndThrow({
+async function prepareRecovery({
   applicationCleanupResultCode = 'notChecked',
   runningUpgradeInitialExitCode = null,
   runningUpgradeObservation = null,
-  cleanupExactProducts,
   errorCode,
   initialInspection,
   scenarioResultCode,
@@ -205,59 +214,23 @@ async function recoverAndThrow({
   verifyExactProductStates,
 }) {
   if (!supervisorResult.processTreeAbsent) {
-    throw new UpgradeRollbackCommandFailure(failureDetails({ errorCode, scenarioResultCode,
+    return Object.freeze({ errorCode, scenarioResultCode,
       applicationCleanupResultCode, runningUpgradeInitialExitCode, runningUpgradeObservation,
       initialProductStateResultCode: 'notChecked', postconditionResultCode: 'notChecked',
-      semanticCleanupResultCode: 'blockedByOwnedProcessTree', supervisorResult }));
+      semanticCleanupResultCode: 'blockedByOwnedProcessTree', supervisorResult, cleanupAction: 'blocked' });
   }
   const initial =
     initialInspection ?? (await inspectProducts(verifyExactProductStates));
-  let initialProductStateResultCode =
+  const initialProductStateResultCode =
     initial.status === 'completed' ? initial.resultCode : initial.errorCode;
-  let semanticCleanupResultCode = 'notRequired';
-  let postconditionResultCode = initialProductStateResultCode;
-  if (
-    initial.status === 'completed' &&
-    initial.resultCode !== 'exactProductsAbsent'
-  ) {
-    if (!semanticCleanupAllowed) {
-      semanticCleanupResultCode = 'blockedByPrecondition';
-    } else {
-      const cleanup = await cleanupProducts(cleanupExactProducts);
-      semanticCleanupResultCode =
-        cleanup.status === 'completed' ? cleanup.resultCode : cleanup.errorCode;
-      const postcondition = await inspectProducts(verifyExactProductStates);
-      postconditionResultCode =
-        postcondition.status === 'completed'
-          ? postcondition.resultCode
-          : postcondition.errorCode;
-      if (
-        cleanup.status === 'completed' &&
-        postcondition.status === 'completed' &&
-        postcondition.resultCode === 'exactProductsAbsent'
-      ) {
-        postconditionResultCode = 'exactProductsAbsentAfterCleanup';
-      }
-    }
-  }
-
-  throw new UpgradeRollbackCommandFailure(
-    failureDetails({
-      applicationCleanupResultCode,
-      runningUpgradeInitialExitCode,
-      runningUpgradeObservation,
-      errorCode,
-      initialProductStateResultCode,
-      postconditionResultCode,
-      scenarioResultCode,
-      semanticCleanupResultCode,
-      supervisorResult,
-    }),
-  );
+  const present = initial.status === 'completed' && initial.resultCode !== 'exactProductsAbsent';
+  return Object.freeze({ applicationCleanupResultCode, runningUpgradeInitialExitCode, runningUpgradeObservation,
+    errorCode, initialProductStateResultCode, postconditionResultCode: initialProductStateResultCode,
+    scenarioResultCode, semanticCleanupResultCode: present && !semanticCleanupAllowed ? 'blockedByPrecondition' : 'notRequired',
+    supervisorResult, cleanupAction: present && semanticCleanupAllowed ? 'cleanupThenVerify' : 'notRequired' });
 }
 
-export async function resolveUpgradeRollbackTerminalOutcome({
-  cleanupExactProducts,
+export async function prepareUpgradeRollbackTerminalOutcome({
   readScenarioResult,
   supervisorResult,
   verifyExactProductStates: verifyProducts,
@@ -266,13 +239,18 @@ export async function resolveUpgradeRollbackTerminalOutcome({
   const verifyExactProductStates = () => outcome && !areProductProcessesAbsent({ outcome })
     ? { status: 'failed', errorCode: 'productStateVerificationProcessRemains' } : verifyProducts();
   if (supervisorResult.status === 'completed') {
-    const scenarioResult = await readScenarioResult();
+    let scenarioResult;
+    try { scenarioResult = await readScenarioResult(); }
+    catch {
+      return Object.freeze({ supervisorResult, errorCode: 'WINDOWS_ACCEPTANCE_UPGRADE_RESULT_MISSING_OR_INVALID',
+        scenarioResultCode: 'missingOrInvalid', initialProductStateResultCode: 'notChecked',
+        postconditionResultCode: 'notChecked', semanticCleanupResultCode: 'blockedByPrecondition', cleanupAction: 'blocked' });
+    }
     if (scenarioResult.status !== 'completed') {
-      await recoverAndThrow({
+      return prepareRecovery({
         applicationCleanupResultCode: scenarioResult.applicationCleanupResultCode,
         runningUpgradeInitialExitCode: scenarioResult.runningUpgradeInitialExitCode,
         runningUpgradeObservation: scenarioResult.runningUpgradeObservation,
-        cleanupExactProducts,
         errorCode: scenarioErrorCode(scenarioResult),
         scenarioResultCode: scenarioResult.resultCode,
         semanticCleanupAllowed:
@@ -286,8 +264,7 @@ export async function resolveUpgradeRollbackTerminalOutcome({
       postcondition.status !== 'completed' ||
       postcondition.resultCode !== 'exactProductsAbsent'
     ) {
-      await recoverAndThrow({
-        cleanupExactProducts,
+      return prepareRecovery({
         errorCode: 'WINDOWS_ACCEPTANCE_UPGRADE_POSTCONDITION_FAILED',
         initialInspection: postcondition,
         runningUpgradeInitialExitCode: scenarioResult.runningUpgradeInitialExitCode,
@@ -297,7 +274,7 @@ export async function resolveUpgradeRollbackTerminalOutcome({
         verifyExactProductStates,
       });
     }
-    return scenarioResult;
+    return Object.freeze({ supervisorResult, scenarioResult, errorCode: null, cleanupAction: 'notRequired' });
   }
 
   let errorCode = supervisorErrorCode(supervisorResult);
@@ -325,17 +302,42 @@ export async function resolveUpgradeRollbackTerminalOutcome({
       scenarioResultCode = 'missingOrInvalid';
     }
   }
-  await recoverAndThrow({
+  return prepareRecovery({
     applicationCleanupResultCode,
     runningUpgradeInitialExitCode,
     runningUpgradeObservation,
-    cleanupExactProducts,
     errorCode,
     scenarioResultCode,
     semanticCleanupAllowed,
     supervisorResult,
     verifyExactProductStates,
   });
+}
+
+// This reader consumes completed phase facts; it does not execute cleanup.
+export function completeUpgradeRollbackTerminalOutcome(plan, { cleanup, postcondition } = {}) {
+  if (plan.errorCode === null) return plan.scenarioResult;
+  let { semanticCleanupResultCode, postconditionResultCode } = plan;
+  if (plan.cleanupAction === 'cleanupThenVerify') {
+    semanticCleanupResultCode = cleanup?.status === 'completed' && cleanup.resultCode === 'semanticCleanupCompleted'
+      ? cleanup.resultCode : cleanup?.errorCode ?? 'semanticCleanupFailed';
+    postconditionResultCode = postcondition?.status === 'completed' ? postcondition.resultCode
+      : postcondition?.errorCode ?? 'productStateVerificationFailed';
+    if (semanticCleanupResultCode === 'semanticCleanupCompleted' && postconditionResultCode === 'exactProductsAbsent')
+      postconditionResultCode = 'exactProductsAbsentAfterCleanup';
+  }
+  throw new UpgradeRollbackCommandFailure(failureDetails({ ...plan, semanticCleanupResultCode, postconditionResultCode }));
+}
+
+export async function resolveUpgradeRollbackTerminalOutcome(options) {
+  const plan = await prepareUpgradeRollbackTerminalOutcome(options);
+  let cleanup, postcondition;
+  if (plan.cleanupAction === 'cleanupThenVerify') {
+    cleanup = await cleanupProducts(options.cleanupExactProducts);
+    postcondition = await inspectProducts(() => options.outcome && !areProductProcessesAbsent({ outcome: options.outcome })
+      ? { status: 'failed', errorCode: 'productStateVerificationProcessRemains' } : options.verifyExactProductStates());
+  }
+  return completeUpgradeRollbackTerminalOutcome(plan, { cleanup, postcondition });
 }
 
 export function upgradeRollbackFailureDetails(error) {

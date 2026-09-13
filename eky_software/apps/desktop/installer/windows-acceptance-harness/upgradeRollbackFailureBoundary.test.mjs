@@ -4,6 +4,8 @@ import { classifyRunningUpgradeLog } from './runningUpgradeObservation.mjs';
 
 import {
   resolveUpgradeRollbackTerminalOutcome,
+  prepareUpgradeRollbackTerminalOutcome,
+  completeUpgradeRollbackTerminalOutcome,
   upgradeRollbackFailureDetails,
 } from './upgradeRollbackFailureBoundary.mjs';
 
@@ -256,4 +258,36 @@ test('successful worker with a remaining product fails the independent postcondi
       return true;
     },
   );
+});
+
+test('the decision reader does not execute cleanup and preserves the original failure', async () => {
+  const plan = await prepareUpgradeRollbackTerminalOutcome({ supervisorResult: supervisor({ status: 'failed',
+    processResultCode: 'deadlineExceeded', workerResultCode: 'notChecked' }),
+    readScenarioResult: () => { throw new Error('must not read'); },
+    verifyExactProductStates: () => products('targetProductPresent') });
+  assert.equal(plan.cleanupAction, 'cleanupThenVerify');
+  assert.throws(() => completeUpgradeRollbackTerminalOutcome(plan, {
+    cleanup: { status: 'failed', errorCode: 'semanticCleanupProcessRemains' },
+    postcondition: { status: 'failed', errorCode: 'productStateVerificationProcessRemains' },
+  }), (error) => {
+    const details = upgradeRollbackFailureDetails(error);
+    assert.equal(details.errorCode, 'WINDOWS_ACCEPTANCE_SUPERVISOR_DEADLINE_EXCEEDED');
+    assert.equal(details.semanticCleanupResultCode, 'semanticCleanupProcessRemains');
+    assert.equal(details.postconditionResultCode, 'productStateVerificationProcessRemains');
+    return true;
+  });
+});
+
+test('a missing scenario after completed supervision is a closed failure, not cleanup authority', async () => {
+  await assert.rejects(resolveUpgradeRollbackTerminalOutcome({ supervisorResult: supervisor(),
+    readScenarioResult: () => { throw new Error('private read error'); },
+    verifyExactProductStates: () => { throw new Error('must not inspect'); },
+    cleanupExactProducts: () => assert.fail('must not uninstall'),
+  }), (error) => {
+    const details = upgradeRollbackFailureDetails(error);
+    assert.equal(details.errorCode, 'WINDOWS_ACCEPTANCE_UPGRADE_RESULT_MISSING_OR_INVALID');
+    assert.equal(details.semanticCleanupResultCode, 'blockedByPrecondition');
+    assert.equal(details.postconditionResultCode, 'notChecked');
+    return true;
+  });
 });

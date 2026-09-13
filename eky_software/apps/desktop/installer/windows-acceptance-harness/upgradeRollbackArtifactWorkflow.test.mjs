@@ -28,7 +28,7 @@ test('V2.4 workflow builds once and fans identical bytes to two consumers', asyn
     1,
   );
   assert.equal(
-    source.match(/installer:v2-upgrade-rollback --artifact-descriptor/gu)
+    source.match(/Eky\.WindowsProcessSupervisor\.dll --upgrade-command --artifact-descriptor/gu)
       ?.length,
     1,
   );
@@ -41,6 +41,13 @@ test('V2.4 workflow builds once and fans identical bytes to two consumers', asyn
   );
   assert.match(source, /WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_STAGE_CLEANUP_FAILED/u);
   assert.doesNotMatch(source, /continue-on-error|retry|re-run/iu);
+  const consumer = source.split('  upgrade_consumer:')[1];
+  assert.match(consumer, /timeout-minutes: 37/u);
+  assert.match(consumer, /name: Build acceptance supervisor\s+shell: pwsh\s+timeout-minutes: 3/u);
+  assert.match(consumer, /name: Run supervised upgrade and rollback once\s+shell: pwsh\s+timeout-minutes: 27/u);
+  assert.equal(consumer.match(/verifyUpgradeCallerResult\.mjs/gu)?.length, 1);
+  assert.match(consumer, /if \(\$commandExit -ne 0 -or \$LASTEXITCODE -ne 0\)/u);
+  assert.doesNotMatch(consumer, /runUpgradeRollback\.mjs/u);
 });
 
 test('V2.4 workflow uses only approved immutable artifact actions', async () => {
@@ -89,9 +96,11 @@ test('existing diagnostic can consume the exact upgrade artifact without rebuild
   const diagnostic = source.split('  packaged-boundary-diagnostic:')[1];
   assert.match(source, /options: \[legacy, workspace, workspace-fault, upgrade\]/u);
   assert.equal(diagnostic.match(/'upgrade' \{ 'verifyUpgradeRollbackArtifact\.mjs' \}/gu)?.length, 2);
-  assert.equal(diagnostic.match(/runUpgradeRollback\.mjs --artifact-descriptor/gu)?.length, 1);
+  assert.equal(diagnostic.match(/Eky\.WindowsProcessSupervisor\.dll --upgrade-command --artifact-descriptor/gu)?.length, 1);
+  assert.equal(diagnostic.match(/verifyUpgradeCallerResult\.mjs/gu)?.length, 1);
   assert.match(diagnostic, /artifact-ids: \$\{\{ inputs\.artifact_id \}\}/u);
   assert.match(diagnostic, /run-id: \$\{\{ inputs\.artifact_run_id \}\}/u);
-  assert.match(diagnostic, /if \(\$LASTEXITCODE -ne 0\) \{ throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED' \}/u);
+  assert.match(diagnostic, /if \(\$commandExit -ne 0 -or \$LASTEXITCODE -ne 0\) \{ throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED' \}/u);
+  assert.doesNotMatch(diagnostic, /runUpgradeRollback\.mjs/u);
   assert.doesNotMatch(diagnostic, /installer:v2-upgrade-artifact:build|upload-artifact|continue-on-error/u);
 });

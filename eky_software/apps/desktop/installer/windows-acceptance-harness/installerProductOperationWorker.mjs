@@ -1,6 +1,5 @@
 import { spawn } from 'node:child_process';
 import { lstat, mkdir, readFile, realpath, rm, rmdir } from 'node:fs/promises';
-import { connect } from 'node:net';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
@@ -95,17 +94,6 @@ export async function executeProductOperation(input, {
     status: errorCode === null ? 'completed' : 'failed', state, errorCode, resultCleanup });
 }
 
-export async function sendProductOperationResult(request, result) {
-  const bytes = Buffer.from(JSON.stringify(result));
-  if (bytes.length > 2 * MAX_BYTES) throw new Error('productResultInvalid');
-  await new Promise((done, reject) => {
-    const socket = connect(`\\\\.\\pipe\\eky-product-worker-${request.nonce}`);
-    socket.once('error', reject);
-    socket.once('connect', () => socket.end(bytes));
-    socket.once('close', (hadError) => hadError ? reject(new Error('productChannelFailed')) : done());
-  });
-}
-
 // The command-entrypoint migration uses the existing supervisor's worker-result
 // contract. Preparation, operation, publication and their failure paths all run
 // inside its Job; this worker does not start a supervisor or own emergency cleanup.
@@ -157,13 +145,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   try {
     if (process.argv.length === 4 && process.argv[2] === '--owned-request') {
       process.exitCode = await runOwnedProductOperation(await readOwnedRequest(process.argv[3]));
-    } else {
-      if (process.argv.length !== 3) throw new Error('productRequestInvalid');
-      const request = validateProductOperationRequest(parseStrictJsonObjectBytes(Buffer.from(process.argv[2], 'base64'),
-        { errorCode: 'productRequestInvalid' }));
-      const result = await executeProductOperation(request);
-      await sendProductOperationResult(request, result);
-      process.exitCode = result.status === 'completed' ? 0 : 1;
-    }
+    } else throw new Error('productRequestInvalid');
   } catch { process.exitCode = 1; }
 }

@@ -11,69 +11,6 @@ import { readWindowsAcceptanceSupervisorResult } from '../windows-process-superv
 
 import { describeCommandPhases, reportCommandFailure } from './acceptanceCommandEntrypointContract.mjs';
 
-// Characterize the old callers before replacement. A deadline here proves
-// their missing completion boundary, not successful caller error handling.
-for (const kind of ['clean', 'upgrade']) {
-  for (const hold of [false, true]) {
-    test(`unmigrated ${kind} caller separates supervisor result from command exit: ${hold ? 'held' : 'completed'}`, {
-      skip: process.platform !== 'win32', timeout: 30_000,
-    }, async (t) => {
-      const context = await createRunContext(kind + '-caller-boundary');
-      let verified = false;
-      t.after(() => cleanupRunContext(context, { preserveEvidence: hold || !verified }));
-      const profile = join(context.testRoot, 'synthetic-profile');
-      await mkdir(profile);
-      const inputPath = join(context.testRoot, 'caller-input.json');
-      await writeFile(inputPath, JSON.stringify({ kind, hold, binding: {
-        schemaVersion: 1, runNonce: context.runNonce, scenario: context.scenario,
-        artifactDescriptorSha256: context.artifactDescriptorSha256,
-      } }));
-      const request = createRequest(context, 'exitZero', { timeoutMilliseconds: 15_000, cleanupReserveMilliseconds: 1_000 });
-      request.arguments = [fileURLToPath(new URL('./legacyCommandWorkerFixture.mjs', import.meta.url)), 'unboundedCaller', inputPath];
-      await writeRequest(context, request);
-      const execution = startSupervisor(context, { environment: { ...process.env, APPDATA: profile } });
-      const events = [];
-      execution.child.once('exit', () => events.push('exit'));
-      execution.child.once('close', () => events.push('close'));
-      const completion = await execution.completion;
-      assert.deepEqual(events, ['exit', 'close']);
-      assert.equal(completion.signal, null);
-      const outer = await readWindowsAcceptanceSupervisorResult(context.resultPath, {
-        ...context, supervisorExitCode: completion.exitCode,
-      });
-      assert.equal(outer.processTreeAbsent, true);
-      const { runRoot } = JSON.parse(await readFile(join(context.testRoot, 'caller-run.json'), 'utf8'));
-      if (hold) {
-        assert.equal(completion.exitCode, 1);
-        assert.equal(outer.processResultCode, 'deadlineExceeded');
-        assert.equal(outer.cleanupResultCode, 'processTreeAbsent');
-        assert.equal(outer.workerResultCode, 'notChecked');
-        const scenarioRoot = join(runRoot, 'scenario');
-        const innerRequest = JSON.parse(await readFile(join(scenarioRoot, 'request.json'), 'utf8'));
-        const inner = await readWindowsAcceptanceSupervisorResult(join(scenarioRoot, 'result.json'), {
-          ...innerRequest, supervisorExitCode: 0,
-        });
-        assert.equal(inner.status, 'completed');
-        assert.equal(inner.processTreeAbsent, true);
-        assert.deepEqual(JSON.parse(await readFile(join(scenarioRoot, 'supervisor-returned.json'), 'utf8')),
-          { schemaVersion: 1, exitCode: 0 });
-        for (const name of ['supervisor-exit.json', 'supervisor-close.json', 'scenario-read.json', 'caller-return.json', 'worker-result.json'])
-          await assert.rejects(readFile(join(context.testRoot, name)), { code: 'ENOENT' });
-        assert.equal((await lstat(runRoot)).isDirectory(), true);
-      } else {
-        assert.equal(completion.exitCode, 0);
-        assert.equal(outer.status, 'completed');
-        for (const name of ['supervisor-exit.json', 'supervisor-close.json'])
-          assert.deepEqual(JSON.parse(await readFile(join(context.testRoot, name), 'utf8')), { exitCode: 0, signal: null });
-        const summary = JSON.parse(await readFile(join(context.testRoot, 'caller-return.json'), 'utf8'));
-        assert.equal(summary.status, 'completed');
-        assert.equal(summary.fixtureRemoved, true);
-        await assert.rejects(lstat(runRoot), { code: 'ENOENT' });
-      }
-      verified = true;
-    });
-  }
-}
 
 test('command failure diagnostics preserve missing results and reject raw fields', async () => {
   const root = join(tmpdir(), 'synthetic-command');

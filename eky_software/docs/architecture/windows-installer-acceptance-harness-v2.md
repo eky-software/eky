@@ -1075,7 +1075,7 @@ Paikallinen build-once-järjestys on:
 ```text
 pnpm --filter @eky/desktop installer:v2-upgrade-artifact:build --artifact-root <absolute-new-artifact-root> --summary-path <absolute-summary-path-outside-artifact-root>
 pnpm --filter @eky/desktop installer:v2-upgrade-artifact:verify --artifact-root <absolute-artifact-root> --expected-descriptor-sha256 <producer-descriptor-sha256> --expected-build-revision <producer-git-revision>
-pnpm --filter @eky/desktop installer:v2-upgrade-rollback --artifact-descriptor <absolute-artifact-root>/upgrade-rollback-artifact.json
+pnpm --filter @eky/desktop installer:v2-upgrade-rollback --artifact-descriptor <absolute-artifact-root>/upgrade-rollback-artifact.json --expected-descriptor-sha256 <producer-descriptor-sha256> --expected-build-revision <producer-git-revision> --result-path <absolute-temporary-root>/eky-upgrade-caller-<32-lowercase-hex-invocation>/result.json
 ```
 
 Workflow `.github/workflows/windows-acceptance-v2-upgrade.yml` käyttää yhtä
@@ -2680,9 +2680,9 @@ CI-kytkentä sijaitsee repositoryn `.github/workflows`-kansiossa.
 | CI-politiikan sopimukset | Oikeat repositorypolut, riskiluokitus, vaaditut jobit ja vaiheet, puuttuvan tai osittaisen matriisin hylkäys | `pnpm test:ci`; `ciRiskPolicy.mjs` ja `ciJobCoverage.mjs` |
 | System security / web critical | Rajapinta-, turvallisuus- ja selainpolut synteettisillä profiileilla | Omat 10/15 min CI-jobit; Playwrightin hallitsemat käyttäjäpolut |
 | Electron critical | Development-runtime, ikkuna, latautuminen, restart ja käyttäjäpolut; fixture omistaa oman runtimen ja portin | `e2e:electron:critical`; yksi worker, ensimmäisen epäonnistumisen näyttö säilyy ja flaky hylätään |
-| Supervisor- ja komentorajaregressiot | Root-exit, Job-empty, worker-result, cleanup sekä kiinteiden komentojen virhepolut | `installer:test:windows-supervisor` ja `installer:test:windows-supervisor-v2-legacy`; jälkimmäisen viisi vastuuryhmää ajetaan CI:ssä kahdesti, 10 min / job |
+| Supervisor- ja komentorajaregressiot | Root-exit, Job-empty, worker-result, cleanup sekä kiinteiden komentojen virhepolut | `installer:test:windows-supervisor` ja `installer:test:windows-supervisor-v2-legacy`; jälkimmäisen kuusi vastuuryhmää ajetaan CI:ssä kahdesti, 10 min / job |
 | V2 clean | Asennus, repair/reinstall ja poisto; nykyisen .NET-komennon kiinteät vaiheet, nimetty skenaarioworker ja erillinen result-verifier | `installer:v2-clean`; komento 965 s, skenaario edelleen 300 s / cleanup 30 s; CI-step 17 min, erillinen build 3 min, job 27 min |
-| V2 upgrade / rollback | N -> N+1, downgrade-torjunta, Windows Installer rollback, binary rollback ja käynnissä olevan sovelluksen päivitys | `installer:v2-upgrade-rollback`; Node-caller, skenaario 600 s / siivousvaraus 30 s; CI-step 12 min, job 18 min |
+| V2 upgrade / rollback | N -> N+1, downgrade-torjunta, Windows Installer rollback, binary rollback ja käynnissä olevan sovelluksen päivitys | `installer:v2-upgrade-rollback`; nykyinen .NET-komento 1565 s, skenaario edelleen 600 s / cleanup 30 s; CI-step 27 min, erillinen build 3 min, job 37 min |
 | V2 historical legacy | Historiallinen 0.2.6-artifact, oikea käynnistys, major upgrade, uusi käynnistys ja datan säilyminen | `.NET --legacy-command` ja erillinen pakollinen caller-result-verifier; komentoraja 1 565 s, CI-step 27 min, normaali job 37 min |
 | V2 workspace success | Synteettisen paketin päivitys, työtilojen eristys, restart, virheellisen historian torjunta ja vanhan session HTTP-hylkäys | `.NET --workspace-success-command` ja result-verifier; komentoraja 1 440 s, CI-step 25 min, job 30 min |
 | V2 workspace fault | Viisi nimettyä fault/rollback-skenaariota samoilla varmennetuilla artifact-tavuilla | `.NET --workspace-fault-command` ja result-verifier; 25 min / skenaariovaihe, 140 min / consumer; täysi matriisi 5 x 2 |
@@ -2695,7 +2695,7 @@ tarkistuskopion; tämä ei julkaise pilot-bundlea. Workspace success ja fault
 jakavat saman producer-artifactin. Revisiosta raportoidaan erikseen
 lähde-HEAD, CI:n todellinen checkout ja artifactin build-identiteetti.
 
-Nykyinen clean/legacy/workspace-käynnistysketju on GitHubin `pwsh` ->
+Nykyinen clean/upgrade/legacy/workspace-käynnistysketju on GitHubin `pwsh` ->
 `pnpm --filter @eky/desktop exec dotnet` -> kiinteä .NET-komento ->
 nimetyt vaihetyöntekijät. Tämän jälkeen sama CI-step suorittaa
 `pnpm exec node verify...CallerResult.mjs`-verifierin ja tarkistaa sekä
@@ -2752,51 +2752,30 @@ Priorisoidut löydökset ja sulkemisehdot:
    Konsolitallenne jää yksityiseksi; estymistodiste käyttää nykyistä .NET-fixturen
    estyvää kirjoitinta. Tämä ei vielä testaa GitHub-runnerin lokikuljetusta tai
    selitä alkuperäistä legacy-jobin katkeamista. Normaali CI-hyväksyntä on auki.
-2. **Clean/upgrade-valmistelun ja viimeistelyn raja.** Näiden Node-callereiden
-   suorat tiedosto-operaatiot ja supervisorin jälkeinen `finally`/`close`
-   eivät kuulu legacy/workspace-komentorajaan. Tuoteoperaatiot käyttävät
-   edelleen `installerProductOperationProcess`-vastuuta, käynnistyssäiesiltaa
-   ja tuloskanavaa; kanavan valmistelu ja sulkeminen on arvioitava erikseen
-   bounded supervisor -odotuksesta. Todista aukko kohdetestillä ennen
-   korjausta. Vanhaa siltaa ei saa poistaa ennen näiden käyttäjien siirtoa.
-   Tämä ei osoita nykyisen legacy-virheen syytä eikä valtuuta uutta omistajaa.
+2. **Clean/upgrade-valmistelun ja viimeistelyn raja.** Lähtötilan Node-callerit
+   odottivat supervisorin `completion`-lupausta ja virhepolun `finally`-
+   valmistumista ilman koko callerin rajaa. Ennen siirtoa nykyisen fixturen
+   neljä karakterisointitapausta todistivat eron: supervisor-result saattoi
+   valmistua, vaikka isäntä jäi eloon, caller-result puuttui ja vain ulompi
+   testiturva katkaisi puun. Näyttö kuvasi aukkoa, ei hyväksyttyä valmistumista
+   eikä alkuperäisen legacy-/runner-havainnon juurisyytä.
 
-   Tarkennettu katselmus: molemmat callerit odottavat skenaarion supervisorin
-   `completion`-lupausta ilman callerin kokonaisrajaa. Myös virhepolun `finally`
-   odottaa samaa lupausta lopetuspyynnön jälkeen. Skenaarion sisäinen määräaika
-   ei kata supervisorin oman poistumisen estymistä, callerin valmistelua tai
-   jälkitarkastuksia. Nykyisten caller-regressioiden injektoitu supervisor
-   valmistuu heti; niiden vihreys ei todista tätä koko komentoprosessin rajaa.
+   **Omistajan hyväksymä korvaava siirto on kytketty molempiin komentoihin.**
+   Clean ja upgrade käyttävät nykyisen `AcceptanceCommandProgram`-vastuun
+   kiinteitä vaihelistoja. Sama supervisor omistaa kulloisenkin vaiheen
+   prosessipuun. Artifact-, skenaario-, tuotetila- ja business-tarkistukset
+   pysyvät nimetyissä nykyisissä vastuissaan. Nykyinen worker suorittaa
+   MSI-operaation; vaihe ei käynnistä uutta supervisoria. Valmistelu, tuloksen
+   luku, sallittu cleanup ja julkaisu kuuluvat samaan komentorajaan.
 
-   **Omistajan hyväksymä korvaava siirto, clean kytketty ja upgrade avoinna:** clean- ja
-   upgrade-komentojen elinkaari siirretään nykyisen `AcceptanceCommandProgram`-
-   vastuun nimetyiksi kiinteiksi vaiheiksi. Sama supervisor omistaa kulloisenkin
-   vaiheen prosessipuun. Artifact-, skenaario-, tuotetila- ja business-sopimukset
-   säilyvät nykyisissä vastuissaan; vaiheiden työ-, cleanup- ja julkaisuvaraukset
-   on sovitettava nykyisiin hyväksyttyihin kokonaisrajoihin ennen kytkentää.
-   Tämä korvaisi näiden callerien Node-prosessikäynnistyksen, signaalikäsittelyn
-   ja rajattoman `finally`-odotuksen sekä viimeiset tuoteoperaatioiden
-   käynnistyssäiesillan/tuloskanavan ajokäyttäjät. Vanhaa polkua ei jätetä
-   fallbackiksi. Puhtaat tuotetilan luokittelut ja tulossopimukset säilytetään:
-   niillä on myös legacy/workspace-käyttäjiä, joten tiedostonimi ei ole
-   poistoperuste. Siirron edellytys on nykyiseen synteettiseen fixtureen tehty
-   oikean komentorajan regressio: tuloksen toimittanut mutta elävä isäntä,
-   estyvä valmistelu tai viimeistely, puuttuva tulos ja epävarma cleanup.
-   Ulomman testiturvan pakkokatkaisu on epäonnistuminen, ei hyväksytty poistuminen.
-   Tuotannon semantiikka, MSI:n hyväksytyt tulokset ja fixture-poiston lupa
-   eivät muutu. Uutta supervisoria, yleistä vaihegraafia tai riippuvuutta ei lisätä.
-
-   Nykyisen aukon käyttäytymistodiste on lisätty olemassa olevaan
-   `legacyCommandCompletion.process.test.mjs`-sarjaan ja samaan command-fixtureen.
-   Kummankin oikea Node-caller suorittaa synteettisen skenaarion: normaali
-   supervisor poistuu ja caller valmistuu, mutta tuloksen kirjoittanut elävä
-   supervisor jättää callerin odottamaan. Jälkimmäisessä vain ulompi testiturva
-   katkaisee puun. Supervisor-result on tällöin valmis mutta caller-result
-   puuttuu ja testijuuri säilyy. Neljän tapauksen läpäisy todistaa tämän
-   tunnetun aukon, ei vanhan callerin onnistunutta virheenkäsittelyä tai
-   alkuperäisen legacy-/runner-havainnon syytä. Fixture ei asenna MSI:tä.
-   Korvaavan kytkennän on läpäistävä nykyiset komentorajaregressiot ilman
-   ulomman testiturvan katkaisua; tämä karakterisointi poistuu vanhan callerin mukana.
+   Korvautuvat `runCleanInstallUninstall`- ja `runUpgradeRollback`-Node-callerit
+   on poistettu. Niiden viimeiset `installerProductOperationProcess`-,
+   `supervisorProcessLaunch`- ja `InstallerProductOperationProgram`-käyttäjät,
+   käynnistyssäie ja putkiprotokolla on poistettu, ei jätetty varapoluksi.
+   Tuotetilan luokittelut, operation-worker, result-file-lukija ja fixture-
+   rakentajat säilyvät niitä edelleen käyttävissä nimetyissä vastuissa.
+   Tuotantokoodi, MSI:n hyväksytyt tulokset, skenaariorajat ja fixture-poiston
+   lupa eivät muutu. Uutta supervisoria, vaihegraafia tai riippuvuutta ei lisätä.
 
    **Aikapolitiikan erillinen päätös on hyväksytty.** Aiemmat 7/12 minuutin
    lifecycle-stepit jättävät 300/600 sekunnin skenaarioiden lisäksi vain
@@ -2830,36 +2809,54 @@ Priorisoidut löydökset ja sulkemisehdot:
    MSI-release-gaten rajoja ei muuteta.
 
    Tämä on enimmäisvarausten laskelma, ei mittaus normaalin ajon kestosta
-   eikä lupa pidentää jumittuvan MSI-operaation aikaa. Clean-komento ja sen
-   CI-kytkentä käyttävät nyt tätä karttaa. Siirto tehdään clean ensin, upgrade
-   toisena, ja korvautuvat Node-/käynnistyssäiepolut poistetaan käyttäjien ja
-   invarianttien siirryttyä. Jos yksittäisen vaiheen sallittu työ tai
-   hyväksymisehto muuttuisi, tarvitaan siitä uusi päätös.
+   eikä lupa pidentää jumittuvan MSI-operaation aikaa. Cleanin ja upgraden
+   kanoniset komennot sekä CI-kytkennät käyttävät tätä karttaa. Jos yksittäisen
+   vaiheen sallittu työ tai hyväksymisehto muuttuu, tarvitaan uusi päätös.
 
-   Cleanin `cleanCommandPhase` kokoaa nykyiset nimettyjen vaiheiden portit;
-   `cleanInstallUninstallFailureBoundary` erottaa siivouspäätöksen ja jo
-   suoritetun siivouksen tuloksen. Se ei käynnistä prosessia. Asennus,
-   repair/reinstall ja payload-tarkistus säilyvät nykyisessä lifecycle-workerissa.
-   Sen julkaisema epäonnistunut tulos säilyy epäonnistumisena myös silloin,
-   kun worker on poistunut nollakoodilla. `cleanCallerResult` ja nykyinen
-   result-file-toimitus sitovat pakollisen lopputuloksen revisioon, descriptorin
-   SHA-256:een ja yhteen ajokertaan. Cleanin ProductState-luokittelu ei muutu
-   upgrade-pair-luokitteluksi. Normaali profiili, artifactit, MSI-paluuarvot,
+   `cleanCommandPhase` ja `upgradeCommandPhase` kokoavat omat nimetyt porttinsa.
+   Kummankin failure boundary erottaa puhtaan siivouspäätöksen jo suoritetun
+   siivouksen tuloksesta. Puuttuva skenaariotulos ei valtuuta vieraan tuotteen
+   poistamista. Cleanin asennus, repair/reinstall ja payload-tarkistus sekä
+   upgraden downgrade-, Windows Installer rollback-, binary rollback- ja
+   running-application-ehdot pysyvät nykyisissä lifecycle-workereissa.
+   Clean säilyttää ProductState-only-luokittelun; upgrade säilyttää tuoteparin
+   luokittelun. Epäonnistunut worker-result ei muutu onnistumiseksi exit 0:lla.
+
+   Pakolliset `cleanCallerResult` ja `upgradeCallerResult` sidotaan revisioon,
+   descriptor-SHA-256:een ja ajokertaan. Upgrade-result säilyttää alkuperäisen
+   skenaarioproofin ja validoi sen nykyisellä sopimuksella, ei rinnakkaisella
+   rollback-sääntökopiolla. Result-verifier vaatii myös oikean komennon exit 0:n.
+   Normaali profiili, artifactit, MSI-paluuarvot, sovelluksen poistuminen,
    prosessipuun poissaolo ja fixture-poistolupa pysyvät erillisinä.
 
-   Korvaavan kattavuuden kartta: vanhan callerin Promise-/finally-odotus ->
-   yhteisen komentorajasarjan clean-tapaukset; tilapäisjuuren alias ja oikea
-   read-only-esitarkistus -> `temporaryRootAlias`; puuttuva juurihakemisto ->
-   `cleanCommandPhase.test`; ProductState-only -> saman tiedoston puhdas
-   luokittelutesti; puuttuva tulos, ensivirhe ja epävarma cleanup -> nykyiset
-   failure-boundary-, phase-continuation- ja caller-result-regressiot.
-   Vanha clean-caller on toistaiseksi vain siirron lähtötilatestien käyttäjä,
-   ei kanoninen komento tai automaattinen fallback. Se ja viimeiset yhteiset
-   käynnistyssillat poistetaan upgrade-kytkennän yhteydessä, kun kaikki käyttäjät
-   on siirretty. Cleanin ja jaettujen legacy/workspace-vastuiden rajattu sarja
-   läpäisi 214/214; viimeistelyn linkki- ja CI-listaregressiot 18/18. Näyttö
-   sisältää oikean komentoprosessin poistumisen ja pakollisen tuloksen, ei
-   MSI-asennusta. Uusi paketoitu hyväksyntä on vielä avoin.
+   | Poistettu tai siirretty tarkistus | Nykyinen korvaava käyttäytymistodiste |
+   | --- | --- |
+   | Node-callerin Promise/finally ja aukon karakterisointi | Yhteisen komentorajasarjan clean/upgrade-tapaukset: suora .NET sekä oikea pwsh/pnpm/verifier-ketju; exit ja close havaitaan ulkopuolelta |
+   | Käynnistyssäiesillan ja putkikanavan mockit | Sama komentorajafixture: estyvä valmistelu, myöhäinen tulos, tulos ennen exitia, puuttuva tulos ja publish ennen exitia; ulompi pakkokatkaisu ei läpäise testiä |
+   | Vanhan product-operation-isännän loppuun kulutettu cleanup | Nykyinen phase-continuation-regressio: cleanupUnverified estää seuraavan vaiheen; omistetun product-resultin lukija ei korota tilaa onnistumiseksi |
+   | Tuoteoperaation valmistelu, native wait ja result I/O | Nykyiset owned-product-komentotestit: Preparation, NativeWait, Read, Remove, MissingResult, ResultBeforeExit, DeliveryHold/Failure ja ConsumerReadHold |
+   | Cleanin ja upgraden caller-mockien ensivirhe/siivous | Perheiden failure-boundary-testit sekä komentotason scenarioAndCleanupFailed, scenarioAndProfileFailed ja scenarioAndRemovalFailed |
+   | Tilapäisjuuren alias, tuoteluokittelu ja alkuperäisen tuotteen suoja | temporaryRootAlias tekee oikean read-only-tarkistuksen; phase-input- ja puhtaat single/pair-luokitteluregressiot; preconditionFailed estää mutaation |
+   | Upgraden siivouksen ja jälkiehdon ero | applicationCleanupUnverified säilyttää aineiston; postconditionFailed säilyy virheenä onnistuneen semantic cleanupin jälkeen |
+   | Kanavan sulkeutuminen hyväksynnän edellytyksenä | Putkea ei enää ole tällä polulla. Bound result-file, todellinen exit, tiukat lukijat ja julkaisuvirheen komentotesti korvaavat sen |
+
+   Sopimuslistojen kuusi CI-ryhmää ovat core, commands, legacy-entry,
+   clean-upgrade-entry, workspace-success-entry ja workspace-fault-entry.
+   Inventaario tarkistaa kaikkien tiedostojen ja 120 komentotapauksen
+   rekisteröinnin ilman puuttuvia tai päällekkäisiä tapauksia. Kumpikin CI-toisto
+   kuuluu loppukoonnin vaatimukseen. Ryhmittely ei muuta yksittäisen
+   timeout-testin sopimusta eikä paketoidun hyväksynnän vaatimuksia.
+
+   Cleanin aiempi rajattu näyttö on 214/214 ja viimeistely 18/18. Upgrade-
+   kytkennän erillinen komentorajasykli on 28/28. Sillan poiston jälkeisessä
+   360 tapauksen sarjassa yksi vanhentunut workflow-budjettiassertio hylkäsi
+   hyväksytyn upgrade-kytkennän; 359 muuta tapausta läpäisi. Korjauksen jälkeen
+   muuttuneet workflow-/result-kohteet ovat 25/25 ja vahvistettu aineiston
+   säilymisregressio 1/1. CI-listan vanha job-lukumäärä korjattiin kuuden ryhmän
+   karttaan; sen koko sopimussarja on 54/54. Desktop typecheck/build läpäisevät.
+   Ensimmäiset hylkäykset eivät muutu hyväksytyiksi uusinta-ajolla. Tämä
+   kohdetodennus ei sisällä MSI-asennusta; uusi paketoitu CI ja koko V2:n
+   lopullinen hyväksyntä ovat vielä avoinna.
 3. **Normaalin hyväksynnän avoimet virheet.** Alla nimetty legacy-terminalin
    puute ja fault-rollback-hylkäys säilyvät avoimina. Diagnostinen onnistuminen
    samoilla tavuilla ei ole niiden juurisyykorjaus. Myös aiempi MSI 3010- ja

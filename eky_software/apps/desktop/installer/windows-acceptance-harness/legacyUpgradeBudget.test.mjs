@@ -101,3 +101,14 @@ test('clean command uses the approved separate preparation, scenario and publica
   assert.equal(new Set(budget.phases.map(([phase]) => phase)).size, budget.phases.length);
   assert.ok(budget.phases.every(([, timeout, cleanup]) => timeout > cleanup && cleanup >= commandBudgets.exitReserveMilliseconds));
 });
+
+test('upgrade command preserves scenario and MSI caps within its approved whole-command reservation', () => {
+  const budget = commandBudgets.upgradeCommand;
+  assert.equal(budget.reservationMilliseconds, 1_565_000);
+  assert.deepEqual(budget.phases.find(([name]) => name === 'scenario'), ['scenario', 600_000, 30_000]);
+  assert.deepEqual(budget.phases.at(-1), ['publish', 35_000, 5_000]);
+  assert.equal(budget.phases.reduce((sum, [, timeout]) => sum + timeout, 0), 1_535_000);
+  assert.equal(27 * 60_000 - budget.reservationMilliseconds - 35_000, 20_000);
+  assert.equal(new Set(budget.phases.map(([phase]) => phase)).size, budget.phases.length);
+  assert.ok(budget.phases.every(([, timeout, cleanup]) => timeout > cleanup && cleanup >= commandBudgets.exitReserveMilliseconds));
+});

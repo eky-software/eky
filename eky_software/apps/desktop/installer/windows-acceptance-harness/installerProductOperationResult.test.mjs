@@ -3,7 +3,7 @@ import { link, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { readOwnedProductOperationResult, validateProductOperationReply } from './installerProductOperationResult.mjs';
+import { readOwnedProductOperationResult } from './installerProductOperationResult.mjs';
 import { runOwnedProductOperation } from './installerProductOperationWorker.mjs';
 import { acceptanceProductPair, acceptanceProductCleanup, validateAcceptanceProductFacts } from './acceptanceProductFacts.mjs';
 
@@ -51,7 +51,7 @@ async function context(t) {
   return { root, request, binding, supervisorResult: supervisor(), supervisorExitCode: 0 };
 }
 
-test('owned product producer and both result transports use the same operation and cleanup contract', async (t) => {
+test('owned product producer and reader preserve the operation and cleanup contract', async (t) => {
   for (const operation of ['inspect', 'uninstall']) {
     for (const fault of [false, true]) {
       const input = await context(t);
@@ -68,10 +68,11 @@ test('owned product producer and both result transports use the same operation a
       if (fault) input.supervisorResult = supervisor({ status: 'failed', processResultCode: 'processExitFailed',
         workerResultCode: 'notChecked', childExitCode: 1, cleanupResultCode: 'processTreeAbsent' });
       const detailed = JSON.parse(await readFile(join(input.root, 'product-result.json'), 'utf8'));
-      const pipe = validateProductOperationReply(Buffer.from(JSON.stringify({ schemaVersion: 1, nonce, operation,
-        supervisor: input.supervisorResult, worker: encoded(detailed.result) })), input.request, exitCode);
       const file = await readOwnedProductOperationResult(input);
-      assert.deepEqual(file, pipe);
+      assert.deepEqual(file.worker, detailed.result);
+      assert.deepEqual(file.supervisor, input.supervisorResult);
+      assert.equal(file.exitCode, exitCode);
+      assert.equal(file.directProcessAbsent, true);
       assert.equal(file.status, fault ? 'failed' : 'completed');
       if (fault) {
         assert.equal(file.worker.errorCode, 'commandFailed');

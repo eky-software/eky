@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile, writeFile, mkdir, rm } from 'node:fs/promises';
-import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { setInterval } from 'node:timers';
 import { readOwnedProductOperationResult } from './installerProductOperationResult.mjs';
 import { writeJsonAtomicExclusive } from './cleanInstallUninstallContracts.mjs';
@@ -10,72 +9,8 @@ import { executeProductOperation, runInstallerProductCommand } from './installer
 import { fileURLToPath } from 'node:url';
 
 const mode = process.argv[2];
-assert(['hold', 'unread', 'consumeOwnedProduct', 'unboundedCaller', '--phase-request'].includes(mode));
-if (mode === 'unboundedCaller') {
-  const inputPath = process.argv[3];
-  const input = JSON.parse(await readFile(inputPath, 'utf8'));
-  assert.ok(['clean', 'upgrade'].includes(input.kind));
-  const root = dirname(inputPath);
-  const { createRequest } = await import('../windows-process-supervisor/tests/supervisorContractTestSupport.mjs');
-  const run = input.kind === 'clean'
-    ? (await import('./runCleanInstallUninstall.mjs')).runCleanInstallUninstall
-    : (await import('./runUpgradeRollback.mjs')).runUpgradeRollback;
-  const source = { appVersion: '0.2.7', msiProductVersion: '0.2.7', packageSha256: 'c'.repeat(64) };
-  const absent = { status: 'completed', resultCode: 'exactProductsAbsent',
-    sourcePresent: false, targetPresent: false, installerRegistryPresent: false };
-  const summary = await run(['--artifact-descriptor', join(root, 'upgrade-rollback-artifact.json')], {
-    inventoryProfile: async () => [],
-    async materializeFixture(_descriptor, fixtureRoot) {
-      const runRoot = input.kind === 'clean' ? fixtureRoot : dirname(fixtureRoot);
-      if (input.kind === 'upgrade') await mkdir(fixtureRoot);
-      await writeFile(join(root, 'caller-run.json'), JSON.stringify({ runRoot }));
-      return { fixtureRoot, artifactRoot: fixtureRoot, descriptorSha256: input.binding.artifactDescriptorSha256,
-        artifactDescriptorSha256: input.binding.artifactDescriptorSha256,
-        manifest: source, packageSha256: source.packageSha256,
-        roles: { source, target: { ...source, appVersion: '0.2.8' }, windowsRollback: source } };
-    },
-    verifyArtifact: async () => undefined,
-    createProductRuntime: () => ({
-      verifyExactProductState: async () => ({ status: 'completed', resultCode: 'exactProductAbsent', exactProductPresent: false }),
-      verifyExactProductStates: async () => absent,
-      cleanupExactProduct: async () => assert.fail('Unexpected MSI cleanup'),
-      cleanupExactProducts: async () => assert.fail('Unexpected MSI cleanup'),
-      outcome: () => ({ productProcessAbsent: true }),
-    }),
-    launchSupervisor(requestPath, scenarioRoot) {
-      const request = JSON.parse(readFileSync(requestPath, 'utf8'));
-      const synthetic = createRequest({ ...request, testRoot: scenarioRoot,
-        runRoot: join(scenarioRoot, request.runNonce), workerResultPath: join(scenarioRoot, 'worker-result.json') }, 'exitZero',
-      { timeoutMilliseconds: 5_000, cleanupReserveMilliseconds: 1_000 });
-      writeFileSync(requestPath, JSON.stringify(synthetic));
-      const assembly = fileURLToPath(new URL(input.hold
-        ? '../bin/windows-process-supervisor-contract-fixture/Release/net10.0/Eky.WindowsProcessSupervisor.ContractFixture.dll'
-        : '../bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll', import.meta.url));
-      const child = spawn(process.env.EKY_DOTNET_EXE || 'dotnet', [assembly,
-        ...(input.hold ? ['--mode', 'completedSupervisorHeld'] : []), '--request', requestPath],
-      { cwd: scenarioRoot, stdio: 'ignore', windowsHide: true });
-      const completion = new Promise((resolvePromise, rejectPromise) => {
-        child.once('error', rejectPromise);
-        child.once('exit', (exitCode, signal) => writeFileSync(join(root, 'supervisor-exit.json'), JSON.stringify({ exitCode, signal })));
-        child.once('close', (exitCode, signal) => {
-          try {
-            writeFileSync(join(root, 'supervisor-close.json'), JSON.stringify({ exitCode, signal }));
-            writeFileSync(join(root, 'supervisor-result.json'), readFileSync(join(scenarioRoot, 'result.json')));
-            resolvePromise(exitCode);
-          } catch (error) { rejectPromise(error); }
-        });
-      });
-      return { child, completion };
-    },
-    async readScenarioResult() {
-      await writeFile(join(root, 'scenario-read.json'), '{}');
-      return { status: 'completed', runningUpgradeInitialExitCode: 0, runningUpgradeObservation: 'synthetic', upgradeExitCode: 0 };
-    },
-  });
-  await writeFile(join(root, 'caller-return.json'), JSON.stringify(summary));
-  await writeJsonAtomicExclusive(join(root, 'worker-result.json'), { ...input.binding,
-    status: 'completed', resultCode: 'fixtureCompleted', errorCode: null });
-} else if (mode === '--phase-request') {
+assert(['hold', 'unread', 'consumeOwnedProduct', '--phase-request'].includes(mode));
+if (mode === '--phase-request') {
   const { runLegacyCommandPhase } = await import('./legacyCommandPhase.mjs');
   const { writeLegacyUpgradeWorkerOutcome } = await import('./runLegacyUpgradeWorker.mjs');
   const input = JSON.parse(await readFile(process.argv[3], 'utf8'));
@@ -87,7 +22,10 @@ if (mode === 'unboundedCaller') {
   const hold = () => spawnSync(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore' });
   if (testCase === 'preparationHold' && input.phase === 'prepare') hold();
   if (testCase === 'productInspectionHold' && input.phase === 'inspectSourceBefore') hold();
-  const code = input.commandKind === 'clean'
+  const code = input.commandKind === 'upgrade'
+    ? await (await import('./upgradeCommandPhase.mjs')).runUpgradeCommandPhase(process.argv.slice(2),
+      (await import('./upgradeCommandFixture.mjs')).upgradeCommandFixture(input, testCase, hold))
+    : input.commandKind === 'clean'
     ? await (await import('./cleanCommandPhase.mjs')).runCleanCommandPhase(process.argv.slice(2),
       (await import('./cleanCommandFixture.mjs')).cleanCommandFixture(input, testCase, hold))
     : input.commandKind !== 'legacy'

@@ -17,6 +17,8 @@ import { legacyCallerResultFile } from './legacyCallerResultFile.mjs';
 import { workspaceCallerResultFile } from './workspaceCallerResultFile.mjs';
 import { cleanCallerResultIdentity, parseCleanCallerResult } from './cleanCallerResult.mjs';
 import { cleanCallerResultFile } from './cleanCallerResultFile.mjs';
+import { upgradeCallerResultIdentity, parseUpgradeCallerResult } from './upgradeCallerResult.mjs';
+import { upgradeCallerResultFile } from './upgradeCallerResultFile.mjs';
 
 const commandBudgets = JSON.parse(await readFile(new URL('../windows-process-supervisor/supervisorCommandBudgets.json', import.meta.url)));
 const contractAssembly = fileURLToPath(new URL('../bin/windows-process-supervisor-contract-fixture/Release/net10.0/Eky.WindowsProcessSupervisor.ContractFixture.dll', import.meta.url));
@@ -27,6 +29,7 @@ async function startCiCommand(context, kind, descriptor, resultPath, signal) {
   const workflow = await readFile(new URL(kind === 'legacy'
     ? '../../../../../.github/workflows/windows-acceptance-v2-legacy-diagnostic.yml'
     : kind === 'clean' ? '../../../../../.github/workflows/windows-acceptance-v2-clean.yml'
+    : kind === 'upgrade' ? '../../../../../.github/workflows/windows-acceptance-v2-upgrade.yml'
     : '../../../../../.github/workflows/windows-acceptance-v2-workspace.yml', import.meta.url), 'utf8');
   const lines = workflow.split(/\r?\n/u);
   const commandIndex = lines.findIndex((line) => line.trim().startsWith('pnpm --filter @eky/desktop exec dotnet ')
@@ -86,7 +89,7 @@ async function startCiCommand(context, kind, descriptor, resultPath, signal) {
 }
 
 export async function describeCommandPhases(commandRoot, kind, read = readCommandPhaseJson) {
-  const phases = commandBudgets[kind === 'legacy' ? 'legacyCommand' : kind === 'clean' ? 'cleanCommand' : 'workspaceCommand'].phases;
+  const phases = commandBudgets[kind.startsWith('workspace-') ? 'workspaceCommand' : `${kind}Command`].phases;
   const evidence = [];
   for (const phase of [...phases.map(([name]) => name), 'publishFailure']) {
     let request;
@@ -116,15 +119,19 @@ export function reportCommandFailure(t, evidence, original) {
 // Registers the same command contract for each fixed entrypoint; it does not
 // execute or supervise processes until the existing test callback runs.
 export function registerAcceptanceCommandEntrypointContracts(kind, register = test) {
-  assert.ok(['legacy', 'clean', 'workspace-success', 'workspace-fault'].includes(kind));
+  assert.ok(['legacy', 'clean', 'upgrade', 'workspace-success', 'workspace-fault'].includes(kind));
   const clean = kind === 'clean';
+  const upgrade = kind === 'upgrade';
   const workspace = kind.startsWith('workspace-');
   const family = workspace ? 'workspace' : kind;
-  const descriptorName = clean ? 'clean-install-artifact.json' : workspace ? 'workspace-success-artifact.json' : 'legacy-upgrade-artifact.json';
+  const descriptorName = clean ? 'clean-install-artifact.json' : upgrade ? 'upgrade-rollback-artifact.json'
+    : workspace ? 'workspace-success-artifact.json' : 'legacy-upgrade-artifact.json';
   const uninstallPhase = clean ? 'uninstallSource' : 'uninstallTarget';
   const followingCleanupPhase = clean ? 'inspectSourceFinal' : 'uninstallSource';
-  const parseResult = clean ? parseCleanCallerResult : workspace ? parseWorkspaceCallerResult : parseLegacyCallerResult;
-  const resultFile = clean ? cleanCallerResultFile : workspace ? workspaceCallerResultFile : legacyCallerResultFile;
+  const parseResult = clean ? parseCleanCallerResult : upgrade ? parseUpgradeCallerResult : workspace ? parseWorkspaceCallerResult : parseLegacyCallerResult;
+  const resultFile = clean ? cleanCallerResultFile : upgrade ? upgradeCallerResultFile : workspace ? workspaceCallerResultFile : legacyCallerResultFile;
+  const scenarioFailureCode = clean ? 'WINDOWS_ACCEPTANCE_CLEAN_INSTALL_FAILED' : upgrade ? 'WINDOWS_ACCEPTANCE_UPGRADE_SOURCE_INSTALL_FAILED'
+    : workspace ? 'sourceInstallFailed' : 'WINDOWS_ACCEPTANCE_LEGACY_SOURCE_SMOKE_FAILED';
   register(`${kind} public command resolves the real worker and rejects an invalid artifact before installation`, {
     skip: process.platform !== 'win32', timeout: 60_000,
   }, async (t) => {
@@ -168,8 +175,9 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
   const directCases = ['completed', 'blockedEvidence', 'preparationHold', 'productInspectionHold', 'scenarioHold', 'uninstallHold', 'resultBeforeExit', 'cleanupFailed', 'scenarioAndCleanupFailed', 'removalHold',
     'publicationBeforeExit', 'productMissingResult', 'preconditionFailed', 'scenarioMissing', 'businessFailed', 'profileChanged', 'artifactChanged',
     ...(kind === 'legacy' ? ['productInspectionNativeHold', 'productInspectionReadOnly'] : workspace ? ['footprintFailed']
-      : ['temporaryRootAlias', 'scenarioAndProfileFailed', 'scenarioAndRemovalFailed']), ...(kind === 'workspace-fault' ? ['sessionFailed'] : [])];
-  const ciCases = kind === 'legacy' || clean
+      : ['temporaryRootAlias', 'scenarioAndProfileFailed', 'scenarioAndRemovalFailed']), ...(kind === 'workspace-fault' ? ['sessionFailed'] : []),
+    ...(upgrade ? ['applicationCleanupUnverified', 'postconditionFailed'] : [])];
+  const ciCases = kind === 'legacy' || clean || upgrade
     ? ['completed', 'blockedEvidence', 'productMissingResult', 'uninstallHold', 'scenarioAndCleanupFailed'] : ['completed'];
   for (const [testCase, ciChain] of [...directCases.map((name) => [name, false]), ...ciCases.map((name) => [name, true])]) {
     const blocked = testCase === 'blockedEvidence';
@@ -283,7 +291,7 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
         else {
           const binding = workspace ? workspaceCallerResultIdentity(resultPath, { expectedBuildRevision: 'b'.repeat(40),
             expectedDescriptorSha256: 'a'.repeat(64), faultScenario })
-            : (clean ? cleanCallerResultIdentity : legacyCallerResultIdentity)(resultPath, { buildRevision: 'b'.repeat(40), artifactDescriptorSha256: 'a'.repeat(64) });
+            : (clean ? cleanCallerResultIdentity : upgrade ? upgradeCallerResultIdentity : legacyCallerResultIdentity)(resultPath, { buildRevision: 'b'.repeat(40), artifactDescriptorSha256: 'a'.repeat(64) });
           const callerRead = await readFile(resultPath).then((bytes) => ({ status: 'read', bytes }),
             (error) => ({ status: error.code === 'ENOENT' ? 'missing' : 'unreadable' }));
           assert.equal(callerRead.status, 'read', 'Mandatory caller result is independent of worker-result absence');
@@ -293,7 +301,7 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
             'verify', resultPath, binding, completion.exitCode));
           if (succeeded) assert.equal(result.outcome.fixtureRemoved, true);
           if (testCase === 'scenarioAndCleanupFailed') {
-            assert.equal(result.outcome.errorCode, workspace ? 'sourceInstallFailed' : clean ? 'WINDOWS_ACCEPTANCE_CLEAN_INSTALL_FAILED' : 'WINDOWS_ACCEPTANCE_LEGACY_SOURCE_SMOKE_FAILED');
+            assert.equal(result.outcome.errorCode, scenarioFailureCode);
             assert.equal(result.outcome.semanticCleanupResultCode, 'semanticCleanupFailed');
             assert.equal(result.outcome.fixtureRemoved, false);
           }
@@ -302,12 +310,13 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
             assert.equal(result.outcome.fixtureRemoved, false);
           }
           if (['uninstallHold', 'resultBeforeExit'].includes(testCase)) {
-            assert.equal(result.outcome.errorCode, workspace ? 'supervisorDeadlineExceeded' : clean ? 'WINDOWS_ACCEPTANCE_CLEAN_INSTALL_FAILED' : 'WINDOWS_ACCEPTANCE_SUPERVISOR_DEADLINE_EXCEEDED');
+            assert.equal(result.outcome.errorCode, clean || upgrade ? scenarioFailureCode : workspace ? 'supervisorDeadlineExceeded' : 'WINDOWS_ACCEPTANCE_SUPERVISOR_DEADLINE_EXCEEDED');
             assert.equal(result.outcome.fixtureRemoved, false);
             await assert.rejects(lstat(join(commandRoot, followingCleanupPhase)), { code: 'ENOENT' });
           }
           if (testCase === 'preconditionFailed') {
-            assert.equal(result.outcome.errorCode, workspace ? 'preconditionFailed' : clean ? 'WINDOWS_ACCEPTANCE_CLEAN_PRECONDITION_FAILED' : 'WINDOWS_ACCEPTANCE_LEGACY_PRECONDITION_FAILED');
+            assert.equal(result.outcome.errorCode, workspace ? 'preconditionFailed' : clean ? 'WINDOWS_ACCEPTANCE_CLEAN_PRECONDITION_FAILED'
+              : upgrade ? 'WINDOWS_ACCEPTANCE_UPGRADE_PRECONDITION_FAILED' : 'WINDOWS_ACCEPTANCE_LEGACY_PRECONDITION_FAILED');
             await assert.rejects(lstat(join(commandRoot, 'scenario')), { code: 'ENOENT' });
             await assert.rejects(lstat(join(commandRoot, uninstallPhase)), { code: 'ENOENT' });
           }
@@ -325,12 +334,22 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
           }
           if (testCase === 'sessionFailed') assert.equal(result.outcome.errorCode, 'sessionProofInvalid');
           if (['scenarioAndProfileFailed', 'scenarioAndRemovalFailed'].includes(testCase)) {
-            assert.equal(result.outcome.errorCode, 'WINDOWS_ACCEPTANCE_CLEAN_INSTALL_FAILED');
+            assert.equal(result.outcome.errorCode, scenarioFailureCode);
             assert.equal(result.outcome.fixtureRemoved, false);
             if (testCase === 'scenarioAndProfileFailed') assert.equal(result.outcome.safetyErrorCode, 'WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED');
             else assert.equal(result.outcome.fixtureCleanupResultCode, 'fixtureCleanupFailed');
           }
-          if (['profileChanged', 'artifactChanged', 'footprintFailed', 'preconditionFailed', 'productMissingResult'].includes(testCase)) {
+          if (testCase === 'applicationCleanupUnverified') {
+            assert.equal(result.outcome.errorCode, scenarioFailureCode);
+            assert.equal(result.outcome.applicationCleanupResultCode, 'cleanupUnverified');
+            assert.equal(result.outcome.fixtureRemoved, false);
+          }
+          if (testCase === 'postconditionFailed') {
+            assert.equal(result.outcome.errorCode, 'WINDOWS_ACCEPTANCE_UPGRADE_POSTCONDITION_FAILED');
+            assert.equal(result.outcome.postconditionResultCode, 'exactProductsAbsentAfterCleanup');
+            assert.equal(result.outcome.fixtureRemoved, true);
+          }
+          if (['profileChanged', 'artifactChanged', 'footprintFailed', 'preconditionFailed', 'productMissingResult', 'applicationCleanupUnverified'].includes(testCase)) {
             assert.equal(result.outcome.fixtureRemoved, false);
             const { state } = JSON.parse(await readFile(join(commandRoot, 'prepare', 'phase-state.json'), 'utf8'));
             assert.equal((await lstat(state.runRoot)).isDirectory(), true);

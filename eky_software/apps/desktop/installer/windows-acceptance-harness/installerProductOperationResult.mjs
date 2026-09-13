@@ -51,7 +51,7 @@ async function readProductResult(root) {
   }
 }
 
-// Both transports use the same operation/cleanup/state rules. A valid worker
+// The owned result preserves operation, cleanup and state independently. A valid worker
 // result never upgrades a failed or unverified process outcome.
 function operationOutcome(supervisor, request, exitCode, readWorker) {
   try {
@@ -71,22 +71,6 @@ function operationOutcome(supervisor, request, exitCode, readWorker) {
   } catch {
     return failed(supervisor, exitCode);
   }
-}
-
-export function validateProductOperationReply(bytes, request, exitCode) {
-  const reply = parseStrictJsonObjectBytes(bytes, { errorCode: 'productOperationResultInvalid', maximumBytes: MAX_BYTES });
-  if (!exact(reply, ['schemaVersion', 'nonce', 'operation', 'supervisor', 'worker']) ||
-    reply.schemaVersion !== 1 || reply.nonce !== request.nonce || reply.operation !== request.operation) invalid();
-  const supervisor = validateWindowsAcceptanceSupervisorResult(reply.supervisor, {
-    runNonce: request.nonce, scenario: 'installerProductOperation', artifactDescriptorSha256: request.nonce,
-    supervisorExitCode: exitCode,
-  });
-  return operationOutcome(supervisor, request, exitCode, () => {
-    if (reply.worker === null) return null;
-    if (typeof reply.worker !== 'string' || !/^[A-Za-z0-9+/]*={0,2}$/.test(reply.worker)) invalid();
-    return parseStrictJsonObjectBytes(Buffer.from(reply.worker, 'base64'),
-      { errorCode: 'productOperationResultInvalid', maximumBytes: 128 * 1024 });
-  });
 }
 
 // Called only from an owned read-only phase after the command owner observed

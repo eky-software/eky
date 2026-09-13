@@ -192,7 +192,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'packaged-boundary-diagnostic'
     name: Existing ${{ inputs.artifact_kind }} artifact caller diagnostic (not acceptance)
     runs-on: windows-latest
-    timeout-minutes: ${{ inputs.artifact_kind == 'legacy' && 37 || 30 }}
+    timeout-minutes: ${{ (inputs.artifact_kind == 'legacy' || inputs.artifact_kind == 'upgrade') && 37 || 30 }}
     permissions:
       contents: read
       actions: read
@@ -299,12 +299,16 @@ jobs:
         run: ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode start
 
       - name: Run existing caller and mandatory result verifier once
-        timeout-minutes: ${{ inputs.artifact_kind == 'legacy' && 27 || 25 }}
+        timeout-minutes: ${{ (inputs.artifact_kind == 'legacy' || inputs.artifact_kind == 'upgrade') && 27 || 25 }}
         run: |
           if ($env:ARTIFACT_KIND -ceq 'upgrade') {
             $descriptorPath = Join-Path (Join-Path $env:RUNNER_TEMP 'eky-existing-boundary-artifact') 'upgrade-rollback-artifact.json'
-            pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/runUpgradeRollback.mjs --artifact-descriptor $descriptorPath
-            if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED' }
+            $resultPath = Join-Path $env:RUNNER_TEMP ('eky-upgrade-caller-' + [guid]::NewGuid().ToString('N') + '\result.json')
+            $PSNativeCommandUseErrorActionPreference = $false
+            pnpm --filter @eky/desktop exec dotnet installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --upgrade-command --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath
+            $commandExit = $LASTEXITCODE
+            pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/verifyUpgradeCallerResult.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath --command-exit $commandExit
+            if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED' }
             exit 0
           }
           if ($env:ARTIFACT_KIND -ceq 'workspace-fault') {

@@ -48,8 +48,8 @@ test('packaged boundary diagnostic reuses exact artifacts without becoming a nor
   assert.match(diagnostic, /--command-exit \$commandExit/u);
   assert.match(diagnostic, /\$commandExit -ne 0 -or \$LASTEXITCODE -ne 0/u);
   assert.match(diagnostic, /always\(\) && steps\.download\.outcome == 'success'/u);
-  assert.match(diagnostic, /inputs\.artifact_kind == 'legacy' && 37 \|\| 30/u);
-  assert.match(diagnostic, /inputs\.artifact_kind == 'legacy' && 27 \|\| 25/u);
+  assert.match(diagnostic, /\(inputs\.artifact_kind == 'legacy' \|\| inputs\.artifact_kind == 'upgrade'\) && 37 \|\| 30/u);
+  assert.match(diagnostic, /\(inputs\.artifact_kind == 'legacy' \|\| inputs\.artifact_kind == 'upgrade'\) && 27 \|\| 25/u);
 });
 
 test('external inspector capture is opt-in and never replaces command or artifact outcomes', async () => {
@@ -165,7 +165,7 @@ test('V2.5 phase acceptance requires all same-revision contract groups before it
   assert.doesNotMatch(contracts + producer, /continue-on-error/u);
   assert.match(source, /cancel-in-progress: false/u);
   assert.ok(contracts.includes("repetition: ${{ fromJSON(inputs.risk_plan != '' && fromJSON(inputs.risk_plan).repetitions == 1 && '[1]' || '[1, 2]') }}"));
-  assert.match(contracts, /group: \[core, commands, legacy-entry, workspace-success-entry, workspace-fault-entry\]/u);
+  assert.match(contracts, /group: \[core, commands, legacy-entry, clean-upgrade-entry, workspace-success-entry, workspace-fault-entry\]/u);
   assert.ok(contracts.includes('name: V2.5 ${{ matrix.group }} contracts run ${{ matrix.repetition }}'));
   assert.ok(contracts.includes('name: Run legacy ${{ matrix.group }} contracts'));
   assert.ok(contracts.includes('run: pnpm installer:test:windows-supervisor-v2-legacy-${{ matrix.group }}'));
@@ -182,7 +182,7 @@ test('V2.5 phase acceptance requires all same-revision contract groups before it
 test('legacy contract groups partition the complete existing inventory without omissions or duplicates', async () => {
   const { scripts } = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'));
   const command = 'installer:test:windows-supervisor-v2-legacy';
-  const names = ['core', 'commands', 'legacy-entry', 'workspace-success-entry', 'workspace-fault-entry'];
+  const names = ['core', 'commands', 'legacy-entry', 'clean-upgrade-entry', 'workspace-success-entry', 'workspace-fault-entry'];
   assert.equal(scripts[command], ['pnpm installer:supervisor:build', ...names.map((name) => `pnpm ${command}-${name}`)].join(' && '));
   const groups = names.map((name) => {
     const parts = scripts[`${command}-${name}`].split(' ');
@@ -190,11 +190,12 @@ test('legacy contract groups partition the complete existing inventory without o
     return parts;
   });
   const expected = [
-    ...['acceptanceCommandPhaseInput', 'boundedWindowsAdapterProcess', 'supervisorProcessLaunch',
+    ...['acceptanceCommandPhaseInput', 'boundedWindowsAdapterProcess',
       'cleanCallerResult', 'cleanCommandPhase', 'cleanInstallUninstallFailureBoundary', 'cleanCommandEntrypoint.process',
+      'upgradeCallerResult', 'upgradeCommandPhase', 'upgradeRollbackFailureBoundary', 'upgradeCommandEntrypoint.process',
       'buildWindowsApplicationCloseFixture', 'closedDirectoryInventory', 'inspectWindowsInstallerProductState', 'installerProductInspectionTrace',
-      'installerProductOperationWorker', 'installerProductOperationProcess', 'installerProductOperationResult',
-      'installerProductOperationDeadline.process', 'legacyCallerResult', 'legacyCommandCompletion.process',
+      'installerProductOperationWorker', 'installerProductOperationResult',
+      'legacyCallerResult', 'legacyCommandCompletion.process',
       'legacyCommandEntrypoint.process', 'workspaceSuccessCommandEntrypoint.process', 'workspaceFaultCommandEntrypoint.process',
       'legacyUpgradeBudget', 'legacyUpgradeFilesystem', 'legacyUpgradeContracts', 'legacyUpgradeFailureBoundary',
       'legacyUpgradeLifecycle', 'legacyUpgradePostcondition', 'legacyUpgradeProfileEvidence', 'legacyUpgradeSourceSmoke',
@@ -206,9 +207,9 @@ test('legacy contract groups partition the complete existing inventory without o
   ];
   assert.equal(new Set(groups.flat()).size, expected.length);
   assert.deepEqual(groups.flat().sort(), expected.sort());
-  assert.deepEqual(groups[1], ['installerProductOperationDeadline.process', 'legacyCommandCompletion.process']
+  assert.deepEqual(groups[1], ['legacyCommandCompletion.process']
     .map((name) => `installer/windows-acceptance-harness/${name}.test.mjs`));
-  assert.deepEqual(groups.slice(2), [['legacyCommandEntrypoint', 'cleanCommandEntrypoint'], ['workspaceSuccessCommandEntrypoint'], ['workspaceFaultCommandEntrypoint']]
+  assert.deepEqual(groups.slice(2), [['legacyCommandEntrypoint'], ['cleanCommandEntrypoint', 'upgradeCommandEntrypoint'], ['workspaceSuccessCommandEntrypoint'], ['workspaceFaultCommandEntrypoint']]
     .map((names) => names.map((name) => `installer/windows-acceptance-harness/${name}.process.test.mjs`)));
 });
 
@@ -220,6 +221,7 @@ test('entrypoint groups register original and migrated command contracts exactly
   const all = [];
   for (const [file, kind, extra] of [
     ['cleanCommandEntrypoint', 'clean', ['temporaryRootAlias', 'scenarioAndProfileFailed', 'scenarioAndRemovalFailed']],
+    ['upgradeCommandEntrypoint', 'upgrade', ['temporaryRootAlias', 'scenarioAndProfileFailed', 'scenarioAndRemovalFailed', 'applicationCleanupUnverified', 'postconditionFailed']],
     ['legacyCommandEntrypoint', 'legacy', ['productInspectionNativeHold', 'productInspectionReadOnly']],
     ['workspaceSuccessCommandEntrypoint', 'workspace-success', ['footprintFailed']],
     ['workspaceFaultCommandEntrypoint', 'workspace-fault', ['footprintFailed', 'sessionFailed']],
@@ -233,7 +235,7 @@ test('entrypoint groups register original and migrated command contracts exactly
     assert.deepEqual(registrations, [
       `${kind} public command resolves the real worker and rejects an invalid artifact before installation`,
       ...[...original, ...extra].map((name) => `${kind} fixed command entrypoint completes the real phase chain: ${name}`),
-      ...(['legacy', 'clean'].includes(kind) ? ['completed', 'blockedEvidence', 'productMissingResult', 'uninstallHold', 'scenarioAndCleanupFailed'] : ['completed'])
+      ...(['legacy', 'clean', 'upgrade'].includes(kind) ? ['completed', 'blockedEvidence', 'productMissingResult', 'uninstallHold', 'scenarioAndCleanupFailed'] : ['completed'])
         .map((name) => `${kind} CI launch chain completes the real phase chain: ${name}`),
     ]);
     const source = await readFile(new URL(`./${file}.process.test.mjs`, import.meta.url), 'utf8');
@@ -241,7 +243,7 @@ test('entrypoint groups register original and migrated command contracts exactly
     assert.ok(source.includes(`registerAcceptanceCommandEntrypointContracts('${kind}');`));
     all.push(...registrations);
   }
-  assert.equal(all.length, 92);
+  assert.equal(all.length, 120);
   assert.equal(new Set(all).size, all.length);
 });
 
