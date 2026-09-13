@@ -2939,10 +2939,15 @@ Priorisoidut löydökset ja sulkemisehdot:
    [dependency review'ssa](local-desktop-dependency-review.md#v2-julkaisun-avoin-riippuvuustarkistus).
    V2:n vihreät prosessitestit eivät korvaa tätä porttia. Honon päivitys
    muuttaa paketoitavaa backendia ja edellyttää uuden build-identiteetin
-   mukaista artifact-hyväksyntää. Auditit, rekisteriallekirjoitukset ja
-   uuden revision normaali kokonaiskierros ovat vielä avoinna. Päivitystä
-   ei nimetä legacy-jumin selitykseksi eikä aiempaa vihreää MSI-näyttöä
-   siirretä uusille tavuille.
+   mukaista artifact-hyväksyntää. Patchin normaali
+   [CI-kierros 34779534322](https://github.com/eky-software/eky/actions/runs/34779534322)
+   läpäisi ensimmäisellä yrityksellä: lähde-, checkout- ja artifact-revisio
+   `a186668cf6d5b6dc6e745b1e8448ed94e7ae8abc`, vaadittu job-/vaihekate 36/36,
+   kaikki paketoidut perheet kahdesti ja fault-matriisi 10/10. Tarkat
+   artifact-identiteetit ovat dependency review'ssa. Auditit ja
+   rekisteriallekirjoitukset ovat edelleen avoinna. Tämä ei ole koko V2:n
+   integraatio-/käyttöönottokuittaus. Päivitystä ei nimetä legacy-jumin
+   selitykseksi eikä aiempaa vihreää MSI-näyttöä siirretä uusille tavuille.
 
 Diagnostiikan laajuus jäädytetään nykyiseen keruu-/vientivastuuseen.
 Analyysikorjaus testataan säilytetyllä tai synteettisellä aineistolla.
