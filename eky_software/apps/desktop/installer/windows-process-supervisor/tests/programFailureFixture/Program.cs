@@ -14,6 +14,18 @@ if (
 }
 
 var mode = args[1];
+if (mode == "completedSupervisorHeld")
+{
+    var exitCode = SupervisorProgram.Run(args[2..]);
+    if (exitCode != 0) return exitCode;
+    File.WriteAllText(Path.Combine(Path.GetDirectoryName(args[3])!, "supervisor-returned.json"),
+        JsonSerializer.Serialize(new { schemaVersion = 1, exitCode }));
+    // Intentional fixture fault: the caller must not confuse a valid result
+    // with this command's exit. Only the existing outer test Job ends it.
+    using var heldAfterResult = new ManualResetEvent(false);
+    heldAfterResult.WaitOne();
+    return exitCode;
+}
 if (mode == "commandBudget")
 {
     using var input = JsonDocument.Parse(File.ReadAllText(args[3]));

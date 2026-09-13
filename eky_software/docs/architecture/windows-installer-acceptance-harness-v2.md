@@ -2764,7 +2764,7 @@ Priorisoidut löydökset ja sulkemisehdot:
    jälkitarkastuksia. Nykyisten caller-regressioiden injektoitu supervisor
    valmistuu heti; niiden vihreys ei todista tätä koko komentoprosessin rajaa.
 
-   **Rajattu päätösehdotus, ei vielä hyväksytty siirto:** clean- ja
+   **Omistajan hyväksymä korvaava siirto, kytkentä vielä tekemättä:** clean- ja
    upgrade-komentojen elinkaari siirretään nykyisen `AcceptanceCommandProgram`-
    vastuun nimetyiksi kiinteiksi vaiheiksi. Sama supervisor omistaa kulloisenkin
    vaiheen prosessipuun. Artifact-, skenaario-, tuotetila- ja business-sopimukset
@@ -2781,6 +2781,57 @@ Priorisoidut löydökset ja sulkemisehdot:
    Ulomman testiturvan pakkokatkaisu on epäonnistuminen, ei hyväksytty poistuminen.
    Tuotannon semantiikka, MSI:n hyväksytyt tulokset ja fixture-poiston lupa
    eivät muutu. Uutta supervisoria, yleistä vaihegraafia tai riippuvuutta ei lisätä.
+
+   Nykyisen aukon käyttäytymistodiste on lisätty olemassa olevaan
+   `legacyCommandCompletion.process.test.mjs`-sarjaan ja samaan command-fixtureen.
+   Kummankin oikea Node-caller suorittaa synteettisen skenaarion: normaali
+   supervisor poistuu ja caller valmistuu, mutta tuloksen kirjoittanut elävä
+   supervisor jättää callerin odottamaan. Jälkimmäisessä vain ulompi testiturva
+   katkaisee puun. Supervisor-result on tällöin valmis mutta caller-result
+   puuttuu ja testijuuri säilyy. Neljän tapauksen läpäisy todistaa tämän
+   tunnetun aukon, ei vanhan callerin onnistunutta virheenkäsittelyä tai
+   alkuperäisen legacy-/runner-havainnon syytä. Fixture ei asenna MSI:tä.
+   Korvaavan kytkennän on läpäistävä nykyiset komentorajaregressiot ilman
+   ulomman testiturvan katkaisua; tämä karakterisointi poistuu vanhan callerin mukana.
+
+   **Aikapolitiikan erillinen päätös on vielä avoin.** Nykyiset 7/12 minuutin
+   lifecycle-stepit jättävät 300/600 sekunnin skenaarioiden lisäksi vain
+   120 sekuntia. Jo cleanin virhepolun exact-tuotetarkistus, mahdollinen
+   uninstall ja jälkitarkistus tarvitsevat nykyisillä apuoperaatiorajoilla
+   35 + 125 + 35 sekunnin enimmäisvaraukset. Valmistelu, tuloksen julkaisu
+   ja fixture-poisto tulevat lisäksi. Näitä ei puristeta skenaarion sisään.
+
+   Ehdotettu kiinteä vaihe- ja budjettikartta käyttää olemassa olevia V2-rajoja:
+
+   | Vastuu | Omistaja | Clean | Upgrade |
+   | --- | --- | --- | --- |
+   | Result-kohteen valmistelu, alkuprofiilin inventory, fixture-materialisointi, exact-esitarkistus ja skenaarion valmistelu | Nimetyt Node-vaiheet nykyisen .NET-komennon Jobissa | 35 + 35 + 125 + 35 + 35 s | 35 + 35 + 125 + 2 x 35 + 35 s |
+   | Nykyinen skenaarioworker, mukaan lukien sen hallittu semantic cleanup | Sama nykyinen supervisor; ei sisäistä uutta valvojaa | 300 s, josta cleanup 30 s | 600 s, josta cleanup 30 s |
+   | Supervisor/scenario-resultin luku, tuotetila ja semanttinen päätös | Nykyiset nimetyt lukijat ja failure boundaryt rajatussa vaiheessa | 35 + 35 s | 2 x 35 + 35 s |
+   | Sallittu exact-tuotteen poisto ja lopputilan varmennus | Nykyinen product-worker, yksi omistaja per vaihe | 125 + 35 s | 2 x 35 + 2 x 125 + 2 x 35 s |
+   | Artifact-varmennus, loppuprofiilin inventory, sallittu fixture-poisto ja pakollinen julkaisu | Nimetyt nykyiset tarkistimet ja result-file-vastuu | 4 x 35 s | 4 x 35 s |
+
+   Kaikki 35/125 sekunnin vaihevaraukset sisältävät nykyisen 5 sekunnin
+   cleanup-varan. Ehdotuksen vaihekattojen summat ovat 935/1535 sekuntia;
+   normaalisti vaihe palautuu heti ehdon täytyttyä, ei katon täytyttyä.
+   Nykyisen legacy-komentomallin 30 sekunnin summan ylittävä liikkumavara
+   antaa clean-komennolle 965 s ja upgrade-komennolle 1565 s.
+   `CalculatePhaseTimeout` säilyttää nykyisen erillisen julkaisu- ja
+   poistumisvarauksen. Komennon ulkopuolinen pakollinen result-verifier
+   varaa 35 s. Ehdotettu lifecycle-step on cleanissa 17 min ja upgradessa
+   27 min, jolloin kummassakin jää 20 s ylemmän käynnistysketjun liikkumavaraa.
+   Supervisor-build erotetaan nykyisen mallin mukaiseksi 3 minuutin stepiksi;
+   consumer-jobien ehdotus on 27/37 min (lifecycle + build + 7 min muulle
+   valmistelulle ja artifact-jälkitarkistukselle). Producerien tai tavallisen
+   MSI-release-gaten rajoja ei muuteta.
+
+   Tämä on enimmäisvarausten laskelma, ei mittaus normaalin ajon kestosta
+   eikä lupa pidentää jumittuvan MSI-operaation aikaa. Nykyisiä aikarajoja,
+   komentoja, CI-kytkentää tai siirtämättömiä siltavastuita ei ole muutettu.
+   Omistajan budjettipäätöksen jälkeen siirto tehdään clean ensin, upgrade
+   toisena, ja korvautuvat Node-/käynnistyssäiepolut poistetaan käyttäjien ja
+   invarianttien siirryttyä. Jos yksittäisen vaiheen sallittu työ tai
+   hyväksymisehto muuttuisi, tarvitaan siitä uusi päätös.
 3. **Normaalin hyväksynnän avoimet virheet.** Alla nimetty legacy-terminalin
    puute ja fault-rollback-hylkäys säilyvät avoimina. Diagnostinen onnistuminen
    samoilla tavuilla ei ole niiden juurisyykorjaus. Myös aiempi MSI 3010- ja
