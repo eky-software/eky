@@ -150,8 +150,14 @@ sekä kahdeksan ennestään määriteltyä alustakohtaista ohitusta. System E2E
 on 86/86, web critical 35/35 ja Electron critical 38/38. Workspace-typecheck
 sekä backendin, webin ja desktopin buildit läpäisevät. Testien käyttäytymistä
 tai aikarajoja ei muutettu päivityksen mukana.
-Audit- ja signature-portit ovat vielä avoimia. Uusien artifactien normaali
-CI-todennus on kuvattu alla; se ei korvaa riippuvuusturvan portteja.
+Riippuvuusturvan checkpoint läpäisi ensimmäisellä yrityksellä revision
+`dcaeaffbdd388b6e1eea97e36ea83dfb4c07f59e`
+[Dependency security -ajossa 34833180991](https://github.com/eky-software/eky/actions/runs/34833180991).
+`Audit dependencies` läpäisi tuotantopuun auditin, koko puun auditin ja
+rekisteriallekirjoitusten varmennuksen. Audit ei muuttanut riippuvuuksia tai
+lockfilea. Lopullinen integraatiorevisio tarvitsee silti oman turvallisuusajonsa;
+tätä näyttöä ei siirretä muuttuneelle revisiolle. Alla kuvattu uusien artifactien
+normaali CI-todennus ja riippuvuusturvan portti säilyvät erillisinä.
 
 [Normaali V2-kierros 34779534322](https://github.com/eky-software/eky/actions/runs/34779534322)
 läpäisi ensimmäisellä yrityksellä ilman raskasta tallennusta. Testattu

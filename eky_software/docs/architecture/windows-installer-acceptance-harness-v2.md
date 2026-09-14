@@ -2521,9 +2521,9 @@ kuvaavat niiden nimettyjä historiallisia revisioita.
 | --- | --- |
 | Riippuvuusturva | Hyväksytyt Hono/Vitest-patchit ja niiden normaali V2-CI ovat vihreät. Omistajan erikseen hyväksymä read-only-audit valmistui: tuotantopuu 0 löydöstä, koko puu 0 löydöstä ja 160/160 rekisteriallekirjoitusta varmennettu. `dcaeaff`-revision erillinen [Dependency security 34833180991](https://github.com/eky-software/eky/actions/runs/34833180991) läpäisi ensimmäisellä yrityksellä kaikki kolme tarkistusta (18 s). Riippuvuuksia tai lockfilea ei muutettu auditissa. Lopullisen revision oma `Audit dependencies` -portti vaaditaan silti; uusi löydös tarvitsee oman vaikutusarvion. |
 | Exact-release-byte-reitti | Vanha Node/PowerShell-lifecycle on korvattu nykyisellä V2-producerilla, `--clean-command`-komennolla ja pakollisella `verifyCleanCallerResult`-tarkistuksella. Kohdetestit sekä puhtaan checkpointin samaa clean-ketjua käyttävät Windows-consumerit 2/2 läpäisivät. Koko jäljellä olevan vanhan MSI-jobin ja lopullisen cutoverin näyttö ei siirry tästä automaattisesti. Producer rakentaa kerran; release-, consumer- ja bundle-MSI:n hashien pitää vastata toisiaan. |
-| Korvatun orkestroinnin poisto | Paikallinen katselmoitava cutover poistaa 71 korvattua W6/PowerShell-orkestroinnin tiedostoa, niiden omat komennot ja vanhat CI-jobit. Shared builderit, fixturet ja tarkistimet säilyvät. Lopullisen diff-revision kohdetestit ja kokonaisportit vaaditaan ennen käyttöönottoa. Vanhaa required-check-asetusta ei ole muutettu; lähdediffi ei saa ohittaa sen erillistä päätöstä. |
+| Korvatun orkestroinnin poisto | Checkpoint `5495fa758fb91efbc44a727009e924ac0b2f68a5` poistaa 71 korvattua W6/PowerShell-orkestroinnin tiedostoa, niiden omat komennot ja vanhat CI-jobit. Shared builderit, fixturet ja tarkistimet säilyvät. Alla nimetyt kohdetestit läpäisivät, mutta lopullisen revision kokonaisportit vaaditaan ennen käyttöönottoa. Vanhaa required-check-asetusta ei ole muutettu; lähdediffi ei saa ohittaa sen erillistä päätöstä. |
 | Lopullinen ympäristö ja toistot | Voimassa on kaksi paikallista täyttä release-kierrosta ja kaksi normaalia GitHub-kierrosta samalla lopullisella integraatiorevisiolla ilman retryä. Yhden kierroksen kaksi consumeria eivät korvaa kahta kierrosta. Vaihekohtaiset CI-ympäristöpäätökset eivät muuta tätä; mahdollinen poikkeus päätetään ennen lopullisia ajoja. |
-| Main-integraatio | Main-baseline on tarkistettu `c1d010263ccf4dc490a709f58ea8a4a5b34fa03a`:ksi. Koko main-diffi, myös pinon desktop-kytkennät, katselmoidaan uudelleen poistodiffin valmistuttua. Jäädytettyjä PR:iä #257/#258 ei mergeä. |
+| Main-integraatio | Main-baseline `c1d010263ccf4dc490a709f58ea8a4a5b34fa03a` on edelleen poisto-checkpointin esi-isä. Poiston jälkeinen main-vertailu ja desktop-kytkennän rajaus on tarkistettu alla. Lopullinen integraatiorevisio, sen kokonaisportit ja main-siirto ovat vielä kesken. Jäädytettyjä PR:iä #257/#258 ei mergeä. |
 | Required checkit | Valmistellaan nykyisten kuuden checkin korvaaminen `V2 acceptance`- ja `Audit dependencies` -porteilla. Asetusmuutos vaatii näkyvän omistajapäätöksen; strict-ajantasaisuus, PR-vaatimus ja tuottajasidos säilyvät. |
 | Merge-commit | Hyväksytyn integraation jälkeen merge-commitin oma täysi main-ajo vaaditaan. PR- tai diagnostisen haaran vihreys ei korvaa sitä. |
 | 0.2.8-pilotti | Vasta edellisten porttien jälkeen erillinen versionosto, puhdas release-revisio, exact-byte-smoke/lifecycle ja samojen tavujen bundle. Ei uudelleenrakennettua korviketta, avointa latausta tai stable-kanavaa. |
@@ -2572,6 +2572,20 @@ Tämä on lähdekoodin cutover-diffi, ei päähaaran tai required-checkien
 käyttöönotto. Aiempi normaali CI 34779534322 ja exact-release CI 34784991143
 todistavat korvaavat perheet; lopullisen poistorevision hyväksyntää ei
 koosteta näiden eri revisioiden tuloksista.
+
+Poiston jälkeinen integraatiokatselmus vertaa `5495fa7`-checkpointia yllä
+nimettyyn main-baselineen: 355 tiedostopolkua (260 lisättyä, 24 muutettua ja
+71 poistettua). Desktopin kuusi lähde-/testitiedostoa ovat muuttumattomat
+aiempaan `b69baa561fb21bda693f0876bfca33ed14053eae`-katselmukseen nähden.
+Kokonaisuutta ei kuvata pelkkänä testimuutoksena: mukana ovat mainin synteettisen
+proof-käynnistyksen kytkentä, sen startup-tapahtuman tuottaja, suljettu proof-
+kontrolli ja hyväksytty yksityinen istuntotodisteen muistikanava testeineen.
+Näiden rajaus ja tavallisen käynnistyksen regressiot säilyvät; poistocheckpoint
+ei muuta niitä. Manifesti-/lockfile-diffissä säilyvät erikseen hyväksytyt
+Hono/Vitest-patchit. Desktopin ja installerin canonical-versio on edelleen
+`0.2.7`; versionosto ei kuulu poistoon. Uutta main-ristiriitaa ei havaittu.
+Tämä katselmus ei siirrä aiempien revisioiden paketoitua hyväksyntää nykyiselle
+revisiolle eikä hyväksy avoimia historiallisia riskejä.
 
 | Poistuva vastuu | Säilyvä invariantti ja nykyinen vastine |
 | --- | --- |
@@ -3030,11 +3044,11 @@ Priorisoidut löydökset ja sulkemisehdot:
    puute ja fault-rollback-hylkäys säilyvät avoimina. Diagnostinen onnistuminen
    samoilla tavuilla ei ole niiden juurisyykorjaus. Myös aiempi MSI 3010- ja
    erillinen tiedostotilahavainto on suljettava tai luokiteltava omalla näytöllä.
-4. **Cutover ja päällekkäisyys.** Vanhoilla W6-komennoilla, installer-contract
-   -testeillä ja CI-jobeilla on vielä käyttäjiä. Poisto vaatii alla olevan
-   invarianttien siirtokartan, korvaavan kattavuuden ja required-check-päätöksen.
-   Jaettua fixture-builderia ei poisteta vanhan orkestroinnin mukana vain nimen
-   perusteella. Koko sovelluksen yleissiivous ei kuulu tähän muutokseen.
+4. **Cutover ja päällekkäisyys.** Korvatut W6-komennot, niiden omat testit ja
+   vanhat CI-jobit on poistettu checkpointissa `5495fa7` yllä kuvatun siirtokartan
+   mukaan. Jaetut fixture-builderit ja edelleen käytetyt tarkistimet säilyvät.
+   Lopullisen revision kokonaisportit ja required-check-/main-päätös ovat vielä
+   avoimia. Koko sovelluksen yleissiivous ei kuulu tähän muutokseen.
 5. **Hyväksynnän ja dokumentoinnin päätösraja.** Koko V2:n nykyinen DoD sisältää
    kaksi paikallista ja kaksi GitHubin täyttä kierrosta. Vaihekohtaiset
    ympäristörajaukset eivät poista tätä vaatimusta hiljaisesti. Mahdollinen
@@ -3055,7 +3069,9 @@ Priorisoidut löydökset ja sulkemisehdot:
    `a186668cf6d5b6dc6e745b1e8448ed94e7ae8abc`, vaadittu job-/vaihekate 36/36,
    kaikki paketoidut perheet kahdesti ja fault-matriisi 10/10. Tarkat
    artifact-identiteetit ovat dependency review'ssa. Auditit ja
-   rekisteriallekirjoitukset ovat edelleen avoinna. Tämä ei ole koko V2:n
+   rekisteriallekirjoitukset läpäisivät myöhemmin revision `dcaeaff` erillisessä
+   CI-ajossa 34833180991; lopullisen revision oma portti vaaditaan edelleen.
+   Tämä ei ole koko V2:n
    integraatio-/käyttöönottokuittaus. Päivitystä ei nimetä legacy-jumin
    selitykseksi eikä aiempaa vihreää MSI-näyttöä siirretä uusille tavuille.
 
@@ -3073,9 +3089,10 @@ CI-politiikka 53/53 läpäisevät. Tämä ei ole paketoidun matriisin tulos eik�
 normaalin hyväksynnän korvike. Desktopin typecheck ja build läpäisevät;
 tuotantokoodia tai aikarajoja ei muuteta. Tarkempi tutkimusaineisto pysyy yksityisenä.
 
-### Nykyisen revision näyttö
+### Historiallinen epäonnistuminen ja sitä seurannut diagnoosi
 
-Uudempi normaali CI
+Tämä osuus säilyttää nimetyn revision epäonnistumisen ja sen jälkeisen
+diagnoosin erillään yllä olevasta käyttöönoton nykytilasta. Normaali CI
 [34724571256](https://github.com/eky-software/eky/actions/runs/34724571256)
 epäonnistui lähde-HEADilla `c3ff7f66572c69e1ddae268c4bd285b255609344`.
 Todellinen checkout ja artifact-build olivat
