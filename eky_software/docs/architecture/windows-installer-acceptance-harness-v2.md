@@ -2535,6 +2535,26 @@ ei yhdistetä hyväksynnäksi. Tunnettua turvallisuus- tai datariskiä ei
 hyväksytä kahdella vihreällä kierroksella. Main, required checkit ja pilotti
 pysyvät alla kuvattujen erillisten porttien takana.
 
+Tämän jatkolinjauksen ensimmäinen normaali kokonaiskierros
+[`34864080095`](https://github.com/eky-software/eky/actions/runs/34864080095)
+revisiolta `9232b6ea4e2911ee3616b591c6290b77ceecc55f` on hylätty.
+Tallennus oli pois päältä. Komentorajojen 12 jobia läpäisivät 824/824;
+core-portit, clean ja upgrade/rollback 2/2, workspace-success 2/2 sekä
+workspace-fault 10/10 valmistuivat. Valmistuneiden consumerien ennen/jälkeen-
+tiivisteet vastaavat niiden producerien artifact-tavuja. Legacy run 2
+valmistui, mutta run 1 peruutettiin 37 minuutin job-rajan vuoksi;
+`V2 acceptance` hylkäsi kierroksen tuloksella `workflowNotSuccessful`.
+Epäonnistuneen jobin loki ei ollut saatavilla job-rajapinnasta eikä koko
+workflow'n arkistosta. Sen komento-, prosessi- ja siivouslopputila jäävät
+varmentamatta; katkaisun sisäistä odotuskohtaa tai aiheuttajaa ei päätellä
+puuttuvasta lokista. Saman revision
+[riippuvuusturva](https://github.com/eky-software/eky/actions/runs/34864084066)
+läpäisi runtime-/kokonaisauditoinnin ja pakettiallekirjoitusten tarkistuksen.
+Hyväksyntä säilyy 0/2:ssa, eikä toista kokonaiskierrosta käynnistetty.
+Main, required checkit ja julkaisu pysyvät ennallaan. Seuraava tarvittava
+näyttö on tämän epäonnistuneen consumerin komennon ja ylemmän ajoketjun
+valmistumistila; aiempi onnistunut debug- tai tallennusajo ei korvaa sitä.
+
 #### Aiemman näytön avoimet havainnot
 
 Omistajan pyytämä normaalin legacy-workflow'n tallennettu/tallentamaton
