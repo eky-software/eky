@@ -2507,6 +2507,31 @@ Tämä osuus erottaa nykyisen julkaisutyön historiallisesta tutkimusnäytöstä
 
 #### Ajantasaiset julkaisuesteet ja päätökset
 
+Omistajan pyytämä normaalin legacy-workflow'n tallennettu/tallentamaton
+vertailu [34855184997](https://github.com/eky-software/eky/actions/runs/34855184997)
+valmistui lähde-, checkout- ja artifact-build-revisiosta
+`ef3922a2f3a4714820cebf49938b09a46b00481f`. Nykyiset 12 sopimusjobia
+läpäisivät 824/824 testiä ilman ohituksia. Sama normaali producer rakensi
+yhden uuden artifactin (`10353271577`); molempien consumerien ennen/jälkeen-
+varmennukset vastasivat sen descriptorin ja pakettien tavuja. Molemmat
+legacy-komennot, pakolliset caller-result-varmentimet, semanttiset
+jälkiehdot, asennus- ja fixture-siivoaminen sekä kokonaiset jobit läpäisivät.
+Kummassakin lokissa oli 20 vaihekohtaista prosessipuun poissaolon havaintoa
+ja valmistunut julkaisemisvaihe.
+
+Consumer 1:n valinnainen tallennus käynnistyi ja pysähtyi, mutta analyysi
+hylättiin `commandExport`-rajalla (`INSPECTOR_CAPTURE_TOOL_FAILED`).
+Suljettu yhteenveto säilytti `analysisOutcome=failure`- ja
+`captureResult=analysisUnverified`-tulokset erillään onnistuneesta testistä.
+Valinnaisen vaiheen vihreä job-kuvake ei siis tarkoita onnistunutta analyysiä.
+Consumer 2 ajettiin ilman tallennusta. Alkuperäinen viive ei toistunut;
+tuotetarkistimen sisäistä odotuskohtaa tai aiempien legacy-katkaisujen syytä
+ei paikannettu. Tämä oli saman normaalin consumer-toteutuksen rajattu
+vertailu, ei koko V2:n hyväksyntäkierros eikä vanhojen havaintojen korjaus.
+Uutta samanlaista MSI-koetta ei käynnistetä tämän tuloksen perusteella.
+Seuraava päätös koskee epäonnistuneen ajon puuttuvan valmistumisnäytön
+saamista; main, required checkit ja julkaisu pysyvät suljettuina.
+
 Tuotetarkistuksen synteettinen aikakatkaisu katetaan nyt myös legacy- ja
 workspace-fault-perheiden todellisen PowerShell/pnpm-käynnistysketjun kautta.
 Nykyinen yhteinen komentofixture tarkistaa alkuperäisen deadline-virheen,
