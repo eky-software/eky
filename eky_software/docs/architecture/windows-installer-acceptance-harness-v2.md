@@ -2507,6 +2507,33 @@ Tämä osuus erottaa nykyisen julkaisutyön historiallisesta tutkimusnäytöstä
 
 #### Ajantasaiset julkaisuesteet ja päätökset
 
+Ensimmäinen integraatiokierros lähde- ja checkout-revisiosta
+`e6bf270da368f08b966372d8c9e8ada0903cb6d8`,
+[34837722838](https://github.com/eky-software/eky/actions/runs/34837722838),
+ei kelpaa hyväksynnäksi. Kaksi sopimusjobia epäonnistui: rollback-bootstrapin
+viiden sekunnin poistumisodotus ja workspace-success-komentofixturen
+`inventoryAfter`-vaiheen deadline. Jälkimmäisen synteettinen vaiheraja on
+4 sekuntia, josta 1 sekunti on siivousta; tämä ei ole varsinaisen paketoidun
+komennon vaiheraja. Deadline-hylkäyksessä prosessipuun poissaolo varmennettiin,
+mutta alkuperäistä viivettä ei paikannettu. Legacy-producer ja sen consumerit
+jäivät tämän sopimusvirheen takia ajamatta. Clean-, upgrade/rollback- ja
+workspace-success-consumerit läpäisivät kukin 2/2 samoilla ennen/jälkeen
+varmennetuilla artifact-tavuilla; osatulokset eivät korvaa kokonaisporttia.
+Saman revision [Audit dependencies 34837793012](https://github.com/eky-software/eky/actions/runs/34837793012)
+läpäisi. Required-check-asetuksia tai mainia ei ole muutettu.
+
+Rajattu rollback-testin lukijakorjaus erottaa todellisen virheellisen
+poistumiskoodin, puuttuvan onnistumiskuittauksen ja vielä elävän prosessin
+aikakatkaisun. Puuttuvan helperin oikea Windows-testi käyttää samaa lukijaa;
+erillinen synkroninen käynnistyspolku on poistettu. Kolme tapahtumaregressiota
+ja kolme Windows-sopimusta läpäisivät 6/6, installer-unitit 94/94.
+Epäonnistuneen testin aineisto säilyy. Tuotannon launcher, aikarajat ja
+prosessiomistajuus eivät muutu. Tämä korjaa alkuperäisen virheen peittymisen,
+ei vielä osoita CI:n bootstrap-viiveen syytä tai helper-puun virhesiivousta.
+Onnistuvan komentofixturen lyhennetyn työrajan sopimus tarvitsee erillisen
+päätöksen ennen uutta kokonaishyväksyntää. Tarkoituksellisia timeout-,
+cleanup- tai MSI-hylkäyksiä ei muuteta onnistumisiksi.
+
 Exact-release-siirron testattu lähde-, checkout- ja artifact-revisio on
 `46f1b0aca3ecdd7b29ad803a955d23b245b9a4c0` /
 [34784991143](https://github.com/eky-software/eky/actions/runs/34784991143).
