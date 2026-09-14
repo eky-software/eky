@@ -2611,6 +2611,39 @@ Muuttuneiden upgrade-lifecycle- ja tulossopimusten nykyiset testit kuuluvat
 myös normaalin CI:n olemassa olevaan core-sopimusryhmään. Erillinen paikallinen
 upgrade-testikomento ei yksin takaa näiden regressioiden CI-kattavuutta.
 
+Jäädytetyn revision `6ec013bd6653ad3fa77f4d96f84262845da8993a` ensimmäinen
+normaali kokonaiskierros
+[`34879088504`](https://github.com/eky-software/eky/actions/runs/34879088504)
+läpäisi ensimmäisellä yrityksellä ilman tallennusta. Sen 12 komentorajajobia
+läpäisivät 846/846; clean, upgrade/rollback ja historical legacy läpäisivät
+2/2, workspace-success 2/2 ja workspace-fault 10/10. Neljän producer-perheen
+artifactit varmennettiin samoiksi tavuiksi ennen ja jälkeen consumerien;
+lähde-, checkout- ja build-revisio olivat sama jäädytetty revisio. Myös sen
+[riippuvuusturva](https://github.com/eky-software/eky/actions/runs/34879091289)
+läpäisi kaikki kolme auditointi- ja allekirjoitusvaihetta.
+
+Saman revision toinen normaali kierros
+[`34882126613`](https://github.com/eky-software/eky/actions/runs/34882126613)
+on hylätty, eikä kahden kokonaiskierroksen hyväksyntä täyty. Kaikki yllä
+nimetyt paketoidut perheet ja niiden ennen/jälkeen-artifact-sidokset
+läpäisivät myös toisella kierroksella. Electron critical -portin
+`DESK-PDF-001` epäonnistui ennen testirungon alkua:
+`playwrightConnect` valmistui, mutta `firstWindow` päättyi aikakatkaisuun.
+Ensimmäisen yrityksen säilytetty turvallinen lifecycle-tulos vahvistaa
+API- ja runtime-siivoamisen, portin vapautumisen ja testijuuren poistamisen.
+Diagnostisen retryn läpäisy ei muuta flaky-tulosta hyväksytyksi;
+`V2 acceptance` hylkäsi kierroksen. Kolmatta kokonaisajoa ei käynnistetä
+samankaltaisena uusintana.
+
+Seuraava avoin vastuu on Electron-E2E:n käynnistys ennen ensimmäistä ikkunaa.
+Nykyinen näyttö ei erota mainin valmistelua, backendin valmiutta,
+profiilin/palautuspisteen tarkistuksia ja ikkunan toimitusta Playwrightille.
+30 sekunnin ikkunarajaa ei muuteta tämän puuttuvan havainnon perusteella.
+Rajattu jatko käyttää nykyistä fixtureä ja käynnistyspolkua; se ei avaa
+uudelleen läpäissyttä MSI-skenaariota tai lisää prosessivalvojaa.
+Main, required checkit ja julkaisu pysyvät ennallaan. Aiemmat MSI- ja
+legacy-havainnot säilyvät erillisinä, eikä niiden syitä nimetä korjatuiksi.
+
 #### Aiemman näytön avoimet havainnot
 
 Omistajan pyytämä normaalin legacy-workflow'n tallennettu/tallentamaton
