@@ -2595,9 +2595,17 @@ sovelluksen siivousluokka sekä nykyisen lokilukijan suljettu havainto.
 Raakalokia ei julkaista. Virheellinen havainto tai tulostuksen epäonnistuminen
 ei muuta alkuperäistä testitulosta; `3010` ja varmentamaton cleanup pysyvät
 virheinä. Tämä korjaa tuloksen säilytyksen, ei vielä osoita MSI-virheen syytä.
-Seuraava rajattu diagnoosi käyttää nykyistä consumeria ja saman producerin
-varmennettuja artifact-tavuja ilman uutta MSI-buildia; se ei ole normaali
-kokonaishyväksyntä.
+Rajattu diagnoosi [34878306519](https://github.com/eky-software/eky/actions/runs/34878306519)
+läpäisi nykyisellä consumerilla ilman uutta MSI-buildia. Harness ja checkout
+olivat `55c7c4db7a4ce5b708863cbb562a753a3b3c38eb`, artifact-ID `10361132680`
+ja build-revisio `3147daf50eb1310c49ab6643f09a4e34ed5969fe`. Ennen/jälkeen-
+varmennukset vastasivat samaa descriptoria ja kolmea MSI-tiivistettä.
+Alkuperäinen ja lopullinen MSI-koodi olivat 0; MSI:n valmistuminen havaittiin
+sovelluksen poistumisen jälkeen. Suljettu lukija ei havainnut tunnettuja
+reboot-syymerkintöjä. Pakollinen caller-result-varmennus, asennuksen poisto,
+prosessien poissaolo ja fixture-siivoaminen läpäisivät. Tämä todentaa
+korjatun tulostiedon kulun, ei aiemman MSI-virheen syytä. Normaali
+kokonaishyväksyntä ja vanhat avoimet havainnot säilyvät erillisinä.
 
 Muuttuneiden upgrade-lifecycle- ja tulossopimusten nykyiset testit kuuluvat
 myös normaalin CI:n olemassa olevaan core-sopimusryhmään. Erillinen paikallinen
