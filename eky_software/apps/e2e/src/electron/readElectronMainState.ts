@@ -41,3 +41,16 @@ export function readElectronMainState(
     };
   });
 }
+
+export function readElectronStartupObservation(
+  electronApp: ElectronApplication,
+): Promise<unknown> {
+  return electronApp.evaluate(() => {
+    const controller = (
+      globalThis as typeof globalThis & {
+        __EKY_ELECTRON_E2E__?: { startupObservation(): unknown };
+      }
+    ).__EKY_ELECTRON_E2E__;
+    return controller?.startupObservation();
+  });
+}

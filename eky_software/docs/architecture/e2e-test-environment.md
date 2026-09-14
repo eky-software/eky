@@ -112,6 +112,26 @@ Sama turvallinen sisältö tallentuu yrityskohtaiseen
 yhden päivän artifactina, myös ensimmäisestä epäonnistumisesta ennen retryä.
 Koko `test-results`-kansiota, tracea, profiilia tai raakaa lokia ei julkaista.
 
+Electronin erillinen E2E-entrypoint säilyttää vain muistissa enintään 16
+nimettyä käynnistyshavaintoa ja niiden kuluneen ajan. Havainto erottaa appin
+valmiuden, workspace-ratkaisun, backendin käynnistyspyynnön ja valmiuden,
+ensimmäisen ikkunan luonnin sekä composition-kutsun valmistumisen. Se ei lue
+yritysdataa, kirjoita konsoliin tai levylle eikä muuta tuotannon käynnistystä.
+Havainnot eivät ole uusia valmius- tai hyväksymisehtoja.
+Erillinen `DESK-STARTUP-OBSERVATION-001` todistaa havaintojen todellisen
+kytkennän nykyiseen main-prosessiin. Se ei lisää diagnostiikan saatavuutta
+PDF-käyttäjäpolun onnistumisehdoksi. `DESK-RESTART-001` todistaa nykyisellä
+yhteydellä keskeneräisen lukupyynnön päättymisen restartin siivouksessa.
+
+Käynnistysvirheessä fixture pyytää muistihavainnon kerran nykyisen
+Playwright-main-yhteyden kautta ja jatkaa nykyistä siivousta odottamatta
+vastausta. Siivottava yhteys omistaa myös keskeneräisen lukupyynnön.
+`startupCapture` on `captured`, `unavailable` tai `notRequested`; puuttuva
+vastaus ei todista mainin jumittumista. Myöhäinen vastaus ei muuta jo
+muodostettua raporttia. Suljettu projektio hyväksyy vain nimetyt vaiheet,
+ei raakavirhettä, polkua, tunnisteita tai vapaata metadataa. Havainto ja sen
+puuttuminen säilyvät erillisinä testivirheestä ja siivoustuloksesta.
+
 Testijuurta ei poisteta, jos runtimen, portin tai API-kahvan siivous jäi
 varmentamatta. Yhteyden epäonnistuessa ennen runtime-kahvan saamista sen
 omistajuutta ei arvata portin vapautumisen perusteella. Aiemman epävarman
@@ -239,10 +259,11 @@ toistensa ajoja:
 | `main` push | `main` | peruuttaa vain aiemman `main` push -ajon |
 | workflow dispatch | valittu ref | peruuttaa vain saman ref-arvon käsin käynnistetyn ajon |
 
-Tavallinen verify-job ajetaan edelleen `antsa`- ja `main`-pusheissa,
-pull requesteissa sekä käsin käynnistettynä. Raskaat E2E-jobit rajataan
-pull requestiin, `main`-pushiin ja käsin käynnistettyyn ajoon. Nykyiset raskaat
-jobit ovat `System security E2E`, `Web critical E2E` ja
+V2:n controller valitsee PR:n jobit riskisuunnitelman mukaan; `main`-,
+ajastettu ja manuaalinen kokonaisajo ovat täysiä. Feature-push ei käynnistä
+PR:n rinnalle toista raskasta matriisia. `ci.yml` on reusable core eikä sen
+vihreä osatulos yksin täytä `V2 acceptance` -porttia. Sen E2E-jobit ovat
+`System security E2E`, `Web critical E2E` ja
 `Windows Electron critical E2E`. Windows-jobi paketoi desktop-sovelluksen,
 ajaa packaged smoken ja sen jälkeen kriittiset Electron development -testit
 yhdellä workerilla. Endurance-baselineja tai soakia ei ajeta automaattisesti

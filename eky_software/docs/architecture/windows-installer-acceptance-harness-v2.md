@@ -2641,6 +2641,17 @@ profiilin/palautuspisteen tarkistuksia ja ikkunan toimitusta Playwrightille.
 30 sekunnin ikkunarajaa ei muuteta tämän puuttuvan havainnon perusteella.
 Rajattu jatko käyttää nykyistä fixtureä ja käynnistyspolkua; se ei avaa
 uudelleen läpäissyttä MSI-skenaariota tai lisää prosessivalvojaa.
+E2E-entrypointin rajattu muistihavainto erottaa jo olemassa olevat
+app-ready-, workspace-, backend- ja ikkunarajat. Fixture pyytää sen vain
+käynnistysvirheessä nykyisellä Playwright-yhteydellä ilman lisäodotusta;
+puuttuva havainto ja alkuperäinen testivirhe säilyvät erillisinä.
+Tämä täsmentää seuraavan kokeen näyttöä, ei vielä korjaa tai selitä
+ensimmäisen ikkunan CI-aikakatkaisua.
+Diagnostiikan kytkentätesti säilyy erillään PDF-käyttäjäpolusta. Restart-
+regressio todistaa oikealla Playwright-yhteydellä myös keskeneräisen
+havaintoluvun päättymisen vanhan runtimen siivouksessa. Rajatun Windows-
+CI-todennuksen käynnistys on vielä avoin; näitä kohdetestejä ei lasketa
+uudeksi normaaliksi kokonaiskierrokseksi.
 Main, required checkit ja julkaisu pysyvät ennallaan. Aiemmat MSI- ja
 legacy-havainnot säilyvät erillisinä, eikä niiden syitä nimetä korjatuiksi.
 

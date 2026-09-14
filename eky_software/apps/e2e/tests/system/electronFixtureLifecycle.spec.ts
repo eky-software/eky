@@ -9,7 +9,11 @@ import {
   finishIsolatedElectronTest,
   reportElectronLifecycleEvidence,
 } from '../../src/fixtures/isolatedElectronTest.js';
-import { launchElectronRuntime, type ElectronLaunchObservation } from '../../src/fixtures/launchElectronRuntime.js';
+import { captureElectronStartupObservation, launchElectronRuntime, type ElectronLaunchObservation } from '../../src/fixtures/launchElectronRuntime.js';
+import {
+  createElectronE2eStartupObservation,
+  parseElectronE2eStartupObservation,
+} from '../../../desktop/e2e/electronE2eStartupObservation.js';
 import { ELECTRON_E2E_FIRST_WINDOW_TIMEOUT_MILLISECONDS } from '../../src/fixtures/electronLaunchBudgets.js';
 import { stopOwnedElectronRuntime } from '../../src/fixtures/stopOwnedElectronRuntime.js';
 
@@ -65,6 +69,57 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
     await expect(launchFixture({ observerFails: true }).run()).resolves.toHaveProperty('page');
     await expect(launchFixture({ observerFails: true, window: new errors.TimeoutError('private') }).run())
       .rejects.toThrow('phase=firstWindow reason=timeout');
+  });
+
+  test('startup memory keeps only bounded immutable checkpoint observations', () => {
+    let elapsed = 0;
+    const observation = createElectronE2eStartupObservation(() => elapsed);
+    observation.record('waitingForAppReady');
+    elapsed = 25;
+    observation.record('appReady');
+    const snapshot = observation.snapshot();
+    expect(snapshot.checkpoints).toEqual([
+      { checkpoint: 'waitingForAppReady', elapsedMs: 0 },
+      { checkpoint: 'appReady', elapsedMs: 25 },
+    ]);
+    expect(parseElectronE2eStartupObservation(snapshot)).toEqual(snapshot);
+    for (let i = 0; i < 20; i += 1) observation.record('backendStartRequested');
+    expect(observation.snapshot().checkpoints).toHaveLength(16);
+    expect(observation.snapshot().truncated).toBe(true);
+    expect(snapshot.checkpoints).toHaveLength(2);
+    expect(Object.isFrozen(snapshot.checkpoints)).toBe(true);
+    for (const unsafe of [
+      { ...snapshot, session: 'private' },
+      { ...snapshot, checkpoints: [{ checkpoint: 'private', elapsedMs: 0 }] },
+      { ...snapshot, checkpoints: [{ checkpoint: 'appReady', elapsedMs: 0, path: 'private' }] },
+      { ...snapshot, checkpoints: [{ checkpoint: 'appReady', elapsedMs: Number.NaN }] },
+      { ...snapshot, checkpoints: new Array(17).fill(snapshot.checkpoints[0]) },
+    ]) expect(parseElectronE2eStartupObservation(unsafe)).toBeUndefined();
+  });
+
+  test('an unavailable or late startup read cannot delay cleanup or replace the original failure', async () => {
+    const original = new Error('original window timeout');
+    let resolveRead!: (value: unknown) => void;
+    const read = new Promise<unknown>((resolve) => { resolveRead = resolve; });
+    const finishCapture = captureElectronStartupObservation(() => read);
+    const fixture = cleanupFixture();
+    try {
+      await expect(fixture.finish({ error: original })).rejects.toBe(original);
+      expect(existsSync(fixture.root)).toBe(false);
+      expect(finishCapture()).toEqual({ status: 'unavailable' });
+      resolveRead(createElectronE2eStartupObservation().snapshot());
+      await read;
+      expect(finishCapture()).toEqual({ status: 'unavailable' });
+      for (const readFailure of [
+        () => { throw new Error('private read failure'); },
+        () => Promise.reject(new Error('private read failure')),
+        () => Promise.resolve({ session: 'private' }),
+      ]) {
+        const finish = captureElectronStartupObservation(readFailure);
+        await Promise.resolve();
+        expect(finish()).toEqual({ status: 'unavailable' });
+      }
+    } finally { resolveRead(undefined); await removeE2eRunRootIfPresent(fixture.root); }
   });
 
   test('keeps the original process handle after Playwright releases its application channel', async () => {
@@ -130,6 +185,9 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
   test('first failed startup keeps safe per-attempt evidence before any retry', async ({}, testInfo) => {
     const fixture = launchFixture({ dom: new errors.TimeoutError('private URL session environment') });
     const root = createE2eRunRoot();
+    const startup = createElectronE2eStartupObservation();
+    startup.record('backendReady');
+    const finishCapture = captureElectronStartupObservation(async () => startup.snapshot());
     let failure: { error: unknown } | undefined;
     try {
       try { await fixture.run(); } catch (error) { failure = { error }; }
@@ -145,6 +203,7 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
           launch: fixture.observations,
           observationsTruncated: false,
           cleanup,
+          startupCapture: finishCapture(),
         }),
       })).rejects.toBe(failure?.error);
       expect(stoppedApplication).toBe(fixture.application);
@@ -154,7 +213,8 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
       const bytes = attachment?.body ?? readFileSync(attachment!.path!);
       const evidence = JSON.parse(bytes.toString('utf8'));
       expect(readFileSync(testInfo.outputPath('electron-lifecycle.json'))).toEqual(bytes);
-      expect(Object.keys(evidence).sort()).toEqual(['attempt', 'cleanup', 'launch', 'observationsTruncated', 'schemaVersion']);
+      expect(Object.keys(evidence).sort()).toEqual(['attempt', 'cleanup', 'launch', 'observationsTruncated', 'schemaVersion', 'startupCapture']);
+      expect(evidence.startupCapture).toEqual({ status: 'captured', observation: startup.snapshot() });
       expect(evidence.attempt).toBe(0);
       expect(evidence.launch.at(-1)).toEqual({ phase: 'domContentLoaded', status: 'failed', reason: 'timeout' });
       expect(evidence.cleanup.runRoot).toBe('removed');

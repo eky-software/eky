@@ -34,6 +34,7 @@ import { reserveLoopbackPort } from '../environment/reserveLoopbackPort.js';
 import { removeE2eRunRoot } from '../environment/removeE2eRunRoot.js';
 import { resolveElectronE2eExecutable } from '../environment/resolveElectronE2eExecutable.js';
 import { waitForLoopbackPortRelease } from '../environment/waitForLoopbackPortRelease.js';
+import { readElectronStartupObservation } from '../electron/readElectronMainState.js';
 import {
   createElectronActiveWorkspaceReplacementFixture,
   createElectronWorkspaceBackupFixture,
@@ -45,8 +46,10 @@ import {
   stopOwnedElectronRuntime,
 } from './stopOwnedElectronRuntime.js';
 import {
+  captureElectronStartupObservation,
   launchElectronRuntime,
   type ElectronLaunchObservation,
+  type ElectronStartupCapture,
 } from './launchElectronRuntime.js';
 import { ELECTRON_E2E_PROCESS_CONNECT_TIMEOUT_MILLISECONDS } from './electronLaunchBudgets.js';
 
@@ -183,6 +186,8 @@ export const test = base.extend<
     let failure: { error: unknown } | undefined;
     const launchObservations: ElectronLaunchObservation[] = [];
     let observationsTruncated = false;
+    let finishStartupCapture: () => ElectronStartupCapture =
+      () => ({ status: 'notRequested' });
 
     async function launchCurrentRuntime() {
       assertElectronRuntimeLaunchPrerequisites(runtime, runRoot);
@@ -210,6 +215,12 @@ export const test = base.extend<
           child.stderr?.resume();
         },
         observe(observation) {
+          if (observation.status === 'failed' && electronApp !== undefined) {
+            const application = electronApp;
+            finishStartupCapture = captureElectronStartupObservation(
+              () => readElectronStartupObservation(application),
+            );
+          }
           if (launchObservations.length < MAX_ELECTRON_LAUNCH_OBSERVATIONS) {
             launchObservations.push(observation);
           } else {
@@ -365,6 +376,7 @@ export const test = base.extend<
               launch: launchObservations,
               observationsTruncated,
               cleanup,
+              startupCapture: finishStartupCapture(),
             });
           }
         },
@@ -407,6 +419,7 @@ export async function reportElectronLifecycleEvidence(
     launch: readonly ElectronLaunchObservation[];
     observationsTruncated: boolean;
     cleanup: Readonly<ElectronCleanupResult>;
+    startupCapture?: ElectronStartupCapture;
   },
 ): Promise<void> {
   const path = testInfo.outputPath('electron-lifecycle.json');
@@ -418,6 +431,7 @@ export async function reportElectronLifecycleEvidence(
       launch: evidence.launch,
       observationsTruncated: evidence.observationsTruncated,
       cleanup: evidence.cleanup,
+      startupCapture: evidence.startupCapture ?? { status: 'notRequested' },
     }),
     { encoding: 'utf8', flag: 'wx', mode: 0o600 },
   );

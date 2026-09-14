@@ -1,6 +1,38 @@
 import { errors, type ElectronApplication, type Page } from '@playwright/test';
 
 import { ELECTRON_E2E_FIRST_WINDOW_TIMEOUT_MILLISECONDS } from './electronLaunchBudgets.js';
+import {
+  parseElectronE2eStartupObservation,
+  type ElectronE2eStartupObservation,
+} from '../../../desktop/e2e/electronE2eStartupObservation.js';
+
+export type ElectronStartupCapture =
+  | Readonly<{ status: 'notRequested' | 'unavailable' }>
+  | Readonly<{ status: 'captured'; observation: ElectronE2eStartupObservation }>;
+
+// The fixture's existing channel cleanup owns pending evaluation. Never wait
+// for this optional read, and never accept a late result after reporting.
+export function captureElectronStartupObservation(
+  read: () => Promise<unknown>,
+): () => ElectronStartupCapture {
+  let sealed = false;
+  let result: ElectronStartupCapture = Object.freeze({ status: 'unavailable' });
+  try {
+    void read().then((value) => {
+      if (sealed) return;
+      const observation = parseElectronE2eStartupObservation(value);
+      if (observation !== undefined) {
+        result = Object.freeze({ status: 'captured', observation });
+      }
+    }).catch(() => undefined);
+  } catch {
+    // A missing or failed diagnostic cannot replace the launch failure.
+  }
+  return () => {
+    sealed = true;
+    return result;
+  };
+}
 
 export interface ElectronLaunchObservation {
   readonly phase: 'playwrightConnect' | 'firstWindow' | 'domContentLoaded';
