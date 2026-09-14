@@ -71,7 +71,10 @@ test('producer publishes exactly one immutable pair and consumers use the same a
   assert.equal(consumer.match(/--workspace-success-command --artifact-descriptor/g).length, 1);
   assert.equal(consumer.match(/installer:v2-workspace-artifact:verify/g).length, 2);
   assert.match(consumer, /always\(\) && steps.download.outcome == 'success'/);
-  for (const command of consumer.split('\n').filter((line) => /pnpm.*(?:installer:v2|--workspace-success-command)/.test(line))) {
+  const boundCommands = consumer.split('\n').filter((line) =>
+    /installer:v2-workspace-artifact:verify|--workspace-success-command|verifyWorkspaceCallerResult\.mjs/.test(line));
+  assert.equal(boundCommands.length, 4);
+  for (const command of boundCommands) {
     assert.match(command, /--expected-descriptor-sha256 \$env:EXPECTED_DESCRIPTOR_SHA256/);
     assert.match(command, /--expected-build-revision \$env:EXPECTED_BUILD_REVISION/);
   }
@@ -98,7 +101,7 @@ test('V2.7 uses two consumers of the same producer and all five existing fault c
     'passiveWorkspaceMigrationFailure', 'binaryRollbackFailure',
   ]);
   for (const command of commands) {
-    assert.match(command, /pnpm --filter @eky\/desktop exec dotnet installer\/bin\/windows-process-supervisor\/Release\/net10\.0\/Eky\.WindowsProcessSupervisor\.dll --workspace-fault-command/);
+    assert.match(command, /^\s+dotnet apps\/desktop\/installer\/bin\/windows-process-supervisor\/Release\/net10\.0\/Eky\.WindowsProcessSupervisor\.dll --workspace-fault-command/);
     assert.match(command, /--artifact-descriptor \$descriptorPath/);
     assert.match(command, /--expected-descriptor-sha256 \$env:EXPECTED_DESCRIPTOR_SHA256/);
     assert.match(command, /--expected-build-revision \$env:EXPECTED_BUILD_REVISION/);

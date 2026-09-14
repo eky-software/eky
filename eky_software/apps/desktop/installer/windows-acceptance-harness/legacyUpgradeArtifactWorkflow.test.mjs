@@ -81,9 +81,13 @@ test('bounded rollback diagnostic executes the existing ordered commands and sto
     const script = join(context.testRoot, 'step.ps1');
     await writeFile(script, `
 $ErrorActionPreference = 'Stop'
-function pnpm {
-  [IO.File]::AppendAllText($env:TEST_CALLS, (ConvertTo-Json -InputObject @($args) -Compress) + [Environment]::NewLine)
-  $global:LASTEXITCODE = if ($args[3] -ceq 'dotnet') { [int]$env:TEST_COMMAND_EXIT } else { [int]$env:TEST_VERIFIER_EXIT }
+function dotnet {
+  [IO.File]::AppendAllText($env:TEST_CALLS, (ConvertTo-Json -InputObject (@('dotnet') + $args) -Compress) + [Environment]::NewLine)
+  $global:LASTEXITCODE = [int]$env:TEST_COMMAND_EXIT
+}
+function node {
+  [IO.File]::AppendAllText($env:TEST_CALLS, (ConvertTo-Json -InputObject (@('node') + $args) -Compress) + [Environment]::NewLine)
+  $global:LASTEXITCODE = [int]$env:TEST_VERIFIER_EXIT
 }
 ${body}
 `);
@@ -105,10 +109,10 @@ ${body}
     const argument = (call, key) => call[call.indexOf(key) + 1];
     for (let index = 0; index < calls.length; index += 2) {
       const [command, verifier] = calls.slice(index, index + 2);
-      assert.equal(command[3], 'dotnet');
+      assert.equal(command[0], 'dotnet');
       assert.ok(command.includes('--workspace-fault-command'));
-      assert.equal(verifier[3], 'node');
-      assert.ok(verifier[4].endsWith('/verifyWorkspaceCallerResult.mjs'));
+      assert.equal(verifier[0], 'node');
+      assert.ok(verifier[1].endsWith('/verifyWorkspaceCallerResult.mjs'));
       for (const call of [command, verifier]) {
         assert.equal(argument(call, '--fault-scenario'), index === 0 ? 'preUpdateRecoveryPointFailure' : 'activeWorkspaceFirstStartFailure');
         assert.equal(argument(call, '--expected-build-revision'), 'a'.repeat(40));

@@ -248,9 +248,9 @@ jobs:
         run: |
           $descriptorPath = Join-Path $env:RUNNER_TEMP 'eky-v2-upgrade-artifact\upgrade-rollback-artifact.json'
           $resultPath = Join-Path $env:RUNNER_TEMP ('eky-upgrade-caller-' + [guid]::NewGuid().ToString('N') + '\result.json')
-          pnpm --filter @eky/desktop exec dotnet installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --upgrade-command --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath
+          dotnet apps/desktop/installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --upgrade-command --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath
           $commandExit = $LASTEXITCODE
-          pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/verifyUpgradeCallerResult.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath --command-exit $commandExit
+          node apps/desktop/installer/windows-acceptance-harness/verifyUpgradeCallerResult.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath --command-exit $commandExit
           if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0) {
             throw 'WINDOWS_ACCEPTANCE_UPGRADE_LIFECYCLE_FAILED'
           }

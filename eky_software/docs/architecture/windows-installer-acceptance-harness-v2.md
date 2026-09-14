@@ -2551,9 +2551,27 @@ puuttuvasta lokista. Saman revision
 [riippuvuusturva](https://github.com/eky-software/eky/actions/runs/34864084066)
 läpäisi runtime-/kokonaisauditoinnin ja pakettiallekirjoitusten tarkistuksen.
 Hyväksyntä säilyy 0/2:ssa, eikä toista kokonaiskierrosta käynnistetty.
-Main, required checkit ja julkaisu pysyvät ennallaan. Seuraava tarvittava
-näyttö on tämän epäonnistuneen consumerin komennon ja ylemmän ajoketjun
+Main, required checkit ja julkaisu pysyvät ennallaan. Tästä kierroksesta
+puuttuu epäonnistuneen consumerin komennon ja ylemmän ajoketjun
 valmistumistila; aiempi onnistunut debug- tai tallennusajo ei korvaa sitä.
+
+Rajattu CI-korjaus poistaa lifecycle-kutsusta `pnpm exec` -välikerroksen.
+Projektin lukitun [pnpm-version virhepolku](https://github.com/pnpm/pnpm/blob/v11.1.3/pnpm/src/errorHandler.ts)
+odottaa jälkeläisprosessien listausta ilman omaa aikarajaa ennen poistumista.
+Jo päättyneen alikomennon virhe voi siten jäädä ylemmän kutsun odotukseksi.
+Clean-, upgrade-, legacy- ja workspace-consumerit kutsuvat nykyistä
+.NET-komentoa ja erillistä Node-tulosvarmenninta suoraan. Työkalut ovat
+samat workflow'n jo valmistelemat työkalut; pnpm säilyy riippuvuuksien ja
+buildien valmistelussa eikä sen versiota tai lockfilea muuteta.
+Nykyiset komentorajaregressiot ajavat muuttuneen PowerShell-komentoketjun
+oikeaan exit/close-tulokseen. Skenaarioiden Job-omistajuus, määräajat,
+artifact-sidokset, pakollinen caller-result ja erilliset siivoustulokset
+säilyvät. Ulomman testiturvan katkaisu ei kelpaa komennon valmistumiseksi.
+Muuttuneiden komentorajojen, artifact-kytkentöjen ja CI-politiikan kohdesarjat
+läpäisivät 294/294; desktopin typecheck ja build läpäisivät myös.
+Tämä rajaa pois yhden ylimääräisen odotuksen, mutta ei osoita aiemman
+legacy-katkaisun sisäistä syytä. Uuden revision normaali kokonaishyväksyntä
+on edelleen avoin; vanhaa vihreää tai diagnostista näyttöä ei siirretä sille.
 
 #### Aiemman näytön avoimet havainnot
 
@@ -2583,7 +2601,7 @@ Yllä oleva uudempi omistajapäätös sallii normaalit kokonaisportit ilman
 vanhan puuttuvan valmistumisnäytön palautumista; tämä havainto säilyy avoimena.
 
 Tuotetarkistuksen synteettinen aikakatkaisu katetaan nyt myös legacy- ja
-workspace-fault-perheiden todellisen PowerShell/pnpm-käynnistysketjun kautta.
+workspace-fault-perheiden todellisen PowerShell-käynnistysketjun kautta.
 Nykyinen yhteinen komentofixture tarkistaa alkuperäisen deadline-virheen,
 pakollisen caller-resultin, prosessipuun poissaolon, tulosvarmentimen
 hylkäyksen ja ulomman komentoprosessin exit/close-rajan. Aineisto säilyy,
@@ -3070,9 +3088,9 @@ Priorisoidut löydökset ja sulkemisehdot:
    legacyssä onnistuminen, estyvä diagnostiikkakirjoitus, puuttuva worker-tulos,
    jumittuva poistovaihe sekä skenaariovirhe yhdessä epäonnistuneen siivouksen
    kanssa; lisäksi molempien workspace-komentojen onnistuminen. Testi käyttää
-   versionoidun workflow'n kutsu- ja exit-tulkintaa, oikeaa pwsh/pnpm-ketjua,
+   versionoidun workflow'n kutsu- ja exit-tulkintaa, oikeaa PowerShell-ketjua,
    nykyistä .NET-komentoa injektoidulla skenaariolla ja oikeaa result-verifieriä.
-   Vaihetulokset, pnpm-kutsujen paluu sekä ulomman PowerShell-prosessin exit/close
+   Vaihetulokset, native-kutsujen paluu sekä ulomman PowerShell-prosessin exit/close
    tarkistetaan erikseen. Ulompi pakkokatkaisu ei läpäise testiä. Epävarman
    lopputilan aineisto säilyy. Alkuperäiset suoran komennon regressiot säilyvät.
    Konsolitallenne jää yksityiseksi; estymistodiste käyttää nykyistä .NET-fixturen
@@ -3157,7 +3175,7 @@ Priorisoidut löydökset ja sulkemisehdot:
 
    | Poistettu tai siirretty tarkistus | Nykyinen korvaava käyttäytymistodiste |
    | --- | --- |
-   | Node-callerin Promise/finally ja aukon karakterisointi | Yhteisen komentorajasarjan clean/upgrade-tapaukset: suora .NET sekä oikea pwsh/pnpm/verifier-ketju; exit ja close havaitaan ulkopuolelta |
+   | Node-callerin Promise/finally ja aukon karakterisointi | Yhteisen komentorajasarjan clean/upgrade-tapaukset: suora .NET sekä oikea pwsh/komento/verifier-ketju; exit ja close havaitaan ulkopuolelta |
    | Käynnistyssäiesillan ja putkikanavan mockit | Sama komentorajafixture: estyvä valmistelu, myöhäinen tulos, tulos ennen exitia, puuttuva tulos ja publish ennen exitia; ulompi pakkokatkaisu ei läpäise testiä |
    | Vanhan product-operation-isännän loppuun kulutettu cleanup | Nykyinen phase-continuation-regressio: cleanupUnverified estää seuraavan vaiheen; omistetun product-resultin lukija ei korota tilaa onnistumiseksi |
    | Tuoteoperaation valmistelu, native wait ja result I/O | Nykyiset owned-product-komentotestit: Preparation, NativeWait, Read, Remove, MissingResult, ResultBeforeExit, DeliveryHold/Failure ja ConsumerReadHold |

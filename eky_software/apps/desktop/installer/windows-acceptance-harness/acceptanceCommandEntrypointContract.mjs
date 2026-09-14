@@ -23,7 +23,7 @@ import { upgradeCallerResultFile } from './upgradeCallerResultFile.mjs';
 const commandBudgets = JSON.parse(await readFile(new URL('../windows-process-supervisor/supervisorCommandBudgets.json', import.meta.url)));
 const contractAssembly = fileURLToPath(new URL('../bin/windows-process-supervisor-contract-fixture/Release/net10.0/Eky.WindowsProcessSupervisor.ContractFixture.dll', import.meta.url));
 
-// Exercise the checked-in CI step with its real pnpm and result verifier.
+// Exercise the checked-in CI step with its direct command and result verifier.
 // Only the installed-package worker is replaced by the existing synthetic fixture.
 async function startCiCommand(context, kind, descriptor, resultPath, signal) {
   const workflow = await readFile(new URL(kind === 'legacy'
@@ -32,7 +32,7 @@ async function startCiCommand(context, kind, descriptor, resultPath, signal) {
     : kind === 'upgrade' ? '../../../../../.github/workflows/windows-acceptance-v2-upgrade.yml'
     : '../../../../../.github/workflows/windows-acceptance-v2-workspace.yml', import.meta.url), 'utf8');
   const lines = workflow.split(/\r?\n/u);
-  const commandIndex = lines.findIndex((line) => line.trim().startsWith('pnpm --filter @eky/desktop exec dotnet ')
+  const commandIndex = lines.findIndex((line) => line.trim().startsWith('dotnet apps/desktop/installer/bin/')
     && line.includes(` --${kind}-command `)
     && (kind !== 'workspace-fault' || line.includes('--fault-scenario acceptanceInterruption')));
   assert.ok(commandIndex >= 0);
@@ -42,7 +42,7 @@ async function startCiCommand(context, kind, descriptor, resultPath, signal) {
   const [command, returned, verifier, ...outcomeLines] = following.slice(0, boundary).map((line) => line.slice(10));
   const outcome = outcomeLines.join('\n');
   assert.equal(returned, '$commandExit = $LASTEXITCODE');
-  assert.ok(verifier.startsWith('pnpm --filter @eky/desktop exec node '));
+  assert.ok(verifier.startsWith('node apps/desktop/installer/windows-acceptance-harness/'));
   assert.ok(verifier.includes('--command-exit $commandExit'));
   assert.ok(outcome.startsWith('if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0)'));
   const script = join(context.testRoot, 'ci-step.ps1');
@@ -50,8 +50,8 @@ async function startCiCommand(context, kind, descriptor, resultPath, signal) {
     "$ErrorActionPreference = 'Stop'",
     '$PSNativeCommandUseErrorActionPreference = $false',
     '$descriptorPath = $env:TEST_DESCRIPTOR', '$resultPath = $env:TEST_RESULT',
-    command.slice(0, command.indexOf(' dotnet ') + ' dotnet '.length)
-      + '$env:TEST_COMMAND_ASSEMBLY --mode legacyCommandEntry --request $env:TEST_REQUEST',
+    command.slice(0, command.indexOf(' '))
+      + ' $env:TEST_COMMAND_ASSEMBLY --mode legacyCommandEntry --request $env:TEST_REQUEST',
     returned,
     '[IO.File]::WriteAllText($env:TEST_COMMAND_RETURN, [string]$commandExit)',
     verifier,

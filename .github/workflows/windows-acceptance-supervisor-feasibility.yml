@@ -296,7 +296,7 @@ jobs:
             'upgrade' { 'verifyUpgradeRollbackArtifact.mjs' }
           }
           $root = Join-Path $env:RUNNER_TEMP 'eky-existing-boundary-artifact'
-          pnpm --filter @eky/desktop exec node "installer/windows-acceptance-harness/$verifier" --artifact-root $root --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION
+          node "apps/desktop/installer/windows-acceptance-harness/$verifier" --artifact-root $root --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION
           if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_ARTIFACT_INVALID' }
 
       - name: Prepare existing supervisor and only the required proof readers
@@ -324,9 +324,9 @@ jobs:
             $descriptorPath = Join-Path (Join-Path $env:RUNNER_TEMP 'eky-existing-boundary-artifact') 'upgrade-rollback-artifact.json'
             $resultPath = Join-Path $env:RUNNER_TEMP ('eky-upgrade-caller-' + [guid]::NewGuid().ToString('N') + '\result.json')
             $PSNativeCommandUseErrorActionPreference = $false
-            pnpm --filter @eky/desktop exec dotnet installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --upgrade-command --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath
+            dotnet apps/desktop/installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --upgrade-command --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath
             $commandExit = $LASTEXITCODE
-            pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/verifyUpgradeCallerResult.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath --command-exit $commandExit
+            node apps/desktop/installer/windows-acceptance-harness/verifyUpgradeCallerResult.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath --command-exit $commandExit
             if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED' }
             exit 0
           }
@@ -335,9 +335,9 @@ jobs:
             $PSNativeCommandUseErrorActionPreference = $false
             foreach ($faultScenario in @('preUpdateRecoveryPointFailure', 'activeWorkspaceFirstStartFailure')) {
               $resultPath = Join-Path (Join-Path $env:RUNNER_TEMP ('eky-workspace-caller-' + [Guid]::NewGuid().ToString('N'))) 'result.json'
-              pnpm --filter @eky/desktop exec dotnet installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --workspace-fault-command --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario $faultScenario --result-path $resultPath
+              dotnet apps/desktop/installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --workspace-fault-command --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario $faultScenario --result-path $resultPath
               $commandExit = $LASTEXITCODE
-              pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/verifyWorkspaceCallerResult.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario $faultScenario --result-path $resultPath --command-exit $commandExit
+              node apps/desktop/installer/windows-acceptance-harness/verifyWorkspaceCallerResult.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario $faultScenario --result-path $resultPath --command-exit $commandExit
               if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED' }
             }
             exit 0
@@ -350,12 +350,12 @@ jobs:
           $resultPath = Join-Path (Join-Path $env:RUNNER_TEMP ($prefix + [Guid]::NewGuid().ToString('N'))) 'result.json'
           $PSNativeCommandUseErrorActionPreference = $false
           if ($legacy) {
-            pnpm --filter @eky/desktop exec dotnet installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --legacy-command --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath
+            dotnet apps/desktop/installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --legacy-command --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath
           } else {
-            pnpm --filter @eky/desktop exec dotnet installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --workspace-success-command --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath
+            dotnet apps/desktop/installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --workspace-success-command --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath
           }
           $commandExit = $LASTEXITCODE
-          pnpm --filter @eky/desktop exec node "installer/windows-acceptance-harness/$verifier" --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath --command-exit $commandExit
+          node "apps/desktop/installer/windows-acceptance-harness/$verifier" --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath --command-exit $commandExit
           if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED' }
 
       - name: Stop only the diagnostic recording
@@ -374,7 +374,7 @@ jobs:
             'upgrade' { 'verifyUpgradeRollbackArtifact.mjs' }
           }
           $root = Join-Path $env:RUNNER_TEMP 'eky-existing-boundary-artifact'
-          pnpm --filter @eky/desktop exec node "installer/windows-acceptance-harness/$verifier" --artifact-root $root --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION
+          node "apps/desktop/installer/windows-acceptance-harness/$verifier" --artifact-root $root --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION
           if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_ARTIFACT_CHANGED' }
 
       - name: Extract closed inspector observations without publishing raw trace
