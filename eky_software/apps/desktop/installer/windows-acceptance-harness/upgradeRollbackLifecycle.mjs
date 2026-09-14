@@ -1,3 +1,5 @@
+import { createRunningUpgradeProgressDetails } from './upgradeRollbackContracts.mjs';
+
 const FAILURE_CODES = new Set([
   'artifactVerificationFailed',
   'binaryRollbackFailed',
@@ -353,8 +355,11 @@ export async function executeUpgradeRollbackLifecycle({
           fail('runningUpgradeFailed');
         }
         result.applicationCleanupResultCode = outcome.cleanupResultCode;
+        result.upgradeExitCode = outcome.exitCode ?? null;
         result.runningUpgradeInitialExitCode = outcome.initialExitCode ?? null;
         result.runningUpgradeObservation = outcome.observation ?? null;
+        progress.emit('runningUpgradeResult', 'observed', performance.now(),
+          createRunningUpgradeProgressDetails(outcome));
         if (outcome.status !== 'completed' || outcome.exitCode !== 0 || outcome.cleanupResultCode !== 'completed' ||
             ![0, 1603].includes(result.runningUpgradeInitialExitCode)) {
           fail(FAILURE_CODES.has(outcome.errorCode) ? outcome.errorCode : 'runningUpgradeFailed');

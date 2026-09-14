@@ -6,6 +6,7 @@ import test from 'node:test';
 import { classifyRunningUpgradeLog } from './runningUpgradeObservation.mjs';
 
 import {
+  createRunningUpgradeProgressDetails,
   createUpgradeRollbackWorkerRequest,
   readUpgradeRollbackResult,
   readUpgradeRollbackWorkerRequest,
@@ -16,6 +17,29 @@ import {
 } from './upgradeRollbackContracts.mjs';
 
 const HASH = 'a'.repeat(64);
+
+test('running upgrade progress projects closed fields without changing acceptance', () => {
+  const observation = classifyRunningUpgradeLog('', {});
+  const outcome = { initialExitCode: 1603, exitCode: 3010,
+    cleanupResultCode: 'cleanupUnverified', observation,
+    rawLog: 'synthetic-private-log', path: 'synthetic-private-path' };
+  assert.deepEqual(createRunningUpgradeProgressDetails(outcome), {
+    resultCode: 'runningUpgradeResultObserved', initialExitCode: 1603, exitCode: 3010,
+    applicationCleanupResultCode: 'cleanupUnverified', observation,
+  });
+  assert.deepEqual(createRunningUpgradeProgressDetails({ cleanupResultCode: 'completed' }), {
+    resultCode: 'runningUpgradeResultObserved', initialExitCode: null, exitCode: null,
+    applicationCleanupResultCode: 'completed', observation: null,
+  });
+  for (const invalid of [null, { ...outcome, exitCode: 'synthetic-private' },
+    { ...outcome, initialExitCode: 2 ** 32 }, { ...outcome, cleanupResultCode: 'unknown' },
+    { ...outcome, observation: { ...observation, rawLog: 'synthetic-private' } },
+    { get initialExitCode() { throw new Error('synthetic-private'); } }]) {
+    assert.deepEqual(createRunningUpgradeProgressDetails(invalid), {
+      resultCode: 'runningUpgradeEvidenceUnavailable',
+    });
+  }
+});
 
 function successfulResult(request) {
   return {

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { executeUpgradeRollbackLifecycle } from './upgradeRollbackLifecycle.mjs';
+import { classifyRunningUpgradeLog } from './runningUpgradeObservation.mjs';
 
 const VERSIONS = Object.freeze({ source: '0.2.7', target: '0.2.8' });
 
@@ -149,6 +150,47 @@ test('cleanup failure never replaces the primary lifecycle error', async () => {
   assert.equal(result.status, 'failed');
   assert.equal(result.errorCode, 'runningUpgradeMsiFailed');
   assert.equal(result.cleanupResultCode, 'cleanupFailed');
+});
+
+test('failed running upgrade preserves MSI results before cleanup and observer failure', async () => {
+  const observation = classifyRunningUpgradeLog('', {});
+  for (const outputFails of [false, true]) {
+    const states = [state(), state('source'), state('target'), state(), state()];
+    const events = [];
+    const dependencies = createSuccessfulDependencies({
+      inspectState: async () => states.shift(),
+      runRunningUpgrade: async () => ({ status: 'failed', exitCode: 3010,
+        initialExitCode: 1603, observation, errorCode: 'runningUpgradeMsiFailed',
+        cleanupResultCode: 'completed' }),
+      runMsiOperation: async (operation) => {
+        dependencies.operations.push(operation);
+        return 0;
+      },
+      reportProgress(entry) {
+        events.push(entry);
+        if (outputFails) throw new Error('synthetic output failure');
+      },
+    });
+    const result = await executeUpgradeRollbackLifecycle(dependencies);
+    assert.equal(result.status, 'failed');
+    assert.equal(result.errorCode, 'runningUpgradeMsiFailed');
+    assert.equal(result.upgradeExitCode, 3010);
+    assert.equal(result.runningUpgradeInitialExitCode, 1603);
+    assert.deepEqual(result.runningUpgradeObservation, observation);
+    assert.equal(result.applicationCleanupResultCode, 'completed');
+    assert.equal(result.cleanupResultCode, 'cleanupCompleted');
+    assert.deepEqual(dependencies.operations, ['sourceInstall', 'cleanupTarget']);
+    const observations = events.filter(entry => entry.phase === 'runningUpgradeResult');
+    assert.equal(observations.length, 1);
+    const { durationMs, elapsedMs, ...safe } = observations[0];
+    assert.deepEqual(safe, { schemaVersion: 1, operation: 'upgradeRollbackLifecycle',
+      scenario: 'upgradeRollback', phase: 'runningUpgradeResult', status: 'observed',
+      resultCode: 'runningUpgradeResultObserved', initialExitCode: 1603, exitCode: 3010,
+      applicationCleanupResultCode: 'completed', observation });
+    assert.ok(Number.isInteger(durationMs) && Number.isInteger(elapsedMs));
+    assert.ok(events.indexOf(observations[0]) < events.findIndex(entry =>
+      entry.phase === 'majorUpgrade' && entry.status === 'failed'));
+  }
 });
 
 test('progress output failure cannot alter terminal semantics', async () => {

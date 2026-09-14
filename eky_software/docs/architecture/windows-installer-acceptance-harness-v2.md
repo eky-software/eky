@@ -2573,6 +2573,36 @@ Tämä rajaa pois yhden ylimääräisen odotuksen, mutta ei osoita aiemman
 legacy-katkaisun sisäistä syytä. Uuden revision normaali kokonaishyväksyntä
 on edelleen avoin; vanhaa vihreää tai diagnostista näyttöä ei siirretä sille.
 
+Suoran komentokytkennän normaali kierros
+[`34874446863`](https://github.com/eky-software/eky/actions/runs/34874446863)
+revisiolta `3147daf50eb1310c49ab6643f09a4e34ed5969fe` on hylätty.
+Core-sopimusten molemmat toistot pysähtyivät samaan vanhentuneeseen
+workflow-odotukseen; legacy-producer ja consumerit eivät käynnistyneet.
+Odotus päivitetään vastaamaan suoraa komentoa ja erillistä tulosvarmenninta,
+säilyttäen nykyiset aikabudjetit. Clean 2/2, workspace-success 2/2 ja
+workspace-fault 10/10 valmistuivat. Upgrade run 1 palautti
+`runningUpgradeMsiFailed`-virheen ja päättyi; run 2 läpäisi. Ensimmäisen
+ajon tarkka MSI-koodi ei välittynyt konsolievidenceen, joten sitä ei
+luokitella uudelleenkäynnistystarpeeksi tai aiemmaksi jumittumiseksi.
+Koontiportti hylkäsi kierroksen; toinen kokonaiskierros jäi käynnistämättä.
+Saman revision [riippuvuusturva](https://github.com/eky-software/eky/actions/runs/34874456414)
+läpäisi. Hyväksyntä säilyy 0/2:ssa.
+
+Päivityksen tuloskorjaus säilyttää myös epäonnistuneen operaation lopullisen
+MSI-koodin ennen poikkeuksen luokitusta. Nykyinen vaihehavaintopolku välittää
+rajatun `runningUpgradeResult`-havainnon: alkuperäinen ja lopullinen exit-koodi,
+sovelluksen siivousluokka sekä nykyisen lokilukijan suljettu havainto.
+Raakalokia ei julkaista. Virheellinen havainto tai tulostuksen epäonnistuminen
+ei muuta alkuperäistä testitulosta; `3010` ja varmentamaton cleanup pysyvät
+virheinä. Tämä korjaa tuloksen säilytyksen, ei vielä osoita MSI-virheen syytä.
+Seuraava rajattu diagnoosi käyttää nykyistä consumeria ja saman producerin
+varmennettuja artifact-tavuja ilman uutta MSI-buildia; se ei ole normaali
+kokonaishyväksyntä.
+
+Muuttuneiden upgrade-lifecycle- ja tulossopimusten nykyiset testit kuuluvat
+myös normaalin CI:n olemassa olevaan core-sopimusryhmään. Erillinen paikallinen
+upgrade-testikomento ei yksin takaa näiden regressioiden CI-kattavuutta.
+
 #### Aiemman näytön avoimet havainnot
 
 Omistajan pyytämä normaalin legacy-workflow'n tallennettu/tallentamaton

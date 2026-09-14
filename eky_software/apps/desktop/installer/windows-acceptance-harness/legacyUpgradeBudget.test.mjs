@@ -107,9 +107,9 @@ test('legacy consumer separates build time from the bounded lifecycle and preser
   assert.ok(build.includes(`timeout-minutes: ${LEGACY_SUPERVISOR_BUILD_MINUTES}\n`));
   assert.ok(build.includes('installer:supervisor:build'));
   assert.ok(lifecycle.includes(`timeout-minutes: ${LEGACY_LIFECYCLE_STEP_MINUTES}\n`));
-  assert.ok(lifecycle.includes('exec dotnet installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --legacy-command'));
-  assert.doesNotMatch(lifecycle, /runLegacyUpgrade\.mjs/);
-  assert.ok(lifecycle.includes('verifyLegacyCallerResult.mjs'));
+  assert.match(lifecycle, /^\s+dotnet apps\/desktop\/installer\/bin\/windows-process-supervisor\/Release\/net10\.0\/Eky\.WindowsProcessSupervisor\.dll --legacy-command /m);
+  assert.doesNotMatch(lifecycle, /runLegacyUpgrade\.mjs|pnpm exec|pnpm --filter/);
+  assert.match(lifecycle, /^\s+node apps\/desktop\/installer\/windows-acceptance-harness\/verifyLegacyCallerResult\.mjs /m);
   assert.doesNotMatch(lifecycle, /installer:supervisor:build|installer:v2-legacy --|retry|continue-on-error/);
 });
 

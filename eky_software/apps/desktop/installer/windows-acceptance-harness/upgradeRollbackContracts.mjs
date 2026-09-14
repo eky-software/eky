@@ -75,6 +75,26 @@ function validExitCode(value) {
   );
 }
 
+export function createRunningUpgradeProgressDetails(outcome) {
+  try {
+    const initialExitCode = outcome.initialExitCode ?? null;
+    const exitCode = outcome.exitCode ?? null;
+    if (!validExitCode(initialExitCode) || !validExitCode(exitCode) ||
+        !['completed', 'cleanupUnverified'].includes(outcome.cleanupResultCode)) {
+      throw new Error('runningUpgradeProgressInvalid');
+    }
+    return Object.freeze({
+      resultCode: 'runningUpgradeResultObserved',
+      initialExitCode,
+      exitCode,
+      applicationCleanupResultCode: outcome.cleanupResultCode,
+      observation: validateRunningUpgradeObservation(outcome.observation ?? null),
+    });
+  } catch {
+    return Object.freeze({ resultCode: 'runningUpgradeEvidenceUnavailable' });
+  }
+}
+
 export function createUpgradeRollbackWorkerRequest({
   artifactDescriptorSha256,
   fixtureRoot,
