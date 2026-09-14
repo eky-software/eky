@@ -2507,6 +2507,50 @@ Tämä osuus erottaa nykyisen julkaisutyön historiallisesta tutkimusnäytöstä
 
 #### Ajantasaiset julkaisuesteet ja päätökset
 
+Uusin normaali integraatiokierros
+[`34844463051`](https://github.com/eky-software/eky/actions/runs/34844463051),
+lähde- ja producer/consumer-checkout
+`37b5c25b26a69673ada0b24a82ef550c51f8be65`, on hylätty. Kaikki 12
+komentorajojen sopimusjobia, core-portit ja clean-, upgrade/rollback- sekä
+workspace-success-consumerit 2/2 läpäisivät. Valmistuneiden consumerien
+ennen/jälkeen-varmennukset vastaavat niiden producerien artifact-tavuja.
+Fault-consumer 2 läpäisi kaikki viisi skenaariota. Fault-consumer 1 hylättiin
+`preUpdateRecoveryPointFailure`-ajon `inspectSourceBefore`-deadlinella ennen
+varsinaisen skenaarion alkua; kyseisen vaiheen prosessipuun poissaolo
+varmennettiin. Virheen julkaisemisen exit 1 ei yksin todista caller-resultin
+puuttumista, koska myös oikein julkaistu epäonnistuminen palauttaa exit 1:n.
+
+Molempien legacy-consumerien GitHub-annotaatio ilmoittaa 37 minuutin
+job-aikakatkaisun. Niiden lokit eivät olleet saatavilla job-API:sta eivätkä
+valmistuneen workflow'n lokiarkistosta. Koko komennon lopputulos, prosessi- ja
+asennussiivous sekä viimeinen todella valmistunut raja ovat siten
+varmentamatta. Koontiportti hylkäsi kierroksen; 34 onnistunutta jobia ei
+korvaa kahta peruutettua consumeria ja epäonnistunutta fault-consumeria.
+Saman revision
+[`Audit dependencies 34844466819`](https://github.com/eky-software/eky/actions/runs/34844466819)
+läpäisi. Hyväksyttyjä lopullisia kokonaiskierroksia on edelleen 0/2.
+
+Yksi erillinen, ennakolta rajattu
+[`legacy-diagnoosi 34849625448`](https://github.com/eky-software/eky/actions/runs/34849625448)
+käytti samaa harness-revisiota ja muuttumattomia legacy-artifactin tavuja
+(artifact-ID `10347903077`). Komento, pakollinen caller-result-varmennus,
+artifactin jälkivarmennus sekä olemassa olevan valinnaisen tallennuksen
+aloitus, lopetus ja analyysi läpäisivät. Tämä on diagnostiikkaa, ei normaali
+hyväksyntäkierros tai vanhojen keskeytymisten juurisyykorjaus.
+Nykyisen synteettisen komentofixturen rajattu koe vahvistaa myös kyseisen
+fault-perheen inspection-deadlinen, alkuperäisen virheen säilymisen,
+pakollisen caller-resultin, todellisen exit/close-rajan ja aineiston
+säilyttämisen ilman skenaarion tai uninstallin käynnistämistä.
+
+Seuraava erottava näyttö tarvitaan nimenomaan epäonnistuvasta ajosta:
+valmistuvatko Eky-komento ja sen pakolliset tulokset ennen ylemmän
+komentoketjun/runnerin katkaisua, ja mihin tuotetarkistuksen alku- ja
+loppuhavainnon väliin odotus jää. Onnistunut erilliskoe tai puuttuva
+konsolirivi ei vastaa näihin kysymyksiin. Uutta samanlaista kokonaista
+MSI-kierrosta, aikarajamuutosta tai uutta valvontakerrosta ei käytetä tämän
+havainnon korvikkeena. Required checkit, main ja julkaisuversio säilyvät
+ennallaan. Alla olevat aiemmat kierrokset ovat historiallista näyttöä.
+
 Ensimmäinen integraatiokierros lähde- ja checkout-revisiosta
 `e6bf270da368f08b966372d8c9e8ada0903cb6d8`,
 [34837722838](https://github.com/eky-software/eky/actions/runs/34837722838),
