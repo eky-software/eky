@@ -2507,6 +2507,36 @@ Tämä osuus erottaa nykyisen julkaisutyön historiallisesta tutkimusnäytöstä
 
 #### Ajantasaiset julkaisuesteet ja päätökset
 
+Omistajan uusin jatkopäätös sallii normaalin hyväksynnän jatkamisen nykyisellä
+V2-rakenteella. Vanhojen kadonneiden lokien palautuminen tai GitHub-tuen
+vastaus ei ole uuden näytön ennakkoehto; tukipyyntöä ei tehdä. Aiemmat
+epäonnistumiset, tuntemattomat viiveet ja varmentamattomat lopputilat jäävät
+alla erillisiksi historiallisiksi havainnoiksi. Niitä ei nimetä korjatuiksi,
+harmittomiksi tai alustavioiksi uuden vihreän ajon perusteella.
+
+Pakollisen skenaarion, tulosvarmennuksen, prosessipoistumisen, datan
+säilymisen tai siivouksen virhe hylkää kierroksen. Valinnaisen jälkianalyysin
+vientivirhe kirjataan erikseen eikä yksin estä normaalia hyväksyntää.
+Tallentimen varmentamaton lopetus tai tietovuoto ei ole pelkkä analyysipuute.
+Pakollisiin portteihin ei lisätä `continue-on-error`-asetusta eikä
+diagnostiikan annotationia peitetä. Nykyinen analyysityökalu säilyy;
+vientikorjaus todennetaan säilytetyllä tai synteettisellä aineistolla ilman
+tarpeetonta MSI-ajoa ja erillään normaalista hyväksynnästä.
+
+Seuraava portti on paikallisten soveltuvien regressioiden ja virherajojen
+varmennuksen jälkeen kaksi peräkkäistä täydellistä normaalia GitHub-kierrosta
+samalta jäädytetyltä integraatiorevisiolta, keruu pois päältä. Producer
+rakentaa kunkin pakettiperheen kerran kierrosta kohti; consumerit varmentavat
+samat tavut ennen ja jälkeen. Lähde-, checkout- ja build-revisiot sekä
+lopullisen revision oma riippuvuusturva kirjataan erikseen. Ensimmäisen
+kierroksen hylkäys estää toisen käynnistämisen: seuraava työ on täsmärajan
+korjaus tai päätös, ei samanlaisten uusintojen silmukka. Eri yritysten osia
+ei yhdistetä hyväksynnäksi. Tunnettua turvallisuus- tai datariskiä ei
+hyväksytä kahdella vihreällä kierroksella. Main, required checkit ja pilotti
+pysyvät alla kuvattujen erillisten porttien takana.
+
+#### Aiemman näytön avoimet havainnot
+
 Omistajan pyytämä normaalin legacy-workflow'n tallennettu/tallentamaton
 vertailu [34855184997](https://github.com/eky-software/eky/actions/runs/34855184997)
 valmistui lähde-, checkout- ja artifact-build-revisiosta
@@ -2528,9 +2558,9 @@ Consumer 2 ajettiin ilman tallennusta. Alkuperäinen viive ei toistunut;
 tuotetarkistimen sisäistä odotuskohtaa tai aiempien legacy-katkaisujen syytä
 ei paikannettu. Tämä oli saman normaalin consumer-toteutuksen rajattu
 vertailu, ei koko V2:n hyväksyntäkierros eikä vanhojen havaintojen korjaus.
-Uutta samanlaista MSI-koetta ei käynnistetä tämän tuloksen perusteella.
-Seuraava päätös koskee epäonnistuneen ajon puuttuvan valmistumisnäytön
-saamista; main, required checkit ja julkaisu pysyvät suljettuina.
+Vertailu ei oikeuttanut samanlaisen diagnostisen MSI-kokeen toistamiseen.
+Yllä oleva uudempi omistajapäätös sallii normaalit kokonaisportit ilman
+vanhan puuttuvan valmistumisnäytön palautumista; tämä havainto säilyy avoimena.
 
 Tuotetarkistuksen synteettinen aikakatkaisu katetaan nyt myös legacy- ja
 workspace-fault-perheiden todellisen PowerShell/pnpm-käynnistysketjun kautta.
@@ -2579,14 +2609,16 @@ fault-perheen inspection-deadlinen, alkuperäisen virheen säilymisen,
 pakollisen caller-resultin, todellisen exit/close-rajan ja aineiston
 säilyttämisen ilman skenaarion tai uninstallin käynnistämistä.
 
-Seuraava erottava näyttö tarvitaan nimenomaan epäonnistuvasta ajosta:
+Vanhan havainnon juurisyyn paikantamiseen tarvitaan näyttö epäonnistuvasta ajosta:
 valmistuvatko Eky-komento ja sen pakolliset tulokset ennen ylemmän
 komentoketjun/runnerin katkaisua, ja mihin tuotetarkistuksen alku- ja
 loppuhavainnon väliin odotus jää. Onnistunut erilliskoe tai puuttuva
 konsolirivi ei vastaa näihin kysymyksiin. Uutta samanlaista kokonaista
-MSI-kierrosta, aikarajamuutosta tai uutta valvontakerrosta ei käytetä tämän
-havainnon korvikkeena. Required checkit, main ja julkaisuversio säilyvät
-ennallaan. Alla olevat aiemmat kierrokset ovat historiallista näyttöä.
+MSI-diagnoosia, aikarajamuutosta tai uutta valvontakerrosta ei käytetä tämän
+havainnon korvikkeena. Uusin jatkopäätös erottaa tästä normaalin hyväksynnän
+keräämisen. Required checkit, main ja julkaisuversio säilyvät ennallaan
+niiden omien porttien täyttymiseen asti. Alla olevat aiemmat kierrokset ovat
+historiallista näyttöä.
 
 Ensimmäinen integraatiokierros lähde- ja checkout-revisiosta
 `e6bf270da368f08b966372d8c9e8ada0903cb6d8`,
@@ -2646,7 +2678,7 @@ kuvaavat niiden nimettyjä historiallisia revisioita.
 | Riippuvuusturva | Hyväksytyt Hono/Vitest-patchit ja niiden normaali V2-CI ovat vihreät. Omistajan erikseen hyväksymä read-only-audit valmistui: tuotantopuu 0 löydöstä, koko puu 0 löydöstä ja 160/160 rekisteriallekirjoitusta varmennettu. `dcaeaff`-revision erillinen [Dependency security 34833180991](https://github.com/eky-software/eky/actions/runs/34833180991) läpäisi ensimmäisellä yrityksellä kaikki kolme tarkistusta (18 s). Riippuvuuksia tai lockfilea ei muutettu auditissa. Lopullisen revision oma `Audit dependencies` -portti vaaditaan silti; uusi löydös tarvitsee oman vaikutusarvion. |
 | Exact-release-byte-reitti | Vanha Node/PowerShell-lifecycle on korvattu nykyisellä V2-producerilla, `--clean-command`-komennolla ja pakollisella `verifyCleanCallerResult`-tarkistuksella. Kohdetestit sekä puhtaan checkpointin samaa clean-ketjua käyttävät Windows-consumerit 2/2 läpäisivät. Koko jäljellä olevan vanhan MSI-jobin ja lopullisen cutoverin näyttö ei siirry tästä automaattisesti. Producer rakentaa kerran; release-, consumer- ja bundle-MSI:n hashien pitää vastata toisiaan. |
 | Korvatun orkestroinnin poisto | Checkpoint `5495fa758fb91efbc44a727009e924ac0b2f68a5` poistaa 71 korvattua W6/PowerShell-orkestroinnin tiedostoa, niiden omat komennot ja vanhat CI-jobit. Shared builderit, fixturet ja tarkistimet säilyvät. Alla nimetyt kohdetestit läpäisivät, mutta lopullisen revision kokonaisportit vaaditaan ennen käyttöönottoa. Vanhaa required-check-asetusta ei ole muutettu; lähdediffi ei saa ohittaa sen erillistä päätöstä. |
-| Lopullinen ympäristö ja toistot | Omistajan hyväksymä käyttöönottorajaus korvaa kaksi paikallista täyttä MSI/release-kierrosta kahdella täydellä normaalilla GitHub-kierroksella samasta lopullisesta integraatiorevisiosta: kaksi GitHub-kierrosta yhteensä, ei neljää. Paikalliset soveltuvat testit, sopimustestit, typecheck ja build säilyvät. Yhden kierroksen kaksi consumeria eivät korvaa kahta kierrosta; eri revisioiden tai epäonnistuneiden kierrosten osia ei yhdistetä hyväksynnäksi. |
+| Lopullinen ympäristö ja toistot | Omistajan hyväksymä käyttöönottorajaus korvaa kaksi paikallista täyttä MSI/release-kierrosta kahdella peräkkäisellä täydellä normaalilla GitHub-kierroksella samasta lopullisesta integraatiorevisiosta ilman tallennusta: kaksi GitHub-kierrosta yhteensä, ei neljää. Ensimmäisen hylkäys pysäyttää toisen. Paikalliset soveltuvat testit, sopimustestit, typecheck ja build säilyvät. Yhden kierroksen kaksi consumeria eivät korvaa kahta kierrosta; eri revisioiden tai epäonnistuneiden kierrosten osia ei yhdistetä hyväksynnäksi. |
 | Main-integraatio | Main-baseline `c1d010263ccf4dc490a709f58ea8a4a5b34fa03a` on edelleen poisto-checkpointin esi-isä. Poiston jälkeinen main-vertailu ja desktop-kytkennän rajaus on tarkistettu alla. Lopullinen integraatiorevisio, sen kokonaisportit ja main-siirto ovat vielä kesken. Jäädytettyjä PR:iä #257/#258 ei mergeä. |
 | Required checkit | Omistaja hyväksyi nykyisten kuuden checkin korvaamisen `V2 acceptance`- ja `Audit dependencies` -porteilla vasta integraatiokatselmuksen ja lopullisten hyväksyntäporttien läpäistyä. Tarkat nimet, GitHub Actions -tuottaja ja koontikattavuus varmennetaan ennen vaihtoa. Nykyiset asetukset tallennetaan paikallisesti ja jälkivertailu sallii vain sovitun check-muutoksen; strict-ajantasaisuus, PR-vaatimus ja muut suojaukset säilyvät ilman suojaamatonta välivaihetta. |
 | Merge-commit | Omistaja hyväksyi katselmoidun V2-integraation normaalin PR-mergen vasta porttien läpäistyä, ei jäädytettyjen historiallisten PR:ien yhdistämistä. Merge-commitin oma täysi main-ajo vaaditaan; sen epäonnistuminen pysäyttää julkaisun. PR- tai diagnostisen haaran vihreys ei korvaa sitä. |
