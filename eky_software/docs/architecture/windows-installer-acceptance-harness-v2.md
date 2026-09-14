@@ -2519,9 +2519,9 @@ kuvaavat niiden nimettyjä historiallisia revisioita.
 
 | Portti | Jäljellä oleva työ tai päätös |
 | --- | --- |
-| Riippuvuusturva | Hyväksytyt Hono/Vitest-patchit ja niiden normaali V2-CI ovat vihreät. Tuotanto- ja koko puun audit sekä rekisteriallekirjoitukset puuttuvat; auditoinnin erillistä tiedonsiirtolupaa ei kierretä. Uusi löydös vaatii rajatun vaikutusarvion ja tarvittaessa oman riippuvuuspäätöksen. |
+| Riippuvuusturva | Hyväksytyt Hono/Vitest-patchit ja niiden normaali V2-CI ovat vihreät. Omistajan erikseen hyväksymä read-only-audit valmistui: tuotantopuu 0 löydöstä, koko puu 0 löydöstä ja 160/160 rekisteriallekirjoitusta varmennettu. `dcaeaff`-revision erillinen [Dependency security 34833180991](https://github.com/eky-software/eky/actions/runs/34833180991) läpäisi ensimmäisellä yrityksellä kaikki kolme tarkistusta (18 s). Riippuvuuksia tai lockfilea ei muutettu auditissa. Lopullisen revision oma `Audit dependencies` -portti vaaditaan silti; uusi löydös tarvitsee oman vaikutusarvion. |
 | Exact-release-byte-reitti | Vanha Node/PowerShell-lifecycle on korvattu nykyisellä V2-producerilla, `--clean-command`-komennolla ja pakollisella `verifyCleanCallerResult`-tarkistuksella. Kohdetestit sekä puhtaan checkpointin samaa clean-ketjua käyttävät Windows-consumerit 2/2 läpäisivät. Koko jäljellä olevan vanhan MSI-jobin ja lopullisen cutoverin näyttö ei siirry tästä automaattisesti. Producer rakentaa kerran; release-, consumer- ja bundle-MSI:n hashien pitää vastata toisiaan. |
-| Korvatun orkestroinnin poisto | Poistetaan vain siirtokartan invariantit, CLI-/workflow-käyttäjät ja saman revision regressiot kattavat tiedostot. Shared builderit, fixturet ja tarkistimet säilyvät. Vanha required MSI-jobi jää nimeltään käyttöön asetuspäätökseen asti. |
+| Korvatun orkestroinnin poisto | Paikallinen katselmoitava cutover poistaa 71 korvattua W6/PowerShell-orkestroinnin tiedostoa, niiden omat komennot ja vanhat CI-jobit. Shared builderit, fixturet ja tarkistimet säilyvät. Lopullisen diff-revision kohdetestit ja kokonaisportit vaaditaan ennen käyttöönottoa. Vanhaa required-check-asetusta ei ole muutettu; lähdediffi ei saa ohittaa sen erillistä päätöstä. |
 | Lopullinen ympäristö ja toistot | Voimassa on kaksi paikallista täyttä release-kierrosta ja kaksi normaalia GitHub-kierrosta samalla lopullisella integraatiorevisiolla ilman retryä. Yhden kierroksen kaksi consumeria eivät korvaa kahta kierrosta. Vaihekohtaiset CI-ympäristöpäätökset eivät muuta tätä; mahdollinen poikkeus päätetään ennen lopullisia ajoja. |
 | Main-integraatio | Main-baseline on tarkistettu `c1d010263ccf4dc490a709f58ea8a4a5b34fa03a`:ksi. Koko main-diffi, myös pinon desktop-kytkennät, katselmoidaan uudelleen poistodiffin valmistuttua. Jäädytettyjä PR:iä #257/#258 ei mergeä. |
 | Required checkit | Valmistellaan nykyisten kuuden checkin korvaaminen `V2 acceptance`- ja `Audit dependencies` -porteilla. Asetusmuutos vaatii näkyvän omistajapäätöksen; strict-ajantasaisuus, PR-vaatimus ja tuottajasidos säilyvät. |
@@ -2566,7 +2566,43 @@ tehdään yhtenä katselmoitavana cutover-kokonaisuutena. Versionosto ja
 käyttäjälle toimitettava pilot-artifact ovat vasta tämän jälkeinen erillinen
 julkaisuvaihe.
 
-### Käyttöönottokatselmus V2.8-checkpointin jälkeen
+#### Valmisteltu poistodiffi
+
+Tämä on lähdekoodin cutover-diffi, ei päähaaran tai required-checkien
+käyttöönotto. Aiempi normaali CI 34779534322 ja exact-release CI 34784991143
+todistavat korvaavat perheet; lopullisen poistorevision hyväksyntää ei
+koosteta näiden eri revisioiden tuloksista.
+
+| Poistuva vastuu | Säilyvä invariantti ja nykyinen vastine |
+| --- | --- |
+| `runW6bLegacy*`, `w6bLegacyAcceptanceProcess`, `testW6bLegacy*`, `scripts/w6bLegacy/` | Historical artifactin alkuperä, kaksi smoke-sukupolvea, normaali startup, accepted-build-precedenssi, business/adoption/idempotenssi: `legacyUpgradeArtifact`, `legacyUpgradeSourceSmoke`, `legacyUpgradeProfileEvidence`, `legacyUpgradeLifecycle` ja niiden testit sekä `legacyCommandEntrypoint.process.test.mjs`. |
+| `runW6b2Packaged*`, vanhat command worker/lifecycle/scenario-process/stop-vastuut ja `testW6b2Packaged*` | A/B/C-success ja viisi fault-skenaariota: `workspaceSuccessLifecycle`, `workspaceFaultLifecycle`, session-/profile-/postcondition-testit ja molemmat workspace-komentorajat. Pakollinen tulos ja komentoprosessin poistuminen säilyvät erillisinä. |
+| `scripts/w6b2Success/`, `scripts/w6b2Fault/` ja niiden prosessi-/progress-testit | Nykyiset workspace Windows-runtime-, failure-boundary-, result-file- ja phase-writer-sopimukset. Näiden dynaaminen eteneminen ei käytä vanhaa PowerShell-ohjausta. |
+| `testWindowsInstallerUpgrade` ja vanhat `windowsInstallerTestSupport`/process-tree/upgrade-attempt/MSI-host-apurit testeineen | `upgradeRollbackLifecycle` todistaa upgrade/downgrade/MSI- ja binary-rollbackin; `upgradeRunningApplication` todistaa sovelluksen ollessa käynnissä alkavan MSI API -päivityksen. Job-supervisorin ja komentorajojen omistajuus-/timeout-/cleanup-regressiot korvaavat vanhat puukyselyt. `closedDirectoryInventory.test.mjs` säilyttää tyhjän inventaarion vertailun käyttäytymistodisteena. |
+| Vanhat MSI/W6-jobit, kuusi vanhaa package-komentoa ja suorat `ci.yml`-triggerit | Nykyiset V2-producerit ja consumerit sekä `V2 acceptance`; `ciRunAcceptance.test.mjs` kattaa riskivalinnan, täydet toistot ja puuttuvat/ohitetut tulokset. Cleanin viisi todellisen CI-ketjun regressiota käyttävät jäljelle jäävää `windows-acceptance-v2-clean.yml`-komentoa. |
+
+Tiedostoviittaukset tarkistetaan poistodiffissä uudelleen. Production rollback
+-launcher ja sen prosessitesti säilyvät. Historical/provenance-, MSI/release-
+ja bundle-builderit, W6B.2:n package-/run-fixturet sekä niiden testit säilyvät.
+Myös `prepareWindowsInstallerUpgradeFixture`- ja
+`w6bSyntheticWindowsPackageFixture`-moduuleissa on edelleen W6B.2-builderin
+käyttämiä puhtaita fixture-funktioita; vanhan CLI-komennon poistaminen ei
+oikeuta poistamaan näitä tiedostoja. Tuotannon proof-, startup-, backup-,
+session- tai update-semanttiikkaa ei muuteta.
+
+Poistodiffin kohdennettu näyttö: CI-politiikka 54/54, säilyvät installer-unitit
+94/94, production rollback -launcher 3/3, neljän artifact-perheen sopimukset
+18/18 + 22/22 + 15/15 + 62/62, todellinen clean-komentoraja 26/26,
+legacy-/supervisor-core 266/266 ja korvaavat lifecycle-sopimukset 159/159.
+Ryhmät sisältävät myös jaettuja tarkistuksia, joten lukuja ei lasketa
+yksilölliseksi testimääräksi. Supervisor/fixture-build, desktopin typecheck
+ja build sekä diff-tarkistus läpäisivät. Tämä on kohdennettu poistodiffin
+näyttö, ei lopullinen koko revision packaged-hyväksyntä.
+
+### Historiallinen käyttöönottokatselmus V2.8-checkpointin jälkeen
+
+Seuraava katselmus ja sen poistoa edeltävät tiedostomäärät kuvaavat alla
+nimettyjä revisioita. Ajantasainen työjärjestys ja poistodiffi ovat yllä.
 
 Päivitetyn vastuu- ja kattavuuskatselmuksen lähde on
 `b69baa561fb21bda693f0876bfca33ed14053eae` ja
@@ -2817,10 +2853,10 @@ Riskikytkentä on toteutettu, mutta ei vielä koko repositoryn cutover:
   täyden matriisin. Main-, ajastettu ja manuaalinen täysi ajo säilyvät.
   Täysi suunnitelma vaatii kaksi consumeria; kevyempi Windows-suunnitelma
   yhden. Puuttuva, peruutettu tai odottamatta ohitettu valittu tulos hylätään.
-- V2-feature-push ei käynnistä raskasta PR-ajon kaksoiskappaletta. Vanha
-  `ci.yml` käynnistyy kuitenkin vielä erikseen mainiin kohdistuvista PR:istä
-  ja main-pushista. V2:n reusable-kutsun W6-ohitus ei poista tätä erillistä
-  vanhaa käynnistystä.
+- V2-feature-push ei käynnistä raskasta PR-ajon kaksoiskappaletta.
+  Valmistellussa poistodiffissä `ci.yml` on vain reusable core: vanhat suorat
+  PR/main-triggerit ja W6-jobit on poistettu. Repositoryn main-käyttöönotto
+  ja required-check-asetusten vaihto ovat edelleen erilliset avoimet portit.
 
 Priorisoidut löydökset ja sulkemisehdot:
 

@@ -44,11 +44,19 @@ pnpm --filter @eky/desktop installer:release
 pnpm --filter @eky/desktop installer:verify-restore-lock
 pnpm --filter @eky/desktop installer:verify-release
 pnpm --filter @eky/desktop installer:v2-artifact:build --artifact-root <new-absolute-directory> --summary-path <new-absolute-summary-path>
-pnpm --filter @eky/desktop installer:build-upgrade-fixture
-pnpm --filter @eky/desktop installer:upgrade -- -FixturePath <path-to-fixture.json>
+pnpm --filter @eky/desktop installer:v2-upgrade-artifact:build --artifact-root <new-absolute-directory> --summary-path <new-absolute-summary-path>
 ```
 
 The unpacked spike is created under `apps/desktop/out/Eky-win32-x64`.
+
+Installer acceptance now uses the named V2 clean, upgrade, historical legacy,
+workspace success and workspace fault commands. Retired W6 runners and the
+old PowerShell upgrade command have no fallback route. Their shared builders,
+profile fixtures, artifact validators and production rollback launcher tests
+remain. Each V2 command requires its matching descriptor, expected hash/build
+revision, mandatory result file and external caller-result verifier. See
+`docs/architecture/windows-installer-acceptance-harness-v2.md` for the exact
+family commands, invariant transfer map and pending main/required-check gates.
 
 `package:windows` remains the development packaging command and may produce a
 dirty, explicitly non-distributable build. It uses the fixed, main-process

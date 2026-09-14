@@ -1,14 +1,6 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - antsa
-      - main
-  pull_request:
-    branches:
-      - main
-  workflow_dispatch:
   workflow_call:
     inputs:
       risk_plan:
@@ -67,11 +59,6 @@ jobs:
 
   e2e-system-security:
     name: System security E2E
-    if: >-
-      inputs.risk_plan != '' ||
-      github.event_name == 'pull_request' ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -102,11 +89,6 @@ jobs:
 
   e2e-web-critical:
     name: Web critical E2E
-    if: >-
-      inputs.risk_plan != '' ||
-      github.event_name == 'pull_request' ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -140,11 +122,7 @@ jobs:
 
   e2e-electron-windows-critical:
     name: Windows Electron critical E2E
-    if: >-
-      (inputs.risk_plan != '' && fromJSON(inputs.risk_plan).gates.electronCritical) ||
-      (inputs.risk_plan == '' && (github.event_name == 'pull_request' ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main')))
+    if: fromJSON(inputs.risk_plan).gates.electronCritical
     runs-on: windows-latest
     timeout-minutes: 25
 
@@ -195,7 +173,7 @@ jobs:
 
   windows-contracts:
     name: Windows installer contract tests
-    if: inputs.risk_plan != '' && fromJSON(inputs.risk_plan).gates.windowsContracts
+    if: fromJSON(inputs.risk_plan).gates.windowsContracts
     runs-on: windows-latest
     timeout-minutes: 15
     defaults:
@@ -224,308 +202,3 @@ jobs:
         run: pnpm --filter @eky/desktop installer:test:unit
       - name: Run Windows process-contract tests serially
         run: pnpm --filter @eky/desktop installer:test:windows-process
-
-  installer-windows:
-    name: Windows MSI release gate
-    if: >-
-      inputs.risk_plan == '' && (github.event_name == 'pull_request' ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: windows-latest
-    timeout-minutes: 45
-
-    defaults:
-      run:
-        working-directory: eky_software
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version-file: eky_software/.node-version
-          package-manager-cache: false
-
-      - name: Set up .NET SDK
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
-        with:
-          dotnet-version: 10.0.302
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Run deterministic installer tests
-        run: pnpm --filter @eky/desktop installer:test:unit
-
-      - name: Run Windows process-contract tests serially
-        run: pnpm --filter @eky/desktop installer:test:windows-process
-
-      - name: Restore locked WiX toolchain twice without lock drift
-        run: pnpm --filter @eky/desktop installer:verify-restore-lock
-
-      - name: Build and bind exact release artifact once
-        shell: pwsh
-        timeout-minutes: 15
-        run: |
-          $artifactRoot = Join-Path $env:RUNNER_TEMP 'eky-v2-clean-artifact'
-          $summaryPath = Join-Path $env:RUNNER_TEMP 'eky-v2-clean-summary.json'
-          if ((Test-Path -LiteralPath $artifactRoot) -or (Test-Path -LiteralPath $summaryPath)) {
-            throw 'WINDOWS_ACCEPTANCE_ARTIFACT_OUTPUT_EXISTS'
-          }
-          pnpm --filter @eky/desktop installer:v2-artifact:build --artifact-root $artifactRoot --summary-path $summaryPath
-          if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_ARTIFACT_BUILD_FAILED' }
-          $summary = Get-Content -LiteralPath $summaryPath -Raw -Encoding utf8 | ConvertFrom-Json
-          $headRevision = (git rev-parse HEAD).Trim()
-          if ($LASTEXITCODE -ne 0 -or $summary.status -cne 'completed' -or
-              $summary.resultCode -cne 'windowsAcceptanceArtifactBuilt' -or
-              $summary.pilotBundleResultCode -cne 'pilotBundleVerified' -or
-              $summary.buildRevision -cne $headRevision -or
-              $summary.descriptorSha256 -notmatch '^[0-9a-f]{64}$') {
-            throw 'WINDOWS_ACCEPTANCE_ARTIFACT_SUMMARY_INVALID'
-          }
-          pnpm --filter @eky/desktop installer:v2-artifact:verify --artifact-root $artifactRoot --expected-descriptor-sha256 $summary.descriptorSha256 --expected-build-revision $headRevision
-          if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_ARTIFACT_VERIFICATION_FAILED' }
-          "EXPECTED_BUILD_REVISION=$headRevision" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
-          "EXPECTED_DESCRIPTOR_SHA256=$($summary.descriptorSha256)" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
-
-      - name: Verify exact MSI release bytes without rebuilding
-        run: pnpm --filter @eky/desktop installer:verify-release
-
-      - name: Build acceptance supervisor
-        shell: pwsh
-        timeout-minutes: 3
-        run: |
-          pnpm --filter @eky/desktop installer:supervisor:build
-          if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_SUPERVISOR_BUILD_FAILED' }
-
-      - name: Verify exact release install, repair and uninstall lifecycle
-        shell: pwsh
-        timeout-minutes: 17
-        run: |
-          $descriptorPath = Join-Path $env:RUNNER_TEMP 'eky-v2-clean-artifact\clean-install-artifact.json'
-          $resultPath = Join-Path $env:RUNNER_TEMP ('eky-clean-caller-' + [guid]::NewGuid().ToString('N') + '\result.json')
-          pnpm --filter @eky/desktop exec dotnet installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --clean-command --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath
-          $commandExit = $LASTEXITCODE
-          pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/verifyCleanCallerResult.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath --command-exit $commandExit
-          if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0) {
-            throw 'WINDOWS_ACCEPTANCE_CLEAN_LIFECYCLE_FAILED'
-          }
-
-      - name: Reverify exact clean artifact bytes
-        if: ${{ always() && env.EXPECTED_DESCRIPTOR_SHA256 != '' }}
-        shell: pwsh
-        run: |
-          $artifactRoot = Join-Path $env:RUNNER_TEMP 'eky-v2-clean-artifact'
-          pnpm --filter @eky/desktop installer:v2-artifact:verify --artifact-root $artifactRoot --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION
-          if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_ARTIFACT_VERIFICATION_FAILED' }
-
-      - name: Build synthetic N+1 and rollback fixtures from the bound N release
-        run: pnpm --filter @eky/desktop installer:build-upgrade-fixture
-
-      - name: Verify major upgrade, downgrade rejection and rollback
-        run: pnpm --filter @eky/desktop installer:upgrade
-
-      - name: Reverify exact MSI release bytes after lifecycle tests
-        run: pnpm --filter @eky/desktop installer:verify-release
-
-      - name: Create the local unsigned pilot bundle from verified bytes
-        run: pnpm --filter @eky/desktop installer:local-pilot-bundle
-
-  installer-w6b-legacy-windows:
-    name: Windows W6B legacy acceptance
-    if: >-
-      inputs.risk_plan == '' && (github.event_name == 'pull_request' ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: windows-latest
-    timeout-minutes: 30
-
-    defaults:
-      run:
-        working-directory: eky_software
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version-file: eky_software/.node-version
-          package-manager-cache: false
-
-      - name: Set up .NET SDK
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
-        with:
-          dotnet-version: 10.0.302
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Restore locked WiX toolchain twice without lock drift
-        run: pnpm --filter @eky/desktop installer:verify-restore-lock
-
-      - name: Verify legacy release adoption and major upgrade
-        run: pnpm --filter @eky/desktop installer:w6b-legacy
-
-  installer-w6b2-success-windows-run:
-    name: Windows W6B.2A packaged workspace run ${{ matrix.repetition }}
-    if: >-
-      inputs.risk_plan == '' && (github.event_name == 'pull_request' ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: windows-latest
-    timeout-minutes: 30
-
-    strategy:
-      fail-fast: false
-      matrix:
-        repetition: [1, 2]
-
-    defaults:
-      run:
-        working-directory: eky_software
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version-file: eky_software/.node-version
-          package-manager-cache: false
-
-      - name: Set up .NET SDK
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
-        with:
-          dotnet-version: 10.0.302
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Prepare Electron development runtime
-        run: pnpm --filter @eky/desktop e2e:prepare-electron-runtime
-
-      - name: Restore locked WiX toolchain twice without lock drift
-        run: pnpm --filter @eky/desktop installer:verify-restore-lock
-
-      - name: Verify one packaged multi-workspace success repetition
-        run: >-
-          pnpm --filter @eky/desktop installer:w6b2-success --
-          --run=${{ matrix.repetition }}
-
-  installer-w6b2-success-windows:
-    name: Windows W6B.2A packaged workspace acceptance
-    if: >-
-      always() && inputs.risk_plan == '' &&
-      (github.event_name == 'pull_request' ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    needs: installer-w6b2-success-windows-run
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-
-    steps:
-      - name: Require every packaged workspace repetition
-        env:
-          MATRIX_RESULT: ${{ needs.installer-w6b2-success-windows-run.result }}
-        run: test "$MATRIX_RESULT" = "success"
-
-  installer-w6b2-fault-rollback-windows-run:
-    name: Windows W6B.2B ${{ matrix.scenario }} run ${{ matrix.repetition }}
-    if: >-
-      inputs.risk_plan == '' && (github.event_name == 'pull_request' ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: windows-latest
-    timeout-minutes: 30
-
-    strategy:
-      fail-fast: false
-      max-parallel: 5
-      matrix:
-        scenario:
-          - preUpdateRecoveryPointFailure
-          - activeWorkspaceFirstStartFailure
-          - acceptanceInterruption
-          - passiveWorkspaceMigrationFailure
-          - binaryRollbackFailure
-        repetition: [1, 2]
-
-    defaults:
-      run:
-        working-directory: eky_software
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version-file: eky_software/.node-version
-          package-manager-cache: false
-
-      - name: Set up .NET SDK
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
-        with:
-          dotnet-version: 10.0.302
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Prepare Electron development runtime
-        run: pnpm --filter @eky/desktop e2e:prepare-electron-runtime
-
-      - name: Restore locked WiX toolchain twice without lock drift
-        run: pnpm --filter @eky/desktop installer:verify-restore-lock
-
-      - name: Verify one packaged fault scenario repetition
-        run: >-
-          pnpm --filter @eky/desktop installer:w6b2-fault-rollback --
-          --scenario=${{ matrix.scenario }}
-          --run=${{ matrix.repetition }}
-
-  installer-w6b2-fault-rollback-windows:
-    name: Windows W6B.2B packaged workspace fault and rollback
-    if: >-
-      always() && inputs.risk_plan == '' &&
-      (github.event_name == 'pull_request' ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    needs: installer-w6b2-fault-rollback-windows-run
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-
-    steps:
-      - name: Require every packaged fault scenario repetition
-        env:
-          MATRIX_RESULT: ${{ needs.installer-w6b2-fault-rollback-windows-run.result }}
-        run: test "$MATRIX_RESULT" = "success"

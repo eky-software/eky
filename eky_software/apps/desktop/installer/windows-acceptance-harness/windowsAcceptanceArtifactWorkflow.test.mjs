@@ -21,25 +21,20 @@ function occurrenceCount(source, value) {
   return source.split(value).length - 1;
 }
 
-test('exact-release route reuses the V2 producer and command without rebuilding approved bytes', async () => {
-  const workflow = await readFile(resolve(WORKSPACE_ROOT, '.github/workflows/ci.yml'), 'utf8');
-  const release = workflow.slice(workflow.indexOf('  installer-windows:'), workflow.indexOf('  installer-w6b-legacy-windows:'));
-  assert.equal(occurrenceCount(release, 'installer:v2-artifact:build'), 1);
-  assert.equal(occurrenceCount(release, ' --clean-command '), 1);
-  assert.equal(occurrenceCount(release, 'verifyCleanCallerResult.mjs'), 1);
-  assert.equal(occurrenceCount(release, 'installer:v2-artifact:verify'), 2);
-  assert.equal(occurrenceCount(release, 'installer:verify-release'), 2);
-  assert.match(release, /\$summary\.pilotBundleResultCode -cne 'pilotBundleVerified'/u);
-  assert.match(release, /\$commandExit -ne 0 -or \$LASTEXITCODE -ne 0/u);
-  assert.match(release, /--command-exit \$commandExit/u);
-  assert.match(release, /timeout-minutes: 45/u);
-  assert.match(release, /timeout-minutes: 17/u);
-  assert.match(release, /timeout-minutes: 3/u);
-  assert.doesNotMatch(release, /package:windows|installer:release(?:\s|$)|installer:(?:release-)?lifecycle/u);
-  const steps = ['installer:verify-restore-lock', 'installer:v2-artifact:build',
-    'installer:verify-release', ' --clean-command ', 'verifyCleanCallerResult.mjs',
-    'installer:build-upgrade-fixture', 'installer:upgrade', 'installer:local-pilot-bundle'];
-  assert.deepEqual(steps.map((step) => release.indexOf(step)), steps.map((step) => release.indexOf(step)).sort((a, b) => a - b));
+test('exact-release lifecycle has one V2 command and no retired orchestration entrypoint', async () => {
+  const core = await readFile(resolve(WORKSPACE_ROOT, '.github/workflows/ci.yml'), 'utf8');
+  const { scripts } = JSON.parse(await readFile(resolve(DIRECTORY, '../../package.json'), 'utf8'));
+  assert.doesNotMatch(core, /installer-windows:|installer-w6b|installer:upgrade/u);
+  for (const retired of ['installer:lifecycle', 'installer:release-lifecycle',
+    'installer:upgrade', 'installer:w6b-legacy', 'installer:w6b2-success',
+    'installer:w6b2-fault-rollback']) {
+    assert.equal(Object.hasOwn(scripts, retired), false);
+  }
+  assert.match(scripts['installer:v2-clean'], /dotnet .* --clean-command$/u);
+  assert.match(scripts['installer:v2-upgrade-rollback'], /dotnet .* --upgrade-command$/u);
+  assert.match(scripts['installer:v2-legacy'], /dotnet .* --legacy-command$/u);
+  assert.match(scripts['installer:v2-workspace-success'], /dotnet .* --workspace-success-command$/u);
+  assert.match(scripts['installer:v2-workspace-fault'], /dotnet .* --workspace-fault-command$/u);
 });
 
 test('CI transfers one exact short-lived artifact to two isolated consumers', async () => {

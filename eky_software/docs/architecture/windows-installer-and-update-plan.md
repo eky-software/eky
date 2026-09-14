@@ -1082,7 +1082,16 @@ tulosteta. Progress on vain testihavainto: puuttuva, keskeneräinen tai
 virheellinen havaintotiedosto ei muuta rollbackin exit-koodia, aikarajaa tai
 fail-closed-tulosta, eikä tavallinen production-handoff anna progresspolkua.
 
-**W6B.2B fault/rollback -checkpoint 27.8.2026:** pysyvä komento
+**Nykyinen hyväksyntäreitti:** W6:n alla kuvatut alkuperäiset ajokomennot ja
+niiden Node/PowerShell-orkestrointi on korvattu V2:n nimetyillä komennoilla.
+`installer:v2-workspace-fault` käyttää build-once-descriptoria, yhtä nykyistä
+Job-supervisoria ja erillistä pakollista caller-tulosta. Viisi fault-
+skenaariota ja niiden turvallisuusehdot säilyvät. Kanoniset kutsut,
+korvaavuusnäyttö ja avoimet käyttöönottopäätökset ovat
+`windows-installer-acceptance-harness-v2.md`:ssä. Seuraavat W6B-kappaleet
+kuvaavat historiallista toteutusta, eivät nykyisiä komentoja tai aikabudjetteja.
+
+**Historiallinen W6B.2B fault/rollback -checkpoint 27.8.2026:** pysyvä komento
 `pnpm --filter @eky/desktop installer:w6b2-fault-rollback` rakentaa yhden
 yksityisen 0.2.7 -> 0.2.8 -fixtureparin ja ajaa viisi fault-skenaariota
 kahdesti. Matriisi kattaa preUpdate-palautuspisteen virheen, aktiivisen

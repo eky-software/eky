@@ -132,8 +132,13 @@ validoidun riskisuunnitelman mukaan. Vakaa `V2 acceptance` vaatii saman ajon
 ja yrityksen kaikki valitut jobit, toistot ja pakolliset testivaiheet; pelkkä
 matriisin osittainen onnistuminen ei riitä. Main-, ajastettu ja manuaalinen
 release-valmistelun ajo säilyvät täysinä. Feature-push ei toista PR:n V2-matriisia.
-Tämä ei muuta required check -asetuksia eikä poista vanhoja W6-komentoja:
-niiden korvaaminen vaatii V2-suunnitelman erillisen käyttöönoton.
+Valmisteltu cutover poistaa korvatut W6-komennot ja niiden suorat CI-jobit.
+`ci.yml` jää saman riskisuunnitelman reusable coreksi; suora feature-push tai
+PR ei käynnistä sen rinnalle toista raskasta matriisia. Säilyvät rakentajat,
+fixturet ja turvallisuustarkistukset on nimetty V2-suunnitelman siirtokartassa.
+Lopullisen poistorevision hyväksyntä sekä required check -asetusten ja mainin
+vaihto ovat erilliset, vielä avoimet käyttöönottoportit. Paikallinen diffi
+ei muuta repositoryn suojauksia.
 
 V2.5:n omistajan hyväksymä vaihekohtainen ympäristöraja käyttää kahta
 eristettyä Windows CI -consumeria samalle build-once-artifactille kahden

@@ -102,7 +102,9 @@ checksumit säilyvät desktopin integraatio- ja packaged-smoke-vastuina.
 
 ## CI ja endurance
 
-GitHub CI ajaa pull requesteissa, `main`-pusheissa ja käsin käynnistettynä:
+V2:n CI-kytkentä valitsee pull requestin portit nykyisen riskisuunnitelman
+mukaan. Main-, ajastettu ja manuaalinen kokonaisajo suorittavat kaikki portit.
+E2E-perheet ovat:
 
 - eristetyn system security E2E -joukon
 - Chromiumin kriittiset web-käyttäjäpolut yhdellä workerilla
@@ -113,18 +115,17 @@ Playwright-jobit käyttävät yhtä CI-retryä vain trace-todisteen keräämisee
 `failOnFlakyTests`-asetusta, joten retryllä vasta läpäisevä testi epäonnistaa
 jobin. Raskaita E2E-jobeja ei ajeta erikseen jokaisessa `antsa`-pushissa.
 
-Pull requestin `main`-mergeportin required status check -joukko on:
+Valmistellussa cutoverissa `ci-cadence-contracts.yml` omistaa laukaisun ja
+vakaan `V2 acceptance` -koonnin. `ci.yml` on vain sen reusable core, ei toinen
+suoraan PR:stä käynnistyvä testiketju. Koonti vaatii kaikki valitut perheet,
+toistot ja pakolliset vaiheet; odottamaton skip, puuttuva tulos tai peruutus
+ei kelpaa onnistumiseksi. Riippuvuusturva säilyy erillisenä työnkulkuna.
 
-- `CI / Test, typecheck and build`
-- `CI / System security E2E`
-- `CI / Web critical E2E`
-- `CI / Windows Electron critical E2E`.
-
-`Dependency security / Audit dependencies` ajetaan jokaisessa `main`-haaraan
-kohdistuvassa pull requestissa ja se soveltuu branch protectionin required
-check -ehdokkaaksi. Repositorion todellinen ruleset varmistetaan GitHubista
-ennen kuin checkiä väitetään pakolliseksi; paikallinen dokumentaatio ei muuta
-GitHub-asetuksia.
+Mainin tarkistetut nykyiset required checkit ja ehdotettu vaihto ovat
+`windows-installer-acceptance-harness-v2.md`-dokumentin ajantasaisessa
+käyttöönottolistassa. Vaihtoa ei ole tehty tämän lähdekoodidiffin perusteella.
+Repositorion todellinen ruleset varmistetaan GitHubista ennen asetusten
+muutosta; paikallinen dokumentaatio ei muuta GitHub-asetuksia.
 Checkien nimiä ei muuteta hiljaisesti, koska branch protection viittaa
 GitHubissa täsmällisiin check-nimiin.
 

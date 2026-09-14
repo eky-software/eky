@@ -28,7 +28,7 @@ const contractAssembly = fileURLToPath(new URL('../bin/windows-process-superviso
 async function startCiCommand(context, kind, descriptor, resultPath, signal) {
   const workflow = await readFile(new URL(kind === 'legacy'
     ? '../../../../../.github/workflows/windows-acceptance-v2-legacy-diagnostic.yml'
-    : kind === 'clean' ? '../../../../../.github/workflows/ci.yml'
+    : kind === 'clean' ? '../../../../../.github/workflows/windows-acceptance-v2-clean.yml'
     : kind === 'upgrade' ? '../../../../../.github/workflows/windows-acceptance-v2-upgrade.yml'
     : '../../../../../.github/workflows/windows-acceptance-v2-workspace.yml', import.meta.url), 'utf8');
   const lines = workflow.split(/\r?\n/u);
@@ -41,11 +41,6 @@ async function startCiCommand(context, kind, descriptor, resultPath, signal) {
   assert.ok(boundary >= 4);
   const [command, returned, verifier, ...outcomeLines] = following.slice(0, boundary).map((line) => line.slice(10));
   const outcome = outcomeLines.join('\n');
-  if (kind === 'clean') {
-    // Release and artifact consumers use the identical command/result boundary.
-    const consumer = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-v2-clean.yml', import.meta.url), 'utf8');
-    assert.ok(consumer.replaceAll('\r\n', '\n').includes(following.slice(0, boundary).join('\n')));
-  }
   assert.equal(returned, '$commandExit = $LASTEXITCODE');
   assert.ok(verifier.startsWith('pnpm --filter @eky/desktop exec node '));
   assert.ok(verifier.includes('--command-exit $commandExit'));

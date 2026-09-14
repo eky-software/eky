@@ -253,12 +253,10 @@ test('workflow bindings preserve one producer and exact result checks with dynam
     assert.match(child, /artifact-ids: \$\{\{ needs\.[a-z_]+\.outputs\.artifact_id \}\}/);
   }
   const core = await readFile(new URL('ci.yml', directory), 'utf8');
-  const contracts = core.split('\n  windows-contracts:')[1].split('\n  installer-windows:')[0];
+  const contracts = core.split('\n  windows-contracts:')[1];
+  assert.match(core, /workflow_call:\s+inputs:\s+risk_plan:\s+required: true\s+type: string/);
+  assert.doesNotMatch(core.split('permissions:')[0], /push:|pull_request:|workflow_dispatch:/);
+  assert.doesNotMatch(core, /installer-windows:|installer-w6b|installer:w6b|installer:upgrade/);
   assert.match(contracts, /persist-credentials: false\s+fetch-depth: 0/);
   assert.match(contracts, /Run deterministic installer tests/);
-  for (const owner of ['installer-windows', 'installer-w6b-legacy-windows',
-    'installer-w6b2-success-windows-run', 'installer-w6b2-success-windows',
-    'installer-w6b2-fault-rollback-windows-run', 'installer-w6b2-fault-rollback-windows']) {
-    assert.ok(core.split(`\n  ${owner}:`)[1].split('runs-on:')[0].includes("inputs.risk_plan == ''"));
-  }
 });

@@ -1192,7 +1192,16 @@ erilliset business-rivit, authoritative PDF, secret-namespace, archive-
 konfiguraatio ja -journal sekä recovery point -juuri. Installation-scoped
 update-tila säilyy yhtenä eikä saa sekoittua workspace-scoped-tilaan.
 
-**W6B.2A success-checkpoint 25.8.2026:** paketoitu N -> N+1-
+**Nykyinen hyväksyntäreitti:** seuraavien historiallisten W6B.2A/W6B.2B-
+checkpointien ajajat on korvattu `installer:v2-workspace-success`- ja
+`installer:v2-workspace-fault`-komennoilla. A/B/C- ja fault-invariantit
+säilyvät, mutta paketit rakennetaan nykyisessä V2-producerissa kerran ja
+consumerit käyttävät samoja varmennettuja tavuja. Vanhoja komentoja tai
+niiden budjetteja ei käytetä uutena hyväksyntäohjeena. Ajantasainen komento-,
+tulos- ja siirtosopimus on `windows-installer-acceptance-harness-v2.md`:ssä;
+lopullinen main-käyttöönotto ja julkaisuhyväksyntä ovat vielä erilliset portit.
+
+**Historiallinen W6B.2A success-checkpoint 25.8.2026:** paketoitu N -> N+1-
 onnistumismatriisi on toteutettu pysyvällä
 `pnpm --filter @eky/desktop installer:w6b2-success` -komennolla. Komento
 rakentaa yhden yksityisen 0.2.7 -> 0.2.8 -fixtureparin ja ajaa saman parin
