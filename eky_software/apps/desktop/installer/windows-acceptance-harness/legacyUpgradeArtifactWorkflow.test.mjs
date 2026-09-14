@@ -235,7 +235,8 @@ test('entrypoint groups register original and migrated command contracts exactly
     assert.deepEqual(registrations, [
       `${kind} public command resolves the real worker and rejects an invalid artifact before installation`,
       ...[...original, ...extra].map((name) => `${kind} fixed command entrypoint completes the real phase chain: ${name}`),
-      ...(['legacy', 'clean', 'upgrade'].includes(kind) ? ['completed', 'blockedEvidence', 'productMissingResult', 'uninstallHold', 'scenarioAndCleanupFailed'] : ['completed'])
+      ...[...(['legacy', 'clean', 'upgrade'].includes(kind) ? ['completed', 'blockedEvidence', 'productMissingResult', 'uninstallHold', 'scenarioAndCleanupFailed'] : ['completed']),
+        ...(['legacy', 'workspace-fault'].includes(kind) ? ['productInspectionHold'] : [])]
         .map((name) => `${kind} CI launch chain completes the real phase chain: ${name}`),
     ]);
     const source = await readFile(new URL(`./${file}.process.test.mjs`, import.meta.url), 'utf8');
@@ -243,8 +244,30 @@ test('entrypoint groups register original and migrated command contracts exactly
     assert.ok(source.includes(`registerAcceptanceCommandEntrypointContracts('${kind}');`));
     all.push(...registrations);
   }
-  assert.equal(all.length, 120);
+  assert.equal(all.length, 122);
   assert.equal(new Set(all).size, all.length);
+});
+
+test('inspection command selection runs both existing failure callbacks without a packaged matrix', async () => {
+  const source = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
+  const step = source.split('      - name: Verify inspection failure through both existing CI command chains\n')[1].split('\n      - name:')[0];
+  const pattern = new RegExp(step.match(/--test-name-pattern="([^"]+)"/u)[1]);
+  const selected = [];
+  for (const kind of ['legacy', 'workspace-fault']) {
+    registerAcceptanceCommandEntrypointContracts(kind, (name, options, callback) => {
+      if (pattern.test(name)) {
+        assert.equal(typeof callback, 'function');
+        assert.equal(options.timeout, 90_000);
+        selected.push(name);
+      }
+    });
+  }
+  assert.deepEqual(selected, ['legacy', 'workspace-fault'].map((kind) =>
+    `${kind} CI launch chain completes the real phase chain: productInspectionHold`));
+  assert.match(step, /if: inputs\.mode == 'inspection-command-contracts'/u);
+  assert.match(step, /legacyCommandEntrypoint\.process\.test\.mjs/u);
+  assert.match(step, /workspaceFaultCommandEntrypoint\.process\.test\.mjs/u);
+  assert.doesNotMatch(step, /artifact:build|package:windows|retry|continue-on-error/u);
 });
 
 test('V2.5 phase acceptance builds once and both consumers only verify and consume', async () => {

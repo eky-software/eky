@@ -179,6 +179,7 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
     ...(upgrade ? ['applicationCleanupUnverified', 'postconditionFailed'] : [])];
   const ciCases = kind === 'legacy' || clean || upgrade
     ? ['completed', 'blockedEvidence', 'productMissingResult', 'uninstallHold', 'scenarioAndCleanupFailed'] : ['completed'];
+  if (kind === 'legacy' || kind === 'workspace-fault') ciCases.push('productInspectionHold');
   for (const [testCase, ciChain] of [...directCases.map((name) => [name, false]), ...ciCases.map((name) => [name, true])]) {
     const blocked = testCase === 'blockedEvidence';
     const succeeded = testCase === 'completed' || blocked || ['productInspectionReadOnly', 'temporaryRootAlias'].includes(testCase);

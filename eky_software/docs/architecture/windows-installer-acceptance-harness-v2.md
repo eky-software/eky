@@ -2507,6 +2507,18 @@ Tämä osuus erottaa nykyisen julkaisutyön historiallisesta tutkimusnäytöstä
 
 #### Ajantasaiset julkaisuesteet ja päätökset
 
+Tuotetarkistuksen synteettinen aikakatkaisu katetaan nyt myös legacy- ja
+workspace-fault-perheiden todellisen PowerShell/pnpm-käynnistysketjun kautta.
+Nykyinen yhteinen komentofixture tarkistaa alkuperäisen deadline-virheen,
+pakollisen caller-resultin, prosessipuun poissaolon, tulosvarmentimen
+hylkäyksen ja ulomman komentoprosessin exit/close-rajan. Aineisto säilyy,
+eikä skenaario tai uninstall käynnisty. Feasibility-workflow'n rajattu
+`inspection-command-contracts`-valinta ajaa vain nämä kaksi nykyistä
+sopimusta ilman MSI:tä tai tapahtumatallennusta; se ei ole kokonaisportti
+eikä alkuperäisen natiiviviiveen tai legacy-katkaisun juurisyykorjaus.
+Muuttuneet komentoryhmät läpäisivät 48/48, artifact-sopimukset 23/23,
+CI-politiikka 54/54 sekä desktopin typecheck ja build.
+
 Uusin normaali integraatiokierros
 [`34844463051`](https://github.com/eky-software/eky/actions/runs/34844463051),
 lähde- ja producer/consumer-checkout

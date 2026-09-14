@@ -13,6 +13,7 @@ on:
           - window-startup-diagnostic
           - legacy-contracts-diagnostic
           - legacy-worker-diagnostic
+          - inspection-command-contracts
           - inspector-analysis-diagnostic
           - inspector-external-diagnostic
           - packaged-boundary-diagnostic
@@ -47,14 +48,14 @@ concurrency:
 jobs:
   job-object-feasibility:
     if: inputs.mode != 'packaged-boundary-diagnostic'
-    name: ${{ inputs.mode == 'inspector-external-diagnostic' && 'External inspector capture (no MSI, not acceptance)' || inputs.mode == 'inspector-analysis-diagnostic' && 'Inspector analysis diagnostic (no MSI, not acceptance)' || inputs.mode == 'window-startup-diagnostic' && 'V2.5 window startup diagnostic (not acceptance)' || inputs.mode == 'legacy-worker-diagnostic' && format('V2.5 worker diagnostic run {0} (not acceptance)', matrix.repetition) || inputs.mode == 'legacy-contracts-diagnostic' && format('V2.5 contracts diagnostic run {0} (not acceptance)', matrix.repetition) || format('Windows Job Object feasibility run {0}', matrix.repetition) }}
+    name: ${{ inputs.mode == 'inspection-command-contracts' && 'Inspection failure command contracts (no MSI, not acceptance)' || inputs.mode == 'inspector-external-diagnostic' && 'External inspector capture (no MSI, not acceptance)' || inputs.mode == 'inspector-analysis-diagnostic' && 'Inspector analysis diagnostic (no MSI, not acceptance)' || inputs.mode == 'window-startup-diagnostic' && 'V2.5 window startup diagnostic (not acceptance)' || inputs.mode == 'legacy-worker-diagnostic' && format('V2.5 worker diagnostic run {0} (not acceptance)', matrix.repetition) || inputs.mode == 'legacy-contracts-diagnostic' && format('V2.5 contracts diagnostic run {0} (not acceptance)', matrix.repetition) || format('Windows Job Object feasibility run {0}', matrix.repetition) }}
     runs-on: windows-latest
     timeout-minutes: 10
 
     strategy:
       fail-fast: false
       matrix:
-        repetition: ${{ fromJSON((inputs.mode == 'window-startup-diagnostic' || inputs.mode == 'inspector-analysis-diagnostic' || inputs.mode == 'inspector-external-diagnostic') && '[1]' || '[1, 2]') }}
+        repetition: ${{ fromJSON((inputs.mode == 'inspection-command-contracts' || inputs.mode == 'window-startup-diagnostic' || inputs.mode == 'inspector-analysis-diagnostic' || inputs.mode == 'inspector-external-diagnostic') && '[1]' || '[1, 2]') }}
 
     defaults:
       run:
@@ -91,7 +92,7 @@ jobs:
         run: node installer/windows-process-supervisor/buildWindowsAcceptanceSupervisor.mjs
 
       - name: Run supervisor unit and process contracts
-        if: inputs.mode != 'window-startup-diagnostic' && inputs.mode != 'legacy-contracts-diagnostic' && inputs.mode != 'legacy-worker-diagnostic' && inputs.mode != 'inspector-analysis-diagnostic' && inputs.mode != 'inspector-external-diagnostic'
+        if: inputs.mode != 'inspection-command-contracts' && inputs.mode != 'window-startup-diagnostic' && inputs.mode != 'legacy-contracts-diagnostic' && inputs.mode != 'legacy-worker-diagnostic' && inputs.mode != 'inspector-analysis-diagnostic' && inputs.mode != 'inspector-external-diagnostic'
         run: >-
           node --test --test-concurrency=1
           installer/windows-process-supervisor/tests/windowsAcceptanceSupervisorResult.test.mjs
@@ -105,8 +106,26 @@ jobs:
           installer/windows-acceptance-harness/requestWindowsApplicationClose.test.mjs
 
       - name: Enable existing package manager for diagnostic contracts
-        if: inputs.mode == 'legacy-contracts-diagnostic'
+        if: inputs.mode == 'legacy-contracts-diagnostic' || inputs.mode == 'inspection-command-contracts'
         run: corepack enable
+
+      - name: Prepare locked package manager before inspection command contracts
+        if: inputs.mode == 'inspection-command-contracts'
+        shell: pwsh
+        run: |
+          $expected = ((Get-Content ../../package.json -Raw | ConvertFrom-Json).packageManager -split '@')[1]
+          $actual = pnpm --version
+          if ($LASTEXITCODE -ne 0 -or $actual.Trim() -cne $expected) {
+            throw 'WINDOWS_ACCEPTANCE_LEGACY_PACKAGE_MANAGER_UNAVAILABLE'
+          }
+
+      - name: Verify inspection failure through both existing CI command chains
+        if: inputs.mode == 'inspection-command-contracts'
+        run: >-
+          node --test --test-concurrency=1
+          --test-name-pattern="^(legacy|workspace-fault) CI launch chain completes the real phase chain: productInspectionHold$"
+          installer/windows-acceptance-harness/legacyCommandEntrypoint.process.test.mjs
+          installer/windows-acceptance-harness/workspaceFaultCommandEntrypoint.process.test.mjs
 
       - name: Record diagnostic revision and runner image
         if: inputs.mode == 'legacy-contracts-diagnostic' || inputs.mode == 'legacy-worker-diagnostic'
