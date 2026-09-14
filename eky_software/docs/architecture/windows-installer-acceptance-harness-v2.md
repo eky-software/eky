@@ -2522,10 +2522,10 @@ kuvaavat niiden nimettyjä historiallisia revisioita.
 | Riippuvuusturva | Hyväksytyt Hono/Vitest-patchit ja niiden normaali V2-CI ovat vihreät. Omistajan erikseen hyväksymä read-only-audit valmistui: tuotantopuu 0 löydöstä, koko puu 0 löydöstä ja 160/160 rekisteriallekirjoitusta varmennettu. `dcaeaff`-revision erillinen [Dependency security 34833180991](https://github.com/eky-software/eky/actions/runs/34833180991) läpäisi ensimmäisellä yrityksellä kaikki kolme tarkistusta (18 s). Riippuvuuksia tai lockfilea ei muutettu auditissa. Lopullisen revision oma `Audit dependencies` -portti vaaditaan silti; uusi löydös tarvitsee oman vaikutusarvion. |
 | Exact-release-byte-reitti | Vanha Node/PowerShell-lifecycle on korvattu nykyisellä V2-producerilla, `--clean-command`-komennolla ja pakollisella `verifyCleanCallerResult`-tarkistuksella. Kohdetestit sekä puhtaan checkpointin samaa clean-ketjua käyttävät Windows-consumerit 2/2 läpäisivät. Koko jäljellä olevan vanhan MSI-jobin ja lopullisen cutoverin näyttö ei siirry tästä automaattisesti. Producer rakentaa kerran; release-, consumer- ja bundle-MSI:n hashien pitää vastata toisiaan. |
 | Korvatun orkestroinnin poisto | Checkpoint `5495fa758fb91efbc44a727009e924ac0b2f68a5` poistaa 71 korvattua W6/PowerShell-orkestroinnin tiedostoa, niiden omat komennot ja vanhat CI-jobit. Shared builderit, fixturet ja tarkistimet säilyvät. Alla nimetyt kohdetestit läpäisivät, mutta lopullisen revision kokonaisportit vaaditaan ennen käyttöönottoa. Vanhaa required-check-asetusta ei ole muutettu; lähdediffi ei saa ohittaa sen erillistä päätöstä. |
-| Lopullinen ympäristö ja toistot | Voimassa on kaksi paikallista täyttä release-kierrosta ja kaksi normaalia GitHub-kierrosta samalla lopullisella integraatiorevisiolla ilman retryä. Yhden kierroksen kaksi consumeria eivät korvaa kahta kierrosta. Vaihekohtaiset CI-ympäristöpäätökset eivät muuta tätä; mahdollinen poikkeus päätetään ennen lopullisia ajoja. |
+| Lopullinen ympäristö ja toistot | Omistajan hyväksymä käyttöönottorajaus korvaa kaksi paikallista täyttä MSI/release-kierrosta kahdella täydellä normaalilla GitHub-kierroksella samasta lopullisesta integraatiorevisiosta: kaksi GitHub-kierrosta yhteensä, ei neljää. Paikalliset soveltuvat testit, sopimustestit, typecheck ja build säilyvät. Yhden kierroksen kaksi consumeria eivät korvaa kahta kierrosta; eri revisioiden tai epäonnistuneiden kierrosten osia ei yhdistetä hyväksynnäksi. |
 | Main-integraatio | Main-baseline `c1d010263ccf4dc490a709f58ea8a4a5b34fa03a` on edelleen poisto-checkpointin esi-isä. Poiston jälkeinen main-vertailu ja desktop-kytkennän rajaus on tarkistettu alla. Lopullinen integraatiorevisio, sen kokonaisportit ja main-siirto ovat vielä kesken. Jäädytettyjä PR:iä #257/#258 ei mergeä. |
-| Required checkit | Valmistellaan nykyisten kuuden checkin korvaaminen `V2 acceptance`- ja `Audit dependencies` -porteilla. Asetusmuutos vaatii näkyvän omistajapäätöksen; strict-ajantasaisuus, PR-vaatimus ja tuottajasidos säilyvät. |
-| Merge-commit | Hyväksytyn integraation jälkeen merge-commitin oma täysi main-ajo vaaditaan. PR- tai diagnostisen haaran vihreys ei korvaa sitä. |
+| Required checkit | Omistaja hyväksyi nykyisten kuuden checkin korvaamisen `V2 acceptance`- ja `Audit dependencies` -porteilla vasta integraatiokatselmuksen ja lopullisten hyväksyntäporttien läpäistyä. Tarkat nimet, GitHub Actions -tuottaja ja koontikattavuus varmennetaan ennen vaihtoa. Nykyiset asetukset tallennetaan paikallisesti ja jälkivertailu sallii vain sovitun check-muutoksen; strict-ajantasaisuus, PR-vaatimus ja muut suojaukset säilyvät ilman suojaamatonta välivaihetta. |
+| Merge-commit | Omistaja hyväksyi katselmoidun V2-integraation normaalin PR-mergen vasta porttien läpäistyä, ei jäädytettyjen historiallisten PR:ien yhdistämistä. Merge-commitin oma täysi main-ajo vaaditaan; sen epäonnistuminen pysäyttää julkaisun. PR- tai diagnostisen haaran vihreys ei korvaa sitä. |
 | 0.2.8-pilotti | Vasta edellisten porttien jälkeen erillinen versionosto, puhdas release-revisio, exact-byte-smoke/lifecycle ja samojen tavujen bundle. Ei uudelleenrakennettua korviketta, avointa latausta tai stable-kanavaa. |
 
 Alkuperäisiä legacy-/runner-, MSI 3010- ja tiedostotilahavaintoja ei nimetä
@@ -2533,6 +2533,13 @@ pelkällä uudemmalla vihreydellä korjatuiksi. Niiden viimeinen näyttö ja
 luokitus katselmoidaan integraatioportissa; uusi rajattu tutkimus tarvitsee
 uuden erottavan havainnon. Sovelluksen yleinen rakennekatselmus ja W7 ovat
 pilotin jälkeisiä töitä.
+
+Hyväksytty ympäristö- ja käyttöönottopäätös ei muuta testiperheitä,
+skenaarioita, niiden toistoja, MSI-paluuarvojen hyväksyntää, turvallisuusehtoja
+tai siivousvaatimuksia eikä hyväksy avoimia turvallisuus- tai datan
+säilymisriskejä. Producer/consumer-tavusidos säilyy. Kummastakin kokonaisajosta
+kirjataan lähde-, todellinen checkout- ja artifact-build-identiteetti erikseen;
+lopullisen revision oma riippuvuusturvan tarkistus kuuluu hyväksyntään.
 
 Exact-release-siirto käyttää jo hyväksyttyjä V2-rajoja: producerin build ja
 artifact-varmennus ovat erillään 965 sekunnin clean-komennosta. Supervisorin
@@ -2559,8 +2566,9 @@ Integraatiosuunnitelma nimeää:
 5. integraatiorevision paikalliset ja ensimmäisen yrityksen CI-portit sekä
    merge-commitin oman main-ajon tarkistuksen.
 
-Required checkien korvaaminen tai repository-asetusten muutos vaatii näkyvän
-omistajapäätöksen. Porttia ei ohiteta eikä vanhaa poisteta ennen vastaavaa
+Omistaja on hyväksynyt yllä rajatun required-check-vaihdon ja normaalin
+PR-mergen niiden ehtojen täytyttyä. Muu repository-asetusten muutos tarvitsee
+erillisen päätöksen. Porttia ei ohiteta eikä vanhaa poisteta ennen vastaavaa
 todistettua kattavuutta. Koodin, komentojen, CI:n ja dokumentaation vaihto
 tehdään yhtenä katselmoitavana cutover-kokonaisuutena. Versionosto ja
 käyttäjälle toimitettava pilot-artifact ovat vasta tämän jälkeinen erillinen
@@ -2752,17 +2760,19 @@ V2-kokonaiskierrosta eikä vanhan koko MSI-jobin ajobudjetin hyväksyntä.
 Tuotantokoodia, riippuvuuksia, testibudjetteja tai required-check-asetuksia
 ei muutettu tässä siirrossa.
 
-Required-check-siirron ehdotus, ei vielä hyväksytty asetusmuutos:
+Hyväksytty required-check-siirto, toteutus vasta kokonaisporttien jälkeen:
 
 - Nykyisen aktiivisen main-rulesetin kuusi pakollista nimeä ovat
   `Test, typecheck and build`, `System security E2E`, `Web critical E2E`,
   `Windows Electron critical E2E`, `Audit dependencies` ja
-  `Windows MSI release gate`. Korvaavaksi yhdistelmäksi ehdotetaan `V2 acceptance` ja
+  `Windows MSI release gate`. Hyväksytty korvaava yhdistelmä on `V2 acceptance` ja
   itsenäinen `Audit dependencies`; V2-koonti tarkistaa riskin valitsemat
   yksittäiset jobit, vaiheet ja kaikki vaaditut toistot.
 - Strict-ajantasaisuus, vaadittu PR ja GitHub Actions -tuottajaan sidonta
   säilyvät. Vanhaa checkiä ei vapauteta ennen korvaavaa vihreää kattavuutta
-  ja omistajan erillistä päätöstä. Suojauksia ei väliaikaisesti poisteta.
+  ja yllä olevan hyväksytyn päätöksen ehtojen täyttymistä. Suojauksia ei
+  väliaikaisesti poisteta. Tallennetun rulesetin ennen/jälkeen-vertailu
+  varmentaa, että vain sovittu pakollisten checkien lista muuttui.
 - V2:n reusable-core-jobien nimet ovat prefiksoituja. Vanhojen suorien
   triggerien poiston yhteydessä ei jätetä pakolliseksi nimeä, jota uusi
   workflow ei tuota. Nimet ja triggerit tarkistetaan yhdessä samalla
@@ -2770,24 +2780,25 @@ Required-check-siirron ehdotus, ei vielä hyväksytty asetusmuutos:
 - Kattavuusaukkojen sulkemisen jälkeen valmistellaan ajantasaiseen mainiin
   kohdistuva integraatiokatselmus, vanhan/uuden vertailu ja ehdotettu
   poistodiffi. Vasta hyväksytyssä siirrossa muutetaan required checkit ja
-  poistetaan korvattu orkestrointi. Merge vaatii oman hyväksynnän ja sen
-  jälkeen merge-commitin täyden main-ajon; PR:n tulos ei korvaa sitä.
+  poistetaan korvattu orkestrointi. Merge tehdään yllä hyväksytyn normaalin
+  PR-menettelyn kautta, ja sen jälkeen vaaditaan merge-commitin täysi main-ajo;
+  PR:n tulos ei korvaa sitä.
 
-Alla olevan koko V2:n valmis-määritelmän kaksi paikallista täyttä kierrosta
-ja kaksi GitHub-kierrosta säilyvät. V2.5-V2.7:n rajatut ympäristöpäätökset
-koskevat vaihehyväksyntää, eivät automaattisesti tätä lopullista siirtoa.
-Saman CI-ajon kaksi consumeria eivät ole kaksi erillistä kokonaiskierrosta.
-Jos integraation ympäristöraja tarvitsee muutoksen, omistajalta pyydetään
-yksi nimenomainen päätös ennen lopullisten ajojen tilaamista.
+Koko V2:n käyttöönottorajaus on nyt hyväksytty erikseen yllä: kaksi täydellistä
+normaalia GitHub-kierrosta samasta lopullisesta integraatiorevisiosta korvaa
+aiemman paikallisen MSI/release-kierrosten vaatimuksen. V2.5-V2.7:n vanhoja
+vaihepäätöksiä ei käytetä tämän perusteluna. Saman CI-ajon kaksi consumeria
+eivät ole kaksi erillistä kokonaiskierrosta.
 
 ## Valmis-määritelmä
 
 V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 
-- paikalliset unit- ja process-contract-kohdetestit
-- kaksi paikallista täyttä release-kierrosta ilman retryä
-- kaksi GitHub-kierrosta ilman rerunia, flakyä, peruutusta tai ulkoista
-  timeoutia
+- paikalliset unit- ja process-contract-kohdetestit sekä muut soveltuvat testit,
+  typecheck ja build
+- kaksi täydellistä normaalia GitHub-kierrosta yhteensä samasta lopullisesta
+  integraatiorevisiosta ilman rerunia, flakyä, peruutusta tai ulkoista timeoutia
+- lopullisen revision oma riippuvuusturvan tarkistus
 - jokainen worker tuottaa oman terminal result -artifactin
 - supervisor tuottaa deadline- tai cancellation-tilassakin terminal-
   cleanup-tuloksen
@@ -3047,12 +3058,13 @@ Priorisoidut löydökset ja sulkemisehdot:
 4. **Cutover ja päällekkäisyys.** Korvatut W6-komennot, niiden omat testit ja
    vanhat CI-jobit on poistettu checkpointissa `5495fa7` yllä kuvatun siirtokartan
    mukaan. Jaetut fixture-builderit ja edelleen käytetyt tarkistimet säilyvät.
-   Lopullisen revision kokonaisportit ja required-check-/main-päätös ovat vielä
-   avoimia. Koko sovelluksen yleissiivous ei kuulu tähän muutokseen.
+   Lopullisen revision kokonaisportit ja hyväksytyn required-check-/main-siirron
+   toteutus ovat vielä kesken. Koko sovelluksen yleissiivous ei kuulu tähän muutokseen.
 5. **Hyväksynnän ja dokumentoinnin päätösraja.** Koko V2:n nykyinen DoD sisältää
-   kaksi paikallista ja kaksi GitHubin täyttä kierrosta. Vaihekohtaiset
-   ympäristörajaukset eivät poista tätä vaatimusta hiljaisesti. Mahdollinen
-   muutos tarvitsee näkyvän päätöksen. Vanhojen toteutussuunnitelmien
+   yllä hyväksytyn ympäristöpäätöksen mukaiset kaksi GitHubin täyttä kierrosta
+   sekä soveltuvat paikalliset testit, typecheckin ja buildin. Vanhojen
+   vaihekohtaisten rajauksien ei oleteta muuttaneen tätä vaatimusta.
+   Vanhojen toteutussuunnitelmien
    lähtötilatekstit erotetaan nykytilasta ennen cutoveria; uusi rinnakkainen
    suunnitelma ei korjaa dokumentaation ristiriitaa.
 6. **Riippuvuusturvan julkaisuportti.** Omistaja on hyväksynyt Hono
@@ -3244,12 +3256,12 @@ onnistunut exit todistaa sen vaatiman tulostiedoston validoinnin; pelkkää
 vaihelokia ei käytetä tämän korvikkeena. Kaksi consumeria yhdessä workflowssa
 eivät ole kaksi erillistä kokonaiskierrosta.
 
-Jäljellä ovat uudemman epäonnistuneen kierroksen rajattujen vikojen sulkeminen,
-koko main-pinon lopullinen kattavuus- ja poistokatselmus, samaan lopulliseen
-revisioon sidotut kaksi paikallista täyttä kierrosta ja kaksi GitHub-
-kokonaiskierrosta sekä erikseen hyväksyttävä required-check-/main-siirto.
-Lopullista poistorevisiota ei ole vielä muodostettu. Aiemmat vaihekohtaiset
-ympäristöpäätökset eivät muuta näitä ehtoja automaattisesti.
+Tuon checkpointin jälkeen avoimeksi jäivät vikojen luokittelu, lopullinen
+kattavuus- ja poistokatselmus sekä käyttöönoton päätökset. Poistocheckpoint,
+nykyinen kahden GitHub-kokonaiskierroksen ympäristöpäätös ja hyväksytyn
+required-check-/main-siirron ehdot on päivitetty yllä olevaan
+käyttöönotto-osuuteen. Tämä historiallinen ajo ei täytä myöhemmän revision
+kokonaishyväksyntää.
 
 ### Avoimen 3010-havainnon päätösesitys
 

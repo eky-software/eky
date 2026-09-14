@@ -155,6 +155,16 @@ fail-closed-tulokset, single-link-tarkistus, profiilin muuttumattomuus ja
 tarkka cleanup säilyvät. Tämä ei hyväksy vaiheita etukäteen eikä muuta koko
 V2:n käyttöönotto- tai julkaisuportteja.
 
+Koko V2:n käyttöönotolle on tämän jälkeen hyväksytty erillinen ympäristöpäätös:
+kaksi täydellistä normaalia GitHub-kierrosta samasta lopullisesta
+integraatiorevisiosta korvaa aiemmat kaksi paikallista täyttä MSI/release-
+kierrosta. GitHub-kierroksia vaaditaan yhteensä kaksi, ei neljää. Paikalliset
+soveltuvat testit, sopimustestit, typecheck ja build säilyvät. Testiperheitä,
+skenaarioita, toistoja, turvallisuus- tai siivousvaatimuksia ei poisteta.
+Tarkka sopimus, required-check-vaihdon ehdot ja merge-commitin oma portti
+ovat kanonisessa V2-suunnitelmassa; vanhojen ajokierrosten osia ei yhdistetä
+uuden revision hyväksynnäksi.
+
 Testiraportin julkaisuraja määräytyy
 `docs/architecture/security-principles.md`-dokumentista. Omistajan koneen
 ohjelma-, ajuri- ja ympäristöhavainnot sekä yksityiskohtaiset paikalliset
@@ -268,9 +278,11 @@ Jos autentikointi, permission-malli tai audit trail ei ole vielä toteutettu, te
 
 ## Automaattinen CI-Tarkistus
 
-GitHub Actions ajaa testit ja staattiset tarkistukset automaattisesti `antsa`-
-ja `main`-haarojen push-tapahtumissa sekä `main`-haaraan kohdistuvissa pull
-requesteissa.
+V2:n GitHub Actions -kytkentä ajaa testit ja staattiset tarkistukset pull
+requesteissa riskisuunnitelman mukaan sekä täysinä `main`-pusheissa,
+ajastetusti ja käsin käynnistetyissä kokonaisajoissa. Feature-push ei aja
+PR:n rinnalle toista raskasta matriisia. `ci.yml` on kutsuttu core-työnkulku,
+ei erillinen `antsa`- tai PR-triggeri.
 
 CI:n vähimmäisportti on:
 
@@ -285,8 +297,8 @@ pnpm --filter @eky/desktop build
 
 Pull requesteissa, `main`-pusheissa ja käsin käynnistetyissä workflow-ajoissa
 CI ajaa lisäksi eristetyn system security E2E -joukon ja Chromiumin kriittiset
-web-käyttäjäpolut. Näitä raskaita E2E-jobeja ei ajeta erikseen jokaisessa
-`antsa`-pushissa.
+web-käyttäjäpolut. Electron- ja Windows-perheet valitaan samasta suljetusta
+riskisuunnitelmasta; täydet main-, ajastetut ja manuaaliset ajot säilyvät.
 
 CI täydentää paikallista testausta, mutta ei korvaa sitä. Muutos testataan
 paikallisesti ennen commitia silloin, kun paikallinen ympäristö sen sallii.
@@ -317,12 +329,15 @@ kirjoita repositoryyn. Päivittäinen cron on UTC-ajassa eikä seuraa
 automaattisesti Europe/Helsinki-kesäaikaa.
 
 Dependabotin avaama päivitys-PR käy läpi saman riskiperusteisen paikallisen ja
-CI-testauksen kuin käsin tehty päivitys. Vähimmäisportteina ovat
-`Test, typecheck and build`, `System security E2E` ja `Web critical E2E`.
+CI-testauksen kuin käsin tehty päivitys. Core säilyttää
+`Test, typecheck and build`, `System security E2E`- ja `Web critical E2E`
+-vastuut myös reusable-workflowin prefiksoiduissa jobeissa.
 Electron-, native addon- ja Windows-paketointimuutoksissa ajetaan lisäksi
 `Windows Electron critical E2E`, Windows package sekä packaged smoke sovitun
-testimatriisin mukaan. Samat neljä nimettyä required check -porttia ovat
-käytössä, kun muutoksen riskit koskevat kaikkia niiden suojaamia rajoja.
+testimatriisin mukaan. Käyttöönotossa pakolliset tarkistukset vaihdetaan
+hyväksytyin ehdoin yhdistelmään `V2 acceptance` + `Audit dependencies`;
+koonti todentaa kaikki riskin valitsemat jobit, vaiheet ja toistot. Ennen
+asetusten varmennettua vaihtoa mainin nykyiset required checkit säilyvät.
 
 Dependabot version updates syntyy `.github/dependabot.yml`-tiedoston
 viikkorytmistä eikä niitä mergeytetä automaattisesti. Security updates ei
