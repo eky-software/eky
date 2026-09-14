@@ -10,6 +10,38 @@ import { LEGACY_COMMAND_RESERVATION_MS, LEGACY_CONSUMER_JOB_MINUTES,
   LEGACY_LIFECYCLE_STEP_MINUTES, LEGACY_SUPERVISOR_BUILD_MINUTES,
   LEGACY_SUPERVISOR_TIMEOUT_MS, LEGACY_SUPERVISOR_CLEANUP_MS } from './legacyUpgradeBudget.mjs';
 
+test('synthetic command budgets accelerate only the injected fault and retain normal failure publication', {
+  skip: process.platform !== 'win32', timeout: 30_000,
+}, async (t) => {
+  const context = await createRunContext('command-fixture-budget');
+  let verified = false;
+  t.after(() => cleanupRunContext(context, { preserveEvidence: !verified }));
+  const faults = { preparationHold: 'prepare', productInspectionHold: 'inspectSourceBefore',
+    scenarioHold: 'scenario', uninstallHold: 'uninstallTarget', resultBeforeExit: 'uninstallTarget',
+    removalHold: 'fixtureCleanup', publicationBeforeExit: 'publish' };
+  const cases = Object.entries(faults).flatMap(([testCase, phase]) => [
+    { testCase, phase, short: true }, { testCase, phase: 'inventoryAfter', short: false },
+    { testCase, phase: 'publishFailure', short: false },
+  ]);
+  for (const testCase of ['completed', 'blockedEvidence', 'productMissingResult', 'cleanupFailed']) {
+    for (const phase of ['prepare', 'inventoryAfter', 'publish', 'publishFailure']) cases.push({ testCase, phase, short: false });
+  }
+  cases.push({ testCase: 'uninstallHold', kind: 'clean', phase: 'uninstallSource', short: true },
+    { testCase: 'uninstallHold', kind: 'clean', phase: 'uninstallTarget', short: false });
+  await writeFile(context.requestPath, JSON.stringify(cases.map(({ short, ...value }) => ({ kind: 'other', ...value }))));
+  const execution = startProgramFailureFixture(context, 'commandFixtureBudget');
+  const events = [];
+  execution.child.once('exit', () => events.push('exit'));
+  execution.child.once('close', () => events.push('close'));
+  const result = await execution.completion;
+  assert.deepEqual(events, ['exit', 'close']);
+  assert.equal(result.signal, null);
+  assert.equal(result.exitCode, 0);
+  assert.deepEqual(JSON.parse(await readFile(join(context.testRoot, 'command-budget-result.json'), 'utf8')),
+    cases.map(({ short }) => short ? { timeout: 4_000, cleanup: 1_000 } : { timeout: 35_000, cleanup: 5_000 }));
+  verified = true;
+});
+
 test('the real command budget separates work, publication and exit at controlled elapsed times', {
   skip: process.platform !== 'win32', timeout: 30_000,
 }, async (t) => {

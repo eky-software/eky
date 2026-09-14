@@ -2522,17 +2522,33 @@ varmennetuilla artifact-tavuilla; osatulokset eivät korvaa kokonaisporttia.
 Saman revision [Audit dependencies 34837793012](https://github.com/eky-software/eky/actions/runs/34837793012)
 läpäisi. Required-check-asetuksia tai mainia ei ole muutettu.
 
-Rajattu rollback-testin lukijakorjaus erottaa todellisen virheellisen
-poistumiskoodin, puuttuvan onnistumiskuittauksen ja vielä elävän prosessin
-aikakatkaisun. Puuttuvan helperin oikea Windows-testi käyttää samaa lukijaa;
-erillinen synkroninen käynnistyspolku on poistettu. Kolme tapahtumaregressiota
-ja kolme Windows-sopimusta läpäisivät 6/6, installer-unitit 94/94.
-Epäonnistuneen testin aineisto säilyy. Tuotannon launcher, aikarajat ja
-prosessiomistajuus eivät muutu. Tämä korjaa alkuperäisen virheen peittymisen,
-ei vielä osoita CI:n bootstrap-viiveen syytä tai helper-puun virhesiivousta.
-Onnistuvan komentofixturen lyhennetyn työrajan sopimus tarvitsee erillisen
-päätöksen ennen uutta kokonaishyväksyntää. Tarkoituksellisia timeout-,
-cleanup- tai MSI-hylkäyksiä ei muuteta onnistumisiksi.
+Checkpoint `1616b36` erotti rollback-testin todellisen virhepoistumisen
+puuttuvasta onnistumiskuittauksesta. Sen 6/6 sopimusta ja 94/94 installer-unitia
+eivät yksin todistaneet helper-puun virhesiivousta tai alkuperäisen CI-viiveen
+syytä; seuraava omistajan hyväksymä muutos sulkee testin omistajuusrajan.
+Omistaja hyväksyi seuraavan rajatun korjauksen: tavalliset synteettiset
+komentovaiheet käyttävät nykyistä V2:n 30 sekunnin työvarausta ja 5 sekunnin
+siivousvarausta. Lyhyt 4/1 sekunnin raja jää vain tarkoituksella jumitettavaan
+vaiheeseen; muut vaiheet ja virheen julkaiseminen eivät peri sitä.
+Normaaleja MSI-, skenaario- tai CI-jobirajoja ei muuteta. Samalla jäljellä
+oleva rollback-bootstrap-fixture on siirretty nykyisen Job Object -omistajan
+alle korvaamaan sen suora Node-omistajuus. Bootstrapin kuittaus ja poistuminen,
+helperin elossaolo ja valmistuminen sekä koko puun ja supervisorin poistuminen
+todistetaan erikseen. Helperin oma deadline, tiedostosignaalien polling ja
+testin suora Node-kill on poistettu; uutta prosessivalvojaa tai fallbackia ei
+lisätä. Kanava välittää vain synteettisen helperin sopimusta, ei skenaarion
+hyväksyntää tai tuotantosovelluksen tietoja. Tuotannon launcher ei muutu.
+Kohdennettu näyttö: rollback 7/7 viidessä peräkkäisessä sarjassa,
+supervisor/legacy-core 267/267, yhteinen komentotoimitus 23/23, legacy-entry
+25/25, clean/upgrade-entry 54/54, workspace-success-entry 20/20,
+workspace-fault-entry 21/21 ja installer-unitit 94/94. Budjettivalinnan testi
+käyttää fixturen todellista valitsinta, ja komentotestit tarkistavat syntyneet
+vaihepyynnöt. Koko uuden revision kaksi normaalia CI-kierrosta ovat edelleen
+erillinen hyväksyntäportti; tätä korjausta ei nimetä vanhojen MSI- tai
+runner-havaintojen juurisyykorjaukseksi.
+CI-politiikka 54/54, legacy-artifact-sopimukset 22/22, koko workspacen testit,
+typecheck, backend/web/desktop-buildit ja diff-tarkistus läpäisivät myös.
+Tarkoituksellisia timeout-, cleanup- tai MSI-hylkäyksiä ei muuteta onnistumisiksi.
 
 Exact-release-siirron testattu lähde-, checkout- ja artifact-revisio on
 `46f1b0aca3ecdd7b29ad803a955d23b245b9a4c0` /
@@ -2628,6 +2644,7 @@ revisiolle eikä hyväksy avoimia historiallisia riskejä.
 | `runW6b2Packaged*`, vanhat command worker/lifecycle/scenario-process/stop-vastuut ja `testW6b2Packaged*` | A/B/C-success ja viisi fault-skenaariota: `workspaceSuccessLifecycle`, `workspaceFaultLifecycle`, session-/profile-/postcondition-testit ja molemmat workspace-komentorajat. Pakollinen tulos ja komentoprosessin poistuminen säilyvät erillisinä. |
 | `scripts/w6b2Success/`, `scripts/w6b2Fault/` ja niiden prosessi-/progress-testit | Nykyiset workspace Windows-runtime-, failure-boundary-, result-file- ja phase-writer-sopimukset. Näiden dynaaminen eteneminen ei käytä vanhaa PowerShell-ohjausta. |
 | `testWindowsInstallerUpgrade` ja vanhat `windowsInstallerTestSupport`/process-tree/upgrade-attempt/MSI-host-apurit testeineen | `upgradeRollbackLifecycle` todistaa upgrade/downgrade/MSI- ja binary-rollbackin; `upgradeRunningApplication` todistaa sovelluksen ollessa käynnissä alkavan MSI API -päivityksen. Job-supervisorin ja komentorajojen omistajuus-/timeout-/cleanup-regressiot korvaavat vanhat puukyselyt. `closedDirectoryInventory.test.mjs` säilyttää tyhjän inventaarion vertailun käyttäytymistodisteena. |
+| Rollback-bootstrap-testin suora Node-kill, helperin oma deadline ja tiedostosignaalien polling | Sama tuotannon bootstrap käynnistetään nykyisen V2 Jobin sisällä. Rajattu synteettinen helper kuittaa elossaolonsa yksityisessä kanavassa vasta bootstrapin havaitun poistumisen jälkeen. Pakollinen worker-tulos, Job-empty ja supervisorin exit/close korvaavat vanhat valmistumisoletukset. Puuttuva helper, aikainen poistuminen ja tarkoituksella jäävä helper säilyvät erillisinä virheinä. |
 | Vanhat MSI/W6-jobit, kuusi vanhaa package-komentoa ja suorat `ci.yml`-triggerit | Nykyiset V2-producerit ja consumerit sekä `V2 acceptance`; `ciRunAcceptance.test.mjs` kattaa riskivalinnan, täydet toistot ja puuttuvat/ohitetut tulokset. Cleanin viisi todellisen CI-ketjun regressiota käyttävät jäljelle jäävää `windows-acceptance-v2-clean.yml`-komentoa. |
 
 Tiedostoviittaukset tarkistetaan poistodiffissä uudelleen. Production rollback
@@ -2856,6 +2873,7 @@ CI-kytkentä sijaitsee repositoryn `.github/workflows`-kansiossa.
 | System security / web critical | Rajapinta-, turvallisuus- ja selainpolut synteettisillä profiileilla | Omat 10/15 min CI-jobit; Playwrightin hallitsemat käyttäjäpolut |
 | Electron critical | Development-runtime, ikkuna, latautuminen, restart ja käyttäjäpolut; fixture omistaa oman runtimen ja portin | `e2e:electron:critical`; yksi worker, ensimmäisen epäonnistumisen näyttö säilyy ja flaky hylätään |
 | Supervisor- ja komentorajaregressiot | Root-exit, Job-empty, worker-result, cleanup sekä kiinteiden komentojen virhepolut | `installer:test:windows-supervisor` ja `installer:test:windows-supervisor-v2-legacy`; jälkimmäisen kuusi vastuuryhmää ajetaan CI:ssä kahdesti, 10 min / job |
+| Tuotannon rollback-bootstrapin sopimus | Oikea bootstrap, synteettinen helper ja yksi nykyinen V2 Job; ei MSI-asennusta eikä uutta tuotantokomponenttia | `installer:test:windows-process` rakentaa nykyisen supervisorin ja ajaa sarjan. Normaali pyyntö 35 s / cleanup 5 s; tarkoituksellinen helper-jumitus 10 s / cleanup 2 s; ulompi testiturva 60 s ei kelpaa valmistumiseksi. |
 | V2 clean | Asennus, repair/reinstall ja poisto; nykyisen .NET-komennon kiinteät vaiheet, nimetty skenaarioworker ja erillinen result-verifier | `installer:v2-clean`; komento 965 s, skenaario edelleen 300 s / cleanup 30 s; CI-step 17 min, erillinen build 3 min, job 27 min |
 | V2 upgrade / rollback | N -> N+1, downgrade-torjunta, Windows Installer rollback, binary rollback ja käynnissä olevan sovelluksen päivitys | `installer:v2-upgrade-rollback`; nykyinen .NET-komento 1565 s, skenaario edelleen 600 s / cleanup 30 s; CI-step 27 min, erillinen build 3 min, job 37 min |
 | V2 historical legacy | Historiallinen 0.2.6-artifact, oikea käynnistys, major upgrade, uusi käynnistys ja datan säilyminen | `.NET --legacy-command` ja erillinen pakollinen caller-result-verifier; komentoraja 1 565 s, CI-step 27 min, normaali job 37 min |

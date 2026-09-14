@@ -142,6 +142,9 @@ käynnistävät prosessisopimustestit ajetaan erikseen ja sarjassa komennolla
 `pnpm --filter @eky/desktop installer:test:windows-process`. Yhdistelmäkomento
 `pnpm --filter @eky/desktop installer:test` ajaa molemmat ryhmät tässä
 järjestyksessä, eikä samaa testiä saa sisällyttää kumpaankin ryhmään.
+Prosessikomento rakentaa nykyisen V2-supervisorin ennen rollback-bootstrapin
+sopimusta. Synteettinen helper jää saman Job Object -puun omistukseen;
+tuotannon launcher ja jaeltava payload eivät sisällä testifixtureä.
 
 CI käyttää .NET SDK:ta `global.json`-sopimuksella `10.0.302`,
 `rollForward: disable` ja `allowPrerelease: false`. Virallinen

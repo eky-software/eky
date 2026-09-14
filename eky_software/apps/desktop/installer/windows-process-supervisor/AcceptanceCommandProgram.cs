@@ -14,7 +14,8 @@ internal static class AcceptanceCommandProgram
         catch { SafeEvidenceWriter.WriteInvalidRequest("unexpectedFailure"); return 1; }
     }
 
-    internal static int Run(string[] arguments, string? contractWorker, int? contractTimeout = null)
+    internal static int Run(string[] arguments, string? contractWorker,
+        Func<string, (int Timeout, int Cleanup)>? contractBudget = null)
     {
         var clock = Stopwatch.StartNew();
         var kind = arguments.FirstOrDefault() switch
@@ -52,6 +53,7 @@ internal static class AcceptanceCommandProgram
         var phases = plan.GetProperty("phases").EnumerateArray().Select(value =>
             (Name: value[0].GetString()!, Timeout: value[1].GetInt32(), Cleanup: value[2].GetInt32())).ToArray();
         var publication = phases[^1];
+        var publicationBudget = contractBudget?.Invoke("publish") ?? (publication.Timeout, publication.Cleanup);
         var failed = false;
         SafeEvidenceWriter? evidence = null;
         try
@@ -59,11 +61,12 @@ internal static class AcceptanceCommandProgram
             try { evidence = new SafeEvidenceWriter(scenario, clock); } catch { /* Optional diagnostics. */ }
             foreach (var phase in phases)
             {
+                var phaseBudget = contractBudget?.Invoke(phase.Name) ?? (phase.Timeout, phase.Cleanup);
                 var timeout = CalculatePhaseTimeout(deadline, clock.ElapsedMilliseconds, exitReserve,
-                    contractTimeout ?? phase.Timeout, contractTimeout ?? publication.Timeout, phase.Name == "publish");
-                var cleanup = contractTimeout.HasValue ? 1_000 : phase.Cleanup;
+                    phaseBudget.Timeout, publicationBudget.Timeout, phase.Name == "publish");
+                var cleanup = phaseBudget.Cleanup;
                 if (timeout <= cleanup) return PublishFailure(context,
-                    (int)Math.Min(publication.Timeout, deadline - clock.ElapsedMilliseconds - exitReserve), publication.Cleanup, evidence);
+                    (int)Math.Min(publicationBudget.Timeout, deadline - clock.ElapsedMilliseconds - exitReserve), publicationBudget.Cleanup, evidence);
                 var nonce = phase.Name == "scenario" ? context.ScenarioRunNonce : NewNonce();
                 evidence?.Write(phase.Name, "started");
                 var completion = RunPhase(context, phase.Name, nonce, timeout, cleanup, evidence);
@@ -78,8 +81,8 @@ internal static class AcceptanceCommandProgram
                 if (phase.Name == "publish") return failed ? 1 : 0;
                 if (completion.ExitCode != 0 && phase.Name != "scenario")
                     return PublishFailure(context,
-                        (int)Math.Min(contractTimeout ?? publication.Timeout, deadline - clock.ElapsedMilliseconds - exitReserve),
-                        contractTimeout.HasValue ? 1_000 : publication.Cleanup, evidence);
+                        (int)Math.Min(publicationBudget.Timeout, deadline - clock.ElapsedMilliseconds - exitReserve),
+                        publicationBudget.Cleanup, evidence);
             }
             return failed ? 1 : 0;
         }

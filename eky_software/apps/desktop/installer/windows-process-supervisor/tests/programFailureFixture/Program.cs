@@ -14,6 +14,18 @@ if (
 }
 
 var mode = args[1];
+if (mode == "commandFixtureBudget")
+{
+    using var input = JsonDocument.Parse(File.ReadAllText(args[3]));
+    var results = input.RootElement.EnumerateArray().Select(value =>
+    {
+        var budget = CommandFixtureBudget.Resolve(value.GetProperty("testCase").GetString()!,
+            value.GetProperty("kind").GetString()!, value.GetProperty("phase").GetString()!);
+        return new { timeout = budget.Timeout, cleanup = budget.Cleanup };
+    }).ToArray();
+    File.WriteAllText(Path.Combine(Path.GetDirectoryName(args[3])!, "command-budget-result.json"), JsonSerializer.Serialize(results));
+    return 0;
+}
 if (mode == "commandBudget")
 {
     using var input = JsonDocument.Parse(File.ReadAllText(args[3]));
@@ -32,9 +44,12 @@ if (mode == "legacyCommandEntry")
     var blocked = input.RootElement.TryGetProperty("evidenceRequestPath", out var evidenceRequest);
     if (blocked) Console.SetOut(new BlockedEvidenceWriter(Console.Out,
         SupervisorRequestReader.Read(["--request", evidenceRequest.GetString()!])));
-    return AcceptanceCommandProgram.Run(input.RootElement.GetProperty("arguments").EnumerateArray()
-        .Select(value => value.GetString()!).ToArray(), input.RootElement.GetProperty("worker").GetString(),
-        input.RootElement.TryGetProperty("useCanonicalBudgets", out var canonical) && canonical.GetBoolean() ? null : 4_000);
+    var arguments = input.RootElement.GetProperty("arguments").EnumerateArray().Select(value => value.GetString()!).ToArray();
+    var testCase = input.RootElement.GetProperty("testCase").GetString()!;
+    var kind = arguments[0] == "--clean-command" ? "clean" : "other";
+    return AcceptanceCommandProgram.Run(arguments, input.RootElement.GetProperty("worker").GetString(),
+        input.RootElement.TryGetProperty("useCanonicalBudgets", out var canonical) && canonical.GetBoolean()
+            ? null : phase => CommandFixtureBudget.Resolve(testCase, kind, phase));
 }
 if (mode.StartsWith("phaseContinuation", StringComparison.Ordinal))
 {

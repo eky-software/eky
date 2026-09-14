@@ -210,7 +210,7 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
       await writeFile(descriptor, JSON.stringify({ testCase }));
       const evidenceRequestPath = join(context.testRoot, 'evidence-request.json');
       if (blocked) await writeFile(evidenceRequestPath, JSON.stringify(createRequest(context, 'exitZero')));
-      await writeFile(context.requestPath, JSON.stringify({ node: process.execPath,
+      await writeFile(context.requestPath, JSON.stringify({ node: process.execPath, testCase,
         ...(blocked ? { evidenceRequestPath } : {}),
         ...(['productInspectionNativeHold', 'productInspectionReadOnly', 'temporaryRootAlias'].includes(testCase) ? { useCanonicalBudgets: true } : {}),
         worker: fileURLToPath(new URL('./legacyCommandWorkerFixture.mjs', import.meta.url)),
@@ -261,6 +261,13 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
         const commandRoot = await readFile(join(context.testRoot, 'command-root.txt'), 'utf8');
         const phase = { preparationHold: 'prepare', productInspectionHold: 'inspectSourceBefore', productInspectionNativeHold: 'inspectSourceBefore', scenarioHold: 'scenario', uninstallHold: uninstallPhase,
           resultBeforeExit: uninstallPhase, removalHold: 'fixtureCleanup', publicationBeforeExit: 'publish' }[testCase];
+        if (!['productInspectionNativeHold', 'productInspectionReadOnly', 'temporaryRootAlias'].includes(testCase)) {
+          for (const receipt of phaseEvidence) {
+            const request = await readCommandPhaseJson(join(commandRoot, receipt.phase, 'request.json'));
+            assert.equal(request.timeoutMilliseconds, receipt.phase === phase ? 4_000 : 35_000);
+            assert.equal(request.cleanupReserveMilliseconds, receipt.phase === phase ? 1_000 : 5_000);
+          }
+        }
         if (phase) {
           const outcome = JSON.parse(await readFile(join(commandRoot, phase, 'result.json'), 'utf8'));
           assert.equal(outcome.processResultCode, 'deadlineExceeded');
