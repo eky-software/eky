@@ -2650,8 +2650,14 @@ ensimmäisen ikkunan CI-aikakatkaisua.
 Diagnostiikan kytkentätesti säilyy erillään PDF-käyttäjäpolusta. Restart-
 regressio todistaa oikealla Playwright-yhteydellä myös keskeneräisen
 havaintoluvun päättymisen vanhan runtimen siivouksessa. Rajatun Windows-
-CI-todennuksen käynnistys on vielä avoin; näitä kohdetestejä ei lasketa
-uudeksi normaaliksi kokonaiskierrokseksi.
+CI-todennus käyttää nykyisen `ci.yml`-coren erillistä käsikäynnistystä
+`electron_diagnostic=true`. Se valitsee vain olemassa olevan Electron-jobin:
+Windows package, packaged smoke, critical-käyttäjäpolut sekä erillinen
+käynnistyshavainnon kytkentätesti samalla valmistellulla E2E-buildillä.
+Normaali reusable-kutsu vaatii edelleen riskisuunnitelman, myös V2:n
+manuaalisessa kokonaisajossa. Rajattu ajo ei käynnistä MSI-matriisia eikä
+tuota `V2 acceptance` -tulosta. Tämän revision CI-tulos on vielä avoin;
+kohdetestejä ei lasketa uudeksi normaaliksi kokonaiskierrokseksi.
 Main, required checkit ja julkaisu pysyvät ennallaan. Aiemmat MSI- ja
 legacy-havainnot säilyvät erillisinä, eikä niiden syitä nimetä korjatuiksi.
 

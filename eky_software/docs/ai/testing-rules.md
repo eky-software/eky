@@ -282,7 +282,12 @@ V2:n GitHub Actions -kytkentä ajaa testit ja staattiset tarkistukset pull
 requesteissa riskisuunnitelman mukaan sekä täysinä `main`-pusheissa,
 ajastetusti ja käsin käynnistetyissä kokonaisajoissa. Feature-push ei aja
 PR:n rinnalle toista raskasta matriisia. `ci.yml` on kutsuttu core-työnkulku,
-ei erillinen `antsa`- tai PR-triggeri.
+ei erillinen `antsa`- tai PR-triggeri. Sen erillinen käsikäynnistys
+`electron_diagnostic=true` ajaa vain nykyisen Electron-jobin paketoinnin,
+packaged smoken, critical-polut ja käynnistyshavainnon kytkentätestin.
+Tämä rajattu diagnoosi ei tuota `V2 acceptance` -tulosta eikä korvaa normaalia
+kokonaiskierrosta. Reusable-kutsun pakollinen riskisuunnitelma säilyy;
+myös manuaalinen V2-kokonaisajo käyttää sitä muuttumattomana.
 
 CI:n vähimmäisportti on:
 

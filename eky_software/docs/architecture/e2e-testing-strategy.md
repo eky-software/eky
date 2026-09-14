@@ -116,8 +116,11 @@ Playwright-jobit käyttävät yhtä CI-retryä vain trace-todisteen keräämisee
 jobin. Raskaita E2E-jobeja ei ajeta erikseen jokaisessa `antsa`-pushissa.
 
 Valmistellussa cutoverissa `ci-cadence-contracts.yml` omistaa laukaisun ja
-vakaan `V2 acceptance` -koonnin. `ci.yml` on vain sen reusable core, ei toinen
-suoraan PR:stä käynnistyvä testiketju. Koonti vaatii kaikki valitut perheet,
+vakaan `V2 acceptance` -koonnin. `ci.yml` on sen reusable core, ei toinen
+suoraan PR:stä käynnistyvä testiketju. Sen erillinen `electron_diagnostic`
+-käsikäynnistys käyttää vain nykyistä Electron-jobia ja erillistä
+käynnistyshavainnon kytkentätestiä; se ei tuota kokonaiskoontia tai korvaa
+normaalia hyväksyntää. Koonti vaatii kaikki valitut perheet,
 toistot ja pakolliset vaiheet; odottamaton skip, puuttuva tulos tai peruutus
 ei kelpaa onnistumiseksi. Riippuvuusturva säilyy erillisenä työnkulkuna.
 

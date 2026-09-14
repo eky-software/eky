@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
+import { runInNewContext } from 'node:vm';
 import { classifyCiChanges } from './classifyCiChanges.mjs';
 import { classifyCiRisk } from './ciRiskPolicy.mjs';
 import { requiredCiJobs } from './ciJobCoverage.mjs';
@@ -255,8 +256,34 @@ test('workflow bindings preserve one producer and exact result checks with dynam
   const core = await readFile(new URL('ci.yml', directory), 'utf8');
   const contracts = core.split('\n  windows-contracts:')[1];
   assert.match(core, /workflow_call:\s+inputs:\s+risk_plan:\s+required: true\s+type: string/);
-  assert.doesNotMatch(core.split('permissions:')[0], /push:|pull_request:|workflow_dispatch:/);
+  assert.doesNotMatch(core.split('permissions:')[0], /push:|pull_request:/);
   assert.doesNotMatch(core, /installer-windows:|installer-w6b|installer:w6b|installer:upgrade/);
   assert.match(contracts, /persist-credentials: false\s+fetch-depth: 0/);
   assert.match(contracts, /Run deterministic installer tests/);
+});
+
+test('manual Electron diagnosis selects only its existing job without changing reusable core gates', async () => {
+  const core = await readFile(new URL('../workflows/ci.yml', import.meta.url), 'utf8');
+  assert.match(core, /workflow_dispatch:\s+inputs:\s+electron_diagnostic:/);
+  const conditions = [...core.matchAll(/^  ([\w-]+):\n    name: [^\n]+\n    if: ([^\n]+)/gm)];
+  assert.equal(conditions.length, 5);
+  const selected = (inputs) => conditions.filter(([, , expression]) => runInNewContext(
+    expression, { inputs, fromJSON: JSON.parse }, { timeout: 1000 },
+  )).map(([, name]) => name);
+  const base = ['verify', 'e2e-system-security', 'e2e-web-critical'];
+  for (const eventName of ['pull_request', 'push', 'schedule', 'workflow_dispatch']) {
+    for (const changed of [fast, critical]) {
+      const plan = planFor([changed], eventName);
+      assert.deepEqual(selected({ risk_plan: JSON.stringify(plan) }), [...base,
+        ...(plan.gates.electronCritical ? ['e2e-electron-windows-critical'] : []),
+        ...(plan.gates.windowsContracts ? ['windows-contracts'] : []),
+      ]);
+    }
+  }
+  assert.deepEqual(selected({ risk_plan: '', electron_diagnostic: true }), ['e2e-electron-windows-critical']);
+  assert.throws(() => selected({ risk_plan: 'invalid', electron_diagnostic: true }));
+  const plan = planFor([fast]);
+  assert.deepEqual(selected({ risk_plan: JSON.stringify(plan), electron_diagnostic: true }), base);
+  assert.doesNotMatch(core, /name: V2 acceptance|uses: .*windows-acceptance/);
+  assert.match(core, /name: Verify Electron startup observation wiring\s+if: inputs.risk_plan == '' && inputs.electron_diagnostic\s+run: pnpm --filter @eky\/e2e exec playwright test --project=electron-development --grep @diagnostic-contract --workers=1 --retries=0/);
 });
