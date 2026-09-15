@@ -2549,6 +2549,29 @@ Tämä osuus erottaa nykyisen julkaisutyön historiallisesta tutkimusnäytöstä
 
 #### Ajantasaiset julkaisuesteet ja päätökset
 
+Revision `b1270ab0ed66904a5412752c94a165cada637d94`
+[ensimmäinen normaali kierros](https://github.com/eky-software/eky/actions/runs/35010087226)
+on hylätty Electron criticalin `DESK-WORKSPACE-REPLACE-001`-flaken vuoksi.
+Kaikki neljä produceria ja 18 paketoitua consumer-komentoa läpäisivät;
+14 producer-/consumer-jobin checkout, artifactin build-revisio ja
+ennen/jälkeen-tavusidos varmennettiin samalle revisiolle. Upgrade-artifactin
+aiempi rakentamisvirhe ei toistunut, mutta sen alkuperäinen syy on avoin.
+Revision [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/35009852210)
+läpäisi kaikki kolme pakollista tarkistusta. Toista normaalia kierrosta ei
+käynnistetty. Main, required checkit ja julkaisu pysyvät ennallaan.
+
+Electron-jobin ensimmäinen epäonnistuminen oli `E2E_BACKEND_HEALTH_TIMEOUT`
+varmuuskopion testivalmistelussa ennen Electronin käynnistystä ja testirunkoa.
+Backendin prosessisiivous ja portin vapautuminen valmistuivat. Retry läpäisi,
+mutta ei korvaa hylkäystä. Tämä ei ole sama havainto kuin aiempi `firstWindow`-
+timeout. Valmistelun virhe tapahtuu ennen nykyisen `electron-lifecycle`-
+liitteen keruurajaa. Lisäksi nykyinen `processSpawned`-havainto syntyy
+käynnistyskutsun paluusta, ei lapsiprosessin `spawn`-tapahtumasta. Näyttö ei
+siksi vielä paikanna odotusta backendin käynnistymisen, kuunteluvalmiuden ja
+HTTP-healthin välille. Seuraava rajaus on tämän nykyisen valmisteluvastuun
+ensimmäisen virheen säilyttäminen ja tapahtumien erottelu; ei uusi valvoja,
+aikarajan kasvatus tai kokonaiskierroksen sokkouusinta.
+
 Revision `fb330fb1d1b615ce602af9367abb5679a3585e3d`
 [ensimmäinen normaali kierros](https://github.com/eky-software/eky/actions/runs/35004076794)
 hylättiin upgrade-artifactin valmistelussa ennen upgrade-consumereita.
