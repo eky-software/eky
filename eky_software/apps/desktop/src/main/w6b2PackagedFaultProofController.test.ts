@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { LocalUpdateHandoffError } from '../update/localUpdateHandoffCoordinator.js';
+import { LocalUpdatePackageCacheError } from '../update/localUpdatePackageCache.js';
 import type { WorkspaceManagementStatusV1 } from '../workspaces/management/workspaceManagementTypes.js';
 import { validateWorkspaceId } from '../workspaces/registry/workspaceIdValidation.js';
 import { runW6b2PackagedFaultProofController } from './w6b2PackagedFaultProofController.js';
@@ -18,6 +19,35 @@ const workspaceIds = {
 } as const;
 
 describe('W6B.2 packaged fault proof controller', () => {
+  it.each([
+    ['current', 'sourceValidation', 'W6B2_FAULT_PROOF_CURRENT_SOURCE_VALIDATION_FAILED'],
+    ['candidate', 'packageCopy', 'W6B2_FAULT_PROOF_CANDIDATE_PACKAGE_COPY_FAILED'],
+  ] as const)('preserves the closed %s package boundary without continuing', async (role, stage, errorCode) => {
+    const fixture = createFixture('preUpdateRecoveryPointFailure', 'sourceHandoff', 'source');
+    const error = new LocalUpdatePackageCacheError(stage);
+    Object.assign(error, { privateData: 'synthetic-private-path-and-error' });
+    if (role === 'candidate') fixture.cache.stageSelectedPackage.mockResolvedValueOnce(undefined);
+    fixture.cache.stageSelectedPackage.mockRejectedValueOnce(error);
+    const result = await runW6b2PackagedFaultProofController(fixture.options);
+    expect(result).toEqual({ errorCode, faultScenario: 'preUpdateRecoveryPointFailure',
+      formatVersion: 2, phase: 'sourceHandoff', status: 'failed' });
+    expect(fixture.cache.stageSelectedPackage).toHaveBeenCalledTimes(role === 'current' ? 1 : 2);
+    expect(fixture.handoff.prepareConfirmedUpdate).not.toHaveBeenCalled();
+    expect(fixture.lifecycle.shutdown).not.toHaveBeenCalled();
+    expect(JSON.stringify(result)).not.toContain('synthetic-private');
+  });
+
+  it('keeps unknown staging errors generic and failed', async () => {
+    const fixture = createFixture('preUpdateRecoveryPointFailure', 'sourceHandoff', 'source');
+    fixture.cache.stageSelectedPackage.mockRejectedValueOnce(Object.assign(
+      new LocalUpdatePackageCacheError(), { stage: 'synthetic-private-path' },
+    ));
+    const result = await runW6b2PackagedFaultProofController(fixture.options);
+    expect(result).toMatchObject({ status: 'failed', errorCode: 'W6B2_FAULT_PROOF_PACKAGE_STAGE_FAILED' });
+    expect(JSON.stringify(result)).not.toContain('synthetic-private');
+    expect(fixture.handoff.prepareConfirmedUpdate).not.toHaveBeenCalled();
+  });
+
   it('uses the production package and handoff ports for a normal source phase', async () => {
     const fixture = createFixture(
       'activeWorkspaceFirstStartFailure',

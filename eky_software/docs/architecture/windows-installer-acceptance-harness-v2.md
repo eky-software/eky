@@ -2549,6 +2549,33 @@ Tämä osuus erottaa nykyisen julkaisutyön historiallisesta tutkimusnäytöstä
 
 #### Ajantasaiset julkaisuesteet ja päätökset
 
+Revision `0416323d6e988ade94fe6ac3b58410d29c776633`
+[normaali kokonaiskierros](https://github.com/eky-software/eky/actions/runs/34987838414)
+on hylätty. Clean, upgrade/rollback, legacy ja workspace-success läpäisivät
+kummassakin toistossa, mutta fault run 1 pysähtyi `sourceHandoff`-vaiheen
+`W6B2_FAULT_PROOF_PACKAGE_STAGE_FAILED`-virheeseen. Native-tuotetarkistukset,
+virheen jälkeiset poistot, loppuinventaario ja fixture-siivoaminen valmistuivat;
+komento ja pakollinen tulosvarmennus palauttivat virheen. Fault run 2:n viisi
+onnistumista eivät korvaa hylättyä sarjaa. Saman revision
+[riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/34987708008)
+läpäisi. Toista normaalia kokonaiskierrosta ei käynnistetty.
+
+Omistaja hyväksyi tämän jälkeen rajatun sovelluskoodin virheluokituksen:
+`LocalUpdatePackageCacheError` säilyttää valmistelun nimetyn alavaiheen.
+Lähdevarmennus, cache-valmistelu, staging-tiedostojen kirjoitus/kopiointi,
+staging-varmennus, slotin julkaisu ja slotin varmennus erotellaan.
+Yksityinen fault-proof muuntaa vain tunnetun vaiheen ja oman `current`- tai
+`candidate`-roolinsa suljetuksi virhekoodiksi nykyisessä tulosskeemassa.
+Tuntematon virhe säilyy yleisenä hylkäyksenä; raakavirhettä, causea, polkua
+tai muuta metadataa ei välitetä. Tarkistukset, operaatiojärjestys, siivous,
+aikarajat ja tavallisen UI:n virheilmoitus eivät muutu. Vaihe on rajaus,
+ei väite tarkan alustakutsun tai aiemman satunnaisen viiveen syystä.
+Regressiot todentavat todelliset cache-virherajat, keskeytetyn stagingin
+siivouksen, vieraan esteen säilymisen, proof-tiedoston kirjoitus/lukuketjun
+ja käännetyn proofin sekä harness-lukijan virhekoodien vastaavuuden.
+Muuttunut paketoitava koodi vaatii uuden puhtaan revision workspace-artifactin
+ja rajatun perheen Windows-varmennuksen; vanha MSI-pari ei todista muutosta.
+
 Revision `b20ec8150d9d6f859882c835671d02b77945b367`
 [ensimmäinen normaali kokonaiskierros](https://github.com/eky-software/eky/actions/runs/34978683620)
 läpäisi kaikki portit ja 18 consumer-komentoa samoihin producer-tavuihin

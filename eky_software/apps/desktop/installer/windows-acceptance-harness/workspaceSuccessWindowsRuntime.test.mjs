@@ -322,6 +322,21 @@ test('fault session cleanup preserves the original safe application error', asyn
   assert.equal(workspaceFaultErrorCode(new Error('sessionProofInvalid')), 'sessionProofInvalid');
 });
 
+test('fault reader preserves every closed package-stage code from the compiled proof protocol', async (context) => {
+  const faultScenario = 'preUpdateRecoveryPointFailure';
+  const codes = Object.values(proofProtocol.w6b2PackagedPackageStageErrorCodes).flatMap(Object.values);
+  assert.equal(codes.length, 12);
+  for (const errorCode of codes) {
+    const value = await fixture(context, { faultScenario, exitCode: 1,
+      proofResult: { formatVersion: 2, faultScenario, phase: 'sourceHandoff', status: 'failed', errorCode } });
+    await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), (error) => {
+      assert.equal(error.message, errorCode);
+      assert.equal(workspaceFaultErrorCode(error), errorCode);
+      return true;
+    });
+  }
+});
+
 test('fault factory and phase selection reject foreign controls before launching an application', async (context) => {
   const value = await fixture(context, { faultScenario: 'preUpdateRecoveryPointFailure' });
   await assert.rejects(() => value.runtime.runProofPhase('failedSafeVerification'), /W6B2_FAULT_PHASE_INVALID/);

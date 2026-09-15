@@ -45,6 +45,44 @@ afterEach(async () => {
 });
 
 describe('local update package cache', () => {
+  it.each([
+    'sourceValidation', 'cachePreparation', 'packageCopy',
+    'stagedValidation', 'slotPublication', 'slotValidation',
+  ] as const)('retains only the owned %s failure boundary', async (stage) => {
+    const fixture = await createFixture();
+    const privateError = new Error('synthetic-private-path-and-error');
+    const cache = createCache(fixture.cacheRoot, {
+      ...(stage === 'sourceValidation' ? { inspectInstaller: async () => { throw privateError; } } : {}),
+      ...(stage === 'cachePreparation' ? { getAvailableBytes: async () => 0n } : {}),
+      async copyPackage(source, destination) {
+        if (stage === 'packageCopy') throw privateError;
+        const identity = await copyLocalUpdatePackageWithHash(source, destination);
+        if (stage === 'stagedValidation') await appendFile(source, '!');
+        if (stage === 'slotPublication') {
+          await mkdir(join(fixture.cacheRoot, 'current'));
+          await writeFile(join(fixture.cacheRoot, 'current', 'sentinel'), 'owned-test-obstacle');
+        }
+        return identity;
+      },
+    });
+    if (stage === 'slotValidation') {
+      await cache.stageSelectedPackage({ manifestPath: fixture.manifestPath, role: 'current' });
+      await writeFile(join(fixture.cacheRoot, 'current', 'slot-metadata.json'), '{');
+    }
+    const result = cache.stageSelectedPackage({ manifestPath: fixture.manifestPath, role: 'current' });
+    await expect(result).rejects.toBeInstanceOf(LocalUpdatePackageCacheError);
+    await expect(result).rejects.toMatchObject({
+      stage, message: 'The local update package could not be stored safely.',
+    });
+    const error = await result.catch((value: unknown) => value);
+    expect(JSON.stringify(error)).not.toContain('synthetic-private');
+    expect(error).not.toHaveProperty('cause');
+    expect((await safeReadDirectory(fixture.cacheRoot)).filter((name) => name.startsWith('.staging-'))).toEqual([]);
+    if (stage === 'slotPublication') {
+      expect(await readFile(join(fixture.cacheRoot, 'current', 'sentinel'), 'utf8')).toBe('owned-test-obstacle');
+    }
+  });
+
   it('registers and idempotently revalidates the exact current rollback package', async () => {
     const fixture = await createFixture();
     const cache = createCache(fixture.cacheRoot);

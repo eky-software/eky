@@ -13,6 +13,7 @@ import {
   resolveW6b2PackagedRollbackProgressPath,
   W6B2_PACKAGED_PROOF_DIRECTORY_NAME,
   W6B2_PACKAGED_PROOF_PATH_TOKEN_LENGTH,
+  w6b2PackagedPackageStageErrorCodes,
   writeW6b2PackagedProofResult,
   type W6b2PackagedFaultScenario,
   type W6b2PackagedFaultPhase,
@@ -30,6 +31,27 @@ afterEach(async () => {
 });
 
 describe('W6B.2 packaged proof configuration', () => {
+  it('writes only the closed package-stage failure codes in the existing fault result', async () => {
+    const proof = await createFaultProofFiles({
+      faultScenario: 'preUpdateRecoveryPointFailure', phase: 'sourceHandoff', role: 'source',
+    });
+    const configuration = await readW6b2PackagedProofConfiguration({
+      appVersion: '0.2.7', bootstrap: proof.bootstrap, resourcesPath: proof.resourcesPath,
+    });
+    for (const codes of Object.values(w6b2PackagedPackageStageErrorCodes)) {
+      for (const errorCode of Object.values(codes)) {
+        const result = { faultScenario: 'preUpdateRecoveryPointFailure', formatVersion: 2,
+          phase: 'sourceHandoff', status: 'failed', errorCode };
+        await writeW6b2PackagedProofResult(configuration!, result);
+        expect(parseW6b2PackagedProofResult(JSON.parse(await readFile(configuration!.resultFilePath, 'utf8')))).toEqual(result);
+        expect(() => parseW6b2PackagedProofResult({ ...result, path: 'synthetic-private' })).toThrow();
+      }
+    }
+    expect(() => parseW6b2PackagedProofResult({ faultScenario: 'preUpdateRecoveryPointFailure',
+      formatVersion: 2, phase: 'sourceHandoff', status: 'failed',
+      errorCode: 'W6B2_FAULT_PROOF_CURRENT_PRIVATE_FAILED' })).toThrow();
+  });
+
   it('allows fault session probes only for the closed healthy-startup scenario and package pairs', async () => {
     const cases: readonly [W6b2PackagedFaultScenario, readonly W6b2PackagedFaultPhase[]][] = [
       ['preUpdateRecoveryPointFailure', ['sourceHandoff']],

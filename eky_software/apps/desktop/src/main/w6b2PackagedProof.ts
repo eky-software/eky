@@ -10,6 +10,8 @@ import {
 } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 
+import type { LocalUpdatePackageCacheFailureStage } from '../update/localUpdatePackageCache.js';
+
 export const W6B2_PACKAGED_PROOF_SWITCH = 'w6b2-packaged-proof';
 export const W6B2_PACKAGED_PROOF_TOKEN_ENV = 'EKY_W6B2_PROOF_TOKEN';
 export const W6B2_PACKAGED_PROOF_MARKER_FILE =
@@ -167,7 +169,27 @@ export type W6b2PackagedProofResult =
   | W6b2PackagedSuccessProofResult
   | W6b2PackagedFaultProofResult;
 
+export const w6b2PackagedPackageStageErrorCodes = Object.freeze({
+  current: Object.freeze({
+    sourceValidation: 'W6B2_FAULT_PROOF_CURRENT_SOURCE_VALIDATION_FAILED',
+    cachePreparation: 'W6B2_FAULT_PROOF_CURRENT_CACHE_PREPARATION_FAILED',
+    packageCopy: 'W6B2_FAULT_PROOF_CURRENT_PACKAGE_COPY_FAILED',
+    stagedValidation: 'W6B2_FAULT_PROOF_CURRENT_STAGED_VALIDATION_FAILED',
+    slotPublication: 'W6B2_FAULT_PROOF_CURRENT_SLOT_PUBLICATION_FAILED',
+    slotValidation: 'W6B2_FAULT_PROOF_CURRENT_SLOT_VALIDATION_FAILED',
+  }),
+  candidate: Object.freeze({
+    sourceValidation: 'W6B2_FAULT_PROOF_CANDIDATE_SOURCE_VALIDATION_FAILED',
+    cachePreparation: 'W6B2_FAULT_PROOF_CANDIDATE_CACHE_PREPARATION_FAILED',
+    packageCopy: 'W6B2_FAULT_PROOF_CANDIDATE_PACKAGE_COPY_FAILED',
+    stagedValidation: 'W6B2_FAULT_PROOF_CANDIDATE_STAGED_VALIDATION_FAILED',
+    slotPublication: 'W6B2_FAULT_PROOF_CANDIDATE_SLOT_PUBLICATION_FAILED',
+    slotValidation: 'W6B2_FAULT_PROOF_CANDIDATE_SLOT_VALIDATION_FAILED',
+  }),
+}) satisfies Readonly<Record<'current' | 'candidate', Readonly<Record<LocalUpdatePackageCacheFailureStage, string>>>>;
+
 export type W6b2PackagedFaultProofErrorCode =
+  | (typeof w6b2PackagedPackageStageErrorCodes)['current' | 'candidate'][LocalUpdatePackageCacheFailureStage]
   | 'W6B2_FAULT_PROOF_EXPECTED_FAULT_NOT_OBSERVED'
   | 'W6B2_FAULT_PROOF_HANDOFF_FAILED'
   | 'W6B2_FAULT_PROOF_JOURNAL_STATE_INVALID'
@@ -244,6 +266,8 @@ const faultFailureResultKeys = [
   'status',
 ] as const;
 const faultResultErrorCodes = new Set<W6b2PackagedFaultProofErrorCode>([
+  ...Object.values(w6b2PackagedPackageStageErrorCodes.current),
+  ...Object.values(w6b2PackagedPackageStageErrorCodes.candidate),
   'W6B2_FAULT_PROOF_EXPECTED_FAULT_NOT_OBSERVED',
   'W6B2_FAULT_PROOF_HANDOFF_FAILED',
   'W6B2_FAULT_PROOF_JOURNAL_STATE_INVALID',
