@@ -2573,8 +2573,8 @@ virheen; tarkistimen sisäinen viivekohta ei selviä näistä havainnoista.
 Hyväksyntäpari on hylätty, eikä ensimmäistä vihreää kierrosta yhdistetä
 uusiin osatuloksiin. Main, required checkit ja julkaisu pysyvät lukittuina.
 
-Seuraava rajattu koe valitsee nykyisen packaged-boundary-diagnostiikan
-upgrade-komennon ja saman kierroksen varmennetun artifactin. Nykyinen
+Rajattu koe käyttää nykyisen packaged-boundary-diagnostiikan
+upgrade-komentoa ja saman kierroksen varmennettua artifactia. Nykyinen
 `inspector_capture`-valinta sallii ulkoisen keruun myös tähän komentoon;
 legacy käyttää edelleen omaa analyysiprojektiotaan. Keruu alkaa ennen
 komentoa, pysähtyy sen jälkeen ja analyysi käyttää vain nykyistä inspectorin
@@ -2587,9 +2587,30 @@ hylättiin ennen latausta, keruuta ja MSI:tä: esivalidointi salli edelleen
 vain legacyn. Pieni korjaus kohdistuu samaan valintaan; käyttäytymisregressio
 toistaa vanhan upgrade-hylkäyksen ja tarkistaa myös sallitut ja kielletyt
 perheet sekä virheellisen artifact-identiteetin. Korjattu artifact-/workflow-
-ryhmä läpäisee 25/25. Koe on diagnostiikkaa, ei uusi
-hyväksyntäkierros. Sen lopputulos on ensimmäinen valmistumaton tarkistinraja
-tai täsmällisesti puuttuva havainto; uusi vihreä koe ei osoita juurisyytä.
+ryhmä läpäisee 25/25. Koe on diagnostiikkaa, ei uusi hyväksyntäkierros.
+
+Korjatun lähde- ja checkout-revision
+`0dfa5fdcc126b136d7ce6962c5af12d0aa3ada4c`
+[upgrade-koe](https://github.com/eky-software/eky/actions/runs/34960665998)
+käytti artifactia `10391754161`, jonka build-revisio säilyi `b82dae5`:
+pakettien ennen/jälkeen-tiivisteet vastasivat toisiaan. Koko komento,
+pakollinen caller-varmennus, sovelluksen sulku, asennussiivous, loppuinventaario
+ja fixture-poisto läpäisivät; running-upgrade palautti MSI-tuloksen 0.
+Tallennin käynnistyi ja pysähtyi, mutta analyysi hylättiin `eventExport`-
+rajalla ennen tapahtumien lukemista. Tämä ei paikanna alkuperäistä viivettä.
+
+Samalta revisiolta ajettu yksi
+[read-only-vientivertailu](https://github.com/eky-software/eky/actions/runs/34961432819)
+läpäisi varsinaisen komentotestin 1/1 ilman MSI-asennusta. Keruu pysähtyi
+hallittuun lopputilaan, mutta sekä nykyinen että minimaalinen tapahtumanäkymä
+hylättiin viennissä samoilla muuttumattomilla ETL-tavuilla. Vientivirhe on siis
+toistettu myös ilman päivitysskenaariota; pelkkä vientinäkymän vaihtaminen ei
+ratkaissut sitä. Suljetut viestihavainnot eivät osoita tapahtumahävikin määrää,
+jäljen vioittumista tai virheen aiheuttajaa. Raakajälkiä ei julkaistu.
+Puuttuva erottava havainto on viennin tarkka syyluokitus; alkuperäisen
+esitarkistuksen ensimmäinen valmistumaton sisäinen raja jää erikseen avoimeksi.
+Uutta samanlaista MSI-koetta tai hyväksyntäparia ei käynnistetä näiden
+onnistuneiden osatulosten perusteella. Aikarajat ja hyväksymisehdot säilyvät.
 
 Kuittauksen koordinaattoritestit läpäisivät 14/14 ja todellisen Job-/kanava-
 ketjun testit 16/16. Nykyinen core-ryhmä läpäisi 313/313, upgrade-ryhmä
