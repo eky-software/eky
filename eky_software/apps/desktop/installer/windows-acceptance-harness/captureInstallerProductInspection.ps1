@@ -32,6 +32,25 @@ function Invoke-CaptureTool([string]$Tool, [string[]]$Arguments, [string]$Label)
   } finally { $process.Dispose() }
 }
 
+function Get-CaptureTraceStatistics([string]$TracePath) {
+  $report = [ordered]@{ schemaVersion = 1; operation = 'installerProductInspectionCapture';
+    phase = 'eventStatistics'; status = 'failed'; resultCode = 'diagnosticUnverified';
+    providerPresent = $null; eventCount = $null }
+  try {
+    Invoke-CaptureTool $xperf @('-i', $TracePath, '-a', 'tracestats', '-detail') 'event-statistics'
+    $statistics = Read-InspectorTraceStatistics (Join-Path $root 'event-statistics.private.log')
+    $report.providerPresent = $statistics.providerPresent
+    $report.eventCount = $statistics.eventCount
+    $report.status = 'completed'
+    $report.resultCode = 'diagnosticOnly'
+  } catch {
+    $report.errorCode = Resolve-InspectorTraceErrorCode $_.Exception.Message
+    if ($_.Exception.Data['toolExitCode'] -is [int]) { $report.toolExitCode = $_.Exception.Data['toolExitCode'] }
+    try { [IO.File]::WriteAllText((Join-Path $root 'event-statistics.failure.private.txt'), $_.ToString()) } catch { }
+  }
+  return $report
+}
+
 function Confirm-RecorderStopped([string]$Label) {
   Invoke-CaptureTool $wpr @('-status', '-instancename', $instance) $Label
   if ([IO.File]::ReadAllText((Join-Path $root "$Label.private.log")) -notmatch 'WPR is not recording') {
@@ -121,6 +140,7 @@ try {
     if (!(Test-Path -LiteralPath (Join-Path $root 'stopped'))) { throw 'INSPECTOR_CAPTURE_STOP_UNVERIFIED' }
     $etl = Join-Path $root 'capture.etl'
     $traceHash = (Get-FileHash -LiteralPath $etl -Algorithm SHA256).Hash
+    Get-CaptureTraceStatistics $etl | ConvertTo-Json -Compress
     $comparisonFailed = $false
     foreach ($view in @('current', 'minimal')) {
       $boundary = 'eventExport'
@@ -166,6 +186,7 @@ try {
   } else {
     $boundary = 'stopVerification'
     if (!(Test-Path -LiteralPath (Join-Path $root 'stopped'))) { throw 'INSPECTOR_CAPTURE_STOP_UNVERIFIED' }
+    Get-CaptureTraceStatistics (Join-Path $root 'capture.etl') | ConvertTo-Json -Compress
     $commandProjection = $null
     if ($LegacyCommand) {
       $boundary = 'commandExport'

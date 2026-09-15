@@ -2612,6 +2612,20 @@ esitarkistuksen ensimmäinen valmistumaton sisäinen raja jää erikseen avoimek
 Uutta samanlaista MSI-koetta tai hyväksyntäparia ei käynnistetä näiden
 onnistuneiden osatulosten perusteella. Aikarajat ja hyväksymisehdot säilyvät.
 
+Viennin seuraava erottava havainto käyttää nykyisen keruuadapterin
+`xperf tracestats`-kutsua samasta pysäytetystä ETL:stä ennen WPA-vientiä.
+Nykyinen lukija hyväksyy vain tunnetun tilastomuodon sekä tarkistimen
+täsmällisen tapahtumalähteen nimen ja johdetun GUID:n. Luku rajataan 1 MiB:iin;
+`eventStatistics` julkaisee vain lähteen havaitsemisen ja tapahtumamäärän tai
+suljetun virheluokan. Muiden lähteiden tiedot ja raakateksti jäävät yksityisiksi.
+Havainto ei todista tapahtumajärjestystä, hävikin määrää, viiveen syytä tai
+testin hyväksyntää. Tilastoluvun virhe raportoidaan erillisenä eikä se korvaa
+WPA-viennin omaa tulosta tai aiemmin varmennettua komentotodistetta.
+Molemmat nykyiset analyysihaarat käyttävät samaa kutsua; uutta keruuta,
+automaattista fallbackia, testiohjausta tai aikarajaa ei lisätä. Rajattu
+käyttäytymistesti suorittaa kummankin todellisen analyysihaaran myös
+tilastovirheen ja alkuperäisen vientivirheen yhdistelmällä.
+
 Kuittauksen koordinaattoritestit läpäisivät 14/14 ja todellisen Job-/kanava-
 ketjun testit 16/16. Nykyinen core-ryhmä läpäisi 313/313, upgrade-ryhmä
 138/138 ja sen komentorajaryhmä 33/33; CI-luettelon artifact-/workflow-

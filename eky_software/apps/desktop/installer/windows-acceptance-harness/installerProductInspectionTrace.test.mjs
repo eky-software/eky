@@ -14,7 +14,7 @@ const SWITCH_HEADERS = ['New Process', 'New Thread Id', 'Switch-In Time (s)', 'L
 const event = (phase, time, provider = PROVIDER) => [provider, 'synthetic.exe (123)', '456', phase, time, time, 'PRIVATE-FIXTURE-DATA'];
 const csv = (rows) => rows.map((row) => row.map((field) => `"${String(field).replaceAll('"', '""')}"`).join(',')).join('\r\n');
 
-for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal', 'toolExit', 'exportOutput', 'externalView', 'commandLifetimes', 'commandAnalysis', 'commandExportFailure', 'commandExportFailureUnreadable']) test(
+for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal', 'toolExit', 'exportOutput', 'eventStatistics', 'externalView', 'commandLifetimes', 'commandAnalysis', 'commandExportFailure', 'commandExportFailureUnreadable']) test(
   `external inspector trace keeps ${kind} evidence closed and separate from acceptance`,
   { skip: process.platform !== 'win32', timeout: INSPECTOR_TIMEOUT_MILLISECONDS },
   async (t) => {
@@ -77,6 +77,96 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
       $ErrorActionPreference = 'Stop'
       [Threading.Thread]::CurrentThread.CurrentCulture = [Globalization.CultureInfo]::InvariantCulture
       . $env:EKY_TRACE_TEST_SCRIPT
+      if ($env:EKY_TRACE_TEST_KIND -ceq 'eventStatistics') {
+        $provider = [Diagnostics.Tracing.EventSource]::new('${PROVIDER}')
+        $identity = $provider.Guid.ToString(); $provider.Dispose()
+        $header = "TraceLogging ProviderId TotalCount TotalSize Name\n10 42 <All>"
+        $foreign = '{00000000-0000-0000-0000-000000000000} 7 42 PRIVATE-PROVIDER'
+        $target = '{' + $identity + '} 3 0 ${PROVIDER}'
+        $statisticsPath = Join-Path $env:EKY_TRACE_TEST_ROOT 'statistics.txt'
+        [IO.File]::WriteAllText($statisticsPath, "$header\n$foreign\n$target\n")
+        $read = Read-InspectorTraceStatistics $statisticsPath
+        if (!$read.providerPresent -or $read.eventCount -ne 3 -or $read.Count -ne 2) { throw 'statisticsProviderMissing' }
+        if (($read | ConvertTo-Json) -match 'PRIVATE|${PROVIDER}|00000000') { throw 'statisticsLeaked' }
+        [IO.File]::WriteAllText($statisticsPath, "$header\n$foreign\n")
+        $read = Read-InspectorTraceStatistics $statisticsPath
+        if ($read.providerPresent -or $read.eventCount -ne 0) { throw 'statisticsPresenceGuessed' }
+        foreach ($invalid in @(
+          'PRIVATE-UNKNOWN-OUTPUT', 'TraceLogging ProviderId TotalCount TotalSize Name', "$header\n$target\n$target",
+          ("$header\n" + $target.Replace($identity, '00000000-0000-0000-0000-000000000000')),
+          ("$header\n" + $target.Replace(' 3 0 ', ' invalid 0 ')), ("$header\n" + $target.Replace('${PROVIDER}', 'PRIVATE-WRONG-NAME')),
+          ("$header\n" + $target.Replace(' 3 0 ', ' 9999999999999999 0 '))
+        )) {
+          [IO.File]::WriteAllText($statisticsPath, $invalid)
+          $rejected = $false
+          try { [void](Read-InspectorTraceStatistics $statisticsPath) }
+          catch { $rejected = $_.Exception.Message -ceq 'INSPECTOR_TRACE_STATISTICS_INVALID' }
+          if (!$rejected) { throw 'invalidStatisticsAccepted' }
+        }
+        [IO.File]::WriteAllText($statisticsPath, ('X' * (1MB + 1)))
+        $rejected = $false
+        try { [void](Read-InspectorTraceStatistics $statisticsPath) }
+        catch { $rejected = $_.Exception.Message -ceq 'INSPECTOR_TRACE_TABLE_LIMIT' -and $_.Exception.Data['tableLimitKind'] -ceq 'bytes' }
+        if (!$rejected) { throw 'statisticsReadUnbounded' }
+        $tokens = $null; $errors = $null
+        $ast = [Management.Automation.Language.Parser]::ParseFile(
+          (Join-Path (Split-Path $env:EKY_TRACE_TEST_SCRIPT -Parent) 'captureInstallerProductInspection.ps1'), [ref]$tokens, [ref]$errors)
+        $observation = $ast.Find({ param($node)
+          $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Get-CaptureTraceStatistics'
+        }, $false)
+        if ($errors.Count -ne 0 -or $null -eq $observation) { throw 'statisticsObservationMissing' }
+        . ([scriptblock]::Create($observation.Extent.Text))
+        $root = $env:EKY_TRACE_TEST_ROOT; $xperf = $env:EKY_TRACE_TEST_NODE
+        function Invoke-CaptureTool([string]$Tool, [string[]]$Arguments, [string]$Label) {
+          if ($Label -cin @('comparison-current', 'comparison-minimal')) {
+            throw 'INSPECTOR_CAPTURE_TOOL_FAILED'
+          }
+          if ($Tool -cne $xperf -or $Label -cne 'event-statistics' -or $Arguments.Count -ne 5 -or
+              $Arguments[0] -cne '-i' -or $Arguments[2] -cne '-a' -or $Arguments[3] -cne 'tracestats' -or
+              $Arguments[4] -cne '-detail') { throw 'unexpectedStatisticsInvocation' }
+          if ($statisticsCase -ceq 'toolFailure') {
+            $failure = [InvalidOperationException]::new('INSPECTOR_CAPTURE_TOOL_FAILED')
+            $failure.Data['toolExitCode'] = 23
+            throw $failure
+          }
+          if ($statisticsCase -cne 'missingOutput') {
+            [IO.File]::WriteAllText((Join-Path $root 'event-statistics.private.log'), "$header\n$target\n")
+          }
+        }
+        foreach ($statisticsCase in @('missingOutput', 'toolFailure', 'completed')) {
+          $report = Get-CaptureTraceStatistics (Join-Path $root 'capture.etl')
+          if ($report.phase -cne 'eventStatistics' -or $report.schemaVersion -ne 1) { throw 'statisticsReportInvalid' }
+          if ($statisticsCase -ceq 'completed') {
+            if ($report.status -cne 'completed' -or $report.resultCode -cne 'diagnosticOnly' -or
+                !$report.providerPresent -or $report.eventCount -ne 3) { throw 'statisticsSuccessInvalid' }
+          } else {
+            if ($report.status -cne 'failed' -or $report.resultCode -cne 'diagnosticUnverified' -or
+                $null -ne $report.providerPresent -or $null -ne $report.eventCount) { throw 'statisticsFailureEscaped' }
+            if ($statisticsCase -ceq 'toolFailure' -and $report.toolExitCode -ne 23) { throw 'statisticsExitLost' }
+          }
+          if (($report | ConvertTo-Json) -match 'PRIVATE|capture.etl|tracestats') { throw 'statisticsReportLeaked' }
+        }
+        $branch = $ast.Find({ param($node)
+          $node -is [Management.Automation.Language.IfStatementAst] -and
+            @($node.Clauses | Where-Object { $_.Item1.Extent.Text -ceq "$" + "Mode -ceq 'compareEvents'" }).Count -eq 1
+        }, $true)
+        if ($null -eq $branch) { throw 'statisticsComparisonMissing' }
+        $clause = @($branch.Clauses | Where-Object { $_.Item1.Extent.Text -ceq "$" + "Mode -ceq 'compareEvents'" })[0]
+        $comparison = [scriptblock]::Create(($clause.Item2.Statements.Extent.Text -join "\n"))
+        [IO.File]::WriteAllText((Join-Path $root 'stopped'), '')
+        [IO.File]::WriteAllText((Join-Path $root 'capture.etl'), 'synthetic trace')
+        function New-InspectorTraceProfile { }
+        $exporter = $xperf; $catalog = ''; $statisticsCase = 'toolFailure'
+        $observations = [Collections.Generic.List[object]]::new(); $rejected = $false
+        try { . $comparison | ForEach-Object { $observations.Add(($_ | ConvertFrom-Json)) } }
+        catch { $rejected = $_.Exception.Message -ceq 'INSPECTOR_TRACE_COMPARISON_FAILED' }
+        if (!$rejected -or $observations.Count -ne 4 -or $observations[0].phase -cne 'eventStatistics' -or
+            $observations[0].status -cne 'failed' -or $observations[3].resultCode -cne 'sameTraceBytes' -or
+            @($observations | Where-Object { $_.phase -ceq 'eventViewComparison' -and
+              $_.errorCode -ceq 'INSPECTOR_CAPTURE_TOOL_FAILED' }).Count -ne 2) { throw 'statisticsMaskedExportFailure' }
+        [IO.File]::WriteAllText($env:EKY_TRACE_TEST_RESULT, '{"status":"validated"}')
+        exit 0
+      }
       if ($env:EKY_TRACE_TEST_KIND -cin @('commandExportFailure', 'commandExportFailureUnreadable')) {
         $tokens = $null; $errors = $null
         $ast = [Management.Automation.Language.Parser]::ParseFile(
@@ -108,12 +198,18 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
             $node.ElseClause.Extent.Text.Contains('$commandProjection = $null')
         }, $true)
         if ($errors.Count -ne 0 -or $null -eq $branch) { throw 'analysisBranchMissing' }
+        $statisticsFunction = $ast.Find({ param($node)
+          $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Get-CaptureTraceStatistics'
+        }, $false)
+        if ($null -eq $statisticsFunction) { throw 'statisticsObservationMissing' }
+        . ([scriptblock]::Create($statisticsFunction.Extent.Text))
         $analysis = [scriptblock]::Create(($branch.ElseClause.Statements.Extent.Text -join "\n"))
         $root = $env:EKY_TRACE_TEST_ROOT; $xperf = $env:EKY_TRACE_TEST_NODE
         $exporter = $xperf; $catalog = ''; $LegacyCommand = $true; $boundary = 'stopVerification'
         [IO.File]::WriteAllText((Join-Path $root 'stopped'), '')
         function Invoke-CaptureTool([string]$Tool, [string[]]$Arguments, [string]$Label) {
-          if ($Label -ceq 'command-export') {
+          if ($Label -ceq 'event-statistics') { throw 'INSPECTOR_CAPTURE_TOOL_FAILED' }
+          elseif ($Label -ceq 'command-export') {
             Copy-Item -LiteralPath (Join-Path $root 'command-completed.txt') -Destination (Join-Path $root 'command-export.private.log')
           } elseif ($Label -ceq 'events-export') {
             if ($analysisCase -ceq 'eventExport') { throw 'INSPECTOR_CAPTURE_TOOL_FAILED' }
@@ -144,10 +240,11 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
             $rejected = if ($analysisCase -ceq 'eventExport') { $_.Exception.Message -ceq 'INSPECTOR_CAPTURE_TOOL_FAILED' }
               else { $_.Exception.Message -ceq 'INSPECTOR_TRACE_TABLE_LIMIT' -and $_.Exception.Data['tableLimitKind'] -ceq $analysisCase }
           }
-          $expectedCount = if ($analysisCase -ceq 'eventExport') { 4 } else { 2 }
+          $expectedCount = if ($analysisCase -ceq 'eventExport') { 5 } else { 3 }
           $expectedBoundary = if ($analysisCase -ceq 'eventExport') { 'eventExport' } else { 'schedulingRead' }
           if (!$rejected -or $boundary -cne $expectedBoundary -or $observations.Count -ne $expectedCount -or
-              @($observations | Where-Object { $_.cleanup -cne 'notInferred' }).Count -ne 0 -or
+              $observations[0].phase -cne 'eventStatistics' -or $observations[0].status -cne 'failed' -or
+              @($observations | Where-Object { $_.phase -cne 'eventStatistics' -and $_.cleanup -cne 'notInferred' }).Count -ne 0 -or
               @($observations | Where-Object { $_.phase -ceq 'commandLifetimeAnalysis' -and
                 $_.schedulingObservation -ceq 'notProjected' }).Count -ne 2) {
             throw 'failedSchedulingErasedCommandEvidence'
@@ -468,7 +565,7 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
               eventLossMessage: false, noDataMessage: false, profileFailureMessage: false, memoryFailureMessage: false,
             } },
       });
-    } else if (['capture', 'decimal', 'toolExit', 'exportOutput', 'externalView', 'commandLifetimes', 'commandAnalysis'].includes(kind)) {
+    } else if (['capture', 'decimal', 'toolExit', 'exportOutput', 'eventStatistics', 'externalView', 'commandLifetimes', 'commandAnalysis'].includes(kind)) {
       assert.deepEqual(results, { status: 'validated' });
     } else if (kind === 'invalid') {
       assert.deepEqual(results, ['INSPECTOR_TRACE_EVENT_NAME_INVALID', 'INSPECTOR_TRACE_PROVIDER_INVALID',

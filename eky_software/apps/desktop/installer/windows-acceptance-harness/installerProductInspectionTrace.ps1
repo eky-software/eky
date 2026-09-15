@@ -18,7 +18,7 @@ function Resolve-InspectorTraceErrorCode([string]$Message) {
     'INSPECTOR_TRACE_STREAMS_INVALID', 'INSPECTOR_TRACE_SWITCH_INVALID',
     'INSPECTOR_TRACE_EXTERNAL_BINDING_INVALID', 'INSPECTOR_TRACE_BOUNDARIES_INVALID',
     'INSPECTOR_TRACE_CHANGED', 'INSPECTOR_TRACE_COMPARISON_FAILED',
-    'INSPECTOR_TRACE_COMMAND_MISSING', 'INSPECTOR_TRACE_COMMAND_AMBIGUOUS',
+    'INSPECTOR_TRACE_COMMAND_MISSING', 'INSPECTOR_TRACE_COMMAND_AMBIGUOUS', 'INSPECTOR_TRACE_STATISTICS_INVALID',
     'INSPECTOR_TRACE_LIFETIME_INVALID', 'INSPECTOR_TRACE_PHASE_INVALID')
   if ($Message -cin $allowed) { return $Message }
   return 'INSPECTOR_CAPTURE_UNEXPECTED_FAILURE'
@@ -132,6 +132,48 @@ function Get-InspectorExportLogObservation([string]$OutputPath, [string]$ErrorPa
   } catch {
     return [ordered]@{ logRead = 'unavailable'; stdoutPresent = $null; stderrPresent = $null; signals = $null }
   }
+}
+
+function Get-InspectorTraceProviderId {
+  $provider = [Diagnostics.Tracing.EventSource]::new('Eky-InstallerProductInspection-V1')
+  try { return $provider.Guid } finally { $provider.Dispose() }
+}
+
+# This is a provider-presence observation, not an event-order or loss-count proof.
+function Read-InspectorTraceStatistics([string]$Path) {
+  if ((Get-Item -LiteralPath $Path).Length -gt 1MB) { Stop-InspectorTraceTableLimit 'bytes' }
+  $reader = [IO.StreamReader]::new($Path)
+  try {
+    $buffer = [char[]]::new(1MB + 1)
+    $length = $reader.ReadBlock($buffer, 0, $buffer.Length)
+    if ($length -gt 1MB) { Stop-InspectorTraceTableLimit 'bytes' }
+    $text = [string]::new($buffer, 0, $length)
+  } finally { $reader.Dispose() }
+  $identity = (Get-InspectorTraceProviderId).ToString()
+  $section = $null
+  $seen = @{}
+  $totals = @{}
+  $count = $null
+  foreach ($line in ($text -split '\r?\n')) {
+    if ($line -cmatch '^(Classic EventGuid|Crimson ProviderId|TraceLogging ProviderId)\s+TotalCount\s+TotalSize\s+Name\s*$') {
+      $section = $Matches[1]
+      if ($seen.ContainsKey($section)) { throw 'INSPECTOR_TRACE_STATISTICS_INVALID' }
+      $seen[$section] = $true
+    } elseif ($line -cmatch '^\s*[0-9]{1,16}\s+[0-9]{1,16}\s+<All>\s*$') {
+      if ($null -eq $section -or $totals.ContainsKey($section)) { throw 'INSPECTOR_TRACE_STATISTICS_INVALID' }
+      $totals[$section] = $true
+    } elseif ($line -match ([regex]::Escape($identity)) -or $line.Contains('Eky-InstallerProductInspection-V1')) {
+      if ($section -cne 'TraceLogging ProviderId' -or $null -ne $count -or
+          $line -cnotmatch '^\{([0-9a-fA-F-]{36})\}\s+([0-9]{1,16})\s+[0-9]{1,16}\s+Eky-InstallerProductInspection-V1\s*$') {
+        throw 'INSPECTOR_TRACE_STATISTICS_INVALID'
+      }
+      if ($Matches[1] -ine $identity -or [long]$Matches[2] -gt 9007199254740991) { throw 'INSPECTOR_TRACE_STATISTICS_INVALID' }
+      $count = [long]$Matches[2]
+    }
+  }
+  if ($seen.Count -eq 0 -or $seen.Count -ne $totals.Count) { throw 'INSPECTOR_TRACE_STATISTICS_INVALID' }
+  return [ordered]@{ providerPresent = $null -ne $count -and $count -gt 0;
+    eventCount = if ($null -eq $count) { 0 } else { $count } }
 }
 
 # This diagnostic reader never controls the test or infers Job membership.
@@ -338,15 +380,13 @@ function Confirm-InspectorExternalReadOnlyEvents([object[]]$Rows) {
       @($events.process | Select-Object -Unique).Count -ne 1 -or
       @($events.thread | Select-Object -Unique).Count -ne 1) { throw 'INSPECTOR_TRACE_BOUNDARIES_INVALID' }
   # Derive the provider's platform identity after capture; no listener is added.
-  $provider = [Diagnostics.Tracing.EventSource]::new('Eky-InstallerProductInspection-V1')
-  try {
-    foreach ($row in $Rows) {
-      $id = [guid]::Empty
-      if (![guid]::TryParse($row.'Provider Id', [ref]$id) -or $id -ne $provider.Guid) {
-        throw 'INSPECTOR_TRACE_EXTERNAL_BINDING_INVALID'
-      }
+  $providerId = Get-InspectorTraceProviderId
+  foreach ($row in $Rows) {
+    $id = [guid]::Empty
+    if (![guid]::TryParse($row.'Provider Id', [ref]$id) -or $id -ne $providerId) {
+      throw 'INSPECTOR_TRACE_EXTERNAL_BINDING_INVALID'
     }
-  } finally { $provider.Dispose() }
+  }
 }
 
 function New-InspectorTraceProfile([string]$Catalog, [string]$Destination, [string[]]$Threads = @(),
