@@ -2621,6 +2621,10 @@ suljetun virheluokan. Muiden lähteiden tiedot ja raakateksti jäävät yksityis
 Havainto ei todista tapahtumajärjestystä, hävikin määrää, viiveen syytä tai
 testin hyväksyntää. Tilastoluvun virhe raportoidaan erillisenä eikä se korvaa
 WPA-viennin omaa tulosta tai aiemmin varmennettua komentotodistetta.
+Tilastoraportti välittää myös saman rajatun lokihavainnon kuin vientiraportti.
+`fileCorruptionMessage` tarkoittaa vain tunnetun viestin löytymistä; numerokoodi
+tai puuttuva havainto ei todista tallenteen eheyttä. Lukukelvoton tai puuttuva
+loki säilyy erillisenä diagnostiikan puutteena eikä korvaa alkuperäistä virhettä.
 Molemmat nykyiset analyysihaarat käyttävät samaa kutsua; uutta keruuta,
 automaattista fallbackia, testiohjausta tai aikarajaa ei lisätä. Rajattu
 käyttäytymistesti suorittaa kummankin todellisen analyysihaaran myös
@@ -2638,6 +2642,20 @@ varmennuksen, ei aiempaa vientivirhettä tai tuotetarkistuksen viivettä.
 Puuttuva näyttö on edelleen alkuperäisen viiveellisen tarkistuksen viimeinen
 valmistunut ja ensimmäinen valmistumaton sisäinen raja. Saman onnistuvan
 vientikokeen uusiminen tai aiempien vihreiden osien yhdistely ei täytä sitä.
+
+Lähde- ja checkout-revision `43969513aa0d4aea5defe134cdec01e27ebe7d58`
+yksi [upgrade-koe](https://github.com/eky-software/eky/actions/runs/34966822340)
+käytti artifactia `10391754161`, jonka build-revisio oli
+`b82dae544f6a6ccdc13c634e1f1b315f9976697d`.
+Komento, pakollinen tulosvarmennus, MSI-tulos 0, sovelluksen sulku,
+rollbackit, asennussiivous, fixture-poisto ja pakettien ennen/jälkeen-varmennus
+läpäisivät. Keruu käynnistyi ja pysähtyi, mutta sekä riippumaton tilastolukija
+että WPA-vienti epäonnistuivat. Ajo on hylätty diagnostinen koe, ei normaali
+hyväksyntä. Viive ei toistunut; sen tai tallenteen lukuhäiriön syytä ei osoitettu.
+Puuttuva näyttö on viiveellisen tarkistuksen sisäinen valmistumisraja sekä
+epäonnistuneen tallenteen lukuhäiriön tarkempi luokitus ennen runnerin poistumista.
+Tämän raportointikorjauksen vuoksi ei ajeta uutta MSI-koetta. Normaali
+hyväksyntäpari, main-käyttöönotto ja julkaisu pysyvät erillisinä portteina.
 
 Kuittauksen koordinaattoritestit läpäisivät 14/14 ja todellisen Job-/kanava-
 ketjun testit 16/16. Nykyinen core-ryhmä läpäisi 313/313, upgrade-ryhmä

@@ -125,12 +125,15 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
               $Arguments[0] -cne '-i' -or $Arguments[2] -cne '-a' -or $Arguments[3] -cne 'tracestats' -or
               $Arguments[4] -cne '-detail') { throw 'unexpectedStatisticsInvocation' }
           if ($statisticsCase -ceq 'toolFailure') {
+            [IO.File]::WriteAllText((Join-Path $root 'event-statistics.private.log'), 'PRIVATE-TRACE')
+            [IO.File]::WriteAllText((Join-Path $root 'event-statistics.stderr.private.log'), 'The file or directory is corrupted and unreadable.')
             $failure = [InvalidOperationException]::new('INSPECTOR_CAPTURE_TOOL_FAILED')
             $failure.Data['toolExitCode'] = 23
             throw $failure
           }
           if ($statisticsCase -cne 'missingOutput') {
             [IO.File]::WriteAllText((Join-Path $root 'event-statistics.private.log'), "$header\n$target\n")
+            [IO.File]::WriteAllText((Join-Path $root 'event-statistics.stderr.private.log'), '')
           }
         }
         foreach ($statisticsCase in @('missingOutput', 'toolFailure', 'completed')) {
@@ -139,10 +142,17 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
           if ($statisticsCase -ceq 'completed') {
             if ($report.status -cne 'completed' -or $report.resultCode -cne 'diagnosticOnly' -or
                 !$report.providerPresent -or $report.eventCount -ne 3) { throw 'statisticsSuccessInvalid' }
+            if ($report.toolOutput.logRead -cne 'completed' -or $report.toolOutput.signals.fileCorruptionMessage) {
+              throw 'statisticsSuccessOutputInvalid'
+            }
           } else {
             if ($report.status -cne 'failed' -or $report.resultCode -cne 'diagnosticUnverified' -or
                 $null -ne $report.providerPresent -or $null -ne $report.eventCount) { throw 'statisticsFailureEscaped' }
             if ($statisticsCase -ceq 'toolFailure' -and $report.toolExitCode -ne 23) { throw 'statisticsExitLost' }
+            if ($statisticsCase -ceq 'toolFailure' -and
+                !$report.toolOutput.signals.fileCorruptionMessage) { throw 'statisticsToolMessageLost' }
+            if ($statisticsCase -ceq 'missingOutput' -and
+                $report.toolOutput.logRead -cne 'unavailable') { throw 'statisticsMissingOutputGuessed' }
           }
           if (($report | ConvertTo-Json) -match 'PRIVATE|capture.etl|tracestats') { throw 'statisticsReportLeaked' }
         }
@@ -294,14 +304,15 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
         $stdout = Join-Path $env:EKY_TRACE_TEST_ROOT 'stdout.txt'
         $stderr = Join-Path $env:EKY_TRACE_TEST_ROOT 'stderr.txt'
         [IO.File]::WriteAllText($stdout, "Exporting Profile: PRIVATE-PATH\nExporting entire trace time range\n")
-        [IO.File]::WriteAllText($stderr, 'PRIVATE-IDENTITY time inversions; lost events; No data; could not load profile; System.OutOfMemoryException')
+        [IO.File]::WriteAllText($stderr, 'PRIVATE-IDENTITY time inversions; lost events; No data; could not load profile; System.OutOfMemoryException; The file or directory is corrupted and unreadable.')
         $report = Get-InspectorExportLogObservation $stdout $stderr
         if ($report.logRead -cne 'completed' -or !$report.stdoutPresent -or !$report.stderrPresent -or
             @($report.signals.Values | Where-Object { $_ -ne $true }).Count -ne 0) { throw 'exportOutputSignalsInvalid' }
         if (($report | ConvertTo-Json -Depth 5) -match 'PRIVATE') { throw 'exportOutputLeaked' }
-        [IO.File]::WriteAllText($stderr, 'unrecognized private output')
+        [IO.File]::WriteAllText($stderr, 'unrecognized private output 0x80070570 ERROR_FILE_CORRUPT')
         $report = Get-InspectorExportLogObservation $stdout $stderr
-        if ($report.signals.noDataMessage -ne $false -or $report.signals.memoryFailureMessage -ne $false) { throw 'exportCauseGuessed' }
+        if ($report.signals.noDataMessage -ne $false -or $report.signals.memoryFailureMessage -ne $false -or
+            $report.signals.fileCorruptionMessage -ne $false) { throw 'exportCauseGuessed' }
         [IO.File]::WriteAllText($stderr, ('X' * (1MB + 1)))
         $report = Get-InspectorExportLogObservation $stdout $stderr
         if ($report.logRead -cne 'unavailable' -or $null -ne $report.signals) { throw 'exportLogUnbounded' }
@@ -563,6 +574,7 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
           : { logRead: 'completed', stdoutPresent: true, stderrPresent: true, signals: {
               profileSelected: false, traceRangeSelected: false, timeInversionMessage: true,
               eventLossMessage: false, noDataMessage: false, profileFailureMessage: false, memoryFailureMessage: false,
+              fileCorruptionMessage: false,
             } },
       });
     } else if (['capture', 'decimal', 'toolExit', 'exportOutput', 'eventStatistics', 'externalView', 'commandLifetimes', 'commandAnalysis'].includes(kind)) {

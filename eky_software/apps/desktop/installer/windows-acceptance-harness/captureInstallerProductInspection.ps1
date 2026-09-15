@@ -48,6 +48,7 @@ function Get-CaptureTraceStatistics([string]$TracePath) {
     if ($_.Exception.Data['toolExitCode'] -is [int]) { $report.toolExitCode = $_.Exception.Data['toolExitCode'] }
     try { [IO.File]::WriteAllText((Join-Path $root 'event-statistics.failure.private.txt'), $_.ToString()) } catch { }
   }
+  $report.toolOutput = Get-InspectorExportLogObservation (Join-Path $root 'event-statistics.private.log') (Join-Path $root 'event-statistics.stderr.private.log')
   return $report
 }
 

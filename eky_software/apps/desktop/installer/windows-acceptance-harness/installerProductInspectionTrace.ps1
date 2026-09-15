@@ -126,6 +126,7 @@ function Get-InspectorExportLogObservation([string]$OutputPath, [string]$ErrorPa
       noDataMessage = $text -match '(?i)(no (?:matching |exportable )?(?:data|tables)|no events (?:found|available))'
       profileFailureMessage = $text -match '(?i)(?:failed|unable|cannot|could not) (?:to )?(?:load|parse|read) (?:the )?profile'
       memoryFailureMessage = $text -match 'System\.OutOfMemoryException|(?i)not enough memory'
+      fileCorruptionMessage = $text -match '(?i)\bthe file or directory is corrupted and unreadable\b'
     }
     return [ordered]@{ logRead = 'completed'; stdoutPresent = $texts[0].Length -gt 0;
       stderrPresent = $texts[1].Length -gt 0; signals = $signals }
