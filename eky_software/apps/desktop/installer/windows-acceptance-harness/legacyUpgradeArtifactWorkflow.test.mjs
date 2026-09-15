@@ -223,9 +223,47 @@ test('inspector analysis diagnosis reuses one native hold without a packaged lif
   assert.match(steps, /always\(\).*steps\.inspector_analysis_stop\.outcome == 'success'/u);
   assert.match(steps, /\$exitCode = \$LASTEXITCODE/u);
   assert.match(steps, /\$summaries\.Count -ne 1/u);
-  assert.match(steps, /comCreationStarted/u);
+  assert.match(steps, /productStateStarted/u);
+  assert.doesNotMatch(steps, /comCreationStarted/u);
   assert.match(steps, /switchIntervalAfterLastEvent/u);
   assert.doesNotMatch(job, /download-artifact|upload-artifact|package:windows|artifact:build|continue-on-error|retry/u);
+});
+
+test('intentional native wait workflow accepts its current boundary and rejects retired or finished waits', {
+  skip: process.platform !== 'win32', timeout: 60_000,
+}, async (t) => {
+  const source = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
+  const step = source.split('      - name: Verify exporter reader and intentional wait without MSI\n')[1].split('\n      - name:')[0];
+  const body = step.split('        run: |\n')[1].trimEnd().split('\n')
+    .map((line) => { assert.ok(line.startsWith('          ')); return line.slice(10); }).join('\n');
+  for (const [boundary, expectedCode] of [['productStateStarted', 0], ['comCreationStarted', 1], ['scriptFinished', 1]]) {
+    const context = await createRunContext('native-wait-workflow');
+    let passed = false;
+    t.after(() => cleanupRunContext(context, { preserveEvidence: !passed || t.signal.aborted }));
+    const directory = join(context.testRoot, 'installer/windows-acceptance-harness');
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, 'captureInstallerProductInspection.ps1'), `
+param([string]$Mode)
+if ($Mode -cne 'analyze') { exit 1 }
+[ordered]@{ phase = 'analysis'; firstBoundary = 'scriptStarted'; lastBoundary = $env:TEST_LAST_BOUNDARY;
+  schedulingObservation = 'switchIntervalAfterLastEvent'; scriptFinishedObserved = ($env:TEST_LAST_BOUNDARY -ceq 'scriptFinished') } | ConvertTo-Json -Compress
+exit 0
+`);
+    const script = join(context.testRoot, 'step.ps1');
+    await writeFile(script, `$ErrorActionPreference = 'Stop'\n${body}\nexit 0\n`);
+    const child = spawn(resolve(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script], {
+        cwd: context.testRoot, stdio: 'ignore', windowsHide: true,
+        env: { ...process.env, TEST_LAST_BOUNDARY: boundary },
+      });
+    context.fixtureProcesses.add(child);
+    const completion = await new Promise((resolvePromise, rejectPromise) => {
+      child.once('error', rejectPromise);
+      child.once('close', (code, signal) => resolvePromise({ code, signal }));
+    });
+    assert.deepEqual(completion, { code: expectedCode, signal: null }, boundary);
+    passed = true;
+  }
 });
 
 test('external-only inspector diagnosis uses one real query and two views of one stopped trace', async () => {

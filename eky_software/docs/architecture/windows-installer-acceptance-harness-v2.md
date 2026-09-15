@@ -2572,7 +2572,17 @@ uutta normaalin kokonaishyväksynnän paria; hyväksyntä on edelleen kesken.
 | Viisi kutsukytkentää | `installerProductOperationWorker`, clean-, upgrade-, legacy- ja workspace-runtime käyttävät vain `createNativeProductInspectionCommand`-argumenttirakentajaa. Se ei käynnistä prosessia tai omista aikarajaa. |
 | Skriptin tulos-/havaintotestit | Nykyinen `inspectWindowsInstallerProductState.test.mjs` käyttää oikeaa native-lukijaa ja nykyisen contract-fixturen rajattuja virhesyötteitä; miehitettyä tulosta ei korvata eikä kyselyvirhe tuota absent-tulosta. |
 | Koko kutsun valmistuminen | Nykyinen legacy-komentorajatesti kattaa oikean read-only-kutsun, estyvän kyselyn sekä tuloksen julkaisseen mutta elävän prosessin. Deadline, Jobin tyhjeneminen, komennon poistuminen ja pakollinen virhetulos varmennetaan erikseen; mutaatio ei ala ja epävarman ajon aineisto säilyy. |
-| Ulkoisen keruun tulkinta | Sama payloaditon provider säilyy, mutta nykyinen lukija ei tuota COM-luonti-/vapautustapahtumia. Vanhojen tallenteiden parserituki jää vain lukutueksi, ei suorituksen varapoluksi. |
+| Ulkoisen keruun tulkinta | Sama payloaditon provider säilyy, mutta nykyinen lukija ei tuota COM-luonti-/vapautustapahtumia. Nykyinen synteettinen odotus vaatii `productStateStarted`-rajahavainnon; vanha COM-raja tai jo valmistunut tarkistus ei kelpaa. Vanhojen tallenteiden parserituki jää vain lukutueksi, ei suorituksen varapoluksi. |
+
+Lähde- ja checkout-revision `dd5434c1d810af38d55911923f155b6dd22c5a45`
+rajattu [upgrade-koe](https://github.com/eky-software/eky/actions/runs/34974491009)
+läpäisi nykyisen komennon, pakollisen tulosvarmennuksen, asennuksen poiston ja
+fixture-siivoamisen ilman keruuta. Artifact `10391754161` oli rakennettu
+revisiosta `b82dae544f6a6ccdc13c634e1f1b315f9976697d`; sen descriptorin ja
+kolmen MSI:n tiivisteet täsmäsivät ennen ja jälkeen ajon. Saman lähderevision
+[riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/34974495174)
+läpäisi. Tämä on native-korvauksen rajattu todiste, ei normaali
+kokonaishyväksyntä tai selitys aiemman tarkistuksen viiveelle.
 
 Rajattu riskikatselmus perustuu revisioon `d2bf592`; se ei ole koko ERP:n
 auditointi tai uusi hyväksyntäkierros. Uusin omistajapäätös korvaa vanhan

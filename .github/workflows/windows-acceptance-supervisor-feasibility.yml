@@ -195,7 +195,7 @@ jobs:
           if ($exitCode -ne 0) { throw 'INSPECTOR_ANALYSIS_DIAGNOSTIC_FAILED' }
           $summaries = @($output | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object { $_.phase -ceq 'analysis' })
           if ($summaries.Count -ne 1 -or $summaries[0].firstBoundary -cne 'scriptStarted' -or
-              $summaries[0].lastBoundary -cne 'comCreationStarted' -or
+              $summaries[0].lastBoundary -cne 'productStateStarted' -or
               $summaries[0].schedulingObservation -cne 'switchIntervalAfterLastEvent' -or
               $summaries[0].scriptFinishedObserved -ne $false) {
             throw 'INSPECTOR_SYNTHETIC_WAIT_UNVERIFIED'
