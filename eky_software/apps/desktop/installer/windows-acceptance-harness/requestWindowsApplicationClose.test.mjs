@@ -15,6 +15,7 @@ import {
 } from './fixtures/windowsApplicationCloseFixtureIdentity.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
+const GUI_FIXTURE_COMPILATION_TIMEOUT_MILLISECONDS = 30_000;
 const GUI_OBSERVATION_TIMEOUT_MILLISECONDS = 30_000;
 let buildContext;
 let fixtureExecutable;
@@ -36,7 +37,11 @@ before(async (t) => {
   if (process.platform !== 'win32') return;
   buildContext = await createRunContext('native-window-compilation');
   fixtureExecutable = resolve(buildContext.runRoot, 'WindowContract.exe');
-  const request = createRequest(buildContext, 'exitZero');
+  const request = createRequest(buildContext, 'exitZero', {
+    timeoutMilliseconds: GUI_FIXTURE_COMPILATION_TIMEOUT_MILLISECONDS,
+  });
+  assert.equal(request.timeoutMilliseconds, 30_000);
+  assert.equal(request.cleanupReserveMilliseconds, 1_000);
   request.arguments = [
     resolve(DIRECTORY, 'fixtures', 'buildWindowsApplicationCloseFixture.mjs'),
     buildContext.requestPath,
@@ -55,6 +60,8 @@ before(async (t) => {
     phases: completion.evidence.map(({ phase, status, elapsedMs }) => ({ phase, status, elapsedMs })),
   });
   t.diagnostic(preparationDetails);
+  assert.equal(completion.exitCode, 0, preparationDetails);
+  assert.equal(completion.signal, null, preparationDetails);
   assert.equal(result.processResultCode, 'processCompleted', preparationDetails);
   assert.equal(result.workerResultCode, 'workerResultValidated', preparationDetails);
   assert.equal(result.processTreeAbsent, true, preparationDetails);

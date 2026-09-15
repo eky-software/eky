@@ -28,6 +28,8 @@ for (const mode of ['compilerFailure', 'compilerTimeout']) {
     t.after(() => cleanupRunContext(foreign));
     const sentinel = await startForeignSentinel(foreign);
     const request = createRequest(context, 'exitZero');
+    assert.equal(request.timeoutMilliseconds, 10_000);
+    assert.equal(request.cleanupReserveMilliseconds, 1_000);
     request.arguments = [
       resolve(DIRECTORY, 'fixtures', 'fixtureCompilationProcessFixture.mjs'),
       context.requestPath, mode,
@@ -37,6 +39,8 @@ for (const mode of ['compilerFailure', 'compilerTimeout']) {
     const result = await readWindowsAcceptanceSupervisorResult(context.resultPath, {
       ...context, supervisorExitCode: completion.exitCode,
     });
+    assert.equal(completion.exitCode, 1);
+    assert.equal(completion.signal, null);
     assert.equal(result.processTreeAbsent, true);
     assert.equal(isProcessAlive(sentinel.marker.processId), true);
     if (mode === 'compilerTimeout') {

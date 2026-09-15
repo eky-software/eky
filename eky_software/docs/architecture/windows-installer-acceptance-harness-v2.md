@@ -1443,6 +1443,18 @@ testisopimus, ei suorituskyky-SLO tai kiinteä odotus. Jaettu `createRequest`-
 oletus, `absent`-tapaus sekä keinotekoiset timeout-, late-creation- ja
 cleanup-regressiot eivät muutu.
 
+Omistajan erikseen hyväksymä GUI-fixturen käännösvalmistelun kokonaisraja
+on myös 30000 ms: työlle 29000 ms ja nykyiselle siivoukselle 1000 ms.
+Se koskee vain `requestWindowsApplicationClose.test.mjs`-tiedoston kerran
+ajettavaa valmistelua, ei jaetun apurin oletusta tai MSI-operaatioita.
+Käännös etenee valmistumisen perusteella; raja ei ole kiinteä odotus eikä
+käännöksen suorituskykyvaatimus. Todellinen valmistelupyyntö ja komentoprosessin
+poistuminen varmennetaan nykyisessä kytkentätestissä. Erilliset compiler-
+failure/timeout-regressiot säilyttävät 10000 ms kokonaisrajan ja 1000 ms
+siivousvarauksen sekä vaativat virhetuloksen, Job-puun poissaolon ja vieraan
+sentinelin säilymisen. Valmistelurajan tarkennus ei osoita aiemman viiveen
+syytä eikä muuta epäonnistunutta hyväksyntäkierrosta onnistuneeksi.
+
 #### Watcher ja worker-fixture
 
 `legacyUpgradeStartupObserver` sekä `legacyUpgradeSourceSmoke` antavat
@@ -2673,6 +2685,29 @@ säilyvät erillisinä. Kohdetestejä ei lasketa uudeksi normaaliksi
 kokonaiskierrokseksi eikä hyväksyntää koota eri revisioiden osatuloksista.
 Main, required checkit ja julkaisu pysyvät ennallaan. Aiemmat MSI- ja
 legacy-havainnot säilyvät erillisinä, eikä niiden syitä nimetä korjatuiksi.
+
+Seuraavan normaalin kierroksen
+[34944223044](https://github.com/eky-software/eky/actions/runs/34944223044)
+hyväksyntä on hylätty lähderevisiolla
+`e7e192455df8c82f5e46293ad8a654cc966edbdb`. Legacy-core run 2:n yhteinen
+GUI-fixturen käännösvalmistelu ylitti yleisen apurin 9000 ms työrajan:
+272/278 läpäisi ja kuusi testiä hylättiin ennen testirunkojaan. Supervisor
+palautti `deadlineExceeded`-tuloksen, varmisti `processTreeAbsent`-siivouksen
+ja poistui. Saman revision run 1 läpäisi 278/278; se ei korvaa hylkäystä.
+Omistaja hyväksyi vain tämän valmistelun erillisen 30000 ms kokonaisrajan
+edellä kuvatulla muuttumattomalla siivousvarauksella. Kytkentä- ja virhepolut
+läpäisivät 9/9 ja koko muuttunut core-sopimusryhmä 278/278; typecheck ja build
+läpäisivät. Natiivin valmisteluviiveen syy jää avoimeksi.
+
+Saman kierroksen upgrade run 1 hylättiin erikseen MSI-tuloksella 3010.
+Nykyinen suljettu lokihavainto totesi `replacedInUseFilesObserved` ja
+`rebootPendingObserved`, mutta ei paikantanut korvaamisen järjestystä
+suhteessa sovelluksen sulkemiseen. Komento palautti virheen ja asennuksen
+siivous valmistui; tätä ei luokitella käännösvalmistelun tai supervisorin
+aikakatkaisuviaksi. Toista kokonaishyväksyntäkierrosta ei aloiteta tästä
+hylätystä revisiosta. Sen erillinen
+[riippuvuusturva](https://github.com/eky-software/eky/actions/runs/34944225422)
+läpäisi, mutta ei korvaa epäonnistunutta toiminnallista porttia.
 
 #### Aiemman näytön avoimet havainnot
 
@@ -4352,7 +4387,7 @@ kanavavirhe- ja pakollisen tuloksen regressiot säilyvät. Korjaus on
 kohdetesteillä hyväksytty ja myöhemmin yllä yksilöidyssä normaalissa CI-ajossa.
 
 Legacy-sopimussarjoista vain toinen läpäisi. Toisessa ikkunafixturen
-käännösvalmistelu ylitti nykyisen 10 sekunnin kokonaisrajan jo yhteisessä
+käännösvalmistelu ylitti tuolloin käytetyn 10 sekunnin kokonaisrajan jo yhteisessä
 valmistelussa; varsinaisia ikkunatapauksia ei päästy ajamaan. Tämä ei ole
 30 sekunnin GUI-havainnointirajan eikä MSI-upgraden hylkäys. Valmistelun
 sisäinen pysähtymisraja jäi paikantamatta. Onnistunut toinen runner
@@ -4363,8 +4398,8 @@ Ikkunafixturen valmistelu raportoi nyt nykyisen supervisorin validoidusta
 tuloksesta erikseen process-, worker- ja cleanup-tuloksen, prosessipuun
 poissaolon sekä suljetut vaihehavainnot ennen onnistumisassertioita.
 Raportointi tapahtuu valmistumisen jälkeen eikä ohjaa suoritusta tai lisää
-uutta odotusta. Valmistelun 10 sekunnin kokonaisrajasta 1 sekunti kuuluu
-edelleen siivoukselle; työn määräaika on 9 sekuntia. Valmistelun timeout-
+uutta odotusta. Tuolloisesta 10 sekunnin kokonaisrajasta 1 sekunti kuului
+siivoukselle; työn määräaika oli 9 sekuntia. Valmistelun timeout-
 regressio vaatii virheen säilymisen, omistetun puun poistumisen ja koko
 komennon päättymisen. Epävarmaa siivousta ei hyväksytä onnistumiseksi.
 Tämä tarkennus ei vielä ratkaise CI:ssä havaittua valmisteluviivettä eikä
