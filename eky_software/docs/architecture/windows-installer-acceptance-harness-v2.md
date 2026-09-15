@@ -2626,6 +2626,19 @@ automaattista fallbackia, testiohjausta tai aikarajaa ei lisätä. Rajattu
 käyttäytymistesti suorittaa kummankin todellisen analyysihaaran myös
 tilastovirheen ja alkuperäisen vientivirheen yhdistelmällä.
 
+Revision `a4cb159b8257e4a474c7ef986e5e545ac98c2b54` yksi
+[read-only-koe](https://github.com/eky-software/eky/actions/runs/34964938698)
+läpäisi ensimmäisellä yrityksellä ilman MSI-asennusta. Riippumaton tilastoluku
+ja kumpikin WPA-näkymä löysivät 19 tapahtumaa samasta muuttumattomasta ETL:stä;
+minimaalinen näkymä varmisti täsmällisen provider-sidoksen ja tarkistimen
+odotetut read-only-rajat. Tarkistinkomento, keruun aloitus ja lopetus sekä
+molemmat viennit valmistuivat. Analyysin kohdesarja läpäisi 13/13 ja
+artifact-/workflow-sopimukset 25/25. Tämä sulkee havaintopolun kytkennän
+varmennuksen, ei aiempaa vientivirhettä tai tuotetarkistuksen viivettä.
+Puuttuva näyttö on edelleen alkuperäisen viiveellisen tarkistuksen viimeinen
+valmistunut ja ensimmäinen valmistumaton sisäinen raja. Saman onnistuvan
+vientikokeen uusiminen tai aiempien vihreiden osien yhdistely ei täytä sitä.
+
 Kuittauksen koordinaattoritestit läpäisivät 14/14 ja todellisen Job-/kanava-
 ketjun testit 16/16. Nykyinen core-ryhmä läpäisi 313/313, upgrade-ryhmä
 138/138 ja sen komentorajaryhmä 33/33; CI-luettelon artifact-/workflow-
