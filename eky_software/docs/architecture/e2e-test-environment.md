@@ -168,6 +168,26 @@ loopback-portilla. Uusi runtime saa aina uuden sessionin ja
 todistamiseksi, ettei vanha session enää kelpaa, ja kaikki contextit suljetaan
 fixture-cleanupissa.
 
+System- ja web-fixtureiden yhteinen `finishServiceFixture` kokoaa vain
+nykyisten API-, prosessipysäytys-, portti- ja artifact-vastuiden tulokset.
+Se ei käynnistä tai valvo prosesseja eikä lisää aikarajoja. Yhden siivousvaiheen
+virhe ei ohita muiden jo omistettujen resurssien siivousyrityksiä. Testijuuri
+poistetaan nykyisellä validoidulla `removeE2eRunRoot`-vastuulla vain kaikkien
+tarvittavien vaiheiden valmistuttua. Puuttuva käynnistyskahva tai aiempi
+varmentamaton siivous ei muutu varmistetuksi pelkän vapaan portin tai
+myöhemmän onnistuneen siivousyrityksen perusteella. Backendin tyypitetyn
+käynnistysvirheen erillistä prosessi- ja porttitulosta voidaan käyttää;
+tuntematon lopputila säilyttää aineiston.
+
+Epäonnistunut restart tyhjentää jo suljetun backendin ja API:n aktiiviset
+viitteet ennen seuraavaa käynnistystä. Varmentamaton sulkeminen tai uuden
+käynnistyksen siivous estää uuden restartin ja testijuuren poiston.
+Alkuperäinen setup-/testivirhe säilyy ensisijaisena. Playwrightin jo kirjaamaa
+testivirhettä ei korvata teardown-poikkeuksella. Erillinen
+`service-fixture-cleanup`-liite sisältää vain version ja suljetut
+siivoustulokset; ei prosessitietoja, polkuja, sessionia tai raakavirheitä.
+Säilytettyä testijuurta ei julkaista artifactina.
+
 ## Selainverkon raja
 
 Selain sallii vain testiruntimen eksplisiittiset loopback-origin-osoitteet.

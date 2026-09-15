@@ -2585,10 +2585,24 @@ läpäisi ensimmäisellä yrityksellä: Windows-paketointi, packaged smoke,
 critical 38/38 ja käynnistyshavainnon kytkentä 1/1, ilman flaky-tulosta tai
 retryä. Muut core-jobit olivat tarkoituksella valitsematta; tämä ei ole
 normaali V2-kokonaiskierros. Alkuperäisen viiveen syy pysyy avoimena;
-onnistuneita toistoja ei esitetä sen juurisyykorjauksena. Ennen seuraavaa
-kokonaisajoa tarkistetaan vielä jaettujen system/web-fixtureiden testijuuren
-säilyminen epävarmassa backendin aloitussiivouksessa; tämä on erillinen
-koodikatselmushavainto, ei selitys aiemmalle Electron-virheelle.
+onnistuneita toistoja ei esitetä sen juurisyykorjauksena.
+
+Jaettujen system/web-fixtureiden siivouskatselmus osoitti erillisen virheen:
+testijuuri poistui varmentamattoman backendin aloitussiivouksen jälkeen.
+Molempien oikean fixture-kutsurajan synteettiset regressiot hylkäsivät vanhan
+käyttäytymisen. Korjaus kokoaa nykyisten siivousvastuiden tulokset yhdessä
+rajatussa loppufunktiossa, säilyttää alkuperäisen virheen ja sallii testijuuren
+poiston vain varmistetun siivouksen jälkeen. Uutta prosessiomistajaa,
+aikarajaa tai readiness-ehtoa ei lisätä. Restart ei voi käyttää vanhaa
+suljettua kahvaa uuden epäonnistuneen käynnistyksen siivoustodisteena;
+aiempi epävarmuus säilyy myös myöhemmän onnistuneen loppusiivouksen jälkeen.
+Suljettu cleanup-liite ei julkaise testijuurta tai raakavirhettä. Tämä
+korjaa todistetun aineiston säilymisrajan, ei aiemman käynnistysviiveen syytä.
+Kohdesopimukset ja normaali system-sarja läpäisivät 131/131, mukaan lukien
+28 uuden siivousrajan käyttäytymisregressiota. Kriittiset web-polut läpäisivät
+35/35 ilman retryä. Typecheck ja tarvittavat buildit läpäisivät. Seuraava
+portti on katselmoidun korjauksen puhtaan revision normaali integraatiokierros;
+se ei peri aiempien revisioiden osatuloksia tai diagnostiikka-ajoja.
 
 Revision `fb330fb1d1b615ce602af9367abb5679a3585e3d`
 [ensimmäinen normaali kierros](https://github.com/eky-software/eky/actions/runs/35004076794)
