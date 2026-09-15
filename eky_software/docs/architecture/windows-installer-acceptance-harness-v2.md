@@ -2576,9 +2576,19 @@ johdetaan vain kuunteluilmoituksen havaintoluokka, ei readiness-ehtoa.
 Testijuuri säilytetään; uutta valvojaa tai aikarajaa ei lisätä. Kohderegressiot,
 jaetut käynnistyssopimukset ja API-kytkentä läpäisivät 43/43. Kohdennetut
 Electron-polut läpäisivät 6/6 ja critical 38/38 samalla valmistellulla buildillä,
-ilman retryä. Typecheck ja tarvittavat buildit läpäisivät. Rajattu CI-todennus
-ja normaali kokonaishyväksyntä ovat kesken. Alkuperäisen viiveen syy pysyy
-avoimena; onnistuneita toistoja ei esitetä sen juurisyykorjauksena.
+ilman retryä. Typecheck ja tarvittavat buildit läpäisivät.
+
+Korjauksen lähde- ja todellinen checkout-revisio on
+`8ecb1d2553719b3e9278a040805f22a8d9ec0092`.
+[Rajattu Electron-kierros](https://github.com/eky-software/eky/actions/runs/35016247726)
+läpäisi ensimmäisellä yrityksellä: Windows-paketointi, packaged smoke,
+critical 38/38 ja käynnistyshavainnon kytkentä 1/1, ilman flaky-tulosta tai
+retryä. Muut core-jobit olivat tarkoituksella valitsematta; tämä ei ole
+normaali V2-kokonaiskierros. Alkuperäisen viiveen syy pysyy avoimena;
+onnistuneita toistoja ei esitetä sen juurisyykorjauksena. Ennen seuraavaa
+kokonaisajoa tarkistetaan vielä jaettujen system/web-fixtureiden testijuuren
+säilyminen epävarmassa backendin aloitussiivouksessa; tämä on erillinen
+koodikatselmushavainto, ei selitys aiemmalle Electron-virheelle.
 
 Revision `fb330fb1d1b615ce602af9367abb5679a3585e3d`
 [ensimmäinen normaali kierros](https://github.com/eky-software/eky/actions/runs/35004076794)
