@@ -2549,6 +2549,51 @@ Tämä osuus erottaa nykyisen julkaisutyön historiallisesta tutkimusnäytöstä
 
 #### Ajantasaiset julkaisuesteet ja päätökset
 
+V2-integraation lähderevisio
+`b130e8601929019fb407865bee69b838d6df7897` läpäisi kaksi normaalia
+kokonaiskierrosta
+([35020309518](https://github.com/eky-software/eky/actions/runs/35020309518),
+[35023325796](https://github.com/eky-software/eky/actions/runs/35023325796))
+ja oman [riippuvuustarkistuksensa](https://github.com/eky-software/eky/actions/runs/35020305521).
+Kummassakin kierroksessa varmennettiin neljän artifact-perheen tavusidos,
+18 paketoitua komentoa ja Electron critical 38/38 ilman flaky-tulosta.
+[PR #268](https://github.com/eky-software/eky/pull/268) läpäisi lisäksi oman
+[CI-ajonsa](https://github.com/eky-software/eky/actions/runs/35026401530)
+ja [riippuvuustarkistuksensa](https://github.com/eky-software/eky/actions/runs/35026400856).
+PR-ajon todellinen checkout ja artifact-build oli
+`f5ac83def41c737394c4cd86e49c6f9bb1e3e987`, ei lähde-HEAD.
+
+Hyväksytty required-check-vaihto on tehty: `V2 acceptance` ja
+`Audit dependencies`, odotettu tuottaja GitHub Actions. Strict-ajantasaisuus,
+PR-vaatimus ja muut suojaukset säilyivät. PR yhdistettiin normaalisti
+main-revisioon `379f9c6232ad73721e1dd387b2fa7be6804eb256`.
+Sen [oma main-ajo](https://github.com/eky-software/eky/actions/runs/35029069964)
+on hylännyt `legacy / V2.5 commands contracts run 2` -jobin: synteettisen
+`Preparation`-tapauksen tuottajan jälkeinen tuloslukija palautti exit 1:n,
+vaikka testi vaati exit 0:n. Tämä pysäyttää julkaisun; aiempi hyväksyntäpari
+ja PR-ajo eivät korvaa merge-revision puuttuvaa hyväksyntää. Mainin oma
+[riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/35029069670)
+läpäisi kaikki kolme pakollista tarkistusta.
+
+Nykyinen rajattu korjaus säilyttää epäonnistumisraportissa tuottajan ja
+tuloslukijan validoidut process-, worker- ja cleanup-tulokset erikseen.
+Puuttuva tai virheellinen tulos erotetaan hylätystä prosessituloksesta;
+diagnostiikan virhe ei korvaa alkuperäistä assertionia. Sama olemassa oleva
+tuloslukija sitoo havainnon pyynnön todelliseen artifact-identiteettiin.
+Aikarajoja, sovelluskoodia tai hyväksymisehtoja ei muuteta. Nykyisen
+feasibility-workflow'n `product-command-diagnostic` valitsee vain saman
+komentoryhmän kahdelle eristetylle Windows-runnerille, ilman MSI-rakentamista
+tai hyväksyntäporttien korvaamista. CI:n alkuperäinen hylkäys ei yksilöinyt
+tuloslukijan sisäistä virhettä, joten sitä ei nimetä vielä aikakatkaisuksi,
+MSI-viaksi tai juurisyyltään korjatuksi.
+
+Jäljellä ovat komentoryhmän virheen rajaaminen, korjauksen normaali
+PR-/main-todennus ja tämän jälkeen erillinen 0.2.8-versionosto sekä
+exact-byte-varmennettu pilot-bundle. Historiallisia jäädytettyjä PR:iä ei
+yhdistetty suoraan. Suojauksia tai julkaisurajoja ei ohiteta.
+
+#### Aiemmat integraatiocheckpointit
+
 Revision `b1270ab0ed66904a5412752c94a165cada637d94`
 [ensimmäinen normaali kierros](https://github.com/eky-software/eky/actions/runs/35010087226)
 on hylätty Electron criticalin `DESK-WORKSPACE-REPLACE-001`-flaken vuoksi.

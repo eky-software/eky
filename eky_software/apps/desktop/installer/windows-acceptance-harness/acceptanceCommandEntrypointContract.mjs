@@ -92,23 +92,28 @@ export async function describeCommandPhases(commandRoot, kind, read = readComman
   const phases = commandBudgets[kind.startsWith('workspace-') ? 'workspaceCommand' : `${kind}Command`].phases;
   const evidence = [];
   for (const phase of [...phases.map(([name]) => name), 'publishFailure']) {
-    let request;
-    try { request = await read(join(commandRoot, phase, 'request.json')); }
-    catch (error) {
-      if (error?.code !== 'ENOENT') evidence.push({ phase, result: 'requestUnreadable' });
-      continue;
-    }
-    try {
-      const value = await read(join(commandRoot, phase, 'result.json'));
-      const result = validateWindowsAcceptanceSupervisorResult(value, {
-        runNonce: request.runNonce, scenario: request.scenario, artifactDescriptorSha256: 'a'.repeat(64),
-        supervisorExitCode: value.status === 'completed' ? 0 : 1,
-      });
-      evidence.push({ phase, result: 'validated', process: result.processResultCode,
-        worker: result.workerResultCode, cleanup: result.cleanupResultCode, processTreeAbsent: result.processTreeAbsent });
-    } catch (error) { evidence.push({ phase, result: error?.code === 'ENOENT' ? 'missing' : 'invalidOrUnreadable' }); }
+    const result = await describeCommandPhase(join(commandRoot, phase), phase, read);
+    if (result !== null) evidence.push(result);
   }
   return evidence;
+}
+
+export async function describeCommandPhase(phaseRoot, phase, read = readCommandPhaseJson) {
+  let request;
+  try { request = await read(join(phaseRoot, 'request.json')); }
+  catch (error) {
+    return error?.code === 'ENOENT' ? null : { phase, result: 'requestUnreadable' };
+  }
+  try {
+    const value = await read(join(phaseRoot, 'result.json'));
+    const result = validateWindowsAcceptanceSupervisorResult(value, {
+      runNonce: request.runNonce, scenario: request.scenario,
+      artifactDescriptorSha256: request.artifactDescriptorSha256,
+      supervisorExitCode: value.status === 'completed' ? 0 : 1,
+    });
+    return { phase, result: 'validated', process: result.processResultCode,
+      worker: result.workerResultCode, cleanup: result.cleanupResultCode, processTreeAbsent: result.processTreeAbsent };
+  } catch (error) { return { phase, result: error?.code === 'ENOENT' ? 'missing' : 'invalidOrUnreadable' }; }
 }
 
 export function recordCommandBoundaryEvidence(tail, value) {

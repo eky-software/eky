@@ -397,44 +397,53 @@ test('inspection command selection runs both existing failure callbacks without 
   assert.doesNotMatch(step, /artifact:build|package:windows|retry|continue-on-error/u);
 });
 
-test('clean and upgrade diagnostic selects the unchanged command group on two runners only', async () => {
-  const source = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
-  const { scripts } = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'));
-  const step = (name) => source.split(`      - name: ${name}\n`)[1].split('\n      - name:')[0];
-  const enabled = (body, mode) => runInNewContext(body.match(/^        if: (.+)$/mu)[1], { inputs: { mode } });
-  const selected = step('Diagnose existing clean and upgrade command group without MSI');
-  const mode = 'clean-upgrade-command-diagnostic';
-  assert.equal(enabled(selected, mode), true);
-  for (const other of ['contracts', 'inspection-command-contracts', 'legacy-contracts-diagnostic', undefined]) {
-    assert.equal(enabled(selected, other), false);
-  }
-  for (const name of ['Enable existing package manager for diagnostic contracts',
-    'Prepare locked package manager before inspection command contracts', 'Build Windows process supervisor']) {
-    assert.equal(enabled(step(name), mode), true);
-  }
-  for (const name of ['Run supervisor unit and process contracts',
-    'Diagnose full V2.5 contract suite with unchanged default budgets',
-    'Verify inspection failure through both existing CI command chains']) {
-    assert.equal(enabled(step(name), mode), false);
-  }
-  const repetition = source.match(/repetition: \$\{\{ (.+) \}\}/u)[1];
-  assert.deepEqual(JSON.parse(JSON.stringify(runInNewContext(repetition, { inputs: { mode }, fromJSON: JSON.parse }))), [1, 2]);
-  const command = selected.match(/run: pnpm (\S+)/u)[1];
-  assert.equal(command, 'installer:test:windows-supervisor-v2-legacy-clean-upgrade-entry');
-  assert.deepEqual(scripts[command].split(' '), ['node', '--test', '--test-concurrency=1',
-    'installer/windows-acceptance-harness/cleanCommandEntrypoint.process.test.mjs',
-    'installer/windows-acceptance-harness/upgradeCommandEntrypoint.process.test.mjs']);
-  const registrations = [];
-  for (const kind of ['clean', 'upgrade']) {
-    registerAcceptanceCommandEntrypointContracts(kind, (name, options, callback) => {
-      assert.equal(typeof callback, 'function');
-      registrations.push(name);
-    });
-  }
-  assert.equal(registrations.length, 54);
-  assert.equal(registrations.filter((name) => name.endsWith(': removalHold')).length, 2);
-  assert.doesNotMatch(selected, /test-name-pattern|artifact|retry|continue-on-error/u);
-});
+for (const [mode, selectedName, commandName, files] of [
+  ['clean-upgrade-command-diagnostic', 'Diagnose existing clean and upgrade command group without MSI',
+    'installer:test:windows-supervisor-v2-legacy-clean-upgrade-entry',
+    ['cleanCommandEntrypoint.process.test.mjs', 'upgradeCommandEntrypoint.process.test.mjs']],
+  ['product-command-diagnostic', 'Diagnose existing product command group without MSI',
+    'installer:test:windows-supervisor-v2-legacy-commands', ['legacyCommandCompletion.process.test.mjs']],
+]) {
+  test(`${mode} selects the unchanged command group on two runners only`, async () => {
+    const source = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
+    const { scripts } = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'));
+    const step = (name) => source.split(`      - name: ${name}\n`)[1].split('\n      - name:')[0];
+    const enabled = (body, mode) => runInNewContext(body.match(/^        if: (.+)$/mu)[1], { inputs: { mode } });
+    const selected = step(selectedName);
+    assert.equal(enabled(selected, mode), true);
+    for (const other of ['contracts', 'inspection-command-contracts', 'legacy-contracts-diagnostic',
+      mode === 'product-command-diagnostic' ? 'clean-upgrade-command-diagnostic' : 'product-command-diagnostic', undefined]) {
+      assert.equal(enabled(selected, other), false);
+    }
+    for (const name of ['Enable existing package manager for diagnostic contracts',
+      'Prepare locked package manager before inspection command contracts', 'Build Windows process supervisor']) {
+      assert.equal(enabled(step(name), mode), true);
+    }
+    for (const name of ['Run supervisor unit and process contracts',
+      'Diagnose full V2.5 contract suite with unchanged default budgets',
+      'Verify inspection failure through both existing CI command chains']) {
+      assert.equal(enabled(step(name), mode), false);
+    }
+    const repetition = source.match(/repetition: \$\{\{ (.+) \}\}/u)[1];
+    assert.deepEqual(JSON.parse(JSON.stringify(runInNewContext(repetition, { inputs: { mode }, fromJSON: JSON.parse }))), [1, 2]);
+    const command = selected.match(/run: pnpm (\S+)/u)[1];
+    assert.equal(command, commandName);
+    assert.deepEqual(scripts[command].split(' '), ['node', '--test', '--test-concurrency=1',
+      ...files.map((file) => `installer/windows-acceptance-harness/${file}`)]);
+    if (mode === 'clean-upgrade-command-diagnostic') {
+      const registrations = [];
+      for (const kind of ['clean', 'upgrade']) {
+        registerAcceptanceCommandEntrypointContracts(kind, (name, options, callback) => {
+          assert.equal(typeof callback, 'function');
+          registrations.push(name);
+        });
+      }
+      assert.equal(registrations.length, 54);
+      assert.equal(registrations.filter((name) => name.endsWith(': removalHold')).length, 2);
+    }
+    assert.doesNotMatch(selected, /test-name-pattern|artifact|retry|continue-on-error/u);
+  });
+}
 
 test('V2.5 phase acceptance builds once and both consumers only verify and consume', async () => {
   const source = await readFile(WORKFLOW_URL, 'utf8');

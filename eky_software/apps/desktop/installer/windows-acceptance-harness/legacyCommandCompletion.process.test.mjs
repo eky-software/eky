@@ -9,7 +9,7 @@ import { cleanupRunContext, createRunContext, createRequest, startProgramFailure
   from '../windows-process-supervisor/tests/supervisorContractTestSupport.mjs';
 import { readWindowsAcceptanceSupervisorResult } from '../windows-process-supervisor/windowsAcceptanceSupervisorResult.mjs';
 
-import { describeCommandPhases, recordCommandBoundaryEvidence, reportCommandFailure } from './acceptanceCommandEntrypointContract.mjs';
+import { describeCommandPhase, describeCommandPhases, recordCommandBoundaryEvidence, reportCommandFailure } from './acceptanceCommandEntrypointContract.mjs';
 
 
 test('command failure diagnostics preserve missing results and reject raw fields', async () => {
@@ -74,6 +74,34 @@ test('command boundary diagnostics keep only a bounded closed projection', () =>
   assert.deepEqual(diagnostic, { commandPhases: [], boundaryEvidence: tail });
   assert.throws(() => reportCommandFailure({ diagnostic() { throw new Error('output failed'); } }, [], original, tail),
     (error) => error === original);
+});
+
+test('product phase diagnostics bind each result and keep reader failure separate', async () => {
+  const request = { runNonce: 'c'.repeat(64), scenario: 'installerProductOperation', artifactDescriptorSha256: 'd'.repeat(64) };
+  const read = async (path) => {
+    if (basename(path) === 'request.json') return request;
+    if (basename(dirname(path)) === 'missing') throw Object.assign(new Error('private'), { code: 'ENOENT' });
+    return { ...request, schemaVersion: 1, status: 'failed', durationMs: 1,
+      processResultCode: basename(dirname(path)) === 'producer' ? 'deadlineExceeded' : 'processExitFailed',
+      childExitCode: basename(dirname(path)) === 'producer' ? null : 1,
+      workerResultCode: 'notChecked', cleanupResultCode: 'processTreeAbsent',
+      processTreeAbsent: true, processWin32ErrorCode: null, cleanupWin32ErrorCode: null };
+  };
+  assert.deepEqual(await describeCommandPhase(join(tmpdir(), 'producer'), 'product', read), {
+    phase: 'product', result: 'validated', process: 'deadlineExceeded', worker: 'notChecked',
+    cleanup: 'processTreeAbsent', processTreeAbsent: true,
+  });
+  assert.deepEqual(await describeCommandPhase(join(tmpdir(), 'reader'), 'consumer', read), {
+    phase: 'consumer', result: 'validated', process: 'processExitFailed', worker: 'notChecked',
+    cleanup: 'processTreeAbsent', processTreeAbsent: true,
+  });
+  assert.deepEqual(await describeCommandPhase(join(tmpdir(), 'missing'), 'consumer', read), {
+    phase: 'consumer', result: 'missing',
+  });
+  assert.deepEqual(await describeCommandPhase(join(tmpdir(), 'reader'), 'consumer', async (path) => {
+    const value = await read(path);
+    return basename(path) === 'result.json' ? { ...value, artifactDescriptorSha256: 'e'.repeat(64) } : value;
+  }), { phase: 'consumer', result: 'invalidOrUnreadable' });
 });
 
 test('optional command evidence observer failure preserves the real terminal boundary', {
@@ -243,6 +271,14 @@ for (const stage of ['Completed', 'Preparation', 'NativeWait', 'Read', 'Remove',
     let verified = false;
     t.after(async () => {
       const preserveEvidence = !verified || stage === 'ConsumerReadHold';
+      if (!verified) {
+        try {
+          t.diagnostic(JSON.stringify({ commandPhases: [
+            await describeCommandPhase(context.testRoot, 'product'),
+            await describeCommandPhase(nextRoot, 'consumer'),
+          ] }));
+        } catch { /* Optional diagnostics must not replace the failed assertion. */ }
+      }
       await cleanupRunContext(next, { preserveEvidence });
       await cleanupRunContext(context, { preserveEvidence });
     });

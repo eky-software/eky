@@ -136,9 +136,11 @@ Valmisteltu cutover poistaa korvatut W6-komennot ja niiden suorat CI-jobit.
 `ci.yml` jää saman riskisuunnitelman reusable coreksi; suora feature-push tai
 PR ei käynnistä sen rinnalle toista raskasta matriisia. Säilyvät rakentajat,
 fixturet ja turvallisuustarkistukset on nimetty V2-suunnitelman siirtokartassa.
-Lopullisen poistorevision hyväksyntä sekä required check -asetusten ja mainin
-vaihto ovat erilliset, vielä avoimet käyttöönottoportit. Paikallinen diffi
-ei muuta repositoryn suojauksia.
+Katselmoitu V2-integraatio on yhdistetty normaalilla PR-menettelyllä mainiin,
+ja required checkit ovat `V2 acceptance` sekä `Audit dependencies`.
+Strict-ajantasaisuus, PR-vaatimus ja muut suojaukset säilyvät. Merge-commitin
+oma täysi ajo on erillinen julkaisuehto: sen hylkäystä ei korvaa aiempi
+PR-vihreys. Ajantasainen hyväksyntätila on kanonisessa V2-suunnitelmassa.
 
 V2.5:n omistajan hyväksymä vaihekohtainen ympäristöraja käyttää kahta
 eristettyä Windows CI -consumeria samalle build-once-artifactille kahden
