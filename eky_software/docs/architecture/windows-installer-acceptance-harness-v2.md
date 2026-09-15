@@ -2576,6 +2576,20 @@ ja käännetyn proofin sekä harness-lukijan virhekoodien vastaavuuden.
 Muuttunut paketoitava koodi vaatii uuden puhtaan revision workspace-artifactin
 ja rajatun perheen Windows-varmennuksen; vanha MSI-pari ei todista muutosta.
 
+Revision `9b9deb745c1282163cd491712623ed8394473c97`
+[rajattu workspace-varmennus](https://github.com/eky-software/eky/actions/runs/34992609487)
+läpäisi ensimmäisellä yrityksellä: success 2/2, fault 10/10 ja kaikki neljä
+sopimusryhmää. Lähde-, todelliset checkout- ja artifactin build-revisiot
+vastasivat toisiaan. Artifact `10406767428` rakennettiin kerran; descriptorin
+ja molempien MSI-pakettien tiivisteet täsmäsivät kaikkien neljän consumerin
+ennen/jälkeen-varmennuksissa. Kaikki 12 komentoa ja niiden pakolliset
+tulosvarmennukset valmistuivat onnistuneesti siivous- ja jälkiehtoineen.
+Aiempi staging-virhe ei toistunut: virheluokituksen puute on korjattu, mutta
+alkuperäisen valmisteluvirheen syy ei ole osoitettu. Tämä rajattu näyttö ei
+korvaa normaalia kokonaishyväksyntäparia tai sulje erillistä aiempaa
+`fixtureCleanup`-tuloksen puuttumishavaintoa. Main, required checkit ja
+julkaisu pysyvät niiden omien porttien takana.
+
 Revision `b20ec8150d9d6f859882c835671d02b77945b367`
 [ensimmäinen normaali kokonaiskierros](https://github.com/eky-software/eky/actions/runs/34978683620)
 läpäisi kaikki portit ja 18 consumer-komentoa samoihin producer-tavuihin
