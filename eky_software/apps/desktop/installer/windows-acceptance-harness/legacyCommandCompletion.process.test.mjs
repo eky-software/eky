@@ -11,6 +11,25 @@ import { readWindowsAcceptanceSupervisorResult } from '../windows-process-superv
 
 import { describeCommandPhase, describeCommandPhases, recordCommandBoundaryEvidence, reportCommandFailure } from './acceptanceCommandEntrypointContract.mjs';
 
+const commandBudgets = JSON.parse(await readFile(new URL('../windows-process-supervisor/supervisorCommandBudgets.json', import.meta.url)));
+const [, readerTimeoutMilliseconds, readerCleanupReserveMilliseconds] = commandBudgets.legacyCommand.phases
+  .find(([name]) => name === 'semantic');
+
+function createProductConsumerRequest(context, stage) {
+  return createRequest(context, 'exitZero', stage === 'ConsumerReadHold'
+    ? { timeoutMilliseconds: 4_000, cleanupReserveMilliseconds: 1_000 }
+    : { timeoutMilliseconds: readerTimeoutMilliseconds, cleanupReserveMilliseconds: readerCleanupReserveMilliseconds });
+}
+
+test('product result reader uses the normal phase budget without changing the injected hold', () => {
+  const context = { runNonce: 'c'.repeat(64), scenario: 'installerProductOperation',
+    artifactDescriptorSha256: 'd'.repeat(64), testRoot: join(tmpdir(), 'synthetic-product-reader') };
+  for (const stage of ['Completed', 'Preparation', 'ConsumerReadHold']) {
+    const request = createProductConsumerRequest(context, stage);
+    assert.deepEqual({ total: request.timeoutMilliseconds, cleanup: request.cleanupReserveMilliseconds },
+      stage === 'ConsumerReadHold' ? { total: 4_000, cleanup: 1_000 } : { total: 35_000, cleanup: 5_000 });
+  }
+});
 
 test('command failure diagnostics preserve missing results and reject raw fields', async () => {
   const root = join(tmpdir(), 'synthetic-command');
@@ -260,7 +279,7 @@ for (const stage of ['Completed', 'WorkerFailed', 'Deadline', 'CleanupUnverified
 for (const stage of ['Completed', 'Preparation', 'NativeWait', 'Read', 'Remove',
   'CleanupFailure', 'MissingResult', 'ResultBeforeExit', 'DeliveryHold', 'DeliveryFailure', 'ConsumerReadHold']) {
   test(`product command entrypoint owns its complete worker lifecycle: ${stage}`, {
-    skip: process.platform !== 'win32', timeout: 30_000,
+    skip: process.platform !== 'win32', timeout: 90_000,
   }, async (t) => {
     const context = await createRunContext('product-command-entrypoint-' + stage);
     context.scenario = 'installerProductOperation';
@@ -309,8 +328,7 @@ for (const stage of ['Completed', 'Preparation', 'NativeWait', 'Read', 'Remove',
           : stage === 'MissingResult' ? 'processCompleted' : 'timedOut',
       binding: { schemaVersion: 1, runNonce: next.runNonce, scenario: next.scenario,
         artifactDescriptorSha256: next.artifactDescriptorSha256 } }));
-    const consumerRequest = createRequest(next, 'exitZero', stage === 'ConsumerReadHold'
-      ? { timeoutMilliseconds: 4_000, cleanupReserveMilliseconds: 1_000 } : undefined);
+    const consumerRequest = createProductConsumerRequest(next, stage);
     consumerRequest.arguments = [fileURLToPath(new URL('./legacyCommandWorkerFixture.mjs', import.meta.url)),
       'consumeOwnedProduct', consumerInputPath];
     await writeRequest(next, consumerRequest);

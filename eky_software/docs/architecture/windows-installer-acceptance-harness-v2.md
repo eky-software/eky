@@ -2568,10 +2568,11 @@ Hyväksytty required-check-vaihto on tehty: `V2 acceptance` ja
 PR-vaatimus ja muut suojaukset säilyivät. PR yhdistettiin normaalisti
 main-revisioon `379f9c6232ad73721e1dd387b2fa7be6804eb256`.
 Sen [oma main-ajo](https://github.com/eky-software/eky/actions/runs/35029069964)
-on hylännyt `legacy / V2.5 commands contracts run 2` -jobin: synteettisen
+on päättynyt hylättynä: `legacy / V2.5 commands contracts run 2` -jobin synteettisen
 `Preparation`-tapauksen tuottajan jälkeinen tuloslukija palautti exit 1:n,
 vaikka testi vaati exit 0:n. Tämä pysäyttää julkaisun; aiempi hyväksyntäpari
-ja PR-ajo eivät korvaa merge-revision puuttuvaa hyväksyntää. Mainin oma
+ja PR-ajo eivät korvaa merge-revision puuttuvaa hyväksyntää. Legacy-producer
+ja sen consumerit eivät käynnistyneet hylätyn sopimusportin jälkeen. Mainin oma
 [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/35029069670)
 läpäisi kaikki kolme pakollista tarkistusta.
 
@@ -2580,14 +2581,34 @@ tuloslukijan validoidut process-, worker- ja cleanup-tulokset erikseen.
 Puuttuva tai virheellinen tulos erotetaan hylätystä prosessituloksesta;
 diagnostiikan virhe ei korvaa alkuperäistä assertionia. Sama olemassa oleva
 tuloslukija sitoo havainnon pyynnön todelliseen artifact-identiteettiin.
-Aikarajoja, sovelluskoodia tai hyväksymisehtoja ei muuteta. Nykyisen
-feasibility-workflow'n `product-command-diagnostic` valitsee vain saman
+Diagnostiikkacheckpoint ei muuttanut aikarajoja, sovelluskoodia tai
+hyväksymisehtoja. Nykyisen feasibility-workflow'n
+`product-command-diagnostic` valitsee vain saman
 komentoryhmän kahdelle eristetylle Windows-runnerille, ilman MSI-rakentamista
 tai hyväksyntäporttien korvaamista. CI:n alkuperäinen hylkäys ei yksilöinyt
 tuloslukijan sisäistä virhettä, joten sitä ei nimetä vielä aikakatkaisuksi,
 MSI-viaksi tai juurisyyltään korjatuksi.
 
-Jäljellä ovat komentoryhmän virheen rajaaminen, korjauksen normaali
+Revision `2bba85428f3a0bfd47b9501c68e7849bbb325d81`
+[rajattu CI-koe](https://github.com/eky-software/eky/actions/runs/35030822281)
+läpäisi saman komentoryhmän molemmilla Windows-runnerilla ensimmäisellä
+yrityksellä, 26/26 kummassakin. Alkuperäinen virhe ei toistunut; tämä on
+diagnostiikkaa eikä korvaa normaalia hyväksyntää.
+
+Omistaja hyväksyi tämän jälkeen yhden todetun budjettikytkennän korjauksen:
+`legacyCommandCompletion.process.test.mjs`-sopimuksen tavallinen
+tuotetuloslukija käyttää kanonisen `legacyCommand`-taulukon `semantic`-
+vaiheen 35 s kokonaisrajaa (30 s työ + 5 s siivous) yleisen testiapurin
+10 s oletuksen sijaan. Tämän kaksivaiheisen sopimustestin ulompi testiturva
+on 90 s, kuten muissa komentorajaregressioissa; se ei ole onnistumisehto.
+Tarkoituksellinen `ConsumerReadHold` ja tuottajan virheinjektiot säilyvät
+4 s kokonaisrajassa ja 1 s siivousvarauksessa. Sovelluksen, MSI:n,
+CI-jobien sekä muiden testien rajat eivät muutu. Pyyntövalinnan regressio
+ja oikean komentoprosessin exit/close-, tulos- ja cleanup-assertiot
+varmentavat eri vastuut. Korjattu sopimusero ei todista vanhan CI-virheen
+syytä, koska sen tarkka sisäinen lukijatulos puuttui.
+
+Jäljellä ovat budjettikytkennän kohdevarmennus, korjauksen normaali
 PR-/main-todennus ja tämän jälkeen erillinen 0.2.8-versionosto sekä
 exact-byte-varmennettu pilot-bundle. Historiallisia jäädytettyjä PR:iä ei
 yhdistetty suoraan. Suojauksia tai julkaisurajoja ei ohiteta.
