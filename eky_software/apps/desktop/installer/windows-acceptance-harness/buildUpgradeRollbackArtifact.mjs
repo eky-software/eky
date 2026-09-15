@@ -25,6 +25,7 @@ import {
 import { buildWindowsInstaller } from '../scripts/buildWindowsInstaller.mjs';
 import {
   createPackageLayout,
+  normalizePackageBuildPhase,
   packageWindowsApplication,
 } from '../../scripts/packageWindowsApplication.mjs';
 import { writeJsonAtomicExclusive } from './cleanInstallUninstallContracts.mjs';
@@ -52,6 +53,34 @@ const DEFAULT_STAGE_ROOT = resolve(
   '.stage',
   'windows-acceptance-v2-upgrade',
 );
+
+const SAFE_PACKAGE_FAILURE_CODES = new Set([
+  'ENOENT', 'EEXIST', 'EACCES', 'EPERM', 'EBUSY', 'ENOSPC', 'EIO',
+  'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN',
+]);
+
+class UpgradePackageBuildError extends Error {
+  constructor(cause, packageRole, packagePhase) {
+    super('WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_BUILD_FAILED', { cause });
+    this.packageRole = packageRole;
+    this.packagePhase = normalizePackageBuildPhase(packagePhase);
+  }
+}
+
+async function packageRoleApplication(packageApplication, paths, release, role) {
+  let phase = null;
+  try {
+    return await packageApplication({
+      layout: paths.layout,
+      onBuildPhase(value) { phase = normalizePackageBuildPhase(value); },
+      pilotBuild: true,
+      reportPackagedPath: false,
+      releaseOverride: release,
+    });
+  } catch (error) {
+    throw new UpgradePackageBuildError(error, role, phase);
+  }
+}
 
 function isPathInside(parent, candidate) {
   const relation = relative(parent, candidate);
@@ -274,19 +303,13 @@ export async function buildStagedInstallerSet({
   const sourcePaths = createRolePaths(stageRoot, 'source');
   const targetPaths = createRolePaths(stageRoot, 'target');
   const rollbackPaths = createRolePaths(stageRoot, 'windows-rollback');
-  const sourcePackaged = await packageApplication({
-    layout: sourcePaths.layout,
-    pilotBuild: true,
-    reportPackagedPath: false,
-    releaseOverride: releases.source,
-  });
+  const sourcePackaged = await packageRoleApplication(
+    packageApplication, sourcePaths, releases.source, 'source',
+  );
   requirePackagedApplication(sourcePackaged, releases.source, buildRevision);
-  const targetPackaged = await packageApplication({
-    layout: targetPaths.layout,
-    pilotBuild: true,
-    reportPackagedPath: false,
-    releaseOverride: releases.target,
-  });
+  const targetPackaged = await packageRoleApplication(
+    packageApplication, targetPaths, releases.target, 'target',
+  );
   requirePackagedApplication(targetPackaged, releases.target, buildRevision);
 
   const source = await buildRoleInstaller({
@@ -433,6 +456,22 @@ function safeErrorCode(error) {
     : 'WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_BUILD_FAILED';
 }
 
+export function upgradeArtifactBuildFailureSummary(error) {
+  const packageFailure = error instanceof UpgradePackageBuildError;
+  const failureCode = packageFailure ? error.cause?.code : error?.code;
+  return Object.freeze({
+    schemaVersion: 1,
+    status: 'failed',
+    errorCode: safeErrorCode(error),
+    packageRole: packageFailure && ['source', 'target'].includes(error.packageRole)
+      ? error.packageRole : null,
+    packagePhase: packageFailure ? normalizePackageBuildPhase(error.packagePhase) : null,
+    failureCode: SAFE_PACKAGE_FAILURE_CODES.has(failureCode)
+      ? failureCode
+      : 'unclassifiedBuildFailure',
+  });
+}
+
 async function main() {
   let arguments_;
   let artifactBuilt = false;
@@ -451,11 +490,7 @@ async function main() {
       );
     }
     console.error(
-      JSON.stringify({
-        schemaVersion: 1,
-        status: 'failed',
-        errorCode: safeErrorCode(error),
-      }),
+      JSON.stringify(upgradeArtifactBuildFailureSummary(error)),
     );
     process.exitCode = 1;
   }

@@ -20,9 +20,11 @@ import {
 } from '../installerManifest.mjs';
 import {
   buildUpgradeRollbackArtifact,
+  buildStagedInstallerSet,
   copyClosedPayloadTree,
   createUpgradeRollbackReleasePair,
   parseUpgradeRollbackArtifactBuildArguments,
+  upgradeArtifactBuildFailureSummary,
 } from './buildUpgradeRollbackArtifact.mjs';
 import {
   UPGRADE_ROLLBACK_DESCRIPTOR_FILENAME,
@@ -47,6 +49,81 @@ const RELEASE_TEMPLATE = Object.freeze({
   msiProductVersion: '0.2.7',
   platform: 'win32',
   releaseChannel: 'pilot',
+});
+
+for (const failedRole of ['source', 'target']) {
+  test(`package failure retains the ${failedRole} role and last preparation phase`, async (context) => {
+    const root = await mkdtemp(resolve(tmpdir(), 'eky-v2-package-failure-'));
+    context.after(() => rm(root, { force: true, recursive: true }));
+    const original = Object.assign(new Error('private synthetic detail'), { code: 'EIO' });
+    let packageCalls = 0;
+    let installerCalls = 0;
+    await assert.rejects(buildStagedInstallerSet({
+      stageRoot: resolve(root, 'stage'),
+      readGitState: async () => BUILD_REVISION,
+      async packageApplication(request) {
+        packageCalls += 1;
+        const role = packageCalls === 1 ? 'source' : 'target';
+        request.onBuildPhase?.('backendValidation');
+        request.onBuildPhase?.('applicationPreparation');
+        if (role === failedRole) throw original;
+        return {
+          appVersion: request.releaseOverride.appVersion,
+          installerRelease: request.releaseOverride,
+          buildInfo: {
+            appVersion: request.releaseOverride.appVersion,
+            buildDirty: false,
+            buildRevision: BUILD_REVISION,
+          },
+          packagedPath: resolve(root, role),
+        };
+      },
+      async buildInstaller() { installerCalls += 1; },
+    }), (error) => {
+      assert.equal(error.cause, original);
+      assert.equal(error.packageRole, failedRole);
+      assert.equal(error.packagePhase, 'applicationPreparation');
+      assert.deepEqual(upgradeArtifactBuildFailureSummary(error), {
+        schemaVersion: 1,
+        status: 'failed',
+        errorCode: 'WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_BUILD_FAILED',
+        packageRole: failedRole,
+        packagePhase: 'applicationPreparation',
+        failureCode: 'EIO',
+      });
+      error.packageRole = 'private role';
+      error.packagePhase = 'private phase';
+      original.code = 'private code';
+      assert.deepEqual(upgradeArtifactBuildFailureSummary(error), {
+        schemaVersion: 1,
+        status: 'failed',
+        errorCode: 'WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_BUILD_FAILED',
+        packageRole: null,
+        packagePhase: null,
+        failureCode: 'unclassifiedBuildFailure',
+      });
+      return true;
+    });
+    assert.equal(packageCalls, failedRole === 'source' ? 1 : 2);
+    assert.equal(installerCalls, 0);
+  });
+}
+
+test('artifact failure summary never copies unknown error metadata or guesses a package role', () => {
+  const error = Object.assign(new Error('private error detail'), {
+    code: 'private code', path: 'private path', packageRole: 'source',
+    packagePhase: 'electronPackaging',
+  });
+  assert.deepEqual(upgradeArtifactBuildFailureSummary(error), {
+    schemaVersion: 1,
+    status: 'failed',
+    errorCode: 'WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_BUILD_FAILED',
+    packageRole: null,
+    packagePhase: null,
+    failureCode: 'unclassifiedBuildFailure',
+  });
+  const known = new Error('WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_PAYLOAD_INVALID');
+  assert.equal(upgradeArtifactBuildFailureSummary(known).errorCode, known.message);
 });
 
 function releaseFor(version) {

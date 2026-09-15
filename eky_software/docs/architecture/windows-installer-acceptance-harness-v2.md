@@ -2549,6 +2549,25 @@ Tämä osuus erottaa nykyisen julkaisutyön historiallisesta tutkimusnäytöstä
 
 #### Ajantasaiset julkaisuesteet ja päätökset
 
+Revision `fb330fb1d1b615ce602af9367abb5679a3585e3d`
+[ensimmäinen normaali kierros](https://github.com/eky-software/eky/actions/runs/35004076794)
+hylättiin upgrade-artifactin valmistelussa ennen upgrade-consumereita.
+SQLite-varmennuksen jälkeinen yleinen build-virhe ei yksilöi epäonnistunutta
+paketointivaihetta. Tämä ei ole osoitettu Electron-startup-, MSI- tai
+supervisor-vika. Toista normaalia kierrosta ei käynnistetä; revision
+[riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/35003840476)
+läpäisi omat kolme pakollista tarkistustaan.
+
+Rajattu korjaus säilyttää upgrade-rakentajan virheyhteenvedossa suljetun
+pakettiroolin, paketointivaiheen ja tunnetun alustavirheluokan. Vaihetieto
+kulkee vain muistissa; sitä ei odoteta, eikä se ohjaa valmistumista.
+Alkuperäinen virhe säilyy yksityisenä syynä. Tuntematonta metadataa ei
+julkaista, ja havaintovirhe ei muuta paketoinnin tulosta. Onnistumisen
+summary, pakettitarkistukset, määräajat ja payload eivät muutu. Regressiot
+kattavat molempien roolien keskeytymisen ennen asentimen rakentamista sekä
+todellisen valmistelun tiedostovirheen säilymisen havaintovirheessä.
+Alkuperäisen paketointihäiriön syy ja uuden revision hyväksyntä ovat auki.
+
 Revision `cb0dff26985c3346c5eb0c88120e73468f5ee075`
 [ensimmäinen normaali kierros](https://github.com/eky-software/eky/actions/runs/34996359240)
 on hylätty Electron criticalin `DESK-WORKSPACE-STARTUP-001`-flaken vuoksi.

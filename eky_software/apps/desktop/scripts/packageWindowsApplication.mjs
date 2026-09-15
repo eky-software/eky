@@ -50,6 +50,30 @@ const profileSnapshotRuntimeFiles = [
   'profileSnapshotBrokerTransport.js',
 ];
 
+const PACKAGE_BUILD_PHASES = new Set([
+  'stagingPreparation', 'workspaceBuild', 'backendPreparation', 'buildIdentity',
+  'backendValidation', 'applicationPreparation', 'applicationValidation',
+  'applicationInventory', 'runtimeInventory', 'updateInventory',
+  'electronPackaging', 'electronVersion', 'electronFuses', 'packagedInventory',
+  'pilotManifest',
+]);
+
+export function normalizePackageBuildPhase(phase) {
+  return PACKAGE_BUILD_PHASES.has(phase) ? phase : null;
+}
+
+export function createPackageBuildPhaseObserver(observer) {
+  return (phase) => {
+    if (typeof observer !== 'function') return;
+    try {
+      const pending = observer(normalizePackageBuildPhase(phase));
+      if (pending !== undefined) Promise.resolve(pending).catch(() => undefined);
+    } catch {
+      // Optional in-memory diagnostics cannot change packaging results.
+    }
+  };
+}
+
 function run(command, args, options = {}) {
   return new Promise((resolveRun, rejectRun) => {
     const child = spawn(command, args, {
@@ -349,6 +373,7 @@ async function assertPackagedElectronVersion(packagedPath) {
 
 export async function packageWindowsApplication({
   layout,
+  onBuildPhase,
   pilotBuild,
   prepareBackendStage,
   reportPackagedPath,
@@ -362,14 +387,19 @@ export async function packageWindowsApplication({
     stagingRoot,
     updateRuntimeStage,
   } = layout;
+  const observePhase = createPackageBuildPhaseObserver(onBuildPhase);
+  observePhase('stagingPreparation');
   await rm(stagingRoot, { force: true, recursive: true });
   await rm(outputDirectory, { force: true, recursive: true });
   await mkdir(stagingRoot, { recursive: true });
+  observePhase('workspaceBuild');
   await buildWorkspaceArtifacts(backendStage);
+  observePhase('backendPreparation');
   await preparePackageBackendStage({
     backendStage,
     prepareBackendStage,
   });
+  observePhase('buildIdentity');
   const packageBuildInfoModule = await import(
     pathToFileURL(
       resolve(desktopDirectory, 'dist/release/packageBuildInfo.js'),
@@ -422,6 +452,7 @@ export async function packageWindowsApplication({
     ).stdout.trim();
     assertPilotBuildPreconditions({ buildInfo, currentHead });
   }
+  observePhase('backendValidation');
   await assertSafeBackendStage(backendStage);
   await inspectPackageArtifactInventory({
     root: backendStage,
@@ -433,23 +464,29 @@ export async function packageWindowsApplication({
     `Validated staged better-sqlite3 ${runtime.version} (SQLite ${sqliteVersion}).`,
   );
 
+  observePhase('applicationPreparation');
   await prepareApplicationStage(layout, buildInfo, packageMode, releaseInfo);
+  observePhase('applicationValidation');
   await assertPackagedDiagnosticsArtifacts(layout, {
     hasReleaseInfo: pilotBuild,
   });
+  observePhase('applicationInventory');
   await inspectPackageArtifactInventory({
     root: applicationStage,
     stage: 'applicationStage',
   });
+  observePhase('runtimeInventory');
   await inspectPackageArtifactInventory({
     root: desktopRuntimeStage,
     stage: 'desktopRuntimeStage',
   });
+  observePhase('updateInventory');
   await inspectPackageArtifactInventory({
     root: updateRuntimeStage,
     stage: 'updateRuntimeStage',
   });
 
+  observePhase('electronPackaging');
   const packagedPaths = await packager({
     appVersion,
     arch: 'x64',
@@ -477,14 +514,18 @@ export async function packageWindowsApplication({
   const packagedPath = packagedPaths[0];
   const executablePath = join(packagedPath, 'Eky.exe');
 
+  observePhase('electronVersion');
   await assertPackagedElectronVersion(packagedPath);
+  observePhase('electronFuses');
   await applyAndVerifyFuses(executablePath);
+  observePhase('packagedInventory');
   const packagedInventory = await inspectPackageArtifactInventory({
     root: packagedPath,
     stage: 'packagedApp',
   });
   let manifestPath;
   if (pilotBuild) {
+    observePhase('pilotManifest');
     assertPilotBuildPreconditions({ buildInfo, currentHead });
     const manifest = createPilotArtifactManifest({
       buildInfo,
