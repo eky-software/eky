@@ -2584,6 +2584,18 @@ kolmen MSI:n tiivisteet täsmäsivät ennen ja jälkeen ajon. Saman lähderevisi
 läpäisi. Tämä on native-korvauksen rajattu todiste, ei normaali
 kokonaishyväksyntä tai selitys aiemman tarkistuksen viiveelle.
 
+Revision `c635b9eaada92610e09e28e8378a0eacc5444f51`
+[normaalin kierroksen](https://github.com/eky-software/eky/actions/runs/34975687345)
+molemmat legacy/core-jobit hylkäsivät saman `eventStatistics`-regression
+(333/334 kummassakin). Tätä kierrosta ei hyväksytä eikä sen puuttuvia
+legacy-consumereita korvata muiden perheiden tuloksilla. Diagnostiikkafixture
+lataa tarvitsemansa Utility-moduulin oman PowerShell-runtimensa juuresta;
+vanhemman komentotulkin hakupolku ei ole testin riippuvuussopimus.
+Odottamaton poikkeus säilyy alkuperäisenä yksityisessä virhelokissa, ja
+testiraportti saa vain rajatun virheluokan. Tämä testivalmistelun korjaus
+ei muuta native-kyselyä, asennusskenaariota tai niiden aikarajoja eikä väitä
+selittävänsä historiallista MSI-viivettä.
+
 Rajattu riskikatselmus perustuu revisioon `d2bf592`; se ei ole koko ERP:n
 auditointi tai uusi hyväksyntäkierros. Uusin omistajapäätös korvaa vanhan
 odotuksettoman MSI-testicallbackin edellä kuvatulla sulkeutumiskuittauksella.

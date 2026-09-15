@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { readFile, writeFile } from 'node:fs/promises';
+import { open, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
@@ -78,6 +78,8 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
       [Threading.Thread]::CurrentThread.CurrentCulture = [Globalization.CultureInfo]::InvariantCulture
       . $env:EKY_TRACE_TEST_SCRIPT
       if ($env:EKY_TRACE_TEST_KIND -ceq 'eventStatistics') {
+        # Resolve this shell's built-in module, independently of the parent shell.
+        Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility/Microsoft.PowerShell.Utility.psd1') -ErrorAction Stop
         $provider = [Diagnostics.Tracing.EventSource]::new('${PROVIDER}')
         $identity = $provider.Guid.ToString(); $provider.Dispose()
         $header = "TraceLogging ProviderId TotalCount TotalSize Name\n10 42 <All>"
@@ -169,7 +171,10 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
         $exporter = $xperf; $catalog = ''; $statisticsCase = 'toolFailure'
         $observations = [Collections.Generic.List[object]]::new(); $rejected = $false
         try { . $comparison | ForEach-Object { $observations.Add(($_ | ConvertFrom-Json)) } }
-        catch { $rejected = $_.Exception.Message -ceq 'INSPECTOR_TRACE_COMPARISON_FAILED' }
+        catch {
+          if ($_.Exception.Message -cne 'INSPECTOR_TRACE_COMPARISON_FAILED') { throw }
+          $rejected = $true
+        }
         if (!$rejected -or $observations.Count -ne 4 -or $observations[0].phase -cne 'eventStatistics' -or
             $observations[0].status -cne 'failed' -or $observations[3].resultCode -cne 'sameTraceBytes' -or
             @($observations | Where-Object { $_.phase -ceq 'eventViewComparison' -and
@@ -544,9 +549,10 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
     `;
     const commandPath = join(context.testRoot, 'trace-contract.ps1');
     await writeFile(commandPath, command);
+    const errorLog = await open(join(context.testRoot, 'stderr.private.log'), 'wx+');
     const child = spawn(resolve(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', commandPath],
-      { stdio: commandExportFailure ? ['ignore', 'pipe', 'ignore'] : 'ignore', windowsHide: true, env: { ...process.env,
+      { stdio: ['ignore', commandExportFailure ? 'pipe' : 'ignore', errorLog.fd], windowsHide: true, env: { ...process.env,
         EKY_TRACE_TEST_ROOT: context.testRoot, EKY_TRACE_TEST_SCRIPT: SCRIPT,
         EKY_TRACE_TEST_CASES: String(cases.length), EKY_TRACE_TEST_RESULT: context.resultPath,
         EKY_TRACE_TEST_PROFILE: String(kind === 'completed'),
@@ -556,10 +562,27 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
     context.fixtureProcesses.add(child);
     const observations = [];
     child.stdout?.on('data', (chunk) => observations.push(chunk));
-    const exit = await new Promise((resolvePromise, rejectPromise) => {
-      child.once('error', rejectPromise);
-      child.once('close', resolvePromise);
-    });
+    let exit;
+    try {
+      exit = await new Promise((resolvePromise, rejectPromise) => {
+        child.once('error', rejectPromise);
+        child.once('close', resolvePromise);
+      });
+      if (exit !== (commandExportFailure ? 1 : 0)) {
+        const { buffer, bytesRead } = await errorLog.read({ buffer: Buffer.alloc(4096), position: 0 })
+          .catch(() => ({ buffer: Buffer.alloc(0), bytesRead: 0 }));
+        const privateText = buffer.toString('utf8', 0, bytesRead);
+        const failure = [
+          'statisticsProviderMissing', 'statisticsLeaked', 'statisticsPresenceGuessed',
+          'invalidStatisticsAccepted', 'statisticsReadUnbounded', 'statisticsObservationMissing',
+          'statisticsReportInvalid', 'statisticsSuccessInvalid', 'statisticsSuccessOutputInvalid',
+          'statisticsFailureEscaped', 'statisticsExitLost', 'statisticsToolMessageLost',
+          'statisticsMissingOutputGuessed', 'statisticsReportLeaked', 'statisticsComparisonMissing',
+          'statisticsMaskedExportFailure',
+        ].find((code) => privateText.split(/\r?\n/).includes(code));
+        t.diagnostic(JSON.stringify({ errorCode: failure ?? 'traceContractFailed' }));
+      }
+    } finally { await errorLog.close(); }
     assert.equal(exit, commandExportFailure ? 1 : 0);
     const output = commandExportFailure ? Buffer.concat(observations).toString('utf8') : await readFile(context.resultPath, 'utf8');
     assert.doesNotMatch(output, /PRIVATE|synthetic\.exe|foreign\.exe|123|456|789/);
