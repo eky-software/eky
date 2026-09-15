@@ -2656,8 +2656,21 @@ Windows package, packaged smoke, critical-käyttäjäpolut sekä erillinen
 käynnistyshavainnon kytkentätesti samalla valmistellulla E2E-buildillä.
 Normaali reusable-kutsu vaatii edelleen riskisuunnitelman, myös V2:n
 manuaalisessa kokonaisajossa. Rajattu ajo ei käynnistä MSI-matriisia eikä
-tuota `V2 acceptance` -tulosta. Tämän revision CI-tulos on vielä avoin;
-kohdetestejä ei lasketa uudeksi normaaliksi kokonaiskierrokseksi.
+tuota `V2 acceptance` -tulosta.
+
+Rajattu ajo [34896344310](https://github.com/eky-software/eky/actions/runs/34896344310)
+valmistui ensimmäisellä yrityksellä revisiosta
+`93fc0f935c77f38e79cdbfc9248149609a1aecb1`; lähde ja lokista varmennettu
+checkout olivat samat. Nykyisen Electron-jobin Windows package ja packaged
+smoke läpäisivät, critical-polut läpäisivät 38/38 ja erillinen
+käynnistyshavainnon kytkentätesti 1/1 ilman retryä tai flaky-tulosta.
+Job valmistui kokonaan eikä sen check-run sisältänyt annotationeita.
+Muut core-jobit ohitettiin tämän diagnostisen rajauksen mukaisesti;
+MSI-matriisia ei käynnistetty. Tulos todistaa nykyisen havaintokytkennän
+toimivuuden CI:ssä, mutta ei selitä aiempaa `firstWindow`-aikakatkaisua.
+Ensimmäisen epäonnistumisen näyttö ja hylätty normaali hyväksyntäpari
+säilyvät erillisinä. Kohdetestejä ei lasketa uudeksi normaaliksi
+kokonaiskierrokseksi eikä hyväksyntää koota eri revisioiden osatuloksista.
 Main, required checkit ja julkaisu pysyvät ennallaan. Aiemmat MSI- ja
 legacy-havainnot säilyvät erillisinä, eikä niiden syitä nimetä korjatuiksi.
 
@@ -3128,11 +3141,13 @@ jakavat saman producer-artifactin. Revisiosta raportoidaan erikseen
 lähde-HEAD, CI:n todellinen checkout ja artifactin build-identiteetti.
 
 Nykyinen clean/upgrade/legacy/workspace-käynnistysketju on GitHubin `pwsh` ->
-`pnpm --filter @eky/desktop exec dotnet` -> kiinteä .NET-komento ->
-nimetyt vaihetyöntekijät. Tämän jälkeen sama CI-step suorittaa
-`pnpm exec node verify...CallerResult.mjs`-verifierin ja tarkistaa sekä
-komennon että verifierin exit-koodin. Runnerin step-/job-valmistuminen on
-tämän yläpuolella, ei sama asia kuin .NET-komennon lopputulos.
+suora `dotnet`-kutsu -> kiinteä .NET-komento -> nimetyt vaihetyöntekijät.
+Tämän jälkeen sama CI-step suorittaa suoraan
+`node .../verify...CallerResult.mjs`-verifierin ja tarkistaa sekä komennon
+että verifierin exit-koodin. `pnpm` säilyy riippuvuuksien ja buildien
+valmistelussa, mutta ei enää lifecycle-komennon tai sen result-verifierin
+välikerroksena. Runnerin step-/job-valmistuminen on tämän yläpuolella,
+ei sama asia kuin .NET-komennon lopputulos.
 
 `.NET AcceptanceCommandProgram` käyttää nykyistä vaihelistaa ja samaa
 Job Object -supervisoria. Työ, vaiheen cleanup-varaus, pakollinen julkaisu
@@ -3163,8 +3178,10 @@ Riskikytkentä on toteutettu, mutta ei vielä koko repositoryn cutover:
   Täysi suunnitelma vaatii kaksi consumeria; kevyempi Windows-suunnitelma
   yhden. Puuttuva, peruutettu tai odottamatta ohitettu valittu tulos hylätään.
 - V2-feature-push ei käynnistä raskasta PR-ajon kaksoiskappaletta.
-  Valmistellussa poistodiffissä `ci.yml` on vain reusable core: vanhat suorat
-  PR/main-triggerit ja W6-jobit on poistettu. Repositoryn main-käyttöönotto
+  Valmistellussa poistodiffissä `ci.yml` on controllerin reusable core;
+  sen erillinen käsikäynnistys on vain rajattu Electron-diagnoosi ilman
+  V2-koontia. Vanhat suorat PR/main-triggerit ja W6-jobit on poistettu.
+  Repositoryn main-käyttöönotto
   ja required-check-asetusten vaihto ovat edelleen erilliset avoimet portit.
 
 Priorisoidut löydökset ja sulkemisehdot:
