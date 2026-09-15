@@ -2569,6 +2569,13 @@ alkuperäisen virheen säilymisen ja havaintovirheen riippumattomuuden.
 Puuttuva välivaihehavainto korjataan, mutta satunnaisen käynnistysviiveen
 syy ja normaali kokonaishyväksyntä jäävät avoimiksi.
 
+Havaintokorjauksen lähde- ja todellinen CI-checkout ovat
+`44981f54c81b6bf1cf050194bca647d725c1eb56`.
+[Rajattu Electron-kierros](https://github.com/eky-software/eky/actions/runs/35001812427)
+läpäisi ensimmäisellä yrityksellä: critical 38/38, havaintokytkentä 1/1,
+Windows-paketointi ja packaged smoke. Koko job valmistui onnistuneesti.
+Tämä ei ole normaali V2-kokonaiskierros eikä korvaa hylättyä `cb0dff2`-ajoa.
+
 Revision `0416323d6e988ade94fe6ac3b58410d29c776633`
 [normaali kokonaiskierros](https://github.com/eky-software/eky/actions/runs/34987838414)
 on hylätty. Clean, upgrade/rollback, legacy ja workspace-success läpäisivät
