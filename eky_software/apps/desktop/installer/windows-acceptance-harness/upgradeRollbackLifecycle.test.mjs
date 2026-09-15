@@ -1,0 +1,241 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import { executeUpgradeRollbackLifecycle } from './upgradeRollbackLifecycle.mjs';
+import { classifyRunningUpgradeLog } from './runningUpgradeObservation.mjs';
+
+const VERSIONS = Object.freeze({ source: '0.2.7', target: '0.2.8' });
+
+function product(version = null, installerRegistryExists = false) {
+  return Object.freeze({
+    schemaVersion: 1,
+    productState: version === null ? -1 : 5,
+    productName: version === null ? null : 'Eky',
+    productVersion: version,
+    localPackagePresent: version !== null,
+    ownedRegistryExists: installerRegistryExists,
+    ekyProcessCount: 0,
+  });
+}
+
+function state(active = null, rollbackBlockerKind = 'absent') {
+  const installerRegistryExists = active !== null;
+  return Object.freeze({
+    source: product(
+      active === 'source' ? VERSIONS.source : null,
+      installerRegistryExists,
+    ),
+    target: product(
+      active === 'target' ? VERSIONS.target : null,
+      installerRegistryExists,
+    ),
+    installRootExists: active !== null,
+    executableExists: active !== null,
+    shortcutExists: active !== null,
+    installerRegistryExists,
+    ekyProcessCount: 0,
+    rollbackBlockerKind,
+  });
+}
+
+function createSuccessfulDependencies(overrides = {}) {
+  const states = [
+    state(),
+    state('source'),
+    state('target'),
+    state('target'),
+    state('source'),
+    state('source', 'file'),
+    state('source'),
+    state(),
+  ];
+  const operations = [];
+  let verifyCount = 0;
+  return {
+    createRollbackBlocker: async () => undefined,
+    inspectState: async () => states.shift(),
+    invokeBinaryRollback: async () => 0,
+    removeRollbackBlocker: async () => undefined,
+    reportProgress: () => undefined,
+    verifyPayload: async () => undefined,
+    runRunningUpgrade: async () => {
+      operations.push('majorUpgrade');
+      return { status: 'completed', exitCode: 0, initialExitCode: 0, cleanupResultCode: 'completed' };
+    },
+    runMsiOperation: async (operation) => {
+      operations.push(operation);
+      return {
+        sourceInstall: 0,
+        majorUpgrade: 0,
+        downgrade: 1638,
+        windowsInstallerRollback: 1603,
+        finalUninstall: 0,
+      }[operation];
+    },
+    verifyArtifact: async () => {
+      verifyCount += 1;
+    },
+    versions: VERSIONS,
+    operations,
+    getVerifyCount: () => verifyCount,
+    ...overrides,
+  };
+}
+
+test('lifecycle proves upgrade, downgrade, both rollback paths, and final absence', async () => {
+  const dependencies = createSuccessfulDependencies();
+  const result = await executeUpgradeRollbackLifecycle(dependencies);
+
+  assert.equal(result.status, 'completed');
+  assert.equal(result.resultCode, 'upgradeRollbackCompleted');
+  assert.deepEqual(dependencies.operations, [
+    'sourceInstall',
+    'majorUpgrade',
+    'downgrade',
+    'windowsInstallerRollback',
+    'finalUninstall',
+  ]);
+  assert.equal(dependencies.getVerifyCount(), 5);
+  assert.equal(result.binaryRollbackRestoredSource, true);
+  assert.equal(result.windowsInstallerRollbackRestoredSource, true);
+  assert.equal(result.runningApplicationUpgradeValidated, true);
+  assert.equal(result.installedPayloadValidated, true);
+  assert.equal(result.runningUpgradeInitialExitCode, 0);
+});
+
+test('accepted downgrade fails closed and cleans the exact target product', async () => {
+  const states = [
+    state(),
+    state('source'),
+    state('target'),
+    state('target'),
+    state('target'),
+    state(),
+  ];
+  const operations = [];
+  const result = await executeUpgradeRollbackLifecycle({
+    ...createSuccessfulDependencies(),
+    inspectState: async () => states.shift(),
+    runMsiOperation: async (operation) => {
+      operations.push(operation);
+      return operation === 'downgrade' ? 0 : 0;
+    },
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.equal(result.errorCode, 'downgradeAccepted');
+  assert.equal(result.cleanupResultCode, 'cleanupCompleted');
+  assert.deepEqual(operations, [
+    'sourceInstall',
+    'downgrade',
+    'cleanupTarget',
+  ]);
+});
+
+test('cleanup failure never replaces the primary lifecycle error', async () => {
+  const states = [state(), state('source'), state('source')];
+  const result = await executeUpgradeRollbackLifecycle({
+    ...createSuccessfulDependencies(),
+    inspectState: async () => {
+      const next = states.shift();
+      if (next === undefined) {
+        throw new Error('blocked');
+      }
+      return next;
+    },
+    runRunningUpgrade: async () => ({ status: 'failed', exitCode: 1603,
+      errorCode: 'runningUpgradeMsiFailed', cleanupResultCode: 'completed' }),
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.equal(result.errorCode, 'runningUpgradeMsiFailed');
+  assert.equal(result.cleanupResultCode, 'cleanupFailed');
+});
+
+test('failed running upgrade preserves MSI results before cleanup and observer failure', async () => {
+  const observation = classifyRunningUpgradeLog('', {});
+  for (const outputFails of [false, true]) {
+    const states = [state(), state('source'), state('target'), state(), state()];
+    const events = [];
+    const dependencies = createSuccessfulDependencies({
+      inspectState: async () => states.shift(),
+      runRunningUpgrade: async () => ({ status: 'failed', exitCode: 3010,
+        initialExitCode: 1603, observation, errorCode: 'runningUpgradeMsiFailed',
+        cleanupResultCode: 'completed' }),
+      runMsiOperation: async (operation) => {
+        dependencies.operations.push(operation);
+        return 0;
+      },
+      reportProgress(entry) {
+        events.push(entry);
+        if (outputFails) throw new Error('synthetic output failure');
+      },
+    });
+    const result = await executeUpgradeRollbackLifecycle(dependencies);
+    assert.equal(result.status, 'failed');
+    assert.equal(result.errorCode, 'runningUpgradeMsiFailed');
+    assert.equal(result.upgradeExitCode, 3010);
+    assert.equal(result.runningUpgradeInitialExitCode, 1603);
+    assert.deepEqual(result.runningUpgradeObservation, observation);
+    assert.equal(result.applicationCleanupResultCode, 'completed');
+    assert.equal(result.cleanupResultCode, 'cleanupCompleted');
+    assert.deepEqual(dependencies.operations, ['sourceInstall', 'cleanupTarget']);
+    const observations = events.filter(entry => entry.phase === 'runningUpgradeResult');
+    assert.equal(observations.length, 1);
+    const { durationMs, elapsedMs, ...safe } = observations[0];
+    assert.deepEqual(safe, { schemaVersion: 1, operation: 'upgradeRollbackLifecycle',
+      scenario: 'upgradeRollback', phase: 'runningUpgradeResult', status: 'observed',
+      resultCode: 'runningUpgradeResultObserved', initialExitCode: 1603, exitCode: 3010,
+      applicationCleanupResultCode: 'completed', observation });
+    assert.ok(Number.isInteger(durationMs) && Number.isInteger(elapsedMs));
+    assert.ok(events.indexOf(observations[0]) < events.findIndex(entry =>
+      entry.phase === 'majorUpgrade' && entry.status === 'failed'));
+  }
+});
+
+test('progress output failure cannot alter terminal semantics', async () => {
+  const dependencies = createSuccessfulDependencies({
+    reportProgress() {
+      throw new Error('output unavailable');
+    },
+  });
+  const result = await executeUpgradeRollbackLifecycle(dependencies);
+  assert.equal(result.status, 'completed');
+});
+
+test('binary rollback keeps a safe production exit category as primary', async () => {
+  const states = [
+    state(),
+    state('source'),
+    state('target'),
+    state('target'),
+    state('target'),
+    state(),
+    state(),
+  ];
+  const result = await executeUpgradeRollbackLifecycle({
+    ...createSuccessfulDependencies(),
+    inspectState: async () => states.shift(),
+    invokeBinaryRollback: async () => {
+      throw new Error('binaryRollbackTargetPackagePathInvalid');
+    },
+    runMsiOperation: async (operation) =>
+      operation === 'downgrade' ? 1638 : 0,
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.equal(result.errorCode, 'binaryRollbackTargetPackagePathInvalid');
+  assert.equal(result.cleanupResultCode, 'cleanupCompleted');
+});
+
+test('uncertain running application cleanup blocks worker-side semantic uninstall', async () => {
+  const f = createSuccessfulDependencies({
+    runRunningUpgrade: async () => ({ status: 'failed', errorCode: 'runningUpgradeValidationInvalid',
+      cleanupResultCode: 'cleanupUnverified', exitCode: null }),
+  });
+  const result = await executeUpgradeRollbackLifecycle(f);
+  assert.equal(result.errorCode, 'runningUpgradeValidationInvalid');
+  assert.equal(result.applicationCleanupResultCode, 'cleanupUnverified');
+  assert.equal(result.cleanupResultCode, 'cleanupFailed');
+  assert.deepEqual(f.operations, ['sourceInstall']);
+});

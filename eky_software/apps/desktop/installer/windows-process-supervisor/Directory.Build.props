@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <BaseOutputPath>$(MSBuildThisFileDirectory)..\bin\windows-process-supervisor\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)..\obj\windows-process-supervisor\</BaseIntermediateOutputPath>
+  </PropertyGroup>
+</Project>

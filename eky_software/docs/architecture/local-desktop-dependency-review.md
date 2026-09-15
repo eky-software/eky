@@ -137,6 +137,121 @@ on päätetty.
 - Artifact ei ole loppukäyttäjälle jaettava tuotantoversio ennen code signingia,
   release-putken jäljellä olevia tarkistuksia ja erillistä jakelupäätöstä.
 
+### V2-Julkaisun Avoin Riippuvuustarkistus
+
+Omistaja on hyväksynyt rajatun päivityksen Hono `4.13.5`:een sekä Vitest ja
+sen nykyisen `@vitest/*`-pakettiperheen `4.1.11`:een. Molemmat suorat
+riippuvuudet sidotaan manifestissa täsmäversioon; myös lockfile käyttää
+näitä versioita. Lockfile-muutos sisältää vain Honon, Vitestin ja seitsemän
+nykyisen `@vitest/*`-paketin päivitykset sekä niiden nykyiset peer-sidokset.
+Uusia paketteja, overrideja tai muiden apupakettien versionostoja ei lisätä.
+Nykyiset yksikkö-/integraatio- ja packaging-kohteet läpäisevät: 3754 testiä
+sekä kahdeksan ennestään määriteltyä alustakohtaista ohitusta. System E2E
+on 86/86, web critical 35/35 ja Electron critical 38/38. Workspace-typecheck
+sekä backendin, webin ja desktopin buildit läpäisevät. Testien käyttäytymistä
+tai aikarajoja ei muutettu päivityksen mukana.
+Riippuvuusturvan checkpoint läpäisi ensimmäisellä yrityksellä revision
+`dcaeaffbdd388b6e1eea97e36ea83dfb4c07f59e`
+[Dependency security -ajossa 34833180991](https://github.com/eky-software/eky/actions/runs/34833180991).
+`Audit dependencies` läpäisi tuotantopuun auditin, koko puun auditin ja
+rekisteriallekirjoitusten varmennuksen. Audit ei muuttanut riippuvuuksia tai
+lockfilea. Lopullinen integraatiorevisio tarvitsee silti oman turvallisuusajonsa;
+tätä näyttöä ei siirretä muuttuneelle revisiolle. Alla kuvattu uusien artifactien
+normaali CI-todennus ja riippuvuusturvan portti säilyvät erillisinä.
+
+[Normaali V2-kierros 34779534322](https://github.com/eky-software/eky/actions/runs/34779534322)
+läpäisi ensimmäisellä yrityksellä ilman raskasta tallennusta. Testattu
+lähde-HEAD, producerien ja consumerien checkout sekä uusien artifactien
+build-revisio ovat `a186668cf6d5b6dc6e745b1e8448ed94e7ae8abc`.
+Kierroksessa onnistui 38 jobia; seitsemän suunniteltua vanhan tai
+diagnostisen polun ohitusta eivät korvanneet vaadittuja tuloksia.
+Tiukka loppukoonti ja nykyinen kattavuuslukija hyväksyivät kaikki 36/36
+vaadittua jobia pakollisine vaiheineen. Kaikki kuusi komentorajaryhmää
+läpäisivät molemmat toistot.
+
+| Paketoitu perhe | Tulos | Consumer-jobien CI-kestot |
+| --- | --- | --- |
+| Clean, repair/reinstall ja uninstall | 2/2 | 3 min 37 s / 3 min 39 s |
+| Upgrade, downgrade-torjunta, rollbackit ja running application | 2/2 | 4 min 26 s / 3 min 52 s |
+| Historical legacy | 2/2 | 3 min 11 s / 3 min 18 s |
+| Workspace success | 2/2 | 4 min 31 s / 4 min 36 s |
+| Workspace fault/rollback | 5 x 2 / 10 | 11 min 27 s / 13 min 24 s |
+
+| Synteettinen CI-artifact | Artifact-ID | Descriptor SHA-256 |
+| --- | --- | --- |
+| Clean | `10325180215` | `4cc279af23c7bf6fc4150551636b396fb4ce51d872ab041cb65855fc3fc685e1` |
+| Upgrade | `10324921362` | `638993ebead69656e3711536b2696ffc4d3b8b622a9d00a3e3a2df5bae1924b1` |
+| Historical legacy | `10324682002` | `fbd34e41fbaa6202ded43c745babda948511a615ce43f1dadd1e45be311bc56c` |
+| Workspace success/fault | `10324751603` | `7617e5113abfb34d166cbdb562d0bd224a548e63be3feb4065bcd60c492d7ae1` |
+
+Kaikkien consumerien lopulliset artifact-varmennukset täsmäsivät omiin
+producereihinsa. Komentojen pakolliset tulosverifierit läpäisivät todellisen
+exitin jälkeen; semanttiset jälkiehdot, asennussiivous, normaali profiili ja
+fixture-poistolupa pysyivät erillisinä vaatimuksina. Omistettujen puiden
+poissaolo ja kaikkien 18 skenaariokomennon julkaisuvaiheen valmistuminen
+vahvistettiin. Clean-producerin samojen MSI-tavujen bundle-varmennus
+läpäisi; tarkistuskopiota ei julkaistu käyttäjän pilot-pakettina.
+
+Tämä on riippuvuuspatchin uusi toiminnallinen CI-näyttö, ei aiempien
+legacy-/runner-havaintojen juurisyykorjaus, koko V2:n käyttöönotto tai
+0.2.8-julkaisulupa. Päähaaran ja required-checkien käyttöönotto sekä
+julkaisun jäljellä olevat portit säilyvät erillisinä.
+
+Advisory-katselmuksen historiallinen lähtörevisio on
+`e5689b3d84b2b1586f5304edc32778c69ea03d50`. Sen lockfile ja päähaaran
+`c1d010263ccf4dc490a709f58ea8a4a5b34fa03a` lockfile ovat samat.
+Tuolloin GitHubin viisi avointa moderate-hälytystä koskivat seuraavia
+lukittuja riippuvuuksia. Alla oleva advisory-/lähdekatselmus ei ole koko
+päivitetyn riippuvuuspuun puhtaan auditin todiste.
+
+| Riippuvuus | Aiempi lukittu versio | Hyväksytty korjausversio | Vastuu |
+| --- | --- | --- | --- |
+| `hono` | `4.13.1` | `4.13.5` | Backendin production HTTP-adapteri; kolme advisorya |
+| `vitest` ja transitiivinen `@vitest/mocker` | `4.1.10` | `4.1.11` | Kehityksen testityökalu; sama advisory kahdella paketilla |
+
+Viisi GitHub-hälytystä vastaa neljää eri GHSA-tunnusta:
+
+| GHSA | Paketti ja lukittu -> korjausversio | Runtime/dev | Käytännön vaikutus nykyisessä lähdekoodissa |
+| --- | --- | --- | --- |
+| GHSA-crvj-82cr-hjcx | hono 4.13.1 -> 4.13.5 | runtime | Query-lukijoita käytetään; literal-fragmentin pääsy adapterin läpi on todistamatta. Tulkintaeroa ei merkitä vaikutuksettomaksi. |
+| GHSA-gqvv-2mrq-wpjv | hono 4.13.1 -> 4.13.5 | runtime | SSG:n polkurajaus; toSSG-toimintoa ei käytetä tarkistetussa lähteessä. |
+| GHSA-g6gw-c38x-mqfc | hono 4.13.1 -> 4.13.5 | runtime | Piste-erotellun parseBody-rakenteen muistinkäyttö; kyseistä parseria ei käytetä nykyisessä JSON-rajassa. |
+| GHSA-82fw-gwwq-j7x9 | vitest ja @vitest/mocker 4.1.10 -> 4.1.11 | dev | Redirect-mockin tiedostoluku; tarkistetusta lähteestä ei löytynyt mockerPlugin-/interceptorPlugin-kytkentää. |
+
+Honon korjaukset koskevat
+[fragmentin jälkeistä query-tulkintaa](https://github.com/advisories/GHSA-crvj-82cr-hjcx),
+[SSG-tulosteen polkurajausta](https://github.com/advisories/GHSA-gqvv-2mrq-wpjv)
+ja [lomakkeen piste-erotellun rakenteen muistinkäyttöä](https://github.com/advisories/GHSA-g6gw-c38x-mqfc).
+Backendin nykyinen lähdekoodi ei käytä `toSSG()`- tai `parseBody()`-toimintoja;
+JSON-syöte luetaan `readJsonRequestBody`-vastuussa. Se käyttää kuitenkin
+Honon query-lukijoita. Literal `#` -merkin kulkeutumista nykyisen HTTP-adapterin
+läpi ei ole tässä katselmuksessa todistettu, joten query-löydöstä ei merkitä
+vaikutuksettomaksi. Loopback- ja istuntorajat eivät korvaa korjattua riippuvuutta.
+
+[Vitestin advisory](https://github.com/advisories/GHSA-82fw-gwwq-j7x9) koskee
+redirect-mockin tiedostolukua dev-palvelimen kautta. Eky käyttää `vitest run`
+-komentoja; tarkistetusta lähteestä ei löytynyt `mockerPlugin`- tai
+`interceptorPlugin`-kytkentää. Tämä rajaa nykyistä käyttötapaa, mutta ei ole
+peruste säilyttää korjattavissa olevaa versiota. Vitest ei kuulu paketoidun
+backendin production-riippuvuuksiin.
+
+Päähaaran [Dependency security -ajo 34745632370](https://github.com/eky-software/eky/actions/runs/34745632370)
+epäonnistui `Audit production dependencies` -vaiheessa. Koko puun audit ja
+rekisteriallekirjoitusten tarkistus jäivät ajamatta. Virheloki nimeää yllä
+mainitut kolme Hono-advisorya. Tulos kuuluu yllä
+nimetylle päähaaran revisiolle, ei V2:n uudelle kokonaishyväksynnälle.
+
+Korjauksessa päivitetään vain nimetyt nykyiset paketit ja niiden välttämätön
+lukittu ketju, ei Electronia, SQLitea, Nodea, pnpm:ää tai uusia testipalvelimia.
+Honon muutos tulee paketoituun backendiin ja vaatii uudet artifact-tavut;
+vanhan MSI-parin näyttö ei hyväksy sitä. Vitestin muutos varmennetaan
+nykyisillä yksikkö-/integraatiotesteillä. Molemmat vaativat lockfile-diffin
+katselmuksen, production- ja full auditin, rekisteriallekirjoitukset,
+typecheckin/buildin sekä sovitut turvallisuus-, E2E- ja paketoidut portit.
+Merkittävä uusi transitiivinen riippuvuus edellyttää erillistä päätöstä.
+Löydöksiä ei dismissata eikä audit-porttia ohiteta. Nämä advisoryt eivät
+osoita MSI- tai komentoprosessijumien syytä.
+
 ## Lisenssit Ja Ylläpito
 
 - `electron`: MIT

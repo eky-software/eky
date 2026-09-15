@@ -50,7 +50,7 @@ test('allows only the approved signed NuGet source and exact setup-dotnet SHA', 
   assert.match(nugetConfig, /<trustedSigners>/);
   assert.match(nugetConfig, /<author name="FireGiant">/);
 
-  const ci = await readFile(join(workspaceRoot, '.github', 'workflows', 'ci.yml'), 'utf8');
+  const ci = await readFile(join(workspaceRoot, '.github', 'workflows', 'windows-acceptance-v2-clean.yml'), 'utf8');
   assert.match(
     ci,
     /actions\/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5\.4\.0/,
@@ -59,152 +59,10 @@ test('allows only the approved signed NuGet source and exact setup-dotnet SHA', 
   assert.doesNotMatch(ci, /actions\/setup-dotnet@v\d/);
 });
 
-test('isolates W6B acceptance jobs from the regular MSI release gate', async () => {
-  const ci = await readFile(
-    join(workspaceRoot, '.github', 'workflows', 'ci.yml'),
-    'utf8',
-  );
-  const installerJobIndex = ci.indexOf('  installer-windows:');
-  const legacyJobIndex = ci.indexOf('  installer-w6b-legacy-windows:');
-  const packagedSuccessWorkerIndex = ci.indexOf(
-    '  installer-w6b2-success-windows-run:',
-  );
-  const packagedSuccessAggregatorIndex = ci.indexOf(
-    '  installer-w6b2-success-windows:',
-  );
-  const faultRollbackWorkerIndex = ci.indexOf(
-    '  installer-w6b2-fault-rollback-windows-run:',
-  );
-  const faultRollbackAggregatorIndex = ci.indexOf(
-    '  installer-w6b2-fault-rollback-windows:',
-  );
-  const installerJob = ci.slice(installerJobIndex, legacyJobIndex);
-  const legacyJob = ci.slice(legacyJobIndex, packagedSuccessWorkerIndex);
-  const packagedSuccessWorker = ci.slice(
-    packagedSuccessWorkerIndex,
-    packagedSuccessAggregatorIndex,
-  );
-  const packagedSuccessAggregator = ci.slice(
-    packagedSuccessAggregatorIndex,
-    faultRollbackWorkerIndex,
-  );
-  const faultRollbackWorker = ci.slice(
-    faultRollbackWorkerIndex,
-    faultRollbackAggregatorIndex,
-  );
-  const faultRollbackAggregator = ci.slice(faultRollbackAggregatorIndex);
-  const legacyAcceptance = 'installer:w6b-legacy';
-  const packagedSuccessAcceptance = 'installer:w6b2-success';
-  const faultRollbackAcceptance = 'installer:w6b2-fault-rollback';
-  const prepareElectronRuntime =
-    'run: pnpm --filter @eky/desktop e2e:prepare-electron-runtime';
-  const localPilotBundle =
-    'run: pnpm --filter @eky/desktop installer:local-pilot-bundle';
-
-  assert.ok(installerJobIndex >= 0);
-  assert.ok(legacyJobIndex > installerJobIndex);
-  assert.ok(packagedSuccessWorkerIndex > legacyJobIndex);
-  assert.ok(packagedSuccessAggregatorIndex > packagedSuccessWorkerIndex);
-  assert.ok(faultRollbackWorkerIndex > packagedSuccessAggregatorIndex);
-  assert.ok(faultRollbackAggregatorIndex > faultRollbackWorkerIndex);
-  assert.match(
-    installerJob,
-    /- name: Check out repository[\s\S]*?persist-credentials: false\s+fetch-depth: 0/u,
-  );
-  assert.match(installerJob, /timeout-minutes: 45/u);
-  assert.match(installerJob, new RegExp(localPilotBundle, 'u'));
-  assert.doesNotMatch(installerJob, new RegExp(legacyAcceptance, 'u'));
-  assert.match(
-    legacyJob,
-    /- name: Check out repository[\s\S]*?persist-credentials: false\s+fetch-depth: 0/u,
-  );
-  assert.match(legacyJob, /timeout-minutes: 30/u);
-  assert.match(legacyJob, new RegExp(legacyAcceptance, 'u'));
-  assert.doesNotMatch(legacyJob, new RegExp(packagedSuccessAcceptance, 'u'));
-  assert.doesNotMatch(legacyJob, new RegExp(localPilotBundle, 'u'));
-  assert.match(
-    packagedSuccessWorker,
-    /- name: Check out repository[\s\S]*?persist-credentials: false\s+fetch-depth: 0/u,
-  );
-  assert.match(packagedSuccessWorker, /timeout-minutes: 30/u);
-  assert.match(
-    packagedSuccessWorker,
-    new RegExp(prepareElectronRuntime, 'u'),
-  );
-  assert.match(
-    packagedSuccessWorker,
-    new RegExp(packagedSuccessAcceptance, 'u'),
-  );
-  assert.match(packagedSuccessWorker, /--run=\$\{\{ matrix\.repetition \}\}/u);
-  assert.doesNotMatch(
-    packagedSuccessWorker,
-    new RegExp(legacyAcceptance, 'u'),
-  );
-  assert.doesNotMatch(
-    packagedSuccessWorker,
-    new RegExp(faultRollbackAcceptance, 'u'),
-  );
-  assert.doesNotMatch(
-    packagedSuccessWorker,
-    new RegExp(localPilotBundle, 'u'),
-  );
-  assert.match(packagedSuccessAggregator, /timeout-minutes: 2/u);
-  assert.match(
-    packagedSuccessAggregator,
-    /needs: installer-w6b2-success-windows-run/u,
-  );
-  assert.doesNotMatch(packagedSuccessAggregator, /actions\/checkout@/u);
-  assert.match(
-    faultRollbackWorker,
-    /- name: Check out repository[\s\S]*?persist-credentials: false\s+fetch-depth: 0/u,
-  );
-  assert.match(faultRollbackWorker, /timeout-minutes: 30/u);
-  assert.match(faultRollbackWorker, /max-parallel: 5/u);
-  assert.match(faultRollbackWorker, /repetition: \[1, 2\]/u);
-  assert.match(
-    faultRollbackWorker,
-    new RegExp(prepareElectronRuntime, 'u'),
-  );
-  assert.match(
-    faultRollbackWorker,
-    new RegExp(faultRollbackAcceptance, 'u'),
-  );
-  assert.match(
-    faultRollbackWorker,
-    /--scenario=\$\{\{ matrix\.scenario \}\}/u,
-  );
-  assert.match(
-    faultRollbackWorker,
-    /--run=\$\{\{ matrix\.repetition \}\}/u,
-  );
-  assert.doesNotMatch(faultRollbackWorker, new RegExp(legacyAcceptance, 'u'));
-  assert.doesNotMatch(
-    faultRollbackWorker,
-    new RegExp(packagedSuccessAcceptance, 'u'),
-  );
-  assert.doesNotMatch(
-    faultRollbackWorker,
-    new RegExp(localPilotBundle, 'u'),
-  );
-  assert.match(faultRollbackAggregator, /timeout-minutes: 2/u);
-  assert.match(
-    faultRollbackAggregator,
-    /needs: installer-w6b2-fault-rollback-windows-run/u,
-  );
-  assert.doesNotMatch(faultRollbackAggregator, /actions\/checkout@/u);
-  assert.equal(ci.split('fetch-depth: 0').length - 1, 4);
-  assert.equal(ci.split(legacyAcceptance).length - 1, 1);
-  assert.equal(ci.split(packagedSuccessAcceptance).length - 1, 1);
-  assert.equal(ci.split(faultRollbackAcceptance).length - 1, 1);
-});
-
 test('uses runtime-independent SHA-256 APIs in Windows installer gates', async () => {
   const scripts = await Promise.all(
     [
       'scripts/verifyLockedInstallerRestore.ps1',
-      'scripts/windowsInstallerTestSupport.ps1',
-      'scripts/windowsInstallerUpgradeAttempt.ps1',
-      'scripts/testWindowsInstallerUpgrade.ps1',
     ].map((path) => readFile(join(installerDirectory, path), 'utf8')),
   );
   const source = scripts.join('\n');
@@ -212,24 +70,6 @@ test('uses runtime-independent SHA-256 APIs in Windows installer gates', async (
   assert.doesNotMatch(source, /Get-FileHash/);
   assert.match(source, /System\.Security\.Cryptography\.SHA256/);
   assert.match(source, /System\.IO\.File.*OpenRead/);
-});
-
-test('keeps empty installer directory inventories as comparable arrays', async () => {
-  const support = await readFile(
-    join(installerDirectory, 'scripts/windowsInstallerTestSupport.ps1'),
-    'utf8',
-  );
-
-  assert.match(support, /return ,@\(\)/);
-  assert.match(support, /return ,\$inventory/);
-  const inventoryComparisonSource = support.slice(
-    support.indexOf('function Assert-EkyInventoryEqual'),
-    support.indexOf('function Assert-EkyInstalledPayload'),
-  );
-  assert.equal(
-    (inventoryComparisonSource.match(/AllowEmptyCollection/g) ?? []).length,
-    2,
-  );
 });
 
 test('keeps direct downgrade blocked and rollback outside MSI authoring', async () => {

@@ -12,6 +12,8 @@ import { gunzipSync } from 'node:zlib';
 import { request as requestFactory } from '@playwright/test';
 
 import { readElectronOperationalEvents } from '../../src/assertions/readElectronOperationalEvents.js';
+import { readElectronStartupObservation } from '../../src/electron/readElectronMainState.js';
+import { parseElectronE2eStartupObservation } from '../../../desktop/e2e/electronE2eStartupObservation.js';
 import {
   closeElectronPdfPreviews,
   killElectronBackendUnexpectedly,
@@ -39,6 +41,7 @@ import { readElectronE2eActiveWorkspace } from '../../src/environment/readElectr
 import { resolveElectronE2eExecutable } from '../../src/environment/resolveElectronE2eExecutable.js';
 import { waitForLoopbackPortRelease } from '../../src/environment/waitForLoopbackPortRelease.js';
 import { test, expect } from '../../src/fixtures/isolatedElectronTest.js';
+import { captureElectronStartupObservation } from '../../src/fixtures/launchElectronRuntime.js';
 import { createApprovedInvoiceWithPdf } from '../../src/journeys/invoicingApiJourney.js';
 
 const repositoryRoot = resolve(import.meta.dirname, '../../../..');
@@ -273,6 +276,30 @@ test('DESK-PDF-001 @critical opens one isolated invoice PDF preview', async ({
   await expect.poll(() => e2eElectron.electronApp.windows().length).toBe(1);
 });
 
+test('DESK-STARTUP-OBSERVATION-001 @diagnostic-contract reads bounded main checkpoints through the existing private channel', async ({
+  e2eElectron,
+}) => {
+  const startup = parseElectronE2eStartupObservation(
+    await readElectronStartupObservation(e2eElectron.electronApp),
+  );
+  expect(startup).toBeDefined();
+  expect(startup?.truncated).toBe(false);
+  const checkpoints = startup!.checkpoints.map((entry) => entry.checkpoint);
+  expect(checkpoints.filter((checkpoint) => checkpoint === 'firstWindowCreated'))
+    .toHaveLength(1);
+  let previousIndex = -1;
+  for (const checkpoint of [
+    'backendStartRequested', 'backendForkRequested', 'backendForkReturned',
+    'backendProcessSpawned', 'backendStartMessageSent', 'backendReadyReceived',
+    'backendReady', 'firstWindowCreated',
+  ] as const) {
+    expect(checkpoints.filter((value) => value === checkpoint)).toHaveLength(1);
+    const index = checkpoints.indexOf(checkpoint);
+    expect(index).toBeGreaterThan(previousIndex);
+    previousIndex = index;
+  }
+});
+
 test('DESK-SECRET-001 @critical @security persists only encrypted SMTP secret state', async ({
   e2eElectron,
 }) => {
@@ -499,7 +526,20 @@ test('DESK-RESTART-001 @critical @recovery preserves data and rotates the runtim
   });
   expect(createResponse.status()).toBe(201);
 
+  let pendingReadSettled = false;
+  const finishStartupCapture = captureElectronStartupObservation(() =>
+    e2eElectron.electronApp.evaluate(() => {
+      Object.assign(globalThis, { __EKY_E2E_BLOCKED_STARTUP_READ__: true });
+      return new Promise<unknown>(() => undefined);
+    }).finally(() => { pendingReadSettled = true; }),
+  );
+  expect(await e2eElectron.electronApp.evaluate(() => (
+    globalThis as typeof globalThis & { __EKY_E2E_BLOCKED_STARTUP_READ__?: boolean }
+  ).__EKY_E2E_BLOCKED_STARTUP_READ__)).toBe(true);
+  expect(pendingReadSettled).toBe(false);
   const restart = await e2eElectron.restart();
+  expect(pendingReadSettled).toBe(true);
+  expect(finishStartupCapture()).toEqual({ status: 'unavailable' });
   expect(e2eElectron.runtime.runtimeInstanceId).not.toBe(
     restart.previousRuntimeInstanceId,
   );

@@ -22,8 +22,9 @@ a new runtime session and machine-local secret continuity with synthetic data.
 A restricted per-user x64 MSI prototype is implemented. Its install, repair,
 uninstall, two-version major upgrade, downgrade rejection, and Windows
 Installer binary rollback boundaries are verified with synthetic data. The
-update coordinator, code signing, and automatic update path remain
-unimplemented. The unpacked `out/Eky-win32-x64` directory is still a
+guarded local update and first-start coordinators are implemented; their
+release gates remain separate from code signing and future network updates.
+The unpacked `out/Eky-win32-x64` directory is still a
 development/package artifact rather than an automatically updating release.
 
 ## Commands
@@ -39,16 +40,23 @@ pnpm --filter @eky/desktop profile:audit
 pnpm --filter @eky/desktop installer:test
 pnpm --filter @eky/desktop installer:build
 pnpm --filter @eky/desktop installer:inspect -- -MsiPath <path-to-msi>
-pnpm --filter @eky/desktop installer:lifecycle -- -MsiPath <path-to-msi> -PayloadRoot <path-to-payload> -ProductCode <product-code>
 pnpm --filter @eky/desktop installer:release
 pnpm --filter @eky/desktop installer:verify-restore-lock
 pnpm --filter @eky/desktop installer:verify-release
-pnpm --filter @eky/desktop installer:release-lifecycle
-pnpm --filter @eky/desktop installer:build-upgrade-fixture
-pnpm --filter @eky/desktop installer:upgrade -- -FixturePath <path-to-fixture.json>
+pnpm --filter @eky/desktop installer:v2-artifact:build --artifact-root <new-absolute-directory> --summary-path <new-absolute-summary-path>
+pnpm --filter @eky/desktop installer:v2-upgrade-artifact:build --artifact-root <new-absolute-directory> --summary-path <new-absolute-summary-path>
 ```
 
 The unpacked spike is created under `apps/desktop/out/Eky-win32-x64`.
+
+Installer acceptance now uses the named V2 clean, upgrade, historical legacy,
+workspace success and workspace fault commands. Retired W6 runners and the
+old PowerShell upgrade command have no fallback route. Their shared builders,
+profile fixtures, artifact validators and production rollback launcher tests
+remain. Each V2 command requires its matching descriptor, expected hash/build
+revision, mandatory result file and external caller-result verifier. See
+`docs/architecture/windows-installer-acceptance-harness-v2.md` for the exact
+family commands, invariant transfer map and pending main/required-check gates.
 
 `package:windows` remains the development packaging command and may produce a
 dirty, explicitly non-distributable build. It uses the fixed, main-process
@@ -72,9 +80,43 @@ engineering prototype and must not be distributed for real-data use.
 builds the MSI exactly once, runs the read-only MSI inspector, and then writes
 a closed `.manifest.json` sidecar bound to the exact MSI filename, release
 identity, Git revision, byte size, and SHA-256. `installer:verify-release`
-rechecks the same bytes without rebuilding, and `installer:release-lifecycle`
-uses only that verified MSI for install, repair, and uninstall checks. The CI
-gate does not yet upload, sign, or distribute the prototype artifacts.
+rechecks the same bytes without rebuilding. The canonical release lifecycle
+now uses the existing V2 producer and clean command below. It replaces the
+old `installer:lifecycle` and `installer:release-lifecycle` commands, not their
+shared package builders or validators. Do not run `package:windows:pilot` or
+`installer:release` again after the V2 producer: it already invokes them once.
+
+On a clean release revision, use a new private absolute artifact directory
+and summary path. Restore the locked WiX toolchain first. The following
+PowerShell sequence uses the producer's exact MSI bytes; the result path must
+retain the shown invocation-specific basename. Run only in the documented
+isolated acceptance environment with no pre-existing Eky installation.
+
+```powershell
+pnpm --filter @eky/desktop installer:verify-restore-lock
+if ($LASTEXITCODE -ne 0) { throw 'INSTALLER_RESTORE_FAILED' }
+pnpm --filter @eky/desktop installer:v2-artifact:build --artifact-root $artifactRoot --summary-path $summaryPath
+if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_ARTIFACT_BUILD_FAILED' }
+$summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
+$descriptorPath = Join-Path $artifactRoot 'clean-install-artifact.json'
+$resultPath = Join-Path $env:TEMP ('eky-clean-caller-' + [guid]::NewGuid().ToString('N') + '\result.json')
+pnpm --filter @eky/desktop installer:v2-clean --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $summary.descriptorSha256 --expected-build-revision $summary.buildRevision --result-path $resultPath
+$commandExit = $LASTEXITCODE
+pnpm --filter @eky/desktop exec node installer/windows-acceptance-harness/verifyCleanCallerResult.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $summary.descriptorSha256 --expected-build-revision $summary.buildRevision --result-path $resultPath --command-exit $commandExit
+if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_CLEAN_LIFECYCLE_FAILED' }
+pnpm --filter @eky/desktop installer:v2-artifact:verify --artifact-root $artifactRoot --expected-descriptor-sha256 $summary.descriptorSha256 --expected-build-revision $summary.buildRevision
+if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_ARTIFACT_VERIFICATION_FAILED' }
+pnpm --filter @eky/desktop installer:verify-release
+if ($LASTEXITCODE -ne 0) { throw 'INSTALLER_RELEASE_VERIFICATION_FAILED' }
+```
+
+The command requires install, damaged-payload repair, uninstall, reinstall,
+final uninstall, unchanged normal profile, exact payload and registration,
+real process exit, and the bound caller result. Unverified cleanup retains
+private evidence and fails the run. The producer's temporary bundle check is
+not a user release. V2 CI transfers only its strict short-lived artifact to
+isolated consumers; user delivery still requires the separate final release
+gates, release-candidate smoke and bundle verification without rebuilding.
 
 The locked WiX restore runs twice and rejects any `packages.lock.json` drift.
 Only the documented per-user `ICE91` warning is suppressed; every other WiX
@@ -88,8 +130,8 @@ not publisher trust. A future signed release must sign before creating the
 final hash and manifest, and all lifecycle tests must then use those exact
 signed bytes.
 
-The current application and Windows Installer version is the numeric SemVer
-`0.2.6`.
+The application version is owned by `package.json`; the matching Windows
+Installer version is validated against `installer/installer-release.json`.
 Release maturity is expressed by the `pilot` channel and release gates, not by
 an `alpha` suffix.
 

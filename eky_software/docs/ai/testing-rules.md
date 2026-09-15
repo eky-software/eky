@@ -51,6 +51,14 @@ Checkpoint-kadenssi ei vähennä GitHubin required check -portteja. CI ajaa
 edelleen sille dokumentoidut merge-portit riippumatta paikallisen työn
 checkpoint-jaosta.
 
+Raskaan acceptance-matriisin CI-kadenssi erotetaan tavallisesta moduuli-PR:n
+palautesyklistä. Nopeiden porttien pitää antaa palaute jokaisesta muutoksesta,
+mutta installer-, packaged-, legacy- ja fault-matriisit ajetaan vain niiden
+suojaaman riskipinnan muutoksista sekä kokonaisina `main`-, yö-, manuaali- ja
+release-portteina. Required checkin nimi ja aggregaattorin terminal-tulos
+pidetään vakaana myös silloin, kun raskas alijoukko on riskiluokituksen vuoksi
+ohitettu.
+
 Seuraava checkpoint aloitetaan vain tunnetulta vihreältä baselinelta. Jos
 edellisen checkpointin paikallinen pakollinen testi tai sen täsmällisen
 commitin vaadittu GitHub-tarkistus on punainen, peruttu, flaky tai vielä
@@ -98,6 +106,74 @@ desktop-paketin omistuksessa.
 Yleistä `test-utils`-kaatopaikkaa ei luoda. Toistuva testi-infrastruktuuri
 irrotetaan vasta todelliseen tarpeeseen ja nimetään vastuun mukaan.
 
+Testi-infrastruktuurissa noudatetaan lisäksi seuraavia vastuurajoja:
+
+- yksi prosessipuu saa yhden timeout- ja emergency cleanup -omistajan
+- scenario worker ei saa rakentaa fixtureä tai omistaa supervisorin cleanupia
+- build, prosessiajo, postcondition-verifiointi ja fixture-cleanup ovat eri
+  vastuita
+- sama immutable fixture rakennetaan kerran yhtä hyväksyntämatriisia varten
+- stdout ja stderr ovat diagnostiikkaa, eivät readiness- tai terminal-
+  kontrolliprotokolla
+- pitkä testi pilkotaan vain tunnistettujen vastuiden perusteella, ei rivimäärän
+  vuoksi
+- testiä ei poisteta ennen kuin sen suojaama invariantti on nimetty ja
+  korvaava testi on vihreä samalla commitilla
+
+Windows installer -harnessin tavoiterakenne ja migraatio määritellään
+`docs/architecture/windows-installer-acceptance-harness-v2.md`-dokumentissa.
+
+V2.8:n riskiluokituksen ja tulosten yhdistämisen kohdesopimukset ajetaan
+kanonisesta lähdejuuresta komennolla `pnpm test:ci`. Repositoryjuuren
+`.github/scripts/` omistaa vain CI-politiikan, ei skenaarioita, niiden
+prosesseja tai artifactien rakentamista. `ci-cadence-contracts.yml` todistaa
+sopimukset Linuxissa ja Windowsissa sekä kutsuu nykyiset V2-workflowit saman
+validoidun riskisuunnitelman mukaan. Vakaa `V2 acceptance` vaatii saman ajon
+ja yrityksen kaikki valitut jobit, toistot ja pakolliset testivaiheet; pelkkä
+matriisin osittainen onnistuminen ei riitä. Main-, ajastettu ja manuaalinen
+release-valmistelun ajo säilyvät täysinä. Feature-push ei toista PR:n V2-matriisia.
+Valmisteltu cutover poistaa korvatut W6-komennot ja niiden suorat CI-jobit.
+`ci.yml` jää saman riskisuunnitelman reusable coreksi; suora feature-push tai
+PR ei käynnistä sen rinnalle toista raskasta matriisia. Säilyvät rakentajat,
+fixturet ja turvallisuustarkistukset on nimetty V2-suunnitelman siirtokartassa.
+Lopullisen poistorevision hyväksyntä sekä required check -asetusten ja mainin
+vaihto ovat erilliset, vielä avoimet käyttöönottoportit. Paikallinen diffi
+ei muuta repositoryn suojauksia.
+
+V2.5:n omistajan hyväksymä vaihekohtainen ympäristöraja käyttää kahta
+eristettyä Windows CI -consumeria samalle build-once-artifactille kahden
+paikallisen packaged-ajon sijaan. Paikalliset sopimustestit ja muut vaiheelle
+sovitut portit säilyvät pakollisina. Rajaus ei muuta testien turvallisuusehtoja,
+epäonnistuneiden ajojen tuloksia, muiden vaiheiden hyväksyntää tai release-
+portteja. Täsmällinen sopimus ja revision näyttö ovat samassa V2-suunnitelmassa.
+
+Omistaja on hyväksynyt vastaavan rajauksen erikseen myös V2.6:n ja V2.7:n
+vaihehyväksyntään. Kumpikin vaihe tarvitsee omat kaksi eristettyä GitHub
+Windows -consumeriaan, jotka käyttävät saman producerin samoja varmennettuja
+artifact-tavuja ensimmäisellä yrityksellä. Paikalliset sopimustestit,
+fail-closed-tulokset, single-link-tarkistus, profiilin muuttumattomuus ja
+tarkka cleanup säilyvät. Tämä ei hyväksy vaiheita etukäteen eikä muuta koko
+V2:n käyttöönotto- tai julkaisuportteja.
+
+Koko V2:n käyttöönotolle on tämän jälkeen hyväksytty erillinen ympäristöpäätös:
+kaksi täydellistä normaalia GitHub-kierrosta samasta lopullisesta
+integraatiorevisiosta korvaa aiemmat kaksi paikallista täyttä MSI/release-
+kierrosta. GitHub-kierroksia vaaditaan yhteensä kaksi, ei neljää. Paikalliset
+soveltuvat testit, sopimustestit, typecheck ja build säilyvät. Testiperheitä,
+skenaarioita, toistoja, turvallisuus- tai siivousvaatimuksia ei poisteta.
+Tarkka sopimus, required-check-vaihdon ehdot ja merge-commitin oma portti
+ovat kanonisessa V2-suunnitelmassa; vanhojen ajokierrosten osia ei yhdistetä
+uuden revision hyväksynnäksi.
+
+Testiraportin julkaisuraja määräytyy
+`docs/architecture/security-principles.md`-dokumentista. Omistajan koneen
+ohjelma-, ajuri- ja ympäristöhavainnot sekä yksityiskohtaiset paikalliset
+mittaukset pidetään Gitistä ohitettuina; niitä ei kopioida yhteiseen
+suunnitelmaan, PR:ään tai CI-artifactiin edes ilman nimiä tai polkuja.
+Julkinen hyväksyntätila ja avoimet testisopimukset raportoidaan silti
+rehellisesti. Yksityisyys ei muuta epäonnistunutta tai varmentamatonta ajoa
+onnistumiseksi. Diagnostiikan lupa ei anna lupaa tulosten julkaisemiseen.
+
 ## Tiedostoidentiteetti Testeissä
 
 Packaged-, installer-, rollback- ja release-fixturet muodostavat itsenäiset
@@ -113,6 +189,15 @@ toiminnon semantiikka. Tällöin lähde, kohde, containment, linkkimäärä,
 same-volume-ehto, rollback ja virhetilat validoidaan erikseen. Turvallisuustesti
 saa luoda haitallisen hardlinkin todistaakseen torjunnan, mutta se ei saa käyttää
 sitä release-payloadin monistamiseen.
+
+V2.5:n `WindowContract.exe`-GUI-fixturen omistajan hyväksymässä sopimuksessa
+ulkopuolinen ajonaikainen linkkimäärän muutos on erillinen havainto, ei yksin
+ikkunan sulkemistestin hylkäys. Alkuperä, kanoninen polku ja testijuurisidos,
+regular-file-tyyppi, symlink-raja, root/file-id, koko, SHA-256 sekä toiminta- ja
+cleanup-tulokset tarkistetaan edelleen. Tämä ei salli harnessin tekemää
+executable-hardlink-kloonausta eikä muuta tuotannon tai release-artifactin
+linkkipolitiikkaa. Rajaus ja näyttö ovat samassa V2-harness-suunnitelmassa;
+vendor-allowlistiä ei lisätä normaaleihin testeihin.
 
 ## Mitä testataan aina
 
@@ -193,9 +278,16 @@ Jos autentikointi, permission-malli tai audit trail ei ole vielä toteutettu, te
 
 ## Automaattinen CI-Tarkistus
 
-GitHub Actions ajaa testit ja staattiset tarkistukset automaattisesti `antsa`-
-ja `main`-haarojen push-tapahtumissa sekä `main`-haaraan kohdistuvissa pull
-requesteissa.
+V2:n GitHub Actions -kytkentä ajaa testit ja staattiset tarkistukset pull
+requesteissa riskisuunnitelman mukaan sekä täysinä `main`-pusheissa,
+ajastetusti ja käsin käynnistetyissä kokonaisajoissa. Feature-push ei aja
+PR:n rinnalle toista raskasta matriisia. `ci.yml` on kutsuttu core-työnkulku,
+ei erillinen `antsa`- tai PR-triggeri. Sen erillinen käsikäynnistys
+`electron_diagnostic=true` ajaa vain nykyisen Electron-jobin paketoinnin,
+packaged smoken, critical-polut ja käynnistyshavainnon kytkentätestin.
+Tämä rajattu diagnoosi ei tuota `V2 acceptance` -tulosta eikä korvaa normaalia
+kokonaiskierrosta. Reusable-kutsun pakollinen riskisuunnitelma säilyy;
+myös manuaalinen V2-kokonaisajo käyttää sitä muuttumattomana.
 
 CI:n vähimmäisportti on:
 
@@ -210,8 +302,8 @@ pnpm --filter @eky/desktop build
 
 Pull requesteissa, `main`-pusheissa ja käsin käynnistetyissä workflow-ajoissa
 CI ajaa lisäksi eristetyn system security E2E -joukon ja Chromiumin kriittiset
-web-käyttäjäpolut. Näitä raskaita E2E-jobeja ei ajeta erikseen jokaisessa
-`antsa`-pushissa.
+web-käyttäjäpolut. Electron- ja Windows-perheet valitaan samasta suljetusta
+riskisuunnitelmasta; täydet main-, ajastetut ja manuaaliset ajot säilyvät.
 
 CI täydentää paikallista testausta, mutta ei korvaa sitä. Muutos testataan
 paikallisesti ennen commitia silloin, kun paikallinen ympäristö sen sallii.
@@ -242,12 +334,15 @@ kirjoita repositoryyn. Päivittäinen cron on UTC-ajassa eikä seuraa
 automaattisesti Europe/Helsinki-kesäaikaa.
 
 Dependabotin avaama päivitys-PR käy läpi saman riskiperusteisen paikallisen ja
-CI-testauksen kuin käsin tehty päivitys. Vähimmäisportteina ovat
-`Test, typecheck and build`, `System security E2E` ja `Web critical E2E`.
+CI-testauksen kuin käsin tehty päivitys. Core säilyttää
+`Test, typecheck and build`, `System security E2E`- ja `Web critical E2E`
+-vastuut myös reusable-workflowin prefiksoiduissa jobeissa.
 Electron-, native addon- ja Windows-paketointimuutoksissa ajetaan lisäksi
 `Windows Electron critical E2E`, Windows package sekä packaged smoke sovitun
-testimatriisin mukaan. Samat neljä nimettyä required check -porttia ovat
-käytössä, kun muutoksen riskit koskevat kaikkia niiden suojaamia rajoja.
+testimatriisin mukaan. Käyttöönotossa pakolliset tarkistukset vaihdetaan
+hyväksytyin ehdoin yhdistelmään `V2 acceptance` + `Audit dependencies`;
+koonti todentaa kaikki riskin valitsemat jobit, vaiheet ja toistot. Ennen
+asetusten varmennettua vaihtoa mainin nykyiset required checkit säilyvät.
 
 Dependabot version updates syntyy `.github/dependabot.yml`-tiedoston
 viikkorytmistä eikä niitä mergeytetä automaattisesti. Security updates ei
@@ -404,12 +499,13 @@ Backup-, restore-, installer- tai update-polun onnistumista ei todisteta vain
 mockilla tai selain-E2E:llä. Windowsin tiedosto-, prosessi-, `safeStorage`- ja
 paketointirajat vaativat packaged-testin.
 
-Packaged-testin ulomman watchdogin pitää käyttää yhtä koko omistetun
-prosessipuun siivouksen kattavaa deadlinea. Jos täsmällinen prosessipuun
-siivous epäonnistuu, tulos pysyy virheenä, mutta wrapperin pitää lisäksi
-terminalisoida vain itse käynnistämänsä suora child-kahva. CI ei saa jäädä
-ulkoiseen aikakatkaisuun ilman turvallista terminal-tulosta eikä
-child-kahvan vapautusta saa tulkita onnistuneeksi siivoukseksi.
+Packaged-testin supervisor käyttää yhtä koko omistetun prosessipuun siivouksen
+kattavaa deadlinea. Saman puun ympärille ei lisätä sisäkkäistä command-,
+acceptance- tai scenario-watchdogia. Jos täsmällinen prosessipuun siivous
+epäonnistuu, tulos pysyy virheenä. CI ei saa jäädä ulkoiseen aikakatkaisuun
+ilman turvallista terminal-tulosta eikä child-kahvan vapautusta saa tulkita
+onnistuneeksi siivoukseksi. Business-postconditionit tarkistetaan erillisessä
+read-only-verifierissä vasta todistetun `processTreeAbsent`-tilan jälkeen.
 
 Restorea muuttava packaged-testi käynnistää vähintään kaksi eri
 Electron-prosessia samaa synteettistä palautettua profiilia vasten. Sen pitää

@@ -10,6 +10,8 @@ import {
 } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 
+import type { LocalUpdatePackageCacheFailureStage } from '../update/localUpdatePackageCache.js';
+
 export const W6B2_PACKAGED_PROOF_SWITCH = 'w6b2-packaged-proof';
 export const W6B2_PACKAGED_PROOF_TOKEN_ENV = 'EKY_W6B2_PROOF_TOKEN';
 export const W6B2_PACKAGED_PROOF_MARKER_FILE =
@@ -62,6 +64,40 @@ export const w6b2PackagedFaultPhases = Object.freeze([
 export type W6b2PackagedFaultPhase =
   (typeof w6b2PackagedFaultPhases)[number];
 
+const faultSessionPhases: Readonly<
+  Record<W6b2PackagedFaultScenario, readonly W6b2PackagedFaultPhase[]>
+> = Object.freeze({
+  preUpdateRecoveryPointFailure: Object.freeze(['sourceHandoff'] as const),
+  activeWorkspaceFirstStartFailure: Object.freeze(['sourceHandoff', 'rollbackFirstStart'] as const),
+  acceptanceInterruption: Object.freeze(['sourceHandoff', 'targetAcceptanceRestart'] as const),
+  passiveWorkspaceMigrationFailure: Object.freeze([
+    'sourceHandoff', 'targetFirstStart', 'switchToB', 'passiveWorkspaceRecovery',
+  ] as const),
+  binaryRollbackFailure: Object.freeze(['sourceHandoff'] as const),
+});
+
+export function getW6b2PackagedFaultSessionPhases(
+  scenario: W6b2PackagedFaultScenario,
+): readonly W6b2PackagedFaultPhase[] {
+  return faultSessionPhases[parseFaultScenario(scenario)];
+}
+
+export function assertW6b2PackagedFaultSessionProbe(
+  configuration: Readonly<W6b2PackagedFaultProofConfiguration>,
+): void {
+  if (
+    configuration.controlFormatVersion !== 2 || configuration.enabled !== true ||
+    typeof configuration.sessionProbeNonce !== 'string' ||
+    !proofTokenPattern.test(configuration.sessionProbeNonce) ||
+    !w6b2PackagedFaultScenarios.includes(configuration.faultScenario) ||
+    !getW6b2PackagedFaultSessionPhases(configuration.faultScenario).includes(configuration.phase) ||
+    !(['source', 'target'] as const).includes(configuration.role) ||
+    !roleAllowsFaultPhase(configuration.role, configuration.phase)
+  ) {
+    throw new Error('W6B2_PROOF_SESSION_VALIDATION_FAILED');
+  }
+}
+
 export interface W6b2PackagedProofBootstrapConfiguration {
   readonly enabled: boolean;
   readonly root: string | undefined;
@@ -70,6 +106,7 @@ export interface W6b2PackagedProofBootstrapConfiguration {
 
 export interface W6b2PackagedSuccessProofConfiguration {
   readonly controlFormatVersion: 1;
+  readonly sessionProbeNonce?: string;
   readonly enabled: true;
   readonly phase: W6b2PackagedProofPhase;
   readonly resultFilePath: string;
@@ -82,6 +119,7 @@ export interface W6b2PackagedSuccessProofConfiguration {
 
 export interface W6b2PackagedFaultProofConfiguration {
   readonly controlFormatVersion: 2;
+  readonly sessionProbeNonce?: string;
   readonly enabled: true;
   readonly faultScenario: W6b2PackagedFaultScenario;
   readonly phase: W6b2PackagedFaultPhase;
@@ -131,7 +169,27 @@ export type W6b2PackagedProofResult =
   | W6b2PackagedSuccessProofResult
   | W6b2PackagedFaultProofResult;
 
+export const w6b2PackagedPackageStageErrorCodes = Object.freeze({
+  current: Object.freeze({
+    sourceValidation: 'W6B2_FAULT_PROOF_CURRENT_SOURCE_VALIDATION_FAILED',
+    cachePreparation: 'W6B2_FAULT_PROOF_CURRENT_CACHE_PREPARATION_FAILED',
+    packageCopy: 'W6B2_FAULT_PROOF_CURRENT_PACKAGE_COPY_FAILED',
+    stagedValidation: 'W6B2_FAULT_PROOF_CURRENT_STAGED_VALIDATION_FAILED',
+    slotPublication: 'W6B2_FAULT_PROOF_CURRENT_SLOT_PUBLICATION_FAILED',
+    slotValidation: 'W6B2_FAULT_PROOF_CURRENT_SLOT_VALIDATION_FAILED',
+  }),
+  candidate: Object.freeze({
+    sourceValidation: 'W6B2_FAULT_PROOF_CANDIDATE_SOURCE_VALIDATION_FAILED',
+    cachePreparation: 'W6B2_FAULT_PROOF_CANDIDATE_CACHE_PREPARATION_FAILED',
+    packageCopy: 'W6B2_FAULT_PROOF_CANDIDATE_PACKAGE_COPY_FAILED',
+    stagedValidation: 'W6B2_FAULT_PROOF_CANDIDATE_STAGED_VALIDATION_FAILED',
+    slotPublication: 'W6B2_FAULT_PROOF_CANDIDATE_SLOT_PUBLICATION_FAILED',
+    slotValidation: 'W6B2_FAULT_PROOF_CANDIDATE_SLOT_VALIDATION_FAILED',
+  }),
+}) satisfies Readonly<Record<'current' | 'candidate', Readonly<Record<LocalUpdatePackageCacheFailureStage, string>>>>;
+
 export type W6b2PackagedFaultProofErrorCode =
+  | (typeof w6b2PackagedPackageStageErrorCodes)['current' | 'candidate'][LocalUpdatePackageCacheFailureStage]
   | 'W6B2_FAULT_PROOF_EXPECTED_FAULT_NOT_OBSERVED'
   | 'W6B2_FAULT_PROOF_HANDOFF_FAILED'
   | 'W6B2_FAULT_PROOF_JOURNAL_STATE_INVALID'
@@ -181,6 +239,7 @@ const proofTokenPattern = /^[0-9a-f]{64}$/u;
 const maximumControlBytes = 4 * 1024;
 const markerKeys = ['appVersion', 'formatVersion', 'role'] as const;
 const controlKeys = ['formatVersion', 'phase'] as const;
+const sessionControlKeys = ['formatVersion', 'phase', 'sessionProbeNonce'] as const;
 const faultControlKeys = [
   'faultScenario',
   'formatVersion',
@@ -207,6 +266,8 @@ const faultFailureResultKeys = [
   'status',
 ] as const;
 const faultResultErrorCodes = new Set<W6b2PackagedFaultProofErrorCode>([
+  ...Object.values(w6b2PackagedPackageStageErrorCodes.current),
+  ...Object.values(w6b2PackagedPackageStageErrorCodes.candidate),
   'W6B2_FAULT_PROOF_EXPECTED_FAULT_NOT_OBSERVED',
   'W6B2_FAULT_PROOF_HANDOFF_FAILED',
   'W6B2_FAULT_PROOF_JOURNAL_STATE_INVALID',
@@ -324,6 +385,7 @@ export async function readW6b2PackagedProofConfiguration(input: {
       ...paths,
       controlFormatVersion: 1,
       phase: control.phase,
+      ...('sessionProbeNonce' in control ? { sessionProbeNonce: control.sessionProbeNonce } : {}),
     });
   }
   return Object.freeze({
@@ -331,6 +393,7 @@ export async function readW6b2PackagedProofConfiguration(input: {
     controlFormatVersion: 2,
     faultScenario: control.faultScenario,
     phase: control.phase,
+    ...('sessionProbeNonce' in control ? { sessionProbeNonce: control.sessionProbeNonce } : {}),
   });
 }
 
@@ -469,11 +532,13 @@ type W6b2PackagedProofControl = Readonly<
   | {
       readonly formatVersion: 1;
       readonly phase: W6b2PackagedProofPhase;
+      readonly sessionProbeNonce?: string;
     }
   | {
       readonly faultScenario: W6b2PackagedFaultScenario;
       readonly formatVersion: 2;
       readonly phase: W6b2PackagedFaultPhase;
+      readonly sessionProbeNonce?: string;
     }
 >;
 
@@ -487,11 +552,23 @@ function parseControl(value: unknown): W6b2PackagedProofControl {
       phase: parsePhase(value.phase),
     });
   }
-  if (value.formatVersion === 2 && hasExactKeys(value, faultControlKeys)) {
+  if (value.formatVersion === 1 && hasExactKeys(value, sessionControlKeys) &&
+    typeof value.sessionProbeNonce === 'string' && proofTokenPattern.test(value.sessionProbeNonce)) {
+    return Object.freeze({ formatVersion: 1, phase: parsePhase(value.phase), sessionProbeNonce: value.sessionProbeNonce });
+  }
+  if (value.formatVersion === 2 &&
+    (hasExactKeys(value, faultControlKeys) || hasExactKeys(value, [...faultControlKeys, 'sessionProbeNonce']))) {
     const faultScenario = parseFaultScenario(value.faultScenario);
     const phase = parseFaultPhase(value.phase);
     if (!faultScenarioAllowsPhase(faultScenario, phase)) {
       throw new Error('W6B2_PROOF_CONFIGURATION_INVALID');
+    }
+    if (Object.hasOwn(value, 'sessionProbeNonce')) {
+      if (typeof value.sessionProbeNonce !== 'string' || !proofTokenPattern.test(value.sessionProbeNonce) ||
+        !getW6b2PackagedFaultSessionPhases(faultScenario).includes(phase)) {
+        throw new Error('W6B2_PROOF_CONFIGURATION_INVALID');
+      }
+      return Object.freeze({ faultScenario, formatVersion: 2, phase, sessionProbeNonce: value.sessionProbeNonce });
     }
     return Object.freeze({ faultScenario, formatVersion: 2, phase });
   }

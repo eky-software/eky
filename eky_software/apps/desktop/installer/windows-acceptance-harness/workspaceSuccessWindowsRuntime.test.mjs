@@ -1,0 +1,750 @@
+import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import { access, link, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { basename, dirname, resolve } from 'node:path';
+import { createRequire } from 'node:module';
+import test from 'node:test';
+
+import { WORKSPACE_SUCCESS_PROFILE_ERRORS, WORKSPACE_SUCCESS_PROOF_ERRORS,
+  WORKSPACE_INSTALLATION_INSPECTION_ERRORS as inspectionErrors, workspaceSuccessErrorCode } from './workspaceSuccessContracts.mjs';
+import { WORKSPACE_SUCCESS_RUN_ROOT_PREFIX, workspaceSuccessRunContext } from './workspaceSuccessRunFixture.mjs';
+import { WORKSPACE_FAULT_SCENARIO, workspaceFaultErrorCode } from './workspaceFaultContracts.mjs';
+import { writeW6b2PackagedSuccessPhase } from '../scripts/w6b2PackagedSuccessRunFixture.mjs';
+
+const profileProtocol = await import(new URL('../../e2e-dist/e2e/w6b2PackagedWorkspaceProfileCommand.js', import.meta.url));
+const proofProtocol = await import(new URL('../../e2e-dist/src/main/w6b2PackagedProof.js', import.meta.url));
+const { createDesktopProfilePaths } = await import(new URL('../../e2e-dist/src/runtime/desktopProfilePaths.js', import.meta.url));
+const { deriveWorkspaceRoot } = await import(new URL('../../e2e-dist/src/workspaces/registry/deriveWorkspaceRoot.js', import.meta.url));
+const { createProfileSnapshotRuntimePaths } = await import(new URL('../../e2e-dist/src/profileBackup/profileSnapshotRuntimePaths.js', import.meta.url));
+
+function workspaceSnapshotFixturePaths(root) {
+  const artifact = { source: { manifest: { packageFilename: 'source.msi' } },
+    target: { manifest: { packageFilename: 'target.msi' } } };
+  const context = workspaceSuccessRunContext(resolve(root, 'scenario/worker-request.json'), {
+    fixtureRoot: resolve(root, 'fixture'), runNonce: 'a'.repeat(64),
+  }, artifact);
+  const id = '11111111-1111-4111-8111-111111111111';
+  const workspace = deriveWorkspaceRoot(resolve(context.proofRoot, 'user-data'), id, 1);
+  const profile = createDesktopProfilePaths(workspace.workspaceRoot);
+  const snapshot = resolve(createProfileSnapshotRuntimePaths(profile.runtimeRoot).stagingRoot, id, 'profile.sqlite');
+  return { context, snapshot };
+}
+
+test('consumer layout leaves room for workspace snapshots and their SQLite journal in a user-scoped Windows temp root', {
+  skip: process.platform !== 'win32',
+}, () => {
+  const root = resolve('C:/Users/synthetic-user/AppData/Local/Temp', `${WORKSPACE_SUCCESS_RUN_ROOT_PREFIX}ABCDEF`);
+  const { context, snapshot } = workspaceSnapshotFixturePaths(root);
+  assert.ok(Buffer.byteLength(`${snapshot}-journal`) < 260,
+    'consumer layout exceeds the SQLite snapshot and journal budget');
+  assert.equal(context.proofRoot.startsWith(`${root}\\`), true);
+  assert.equal(context.temporaryRoot.startsWith(`${root}\\`), true);
+});
+
+test('the consumer snapshot path supports a real SQLite backup and integrity check', {
+  skip: process.platform !== 'win32',
+}, async (context) => {
+  const root = await mkdtemp(resolve(await realpath(tmpdir()), WORKSPACE_SUCCESS_RUN_ROOT_PREFIX));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const { snapshot } = workspaceSnapshotFixturePaths(root);
+  const Database = createRequire(new URL('../../../backend/package.json', import.meta.url))('better-sqlite3');
+  const source = new Database(':memory:');
+  try {
+    source.pragma('user_version = 1');
+    await mkdir(dirname(snapshot), { recursive: true });
+    await source.backup(snapshot);
+    const copied = new Database(snapshot, { readonly: true, fileMustExist: true });
+    try {
+      assert.equal(copied.pragma('integrity_check', { simple: true }), 'ok');
+      assert.equal(copied.pragma('user_version', { simple: true }), 1);
+    } finally { copied.close(); }
+
+    // A database filename alone may fit while SQLite cannot open its journal.
+    const oldSuffix = '/profile.sqlite';
+    const oldSnapshot = resolve(root, 'x'.repeat(255 - Buffer.byteLength(root) - oldSuffix.length - 1), 'profile.sqlite');
+    assert.equal(Buffer.byteLength(oldSnapshot), 255);
+    await mkdir(dirname(oldSnapshot), { recursive: true });
+    await assert.rejects(() => source.backup(oldSnapshot), { code: 'SQLITE_CANTOPEN' });
+  } finally { source.close(); }
+});
+
+import {
+  createWorkspaceSuccessWindowsRuntime, runWorkspaceSuccessOwnedCommand,
+  createWorkspaceFaultWindowsRuntime,
+  workspaceSuccessApplicationEnvironment, removeWorkspaceSuccessPreviousResult,
+} from './workspaceSuccessWindowsRuntime.mjs';
+
+async function fixture(context, changes = {}) {
+  const root = await mkdtemp(resolve(await realpath(tmpdir()), 'eky-v26-runtime-contract-'));
+  await mkdir(resolve(root, 'control'));
+  await mkdir(resolve(root, 'result'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const calls = [];
+  let phase = 'sourceHandoff';
+  let operation = 'prepare';
+  const token = 'a'.repeat(64);
+  const revision = 'b'.repeat(40);
+  const environment = { APPDATA: resolve(root, 'roaming'), LOCALAPPDATA: resolve(root, 'local'),
+    SystemRoot: resolve(root, 'system'), TEMP: root, EKY_PRIVATE: 'not forwarded' };
+  const artifact = { source: { productCode: 'SOURCE', installerPath: resolve(root, 'source.msi'),
+    msiProductVersion: '0.2.7', payloadInventory: { identity: 'source' } },
+    target: { productCode: 'TARGET', msiProductVersion: '0.2.8', payloadInventory: { identity: 'target' } } };
+  const inputs = { request: { runNonce: token, buildRevision: revision,
+    ...(changes.faultScenario ? { scenario: WORKSPACE_FAULT_SCENARIO, faultScenario: changes.faultScenario } : {}),
+    artifactDescriptorSha256: 'c'.repeat(64), fixtureRoot: resolve(root, 'artifact') },
+  artifact, temporaryRoot: root, scenarioRoot: root, runFixture: { proofRoot: root, token },
+  profileRuntime: { executablePath: resolve(root, 'electron.exe'), applicationPath: resolve(root, 'profile') },
+  sessionProof: { async start(value) { calls.push({ sessionStarted: value }); return { nonce: 'd'.repeat(64), async finish(value) {
+    calls.push({ sessionFinished: value });
+    if (changes.sessionFailure) throw new Error('sessionProofInvalid');
+  } }; } },
+  proofProtocol: {
+    W6B2_PACKAGED_PROOF_SWITCH: 'w6b2-packaged-proof',
+    W6B2_PACKAGED_ROLLBACK_PROGRESS_FILE: proofProtocol.W6B2_PACKAGED_ROLLBACK_PROGRESS_FILE,
+    createW6b2PackagedProofBootstrapConfiguration: () => ({ root, userDataPath: resolve(root, 'user-data') }),
+    parseW6b2PackagedProofResult: changes.parseProof ?? proofProtocol.parseW6b2PackagedProofResult,
+    getW6b2PackagedFaultSessionPhases: proofProtocol.getW6b2PackagedFaultSessionPhases,
+  },
+  profileProtocol,
+  captureCheckpoint: async (checkpoint) => { calls.push({ checkpoint }); } };
+  let inspectionRole = 'source';
+  let activityQuery = false;
+  const dependencies = {
+    environment,
+    async runCommand(command, args, options) {
+      calls.push({ command, args, options });
+      if (basename(command) === 'powershell.exe' || args.includes('--inspect-product')) {
+        activityQuery = args.some((arg) => arg.endsWith('inspectWorkspaceSuccessMsiActivity.ps1'));
+        inspectionRole = args.includes('{SOURCE}') ? 'source' : 'target';
+        if (changes.inspectionCommand) return changes.inspectionCommand({
+          kind: activityQuery ? 'activity' : inspectionRole, resultPath: args.at(-1),
+        });
+      }
+      if (options.env.EKY_W6B2_PROFILE_OPERATION) operation = options.env.EKY_W6B2_PROFILE_OPERATION;
+      if (changes.faultScenario && basename(command) === 'Eky.exe') {
+        const control = JSON.parse(await readFile(resolve(root, 'control/phase.json'), 'utf8'));
+        phase = control.phase;
+        calls.push({ control });
+      }
+      return changes.exitCode ?? 0;
+    },
+    async readObject(path, errorCode) {
+      if (path.endsWith('w6b2-proof-result.json')) {
+        if (changes.proofUnreadable) throw new Error(errorCode);
+        return changes.proofResult ?? { ...(changes.faultScenario
+          ? { formatVersion: 2, faultScenario: changes.faultScenario } : { formatVersion: 1 }),
+          phase, status: changes.proofStatus?.(phase) ?? 'completed' };
+      }
+      if (path.endsWith(profileProtocol.W6B2_PACKAGED_PROFILE_RESULT_FILE)) {
+        if (changes.profileUnreadable) throw new Error(errorCode);
+        return changes.profileResult ?? { formatVersion: 1, operation, status: 'completed' };
+      }
+      if (activityQuery) return changes.activity?.length ? changes.activity.shift() : { schemaVersion: 1, msiClientCount: 0 };
+      const installedRole = changes.installedRole ?? 'target';
+      const installed = changes.noTarget !== true && inspectionRole === installedRole;
+      const result = { schemaVersion: 1, productState: installed ? 5 : -1,
+        productName: installed ? 'Eky' : null, productVersion: installed ? artifact[installedRole].msiProductVersion : null,
+        localPackagePresent: installed, ownedRegistryExists: true, ekyProcessCount: 0 };
+      return changes.productObservation ? changes.productObservation(inspectionRole, result) : result;
+    },
+    async inspectPayload() { return changes.payload ?? { identity: 'target' }; },
+    async inspectFootprint() { calls.push({ footprint: true });
+      return { installRootExists: true, executableExists: true, shortcutExists: true }; },
+    async verifyArtifact(value) { calls.push({ artifact: value }); },
+    async verifyRunFixture(value) { calls.push({ fixture: value }); },
+    async writePhase(root, value) {
+      phase = value; calls.push({ phase });
+      if (changes.faultScenario) await writeW6b2PackagedSuccessPhase(root, value);
+    },
+    async nextObservation() {
+      calls.push({ observation: true });
+      await changes.onObservation?.({ root, calls });
+    },
+  };
+  return { root, calls, inputs, dependencies,
+    runtime: await (changes.faultScenario ? createWorkspaceFaultWindowsRuntime : createWorkspaceSuccessWindowsRuntime)(inputs, dependencies) };
+}
+
+const faultProofPlans = {
+  preUpdateRecoveryPointFailure: [['sourceHandoff', 'completed']],
+  activeWorkspaceFirstStartFailure: [['sourceHandoff', 'completed'], ['targetFirstStartFailure', 'relaunching'],
+    ['businessRollback', 'relaunching'], ['rollbackFirstStart', 'completed']],
+  acceptanceInterruption: [['sourceHandoff', 'completed'], ['targetAcceptanceInterruption', 'interrupted'],
+    ['targetAcceptanceRecovery', 'relaunching'], ['targetAcceptanceRestart', 'completed']],
+  passiveWorkspaceMigrationFailure: [['sourceHandoff', 'completed'], ['targetFirstStart', 'completed'],
+    ['switchToB', 'relaunching'], ['passiveWorkspaceMigrationFailure', 'relaunching'], ['passiveWorkspaceRecovery', 'completed']],
+  binaryRollbackFailure: [['sourceHandoff', 'completed'], ['targetFirstStartFailure', 'relaunching'],
+    ['binaryRollbackFailure', 'completed'], ['failedSafeVerification', 'completed']],
+};
+
+for (const [faultScenario, phases] of Object.entries(faultProofPlans)) {
+  test(`fault adapter binds ${faultScenario} to existing application controls and only healthy session phases`, async (context) => {
+    const value = await fixture(context, { faultScenario, proofStatus: (phase) => phases.find(([p]) => p === phase)[1] });
+    await value.runtime.prepareProfile();
+    assert.deepEqual(JSON.parse(await readFile(resolve(value.root, 'control/phase.json'), 'utf8')),
+      { formatVersion: 1, phase: 'sourceHandoff' });
+    const healthy = proofProtocol.getW6b2PackagedFaultSessionPhases(faultScenario);
+    for (const [phase, status] of phases) {
+      assert.deepEqual(await value.runtime.runProofPhase(phase), { formatVersion: 2, faultScenario, phase, status });
+      assert.deepEqual(value.calls.findLast((call) => call.control).control, {
+        formatVersion: 2, faultScenario, phase, ...(healthy.includes(phase) ? { sessionProbeNonce: 'd'.repeat(64) } : {}),
+      });
+    }
+    assert.deepEqual(value.calls.filter((call) => call.sessionStarted).map((call) => call.sessionStarted), healthy);
+    assert.deepEqual(value.calls.filter((call) => call.sessionFinished).map((call) => call.sessionFinished),
+      healthy.map(() => ({ allowMissing: false })));
+    const applications = value.calls.filter((call) => basename(call.command ?? '') === 'Eky.exe');
+    assert.equal(applications.length, phases.length);
+    for (const call of applications) {
+      assert.deepEqual(call.args, ['--w6b2-packaged-proof', `--user-data-dir=${resolve(value.root, 'user-data')}`]);
+      assert.equal(call.options.env.EKY_W6B2_PROOF_TOKEN, value.inputs.request.runNonce);
+      assert.equal(call.options.env.EKY_PRIVATE, undefined);
+    }
+    assert.equal(value.calls.some((call) => basename(call.command ?? '') === 'msiexec.exe'), false);
+  });
+}
+
+for (const role of ['source', 'target']) {
+  test(`fault ${role} handoff observes the existing installation without reinstalling`, async (context) => {
+    const value = await fixture(context, { faultScenario: 'activeWorkspaceFirstStartFailure', installedRole: role,
+      activity: [{ schemaVersion: 1, msiClientCount: 1 }, { schemaVersion: 1, msiClientCount: 0 }] });
+    if (role === 'source') await writeRollbackProgress(value.root, completedRollbackProgress());
+    await value.runtime.waitForInstallation(role);
+    assert.equal(value.calls.filter((call) => call.observation).length, 1);
+    assert.equal(value.calls.filter((call) => call.command).length, 5);
+    assert.deepEqual(value.calls.filter(call => call.command).map(call => call.args.includes('--inspect-product')
+      ? 'product' : basename(call.command)), ['powershell.exe', 'powershell.exe', 'product', 'product', 'powershell.exe']);
+    await assert.rejects(() => value.runtime.waitForInstallation('foreign'), /requestInvalid/);
+  });
+}
+
+test('an absent source after rollback is a terminal failure without a second installer or cleanup owner', async (context) => {
+  const value = await fixture(context, { faultScenario: 'activeWorkspaceFirstStartFailure' });
+  await writeRollbackProgress(value.root, completedRollbackProgress());
+  await assert.rejects(() => value.runtime.waitForInstallation('source'), /sourceRollbackInstallFailed/);
+  assert.equal(value.calls.some((call) => call.observation || basename(call.command ?? '') === 'msiexec.exe'), false);
+});
+
+function completedRollbackProgress() {
+  return ['inputValidation', 'launcherExitWait', 'failedPackageUninstall', 'rollbackPackageInstall']
+    .flatMap((phase, index) => [
+      { phase, event: 'started', durationMs: 0, elapsedMs: index * 2 },
+      { phase, event: 'completed', durationMs: 1, elapsedMs: index * 2 + 1 },
+    ]);
+}
+
+async function writeRollbackProgress(root, records) {
+  await writeFile(resolve(root, 'result', proofProtocol.W6B2_PACKAGED_ROLLBACK_PROGRESS_FILE),
+    records.map((record) => JSON.stringify(record)).join('\n') + '\n');
+}
+
+test('source rollback observes delayed helper and inter-MSI gaps until actual terminal evidence', async (context) => {
+  const complete = completedRollbackProgress();
+  const observations = [[], complete.slice(0, 4), complete.slice(0, 6), complete.slice(0, 7), complete];
+  const changes = { faultScenario: 'activeWorkspaceFirstStartFailure', installedRole: 'target',
+    async onObservation({ root }) {
+      assert.ok(observations.length > 0, 'no extra observation after terminal rollback');
+      const next = observations.shift();
+      await writeRollbackProgress(root, next);
+      if (next.length === complete.length) changes.installedRole = 'source';
+    } };
+  const value = await fixture(context, changes);
+  await assert.doesNotReject(value.runtime.waitForInstallation('source'));
+  assert.equal(observations.length, 0);
+  assert.equal(value.calls.filter((call) => call.observation).length, 5);
+  assert.equal(value.calls.filter((call) => call.command).length, 4);
+  assert.deepEqual(value.calls.filter(call => call.command).map(call => call.args.includes('--inspect-product')
+    ? 'product' : basename(call.command)), ['powershell.exe', 'product', 'product', 'powershell.exe']);
+});
+
+test('missing rollback progress cannot complete the wait and leaves cancellation to the existing owner', async (context) => {
+  const cancellation = new Error('existingOwnerCancelled');
+  const value = await fixture(context, { faultScenario: 'activeWorkspaceFirstStartFailure', installedRole: 'source',
+    onObservation() { throw cancellation; } });
+  await assert.rejects(value.runtime.waitForInstallation('source'), (error) => error === cancellation);
+  assert.equal(value.calls.filter((call) => call.observation).length, 1);
+  assert.equal(value.calls.some((call) => call.command), false);
+});
+
+test('rollback failure waits for the helpers repair terminal without accepting the repaired target', async (context) => {
+  const failed = completedRollbackProgress();
+  failed.at(-1).event = 'failed';
+  const repairStarted = [...failed, { phase: 'failedPackageRepair', event: 'started', durationMs: 0, elapsedMs: 8 }];
+  const value = await fixture(context, { faultScenario: 'activeWorkspaceFirstStartFailure',
+    async onObservation({ root, calls }) {
+      assert.equal(calls.filter((call) => call.observation).length, 1);
+      await writeRollbackProgress(root, [...repairStarted,
+        { phase: 'failedPackageRepair', event: 'completed', durationMs: 1, elapsedMs: 9 }]);
+    } });
+  await writeRollbackProgress(value.root, repairStarted);
+  await assert.rejects(value.runtime.waitForInstallation('source'), { message: 'sourceRollbackInstallFailed' });
+  assert.equal(value.calls.some((call) => call.command), false);
+});
+
+test('rollback progress cannot disappear or change its already observed prefix', async (context) => {
+  const value = await fixture(context, { faultScenario: 'activeWorkspaceFirstStartFailure',
+    async onObservation({ root }) { await writeRollbackProgress(root, []); } });
+  await writeRollbackProgress(value.root, completedRollbackProgress().slice(0, 4));
+  await assert.rejects(value.runtime.waitForInstallation('source'), { message: 'sourceRollbackInstallFailed' });
+  assert.equal(value.calls.filter((call) => call.observation).length, 1);
+  assert.equal(value.calls.some((call) => call.command), false);
+});
+
+test('rollback completion must be regular single-link strict progress before ProductCode inspection', async (context) => {
+  const value = await fixture(context, { faultScenario: 'activeWorkspaceFirstStartFailure', installedRole: 'source' });
+  await writeRollbackProgress(value.root, completedRollbackProgress());
+  await link(resolve(value.root, 'result', proofProtocol.W6B2_PACKAGED_ROLLBACK_PROGRESS_FILE), resolve(value.root, 'alias.jsonl'));
+  await assert.rejects(value.runtime.waitForInstallation('source'), { message: 'sourceRollbackInstallFailed' });
+  assert.equal(value.calls.some((call) => call.command || call.observation), false);
+});
+
+for (const [change, errorCode] of [
+  [{ proofResult: { formatVersion: 1, phase: 'sourceHandoff', status: 'completed' } }, 'proofBindingMismatch'],
+  [{ proofResult: { formatVersion: 2, faultScenario: 'binaryRollbackFailure', phase: 'sourceHandoff', status: 'completed' } }, 'proofBindingMismatch'],
+  [{ proofResult: { formatVersion: 2, faultScenario: 'acceptanceInterruption', phase: 'targetAcceptanceInterruption', status: 'completed', secret: 'private' } }, 'proofSchemaInvalid'],
+  [{ exitCode: 1 }, 'proofProcessExitFailed'],
+]) {
+  test('fault exit and strict result must independently prove the requested interruption', async (context) => {
+    const value = await fixture(context, { faultScenario: 'acceptanceInterruption',
+      proofStatus: () => 'interrupted', ...change });
+    await assert.rejects(() => value.runtime.runProofPhase('targetAcceptanceInterruption'), { message: errorCode });
+    assert.equal(value.calls.some((call) => call.sessionStarted || call.sessionFinished), false);
+  });
+}
+
+test('fault session cleanup preserves the original safe application error', async (context) => {
+  const errorCode = 'W6B2_FAULT_PROOF_HANDOFF_FAILED';
+  const value = await fixture(context, { faultScenario: 'binaryRollbackFailure', sessionFailure: true,
+    proofResult: { formatVersion: 2, faultScenario: 'binaryRollbackFailure', phase: 'sourceHandoff', status: 'failed', errorCode } });
+  await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: errorCode });
+  assert.deepEqual(value.calls.at(-1), { sessionFinished: { allowMissing: false } });
+  assert.equal(workspaceFaultErrorCode(new Error('sessionProofInvalid')), 'sessionProofInvalid');
+});
+
+test('fault reader preserves every closed package-stage code from the compiled proof protocol', async (context) => {
+  const faultScenario = 'preUpdateRecoveryPointFailure';
+  const codes = Object.values(proofProtocol.w6b2PackagedPackageStageErrorCodes).flatMap(Object.values);
+  assert.equal(codes.length, 12);
+  for (const errorCode of codes) {
+    const value = await fixture(context, { faultScenario, exitCode: 1,
+      proofResult: { formatVersion: 2, faultScenario, phase: 'sourceHandoff', status: 'failed', errorCode } });
+    await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), (error) => {
+      assert.equal(error.message, errorCode);
+      assert.equal(workspaceFaultErrorCode(error), errorCode);
+      return true;
+    });
+  }
+});
+
+test('fault factory and phase selection reject foreign controls before launching an application', async (context) => {
+  const value = await fixture(context, { faultScenario: 'preUpdateRecoveryPointFailure' });
+  await assert.rejects(() => value.runtime.runProofPhase('failedSafeVerification'), /W6B2_FAULT_PHASE_INVALID/);
+  assert.equal(value.calls.some((call) => call.command), false);
+  assert.throws(() => createWorkspaceSuccessWindowsRuntime(value.inputs, value.dependencies), /requestInvalid/);
+  assert.throws(() => createWorkspaceFaultWindowsRuntime({ ...value.inputs,
+    request: { ...value.inputs.request, scenario: 'packagedWorkspaceSuccess' } }, value.dependencies), /requestInvalid/);
+});
+
+test('source install launches exactly the descriptor package with quiet logging', async (context) => {
+  const value = await fixture(context);
+  assert.equal(await value.runtime.installSource(), 0);
+  const call = value.calls[0];
+  assert.equal(basename(call.command), 'msiexec.exe');
+  assert.deepEqual(call.args.slice(0, 5), ['/i', value.inputs.artifact.source.installerPath, '/qn', '/norestart', '/L*v']);
+});
+
+test('stale result is removed only after regular single-link JSON validation', async (context) => {
+  const root = await mkdtemp(resolve(await realpath(tmpdir()), 'eky-v26-result-contract-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const path = resolve(root, 'result.json');
+  await removeWorkspaceSuccessPreviousResult(path);
+  await writeFile(path, '{"schemaVersion":1}');
+  await link(path, resolve(root, 'alias.json'));
+  await assert.rejects(() => removeWorkspaceSuccessPreviousResult(path), { message: 'proofResultInvalid' });
+  assert.equal(await readFile(path, 'utf8'), '{"schemaVersion":1}');
+  await rm(resolve(root, 'alias.json'));
+  await removeWorkspaceSuccessPreviousResult(path);
+  await assert.rejects(() => access(path), { code: 'ENOENT' });
+});
+
+test('handoff waits for observed MSI inactivity without starting or killing a process', async (context) => {
+  const value = await fixture(context, { activity: [
+    { schemaVersion: 1, msiClientCount: 1 }, { schemaVersion: 1, msiClientCount: 0 },
+  ] });
+  await value.runtime.waitForTargetInstallation();
+  assert.equal(value.calls.filter((call) => call.observation).length, 1);
+  assert.equal(value.calls.filter((call) => call.command).length, 5);
+  assert.deepEqual(value.calls.filter(call => call.command).map(call => call.args.includes('--inspect-product')
+    ? 'product' : basename(call.command)), ['powershell.exe', 'powershell.exe', 'product', 'product', 'powershell.exe']);
+});
+
+test('handoff discards product observations that overlap an active MSI transition', async (context) => {
+  const roles = [];
+  let settled = false;
+  const value = await fixture(context, {
+    activity: [0, 1, 0, 0].map((msiClientCount) => ({ schemaVersion: 1, msiClientCount })),
+    productObservation(role, result) {
+      roles.push(role);
+      return { ...result, ownedRegistryExists: settled || role === 'target' };
+    },
+    onObservation({ calls }) {
+      assert.equal(calls.filter((call) => call.observation).length, 1);
+      assert.deepEqual(roles, ['source', 'target']);
+      settled = true;
+    },
+  });
+  await assert.doesNotReject(value.runtime.waitForTargetInstallation());
+  assert.equal(settled, true);
+  assert.deepEqual(roles, ['source', 'target', 'source', 'target']);
+  assert.equal(value.calls.some((call) => basename(call.command ?? '') === 'msiexec.exe'), false);
+});
+
+test('handoff does not query products while the MSI is already observed active', async (context) => {
+  const roles = [];
+  const value = await fixture(context, {
+    activity: [1, 0, 0].map((msiClientCount) => ({ schemaVersion: 1, msiClientCount })),
+    productObservation(role, result) { roles.push(role); return result; },
+    onObservation({ calls }) {
+      assert.equal(calls.filter((call) => call.observation).length, 1);
+      assert.deepEqual(roles, []);
+    },
+  });
+  await assert.doesNotReject(value.runtime.waitForTargetInstallation());
+  assert.deepEqual(roles, ['source', 'target']);
+});
+
+for (const [field, change, expected] of [
+  ['ownedRegistryExists', false, inspectionErrors.registryMismatch],
+  ['ekyProcessCount', 1, inspectionErrors.processMismatch],
+]) {
+  test(`idle product ${field} disagreement is terminal, not a retriable MSI transition`, async (context) => {
+    const value = await fixture(context, { productObservation(role, result) {
+      return role === 'source' ? { ...result, [field]: change } : result;
+    } });
+    await assert.rejects(value.runtime.waitForTargetInstallation(), { message: expected });
+    assert.equal(value.calls.some((call) => call.observation || call.footprint), false);
+  });
+}
+
+for (const role of ['source', 'target']) {
+  test(`${role} inspector failure or malformed evidence is not treated as MSI activity`, async (context) => {
+    for (const mode of ['exit', 'throw', 'unreadable', 'unknownKey', 'null']) {
+      const changes = {
+        activity: [0, 1].map((msiClientCount) => ({ schemaVersion: 1, msiClientCount })),
+        inspectionCommand({ kind }) {
+          if (kind === role && mode === 'throw') throw new Error('PRIVATE process detail');
+          return kind === role && mode === 'exit' ? 1 : 0;
+        },
+        productObservation(kind, result) {
+          if (kind !== role) return result;
+          if (mode === 'unreadable') throw new Error('PRIVATE file detail');
+          if (mode === 'unknownKey') return { ...result, session: 'PRIVATE' };
+          return mode === 'null' ? null : result;
+        },
+      };
+      const value = await fixture(context, changes);
+      const expected = inspectionErrors[`${role}${['exit', 'throw'].includes(mode) ? 'Command' : 'Result'}`];
+      await assert.rejects(value.runtime.waitForTargetInstallation(), { message: expected });
+      assert.equal(value.calls.some((call) => call.observation || call.footprint), false);
+      assert.equal(changes.activity.length, 1, 'a later busy observation must not hide the original failure');
+      assert.equal(workspaceSuccessErrorCode(new Error(expected)), expected);
+      assert.equal(workspaceFaultErrorCode(new Error(expected)), expected);
+    }
+  });
+}
+
+test('MSI inspector nonzero exit is distinct before and after the product observations', async (context) => {
+  for (const failAt of [1, 2]) {
+    let activities = 0;
+    const value = await fixture(context, { inspectionCommand({ kind }) {
+      return kind === 'activity' && ++activities === failAt ? 1 : 0;
+    } });
+    await assert.rejects(value.runtime.waitForTargetInstallation(), { message: inspectionErrors.activityCommand });
+    assert.equal(value.calls.some((call) => call.observation || call.footprint), false);
+    assert.equal(activities, failAt);
+  }
+});
+
+test('inspection file cleanup fails closed and does not replace an earlier query failure', async (context) => {
+  for (const exitCode of [0, 1]) {
+    let resultDirectory;
+    const value = await fixture(context, { async inspectionCommand({ kind, resultPath }) {
+      if (kind === 'source') {
+        resultDirectory = resultPath;
+        await mkdir(resultPath);
+        return exitCode;
+      }
+      return 0;
+    } });
+    await assert.rejects(value.runtime.waitForTargetInstallation(), {
+      message: exitCode === 0 ? inspectionErrors.cleanup : inspectionErrors.sourceCommand,
+    });
+    await assert.doesNotReject(access(resultDirectory));
+    assert.equal(value.calls.some((call) => call.observation || call.footprint), false);
+  }
+});
+
+test('postcondition inspection never accepts or waits on an active MSI sample', async (context) => {
+  for (const counts of [[1], [0, 1]]) {
+    const value = await fixture(context, { activity: counts.map((msiClientCount) => ({ schemaVersion: 1, msiClientCount })) });
+    await assert.rejects(value.runtime.inspectState(), { message: inspectionErrors.activityBusy });
+    assert.equal(value.calls.some((call) => call.observation || call.footprint), false);
+  }
+});
+
+test('a pending MSI observation leaves cancellation with the existing owner', async (context) => {
+  const cancellation = new Error('existingOwnerCancelled');
+  const value = await fixture(context, {
+    activity: [{ schemaVersion: 1, msiClientCount: 1 }],
+    onObservation() { throw cancellation; },
+  });
+  await assert.rejects(value.runtime.waitForTargetInstallation(), (error) => error === cancellation);
+  assert.equal(value.calls.filter((call) => call.observation).length, 1);
+  assert.equal(value.calls.filter((call) => call.command).length, 1);
+});
+
+test('an exited installer with no target is a terminal failure, not another install attempt', async (context) => {
+  const value = await fixture(context, { noTarget: true });
+  await assert.rejects(value.runtime.waitForTargetInstallation, { message: 'targetInstallFailed' });
+  assert.equal(value.calls.some((call) => call.observation || basename(call.command ?? '') === 'msiexec.exe'), false);
+});
+
+for (const activity of [
+  { schemaVersion: 1, msiClientCount: -1 }, { schemaVersion: 1, msiClientCount: 0, pid: 123 },
+  { schemaVersion: 1, msiClientCount: 0.5 }, { schemaVersion: 2, msiClientCount: 0 }, null,
+]) {
+  test('unknown MSI activity cannot authorize the next startup', async (context) => {
+    const value = await fixture(context, { activity: [activity] });
+    await assert.rejects(value.runtime.waitForTargetInstallation, { message: inspectionErrors.activityResult });
+    assert.equal(value.calls.some((call) => call.observation || call.footprint), false);
+  });
+}
+
+test('private proof launches only the isolated profile and consumes the requested phase', async (context) => {
+  const value = await fixture(context);
+  assert.deepEqual(await value.runtime.runProofPhase('rejectC'), { formatVersion: 1, phase: 'rejectC', status: 'completed' });
+  const call = value.calls.find((entry) => entry.command);
+  assert.equal(basename(call.command), 'Eky.exe');
+  assert.deepEqual(call.args, ['--w6b2-packaged-proof', `--user-data-dir=${resolve(value.root, 'user-data')}`]);
+  assert.equal(call.options.env.TEMP, value.root);
+  assert.equal(call.options.env.EKY_PRIVATE, undefined);
+  assert.equal(call.options.env.EKY_W6B2_PROOF_TOKEN, value.inputs.request.runNonce);
+});
+
+for (const [changes, errorCode] of [
+  [{ exitCode: 1 }, 'proofProcessExitFailed'],
+  [{ proofResult: { formatVersion: 1, phase: 'sourceHandoff', status: 'failed' } }, 'proofSchemaInvalid'],
+  [{ proofResult: { formatVersion: 1, phase: 'rejectC', status: 'completed' } }, 'proofBindingMismatch'],
+]) {
+  test('exit and result must both prove the requested application operation', async (context) => {
+    const value = await fixture(context, changes);
+    await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: errorCode });
+  });
+}
+
+for (const errorCode of WORKSPACE_SUCCESS_PROOF_ERRORS) {
+  test(`proof failure retains the strict protocol code ${errorCode}`, async (context) => {
+    const value = await fixture(context, { proofResult: {
+      formatVersion: 1, phase: 'sourceHandoff', status: 'failed', errorCode,
+    }, sessionFailure: true });
+    await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), (error) => {
+      assert.equal(error.message, errorCode);
+      assert.equal(workspaceSuccessErrorCode(error), errorCode);
+      return true;
+    });
+    assert.equal(value.calls.filter((call) => call.command).length, 1);
+    assert.deepEqual(value.calls.at(-1), { sessionFinished: { allowMissing: false } });
+  });
+}
+
+for (const [name, change, errorCode] of [
+  ['unknown code', { errorCode: 'PRIVATE_PATH_OR_SECRET' }, 'proofSchemaInvalid'],
+  ['unknown key', { session: 'PRIVATE_PATH_OR_SECRET' }, 'proofSchemaInvalid'],
+  ['wrong phase', { phase: 'rejectC' }, 'proofBindingMismatch'],
+  ['wrong version', { formatVersion: 2 }, 'proofSchemaInvalid'],
+  ['contradictory completed result', { status: 'completed' }, 'proofSchemaInvalid'],
+]) {
+  test(`proof reader rejects ${name} without exposing untrusted fields`, async (context) => {
+    const value = await fixture(context, { proofResult: {
+      formatVersion: 1, phase: 'sourceHandoff', status: 'failed',
+      errorCode: 'W6B2_PROOF_UNEXPECTED', ...change,
+    } });
+    await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: errorCode });
+  });
+}
+
+test('a valid fault protocol result cannot be used for the success matrix', async (context) => {
+  const value = await fixture(context, { proofResult: {
+    formatVersion: 2, faultScenario: 'preUpdateRecoveryPointFailure',
+    phase: 'sourceHandoff', status: 'completed',
+  } });
+  await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: 'proofBindingMismatch' });
+});
+
+test('unreadable proof result remains distinct while the session channel closes', async (context) => {
+  const value = await fixture(context, { proofUnreadable: true, sessionFailure: true });
+  await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: 'proofResultUnreadable' });
+  assert.deepEqual(value.calls.at(-1), { sessionFinished: { allowMissing: false } });
+});
+
+test('a failed application exit preserves its valid failed proof result', async (context) => {
+  const value = await fixture(context, { exitCode: 1, proofResult: {
+    formatVersion: 1, phase: 'sourceHandoff', status: 'failed', errorCode: 'W6B2_PROOF_UNEXPECTED',
+  } });
+  await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: 'W6B2_PROOF_UNEXPECTED' });
+});
+
+test('business rollback distinguishes proof parsing, binding and process exit without opening a healthy-session probe', async (context) => {
+  const faultScenario = 'activeWorkspaceFirstStartFailure';
+  const phase = 'businessRollback';
+  const proof = { formatVersion: 2, faultScenario, phase, status: 'relaunching' };
+  for (const [changes, errorCode] of [
+    [{ proofResult: { ...proof, secret: 'PRIVATE' } }, 'proofSchemaInvalid'],
+    [{ proofResult: { ...proof, phase: 'targetFirstStartFailure' } }, 'proofBindingMismatch'],
+    [{ proofResult: { ...proof, faultScenario: 'binaryRollbackFailure', phase: 'binaryRollbackFailure' } }, 'proofBindingMismatch'],
+    [{ proofResult: proof, exitCode: 1 }, 'proofProcessExitFailed'],
+    [{ proofUnreadable: true }, 'proofResultUnreadable'],
+    [{ proofResult: { ...proof, status: 'failed', errorCode: 'W6B2_FAULT_PROOF_HANDOFF_FAILED' }, exitCode: 1 },
+      'W6B2_FAULT_PROOF_HANDOFF_FAILED'],
+  ]) {
+    const value = await fixture(context, { faultScenario, ...changes });
+    await assert.rejects(() => value.runtime.runProofPhase(phase), (error) => {
+      assert.equal(error.message, errorCode);
+      assert.equal(workspaceFaultErrorCode(error), errorCode);
+      return true;
+    });
+    assert.equal(value.calls.filter((call) => call.command).length, 1);
+    assert.equal(value.calls.some((call) => call.sessionStarted || call.sessionFinished), false);
+  }
+});
+
+test('a parser extension cannot publish a failure code outside the harness allowlist', async (context) => {
+  const value = await fixture(context, {
+    parseProof: () => ({ formatVersion: 1, phase: 'sourceHandoff', status: 'failed', errorCode: 'PRIVATE' }),
+    sessionFailure: true,
+  });
+  await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: 'proofFailureCodeUnknown' });
+  assert.deepEqual(value.calls.at(-1), { sessionFinished: { allowMissing: false } });
+});
+
+test('profile preparation uses the existing named profile entrypoint and environment', async (context) => {
+  const value = await fixture(context);
+  await value.runtime.prepareProfile();
+  const call = value.calls[0];
+  assert.equal(call.command, value.inputs.profileRuntime.executablePath);
+  assert.deepEqual(call.args, [value.inputs.profileRuntime.applicationPath]);
+  assert.equal(call.options.env.EKY_W6B2_PROFILE_OPERATION, 'prepare');
+  assert.equal(call.options.env.TEMP, value.root);
+});
+
+test('profile failure mapping covers exactly the existing strict protocol stages', () => {
+  assert.deepEqual(Object.keys(WORKSPACE_SUCCESS_PROFILE_ERRORS), [...profileProtocol.w6b2PackagedProfileFailureStages]);
+});
+
+for (const failureStage of profileProtocol.w6b2PackagedProfileFailureStages) {
+  test(`profile preparation preserves the safe ${failureStage} failure`, async (context) => {
+    const value = await fixture(context, { exitCode: 1, profileResult: {
+      formatVersion: 1, operation: 'prepare', status: 'failed',
+      errorCode: 'W6B2_PROFILE_PREPARATION_FAILED', failureStage,
+    } });
+    await assert.rejects(value.runtime.prepareProfile, (error) => {
+      assert.equal(error.message, WORKSPACE_SUCCESS_PROFILE_ERRORS[failureStage]);
+      assert.equal(workspaceSuccessErrorCode(error), error.message);
+      return true;
+    });
+    assert.equal(value.calls.length, 1);
+  });
+}
+
+test('missing or unreadable profile evidence remains a distinct safe failure', async (context) => {
+  const value = await fixture(context, { exitCode: 1, profileUnreadable: true });
+  await assert.rejects(value.runtime.prepareProfile, { message: 'profileResultUnreadable' });
+});
+
+for (const [name, change, exitCode] of [
+  ['unknown stage', { failureStage: 'PRIVATE_PATH_OR_SECRET' }, 1],
+  ['unknown key', { path: 'PRIVATE_PATH_OR_SECRET' }, 1],
+  ['wrong operation', { operation: 'rejectC', errorCode: 'W6B2_PROFILE_VERIFICATION_FAILED' }, 1],
+  ['wrong error code', { errorCode: 'PRIVATE_PATH_OR_SECRET' }, 1],
+  ['wrong version', { formatVersion: 2 }, 1],
+  ['contradictory successful exit', {}, 0],
+  ['contradictory completed result', { status: 'completed' }, 1],
+]) {
+  test(`profile result rejects ${name} without leaking raw fields`, async (context) => {
+    const value = await fixture(context, { exitCode, profileResult: {
+      formatVersion: 1, operation: 'prepare', status: 'failed',
+      errorCode: 'W6B2_PROFILE_PREPARATION_FAILED', failureStage: 'profileInput', ...change,
+    } });
+    await assert.rejects(value.runtime.prepareProfile, { message: 'profileResultInvalid' });
+  });
+}
+
+test('nonzero exit cannot accept an otherwise valid completed profile result', async (context) => {
+  const value = await fixture(context, { exitCode: 1 });
+  await assert.rejects(value.runtime.prepareProfile, { message: 'profileResultInvalid' });
+});
+
+test('session proof failure rejects an otherwise completed application result', async (context) => {
+  const value = await fixture(context, { sessionFailure: true });
+  await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: 'sessionProofInvalid' });
+  const control = JSON.parse(await readFile(resolve(value.root, 'control', 'phase.json'), 'utf8'));
+  assert.deepEqual(control, { formatVersion: 1, phase: 'sourceHandoff', sessionProbeNonce: 'd'.repeat(64) });
+  assert.deepEqual(value.calls.at(-1), { sessionFinished: { allowMissing: false } });
+});
+
+test('session channel cleanup does not erase the original application failure', async (context) => {
+  const value = await fixture(context, { exitCode: 1, sessionFailure: true });
+  await assert.rejects(() => value.runtime.runProofPhase('sourceHandoff'), { message: 'proofProcessExitFailed' });
+  assert.deepEqual(value.calls.at(-1), { sessionFinished: { allowMissing: false } });
+});
+
+test('only the migration relaunch may exit before a backend session exists', async (context) => {
+  const value = await fixture(context, { proofResult: { formatVersion: 1, phase: 'verifyBRestart', status: 'relaunching' } });
+  await value.runtime.runProofPhase('verifyBRestart');
+  assert.deepEqual(value.calls.at(-1), { sessionFinished: { allowMissing: true } });
+});
+
+test('profile result from a different operation cannot be reused', async (context) => {
+  const value = await fixture(context, { profileResult: { formatVersion: 1, operation: 'rejectC', status: 'completed' } });
+  await assert.rejects(() => value.runtime.prepareProfile(), { message: 'profileResultInvalid' });
+});
+
+test('payload comparison and byte verification keep both immutable bindings', async (context) => {
+  const value = await fixture(context);
+  await value.runtime.validatePayload('target');
+  await assert.rejects(() => value.runtime.validatePayload('source'), { message: 'sourceStateInvalid' });
+  await value.runtime.verifyArtifact();
+  assert.deepEqual(value.calls.at(-2).artifact, { artifactRoot: value.inputs.request.fixtureRoot,
+    expectedBuildRevision: value.inputs.request.buildRevision,
+    expectedDescriptorSha256: value.inputs.request.artifactDescriptorSha256 });
+  assert.equal(value.calls.at(-1).fixture.temporaryRoot, value.root);
+});
+
+test('process environment removes inherited Eky overrides and Node mode case-insensitively', () => {
+  const value = workspaceSuccessApplicationEnvironment({
+    Path: 'preserved', Temp: 'old', Tmp: 'old', electron_run_as_node: '1', eky_fake: 'private',
+  }, { temporaryRoot: 'owned', token: 'token' });
+  assert.deepEqual(value, { Path: 'preserved', TEMP: 'owned', TMP: 'owned', EKY_W6B2_PROOF_TOKEN: 'token' });
+});
+
+for (const [name, event, expected] of [
+  ['zero', ['close', 0, null], 0], ['non-zero', ['close', 9, null], 9],
+  ['signal', ['close', null, 'SIGTERM'], 'ownedProcessExitInvalid'],
+  ['spawn failure', ['error', new Error('PRIVATE')], 'ownedProcessStartFailed'],
+]) {
+  test(`owned command observes ${name} without a second cleanup owner`, async () => {
+    const child = new EventEmitter();
+    let options;
+    const promise = runWorkspaceSuccessOwnedCommand('fixture', [], { cwd: 'owned', env: {} }, (_, __, value) => {
+      options = value;
+      queueMicrotask(() => child.emit(...event));
+      return child;
+    });
+    assert.equal(options.stdio, 'ignore');
+    assert.equal(options.shell, false);
+    assert.equal(Object.hasOwn(options, 'timeout'), false);
+    if (typeof expected === 'number') assert.equal(await promise, expected);
+    else await assert.rejects(promise, { message: expected });
+  });
+}

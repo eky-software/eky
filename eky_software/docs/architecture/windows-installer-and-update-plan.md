@@ -142,6 +142,9 @@ käynnistävät prosessisopimustestit ajetaan erikseen ja sarjassa komennolla
 `pnpm --filter @eky/desktop installer:test:windows-process`. Yhdistelmäkomento
 `pnpm --filter @eky/desktop installer:test` ajaa molemmat ryhmät tässä
 järjestyksessä, eikä samaa testiä saa sisällyttää kumpaankin ryhmään.
+Prosessikomento rakentaa nykyisen V2-supervisorin ennen rollback-bootstrapin
+sopimusta. Synteettinen helper jää saman Job Object -puun omistukseen;
+tuotannon launcher ja jaeltava payload eivät sisällä testifixtureä.
 
 CI käyttää .NET SDK:ta `global.json`-sopimuksella `10.0.302`,
 `rollForward: disable` ja `allowPrerelease: false`. Virallinen
@@ -898,24 +901,30 @@ paketista ja kulkee nykyisen sisäisen update/handoff-polun kautta N+1:een.
 Canonical release-identiteettiä ei muuteta eikä samaa versionumeroa käytetä
 eri build-revisioille.
 
-Legacy-acceptance-harnessin ulompi Node-prosessi rajaa PowerShell-hostin koko
-elinkaaren. Se tuottaa allowlistatut host-, wait-, heartbeat-, timeout- ja
-cleanup-tapahtumat, jättää ulomman CI-jobin aikarajaan siivousvaran ja
-terminalisoi vain täsmälliseen 64-hex-todisteeseen sekä process creation
--identiteettiin sidotun prosessipuun. PowerShell-skenaarion sisäinen viiden
-minuutin MSI-operaation aikaraja säilyy erillisenä ja muuttumattomana.
+Legacy-acceptance-harnessissa koko komennon omistava Node-prosessi rajaa
+target- ja historical-source-buildit sekä varsinaisen acceptance-ajon yhteen
+25 minuutin deadlineen. Sen workerin sisällä toinen Node-prosessi rajaa vain
+PowerShell-hostin 18 minuuttiin. Molemmat tuottavat erikseen allowlistatut
+host-, wait-, heartbeat-, timeout- ja cleanup-tapahtumat, jättävät ulomman
+CI-jobin aikarajaan siivousvaran ja terminalisoivat vain täsmälliseen 64-hex-
+todisteeseen sekä process creation -identiteettiin sidotun prosessipuun.
+PowerShell-skenaarion sisäinen viiden minuutin MSI-operaation aikaraja säilyy
+erillisenä ja muuttumattomana.
 Testikäytön `msiexec` käynnistetään olemassa olevan MSI-hostin kautta omilla
-konsoli- ja output-kahvoillaan. Hosti odottaa rajatusti vain käynnistämäänsä
-täsmällistä prosessia, siivoaa aikarajalla vain sen omistaman prosessipuun ja
-välittää timeoutin suljettuna tuloksena kutsuvalle harnessille. CI-runnerin
-output-kahvaa perivää `-NoNewWindow`-käynnistystä tai rajaamatonta
+konsoli- ja output-kahvoillaan. Kutsuva harness omistaa varsinaisen
+operaatioaikarajan ja täsmällisen prosessipuun cleanupin. Hosti odottaa
+rajatusti vain käynnistämäänsä täsmällistä prosessia ja käyttää omaa
+varmistusrajaansa vasta 30 sekunnin cleanup-varan jälkeen. Näin hosti ja
+kutsuja eivät käynnistä saman prosessipuun timeout-cleanupia samanaikaisesti.
+CI-runnerin output-kahvaa perivää `-NoNewWindow`-käynnistystä tai rajaamatonta
 `Start-Process -Wait` -jälkeläisodotusta ei käytetä.
 
-W6B.2:n prosessiharness ei peri CI-runnerin output-kahvoja suoraan.
-Workerin stdout ja stderr välitetään omien pipe-kahvojen kautta. Workerilta
-odotetaan prosessin exit-tapahtuma, sen omistama prosessipuu siivotaan tai
-todetaan poistuneeksi ja vasta sen jälkeen pipe-kahvat irrotetaan. Näin
-jälkeläisen auki pitämä output-kahva ei estä cleanupia tai CI-komennon
+W6B.2:n ulompi prosessiharness ei välitä workerin stdout- tai stderr-virtaa
+oman Node-event loopinsa kautta. Worker kirjoittaa olemassa olevan turvallisen
+testievidenssin suoraan perittyihin runner-kahvoihin, kun taas ulomman omistajan
+deadline ja täsmällinen cleanup säilyvät lokivirrasta riippumattomina. Näin
+watchdog ei voi lukkiutua oman lapsensa output-putken backpressureen eikä
+jälkeläisen auki pitämä erillinen pipe-kahva estä CI-komennon
 terminalisoitumista. Installer-handoffissa omistajuus siirtyy dynaamisesti koko
 sille täsmälliselle omistetulle prosessihaaralle, jonka jälkeläisenä validoitu
 `msiexec.exe` havaitaan; rinnakkaiset application-haarat pysyvät harnessin
@@ -1076,7 +1085,16 @@ tulosteta. Progress on vain testihavainto: puuttuva, keskeneräinen tai
 virheellinen havaintotiedosto ei muuta rollbackin exit-koodia, aikarajaa tai
 fail-closed-tulosta, eikä tavallinen production-handoff anna progresspolkua.
 
-**W6B.2B fault/rollback -checkpoint 27.8.2026:** pysyvä komento
+**Nykyinen hyväksyntäreitti:** W6:n alla kuvatut alkuperäiset ajokomennot ja
+niiden Node/PowerShell-orkestrointi on korvattu V2:n nimetyillä komennoilla.
+`installer:v2-workspace-fault` käyttää build-once-descriptoria, yhtä nykyistä
+Job-supervisoria ja erillistä pakollista caller-tulosta. Viisi fault-
+skenaariota ja niiden turvallisuusehdot säilyvät. Kanoniset kutsut,
+korvaavuusnäyttö ja avoimet käyttöönottopäätökset ovat
+`windows-installer-acceptance-harness-v2.md`:ssä. Seuraavat W6B-kappaleet
+kuvaavat historiallista toteutusta, eivät nykyisiä komentoja tai aikabudjetteja.
+
+**Historiallinen W6B.2B fault/rollback -checkpoint 27.8.2026:** pysyvä komento
 `pnpm --filter @eky/desktop installer:w6b2-fault-rollback` rakentaa yhden
 yksityisen 0.2.7 -> 0.2.8 -fixtureparin ja ajaa viisi fault-skenaariota
 kahdesti. Matriisi kattaa preUpdate-palautuspisteen virheen, aktiivisen

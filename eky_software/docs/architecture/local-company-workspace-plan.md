@@ -1152,15 +1152,17 @@ Satunnaista nykyisestä HEADista 0.2.6-versionumerolla rakennettua pakettia ei
 hyväksytä legacy-lähteeksi. Jos hyväksyttyä artifactia tai sen tarkkaa
 source-commitia ei voida todistaa, W6B pysähtyy ennen MSI-ajoa.
 
-Legacy-hyväksynnän PowerShell-hostia ympäröi lisäksi Node-harnessin omistama
-rajattu prosessielinkaari. Se antaa vain suljetut host-, wait-, heartbeat-,
-timeout- ja cleanup-tapahtumat, päättää odotuksen viimeistään 18 minuutissa ja
-varaa tämän jälkeen 30 sekuntia täsmälliseen prosessipuun siivoukseen.
-Siivous hyväksyy vain käynnistetyn legacy-skriptin, saman 64-hex-
-todistetunnisteen ja saman process creation -identiteetin. Se ei tapa prosesseja
-nimellä eikä muuta PowerShell-skenaarion sisäistä viiden minuutin MSI-
-aikarajaa. Näin ulompi GitHub-jobi ei jää yksin terminalisoimaan jumiutunutta
-legacy-hyväksyntää.
+Legacy-hyväksynnän koko Node-komentoa ympäröi ensin 25 minuuttiin rajattu
+omistettu worker-prosessi. Raja kattaa target- ja historical-source-buildit,
+fixture-tarkistukset sekä varsinaisen acceptance-ajon. Workerin sisällä
+PowerShell-hostia ympäröi erillinen 18 minuutin rajattu prosessielinkaari.
+Molemmat antavat vain suljetut host-, wait-, heartbeat-, timeout- ja cleanup-
+tapahtumat ja varaavat tämän jälkeen 30 sekuntia täsmälliseen prosessipuun
+siivoukseen. Siivous hyväksyy vain oikean workerin tai legacy-skriptin, saman
+64-hex-todistetunnisteen ja saman process creation -identiteetin. Se ei tapa
+prosesseja nimellä eikä muuta PowerShell-skenaarion sisäistä viiden minuutin
+MSI-aikarajaa. Näin ulompi GitHub-jobi ei jää yksin terminalisoimaan buildiin
+tai legacy-hyväksyntään jumiutunutta komentoa.
 
 Legacy-target on yksityinen, täsmälleen versioon `0.2.7` sidottu synteettinen
 fixture. Canonical release-konfiguraatio validoidaan sille vain read-only-
@@ -1190,7 +1192,16 @@ erilliset business-rivit, authoritative PDF, secret-namespace, archive-
 konfiguraatio ja -journal sekä recovery point -juuri. Installation-scoped
 update-tila säilyy yhtenä eikä saa sekoittua workspace-scoped-tilaan.
 
-**W6B.2A success-checkpoint 25.8.2026:** paketoitu N -> N+1-
+**Nykyinen hyväksyntäreitti:** seuraavien historiallisten W6B.2A/W6B.2B-
+checkpointien ajajat on korvattu `installer:v2-workspace-success`- ja
+`installer:v2-workspace-fault`-komennoilla. A/B/C- ja fault-invariantit
+säilyvät, mutta paketit rakennetaan nykyisessä V2-producerissa kerran ja
+consumerit käyttävät samoja varmennettuja tavuja. Vanhoja komentoja tai
+niiden budjetteja ei käytetä uutena hyväksyntäohjeena. Ajantasainen komento-,
+tulos- ja siirtosopimus on `windows-installer-acceptance-harness-v2.md`:ssä;
+lopullinen main-käyttöönotto ja julkaisuhyväksyntä ovat vielä erilliset portit.
+
+**Historiallinen W6B.2A success-checkpoint 25.8.2026:** paketoitu N -> N+1-
 onnistumismatriisi on toteutettu pysyvällä
 `pnpm --filter @eky/desktop installer:w6b2-success` -komennolla. Komento
 rakentaa yhden yksityisen 0.2.7 -> 0.2.8 -fixtureparin ja ajaa saman parin
@@ -1277,23 +1288,26 @@ dependency-, schema-, migration SQL- tai backup-formaattimuutosta.
 In-app update testataan erikseen vain, jos `localUnsignedPilot`-polku on
 kyseisessä checkpointissa hyväksytty. MSI-gate ei piilota in-app update -puutetta.
 
-**Release-raja:** ensimmäinen käyttäjälle näkyvä versio on `0.2.7` vain, jos
-W1-W5B muodostavat koherentin käytettävän kokonaisuuden ja koko W6-portti on
-vihreä. Pelkästä registry- tai sisäisestä checkpointista ei nosteta versiota.
+**Release-raja:** nykyinen omistajan tavoite on korjattu `0.2.8`-pilotti.
+W1-W5B:n käytettävä kokonaisuus, W6-invarianttien korvaava V2-kattavuus ja
+katselmoitu harnessin käyttöönotto pitää hyväksyä ennen erillistä
+julkaisuvaihetta. Pelkästä registry- tai sisäisestä checkpointista ei nosteta
+versiota. Historiallisten ja synteettisten fixturejen versiot säilyvät;
+tämä tiekarttatavoite ei muuta niitä tai canonical-version tiedostoja.
 
 **Commit/PR/release:** testihardening omana PR:nään; versionosto viimeisenä
 erillisenä commitina vihreästä lähdepuusta.
 
 ## W7: Workspace deletion
 
-**Tila:** 0.2.8-versioon rajattu erillinen jatkotyö.
+**Tila:** erillinen myöhempi jatkotyö, alustava versiotavoite `0.2.9`.
 
 Poisto suunnitellaan erikseen vasta ensimmäisen multi-workspace-releasen
 jälkeen. Se vaatii ADR-0011:n quarantine-, backup-, typed confirmation-,
 native confirmation-, secret-, recovery- ja external artifact -rajat.
 
-W7 ei saa tulla mukaan W1-W6-PR:iin tai 0.2.7-releaseen sivutoimintona.
-0.2.8-tavoite ei vielä hyväksy toteutuksen yksityiskohtia, schema- tai
+W7 ei saa tulla mukaan W1-W6-PR:iin tai korjattuun 0.2.8-pilottiin sivutoimintona.
+Alustava 0.2.9-tavoite ei vielä hyväksy toteutuksen yksityiskohtia, schema- tai
 backup-formaattimuutosta eikä poiston turvallisuussopimusta ilman omaa
 suunnittelu- ja hyväksyntäporttia.
 

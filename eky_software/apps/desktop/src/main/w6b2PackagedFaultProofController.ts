@@ -2,7 +2,10 @@ import {
   LocalUpdateHandoffError,
   type LocalUpdateHandoffCoordinator,
 } from '../update/localUpdateHandoffCoordinator.js';
-import type { LocalUpdatePackageCache } from '../update/localUpdatePackageCache.js';
+import {
+  LocalUpdatePackageCacheError,
+  type LocalUpdatePackageCache,
+} from '../update/localUpdatePackageCache.js';
 import type { UpdateJournalStore } from '../update/updateJournalStore.js';
 import {
   WorkspaceManagementError,
@@ -13,6 +16,7 @@ import type {
   WorkspaceManagementStatusV1,
 } from '../workspaces/management/workspaceManagementTypes.js';
 import type { DesktopLifecycleHandle } from './desktopComposition.js';
+import { w6b2PackagedPackageStageErrorCodes } from './w6b2PackagedProof.js';
 import type {
   W6b2PackagedFaultProofConfiguration,
   W6b2PackagedFaultProofErrorCode,
@@ -123,19 +127,21 @@ async function runSourceHandoff(
 async function stagePackages(
   options: Readonly<W6b2PackagedFaultProofControllerOptions>,
 ): Promise<void> {
-  try {
-    await options.cache.stageSelectedPackage({
-      manifestPath: options.configuration.sourceManifestPath,
-      role: 'current',
-    });
-    await options.cache.stageSelectedPackage({
-      manifestPath: options.configuration.targetManifestPath,
-      role: 'candidate',
-    });
-  } catch {
-    throw new W6b2PackagedFaultProofControllerError(
-      'W6B2_FAULT_PROOF_PACKAGE_STAGE_FAILED',
-    );
+  for (const [role, manifestPath] of [
+    ['current', options.configuration.sourceManifestPath],
+    ['candidate', options.configuration.targetManifestPath],
+  ] as const) {
+    try {
+      await options.cache.stageSelectedPackage({ manifestPath, role });
+    } catch (error) {
+      const codes = w6b2PackagedPackageStageErrorCodes[role];
+      throw new W6b2PackagedFaultProofControllerError(
+        error instanceof LocalUpdatePackageCacheError && error.stage !== undefined &&
+          Object.hasOwn(codes, error.stage)
+          ? codes[error.stage]
+          : 'W6B2_FAULT_PROOF_PACKAGE_STAGE_FAILED',
+      );
+    }
   }
 }
 

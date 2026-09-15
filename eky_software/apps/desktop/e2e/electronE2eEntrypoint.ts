@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 
-import { app, BrowserWindow, protocol } from 'electron';
+import { app, BrowserWindow, protocol, utilityProcess } from 'electron';
 
 import {
   startDesktopComposition,
@@ -18,6 +18,7 @@ import { createElectronE2eBackendController } from './electronE2eBackendProcess.
 import { readElectronE2eConfig } from './electronE2eConfig.js';
 import { createElectronE2eNativeAdapters } from './electronE2eNativeAdapters.js';
 import { readSafeElectronE2eWorkspaceStartupFailureCode } from './electronE2eWorkspaceStartupFailure.js';
+import { createElectronE2eStartupObservation } from './electronE2eStartupObservation.js';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -50,11 +51,19 @@ const backendRunnerPath = resolve(
   import.meta.dirname,
   'electronE2eBackendRunner.js',
 );
+const startupObservation = createElectronE2eStartupObservation();
 const backendController = createElectronE2eBackendController(
   config,
   backendRunnerPath,
+  {
+    fork: (modulePath, args, options) => utilityProcess.fork(modulePath, args, options),
+    observeStartup: (checkpoint) => startupObservation.record(checkpoint),
+  },
 );
 const nativeAdapters = createElectronE2eNativeAdapters(config);
+app.once('browser-window-created', () => {
+  startupObservation.record('firstWindowCreated');
+});
 let lifecycle: DesktopLifecycleHandle | undefined;
 let shutdownStarted = false;
 let secondInstanceCount = 0;
@@ -75,6 +84,7 @@ if (hasSingleInstanceLock) {
     exitApplication: (code) => app.exit(code),
     loadRuntime: async () => ({ startDesktopComposition }),
     async onFailure(errorCode) {
+      startupObservation.record('startupFailed');
       nativeAdapters.recordStartupFailure(errorCode);
       nativeAdapters.showErrorBox(
         'Eky ei käynnistynyt',
@@ -82,6 +92,7 @@ if (hasSingleInstanceLock) {
       );
     },
     async startRuntime() {
+      startupObservation.record('compositionStarted');
       lifecycle = await startDesktopComposition({
         appVersion: e2eAppVersion,
         applicationPath: config.paths.applicationPath,
@@ -100,14 +111,17 @@ if (hasSingleInstanceLock) {
           showOpenDialog: nativeAdapters.showOpenDialog,
           showSaveDialog: nativeAdapters.showSaveDialog,
           resolveActiveWorkspace: async (userDataRoot) => {
+            startupObservation.record('workspaceResolutionStarted');
             let activePhase: ActiveWorkspaceStartupPhase | undefined;
             try {
-              return await resolveActiveWorkspaceStartup(userDataRoot, {
+              const selection = await resolveActiveWorkspaceStartup(userDataRoot, {
                 reportProgress(progress) {
                   activePhase =
                     progress.state === 'started' ? progress.phase : undefined;
                 },
               });
+              startupObservation.record('workspaceResolutionCompleted');
+              return selection;
             } catch (error) {
               throw new Error(
                 readSafeElectronE2eWorkspaceStartupFailureCode(
@@ -117,12 +131,15 @@ if (hasSingleInstanceLock) {
               );
             }
           },
-          startBackend:
-            config.startupMode === 'backendStartFailure'
-              ? async () => {
-                  throw new Error('BACKEND_READINESS_TIMEOUT');
-                }
-              : backendController.startBackend,
+          async startBackend(options) {
+            startupObservation.record('backendStartRequested');
+            if (config.startupMode === 'backendStartFailure') {
+              throw new Error('BACKEND_READINESS_TIMEOUT');
+            }
+            const handle = await backendController.startBackend(options);
+            startupObservation.record('backendReady');
+            return handle;
+          },
         },
         quitApplication: () => app.quit(),
         releaseInfo: undefined,
@@ -144,8 +161,13 @@ if (hasSingleInstanceLock) {
         },
         userDataPath: config.paths.userDataPath,
       });
+      startupObservation.record('compositionCompleted');
     },
-    waitUntilReady: () => app.whenReady(),
+    async waitUntilReady() {
+      startupObservation.record('waitingForAppReady');
+      await app.whenReady();
+      startupObservation.record('appReady');
+    },
   });
 }
 
@@ -166,6 +188,7 @@ app.on('window-all-closed', () => app.quit());
 
 Object.assign(globalThis, {
   __EKY_ELECTRON_E2E__: Object.freeze({
+    startupObservation: () => startupObservation.snapshot(),
     backendIsRunning: () => backendController.isRunning(),
     backendStartCount: () => backendController.getStartCount(),
     closePdfPreviewWindows: () => {

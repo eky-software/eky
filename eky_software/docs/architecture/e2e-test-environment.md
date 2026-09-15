@@ -88,12 +88,105 @@ juuriprosessin todellista exit-tapahtumaa. Pakotettu prosessipuun cleanup on
 rajattu varmistus vain silloin, kun tapahtumaa ei saada turvallisen
 enimmäisajan sisällä; kiinteä odotus ei ole onnistumissignaali.
 
+Electron-fixture erottaa `playwrightConnect`-, `firstWindow`- ja
+`domContentLoaded`-vaiheet. Virheen luokka perustuu Playwrightin timeout-tyyppiin
+tai havaittuun prosessin poistumiseen / sivun sulkeutumiseen; tuntematon syy
+säilyy tuntemattomana. Vaihehavainto ei muuta aikarajoja eikä toimi readiness-
+signaalina. Runtime- ja prosessikahva siirtyvät fixturen omistukseen heti
+yhteyden valmistuttua, ennen ikkunan odottamista. Sama prosessikahva säilyy
+virheluokitusta ja siivousta varten; sitä ei haeta uudelleen jo suljetun
+Playwright-yhteyden kautta. Myös restart käyttää nykyistä omistetun runtimen
+sulkemista ennen uuden sukupolven käynnistämistä.
+Sovelluksen oman relaunchin jo sulkema kahva käsitellään olemassa olevalla
+suljetun kahvan siivouspolulla vasta havaitun `close`-tapahtuman jälkeen.
+Tapahtuma ei korvaa prosessisiivouksen tai portin vapautumisen tarkistusta.
+
+Epäonnistuneen yrityksen `electron-lifecycle`-liite sisältää vain version,
+yritysnumeron, rajatun vaiheluettelon ja erilliset API-, runtime-, portti- ja
+testijuuren siivoustulokset. Se kerätään myös ensimmäisestä yrityksestä,
+ei vain retrystä. Raakavirheitä, URL:eja, sessionia, prosessitulostetta tai
+ympäristöä ei kopioida liitteeseen. Playwrightin testivirhe säilyy ensisijaisena;
+myöhempi siivous ei muuta sitä onnistumiseksi.
+Sama turvallinen sisältö tallentuu yrityskohtaiseen
+`electron-lifecycle.json`-tiedostoon. Electron-CI säilyttää vain nämä tiedostot
+yhden päivän artifactina, myös ensimmäisestä epäonnistumisesta ennen retryä.
+Koko `test-results`-kansiota, tracea, profiilia tai raakaa lokia ei julkaista.
+
+Myös Electronin käynnistystä edeltävä workspace-backupin valmistelu säilyttää
+ensimmäisen epäonnistumisen samassa liitteessä. Electronin omat API-, runtime-
+ja porttivastuut ovat silloin `notStarted`, testijuuri `retained`. Erillinen
+`preparation.backend` kertoo vain tunnetun backend-käynnistysvirheen,
+todellisen `spawn`-havainnon, ennen siivousta havaitun poistumisen, olemassa
+olevan kuunteluilmoituksen havaitsemisen sekä backendin prosessipuun ja portin
+siivoustulokset. Tuntematon valmisteluvirhe ei väitä näitä varmistetuiksi.
+Kuunteluilmoitus on rajatun diagnostiikkapuskurin havainto, ei health-signaali
+tai ajastusprotokolla; sen puuttuminen ei todista kuuntelun puuttumista.
+Raakaa tulostetta, alkuperää tai porttinumeroa ei kopioida liitteeseen.
+Tulosteen lukijan tai raportoinnin virhe ei peitä käynnistysvirhettä;
+prosessin tai portin epävarma siivous säilyy erillisenä epäonnistumisena.
+Valmistelun raportointiraja ei omista siivousta eikä poista testijuurta.
+
+Electronin erillinen E2E-entrypoint säilyttää vain muistissa enintään 16
+nimettyä käynnistyshavaintoa ja niiden kuluneen ajan. Havainto erottaa appin
+valmiuden, workspace-ratkaisun, backendin käynnistyspyynnön ja valmiuden,
+ensimmäisen ikkunan luonnin sekä composition-kutsun valmistumisen. Se ei lue
+yritysdataa, kirjoita konsoliin tai levylle eikä muuta tuotannon käynnistystä.
+Havainnot eivät ole uusia valmius- tai hyväksymisehtoja.
+Backendin nykyinen E2E-controller erottaa samalla muistihavainnolla
+`fork`-pyynnön, prosessikahvan palautumisen, `spawn`-tapahtuman,
+start-viestin lähetyksen ja validoidun ready-viestin vastaanoton.
+Kahva tai lähetetty viesti ei todista backendin valmiutta. Nämä havainnot
+käyttävät samaa 16 merkinnän rajaa ja nykyistä yksityistä lukukanavaa;
+ne eivät lisää lokitusta, prosessivalvojaa, kuittausta tai aikarajaa.
+Havaintokutsun poikkeus ei muuta controllerin onnistumista, alkuperäistä
+käynnistysvirhettä tai sulkemista. Tuotannon käynnistyspolku ei muutu.
+Erillinen `DESK-STARTUP-OBSERVATION-001` todistaa havaintojen todellisen
+kytkennän nykyiseen main-prosessiin. Se ei lisää diagnostiikan saatavuutta
+PDF-käyttäjäpolun onnistumisehdoksi. `DESK-RESTART-001` todistaa nykyisellä
+yhteydellä keskeneräisen lukupyynnön päättymisen restartin siivouksessa.
+
+Käynnistysvirheessä fixture pyytää muistihavainnon kerran nykyisen
+Playwright-main-yhteyden kautta ja jatkaa nykyistä siivousta odottamatta
+vastausta. Siivottava yhteys omistaa myös keskeneräisen lukupyynnön.
+`startupCapture` on `captured`, `unavailable` tai `notRequested`; puuttuva
+vastaus ei todista mainin jumittumista. Myöhäinen vastaus ei muuta jo
+muodostettua raporttia. Suljettu projektio hyväksyy vain nimetyt vaiheet,
+ei raakavirhettä, polkua, tunnisteita tai vapaata metadataa. Havainto ja sen
+puuttuminen säilyvät erillisinä testivirheestä ja siivoustuloksesta.
+
+Testijuurta ei poisteta, jos runtimen, portin tai API-kahvan siivous jäi
+varmentamatta. Yhteyden epäonnistuessa ennen runtime-kahvan saamista sen
+omistajuutta ei arvata portin vapautumisen perusteella. Aiemman epävarman
+siivouksen jälkeinen onnistunut loppuyritys ei myöskään oikeuta aineiston
+poistoon. Säilytetty aineisto jää yksityiseen testijuureen; se ei ole
+julkaistava CI-artifact tai yleinen retention-järjestelmä.
+
 System-fixture voi hallitussa recovery-testissä pysäyttää backendin ja
 käynnistää sen uudelleen samalla testikohtaisella SQLite-kannalla ja samalla
 loopback-portilla. Uusi runtime saa aina uuden sessionin ja
 `runtimeInstanceId`-arvon. Vanha autentikoitu API-context säilytetään vain sen
 todistamiseksi, ettei vanha session enää kelpaa, ja kaikki contextit suljetaan
 fixture-cleanupissa.
+
+System- ja web-fixtureiden yhteinen `finishServiceFixture` kokoaa vain
+nykyisten API-, prosessipysäytys-, portti- ja artifact-vastuiden tulokset.
+Se ei käynnistä tai valvo prosesseja eikä lisää aikarajoja. Yhden siivousvaiheen
+virhe ei ohita muiden jo omistettujen resurssien siivousyrityksiä. Testijuuri
+poistetaan nykyisellä validoidulla `removeE2eRunRoot`-vastuulla vain kaikkien
+tarvittavien vaiheiden valmistuttua. Puuttuva käynnistyskahva tai aiempi
+varmentamaton siivous ei muutu varmistetuksi pelkän vapaan portin tai
+myöhemmän onnistuneen siivousyrityksen perusteella. Backendin tyypitetyn
+käynnistysvirheen erillistä prosessi- ja porttitulosta voidaan käyttää;
+tuntematon lopputila säilyttää aineiston.
+
+Epäonnistunut restart tyhjentää jo suljetun backendin ja API:n aktiiviset
+viitteet ennen seuraavaa käynnistystä. Varmentamaton sulkeminen tai uuden
+käynnistyksen siivous estää uuden restartin ja testijuuren poiston.
+Alkuperäinen setup-/testivirhe säilyy ensisijaisena. Playwrightin jo kirjaamaa
+testivirhettä ei korvata teardown-poikkeuksella. Erillinen
+`service-fixture-cleanup`-liite sisältää vain version ja suljetut
+siivoustulokset; ei prosessitietoja, polkuja, sessionia tai raakavirheitä.
+Säilytettyä testijuurta ei julkaista artifactina.
 
 ## Selainverkon raja
 
@@ -208,10 +301,11 @@ toistensa ajoja:
 | `main` push | `main` | peruuttaa vain aiemman `main` push -ajon |
 | workflow dispatch | valittu ref | peruuttaa vain saman ref-arvon käsin käynnistetyn ajon |
 
-Tavallinen verify-job ajetaan edelleen `antsa`- ja `main`-pusheissa,
-pull requesteissa sekä käsin käynnistettynä. Raskaat E2E-jobit rajataan
-pull requestiin, `main`-pushiin ja käsin käynnistettyyn ajoon. Nykyiset raskaat
-jobit ovat `System security E2E`, `Web critical E2E` ja
+V2:n controller valitsee PR:n jobit riskisuunnitelman mukaan; `main`-,
+ajastettu ja manuaalinen kokonaisajo ovat täysiä. Feature-push ei käynnistä
+PR:n rinnalle toista raskasta matriisia. `ci.yml` on reusable core eikä sen
+vihreä osatulos yksin täytä `V2 acceptance` -porttia. Sen E2E-jobit ovat
+`System security E2E`, `Web critical E2E` ja
 `Windows Electron critical E2E`. Windows-jobi paketoi desktop-sovelluksen,
 ajaa packaged smoken ja sen jälkeen kriittiset Electron development -testit
 yhdellä workerilla. Endurance-baselineja tai soakia ei ajeta automaattisesti

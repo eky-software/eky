@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <BaseOutputPath>$(MSBuildThisFileDirectory)..\..\bin\native-msi-test-adapter\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)..\..\obj\native-msi-test-adapter\</BaseIntermediateOutputPath>
+  </PropertyGroup>
+</Project>

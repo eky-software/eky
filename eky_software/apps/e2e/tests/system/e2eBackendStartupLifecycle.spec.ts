@@ -13,9 +13,103 @@ import {
 } from '../../src/environment/e2eServiceStartupBudgets.js';
 import { runBoundedWindowsTaskkill } from '../../src/environment/runBoundedWindowsTaskkill.js';
 import type { ManagedChildProcess } from '../../src/environment/startManagedProcess.js';
+import { waitForE2eBackendStartup } from '../../src/environment/startE2eBackendProcess.js';
 import { waitForHttpHealth } from '../../src/environment/waitForHttpHealth.js';
 
 test.describe('managed E2E backend startup lifecycle', () => {
+  test('observes actual spawn after handle return and removes the listener after health', async () => {
+    const child = createFakeChild();
+    const progress: E2eBackendStartupProgress[] = [];
+    let ready!: () => void;
+    const health = new Promise<void>((resolve) => { ready = resolve; });
+    const calls: string[] = [];
+    const result = waitForE2eBackendStartup({
+      backendOrigin: 'http://127.0.0.1:12345',
+      managedProcess: { child, readStdout: () => '', readStderr: () => '' },
+      observe: (event) => progress.push(event),
+      waitForHealth: () => health,
+      async stopProcessTree() { calls.push('stop'); },
+      async releasePort() { calls.push('release'); },
+    });
+    expect(progress.some((event) => event.phase === 'processSpawned')).toBe(false);
+    child.emit('spawn');
+    expect(progress.at(-1)).toMatchObject({ phase: 'processSpawned', status: 'completed' });
+    ready();
+    await expect(result).resolves.toBeUndefined();
+    expect(progress.at(-1)).toMatchObject({ phase: 'healthReady', status: 'completed' });
+    expect(calls).toEqual([]);
+    expect(child.listenerCount('spawn')).toBe(0);
+  });
+
+  for (const mode of ['beforeListening', 'afterListening', 'cleanupFailure', 'portFailure', 'outputFailure', 'earlyExit', 'spawnFailure'] as const) {
+    test(`preserves backend preparation failure and independent cleanup: ${mode}`, async () => {
+      const child = createFakeChild();
+      const calls: string[] = [];
+      const lines: string[] = [];
+      const listening = 'E2E backend listening on http://127.0.0.1:12345\n';
+      const result = waitForE2eBackendStartup({
+        backendOrigin: 'http://127.0.0.1:12345',
+        managedProcess: {
+          child,
+          readStdout: () => {
+            if (mode === 'outputFailure') throw new Error('private output failure');
+            return mode === 'afterListening' ? listening : 'private output and session';
+          },
+          readStderr: () => 'private stderr and environment',
+        },
+        observe: createE2eBackendStartupReporter({ writeLine(line) {
+          lines.push(line);
+          if (mode === 'outputFailure') throw new Error('private logger failure');
+        } }),
+        async waitForHealth() {
+          if (mode === 'spawnFailure') {
+            child.emit('error', new Error('private spawn failure'));
+          } else {
+            child.emit('spawn');
+            if (mode === 'earlyExit') {
+              child.setExitCode(1);
+              child.emit('exit', 1, null);
+            }
+          }
+          throw new Error('private health detail');
+        },
+        async stopProcessTree() {
+          calls.push('stop');
+          if (mode === 'cleanupFailure') throw new Error('private cleanup failure');
+          child.setExitCode(1);
+        },
+        async releasePort() {
+          calls.push('release');
+          if (mode === 'portFailure') throw new Error('private port failure');
+        },
+      });
+      const errorCode = mode === 'spawnFailure' ? 'E2E_BACKEND_PROCESS_SPAWN_FAILED'
+        : mode === 'earlyExit' ? 'E2E_BACKEND_CHILD_EXITED_BEFORE_HEALTH'
+          : 'E2E_BACKEND_HEALTH_TIMEOUT';
+      await expect(result).rejects.toMatchObject({
+        message: errorCode,
+        evidence: {
+          errorCode,
+          spawnObserved: mode !== 'spawnFailure',
+          exitedBeforeCleanup: mode === 'earlyExit',
+          listeningNotice: mode === 'outputFailure' ? 'unavailable'
+            : mode === 'afterListening' ? 'observed' : 'notObserved',
+          cleanup: {
+            processTree: mode === 'cleanupFailure' ? 'unverified' : 'stopped',
+            port: mode === 'portFailure' ? 'unverified' : 'released',
+          },
+        },
+      });
+      const failure = await result.catch((error: unknown) => error);
+      expect(JSON.stringify(failure)).not.toMatch(/private|12345|http|session|environment/);
+      expect(lines.join('\n')).not.toMatch(/private|12345|http|session|environment/);
+      expect(calls).toEqual(['stop', 'release']);
+      expect(child.listenerCount('spawn')).toBe(0);
+      expect(child.listenerCount('exit')).toBe(0);
+      expect(child.listenerCount('error')).toBe(0);
+    });
+  }
+
   test('reports a healthy child without changing the startup result', async () => {
     const child = createFakeChild();
     const progress: E2eBackendStartupProgress[] = [];

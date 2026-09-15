@@ -96,8 +96,16 @@ interface LocalUpdatePackageCacheOptions {
   now?: () => Date;
 }
 
+export type LocalUpdatePackageCacheFailureStage =
+  | 'sourceValidation'
+  | 'cachePreparation'
+  | 'packageCopy'
+  | 'stagedValidation'
+  | 'slotPublication'
+  | 'slotValidation';
+
 export class LocalUpdatePackageCacheError extends Error {
-  constructor() {
+  constructor(readonly stage?: LocalUpdatePackageCacheFailureStage) {
     super('The local update package could not be stored safely.');
     this.name = 'LocalUpdatePackageCacheError';
   }
@@ -286,33 +294,41 @@ export class LocalUpdatePackageCache {
     role: LocalUpdatePackageRole;
   }): Promise<Readonly<LocalUpdatePackageSummary>> {
     return this.runExclusive(async () => {
-      const source = await this.readAndVerifySource(input);
-      await this.ensureCacheRoot();
-      const slotPath = this.slotPath(input.role);
-      if (await pathExists(slotPath)) {
-        const cached = await this.validateSlot(input.role, slotPath);
-        if (metadataMatchesManifest(cached, source.manifest)) {
-          return createSafeSummary(source.manifest, input.role);
-        }
-        throw new LocalUpdatePackageCacheError();
-      }
-
-      await this.assertCapacity(source.manifest.packageSize);
-      const stagingPath = await mkdtemp(join(this.options.cacheRoot, '.staging-'));
+      let stage: LocalUpdatePackageCacheFailureStage = 'sourceValidation';
       try {
-        await this.writeVerifiedSourceToStaging(
-          source,
-          input.role,
-          stagingPath,
+        const source = await this.readAndVerifySource(input);
+        stage = 'cachePreparation';
+        await this.ensureCacheRoot();
+        const slotPath = this.slotPath(input.role);
+        if (await pathExists(slotPath)) {
+          stage = 'slotValidation';
+          const cached = await this.validateSlot(input.role, slotPath);
+          if (metadataMatchesManifest(cached, source.manifest)) {
+            return createSafeSummary(source.manifest, input.role);
+          }
+          throw new LocalUpdatePackageCacheError();
+        }
+
+        await this.assertCapacity(source.manifest.packageSize);
+        const stagingPath = await mkdtemp(join(this.options.cacheRoot, '.staging-'));
+        try {
+          stage = 'packageCopy';
+          await this.writeVerifiedSourceToStaging(source, input.role, stagingPath);
+          stage = 'slotPublication';
+          await rename(stagingPath, slotPath);
+          stage = 'slotValidation';
+          await this.validateSlot(input.role, slotPath);
+          return createSafeSummary(source.manifest, input.role);
+        } catch (error) {
+          await rm(stagingPath, { force: true, recursive: true }).catch(
+            () => undefined,
+          );
+          throw error;
+        }
+      } catch (error) {
+        throw new LocalUpdatePackageCacheError(
+          error instanceof LocalUpdatePackageCacheError ? error.stage ?? stage : stage,
         );
-        await rename(stagingPath, slotPath);
-        await this.validateSlot(input.role, slotPath);
-        return createSafeSummary(source.manifest, input.role);
-      } catch {
-        await rm(stagingPath, { force: true, recursive: true }).catch(
-          () => undefined,
-        );
-        throw new LocalUpdatePackageCacheError();
       }
     });
   }
@@ -590,34 +606,28 @@ export class LocalUpdatePackageCache {
     stagingPath: string,
     expectedIdentity?: Readonly<LocalUpdateExpectedPackageIdentity>,
   ): Promise<void> {
-    const stagedManifestPath = join(stagingPath, manifestCacheFilename);
-    const stagedPackagePath = join(
-      stagingPath,
-      source.manifest.packageFilename,
-    );
-    await writeExclusiveSyncedFile(stagedManifestPath, source.manifestBytes);
-    const copied = await (this.options.copyPackage ??
-      copyLocalUpdatePackageWithHash)(source.packagePath, stagedPackagePath);
-    const packageAfter = await readLocalUpdateSourceSnapshot(
-      source.packagePath,
-      this.options.inspectRegularFile,
-    );
-    assertLocalUpdateSourceUnchanged(source.packageBefore, packageAfter);
-    assertPackageIdentity(source.manifest, copied);
-    await this.writeMetadata(stagingPath, source.manifest, role);
-    if (expectedIdentity === undefined) {
-      await this.validateStagedFiles(
-        role,
-        stagedManifestPath,
-        stagedPackagePath,
+    let stage: LocalUpdatePackageCacheFailureStage = 'packageCopy';
+    try {
+      const stagedManifestPath = join(stagingPath, manifestCacheFilename);
+      const stagedPackagePath = join(stagingPath, source.manifest.packageFilename);
+      await writeExclusiveSyncedFile(stagedManifestPath, source.manifestBytes);
+      const copied = await (this.options.copyPackage ??
+        copyLocalUpdatePackageWithHash)(source.packagePath, stagedPackagePath);
+      stage = 'stagedValidation';
+      const packageAfter = await readLocalUpdateSourceSnapshot(
+        source.packagePath,
+        this.options.inspectRegularFile,
       );
-    } else {
-      await this.validateJournalSlot(
-        role,
-        stagingPath,
-        expectedIdentity,
-        new Set([role]),
-      );
+      assertLocalUpdateSourceUnchanged(source.packageBefore, packageAfter);
+      assertPackageIdentity(source.manifest, copied);
+      await this.writeMetadata(stagingPath, source.manifest, role);
+      if (expectedIdentity === undefined) {
+        await this.validateStagedFiles(role, stagedManifestPath, stagedPackagePath);
+      } else {
+        await this.validateJournalSlot(role, stagingPath, expectedIdentity, new Set([role]));
+      }
+    } catch {
+      throw new LocalUpdatePackageCacheError(stage);
     }
   }
 
