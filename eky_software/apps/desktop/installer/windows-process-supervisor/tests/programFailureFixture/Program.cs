@@ -64,6 +64,10 @@ if (mode == "nativeMsiContract")
 {
     return await NativeMsiAdapterContract.Run(args[3]);
 }
+if (mode == "nativeProductInspectionContract")
+{
+    return NativeProductInspectionContract.Run(args[3]);
+}
 if (mode == "blockedInvalidRequestEvidence")
 {
     // Read only the valid fixture binding before presenting malformed input to the program.

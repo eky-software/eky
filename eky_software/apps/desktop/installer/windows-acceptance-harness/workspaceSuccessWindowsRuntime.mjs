@@ -11,6 +11,7 @@ import {
 } from '../scripts/w6b2PackagedSuccessRunFixture.mjs';
 import { writeW6b2PackagedFaultPhase } from '../scripts/w6b2PackagedFaultRunFixture.mjs';
 import { validateInstallerProductStateResult } from './cleanInstallUninstallWindowsRuntime.mjs';
+import { createNativeProductInspectionCommand } from './nativeMsiAdapterCommand.mjs';
 import { inspectLegacyInstallerFootprint } from './legacyUpgradeWindowsRuntime.mjs';
 import { readUpgradeRollbackProgress } from './upgradeRollbackProgress.mjs';
 import { verifyWorkspaceSuccessArtifact } from './workspaceSuccessArtifact.mjs';
@@ -22,7 +23,6 @@ import {
 import { WORKSPACE_FAULT_ERRORS, WORKSPACE_FAULT_SCENARIO, workspaceFaultPlan } from './workspaceFaultContracts.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
-const PRODUCT_INSPECTOR = resolve(DIRECTORY, 'inspectWindowsInstallerProductState.ps1');
 const MSI_ACTIVITY_INSPECTOR = resolve(DIRECTORY, 'inspectWorkspaceSuccessMsiActivity.ps1');
 
 // The existing supervisor's Job owns every descendant. This adapter only awaits
@@ -103,16 +103,14 @@ async function createWorkspaceWindowsRuntime({
   const sessionPhases = faultScenario === undefined ? undefined
     : proofProtocol.getW6b2PackagedFaultSessionPhases(faultScenario);
 
-  async function inspectResult(script, arguments_, { commandError, resultError, validate }) {
+  async function inspectResult(createInvocation, { commandError, resultError, validate }) {
     const resultPath = resolve(scenarioRoot, `workspace-inspection-${inspectionSequence++}.json`);
     let result;
     let failure;
     try {
       try {
-        const exitCode = await runCommand(powershell, [
-          '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script,
-          ...arguments_, '-ResultPath', resultPath,
-        ], commandOptions);
+        const invocation = createInvocation(resultPath);
+        const exitCode = await runCommand(invocation.command, invocation.arguments, commandOptions);
         if (exitCode !== 0) throw new Error(commandError);
       } catch { throw new Error(commandError); }
       try { result = validate(await readObject(resultPath, resultError, 64 * 1024)); }
@@ -129,13 +127,13 @@ async function createWorkspaceWindowsRuntime({
     // Only compare valid observations bracketed by MSI inactivity. A busy
     // sample stays pending; malformed evidence and inspection failures do not.
     if (!await requireMsiIdle()) return null;
-    const source = await inspectResult(PRODUCT_INSPECTOR,
-      ['-ProductCode', `{${artifact.source.productCode}}`], {
+    const source = await inspectResult(
+      resultPath => createNativeProductInspectionCommand(`{${artifact.source.productCode}}`, resultPath, environment), {
         commandError: inspectionErrors.sourceCommand, resultError: inspectionErrors.sourceResult,
         validate: validateInstallerProductStateResult,
       });
-    const target = await inspectResult(PRODUCT_INSPECTOR,
-      ['-ProductCode', `{${artifact.target.productCode}}`], {
+    const target = await inspectResult(
+      resultPath => createNativeProductInspectionCommand(`{${artifact.target.productCode}}`, resultPath, environment), {
         commandError: inspectionErrors.targetCommand, resultError: inspectionErrors.targetResult,
         validate: validateInstallerProductStateResult,
       });
@@ -147,7 +145,10 @@ async function createWorkspaceWindowsRuntime({
   }
 
   async function requireMsiIdle() {
-    return inspectResult(MSI_ACTIVITY_INSPECTOR, [], {
+    return inspectResult(resultPath => ({ command: powershell, arguments: [
+      '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', MSI_ACTIVITY_INSPECTOR,
+      '-ResultPath', resultPath,
+    ] }), {
       commandError: inspectionErrors.activityCommand, resultError: inspectionErrors.activityResult,
       validate(value) {
         if (!hasWorkspaceSuccessExactKeys(value, ['schemaVersion', 'msiClientCount']) ||

@@ -2320,7 +2320,7 @@ tilatarkistuksen erillään alkuperäisestä skenaariovirheestä ja estää
 varmistamattoman siivouksen hyväksymisen. Uutta tulosskeemaa, valvojaa tai
 aikarajaa ei lisätä.
 
-Nykyisen Windows-käyttäytymistestin COM-fixture aiheuttaa kyselypoikkeuksen
+Tämän historiallisen checkpointin Windows-käyttäytymistestin COM-fixture aiheuttaa kyselypoikkeuksen
 mutta säilyttää oikean vapautettavan COM-kahvan. Regressio hylkäsi vanhan
 lukijan ja hyväksyy korjatun: virhe ei tuota absent-tulosta. Sama testi
 säilyttää oikeasti puuttuvan tuotteen, kanonisen tulospolun ja virheellisen
@@ -2548,6 +2548,31 @@ checkpoint ei yksin täytä tätä tasoa.
 Tämä osuus erottaa nykyisen julkaisutyön historiallisesta tutkimusnäytöstä.
 
 #### Ajantasaiset julkaisuesteet ja päätökset
+
+Omistaja on hyväksynyt nykyisen read-only-tuotetarkistimen korvaamisen
+olemassa olevan `native-msi-adapter`-testiprojektin lukutoiminnolla. Viisi
+harness-käyttäjää käyttävät samaa `MsiQueryProductStateW`-/
+`MsiGetProductInfoW`-rajaan ilman PowerShell/COM-varapolkua. Muutos ei ole
+osoitettu selitys aiemmalle viiveelle: myös native-kutsu voi estyä.
+Nykyinen ympäröivä Job, työ- ja siivousrajat, pakollinen tulos sekä prosessin
+todellinen poistuminen säilyvät. Adapteri ei kuulu jaettavaan sovellukseen.
+
+Siirron sopimus säilyttää exact ProductCode -syötteen, versionoidun seitsemän
+kentän tuloksen, kyselyvirheen eron tuotteen puuttumisesta sekä atomisen
+no-overwrite-julkaisun. Tuote-, rekisteri-, tiedosto- ja prosessihavainnot
+ovat lukutoimintoja, eivät poistovaltuutus. Artifact-varmennukset,
+MSI-idle-rajaukset, semanttiset jälkiehdot ja aineiston säilytys pysyvät
+nykyisillä omistajillaan. Korvattu skripti ja sen COM-fixture on poistettu
+käyttäytymisregressioiden siirron jälkeen. Rajattu Windows-CI-todennus edeltää
+uutta normaalin kokonaishyväksynnän paria; hyväksyntä on edelleen kesken.
+
+| Korvattu vastuu | Nykyinen vastine ja säilyvä ehto |
+| --- | --- |
+| PowerShell/COM-tuotetarkistus | `NativeProductInspection` ja `NativeProductQueries` nykyisessä testiadapterissa; dokumentoidut tuotetilat, Unicode-ominaisuudet ja kyselyvirheet erotellaan. Muuttuva tai liian suuri vastaus hylätään ilman uusintaa. |
+| Viisi kutsukytkentää | `installerProductOperationWorker`, clean-, upgrade-, legacy- ja workspace-runtime käyttävät vain `createNativeProductInspectionCommand`-argumenttirakentajaa. Se ei käynnistä prosessia tai omista aikarajaa. |
+| Skriptin tulos-/havaintotestit | Nykyinen `inspectWindowsInstallerProductState.test.mjs` käyttää oikeaa native-lukijaa ja nykyisen contract-fixturen rajattuja virhesyötteitä; miehitettyä tulosta ei korvata eikä kyselyvirhe tuota absent-tulosta. |
+| Koko kutsun valmistuminen | Nykyinen legacy-komentorajatesti kattaa oikean read-only-kutsun, estyvän kyselyn sekä tuloksen julkaisseen mutta elävän prosessin. Deadline, Jobin tyhjeneminen, komennon poistuminen ja pakollinen virhetulos varmennetaan erikseen; mutaatio ei ala ja epävarman ajon aineisto säilyy. |
+| Ulkoisen keruun tulkinta | Sama payloaditon provider säilyy, mutta nykyinen lukija ei tuota COM-luonti-/vapautustapahtumia. Vanhojen tallenteiden parserituki jää vain lukutueksi, ei suorituksen varapoluksi. |
 
 Rajattu riskikatselmus perustuu revisioon `d2bf592`; se ei ole koko ERP:n
 auditointi tai uusi hyväksyntäkierros. Uusin omistajapäätös korvaa vanhan

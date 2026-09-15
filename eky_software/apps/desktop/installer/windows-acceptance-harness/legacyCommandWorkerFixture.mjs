@@ -61,14 +61,15 @@ if (mode === '--phase-request') {
         // One real read-only query; every install/uninstall remains synthetic.
         return executeProductOperation(request);
       }
-      if (testCase === 'productInspectionNativeHold' && input.phase === 'inspectSourceBefore') {
+      if (['productInspectionNativeHold', 'productInspectionResultBeforeExit'].includes(testCase) && input.phase === 'inspectSourceBefore') {
         return executeProductOperation(request, {
           execute(command, args, cwd) {
-            const resultPath = args[args.indexOf('-ResultPath') + 1];
-            return runInstallerProductCommand(command,
-              [...args.slice(0, args.indexOf('-File') + 1),
-                fileURLToPath(new URL('./fixtures/inspectorObservationFixture.ps1', import.meta.url)),
-                '-ResultPath', resultPath, '-ObservationPath', join(phaseRoot, 'inspector-observation.json'), '-Mode', 'comHold'], cwd);
+            const resultPath = args[args.indexOf('--result-path') + 1];
+            const fixture = fileURLToPath(new URL('../bin/windows-process-supervisor-contract-fixture/Release/net10.0/Eky.WindowsProcessSupervisor.ContractFixture.dll', import.meta.url));
+            const value = { resultPath, observationPath: join(phaseRoot, 'inspector-observation.json'),
+              mode: testCase === 'productInspectionNativeHold' ? 'queryHold' : 'resultBeforeExit' };
+            return runInstallerProductCommand(command, [fixture, '--mode', 'nativeProductInspectionContract',
+              '--request', Buffer.from(JSON.stringify(value)).toString('base64')], cwd);
           },
         });
       }

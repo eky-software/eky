@@ -339,11 +339,11 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
             $profile.SelectNodes('//p:Column[@IsVisible="true"]', $ns).Count -ne 6) { throw 'minimalViewInvalid' }
         $provider = [Diagnostics.Tracing.EventSource]::new('${PROVIDER}')
         $providerId = $provider.Guid.ToString(); $provider.Dispose()
-        $phases = @('scriptStarted', 'requestValidated', 'comCreationStarted', 'comCreationCompleted',
+        $phases = @('scriptStarted', 'requestValidated',
           'productStateStarted', 'productStateCompleted', 'registryInspectionStarted', 'registryInspectionCompleted',
           'processInspectionStarted', 'processInspectionCompleted', 'resultSerializeStarted', 'resultSerializeCompleted',
           'resultWriteStarted', 'resultWriteCompleted', 'resultPublishStarted', 'resultPublishCompleted',
-          'comReleaseStarted', 'comReleaseCompleted', 'scriptFinished')
+          'scriptFinished')
         $rows = @(for ($i = 0; $i -lt $phases.Count; $i++) {
           [pscustomobject]@{ 'Provider Name' = '${PROVIDER}'; 'Provider Id' = $providerId;
             Process = 'synthetic.exe (123)'; ThreadId = '456'; 'Time (s)' = [string]$i; 'Event Name' = $phases[$i] }
@@ -356,7 +356,7 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
         if (!$rejected) { throw 'externalProviderNotBound' }
         $rows[0].'Provider Id' = $providerId
         $rejected = $false
-        try { Confirm-InspectorExternalReadOnlyEvents $rows[0..17] }
+        try { Confirm-InspectorExternalReadOnlyEvents $rows[0..($rows.Count - 2)] }
         catch { $rejected = $_.Exception.Message -ceq 'INSPECTOR_TRACE_BOUNDARIES_INVALID' }
         if (!$rejected) { throw 'externalFinishNotRequired' }
         [IO.File]::WriteAllText($env:EKY_TRACE_TEST_RESULT, '{"status":"validated"}')

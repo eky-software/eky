@@ -14,6 +14,7 @@ internal static class NativeMsiProgram
     {
         try
         {
+            if (args.Length > 0 && args[0] == "--inspect-product") return NativeProductInspection.Run(args);
             if (args.Length != 8 || args[0] != "--package" || args[2] != "--log" ||
                 args[4] != "--pipe" || args[6] != "--nonce" ||
                 !CanonicalPath(args[1], ".msi") || !CanonicalPath(args[3], ".log") ||

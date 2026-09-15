@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { executeProductOperation, runOwnedProductOperation, validateProductOperationRequest } from './installerProductOperationWorker.mjs';
 import { writeJsonAtomicExclusive } from './cleanInstallUninstallContracts.mjs';
+import { NATIVE_MSI_ADAPTER } from './nativeMsiAdapterCommand.mjs';
 
 const request = { schemaVersion: 1, nonce: 'a'.repeat(64), operation: 'inspect',
   productCode: '{00000000-0000-0000-0000-000000000001}', scenarioRoot: resolve('synthetic'),
@@ -73,6 +74,25 @@ test('uninstall uses only the exact product and its own temporary namespace', as
   assert.deepEqual(events, ['prepare', 'create', 'uninstall', 'removeDirectory']);
   assert.deepEqual(result, { schemaVersion: 1, nonce: request.nonce, operation: 'uninstall',
     status: 'completed', state: null, errorCode: null, resultCleanup: 'completed' });
+});
+
+test('product worker uses the native read-only command without a PowerShell fallback', async () => {
+  const expectedPath = resolve(request.scenarioRoot, `product-operation-${request.nonce}`, 'state.json');
+  const invocations = [];
+  const result = await executeProductOperation(request, {
+    systemRoot: request.scenarioRoot, prepareRoot: async () => {}, createDirectory: async () => {},
+    execute: async (command, args, cwd) => {
+      invocations.push({ command, args, cwd });
+      throw new Error('syntheticNativeFailure');
+    },
+    readResult: async () => assert.fail('failed command has no readable result'),
+    removeResult: async path => assert.equal(path, expectedPath), removeDirectory: async () => {},
+  });
+  assert.deepEqual(invocations, [{ command: process.env.EKY_DOTNET_EXE || 'dotnet',
+    args: [NATIVE_MSI_ADAPTER, '--inspect-product', '--product-code', request.productCode,
+      '--result-path', expectedPath], cwd: request.scenarioRoot }]);
+  assert.equal(result.errorCode, 'commandFailed');
+  assert.equal(result.resultCleanup, 'completed');
 });
 
 test('owned product worker rejects invalid binding and occupied output before executing', async (t) => {

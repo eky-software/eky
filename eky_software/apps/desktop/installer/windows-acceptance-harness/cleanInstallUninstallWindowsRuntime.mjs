@@ -3,7 +3,6 @@ import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { lstat, mkdir, readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { createInstallerProductCode } from '../installerIdentity.mjs';
 import {
@@ -14,11 +13,8 @@ import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
 import { readWindowsAcceptanceArtifactDescriptor, CLEAN_ARTIFACT_DESCRIPTOR_FILENAME } from './windowsAcceptanceArtifactDescriptor.mjs';
 import { verifyCleanInstalledPayload, damageCleanRepairPayload } from './cleanInstallUninstallPayload.mjs';
 import { createClosedDirectoryInventory, inventoriesMatch } from './closedDirectoryInventory.mjs';
+import { createNativeProductInspectionCommand } from './nativeMsiAdapterCommand.mjs';
 
-const INSPECTOR_PATH = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  'inspectWindowsInstallerProductState.ps1',
-);
 const STATE_KEYS = [
   'ekyProcessCount',
   'localPackagePresent',
@@ -162,25 +158,8 @@ export async function createCleanInstallUninstallWindowsRuntime(
       `product-state-${stateSequence}-${label}.json`,
     );
     stateSequence += 1;
-    const powershell = resolve(
-      systemRoot,
-      'System32',
-      'WindowsPowerShell',
-      'v1.0',
-      'powershell.exe',
-    );
-    const exitCode = await runOwnedProcess(powershell, [
-      '-NoProfile',
-      '-NonInteractive',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-File',
-      INSPECTOR_PATH,
-      '-ProductCode',
-      productCode,
-      '-ResultPath',
-      resultPath,
-    ]).catch(() => -1);
+    const invocation = createNativeProductInspectionCommand(productCode, resultPath);
+    const exitCode = await runOwnedProcess(invocation.command, invocation.arguments).catch(() => -1);
     if (exitCode !== 0) {
       throw new Error('installerStateInspectionFailed');
     }

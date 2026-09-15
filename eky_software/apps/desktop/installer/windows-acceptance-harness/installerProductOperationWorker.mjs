@@ -1,11 +1,11 @@
 import { spawn } from 'node:child_process';
 import { lstat, mkdir, readFile, realpath, rm, rmdir } from 'node:fs/promises';
-import { dirname, isAbsolute, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { isAbsolute, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
 import { writeJsonAtomicExclusive } from './cleanInstallUninstallContracts.mjs';
+import { createNativeProductInspectionCommand } from './nativeMsiAdapterCommand.mjs';
 
-const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const MAX_BYTES = 64 * 1024;
 export function validateProductOperationRequest(value) {
   const keys = ['schemaVersion', 'nonce', 'operation', 'productCode', 'scenarioRoot', 'nodeExecutable',
@@ -70,10 +70,8 @@ export async function executeProductOperation(input, {
     prepared = true;
     phase = 'command';
     if (request.operation === 'inspect') {
-      await execute(resolve(systemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
-        ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File',
-          resolve(DIRECTORY, 'inspectWindowsInstallerProductState.ps1'), '-ProductCode', request.productCode,
-          '-ResultPath', resultPath], request.scenarioRoot);
+      const invocation = createNativeProductInspectionCommand(request.productCode, resultPath);
+      await execute(invocation.command, invocation.arguments, request.scenarioRoot);
       phase = 'resultRead';
       state = await readResult(resultPath);
     } else {

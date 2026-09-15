@@ -372,11 +372,11 @@ function Get-InspectorTraceEvents([object[]]$Rows) {
 
 function Confirm-InspectorExternalReadOnlyEvents([object[]]$Rows) {
   $events = @(Get-InspectorTraceEvents $Rows | Sort-Object seconds)
-  $expected = @('scriptStarted', 'requestValidated', 'comCreationStarted', 'comCreationCompleted',
+  $expected = @('scriptStarted', 'requestValidated',
     'productStateStarted', 'productStateCompleted', 'registryInspectionStarted', 'registryInspectionCompleted',
     'processInspectionStarted', 'processInspectionCompleted', 'resultSerializeStarted', 'resultSerializeCompleted',
     'resultWriteStarted', 'resultWriteCompleted', 'resultPublishStarted', 'resultPublishCompleted',
-    'comReleaseStarted', 'comReleaseCompleted', 'scriptFinished')
+    'scriptFinished')
   if (($events.phase -join ',') -cne ($expected -join ',') -or
       @($events.process | Select-Object -Unique).Count -ne 1 -or
       @($events.thread | Select-Object -Unique).Count -ne 1) { throw 'INSPECTOR_TRACE_BOUNDARIES_INVALID' }

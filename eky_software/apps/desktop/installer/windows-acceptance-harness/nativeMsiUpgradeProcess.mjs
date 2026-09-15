@@ -1,11 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
+import { NATIVE_MSI_ADAPTER } from './nativeMsiAdapterCommand.mjs';
 
-const DIRECTORY = dirname(fileURLToPath(import.meta.url));
-const ADAPTER = resolve(DIRECTORY, '../bin/native-msi-test-adapter/Release/net10.0/Eky.NativeMsiTestAdapter.dll');
 const MAX_BYTES = 2048;
 const invalid = () => new Error('runningUpgradeValidationInvalid');
 const exact = (value, keys) => Object.keys(value).sort().join(',') === keys.sort().join(',');
@@ -69,7 +66,7 @@ export async function startNativeMsiUpgrade({ packagePath, logPath, cwd, launch,
       server.listen(`\\\\.\\pipe\\${pipeName}`, () => { server.off('error', reject); ready(); });
     });
     const owned = await launch(process.env.EKY_DOTNET_EXE || 'dotnet',
-      [ADAPTER, '--package', packagePath, '--log', logPath, '--pipe', pipeName, '--nonce', nonce], { cwd });
+      [NATIVE_MSI_ADAPTER, '--package', packagePath, '--log', logPath, '--pipe', pipeName, '--nonce', nonce], { cwd });
     const completion = (async () => {
       try {
         const host = await owned.completion;

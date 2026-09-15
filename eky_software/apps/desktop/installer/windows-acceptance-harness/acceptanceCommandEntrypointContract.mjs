@@ -174,7 +174,7 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
   });
   const directCases = ['completed', 'blockedEvidence', 'preparationHold', 'productInspectionHold', 'scenarioHold', 'uninstallHold', 'resultBeforeExit', 'cleanupFailed', 'scenarioAndCleanupFailed', 'removalHold',
     'publicationBeforeExit', 'productMissingResult', 'preconditionFailed', 'scenarioMissing', 'businessFailed', 'profileChanged', 'artifactChanged',
-    ...(kind === 'legacy' ? ['productInspectionNativeHold', 'productInspectionReadOnly'] : workspace ? ['footprintFailed']
+    ...(kind === 'legacy' ? ['productInspectionNativeHold', 'productInspectionResultBeforeExit', 'productInspectionReadOnly'] : workspace ? ['footprintFailed']
       : ['temporaryRootAlias', 'scenarioAndProfileFailed', 'scenarioAndRemovalFailed']), ...(kind === 'workspace-fault' ? ['sessionFailed'] : []),
     ...(upgrade ? ['applicationCleanupUnverified', 'postconditionFailed'] : [])];
   const ciCases = kind === 'legacy' || clean || upgrade
@@ -213,7 +213,7 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
       if (blocked) await writeFile(evidenceRequestPath, JSON.stringify(createRequest(context, 'exitZero')));
       await writeFile(context.requestPath, JSON.stringify({ node: process.execPath, testCase,
         ...(blocked ? { evidenceRequestPath } : {}),
-        ...(['productInspectionNativeHold', 'productInspectionReadOnly', 'temporaryRootAlias'].includes(testCase) ? { useCanonicalBudgets: true } : {}),
+        ...(['productInspectionNativeHold', 'productInspectionResultBeforeExit', 'productInspectionReadOnly', 'temporaryRootAlias'].includes(testCase) ? { useCanonicalBudgets: true } : {}),
         worker: fileURLToPath(new URL('./legacyCommandWorkerFixture.mjs', import.meta.url)),
         arguments: [`--${kind}-command`, '--artifact-descriptor', descriptor, '--expected-descriptor-sha256', 'a'.repeat(64),
           '--expected-build-revision', 'b'.repeat(40), ...(faultScenario ? ['--fault-scenario', faultScenario] : []), '--result-path', resultPath] }));
@@ -260,9 +260,9 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
         }
         assert.equal(completion.exitCode, succeeded ? 0 : 1);
         const commandRoot = await readFile(join(context.testRoot, 'command-root.txt'), 'utf8');
-        const phase = { preparationHold: 'prepare', productInspectionHold: 'inspectSourceBefore', productInspectionNativeHold: 'inspectSourceBefore', scenarioHold: 'scenario', uninstallHold: uninstallPhase,
+        const phase = { preparationHold: 'prepare', productInspectionHold: 'inspectSourceBefore', productInspectionNativeHold: 'inspectSourceBefore', productInspectionResultBeforeExit: 'inspectSourceBefore', scenarioHold: 'scenario', uninstallHold: uninstallPhase,
           resultBeforeExit: uninstallPhase, removalHold: 'fixtureCleanup', publicationBeforeExit: 'publish' }[testCase];
-        if (!['productInspectionNativeHold', 'productInspectionReadOnly', 'temporaryRootAlias'].includes(testCase)) {
+        if (!['productInspectionNativeHold', 'productInspectionResultBeforeExit', 'productInspectionReadOnly', 'temporaryRootAlias'].includes(testCase)) {
           for (const receipt of phaseEvidence) {
             const request = await readCommandPhaseJson(join(commandRoot, receipt.phase, 'request.json'));
             assert.equal(request.timeoutMilliseconds, receipt.phase === phase ? 4_000 : 35_000);
@@ -275,10 +275,19 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
           assert.equal(outcome.processTreeAbsent, true);
           assert.equal(outcome.cleanupResultCode, 'processTreeAbsent');
         }
-        if (testCase === 'productInspectionNativeHold') {
+        if (['productInspectionNativeHold', 'productInspectionResultBeforeExit'].includes(testCase)) {
           const observation = JSON.parse(await readFile(join(commandRoot, phase, 'inspector-observation.json'), 'utf8'));
-          assert.deepEqual(observation, { schemaVersion: 1, events:
-            ['scriptStarted', 'requestValidated', 'comCreationStarted'].map((name) => ({ phase: name, payloadCount: 0 })) });
+          const phases = ['scriptStarted', 'requestValidated', 'productStateStarted'];
+          if (testCase === 'productInspectionResultBeforeExit') {
+            phases.push('productStateCompleted', 'registryInspectionStarted', 'registryInspectionCompleted',
+              'processInspectionStarted', 'processInspectionCompleted', 'resultSerializeStarted', 'resultSerializeCompleted',
+              'resultWriteStarted', 'resultWriteCompleted', 'resultPublishStarted', 'resultPublishCompleted');
+            const operationRoots = (await readdir(join(commandRoot, phase))).filter(name => name.startsWith('product-operation-'));
+            assert.equal(operationRoots.length, 1);
+            const fact = JSON.parse(await readFile(join(commandRoot, phase, operationRoots[0], 'state.json'), 'utf8'));
+            assert.equal(fact.productState, -1);
+          }
+          assert.deepEqual(observation, { schemaVersion: 1, events: phases.map(name => ({ phase: name, payloadCount: 0 })) });
           await assert.rejects(lstat(join(commandRoot, phase, 'worker-result.json')), { code: 'ENOENT' });
         }
         if (testCase === 'productInspectionReadOnly') {
@@ -328,7 +337,7 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
             await assert.rejects(lstat(join(commandRoot, 'scenario')), { code: 'ENOENT' });
             await assert.rejects(lstat(join(commandRoot, uninstallPhase)), { code: 'ENOENT' });
           }
-          if (['productInspectionHold', 'productInspectionNativeHold'].includes(testCase)) {
+          if (['productInspectionHold', 'productInspectionNativeHold', 'productInspectionResultBeforeExit'].includes(testCase)) {
             assert.equal(result.outcome.errorCode, workspace ? 'supervisorDeadlineExceeded' : 'WINDOWS_ACCEPTANCE_SUPERVISOR_DEADLINE_EXCEEDED');
             assert.equal(result.outcome.fixtureRemoved, false);
             await assert.rejects(lstat(join(commandRoot, 'scenario')), { code: 'ENOENT' });

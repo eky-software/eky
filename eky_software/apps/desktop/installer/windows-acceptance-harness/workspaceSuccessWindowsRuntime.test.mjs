@@ -114,7 +114,7 @@ async function fixture(context, changes = {}) {
     environment,
     async runCommand(command, args, options) {
       calls.push({ command, args, options });
-      if (basename(command) === 'powershell.exe') {
+      if (basename(command) === 'powershell.exe' || args.includes('--inspect-product')) {
         activityQuery = args.some((arg) => arg.endsWith('inspectWorkspaceSuccessMsiActivity.ps1'));
         inspectionRole = args.includes('{SOURCE}') ? 'source' : 'target';
         if (changes.inspectionCommand) return changes.inspectionCommand({
@@ -213,7 +213,8 @@ for (const role of ['source', 'target']) {
     await value.runtime.waitForInstallation(role);
     assert.equal(value.calls.filter((call) => call.observation).length, 1);
     assert.equal(value.calls.filter((call) => call.command).length, 5);
-    assert.ok(value.calls.filter((call) => call.command).every((call) => basename(call.command) === 'powershell.exe'));
+    assert.deepEqual(value.calls.filter(call => call.command).map(call => call.args.includes('--inspect-product')
+      ? 'product' : basename(call.command)), ['powershell.exe', 'powershell.exe', 'product', 'product', 'powershell.exe']);
     await assert.rejects(() => value.runtime.waitForInstallation('foreign'), /requestInvalid/);
   });
 }
@@ -253,7 +254,8 @@ test('source rollback observes delayed helper and inter-MSI gaps until actual te
   assert.equal(observations.length, 0);
   assert.equal(value.calls.filter((call) => call.observation).length, 5);
   assert.equal(value.calls.filter((call) => call.command).length, 4);
-  assert.ok(value.calls.filter((call) => call.command).every((call) => basename(call.command) === 'powershell.exe'));
+  assert.deepEqual(value.calls.filter(call => call.command).map(call => call.args.includes('--inspect-product')
+    ? 'product' : basename(call.command)), ['powershell.exe', 'product', 'product', 'powershell.exe']);
 });
 
 test('missing rollback progress cannot complete the wait and leaves cancellation to the existing owner', async (context) => {
@@ -358,7 +360,8 @@ test('handoff waits for observed MSI inactivity without starting or killing a pr
   await value.runtime.waitForTargetInstallation();
   assert.equal(value.calls.filter((call) => call.observation).length, 1);
   assert.equal(value.calls.filter((call) => call.command).length, 5);
-  assert.ok(value.calls.filter((call) => call.command).every((call) => basename(call.command) === 'powershell.exe'));
+  assert.deepEqual(value.calls.filter(call => call.command).map(call => call.args.includes('--inspect-product')
+    ? 'product' : basename(call.command)), ['powershell.exe', 'powershell.exe', 'product', 'product', 'powershell.exe']);
 });
 
 test('handoff discards product observations that overlap an active MSI transition', async (context) => {

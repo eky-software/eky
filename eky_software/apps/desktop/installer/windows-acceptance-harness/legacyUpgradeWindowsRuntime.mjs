@@ -24,9 +24,9 @@ import {
 } from './legacyUpgradeStartupObserver.mjs';
 import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
 import { verifyLegacyUpgradeArtifact } from './legacyUpgradeArtifact.mjs';
+import { createNativeProductInspectionCommand } from './nativeMsiAdapterCommand.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
-const INSPECTOR_PATH = resolve(DIRECTORY, 'inspectWindowsInstallerProductState.ps1');
 const CLOSE_REQUEST_PATH = resolve(DIRECTORY, 'requestWindowsApplicationClose.ps1');
 
 function bracedProductCode(productCode) {
@@ -211,20 +211,10 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact) {
     );
     inspectionSequence += 1;
     try {
+      const invocation = createNativeProductInspectionCommand(bracedProductCode(artifact[roleName].productCode), resultPath);
       const processResult = await runOwnedProcess(
-        powershell,
-        [
-          '-NoProfile',
-          '-NonInteractive',
-          '-ExecutionPolicy',
-          'Bypass',
-          '-File',
-          INSPECTOR_PATH,
-          '-ProductCode',
-          bracedProductCode(artifact[roleName].productCode),
-          '-ResultPath',
-          resultPath,
-        ],
+        invocation.command,
+        invocation.arguments,
         { cwd: scenarioRoot },
       );
       if (processResult.exitCode !== 0) {

@@ -10,17 +10,15 @@ import { coordinateUpgradeRollbackBinaryHandoff } from './upgradeRollbackBinaryH
 import { createUpgradeRollbackProgressWaiter } from './upgradeRollbackProgress.mjs';
 import { coordinateRunningApplicationUpgrade } from './upgradeRunningApplication.mjs';
 import { startNativeMsiUpgrade } from './nativeMsiUpgradeProcess.mjs';
+import { createNativeProductInspectionCommand } from './nativeMsiAdapterCommand.mjs';
 import { readRunningUpgradeObservation } from './runningUpgradeObservation.mjs';
 import { verifyInstalledPackagePayload } from './installedPackagePayload.mjs';
 import { captureDesktopLifecycleBaseline, requireTargetShutdownCompleted,
   waitForTargetDesktopStarted } from './legacyUpgradeStartupObserver.mjs';
 
-const INSPECTOR_PATH = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  'inspectWindowsInstallerProductState.ps1',
-);
+const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const LAUNCHER_FIXTURE_PATH = resolve(
-  dirname(fileURLToPath(import.meta.url)),
+  DIRECTORY,
   'upgradeRollbackLauncherFixture.mjs',
 );
 
@@ -166,20 +164,10 @@ export async function createUpgradeRollbackWindowsRuntime(request, artifact) {
     );
     inspectionSequence += 1;
     try {
+      const invocation = createNativeProductInspectionCommand(bracedProductCode(productCode), resultPath);
       const processResult = await runOwnedProcess(
-        powershell,
-        [
-          '-NoProfile',
-          '-NonInteractive',
-          '-ExecutionPolicy',
-          'Bypass',
-          '-File',
-          INSPECTOR_PATH,
-          '-ProductCode',
-          bracedProductCode(productCode),
-          '-ResultPath',
-          resultPath,
-        ],
+        invocation.command,
+        invocation.arguments,
         { cwd: runRoot },
       );
       if (processResult.exitCode !== 0) {
@@ -400,7 +388,7 @@ export async function createUpgradeRollbackWindowsRuntime(request, artifact) {
             if (owned.child.exitCode === null && owned.child.signalCode === null) {
               moments.closeRequested = Date.now();
               const close = await runOwnedProcess(powershell, ['-NoProfile', '-NonInteractive',
-                '-ExecutionPolicy', 'Bypass', '-File', resolve(dirname(INSPECTOR_PATH), 'requestWindowsApplicationClose.ps1'),
+                '-ExecutionPolicy', 'Bypass', '-File', resolve(DIRECTORY, 'requestWindowsApplicationClose.ps1'),
                 '-ProcessId', String(owned.processId), '-ExpectedExecutablePath', executablePath], { cwd: runRoot });
               if (close.exitCode !== 0) throw new Error('runningUpgradeShutdownFailed');
             }

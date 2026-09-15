@@ -311,7 +311,7 @@ test('entrypoint groups register original and migrated command contracts exactly
   for (const [file, kind, extra] of [
     ['cleanCommandEntrypoint', 'clean', ['temporaryRootAlias', 'scenarioAndProfileFailed', 'scenarioAndRemovalFailed']],
     ['upgradeCommandEntrypoint', 'upgrade', ['temporaryRootAlias', 'scenarioAndProfileFailed', 'scenarioAndRemovalFailed', 'applicationCleanupUnverified', 'postconditionFailed']],
-    ['legacyCommandEntrypoint', 'legacy', ['productInspectionNativeHold', 'productInspectionReadOnly']],
+    ['legacyCommandEntrypoint', 'legacy', ['productInspectionNativeHold', 'productInspectionResultBeforeExit', 'productInspectionReadOnly']],
     ['workspaceSuccessCommandEntrypoint', 'workspace-success', ['footprintFailed']],
     ['workspaceFaultCommandEntrypoint', 'workspace-fault', ['footprintFailed', 'sessionFailed']],
   ]) {
@@ -333,7 +333,7 @@ test('entrypoint groups register original and migrated command contracts exactly
     assert.ok(source.includes(`registerAcceptanceCommandEntrypointContracts('${kind}');`));
     all.push(...registrations);
   }
-  assert.equal(all.length, 122);
+  assert.equal(all.length, 123);
   assert.equal(new Set(all).size, all.length);
 });
 
