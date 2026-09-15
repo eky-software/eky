@@ -235,7 +235,7 @@ jobs:
 
       - name: Validate closed diagnostic identity before download
         run: |
-          if ($env:INSPECTOR_CAPTURE -ceq 'true' -and $env:ARTIFACT_KIND -cne 'legacy') {
+          if ($env:INSPECTOR_CAPTURE -ceq 'true' -and $env:ARTIFACT_KIND -cnotin @('legacy', 'upgrade')) {
             throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CAPTURE_SCOPE_INVALID'
           }
           if ($env:ARTIFACT_KIND -cnotin @('legacy', 'workspace', 'workspace-fault', 'upgrade') -or

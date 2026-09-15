@@ -2581,8 +2581,13 @@ komentoa, pysähtyy sen jälkeen ja analyysi käyttää vain nykyistä inspector
 lukijaa. Start/stop/analyze-rajat, komentobudjetit, pakolliset tulokset ja
 ennen/jälkeen-artifact-varmennukset eivät muutu. Raakajälkiä ei julkaista.
 Kytkentätesti suorittaa todellisen analyysivaiheen kummankin valinnan sekä
-virhepaluiden kanssa; 24/24 legacy-artifact-/workflow- ja 15/15
-upgrade-artifact-sopimusta läpäisevät. Koe on diagnostiikkaa, ei uusi
+virhepaluiden kanssa. Ensimmäinen keruukytkennän
+[CI-yritys](https://github.com/eky-software/eky/actions/runs/34959972273)
+hylättiin ennen latausta, keruuta ja MSI:tä: esivalidointi salli edelleen
+vain legacyn. Pieni korjaus kohdistuu samaan valintaan; käyttäytymisregressio
+toistaa vanhan upgrade-hylkäyksen ja tarkistaa myös sallitut ja kielletyt
+perheet sekä virheellisen artifact-identiteetin. Korjattu artifact-/workflow-
+ryhmä läpäisee 25/25. Koe on diagnostiikkaa, ei uusi
 hyväksyntäkierros. Sen lopputulos on ensimmäinen valmistumaton tarkistinraja
 tai täsmällisesti puuttuva havainto; uusi vihreä koe ei osoita juurisyytä.
 

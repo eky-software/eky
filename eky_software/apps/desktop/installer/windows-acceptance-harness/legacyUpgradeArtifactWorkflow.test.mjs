@@ -74,6 +74,41 @@ test('external inspector capture is opt-in and never replaces command or artifac
   assert.doesNotMatch(diagnostic, /continue-on-error|upload-artifact|wpr.*-cancel|symbols/u);
 });
 
+test('diagnostic preflight admits only the selected capture families and verified identity', {
+  skip: process.platform !== 'win32', timeout: 60_000,
+}, async (t) => {
+  const workflow = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
+  const step = workflow.split('      - name: Validate closed diagnostic identity before download\n')[1].split('\n      - name:')[0];
+  const body = step.split('        run: |\n')[1].trimEnd().split('\n')
+    .map((line) => { assert.ok(line.startsWith('          ')); return line.slice(10); }).join('\n');
+  for (const [kind, capture, invalidIdentity, expectedCode] of [
+    ['legacy', 'true', false, 0], ['upgrade', 'true', false, 0],
+    ['workspace', 'true', false, 1], ['workspace-fault', 'true', false, 1],
+    ['workspace', 'false', false, 0], ['unknown', 'false', false, 1],
+    ['upgrade', 'true', true, 1],
+  ]) {
+    const context = await createRunContext('diagnostic-preflight-routing');
+    let passed = false;
+    t.after(() => cleanupRunContext(context, { preserveEvidence: !passed || t.signal.aborted }));
+    const script = join(context.testRoot, 'step.ps1');
+    await writeFile(script, `$ErrorActionPreference = 'Stop'\n$env:GITHUB_SHA = (git rev-parse HEAD).Trim()\n${body}\nexit $LASTEXITCODE\n`);
+    const child = spawn(resolve(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script], {
+        stdio: 'ignore', windowsHide: true,
+        env: { ...process.env, ARTIFACT_KIND: kind, INSPECTOR_CAPTURE: capture,
+          ARTIFACT_RUN_ID: '1', ARTIFACT_ID: '2', EXPECTED_BUILD_REVISION: 'a'.repeat(40),
+          EXPECTED_DESCRIPTOR_SHA256: invalidIdentity ? 'invalid' : 'b'.repeat(64) },
+      });
+    context.fixtureProcesses.add(child);
+    const completion = await new Promise((resolvePromise, rejectPromise) => {
+      child.once('error', rejectPromise);
+      child.once('close', (code, signal) => resolvePromise({ code, signal }));
+    });
+    assert.deepEqual(completion, { code: expectedCode, signal: null }, `${kind}/${capture}/${invalidIdentity}`);
+    passed = true;
+  }
+});
+
 test('diagnostic analysis uses the selected existing reader and preserves its process outcome', {
   skip: process.platform !== 'win32', timeout: 60_000,
 }, async (t) => {
