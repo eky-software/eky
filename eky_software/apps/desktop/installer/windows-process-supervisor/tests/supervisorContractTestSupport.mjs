@@ -164,6 +164,7 @@ export function startSupervisor(
     dotnetArguments = ['--request', context.requestPath],
     dotnetAssembly = SUPERVISOR_DLL,
     environment = process.env,
+    observeEvidence,
   } = {},
 ) {
   const evidence = [];
@@ -177,7 +178,7 @@ export function startSupervisor(
     [dotnetAssembly, ...dotnetArguments],
     {
       cwd: context.testRoot,
-      stdio: captureOutput || unreadOutput ? ['ignore', 'pipe', 'pipe'] : 'ignore',
+      stdio: captureOutput || unreadOutput || observeEvidence ? ['ignore', 'pipe', 'pipe'] : 'ignore',
       windowsHide: true,
       env: environment,
     },
@@ -189,11 +190,11 @@ export function startSupervisor(
     context.supervisorProcesses.delete(child);
   });
 
-  if (captureOutput) {
+  if (captureOutput || observeEvidence) {
     let pending = '';
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (chunk) => {
-      standardOutput += chunk;
+      if (captureOutput) standardOutput += chunk;
       if (standardOutput.length > 65_536) {
         evidenceFailure = new Error(
           'WINDOWS_ACCEPTANCE_SUPERVISOR_EVIDENCE_TOO_LARGE',
@@ -201,6 +202,10 @@ export function startSupervisor(
         return;
       }
       pending += chunk;
+      if (!captureOutput && pending.length > 65_536) {
+        pending = '';
+        return;
+      }
       const lines = pending.split(/\r?\n/);
       pending = lines.pop() || '';
       for (const line of lines) {
@@ -209,16 +214,17 @@ export function startSupervisor(
         }
         try {
           const value = parseEvidenceLine(line, context);
-          evidence.push(value);
+          if (captureOutput) evidence.push(value);
+          try { observeEvidence?.(value); } catch { /* Optional observation cannot change completion. */ }
           emitter.emit('evidence', value);
         } catch (error) {
-          evidenceFailure = error;
+          if (captureOutput) evidenceFailure = error;
         }
       }
     });
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', (chunk) => {
-      standardError += chunk;
+      if (captureOutput) standardError += chunk;
     });
   }
 

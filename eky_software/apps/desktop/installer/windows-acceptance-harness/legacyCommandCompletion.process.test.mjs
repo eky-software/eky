@@ -9,7 +9,7 @@ import { cleanupRunContext, createRunContext, createRequest, startProgramFailure
   from '../windows-process-supervisor/tests/supervisorContractTestSupport.mjs';
 import { readWindowsAcceptanceSupervisorResult } from '../windows-process-supervisor/windowsAcceptanceSupervisorResult.mjs';
 
-import { describeCommandPhases, reportCommandFailure } from './acceptanceCommandEntrypointContract.mjs';
+import { describeCommandPhases, recordCommandBoundaryEvidence, reportCommandFailure } from './acceptanceCommandEntrypointContract.mjs';
 
 
 test('command failure diagnostics preserve missing results and reject raw fields', async () => {
@@ -48,6 +48,65 @@ test('command failure diagnostics keep worker loss separate from unverified clea
     { phase: 'prepare', result: 'validated', process: 'processCompleted', worker: 'workerResultMissing', cleanup: 'notRequired', processTreeAbsent: true },
     { phase: 'scenario', result: 'validated', process: 'deadlineExceeded', worker: 'notChecked', cleanup: 'cleanupUnverified', processTreeAbsent: false },
   ]);
+});
+
+test('command boundary diagnostics keep only a bounded closed projection', () => {
+  const tail = [];
+  for (let index = 0; index < 25; index += 1) {
+    recordCommandBoundaryEvidence(tail, { phase: 'hostStarted', status: 'completed',
+      path: 'private', processId: index, elapsedMs: index });
+  }
+  recordCommandBoundaryEvidence(tail, { phase: 'private', status: 'failed' });
+  recordCommandBoundaryEvidence(tail, { phase: 'hostStarted', status: 'private' });
+  recordCommandBoundaryEvidence(tail, null);
+  assert.deepEqual(tail, Array.from({ length: 20 }, () => ({ phase: 'hostStarted', status: 'completed' })));
+  recordCommandBoundaryEvidence(tail, { phase: 'resultWritten', status: 'failed', errorCode: 'private raw error' });
+  recordCommandBoundaryEvidence(tail, { phase: 'supervisor', status: 'failed', errorCode: 'cleanupUnverified' });
+  assert.equal(tail.length, 20);
+  assert.deepEqual(tail.slice(-2), [
+    { phase: 'resultWritten', status: 'failed', errorCode: 'other' },
+    { phase: 'supervisor', status: 'failed', errorCode: 'cleanupUnverified' },
+  ]);
+  const original = new Error('original assertion');
+  let diagnostic;
+  assert.throws(() => reportCommandFailure({ diagnostic(value) { diagnostic = JSON.parse(value); } }, [], original, tail),
+    (error) => error === original);
+  assert.deepEqual(diagnostic, { commandPhases: [], boundaryEvidence: tail });
+  assert.throws(() => reportCommandFailure({ diagnostic() { throw new Error('output failed'); } }, [], original, tail),
+    (error) => error === original);
+});
+
+test('optional command evidence observer failure preserves the real terminal boundary', {
+  skip: process.platform !== 'win32', timeout: 30_000,
+}, async (t) => {
+  const context = await createRunContext('optional-command-evidence');
+  let verified = false;
+  t.after(() => cleanupRunContext(context, { preserveEvidence: !verified }));
+  await writeRequest(context, createRequest(context, 'exitNonZero'));
+  let observations = 0;
+  const execution = startSupervisor(context, { captureOutput: false, observeEvidence() {
+    observations += 1;
+    throw new Error('optional observer failed');
+  } });
+  const events = [];
+  execution.child.once('exit', () => events.push('exit'));
+  execution.child.once('close', () => events.push('close'));
+  const completed = await execution.completion;
+  assert.deepEqual(events, ['exit', 'close']);
+  assert.equal(completed.exitCode, 1);
+  assert.equal(completed.signal, null);
+  assert.ok(observations > 0);
+  assert.deepEqual(completed.evidence, []);
+  assert.equal(completed.standardOutput, '');
+  const result = await readWindowsAcceptanceSupervisorResult(context.resultPath, {
+    artifactDescriptorSha256: context.artifactDescriptorSha256, runNonce: context.runNonce,
+    scenario: context.scenario, supervisorExitCode: completed.exitCode,
+  });
+  assert.equal(result.processResultCode, 'processExitFailed');
+  assert.equal(result.processTreeAbsent, true);
+  assert.equal(result.cleanupResultCode, 'notRequired');
+  assert.equal(context.supervisorProcesses.size, 0);
+  verified = true;
 });
 
 for (const stage of ['WorkerReadHold', 'ResultWriteHold', 'ResultWriteHoldAfterFailure']) {

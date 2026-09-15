@@ -2549,6 +2549,25 @@ Tämä osuus erottaa nykyisen julkaisutyön historiallisesta tutkimusnäytöstä
 
 #### Ajantasaiset julkaisuesteet ja päätökset
 
+Revision `b20ec8150d9d6f859882c835671d02b77945b367`
+[ensimmäinen normaali kokonaiskierros](https://github.com/eky-software/eky/actions/runs/34978683620)
+läpäisi kaikki portit ja 18 consumer-komentoa samoihin producer-tavuihin
+sidottuina. Saman revision
+[riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/34978408074)
+läpäisi. [Toisen normaalin kierroksen](https://github.com/eky-software/eky/actions/runs/34982523814)
+clean/upgrade-komentoryhmän ensimmäinen toisto hylkäsi synteettisen
+`upgrade/removalHold`-tapauksen (53/54). Komennon exit ja close havaittiin,
+mutta `fixtureCleanup`-vaiheen pakollinen tulos puuttui. Hyväksyntäpari on
+hylätty; ensimmäisen kierroksen vihreys ei korvaa puuttuvaa näyttöä.
+
+Nykyinen komentoregressio säilyttää tämän virherajan viimeiset 20 suljettua
+vaihehavaintoa vain epäonnistumisen lisätietona. Havaintotuki ei odota
+kuittausta, muuta prosessin tulosta tai korvaa pakollista tulostiedostoa.
+Raakakentät hylätään ja havaintotuen virhe säilyttää alkuperäisen assertionin.
+Nykyisen diagnostiikkatyönkulun `clean-upgrade-command-diagnostic` ajaa saman
+kanonisen komentoryhmän kahdella Windows-runnerilla ilman MSI-matriisia.
+Tämä on vianrajaus, ei hyväksyntä tai selitys puuttuvalle tulokselle.
+
 Omistaja on hyväksynyt nykyisen read-only-tuotetarkistimen korvaamisen
 olemassa olevan `native-msi-adapter`-testiprojektin lukutoiminnolla. Viisi
 harness-käyttäjää käyttävät samaa `MsiQueryProductStateW`-/

@@ -111,8 +111,21 @@ export async function describeCommandPhases(commandRoot, kind, read = readComman
   return evidence;
 }
 
-export function reportCommandFailure(t, evidence, original) {
-  try { t.diagnostic(JSON.stringify({ commandPhases: evidence })); } catch { /* Preserve the assertion. */ }
+export function recordCommandBoundaryEvidence(tail, value) {
+  if (!['fixtureCleanup', 'requestValidated', 'jobCreated', 'hostStarted', 'hostAssigned',
+    'waitStarted', 'hostExited', 'deadlineExceeded', 'cleanupStarted', 'cleanupCompleted',
+    'processTreeAbsent', 'workerResultValidated', 'resultWritten', 'supervisor'].includes(value?.phase) ||
+    !['started', 'completed', 'failed'].includes(value?.status)) return;
+  const entry = { phase: value.phase, status: value.status };
+  if (value.errorCode !== undefined) entry.errorCode = ['requestFileInvalid', 'unexpectedFailure',
+    'resultWriteFailed', 'deadlineExceeded', 'cleanupFailed', 'cleanupUnverified', 'processStartFailed',
+    'processExitFailed'].includes(value.errorCode) ? value.errorCode : 'other';
+  tail.push(entry);
+  if (tail.length > 20) tail.shift();
+}
+
+export function reportCommandFailure(t, evidence, original, boundaryEvidence = []) {
+  try { t.diagnostic(JSON.stringify({ commandPhases: evidence, boundaryEvidence })); } catch { /* Preserve the assertion. */ }
   throw original;
 }
 
@@ -217,8 +230,10 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
         worker: fileURLToPath(new URL('./legacyCommandWorkerFixture.mjs', import.meta.url)),
         arguments: [`--${kind}-command`, '--artifact-descriptor', descriptor, '--expected-descriptor-sha256', 'a'.repeat(64),
           '--expected-build-revision', 'b'.repeat(40), ...(faultScenario ? ['--fault-scenario', faultScenario] : []), '--result-path', resultPath] }));
+      const boundaryEvidence = [];
       const execution = ciChain ? await startCiCommand(context, kind, descriptor, resultPath, t.signal)
         : startSupervisor(context, { captureOutput: false, environment,
+        observeEvidence: testCase === 'removalHold' ? (value) => recordCommandBoundaryEvidence(boundaryEvidence, value) : undefined,
         dotnetAssembly: contractAssembly,
         dotnetArguments: ['--mode', 'legacyCommandEntry', '--request', context.requestPath] });
       const events = execution.events ?? [];
@@ -373,7 +388,7 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
           }
         }
         verified = true;
-      } catch (error) { reportCommandFailure(t, phaseEvidence, error); }
+      } catch (error) { reportCommandFailure(t, phaseEvidence, error, boundaryEvidence); }
     });
   }
 }
