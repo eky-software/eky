@@ -2568,6 +2568,15 @@ Nykyisen diagnostiikkatyönkulun `clean-upgrade-command-diagnostic` ajaa saman
 kanonisen komentoryhmän kahdella Windows-runnerilla ilman MSI-matriisia.
 Tämä on vianrajaus, ei hyväksyntä tai selitys puuttuvalle tulokselle.
 
+Revision `5701742d2f3051ad2b35cdf123f1b26cc7dc0f18`
+[rajatussa Windows-kokeessa](https://github.com/eky-software/eky/actions/runs/34985968216)
+molemmat komentoryhmät läpäisivät 54/54 ensimmäisellä yrityksellä.
+Aiempi tuloksen puuttuminen ei toistunut. Avoin raja on edelleen
+`fixtureCleanup`-pyynnön valmistelun, prosessituloksen ja tulostiedoston
+julkaisun erottaminen epäonnistuneessa ajossa; komennon oma poistuminen on
+jo havaittu. Diagnostiikan vihreys ei sulje tätä puutetta eikä käynnistä
+uutta täyttä MSI-matriisia sen selvittämisen korvikkeena.
+
 Omistaja on hyväksynyt nykyisen read-only-tuotetarkistimen korvaamisen
 olemassa olevan `native-msi-adapter`-testiprojektin lukutoiminnolla. Viisi
 harness-käyttäjää käyttävät samaa `MsiQueryProductStateW`-/
