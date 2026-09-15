@@ -118,6 +118,14 @@ valmiuden, workspace-ratkaisun, backendin käynnistyspyynnön ja valmiuden,
 ensimmäisen ikkunan luonnin sekä composition-kutsun valmistumisen. Se ei lue
 yritysdataa, kirjoita konsoliin tai levylle eikä muuta tuotannon käynnistystä.
 Havainnot eivät ole uusia valmius- tai hyväksymisehtoja.
+Backendin nykyinen E2E-controller erottaa samalla muistihavainnolla
+`fork`-pyynnön, prosessikahvan palautumisen, `spawn`-tapahtuman,
+start-viestin lähetyksen ja validoidun ready-viestin vastaanoton.
+Kahva tai lähetetty viesti ei todista backendin valmiutta. Nämä havainnot
+käyttävät samaa 16 merkinnän rajaa ja nykyistä yksityistä lukukanavaa;
+ne eivät lisää lokitusta, prosessivalvojaa, kuittausta tai aikarajaa.
+Havaintokutsun poikkeus ei muuta controllerin onnistumista, alkuperäistä
+käynnistysvirhettä tai sulkemista. Tuotannon käynnistyspolku ei muutu.
 Erillinen `DESK-STARTUP-OBSERVATION-001` todistaa havaintojen todellisen
 kytkennän nykyiseen main-prosessiin. Se ei lisää diagnostiikan saatavuutta
 PDF-käyttäjäpolun onnistumisehdoksi. `DESK-RESTART-001` todistaa nykyisellä

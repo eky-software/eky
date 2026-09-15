@@ -2549,6 +2549,26 @@ Tämä osuus erottaa nykyisen julkaisutyön historiallisesta tutkimusnäytöstä
 
 #### Ajantasaiset julkaisuesteet ja päätökset
 
+Revision `cb0dff26985c3346c5eb0c88120e73468f5ee075`
+[ensimmäinen normaali kierros](https://github.com/eky-software/eky/actions/runs/34996359240)
+on hylätty Electron criticalin `DESK-WORKSPACE-STARTUP-001`-flaken vuoksi.
+Ensimmäinen yritys päättyi fixturen `firstWindow`-aikakatkaisuun ennen
+testirunkoa. Turvallinen muistihavainto saavutti `backendStartRequested`-
+vaiheen mutta ei `backendReady`- tai ikkunahavaintoa. Runtime-siivoaminen,
+portin vapautuminen ja testijuuren poisto valmistuivat. Retry läpäisi, mutta
+ei korvaa hylkäystä. Muut testijobit sekä kaikki 18 paketoitua consumer-komentoa
+valmistuivat; [revision riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/34996143398)
+läpäisi. Toista normaalia kierrosta ei käynnistetty.
+
+Rajattu havaintokorjaus erottaa olemassa olevassa E2E-backend-controllerissa
+fork-pyynnön, kahvan palautumisen, spawnin, start-viestin ja validoidun
+ready-viestin. Sama rajattu muistiprojektio ja yksityinen lukukanava säilyvät;
+ei uutta valvojaa, lokitusta, tuotantomuutosta tai aikarajaa. Synteettiset
+sopimukset ja nykyinen Electron-kytkentätesti todentavat tapahtumajärjestyksen,
+alkuperäisen virheen säilymisen ja havaintovirheen riippumattomuuden.
+Puuttuva välivaihehavainto korjataan, mutta satunnaisen käynnistysviiveen
+syy ja normaali kokonaishyväksyntä jäävät avoimiksi.
+
 Revision `0416323d6e988ade94fe6ac3b58410d29c776633`
 [normaali kokonaiskierros](https://github.com/eky-software/eky/actions/runs/34987838414)
 on hylätty. Clean, upgrade/rollback, legacy ja workspace-success läpäisivät

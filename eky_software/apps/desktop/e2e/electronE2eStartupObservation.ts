@@ -5,19 +5,24 @@ const checkpoints = [
   'workspaceResolutionStarted',
   'workspaceResolutionCompleted',
   'backendStartRequested',
+  'backendForkRequested',
+  'backendForkReturned',
+  'backendProcessSpawned',
+  'backendStartMessageSent',
+  'backendReadyReceived',
   'backendReady',
   'firstWindowCreated',
   'compositionCompleted',
   'startupFailed',
 ] as const;
 
-type StartupCheckpoint = (typeof checkpoints)[number];
+export type ElectronE2eStartupCheckpoint = (typeof checkpoints)[number];
 const MAX_CHECKPOINTS = 16;
 
 export interface ElectronE2eStartupObservation {
   readonly schemaVersion: 1;
   readonly checkpoints: readonly Readonly<{
-    checkpoint: StartupCheckpoint;
+    checkpoint: ElectronE2eStartupCheckpoint;
     elapsedMs: number;
   }>[];
   readonly truncated: boolean;
@@ -27,7 +32,7 @@ export interface ElectronE2eStartupObservation {
 export function createElectronE2eStartupObservation(
   now: () => number = () => performance.now(),
 ): {
-  record(checkpoint: StartupCheckpoint): void;
+  record(checkpoint: ElectronE2eStartupCheckpoint): void;
   snapshot(): ElectronE2eStartupObservation;
 } {
   const started = now();
@@ -65,13 +70,13 @@ export function parseElectronE2eStartupObservation(
   for (const entry of value.checkpoints) {
     if (!isRecord(entry) ||
         Object.keys(entry).sort().join(',') !== 'checkpoint,elapsedMs' ||
-        !checkpoints.includes(entry.checkpoint as StartupCheckpoint) ||
+        !checkpoints.includes(entry.checkpoint as ElectronE2eStartupCheckpoint) ||
         typeof entry.elapsedMs !== 'number' ||
         !Number.isSafeInteger(entry.elapsedMs) || entry.elapsedMs < 0) {
       return undefined;
     }
     observations.push(Object.freeze({
-      checkpoint: entry.checkpoint as StartupCheckpoint,
+      checkpoint: entry.checkpoint as ElectronE2eStartupCheckpoint,
       elapsedMs: entry.elapsedMs,
     }));
   }

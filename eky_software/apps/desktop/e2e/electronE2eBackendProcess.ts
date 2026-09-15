@@ -1,4 +1,4 @@
-import { utilityProcess, type UtilityProcess } from 'electron';
+import type { utilityProcess, UtilityProcess } from 'electron';
 
 import type {
   DesktopBackendHandle,
@@ -7,6 +7,7 @@ import type {
 import { waitForBackendShutdown } from '../src/runtime/backendShutdown.js';
 import { createDesktopOperationalEvent } from '../src/observability/createDesktopOperationalEvent.js';
 import type { ElectronE2eConfig } from './electronE2eConfig.js';
+import type { ElectronE2eStartupCheckpoint } from './electronE2eStartupObservation.js';
 import {
   parseElectronE2eBackendStatus,
   readElectronE2eBackendFailureCode,
@@ -27,9 +28,21 @@ const shutdownTimeoutMilliseconds = 3_000;
 export function createElectronE2eBackendController(
   config: ElectronE2eConfig,
   runnerPath: string,
+  runtime: {
+    fork: typeof utilityProcess.fork;
+    observeStartup(checkpoint: ElectronE2eStartupCheckpoint): void;
+  },
 ): ElectronE2eBackendController {
   let processHandle: UtilityProcess | undefined;
   let startCount = 0;
+
+  function observe(checkpoint: ElectronE2eStartupCheckpoint): void {
+    try {
+      runtime.observeStartup(checkpoint);
+    } catch {
+      // Optional memory evidence cannot change the owned process outcome.
+    }
+  }
 
   return {
     getStartCount: () => startCount,
@@ -55,12 +68,14 @@ export function createElectronE2eBackendController(
             options.operationalIdentity,
           ),
         );
-        const child = utilityProcess.fork(runnerPath, [], {
+        observe('backendForkRequested');
+        const child = runtime.fork(runnerPath, [], {
           env: createE2eUtilityEnvironment(),
           serviceName: 'Eky E2E Fake Backend',
           stdio: 'ignore',
         });
         processHandle = child;
+        observe('backendForkReturned');
         let ready = false;
         let stopping = false;
         let unexpectedExitCallback: (() => void) | undefined;
@@ -72,6 +87,7 @@ export function createElectronE2eBackendController(
         }, readinessTimeoutMilliseconds);
 
         child.once('spawn', () => {
+          observe('backendProcessSpawned');
           child.postMessage(
             {
               config: options.config,
@@ -84,6 +100,7 @@ export function createElectronE2eBackendController(
               options.profileSnapshotBrokerPort,
             ],
           );
+          observe('backendStartMessageSent');
         });
         child.on('message', (value) => {
           const status = parseElectronE2eBackendStatus(value);
@@ -109,6 +126,7 @@ export function createElectronE2eBackendController(
 
           ready = true;
           clearTimeout(timer);
+          observe('backendReadyReceived');
           options.operationalLogger?.write(
             createDesktopOperationalEvent(
               {

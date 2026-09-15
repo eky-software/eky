@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 
-import { app, BrowserWindow, protocol } from 'electron';
+import { app, BrowserWindow, protocol, utilityProcess } from 'electron';
 
 import {
   startDesktopComposition,
@@ -51,12 +51,16 @@ const backendRunnerPath = resolve(
   import.meta.dirname,
   'electronE2eBackendRunner.js',
 );
+const startupObservation = createElectronE2eStartupObservation();
 const backendController = createElectronE2eBackendController(
   config,
   backendRunnerPath,
+  {
+    fork: (modulePath, args, options) => utilityProcess.fork(modulePath, args, options),
+    observeStartup: (checkpoint) => startupObservation.record(checkpoint),
+  },
 );
 const nativeAdapters = createElectronE2eNativeAdapters(config);
-const startupObservation = createElectronE2eStartupObservation();
 app.once('browser-window-created', () => {
   startupObservation.record('firstWindowCreated');
 });

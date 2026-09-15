@@ -287,11 +287,17 @@ test('DESK-STARTUP-OBSERVATION-001 @diagnostic-contract reads bounded main check
   const checkpoints = startup!.checkpoints.map((entry) => entry.checkpoint);
   expect(checkpoints.filter((checkpoint) => checkpoint === 'firstWindowCreated'))
     .toHaveLength(1);
-  expect(checkpoints.indexOf('backendStartRequested')).toBeGreaterThanOrEqual(0);
-  expect(checkpoints.indexOf('backendReady'))
-    .toBeGreaterThan(checkpoints.indexOf('backendStartRequested'));
-  expect(checkpoints.indexOf('firstWindowCreated'))
-    .toBeGreaterThan(checkpoints.indexOf('backendReady'));
+  let previousIndex = -1;
+  for (const checkpoint of [
+    'backendStartRequested', 'backendForkRequested', 'backendForkReturned',
+    'backendProcessSpawned', 'backendStartMessageSent', 'backendReadyReceived',
+    'backendReady', 'firstWindowCreated',
+  ] as const) {
+    expect(checkpoints.filter((value) => value === checkpoint)).toHaveLength(1);
+    const index = checkpoints.indexOf(checkpoint);
+    expect(index).toBeGreaterThan(previousIndex);
+    previousIndex = index;
+  }
 });
 
 test('DESK-SECRET-001 @critical @security persists only encrypted SMTP secret state', async ({
