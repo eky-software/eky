@@ -2566,7 +2566,18 @@ julkaista, ja havaintovirhe ei muuta paketoinnin tulosta. Onnistumisen
 summary, pakettitarkistukset, määräajat ja payload eivät muutu. Regressiot
 kattavat molempien roolien keskeytymisen ennen asentimen rakentamista sekä
 todellisen valmistelun tiedostovirheen säilymisen havaintovirheessä.
-Alkuperäisen paketointihäiriön syy ja uuden revision hyväksyntä ovat auki.
+Alkuperäisen paketointihäiriön syy ja normaali kokonaishyväksyntä ovat auki.
+
+Korjauksen lähde-, checkout- ja artifactin build-revisio on
+`77ee53091fe505da822b4cb7501d883ea79b65a8`.
+[Rajattu upgrade-kierros](https://github.com/eky-software/eky/actions/runs/35007040291)
+läpäisi ensimmäisellä yrityksellä: producer ja molemmat consumerit, ilman
+ohituksia tai uusintaa. Artifact `10412009970` rakennettiin kerran;
+descriptorin ja kolmen MSI:n tiivisteet täsmäsivät molempien consumerien
+ennen/jälkeen-varmennuksissa. Komentojen pakolliset tulosvarmennukset ja
+lopputulokset läpäisivät. Häiriö ei toistunut; tämä todentaa rajatun
+virhetiedon korjauksen yhteensopivuuden, ei alkuperäisen häiriön juurisyytä
+eikä normaalia kahden kokonaiskierroksen hyväksyntää.
 
 Revision `cb0dff26985c3346c5eb0c88120e73468f5ee075`
 [ensimmäinen normaali kierros](https://github.com/eky-software/eky/actions/runs/34996359240)
