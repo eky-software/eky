@@ -995,6 +995,17 @@ tiedostonimiä, aikoja tai prosessitunnisteita ei sisällytetä tulokseen. Lukij
 ei ohjaa sulkemista eikä muuta hyväksyntää. Tunnettujen merkintöjen puuttuminen
 ei todista kaikkien mahdollisten uudelleenkäynnistyssyiden poissaoloa.
 
+`replacementMarkerAction` ja sen kaksi järjestysluokkaa paikantavat vain
+ensimmäisen `ReplacedInUseFiles`-property-change-merkinnän suhteessa
+sulkemispyyntöön ja havaittuun poistumiseen. Pelkkä lopun property-listaus
+ei anna ajoitustodistetta; ajaton tai ristiriitainen loki säilyttää nykyiset
+epävarmuusluokat. Merkinnän aika ei todista yksittäisen tiedoston operaation
+aikaa tai lukon omistajaa, eikä tätä havaintoa käytetä MSI:n ohjaamiseen.
+Microsoftin [ReplacedInUseFiles-sopimus](https://learn.microsoft.com/en-us/windows/win32/msi/replacedinusefiles)
+sitoo ominaisuuden käytössä olevan tiedoston korvaamiseen; se ei yksin nimeä
+lukitsevaa prosessia. Tämän erottelun koe käyttää nykyistä rajattua
+upgrade-consumeria ja olemassa olevia varmennettuja artifact-tavuja.
+
 Aiempaan normaaliin integraatioajoon
 [34715796076](https://github.com/eky-software/eky/actions/runs/34715796076)
 jäi upgrade-hylkäys MSI-tuloksella 3010.

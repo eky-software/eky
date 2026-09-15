@@ -23,12 +23,39 @@ test('verbose reboot observation preserves untimed-record uncertainty and closed
   assert.deepEqual(result, { status: 'observed', fileInUseObserved: true,
     scheduledDeletionObserved: true, replacedInUseFilesObserved: true, rebootPendingObserved: true,
     rebootAction: 'InstallFinalize', rebootVsCloseRequest: 'before',
-    rebootVsExitObservation: 'before', msiCompletionVsExitObservation: 'after' });
+    rebootVsExitObservation: 'before', msiCompletionVsExitObservation: 'after',
+    replacementMarkerAction: 'InstallFinalize', replacementMarkerVsCloseRequest: 'after',
+    replacementMarkerVsExitObservation: 'after' });
   assert.equal(classifyRunningUpgradeLog(log, { ...moments, closeRequested: at(1) + 500 }).rebootVsCloseRequest, 'overlap');
   assert.equal(classifyRunningUpgradeLog(log, { ...moments, closeRequested: at(0) }).rebootVsCloseRequest, 'after');
   assert.equal(JSON.stringify(result).includes('synthetic-private'), false);
   assert.throws(() => validateRunningUpgradeObservation({ ...result, rawLog: log }));
   assert.throws(() => validateRunningUpgradeObservation({ ...result, rebootAction: 'private-action' }));
+  assert.throws(() => validateRunningUpgradeObservation({ ...result, replacementMarkerAction: 'private-action' }));
+  assert.throws(() => validateRunningUpgradeObservation({ ...result, replacementMarkerVsExitObservation: 'private-value' }));
+});
+
+test('replacement marker timing is distinct from a property dump and scheduled deletion', () => {
+  const prefix = 'MSI (s) (12:34) [10:00:';
+  const marker = "PROPERTY CHANGE: Adding ReplacedInUseFiles property. Its value is '1'.";
+  const source = [prefix + '05:000]: Doing action: InstallExecute',
+    prefix + '06:000]: ' + marker, prefix + '16:000]: ' + marker,
+    'Property(S): ReplacedInUseFiles = 1'].join('\n');
+  const result = classifyRunningUpgradeLog(source, moments);
+  assert.equal(result.replacedInUseFilesObserved, true);
+  assert.equal(result.scheduledDeletionObserved, false);
+  assert.equal(result.rebootVsExitObservation, 'unknown');
+  assert.equal(result.replacementMarkerAction, 'InstallExecute');
+  assert.equal(result.replacementMarkerVsCloseRequest, 'after');
+  assert.equal(result.replacementMarkerVsExitObservation, 'before');
+  const dumpOnly = classifyRunningUpgradeLog(prefix + '16:000]: finished\nProperty(S): ReplacedInUseFiles = 1', moments);
+  assert.equal(dumpOnly.replacedInUseFilesObserved, true);
+  assert.equal(dumpOnly.replacementMarkerVsExitObservation, 'unknown');
+  assert.equal(dumpOnly.replacementMarkerAction, 'unknown');
+  const untimed = source.replace(prefix + '06:000]: ', '');
+  assert.equal(classifyRunningUpgradeLog(untimed, moments).replacementMarkerVsExitObservation, 'overlap');
+  const outOfOrder = source.replace('[10:00:16:000]', '[10:00:02:000]');
+  assert.equal(classifyRunningUpgradeLog(outOfOrder, moments).replacementMarkerVsExitObservation, 'unknown');
 });
 
 test('3010 without a logged reason is not silently assigned to files in use', () => {

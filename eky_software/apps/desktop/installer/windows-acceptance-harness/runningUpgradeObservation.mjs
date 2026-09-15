@@ -9,6 +9,8 @@ const empty = () => ({ status: 'unavailable', fileInUseObserved: false,
   scheduledDeletionObserved: false, replacedInUseFilesObserved: false,
   rebootPendingObserved: false, rebootAction: 'unknown',
   rebootVsCloseRequest: 'unknown', rebootVsExitObservation: 'unknown',
+  replacementMarkerAction: 'unknown', replacementMarkerVsCloseRequest: 'unknown',
+  replacementMarkerVsExitObservation: 'unknown',
   msiCompletionVsExitObservation: 'unknown' });
 
 export function validateRunningUpgradeObservation(value) {
@@ -17,10 +19,11 @@ export function validateRunningUpgradeObservation(value) {
   if (!value || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype ||
       Object.keys(value).sort().join(',') !== Object.keys(template).sort().join(',') ||
       !['unavailable', 'observed'].includes(value.status) ||
-      ![...ACTIONS, 'unknown'].includes(value.rebootAction) ||
+      !['rebootAction', 'replacementMarkerAction'].every(key => [...ACTIONS, 'unknown'].includes(value[key])) ||
       !['fileInUseObserved', 'scheduledDeletionObserved', 'replacedInUseFilesObserved',
         'rebootPendingObserved'].every(key => typeof value[key] === 'boolean') ||
-      !['rebootVsCloseRequest', 'rebootVsExitObservation', 'msiCompletionVsExitObservation']
+      !['rebootVsCloseRequest', 'rebootVsExitObservation', 'msiCompletionVsExitObservation',
+        'replacementMarkerVsCloseRequest', 'replacementMarkerVsExitObservation']
         .every(key => ORDERS.includes(value[key]))) throw new Error('runningUpgradeObservationInvalid');
   return Object.freeze({ ...value });
 }
@@ -43,6 +46,7 @@ export function classifyRunningUpgradeLog(text, moments) {
   const day = new Date(moments.started);
   day.setHours(0, 0, 0, 0);
   let previousTime = null, rebootInterval = null, pendingReboot = false, action = 'unknown';
+  let replacementInterval = null, pendingReplacement = false;
   let timedRecordObserved = false, chronologyValid = true;
   for (const line of text.split(/\r?\n/)) {
     const timestamp = /^MSI \([cs]\) \([^)]*\) \[(\d{2}):(\d{2}):(\d{2}):(\d{3})\]:/.exec(line);
@@ -59,12 +63,20 @@ export function classifyRunningUpgradeLog(text, moments) {
       timedRecordObserved = true;
       if (previousTime !== null && time < previousTime) chronologyValid = false;
       if (pendingReboot) { rebootInterval[1] = time; pendingReboot = false; }
+      if (pendingReplacement) { replacementInterval[1] = time; pendingReplacement = false; }
       previousTime = time;
     } else if (timestamp) chronologyValid = false;
     const nextAction = /(?:Doing action: |Action start \d{1,2}:\d{2}:\d{2}: )([A-Za-z]+)\.?\s*$/.exec(line)?.[1];
     if (nextAction) action = ACTIONS.includes(nextAction) ? nextAction : 'unknown';
     if (/\bInfo 1603\./.test(line) && /\bbeing held in use\b/.test(line)) result.fileInUseObserved = true;
     if (/\bReplacedInUseFiles\b.*(?:value is '1'|= 1)\s*\.?\s*$/.test(line)) result.replacedInUseFilesObserved = true;
+    // A property-change marker is timed; a later property dump does not locate the replacement.
+    if (replacementInterval === null &&
+        /\bPROPERTY CHANGE: (?:Adding|Modifying) ReplacedInUseFiles property\..*value is '1'\.\s*$/.test(line)) {
+      result.replacementMarkerAction = action;
+      replacementInterval = time === null ? [previousTime ?? moments.started, moments.finished] : [time, time];
+      pendingReplacement = time === null;
+    }
     if (/\bMsiSystemRebootPending\b.*(?:value is '1'|= 1)\s*\.?\s*$/.test(line)) result.rebootPendingObserved = true;
     if (/\bInfo 1903\.\s*Scheduling reboot operation: Deleting file\b/.test(line)) {
       result.scheduledDeletionObserved = true;
@@ -79,6 +91,8 @@ export function classifyRunningUpgradeLog(text, moments) {
   result.status = 'observed';
   result.rebootVsCloseRequest = order(chronologyValid ? rebootInterval : null, moments.closeRequested);
   result.rebootVsExitObservation = order(chronologyValid ? rebootInterval : null, moments.applicationExitObserved);
+  result.replacementMarkerVsCloseRequest = order(chronologyValid ? replacementInterval : null, moments.closeRequested);
+  result.replacementMarkerVsExitObservation = order(chronologyValid ? replacementInterval : null, moments.applicationExitObserved);
   result.msiCompletionVsExitObservation = order(Number.isFinite(moments.msiCompleted)
     ? [moments.msiCompleted, moments.msiCompleted] : null, moments.applicationExitObserved);
   return validateRunningUpgradeObservation(result);
