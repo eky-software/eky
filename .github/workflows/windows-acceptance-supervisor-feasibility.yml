@@ -34,7 +34,7 @@ on:
         description: Expected original descriptor SHA-256
         type: string
       inspector_capture:
-        description: One opt-in legacy diagnostic; raw WPR data stays in runner temp
+        description: One opt-in legacy or upgrade diagnostic; raw WPR data stays in runner temp
         type: boolean
         default: false
 
@@ -313,7 +313,7 @@ jobs:
 
       - name: Start opt-in external inspector capture
         id: capture
-        if: inputs.inspector_capture && inputs.artifact_kind == 'legacy'
+        if: inputs.inspector_capture && (inputs.artifact_kind == 'legacy' || inputs.artifact_kind == 'upgrade')
         timeout-minutes: 1
         run: ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode start
 
@@ -380,4 +380,9 @@ jobs:
       - name: Extract closed inspector observations without publishing raw trace
         if: always() && steps.capture_stop.outcome == 'success'
         timeout-minutes: 3
-        run: ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode analyze -LegacyCommand
+        run: |
+          if ($env:ARTIFACT_KIND -ceq 'legacy') {
+            ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode analyze -LegacyCommand
+          } else {
+            ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode analyze
+          }

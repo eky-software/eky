@@ -2554,7 +2554,37 @@ auditointi tai uusi hyväksyntäkierros. Uusin omistajapäätös korvaa vanhan
 odotuksettoman MSI-testicallbackin edellä kuvatulla sulkeutumiskuittauksella.
 Kuittaus on toteutettu nykyiseen adapteriin, kanavaan ja päivityksen
 koordinaattoriin. Vanhaa 3010-havaintoa ei nimetä tällä korjauksella ratkaistuksi;
-uuden revision paketoitu koe ja normaali kokonaishyväksyntä ovat vielä avoinna.
+revision `b82dae544f6a6ccdc13c634e1f1b315f9976697d` rajattu paketoitu
+[koe](https://github.com/eky-software/eky/actions/runs/34953866536) läpäisi.
+Sen vanhemman artifactin build-revisio oli `e7e192455df8c82f5e46293ad8a654cc966edbdb`;
+koe ei korvaa normaalia kokonaishyväksyntää.
+
+Samalta jäädytetyltä `b82dae5`-revisiolta ilman raskasta keruuta ajettu
+[ensimmäinen kokonaiskierros](https://github.com/eky-software/eky/actions/runs/34954686978)
+läpäisi kaikki vaaditut portit ja 18 consumer-komentoa. Producerien ja
+consumerien ennen/jälkeen-tiivisteet vastasivat toisiaan; koonti hyväksyi
+kattavuuden. Saman revision
+[riippuvuusturva](https://github.com/eky-software/eky/actions/runs/34954690752)
+läpäisi. [Toinen kokonaiskierros](https://github.com/eky-software/eky/actions/runs/34957230914)
+hylkäsi kuitenkin upgrade run 1:n ja workspace success run 1:n jo
+`inspectSourceBefore`-vaiheen määräaikaan ennen MSI-skenaarion aloittamista.
+Molempien vaiheiden prosessipuut poistuivat ja komentoprosessit palauttivat
+virheen; tarkistimen sisäinen viivekohta ei selviä näistä havainnoista.
+Hyväksyntäpari on hylätty, eikä ensimmäistä vihreää kierrosta yhdistetä
+uusiin osatuloksiin. Main, required checkit ja julkaisu pysyvät lukittuina.
+
+Seuraava rajattu koe valitsee nykyisen packaged-boundary-diagnostiikan
+upgrade-komennon ja saman kierroksen varmennetun artifactin. Nykyinen
+`inspector_capture`-valinta sallii ulkoisen keruun myös tähän komentoon;
+legacy käyttää edelleen omaa analyysiprojektiotaan. Keruu alkaa ennen
+komentoa, pysähtyy sen jälkeen ja analyysi käyttää vain nykyistä inspectorin
+lukijaa. Start/stop/analyze-rajat, komentobudjetit, pakolliset tulokset ja
+ennen/jälkeen-artifact-varmennukset eivät muutu. Raakajälkiä ei julkaista.
+Kytkentätesti suorittaa todellisen analyysivaiheen kummankin valinnan sekä
+virhepaluiden kanssa; 24/24 legacy-artifact-/workflow- ja 15/15
+upgrade-artifact-sopimusta läpäisevät. Koe on diagnostiikkaa, ei uusi
+hyväksyntäkierros. Sen lopputulos on ensimmäinen valmistumaton tarkistinraja
+tai täsmällisesti puuttuva havainto; uusi vihreä koe ei osoita juurisyytä.
 
 Kuittauksen koordinaattoritestit läpäisivät 14/14 ja todellisen Job-/kanava-
 ketjun testit 16/16. Nykyinen core-ryhmä läpäisi 313/313, upgrade-ryhmä

@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 import { registerAcceptanceCommandEntrypointContracts } from './acceptanceCommandEntrypointContract.mjs';
 import { cleanupRunContext, createRunContext } from '../windows-process-supervisor/tests/supervisorContractTestSupport.mjs';
 
@@ -56,13 +57,60 @@ test('external inspector capture is opt-in and never replaces command or artifac
   const source = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
   const diagnostic = source.slice(source.indexOf('  packaged-boundary-diagnostic:'));
   assert.match(source, /inspector_capture:[\s\S]*?type: boolean\s+default: false/u);
-  assert.match(diagnostic, /if: inputs\.inspector_capture && inputs\.artifact_kind == 'legacy'/u);
+  const selection = diagnostic.split('      - name: Start opt-in external inspector capture\n')[1]
+    .match(/^        if: (.+)$/mu)?.[1];
+  assert.ok(selection);
+  for (const inspector_capture of [false, true]) {
+    for (const artifact_kind of ['legacy', 'upgrade', 'workspace', 'workspace-fault']) {
+      assert.equal(runInNewContext(selection, { inputs: { inspector_capture, artifact_kind } }, { timeout: 1000 }),
+        inspector_capture && ['legacy', 'upgrade'].includes(artifact_kind));
+    }
+  }
   assert.ok(diagnostic.indexOf('-Mode start') < diagnostic.indexOf('Run existing caller and mandatory result verifier once'));
   assert.ok(diagnostic.indexOf('-Mode stop') > diagnostic.indexOf('--command-exit $commandExit'));
   assert.match(diagnostic, /always\(\) && \(steps\.capture\.outcome == 'success' \|\| steps\.capture\.outcome == 'failure' \|\| steps\.capture\.outcome == 'cancelled'\)/u);
   assert.match(diagnostic, /always\(\) && steps\.capture_stop\.outcome == 'success'/u);
   assert.ok(diagnostic.indexOf('Reverify immutable artifact') < diagnostic.indexOf('-Mode analyze'));
   assert.doesNotMatch(diagnostic, /continue-on-error|upload-artifact|wpr.*-cancel|symbols/u);
+});
+
+test('diagnostic analysis uses the selected existing reader and preserves its process outcome', {
+  skip: process.platform !== 'win32', timeout: 60_000,
+}, async (t) => {
+  const workflow = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
+  const step = workflow.split('      - name: Extract closed inspector observations without publishing raw trace\n')[1];
+  assert.ok(step);
+  const body = step.split('        run: |\n')[1].trimEnd().split('\n')
+    .map((line) => { assert.ok(line.startsWith('          ')); return line.slice(10); }).join('\n');
+  for (const [kind, analysis, expectedCode] of [['legacy', '0', 0], ['upgrade', '0', 0],
+    ['upgrade', '1', 1], ['upgrade', 'throw', 1]]) {
+    const context = await createRunContext('diagnostic-reader-routing');
+    let passed = false;
+    t.after(() => cleanupRunContext(context, { preserveEvidence: !passed || t.signal.aborted }));
+    const directory = join(context.testRoot, 'apps/desktop/installer/windows-acceptance-harness');
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, 'captureInstallerProductInspection.ps1'), `
+param([string]$Mode, [switch]$LegacyCommand)
+[IO.File]::WriteAllText($env:TEST_READER_RESULT, ([ordered]@{ mode = $Mode; legacy = [bool]$LegacyCommand } | ConvertTo-Json -Compress))
+if ($env:TEST_ANALYSIS -ceq 'throw') { throw 'private-analysis-error' }
+exit ([int]$env:TEST_ANALYSIS)
+`);
+    const script = join(context.testRoot, 'step.ps1');
+    await writeFile(script, `$ErrorActionPreference = 'Stop'\n${body}\nexit $LASTEXITCODE\n`);
+    const child = spawn(resolve(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script], {
+        cwd: context.testRoot, stdio: 'ignore', windowsHide: true,
+        env: { ...process.env, ARTIFACT_KIND: kind, TEST_ANALYSIS: analysis, TEST_READER_RESULT: context.resultPath },
+      });
+    context.fixtureProcesses.add(child);
+    const completion = await new Promise((resolvePromise, rejectPromise) => {
+      child.once('error', rejectPromise);
+      child.once('close', (code, signal) => resolvePromise({ code, signal }));
+    });
+    assert.deepEqual(completion, { code: expectedCode, signal: null });
+    assert.deepEqual(JSON.parse(await readFile(context.resultPath, 'utf8')), { mode: 'analyze', legacy: kind === 'legacy' });
+    passed = true;
+  }
 });
 
 test('bounded rollback diagnostic executes the existing ordered commands and stops on either failed result', {
