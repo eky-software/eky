@@ -953,8 +953,10 @@ viesti 0. `RMFILESINUSE`-viestiä ei tilata eikä siihen palauteta shutdownin
 valtuuttavaa `IDOK`- tai lukkojen ohittavaa `IDIGNORE`-vastausta. Restart Managerin
 ominaisuuksia tai tuotannon sulkemisvastuuta ei muuteta.
 
-Callback lukee vain action-nimen ja julkaisee yhden muistissa olevan signaalin;
-se ei tee I/O:ta eikä odota. Erillinen jatko välittää yksityiseen pipeen enintään
+Callback lukee vain action-nimen ja julkaisee yhden muistissa olevan signaalin.
+Omistajan hyväksymä kuittausraja korvaa aiemman odotuksettoman paluun:
+ensimmäinen `InstallValidate` odottaa muistissa sovelluksen poistumiskuittausta.
+Callback ei tee I/O:ta. Erillinen jatko välittää yksityiseen pipeen enintään
 kaksi suljettua viestiä: validointirajan ja varsinaisen MSI-tuloksen. Kanava,
 adapteri ja MSI kuuluvat nykyisen workerin Job-rajaan. Kanavan epäonnistuminen
 hylkää protokollan; lokia tai konsolia ei käytetä varareittinä. Adapteri rakennetaan
@@ -976,12 +978,29 @@ onnistunutta päivitystä. Hyväksyntä vaatii edelleen oikean exit-koodin,
 asennetun payloadin täyden vertailun, exact tuotetilan, desktopin onnistuneen
 shutdown-todisteen ja erilliset callerin jälkiehdot.
 
-Asynkroninen `InstallValidate`-ilmoitus ei pysäytä MSI:tä sovelluksen
+Aiempi asynkroninen `InstallValidate`-ilmoitus ei pysäyttänyt MSI:tä sovelluksen
 sulkeutumisen ajaksi. Sulkemispyyntö ja sovelluksen havaittu poistuminen ovat
-eri tapahtumat: nykyinen `close`-portti odottaa myös poistumista, ja
-käyttäytymisregressio vaatii tämän, vaikka MSI olisi jo valmistunut. Callbackin
-odotukseton politiikka säilyy; ajoitusikkuna on tutkittava vaihtoehto, ei
-sellaisenaan osoitettu uudelleenkäynnistystarpeen syy.
+eri tapahtumat. Hyväksytty korvaus käyttää nykyistä kaksisuuntaiseksi muutettua
+private pipeä: worker lähettää yhden schema-/nonce-sidotun `applicationExited`-
+kuittauksen vasta `close`- ja `verifyShutdown`-porttien onnistuttua. Vastaanottaja
+validoi suljetun, enintään 256 tavun viestin; vasta se vapauttaa callbackin.
+MSI-tulos vahvistaa `applicationExitAcknowledged`-tilan erikseen. Lähetetty
+kuittaus tai pelkkä prosessin syntyminen eivät ole onnistumistodisteita.
+
+Synteettinen MSI-record-fixture kirjoittaa paikallisen paluumerkin vasta
+ensimmäisen callbackin palattua. Viivästetyn kuittauksen testi vaatii merkin
+puuttumista ennen lähetyksen vapauttamista ja läsnäoloa lopussa; puuttuvan
+kuittauksen testi vaatii sen puuttumista vielä todetun Job-deadlinen ja
+prosessipoistumisen jälkeen. Näin tulosviestin odotus ei voi yksin peittää
+liian aikaisin palautunutta callbackia. Merkki ei ohjaa varsinaista MSI-ajoa.
+
+Puuttuva kuittaus kuuluu nykyiseen workerin Job-määräaikaan ja sen cleanupiin;
+adapterille ei lisätä omaa ajastinta, tappopolitiikkaa tai valvojaa. Epäonnistunut
+sulkeminen katkaisee kanavan ja säilyttää alkuperäisen virheen. Virheellinen
+kuittaus hylkää callbackin, eikä käynnistä fallbackia tai uusintaa. Callbackin
+paluuarvot, UI-asetukset, MSI-koodien hyväksyntä ja tavallinen Eky säilyvät.
+Tämä poistaa testiohjauksen ajoitusikkunan; aiemman 3010:n syy ei silti ole
+osoitettu ennen erottavaa näyttöä.
 
 Running-upgrade-worker luokittelee valmistuneen verbose-lokin ennen aineiston
 poistoa nykyisen Job-rajan sisällä. Suljettu `runningUpgradeObservation`
@@ -2530,6 +2549,44 @@ Tämä osuus erottaa nykyisen julkaisutyön historiallisesta tutkimusnäytöstä
 
 #### Ajantasaiset julkaisuesteet ja päätökset
 
+Rajattu riskikatselmus perustuu revisioon `d2bf592`; se ei ole koko ERP:n
+auditointi tai uusi hyväksyntäkierros. Uusin omistajapäätös korvaa vanhan
+odotuksettoman MSI-testicallbackin edellä kuvatulla sulkeutumiskuittauksella.
+Kuittaus on toteutettu nykyiseen adapteriin, kanavaan ja päivityksen
+koordinaattoriin. Vanhaa 3010-havaintoa ei nimetä tällä korjauksella ratkaistuksi;
+uuden revision paketoitu koe ja normaali kokonaishyväksyntä ovat vielä avoinna.
+
+Kuittauksen koordinaattoritestit läpäisivät 14/14 ja todellisen Job-/kanava-
+ketjun testit 16/16. Nykyinen core-ryhmä läpäisi 313/313, upgrade-ryhmä
+138/138 ja sen komentorajaryhmä 33/33; CI-luettelon artifact-/workflow-
+sopimukset läpäisivät 23/23. Typecheck ja build läpäisivät. Näitä kohdetuloksia
+ei lasketa paketoiduksi kokeeksi tai normaaliksi kokonaiskierrokseksi.
+
+| Havainto ja koodikohta | Sopimus, näyttö ja pienin jatko |
+| --- | --- |
+| Korjattu testiohjauksen ajoitusikkuna: `NativeMsiProgram.Run`, `coordinateRunningApplicationUpgrade` | Aiempi ilmoitus vapautti MSI:n ennen `close`/`verifyShutdown`-valmistumista. Sama kanava välittää nyt yhden ajosidotun kuittauksen vasta sulkeutumisvarmennuksen jälkeen. Viivästetty/puuttuva/väärä/eri ajon kuittaus, katkennut kanava ja ensivirheen säilyminen on todennettu nykyisellä Job-fixturellä. Callbackin paluu erotetaan apuprosessin elossaolosta; puuttuvalla kuittauksella paluumerkki puuttuu koko nykyisen määräajan yli. |
+| Korjattu CI-kytkennän puute: `apps/desktop/package.json`, `legacyUpgradeArtifactWorkflow.test.mjs` | Running-upgrade-, MSI-kanava- ja lokihavaintotestit olivat erillisessä upgrade-komennossa, jota normaali matriisi ei kutsunut. Samat kolme tiedostoa kuuluvat nyt nykyiseen core-ryhmään; ryhmien täydellinen luettelo varmistaa niiden ajamisen ilman kaksoiskytkentää. Uutta jobia, ajokerrosta tai aikarajaa ei lisätty. |
+| Kattavuusraja, ei osoitettu tuotantovika: `runRunningUpgrade`, `legacyUpgradeWindowsRuntime.runSourceStartup` ja `runMsiOperation` | Legacy sulkee lähdesovelluksen ennen suoraa msiexec-päivitystä; running-upgrade käyttää testicallbackia. Kumpikaan ei yksin todista tavallisen Setupin automaattista sovelluksen sulkemista. Tätä ominaisuutta ei luvata adapterin tuloksella. Mahdollinen uusi tuotelupaus tai tuotantokorjaus vaatii päätöksen. |
+| Kattavuusraja: `executeCleanInstallUninstallLifecycle` | Clean todistaa exact-payloadin, repair/reinstallin, profiilin säilymisen ja poiston, ei GUI-käynnistystä. Packaged smoke, legacyssä asennetun sovelluksen käynnistys ja julkaisun exact-byte-smoke säilyvät erillisinä portteina; clean-vihreyttä ei nimetä yksin käynnistystodisteeksi. |
+
+Valmistelukatselmuksessa installer-sarjan ainoa yhteinen `before`-käännös
+on `requestWindowsApplicationClose.test.mjs`: sen hyväksytty 30 s valmistelu
+on erillinen yleisestä 10 s apurista ja tarkoituksellisista timeout-testeistä.
+Muiden budjettien nostolle ei löytynyt tästä rajauksesta näyttöä.
+Electronin `finishIsolatedElectronTest` säilyttää testijuuren epävarman
+runtime-/porttisiivouksen jälkeen sekä alkuperäisen virheen. Ensimmäisen
+yrityksen kevyt `electron-lifecycle`-liite ei riipu retryn tracesta.
+Nykyiset fixture-identiteetti-, erillisten tiedostotavujen, result-file-,
+process-exit- ja cleanup-tarkistukset säilyvät; niitä ei korvata kuittauksella.
+
+Laajennettavuuden polkutarkistus käyttää nykyistä `ciRiskPolicy`-luokittelua:
+uusi domainin tuntikirjauksen validointisääntö kuuluu moduulin viereisiin
+testeihin ja nopeaan core/security/web-porttiin. Työmääräysmoduulin SQL-
+migraatio valitsee täyden matriisin; sen omat tallennus-, yrityseristys-,
+backup- ja päivitysregressiot tarvitaan silti moduulin sopimuksen mukaan.
+Riskiluokitus valitsee testit, ei luo uuden moduulin kattavuutta automaattisesti.
+Kumpikaan esimerkki ei edellytä moduulilta uutta prosessivalvojaa.
+
 Omistajan uusin jatkopäätös sallii normaalin hyväksynnän jatkamisen nykyisellä
 V2-rakenteella. Vanhojen kadonneiden lokien palautuminen tai GitHub-tuen
 vastaus ei ole uuden näytön ennakkoehto; tukipyyntöä ei tehdä. Aiemmat
@@ -2719,6 +2776,15 @@ aikakatkaisuviaksi. Toista kokonaishyväksyntäkierrosta ei aloiteta tästä
 hylätystä revisiosta. Sen erillinen
 [riippuvuusturva](https://github.com/eky-software/eky/actions/runs/34944225422)
 läpäisi, mutta ei korvaa epäonnistunutta toiminnallista porttia.
+
+Rajattu [34946706274](https://github.com/eky-software/eky/actions/runs/34946706274)
+valmistui ensimmäisellä yrityksellä ilman keruuta. Harness ja checkout olivat
+`d2bf5921f036d6d01d3560cd7a47713138ac2599`; samojen ennen/jälkeen varmennettujen
+MSI-tavujen build-revisio oli `e7e192455df8c82f5e46293ad8a654cc966edbdb`.
+Koko upgrade-komento, pakollinen tulostarkistus, asennuksen siivous ja
+fixture-poisto valmistuivat. 3010 ei toistunut, mutta tämä ei osoita sen
+juurisyytä eikä korvaa uuden kuittausrevision koetta tai kahta normaalia
+kokonaiskierrosta. Vanhoja paketteja ei lasketa uuden revision julkaisunäytöksi.
 
 #### Aiemman näytön avoimet havainnot
 

@@ -11,9 +11,10 @@ function deferred() {
 function fixture(mode = 'validation') {
   const events = [], validation = deferred(), applicationExit = deferred(), msiExit = deferred();
   validation.promise.catch(() => undefined);
-  let applicationRunning = true;
+  let applicationRunning = true, acknowledged = false;
   const nativeResult = (exitCode) => ({ exitCode, protocolValid: true,
-    validationObserved: !['observerFailed', 'cleanupFailed'].includes(mode), callbackValid: mode !== 'wrongEvent' });
+    validationObserved: !['observerFailed', 'cleanupFailed', 'abortFailed'].includes(mode),
+    callbackValid: mode !== 'wrongEvent', applicationExitAcknowledged: acknowledged });
   const ports = {
     async startApplication() {
       events.push('applicationStarted');
@@ -29,25 +30,40 @@ function fixture(mode = 'validation') {
           if (['cleanupFailed', 'shutdownFailed'].includes(mode)) throw new Error('private close failure');
           applicationRunning = false;
           applicationExit.resolve({ exitCode: 0 });
-          msiExit.resolve(nativeResult(0));
         },
-        async verifyShutdown() { events.push('shutdownVerified'); },
+        async verifyShutdown() {
+          if (mode === 'unverifiedShutdown') throw new Error('runningUpgradeShutdownFailed');
+          events.push('shutdownVerified');
+        },
       };
     },
     async startUpgrade() {
       assert.equal(applicationRunning, true);
       assert.ok(events.includes('applicationReady'));
       events.push('installerStarted');
-      if (['observerFailed', 'cleanupFailed'].includes(mode)) {
+      if (['observerFailed', 'cleanupFailed', 'abortFailed'].includes(mode)) {
         validation.reject(new Error('runningUpgradeValidationInvalid'));
         msiExit.resolve(nativeResult(1603));
       } else {
         events.push('validationObserved'); validation.resolve();
-        if (['blocked', 'shutdownFailed'].includes(mode)) msiExit.resolve(nativeResult(1603));
-        if (mode === 'invalidExit') msiExit.resolve(nativeResult(3010));
-        if (mode === 'wrongEvent') msiExit.resolve(nativeResult(0));
+        if (mode === 'earlyMsiExit') msiExit.resolve(nativeResult(3010));
       }
-      return { validation: validation.promise, completion: msiExit.promise };
+      return { validation: validation.promise, completion: msiExit.promise,
+        acknowledgeApplicationExit() {
+          assert.equal(applicationRunning, false);
+          assert.ok(events.includes('shutdownVerified'));
+          assert.equal(acknowledged, false);
+          if (mode === 'earlyMsiExit') throw new Error('runningUpgradeValidationInvalid');
+          acknowledged = true;
+          events.push('applicationExitAcknowledged');
+          msiExit.resolve(nativeResult(mode === 'blocked' ? 1603 : mode === 'invalidExit' ? 3010 : 0));
+        },
+        abortValidation() {
+          events.push('validationAborted');
+          msiExit.resolve(nativeResult(1603));
+          if (mode === 'abortFailed') throw new Error('private abort failure');
+        },
+      };
     },
     async verifyBlockedSource() {
       assert.equal(applicationRunning, false);
@@ -64,7 +80,7 @@ test('MSI validation, not a fixed delay, releases a ready application before ter
   assert.deepEqual(result, { status: 'completed', errorCode: null, cleanupResultCode: 'completed',
     exitCode: 0, initialExitCode: 0, boundary: 'validationObserved' });
   assert.deepEqual(f.events, ['applicationStarted', 'applicationReady', 'installerStarted',
-    'validationObserved', 'applicationClose', 'shutdownVerified']);
+    'validationObserved', 'applicationClose', 'shutdownVerified', 'applicationExitAcknowledged']);
   assert.deepEqual(f.resources(), { applicationRunning: false });
 });
 
@@ -80,7 +96,7 @@ test('blocked Setup resumes once only after graceful exit and unchanged source p
 });
 
 test('MSI completion during a pending graceful close does not acknowledge application exit', async () => {
-  const f = fixture('invalidExit');
+  const f = fixture('earlyMsiExit');
   const requested = deferred(), exited = deferred();
   const close = f.ports.startApplication;
   f.ports.startApplication = async () => {
@@ -100,13 +116,55 @@ test('MSI completion during a pending graceful close does not acknowledge applic
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(completed, false);
   assert.equal(f.events.includes('shutdownVerified'), false);
+  assert.equal(f.events.includes('applicationExitAcknowledged'), false);
   assert.equal(f.resources().applicationRunning, true);
   exited.resolve();
   const result = await completion;
-  assert.equal(result.errorCode, 'runningUpgradeMsiFailed');
+  assert.equal(result.errorCode, 'runningUpgradeValidationInvalid');
   assert.equal(result.initialExitCode, 3010);
   assert.equal(result.cleanupResultCode, 'completed');
   assert.equal(f.resources().applicationRunning, false);
+  assert.equal(f.events.includes('applicationExitAcknowledged'), false);
+});
+
+test('delayed shutdown acknowledgement releases MSI before waiting for its completion', async () => {
+  const f = fixture();
+  const requested = deferred(), exited = deferred();
+  const start = f.ports.startApplication;
+  f.ports.startApplication = async () => {
+    const application = await start();
+    return { ...application, async close() {
+      requested.resolve();
+      await exited.promise;
+      await application.close();
+    } };
+  };
+  const completion = coordinateRunningApplicationUpgrade(f.ports);
+  await requested.promise;
+  assert.equal(f.events.includes('applicationExitAcknowledged'), false);
+  exited.resolve();
+  assert.equal((await completion).status, 'completed');
+  assert.ok(f.events.indexOf('applicationExitAcknowledged') > f.events.indexOf('shutdownVerified'));
+});
+
+test('failed shutdown proof never acknowledges exit even when the application has exited', async () => {
+  const f = fixture('unverifiedShutdown');
+  const result = await coordinateRunningApplicationUpgrade(f.ports);
+  assert.equal(result.errorCode, 'runningUpgradeShutdownFailed');
+  assert.equal(result.initialExitCode, 1603);
+  assert.equal(result.cleanupResultCode, 'completed');
+  assert.equal(f.resources().applicationRunning, false);
+  assert.equal(f.events.includes('applicationExitAcknowledged'), false);
+  assert.equal(f.events.includes('validationAborted'), true);
+});
+
+test('validation abort failure retains the original error and unverified cleanup', async () => {
+  const f = fixture('abortFailed');
+  const result = await coordinateRunningApplicationUpgrade(f.ports);
+  assert.equal(result.errorCode, 'runningUpgradeValidationInvalid');
+  assert.equal(result.cleanupResultCode, 'cleanupUnverified');
+  assert.equal(result.initialExitCode, 1603);
+  assert.equal(f.events.includes('applicationExitAcknowledged'), false);
 });
 
 test('failed unchanged-source proof never resumes the blocked installer', async () => {

@@ -8,6 +8,7 @@ export async function coordinateRunningApplicationUpgrade({
   let applicationClosed = false, applicationCloseAttempted = false, installerClosed = false;
   let errorCode = null, cleanupResultCode = 'completed', exitCode = null;
   let boundary = null, initialExitCode = null;
+  let applicationExitAcknowledged = false;
   const closeApplication = async () => {
     if (application && !applicationClosed) {
       if (applicationCloseAttempted) failure('runningUpgradeShutdownFailed');
@@ -32,10 +33,12 @@ export async function coordinateRunningApplicationUpgrade({
     if (first === 'validationObserved' && !application.isRunning()) failure('runningUpgradeApplicationExitedEarly');
     await closeApplication();
     await application.verifyShutdown();
+    installer.acknowledgeApplicationExit();
+    applicationExitAcknowledged = true;
     const initial = await installer.completion;
     initialExitCode = initial.exitCode;
     installerClosed = true;
-    if (!initial.protocolValid || !initial.validationObserved || !initial.callbackValid)
+    if (!initial.protocolValid || !initial.validationObserved || !initial.callbackValid || !initial.applicationExitAcknowledged)
       failure('runningUpgradeValidationInvalid');
     if (initial.exitCode === 1603) {
       // An explicit blocked-Setup continuation, not a retry of an unexplained failure.
@@ -52,6 +55,9 @@ export async function coordinateRunningApplicationUpgrade({
       'runningUpgradeBlockedSourceChanged'].includes(error?.message) ? error.message : 'runningUpgradeFailed';
   } finally {
     try { await closeApplication(); } catch { cleanupResultCode = 'cleanupUnverified'; }
+    if (installer && !applicationExitAcknowledged) {
+      try { installer.abortValidation(); } catch { cleanupResultCode = 'cleanupUnverified'; }
+    }
     if (installer && !installerClosed) {
       try { initialExitCode = (await installer.completion).exitCode; }
       catch { cleanupResultCode = 'cleanupUnverified'; }

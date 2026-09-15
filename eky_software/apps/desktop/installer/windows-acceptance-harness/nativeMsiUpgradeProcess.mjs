@@ -11,20 +11,22 @@ const invalid = () => new Error('runningUpgradeValidationInvalid');
 const exact = (value, keys) => Object.keys(value).sort().join(',') === keys.sort().join(',');
 
 // The existing worker Job owns this client and every MSI descendant. No new timer or kill path.
-export async function startNativeMsiUpgrade({ packagePath, logPath, cwd, launch }) {
+export async function startNativeMsiUpgrade({ packagePath, logPath, cwd, launch, createPipeServer = createServer }) {
   const nonce = randomBytes(32).toString('hex');
   const pipeName = `eky-running-msi-${nonce}`;
   let observed = false, reply = null, channelInvalid = false, connections = 0, bytes = 0;
+  let channel, acknowledgementSent = false;
   let completeValidation, rejectValidation, socketEnded = Promise.resolve();
   const sockets = new Set();
   const validation = new Promise((yes, no) => { completeValidation = yes; rejectValidation = no; });
   validation.catch(() => undefined);
   const fail = () => { channelInvalid = true; rejectValidation(invalid()); };
-  const server = createServer((socket) => {
+  const server = createPipeServer((socket) => {
     sockets.add(socket);
     socket.on('error', fail);
     socket.once('close', () => sockets.delete(socket));
     if (++connections !== 1) { fail(); socket.destroy(); return; }
+    channel = socket;
     socketEnded = new Promise((done) => socket.once('close', done));
     let buffer = Buffer.alloc(0);
     socket.on('data', (part) => {
@@ -43,10 +45,11 @@ export async function startNativeMsiUpgrade({ packagePath, logPath, cwd, launch 
             observed = true;
             completeValidation();
           } else {
-            if (!exact(value, ['schemaVersion', 'nonce', 'phase', 'msiExitCode', 'validationObserved', 'callbackValid']) ||
+            if (!exact(value, ['schemaVersion', 'nonce', 'phase', 'msiExitCode', 'validationObserved', 'callbackValid', 'applicationExitAcknowledged']) ||
                 value.phase !== 'result' || !Number.isInteger(value.msiExitCode) || value.msiExitCode < 0 ||
                 value.msiExitCode > 65535 || typeof value.callbackValid !== 'boolean' ||
-                value.validationObserved !== observed) throw invalid();
+                value.validationObserved !== observed || typeof value.applicationExitAcknowledged !== 'boolean' ||
+                value.applicationExitAcknowledged !== acknowledgementSent) throw invalid();
             reply = value;
             if (!observed || !value.callbackValid) rejectValidation(invalid());
           }
@@ -74,12 +77,21 @@ export async function startNativeMsiUpgrade({ packagePath, logPath, cwd, launch 
         const protocolValid = !channelInvalid && connections === 1 && reply !== null && reply.msiExitCode === host.exitCode;
         if (!protocolValid || !observed || !reply.callbackValid) rejectValidation(invalid());
         return Object.freeze({ exitCode: protocolValid ? reply.msiExitCode : null,
-          protocolValid, validationObserved: observed, callbackValid: protocolValid && reply.callbackValid });
+          protocolValid, validationObserved: observed, callbackValid: protocolValid && reply.callbackValid,
+          applicationExitAcknowledged: protocolValid && reply.applicationExitAcknowledged });
       } catch { fail(); throw invalid(); }
       finally { await dispose(); }
     })();
     completion.catch(() => undefined);
-    return Object.freeze({ validation, completion });
+    return Object.freeze({ validation, completion,
+      acknowledgeApplicationExit() {
+        if (!observed || channelInvalid || reply !== null || acknowledgementSent || !channel || channel.destroyed)
+          throw invalid();
+        acknowledgementSent = true;
+        channel.write(JSON.stringify({ schemaVersion: 1, nonce, phase: 'applicationExited' }) + '\n');
+      },
+      abortValidation() { for (const socket of sockets) socket.destroy(); },
+    });
   } catch (error) {
     await dispose();
     rejectValidation(invalid());

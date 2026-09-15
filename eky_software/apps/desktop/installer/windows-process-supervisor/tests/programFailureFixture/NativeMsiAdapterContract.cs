@@ -48,6 +48,10 @@ internal static class NativeMsiAdapterContract
                 if (mode == "missing") return 0;
                 if (mode is not ("valid" or "msiFailure")) throw new InvalidOperationException();
                 Action(observer, "InstallValidate", 1);
+                using (var marker = new FileStream(value.GetProperty("callbackReturnedPath").GetString()!,
+                    FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                    JsonSerializer.Serialize(marker, new { callbackReturned = true });
+                Require(observer.ApplicationExitAcknowledged);
                 Action(observer, "InstallValidate", 1);
                 return mode == "msiFailure" ? 1603u : 0u;
             });

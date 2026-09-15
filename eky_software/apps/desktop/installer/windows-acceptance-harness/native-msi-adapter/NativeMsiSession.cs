@@ -8,6 +8,7 @@ internal sealed class NativeMsiActionObserver(Func<uint, string> readAction, Act
     internal const uint ActionStart = 0x08000000;
     private bool costFinalized;
     internal bool Observed { get; private set; }
+    internal bool ApplicationExitAcknowledged { get; private set; }
     internal bool Valid { get; private set; } = true;
 
     internal int Handle(uint message, uint record)
@@ -23,6 +24,7 @@ internal sealed class NativeMsiActionObserver(Func<uint, string> readAction, Act
                 if (!costFinalized) throw new InvalidOperationException();
                 Observed = true;
                 validationStarted();
+                ApplicationExitAcknowledged = true;
             }
             return 1; // IDOK acknowledges an action notification, not installation success.
         }

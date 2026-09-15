@@ -27,11 +27,16 @@ internal static class NativeMsiProgram
 
     internal static async Task<int> Run(string pipeName, string nonce, Func<NativeMsiActionObserver, uint> install)
     {
-        using var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.Out, PipeOptions.Asynchronous);
+        using var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
         await pipe.ConnectAsync();
         var notification = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var observer = new NativeMsiActionObserver(NativeMsiSession.ReadAction, () => notification.TrySetResult(true));
-        // One notification slot, no queue and no I/O or wait inside the native callback.
+        var applicationExited = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var observer = new NativeMsiActionObserver(NativeMsiSession.ReadAction, () =>
+        {
+            notification.TrySetResult(true);
+            // The enclosing worker Job owns this wait and every failure cleanup.
+            if (!applicationExited.Task.GetAwaiter().GetResult()) throw new InvalidOperationException();
+        });
         var delivery = DeliverNotification();
         uint msiExitCode = 0;
         Exception? failure = null;
@@ -41,7 +46,8 @@ internal static class NativeMsiProgram
         await delivery;
         if (failure is not null) throw failure;
         await Send(new { schemaVersion = 1, nonce, phase = "result", msiExitCode,
-            validationObserved = observer.Observed, callbackValid = observer.Valid });
+            validationObserved = observer.Observed, callbackValid = observer.Valid,
+            applicationExitAcknowledged = observer.ApplicationExitAcknowledged });
         return checked((int)msiExitCode);
 
         async Task Send(object value)
@@ -52,8 +58,39 @@ internal static class NativeMsiProgram
         }
         async Task DeliverNotification()
         {
-            if (await notification.Task)
+            if (!await notification.Task) return;
+            try
+            {
                 await Send(new { schemaVersion = 1, nonce, phase = "installValidate" });
+                await ReadApplicationExit();
+                applicationExited.TrySetResult(true);
+            }
+            finally { applicationExited.TrySetResult(false); }
+        }
+        async Task ReadApplicationExit()
+        {
+            var bytes = new byte[256];
+            var count = 0;
+            while (count < bytes.Length)
+            {
+                var read = await pipe.ReadAsync(bytes.AsMemory(count));
+                if (read == 0) throw new InvalidOperationException();
+                count += read;
+                var boundary = Array.IndexOf(bytes, (byte)10, 0, count);
+                if (boundary < 0) continue;
+                if (boundary != count - 1) throw new InvalidOperationException();
+                using var document = JsonDocument.Parse(bytes.AsMemory(0, boundary));
+                var value = document.RootElement;
+                if (value.ValueKind != JsonValueKind.Object) throw new InvalidOperationException();
+                var properties = value.EnumerateObject().Select(property => property.Name).ToArray();
+                if (properties.Length != 3 || properties.Distinct(StringComparer.Ordinal).Count() != 3 ||
+                    !value.TryGetProperty("schemaVersion", out var schema) || !schema.TryGetInt32(out var version) || version != 1 ||
+                    !value.TryGetProperty("nonce", out var identity) || identity.GetString() != nonce ||
+                    !value.TryGetProperty("phase", out var phase) || phase.GetString() != "applicationExited")
+                    throw new InvalidOperationException();
+                return;
+            }
+            throw new InvalidOperationException();
         }
     }
 }
