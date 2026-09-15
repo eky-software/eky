@@ -7,8 +7,13 @@ import { createE2eRunRoot } from '../../src/environment/createE2eRunRoot.js';
 import { removeE2eRunRoot } from '../../src/environment/removeE2eRunRoot.js';
 import {
   finishIsolatedElectronTest,
+  prepareElectronWorkspaceBackup,
   reportElectronLifecycleEvidence,
 } from '../../src/fixtures/isolatedElectronTest.js';
+import {
+  E2eBackendStartupFailure,
+  type E2eBackendStartupFailureEvidence,
+} from '../../src/environment/startE2eBackendProcess.js';
 import { captureElectronStartupObservation, launchElectronRuntime, type ElectronLaunchObservation } from '../../src/fixtures/launchElectronRuntime.js';
 import {
   createElectronE2eStartupObservation,
@@ -18,6 +23,60 @@ import { ELECTRON_E2E_FIRST_WINDOW_TIMEOUT_MILLISECONDS } from '../../src/fixtur
 import { stopOwnedElectronRuntime } from '../../src/fixtures/stopOwnedElectronRuntime.js';
 
 test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
+  test('backup preparation failure retains the root and writes safe evidence on the first attempt', async ({}, testInfo) => {
+    const root = createE2eRunRoot();
+    const marker = join(root, 'synthetic-evidence.json');
+    writeFileSync(marker, '{}', { flag: 'wx' });
+    const original = new E2eBackendStartupFailure({
+      errorCode: 'E2E_BACKEND_HEALTH_TIMEOUT',
+      spawnObserved: true,
+      exitedBeforeCleanup: false,
+      listeningNotice: 'notObserved',
+      cleanup: { processTree: 'unverified', port: 'released' },
+      privateDetail: 'private process output',
+    } as E2eBackendStartupFailureEvidence);
+    Object.assign(original, { privateDetail: 'private path and session' });
+    try {
+      await expect(prepareElectronWorkspaceBackup({
+        async prepare() { throw original; },
+        report: (preparation) => reportElectronLifecycleEvidence(testInfo, {
+          launch: [], observationsTruncated: false,
+          cleanup: { api: 'notStarted', runtime: 'notStarted', port: 'notStarted', runRoot: 'retained' },
+          preparation,
+        }),
+      })).rejects.toBe(original);
+      expect(existsSync(marker)).toBe(true);
+      const text = readFileSync(testInfo.outputPath('electron-lifecycle.json'), 'utf8');
+      const evidence = JSON.parse(text);
+      expect(evidence.attempt).toBe(0);
+      expect(evidence.launch).toEqual([]);
+      expect(evidence.cleanup.runRoot).toBe('retained');
+      expect(evidence.preparation).toEqual({ stage: 'workspaceBackup', backend: original.evidence });
+      expect(evidence.preparation.backend.cleanup.processTree).toBe('unverified');
+      expect(Object.isFrozen(original.evidence)).toBe(true);
+      expect(Object.isFrozen(original.evidence.cleanup)).toBe(true);
+      expect(Object.keys(evidence.preparation.backend).sort()).toEqual([
+        'cleanup', 'errorCode', 'exitedBeforeCleanup', 'listeningNotice', 'spawnObserved',
+      ]);
+      expect(text).not.toMatch(/private|session|path|http/);
+      expect(testInfo.attachments.some((item) => item.name === 'electron-lifecycle')).toBe(true);
+    } finally { await removeE2eRunRootIfPresent(root); }
+  });
+
+  test('preparation reporting cannot replace an unknown failure or turn it into success', async () => {
+    const original = new Error('private unknown preparation failure');
+    let reported: unknown;
+    await expect(prepareElectronWorkspaceBackup({
+      async prepare() { throw original; },
+      async report(value) { reported = value; throw new Error('private report failure'); },
+    })).rejects.toBe(original);
+    expect(reported).toEqual({ stage: 'workspaceBackup', backend: null });
+    await expect(prepareElectronWorkspaceBackup({
+      async prepare() { return undefined; },
+      async report() { throw new Error('must not report successful preparation'); },
+    })).resolves.toBeUndefined();
+  });
+
   test('connects, transfers ownership, gets a window and waits for DOM in order', async () => {
     const fixture = launchFixture();
     await expect(fixture.run()).resolves.toEqual({ electronApp: fixture.application, page: fixture.page });

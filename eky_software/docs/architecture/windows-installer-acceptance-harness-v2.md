@@ -2568,9 +2568,17 @@ timeout. Valmistelun virhe tapahtuu ennen nykyisen `electron-lifecycle`-
 liitteen keruurajaa. Lisäksi nykyinen `processSpawned`-havainto syntyy
 käynnistyskutsun paluusta, ei lapsiprosessin `spawn`-tapahtumasta. Näyttö ei
 siksi vielä paikanna odotusta backendin käynnistymisen, kuunteluvalmiuden ja
-HTTP-healthin välille. Seuraava rajaus on tämän nykyisen valmisteluvastuun
-ensimmäisen virheen säilyttäminen ja tapahtumien erottelu; ei uusi valvoja,
-aikarajan kasvatus tai kokonaiskierroksen sokkouusinta.
+HTTP-healthin välille. Rajattu korjaus nykyiseen valmisteluvastuuseen erottaa
+todellisen `spawn`-tapahtuman, säilyttää alkuperäisen käynnistysvirheen ja
+erilliset siivoustulokset sekä tallentaa ensimmäisen valmisteluvirheen samaan
+turvalliseen Electron-liitteeseen. Nykyisestä rajatusta tulostepuskurista
+johdetaan vain kuunteluilmoituksen havaintoluokka, ei readiness-ehtoa.
+Testijuuri säilytetään; uutta valvojaa tai aikarajaa ei lisätä. Kohderegressiot,
+jaetut käynnistyssopimukset ja API-kytkentä läpäisivät 43/43. Kohdennetut
+Electron-polut läpäisivät 6/6 ja critical 38/38 samalla valmistellulla buildillä,
+ilman retryä. Typecheck ja tarvittavat buildit läpäisivät. Rajattu CI-todennus
+ja normaali kokonaishyväksyntä ovat kesken. Alkuperäisen viiveen syy pysyy
+avoimena; onnistuneita toistoja ei esitetä sen juurisyykorjauksena.
 
 Revision `fb330fb1d1b615ce602af9367abb5679a3585e3d`
 [ensimmäinen normaali kierros](https://github.com/eky-software/eky/actions/runs/35004076794)

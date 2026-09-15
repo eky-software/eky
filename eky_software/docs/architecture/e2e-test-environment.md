@@ -112,6 +112,20 @@ Sama turvallinen sisältö tallentuu yrityskohtaiseen
 yhden päivän artifactina, myös ensimmäisestä epäonnistumisesta ennen retryä.
 Koko `test-results`-kansiota, tracea, profiilia tai raakaa lokia ei julkaista.
 
+Myös Electronin käynnistystä edeltävä workspace-backupin valmistelu säilyttää
+ensimmäisen epäonnistumisen samassa liitteessä. Electronin omat API-, runtime-
+ja porttivastuut ovat silloin `notStarted`, testijuuri `retained`. Erillinen
+`preparation.backend` kertoo vain tunnetun backend-käynnistysvirheen,
+todellisen `spawn`-havainnon, ennen siivousta havaitun poistumisen, olemassa
+olevan kuunteluilmoituksen havaitsemisen sekä backendin prosessipuun ja portin
+siivoustulokset. Tuntematon valmisteluvirhe ei väitä näitä varmistetuiksi.
+Kuunteluilmoitus on rajatun diagnostiikkapuskurin havainto, ei health-signaali
+tai ajastusprotokolla; sen puuttuminen ei todista kuuntelun puuttumista.
+Raakaa tulostetta, alkuperää tai porttinumeroa ei kopioida liitteeseen.
+Tulosteen lukijan tai raportoinnin virhe ei peitä käynnistysvirhettä;
+prosessin tai portin epävarma siivous säilyy erillisenä epäonnistumisena.
+Valmistelun raportointiraja ei omista siivousta eikä poista testijuurta.
+
 Electronin erillinen E2E-entrypoint säilyttää vain muistissa enintään 16
 nimettyä käynnistyshavaintoa ja niiden kuluneen ajan. Havainto erottaa appin
 valmiuden, workspace-ratkaisun, backendin käynnistyspyynnön ja valmiuden,

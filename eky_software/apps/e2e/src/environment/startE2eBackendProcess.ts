@@ -28,6 +28,35 @@ export interface StartedE2eBackend {
   stop(): Promise<void>;
 }
 
+export interface E2eBackendStartupFailureEvidence {
+  readonly errorCode: E2eBackendStartupErrorCode;
+  readonly spawnObserved: boolean;
+  readonly exitedBeforeCleanup: boolean;
+  readonly listeningNotice: 'observed' | 'notObserved' | 'unavailable';
+  readonly cleanup: Readonly<{
+    processTree: 'stopped' | 'unverified';
+    port: 'released' | 'unverified';
+  }>;
+}
+
+export class E2eBackendStartupFailure extends Error {
+  readonly evidence: E2eBackendStartupFailureEvidence;
+
+  constructor(evidence: E2eBackendStartupFailureEvidence) {
+    super(evidence.errorCode);
+    this.evidence = Object.freeze({
+      errorCode: evidence.errorCode,
+      spawnObserved: evidence.spawnObserved,
+      exitedBeforeCleanup: evidence.exitedBeforeCleanup,
+      listeningNotice: evidence.listeningNotice,
+      cleanup: Object.freeze({
+        processTree: evidence.cleanup.processTree,
+        port: evidence.cleanup.port,
+      }),
+    });
+  }
+}
+
 const repositoryRoot = resolve(import.meta.dirname, '../../../..');
 
 export async function startE2eBackendProcess(input: {
@@ -79,7 +108,6 @@ export async function startE2eBackendProcess(input: {
       inheritEnvironment: false,
       redactedValues: [config.backend.sessionSecret],
     });
-    observe(newProgress('processSpawned', 'completed'));
   } catch {
     observe(
       newProgress(
@@ -91,26 +119,18 @@ export async function startE2eBackendProcess(input: {
     throw new Error('E2E_BACKEND_PROCESS_SPAWN_FAILED');
   }
 
-  try {
-    await waitForManagedBackendHealth({
-      child: managedProcess.child,
-      observe,
-      waitForHealth: (signal) =>
-        waitForHttpHealth(`${backendOrigin}/health`, {
-          signal,
-          timeoutMilliseconds:
-            E2E_BACKEND_STARTUP_SAFETY_TIMEOUT_MILLISECONDS,
-        }),
-    });
-  } catch (error) {
-    const startupErrorCode = resolveStartupErrorCode(error, managedProcess);
-    const cleanupErrorCode = await cleanupFailedStartup({
-      backendPort: input.backendPort,
-      child: managedProcess.child,
-      observe,
-    });
-    throw new Error(cleanupErrorCode ?? startupErrorCode);
-  }
+  await waitForE2eBackendStartup({
+    backendOrigin,
+    managedProcess,
+    observe,
+    waitForHealth: (signal) =>
+      waitForHttpHealth(`${backendOrigin}/health`, {
+        signal,
+        timeoutMilliseconds: E2E_BACKEND_STARTUP_SAFETY_TIMEOUT_MILLISECONDS,
+      }),
+    stopProcessTree: () => stopManagedProcessTree(managedProcess.child),
+    releasePort: () => waitForLoopbackPortRelease(input.backendPort),
+  });
 
   return {
     backendOrigin,
@@ -123,15 +143,63 @@ export async function startE2eBackendProcess(input: {
   };
 }
 
-async function cleanupFailedStartup(input: {
-  readonly backendPort: number;
-  readonly child: ManagedProcess['child'];
+export async function waitForE2eBackendStartup(input: {
+  readonly backendOrigin: string;
+  readonly managedProcess: ManagedProcess;
   readonly observe: ReturnType<typeof createE2eBackendStartupReporter>;
-}): Promise<E2eBackendStartupErrorCode | undefined> {
+  waitForHealth(signal: AbortSignal): Promise<void>;
+  stopProcessTree(): Promise<void>;
+  releasePort(): Promise<void>;
+}): Promise<void> {
+  const child = input.managedProcess.child;
+  let spawnObserved = false;
+  const onSpawn = () => {
+    spawnObserved = true;
+    input.observe(newProgress('processSpawned', 'completed'));
+  };
+  child.once('spawn', onSpawn);
+  try {
+    await waitForManagedBackendHealth({
+      child,
+      observe: input.observe,
+      waitForHealth: input.waitForHealth,
+    });
+  } catch (error) {
+    // Capture before cleanup, which can itself change process/output state.
+    const output = readStartupOutput(input.managedProcess);
+    const errorCode = resolveStartupErrorCode(error, output);
+    const spawnedBeforeCleanup = spawnObserved;
+    const exitedBeforeCleanup = child.exitCode !== null || child.signalCode !== null;
+    const listeningNotice = output === undefined
+      ? 'unavailable'
+      : output.stdout.split(/\r?\n/).includes(`E2E backend listening on ${input.backendOrigin}`)
+        ? 'observed'
+        : 'notObserved';
+    const cleanup = await cleanupFailedStartup(input);
+    throw new E2eBackendStartupFailure(Object.freeze({
+      errorCode,
+      spawnObserved: spawnedBeforeCleanup,
+      exitedBeforeCleanup,
+      listeningNotice,
+      cleanup,
+    }));
+  } finally {
+    child.removeListener('spawn', onSpawn);
+  }
+}
+
+async function cleanupFailedStartup(input: {
+  readonly observe: ReturnType<typeof createE2eBackendStartupReporter>;
+  stopProcessTree(): Promise<void>;
+  releasePort(): Promise<void>;
+}): Promise<E2eBackendStartupFailureEvidence['cleanup']> {
   input.observe(newProgress('cleanupStarted', 'started'));
   let cleanupErrorCode: E2eBackendStartupErrorCode | undefined;
+  let processTree: 'stopped' | 'unverified' = 'unverified';
+  let port: 'released' | 'unverified' = 'unverified';
   try {
-    await stopManagedProcessTree(input.child);
+    await input.stopProcessTree();
+    processTree = 'stopped';
     input.observe(newProgress('processTreeStopped', 'completed'));
   } catch {
     input.observe(
@@ -145,7 +213,8 @@ async function cleanupFailedStartup(input: {
   }
   input.observe(newProgress('portReleaseStarted', 'started'));
   try {
-    await waitForLoopbackPortRelease(input.backendPort);
+    await input.releasePort();
+    port = 'released';
     input.observe(newProgress('portReleased', 'completed'));
   } catch {
     input.observe(
@@ -164,15 +233,22 @@ async function cleanupFailedStartup(input: {
       newProgress('cleanupCompleted', 'failed', cleanupErrorCode),
     );
   }
-  return cleanupErrorCode;
+  return Object.freeze({ processTree, port });
+}
+
+function readStartupOutput(managedProcess: ManagedProcess) {
+  try {
+    return { stdout: managedProcess.readStdout(), stderr: managedProcess.readStderr() };
+  } catch {
+    return undefined;
+  }
 }
 
 function resolveStartupErrorCode(
   error: unknown,
-  managedProcess: ManagedProcess,
+  output: ReturnType<typeof readStartupOutput>,
 ): E2eBackendStartupErrorCode {
-  const output = `${managedProcess.readStdout()}\n${managedProcess.readStderr()}`;
-  if (output.includes('EADDRINUSE')) {
+  if (output !== undefined && `${output.stdout}\n${output.stderr}`.includes('EADDRINUSE')) {
     return 'E2E_BACKEND_LOOPBACK_ADDRESS_IN_USE';
   }
   const candidate = error instanceof Error ? error.message : '';

@@ -30,6 +30,10 @@ import { listElectronE2eProfileDirectories } from '../environment/createElectron
 import { createE2eRunRoot } from '../environment/createE2eRunRoot.js';
 import { createE2eWorkerPaths } from '../environment/createE2eWorkerPaths.js';
 import type { E2eWorkerPaths } from '../environment/e2eEnvironmentTypes.js';
+import {
+  E2eBackendStartupFailure,
+  type E2eBackendStartupFailureEvidence,
+} from '../environment/startE2eBackendProcess.js';
 import { reserveLoopbackPort } from '../environment/reserveLoopbackPort.js';
 import { removeE2eRunRoot } from '../environment/removeE2eRunRoot.js';
 import { resolveElectronE2eExecutable } from '../environment/resolveElectronE2eExecutable.js';
@@ -135,26 +139,34 @@ export const test = base.extend<
         'Active workspace backup requires the replacement dialog purpose.',
       );
     }
-    const workspaceBackupFixture =
-      e2eWorkspaceBackupFixture === 'synthetic'
-        ? await createElectronWorkspaceBackupFixture({
-            backupPath: join(
-              paths.artifactsRoot,
-              'workspace-import-source.ekybackup',
-            ),
-            runRoot,
-          })
-        : e2eWorkspaceBackupFixture === 'activeReplacement'
-          ? await createElectronActiveWorkspaceReplacementFixture({
+    const workspaceBackupFixture = await prepareElectronWorkspaceBackup({
+      prepare: async () =>
+        e2eWorkspaceBackupFixture === 'synthetic'
+          ? await createElectronWorkspaceBackupFixture({
               backupPath: join(
                 paths.artifactsRoot,
-                'active-workspace-replacement.ekybackup',
+                'workspace-import-source.ekybackup',
               ),
-              paths,
               runRoot,
-              scenarioId,
             })
-          : undefined;
+          : e2eWorkspaceBackupFixture === 'activeReplacement'
+            ? await createElectronActiveWorkspaceReplacementFixture({
+                backupPath: join(
+                  paths.artifactsRoot,
+                  'active-workspace-replacement.ekybackup',
+                ),
+                paths,
+                runRoot,
+                scenarioId,
+              })
+            : undefined,
+      report: (preparation) => reportElectronLifecycleEvidence(testInfo, {
+        launch: [],
+        observationsTruncated: false,
+        cleanup: { api: 'notStarted', runtime: 'notStarted', port: 'notStarted', runRoot: 'retained' },
+        preparation,
+      }),
+    });
     let backendPort = await reserveLoopbackPort();
     let runtime = createElectronE2eRuntime({
       backendPort,
@@ -407,10 +419,34 @@ function seedLegacyWorkspaceForActiveReplacement(input: {
 }
 
 interface ElectronCleanupResult {
-  api: 'completed' | 'failed';
-  runtime: 'completed' | 'unverified';
-  port: 'released' | 'unverified';
+  api: 'completed' | 'failed' | 'notStarted';
+  runtime: 'completed' | 'unverified' | 'notStarted';
+  port: 'released' | 'unverified' | 'notStarted';
   runRoot: 'removed' | 'retained' | 'removalFailed';
+}
+
+interface ElectronPreparationFailureEvidence {
+  readonly stage: 'workspaceBackup';
+  readonly backend: E2eBackendStartupFailureEvidence | null;
+}
+
+export async function prepareElectronWorkspaceBackup(input: {
+  prepare(): Promise<Readonly<ElectronWorkspaceBackupFixture> | undefined>;
+  report(evidence: ElectronPreparationFailureEvidence): Promise<void>;
+}): Promise<Readonly<ElectronWorkspaceBackupFixture> | undefined> {
+  try {
+    return await input.prepare();
+  } catch (error) {
+    try {
+      await input.report({
+        stage: 'workspaceBackup',
+        backend: error instanceof E2eBackendStartupFailure ? error.evidence : null,
+      });
+    } catch {
+      // Reporting cannot replace the original preparation failure.
+    }
+    throw error;
+  }
 }
 
 export async function reportElectronLifecycleEvidence(
@@ -420,6 +456,7 @@ export async function reportElectronLifecycleEvidence(
     observationsTruncated: boolean;
     cleanup: Readonly<ElectronCleanupResult>;
     startupCapture?: ElectronStartupCapture;
+    preparation?: ElectronPreparationFailureEvidence;
   },
 ): Promise<void> {
   const path = testInfo.outputPath('electron-lifecycle.json');
@@ -432,6 +469,7 @@ export async function reportElectronLifecycleEvidence(
       observationsTruncated: evidence.observationsTruncated,
       cleanup: evidence.cleanup,
       startupCapture: evidence.startupCapture ?? { status: 'notRequested' },
+      ...(evidence.preparation === undefined ? {} : { preparation: evidence.preparation }),
     }),
     { encoding: 'utf8', flag: 'wx', mode: 0o600 },
   );
