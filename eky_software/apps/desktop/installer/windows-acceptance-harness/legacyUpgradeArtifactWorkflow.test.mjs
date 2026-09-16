@@ -43,7 +43,7 @@ test('packaged boundary diagnostic reuses exact artifacts without becoming a nor
   assert.match(diagnostic, /run-id: \$\{\{ inputs\.artifact_run_id \}\}/u);
   assert.match(diagnostic, /repository: \$\{\{ github\.repository \}\}/u);
   assert.match(diagnostic, /actions\/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c/u);
-  assert.doesNotMatch(diagnostic, /artifact:build|package:windows|upload-artifact|retry|continue-on-error|permissions:\s+contents: write/u);
+  assert.doesNotMatch(diagnostic, /artifact:build|package:windows|upload-artifact|retry|permissions:\s+contents: write/u);
   assert.ok(diagnostic.indexOf('Validate closed diagnostic identity') < diagnostic.indexOf('uses: actions/download-artifact'));
   assert.match(diagnostic, /\$commandExit = \$LASTEXITCODE/u);
   assert.match(diagnostic, /--command-exit \$commandExit/u);
@@ -63,7 +63,7 @@ test('external inspector capture is opt-in and never replaces command or artifac
   for (const inspector_capture of [false, true]) {
     for (const artifact_kind of ['legacy', 'upgrade', 'workspace', 'workspace-fault']) {
       assert.equal(runInNewContext(selection, { inputs: { inspector_capture, artifact_kind } }, { timeout: 1000 }),
-        inspector_capture && ['legacy', 'upgrade'].includes(artifact_kind));
+        inspector_capture && ['legacy', 'upgrade', 'workspace-fault'].includes(artifact_kind));
     }
   }
   assert.ok(diagnostic.indexOf('-Mode start') < diagnostic.indexOf('Run existing caller and mandatory result verifier once'));
@@ -71,7 +71,14 @@ test('external inspector capture is opt-in and never replaces command or artifac
   assert.match(diagnostic, /always\(\) && \(steps\.capture\.outcome == 'success' \|\| steps\.capture\.outcome == 'failure' \|\| steps\.capture\.outcome == 'cancelled'\)/u);
   assert.match(diagnostic, /always\(\) && steps\.capture_stop\.outcome == 'success'/u);
   assert.ok(diagnostic.indexOf('Reverify immutable artifact') < diagnostic.indexOf('-Mode analyze'));
-  assert.doesNotMatch(diagnostic, /continue-on-error|upload-artifact|wpr.*-cancel|symbols/u);
+  assert.doesNotMatch(diagnostic, /upload-artifact|wpr.*-cancel|symbols/u);
+  const steps = diagnostic.split('\n      - name: ').slice(1);
+  for (const step of steps) {
+    const optional = ['Start opt-in external inspector capture', 'Stop only the diagnostic recording',
+      'Extract closed inspector observations without publishing raw trace'].includes(step.split('\n')[0]);
+    if (optional) assert.match(step, /continue-on-error: \$\{\{ inputs\.artifact_kind == 'workspace-fault' \}\}/u);
+    else assert.doesNotMatch(step, /continue-on-error/u);
+  }
 });
 
 test('diagnostic preflight admits only the selected capture families and verified identity', {
@@ -83,7 +90,7 @@ test('diagnostic preflight admits only the selected capture families and verifie
     .map((line) => { assert.ok(line.startsWith('          ')); return line.slice(10); }).join('\n');
   for (const [kind, capture, invalidIdentity, expectedCode] of [
     ['legacy', 'true', false, 0], ['upgrade', 'true', false, 0],
-    ['workspace', 'true', false, 1], ['workspace-fault', 'true', false, 1],
+    ['workspace', 'true', false, 1], ['workspace-fault', 'true', false, 0],
     ['workspace', 'false', false, 0], ['unknown', 'false', false, 1],
     ['upgrade', 'true', true, 1],
   ]) {
@@ -118,15 +125,16 @@ test('diagnostic analysis uses the selected existing reader and preserves its pr
   const body = step.split('        run: |\n')[1].trimEnd().split('\n')
     .map((line) => { assert.ok(line.startsWith('          ')); return line.slice(10); }).join('\n');
   for (const [kind, analysis, expectedCode] of [['legacy', '0', 0], ['upgrade', '0', 0],
-    ['upgrade', '1', 1], ['upgrade', 'throw', 1]]) {
+    ['upgrade', '1', 1], ['upgrade', 'throw', 1], ['workspace-fault', '0', 0],
+    ['workspace-fault', '1', 1], ['workspace-fault', 'throw', 1]]) {
     const context = await createRunContext('diagnostic-reader-routing');
     let passed = false;
     t.after(() => cleanupRunContext(context, { preserveEvidence: !passed || t.signal.aborted }));
     const directory = join(context.testRoot, 'apps/desktop/installer/windows-acceptance-harness');
     await mkdir(directory, { recursive: true });
     await writeFile(join(directory, 'captureInstallerProductInspection.ps1'), `
-param([string]$Mode, [switch]$LegacyCommand)
-[IO.File]::WriteAllText($env:TEST_READER_RESULT, ([ordered]@{ mode = $Mode; legacy = [bool]$LegacyCommand } | ConvertTo-Json -Compress))
+param([string]$Mode, [switch]$LegacyCommand, [switch]$WorkspaceFaultCommand)
+[IO.File]::WriteAllText($env:TEST_READER_RESULT, ([ordered]@{ mode = $Mode; legacy = [bool]$LegacyCommand; workspaceFault = [bool]$WorkspaceFaultCommand } | ConvertTo-Json -Compress))
 if ($env:TEST_ANALYSIS -ceq 'throw') { throw 'private-analysis-error' }
 exit ([int]$env:TEST_ANALYSIS)
 `);
@@ -143,7 +151,9 @@ exit ([int]$env:TEST_ANALYSIS)
       child.once('close', (code, signal) => resolvePromise({ code, signal }));
     });
     assert.deepEqual(completion, { code: expectedCode, signal: null });
-    assert.deepEqual(JSON.parse(await readFile(context.resultPath, 'utf8')), { mode: 'analyze', legacy: kind === 'legacy' });
+    assert.deepEqual(JSON.parse(await readFile(context.resultPath, 'utf8')), {
+      mode: 'analyze', legacy: kind === 'legacy', workspaceFault: kind === 'workspace-fault',
+    });
     passed = true;
   }
 });
@@ -157,29 +167,43 @@ test('bounded rollback diagnostic executes the existing ordered commands and sto
     .split('\n      - name:')[0];
   const body = step.split('        run: |\n')[1].trimEnd().split('\n')
     .map((line) => { assert.ok(line.startsWith('          ')); return line.slice(10); }).join('\n');
-  for (const [commandExit, verifierExit, expectedCount] of [[0, 0, 4], [1, 0, 2], [0, 1, 2], [1, 1, 2]]) {
+  const prefixNames = ['Preserve workspace pre-update failure prefix', 'Preserve workspace active rollback prefix'];
+  const prefix = prefixNames.map((name) => {
+    const sourceStep = diagnostic.split(`      - name: ${name}\n`)[1].split('\n      - name:')[0];
+    assert.match(sourceStep, /if: inputs\.inspector_capture && inputs\.artifact_kind == 'workspace-fault'/u);
+    assert.match(sourceStep, /timeout-minutes: 25/u);
+    return sourceStep.split('        run: |\n')[1].trimEnd().split('\n').map((line) => line.slice(10)).join('\n');
+  }).join('\n');
+  for (const capture of [false, true]) for (const [commandExit, verifierExit, failAt] of [
+    [0, 0, 0], [1, 0, 1], [0, 1, 1], [1, 1, 1],
+    ...(capture ? [[1, 0, 2], [0, 1, 2], [1, 0, 3], [0, 1, 3]] : []),
+  ]) {
+    const expectedCount = failAt ? failAt * 2 : capture ? 6 : 4;
     const context = await createRunContext('rollback-diagnostic-workflow');
     let passed = false;
     t.after(() => cleanupRunContext(context, { preserveEvidence: !passed || t.signal.aborted }));
     const script = join(context.testRoot, 'step.ps1');
     await writeFile(script, `
 $ErrorActionPreference = 'Stop'
+$script:commandCount = 0
 function dotnet {
+  $script:commandCount++
   [IO.File]::AppendAllText($env:TEST_CALLS, (ConvertTo-Json -InputObject (@('dotnet') + $args) -Compress) + [Environment]::NewLine)
-  $global:LASTEXITCODE = [int]$env:TEST_COMMAND_EXIT
+  $global:LASTEXITCODE = if ($script:commandCount -eq [int]$env:TEST_FAIL_AT) { [int]$env:TEST_COMMAND_EXIT } else { 0 }
 }
 function node {
   [IO.File]::AppendAllText($env:TEST_CALLS, (ConvertTo-Json -InputObject (@('node') + $args) -Compress) + [Environment]::NewLine)
-  $global:LASTEXITCODE = [int]$env:TEST_VERIFIER_EXIT
+  $global:LASTEXITCODE = if ($script:commandCount -eq [int]$env:TEST_FAIL_AT) { [int]$env:TEST_VERIFIER_EXIT } else { 0 }
 }
+${capture ? prefix : ''}
 ${body}
 `);
     const child = spawn(resolve(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script], {
         cwd: context.testRoot, stdio: 'ignore', windowsHide: true,
-        env: { ...process.env, ARTIFACT_KIND: 'workspace-fault', RUNNER_TEMP: context.testRoot,
+        env: { ...process.env, ARTIFACT_KIND: 'workspace-fault', INSPECTOR_CAPTURE: String(capture), RUNNER_TEMP: context.testRoot,
           EXPECTED_BUILD_REVISION: 'a'.repeat(40), EXPECTED_DESCRIPTOR_SHA256: 'b'.repeat(64),
-          TEST_CALLS: context.resultPath, TEST_COMMAND_EXIT: String(commandExit), TEST_VERIFIER_EXIT: String(verifierExit) },
+          TEST_CALLS: context.resultPath, TEST_FAIL_AT: String(failAt), TEST_COMMAND_EXIT: String(commandExit), TEST_VERIFIER_EXIT: String(verifierExit) },
       });
     context.fixtureProcesses.add(child);
     const exited = await new Promise((resolvePromise, rejectPromise) => {
@@ -197,15 +221,34 @@ ${body}
       assert.equal(verifier[0], 'node');
       assert.ok(verifier[1].endsWith('/verifyWorkspaceCallerResult.mjs'));
       for (const call of [command, verifier]) {
-        assert.equal(argument(call, '--fault-scenario'), index === 0 ? 'preUpdateRecoveryPointFailure' : 'activeWorkspaceFirstStartFailure');
+        assert.equal(argument(call, '--fault-scenario'),
+          ['preUpdateRecoveryPointFailure', 'activeWorkspaceFirstStartFailure', 'acceptanceInterruption'][index / 2]);
         assert.equal(argument(call, '--expected-build-revision'), 'a'.repeat(40));
         assert.equal(argument(call, '--expected-descriptor-sha256'), 'b'.repeat(64));
       }
       assert.equal(argument(command, '--result-path'), argument(verifier, '--result-path'));
-      assert.equal(String(argument(verifier, '--command-exit')), String(commandExit));
+      assert.equal(String(argument(verifier, '--command-exit')), String(index / 2 + 1 === failAt ? commandExit : 0));
     }
-    if (calls.length === 4) assert.notEqual(argument(calls[0], '--result-path'), argument(calls[2], '--result-path'));
+    assert.equal(new Set(calls.filter((_, index) => index % 2 === 0).map((call) => argument(call, '--result-path'))).size, calls.length / 2);
     passed = true;
+  }
+});
+
+test('workspace capture preserves ordered prefix and separates the approved job reservation', async () => {
+  const source = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
+  const diagnostic = source.split('  packaged-boundary-diagnostic:')[1];
+  const jobBudget = diagnostic.match(/^    timeout-minutes: \$\{\{ (.+) \}\}$/mu)?.[1];
+  assert.ok(jobBudget);
+  for (const capture of [false, true]) for (const kind of ['legacy', 'upgrade', 'workspace', 'workspace-fault']) {
+    assert.equal(runInNewContext(jobBudget, { inputs: { inspector_capture: capture, artifact_kind: kind } }),
+      capture && kind === 'workspace-fault' ? 3 * 25 + 15 + 6 : ['legacy', 'upgrade'].includes(kind) ? 37 : 30);
+  }
+  const order = ['Preserve workspace pre-update failure prefix', 'Preserve workspace active rollback prefix',
+    'Start opt-in external inspector capture', 'Run existing caller and mandatory result verifier once',
+    'Stop only the diagnostic recording', 'Reverify immutable artifact after diagnostic',
+    'Extract closed inspector observations without publishing raw trace'];
+  for (let index = 1; index < order.length; index++) {
+    assert.ok(diagnostic.indexOf(`- name: ${order[index - 1]}`) < diagnostic.indexOf(`- name: ${order[index]}`));
   }
 });
 

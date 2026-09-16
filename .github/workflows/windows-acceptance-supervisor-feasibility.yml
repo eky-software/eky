@@ -36,7 +36,7 @@ on:
         description: Expected original descriptor SHA-256
         type: string
       inspector_capture:
-        description: One opt-in legacy or upgrade diagnostic; raw WPR data stays in runner temp
+        description: Opt-in legacy, upgrade or ordered workspace fault diagnostic; raw WPR data stays in runner temp
         type: boolean
         default: false
 
@@ -221,7 +221,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'packaged-boundary-diagnostic'
     name: Existing ${{ inputs.artifact_kind }} artifact caller diagnostic (not acceptance)
     runs-on: windows-latest
-    timeout-minutes: ${{ (inputs.artifact_kind == 'legacy' || inputs.artifact_kind == 'upgrade') && 37 || 30 }}
+    timeout-minutes: ${{ inputs.inspector_capture && inputs.artifact_kind == 'workspace-fault' && 96 || (inputs.artifact_kind == 'legacy' || inputs.artifact_kind == 'upgrade') && 37 || 30 }}
     permissions:
       contents: read
       actions: read
@@ -245,7 +245,7 @@ jobs:
 
       - name: Validate closed diagnostic identity before download
         run: |
-          if ($env:INSPECTOR_CAPTURE -ceq 'true' -and $env:ARTIFACT_KIND -cnotin @('legacy', 'upgrade')) {
+          if ($env:INSPECTOR_CAPTURE -ceq 'true' -and $env:ARTIFACT_KIND -cnotin @('legacy', 'upgrade', 'workspace-fault')) {
             throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CAPTURE_SCOPE_INVALID'
           }
           if ($env:ARTIFACT_KIND -cnotin @('legacy', 'workspace', 'workspace-fault', 'upgrade') -or
@@ -321,9 +321,34 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_PREPARATION_FAILED' }
           }
 
+      - name: Preserve workspace pre-update failure prefix
+        if: inputs.inspector_capture && inputs.artifact_kind == 'workspace-fault'
+        timeout-minutes: 25
+        run: |
+          $descriptorPath = Join-Path $env:RUNNER_TEMP 'eky-existing-boundary-artifact/workspace-success-artifact.json'
+          $resultPath = Join-Path $env:RUNNER_TEMP ('eky-workspace-caller-' + [Guid]::NewGuid().ToString('N') + '/result.json')
+          $PSNativeCommandUseErrorActionPreference = $false
+          dotnet apps/desktop/installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --workspace-fault-command --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario preUpdateRecoveryPointFailure --result-path $resultPath
+          $commandExit = $LASTEXITCODE
+          node apps/desktop/installer/windows-acceptance-harness/verifyWorkspaceCallerResult.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario preUpdateRecoveryPointFailure --result-path $resultPath --command-exit $commandExit
+          if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED' }
+
+      - name: Preserve workspace active rollback prefix
+        if: inputs.inspector_capture && inputs.artifact_kind == 'workspace-fault'
+        timeout-minutes: 25
+        run: |
+          $descriptorPath = Join-Path $env:RUNNER_TEMP 'eky-existing-boundary-artifact/workspace-success-artifact.json'
+          $resultPath = Join-Path $env:RUNNER_TEMP ('eky-workspace-caller-' + [Guid]::NewGuid().ToString('N') + '/result.json')
+          $PSNativeCommandUseErrorActionPreference = $false
+          dotnet apps/desktop/installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --workspace-fault-command --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario activeWorkspaceFirstStartFailure --result-path $resultPath
+          $commandExit = $LASTEXITCODE
+          node apps/desktop/installer/windows-acceptance-harness/verifyWorkspaceCallerResult.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario activeWorkspaceFirstStartFailure --result-path $resultPath --command-exit $commandExit
+          if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED' }
+
       - name: Start opt-in external inspector capture
         id: capture
-        if: inputs.inspector_capture && (inputs.artifact_kind == 'legacy' || inputs.artifact_kind == 'upgrade')
+        if: inputs.inspector_capture && (inputs.artifact_kind == 'legacy' || inputs.artifact_kind == 'upgrade' || inputs.artifact_kind == 'workspace-fault')
+        continue-on-error: ${{ inputs.artifact_kind == 'workspace-fault' }}
         timeout-minutes: 1
         run: ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode start
 
@@ -343,7 +368,9 @@ jobs:
           if ($env:ARTIFACT_KIND -ceq 'workspace-fault') {
             $descriptorPath = Join-Path (Join-Path $env:RUNNER_TEMP 'eky-existing-boundary-artifact') 'workspace-success-artifact.json'
             $PSNativeCommandUseErrorActionPreference = $false
-            foreach ($faultScenario in @('preUpdateRecoveryPointFailure', 'activeWorkspaceFirstStartFailure')) {
+            $scenarios = if ($env:INSPECTOR_CAPTURE -ceq 'true') { @('acceptanceInterruption') }
+              else { @('preUpdateRecoveryPointFailure', 'activeWorkspaceFirstStartFailure') }
+            foreach ($faultScenario in $scenarios) {
               $resultPath = Join-Path (Join-Path $env:RUNNER_TEMP ('eky-workspace-caller-' + [Guid]::NewGuid().ToString('N'))) 'result.json'
               dotnet apps/desktop/installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --workspace-fault-command --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario $faultScenario --result-path $resultPath
               $commandExit = $LASTEXITCODE
@@ -372,6 +399,7 @@ jobs:
         id: capture_stop
         if: always() && (steps.capture.outcome == 'success' || steps.capture.outcome == 'failure' || steps.capture.outcome == 'cancelled')
         timeout-minutes: 2
+        continue-on-error: ${{ inputs.artifact_kind == 'workspace-fault' }}
         run: ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode stop
 
       - name: Reverify immutable artifact after diagnostic
@@ -390,9 +418,12 @@ jobs:
       - name: Extract closed inspector observations without publishing raw trace
         if: always() && steps.capture_stop.outcome == 'success'
         timeout-minutes: 3
+        continue-on-error: ${{ inputs.artifact_kind == 'workspace-fault' }}
         run: |
           if ($env:ARTIFACT_KIND -ceq 'legacy') {
             ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode analyze -LegacyCommand
+          } elseif ($env:ARTIFACT_KIND -ceq 'workspace-fault') {
+            ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode analyze -WorkspaceFaultCommand
           } else {
             ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode analyze
           }

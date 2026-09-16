@@ -2642,7 +2642,11 @@ PR-/main-todennus ja tämän jälkeen erillinen 0.2.8-versionosto sekä
 exact-byte-varmennettu pilot-bundle. Historiallisia jäädytettyjä PR:iä ei
 yhdistetty suoraan. Suojauksia tai julkaisurajoja ei ohiteta.
 
-#### Valmisteltu workspace-koe, toteutus odottaa täsmähyväksyntää
+#### Hyväksytty rajattu workspace-koe
+
+Omistaja hyväksyi alla olevan keruun reitityksen, rajatun jälkilukijan ja
+96 minuutin kertakokeen job-varauksen. Tämä on diagnostiikan päätös,
+ei normaalin hyväksyntäportin tai yksittäisen skenaarion aikarajan muutos.
 
 Kysymys on vain, odottaako `acceptanceInterruption`-tapauksen `targetInstall`
 MSI:n valmistumista vai asennuksen jälkeistä tarkistusta. Nykyinen
@@ -2674,16 +2678,15 @@ jälkeen, joten sen onnistumista tai vikaa ei päätellä aloitusrivistä.
   aloitus-/lopetus-/analyysivaiheet ja keräinten koko- sekä yksityisyysrajat
   säilyvät. Keruu ei kuluta skenaarion työ- tai siivousaikaa, eikä sen virhe
   muutu testin tai cleanupin tulokseksi. Raakajälkiä ei julkaista.
-- Budjettiehdotus, ei tehty muutos: kolme erillistä nykyistä 25 minuutin
+- Hyväksytty job-varaus: kolme erillistä nykyistä 25 minuutin
   komentovaihetta, normaalityönkulusta sama 15 minuutin valmistelu- ja
   jälkivarmennusvara sekä 6 minuutin erillinen keruuvara ovat yhteensä
   96 minuuttia vain tämän kertakokeen jobille. Nykyisen diagnostisen
   30 minuutin jobin sisään ei piiloteta kolmea komentoa. Komennon 24 minuutin
   kokonaisraja ja skenaarion 720 sekuntia (690 työ + 30 cleanup), muut
   komentobudjetit sekä normaalin CI:n aikarajat eivät muutu.
-- Nykyinen keruuvalitsin ja jälkilukija sallivat vasta legacy-/upgrade-
-  käytön; komentoprojektio tunnistaa legacy-komennon. Ehdotettu rajattu
-  workspace-sidonta tunnistaa vain tämän fault-komennon, sen nykyiset
+- Keruuvalitsimen workspace-laajennus koskee vain tätä kertakoetta;
+  komentoprojektio tunnistaa legacy-komennon lisäksi tämän fault-komennon, sen nykyiset
   vaiheprosessit, MSI-havainnot ja payloadittomat inspector-tapahtumat.
   Prosessin elinkaari ja tapahtumien järjestys on sidottava samaan komentoon;
   pelkkä PID, MSI-prosessin läsnäolo tai yleinen säieodotus ei todista syytä.
@@ -2694,9 +2697,24 @@ jälkeen, joten sen onnistumista tai vikaa ei päätellä aloitusrivistä.
   näyttö jää varmentamattomaksi. Silloin raportoidaan seuraava päätöstarve,
   ei aloiteta uutta samanlaista MSI-kierrosta.
 
-Keruun reititys, lukijan laajennus ja yllä oleva kertakokeen job-varaus
-edellyttävät omistajan täsmähyväksyntää. Tämä valmistelu ei käynnistä koetta,
-muuta hyväksymisehtoja tai väitä normaalia kahden kierroksen porttia suljetuksi.
+Keruun aloitus, pysäytys ja analyysi ovat workspace-kokeessa valinnaisia
+CI-vaiheita, joiden alkuperäiset outcome-arvot säilyvät. Esiskenaarioiden,
+tutkittavan komennon ja artifactin varmennuksen hylkäykset pysyvät pakollisina.
+Jälkilukija sitoo tarkistimen tapahtuman prosessi- ja säieelinkaareen;
+saman session MSI-client on vain havainto, ei omistettu resurssi tai
+MSI-paluuarvo. Suljettu yhteenveto ei sisällä prosessitunnisteita, polkuja,
+komentorivejä tai absoluuttisia aikoja. Kokeen toteutus tai vihreä tulos ei
+yksin sulje normaalia kahden kierroksen hyväksyntää.
+
+Kytkennän kohdesarja läpäisi 23/23, yhteinen core-sopimussarja 342/342,
+legacy-artifact-/workflow-sopimukset 29/29 ja CI-sopimukset 55/55.
+Desktopin typecheck ja build läpäisivät. Regressiot suorittavat workflow'n
+todelliset komentorungot synteettisillä tuloksilla ja varmentavat myös
+toisen esiskenaarion hylkäykseen pysähtymisen. Jälkilukijan testi erottaa
+komennon, vaiheprosessin, saman session MSI-havainnon sekä natiivikyselyn
+prosessin ja säikeen; vientivirhe ei poista jo validoituja havaintoja.
+Tämä näyttö hyväksyy rajatun kokeen kytkennän, ei vielä alkuperäisen vian
+korjausta tai julkaisua.
 
 #### Aiemmat integraatiocheckpointit
 

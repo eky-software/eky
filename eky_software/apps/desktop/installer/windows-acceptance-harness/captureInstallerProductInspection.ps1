@@ -1,5 +1,5 @@
 param([Parameter(Mandatory = $true)][ValidateSet('start', 'stop', 'analyze', 'compareEvents')][string]$Mode,
-  [switch]$LegacyCommand)
+  [switch]$LegacyCommand, [switch]$WorkspaceFaultCommand)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -72,7 +72,8 @@ try {
   $catalog = Join-Path $toolkit 'Catalog/AppLaunch.wpaProfile'
   . (Join-Path $PSScriptRoot 'installerProductInspectionTrace.ps1')
   $readerLoaded = $true
-  if ($LegacyCommand -and $Mode -cne 'analyze') { throw 'INSPECTOR_CAPTURE_ARGUMENTS_INVALID' }
+  if ((($LegacyCommand -or $WorkspaceFaultCommand) -and $Mode -cne 'analyze') -or
+      ($LegacyCommand -and $WorkspaceFaultCommand)) { throw 'INSPECTOR_CAPTURE_ARGUMENTS_INVALID' }
 
   if ($Mode -ceq 'start') {
     $boundary = 'preparation'
@@ -189,12 +190,12 @@ try {
     if (!(Test-Path -LiteralPath (Join-Path $root 'stopped'))) { throw 'INSPECTOR_CAPTURE_STOP_UNVERIFIED' }
     Get-CaptureTraceStatistics (Join-Path $root 'capture.etl') | ConvertTo-Json -Compress
     $commandProjection = $null
-    if ($LegacyCommand) {
+    if ($LegacyCommand -or $WorkspaceFaultCommand) {
       $boundary = 'commandExport'
       if (!(Test-Path -LiteralPath $xperf -PathType Leaf)) { throw 'INSPECTOR_CAPTURE_TOOL_UNAVAILABLE' }
       Invoke-CaptureTool $xperf @('-i', (Join-Path $root 'capture.etl'), '-a', 'process', '-thread', '-withcmdline') 'command-export'
       $boundary = 'commandRead'
-      $commandProjection = Read-LegacyCommandTrace (Join-Path $root 'command-export.private.log')
+      $commandProjection = Read-LegacyCommandTrace (Join-Path $root 'command-export.private.log') -WorkspaceFaultCommand:$WorkspaceFaultCommand
       # Scheduling export is a separate observation. Its failure must not erase
       # already validated lifetimes or turn them into acceptance/cleanup proof.
       foreach ($summary in @(Get-LegacyCommandTraceSummary $commandProjection @() -LifetimeOnly)) {
@@ -213,6 +214,12 @@ try {
       if ($null -eq $commandProjection) { throw }
       $eventFailure = $_.Exception
       $eventFailureBoundary = $boundary
+    }
+    if ($WorkspaceFaultCommand) {
+      # Preserve the command/process observations even if optional CPU export fails.
+      foreach ($summary in @(Get-WorkspaceInstallationTraceSummary $commandProjection $events)) {
+        $summary | ConvertTo-Json -Compress
+      }
     }
     $threadValues = @($events | ForEach-Object { $_.thread })
     if ($null -ne $commandProjection) { $threadValues += @($commandProjection.schedulingThreads.thread) }
