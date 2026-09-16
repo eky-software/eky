@@ -2628,10 +2628,75 @@ tulostiedostoa, liian aikaista poistumista ja sovelluksen raportoimaa virhettä
 ei enää tarvitse päätellä samasta yleisestä lokirivistä. Alkuperäisen
 CI-virheen sisäinen syy ja workspace-asennusodotuksen tarkka raja ovat avoimia.
 
+Revision `d13422fe1e7f17d1c3592d5837f76199254c948b`
+[yksi rajattu legacy-koe](https://github.com/eky-software/eky/actions/runs/35038872159)
+läpäisi ensimmäisellä yrityksellä saman epäonnistuneen kierroksen
+artifactilla `10423058899`. Harness ja checkout olivat `d13422f`, mutta
+pakettien build-revisio säilyi `1bbc4c5`. Ennen/jälkeen-tavusidos,
+pakollinen lopputulos ja komentoketjun viimeistely varmennettiin.
+Alkuperäinen smoke-virhe ei toistunut; koe ei todista sen syytä korjatuksi
+eikä korvaa normaalia hyväksyntää.
+
 Jäljellä ovat näiden erillisten hylkäysten rajaus, korjauksen normaali
 PR-/main-todennus ja tämän jälkeen erillinen 0.2.8-versionosto sekä
 exact-byte-varmennettu pilot-bundle. Historiallisia jäädytettyjä PR:iä ei
 yhdistetty suoraan. Suojauksia tai julkaisurajoja ei ohiteta.
+
+#### Valmisteltu workspace-koe, toteutus odottaa täsmähyväksyntää
+
+Kysymys on vain, odottaako `acceptanceInterruption`-tapauksen `targetInstall`
+MSI:n valmistumista vai asennuksen jälkeistä tarkistusta. Nykyinen
+`workspaceFaultLifecycle.mjs` odottaa tässä ensin `waitForInstallation`-
+operaatiota, sitten asennustilaa, payloadia ja artifactin varmennusta.
+Varsinainen `targetAcceptanceInterruption`-virheinjektio tulee vasta tämän
+jälkeen, joten sen onnistumista tai vikaa ei päätellä aloitusrivistä.
+
+- `workspaceSuccessWindowsRuntime.mjs` tarkistaa saman Windows-session
+  MSI-clientit ennen kahta natiivia ProductCode-kyselyä ja niiden jälkeen.
+  Keskeneräinen MSI-havainto on odotus, ei tuotteen puuttuminen. Näiden
+  apuprosessien poistuminen, tuloslukeminen ja tulostiedoston poisto sekä
+  myöhemmät payload-/artifact-luvut ovat myös mahdollisia odotusrajoja.
+  Yksi nykyinen Job omistaa skenaarion jälkeläiset; pelkkä session
+  prosessihavainto ei anna lupaa vieraan prosessin sulkemiseen.
+- Yksi uusi eristetty Windows-runner käyttää epäonnistuneen kierroksen
+  `35035995254` workspace-artifactia `10423393700`, build-revisiota
+  `1bbc4c5c4e018fadfd19567a40505885958d1625` ja descriptor-tiivistettä
+  `32b94f1714469f0cd59831551a1f4d335ed74f857f053844748dc375510f0b43`.
+  Paketteja ei rakenneta uudelleen. Harness-revisio ja todellinen checkout
+  kirjataan erikseen; tavut varmennetaan ennen ja jälkeen kokeen.
+- Säilytetään normaalin jobin järjestys: `preUpdateRecoveryPointFailure`,
+  `activeWorkspaceFirstStartFailure`, sitten `acceptanceInterruption`.
+  Kukin käyttää nykyistä .NET-komentoa, omaa eristettyä fixtureä ja
+  pakollista tulosvarmennusta. Seuraavaa asennusta ei aloiteta, jos edellisen
+  tulos, prosessisiivous, exact-tuotetila tai fixture-siivoaminen hylätään.
+- Keruu alkaa vasta kahden esiskenaarion jälkeen, ennen kolmatta komentoa,
+  ja pysähtyy sen jälkeen myös virhepolulla. Nykyiset 1/2/3 minuutin
+  aloitus-/lopetus-/analyysivaiheet ja keräinten koko- sekä yksityisyysrajat
+  säilyvät. Keruu ei kuluta skenaarion työ- tai siivousaikaa, eikä sen virhe
+  muutu testin tai cleanupin tulokseksi. Raakajälkiä ei julkaista.
+- Budjettiehdotus, ei tehty muutos: kolme erillistä nykyistä 25 minuutin
+  komentovaihetta, normaalityönkulusta sama 15 minuutin valmistelu- ja
+  jälkivarmennusvara sekä 6 minuutin erillinen keruuvara ovat yhteensä
+  96 minuuttia vain tämän kertakokeen jobille. Nykyisen diagnostisen
+  30 minuutin jobin sisään ei piiloteta kolmea komentoa. Komennon 24 minuutin
+  kokonaisraja ja skenaarion 720 sekuntia (690 työ + 30 cleanup), muut
+  komentobudjetit sekä normaalin CI:n aikarajat eivät muutu.
+- Nykyinen keruuvalitsin ja jälkilukija sallivat vasta legacy-/upgrade-
+  käytön; komentoprojektio tunnistaa legacy-komennon. Ehdotettu rajattu
+  workspace-sidonta tunnistaa vain tämän fault-komennon, sen nykyiset
+  vaiheprosessit, MSI-havainnot ja payloadittomat inspector-tapahtumat.
+  Prosessin elinkaari ja tapahtumien järjestys on sidottava samaan komentoon;
+  pelkkä PID, MSI-prosessin läsnäolo tai yleinen säieodotus ei todista syytä.
+- Ennen ajoa regressiot varmentavat oikean komentovalinnan ja järjestyksen,
+  väärän tai puuttuvan sidonnan hylkäyksen sekä analyysivirheen erillisyyden.
+  Kokeen tulos erottaa MSI-odotuksen, tarkistimen keskeneräisen kutsun tai
+  myöhemmän tarkistusrajan vain riittävällä näytöllä. Puuttuva tai ristiriitainen
+  näyttö jää varmentamattomaksi. Silloin raportoidaan seuraava päätöstarve,
+  ei aloiteta uutta samanlaista MSI-kierrosta.
+
+Keruun reititys, lukijan laajennus ja yllä oleva kertakokeen job-varaus
+edellyttävät omistajan täsmähyväksyntää. Tämä valmistelu ei käynnistä koetta,
+muuta hyväksymisehtoja tai väitä normaalia kahden kierroksen porttia suljetuksi.
 
 #### Aiemmat integraatiocheckpointit
 
