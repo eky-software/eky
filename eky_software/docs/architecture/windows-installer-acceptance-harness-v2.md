@@ -2599,9 +2599,9 @@ Keruun aloitus ja lopetus onnistuivat, mutta analyysi hylättiin rajalla
 `commandRead`: `INSPECTOR_TRACE_LIFETIME_INVALID`. Prosessitaulukon vienti
 oli palautunut ennen tätä hylkäystä; sitä ei nimetä WPA-vientivirheeksi.
 Koko diagnostinen job jäi hylätyksi, eikä ulkoisesta prosessi-/säieanalyysistä
-ole hyväksyttyä todistetta. Tarkka hylätty elinkaariehto puuttuu yhä.
-Seuraava erottava rajaus on nykyisen lukijan suljettu hylkäyssyy ja sen
-synteettinen regressio ennen uutta MSI-koetta; validointia ei löysennetä.
+ole hyväksyttyä todistetta. Tämän ajon tarkka hylätty elinkaariehto puuttui.
+Alla kuvattu jatkorajaus erottaa nykyisen lukijan suljetun hylkäyssyyn
+synteettisellä kokeella ennen uutta MSI-koetta; validointia ei löysennetä.
 Tämä ei hyväksy vanhaa PR-ajoa eikä muodosta normaalia julkaisukierrosta.
 
 Lukijan kuusi olemassa olevaa elinkaaren hylkäysrajaa erotetaan valinnaisella
@@ -2615,6 +2615,20 @@ ajettavan synteettisen komentofixturen `-LegacyCommand -ContractFixture`
 ei rakenneta tai asenneta MSI:tä eikä muuteta keräimiä, aikarajoja tai
 omistajuutta. Tarkoitus on erottaa lukijan hylkäysraja oikealla vientitaulukolla,
 ei todistaa vanhan MSI-jumin korjausta tai korvata normaalihyväksyntää.
+
+Hylkäyssyyn revision `2fc2d653d6e526cd4821d7a2abba625012f9e5b4`
+[MSI:tön koe 35135231936](https://github.com/eky-software/eky/actions/runs/35135231936)
+päättyi ensimmäisellä yrityksellä hallitusti analyysin virheeseen; todellinen
+checkout vastasi lähderevisiota. Keruun aloitus, synteettinen komentotesti ja
+keruun lopetus läpäisivät. Analyysi palautti `commandRead`-rajalla
+`INSPECTOR_TRACE_LIFETIME_INVALID` ja `lifetimeValidationBranch=processIdentity`.
+Jobin virhemerkintä oli exit 1, ei ulompi aikakatkaisu. Rajaus erottaa
+prosessin avain-/istuntokenttien tarkistuksen muista elinkaariehdoista,
+mutta ei vielä kerro kumpaa kenttää tai riviä hylkäys koski. Raakataulukkoa
+ei julkaistu. Seuraava mahdollinen lukijakorjaus tarvitsee tämän rajatun
+sopimuksen todistuksen; kokonaismatriisin uusiminen ei korvaa sitä.
+MSI-odotuksen juurisyy, PR:n puuttuva hyväksyntä ja julkaisuportit pysyvät
+erillisinä eikä tämä diagnostinen kierros tuota hyväksyntänäyttöä.
 
 Trace-fixturen rajattu valmistelukatselmus osoitti erillisen
 keskeytyssopimuksen puutteen: lokikahvan myöhäinen avautuminen saattoi
