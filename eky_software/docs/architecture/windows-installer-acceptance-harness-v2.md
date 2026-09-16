@@ -2630,6 +2630,22 @@ sopimuksen todistuksen; kokonaismatriisin uusiminen ei korvaa sitä.
 MSI-odotuksen juurisyy, PR:n puuttuva hyväksyntä ja julkaisuportit pysyvät
 erillisinä eikä tämä diagnostinen kierros tuota hyväksyntänäyttöä.
 
+Omistajan hyväksymä rajattu lukijasopimus sallii prosessitaulukon täsmällisen
+`SessionID=-1`-arvon vain puuttuvan istunnon merkintänä. Rivi ja sen säikeet
+säilyvät komentoehdokkaiden moniselitteisyyden ja päällekkäisten
+prosessitunnisteiden tarkistuksissa; niitä ei poisteta taulukosta. Valittu
+komento ja sen vaiheprosessit tarvitsevat tunnetun istunnon. Asennuksen
+diagnostisiin rooleihin vaaditaan tunnettu, komennon kanssa sama istunto;
+puuttuvia istuntoja ei yhdistetä keskenään. Numeerinen istunto `0` säilyy
+kelvollisena. Muut negatiiviset tai virheelliset arvot sekä kaikki nykyiset
+avain-, elinkaari-, säie- ja kokorajat torjuvat aineiston ennallaan.
+Muutos koskee vain analyysilukijaa: se ei tuota prosessiomistajuutta tai
+siivoustodistetta eikä muuta MSI:n tai julkaisun hyväksyntäehtoja.
+Lukijan ja workflow-kytkennän kohdesarja läpäisi 43/43 sekä CI-sopimukset
+55/55. Regressiot säilyttävät puuttuvan valitun istunnon virheen,
+komennon todellisen poistumisen, suljetun virhetuloksen ja pakollisen
+onnistumistuloksen puuttumisen erillisinä. Normaali hyväksyntä pysyy avoimena.
+
 Trace-fixturen rajattu valmistelukatselmus osoitti erillisen
 keskeytyssopimuksen puutteen: lokikahvan myöhäinen avautuminen saattoi
 käynnistää prosessin keskeytyksen jälkeen, ja myöhäinen `close` saattoi

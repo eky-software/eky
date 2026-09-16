@@ -259,9 +259,12 @@ function Read-LegacyCommandTrace([string]$Path, [switch]$ContractFixture, [switc
       })
       if ($times[0] -gt $times[1] -or $fields[5] -cnotmatch '^[0-9]{1,10}$') { Stop-InspectorTraceLifetime 'rowLifetimeOrIdentifier' }
       if ($fields[2] -ceq 'Process' -and $fields.Count -ge 9) {
-        if ($fields[7] -notmatch '^0x[0-9a-f]+$' -or $fields[6] -cnotmatch '^[0-9]{1,10}$') { Stop-InspectorTraceLifetime 'processIdentity' }
+        if ($fields[7] -notmatch '^0x[0-9a-f]+$' -or
+            ($fields[6] -cne '-1' -and $fields[6] -cnotmatch '^[0-9]{1,10}$')) { Stop-InspectorTraceLifetime 'processIdentity' }
+        # Retain sessionless background records for ambiguity and PID-overlap checks.
+        $session = if ($fields[6] -ceq '-1') { $null } else { $fields[6] }
         $owner = [pscustomobject]@{ label = $label; identifier = $identifier; name = $name;
-          start = $times[0]; end = $times[1]; parent = $fields[5]; key = $fields[7]; session = $fields[6];
+          start = $times[0]; end = $times[1]; parent = $fields[5]; key = $fields[7]; session = $session;
           commandLine = $fields[8..($fields.Count - 1)] -join ',';
           threads = [Collections.Generic.List[object]]::new() }
         $processes.Add($owner)
@@ -282,6 +285,7 @@ function Read-LegacyCommandTrace([string]$Path, [switch]$ContractFixture, [switc
   if ($commands.Count -eq 0) { throw 'INSPECTOR_TRACE_COMMAND_MISSING' }
   if ($commands.Count -ne 1) { throw 'INSPECTOR_TRACE_COMMAND_AMBIGUOUS' }
   $command = $commands[0]
+  if ($null -eq $command.session) { Stop-InspectorTraceLifetime 'processIdentity' }
   if ($WorkspaceFaultCommand -and
       ([regex]::Matches($command.commandLine, '\s--fault-scenario(?:\s|$)').Count -ne 1 -or
        $command.commandLine -cnotmatch '\s--fault-scenario\s+acceptanceInterruption\s+--result-path\s+')) {
@@ -302,6 +306,7 @@ function Read-LegacyCommandTrace([string]$Path, [switch]$ContractFixture, [switc
     if ($process.name -ine 'node.exe' -or $process.commandLine -notmatch ('^(?:"[^"\r\n]*[\\/]node\.exe"|[^\s"]*node\.exe)\s+' + $workerToken + '\s+--phase-request\s+"?[^"\r\n]*[\\/]([a-zA-Z]+)[\\/]phase-input\.json"?$')) { continue }
     $phase = $Matches[1]
     if ($phase -cnotin $phases -or @($selected | Where-Object { $_.phase -ceq $phase }).Count -ne 0) { throw 'INSPECTOR_TRACE_PHASE_INVALID' }
+    if ($null -eq $process.session) { Stop-InspectorTraceLifetime 'processIdentity' }
     $process | Add-Member -NotePropertyName phase -NotePropertyValue $phase
     $selected.Add($process)
   }
@@ -312,7 +317,8 @@ function Read-LegacyCommandTrace([string]$Path, [switch]$ContractFixture, [switc
     $scenario = $scenario[0]
     foreach ($process in $processes) {
       $role = $null
-      if ($process.session -cne $command.session -or $process.start -gt $scenario.end -or $process.end -lt $scenario.start) { continue }
+      if ($null -eq $process.session -or $process.session -cne $command.session -or
+          $process.start -gt $scenario.end -or $process.end -lt $scenario.start) { continue }
       # Session MSI observations are not process ownership or installer results.
       if ($process.name -ieq 'msiexec.exe') { $role = 'sessionMsiClient' }
       elseif ($process.parent -ceq $scenario.identifier -and $process.start -ge $scenario.start) {
