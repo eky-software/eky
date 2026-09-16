@@ -2566,6 +2566,28 @@ Korjatut keskeytysregressiot läpäisivät 2/2, koko trace-sarja 18/18,
 core-sarja 345/345, legacy-artifact-/workflow-sarja 30/30 ja CI-sopimukset
 55/55. Normaaleja budjetteja, skenaarioita tai tuotantokoodia ei muutettu.
 
+Keskeytyskorjauksen revisio `1c1f983cbb189f7989a03315d6ad616be28bd704`
+läpäisi [ensimmäisen normaalikierroksen](https://github.com/eky-software/eky/actions/runs/35102498816)
+ja [riippuvuustarkistuksen](https://github.com/eky-software/eky/actions/runs/35102494936).
+Kaikki 18 paketoitua komentoa, neljän artifact-perheen tavusidokset,
+todelliset checkoutit ja Electron 38/38 ilman flaky-tulosta varmennettiin.
+[Toisen kierroksen](https://github.com/eky-software/eky/actions/runs/35105498018)
+core run 1 hylkäsi `completed`- ja `interrupted`-trace-testit: 343 läpäisi ja
+2 aikakatkaistiin. Uudet keskeytysregressiot läpäisivät, mutta hyväksyntäpari
+ei täyty. Ensimmäisen tapauksen turvallinen havainto oli
+`processStartRequested`, `spawned: true`, `exited: false`, `closed: false`.
+Siivous valmistui ja exit/close havaittiin sen jälkeen. Ensimmäistä
+skriptikuittausta ei vastaanotettu; siitä ei päätellä skriptin todellista
+suorituskohtaa tai suoraan natiivikutsun hitautta.
+
+Seuraava rajattu havainto erottaa nykyisessä testissä valmistelun keston,
+Noden `spawn`-kutsun keston, spawn-ilmoituksen havaitsemisajan ja ensimmäisen
+skriptikuittauksen vastaanottoajan. Se ei mittaa erikseen Win32-kutsun
+sisäistä aikaa eikä muuta aikarajaa tai hyväksymisehtoa. Tuntematon tai
+puuttuva havainto säilyy tuntemattomana. Rajattu core-koe käyttää nykyistä
+diagnostiikkareittiä ilman MSI-rakentamista tai tallennusta; onnistuneita
+diagnooseja ei siirretä hyväksyntäparin osiksi.
+
 Revision `ff20f26c8bf172f678ff5213280abb8b1061073d`
 [ensimmäinen normaali kierros](https://github.com/eky-software/eky/actions/runs/35093649797)
 läpäisi: neljän artifact-perheen tavusidos, 18 paketoitua komentoa,

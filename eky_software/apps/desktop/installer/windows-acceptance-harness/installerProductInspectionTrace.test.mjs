@@ -21,11 +21,15 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
   `external inspector trace keeps ${kind} evidence closed and separate from acceptance`,
   { skip: process.platform !== 'win32', timeout: INSPECTOR_TIMEOUT_MILLISECONDS },
   async (t) => {
+    const testStarted = performance.now();
     const context = await createRunContext('inspector-trace');
     let passed = false;
     const lifecycle = { phase: 'fixturePreparation', spawned: false, exited: false, closed: false };
+    const timing = { preparationDurationMs: null, launchCallDurationMs: null,
+      spawnObservedElapsedMs: null, scriptStartedObservedElapsedMs: null };
     t.after(async () => {
       const beforeCleanup = { ...lifecycle };
+      const timingBeforeCleanup = { ...timing };
       let cleanup = 'unverified';
       try {
         await cleanupRunContext(context, { preserveEvidence: !passed || t.signal.aborted });
@@ -34,7 +38,7 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
         if (kind === 'completed') {
           try {
             t.diagnostic(JSON.stringify({ schemaVersion: 1, operation: 'inspectorTraceContract',
-              ...beforeCleanup, testAborted: t.signal.aborted, cleanup,
+              ...beforeCleanup, timing: timingBeforeCleanup, testAborted: t.signal.aborted, cleanup,
               exitedAfterCleanup: lifecycle.exited, closedAfterCleanup: lifecycle.closed }));
           } catch { /* Optional observation must preserve the test and cleanup errors. */ }
         }
@@ -736,6 +740,8 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
       try {
         signal.throwIfAborted();
         lifecycle.phase = 'processStartRequested';
+        timing.preparationDurationMs = Math.floor(performance.now() - testStarted);
+        const launchStarted = performance.now();
         const child = spawn(resolve(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
           ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', commandPath],
           { stdio: ['ignore', commandExportFailure || kind === 'completed' ? 'pipe' : 'ignore', errorLog.fd], windowsHide: true, env: { ...process.env,
@@ -745,8 +751,12 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
             EKY_TRACE_TEST_KIND: kind,
             EKY_TRACE_TEST_NODE: process.execPath,
           } });
+        timing.launchCallDurationMs = Math.floor(performance.now() - launchStarted);
         context.fixtureProcesses.add(child);
-        child.once('spawn', () => { lifecycle.spawned = true; });
+        child.once('spawn', () => {
+          lifecycle.spawned = true;
+          timing.spawnObservedElapsedMs = Math.floor(performance.now() - testStarted);
+        });
         child.once('exit', () => { lifecycle.exited = true; });
         child.once('close', () => {
           lifecycle.closed = true;
@@ -760,7 +770,12 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
           pendingPhase += chunk.toString('utf8');
           const lines = pendingPhase.split(/\r?\n/);
           pendingPhase = lines.pop() ?? '';
-          for (const phase of lines) if (COMPLETED_PHASES.includes(phase)) lifecycle.phase = phase;
+          for (const phase of lines) if (COMPLETED_PHASES.includes(phase)) {
+            lifecycle.phase = phase;
+            if (phase === 'scriptStarted' && timing.scriptStartedObservedElapsedMs === null) {
+              timing.scriptStartedObservedElapsedMs = Math.floor(performance.now() - testStarted);
+            }
+          }
         });
         const exit = await new Promise((resolvePromise, rejectPromise) => {
           child.once('error', rejectPromise);
@@ -793,6 +808,11 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
       assert.equal(context.fixtureProcesses.size, started ? 1 : 0);
       assert.deepEqual(lifecycle, { phase: started ? 'processStartRequested' : 'fixturePreparation',
         spawned: started, exited: started, closed: started });
+      assert.equal(timing.scriptStartedObservedElapsedMs, null);
+      for (const value of [timing.preparationDurationMs, timing.launchCallDurationMs, timing.spawnObservedElapsedMs]) {
+        if (started) assert.ok(Number.isSafeInteger(value) && value >= 0);
+        else assert.equal(value, null);
+      }
       passed = true;
       return;
     }
