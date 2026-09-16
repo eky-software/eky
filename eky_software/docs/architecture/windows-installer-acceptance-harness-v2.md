@@ -2601,16 +2601,33 @@ ja kanoninen testikomento/järjestys vastaavat toisiaan. Tämä ei osoita
 runnerien ajonaikaisten olosuhteiden yhtäläisyyttä tai viiveen aiheuttajaa.
 Puuttuva havainto on edelleen epäonnistuvan käynnistyksen aikajako.
 
-Seuraava päätösesitys on ennalta rajattu kuuden eristetyn core-ajon sarja
-yhdeltä jäädytetyltä checkpointilta, jonka testikoodi vastaa havaintorevisiota:
-kolme nykyisen diagnostisen workflow'n kutsua, kussakin kaksi tuoretta runneria.
-Sarjan tarkka lähde- ja checkout-revisio varmennetaan erikseen.
-Sarjassa ei rakenneta MSI:tä, kerätä WPR:ää,
-muuteta budjetteja tai ajeta kunnes vihreä; kaikki tulokset säilyvät.
-Varmentamaton prosessisiivous keskeyttää sarjan ennen seuraavaa kutsua.
-Sarja vaatii omistajan hyväksynnän, eikä sen vihreyttä lasketa normaaliin
-hyväksyntäpariin. Ellei rajattu sarja tuota erottavaa havaintoa, siitä tehdään
-päätösraportti eikä käynnistetä automaattisesti uusia toistoja.
+Omistajan hyväksymä kuuden eristetyn core-ajon sarja on päättynyt
+revisiolla `11fb8653d091fb48137b3b8b7ba709ee79162851`, jonka testikoodi vastaa
+havaintorevisiota. Kolme ennalta sovittua kutsua
+([35110017787](https://github.com/eky-software/eky/actions/runs/35110017787),
+[35110593680](https://github.com/eky-software/eky/actions/runs/35110593680),
+[35111216847](https://github.com/eky-software/eky/actions/runs/35111216847))
+läpäisivät 345/345 kummallakin runnerilla, yhteensä kuusi erillistä jobia.
+Kaikki olivat ensimmäisiä yrityksiä samalla varmennetulla checkoutilla;
+epäonnistumisia, keskeytyksiä tai epävarmaa trace-siivoamista ei havaittu.
+Trace-fixturen exit ja close havaittiin ennen cleanupia kaikissa kuudessa.
+MSI:tä ei rakennettu, WPR:ää ei kerätty eikä budjetteja muutettu.
+Sarja on diagnostiikkaa, ei normaali hyväksyntäpari tai viiveen juurisyykorjaus.
+Uusia samanlaisia toistoja ei käynnistetä tämän sarjan jatkoksi.
+
+Rajattu lähdekatselmus osoitti testin ja testattavan ajopolun isäntäeron:
+`installerProductInspectionTrace.test.mjs` käynnistää Windows PowerShellin
+`powershell.exe`:n, mutta nykyiset keruu-/analyysivaiheet kutsuvat samaa
+`captureInstallerProductInspection.ps1`- ja trace-lukijaa `pwsh`-isännällä.
+Ero ei todista aikakatkaisun aiheuttajaa. Seuraava päätösesitys on kohdistaa
+vain trace-sopimustesti samaan, jo CI:ssä käytettyyn `pwsh`-isäntään ilman
+automaattista Windows PowerShell -varapolkua. Muutos poistaisi tämän testin
+erillisen isäntäympäristön; tuotannon PowerShell-polkuja, muita testiperheitä,
+aikarajoja tai assertioneja ei muutettaisi. Tämä testin ympäristöraja vaatii
+omistajan hyväksynnän ennen toteutusta. Kytkentä, puuttuvan isännän virhe sekä
+nykyiset keskeytys-, tulos- ja siivousregressiot on varmennettava ennen
+normaaleihin hyväksyntäportteihin etenemistä. Alkuperäinen viive jää erilliseksi
+avoimeksi havainnoksi, ellei sille saada suoraa syyn osoittavaa näyttöä.
 
 Revision `ff20f26c8bf172f678ff5213280abb8b1061073d`
 [ensimmäinen normaali kierros](https://github.com/eky-software/eky/actions/runs/35093649797)
