@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const WORKFLOW_PATH = resolve(
@@ -102,5 +103,14 @@ test('existing diagnostic can consume the exact upgrade artifact without rebuild
   assert.match(diagnostic, /run-id: \$\{\{ inputs\.artifact_run_id \}\}/u);
   assert.match(diagnostic, /if \(\$commandExit -ne 0 -or \$LASTEXITCODE -ne 0\) \{ throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED' \}/u);
   assert.doesNotMatch(diagnostic, /runUpgradeRollback\.mjs/u);
-  assert.doesNotMatch(diagnostic, /installer:v2-upgrade-artifact:build|upload-artifact|continue-on-error/u);
+  assert.doesNotMatch(diagnostic, /installer:v2-upgrade-artifact:build|upload-artifact/u);
+  const optionalSteps = [...diagnostic.matchAll(/^        continue-on-error: \$\{\{ (.+) \}\}$/gmu)];
+  assert.equal(optionalSteps.length, diagnostic.match(/continue-on-error:/gu)?.length ?? 0);
+  for (const [, expression] of optionalSteps) {
+    for (const inspector_capture of [false, true]) {
+      assert.equal(runInNewContext(expression, {
+        inputs: { artifact_kind: 'upgrade', inspector_capture },
+      }, { timeout: 1000 }), false);
+    }
+  }
 });

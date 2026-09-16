@@ -2549,6 +2549,26 @@ Tämä osuus erottaa nykyisen julkaisutyön historiallisesta tutkimusnäytöstä
 
 #### Ajantasaiset julkaisuesteet ja päätökset
 
+Jälkikorjausten revision `8a8c083ef6c4b0442cd705ed2fbdf9a176125ada`
+[ensimmäinen normaali kokonaiskierros](https://github.com/eky-software/eky/actions/runs/35090707995)
+hylättiin upgrade-producerin workflow-sopimukseen ennen pakettien rakentamista.
+Vanha koko diagnostisen jobin `continue-on-error`-tekstikielto oli ristiriidassa
+hyväksytyn, vain workspace-fault-keruun valinnaisuuden kanssa. Korjaus testaa
+nykyisen workflow'n todelliset ehdot: upgrade-polun virheitä ei saa ohittaa
+keruun ollessa päällä tai pois. Tunnistamaton tai job-tason ohitus torjutaan;
+normaalin matriisin ja jaetun diagnostiikan muut portit säilyvät.
+Workflow'n ajokoodi, aikarajat tai hyväksymisehdot eivät muutu.
+Virhe toistui rajatussa regressiossa ennen korjausta. Neljän artifact-perheen
+kohdesarjat läpäisivät sen jälkeen 18/18, 20/20, 29/29 ja 62/62 sekä
+CI-sopimukset 55/55. Revision oma
+[riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/35090370633)
+läpäisi kaikki kolme porttia. Kokonaiskierros päättyi: muut käynnistyneet jobit,
+mukaan lukien Electron, molemmat legacy-ajot sekä workspace-success- ja
+fault-consumerit, läpäisivät. Upgrade-consumer jäi producerin sopimusvirheen
+takia käynnistymättä ja loppukoonti hylkäsi ajon oikein. Hylätystä kierroksesta
+ei muodosteta hyväksyntäparia; korjaus tarvitsee oman normaalin PR-/main-
+todennuksen.
+
 V2-integraation lähderevisio
 `b130e8601929019fb407865bee69b838d6df7897` läpäisi kaksi normaalia
 kokonaiskierrosta
