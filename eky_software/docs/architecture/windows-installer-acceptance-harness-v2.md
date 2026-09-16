@@ -2549,6 +2549,23 @@ Tämä osuus erottaa nykyisen julkaisutyön historiallisesta tutkimusnäytöstä
 
 #### Ajantasaiset julkaisuesteet ja päätökset
 
+Trace-fixturen rajattu valmistelukatselmus osoitti erillisen
+keskeytyssopimuksen puutteen: lokikahvan myöhäinen avautuminen saattoi
+käynnistää prosessin keskeytyksen jälkeen, ja myöhäinen `close` saattoi
+palauttaa tavallisen tuloksen keskeytetylle kutsulle. Kaksi determinististä
+regressiota hylkäsi tämän ennen korjausta. Nykyinen testin käynnistyskohta
+tarkistaa saman keskeytyssignaalin ennen avausta, avauksen valmistuttua ja
+prosessin sulkeuduttua. Myöhään saatu lokikahva suljetaan, uutta prosessia ei
+käynnistetä ja alkuperäinen keskeytys säilyy virheenä. Jo käynnistyneen
+fixturen sama kahvapohjainen siivousvastuu säilyy. Regressoissa varmistetaan
+myös lokikahvan sulkeutuminen sekä käynnistymättä jääminen tai todelliset
+spawn/exit/close-havainnot. Uutta valvojaa, aikarajaa tai varapolkua ei lisätä.
+Tämä korjaa osoitetun testituen puutteen, ei väitä selittävänsä alkuperäistä
+trace-testin viivettä. Korjaus tarvitsee omat normaalit hyväksyntäporttinsa.
+Korjatut keskeytysregressiot läpäisivät 2/2, koko trace-sarja 18/18,
+core-sarja 345/345, legacy-artifact-/workflow-sarja 30/30 ja CI-sopimukset
+55/55. Normaaleja budjetteja, skenaarioita tai tuotantokoodia ei muutettu.
+
 Revision `ff20f26c8bf172f678ff5213280abb8b1061073d`
 [ensimmäinen normaali kierros](https://github.com/eky-software/eky/actions/runs/35093649797)
 läpäisi: neljän artifact-perheen tavusidos, 18 paketoitua komentoa,

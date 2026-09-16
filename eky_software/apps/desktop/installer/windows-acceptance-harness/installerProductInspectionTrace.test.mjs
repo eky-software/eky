@@ -17,7 +17,7 @@ const COMPLETED_PHASES = ['scriptStarted', 'readerLoaded', 'profileStarted', 'pr
   'eventsReadStarted', 'eventsReadCompleted', 'switchesReadStarted', 'switchesReadCompleted',
   'summaryCompleted', 'resultWriteStarted', 'resultWritten'];
 
-for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureStop', 'decimal', 'toolExit', 'exportOutput', 'eventStatistics', 'externalView', 'commandLifetimes', 'workspaceLifetimes', 'commandAnalysis', 'workspaceAnalysis', 'commandExportFailure', 'commandExportFailureUnreadable']) test(
+for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureStop', 'decimal', 'toolExit', 'exportOutput', 'eventStatistics', 'externalView', 'commandLifetimes', 'workspaceLifetimes', 'commandAnalysis', 'workspaceAnalysis', 'commandExportFailure', 'commandExportFailureUnreadable', 'cancelledPreparation', 'cancelledCompletion']) test(
   `external inspector trace keeps ${kind} evidence closed and separate from acceptance`,
   { skip: process.platform !== 'win32', timeout: INSPECTOR_TIMEOUT_MILLISECONDS },
   async (t) => {
@@ -723,55 +723,80 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
     `;
     const commandPath = join(context.testRoot, 'trace-contract.ps1');
     await writeFile(commandPath, command);
-    const errorLog = await open(join(context.testRoot, 'stderr.private.log'), 'wx+');
-    lifecycle.phase = 'processStartRequested';
-    const child = spawn(resolve(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', commandPath],
-      { stdio: ['ignore', commandExportFailure || kind === 'completed' ? 'pipe' : 'ignore', errorLog.fd], windowsHide: true, env: { ...process.env,
-        EKY_TRACE_TEST_ROOT: context.testRoot, EKY_TRACE_TEST_SCRIPT: SCRIPT,
-        EKY_TRACE_TEST_CASES: String(cases.length), EKY_TRACE_TEST_RESULT: context.resultPath,
-        EKY_TRACE_TEST_PROFILE: String(kind === 'completed'),
-        EKY_TRACE_TEST_KIND: kind,
-        EKY_TRACE_TEST_NODE: process.execPath,
-      } });
-    context.fixtureProcesses.add(child);
-    child.once('spawn', () => { lifecycle.spawned = true; });
-    child.once('exit', () => { lifecycle.exited = true; });
-    child.once('close', () => { lifecycle.closed = true; });
+    const cancellation = kind.startsWith('cancelled') ? new AbortController() : null;
+    const cancellationError = new Error('traceFixtureCancelled');
+    const signal = cancellation?.signal ?? t.signal;
     const observations = [];
-    let pendingPhase = '';
-    let phaseBytes = 0;
-    child.stdout?.on('data', (chunk) => {
-      if (commandExportFailure) observations.push(chunk);
-      if (kind !== 'completed' || (phaseBytes += chunk.length) > 2048) return;
-      pendingPhase += chunk.toString('utf8');
-      const lines = pendingPhase.split(/\r?\n/);
-      pendingPhase = lines.pop() ?? '';
-      for (const phase of lines) if (COMPLETED_PHASES.includes(phase)) lifecycle.phase = phase;
-    });
-    let exit;
-    try {
-      exit = await new Promise((resolvePromise, rejectPromise) => {
-        child.once('error', rejectPromise);
-        child.once('close', resolvePromise);
-      });
-      if (exit !== (commandExportFailure ? 1 : 0)) {
-        const { buffer, bytesRead } = await errorLog.read({ buffer: Buffer.alloc(4096), position: 0 })
-          .catch(() => ({ buffer: Buffer.alloc(0), bytesRead: 0 }));
-        const privateText = buffer.toString('utf8', 0, bytesRead);
-        const failure = [
-          'statisticsProviderMissing', 'statisticsLeaked', 'statisticsPresenceGuessed',
-          'invalidStatisticsAccepted', 'statisticsReadUnbounded', 'statisticsObservationMissing',
-          'statisticsReportInvalid', 'statisticsSuccessInvalid', 'statisticsSuccessOutputInvalid',
-          'statisticsFailureEscaped', 'statisticsExitLost', 'statisticsToolMessageLost',
-          'statisticsMissingOutputGuessed', 'statisticsReportLeaked', 'statisticsComparisonMissing',
-          'statisticsMaskedExportFailure', 'captureStopOriginalFailureLost', 'captureStopCleanupLost',
-          'captureStopCleanupErrorLost', 'captureStopUnverifiedMarker', 'captureStopOwnershipChanged',
-          'captureStopReportInvalid',
-        ].find((code) => privateText.split(/\r?\n/).includes(code));
-        t.diagnostic(JSON.stringify({ errorCode: failure ?? 'traceContractFailed' }));
-      }
-    } finally { await errorLog.close(); }
+    let errorLog;
+    const runFixture = async () => {
+      signal.throwIfAborted();
+      const acquisition = open(join(context.testRoot, 'stderr.private.log'), 'wx+');
+      if (kind === 'cancelledPreparation') cancellation.abort(cancellationError);
+      errorLog = await acquisition;
+      try {
+        signal.throwIfAborted();
+        lifecycle.phase = 'processStartRequested';
+        const child = spawn(resolve(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
+          ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', commandPath],
+          { stdio: ['ignore', commandExportFailure || kind === 'completed' ? 'pipe' : 'ignore', errorLog.fd], windowsHide: true, env: { ...process.env,
+            EKY_TRACE_TEST_ROOT: context.testRoot, EKY_TRACE_TEST_SCRIPT: SCRIPT,
+            EKY_TRACE_TEST_CASES: String(cases.length), EKY_TRACE_TEST_RESULT: context.resultPath,
+            EKY_TRACE_TEST_PROFILE: String(kind === 'completed'),
+            EKY_TRACE_TEST_KIND: kind,
+            EKY_TRACE_TEST_NODE: process.execPath,
+          } });
+        context.fixtureProcesses.add(child);
+        child.once('spawn', () => { lifecycle.spawned = true; });
+        child.once('exit', () => { lifecycle.exited = true; });
+        child.once('close', () => {
+          lifecycle.closed = true;
+          if (kind === 'cancelledCompletion') cancellation.abort(cancellationError);
+        });
+        let pendingPhase = '';
+        let phaseBytes = 0;
+        child.stdout?.on('data', (chunk) => {
+          if (commandExportFailure) observations.push(chunk);
+          if (kind !== 'completed' || (phaseBytes += chunk.length) > 2048) return;
+          pendingPhase += chunk.toString('utf8');
+          const lines = pendingPhase.split(/\r?\n/);
+          pendingPhase = lines.pop() ?? '';
+          for (const phase of lines) if (COMPLETED_PHASES.includes(phase)) lifecycle.phase = phase;
+        });
+        const exit = await new Promise((resolvePromise, rejectPromise) => {
+          child.once('error', rejectPromise);
+          child.once('close', resolvePromise);
+        });
+        signal.throwIfAborted();
+        if (exit !== (commandExportFailure ? 1 : 0)) {
+          const { buffer, bytesRead } = await errorLog.read({ buffer: Buffer.alloc(4096), position: 0 })
+            .catch(() => ({ buffer: Buffer.alloc(0), bytesRead: 0 }));
+          const privateText = buffer.toString('utf8', 0, bytesRead);
+          const failure = [
+            'statisticsProviderMissing', 'statisticsLeaked', 'statisticsPresenceGuessed',
+            'invalidStatisticsAccepted', 'statisticsReadUnbounded', 'statisticsObservationMissing',
+            'statisticsReportInvalid', 'statisticsSuccessInvalid', 'statisticsSuccessOutputInvalid',
+            'statisticsFailureEscaped', 'statisticsExitLost', 'statisticsToolMessageLost',
+            'statisticsMissingOutputGuessed', 'statisticsReportLeaked', 'statisticsComparisonMissing',
+            'statisticsMaskedExportFailure', 'captureStopOriginalFailureLost', 'captureStopCleanupLost',
+            'captureStopCleanupErrorLost', 'captureStopUnverifiedMarker', 'captureStopOwnershipChanged',
+            'captureStopReportInvalid',
+          ].find((code) => privateText.split(/\r?\n/).includes(code));
+          t.diagnostic(JSON.stringify({ errorCode: failure ?? 'traceContractFailed' }));
+        }
+        return exit;
+      } finally { await errorLog.close(); }
+    };
+    if (cancellation) {
+      await assert.rejects(runFixture(), (error) => error === cancellationError);
+      assert.equal(errorLog.fd, -1);
+      const started = kind === 'cancelledCompletion';
+      assert.equal(context.fixtureProcesses.size, started ? 1 : 0);
+      assert.deepEqual(lifecycle, { phase: started ? 'processStartRequested' : 'fixturePreparation',
+        spawned: started, exited: started, closed: started });
+      passed = true;
+      return;
+    }
+    const exit = await runFixture();
     assert.equal(exit, commandExportFailure ? 1 : 0);
     lifecycle.phase = 'resultReadStarted';
     const output = commandExportFailure ? Buffer.concat(observations).toString('utf8') : await readFile(context.resultPath, 'utf8');
