@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import { setImmediate } from 'node:timers/promises';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,6 +9,7 @@ import test from 'node:test';
 import { executeLegacyUpgradeLifecycle } from './legacyUpgradeLifecycle.mjs';
 import { LEGACY_FOOTPRINT_ERROR_CODES } from './legacyUpgradeContracts.mjs';
 import { runHistoricalPackagedSmokeProcessChain } from './legacyUpgradeSourceSmoke.mjs';
+import { startLegacyOwnedProcess } from './legacyUpgradeWindowsRuntime.mjs';
 
 const VERSIONS = Object.freeze({ source: '0.2.6', target: '0.2.7' });
 
@@ -104,6 +107,63 @@ test('safe progress failure cannot alter lifecycle semantics', async () => {
     }),
   );
   assert.equal(result.status, 'completed');
+});
+
+test('legacy MSI observations preserve the close boundary before target postconditions', async () => {
+  const child = new EventEmitter();
+  child.pid = 17;
+  const reached = Promise.withResolvers();
+  const entries = [];
+  const dependencies = successfulDependencies({
+    reportProgress: (entry) => entries.push(entry),
+    async runMsiOperation(operation, observe) {
+      if (operation === 'sourceInstall') return 0;
+      // Unknown observer input is never a public progress value.
+      observe('private-path-or-error');
+      const execution = await startLegacyOwnedProcess('synthetic', [], {}, {
+        observe,
+        spawnProcess() { queueMicrotask(() => child.emit('spawn')); return child; },
+      });
+      reached.resolve();
+      return (await execution.completion).exitCode;
+    },
+  });
+  const outcome = executeLegacyUpgradeLifecycle(dependencies);
+  await reached.promise;
+  child.emit('exit', 0, null);
+  await setImmediate();
+  assert.equal(entries.some((entry) => entry.phase === 'targetPostcondition'), false);
+  child.emit('close', 0, null);
+  assert.equal((await outcome).status, 'completed');
+  const observations = entries.filter((entry) => entry.phase === 'majorUpgrade' && entry.status === 'observed');
+  assert.deepEqual(observations.map((entry) => entry.resultCode), [
+    'processSpawnRequested', 'processSpawned', 'processExited', 'processClosed',
+  ]);
+  for (const entry of observations) {
+    assert.deepEqual(Object.keys(entry).sort(), [
+      'durationMs', 'elapsedMs', 'operation', 'phase', 'resultCode', 'scenario', 'schemaVersion', 'status',
+    ]);
+    assert.equal(entry.operation, 'historicalLegacyUpgradeLifecycle');
+    assert.equal(entry.scenario, 'historicalLegacyUpgrade');
+    assert.equal(entry.schemaVersion, 1);
+    assert.ok(Number.isInteger(entry.durationMs) && entry.durationMs >= 0);
+    assert.ok(Number.isInteger(entry.elapsedMs) && entry.elapsedMs >= entry.durationMs);
+  }
+  assert.ok(entries.indexOf(observations.at(-1)) < entries.findIndex((entry) => entry.phase === 'targetPostcondition'));
+  assert.doesNotMatch(JSON.stringify(entries), /private-path-or-error/);
+});
+
+test('legacy failed MSI stays failed when process progress reporting throws', async () => {
+  const result = await executeLegacyUpgradeLifecycle(successfulDependencies({
+    reportProgress() { throw new Error('private observer failure'); },
+    async runMsiOperation(operation, observe) {
+      for (const code of ['processSpawnRequested', 'processSpawned', 'processExited', 'processClosed']) observe(code);
+      return operation === 'majorUpgrade' ? 1603 : 0;
+    },
+  }));
+  assert.equal(result.status, 'failed');
+  assert.equal(result.errorCode, 'majorUpgradeFailed');
+  assert.equal(result.targetFirstStartupValidated, false);
 });
 
 for (const [name, content, exitCode, reason, stage, status] of [

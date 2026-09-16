@@ -426,7 +426,7 @@ test('entrypoint groups register original and migrated command contracts exactly
   for (const [file, kind, extra] of [
     ['cleanCommandEntrypoint', 'clean', ['temporaryRootAlias', 'scenarioAndProfileFailed', 'scenarioAndRemovalFailed']],
     ['upgradeCommandEntrypoint', 'upgrade', ['temporaryRootAlias', 'scenarioAndProfileFailed', 'scenarioAndRemovalFailed', 'applicationCleanupUnverified', 'postconditionFailed']],
-    ['legacyCommandEntrypoint', 'legacy', ['productInspectionNativeHold', 'productInspectionResultBeforeExit', 'productInspectionReadOnly']],
+    ['legacyCommandEntrypoint', 'legacy', ['msiProcessHold', 'productInspectionNativeHold', 'productInspectionResultBeforeExit', 'productInspectionReadOnly']],
     ['workspaceSuccessCommandEntrypoint', 'workspace-success', ['footprintFailed']],
     ['workspaceFaultCommandEntrypoint', 'workspace-fault', ['footprintFailed', 'sessionFailed']],
   ]) {
@@ -440,7 +440,8 @@ test('entrypoint groups register original and migrated command contracts exactly
       `${kind} public command resolves the real worker and rejects an invalid artifact before installation`,
       ...[...original, ...extra].map((name) => `${kind} fixed command entrypoint completes the real phase chain: ${name}`),
       ...[...(['legacy', 'clean', 'upgrade'].includes(kind) ? ['completed', 'blockedEvidence', 'productMissingResult', 'uninstallHold', 'scenarioAndCleanupFailed'] : ['completed']),
-        ...(['legacy', 'workspace-fault'].includes(kind) ? ['productInspectionHold'] : [])]
+        ...(['legacy', 'workspace-fault'].includes(kind) ? ['productInspectionHold'] : []),
+        ...(kind === 'legacy' ? ['msiProcessHold'] : [])]
         .map((name) => `${kind} CI launch chain completes the real phase chain: ${name}`),
     ]);
     const source = await readFile(new URL(`./${file}.process.test.mjs`, import.meta.url), 'utf8');
@@ -448,7 +449,7 @@ test('entrypoint groups register original and migrated command contracts exactly
     assert.ok(source.includes(`registerAcceptanceCommandEntrypointContracts('${kind}');`));
     all.push(...registrations);
   }
-  assert.equal(all.length, 123);
+  assert.equal(all.length, 125);
   assert.equal(new Set(all).size, all.length);
 });
 

@@ -192,12 +192,13 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
   });
   const directCases = ['completed', 'blockedEvidence', 'preparationHold', 'productInspectionHold', 'scenarioHold', 'uninstallHold', 'resultBeforeExit', 'cleanupFailed', 'scenarioAndCleanupFailed', 'removalHold',
     'publicationBeforeExit', 'productMissingResult', 'preconditionFailed', 'scenarioMissing', 'businessFailed', 'profileChanged', 'artifactChanged',
-    ...(kind === 'legacy' ? ['productInspectionNativeHold', 'productInspectionResultBeforeExit', 'productInspectionReadOnly'] : workspace ? ['footprintFailed']
+    ...(kind === 'legacy' ? ['msiProcessHold', 'productInspectionNativeHold', 'productInspectionResultBeforeExit', 'productInspectionReadOnly'] : workspace ? ['footprintFailed']
       : ['temporaryRootAlias', 'scenarioAndProfileFailed', 'scenarioAndRemovalFailed']), ...(kind === 'workspace-fault' ? ['sessionFailed'] : []),
     ...(upgrade ? ['applicationCleanupUnverified', 'postconditionFailed'] : [])];
   const ciCases = kind === 'legacy' || clean || upgrade
     ? ['completed', 'blockedEvidence', 'productMissingResult', 'uninstallHold', 'scenarioAndCleanupFailed'] : ['completed'];
   if (kind === 'legacy' || kind === 'workspace-fault') ciCases.push('productInspectionHold');
+  if (kind === 'legacy') ciCases.push('msiProcessHold');
   for (const [testCase, ciChain] of [...directCases.map((name) => [name, false]), ...ciCases.map((name) => [name, true])]) {
     const blocked = testCase === 'blockedEvidence';
     const succeeded = testCase === 'completed' || blocked || ['productInspectionReadOnly', 'temporaryRootAlias'].includes(testCase);
@@ -280,7 +281,7 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
         }
         assert.equal(completion.exitCode, succeeded ? 0 : 1);
         const commandRoot = await readFile(join(context.testRoot, 'command-root.txt'), 'utf8');
-        const phase = { preparationHold: 'prepare', productInspectionHold: 'inspectSourceBefore', productInspectionNativeHold: 'inspectSourceBefore', productInspectionResultBeforeExit: 'inspectSourceBefore', scenarioHold: 'scenario', uninstallHold: uninstallPhase,
+        const phase = { preparationHold: 'prepare', productInspectionHold: 'inspectSourceBefore', productInspectionNativeHold: 'inspectSourceBefore', productInspectionResultBeforeExit: 'inspectSourceBefore', scenarioHold: 'scenario', msiProcessHold: 'scenario', uninstallHold: uninstallPhase,
           resultBeforeExit: uninstallPhase, removalHold: 'fixtureCleanup', publicationBeforeExit: 'publish' }[testCase];
         if (!['productInspectionNativeHold', 'productInspectionResultBeforeExit', 'productInspectionReadOnly', 'temporaryRootAlias'].includes(testCase)) {
           for (const receipt of phaseEvidence) {
@@ -294,6 +295,11 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
           assert.equal(outcome.processResultCode, 'deadlineExceeded');
           assert.equal(outcome.processTreeAbsent, true);
           assert.equal(outcome.cleanupResultCode, 'processTreeAbsent');
+        }
+        if (testCase === 'msiProcessHold') {
+          const observation = JSON.parse(await readFile(join(commandRoot, phase, 'msi-process-observation.json'), 'utf8'));
+          assert.deepEqual(observation, { schemaVersion: 1, events: ['processSpawnRequested', 'processSpawned'] });
+          await assert.rejects(lstat(join(commandRoot, phase, 'worker-result.json')), { code: 'ENOENT' });
         }
         if (['productInspectionNativeHold', 'productInspectionResultBeforeExit'].includes(testCase)) {
           const observation = JSON.parse(await readFile(join(commandRoot, phase, 'inspector-observation.json'), 'utf8'));
@@ -337,6 +343,12 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
           if (!succeeded) await assert.rejects(resultFile(
             'verify', resultPath, binding, completion.exitCode));
           if (succeeded) assert.equal(result.outcome.fixtureRemoved, true);
+          if (testCase === 'msiProcessHold') {
+            assert.equal(result.outcome.errorCode, 'WINDOWS_ACCEPTANCE_SUPERVISOR_DEADLINE_EXCEEDED');
+            assert.equal(result.outcome.processTreeAbsent, true);
+            assert.equal(result.outcome.supervisorProcessResultCode, 'deadlineExceeded');
+            assert.equal(result.outcome.supervisorCleanupResultCode, 'processTreeAbsent');
+          }
           if (testCase === 'scenarioAndCleanupFailed') {
             assert.equal(result.outcome.errorCode, scenarioFailureCode);
             assert.equal(result.outcome.semanticCleanupResultCode, 'semanticCleanupFailed');

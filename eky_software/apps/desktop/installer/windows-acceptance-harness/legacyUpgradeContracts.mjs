@@ -12,6 +12,15 @@ export const LEGACY_UPGRADE_WORKER_EXIT_CODES = Object.freeze({
   invalidRequest: 64,
 });
 
+export const LEGACY_PROCESS_OBSERVATIONS = Object.freeze([
+  'processSpawnRequested',
+  'processSpawned',
+  'processStartFailed',
+  'processOperationFailed',
+  'processExited',
+  'processClosed',
+]);
+
 export const LEGACY_FOOTPRINT_ERROR_CODES = Object.freeze({
   installerFootprintInstallRootMetadataReadFailed:
     'WINDOWS_ACCEPTANCE_LEGACY_FOOTPRINT_INSTALL_ROOT_METADATA_READ_FAILED',

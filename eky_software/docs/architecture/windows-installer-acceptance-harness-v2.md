@@ -2549,6 +2549,44 @@ Tämä osuus erottaa nykyisen julkaisutyön historiallisesta tutkimusnäytöstä
 
 #### Ajantasaiset julkaisuesteet ja päätökset
 
+Revision `b4f48e392d3e6dc81bd0de4fb76ec88e9fad261a` kaksi normaalia
+kokonaiskierrosta
+([35113921643](https://github.com/eky-software/eky/actions/runs/35113921643),
+[35117892784](https://github.com/eky-software/eky/actions/runs/35117892784))
+säilyvät hyväksyttynä revision näyttönä. Ne eivät korvaa PR #270:n
+[ajon 35121019099](https://github.com/eky-software/eky/actions/runs/35121019099)
+hylkäystä: sen checkout ja artifact-build olivat
+`3b52d51e49acf360bdf87539bb00a325222f3d3d`, ja legacy run 1 saavutti
+GitHub-jobin 37 minuutin ulkorajan ilman varmennettua komentotulosta tai
+siivousta. Saman artifactin `10457883033` toinen consumer läpäisi. Puuttuva
+epäonnistuneen consumerin loppuloki ei osoita MSI:n, supervisorin tai runnerin
+juurisyytä. PR, merge ja julkaisu pysyvät porttiensa takana.
+
+Seuraava rajattu todiste kohdistuu legacy-workerin nykyiseen suoraan
+MSI-kutsuun. `sourceInstall` ja `majorUpgrade` välittävät nykyiseen
+vaihehavaintoon vain suljetut `processSpawnRequested`, `processSpawned`,
+`processStartFailed`, `processOperationFailed`, `processExited` ja
+`processClosed`-arvot. Vaiheen aloitus ei todista spawnia eikä `exit` korvaa
+`close`-havaintoa. Observerin poikkeus ei muuta prosessitulosta; havainto ei
+ole kontrolliprotokolla tai cleanup-todiste. MSI:n stdout/stderr säilyvät
+ohitettuina ja verbose-loki yksityisenä. Worker-havaintojen mahdollinen
+estävä konsolitoimitus kuuluu edelleen saman scenario-Jobin rajaan;
+.NET-komennon erillinen tulos- ja poistumisvastuu ei muutu.
+
+Regressiot todistavat todellisen runtime-kytkennän, alkuperäisen MSI-
+paluuarvon säilymisen, exit/close-järjestyksen ja jälkitarkistuksen alkamisen
+vasta sulkeutumisen jälkeen. Nykyisen komentofixturen `msiProcessHold`
+käyttää samaa prosessikutsua ja nykyistä synteettisen pysähdyksen varausta:
+pakollinen caller-tulos, supervisorin deadline/cleanup sekä koko komennon
+exit ja close tarkistetaan erikseen. Uutta valvojaa, ajastusta, fallbackia
+tai MSI-politiikkaa ei lisätä. Yksi olemassa olevan artifactin rajattu
+CI-koe saa käyttää nykyistä ulkoista keruuta; uusi harness-revisio erotetaan
+paketin build-revisiosta. Koetta ei lasketa normaaliksi hyväksynnäksi eikä
+pelkkää onnistumista vanhan häiriön korjaukseksi. Nykyinen trace-projektio
+erottaa komentoa ja sen vaiheprosesseja, ei yksin todista MSI-lapsen
+poistumista. Aiemmat trace-fixturen korjaukset ja niiden näyttö ovat alla
+erillistä historiaa, eivät tämän MSI-odotuksen selitys.
+
 Trace-fixturen rajattu valmistelukatselmus osoitti erillisen
 keskeytyssopimuksen puutteen: lokikahvan myöhäinen avautuminen saattoi
 käynnistää prosessin keskeytyksen jälkeen, ja myöhäinen `close` saattoi

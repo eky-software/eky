@@ -33,22 +33,34 @@ function bracedProductCode(productCode) {
   return `{${productCode}}`;
 }
 
-export async function startLegacyOwnedProcess(command, arguments_, options = {}, { spawnProcess = spawn } = {}) {
-  const child = spawnProcess(command, arguments_, {
-    cwd: options.cwd,
-    env: options.env,
-    stdio: options.stdio ?? 'ignore',
-    windowsHide: options.windowsHide ?? true,
-  });
+export async function startLegacyOwnedProcess(command, arguments_, options = {}, { spawnProcess = spawn, observe } = {}) {
+  function observed(code) {
+    try { observe?.(code); } catch { /* Diagnostics never decide process completion. */ }
+  }
+  observed('processSpawnRequested');
+  let child;
+  try {
+    child = spawnProcess(command, arguments_, {
+      cwd: options.cwd,
+      env: options.env,
+      stdio: options.stdio ?? 'ignore',
+      windowsHide: options.windowsHide ?? true,
+    });
+  } catch (error) {
+    observed('processStartFailed');
+    throw error;
+  }
   let processId = null;
   let processError = false;
   const started = new Promise((resolvePromise, rejectPromise) => {
     child.once('spawn', () => {
       if (!Number.isInteger(child.pid)) {
+        observed('processStartFailed');
         rejectPromise(new Error('ownedProcessStartFailed'));
         return;
       }
       processId = child.pid;
+      observed('processSpawned');
       resolvePromise();
     });
     child.once('error', () =>
@@ -57,8 +69,13 @@ export async function startLegacyOwnedProcess(command, arguments_, options = {},
   });
   const completion = new Promise((resolvePromise, rejectPromise) => {
     // An error can follow spawn (for example a failed send/kill); it is not an exit receipt.
-    child.on('error', () => { processError = true; });
+    child.on('error', () => {
+      processError = true;
+      observed(Number.isInteger(processId) ? 'processOperationFailed' : 'processStartFailed');
+    });
+    child.once('exit', () => observed('processExited'));
     child.once('close', (exitCode, signal) => {
+      observed('processClosed');
       if (!Number.isInteger(processId)) {
         rejectPromise(new Error('ownedProcessStartFailed'));
         return;
@@ -87,8 +104,8 @@ export async function startLegacyOwnedProcess(command, arguments_, options = {},
   return Object.freeze({ child, completion, processId });
 }
 
-async function runOwnedProcess(command, arguments_, options = {}) {
-  return (await startLegacyOwnedProcess(command, arguments_, options)).completion;
+async function runOwnedProcess(command, arguments_, options = {}, dependencies = {}) {
+  return (await startLegacyOwnedProcess(command, arguments_, options, dependencies)).completion;
 }
 
 async function pathKind(path, role, expectedKind, readMetadata) {
@@ -139,7 +156,7 @@ function inventoriesEqual(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-export async function createLegacyUpgradeWindowsRuntime(request, artifact) {
+export async function createLegacyUpgradeWindowsRuntime(request, artifact, { spawnMsiProcess = spawn } = {}) {
   const appData = process.env.APPDATA;
   const localAppData = process.env.LOCALAPPDATA;
   const systemRoot = process.env.SystemRoot;
@@ -263,7 +280,7 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact) {
     });
   }
 
-  async function runMsiOperation(operation) {
+  async function runMsiOperation(operation, observe) {
     const roleName =
       operation === 'sourceInstall'
         ? 'source'
@@ -284,6 +301,7 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact) {
             resolve(logRoot, `${operation}.log`),
           ],
           { cwd: scenarioRoot },
+          { observe, spawnProcess: spawnMsiProcess },
         )
       ).exitCode;
     } catch {
