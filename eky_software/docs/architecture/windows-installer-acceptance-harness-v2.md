@@ -2608,7 +2608,27 @@ ja oikean komentoprosessin exit/close-, tulos- ja cleanup-assertiot
 varmentavat eri vastuut. Korjattu sopimusero ei todista vanhan CI-virheen
 syytä, koska sen tarkka sisäinen lukijatulos puuttui.
 
-Jäljellä ovat budjettikytkennän kohdevarmennus, korjauksen normaali
+Budjettikorjauksen revisio `1bbc4c5c4e018fadfd19567a40505885958d1625`
+läpäisi [kohdesarjan](https://github.com/eky-software/eky/actions/runs/35033463537)
+27/27 molemmilla runnereilla, [riippuvuustarkistuksen](https://github.com/eky-software/eky/actions/runs/35033855366)
+sekä [ensimmäisen normaalin kokonaiskierroksen](https://github.com/eky-software/eky/actions/runs/35033870483).
+Saman revision [toinen kokonaiskierros](https://github.com/eky-software/eky/actions/runs/35035995254)
+päättyi hylättynä: legacy run 2 epäonnistui `sourcePackagedSmoke`-vaiheessa,
+ja workspace fault run 2 saavutti skenaarion deadlinen `acceptanceInterruption`-
+tapauksen `targetInstall`-vaiheessa. Komennot päättyivät; jälkimmäisen
+prosessisiivous valmistui ja artifactien jälkivarmennus läpäisi. Tämä ei ole
+hyväksytty kahden kierroksen pari eikä näyttö alkuperäisten syiden korjauksesta.
+
+Legacy-smoken seuraava rajattu diagnostiikkakorjaus säilyttää yleisen
+virhetuloksen rinnalla suljetun syyluokan, validoidun viimeisen smoke-vaiheen
+ja statuksen sekä initial/restored-sukupolven. Raakaa sovellusvirhekoodia,
+polkua tai virhetekstiä ei julkaista. Havainto ei valtuuta cleanupia eikä
+muuta onnistumisehtoja, prosessiomistajuutta tai aikarajoja. Virheellistä
+tulostiedostoa, liian aikaista poistumista ja sovelluksen raportoimaa virhettä
+ei enää tarvitse päätellä samasta yleisestä lokirivistä. Alkuperäisen
+CI-virheen sisäinen syy ja workspace-asennusodotuksen tarkka raja ovat avoimia.
+
+Jäljellä ovat näiden erillisten hylkäysten rajaus, korjauksen normaali
 PR-/main-todennus ja tämän jälkeen erillinen 0.2.8-versionosto sekä
 exact-byte-varmennettu pilot-bundle. Historiallisia jäädytettyjä PR:iä ei
 yhdistetty suoraan. Suojauksia tai julkaisurajoja ei ohiteta.

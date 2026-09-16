@@ -1,4 +1,5 @@
 import { LEGACY_FOOTPRINT_ERROR_CODES } from './legacyUpgradeContracts.mjs';
+import { describeHistoricalPackagedSmokeFailure } from './legacyUpgradeSourceSmoke.mjs';
 
 const FAILURE_CODES = new Set([
   ...Object.keys(LEGACY_FOOTPRINT_ERROR_CODES),
@@ -154,7 +155,10 @@ function createProgress(reportProgress) {
     } catch (error) {
       const known = errorCodeOf(error);
       const errorCode = known === 'unexpectedFailure' ? failureCode : known;
-      emit(phase, 'failed', phaseStartedAt, { errorCode });
+      emit(phase, 'failed', phaseStartedAt, {
+        errorCode,
+        ...(phase === 'sourcePackagedSmoke' ? describeHistoricalPackagedSmokeFailure(error) : {}),
+      });
       fail(errorCode);
     }
   }

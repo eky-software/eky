@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path';
 import test from 'node:test';
 
 import {
+  describeHistoricalPackagedSmokeFailure,
   runHistoricalPackagedSmokeProcessChain,
   readHistoricalPackagedSmokeResult,
   validateHistoricalPackagedSmokeResult,
@@ -210,4 +211,33 @@ test('historical smoke chain rejects a failed generation without adding another'
     /sourcePackagedSmokeFailed/,
   );
   assert.equal(starts, 1);
+});
+
+test('restored smoke failure retains its generation without exposing the application code', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'eky-legacy-smoke-restored-fail-'));
+  t.after(() => rm(root, { force: true, recursive: true }));
+  const resultPath = resolve(root, 'desktop-smoke-result.json');
+  const starts = [];
+  await assert.rejects(runHistoricalPackagedSmokeProcessChain({
+    resultPath,
+    async startGeneration(generation) {
+      starts.push(generation);
+      const value = generation === 'initial'
+        ? { stage: 'restoreRestart', status: 'started' }
+        : { stage: 'secondBackup', status: 'failed', code: 'PRIVATE_APPLICATION_DETAIL' };
+      await writeFile(resultPath, `${JSON.stringify(value)}\n`);
+      return { completion: Promise.resolve({ exitCode: generation === 'initial' ? 0 : 1 }) };
+    },
+  }), (error) => {
+    assert.equal(error.message, 'sourcePackagedSmokeFailed');
+    assert.deepEqual(describeHistoricalPackagedSmokeFailure(error), {
+      smokeReason: 'applicationReportedFailure', smokeStage: 'secondBackup',
+      smokeStatus: 'failed', smokeGeneration: 'restored',
+    });
+    return true;
+  });
+  assert.deepEqual(starts, ['initial', 'restored']);
+  assert.deepEqual(describeHistoricalPackagedSmokeFailure({
+    evidence: { smokeReason: 'private-data', secret: 'private-data' },
+  }), {});
 });

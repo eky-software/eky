@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 
 import { executeLegacyUpgradeLifecycle } from './legacyUpgradeLifecycle.mjs';
 import { LEGACY_FOOTPRINT_ERROR_CODES } from './legacyUpgradeContracts.mjs';
+import { runHistoricalPackagedSmokeProcessChain } from './legacyUpgradeSourceSmoke.mjs';
 
 const VERSIONS = Object.freeze({ source: '0.2.6', target: '0.2.7' });
 
@@ -101,6 +105,58 @@ test('safe progress failure cannot alter lifecycle semantics', async () => {
   );
   assert.equal(result.status, 'completed');
 });
+
+for (const [name, content, exitCode, reason, stage, status] of [
+  ['reported failure', { stage: 'backend', status: 'failed', code: 'PRIVATE_FAILURE_DETAIL' },
+    1, 'applicationReportedFailure', 'backend', 'failed'],
+  ['invalid result', '{\n', 0, 'resultInvalid', 'unknown', 'unknown'],
+  ['incomplete result at exit', '{', 0, 'processExitedEarly', 'unknown', 'unknown'],
+  ['nonzero exit after result', { stage: 'restoreRestart', status: 'started' },
+    1, 'processExitFailed', 'restoreRestart', 'started'],
+  ['spawn failure', null, null, 'processStartFailed', 'unknown', 'unknown'],
+]) {
+  test(`historical smoke ${name} retains safe failure evidence without advancing`, async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'eky-legacy-smoke-evidence-'));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    for (const brokenObserver of [false, true]) {
+      const resultPath = join(root, `result-${brokenObserver}.json`);
+      const entries = [];
+      const starts = [];
+      const dependencies = successfulDependencies({
+        runSourcePackagedSmoke: () => runHistoricalPackagedSmokeProcessChain({
+          resultPath,
+          async startGeneration(generation) {
+            starts.push(generation);
+            if (content === null) throw new Error('private-path-and-secret');
+            await writeFile(resultPath, typeof content === 'string' ? content : `${JSON.stringify(content)}\n`);
+            return { completion: Promise.resolve({ exitCode }) };
+          },
+        }),
+        reportProgress(entry) {
+          entries.push(entry);
+          if (brokenObserver) throw new Error('private-observer-failure');
+        },
+      });
+      const result = await executeLegacyUpgradeLifecycle(dependencies);
+      assert.equal(result.status, 'failed');
+      assert.equal(result.errorCode, 'sourcePackagedSmokeFailed');
+      assert.equal(result.sourcePackagedSmokeValidated, false);
+      assert.equal(dependencies.calls.includes('sourceStartup'), false);
+      assert.equal(dependencies.calls.includes('majorUpgrade'), false);
+      assert.deepEqual(starts, ['initial']);
+      const evidence = entries.find(entry => entry.phase === 'sourcePackagedSmoke' && entry.status === 'failed');
+      assert.deepEqual(Object.keys(evidence).sort(), [
+        'durationMs', 'elapsedMs', 'errorCode', 'operation', 'phase', 'scenario',
+        'schemaVersion', 'smokeGeneration', 'smokeReason', 'smokeStage', 'smokeStatus', 'status',
+      ].sort());
+      assert.equal(evidence.smokeReason, reason);
+      assert.equal(evidence.smokeStage, stage);
+      assert.equal(evidence.smokeStatus, status);
+      assert.equal(evidence.smokeGeneration, 'initial');
+      assert.doesNotMatch(JSON.stringify({ entries, result }), /PRIVATE_FAILURE_DETAIL|private-path|private-observer/);
+    }
+  });
+}
 
 test('legacy lifecycle preserves a closed product inspection failure class', async () => {
   let inspection = 0;

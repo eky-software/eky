@@ -30,6 +30,21 @@ const STAGES = Object.freeze([
   'shutdown',
 ]);
 
+class HistoricalSmokeFailure extends Error {
+  constructor(message, reason, result, cause) {
+    super(message, { cause });
+    this.evidence = Object.freeze({
+      smokeReason: reason,
+      smokeStage: result?.stage ?? 'unknown',
+      smokeStatus: result?.status ?? 'unknown',
+    });
+  }
+}
+
+export function describeHistoricalPackagedSmokeFailure(error) {
+  return error instanceof HistoricalSmokeFailure ? error.evidence : {};
+}
+
 export function validateHistoricalPackagedSmokeResult(value) {
   if (
     typeof value !== 'object' ||
@@ -138,13 +153,14 @@ export async function waitForHistoricalPackagedSmokeResult({
       throw new Error('sourcePackagedSmokeResultInvalid');
     }
   } catch {
-    throw new Error('sourcePackagedSmokeResultInvalid');
+    throw new HistoricalSmokeFailure('sourcePackagedSmokeResultInvalid', 'watchSetupFailed');
   }
   return new Promise((resolvePromise, rejectPromise) => {
     let settled = false;
     let scanning = false;
     let scanAgain = false;
     let childExited = false;
+    let lastResult;
     let watcher;
     const settle = (callback, value) => {
       if (settled) return;
@@ -161,18 +177,28 @@ export async function waitForHistoricalPackagedSmokeResult({
       scanning = true;
       try {
         const result = await readHistoricalPackagedSmokeResult(resultPath);
+        if (result !== null) lastResult = result;
         if (result?.status === 'failed') {
-          settle(rejectPromise, new Error('sourcePackagedSmokeFailed'));
+          settle(rejectPromise, new HistoricalSmokeFailure(
+            'sourcePackagedSmokeFailed', 'applicationReportedFailure', result,
+          ));
         } else if (
           result?.stage === expectedStage &&
           result.status === expectedStatus
         ) {
           settle(resolvePromise, result);
         } else if (childExited) {
-          settle(rejectPromise, new Error('sourcePackagedSmokeExitedEarly'));
+          settle(rejectPromise, new HistoricalSmokeFailure(
+            'sourcePackagedSmokeExitedEarly', 'processExitedEarly', lastResult,
+          ));
         }
       } catch (error) {
-        settle(rejectPromise, error);
+        settle(rejectPromise, new HistoricalSmokeFailure(
+          error.message,
+          error.message === 'sourcePackagedSmokeResultInvalid' ? 'resultInvalid' : 'resultReadFailed',
+          lastResult,
+          error,
+        ));
       } finally {
         scanning = false;
         if (scanAgain && !settled) {
@@ -186,16 +212,20 @@ export async function waitForHistoricalPackagedSmokeResult({
         void scan(),
       );
       watcher.once('error', () =>
-        settle(rejectPromise, new Error('sourcePackagedSmokeResultInvalid')),
+        settle(rejectPromise, new HistoricalSmokeFailure(
+          'sourcePackagedSmokeResultInvalid', 'watchFailed', lastResult,
+        )),
       );
     } catch {
-      settle(rejectPromise, new Error('sourcePackagedSmokeResultInvalid'));
+      settle(rejectPromise, new HistoricalSmokeFailure('sourcePackagedSmokeResultInvalid', 'watchSetupFailed'));
       return;
     }
     void scan();
     childFailed.then((failed) => {
       if (failed) {
-        settle(rejectPromise, new Error('sourcePackagedSmokeExitedEarly'));
+        settle(rejectPromise, new HistoricalSmokeFailure(
+          'sourcePackagedSmokeExitedEarly', 'processCompletionFailed', lastResult,
+        ));
       } else {
         childExited = true;
         void scan();
@@ -208,33 +238,53 @@ export async function runHistoricalPackagedSmokeProcessChain({
   resultPath,
   startGeneration,
 }) {
-  await initializeHistoricalPackagedSmokeResult(resultPath);
-  const initial = await startGeneration('initial');
-  await waitForHistoricalPackagedSmokeResult({
-    childCompletion: initial.completion,
-    expectedStage: 'restoreRestart',
-    expectedStatus: 'started',
-    resultPath,
-  });
-  const initialResult = await initial.completion;
-  if (initialResult.exitCode !== 0) {
-    throw new Error('sourcePackagedSmokeFailed');
-  }
+  let generation = 'initial';
+  let boundary = 'resultInitializationFailed';
+  try {
+    await initializeHistoricalPackagedSmokeResult(resultPath);
+    boundary = 'processStartFailed';
+    const initial = await startGeneration(generation);
+    boundary = 'resultReadFailed';
+    await waitForHistoricalPackagedSmokeResult({
+      childCompletion: initial.completion,
+      expectedStage: 'restoreRestart',
+      expectedStatus: 'started',
+      resultPath,
+    });
+    boundary = 'processCompletionFailed';
+    const initialResult = await initial.completion;
+    if (initialResult.exitCode !== 0) {
+      throw new HistoricalSmokeFailure('sourcePackagedSmokeFailed', 'processExitFailed', {
+        stage: 'restoreRestart', status: 'started',
+      });
+    }
 
-  const restored = await startGeneration('restored');
-  await waitForHistoricalPackagedSmokeResult({
-    childCompletion: restored.completion,
-    expectedStage: 'shutdown',
-    expectedStatus: 'ok',
-    resultPath,
-  });
-  const restoredResult = await restored.completion;
-  if (restoredResult.exitCode !== 0) {
-    throw new Error('sourcePackagedSmokeFailed');
+    generation = 'restored';
+    boundary = 'processStartFailed';
+    const restored = await startGeneration(generation);
+    boundary = 'resultReadFailed';
+    await waitForHistoricalPackagedSmokeResult({
+      childCompletion: restored.completion,
+      expectedStage: 'shutdown',
+      expectedStatus: 'ok',
+      resultPath,
+    });
+    boundary = 'processCompletionFailed';
+    const restoredResult = await restored.completion;
+    if (restoredResult.exitCode !== 0) {
+      throw new HistoricalSmokeFailure('sourcePackagedSmokeFailed', 'processExitFailed', {
+        stage: 'shutdown', status: 'ok',
+      });
+    }
+    return Object.freeze({
+      contract: 'explicitTwoPhase',
+      initialGenerationCount: 1,
+      restoredGenerationCount: 1,
+    });
+  } catch (error) {
+    const failure = error instanceof HistoricalSmokeFailure ? error
+      : new HistoricalSmokeFailure(error?.message, boundary, undefined, error);
+    failure.evidence = Object.freeze({ ...failure.evidence, smokeGeneration: generation });
+    throw failure;
   }
-  return Object.freeze({
-    contract: 'explicitTwoPhase',
-    initialGenerationCount: 1,
-    restoredGenerationCount: 1,
-  });
 }
