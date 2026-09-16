@@ -2549,6 +2549,27 @@ Tämä osuus erottaa nykyisen julkaisutyön historiallisesta tutkimusnäytöstä
 
 #### Ajantasaiset julkaisuesteet ja päätökset
 
+Revision `f863ec8f095444321c9b82d7869712f65fd82189` ensimmäinen
+[normaali kokonaiskierros 35151889180](https://github.com/eky-software/eky/actions/runs/35151889180)
+ja sen [riippuvuustarkistus 35151891636](https://github.com/eky-software/eky/actions/runs/35151891636)
+läpäisivät. Producerien ja consumerien todellinen checkout ja artifact-build
+olivat sama revisio, ja pakettien sidokset varmennettiin ennen ja jälkeen
+skenaarioiden. Saman revision
+[toisen kierroksen 35154903009](https://github.com/eky-software/eky/actions/runs/35154903009)
+legacy core run 1 hylättiin 355/356-tuloksella: startup-observerin erillinen
+8.3-alias-valmistelu käytti vielä suoraa PowerShell/COM-kutsua ja saavutti
+sen kymmenen sekunnin rajan ennen observerin käynnistystä. Hyväksyntäpari
+ei täyty; ensimmäinen kierros säilyy erillisenä näyttönä.
+
+Rajattu jatkokorjaus kytkee myös `legacyUpgradeStartupObserver`-testin samaan
+olemassa olevaan `readWindowsShortPathFixture`-testitukeen kuin historical
+smoke -testin. Molemmat vaativat aidosti erilaisen lyhytnimipolun sekä saman
+kanonisen hakemiston. Valmisteluvirhe ei käynnistä observeria, ja epäonnistuneen
+alias-tapauksen aineisto säilytetään. Yhteisen apurin virhe- ja jumitusregressiot
+säilyvät; rinnakkaista valmistelijaa, fallbackia tai aikarajamuutosta ei lisätä.
+Tämä sulkee jäljelle jääneen testivalmistelun kytkentäpuutteen, ei osoita vanhan
+COM-viiveen sisäistä syytä. Korjattu revisio tarvitsee omat normaalit porttinsa.
+
 PR #270:n lähderevision `42a8bcdac35dbdba40327dd6083e0193ee30b414`
 [normaali ajo 35139815567](https://github.com/eky-software/eky/actions/runs/35139815567)
 päättyi hylättynä ensimmäisellä yrityksellä. Todellinen checkout oli

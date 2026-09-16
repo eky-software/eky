@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { appendFile, mkdir, mkdtemp, rm, symlink } from 'node:fs/promises';
+import { appendFile, mkdir, mkdtemp, realpath, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
+
+import { readWindowsShortPathFixture } from '../windows-process-supervisor/tests/supervisorContractTestSupport.mjs';
 
 import {
   captureDesktopLifecycleBaseline,
@@ -32,9 +33,11 @@ function event(eventName, eventId, overrides = {}) {
   };
 }
 
-async function fixture(t) {
+async function fixture(t, automaticCleanup = true) {
   const root = await mkdtemp(join(tmpdir(), 'eky-legacy-observer-'));
-  t.after(() => rm(root, { force: true, recursive: true }));
+  if (automaticCleanup) {
+    t.after(() => rm(root, { force: true, recursive: true }));
+  }
   const logs = resolve(root, 'desktop');
   await mkdir(logs);
   const info = resolve(logs, 'desktop-info-2026-09-001.jsonl');
@@ -76,20 +79,13 @@ test('startup observer resolves from a new matching event without polling', asyn
 test('startup observer accepts the same directory through a Windows 8.3 alias', {
   skip: process.platform !== 'win32',
 }, async (t) => {
-  const files = await fixture(t);
-  const shortRoot = execFileSync(
-    resolve(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
-    ['-NoProfile', '-NonInteractive', '-Command',
-      '$fso = New-Object -ComObject Scripting.FileSystemObject; $fso.GetFolder($env:EKY_OBSERVER_TEST_ROOT).ShortPath'],
-    {
-      env: { ...process.env, EKY_OBSERVER_TEST_ROOT: files.root },
-      encoding: 'utf8',
-      timeout: 10_000,
-      windowsHide: true,
-    },
-  ).trim();
+  const files = await fixture(t, false);
+  let verified = false;
+  t.after(() => verified ? rm(files.root, { force: true, recursive: true }) : undefined);
+  const shortRoot = await readWindowsShortPathFixture(files.root, { directory: files.root });
   assert.notEqual(shortRoot, files.root, 'The fixture must exercise a real 8.3 alias');
   assert.match(shortRoot, /~[0-9]/);
+  assert.equal(await realpath(shortRoot), await realpath(files.root));
   const child = deferred();
   const waiting = waitForTargetDesktopStarted({
     baselineEventIds: await captureDesktopLifecycleBaseline(files.logs),
@@ -102,6 +98,7 @@ test('startup observer accepts the same directory through a Windows 8.3 alias', 
     `${JSON.stringify(event('desktop.started', '42345678-1234-4abc-8abc-1234567890ab'))}\n`,
   );
   assert.equal((await waiting).runtimeInstanceId, RUNTIME);
+  verified = true;
 });
 
 test('startup observer still rejects a directory link before watching its target', async (t) => {
