@@ -12,6 +12,40 @@ const WORKFLOW_URL = new URL(
   import.meta.url,
 );
 
+test('existing contract diagnosis can select the unchanged core group without MSI or recording', async () => {
+  const source = await readFile(new URL(
+    '../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url,
+  ), 'utf8');
+  const job = source.slice(source.indexOf('  job-object-feasibility:'), source.indexOf('  packaged-boundary-diagnostic:'));
+  const steps = job.split('\n      - name: ').slice(1);
+  const selected = (name, inputs) => {
+    const step = steps.find((candidate) => candidate.split('\n')[0] === name);
+    assert.ok(step, name);
+    const condition = step.match(/^        if: (.+)$/mu)?.[1];
+    return condition ? runInNewContext(condition, { inputs, always: () => false }, { timeout: 1000 }) : true;
+  };
+  const coreName = 'Diagnose existing legacy core group without MSI or recording';
+  const fullName = 'Diagnose full V2.5 contract suite with unchanged default budgets';
+  for (const mode of ['', 'contracts', 'legacy-contracts-diagnostic']) {
+    for (const legacy_contract_scope of ['all', 'core']) {
+      const inputs = { mode, legacy_contract_scope };
+      const core = mode === 'legacy-contracts-diagnostic' && legacy_contract_scope === 'core';
+      assert.equal(selected(coreName, inputs), core);
+      assert.equal(selected(fullName, inputs), mode === 'legacy-contracts-diagnostic' && !core);
+      assert.equal(selected('Build Windows process supervisor', inputs), mode !== 'legacy-contracts-diagnostic');
+      assert.equal(selected('Build existing supervisor for core diagnosis', inputs), core);
+      if (core) {
+        assert.equal(selected('Prepare locked package manager before inspection command contracts', inputs), true);
+        assert.equal(selected('Run supervisor unit and process contracts', inputs), false);
+        assert.equal(selected('Start bounded inspector analysis fixture capture', inputs), false);
+      }
+    }
+  }
+  const core = steps.find((step) => step.startsWith(coreName + '\n'));
+  assert.match(core, /run: pnpm installer:test:windows-supervisor-v2-legacy-core\s*$/u);
+  assert.doesNotMatch(core, /continue-on-error|timeout-minutes|artifact:build|retry/u);
+});
+
 test('shared feasibility binds the verified SDK before every process-contract mode', async () => {
   const source = await readFile(new URL(
     '../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml',

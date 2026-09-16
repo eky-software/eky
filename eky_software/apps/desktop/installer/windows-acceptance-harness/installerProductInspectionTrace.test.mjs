@@ -13,6 +13,9 @@ const EVENT_HEADERS = ['Provider Name', 'Process', 'ThreadId', 'Event Name', 'Ti
 const SWITCH_HEADERS = ['New Process', 'New Thread Id', 'Switch-In Time (s)', 'Last Switch-Out Time (s)', 'New Thread Stack'];
 const event = (phase, time, provider = PROVIDER) => [provider, 'synthetic.exe (123)', '456', phase, time, time, 'PRIVATE-FIXTURE-DATA'];
 const csv = (rows) => rows.map((row) => row.map((field) => `"${String(field).replaceAll('"', '""')}"`).join(',')).join('\r\n');
+const COMPLETED_PHASES = ['scriptStarted', 'readerLoaded', 'profileStarted', 'profileCompleted',
+  'eventsReadStarted', 'eventsReadCompleted', 'switchesReadStarted', 'switchesReadCompleted',
+  'summaryCompleted', 'resultWriteStarted', 'resultWritten'];
 
 for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureStop', 'decimal', 'toolExit', 'exportOutput', 'eventStatistics', 'externalView', 'commandLifetimes', 'workspaceLifetimes', 'commandAnalysis', 'workspaceAnalysis', 'commandExportFailure', 'commandExportFailureUnreadable']) test(
   `external inspector trace keeps ${kind} evidence closed and separate from acceptance`,
@@ -20,7 +23,23 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
   async (t) => {
     const context = await createRunContext('inspector-trace');
     let passed = false;
-    t.after(() => cleanupRunContext(context, { preserveEvidence: !passed || t.signal.aborted }));
+    const lifecycle = { phase: 'fixturePreparation', spawned: false, exited: false, closed: false };
+    t.after(async () => {
+      const beforeCleanup = { ...lifecycle };
+      let cleanup = 'unverified';
+      try {
+        await cleanupRunContext(context, { preserveEvidence: !passed || t.signal.aborted });
+        cleanup = 'completed';
+      } finally {
+        if (kind === 'completed') {
+          try {
+            t.diagnostic(JSON.stringify({ schemaVersion: 1, operation: 'inspectorTraceContract',
+              ...beforeCleanup, testAborted: t.signal.aborted, cleanup,
+              exitedAfterCleanup: lifecycle.exited, closedAfterCleanup: lifecycle.closed }));
+          } catch { /* Optional observation must preserve the test and cleanup errors. */ }
+        }
+      }
+    });
     const cases = kind === 'invalid'
       ? [
           [event('unknown-private-phase', '1')],
@@ -94,8 +113,15 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
       "process.stdout.write('PRIVATE-PROCESS-DATA'); process.stderr.write('PRIVATE-PATH time inversions'); process.exitCode = 23;\n");
     const command = `
       $ErrorActionPreference = 'Stop'
+      function Observe-TraceContract([string]$Phase) {
+        if ($env:EKY_TRACE_TEST_KIND -ceq 'completed') {
+          try { [Console]::Out.WriteLine($Phase) } catch { }
+        }
+      }
+      Observe-TraceContract 'scriptStarted'
       [Threading.Thread]::CurrentThread.CurrentCulture = [Globalization.CultureInfo]::InvariantCulture
       . $env:EKY_TRACE_TEST_SCRIPT
+      Observe-TraceContract 'readerLoaded'
       if ($env:EKY_TRACE_TEST_KIND -ceq 'captureStop') {
         $tokens = $null; $errors = $null
         $ast = [Management.Automation.Language.Parser]::ParseFile(
@@ -633,6 +659,7 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
         exit 0
       }
       if ($env:EKY_TRACE_TEST_PROFILE -ceq 'true') {
+        Observe-TraceContract 'profileStarted'
         $names = @('New Process', 'New Thread Id', 'Switch-In Time', 'Last Switch-Out Time', 'New Thread Stack', 'Ready Thread Stack', 'Readying Process')
         $columns = ($names | ForEach-Object { '<Column Name="' + $_ + '" IsVisible="true" />' }) -join ''
         [xml]$catalog = '<Profile xmlns="urn:fixture"><Content><Views><View><Graphs><Graph Guid="c58f5fea-0319-4046-932d-e695ebe20b47"><Preset><Columns>' + $columns + '</Columns></Preset></Graph></Graphs></View></Views></Content></Profile>'
@@ -662,13 +689,19 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
         try { New-InspectorTraceProfile $catalogPath $profilePath @('456', '789') -Streams @($streams[1]) }
         catch { $rejected = $_.Exception.Message -ceq 'INSPECTOR_TRACE_STREAMS_INVALID' }
         if (!$rejected) { throw 'projectionSilentlyDroppedThread' }
+        Observe-TraceContract 'profileCompleted'
       }
       $results = @()
       for ($index = 0; $index -lt [int]$env:EKY_TRACE_TEST_CASES; $index++) {
         try {
+          Observe-TraceContract 'eventsReadStarted'
           $events = @(Get-InspectorTraceEvents @(Read-InspectorTraceTable (Join-Path $env:EKY_TRACE_TEST_ROOT "events-$index.csv")))
+          Observe-TraceContract 'eventsReadCompleted'
+          Observe-TraceContract 'switchesReadStarted'
           $switches = @(Read-InspectorTraceTable (Join-Path $env:EKY_TRACE_TEST_ROOT 'switches.csv'))
+          Observe-TraceContract 'switchesReadCompleted'
           $results += @{ status = 'read'; summaries = @(Get-InspectorTraceSummary $events $switches) }
+          Observe-TraceContract 'summaryCompleted'
         } catch {
           $results += @{ status = 'rejected'; errorCode = Resolve-InspectorTraceErrorCode $_.Exception.Message;
             shape = @(Get-InspectorTraceFailureShape $_.Exception) }
@@ -684,14 +717,17 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
       if ((@(Get-InspectorTraceFailureShape $failure) -join ',') -cne ($shape -join ',')) { throw 'shapeDeliveryFailed' }
       $failure.Data['processLabelShape'] = @('PRIVATE-RAW-VALUE')
       if (@(Get-InspectorTraceFailureShape $failure).Count -ne 0) { throw 'shapePrivacyFailed' }
+      Observe-TraceContract 'resultWriteStarted'
       [IO.File]::WriteAllText($env:EKY_TRACE_TEST_RESULT, (ConvertTo-Json -InputObject $results -Depth 8 -Compress))
+      Observe-TraceContract 'resultWritten'
     `;
     const commandPath = join(context.testRoot, 'trace-contract.ps1');
     await writeFile(commandPath, command);
     const errorLog = await open(join(context.testRoot, 'stderr.private.log'), 'wx+');
+    lifecycle.phase = 'processStartRequested';
     const child = spawn(resolve(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', commandPath],
-      { stdio: ['ignore', commandExportFailure ? 'pipe' : 'ignore', errorLog.fd], windowsHide: true, env: { ...process.env,
+      { stdio: ['ignore', commandExportFailure || kind === 'completed' ? 'pipe' : 'ignore', errorLog.fd], windowsHide: true, env: { ...process.env,
         EKY_TRACE_TEST_ROOT: context.testRoot, EKY_TRACE_TEST_SCRIPT: SCRIPT,
         EKY_TRACE_TEST_CASES: String(cases.length), EKY_TRACE_TEST_RESULT: context.resultPath,
         EKY_TRACE_TEST_PROFILE: String(kind === 'completed'),
@@ -699,8 +735,20 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
         EKY_TRACE_TEST_NODE: process.execPath,
       } });
     context.fixtureProcesses.add(child);
+    child.once('spawn', () => { lifecycle.spawned = true; });
+    child.once('exit', () => { lifecycle.exited = true; });
+    child.once('close', () => { lifecycle.closed = true; });
     const observations = [];
-    child.stdout?.on('data', (chunk) => observations.push(chunk));
+    let pendingPhase = '';
+    let phaseBytes = 0;
+    child.stdout?.on('data', (chunk) => {
+      if (commandExportFailure) observations.push(chunk);
+      if (kind !== 'completed' || (phaseBytes += chunk.length) > 2048) return;
+      pendingPhase += chunk.toString('utf8');
+      const lines = pendingPhase.split(/\r?\n/);
+      pendingPhase = lines.pop() ?? '';
+      for (const phase of lines) if (COMPLETED_PHASES.includes(phase)) lifecycle.phase = phase;
+    });
     let exit;
     try {
       exit = await new Promise((resolvePromise, rejectPromise) => {
@@ -725,7 +773,9 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
       }
     } finally { await errorLog.close(); }
     assert.equal(exit, commandExportFailure ? 1 : 0);
+    lifecycle.phase = 'resultReadStarted';
     const output = commandExportFailure ? Buffer.concat(observations).toString('utf8') : await readFile(context.resultPath, 'utf8');
+    lifecycle.phase = 'resultReadCompleted';
     assert.doesNotMatch(output, /PRIVATE|synthetic\.exe|foreign\.exe|123|456|789/);
     const results = JSON.parse(output);
     if (commandExportFailure) {
@@ -763,6 +813,7 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
         processExit: 'notInferred', cause: 'notEstablished',
       }] }]);
     }
+    lifecycle.phase = 'assertionsCompleted';
     passed = true;
   },
 );

@@ -2549,6 +2549,37 @@ Tämä osuus erottaa nykyisen julkaisutyön historiallisesta tutkimusnäytöstä
 
 #### Ajantasaiset julkaisuesteet ja päätökset
 
+Revision `ff20f26c8bf172f678ff5213280abb8b1061073d`
+[ensimmäinen normaali kierros](https://github.com/eky-software/eky/actions/runs/35093649797)
+läpäisi: neljän artifact-perheen tavusidos, 18 paketoitua komentoa,
+todelliset checkout-revisiot sekä Electron 38/38 ilman flaky-tulosta
+varmennettiin. Revision [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/35093646215)
+läpäisi kaikki kolme porttia. Saman revision
+[toisessa kierroksessa](https://github.com/eky-software/eky/actions/runs/35096874185)
+core run 2:n synteettinen trace-lukijan `completed`-testi ylitti 30 sekunnin
+testirajan. Tämä hylkäys estää hyväksyntäparin; se ei ole MSI-tulos eikä
+paikanna viivettä PowerShellin käynnistykseen, lukutyöhön tai poistumiseen.
+Kierros päättyi hylättynä: muut käynnistyneet jobit läpäisivät, mutta
+legacy-producer ja sen consumerit jäivät sopimusportin jälkeen käynnistymättä.
+Loppukoonti torjui puuttuvan kattavuuden; kahden kierroksen vaatimus on auki.
+
+Rajattu testihavainto erottaa fixturen suljetut vaiheet, spawn-, exit- ja
+close-havainnot sekä tilan ennen cleanupia ja sen jälkeen. Pakollinen
+tulostiedosto ja nykyiset assertionit päättävät testin tuloksen, eivät
+vaiheviestit. Ohjattu synteettinen pysähdys todisti testirajan hylkäyksen,
+alkuperäisen vaiheen säilymisen ja kahvapohjaisen siivouksen erillisen
+jälkihavainnon; koepysähdystä ei jätetty normaaliin testiin.
+Nykyinen `legacy-contracts-diagnostic` voi valita vain kanonisen core-ryhmän
+sen normaalissa järjestyksessä kahdelle eristetylle runnerille. Tämä reitti
+ei rakenna MSI-artifacteja, käynnistä tallennusta tai korvaa hyväksyntää.
+Prosessiomistajuus, normaalit työnkulut ja kaikki aikarajat säilyvät.
+Alkuperäisen testiviiveen sisäinen raja on vielä avoin.
+Core-kohdesarja läpäisi 343/343, legacy-artifact-/workflow-sarja 30/30,
+upgrade-artifact-/workflow-sarja 20/20 ja CI-sopimukset 55/55.
+Valinnan regressio suorittaa workflow'n todelliset ehdot: core valitsee vain
+olemassa olevan ryhmän, oletus säilyttää täyden diagnostisen sarjan ja normaali
+supervisor-portti säilyy erillisenä. Tämä ei vielä ole viiveen juurisyykorjaus.
+
 Jälkikorjausten revision `8a8c083ef6c4b0442cd705ed2fbdf9a176125ada`
 [ensimmäinen normaali kokonaiskierros](https://github.com/eky-software/eky/actions/runs/35090707995)
 hylättiin upgrade-producerin workflow-sopimukseen ennen pakettien rakentamista.

@@ -19,6 +19,11 @@ on:
           - inspector-analysis-diagnostic
           - inspector-external-diagnostic
           - packaged-boundary-diagnostic
+      legacy_contract_scope:
+        description: Existing legacy contract diagnosis only; core does not build MSI artifacts or record traces
+        type: choice
+        default: all
+        options: [all, core]
       artifact_kind:
         description: Existing artifact consumer (diagnostic only)
         type: choice
@@ -112,7 +117,7 @@ jobs:
         run: corepack enable
 
       - name: Prepare locked package manager before inspection command contracts
-        if: inputs.mode == 'inspection-command-contracts' || inputs.mode == 'clean-upgrade-command-diagnostic' || inputs.mode == 'product-command-diagnostic'
+        if: inputs.mode == 'inspection-command-contracts' || inputs.mode == 'clean-upgrade-command-diagnostic' || inputs.mode == 'product-command-diagnostic' || (inputs.mode == 'legacy-contracts-diagnostic' && inputs.legacy_contract_scope == 'core')
         shell: pwsh
         run: |
           $expected = ((Get-Content ../../package.json -Raw | ConvertFrom-Json).packageManager -split '@')[1]
@@ -155,8 +160,16 @@ jobs:
           } | ConvertTo-Json -Compress
 
       - name: Diagnose full V2.5 contract suite with unchanged default budgets
-        if: inputs.mode == 'legacy-contracts-diagnostic'
+        if: inputs.mode == 'legacy-contracts-diagnostic' && inputs.legacy_contract_scope != 'core'
         run: pnpm installer:test:windows-supervisor-v2-legacy
+
+      - name: Build existing supervisor for core diagnosis
+        if: inputs.mode == 'legacy-contracts-diagnostic' && inputs.legacy_contract_scope == 'core'
+        run: pnpm installer:supervisor:build
+
+      - name: Diagnose existing legacy core group without MSI or recording
+        if: inputs.mode == 'legacy-contracts-diagnostic' && inputs.legacy_contract_scope == 'core'
+        run: pnpm installer:test:windows-supervisor-v2-legacy-core
 
       - name: Diagnose legacy worker live-child contract without MSI or acceptance matrix
         if: inputs.mode == 'legacy-worker-diagnostic'
