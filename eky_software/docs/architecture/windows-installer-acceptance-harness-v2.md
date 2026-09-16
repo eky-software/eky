@@ -2604,6 +2604,18 @@ Seuraava erottava rajaus on nykyisen lukijan suljettu hylkäyssyy ja sen
 synteettinen regressio ennen uutta MSI-koetta; validointia ei löysennetä.
 Tämä ei hyväksy vanhaa PR-ajoa eikä muodosta normaalia julkaisukierrosta.
 
+Lukijan kuusi olemassa olevaa elinkaaren hylkäysrajaa erotetaan valinnaisella
+`lifetimeValidationBranch`-kentällä vain `commandRead`-virheessä. Kenttä on
+suljettu luokka, ei rivin sisältö, prosessitunniste, polku tai aikaleima.
+Alkuperäinen virhekoodi, epäonnistunut analyysi ja komennon exit 1 säilyvät;
+virheellinen taulukko ei julkaise elinkaari- tai cleanup-todistetta.
+Nykyinen `inspector-analysis-diagnostic` saa lukea samalla keruulla jo
+ajettavan synteettisen komentofixturen `-LegacyCommand -ContractFixture`
+-valinnalla. Normaali legacy-consumer ei käytä fixture-valintaa. Kokeessa
+ei rakenneta tai asenneta MSI:tä eikä muuteta keräimiä, aikarajoja tai
+omistajuutta. Tarkoitus on erottaa lukijan hylkäysraja oikealla vientitaulukolla,
+ei todistaa vanhan MSI-jumin korjausta tai korvata normaalihyväksyntää.
+
 Trace-fixturen rajattu valmistelukatselmus osoitti erillisen
 keskeytyssopimuksen puutteen: lokikahvan myöhäinen avautuminen saattoi
 käynnistää prosessin keskeytyksen jälkeen, ja myöhäinen `close` saattoi

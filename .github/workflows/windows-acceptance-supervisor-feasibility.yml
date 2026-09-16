@@ -212,7 +212,7 @@ jobs:
         timeout-minutes: 3
         shell: pwsh
         run: |
-          $output = & ./installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode analyze
+          $output = & ./installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode analyze -LegacyCommand -ContractFixture
           $exitCode = $LASTEXITCODE
           $output | Write-Output
           if ($exitCode -ne 0) { throw 'INSPECTOR_ANALYSIS_DIAGNOSTIC_FAILED' }

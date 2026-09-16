@@ -24,6 +24,22 @@ function Resolve-InspectorTraceErrorCode([string]$Message) {
   return 'INSPECTOR_CAPTURE_UNEXPECTED_FAILURE'
 }
 
+function Stop-InspectorTraceLifetime([string]$Branch) {
+  $failure = [InvalidOperationException]::new('INSPECTOR_TRACE_LIFETIME_INVALID')
+  $failure.Data['lifetimeValidationBranch'] = $Branch
+  throw $failure
+}
+
+function Get-InspectorTraceLifetimeFailureBranch([Exception]$Failure) {
+  if ($Failure.Message -cne 'INSPECTOR_TRACE_LIFETIME_INVALID') { return $null }
+  $branch = $Failure.Data['lifetimeValidationBranch']
+  if ($branch -is [string] -and $branch -cin @('timestampSyntax', 'rowLifetimeOrIdentifier',
+      'processIdentity', 'commandStart', 'processLifetimeOrThreadCount', 'threadLifetimeOrIdentity')) {
+    return $branch
+  }
+  return $null
+}
+
 function Confirm-InspectorCaptureSpace([long]$AvailableBytes) {
   if ($AvailableBytes -lt 6GB) { throw 'INSPECTOR_CAPTURE_SPACE_INSUFFICIENT' }
 }
@@ -239,11 +255,11 @@ function Read-LegacyCommandTrace([string]$Path, [switch]$ContractFixture, [switc
         if ($index -eq 0 -and $fields[$index] -ceq 'MIN') { [double]::NegativeInfinity }
         elseif ($index -eq 1 -and $fields[$index] -ceq 'MAX') { [double]::PositiveInfinity }
         elseif ($fields[$index] -cmatch '^[0-9]{1,16}$') { [double]$fields[$index] / 1000000 }
-        else { throw 'INSPECTOR_TRACE_LIFETIME_INVALID' }
+        else { Stop-InspectorTraceLifetime 'timestampSyntax' }
       })
-      if ($times[0] -gt $times[1] -or $fields[5] -cnotmatch '^[0-9]{1,10}$') { throw 'INSPECTOR_TRACE_LIFETIME_INVALID' }
+      if ($times[0] -gt $times[1] -or $fields[5] -cnotmatch '^[0-9]{1,10}$') { Stop-InspectorTraceLifetime 'rowLifetimeOrIdentifier' }
       if ($fields[2] -ceq 'Process' -and $fields.Count -ge 9) {
-        if ($fields[7] -notmatch '^0x[0-9a-f]+$' -or $fields[6] -cnotmatch '^[0-9]{1,10}$') { throw 'INSPECTOR_TRACE_LIFETIME_INVALID' }
+        if ($fields[7] -notmatch '^0x[0-9a-f]+$' -or $fields[6] -cnotmatch '^[0-9]{1,10}$') { Stop-InspectorTraceLifetime 'processIdentity' }
         $owner = [pscustomobject]@{ label = $label; identifier = $identifier; name = $name;
           start = $times[0]; end = $times[1]; parent = $fields[5]; key = $fields[7]; session = $fields[6];
           commandLine = $fields[8..($fields.Count - 1)] -join ',';
@@ -271,7 +287,7 @@ function Read-LegacyCommandTrace([string]$Path, [switch]$ContractFixture, [switc
        $command.commandLine -cnotmatch '\s--fault-scenario\s+acceptanceInterruption\s+--result-path\s+')) {
     throw 'INSPECTOR_TRACE_PHASE_INVALID'
   }
-  if ([double]::IsInfinity($command.start)) { throw 'INSPECTOR_TRACE_LIFETIME_INVALID' }
+  if ([double]::IsInfinity($command.start)) { Stop-InspectorTraceLifetime 'commandStart' }
   $selected = [Collections.Generic.List[object]]::new()
   $command | Add-Member -NotePropertyName phase -NotePropertyValue 'command'
   $selected.Add($command)
@@ -318,11 +334,11 @@ function Read-LegacyCommandTrace([string]$Path, [switch]$ContractFixture, [switc
     if (@($processes | Where-Object {
       $_ -ne $process -and $_.identifier -ceq $process.identifier -and
       $_.start -le $process.end -and $_.end -ge $process.start
-    }).Count -ne 0 -or $process.threads.Count -eq 0 -or $process.threads.Count -gt 64) { throw 'INSPECTOR_TRACE_LIFETIME_INVALID' }
+    }).Count -ne 0 -or $process.threads.Count -eq 0 -or $process.threads.Count -gt 64) { Stop-InspectorTraceLifetime 'processLifetimeOrThreadCount' }
     foreach ($thread in $process.threads) {
       if ($thread.start -lt $process.start -or $thread.end -gt $process.end -or $thread.thread -ceq '0' -or
           @($process.threads | Where-Object { $_ -ne $thread -and $_.thread -ceq $thread.thread -and
-            $_.start -le $thread.end -and $_.end -ge $thread.start }).Count -ne 0) { throw 'INSPECTOR_TRACE_LIFETIME_INVALID' }
+            $_.start -le $thread.end -and $_.end -ge $thread.start }).Count -ne 0) { Stop-InspectorTraceLifetime 'threadLifetimeOrIdentity' }
     }
   }
   $projection = @($selected | Sort-Object start | ForEach-Object {

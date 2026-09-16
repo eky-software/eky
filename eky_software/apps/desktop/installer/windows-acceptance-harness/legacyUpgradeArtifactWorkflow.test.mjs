@@ -296,6 +296,8 @@ test('inspector analysis diagnosis reuses one native hold without a packaged lif
   assert.ok(steps.indexOf('-Mode start') < steps.indexOf('node --test'));
   assert.ok(steps.indexOf('-Mode stop') > steps.indexOf('node --test'));
   assert.ok(steps.indexOf('-Mode analyze') > steps.indexOf('-Mode stop'));
+  assert.match(steps, /-Mode analyze -LegacyCommand -ContractFixture\s*$/mu);
+  assert.doesNotMatch(source.slice(source.indexOf('  packaged-boundary-diagnostic:')), /-ContractFixture/u);
   assert.match(steps, /always\(\).*steps\.inspector_analysis_start\.outcome != 'skipped'/u);
   assert.match(steps, /always\(\).*steps\.inspector_analysis_stop\.outcome == 'success'/u);
   assert.match(steps, /\$exitCode = \$LASTEXITCODE/u);

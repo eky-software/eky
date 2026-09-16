@@ -1,5 +1,5 @@
 param([Parameter(Mandatory = $true)][ValidateSet('start', 'stop', 'analyze', 'compareEvents')][string]$Mode,
-  [switch]$LegacyCommand, [switch]$WorkspaceFaultCommand)
+  [switch]$LegacyCommand, [switch]$WorkspaceFaultCommand, [switch]$ContractFixture)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -74,7 +74,8 @@ try {
   . (Join-Path $PSScriptRoot 'installerProductInspectionTrace.ps1')
   $readerLoaded = $true
   if ((($LegacyCommand -or $WorkspaceFaultCommand) -and $Mode -cne 'analyze') -or
-      ($LegacyCommand -and $WorkspaceFaultCommand)) { throw 'INSPECTOR_CAPTURE_ARGUMENTS_INVALID' }
+      ($LegacyCommand -and $WorkspaceFaultCommand) -or
+      ($ContractFixture -and !$LegacyCommand)) { throw 'INSPECTOR_CAPTURE_ARGUMENTS_INVALID' }
 
   if ($Mode -ceq 'start') {
     $boundary = 'preparation'
@@ -211,7 +212,7 @@ try {
       if (!(Test-Path -LiteralPath $xperf -PathType Leaf)) { throw 'INSPECTOR_CAPTURE_TOOL_UNAVAILABLE' }
       Invoke-CaptureTool $xperf @('-i', (Join-Path $root 'capture.etl'), '-a', 'process', '-thread', '-withcmdline') 'command-export'
       $boundary = 'commandRead'
-      $commandProjection = Read-LegacyCommandTrace (Join-Path $root 'command-export.private.log') -WorkspaceFaultCommand:$WorkspaceFaultCommand
+      $commandProjection = Read-LegacyCommandTrace (Join-Path $root 'command-export.private.log') -WorkspaceFaultCommand:$WorkspaceFaultCommand -ContractFixture:$ContractFixture
       # Scheduling export is a separate observation. Its failure must not erase
       # already validated lifetimes or turn them into acceptance/cleanup proof.
       foreach ($summary in @(Get-LegacyCommandTraceSummary $commandProjection @() -LifetimeOnly)) {
@@ -275,6 +276,10 @@ try {
   if ($readerLoaded) {
     $shape = @(Get-InspectorTraceFailureShape $failure)
     if ($shape.Count -gt 0) { $result.processLabelShape = $shape }
+    if ($boundary -ceq 'commandRead') {
+      $branch = Get-InspectorTraceLifetimeFailureBranch $failure
+      if ($null -ne $branch) { $result.lifetimeValidationBranch = $branch }
+    }
   }
   if ($code -ceq 'INSPECTOR_CAPTURE_TOOL_FAILED' -and $failure.Data['toolExitCode'] -is [int]) {
     $result.toolExitCode = $failure.Data['toolExitCode']
