@@ -2580,6 +2580,19 @@ Valinnan regressio suorittaa workflow'n todelliset ehdot: core valitsee vain
 olemassa olevan ryhmän, oletus säilyttää täyden diagnostisen sarjan ja normaali
 supervisor-portti säilyy erillisenä. Tämä ei vielä ole viiveen juurisyykorjaus.
 
+Havaintorevision `945ce69f6e697249edc193707884701351ad1c3a`
+[rajattu core-koe](https://github.com/eky-software/eky/actions/runs/35099798055)
+läpäisi 343/343 molemmilla eristetyillä Windows-runnereilla ensimmäisellä
+yrityksellä. Todelliset checkoutit vastasivat lähde-HEADia. Kummankin
+`completed`-tapauksen assertionit valmistuivat, prosessin exit ja close
+havaittiin ennen cleanupia, testiä ei keskeytetty ja cleanup valmistui.
+MSI-, keruu- ja täyden diagnostisen sarjan vaiheet pysyivät ohitettuina.
+Tulos todentaa havaintokytkennän normaalipolun, ei alkuperäisen viiveen
+korjausta tai normaalia kokonaishyväksyntää. Puuttuva erottava näyttö on
+epäonnistuvan tapauksen viimeinen valmistunut vaihe sekä sen exit/close-tila
+ennen siivousta. Uutta samanlaista onnistuvaa toistoa tai aikarajan nostoa
+ei pidetä tämän näytön korvikkeena. Hyväksyntäpari ja julkaisuportti ovat auki.
+
 Jälkikorjausten revision `8a8c083ef6c4b0442cd705ed2fbdf9a176125ada`
 [ensimmäinen normaali kokonaiskierros](https://github.com/eky-software/eky/actions/runs/35090707995)
 hylättiin upgrade-producerin workflow-sopimukseen ennen pakettien rakentamista.
