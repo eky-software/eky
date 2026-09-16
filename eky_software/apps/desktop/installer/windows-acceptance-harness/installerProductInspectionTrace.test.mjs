@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { open, readFile, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { cleanupRunContext, createRunContext } from '../windows-process-supervisor/tests/supervisorContractTestSupport.mjs';
@@ -17,7 +17,7 @@ const COMPLETED_PHASES = ['scriptStarted', 'readerLoaded', 'profileStarted', 'pr
   'eventsReadStarted', 'eventsReadCompleted', 'switchesReadStarted', 'switchesReadCompleted',
   'summaryCompleted', 'resultWriteStarted', 'resultWritten'];
 
-for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureStop', 'decimal', 'toolExit', 'exportOutput', 'eventStatistics', 'externalView', 'commandLifetimes', 'workspaceLifetimes', 'commandAnalysis', 'workspaceAnalysis', 'commandExportFailure', 'commandExportFailureUnreadable', 'cancelledPreparation', 'cancelledCompletion']) test(
+for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureStop', 'decimal', 'toolExit', 'exportOutput', 'eventStatistics', 'externalView', 'commandLifetimes', 'workspaceLifetimes', 'commandAnalysis', 'workspaceAnalysis', 'commandExportFailure', 'commandExportFailureUnreadable', 'cancelledPreparation', 'cancelledCompletion', 'hostUnavailable']) test(
   `external inspector trace keeps ${kind} evidence closed and separate from acceptance`,
   { skip: process.platform !== 'win32', timeout: INSPECTOR_TIMEOUT_MILLISECONDS },
   async (t) => {
@@ -117,6 +117,8 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
       "process.stdout.write('PRIVATE-PROCESS-DATA'); process.stderr.write('PRIVATE-PATH time inversions'); process.exitCode = 23;\n");
     const command = `
       $ErrorActionPreference = 'Stop'
+      if ($PSVersionTable.PSEdition -cne 'Core' -or
+          [Diagnostics.Process]::GetCurrentProcess().ProcessName -cne 'pwsh') { throw 'traceHostMismatch' }
       function Observe-TraceContract([string]$Phase) {
         if ($env:EKY_TRACE_TEST_KIND -ceq 'completed') {
           try { [Console]::Out.WriteLine($Phase) } catch { }
@@ -732,7 +734,7 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
     const signal = cancellation?.signal ?? t.signal;
     const observations = [];
     let errorLog;
-    const runFixture = async () => {
+    const runFixture = async (executable = 'pwsh.exe') => {
       signal.throwIfAborted();
       const acquisition = open(join(context.testRoot, 'stderr.private.log'), 'wx+');
       if (kind === 'cancelledPreparation') cancellation.abort(cancellationError);
@@ -742,7 +744,7 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
         lifecycle.phase = 'processStartRequested';
         timing.preparationDurationMs = Math.floor(performance.now() - testStarted);
         const launchStarted = performance.now();
-        const child = spawn(resolve(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
+        const child = spawn(executable,
           ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', commandPath],
           { stdio: ['ignore', commandExportFailure || kind === 'completed' ? 'pipe' : 'ignore', errorLog.fd], windowsHide: true, env: { ...process.env,
             EKY_TRACE_TEST_ROOT: context.testRoot, EKY_TRACE_TEST_SCRIPT: SCRIPT,
@@ -778,8 +780,12 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
           }
         });
         const exit = await new Promise((resolvePromise, rejectPromise) => {
-          child.once('error', rejectPromise);
-          child.once('close', resolvePromise);
+          let processError;
+          child.once('error', (error) => { processError ??= error; });
+          child.once('close', (code) => {
+            if (processError) rejectPromise(processError);
+            else resolvePromise(code);
+          });
         });
         signal.throwIfAborted();
         if (exit !== (commandExportFailure ? 1 : 0)) {
@@ -787,6 +793,7 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
             .catch(() => ({ buffer: Buffer.alloc(0), bytesRead: 0 }));
           const privateText = buffer.toString('utf8', 0, bytesRead);
           const failure = [
+            'traceHostMismatch',
             'statisticsProviderMissing', 'statisticsLeaked', 'statisticsPresenceGuessed',
             'invalidStatisticsAccepted', 'statisticsReadUnbounded', 'statisticsObservationMissing',
             'statisticsReportInvalid', 'statisticsSuccessInvalid', 'statisticsSuccessOutputInvalid',
@@ -801,6 +808,19 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
         return exit;
       } finally { await errorLog.close(); }
     };
+    if (kind === 'hostUnavailable') {
+      await assert.rejects(runFixture(join(context.testRoot, 'missing-pwsh.exe')),
+        (error) => error.code === 'ENOENT');
+      assert.equal(errorLog.fd, -1);
+      assert.equal(context.fixtureProcesses.size, 1);
+      assert.deepEqual(lifecycle, { phase: 'processStartRequested', spawned: false,
+        exited: false, closed: true });
+      assert.equal(timing.spawnObservedElapsedMs, null);
+      assert.equal(timing.scriptStartedObservedElapsedMs, null);
+      await assert.rejects(readFile(context.resultPath), { code: 'ENOENT' });
+      passed = true;
+      return;
+    }
     if (cancellation) {
       await assert.rejects(runFixture(), (error) => error === cancellationError);
       assert.equal(errorLog.fd, -1);

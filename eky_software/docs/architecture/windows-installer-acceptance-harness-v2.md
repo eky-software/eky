@@ -2615,19 +2615,22 @@ MSI:tä ei rakennettu, WPR:ää ei kerätty eikä budjetteja muutettu.
 Sarja on diagnostiikkaa, ei normaali hyväksyntäpari tai viiveen juurisyykorjaus.
 Uusia samanlaisia toistoja ei käynnistetä tämän sarjan jatkoksi.
 
-Rajattu lähdekatselmus osoitti testin ja testattavan ajopolun isäntäeron:
-`installerProductInspectionTrace.test.mjs` käynnistää Windows PowerShellin
-`powershell.exe`:n, mutta nykyiset keruu-/analyysivaiheet kutsuvat samaa
-`captureInstallerProductInspection.ps1`- ja trace-lukijaa `pwsh`-isännällä.
-Ero ei todista aikakatkaisun aiheuttajaa. Seuraava päätösesitys on kohdistaa
-vain trace-sopimustesti samaan, jo CI:ssä käytettyyn `pwsh`-isäntään ilman
-automaattista Windows PowerShell -varapolkua. Muutos poistaisi tämän testin
-erillisen isäntäympäristön; tuotannon PowerShell-polkuja, muita testiperheitä,
-aikarajoja tai assertioneja ei muutettaisi. Tämä testin ympäristöraja vaatii
-omistajan hyväksynnän ennen toteutusta. Kytkentä, puuttuvan isännän virhe sekä
-nykyiset keskeytys-, tulos- ja siivousregressiot on varmennettava ennen
-normaaleihin hyväksyntäportteihin etenemistä. Alkuperäinen viive jää erilliseksi
-avoimeksi havainnoksi, ellei sille saada suoraa syyn osoittavaa näyttöä.
+Omistaja hyväksyi trace-sopimustestin isännän kohdistamisen samaan `pwsh`-
+ympäristöön, jota nykyiset keruu-/analyysivaiheet jo käyttävät. Vain
+`installerProductInspectionTrace.test.mjs` luopuu erillisestä Windows
+PowerShell -isännästä; tuotannon PowerShell-polut ja muut testiperheet
+säilyvät. Uutta riippuvuutta, asennusta, varapolkua tai aikarajaa ei lisätä.
+Suoritettava fixture varmistaa itse Core/pwsh-isännän ennen trace-lukijan
+käyttöä. Puuttuva isäntä säilyttää käynnistysvirheen; saman käynnistyksen
+`close` ja lokikahvan sulkeminen varmistetaan ilman toista käynnistystä tai
+tekaistua tulosta. Nykyiset keskeytys-, tulos- ja siivousehdot säilyvät.
+Isäntäregressio hylkäsi vanhan kytkennän ennen muutosta. Korjattu trace-sarja
+läpäisi 19/19, kanoninen core-sarja 346/346, legacy-artifact-/workflow-
+sopimukset 30/30 ja CI-sopimukset 55/55. Desktopin typecheck ja build
+läpäisivät. Muuttuneen revision normaalit hyväksyntäportit ovat vielä auki;
+aiempaa kuuden ajon diagnostista sarjaa ei lasketa niiden osaksi.
+Isäntäero ei osoita vanhan aikakatkaisun aiheuttajaa: alkuperäinen viive jää
+erilliseksi avoimeksi havainnoksi ilman suoraa syyn osoittavaa näyttöä.
 
 Revision `ff20f26c8bf172f678ff5213280abb8b1061073d`
 [ensimmäinen normaali kierros](https://github.com/eky-software/eky/actions/runs/35093649797)
