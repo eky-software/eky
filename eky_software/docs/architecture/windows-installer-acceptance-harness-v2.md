@@ -2740,6 +2740,23 @@ CI-kokeen read-only-tarkistimella ja samoilla keruurajoilla, ilman MSI-
 asennuksia tai pakettien rakentamista. Tarkoitus on erottaa keruun
 lopetusrajat; tämä ei ole uusi workspace-uusinta tai julkaisuhyväksyntä.
 
+Tämä [kertakoe](https://github.com/eky-software/eky/actions/runs/35089282031)
+läpäisi ensimmäisellä yrityksellä. Lähde- ja todellinen checkout-revisio
+olivat `b549a5090a029f08c55dc47f839b5bb6500981e3`. Read-only-komentorajan
+sopimus läpäisi 1/1; prosessin poistuminen ja pakolliset tulokset varmennettiin
+ilman MSI-asennuksia tai sisäistä tapahtumakuuntelijaa. Keruun aloitus ja
+lopetus onnistuivat. Nykyinen ja minimaalinen WPA-näkymä löysivät kumpikin
+15 inspector-tapahtumaa samasta muuttumattomasta tallenteesta;
+provider-sidos ja read-only-vaiheiden järjestys validoitiin.
+
+Keruuketjun rajattu perustoimivuus ja lopetusvirheen säilyttävä korjaus ovat
+näin todennettuja. Pitkän workspace-keruun lopetusvirheen syy ja alkuperäisen
+`targetInstall`-odotuksen sisäinen raja jäivät avoimiksi: lyhyen kokeen
+onnistuminen ei erota niiden vaihtoehtoja. Uutta samanlaista MSI-koetta ei
+käynnistetä tämän tuloksen perusteella. Normaali kahden kokonaiskierroksen
+hyväksyntä sekä korjauksen PR-/main-portit ovat edelleen täyttämättä;
+0.2.8-julkaisu ei ole valmis.
+
 #### Aiemmat integraatiocheckpointit
 
 Revision `b1270ab0ed66904a5412752c94a165cada637d94`
