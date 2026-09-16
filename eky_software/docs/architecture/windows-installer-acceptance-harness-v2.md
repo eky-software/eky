@@ -2574,19 +2574,43 @@ todelliset checkoutit ja Electron 38/38 ilman flaky-tulosta varmennettiin.
 [Toisen kierroksen](https://github.com/eky-software/eky/actions/runs/35105498018)
 core run 1 hylkäsi `completed`- ja `interrupted`-trace-testit: 343 läpäisi ja
 2 aikakatkaistiin. Uudet keskeytysregressiot läpäisivät, mutta hyväksyntäpari
-ei täyty. Ensimmäisen tapauksen turvallinen havainto oli
+ei täyty. Kierros on päättynyt hylättynä: muut käynnistyneet jobit läpäisivät,
+legacy-producer ja consumerit jäivät portin jälkeen käynnistymättä ja
+loppukoonti torjui puuttuvan kattavuuden. Ensimmäisen tapauksen turvallinen havainto oli
 `processStartRequested`, `spawned: true`, `exited: false`, `closed: false`.
 Siivous valmistui ja exit/close havaittiin sen jälkeen. Ensimmäistä
 skriptikuittausta ei vastaanotettu; siitä ei päätellä skriptin todellista
 suorituskohtaa tai suoraan natiivikutsun hitautta.
 
-Seuraava rajattu havainto erottaa nykyisessä testissä valmistelun keston,
+Rajattu havainto erottaa nykyisessä testissä valmistelun keston,
 Noden `spawn`-kutsun keston, spawn-ilmoituksen havaitsemisajan ja ensimmäisen
 skriptikuittauksen vastaanottoajan. Se ei mittaa erikseen Win32-kutsun
 sisäistä aikaa eikä muuta aikarajaa tai hyväksymisehtoa. Tuntematon tai
 puuttuva havainto säilyy tuntemattomana. Rajattu core-koe käyttää nykyistä
 diagnostiikkareittiä ilman MSI-rakentamista tai tallennusta; onnistuneita
 diagnooseja ei siirretä hyväksyntäparin osiksi.
+
+Havaintorevision `133a895e3d575d2b50b8dc416eb7d28db7613e37`
+[yksi rajattu core-koe](https://github.com/eky-software/eky/actions/runs/35108618892)
+läpäisi 345/345 molemmilla eristetyillä Windows-runnereilla ensimmäisellä
+yrityksellä. Todelliset checkoutit vastasivat lähde-HEADia. Ensimmäisen
+skriptiviestin jälkeen assertionit, prosessin exit/close ja cleanup
+valmistuivat; aikakatkaisu ei toistunut. MSI- ja keruuvaiheita ei ajettu.
+Normaalin core-jobin ja rajatun kokeen lukitut versiot, valmisteluvastuut
+ja kanoninen testikomento/järjestys vastaavat toisiaan. Tämä ei osoita
+runnerien ajonaikaisten olosuhteiden yhtäläisyyttä tai viiveen aiheuttajaa.
+Puuttuva havainto on edelleen epäonnistuvan käynnistyksen aikajako.
+
+Seuraava päätösesitys on ennalta rajattu kuuden eristetyn core-ajon sarja
+yhdeltä jäädytetyltä checkpointilta, jonka testikoodi vastaa havaintorevisiota:
+kolme nykyisen diagnostisen workflow'n kutsua, kussakin kaksi tuoretta runneria.
+Sarjan tarkka lähde- ja checkout-revisio varmennetaan erikseen.
+Sarjassa ei rakenneta MSI:tä, kerätä WPR:ää,
+muuteta budjetteja tai ajeta kunnes vihreä; kaikki tulokset säilyvät.
+Varmentamaton prosessisiivous keskeyttää sarjan ennen seuraavaa kutsua.
+Sarja vaatii omistajan hyväksynnän, eikä sen vihreyttä lasketa normaaliin
+hyväksyntäpariin. Ellei rajattu sarja tuota erottavaa havaintoa, siitä tehdään
+päätösraportti eikä käynnistetä automaattisesti uusia toistoja.
 
 Revision `ff20f26c8bf172f678ff5213280abb8b1061073d`
 [ensimmäinen normaali kierros](https://github.com/eky-software/eky/actions/runs/35093649797)
