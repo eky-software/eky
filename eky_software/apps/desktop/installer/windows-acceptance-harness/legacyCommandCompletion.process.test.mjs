@@ -86,6 +86,18 @@ test('command boundary diagnostics keep only a bounded closed projection', () =>
     { phase: 'resultWritten', status: 'failed', errorCode: 'other' },
     { phase: 'supervisor', status: 'failed', errorCode: 'cleanupUnverified' },
   ]);
+  recordCommandBoundaryEvidence(tail, { phase: 'resultPublication', status: 'failed',
+    errorCode: 'publicationDeadlineExceeded', resultCode: 'flush', path: 'private' });
+  recordCommandBoundaryEvidence(tail, { phase: 'resultPublication', status: 'failed',
+    errorCode: 'private failure', resultCode: 'private path' });
+  assert.deepEqual(tail.slice(-2), [
+    { phase: 'resultPublication', status: 'failed', errorCode: 'publicationDeadlineExceeded', resultCode: 'flush' },
+    { phase: 'resultPublication', status: 'failed', errorCode: 'other', resultCode: 'other' },
+  ]);
+  recordCommandBoundaryEvidence(tail, { phase: 'resultPublicationLastCompleted', status: 'failed',
+    errorCode: 'publicationWriteException', resultCode: 'close', path: 'private' });
+  assert.deepEqual(tail.at(-1), { phase: 'resultPublicationLastCompleted', status: 'failed',
+    errorCode: 'publicationWriteException', resultCode: 'close' });
   const original = new Error('original assertion');
   let diagnostic;
   assert.throws(() => reportCommandFailure({ diagnostic(value) { diagnostic = JSON.parse(value); } }, [], original, tail),
@@ -156,13 +168,14 @@ test('optional command evidence observer failure preserves the real terminal bou
   verified = true;
 });
 
-for (const stage of ['WorkerReadHold', 'ResultWriteHold', 'ResultWriteHoldAfterFailure']) {
+for (const stage of ['WorkerReadHold', 'ResultWriteHold', 'ResultWriteHoldAfterFailure', 'PublicationBudgetExhausted']) {
   test(`command owner exits after its own result I/O stalls: ${stage}`, {
     skip: process.platform !== 'win32', timeout: 30_000,
   }, async (t) => {
     const context = await createRunContext('command-owner-io-' + stage);
     t.after(() => cleanupRunContext(context, { preserveEvidence: true }));
-    await writeRequest(context, createRequest(context, stage === 'ResultWriteHoldAfterFailure' ? 'exitNonZero' : 'exitZero', {
+    const failedWorker = ['ResultWriteHoldAfterFailure', 'PublicationBudgetExhausted'].includes(stage);
+    await writeRequest(context, createRequest(context, failedWorker ? 'exitNonZero' : 'exitZero', {
       timeoutMilliseconds: 4_000, cleanupReserveMilliseconds: 1_000,
     }));
     const execution = startProgramFailureFixture(context, 'phaseContinuation' + stage);
@@ -174,7 +187,8 @@ for (const stage of ['WorkerReadHold', 'ResultWriteHold', 'ResultWriteHoldAfterF
     assert.equal(completed.signal, null);
     assert.deepEqual(events, ['exit', 'close']);
     const marker = JSON.parse(await readFile(join(context.testRoot, 'host-io-entered.json'), 'utf8'));
-    assert.equal(marker.phase, stage === 'WorkerReadHold' ? 'workerRead' : 'resultWrite');
+    assert.equal(marker.phase, stage === 'WorkerReadHold' ? 'workerRead'
+      : stage === 'PublicationBudgetExhausted' ? 'publicationBudgetExhausted' : 'resultWrite');
     const report = JSON.parse(await readFile(join(context.testRoot, 'phase-completion.json'), 'utf8'));
     assert.deepEqual(report.events, ['firstPhaseReturned']);
     assert.equal(report.first.processBoundaryVerified, false);
@@ -189,13 +203,61 @@ for (const stage of ['WorkerReadHold', 'ResultWriteHold', 'ResultWriteHoldAfterF
       assert.equal(result.workerResultCode, 'notChecked');
       assert.equal(report.first.resultWritten, true);
     } else {
-      assert.equal(report.first.processResultCode, stage === 'ResultWriteHoldAfterFailure' ? 'processExitFailed' : 'processCompleted');
+      assert.equal(report.first.processResultCode, failedWorker ? 'processExitFailed' : 'processCompleted');
       assert.equal(report.first.processTreeAbsent, true);
       assert.equal(report.first.resultWritten, false);
       await assert.rejects(lstat(context.resultPath), { code: 'ENOENT' });
+      const publication = completed.evidence.filter((entry) => entry.phase === 'resultPublication');
+      assert.deepEqual(publication.map(({ status, errorCode, resultCode }) => ({ status, errorCode, resultCode })), [
+        { status: 'failed', errorCode: stage === 'PublicationBudgetExhausted'
+          ? 'publicationBudgetExhausted' : 'publicationDeadlineExceeded',
+        resultCode: stage === 'PublicationBudgetExhausted' ? 'notStarted' : 'writerStarted' },
+      ]);
+      assert.equal(completed.evidence.find((entry) => entry.phase === 'resultPublicationLastCompleted')?.resultCode,
+        'notStarted');
+      assert.equal(context.supervisorProcesses.size, 0);
     }
   });
 }
+
+test('late publication cannot revive a failed command or authorize another phase', {
+  skip: process.platform !== 'win32', timeout: 30_000,
+}, async (t) => {
+  const context = await createRunContext('late-publication');
+  t.after(() => cleanupRunContext(context, { preserveEvidence: true }));
+  await writeRequest(context, createRequest(context, 'exitZero', {
+    timeoutMilliseconds: 4_000, cleanupReserveMilliseconds: 1_000,
+  }));
+  const execution = startProgramFailureFixture(context, 'phaseContinuationLateResultWrite');
+  const receipts = [];
+  execution.child.once('exit', () => receipts.push('exit'));
+  execution.child.once('close', () => receipts.push('close'));
+  const completed = await execution.completion;
+  assert.deepEqual(receipts, ['exit', 'close']);
+  assert.equal(completed.signal, null);
+  assert.equal(completed.exitCode, 1);
+  const report = JSON.parse(await readFile(join(context.testRoot, 'phase-completion.json'), 'utf8'));
+  assert.deepEqual(report.events, ['firstPhaseReturned', 'lateWriterReturned']);
+  assert.equal(report.rootPresentBeforeRelease, true);
+  assert.equal(report.resultAbsentBeforeRelease, true);
+  assert.equal(report.lateWriteCompleted, true);
+  assert.equal(report.first.resultWritten, false);
+  assert.equal(report.first.processBoundaryVerified, false);
+  assert.equal(report.first.processResultCode, 'processCompleted');
+  assert.equal(report.first.workerResultCode, 'workerResultValidated');
+  assert.equal(report.first.cleanupResultCode, 'notRequired');
+  assert.equal(report.first.processTreeAbsent, true);
+  assert.equal(report.second, null);
+  assert.ok(report.publicationPhases.includes('publish:completed'));
+  assert.equal((await lstat(context.resultPath)).isFile(), true);
+  await assert.rejects(readWindowsAcceptanceSupervisorResult(context.resultPath, {
+    artifactDescriptorSha256: context.artifactDescriptorSha256, runNonce: context.runNonce,
+    scenario: context.scenario, supervisorExitCode: completed.exitCode,
+  }), /WINDOWS_ACCEPTANCE_SUPERVISOR_RESULT_OUTCOME_INVALID/);
+  assert.equal(context.supervisorProcesses.size, 0);
+  await cleanupRunContext(context, { preserveEvidence: true });
+  assert.equal((await lstat(context.testRoot)).isDirectory(), true);
+});
 
 for (const stage of ['Completed', 'WorkerFailed', 'Deadline', 'CleanupUnverified',
   'PublicationFailed', 'RequestInvalid', 'BlockedEvidence']) {
@@ -231,6 +293,12 @@ for (const stage of ['Completed', 'WorkerFailed', 'Deadline', 'CleanupUnverified
     const report = JSON.parse(await readFile(join(context.testRoot, 'phase-completion.json'), 'utf8'));
     const succeeded = ['Completed', 'BlockedEvidence'].includes(stage);
     const continued = !['CleanupUnverified', 'PublicationFailed', 'RequestInvalid'].includes(stage);
+    if (stage === 'Completed') {
+      assert.deepEqual(report.publicationPhases,
+        ['temporaryCreate', 'serialize', 'flush', 'close', 'publish', 'temporaryCleanup', 'completed']
+          .flatMap((phase) => [phase + ':started', phase + ':completed']));
+      assert.equal(completed.standardOutput.includes('privateFixtureObserverFailure'), false);
+    }
     assert.equal(completed.exitCode, succeeded ? 0 : 1);
     assert.equal(report.exitCode, completed.exitCode);
     assert.equal(report.first.exitCode, succeeded ? 0 : 1);

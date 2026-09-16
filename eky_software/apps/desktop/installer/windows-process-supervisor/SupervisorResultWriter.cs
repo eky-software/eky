@@ -26,14 +26,34 @@ internal static class SupervisorResultWriter
         SupervisorRequest request,
         SupervisorOutcome outcome,
         long durationMilliseconds
+    ) => Write(request, outcome, durationMilliseconds, null);
+
+    internal static void Write(
+        SupervisorRequest request,
+        SupervisorOutcome outcome,
+        long durationMilliseconds,
+        Action<SupervisorResultWritePhase, bool>? observe
     )
     {
+        var phase = SupervisorResultWritePhase.TemporaryCreate;
+        var lastCompleted = SupervisorResultWritePhase.NotStarted;
+        void Enter(SupervisorResultWritePhase next)
+        {
+            phase = next;
+            try { observe?.Invoke(next, false); } catch { /* Optional observation only. */ }
+        }
+        void Complete()
+        {
+            lastCompleted = phase;
+            try { observe?.Invoke(phase, true); } catch { /* Optional observation only. */ }
+        }
         var temporaryPath = Path.Combine(
             Path.GetDirectoryName(request.ResultPath)!,
             $"result-{Guid.NewGuid():N}.tmp"
         );
         try
         {
+            Enter(SupervisorResultWritePhase.TemporaryCreate);
             using (var stream = new FileStream(
                 temporaryPath,
                 FileMode.CreateNew,
@@ -43,28 +63,51 @@ internal static class SupervisorResultWriter
                 FileOptions.WriteThrough
             ))
             {
+                Complete();
+                Enter(SupervisorResultWritePhase.Serialize);
                 JsonSerializer.Serialize(stream, CreateValue(request, outcome, durationMilliseconds));
+                Complete();
+                Enter(SupervisorResultWritePhase.Flush);
                 stream.Flush(true);
+                Complete();
+                Enter(SupervisorResultWritePhase.Close);
             }
+            Complete();
+            Enter(SupervisorResultWritePhase.Publish);
             File.Move(temporaryPath, request.ResultPath, false);
+            Complete();
         }
         catch
         {
-            throw new SupervisorResultWriteFailure();
+            throw new SupervisorResultWriteFailure(phase, lastCompleted);
         }
         finally
         {
             try
             {
+                Enter(SupervisorResultWritePhase.TemporaryCleanup);
                 File.Delete(temporaryPath);
+                Complete();
             }
             catch
             {
                 // A result-write failure remains the terminal supervisor outcome.
             }
         }
+        Enter(SupervisorResultWritePhase.Completed);
+        Complete();
     }
 }
 
-internal sealed class SupervisorResultWriteFailure()
-    : Exception("resultWriteFailed");
+internal enum SupervisorResultWritePhase
+{
+    NotStarted, WriterStarted, TemporaryCreate, Serialize, Flush, Close, Publish, TemporaryCleanup, Completed,
+}
+
+internal sealed class SupervisorResultWriteFailure(SupervisorResultWritePhase? phase = null,
+    SupervisorResultWritePhase? lastCompletedPhase = null)
+    : Exception("resultWriteFailed")
+{
+    internal SupervisorResultWritePhase? Phase { get; } = phase;
+    internal SupervisorResultWritePhase? LastCompletedPhase { get; } = lastCompletedPhase;
+}

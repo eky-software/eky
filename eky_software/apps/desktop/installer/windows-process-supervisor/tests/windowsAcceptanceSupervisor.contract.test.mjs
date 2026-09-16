@@ -599,6 +599,14 @@ test(
     );
     const writerCompletion = await writerExecution.completion;
     assert.equal(writerCompletion.exitCode, 1);
+    assert.deepEqual(writerCompletion.evidence.filter((entry) => entry.phase === 'resultPublication')
+      .map(({ status, errorCode, resultCode }) => ({ status, errorCode, resultCode })), [
+      { status: 'failed', errorCode: 'publicationWriteException', resultCode: 'publish' },
+    ]);
+    assert.deepEqual(writerCompletion.evidence.filter((entry) => entry.phase === 'resultPublicationLastCompleted')
+      .map(({ status, errorCode, resultCode }) => ({ status, errorCode, resultCode })), [
+      { status: 'failed', errorCode: 'publicationWriteException', resultCode: 'close' },
+    ]);
     assert.ok(
       writerCompletion.evidence.find(
         (entry) =>

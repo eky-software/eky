@@ -2549,6 +2549,58 @@ Tämä osuus erottaa nykyisen julkaisutyön historiallisesta tutkimusnäytöstä
 
 #### Ajantasaiset julkaisuesteet ja päätökset
 
+PR #270:n lähderevision `42a8bcdac35dbdba40327dd6083e0193ee30b414`
+[normaali ajo 35139815567](https://github.com/eky-software/eky/actions/runs/35139815567)
+päättyi hylättynä ensimmäisellä yrityksellä. Todellinen checkout oli
+`ba29782772a0f5b205d6805f753e9cf38a869845`.
+[Saman revision riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/35139815108)
+läpäisi. Kolme varsinaista epäonnistumista pidetään erillään:
+
+- Upgrade-producerin Corepack/pnpm-lataus kaatui ennen artifact-buildia.
+  Tulos ei ole MSI- tai sovellustestin epäonnistuminen.
+- Legacy core run 1 läpäisi 353/354; 8.3-alias-testin PowerShell/COM-
+  valmistelu aikakatkaistiin ennen varsinaista watcher-tarkistusta.
+- Workspace fault run 2:n `activeWorkspaceFirstStartFailure` hylättiin
+  `inspectTargetAfter`-vaiheen supervisor-resultin julkaisuun. Worker-tulos
+  hyväksyttiin ja vaiheen prosessipuu todettiin poissaolevaksi, mutta
+  `resultWriteFailed` ei erottanut kirjoituspoikkeusta ja julkaisuajan
+  loppumista. Puuttuva tulos ei kelpaa koko komennon tai siivouksen näytöksi.
+
+Rajattu testituen korjaus korvaa vain alias-fixturen PowerShell/COM-kyselyn
+olemassa olevan käännetyn contract-fixturen `GetShortPathNameW`-kutsulla.
+Sama kymmenen sekunnin valmisteluraja säilyy. Fixture ei luo jälkeläisiä;
+tulos luetaan vasta sen poistuttua, aito lyhytnimialias ja sama hakemisto
+varmennetaan, eikä puuttuvaa aliasia korvata arvauksella tai ohitetulla testillä.
+Virheellinen valmistelu ei käynnistä watcheria. Tämä ei osoita vanhan
+valmisteluviiveen sisäistä syytä.
+
+Nykyinen result-writer välittää vain suljetun, muistissa olevan kirjoitusvaiheen.
+Epäonnistumisen valinnainen `resultPublication`-havainto erottaa jo kuluneen
+julkaisuvaran, kirjoitusta odottaessa päättyneen varan ja kirjoituspoikkeuksen.
+Erillinen `resultPublicationLastCompleted` ilmoittaa viimeisen valmistuneen
+vaiheen; operaation aloitus ei ole valmistumistodiste. Kirjoituspoikkeus
+säilyttää alkuperäisen vaiherajan myös tilapäistiedoston siivouksen jälkeen.
+Pakollinen `resultWriteFailed`, alkuperäiset process/worker/cleanup-tulokset,
+nykyinen viiden sekunnin poistumisvaraus ja jatkamisen esto säilyvät.
+Havaintovirhe ei saa muuttaa tulostiedostoa tai komennon onnistumista.
+Nykyisen komentofixturen regressio vapauttaa estyneen oikean kirjoittimen
+vasta hylätyn vaiheen palattua: myöhäinen tiedosto ei muuta exit-koodia,
+valtuuta seuraavaa vaihetta tai poista aineistoa. Lukija hylkää onnistuneeksi
+merkityn myöhäisen tiedoston, kun todellinen komentoprosessi poistui virheenä.
+Tämä täsmentää seuraavan mahdollisen virheen näyttöä, ei nimeä aiemman
+julkaisuvirheen syytä. Uuden korjauksen normaalit hyväksyntäportit ovat auki.
+
+Corepackin latausvirhe on erillinen työkaluketjun havainto. CI:n lukitun
+[Node 24.19.0:n Undici-versio on 7.29.0](https://github.com/nodejs/node/blob/v24.19.0/deps/undici/src/package.json),
+ja sen [Parser.finish sisältää kaatuneen assertionin](https://github.com/nodejs/node/blob/v24.19.0/deps/undici/src/lib/dispatcher/client-h1.js).
+Virheluokka vastaa [Undici #5360](https://github.com/nodejs/undici/issues/5360)-havaintoa
+sekä korjauksia [#5389](https://github.com/nodejs/undici/pull/5389) ja
+[#5474](https://github.com/nodejs/undici/pull/5474). Myös tarkistetussa
+[Node 24.21.0:n lähteessä](https://github.com/nodejs/node/blob/v24.21.0/deps/undici/src/lib/dispatcher/client-h1.js)
+sama assertion säilyy. Pelkkää LTS-version nostoa ei siten esitetä tämän
+virheen korjauksena. Ei sovellusriippuvuutta, yleistä uusintaa tai
+työkaluversion muutosta; lataushäiriö ei muutu MSI-testitulokseksi.
+
 Revision `b4f48e392d3e6dc81bd0de4fb76ec88e9fad261a` kaksi normaalia
 kokonaiskierrosta
 ([35113921643](https://github.com/eky-software/eky/actions/runs/35113921643),

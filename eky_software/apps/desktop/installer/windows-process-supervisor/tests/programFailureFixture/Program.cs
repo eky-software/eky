@@ -14,6 +14,7 @@ if (
 }
 
 var mode = args[1];
+if (mode == "shortPathLookup") return ShortPathContract.Run(args[3]);
 if (mode == "commandFixtureBudget")
 {
     using var input = JsonDocument.Parse(File.ReadAllText(args[3]));

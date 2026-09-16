@@ -135,6 +135,9 @@ internal static class SupervisorProgram
         Action<SupervisorRequest, SupervisorOutcome, long>? writeResult
     )
     {
+        var publicationPhase = (int)SupervisorResultWritePhase.NotStarted;
+        var publicationLastCompleted = (int)SupervisorResultWritePhase.NotStarted;
+        var failureCode = "publicationWriteException";
         try
         {
             // Use the existing caller exit reservation, never extend the
@@ -143,21 +146,45 @@ internal static class SupervisorProgram
             var duration = stopwatch.ElapsedMilliseconds;
             var remaining = Math.Min(ExitReserveMilliseconds,
                 request.TimeoutMilliseconds + (long)ExitReserveMilliseconds - duration);
-            if (remaining <= 0) throw new SupervisorResultWriteFailure();
+            if (remaining <= 0)
+            {
+                failureCode = "publicationBudgetExhausted";
+                throw new SupervisorResultWriteFailure();
+            }
             var publication = Task.Run(() =>
-                (writeResult ?? SupervisorResultWriter.Write)(request, outcome, duration));
+            {
+                Volatile.Write(ref publicationPhase, (int)SupervisorResultWritePhase.WriterStarted);
+                if (writeResult is not null) writeResult(request, outcome, duration);
+                else SupervisorResultWriter.Write(request, outcome, duration,
+                    (phase, completed) =>
+                    {
+                        Volatile.Write(ref publicationPhase, (int)phase);
+                        if (completed) Volatile.Write(ref publicationLastCompleted, (int)phase);
+                    });
+            });
             if (Task.WaitAny([publication], (int)remaining) != 0)
             {
                 _ = publication.ContinueWith(completed => { _ = completed.Exception; },
                     TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
+                failureCode = "publicationDeadlineExceeded";
                 throw new SupervisorResultWriteFailure();
             }
             publication.GetAwaiter().GetResult();
             evidence?.Write("resultWritten", "completed");
             return true;
         }
-        catch
+        catch (Exception error)
         {
+            // Snapshot only closed in-memory state; diagnostics perform no result I/O.
+            // A late writer cannot change this failure or authorize another phase.
+            var phase = (error as SupervisorResultWriteFailure)?.Phase ??
+                (SupervisorResultWritePhase)Volatile.Read(ref publicationPhase);
+            var lastCompleted = (error as SupervisorResultWriteFailure)?.LastCompletedPhase ??
+                (SupervisorResultWritePhase)Volatile.Read(ref publicationLastCompleted);
+            evidence?.Write("resultPublication", "failed",
+                resultCode: JsonNamingPolicy.CamelCase.ConvertName(phase.ToString()), errorCode: failureCode);
+            evidence?.Write("resultPublicationLastCompleted", "failed",
+                resultCode: JsonNamingPolicy.CamelCase.ConvertName(lastCompleted.ToString()), errorCode: failureCode);
             evidence?.Write(
                 "resultWritten",
                 "failed",

@@ -119,12 +119,18 @@ export async function describeCommandPhase(phaseRoot, phase, read = readCommandP
 export function recordCommandBoundaryEvidence(tail, value) {
   if (!['fixtureCleanup', 'requestValidated', 'jobCreated', 'hostStarted', 'hostAssigned',
     'waitStarted', 'hostExited', 'deadlineExceeded', 'cleanupStarted', 'cleanupCompleted',
-    'processTreeAbsent', 'workerResultValidated', 'resultWritten', 'supervisor'].includes(value?.phase) ||
+    'processTreeAbsent', 'workerResultValidated', 'resultPublication', 'resultPublicationLastCompleted',
+    'resultWritten', 'supervisor'].includes(value?.phase) ||
     !['started', 'completed', 'failed'].includes(value?.status)) return;
   const entry = { phase: value.phase, status: value.status };
   if (value.errorCode !== undefined) entry.errorCode = ['requestFileInvalid', 'unexpectedFailure',
     'resultWriteFailed', 'deadlineExceeded', 'cleanupFailed', 'cleanupUnverified', 'processStartFailed',
-    'processExitFailed'].includes(value.errorCode) ? value.errorCode : 'other';
+    'processExitFailed', 'publicationBudgetExhausted', 'publicationDeadlineExceeded',
+    'publicationWriteException'].includes(value.errorCode) ? value.errorCode : 'other';
+  if (['resultPublication', 'resultPublicationLastCompleted'].includes(value.phase) && value.resultCode !== undefined) {
+    entry.resultCode = ['notStarted', 'writerStarted', 'temporaryCreate', 'serialize', 'flush', 'close',
+      'publish', 'temporaryCleanup', 'completed'].includes(value.resultCode) ? value.resultCode : 'other';
+  }
   tail.push(entry);
   if (tail.length > 20) tail.shift();
 }
