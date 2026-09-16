@@ -2562,7 +2562,7 @@ siivousta. Saman artifactin `10457883033` toinen consumer läpäisi. Puuttuva
 epäonnistuneen consumerin loppuloki ei osoita MSI:n, supervisorin tai runnerin
 juurisyytä. PR, merge ja julkaisu pysyvät porttiensa takana.
 
-Seuraava rajattu todiste kohdistuu legacy-workerin nykyiseen suoraan
+Rajattu todiste kohdistuu legacy-workerin nykyiseen suoraan
 MSI-kutsuun. `sourceInstall` ja `majorUpgrade` välittävät nykyiseen
 vaihehavaintoon vain suljetut `processSpawnRequested`, `processSpawned`,
 `processStartFailed`, `processOperationFailed`, `processExited` ja
@@ -2586,6 +2586,23 @@ pelkkää onnistumista vanhan häiriön korjaukseksi. Nykyinen trace-projektio
 erottaa komentoa ja sen vaiheprosesseja, ei yksin todista MSI-lapsen
 poistumista. Aiemmat trace-fixturen korjaukset ja niiden näyttö ovat alla
 erillistä historiaa, eivät tämän MSI-odotuksen selitys.
+
+Havaintorevision `39b6b863bf9344facae0a20fe9acc4d9e088408f`
+[yksi rajattu koe](https://github.com/eky-software/eky/actions/runs/35131637796)
+käytti samaa artifactia `10457883033` ilman rebuildiä. Todellinen checkout
+vastasi havaintorevisiota, paketin build pysyi `3b52d51`-revisiona ja
+descriptorin sekä molempien MSI:den tavut varmennettiin ennen ja jälkeen.
+Molempien MSI-kutsujen request/spawn/exit/close havaittiin; legacy-skenaario,
+komento, pakollisen tuloksen tarkistin, semanttiset jälkiehdot, asennuksen
+poisto ja fixture-siivoaminen valmistuivat. Alkuperäinen jumi ei toistunut.
+Keruun aloitus ja lopetus onnistuivat, mutta analyysi hylättiin rajalla
+`commandRead`: `INSPECTOR_TRACE_LIFETIME_INVALID`. Prosessitaulukon vienti
+oli palautunut ennen tätä hylkäystä; sitä ei nimetä WPA-vientivirheeksi.
+Koko diagnostinen job jäi hylätyksi, eikä ulkoisesta prosessi-/säieanalyysistä
+ole hyväksyttyä todistetta. Tarkka hylätty elinkaariehto puuttuu yhä.
+Seuraava erottava rajaus on nykyisen lukijan suljettu hylkäyssyy ja sen
+synteettinen regressio ennen uutta MSI-koetta; validointia ei löysennetä.
+Tämä ei hyväksy vanhaa PR-ajoa eikä muodosta normaalia julkaisukierrosta.
 
 Trace-fixturen rajattu valmistelukatselmus osoitti erillisen
 keskeytyssopimuksen puutteen: lokikahvan myöhäinen avautuminen saattoi
