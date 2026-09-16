@@ -2716,6 +2716,30 @@ prosessin ja säikeen; vientivirhe ei poista jo validoituja havaintoja.
 Tämä näyttö hyväksyy rajatun kokeen kytkennän, ei vielä alkuperäisen vian
 korjausta tai julkaisua.
 
+Revision `0d8054bc29a8aa116203434360a2fd5a44c2112f`
+[yksi järjestyksen säilyttävä workspace-koe](https://github.com/eky-software/eky/actions/runs/35086869232)
+läpäisi kaikki kolme komentoa ensimmäisellä yrityksellä. Harness ja checkout
+olivat `0d8054b`; artifact ja sen build-revisio säilyivät yllä nimettyinä.
+Pakolliset tulokset, semanttiset jälkiehdot, asennusten poisto, lopulliset
+tuotetilat, profiilivertailu, fixture-poisto sekä ennen/jälkeen-tavusidos
+varmennettiin. Alkuperäinen `targetInstall`-odotus ei toistunut.
+
+Keruun aloitus onnistui, mutta lopetus palautti `captureUnverified`-tuloksen
+ja analyysi ohitettiin. Jobin vihreys ei siis tarkoita onnistunutta keruuta
+eikä alkuperäisen viiveen syyn paikantamista. Vanha `recorderStop`-luokka ei
+erottanut keräinten esitarkistusta, varsinaista lopetusta ja jälkitarkistusta;
+myös peruutussiivouksen virhe saattoi peittää alkuperäisen lopetusvirheen.
+Rajattu korjaus nykyiseen keruuskriptiin säilyttää nämä rajat ja erillisen
+`recordingCleanup`-tuloksen. Se ei muuta keruuta, testien omistajuutta tai
+aikarajoja eikä hyväksy varmentamatonta tallennusta. Nykyisen skriptin
+synteettinen regressio todisti virheen ennen korjausta; jälkilukijasarja
+läpäisi tämän jälkeen 16/16 ja workflow-sopimukset 21/21.
+
+Omistaja hyväksyi seuraavaksi yhden nykyisen `inspector-external-diagnostic`-
+CI-kokeen read-only-tarkistimella ja samoilla keruurajoilla, ilman MSI-
+asennuksia tai pakettien rakentamista. Tarkoitus on erottaa keruun
+lopetusrajat; tämä ei ole uusi workspace-uusinta tai julkaisuhyväksyntä.
+
 #### Aiemmat integraatiocheckpointit
 
 Revision `b1270ab0ed66904a5412752c94a165cada637d94`

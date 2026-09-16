@@ -9,6 +9,7 @@ $instance = $null
 $wpr = $null
 $boundary = 'context'
 $readerLoaded = $false
+$recordingCleanup = $null
 
 # Invoked only by opt-in CI observation steps. Their existing step limits
 # bound recorder/exporter commands; this file never starts or stops a test.
@@ -117,7 +118,7 @@ try {
     Invoke-CaptureTool $wpr @('-start', "$cpuProfile!CPU", '-start', "$profile!EkyInspector",
       '-filemode', '-recordtempto', $recordingRoot, '-instancename', $instance) 'start'
   } elseif ($Mode -ceq 'stop') {
-    $boundary = 'recorderStop'
+    $boundary = 'collectorStatus'
     if (!(Test-Path -LiteralPath (Join-Path $root 'start-attempted'))) { throw 'INSPECTOR_CAPTURE_NOT_STARTED' }
     $collectorFailure = $null
     try {
@@ -125,17 +126,32 @@ try {
       Confirm-InspectorCaptureCollectors ([IO.File]::ReadAllText((Join-Path $root 'collectors-before-stop.private.log')))
     } catch { $collectorFailure = $_.Exception }
     try {
+      $boundary = 'recorderStop'
       Invoke-CaptureTool $wpr @('-stop', (Join-Path $root 'capture.etl'), '-instancename', $instance) 'stop'
+      $boundary = 'recorderStatus'
       Confirm-RecorderStopped 'after'
+      $recordingCleanup = [ordered]@{ status = 'completed'; phase = $boundary }
     } catch {
+      $stopFailure = $_.Exception
+      $stopBoundary = $boundary
       # Cancel only this recording, never another WPR session or test process.
-      Invoke-CaptureTool $wpr @('-cancel', '-instancename', $instance) 'cancel'
-      Confirm-RecorderStopped 'after-cancel'
-      throw 'INSPECTOR_CAPTURE_STOP_FAILED'
+      try {
+        $boundary = 'recorderCancel'
+        Invoke-CaptureTool $wpr @('-cancel', '-instancename', $instance) 'cancel'
+        $boundary = 'recorderCancelStatus'
+        Confirm-RecorderStopped 'after-cancel'
+        $recordingCleanup = [ordered]@{ status = 'completed'; phase = $boundary }
+      } catch {
+        $recordingCleanup = [ordered]@{ status = 'failed'; phase = $boundary;
+          errorCode = Resolve-InspectorTraceErrorCode $_.Exception.Message }
+        if ($_.Exception.Data['toolExitCode'] -is [int]) { $recordingCleanup.toolExitCode = $_.Exception.Data['toolExitCode'] }
+      }
+      $boundary = $stopBoundary
+      throw $stopFailure
     }
     # A cap-stopped/missing collector or event loss cannot be cured by a merge.
     # Recorder cleanup is still mandatory when this diagnostic check fails.
-    if ($null -ne $collectorFailure) { throw $collectorFailure }
+    if ($null -ne $collectorFailure) { $boundary = 'collectorStatus'; throw $collectorFailure }
     [IO.File]::WriteAllText((Join-Path $root 'stopped'), '')
   } elseif ($Mode -ceq 'compareEvents') {
     $boundary = 'stopVerification'
@@ -255,6 +271,7 @@ try {
   }
   $result = [ordered]@{ schemaVersion = 1; operation = 'installerProductInspectionCapture'; phase = $Mode;
     status = 'failed'; resultCode = 'captureUnverified'; failureBoundary = $boundary; errorCode = $code }
+  if ($null -ne $recordingCleanup) { $result.recordingCleanup = $recordingCleanup }
   if ($readerLoaded) {
     $shape = @(Get-InspectorTraceFailureShape $failure)
     if ($shape.Count -gt 0) { $result.processLabelShape = $shape }

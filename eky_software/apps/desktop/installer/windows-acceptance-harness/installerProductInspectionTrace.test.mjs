@@ -14,7 +14,7 @@ const SWITCH_HEADERS = ['New Process', 'New Thread Id', 'Switch-In Time (s)', 'L
 const event = (phase, time, provider = PROVIDER) => [provider, 'synthetic.exe (123)', '456', phase, time, time, 'PRIVATE-FIXTURE-DATA'];
 const csv = (rows) => rows.map((row) => row.map((field) => `"${String(field).replaceAll('"', '""')}"`).join(',')).join('\r\n');
 
-for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal', 'toolExit', 'exportOutput', 'eventStatistics', 'externalView', 'commandLifetimes', 'workspaceLifetimes', 'commandAnalysis', 'workspaceAnalysis', 'commandExportFailure', 'commandExportFailureUnreadable']) test(
+for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureStop', 'decimal', 'toolExit', 'exportOutput', 'eventStatistics', 'externalView', 'commandLifetimes', 'workspaceLifetimes', 'commandAnalysis', 'workspaceAnalysis', 'commandExportFailure', 'commandExportFailureUnreadable']) test(
   `external inspector trace keeps ${kind} evidence closed and separate from acceptance`,
   { skip: process.platform !== 'win32', timeout: INSPECTOR_TIMEOUT_MILLISECONDS },
   async (t) => {
@@ -96,6 +96,75 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
       $ErrorActionPreference = 'Stop'
       [Threading.Thread]::CurrentThread.CurrentCulture = [Globalization.CultureInfo]::InvariantCulture
       . $env:EKY_TRACE_TEST_SCRIPT
+      if ($env:EKY_TRACE_TEST_KIND -ceq 'captureStop') {
+        $tokens = $null; $errors = $null
+        $ast = [Management.Automation.Language.Parser]::ParseFile(
+          (Join-Path (Split-Path $env:EKY_TRACE_TEST_SCRIPT -Parent) 'captureInstallerProductInspection.ps1'), [ref]$tokens, [ref]$errors)
+        $branch = $ast.Find({ param($node)
+          $node -is [Management.Automation.Language.IfStatementAst] -and
+            @($node.Clauses | Where-Object { $_.Item1.Extent.Text -ceq "$" + "Mode -ceq 'stop'" }).Count -eq 1
+        }, $true)
+        if ($errors.Count -ne 0 -or $null -eq $branch) { throw 'captureStopBranchMissing' }
+        $clause = @($branch.Clauses | Where-Object { $_.Item1.Extent.Text -ceq "$" + "Mode -ceq 'stop'" })[0]
+        $stop = [scriptblock]::Create(($clause.Item2.Statements.Extent.Text -join "\n"))
+        $outerTry = @($ast.EndBlock.Statements | Where-Object { $_ -is [Management.Automation.Language.TryStatementAst] })[0]
+        $handler = [scriptblock]::Create((($outerTry.CatchClauses[0].Body.Statements | Where-Object {
+          $_ -isnot [Management.Automation.Language.ExitStatementAst]
+        }).Extent.Text -join "\n"))
+        $root = $env:EKY_TRACE_TEST_ROOT; $wpr = 'PRIVATE-TOOL'; $instance = 'PRIVATE-INSTANCE'
+        [IO.File]::WriteAllText((Join-Path $root 'start-attempted'), '')
+        function Invoke-CaptureTool([string]$Tool, [string[]]$Arguments, [string]$Label) {
+          $calls.Add($Label)
+          if ($captureCase.failures -ccontains $Label) {
+            $toolFailure = [InvalidOperationException]::new('INSPECTOR_CAPTURE_TOOL_FAILED')
+            $toolFailure.Data['toolExitCode'] = [int](@{ 'collectors-before-stop' = 11; stop = 22; cancel = 33; after = 44; 'after-cancel' = 55 }[$Label])
+            throw $toolFailure
+          }
+          if ($Label -ceq 'collectors-before-stop') {
+            [IO.File]::WriteAllText((Join-Path $root 'collectors-before-stop.private.log'), 'VALIDATED')
+          }
+        }
+        function Confirm-InspectorCaptureCollectors([string]$Text) { if ($Text -cne 'VALIDATED') { throw 'collectorInputInvalid' } }
+        function Confirm-RecorderStopped([string]$Label) { Invoke-CaptureTool $wpr @('-status') $Label }
+        foreach ($captureCase in @(
+          @{ failures = @('stop', 'cancel'); primary = 22; boundary = 'recorderStop'; cleanup = 'failed'; cleanupPhase = 'recorderCancel'; cleanupExit = 33 },
+          @{ failures = @(); primary = 0; boundary = 'recorderStatus'; cleanup = 'completed'; cleanupPhase = 'recorderStatus'; cleanupExit = 0 },
+          @{ failures = @('collectors-before-stop'); primary = 11; boundary = 'collectorStatus'; cleanup = 'completed'; cleanupPhase = 'recorderStatus'; cleanupExit = 0 },
+          @{ failures = @('stop'); primary = 22; boundary = 'recorderStop'; cleanup = 'completed'; cleanupPhase = 'recorderCancelStatus'; cleanupExit = 0 },
+          @{ failures = @('after'); primary = 44; boundary = 'recorderStatus'; cleanup = 'completed'; cleanupPhase = 'recorderCancelStatus'; cleanupExit = 0 },
+          @{ failures = @('stop', 'after-cancel'); primary = 22; boundary = 'recorderStop'; cleanup = 'failed'; cleanupPhase = 'recorderCancelStatus'; cleanupExit = 55 }
+        )) {
+          [IO.File]::Delete((Join-Path $root 'stopped'))
+          $recordingCleanup = $null; $failure = $null; $boundary = 'context'
+          $calls = [Collections.Generic.List[string]]::new()
+          try { . $stop } catch { $failure = $_.Exception }
+          $primary = if ($null -eq $failure) { 0 } else { $failure.Data['toolExitCode'] }
+          if ($primary -ne $captureCase.primary -or $boundary -cne $captureCase.boundary) { throw 'captureStopOriginalFailureLost' }
+          if ($null -eq $recordingCleanup -or $recordingCleanup.status -cne $captureCase.cleanup -or
+              $recordingCleanup.phase -cne $captureCase.cleanupPhase) { throw 'captureStopCleanupLost' }
+          if ($captureCase.cleanupExit -ne 0 -and
+              ($recordingCleanup.toolExitCode -ne $captureCase.cleanupExit -or
+               $recordingCleanup.errorCode -cne 'INSPECTOR_CAPTURE_TOOL_FAILED')) { throw 'captureStopCleanupErrorLost' }
+          if ([IO.File]::Exists((Join-Path $root 'stopped')) -ne ($captureCase.primary -eq 0)) { throw 'captureStopUnverifiedMarker' }
+          $expectedCalls = if ($captureCase.failures -ccontains 'stop') {
+            if ($captureCase.failures -ccontains 'cancel') { 'collectors-before-stop,stop,cancel' }
+            else { 'collectors-before-stop,stop,cancel,after-cancel' }
+          } elseif ($captureCase.failures -ccontains 'after') { 'collectors-before-stop,stop,after,cancel,after-cancel' }
+          else { 'collectors-before-stop,stop,after' }
+          if (($calls -join ',') -cne $expectedCalls -or ($recordingCleanup | ConvertTo-Json) -match 'PRIVATE') { throw 'captureStopOwnershipChanged' }
+          if ($null -ne $failure) {
+            $Mode = 'stop'; $readerLoaded = $true
+            try { throw $failure } catch { $report = (. $handler | ConvertFrom-Json) }
+            if ($report.status -cne 'failed' -or $report.resultCode -cne 'captureUnverified' -or
+                $report.failureBoundary -cne $captureCase.boundary -or $report.toolExitCode -ne $captureCase.primary -or
+                $report.recordingCleanup.status -cne $captureCase.cleanup -or
+                $report.recordingCleanup.phase -cne $captureCase.cleanupPhase -or
+                ($report | ConvertTo-Json -Depth 5) -match 'PRIVATE') { throw 'captureStopReportInvalid' }
+          }
+        }
+        [IO.File]::WriteAllText($env:EKY_TRACE_TEST_RESULT, '{"status":"validated"}')
+        exit 0
+      }
       if ($env:EKY_TRACE_TEST_KIND -ceq 'eventStatistics') {
         # Resolve this shell's built-in module, independently of the parent shell.
         Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility/Microsoft.PowerShell.Utility.psd1') -ErrorAction Stop
@@ -212,7 +281,7 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
         if ($errors.Count -ne 0 -or $null -eq $invocation -or $outerTry.Count -ne 1) { throw 'captureBoundaryMissing' }
         . ([scriptblock]::Create($invocation.Extent.Text))
         $handler = [scriptblock]::Create(($outerTry[0].CatchClauses[0].Body.Statements.Extent.Text -join "\n"))
-        $root = $env:EKY_TRACE_TEST_ROOT; $readerLoaded = $true; $boundary = 'commandExport'; $Mode = 'analyze'
+        $root = $env:EKY_TRACE_TEST_ROOT; $readerLoaded = $true; $boundary = 'commandExport'; $Mode = 'analyze'; $recordingCleanup = $null
         try {
           Invoke-CaptureTool $env:EKY_TRACE_TEST_NODE @((Join-Path $root 'failed-export.mjs')) 'command-export'
         } catch {
@@ -648,7 +717,9 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
           'statisticsReportInvalid', 'statisticsSuccessInvalid', 'statisticsSuccessOutputInvalid',
           'statisticsFailureEscaped', 'statisticsExitLost', 'statisticsToolMessageLost',
           'statisticsMissingOutputGuessed', 'statisticsReportLeaked', 'statisticsComparisonMissing',
-          'statisticsMaskedExportFailure',
+          'statisticsMaskedExportFailure', 'captureStopOriginalFailureLost', 'captureStopCleanupLost',
+          'captureStopCleanupErrorLost', 'captureStopUnverifiedMarker', 'captureStopOwnershipChanged',
+          'captureStopReportInvalid',
         ].find((code) => privateText.split(/\r?\n/).includes(code));
         t.diagnostic(JSON.stringify({ errorCode: failure ?? 'traceContractFailed' }));
       }
@@ -670,7 +741,7 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'decimal',
               fileCorruptionMessage: false,
             } },
       });
-    } else if (['capture', 'decimal', 'toolExit', 'exportOutput', 'eventStatistics', 'externalView', 'commandLifetimes', 'workspaceLifetimes', 'commandAnalysis', 'workspaceAnalysis'].includes(kind)) {
+    } else if (['capture', 'captureStop', 'decimal', 'toolExit', 'exportOutput', 'eventStatistics', 'externalView', 'commandLifetimes', 'workspaceLifetimes', 'commandAnalysis', 'workspaceAnalysis'].includes(kind)) {
       assert.deepEqual(results, { status: 'validated' });
     } else if (kind === 'invalid') {
       assert.deepEqual(results, ['INSPECTOR_TRACE_EVENT_NAME_INVALID', 'INSPECTOR_TRACE_PROVIDER_INVALID',
