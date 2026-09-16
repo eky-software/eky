@@ -2646,6 +2646,27 @@ Lukijan ja workflow-kytkennän kohdesarja läpäisi 43/43 sekä CI-sopimukset
 komennon todellisen poistumisen, suljetun virhetuloksen ja pakollisen
 onnistumistuloksen puuttumisen erillisinä. Normaali hyväksyntä pysyy avoimena.
 
+Lukijakorjauksen revisio `6f37ef0439006c611d439fa72c1af47beafa4c5e`
+läpäisi [MSI:ttömän kokeen 35137776980](https://github.com/eky-software/eky/actions/runs/35137776980)
+ensimmäisellä yrityksellä; todellinen checkout vastasi lähde-HEADia.
+Keruun aloitus, nykyinen synteettinen komentotesti, keruun lopetus ja
+analyysi valmistuivat. Ulkoisesta aineistosta varmennettiin komennon ja
+vaiheprosessien elinkaaret sekä tarkoituksellinen tarkistinkutsun odotus.
+MSI:tä ei rakennettu tai asennettu. Tämä sulkee rajatun lukijakorjauksen
+CI-todennuksen, ei alkuperäisen MSI-odotuksen juurisyytä tai PR:n puuttuvaa
+normaalia hyväksyntää. Uutta MSI-koetta ei tarvita analyysilukijan vuoksi.
+
+Normaalin legacy-consumerin ja aiemman paketoidun diagnoosin nykyinen
+komentopolku käyttää samaa suoraa .NET-käynnistystä, lukittua SDK:ta,
+supervisor-buildia, 27 minuutin lifecycle-rajaa ja pakollista
+caller-tuloksen tarkistinta. Normaali consumer sitoo checkoutin producerin
+build-revisioon; diagnoosi sitoo uuden harness-revision erikseen vanhan
+artifactin varmennettuihin tavuihin. Valmistelun ja komentojen vastaavuus
+ei todista runnerien ajonaikaisia olosuhteita samoiksi. Seuraava erottava
+koe kuuluu normaalin consumerin valmistumisketjuun nykyisillä MSI:n
+request/spawn/exit/close-havainnoilla ja valinnaisella keruulla; sen
+tallentamaton vertailu ja diagnostinen hyväksyntäasema säilytetään.
+
 Trace-fixturen rajattu valmistelukatselmus osoitti erillisen
 keskeytyssopimuksen puutteen: lokikahvan myöhäinen avautuminen saattoi
 käynnistää prosessin keskeytyksen jälkeen, ja myöhäinen `close` saattoi
