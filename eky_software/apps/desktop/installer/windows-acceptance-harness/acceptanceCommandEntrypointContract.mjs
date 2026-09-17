@@ -92,34 +92,52 @@ export async function describeCommandPhases(commandRoot, kind, read = readComman
   const phases = commandBudgets[kind.startsWith('workspace-') ? 'workspaceCommand' : `${kind}Command`].phases;
   const evidence = [];
   for (const phase of [...phases.map(([name]) => name), 'publishFailure']) {
-    let request;
-    try { request = await read(join(commandRoot, phase, 'request.json')); }
-    catch (error) {
-      if (error?.code !== 'ENOENT') evidence.push({ phase, result: 'requestUnreadable' });
-      continue;
-    }
-    try {
-      const value = await read(join(commandRoot, phase, 'result.json'));
-      const result = validateWindowsAcceptanceSupervisorResult(value, {
-        runNonce: request.runNonce, scenario: request.scenario, artifactDescriptorSha256: 'a'.repeat(64),
-        supervisorExitCode: value.status === 'completed' ? 0 : 1,
-      });
-      evidence.push({ phase, result: 'validated', process: result.processResultCode,
-        worker: result.workerResultCode, cleanup: result.cleanupResultCode, processTreeAbsent: result.processTreeAbsent });
-    } catch (error) { evidence.push({ phase, result: error?.code === 'ENOENT' ? 'missing' : 'invalidOrUnreadable' }); }
+    const result = await describeCommandPhase(join(commandRoot, phase), phase, read);
+    if (result !== null) evidence.push(result);
   }
   return evidence;
 }
 
+export async function describeCommandPhase(phaseRoot, phase, read = readCommandPhaseJson) {
+  let request;
+  try { request = await read(join(phaseRoot, 'request.json')); }
+  catch (error) {
+    return error?.code === 'ENOENT' ? null : { phase, result: 'requestUnreadable' };
+  }
+  try {
+    const value = await read(join(phaseRoot, 'result.json'));
+    const result = validateWindowsAcceptanceSupervisorResult(value, {
+      runNonce: request.runNonce, scenario: request.scenario,
+      artifactDescriptorSha256: request.artifactDescriptorSha256,
+      supervisorExitCode: value.status === 'completed' ? 0 : 1,
+    });
+    return { phase, result: 'validated', process: result.processResultCode,
+      worker: result.workerResultCode, cleanup: result.cleanupResultCode, processTreeAbsent: result.processTreeAbsent };
+  } catch (error) { return { phase, result: error?.code === 'ENOENT' ? 'missing' : 'invalidOrUnreadable' }; }
+}
+
 export function recordCommandBoundaryEvidence(tail, value) {
-  if (!['fixtureCleanup', 'requestValidated', 'jobCreated', 'hostStarted', 'hostAssigned',
+  if (!['inventoryAfter', 'fixtureCleanup', 'requestValidated', 'jobCreated', 'hostStarted', 'hostAssigned',
     'waitStarted', 'hostExited', 'deadlineExceeded', 'cleanupStarted', 'cleanupCompleted',
-    'processTreeAbsent', 'workerResultValidated', 'resultWritten', 'supervisor'].includes(value?.phase) ||
+    'processTreeAbsent', 'workerResultValidated', 'resultPublication', 'resultPublicationLastCompleted',
+    'requestPreparation', 'requestPreparationLastCompleted', 'resultWritten', 'supervisor'].includes(value?.phase) ||
     !['started', 'completed', 'failed'].includes(value?.status)) return;
   const entry = { phase: value.phase, status: value.status };
   if (value.errorCode !== undefined) entry.errorCode = ['requestFileInvalid', 'unexpectedFailure',
     'resultWriteFailed', 'deadlineExceeded', 'cleanupFailed', 'cleanupUnverified', 'processStartFailed',
-    'processExitFailed'].includes(value.errorCode) ? value.errorCode : 'other';
+    'processExitFailed', 'publicationBudgetExhausted', 'publicationDeadlineExceeded',
+    'publicationWriteException', 'preparationDeadlineExceeded', 'preparationException'].includes(value.errorCode) ? value.errorCode : 'other';
+  if (['resultPublication', 'resultPublicationLastCompleted'].includes(value.phase) && value.resultCode !== undefined) {
+    entry.resultCode = ['notStarted', 'writerStarted', 'temporaryCreate', 'serialize', 'flush', 'close',
+      'publish', 'temporaryCleanup', 'completed'].includes(value.resultCode) ? value.resultCode : 'other';
+  }
+  if (['requestPreparation', 'requestPreparationLastCompleted'].includes(value.phase) && value.resultCode !== undefined) {
+    entry.resultCode = ['notStarted', 'preparerStarted', 'temporaryRootCheck', 'phaseDirectoryCreation',
+      'phaseInputWrite', 'nodeExecutableResolution', 'requestWrite', 'requestFileCreate',
+      'requestSerialize', 'requestFlush', 'requestClose', 'requestFileValidation', 'requestFileRead', 'requestSchemaValidation',
+      'commandFileValidation', 'workingDirectoryValidation', 'resultDestinationValidation', 'completed']
+      .includes(value.resultCode) ? value.resultCode : 'other';
+  }
   tail.push(entry);
   if (tail.length > 20) tail.shift();
 }
@@ -187,15 +205,19 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
   });
   const directCases = ['completed', 'blockedEvidence', 'preparationHold', 'productInspectionHold', 'scenarioHold', 'uninstallHold', 'resultBeforeExit', 'cleanupFailed', 'scenarioAndCleanupFailed', 'removalHold',
     'publicationBeforeExit', 'productMissingResult', 'preconditionFailed', 'scenarioMissing', 'businessFailed', 'profileChanged', 'artifactChanged',
-    ...(kind === 'legacy' ? ['productInspectionNativeHold', 'productInspectionResultBeforeExit', 'productInspectionReadOnly'] : workspace ? ['footprintFailed']
+    ...(kind === 'legacy' ? ['msiProcessHold', 'productInspectionNativeHold', 'productInspectionResultBeforeExit', 'productInspectionReadOnly',
+      'requestPreparationDelayed', 'requestPreparationHold', 'requestPreparationLate'] : workspace ? ['footprintFailed']
       : ['temporaryRootAlias', 'scenarioAndProfileFailed', 'scenarioAndRemovalFailed']), ...(kind === 'workspace-fault' ? ['sessionFailed'] : []),
     ...(upgrade ? ['applicationCleanupUnverified', 'postconditionFailed'] : [])];
   const ciCases = kind === 'legacy' || clean || upgrade
     ? ['completed', 'blockedEvidence', 'productMissingResult', 'uninstallHold', 'scenarioAndCleanupFailed'] : ['completed'];
   if (kind === 'legacy' || kind === 'workspace-fault') ciCases.push('productInspectionHold');
+  if (kind === 'legacy') ciCases.push('msiProcessHold');
   for (const [testCase, ciChain] of [...directCases.map((name) => [name, false]), ...ciCases.map((name) => [name, true])]) {
     const blocked = testCase === 'blockedEvidence';
-    const succeeded = testCase === 'completed' || blocked || ['productInspectionReadOnly', 'temporaryRootAlias'].includes(testCase);
+    const succeeded = testCase === 'completed' || blocked || ['productInspectionReadOnly', 'temporaryRootAlias', 'requestPreparationDelayed'].includes(testCase);
+    const requestPreparation = testCase.startsWith('requestPreparation');
+    const preparationRejected = requestPreparation && testCase !== 'requestPreparationDelayed';
     const faultScenario = kind === 'workspace-fault' ? 'acceptanceInterruption' : undefined;
     register(`${kind} ${ciChain ? 'CI launch chain' : 'fixed command entrypoint'} completes the real phase chain: ${testCase}`, {
       skip: process.platform !== 'win32', timeout: 90_000,
@@ -216,7 +238,7 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
       const descriptor = join(context.testRoot, descriptorName);
       let verified = false;
       t.after(async () => {
-        const removePassed = ['completed', 'productInspectionReadOnly', 'temporaryRootAlias'].includes(testCase);
+        const removePassed = ['completed', 'productInspectionReadOnly', 'temporaryRootAlias', 'requestPreparationDelayed'].includes(testCase);
         if (verified && removePassed) await rm(callerRoot, { recursive: true });
         await cleanupRunContext(context, { preserveEvidence: !verified || !removePassed });
         if (verified && testCase === 'temporaryRootAlias') await rm(commandTemp, { recursive: true });
@@ -233,7 +255,7 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
       const boundaryEvidence = [];
       const execution = ciChain ? await startCiCommand(context, kind, descriptor, resultPath, t.signal)
         : startSupervisor(context, { captureOutput: false, environment,
-        observeEvidence: testCase === 'removalHold' ? (value) => recordCommandBoundaryEvidence(boundaryEvidence, value) : undefined,
+        observeEvidence: testCase === 'removalHold' || requestPreparation ? (value) => recordCommandBoundaryEvidence(boundaryEvidence, value) : undefined,
         dotnetAssembly: contractAssembly,
         dotnetArguments: ['--mode', 'legacyCommandEntry', '--request', context.requestPath] });
       const events = execution.events ?? [];
@@ -275,20 +297,59 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
         }
         assert.equal(completion.exitCode, succeeded ? 0 : 1);
         const commandRoot = await readFile(join(context.testRoot, 'command-root.txt'), 'utf8');
-        const phase = { preparationHold: 'prepare', productInspectionHold: 'inspectSourceBefore', productInspectionNativeHold: 'inspectSourceBefore', productInspectionResultBeforeExit: 'inspectSourceBefore', scenarioHold: 'scenario', uninstallHold: uninstallPhase,
+        if (requestPreparation) {
+          assert.equal(context.supervisorProcesses.size, 0);
+          assert.deepEqual(JSON.parse(await readFile(join(context.testRoot, 'preparation-observation.json'), 'utf8')),
+            { schemaVersion: 1, entered: true, completed: testCase !== 'requestPreparationHold' });
+          if (preparationRejected) {
+            assert.deepEqual(phaseEvidence.map(({ phase }) => phase), ['prepare', 'inventoryBefore', 'materialize',
+              ...(testCase === 'requestPreparationLate' ? ['inspectSourceBefore'] : [])]);
+            if (testCase === 'requestPreparationLate') assert.deepEqual(phaseEvidence.at(-1),
+              { phase: 'inspectSourceBefore', result: 'missing' });
+            for (const phase of ['inspectTargetBefore', 'scenario', 'uninstallTarget', 'fixtureCleanup', 'publish', 'publishFailure'])
+              await assert.rejects(lstat(join(commandRoot, phase)), { code: 'ENOENT' });
+            await assert.rejects(lstat(join(commandRoot, 'inspectSourceBefore', 'result.json')), { code: 'ENOENT' });
+            await assert.rejects(lstat(join(commandRoot, 'inspectSourceBefore', 'worker-result.json')), { code: 'ENOENT' });
+            const { state } = JSON.parse(await readFile(join(commandRoot, 'materialize', 'phase-state.json'), 'utf8'));
+            assert.equal((await lstat(state.runRoot)).isDirectory(), true);
+            assert.deepEqual(boundaryEvidence.filter(({ phase }) => phase === 'requestPreparation'), [
+              { phase: 'requestPreparation', status: 'failed', errorCode: 'preparationDeadlineExceeded', resultCode: 'preparerStarted' },
+            ]);
+            if (testCase === 'requestPreparationLate') {
+              const request = await readCommandPhaseJson(join(commandRoot, 'inspectSourceBefore', 'request.json'));
+              assert.equal(request.timeoutMilliseconds, 4_000);
+              assert.equal(request.cleanupReserveMilliseconds, 1_000);
+            }
+          } else {
+            const result = await readCommandPhaseJson(join(commandRoot, 'inspectSourceBefore', 'result.json'));
+            assert.ok(result.durationMs >= 6_000, 'Preparation time must remain in the supervisor phase clock');
+            assert.equal(result.processResultCode, 'processCompleted');
+            assert.equal(result.workerResultCode, 'workerResultValidated');
+            assert.equal(result.processTreeAbsent, true);
+          }
+        }
+        const phase = { preparationHold: 'prepare', productInspectionHold: 'inspectSourceBefore', productInspectionNativeHold: 'inspectSourceBefore', productInspectionResultBeforeExit: 'inspectSourceBefore', scenarioHold: 'scenario', msiProcessHold: 'scenario', uninstallHold: uninstallPhase,
           resultBeforeExit: uninstallPhase, removalHold: 'fixtureCleanup', publicationBeforeExit: 'publish' }[testCase];
         if (!['productInspectionNativeHold', 'productInspectionResultBeforeExit', 'productInspectionReadOnly', 'temporaryRootAlias'].includes(testCase)) {
           for (const receipt of phaseEvidence) {
             const request = await readCommandPhaseJson(join(commandRoot, receipt.phase, 'request.json'));
-            assert.equal(request.timeoutMilliseconds, receipt.phase === phase ? 4_000 : 35_000);
-            assert.equal(request.cleanupReserveMilliseconds, receipt.phase === phase ? 1_000 : 5_000);
+            const shortPhase = receipt.phase === phase || (preparationRejected && receipt.phase === 'inspectSourceBefore');
+            assert.equal(request.timeoutMilliseconds, shortPhase ? 4_000 : 35_000);
+            assert.equal(request.cleanupReserveMilliseconds, shortPhase ? 1_000 : 5_000);
           }
         }
         if (phase) {
+          assert.equal(phaseEvidence.find((entry) => entry.phase === phase)?.result ?? 'requestMissing', 'validated',
+            `Expected a validated terminal result for ${phase}; see commandPhases and boundaryEvidence`);
           const outcome = JSON.parse(await readFile(join(commandRoot, phase, 'result.json'), 'utf8'));
           assert.equal(outcome.processResultCode, 'deadlineExceeded');
           assert.equal(outcome.processTreeAbsent, true);
           assert.equal(outcome.cleanupResultCode, 'processTreeAbsent');
+        }
+        if (testCase === 'msiProcessHold') {
+          const observation = JSON.parse(await readFile(join(commandRoot, phase, 'msi-process-observation.json'), 'utf8'));
+          assert.deepEqual(observation, { schemaVersion: 1, events: ['processSpawnRequested', 'processSpawned'] });
+          await assert.rejects(lstat(join(commandRoot, phase, 'worker-result.json')), { code: 'ENOENT' });
         }
         if (['productInspectionNativeHold', 'productInspectionResultBeforeExit'].includes(testCase)) {
           const observation = JSON.parse(await readFile(join(commandRoot, phase, 'inspector-observation.json'), 'utf8'));
@@ -319,7 +380,7 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
           assert.equal(report.processTreeAbsent, true);
           await assert.rejects(lstat(join(commandRoot, followingCleanupPhase)), { code: 'ENOENT' });
         }
-        if (testCase === 'preparationHold') await assert.rejects(lstat(resultPath), { code: 'ENOENT' });
+        if (testCase === 'preparationHold' || preparationRejected) await assert.rejects(lstat(resultPath), { code: 'ENOENT' });
         else {
           const binding = workspace ? workspaceCallerResultIdentity(resultPath, { expectedBuildRevision: 'b'.repeat(40),
             expectedDescriptorSha256: 'a'.repeat(64), faultScenario })
@@ -332,6 +393,12 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
           if (!succeeded) await assert.rejects(resultFile(
             'verify', resultPath, binding, completion.exitCode));
           if (succeeded) assert.equal(result.outcome.fixtureRemoved, true);
+          if (testCase === 'msiProcessHold') {
+            assert.equal(result.outcome.errorCode, 'WINDOWS_ACCEPTANCE_SUPERVISOR_DEADLINE_EXCEEDED');
+            assert.equal(result.outcome.processTreeAbsent, true);
+            assert.equal(result.outcome.supervisorProcessResultCode, 'deadlineExceeded');
+            assert.equal(result.outcome.supervisorCleanupResultCode, 'processTreeAbsent');
+          }
           if (testCase === 'scenarioAndCleanupFailed') {
             assert.equal(result.outcome.errorCode, scenarioFailureCode);
             assert.equal(result.outcome.semanticCleanupResultCode, 'semanticCleanupFailed');

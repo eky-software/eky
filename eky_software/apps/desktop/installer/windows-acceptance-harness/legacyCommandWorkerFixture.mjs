@@ -7,6 +7,7 @@ import { readOwnedProductOperationResult } from './installerProductOperationResu
 import { writeJsonAtomicExclusive } from './cleanInstallUninstallContracts.mjs';
 import { executeProductOperation, runInstallerProductCommand } from './installerProductOperationWorker.mjs';
 import { fileURLToPath } from 'node:url';
+import { startLegacyOwnedProcess } from './legacyUpgradeWindowsRuntime.mjs';
 
 const mode = process.argv[2];
 assert(['hold', 'unread', 'consumeOwnedProduct', '--phase-request'].includes(mode));
@@ -85,6 +86,14 @@ if (mode === '--phase-request') {
     },
     async runScenario([, requestPath]) {
       if (testCase === 'scenarioHold') hold();
+      if (testCase === 'msiProcessHold') {
+        const events = [];
+        const execution = await startLegacyOwnedProcess(process.execPath,
+          ['-e', 'setInterval(() => {}, 1000)'], {}, { observe: (code) => events.push(code) });
+        await writeFile(join(phaseRoot, 'msi-process-observation.json'), JSON.stringify({ schemaVersion: 1, events }));
+        await execution.completion;
+        throw new Error('heldProcessUnexpectedlyCompleted');
+      }
       if (testCase === 'scenarioMissing') return 0;
       const request = JSON.parse(await readFile(requestPath, 'utf8'));
       const failed = testCase === 'scenarioAndCleanupFailed';

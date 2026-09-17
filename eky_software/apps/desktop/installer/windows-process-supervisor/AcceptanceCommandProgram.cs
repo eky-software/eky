@@ -15,7 +15,8 @@ internal static class AcceptanceCommandProgram
     }
 
     internal static int Run(string[] arguments, string? contractWorker,
-        Func<string, (int Timeout, int Cleanup)>? contractBudget = null)
+        Func<string, (int Timeout, int Cleanup)>? contractBudget = null,
+        Action<string, bool>? contractPreparation = null)
     {
         var clock = Stopwatch.StartNew();
         var kind = arguments.FirstOrDefault() switch
@@ -41,9 +42,6 @@ internal static class AcceptanceCommandProgram
             "workspaceSuccess" => "packagedWorkspaceSuccess",
             _ => "packagedWorkspaceFaultRollback",
         };
-        var context = new CommandContext(
-            Path.Combine(Path.GetTempPath(), "eky-acceptance-command-" + Guid.NewGuid().ToString("N")),
-            input, kind, scenario, NewNonce(), contractWorker);
         using var budgetStream = typeof(AcceptanceCommandProgram).Assembly.GetManifestResourceStream("supervisorCommandBudgets.json")!;
         using var budgets = JsonDocument.Parse(budgetStream);
         var exitReserve = budgets.RootElement.GetProperty("exitReserveMilliseconds").GetInt32();
@@ -52,6 +50,11 @@ internal static class AcceptanceCommandProgram
         var deadline = plan.GetProperty("reservationMilliseconds").GetInt32();
         var phases = plan.GetProperty("phases").EnumerateArray().Select(value =>
             (Name: value[0].GetString()!, Timeout: value[1].GetInt32(), Cleanup: value[2].GetInt32())).ToArray();
+        var preparation = phases.Single(phase => phase.Name == "prepare");
+        var context = new CommandContext(
+            Path.Combine(Path.GetTempPath(), "eky-acceptance-command-" + Guid.NewGuid().ToString("N")),
+            input, kind, scenario, NewNonce(), contractWorker, contractPreparation,
+            preparation.Timeout - preparation.Cleanup);
         var publication = phases[^1];
         var publicationBudget = contractBudget?.Invoke("publish") ?? (publication.Timeout, publication.Cleanup);
         var failed = false;
@@ -97,6 +100,9 @@ internal static class AcceptanceCommandProgram
         return (int)Math.Min(phaseTimeout, remaining);
     }
 
+    internal static int CalculatePreparationTimeout(int phaseTimeout, int cleanupReserve, int normalWorkCap) =>
+        Math.Max(0, Math.Min(normalWorkCap, phaseTimeout - cleanupReserve));
+
     private static int PublishFailure(CommandContext context, int timeout, int cleanup, SafeEvidenceWriter? evidence)
     {
         if (timeout > cleanup) _ = RunPhase(context, "publishFailure", NewNonce(), timeout, cleanup, evidence);
@@ -105,29 +111,45 @@ internal static class AcceptanceCommandProgram
 
     private static SupervisorPhaseCompletion RunPhase(CommandContext context, string phase, string nonce, int timeout, int cleanup,
         SafeEvidenceWriter? evidence) =>
-        SupervisorProgram.RunPhase(() =>
+        SupervisorProgram.RunPhase(observe =>
         {
+            context.ContractPreparation?.Invoke(phase, false);
+            observe(SupervisorRequestPreparationPhase.TemporaryRootCheck, false);
             if (!Directory.Exists(Path.GetTempPath())) throw new SupervisorFailure("requestWorkingDirectoryInvalid");
+            observe(SupervisorRequestPreparationPhase.TemporaryRootCheck, true);
             var phaseRoot = Path.Combine(context.Root, phase);
+            observe(SupervisorRequestPreparationPhase.PhaseDirectoryCreation, false);
             Directory.CreateDirectory(phaseRoot);
+            observe(SupervisorRequestPreparationPhase.PhaseDirectoryCreation, true);
             var inputPath = Path.Combine(phaseRoot, "phase-input.json");
+            observe(SupervisorRequestPreparationPhase.PhaseInputWrite, false);
             WriteExclusive(inputPath, new { schemaVersion = 1, phase, commandKind = context.Kind,
                 scenarioRunNonce = context.ScenarioRunNonce, commandArguments = context.Input, history = context.History });
+            observe(SupervisorRequestPreparationPhase.PhaseInputWrite, true);
             var requestPath = Path.Combine(phaseRoot, "request.json");
             var worker = context.ContractWorker ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
                 "../../../../windows-acceptance-harness", context.Kind switch {
                     "legacy" => "legacyCommandPhase.mjs", "clean" => "cleanCommandPhase.mjs",
                     "upgrade" => "upgradeCommandPhase.mjs", _ => "workspaceCommandPhase.mjs" }));
+            observe(SupervisorRequestPreparationPhase.NodeExecutableResolution, false);
+            var command = ResolveNodeExecutable();
+            observe(SupervisorRequestPreparationPhase.NodeExecutableResolution, true);
+            observe(SupervisorRequestPreparationPhase.RequestWrite, false);
             WriteExclusive(requestPath, new { schemaVersion = 1, runNonce = nonce,
                 scenario = phase == "scenario" ? context.Scenario : "acceptanceCommandPhase",
-                artifactDescriptorSha256 = context.Input[3], command = ResolveNodeExecutable(),
+                artifactDescriptorSha256 = context.Input[3], command,
                 arguments = new[] { worker, "--phase-request", inputPath }, workingDirectory = phaseRoot,
-                timeoutMilliseconds = timeout, cleanupReserveMilliseconds = cleanup });
-            return SupervisorRequestReader.Read(["--request", requestPath]);
-        }, commandEvidence: evidence);
+                timeoutMilliseconds = timeout, cleanupReserveMilliseconds = cleanup }, observe);
+            observe(SupervisorRequestPreparationPhase.RequestWrite, true);
+            var request = SupervisorRequestReader.Read(["--request", requestPath], observe);
+            context.ContractPreparation?.Invoke(phase, true);
+            return request;
+        }, commandEvidence: evidence, preparationTimeoutMilliseconds:
+            CalculatePreparationTimeout(timeout, cleanup, context.PreparationWorkCap));
 
     private sealed record CommandContext(string Root, string[] Input, string Kind, string Scenario,
-        string ScenarioRunNonce, string? ContractWorker)
+        string ScenarioRunNonce, string? ContractWorker, Action<string, bool>? ContractPreparation,
+        int PreparationWorkCap)
     {
         internal List<object> History { get; } = [];
     }
@@ -156,10 +178,25 @@ internal static class AcceptanceCommandProgram
         throw new SupervisorFailure("requestCommandInvalid");
     }
 
-    private static void WriteExclusive(string path, object value)
+    internal static void WriteExclusive(string path, object value,
+        Action<SupervisorRequestPreparationPhase, bool>? observe = null)
     {
-        using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-        JsonSerializer.Serialize(stream, value);
-        stream.Flush(true);
+        void Observe(SupervisorRequestPreparationPhase phase, bool completed)
+        {
+            try { observe?.Invoke(phase, completed); } catch { /* Optional observation only. */ }
+        }
+        Observe(SupervisorRequestPreparationPhase.RequestFileCreate, false);
+        using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+        {
+            Observe(SupervisorRequestPreparationPhase.RequestFileCreate, true);
+            Observe(SupervisorRequestPreparationPhase.RequestSerialize, false);
+            JsonSerializer.Serialize(stream, value);
+            Observe(SupervisorRequestPreparationPhase.RequestSerialize, true);
+            Observe(SupervisorRequestPreparationPhase.RequestFlush, false);
+            stream.Flush(true);
+            Observe(SupervisorRequestPreparationPhase.RequestFlush, true);
+            Observe(SupervisorRequestPreparationPhase.RequestClose, false);
+        }
+        Observe(SupervisorRequestPreparationPhase.RequestClose, true);
     }
 }

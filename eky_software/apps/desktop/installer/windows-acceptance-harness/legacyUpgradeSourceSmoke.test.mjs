@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { link, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { link, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
 
+import { readWindowsShortPathFixture } from '../windows-process-supervisor/tests/supervisorContractTestSupport.mjs';
+
 import {
+  describeHistoricalPackagedSmokeFailure,
   runHistoricalPackagedSmokeProcessChain,
   readHistoricalPackagedSmokeResult,
   validateHistoricalPackagedSmokeResult,
@@ -24,20 +26,12 @@ test('historical watcher accepts the same directory through a Windows 8.3 alias'
   skip: process.platform !== 'win32',
 }, async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'eky-legacy-smoke-alias-'));
-  t.after(() => rm(root, { force: true, recursive: true }));
-  const shortRoot = execFileSync(
-    resolve(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
-    ['-NoProfile', '-NonInteractive', '-Command',
-      '$fso = New-Object -ComObject Scripting.FileSystemObject; $fso.GetFolder($env:EKY_SMOKE_TEST_ROOT).ShortPath'],
-    {
-      env: { ...process.env, EKY_SMOKE_TEST_ROOT: root },
-      encoding: 'utf8',
-      timeout: 10_000,
-      windowsHide: true,
-    },
-  ).trim();
+  let verified = false;
+  t.after(() => verified ? rm(root, { force: true, recursive: true }) : undefined);
+  const shortRoot = await readWindowsShortPathFixture(root, { directory: root });
   assert.notEqual(shortRoot, root, 'The fixture must exercise a real 8.3 alias');
   assert.match(shortRoot, /~[0-9]/);
+  assert.equal(await realpath(shortRoot), await realpath(root));
   const child = deferred();
   const resultPath = resolve(root, 'desktop-smoke-result.json');
   await writeFile(resultPath, '');
@@ -50,7 +44,29 @@ test('historical watcher accepts the same directory through a Windows 8.3 alias'
   const expected = { stage: 'restoreRestart', status: 'started' };
   await writeFile(resultPath, `${JSON.stringify(expected)}\n`);
   assert.deepEqual(await waiting, expected);
+  verified = true;
 });
+
+for (const mode of ['missingDirectory', 'hold']) {
+  test(`historical alias preparation fails closed before watching: ${mode}`, {
+    skip: process.platform !== 'win32', timeout: 30_000,
+  }, async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'eky-legacy-smoke-alias-'));
+    let verified = false;
+    t.after(() => verified ? rm(root, { force: true, recursive: true }) : undefined);
+    await assert.rejects(readWindowsShortPathFixture(root, {
+      directory: mode === 'missingDirectory' ? join(root, 'missing') : root,
+      hold: mode === 'hold',
+    }), new RegExp(mode === 'hold' ? '^Error: WINDOWS_ACCEPTANCE_ALIAS_PREPARATION_TIMED_OUT$'
+      : '^Error: WINDOWS_ACCEPTANCE_ALIAS_PREPARATION_FAILED$'));
+    if (mode === 'hold') {
+      assert.deepEqual(JSON.parse(await readFile(join(root, 'short-path-started.json'), 'utf8')),
+        { schemaVersion: 1, phase: 'lookupHeld' });
+    }
+    await assert.rejects(readFile(join(root, 'short-path-result.json')), { code: 'ENOENT' });
+    verified = true;
+  });
+}
 
 test('historical watcher rejects a directory link before watching its target', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'eky-legacy-smoke-linked-root-'));
@@ -210,4 +226,33 @@ test('historical smoke chain rejects a failed generation without adding another'
     /sourcePackagedSmokeFailed/,
   );
   assert.equal(starts, 1);
+});
+
+test('restored smoke failure retains its generation without exposing the application code', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'eky-legacy-smoke-restored-fail-'));
+  t.after(() => rm(root, { force: true, recursive: true }));
+  const resultPath = resolve(root, 'desktop-smoke-result.json');
+  const starts = [];
+  await assert.rejects(runHistoricalPackagedSmokeProcessChain({
+    resultPath,
+    async startGeneration(generation) {
+      starts.push(generation);
+      const value = generation === 'initial'
+        ? { stage: 'restoreRestart', status: 'started' }
+        : { stage: 'secondBackup', status: 'failed', code: 'PRIVATE_APPLICATION_DETAIL' };
+      await writeFile(resultPath, `${JSON.stringify(value)}\n`);
+      return { completion: Promise.resolve({ exitCode: generation === 'initial' ? 0 : 1 }) };
+    },
+  }), (error) => {
+    assert.equal(error.message, 'sourcePackagedSmokeFailed');
+    assert.deepEqual(describeHistoricalPackagedSmokeFailure(error), {
+      smokeReason: 'applicationReportedFailure', smokeStage: 'secondBackup',
+      smokeStatus: 'failed', smokeGeneration: 'restored',
+    });
+    return true;
+  });
+  assert.deepEqual(starts, ['initial', 'restored']);
+  assert.deepEqual(describeHistoricalPackagedSmokeFailure({
+    evidence: { smokeReason: 'private-data', secret: 'private-data' },
+  }), {});
 });

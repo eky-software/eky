@@ -31,26 +31,53 @@ internal static class SupervisorProgram
         string[] arguments,
         Func<SupervisorRequest, Stopwatch, SafeEvidenceWriter, SupervisorOutcome> execute,
         Action<SupervisorRequest, SupervisorOutcome, long>? writeResult = null
-    ) => RunPhase(() => SupervisorRequestReader.Read(arguments), execute, writeResult);
+    ) => RunPhase(observe => SupervisorRequestReader.Read(arguments, observe), execute, writeResult);
 
     internal static SupervisorPhaseCompletion RunPhase(
-        Func<SupervisorRequest> prepareRequest,
+        Func<Action<SupervisorRequestPreparationPhase, bool>, SupervisorRequest> prepareRequest,
         Func<SupervisorRequest, Stopwatch, SafeEvidenceWriter, SupervisorOutcome>? execute = null,
         Action<SupervisorRequest, SupervisorOutcome, long>? writeResult = null,
-        SafeEvidenceWriter? commandEvidence = null
+        SafeEvidenceWriter? commandEvidence = null,
+        int? preparationTimeoutMilliseconds = null
     )
     {
         var stopwatch = Stopwatch.StartNew();
         SupervisorRequest? request = null;
         SafeEvidenceWriter? evidence = null;
+        var preparationPhase = (int)SupervisorRequestPreparationPhase.NotStarted;
+        var preparationLastCompleted = (int)SupervisorRequestPreparationPhase.NotStarted;
+        var preparationFailureCode = "preparationException";
+
+        void ObservePreparation(SupervisorRequestPreparationPhase phase, bool completed)
+        {
+            Volatile.Write(ref preparationPhase, (int)phase);
+            if (completed) Volatile.Write(ref preparationLastCompleted, (int)phase);
+        }
+
+        void RejectRequest(string errorCode, int? win32ErrorCode = null) =>
+            SafeEvidenceWriter.WriteInvalidRequest(errorCode, win32ErrorCode, commandEvidence,
+                (SupervisorRequestPreparationPhase)Volatile.Read(ref preparationPhase),
+                (SupervisorRequestPreparationPhase)Volatile.Read(ref preparationLastCompleted),
+                preparationFailureCode);
 
         try
         {
-            var admission = Task.Run(prepareRequest);
-            if (Task.WaitAny([admission], ExitReserveMilliseconds) != 0)
+            // Internal command preparation shares the phase clock; external CLI admission keeps its own cap.
+            var preparationDeadline = preparationTimeoutMilliseconds ?? ExitReserveMilliseconds;
+            if (preparationDeadline <= 0) throw new SupervisorFailure("requestFileInvalid");
+            var admission = Task.Run(() =>
+            {
+                ObservePreparation(SupervisorRequestPreparationPhase.PreparerStarted, false);
+                var prepared = prepareRequest(ObservePreparation);
+                ObservePreparation(SupervisorRequestPreparationPhase.Completed, true);
+                return prepared;
+            });
+            if (Task.WaitAny([admission], RemainingPreparationMilliseconds(preparationDeadline, stopwatch.ElapsedMilliseconds)) != 0 ||
+                stopwatch.ElapsedMilliseconds >= preparationDeadline)
             {
                 _ = admission.ContinueWith(completed => { _ = completed.Exception; },
                     TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
+                preparationFailureCode = "preparationDeadlineExceeded";
                 throw new SupervisorFailure("requestFileInvalid");
             }
             request = admission.GetAwaiter().GetResult();
@@ -90,7 +117,7 @@ internal static class SupervisorProgram
             }
             else
             {
-                SafeEvidenceWriter.WriteInvalidRequest(
+                RejectRequest(
                     failure.ErrorCode,
                     failure.Win32ErrorCode
                 );
@@ -116,7 +143,7 @@ internal static class SupervisorProgram
             }
             else
             {
-                SafeEvidenceWriter.WriteInvalidRequest("unexpectedFailure");
+                RejectRequest("unexpectedFailure");
             }
             return new(null, false, "unexpectedFailure");
         }
@@ -127,6 +154,9 @@ internal static class SupervisorProgram
         }
     }
 
+    internal static int RemainingPreparationMilliseconds(int deadline, long elapsed) =>
+        (int)Math.Max(0, deadline - elapsed);
+
     private static bool TryWriteResult(
         SupervisorRequest request,
         SupervisorOutcome outcome,
@@ -135,6 +165,9 @@ internal static class SupervisorProgram
         Action<SupervisorRequest, SupervisorOutcome, long>? writeResult
     )
     {
+        var publicationPhase = (int)SupervisorResultWritePhase.NotStarted;
+        var publicationLastCompleted = (int)SupervisorResultWritePhase.NotStarted;
+        var failureCode = "publicationWriteException";
         try
         {
             // Use the existing caller exit reservation, never extend the
@@ -143,21 +176,45 @@ internal static class SupervisorProgram
             var duration = stopwatch.ElapsedMilliseconds;
             var remaining = Math.Min(ExitReserveMilliseconds,
                 request.TimeoutMilliseconds + (long)ExitReserveMilliseconds - duration);
-            if (remaining <= 0) throw new SupervisorResultWriteFailure();
+            if (remaining <= 0)
+            {
+                failureCode = "publicationBudgetExhausted";
+                throw new SupervisorResultWriteFailure();
+            }
             var publication = Task.Run(() =>
-                (writeResult ?? SupervisorResultWriter.Write)(request, outcome, duration));
+            {
+                Volatile.Write(ref publicationPhase, (int)SupervisorResultWritePhase.WriterStarted);
+                if (writeResult is not null) writeResult(request, outcome, duration);
+                else SupervisorResultWriter.Write(request, outcome, duration,
+                    (phase, completed) =>
+                    {
+                        Volatile.Write(ref publicationPhase, (int)phase);
+                        if (completed) Volatile.Write(ref publicationLastCompleted, (int)phase);
+                    });
+            });
             if (Task.WaitAny([publication], (int)remaining) != 0)
             {
                 _ = publication.ContinueWith(completed => { _ = completed.Exception; },
                     TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
+                failureCode = "publicationDeadlineExceeded";
                 throw new SupervisorResultWriteFailure();
             }
             publication.GetAwaiter().GetResult();
             evidence?.Write("resultWritten", "completed");
             return true;
         }
-        catch
+        catch (Exception error)
         {
+            // Snapshot only closed in-memory state; diagnostics perform no result I/O.
+            // A late writer cannot change this failure or authorize another phase.
+            var phase = (error as SupervisorResultWriteFailure)?.Phase ??
+                (SupervisorResultWritePhase)Volatile.Read(ref publicationPhase);
+            var lastCompleted = (error as SupervisorResultWriteFailure)?.LastCompletedPhase ??
+                (SupervisorResultWritePhase)Volatile.Read(ref publicationLastCompleted);
+            evidence?.Write("resultPublication", "failed",
+                resultCode: JsonNamingPolicy.CamelCase.ConvertName(phase.ToString()), errorCode: failureCode);
+            evidence?.Write("resultPublicationLastCompleted", "failed",
+                resultCode: JsonNamingPolicy.CamelCase.ConvertName(lastCompleted.ToString()), errorCode: failureCode);
             evidence?.Write(
                 "resultWritten",
                 "failed",

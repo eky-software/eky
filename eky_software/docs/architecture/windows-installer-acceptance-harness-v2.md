@@ -2549,6 +2549,678 @@ Tämä osuus erottaa nykyisen julkaisutyön historiallisesta tutkimusnäytöstä
 
 #### Ajantasaiset julkaisuesteet ja päätökset
 
+Revision `7ff2936d9774e4f201b37fc09c3fdbc77c7bebb0`
+[PR-kierros 35200298384](https://github.com/eky-software/eky/actions/runs/35200298384)
+läpäisi todellisella checkoutilla `3cc6534f20970c32e96abc15a6b8982fe7880670`.
+Sitä seurannut [normaali kierros 35203136871](https://github.com/eky-software/eky/actions/runs/35203136871)
+hylättiin samalla lähde- ja checkout-revisiolla `7ff2936`: legacy run 1:n
+`inspectTargetFinal` saavutti valmistelun deadlinen kohdassa `requestWrite`,
+viimeisen valmistuneen kohdan ollessa `phaseInputWrite`. MSI-päivitys,
+skenaario, semanttinen tarkistus ja poistokomennot olivat valmistuneet,
+mutta kohdetuotteen lopputila ja koko komennon pakollinen tulos jäivät
+varmentamatta. Saman artifactin toinen consumer läpäisi; se ei korvaa
+ensimmäisen hylkäystä. Toista normaalia kokonaiskierrosta ei käynnistetä.
+
+Hylätyn revision `requestWrite` sisälsi myös Node-executablen selvityksen sekä
+tiedoston luonnin, serialisoinnin, flushin ja sulkemisen. Rajattu tarkennus
+erottaa nämä olemassa olevaan, vain suljettuja vaiheita välittävään
+valmisteluhavaintoon. Havainto ei vielä osoita viivästynyttä alavaihetta.
+Eksklusiivinen luonti, `Flush(true)`, sulkeminen ennen lukua, nykyinen
+valmisteluraja ja pakollisen tuloksen sopimus säilyvät. Estyvä tai myöhäinen
+pyyntökirjoitus ei valtuuta workeria, jatkovaihetta tai aineiston poistamista;
+havaintokäsittelijän poikkeus ei muuta kirjoituksen tulosta. Synteettinen
+estymistesti pysäyttää saman kirjoittimen ennen flush-kutsua: se todistaa
+määräajan ja jatkamisen eston, ei Windowsin levykutsun viiveen syytä.
+[Rajattu koe 35206884818](https://github.com/eky-software/eky/actions/runs/35206884818)
+läpäisi ensimmäisellä yrityksellä. Harness ja todellinen checkout olivat
+`f7828d375e429396e18ccb9ed1c97c4b4a53f572`; sama alkuperäinen artifact
+`10489386062` säilytti build-revision `7ff2936` sekä ennen/jälkeen-varmennetun
+descriptorin `732a79de08de2de75bd6f7ec319c871be552617b756fe87f366ff39bf7eaecd3`.
+Lopputilan tarkistukset, fixture-poisto, tuloksen julkaisu ja pakollinen
+tulosverifier läpäisivät ilman uutta MSI-buildia tai raskasta keruuta.
+Valmisteluviive ei toistunut. Tämä ei selitä aiempaa viivettä eikä korvaa
+hylättyä normaalikierrosta; saman diagnoosin uusintasarjaa ei aloiteta.
+
+Omistaja hyväksyi rajatun valmistelun aikapolitiikan tarkennuksen.
+Kiinteän acceptance-komennon sisäinen valmistelu käyttää nyt samaa
+työaikaa kuin sitä seuraava prosessivaihe. Valmistelun katto johdetaan
+nykyisen kanonisen valmisteluvaiheen 30 sekunnin työvarauksesta ja rajataan
+aina kyseisen vaiheen jäljellä olevaan työaikaan. Tavallinen vaihe säilyy
+35 sekuntina (30 työ + 5 siivous); valmisteluun kulunut aika vähennetään,
+eikä worker saa uutta työjaksoa. Lyhyet tarkoitukselliset timeout-sopimukset,
+siivous- ja julkaisuvaraukset sekä komento- ja job-rajat säilyvät.
+Erillisen supervisor-CLI:n ulkoisen pyynnön lukuraja säilyy viidessä
+sekunnissa. Eksklusiivinen kirjoitus, flush, validointi ja prosessiomistaja
+eivät muutu.
+
+Regressiot kutsuvat toteutuksen omaa budjettilaskentaa hallituilla
+kuluneen ajan arvoilla. Nykyisen todellisen komentofixturen erilliset
+tapaukset todistavat ajoissa valmistuvan hitaan pyynnön jatkamisen,
+estyvän valmistelun hylkäyksen sekä hylkäyksen jälkeen valmistuvan pyynnön
+käsittelyn. Ne vaativat komennon exit/close-havainnot: myöhäinen tiedosto
+ei käynnistä workeria tai jatkovaihetta, muuta virhetulosta eikä valtuuta
+aineiston poistamista. Kohdetestit läpäisivät 6/6 ja kanoninen sarjallinen
+sopimussarja 523/523 (core 357, valmistuminen 38, legacy 32, clean/upgrade
+54, workspace success 20 ja fault 22). CI-kytkentäsopimukset läpäisivät
+30/30 ja 55/55, samoin desktopin typecheck ja build. Uuden revision normaali
+CI-hyväksyntä on vielä kesken. Tämä on hyväksytty sopimustarkennus, ei
+aiemman Windows-viiveen juurisyykorjaus.
+
+Revision `ebdf0d715d1a2608bb9f929d5d83e85ed9eb1977`
+[ensimmäinen normaali kierros 35159913917](https://github.com/eky-software/eky/actions/runs/35159913917)
+ja [riippuvuustarkistus 35159916020](https://github.com/eky-software/eky/actions/runs/35159916020)
+läpäisivät. [Toinen kierros 35162332505](https://github.com/eky-software/eky/actions/runs/35162332505)
+hylättiin clean/upgrade-komentoryhmän toisessa toistossa (53/54):
+`upgrade/removalHold` ei saanut `fixtureCleanup`-tulosta. Komennon exit ja
+close havaittiin. Viimeinen varmennettu vaihe oli `artifact`; seuraava
+turvallinen virhehavainto oli `requestValidated/requestFileInvalid`.
+Suunnitellun seuraavan `inventoryAfter`-vaiheen pyyntöä ei löytynyt
+raportista; tarkoituksellista `fixtureCleanup`-jumitusta ei siten vielä
+todennettu tässä tapauksessa.
+Legacy-producer ja sen consumerit jäivät ajamatta, eikä hyväksyntäpari täyty.
+Aiempi PR-vihreys eri checkout-revisiolla säilyy erillisenä näyttönä.
+
+Tuon aiemman checkpointin valmisteluraja erotteli valinnaisessa, suljetussa
+evidencessä
+`preparationDeadlineExceeded`- ja `preparationException`-tapaukset sekä
+viimeisen aloitetun ja valmistuneen valmisteluvaiheen. Pelkkä
+`requestFileInvalid` ei erottanut näitä. Tuossa luokittelumuutoksessa viiden
+sekunnin valmisteluraja, pyynnön validointi, prosessiomistajuus ja pakolliset
+tulokset säilyivät; yllä hyväksytty aikapolitiikka on erillinen tarkennus.
+Valmistelun hylkäys ei valtuuta workerin käynnistystä, seuraavaa
+vaihetta, tuloksen julkaisua tai aineiston poistamista; myöhäinen valmistelu
+ei muuta hylkäystä. Näitä rajoja testataan samalla komentofixturellä, myös
+todellisen komentoprosessin exit/close-havainnoilla. Uusi luokittelu ei vielä
+osoita CI-valmistelun sisäistä viivekohtaa tai korjaa sitä; seuraava rajattu
+Windows-komentokoe erottaa puuttuvat vaihtoehdot ilman MSI-matriisia.
+
+Tämän rajauksen [Windows-koe 35195460590](https://github.com/eky-software/eky/actions/runs/35195460590)
+läpäisi kahdella runnerilla 54/54 ensimmäisellä yrityksellä. Molempien
+todellinen checkout oli `86e2eeff9ffa931bdfc4965269ceda5d20188e10`, ja
+clean/upgrade-`removalHold` läpäisi molemmissa. Koe ei rakentanut tai asentanut
+MSI-paketteja. Valmisteluhylkäys ei toistunut: avoimeksi jää sen tarkka
+alavaihe ja deadline-/poikkeusero, ei komentoprosessin poistuminen.
+Diagnoosityönkulku rakentaa supervisorin ennen pakettityökalun valmistelua
+suoraan Node-komennolla, kun normaali sopimusjobi rakentaa sen tämän jälkeen
+pnpm:n kautta. Tämä on tunnistettu vertailuraja, ei osoitettu syy.
+Mahdollinen seuraava koe kohdistetaan tähän normaalin käynnistysketjun
+rajaan; samaa diagnostiikkaa ei toisteta vihreyden keräämiseksi. PR:n lähde
+pysyy ennallaan, eikä tämä näyttö sulje normaalia hyväksyntäparia.
+
+Rajattu vertailu poistaa tämän valmistelueron olemassa olevasta
+`clean-upgrade-command-diagnostic`-tilasta: lukittu pakettityökalu
+valmistellaan ensin, sitten supervisor rakennetaan normaalin jobin samalla
+`pnpm installer:supervisor:build`-komennolla. Suora ennakkokäännös poistuu
+vain tältä diagnoosipolulta. Sama 54 tapauksen järjestys, kaksi eristettyä
+runneria ja nykyiset rajat säilyvät. Kytkentätesti vaatii yhden valitun
+käännöspolun sekä valmistelu-, käännös- ja testivaiheiden järjestyksen.
+Yksi vertailukierros ei rakenna MSI-artifacteja eikä korvaa hyväksyntää.
+[Vertailu 35199294637](https://github.com/eky-software/eky/actions/runs/35199294637)
+läpäisi ensimmäisellä yrityksellä 54/54 molemmissa jobeissa, myös kummankin
+perheen `removalHold`-tapauksen. Molempien todellinen checkout oli
+`1d5a52b17086391360515be50b56952cf6bbda9e`; lukittu pakettityökalu ja
+pnpm-käännös valmistuivat dokumentoidussa järjestyksessä ja suora
+ennakkokäännös jäi pois. Valmisteluhylkäys ei toistunut. Valmisteluerosta
+ei siten ole juurisyyhavaintoa, eikä alkuperäisen viiveen sisäistä alavaihetta
+tiedetä. Synteettinen `removalHold` käyttää oikeaa komentorajaa mutta
+injektoituja product- ja scenario-tuloksia, ei Ekyn sovellus- tai MSI-ajoa.
+
+Rajattu diagnostiikka päättyy tähän. Virheraportoinnin ja kytkennän korjaus
+siirretään samaan PR-kokonaisuuteen normaaleja integraatioportteja varten;
+uutta samanlaista diagnoosiuusintaa ei käytetä hyväksyntänä. Epäonnistunut
+`ebdf0d7`-kierros säilyy hylättynä, eivätkä diagnostiset 54/54-tulokset
+täytä uuden revision kahden kokonaiskierroksen vaatimusta. Mahdollinen
+uusi valmisteluvirhe pysäyttää hyväksynnän ja rajataan sen suljetusta
+vaihenäytöstä; rajoja tai puuttuvan tuloksen vaatimusta ei löysennetä.
+
+Revision `f863ec8f095444321c9b82d7869712f65fd82189` ensimmäinen
+[normaali kokonaiskierros 35151889180](https://github.com/eky-software/eky/actions/runs/35151889180)
+ja sen [riippuvuustarkistus 35151891636](https://github.com/eky-software/eky/actions/runs/35151891636)
+läpäisivät. Producerien ja consumerien todellinen checkout ja artifact-build
+olivat sama revisio, ja pakettien sidokset varmennettiin ennen ja jälkeen
+skenaarioiden. Saman revision
+[toisen kierroksen 35154903009](https://github.com/eky-software/eky/actions/runs/35154903009)
+legacy core run 1 hylättiin 355/356-tuloksella: startup-observerin erillinen
+8.3-alias-valmistelu käytti vielä suoraa PowerShell/COM-kutsua ja saavutti
+sen kymmenen sekunnin rajan ennen observerin käynnistystä. Hyväksyntäpari
+ei täyty; ensimmäinen kierros säilyy erillisenä näyttönä.
+
+Rajattu jatkokorjaus kytkee myös `legacyUpgradeStartupObserver`-testin samaan
+olemassa olevaan `readWindowsShortPathFixture`-testitukeen kuin historical
+smoke -testin. Molemmat vaativat aidosti erilaisen lyhytnimipolun sekä saman
+kanonisen hakemiston. Valmisteluvirhe ei käynnistä observeria, ja epäonnistuneen
+alias-tapauksen aineisto säilytetään. Yhteisen apurin virhe- ja jumitusregressiot
+säilyvät; rinnakkaista valmistelijaa, fallbackia tai aikarajamuutosta ei lisätä.
+Tämä sulkee jäljelle jääneen testivalmistelun kytkentäpuutteen, ei osoita vanhan
+COM-viiveen sisäistä syytä. Korjattu revisio tarvitsee omat normaalit porttinsa.
+
+PR #270:n lähderevision `42a8bcdac35dbdba40327dd6083e0193ee30b414`
+[normaali ajo 35139815567](https://github.com/eky-software/eky/actions/runs/35139815567)
+päättyi hylättynä ensimmäisellä yrityksellä. Todellinen checkout oli
+`ba29782772a0f5b205d6805f753e9cf38a869845`.
+[Saman revision riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/35139815108)
+läpäisi. Kolme varsinaista epäonnistumista pidetään erillään:
+
+- Upgrade-producerin Corepack/pnpm-lataus kaatui ennen artifact-buildia.
+  Tulos ei ole MSI- tai sovellustestin epäonnistuminen.
+- Legacy core run 1 läpäisi 353/354; 8.3-alias-testin PowerShell/COM-
+  valmistelu aikakatkaistiin ennen varsinaista watcher-tarkistusta.
+- Workspace fault run 2:n `activeWorkspaceFirstStartFailure` hylättiin
+  `inspectTargetAfter`-vaiheen supervisor-resultin julkaisuun. Worker-tulos
+  hyväksyttiin ja vaiheen prosessipuu todettiin poissaolevaksi, mutta
+  `resultWriteFailed` ei erottanut kirjoituspoikkeusta ja julkaisuajan
+  loppumista. Puuttuva tulos ei kelpaa koko komennon tai siivouksen näytöksi.
+
+Rajattu testituen korjaus korvaa vain alias-fixturen PowerShell/COM-kyselyn
+olemassa olevan käännetyn contract-fixturen `GetShortPathNameW`-kutsulla.
+Sama kymmenen sekunnin valmisteluraja säilyy. Fixture ei luo jälkeläisiä;
+tulos luetaan vasta sen poistuttua, aito lyhytnimialias ja sama hakemisto
+varmennetaan, eikä puuttuvaa aliasia korvata arvauksella tai ohitetulla testillä.
+Virheellinen valmistelu ei käynnistä watcheria. Tämä ei osoita vanhan
+valmisteluviiveen sisäistä syytä.
+
+Nykyinen result-writer välittää vain suljetun, muistissa olevan kirjoitusvaiheen.
+Epäonnistumisen valinnainen `resultPublication`-havainto erottaa jo kuluneen
+julkaisuvaran, kirjoitusta odottaessa päättyneen varan ja kirjoituspoikkeuksen.
+Erillinen `resultPublicationLastCompleted` ilmoittaa viimeisen valmistuneen
+vaiheen; operaation aloitus ei ole valmistumistodiste. Kirjoituspoikkeus
+säilyttää alkuperäisen vaiherajan myös tilapäistiedoston siivouksen jälkeen.
+Pakollinen `resultWriteFailed`, alkuperäiset process/worker/cleanup-tulokset,
+nykyinen viiden sekunnin poistumisvaraus ja jatkamisen esto säilyvät.
+Havaintovirhe ei saa muuttaa tulostiedostoa tai komennon onnistumista.
+Nykyisen komentofixturen regressio vapauttaa estyneen oikean kirjoittimen
+vasta hylätyn vaiheen palattua: myöhäinen tiedosto ei muuta exit-koodia,
+valtuuta seuraavaa vaihetta tai poista aineistoa. Lukija hylkää onnistuneeksi
+merkityn myöhäisen tiedoston, kun todellinen komentoprosessi poistui virheenä.
+Tämä täsmentää seuraavan mahdollisen virheen näyttöä, ei nimeä aiemman
+julkaisuvirheen syytä. Uuden korjauksen normaalit hyväksyntäportit ovat auki.
+
+Corepackin latausvirhe on erillinen työkaluketjun havainto. CI:n lukitun
+[Node 24.19.0:n Undici-versio on 7.29.0](https://github.com/nodejs/node/blob/v24.19.0/deps/undici/src/package.json),
+ja sen [Parser.finish sisältää kaatuneen assertionin](https://github.com/nodejs/node/blob/v24.19.0/deps/undici/src/lib/dispatcher/client-h1.js).
+Virheluokka vastaa [Undici #5360](https://github.com/nodejs/undici/issues/5360)-havaintoa
+sekä korjauksia [#5389](https://github.com/nodejs/undici/pull/5389) ja
+[#5474](https://github.com/nodejs/undici/pull/5474). Myös tarkistetussa
+[Node 24.21.0:n lähteessä](https://github.com/nodejs/node/blob/v24.21.0/deps/undici/src/lib/dispatcher/client-h1.js)
+sama assertion säilyy. Pelkkää LTS-version nostoa ei siten esitetä tämän
+virheen korjauksena. Ei sovellusriippuvuutta, yleistä uusintaa tai
+työkaluversion muutosta; lataushäiriö ei muutu MSI-testitulokseksi.
+
+Revision `b4f48e392d3e6dc81bd0de4fb76ec88e9fad261a` kaksi normaalia
+kokonaiskierrosta
+([35113921643](https://github.com/eky-software/eky/actions/runs/35113921643),
+[35117892784](https://github.com/eky-software/eky/actions/runs/35117892784))
+säilyvät hyväksyttynä revision näyttönä. Ne eivät korvaa PR #270:n
+[ajon 35121019099](https://github.com/eky-software/eky/actions/runs/35121019099)
+hylkäystä: sen checkout ja artifact-build olivat
+`3b52d51e49acf360bdf87539bb00a325222f3d3d`, ja legacy run 1 saavutti
+GitHub-jobin 37 minuutin ulkorajan ilman varmennettua komentotulosta tai
+siivousta. Saman artifactin `10457883033` toinen consumer läpäisi. Puuttuva
+epäonnistuneen consumerin loppuloki ei osoita MSI:n, supervisorin tai runnerin
+juurisyytä. PR, merge ja julkaisu pysyvät porttiensa takana.
+
+Rajattu todiste kohdistuu legacy-workerin nykyiseen suoraan
+MSI-kutsuun. `sourceInstall` ja `majorUpgrade` välittävät nykyiseen
+vaihehavaintoon vain suljetut `processSpawnRequested`, `processSpawned`,
+`processStartFailed`, `processOperationFailed`, `processExited` ja
+`processClosed`-arvot. Vaiheen aloitus ei todista spawnia eikä `exit` korvaa
+`close`-havaintoa. Observerin poikkeus ei muuta prosessitulosta; havainto ei
+ole kontrolliprotokolla tai cleanup-todiste. MSI:n stdout/stderr säilyvät
+ohitettuina ja verbose-loki yksityisenä. Worker-havaintojen mahdollinen
+estävä konsolitoimitus kuuluu edelleen saman scenario-Jobin rajaan;
+.NET-komennon erillinen tulos- ja poistumisvastuu ei muutu.
+
+Regressiot todistavat todellisen runtime-kytkennän, alkuperäisen MSI-
+paluuarvon säilymisen, exit/close-järjestyksen ja jälkitarkistuksen alkamisen
+vasta sulkeutumisen jälkeen. Nykyisen komentofixturen `msiProcessHold`
+käyttää samaa prosessikutsua ja nykyistä synteettisen pysähdyksen varausta:
+pakollinen caller-tulos, supervisorin deadline/cleanup sekä koko komennon
+exit ja close tarkistetaan erikseen. Uutta valvojaa, ajastusta, fallbackia
+tai MSI-politiikkaa ei lisätä. Yksi olemassa olevan artifactin rajattu
+CI-koe saa käyttää nykyistä ulkoista keruuta; uusi harness-revisio erotetaan
+paketin build-revisiosta. Koetta ei lasketa normaaliksi hyväksynnäksi eikä
+pelkkää onnistumista vanhan häiriön korjaukseksi. Nykyinen trace-projektio
+erottaa komentoa ja sen vaiheprosesseja, ei yksin todista MSI-lapsen
+poistumista. Aiemmat trace-fixturen korjaukset ja niiden näyttö ovat alla
+erillistä historiaa, eivät tämän MSI-odotuksen selitys.
+
+Havaintorevision `39b6b863bf9344facae0a20fe9acc4d9e088408f`
+[yksi rajattu koe](https://github.com/eky-software/eky/actions/runs/35131637796)
+käytti samaa artifactia `10457883033` ilman rebuildiä. Todellinen checkout
+vastasi havaintorevisiota, paketin build pysyi `3b52d51`-revisiona ja
+descriptorin sekä molempien MSI:den tavut varmennettiin ennen ja jälkeen.
+Molempien MSI-kutsujen request/spawn/exit/close havaittiin; legacy-skenaario,
+komento, pakollisen tuloksen tarkistin, semanttiset jälkiehdot, asennuksen
+poisto ja fixture-siivoaminen valmistuivat. Alkuperäinen jumi ei toistunut.
+Keruun aloitus ja lopetus onnistuivat, mutta analyysi hylättiin rajalla
+`commandRead`: `INSPECTOR_TRACE_LIFETIME_INVALID`. Prosessitaulukon vienti
+oli palautunut ennen tätä hylkäystä; sitä ei nimetä WPA-vientivirheeksi.
+Koko diagnostinen job jäi hylätyksi, eikä ulkoisesta prosessi-/säieanalyysistä
+ole hyväksyttyä todistetta. Tämän ajon tarkka hylätty elinkaariehto puuttui.
+Alla kuvattu jatkorajaus erottaa nykyisen lukijan suljetun hylkäyssyyn
+synteettisellä kokeella ennen uutta MSI-koetta; validointia ei löysennetä.
+Tämä ei hyväksy vanhaa PR-ajoa eikä muodosta normaalia julkaisukierrosta.
+
+Lukijan kuusi olemassa olevaa elinkaaren hylkäysrajaa erotetaan valinnaisella
+`lifetimeValidationBranch`-kentällä vain `commandRead`-virheessä. Kenttä on
+suljettu luokka, ei rivin sisältö, prosessitunniste, polku tai aikaleima.
+Alkuperäinen virhekoodi, epäonnistunut analyysi ja komennon exit 1 säilyvät;
+virheellinen taulukko ei julkaise elinkaari- tai cleanup-todistetta.
+Nykyinen `inspector-analysis-diagnostic` saa lukea samalla keruulla jo
+ajettavan synteettisen komentofixturen `-LegacyCommand -ContractFixture`
+-valinnalla. Normaali legacy-consumer ei käytä fixture-valintaa. Kokeessa
+ei rakenneta tai asenneta MSI:tä eikä muuteta keräimiä, aikarajoja tai
+omistajuutta. Tarkoitus on erottaa lukijan hylkäysraja oikealla vientitaulukolla,
+ei todistaa vanhan MSI-jumin korjausta tai korvata normaalihyväksyntää.
+
+Hylkäyssyyn revision `2fc2d653d6e526cd4821d7a2abba625012f9e5b4`
+[MSI:tön koe 35135231936](https://github.com/eky-software/eky/actions/runs/35135231936)
+päättyi ensimmäisellä yrityksellä hallitusti analyysin virheeseen; todellinen
+checkout vastasi lähderevisiota. Keruun aloitus, synteettinen komentotesti ja
+keruun lopetus läpäisivät. Analyysi palautti `commandRead`-rajalla
+`INSPECTOR_TRACE_LIFETIME_INVALID` ja `lifetimeValidationBranch=processIdentity`.
+Jobin virhemerkintä oli exit 1, ei ulompi aikakatkaisu. Rajaus erottaa
+prosessin avain-/istuntokenttien tarkistuksen muista elinkaariehdoista,
+mutta ei vielä kerro kumpaa kenttää tai riviä hylkäys koski. Raakataulukkoa
+ei julkaistu. Seuraava mahdollinen lukijakorjaus tarvitsee tämän rajatun
+sopimuksen todistuksen; kokonaismatriisin uusiminen ei korvaa sitä.
+MSI-odotuksen juurisyy, PR:n puuttuva hyväksyntä ja julkaisuportit pysyvät
+erillisinä eikä tämä diagnostinen kierros tuota hyväksyntänäyttöä.
+
+Omistajan hyväksymä rajattu lukijasopimus sallii prosessitaulukon täsmällisen
+`SessionID=-1`-arvon vain puuttuvan istunnon merkintänä. Rivi ja sen säikeet
+säilyvät komentoehdokkaiden moniselitteisyyden ja päällekkäisten
+prosessitunnisteiden tarkistuksissa; niitä ei poisteta taulukosta. Valittu
+komento ja sen vaiheprosessit tarvitsevat tunnetun istunnon. Asennuksen
+diagnostisiin rooleihin vaaditaan tunnettu, komennon kanssa sama istunto;
+puuttuvia istuntoja ei yhdistetä keskenään. Numeerinen istunto `0` säilyy
+kelvollisena. Muut negatiiviset tai virheelliset arvot sekä kaikki nykyiset
+avain-, elinkaari-, säie- ja kokorajat torjuvat aineiston ennallaan.
+Muutos koskee vain analyysilukijaa: se ei tuota prosessiomistajuutta tai
+siivoustodistetta eikä muuta MSI:n tai julkaisun hyväksyntäehtoja.
+Lukijan ja workflow-kytkennän kohdesarja läpäisi 43/43 sekä CI-sopimukset
+55/55. Regressiot säilyttävät puuttuvan valitun istunnon virheen,
+komennon todellisen poistumisen, suljetun virhetuloksen ja pakollisen
+onnistumistuloksen puuttumisen erillisinä. Normaali hyväksyntä pysyy avoimena.
+
+Lukijakorjauksen revisio `6f37ef0439006c611d439fa72c1af47beafa4c5e`
+läpäisi [MSI:ttömän kokeen 35137776980](https://github.com/eky-software/eky/actions/runs/35137776980)
+ensimmäisellä yrityksellä; todellinen checkout vastasi lähde-HEADia.
+Keruun aloitus, nykyinen synteettinen komentotesti, keruun lopetus ja
+analyysi valmistuivat. Ulkoisesta aineistosta varmennettiin komennon ja
+vaiheprosessien elinkaaret sekä tarkoituksellinen tarkistinkutsun odotus.
+MSI:tä ei rakennettu tai asennettu. Tämä sulkee rajatun lukijakorjauksen
+CI-todennuksen, ei alkuperäisen MSI-odotuksen juurisyytä tai PR:n puuttuvaa
+normaalia hyväksyntää. Uutta MSI-koetta ei tarvita analyysilukijan vuoksi.
+
+Normaalin legacy-consumerin ja aiemman paketoidun diagnoosin nykyinen
+komentopolku käyttää samaa suoraa .NET-käynnistystä, lukittua SDK:ta,
+supervisor-buildia, 27 minuutin lifecycle-rajaa ja pakollista
+caller-tuloksen tarkistinta. Normaali consumer sitoo checkoutin producerin
+build-revisioon; diagnoosi sitoo uuden harness-revision erikseen vanhan
+artifactin varmennettuihin tavuihin. Valmistelun ja komentojen vastaavuus
+ei todista runnerien ajonaikaisia olosuhteita samoiksi. Seuraava erottava
+koe kuuluu normaalin consumerin valmistumisketjuun nykyisillä MSI:n
+request/spawn/exit/close-havainnoilla ja valinnaisella keruulla; sen
+tallentamaton vertailu ja diagnostinen hyväksyntäasema säilytetään.
+
+Trace-fixturen rajattu valmistelukatselmus osoitti erillisen
+keskeytyssopimuksen puutteen: lokikahvan myöhäinen avautuminen saattoi
+käynnistää prosessin keskeytyksen jälkeen, ja myöhäinen `close` saattoi
+palauttaa tavallisen tuloksen keskeytetylle kutsulle. Kaksi determinististä
+regressiota hylkäsi tämän ennen korjausta. Nykyinen testin käynnistyskohta
+tarkistaa saman keskeytyssignaalin ennen avausta, avauksen valmistuttua ja
+prosessin sulkeuduttua. Myöhään saatu lokikahva suljetaan, uutta prosessia ei
+käynnistetä ja alkuperäinen keskeytys säilyy virheenä. Jo käynnistyneen
+fixturen sama kahvapohjainen siivousvastuu säilyy. Regressoissa varmistetaan
+myös lokikahvan sulkeutuminen sekä käynnistymättä jääminen tai todelliset
+spawn/exit/close-havainnot. Uutta valvojaa, aikarajaa tai varapolkua ei lisätä.
+Tämä korjaa osoitetun testituen puutteen, ei väitä selittävänsä alkuperäistä
+trace-testin viivettä. Korjaus tarvitsee omat normaalit hyväksyntäporttinsa.
+Korjatut keskeytysregressiot läpäisivät 2/2, koko trace-sarja 18/18,
+core-sarja 345/345, legacy-artifact-/workflow-sarja 30/30 ja CI-sopimukset
+55/55. Normaaleja budjetteja, skenaarioita tai tuotantokoodia ei muutettu.
+
+Keskeytyskorjauksen revisio `1c1f983cbb189f7989a03315d6ad616be28bd704`
+läpäisi [ensimmäisen normaalikierroksen](https://github.com/eky-software/eky/actions/runs/35102498816)
+ja [riippuvuustarkistuksen](https://github.com/eky-software/eky/actions/runs/35102494936).
+Kaikki 18 paketoitua komentoa, neljän artifact-perheen tavusidokset,
+todelliset checkoutit ja Electron 38/38 ilman flaky-tulosta varmennettiin.
+[Toisen kierroksen](https://github.com/eky-software/eky/actions/runs/35105498018)
+core run 1 hylkäsi `completed`- ja `interrupted`-trace-testit: 343 läpäisi ja
+2 aikakatkaistiin. Uudet keskeytysregressiot läpäisivät, mutta hyväksyntäpari
+ei täyty. Kierros on päättynyt hylättynä: muut käynnistyneet jobit läpäisivät,
+legacy-producer ja consumerit jäivät portin jälkeen käynnistymättä ja
+loppukoonti torjui puuttuvan kattavuuden. Ensimmäisen tapauksen turvallinen havainto oli
+`processStartRequested`, `spawned: true`, `exited: false`, `closed: false`.
+Siivous valmistui ja exit/close havaittiin sen jälkeen. Ensimmäistä
+skriptikuittausta ei vastaanotettu; siitä ei päätellä skriptin todellista
+suorituskohtaa tai suoraan natiivikutsun hitautta.
+
+Rajattu havainto erottaa nykyisessä testissä valmistelun keston,
+Noden `spawn`-kutsun keston, spawn-ilmoituksen havaitsemisajan ja ensimmäisen
+skriptikuittauksen vastaanottoajan. Se ei mittaa erikseen Win32-kutsun
+sisäistä aikaa eikä muuta aikarajaa tai hyväksymisehtoa. Tuntematon tai
+puuttuva havainto säilyy tuntemattomana. Rajattu core-koe käyttää nykyistä
+diagnostiikkareittiä ilman MSI-rakentamista tai tallennusta; onnistuneita
+diagnooseja ei siirretä hyväksyntäparin osiksi.
+
+Havaintorevision `133a895e3d575d2b50b8dc416eb7d28db7613e37`
+[yksi rajattu core-koe](https://github.com/eky-software/eky/actions/runs/35108618892)
+läpäisi 345/345 molemmilla eristetyillä Windows-runnereilla ensimmäisellä
+yrityksellä. Todelliset checkoutit vastasivat lähde-HEADia. Ensimmäisen
+skriptiviestin jälkeen assertionit, prosessin exit/close ja cleanup
+valmistuivat; aikakatkaisu ei toistunut. MSI- ja keruuvaiheita ei ajettu.
+Normaalin core-jobin ja rajatun kokeen lukitut versiot, valmisteluvastuut
+ja kanoninen testikomento/järjestys vastaavat toisiaan. Tämä ei osoita
+runnerien ajonaikaisten olosuhteiden yhtäläisyyttä tai viiveen aiheuttajaa.
+Puuttuva havainto on edelleen epäonnistuvan käynnistyksen aikajako.
+
+Omistajan hyväksymä kuuden eristetyn core-ajon sarja on päättynyt
+revisiolla `11fb8653d091fb48137b3b8b7ba709ee79162851`, jonka testikoodi vastaa
+havaintorevisiota. Kolme ennalta sovittua kutsua
+([35110017787](https://github.com/eky-software/eky/actions/runs/35110017787),
+[35110593680](https://github.com/eky-software/eky/actions/runs/35110593680),
+[35111216847](https://github.com/eky-software/eky/actions/runs/35111216847))
+läpäisivät 345/345 kummallakin runnerilla, yhteensä kuusi erillistä jobia.
+Kaikki olivat ensimmäisiä yrityksiä samalla varmennetulla checkoutilla;
+epäonnistumisia, keskeytyksiä tai epävarmaa trace-siivoamista ei havaittu.
+Trace-fixturen exit ja close havaittiin ennen cleanupia kaikissa kuudessa.
+MSI:tä ei rakennettu, WPR:ää ei kerätty eikä budjetteja muutettu.
+Sarja on diagnostiikkaa, ei normaali hyväksyntäpari tai viiveen juurisyykorjaus.
+Uusia samanlaisia toistoja ei käynnistetä tämän sarjan jatkoksi.
+
+Omistaja hyväksyi trace-sopimustestin isännän kohdistamisen samaan `pwsh`-
+ympäristöön, jota nykyiset keruu-/analyysivaiheet jo käyttävät. Vain
+`installerProductInspectionTrace.test.mjs` luopuu erillisestä Windows
+PowerShell -isännästä; tuotannon PowerShell-polut ja muut testiperheet
+säilyvät. Uutta riippuvuutta, asennusta, varapolkua tai aikarajaa ei lisätä.
+Suoritettava fixture varmistaa itse Core/pwsh-isännän ennen trace-lukijan
+käyttöä. Puuttuva isäntä säilyttää käynnistysvirheen; saman käynnistyksen
+`close` ja lokikahvan sulkeminen varmistetaan ilman toista käynnistystä tai
+tekaistua tulosta. Nykyiset keskeytys-, tulos- ja siivousehdot säilyvät.
+Isäntäregressio hylkäsi vanhan kytkennän ennen muutosta. Korjattu trace-sarja
+läpäisi 19/19, kanoninen core-sarja 346/346, legacy-artifact-/workflow-
+sopimukset 30/30 ja CI-sopimukset 55/55. Desktopin typecheck ja build
+läpäisivät. Muuttuneen revision normaalit hyväksyntäportit ovat vielä auki;
+aiempaa kuuden ajon diagnostista sarjaa ei lasketa niiden osaksi.
+Isäntäero ei osoita vanhan aikakatkaisun aiheuttajaa: alkuperäinen viive jää
+erilliseksi avoimeksi havainnoksi ilman suoraa syyn osoittavaa näyttöä.
+
+Revision `ff20f26c8bf172f678ff5213280abb8b1061073d`
+[ensimmäinen normaali kierros](https://github.com/eky-software/eky/actions/runs/35093649797)
+läpäisi: neljän artifact-perheen tavusidos, 18 paketoitua komentoa,
+todelliset checkout-revisiot sekä Electron 38/38 ilman flaky-tulosta
+varmennettiin. Revision [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/35093646215)
+läpäisi kaikki kolme porttia. Saman revision
+[toisessa kierroksessa](https://github.com/eky-software/eky/actions/runs/35096874185)
+core run 2:n synteettinen trace-lukijan `completed`-testi ylitti 30 sekunnin
+testirajan. Tämä hylkäys estää hyväksyntäparin; se ei ole MSI-tulos eikä
+paikanna viivettä PowerShellin käynnistykseen, lukutyöhön tai poistumiseen.
+Kierros päättyi hylättynä: muut käynnistyneet jobit läpäisivät, mutta
+legacy-producer ja sen consumerit jäivät sopimusportin jälkeen käynnistymättä.
+Loppukoonti torjui puuttuvan kattavuuden; kahden kierroksen vaatimus on auki.
+
+Rajattu testihavainto erottaa fixturen suljetut vaiheet, spawn-, exit- ja
+close-havainnot sekä tilan ennen cleanupia ja sen jälkeen. Pakollinen
+tulostiedosto ja nykyiset assertionit päättävät testin tuloksen, eivät
+vaiheviestit. Ohjattu synteettinen pysähdys todisti testirajan hylkäyksen,
+alkuperäisen vaiheen säilymisen ja kahvapohjaisen siivouksen erillisen
+jälkihavainnon; koepysähdystä ei jätetty normaaliin testiin.
+Nykyinen `legacy-contracts-diagnostic` voi valita vain kanonisen core-ryhmän
+sen normaalissa järjestyksessä kahdelle eristetylle runnerille. Tämä reitti
+ei rakenna MSI-artifacteja, käynnistä tallennusta tai korvaa hyväksyntää.
+Prosessiomistajuus, normaalit työnkulut ja kaikki aikarajat säilyvät.
+Alkuperäisen testiviiveen sisäinen raja on vielä avoin.
+Core-kohdesarja läpäisi 343/343, legacy-artifact-/workflow-sarja 30/30,
+upgrade-artifact-/workflow-sarja 20/20 ja CI-sopimukset 55/55.
+Valinnan regressio suorittaa workflow'n todelliset ehdot: core valitsee vain
+olemassa olevan ryhmän, oletus säilyttää täyden diagnostisen sarjan ja normaali
+supervisor-portti säilyy erillisenä. Tämä ei vielä ole viiveen juurisyykorjaus.
+
+Havaintorevision `945ce69f6e697249edc193707884701351ad1c3a`
+[rajattu core-koe](https://github.com/eky-software/eky/actions/runs/35099798055)
+läpäisi 343/343 molemmilla eristetyillä Windows-runnereilla ensimmäisellä
+yrityksellä. Todelliset checkoutit vastasivat lähde-HEADia. Kummankin
+`completed`-tapauksen assertionit valmistuivat, prosessin exit ja close
+havaittiin ennen cleanupia, testiä ei keskeytetty ja cleanup valmistui.
+MSI-, keruu- ja täyden diagnostisen sarjan vaiheet pysyivät ohitettuina.
+Tulos todentaa havaintokytkennän normaalipolun, ei alkuperäisen viiveen
+korjausta tai normaalia kokonaishyväksyntää. Puuttuva erottava näyttö on
+epäonnistuvan tapauksen viimeinen valmistunut vaihe sekä sen exit/close-tila
+ennen siivousta. Uutta samanlaista onnistuvaa toistoa tai aikarajan nostoa
+ei pidetä tämän näytön korvikkeena. Hyväksyntäpari ja julkaisuportti ovat auki.
+
+Jälkikorjausten revision `8a8c083ef6c4b0442cd705ed2fbdf9a176125ada`
+[ensimmäinen normaali kokonaiskierros](https://github.com/eky-software/eky/actions/runs/35090707995)
+hylättiin upgrade-producerin workflow-sopimukseen ennen pakettien rakentamista.
+Vanha koko diagnostisen jobin `continue-on-error`-tekstikielto oli ristiriidassa
+hyväksytyn, vain workspace-fault-keruun valinnaisuuden kanssa. Korjaus testaa
+nykyisen workflow'n todelliset ehdot: upgrade-polun virheitä ei saa ohittaa
+keruun ollessa päällä tai pois. Tunnistamaton tai job-tason ohitus torjutaan;
+normaalin matriisin ja jaetun diagnostiikan muut portit säilyvät.
+Workflow'n ajokoodi, aikarajat tai hyväksymisehdot eivät muutu.
+Virhe toistui rajatussa regressiossa ennen korjausta. Neljän artifact-perheen
+kohdesarjat läpäisivät sen jälkeen 18/18, 20/20, 29/29 ja 62/62 sekä
+CI-sopimukset 55/55. Revision oma
+[riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/35090370633)
+läpäisi kaikki kolme porttia. Kokonaiskierros päättyi: muut käynnistyneet jobit,
+mukaan lukien Electron, molemmat legacy-ajot sekä workspace-success- ja
+fault-consumerit, läpäisivät. Upgrade-consumer jäi producerin sopimusvirheen
+takia käynnistymättä ja loppukoonti hylkäsi ajon oikein. Hylätystä kierroksesta
+ei muodosteta hyväksyntäparia; korjaus tarvitsee oman normaalin PR-/main-
+todennuksen.
+
+V2-integraation lähderevisio
+`b130e8601929019fb407865bee69b838d6df7897` läpäisi kaksi normaalia
+kokonaiskierrosta
+([35020309518](https://github.com/eky-software/eky/actions/runs/35020309518),
+[35023325796](https://github.com/eky-software/eky/actions/runs/35023325796))
+ja oman [riippuvuustarkistuksensa](https://github.com/eky-software/eky/actions/runs/35020305521).
+Kummassakin kierroksessa varmennettiin neljän artifact-perheen tavusidos,
+18 paketoitua komentoa ja Electron critical 38/38 ilman flaky-tulosta.
+[PR #268](https://github.com/eky-software/eky/pull/268) läpäisi lisäksi oman
+[CI-ajonsa](https://github.com/eky-software/eky/actions/runs/35026401530)
+ja [riippuvuustarkistuksensa](https://github.com/eky-software/eky/actions/runs/35026400856).
+PR-ajon todellinen checkout ja artifact-build oli
+`f5ac83def41c737394c4cd86e49c6f9bb1e3e987`, ei lähde-HEAD.
+
+Hyväksytty required-check-vaihto on tehty: `V2 acceptance` ja
+`Audit dependencies`, odotettu tuottaja GitHub Actions. Strict-ajantasaisuus,
+PR-vaatimus ja muut suojaukset säilyivät. PR yhdistettiin normaalisti
+main-revisioon `379f9c6232ad73721e1dd387b2fa7be6804eb256`.
+Sen [oma main-ajo](https://github.com/eky-software/eky/actions/runs/35029069964)
+on päättynyt hylättynä: `legacy / V2.5 commands contracts run 2` -jobin synteettisen
+`Preparation`-tapauksen tuottajan jälkeinen tuloslukija palautti exit 1:n,
+vaikka testi vaati exit 0:n. Tämä pysäyttää julkaisun; aiempi hyväksyntäpari
+ja PR-ajo eivät korvaa merge-revision puuttuvaa hyväksyntää. Legacy-producer
+ja sen consumerit eivät käynnistyneet hylätyn sopimusportin jälkeen. Mainin oma
+[riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/35029069670)
+läpäisi kaikki kolme pakollista tarkistusta.
+
+Nykyinen rajattu korjaus säilyttää epäonnistumisraportissa tuottajan ja
+tuloslukijan validoidut process-, worker- ja cleanup-tulokset erikseen.
+Puuttuva tai virheellinen tulos erotetaan hylätystä prosessituloksesta;
+diagnostiikan virhe ei korvaa alkuperäistä assertionia. Sama olemassa oleva
+tuloslukija sitoo havainnon pyynnön todelliseen artifact-identiteettiin.
+Diagnostiikkacheckpoint ei muuttanut aikarajoja, sovelluskoodia tai
+hyväksymisehtoja. Nykyisen feasibility-workflow'n
+`product-command-diagnostic` valitsee vain saman
+komentoryhmän kahdelle eristetylle Windows-runnerille, ilman MSI-rakentamista
+tai hyväksyntäporttien korvaamista. CI:n alkuperäinen hylkäys ei yksilöinyt
+tuloslukijan sisäistä virhettä, joten sitä ei nimetä vielä aikakatkaisuksi,
+MSI-viaksi tai juurisyyltään korjatuksi.
+
+Revision `2bba85428f3a0bfd47b9501c68e7849bbb325d81`
+[rajattu CI-koe](https://github.com/eky-software/eky/actions/runs/35030822281)
+läpäisi saman komentoryhmän molemmilla Windows-runnerilla ensimmäisellä
+yrityksellä, 26/26 kummassakin. Alkuperäinen virhe ei toistunut; tämä on
+diagnostiikkaa eikä korvaa normaalia hyväksyntää.
+
+Omistaja hyväksyi tämän jälkeen yhden todetun budjettikytkennän korjauksen:
+`legacyCommandCompletion.process.test.mjs`-sopimuksen tavallinen
+tuotetuloslukija käyttää kanonisen `legacyCommand`-taulukon `semantic`-
+vaiheen 35 s kokonaisrajaa (30 s työ + 5 s siivous) yleisen testiapurin
+10 s oletuksen sijaan. Tämän kaksivaiheisen sopimustestin ulompi testiturva
+on 90 s, kuten muissa komentorajaregressioissa; se ei ole onnistumisehto.
+Tarkoituksellinen `ConsumerReadHold` ja tuottajan virheinjektiot säilyvät
+4 s kokonaisrajassa ja 1 s siivousvarauksessa. Sovelluksen, MSI:n,
+CI-jobien sekä muiden testien rajat eivät muutu. Pyyntövalinnan regressio
+ja oikean komentoprosessin exit/close-, tulos- ja cleanup-assertiot
+varmentavat eri vastuut. Korjattu sopimusero ei todista vanhan CI-virheen
+syytä, koska sen tarkka sisäinen lukijatulos puuttui.
+
+Budjettikorjauksen revisio `1bbc4c5c4e018fadfd19567a40505885958d1625`
+läpäisi [kohdesarjan](https://github.com/eky-software/eky/actions/runs/35033463537)
+27/27 molemmilla runnereilla, [riippuvuustarkistuksen](https://github.com/eky-software/eky/actions/runs/35033855366)
+sekä [ensimmäisen normaalin kokonaiskierroksen](https://github.com/eky-software/eky/actions/runs/35033870483).
+Saman revision [toinen kokonaiskierros](https://github.com/eky-software/eky/actions/runs/35035995254)
+päättyi hylättynä: legacy run 2 epäonnistui `sourcePackagedSmoke`-vaiheessa,
+ja workspace fault run 2 saavutti skenaarion deadlinen `acceptanceInterruption`-
+tapauksen `targetInstall`-vaiheessa. Komennot päättyivät; jälkimmäisen
+prosessisiivous valmistui ja artifactien jälkivarmennus läpäisi. Tämä ei ole
+hyväksytty kahden kierroksen pari eikä näyttö alkuperäisten syiden korjauksesta.
+
+Legacy-smoken seuraava rajattu diagnostiikkakorjaus säilyttää yleisen
+virhetuloksen rinnalla suljetun syyluokan, validoidun viimeisen smoke-vaiheen
+ja statuksen sekä initial/restored-sukupolven. Raakaa sovellusvirhekoodia,
+polkua tai virhetekstiä ei julkaista. Havainto ei valtuuta cleanupia eikä
+muuta onnistumisehtoja, prosessiomistajuutta tai aikarajoja. Virheellistä
+tulostiedostoa, liian aikaista poistumista ja sovelluksen raportoimaa virhettä
+ei enää tarvitse päätellä samasta yleisestä lokirivistä. Alkuperäisen
+CI-virheen sisäinen syy ja workspace-asennusodotuksen tarkka raja ovat avoimia.
+
+Revision `d13422fe1e7f17d1c3592d5837f76199254c948b`
+[yksi rajattu legacy-koe](https://github.com/eky-software/eky/actions/runs/35038872159)
+läpäisi ensimmäisellä yrityksellä saman epäonnistuneen kierroksen
+artifactilla `10423058899`. Harness ja checkout olivat `d13422f`, mutta
+pakettien build-revisio säilyi `1bbc4c5`. Ennen/jälkeen-tavusidos,
+pakollinen lopputulos ja komentoketjun viimeistely varmennettiin.
+Alkuperäinen smoke-virhe ei toistunut; koe ei todista sen syytä korjatuksi
+eikä korvaa normaalia hyväksyntää.
+
+Jäljellä ovat näiden erillisten hylkäysten rajaus, korjauksen normaali
+PR-/main-todennus ja tämän jälkeen erillinen 0.2.8-versionosto sekä
+exact-byte-varmennettu pilot-bundle. Historiallisia jäädytettyjä PR:iä ei
+yhdistetty suoraan. Suojauksia tai julkaisurajoja ei ohiteta.
+
+#### Hyväksytty rajattu workspace-koe
+
+Omistaja hyväksyi alla olevan keruun reitityksen, rajatun jälkilukijan ja
+96 minuutin kertakokeen job-varauksen. Tämä on diagnostiikan päätös,
+ei normaalin hyväksyntäportin tai yksittäisen skenaarion aikarajan muutos.
+
+Kysymys on vain, odottaako `acceptanceInterruption`-tapauksen `targetInstall`
+MSI:n valmistumista vai asennuksen jälkeistä tarkistusta. Nykyinen
+`workspaceFaultLifecycle.mjs` odottaa tässä ensin `waitForInstallation`-
+operaatiota, sitten asennustilaa, payloadia ja artifactin varmennusta.
+Varsinainen `targetAcceptanceInterruption`-virheinjektio tulee vasta tämän
+jälkeen, joten sen onnistumista tai vikaa ei päätellä aloitusrivistä.
+
+- `workspaceSuccessWindowsRuntime.mjs` tarkistaa saman Windows-session
+  MSI-clientit ennen kahta natiivia ProductCode-kyselyä ja niiden jälkeen.
+  Keskeneräinen MSI-havainto on odotus, ei tuotteen puuttuminen. Näiden
+  apuprosessien poistuminen, tuloslukeminen ja tulostiedoston poisto sekä
+  myöhemmät payload-/artifact-luvut ovat myös mahdollisia odotusrajoja.
+  Yksi nykyinen Job omistaa skenaarion jälkeläiset; pelkkä session
+  prosessihavainto ei anna lupaa vieraan prosessin sulkemiseen.
+- Yksi uusi eristetty Windows-runner käyttää epäonnistuneen kierroksen
+  `35035995254` workspace-artifactia `10423393700`, build-revisiota
+  `1bbc4c5c4e018fadfd19567a40505885958d1625` ja descriptor-tiivistettä
+  `32b94f1714469f0cd59831551a1f4d335ed74f857f053844748dc375510f0b43`.
+  Paketteja ei rakenneta uudelleen. Harness-revisio ja todellinen checkout
+  kirjataan erikseen; tavut varmennetaan ennen ja jälkeen kokeen.
+- Säilytetään normaalin jobin järjestys: `preUpdateRecoveryPointFailure`,
+  `activeWorkspaceFirstStartFailure`, sitten `acceptanceInterruption`.
+  Kukin käyttää nykyistä .NET-komentoa, omaa eristettyä fixtureä ja
+  pakollista tulosvarmennusta. Seuraavaa asennusta ei aloiteta, jos edellisen
+  tulos, prosessisiivous, exact-tuotetila tai fixture-siivoaminen hylätään.
+- Keruu alkaa vasta kahden esiskenaarion jälkeen, ennen kolmatta komentoa,
+  ja pysähtyy sen jälkeen myös virhepolulla. Nykyiset 1/2/3 minuutin
+  aloitus-/lopetus-/analyysivaiheet ja keräinten koko- sekä yksityisyysrajat
+  säilyvät. Keruu ei kuluta skenaarion työ- tai siivousaikaa, eikä sen virhe
+  muutu testin tai cleanupin tulokseksi. Raakajälkiä ei julkaista.
+- Hyväksytty job-varaus: kolme erillistä nykyistä 25 minuutin
+  komentovaihetta, normaalityönkulusta sama 15 minuutin valmistelu- ja
+  jälkivarmennusvara sekä 6 minuutin erillinen keruuvara ovat yhteensä
+  96 minuuttia vain tämän kertakokeen jobille. Nykyisen diagnostisen
+  30 minuutin jobin sisään ei piiloteta kolmea komentoa. Komennon 24 minuutin
+  kokonaisraja ja skenaarion 720 sekuntia (690 työ + 30 cleanup), muut
+  komentobudjetit sekä normaalin CI:n aikarajat eivät muutu.
+- Keruuvalitsimen workspace-laajennus koskee vain tätä kertakoetta;
+  komentoprojektio tunnistaa legacy-komennon lisäksi tämän fault-komennon, sen nykyiset
+  vaiheprosessit, MSI-havainnot ja payloadittomat inspector-tapahtumat.
+  Prosessin elinkaari ja tapahtumien järjestys on sidottava samaan komentoon;
+  pelkkä PID, MSI-prosessin läsnäolo tai yleinen säieodotus ei todista syytä.
+- Ennen ajoa regressiot varmentavat oikean komentovalinnan ja järjestyksen,
+  väärän tai puuttuvan sidonnan hylkäyksen sekä analyysivirheen erillisyyden.
+  Kokeen tulos erottaa MSI-odotuksen, tarkistimen keskeneräisen kutsun tai
+  myöhemmän tarkistusrajan vain riittävällä näytöllä. Puuttuva tai ristiriitainen
+  näyttö jää varmentamattomaksi. Silloin raportoidaan seuraava päätöstarve,
+  ei aloiteta uutta samanlaista MSI-kierrosta.
+
+Keruun aloitus, pysäytys ja analyysi ovat workspace-kokeessa valinnaisia
+CI-vaiheita, joiden alkuperäiset outcome-arvot säilyvät. Esiskenaarioiden,
+tutkittavan komennon ja artifactin varmennuksen hylkäykset pysyvät pakollisina.
+Jälkilukija sitoo tarkistimen tapahtuman prosessi- ja säieelinkaareen;
+saman session MSI-client on vain havainto, ei omistettu resurssi tai
+MSI-paluuarvo. Suljettu yhteenveto ei sisällä prosessitunnisteita, polkuja,
+komentorivejä tai absoluuttisia aikoja. Kokeen toteutus tai vihreä tulos ei
+yksin sulje normaalia kahden kierroksen hyväksyntää.
+
+Kytkennän kohdesarja läpäisi 23/23, yhteinen core-sopimussarja 342/342,
+legacy-artifact-/workflow-sopimukset 29/29 ja CI-sopimukset 55/55.
+Desktopin typecheck ja build läpäisivät. Regressiot suorittavat workflow'n
+todelliset komentorungot synteettisillä tuloksilla ja varmentavat myös
+toisen esiskenaarion hylkäykseen pysähtymisen. Jälkilukijan testi erottaa
+komennon, vaiheprosessin, saman session MSI-havainnon sekä natiivikyselyn
+prosessin ja säikeen; vientivirhe ei poista jo validoituja havaintoja.
+Tämä näyttö hyväksyy rajatun kokeen kytkennän, ei vielä alkuperäisen vian
+korjausta tai julkaisua.
+
+Revision `0d8054bc29a8aa116203434360a2fd5a44c2112f`
+[yksi järjestyksen säilyttävä workspace-koe](https://github.com/eky-software/eky/actions/runs/35086869232)
+läpäisi kaikki kolme komentoa ensimmäisellä yrityksellä. Harness ja checkout
+olivat `0d8054b`; artifact ja sen build-revisio säilyivät yllä nimettyinä.
+Pakolliset tulokset, semanttiset jälkiehdot, asennusten poisto, lopulliset
+tuotetilat, profiilivertailu, fixture-poisto sekä ennen/jälkeen-tavusidos
+varmennettiin. Alkuperäinen `targetInstall`-odotus ei toistunut.
+
+Keruun aloitus onnistui, mutta lopetus palautti `captureUnverified`-tuloksen
+ja analyysi ohitettiin. Jobin vihreys ei siis tarkoita onnistunutta keruuta
+eikä alkuperäisen viiveen syyn paikantamista. Vanha `recorderStop`-luokka ei
+erottanut keräinten esitarkistusta, varsinaista lopetusta ja jälkitarkistusta;
+myös peruutussiivouksen virhe saattoi peittää alkuperäisen lopetusvirheen.
+Rajattu korjaus nykyiseen keruuskriptiin säilyttää nämä rajat ja erillisen
+`recordingCleanup`-tuloksen. Se ei muuta keruuta, testien omistajuutta tai
+aikarajoja eikä hyväksy varmentamatonta tallennusta. Nykyisen skriptin
+synteettinen regressio todisti virheen ennen korjausta; jälkilukijasarja
+läpäisi tämän jälkeen 16/16 ja workflow-sopimukset 21/21.
+
+Omistaja hyväksyi seuraavaksi yhden nykyisen `inspector-external-diagnostic`-
+CI-kokeen read-only-tarkistimella ja samoilla keruurajoilla, ilman MSI-
+asennuksia tai pakettien rakentamista. Tarkoitus on erottaa keruun
+lopetusrajat; tämä ei ole uusi workspace-uusinta tai julkaisuhyväksyntä.
+
+Tämä [kertakoe](https://github.com/eky-software/eky/actions/runs/35089282031)
+läpäisi ensimmäisellä yrityksellä. Lähde- ja todellinen checkout-revisio
+olivat `b549a5090a029f08c55dc47f839b5bb6500981e3`. Read-only-komentorajan
+sopimus läpäisi 1/1; prosessin poistuminen ja pakolliset tulokset varmennettiin
+ilman MSI-asennuksia tai sisäistä tapahtumakuuntelijaa. Keruun aloitus ja
+lopetus onnistuivat. Nykyinen ja minimaalinen WPA-näkymä löysivät kumpikin
+15 inspector-tapahtumaa samasta muuttumattomasta tallenteesta;
+provider-sidos ja read-only-vaiheiden järjestys validoitiin.
+
+Keruuketjun rajattu perustoimivuus ja lopetusvirheen säilyttävä korjaus ovat
+näin todennettuja. Pitkän workspace-keruun lopetusvirheen syy ja alkuperäisen
+`targetInstall`-odotuksen sisäinen raja jäivät avoimiksi: lyhyen kokeen
+onnistuminen ei erota niiden vaihtoehtoja. Uutta samanlaista MSI-koetta ei
+käynnistetä tämän tuloksen perusteella. Normaali kahden kokonaiskierroksen
+hyväksyntä sekä korjauksen PR-/main-portit ovat edelleen täyttämättä;
+0.2.8-julkaisu ei ole valmis.
+
+#### Aiemmat integraatiocheckpointit
+
 Revision `b1270ab0ed66904a5412752c94a165cada637d94`
 [ensimmäinen normaali kierros](https://github.com/eky-software/eky/actions/runs/35010087226)
 on hylätty Electron criticalin `DESK-WORKSPACE-REPLACE-001`-flaken vuoksi.

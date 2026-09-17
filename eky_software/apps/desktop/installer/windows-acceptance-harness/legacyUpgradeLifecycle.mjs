@@ -1,4 +1,5 @@
-import { LEGACY_FOOTPRINT_ERROR_CODES } from './legacyUpgradeContracts.mjs';
+import { LEGACY_FOOTPRINT_ERROR_CODES, LEGACY_PROCESS_OBSERVATIONS } from './legacyUpgradeContracts.mjs';
+import { describeHistoricalPackagedSmokeFailure } from './legacyUpgradeSourceSmoke.mjs';
 
 const FAILURE_CODES = new Set([
   ...Object.keys(LEGACY_FOOTPRINT_ERROR_CODES),
@@ -154,7 +155,10 @@ function createProgress(reportProgress) {
     } catch (error) {
       const known = errorCodeOf(error);
       const errorCode = known === 'unexpectedFailure' ? failureCode : known;
-      emit(phase, 'failed', phaseStartedAt, { errorCode });
+      emit(phase, 'failed', phaseStartedAt, {
+        errorCode,
+        ...(phase === 'sourcePackagedSmoke' ? describeHistoricalPackagedSmokeFailure(error) : {}),
+      });
       fail(errorCode);
     }
   }
@@ -175,6 +179,14 @@ export async function executeLegacyUpgradeLifecycle({
 }) {
   const result = initialResult();
   const progress = createProgress(reportProgress);
+  function observedMsiOperation(operation) {
+    const startedAt = performance.now();
+    return runMsiOperation(operation, (code) => {
+      if (LEGACY_PROCESS_OBSERVATIONS.includes(code)) {
+        progress.emit(operation, 'observed', startedAt, { resultCode: code });
+      }
+    });
+  }
   progress.emit('lifecycle', 'started', progress.startedAt, {
     resultCode: 'started',
   });
@@ -199,7 +211,7 @@ export async function executeLegacyUpgradeLifecycle({
       'sourceInstalled',
       'sourceInstallFailed',
       async () => {
-        const exitCode = await runMsiOperation('sourceInstall');
+        const exitCode = await observedMsiOperation('sourceInstall');
         if (exitCode !== 0) fail('sourceInstallFailed');
         return exitCode;
       },
@@ -240,7 +252,7 @@ export async function executeLegacyUpgradeLifecycle({
       'targetInstalled',
       'majorUpgradeFailed',
       async () => {
-        const exitCode = await runMsiOperation('majorUpgrade');
+        const exitCode = await observedMsiOperation('majorUpgrade');
         if (exitCode !== 0) fail('majorUpgradeFailed');
         return exitCode;
       },

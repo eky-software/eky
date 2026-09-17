@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { constants } from 'node:fs';
@@ -282,6 +282,33 @@ export function startProgramFailureFixture(context, mode) {
     dotnetArguments: ['--mode', mode, '--request', context.requestPath],
     dotnetAssembly: PROGRAM_FAILURE_FIXTURE_DLL,
   });
+}
+
+export async function readWindowsShortPathFixture(root, { directory, hold = false }) {
+  const inputPath = join(root, 'short-path-input.json');
+  await writeFile(inputPath, JSON.stringify({ schemaVersion: 1, directory, hold }), { flag: 'wx' });
+  // Replace only the old synchronous alias lookup, retaining its exact bound.
+  // This fixed fixture creates no descendants; spawnSync waits for its exit.
+  const completed = spawnSync(DOTNET_EXECUTABLE,
+    [PROGRAM_FAILURE_FIXTURE_DLL, '--mode', 'shortPathLookup', '--request', inputPath],
+    { cwd: root, stdio: 'ignore', windowsHide: true, timeout: 10_000 });
+  if (completed.error?.code === 'ETIMEDOUT' && completed.signal === 'SIGTERM') {
+    throw new Error('WINDOWS_ACCEPTANCE_ALIAS_PREPARATION_TIMED_OUT');
+  }
+  if (completed.error || completed.signal || completed.status !== 0) {
+    throw new Error('WINDOWS_ACCEPTANCE_ALIAS_PREPARATION_FAILED');
+  }
+  try {
+    const value = JSON.parse(await readFile(join(root, 'short-path-result.json'), 'utf8'));
+    if (value?.schemaVersion !== 1 || typeof value.shortPath !== 'string' ||
+        value.shortPath.length === 0 ||
+        Object.keys(value).sort().join(',') !== 'schemaVersion,shortPath') {
+      throw new Error('invalidResult');
+    }
+    return value.shortPath;
+  } catch {
+    throw new Error('WINDOWS_ACCEPTANCE_ALIAS_RESULT_INVALID');
+  }
 }
 
 export async function runSupervisor(

@@ -7,14 +7,112 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
-import { inspectLegacyInstallerFootprint, startLegacyOwnedProcess } from './legacyUpgradeWindowsRuntime.mjs';
+import { createLegacyUpgradeWindowsRuntime, inspectLegacyInstallerFootprint, startLegacyOwnedProcess } from './legacyUpgradeWindowsRuntime.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
+
+test('legacy runtime binds both MSI operations to the observed process with unchanged install policy', {
+  skip: process.platform !== 'win32',
+}, async (context) => {
+  const root = await mkdtemp(resolve(tmpdir(), 'eky-legacy-msi-binding-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const artifact = {
+    source: { appVersion: '0.2.6', runtimeBuildRevision: 'a'.repeat(40), installerPath: resolve(root, 'source.msi') },
+    target: { appVersion: '0.2.7', buildRevision: 'b'.repeat(40), installerPath: resolve(root, 'target.msi') },
+  };
+  const invocations = [];
+  let child;
+  const runtime = await createLegacyUpgradeWindowsRuntime({
+    fixtureRoot: resolve(root, 'fixture'), runNonce: 'a'.repeat(64),
+  }, artifact, {
+    spawnMsiProcess(command, arguments_, options) {
+      invocations.push({ command, arguments_, options });
+      child = new EventEmitter();
+      child.pid = 17;
+      queueMicrotask(() => child.emit('spawn'));
+      return child;
+    },
+  });
+  for (const [operation, role, exitCode] of [['sourceInstall', 'source', 0], ['majorUpgrade', 'target', 1603]]) {
+    const observations = [];
+    let settled = false;
+    const outcome = runtime.runMsiOperation(operation, (code) => {
+      observations.push(code);
+      if (code === 'processExited') throw new Error('private diagnostic failure');
+    }).then((result) => { settled = true; return result; });
+    await setImmediate();
+    assert.deepEqual(invocations.at(-1), {
+      command: resolve(process.env.SystemRoot, 'System32', 'msiexec.exe'),
+      arguments_: ['/i', artifact[role].installerPath, '/qn', '/norestart', '/l*v', resolve(root, 'msi-logs', `${operation}.log`)],
+      options: { cwd: root, env: undefined, stdio: 'ignore', windowsHide: true },
+    });
+    child.emit('exit', exitCode, null);
+    await setImmediate();
+    assert.equal(settled, false);
+    child.emit('close', exitCode, null);
+    assert.equal(await outcome, exitCode);
+    assert.deepEqual(observations, ['processSpawnRequested', 'processSpawned', 'processExited', 'processClosed']);
+  }
+  assert.equal(invocations.length, 2);
+});
+
+test('legacy process observations distinguish request, spawn, exit and close without deciding completion', async () => {
+  const child = new EventEmitter();
+  child.pid = 17;
+  const observations = [];
+  const execution = await startLegacyOwnedProcess('private-executable', ['private-argument'], {}, {
+    observe: (code) => observations.push(code),
+    spawnProcess(_command, _arguments, options) {
+      assert.deepEqual(observations, ['processSpawnRequested']);
+      assert.equal(options.stdio, 'ignore');
+      queueMicrotask(() => child.emit('spawn'));
+      return child;
+    },
+  });
+  assert.deepEqual(observations, ['processSpawnRequested', 'processSpawned']);
+  let completed = false;
+  const outcome = execution.completion.then((result) => { completed = true; return result; });
+  child.emit('exit', 1603, null);
+  await setImmediate();
+  assert.equal(completed, false);
+  assert.deepEqual(observations, ['processSpawnRequested', 'processSpawned', 'processExited']);
+  child.emit('close', 1603, null);
+  assert.deepEqual(await outcome, { exitCode: 1603, processId: 17 });
+  assert.deepEqual(observations, ['processSpawnRequested', 'processSpawned', 'processExited', 'processClosed']);
+});
+
+test('legacy process observation failure preserves success and nonzero exit', async () => {
+  for (const exitCode of [0, 1603]) {
+    const child = new EventEmitter();
+    child.pid = 17;
+    const observed = [];
+    const execution = await startLegacyOwnedProcess('synthetic', [], {}, {
+      observe(code) { observed.push(code); throw new Error('private observer failure'); },
+      spawnProcess() { queueMicrotask(() => child.emit('spawn')); return child; },
+    });
+    child.emit('exit', exitCode, null);
+    child.emit('close', exitCode, null);
+    assert.deepEqual(await execution.completion, { exitCode, processId: 17 });
+    assert.deepEqual(observed, ['processSpawnRequested', 'processSpawned', 'processExited', 'processClosed']);
+  }
+});
+
+test('legacy synchronous creation failure is observed without replacing the original error', async () => {
+  const original = new Error('private creation failure');
+  const observations = [];
+  await assert.rejects(startLegacyOwnedProcess('synthetic', [], {}, {
+    observe(code) { observations.push(code); throw new Error('observer failure'); },
+    spawnProcess() { throw original; },
+  }), (error) => error === original);
+  assert.deepEqual(observations, ['processSpawnRequested', 'processStartFailed']);
+});
 
 test('legacy owned process retains a post-spawn error until actual close', async () => {
   const child = new EventEmitter();
   child.pid = 1;
+  const observations = [];
   const started = startLegacyOwnedProcess('synthetic', [], {}, {
+    observe: (code) => observations.push(code),
     spawnProcess() { queueMicrotask(() => child.emit('spawn')); return child; },
   });
   const execution = await started;
@@ -33,12 +131,15 @@ test('legacy owned process retains a post-spawn error until actual close', async
   assert.equal(settledBeforeClose, false);
   assert.equal(settledBeforeStreamsClosed, false);
   assert.equal(code, 'ownedProcessOperationFailed');
+  assert.deepEqual(observations, ['processSpawnRequested', 'processSpawned', 'processOperationFailed', 'processExited', 'processClosed']);
 });
 
 test('legacy owned process rejects failed creation only after the close receipt', async () => {
   const child = new EventEmitter();
   let settled = false;
+  const observations = [];
   const outcome = startLegacyOwnedProcess('synthetic', [], {}, {
+    observe: (code) => observations.push(code),
     spawnProcess() { return child; },
   }).then(() => { settled = true; }, (error) => { settled = true; return error.message; });
   child.emit('error', new Error('private spawn failure'));
@@ -47,6 +148,7 @@ test('legacy owned process rejects failed creation only after the close receipt'
   child.emit('close', -2, null);
   assert.equal(await outcome, 'ownedProcessStartFailed');
   assert.equal(beforeClose, false);
+  assert.deepEqual(observations, ['processSpawnRequested', 'processStartFailed', 'processClosed']);
 });
 
 const FOOTPRINT_PATHS = Object.freeze({

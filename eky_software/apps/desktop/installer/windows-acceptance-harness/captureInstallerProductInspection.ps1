@@ -1,5 +1,5 @@
 param([Parameter(Mandatory = $true)][ValidateSet('start', 'stop', 'analyze', 'compareEvents')][string]$Mode,
-  [switch]$LegacyCommand)
+  [switch]$LegacyCommand, [switch]$WorkspaceFaultCommand, [switch]$ContractFixture)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -9,6 +9,7 @@ $instance = $null
 $wpr = $null
 $boundary = 'context'
 $readerLoaded = $false
+$recordingCleanup = $null
 
 # Invoked only by opt-in CI observation steps. Their existing step limits
 # bound recorder/exporter commands; this file never starts or stops a test.
@@ -72,7 +73,9 @@ try {
   $catalog = Join-Path $toolkit 'Catalog/AppLaunch.wpaProfile'
   . (Join-Path $PSScriptRoot 'installerProductInspectionTrace.ps1')
   $readerLoaded = $true
-  if ($LegacyCommand -and $Mode -cne 'analyze') { throw 'INSPECTOR_CAPTURE_ARGUMENTS_INVALID' }
+  if ((($LegacyCommand -or $WorkspaceFaultCommand) -and $Mode -cne 'analyze') -or
+      ($LegacyCommand -and $WorkspaceFaultCommand) -or
+      ($ContractFixture -and !$LegacyCommand)) { throw 'INSPECTOR_CAPTURE_ARGUMENTS_INVALID' }
 
   if ($Mode -ceq 'start') {
     $boundary = 'preparation'
@@ -116,7 +119,7 @@ try {
     Invoke-CaptureTool $wpr @('-start', "$cpuProfile!CPU", '-start', "$profile!EkyInspector",
       '-filemode', '-recordtempto', $recordingRoot, '-instancename', $instance) 'start'
   } elseif ($Mode -ceq 'stop') {
-    $boundary = 'recorderStop'
+    $boundary = 'collectorStatus'
     if (!(Test-Path -LiteralPath (Join-Path $root 'start-attempted'))) { throw 'INSPECTOR_CAPTURE_NOT_STARTED' }
     $collectorFailure = $null
     try {
@@ -124,17 +127,32 @@ try {
       Confirm-InspectorCaptureCollectors ([IO.File]::ReadAllText((Join-Path $root 'collectors-before-stop.private.log')))
     } catch { $collectorFailure = $_.Exception }
     try {
+      $boundary = 'recorderStop'
       Invoke-CaptureTool $wpr @('-stop', (Join-Path $root 'capture.etl'), '-instancename', $instance) 'stop'
+      $boundary = 'recorderStatus'
       Confirm-RecorderStopped 'after'
+      $recordingCleanup = [ordered]@{ status = 'completed'; phase = $boundary }
     } catch {
+      $stopFailure = $_.Exception
+      $stopBoundary = $boundary
       # Cancel only this recording, never another WPR session or test process.
-      Invoke-CaptureTool $wpr @('-cancel', '-instancename', $instance) 'cancel'
-      Confirm-RecorderStopped 'after-cancel'
-      throw 'INSPECTOR_CAPTURE_STOP_FAILED'
+      try {
+        $boundary = 'recorderCancel'
+        Invoke-CaptureTool $wpr @('-cancel', '-instancename', $instance) 'cancel'
+        $boundary = 'recorderCancelStatus'
+        Confirm-RecorderStopped 'after-cancel'
+        $recordingCleanup = [ordered]@{ status = 'completed'; phase = $boundary }
+      } catch {
+        $recordingCleanup = [ordered]@{ status = 'failed'; phase = $boundary;
+          errorCode = Resolve-InspectorTraceErrorCode $_.Exception.Message }
+        if ($_.Exception.Data['toolExitCode'] -is [int]) { $recordingCleanup.toolExitCode = $_.Exception.Data['toolExitCode'] }
+      }
+      $boundary = $stopBoundary
+      throw $stopFailure
     }
     # A cap-stopped/missing collector or event loss cannot be cured by a merge.
     # Recorder cleanup is still mandatory when this diagnostic check fails.
-    if ($null -ne $collectorFailure) { throw $collectorFailure }
+    if ($null -ne $collectorFailure) { $boundary = 'collectorStatus'; throw $collectorFailure }
     [IO.File]::WriteAllText((Join-Path $root 'stopped'), '')
   } elseif ($Mode -ceq 'compareEvents') {
     $boundary = 'stopVerification'
@@ -189,12 +207,12 @@ try {
     if (!(Test-Path -LiteralPath (Join-Path $root 'stopped'))) { throw 'INSPECTOR_CAPTURE_STOP_UNVERIFIED' }
     Get-CaptureTraceStatistics (Join-Path $root 'capture.etl') | ConvertTo-Json -Compress
     $commandProjection = $null
-    if ($LegacyCommand) {
+    if ($LegacyCommand -or $WorkspaceFaultCommand) {
       $boundary = 'commandExport'
       if (!(Test-Path -LiteralPath $xperf -PathType Leaf)) { throw 'INSPECTOR_CAPTURE_TOOL_UNAVAILABLE' }
       Invoke-CaptureTool $xperf @('-i', (Join-Path $root 'capture.etl'), '-a', 'process', '-thread', '-withcmdline') 'command-export'
       $boundary = 'commandRead'
-      $commandProjection = Read-LegacyCommandTrace (Join-Path $root 'command-export.private.log')
+      $commandProjection = Read-LegacyCommandTrace (Join-Path $root 'command-export.private.log') -WorkspaceFaultCommand:$WorkspaceFaultCommand -ContractFixture:$ContractFixture
       # Scheduling export is a separate observation. Its failure must not erase
       # already validated lifetimes or turn them into acceptance/cleanup proof.
       foreach ($summary in @(Get-LegacyCommandTraceSummary $commandProjection @() -LifetimeOnly)) {
@@ -213,6 +231,12 @@ try {
       if ($null -eq $commandProjection) { throw }
       $eventFailure = $_.Exception
       $eventFailureBoundary = $boundary
+    }
+    if ($WorkspaceFaultCommand) {
+      # Preserve the command/process observations even if optional CPU export fails.
+      foreach ($summary in @(Get-WorkspaceInstallationTraceSummary $commandProjection $events)) {
+        $summary | ConvertTo-Json -Compress
+      }
     }
     $threadValues = @($events | ForEach-Object { $_.thread })
     if ($null -ne $commandProjection) { $threadValues += @($commandProjection.schedulingThreads.thread) }
@@ -248,9 +272,14 @@ try {
   }
   $result = [ordered]@{ schemaVersion = 1; operation = 'installerProductInspectionCapture'; phase = $Mode;
     status = 'failed'; resultCode = 'captureUnverified'; failureBoundary = $boundary; errorCode = $code }
+  if ($null -ne $recordingCleanup) { $result.recordingCleanup = $recordingCleanup }
   if ($readerLoaded) {
     $shape = @(Get-InspectorTraceFailureShape $failure)
     if ($shape.Count -gt 0) { $result.processLabelShape = $shape }
+    if ($boundary -ceq 'commandRead') {
+      $branch = Get-InspectorTraceLifetimeFailureBranch $failure
+      if ($null -ne $branch) { $result.lifetimeValidationBranch = $branch }
+    }
   }
   if ($code -ceq 'INSPECTOR_CAPTURE_TOOL_FAILED' -and $failure.Data['toolExitCode'] -is [int]) {
     $result.toolExitCode = $failure.Data['toolExitCode']
