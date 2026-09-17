@@ -2575,6 +2575,19 @@ todellisen komentoprosessin exit/close-havainnoilla. Uusi luokittelu ei vielä
 osoita CI-valmistelun sisäistä viivekohtaa tai korjaa sitä; seuraava rajattu
 Windows-komentokoe erottaa puuttuvat vaihtoehdot ilman MSI-matriisia.
 
+Tämän rajauksen [Windows-koe 35195460590](https://github.com/eky-software/eky/actions/runs/35195460590)
+läpäisi kahdella runnerilla 54/54 ensimmäisellä yrityksellä. Molempien
+todellinen checkout oli `86e2eeff9ffa931bdfc4965269ceda5d20188e10`, ja
+clean/upgrade-`removalHold` läpäisi molemmissa. Koe ei rakentanut tai asentanut
+MSI-paketteja. Valmisteluhylkäys ei toistunut: avoimeksi jää sen tarkka
+alavaihe ja deadline-/poikkeusero, ei komentoprosessin poistuminen.
+Diagnoosityönkulku rakentaa supervisorin ennen pakettityökalun valmistelua
+suoraan Node-komennolla, kun normaali sopimusjobi rakentaa sen tämän jälkeen
+pnpm:n kautta. Tämä on tunnistettu vertailuraja, ei osoitettu syy.
+Mahdollinen seuraava koe kohdistetaan tähän normaalin käynnistysketjun
+rajaan; samaa diagnostiikkaa ei toisteta vihreyden keräämiseksi. PR:n lähde
+pysyy ennallaan, eikä tämä näyttö sulje normaalia hyväksyntäparia.
+
 Revision `f863ec8f095444321c9b82d7869712f65fd82189` ensimmäinen
 [normaali kokonaiskierros 35151889180](https://github.com/eky-software/eky/actions/runs/35151889180)
 ja sen [riippuvuustarkistus 35151891636](https://github.com/eky-software/eky/actions/runs/35151891636)
