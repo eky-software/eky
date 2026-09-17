@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { rm } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -36,9 +37,10 @@ function isPathInside(parent, candidate) {
 
 export function parseWindowsAcceptanceArtifactBuildArguments(arguments_) {
   if (
-    arguments_.length !== 4 ||
+    (arguments_.length !== 4 && arguments_.length !== 5) ||
     arguments_[0] !== '--artifact-root' ||
-    arguments_[2] !== '--summary-path'
+    arguments_[2] !== '--summary-path' ||
+    (arguments_.length === 5 && arguments_[4] !== '--release-candidate')
   ) {
     throw new Error('WINDOWS_ACCEPTANCE_ARTIFACT_BUILD_ARGUMENTS_INVALID');
   }
@@ -56,19 +58,40 @@ export function parseWindowsAcceptanceArtifactBuildArguments(arguments_) {
   return Object.freeze({
     artifactRoot,
     summaryPath,
+    releaseCandidate: arguments_.length === 5,
+  });
+}
+
+export function runReleaseCandidateSmoke({ spawnProcess = spawn } = {}) {
+  return new Promise((resolveSmoke, rejectSmoke) => {
+    const child = spawnProcess(process.execPath, [
+      resolve(DIRECTORY, '../../scripts/run-packaged-smoke.mjs'),
+      '--release-candidate',
+    ], { cwd: REPOSITORY_ROOT, shell: false, stdio: 'ignore' });
+    let processFailed = false;
+    child.once('error', () => { processFailed = true; });
+    child.once('close', (code) => {
+      if (!processFailed && code === 0) resolveSmoke();
+      else rejectSmoke(new Error('WINDOWS_ACCEPTANCE_RELEASE_CANDIDATE_FAILED'));
+    });
   });
 }
 
 export async function buildWindowsAcceptanceArtifact({
   artifactRoot,
+  releaseCandidate = false,
   createInstallerRelease = createWindowsInstallerRelease,
   packageApplication = packageDefaultWindowsApplication,
   readReleaseGitState = readInstallerReleaseGitState,
   inspectPayload = inspectPackageArtifactInventory,
   createPilotBundle = createLocalPilotReleaseBundle,
+  verifyReleaseCandidate = runReleaseCandidateSmoke,
 }) {
   let fixture = null;
   try {
+    if (typeof releaseCandidate !== 'boolean') {
+      throw new Error('WINDOWS_ACCEPTANCE_ARTIFACT_BUILD_ARGUMENTS_INVALID');
+    }
     const buildRevision = await readReleaseGitState({
       repositoryRoot: REPOSITORY_ROOT,
     });
@@ -87,6 +110,13 @@ export async function buildWindowsAcceptanceArtifact({
       throw new Error('WINDOWS_ACCEPTANCE_ARTIFACT_BUILD_IDENTITY_MISMATCH');
     }
     const payload = await inspectPayload({ root: packagedApplication.packagedPath, stage: 'packagedApp' });
+    if (releaseCandidate) {
+      await verifyReleaseCandidate();
+      const payloadAfterSmoke = await inspectPayload({ root: packagedApplication.packagedPath, stage: 'packagedApp' });
+      if (JSON.stringify(payloadAfterSmoke) !== JSON.stringify(payload)) {
+        throw new Error('WINDOWS_ACCEPTANCE_ARTIFACT_BUILD_IDENTITY_MISMATCH');
+      }
+    }
     const release = await createInstallerRelease({ buildRevision });
     const payloadAfter = await inspectPayload({ root: packagedApplication.packagedPath, stage: 'packagedApp' });
     if (JSON.stringify(payloadAfter) !== JSON.stringify(payload)) {
@@ -145,6 +175,7 @@ export async function buildWindowsAcceptanceArtifact({
       descriptorSha256: verified.descriptorSha256,
       packageSha256: verified.packageSha256,
       pilotBundleResultCode: 'pilotBundleVerified',
+      releaseCandidateResultCode: releaseCandidate ? 'releaseCandidateVerified' : 'notRequested',
     });
   } catch (error) {
     if (fixture !== null) {

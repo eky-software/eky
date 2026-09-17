@@ -7,6 +7,11 @@ on:
         type: string
         required: true
   workflow_dispatch:
+    inputs:
+      release_candidate:
+        description: Require release-candidate startup on the exact packaged payload
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -75,6 +80,8 @@ jobs:
         id: produce
         shell: pwsh
         timeout-minutes: 15
+        env:
+          REQUIRE_RELEASE_CANDIDATE: ${{ github.event_name == 'workflow_dispatch' && inputs.release_candidate == true }}
         run: |
           $artifactRoot = Join-Path $env:RUNNER_TEMP 'eky-v2-clean-artifact'
           $summaryPath = Join-Path $env:RUNNER_TEMP 'eky-v2-clean-summary.json'
@@ -82,7 +89,11 @@ jobs:
             throw 'WINDOWS_ACCEPTANCE_ARTIFACT_OUTPUT_EXISTS'
           }
 
-          pnpm --filter @eky/desktop installer:v2-artifact:build --artifact-root $artifactRoot --summary-path $summaryPath
+          $releaseArguments = @()
+          if ($env:REQUIRE_RELEASE_CANDIDATE -ceq 'true') {
+            $releaseArguments = @('--release-candidate')
+          }
+          pnpm --filter @eky/desktop installer:v2-artifact:build --artifact-root $artifactRoot --summary-path $summaryPath @releaseArguments
           if ($LASTEXITCODE -ne 0) {
             throw 'WINDOWS_ACCEPTANCE_ARTIFACT_BUILD_FAILED'
           }
@@ -94,6 +105,7 @@ jobs:
             'descriptorSha256',
             'packageSha256',
             'pilotBundleResultCode',
+            'releaseCandidateResultCode',
             'resultCode',
             'schemaVersion',
             'status'
@@ -107,6 +119,7 @@ jobs:
             $summary.status -cne 'completed' -or
             $summary.resultCode -cne 'windowsAcceptanceArtifactBuilt' -or
             $summary.pilotBundleResultCode -cne 'pilotBundleVerified' -or
+            $summary.releaseCandidateResultCode -cne $(if ($env:REQUIRE_RELEASE_CANDIDATE -ceq 'true') { 'releaseCandidateVerified' } else { 'notRequested' }) -or
             $summary.appVersion -notmatch '^\d+\.\d+\.\d+$' -or
             $summary.buildRevision -notmatch '^[0-9a-f]{40}$' -or
             $summary.descriptorSha256 -notmatch '^[0-9a-f]{64}$' -or

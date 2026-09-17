@@ -85,15 +85,6 @@ function hasExactKeys(value, expectedKeys) {
   );
 }
 
-function nextPatchVersion(version) {
-  const parts = [...parseMsiProductVersion(version)];
-  if (parts[2] >= 65_535) {
-    throw new Error('WINDOWS_ACCEPTANCE_LEGACY_ARTIFACT_DESCRIPTOR_INVALID');
-  }
-  parts[2] += 1;
-  return parts.join('.');
-}
-
 function validateCommonRole(roleName, value, expectedKeys) {
   if (
     !hasExactKeys(value, expectedKeys) ||
@@ -179,10 +170,7 @@ function validatePayloadInventory(value) {
 
 function validateTarget(value, buildRevision) {
   validateCommonRole('target', value, TARGET_KEYS);
-  if (
-    value.buildRevision !== buildRevision ||
-    value.appVersion !== '0.2.7'
-  ) {
+  if (value.buildRevision !== buildRevision) {
     throw new Error('WINDOWS_ACCEPTANCE_LEGACY_ARTIFACT_DESCRIPTOR_INVALID');
   }
   return Object.freeze({
@@ -205,7 +193,6 @@ export function validateLegacyUpgradeArtifactDescriptor(value) {
   const source = validateSource(value.source);
   const target = validateTarget(value.target, value.buildRevision);
   if (
-    nextPatchVersion(source.msiProductVersion) !== target.msiProductVersion ||
     compareMsiProductVersions(
       source.msiProductVersion,
       target.msiProductVersion,

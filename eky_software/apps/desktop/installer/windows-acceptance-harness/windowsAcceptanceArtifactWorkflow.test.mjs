@@ -71,6 +71,13 @@ test('CI transfers one exact short-lived artifact to two isolated consumers', as
   assert.match(producer, /timeout-minutes: 15/u);
   assert.match(producer, /'pilotBundleResultCode'/u);
   assert.match(producer, /\$summary\.pilotBundleResultCode -cne 'pilotBundleVerified'/u);
+  assert.match(workflow, /release_candidate:\s+description: [^\n]+\s+type: boolean\s+default: false/u);
+  assert.ok(producer.includes("github.event_name == 'workflow_dispatch' && inputs.release_candidate == true"));
+  assert.match(producer, /\$releaseArguments = @\('--release-candidate'\)/u);
+  assert.match(producer, /--summary-path \$summaryPath @releaseArguments/u);
+  assert.match(producer, /'releaseCandidateResultCode'/u);
+  assert.match(producer, /\$summary\.releaseCandidateResultCode -cne/u);
+  assert.match(producer, /'releaseCandidateVerified' \} else \{ 'notRequested'/u);
   assert.doesNotMatch(producer, /installer:v2-clean/u);
 
   assert.match(consumer, /needs: artifact_producer/u);
