@@ -2572,17 +2572,50 @@ varmennettiin; required checkit, PR-vaatimus ja strict-ajantasaisuus säilyivät
 Historiallisia hylkäyksiä ei hyväksytä tällä näytöllä eikä niiden tuntematonta
 alustasyytä väitetä ratkaistuksi.
 
-Seuraava erillinen vaihe on 0.2.8-pilotti. Nykyiseen clean-produceriin
+Erillinen 0.2.8-pilotin julkaisuportti on läpäisty. Nykyiseen clean-produceriin
 on kytketty omistajan hyväksymä valinnainen release-candidate-portti:
 `release_candidate=true` vaatii nykyisen käynnistystestin samalle kerran
 rakennetulle payloadille ennen MSI:n muodostamista. Inventaario tarkistetaan
 ennen ja jälkeen smoken sekä MSI-buildin. Normaali hyväksyntäajo ei ota
 uutta versiohistoriaporttia käyttöön muuttumattomalle sovellusversiolle.
-Julkaisun PR-/main-portit ja erillisen release-ajon molemmat clean-consumerit
-ovat vielä auki. Vain tämän release-ajon hyväksytyt MSI-tavut saa toimittaa;
-paikallinen rebuild, automaattinen asennus ja 0.2.9 jäävät pois.
 
-Julkaisun PR #271:n lähderevision
+PR #271:n korjatun lähderevision
+`4b257dce8d160d74c8aa990ebb18a9be51c62f96`
+[PR-ajo 35256889982](https://github.com/eky-software/eky/actions/runs/35256889982)
+läpäisi checkoutilla `103a5837ca689ad24af285d51d268479fa732c4f`.
+Saman lähderevision kaksi normaalia kokonaiskierrosta
+[35260031229](https://github.com/eky-software/eky/actions/runs/35260031229) ja
+[35263221598](https://github.com/eky-software/eky/actions/runs/35263221598)
+läpäisivät ensimmäisillä yrityksillä. Molempien todellinen checkout ja
+artifactien build-revisio olivat `4b257dc`; kummankin omat auditit ja
+producer/consumer-tavusidokset varmennettiin erikseen.
+
+Suojattu normaali merge tuotti revision
+`94cd4a04af9cb51168909b0c93ca6a6d9e6b5db1`. Sen oma täysi
+[main-ajo 35266292213](https://github.com/eky-software/eky/actions/runs/35266292213)
+ja [audit 35266291904](https://github.com/eky-software/eky/actions/runs/35266291904)
+läpäisivät. Jokaisessa edellä mainitussa kokonaisajossa läpäisivät kaikki
+38 pakollista jobia, kymmenen paketoitua consumeria, 523/523 sopimusta
+kummassakin toistossa ja 38 Electron critical -testiä ilman flaky-tulosta.
+Required checkit ja muut suojaukset säilyivät muuttumattomina.
+
+Samasta merge-revisiosta ajettu erillinen
+[release-ajo 35270207550](https://github.com/eky-software/eky/actions/runs/35270207550)
+läpäisi ensimmäisellä yrityksellä: producer todisti
+`releaseCandidateVerified`- ja `pilotBundleVerified`-tulokset, ja molemmat
+clean-consumerit varmensivat samat MSI-tavut ennen ja jälkeen lifecycle-ajon.
+Toimitettavan artifactin ID on `10518655376`, descriptorin SHA-256
+`2ddf5c02f82bebf8930b3150c2a257d79f375127d6470bc155214650c2345fee` ja
+MSI:n SHA-256
+`fbd1c02eab28aac231d0fb9813e53586fe7e9a52fed4c437053c15d887ca2276`.
+Pilot-bundle sisältää vain tämän MSI:n, sen manifestin ja checksum-tiedoston;
+kopion eheys varmennetaan nykyisillä bundle-työkaluilla ilman rebuildiä.
+Tämä hyväksyy rajatun allekirjoittamattoman pilotin, ei avointa jakelua tai
+pilottilaitteen oikean datan käyttöönoton erillisiä turvallisuusehtoja.
+Käyttäjän manuaalinen pilot-kokeilu, 0.2.9, W7 ja laajempi sovelluskatselmus
+jäävät seuraaviksi töiksi. Automaattista asennusta ei tehdä.
+
+Saman PR #271:n aiemman lähderevision
 `f93e1ff91eab342a98d5961fd675371006a9b600`
 [kierros 35226452157](https://github.com/eky-software/eky/actions/runs/35226452157)
 hylättiin ensimmäisellä yrityksellä. Todellinen checkout oli
