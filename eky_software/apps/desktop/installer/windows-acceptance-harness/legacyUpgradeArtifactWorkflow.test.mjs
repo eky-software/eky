@@ -496,9 +496,12 @@ for (const [mode, selectedName, commandName, files] of [
       assert.equal(enabled(selected, other), false);
     }
     for (const name of ['Enable existing package manager for diagnostic contracts',
-      'Prepare locked package manager before inspection command contracts', 'Build Windows process supervisor']) {
+      'Prepare locked package manager before inspection command contracts']) {
       assert.equal(enabled(step(name), mode), true);
     }
+    assert.equal(enabled(step('Build Windows process supervisor'), mode), mode !== 'clean-upgrade-command-diagnostic');
+    assert.equal(enabled(step('Build existing supervisor for clean and upgrade diagnosis'), mode),
+      mode === 'clean-upgrade-command-diagnostic');
     for (const name of ['Run supervisor unit and process contracts',
       'Diagnose full V2.5 contract suite with unchanged default budgets',
       'Verify inspection failure through both existing CI command chains']) {
@@ -511,6 +514,18 @@ for (const [mode, selectedName, commandName, files] of [
     assert.deepEqual(scripts[command].split(' '), ['node', '--test', '--test-concurrency=1',
       ...files.map((file) => `installer/windows-acceptance-harness/${file}`)]);
     if (mode === 'clean-upgrade-command-diagnostic') {
+      const normal = await readFile(WORKFLOW_URL, 'utf8');
+      const normalContracts = normal.slice(normal.indexOf('  legacy_contracts:'), normal.indexOf('  legacy_artifact_producer:'));
+      const normalBuild = normalContracts.split('      - name: Build existing supervisor once\n')[1]
+        .split('\n      - name:')[0].match(/run: (.+)/u)[1];
+      assert.equal(step('Build existing supervisor for clean and upgrade diagnosis').match(/run: (.+)/u)[1], normalBuild);
+      assert.equal(enabled(step('Record diagnostic revision and runner image'), mode), true);
+      const preparation = ['Enable existing package manager for diagnostic contracts',
+        'Prepare locked package manager before inspection command contracts',
+        'Record diagnostic revision and runner image',
+        'Build existing supervisor for clean and upgrade diagnosis', selectedName];
+      const positions = preparation.map((name) => source.indexOf(`      - name: ${name}\n`));
+      assert.ok(positions.every((position, index) => position >= 0 && (index === 0 || positions[index - 1] < position)));
       const registrations = [];
       for (const kind of ['clean', 'upgrade']) {
         registerAcceptanceCommandEntrypointContracts(kind, (name, options, callback) => {
