@@ -253,6 +253,32 @@ USB-medialle kopioidut tavut tarkistetaan hashilla kopioinnin jälkeen. Vähint�
 nykyinen ja edellinen hyväksytty kokonaisuus säilytetään hallittua rollbackia
 varten.
 
+### V2:n Exact-Byte-Pilotin Toimitus
+
+Omistajan hyväksymä release-kytkentä käyttää nykyistä
+`Windows acceptance V2 clean artifact` -työnkulkua puhtaassa Windows-CI:ssä.
+Erillinen käsikäynnistys `release_candidate=true` välittää clean-producerille
+`--release-candidate`-valinnan. Tavalliset PR-/main-hyväksynnät säilyvät
+ilman tätä erillistä julkaisuvalintaa; niiden MSI ei yksin ole toimitettava
+pilottiehdokas.
+
+Producer rakentaa nykyisen pilot-payloadin kerran, ajaa olemassa olevan
+release-candidate-käynnistystestin juuri sille ja vaatii muuttumattoman
+inventaarion. Vasta tämän jälkeen se muodostaa MSI:n ja sitoo saman
+payload-inventaarion descriptoriin. Myös MSI-buildin jälkeinen inventaario
+sekä tilapäisen pilot-bundlen varmennus säilyvät. Käynnistysvirhe, muuttunut
+payload tai puuttuva `releaseCandidateVerified`-tulos estää artifactin
+julkaisun. First-parent-versionkäyttökieltoa ei ohiteta.
+
+Molempien nykyisten clean-consumerien on läpäistävä saman producerin samat
+MSI-tavut ja niiden ennen/jälkeen-varmennus. Julkaisun normaali PR-/main-ajo
+sekä riippuvuusturvan portti vaaditaan tämän lisäksi. Lopullinen artifact-ID,
+build-revisio, descriptor ja MSI:n SHA-256 kirjataan toimitukseen. Hyväksytty
+MSI ja manifesti kopioidaan nykyisellä bundle-työkalulla paikalliseen
+pilottikansioon ilman rebuildiä; kopion eheys varmennetaan ennen toimitusta.
+Allekirjoittamatonta pilottia ei julkaista avoimena latauksena eikä asenneta
+automaattisesti.
+
 ### Production-profiilin puhtaus
 
 Lopullinen production-profiili luodaan tyhjästä sovelluksen hallitulla

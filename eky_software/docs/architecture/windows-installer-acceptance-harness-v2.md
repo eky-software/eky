@@ -2549,6 +2549,37 @@ Tämä osuus erottaa nykyisen julkaisutyön historiallisesta tutkimusnäytöstä
 
 #### Ajantasaiset julkaisuesteet ja päätökset
 
+PR #270 on yhdistetty normaalilla suojatulla PR-menettelyllä. Lähderevision
+`92461e0000801aa6d18bb84dd3eabb8fae87331f` kaksi täyttä normaalia kierrosta
+[35213756481](https://github.com/eky-software/eky/actions/runs/35213756481) ja
+[35216289183](https://github.com/eky-software/eky/actions/runs/35216289183)
+läpäisivät ensimmäisillä yrityksillä. Molemmissa lähde, todellinen checkout
+ja artifactien build-revisio olivat samat; kummankin kierroksen omat
+producer/consumer-tavut varmennettiin erikseen. Kumpikin oma audit läpäisi.
+
+Merge-commitin `2b6e26a3e5fd363ac5007bd2401011d246eb5c41` oma täysi
+[main-ajo 35219024698](https://github.com/eky-software/eky/actions/runs/35219024698)
+ja [audit 35219155196](https://github.com/eky-software/eky/actions/runs/35219155196)
+läpäisivät. Kaikissa näissä kokonaisajoissa 38 pakollista jobia, kymmenen
+paketoitua consumeria, 523/523 sopimusta kummassakin toistossa ja 38 Electron
+critical -testiä läpäisivät ilman flaky-tulosta. Valinnainen diagnostiikka
+oli pois käytöstä. Pakolliset tulokset, siivous ja artifact-sidokset
+varmennettiin; required checkit, PR-vaatimus ja strict-ajantasaisuus säilyivät.
+Historiallisia hylkäyksiä ei hyväksytä tällä näytöllä eikä niiden tuntematonta
+alustasyytä väitetä ratkaistuksi.
+
+Seuraava erillinen vaihe on 0.2.8-pilotti. Nykyiseen clean-produceriin
+kytketään omistajan hyväksymä valinnainen release-candidate-portti:
+`release_candidate=true` vaatii nykyisen käynnistystestin samalle kerran
+rakennetulle payloadille ennen MSI:n muodostamista. Inventaario tarkistetaan
+ennen ja jälkeen smoken sekä MSI-buildin. Normaali hyväksyntäajo ei ota
+uutta versiohistoriaporttia käyttöön muuttumattomalle sovellusversiolle.
+Julkaisun PR-/main-portit ja erillisen release-ajon molemmat clean-consumerit
+ovat vielä auki. Vain tämän release-ajon hyväksytyt MSI-tavut saa toimittaa;
+paikallinen rebuild, automaattinen asennus ja 0.2.9 jäävät pois.
+
+#### Edellinen valmistelurajan korjaus
+
 Revision `7ff2936d9774e4f201b37fc09c3fdbc77c7bebb0`
 [PR-kierros 35200298384](https://github.com/eky-software/eky/actions/runs/35200298384)
 läpäisi todellisella checkoutilla `3cc6534f20970c32e96abc15a6b8982fe7880670`.

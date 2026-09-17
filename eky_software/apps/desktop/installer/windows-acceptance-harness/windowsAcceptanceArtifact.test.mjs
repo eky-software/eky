@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import {
   link,
   lstat,
@@ -23,6 +24,7 @@ import { createLocalPilotReleaseBundle } from '../scripts/createLocalPilotReleas
 import {
   buildWindowsAcceptanceArtifact,
   parseWindowsAcceptanceArtifactBuildArguments,
+  runReleaseCandidateSmoke,
 } from './buildWindowsAcceptanceArtifact.mjs';
 import { detachWindowsInstallerBuildOutput } from './detachWindowsInstallerBuildOutput.mjs';
 import {
@@ -273,11 +275,78 @@ test('build orchestration invokes each package producer exactly once', async (te
   assert.equal(releaseBuildCount, 1);
   assert.equal(bundleCount, 1);
   assert.equal(result.pilotBundleResultCode, 'pilotBundleVerified');
+  assert.equal(result.releaseCandidateResultCode, 'notRequested');
   assert.equal(result.resultCode, 'windowsAcceptanceArtifactBuilt');
   assert.equal(result.appVersion, '9.8.7');
   assert.deepEqual((await readdir(artifactRoot)).sort(), [
     'Eky-9.8.7-x64.msi', 'clean-install-artifact.json', 'installer.manifest.json',
   ]);
+});
+
+test('release producer verifies the once-built payload before creating the MSI', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'eky-v2-release-startup-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const source = await createSourceFixture(root);
+  const calls = [];
+  const result = await buildWindowsAcceptanceArtifact({
+    artifactRoot: resolve(root, 'artifact'),
+    releaseCandidate: true,
+    readReleaseGitState: async () => BUILD_REVISION,
+    packageApplication: async () => { calls.push('build'); return createPackagedApplication(); },
+    inspectPayload: async () => { calls.push('inventory'); return PAYLOAD; },
+    verifyReleaseCandidate: async () => { calls.push('startup'); },
+    createInstallerRelease: async () => { calls.push('msi'); return source; },
+  });
+  assert.deepEqual(calls, ['build', 'inventory', 'startup', 'inventory', 'msi', 'inventory']);
+  assert.equal(result.releaseCandidateResultCode, 'releaseCandidateVerified');
+  assert.equal(result.resultCode, 'windowsAcceptanceArtifactBuilt');
+});
+
+test('failed release startup or changed payload cannot publish an MSI artifact', async (t) => {
+  for (const fault of ['startupFailure', 'payloadChanged']) {
+    await t.test(fault, async (subtest) => {
+      const root = await mkdtemp(join(tmpdir(), 'eky-v2-release-reject-'));
+      subtest.after(() => rm(root, { recursive: true, force: true }));
+      const artifactRoot = resolve(root, 'artifact');
+      let inspections = 0;
+      let installerBuilds = 0;
+      const failure = new Error('WINDOWS_ACCEPTANCE_RELEASE_CANDIDATE_FAILED');
+      await assert.rejects(buildWindowsAcceptanceArtifact({
+        artifactRoot,
+        releaseCandidate: true,
+        readReleaseGitState: async () => BUILD_REVISION,
+        packageApplication: async () => createPackagedApplication(),
+        inspectPayload: async () => ++inspections === 1 ? PAYLOAD : { ...PAYLOAD, identity: 'd'.repeat(64) },
+        verifyReleaseCandidate: async () => { if (fault === 'startupFailure') throw failure; },
+        createInstallerRelease: async () => { installerBuilds += 1; },
+      }), fault === 'startupFailure' ? (error) => error === failure : /WINDOWS_ACCEPTANCE_ARTIFACT_BUILD_IDENTITY_MISMATCH/);
+      assert.equal(installerBuilds, 0);
+      await assert.rejects(readdir(artifactRoot), { code: 'ENOENT' });
+    });
+  }
+});
+
+test('release startup command requires close and rejects process errors', async () => {
+  for (const outcome of ['completed', 'nonZero', 'processError']) {
+    const child = new EventEmitter();
+    let settled = false;
+    const result = runReleaseCandidateSmoke({ spawnProcess(command, args, options) {
+      assert.equal(command, process.execPath);
+      assert.equal(args[1], '--release-candidate');
+      assert.match(args[0], /run-packaged-smoke\.mjs$/u);
+      assert.equal(options.shell, false);
+      assert.equal(options.stdio, 'ignore');
+      return child;
+    } });
+    result.then(() => { settled = true; }, () => { settled = true; });
+    child.emit('exit', 0);
+    await Promise.resolve();
+    assert.equal(settled, false);
+    if (outcome === 'processError') child.emit('error', new Error('private-error'));
+    child.emit('close', outcome === 'nonZero' ? 1 : 0);
+    if (outcome === 'completed') await assert.doesNotReject(result);
+    else await assert.rejects(result, { message: 'WINDOWS_ACCEPTANCE_RELEASE_CANDIDATE_FAILED' });
+  }
 });
 
 test('producer rejects failed or altered pilot bundle verification without releasing an artifact', async (t) => {
@@ -409,8 +478,16 @@ test('producer and consumer CLIs require closed absolute arguments', () => {
       '--summary-path',
       summaryPath,
     ]),
-    { artifactRoot, summaryPath },
+    { artifactRoot, summaryPath, releaseCandidate: false },
   );
+  assert.deepEqual(parseWindowsAcceptanceArtifactBuildArguments([
+    '--artifact-root', artifactRoot, '--summary-path', summaryPath, '--release-candidate',
+  ]), { artifactRoot, summaryPath, releaseCandidate: true });
+  for (const extra of [['--release-candidate', '--release-candidate'], ['--unknown'], ['false']]) {
+    assert.throws(() => parseWindowsAcceptanceArtifactBuildArguments([
+      '--artifact-root', artifactRoot, '--summary-path', summaryPath, ...extra,
+    ]), /WINDOWS_ACCEPTANCE_ARTIFACT_BUILD_ARGUMENTS_INVALID/);
+  }
   assert.deepEqual(
     parseWindowsAcceptanceArtifactVerifierArguments([
       '--artifact-root',
@@ -433,7 +510,7 @@ test('producer and consumer CLIs require closed absolute arguments', () => {
       '--summary-path',
       transportedSummaryPath,
     ]),
-    { artifactRoot, summaryPath },
+    { artifactRoot, summaryPath, releaseCandidate: false },
   );
   assert.deepEqual(
     parseWindowsAcceptanceArtifactVerifierArguments([
