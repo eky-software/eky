@@ -117,19 +117,25 @@ export async function describeCommandPhase(phaseRoot, phase, read = readCommandP
 }
 
 export function recordCommandBoundaryEvidence(tail, value) {
-  if (!['fixtureCleanup', 'requestValidated', 'jobCreated', 'hostStarted', 'hostAssigned',
+  if (!['inventoryAfter', 'fixtureCleanup', 'requestValidated', 'jobCreated', 'hostStarted', 'hostAssigned',
     'waitStarted', 'hostExited', 'deadlineExceeded', 'cleanupStarted', 'cleanupCompleted',
     'processTreeAbsent', 'workerResultValidated', 'resultPublication', 'resultPublicationLastCompleted',
-    'resultWritten', 'supervisor'].includes(value?.phase) ||
+    'requestPreparation', 'requestPreparationLastCompleted', 'resultWritten', 'supervisor'].includes(value?.phase) ||
     !['started', 'completed', 'failed'].includes(value?.status)) return;
   const entry = { phase: value.phase, status: value.status };
   if (value.errorCode !== undefined) entry.errorCode = ['requestFileInvalid', 'unexpectedFailure',
     'resultWriteFailed', 'deadlineExceeded', 'cleanupFailed', 'cleanupUnverified', 'processStartFailed',
     'processExitFailed', 'publicationBudgetExhausted', 'publicationDeadlineExceeded',
-    'publicationWriteException'].includes(value.errorCode) ? value.errorCode : 'other';
+    'publicationWriteException', 'preparationDeadlineExceeded', 'preparationException'].includes(value.errorCode) ? value.errorCode : 'other';
   if (['resultPublication', 'resultPublicationLastCompleted'].includes(value.phase) && value.resultCode !== undefined) {
     entry.resultCode = ['notStarted', 'writerStarted', 'temporaryCreate', 'serialize', 'flush', 'close',
       'publish', 'temporaryCleanup', 'completed'].includes(value.resultCode) ? value.resultCode : 'other';
+  }
+  if (['requestPreparation', 'requestPreparationLastCompleted'].includes(value.phase) && value.resultCode !== undefined) {
+    entry.resultCode = ['notStarted', 'preparerStarted', 'temporaryRootCheck', 'phaseDirectoryCreation',
+      'phaseInputWrite', 'requestWrite', 'requestFileValidation', 'requestFileRead', 'requestSchemaValidation',
+      'commandFileValidation', 'workingDirectoryValidation', 'resultDestinationValidation', 'completed']
+      .includes(value.resultCode) ? value.resultCode : 'other';
   }
   tail.push(entry);
   if (tail.length > 20) tail.shift();
@@ -297,6 +303,8 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
           }
         }
         if (phase) {
+          assert.equal(phaseEvidence.find((entry) => entry.phase === phase)?.result ?? 'requestMissing', 'validated',
+            `Expected a validated terminal result for ${phase}; see commandPhases and boundaryEvidence`);
           const outcome = JSON.parse(await readFile(join(commandRoot, phase, 'result.json'), 'utf8'));
           assert.equal(outcome.processResultCode, 'deadlineExceeded');
           assert.equal(outcome.processTreeAbsent, true);

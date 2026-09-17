@@ -79,6 +79,8 @@ test('command boundary diagnostics keep only a bounded closed projection', () =>
   recordCommandBoundaryEvidence(tail, { phase: 'hostStarted', status: 'private' });
   recordCommandBoundaryEvidence(tail, null);
   assert.deepEqual(tail, Array.from({ length: 20 }, () => ({ phase: 'hostStarted', status: 'completed' })));
+  recordCommandBoundaryEvidence(tail, { phase: 'inventoryAfter', status: 'started', path: 'private' });
+  assert.deepEqual(tail.at(-1), { phase: 'inventoryAfter', status: 'started' });
   recordCommandBoundaryEvidence(tail, { phase: 'resultWritten', status: 'failed', errorCode: 'private raw error' });
   recordCommandBoundaryEvidence(tail, { phase: 'supervisor', status: 'failed', errorCode: 'cleanupUnverified' });
   assert.equal(tail.length, 20);
@@ -98,6 +100,14 @@ test('command boundary diagnostics keep only a bounded closed projection', () =>
     errorCode: 'publicationWriteException', resultCode: 'close', path: 'private' });
   assert.deepEqual(tail.at(-1), { phase: 'resultPublicationLastCompleted', status: 'failed',
     errorCode: 'publicationWriteException', resultCode: 'close' });
+  recordCommandBoundaryEvidence(tail, { phase: 'requestPreparation', status: 'failed',
+    errorCode: 'preparationDeadlineExceeded', resultCode: 'phaseInputWrite', path: 'private' });
+  recordCommandBoundaryEvidence(tail, { phase: 'requestPreparationLastCompleted', status: 'failed',
+    errorCode: 'private', resultCode: 'private' });
+  assert.deepEqual(tail.slice(-2), [
+    { phase: 'requestPreparation', status: 'failed', errorCode: 'preparationDeadlineExceeded', resultCode: 'phaseInputWrite' },
+    { phase: 'requestPreparationLastCompleted', status: 'failed', errorCode: 'other', resultCode: 'other' },
+  ]);
   const original = new Error('original assertion');
   let diagnostic;
   assert.throws(() => reportCommandFailure({ diagnostic(value) { diagnostic = JSON.parse(value); } }, [], original, tail),
@@ -167,6 +177,50 @@ test('optional command evidence observer failure preserves the real terminal bou
   assert.equal(context.supervisorProcesses.size, 0);
   verified = true;
 });
+
+for (const stage of ['RequestPreparationHold', 'RequestPreparationThrow', 'RequestPreparationInvalid',
+  'LateRequestPreparation', 'LateRequestPreparationFailure']) {
+  test(`request admission failure cannot launch work or revive the command: ${stage}`, {
+    skip: process.platform !== 'win32', timeout: 30_000,
+  }, async (t) => {
+    const context = await createRunContext('command-admission-' + stage);
+    t.after(() => cleanupRunContext(context, { preserveEvidence: true }));
+    await writeRequest(context, createRequest(context, 'exitZero'));
+    const execution = startProgramFailureFixture(context, 'phaseContinuation' + stage);
+    const receipts = [];
+    execution.child.once('exit', () => receipts.push('exit'));
+    execution.child.once('close', () => receipts.push('close'));
+    const completed = await execution.completion;
+    assert.deepEqual(receipts, ['exit', 'close']);
+    assert.equal(completed.exitCode, 1);
+    assert.equal(completed.signal, null);
+    assert.deepEqual(JSON.parse(await readFile(join(context.testRoot, 'host-io-entered.json'), 'utf8')),
+      { schemaVersion: 1, phase: 'requestPreparation' });
+    const report = JSON.parse(await readFile(join(context.testRoot, 'phase-completion.json'), 'utf8'));
+    assert.equal(report.workerStarted, false);
+    assert.equal(report.resultWriterStarted, false);
+    assert.equal(report.first.processBoundaryVerified, false);
+    assert.equal(report.first.resultWritten, false);
+    assert.equal(report.first.processTreeAbsent, null);
+    assert.equal(report.rootPresent, true);
+    const late = stage.startsWith('Late');
+    assert.deepEqual(report.events, late
+      ? ['firstPhaseReturned', 'latePreparationReturned'] : ['firstPhaseReturned']);
+    assert.equal(report.latePreparationCompleted, late ? true : null);
+    assert.equal(report.preparationOutcome, stage === 'LateRequestPreparation' ? 'requestReturned'
+      : stage === 'LateRequestPreparationFailure' ? 'preparationFailed' : null);
+    assert.equal(report.first.requestErrorCode, stage === 'RequestPreparationThrow' ? 'unexpectedFailure' : 'requestFileInvalid');
+    await assert.rejects(lstat(context.resultPath), { code: 'ENOENT' });
+    await assert.rejects(lstat(context.runRoot), { code: 'ENOENT' });
+    assert.equal(context.supervisorProcesses.size, 0);
+    assert.deepEqual(completed.evidence.filter(({ phase }) => phase === 'requestPreparation')
+      .map(({ status, errorCode }) => ({ status, errorCode })), [{ status: 'failed',
+      errorCode: ['RequestPreparationThrow', 'RequestPreparationInvalid'].includes(stage)
+        ? 'preparationException' : 'preparationDeadlineExceeded' }]);
+    assert.equal(completed.evidence.find(({ phase }) => phase === 'requestPreparation')?.resultCode, 'preparerStarted');
+    assert.equal(completed.evidence.find(({ phase }) => phase === 'requestPreparationLastCompleted')?.resultCode, 'notStarted');
+  });
+}
 
 for (const stage of ['WorkerReadHold', 'ResultWriteHold', 'ResultWriteHoldAfterFailure', 'PublicationBudgetExhausted']) {
   test(`command owner exits after its own result I/O stalls: ${stage}`, {

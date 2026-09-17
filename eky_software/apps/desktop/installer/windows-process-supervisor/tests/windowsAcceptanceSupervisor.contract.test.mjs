@@ -703,6 +703,14 @@ test(
     assert.equal(await access(context.resultPath).then(() => true, () => false), false);
     // Invalid input supplies no trusted flush budget; any delivered evidence stays strict.
     for (const entry of completion.evidence) {
+      if (['requestPreparation', 'requestPreparationLastCompleted'].includes(entry.phase)) {
+        assert.deepEqual(Object.keys(entry).sort(), ['durationMs', 'elapsedMs', 'errorCode', 'operation',
+          'phase', 'resultCode', 'schemaVersion', 'status']);
+        assert.equal(entry.status, 'failed');
+        assert.equal(entry.errorCode, 'preparationException');
+        assert.equal(entry.resultCode, entry.phase === 'requestPreparation' ? 'requestSchemaValidation' : 'requestFileRead');
+        continue;
+      }
       assert.deepEqual(entry, {
         schemaVersion: 1, operation: 'windowsAcceptanceSupervisor',
         phase: 'requestValidated', status: 'failed', durationMs: 0, elapsedMs: 0,

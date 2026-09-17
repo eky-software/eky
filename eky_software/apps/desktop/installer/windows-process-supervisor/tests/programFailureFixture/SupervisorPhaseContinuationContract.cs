@@ -5,6 +5,10 @@ internal static class SupervisorPhaseContinuationContract
 {
     internal static int Run(string mode, string requestPath)
     {
+        if (mode is "phaseContinuationRequestPreparationHold" or
+            "phaseContinuationRequestPreparationThrow" or "phaseContinuationRequestPreparationInvalid" or
+            "phaseContinuationLateRequestPreparation" or "phaseContinuationLateRequestPreparationFailure")
+            return RunRequestPreparation(mode, requestPath);
         if (mode is not ("phaseContinuationCompleted" or "phaseContinuationWorkerFailed" or
             "phaseContinuationDeadline" or "phaseContinuationCleanupUnverified" or
             "phaseContinuationPublicationFailed" or "phaseContinuationRequestInvalid" or
@@ -114,6 +118,59 @@ internal static class SupervisorPhaseContinuationContract
     {
         Hold(request, "workerRead");
         return new(false, "workerResultInvalid");
+    }
+
+    private static int RunRequestPreparation(string mode, string requestPath)
+    {
+        var root = Path.GetDirectoryName(requestPath)!;
+        using var release = new ManualResetEvent(false);
+        using var finished = new ManualResetEvent(false);
+        var workerStarted = false;
+        var resultWriterStarted = false;
+        string? preparationOutcome = null;
+        var first = SupervisorProgram.RunPhase(observe =>
+        {
+            File.WriteAllText(Path.Combine(root, "host-io-entered.json"),
+                "{\"schemaVersion\":1,\"phase\":\"requestPreparation\"}");
+            if (mode == "phaseContinuationRequestPreparationThrow")
+                throw new IOException("privatePreparationFailure");
+            if (mode == "phaseContinuationRequestPreparationInvalid")
+                throw new SupervisorFailure("requestFileInvalid");
+            release.WaitOne();
+            try
+            {
+                if (mode == "phaseContinuationLateRequestPreparationFailure")
+                    throw new IOException("privateLatePreparationFailure");
+                var prepared = SupervisorRequestReader.Read(["--request", requestPath], (phase, completed) =>
+                {
+                    observe(phase, completed);
+                    throw new InvalidOperationException("privateObservationFailure");
+                });
+                preparationOutcome = "requestReturned";
+                return prepared;
+            }
+            catch { preparationOutcome = "preparationFailed"; throw; }
+            finally { finished.Set(); }
+        }, (request, clock, evidence) =>
+        {
+            workerStarted = true;
+            return new WindowsJobProcessSupervisor(clock, evidence).Run(request);
+        }, (_, _, _) => { resultWriterStarted = true; });
+        var events = new List<string> { "firstPhaseReturned" };
+        bool? latePreparationCompleted = null;
+        if (mode is "phaseContinuationLateRequestPreparation" or "phaseContinuationLateRequestPreparationFailure")
+        {
+            release.Set();
+            latePreparationCompleted = finished.WaitOne(TimeSpan.FromSeconds(5));
+            if (latePreparationCompleted != true) return 65;
+            events.Add("latePreparationReturned");
+        }
+        File.WriteAllText(Path.Combine(root, "phase-completion.json"), JsonSerializer.Serialize(new
+        {
+            schemaVersion = 1, first = Report(first), events, workerStarted, resultWriterStarted,
+            latePreparationCompleted, preparationOutcome, rootPresent = Directory.Exists(root),
+        }));
+        return first.ExitCode;
     }
 
     private static void HeldResultWrite(SupervisorRequest request, SupervisorOutcome _, long __) =>

@@ -2549,6 +2549,32 @@ Tämä osuus erottaa nykyisen julkaisutyön historiallisesta tutkimusnäytöstä
 
 #### Ajantasaiset julkaisuesteet ja päätökset
 
+Revision `ebdf0d715d1a2608bb9f929d5d83e85ed9eb1977`
+[ensimmäinen normaali kierros 35159913917](https://github.com/eky-software/eky/actions/runs/35159913917)
+ja [riippuvuustarkistus 35159916020](https://github.com/eky-software/eky/actions/runs/35159916020)
+läpäisivät. [Toinen kierros 35162332505](https://github.com/eky-software/eky/actions/runs/35162332505)
+hylättiin clean/upgrade-komentoryhmän toisessa toistossa (53/54):
+`upgrade/removalHold` ei saanut `fixtureCleanup`-tulosta. Komennon exit ja
+close havaittiin. Viimeinen varmennettu vaihe oli `artifact`; seuraava
+turvallinen virhehavainto oli `requestValidated/requestFileInvalid`.
+Suunnitellun seuraavan `inventoryAfter`-vaiheen pyyntöä ei löytynyt
+raportista; tarkoituksellista `fixtureCleanup`-jumitusta ei siten vielä
+todennettu tässä tapauksessa.
+Legacy-producer ja sen consumerit jäivät ajamatta, eikä hyväksyntäpari täyty.
+Aiempi PR-vihreys eri checkout-revisiolla säilyy erillisenä näyttönä.
+
+Nykyinen valmisteluraja erottelee valinnaisessa, suljetussa evidencessä
+`preparationDeadlineExceeded`- ja `preparationException`-tapaukset sekä
+viimeisen aloitetun ja valmistuneen valmisteluvaiheen. Pelkkä
+`requestFileInvalid` ei erottanut näitä. Olemassa oleva viiden sekunnin
+valmisteluraja, pyynnön validointi, prosessiomistajuus ja pakolliset tulokset
+eivät muutu. Valmistelun hylkäys ei valtuuta workerin käynnistystä, seuraavaa
+vaihetta, tuloksen julkaisua tai aineiston poistamista; myöhäinen valmistelu
+ei muuta hylkäystä. Näitä rajoja testataan samalla komentofixturellä, myös
+todellisen komentoprosessin exit/close-havainnoilla. Uusi luokittelu ei vielä
+osoita CI-valmistelun sisäistä viivekohtaa tai korjaa sitä; seuraava rajattu
+Windows-komentokoe erottaa puuttuvat vaihtoehdot ilman MSI-matriisia.
+
 Revision `f863ec8f095444321c9b82d7869712f65fd82189` ensimmäinen
 [normaali kokonaiskierros 35151889180](https://github.com/eky-software/eky/actions/runs/35151889180)
 ja sen [riippuvuustarkistus 35151891636](https://github.com/eky-software/eky/actions/runs/35151891636)

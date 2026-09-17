@@ -31,10 +31,10 @@ internal static class SupervisorProgram
         string[] arguments,
         Func<SupervisorRequest, Stopwatch, SafeEvidenceWriter, SupervisorOutcome> execute,
         Action<SupervisorRequest, SupervisorOutcome, long>? writeResult = null
-    ) => RunPhase(() => SupervisorRequestReader.Read(arguments), execute, writeResult);
+    ) => RunPhase(observe => SupervisorRequestReader.Read(arguments, observe), execute, writeResult);
 
     internal static SupervisorPhaseCompletion RunPhase(
-        Func<SupervisorRequest> prepareRequest,
+        Func<Action<SupervisorRequestPreparationPhase, bool>, SupervisorRequest> prepareRequest,
         Func<SupervisorRequest, Stopwatch, SafeEvidenceWriter, SupervisorOutcome>? execute = null,
         Action<SupervisorRequest, SupervisorOutcome, long>? writeResult = null,
         SafeEvidenceWriter? commandEvidence = null
@@ -43,14 +43,36 @@ internal static class SupervisorProgram
         var stopwatch = Stopwatch.StartNew();
         SupervisorRequest? request = null;
         SafeEvidenceWriter? evidence = null;
+        var preparationPhase = (int)SupervisorRequestPreparationPhase.NotStarted;
+        var preparationLastCompleted = (int)SupervisorRequestPreparationPhase.NotStarted;
+        var preparationFailureCode = "preparationException";
+
+        void ObservePreparation(SupervisorRequestPreparationPhase phase, bool completed)
+        {
+            Volatile.Write(ref preparationPhase, (int)phase);
+            if (completed) Volatile.Write(ref preparationLastCompleted, (int)phase);
+        }
+
+        void RejectRequest(string errorCode, int? win32ErrorCode = null) =>
+            SafeEvidenceWriter.WriteInvalidRequest(errorCode, win32ErrorCode, commandEvidence,
+                (SupervisorRequestPreparationPhase)Volatile.Read(ref preparationPhase),
+                (SupervisorRequestPreparationPhase)Volatile.Read(ref preparationLastCompleted),
+                preparationFailureCode);
 
         try
         {
-            var admission = Task.Run(prepareRequest);
+            var admission = Task.Run(() =>
+            {
+                ObservePreparation(SupervisorRequestPreparationPhase.PreparerStarted, false);
+                var prepared = prepareRequest(ObservePreparation);
+                ObservePreparation(SupervisorRequestPreparationPhase.Completed, true);
+                return prepared;
+            });
             if (Task.WaitAny([admission], ExitReserveMilliseconds) != 0)
             {
                 _ = admission.ContinueWith(completed => { _ = completed.Exception; },
                     TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
+                preparationFailureCode = "preparationDeadlineExceeded";
                 throw new SupervisorFailure("requestFileInvalid");
             }
             request = admission.GetAwaiter().GetResult();
@@ -90,7 +112,7 @@ internal static class SupervisorProgram
             }
             else
             {
-                SafeEvidenceWriter.WriteInvalidRequest(
+                RejectRequest(
                     failure.ErrorCode,
                     failure.Win32ErrorCode
                 );
@@ -116,7 +138,7 @@ internal static class SupervisorProgram
             }
             else
             {
-                SafeEvidenceWriter.WriteInvalidRequest("unexpectedFailure");
+                RejectRequest("unexpectedFailure");
             }
             return new(null, false, "unexpectedFailure");
         }

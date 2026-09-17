@@ -81,6 +81,14 @@ internal sealed class SupervisorFailure(
     internal int? Win32ErrorCode { get; } = win32ErrorCode;
 }
 
+internal enum SupervisorRequestPreparationPhase
+{
+    NotStarted, PreparerStarted, TemporaryRootCheck, PhaseDirectoryCreation,
+    PhaseInputWrite, RequestWrite, RequestFileValidation, RequestFileRead,
+    RequestSchemaValidation, CommandFileValidation, WorkingDirectoryValidation,
+    ResultDestinationValidation, Completed,
+}
+
 internal static partial class SupervisorRequestReader
 {
     private const int MaximumRequestBytes = 1024 * 1024;
@@ -103,8 +111,13 @@ internal static partial class SupervisorRequestReader
     [GeneratedRegex("^[0-9a-f]{64}$", RegexOptions.CultureInvariant)]
     private static partial Regex Sha256Pattern();
 
-    internal static SupervisorRequest Read(string[] arguments)
+    internal static SupervisorRequest Read(string[] arguments,
+        Action<SupervisorRequestPreparationPhase, bool>? observe = null)
     {
+        void Observe(SupervisorRequestPreparationPhase phase, bool completed)
+        {
+            try { observe?.Invoke(phase, completed); } catch { /* Optional observation only. */ }
+        }
         if (
             arguments.Length != 2 ||
             !string.Equals(arguments[0], "--request", StringComparison.Ordinal) ||
@@ -115,14 +128,17 @@ internal static partial class SupervisorRequestReader
         }
 
         var requestPath = Path.GetFullPath(arguments[1]);
+        Observe(SupervisorRequestPreparationPhase.RequestFileValidation, false);
         RequireRegularFile(requestPath);
         var file = new FileInfo(requestPath);
         if (file.Length is < 2 or > MaximumRequestBytes)
         {
             throw new SupervisorFailure("requestFileInvalid");
         }
+        Observe(SupervisorRequestPreparationPhase.RequestFileValidation, true);
 
         JsonDocument document;
+        Observe(SupervisorRequestPreparationPhase.RequestFileRead, false);
         try
         {
             using var stream = new FileStream(
@@ -144,9 +160,11 @@ internal static partial class SupervisorRequestReader
         {
             throw new SupervisorFailure("requestFileInvalid");
         }
+        Observe(SupervisorRequestPreparationPhase.RequestFileRead, true);
 
         using (document)
         {
+            Observe(SupervisorRequestPreparationPhase.RequestSchemaValidation, false);
             if (document.RootElement.ValueKind != JsonValueKind.Object)
             {
                 throw new SupervisorFailure("requestSchemaInvalid");
@@ -189,14 +207,19 @@ internal static partial class SupervisorRequestReader
                 throw new SupervisorFailure("requestCommandInvalid");
             }
             command = Path.GetFullPath(command);
+            Observe(SupervisorRequestPreparationPhase.RequestSchemaValidation, true);
+            Observe(SupervisorRequestPreparationPhase.CommandFileValidation, false);
             RequireRegularFile(command);
+            Observe(SupervisorRequestPreparationPhase.CommandFileValidation, true);
 
+            Observe(SupervisorRequestPreparationPhase.WorkingDirectoryValidation, false);
             if (!Path.IsPathFullyQualified(workingDirectory))
             {
                 throw new SupervisorFailure("requestWorkingDirectoryInvalid");
             }
             workingDirectory = Path.GetFullPath(workingDirectory);
             RequireRegularDirectory(workingDirectory);
+            Observe(SupervisorRequestPreparationPhase.WorkingDirectoryValidation, true);
 
             if (
                 timeoutMilliseconds is < 200 or > 14_400_000 ||
@@ -207,6 +230,7 @@ internal static partial class SupervisorRequestReader
                 throw new SupervisorFailure("requestTimeoutInvalid");
             }
 
+            Observe(SupervisorRequestPreparationPhase.ResultDestinationValidation, false);
             var resultPath = Path.Combine(
                 Path.GetDirectoryName(requestPath)!,
                 "result.json"
@@ -224,6 +248,7 @@ internal static partial class SupervisorRequestReader
             {
                 throw new SupervisorFailure("resultPathOccupied");
             }
+            Observe(SupervisorRequestPreparationPhase.ResultDestinationValidation, true);
 
             return new SupervisorRequest(
                 requestPath,

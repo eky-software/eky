@@ -105,25 +105,33 @@ internal static class AcceptanceCommandProgram
 
     private static SupervisorPhaseCompletion RunPhase(CommandContext context, string phase, string nonce, int timeout, int cleanup,
         SafeEvidenceWriter? evidence) =>
-        SupervisorProgram.RunPhase(() =>
+        SupervisorProgram.RunPhase(observe =>
         {
+            observe(SupervisorRequestPreparationPhase.TemporaryRootCheck, false);
             if (!Directory.Exists(Path.GetTempPath())) throw new SupervisorFailure("requestWorkingDirectoryInvalid");
+            observe(SupervisorRequestPreparationPhase.TemporaryRootCheck, true);
             var phaseRoot = Path.Combine(context.Root, phase);
+            observe(SupervisorRequestPreparationPhase.PhaseDirectoryCreation, false);
             Directory.CreateDirectory(phaseRoot);
+            observe(SupervisorRequestPreparationPhase.PhaseDirectoryCreation, true);
             var inputPath = Path.Combine(phaseRoot, "phase-input.json");
+            observe(SupervisorRequestPreparationPhase.PhaseInputWrite, false);
             WriteExclusive(inputPath, new { schemaVersion = 1, phase, commandKind = context.Kind,
                 scenarioRunNonce = context.ScenarioRunNonce, commandArguments = context.Input, history = context.History });
+            observe(SupervisorRequestPreparationPhase.PhaseInputWrite, true);
             var requestPath = Path.Combine(phaseRoot, "request.json");
             var worker = context.ContractWorker ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
                 "../../../../windows-acceptance-harness", context.Kind switch {
                     "legacy" => "legacyCommandPhase.mjs", "clean" => "cleanCommandPhase.mjs",
                     "upgrade" => "upgradeCommandPhase.mjs", _ => "workspaceCommandPhase.mjs" }));
+            observe(SupervisorRequestPreparationPhase.RequestWrite, false);
             WriteExclusive(requestPath, new { schemaVersion = 1, runNonce = nonce,
                 scenario = phase == "scenario" ? context.Scenario : "acceptanceCommandPhase",
                 artifactDescriptorSha256 = context.Input[3], command = ResolveNodeExecutable(),
                 arguments = new[] { worker, "--phase-request", inputPath }, workingDirectory = phaseRoot,
                 timeoutMilliseconds = timeout, cleanupReserveMilliseconds = cleanup });
-            return SupervisorRequestReader.Read(["--request", requestPath]);
+            observe(SupervisorRequestPreparationPhase.RequestWrite, true);
+            return SupervisorRequestReader.Read(["--request", requestPath], observe);
         }, commandEvidence: evidence);
 
     private sealed record CommandContext(string Root, string[] Input, string Kind, string Scenario,

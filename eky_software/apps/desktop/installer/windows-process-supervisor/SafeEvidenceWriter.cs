@@ -68,13 +68,29 @@ internal sealed class SafeEvidenceWriter
 
     internal static void WriteInvalidRequest(
         string errorCode,
-        int? win32ErrorCode = null
+        int? win32ErrorCode = null,
+        SafeEvidenceWriter? commandEvidence = null,
+        SupervisorRequestPreparationPhase? preparationPhase = null,
+        SupervisorRequestPreparationPhase? preparationLastCompleted = null,
+        string? preparationFailureCode = null
     )
     {
         try
         {
-            var evidence = new SafeEvidenceWriter(null, Stopwatch.StartNew());
-            evidence.TryEnqueue(new
+            var evidence = commandEvidence ?? new SafeEvidenceWriter(null, Stopwatch.StartNew());
+            if (preparationPhase is not null)
+            {
+                evidence.Write("requestPreparation", "failed",
+                    resultCode: JsonNamingPolicy.CamelCase.ConvertName(preparationPhase.Value.ToString()),
+                    errorCode: preparationFailureCode);
+                evidence.Write("requestPreparationLastCompleted", "failed",
+                    resultCode: JsonNamingPolicy.CamelCase.ConvertName(
+                        (preparationLastCompleted ?? SupervisorRequestPreparationPhase.NotStarted).ToString()),
+                    errorCode: preparationFailureCode);
+            }
+            if (commandEvidence is not null)
+                evidence.Write("requestValidated", "failed", errorCode: errorCode, win32ErrorCode: win32ErrorCode);
+            else evidence.TryEnqueue(new
             {
                 schemaVersion = 1,
                 operation = Operation,
@@ -86,7 +102,7 @@ internal sealed class SafeEvidenceWriter
                 win32ErrorCode,
             });
             // Invalid input supplies no trusted budget; never wait for its diagnostics.
-            evidence.CompleteWithinRequestBudget(0);
+            if (commandEvidence is null) evidence.CompleteWithinRequestBudget(0);
         }
         catch { /* Invalid-request rejection does not depend on diagnostic delivery. */ }
     }
