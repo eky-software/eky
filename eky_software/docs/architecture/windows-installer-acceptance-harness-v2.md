@@ -2588,7 +2588,7 @@ Mahdollinen seuraava koe kohdistetaan tähän normaalin käynnistysketjun
 rajaan; samaa diagnostiikkaa ei toisteta vihreyden keräämiseksi. PR:n lähde
 pysyy ennallaan, eikä tämä näyttö sulje normaalia hyväksyntäparia.
 
-Seuraava rajattu vertailu poistaa tämän valmistelueron olemassa olevasta
+Rajattu vertailu poistaa tämän valmistelueron olemassa olevasta
 `clean-upgrade-command-diagnostic`-tilasta: lukittu pakettityökalu
 valmistellaan ensin, sitten supervisor rakennetaan normaalin jobin samalla
 `pnpm installer:supervisor:build`-komennolla. Suora ennakkokäännös poistuu
@@ -2596,9 +2596,23 @@ vain tältä diagnoosipolulta. Sama 54 tapauksen järjestys, kaksi eristettyä
 runneria ja nykyiset rajat säilyvät. Kytkentätesti vaatii yhden valitun
 käännöspolun sekä valmistelu-, käännös- ja testivaiheiden järjestyksen.
 Yksi vertailukierros ei rakenna MSI-artifacteja eikä korvaa hyväksyntää.
-Jos valmisteluhylkäys toistuu, suljetut vaihetiedot rajaavat jatkotyön;
-jos se ei toistu, alkuperäinen viive jää avoimeksi eikä tästä johdeta
-juurisyytä tai lupaa samanlaisten kokeiden automaattiseen sarjaan.
+[Vertailu 35199294637](https://github.com/eky-software/eky/actions/runs/35199294637)
+läpäisi ensimmäisellä yrityksellä 54/54 molemmissa jobeissa, myös kummankin
+perheen `removalHold`-tapauksen. Molempien todellinen checkout oli
+`1d5a52b17086391360515be50b56952cf6bbda9e`; lukittu pakettityökalu ja
+pnpm-käännös valmistuivat dokumentoidussa järjestyksessä ja suora
+ennakkokäännös jäi pois. Valmisteluhylkäys ei toistunut. Valmisteluerosta
+ei siten ole juurisyyhavaintoa, eikä alkuperäisen viiveen sisäistä alavaihetta
+tiedetä. Synteettinen `removalHold` käyttää oikeaa komentorajaa mutta
+injektoituja product- ja scenario-tuloksia, ei Ekyn sovellus- tai MSI-ajoa.
+
+Rajattu diagnostiikka päättyy tähän. Virheraportoinnin ja kytkennän korjaus
+siirretään samaan PR-kokonaisuuteen normaaleja integraatioportteja varten;
+uutta samanlaista diagnoosiuusintaa ei käytetä hyväksyntänä. Epäonnistunut
+`ebdf0d7`-kierros säilyy hylättynä, eivätkä diagnostiset 54/54-tulokset
+täytä uuden revision kahden kokonaiskierroksen vaatimusta. Mahdollinen
+uusi valmisteluvirhe pysäyttää hyväksynnän ja rajataan sen suljetusta
+vaihenäytöstä; rajoja tai puuttuvan tuloksen vaatimusta ei löysennetä.
 
 Revision `f863ec8f095444321c9b82d7869712f65fd82189` ensimmäinen
 [normaali kokonaiskierros 35151889180](https://github.com/eky-software/eky/actions/runs/35151889180)
