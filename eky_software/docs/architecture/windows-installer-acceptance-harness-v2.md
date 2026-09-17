@@ -2549,6 +2549,32 @@ Tämä osuus erottaa nykyisen julkaisutyön historiallisesta tutkimusnäytöstä
 
 #### Ajantasaiset julkaisuesteet ja päätökset
 
+Revision `7ff2936d9774e4f201b37fc09c3fdbc77c7bebb0`
+[PR-kierros 35200298384](https://github.com/eky-software/eky/actions/runs/35200298384)
+läpäisi todellisella checkoutilla `3cc6534f20970c32e96abc15a6b8982fe7880670`.
+Sitä seurannut [normaali kierros 35203136871](https://github.com/eky-software/eky/actions/runs/35203136871)
+hylättiin samalla lähde- ja checkout-revisiolla `7ff2936`: legacy run 1:n
+`inspectTargetFinal` saavutti valmistelun deadlinen kohdassa `requestWrite`,
+viimeisen valmistuneen kohdan ollessa `phaseInputWrite`. MSI-päivitys,
+skenaario, semanttinen tarkistus ja poistokomennot olivat valmistuneet,
+mutta kohdetuotteen lopputila ja koko komennon pakollinen tulos jäivät
+varmentamatta. Saman artifactin toinen consumer läpäisi; se ei korvaa
+ensimmäisen hylkäystä. Toista normaalia kokonaiskierrosta ei käynnistetä.
+
+Hylätyn revision `requestWrite` sisälsi myös Node-executablen selvityksen sekä
+tiedoston luonnin, serialisoinnin, flushin ja sulkemisen. Rajattu tarkennus
+erottaa nämä olemassa olevaan, vain suljettuja vaiheita välittävään
+valmisteluhavaintoon. Havainto ei vielä osoita viivästynyttä alavaihetta.
+Eksklusiivinen luonti, `Flush(true)`, sulkeminen ennen lukua, nykyinen
+valmisteluraja ja pakollisen tuloksen sopimus säilyvät. Estyvä tai myöhäinen
+pyyntökirjoitus ei valtuuta workeria, jatkovaihetta tai aineiston poistamista;
+havaintokäsittelijän poikkeus ei muuta kirjoituksen tulosta. Synteettinen
+estymistesti pysäyttää saman kirjoittimen ennen flush-kutsua: se todistaa
+määräajan ja jatkamisen eston, ei Windowsin levykutsun viiveen syytä.
+Seuraava rajattu koe käyttää
+olemassa olevaa artifact-consumeria ilman uutta MSI-buildia eikä korvaa
+normaalia hyväksyntää.
+
 Revision `ebdf0d715d1a2608bb9f929d5d83e85ed9eb1977`
 [ensimmäinen normaali kierros 35159913917](https://github.com/eky-software/eky/actions/runs/35159913917)
 ja [riippuvuustarkistus 35159916020](https://github.com/eky-software/eky/actions/runs/35159916020)

@@ -133,7 +133,8 @@ export function recordCommandBoundaryEvidence(tail, value) {
   }
   if (['requestPreparation', 'requestPreparationLastCompleted'].includes(value.phase) && value.resultCode !== undefined) {
     entry.resultCode = ['notStarted', 'preparerStarted', 'temporaryRootCheck', 'phaseDirectoryCreation',
-      'phaseInputWrite', 'requestWrite', 'requestFileValidation', 'requestFileRead', 'requestSchemaValidation',
+      'phaseInputWrite', 'nodeExecutableResolution', 'requestWrite', 'requestFileCreate',
+      'requestSerialize', 'requestFlush', 'requestClose', 'requestFileValidation', 'requestFileRead', 'requestSchemaValidation',
       'commandFileValidation', 'workingDirectoryValidation', 'resultDestinationValidation', 'completed']
       .includes(value.resultCode) ? value.resultCode : 'other';
   }

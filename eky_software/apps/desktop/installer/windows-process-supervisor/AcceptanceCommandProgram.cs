@@ -124,12 +124,15 @@ internal static class AcceptanceCommandProgram
                 "../../../../windows-acceptance-harness", context.Kind switch {
                     "legacy" => "legacyCommandPhase.mjs", "clean" => "cleanCommandPhase.mjs",
                     "upgrade" => "upgradeCommandPhase.mjs", _ => "workspaceCommandPhase.mjs" }));
+            observe(SupervisorRequestPreparationPhase.NodeExecutableResolution, false);
+            var command = ResolveNodeExecutable();
+            observe(SupervisorRequestPreparationPhase.NodeExecutableResolution, true);
             observe(SupervisorRequestPreparationPhase.RequestWrite, false);
             WriteExclusive(requestPath, new { schemaVersion = 1, runNonce = nonce,
                 scenario = phase == "scenario" ? context.Scenario : "acceptanceCommandPhase",
-                artifactDescriptorSha256 = context.Input[3], command = ResolveNodeExecutable(),
+                artifactDescriptorSha256 = context.Input[3], command,
                 arguments = new[] { worker, "--phase-request", inputPath }, workingDirectory = phaseRoot,
-                timeoutMilliseconds = timeout, cleanupReserveMilliseconds = cleanup });
+                timeoutMilliseconds = timeout, cleanupReserveMilliseconds = cleanup }, observe);
             observe(SupervisorRequestPreparationPhase.RequestWrite, true);
             return SupervisorRequestReader.Read(["--request", requestPath], observe);
         }, commandEvidence: evidence);
@@ -164,10 +167,25 @@ internal static class AcceptanceCommandProgram
         throw new SupervisorFailure("requestCommandInvalid");
     }
 
-    private static void WriteExclusive(string path, object value)
+    internal static void WriteExclusive(string path, object value,
+        Action<SupervisorRequestPreparationPhase, bool>? observe = null)
     {
-        using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-        JsonSerializer.Serialize(stream, value);
-        stream.Flush(true);
+        void Observe(SupervisorRequestPreparationPhase phase, bool completed)
+        {
+            try { observe?.Invoke(phase, completed); } catch { /* Optional observation only. */ }
+        }
+        Observe(SupervisorRequestPreparationPhase.RequestFileCreate, false);
+        using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+        {
+            Observe(SupervisorRequestPreparationPhase.RequestFileCreate, true);
+            Observe(SupervisorRequestPreparationPhase.RequestSerialize, false);
+            JsonSerializer.Serialize(stream, value);
+            Observe(SupervisorRequestPreparationPhase.RequestSerialize, true);
+            Observe(SupervisorRequestPreparationPhase.RequestFlush, false);
+            stream.Flush(true);
+            Observe(SupervisorRequestPreparationPhase.RequestFlush, true);
+            Observe(SupervisorRequestPreparationPhase.RequestClose, false);
+        }
+        Observe(SupervisorRequestPreparationPhase.RequestClose, true);
     }
 }

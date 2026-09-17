@@ -108,6 +108,12 @@ test('command boundary diagnostics keep only a bounded closed projection', () =>
     { phase: 'requestPreparation', status: 'failed', errorCode: 'preparationDeadlineExceeded', resultCode: 'phaseInputWrite' },
     { phase: 'requestPreparationLastCompleted', status: 'failed', errorCode: 'other', resultCode: 'other' },
   ]);
+  for (const resultCode of ['nodeExecutableResolution', 'requestFileCreate', 'requestSerialize', 'requestFlush', 'requestClose']) {
+    recordCommandBoundaryEvidence(tail, { phase: 'requestPreparation', status: 'failed',
+      errorCode: 'preparationDeadlineExceeded', resultCode, path: 'private' });
+    assert.deepEqual(tail.at(-1), { phase: 'requestPreparation', status: 'failed',
+      errorCode: 'preparationDeadlineExceeded', resultCode });
+  }
   const original = new Error('original assertion');
   let diagnostic;
   assert.throws(() => reportCommandFailure({ diagnostic(value) { diagnostic = JSON.parse(value); } }, [], original, tail),
@@ -219,6 +225,68 @@ for (const stage of ['RequestPreparationHold', 'RequestPreparationThrow', 'Reque
         ? 'preparationException' : 'preparationDeadlineExceeded' }]);
     assert.equal(completed.evidence.find(({ phase }) => phase === 'requestPreparation')?.resultCode, 'preparerStarted');
     assert.equal(completed.evidence.find(({ phase }) => phase === 'requestPreparationLastCompleted')?.resultCode, 'notStarted');
+  });
+}
+
+for (const stage of ['Completed', 'Exists', 'Hold', 'Late']) {
+  test(`request writer separates file stages and preserves command rejection: ${stage}`, {
+    skip: process.platform !== 'win32', timeout: 30_000,
+  }, async (t) => {
+    const context = await createRunContext('request-file-' + stage);
+    let verified = false;
+    t.after(() => cleanupRunContext(context, { preserveEvidence: !verified }));
+    const request = createRequest(context, 'exitZero');
+    await writeRequest(context, request);
+    const execution = startProgramFailureFixture(context, 'phaseContinuationRequestFile' + stage);
+    const receipts = [];
+    execution.child.once('exit', () => receipts.push('exit'));
+    execution.child.once('close', () => receipts.push('close'));
+    const completed = await execution.completion;
+    assert.deepEqual(receipts, ['exit', 'close']);
+    assert.equal(completed.signal, null);
+    assert.equal(completed.exitCode, stage === 'Completed' ? 0 : 1);
+    assert.equal(context.supervisorProcesses.size, 0);
+    const report = JSON.parse(await readFile(join(context.testRoot, 'phase-completion.json'), 'utf8'));
+    assert.equal(report.workerStarted, stage === 'Completed');
+    assert.equal(report.first.processBoundaryVerified, stage === 'Completed');
+    assert.equal(report.first.resultWritten, stage === 'Completed');
+    assert.equal(report.rootPresent, true);
+    assert.equal(report.latePreparationCompleted, stage === 'Late' ? true : null);
+    const expectedStages = ['requestFileCreate', 'requestSerialize', 'requestFlush', 'requestClose']
+      .flatMap((phase) => [phase + ':started', phase + ':completed']);
+    assert.deepEqual(report.observations, stage === 'Exists' ? expectedStages.slice(0, 1)
+      : stage === 'Hold' ? expectedStages.slice(0, 5) : expectedStages);
+    if (stage === 'Completed' || stage === 'Late') {
+      assert.deepEqual(JSON.parse(await readFile(join(context.testRoot, 'prepared-request.json'), 'utf8')), request);
+    }
+    if (stage === 'Completed') {
+      const result = await readWindowsAcceptanceSupervisorResult(context.resultPath, {
+        artifactDescriptorSha256: context.artifactDescriptorSha256, runNonce: context.runNonce,
+        scenario: context.scenario, supervisorExitCode: completed.exitCode,
+      });
+      assert.equal(result.status, 'completed');
+      assert.equal(result.processTreeAbsent, true);
+      assert.equal(completed.evidence.some(({ phase }) => phase === 'requestPreparation'), false);
+    } else {
+      await assert.rejects(lstat(context.resultPath), { code: 'ENOENT' });
+      await assert.rejects(lstat(context.runRoot), { code: 'ENOENT' });
+      assert.equal(report.first.processTreeAbsent, null);
+      assert.equal(report.first.requestErrorCode, stage === 'Exists' ? 'unexpectedFailure' : 'requestFileInvalid');
+      assert.deepEqual(completed.evidence.filter(({ phase }) => phase.startsWith('requestPreparation'))
+        .map(({ phase, resultCode, errorCode }) => ({ phase, resultCode, errorCode })), [
+        { phase: 'requestPreparation', resultCode: stage === 'Exists' ? 'requestFileCreate' : 'requestFlush',
+          errorCode: stage === 'Exists' ? 'preparationException' : 'preparationDeadlineExceeded' },
+        { phase: 'requestPreparationLastCompleted', resultCode: stage === 'Exists' ? 'notStarted' : 'requestSerialize',
+          errorCode: stage === 'Exists' ? 'preparationException' : 'preparationDeadlineExceeded' },
+      ]);
+      if (stage === 'Exists') {
+        assert.deepEqual(JSON.parse(await readFile(join(context.testRoot, 'prepared-request.json'), 'utf8')), { sentinel: true });
+      } else {
+        assert.deepEqual(JSON.parse(await readFile(join(context.testRoot, 'host-io-entered.json'), 'utf8')),
+          { schemaVersion: 1, phase: 'requestFlush' });
+      }
+    }
+    verified = stage === 'Completed';
   });
 }
 

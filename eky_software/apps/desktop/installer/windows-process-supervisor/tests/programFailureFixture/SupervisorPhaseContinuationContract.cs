@@ -5,6 +5,9 @@ internal static class SupervisorPhaseContinuationContract
 {
     internal static int Run(string mode, string requestPath)
     {
+        if (mode is "phaseContinuationRequestFileCompleted" or "phaseContinuationRequestFileExists" or
+            "phaseContinuationRequestFileHold" or "phaseContinuationRequestFileLate")
+            return RunRequestFilePreparation(mode, requestPath);
         if (mode is "phaseContinuationRequestPreparationHold" or
             "phaseContinuationRequestPreparationThrow" or "phaseContinuationRequestPreparationInvalid" or
             "phaseContinuationLateRequestPreparation" or "phaseContinuationLateRequestPreparationFailure")
@@ -118,6 +121,58 @@ internal static class SupervisorPhaseContinuationContract
     {
         Hold(request, "workerRead");
         return new(false, "workerResultInvalid");
+    }
+
+    private static int RunRequestFilePreparation(string mode, string requestPath)
+    {
+        var root = Path.GetDirectoryName(requestPath)!;
+        var preparedPath = Path.Combine(root, "prepared-request.json");
+        using var input = JsonDocument.Parse(File.ReadAllText(requestPath));
+        using var release = new ManualResetEvent(false);
+        using var finished = new ManualResetEvent(false);
+        var observations = new List<string>();
+        var workerStarted = false;
+        if (mode == "phaseContinuationRequestFileExists")
+            File.WriteAllText(preparedPath, "{\"sentinel\":true}");
+        var first = SupervisorProgram.RunPhase(observe =>
+        {
+            try
+            {
+                AcceptanceCommandProgram.WriteExclusive(preparedPath, input.RootElement, (phase, completed) =>
+                {
+                    observe(phase, completed);
+                    observations.Add(JsonNamingPolicy.CamelCase.ConvertName(phase.ToString()) +
+                        (completed ? ":completed" : ":started"));
+                    if (phase == SupervisorRequestPreparationPhase.RequestFlush && !completed &&
+                        mode is "phaseContinuationRequestFileHold" or "phaseContinuationRequestFileLate")
+                    {
+                        File.WriteAllText(Path.Combine(root, "host-io-entered.json"),
+                            "{\"schemaVersion\":1,\"phase\":\"requestFlush\"}");
+                        release.WaitOne();
+                    }
+                    throw new InvalidOperationException("privateObservationFailure");
+                });
+                return SupervisorRequestReader.Read(["--request", preparedPath], observe);
+            }
+            finally { finished.Set(); }
+        }, (request, clock, evidence) =>
+        {
+            workerStarted = true;
+            return new WindowsJobProcessSupervisor(clock, evidence).Run(request);
+        });
+        bool? latePreparationCompleted = null;
+        if (mode == "phaseContinuationRequestFileLate")
+        {
+            release.Set();
+            latePreparationCompleted = finished.WaitOne(TimeSpan.FromSeconds(5));
+            if (latePreparationCompleted != true) return 65;
+        }
+        File.WriteAllText(Path.Combine(root, "phase-completion.json"), JsonSerializer.Serialize(new
+        {
+            schemaVersion = 1, first = Report(first), observations, workerStarted,
+            latePreparationCompleted, rootPresent = Directory.Exists(root),
+        }));
+        return first.ExitCode;
     }
 
     private static int RunRequestPreparation(string mode, string requestPath)

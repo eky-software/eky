@@ -84,7 +84,8 @@ internal sealed class SupervisorFailure(
 internal enum SupervisorRequestPreparationPhase
 {
     NotStarted, PreparerStarted, TemporaryRootCheck, PhaseDirectoryCreation,
-    PhaseInputWrite, RequestWrite, RequestFileValidation, RequestFileRead,
+    PhaseInputWrite, NodeExecutableResolution, RequestWrite,
+    RequestFileCreate, RequestSerialize, RequestFlush, RequestClose, RequestFileValidation, RequestFileRead,
     RequestSchemaValidation, CommandFileValidation, WorkingDirectoryValidation,
     ResultDestinationValidation, Completed,
 }
