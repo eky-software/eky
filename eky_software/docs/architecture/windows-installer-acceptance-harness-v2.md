@@ -2571,9 +2571,31 @@ pyyntökirjoitus ei valtuuta workeria, jatkovaihetta tai aineiston poistamista;
 havaintokäsittelijän poikkeus ei muuta kirjoituksen tulosta. Synteettinen
 estymistesti pysäyttää saman kirjoittimen ennen flush-kutsua: se todistaa
 määräajan ja jatkamisen eston, ei Windowsin levykutsun viiveen syytä.
-Seuraava rajattu koe käyttää
-olemassa olevaa artifact-consumeria ilman uutta MSI-buildia eikä korvaa
-normaalia hyväksyntää.
+[Rajattu koe 35206884818](https://github.com/eky-software/eky/actions/runs/35206884818)
+läpäisi ensimmäisellä yrityksellä. Harness ja todellinen checkout olivat
+`f7828d375e429396e18ccb9ed1c97c4b4a53f572`; sama alkuperäinen artifact
+`10489386062` säilytti build-revision `7ff2936` sekä ennen/jälkeen-varmennetun
+descriptorin `732a79de08de2de75bd6f7ec319c871be552617b756fe87f366ff39bf7eaecd3`.
+Lopputilan tarkistukset, fixture-poisto, tuloksen julkaisu ja pakollinen
+tulosverifier läpäisivät ilman uutta MSI-buildia tai raskasta keruuta.
+Valmisteluviive ei toistunut. Tämä ei selitä aiempaa viivettä eikä korvaa
+hylättyä normaalikierrosta; saman diagnoosin uusintasarjaa ei aloiteta.
+
+Avoin päätös koskee valmistelun aikapolitiikkaa, ei todettua levykutsun
+vikaa. Nykyinen `SupervisorProgram.RunPhase` käyttää valmistelun omana
+kattona samaa `exitReserveMilliseconds`-arvoa kuin tuloksen julkaiseminen.
+Valmistelu sisältyy silti jo vaiheen ennen sitä alkavaan työaikaan.
+Päätösehdotus on sitoa vain kiinteän acceptance-komennon sisäinen valmistelu
+enintään nykyiseen 30 sekunnin normaalityövaraukseen ja aina saman vaiheen
+työdeadlineen. Työlle jäisi vain valmistelun jälkeen jäljellä oleva aika,
+ei uutta 30 sekunnin jaksoa. Lyhyemmät tarkoitukselliset timeout-sopimukset,
+siivous- ja julkaisuvaraukset sekä komento- ja job-rajat säilyisivät.
+Erillisen supervisor-CLI:n ulkoisen pyynnön lukurajaa ei muutettaisi.
+Tämä olisi erikseen hyväksyttävä sopimustarkennus, ei juurisyykorjaus tai
+lupaus Windowsin I/O-viiveen ylärajasta. Toteutusta ei ole tehty. Sen
+regressioiden pitää todistaa yhteinen kulunut aika, ajoissa valmistuvan
+pyynnön jatko sekä deadlinen jälkeinen käynnistyksen esto, virhetuloksen
+säilyminen, komentoprosessin poistuminen ja epävarman aineiston säilytys.
 
 Revision `ebdf0d715d1a2608bb9f929d5d83e85ed9eb1977`
 [ensimmäinen normaali kierros 35159913917](https://github.com/eky-software/eky/actions/runs/35159913917)
