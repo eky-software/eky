@@ -15,6 +15,20 @@ if (
 
 var mode = args[1];
 if (mode == "shortPathLookup") return ShortPathContract.Run(args[3]);
+if (mode == "preparationBudget")
+{
+    using var input = JsonDocument.Parse(File.ReadAllText(args[3]));
+    var results = input.RootElement.EnumerateArray().Select(value =>
+    {
+        var deadline = AcceptanceCommandProgram.CalculatePreparationTimeout(
+            value.GetProperty("phaseTimeout").GetInt32(), value.GetProperty("cleanup").GetInt32(),
+            value.GetProperty("normalWorkCap").GetInt32());
+        return new { deadline, remaining = SupervisorProgram.RemainingPreparationMilliseconds(
+            deadline, value.GetProperty("elapsed").GetInt64()) };
+    }).ToArray();
+    File.WriteAllText(Path.Combine(Path.GetDirectoryName(args[3])!, "command-budget-result.json"), JsonSerializer.Serialize(results));
+    return 0;
+}
 if (mode == "commandFixtureBudget")
 {
     using var input = JsonDocument.Parse(File.ReadAllText(args[3]));
@@ -48,9 +62,29 @@ if (mode == "legacyCommandEntry")
     var arguments = input.RootElement.GetProperty("arguments").EnumerateArray().Select(value => value.GetString()!).ToArray();
     var testCase = input.RootElement.GetProperty("testCase").GetString()!;
     var kind = arguments[0] == "--clean-command" ? "clean" : "other";
-    return AcceptanceCommandProgram.Run(arguments, input.RootElement.GetProperty("worker").GetString(),
+    using var preparationRelease = new ManualResetEvent(false);
+    using var preparationFinished = new ManualResetEvent(false);
+    Action<string, bool>? prepare = testCase is "requestPreparationDelayed" or "requestPreparationHold" or "requestPreparationLate"
+        ? (phase, completed) =>
+        {
+            if (phase != "inspectSourceBefore") return;
+            var marker = Path.Combine(Path.GetDirectoryName(args[3])!, "preparation-observation.json");
+            File.WriteAllText(marker, JsonSerializer.Serialize(new { schemaVersion = 1, entered = true, completed }));
+            if (completed) { preparationFinished.Set(); return; }
+            // One deliberate delay crosses the old admission cap; it is not a success wait.
+            using var releaseTimer = new Timer(_ => preparationRelease.Set(), null,
+                testCase == "requestPreparationDelayed" ? 6_000 : Timeout.Infinite, Timeout.Infinite);
+            preparationRelease.WaitOne();
+        } : null;
+    var exitCode = AcceptanceCommandProgram.Run(arguments, input.RootElement.GetProperty("worker").GetString(),
         input.RootElement.TryGetProperty("useCanonicalBudgets", out var canonical) && canonical.GetBoolean()
-            ? null : phase => CommandFixtureBudget.Resolve(testCase, kind, phase));
+            ? null : phase => CommandFixtureBudget.Resolve(testCase, kind, phase), prepare);
+    if (testCase == "requestPreparationLate")
+    {
+        preparationRelease.Set();
+        if (!preparationFinished.WaitOne(TimeSpan.FromSeconds(5))) return 65;
+    }
+    return exitCode;
 }
 if (mode.StartsWith("phaseContinuation", StringComparison.Ordinal))
 {

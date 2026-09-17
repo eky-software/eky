@@ -37,7 +37,8 @@ internal static class SupervisorProgram
         Func<Action<SupervisorRequestPreparationPhase, bool>, SupervisorRequest> prepareRequest,
         Func<SupervisorRequest, Stopwatch, SafeEvidenceWriter, SupervisorOutcome>? execute = null,
         Action<SupervisorRequest, SupervisorOutcome, long>? writeResult = null,
-        SafeEvidenceWriter? commandEvidence = null
+        SafeEvidenceWriter? commandEvidence = null,
+        int? preparationTimeoutMilliseconds = null
     )
     {
         var stopwatch = Stopwatch.StartNew();
@@ -61,6 +62,9 @@ internal static class SupervisorProgram
 
         try
         {
+            // Internal command preparation shares the phase clock; external CLI admission keeps its own cap.
+            var preparationDeadline = preparationTimeoutMilliseconds ?? ExitReserveMilliseconds;
+            if (preparationDeadline <= 0) throw new SupervisorFailure("requestFileInvalid");
             var admission = Task.Run(() =>
             {
                 ObservePreparation(SupervisorRequestPreparationPhase.PreparerStarted, false);
@@ -68,7 +72,8 @@ internal static class SupervisorProgram
                 ObservePreparation(SupervisorRequestPreparationPhase.Completed, true);
                 return prepared;
             });
-            if (Task.WaitAny([admission], ExitReserveMilliseconds) != 0)
+            if (Task.WaitAny([admission], RemainingPreparationMilliseconds(preparationDeadline, stopwatch.ElapsedMilliseconds)) != 0 ||
+                stopwatch.ElapsedMilliseconds >= preparationDeadline)
             {
                 _ = admission.ContinueWith(completed => { _ = completed.Exception; },
                     TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
@@ -148,6 +153,9 @@ internal static class SupervisorProgram
                 evidence?.CompleteWithinRequestBudget(request.TimeoutMilliseconds);
         }
     }
+
+    internal static int RemainingPreparationMilliseconds(int deadline, long elapsed) =>
+        (int)Math.Max(0, deadline - elapsed);
 
     private static bool TryWriteResult(
         SupervisorRequest request,

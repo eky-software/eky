@@ -10,6 +10,7 @@ internal static class CommandFixtureBudget
         {
             "preparationHold" => "prepare",
             "productInspectionHold" => "inspectSourceBefore",
+            "requestPreparationHold" or "requestPreparationLate" => "inspectSourceBefore",
             "scenarioHold" or "msiProcessHold" => "scenario",
             "uninstallHold" or "resultBeforeExit" => kind == "clean" ? "uninstallSource" : "uninstallTarget",
             "removalHold" => "fixtureCleanup",

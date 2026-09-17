@@ -83,6 +83,42 @@ test('the real command budget separates work, publication and exit at controlled
   verified = true;
 });
 
+test('internal request preparation consumes the phase work budget without borrowing cleanup or resetting elapsed time', {
+  skip: process.platform !== 'win32', timeout: 30_000,
+}, async (t) => {
+  const context = await createRunContext('preparation-budget');
+  let verified = false;
+  t.after(() => cleanupRunContext(context, { preserveEvidence: !verified }));
+  const cases = [
+    { phaseTimeout: 35_000, cleanup: 5_000, elapsed: 0, deadline: 30_000, remaining: 30_000 },
+    { phaseTimeout: 35_000, cleanup: 5_000, elapsed: 6_000, deadline: 30_000, remaining: 24_000 },
+    { phaseTimeout: 35_000, cleanup: 5_000, elapsed: 30_000, deadline: 30_000, remaining: 0 },
+    { phaseTimeout: 35_000, cleanup: 5_000, elapsed: 30_001, deadline: 30_000, remaining: 0 },
+    { phaseTimeout: 125_000, cleanup: 5_000, elapsed: 6_000, deadline: 30_000, remaining: 24_000 },
+    { phaseTimeout: 600_000, cleanup: 30_000, elapsed: 0, deadline: 30_000, remaining: 30_000 },
+    { phaseTimeout: 4_000, cleanup: 1_000, elapsed: 2_000, deadline: 3_000, remaining: 1_000 },
+    { phaseTimeout: 4_000, cleanup: 1_000, elapsed: 3_001, deadline: 3_000, remaining: 0 },
+    { phaseTimeout: 5_000, cleanup: 5_000, elapsed: 0, deadline: 0, remaining: 0 },
+  ];
+  for (const kind of ['cleanCommand', 'upgradeCommand', 'legacyCommand', 'workspaceCommand']) {
+    const [, total, cleanup] = commandBudgets[kind].phases.find(([name]) => name === 'prepare');
+    assert.equal(total - cleanup, 30_000);
+  }
+  await writeFile(context.requestPath, JSON.stringify(cases.map(({ deadline, remaining, ...value }) =>
+    ({ ...value, normalWorkCap: 30_000 }))));
+  const execution = startProgramFailureFixture(context, 'preparationBudget');
+  const events = [];
+  execution.child.once('exit', () => events.push('exit'));
+  execution.child.once('close', () => events.push('close'));
+  const result = await execution.completion;
+  assert.deepEqual(events, ['exit', 'close']);
+  assert.equal(result.signal, null);
+  assert.equal(result.exitCode, 0);
+  assert.deepEqual(JSON.parse(await readFile(join(context.testRoot, 'command-budget-result.json'), 'utf8')),
+    cases.map(({ deadline, remaining }) => ({ deadline, remaining })));
+  verified = true;
+});
+
 test('legacy lifecycle fits existing process waits plus grouped filesystem and result delivery reservations', () => {
   assert.equal(LEGACY_SUPERVISOR_TIMEOUT_MS, 600_000);
   assert.equal(LEGACY_SUPERVISOR_CLEANUP_MS, 30_000);

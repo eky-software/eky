@@ -15,7 +15,8 @@ internal static class AcceptanceCommandProgram
     }
 
     internal static int Run(string[] arguments, string? contractWorker,
-        Func<string, (int Timeout, int Cleanup)>? contractBudget = null)
+        Func<string, (int Timeout, int Cleanup)>? contractBudget = null,
+        Action<string, bool>? contractPreparation = null)
     {
         var clock = Stopwatch.StartNew();
         var kind = arguments.FirstOrDefault() switch
@@ -41,9 +42,6 @@ internal static class AcceptanceCommandProgram
             "workspaceSuccess" => "packagedWorkspaceSuccess",
             _ => "packagedWorkspaceFaultRollback",
         };
-        var context = new CommandContext(
-            Path.Combine(Path.GetTempPath(), "eky-acceptance-command-" + Guid.NewGuid().ToString("N")),
-            input, kind, scenario, NewNonce(), contractWorker);
         using var budgetStream = typeof(AcceptanceCommandProgram).Assembly.GetManifestResourceStream("supervisorCommandBudgets.json")!;
         using var budgets = JsonDocument.Parse(budgetStream);
         var exitReserve = budgets.RootElement.GetProperty("exitReserveMilliseconds").GetInt32();
@@ -52,6 +50,11 @@ internal static class AcceptanceCommandProgram
         var deadline = plan.GetProperty("reservationMilliseconds").GetInt32();
         var phases = plan.GetProperty("phases").EnumerateArray().Select(value =>
             (Name: value[0].GetString()!, Timeout: value[1].GetInt32(), Cleanup: value[2].GetInt32())).ToArray();
+        var preparation = phases.Single(phase => phase.Name == "prepare");
+        var context = new CommandContext(
+            Path.Combine(Path.GetTempPath(), "eky-acceptance-command-" + Guid.NewGuid().ToString("N")),
+            input, kind, scenario, NewNonce(), contractWorker, contractPreparation,
+            preparation.Timeout - preparation.Cleanup);
         var publication = phases[^1];
         var publicationBudget = contractBudget?.Invoke("publish") ?? (publication.Timeout, publication.Cleanup);
         var failed = false;
@@ -97,6 +100,9 @@ internal static class AcceptanceCommandProgram
         return (int)Math.Min(phaseTimeout, remaining);
     }
 
+    internal static int CalculatePreparationTimeout(int phaseTimeout, int cleanupReserve, int normalWorkCap) =>
+        Math.Max(0, Math.Min(normalWorkCap, phaseTimeout - cleanupReserve));
+
     private static int PublishFailure(CommandContext context, int timeout, int cleanup, SafeEvidenceWriter? evidence)
     {
         if (timeout > cleanup) _ = RunPhase(context, "publishFailure", NewNonce(), timeout, cleanup, evidence);
@@ -107,6 +113,7 @@ internal static class AcceptanceCommandProgram
         SafeEvidenceWriter? evidence) =>
         SupervisorProgram.RunPhase(observe =>
         {
+            context.ContractPreparation?.Invoke(phase, false);
             observe(SupervisorRequestPreparationPhase.TemporaryRootCheck, false);
             if (!Directory.Exists(Path.GetTempPath())) throw new SupervisorFailure("requestWorkingDirectoryInvalid");
             observe(SupervisorRequestPreparationPhase.TemporaryRootCheck, true);
@@ -134,11 +141,15 @@ internal static class AcceptanceCommandProgram
                 arguments = new[] { worker, "--phase-request", inputPath }, workingDirectory = phaseRoot,
                 timeoutMilliseconds = timeout, cleanupReserveMilliseconds = cleanup }, observe);
             observe(SupervisorRequestPreparationPhase.RequestWrite, true);
-            return SupervisorRequestReader.Read(["--request", requestPath], observe);
-        }, commandEvidence: evidence);
+            var request = SupervisorRequestReader.Read(["--request", requestPath], observe);
+            context.ContractPreparation?.Invoke(phase, true);
+            return request;
+        }, commandEvidence: evidence, preparationTimeoutMilliseconds:
+            CalculatePreparationTimeout(timeout, cleanup, context.PreparationWorkCap));
 
     private sealed record CommandContext(string Root, string[] Input, string Kind, string Scenario,
-        string ScenarioRunNonce, string? ContractWorker)
+        string ScenarioRunNonce, string? ContractWorker, Action<string, bool>? ContractPreparation,
+        int PreparationWorkCap)
     {
         internal List<object> History { get; } = [];
     }

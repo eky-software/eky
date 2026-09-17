@@ -2581,21 +2581,30 @@ tulosverifier läpäisivät ilman uutta MSI-buildia tai raskasta keruuta.
 Valmisteluviive ei toistunut. Tämä ei selitä aiempaa viivettä eikä korvaa
 hylättyä normaalikierrosta; saman diagnoosin uusintasarjaa ei aloiteta.
 
-Avoin päätös koskee valmistelun aikapolitiikkaa, ei todettua levykutsun
-vikaa. Nykyinen `SupervisorProgram.RunPhase` käyttää valmistelun omana
-kattona samaa `exitReserveMilliseconds`-arvoa kuin tuloksen julkaiseminen.
-Valmistelu sisältyy silti jo vaiheen ennen sitä alkavaan työaikaan.
-Päätösehdotus on sitoa vain kiinteän acceptance-komennon sisäinen valmistelu
-enintään nykyiseen 30 sekunnin normaalityövaraukseen ja aina saman vaiheen
-työdeadlineen. Työlle jäisi vain valmistelun jälkeen jäljellä oleva aika,
-ei uutta 30 sekunnin jaksoa. Lyhyemmät tarkoitukselliset timeout-sopimukset,
-siivous- ja julkaisuvaraukset sekä komento- ja job-rajat säilyisivät.
-Erillisen supervisor-CLI:n ulkoisen pyynnön lukurajaa ei muutettaisi.
-Tämä olisi erikseen hyväksyttävä sopimustarkennus, ei juurisyykorjaus tai
-lupaus Windowsin I/O-viiveen ylärajasta. Toteutusta ei ole tehty. Sen
-regressioiden pitää todistaa yhteinen kulunut aika, ajoissa valmistuvan
-pyynnön jatko sekä deadlinen jälkeinen käynnistyksen esto, virhetuloksen
-säilyminen, komentoprosessin poistuminen ja epävarman aineiston säilytys.
+Omistaja hyväksyi rajatun valmistelun aikapolitiikan tarkennuksen.
+Kiinteän acceptance-komennon sisäinen valmistelu käyttää nyt samaa
+työaikaa kuin sitä seuraava prosessivaihe. Valmistelun katto johdetaan
+nykyisen kanonisen valmisteluvaiheen 30 sekunnin työvarauksesta ja rajataan
+aina kyseisen vaiheen jäljellä olevaan työaikaan. Tavallinen vaihe säilyy
+35 sekuntina (30 työ + 5 siivous); valmisteluun kulunut aika vähennetään,
+eikä worker saa uutta työjaksoa. Lyhyet tarkoitukselliset timeout-sopimukset,
+siivous- ja julkaisuvaraukset sekä komento- ja job-rajat säilyvät.
+Erillisen supervisor-CLI:n ulkoisen pyynnön lukuraja säilyy viidessä
+sekunnissa. Eksklusiivinen kirjoitus, flush, validointi ja prosessiomistaja
+eivät muutu.
+
+Regressiot kutsuvat toteutuksen omaa budjettilaskentaa hallituilla
+kuluneen ajan arvoilla. Nykyisen todellisen komentofixturen erilliset
+tapaukset todistavat ajoissa valmistuvan hitaan pyynnön jatkamisen,
+estyvän valmistelun hylkäyksen sekä hylkäyksen jälkeen valmistuvan pyynnön
+käsittelyn. Ne vaativat komennon exit/close-havainnot: myöhäinen tiedosto
+ei käynnistä workeria tai jatkovaihetta, muuta virhetulosta eikä valtuuta
+aineiston poistamista. Kohdetestit läpäisivät 6/6 ja kanoninen sarjallinen
+sopimussarja 523/523 (core 357, valmistuminen 38, legacy 32, clean/upgrade
+54, workspace success 20 ja fault 22). CI-kytkentäsopimukset läpäisivät
+30/30 ja 55/55, samoin desktopin typecheck ja build. Uuden revision normaali
+CI-hyväksyntä on vielä kesken. Tämä on hyväksytty sopimustarkennus, ei
+aiemman Windows-viiveen juurisyykorjaus.
 
 Revision `ebdf0d715d1a2608bb9f929d5d83e85ed9eb1977`
 [ensimmäinen normaali kierros 35159913917](https://github.com/eky-software/eky/actions/runs/35159913917)
@@ -2611,12 +2620,14 @@ todennettu tässä tapauksessa.
 Legacy-producer ja sen consumerit jäivät ajamatta, eikä hyväksyntäpari täyty.
 Aiempi PR-vihreys eri checkout-revisiolla säilyy erillisenä näyttönä.
 
-Nykyinen valmisteluraja erottelee valinnaisessa, suljetussa evidencessä
+Tuon aiemman checkpointin valmisteluraja erotteli valinnaisessa, suljetussa
+evidencessä
 `preparationDeadlineExceeded`- ja `preparationException`-tapaukset sekä
 viimeisen aloitetun ja valmistuneen valmisteluvaiheen. Pelkkä
-`requestFileInvalid` ei erottanut näitä. Olemassa oleva viiden sekunnin
-valmisteluraja, pyynnön validointi, prosessiomistajuus ja pakolliset tulokset
-eivät muutu. Valmistelun hylkäys ei valtuuta workerin käynnistystä, seuraavaa
+`requestFileInvalid` ei erottanut näitä. Tuossa luokittelumuutoksessa viiden
+sekunnin valmisteluraja, pyynnön validointi, prosessiomistajuus ja pakolliset
+tulokset säilyivät; yllä hyväksytty aikapolitiikka on erillinen tarkennus.
+Valmistelun hylkäys ei valtuuta workerin käynnistystä, seuraavaa
 vaihetta, tuloksen julkaisua tai aineiston poistamista; myöhäinen valmistelu
 ei muuta hylkäystä. Näitä rajoja testataan samalla komentofixturellä, myös
 todellisen komentoprosessin exit/close-havainnoilla. Uusi luokittelu ei vielä
