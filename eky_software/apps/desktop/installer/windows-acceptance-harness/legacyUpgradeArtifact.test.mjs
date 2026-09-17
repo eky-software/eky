@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 import { createInstallerProductCode } from '../installerIdentity.mjs';
+import { readInstallerReleaseConfig } from '../installerVersion.mjs';
 import {
   createInstallerManifest,
   writeInstallerManifest,
@@ -27,6 +28,7 @@ import {
 } from '../scripts/historicalWindowsInstallerFixtureProvenance.mjs';
 import {
   buildLegacyUpgradeArtifact,
+  materializeCurrentLegacyTargetRole,
   parseLegacyUpgradeArtifactBuildArguments,
 } from './buildLegacyUpgradeArtifact.mjs';
 import { writeJsonAtomicExclusive } from './cleanInstallUninstallContracts.mjs';
@@ -153,11 +155,11 @@ async function createSourceRole(artifactRoot) {
   });
 }
 
-async function createTargetRole(artifactRoot) {
+async function createTargetRole(artifactRoot, version = '0.2.7') {
   const targetFixture = await createInstallerRole(
     artifactRoot,
     'target',
-    '0.2.7',
+    version,
     TARGET_BUILD_REVISION,
     'current target',
   );
@@ -177,23 +179,23 @@ async function createTargetRole(artifactRoot) {
       stage: 'packagedApp',
       totalByteSize: 220_000_000,
     }),
-    productCode: createInstallerProductCode('0.2.7'),
+    productCode: createInstallerProductCode(version),
   });
 }
 
-async function createRoles(artifactRoot) {
+async function createRoles(artifactRoot, targetVersion) {
   return Object.freeze({
     source: await createSourceRole(artifactRoot),
-    target: await createTargetRole(artifactRoot),
+    target: await createTargetRole(artifactRoot, targetVersion),
   });
 }
 
-async function createArtifact(testContext, canCleanup = () => true) {
+async function createArtifact(testContext, canCleanup = () => true, targetVersion) {
   const root = await mkdtemp(resolve(tmpdir(), 'eky-v2-legacy-artifact-'));
   testContext.after(() => canCleanup() ? rm(root, { force: true, recursive: true }) : undefined);
   const artifactRoot = resolve(root, 'artifact');
   await mkdir(artifactRoot);
-  const roles = await createRoles(artifactRoot);
+  const roles = await createRoles(artifactRoot, targetVersion);
   const descriptor = createLegacyUpgradeArtifactDescriptor({
     buildRevision: TARGET_BUILD_REVISION,
     ...roles,
@@ -215,32 +217,34 @@ async function createArtifact(testContext, canCleanup = () => true) {
   });
 }
 
-test('legacy artifact binds one historical source and one current target', async (testContext) => {
-  const artifact = await createArtifact(testContext);
-  const verified = await verifyLegacyUpgradeArtifact({
-    artifactRoot: artifact.artifactRoot,
-    expectedBuildRevision: TARGET_BUILD_REVISION,
-    expectedDescriptorSha256: artifact.descriptorSha256,
-  });
+for (const version of ['0.2.7', '0.2.8', '0.3.0']) {
+  test(`legacy artifact binds the fixed historical source to target ${version}`, async (testContext) => {
+    const artifact = await createArtifact(testContext, () => true, version);
+    const verified = await verifyLegacyUpgradeArtifact({
+      artifactRoot: artifact.artifactRoot,
+      expectedBuildRevision: TARGET_BUILD_REVISION,
+      expectedDescriptorSha256: artifact.descriptorSha256,
+    });
 
-  assert.deepEqual((await readdir(artifact.artifactRoot)).sort(), [
-    LEGACY_UPGRADE_DESCRIPTOR_FILENAME,
-    'source',
-    'target',
-  ]);
-  assert.equal(verified.source.appVersion, '0.2.6');
-  assert.equal(verified.target.appVersion, '0.2.7');
-  assert.equal(
-    verified.source.provenance.expectedCommit,
-    HISTORICAL_WINDOWS_INSTALLER_FIXTURE.expectedCommit,
-  );
-  assert.equal(verified.target.payloadInventory.identity, 'c'.repeat(64));
-});
+    assert.deepEqual((await readdir(artifact.artifactRoot)).sort(), [
+      LEGACY_UPGRADE_DESCRIPTOR_FILENAME,
+      'source',
+      'target',
+    ]);
+    assert.equal(verified.source.appVersion, '0.2.6');
+    assert.equal(verified.target.appVersion, version);
+    assert.equal(
+      verified.source.provenance.expectedCommit,
+      HISTORICAL_WINDOWS_INSTALLER_FIXTURE.expectedCommit,
+    );
+    assert.equal(verified.target.payloadInventory.identity, 'c'.repeat(64));
+  });
+}
 
 test('legacy filesystem leaf materializes the same artifact identity and preserves verifier failures', async (t) => {
   const runtime = createLegacyUpgradeFilesystemRuntime();
   const canCleanup = () => runtime.outcome().filesystemProcessAbsent;
-  const artifact = await createArtifact(t, canCleanup);
+  const artifact = await createArtifact(t, canCleanup, '0.2.8');
   const root = await mkdtemp(resolve(await realpath(tmpdir()), 'eky-windows-acceptance-v2-legacy-'));
   t.after(() => canCleanup() ? rm(root, { force: true, recursive: true }) : undefined);
   const fixture = await runtime.materializeFixture(artifact.descriptorPath, resolve(root, 'fixture'));
@@ -250,7 +254,7 @@ test('legacy filesystem leaf materializes the same artifact identity and preserv
   await runtime.verifyArtifact(fixture);
   assert.deepEqual(await runtime.verifySemanticPostcondition({ artifact: fixture, runNonce: 'a'.repeat(64), runtimeRoot: root }),
     { status: 'failed', errorCode: 'legacySourceEvidenceReadFailed' });
-  await writeFile(resolve(artifact.artifactRoot, 'target', 'Eky-0.2.7-x64.msi'), 'changed source');
+  await writeFile(resolve(artifact.artifactRoot, 'target', 'Eky-0.2.8-x64.msi'), 'changed source');
   await assert.rejects(runtime.verifyArtifact(fixture), /LEGACY_LOCAL_FIXTURE_CHANGED/);
   assert.equal(await readFile(fixture.target.installerPath, 'utf8'), 'current target');
   assert.equal(runtime.outcome().filesystemProcessAbsent, true);
@@ -300,6 +304,130 @@ test('legacy descriptor rejects drifted identity and unknown fields', async (tes
       }),
     /WINDOWS_ACCEPTANCE_LEGACY_ARTIFACT_DESCRIPTOR_INVALID/,
   );
+});
+
+test('legacy descriptor rejects non-upgrades, false product identities and changed historical provenance', async (t) => {
+  const { descriptor } = await createArtifact(t);
+  for (const version of ['0.2.6', '0.2.5']) {
+    assert.throws(() => validateLegacyUpgradeArtifactDescriptor({
+      ...descriptor,
+      target: { ...descriptor.target, appVersion: version, msiProductVersion: version,
+        productCode: createInstallerProductCode(version) },
+    }), /WINDOWS_ACCEPTANCE_LEGACY_ARTIFACT_DESCRIPTOR_INVALID/);
+  }
+  for (const change of [
+    { target: { ...descriptor.target, buildRevision: 'f'.repeat(40) } },
+    { target: { ...descriptor.target, productCode: createInstallerProductCode('0.2.8') } },
+    { source: { ...descriptor.source, buildRevision: TARGET_BUILD_REVISION } },
+    { source: { ...descriptor.source, appVersion: '0.2.7', msiProductVersion: '0.2.7',
+      productCode: createInstallerProductCode('0.2.7') } },
+  ]) {
+    assert.throws(() => validateLegacyUpgradeArtifactDescriptor({ ...descriptor, ...change }),
+      /WINDOWS_ACCEPTANCE_LEGACY_ARTIFACT_DESCRIPTOR_INVALID/);
+  }
+});
+
+for (const releaseInput of ['canonical', '0.2.8', '0.3.0']) {
+  test(`legacy target materializes the validated release ${releaseInput} without rebuilding or changing bytes`, async (t) => {
+    const release = releaseInput === 'canonical'
+      ? await readInstallerReleaseConfig(resolve(DESKTOP_ROOT, 'installer', 'installer-release.json'),
+        resolve(DESKTOP_ROOT, 'package.json'))
+      : releaseFor(releaseInput);
+    const version = release.appVersion;
+    const root = await mkdtemp(resolve(tmpdir(), 'eky-v2-legacy-target-'));
+    t.after(() => rm(root, { force: true, recursive: true }));
+    const payload = resolve(root, 'payload');
+    await mkdir(payload);
+    await writeFile(resolve(payload, 'Eky.exe'), 'synthetic payload');
+    const built = await createInstallerRole(root, 'built', version, TARGET_BUILD_REVISION, 'synthetic MSI bytes');
+    const calls = [];
+    const role = await materializeCurrentLegacyTargetRole({
+      artifactRoot: root, buildRevision: TARGET_BUILD_REVISION,
+      ...(releaseInput === 'canonical' ? {} : { targetRelease: release }),
+      async packageApplication(options) {
+        assert.deepEqual(options, { pilotBuild: true, reportPackagedPath: false });
+        calls.push('package');
+        return { appVersion: version, packagedPath: payload,
+          buildInfo: { buildDirty: false, buildRevision: TARGET_BUILD_REVISION.slice(0, 12) } };
+      },
+      async createInstallerRelease(options) {
+        assert.deepEqual(options, { buildRevision: TARGET_BUILD_REVISION });
+        calls.push('installer');
+        return { release: releaseFor(version), manifest: built.manifest,
+          manifestPath: built.manifestPath, productCode: createInstallerProductCode(version) };
+      },
+    });
+    assert.deepEqual(calls, ['package', 'installer']);
+    assert.equal(role.appVersion, version);
+    assert.equal(role.msiProductVersion, version);
+    assert.equal(role.buildRevision, TARGET_BUILD_REVISION);
+    assert.equal(role.productCode, createInstallerProductCode(version));
+    assert.equal(role.payloadInventory.fileCount, 1);
+    assert.equal(role.packageSha256, built.manifest.packageSha256);
+    assert.equal(await readFile(resolve(root, 'target', built.manifest.packageFilename), 'utf8'), 'synthetic MSI bytes');
+  });
+}
+
+test('legacy target rejects invalid release configuration before packaging', async () => {
+  for (const targetRelease of [
+    null, releaseFor('0.2.6'), releaseFor('0.2.5'),
+    { ...releaseFor('0.2.8'), msiProductVersion: '0.2.9' },
+    { ...releaseFor('0.2.8'), releaseChannel: 'stable' },
+    { ...releaseFor('0.2.8'), extra: true },
+  ]) {
+    await assert.rejects(materializeCurrentLegacyTargetRole({
+      artifactRoot: resolve(tmpdir(), 'unused-legacy-target'), buildRevision: TARGET_BUILD_REVISION,
+      targetRelease,
+      packageApplication: () => assert.fail('Invalid release must not package'),
+      createInstallerRelease: () => assert.fail('Invalid release must not build MSI'),
+    }), /WINDOWS_ACCEPTANCE_LEGACY_TARGET_IDENTITY_INVALID/);
+  }
+});
+
+test('legacy target rejects a wrong version or unbound packaged build before MSI construction', async () => {
+  const packaged = { appVersion: '0.2.8', packagedPath: resolve(tmpdir(), 'unused-legacy-payload'),
+    buildInfo: { buildDirty: false, buildRevision: TARGET_BUILD_REVISION.slice(0, 12) } };
+  for (const invalid of [
+    { ...packaged, appVersion: '0.2.7' },
+    { ...packaged, buildInfo: { ...packaged.buildInfo, buildDirty: true } },
+    { ...packaged, buildInfo: { ...packaged.buildInfo, buildRevision: 'f'.repeat(12) } },
+  ]) {
+    await assert.rejects(materializeCurrentLegacyTargetRole({
+      artifactRoot: resolve(tmpdir(), 'unused-legacy-target'), buildRevision: TARGET_BUILD_REVISION,
+      targetRelease: releaseFor('0.2.8'), packageApplication: async () => invalid,
+      createInstallerRelease: () => assert.fail('Unbound payload must not build MSI'),
+    }), /WINDOWS_ACCEPTANCE_LEGACY_TARGET_IDENTITY_INVALID/);
+  }
+});
+
+test('legacy target rejects mismatched installer, manifest and persisted role identities', async (t) => {
+  const root = await mkdtemp(resolve(tmpdir(), 'eky-v2-legacy-target-rejection-'));
+  t.after(() => rm(root, { force: true, recursive: true }));
+  const payload = resolve(root, 'payload');
+  await mkdir(payload);
+  await writeFile(resolve(payload, 'Eky.exe'), 'synthetic payload');
+  const built = await createInstallerRole(root, 'built', '0.2.8', TARGET_BUILD_REVISION, 'current MSI');
+  const other = await createInstallerRole(root, 'other', '0.2.7', TARGET_BUILD_REVISION, 'wrong MSI');
+  const valid = { release: releaseFor('0.2.8'), manifest: built.manifest,
+    manifestPath: built.manifestPath, productCode: createInstallerProductCode('0.2.8') };
+  const cases = [
+    { ...valid, release: releaseFor('0.3.0') },
+    { ...valid, manifest: { ...built.manifest, appVersion: '0.2.7' } },
+    { ...valid, manifest: { ...built.manifest, msiProductVersion: '0.2.7' } },
+    { ...valid, manifest: { ...built.manifest, buildRevision: 'f'.repeat(40) } },
+    { ...valid, productCode: createInstallerProductCode('0.2.7') },
+    { ...valid, manifestPath: other.manifestPath },
+  ];
+  for (const [index, invalid] of cases.entries()) {
+    const artifactRoot = resolve(root, `case-${index}`);
+    await mkdir(artifactRoot);
+    await assert.rejects(materializeCurrentLegacyTargetRole({
+      artifactRoot, buildRevision: TARGET_BUILD_REVISION, targetRelease: releaseFor('0.2.8'),
+      packageApplication: async () => ({ appVersion: '0.2.8', packagedPath: payload,
+        buildInfo: { buildDirty: false, buildRevision: TARGET_BUILD_REVISION.slice(0, 12) } }),
+      createInstallerRelease: async () => invalid,
+    }), /WINDOWS_ACCEPTANCE_LEGACY_TARGET_IDENTITY_INVALID/);
+  }
 });
 
 test('legacy artifact rejects package, provenance, and inventory drift', async (testContext) => {
@@ -371,17 +499,21 @@ test('legacy producer consumes exactly one source and target build', async (test
   const artifactRoot = resolve(root, 'artifact');
   let sourceBuildCount = 0;
   let targetBuildCount = 0;
+  const canonicalRelease = await readInstallerReleaseConfig(
+    resolve(DESKTOP_ROOT, 'installer', 'installer-release.json'), resolve(DESKTOP_ROOT, 'package.json'),
+  );
   const result = await buildLegacyUpgradeArtifact({
     artifactRoot,
     async materializeSourceRole({ artifactRoot: outputRoot }) {
       sourceBuildCount += 1;
       return createSourceRole(outputRoot);
     },
-    async materializeTargetRole({ artifactRoot: outputRoot }) {
+    async materializeTargetRole({ artifactRoot: outputRoot, targetRelease }) {
       targetBuildCount += 1;
+      assert.deepEqual(targetRelease, canonicalRelease);
       const existing = await readdir(outputRoot);
       assert.deepEqual(existing, ['source']);
-      return createTargetRole(outputRoot);
+      return createTargetRole(outputRoot, targetRelease.appVersion);
     },
     async readGitState() {
       return TARGET_BUILD_REVISION;
@@ -396,6 +528,35 @@ test('legacy producer consumes exactly one source and target build', async (test
     expectedBuildRevision: TARGET_BUILD_REVISION,
     expectedDescriptorSha256: result.descriptorSha256,
   });
+});
+
+test('legacy producer rejects a consistent target that is not the canonical release', async (t) => {
+  const root = await mkdtemp(resolve(tmpdir(), 'eky-v2-legacy-release-binding-'));
+  t.after(() => rm(root, { force: true, recursive: true }));
+  const canonical = await readInstallerReleaseConfig(
+    resolve(DESKTOP_ROOT, 'installer', 'installer-release.json'), resolve(DESKTOP_ROOT, 'package.json'),
+  );
+  for (const version of ['0.2.7', '0.3.0'].filter((value) => value !== canonical.appVersion)) {
+    const artifactRoot = resolve(root, version);
+    await assert.rejects(buildLegacyUpgradeArtifact({
+      artifactRoot,
+      readGitState: async () => TARGET_BUILD_REVISION,
+      materializeSourceRole: ({ artifactRoot: outputRoot }) => createSourceRole(outputRoot),
+      materializeTargetRole: ({ artifactRoot: outputRoot }) => createTargetRole(outputRoot, version),
+    }), /WINDOWS_ACCEPTANCE_LEGACY_TARGET_IDENTITY_INVALID/);
+    await assert.rejects(readdir(artifactRoot), { code: 'ENOENT' });
+  }
+});
+
+test('legacy verification rejects a substituted newer target under the original producer digest', async (t) => {
+  const artifact = await createArtifact(t);
+  const substituted = await createArtifact(t, () => true, '0.2.8');
+  await writeFile(artifact.descriptorPath, `${JSON.stringify(substituted.descriptor)}\n`);
+  await assert.rejects(verifyLegacyUpgradeArtifact({
+    artifactRoot: artifact.artifactRoot,
+    expectedBuildRevision: TARGET_BUILD_REVISION,
+    expectedDescriptorSha256: artifact.descriptorSha256,
+  }), /WINDOWS_ACCEPTANCE_LEGACY_ARTIFACT_IDENTITY_MISMATCH/);
 });
 
 test('legacy artifact producer and verifier arguments are closed', () => {

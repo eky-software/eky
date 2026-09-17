@@ -11,8 +11,14 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { createInstallerProductCode } from '../installerIdentity.mjs';
 import { readInstallerReleaseGitState } from '../installerReleaseContext.mjs';
+import {
+  compareMsiProductVersions,
+  readInstallerReleaseConfig,
+  validateInstallerReleaseConfig,
+} from '../installerVersion.mjs';
 import { createWindowsInstallerRelease } from '../scripts/releaseWindowsInstaller.mjs';
 import { withHistoricalSourceWindowsInstallerFixture } from '../scripts/historicalWindowsInstallerFixtureBuilder.mjs';
+import { HISTORICAL_WINDOWS_INSTALLER_FIXTURE } from '../scripts/historicalWindowsInstallerFixtureProvenance.mjs';
 import { packageDefaultWindowsApplication } from '../../scripts/packageWindowsApplication.mjs';
 import { inspectPackageArtifactInventory } from '../../scripts/package-artifact-inventory.mjs';
 import { writeJsonAtomicExclusive } from './cleanInstallUninstallContracts.mjs';
@@ -148,9 +154,39 @@ export async function materializeHistoricalLegacyRole({ artifactRoot }) {
   });
 }
 
-function requireTargetPackagedIdentity(packaged, buildRevision) {
+function requireTargetRelease(value) {
+  try {
+    const release = validateInstallerReleaseConfig(value, value?.appVersion);
+    if (
+      release.releaseChannel !== 'pilot' ||
+      release.appVersion !== release.msiProductVersion ||
+      compareMsiProductVersions(
+        HISTORICAL_WINDOWS_INSTALLER_FIXTURE.msiProductVersion,
+        release.msiProductVersion,
+      ) >= 0
+    ) {
+      throw new Error();
+    }
+    return release;
+  } catch {
+    throw new Error('WINDOWS_ACCEPTANCE_LEGACY_TARGET_IDENTITY_INVALID');
+  }
+}
+
+function requireTargetRoleIdentity(role, buildRevision, targetRelease) {
   if (
-    packaged?.appVersion !== '0.2.7' ||
+    role?.appVersion !== targetRelease.appVersion ||
+    role?.msiProductVersion !== targetRelease.msiProductVersion ||
+    role?.buildRevision !== buildRevision ||
+    role?.productCode !== createInstallerProductCode(targetRelease.msiProductVersion)
+  ) {
+    throw new Error('WINDOWS_ACCEPTANCE_LEGACY_TARGET_IDENTITY_INVALID');
+  }
+}
+
+function requireTargetPackagedIdentity(packaged, buildRevision, targetRelease) {
+  if (
+    packaged?.appVersion !== targetRelease.appVersion ||
     packaged?.buildInfo?.buildDirty !== false ||
     typeof packaged?.buildInfo?.buildRevision !== 'string' ||
     !/^[0-9a-f]{7,40}$/.test(packaged.buildInfo.buildRevision) ||
@@ -161,33 +197,42 @@ function requireTargetPackagedIdentity(packaged, buildRevision) {
   }
 }
 
-function requireTargetInstallerIdentity(packaged, release, buildRevision) {
+function requireTargetInstallerIdentity(release, buildRevision, targetRelease) {
+  const installerRelease = requireTargetRelease(release?.release);
   if (
-    packaged.appVersion !== release?.release?.appVersion ||
-    release?.release?.msiProductVersion !== packaged.appVersion ||
-    release?.manifest?.buildRevision !== buildRevision
+    installerRelease.appVersion !== targetRelease.appVersion ||
+    installerRelease.msiProductVersion !== targetRelease.msiProductVersion
   ) {
     throw new Error('WINDOWS_ACCEPTANCE_LEGACY_TARGET_IDENTITY_INVALID');
   }
+  requireTargetRoleIdentity(
+    { ...release?.manifest, productCode: release?.productCode },
+    buildRevision,
+    targetRelease,
+  );
 }
 
 export async function materializeCurrentLegacyTargetRole({
   artifactRoot,
   buildRevision,
+  targetRelease,
   createInstallerRelease = createWindowsInstallerRelease,
   packageApplication = packageDefaultWindowsApplication,
 }) {
+  targetRelease = requireTargetRelease(targetRelease === undefined
+    ? await readInstallerReleaseConfig(CANONICAL_RELEASE_PATH, CANONICAL_PACKAGE_PATH)
+    : targetRelease);
   const packaged = await packageApplication({
     pilotBuild: true,
     reportPackagedPath: false,
   });
-  requireTargetPackagedIdentity(packaged, buildRevision);
+  requireTargetPackagedIdentity(packaged, buildRevision, targetRelease);
   const payloadInventory = await inspectPackageArtifactInventory({
     root: packaged.packagedPath,
     stage: 'packagedApp',
   });
   const release = await createInstallerRelease({ buildRevision });
-  requireTargetInstallerIdentity(packaged, release, buildRevision);
+  requireTargetInstallerIdentity(release, buildRevision, targetRelease);
   const payloadInventoryAfterBuild = await inspectPackageArtifactInventory({
     root: packaged.packagedPath,
     stage: 'packagedApp',
@@ -204,7 +249,7 @@ export async function materializeCurrentLegacyTargetRole({
     resolve(artifactRoot, 'target'),
   );
   await verifyLocalImmutableSourceFixture(fixture);
-  return Object.freeze({
+  const role = Object.freeze({
     appVersion: fixture.manifest.appVersion,
     buildRevision: fixture.manifest.buildRevision,
     manifestPath: 'target/installer.manifest.json',
@@ -215,6 +260,8 @@ export async function materializeCurrentLegacyTargetRole({
     payloadInventory,
     productCode: release.productCode,
   });
+  requireTargetRoleIdentity(role, buildRevision, targetRelease);
+  return role;
 }
 
 export async function buildLegacyUpgradeArtifact({
@@ -229,6 +276,10 @@ export async function buildLegacyUpgradeArtifact({
   const packageSource = await readFile(CANONICAL_PACKAGE_PATH, 'utf8');
   const releaseSource = await readFile(CANONICAL_RELEASE_PATH, 'utf8');
   try {
+    const targetRelease = requireTargetRelease(await readInstallerReleaseConfig(
+      CANONICAL_RELEASE_PATH,
+      CANONICAL_PACKAGE_PATH,
+    ));
     const buildRevision = await readGitState({
       repositoryRoot: REPOSITORY_ROOT,
     });
@@ -240,7 +291,8 @@ export async function buildLegacyUpgradeArtifact({
     await mkdir(artifactRoot, { recursive: false });
     artifactCreated = true;
     const source = await materializeSourceRole({ artifactRoot });
-    const target = await materializeTargetRole({ artifactRoot, buildRevision });
+    const target = await materializeTargetRole({ artifactRoot, buildRevision, targetRelease });
+    requireTargetRoleIdentity(target, buildRevision, targetRelease);
     const descriptor = createLegacyUpgradeArtifactDescriptor({
       buildRevision,
       source,

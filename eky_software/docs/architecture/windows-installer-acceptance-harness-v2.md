@@ -1117,6 +1117,10 @@ ajan, eikä se ole release, pilot-bundle tai käyttäjälle jaettava paketti.
 
 ## V2.5 historical legacy -checkpoint
 
+Tämä luku säilyttää alkuperäisen vaihecheckpointin versionrajauksen.
+Julkaisuvaiheen nykyversioon sidottu legacy-sopimus on ajantasaisessa
+julkaisuesteiden ja päätösten osuudessa.
+
 V2.5 siirtää historiallisen `0.2.6 -> 0.2.7` -yhteensopivuustodisteen saman
 V2.1-supervisorin ja build-once-rajan päälle. Checkpoint toteutetaan kahdessa
 itsenäisesti vihreässä osassa. V2.5A rakentaa ja varmistaa immutable artifactin;
@@ -2569,7 +2573,7 @@ Historiallisia hylkäyksiä ei hyväksytä tällä näytöllä eikä niiden tunt
 alustasyytä väitetä ratkaistuksi.
 
 Seuraava erillinen vaihe on 0.2.8-pilotti. Nykyiseen clean-produceriin
-kytketään omistajan hyväksymä valinnainen release-candidate-portti:
+on kytketty omistajan hyväksymä valinnainen release-candidate-portti:
 `release_candidate=true` vaatii nykyisen käynnistystestin samalle kerran
 rakennetulle payloadille ennen MSI:n muodostamista. Inventaario tarkistetaan
 ennen ja jälkeen smoken sekä MSI-buildin. Normaali hyväksyntäajo ei ota
@@ -2577,6 +2581,38 @@ uutta versiohistoriaporttia käyttöön muuttumattomalle sovellusversiolle.
 Julkaisun PR-/main-portit ja erillisen release-ajon molemmat clean-consumerit
 ovat vielä auki. Vain tämän release-ajon hyväksytyt MSI-tavut saa toimittaa;
 paikallinen rebuild, automaattinen asennus ja 0.2.9 jäävät pois.
+
+Julkaisun PR #271:n lähderevision
+`f93e1ff91eab342a98d5961fd675371006a9b600`
+[kierros 35226452157](https://github.com/eky-software/eky/actions/runs/35226452157)
+hylättiin ensimmäisellä yrityksellä. Todellinen checkout oli
+`257f2bab16f774be398887539793086670e40577`.
+Legacy-producer hylkäsi nykyisen 0.2.8-payloadin virheellä
+`WINDOWS_ACCEPTANCE_LEGACY_TARGET_IDENTITY_INVALID` ennen target-MSI:n
+rakentamista. Molemmat legacy-consumerit jäivät ajamatta; muiden perheiden
+vihreys tai aiempi V2-hyväksyntä ei korvaa tätä puuttuvaa julkaisun näyttöä.
+
+Hylkäyksen osoitettu syy oli alkuperäisen V2.5-checkpointin kiinteä
+0.2.7-target sekä historiallisesta 0.2.6-lähteestä vaadittu seuraava
+patch-versio. Omistaja on hyväksynyt näiden kahden ehdon korvaamisen
+nykyiseen julkaisuun sidotulla legacy-sopimuksella:
+
+- Producer validoi `package.json`- ja `installer-release.json`-tiedostojen
+  yhteisen nykyversion puhtaalta revisiolta ennen rakentamista. Paketoidun
+  payloadin, MSI:n, manifestin ja lopullisen target-roolin versioiden,
+  build-revision ja ProductCoden on vastattava tätä samaa julkaisuidentiteettiä.
+- Historiallinen 0.2.6-lähde ja sen provenance pysyvät lukittuina. Targetin
+  on oltava lähdettä uudempi. Tuleva tarkoituksellinen versionosto käyttää
+  samaa sopimusta; harnessiin ei kopioida uutta kiinteää kohdeversiota.
+- Siirrettävä descriptor validoi suljetun rakenteen, historialliset sidokset
+  ja roolien keskinäisen eheyden. Se ei yksin päätä nykyistä julkaisuversiota.
+  Consumer vaatii producerilta ulkoisesti sidotun descriptor-hashin,
+  build-revision ja samat varmennetut MSI-tavut. Consumerin oman checkoutin
+  versio ei korvaa artifactin identiteettiä.
+- Erillisen V2.4-upgrade-perheen N -> N+1 -ehto sekä artifact-, prosessi-,
+  data- ja siivousvaatimukset säilyvät. Uudelle legacy-korjausrevisiolle
+  tarvitaan omat kohdetestit ja normaalit julkaisuportit; aiempi hylkäys
+  pysyy hylättynä. Tämä korjaus ei osoita vanhan MSI-viiveen syytä.
 
 #### Edellinen valmistelurajan korjaus
 
