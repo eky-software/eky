@@ -526,6 +526,23 @@ sammutuksen jälkeen. Markerissa on vain formaattiversio ja ISO-aikaleima.
 Väärä rakenne, puuttuva merkki tai kesken jäänyt marker-korvaus tulkitaan
 unclean shutdowniksi.
 
+## Päivitysten yhteensopivuus
+
+Normaali versiopäivitys säilyttää aiemmin tallennetun business-datan ja
+profiili-identiteetin. Uudet taulut, sarakkeet ja tietomallin muutokset
+toteutetaan hallituilla forward-migraatioilla; profiilin tyhjentäminen tai
+uuden yrityksen luomisen vaatiminen ei ole migraation korvaava ratkaisu.
+Tuettujen aiempien versioiden varmuuskopiot validoidaan ja päivitetään
+nykyiseen rakenteeseen restore-stagingissa ennen aktivointia.
+
+Yhteensopivuus ei tarkoita tuntemattoman, tulevan tai ristiriitaisen
+migraatiohistorian tai profiili-identiteetin hyväksymistä. Näissä tilanteissa
+toiminto keskeytyy tietoja muuttamatta. Tietomallimuutoksen testeissä
+todennetaan aiemman tuetun rakenteen migraatio ja sisällön säilyminen nykyisen
+backup/restore-testisopimuksen mukaan. Omistajan erikseen hyväksymä
+kertaluonteinen testiprofiilin nollaus ei todista päivityksen tai palautuksen
+yhteensopivuutta eikä muuta normaalin päivityksen säilyttämisvaatimusta.
+
 ## Inspector
 
 Inspector ei luota tiedostopäätteeseen. Se:
@@ -649,6 +666,28 @@ artifact-validoinnin sekä registryltä johdetun exact-lineage-tarkistuksen
 jälkeen. Lineage-ristiriita palauttaa edellisen profiilin journalin omasta
 rollback-slotista ennen journalin siivousta ja käynnistää sovelluksen uudelleen.
 Tuntematonta tai journalitonta ristiriitaa ei korjata arvaamalla.
+
+Lykätyn hyväksynnän palautumisvastuu alkaa heti, kun restored-profile-
+validointi palauttaa päätöstä odottavan tuloksen. Myöhempi health- tai
+session-tarkistus ei saa jäädä tämän vastuun ulkopuolelle. Jos tarkistus
+epäonnistuu, backend suljetaan ennen tietokannan ja asiakirjajuuren
+rollbackia. Epäonnistunut sulkeminen ei ole sulkeutumistodiste: journal,
+rollback-tavut ja tutkittava profiili säilytetään, eikä business-ikkunaa
+avata, aktiivista yritysosoitinta palauteta tai uutta runtimea käynnistetä.
+Sama sulkemisvaatimus koskee jo ensimmäisessä profiilivalidoinnissa
+tapahtuvaa virhettä, myös yrityksen vaihtoon liittyvässä palautuksessa.
+
+`desktopRestoreStartup.test.ts` todentaa tämän oikean compositionin,
+rekisterin, journalin ja tiedostotransaktion kautta synteettisillä tavuilla.
+Se korvaa aiemman pelkän lähdetekstin järjestystarkistuksen: mukana ovat
+vieraan lineagen rollback ja seuraava validointikäynnistys, saman lineagen
+hyväksyntä, myöhäinen health-virhe sekä sulkemisen ja rollbackin virheet.
+Backendin validointivastaus ja Electronin rajat ovat tässä kontrolloituja;
+testi ei yksin todista SQLite-migraatiota tai paketoidun sovelluksen
+käynnistymistä. Muutoksen hyväksyntä vaatii edelleen hardened Windows
+backup -> inspect -> restore -> restart -> compare -näytön ja normaalit
+muuttuneen revision CI-portit. Aiemman julkaisun hyväksyntä ei siirry
+uuteen ajokoodiin.
 
 ### W3:n backup-import uutena työtilana
 
