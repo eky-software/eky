@@ -307,24 +307,36 @@ Frontendin virhe-esitys ei korvaa backendin negatiivisia turvallisuustestejä.
 
 ## Lokitus ja audit
 
-Tuotantolokitus ja audit trail suunnitellaan erillisinä kokonaisuuksina ennen
-tuotantokäyttöä.
+Lokitus ja business audit ovat erillisiä vastuita. Niiden nykyinen R0-sopimus
+on `observability-and-audit-plan.md`:ssä; retention ja tukipaketti on
+rajattu dokumenteissa `operational-log-retention-plan.md` ja
+`support-bundle-plan.md`.
 
 Lokitus:
 
 - auttaa teknisen vian tutkimisessa
 - ei saa sisältää salaisuuksia tai tarpeetonta henkilötietoa
-- voi myöhemmin käyttää request- tai correlation-tunnistetta
+- käyttää vain tapahtumalle erikseen sallittuja teknisiä tunnisteita
+- säilyttää turvallisen syykoodin ja vaiheen myös silloin, kun UI-virhe
+  tarkoituksella yleistetään; raakaa poikkeusta ei kopioida lokiin
 
 Audit trail:
 
 - kertoo kuka teki liiketoimintakriittisen toiminnon
 - ei ole sama asia kuin tekninen virheloki
-- tarvitaan myöhemmin erityisesti laskutuksen hyväksyntään ja asetuksiin
+- noudattaa omistavan moduulin transaktio- ja säilytyssääntöjä
 
-Virheenkäsittelydokumentti ei vielä päätä tuotantolokituksen teknologiaa.
+Virheenkäsittelydokumentti ei muuta lokituksen teknologiaa tai auditin
+omistajuutta. Virheketjun kytkentä ja turvallinen näkyvyys tarkistetaan
+`docs/ai/workflow.md`:n toiminnon valmistumisportissa.
 
 ## Vaiheistus
+
+Seuraava vaiheistus ja sen lopun suositus kuvaavat alkuperäistä
+käyttöönottojärjestystä, eivät nykyistä toteutustilaa tai release-backlogia.
+Uuden työn rajaus perustuu ajantasaiseen moduulisopimukseen ja lähdekoodiin;
+diagnostiikan avoimet täydennykset ovat dokumentissa
+`diagnostics-0.2.9-completion-plan.md`.
 
 ### Vaihe 1: periaatteet
 

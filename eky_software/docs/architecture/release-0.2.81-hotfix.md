@@ -31,25 +31,36 @@ paketoitu Windows-hyvaksynta todentaa erikseen oikean runtime-ketjun.
 
 ## Julkaisuportti
 
-Tila: valmistelussa, ei viela toimitettavaa hyvaksyttya MSI-pakettia.
+Tila: paikallinen allekirjoittamaton pilottipaketti valmis. Omistaja paatti
+toimittaa taman rajatun korjauksen omaan kokeiluun ja siirtaa GitHubin
+laajemman testiharnessin selvityksen myohemmaksi. Tama on vain taman
+pilottitoimituksen poikkeus, ei yleinen julkaisuporttien muutos tai tayden
+CI-hyvaksynnan ilmoitus.
 
-Paikalliset korjauksen kohdetestit (24), desktopin regressiosarja,
-desktop-typecheck ja installerin yksikkotestit (94) ovat lapaisseet.
-Kehityspaketin build ja hardened Windows backup -> inspect -> restore ->
-restart -> compare ovat lapaisseet synteettisella profiililla. Tama on
-kehityspaketin naytto, ei puhtaan release candidaten hyvaksymistodiste.
+Korjauksen kohdetestit (24), koko workspacen testit ja typecheck seka
+installerin yksikkotestit (94) ovat lapaisseet. Lopullinen pilotti on
+rakennettu kerran puhtaasta version kayttoonottavasta revisiosta
+`9699f4e0efd0a82984d155b4d46b0b401ebb17e3`. Sen hardened Windows backup ->
+inspect -> restore -> restart -> compare lapaisi synteettisella profiililla
+release-candidate-tilassa. Payload-inventaario sailyi muuttumattomana
+tarkistuksen ja MSI-rakennuksen yli. MSI:n rakenne, julkaisuidentiteetti,
+manifesti, SHA-256 ja toimituskopion samat tavut on tarkistettu.
 
-Ennen toimitusta vaaditaan nykyisen korjausrevision kohde- ja regressiotestit,
-typecheck, tarvittavat buildit, hardened Windows backup -> inspect -> restore
--> restart -> compare seka normaalit PR-, main- ja riippuvuusturvan portit.
-Lopullinen release candidate rakennetaan kerran puhtaasta version
-kayttoonottavasta revisiosta. Molemmat clean-consumerit testaavat samat
-MSI-tavut; bundle muodostetaan niista ilman paikallista rebuildia.
+GitHubin riippuvuusauditointi lapaisi. Tayden installer-hyvaksyntaharnessin
+ajossa yksi muuttumaton supervisor-sopimustesti epaonnistui odottaessaan
+lapsiprosessin valmiusmerkintaa. Laajojen CI-ajojen jatko keskeytettiin
+omistajan paatoksella. Korjausta ei ole yhdistetty mainiin; normaali
+PR/main-hyvaksynta ja molemmat exact-byte clean-consumerit jaavat avoimiksi.
+Taman MSI:n asennettua paivitysta versioista `0.2.6` tai `0.2.7` ei ole
+todennettu. Paketin kaynnistystesti ei yksin korvaa sita.
 
-Hyvaksytty `0.2.8`-bundle sailyy muuttumattomana. Uuden bundlen hyvaksynta,
-release-ajo, build-revisio, artifact-ID ja SHA-256 kirjataan vasta
-todentamisen jalkeen. Dirty-kehityspaketti tai aikaisemman version vihrea
-ajo ei korvaa uuden julkaisun hyvaksymista.
+Hyvaksytty `0.2.8`-bundle on tarkistettu muuttumattomaksi. Uusi kolmen
+tiedoston bundle sisaltaa `Eky-0.2.81-x64.msi`-tiedoston, sen manifestin ja
+tarkistussumman. MSI:n SHA-256 on
+`0386a5d4860644752733c88213cb43d42cdc71c1c83b54ec8e3fda65c3276af4`.
+Kyseessa on paikallinen build ilman GitHub-artifact-ID:ta; toimituksen
+johdosta ei ole ajettu automaattista asennusta. Julkaistuja tavuita ei
+korvata saman version uudelleenrakennuksella.
 
 Varmuuskopioiden saatavuus ja kohdelaitteen turvallisuusehdot ovat erillisia
 kayttoonoton ehtoja. Asennus tai uudelleenasennus ei poista business-dataa;

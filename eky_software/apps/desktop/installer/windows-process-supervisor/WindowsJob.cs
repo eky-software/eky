@@ -77,6 +77,18 @@ internal sealed class WindowsJob : IDisposable
 
     internal ProcessCreationJobAttribute CreateProcessAttribute() => new(handle);
 
+    internal bool ContainsProcess(SafeProcessHandle process)
+    {
+        if (!NativeMethods.IsProcessInJob(process, handle, out var isInJob))
+        {
+            throw new SupervisorFailure(
+                "jobQueryFailed",
+                Marshal.GetLastWin32Error()
+            );
+        }
+        return isInJob;
+    }
+
     internal uint GetActiveProcessCount()
     {
         var size = Marshal.SizeOf<NativeMethods.JobObjectBasicAccountingInformation>();

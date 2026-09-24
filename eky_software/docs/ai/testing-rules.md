@@ -258,6 +258,10 @@ Frontendissä testataan erityisesti:
 - virhetilojen näyttö
 - käyttöoikeuksien vaikutus näkymään
 - tärkeät painikkeet ja toimintopolut
+- varattu-tila, kaksoispainallus, peruutus, aikakatkaisu ja turvallinen
+  uudelleenyritys muuttuvan toiminnon sivuvaikutusten mukaan
+- ilmoitusten fokus, näppäimistökäyttö ja status/alert-esitys sekä ero tyhjän,
+  vanhentuneen, osittaisen ja epäonnistuneen tuloksen välillä
 
 Frontendin käyttöoikeustesti ei korvaa backendin käyttöoikeustestiä.
 
@@ -410,9 +414,26 @@ Kun muutos lisää eventin, lokin, auditin, retentionin tai tukipaketin:
 - testaa tapahtuman omistajuus ja business auditin transaction ownership
 - testaa Activity-, Diagnostics-, tukipaketti- ja incident-index-projektion
   sisällytys tai poissulku
+- testaa tuotannon compositionin observer/logger/failure sink -kytkentä;
+  testiin erikseen injektoitu spy ei todista tuotantokytkentää
+- käytä writerin hyväksymää tapahtumaa readerin ja strict clientin
+  sopimustestissä; katalogierolle pitää olla nimetty poissulku tai testi
+- todista edustava oikean käyttötapauksen virheketju: turvallinen syy ja
+  vaihe -> kirjattu tapahtuma -> sallittu projektio -> UI/tukipaketti;
+  yleinen käyttäjäviesti ei saa poistaa sisäistä turvallista syyluokitusta
+- testaa eri lokivirtoihin lomittuneet aikaleimat sekä tapahtuma-, tavu- ja
+  lähdebudjetit yhdessä: tiedostojärjestys ei todista tapahtumajärjestystä
+- testaa puuttuva, viallinen, osittainen ja lukukelvoton lähde erikseen;
+  lokituksen virheilmoitus ei saa vaatia epäonnistuvan writerin toimimista
 - lisää riskin mukaan yksikkö-, integraatio- ja E2E-testi sekä onnistuvaan että
   rikkoutuvaan polkuun; yhden kerroksen testi ei yksin todista koko
   observability-ketjun failure behavioria
+
+Lähdekoodin puutteen toistava tutkimustesti erotetaan korjauksen
+regressiotestistä. Vihreä testi, joka odottaa nykyistä virhekäyttäytymistä,
+todistaa puutteen, ei korjausta. Korjauksen hyväksyntätesti odottaa sovittua
+oikeaa käyttäytymistä. Nykyiset vihreät testit eivät yksin todista uuden
+tapahtumaperheen tai composition-kytkennän kattavuutta.
 
 E2E:n pysyvä strategia on dokumentissa
 `docs/architecture/e2e-testing-strategy.md`, skenaariot

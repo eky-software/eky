@@ -53,6 +53,14 @@ internal static class NativeMethods
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool IsProcessInJob(
+        SafeProcessHandle process,
+        SafeJobHandle job,
+        [MarshalAs(UnmanagedType.Bool)] out bool isInJob
+    );
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool TerminateJobObject(
         SafeJobHandle job,
         uint exitCode
