@@ -154,6 +154,16 @@ Nykyiset feature-moduulit:
 - `features/customers`
 - `features/companySettings`
 - `features/invoicing`
+- `features/workspaces`
+
+`features/workspaces` omistaa työtilavalitsimen ja hallinnan käyttöliittymän
+paikallisen desktop-capabilityn päällä. Electron main omistaa työtilarekisterin
+ja privileged-toiminnot; backendin business API ei tarjoa työtilahallinnan
+reittejä. Lue ennen tämän featuren muutoksia
+[ADR-0011](../decisions/ADR-0011-local-multi-workspace-company-model.md) ja
+[työtilasuunnitelman W5B-sopimus](local-company-workspace-plan.md#w5b-trusted-workspace-capability-and-ui).
+Selainkehityksen turvallinen fallback ja vaiheiden toteutus- sekä
+hyväksyntätilat kuvataan samassa suunnitelmassa.
 
 Feature omistaa oman näkymänsä, paikalliset komponenttinsa, hookinsa, lomakemallinsa ja feature-kohtaiset puhtaat apufunktionsa.
 

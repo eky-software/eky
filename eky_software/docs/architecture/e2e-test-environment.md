@@ -112,6 +112,63 @@ Sama turvallinen sisältö tallentuu yrityskohtaiseen
 yhden päivän artifactina, myös ensimmäisestä epäonnistumisesta ennen retryä.
 Koko `test-results`-kansiota, tracea, profiilia tai raakaa lokia ei julkaista.
 
+M0.3:n `DESK-WORKSPACE-FIRST-START-001` tallentaa lisäksi first-start-proofin
+suljetut vaihehavainnot ja kuluneen ajan runtime-kohtaiseen testitiedostoon.
+Se sijaitsee validoidussa E2E-userData-juuressa, erillään proofin poistettavasta
+alihakemistosta. Tiedoston yksityinen nimi sidotaan olemassa olevaan runtime-
+identiteettiin; tunniste ei tule sisältöön tai julkaistavaan liitteeseen.
+Capability sallii vain yhden proof-kutsun per testiruntime, myös ensimmäisen
+kutsun epäonnistuessa. Uusi runtime ei lue aiemman sukupolven havaintoja.
+
+Writer sallii enintään 128 tietuetta ja 16 KiB; viimeinen paikka on varattu
+katkaisumerkille. Lukija rajaa tavut ennen jäsennystä, torjuu linkitetyt juuret,
+linkit ja ei-tavalliset tiedostot sekä rakentaa vain sallituista kentistä
+uuden tilannekuvan. Kesken jäänyt viimeinen tietue näkyy `partial`-tilana,
+puuttuva, virheellinen, liian suuri tai lukukelvoton näyttö erillisinä tiloina.
+`captured` kertoo havaintojen luvusta, ei koko proofin valmistumisesta;
+`proofFinallyReturned` ei todista cleanupin onnistumista.
+
+Nykyinen fixture kerää snapshotin API:n sulkemisen, omistetun runtimen
+pysäytyksen ja porttitarkistuksen jälkeen, ennen testijuuren mahdollista
+poistamista. Lukeminen ei tarvitse toimivaa Electron-evaluate-kutsua.
+Epävarma cleanup säilyttää juuren entiseen tapaan ja raportoidaan erikseen.
+Validoitu `firstStartProof`-osa lisätään nykyiseen lifecycle-liitteeseen;
+juuri tämä testi kirjoittaa sen myös onnistuessaan kytkennän todentamiseksi.
+Luku- tai raportointivirhe ei korvaa alkuperäistä testivirhettä eikä estä
+siivousta. Diagnostiikka ei muuta tuotannon lokitusta, runtime-käyttäytymistä,
+testibudjetteja, retryä tai hyväksyntäassertioita. Paikallisen ajon
+yksityiskohtaiset ajoitukset säilyvät paikallisina.
+
+M0.4:n testikohtainen load-havainto liitetään saman first-start-proofin
+neljään compositioniin. Ikkunahookki asennetaan ennen compositionin latausta
+ja vapautetaan myös virheessä. Tavallinen `loadURL` delegoidaan välittömästi
+samalla receiverillä ja argumenteilla; palautetaan alkuperäinen promise.
+Testin virheadapteri ei avaa natiivia modaalia eikä heitä irrotetusta
+callbackista. Odottamaton virhe hylkää normaalin testin omistajan tarkistuksessa.
+Vaihe sisältää vain suljetun composition-paikan ja tapahtuman, ei dialogitekstiä.
+
+[M0.6:n latauksen omistajuus](windows-installer-acceptance-harness-v2.md#m06-ehdotus-testin-latauksen-ja-purun-omistajuus)
+edellyttää normaalissa proofissa, että oman ikkunan todellinen lataus päättyy
+ennen backendin shutdownia ja protokollapurkua. Ei lisäviivettä, timeoutia
+tai retryä. Latausvirhe säilyy ensivirheenä, mutta shutdown ja cleanup
+yritetään silti. `SYS-FIRST-START-LOAD-SHUTDOWN-001` kattaa pending-,
+onnistumis-, virhe-, peruutus- ja yhdistelmävirhepolut hallituilla promiseilla.
+Pakotettu diagnostiikkakoe ohittaa vain tämän ennakko-odotuksen; sen oma
+todellisen virheketjun hyväksyntä pysyy erillisenä.
+
+`DESK-FIRST-START-LOAD-ORDER-001` on erillinen koe konfiguraatiossa
+`apps/e2e/playwright.first-start-diagnostic.config.ts`, ei tavallisen CI:n
+valitsema skenaario. Se käyttää samaa eristettyä fixtureä, cleanupia ja
+aikarajoja; yhden todellisen latauksen kutsu vapautetaan vasta todennetun
+protokollapurun jälkeen. [M0.5:n havaintosopimus](windows-installer-acceptance-harness-v2.md#m05-pakotetun-kokeen-havaintosopimuksen-täsmennys)
+vaatii todellisen `loadURL`-rejectionin, täsmällisen virheadapterin ja
+quit-pyynnön. `did-fail-load` säilyy täydentävänä havaintona: native-promise
+voi epäonnistua ilman sitä. Normaali koe vaatii edelleen onnistuneen latauksen
+ja torjuu main-frame-virheen sekä kaikki virhedialogi- ja quit-kutsut.
+Älä tulkitse pakotetun kokeen havaintoa tavallisen testin läpäisyksi tai
+alkuperäisen timeoutin syytodisteeksi. Myös tämän kokeen first-start-journal
+kerätään omistetun cleanupin jälkeen ennen juuren poistoa.
+
 Myös Electronin käynnistystä edeltävä workspace-backupin valmistelu säilyttää
 ensimmäisen epäonnistumisen samassa liitteessä. Electronin omat API-, runtime-
 ja porttivastuut ovat silloin `notStarted`, testijuuri `retained`. Erillinen

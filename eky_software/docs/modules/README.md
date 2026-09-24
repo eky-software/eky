@@ -31,15 +31,20 @@ Moduulien välinen kommunikaatio tehdään hallitusti.
 
 ## Dokumentoitavat moduulit
 
-Alustavat moduulit:
+Toteutetut moduulit:
 
-- customers
-- company-settings
-- sales
-- invoicing
-- inventory
-- work-orders
-- reporting
+- [customers](customers.md)
+- [company-settings](company-settings.md)
+- [invoicing](invoicing.md)
+- [Activity](activity.md), [backendin AGENTS.md](../../apps/backend/src/modules/activity/AGENTS.md)
+- [Diagnostics](diagnostics.md), [backendin AGENTS.md](../../apps/backend/src/modules/diagnostics/AGENTS.md)
+
+Dokumentoidut myöhemmät moduulit:
+
+- [sales](sales.md)
+- [inventory](inventory.md)
+- [work-orders](work-orders.md)
+- [reporting](reporting.md)
 
 Mahdollisia myöhempiä moduuleja:
 

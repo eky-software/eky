@@ -237,6 +237,10 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
 
 ## Dokumentaatio
 
+- Löytyvätkö vaikutusalueen ohjeet juuri- ja kohdekansion `AGENTS.md`:n
+  lukureiteistä sekä omistavista moduuli-/arkkitehtuuriohjeista?
+- Tarkistettiinko muuttuneiden ohjeiden linkkien polut ja otsikkoankkurit,
+  myös ohjeeseen johtavat viitteet, eikä vain sen oma sisältö?
 - Onko raportista poistettu omistajaan tai hänen koneeseensa liittyvä
   ohjelma-, ajuri-, laitteisto-, käyttöjärjestelmä-, verkko- ja suojaustieto
   sekä yksityiskohtainen paikallinen diagnostiikka, ei vain nimet ja polut?
@@ -261,6 +265,11 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
   avoimet kysymykset ennen toteutusta?
 - Annettiinko toteutussuunnitelma ennen laajaa muutosta?
 - Luettiinko oikeat dokumentit?
+- Tarkistettiinko [aloitusjärjestyksen](workflow.md#työn-aloitusjärjestys)
+  mukainen lukureitti myös tehtävän laajentuessa uuteen ohjelman osaan?
+- Oliko ajolla [nimetty seuranta](workflow.md#ci-ajon-seuranta-ja-virhetodisteet),
+  säilyivätkö ensimmäisen virheen todisteet ja raportoitiinko mahdolliset
+  seuranta-/tallennuskatkokset?
 - Onko Git-tila hallinnassa?
 - Onko lähtöbaseline todistetusti vihreä ennen seuraavan vaiheen aloittamista?
 - Onko muutos helppo perua tarvittaessa?

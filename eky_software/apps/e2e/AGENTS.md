@@ -1,8 +1,13 @@
 # E2E Test Instructions
 
 Read the repository root `AGENTS.md`, testing rules, security principles,
-review checklist, E2E strategy, R0 E2E matrix and E2E environment document
+review checklist, [E2E strategy](../../docs/architecture/e2e-testing-strategy.md),
+[R0 E2E matrix](../../docs/architecture/r0-e2e-test-matrix.md) and
+[E2E environment](../../docs/architecture/e2e-test-environment.md)
 before changing this package.
+
+For test runs and CI follow-up, use the canonical
+[run monitoring and failure evidence instructions](../../docs/ai/workflow.md#ci-ajon-seuranta-ja-virhetodisteet).
 
 `apps/e2e` owns cross-layer system, browser and Electron development tests. It
 is test infrastructure, not a business module.
@@ -37,11 +42,14 @@ The only dependency approved for this package at foundation time is
 `package.json`. No other dependency may be added without
 the repository dependency approval gate.
 
-Update `docs/architecture/r0-e2e-test-matrix.md` whenever a scenario is added,
-removed, split, blocked or changes test level. Never label lower-level
+Update the [R0 E2E matrix](../../docs/architecture/r0-e2e-test-matrix.md)
+whenever a scenario is added, removed, split, blocked or changes test level. Never label lower-level
 coverage as implemented E2E.
 
-Keep normal E2E and endurance separate:
+For endurance work, read the
+[system/web baseline](../../docs/architecture/e2e-endurance-baseline.md) or
+[desktop stress/soak baseline](../../docs/architecture/e2e-desktop-endurance-baseline.md)
+for the affected test family. Keep normal E2E and endurance separate:
 
 - system, web and the critical Electron development project may run in pull
   request CI

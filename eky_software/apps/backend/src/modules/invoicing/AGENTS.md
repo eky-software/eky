@@ -16,6 +16,10 @@ Also read the documents required by the task, including at minimum:
 
 Approval, numbering, snapshot, PDF, delivery and email work also requires the
 corresponding architecture documents named in the root `AGENTS.md`.
+PDF renderer or layout work also requires the
+[Approved Invoice PDF Layout Plan](../../../../../docs/architecture/approved-invoice-pdf-layout-plan.md).
+It records the `25a0004` audit baseline before the behavior-preserving
+structural split, not a new approval to change the layout or snapshot contract.
 Payment tracking work also requires
 `docs/architecture/invoice-payment-tracking-plan.md`.
 

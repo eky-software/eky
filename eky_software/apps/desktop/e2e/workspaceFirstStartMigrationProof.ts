@@ -52,37 +52,16 @@ import {
   captureUtilityProcessBaseline,
   waitForProofUtilityProcessesReleased,
 } from './workspaceManagementCompositionProofRuntime.js';
+import type {
+  FirstStartProofPhase,
+  FirstStartProofStage as ProofStage,
+} from './workspaceFirstStartProofObservation.js';
+import type { FirstStartLoadSlot } from './workspaceFirstStartLoadObservation.js';
+import { runFirstStartProofShutdown } from './workspaceFirstStartProofShutdown.js';
 
 const sourceBuildRevision = 'a'.repeat(40);
 const targetBuildRevision = 'b'.repeat(40);
 const proofUpgradeCode = '11111111-1111-4111-8111-111111111111';
-
-type ProofStage =
-  | 'setup'
-  | 'mixedActiveFixture'
-  | 'mixedCompatibleFixture'
-  | 'mixedInvalidFixture'
-  | 'mixedStores'
-  | 'mixedSnapshotsBefore'
-  | 'mixedStartup'
-  | 'mixedRuntimeReadback'
-  | 'mixedShutdown'
-  | 'mixedActiveInspection'
-  | 'mixedCompatibleInspection'
-  | 'mixedInvalidInspection'
-  | 'mixedSnapshotsAfter'
-  | 'mixedRestart'
-  | 'mixedComplete'
-  | 'allCurrentFixtures'
-  | 'allCurrentStores'
-  | 'allCurrentSnapshotsBefore'
-  | 'allCurrentStartup'
-  | 'allCurrentRuntimeReadback'
-  | 'allCurrentShutdown'
-  | 'allCurrentSnapshotsAfter'
-  | 'allCurrentRestart'
-  | 'allCurrentComplete'
-  | 'cleanup';
 
 interface ProofProgress {
   readonly stage: ProofStage;
@@ -93,7 +72,8 @@ interface ProofProgress {
 type ProofShutdownCheckpoint =
   | 'lifecycleShutdownCompleted'
   | 'windowCleanupDeferred'
-  | 'protocolUnregistered';
+  | 'protocolUnregistered'
+  | 'shutdownCleanupFailed';
 
 type ProofCheckpoint = ProofShutdownCheckpoint;
 
@@ -148,7 +128,7 @@ export async function runWorkspaceFirstStartMigrationProof(
     startCount: 0,
   };
   let factories: Readonly<WorkspaceFirstStartProofFactories> | undefined;
-  const progress = createProofProgress(join(proofRoot, 'progress.jsonl'));
+  const progress = createProofProgress(join(proofRoot, 'progress.jsonl'), input.observe);
 
   try {
     await progress.enter('setup');
@@ -216,12 +196,14 @@ export async function runWorkspaceFirstStartMigrationProof(
       `WORKSPACE_FIRST_START_MIGRATION_PROOF_FAILED_${progress.stage.toUpperCase()}_${readSafeErrorCode(error)}`,
     );
   } finally {
+    observeProof(input.observe, 'proofFinallyStarted');
     unregisterApplicationProtocol();
     await stopTrackedBackends(tracker);
     await factories?.cleanup().catch(() => undefined);
     await rm(proofRoot, { force: true, recursive: true }).catch(
       () => undefined,
     );
+    observeProof(input.observe, 'proofFinallyReturned');
   }
 }
 
@@ -275,6 +257,7 @@ async function proveMixedScenario(input: {
   try {
     await input.progress.enter('mixedStartup');
     firstLifecycle = await startProofComposition({
+      loadSlot: 'mixedInitial',
       beforeBackendStart: async () => {
         const [journal, acceptedBuild, registry, activeAtGate] =
           await Promise.all([
@@ -315,6 +298,7 @@ async function proveMixedScenario(input: {
   await input.progress.enter('mixedShutdown');
   await stopProofComposition(firstLifecycle, (checkpoint) =>
     input.progress.checkpoint(checkpoint),
+    input.input.loadExperiment,
   );
 
   await input.progress.enter('mixedActiveInspection');
@@ -346,6 +330,7 @@ async function proveMixedScenario(input: {
 
   await input.progress.enter('mixedRestart');
   const exactRestartSkippedInventory = await runExactAcceptedRestart({
+    loadSlot: 'mixedRestart',
     build: input.build,
     factories: input.factories,
     input: input.input,
@@ -431,6 +416,7 @@ async function proveAllCurrentScenario(input: {
 
   await input.progress.enter('allCurrentStartup');
   const firstLifecycle = await startProofComposition({
+    loadSlot: 'currentInitial',
     beforeBackendStart: async () => {
       const [journal, acceptedBuild, registry] = await Promise.all([
         stores.journal.read(),
@@ -461,12 +447,14 @@ async function proveAllCurrentScenario(input: {
   await input.progress.enter('allCurrentShutdown');
   await stopProofComposition(firstLifecycle, (checkpoint) =>
     input.progress.checkpoint(checkpoint),
+    input.input.loadExperiment,
   );
   await input.progress.enter('allCurrentSnapshotsAfter');
   const artifactRootsAfter = await snapshotArtifactRoots(fixtures);
 
   await input.progress.enter('allCurrentRestart');
   const exactRestartSkippedInventory = await runExactAcceptedRestart({
+    loadSlot: 'currentRestart',
     build: input.build,
     factories: input.factories,
     input: input.input,
@@ -511,13 +499,24 @@ async function proveAllCurrentScenario(input: {
   });
 }
 
-function createProofProgress(filePath: string): ProofProgress {
+function observeProof(
+  observe: WorkspaceFirstStartMigrationProofInput['observe'],
+  phase: FirstStartProofPhase,
+): void {
+  try { observe?.(phase); } catch { /* Diagnostics cannot change the proof. */ }
+}
+
+function createProofProgress(
+  filePath: string,
+  observe: WorkspaceFirstStartMigrationProofInput['observe'],
+): ProofProgress {
   let stage: ProofStage = 'setup';
   return {
     get stage() {
       return stage;
     },
     async checkpoint(checkpoint) {
+      observeProof(observe, checkpoint);
       await appendFile(
         filePath,
         `${JSON.stringify({ checkpoint, stage })}\n`,
@@ -526,6 +525,7 @@ function createProofProgress(filePath: string): ProofProgress {
     },
     async enter(nextStage) {
       stage = nextStage;
+      observeProof(observe, nextStage);
       await appendFile(
         filePath,
         `${JSON.stringify({ stage: nextStage })}\n`,
@@ -584,6 +584,7 @@ async function createProofStores(input: {
 }
 
 async function startProofComposition(input: {
+  readonly loadSlot: FirstStartLoadSlot;
   readonly beforeBackendStart?: () => Promise<void>;
   readonly build: Readonly<ProofBuildIdentity>;
   readonly input: Readonly<WorkspaceFirstStartMigrationProofInput>;
@@ -591,49 +592,57 @@ async function startProofComposition(input: {
   readonly userDataPath: string;
 }): Promise<DesktopLifecycleHandle> {
   unregisterApplicationProtocol();
-  const lifecycle = await startDesktopComposition({
-    appVersion: input.build.targetRelease.appVersion,
-    applicationPath: input.input.applicationPath,
-    buildInfo: {
+  const capture = input.input.loadExperiment?.startComposition(input.loadSlot);
+  try {
+    const lifecycle = await startDesktopComposition({
       appVersion: input.build.targetRelease.appVersion,
-      buildCreatedAt: '2026-08-21T00:01:00.000Z',
-      buildDirty: false,
-      buildRevision: targetBuildRevision,
-      schemaVersion: 1,
-    },
-    dependencies: {
-      createRuntimeSession: createRuntimeSessionFactory(
-        input.input.runtimeSessionSecret,
-      ),
-      startBackend: createTrackedBackendStarter({
-        delegate: input.input.startBackend,
-        tracker: input.tracker,
-        ...(input.beforeBackendStart === undefined
-          ? {}
-          : { beforeStart: input.beforeBackendStart }),
-      }),
-    },
-    quitApplication: () => undefined,
-    releaseInfo: input.build.targetRelease,
-    relaunchApplication: () => undefined,
-    reportSmokeStage: async () => undefined,
-    resourcesPath: input.input.resourcesPath,
-    runtimeInstanceId: randomUUID(),
-    smokeConfiguration: {
-      enabled: false,
-      phase: 'initial',
-      root: undefined,
-      userDataPath: undefined,
-    },
-    userDataPath: input.userDataPath,
-  });
-  if (lifecycle === undefined) {
-    throw new Error('WORKSPACE_FIRST_START_PROOF_RELAUNCH_UNEXPECTED');
+      applicationPath: input.input.applicationPath,
+      buildInfo: {
+        appVersion: input.build.targetRelease.appVersion,
+        buildCreatedAt: '2026-08-21T00:01:00.000Z',
+        buildDirty: false,
+        buildRevision: targetBuildRevision,
+        schemaVersion: 1,
+      },
+      dependencies: {
+        ...(capture === undefined ? {} : { showErrorBox: capture.probe.showErrorBox }),
+        createRuntimeSession: createRuntimeSessionFactory(
+          input.input.runtimeSessionSecret,
+        ),
+        startBackend: createTrackedBackendStarter({
+          delegate: input.input.startBackend,
+          tracker: input.tracker,
+          ...(input.beforeBackendStart === undefined
+            ? {}
+            : { beforeStart: input.beforeBackendStart }),
+        }),
+      },
+      quitApplication: () => capture?.probe.quitRequested(),
+      releaseInfo: input.build.targetRelease,
+      relaunchApplication: () => undefined,
+      reportSmokeStage: async () => undefined,
+      resourcesPath: input.input.resourcesPath,
+      runtimeInstanceId: randomUUID(),
+      smokeConfiguration: {
+        enabled: false,
+        phase: 'initial',
+        root: undefined,
+        userDataPath: undefined,
+      },
+      userDataPath: input.userDataPath,
+    });
+    if (lifecycle === undefined) {
+      throw new Error('WORKSPACE_FIRST_START_PROOF_RELAUNCH_UNEXPECTED');
+    }
+    capture?.acceptWindow(lifecycle.applicationWindow);
+    return lifecycle;
+  } finally {
+    capture?.stopCreationObservation();
   }
-  return lifecycle;
 }
 
 async function runExactAcceptedRestart(input: {
+  readonly loadSlot: FirstStartLoadSlot;
   readonly build: Readonly<ProofBuildIdentity>;
   readonly factories: Readonly<WorkspaceFirstStartProofFactories>;
   readonly input: Readonly<WorkspaceFirstStartMigrationProofInput>;
@@ -646,6 +655,7 @@ async function runExactAcceptedRestart(input: {
   let restoredBeforeBackend = false;
   try {
     const lifecycle = await startProofComposition({
+      loadSlot: input.loadSlot,
       beforeBackendStart: async () => {
         await restoreRunner();
         restoredBeforeBackend = true;
@@ -655,7 +665,7 @@ async function runExactAcceptedRestart(input: {
       tracker: input.tracker,
       userDataPath: input.userDataPath,
     });
-    await stopProofComposition(lifecycle);
+    await stopProofComposition(lifecycle, undefined, input.input.loadExperiment);
     return restoredBeforeBackend;
   } finally {
     await restoreRunner();
@@ -732,17 +742,31 @@ function createTrackedBackendStarter(input: {
 async function stopProofComposition(
   lifecycle: DesktopLifecycleHandle,
   reportCheckpoint?: (checkpoint: ProofShutdownCheckpoint) => Promise<void>,
+  loadExperiment?: WorkspaceFirstStartMigrationProofInput['loadExperiment'],
 ): Promise<void> {
-  try {
-    await lifecycle.shutdown();
-    await reportCheckpoint?.('lifecycleShutdownCompleted');
-  } finally {
-    // BrowserWindow close/destroy can deadlock when this proof runs inside
-    // ElectronApplication.evaluate. The isolated fixture owns process cleanup.
-    await reportCheckpoint?.('windowCleanupDeferred');
-    unregisterApplicationProtocol();
-    await reportCheckpoint?.('protocolUnregistered');
-  }
+  await runFirstStartProofShutdown({
+    async beforeShutdown() {
+      await loadExperiment?.waitForLoadBeforeShutdown(lifecycle.applicationWindow);
+    },
+    async shutdown() {
+      loadExperiment?.shutdownStarted(lifecycle.applicationWindow);
+      await lifecycle.shutdown();
+      await reportCheckpoint?.('lifecycleShutdownCompleted');
+    },
+    async cleanup(shutdownFailed) {
+      if (shutdownFailed) loadExperiment?.cancelPending(lifecycle.applicationWindow);
+      // BrowserWindow close/destroy can deadlock inside ElectronApplication.evaluate.
+      // The isolated fixture owns process cleanup.
+      await reportCheckpoint?.('windowCleanupDeferred');
+      const removed = unregisterApplicationProtocol();
+      const forcedOutcome = shutdownFailed ? undefined : loadExperiment?.protocolRemoved(
+        lifecycle.applicationWindow, removed, !protocol.isProtocolHandled('eky'),
+      );
+      await reportCheckpoint?.('protocolUnregistered');
+      if (forcedOutcome !== undefined) await forcedOutcome;
+    },
+    reportSecondaryFailure: () => reportCheckpoint?.('shutdownCleanupFailed'),
+  });
 }
 
 async function stopTrackedBackends(
@@ -820,10 +844,12 @@ function createRuntimeSessionFactory(primary: string): () => string {
   };
 }
 
-function unregisterApplicationProtocol(): void {
+function unregisterApplicationProtocol(): boolean {
   if (protocol.isProtocolHandled('eky')) {
     protocol.unhandle('eky');
+    return true;
   }
+  return false;
 }
 
 function requireFixture(

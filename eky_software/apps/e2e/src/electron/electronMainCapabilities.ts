@@ -1,4 +1,5 @@
 import type { ElectronApplication } from '@playwright/test';
+import type { FirstStartLoadSnapshot } from '../../../desktop/e2e/workspaceFirstStartLoadObservation.js';
 
 export interface ElectronNativeAdapterSnapshot {
   errorBoxCount: number;
@@ -250,6 +251,18 @@ export function runElectronWorkspaceActivationMigrationProof(
   });
 }
 
+export function runElectronWorkspaceFirstStartLoadOrderDiagnostic(
+  electronApp: ElectronApplication,
+): Promise<{ proof: WorkspaceFirstStartMigrationProofSnapshot; loads: readonly FirstStartLoadSnapshot[] }> {
+  return electronApp.evaluate(() => {
+    const controller = (globalThis as typeof globalThis & {
+      __EKY_ELECTRON_E2E__?: ElectronE2eController;
+    }).__EKY_ELECTRON_E2E__;
+    if (controller === undefined) throw new Error('Electron E2E controller is unavailable.');
+    return controller.runWorkspaceFirstStartLoadOrderDiagnostic();
+  });
+}
+
 export function runElectronWorkspaceStartupRecoveryProof(
   electronApp: ElectronApplication,
 ): Promise<WorkspaceStartupRecoveryProofSnapshot> {
@@ -275,6 +288,10 @@ interface ElectronE2eController {
   runWorkspaceActivationMigrationProof(): Promise<WorkspaceActivationMigrationProofSnapshot>;
   runWorkspaceManagementCompositionProof(): Promise<WorkspaceManagementCompositionProofSnapshot>;
   runWorkspaceFirstStartMigrationProof(): Promise<WorkspaceFirstStartMigrationProofSnapshot>;
+  runWorkspaceFirstStartLoadOrderDiagnostic(): Promise<{
+    proof: WorkspaceFirstStartMigrationProofSnapshot;
+    loads: readonly FirstStartLoadSnapshot[];
+  }>;
   runWorkspaceMigrationInventoryProof(): Promise<WorkspaceMigrationInventoryProofSnapshot>;
   runWorkspaceStartupRecoveryProof(): Promise<WorkspaceStartupRecoveryProofSnapshot>;
 }

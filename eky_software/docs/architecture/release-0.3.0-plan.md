@@ -2,6 +2,50 @@
 
 ## Päätös ja nykyinen tila
 
+**M0-checkpoint 2026-09-24: M0.6 toteutettu ja paikallisesti todennettu.**
+Ajantasainen PR/main-hyväksyntä ja puhdas lähtörevisio kirjataan
+[PR #275:n integraatiocheckpointiin](https://github.com/eky-software/eky/pull/275#issuecomment-5819025563).
+M0 valmistuu vasta, kun siinä on täsmällisen PR-pään hyväksyntä, normaali
+merge ja syntyneen main-revision omat V2- ja riippuvuustarkistukset.
+Tämä ennen mergeä kirjoitettu dokumentti ei ennakoi niiden lopputulosta.
+
+Aikaisempi tapahtumaketju:
+PR #274 yhdistettiin normaalisti mainiin revisiona
+`4c18821e1d22e48608b082fc1fa6c54b8ac04a32`, kun täsmällisen PR-pään
+`7d6d0f682c3ba374bd70eca387a9ad7f609a54ee` molemmat required checkit
+läpäisivät. Mainin oma kokonaisajo hylättiin Electronin ensimmäisen
+käynnistyksen testin flaken vuoksi. M0:aa ei merkitä valmiiksi eikä M1:n
+tuotantototeutusta aloiteta. Tarkat hyväksyntäviitteet ja uusi päätösraja
+ovat [harnessin jälkitodennuscheckpointissa](windows-installer-acceptance-harness-v2.md#m0-mainin-jälkitodennus).
+Seuraava rajattu [M0.3-diagnostiikkaehdotus](windows-installer-acceptance-harness-v2.md#m03-ehdotus-electron-testin-vaihekohtainen-näyttö)
+on omistajan hyväksymä, toteutettu ja kohdetodennettu. Myös revision
+`a293a9b0411ce10e6b04b381a8aadb78ddc03d78` normaali PR #275 -todennus
+läpäisi. Timeoutin juurisyytä ei ole vielä todistettu. Omistaja päätti
+tämän jälkeen nimenomaisesti selvittää syyn ennen mergeä: PR #275 jätettiin
+luonnokseksi eikä sen vihreä ajo hyväksynyt M0:aa. Tarkka näyttö ja rajatun
+jatkotutkimuksen checkpoint ovat samassa harness-suunnitelmassa.
+Tutkimus jatkui [M0.4:n rajatulla lataus-/virhedialogikokeella](windows-installer-acceptance-harness-v2.md#m04-ehdotus-lataus--ja-virhedialogiketjun-rajattu-koe).
+Omistajan 2026-09-24 hyväksymä M0.4-harness on toteutettu ja katselmoitu.
+Kohdesopimukset läpäisivät 33/33 ja yksi tavallinen Windows-koe läpäisi.
+Yksi erillinen pakotettu koe hylättiin; sitä ei uusittu tai muutettu
+jälkikäteen läpäistyksi. Sen havaintosopimuksessa tunnistettiin liian tiukka
+Electron-tapahtuman vaatimus. Omistaja hyväksyi
+[M0.5:n rajatun havaintosopimuksen korjauksen](windows-installer-acceptance-harness-v2.md#m05-pakotetun-kokeen-havaintosopimuksen-täsmennys),
+sopimustestit, riippumattoman katselmuksen ja yhden uuden pakotetun
+Windows-kokeen. M0.5 on toteutettu: sopimukset 35/35, käännös ja
+tyypintarkistus sekä katselmuksen jälkeinen yksi pakotettu koe läpäisivät.
+Tavallisen testin ehtoja ei muutettu eikä M0.4:n hylättyä tulosta korvattu.
+Seuraava [M0.6-ehdotus](windows-installer-acceptance-harness-v2.md#m06-ehdotus-testin-latauksen-ja-purun-omistajuus)
+rajaa testin oman lataus-/purkujärjestyksen korjauksen, ei tuotantokorjausta.
+Omistajan uusi 2026-09-24 jatkovaltuus sallii toteutuksen, katselmukset ja
+normaalin PR/main-integraation ilman välivaiheiden lupakysymyksiä, mutta ei
+hyväksyntäporttien lieventämistä. M0.6:n katselmus, 48 kohdesopimusta,
+koko työtilan testit ja typecheck, desktopin E2E-käännös, 55 CI-sopimusta
+sekä yksi tavallinen Windows-first-start-koe läpäisivät. Jokaisen neljän
+compositionin lataus valmistui ennen shutdownia ja protokollapurkua;
+cleanup todennettiin. Historiallisen timeoutin syyepävarmuus säilyy.
+Integraation lopputulos tarkistetaan yllä linkitetystä checkpointista.
+
 Projektin omistaja päätti 2026-09-22, että aiemmin työnimellä `0.2.9`
 koottu kokonaisuus valmistellaan seuraavaksi versioksi `0.3.0`.
 Yrityksen poistaminen ja odotustilojen latausilmaisin kuuluvat julkaisuun.
@@ -158,6 +202,10 @@ todisteina: niiden historiallinen testitulos ei ole uuden version hyväksyntä.
 
 ### M0: Nykyinen työ mainiin ennen korjauksia
 
+Testi-, PR- ja merge-ajot noudattavat pysyvää
+[CI-seurantaohjetta](../ai/workflow.md#ci-ajon-seuranta-ja-virhetodisteet).
+Ajonaikainen seuranta ei korvaa testin omaa vaihehavaintoa tai hyväksyntäporttia.
+
 1. Varmista tuore paikallinen ja etärevision tilanne, PR ja sen kohdehaara.
    Tarkista nykyisen käyttäjätestauksen oikeasti kirjatut tulokset ja avoimet
    kohdat; testiohje ei yksin todista testien valmistumista.
@@ -181,7 +229,12 @@ Puhdas työpuu tarkoittaa jäljitettävää integraatiopohjaa, ei tunnettujen
 virheiden poistumista eikä uuden tuotantojulkaisun hyväksyntää. Alla olevat
 korjaustehtävät säilyvät avoimina myös vihreän lähtötilan jälkeen.
 
-#### M0-seuranta 2026-09-24
+#### M0-seuranta 2026-09-24: integraatiota edeltävä historia
+
+Tämä alaluku säilyttää valmistelun päätökset ja testitulokset. Nykyinen
+PR/main-tila on [integraatiocheckpointissa](https://github.com/eky-software/eky/pull/275#issuecomment-5819025563).
+PR #274:n aiemman main-hylkäyksen näyttö säilyy
+[jälkitodennuscheckpointissa](windows-installer-acceptance-harness-v2.md#m0-mainin-jälkitodennus).
 
 Tila: **aloitettu / integraation hyväksyntä avoin**. Paikallinen ja PR:n
 head on `9699f4e0efd0a82984d155b4d46b0b401ebb17e3`;
@@ -307,6 +360,24 @@ kuitata valmiiksi pelkän vanhan diagnostiikkalistan läpäisyllä.
 
 Kaikkien T/A/B/C/K/D/E/F/G/H/I-pakettien tila on **suunniteltu / korjaus ja
 hyväksyntä tekemättä**. Päätösportin vaikutusalue odottaa hyväksyntää.
+
+I-paketin dokumentaatiokatselmukseen kuuluu myös ohjelmanosittainen
+ohjeiden löydettävyys: juuri- ja paikalliset `AGENTS.md`-tiedostot,
+moduulivastuut, ADR:t sekä testaus-/diagnostiikka-/turvallisuusohjeet
+muodostavat ehjän lukureitin. Aliagentit voivat tarkistaa eri alueet;
+pääagentti kokoaa havaitut linkki-, ankkuri-, päällekkäisyys- ja
+ajantasaisuuspuutteet sekä varmentaa korjaukset. Koko ohjeverkon katselmus
+on vielä tekemättä. Se täydentää jokaisen tehtävän pysyvää
+[ohjeiden tarkistusvelvoitetta](../ai/workflow.md#työn-aloitusjärjestys),
+ei siirrä sitä myöhemmäksi tai rajoita sitä 0.3.0-julkaisuun.
+
+Rajattu lukureittikatselmus 2026-09-24: pysyvä aloitus- ja CI-seurantaohje
+on linkitetty juuri-ohjeeseen, testaukseen ja tarkistuslistaan. Kahden
+aliagentin katselmuksessa täydennettiin desktop-/E2E-, moduulihakemisto-,
+PDF- ja workspace-lukureittejä sekä oikaistiin UI-paketin vanha ohjaus
+olemassa olevaan tiekarttaan. Muutettujen ohjeiden paikalliset linkit ja
+otsikkoankkurit tarkistettiin rajatusti. Tämä ei hyväksy koko I-pakettia,
+M0:aa tai kaikkien ohjeiden sisällön ajantasaisuutta.
 Yksittäiset R- ja S030-tunnukset säilytetään paketin toteutusseurannassa;
 osittainen paketti ei sulje koko ryhmää. Jos jokin havainto kumoutuu tai
 rajataan myöhemmäksi, kirjaa vastanäyttö tai omistajan päätös ja jäännösriski.

@@ -32,6 +32,12 @@ Hyväksytyn laskun katselu-, print- ja PDF-polun tarvitsemat data- ja snapshot-v
 PDF-polun ensimmäinen teknologiakokeilu ja sisäisten PDF-apujen rajaus on
 kuvattu dokumentissa `docs/architecture/pdf-and-internal-tools-planning.md`.
 
+PDF-rendererin tai layoutin muutoksissa lue myös
+[Approved Invoice PDF Layout Plan](../architecture/approved-invoice-pdf-layout-plan.md).
+Se kuvaa commitin `25a0004` auditointibaselinen ennen käyttäytymisen
+säilyttävää rakenteellista jakoa, ei uutta hyväksyntää layoutin tai
+snapshot-sopimuksen muuttamiseen.
+
 Hyväksytyn laskun toimitusputki, tulostuksen MVP-rajaus,
 sähköpostitoimituksen turvallisuuslinja, `sent`-tila, laskun kopiointi,
 peruutus ja hyvityslaskut on kuvattu dokumentissa
