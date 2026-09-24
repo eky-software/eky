@@ -6,6 +6,98 @@ Tavoitteena on rakentaa manuaalisen laskutuksen käyttöliittymä pieninä,
 testattavina vaiheina olemassa olevan Invoicing-domainin, backend-reittien ja
 `packages/api-client`-rajapinnan päälle.
 
+## A-paketin valmistelu
+
+**2026-09-24: suunnitelma, ei toteutettu.** [M1-valmistelu](release-0.3.0-m1-preparation-plan.md)
+rajaa ensimmäisen tuotantokorjauksen A1:een. R01, R05 ja R06 pidetään
+erillisinä seurattavina kohtina; yhden läpäisy ei sulje koko A-pakettia.
+
+### A1: Avattavan luonnoksen kohde
+
+Nykyinen `useInvoiceDraftEditor.openDraft` julkaisee valmistuvan vastauksen,
+virheen ja loading-tilan ilman nykyisen avauspyynnön tarkistusta. `clearDraft`
+ei mitätöi keskeneräistä avaamista. `NewInvoiceForm` alustaa tilansa vain
+mountissa; myöhäinen draft-propin kohdevaihto ei saa jättää näkyviä arvoja
+ja tallennuksen kohdetta eri laskuihin.
+
+Rajaus on `apps/web/src/features/invoicing`: avaushookki, sitä käyttävä
+editori/lomakkeen kohderaja ja vain tarpeelliset `InvoicingPage`-kutsukohdat.
+Ei domain-, repository-, schema-, HTTP-, permission- tai yleistä
+navigaatioarkkitehtuurin muutosta, uutta tilakirjastoa tai shared-manageria.
+
+Ehdotettu korjaussopimus:
+
+1. Jokainen tarkoituksellinen avaus saa uuden pyynnön sukupolven myös
+   samalle draftId:lle. Kohteen vaihtaminen, `clearDraft` ja unmount
+   mitätöivät edellisen avauksen.
+2. Vain nykyinen avaus saa muuttaa draftia, virhettä tai loading-tilaa.
+   Vanhan pyynnön `catch` ja `finally` kuuluvat samaan rajaan kuin onnistuminen.
+3. Lomakkeen muokkaussession kohde ja näkyvät arvot alustuvat yhdessä.
+   Todellinen kohteen vaihto erotetaan saman luonnoksen tallennusvastauksesta.
+   Tavoite ei riipu siitä, ehtiikö React näyttää välissä loading-haaran.
+4. Älä sido mount-avainta jokaiseen DTO:hon tai ensimmäisen createn
+   draftId:n ilmestymiseen: saman uuden luonnoksen create -> edit -siirtymä
+   ei saa uutena regressiona hävittää käyttäjän uudempaa syötettä.
+5. Pyyntöjen peruuttaminen voi täydentää ratkaisua, mutta abort ei todista
+   backendin kirjoituksen peruuntumista. A1 ei tee automaattista
+   tietokantakorjausta tai väitä ratkaisevansa kaikkia myöhäisiä kirjoituksia.
+
+Hyväksyntä käyttää hallittuja vastauksia, ei sattumanvaraista hitautta:
+
+| Tapaus | Vaadittu tulos |
+| --- | --- |
+| A:n GET pidätetään, B avataan ja vasta B:n jälkeen vapautetaan A | B:n otsikko, arvot ja tallennuksen kohde pysyvät B:ssä; backendin jälkiluku vahvistaa, ettei A muuttunut. |
+| Vanha A epäonnistuu B:n ollessa avoinna tai vasta latautumassa | A:n virhe/finally ei korvaa B:n virhettä tai lopeta B:n loading-tilaa. |
+| Clear, paluu listaan, uusi luonnos, toiseen näkymään siirtyminen tai unmount kesken GETin | Myöhäinen vastaus ei palauta poistuttua editoria tai vaihda uuden luonnoksen kohdetta. |
+| Sama ID avataan kahdesti eri sukupolvessa | Vain uudempi avaus julkaisee tilan. |
+| Normaali luonti, tallennus, uudelleenavaus ja muokkaus | Ei ylimääräistä lomakkeen resetointia, kohteen vaihtoa tai duplikaattiluonnosta korjauksen sivuvaikutuksena. |
+
+Unit-/hook-sopimuksen lisäksi todellinen UI-polku käyttää synteettistä
+backendia ja pysyvän tilan jälkilukua. Selaimen testiadapteri saa hallita
+GET-vastauksen valmistumisjärjestystä, mutta ei keksiä kirjoituksen
+lopputulosta. Fixture käyttää [T-paketin](e2e-test-environment.md#t-paketin-valmistelu)
+hyväksyttyä cleanupia. Nykyiset asiakaskortilta avaamisen sekä laskutus-
+lifecycle-polut uusitaan. Testimatriisiin lisätään erilliset tilat ennen
+kuin niitä merkitään toteutetuiksi tai läpäistyiksi.
+
+Nykyisen kohteen lukuvirhe käyttää nykyistä turvallista suomenkielistä
+palautetta. Vanhentuneen lukutuloksen hylkääminen ei ole business-tapahtuma:
+siitä ei lisätä Activity-riviä tai uutta tuotantologivirtaa. Todellisten
+backend-virheiden nykyinen turvallinen diagnostiikkaketju tarkistetaan.
+Raakavastauksia tai laskun arvoja ei lisätä lokiin/tukipakettiin.
+Koodimuutoksen peruminen ei korjaa mahdollisia aiempia väärään kohteeseen
+tallennuksia; niitä ei arvata tai yhdistetä automaattisesti.
+
+### A2 ja A3: Erilliset jatkopalat
+
+R05/A2 erottaa ensimmäisen onnistuneen createn tunnisteen vastaanoton ja
+vanhentuneen form-payloadin hylkäämisen. Editointi createn ollessa kesken
+ei saa kadottaa syntynyttä tunnistetta eikä aiheuttaa toista POSTia.
+Ennen toteutusta ratkaistaan autosaven/manual-saven keskinäinen omistajuus,
+navigoinnin aikainen tulos sekä epäselvän verkkovirheen käsittely ilman
+uutta sokkona tehtyä createa. Uudempi paikallinen syöte säilyy.
+
+Tunnisteen vastaanottaminen ei saa merkitä koko nykyistä lomaketta
+tallennetuksi: vastauksesta hyväksytään vain sen todellisuudessa tallentama
+revisio. Create -> edit -siirtymässä uudempi paikallinen revisio pysyy
+tallentamattomana, kunnes sen oma tallennus vahvistetaan.
+Deterministinen hyväksyntäketju: ensimmäinen POST pidätetään, käyttäjä
+muokkaa lomaketta, create-vastaus vapautetaan, sama ID säilyy mutta uusi
+syöte ei saa `saved`-tilaa, ja PUT tallentaa uuden revision samalle ID:lle.
+Backendin jälkiluku vahvistaa uudemman sisällön; POSTeja on vain yksi eikä
+hyväksyntä ole käytettävissä ennen uudemman revision tallentumista.
+Tämä on A2:n vaatimus, ei A1:n rajauksen laajennus.
+
+R06/A3 sitoo readinessin kohteeseen, muokkaussessioon ja form-revisioon.
+Muutos, navigointi tai muuttunut tallennustila mitätöi vanhan tuloksen ja
+hyväksyntävahvistuksen. Tallentumaton lomake ei saa hyväksyntää myöhäisellä
+vastauksella. Backendin transaktio tarkistaa edelleen varsinaisen
+hyväksynnän; UI-readiness ei ole valtuutus.
+
+Näiden testit kattavat hallitut vastausjärjestykset ja backendin lopputilan.
+A1 ei sulje R05/R06:ta. Jos niiden vaatimaa kytkentää ei voi erottaa A1:stä
+turvallisesti, rajaus palautetaan suunnitteluun ennen laajempaa toteutusta.
+
 ## Classic-periaate
 
 Ensimmäinen laskutusnäkymä on Classic-työpinta.

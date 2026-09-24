@@ -1301,7 +1301,8 @@ erillisenä commitina vihreästä lähdepuusta.
 ## W7: Workspace deletion
 
 **Tila:** omistajan 2026-09-22 päätöksellä `0.3.0`-julkaisuun kuuluva
-vaadittu ominaisuus; yksityiskohtainen suunnittelu ja toteutus ovat tekemättä.
+vaadittu ominaisuus. M1 on aloittanut alla olevan päätösvalmistelun;
+yksityiskohtainen turvallisuussopimus ja toteutus eivät ole hyväksyttyjä.
 Aiempi alustava tavoite `0.2.9` on korvattu
 [0.3.0-julkaisusuunnitelmalla](release-0.3.0-plan.md), tehtävä `R030-02`.
 
@@ -1315,6 +1316,106 @@ backup-formaattimuutosta eikä poiston turvallisuussopimusta ilman omaa
 suunnittelu- ja hyväksyntäporttia. Poistoa ei siirretä pois `0.3.0`:sta ilman
 omistajan uutta päätöstä, eikä keskeneräistä turvallisuusrajaa ohiteta
 julkaisun valmistumiseksi.
+
+### W7-valmistelu ja paatosportti
+
+**2026-09-24: read-only-valmistelu, ei toteutuslupaa.**
+[M1-suunnitelma](release-0.3.0-m1-preparation-plan.md) omistaa etenemisjärjestyksen.
+Tämä osio omistaa W7:n päätöslistan; ehdotukset eivät muuta ADR:iä.
+
+Nykyinen pohja sisältää registry-/path-validoinnin, maintenance-leasen,
+quiescence-/shutdown-portit ja rajatut workspace-capabilityt. Poisto ei ole
+valmis kyvykkyys, jonka voisi vain näyttää UI:ssa: rekisterin tilat ovat
+`ready` ja `recoveryRequired`, lease ei tunne poistoa eikä management-
+compositionissa ole poistokoordinaattoria. Tyhjä rekisteri on esitettävissä,
+mutta `resolveWorkspaceSwitchStartup` torjuu puuttuvan aktiivisen työtilan
+ja management-composition tarvitsee aktiivisen workspacen.
+
+Create/import-recovery-luokkien olemassaolo ei todista tuotantokytkentää.
+W3:n import-plaintext-quarantine ei ole palautettava yrityspoisto. Uutta
+W7-journalia tai tilaa ei lisätä hiljaisesti registry v1 -formaattiin.
+
+#### Omistajan päätettävät sopimukset
+
+| Päätös | Voimassa oleva raja | Ehdotus ja avoin hyväksyntä |
+| --- | --- | --- |
+| W7-D1: poiston kohdetilat | Enintään yksi business-SQLite-owner; epävarma recovery pysyy suljettuna. | Aloita passiivisesta `ready`-työtilasta. Rajaa `recoveryRequired`-kohteen hävitys erilliseen myöhempään päätökseen. Tämä välipala ei yksin täytä julkaisun yrityspoistoa. |
+| W7-D2: aktiivinen ja viimeinen yritys | Vanhan sessionin, tietokannan, prosessien ja adapterien omistajuus päättyy ennen seuraavaa runtimea. | Aktiivisen poisto vaatii käyttäjän valitseman jäljelle jäävän `ready`-yrityksen tai hyväksytyn backendittoman hallintatilan. Erota nolla työtilaa ja tila, jossa jäljellä on vain recovery-kohteita. Ei automaattista oletusyritystä, hiljaista legacy-adoptiota tai toisen yrityksen arvaamista. Määritä successor-startupin virhe ja peruutus. |
+| W7-D3: vahvistuksen kohde | Näkyvän nimen kirjoitus ja Electron mainin native-vahvistus; samannimiset yritykset sallitaan. | Molemmat vahvistukset sidotaan samaan uudelleenvalidoituun workspaceId:hen ja nykyiseen labeliin. Ratkaise samannimisten erottelu, rename-/selection-race ja viimeinen peruutuskohta. Renderer ei lähetä poistettavaa polkua. |
+| W7-D4: backup tai riskihyväksyntä | Tuore validoitu backup tai nimenomainen riskihyväksyntä; ei uusia piilokopioita. | Määritä tuoreus snapshot-/kirjoitusrajana, tarkistuslaajuus ja kohteen lineage. Käyttäjän luoma/valitsema salattu kopio todennetaan K:n portilla; pelkkä viimeisin onnistunut aikaleima ei todista tiedoston olemassaoloa. Erillinen ilman backupia jatkaminen ei ohita identiteetti-, containment- tai recovery-rajaa. |
+| W7-D5: quarantine ja lopullinen poisto | Quarantine edeltää lopullista poistoa. | Suositus on mainin omistama saman taltion rajattu siirto, ei uusi snapshot-kopio. Päätä säilytysaika, levybudjetti, näkyvä palautus/lopullinen poisto, irreversible-raja ja journalin recovery. Ratkaise, varataanko karanteenissa oleva lineage estämään tuonti-/palautustörmäys. |
+| W7-D6: business-data ja audit | Työtila omistaa SQLiten, business-auditin ja auktoritatiiviset PDF:t. Auditilla on oma säilytyssopimus. | Kokonaisen yrityksen hävityksen suhde säilytyssääntöön ja käyttäjän säilyttämän viennin vastuu hyväksytään erikseen; roadmap ei ole retention-poikkeus. Inventoi myös sidecarit, staging-jäämät ja erikseen säilytetty legacy-adoption lähde. Älä lupaa kaikkien kopioiden häviämistä yhden juuren poistolla. |
+| W7-D7: salaisuudet | Workspace-kohtainen salattu store; poisto kattaa current/next/backup-slotit ja lifecycle-auditin. | Päätä salattujen slottien suljettu säilytys palautettavan quarantinen ajan tai välitön poisto, jolloin palautus vaatii uudelleensyötön. Ratkaise keskeneräiset secret-operaatiot ennen siirtoa. Paikallinen poisto ei peruuta palveluntarjoajan tunnusta. |
+| W7-D8: palautuspisteet | ADR-0009 suojaa uusimman hyvän sekä avoimen pre-update/pre-restore-pisteen. | Keskeneräinen restore/update estää poiston. Kokonaisen yrityksen lopullinen hävitys tarvitsee nimenomaisen poikkeus-/säilytyspäätöksen sen pisteille, indeksille ja avainkuorille. Muiden yritysten pisteet eivät kuulu toimeen. |
+| W7-D9: ulkoiset ja installation-kopiot | Ulkoiset PDF:t eivät ole auktoritatiivinen store; tekniset lokit ja update ovat installation-scopea. | Säilytä käyttäjän vientibackupit, ulkoiset PDF:t ja tukipaketit; kerro rajaus. Pysäytä arkistointityö ennen sen workspace-konfiguraation/journalin poistoa. Älä poista ulkoista arkistojuurta tai installation-tilaa rekursiivisesti. |
+| W7-D10: virhe- ja tukipolku | Journal on auktoritatiivinen, tekninen loki best effort. Renderer ei saa polkuja, salaisuuksia tai journalia. | Päätä suljetut tilat/syykoodit, observer-ketju, Diagnostics/support-projektio ja Activity/audit mukaanotto tai perusteltu poissulku. Backendittoman tilan tuki on ratkaistava erikseen: nykyinen tukipaketti tarvitsee backend-sessionin. |
+
+W7-D6/D8 voivat edellyttää ADR-/retention-täsmennystä. Päätöksessä kirjataan
+nykyinen sääntö, tarvittava poikkeus, tietojen kohtalo ja recovery-testi.
+Tätä ristiriitaa ei ratkaista yleisellä poistohyväksynnällä. Tarkat
+salaisuusrajat ovat [email-suunnitelmassa](email-delivery-and-secrets-plan.md),
+säilytys [retention-suunnitelmassa](operational-log-retention-plan.md) ja
+ulkoinen arkisto [PDF-arkistosuunnitelmassa](local-invoice-pdf-archive-plan.md).
+
+#### Toteutusriippuvuudet ja vaiheistus
+
+- C todistaa katkeamattoman kirjoitussuojan, todellisen exitin, graceful-
+  pysäytyksen ja startup-recoveryn oikean tuotantokytkennän. Pelkkä portti ei riitä.
+- K antaa hyväksytyn versionmukaisen ja eristetyn backup-tarkistuksen.
+  Containerin autentikointi ei yksin täytä W7-D4:ää.
+- G antaa todellisen observer-kytkennän ja suljetun tapahtumakatalogin.
+  H erottaa lokin tyhjyyden, osittaisuuden ja häiriön sekä turvallisen fallbackin.
+- D:n secret-operaation epävarmuussopimus ratkaistaan, jos pending-operaatio
+  voi vielä muuttaa poistettavaa storea. Poisto ei saa ohittaa sitä.
+
+Suositeltu vaiheistus on politiikan hyväksyntä, passiivinen `ready`-kohde,
+aktiivinen/viimeinen yritys ja backendittoman tilan recovery sekä lopullinen
+quarantine/purge-hyväksyntä. Kukin vaihe toteutetaan täydellä sille soveltuvalla
+turvarajalla; karanteenia tai vahvistuksia ei lykätä välivaiheen sivutyöksi.
+Osittain valmis poisto ei täytä 0.3.0:n koko W7-vaatimusta. Laajempi
+ensiasennuksen R030-06-muutos tarvitsee edelleen oman rajauspäätöksensä.
+
+#### Recovery ja hyväksyntänäyttö
+
+Tilakoneen ehdotus hyväksyttäväksi: ennen quarantine-siirtoa alkuperäinen
+säilyy; siirron ja rekisterijulkaisun välissä recovery hyväksyy vain
+journalin todistamat tilat; ennen irreversible-purgea palautus vaatii
+identiteetin ja lineage-konfliktin tarkistuksen. Osittain tuhottua yritystä
+ei herätetä toimivaksi. Puuttuva/rikkinäinen journal, linkki tai ristiriitaiset
+juuret johtavat turvalliseen recovery-tilaan, eivät arvaavaan poistoon.
+Tarkat journalin commit-/rollback-rajat ovat vielä hyväksymättä.
+
+Nykyinen `WORKSPACE-DELETE-001` on lykätty paikkamerkki, ei testitodiste.
+Hyväksytyn poistosopimuksen jälkeen se täsmennetään
+[testimatriisiin](r0-e2e-test-matrix.md) seuraavilla tapauksilla:
+
+- aktiivinen, passiivinen, viimeinen ja viimeinen `ready`; samannimiset,
+  vanha vahvistus, peruutus sekä kilpaileva maintenance
+- puuttuva, vioittunut, väärän lineagen tai hyväksytyn tuoreusrajan rikkova
+  backup sekä puuttuva/peruttu erillinen riskihyväksyntä: ilman kumpaakaan
+  kelvollista perustetta ei siirtoa tai poistoa; riskihyväksyntä ei ohita
+  identiteetti-, containment-, maintenance- tai recovery-rajaa
+- keskeneräiset kirjoitukset, arkistointi ja salaisuusoperaatiot; vanha
+  session torjutaan eikä kahta business-runtimea synny
+- keskeytys jokaisella durable-rajalla, toistettu restart, levy täynnä,
+  käyttöoikeus-/kahvalukko, journalin korruptio, linkki ja containment
+- quarantine/import-lineage-törmäys, palautus ja osittainen lopullinen poisto
+- W7-D6-D9:n hyväksyttyihin päätöksiin sidottu ennen/jälkeen-inventaario
+  quarantinen, palautuksen ja lopullisen poiston jälkeen: secretien
+  current/next/backup-slotit, recovery-pisteet/indeksi/avainkuoret sekä
+  staging- ja legacy-jäämät; ulkoisten kopioiden ja installation-tilan
+  säilyminen tarkistetaan, ei oleteta. Inventaarion testi ei päätä retentionia.
+- sama hardened Windows -artifact: oikea capability, muut yritykset ja
+  niiden DB/PDF/salaisuudet muuttumattomina, todettu prosessisiivous,
+  diagnostiikka ja backendittoman tilan palautuminen
+- packaged backup -> inspect -> restore -> restart -> compare, mukaan
+  lukien kannan vertailu ennen ensimmäistä avausta, salaisuuksien poissulku
+  ja soveltuvat lifecycle-/soak-portit.
+
+Testit käyttävät vain synteettisiä profiileja. Käyttöohje kertoo, mikä
+poistuu, mikä jää käyttäjän ulkoisiin kopioihin, mistä palautus onnistuu ja
+missä kohdassa poisto muuttuu lopulliseksi. Suunnitelman katselmointi ei
+ole näiden testien suoritus tai turvallisuussopimuksen hyväksyntä.
 
 ### Jatkosuunnittelu: ensikäyttö ilman oletusyritystä
 
