@@ -2,8 +2,10 @@ import type {
   DesktopBackendHandle,
   StartDesktopBackendOptions,
 } from '../src/runtime/backendProcess.js';
+import type { FirstStartProofPhase } from './workspaceFirstStartProofObservation.js';
 
 export interface WorkspaceFirstStartMigrationProofInput {
+  readonly observe?: (phase: FirstStartProofPhase) => void;
   readonly applicationPath: string;
   readonly appVersion: string;
   readonly resourcesPath: string;

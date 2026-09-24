@@ -2,6 +2,19 @@
 
 ## Päätös ja nykyinen tila
 
+**M0-checkpoint 2026-09-24: merge tehty, mainin hyväksyntä avoin.**
+PR #274 yhdistettiin normaalisti mainiin revisiona
+`4c18821e1d22e48608b082fc1fa6c54b8ac04a32`, kun täsmällisen PR-pään
+`7d6d0f682c3ba374bd70eca387a9ad7f609a54ee` molemmat required checkit
+läpäisivät. Mainin oma kokonaisajo hylättiin Electronin ensimmäisen
+käynnistyksen testin flaken vuoksi. M0:aa ei merkitä valmiiksi eikä M1:n
+tuotantototeutusta aloiteta. Tarkat hyväksyntäviitteet ja uusi päätösraja
+ovat [harnessin jälkitodennuscheckpointissa](windows-installer-acceptance-harness-v2.md#m0-mainin-jälkitodennus).
+Seuraava rajattu [M0.3-diagnostiikkaehdotus](windows-installer-acceptance-harness-v2.md#m03-ehdotus-electron-testin-vaihekohtainen-näyttö)
+on omistajan hyväksymä, toteutettu ja kohdetodennettu; uuden revision
+normaali PR-todennus on seuraava vaihe.
+Timeoutin juurisyytä ei ole vielä todistettu.
+
 Projektin omistaja päätti 2026-09-22, että aiemmin työnimellä `0.2.9`
 koottu kokonaisuus valmistellaan seuraavaksi versioksi `0.3.0`.
 Yrityksen poistaminen ja odotustilojen latausilmaisin kuuluvat julkaisuun.
@@ -181,7 +194,11 @@ Puhdas työpuu tarkoittaa jäljitettävää integraatiopohjaa, ei tunnettujen
 virheiden poistumista eikä uuden tuotantojulkaisun hyväksyntää. Alla olevat
 korjaustehtävät säilyvät avoimina myös vihreän lähtötilan jälkeen.
 
-#### M0-seuranta 2026-09-24
+#### M0-seuranta 2026-09-24: integraatiota edeltävä historia
+
+Tämä alaluku säilyttää valmistelun päätökset ja testitulokset. Nykyinen
+PR/main-tila on [jälkitodennuscheckpointissa](windows-installer-acceptance-harness-v2.md#m0-mainin-jälkitodennus):
+PR #274 on yhdistetty, mutta mainin hyväksyntä on vielä avoin.
 
 Tila: **aloitettu / integraation hyväksyntä avoin**. Paikallinen ja PR:n
 head on `9699f4e0efd0a82984d155b4d46b0b401ebb17e3`;

@@ -19,6 +19,7 @@ import { readElectronE2eConfig } from './electronE2eConfig.js';
 import { createElectronE2eNativeAdapters } from './electronE2eNativeAdapters.js';
 import { readSafeElectronE2eWorkspaceStartupFailureCode } from './electronE2eWorkspaceStartupFailure.js';
 import { createElectronE2eStartupObservation } from './electronE2eStartupObservation.js';
+import { createFirstStartProofAdmission, createFirstStartProofObserver } from './workspaceFirstStartProofObservation.js';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -52,6 +53,7 @@ const backendRunnerPath = resolve(
   'electronE2eBackendRunner.js',
 );
 const startupObservation = createElectronE2eStartupObservation();
+const admitFirstStartProof = createFirstStartProofAdmission();
 const backendController = createElectronE2eBackendController(
   config,
   backendRunnerPath,
@@ -244,24 +246,39 @@ Object.assign(globalThis, {
       });
     },
     async runWorkspaceFirstStartMigrationProof() {
-      if (lifecycle === undefined) {
-        throw new Error('WORKSPACE_FIRST_START_MIGRATION_LIFECYCLE_MISSING');
+      admitFirstStartProof();
+      const observation = createFirstStartProofObserver(config.paths.userDataPath, config.runtimeInstanceId);
+      try {
+        observation.record('initialShutdownStarted');
+        if (lifecycle === undefined) {
+          throw new Error('WORKSPACE_FIRST_START_MIGRATION_LIFECYCLE_MISSING');
+        }
+        await lifecycle.shutdown();
+        if (backendController.isRunning()) {
+          throw new Error('WORKSPACE_FIRST_START_MIGRATION_BACKEND_RUNNING');
+        }
+        observation.record('initialShutdownCompleted');
+        const { runWorkspaceFirstStartMigrationProof } = await import(
+          './workspaceFirstStartMigrationProof.js'
+        );
+        observation.record('proofStarted');
+        const result = await runWorkspaceFirstStartMigrationProof({
+          observe: observation.record,
+          applicationPath: config.paths.applicationPath,
+          appVersion: e2eAppVersion,
+          resourcesPath: config.paths.resourcesPath,
+          runtimeSessionSecret: config.backend.sessionSecret,
+          startBackend: startDesktopBackend,
+          userDataRoot: config.paths.userDataPath,
+        });
+        observation.record('proofCompleted');
+        return result;
+      } catch (error) {
+        observation.record('proofFailed');
+        throw error;
+      } finally {
+        observation.close();
       }
-      await lifecycle.shutdown();
-      if (backendController.isRunning()) {
-        throw new Error('WORKSPACE_FIRST_START_MIGRATION_BACKEND_RUNNING');
-      }
-      const { runWorkspaceFirstStartMigrationProof } = await import(
-        './workspaceFirstStartMigrationProof.js'
-      );
-      return runWorkspaceFirstStartMigrationProof({
-        applicationPath: config.paths.applicationPath,
-        appVersion: e2eAppVersion,
-        resourcesPath: config.paths.resourcesPath,
-        runtimeSessionSecret: config.backend.sessionSecret,
-        startBackend: startDesktopBackend,
-        userDataRoot: config.paths.userDataPath,
-      });
     },
     async runWorkspaceActivationMigrationProof() {
       if (lifecycle === undefined) {

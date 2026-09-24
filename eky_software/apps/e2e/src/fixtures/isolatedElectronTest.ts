@@ -56,6 +56,8 @@ import {
   type ElectronStartupCapture,
 } from './launchElectronRuntime.js';
 import { ELECTRON_E2E_PROCESS_CONNECT_TIMEOUT_MILLISECONDS } from './electronLaunchBudgets.js';
+import { captureFirstStartProof } from './captureFirstStartProof.js';
+import type { FirstStartProofCapture } from '../../../desktop/e2e/workspaceFirstStartProofObservation.js';
 
 export interface IsolatedElectronHarness {
   api: APIRequestContext;
@@ -200,6 +202,7 @@ export const test = base.extend<
     let observationsTruncated = false;
     let finishStartupCapture: () => ElectronStartupCapture =
       () => ({ status: 'notRequested' });
+    let firstStartProof: FirstStartProofCapture = { status: 'notRequested' };
 
     async function launchCurrentRuntime() {
       assertElectronRuntimeLaunchPrerequisites(runtime, runRoot);
@@ -377,18 +380,24 @@ export const test = base.extend<
         },
         closeRuntime: closeCurrentRuntime,
         releasePort: releaseCurrentPort,
+        captureEvidence() {
+          if (scenarioId === 'DESK-WORKSPACE-FIRST-START-001') {
+            firstStartProof = captureFirstStartProof(runtime.userDataPath, runtime.runtimeInstanceId);
+          }
+        },
         removeRoot: () => removeE2eRunRoot(runRoot),
         async report(cleanup) {
           if (
             failure !== undefined ||
             testInfo.errors.length > 0 ||
-            cleanup.runRoot !== 'removed'
+            cleanup.runRoot !== 'removed' || firstStartProof.status !== 'notRequested'
           ) {
             await reportElectronLifecycleEvidence(testInfo, {
               launch: launchObservations,
               observationsTruncated,
               cleanup,
               startupCapture: finishStartupCapture(),
+              ...(firstStartProof.status === 'notRequested' ? {} : { firstStartProof }),
             });
           }
         },
@@ -456,6 +465,7 @@ export async function reportElectronLifecycleEvidence(
     observationsTruncated: boolean;
     cleanup: Readonly<ElectronCleanupResult>;
     startupCapture?: ElectronStartupCapture;
+    firstStartProof?: FirstStartProofCapture;
     preparation?: ElectronPreparationFailureEvidence;
   },
 ): Promise<void> {
@@ -469,6 +479,7 @@ export async function reportElectronLifecycleEvidence(
       observationsTruncated: evidence.observationsTruncated,
       cleanup: evidence.cleanup,
       startupCapture: evidence.startupCapture ?? { status: 'notRequested' },
+      ...(evidence.firstStartProof === undefined ? {} : { firstStartProof: evidence.firstStartProof }),
       ...(evidence.preparation === undefined ? {} : { preparation: evidence.preparation }),
     }),
     { encoding: 'utf8', flag: 'wx', mode: 0o600 },
@@ -485,6 +496,7 @@ export async function finishIsolatedElectronTest(input: {
   disposeApi(): Promise<void>;
   closeRuntime(): Promise<void>;
   releasePort(): Promise<void>;
+  captureEvidence?(): void;
   removeRoot(): Promise<void>;
   report(result: Readonly<ElectronCleanupResult>): Promise<void>;
 }): Promise<void> {
@@ -509,6 +521,8 @@ export async function finishIsolatedElectronTest(input: {
   } catch {
     result.port = 'unverified';
   }
+  let reportFailed = false;
+  try { input.captureEvidence?.(); } catch { reportFailed = true; }
   if (
     result.api === 'completed' &&
     result.runtime === 'completed' &&
@@ -521,7 +535,6 @@ export async function finishIsolatedElectronTest(input: {
       result.runRoot = 'removalFailed';
     }
   }
-  let reportFailed = false;
   try {
     await input.report(Object.freeze(result));
   } catch {

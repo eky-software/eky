@@ -31,7 +31,8 @@ paketoitu Windows-hyvaksynta todentaa erikseen oikean runtime-ketjun.
 
 ## Julkaisuportti
 
-Tila: paikallinen allekirjoittamaton pilottipaketti valmis. Omistaja paatti
+Historiallinen pilottitoimituksen tila: paikallinen allekirjoittamaton
+pilottipaketti valmis. Omistaja paatti
 toimittaa taman rajatun korjauksen omaan kokeiluun ja siirtaa GitHubin
 laajemman testiharnessin selvityksen myohemmaksi. Tama on vain taman
 pilottitoimituksen poikkeus, ei yleinen julkaisuporttien muutos tai tayden
@@ -65,6 +66,20 @@ korvata saman version uudelleenrakennuksella.
 Varmuuskopioiden saatavuus ja kohdelaitteen turvallisuusehdot ovat erillisia
 kayttoonoton ehtoja. Asennus tai uudelleenasennus ei poista business-dataa;
 automaattista profiilin nollausta ei tehda.
+
+### Integraation jatko 2026-09-24
+
+[PR #274](https://github.com/eky-software/eky/pull/274) yhdistettiin
+normaalilla menettelylla mainiin revisiona
+`4c18821e1d22e48608b082fc1fa6c54b8ac04a32`. PR:n required checkit
+lapaisivat; mainin oma V2-hyvaksynta jai avoimeksi erillisen Electron-
+E2E-aikakatkaisun vuoksi. Tarkat ajoviitteet ja jatkon paatosraja ovat
+[harnessin checkpointissa](windows-installer-acceptance-harness-v2.md#m0-mainin-jälkitodennus).
+
+Integraation CI-artifactit eivat ole ylla toimitetun paikallisen
+pilottipaketin exact-byte-todennus. Sen aiemmat avoimet toimitusportit
+eivat muutu lapaisseiksi taman mergen perusteella. Sovellusversiota ei
+nostettu eika jaettua `0.2.81`-pakettia rakennettu uudelleen.
 
 ## Viitteet
 

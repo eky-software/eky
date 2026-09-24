@@ -113,9 +113,12 @@ ratkaisupäätös ja hyväksyntätila ovat seuraavassa kohdassa.
 
 ### Varsinaisen korjauksen päätösraja: M0.2
 
-Tila 2026-09-24: **toteutettu / katselmoitu / kokonaisportit kesken**.
+Tila 2026-09-24: **toteutettu / katselmoitu / PR hyväksytty / main-portti avoin**.
 Omistaja hyväksyi alla olevan rajauksen nimenomaisesti ennen toteutusta.
-Lopullinen testi- ja integraatiohyväksyntä ovat vielä avoinna. Vastuu kuuluu Windows installer -testiharnessille, ei business-
+PR on yhdistetty normaalisti mainiin; mainin oma hyväksyntä on vielä avoin
+erillisen Electron-E2E-havainnon vuoksi, katso
+[jälkitodennus](#m0-mainin-jälkitodennus). Alla oleva taukocheckpoint kuvaa
+integraatiota edeltänyttä vaihetta. Vastuu kuuluu Windows installer -testiharnessille, ei business-
 moduuleille tai käyttäjän asentamalle sovellukselle.
 
 #### Taukocheckpoint
@@ -337,6 +340,137 @@ PID-arvoja, noncea, komentorivejä tai konekohtaista raporttia. Ei uutta
 artifact-uploadia. Käyttäjän UI, Diagnostics, Activity, tukipaketti,
 business-data, yritysrajat ja backup/restore eivät muutu. Niihin ei lisätä
 testiharnessin tapahtumia. Tämän suunnitelman kirjaaminen ei ole testiläpäisy.
+
+### M0: Mainin jälkitodennus
+
+Checkpoint 2026-09-24:
+
+- [PR #274](https://github.com/eky-software/eky/pull/274), head
+  `7d6d0f682c3ba374bd70eca387a9ad7f609a54ee`: normaali
+  [V2-ajo](https://github.com/eky-software/eky/actions/runs/36005082211)
+  ja [riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/36005081901)
+  läpäisivät ensimmäisellä yrityksellä. Koko muuttumaton legacy-core läpäisi
+  446/446 molemmissa vaadituissa ajoissa. Paikallinen 444/446-ajo säilyy
+  erillisenä epäonnistumisena, ei jälkikäteen hyväksyttynä tuloksena.
+- Normaali SHA-sidottu merge tuotti main-commitin
+  `4c18821e1d22e48608b082fc1fa6c54b8ac04a32`. Ei suojausten ohitusta,
+  versionnostoa tai uutta jaettavaa pakettia.
+- Mainin oma [riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/36008240128)
+  läpäisi. Sen [V2-ajo](https://github.com/eky-software/eky/actions/runs/36008241013)
+  päättyi hylättynä: 36 jobia läpäisi, Electron critical ja siitä riippuva
+  `V2 acceptance` epäonnistuivat. Yksi valinnainen artifact-diagnostiikka
+  ei kuulunut hyväksyntämatriisiin. Asennus-, supervisor-, legacy-,
+  upgrade/rollback- ja workspace-perheet läpäisivät molemmat toistonsa.
+- Electronissa `DESK-WORKSPACE-FIRST-START-001` ylitti testin nykyisen
+  150 000 ms aikarajan sisäisen first-start-migraatiotodistuksen aikana.
+  Yhteys, ensimmäinen ikkuna ja DOM-valmius oli saavutettu. Loput 37 testiä
+  läpäisivät. Nykyinen automaattinen diagnostiikkaretry läpäisi myös kyseisen
+  testin, mutta `failOnFlakyTests` hylkäsi jobin tarkoituksenmukaisesti.
+  Uutta CI-ajoa ei käynnistetty epäonnistumisen korvaamiseksi.
+- Säilynyt rajattu lifecycle-liite todistaa launch-vaiheet ja onnistuneen
+  cleanupin, ei todistusrutiinin sisäistä jumikohtaa. Timeout tai yleinen
+  suljetun Playwright-kohteen virhe ei yksin osoita juurisyytä.
+
+**Uusi päätösraja:** tämä Electron-havainto ei kuulu hyväksytyn M0.2-
+supervisor-korjauksen toteutusrajaan. Ensin tehdään rajattu lähde- ja
+todistekatselmus. Mahdollinen korjaus tai lisäinstrumentointi suunnitellaan
+ja hyväksytään erikseen ennen toteutusta; aikarajoja, retry- tai CI-ehtoja
+ei muuteta tämän checkpointin perusteella. M0 ja mainin hyväksyntä jäävät
+avoimiksi, vaikka PR-merge ja M0.2:n omat prosessisopimukset läpäisivät.
+
+#### M0.3-ehdotus: Electron-testin vaihekohtainen näyttö
+
+Tila: **omistajan hyväksymä / toteutettu / katselmoitu / kohdetodennus läpäisty**.
+Omistaja hyväksyi 2026-09-24 M0.3:n toteutuksen, kohdetestit ja yhden
+rajatun Windows-ajon. Mahdollista timeout-korjausta ei samalla hyväksytty.
+Tämä on testiharnessin selvityspala, ei sovelluksen migraatio- tai
+prosessielinkaaren korjauspäätös.
+
+Lähdekatselmuksen varmistamat rajat:
+
+- PR-pään ja merge-commitin lähdepuut ovat samat. First-start-testi ja sen
+  aikaraja eivät muuttuneet M0.2:ssa, eikä katselmoitu kutsuketju käytä
+  muutettua Windows-supervisoria.
+- `workspaceFirstStartMigrationProof.ts` sisältää tarkoitukselliset mixed-
+  ja all-current-skenaariot sekä kummankin hyväksytyn uudelleenkäynnistyksen.
+  Neljää composition-käynnistystä ei poisteta oletettuna päällekkäisyytenä.
+- Candidate-operaation ja backendin migration-gaten sisäiset rajat ovat
+  300 sekuntia, koko testin nykyinen raja 150 sekuntia. Ulompi aikakatkaisu
+  voi katkaista näytön ennen sisäisen virheen palautumista. Tämä ei yksin
+  osoita, missä epäonnistunut yritys viipyi.
+- Proofin nykyinen `progress.jsonl` poistuu sen `finally`-siivouksessa.
+  Myös fixture poistaa ajon juuren ennen lifecycle-liitteen raportointia.
+  Säilynyt liite ei sisällä alkuperäisen lifecyclen sulkemista tai proofin
+  sisäisiä vaiheita. Tämä diagnostiikkapuute on todettu; timeoutin juurisyy
+  on edelleen avoin.
+- Health- ja hylätyn session HTTP-tarkistuksissa ei ole eksplisiittistä
+  sovellustason deadlinea/cancellation-signaalia. Niiden vaikutus on
+  erillinen tutkittava riski, ei tämän epäonnistumisen todistettu syy.
+
+Ehdotettu rajattu toteutus:
+
+1. Lisää vain E2E-rajalle rajattu vaihe-/tila-/kulunutta aikaa kuvaava näyttö
+   alkuperäisen lifecyclen sulkemisesta sekä olemassa olevista first-start-
+   proofin vaiheista. Käytä suljettua sanastoa, enimmäismäärää ja validoituja
+   aikakenttiä; ei polkuja, tunnisteita, komentorivejä, raakavirheitä,
+   business-dataa tai salaisuuksia.
+2. Säilytä snapshot testin omistajan keräysketjussa ennen tuhoavaa siivousta.
+   Ratkaisun pitää toimia myös ulomman timeoutin jälkeen ilman riippuvuutta
+   onnistuneesta `electronApp.evaluate`-paluuarvosta. Prosessien ja portin
+   nykyinen cleanup suoritetaan aina; diagnostiikkavirhe ei korvaa
+   ensimmäistä testivirhettä eikä tee epävarmasta cleanupista onnistunutta.
+3. Liitä validoitu näyttö nykyiseen rajattuun lifecycle-artifactiin ja
+   todista koko kirjoitus -> keräys -> siivous -> raportti -ketju. Ei uutta
+   raakaprofiilin uploadia tai tuotannon diagnostiikkakanavaa.
+
+Tiedostorajaus: `apps/desktop/e2e/electronE2eEntrypoint.ts`,
+`workspaceFirstStartMigrationProof.ts` ja niiden tarvittavat testikohtaiset
+tyypit/apurit; `apps/e2e/src/fixtures/isolatedElectronTest.ts`, nykyinen
+lifecycle-todisteen apuketju sekä omistavat system-/Electron-testit.
+`apps/desktop/src`-tuotantopolkua ei muuteta tällä luvalla.
+
+Hyväksyntänäyttö: puuttuvan, virheellisen, liian pitkän ja lukukelvottoman
+näytön turvalliset tilat; salaisuuksien torjunta; timeoutin ja siivouksen
+yli säilyminen; alkuperäisen virheen etusija; muuttumattomat yritys-,
+migraatio-, prosessi- ja tietoturva-assertiot. Kohdetestit ja typecheck,
+riippumaton katselmus, sitten yksi rajattu Windows first-start-ajo
+synteettisellä profiililla nykyisin budjetein. Ensimmäisen epäonnistumisen
+näyttö analysoidaan ennen jatkoa; läpäisy yksin ei todista flakea korjatuksi.
+Mahdollinen normaali CI-ajo arvioi uutta diagnostiikkarevisiota eikä korvaa
+epäonnistunutta main-ajoa uusinnalla. Kokonaisportti pysyy avoinna, kunnes
+juurisyy ja korjaus on käsitelty.
+
+Ei timeout-, retry-, `failOnFlakyTests`-, kattavuus-, riippuvuus-, versio-
+tai julkaisuartifact-muutosta. Mahdollinen tuotantokorjaus tai testin
+uudelleenjako vaatii erillisen suunnitelman ja omistajan päätöksen.
+
+M0.3-toteutuksen checkpoint:
+
+- Suljettu, runtime-kohtainen append-journal säilyy erillään proofin oman
+  siivouksen poistamasta alihakemistosta. Nykyinen fixture lukee sen ilman
+  Electron-evaluatea prosessi-/porttisiivouksen jälkeen ja ennen rootin poistoa.
+  Vain sallituista kentistä rekonstruoitu snapshot tulee lifecycle-liitteeseen.
+- Riippumaton katselmus nosti esiin saman runtimen toistuvan kutsun vanhan
+  näytön riskin ja liian vahvan cleanup-vaihenimen. Testicapability on nyt
+  kertakäyttöinen per runtime, ja `proofFinallyReturned` ilmaisee vain
+  kontrollivirran. Kirjoituksen poikkeus ja lyhyt kirjoitus kohdetestattiin.
+  Uusintakatselmukseen ei jäänyt avoimia havaintoja.
+- Rajatut system-testit läpäisivät **29/29**, E2E-typecheck ja desktopin
+  E2E-käännös läpäisivät. Yksi ennalta sovittu Windows
+  `DESK-WORKSPACE-FIRST-START-001` läpäisi ilman retryä. Sen todellisesta
+  liitteestä tarkistettiin alkuperäinen shutdown, molemmat skenaariot,
+  finally ja terminal-merkintä sekä runtimen, portin ja testijuuren cleanup.
+- Tämä todistaa diagnostiikan kytkennän, ei alkuperäisen main-timeoutin
+  syytä tai sen korjausta. Yksityiskohtaiset paikalliset ajoitukset jäävät
+  Gitistä ohitettuun aineistoon. M0:n main-portti pysyy avoinna.
+- Valmistumisportti: vain testikohtainen havaintotiedosto, ei business-dataa,
+  tuotannon UI:ta, Diagnosticsia, Activitya, tukipakettia, backup-sisältöä,
+  sessio-/yritysrajaa tai uutta verkkonäkyvyyttä. Niiden runtime-sopimukset
+  eivät muutu. Testimatriisi ja E2E-ympäristösopimus on päivitetty.
+
+Seuraava normaali PR-ajo arvioi tätä uutta diagnostiikkarevisiota. Sen
+mahdollinen läpäisy ei muuta aiempaa main-ajoa hyväksytyksi eikä nimeä
+alkuperäistä timeoutia korjatuksi. Uutta ominaisuustoteutusta ei aloiteta.
 
 ## Historiallinen lähtötilanne
 

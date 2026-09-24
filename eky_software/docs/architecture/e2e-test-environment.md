@@ -112,6 +112,33 @@ Sama turvallinen sisältö tallentuu yrityskohtaiseen
 yhden päivän artifactina, myös ensimmäisestä epäonnistumisesta ennen retryä.
 Koko `test-results`-kansiota, tracea, profiilia tai raakaa lokia ei julkaista.
 
+M0.3:n `DESK-WORKSPACE-FIRST-START-001` tallentaa lisäksi first-start-proofin
+suljetut vaihehavainnot ja kuluneen ajan runtime-kohtaiseen testitiedostoon.
+Se sijaitsee validoidussa E2E-userData-juuressa, erillään proofin poistettavasta
+alihakemistosta. Tiedoston yksityinen nimi sidotaan olemassa olevaan runtime-
+identiteettiin; tunniste ei tule sisältöön tai julkaistavaan liitteeseen.
+Capability sallii vain yhden proof-kutsun per testiruntime, myös ensimmäisen
+kutsun epäonnistuessa. Uusi runtime ei lue aiemman sukupolven havaintoja.
+
+Writer sallii enintään 128 tietuetta ja 16 KiB; viimeinen paikka on varattu
+katkaisumerkille. Lukija rajaa tavut ennen jäsennystä, torjuu linkitetyt juuret,
+linkit ja ei-tavalliset tiedostot sekä rakentaa vain sallituista kentistä
+uuden tilannekuvan. Kesken jäänyt viimeinen tietue näkyy `partial`-tilana,
+puuttuva, virheellinen, liian suuri tai lukukelvoton näyttö erillisinä tiloina.
+`captured` kertoo havaintojen luvusta, ei koko proofin valmistumisesta;
+`proofFinallyReturned` ei todista cleanupin onnistumista.
+
+Nykyinen fixture kerää snapshotin API:n sulkemisen, omistetun runtimen
+pysäytyksen ja porttitarkistuksen jälkeen, ennen testijuuren mahdollista
+poistamista. Lukeminen ei tarvitse toimivaa Electron-evaluate-kutsua.
+Epävarma cleanup säilyttää juuren entiseen tapaan ja raportoidaan erikseen.
+Validoitu `firstStartProof`-osa lisätään nykyiseen lifecycle-liitteeseen;
+juuri tämä testi kirjoittaa sen myös onnistuessaan kytkennän todentamiseksi.
+Luku- tai raportointivirhe ei korvaa alkuperäistä testivirhettä eikä estä
+siivousta. Diagnostiikka ei muuta tuotannon lokitusta, runtime-käyttäytymistä,
+testibudjetteja, retryä tai hyväksyntäassertioita. Paikallisen ajon
+yksityiskohtaiset ajoitukset säilyvät paikallisina.
+
 Myös Electronin käynnistystä edeltävä workspace-backupin valmistelu säilyttää
 ensimmäisen epäonnistumisen samassa liitteessä. Electronin omat API-, runtime-
 ja porttivastuut ovat silloin `notStarted`, testijuuri `retained`. Erillinen

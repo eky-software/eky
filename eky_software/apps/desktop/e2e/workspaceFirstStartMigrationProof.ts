@@ -52,37 +52,14 @@ import {
   captureUtilityProcessBaseline,
   waitForProofUtilityProcessesReleased,
 } from './workspaceManagementCompositionProofRuntime.js';
+import type {
+  FirstStartProofPhase,
+  FirstStartProofStage as ProofStage,
+} from './workspaceFirstStartProofObservation.js';
 
 const sourceBuildRevision = 'a'.repeat(40);
 const targetBuildRevision = 'b'.repeat(40);
 const proofUpgradeCode = '11111111-1111-4111-8111-111111111111';
-
-type ProofStage =
-  | 'setup'
-  | 'mixedActiveFixture'
-  | 'mixedCompatibleFixture'
-  | 'mixedInvalidFixture'
-  | 'mixedStores'
-  | 'mixedSnapshotsBefore'
-  | 'mixedStartup'
-  | 'mixedRuntimeReadback'
-  | 'mixedShutdown'
-  | 'mixedActiveInspection'
-  | 'mixedCompatibleInspection'
-  | 'mixedInvalidInspection'
-  | 'mixedSnapshotsAfter'
-  | 'mixedRestart'
-  | 'mixedComplete'
-  | 'allCurrentFixtures'
-  | 'allCurrentStores'
-  | 'allCurrentSnapshotsBefore'
-  | 'allCurrentStartup'
-  | 'allCurrentRuntimeReadback'
-  | 'allCurrentShutdown'
-  | 'allCurrentSnapshotsAfter'
-  | 'allCurrentRestart'
-  | 'allCurrentComplete'
-  | 'cleanup';
 
 interface ProofProgress {
   readonly stage: ProofStage;
@@ -148,7 +125,7 @@ export async function runWorkspaceFirstStartMigrationProof(
     startCount: 0,
   };
   let factories: Readonly<WorkspaceFirstStartProofFactories> | undefined;
-  const progress = createProofProgress(join(proofRoot, 'progress.jsonl'));
+  const progress = createProofProgress(join(proofRoot, 'progress.jsonl'), input.observe);
 
   try {
     await progress.enter('setup');
@@ -216,12 +193,14 @@ export async function runWorkspaceFirstStartMigrationProof(
       `WORKSPACE_FIRST_START_MIGRATION_PROOF_FAILED_${progress.stage.toUpperCase()}_${readSafeErrorCode(error)}`,
     );
   } finally {
+    observeProof(input.observe, 'proofFinallyStarted');
     unregisterApplicationProtocol();
     await stopTrackedBackends(tracker);
     await factories?.cleanup().catch(() => undefined);
     await rm(proofRoot, { force: true, recursive: true }).catch(
       () => undefined,
     );
+    observeProof(input.observe, 'proofFinallyReturned');
   }
 }
 
@@ -511,13 +490,24 @@ async function proveAllCurrentScenario(input: {
   });
 }
 
-function createProofProgress(filePath: string): ProofProgress {
+function observeProof(
+  observe: WorkspaceFirstStartMigrationProofInput['observe'],
+  phase: FirstStartProofPhase,
+): void {
+  try { observe?.(phase); } catch { /* Diagnostics cannot change the proof. */ }
+}
+
+function createProofProgress(
+  filePath: string,
+  observe: WorkspaceFirstStartMigrationProofInput['observe'],
+): ProofProgress {
   let stage: ProofStage = 'setup';
   return {
     get stage() {
       return stage;
     },
     async checkpoint(checkpoint) {
+      observeProof(observe, checkpoint);
       await appendFile(
         filePath,
         `${JSON.stringify({ checkpoint, stage })}\n`,
@@ -526,6 +516,7 @@ function createProofProgress(filePath: string): ProofProgress {
     },
     async enter(nextStage) {
       stage = nextStage;
+      observeProof(observe, nextStage);
       await appendFile(
         filePath,
         `${JSON.stringify({ stage: nextStage })}\n`,
