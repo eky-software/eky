@@ -23,6 +23,10 @@ todellisista väärinkäyttö- tai rikkoutumistavoista.
 
 ## Checkpoint-Pohjainen Testikadenssi
 
+Jokaisen tehtävään kuuluvan ajon seuranta ja virhetodisteiden säilyttäminen
+noudattavat [työnkulun CI-seurantaohjetta](workflow.md#ci-ajon-seuranta-ja-virhetodisteet).
+Tämä koskee myös paikallista testiajoa ja mergeä seuraavaa `main`-ajoa.
+
 Laaja ominaisuus jaetaan toiminnallisiin checkpointteihin. Jokaisen checkpointin
 jälkeen ajetaan muuttuneeseen vastuuseen suoraan kohdistuvat testit. Näin
 virhe paikantuu pieneen muutokseen eikä työn loppuun kerätä tietoisesti

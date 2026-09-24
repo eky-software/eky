@@ -139,6 +139,36 @@ siivousta. Diagnostiikka ei muuta tuotannon lokitusta, runtime-käyttäytymistä
 testibudjetteja, retryä tai hyväksyntäassertioita. Paikallisen ajon
 yksityiskohtaiset ajoitukset säilyvät paikallisina.
 
+M0.4:n testikohtainen load-havainto liitetään saman first-start-proofin
+neljään compositioniin. Ikkunahookki asennetaan ennen compositionin latausta
+ja vapautetaan myös virheessä. Tavallinen `loadURL` delegoidaan välittömästi
+samalla receiverillä ja argumenteilla; palautetaan alkuperäinen promise.
+Testin virheadapteri ei avaa natiivia modaalia eikä heitä irrotetusta
+callbackista. Odottamaton virhe hylkää normaalin testin omistajan tarkistuksessa.
+Vaihe sisältää vain suljetun composition-paikan ja tapahtuman, ei dialogitekstiä.
+
+[M0.6:n latauksen omistajuus](windows-installer-acceptance-harness-v2.md#m06-ehdotus-testin-latauksen-ja-purun-omistajuus)
+edellyttää normaalissa proofissa, että oman ikkunan todellinen lataus päättyy
+ennen backendin shutdownia ja protokollapurkua. Ei lisäviivettä, timeoutia
+tai retryä. Latausvirhe säilyy ensivirheenä, mutta shutdown ja cleanup
+yritetään silti. `SYS-FIRST-START-LOAD-SHUTDOWN-001` kattaa pending-,
+onnistumis-, virhe-, peruutus- ja yhdistelmävirhepolut hallituilla promiseilla.
+Pakotettu diagnostiikkakoe ohittaa vain tämän ennakko-odotuksen; sen oma
+todellisen virheketjun hyväksyntä pysyy erillisenä.
+
+`DESK-FIRST-START-LOAD-ORDER-001` on erillinen koe konfiguraatiossa
+`apps/e2e/playwright.first-start-diagnostic.config.ts`, ei tavallisen CI:n
+valitsema skenaario. Se käyttää samaa eristettyä fixtureä, cleanupia ja
+aikarajoja; yhden todellisen latauksen kutsu vapautetaan vasta todennetun
+protokollapurun jälkeen. [M0.5:n havaintosopimus](windows-installer-acceptance-harness-v2.md#m05-pakotetun-kokeen-havaintosopimuksen-täsmennys)
+vaatii todellisen `loadURL`-rejectionin, täsmällisen virheadapterin ja
+quit-pyynnön. `did-fail-load` säilyy täydentävänä havaintona: native-promise
+voi epäonnistua ilman sitä. Normaali koe vaatii edelleen onnistuneen latauksen
+ja torjuu main-frame-virheen sekä kaikki virhedialogi- ja quit-kutsut.
+Älä tulkitse pakotetun kokeen havaintoa tavallisen testin läpäisyksi tai
+alkuperäisen timeoutin syytodisteeksi. Myös tämän kokeen first-start-journal
+kerätään omistetun cleanupin jälkeen ennen juuren poistoa.
+
 Myös Electronin käynnistystä edeltävä workspace-backupin valmistelu säilyttää
 ensimmäisen epäonnistumisen samassa liitteessä. Electronin omat API-, runtime-
 ja porttivastuut ovat silloin `notStarted`, testijuuri `retained`. Erillinen

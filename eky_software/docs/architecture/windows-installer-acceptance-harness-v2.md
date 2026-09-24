@@ -468,9 +468,276 @@ M0.3-toteutuksen checkpoint:
   sessio-/yritysrajaa tai uutta verkkonäkyvyyttä. Niiden runtime-sopimukset
   eivät muutu. Testimatriisi ja E2E-ympäristösopimus on päivitetty.
 
-Seuraava normaali PR-ajo arvioi tätä uutta diagnostiikkarevisiota. Sen
-mahdollinen läpäisy ei muuta aiempaa main-ajoa hyväksytyksi eikä nimeä
-alkuperäistä timeoutia korjatuksi. Uutta ominaisuustoteutusta ei aloiteta.
+M0.3:n normaali PR-todennus valmistui:
+
+- PR #275:n pää `a293a9b0411ce10e6b04b381a8aadb78ddc03d78` ja CI:n
+  yhdistelmächeckout `eeb60f432dd69a98aac7d24980cb4128ea61c543` sisältävät
+  saman lähdepuun. Checkoutin vanhemmat ovat nykyinen main `4c18821e` ja
+  kyseinen PR-pää.
+- [V2-ajo 36015403134](https://github.com/eky-software/eky/actions/runs/36015403134)
+  läpäisi ensimmäisellä yrityksellä: 38 onnistunutta jobia ja yksi
+  tarkoituksellisesti valitsematon optional-diagnostic. Aggregaattori
+  vahvisti kaikki valitut matriisin jäsenet.
+- [Dependency security 36015402833](https://github.com/eky-software/eky/actions/runs/36015402833)
+  läpäisi. System-E2E läpäisi 143/143, mukaan lukien uudet 12
+  evidence-sopimusta. Electron-E2E läpäisi 38/38 ilman retryä.
+- First-startin todellinen CI-liite sisältää yrityksen 0, 37 validoitua
+  vaihehavaintoa, molemmat skenaariot ja `proofCompleted`-merkinnän.
+  Runtime-, portti- ja testijuuren cleanup vahvistettiin. Tämä on
+  diagnostiikan kytkennän näyttö, ei vanhan timeoutin selitys.
+
+**M0.3:n jälkeinen historiallinen jatkopäätös:** timeoutin syy selvitetään
+ennen mergeä. PR #275 jätettiin luonnokseksi. Avoimen timeoutin hyväksymistä pelkäksi
+seurantahavainnoksi ei hyväksytty. Vihreä diagnostiikkarevisio ei muuta
+aiempaa main-ajoa hyväksytyksi eikä nimeä alkuperäistä timeoutia korjatuksi.
+Myöhempi jatkovaltuus ja nykyiset integraatioportit on kirjattu
+[M0.6-vaiheeseen](#m06-ehdotus-testin-latauksen-ja-purun-omistajuus).
+
+#### M0.4-ehdotus: lataus- ja virhedialogiketjun rajattu koe
+
+Tila: **M0.4 toteutettu / kaksi sovittua koetta suoritettu / jatko M0.5:ssä**.
+Tämä ei ole lupa korjata tuotantokoodia tai hyväksyä tuntematonta flakea.
+
+Lähteestä löytyi tutkittava tapahtumajärjestys:
+
+- Tavallinen Electron-E2E-entrypoint injektoi natiivioperaatioiden
+  testiadapterit. First-start-proofin `startProofComposition` injektoi vain
+  session ja backendin käynnistimen, joten esimerkiksi `showErrorBox`
+  käyttää oikeaa natiivitoteutusta.
+- `desktopComposition.ts` aloittaa `loadApplicationWindow`-kutsun
+  taustalla ja palauttaa lifecycle-kahvan odottamatta latausta. Sen
+  latausvirhehaara kutsuu `showErrorBox`-adapteria.
+- Proof sulkee lifecyclen ja poistaa `eky`-protokollakäsittelijän, mutta
+  jättää ikkunan fixturen prosessisiivoukseen. Avoimeksi jää, voiko vielä
+  keskeneräinen lataus osua tähän väliin ja käynnistää virheikkunan.
+- Lukitun Electron-version Windows-toteutuksessa
+  [ShowErrorBox](https://github.com/electron/electron/blob/v43.3.0/shell/browser/ui/message_box_win.cc)
+  kutsuu synkronisesti `ShowTaskDialogWstr` -> `TaskDialogIndirect`.
+  Tämä selittää mahdollisen odotusmekanismin, ei osoita sen tapahtuneen
+  hylätyssä CI-ajossa.
+- Riippumaton alaprosessikatselmus löysi lisäksi readinessin jälkeisen
+  exit-tapahtuman ja myöhäisen listener-rekisteröinnin välisen ilmoitusaukon.
+  Sille ei löytynyt näyttöä tässä virheessä eikä sellaisenaan koko testin
+  aikakatkaisuun johtavaa ketjua. Sitä ei muuteta oletettuna korjauksena.
+
+Ehdotettu kokeen raja:
+
+1. Lisää vain eristettyyn, main-owned E2E-koepolkuun rajattu havainto
+   ikkunan latauksen, protokollan purun ja virheadapterin kutsun järjestyksestä.
+   Natiivin virheikkunan tilalla on kokeessa turvallinen havaitsija, ei
+   käyttäjän kuittausta odottava dialogi. Odottamaton virheadapterin kutsu
+   epäonnistaa normaalin havaintoajon; sitä ei nielaista vihreäksi.
+2. Aja kerran tavallinen first-start-ketju tällä havainnolla, ilman
+   tarkoituksellista viivettä tai retryä. Samat migraatio- ja
+   yritysraja-assertiot säilyvät. Onnistuminen on vastanäyttöä kyseiselle
+   ajolle, ei väite epävakauden korjaantumisesta.
+3. Aja kerran erillinen tapahtumajärjestyksellä ohjattu diagnostiikkakoe:
+   yhden proof-ikkunan lataus vapautetaan vasta todetun protokollapurun
+   jälkeen. Todista syntyykö latausvirhe ja kutsutaanko juuri yllä olevaa
+   virheadapteripolkua. Ei satunnaisia odotuksia, uusia aikarajoja,
+   oikean virheikkunan avaamista tai muutosta tavallisen testin hyväksyntään.
+4. Säilytä molempien kokeiden tulokset erillisinä. Pakotettu koe voi
+   vahvistaa mekanismin, mutta vain luonnollinen havainto tai alkuperäisen
+   ajon näyttö sitoo sen aiempaan timeoutiin. Jos kumpikaan ei paikanna
+   alkuperäistä vikaa, syy jää avoimeksi eikä toistoja lisätä hiljaisesti.
+
+Toteutusraja: `apps/desktop/e2e`- ja `apps/e2e`-omisteinen koeharness,
+nykyinen eristetty runtime ja olemassa olevat testiadapterirajat. Tuotannon
+`apps/desktop/src`, renderer, preload, HTTP, riippuvuudet, hyväksyntäehdot,
+versio ja workflowit eivät muutu. Tarkat koetiedostot ja mahdollinen
+main-only adapteri rajataan ennen toteutusta; ei yleistä debug-rajapintaa.
+Kohdesopimukset ja riippumaton katselmus edeltävät kahta rajattua
+Windows-koetta. Nykyinen fixture omistaa prosessit, portit ja siivouksen;
+koehookit vapautetaan myös virheessä. Vain suljettu vaihe ja tulos, ei
+dialogin tekstiä, polkuja, sessioita tai business-dataa havaintoon.
+
+Kokeen jälkeen mahdollinen korjaus suunnitellaan erikseen. Mainin vanhaa
+epäonnistumista, M0.3:n vihreää diagnostiikkaa ja tarkoituksella pakotettua
+virhettä ei yhdistetä yhdeksi hyväksyntätodisteeksi.
+
+Toteutuksen rajaus ennen muutoksia:
+
+- `workspaceFirstStartLoadObservation.ts` omistaa suljetun koehavainnon ja
+  yhden latauksen tapahtumaportin. `workspaceFirstStartLoadExperiment.ts`
+  sitoo sen vain proofin luomiin Electron-ikkunoihin; ei globaalia prototype-
+  muutosta, tuotantoadapterin laajennusta tai renderer-kontrollia.
+- Nykyinen first-start-proof ja E2E-entrypoint kytkevät havainnon neljään
+  compositioniin. Normaali lataus delegoidaan heti ja palauttaa alkuperäisen
+  promisen. Virheadapteri kirjaa suljetun luokan heittämättä irrotetussa
+  callbackissa; testin omistaja tarkistaa virheen.
+- Pakotetulla kokeella on erillinen main-only-komento ja Playwright-konfiguraatio,
+  joka käyttää nykyistä fixtureä ja samoja aikarajoja mutta ei kuulu
+  tavallisen CI:n skenaariovalintaan. Vanhan testin business-assertiot säilyvät.
+- System-sopimustestit tarkistavat delegoinnin, järjestyksen, havaintovirheen,
+  odottamattoman dialogin ja portin vapautuksen. Riippumaton katselmus sekä
+  kohdetestit edeltävät kahta omistajan hyväksymää Windows-koetta.
+- Havainto kulkee nykyisen rajatun first-start-journalin kautta. Se ei ole
+  business audit-, Diagnostics- tai tukipakettitapahtuma eikä backup-sisältöä.
+  Oikean sovelluksen profiilia tai asennusta ei käytetä.
+
+Checkpoint 2026-09-24:
+
+- Omistaja hyväksyi yllä rajatun kokeen. Testiharness, suljetut havainnot,
+  erillinen diagnostiikkakonfiguraatio ja sopimustestit toteutettiin.
+- Riippumaton katselmus havaitsi shutdown-virheen peittymisen cleanupin
+  virheeseen. Testikohtainen `workspaceFirstStartProofShutdown.ts` säilyttää
+  ensivirheen, kirjaa toissijaisen vian erikseen ja estää pakotetun kokeen
+  odottamisen, jos sen shutdown-edellytys epäonnistui. Uudet regressiot
+  kattavat myös `undefined`-rejectionin. Uusintakatselmus ei jättänyt
+  avoimia löydöksiä tästä muutoksesta.
+- Kohdesopimukset läpäisivät 33/33, E2E-typecheck ja desktopin E2E-käännös
+  läpäisivät. Yksi tavallinen Windows-first-start läpäisi ilman retryä.
+- Yksi erillinen pakotettu diagnostiikkakoe hylättiin koodilla
+  `E2E_FIRST_START_LOAD_MECHANISM_NOT_DEMONSTRATED`. Ensimmäinen tulos
+  säilytettiin; ei uusintaa, oletusassertioiden muuttamista tai koko kokeen
+  merkitsemistä läpäistyksi. Molempien ajojen loppusiivous vahvistettiin.
+  Yksityiskohtaiset paikalliset havainnot säilyvät Gitistä ohitettuna.
+- M0.4:n diagnostiikkakokeen ehto vaati `did-fail-load`-havaintoa jokaisesta
+  latausvirheestä. Lukitun Electron-version
+  [loadURL-toteutus](https://github.com/electron/electron/blob/v43.3.0/lib/browser/api/web-contents.ts#L398-L410)
+  voi kuitenkin hylätä promisen myös loading-stop-polusta ilman finish-/fail-
+  tapahtumaa. Ehto ei siis kuvaa kaikkia sallittuja virhepolkuja. Tämä
+  lähdetieto ei yksin osoita tietyn aiemman testiajon tapahtumaketjua.
+- Tuotantokoodi, aikarajat, retry, CI-valinta, riippuvuudet ja versio eivät
+  muuttuneet. Uutta CI-ajoa, committia, pushia tai mergeä ei tehty.
+  Käyttäjän UI-, Diagnostics-, Activity-, tukipaketti- ja backup-sopimukset
+  säilyvät. Testitunnukset ja havaintoketju on kirjattu E2E-ohjeisiin.
+
+#### M0.5: pakotetun kokeen havaintosopimuksen täsmennys
+
+Tila: **omistajan hyväksymä 2026-09-24 / toteutettu ja kohdetodennettu**.
+Hyväksyntä koskee vain alla rajattua diagnostiikkaehtoa, sopimustestejä,
+riippumatonta katselmusta ja sen jälkeen yhtä uutta pakotettua Windows-koetta.
+M0.4:n hylätty tulos säilyy erillisenä. M0.5:n valtuus ei sisältänyt mergeä;
+myöhempi integraatiovaltuus on kirjattu
+[M0.6-vaiheeseen](#m06-ehdotus-testin-latauksen-ja-purun-omistajuus).
+
+1. Täsmennä vain erillisen diagnostiikkakokeen havaintosopimus lukitun
+   Electronin todellisia latauspolkuja vastaavaksi. Todellinen
+   `loadURL`-rejection, todettu protokollapurku, täsmällinen virheadapteri ja
+   quit-pyyntö pysyvät pakollisina; tapahtumaa ei keksitä tai virhettä stubata.
+   `did-fail-load` ei yksin määrää promisen epäonnistumista. Väärä dialogi,
+   onnistunut lataus, puuttuva rejection tai väärä järjestys hylkää edelleen.
+2. Sopimustestit, riippumaton katselmus ja omistajan hyväksymä yksi uusi
+   pakotettu Windows-koe. Ei tavallisen testin toistokampanjaa, lisäaikarajaa
+   tai CI-ehtojen lievennystä. Vanha pakotettu ajo jää hylätyksi.
+3. Vasta tuloksen jälkeen päätä mahdollinen testin lataus-/purkujärjestyksen
+   korjaus. Tuotannon elinkaarta ei muuteta oletuksen perusteella. Mekanismin
+   näyttö ei nimeä alkuperäistä main-timeoutia ratkaistuksi; omistajan
+   merge-pysäytys säilyy, kunnes syyraja tai sitä koskeva päätös ratkaistaan.
+
+M0.5-checkpoint 2026-09-24:
+
+- Vain pakotetun kokeen `mainFrameFailures === 1` -ehto poistettiin.
+  Laskuri ja suljettu tapahtuma säilyvät täydentävänä havaintona. Todellinen
+  latausvirhe, todettu purku, oikea virheadapteri ja quit-pyyntö sekä
+  onnistumisen ja peruutuksen poissulku pysyvät pakollisina.
+- Sopimukset kattavat tapahtuman puuttumisen ja saapumisen vasta
+  hyväksyntätarkistuksen jälkeen. Normaalia testiä koskeva lisäregressio
+  varmistaa, että main-frame-virhe hylätään edelleen. Aiemmat puuttuvan
+  rejectionin, väärän dialogin, keskeneräisen purun ja cleanupin ehdot säilyvät.
+- Riippumaton katselmus ei jättänyt avoimia löydöksiä. Kohdesopimukset
+  läpäisivät 35/35; E2E-typecheck ja desktopin E2E-käännös läpäisivät.
+- Katselmuksen jälkeen ajettiin täsmälleen yksi uusi pakotettu Windows-koe.
+  Se läpäisi ilman retryä. Kaikki neljä compositionia, alkuperäinen business-
+  proof, havaintojen talteenotto ja loppusiivous valmistuivat. Yksityiskohtainen
+  koenäyttö säilyy paikallisena; M0.4:n hylättyä ajoa ei korvattu.
+- Koe vahvistaa rajatun lataus-/virheadapterimekanismin, ei alkuperäisen
+  main-timeoutin juurisyytä eikä oikean natiivimodaalin odotusta. Tavallista
+  Windows-koetta ei uusittu tässä vaiheessa. Tuotantokoodi, aikarajat, retry,
+  CI, riippuvuudet ja versio eivät muuttuneet; ei committia, pushia tai mergeä.
+- UI-, Diagnostics-, Activity-, tukipaketti- ja backup-sopimukset eivät muutu.
+  Havainto on vain testiruntimen rajattu journal, ei uusi sovellustapahtuma.
+
+#### M0.6-ehdotus: testin latauksen ja purun omistajuus
+
+Tila: **omistajan 2026-09-24 jatkovaltuudella toteutettu ja paikallisesti todennettu**. Omistaja
+pyysi jatkamaan M0-Goalissa loppuun ilman välivaiheiden erillisiä
+lupakysymyksiä. Tämä valtuuttaa rajatun testiharnessin korjauksen,
+katselmukset ja normaalin PR/main-integraation vasta hyväksyntäporttien
+jälkeen. Se ei muuta testiehtoja tai luokittele historiallista timeoutia
+jälkikäteen todistetuksi. Rajattu mekanismi on todennettu; seuraava pala
+ei ole uusi satunnaisten uusinta-ajojen kampanja.
+
+1. Suunnittele testin omistama portti: tavallisen first-start-proofin oman
+   ikkunan todellinen lataus päättyy ennen backendin sulkemista ja
+   protokollakäsittelijän purkua. Omistaja odottaa olemassa olevaa latauksen
+   tulosta, ei kiinteää viivettä, uutta timeoutia tai retryä. Tuotannon
+   compositionin paluusopimus ja elinkaari eivät muutu.
+2. Latausvirhe hylkää proofin, alkuperäinen virhe säilyy ja omistetut
+   resurssit siivotaan myös virheessä. Pakotettu diagnostinen väärä järjestys
+   pysyy selvästi erillään normaalipolusta; kumpikaan ei saa ohittaa toisen
+   hyväksyntää. Ennen toteutusta ratkaistaan portin sijoitus sekä virheen,
+   peruutuksen ja fixture-cleanupin vastuut nykyisten sopimusten sisällä.
+3. Rajaa deterministiset pending/success/failure/cleanup-sopimukset,
+   riippumaton katselmus ja yksi tavallinen Windows-first-start-koe.
+   Järjestys todistetaan vaiheista, ei testin pelkästä vihreästä tuloksesta.
+   Täsmällinen toteutus- ja koeraja kirjataan ennen muutosta.
+
+Tällainen muutos korjaisi osoitetun testin lataus-/purkuriskin. Se ei
+jälkikäteen todista vanhan CI-ajon syytä. Uusi jatkovaltuus sallii normaalin
+mergen vain todennetun korjauksen ja täsmällisen PR-revision vaadittujen
+porttien jälkeen; M0 valmistuu vasta merge-mainin omien porttien jälkeen.
+Historiallinen syyepävarmuus säilytetään avoimena havaintona.
+
+Ajantasainen integraatiotila ja hyväksytty lähtörevisio ylläpidetään
+[PR #275:n integraatiocheckpointissa](https://github.com/eky-software/eky/pull/275#issuecomment-5819025563).
+Siihen kirjataan exact-PR:n ajot, normaali merge-SHA ja sen omat main-ajot.
+Tämä ennen mergeä kirjattu toteutusnäyttö ei ole tulevan revision hyväksyntä.
+
+Ennen koodimuutoksia kirjattu toteutussuunnitelma:
+
+- Omistajat ovat vain `apps/desktop/e2e` ja `apps/e2e`. Luettuina ovat
+  juuri- ja kohdeohjeet, workflow/testaus/tarkistuslista, E2E-strategia,
+  ympäristö ja matriisi sekä ADR-0007, desktopin toteutus-/riippuvuusrajat,
+  runtime-trust ja turvallisuusperiaatteet. Ei uusia riippuvuuksia.
+- `workspaceFirstStartLoadObservation.ts` tarjoaa testin omistajalle
+  todellisen native-latauksen päättymislupauksen. Alkuperäinen promise,
+  argumentit ja virhe säilyvät; erillinen tulos ei kirjoita raakavirhettä
+  havaintojournaliin. Puuttuva tai moninkertainen lataus hylätään.
+- `WorkspaceFirstStartLoadExperiment` välittää odotuksen vain omistetulle
+  ikkunalle. Erillisen pakotetun kokeen pidätetty lataus ohittaa vain tämän
+  normaalijärjestyksen portin ja vaatii edelleen M0.5:n täyden virheketjun.
+- `runFirstStartProofShutdown` saa valinnaisen `beforeShutdown`-vaiheen.
+  `stopProofComposition` odottaa latauksen siinä ennen shutdownStarted-
+  havaintoa ja varsinaista sulkua. Myös latausvirheen jälkeen yritetään
+  shutdown ja cleanup; ensimmäinen virhe säilyy, toissijainen raportoidaan.
+- Keskeneräisen latausodotuksen peruutus päättää odotuksen virheeseen,
+  ei luo tekaistua native-rejectionia. Nykyinen fixture omistaa edelleen
+  prosessin timeoutin ja emergency-cleanupin; ei uutta aikarajaa tai pollingia.
+- Uusi `firstStartLoadShutdown.spec.ts` todistaa portin oikeassa shutdown-
+  apurajassa hallituilla promiseilla: pending/success/failure, peruutus,
+  puuttuva lataus, virheiden etusija sekä pakotetun kokeen erottelu.
+  Kohdetestit, typecheck, E2E-käännös ja riippumaton katselmus edeltävät yhtä
+  tavallista Windows-first-start-koetta. Normaali PR/main-CI seuraa vasta
+  paikallisen hyväksynnän ja julkaistavan diff-katselmuksen jälkeen.
+- Ei muutosta tuotantokoodiin, business-assertioihin, versioon, build-
+  identiteettiin, dataformaattiin, CI:hin, timeoutiin tai retryyn. UI-, audit-,
+  Diagnostics-, tukipaketti- ja backup-sopimukset eivät muutu; testihavainnot
+  pysyvät nykyisessä rajatussa journalissa. Raakanäyttö jää paikalliseksi.
+
+M0.6-checkpoint 2026-09-24:
+
+- Rajattu toteutus valmistui suunniteltuihin testitiedostoihin. Riippumaton
+  katselmus hyväksyi latausportin, virheiden etusijan ja cleanupin. Katselmuksen
+  löytämä uuden testin virhesiivouksen odotusriski korjattiin ennen Windows-koetta.
+- 48 kohdesopimusta läpäisi, mukaan lukien 13 uutta hallitun lataus-/shutdown-
+  järjestyksen tapausta. Koko työtilan olemassa olevat testit ja typecheck,
+  desktopin E2E-käännös ja 55 CI-valinta-/hyväksyntäsopimusta läpäisivät.
+- Katselmuksen jälkeen yksi tavallinen Windows-first-start-koe läpäisi
+  ensimmäisellä yrityksellä. Kaikissa neljässä compositionissa todennettiin
+  `loadSucceeded -> shutdownStarted -> protocolRemoved` ja hookin vapautus.
+  Proof valmistui; runtime, portti ja testijuuri siivottiin onnistuneesti.
+- Näyttö korjaa testin osoitetun lataus-/purkuriskin. Se ei yksilöi vanhan
+  main-timeoutin tarkkaa syytä eikä kumoa M0.4:n hylättyä diagnostiikkatulosta.
+  Erillistä pakotettua Windows-koetta ei toistettu M0.6:ssa.
+- Toiminnon valmistumisportti: vain testiruntime ja sen turvallinen havaintoketju
+  muuttuvat. Ei uutta sovellus-, audit-, Diagnostics- tai tukipakettitapahtumaa;
+  business-data, backup/restore-formaatti, tuotannon elinkaari ja käyttöoikeudet
+  säilyvät. Riippuvuuksia, versiota, aikarajoja, retryä tai CI-ehtoja ei muutettu.
+- Julkaistava näyttö rajoittuu sopimuksiin, hyväksyntätiloihin ja Git/CI-viitteisiin.
+  Paikalliset raakajäljet ja ajoitukset eivät kuulu julkaisuun. PR/main-porttien
+  valmistuminen varmistetaan erikseen yllä linkitetystä integraatiocheckpointista.
 
 ## Historiallinen lähtötilanne
 

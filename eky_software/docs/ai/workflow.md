@@ -36,6 +36,24 @@ Tehtävän mukaan luettavat dokumentit määritellään `AGENTS.md`-tiedostossa.
 
 Jos kohdekansiossa on oma `AGENTS.md`, se on luettava ennen muutoksia.
 
+Tämä on jokaisen tehtävän pysyvä aloitusportti, ei julkaisukohtainen tarkistus:
+
+1. Nimeä kosketettavat sovellukset, moduulit, jaetut paketit ja vastuurajat.
+2. Tarkista juuri-`AGENTS.md`:n aihekohtaiset lukureitit ja kohdepolkujen
+   soveltuvat `AGENTS.md`-tiedostot. Lue niiden osoittamat voimassa olevat
+   vastuuohjeet, ADR:t ja tehtävän omistava suunnitelma.
+3. Tarkista myös vaikutusalueen testaus-, diagnostiikka-, tietoturva- ja
+   palautettavuusohjeet. Kirjaa aloitukseen lyhyesti olennaiset luetut ohjeet
+   ja avoimet päätökset; tiedostolista ei yksin osoita sisällön lukemista.
+4. Jos tehtävän aikana sivutaan uutta osaa, toista tarkistus sen osalta ennen
+   muutoksia. Anna aliagentille sama rajattu lukureitti; pääagentti tarkistaa
+   tulosten ohjeenmukaisuuden.
+
+Koko `docs`-kansiota ei lueta joka kerta, mutta ohjetta ei sivuuteta siksi,
+ettei se ollut ensimmäisessä luetussa listassa. Etsi puuttuva reitti alueen
+omistajan ja aiheen perusteella. Ristiriita tai puuttuva olennainen sopimus
+rajataan ratkaistavaksi juuri-`AGENTS.md`:n etusija- ja pysäytyssäännöllä.
+
 ## Pienissä paloissa eteneminen
 
 AI:lle ei anneta liian suuria tehtäviä kerralla.
@@ -138,6 +156,14 @@ Kun arkkitehtuuri, moduuliraja, teknologiapäätös, turvallisuussääntö tai l
 
 Dokumentaation päivittäminen on osa muutosta.
 
+Ohjeen löydettävyys on myös osa muutosta: kun ohje lisätään, siirretään,
+nimetään uudelleen tai sen soveltamisala muuttuu, tarkista siihen johtava
+lukureitti juuri- tai lähimmästä `AGENTS.md`:stä ja omistavasta moduuli- tai
+arkkitehtuuridokumentista. Korjaa vaikutusalueen polut ja otsikkoankkurit.
+Pidä sääntö yhdessä omistavassa dokumentissa ja linkitä siihen kopioimisen
+sijaan. Erota voimassa oleva ohje historiallisesta checkpointista; yksityistä
+runbookia tai sen konekohtaisia havaintoja ei siirretä yhteisiin ohjeisiin.
+
 Seuraavan sovitun julkaisun sisältö ja jatkotoiveet pidetään yhteisessä
 [0.3.0-tehtävälistassa](../architecture/release-0.3.0-plan.md). Päivitä
 tehtävän tila, rajaus ja hyväksyntäviite työn edetessä. Erota sovittu sisältö,
@@ -202,6 +228,38 @@ Raporttiin saa jäädä projektin sopimus ja hyväksyntätila, ei omistajan
 koneeseen liittyvää diagnostiikkaa. Epäselvä sisältö jää paikalliseksi,
 kunnes julkaisukelpoisuus on ratkaistu. Jo julkaistu poikkeama kerrotaan
 omistajalle; historian siivousta ei käynnistetä ilman erillistä päätöstä.
+
+### CI-ajon seuranta ja virhetodisteet
+
+Ennen tehtävään kuuluvaa testi- tai CI-ajoa nimeä seurannan omistaja ja
+varmista käytettävissä oleva havainto- ja tallennusketju. Seuranta on
+pääagentin tai rajatun, vain lukevan aliagentin vastuulla koko ajon ajan,
+myös PR:n mergen jälkeisessä `main`-ajossa. Kun pääagentti tekee muuta työtä,
+käytä erillistä seuranta-agenttia, jos se on saatavilla ja sallittu; muuten
+pääagentti hoitaa seurannan itse. Älä jätä ajoa pelkän lopputuloksen varaan.
+
+- Sido seuranta lähderevisioon ja ajokomentoon; CI:ssä lisäksi todelliseen
+  checkoutiin, run ID:hen, yritykseen ja valittuihin jobeihin.
+  Käytä nykyisiä luku-/odotustyökaluja
+  kohtuullisella tarkistusvälillä, älä tiheää kyselysilmukkaa.
+- Tartu hylkäykseen heti, kun tieto on saatavilla: säilytä ensimmäisen
+  epäonnistuneen yrityksen lokit, turvallinen virhekoodi, viimeinen havaittu
+  vaihe, timeout-/cleanup-tulos ja olemassa olevat liitteet. Erota puuttuva
+  havainto onnistumisesta. Jos palvelu antaa lokin tai artifactin vasta jobin
+  loputtua, hae se silloin; pelkkä tilaseuranta ei ole live-lokivirta.
+- Seuranta-agentti ei käynnistä testejä uudelleen, muuta koodia, peruuta ajoa
+  tai mergeä. Pääagentti varmistaa havainnot ja omistaa hyväksyntäpäätöksen
+  valmistelun. Julkaisu- ja yksityisyysrajat koskevat myös kerättyjä todisteita.
+- Jos seuranta katkeaa, kirjaa katkos ja jatka saman ajon tunnisteista.
+  Älä aloita korvaavaa ajoa tai väitä seurantaa katkeamattomaksi. Sulje
+  seuranta-agentti vasta rajatun tehtävän päätyttyä tai vastuun siirryttyä.
+
+Testin oma turvallinen vaihehavainto ja agentin ajoseuranta täydentävät
+toisiaan. Agentti ei voi palauttaa tietoa, jota testi ei tallentanut.
+Jos vianrajaus tai hyväksyntä tarvitsee puuttuvan havainnon, suunnittele sen
+rajattu tallennus ennen kyseistä koetta; kaikkea mahdollista diagnostiikkaa
+ei lisätä jokaisen ajon ehdoksi. Virhettä ei nimetä korjatuksi uusinta-ajon
+vihreyden perusteella eikä hyväksyntäehtoja muuteta seurantaa varten.
 
 ## Puhdas baseline ja julkaistavan artifactin portti
 

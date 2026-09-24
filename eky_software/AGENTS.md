@@ -78,10 +78,22 @@ Sama pysäytyssääntö koskee tilannetta, jossa liiketoimintasääntö, moduuli
 
 Lue aina ensin tämä tiedosto.
 
+Ohjeiden tarkistus kuuluu jokaiseen tehtävään, myös pieneen korjaukseen,
+testiin, katselmukseen ja dokumentointiin, eikä vain tietyn julkaisun
+roadmapiin. Tunnista kosketettavat ohjelman osat ja noudata
+[työn aloitusjärjestystä](docs/ai/workflow.md#työn-aloitusjärjestys).
+Lue niiden soveltuvat ohjeet ennen muutoksia. Jos työ laajenee uuteen
+osaan tai vastuurajaan, tarkista sen ohjeet ennen siihen kohdistuvaa työtä.
+Pelkkä aiempi lukukerta tai keskustelumuisti ei korvaa ajantasaisen
+ohjeen tarkistusta.
+
 Windows/WSL/Git/Node/pnpm/.NET/WiX- tai paikallista release-työtä varten lue
 Gitistä ohitettu `.eky-local/local-toolchain-runbook.md` ja käytä
 `.eky-local/toolchain.local.json`-inventaarioa, jos nämä paikalliset tiedostot
 ovat olemassa. Niihin ei saa tallentaa salaisuuksia.
+
+Testiajojen, CI:n, pushin, PR:n ja mergen yhteydessä noudata myös
+[CI-ajon seurannan ja virhetodisteiden ohjetta](docs/ai/workflow.md#ci-ajon-seuranta-ja-virhetodisteet).
 
 Lue lisäksi tehtävän mukaan seuraavat dokumentit:
 
@@ -106,7 +118,9 @@ Lue lisäksi tehtävän mukaan seuraavat dokumentit:
 - Työnkulut: `docs/product/workflows.md`
 - UI-periaatteet: `docs/design/ui-principles.md`
 
-Jos työ koskee tiettyä moduulia, lue myös kyseisen moduulin dokumentti `docs/modules/`-kansiosta.
+Jos työ koskee tiettyä moduulia, lue myös sen vastuudokumentti
+[moduulihakemistosta](docs/modules/README.md) ja toteutuspolun soveltuva
+`AGENTS.md`. Hakemisto on lukureitti, ei moduulin varsinaisen ohjeen korvike.
 
 Jos työ koskee käyttäjälle näkyvää tapahtumahistoriaa, Activity-moduulia tai
 moduulien audit-tapahtumista muodostettua turvallista read modelia, lue myös

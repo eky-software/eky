@@ -1,5 +1,6 @@
 import { closeSync, lstatSync, openSync, realpathSync, writeSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
+import { firstStartLoadPhases } from './workspaceFirstStartLoadObservation.js';
 
 const observationFilePrefix = 'first-start-proof';
 export const MAX_FIRST_START_PROOF_OBSERVATIONS = 128;
@@ -16,9 +17,11 @@ const proofStages = [
 ] as const;
 const phases = [
   ...proofStages,
+  ...firstStartLoadPhases,
   'initialShutdownStarted', 'initialShutdownCompleted', 'proofStarted',
   'proofCompleted', 'proofFailed', 'proofFinallyStarted', 'proofFinallyReturned',
   'lifecycleShutdownCompleted', 'windowCleanupDeferred', 'protocolUnregistered',
+  'loadExperimentCleanupFailed', 'shutdownCleanupFailed',
   'observationsTruncated',
 ] as const;
 

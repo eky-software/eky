@@ -20,6 +20,7 @@ import { createElectronE2eNativeAdapters } from './electronE2eNativeAdapters.js'
 import { readSafeElectronE2eWorkspaceStartupFailureCode } from './electronE2eWorkspaceStartupFailure.js';
 import { createElectronE2eStartupObservation } from './electronE2eStartupObservation.js';
 import { createFirstStartProofAdmission, createFirstStartProofObserver } from './workspaceFirstStartProofObservation.js';
+import { WorkspaceFirstStartLoadExperiment, type FirstStartLoadExperimentMode } from './workspaceFirstStartLoadExperiment.js';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -69,6 +70,52 @@ app.once('browser-window-created', () => {
 let lifecycle: DesktopLifecycleHandle | undefined;
 let shutdownStarted = false;
 let secondInstanceCount = 0;
+
+async function runFirstStartProof(mode: FirstStartLoadExperimentMode) {
+  admitFirstStartProof();
+  const observation = createFirstStartProofObserver(config.paths.userDataPath, config.runtimeInstanceId);
+  const experiment = new WorkspaceFirstStartLoadExperiment(mode, observation.record);
+  let failed = false;
+  try {
+    observation.record('initialShutdownStarted');
+    if (lifecycle === undefined) {
+      throw new Error('WORKSPACE_FIRST_START_MIGRATION_LIFECYCLE_MISSING');
+    }
+    await lifecycle.shutdown();
+    if (backendController.isRunning()) {
+      throw new Error('WORKSPACE_FIRST_START_MIGRATION_BACKEND_RUNNING');
+    }
+    observation.record('initialShutdownCompleted');
+    const { runWorkspaceFirstStartMigrationProof } = await import('./workspaceFirstStartMigrationProof.js');
+    observation.record('proofStarted');
+    const proof = await runWorkspaceFirstStartMigrationProof({
+      observe: observation.record,
+      loadExperiment: experiment,
+      applicationPath: config.paths.applicationPath,
+      appVersion: e2eAppVersion,
+      resourcesPath: config.paths.resourcesPath,
+      runtimeSessionSecret: config.backend.sessionSecret,
+      startBackend: startDesktopBackend,
+      userDataRoot: config.paths.userDataPath,
+    });
+    experiment.assertComplete();
+    observation.record('proofCompleted');
+    return { proof, loads: experiment.snapshot() };
+  } catch (error) {
+    failed = true;
+    observation.record('proofFailed');
+    throw error;
+  } finally {
+    try {
+      experiment.dispose();
+    } catch (error) {
+      observation.record('loadExperimentCleanupFailed');
+      if (!failed) throw error;
+    } finally {
+      observation.close();
+    }
+  }
+}
 
 function getPdfPreviewWindows(): BrowserWindow[] {
   return BrowserWindow.getAllWindows().filter(
@@ -246,39 +293,10 @@ Object.assign(globalThis, {
       });
     },
     async runWorkspaceFirstStartMigrationProof() {
-      admitFirstStartProof();
-      const observation = createFirstStartProofObserver(config.paths.userDataPath, config.runtimeInstanceId);
-      try {
-        observation.record('initialShutdownStarted');
-        if (lifecycle === undefined) {
-          throw new Error('WORKSPACE_FIRST_START_MIGRATION_LIFECYCLE_MISSING');
-        }
-        await lifecycle.shutdown();
-        if (backendController.isRunning()) {
-          throw new Error('WORKSPACE_FIRST_START_MIGRATION_BACKEND_RUNNING');
-        }
-        observation.record('initialShutdownCompleted');
-        const { runWorkspaceFirstStartMigrationProof } = await import(
-          './workspaceFirstStartMigrationProof.js'
-        );
-        observation.record('proofStarted');
-        const result = await runWorkspaceFirstStartMigrationProof({
-          observe: observation.record,
-          applicationPath: config.paths.applicationPath,
-          appVersion: e2eAppVersion,
-          resourcesPath: config.paths.resourcesPath,
-          runtimeSessionSecret: config.backend.sessionSecret,
-          startBackend: startDesktopBackend,
-          userDataRoot: config.paths.userDataPath,
-        });
-        observation.record('proofCompleted');
-        return result;
-      } catch (error) {
-        observation.record('proofFailed');
-        throw error;
-      } finally {
-        observation.close();
-      }
+      return (await runFirstStartProof('observe')).proof;
+    },
+    async runWorkspaceFirstStartLoadOrderDiagnostic() {
+      return runFirstStartProof('releaseAfterProtocolRemoval');
     },
     async runWorkspaceActivationMigrationProof() {
       if (lifecycle === undefined) {

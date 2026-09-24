@@ -381,7 +381,7 @@ export const test = base.extend<
         closeRuntime: closeCurrentRuntime,
         releasePort: releaseCurrentPort,
         captureEvidence() {
-          if (scenarioId === 'DESK-WORKSPACE-FIRST-START-001') {
+          if (scenarioId === 'DESK-WORKSPACE-FIRST-START-001' || scenarioId === 'DESK-FIRST-START-LOAD-ORDER-001') {
             firstStartProof = captureFirstStartProof(runtime.userDataPath, runtime.runtimeInstanceId);
           }
         },

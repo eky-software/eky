@@ -8,6 +8,27 @@ When changing Electron, `better-sqlite3`, N-API packaging, or native-runtime
 compatibility, also read the Electron 43 / better-sqlite3 13 compatibility
 plan and preserve its checkpoint-based validation model.
 
+For backup, restore, recovery-point, restore-staging or profile rollback work, read
+[ADR-0009](../../docs/decisions/ADR-0009-local-backup-encryption-and-recovery-points.md)
+and the [backup/restore plan](../../docs/architecture/local-backup-and-restore-plan.md).
+For manual checks after interrupted restore or rollback, also read the
+[restore recovery runbook](../../docs/architecture/local-restore-recovery-runbook.md).
+
+For Windows installer, Setup, update orchestration, signing or release-channel
+work, read [ADR-0010](../../docs/decisions/ADR-0010-windows-installer-and-update-orchestration.md),
+the [installer/update plan](../../docs/architecture/windows-installer-and-update-plan.md)
+and the [release versioning policy](../../docs/architecture/release-versioning-policy.md).
+For installer acceptance harness or W6B-family scenario work, including their
+process ownership, timeout/cleanup or heavy Windows CI cadence, also read the
+[acceptance harness V2 contract](../../docs/architecture/windows-installer-acceptance-harness-v2.md).
+
+For Electron E2E or packaged-smoke coverage work, read the
+[E2E strategy](../../docs/architecture/e2e-testing-strategy.md),
+[R0 E2E matrix](../../docs/architecture/r0-e2e-test-matrix.md) and
+[E2E environment](../../docs/architecture/e2e-test-environment.md).
+For test runs and CI follow-up, use the canonical
+[run monitoring and failure evidence instructions](../../docs/ai/workflow.md#ci-ajon-seuranta-ja-virhetodisteet).
+
 `apps/desktop` is an infrastructure/runtime shell. It may own Electron window
 configuration, packaged resource paths, backend process lifecycle, a narrowly
 validated desktop transport, and packaging scripts.
