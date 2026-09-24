@@ -16,8 +16,12 @@ Omistajan hyväksymä valmistelu-Goal rajattiin **M1-suunnitteluun**, ei koko
 0.3.0-toteutukseen. Sen työjärjestys, ensimmäisen toteutuspalan rajaus ja
 avoimet päätökset ovat [M1-valmistelusuunnitelmassa](release-0.3.0-m1-preparation-plan.md).
 Tuotantokoodia, riippuvuuksia, versiota tai CI-ehtoja ei muutettu.
-Seuraava toteutukseen ehdotettu pala on T1a/T1b; sen hyväksyntä ja toteutus
-ovat vielä avoinna. Valmistelun valmistuminen ei sulje M1:n testikorjauksia.
+Omistaja hyväksyi seuraavaksi T1a/T1b:n rajatun toteutus-Goalin: olemassa
+olevat testit nykyisiin komentoihin ja ajokytkennän regressiosuoja.
+T1 on toteutettu, katselmoitu ja paikallisesti todennettu 2026-09-25.
+Testinäyttö sekä tästä erillinen PR/main-hyväksyntäportti ovat
+[T1-checkpointissa](release-0.3.0-m1-preparation-plan.md#t1n-toteutus-ja-hyväksyntänäyttö).
+Valmistelun valmistuminen ei sulje M1:n muita testikorjauksia.
 
 ### M0:n historiallinen tapahtumaketju
 
@@ -327,13 +331,15 @@ M0-selvitys ei avaa muuta 0.3.0-toteutusta ennen integraatioporttia.
 
 ### M1: Todistuksen ja päätösten valmistelu
 
-**Tila 2026-09-24:** rajattu suunnitteluvalmistelu tehty ja katselmoitu
-hyväksytyltä M0-pohjalta; M1:n testikorjaukset eivät ole vielä toteutettuja.
+**Tila 2026-09-25:** rajattu suunnitteluvalmistelu tehty ja katselmoitu
+hyväksytyltä M0-pohjalta. T1a/T1b:n toteutus hyväksyttiin tämän jälkeen;
+sen paikallinen todennus on valmis ja integraatio arvioidaan erikseen,
+muut testikorjaukset ovat avoinna.
 Tarkka jako on [M1-suunnitelmassa](release-0.3.0-m1-preparation-plan.md):
 T1a/T1b testien ajokytkentä, T2 projektivalinta ja build-edellytykset,
 T3 testiprosessien omistajuus sekä A1:n rajattu kohdekorjaus.
 W7:n päätöslista on [työtilasuunnitelmassa](local-company-workspace-plan.md#w7-valmistelu-ja-paatosportti).
-Nämä suunnitelmat eivät merkitse korjauksia tai hyväksyntätestejä tehdyiksi.
+Suunnitelma itsessään ei korvaa kunkin palan toteutus- ja hyväksyntänäyttöä.
 
 Korjaa ensin tarvittavat T-paketin testikytkennät ja testiruntimen
 edellytykset, jotta myöhempien pakettien näyttöön voidaan luottaa. Tämä
@@ -380,8 +386,10 @@ ovat samoja töitä G/H-paketeissa, eivät toinen korjausjono. PDF-arkiston
 katalogisopimus ja retentionin reunaehdot täydentävät D029-listaa; niitä ei
 kuitata valmiiksi pelkän vanhan diagnostiikkalistan läpäisyllä.
 
-Kaikkien T/A/B/C/K/D/E/F/G/H/I-pakettien tila on **suunniteltu / korjaus ja
-hyväksyntä tekemättä**. Päätösportin vaikutusalue odottaa hyväksyntää.
+T-paketista T1a/T1b on toteutettu ja paikallisesti todennettu yllä mainitun
+integraatioportin ehdoin; T2/T3 ovat suunniteltuja. A/B/C/K/D/E/F/G/H/I:n
+tila on **suunniteltu / korjaus ja hyväksyntä tekemättä**.
+Päätösportin vaikutusalue odottaa hyväksyntää.
 
 I-paketin dokumentaatiokatselmukseen kuuluu myös ohjelmanosittainen
 ohjeiden löydettävyys: juuri- ja paikalliset `AGENTS.md`-tiedostot,

@@ -12,6 +12,12 @@ versiota, CI-politiikkaa tai uusia turvallisuus-/liiketoimintasopimuksia.
 Toteutus aloitetaan rajatun suunnitelman hyväksynnän jälkeen. Yksittäisen
 päätösportin keskeneräisyys ei estä muun riippumattoman palan valmistelua.
 
+**T1a/T1b 2026-09-25: toteutettu ja paikallisesti todennettu.** Omistaja hyväksyi
+vain alla rajatun testien ajokytkennän ja sen regressiosuojan sekä normaalin
+PR/main-integraation vaadittujen porttien jälkeen. T2/T3/A/W7 eivät kuulu
+tähän toteutus-Goaliin. Suunnittelu säilyy erillisenä checkpointina;
+toteutuksen näyttö ja integraation erillinen portti ovat alla.
+
 ## Lähtötilan näyttö
 
 - M0:n hyväksytty main on `38082dffe1772f099c4b9bb7495bed6c6b9b067b`.
@@ -53,7 +59,7 @@ tai riippuvuusporttia, jos rajaus myöhemmin koskettaa niitä.
 
 | Pala | Muutos ja valmistumisen näyttö | Edellytys ja päätösraja |
 | --- | --- | --- |
-| T1a / R27 | Startup-failure-testit tavalliseen desktop-testivalintaan ja valinnan regressiosopimus. | Ei tuotantokoodia. Ensimmäinen toteutukseen ehdotettu pala. |
+| T1a / R27 | Startup-failure-testit tavalliseen desktop-testivalintaan ja valinnan regressiosopimus. | Toteutettu ja paikallisesti todennettu; integraation hyväksyntä erikseen. Ei tuotantokoodia. |
 | T1b / R27 | Kuusi puuttuvaa installer-harness-testitiedostoa nykyisten vaadittujen komentojen kautta ajettaviksi, myös ajokytkentää suojaava testi. | T1a:n kanssa sama rajattu toteutus voi olla järkevä; R27 suljetaan vasta molempien näyttöjen jälkeen. Ei raskaan CI:n kevennystä. |
 | T2 / R29 | `security`/`fault`-projektivalinnan ja niiden koko build-ketjun vastaavuus puhtaasta ja vanhoja tuotteita sisältävästä lähtötilasta. | Suositus säilyttää kaikki kolme standardiprojektia ja erottaa endurance eksplisiittisesti. Tarkka komentorajaus hyväksytään ennen muutosta. |
 | T3 / R28 | Omistajuus käynnistyksestä todettuun koko puun poistumiseen; epävarma cleanup ei hyväksy restartia tai poista fixtureä. | Windowsin ja POSIXin omistajuusmekanismi sekä Electron-käyttö päätetään erikseen lähdekatselmuksen jälkeen. Pelkkä early returnin poisto ei riitä. |
@@ -67,10 +73,10 @@ cleanup ei kelpaa lopullisen oikeaprosessiajon onnistumistodisteeksi.
 Kaikkia I-paketin CI-uudistuksia ei tehdä ennen A:ta. Myöhemmät B/C/K-rajat
 säilyvät roadmapin mukaisina, eivät muutu tämän taulukon sivuvaikutuksena.
 
-## Ensimmäinen toteutukseen ehdotettu pala
+## Ensimmäinen hyväksytty toteutuspala
 
 **T1a + T1b, vain olemassa olevien testien ajokytkentä ja sen suojaus.**
-Omistaja hyväksyy tämän rajauksen ennen koodimuutoksia. Muutospinta on
+Omistaja hyväksyi tämän rajauksen ennen koodimuutoksia. Muutospinta on
 desktopin scripts-valinta ja sen nykyinen testisopimus, sekä tarpeelliset
 dokumentti-/testimatriisitäsmennykset. Nykyiseen vaadittuun komentoon
 liittäminen on ensisijainen; uutta workflowta tai yleistä testirunneria ei
@@ -108,6 +114,41 @@ Hyväksyntä ei perustu pelkkään `package.json`:in tekstihakuun:
 Hylätty testi pysäyttää tämän palan hyväksynnän. Korjausta ei naamioida
 testin poisjättämiseksi, pidemmäksi aikarajaksi tai retry-läpäisyksi.
 Jos testi paljastaa tuotantovirheen, se rajataan ja päätetään erikseen.
+
+### T1:n toteutus ja hyväksyntänäyttö
+
+2026-09-25: seitsemän olemassa olevaa tiedostoa on kytketty yllä nimettyihin
+komentoihin. `scripts/test-command-wiring.test.mjs` suojaa tiedostojen,
+runnerien, build-esiehdon, sarjallisuuden ja required-CI-ketjun vastaavuuden.
+Sen 58 tapausta sisältävät oman ajokytkennän sekä puuttuvien, väärien,
+ohitettujen ja epäonnistuneiden vaiheiden kielteiset kokeet. Kaikki
+aiemmat manifestin testivalinnat säilyvät. Riippumaton diff-katselmus ei
+löytänyt korjattavaa tästä rajauksesta.
+
+Valmistuneet paikalliset tarkistukset:
+
+- Tavallinen desktop-komento suoritti startup-failure-tiedoston kaikki
+  seitsemän tapausta. Desktop: 1529 Vitest-läpäisyä, kolme ennestään
+  alustarajattua ohitusta ja 139 Node-läpäisyä; ohitukset eivät ole läpäisyjä.
+- Installer-unit 113/113, mukaan liitettyjen viiden tiedoston 19 tapausta
+  mukaan lukien. Sarjallinen Windows-prosessikomento 13/13, joista kuusi
+  binary-handoff-tapauksia; supervisorin build-esiehto säilyi.
+- Koko workspace 3839 läpäisyä ja kahdeksan ennestään alustarajattua
+  ohitusta. Typecheck, backend/web/desktop-buildit ja 55 CI-sopimusta
+  läpäisivät. Ajot valmistuivat ensimmäisillä yrityksillä.
+
+Tämä on testiajokytkennän näyttö, ei tuotannon backup-, lifecycle- tai
+asennushyväksyntä. Muutos ei lisää tuotannon tapahtumia, käyttöliittymää,
+schemaa, salaisuuskäsittelyä tai pysyviä business-artifacteja, joten niiden
+Diagnostics-/Activity-/tukipakettiketjut ja packaged backup -portti eivät
+muutu T1:n vuoksi. Testitulokset ja virheet kulkevat nykyisten runnerien
+ja CI:n kautta. Riippuvuudet, sovellusversio, aikarajat ja CI-ehdot säilyvät.
+
+R27:n integraation hyväksyntä kirjataan tämän muutoksen PR:n
+integraatiocheckpointiin: tarkka head, todellinen checkout, run ID ja
+yritys, valitut required-portit sekä normaalin mergen jälkeisen mainin
+omat tarkistukset. Paikallinen läpäisy ei korvaa tätä porttia. T2/R29,
+T3/R28, A ja W7 pysyvät erillisinä avoimina jatkopaloina.
 
 ## Skannaushavaintojen vaikutus jatkoon
 
@@ -150,7 +191,7 @@ soveltuvuus perustellaan erikseen; T:n testiajot eivät todista W7:n tuotantoa.
 
 ## Päätösjono ja valmistelun lopetus
 
-Ensimmäinen omistajalle annettava toteutusraja on T1a/T1b yllä.
+Ensimmäinen hyväksytty toteutusraja on T1a/T1b yllä.
 T2:n projektisopimus ja T3:n omistajuusmekanismi ratkaistaan ennen niiden
 muutoksia. A1 käyttää nykyistä feature-/API-sopimusta; jos rajaus vaatii
 backendin tai navigoinnin uuden liiketoimintasäännön, se palautuu suunnitteluun.
@@ -170,5 +211,6 @@ sekä artifact-kohtaiset lopputilat täsmennettiin katselmusten perusteella.
 Muuttuneiden viiden dokumentin suhteelliset linkit ja otsikkoankkurit
 tarkistettiin; diff- ja julkaisusisällön tarkistus tehtiin.
 Tämä on dokumentointinäyttöä, ei sovelluksen testiläpäisy.
-T1a/T1b on valmis rajattuun toteutuspäätökseen. T2/T3/W7:n nimetyt
+T1a/T1b valmistui rajattuun toteutuspäätökseen; myöhempi hyväksyntä ja
+toteutustila ovat dokumentin alussa. T2/T3/W7:n nimetyt
 päätösportit säilyvät auki ennen kyseisten sopimusten toteutusta.

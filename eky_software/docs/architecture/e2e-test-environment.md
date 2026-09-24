@@ -16,16 +16,16 @@ fault injectionia.
 
 ## T-paketin valmistelu
 
-**2026-09-24, suunnitelma; ei toteutettu.** [M1-valmistelu](release-0.3.0-m1-preparation-plan.md)
+**2026-09-24, suunnitelma; T1 toteutettu ja paikallisesti todennettu 2026-09-25.** [M1-valmistelu](release-0.3.0-m1-preparation-plan.md)
 rajaa R27-R29:n kolmeen erikseen todennettavaan sopimukseen. M0:n erillinen
 Windows Job -supervisor ja Electronin lataus-/purkutodistus eivät sulje näitä.
 
 ### T1: Testien ajokytkentä
 
-Nykyinen desktopin `test`-komento jättää
+T1:n lähtötilan desktopin `test`-komento jätti
 `e2e/electronE2eWorkspaceStartupFailure.test.ts`-tiedoston seitsemän tapausta
 valinnan ulkopuolelle. Lisäksi seuraavat `installer/windows-acceptance-harness/`
--tiedostot ovat vain clean/upgrade-skripteissä, joita nykyiset workflowt eivät kutsu:
+-tiedostot olivat vain clean/upgrade-skripteissä, joita nykyiset workflowt eivät kutsu:
 
 - `cleanInstallUninstallContracts.test.mjs`
 - `cleanInstallUninstallLifecycle.test.mjs`
@@ -36,7 +36,7 @@ valinnan ulkopuolelle. Lisäksi seuraavat `installer/windows-acceptance-harness/
 
 T1a lisää startup-testin tavalliseen desktop-valintaan. T1b liittää kuusi
 harness-tiedostoa nykyiseen vaadittuun komentoketjuun niiden vastuun mukaan.
-Toteutukseen ehdotettu täsmällinen jako, nykyiset testit säilyttäen:
+Hyväksytty täsmällinen jako, nykyiset testit säilyttäen:
 
 - `pnpm --filter @eky/desktop test`: startup-failure-tiedosto nykyiseen
   Vitest-osaan ja uusi ajokytkennän sopimustesti nykyiseen `node --test` -osaan.
@@ -60,6 +60,13 @@ samanniminen workflow tai testattavan toteutuksen välillinen käyttö ei riitä
 Nykyinen sarjallisuus ja native-testien edellytykset säilyvät. Valinnan
 negatiivinen sopimustesti hylkää puuttuvan tiedoston/kutsureunan. Varsinainen
 komento suoritetaan ja sen tulos sidotaan täsmälliseen revisioon.
+
+T1a/T1b:n `apps/desktop/scripts/test-command-wiring.test.mjs` sisältää
+58 tapausta ja kuuluu itse tavalliseen desktop-komentoon. Todelliset
+komentotulokset, valmistumisportin soveltuvuus ja PR/main-integraation
+erillinen hyväksyntä ovat
+[M1:n T1-checkpointissa](release-0.3.0-m1-preparation-plan.md#t1n-toteutus-ja-hyväksyntänäyttö).
+Tämä ei sulje alla olevia projektivalinnan ja prosessipuun jatkorajoja.
 
 ### T2: Projektivalinta ja valmistelu
 
@@ -106,6 +113,14 @@ Oikeat prosessit käynnistetään vain eristettyyn testijuureen. Jos koko puun
 poistumista ei todenneta, cleanup epäonnistuu, juuri säilyy eikä restart
 käynnistä uutta omistajaa. Alkuperäinen virhe, cleanup ja rajatun näytön
 tallennus arvioidaan erikseen. Tuotantolifecycleen ei tehdä sivukorjausta.
+
+T1:n katselmuksessa kirjattiin myös erillinen jatkotarkistus:
+`upgradeRollbackBinaryHandoff.test.mjs` käynnistää yhdessä tapauksessa
+suoran synteettisen Node-lapsen ilman virhepolun erillistä `finally`-siivousta.
+Normaalipolku todentaa lapsen `close`-tapahtuman, mutta testin timeout tai
+komennon supervisor-build ei todista tämän lapsen virhepolun omistajuutta.
+Tarkistus kuuluu T3:n rajaukseen ennen fixturen laajentamista; T1 ei muuta
+testin elinkaarta eikä sen läpäisy osoita tätä jatkokohtaa ratkaistuksi.
 
 T1/T2/T3 tarvitsevat omat todelliset läpäisynsä. Testikattavuutta, aikarajoja,
 flaky-hylkäystä, pakollisia jobeja tai toistoja ei kevennetä tämän työn vuoksi.
