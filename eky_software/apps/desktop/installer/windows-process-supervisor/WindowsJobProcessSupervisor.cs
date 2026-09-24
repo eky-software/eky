@@ -7,11 +7,14 @@ internal sealed class WindowsJobProcessSupervisor(
     SafeEvidenceWriter evidence,
     Func<SupervisorRequest, WindowsJob, CancellationToken, SuspendedWindowsProcess>? createProcess = null,
     Func<SuspendedWindowsProcess, bool>? observeRootExit = null,
-    Func<SupervisorRequest, WorkerTerminalResultValidation>? validateWorkerResult = null
+    Func<SupervisorRequest, WorkerTerminalResultValidation>? validateWorkerResult = null,
+    ISupervisorDeadline? deadline = null
 )
 {
     private const int WaitSliceMilliseconds = 100;
     private const int HeartbeatMilliseconds = 60_000;
+    private readonly ISupervisorDeadline supervisorDeadline =
+        deadline ?? new StopwatchSupervisorDeadline(stopwatch);
 
     internal Task LateCreationRelease { get; private set; } = Task.CompletedTask;
 
@@ -63,7 +66,7 @@ internal sealed class WindowsJobProcessSupervisor(
         using (child)
         {
             evidence.Write("hostAssigned", "completed");
-            if (stopwatch.ElapsedMilliseconds >= workDeadline)
+            if (supervisorDeadline.ElapsedMilliseconds >= workDeadline)
             {
                 evidence.Write("deadlineExceeded", "failed", errorCode: "deadlineExceeded");
                 return FailAfterCleanup(job, request, "deadlineExceeded", null, child);
@@ -92,17 +95,13 @@ internal sealed class WindowsJobProcessSupervisor(
         }
     }
 
-    private bool WaitForCreation(Task<SuspendedWindowsProcess> creation, long deadline)
-    {
-        var remaining = deadline - stopwatch.ElapsedMilliseconds;
-        if (!creation.IsCompleted && remaining > 0)
-            Task.WaitAny([creation], (int)Math.Min(int.MaxValue, remaining));
-        return creation.IsCompleted;
-    }
+    private bool WaitForCreation(Task<SuspendedWindowsProcess> creation, long deadline) =>
+        supervisorDeadline.WaitForTask(creation, deadline);
 
     private SupervisorOutcome CleanupPendingCreation(
         WindowsJob job, Task<SuspendedWindowsProcess> creation, SupervisorRequest request)
     {
+        supervisorDeadline.OnCleanupStarting();
         evidence.Write("cleanupStarted", "started");
         // A zero Job count is not absence while the native call can still create a suspended member.
         if (!WaitForCreation(creation, request.TimeoutMilliseconds))
@@ -152,7 +151,7 @@ internal sealed class WindowsJobProcessSupervisor(
         var rootExited = false;
         int? childExitCode = null;
 
-        while (stopwatch.ElapsedMilliseconds < workDeadline)
+        while (supervisorDeadline.ElapsedMilliseconds < workDeadline)
         {
             var activeProcessCount = job.GetActiveProcessCount();
             if (!descendantObserved && activeProcessCount > 1)
@@ -191,10 +190,7 @@ internal sealed class WindowsJobProcessSupervisor(
                 evidence.Write("workerResultValidated", "started");
                 var validation = Task.Run(() => validateWorkerResult?.Invoke(request) ??
                     WorkerTerminalResultReader.Validate(request));
-                var readRemaining = workDeadline - stopwatch.ElapsedMilliseconds;
-                if (!validation.IsCompleted && readRemaining > 0)
-                    Task.WaitAny([validation], (int)Math.Min(int.MaxValue, readRemaining));
-                if (!validation.IsCompleted)
+                if (!supervisorDeadline.WaitForTask(validation, workDeadline))
                 {
                     _ = validation.ContinueWith(completed => { _ = completed.Exception; },
                         TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
@@ -233,13 +229,13 @@ internal sealed class WindowsJobProcessSupervisor(
                 );
             }
 
-            if (stopwatch.ElapsedMilliseconds >= nextHeartbeat)
+            if (supervisorDeadline.ElapsedMilliseconds >= nextHeartbeat)
             {
                 evidence.Write("waitHeartbeat", "heartbeat");
                 nextHeartbeat += HeartbeatMilliseconds;
             }
 
-            var remaining = workDeadline - stopwatch.ElapsedMilliseconds;
+            var remaining = workDeadline - supervisorDeadline.ElapsedMilliseconds;
             if (remaining <= 0)
             {
                 break;
@@ -268,6 +264,7 @@ internal sealed class WindowsJobProcessSupervisor(
         bool cleanupStarted = false
     )
     {
+        supervisorDeadline.OnCleanupStarting();
         if (!cleanupStarted) evidence.Write("cleanupStarted", "started");
         try
         {
@@ -311,7 +308,7 @@ internal sealed class WindowsJobProcessSupervisor(
         SuspendedWindowsProcess? child
     )
     {
-        while (stopwatch.ElapsedMilliseconds < request.TimeoutMilliseconds)
+        while (supervisorDeadline.ElapsedMilliseconds < request.TimeoutMilliseconds)
         {
             if (job.GetActiveProcessCount() == 0 && (child is null || child.Wait(0)))
             {
@@ -325,7 +322,7 @@ internal sealed class WindowsJobProcessSupervisor(
                 );
             }
 
-            var remaining = request.TimeoutMilliseconds - stopwatch.ElapsedMilliseconds;
+            var remaining = request.TimeoutMilliseconds - supervisorDeadline.ElapsedMilliseconds;
             if (remaining <= 0)
             {
                 break;

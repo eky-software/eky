@@ -92,6 +92,8 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
 
 ### Observability-laajennus
 
+- Käytiinkö `workflow.md`:n toiminnon valmistumisportti läpi myös silloin,
+  kun olemassa olevaa toimintoa vain korjattiin?
 - Onko business-, operational- ja security-event catalog määritelty?
 - Onko jokaisella tapahtumalla selvä omistaja?
 - Onko transaction ownership määritelty kriittiselle business auditille?
@@ -104,6 +106,17 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
 - Onko incident-index-kelpoisuus tai poissulku päätetty?
 - Onko failure behavior päätetty erikseen business auditille ja technical
   logille?
+- Onko observer/logger/failure sink kytketty omistavan runtimen todellisessa
+  compositionissa, eikä vain yksikkötestin fixtureen?
+- Säilyykö turvallinen tarkka syykoodi ja vaihe ennen yleistä UI-virhemuunnosta
+  ilman raakaa poikkeusta tai yritystunnisteita?
+- Kattaako tapahtuman sopimustesti writerin, readerin, HTTP-projektion ja
+  strict clientin sekä tarkoitetun UI-/tukipakettipolun? Onko jokainen
+  katalogiero perusteltu sisällytys- tai poissulkupäätöksellä?
+- Näkyykö lukemisen tai lokituksen häiriö turvallisesti ilman rekursiivista
+  virhelokitusta? Erotetaanko tyhjä, osittainen ja vanhentunut tulos?
+- Säilyvätkö uusimmat tapahtumat eri lokivirroista koko- ja määrärajoissa,
+  ja raportoidaanko kattavuuden rajat rehellisesti?
 - Torjuvatko testit raw errorin, stackin, request bodyn, salaisuudet,
   henkilötiedot ja tarpeettoman business-sisällön?
 - Kattavatko yksikkö-, integraatio- ja E2E-testit myös rikkoutuvat polut?
@@ -168,6 +181,8 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
   tietoisesti rikkinäistä välitilaa?
 - Lisättiinkö testi kriittiseen logiikkaan?
 - Testataanko virhetilat?
+- Testataanko muuttuvan UI-polun varattu-tila, kaksoispainallus, peruutus,
+  turvallinen uudelleenyritys ja käyttäjän seuraava toimenpide?
 - Testataanko käyttöoikeudet backendissä?
 - Testataanko puuttuva tai virheellinen identiteetti/token, kun auth on käytössä?
 - Testataanko toisen yrityksen tunnisteella tehdyt luku- ja kirjoitusyritykset?
@@ -242,11 +257,15 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
 ## AI-työtapa
 
 - Oliko tehtävä riittävän pieni?
+- Käytiinkö toiminnon aloitusportti läpi ja ratkaistiinko vaikutusalueen
+  avoimet kysymykset ennen toteutusta?
 - Annettiinko toteutussuunnitelma ennen laajaa muutosta?
 - Luettiinko oikeat dokumentit?
 - Onko Git-tila hallinnassa?
 - Onko lähtöbaseline todistetusti vihreä ennen seuraavan vaiheen aloittamista?
 - Onko muutos helppo perua tarvittaessa?
+- Vastaavatko roadmapin ja omistavan suunnitelman tilat päätöksiä sekä
+  todellista toteutus- ja testinäyttöä?
 
 ## Valmiin työn minimitaso
 

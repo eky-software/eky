@@ -1222,6 +1222,9 @@ async function startDesktopCompositionRuntime({
           );
         },
       });
+    restoredProfileAwaitingDecision =
+      shouldDeferRestoredProfileAcceptance &&
+      restoreStartupResult === 'restoredProfileReady';
     if (restoreStartupResult === 'relaunchRequired') {
       if (isWorkspaceActivationReplacementRecovery) {
         const workspaceRecovery = await activeWorkspace.recoverFromFailure();
@@ -1251,12 +1254,8 @@ async function startDesktopCompositionRuntime({
         runtimeSessionSecret,
       });
     }
-    if (
-      shouldDeferRestoredProfileAcceptance &&
-      restoreStartupResult === 'restoredProfileReady'
-    ) {
+    if (restoredProfileAwaitingDecision) {
       const restoredProfileId = activeProfileValidation.profileId;
-      restoredProfileAwaitingDecision = true;
       try {
         await activeProfileRestoreStartupRecovery
           .acceptValidatedRestoredProfile({
@@ -1298,10 +1297,16 @@ async function startDesktopCompositionRuntime({
     await recoveryPointScheduler.start();
   } catch (error) {
     await recoveryPointScheduler.stopChecks().catch(() => undefined);
-    await backendHandle?.stop().catch(() => undefined);
+    const backendStopped = await Promise.resolve()
+      .then(() => backendHandle?.stop())
+      .then(() => true, () => false);
     profileSnapshotBrokerClient.close();
     invoicePdfArchiveBrokerHandle.close();
     secretBrokerHandle.close();
+    if (!backendStopped) {
+      // No recovery may change profile files or select another live runtime.
+      throw error;
+    }
     if (
       error instanceof DesktopBackendStartupStoppedError &&
       (updateRecoveryRelaunchRequested ||

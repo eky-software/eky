@@ -29,6 +29,56 @@ validoida turvallisesti siirtymäkauden yli.
 Pelkkä paikallinen kehitysbuild ei edellytä version nostoa. Git-revision avulla
 samasta versiosta tehdyt kehitysbuildit erotetaan toisistaan.
 
+## Julkaisurytmi ja muutosten kokoaminen
+
+Versionumero kuvaa käyttäjälle toimitettavaa kokonaisuutta, ei yksittäistä
+korjausta, committia tai testiajoa. Pienet muutokset toteutetaan ja testataan
+rajattuina paloina, mutta useita korjauksia ja sovittuja ominaisuuksia
+kootaan samaan julkaisuun. Versionumeroita ei nosteta jokaisesta työvaiheesta.
+
+| Esimerkki | Käyttötarkoitus |
+| --- | --- |
+| Kehitystyö ilman versionnostoa | Korjaukset, dokumentit ja testit valmistellaan Git-revisioina. Kehitysbuild ei ole käyttäjälle jaettava uusi päivitys. |
+| `0.3.0` | Omistajan hyväksymä seuraava ominaisuus- ja korjauskokonaisuus; sisältö on [julkaisusuunnitelmassa](release-0.3.0-plan.md). |
+| `0.3.1`, `0.3.2` | Saman ominaisuuskokonaisuuden yhteensopivia korjausjulkaisuja. Yhteen patch-julkaisuun voi kuulua useita pieniä korjauksia. |
+| `0.4.0` | Esimerkki myöhemmästä uudesta ominaisuuskokonaisuudesta, ei päätös sen sisällöstä tai julkaisupäivästä. |
+| `1.0.0` | Erikseen hyväksyttävä vakiintuneen julkisen sopimuksen ja käyttöönoton merkkipaalu; numero ei yksin hyväksy laajaa jakelua tai tietoturvaa. |
+
+Julkaisuvalinta perustuu muutosten sisältöön ja yhteensopivuuteen, ei
+korjausten lukumäärään tai käytettyyn aikaan. Pelkistä pienistä korjauksista
+ei tehdä uutta minor-versiota vain siksi, että niitä on monta. Schema-,
+backup- ja API-yhteensopivuus arvioidaan erikseen myös `0.x`-sarjassa.
+
+Kiireellinen tietoturva-, tietojen säilymiseen liittyvä tai käytön estävä
+korjaus voidaan toimittaa erillisenä patch-julkaisuna odottamatta muuta
+kokonaisuutta. Se ei poista muutoksen riskin edellyttämiä hyväksyntäportteja.
+Tavalliset pienet parannukset odottavat sovittua koontijulkaisua.
+
+Version tavoite kirjataan suunnitelmaan alussa. Auktoritatiivinen
+sovellusversio ja MSI-tuoteversio muutetaan vasta julkaisuvaiheen erillisessä
+versionostossa, kun sisältö ja sitä edeltävät tarkistukset ovat valmiit.
+Nykyinen first-parent-, clean-build- ja exact-byte-release-portti säilyy.
+Versionoston jälkeen tehty muutos voi vaatia uuden version nykyisen portin
+mukaan; julkaisun keskeneräisyyttä ei kierretä saman version uusilla tavuilla.
+
+Ennen toimitusta kirjataan valmistuneet korjaukset ja ominaisuudet,
+olennaiset rajaukset, yhteensopivuus sekä hyväksyntänäyttö. Keskeneräinen
+tehtävä ei siirry julkaisutietoihin valmistuneena. Sovitun tehtävän siirto
+seuraavaan julkaisuun vaatii omistajan päätöksen.
+
+### Siirtymä 0.2.81:stä 0.3.0:aan
+
+Omistajan 2026-09-22 päättämä seuraava julkaisutavoite on `0.3.0`. Aiempi
+`0.2.9` oli tämän kokonaisuuden työnimi, ei enää toimitettavan päivityksen
+numero. Sekä SemVerissä että kolmiosaisessa MSI-vertailussa `0.3.0` on
+`0.2.81`:tä suurempi; `0.2.9` olisi sitä pienempi. Osat ovat kokonaislukuja,
+eivät desimaaliluvun numeroita.
+
+Tavoite ei tässä vaiheessa muuta manifestien versioita tai vanhoja
+artifacteja. Neliosaista versiota, vertailualgoritmin muutosta tai
+downgrade-poikkeusta ei tarvita. Vanhat julkaisut ja testitodisteet säilyvät
+alkuperäisillä numeroillaan.
+
 ## Paketoidun buildin identiteetti
 
 Windows-paketointi muodostaa build-infon vasta buildin alussa:

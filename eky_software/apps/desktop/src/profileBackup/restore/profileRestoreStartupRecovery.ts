@@ -115,9 +115,12 @@ export class ProfileRestoreStartupRecovery {
           ? 'restoredProfile'
           : 'rolledBackProfile',
       });
-      await Promise.resolve()
-        .then(() => input.stopBackend())
-        .catch(() => undefined);
+      try {
+        await input.stopBackend();
+      } catch {
+        this.observeRecoveryRequired('startupRollback');
+        throw new Error('PROFILE_RESTORE_RECOVERY_REQUIRED');
+      }
       if (input.mode === 'validateRolledBackProfile') {
         this.observeRecoveryRequired('rolledBackProfile');
         throw new Error('PROFILE_RESTORE_RECOVERY_REQUIRED');

@@ -249,6 +249,50 @@ describe('profile restore startup recovery', () => {
     ]);
   });
 
+  it.each(['validateRestoredProfile', 'validateRolledBackProfile'] as const)(
+    'does not change profile files when stopping the backend fails during %s',
+    async (mode) => {
+      const operationId = randomUUID();
+      const events: ProfileRecoveryOperationalEvent[] = [];
+      const transaction = createTransaction(operationId);
+      const recovery = new ProfileRestoreStartupRecovery({
+        journalStore: {
+          read: async () => createJournal(
+            operationId,
+            mode === 'validateRestoredProfile' ? 'validationStarting' : 'rolledBack',
+          ),
+        },
+        observer: { observe: (event) => events.push(event) },
+        transaction,
+      });
+      await expect(recovery.prepareBeforeBackend()).resolves.toBe(mode);
+
+      await expect(recovery.validateAfterBackend({
+        mode,
+        async validateActiveProfile() {
+          throw new Error('SYNTHETIC_VALIDATION_FAILED');
+        },
+        async stopBackend() {
+          throw new Error('SYNTHETIC_STOP_FAILED');
+        },
+      })).rejects.toThrow('PROFILE_RESTORE_RECOVERY_REQUIRED');
+
+      expect(transaction.accept).not.toHaveBeenCalled();
+      expect(transaction.rollback).not.toHaveBeenCalled();
+      expect(transaction.clearRolledBack).not.toHaveBeenCalled();
+      expect(events).toEqual([
+        expect.objectContaining({
+          eventName: 'restore.validationFailed',
+          errorCode: 'SYNTHETIC_VALIDATION_FAILED',
+        }),
+        expect.objectContaining({
+          eventName: 'restore.recoveryRequired',
+          errorCode: 'PROFILE_RESTORE_RECOVERY_REQUIRED',
+        }),
+      ]);
+    },
+  );
+
   it('reports a failed-safe startup journal before blocking startup', async () => {
     const operationId = randomUUID();
     const events: ProfileRecoveryOperationalEvent[] = [];

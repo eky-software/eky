@@ -27,6 +27,27 @@ AI-avustajat voivat auttaa suunnittelussa, arkkitehtuurin arvioinnissa, dokument
 
 Codex tai muu koodausagentti toimii toteuttajana, mutta ei saa tehdä laajoja arkkitehtuuripäätöksiä itsenäisesti.
 
+### Agenttien ja aliagenttien käyttö
+
+Projektin omistaja antaa pysyvän, nimenomaisen luvan käyttää agentteja ja
+aliagentteja sekä delegoida niille rajattuja osatehtäviä jokaisella
+työskentelykierroksella, ellei omistaja erikseen kiellä tai rajaa niiden
+käyttöä. Erillistä lupaa delegointiin ei tarvitse kysyä joka tehtävässä.
+Lupa koskee kaikkia käytettävissä olevia päättelytasoja, ei vain Ultraa,
+eikä edellytä agenttien käyttöä pienessä tai suoraviivaisessa tehtävässä.
+
+Pääagentti arvioi hyödyn, rajaa vastuut ja antaa kullekin aliagentille
+tarvittavat projektiohjeet, tehtävärajauksen ja hyväksyntäehdot. Rinnakkaisten
+muokkausten kirjoitusalueet erotetaan. Pääagentti tarkistaa tulokset ja
+muutokset ennen niiden hyväksymistä osaksi kokonaisuutta sekä vastaa
+yhteenvetoon merkityistä todisteista ja avoimista kohdista.
+
+Samat tietoturva-, yksityisyys-, moduuliraja-, riippuvuus-, testaus- ja
+hyväksyntäsäännöt koskevat kaikkia agentteja. Delegointi ei laajenna tehtävän
+valtuuksia, ohita työkalujen rajoituksia tai käynnistä keskeytettyä työtä
+uudelleen. Tämä lupa koskee kehitystyön avustajia, ei sovelluksen tulevien
+AI-toimijoiden ajonaikaisia käyttöoikeuksia.
+
 ## Ohjeiden etusija ja ristiriitatilanteet
 
 Jos kaksi projektin ohjetta vaikuttavat ristiriitaisilta, noudata seuraavaa etusijajärjestystä:
@@ -454,6 +475,19 @@ Ennen muutosten tekemistä:
 8. Älä muuta arkkitehtuuria ilman hyväksyntää.
 
 ## Ennen kuin ilmoitat työn valmiiksi
+
+Jokaisen uuden tai muuttuvan toiminnon mukana tarkistetaan
+`docs/ai/workflow.md`:n **Toiminnon valmistumisportti**. Se koskee myös
+virhekorjauksia, ei vain uusia moduuleja. Testit, käyttäjän palaute,
+virheiden jäljitettävyys, diagnostiikka, tietoturva ja datan palautettavuus
+arvioidaan samassa tehtävässä. Soveltumaton kohta perustellaan; tekemätöntä
+tarkistusta ei merkitä läpäistyksi.
+
+Lokituksen olemassaoloa ei todisteta pelkällä loggerin yksikkötestillä:
+varmista omistavan runtimen todellinen kytkentä ja tapahtumalle tarkoitettu
+lukuketju. Uusi tapahtuma saa jäädä Diagnosticsin, Activityn, tukipaketin tai
+incident-indeksin ulkopuolelle vain tarkoituksellisen sopimuksen perusteella.
+Näihin kaikkiin ei tarvitse lisätä jokaista tapahtumaa.
 
 Tarkista:
 

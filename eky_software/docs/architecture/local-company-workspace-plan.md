@@ -1300,16 +1300,40 @@ erillisenä commitina vihreästä lähdepuusta.
 
 ## W7: Workspace deletion
 
-**Tila:** erillinen myöhempi jatkotyö, alustava versiotavoite `0.2.9`.
+**Tila:** omistajan 2026-09-22 päätöksellä `0.3.0`-julkaisuun kuuluva
+vaadittu ominaisuus; yksityiskohtainen suunnittelu ja toteutus ovat tekemättä.
+Aiempi alustava tavoite `0.2.9` on korvattu
+[0.3.0-julkaisusuunnitelmalla](release-0.3.0-plan.md), tehtävä `R030-02`.
 
 Poisto suunnitellaan erikseen vasta ensimmäisen multi-workspace-releasen
 jälkeen. Se vaatii ADR-0011:n quarantine-, backup-, typed confirmation-,
 native confirmation-, secret-, recovery- ja external artifact -rajat.
 
 W7 ei saa tulla mukaan W1-W6-PR:iin tai korjattuun 0.2.8-pilottiin sivutoimintona.
-Alustava 0.2.9-tavoite ei vielä hyväksy toteutuksen yksityiskohtia, schema- tai
+Julkaisuun kuuluminen ei vielä hyväksy toteutuksen yksityiskohtia, schema- tai
 backup-formaattimuutosta eikä poiston turvallisuussopimusta ilman omaa
-suunnittelu- ja hyväksyntäporttia.
+suunnittelu- ja hyväksyntäporttia. Poistoa ei siirretä pois `0.3.0`:sta ilman
+omistajan uutta päätöstä, eikä keskeneräistä turvallisuusrajaa ohiteta
+julkaisun valmistumiseksi.
+
+### Jatkosuunnittelu: ensikäyttö ilman oletusyritystä
+
+Omistajan jatkotoiveena on, ettei aidosti uudessa asennuksessa luoda
+automaattisesti tyhjää oletusyritystä. Ensimmäinen näkymä tarjoaisi uuden
+yrityksen luonnin tai varmuuskopion tuonnin uutena yrityksenä. Tämä
+suunnitellaan W7:n yhteydessä, mutta ei toteuteta 0.2.8-pilotin aikana.
+
+Toive säilyy `0.3.0`-tehtävälistalla kohtana `R030-06`, jonka toteutusraja
+päätetään W7-suunnittelussa. Yrityspoiston pakollisuus ei yksin hyväksy
+kaikkia ensiasennuksen muutoksia.
+
+Olemassa olevan asennuksen päivitys ja aiemman profiilin adoptio säilyttävät
+yritykset ja tiedot; niitä ei tulkita tyhjäksi ensikäytöksi. Oletusyritystä
+ei poisteta automaattisesti myöskään silloin, kun se näyttää tyhjältä.
+Suunnittelu ratkaisee erikseen nollan työtilan käynnistystilan, luonnin ja
+tuonnin peruutus-/virhepolut sekä viimeisen yrityksen poistamisen jälkeisen
+tilan nykyisten lifecycle- ja turvallisuussopimusten puitteissa. Tämä kirjaus
+on jatkotyön tavoite, ei valmiin toteutuksen tai uuden poistorajan hyväksyntä.
 
 ## Checkpointien yhteinen Definition of Done
 

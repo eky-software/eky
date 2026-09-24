@@ -14,6 +14,7 @@ const MODES = new Set([
   'recordArguments',
   'spawnGrandchildAndExit',
   'spawnGrandchildAndHold',
+  'spawnGrandchildOnReleaseAndHold',
   'spawnGrandchildThenExitOnRelease',
 ]);
 const ROLES = new Set(['grandchild', 'root', 'sentinel']);
@@ -231,6 +232,14 @@ async function main() {
     return;
   }
 
+  if (input.mode === 'spawnGrandchildOnReleaseAndHold') {
+    await writeJsonAtomic(join(input.runRoot, 'grandchild.gate.json'), {
+      schemaVersion: 1,
+      runNonce: input.runNonce,
+      rootProcessId: process.pid,
+    });
+    await waitForRelease(input.runRoot, 'grandchild-create');
+  }
   await startGrandchild(input);
   if (input.mode === 'spawnGrandchildAndExit') {
     await writeWorkerResult(

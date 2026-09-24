@@ -5,6 +5,10 @@
 Diagnostics tarjoaa käyttäjälle rajatun, vain lukuun tarkoitetun teknisen
 näkymän Eky-runtimen operational- ja security-tapahtumista.
 
+Diagnostiikan tarkennukset ja avoimet korjaukset on koottu dokumenttiin
+[Diagnostiikan 0.3.0-täydennyssuunnitelma](../architecture/diagnostics-0.2.9-completion-plan.md).
+Suunnitelma ei tarkoita, että korjaukset olisivat jo toteutettuja.
+
 ## Omistajuus
 
 Diagnostics omistaa vain turvallisen lukuprojektion. Se ei omista
@@ -57,11 +61,15 @@ diagnostiikkalista voi olla tyhjä, jos backendille ei ole annettu logs-rootia.
 Lokikansion avaaminen ja tukipaketin tallennus toteutetaan erillisinä Electron
 mainin omistamina, käyttäjän käynnistäminä capabilityina.
 
-Paketoidun desktopin smoke todentaa koko julkisen diagnostiikkaketjun
+Paketoidun desktopin smoke todentaa edustavan julkisen diagnostiikkaketjun
 JSONL-readerista HTTP-projektioon, API-clientin strict parseriin ja oikeaan
 paketoituun Diagnostiikka-näkymään. Tuntematon vanha JSONL-event voidaan
 ohittaa turvallisesti, mutta HTTP-projektion tuntematon event torjutaan
 clientissä.
+
+Smoke ei yksin todista kaikkien event-katalogien kattavuutta tai jokaisen
+ominaisuuden observer-kytkentää. Niille tarvitaan erilliset sopimus- ja
+composition-testit.
 
 Lokikansion avaaminen ei hyväksy rendereriltä polkua. Electron main muodostaa
 kiinteän `userData/runtime/logs`-juuren, tarkistaa trusted main frame
@@ -93,8 +101,12 @@ permissionilla suojatun read-only-projektion. Se sisältää vain:
 - tiedon siitä, katkaistiinko tapahtumaosio
 
 Projektio ei palauta tietokantapolkua, business-taulujen rivejä,
-`companyId`- tai actor-tunnisteita, correlation-tunnisteita, raakaa
-lokisisältöä tai salaisuuksia.
+`companyId`- tai actor-tunnisteita, raakaa lokisisältöä tai salaisuuksia.
+Tekninen korrelaatiotunniste on sallittu vain erikseen hyväksytyssä
+tapahtumaprojektiossa `support-bundle-plan.md`:n mukaisesti; esimerkiksi
+recovery/restore-tapahtumien satunnainen `correlationId` on tällainen.
+Tämä ei salli business-tunnisteita, runtime-sessionia tai korrelaatiota
+pitkäaikaiseen incident-indeksiin.
 
 Tukipakettidatan HTTP-reitti ei kuulu rendererin yleiseen desktop-protokollan
 allowlistiin eikä API-clientin julkiseen sopimukseen. Paketoidussa

@@ -20,6 +20,12 @@ AI voi ehdottaa, vertailla, kirjoittaa, refaktoroida ja testata, mutta se ei saa
 
 AI-avustajien ehdotuksia ei hyväksytä automaattisesti. Ihminen tarkistaa, rajaa ja hyväksyy työn.
 
+Agenttien ja aliagenttien käyttö on oletusarvoisesti sallittu jokaisella
+työskentelykierroksella juuri-[AGENTS.md:n](../../AGENTS.md#agenttien-ja-aliagenttien-käyttö)
+pysyvän delegointiluvan mukaisesti, ellei omistaja erikseen kiellä tai rajaa
+sitä. Käytä delegointia tarpeen mukaan; pääagentti vastaa työn rajauksesta,
+tulosten tarkistamisesta ja yhteisten hyväksyntäporttien noudattamisesta.
+
 ## Työn aloitusjärjestys
 
 Aina luettava:
@@ -53,6 +59,29 @@ Suosi pieniä ja rajattuja tehtäviä:
 Nollaa konteksti säännöllisesti. Kun siirryt täysin uuteen tehtävään tai moduuliin, aloita uusi chat-sessio.
 
 ## Toteutussuunnitelma ennen koodaamista
+
+### Toiminnon aloitusportti
+
+Ennen jokaista rajattua toteutuspalaa, myös virhekorjausta, tarkista
+voimassa olevat ohjeet, roadmapin tila ja edeltävän hyväksyntäportin näyttö.
+Kirjaa lyhyesti tavoite, omistava vastuu, säilyvät sopimukset, rajauksen
+ulkopuoliset asiat ja avoimet kysymykset. Koko roadmapin hyväksyntä ei
+ratkaise sen erikseen päätettäviksi merkittyjä kysymyksiä.
+
+Ratkaise toteutukseen vaikuttavat avoimet kysymykset ja tarvittavat
+omistajapäätökset ennen koodimuutoksia. Jos uusi epäselvyys ilmenee työn
+aikana, pysäytä sen vaikutusalue ja päivitä suunnitelma; älä keksi sopimusta
+lennossa. Riippumaton, jo hyväksytty työ voi jatkua.
+
+Valitse samalla tarvittava testinäyttö sekä arvioi ilmoitukset, lokitus,
+diagnostiikka, auditointi, dokumentointi, tietoturva ja palautettavuus
+[toiminnon valmistumisportin](#toiminnon-valmistumisportti) mukaan.
+Soveltumaton kohta perustellaan. Päivitä roadmapin ja omistavan suunnitelman
+tila aloituksessa, päätöksen muuttuessa ja hyväksynnässä, ei vasta julkaisun
+lopuksi. Pieni tehtävä tarvitsee vain lyhyen kirjauksen, ei uutta
+suunnitelmadokumenttia.
+
+### Suunnitelman sisältö ja hyväksyntä
 
 Laajoissa tai arkkitehtuuriin vaikuttavissa tehtävissä AI:n pitää antaa lyhyt toteutussuunnitelma ennen koodimuutoksia.
 
@@ -108,6 +137,14 @@ Jos sääntö puuttuu, se kirjataan avoimeksi kysymykseksi oikeaan dokumenttiin.
 Kun arkkitehtuuri, moduuliraja, teknologiapäätös, turvallisuussääntö tai liiketoimintasääntö muuttuu, dokumentaatio pitää päivittää.
 
 Dokumentaation päivittäminen on osa muutosta.
+
+Seuraavan sovitun julkaisun sisältö ja jatkotoiveet pidetään yhteisessä
+[0.3.0-tehtävälistassa](../architecture/release-0.3.0-plan.md). Päivitä
+tehtävän tila, rajaus ja hyväksyntäviite työn edetessä. Erota sovittu sisältö,
+vielä päätettävät ehdotukset ja myöhemmäksi jätetyt asiat; keskustelussa
+esitettyä ideaa ei merkitä automaattisesti hyväksytyksi toteutukseksi.
+Julkaisunumeroa ei nosteta jokaisesta pienestä korjauksesta tai commitista:
+noudata [julkaisurytmiä ja versiointia](../architecture/release-versioning-policy.md#julkaisurytmi-ja-muutosten-kokoaminen).
 
 Esimerkkejä:
 
@@ -214,6 +251,34 @@ Ihmisen pitää tarkistaa erityisesti:
 
 AI voi tuottaa paljon koodia nopeasti, mutta arkkitehtuuri ja vastuu pysyvät ihmisellä.
 
+## Toiminnon valmistumisportti
+
+Uusi toiminto tai virhekorjaus arvioidaan kokonaisena käyttäjäpolkuna, ei
+vain onnistuvana palvelukutsuna. Seuraavat kohdat tarkistetaan samassa
+tehtävässä. Kirjaa olennaiset tulokset tehtävän yhteenvetoon muodossa
+**todennettu**, **ei sovellu (perustelu)** tai **avoin (riski ja jatkotyö)**.
+Turvallisuuden, datan eheyden tai sovitun hyväksyntäportin avoin kohta estää
+valmiiksi ilmoittamisen. Testin ajamatta jättäminen ei ole läpäisy.
+
+| Alue | Tarkistettava asia |
+| --- | --- |
+| Käyttäjäpolku | Onnistuminen, tyhjä tila, virheellinen syöte ja odotettu esto toimivat. Käyttäjä tietää, onnistuiko toiminto ja mitä tehdä seuraavaksi. |
+| Keskeneräinen työ | Lataus/varattu-tila, kaksoispainallus, peruutus, aikakatkaisu ja yhteyskatko eivät tuota tuplatoimintoa tai väärää onnistumisilmoitusta. Epäselvää lopputulosta ei kutsuta epäonnistumiseksi ilman näyttöä. |
+| Uudelleenyritys | Uudelleenyritys on turvallinen tai estetty; sivuvaikutus, idempotenssi ja tarvittaessa restart/recovery on huomioitu. Peruutusta ei oleteta jo valmistuneen kirjoituksen kumoamiseksi. |
+| Ilmoitukset ja ohje | Suomenkielinen virhe kertoo turvallisesti ongelman ja seuraavan toimen. Näppäimistö, fokus, ruudunlukijan status/alert ja tekstien mahtuminen tarkistetaan muuttuvassa UI:ssa. Käyttöohje päivitetään, kun työnkulku muuttuu. |
+| Lokitus ja jäljitettävyys | Omistava toiminto tuottaa sovitun tapahtuman myös virheessä. Vakaa syykoodi ja vaihe säilyvät sisäisessä turvallisessa luokituksessa, vaikka käyttäjälle palautetaan yleisempi virhe. Tarkista tuotannon composition-kytkentä, ei vain testiin injektoitua observeria. |
+| Diagnostiikka ja tuki | Katalogi, writer, reader, projektio, strict client ja UI tukevat sovittua tapahtumaa. Tukipaketin ja incident-indeksin sisällytys tai poissulku on tarkoituksellinen. Osittainen, vanhentunut tai epäonnistunut luku ei saa näyttää täydeltä terveystarkistukselta. |
+| Audit ja tietoturva | Business audit ja tekninen loki säilyvät erillisinä. Tarkista käyttöoikeus, yritysraja, syötteet ja tietovuodot myös estetyssä polussa. Lokin kirjoitusvirhe ei muuta business-tulosta; kriittisen auditin transaktiosääntö säilyy. |
+| Pysyvä data | Migraatio, vanhan version/aineiston yhteensopivuus, backup inclusion/exclusion, restore ja rollback arvioidaan, jos muutos koskee pysyvää tilaa. Ei piilotettuja varmuuskopioita tai uusia retention-sääntöjä ilman päätöstä. |
+| Rajat ja testit | Testaa onnistuminen, odotettu esto ja odottamaton virhe oikealla tasolla; huomioi koko-, aika-, levy- ja muistirajat, aikaleimat sekä rinnakkaisuus riskin mukaan. Lisää regressiotesti löydettyyn vikaan ja kytkentätesti kerrosten väliseen katkokseen. |
+| Toimitus | Dokumentit, julkaisutiedot ja tarvittavat hyväksyntäportit vastaavat toteutusta. Raportoi ajetut testit, testaamatta jäänyt ja jäljelle jäävät riskit. Asennetun version toiminta, lähdekooditesti ja uusi julkaisu eivät ole sama todiste. |
+
+Tämä ei määrää jokaiseen pieneen muutokseen uutta eventtiä, tukipakettiosiota
+tai raskasta E2E-ajoa. Testitasot valitaan `testing-rules.md`:n ja voimassa
+olevien packaged-/backup-/release-porttien mukaan. Moduulin omistaja päättää
+tapahtumasopimuksen; epäselvä uusi sopimus rajataan päätettäväksi ennen
+toteutusta. Soveltuvuuden tarkistus on aina pakollinen.
+
 ## Valmiin työn määritelmä
 
 AI:n tekemä työ voidaan katsoa valmiiksi vasta, kun:
@@ -224,6 +289,8 @@ AI:n tekemä työ voidaan katsoa valmiiksi vasta, kun:
 - turvallisuusperiaatteet on huomioitu
 - uudet riippuvuudet on perusteltu tai niitä ei ole
 - kriittiset testit on lisätty tai perustellusti jätetty lisäämättä
+- toiminnon valmistumisportti on käyty läpi ja sovitut hyväksyntäehdot
+  on todennettu myös virhepolussa
 - dokumentaatio on päivitetty tarvittaessa
 - koodi on luettavaa
 - tiedostoilla on selkeä vastuu

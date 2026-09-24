@@ -101,6 +101,10 @@ Mandatory boundaries:
   the registry lineage assertion both pass; a mismatch must roll back while
   the journal still owns the rollback slot and then relaunch the previous
   profile
+- own the pending restore decision immediately after deferred validation,
+  before any later health/session check; rollback may replace profile files
+  only after backend shutdown succeeds, otherwise retain recovery evidence
+  and keep business UI closed
 - never expose a backup password, derived key, recovery-point key, raw
   manifest or local backup/update path to the renderer
 - never accept encryption parameters, an executable, process arguments, a

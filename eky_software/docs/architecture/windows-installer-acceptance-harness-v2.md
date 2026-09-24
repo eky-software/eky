@@ -16,6 +16,328 @@ nykyisen revision hyväksyntää. Tämä on projektin suunnitelma, ei omistajan
 koneen diagnostiikkapäiväkirja. Yksityinen aineisto kuuluu vain Gitistä
 ohitettuihin paikallisiin paikkoihin; epäonnistuneita testituloksia ei kumota.
 
+## M0: Valmiusmerkinnän selvitys
+
+Tila 2026-09-24: omistaja hyväksyi selvityksen ja suunnittelun ennen
+[0.3.0-roadmapin M0-mergeä](release-0.3.0-plan.md#m0-nykyinen-työ-mainiin-ennen-korjauksia).
+Omistaja hyväksyi tämän jälkeen M0.1:n rajatun diagnostiikkatoteutuksen.
+Aikarajojen muutoksia tai testivaatimusten keventämistä ei ole hyväksytty.
+Tämä rajattu pala ei avaa muita 0.3.0-korjauksia ennen mergeä.
+
+### Havainto ja näytön raja
+
+Lähdevertailu revision `9699f4e0efd0a82984d155b4d46b0b401ebb17e3`
+`windowsAcceptanceSupervisor.contract.test.mjs`-testiin osoittaa
+ajoituskilvan: testin 2 500 ms kokonaisrajasta 800 ms on siivousvaraus.
+Tuotannon kello alkaa ennen request-valmistelua. Root-fixture kirjoittaa
+oman markerinsa ennen grandchildin käynnistämistä, ja molempien markereiden
+pitäisi syntyä jäljelle jäävässä 1 700 ms työajassa. Testi lukee ne vasta
+supervisorin `close`-tapahtuman ja validoidun terminal-resultin jälkeen.
+Koodi ei takaa molempien markereiden ehtimistä ennen deadlinea.
+
+[Erillisen ajon epäonnistuneessa core-jobissa](https://github.com/eky-software/eky/actions/runs/35474264108/job/105980791783)
+grandchild-markerin odotus epäonnistui ennen deadline-/cleanup-assertioita.
+Säilynyt loki ei kerro kyseisen yrityksen terminal-kenttien arvoja.
+Markerin puuttuminen voi johtua deadlinen ja käynnistyksen kilpailusta,
+käynnistys-/kirjoitusvirheestä tai lukuvirheestä. Lähtörevision existence-apu
+käsittelee kaikki access-virheet puuttumisena. Historiallista syytä ei
+nimetä varmistetuksi eikä havaintoa tulkita tuotantosovelluksen viaksi.
+
+Lähtörevision `finally` voi poistaa onnistuneen prosessisiivouksen jälkeen
+myös epäonnistumisen aineiston. Puuttuvan markerin ohittaminen siivouksessa
+ei todista kyseisen jälkeläisen syntymistä tai puuttumista. Cleanup ja
+hyväksyntä ovat eri todisteita; puuttuva vaadittu näyttö pysyy hylkäyksenä.
+
+### Hyväksytty diagnostiikkapala: M0.1
+
+Tila: **toteutettu / rajatut kohdetestit läpäisty**. Hyväksyntä koskee
+vain testiharnessin diagnostiikan täsmennystä. Kohteet ovat supervisorin
+olemassa oleva sopimustesti ja sen
+`supervisorContractTestSupport.mjs`; tarvittaessa vain niiden omat testit.
+Suunniteltu käyttäytyminen:
+
+- Tarkista ja säilytä validoidun terminal-resultin turvalliset
+  process-/cleanup-luokat ennen jälkikäteistä marker-assertiota. Puuttuvaa
+  markeria ei hyväksytä, ohiteta tai muuteta onnistumiseksi.
+- Erota puuttuva marker, virheellinen sisältö ja lukuvirhe rajatulla
+  syykoodilla. Kun omistettu prosessi on jo päättynyt, jälkiluku ei odota
+  siltä uutta markeria. Elävän prosessin readiness-odotus säilyy erillisenä.
+- Säilytä ensimmäisen epäonnistumisen näyttö, mutta aja aina nykyinen
+  omistettujen prosessien cleanup. Alkuperäinen testivirhe ja mahdollinen
+  cleanup-virhe säilyvät erillisinä. Tuntematon cleanup estää temp-poiston.
+- Julkinen testipalaute sisältää vain suljetut vaihe-/syyluokat ja
+  todennetut marker-/cleanup-tilat. Ei polkuja, PID-arvoja, noncea,
+  komentorivejä, raakapoikkeuksia tai omistajan koneen tietoja. Tarkempi
+  paikallinen näyttö jää nykyiseen ohitettuun paikkaan; CI:hin ei lisätä
+  raakafixturen artifact-uploadia.
+
+Kohdetestit todistavat puuttuvan, virheellisen ja lukukelvottoman markerin,
+terminal-virheen etusijan, evidencen säilymisen sekä cleanup-virheen
+näkymisen. Sen jälkeen ajetaan rajattu Windows-sopimustesti nykyisillä
+budjeteilla synteettisessä testijuuressa. Ensimmäinen epäonnistuminen
+analysoidaan; testiä ei uusita vihreän tuloksen saamiseksi. Uusi läpäisy
+ei yksin todista ajoituskilpaa korjatuksi eikä avaa mergeä.
+
+#### M0.1-toteutus ja todennus
+
+- `verifyDeadlineRun` validoi ja tarkistaa terminal-tuloksen ennen pakollisia
+  markereita. `readCompletedMarker` erottaa kertaluvussa `missing`, `invalid`
+  ja `readFailed`-tilat; elävän prosessin `waitForMarker` säilyy ennallaan.
+- Puuttuva näyttö hylkää testin. Ensimmäinen virhe sekä mahdollinen erillinen
+  cleanup-virhe tulevat suljettuun diagnostiikkaan. Omistetut kahvat käsitellään
+  myös virheessä; tämän ajon cleanupia ei uusita yleisestä `afterEach`-hookista.
+  Muiden ajojen rekisteröinti ja jälkisiivous säilyvät ennallaan.
+- Virheellisen ajon oma synteettinen temp-juuri säilytetään. Siihen yritetään
+  kirjoittaa turvallinen `deadline-contract-diagnostic.json`; kirjoitusvirhe
+  näkyy erikseen eikä korvaa ensimmäistä virhettä. `retention=requested`
+  kertoo säilytyspyynnöstä, ei lupaa tiedostojärjestelmän virheettömyyttä.
+  Raakatuloksia ei tulosteta eikä uutta artifact-uploadia lisätä.
+- Cleanup ei enää tulkitse markerin lukuvirhettä puuttumiseksi. Epävarma
+  cleanup estää temp-poiston. Puuttuva marker ei edelleenkään todista
+  jälkeläisprosessin syntymistä tai poistumista.
+- Windows-kohdetodennus: diagnostiikka ja context-cleanup **25/25**,
+  terminal-validator **5/5**, alkuperäinen deadline-sopimus **1/1** yhdellä
+  yrityksellä. Ei ohitettuja testejä valituissa joukoissa. Supervisorin ja
+  contract-fixturen nykyinen käännös onnistui. Budjetteja ei muutettu.
+- Kohdetestit ovat jo CI:n suorittamassa sopimustiedostossa. Uutta koko
+  supervisor-perheen, legacy-core-perheen tai GitHub-matriisin ajoa ei tehty.
+  Rajattu läpäisy ei korjaa tai kumoa M0.2:n avointa ajoituskilpaa.
+
+Valmistumisportti: tämän testipolun virheet, tietosuojaraja, todellinen
+Windows-kytkentä sekä aineiston säilyminen ja cleanup on kohdetodennettu.
+Tuotannon UI, Diagnostics, Activity, tukipaketti, yritysrajat, business-data
+ja backup/restore eivät muutu; niihin ei lisätä testiharnessin tapahtumia.
+Uusia riippuvuuksia, tuotantoprotokollia, aikarajoja tai julkaisuversiota ei lisätty.
+M0:n integraatiohyväksyntä on edelleen avoinna. M0.2:n myöhempi
+ratkaisupäätös ja hyväksyntätila ovat seuraavassa kohdassa.
+
+### Varsinaisen korjauksen päätösraja: M0.2
+
+Tila 2026-09-24: **toteutettu / katselmoitu / kokonaisportit kesken**.
+Omistaja hyväksyi alla olevan rajauksen nimenomaisesti ennen toteutusta.
+Lopullinen testi- ja integraatiohyväksyntä ovat vielä avoinna. Vastuu kuuluu Windows installer -testiharnessille, ei business-
+moduuleille tai käyttäjän asentamalle sovellukselle.
+
+#### Taukocheckpoint
+
+Omistajan pyynnöstä työ pysäytettiin valmistuneen testiperheen jälkeen.
+Windows-käännös onnistui ilman virheitä tai varoituksia. Kohdeajo läpäisi
+65/65, etukäteen sovitut root-before-grandchild- ja both-live-toistosarjat
+kumpikin 10/10 sekä kanoninen `installer:test:windows-supervisor` 97/97.
+Nämä ovat työpuun testituloksia, eivät lopullisen revision hyväksyntä.
+
+Riippumaton katselmus ei löytänyt toiminnallista regressiota oletuskellosta
+tai prosessijäsenyyden toteutuksesta, mutta jätti neljä korjattavaa
+testitodisteen puutetta saman hyväksytyn M0.2-rajauksen sisälle:
+
+1. Result-writerin virhetestin pitää osoittaa juuri injektiokohdan
+   saavuttaminen ja odotettu hylkäyssyy, ei vain puuttuva execution-arvo.
+2. Cleanup-kellon nollaamattomuus pitää todistaa havaitun ajan etenemisen
+   jälkeen; saman millisekunnin vertailu ei riitä regressiotodisteeksi.
+3. Uusien kello- ja startup-testien pitää säilyttää epäonnistumisen aineisto
+   myös silloin, kun prosessien cleanup onnistuu.
+4. Näiden testien suorat lukupoikkeukset ja raakatulosten assertionit pitää
+   sulkea turvalliseen diagnostiikkarajaan ilman polkuja tai noncea.
+
+Omistajan jatkoluvan jälkeen neljään huomioon on tehty rajatut korjaukset.
+Kirjoitusvirhe vaatii täsmällisen publication-vaiheen todistuksen,
+cleanup-kutsuja edeltää havaittu kellon eteneminen, ja kello-, startup- sekä
+kielteisten fixture-testien tarkistukset käyttävät yhteistä aineiston
+säilyttävää cleanup- ja turvallisen virheraportoinnin rajaa. Korjausten
+riippumaton katselmus löysi vielä vastaavan liian aikaisen läpäisyn riskin
+prosessitodisteen kirjoitusvirhetestistä. Sekin korjattiin: tarkka publication-
+virhe sidotaan ajoon, ja alkuperäinen julkaisematon proof validoidaan samoin
+both-live-ehdoin kuin onnistuvassa julkaisussa. Setup-virhe ei kelpaa näytöksi.
+Uusintakatselmuksessa ei jäänyt avoimia löydöksiä näihin muutoksiin.
+Lopullisen korjauksen kohdetestit läpäisivät 103/103 ja ennalta sovitut
+prosessitoistot 10/10 kummassakin skenaariossa. Koko supervisor-perhe läpäisi
+135/135. Legacy-core-perheen tulos oli 444/446; kaksi testiä epäonnistui.
+Tätä ajoa ei merkitä hyväksytyksi. Epäonnistumiset koskevat muuttumattoman
+native product inspector -testin canonical- ja transported-sopimuksia;
+niiden vaatiman puhtaan testiprofiilin hyväksyntäympäristö on omistajan
+2026-09-24 päätöksellä normaali puhdas Windows-CI. Koko muuttumattoman
+legacy-core-perheen pitää läpäistä uuden PR-revision normaalissa CI:ssä
+ennen mergeä. Paikallinen 444/446-tulos säilyy epäonnistuneena, eikä päätös
+salli testien, tarkistimen sopimuksen tai CI-vaatimusten muuttamista.
+Yksityiskohtainen selvitys ja raakajäljet säilyvät vain paikallisesti.
+
+Työtilan testit, typecheck, web/backend/desktop-buildit ja CI-sopimustestit
+55/55 läpäisivät. Työtilan kahdeksan ennestään alustarajattua testiä jäivät
+ohitetuiksi, eivät läpäisyiksi. Kriittinen system/web-E2E läpäisi 106/106,
+koko system-perhe 131/131 ja Electron developmentin kriittiset polut 38/38.
+Kaikki nämä ajot ovat päättyneet; niiden testituloksia ei koottu retrystä.
+Legacy-core-hyväksyntäympäristön päätös sallii seuraavaksi julkaisurajan
+tarkistuksen, commit/push-vaiheen ja normaalin PR-todennuksen. Uuden revision
+PR/main-todennus on vielä avoin; nämä paikalliset tulokset eivät hyväksy
+mergeä. Ei versionnostoa tai jaettavan paketin muutosta.
+
+Ehdotus erottaa oikean ajan käynnistysrajan ja jo elävien prosessien hallitun
+deadline-siivouksen. Jälkimmäinen ei väitä kahden prosessin käynnistyvän aina
+1 700 ms:ssa. Todelliset Windows Jobit, prosessikahvat, jäsenyys, exitit ja
+supervisorin palauttama tulos säilyvät; fake-terminal ei riitä näytöksi.
+
+#### Kello ja odotus kuuluvat samaan sopimukseen
+
+Lisätään vain `WindowsJobProcessSupervisor`-luokan sisäinen, valinnainen
+`ISupervisorDeadline`-riippuvuus nykyisten konstruktoriparametrien loppuun:
+
+```csharp
+internal interface ISupervisorDeadline
+{
+    long ElapsedMilliseconds { get; }
+    bool WaitForTask(Task task, long deadlineMilliseconds);
+    void OnCleanupStarting();
+}
+```
+
+- Oletus `StopwatchSupervisorDeadline` käyttää samaa jo käynnistettyä
+  `Stopwatch`-oliota kuin nyt. Se ei käynnistä, pysäytä tai nollaa kelloa.
+  `WaitForTask` säilyttää nykyisen remaining-laskennan, rajatun
+  `Task.WaitAny`-odotuksen ja todellisen `task.IsCompleted`-tuloksen.
+  Faulted/cancelled-taskin virhe käsitellään edelleen omistavassa polussa.
+- Ytimen deadline-laskenta, molemmat creation-odotukset ja worker-resultin
+  task-odotus käyttävät samaa rajapintaa. Native process-/Job-odotukset,
+  cancellation, omistajuus, exit-havainnot ja terminal-luokat eivät muutu.
+- `OnCleanupStarting` kutsutaan `CleanupPendingCreation`- ja
+  `FailAfterCleanup`-polkujen alussa. Oletustoteutus ei tee mitään.
+  Testitoteutuksessa ilmoitus on idempotentti eikä uusi cleanupin aikaa.
+- `SupervisorProgram` säilyy muuttumattomana. Sen oikea kello alkaa ennen
+  request-valmistelua; admission, julkaisu, evidence-flush ja CLI-rajat
+  eivät käytä testikelloa. Ei uutta request-kenttää, ympäristömuuttujaa,
+  julkaistavan komennon testitilaa tai turvallisuusohitusta.
+
+Pelkkä `Stopwatch.Stop/Start` tai elapsed-arvon injektio ei ole valittu
+ratkaisu: `WaitForCreation` voi silloin katketa oikean ajan `Task.WaitAny`-
+rajasta, vaikka testikello ei ole edennyt. Pidempi timeout, retry tai
+puuttuvan markerin hyväksyminen eivät ole vaihtoehtoja.
+
+#### Hallitun fixturen elinkaari
+
+Erillinen contract-fixture lukee pyynnön nykyisellä readerilla ja kutsuu
+oikeaa supervisor-ydintä. Se julkaisee ytimen todellisen tuloksen nykyisellä
+result writerilla ja lukija validoi sen nykyisellä validatorilla. Tätä
+kutsutaan **hallituksi Windows-prosessi-integraatioksi**, ei koko tuotannon
+CLI:n ajoitustodisteeksi. Oikea kesto ja looginen testideadline erotetaan.
+Julkaisun tai proof-tiedoston epäonnistuminen hylkää testin.
+
+Testikellon tilat ovat `preparing` ja `deadline/cleanup`:
+
+1. `preparing` pitää loogisen ajan nollassa. Yksi riippumaton, monotoninen
+   10 000 ms kokonaisraja kattaa creation/readiness-valmistelun nykyisen
+   readiness-rajan mukaisesti. Sitä ei aloiteta uudestaan joka markerille.
+   Odotus tarkistaa todellisen taskin, tilan ja rajan enintään nykyisen
+   100 ms odotusviipaleen välein. Yhden viipaleen kuluminen ei ole deadline.
+2. Hyväksytty valmiusportti sallii testin laukaista määräajan. Kello siirtyy
+   atomisesti arvoon `workDeadline + siirtymän jälkeinen oikea aika`.
+   Perustestissä `workDeadline=1700`, kokonaisraja on 2500 ja cleanup-varaus
+   800 ms. Näitä ei muuteta. Cleanup käyttää oikeaa etenevää aikaa.
+3. Setup-rajan täyttyminen tai ennenaikainen cleanup tekee saman siirtymän
+   mutta kirjaa erillisen fixture-virheen. Sitä ei voi muuttaa hyväksytyksi
+   regressioksi myöhemmällä kelvollisella terminal-tuloksella. Keskeneräinen
+   creation kulkee normaalin cancellation-/pending-cleanup-polun kautta;
+   odotuksesta ei heitetä ulos ja hylätä myöhäisiä kahvoja.
+   Raja tarkistetaan myös `ElapsedMilliseconds`-luennassa: jo valmistunut
+   creation ei saa jättää readiness-odotusta pysyvästi jäädytetylle kellolle,
+   vaikka uutta `WaitForTask`-kutsua ei enää tule.
+4. Pending-creationin cleanup odottaa kokonaisrajaa, ei umpeutunutta
+   setup-rajaa. Siirtymää tai cleanup-varausta ei nollata toisessa kutsussa.
+   Jos creation jää kesken, `cleanupUnverified`, `processTreeAbsent=false`
+   ja `LateCreationRelease` säilyvät. Myöhäinen siivous ei muuta vanhaa tulosta.
+
+Testifixturen tapahtumaportti estää grandchildin luomisen root-ready-tilan
+jälkeen. Portin saavuttaminen vahvistetaan erikseen; pelkkä puuttuva
+grandchild-tiedosto ei todista järjestystä. Portti vapautetaan vain testin
+omasta synteettisestä juuresta. Kiinteä viive tai stdout ei ohjaa ajoitusta.
+Readiness-virhe ja ennenaikainen exit hylkäävät testin.
+
+Rootin ja grandchildin identiteetti sidotaan validoituihin nonce-/role-
+markereihin ja ennen deadlinea kiinnitettyihin oikeisiin prosessikahvoihin.
+Read-only `WindowsJob.ContainsProcess(SafeProcessHandle)` tarkistaa
+`IsProcessInJob`-kutsulla jäsenyyden juuri kyseisessä Jobissa; kyselyvirhe
+on virhe. Job-kahvaa ei kopioida, koska se muuttaisi kill-on-close-rajaa.
+PID:n olemassaolo tai Jobin kokonaisluku ei yksin riitä prosessitodisteeksi.
+Ulkopuolisen sentinelin sama kiinnitetty kahva todetaan eläväksi ja Jobin
+ulkopuoliseksi ennen testiä sekä eläväksi cleanupin jälkeen, ennen teardownia.
+
+#### Testikartta ja rajaus
+
+| Todiste | Vaadittu tulos |
+| --- | --- |
+| Oikean ajan startup-deadline, muuttamaton CLI/creation-polku | Uusi 2500/800 tapaus käyttää nykyistä `creationCancelled`-fixtureä ilman readiness-riippuvuutta. Olemassa olevat 2000/1000 creation-/late-/pending-tapaukset ja oikean kellon `hold`-testi säilyvät erillisinä ja ennallaan. |
+| Root ready, grandchildin luonti estetty | Todennettu suljettu creation-portti, root elossa Jobissa; hallittu deadline, todellinen root-exit ja sentinel säilyy. Grandchildin puuttuminen on vain tämän erikseen nimetyn järjestystestin sopimus. |
+| Molemmat sukupolvet elossa | Molemmat tiukat markerit, kaksi elävää Job-jäsentä ja kiinnitetyt kahvat ennen deadlinea; `deadlineExceeded`, `workerResultCode=notChecked`, `cleanupResultCode=processTreeAbsent`, `processTreeAbsent=true`, molempien exit-signaalit ja sentinel säilyy. |
+| Kello-/odotusraja | Oikean odotusviipaleen loppu ei päätä jäädytettyä creationia; setup-virhe tai varhainen cleanup ei jäädytä siivousta; toinen cleanup-kutsu ei uusi varausta. |
+| Kielteinen proof/cleanup | Väärä tai puuttuva binding, jäsenyysvirhe, kuollut prosessi, proof-/result-kirjoitusvirhe ja setup-timeout hylkäävät; ensivirhe, erillinen cleanup-virhe ja aineisto säilyvät. |
+
+Nykyisen toistetun kahden sukupolven deadline-testin näyttö jaetaan yllä
+oleviin oikean ajan ja hallittuihin testeihin. Vaatimusta ei korvata
+pelkällä unit-fakella. M0.1:n terminal-ensin-järjestys ja yhden omistajan
+cleanup säilyvät; vain erikseen nimetty root-only-testi voi vaatia yhden
+markerin. Both-live-testissä molemmat ovat edelleen pakollisia.
+
+Lähdekatselmus tunnisti saman readiness-riippuvuuden myös root-zero /
+grandchild-live-, rinnakkaisten supervisorien ja blocked-evidence-testien
+ajoituksissa. Niiden nykyisiä väitteitä tai CLI-kytkentöjä ei heikennetä
+tämän luvan perusteella. Ne ajetaan kohde- ja kokonaisperheiden mukana;
+jos tarvitaan uusi korjaus, sen tarkka rajaus hyväksytään erikseen ennen
+toteutusta. M0.2 ei lupaa kaikkien harnessin ajoitusriskien poistumista.
+
+#### Ehdotettu tiedostorajaus
+
+Alla olevat lähdepolut ovat suhteessa
+`apps/desktop/installer/windows-process-supervisor/`-kansioon:
+
+| Tiedosto | Muutos |
+| --- | --- |
+| `WindowsJobProcessSupervisor.cs` | Valinnainen sisäinen deadline, yhtenäiset odotukset ja cleanup-ilmoitukset. |
+| Uusi `ISupervisorDeadline.cs` | Sisäinen sopimus ja nykyistä käyttäytymistä säilyttävä Stopwatch-adapteri. |
+| `WindowsJob.cs`, `NativeMethods.cs` | Read-only täsmällinen jäsenyyskysely; kahvan omistajuus ennallaan. |
+| Uusi `tests/programFailureFixture/ControlledSupervisorDeadline.cs` | Vain testin hallittu kello, setup-raja ja peruuttamaton cleanup-siirtymä. |
+| Uusi `tests/programFailureFixture/DeadlineReadinessContract.cs` | Rajattu readiness-fixture, oikeat kahvat, jäsenyys- ja exit-proof sekä todellisen tuloksen julkaisu. |
+| `tests/programFailureFixture/Program.cs` | Valinta vain olemassa olevan erillisen contract-fixturen sisällä. |
+| `tests/processTreeFixture.mjs` | Grandchild-creationin nimenomainen testikohtainen tapahtumaportti. |
+| `tests/supervisorContractTestSupport.mjs` | Tiukka proof-luku ja M0.1:n diagnostiikka-/cleanup-rajan säilyttäminen. |
+| `tests/windowsAcceptanceSupervisor.contract.test.mjs` | Todisteiden erottaminen ja uudet kielteiset regressiot nykyisessä CI:hin kytketyssä tiedostossa. |
+
+Lisäksi päivitetään tämä dokumentti ja `release-0.3.0-plan.md`.
+Ei uusia riippuvuuksia, projektitiedostoja, package-skriptejä, workflowita,
+budjetteja, protokollaversioita tai sovellusversiota. Tuotannon
+`SupervisorProgram` ja toimitettu 0.2.81-paketti eivät muutu.
+
+#### Hyväksyntäjärjestys
+
+1. Omistajan hyväksyntä yllä kuvatulle sisäiselle rajapinnalle ja tiedosto-
+   rajaukselle. Toteutuksessa löytyvä uusi epäselvyys pysäyttää sen alueen.
+2. Riippumaton diff-katselmus sekä Windows-käännös ja kohdetestit:
+   M0.1, terminal-validator, oletuskellon vastaavuus, uudet fixture-testit,
+   myöhäinen/pending-creation sekä yllä nimetyt viereiset sopimukset.
+3. Etukäteen päätetyt **10 sarjallista toistoa kummallekin uudelle
+   prosessiskenaariolle** nykyisellä repetition-mekanismilla. Ei retryä:
+   ensimmäinen epäonnistuminen säilytetään ja analysoidaan ennen jatkoa.
+4. Koko `installer:test:windows-supervisor` ja
+   `installer:test:windows-supervisor-v2-legacy-core` Windowsissa sekä
+   checkpointin muut pakolliset paikalliset testausohjeen portit.
+   Omistajan 2026-09-24 hyväksymä rajattu poikkeus hyväksyntäjärjestykseen:
+   legacy-core-perheen paikallinen 444/446-ajo jää epäonnistuneeksi, ja
+   koko muuttumaton perhe todennetaan puhtaassa normaalissa Windows-CI:ssä
+   uuden PR-revision molemmissa vaadituissa ajoissa ennen mergeä.
+   Muut paikalliset portit sekä normaalit PR/main-vaatimukset säilyvät.
+5. Julkaisurajan, diffien ja staged-sisällön tarkistus ennen commit/pushia.
+   Täsmällisen uuden PR-revision normaalit required checkit. Nykyinen
+   riskiluokitus valitsee ohje-/harness-muutokselle täyden matriisin ja
+   kaksi toistoa; sitä ei kevennetä. Vanhaa tulosta ei käytetä uutena näyttönä.
+6. Normaali merge vain hyväksyttyjen porttien jälkeen, sitten täsmällisen
+   main-merge-commitin omat vaaditut ajot. Vasta tämä sulkee M0:n.
+
+Valmistumisportin soveltaminen: muutos koskee testiruntimen aikaa,
+prosessiturvallisuutta ja evidencen omistajuutta, joten ne todistetaan
+oikeassa Windows-ketjussa. Julkinen diagnoosi sisältää vain suljetut
+vaihe-/syyluokat ja validoidut proof-tilat; ei raakapoikkeuksia, polkuja,
+PID-arvoja, noncea, komentorivejä tai konekohtaista raporttia. Ei uutta
+artifact-uploadia. Käyttäjän UI, Diagnostics, Activity, tukipaketti,
+business-data, yritysrajat ja backup/restore eivät muutu. Niihin ei lisätä
+testiharnessin tapahtumia. Tämän suunnitelman kirjaaminen ei ole testiläpäisy.
+
 ## Historiallinen lähtötilanne
 
 Katselmus tehtiin 3.9.2026 seuraavasta puhtaasta checkpointista. Tämän luvun
@@ -2612,8 +2934,11 @@ Pilot-bundle sisältää vain tämän MSI:n, sen manifestin ja checksum-tiedosto
 kopion eheys varmennetaan nykyisillä bundle-työkaluilla ilman rebuildiä.
 Tämä hyväksyy rajatun allekirjoittamattoman pilotin, ei avointa jakelua tai
 pilottilaitteen oikean datan käyttöönoton erillisiä turvallisuusehtoja.
-Käyttäjän manuaalinen pilot-kokeilu, 0.2.9, W7 ja laajempi sovelluskatselmus
-jäävät seuraaviksi töiksi. Automaattista asennusta ei tehdä.
+Käyttäjän manuaalinen pilot-kokeilu on rajattu
+[0.2.8-käyttäjätestiohjeeseen](../product/pilot-0.2.8-user-testing.md).
+Käsin tehtävien testien tulokset eivät seuraa automaation hyväksynnästä;
+täytetyt havainnot pidetään paikallisina. 0.2.9, W7 ja laajempi
+sovelluskatselmus jäävät myöhemmiksi töiksi. Automaattista asennusta ei tehdä.
 
 Saman PR #271:n aiemman lähderevision
 `f93e1ff91eab342a98d5961fd675371006a9b600`

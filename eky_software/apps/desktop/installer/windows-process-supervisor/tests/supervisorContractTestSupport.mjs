@@ -16,6 +16,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import {
   readWindowsAcceptanceSupervisorResult,
+  validateWindowsAcceptanceSupervisorResult,
 } from '../windowsAcceptanceSupervisorResult.mjs';
 
 const TEST_DIRECTORY = dirname(fileURLToPath(import.meta.url));
@@ -156,6 +157,15 @@ function parseEvidenceLine(line, context) {
   return value;
 }
 
+export function registerSupervisorProcess(context, child) {
+  activeSupervisorProcesses.add(child);
+  context.supervisorProcesses.add(child);
+  child.once('close', () => {
+    activeSupervisorProcesses.delete(child);
+    context.supervisorProcesses.delete(child);
+  });
+}
+
 export function startSupervisor(
   context,
   {
@@ -183,12 +193,7 @@ export function startSupervisor(
       env: environment,
     },
   );
-  activeSupervisorProcesses.add(child);
-  context.supervisorProcesses.add(child);
-  child.once('close', () => {
-    activeSupervisorProcesses.delete(child);
-    context.supervisorProcesses.delete(child);
-  });
+  registerSupervisorProcess(context, child);
 
   if (captureOutput || observeEvidence) {
     let pending = '';
@@ -358,6 +363,289 @@ export async function waitForMarker(
   throw new Error('WINDOWS_ACCEPTANCE_FIXTURE_MARKER_TIMEOUT');
 }
 
+// Only for postcompletion inspection, never a replacement for live readiness.
+export async function readCompletedMarker(context, role) {
+  if (!['root', 'grandchild', 'sentinel'].includes(role)) {
+    throw new Error('WINDOWS_ACCEPTANCE_FIXTURE_MARKER_INVALID');
+  }
+  let serialized;
+  try {
+    serialized = await readFile(join(context.runRoot, role + '.ready.json'), 'utf8');
+  } catch (error) {
+    throw new Error(error?.code === 'ENOENT'
+      ? 'WINDOWS_ACCEPTANCE_FIXTURE_MARKER_MISSING'
+      : 'WINDOWS_ACCEPTANCE_FIXTURE_MARKER_READ_FAILED');
+  }
+  let value;
+  try {
+    value = JSON.parse(serialized);
+  } catch {
+    throw new Error('WINDOWS_ACCEPTANCE_FIXTURE_MARKER_INVALID');
+  }
+  if (value === null || typeof value !== 'object' || Array.isArray(value) ||
+      Object.keys(value).sort().join(',') !== 'processId,role,runNonce,schemaVersion' ||
+      value.schemaVersion !== 1 || value.runNonce !== context.runNonce || value.role !== role ||
+      !Number.isSafeInteger(value.processId) || value.processId <= 0) {
+    throw new Error('WINDOWS_ACCEPTANCE_FIXTURE_MARKER_INVALID');
+  }
+  return value;
+}
+
+const DEADLINE_FAILURE_CODES = new Set([
+  'WINDOWS_ACCEPTANCE_FIXTURE_MARKER_MISSING',
+  'WINDOWS_ACCEPTANCE_FIXTURE_MARKER_INVALID',
+  'WINDOWS_ACCEPTANCE_FIXTURE_MARKER_READ_FAILED',
+  'WINDOWS_ACCEPTANCE_FIXTURE_PROCESS_REMAINS',
+  'WINDOWS_ACCEPTANCE_FIXTURE_HANDLE_CLEANUP_TIMEOUT',
+  'WINDOWS_ACCEPTANCE_SUPERVISOR_TERMINAL_RESULT_MISSING',
+  'WINDOWS_ACCEPTANCE_SUPERVISOR_RESULT_SCHEMA_INVALID',
+  'WINDOWS_ACCEPTANCE_SUPERVISOR_RESULT_BINDING_INVALID',
+  'WINDOWS_ACCEPTANCE_SUPERVISOR_RESULT_OUTCOME_INVALID',
+  'WINDOWS_ACCEPTANCE_SUPERVISOR_EVIDENCE_INVALID',
+  'WINDOWS_ACCEPTANCE_SUPERVISOR_EVIDENCE_TOO_LARGE',
+  'WINDOWS_ACCEPTANCE_SUPERVISOR_STDERR_NOT_EMPTY',
+  'WINDOWS_ACCEPTANCE_DEADLINE_TERMINAL_UNEXPECTED',
+  'WINDOWS_ACCEPTANCE_DEADLINE_PROCESS_PROOF_INVALID',
+  'WINDOWS_ACCEPTANCE_DEADLINE_WRITER_PROOF_INVALID',
+  'WINDOWS_ACCEPTANCE_DEADLINE_PROOF_PUBLICATION_INVALID',
+]);
+
+function deadlineFailureCode(error, fallback) {
+  return DEADLINE_FAILURE_CODES.has(error?.message) ? error.message : fallback;
+}
+
+export function verifyDeadlineRun(context, execute) {
+  return verifyDeadlineContract(context, execute);
+}
+
+export function verifyControlledDeadlineRun(context, contract, execute) {
+  if (!['rootBeforeGrandchild', 'bothLive'].includes(contract)) {
+    throw new Error('WINDOWS_ACCEPTANCE_DEADLINE_CONTRACT_INVALID');
+  }
+  return verifyDeadlineContract(context, execute, contract);
+}
+
+function hasExactKeys(value, keys) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) &&
+    Object.keys(value).sort().join(',') === [...keys].sort().join(',');
+}
+
+export async function readControlledDeadlineProof(context, contract) {
+  return readControlledDeadlineProofFile(context, contract, 'deadline-process-proof.json');
+}
+
+async function readControlledDeadlineProofFile(context, contract, fileName) {
+  try {
+    const content = await readFile(join(context.testRoot, fileName), 'utf8');
+    if (content.length > 4_096) throw new Error('invalidProof');
+    const proof = JSON.parse(content);
+    const memberKeys = ['ready', 'member', 'aliveBeforeDeadline', 'exitedAfterCleanup'];
+    const sentinelKeys = ['outsideJob', 'aliveBeforeDeadline', 'aliveAfterCleanup'];
+    if (!['rootBeforeGrandchild', 'bothLive'].includes(contract) ||
+        !hasExactKeys(proof, ['schemaVersion', 'clockKind', 'runNonce', 'scenario',
+          'artifactDescriptorSha256', 'contract', 'root', 'grandchild', 'sentinel',
+          'creationWithheld', 'deadlineTriggered', 'setupFailure']) ||
+        proof.schemaVersion !== 1 || proof.clockKind !== 'controlled' || proof.contract !== contract ||
+        proof.runNonce !== context.runNonce || proof.scenario !== context.scenario ||
+        proof.artifactDescriptorSha256 !== context.artifactDescriptorSha256 ||
+        proof.deadlineTriggered !== true || proof.setupFailure !== null ||
+        !hasExactKeys(proof.root, memberKeys) || !memberKeys.every(key => proof.root[key] === true) ||
+        !hasExactKeys(proof.sentinel, sentinelKeys) || !sentinelKeys.every(key => proof.sentinel[key] === true) ||
+        !hasExactKeys(proof.grandchild, memberKeys) ||
+        !memberKeys.every(key => proof.grandchild[key] === (contract === 'bothLive')) ||
+        proof.creationWithheld !== (contract === 'rootBeforeGrandchild')) {
+      throw new Error('invalidProof');
+    }
+    return Object.freeze({ contract, nativeProcessProof: 'verified' });
+  } catch {
+    throw new Error('WINDOWS_ACCEPTANCE_DEADLINE_PROCESS_PROOF_INVALID');
+  }
+}
+
+export async function readDeadlineProofPublicationFailure(context) {
+  try {
+    const content = await readFile(join(context.testRoot, 'deadline-proof-write-failure.json'), 'utf8');
+    if (content.length > 4_096) throw new Error('invalidProof');
+    const proof = JSON.parse(content);
+    if (!hasExactKeys(proof, ['schemaVersion', 'runNonce', 'scenario', 'artifactDescriptorSha256',
+      'resultCode', 'writePhase']) || proof.schemaVersion !== 1 || proof.runNonce !== context.runNonce ||
+        proof.scenario !== context.scenario || proof.artifactDescriptorSha256 !== context.artifactDescriptorSha256 ||
+        proof.resultCode !== 'proofWriteFailed' || proof.writePhase !== 'publish') {
+      throw new Error('invalidProof');
+    }
+    // The failed atomic publication must retain the genuine, fully serialized
+    // both-live observations. A setup failure cannot stand in for this case.
+    await readControlledDeadlineProofFile(context, 'bothLive', 'deadline-process-proof.json.next');
+    return Object.freeze({ resultCode: 'proofWriteFailed', writePhase: 'publish', nativeProcessProof: 'verified' });
+  } catch {
+    throw new Error('WINDOWS_ACCEPTANCE_DEADLINE_PROOF_PUBLICATION_INVALID');
+  }
+}
+
+export async function readDeadlineWriterFailureProof(context) {
+  try {
+    const content = await readFile(join(context.testRoot, 'deadline-writer-proof.json'), 'utf8');
+    if (content.length > 4_096) throw new Error('invalidProof');
+    const proof = JSON.parse(content);
+    if (!hasExactKeys(proof, ['schemaVersion', 'runNonce', 'scenario', 'artifactDescriptorSha256',
+      'resultCode', 'writePhase', 'lastCompletedPhase', 'processResultCode', 'cleanupResultCode', 'processTreeAbsent']) ||
+        proof.schemaVersion !== 1 || proof.runNonce !== context.runNonce ||
+        proof.scenario !== context.scenario || proof.artifactDescriptorSha256 !== context.artifactDescriptorSha256 ||
+        proof.resultCode !== 'resultWriteFailed' || proof.writePhase !== 'publish' ||
+        proof.lastCompletedPhase !== 'close' || proof.processResultCode !== 'deadlineExceeded' ||
+        proof.cleanupResultCode !== 'processTreeAbsent' || proof.processTreeAbsent !== true) {
+      throw new Error('invalidProof');
+    }
+    return Object.freeze({ resultCode: 'resultWriteFailed', writePhase: 'publish', lastCompletedPhase: 'close' });
+  } catch {
+    throw new Error('WINDOWS_ACCEPTANCE_DEADLINE_WRITER_PROOF_INVALID');
+  }
+}
+
+// Clock/startup and negative-fixture checks share the same cleanup owner as
+// deadline process checks, including assertions made after reading evidence.
+export async function verifyDeadlineFixture(context, verify, { preserveEvidence = false } = {}) {
+  const diagnostic = {
+    operation: 'deadlineFixture', failure: null, cleanup: 'notAttempted',
+    cleanupFailure: null, retention: 'notRequested', diagnosticWrite: 'notRequired',
+  };
+  try {
+    await verify();
+  } catch (error) {
+    diagnostic.failure = {
+      phase: 'verification',
+      reason: deadlineFailureCode(error, 'WINDOWS_ACCEPTANCE_DEADLINE_CHECK_FAILED'),
+    };
+  }
+  return finishDeadlineVerification(context, diagnostic, preserveEvidence);
+}
+
+async function verifyDeadlineContract(context, execute, controlledContract = null) {
+  const diagnostic = {
+    operation: 'deadlineContract',
+    terminal: null,
+    rootMarker: 'notRead',
+    grandchildMarker: 'notRead',
+    rootProcess: 'notChecked',
+    grandchildProcess: 'notChecked',
+    failure: null,
+    cleanup: 'notAttempted',
+    cleanupFailure: null,
+    retention: 'notRequested',
+    diagnosticWrite: 'notRequired',
+  };
+  if (controlledContract !== null) {
+    diagnostic.contract = controlledContract;
+    diagnostic.nativeProcessProof = 'notChecked';
+  }
+  let phase = 'execution';
+  try {
+    const execution = await execute();
+    phase = 'terminal';
+    // Reuse the owner validator before projecting even a test-injected result.
+    const result = validateWindowsAcceptanceSupervisorResult(execution.result, {
+      artifactDescriptorSha256: context.artifactDescriptorSha256,
+      runNonce: context.runNonce,
+      scenario: context.scenario,
+      supervisorExitCode: execution.exitCode,
+    });
+    diagnostic.terminal = {
+      processResultCode: result.processResultCode,
+      cleanupResultCode: result.cleanupResultCode,
+      processTreeAbsent: result.processTreeAbsent,
+    };
+    if (execution.exitCode !== 1 || result.processResultCode !== 'deadlineExceeded' ||
+        result.workerResultCode !== 'notChecked' ||
+        result.cleanupResultCode !== 'processTreeAbsent' || result.processTreeAbsent !== true) {
+      throw new Error('WINDOWS_ACCEPTANCE_DEADLINE_TERMINAL_UNEXPECTED');
+    }
+    if (controlledContract !== null) {
+      phase = 'nativeProcessProof';
+      await readControlledDeadlineProof(context, controlledContract);
+      diagnostic.nativeProcessProof = 'verified';
+    }
+    const markers = {};
+    const roles = controlledContract === 'rootBeforeGrandchild' ? ['root'] : ['root', 'grandchild'];
+    if (controlledContract === 'rootBeforeGrandchild') {
+      phase = 'grandchildMarker';
+      try {
+        await readCompletedMarker(context, 'grandchild');
+        throw new Error('WINDOWS_ACCEPTANCE_DEADLINE_PROCESS_PROOF_INVALID');
+      } catch (error) {
+        if (error.message !== 'WINDOWS_ACCEPTANCE_FIXTURE_MARKER_MISSING') throw error;
+      }
+      diagnostic.grandchildMarker = 'creationWithheld';
+      diagnostic.grandchildProcess = 'creationWithheld';
+    }
+    for (const role of roles) {
+      phase = role + 'Marker';
+      try {
+        markers[role] = await readCompletedMarker(context, role);
+        diagnostic[phase] = 'valid';
+      } catch (error) {
+        diagnostic[phase] = error.message === 'WINDOWS_ACCEPTANCE_FIXTURE_MARKER_MISSING'
+          ? 'missing' : error.message === 'WINDOWS_ACCEPTANCE_FIXTURE_MARKER_INVALID'
+            ? 'invalid' : 'readFailed';
+        throw error;
+      }
+    }
+    for (const role of roles) {
+      phase = role + 'Process';
+      await waitForProcessAbsent(markers[role].processId);
+      diagnostic[phase] = 'absent';
+    }
+    if (controlledContract !== null) {
+      phase = 'sentinel';
+      const sentinel = await readCompletedMarker(context, 'sentinel');
+      const handle = [...context.fixtureProcesses].find(child => child.pid === sentinel.processId);
+      if (!handle || handle.exitCode !== null || handle.signalCode !== null ||
+          !isProcessAlive(sentinel.processId)) {
+        throw new Error('WINDOWS_ACCEPTANCE_DEADLINE_PROCESS_PROOF_INVALID');
+      }
+    }
+  } catch (error) {
+    diagnostic.failure = {
+      phase,
+      reason: deadlineFailureCode(error, 'WINDOWS_ACCEPTANCE_DEADLINE_CHECK_FAILED'),
+    };
+  }
+
+  return finishDeadlineVerification(context, diagnostic);
+}
+
+async function finishDeadlineVerification(context, diagnostic, preserveEvidence = false) {
+  const retain = preserveEvidence || diagnostic.failure !== null;
+  diagnostic.retention = retain ? 'requested' : 'notRequested';
+  const supervisedHandles = [...context.supervisorProcesses];
+  try {
+    await cleanupRunContext(context, { preserveEvidence: retain });
+    diagnostic.cleanup = 'completed';
+  } catch (error) {
+    diagnostic.cleanup = 'failed';
+    diagnostic.retention = 'requested';
+    diagnostic.cleanupFailure = deadlineFailureCode(error, 'WINDOWS_ACCEPTANCE_DEADLINE_CLEANUP_FAILED');
+  } finally {
+    // This run already attempted every owned handle. Do not retry outside its
+    // diagnostic boundary in the global afterEach; failed cleanup stays failed.
+    for (const child of supervisedHandles) activeSupervisorProcesses.delete(child);
+  }
+  if (diagnostic.failure || diagnostic.cleanupFailure) {
+    try {
+      diagnostic.diagnosticWrite = 'completed';
+      await writeFile(join(context.testRoot, 'deadline-contract-diagnostic.json'),
+        JSON.stringify(diagnostic) + '\n', { encoding: 'utf8', flag: 'wx' });
+    } catch {
+      diagnostic.diagnosticWrite = 'failed';
+    }
+    // Never attach the raw exception/cause: filesystem errors contain local paths.
+    const failure = new Error(diagnostic.failure?.reason ?? diagnostic.cleanupFailure);
+    failure.stack = failure.message;
+    failure.diagnostic = diagnostic;
+    throw failure;
+  }
+  return diagnostic;
+}
+
 export async function releaseFixture(context, role) {
   const path = join(context.runRoot, role + '.release');
   if (!(await pathExists(path))) {
@@ -431,20 +719,10 @@ export async function cleanupRunContext(context, { preserveEvidence = false } = 
 
   for (const role of ['root', 'grandchild', 'sentinel']) {
     try {
-      const markerPath = join(context.runRoot, role + '.ready.json');
-      if (!(await pathExists(markerPath))) {
-        continue;
-      }
-      const marker = JSON.parse(await readFile(markerPath, 'utf8'));
-      if (
-        marker.runNonce !== context.runNonce ||
-        !Number.isInteger(marker.processId) ||
-        marker.processId <= 0
-      ) {
-        throw new Error('WINDOWS_ACCEPTANCE_FIXTURE_MARKER_INVALID');
-      }
+      const marker = await readCompletedMarker(context, role);
       await waitForProcessAbsent(marker.processId);
     } catch (error) {
+      if (error.message === 'WINDOWS_ACCEPTANCE_FIXTURE_MARKER_MISSING') continue;
       cleanupFailure ??= error;
     }
   }
