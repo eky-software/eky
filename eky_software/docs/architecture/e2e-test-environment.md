@@ -14,6 +14,105 @@ backend-buildiin eikä pakata desktop-sovellukseen. Production-koodiin ei lisät
 testireittejä, reset-pintoja, testipainikkeita tai rendereristä ohjattavaa
 fault injectionia.
 
+## T-paketin valmistelu
+
+**2026-09-24, suunnitelma; ei toteutettu.** [M1-valmistelu](release-0.3.0-m1-preparation-plan.md)
+rajaa R27-R29:n kolmeen erikseen todennettavaan sopimukseen. M0:n erillinen
+Windows Job -supervisor ja Electronin lataus-/purkutodistus eivät sulje näitä.
+
+### T1: Testien ajokytkentä
+
+Nykyinen desktopin `test`-komento jättää
+`e2e/electronE2eWorkspaceStartupFailure.test.ts`-tiedoston seitsemän tapausta
+valinnan ulkopuolelle. Lisäksi seuraavat `installer/windows-acceptance-harness/`
+-tiedostot ovat vain clean/upgrade-skripteissä, joita nykyiset workflowt eivät kutsu:
+
+- `cleanInstallUninstallContracts.test.mjs`
+- `cleanInstallUninstallLifecycle.test.mjs`
+- `cleanInstallUninstallPayload.test.mjs`
+- `localImmutableInstallerFixture.test.mjs`
+- `upgradeRollbackBinaryHandoff.test.mjs`
+- `upgradeRollbackProgress.test.mjs`
+
+T1a lisää startup-testin tavalliseen desktop-valintaan. T1b liittää kuusi
+harness-tiedostoa nykyiseen vaadittuun komentoketjuun niiden vastuun mukaan.
+Toteutukseen ehdotettu täsmällinen jako, nykyiset testit säilyttäen:
+
+- `pnpm --filter @eky/desktop test`: startup-failure-tiedosto nykyiseen
+  Vitest-osaan ja uusi ajokytkennän sopimustesti nykyiseen `node --test` -osaan.
+- `pnpm --filter @eky/desktop installer:test:unit`: yllä luetellut kolme
+  `cleanInstallUninstall*`-tiedostoa, `localImmutableInstallerFixture.test.mjs`
+  ja `upgradeRollbackProgress.test.mjs`.
+- `pnpm --filter @eky/desktop installer:test:windows-process`:
+  `upgradeRollbackBinaryHandoff.test.mjs` nykyiseen
+  `node --test --test-concurrency=1` -kutsuun. Supervisor-build-esiehto säilyy.
+
+Nykyinen `Windows installer contract tests` -jobi kutsuu kahta viimeistä
+komentoa ja `windowsContracts`-aggregaatti vaatii niiden kummankin vaiheen
+onnistumisen. Tavallinen desktop-testi kuuluu workspace-testien ketjuun.
+Workflowta tai riskipolitiikkaa ei tarvitse muuttaa tätä kytkentää varten.
+Uusi valinnan sopimustesti todistaa myös oman ajokytkentänsä, oikean
+komentoryhmän ja native-komennon sarjallisuuden. Negatiivisiin tapauksiin
+kuuluvat myös oma puuttuva kutsu, väärä ryhmä ja poistettu sarjallisuuslippu.
+
+Tarkista koko ketju tiedostosta required-aggregaattiin; pelkkä käännös,
+samanniminen workflow tai testattavan toteutuksen välillinen käyttö ei riitä.
+Nykyinen sarjallisuus ja native-testien edellytykset säilyvät. Valinnan
+negatiivinen sopimustesti hylkää puuttuvan tiedoston/kutsureunan. Varsinainen
+komento suoritetaan ja sen tulos sidotaan täsmälliseen revisioon.
+
+### T2: Projektivalinta ja valmistelu
+
+`e2e:security` ja `e2e:fault` valitsevat nyt tageilla myös Electron-testejä,
+mutta kutsuvat vain backendin valmistelua. Ehdotus: säilytä kaikkien kolmen
+standardiprojektin kattavuus, nimeä projektit eksplisiittisesti ja käytä
+niitä vastaavaa täydellistä valmistelua. Endurance pysyy erillisenä.
+Vaihtoehtoinen komentojen jakaminen vaatii näkyvän aggregate-sopimuksen;
+Electronia ei vain pudoteta pois vanhasta komennosta. Valinta hyväksytään
+ennen toteutusta, ilman uutta riippuvuutta tai CI-riskipolitiikan muutosta.
+
+Puhtaan lähtötilan nykyinen edellytysketju hyväksyttyjen työkalujen jälkeen:
+
+- system/web: permissions -> auth -> backendin `e2e:build`; web tarvitsee
+  myös Playwrightin Chromiumin, mutta Vite käyttää webin lähdettä
+- Electron: Electron-runtime -> permissions -> auth -> backendin
+  `e2e:build` -> web build -> desktop build -> desktop `e2e:build` ->
+  backend staging; staging tekee vielä tavallisen backend-buildin,
+  production-deployn, E2E-backendin kopioinnin ja native-SQLite-tarkistuksen.
+
+Testaa tyhjä build-lähtötila, tarkoituksella vanhat build-tuotteet ja
+valmistelun virhe. Launch ei saa käyttää vanhaa stagea tai jatkua virheen
+jälkeen. Konfiguraation projektit, tagien valinta ja valmisteluketju
+testataan yhtenä sopimuksena; käytä nykyistä `e2e:electron:prepare`-omistajaa
+sen ketjun monistamisen sijaan. Tämä ei muuta tavallisen web-komennon tarvetta.
+
+### T3: Koko prosessipuun poistumistodiste
+
+`stopManagedProcessTree` hyväksyy nyt poistuneen root-prosessin liian
+aikaisin. Portittoman jälkeläisen poistumista ei todista rootin exit,
+vapautunut portti tai `taskkill`-apuprosessin valmistuminen. POSIXissa
+rootin poistuminen kesken stopin ei saa jättää jälkeläisiä eskalaation ulkopuolelle.
+
+Ennen korjausta rajataan launch-hetkestä säilyvä omistajuus ja todistuksen
+antava mekanismi Windowsille ja POSIXille sekä saman apurajapinnan Electron-
+kuluttajille. Installerin Job-omistajuutta ei oleteta Playwrightin omistajuudeksi.
+Pelkkä PID-luku tai jälkikäteen arvaava prosessihaku ei oikeuta tappamaan
+prosessia. Tuntematon kyselytulos ei ole poissaolon todiste.
+
+Hyväksyntään kuuluvat root-exits-first, root-exits-during-stop, elävä
+portiton jälkeläinen, pysäytystä vastustava jälkeläinen, launch-/taskkill-/
+kyselyvirhe, PID-uudelleenkäyttö ja riippumattoman sentinel-prosessin säilyminen.
+Oikeat prosessit käynnistetään vain eristettyyn testijuureen. Jos koko puun
+poistumista ei todenneta, cleanup epäonnistuu, juuri säilyy eikä restart
+käynnistä uutta omistajaa. Alkuperäinen virhe, cleanup ja rajatun näytön
+tallennus arvioidaan erikseen. Tuotantolifecycleen ei tehdä sivukorjausta.
+
+T1/T2/T3 tarvitsevat omat todelliset läpäisynsä. Testikattavuutta, aikarajoja,
+flaky-hylkäystä, pakollisia jobeja tai toistoja ei kevennetä tämän työn vuoksi.
+T3:n puute korjataan ennen sen fixturen käyttämistä A:n lopullisena
+oikeaprosessi-/E2E-hyväksyntänä. Alemmat puhtaat sopimustestit voidaan
+valmistella rinnalla. Tämä valmistelu ei ole uusi testitulos.
+
 ## Testikohtainen runtime
 
 Ensimmäinen versio käyttää yhtä workeria ja lähtökohtaisesti testikohtaista

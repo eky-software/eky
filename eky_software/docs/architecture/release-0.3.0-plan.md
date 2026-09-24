@@ -2,14 +2,28 @@
 
 ## Päätös ja nykyinen tila
 
-**M0-checkpoint 2026-09-24: M0.6 toteutettu ja paikallisesti todennettu.**
-Ajantasainen PR/main-hyväksyntä ja puhdas lähtörevisio kirjataan
-[PR #275:n integraatiocheckpointiin](https://github.com/eky-software/eky/pull/275#issuecomment-5819025563).
-M0 valmistuu vasta, kun siinä on täsmällisen PR-pään hyväksyntä, normaali
-merge ja syntyneen main-revision omat V2- ja riippuvuustarkistukset.
-Tämä ennen mergeä kirjoitettu dokumentti ei ennakoi niiden lopputulosta.
+**Nykytila 2026-09-24: M0 hyväksytty, rajattu M1-valmistelu katselmoitu.**
+PR #275 on yhdistetty normaalisti. Paikallinen `main`, etäinen `main` ja
+hyväksytty lähtörevisio ovat
+`38082dffe1772f099c4b9bb7495bed6c6b9b067b`. Tämän täsmällisen revision
+[V2-ajo](https://github.com/eky-software/eky/actions/runs/36039663203) ja
+[riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/36039734305)
+ovat valmistuneet onnistuneesti. Integraation näyttö on
+[PR #275:n integraatiocheckpointissa](https://github.com/eky-software/eky/pull/275#issuecomment-5819025563).
+M0 ei sulje T-pakettia eikä todista historiallisen timeoutin tarkkaa syytä.
 
-Aikaisempi tapahtumaketju:
+Omistajan hyväksymä valmistelu-Goal rajattiin **M1-suunnitteluun**, ei koko
+0.3.0-toteutukseen. Sen työjärjestys, ensimmäisen toteutuspalan rajaus ja
+avoimet päätökset ovat [M1-valmistelusuunnitelmassa](release-0.3.0-m1-preparation-plan.md).
+Tuotantokoodia, riippuvuuksia, versiota tai CI-ehtoja ei muutettu.
+Seuraava toteutukseen ehdotettu pala on T1a/T1b; sen hyväksyntä ja toteutus
+ovat vielä avoinna. Valmistelun valmistuminen ei sulje M1:n testikorjauksia.
+
+### M0:n historiallinen tapahtumaketju
+
+Seuraavat välitilat säilyvät historiatietona. Niiden merge-/M1-estot eivät
+kumoa yllä varmennettua nykyistä hyväksyntää.
+
 PR #274 yhdistettiin normaalisti mainiin revisiona
 `4c18821e1d22e48608b082fc1fa6c54b8ac04a32`, kun täsmällisen PR-pään
 `7d6d0f682c3ba374bd70eca387a9ad7f609a54ee` molemmat required checkit
@@ -72,7 +86,7 @@ muuttamisesta. Sitä ei merkitä valmiiksi pelkän suunnitelman perusteella.
 | Tunnus | Tehtävä ja tavoite | Tila |
 | --- | --- | --- |
 | R030-01 | Yhtenäinen latausikoni tai odotusilmaisin näkyviin käyttäjälle havaittaviin odotustiloihin eri toiminnoissa. | Suunniteltu; käyttökohteiden kartoitus tekemättä. |
-| R030-02 / W7 | Yritystyötilan turvallinen poistaminen käyttöliittymästä. | Mukaan sovittu; poiston yksityiskohtainen turvallisuussuunnitelma ja toteutus tekemättä. |
+| R030-02 / W7 | Yritystyötilan turvallinen poistaminen käyttöliittymästä. | Mukaan sovittu; valmistelu ja päätösjono kirjattu. Sopimusten hyväksyntä ja toteutus avoinna. |
 | R030-03 | Yrityksen nimi mukaan käyttäjän tallentaman varmuuskopion ehdotettuun tiedostonimeen päivämäärän lisäksi. | Suunniteltu; nimen lähde ja turvallinen nimeämissääntö päätettävä. |
 | D029-01 | Työtilatoiminnon tarkka turvallinen virhesyy lokiin, esimerkiksi väärän yrityksen varmuuskopion hylkäys. | Puute todettu; korjaus tekemättä. |
 | D029-02 | Päivitystapahtumat kulkemaan sovitusti diagnostiikan ja tukipaketin koko lukuketjussa. | Puute todettu; korjaus tekemättä. |
@@ -313,6 +327,14 @@ M0-selvitys ei avaa muuta 0.3.0-toteutusta ennen integraatioporttia.
 
 ### M1: Todistuksen ja päätösten valmistelu
 
+**Tila 2026-09-24:** rajattu suunnitteluvalmistelu tehty ja katselmoitu
+hyväksytyltä M0-pohjalta; M1:n testikorjaukset eivät ole vielä toteutettuja.
+Tarkka jako on [M1-suunnitelmassa](release-0.3.0-m1-preparation-plan.md):
+T1a/T1b testien ajokytkentä, T2 projektivalinta ja build-edellytykset,
+T3 testiprosessien omistajuus sekä A1:n rajattu kohdekorjaus.
+W7:n päätöslista on [työtilasuunnitelmassa](local-company-workspace-plan.md#w7-valmistelu-ja-paatosportti).
+Nämä suunnitelmat eivät merkitse korjauksia tai hyväksyntätestejä tehdyiksi.
+
 Korjaa ensin tarvittavat T-paketin testikytkennät ja testiruntimen
 edellytykset, jotta myöhempien pakettien näyttöön voidaan luottaa. Tämä
 ei tarkoita kaikkien CI-uudistusten tekemistä ennen ensimmäistä korjausta.
@@ -384,12 +406,19 @@ rajataan myöhemmäksi, kirjaa vastanäyttö tai omistajan päätös ja jäänn�
 
 ### Skannauksen tuoma täydennys
 
-Osittaisen, keskeytetyn Deep Scanin raportti täydentää katselmusta; se ei
-ole valmis koko repositorion turvatarkastus tai korjaustodiste. Sen
+Osittaisen, keskeytetyn Deep Scanin tallennetut tulokset täydentävät katselmusta;
+ne eivät ole valmis koko repositorion turvatarkastus tai korjaustodiste. Sen
 päällekkäiset havaintoinstanssit on ryhmitelty alla vain työn suunnitteluun.
 Alkuperäisiä löytötunnuksia, vakavuusluokkia, näyttöä ja kattavuusaukkoja
 ei kirjoiteta uudelleen. Tarkka vastaavuus säilyy yksityisessä liitteessä.
 Raportin korjausehdotus ei tarkoita toteutettua tai testattua patchia.
+
+M1-valmistelussa tallennetut 13 havaintoinstanssia ja korjausehdotukset
+luettiin uudelleen lisäosasta. Ajon tila on yhä `canceled`, eikä suljettua
+loppuraporttia ole saatavilla. Alla oleva viiden ryhmän työjako säilyy;
+alkuperäisiä vakavuusluokkia tai validointirajoituksia ei yhdistetä uudeksi
+skannerin tulokseksi. Nykyisen mainin tuotantolähteet näillä alueilla eivät
+ole muuttuneet skannauksen jälkeen; tämä vertailu ei ole uusi runtime-testi.
 
 | Tunnus | Suunniteltu turvasopimus | Suhde muuhun työhön |
 | --- | --- | --- |
