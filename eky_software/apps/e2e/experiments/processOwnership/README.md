@@ -109,3 +109,37 @@ There has been no fixture migration, dependency change, ordinary CI run or
 PR/main acceptance for this experiment. Next decisions and the complete
 remaining acceptance matrix stay in the owning T3 plan. Do not bypass the
 unhandled rejection or modify installed dependency code to make the case green.
+
+## T3b-L read-only CI prerequisites
+
+The separately approved prerequisite probe does not run the Windows experiment
+or a Linux workload. It inspects only its own cgroup v2 mapping and bounded
+metadata, using Node builtins. It never writes a cgroup, reads a process member
+list, queries systemd, installs tools or changes permissions.
+
+Use the existing **V2 risk-based CI** manual dispatch with
+`linux_ownership_prerequisites=true`. The default remains false. The probe runs
+inside each existing Linux system/web test step immediately before its normal
+command, after the normal dependency/browser preparation. This dispatch still
+runs the complete existing CI matrix; it is not a probe-only workflow.
+
+The entrypoint requires `EKY_E2E=1`, the GitHub Actions context, a validated
+run ID/attempt, and the actual checkout SHA read by the step. Do not substitute
+a PR head SHA for a merge checkout. Its single bounded JSON line contains only
+closed observations and CI binding. The step separately records the closed
+`LINUX_PREREQUISITE_EXIT_OK` or `LINUX_PREREQUISITE_EXIT_UNVERIFIED` marker.
+Only a complete, matching JSON result AND normal exit permit an observation
+to be used; an already queued JSON line cannot erase a later output deadline.
+There is no separate artifact. Paths,
+process IDs, accounts, environment contents and raw failures are not published.
+
+An incomplete or missing observation remains unverified. A complete negative
+observation is not Linux ownership support. Access metadata is only a hint:
+it cannot prove child creation, migration, termination, reaping or owner-loss
+cleanup. The normal test always runs independently and its exit status is kept.
+
+`pnpm test:ci` and the CI cadence contracts include the pure parser/schema/
+redaction tests and the workflow wiring contract. The latter uses the existing
+Bash tool with inert shell functions on both runner platforms, never the host
+probe or a real E2E workload. Real Linux metadata is collected only in the
+explicitly enabled CI steps. Final T3 ownership acceptance remains separate.

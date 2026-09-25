@@ -30,8 +30,9 @@ koskevat vain rajattua toteutettavuuskoetta. Varsinainen
 Windows-/POSIX-/Electron-omistajuusratkaisu ja tavallisten testien siirto
 päätetään edelleen erikseen kokeen näytön perusteella.
 Omistajan hyväksymä [T3b-valmistelu](e2e-test-environment.md#t3b-virhehaaran-ja-alustarajan-valmistelu)
-rajaa nyt Electronin virheketjun, Linuxin read-only-CI-proben ja alustojen
-jatkopäätökset. Riippuvuuskorjausta, probea tai CI-kytkentää ei toteutettu.
+rajaa Electronin virheketjun, Linuxin read-only-CI-proben ja alustojen
+jatkopäätökset. Valmistelun jälkeen hyväksytty T3b-L:n probe ja CI-kytkentä
+on toteutettu; riippuvuuskorjaus odottaa edelleen erillistä päätöstä.
 
 **T3:n jatko-Goal 2026-09-25:** omistaja hyväksyi T3b-L:n toteutuksen ja
 yhden seuratun CI-ajon sekä itsenäisen etenemisen T3:n loppuun erilliset
@@ -342,6 +343,16 @@ CI-ajoja tehty. Sovelluksen testi-, diagnostiikka- ja palautusportit eivät
 sovellu tähän dokumentointimuutokseen, eikä niitä merkitä läpäistyiksi.
 Tämä päättää vain rajatun valmistelun; T3b-E/T3b-L:n toteutuspäätökset,
 alustamekanismi ja R28:n hyväksyntä jäävät avoimiksi.
+
+### T3b-L:n paikallinen checkpoint
+
+2026-09-25: read-only-probe ja oletuksena suljettu CI-kytkentä toteutettu.
+`pnpm test:ci` läpäisi 95/95 ilman ohituksia. Kytkennän ja lukijan
+katselmukset sekä havaitun stdout-aikarajajärjestyksen korjaus kuuluvat
+[omistavaan checkpointiin](e2e-test-environment.md#t3b-ln-toteutuscheckpoint).
+Todellinen Linux-CI-havainto ja yksi hyväksytty seurattu kokonaisajo ovat
+vielä avoinna. Tämä ei hyväksy alustamekanismia, riippuvuuspatchia,
+fixture-siirtoa, R28:n sulkua tai PR/main-integraatiota.
 
 ## Skannaushavaintojen vaikutus jatkoon
 

@@ -13,6 +13,10 @@ on:
       risk_plan:
         required: true
         type: string
+      linux_ownership_prerequisites:
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -94,7 +98,19 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run isolated system security E2E tests
-        run: pnpm test:e2e:system
+        env:
+          EKY_E2E: '1'
+          EKY_LINUX_OWNERSHIP_PREREQUISITES: ${{ inputs.linux_ownership_prerequisites == true }}
+        run: |
+          if [ "$EKY_LINUX_OWNERSHIP_PREREQUISITES" = "true" ]; then
+            checkout_sha="$(git rev-parse --verify HEAD 2>/dev/null)" || checkout_sha=""
+            if node apps/e2e/experiments/processOwnership/probeLinuxPrerequisites.mjs --consumer=system-api --checkout-sha="$checkout_sha" 2>/dev/null; then
+              printf '%s\n' 'LINUX_PREREQUISITE_EXIT_OK'
+            else
+              printf '%s\n' 'LINUX_PREREQUISITE_EXIT_UNVERIFIED'
+            fi
+          fi
+          pnpm test:e2e:system
 
   e2e-web-critical:
     name: Web critical E2E
@@ -128,7 +144,19 @@ jobs:
         run: pnpm --filter @eky/e2e exec playwright install --with-deps chromium
 
       - name: Run critical web E2E journeys
-        run: pnpm --filter @eky/e2e e2e:web:critical
+        env:
+          EKY_E2E: '1'
+          EKY_LINUX_OWNERSHIP_PREREQUISITES: ${{ inputs.linux_ownership_prerequisites == true }}
+        run: |
+          if [ "$EKY_LINUX_OWNERSHIP_PREREQUISITES" = "true" ]; then
+            checkout_sha="$(git rev-parse --verify HEAD 2>/dev/null)" || checkout_sha=""
+            if node apps/e2e/experiments/processOwnership/probeLinuxPrerequisites.mjs --consumer=web-chromium --checkout-sha="$checkout_sha" 2>/dev/null; then
+              printf '%s\n' 'LINUX_PREREQUISITE_EXIT_OK'
+            else
+              printf '%s\n' 'LINUX_PREREQUISITE_EXIT_UNVERIFIED'
+            fi
+          fi
+          pnpm --filter @eky/e2e e2e:web:critical
 
   e2e-electron-windows-critical:
     name: Windows Electron critical E2E

@@ -483,6 +483,46 @@ Alkuperäinen T3a-hylkäys säilyy. Vasta todellinen launch-catch, ei timeout
 tai unhandled rejection, sekä erillinen hyväksytty cleanup-kuitti voivat
 täyttää virhekokeen odotuksen. Koko T3-matriisi on edelleen erillinen portti.
 
+##### T3b-E:n täsmällinen riippuvuusehdotus
+
+2026-09-25 lähdearviossa ei varmennettu korjaavaa upstream-julkaisua.
+Myös tarkastettu [1.63.0:n launch-lähde](https://github.com/microsoft/playwright/blob/v1.63.0/packages/playwright-core/src/server/electron/electron.ts#L238-L323)
+säilyttää olennaisen odotusjärjestyksen; pelkkää versiopäivitystä ei siksi
+ehdoteta tämän virheen ratkaisuksi. Omistajalta pyydettiin erillinen päätös
+nykyisen `playwright-core@1.62.1`:n rajattuun korjaukseen. Korjausta ei tämän
+ehdotuksen perusteella vielä asenneta.
+
+Ehdotettu patch koskee vain `lib/coreBundle.js`:n Electron-launchia:
+X-server-odotuksen johdetulle promiselle sekä Chromium- ja disconnect-
+odotuksille kytketään heti paikallinen rejection-vastaanottaja. Alkuperäiset
+promiset ja niiden hylkäykset säilyvät myöhemmille kuluttajille. Launch-catch
+säilyttää alkuperäisen virheen myös cleanupin hylkäyksessä ja ilmoittaa
+cleanupin epävarmuuden suljetulla merkillä `electronLaunchCleanupUnverified`.
+Nykyisen kokeen pitää hylätä tämä merkki, ei hyväksyä sitä odotettuna
+launch-virheenä. Myöhempi native-kuitti ei nollaa epävarmuutta.
+
+Toimitustapa on [pnpm:n versionoitu patch](https://pnpm.io/cli/patch),
+`patches/playwright-core@1.62.1.patch`, täsmällinen `patchedDependencies`-
+avain ja lockfilen patch-identiteetti. Ei uutta suoraa core-riippuvuutta,
+uutta kirjastoa, selainta, ajonaikaista monkey patchia tai postinstall-
+uudelleenkirjoitusta. Alkuperäinen registry-integrity ja Apache-2.0-
+LICENSE/NOTICE säilyvät; oma muutos merkitään. Patchin digest ja frozen-
+asennuksen todennus syntyvät vasta hyväksytyssä toteutuksessa.
+
+Korjaus vaikuttaa kaikkiin tämän core-version workspace-kuluttajiin.
+Ylläpitovastuu jää projektille: molemmat muutoskohdat tarkistetaan jokaisessa
+päivityksessä ja patch poistetaan vasta vastaavan upstream-korjauksen
+regressionäytön jälkeen. Auditointi, allekirjoitustarkistus ja testikirjaston
+poissulku tuotantoartifactista ovat hyväksyntäportteja, eivät vielä tuloksia.
+
+Regressiot kohdistuvat todelliseen lukittuun riippuvuuskoodiin, eivät sen
+kopioon: jokaisen odotuksen varhainen hylkäys, exit/error/stderr-close,
+normaalipolku ja disconnect, abort eri vaiheissa, myöhäinen valmistuminen,
+listenerien purku sekä cleanupin throw/reject/abort. Alkuperäinen virhe ja
+cleanup-merkki pitää todentaa myös palautusketjussa. Vasta tämän jälkeen
+ajetaan nykyinen normaali Electron-koe ja sama before-ready exit 29 -koe.
+R28, alustaratkaisu ja tavallisten fixturejen siirto jäävät erillisiksi porteiksi.
+
 ##### Windowsin omistajuusrajan valinta
 
 | Vaihtoehto | Vaikutus ja päätösraja |
@@ -633,6 +673,38 @@ riippuvuuksia. Pääagentti vastaa paikallisten kohdetestien seurannasta;
 CI:lle nimetään erillinen lukuseuranta ennen käynnistystä. Ensimmäinen
 epäonnistunut näyttö säilytetään. Tarkka checkout sidotaan CI:n Git-lukuun,
 ei oletukseen PR:n head-revisiosta. Proben tulos erotetaan testien tuloksesta.
+
+CI-askel kirjaa JSON-havainnon lisäksi vain suljetun päättymismerkin
+`LINUX_PREREQUISITE_EXIT_OK` tai `LINUX_PREREQUISITE_EXIT_UNVERIFIED`.
+Havainnon käyttö edellyttää sekä täydellistä oikeaan ajoon sidottua JSONia
+että normaalia exit-merkkiä. Esimerkiksi jo jonoon kirjoitettu tulos ei
+poista tulostuksen aikakatkaisua. Puuttuva rivi tai merkki on varmentamaton;
+varsinaisen testikomennon tulos säilyy tästä riippumatta.
+
+##### T3b-L:n toteutuscheckpoint
+
+2026-09-25: Node-standardikirjastoon rajattu probe, puhdas sopimus ja
+erilliset lukijan testit toteutettu `processOwnership`-koealueelle.
+CI-kadenssin kaksi nykyistä Linux-askelta kutsuvat probea vain manuaalisella
+opt-in-valinnalla. `EKY_E2E=1`, GitHub-konteksti ja tarkka checkout/run/attempt
+validoidaan ennen host-lukuja. Proben JSON ja päättymismerkki ovat eri todisteita;
+varsinaiset testikomennot ja niiden exit-status säilyvät.
+
+Katselmuksessa havaittu myöhäisen stdout-kuittauksen järjestysvirhe
+todennettiin ensin hylkäävällä regressiolla ja korjattiin tarkistamalla
+monotoninen aikaraja myös ennen onnistunutta exit-tilaa. Erillinen katselmus
+korjasi Windows-sopimustestin Bash-valinnan sitoutumaan löydettyyn Git-
+asennukseen. Täydellinen paikallinen `pnpm test:ci` läpäisi 95/95:
+aiemmat CI-sopimukset, uusi kytkentä sekä parseri-, lukija- ja CLI-guard-
+testit. Ei ohitettuja tai peruttuja testejä. Ensimmäiset havainnot säilyvät
+erillään korjauksen jälkeisestä tuloksesta.
+
+Todellinen Linux-CI-probe ja seurattu kokonaisajo ovat vielä tekemättä.
+Sopimustestit eivät ole cgroup-omistajuusnäyttöä. Tuotantokoodi,
+riippuvuudet, asennettu sovellus, aikarajat ja normaalin CI:n valinta eivät
+muuttuneet. Käyttäjän UI-, Diagnostics-, audit-, tukipaketti- ja backup-
+sopimuksiin ei tule muutosta; niiden tuotantohyväksyntää ei väitetä tehdyksi.
+R28 ja lopullinen T3-matriisi jäävät avoimiksi.
 
 #### T3:n lopullinen hyväksyntänäyttö
 
