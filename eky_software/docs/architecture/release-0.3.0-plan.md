@@ -2,9 +2,16 @@
 
 ## Päätös ja nykyinen tila
 
-**Nykytila 2026-09-24: M0 hyväksytty, rajattu M1-valmistelu katselmoitu.**
-PR #275 on yhdistetty normaalisti. Paikallinen `main`, etäinen `main` ja
-hyväksytty lähtörevisio ovat
+**Nykytila 2026-09-25: M0 ja T1 hyväksytty; T2 toteutettu ja paikallisesti
+todennettu, PR/main-integraatio kesken.** Viimeisin varmennettu paikallinen ja etäinen
+`main` on T1:n normaali PR #276 -merge
+`da896643d5cc1895174e508bee4f6141f4489d56`. Tämän revision
+[V2-ajo](https://github.com/eky-software/eky/actions/runs/36064323922) ja
+[riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/36064323269)
+läpäisivät. Tarkka näyttö on
+[PR #276:n integraatiocheckpointissa](https://github.com/eky-software/eky/pull/276#issuecomment-5822861572).
+
+M0:n aiempi hyväksytty lähtörevisio on
 `38082dffe1772f099c4b9bb7495bed6c6b9b067b`. Tämän täsmällisen revision
 [V2-ajo](https://github.com/eky-software/eky/actions/runs/36039663203) ja
 [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/36039734305)
@@ -18,10 +25,14 @@ avoimet päätökset ovat [M1-valmistelusuunnitelmassa](release-0.3.0-m1-prepara
 Tuotantokoodia, riippuvuuksia, versiota tai CI-ehtoja ei muutettu.
 Omistaja hyväksyi seuraavaksi T1a/T1b:n rajatun toteutus-Goalin: olemassa
 olevat testit nykyisiin komentoihin ja ajokytkennän regressiosuoja.
-T1 on toteutettu, katselmoitu ja paikallisesti todennettu 2026-09-25.
-Testinäyttö sekä tästä erillinen PR/main-hyväksyntäportti ovat
+T1 on toteutettu, katselmoitu ja hyväksytty myös PR/main-porttien jälkeen.
+Testinäyttö ja integraation viite ovat
 [T1-checkpointissa](release-0.3.0-m1-preparation-plan.md#t1n-toteutus-ja-hyväksyntänäyttö).
-Valmistelun valmistuminen ei sulje M1:n muita testikorjauksia.
+Seuraavan suunnittelu-Goalin tarkka
+[T2-rajaus](release-0.3.0-m1-preparation-plan.md#t2n-toteutukseen-siirtymisen-portti)
+on toteutettu ja paikallisesti todennettu
+[T2-checkpointin](release-0.3.0-m1-preparation-plan.md#t2n-toteutus-ja-paikallinen-näyttö)
+mukaan. Linux-CI ja integraatio ovat avoinna; tämä ei sulje M1:n muita testikorjauksia.
 
 ### M0:n historiallinen tapahtumaketju
 
@@ -332,9 +343,10 @@ M0-selvitys ei avaa muuta 0.3.0-toteutusta ennen integraatioporttia.
 ### M1: Todistuksen ja päätösten valmistelu
 
 **Tila 2026-09-25:** rajattu suunnitteluvalmistelu tehty ja katselmoitu
-hyväksytyltä M0-pohjalta. T1a/T1b:n toteutus hyväksyttiin tämän jälkeen;
-sen paikallinen todennus on valmis ja integraatio arvioidaan erikseen,
-muut testikorjaukset ovat avoinna.
+hyväksytyltä M0-pohjalta. T1a/T1b:n toteutus ja PR/main-integraatio on
+hyväksytty. T2:n tarkennettu suunnitelma on kirjattu erillisen suunnittelu-
+Goalin yhteydessä; omistajan hyväksymä toteutus ja paikallinen näyttö ovat
+valmiit. Linux-CI, integraatio ja muut testikorjaukset ovat avoinna.
 Tarkka jako on [M1-suunnitelmassa](release-0.3.0-m1-preparation-plan.md):
 T1a/T1b testien ajokytkentä, T2 projektivalinta ja build-edellytykset,
 T3 testiprosessien omistajuus sekä A1:n rajattu kohdekorjaus.
@@ -386,8 +398,8 @@ ovat samoja töitä G/H-paketeissa, eivät toinen korjausjono. PDF-arkiston
 katalogisopimus ja retentionin reunaehdot täydentävät D029-listaa; niitä ei
 kuitata valmiiksi pelkän vanhan diagnostiikkalistan läpäisyllä.
 
-T-paketista T1a/T1b on toteutettu ja paikallisesti todennettu yllä mainitun
-integraatioportin ehdoin; T2/T3 ovat suunniteltuja. A/B/C/K/D/E/F/G/H/I:n
+T-paketista T1a/T1b on hyväksytty yllä mainitun integraation näytöllä;
+T2 on paikallisesti todennettu integraatioportin ehdoin ja T3 on suunniteltu. A/B/C/K/D/E/F/G/H/I:n
 tila on **suunniteltu / korjaus ja hyväksyntä tekemättä**.
 Päätösportin vaikutusalue odottaa hyväksyntää.
 

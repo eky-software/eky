@@ -16,7 +16,8 @@ fault injectionia.
 
 ## T-paketin valmistelu
 
-**2026-09-24, suunnitelma; T1 toteutettu ja paikallisesti todennettu 2026-09-25.** [M1-valmistelu](release-0.3.0-m1-preparation-plan.md)
+**2026-09-25: T1 hyväksytty PR/main-porttien jälkeen; T2 toteutettu ja
+paikallisesti todennettu, integraatio kesken.** [M1-valmistelu](release-0.3.0-m1-preparation-plan.md)
 rajaa R27-R29:n kolmeen erikseen todennettavaan sopimukseen. M0:n erillinen
 Windows Job -supervisor ja Electronin lataus-/purkutodistus eivät sulje näitä.
 
@@ -70,13 +71,56 @@ Tämä ei sulje alla olevia projektivalinnan ja prosessipuun jatkorajoja.
 
 ### T2: Projektivalinta ja valmistelu
 
-`e2e:security` ja `e2e:fault` valitsevat nyt tageilla myös Electron-testejä,
-mutta kutsuvat vain backendin valmistelua. Ehdotus: säilytä kaikkien kolmen
-standardiprojektin kattavuus, nimeä projektit eksplisiittisesti ja käytä
-niitä vastaavaa täydellistä valmistelua. Endurance pysyy erillisenä.
-Vaihtoehtoinen komentojen jakaminen vaatii näkyvän aggregate-sopimuksen;
-Electronia ei vain pudoteta pois vanhasta komennosta. Valinta hyväksytään
-ennen toteutusta, ilman uutta riippuvuutta tai CI-riskipolitiikan muutosta.
+**Tila 2026-09-25: hyväksytty T2-rajaus toteutettu ja paikallisesti
+todennettu; Linux-CI ja PR/main-integraatio kesken.** Lähtörevisio ja hyväksyntänäyttö ovat
+[M1-suunnitelmassa](release-0.3.0-m1-preparation-plan.md#t2n-toteutukseen-siirtymisen-portti).
+
+T2:n lähtötilassa `e2e:security` ja `e2e:fault` valitsivat tageilla myös
+Electron-testejä mutta kutsuivat vain backendin valmistelua. Electron-runtime käyttää
+desktopin `dist`- ja `e2e-dist`-tuotteita, webin `dist`-tuotetta ja
+`e2e-backend-stage`-hakemistoa. Vanhojen tuotteiden olemassaolo voi peittää
+puuttuvan valmistelun. Pelkkä vihreä CI ei todista näitä kahta komentoa:
+nykyinen `System security E2E` ajaa koko system-projektin, ja Windowsin
+Electron-critical käyttää omaa, jo täydellistä valmisteluaan.
+
+#### T2:n hyväksytty muutosraja
+
+`apps/e2e/package.json`:n kaksi aggregaattia muutettiin seuraaviksi;
+juuripaketin nykyiset `test:e2e:security`- ja `test:e2e:fault`-aliakset säilyvät:
+
+```text
+e2e:security = pnpm e2e:electron:prepare && playwright test --project=system-api --project=web-chromium --project=electron-development --grep @security
+e2e:fault = pnpm e2e:electron:prepare && playwright test --project=system-api --project=web-chromium --project=electron-development --grep @fault
+```
+
+Käytä olemassa olevaa `e2e:electron:prepare`-omistajaa. Älä monista sen
+ketjua, lisää yleistä komentorunneria tai muuta build-/staging-toteutusta
+ennakoivasti. Puuttuva runtime tai epäonnistunut valmistelu on virhe, ei
+peruste pudottaa Electron-projektia valinnasta. Chromiumin asennus kuuluu
+nykyisiin työkaluesiehtoihin; aggregate ei asenna uutta riippuvuutta.
+
+Lähdekatselmuksessa löytyi lisäksi rajattu projektivalinnan päällekkäisyys:
+`endurance-baseline`-projektin `/stress\/.*\.spec\.ts/` osuu myös
+`electron-stress`-hakemistoon. Hyväksytty T2-rajaus korjaa tämän
+`testMatch`-ehdon hakemistorajan samassa konfiguraatiossa.
+Omistajan hyväksyntä kattaa myös tämän korjauksen: desktopin stress/soak
+säilyy omassa `electron-endurance`-projektissaan, eikä testiä poisteta.
+Muuta projektivalintaa tai tagitusta ei laajenneta samalla.
+
+Säilytettävät valinnat:
+
+| Komentoperhe | Projektit ja suodatus |
+| --- | --- |
+| security / fault | Kolme standardiprojektia ja vastaava tagi; ei lisäehtoa `@critical`. Myös nykyiset ei-kriittiset security/fault-tapaukset säilyvät. |
+| critical | Nykyiset system + web; Electron-critical pysyy omana komentonaan. |
+| all / electron | Nykyiset standardiprojektit / Electron-development ilman uutta tagirajausta. Tavallinen diagnostic-contract säilyy. |
+| stress / desktop-stress / desktop-soak | Omat endurance-projektit; desktopin kaksi komentoa säilyttävät nykyiset taginsa ja sarjallisuuden. |
+
+Erillinen first-start-diagnostic-konfiguraatio ei tule normaaliin valintaan.
+Aikarajat, workerit, retry-/flaky-ehdot, CI-jobit, riskiluokitus ja vaaditut
+toistot eivät muutu. Laajempi komentojen jakaminen tarvitsee uuden päätöksen.
+
+#### T2:n valmisteluketju
 
 Puhtaan lähtötilan nykyinen edellytysketju hyväksyttyjen työkalujen jälkeen:
 
@@ -87,11 +131,100 @@ Puhtaan lähtötilan nykyinen edellytysketju hyväksyttyjen työkalujen jälkeen
   backend staging; staging tekee vielä tavallisen backend-buildin,
   production-deployn, E2E-backendin kopioinnin ja native-SQLite-tarkistuksen.
 
-Testaa tyhjä build-lähtötila, tarkoituksella vanhat build-tuotteet ja
-valmistelun virhe. Launch ei saa käyttää vanhaa stagea tai jatkua virheen
-jälkeen. Konfiguraation projektit, tagien valinta ja valmisteluketju
-testataan yhtenä sopimuksena; käytä nykyistä `e2e:electron:prepare`-omistajaa
-sen ketjun monistamisen sijaan. Tämä ei muuta tavallisen web-komennon tarvetta.
+Stagingin omistaja on desktopin `prepare-electron-e2e-backend.mjs`.
+Se poistaa vanhan stagen, rakentaa tavallisen backendin, tekee production-
+deployn, kopioi E2E-backendin ja tarkistaa native-SQLiten. T2 todentaa tämän
+ketjun käytön; SQLite-ajuria tai sovelluksen paketointia ei muuteta.
+
+#### T2:n regressiosuoja
+
+Todistus jaetaan kolmeen tasoon, joita ei merkitä toistensa korvikkeiksi:
+
+1. **Tavallinen Node-sopimustesti.** Lisää E2E-paketin omistama pieni
+   `scripts/e2e-command-wiring.test.mjs` ja sen `test`-kytkentä nykyiseen
+   workspace-testiketjuun. Käytä Node-vakiokirjastoa ja jäsennettyjä
+   package-manifesteja. Rajaa komentojen tulkinta nykyisiin nimettyihin
+   kutsuihin ja `&&`-ketjuun, älä rakenna shell-parseria. Todista oma
+   ajokytkentä, juurialiakset, projektit/tagit, valmistelun omistaja ja
+   vaiheiden järjestys. Testi ei käynnistä buildia, selainta tai Electronia.
+2. **Oikean konfiguraation sopimustesti.** Lisää system-projektiin puhdas
+   Playwright-testi, joka importtaa nykyisen konfiguraation Playwrightin
+   omalla tuella ja käyttää base-`test`-rajapintaa ilman runtime-fixtureä.
+   Tarkista oikeat `testMatch`-ehdot ja projektien erillisyys sekä nykyiset
+   worker-/retry-/flaky-rajat. Älä jäsennä TypeScript-lähdettä regexillä
+   tai lisää tätä varten uutta parseririippuvuutta.
+3. **Todellinen discovery ja suoritus.** Valmistelun jälkeen aja native-
+   Playwrightin `--list --reporter=json` vastaavilla projektien ja tagien
+   valinnoilla. Tarkista exit-koodi, virheet sekä jäsenyys tunnisteella
+   projekti + repository-relative-tiedosto + koko suite/test-otsikko.
+   Huomioi parametrisoidut tapaukset ja suitesta perityt tagit. Pelkkä
+   määrä tai onnistunut listaus ei ole testiläpäisy. Älä liitä discoverya
+   sokkona ennen buildia ajettavaan workspace-unit-vaiheeseen, sillä se
+   lataa myös testien importit.
+
+Kielteiset sopimuskokeet poistavat valmistelun, vaihtavat kutsujärjestyksen,
+katkaisevat oman testikytkennän tai muuttavat projektin, tagin tai muun
+suodattimen. Tuntematon projekti, ylimääräinen positional filter tai
+`grepInvert` ei saa huomaamatta kaventaa valintaa. Synteettiset
+ei-`@critical`-Electron-tapaukset säilyvät security/fault-valinnassa;
+endurance-tapaukset jäävät pois myös tageilla `@security`, `@fault` ja
+`@critical`. Poistettu critical-tagi ei saa laajentaa critical-komentoa
+automaattisesti. Nämä kokeet muuttavat testisyötettä, eivät oikeiden
+skenaarioiden tageja. Endurance-hakemistoraja testataan molempien
+alustojen poluilla ja todellisella discoverylla.
+
+Ennen/jälkeen-listauksen hyväksytyt erot ovat uudet sopimustapaukset ja
+desktop-endurancen poistuminen väärästä baseline-projektista. Sen omat
+desktop-stress/soak-tapaukset säilyvät. Muu kadonnut, yllättävästi lisätty
+tai kahteen projektiperheeseen osuva tapaus vaatii selvityksen; tyhjä
+lista tai import-virhe ei läpäise sopimusta.
+
+#### T2:n ajotodistus ja hyväksyntä
+
+| Lähtötila | Koe ja vaadittu näyttö |
+| --- | --- |
+| Puhdas | Eristetyssä checkoutissa ei ole ketjun aiempia build-/stage-tuotteita. Oikea valmistelu tuottaa ne; molemmat juurialiakset suorittavat tarkoitetut tapaukset. |
+| Vanhat tuotteet | Samassa synteettisessä koealueessa tuotteisiin lisätään tunnistettava vanha sisältö ja ylimääräinen sentinel. Valmistelu korvaa sisällön ja poistaa vanhan sentinelin; testiruntimen kopiot vastaavat uusia tuotteita. Pelkkä tiedoston olemassaolo tai mtime ei riitä. |
+| Valmistelun virhe | Rajattu komentofixture tuottaa ei-nollatuloksen vuorollaan nimetyissä esiehdoissa ja todistaa, ettei myöhempi vaihe tai Playwright-launch käynnisty. Oikeasta ketjusta todetaan lisäksi vähintään yksi hallittu build-virhe ja yksi staging-virhe vanhojen tuotteiden ollessa olemassa. Mockettua koetta ei nimetä oikeaksi build-todisteeksi. |
+
+Kokeiden faultit elävät vain kopioidussa testialueessa tai testifixturessa;
+ei uusia tuotannon fault-kytkimiä, muutoksia käyttäjäprofiileihin tai
+hyväksyttyihin release-artifacteihin. Kopiot ovat itsenäisiä tiedostotavuja,
+eivät hardlinkkejä. Alkuperäinen valmisteluvirhe ja komennon ei-nollatulos
+säilytetään; puuttuva valmistelu ei saa käyttää vanhaa stagea.
+Rinnakkaisia build-/E2E-ajoja samaan työpuuhun ei käynnistetä.
+
+Etene sopimustesteistä discoveryyn ja valmistelukokeisiin, sitten molempiin
+oikeisiin aggregate-ajoihin Windowsissa. Nykyinen Linux-CI todentaa
+Node-/system-sopimukset; polkusopimus kattaa molempien alustojen muodot.
+T2 ei vaadi uutta workflowta: nykyisen CI:n system-ajo löytää system-
+sopimuksen ja recursive test löytää E2E-paketin Node-sopimuksen.
+Niiden onnistuminen ei yksin korvaa kahden aggregaatin omaa ajotodistusta.
+Nykyiset muut required-portit säilyvät.
+
+Seuraa jokaista ajoa alusta loppuun
+[CI-seurantaohjeen](../ai/workflow.md#ci-ajon-seuranta-ja-virhetodisteet)
+mukaan ja säilytä ensimmäinen virhe ennen mahdollista uusintaa. Kirjaa
+revisio, tarkka valinta, valmistelun tulos, valmiit/ohitetut/flaky-tapaukset
+ja siivouksen tulos erikseen. Raakatulosteet ja konekohtainen näyttö
+pysyvät paikallisina; yhteiseen checkpointiin vain turvallinen yhteenveto.
+
+T3:n tunnettu prosessipuun puute pysyy avoimena: T2:n vihreä ajo ei todista
+sitä korjatuksi. Jos ajon siivous jää epävarmaksi, kyseistä ajoa ei hyväksytä,
+testijuuri säilytetään ja uusi launch odottaa omistettujen prosessien
+selvittämistä. T2 ei korjaa lifecycleä sivutyönä. Myöhempi A:n lopullinen
+oikeaprosessihyväksyntä tarvitsee edelleen T3:n korjauksen.
+
+R29 suljetaan vasta rajauksen toteutuksen, yllä eritellyn näytön,
+riippumattoman diff-katselmuksen ja normaalien PR/main-porttien jälkeen.
+Jos nykyisessä build-/staging-toteutuksessa paljastuu korjattavaa, pysäytä
+juuri sen vaikutusalue ja rajaa korjaus ennen toteutusta. Tuotannon
+Diagnostics-, Activity-, tukipaketti- tai backup-sopimus ei muutu T2:ssa;
+uudet testihavainnot kuuluvat testirunnerin raporttiin, eivät business-auditiin.
+
+Paikallisen toteutuksen ja kokeiden kooste on
+[T2-checkpointissa](release-0.3.0-m1-preparation-plan.md#t2n-toteutus-ja-paikallinen-näyttö).
+Suunnitelman todistusrajat säilyvät myös myöhemmissä muutoksissa.
 
 ### T3: Koko prosessipuun poistumistodiste
 
