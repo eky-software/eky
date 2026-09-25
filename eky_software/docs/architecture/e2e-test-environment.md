@@ -16,8 +16,8 @@ fault injectionia.
 
 ## T-paketin valmistelu
 
-**2026-09-25: T1 hyväksytty PR/main-porttien jälkeen; T2:n tarkennettu
-suunnitelma odottaa toteutuspäätöstä.** [M1-valmistelu](release-0.3.0-m1-preparation-plan.md)
+**2026-09-25: T1 hyväksytty PR/main-porttien jälkeen; T2 toteutettu ja
+paikallisesti todennettu, integraatio kesken.** [M1-valmistelu](release-0.3.0-m1-preparation-plan.md)
 rajaa R27-R29:n kolmeen erikseen todennettavaan sopimukseen. M0:n erillinen
 Windows Job -supervisor ja Electronin lataus-/purkutodistus eivät sulje näitä.
 
@@ -71,12 +71,12 @@ Tämä ei sulje alla olevia projektivalinnan ja prosessipuun jatkorajoja.
 
 ### T2: Projektivalinta ja valmistelu
 
-**Tila 2026-09-25: omistaja hyväksyi T2-rajauksen toteutus-Goaliksi;
-toteutus ja todentaminen kesken.** Lähtörevisio ja hyväksyntänäyttö ovat
+**Tila 2026-09-25: hyväksytty T2-rajaus toteutettu ja paikallisesti
+todennettu; Linux-CI ja PR/main-integraatio kesken.** Lähtörevisio ja hyväksyntänäyttö ovat
 [M1-suunnitelmassa](release-0.3.0-m1-preparation-plan.md#t2n-toteutukseen-siirtymisen-portti).
 
-`e2e:security` ja `e2e:fault` valitsevat tageilla myös Electron-testejä,
-mutta kutsuvat vain backendin valmistelua. Electron-runtime käyttää
+T2:n lähtötilassa `e2e:security` ja `e2e:fault` valitsivat tageilla myös
+Electron-testejä mutta kutsuivat vain backendin valmistelua. Electron-runtime käyttää
 desktopin `dist`- ja `e2e-dist`-tuotteita, webin `dist`-tuotetta ja
 `e2e-backend-stage`-hakemistoa. Vanhojen tuotteiden olemassaolo voi peittää
 puuttuvan valmistelun. Pelkkä vihreä CI ei todista näitä kahta komentoa:
@@ -85,7 +85,7 @@ Electron-critical käyttää omaa, jo täydellistä valmisteluaan.
 
 #### T2:n hyväksytty muutosraja
 
-Muuta vain `apps/e2e/package.json`:n kaksi aggregaattia seuraaviksi;
+`apps/e2e/package.json`:n kaksi aggregaattia muutettiin seuraaviksi;
 juuripaketin nykyiset `test:e2e:security`- ja `test:e2e:fault`-aliakset säilyvät:
 
 ```text
@@ -101,8 +101,8 @@ nykyisiin työkaluesiehtoihin; aggregate ei asenna uutta riippuvuutta.
 
 Lähdekatselmuksessa löytyi lisäksi rajattu projektivalinnan päällekkäisyys:
 `endurance-baseline`-projektin `/stress\/.*\.spec\.ts/` osuu myös
-`electron-stress`-hakemistoon. Ehdotettu T2-rajaus sisältää tämän
-`testMatch`-ehdon hakemistorajan korjaamisen samassa konfiguraatiossa.
+`electron-stress`-hakemistoon. Hyväksytty T2-rajaus korjaa tämän
+`testMatch`-ehdon hakemistorajan samassa konfiguraatiossa.
 Omistajan hyväksyntä kattaa myös tämän korjauksen: desktopin stress/soak
 säilyy omassa `electron-endurance`-projektissaan, eikä testiä poisteta.
 Muuta projektivalintaa tai tagitusta ei laajenneta samalla.
@@ -221,6 +221,10 @@ Jos nykyisessä build-/staging-toteutuksessa paljastuu korjattavaa, pysäytä
 juuri sen vaikutusalue ja rajaa korjaus ennen toteutusta. Tuotannon
 Diagnostics-, Activity-, tukipaketti- tai backup-sopimus ei muutu T2:ssa;
 uudet testihavainnot kuuluvat testirunnerin raporttiin, eivät business-auditiin.
+
+Paikallisen toteutuksen ja kokeiden kooste on
+[T2-checkpointissa](release-0.3.0-m1-preparation-plan.md#t2n-toteutus-ja-paikallinen-näyttö).
+Suunnitelman todistusrajat säilyvät myös myöhemmissä muutoksissa.
 
 ### T3: Koko prosessipuun poistumistodiste
 

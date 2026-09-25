@@ -60,15 +60,17 @@ tietokannan, auditin, operational/security-eventin ja tukipaketin päätöksen.
 ### T2: Testivalinnan ja valmistelun sopimukset
 
 Alla olevat rivit ovat [T2-suunnitelman](e2e-test-environment.md#t2-projektivalinta-ja-valmistelu)
-hyväksyttyä toteutusrajausta, eivät vielä ajettuja testejä. Unit-sopimus ja discovery eivät ole E2E-
-läpäisyjä. Nämä testiharnessin rivit eivät muuta UI:ta, HTTP:tä, business-
+hyväksyttyä toteutusrajausta. Paikallinen näyttö on
+[T2-checkpointissa](release-0.3.0-m1-preparation-plan.md#t2n-toteutus-ja-paikallinen-näyttö);
+Linux-CI ja PR/main-hyväksyntä ovat erilliset avoimet portit. Unit-sopimus
+ja discovery eivät ole E2E-läpäisyjä. Nämä rivit eivät muuta UI:ta, HTTP:tä, business-
 auditia tai tuotannon tukipakettia; niiden näyttö kuuluu testiraporttiin.
 
 | ID | Taso | Koe ja hyväksyntä | Tila |
 | --- | --- | --- | --- |
-| TEST-COMMAND-WIRING-001 | Node-sopimus | Jäsennetyt manifestit; oma recursive-kytkentä, juurialiakset, kolme projektia, oikea tagi, täydellinen valmistelu ja järjestys. Kielteiset muutokset hylätään ilman runtime-launchia. | in-progress |
-| TEST-PROJECT-SELECTION-001 | Puhdas Playwright-sopimus ja discovery | Oikea config, erilliset projekti-/hakemistorajat, ei-kriittisten security/fault-tapausten säilyminen ja endurance-poissulku. Baseline ei valitse electron-stressiä. Todellista jäsenyyttä verrataan, ei vain määrää. | in-progress |
-| TEST-PREPARATION-001 | Build-integraatio ja Windows E2E | Tyhjät tai vanhentuneet tuotteet rakennetaan oikein, valmisteluvirhe estää myöhemmät vaiheet ja launchin myös vanhan stagen kanssa. Molemmat oikeat aggregaatit suoritetaan; siivoustulos erillään T3:n avoimesta puutteesta. | in-progress |
+| TEST-COMMAND-WIRING-001 | Node-sopimus | Jäsennetyt manifestit; oma recursive-kytkentä, juurialiakset, kolme projektia, oikea tagi, täydellinen valmistelu ja järjestys. Kielteiset muutokset hylätään ilman runtime-launchia. | local-pass / integration-pending |
+| TEST-PROJECT-SELECTION-001 | Puhdas Playwright-sopimus ja discovery | Oikea config, erilliset projekti-/hakemistorajat, ei-kriittisten security/fault-tapausten säilyminen ja endurance-poissulku. Baseline ei valitse electron-stressiä. Todellista jäsenyyttä verrataan, ei vain määrää. | local-pass / integration-pending |
+| TEST-PREPARATION-001 | Build-integraatio ja Windows E2E | Tyhjät tai vanhentuneet tuotteet rakennetaan oikein, valmisteluvirhe estää myöhemmät vaiheet ja launchin myös vanhan stagen kanssa. Molemmat oikeat aggregaatit suoritetaan; siivoustulos erillään T3:n avoimesta puutteesta. | local-pass / integration-pending |
 
 ## Customers
 

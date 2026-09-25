@@ -18,9 +18,9 @@ PR/main-integraation vaadittujen porttien jälkeen. T2/T3/A/W7 eivät kuulu
 tähän toteutus-Goaliin. Suunnittelu säilyy erillisenä checkpointina;
 toteutuksen näyttö ja valmistuneen integraation viite ovat alla.
 
-**T2 2026-09-25: rajattu toteutus-Goal hyväksytty ja käynnissä.** Komentovalinta,
-build-esiehdot, regressiosuoja ja ajotodistus toteutetaan hyväksytyn
-suunnitelman mukaan. Todentaminen ja integraatio ovat kesken.
+**T2 2026-09-25: rajattu toteutus ja paikallinen ajotodistus valmis.** Komentovalinta,
+build-esiehdot ja regressiosuoja on toteutettu hyväksytyn
+suunnitelman mukaan. Linux-CI ja PR/main-integraatio ovat kesken.
 [Toteutusportti](#t2n-toteutukseen-siirtymisen-portti) erottaa tämän
 T1:n hyväksynnästä sekä T3:n ja tuotantokorjausten jatkotyöstä.
 
@@ -67,7 +67,7 @@ tai riippuvuusporttia, jos rajaus myöhemmin koskettaa niitä.
 | --- | --- | --- |
 | T1a / R27 | Startup-failure-testit tavalliseen desktop-testivalintaan ja valinnan regressiosopimus. | Hyväksytty; paikallisen näytön lisäksi PR/main-portit läpäisty. Ei tuotantokoodia. |
 | T1b / R27 | Kuusi puuttuvaa installer-harness-testitiedostoa nykyisten vaadittujen komentojen kautta ajettaviksi, myös ajokytkentää suojaava testi. | Hyväksytty T1a:n kanssa; R27 suljettu. Ei raskaan CI:n kevennystä. |
-| T2 / R29 | `security`/`fault`-projektivalinnan ja koko build-ketjun vastaavuus puhtaasta, vanhentuneesta ja epäonnistuneesta valmistelusta. | Hyväksytty [T2-suunnitelma](e2e-test-environment.md#t2-projektivalinta-ja-valmistelu) toteutuksessa; sisältää myös baseline-/desktop-endurancen polkupäällekkäisyyden rajatun korjauksen. |
+| T2 / R29 | `security`/`fault`-projektivalinnan ja koko build-ketjun vastaavuus puhtaasta, vanhentuneesta ja epäonnistuneesta valmistelusta. | Hyväksytty [T2-suunnitelma](e2e-test-environment.md#t2-projektivalinta-ja-valmistelu) toteutettu ja paikallisesti todennettu; Linux-CI ja integraatio avoinna. |
 | T3 / R28 | Omistajuus käynnistyksestä todettuun koko puun poistumiseen; epävarma cleanup ei hyväksy restartia tai poista fixtureä. | Windowsin ja POSIXin omistajuusmekanismi sekä Electron-käyttö päätetään erikseen lähdekatselmuksen jälkeen. Pelkkä early returnin poisto ei riitä. |
 | A1 / R01 | Luonnoksen avaamisen kohde, näkyvät arvot ja tallennuksen kohde pysyvät samana myös vastausten valmistuessa väärässä järjestyksessä. | T1 ensin; hyväksyntään käytettävän E2E-fixturen T3-puute korjattu ja sen build-valinta todennettu. |
 | A2 / R05, A3 / R06 | Ensimmäisen createn tunnisteen säilyminen ja muokatun lomakkeen vanhentunut readiness. | Omat rajatut jatkopalat; A1:n hyväksyntä ei sulje niitä. Backendin hyväksyntäauktoriteetti säilyy. |
@@ -184,9 +184,9 @@ Build-/staging-toteutuksen mahdollinen lisäkorjaus tai T3:n prosessiomistus
 ei tule hyväksytyksi sivuvaikutuksena. Tuntematon siivoustulos keskeyttää
 kyseisen ajon hyväksynnän; vihreä T2 ei sulje T3:a.
 
-Suunnittelun näyttö on lähdekatselmus, ei uusi testitulos. Matriisin
-[T2-rivit](r0-e2e-test-matrix.md#t2-testivalinnan-ja-valmistelun-sopimukset)
-ovat toteutuksessa, eivät läpäistyjä. Lähtörevisio on yllä varmennettu
+Suunnittelun näyttö oli lähdekatselmus, ei testitulos. Toteutuksen
+[T2-rivien](r0-e2e-test-matrix.md#t2-testivalinnan-ja-valmistelun-sopimukset)
+paikallinen näyttö ja avoin integraatioportti ovat alla. Lähtörevisio on yllä varmennettu
 T1-main; se ja työpuun muutokset tarkistettiin uudelleen toteutuksen alussa.
 
 ### T2-valmistelun checkpoint
@@ -198,6 +198,42 @@ korjattavia huomautuksia. Muutettujen dokumenttien 67 suhteellista linkkiä,
 otsikkoankkurit ja kuusi ohjeiden lukureittiä tarkistettiin; diffin muotoilu
 ja julkaistavan sisällön yksityisyys tarkistettiin. Ei buildia, discoverya,
 testiajoa tai T2-integraatiota. Tämä päättää suunnittelun, ei toteutusporttia.
+
+### T2:n toteutus ja paikallinen näyttö
+
+Toteutusrevisio on `aada2b67c6353a54b96c629cb90652fb7f3f5834`.
+Security/fault käyttää nyt yhteistä täydellistä valmistelua ja kolmea
+standardiprojektia. Baseline-stressin hakemistoraja ei enää valitse
+desktop-endurancea. Valintoja, aikarajoja, toistoja tai CI-ehtoja ei kevennetty.
+
+| Tarkistus | Tulos ja rajaus |
+| --- | --- |
+| Node-ajokytkentäsopimus | 20/20 läpäisi sekä oman pnpm-komennon että workspace-testiketjun kautta. Kielteiset manifestimuutokset ja jokaisen nimetyn valmisteluvaiheen pysähtyminen testattiin inertillä komentofixturellä. Tämä ei korvaa oikeaa build-koetta. |
+| Konfiguraatiosopimus | 9/9 oikeaa konfiguraatiota käyttävää tapausta läpäisi normaalissa ja CI-moodissa. Paikallinen CI-moodi ei ole Linux-CI:n todistus. |
+| Todellinen discovery | Kymmenen ennen/jälkeen-valinnan tarkka jäsenyys tarkistettiin. Ainoat erot: uudet sopimustapaukset ja kaksi desktop-endurance-tapausta pois väärästä baseline-projektista. Desktop-stress/soak säilyivät omissa valinnoissaan. |
+| Puhdas valmistelu ja aggregaatit | Molemmat juurialiakset suoritettiin erikseen ilman aiempia build-/stage-tuotteita synteettisessä Windows-koeympäristössä. Security 141/141, fault 17/17; ei ohituksia, retryjä tai flaky-tuloksia. Vain raportointia täydennettiin erillisiä todisteita varten. |
+| Vanhentuneet tuotteet | Kahdeksan tuoteryhmän tunnistettava vanha sisältö korvautui ja ylimääräiset sentinelit poistuivat. Oikean runtime-materialisoijan kopioiden sisältö vastasi uudelleen rakennettuja tuotteita; pelkkää mtimea ei käytetty. |
+| Oikea valmisteluvirhe | Hallittu käännösvirhe pysäytti security-ketjun ennen myöhempiä vaiheita. Erillinen hallittu staging-tiedostolukko pysäytti fault-ketjun. Vanha stage oli olemassa, mutta Playwright ei käynnistynyt. Alkuperäiset virheet säilytettiin eikä näitä ajoja nimetty testiläpäisyiksi. |
+| Workspace | Nykyinen `pnpm test` ja koko workspacen typecheck läpäisivät. Buildit ja staging todennettiin yllä olevilla oikeilla valmisteluajoilla. Olemassa olevia alustakohtaisia unit-ohituksia ei muutettu. |
+| Katselmointi | Riippumaton koodikatselmointi: POSIX-fixturepolun lainaus korjattiin ja erikoismerkkipolku lisättiin regressioksi. Ensimmäisen kohdeajon Windows-lainausvirhe ja uuden specin tyypitysvirhe korjattiin ennen hyväksyttyjä ajoja; alkuperäinen näyttö säilytettiin. |
+
+Ajoja seurattiin alusta loppuun; aggregateilla oli myös riippumaton
+lukuseuranta. Todellisen Electron first-start -tapauksen siivousliite
+vahvisti nykyisen fixturen cleanupin, portin vapautuksen ja juuren poiston.
+Tämä ei todista koko prosessipuun omistajuuden T3-puutetta korjatuksi.
+Raakatulosteet, synteettiset koealueet ja yksityiskohtaiset paikalliset
+todisteet pysyvät Gitistä ohitettuina.
+
+Tuotantokoodi, UI-ilmoitukset, Diagnostics/Activity, tukipaketti, backup-
+formaatti ja tietokantamigraatiot eivät muutu. Siksi tuotannon packaged
+backup/restore-porttia tai uutta asennuspakettia ei tuoteta T2:ssa.
+Koodin peruminen ei ole testiprosessin siivouskeino. Uusia riippuvuuksia,
+versionnostoa tai lukitustiedoston muutosta ei ole.
+
+R29:n lopullinen hyväksyntä odottaa Linuxin Node-/system-sopimuksia,
+normaaleja PR-portteja ja mergen tuottaman täsmällisen main-revision
+omia required-ajoja. Niiden viite lisätään integraatiocheckpointiin;
+paikallinen näyttö ei korvaa niitä. T3/R28, A ja W7 jäävät avoimiksi.
 
 ## Skannaushavaintojen vaikutus jatkoon
 
@@ -241,7 +277,8 @@ soveltuvuus perustellaan erikseen; T:n testiajot eivät todista W7:n tuotantoa.
 ## Päätösjono ja valmistelun lopetus
 
 Ensimmäinen hyväksytty toteutusraja T1a/T1b on valmis.
-T2 toteutetaan yllä hyväksytyllä rajauksella. T3:n omistajuusmekanismi
+T2 on toteutettu ja paikallisesti todennettu; Linux-CI ja PR/main-integraatio
+ovat avoinna. T3:n omistajuusmekanismi
 ratkaistaan edelleen ennen sen muutoksia. A1 käyttää nykyistä
 feature-/API-sopimusta; jos rajaus vaatii
 backendin tai navigoinnin uuden liiketoimintasäännön, se palautuu suunnitteluun.

@@ -2,8 +2,8 @@
 
 ## Päätös ja nykyinen tila
 
-**Nykytila 2026-09-25: M0 ja T1 hyväksytty; T2:n rajattu toteutus-Goal
-hyväksytty ja työ kesken.** Viimeisin varmennettu paikallinen ja etäinen
+**Nykytila 2026-09-25: M0 ja T1 hyväksytty; T2 toteutettu ja paikallisesti
+todennettu, PR/main-integraatio kesken.** Viimeisin varmennettu paikallinen ja etäinen
 `main` on T1:n normaali PR #276 -merge
 `da896643d5cc1895174e508bee4f6141f4489d56`. Tämän revision
 [V2-ajo](https://github.com/eky-software/eky/actions/runs/36064323922) ja
@@ -30,8 +30,9 @@ Testinäyttö ja integraation viite ovat
 [T1-checkpointissa](release-0.3.0-m1-preparation-plan.md#t1n-toteutus-ja-hyväksyntänäyttö).
 Seuraavan suunnittelu-Goalin tarkka
 [T2-rajaus](release-0.3.0-m1-preparation-plan.md#t2n-toteutukseen-siirtymisen-portti)
-on hyväksytty toteutukseen. T2:n testivalinnan ja valmistelun todentaminen on kesken;
-suunnitelman valmistuminen ei sulje M1:n muita testikorjauksia.
+on toteutettu ja paikallisesti todennettu
+[T2-checkpointin](release-0.3.0-m1-preparation-plan.md#t2n-toteutus-ja-paikallinen-näyttö)
+mukaan. Linux-CI ja integraatio ovat avoinna; tämä ei sulje M1:n muita testikorjauksia.
 
 ### M0:n historiallinen tapahtumaketju
 
@@ -344,7 +345,8 @@ M0-selvitys ei avaa muuta 0.3.0-toteutusta ennen integraatioporttia.
 **Tila 2026-09-25:** rajattu suunnitteluvalmistelu tehty ja katselmoitu
 hyväksytyltä M0-pohjalta. T1a/T1b:n toteutus ja PR/main-integraatio on
 hyväksytty. T2:n tarkennettu suunnitelma on kirjattu erillisen suunnittelu-
-Goalin yhteydessä; omistaja hyväksyi T2:n toteutuksen. Muut testikorjaukset ovat avoinna.
+Goalin yhteydessä; omistajan hyväksymä toteutus ja paikallinen näyttö ovat
+valmiit. Linux-CI, integraatio ja muut testikorjaukset ovat avoinna.
 Tarkka jako on [M1-suunnitelmassa](release-0.3.0-m1-preparation-plan.md):
 T1a/T1b testien ajokytkentä, T2 projektivalinta ja build-edellytykset,
 T3 testiprosessien omistajuus sekä A1:n rajattu kohdekorjaus.
@@ -397,7 +399,7 @@ katalogisopimus ja retentionin reunaehdot täydentävät D029-listaa; niitä ei
 kuitata valmiiksi pelkän vanhan diagnostiikkalistan läpäisyllä.
 
 T-paketista T1a/T1b on hyväksytty yllä mainitun integraation näytöllä;
-T2:n hyväksytty rajaus on toteutuksessa ja T3 on suunniteltu. A/B/C/K/D/E/F/G/H/I:n
+T2 on paikallisesti todennettu integraatioportin ehdoin ja T3 on suunniteltu. A/B/C/K/D/E/F/G/H/I:n
 tila on **suunniteltu / korjaus ja hyväksyntä tekemättä**.
 Päätösportin vaikutusalue odottaa hyväksyntää.
 
