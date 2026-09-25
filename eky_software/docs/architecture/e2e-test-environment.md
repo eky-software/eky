@@ -873,6 +873,58 @@ Pelkkä viimeinen havaittu vaihe tai hidas onnistuva uusinta ei yksilöi
 juurisyytä. Tuotantokoodia, moduulien vastuita, deadlineja tai CI-ehtoja ei
 muuteta arvaamalla. Mahdollinen lisähavainto pidetään testikerroksessa,
 sidotaan todelliseen kirjoittajaan ja testataan ennen uutta kohdekoetta.
+
+##### T3b-E:n rajattu backend-lokihavainto
+
+Rajattu lisähavainto kuuluu `apps/e2e`-fixtureen, ei tuotannon
+käynnistykseen. Ensimmäisen launch-virheen kohdalla, ennen fixture-siivousta,
+otetaan yksi synkroninen otos kyseisen testiruntimen olemassa olevasta
+backend-lokista. Onnistuva launch ei lue lokia. Main-prosessin nykyistä
+valinnaista havaintopyyntöä ei odoteta; kumpikaan havainto ei
+muuta ikkunan, backendin readinessin tai cleanupin aikarajaa.
+
+Lukija hyväksyy vain testikohtaisen OS-temp-juuren oman userData-hakemiston
+kiinteän `runtime/logs/backend`-alahakemiston. Se ei lue konfiguraatiota
+uudelleen, etsi aktiivista työtilaa tai varahakemistoa eikä seuraa linkkejä.
+Ei rekursiivista lukua: enintään 64 hakemistomerkintää, 16 JSONL-tiedostoa,
+64 KiB yhdestä tiedostosta ja yhteensä 256 KiB sekä enintään 16 KiB rivistä
+ennen JSON-jäsennystä. Tiedoston identiteetti ja yksittäinen linkki
+tarkistetaan avatusta kahvasta; saman kahvan avaamishetken koko rajaa luvun.
+Kasvua ei seurata eikä vajaata viimeistä riviä tulkita kokonaiseksi.
+
+Jokainen tapahtuma kulkee nykyisen backend-validaattorin läpi ja sen
+runtime-tunnisteen on vastattava epäonnistunutta testigeneraatiota. Raporttiin
+projisoidaan vain suljetun käynnistysjoukon tapahtumanimi/tulos-parit ja
+erillinen shutdown-havaintojoukko. Polut, runtime- ja tapahtumatunnisteet,
+aikaleimat, virhepayloadit sekä raakaloki eivät siirry liitteeseen. Havainto
+säilyy muistissa muuttumattomana nykyiseen `electron-lifecycle.json`-liitteeseen
+asti, vaikka cleanup poistaisi lähteen tai kirjoittaisi shutdown-tapahtumia.
+
+Tämä on havaittujen tapahtumien joukko, ei prosessien välinen aikajana.
+Esimerkiksi `backend.starting`/`success` tarkoittaa vain kyseisen eventin
+onnistunutta kirjausta, ei käynnistyksen valmistumista. Puuttuva, osittainen,
+virheellinen tai rajaan osunut lähde erotetaan ehjästä luetusta otoksesta.
+Myöskään ehjä otos ei todista lokin täydellisyyttä: writer on best-effort,
+ja configin/faultin valmistelu ennen loggerin luontia jää tämän ulkopuolelle.
+Rajattu tavumäärä ei ole tiedostojärjestelmän vasteajan takuu.
+
+Regressio vaatii aidon backend-writerin, validaattorin, suljetun projektion,
+launch-virheen observerin, cleanupin ja liitteen ketjun sekä onnistumispolun
+muuttumattomuuden. Lisäksi tarkistetaan väärä runtime, linkit, ulkopuolinen
+juuri, virheellinen sisältö ja lukurajat. Tämä ei muuta tuotannon Diagnostics-,
+Activity-, tukipaketti- tai incident-sopimuksia, tietokantaa, backupia,
+riippuvuuksia, testisuodatusta eikä CI:n ehtoja.
+
+Kohdesarja läpäisi 52/52 ilman ohituksia tai uusintaa: 19 lukijan regressiota,
+21 lifecycle-sopimusta ja 12 aiempaa backend-startup-sopimusta. Koko työtilan
+normaalit testit läpäisivät 3 907 testillä ja 8 ennestään olevalla ohituksella;
+E2E:n ja koko työtilan tyypitystarkistukset läpäisivät. Riippumaton koodin ja
+dokumentaation katselmus ei löytänyt korjattavaa. Writer ja raportointiketju
+ovat testeissä todellisia, mutta launch ja cleanup ohjattuja korvikkeita;
+varsinaisen fixturen kytkentä tarkistettiin lähteestä. Tämä on sopimustodiste,
+ei vielä uuden oikean Electron-ajon näyttö. Koko normaalin CI-baselinen
+hyväksyntä, timeoutin syy ja T3/R28 ovat edelleen avoimia.
+
 T3b-P, alustakokeet ja PR/main-portti odottavat edelleen vihreää baselinea.
 
 ##### T3b-P: hyväksytty metatietorajaus

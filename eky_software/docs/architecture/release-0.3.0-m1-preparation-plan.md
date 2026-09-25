@@ -69,6 +69,12 @@ ominaisuuksia. Pelkkä diagnostiikka tai vihreä Electron-osajoukko ei täytä s
    diagnostiikkarevision normaali CI todensi nämä 18/18 sopimusta ja niiden
    tulosrivit, mutta hylkäsi kaksi Electronin firstWindow-ensiyritystä.
    Backendin tarkempi käynnistysväli tutkitaan ennen seuraavaa kohdekoetta.
+   [Rajattu backend-lokihavainto](e2e-test-environment.md#t3b-en-rajattu-backend-lokihavainto)
+   säilyttää ensimmäisen launch-virheen jo kirjoitetut vaiheet ennen
+   fixture-siivousta. Toteutus ja writerista liitteeseen ulottuva regressio
+   pysyvät testikerroksessa. Kohdesarja läpäisi 52/52, koko työtilan normaalit
+   testit ja tyypitys läpäisivät, ja riippumaton katselmus ei löytänyt
+   korjattavaa. Oikean Electron-ajon uusi näyttö ja koko baseline ovat avoinna.
    Hylkäystä ei ohiteta tai korvata eri ajojen osatuloksilla.
 3. **Vihreän baselinen jälkeen:** toteuta hyväksytty T3b-P:n metatietorajaus
    ja sen eristetty packaged-todennus. Tuotantotoimintoja ei lisätä tähän.

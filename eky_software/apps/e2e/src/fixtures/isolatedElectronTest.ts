@@ -50,11 +50,12 @@ import {
   stopOwnedElectronRuntime,
 } from './stopOwnedElectronRuntime.js';
 import {
-  captureElectronStartupObservation,
   launchElectronRuntime,
   type ElectronLaunchObservation,
   type ElectronStartupCapture,
 } from './launchElectronRuntime.js';
+import { createElectronLaunchFailureCapture } from './captureElectronLaunchFailure.js';
+import type { ElectronBackendStartupLogsCapture } from './captureElectronBackendStartupLogs.js';
 import { ELECTRON_E2E_PROCESS_CONNECT_TIMEOUT_MILLISECONDS } from './electronLaunchBudgets.js';
 import { captureFirstStartProof } from './captureFirstStartProof.js';
 import type { FirstStartProofCapture } from '../../../desktop/e2e/workspaceFirstStartProofObservation.js';
@@ -200,8 +201,7 @@ export const test = base.extend<
     let failure: { error: unknown } | undefined;
     const launchObservations: ElectronLaunchObservation[] = [];
     let observationsTruncated = false;
-    let finishStartupCapture: () => ElectronStartupCapture =
-      () => ({ status: 'notRequested' });
+    const launchFailureCapture = createElectronLaunchFailureCapture();
     let firstStartProof: FirstStartProofCapture = { status: 'notRequested' };
 
     async function launchCurrentRuntime() {
@@ -230,12 +230,14 @@ export const test = base.extend<
           child.stderr?.resume();
         },
         observe(observation) {
-          if (observation.status === 'failed' && electronApp !== undefined) {
-            const application = electronApp;
-            finishStartupCapture = captureElectronStartupObservation(
-              () => readElectronStartupObservation(application),
-            );
-          }
+          const application = electronApp;
+          launchFailureCapture.observe(observation, {
+            runRoot,
+            userDataPath: runtime.userDataPath,
+            runtimeInstanceId: runtime.runtimeInstanceId,
+          }, () => application === undefined
+            ? Promise.resolve(undefined)
+            : readElectronStartupObservation(application));
           if (launchObservations.length < MAX_ELECTRON_LAUNCH_OBSERVATIONS) {
             launchObservations.push(observation);
           } else {
@@ -396,7 +398,7 @@ export const test = base.extend<
               launch: launchObservations,
               observationsTruncated,
               cleanup,
-              startupCapture: finishStartupCapture(),
+              ...launchFailureCapture.finish(),
               ...(firstStartProof.status === 'notRequested' ? {} : { firstStartProof }),
             });
           }
@@ -465,6 +467,7 @@ export async function reportElectronLifecycleEvidence(
     observationsTruncated: boolean;
     cleanup: Readonly<ElectronCleanupResult>;
     startupCapture?: ElectronStartupCapture;
+    backendStartupLogs?: ElectronBackendStartupLogsCapture;
     firstStartProof?: FirstStartProofCapture;
     preparation?: ElectronPreparationFailureEvidence;
   },
@@ -479,6 +482,7 @@ export async function reportElectronLifecycleEvidence(
       observationsTruncated: evidence.observationsTruncated,
       cleanup: evidence.cleanup,
       startupCapture: evidence.startupCapture ?? { status: 'notRequested' },
+      ...(evidence.backendStartupLogs === undefined ? {} : { backendStartupLogs: evidence.backendStartupLogs }),
       ...(evidence.firstStartProof === undefined ? {} : { firstStartProof: evidence.firstStartProof }),
       ...(evidence.preparation === undefined ? {} : { preparation: evidence.preparation }),
     }),

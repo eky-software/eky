@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { errors, expect, test, type ElectronApplication, type Page } from '@playwright/test';
@@ -21,6 +21,9 @@ import {
 } from '../../../desktop/e2e/electronE2eStartupObservation.js';
 import { ELECTRON_E2E_FIRST_WINDOW_TIMEOUT_MILLISECONDS } from '../../src/fixtures/electronLaunchBudgets.js';
 import { stopOwnedElectronRuntime } from '../../src/fixtures/stopOwnedElectronRuntime.js';
+import { createElectronLaunchFailureCapture } from '../../src/fixtures/captureElectronLaunchFailure.js';
+import { createBackendOperationalEvent } from '../../../backend/src/observability/createOperationalEvent.js';
+import { createBackendOperationalLogger } from '../../../backend/src/observability/infrastructure/createBackendOperationalLogger.js';
 
 test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
   test('backup preparation failure retains the root and writes safe evidence on the first attempt', async ({}, testInfo) => {
@@ -128,6 +131,95 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
     await expect(launchFixture({ observerFails: true }).run()).resolves.toHaveProperty('page');
     await expect(launchFixture({ observerFails: true, window: new errors.TimeoutError('private') }).run())
       .rejects.toThrow('phase=firstWindow reason=timeout');
+  });
+
+  test('successful launch does not request backend logs or main-process diagnostics', async () => {
+    const capture = createElectronLaunchFailureCapture();
+    const root = createE2eRunRoot();
+    let mainReads = 0;
+    try {
+      const fixture = launchFixture({}, (observation) => capture.observe(observation, {
+        runRoot: root,
+        userDataPath: join(root, 'missing-user-data'),
+        runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+      }, async () => { mainReads += 1; return undefined; }));
+      await expect(fixture.run()).resolves.toHaveProperty('page');
+      expect(mainReads).toBe(0);
+      expect(capture.finish()).toEqual({
+        startupCapture: { status: 'notRequested' },
+        backendStartupLogs: { status: 'notRequested' },
+      });
+    } finally { await removeE2eRunRootIfPresent(root); }
+  });
+
+  test('first launch failure snapshots real backend logs before cleanup and retains only that generation in the attachment', async ({}, testInfo) => {
+    const root = createE2eRunRoot();
+    const userDataPath = join(root, 'worker', 'desktop-user-data');
+    mkdirSync(userDataPath, { recursive: true, mode: 0o700 });
+    const runtime = {
+      runRoot: root,
+      userDataPath,
+      runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+    };
+    const identity = {
+      appVersion: '0.0.0-e2e', buildRevision: 'development',
+      runtimeInstanceId: runtime.runtimeInstanceId,
+    };
+    const logger = createBackendOperationalLogger(join(userDataPath, 'runtime', 'logs'), identity);
+    const write = (eventName: 'backend.starting' | 'database.opening' | 'backend.started' | 'backend.shutdownStarted') =>
+      logger.write(createBackendOperationalEvent({ eventName }, identity));
+    const capture = createElectronLaunchFailureCapture();
+    let mainReads = 0;
+    const fixture = launchFixture({ window: new errors.TimeoutError('private window detail') }, (observation) => {
+      capture.observe(observation, runtime, async () => {
+        mainReads += 1;
+        throw new Error('private main-channel failure');
+      });
+    });
+    let failure: { error: unknown } | undefined;
+    try {
+      write('backend.starting');
+      write('database.opening');
+      logger.write(createBackendOperationalEvent({ eventName: 'backend.started' }, {
+        ...identity, runtimeInstanceId: '22222222-2222-4222-8222-222222222222',
+      }));
+      try { await fixture.run(); } catch (error) { failure = { error }; }
+      expect(failure?.error).toBeInstanceOf(Error);
+      const beforeCleanup = capture.finish();
+      const beforeText = JSON.stringify(beforeCleanup.backendStartupLogs);
+      expect(beforeText).toContain('backend.starting');
+      expect(beforeText).toContain('database.opening');
+      expect(beforeText).not.toContain('backend.started');
+      expect(mainReads).toBe(1);
+      await expect(finishIsolatedElectronTest({
+        failure, testAlreadyFailed: false,
+        async disposeApi() {},
+        async closeRuntime() {
+          write('backend.started');
+          write('backend.shutdownStarted');
+          capture.observe({ phase: 'firstWindow', status: 'failed', reason: 'unknown' }, {
+            ...runtime, runtimeInstanceId: '22222222-2222-4222-8222-222222222222',
+          }, async () => { mainReads += 1; return undefined; });
+        },
+        async releasePort() {},
+        removeRoot: () => removeE2eRunRoot(root),
+        report: (cleanup) => reportElectronLifecycleEvidence(testInfo, {
+          launch: fixture.observations, observationsTruncated: false, cleanup,
+          ...capture.finish(),
+        }),
+      })).rejects.toBe(failure?.error);
+      expect(capture.finish()).toEqual(beforeCleanup);
+      expect(mainReads).toBe(1);
+      expect(existsSync(root)).toBe(false);
+      const text = readFileSync(testInfo.outputPath('electron-lifecycle.json'), 'utf8');
+      const report = JSON.parse(text);
+      expect(report.backendStartupLogs).toEqual(beforeCleanup.backendStartupLogs);
+      expect(report.startupCapture).toEqual({ status: 'unavailable' });
+      expect(report.launch.at(-1)).toEqual({ phase: 'firstWindow', status: 'failed', reason: 'timeout' });
+      expect(report.cleanup.runRoot).toBe('removed');
+      expect(text).not.toMatch(/backend\.started|backend\.shutdownStarted|private|11111111|22222222|desktop-user-data/);
+      expect(testInfo.attachments.some((item) => item.name === 'electron-lifecycle')).toBe(true);
+    } finally { await removeE2eRunRootIfPresent(root); }
   });
 
   test('startup memory keeps only bounded immutable checkpoint observations', () => {
@@ -353,7 +445,7 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
 function launchFixture(fault: {
   connect?: Error; window?: Error; dom?: Error;
   terminal?: 'process' | 'page' | 'unknown'; observerFails?: boolean;
-} = {}) {
+} = {}, observe?: (observation: ElectronLaunchObservation) => void) {
   const calls: string[] = [];
   const observations: ElectronLaunchObservation[] = [];
   let owned: ElectronApplication | undefined;
@@ -382,7 +474,7 @@ function launchFixture(fault: {
     run: () => launchElectronRuntime({
       async launch() { calls.push('connect'); if (fault.connect) throw fault.connect; return application; },
       connected(value, childProcess) { owned = value; ownedProcess = childProcess; calls.push('owned'); },
-      observe(value) { if (fault.observerFails) throw new Error('private observer detail'); observations.push(value); },
+      observe(value) { if (fault.observerFails) throw new Error('private observer detail'); observe?.(value); observations.push(value); },
     }),
   };
 }
