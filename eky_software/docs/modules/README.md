@@ -41,7 +41,7 @@ Toteutetut moduulit:
 
 Dokumentoidut myöhemmät moduulit:
 
-- [sales](sales.md)
+- [sales](sales.md): tarjoushallinta, mukaan lukien tarjousten laatiminen ja lähettäminen
 - [inventory](inventory.md)
 - [work-orders](work-orders.md)
 - [reporting](reporting.md)
