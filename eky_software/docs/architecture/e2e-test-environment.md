@@ -16,8 +16,8 @@ fault injectionia.
 
 ## T-paketin valmistelu
 
-**2026-09-25: T1 hyväksytty PR/main-porttien jälkeen; T2 toteutettu ja
-paikallisesti todennettu, integraatio kesken.** [M1-valmistelu](release-0.3.0-m1-preparation-plan.md)
+**2026-09-25: T1 ja T2 hyväksytty PR/main-porttien jälkeen; T3:n
+omistajuusmekanismi valmistelussa.** [M1-valmistelu](release-0.3.0-m1-preparation-plan.md)
 rajaa R27-R29:n kolmeen erikseen todennettavaan sopimukseen. M0:n erillinen
 Windows Job -supervisor ja Electronin lataus-/purkutodistus eivät sulje näitä.
 
@@ -71,9 +71,9 @@ Tämä ei sulje alla olevia projektivalinnan ja prosessipuun jatkorajoja.
 
 ### T2: Projektivalinta ja valmistelu
 
-**Tila 2026-09-25: hyväksytty T2-rajaus toteutettu ja paikallisesti
-todennettu; Linux-CI ja PR/main-integraatio kesken.** Lähtörevisio ja hyväksyntänäyttö ovat
-[M1-suunnitelmassa](release-0.3.0-m1-preparation-plan.md#t2n-toteutukseen-siirtymisen-portti).
+**Tila 2026-09-25: T2 toteutettu ja hyväksytty, myös Linux-CI ja
+PR/main-portit.** Lähtörevisio ja hyväksyntänäyttö ovat
+[M1-suunnitelmassa](release-0.3.0-m1-preparation-plan.md#t2n-integraatiohyväksyntä).
 
 T2:n lähtötilassa `e2e:security` ja `e2e:fault` valitsivat tageilla myös
 Electron-testejä mutta kutsuivat vain backendin valmistelua. Electron-runtime käyttää
@@ -228,6 +228,11 @@ Suunnitelman todistusrajat säilyvät myös myöhemmissä muutoksissa.
 
 ### T3: Koko prosessipuun poistumistodiste
 
+**Tila 2026-09-25: lähdekatselmus ja rajattu koesuunnitelma valmisteltu;
+T3a:n toteutuspäätös avoin.** Lähtökohta on hyväksytty T2-main;
+[M1:n päätösportti](release-0.3.0-m1-preparation-plan.md#t3n-toteutukseen-siirtymisen-portti)
+erottaa valmistelun, teknisen kokeen ja varsinaisen kuluttajien siirron.
+
 `stopManagedProcessTree` hyväksyy nyt poistuneen root-prosessin liian
 aikaisin. Portittoman jälkeläisen poistumista ei todista rootin exit,
 vapautunut portti tai `taskkill`-apuprosessin valmistuminen. POSIXissa
@@ -260,6 +265,160 @@ flaky-hylkäystä, pakollisia jobeja tai toistoja ei kevennetä tämän työn vu
 T3:n puute korjataan ennen sen fixturen käyttämistä A:n lopullisena
 oikeaprosessi-/E2E-hyväksyntänä. Alemmat puhtaat sopimustestit voidaan
 valmistella rinnalla. Tämä valmistelu ei ole uusi testitulos.
+
+#### T3:n lähdehavainnot ja kuluttajat
+
+Lähdekatselmus kohdistui T2-mainiin `5cc58b7139a6616bc9403a5724f93d929e90cf25`.
+Windows- ja Linux-vaihtoehdot arvioitiin erillisillä read-only-agenteilla.
+Havainnot ovat koodista pääteltyjä puutteita, eivät tässä valmistelussa ajettuja
+vikatoistoja tai väite siitä, että aiempi ajo jätti prosesseja eloon.
+
+| Vastuu | Nykyinen raja ja suunnittelun vaikutus |
+| --- | --- |
+| `src/environment/startManagedProcess.ts`, `stopManagedProcessTree.ts` | Node-kahva ja POSIXin `detached` eivät muodosta koko puun säilyvää omistajaa. Sekä alkupaluu että eskalaation ehto riippuvat rootista. Myös epäonnistuneen ryhmäsignaalin root-only-fallback on arvioitava. |
+| `runBoundedWindowsTaskkill.ts` | Apuprosessin `exit` ratkaisee promisen ilman exit-koodin tarkistusta. Sen valmistuminen ei joka tapauksessa todista omistetun puun tyhjyyttä. Ei pelkkää exit-koodipaikkausta R28:n sulkemiseksi. |
+| `startE2eBackendProcess.ts`, `startE2eWebProcess.ts`, service-fixturet | Health ja rootin exit säilyvät runtime-havaintoina; tree-stop saa oman todistusrajansa. Nykyinen alkuperäisen virheen säilytys, juuren säilytys ja restartin esto pidetään. |
+| `isolatedElectronTest.ts`, `launchElectronRuntime.ts`, `stopOwnedElectronRuntime.ts` | Playwright käynnistää Electronin; nykyinen kahva saadaan vasta launch-promisen valmistuttua. Jälkikäteen liittäminen ei sulje ennen yhteyttä syntyvää omistajuusaukkoa. |
+| `isolatedElectronTest.ts` / `launchSecondElectronInstance`, `tests/electron/desktopCapabilities.spec.ts` / `runElectronProcess` | Suorat Electron-lapset hyväksyvät rootin exitin; timeout pyytää tappoa mutta ei odota koko puun poistumistodistetta. Nämä kuuluvat samaan siirtokarttaan. |
+| `tests/system/restartAndRecovery.spec.ts`, backup import/replacement -testit, `tests/stress/enduranceBaseline.spec.ts` | Rootin exit ja rootien lukumäärä eivät yksin tue koko puun poissaoloväitettä. Päivitä assertiot omistavan rajapinnan mukana, älä poista nykyisiä data-, session- tai porttiehtoja. |
+| Desktopin `upgradeRollbackBinaryHandoff.test.mjs` | Suora Node-lapsi tarvitsee virhepolun välittömän cleanup-rekisteröinnin, poistumisen odotuksen ja oman regressionsa. Ei installerin tuotantokorjausta. |
+
+E2E-polut ovat suhteessa `apps/e2e`-kansioon. RSS-kyselyn ja synkronisen
+testiapukomennon omat rajatut elinkaaret tarkistetaan siirron yhteydessä;
+niitä ei nimetä business-runtimen jälkeläisomistajiksi.
+
+#### T3:n omistajuusehdotus
+
+Tämä on hyväksyttävä ehdotus, ei jo toteutettu yleinen prosessipalvelu:
+
+1. `apps/e2e` omistaa testikohtaisen, sukupolveen sidotun puukahvan.
+   Stop ei hyväksy mielivaltaista PID:tä tai jälkikäteen adoptoitua
+   `ChildProcess`-oliota omistajuustodisteeksi. Rootin tila ja stdout/stderr
+   ovat erillisiä havaintoja, eivät puun omistajuus.
+2. Omistajuus syntyy ennen kuin varsinainen workload voi luoda jälkeläisiä.
+   Alustan omistusobjekti ja sen kontrolliyhteys säilyvät rootin poistuessa.
+   Suljettua objektia ei avata uudelleen samalla nimellä, polulla tai PID:llä.
+3. Yksi omistaja hoitaa kyseisen puun stopin, eskalaation ja poistumistodisteen.
+   Nykyisten turvabudjettien sisäinen jako kuvataan ennen kytkentää;
+   ei pidempiä aikarajoja, rinnakkaisia tappajia tai hiljaista retryä.
+4. Rootin poistuminen, koko puun tyhjyys, valvojan poistuminen, portin
+   vapautuminen ja tuloksen tallennus ovat erillisiä ehtoja. Käynnistysvirhe
+   tai myöhäinen pending-launch ei saa tuottaa valheellista tyhjyyttä.
+5. Virheellinen, vanhan sukupolven tai puuttuva omistajuus-/terminal-kuitti,
+   kyselyvirhe ja katkennut kontrolliyhteys ovat varmentamattomia tuloksia.
+   Ne estävät uuden launchin ja testijuuren poiston; aiempi epävarmuus ei
+   katoa myöhemmällä onnistumisella. Toistettu stop ei kohdista uutta
+   signaalia mahdollisesti uudelleen käytettyyn tunnisteeseen.
+6. Testin alkuperäinen virhe säilyy ensisijaisena. Puun cleanup ja rajatun
+   näytön kirjoitus raportoidaan erikseen nykyiseen turvalliseen
+   service-/Electron-fixtureketjuun. Ei raakaa ympäristöä, polkuja, PID:itä,
+   sessionia tai vapaata virhetekstiä julkaistavaan liitteeseen.
+
+Windowsin ensisijainen koesuunta on nykyisten native Job- ja suspended-launch-
+primitiivien uudelleenkäyttö erillisessä **testisessiossa**.
+`WindowsJob`, `ProcessCreationJobAttribute` ja `SuspendedWindowsProcess`
+ovat lähdekatselmuksen perusteella hyödyllinen pohja. Nykyinen installer-
+supervisor vaatii kuitenkin suljetun batch-requestin, scenario-/artifact-
+sidonnan ja worker-resultin. Sillä ei ole E2E:n tarvitsemaa elävää stop-
+kanavaa eikä request-kohtaista stdio-/environment-sopimusta. Tavalliselle
+palvelimelle ei valmisteta tekaistua installer-tulosta. Installerin nykyiset
+moodit, tulosschema, deadline ja käyttäytyminen säilytetään.
+
+Kokeessa erotetaan varsinainen runtime, käynnistysadapteri ja puun omistaja.
+`electron.launch({ executablePath })`-adapteri on vasta vaihtoehto:
+argumenttien, ympäristön, stdion, `process()`-kahvan merkityksen sekä
+`exit`/`close`-järjestyksen säilyminen on todistettava oikealla Electronilla.
+Playwrightin yksityiseen toteutukseen ei tehdä monkey patchia, eikä
+production-fuseja, sandboxia tai preloadia muuteta. Omistajan pitää olla
+tavoitettavissa jo launchin epäonnistuessa ennen `ElectronApplication`-kahvaa.
+Mahdollinen valvojan pakkopoistuminen ei itsessään kelpaa terminal-kuitiksi.
+
+Linuxin nykyiset system-/web-CI-ajot tarvitsevat oman mekanismin; Windowsin
+Job-ratkaisu ei kata niitä. Ensisijainen **selvitettävä** vaihtoehto on
+launchista omistettu cgroup v2: sama omistusobjekti, periytyvä jäsenyys,
+ryhmäkohtainen lopetus ja erillinen live-jäsenten tyhjyystodiste.
+Ensin selvitetään vain lukemalla nykyisen suoritusympäristön saatavuus,
+delegointi ja mahdollinen systemd-reitti. `ubuntu-latest` tai paikallinen
+WSL ei yksin todista CI:n käyttöoikeuksia. Cgroup ei ole tässä hyväksytty
+riippuvuus tai käyttöönotto. Cgroup-kirjoitus, transient-service, delegointi,
+oikeusmuutos tai uusi native-toolchain vaatii nimetyn jatkopäätöksen.
+Myös jäsenyyden ulkopuolelle siirtyminen, owner-loss ja zombie/reaping-raja
+ratkaistaan ennen oikeaprosessikokeen hyväksyntää.
+
+Pelkkä saved-PGID, parent-PID-snapshot, prosessinimi, vapaa portti tai
+yksittäisen rootin pidfd ei korvaa puun omistajuutta. Ryhmässä pysyvään
+keeperiin tai Linux-subreaperiin perustuva vaihtoehto tarvitsee oman
+identiteetti-, poistumis- ja karkaamisrajansa todistuksen. Yleistä POSIX-
+tukea tai muun alustan poistamista ei päätetä tämän Linux-selvityksen nojalla.
+
+#### T3a: Rajattu toteutettavuuskoe
+
+Suositus on hyväksyä seuraava pieni checkpoint ennen kuluttajien siirtoa:
+
+- Test-only Windows-sessiokoe nykyisillä Job-primitiiveillä ja jo hyväksytyllä
+  .NET-työkalupohjalla. Ei uusia npm-/NuGet-riippuvuuksia, tuotantokoodia,
+  installer-protokollan laajennusta tai yleistä prosessikirjastoa.
+- Sama koe tarkistaa yhden synteettisen Node-puun ja eristetyn Electron-
+  launchin yhteensopivuuden. Tavallisten testien launch-ketjua ei vielä vaihdeta.
+  Negatiivinen koe saa alkaa vasta, kun sen itsenäisesti omistettu cleanup
+  on valmis; testattavan viallisen helperin varaan ei jätetä orpoa prosessia.
+- Linuxista tässä checkpointissa vain rajattu, read-only-edellytystarkistus
+  ja nimetty jatkoehdotus. Ei palvelujen, kernel-kontrollien, oikeuksien,
+  asennusten tai CI-vaatimusten muutoksia.
+- Kokeen jälkeen päätetään täsmälliset Windows-/Linux-adapterit, niiden
+  tiedostorajat, kontrolliprotokolla, tuetut alustat ja testikomentojen
+  build-edellytykset. Ennen tätä ei siirretä backend-, Vite- tai Electron-
+  kuluttajia eikä merkitä R28:aa korjatuksi. Epäonnistunut koe rajataan,
+  ei laajenneta arkkitehtuuria automaattisesti.
+
+T3a:n lupa ei hyväksy hiljaisesti Linux-cgroup-kirjoituksia tai uutta
+testipalvelua. Jos nykyinen Windows-pohja vaatii hyväksytyn rajauksen
+ulkopuolisen muutoksen, myös se palautuu päätettäväksi ennen toteutusta.
+
+#### T3:n lopullinen hyväksyntänäyttö
+
+Pysyvä [testimatriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus)
+erottaa tulevat puhtaat sopimukset, oikeaprosessikokeet ja Electron-
+integraation. Pakollisia tapauksia ovat:
+
+- root exits first / during stop; portiton ja TERM:iä vastustava jälkeläinen;
+  jälkeläisen myöhäinen fork ja uuden sessionin/ryhmän yritys
+- launch-, resume-, kysely-, kontrolli- ja terminal-julkaisuvirhe sekä
+  myöhäinen prosessinluonti, caller-/owner-loss ja samanaikainen/toistettu stop
+- vanha omistajuuskuitti, PID-/ryhmätunnisteen uudelleenkäytön hallittu
+  simulaatio ja puun ulkopuolinen, omalla kahvallaan elävä sentinel
+- restartin esto ja juuren säilytys epävarmuudessa sekä alkuperäisen virheen,
+  cleanupin ja näyttövirheen erillisyys myös todellisessa fixtureketjussa
+- Electronin normaali sulku, launch-virhe ennen yhteyttä, first-window-virhe,
+  relaunch, toinen instanssi ja synteettinen bootstrap; handoff-testin
+  assertion-/timeout-/release-virheen varma cleanup.
+
+Älä pakota käyttöjärjestelmän PID-avaruutta loppuun uudelleenkäyttökokeessa.
+Simulaatio todistaa virheellisen identiteetin torjunnan, oikea prosessikoe
+omistetun puun poistumisen ja sentinelin säilymisen. Niitä ei sekoiteta.
+Oikeat kokeet ajetaan vasta hyväksytyn mekanismin sisällä erillisessä
+synteettisessä testijuuressa. Mekanismin edellytyksen puuttuminen on
+avoin/hylätty näyttö, ei onnistunut skip.
+
+Kuluttajien siirron jälkeen vaaditaan niiden kohdetestit, workspace/typecheck,
+nykyiset Linux system/web- ja Windows Electron -portit sekä muuttuneen
+Windows-primitiivin installer-regressiot. Uudet build-esiehdot on sidottava
+todellisiin testikomentoihin ja CI:hin, ei oletettava T2:n perusteella.
+Raskaan matriisin nykyinen riskivalinta, aikarajat ja flaky-hylkäys säilyvät.
+Ajoseuranta nimetään ennen ensimmäistä koetta; normaali PR ja täsmällisen
+main-revision omat portit tarvitaan ennen R28:n sulkemista.
+
+Tuotannon UI, HTTP, business audit, Diagnostics, Activity, tukipaketti,
+backup-formaatti ja sovellusversio eivät muutu tässä testiharness-rajauksessa.
+Tuleva testisession evidence ei kuulu business-backupiin tai tuotannon
+lokiketjuun. Jos toteutus ulottuu tuotantolifecycleen, packaged-artifactiin
+tai profiilin sopimukseen, työ pysähtyy kyseisen erillisen portin ratkaisuun.
+
+Tekniset lähteet: [Microsoft Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects),
+[Playwright Electron launch](https://playwright.dev/docs/api/class-electron),
+[ElectronApplication process](https://playwright.dev/docs/api/class-electronapplication#electron-application-process)
+ja [Linux cgroup v2](https://docs.kernel.org/admin-guide/cgroup-v2.html).
+Niiden alustakyvykkyydet eivät yksin todista EKY-adapterin oikeellisuutta.
 
 ## Testikohtainen runtime
 

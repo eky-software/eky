@@ -5,6 +5,9 @@ väitä alemman tason testiä E2E-todisteeksi.
 
 ## Tilat
 
+- `accepted-contract`: matriisissa nimetty testi-infrastruktuurin sopimus
+  on todennettu omalla tasollaan ja hyväksytty PR/main-porteissa; ei väite
+  unit-testin muuttumisesta E2E-testiksi
 - `covered-existing`: skenaariolla on nykyinen unit-, integraatio- tai
   packaged-smoke-todiste, mutta uusi Playwright E2E puuttuu
 - `implemented-e2e`: skenaario on toteutettu matriisissa nimetyllä E2E-tasolla
@@ -62,15 +65,33 @@ tietokannan, auditin, operational/security-eventin ja tukipaketin päätöksen.
 Alla olevat rivit ovat [T2-suunnitelman](e2e-test-environment.md#t2-projektivalinta-ja-valmistelu)
 hyväksyttyä toteutusrajausta. Paikallinen näyttö on
 [T2-checkpointissa](release-0.3.0-m1-preparation-plan.md#t2n-toteutus-ja-paikallinen-näyttö);
-Linux-CI ja PR/main-hyväksyntä ovat erilliset avoimet portit. Unit-sopimus
+[Linux-CI ja PR/main-hyväksyntä](release-0.3.0-m1-preparation-plan.md#t2n-integraatiohyväksyntä)
+on todennettu erikseen. Unit-sopimus
 ja discovery eivät ole E2E-läpäisyjä. Nämä rivit eivät muuta UI:ta, HTTP:tä, business-
 auditia tai tuotannon tukipakettia; niiden näyttö kuuluu testiraporttiin.
 
 | ID | Taso | Koe ja hyväksyntä | Tila |
 | --- | --- | --- | --- |
-| TEST-COMMAND-WIRING-001 | Node-sopimus | Jäsennetyt manifestit; oma recursive-kytkentä, juurialiakset, kolme projektia, oikea tagi, täydellinen valmistelu ja järjestys. Kielteiset muutokset hylätään ilman runtime-launchia. | local-pass / integration-pending |
-| TEST-PROJECT-SELECTION-001 | Puhdas Playwright-sopimus ja discovery | Oikea config, erilliset projekti-/hakemistorajat, ei-kriittisten security/fault-tapausten säilyminen ja endurance-poissulku. Baseline ei valitse electron-stressiä. Todellista jäsenyyttä verrataan, ei vain määrää. | local-pass / integration-pending |
-| TEST-PREPARATION-001 | Build-integraatio ja Windows E2E | Tyhjät tai vanhentuneet tuotteet rakennetaan oikein, valmisteluvirhe estää myöhemmät vaiheet ja launchin myös vanhan stagen kanssa. Molemmat oikeat aggregaatit suoritetaan; siivoustulos erillään T3:n avoimesta puutteesta. | local-pass / integration-pending |
+| TEST-COMMAND-WIRING-001 | Node-sopimus | Jäsennetyt manifestit; oma recursive-kytkentä, juurialiakset, kolme projektia, oikea tagi, täydellinen valmistelu ja järjestys. Kielteiset muutokset hylätään ilman runtime-launchia. | accepted-contract |
+| TEST-PROJECT-SELECTION-001 | Puhdas Playwright-sopimus ja discovery | Oikea config, erilliset projekti-/hakemistorajat, ei-kriittisten security/fault-tapausten säilyminen ja endurance-poissulku. Baseline ei valitse electron-stressiä. Todellista jäsenyyttä verrataan, ei vain määrää. | accepted-contract |
+| TEST-PREPARATION-001 | Build-integraatio ja Windows E2E | Tyhjät tai vanhentuneet tuotteet rakennetaan oikein, valmisteluvirhe estää myöhemmät vaiheet ja launchin myös vanhan stagen kanssa. Molemmat oikeat aggregaatit suoritetaan; siivoustulos erillään T3:n avoimesta puutteesta. | accepted-contract |
+
+### T3: Prosessipuun omistajuus
+
+Alla on [T3-ehdotuksen](e2e-test-environment.md#t3n-lopullinen-hyväksyntänäyttö)
+hyväksyntämatriisi. Toteutus odottaa [mekanismipäätöstä](release-0.3.0-m1-preparation-plan.md#t3n-toteutukseen-siirtymisen-portti).
+Nykyinen `RUNTIME-EXIT-001` ja rootin lukumäärään perustuva endurance-tarkistus
+eivät yksin todista R28:n portittoman jälkeläisen poistumista. Niiden aiempaa
+läpäisyä ei peruta eikä koroteta uudeksi koko puun omistajuustodisteeksi.
+UI-/HTTP-/business-audit-/tukipakettimuutokset eivät kuulu näihin testisopimuksiin.
+
+| ID | Taso | Koe ja hyväksyntä | Tila |
+| --- | --- | --- | --- |
+| TEST-TREE-OWNERSHIP-001 | Omistajasopimus ja oikeat Windows-/Linux-prosessit | Root ensin tai stopin aikana pois; portiton/vastustava jälkeläinen, myöhäinen fork ja ryhmästä irtautuminen; puu todistetusti tyhjä, ulkopuolinen sentinel säilyy. | blocked-by-decision |
+| TEST-TREE-FAILURE-001 | Hallittu sopimus ja oikeaprosessi-integraatio | Launch/resume/query/control/result-virheet, myöhäinen luonti, owner-loss, vanha kuitti ja identiteetin uudelleenkäyttösimulaatio; ei root/PID-fallbackia tai väärää onnistumista. | blocked-by-decision |
+| TEST-TREE-FIXTURE-001 | System/web-fixture-integraatio | Varmentamaton stop estää restartin ja poiston; alkuperäinen virhe, cleanup ja evidence-virhe erillään, stop idempotentti. Wrapper ei korvaa runtime-identiteettiä health-/exit-/mittarirajalla. | blocked-by-decision |
+| TEST-TREE-ELECTRON-001 | Windows Electron development | Omistajuus ennen launchin valmistumista; normaali close, connect-/window-virhe, relaunch, toinen instanssi ja bootstrap, myös stdio-/environment-/process-kahvan sopimus. | blocked-by-decision |
+| TEST-TREE-HANDOFF-001 | Desktopin eristetty Windows-testiprosessi | Binary-handoff-testin assertion-, timeout-, abort- ja release-virheiden cleanup; alkuperäinen virhe säilyy ja lapsen poistuminen todetaan. | blocked-by-decision |
 
 ## Customers
 

@@ -18,11 +18,16 @@ PR/main-integraation vaadittujen porttien jälkeen. T2/T3/A/W7 eivät kuulu
 tähän toteutus-Goaliin. Suunnittelu säilyy erillisenä checkpointina;
 toteutuksen näyttö ja valmistuneen integraation viite ovat alla.
 
-**T2 2026-09-25: rajattu toteutus ja paikallinen ajotodistus valmis.** Komentovalinta,
+**T2 2026-09-25: toteutettu ja hyväksytty PR/main-porttien jälkeen.** Komentovalinta,
 build-esiehdot ja regressiosuoja on toteutettu hyväksytyn
-suunnitelman mukaan. Linux-CI ja PR/main-integraatio ovat kesken.
+suunnitelman mukaan. Linux-CI ja täsmällisen merge-revision portit läpäisivät.
 [Toteutusportti](#t2n-toteutukseen-siirtymisen-portti) erottaa tämän
 T1:n hyväksynnästä sekä T3:n ja tuotantokorjausten jatkotyöstä.
+
+**T3 2026-09-25: omistajuusmekanismin suunnitelma ja T3a-koerajaus valmisteltu.**
+Toteutus saa edetä ilman uutta kysymystä vain aiemmin hyväksytyissä
+sopimuksissa. T3:n nimetty Windows-/POSIX-/Electron-omistajuuspäätös
+on edelleen ratkaistava ennen koodimuutoksia.
 
 ## Lähtötilan näyttö
 
@@ -67,8 +72,8 @@ tai riippuvuusporttia, jos rajaus myöhemmin koskettaa niitä.
 | --- | --- | --- |
 | T1a / R27 | Startup-failure-testit tavalliseen desktop-testivalintaan ja valinnan regressiosopimus. | Hyväksytty; paikallisen näytön lisäksi PR/main-portit läpäisty. Ei tuotantokoodia. |
 | T1b / R27 | Kuusi puuttuvaa installer-harness-testitiedostoa nykyisten vaadittujen komentojen kautta ajettaviksi, myös ajokytkentää suojaava testi. | Hyväksytty T1a:n kanssa; R27 suljettu. Ei raskaan CI:n kevennystä. |
-| T2 / R29 | `security`/`fault`-projektivalinnan ja koko build-ketjun vastaavuus puhtaasta, vanhentuneesta ja epäonnistuneesta valmistelusta. | Hyväksytty [T2-suunnitelma](e2e-test-environment.md#t2-projektivalinta-ja-valmistelu) toteutettu ja paikallisesti todennettu; Linux-CI ja integraatio avoinna. |
-| T3 / R28 | Omistajuus käynnistyksestä todettuun koko puun poistumiseen; epävarma cleanup ei hyväksy restartia tai poista fixtureä. | Windowsin ja POSIXin omistajuusmekanismi sekä Electron-käyttö päätetään erikseen lähdekatselmuksen jälkeen. Pelkkä early returnin poisto ei riitä. |
+| T2 / R29 | `security`/`fault`-projektivalinnan ja koko build-ketjun vastaavuus puhtaasta, vanhentuneesta ja epäonnistuneesta valmistelusta. | Hyväksytty; paikallinen näyttö, Linux-CI sekä PR/main-portit läpäisty. [Integraatio](#t2n-integraatiohyväksyntä). |
+| T3 / R28 | Omistajuus käynnistyksestä todettuun koko puun poistumiseen; epävarma cleanup ei hyväksy restartia tai poista fixtureä. | Lähdekatselmus tehty; [T3a-koerajaus](#t3n-toteutukseen-siirtymisen-portti) odottaa päätöstä. Mekanismia tai kuluttajien siirtoa ei ole toteutettu. |
 | A1 / R01 | Luonnoksen avaamisen kohde, näkyvät arvot ja tallennuksen kohde pysyvät samana myös vastausten valmistuessa väärässä järjestyksessä. | T1 ensin; hyväksyntään käytettävän E2E-fixturen T3-puute korjattu ja sen build-valinta todennettu. |
 | A2 / R05, A3 / R06 | Ensimmäisen createn tunnisteen säilyminen ja muokatun lomakkeen vanhentunut readiness. | Omat rajatut jatkopalat; A1:n hyväksyntä ei sulje niitä. Backendin hyväksyntäauktoriteetti säilyy. |
 | W7-valmistelu | Omistajan hyväksyttävä poisto-, karanteeni-, palautus- ja nollan työtilan sopimus. | Suunnittelu kulkee rinnalla; toteutus tarvitsee C/K/G/H:n nimetyt kyvykkyydet. |
@@ -186,7 +191,7 @@ kyseisen ajon hyväksynnän; vihreä T2 ei sulje T3:a.
 
 Suunnittelun näyttö oli lähdekatselmus, ei testitulos. Toteutuksen
 [T2-rivien](r0-e2e-test-matrix.md#t2-testivalinnan-ja-valmistelun-sopimukset)
-paikallinen näyttö ja avoin integraatioportti ovat alla. Lähtörevisio on yllä varmennettu
+paikallinen näyttö ja valmistunut integraatioportti ovat alla. Lähtörevisio on yllä varmennettu
 T1-main; se ja työpuun muutokset tarkistettiin uudelleen toteutuksen alussa.
 
 ### T2-valmistelun checkpoint
@@ -230,10 +235,64 @@ backup/restore-porttia tai uutta asennuspakettia ei tuoteta T2:ssa.
 Koodin peruminen ei ole testiprosessin siivouskeino. Uusia riippuvuuksia,
 versionnostoa tai lukitustiedoston muutosta ei ole.
 
-R29:n lopullinen hyväksyntä odottaa Linuxin Node-/system-sopimuksia,
-normaaleja PR-portteja ja mergen tuottaman täsmällisen main-revision
-omia required-ajoja. Niiden viite lisätään integraatiocheckpointiin;
-paikallinen näyttö ei korvaa niitä. T3/R28, A ja W7 jäävät avoimiksi.
+### T2:n integraatiohyväksyntä
+
+R29 on hyväksytty [PR #277:n integraatiocheckpointissa](https://github.com/eky-software/eky/pull/277#issuecomment-5826768078).
+Hyväksytty lähde on `6b323284bf671ad684e8b5774d22bc566cf709c2`,
+todellinen PR-checkout `0714504914cd1b43c4fae73bfb3da0cbd39c0e14`
+ja normaali merge `5cc58b7139a6616bc9403a5724f93d929e90cf25`.
+Checkpoint erottaa paikalliset aggregaatit, Linuxin Node-/system-sopimukset
+sekä PR:n ja mainin omat portit. Mainin
+[V2-ajo](https://github.com/eky-software/eky/actions/runs/36094675603) ja
+[riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/36094675166)
+läpäisivät ensimmäisellä yrityksellä. Paikallinen/etäinen main, merge,
+ajojen revisio ja valmistunut tila sekä checkpoint tarkistettiin uudelleen
+T3-valmistelun alussa. T3/R28, A ja W7 jäävät avoimiksi.
+
+## T3:n toteutukseen siirtymisen portti
+
+2026-09-25: omistaja salli suunnittelun ja toteutuksen ilman uutta kysymystä,
+jos uusia hyväksyttäviä päätöksiä ei tarvita. T3:n aiemmin nimetty
+omistajuusmekanismin päätös on kuitenkin avoin. Tätä ehtoa ei tulkita
+Windowsin installer-supervisorin yleiskäyttöluvan tai Linuxin uuden
+alustavaatimuksen hyväksynnäksi.
+
+[Omistava T3-suunnitelma](e2e-test-environment.md#t3-koko-prosessipuun-poistumistodiste)
+sisältää lähdehavainnot, kuluttajaluettelon, vaihtoehdot ja hyväksyntätestit.
+Windowsin Job-primitiivejä voidaan selvittää uudelleenkäytettäviksi, mutta
+nykyinen installerin batch-protokolla ei ole elävän E2E-session rajapinta.
+Electronin launchia ei voi nimetä launch-hetkestä omistetuksi pelkän
+myöhemmin saadun prosessikahvan perusteella. Linuxin nykyiset CI-kuluttajat
+tarvitsevat oman todistettavan ratkaisunsa.
+
+**Suositeltu seuraava hyväksyntä: vain T3a-toteutettavuuskoe.** Se kattaa
+erillisen test-only Windows Job -session ja Electron-liitännän kokeen
+nykyisellä työkalupohjalla sekä Linux-edellytysten read-only-tarkistuksen.
+Ei uusia riippuvuuksia, tuotantokoodia, installerin nykyisen protokollan
+muutosta, tavallisten fixturejen siirtoa, pidempiä aikarajoja, kevyempiä
+CI-ehtoja tai koneen suojaus-/palveluasetusten muutosta.
+Linuxin cgroup-kirjoitukset, systemd-palvelu, delegointi, oikeusmuutos tai
+uusi native-toolchain eivät kuulu tähän ehdotukseen. Tarvittava täsmällinen
+jatkopäätös valmistellaan näytön perusteella ennen niitä.
+
+T3a:n valmistuminen tarkoittaa päätöskelpoista näyttöä valituista
+mekanismeista ja niiden rajoista, ei R28:n korjausta. Varsinaisen siirron
+portti vaatii omistajan hyväksymät alustamekanismit, session/stop-
+sopimuksen, tiedostorajat, build-esiehdot ja omistavan suunnitelman testit.
+Koodimuutoksia tai oikeaprosessikokeita ei tehty tässä suunnittelussa.
+Sovelluksen testit eivät ole dokumenttimuutoksen hyväksyntänäyttöä;
+suunnitelman tarkistus kohdistuu lähdevastaavuuteen, linkkeihin ja rajaukseen.
+
+### T3-valmistelun checkpoint
+
+2026-09-25: Windowsin ja Linuxin vaihtoehdot sekä lopullinen neljän
+dokumentin suunnitelmadiffi katselmoitiin kahdella erillisellä read-only-
+agentilla. Katselmuksiin ei jäänyt korjattavia huomautuksia. Muuttuneiden
+dokumenttien 79 suhteellista linkkiä ja niiden otsikkoankkurit sekä diffin
+muotoilu ja julkaistavan sisällön yksityisyys tarkistettiin.
+T2:n integraatiotila varmistettiin uudelleen; aiempia testituloksia ei ajettu
+uudelleen tässä dokumentointivaiheessa. T3a odottaa omistajan päätöstä.
+Tämä päättää vain valmistelun, ei T3:n toteutusta tai R28:n hyväksyntää.
 
 ## Skannaushavaintojen vaikutus jatkoon
 
@@ -277,8 +336,8 @@ soveltuvuus perustellaan erikseen; T:n testiajot eivät todista W7:n tuotantoa.
 ## Päätösjono ja valmistelun lopetus
 
 Ensimmäinen hyväksytty toteutusraja T1a/T1b on valmis.
-T2 on toteutettu ja paikallisesti todennettu; Linux-CI ja PR/main-integraatio
-ovat avoinna. T3:n omistajuusmekanismi
+Myös T2:n paikallinen näyttö, Linux-CI ja PR/main-integraatio on hyväksytty.
+T3:n omistajuusmekanismi
 ratkaistaan edelleen ennen sen muutoksia. A1 käyttää nykyistä
 feature-/API-sopimusta; jos rajaus vaatii
 backendin tai navigoinnin uuden liiketoimintasäännön, se palautuu suunnitteluun.
