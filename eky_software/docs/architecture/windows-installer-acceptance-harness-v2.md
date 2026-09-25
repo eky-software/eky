@@ -3916,6 +3916,20 @@ tulostiedostoa, liian aikaista poistumista ja sovelluksen raportoimaa virhettä
 ei enää tarvitse päätellä samasta yleisestä lokirivistä. Alkuperäisen
 CI-virheen sisäinen syy ja workspace-asennusodotuksen tarkka raja ovat avoimia.
 
+T3/R28:n myöhempi [legacy-hylkäys ja diagnostiikkatarkennus](e2e-test-environment.md#t3b-en-kokonaisajon-legacy-hylkäys)
+lisää samaan vaihehavaintoon suljetun `smokeFailureClass`-kentän. Harness
+projektoi vain jäädytetyn 0.2.6-kirjoittajan 16 täsmällisesti nimettyä
+startup-virhekoodia ennalta määriteltyihin luokkiin. Esimerkiksi
+`backendReadinessTimeout` ja `backendExitedBeforeReady` erottavat kaksi
+raportoitua virhehaaraa. Muut validit sovelluskoodit, myös avoimen
+`DESKTOP_SMOKE_`-prefiksin arvot, saavat luokan `unclassified`.
+Jos sovelluksen validoitua virhetulosta ei havaittu, luokka on `notReported`.
+Raakaa koodia ei välitetä eikä luokkaa päätellä kestosta, exit-koodista tai
+viimeisestä vaiheesta. Historiallisia sovellustavuja, tulosformaattia,
+deadlinea, prosessiketjua ja terminaalista hyväksyntää ei muuteta.
+Kenttä on vain CI:n vaihehavainto; se ei kuulu sovelluksen Diagnosticsiin,
+Activityyn tai tukipakettiin eikä korvaa varsinaista lopputulosta.
+
 Revision `d13422fe1e7f17d1c3592d5837f76199254c948b`
 [yksi rajattu legacy-koe](https://github.com/eky-software/eky/actions/runs/35038872159)
 läpäisi ensimmäisellä yrityksellä saman epäonnistuneen kierroksen

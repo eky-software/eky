@@ -100,13 +100,15 @@ kytkentähylkäys ja paikallinen korjaus on kirjattu
 [CI-checkpointiin](e2e-test-environment.md#t3b-ln-ensimmäinen-ci-havainto-ja-sopimuskorjaus).
 Korjatun revision oma CI läpäisi. Electron-korjauksen
 [paikalliset regressiot ja kaksi nykyistä koetta läpäisivät](e2e-test-environment.md#t3b-en-paikallinen-korjausnäyttö).
-Patchin oman revision CI on avoinna. Mikään näistä yksin
-ei täytä alla olevia lopullisia rivejä.
+Patchia seuraava rajattu Windows-CI läpäisi. [Seuraava kokonaisajo](e2e-test-environment.md#t3b-en-kokonaisajon-legacy-hylkäys)
+hylättiin historiallisen lähtöversion smokessa, vaikka nykyisen Electronin
+38 testiä läpäisivät. Koko baselinen hyväksyntä on avoin. Mikään näistä
+yksin ei täytä alla olevia lopullisia rivejä.
 
 | Valmistelun näyttö | Taso ja rajaus | Tila |
 | --- | --- | --- |
 | TEST-TREE-LINUX-PREREQ-001 | Suljettu metadatahavainto, host-lukujen guard, luku-/aikarajat ja CI-komennon status. Ei prosessipuun omistajuuskoe. | Molempien kuluttajien täydellinen kielteinen pääsyhavainto saatu; ensimmäisen ajon T1-hylkäys säilyy. Korjattu revisio läpäisi oman CI-ajonsa. Ei Linux-omistajuustodiste. |
-| TEST-ELECTRON-LAUNCH-PATCH-001 | Todellisen lukitun riippuvuuden hallittu regressio; ei prosesseja tai verkkoa. Lisäksi kaksi alkuperäistä eristettyä Windows-koetta. | Ennen patchia 17/43 läpäisyä, jälkeen 43/43; normaali ja before-ready exit 29 -koe läpäisivät native-kuitein. Oman revision CI avoinna; ei koko R28. |
+| TEST-ELECTRON-LAUNCH-PATCH-001 | Todellisen lukitun riippuvuuden hallittu regressio; ei prosesseja tai verkkoa. Lisäksi kaksi alkuperäistä eristettyä Windows-koetta. | Ennen patchia 17/43 läpäisyä, jälkeen 43/43; normaali ja before-ready exit 29 -koe läpäisivät native-kuitein. Rajattu Windows-CI läpäisi; kokonaisbaseline hylätty legacy-smokessa, ei koko R28. |
 
 | ID | Taso | Koe ja hyväksyntä | Tila |
 | --- | --- | --- | --- |

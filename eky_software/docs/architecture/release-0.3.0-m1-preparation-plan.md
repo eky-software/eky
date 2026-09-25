@@ -33,13 +33,43 @@ Omistajan hyväksymä [T3b-valmistelu](e2e-test-environment.md#t3b-virhehaaran-j
 rajaa Electronin virheketjun, Linuxin read-only-CI-proben ja alustojen
 jatkopäätökset. Valmistelun jälkeen hyväksytty T3b-L:n probe ja CI-kytkentä
 on toteutettu ja CI-sopimuskorjauksen uusi kokonaisajo on läpäissyt.
-Riippuvuuskorjaus hyväksyttiin myöhemmin erikseen; sen toteutus on aloitettu.
+Riippuvuuskorjaus hyväksyttiin myöhemmin erikseen; paikalliset regressiot ja
+rajattu Windows-CI ovat läpäisseet. Koko baselinen hyväksyntä on vielä avoin.
 
 **T3:n jatko-Goal 2026-09-25:** omistaja hyväksyi T3b-L:n toteutuksen ja
 yhden seuratun CI-ajon sekä itsenäisen etenemisen T3:n loppuun erilliset
 päätösportit säilyttäen. [Toteutusvaltuus](e2e-test-environment.md#t3b-ln-toteutusvaltuus)
-ei hyväksy vielä riippuvuuskorjausta tai alustamekanismeja. Toteutus ja
-näyttö kirjataan omiin checkpointteihinsa, ei valmistelun läpäisyiksi.
+ei itsessään hyväksynyt riippuvuuskorjausta tai alustamekanismeja.
+Riippuvuuspatchin myöhempi erillinen päätös on kirjattu omistavaan checkpointiin.
+Toteutus ja näyttö kirjataan omiin checkpointteihinsa, ei valmistelun läpäisyiksi.
+
+## T3:n nykyinen työjärjestys
+
+Goal koskee koko T3/R28:aa ja sen PR/main-integraatiota, ei kaikkia 0.3.0:n
+ominaisuuksia. Pelkkä diagnostiikka tai vihreä Electron-osajoukko ei täytä sitä.
+
+1. **Nyt:** rajaa [viimeisimmän kokonaisajon legacy-hylkäys](e2e-test-environment.md#t3b-en-kokonaisajon-legacy-hylkäys)
+   ensimmäisestä virheestä. Älä sekoita lopun `processExitFailed`-seurausta
+   juurisyyksi tai yhdistä sitä todistamatta aiempaan firstWindow-timeoutiin.
+   Nykyinen näyttö ei vielä yksilöi sovelluksen tarkkaa virhekoodia.
+2. **Ennen uutta ajoa:** selvitä jo kerätyn näytön riittävyys. Jos tarvittava
+   tieto puuttuu, rajaa sen turvallinen tallennus ja regressio ensin.
+   Älä muuta jäädytettyä lähtöversiota, pidennä aikarajoja tai hae vihreää uusimalla.
+   Suljettu `smokeFailureClass`-tarkennus ja sen 73/73 kohdetestin näyttö on
+   toteutettu; katselmus ja yksi saman artifactin kohdekoe ovat seuraavana.
+   Tämä on diagnostiikkakorjaus, ei vielä alkuperäisen käynnistysvirheen ratkaisu.
+3. **Vihreän baselinen jälkeen:** toteuta hyväksytty T3b-P:n metatietorajaus
+   ja sen eristetty packaged-todennus. Tuotantotoimintoja ei lisätä tähän.
+4. **Seuraava mekanismivaihe:** T3c-W:n ja T3c-L:n rajatut kokeet säilyvät
+   erillisinä päätösportteina. Hyväksytyn näytön jälkeen toteutetaan varsinainen
+   prosessiomistajuus ja fixture-siirrot sovittujen sopimusten mukaan.
+5. **T3:n valmistuminen:** koko omistajuusmatriisi, katselmukset ja normaali
+   PR/main-integraatio; vasta täsmällisen main-revision portit sulkevat R28:n.
+
+Tavalliset hyväksytyn rajauksen korjaus-, testi- ja dokumentointiaskeleet
+jatkuvat itsenäisesti. Erilliset riippuvuus-, oikeus- ja arkkitehtuuripäätökset
+säilyvät projektin yleisten ohjeiden mukaisina. A:n toiminnalliset korjaukset
+ja muut 0.3.0-paketit eivät korvaa kesken olevaa T3:a.
 
 ## Lähtötilan näyttö
 
@@ -398,6 +428,12 @@ läpäisi revision `cba3fa3db304024c55c76838cd99637d0e1bc0ef` ajossa
 uusintayrityksiä sekä paketointi ja packaged smoke. Timeoutin syy pysyy
 avoimena. Rajattu ajo ei korvaa koko V2-baselinea tai aloita T3b-P:tä.
 
+Revision `f007bda2219ad473fc20c3a948b08e4974641451` seuraava
+[kokonaisajo](e2e-test-environment.md#t3b-en-kokonaisajon-legacy-hylkäys)
+hylättiin historiallisen lähtöversion smoke-vaiheessa. Nykyinen Electron
+läpäisi 38/38 ja saman revision riippuvuustarkistus läpäisi. T3b-P ja
+alustamekanismien toteutus eivät ala punaisen baselinen päälle.
+
 Linuxin seuraavaksi päätösehdotukseksi on katselmoitu
 [rajattu T3c-L:n namespace-koe](e2e-test-environment.md#t3c-ln-rajattu-namespace-koe-päätösehdotus).
 Se nimeää valmiin `unshare`-työkalun, namespace-kohtaiset luontioikeudet,
@@ -455,9 +491,11 @@ soveltuvuus perustellaan erikseen; T:n testiajot eivät todista W7:n tuotantoa.
 Ensimmäinen hyväksytty toteutusraja T1a/T1b on valmis.
 Myös T2:n paikallinen näyttö, Linux-CI ja PR/main-integraatio on hyväksytty.
 T3a on tutkittu ja sen varhaisen Electron-virheen yhteensopivuusraja kirjattu.
-Rajattu T3b-valmistelu nimeää [seuraavat päätökset](e2e-test-environment.md#seuraavat-päätökset-ja-työn-järjestys):
-täsmällinen riippuvuuskorjaus ja read-only-CI-probe hyväksytään erikseen;
-jälkimmäinen ei todista cgroupin kirjoitusoikeutta tai turvallista cleanupia.
+Rajattu T3b-valmistelu nimesi [erilliset päätökset](e2e-test-environment.md#seuraavat-päätökset-ja-työn-järjestys).
+Read-only-CI-probe ja täsmällinen riippuvuuspatch on sittemmin hyväksytty;
+niille ei pyydetä samoja lupia uudelleen. Probe ei todista cgroupin
+kirjoitusoikeutta tai turvallista cleanupia. Nykyinen järjestys on
+[T3:n tilakoosteessa](#t3n-nykyinen-työjärjestys).
 T3:n omistajuusmekanismi ratkaistaan edelleen ennen tavallisten fixturejen
 muutoksia. A1 käyttää nykyistä
 feature-/API-sopimusta; jos rajaus vaatii

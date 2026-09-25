@@ -2,9 +2,13 @@
 
 ## Päätös ja nykyinen tila
 
-**Nykytila 2026-09-25: M0, T1 ja T2 hyväksytty; T3-suunnitelma valmisteltu,
-T3a-koe suoritettu osittaisin tuloksin (4/5), T3b-jatkovalmistelu kirjattu.**
-Varhainen Electron-launch-virhe on avoin käyttöönoton este; R28:aa ei suljettu.
+**Nykytila 2026-09-25: M0, T1 ja T2 hyväksytty; T3/R28 kesken.**
+T3b-L:n probe on todennettu ja T3b-E:n Playwright-korjauksen paikalliset
+regressiot sekä rajattu Windows-CI ovat läpäisseet. Viimeisin kokonaisajo
+hylättiin historiallisen 0.2.6-lähtöversion packaged smoke -vaiheessa.
+Nykyisen Electron-sarjan läpäisy ei korvaa tätä baseline-porttia.
+[Ajantasainen työjärjestys](release-0.3.0-m1-preparation-plan.md#t3n-nykyinen-työjärjestys)
+erottaa virheen rajauksen, paketoinnin ja varsinaisen omistajuusratkaisun.
 Omistaja hyväksyi T3b-L:n toteutuksen ja yhden seuratun CI-ajon; T3:n loppu
 etenee Goalina [nimetyt päätösportit säilyttäen](e2e-test-environment.md#t3b-ln-toteutusvaltuus).
 Viimeisin varmennettu paikallinen ja etäinen
@@ -55,6 +59,9 @@ rajautui Electron-fixturen käynnistykseen. Hyväksytty testidiagnostiikan
 täydennys ja [yksi rajattu Windows-CI-ajo](e2e-test-environment.md#t3b-en-rajattu-windows-ci-todennus)
 läpäisivät; alkuperäinen timeout ei toistunut eikä sen syytä merkitty
 korjatuksi. Tämä ei korvaa koko V2-hyväksyntää.
+[Seuraava kokonaisajo](e2e-test-environment.md#t3b-en-kokonaisajon-legacy-hylkäys)
+valmistui hylättynä: ensimmäinen legacy-consumer epäonnistui, toinen läpäisi.
+Tämä on eri havainto kuin aikaisempi development-fixturen firstWindow-timeout.
 Payloadin [metatietorajauksen erillinen paketointipäätös](e2e-test-environment.md#t3b-p-hyväksytty-metatietorajaus)
 on hyväksytty, mutta toteutus odottaa dokumentoitua baseline-porttia.
 Alustojen omistajuusmekanismi ja tavallisten fixturejen siirto ovat avoimia.

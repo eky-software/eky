@@ -30,6 +30,26 @@ const STAGES = Object.freeze([
   'shutdown',
 ]);
 
+// Project only exact startup codes from the frozen 0.2.6 writer, never raw codes.
+const APPLICATION_FAILURE_CLASSES = new Map([
+  ['BACKEND_EXITED_BEFORE_READY', 'backendExitedBeforeReady'],
+  ['BACKEND_READINESS_TIMEOUT', 'backendReadinessTimeout'],
+  ['DESKTOP_START_FAILED', 'desktopStartFailed'],
+  ['PACKAGED_BUILD_INFO_INVALID', 'packagedBuildInfoInvalid'],
+  ['PACKAGED_SMOKE_FAILED', 'packagedSmokeFailed'],
+  ['PROFILE_MAINTENANCE_BUSY', 'profileMaintenanceBusy'],
+  ['PROFILE_MAINTENANCE_OPERATION_MISMATCH', 'profileMaintenanceOperationMismatch'],
+  ['PROFILE_MAINTENANCE_TIMEOUT', 'profileMaintenanceTimeout'],
+  ['PROFILE_RESTORE_RECOVERY_REQUIRED', 'profileRestoreRecoveryRequired'],
+  ['PROFILE_SNAPSHOT_ARTIFACTS_FAILED', 'profileSnapshotArtifactsFailed'],
+  ['PROFILE_SNAPSHOT_BROKER_OPERATION_FAILED', 'profileSnapshotBrokerOperationFailed'],
+  ['PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID', 'profileSnapshotBrokerRequestInvalid'],
+  ['PROFILE_SNAPSHOT_STAGING_FAILED', 'profileSnapshotStagingFailed'],
+  ['PROFILE_SNAPSHOT_BROKER_UNAVAILABLE', 'profileSnapshotBrokerUnavailable'],
+  ['PROFILE_SNAPSHOT_DATABASE_FAILED', 'profileSnapshotDatabaseFailed'],
+  ['PROFILE_SNAPSHOT_VALIDATION_FAILED', 'profileSnapshotValidationFailed'],
+]);
+
 class HistoricalSmokeFailure extends Error {
   constructor(message, reason, result, cause) {
     super(message, { cause });
@@ -37,6 +57,9 @@ class HistoricalSmokeFailure extends Error {
       smokeReason: reason,
       smokeStage: result?.stage ?? 'unknown',
       smokeStatus: result?.status ?? 'unknown',
+      smokeFailureClass: reason === 'applicationReportedFailure' && result?.status === 'failed'
+        ? APPLICATION_FAILURE_CLASSES.get(result.code) ?? 'unclassified'
+        : 'notReported',
     });
   }
 }

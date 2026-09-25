@@ -228,10 +228,11 @@ Suunnitelman todistusrajat säilyvät myös myöhemmissä muutoksissa.
 
 ### T3: Koko prosessipuun poistumistodiste
 
-**Tila 2026-09-25: rajattu T3a-koe suoritettu (4/5); omistaja hyväksyi
-T3b-valmistelun ja sen jälkeen T3b-L:n toteutuksen.** T3:n loppuosa etenee
-Goalina erilliset päätösportit säilyttäen. Varhainen Electron-virhe ja käyttöönoton päätös ovat
-avoimia. Lähtökohta on hyväksytty T2-main;
+**Tila 2026-09-25: T3/R28 kesken; T3b-L:n probe todennettu, T3b-E:n patchin
+paikalliset regressiot ja rajattu Windows-CI läpäisty.** Viimeisin
+[kokonaisajo hylättiin legacy-smokessa](#t3b-en-kokonaisajon-legacy-hylkäys).
+T3a:n alkuperäinen 4/5 jää historiaksi. Alustamekanismien ja fixture-siirron
+hyväksyntä on erillinen. Lähtökohta on hyväksytty T2-main;
 [M1:n päätösportti](release-0.3.0-m1-preparation-plan.md#t3n-toteutukseen-siirtymisen-portti)
 erottaa valmistelun, teknisen kokeen ja varsinaisen kuluttajien siirron.
 
@@ -474,7 +475,9 @@ Electron-ohjauskirjastoa ei rakenneta tämän vuoksi. Oma riippuvuuskorjaus
 kasvattaa ylläpito- ja toimitusketjuvastuuta: tarvitaan tarkka patch/digest,
 lukittu asennus, lisenssi-/NOTICE-tarkistus, poistoehto upstream-korjauksen
 jälkeen sekä [riippuvuuspolitiikan](dependency-policy.md) tarkistukset.
-Tämän vaihtoehdon hyväksyntää tai korjattua julkaisuversiota ei vielä ole.
+Tämän valmistelucheckpointin aikaan vaihtoehtoa ei ollut hyväksytty.
+Myöhempi erillinen patch-päätös ja sen näyttö ovat alla; upstream-version
+käyttöönottoa ei hyväksytty tämän päätöksen mukana.
 
 Hyväksytyn korjauksen ensimmäinen näyttö on hallittu hylkäysjärjestyksen
 regressio; sen jälkeen nykyinen normaali Electron-koe ja sama before-ready-
@@ -691,6 +694,54 @@ on nyt olemassa oleva `backendStartup`-projektio ja readiness-checkpointit.
 Vaiheilmoitus edeltää nimettyä operaatiota eikä todista sen valmistumista.
 Näyttö rajaa jatkotutkimuksen ennen lisämuutoksia; vihreitä uusinta-ajoja,
 arvattua korjausta tai pidempiä aikarajoja ei käytetä syyn korvikkeena.
+
+##### T3b-E:n kokonaisajon legacy-hylkäys
+
+Revision `f007bda2219ad473fc20c3a948b08e4974641451`
+[kokonaisajo 36167733407](https://github.com/eky-software/eky/actions/runs/36167733407),
+yritys 1, päättyi hylättynä: 36 onnistunutta jobia, yksi ennalta valinnainen
+ohitus sekä legacy run 1:n ja siitä riippuvan kokoavan hyväksyntäportin hylkäys.
+Saman revision [riippuvuustarkistus 36167746427](https://github.com/eky-software/eky/actions/runs/36167746427)
+läpäisi. Nykyisen sovelluksen Windows-paketointi, packaged smoke ja kaikki
+38 kriittistä Electron-testiä läpäisivät ensimmäisillä yrityksillä.
+
+Ensimmäinen varsinainen virhe oli `sourcePackagedSmokeFailed`, tarkennuksin
+`applicationReportedFailure`, `backend`, `failed`, `initial`.
+Se syntyi historiallisesta lähteestä uudelleen rakennetun 0.2.6-version
+smokessa ennen varsinaista päivitystä. Lopun `processExitFailed` ja
+`WINDOWS_ACCEPTANCE_LEGACY_LIFECYCLE_FAILED` välittävät hylkäyksen;
+ne eivät yksilöi alkuperäistä syytä. Vaiheen kesto ei yksin todista timeoutia.
+Lähtö- ja kohdeartifactien ennen/jälkeen-varmennus läpäisi. Saman artifactin
+toinen legacy-consumer läpäisi, mutta se ei kumoa ensimmäisen hylkäystä.
+
+Nykyinen turvallinen projektio säilytti ensimmäisen virheen vaiheen ja
+syyluokan mutta ei sovelluksen tarkkaa virhekoodia. Historiallisen lähteen
+`backend`-vaihe kattaa käynnistyksen lisäksi sen jälkeisiä valmius- ja
+terveystarkistuksia, joten se ei yksin osoita backend-prosessin kaatumista.
+Tämä havainto pidetään erillään aiemmasta development-Electronin
+firstWindow-timeoutista. Seuraava rajaus tutkii ensin säilyneen aineiston
+ja virheen projektion; uutta ajoa, arvattua korjausta tai aikarajamuutosta
+ei käytetä puuttuvan syytiedon korvikkeena. T3b-P, T3c ja PR/main pysyvät
+avoimina. Tämä checkpoint ei hyväksy baselinea eikä sulje R28:aa.
+
+Rajattu harness-korjaus säilyttää jatkossa validoidusta virhetuloksesta
+[suljetun sovellusvirheluokan](windows-installer-acceptance-harness-v2.md)
+(`smokeFailureClass`) olemassa olevaan vaihehavaintoon. Luokitus käyttää
+vain 16 täsmällisesti nimettyä historiallisen kirjoittajan startup-koodia;
+muut arvot jäävät `unclassified`-luokkaan. `notReported` tarkoittaa, ettei
+validoitua sovelluksen virhetulosta havaittu. Raakaa koodia tai polkua ei
+julkaista. Alkuperäisen ajon tarkkaa luokkaa ei voida palauttaa jälkikäteen
+sen säilyneestä suljetusta projektiosta.
+
+Regressiot osoittivat puutteen ensin 27 hylkäyksellä ja läpäisivät saman
+27 tapauksen sarjan korjauksen jälkeen. Omistavien smoke-, lifecycle- ja
+Windows-runtime-sopimustestien kokonaisuus läpäisi 73/73 ilman ohituksia.
+Virhetulos pysyy hylättynä myös havaintoketjun heittäessä poikkeuksen;
+seuraavaa sukupolvea tai upgrade-vaihetta ei aloiteta. Tuotanto, historiallinen
+0.2.6, tulostiedoston validaattori, aikarajat ja CI-ehdot säilyvät ennallaan.
+Seuraava näyttö on katselmuksen jälkeen yksi kohdennettu legacy-koe saman
+epäonnistuneen ajon muuttumattomalla artifactilla. Sen mahdollinen läpäisy
+ei yksin todista alkuperäisen virheen korjautumista.
 
 ##### T3b-P: hyväksytty metatietorajaus
 
@@ -964,7 +1015,9 @@ aiemmat CI-sopimukset, uusi kytkentä sekä parseri-, lukija- ja CLI-guard-
 testit. Ei ohitettuja tai peruttuja testejä. Ensimmäiset havainnot säilyvät
 erillään korjauksen jälkeisestä tuloksesta.
 
-Todellinen Linux-CI-probe ja seurattu kokonaisajo ovat vielä tekemättä.
+Tässä paikallisessa checkpointissa todellinen Linux-CI-probe ja seurattu
+kokonaisajo olivat vielä tekemättä; niiden myöhempi näyttö on seuraavassa
+CI-checkpointissa.
 Sopimustestit eivät ole cgroup-omistajuusnäyttöä. Tuotantokoodi,
 riippuvuudet, asennettu sovellus, aikarajat ja normaalin CI:n valinta eivät
 muuttuneet. Käyttäjän UI-, Diagnostics-, audit-, tukipaketti- ja backup-
