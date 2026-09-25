@@ -11,6 +11,43 @@ import {
   packageWindowsApplication,
 } from './packageWindowsApplication.mjs';
 
+test('backend metadata wiring binds the source before deploy and normalizes after the hook', () => {
+  const source = packageWindowsApplication.toString().replaceAll('\r\n', '\n');
+  // Guard the real entry point without adding injectable build dependencies.
+  const preparation = [
+    "  observePhase('workspaceBuild');",
+    '  const backendMetadataSource = await captureBackendBuildMetadataSource({',
+    '    repositoryRoot,',
+    '  });',
+    '  await buildWorkspaceArtifacts(backendStage);',
+    "  observePhase('backendPreparation');",
+    '  await preparePackageBackendStage({',
+    '    backendStage,',
+    '    prepareBackendStage,',
+    '  });',
+    '  await normalizeBackendBuildMetadata({',
+    '    backendStage,',
+    '    source: backendMetadataSource,',
+    '  });',
+    "  observePhase('buildIdentity');",
+  ].join('\n');
+  assert.ok(source.includes(preparation), 'Backend preparation order or source binding changed');
+  for (const name of ['captureBackendBuildMetadataSource', 'buildWorkspaceArtifacts',
+    'preparePackageBackendStage', 'normalizeBackendBuildMetadata']) {
+    assert.equal(source.split(`${name}(`).length, 2, `Expected exactly one ${name} call`);
+  }
+  const validation = [
+    "  observePhase('backendValidation');",
+    '  await assertSafeBackendStage(backendStage);',
+    '  await inspectPackageArtifactInventory({',
+    '    root: backendStage,',
+    "    stage: 'backendStage',",
+    '  });',
+  ].join('\n');
+  assert.ok(source.indexOf(validation) >= source.indexOf(preparation) + preparation.length,
+    'Backend validation must follow metadata normalization');
+});
+
 test('package phase observation is ordered, closed and never awaited', async () => {
   const phases = [];
   const observe = createPackageBuildPhaseObserver((phase) => {

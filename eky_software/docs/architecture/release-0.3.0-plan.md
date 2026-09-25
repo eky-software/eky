@@ -2,17 +2,21 @@
 
 ## Päätös ja nykyinen tila
 
-**Nykytila 2026-09-25: M0, T1 ja T2 hyväksytty; T3/R28 kesken.**
+**Nykytila 2026-09-26: M0, T1 ja T2 hyväksytty; T3/R28 kesken.**
 T3b-L:n probe on todennettu ja T3b-E:n Playwright-korjauksen paikalliset
 regressiot sekä rajattu Windows-CI ovat läpäisseet. Aiempi kokonaisajo
 hylättiin historiallisen 0.2.6-lähtöversion packaged smoke -vaiheessa;
 seuraavassa normaalissa ajossa havaittiin erillinen
 [rollback-prosessisopimuksen hylkäys](e2e-test-environment.md#t3b-en-normaalin-baselinen-rollback-sopimushylkäys).
-Viimeisin diagnostiikkarevision ajo todensi rollback-sopimukset, mutta
+Edellinen diagnostiikkarevision ajo todensi rollback-sopimukset, mutta
 [kaksi Electronin firstWindow-ensiyritystä hylättiin](e2e-test-environment.md#t3b-en-toistunut-firstwindow-hylkäys-ja-backendstart-rajaus).
 Niiden uusi näyttö rajaa odotuksen testibackendin `backendStart`-vaiheeseen;
 juurisyy ei vielä ole todistettu.
-Nykyisen Electron-sarjan läpäisy ei korvaa tätä baseline-porttia.
+Uusi [täsmällisen revision normaali baseline](e2e-test-environment.md#t3b-en-vihreä-normaali-baseline)
+läpäisi kokonaisuudessaan. T3b-P:n hyväksytyn paketointikorjauksen rajattu
+toteutus, regressiot ja katselmus ovat valmistuneet; tuore eristetty build
+ja packaged smoke ovat avoinna. Vihreys ei todista aiempien satunnaisten
+virheiden juurisyitä.
 [Ajantasainen työjärjestys](release-0.3.0-m1-preparation-plan.md#t3n-nykyinen-työjärjestys)
 erottaa virheen rajauksen, paketoinnin ja varsinaisen omistajuusratkaisun.
 Omistaja hyväksyi T3b-L:n toteutuksen ja yhden seuratun CI-ajon; T3:n loppu
@@ -59,7 +63,8 @@ pääsyvihjein. [Ensimmäinen CI-checkpoint](e2e-test-environment.md#t3b-ln-ensi
 kirjaa T1-kytkentähylkäyksen sekä korjatun revision oman läpäisseen
 CI-ajon. Playwright-korjauksen
 [paikalliset regressiot ja nykyiset kaksi Electron-koetta läpäisivät](e2e-test-environment.md#t3b-en-paikallinen-korjausnäyttö);
-sen toimitus- ja koko CI-baselinen portit ovat vielä avoinna.
+sen normaali CI-baseline on sittemmin läpäissyt yllä linkitetyllä revisiolla,
+mutta T3:n toimitus- ja PR/main-portit ovat vielä avoinna.
 [Ensimmäinen CI-hylkäys](e2e-test-environment.md#t3b-en-ensimmäinen-ci-havainto)
 rajautui Electron-fixturen käynnistykseen. Hyväksytty testidiagnostiikan
 täydennys ja [yksi rajattu Windows-CI-ajo](e2e-test-environment.md#t3b-en-rajattu-windows-ci-todennus)
@@ -69,7 +74,7 @@ korjatuksi. Tämä ei korvaa koko V2-hyväksyntää.
 valmistui hylättynä: ensimmäinen legacy-consumer epäonnistui, toinen läpäisi.
 Tämä on eri havainto kuin aikaisempi development-fixturen firstWindow-timeout.
 Payloadin [metatietorajauksen erillinen paketointipäätös](e2e-test-environment.md#t3b-p-hyväksytty-metatietorajaus)
-on hyväksytty, mutta toteutus odottaa dokumentoitua baseline-porttia.
+on hyväksytty ja toteutus aloitettu läpäisseen baseline-portin jälkeen.
 Alustojen omistajuusmekanismi ja tavallisten fixturejen siirto ovat avoimia.
 T2 ei sulje M1:n muita testikorjauksia.
 

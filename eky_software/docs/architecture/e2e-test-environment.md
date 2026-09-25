@@ -925,7 +925,32 @@ varsinaisen fixturen kytkentä tarkistettiin lähteestä. Tämä on sopimustodis
 ei vielä uuden oikean Electron-ajon näyttö. Koko normaalin CI-baselinen
 hyväksyntä, timeoutin syy ja T3/R28 ovat edelleen avoimia.
 
-T3b-P, alustakokeet ja PR/main-portti odottavat edelleen vihreää baselinea.
+Tämä sopimuscheckpoint edeltää alla olevaa normaalia CI-todennusta.
+
+##### T3b-E:n vihreä normaali baseline
+
+Revision `1953b6b05dd7bdd4aaea24b509416fafa353d1ce`
+[normaali V2-ajo](https://github.com/eky-software/eky/actions/runs/36191056763)
+ja [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/36191065180)
+läpäisivät ensimmäisellä yrityksellä. Valinnaiset inspector- ja Linux-probe-
+valinnat olivat pois. V2:n 38 valittua jobia läpäisi ja yksi tarkoituksellinen
+probe-job ohitettiin; hyväksyntä ei yhdistä eri ajojen osatuloksia.
+
+Pääagentti varmisti revision, todelliset checkoutit, valitut jobit ja vaiheet,
+neljän producerin artifact-sidonnat kaikkiin kymmeneen consumeriin sekä
+consumerien ennen/jälkeen-tarkistukset ja terminal-tulokset alkuperäisistä
+lokeista. Electron läpäisi 38/38 ilman flaky-tuloksia ja system-sarja 218/218,
+mukaan lukien 19 backend-lukijan, 21 lifecycle- ja 12 backend-startup-sopimusta.
+Myös rollbackin 18 prosessisopimusta ja neljä odotettua diagnostista tulosta
+läpäisivät. Suurten MSI-arkistojen tavuja ei tarkistettu erikseen paikallisesti;
+niiden näyttö perustuu CI:ssä suoritettuihin ennen/jälkeen-verifioijiin.
+
+Tämä täyttää seuraavan T3b-P-vaiheen normaalin baseline-portin. Vanhojen
+firstWindow-, legacy-smoke- ja rollback-hylkäysten tarkkaa syytä ei merkitä
+ratkaistuksi. Tässä ajossa ei tullut uutta launch-virhettä, joten backend-
+lokihavainnon todellinen virhetilanne ei aktivoitunut; sen virheketjun näyttö
+on edelleen yllä kuvattu sopimussarja. T3c-W/L:n päätökset, varsinainen
+omistajuusratkaisu, fixture-siirrot ja PR/main-integraatio ovat avoinna.
 
 ##### T3b-P: hyväksytty metatietorajaus
 
@@ -954,8 +979,32 @@ installeria tai olemassa olevia käyttäjäprofiileja ei muuteta.
 - Uusi eristetty Windows-paketti, sen sisältötarkistus ja synteettinen
   packaged smoke vaaditaan. Tämä ei ole käyttäjälle toimitettava julkaisu.
 
-Toteutus ja näyttö ovat vielä avoinna. T3c-W:n ja T3c-L:n erillisiä
-alustakokeita ei hyväksytä tällä päätöksellä.
+Toteutus on aloitettu yllä varmennetun vihreän baselinen jälkeen.
+Paketointiapuri omistaa lähdesidonnan ja metatietosäännön; build-ketju
+kutsuu sitä ja sisältöportti käyttää samaa read-only-tarkistusta.
+Lähdemanifestit sidotaan ennen deployta ja niiden muuttumattomuus tarkistetaan
+ennen normalisointia. Vain deployn tuottama backend-juuren manifesti vaaditaan
+lukitun pnpm-polun kanoniseen kahden välilyönnin ja loppurivinvaihdon JSON-
+muotoon: tiukka UTF-8-luku ja jäsennetyn sisällön tavutarkka roundtrip torjuvat
+epäselvän tai uudelleenserialisoinnissa muuttuvan sisällön. Tätä muotovaatimusta
+ei uloteta lähde- tai vendor-manifesteihin eikä virheellistä sisältöä korjata
+hiljaisesti.
+
+Rajattu regressiosarja läpäisi 191/191 ilman ohituksia. Siihen kuuluu 77
+apurin tapausta, molempien sisältöporttien regressiot, hookin sopimukset,
+paketoinnin järjestyksen rakenteellinen suoja sekä testikomennon kytkentä.
+Koko normaali testisarja läpäisi 4 000 testillä ja kahdeksalla ennestään
+olevalla ohituksella; työtilan tyypitystarkistus läpäisi. Riippumaton
+katselmus ei löytänyt toteutusvirhettä. Katselmuksessa havaittu järjestyksen
+testiaukko täydennettiin ja lisäys katselmoitiin erikseen.
+
+Rakenteellinen järjestystesti ei todista pnpm-deployn ajonaikaista muotoa tai
+paketoidun sovelluksen toimintaa. Uusi eristetty build, samoihin tavuihin
+sidottu sisältötarkistus ja synteettinen packaged smoke ovat edelleen avoinna;
+T3b-P:tä ei ole hyväksytty valmiiksi. Tiedostotarkistukset torjuvat testatut
+linkit ja muuttuneet identiteetit, mutta eivät lupaa atomista suojaa saman
+käyttäjän samanaikaista vihamielistä hakemistojen vaihtamista vastaan.
+T3c-W:n ja T3c-L:n erillisiä alustakokeita ei hyväksytä tällä päätöksellä.
 
 ##### Windowsin omistajuusrajan valinta
 

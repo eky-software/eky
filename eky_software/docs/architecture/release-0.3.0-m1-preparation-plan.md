@@ -34,7 +34,9 @@ rajaa Electronin virheketjun, Linuxin read-only-CI-proben ja alustojen
 jatkopäätökset. Valmistelun jälkeen hyväksytty T3b-L:n probe ja CI-kytkentä
 on toteutettu ja CI-sopimuskorjauksen uusi kokonaisajo on läpäissyt.
 Riippuvuuskorjaus hyväksyttiin myöhemmin erikseen; paikalliset regressiot ja
-rajattu Windows-CI ovat läpäisseet. Koko baselinen hyväksyntä on vielä avoin.
+rajattu Windows-CI ovat läpäisseet. Myös uusi
+[normaali baseline](e2e-test-environment.md#t3b-en-vihreä-normaali-baseline)
+on hyväksytty; koko T3/R28 ja PR/main-integraatio ovat vielä avoinna.
 
 **T3:n jatko-Goal 2026-09-25:** omistaja hyväksyi T3b-L:n toteutuksen ja
 yhden seuratun CI-ajon sekä itsenäisen etenemisen T3:n loppuun erilliset
@@ -48,36 +50,47 @@ Toteutus ja näyttö kirjataan omiin checkpointteihinsa, ei valmistelun läpäis
 Goal koskee koko T3/R28:aa ja sen PR/main-integraatiota, ei kaikkia 0.3.0:n
 ominaisuuksia. Pelkkä diagnostiikka tai vihreä Electron-osajoukko ei täytä sitä.
 
-1. **Nyt:** rajaa [toistunut firstWindow-hylkäys](e2e-test-environment.md#t3b-en-toistunut-firstwindow-hylkäys-ja-backendstart-rajaus)
-   sen omista todisteista. Uusi havainto todistaa testibackendin päässeen
-   `backendStart`-vaiheeseen, ei sen sisäisen käynnistystyön valmistumista.
+1. **Hyväksytty lähtötila:** revision
+   `1953b6b05dd7bdd4aaea24b509416fafa353d1ce` normaali V2-ajo ja
+   riippuvuustarkistus läpäisivät ensimmäisellä yrityksellä.
+   [Baselinen näyttö](e2e-test-environment.md#t3b-en-vihreä-normaali-baseline)
+   kattaa saman ajon kaikki valitut jobit, Electronin 38/38 ilman flaky-tuloksia
+   sekä producerien ja consumerien artifact-sidonnat. Tämä avaa T3b-P:n,
+   ei hyväksy koko T3:a eikä ratkaise aiempia virheitä.
+2. **Säilyvä virhetutkimus:** säilytä
+   [toistunut firstWindow-hylkäys](e2e-test-environment.md#t3b-en-toistunut-firstwindow-hylkäys-ja-backendstart-rajaus)
+   omana havaintonaan. Sen näyttö todistaa testibackendin päässeen
+   `backendStart`-vaiheeseen, ei sisäisen käynnistystyön valmistumista.
    [Rollback-sopimushylkäys](e2e-test-environment.md#t3b-en-normaalin-baselinen-rollback-sopimushylkäys),
    [aiempi legacy-smoken hylkäys](e2e-test-environment.md#t3b-en-kokonaisajon-legacy-hylkäys)
    ja aiempi, suppeammin havaittu firstWindow-yritys pysyvät erillisinä
    havaintoina. Samassa katselmuksessa löydetty pending-close-siivouspuute
    kuuluu T3:n cleanup-regressioon, ei näiden timeoutien todistetuksi syyksi.
-2. **Ennen uutta ajoa:** selvitä jo kerätyn näytön riittävyys. Jos tarvittava
+   Selvitä ennen jokaista uutta ajoa jo kerätyn näytön riittävyys. Jos tarvittava
    tieto puuttuu, rajaa sen turvallinen tallennus ja regressio ensin.
    Älä muuta jäädytettyä lähtöversiota, pidennä aikarajoja tai hae vihreää uusimalla.
    Suljettu `smokeFailureClass`-tarkennus ja sen 73/73 kohdetestin näyttö on
    toteutettu. Katselmus ja yksi saman artifactin kohdekoe läpäisivät,
-   mutta alkuperäinen virhe ei toistunut. Korjatun harness-revision normaali
-   hyväksyntä on vielä avoin; diagnostiikkakorjaus ei ratkaise vanhaa juurisyytä.
+   mutta alkuperäinen virhe ei toistunut. Diagnostiikkakorjaus ei ratkaise
+   vanhaa juurisyytä.
    Rollback-havainnon suljettu tulos- ja vaiheraportointi on toteutettu,
    katselmoitu ja todennettu 18/18 Windows-prosessisopimuksella sekä 66/66
    testikytkentä-/validaattoritestillä. Edellinen kokonaisajo päättyi hylättynä;
    diagnostiikkarevision normaali CI todensi nämä 18/18 sopimusta ja niiden
    tulosrivit, mutta hylkäsi kaksi Electronin firstWindow-ensiyritystä.
-   Backendin tarkempi käynnistysväli tutkitaan ennen seuraavaa kohdekoetta.
    [Rajattu backend-lokihavainto](e2e-test-environment.md#t3b-en-rajattu-backend-lokihavainto)
    säilyttää ensimmäisen launch-virheen jo kirjoitetut vaiheet ennen
    fixture-siivousta. Toteutus ja writerista liitteeseen ulottuva regressio
    pysyvät testikerroksessa. Kohdesarja läpäisi 52/52, koko työtilan normaalit
    testit ja tyypitys läpäisivät, ja riippumaton katselmus ei löytänyt
-   korjattavaa. Oikean Electron-ajon uusi näyttö ja koko baseline ovat avoinna.
-   Hylkäystä ei ohiteta tai korvata eri ajojen osatuloksilla.
-3. **Vihreän baselinen jälkeen:** toteuta hyväksytty T3b-P:n metatietorajaus
-   ja sen eristetty packaged-todennus. Tuotantotoimintoja ei lisätä tähän.
+   korjattavaa. Kohdassa 1 hyväksytyssä normaalissa ajossa launch-virhe ei
+   toistunut: uuden lokihavainnon virheketjun näyttö pysyy sopimustesteissä,
+   eikä eri ajojen osatuloksia yhdistetä hyväksynnäksi.
+3. **Nyt:** hyväksytyn T3b-P:n metatietorajaus on toteutettu ja katselmoitu;
+   kohdesarja, normaalit testit ja tyypitys läpäisivät. Tee vielä uusi
+   eristetty build ja samoihin tavuihin sidottu packaged-todennus
+   [omistavan sopimuksen mukaan](e2e-test-environment.md#t3b-p-hyväksytty-metatietorajaus).
+   Tuotantotoimintoja ei lisätä tähän eikä vaihetta merkitä valmiiksi ennen näyttöä.
 4. **Seuraava mekanismivaihe:** T3c-W:n ja T3c-L:n rajatut kokeet säilyvät
    erillisinä päätösportteina. Hyväksytyn näytön jälkeen toteutetaan varsinainen
    prosessiomistajuus ja fixture-siirrot sovittujen sopimusten mukaan.

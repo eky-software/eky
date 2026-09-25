@@ -3,6 +3,11 @@ import { createReadStream } from 'node:fs';
 import { lstat, readFile, readdir } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 
+import {
+  assertBackendManifestHasNoBuildPaths,
+  BACKEND_BUILD_METADATA_PATHS,
+} from './backendBuildMetadata.mjs';
+
 const smokeAllowlist = new Set([
   'dist/main/applicationProtocolSmoke.js',
   'dist/main/packagedSmoke.js',
@@ -140,6 +145,10 @@ export function classifyForbiddenArtifact(logicalPath, stage) {
   const fileName = segments.at(-1) ?? '';
   const isProjectOwned = isProjectOwnedArtifact(normalized, stage);
 
+  if (BACKEND_BUILD_METADATA_PATHS.includes(backendLogicalPath(lowerPath, stage))) {
+    return 'BACKEND_BUILD_METADATA';
+  }
+
   if (stage === 'updateRuntimeStage' && !updateRuntimeAllowlist.has(normalized)) {
     return 'UNAPPROVED_UPDATE_RUNTIME_ARTIFACT';
   }
@@ -217,6 +226,17 @@ async function classifyForbiddenArtifactContents({
 }) {
   const lowerPath = logicalPath.replaceAll('\\', '/').toLowerCase();
 
+  if (backendLogicalPath(lowerPath, stage) === 'package.json') {
+    if (size > stageLimits.backendStage.maximumProjectOwnedFileBytes) {
+      return 'PROJECT_FILE_SIZE';
+    }
+    try {
+      assertBackendManifestHasNoBuildPaths(await readFile(file));
+    } catch {
+      return 'BACKEND_BUILD_MANIFEST';
+    }
+  }
+
   if (lowerPath.endsWith('.pem')) {
     const content = await readFile(file, 'utf8');
     if (/-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----/.test(content)) {
@@ -249,6 +269,14 @@ function isServiceAccountJsonFileName(fileName) {
     fileName.endsWith('.json') &&
     /(?:^|[-_.])service[-_.]?account(?:[-_.]|$)/.test(fileName)
   );
+}
+
+function backendLogicalPath(lowerPath, stage) {
+  if (stage === 'backendStage') return lowerPath;
+  if (stage === 'packagedApp' && lowerPath.startsWith('resources/backend/')) {
+    return lowerPath.slice('resources/backend/'.length);
+  }
+  return undefined;
 }
 
 function isServiceAccountJson(value) {

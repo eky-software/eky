@@ -17,6 +17,7 @@ const COMMANDS = {
 const REQUIRED_FILES = [
   ['e2e/electronE2eWorkspaceStartupFailure.test.ts', 'vitest'],
   ['scripts/test-command-wiring.test.mjs', 'node'],
+  ['scripts/backendBuildMetadata.test.mjs', 'node'],
   ...[
     'cleanInstallUninstallContracts', 'cleanInstallUninstallLifecycle',
     'cleanInstallUninstallPayload', 'localImmutableInstallerFixture',

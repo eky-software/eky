@@ -9,8 +9,62 @@ import {
   inspectPackageArtifactInventory,
   PackageArtifactInventoryError,
 } from './package-artifact-inventory.mjs';
+import { BACKEND_BUILD_METADATA_PATHS } from './backendBuildMetadata.mjs';
 
 const temporaryDirectories = [];
+
+for (const [stage, prefix] of [
+  ['backendStage', ''],
+  ['packagedApp', 'resources/backend/'],
+]) {
+  for (const name of BACKEND_BUILD_METADATA_PATHS) {
+    test(`rejects backend build metadata in ${stage}: ${name}`, async () => {
+      const root = await createStageFixture(`${prefix}${name}`, 'build metadata');
+      await assert.rejects(
+        inspectPackageArtifactInventory({ root, stage }),
+        /BACKEND_BUILD_METADATA/,
+      );
+    });
+  }
+
+  test(`rejects build-local references in the ${stage} backend manifest`, async () => {
+    for (const value of [
+      '@eky/auth@file:///synthetic-build/packages/auth',
+      'file:///synthetic-build/packages/auth',
+      '/synthetic-build/packages/auth',
+    ]) {
+      const root = await createStageFixture(`${prefix}package.json`,
+        `${JSON.stringify({ name: '@eky/backend', dependencies: { '@eky/auth': value } }, null, 2)}\n`);
+      await assert.rejects(
+        inspectPackageArtifactInventory({ root, stage }),
+        /BACKEND_BUILD_MANIFEST/,
+      );
+    }
+  });
+
+  test(`rejects ambiguous backend manifest bytes in ${stage}`, async () => {
+    const root = await createStageFixture(`${prefix}package.json`,
+      '{"dependencies":{},"dependencies":{"vendor":"file:///synthetic-build/vendor"}}');
+    await assert.rejects(
+      inspectPackageArtifactInventory({ root, stage }),
+      /BACKEND_BUILD_MANIFEST/,
+    );
+  });
+
+  test(`keeps normalized references and vendor metadata unchanged in ${stage}`, async () => {
+    const manifest = `${JSON.stringify({ name: '@eky/backend',
+      dependencies: { '@eky/auth': 'workspace:*', vendor: '1.0.0' } }, null, 2)}\n`;
+    const root = await createStageFixture(`${prefix}package.json`, manifest);
+    await writeFixture(root, `${prefix}node_modules/vendor/package.json`,
+      '{"devDependencies":{"example":"file:../example"}}');
+    await writeFixture(root, `${prefix}node_modules/vendor/pnpm-lock.yaml`, 'vendor lock');
+    await writeFixture(root, `${prefix}node_modules/vendor/LICENSE`, 'license bytes');
+    const first = await inspectPackageArtifactInventory({ root, stage });
+    const second = await inspectPackageArtifactInventory({ root, stage });
+    assert.deepEqual(first, second);
+    assert.equal(first.fileCount, 4);
+  });
+}
 
 afterEach(async () => {
   await Promise.all(

@@ -106,13 +106,16 @@ hylättiin historiallisen lähtöversion smokessa, vaikka nykyisen Electronin
 erillinen [rollback-prosessisopimuksen hylkäys](e2e-test-environment.md#t3b-en-normaalin-baselinen-rollback-sopimushylkäys).
 Sen diagnostiikkarevision sopimukset läpäisivät, mutta kaksi
 [firstWindow-ensiyritystä hylättiin](e2e-test-environment.md#t3b-en-toistunut-firstwindow-hylkäys-ja-backendstart-rajaus).
-Koko baselinen hyväksyntä on avoin. Mikään näistä
-yksin ei täytä alla olevia lopullisia rivejä.
+Uusi [normaali baseline](e2e-test-environment.md#t3b-en-vihreä-normaali-baseline)
+on tämän jälkeen läpäissyt kokonaisuudessaan revision `1953b6b0` ensimmäisellä
+yrityksellä. Vanhoja virhesyitä ei merkitä ratkaistuiksi. Tämäkään ei täytä
+alla olevia lopullisia prosessiomistajuuden rivejä.
 
 | Valmistelun näyttö | Taso ja rajaus | Tila |
 | --- | --- | --- |
 | TEST-TREE-LINUX-PREREQ-001 | Suljettu metadatahavainto, host-lukujen guard, luku-/aikarajat ja CI-komennon status. Ei prosessipuun omistajuuskoe. | Molempien kuluttajien täydellinen kielteinen pääsyhavainto saatu; ensimmäisen ajon T1-hylkäys säilyy. Korjattu revisio läpäisi oman CI-ajonsa. Ei Linux-omistajuustodiste. |
-| TEST-ELECTRON-LAUNCH-PATCH-001 | Todellisen lukitun riippuvuuden hallittu regressio; ei prosesseja tai verkkoa. Lisäksi kaksi alkuperäistä eristettyä Windows-koetta. | Ennen patchia 17/43 läpäisyä, jälkeen 43/43; normaali ja before-ready exit 29 -koe läpäisivät native-kuitein. Rajattu Windows-CI läpäisi; kokonaisbaseline hylätty legacy-smokessa, ei koko R28. |
+| TEST-ELECTRON-LAUNCH-PATCH-001 | Todellisen lukitun riippuvuuden hallittu regressio; ei prosesseja tai verkkoa. Lisäksi kaksi alkuperäistä eristettyä Windows-koetta. | Ennen patchia 17/43 läpäisyä, jälkeen 43/43; normaali ja before-ready exit 29 -koe läpäisivät native-kuitein. Rajattu Windows-CI ja myöhempi täysi normaali baseline läpäisivät; aiemmat erilliset hylkäykset säilyvät. Ei koko R28. |
+| TEST-BACKEND-BUILD-METADATA-001 | Täsmällinen normalisointi, lähdesidonta, linkkien torjunta, vendor-tavujen säilyminen, sisältöportit ja paketointijärjestyksen rakenteellinen suoja. | Kohdesarja 191/191, normaali testisarja ja tyypitys läpäisivät; katselmoitu. Tuore eristetty build ja samoihin tavuihin sidottu packaged smoke avoinna. Ei julkaisu- tai T3-hyväksyntä. |
 
 | ID | Taso | Koe ja hyväksyntä | Tila |
 | --- | --- | --- | --- |
