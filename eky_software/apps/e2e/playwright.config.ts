@@ -63,7 +63,7 @@ export default defineConfig({
     },
     {
       name: 'endurance-baseline',
-      testMatch: /stress\/.*\.spec\.ts/,
+      testMatch: /(?:^|[\\/])stress[\\/].*\.spec\.ts/,
     },
   ],
 });
