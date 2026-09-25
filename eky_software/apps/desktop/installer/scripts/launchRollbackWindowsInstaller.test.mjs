@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { cleanupRunContext, createRunContext, createRequest, startSupervisor, writeRequest }
   from '../windows-process-supervisor/tests/supervisorContractTestSupport.mjs';
 import { readWindowsAcceptanceSupervisorResult } from '../windows-process-supervisor/windowsAcceptanceSupervisorResult.mjs';
 import { readBootstrapExit } from './rollbackBootstrapContractFixture.mjs';
+import { readRollbackBootstrapContractDiagnostics } from './rollbackBootstrapContractDiagnostics.mjs';
 
 for (const testCase of ['completed', 'missingHelper', 'earlyHelperExit', 'helperHold']) {
   test(`rollback bootstrap supervised handoff: ${testCase}`, {
@@ -29,6 +31,8 @@ for (const testCase of ['completed', 'missingHelper', 'earlyHelperExit', 'helper
     execution.child.once('exit', () => events.push('exit'));
     execution.child.once('close', () => events.push('close'));
     const completion = await execution.completion;
+    t.diagnostic(JSON.stringify(await readRollbackBootstrapContractDiagnostics(context.resultPath,
+      join(context.testRoot, 'handoff-evidence.json'), { ...request, supervisorExitCode: completion.exitCode })));
     assert.deepEqual(events, ['exit', 'close']);
     assert.equal(completion.signal, null);
     assert.equal(completion.exitCode, testCase === 'completed' ? 0 : 1);
@@ -63,6 +67,74 @@ for (const testCase of ['completed', 'missingHelper', 'earlyHelperExit', 'helper
     verified = true;
   });
 }
+
+test('rollback bootstrap diagnostics project only validated results and ordered handoff evidence', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'eky-rollback-diagnostic-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const resultPath = join(root, 'result.json');
+  const handoffPath = join(root, 'handoff.json');
+  const expected = { runNonce: 'a'.repeat(64), scenario: 'jobObjectFeasibility',
+    artifactDescriptorSha256: 'b'.repeat(64), supervisorExitCode: 1 };
+  const result = { schemaVersion: 1, runNonce: expected.runNonce, scenario: expected.scenario,
+    artifactDescriptorSha256: expected.artifactDescriptorSha256, status: 'failed',
+    processResultCode: 'deadlineExceeded', workerResultCode: 'notChecked',
+    cleanupResultCode: 'processTreeAbsent', processTreeAbsent: true, childExitCode: null,
+    processWin32ErrorCode: null, cleanupWin32ErrorCode: null, durationMs: 30_000 };
+  await writeFile(resultPath, JSON.stringify(result));
+  await writeFile(handoffPath, JSON.stringify({ schemaVersion: 1,
+    phases: ['bootstrapExited', 'helperStarted', 'helperAliveAfterBootstrapExit'] }));
+  const diagnostic = await readRollbackBootstrapContractDiagnostics(resultPath, handoffPath, expected);
+  assert.deepEqual(diagnostic, { schemaVersion: 1, operation: 'rollbackBootstrapContract',
+    supervisorResult: 'validated', handoffEvidence: 'validated', status: 'failed',
+    processResultCode: 'deadlineExceeded', workerResultCode: 'notChecked',
+    cleanupResultCode: 'processTreeAbsent', processTreeAbsent: true,
+    lastHandoffPhase: 'helperAliveAfterBootstrapExit', handoffPhaseCount: 3 });
+  const serialized = JSON.stringify(diagnostic);
+  for (const privateValue of [root, expected.runNonce, expected.artifactDescriptorSha256]) {
+    assert.equal(serialized.includes(privateValue), false);
+  }
+  await t.test('unbound and unknown result values are never published', async () => {
+    for (const change of [{ runNonce: 'c'.repeat(64) }, { processResultCode: 'PRIVATE_TOKEN_SENTINEL' },
+      { extra: 'PRIVATE_TOKEN_SENTINEL' }]) {
+      await writeFile(resultPath, JSON.stringify({ ...result, ...change }));
+      const observed = await readRollbackBootstrapContractDiagnostics(resultPath, handoffPath, expected);
+      assert.equal(observed.supervisorResult, 'unavailableOrInvalid');
+      assert.equal(Object.hasOwn(observed, 'processResultCode'), false);
+      assert.equal(JSON.stringify(observed).includes('PRIVATE_TOKEN_SENTINEL'), false);
+    }
+  });
+  await t.test('missing or partial files remain unavailable without replacing the failure', async () => {
+    await rm(resultPath);
+    await writeFile(handoffPath, '{"schemaVersion":1');
+    assert.deepEqual(await readRollbackBootstrapContractDiagnostics(resultPath, handoffPath, expected), {
+      schemaVersion: 1, operation: 'rollbackBootstrapContract',
+      supervisorResult: 'unavailableOrInvalid', handoffEvidence: 'unavailableOrInvalid',
+    });
+  });
+  await t.test('unknown, out-of-order and extended phase evidence is not published', async () => {
+    for (const value of [null, [], { schemaVersion: 1, phases: [] },
+      { schemaVersion: 1, phases: ['helperStarted'] },
+      { schemaVersion: 1, phases: ['bootstrapExited', 'PRIVATE_TOKEN_SENTINEL'] },
+      { schemaVersion: 1, phases: ['bootstrapExited'], private: 'PRIVATE_TOKEN_SENTINEL' }]) {
+      await writeFile(handoffPath, JSON.stringify(value));
+      const observed = await readRollbackBootstrapContractDiagnostics(resultPath, handoffPath, expected);
+      assert.equal(observed.handoffEvidence, 'unavailableOrInvalid');
+      assert.equal(Object.hasOwn(observed, 'lastHandoffPhase'), false);
+      assert.equal(JSON.stringify(observed).includes('PRIVATE_TOKEN_SENTINEL'), false);
+    }
+  });
+  await t.test('bootstrap rejection and full handoff are separate valid sequences', async () => {
+    for (const phases of [['bootstrapExited', 'bootstrapClosed'],
+      ['bootstrapExited', 'helperStarted', 'helperAliveAfterBootstrapExit',
+        'helperTerminalReceived', 'bootstrapClosed']]) {
+      await writeFile(handoffPath, JSON.stringify({ schemaVersion: 1, phases }));
+      const observed = await readRollbackBootstrapContractDiagnostics(resultPath, handoffPath, expected);
+      assert.equal(observed.handoffEvidence, 'validated');
+      assert.equal(observed.lastHandoffPhase, 'bootstrapClosed');
+      assert.equal(observed.handoffPhaseCount, phases.length);
+    }
+  });
+});
 
 function eventChild() {
   const child = new EventEmitter();

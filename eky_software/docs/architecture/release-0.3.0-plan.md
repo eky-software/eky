@@ -4,8 +4,10 @@
 
 **Nykytila 2026-09-25: M0, T1 ja T2 hyväksytty; T3/R28 kesken.**
 T3b-L:n probe on todennettu ja T3b-E:n Playwright-korjauksen paikalliset
-regressiot sekä rajattu Windows-CI ovat läpäisseet. Viimeisin kokonaisajo
-hylättiin historiallisen 0.2.6-lähtöversion packaged smoke -vaiheessa.
+regressiot sekä rajattu Windows-CI ovat läpäisseet. Aiempi kokonaisajo
+hylättiin historiallisen 0.2.6-lähtöversion packaged smoke -vaiheessa;
+uudemmassa normaalissa ajossa havaittiin erillinen
+[rollback-prosessisopimuksen hylkäys](e2e-test-environment.md#t3b-en-normaalin-baselinen-rollback-sopimushylkäys).
 Nykyisen Electron-sarjan läpäisy ei korvaa tätä baseline-porttia.
 [Ajantasainen työjärjestys](release-0.3.0-m1-preparation-plan.md#t3n-nykyinen-työjärjestys)
 erottaa virheen rajauksen, paketoinnin ja varsinaisen omistajuusratkaisun.

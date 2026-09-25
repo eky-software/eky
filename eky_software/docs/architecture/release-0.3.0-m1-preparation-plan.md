@@ -48,10 +48,10 @@ Toteutus ja näyttö kirjataan omiin checkpointteihinsa, ei valmistelun läpäis
 Goal koskee koko T3/R28:aa ja sen PR/main-integraatiota, ei kaikkia 0.3.0:n
 ominaisuuksia. Pelkkä diagnostiikka tai vihreä Electron-osajoukko ei täytä sitä.
 
-1. **Nyt:** rajaa [viimeisimmän kokonaisajon legacy-hylkäys](e2e-test-environment.md#t3b-en-kokonaisajon-legacy-hylkäys)
-   ensimmäisestä virheestä. Älä sekoita lopun `processExitFailed`-seurausta
-   juurisyyksi tai yhdistä sitä todistamatta aiempaan firstWindow-timeoutiin.
-   Nykyinen näyttö ei vielä yksilöi sovelluksen tarkkaa virhekoodia.
+1. **Nyt:** rajaa [normaalin baselinen rollback-sopimushylkäys](e2e-test-environment.md#t3b-en-normaalin-baselinen-rollback-sopimushylkäys)
+   sen omista todisteista. Supervisorin paluukoodi 1 ei vielä yksilöi syytä.
+   [Aiempi legacy-smoken hylkäys](e2e-test-environment.md#t3b-en-kokonaisajon-legacy-hylkäys)
+   ja development-Electronin firstWindow-timeout pysyvät erillisinä havaintoina.
 2. **Ennen uutta ajoa:** selvitä jo kerätyn näytön riittävyys. Jos tarvittava
    tieto puuttuu, rajaa sen turvallinen tallennus ja regressio ensin.
    Älä muuta jäädytettyä lähtöversiota, pidennä aikarajoja tai hae vihreää uusimalla.
@@ -59,6 +59,11 @@ ominaisuuksia. Pelkkä diagnostiikka tai vihreä Electron-osajoukko ei täytä s
    toteutettu. Katselmus ja yksi saman artifactin kohdekoe läpäisivät,
    mutta alkuperäinen virhe ei toistunut. Korjatun harness-revision normaali
    hyväksyntä on vielä avoin; diagnostiikkakorjaus ei ratkaise vanhaa juurisyytä.
+   Rollback-havainnon suljettu tulos- ja vaiheraportointi on toteutettu,
+   katselmoitu ja todennettu 18/18 Windows-prosessisopimuksella sekä 66/66
+   testikytkentä-/validaattoritestillä. Edellinen kokonaisajo päättyi hylättynä;
+   seuraava portti on tämän diagnostiikkarevision normaali, seurattu CI-ajo.
+   Hylkäystä ei ohiteta tai korvata eri ajojen osatuloksilla.
 3. **Vihreän baselinen jälkeen:** toteuta hyväksytty T3b-P:n metatietorajaus
    ja sen eristetty packaged-todennus. Tuotantotoimintoja ei lisätä tähän.
 4. **Seuraava mekanismivaihe:** T3c-W:n ja T3c-L:n rajatut kokeet säilyvät

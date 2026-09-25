@@ -102,7 +102,9 @@ Korjatun revision oma CI läpäisi. Electron-korjauksen
 [paikalliset regressiot ja kaksi nykyistä koetta läpäisivät](e2e-test-environment.md#t3b-en-paikallinen-korjausnäyttö).
 Patchia seuraava rajattu Windows-CI läpäisi. [Seuraava kokonaisajo](e2e-test-environment.md#t3b-en-kokonaisajon-legacy-hylkäys)
 hylättiin historiallisen lähtöversion smokessa, vaikka nykyisen Electronin
-38 testiä läpäisivät. Koko baselinen hyväksyntä on avoin. Mikään näistä
+38 testiä läpäisivät. Diagnostiikan jälkeisessä normaalissa ajossa havaittiin
+erillinen [rollback-prosessisopimuksen hylkäys](e2e-test-environment.md#t3b-en-normaalin-baselinen-rollback-sopimushylkäys).
+Koko baselinen hyväksyntä on avoin. Mikään näistä
 yksin ei täytä alla olevia lopullisia rivejä.
 
 | Valmistelun näyttö | Taso ja rajaus | Tila |

@@ -5086,6 +5086,14 @@ CI-kytkentä sijaitsee repositoryn `.github/workflows`-kansiossa.
 | V2 workspace fault | Viisi nimettyä fault/rollback-skenaariota samoilla varmennetuilla artifact-tavuilla | `.NET --workspace-fault-command` ja result-verifier; 25 min / skenaariovaihe, 140 min / consumer; täysi matriisi 5 x 2 |
 | Valinnainen diagnostiikka | Nykyinen ulkoinen tallennus, vienti ja suljettu analyysi; ei hyväksynnän tai prosessisiivouksen omistaja | Erilliset start/stop/analyze-rajat; normaalissa opt-in-legacyssä 1/2/3 min lisävaraus, ei skenaarion työajasta |
 
+Rollback-bootstrapin sopimustesti raportoi supervisorin todellisen `close`-rajan
+jälkeen suljetun terminal-tuloksen ja viimeisen validoidun handoff-vaiheen ennen
+paluukoodiväitettä. `unavailableOrInvalid` säilyttää puuttuvan tai virheellisen
+havainnon erillään onnistumisesta. Raportointi ei korvaa tuloksen sidontaa,
+alkuperäisiä assertioneita tai cleanup-varmennusta eikä julkaise raakaa
+fixture-aineistoa. [Ajankohtainen hylkäys ja rajattu näyttö](e2e-test-environment.md#t3b-en-normaalin-baselinen-rollback-sopimushylkäys)
+eivät muuta yllä olevia aikarajoja tai ratkaise hylkäyksen tuntematonta syytä.
+
 Build-once-producerit omistavat paketoinnin ja immutable descriptorin.
 Consumer ei rakenna MSI-paria uudelleen. Clean-producer varmentaa myös
 samojen MSI-tavujen pilot-bundlen nykyisellä työkalulla ja poistaa

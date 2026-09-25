@@ -755,6 +755,60 @@ on todennettu regressioissa, ei tämän onnistuneen ajon virherivillä.
 Alkuperäisen hylkäyksen juurisyy jää avoimeksi. Kohdekoe ei korvaa normaalia
 V2-hyväksyntää, muuta vanhan ajon hylkäystä tai sulje T3/R28:aa.
 
+##### T3b-E:n normaalin baselinen rollback-sopimushylkäys
+
+Diagnostiikkakorjauksen jälkeinen normaali
+[V2-ajo 36178371145](https://github.com/eky-software/eky/actions/runs/36178371145)
+käynnistettiin kerran revision `07021d5089715451623be774cf3f464fd44c0cac`
+yrityksenä 1 ilman inspector-kaappausta tai Linuxin opt-in-probea.
+Saman revision [riippuvuustarkistus 36178382747](https://github.com/eky-software/eky/actions/runs/36178382747)
+läpäisi. V2 valmistui hylättynä: 36 onnistunutta jobia, yksi ennalta valinnainen
+ohitus sekä Windowsin prosessisopimusjobin ja kokoavan hyväksyntäportin hylkäys.
+`rollback bootstrap supervised handoff: completed` sai
+supervisorilta paluukoodin 1 odotetun nollan sijaan. Kolme muuta handoff-tapausta
+ja binary-handoff-sopimukset läpäisivät. Tämä ei ole sama havainto kuin
+historiallisen lähtöversion smoke tai development-Electronin firstWindow.
+
+Jobin ensimmäinen virheloki on säilytetty. Testin paluukoodiväite pysäytti
+suorituksen ennen terminal-tuloksen ja handoff-vaiheiden lukemista. Niitä ei
+tallennettu tämän jobin julkiseen lokiin tai artifactiin. Noin 30 sekunnin
+kesto ei yksin todista `deadlineExceeded`-syytä tai yksilöi juurisyytä.
+
+Rajattu jatkomuutos kuuluu vain rollbackin testiharnessiin: supervisorin
+todellisen `close`-rajan jälkeen ja ennen entisiä assertioneita luetaan nykyisen
+validaattorin sitoma terminal-tulos sekä vain tunnettu, järjestykseltään
+kelvollinen handoff-vaihejono. Konsoliin projisoidaan suljetut tulosluokat ja
+viimeinen vaihe, ei polkuja, noncea, raakavirheitä tai tiedostojen sisältöä.
+Puuttuva tai virheellinen havainto näkyy sellaisena; alkuperäiset pakolliset
+tarkistukset, hylkäys, cleanup ja aikarajat säilyvät. Tuntematonta protokollavikaa
+ei korjata arvaamalla. Regressio, riippumaton katselmus ja rajattu Windows-näyttö
+vaaditaan ennen tämän diagnostiikan hyväksyntää. Uutta kokonaista baselinea
+ei käynnistetä pelkän vihreän uusinta-ajon hakemiseksi.
+
+T3b-P:n toteutus, alustamekanismit ja PR/main-portti eivät etene tämän
+hylätyn osatuloksen perusteella. Alkuperäiset erilliset havainnot pysyvät avoimina.
+
+Rajattu diagnostiikka on toteutettu ja katselmoitu ilman korjattavia löydöksiä.
+Puhtaat projektio- ja bootstrap-lukijasopimukset läpäisivät 8/8; yksi rajattu
+Windows-prosessisopimussarja läpäisi 18/18 ilman ohituksia tai uusintaa.
+Todellisesta nykyisestä supervisorista saatiin erikseen onnistumisen,
+bootstrap-hylkäyksen, helperin ennenaikaisen poistumisen ja tarkoituksellisen
+helper-jumituksen suljetut tulos- ja vaiherivit. Testikytkennän ja terminal-
+validaattorin kohderegressiot läpäisivät myös 66/66. Kussakin handoff-tapauksessa puun poissaolo
+varmennettiin nykyisellä sopimuksella. Tämä todistaa diagnostiikan kytkennän,
+ei alkuperäisen CI-hylkäyksen syytä tai normaalin baselinen hyväksyntää.
+Sovellus- ja MSI-käyttäytyminen, versiot, riippuvuudet, aikarajat ja CI-ehdot
+eivät muuttuneet.
+
+Säilytettyjen 38 V2-jobin lokien checkout- ja hash-sidokset tarkistettiin
+erikseen ensimmäistä yritystä vasten; riippuvuustarkistuksen loki tarkistettiin
+samoin. Kaikki muiden jobien läpäisyt jäävät tämän hylätyn kokonaisajon
+osatuloksiksi. Jatkon yksi normaalin kadenssin täsmällisen korjausrevision
+ajo todentaa myös uuden diagnostiikan CI-kytkennän; sitä ei nimetä vanhan
+syyn korjaukseksi, vaikka virhe ei toistuisi. Ennen sitä checkpoint katselmoidaan
+ja työkalujen seurantavastuu nimetään normaalin ohjeen mukaan. Uutta rajattua
+CI-kytkintä tai workflowta ei lisätä tämän havainnon vuoksi.
+
 ##### T3b-P: hyväksytty metatietorajaus
 
 Omistajan erillinen hyväksyntä koskee vain backend-paketoinnin tuottamia
