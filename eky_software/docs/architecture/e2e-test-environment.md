@@ -739,9 +739,21 @@ Windows-runtime-sopimustestien kokonaisuus läpäisi 73/73 ilman ohituksia.
 Virhetulos pysyy hylättynä myös havaintoketjun heittäessä poikkeuksen;
 seuraavaa sukupolvea tai upgrade-vaihetta ei aloiteta. Tuotanto, historiallinen
 0.2.6, tulostiedoston validaattori, aikarajat ja CI-ehdot säilyvät ennallaan.
-Seuraava näyttö on katselmuksen jälkeen yksi kohdennettu legacy-koe saman
-epäonnistuneen ajon muuttumattomalla artifactilla. Sen mahdollinen läpäisy
-ei yksin todista alkuperäisen virheen korjautumista.
+Riippumaton katselmus ei löytänyt korjattavaa. Revision
+`7e26f06906567a96a51a3c6ef1cf142bf17fe5e0`
+[yksi kohdennettu legacy-koe 36176346468](https://github.com/eky-software/eky/actions/runs/36176346468)
+läpäisi yrityksellä 1 saman epäonnistuneen kokonaisajon artifactilla
+`10879996614`. Harnessin revisio oli `7e26f069`, mutta sovelluspakettien
+build-revisio säilyi `f007bda2`: paketteja ei rakennettu uudelleen.
+Ennen/jälkeen-tavusidos, historiallinen smoke, päivitys, kohteen kaksi
+käynnistystä, siivous, tuloksen julkaisu ja pakollinen caller-varmennus
+läpäisivät. Inspector-kaappausta ei käytetty.
+
+Alkuperäinen virhe ei toistunut, joten uuden virheluokan toimitusta oikeasta
+CI-virhehaarasta ei tässä ajossa havaittu. Sen luokitus- ja välityssopimus
+on todennettu regressioissa, ei tämän onnistuneen ajon virherivillä.
+Alkuperäisen hylkäyksen juurisyy jää avoimeksi. Kohdekoe ei korvaa normaalia
+V2-hyväksyntää, muuta vanhan ajon hylkäystä tai sulje T3/R28:aa.
 
 ##### T3b-P: hyväksytty metatietorajaus
 

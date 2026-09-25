@@ -56,8 +56,9 @@ ominaisuuksia. Pelkkä diagnostiikka tai vihreä Electron-osajoukko ei täytä s
    tieto puuttuu, rajaa sen turvallinen tallennus ja regressio ensin.
    Älä muuta jäädytettyä lähtöversiota, pidennä aikarajoja tai hae vihreää uusimalla.
    Suljettu `smokeFailureClass`-tarkennus ja sen 73/73 kohdetestin näyttö on
-   toteutettu; katselmus ja yksi saman artifactin kohdekoe ovat seuraavana.
-   Tämä on diagnostiikkakorjaus, ei vielä alkuperäisen käynnistysvirheen ratkaisu.
+   toteutettu. Katselmus ja yksi saman artifactin kohdekoe läpäisivät,
+   mutta alkuperäinen virhe ei toistunut. Korjatun harness-revision normaali
+   hyväksyntä on vielä avoin; diagnostiikkakorjaus ei ratkaise vanhaa juurisyytä.
 3. **Vihreän baselinen jälkeen:** toteuta hyväksytty T3b-P:n metatietorajaus
    ja sen eristetty packaged-todennus. Tuotantotoimintoja ei lisätä tähän.
 4. **Seuraava mekanismivaihe:** T3c-W:n ja T3c-L:n rajatut kokeet säilyvät
