@@ -104,6 +104,8 @@ Patchia seuraava rajattu Windows-CI läpäisi. [Seuraava kokonaisajo](e2e-test-e
 hylättiin historiallisen lähtöversion smokessa, vaikka nykyisen Electronin
 38 testiä läpäisivät. Diagnostiikan jälkeisessä normaalissa ajossa havaittiin
 erillinen [rollback-prosessisopimuksen hylkäys](e2e-test-environment.md#t3b-en-normaalin-baselinen-rollback-sopimushylkäys).
+Sen diagnostiikkarevision sopimukset läpäisivät, mutta kaksi
+[firstWindow-ensiyritystä hylättiin](e2e-test-environment.md#t3b-en-toistunut-firstwindow-hylkäys-ja-backendstart-rajaus).
 Koko baselinen hyväksyntä on avoin. Mikään näistä
 yksin ei täytä alla olevia lopullisia rivejä.
 

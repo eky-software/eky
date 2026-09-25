@@ -809,6 +809,72 @@ syyn korjaukseksi, vaikka virhe ei toistuisi. Ennen sitä checkpoint katselmoida
 ja työkalujen seurantavastuu nimetään normaalin ohjeen mukaan. Uutta rajattua
 CI-kytkintä tai workflowta ei lisätä tämän havainnon vuoksi.
 
+##### T3b-E:n toistunut firstWindow-hylkäys ja backendStart-rajaus
+
+Rollback-diagnostiikan revision
+`66d6177004c6b871743093a24c9740507f1f6cfe` normaali
+[V2-ajo 36182721794](https://github.com/eky-software/eky/actions/runs/36182721794),
+yritys 1, päättyi hylättynä: 36 onnistunutta jobia, Electronin kriittisen
+E2E-jobin ja koontiportin hylkäys sekä yksi ennalta valinnainen ohitus.
+Saman revision [riippuvuustarkistus 36182729497](https://github.com/eky-software/eky/actions/runs/36182729497)
+läpäisi. Inspector ja Linuxin opt-in-probe eivät olleet käytössä.
+
+Windowsin rollback-prosessisopimukset läpäisivät 18/18 ja kaikki neljä
+suljettua terminal-/handoff-projektiota tallentuivat CI:ssä. Myös molemmat
+legacy-kuluttajat ja workspace-fault-toistot läpäisivät. Nämä osatulokset
+eivät korvaa koko ajon hylkäystä tai ratkaise vanhojen hylkäysten syitä.
+
+`DESK-WORKSPACE-MIGRATION-INVENTORY-001` sekä
+`DESK-SUPPORT-001` / `DESK-LOGFOLDER-001` epäonnistuivat ensimmäisillä
+yrityksillään fixturen `firstWindow`-odotukseen ennen testirunkoa. Nykyinen
+automaattinen retry onnistui, joten tulos oli oikein 2 flaky / 36 passed
+ja jobin paluukoodi 1. Uutta ajoa tai pidempää aikarajaa ei käytetty
+tämän tuloksen korvaamiseen.
+
+Alkuperäisen lifecycle-artifactin tiiviste ja puretut JSON-tavut varmennettiin.
+Molempien ensimmäisten yritysten tallenne sisältää
+`backendStartup.status=observed` ja `stage=backendStart`; kummankaan
+havaintolistaa ei katkaistu kapasiteettirajaan. Testirunnerin
+kirjoittajan mukaan käynnistyskomento siis vastaanotettiin, broker-clientit
+luotiin ja backend-moduulin import valmistui. Havainto edeltää
+`startE2eBackend`-kutsua eikä todista sen config-, tiedosto-, tietokanta-,
+migraatio-, composition- tai kuunteluvaiheen valmistumista. Aiempi epävarmuus
+pelkästä lähetetystä IPC-viestistä tarkentuu näissä kahdessa yrityksessä;
+vanhan eri yrityksen puuttuvaa havaintoa ei täydennetä jälkikäteen.
+
+Fixture raportoi API- ja runtime-siivouksen valmistuneeksi, portin
+vapautuneeksi ja testijuuren poistetuksi. Tämä ei ole T3:n uuden koko
+prosessipuun omistajuusmekanismin hyväksyntä. Kaikkien 38 suoritetun
+V2-jobin alkuperäiset lokitiivisteet ja checkout-sidokset tarkistettiin;
+isojen MSI-arkistojen paikallista tavutarkistusta ei väitetä tehdyksi.
+
+Riippumaton lähdekatselmus erottaa kaksi ajoitussopimusta: fixturen
+`firstWindow`-odotus ja backendin readiness-odotus alkavat eri kohdissa.
+Ikkunaodotus voi päättyä ensin, joten `backendReadinessTimedOut`-havainnon
+puuttuminen ei osoita backendin valmistuneen. Main-prosessin havaintoajat
+eivät ole fixturen deadlinen lähtöaikoja. Lisäksi startup-havainto pyydetään
+vasta launch-virheen jälkeen ilman odotusta, eikä myöhäistä vastausta
+hyväksytä jo suljettuun raporttiin. Tämä havaintopyyntö ei siis kuluttanut
+edeltävää firstWindow-aikabudjettia. Kumpikaan seikka ei yksilöi viiveen syytä.
+
+Erillinen staattinen siivouspuute: `closeOwnedElectronRuntime` odottaa
+`runtime.close()`-kutsua ennen nykyisen graceful-exit-turvarajan ja
+prosessipuusiivouksen käynnistymistä. Päättymätön close voi estää fallbackin
+ja lifecycle-raportoinnin. Tämä ei selitä näitä kahta yritystä, joiden
+siivous valmistui, eikä sitä merkitä tämän diagnostiikan korjaamaksi.
+T3:n cleanup-sopimuksen regressioon tarvitaan hallittu pending-close-tapaus:
+fallback säilyy saavutettavana nykyisessä budjetissa, alkuperäinen
+käynnistysvirhe säilyy ja varmentamaton siivous estää testijuuren poistamisen.
+Toteutus sovitetaan T3:n omistajuusratkaisuun erillään tämän virheen rajauksesta.
+
+Seuraava rajattu tutkimus kohdistuu testibackendin tähän käynnistysväliin
+sekä fixturen ikkunaodotuksen ja havaintojen ajoitussopimukseen.
+Pelkkä viimeinen havaittu vaihe tai hidas onnistuva uusinta ei yksilöi
+juurisyytä. Tuotantokoodia, moduulien vastuita, deadlineja tai CI-ehtoja ei
+muuteta arvaamalla. Mahdollinen lisähavainto pidetään testikerroksessa,
+sidotaan todelliseen kirjoittajaan ja testataan ennen uutta kohdekoetta.
+T3b-P, alustakokeet ja PR/main-portti odottavat edelleen vihreää baselinea.
+
 ##### T3b-P: hyväksytty metatietorajaus
 
 Omistajan erillinen hyväksyntä koskee vain backend-paketoinnin tuottamia

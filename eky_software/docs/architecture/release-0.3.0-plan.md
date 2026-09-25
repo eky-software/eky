@@ -6,8 +6,12 @@
 T3b-L:n probe on todennettu ja T3b-E:n Playwright-korjauksen paikalliset
 regressiot sekä rajattu Windows-CI ovat läpäisseet. Aiempi kokonaisajo
 hylättiin historiallisen 0.2.6-lähtöversion packaged smoke -vaiheessa;
-uudemmassa normaalissa ajossa havaittiin erillinen
+seuraavassa normaalissa ajossa havaittiin erillinen
 [rollback-prosessisopimuksen hylkäys](e2e-test-environment.md#t3b-en-normaalin-baselinen-rollback-sopimushylkäys).
+Viimeisin diagnostiikkarevision ajo todensi rollback-sopimukset, mutta
+[kaksi Electronin firstWindow-ensiyritystä hylättiin](e2e-test-environment.md#t3b-en-toistunut-firstwindow-hylkäys-ja-backendstart-rajaus).
+Niiden uusi näyttö rajaa odotuksen testibackendin `backendStart`-vaiheeseen;
+juurisyy ei vielä ole todistettu.
 Nykyisen Electron-sarjan läpäisy ei korvaa tätä baseline-porttia.
 [Ajantasainen työjärjestys](release-0.3.0-m1-preparation-plan.md#t3n-nykyinen-työjärjestys)
 erottaa virheen rajauksen, paketoinnin ja varsinaisen omistajuusratkaisun.

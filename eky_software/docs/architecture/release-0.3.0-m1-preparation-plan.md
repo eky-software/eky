@@ -48,10 +48,14 @@ Toteutus ja näyttö kirjataan omiin checkpointteihinsa, ei valmistelun läpäis
 Goal koskee koko T3/R28:aa ja sen PR/main-integraatiota, ei kaikkia 0.3.0:n
 ominaisuuksia. Pelkkä diagnostiikka tai vihreä Electron-osajoukko ei täytä sitä.
 
-1. **Nyt:** rajaa [normaalin baselinen rollback-sopimushylkäys](e2e-test-environment.md#t3b-en-normaalin-baselinen-rollback-sopimushylkäys)
-   sen omista todisteista. Supervisorin paluukoodi 1 ei vielä yksilöi syytä.
-   [Aiempi legacy-smoken hylkäys](e2e-test-environment.md#t3b-en-kokonaisajon-legacy-hylkäys)
-   ja development-Electronin firstWindow-timeout pysyvät erillisinä havaintoina.
+1. **Nyt:** rajaa [toistunut firstWindow-hylkäys](e2e-test-environment.md#t3b-en-toistunut-firstwindow-hylkäys-ja-backendstart-rajaus)
+   sen omista todisteista. Uusi havainto todistaa testibackendin päässeen
+   `backendStart`-vaiheeseen, ei sen sisäisen käynnistystyön valmistumista.
+   [Rollback-sopimushylkäys](e2e-test-environment.md#t3b-en-normaalin-baselinen-rollback-sopimushylkäys),
+   [aiempi legacy-smoken hylkäys](e2e-test-environment.md#t3b-en-kokonaisajon-legacy-hylkäys)
+   ja aiempi, suppeammin havaittu firstWindow-yritys pysyvät erillisinä
+   havaintoina. Samassa katselmuksessa löydetty pending-close-siivouspuute
+   kuuluu T3:n cleanup-regressioon, ei näiden timeoutien todistetuksi syyksi.
 2. **Ennen uutta ajoa:** selvitä jo kerätyn näytön riittävyys. Jos tarvittava
    tieto puuttuu, rajaa sen turvallinen tallennus ja regressio ensin.
    Älä muuta jäädytettyä lähtöversiota, pidennä aikarajoja tai hae vihreää uusimalla.
@@ -62,7 +66,9 @@ ominaisuuksia. Pelkkä diagnostiikka tai vihreä Electron-osajoukko ei täytä s
    Rollback-havainnon suljettu tulos- ja vaiheraportointi on toteutettu,
    katselmoitu ja todennettu 18/18 Windows-prosessisopimuksella sekä 66/66
    testikytkentä-/validaattoritestillä. Edellinen kokonaisajo päättyi hylättynä;
-   seuraava portti on tämän diagnostiikkarevision normaali, seurattu CI-ajo.
+   diagnostiikkarevision normaali CI todensi nämä 18/18 sopimusta ja niiden
+   tulosrivit, mutta hylkäsi kaksi Electronin firstWindow-ensiyritystä.
+   Backendin tarkempi käynnistysväli tutkitaan ennen seuraavaa kohdekoetta.
    Hylkäystä ei ohiteta tai korvata eri ajojen osatuloksilla.
 3. **Vihreän baselinen jälkeen:** toteuta hyväksytty T3b-P:n metatietorajaus
    ja sen eristetty packaged-todennus. Tuotantotoimintoja ei lisätä tähän.
