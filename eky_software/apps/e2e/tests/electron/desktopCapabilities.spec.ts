@@ -283,13 +283,18 @@ test('DESK-STARTUP-OBSERVATION-001 @diagnostic-contract reads bounded main check
     await readElectronStartupObservation(e2eElectron.electronApp),
   );
   expect(startup).toBeDefined();
+  expect(startup?.schemaVersion).toBe(2);
   expect(startup?.truncated).toBe(false);
+  expect(startup?.backendStartup).toEqual({
+    status: 'observed', stage: 'readyNotification', elapsedMs: expect.any(Number),
+  });
   const checkpoints = startup!.checkpoints.map((entry) => entry.checkpoint);
   expect(checkpoints.filter((checkpoint) => checkpoint === 'firstWindowCreated'))
     .toHaveLength(1);
   let previousIndex = -1;
   for (const checkpoint of [
     'backendStartRequested', 'backendForkRequested', 'backendForkReturned',
+    'backendReadinessWaitStarted',
     'backendProcessSpawned', 'backendStartMessageSent', 'backendReadyReceived',
     'backendReady', 'firstWindowCreated',
   ] as const) {
@@ -297,6 +302,11 @@ test('DESK-STARTUP-OBSERVATION-001 @diagnostic-contract reads bounded main check
     const index = checkpoints.indexOf(checkpoint);
     expect(index).toBeGreaterThan(previousIndex);
     previousIndex = index;
+  }
+  expect(checkpoints).not.toContain('backendReadinessTimedOut');
+  if (startup!.backendStartup.status === 'observed') {
+    const ready = startup!.checkpoints.find((entry) => entry.checkpoint === 'backendReadyReceived')!;
+    expect(startup!.backendStartup.elapsedMs).toBeLessThanOrEqual(ready.elapsedMs);
   }
 });
 

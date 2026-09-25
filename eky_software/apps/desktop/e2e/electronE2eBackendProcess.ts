@@ -9,8 +9,10 @@ import { createDesktopOperationalEvent } from '../src/observability/createDeskto
 import type { ElectronE2eConfig } from './electronE2eConfig.js';
 import type { ElectronE2eStartupCheckpoint } from './electronE2eStartupObservation.js';
 import {
+  parseElectronE2eBackendProgress,
   parseElectronE2eBackendStatus,
   readElectronE2eBackendFailureCode,
+  type ElectronE2eBackendStartupStage,
 } from './electronE2eBackendStatus.js';
 
 export interface ElectronE2eBackendController {
@@ -31,6 +33,7 @@ export function createElectronE2eBackendController(
   runtime: {
     fork: typeof utilityProcess.fork;
     observeStartup(checkpoint: ElectronE2eStartupCheckpoint): void;
+    observeBackendStartupStage?(stage: ElectronE2eBackendStartupStage): void;
   },
 ): ElectronE2eBackendController {
   let processHandle: UtilityProcess | undefined;
@@ -77,14 +80,18 @@ export function createElectronE2eBackendController(
         processHandle = child;
         observe('backendForkReturned');
         let ready = false;
+        let startupSettled = false;
         let stopping = false;
         let unexpectedExitCallback: (() => void) | undefined;
         const timer = setTimeout(() => {
+          startupSettled = true;
+          observe('backendReadinessTimedOut');
           child.kill();
           rejectStart(
             new Error('DESKTOP_SMOKE_E2E_BACKEND_READY_TIMEOUT_FAILED'),
           );
         }, readinessTimeoutMilliseconds);
+        observe('backendReadinessWaitStarted');
 
         child.once('spawn', () => {
           observe('backendProcessSpawned');
@@ -103,11 +110,23 @@ export function createElectronE2eBackendController(
           observe('backendStartMessageSent');
         });
         child.on('message', (value) => {
+          const progress = parseElectronE2eBackendProgress(value);
+          if (progress !== undefined) {
+            if (!startupSettled) {
+              try {
+                runtime.observeBackendStartupStage?.(progress.stage);
+              } catch {
+                // Optional progress never changes readiness or its deadline.
+              }
+            }
+            return;
+          }
           const status = parseElectronE2eBackendStatus(value);
           if (status === undefined || ready) {
             return;
           }
           if (status.type === 'failed') {
+            startupSettled = true;
             clearTimeout(timer);
             child.kill();
             rejectStart(
@@ -116,6 +135,7 @@ export function createElectronE2eBackendController(
             return;
           }
           if (status.port !== config.backend.port) {
+            startupSettled = true;
             clearTimeout(timer);
             child.kill();
             rejectStart(
@@ -125,6 +145,7 @@ export function createElectronE2eBackendController(
           }
 
           ready = true;
+          startupSettled = true;
           clearTimeout(timer);
           observe('backendReadyReceived');
           options.operationalLogger?.write(
@@ -163,6 +184,7 @@ export function createElectronE2eBackendController(
           }
         });
         child.once('exit', () => {
+          startupSettled = true;
           clearTimeout(timer);
           processHandle = undefined;
           if (!ready) {

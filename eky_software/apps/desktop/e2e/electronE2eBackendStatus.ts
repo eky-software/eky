@@ -10,6 +10,11 @@ export const electronE2eBackendStartupStages = [
 export type ElectronE2eBackendStartupStage =
   (typeof electronE2eBackendStartupStages)[number];
 
+export interface ElectronE2eBackendProgress {
+  readonly type: 'progress';
+  readonly stage: ElectronE2eBackendStartupStage;
+}
+
 export type ElectronE2eBackendStatus =
   | {
       port: number;
@@ -35,6 +40,40 @@ const failureCodeByStage: Record<
   readyNotification:
     'DESKTOP_SMOKE_E2E_BACKEND_READY_NOTIFICATION_FAILED',
 };
+
+export function parseElectronE2eBackendProgress(
+  value: unknown,
+): ElectronE2eBackendProgress | undefined {
+  try {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      return undefined;
+    }
+    const record = value as Record<string, unknown>;
+    if (
+      record.type === 'progress' &&
+      hasExactlyKeys(record, ['stage', 'type']) &&
+      isElectronE2eBackendStartupStage(record.stage)
+    ) {
+      return Object.freeze({ stage: record.stage, type: 'progress' });
+    }
+  } catch {
+    // Unreadable optional evidence is not a backend outcome.
+  }
+  return undefined;
+}
+
+export function reportElectronE2eBackendProgress(
+  stage: ElectronE2eBackendStartupStage,
+  send: (progress: ElectronE2eBackendProgress) => void,
+): void {
+  try {
+    if (isElectronE2eBackendStartupStage(stage)) {
+      send(Object.freeze({ stage, type: 'progress' }));
+    }
+  } catch {
+    // A progress-channel failure must not change startup or its failure stage.
+  }
+}
 
 export function parseElectronE2eBackendStatus(
   value: unknown,
@@ -80,7 +119,7 @@ function hasExactlyKeys(
   );
 }
 
-function isElectronE2eBackendStartupStage(
+export function isElectronE2eBackendStartupStage(
   value: unknown,
 ): value is ElectronE2eBackendStartupStage {
   return (

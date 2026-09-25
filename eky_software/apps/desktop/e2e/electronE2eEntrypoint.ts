@@ -61,6 +61,7 @@ const backendController = createElectronE2eBackendController(
   {
     fork: (modulePath, args, options) => utilityProcess.fork(modulePath, args, options),
     observeStartup: (checkpoint) => startupObservation.record(checkpoint),
+    observeBackendStartupStage: (stage) => startupObservation.recordBackendStartupStage(stage),
   },
 );
 const nativeAdapters = createElectronE2eNativeAdapters(config);

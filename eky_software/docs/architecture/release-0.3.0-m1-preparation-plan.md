@@ -373,10 +373,26 @@ T3b-E:n nimetty patch ja kokeet on nyt hyväksytty; alustamekanismit eivät.
 T3b-E:n [paikallinen korjausnäyttö](e2e-test-environment.md#t3b-en-paikallinen-korjausnäyttö)
 sisältää todellisen RED -> GREEN -regression sekä nykyiset kaksi hyväksyttyä
 Electron-koetta. Koko paikallinen sarja läpäisi 3907 testiä ja säilytti
-kahdeksan aikaisempaa ohitusta. Typecheck läpäisi. Payloadin metatietoraja
-tarvitsee erillisen rajatun paketointipäätöksen; porttia ei ohiteta pelkän
-Playwright-koodin puuttumisen perusteella. Oman CI-revision portti on myös
-avoin; T3/R28 ei ole valmis.
+kahdeksan aikaisempaa ohitusta. Typecheck läpäisi. Payloadin metatietorajan
+[erillinen paketointikorjaus](e2e-test-environment.md#t3b-p-hyväksytty-metatietorajaus)
+on nyt hyväksytty toteutettavaksi; porttia ei ohiteta pelkän Playwright-koodin
+puuttumisen perusteella. Korjauksen toteutus odottaa kuitenkin
+[oman CI-revision käynnistysvian selvitystä](e2e-test-environment.md#t3b-en-ensimmäinen-ci-havainto).
+Ensimmäisen yrityksen lifecycle-näyttö säilyi: Playwright-yhteys valmistui,
+mutta backendin valmiutta ei havaittu ennen ensimmäisen ikkunan timeoutia.
+Retry onnistui, mutta flaky-tulos ja kokoava CI-portti hylättiin oikein.
+Juurisyytä tai tämän revision baselinea ei ole hyväksytty; T3/R28 ei ole valmis.
+Omistaja hyväksyi tämän jälkeen rajatun Electron-vian selvityksen ja
+korjauksen. Ensimmäinen checkpoint lisää vain testibackendin suljetun
+käynnistysvaiheen havaintoketjun ja sen sopimustestit. Aikarajat,
+onnistumisehdot ja tuotantokoodi säilyvät.
+[Diagnostiikan paikallinen todennus](e2e-test-environment.md#t3b-en-käynnistysdiagnostiikan-paikallinen-todennus)
+läpäisi 33 testin Windows-ajon ilman retryä sekä workspace-testit ja
+typecheckin. Alkuperäinen timeout ei toistunut eikä sen juurisyy ratkennut.
+Omistaja hyväksyi uuden revision julkaisun kehityshaaraan ja yhden seuratun
+Windows-CI-diagnostiikka-ajon. Rajauksen tavalliset commit-, push- ja
+CI-työvaiheet eivät vaadi erillistä uusintahyväksyntää. CI-tulos on vielä
+avoin; diagnoosin läpäisy ei yksin hyväksy baselinea tai aloita T3b-P:tä.
 
 Linuxin seuraavaksi päätösehdotukseksi on katselmoitu
 [rajattu T3c-L:n namespace-koe](e2e-test-environment.md#t3c-ln-rajattu-namespace-koe-päätösehdotus).

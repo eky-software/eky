@@ -568,12 +568,125 @@ Payloadin metatiedot kattava poissulkuportti ei kuitenkaan läpäissyt:
 nykyinen `deploy --prod` ja koko backend-stagen extraResource-kopiointi
 säilyttävät myös rakentamisen metatietoja. Pelkkä Playwrightin suoritettavien
 tiedostojen puuttuminen ei ole tämän laajemman portin hyväksyntä.
-Metatietojen rajaus ja sen regressiosuoja tarvitsevat erillisen, vain
-paketointiin kohdistuvan päätöksen; nykyinen Playwright-lupa ei valtuuta
-tuotantopaketoinnin muuttamista. Tarkistuspakettia ei julkaista tai korvata
-hyväksytyksi artifactiksi. Oman uuden revision CI on myös avoinna.
+Metatietojen rajaus erotettiin omaksi paketointipäätöksekseen, jonka
+omistaja hyväksyi 25.9.2026. Playwright-luvasta ei johdettu tätä valtuutta.
+Tarkistuspakettia ei julkaista tai korvata hyväksytyksi artifactiksi.
+Oman uuden revision CI hylättiin alla kuvatun käynnistyshavainnon vuoksi.
 Ei PR/main-hyväksyntää, alustamekanismin käyttöönottoa, tavallisten fixturejen
 siirtoa tai R28:n sulkemista.
+
+##### T3b-E:n ensimmäinen CI-havainto
+
+Revision `59ff56b01d6cbb44af4831901229ac1206c4cb64` ajo `36149261286`,
+yritys 1, päättyi hylkäykseen: 36 jobia onnistui, Electronin kriittinen
+E2E-jobi hylättiin, kokoava hyväksyntäportti hylättiin tämän seurauksena ja
+yksi ennalta valinnainen jobi ohitettiin. Saman revision erillinen
+riippuvuustarkistus `36149272461` läpäisi.
+
+`DESK-WORKSPACE-PASSWORD-001`:n ensimmäinen yritys epäonnistui fixturen
+käynnistyksessä, ennen salasanan perumista testaavaa testirunkoa:
+`E2E_ELECTRON_STARTUP_FAILED phase=firstWindow reason=timeout`.
+Nykyisen CI-asetuksen automaattinen retry läpäisi; tulos jäi silti oikein
+flakyksi ja hylätyksi. Testisarjassa oli lisäksi 37 läpäissyttä testiä.
+Uutta ajoa ei käynnistetty hylkäyksen peittämiseksi.
+
+Ensimmäisen yrityksen talteen otettu, katkaisematon `electron-lifecycle`
+osoittaa Playwright-yhteyden valmistuneen. Käynnistyshavainto päättyy
+`backendStartMessageSent`-vaiheeseen; backendin valmiuskuittausta,
+ensimmäistä ikkunaa tai compositionin valmistumista ei ole havaittu.
+Fixture raportoi oman runtime-siivouksensa valmistuneeksi, portin
+vapautuneeksi ja testijuuren poistetuksi. Tämä on nykyisen fixturen näyttö,
+ei uusi todiste R28:n tavoitellusta koko prosessipuun omistajuudesta.
+
+Juurisyy on avoin. Testibackend kertoo nykyisin sisäisen käynnistysvaiheen
+vain valmistuneessa virhevastauksessa, ei vielä kesken olevassa odotuksessa.
+Talteen saatu näyttö ei siis erota esimerkiksi moduulin latausta backendin
+käynnistystyöstä. Sitä ei tulkita salasanatoiminnon virheeksi, Playwright-
+patchin syyksi tai pelkäksi CI-kuormaksi ilman lisätodistetta.
+Seuraava vianrajaus rajataan ensin tähän puuttuvaan testiharnessin havaintoon
+ja sen sopimuksiin. Tuotantokäyttäytymistä, aikarajoja, retryä tai CI-ehtoja
+ei muuteta tämän havainnon perusteella. T3b-P:n toteutus ja uudet
+alustakokeet odottavat korjattua ja todennettua baselinea.
+
+Rajattu jatkoehdotus on välittää testibackendin nykyisen suljetun
+käynnistysvaiheluettelon havainto olemassa olevaan rajattuun lifecycle-
+keräykseen. Puuttuva havainto erotetaan ilmoitetusta vaiheesta. Progress ei
+saa toimia valmiuskuittauksena, nollata aikarajaa tai viivyttää siivousta.
+Eri prosessien kuluneita aikoja ei vähennetä toisistaan yhteisenä kellona.
+Virheelliset ja myöhäiset havainnot sekä havaitsijan virhe testataan ennen
+yhtä seurattua Windows-koetta. Omistaja hyväksyi 25.9.2026 tämän rajatun
+Electron-vian selvityksen ja korjauksen. Ensimmäinen toteutus koskee vain
+testiharnessin puuttuvaa havaintoa ja sen regressiosuojaa. Käynnistyksen
+juurisyytä ei merkitä korjatuksi pelkän onnistuvan kokeen perusteella.
+
+Muistiprojektion versio 2 säilyttää nykyiset enintään 16 checkpointia ja
+erillisen viimeisen backend-vaiheen: `unobserved` tai `observed` sekä suljettu
+vaihenimi ja main-prosessin havaitsemishetken kulunut aika. Lapsiprosessi ei
+lähetä aikaleimaa, polkua, virhetekstiä tai konfiguraatiota tässä viestissä.
+Valmiusodotuksen alku ja mahdollinen aikarajan täyttyminen erotetaan
+checkpointteina muuttamatta odotuksen aloituskohtaa tai kestoa.
+Nämä ovat vain testien lifecycle-todisteita, eivät sovelluksen Diagnostics-,
+Activity-, tukipaketti- tai incident-tapahtumia. Punaisen CI-baselinen
+hyväksyntä ei muutu tällä päätöksellä.
+
+##### T3b-E:n käynnistysdiagnostiikan paikallinen todennus
+
+Rajattu testimuutos on toteutettu ja katselmoitu riippumattomasti. Suljetut
+progress-viestit välittyvät nykyisestä utility-runnerista mainin muistikuvaan
+ja aiempaan lifecycle-keräykseen. Valmius tulee edelleen vain validoidusta
+`ready`-viestistä; progress ei nollaa readiness-aikarajaa. Lähettäjän tai
+havaitsijan virhe ei korvaa alkuperäistä tulosta, ja terminalin jälkeen
+saapuva progress sivuutetaan.
+
+- 31 kohdistettua sopimustestiä läpäisi. Mukana ovat kenttien rajaus,
+  muuttumaton valmiusbudjetti, myöhäiset havainnot, havaitsijan virhe,
+  muuttumaton muistikuva ja ensivirheen näyttö siivouksen yli.
+- Sama sopimusjoukko sekä `DESK-STARTUP-OBSERVATION-001` ja aiemmin
+  epäonnistunut `DESK-WORKSPACE-PASSWORD-001` läpäisivät yhden 33 testin
+  Windows-ajon, ilman retryä. Todellinen utility/main/lukija-kytkentä
+  tuotti version 2 havainnon. Alkuperäinen aikakatkaisu ei toistunut.
+- Workspace-typecheck, tarvittavat buildit ja koko `pnpm test` läpäisivät.
+  Jälkimmäisessä oli 3907 läpäissyttä testiä ja kahdeksan ennestään
+  määriteltyä alustakohtaista ohitusta. Riippumaton katselmus ei löytänyt
+  tämän rajatun kokeen estäviä puutteita.
+
+Tämä todentaa diagnostiikkakorjauksen, ei alkuperäisen timeoutin juurisyytä
+tai korjausta. Omistaja hyväksyi 25.9.2026 muutoksen commitin ja pushin
+nykyiseen kehityshaaraan sekä yhden seuratun Windows-CI-diagnostiikka-ajon.
+Hyväksytyn rajauksen tavalliset tallennus-, julkaisu- ja CI-työvaiheet eivät
+vaadi uutta lupakysymystä. Uuden revision CI-näyttö on vielä avoin; rajattu
+diagnostiikka-ajo ei korvaa koko V2-hyväksyntää tai hyväksy main-mergeä.
+T3b-P ja T3c pysyvät edellä määriteltyjen hyväksyntäporttien takana.
+
+##### T3b-P: hyväksytty metatietorajaus
+
+Omistajan erillinen hyväksyntä koskee vain backend-paketoinnin tuottamia
+rakennusmetatietoja, niiden regressiosuojaa ja uuden eristetyn paketin
+tarkistusta. Riippuvuuksia, versioita, sovellustoimintoja, tietokantoja,
+installeria tai olemassa olevia käyttäjäprofiileja ei muuteta.
+
+- Normalisointi kuuluu desktopin paketointiketjuun nykyisen valinnaisen
+  `preparePackageBackendStage`-hookin jälkeen ja ennen sisällön validointia.
+  Hookin nykyinen no-op-sopimus säilyy.
+- Vain backend-juuren `pnpm-lock.yaml`, `pnpm-workspace.yaml` ja
+  `node_modules/.modules.yaml` poistetaan rakennustiedostoina.
+- Backend-juuren manifestista palautetaan vain tunnistetut buildin
+  tuottamat absoluuttiset paikalliset riippuvuusviitteet saman buildin
+  auktoritatiivisiin lähdemäärityksiin. Tuntematon muunnos hylätään.
+  Muut kentät, järjestys ja asennetut runtime-riippuvuudet säilyvät.
+- Tiedosto-operaatiot pysyvät validoidussa staging-juuressa. Manifesti
+  korvataan atomisesti; jaettuja tiedostotavuja ei muokata paikallaan.
+  Vendor-manifesteja, lisenssejä, NOTICE-tiedostoja, natiivibinaareja tai
+  riippuvuuksien omia patcheja ei siivota rekursiivisesti.
+- Regressiot todistavat täsmällisen muutosjoukon, toistettavuuden,
+  virheellisten manifestien ja linkkien torjunnan sekä muiden tavujen ja
+  moduulien ratkeamisen säilymisen. Sisältöportti estää metatietojen
+  palaamisen sekä backend-stagessa että valmiissa paketissa.
+- Uusi eristetty Windows-paketti, sen sisältötarkistus ja synteettinen
+  packaged smoke vaaditaan. Tämä ei ole käyttäjälle toimitettava julkaisu.
+
+Toteutus ja näyttö ovat vielä avoinna. T3c-W:n ja T3c-L:n erillisiä
+alustakokeita ei hyväksytä tällä päätöksellä.
 
 ##### Windowsin omistajuusrajan valinta
 

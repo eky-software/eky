@@ -137,6 +137,8 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
     elapsed = 25;
     observation.record('appReady');
     const snapshot = observation.snapshot();
+    expect(snapshot.schemaVersion).toBe(2);
+    expect(snapshot.backendStartup).toEqual({ status: 'unobserved' });
     expect(snapshot.checkpoints).toEqual([
       { checkpoint: 'waitingForAppReady', elapsedMs: 0 },
       { checkpoint: 'appReady', elapsedMs: 25 },
@@ -153,7 +155,62 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
       { ...snapshot, checkpoints: [{ checkpoint: 'appReady', elapsedMs: 0, path: 'private' }] },
       { ...snapshot, checkpoints: [{ checkpoint: 'appReady', elapsedMs: Number.NaN }] },
       { ...snapshot, checkpoints: new Array(17).fill(snapshot.checkpoints[0]) },
+      { ...snapshot, schemaVersion: 1 },
+      { ...snapshot, backendStartup: undefined },
+      { ...snapshot, backendStartup: { status: 'unobserved', stage: 'moduleImport' } },
     ]) expect(parseElectronE2eStartupObservation(unsafe)).toBeUndefined();
+  });
+
+  test('backend progress keeps one immutable stage observed on the main clock, independently of checkpoints', () => {
+    let now = 1_000;
+    const observation = createElectronE2eStartupObservation(() => now);
+    for (let i = 0; i < 20; i += 1) observation.record('backendStartRequested');
+    now = 1_125;
+    observation.recordBackendStartupStage('moduleImport');
+    const importing = observation.snapshot();
+    expect(importing.backendStartup).toEqual({
+      status: 'observed', stage: 'moduleImport', elapsedMs: 125,
+    });
+    expect(Object.isFrozen(importing.backendStartup)).toBe(true);
+    now = 1_250;
+    observation.recordBackendStartupStage('backendStart');
+    const starting = observation.snapshot();
+    expect(starting.backendStartup).toEqual({
+      status: 'observed', stage: 'backendStart', elapsedMs: 250,
+    });
+    expect(importing.backendStartup).toEqual({
+      status: 'observed', stage: 'moduleImport', elapsedMs: 125,
+    });
+    expect(starting.checkpoints).toHaveLength(16);
+    expect(starting.truncated).toBe(true);
+    expect(parseElectronE2eStartupObservation(starting)).toEqual(starting);
+    for (const backendStartup of [
+      { status: 'observed', stage: 'unknown', elapsedMs: 125 },
+      { status: 'observed', stage: 'moduleImport' },
+      { status: 'observed', stage: 'moduleImport', elapsedMs: -1 },
+      { status: 'observed', stage: 'moduleImport', elapsedMs: Number.NaN },
+      { status: 'observed', stage: 'moduleImport', elapsedMs: Number.POSITIVE_INFINITY },
+      { status: 'observed', stage: 'moduleImport', elapsedMs: 125, path: 'private' },
+      { status: 'complete', stage: 'moduleImport', elapsedMs: 125 },
+      ['moduleImport'], null,
+    ]) expect(parseElectronE2eStartupObservation({ ...starting, backendStartup })).toBeUndefined();
+  });
+
+  test('captured backend progress survives the failure cleanup and cannot leak a later update', async () => {
+    const observation = createElectronE2eStartupObservation(() => 0);
+    observation.recordBackendStartupStage('moduleImport');
+    const finishCapture = captureElectronStartupObservation(async () => observation.snapshot());
+    await Promise.resolve();
+    const fixture = cleanupFixture();
+    try {
+      const original = new Error('synthetic startup failure');
+      await expect(fixture.finish({ error: original })).rejects.toBe(original);
+      const captured = finishCapture();
+      expect(captured).toEqual({ status: 'captured', observation: observation.snapshot() });
+      observation.recordBackendStartupStage('backendStart');
+      expect(finishCapture()).toEqual(captured);
+      expect(existsSync(fixture.root)).toBe(false);
+    } finally { await removeE2eRunRootIfPresent(fixture.root); }
   });
 
   test('an unavailable or late startup read cannot delay cleanup or replace the original failure', async () => {
@@ -246,6 +303,7 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
     const root = createE2eRunRoot();
     const startup = createElectronE2eStartupObservation();
     startup.record('backendReady');
+    startup.recordBackendStartupStage('readyNotification');
     const finishCapture = captureElectronStartupObservation(async () => startup.snapshot());
     let failure: { error: unknown } | undefined;
     try {
@@ -274,6 +332,7 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
       expect(readFileSync(testInfo.outputPath('electron-lifecycle.json'))).toEqual(bytes);
       expect(Object.keys(evidence).sort()).toEqual(['attempt', 'cleanup', 'launch', 'observationsTruncated', 'schemaVersion', 'startupCapture']);
       expect(evidence.startupCapture).toEqual({ status: 'captured', observation: startup.snapshot() });
+      expect(evidence.startupCapture.observation.backendStartup.stage).toBe('readyNotification');
       expect(evidence.attempt).toBe(0);
       expect(evidence.launch.at(-1)).toEqual({ phase: 'domContentLoaded', status: 'failed', reason: 'timeout' });
       expect(evidence.cleanup.runRoot).toBe('removed');
