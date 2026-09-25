@@ -49,8 +49,14 @@ pääsyvihjein. [Ensimmäinen CI-checkpoint](e2e-test-environment.md#t3b-ln-ensi
 kirjaa T1-kytkentähylkäyksen sekä korjatun revision oman läpäisseen
 CI-ajon. Playwright-korjauksen
 [paikalliset regressiot ja nykyiset kaksi Electron-koetta läpäisivät](e2e-test-environment.md#t3b-en-paikallinen-korjausnäyttö);
-sen toimitus- ja oman CI-revision portit ovat vielä avoinna. Payloadin
-metatietorajauksen erillinen paketointipäätös odottaa omistajaa.
+sen toimitus- ja koko CI-baselinen portit ovat vielä avoinna.
+[Ensimmäinen CI-hylkäys](e2e-test-environment.md#t3b-en-ensimmäinen-ci-havainto)
+rajautui Electron-fixturen käynnistykseen. Hyväksytty testidiagnostiikan
+täydennys ja [yksi rajattu Windows-CI-ajo](e2e-test-environment.md#t3b-en-rajattu-windows-ci-todennus)
+läpäisivät; alkuperäinen timeout ei toistunut eikä sen syytä merkitty
+korjatuksi. Tämä ei korvaa koko V2-hyväksyntää.
+Payloadin [metatietorajauksen erillinen paketointipäätös](e2e-test-environment.md#t3b-p-hyväksytty-metatietorajaus)
+on hyväksytty, mutta toteutus odottaa dokumentoitua baseline-porttia.
 Alustojen omistajuusmekanismi ja tavallisten fixturejen siirto ovat avoimia.
 T2 ei sulje M1:n muita testikorjauksia.
 

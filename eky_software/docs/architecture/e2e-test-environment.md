@@ -654,9 +654,43 @@ Tämä todentaa diagnostiikkakorjauksen, ei alkuperäisen timeoutin juurisyytä
 tai korjausta. Omistaja hyväksyi 25.9.2026 muutoksen commitin ja pushin
 nykyiseen kehityshaaraan sekä yhden seuratun Windows-CI-diagnostiikka-ajon.
 Hyväksytyn rajauksen tavalliset tallennus-, julkaisu- ja CI-työvaiheet eivät
-vaadi uutta lupakysymystä. Uuden revision CI-näyttö on vielä avoin; rajattu
-diagnostiikka-ajo ei korvaa koko V2-hyväksyntää tai hyväksy main-mergeä.
+vaadi uutta lupakysymystä. Alla kirjattu rajattu CI-todennus ei korvaa koko
+V2-hyväksyntää tai hyväksy main-mergeä.
 T3b-P ja T3c pysyvät edellä määriteltyjen hyväksyntäporttien takana.
+
+##### T3b-E:n rajattu Windows-CI-todennus
+
+Revision `cba3fa3db304024c55c76838cd99637d0e1bc0ef`
+[Windows-diagnostiikka-ajo 36164733794](https://github.com/eky-software/eky/actions/runs/36164733794),
+yritys 1, läpäisi. Sekä ajon metatiedot että checkout-lokin lopullinen
+Git-revisio vastaavat tätä lähdettä. Seuranta oli nimetty ennen käynnistystä;
+tilaseuranta ja valmistunut jobiloki tarkistettiin erikseen.
+
+- Nykyinen Windows-paketointi ja packaged smoke läpäisivät.
+- Kaikki 38 kriittistä Electron-testiä läpäisivät ensimmäisellä yrityksellä,
+  myös aiemmin käynnistykseen pysähtynyt `DESK-WORKSPACE-PASSWORD-001`.
+  Ei flaky-tulosta tai testien uusintayrityksiä.
+- Erillinen `DESK-STARTUP-OBSERVATION-001` läpäisi ilman retryä. Se todentaa
+  version 2 utility/main/lukija-kytkennän ja readiness-checkpointit.
+- Yksi valittu jobi onnistui; neljä muuta ohitettiin tarkoituksellisesti
+  nykyisen `electron_diagnostic`-valinnan perusteella. Kyse ei ole koko
+  V2-ajosta, system-/web-sarjan tai installer-matriisin todennuksesta.
+- Virheen lifecycle-artifactia ei syntynyt: tässä ajossa ei havaittu
+  epäonnistunutta yritystä. Tämä ei ole uusi CI-todiste virhehaaran
+  artifactista; aiempi ensivirhe ja sen todisteet säilyvät erillään.
+
+Tulos hyväksyy diagnostiikkamuutoksen rajatun CI-todennuksen. Alkuperäinen
+timeout ei toistunut, eikä sen juurisyytä tai korjausta ole osoitettu.
+Myöskään riippumaton rajattu lähdekatselmus ei yksilöinyt sen syytä.
+Koko baselinen, T3b-P:n, alustakokeiden ja PR/main-integraation portit
+pysyvät avoimina. T3/R28:aa ei suljeta tällä ajolla.
+
+Mahdollisen seuraavan todellisen käynnistysvirheen ensisijainen lukureitti
+on nyt olemassa oleva `backendStartup`-projektio ja readiness-checkpointit.
+`unobserved` tarkoittaa puuttuvaa havaintoa, ei todistettua kadonnutta IPC:tä.
+Vaiheilmoitus edeltää nimettyä operaatiota eikä todista sen valmistumista.
+Näyttö rajaa jatkotutkimuksen ennen lisämuutoksia; vihreitä uusinta-ajoja,
+arvattua korjausta tai pidempiä aikarajoja ei käytetä syyn korvikkeena.
 
 ##### T3b-P: hyväksytty metatietorajaus
 

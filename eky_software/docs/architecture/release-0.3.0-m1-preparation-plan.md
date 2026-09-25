@@ -391,8 +391,12 @@ läpäisi 33 testin Windows-ajon ilman retryä sekä workspace-testit ja
 typecheckin. Alkuperäinen timeout ei toistunut eikä sen juurisyy ratkennut.
 Omistaja hyväksyi uuden revision julkaisun kehityshaaraan ja yhden seuratun
 Windows-CI-diagnostiikka-ajon. Rajauksen tavalliset commit-, push- ja
-CI-työvaiheet eivät vaadi erillistä uusintahyväksyntää. CI-tulos on vielä
-avoin; diagnoosin läpäisy ei yksin hyväksy baselinea tai aloita T3b-P:tä.
+CI-työvaiheet eivät vaadi erillistä uusintahyväksyntää.
+[Rajattu Windows-CI-todennus](e2e-test-environment.md#t3b-en-rajattu-windows-ci-todennus)
+läpäisi revision `cba3fa3db304024c55c76838cd99637d0e1bc0ef` ajossa
+`36164733794`: 38 kriittistä testiä ja yksi diagnostiikkatesti ilman
+uusintayrityksiä sekä paketointi ja packaged smoke. Timeoutin syy pysyy
+avoimena. Rajattu ajo ei korvaa koko V2-baselinea tai aloita T3b-P:tä.
 
 Linuxin seuraavaksi päätösehdotukseksi on katselmoitu
 [rajattu T3c-L:n namespace-koe](e2e-test-environment.md#t3c-ln-rajattu-namespace-koe-päätösehdotus).
