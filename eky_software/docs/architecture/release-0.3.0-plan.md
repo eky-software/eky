@@ -44,8 +44,11 @@ erottavat osittaisen kokeen omistajuusmekanismin hyväksynnästä ja kuluttajien
 nimeää lukitun Playwrightin virheenkäsittelyaukon sekä erikseen hyväksyttävän
 Linux-CI:n read-only-proben. Hyväksytty probe ja CI-kytkentä on nyt toteutettu,
 ja [paikallinen sopimussarja läpäisi 95/95](e2e-test-environment.md#t3b-ln-toteutuscheckpoint).
-Todellinen Linux-CI-havainto, riippuvuuskorjaus, alustojen omistajuusmekanismi
-ja tavallisten fixturejen siirto ovat vielä avoimia.
+Todellinen Linux-CI-havainto saatiin molemmista kuluttajista kielteisin
+pääsyvihjein. [Ensimmäinen CI-checkpoint](e2e-test-environment.md#t3b-ln-ensimmäinen-ci-havainto-ja-sopimuskorjaus)
+kirjaa T1-kytkentähylkäyksen ja paikallisen korjauksen; korjatun revision
+CI on vielä avoinna. Playwright-korjaus on hyväksytty mutta toteuttamatta.
+Alustojen omistajuusmekanismi ja tavallisten fixturejen siirto ovat avoimia.
 T2 ei sulje M1:n muita testikorjauksia.
 
 ### M0:n historiallinen tapahtumaketju

@@ -32,7 +32,8 @@ päätetään edelleen erikseen kokeen näytön perusteella.
 Omistajan hyväksymä [T3b-valmistelu](e2e-test-environment.md#t3b-virhehaaran-ja-alustarajan-valmistelu)
 rajaa Electronin virheketjun, Linuxin read-only-CI-proben ja alustojen
 jatkopäätökset. Valmistelun jälkeen hyväksytty T3b-L:n probe ja CI-kytkentä
-on toteutettu; riippuvuuskorjaus odottaa edelleen erillistä päätöstä.
+on toteutettu. Riippuvuuskorjaus hyväksyttiin myöhemmin erikseen; sen
+toteutus odottaa T3b-L:n CI-sopimuskorjauksen sulkemista.
 
 **T3:n jatko-Goal 2026-09-25:** omistaja hyväksyi T3b-L:n toteutuksen ja
 yhden seuratun CI-ajon sekä itsenäisen etenemisen T3:n loppuun erilliset
@@ -341,8 +342,9 @@ sekä julkaistavan sisällön yksityisyys tarkistettiin. Tuotanto-, testi-,
 riippuvuus- ja workflow-koodia ei muutettu eikä uusia prosessikokeita tai
 CI-ajoja tehty. Sovelluksen testi-, diagnostiikka- ja palautusportit eivät
 sovellu tähän dokumentointimuutokseen, eikä niitä merkitä läpäistyiksi.
-Tämä päättää vain rajatun valmistelun; T3b-E/T3b-L:n toteutuspäätökset,
-alustamekanismi ja R28:n hyväksyntä jäävät avoimiksi.
+Tämä päätti vain rajatun valmistelun; T3b-E/T3b-L:n toteutuspäätökset,
+alustamekanismi ja R28:n hyväksyntä jäivät silloin avoimiksi. Myöhemmät
+päätökset ja toteutustila kirjataan alla oleviin checkpointteihin.
 
 ### T3b-L:n paikallinen checkpoint
 
@@ -350,9 +352,21 @@ alustamekanismi ja R28:n hyväksyntä jäävät avoimiksi.
 `pnpm test:ci` läpäisi 95/95 ilman ohituksia. Kytkennän ja lukijan
 katselmukset sekä havaitun stdout-aikarajajärjestyksen korjaus kuuluvat
 [omistavaan checkpointiin](e2e-test-environment.md#t3b-ln-toteutuscheckpoint).
-Todellinen Linux-CI-havainto ja yksi hyväksytty seurattu kokonaisajo ovat
-vielä avoinna. Tämä ei hyväksy alustamekanismia, riippuvuuspatchia,
+Todellinen Linux-CI-havainto ja yksi hyväksytty seurattu kokonaisajo olivat
+tässä vaiheessa vielä avoinna. Tämä ei hyväksy alustamekanismia, riippuvuuspatchia,
 fixture-siirtoa, R28:n sulkua tai PR/main-integraatiota.
+
+### T3b-L:n ensimmäinen CI-checkpoint
+
+Molemmat Linux-probet tuottivat täydellisen mutta pääsyvihjeiltään kielteisen
+havainnon. Ensimmäinen kokonaisajo hylkäsi desktopin T1-kytkentätestin
+vanhentuneen odotuksen. Rajattu korjaus ja sen 61/61-kohdesarja, koko
+workspacen 3862 läpäissyttä testiä / kahdeksan aiempaa ohitusta, typecheck
+sekä backendin, webin ja desktopin buildit
+ovat paikallista näyttöä, eivät tämän CI-revision hyväksyntä.
+[Omistava CI-checkpoint](e2e-test-environment.md#t3b-ln-ensimmäinen-ci-havainto-ja-sopimuskorjaus)
+erottaa ensimmäisen hylkäyksen, korjauksen ja puuttuvan uuden CI-todennuksen.
+T3b-E:n nimetty patch ja kokeet on nyt hyväksytty; alustamekanismit eivät.
 
 ## Skannaushavaintojen vaikutus jatkoon
 

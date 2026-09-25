@@ -523,6 +523,13 @@ cleanup-merkki pitää todentaa myös palautusketjussa. Vasta tämän jälkeen
 ajetaan nykyinen normaali Electron-koe ja sama before-ready exit 29 -koe.
 R28, alustaratkaisu ja tavallisten fixturejen siirto jäävät erillisiksi porteiksi.
 
+**Omistajan päätös 2026-09-25:** yllä nimetty nykyisen
+`playwright-core@1.62.1`:n versionoitu minimikorjaus, regressiotestit ja
+kahden nykyisen Electron-kokeen todennus hyväksyttiin. Tämä korvaa
+ehdotuksen odottavan päätöksen, ei sen teknisiä rajoja. Toteutusta ei vielä
+ole aloitettu; ensin suljetaan T3b-L:n CI-sopimuksen korjaus. Ei uutta
+kirjastoa, versionostoa, tuotantokoodia tai aikarajojen lievennystä.
+
 ##### Windowsin omistajuusrajan valinta
 
 | Vaihtoehto | Vaikutus ja päätösraja |
@@ -705,6 +712,36 @@ riippuvuudet, asennettu sovellus, aikarajat ja normaalin CI:n valinta eivät
 muuttuneet. Käyttäjän UI-, Diagnostics-, audit-, tukipaketti- ja backup-
 sopimuksiin ei tule muutosta; niiden tuotantohyväksyntää ei väitetä tehdyksi.
 R28 ja lopullinen T3-matriisi jäävät avoimiksi.
+
+##### T3b-L:n ensimmäinen CI-havainto ja sopimuskorjaus
+
+[Seurattu ajo 36137467962](https://github.com/eky-software/eky/actions/runs/36137467962),
+yritys 1, checkout `a49904afb32f6d12a5fbf0c291bbbc47d48f7b7b`:
+molempien Linux-kuluttajien sidottu JSON-havainto ja normaali
+`LINUX_PREREQUISITE_EXIT_OK` saatiin niiden omista testiaskeleista.
+Kummassakin v2-kohdistus oli `mapped`, tyyppi `domain`, mount `rw`,
+events `observed` ja kill `present`; kaikki kolme pääsyvihjettä olivat
+`denied`. `systemd` ja `ownershipProof` pysyivät `notAttempted`-tilassa.
+Havainto ei hyväksy suoraa cgroup-kirjoitusta eikä osoita Linux-ratkaisua
+mahdottomaksi. Hallintaväylä, valtuudet ja mekanismi tarvitsevat oman päätöksen.
+
+CI:n ensimmäinen hylkäys tuli `core / Test, typecheck and build` -jobin
+`Run tests` -vaiheesta: desktopin T1-kytkentätestin literal-odotuksesta puuttui
+uusi hyväksytty opt-in-rivi. Tyyppitarkistus ja buildit jäivät tässä jobissa
+ajamatta. Ajorevisio pysyy hylättynä; sitä ei ajeta uudelleen vihreän hakemiseksi.
+Loppukoonti vahvisti saman hylkäyksen: 36 jobia läpäisi, tämä core-job
+ja sen vuoksi `V2 acceptance` hylättiin; yksi valinnainen diagnostiikkajob
+ohitettiin suunnitellusti. Muita epäonnistuneita jobeja ei ollut.
+
+Virhe toistettiin paikallisesti ennen korjausta. Odotukseen lisättiin vain
+hyväksytty rivi ja kolme mutaatiotestiä: puuttuva, aina päällä oleva ja
+manuaalirajan ohittava valinta hylätään. Tiukka yhtäsuuruusvertailu, vanhat
+testit ja CI:n hyväksyntäehdot säilyvät. Riippumaton katselmus ei löytänyt
+korjattavaa. Kohdesarja läpäisi 61/61, koko paikallinen `pnpm test` 3862
+testiä ja kahdeksan ennestään määriteltyä ohitusta sekä workspace-typecheck.
+Backendin, webin ja desktopin paikalliset buildit läpäisivät myös.
+Korjattu revisio tarvitsee vielä oman CI-varmennuksensa; paikallinen tulos
+ei muuta ensimmäisen ajon hylkäystä hyväksytyksi.
 
 #### T3:n lopullinen hyväksyntänäyttö
 

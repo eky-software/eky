@@ -150,6 +150,7 @@ function assertCiWiring({ core, caller, plan, coverage }) {
   assert.equal(jobBlock(caller, 'core'), [
     '  core:', '    needs: classification', '    uses: ./.github/workflows/ci.yml',
     '    with:', '      risk_plan: ${{ needs.classification.outputs.plan }}',
+    "      linux_ownership_prerequisites: ${{ github.event_name == 'workflow_dispatch' && inputs.linux_ownership_prerequisites == true }}",
   ].join('\n'));
   const acceptance = jobBlock(caller, 'acceptance');
   const header = acceptance.split('\n    steps:\n')[0];
@@ -249,6 +250,9 @@ for (const edge of CI_EDGES) {
 for (const [name, before, after] of [
   ['normal caller', '    uses: ./.github/workflows/ci.yml', '    uses: ./.github/workflows/unrelated.yml'],
   ['risk plan binding', '      risk_plan: ${{ needs.classification.outputs.plan }}', '      risk_plan: unrelated'],
+  ['missing prerequisite opt-in', "      linux_ownership_prerequisites: ${{ github.event_name == 'workflow_dispatch' && inputs.linux_ownership_prerequisites == true }}", ''],
+  ['unconditional prerequisite opt-in', "      linux_ownership_prerequisites: ${{ github.event_name == 'workflow_dispatch' && inputs.linux_ownership_prerequisites == true }}", '      linux_ownership_prerequisites: true'],
+  ['non-manual prerequisite opt-in', "github.event_name == 'workflow_dispatch' && inputs.linux_ownership_prerequisites == true", 'inputs.linux_ownership_prerequisites == true'],
   ['acceptance dependency', 'cadence_contracts, core, supervisor', 'cadence_contracts, supervisor'],
   ['acceptance invocation', '        run: node .github/scripts/verifyCiRun.mjs', '        run: node --version'],
   ['pull request trigger', '  pull_request:', '  unrelated_event:'],

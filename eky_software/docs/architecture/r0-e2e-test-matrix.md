@@ -94,13 +94,16 @@ näyttö ei muuta alla olevia lopullisia rivejä toteutetuiksi tai hyväksytyiks
 erottaa riippuvuuden hylkäysjärjestyksen regression, nykyisten Electron-
 koetapausten korjauksen jälkeisen todennuksen ja Linux-CI:n read-only-
 edellytystarkistuksen. T3b-L:n puhtaat parseri-, lukija- ja CI-kytkentätestit
-sisältyvät läpäisseeseen 95/95-sopimussarjaan; todellinen CI-probe on vielä
-tekemättä. Electron-korjaus odottaa erillistä päätöstä. Mikään näistä yksin
+sisältyvät läpäisseeseen 95/95-sopimussarjaan. Molemmat Linux-CI-havainnot
+saatiin; pääsyvihjeet olivat kielteiset. Ensimmäisen kokonaisajon T1-
+kytkentähylkäys ja paikallinen korjaus on kirjattu
+[CI-checkpointiin](e2e-test-environment.md#t3b-ln-ensimmäinen-ci-havainto-ja-sopimuskorjaus).
+Electron-korjaus hyväksyttiin erikseen, mutta sitä ei vielä toteutettu. Mikään näistä yksin
 ei täytä alla olevia lopullisia rivejä.
 
 | Valmistelun näyttö | Taso ja rajaus | Tila |
 | --- | --- | --- |
-| TEST-TREE-LINUX-PREREQ-001 | Suljettu metadatahavainto, host-lukujen guard, luku-/aikarajat ja CI-komennon status. Ei prosessipuun omistajuuskoe. | Sopimukset läpäisty; Linux-CI-havainto ja kokonaisajo avoinna. |
+| TEST-TREE-LINUX-PREREQ-001 | Suljettu metadatahavainto, host-lukujen guard, luku-/aikarajat ja CI-komennon status. Ei prosessipuun omistajuuskoe. | Molempien kuluttajien täydellinen kielteinen pääsyhavainto saatu; kokonaisajo hylätty T1-kytkentätestiin. Paikallinen korjaus läpäisty, korjatun revision CI avoinna. |
 
 | ID | Taso | Koe ja hyväksyntä | Tila |
 | --- | --- | --- | --- |
