@@ -32,8 +32,8 @@ päätetään edelleen erikseen kokeen näytön perusteella.
 Omistajan hyväksymä [T3b-valmistelu](e2e-test-environment.md#t3b-virhehaaran-ja-alustarajan-valmistelu)
 rajaa Electronin virheketjun, Linuxin read-only-CI-proben ja alustojen
 jatkopäätökset. Valmistelun jälkeen hyväksytty T3b-L:n probe ja CI-kytkentä
-on toteutettu. Riippuvuuskorjaus hyväksyttiin myöhemmin erikseen; sen
-toteutus odottaa T3b-L:n CI-sopimuskorjauksen sulkemista.
+on toteutettu ja CI-sopimuskorjauksen uusi kokonaisajo on läpäissyt.
+Riippuvuuskorjaus hyväksyttiin myöhemmin erikseen; sen toteutus on aloitettu.
 
 **T3:n jatko-Goal 2026-09-25:** omistaja hyväksyi T3b-L:n toteutuksen ja
 yhden seuratun CI-ajon sekä itsenäisen etenemisen T3:n loppuun erilliset
@@ -365,8 +365,31 @@ workspacen 3862 läpäissyttä testiä / kahdeksan aiempaa ohitusta, typecheck
 sekä backendin, webin ja desktopin buildit
 ovat paikallista näyttöä, eivät tämän CI-revision hyväksyntä.
 [Omistava CI-checkpoint](e2e-test-environment.md#t3b-ln-ensimmäinen-ci-havainto-ja-sopimuskorjaus)
-erottaa ensimmäisen hylkäyksen, korjauksen ja puuttuvan uuden CI-todennuksen.
+erottaa ensimmäisen hylkäyksen ja korjatun revision oman CI-todennuksen:
+`0235d7270bde2edf43dc4c998ff9bf86f23ec401`, ajo `36140255216`, yritys 1,
+38 onnistunutta jobia ja yksi ennalta valinnainen ohitus, ei hylkäyksiä.
 T3b-E:n nimetty patch ja kokeet on nyt hyväksytty; alustamekanismit eivät.
+
+T3b-E:n [paikallinen korjausnäyttö](e2e-test-environment.md#t3b-en-paikallinen-korjausnäyttö)
+sisältää todellisen RED -> GREEN -regression sekä nykyiset kaksi hyväksyttyä
+Electron-koetta. Koko paikallinen sarja läpäisi 3907 testiä ja säilytti
+kahdeksan aikaisempaa ohitusta. Typecheck läpäisi. Payloadin metatietoraja
+tarvitsee erillisen rajatun paketointipäätöksen; porttia ei ohiteta pelkän
+Playwright-koodin puuttumisen perusteella. Oman CI-revision portti on myös
+avoin; T3/R28 ei ole valmis.
+
+Linuxin seuraavaksi päätösehdotukseksi on katselmoitu
+[rajattu T3c-L:n namespace-koe](e2e-test-environment.md#t3c-ln-rajattu-namespace-koe-päätösehdotus).
+Se nimeää valmiin `unshare`-työkalun, namespace-kohtaiset luontioikeudet,
+ehdollisen synteettisen kuorman ja rajatun wait-todisteen. Toteutus ja ajo
+odottavat erillistä hyväksyntää; se ei ratkaise koko R28:aa.
+
+Windowsin seuraava päätösehdotus on
+[T3c-W:n neljän tapauksen adapterikoe](e2e-test-environment.md#t3c-wn-neljän-tapauksen-adapterikoe-päätösehdotus).
+Se rajaa erillisen omistajan, Playwright-bridgen, koekohtaisen native-
+builderin ja uuden kokeen apphost-buildin vain jo saatavilla olevin
+edellytyksin; puuttuva edellytys pysäyttää ilman asennusta. Toteutus odottaa omaa
+hyväksyntää sekä T3b-E:n todennusta; lopullista fixture-siirtoa ei hyväksytä.
 
 ## Skannaushavaintojen vaikutus jatkoon
 

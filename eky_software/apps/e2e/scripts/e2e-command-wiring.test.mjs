@@ -21,7 +21,7 @@ const preparations = [
   'pnpm --filter @eky/desktop e2e:prepare-backend',
 ];
 const projects = '--project=system-api --project=web-chromium --project=electron-development';
-const contractCommand = 'node --test scripts/e2e-command-wiring.test.mjs';
+const contractCommand = 'node --test scripts/e2e-command-wiring.test.mjs experiments/processOwnership/playwrightElectronLaunch.test.mjs';
 
 function assertWiring(rootManifest, e2eManifest) {
   assert.equal(rootManifest.scripts.test, 'pnpm --recursive test');
@@ -79,6 +79,8 @@ const mutations = [
   ['unconditional prerequisite', (r, e) => { e.scripts['e2e:electron:prepare'] = preparations.join(' ; '); }],
   ['missing recursive hook', (r) => { r.scripts.test = 'pnpm --filter @eky/backend test'; }],
   ['missing self hook', (r, e) => { delete e.scripts.test; }],
+  ['missing dependency regression', (r, e) => { e.scripts.test = 'node --test scripts/e2e-command-wiring.test.mjs'; }],
+  ['missing wiring regression', (r, e) => { e.scripts.test = 'node --test experiments/processOwnership/playwrightElectronLaunch.test.mjs'; }],
   ['wrong self hook', (r, e) => { e.scripts.test = 'node --test scripts/other.test.mjs'; }],
   ['wrong root alias', (r) => { r.scripts['test:e2e:security'] = 'pnpm --filter @eky/e2e e2e:critical'; }],
 ];

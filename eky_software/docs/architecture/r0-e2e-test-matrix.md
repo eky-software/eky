@@ -98,12 +98,15 @@ sisältyvät läpäisseeseen 95/95-sopimussarjaan. Molemmat Linux-CI-havainnot
 saatiin; pääsyvihjeet olivat kielteiset. Ensimmäisen kokonaisajon T1-
 kytkentähylkäys ja paikallinen korjaus on kirjattu
 [CI-checkpointiin](e2e-test-environment.md#t3b-ln-ensimmäinen-ci-havainto-ja-sopimuskorjaus).
-Electron-korjaus hyväksyttiin erikseen, mutta sitä ei vielä toteutettu. Mikään näistä yksin
+Korjatun revision oma CI läpäisi. Electron-korjauksen
+[paikalliset regressiot ja kaksi nykyistä koetta läpäisivät](e2e-test-environment.md#t3b-en-paikallinen-korjausnäyttö).
+Patchin oman revision CI on avoinna. Mikään näistä yksin
 ei täytä alla olevia lopullisia rivejä.
 
 | Valmistelun näyttö | Taso ja rajaus | Tila |
 | --- | --- | --- |
-| TEST-TREE-LINUX-PREREQ-001 | Suljettu metadatahavainto, host-lukujen guard, luku-/aikarajat ja CI-komennon status. Ei prosessipuun omistajuuskoe. | Molempien kuluttajien täydellinen kielteinen pääsyhavainto saatu; kokonaisajo hylätty T1-kytkentätestiin. Paikallinen korjaus läpäisty, korjatun revision CI avoinna. |
+| TEST-TREE-LINUX-PREREQ-001 | Suljettu metadatahavainto, host-lukujen guard, luku-/aikarajat ja CI-komennon status. Ei prosessipuun omistajuuskoe. | Molempien kuluttajien täydellinen kielteinen pääsyhavainto saatu; ensimmäisen ajon T1-hylkäys säilyy. Korjattu revisio läpäisi oman CI-ajonsa. Ei Linux-omistajuustodiste. |
+| TEST-ELECTRON-LAUNCH-PATCH-001 | Todellisen lukitun riippuvuuden hallittu regressio; ei prosesseja tai verkkoa. Lisäksi kaksi alkuperäistä eristettyä Windows-koetta. | Ennen patchia 17/43 läpäisyä, jälkeen 43/43; normaali ja before-ready exit 29 -koe läpäisivät native-kuitein. Oman revision CI avoinna; ei koko R28. |
 
 | ID | Taso | Koe ja hyväksyntä | Tila |
 | --- | --- | --- | --- |

@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const { createRequire } = require('node:module');
 const os = require('node:os');
 const path = require('node:path');
+const { isExpectedElectronLaunchFailure } = require('./electronLaunchFailure.cjs');
 
 const OPERATION_TIMEOUT_MS = 10_000;
 const STDIO_LIMIT_BYTES = 64 * 1024;
@@ -232,7 +233,7 @@ async function main() {
     try {
       await launch();
     } catch (error) {
-      requireCondition(!(error instanceof errors.TimeoutError));
+      requireCondition(isExpectedElectronLaunchFailure(error, errors.TimeoutError));
       launchRejected = true;
     }
     failurePhase = 'launchMustReject';

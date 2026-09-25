@@ -66,7 +66,7 @@ async function runCase({ root, scenario, node, electron, e2ePackage, dotnet, ass
   const profile = path.join(directory, 'profile');
   await mkdir(profile);
   await mkdir(path.join(directory, 'tmp'));
-  for (const name of ['nodeTree.cjs', 'electronMain.cjs', 'electronDriver.cjs'])
+  for (const name of ['nodeTree.cjs', 'electronMain.cjs', 'electronDriver.cjs', 'electronLaunchFailure.cjs'])
     await copyFile(path.join(here, 'fixtures', name), path.join(directory, name));
   const nonce = randomBytes(32).toString('hex');
   const child = spawn(dotnet, [assembly, node, root, scenario, nonce], {

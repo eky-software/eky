@@ -88,7 +88,7 @@ Linux cgroup ownership. Contract tests are not substitutes for those real
 process cases. Ordinary fixture migration and final T3 acceptance require the
 owner-approved session contract, platform prerequisites and full matrix.
 
-## Checkpoint 2026-09-25
+## Initial T3a checkpoint 2026-09-25
 
 Feasibility observations are complete, not all accepted: the three Node cases
 and normal Electron case passed. `electronLaunchFailure` remains failed.
@@ -109,6 +109,35 @@ There has been no fixture migration, dependency change, ordinary CI run or
 PR/main acceptance for this experiment. Next decisions and the complete
 remaining acceptance matrix stay in the owning T3 plan. Do not bypass the
 unhandled rejection or modify installed dependency code to make the case green.
+
+## Approved T3b-E dependency correction
+
+The owner separately approved a versioned, minimal correction to
+`playwright-core@1.62.1`, its regressions and the two unchanged Electron
+experiments. The initial failed evidence above remains failed. The correction
+observes the three concurrently started launch waits immediately, while keeping
+their original promises and preserving the original launch error. Cleanup
+failure or cancellation adds the closed call-log marker
+`electronLaunchCleanupUnverified`; the experiment rejects such an error rather
+than accepting it as the expected launch failure. Absence of that marker is not
+tree-absence proof: the independent native terminal receipt is still required.
+
+The patch belongs in `patches/playwright-core@1.62.1.patch`, with an exact pnpm
+workspace mapping and lockfile identity. No runtime monkey-patching, copied
+Electron launch implementation, global rejection suppression, version increase
+or new dependency is authorized. The canonical package `test` command must
+include the actual installed-bundle regressions, and a wiring contract protects
+that inclusion. These controlled dependency tests do not launch a real Electron
+process and are not R28 integration acceptance.
+
+On a dependency update, review both patch hunks, the original registry integrity,
+patched bundle digest, LICENSE/NOTICE and normal/error-path regressions. Remove
+the patch only after demonstrating an equivalent upstream fix with those tests.
+Keep the dependency audit, signature check, frozen installation and production
+payload exclusion checks. Test evidence is recorded in the
+[owning T3b-E checkpoint](../../../../docs/architecture/e2e-test-environment.md#t3b-en-täsmällinen-riippuvuusehdotus);
+the existence of this maintenance contract is not a claim that these checks have
+already passed.
 
 ## T3b-L read-only CI prerequisites
 

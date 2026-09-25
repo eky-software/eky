@@ -1,0 +1,32 @@
+diff --git a/lib/coreBundle.js b/lib/coreBundle.js
+index d9041dd0f009072511a7d808dec83121ff29e127..88544ae401bd63058c66269167f67699dd7748ee 100644
+--- a/lib/coreBundle.js
++++ b/lib/coreBundle.js
+@@ -44043,6 +44043,10 @@ var init_electron = __esm({
+         const nodeMatchPromise = waitForLine(progress2, launchedProcess, /^Debugger listening on (ws:\/\/.*)$/);
+         const chromeMatchPromise = waitForLine(progress2, launchedProcess, /^DevTools listening on (ws:\/\/.*)$/);
+         const debuggerDisconnectPromise = waitForLine(progress2, launchedProcess, /Waiting for the debugger to disconnect\.\.\./);
++        // Eky T3b-E modification: observe pending waits without replacing their results.
++        waitForXserverError.catch(() => {});
++        chromeMatchPromise.catch(() => {});
++        debuggerDisconnectPromise.catch(() => {});
+         try {
+           const nodeMatch = await nodeMatchPromise;
+           const nodeTransport = await WebSocketTransport.connect(progress2, nodeMatch[1]);
+@@ -44085,8 +44089,14 @@ var init_electron = __esm({
+           await progress2.race(app.initialize());
+           return app;
+         } catch (error) {
+-          await progress2.race(kill());
+-          throw error;
++          // Eky T3b-E modification: preserve the launch failure and report uncertain cleanup.
++          try {
++            await progress2.race(kill());
++          } catch {
++            progress2.metadata.log.push("electronLaunchCleanupUnverified");
++          } finally {
++            throw error;
++          }
+         }
+       }
+     };

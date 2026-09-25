@@ -526,9 +526,54 @@ R28, alustaratkaisu ja tavallisten fixturejen siirto jäävät erillisiksi porte
 **Omistajan päätös 2026-09-25:** yllä nimetty nykyisen
 `playwright-core@1.62.1`:n versionoitu minimikorjaus, regressiotestit ja
 kahden nykyisen Electron-kokeen todennus hyväksyttiin. Tämä korvaa
-ehdotuksen odottavan päätöksen, ei sen teknisiä rajoja. Toteutusta ei vielä
-ole aloitettu; ensin suljetaan T3b-L:n CI-sopimuksen korjaus. Ei uutta
+ehdotuksen odottavan päätöksen, ei sen teknisiä rajoja. Toteutus aloitettiin
+korjatun T3b-L-revision oman CI-varmennuksen läpäistyä. Ei uutta
 kirjastoa, versionostoa, tuotantokoodia tai aikarajojen lievennystä.
+
+##### T3b-E:n paikallinen korjausnäyttö
+
+Hyväksytty kaksikohtainen patch on toteutettu ja asennettu pnpm:n kautta.
+Version `1.62.1` registry-integrity sekä LICENSE/NOTICE säilyivät ennallaan;
+pakettiversiot eivät muuttuneet. Patchin SHA-256 on
+`e118d6303857130ea2d3cd7aee5c4075935522224cc6df0955f77d3a986a831c` ja
+asennetun `coreBundle.js`:n tarkistettu SHA-256
+`0d8b43a8e50f5453ddde5e5055ca1102ffdd927acf785fb88f90fd00dc94eb85`.
+Nämä ovat toistettavuustunnisteita, eivät upstreamin hyväksyntä tai oman
+muutoksen julkaisija-allekirjoitus.
+
+Todelliseen asennettuun riippuvuuteen kohdistettu 43 testin sarja antoi
+ennen patchia 17 läpäisyä ja 26 hylkäystä: 21 käsittelemätöntä rejectionia
+ja viisi puuttuvaa cleanup-merkkiä. Ensimmäinen RED säilyy. Patchin jälkeen
+sama sarja läpäisi 43/43 ja testikytkennän sarja 22/22. Testit käyttävät
+riippuvuuden omaa launchia, odotuksia, Progressia ja virheen palautusketjua;
+vain ulkoiset prosessi- ja transport-rajat korvataan hallituilla vastineilla.
+Versio/digest-portti vaatii lähdekatselmuksen jokaisessa päivityksessä.
+
+Nykyiset `electronNormal` ja ennen ready-vaihetta exit 29:n tuottava
+`electronLaunchFailure` läpäisivät muuttamattomilla aikarajoilla. Kummankin
+erillinen native-kuitti hyväksyttiin: luonti päättynyt, root poistunut,
+Job tyhjä ja omistaja sulkeutunut ilman hätäpysäytystä. Virhehaaran oikea
+launch-catch ja driver-session jälkeläinen havaittiin. Tulos ei väitä
+jälkeläistä Electronin lapseksi eikä tee wrapperista Electron-mainia.
+Alkuperäinen T3a-hylkäys ja sen diagnostiset yritykset säilyvät erillään.
+
+Koko paikallinen `pnpm test` läpäisi 3907 testiä; kahdeksan aikaisempaa
+alustakohtaista ohitusta säilyi. Frozen-asennus läpäisi, tuotanto- ja kaikki
+riippuvuudet kattavat auditoinnit eivät löytäneet tunnettuja haavoittuvuuksia,
+ja 160 registry-allekirjoitusta varmistettiin. Riippumattomat patch- ja
+regressiokatselmukset eivät löytäneet estäviä puutteita.
+
+Workspace-typecheck ja erillinen ei-julkaistava paketointi läpäisivät.
+Payloadin metatiedot kattava poissulkuportti ei kuitenkaan läpäissyt:
+nykyinen `deploy --prod` ja koko backend-stagen extraResource-kopiointi
+säilyttävät myös rakentamisen metatietoja. Pelkkä Playwrightin suoritettavien
+tiedostojen puuttuminen ei ole tämän laajemman portin hyväksyntä.
+Metatietojen rajaus ja sen regressiosuoja tarvitsevat erillisen, vain
+paketointiin kohdistuvan päätöksen; nykyinen Playwright-lupa ei valtuuta
+tuotantopaketoinnin muuttamista. Tarkistuspakettia ei julkaista tai korvata
+hyväksytyksi artifactiksi. Oman uuden revision CI on myös avoinna.
+Ei PR/main-hyväksyntää, alustamekanismin käyttöönottoa, tavallisten fixturejen
+siirtoa tai R28:n sulkemista.
 
 ##### Windowsin omistajuusrajan valinta
 
@@ -545,6 +590,72 @@ yleisratkaisuna. Playwrightin sisäinen kill ja omistajan tree-stop eivät
 saa muodostaa kilpailevia siivoojia; omistajaa ei saa menettää wrapperin
 poistuessa. Ellei julkisella rajapinnalla saada tätä todistettua, palataan
 worker-rajan päätökseen eikä yksityistä Playwright-protokollaa kopioida.
+
+##### T3c-W:n neljän tapauksen adapterikoe: päätösehdotus
+
+Seuraava Windows-päätös rajataan erilliseen neljän tapauksen kokeeseen,
+ei koko T3-matriisin toteutukseen. **Ei vielä hyväksytty tai toteutettu.**
+Ensin vaaditaan korjattu CI-lähtötila ja hyväksytyn T3b-E-patchin todennus.
+
+Kokeen ajuri käynnistää itsenäisen native-omistajan ennen Playwright-launchia.
+Playwright saa `executablePath`-arvoksi oman `bridge.exe`-apurin.
+Omistaja, ei bridge, luo ennalta sidotun Electronin suspended-tilassa
+atomisesti omaan Jobiin ja varmistaa jäsenyyden ennen resumea. Omistaja
+pysyy shell/bridge-alipuun ulkopuolella mutta T3a:n ulomman turva-Jobin
+sisällä. Electronin jälkeläiset kuuluvat myös sisempään Jobiin.
+[Sisäkkäiset Jobit](https://learn.microsoft.com/en-us/windows/win32/procthread/nested-jobs)
+on todennettava normaalikokeessa ennen virheinjektiota.
+
+Bridge välittää stdout/stderrin tavuina omilla kanavillaan; debugger-
+protokollaa ei parsita tai kopioida. Nykyiset `ElectronApplication`/`Page`-
+kutsut säilyvät. Erilliset, yhdelle asiakkaalle rajatut nykykäyttäjän
+kontrolliputket sitovat sukupolven, kertakäyttöisen launchin ja idempotentin
+stopin; etäasiakkaat, väärät sukupolvet ja replay hylätään. Kontrollikehys
+on enintään 4 KiB ja kummankin tulosteen puskuri 64 KiB. Ylivuoto tai
+jumittunut välitys on virhe. `application.process()` ei todista puun
+identiteettiä. Playwrightin shell-kill ei saa hävittää Job-omistajaa.
+
+Erikseen hyväksyttävä uusi kokeen apphost-build käyttää nykyistä .NET SDK:ta
+ja vain jo saatavilla olevia Windows-apphostin build-edellytyksiä.
+Nykyinen T3a-projekti ei tuota apphostia. Puuttuva edellytys pysäyttää;
+uuden työkalun tai paketin asennusta ei hyväksytä tämän kokeen osana.
+`WindowsJob.cs` ja nykyiset native-primitiivit voidaan linkittää muuttamatta
+installerin lähteitä. Yhden attribuutin nykyinen builder ei kuitenkaan
+riitä: kokeen erillinen assembly jättäisi sen pois ja käyttäisi omaa
+samansopimuksista `ProcessCreationJobAttribute`-tyyppiä, jossa on sekä
+`JOB_LIST` että rajattu stdio-`HANDLE_LIST`: kapasiteetti kaksi molemmissa
+alustusvaiheissa, nykyinen namespace ja konstruktorisopimus säilyttäen.
+Job-kahva ei periydy.
+[Attribuuttilistan ja kahvaperinnän sopimus](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-updateprocthreadattribute)
+sekä [putkien paikallinen rajaus](https://learn.microsoft.com/en-us/windows/win32/api/namedpipeapi/nf-namedpipeapi-createnamedpipew)
+kuuluvat toteutuksen katselmukseen. Tämä on uutta koekohtaista native-koodia,
+ei väite kaikkien nykyisten luokkien muuttumattomasta uudelleenkäytöstä.
+
+| Ensimmäinen koetapaus | Vaadittu näyttö |
+| --- | --- |
+| Normaali | Todellinen Page/API, argumentit, ympäristö, cwd, sandbox, stdio ja normaali close; erikseen hyväksytty sisemmän Jobin terminal. |
+| Before-ready-virhe | Electron itse luo eloon jäävän leafin ja poistuu edelleen ennen readyä tarkoituksellisella virhekoodilla; launch-catch ei ole timeout/unhandled rejection. |
+| Root poistuu ensin | Launch onnistuu, Electron-root poistuu mutta sisempi Job on havaittavasti vielä ei-tyhjä; omistaja siivoaa sen. |
+| Bridge poistuu | Electron on yhä elossa, caller-owner-kontrolli toimii ja omistaja pysyy käytössä; bridge-virhe ei muutu workload-onnistumiseksi. |
+
+Before-ready-adapterikoe on lisätapaus; se ei korvaa tai muuta T3b-E:n
+alkuperäistä ajurin luomaa leafiä käyttävää virhekoetta. Leaf-kuittaus ei
+saa päästää Electronia ready-tilaan ennen vikaa.
+
+Ulompi ohjain omistaa sentinelin kummankin Jobin ulkopuolella. Ajuri pysyy
+elossa sisemmän terminalin ja omistajan hallitun exitin yli. Sisemmän työn
+pitää mahtua ulomman kokeen 25 sekunnin työbudjettiin; sen 5 sekunnin
+cleanup-varaus ja 35 sekunnin hätäraja eivät kasva. Ulompi interventio on
+aina hätäsiivousta, ei sisemmän omistajuuden hyväksyntä.
+
+Tiedostoraja on `apps/e2e/experiments/processOwnership`-alueen erillinen
+owner/bridge-projekti, runner, synteettiset fixturet ja sopimustestit sekä
+omistavat ohjeet. Ei tuotanto-/installerimuutosta, uutta riippuvuutta,
+nykyisten fixturejen siirtoa tai R28:n sulkua. Launch/stop-tilakone ja
+viestisopimukset katselmoidaan ja testataan ennen oikeita prosesseja.
+Työkuorma, cleanup ja näyttö säilyvät erillisinä; epävarmuus estää restartin
+ja juuren poiston. Tarkoitukselliset caller-/owner-lossit ja muut lopullisen
+T3-matriisin viat ratkaistaan erikseen, ei oleteta tämän kokeen kattamiksi.
 
 ##### Linuxin CI-edellytysten rajattu selvitys
 
@@ -740,8 +851,105 @@ testit ja CI:n hyväksyntäehdot säilyvät. Riippumaton katselmus ei löytänyt
 korjattavaa. Kohdesarja läpäisi 61/61, koko paikallinen `pnpm test` 3862
 testiä ja kahdeksan ennestään määriteltyä ohitusta sekä workspace-typecheck.
 Backendin, webin ja desktopin paikalliset buildit läpäisivät myös.
-Korjattu revisio tarvitsee vielä oman CI-varmennuksensa; paikallinen tulos
-ei muuta ensimmäisen ajon hylkäystä hyväksytyksi.
+Korjatun revision `0235d7270bde2edf43dc4c998ff9bf86f23ec401`
+[oma seurattu CI-ajo 36140255216](https://github.com/eky-software/eky/actions/runs/36140255216),
+yritys 1, läpäisi: 38 onnistunutta jobia, yksi ennalta valinnainen ohitus,
+ei epäonnistuneita jobeja ja `V2 acceptance` hyväksytty. Molemmat manuaaliset
+diagnostiikkavalinnat olivat pois päältä. Tämä sulkee CI-sopimuskorjauksen,
+ei muuta alkuperäistä hylkäystä tai todenna myöhemmin aloitettua Playwright-
+patchia. Linuxin pääsyhavainto tulee edelleen ensimmäisestä ajosta.
+
+##### T3c-L:n rajattu namespace-koe: päätösehdotus
+
+T3b-L:n kielteiset cgroup-pääsyvihjeet eivät kerro user/PID-namespacejen
+saatavuudesta. Seuraavaksi ehdotetaan yhtä ehdollista synteettistä koetta
+kummassakin nykyisessä Linux-jobissa. **Tätä ei ole vielä hyväksytty eikä
+toteutettu.** Ensin vaaditaan korjatun lähtörevision CI-portti.
+
+Erikseen hyväksyttävä työkalu on runnerilla ennestään oleva util-linux
+`unshare`; ei asennusta, kääntäjää, systemd-palvelua, cgroup-kirjoitusta,
+sudoa, suojausrajoituksen löysennystä tai vaihtoehtoiseen tapaan siirtymistä.
+Kiinteä argumenttijono on `--user --map-current-user --setgroups=deny
+--mount --propagation=private --mount-proc=/proc --pid --fork
+--kill-child=SIGKILL --`, jonka jälkeen tulevat nykyinen Node ja oma
+synteettinen init-scripti validoituine koeargumentteineen. Ei shelliä tai
+ulkopuolelta valittavaa ohjelmaa. [Util-linuxin sopimus](https://man7.org/linux/man-pages/man1/unshare.1.html)
+määrittää tämän luonnin ja normaalin lapsen odotuksen.
+
+Hyväksyntä koskee nimenomaisesti uuden user-namespacen sisäisiä
+luontioikeuksia sekä sen yksityistä proc-mountia. Numerollinen käyttäjä
+pysyy samana eikä host-root-oikeuksia hankita. Uuden namespacen luonnissa
+syntyy silti [namespace-kohtaisia capability-oikeuksia](https://man7.org/linux/man-pages/man7/user_namespaces.7.html).
+Init hyväksyy vain PID 1:n, muuttumattomat ei-nollatunnisteet ja nollatut
+`CapEff`, `CapPrm`, `CapInh` ja `CapAmb` -arvot ennen työkuormaa.
+`CapBnd` ei ole sama asia. `--keep-caps` ja root-mäppäys ovat kiellettyjä.
+
+Ulkoinen havaitsija omistaa erillisen sentinelin ja `unshare`-wrapperin.
+Wrapper odottaa namespace-initin päättymistä. Init käynnistää vasta tuoreen
+sukupolven `READY`/`GO`-vaihdon jälkeen yhden rootin ja sen irrotetun,
+TERM-signaalia vastustavan leafin. Kontrollille luodaan oma stdin-putki;
+CI:n stdin ei periydy. Vastaukset kulkevat rajatulla fd3-kanavalla ja
+stdout/stderr pidetään erillään. Root/leaf eivät peri näitä kontrolli- tai
+vastauskahvoja; niiden rajatut kuittaukset kulkevat initin omistamien omien
+kanavien kautta. Ympäristö sulkee preload- ja muut suoritus-hookit pois.
+
+Leaf-yhteyden siirto määritellään ennen toteutusta: init käynnistää rootin
+stdio-valinnalla `['ignore', 'ignore', 'ignore', 'ipc', 'pipe']` ja säilyttää
+oman fd4-kanavan pään. Root välittää vain vastapään leafille valinnalla
+`['ignore', 'ignore', 'ignore', 'ignore', 4]`, sulkee oman kopionsa ja poistuu.
+Leaf käyttää fd4:ää kaksisuuntaisena `net.Socket`-kanavana. Init luo tuoreen
+haasteen vasta rootin odotetun **exit**-tapahtuman jälkeen; vasta oikean
+sukupolven leaf-vastaus saman 8 sekunnin budjetin sisällä kelpaa.
+Rootin **close**-tapahtumaa ei odoteta ennen haastetta, koska leaf pitää
+kanavaa tarkoituksella auki. Kanava ei anna GO-/stop-valtuutta tai cleanup-
+todistetta. [Noden stdio- ja exit/close-sopimus](https://nodejs.org/docs/latest-v24.x/api/child_process.html)
+sekä [fd-pohjainen Socket](https://nodejs.org/docs/latest-v24.x/api/net.html#new-netsocketoptions)
+ohjaavat toteutusta. Ennen exit-tapahtumaa puskuroidut vastaukset, väärä tai
+toistettu haaste, EOF, kanavavirhe ja myöhäinen vastaus hylätään testeissä.
+
+Rootin odotetun exitin jälkeen vaaditaan tuore leaf-elossa-kuittaus, joka
+syntyy vasta TERM-käsittelijän asentamisen jälkeen. Vasta sitten havaitsija
+sulkee kontrollin. Initin exit 41 varataan vain ajoissa käsitellylle,
+odotetulle EOF:lle; expiry, virhe ja puuttuva näyttö eivät saa käyttää sitä.
+Hyväksytty normaali wrapper-wait ja sulkeutuneet virrat tukevat vain tämän
+namespace-instanssin purkuhavaintoa. Initin oma ennakkokuitti tai wrapperin
+tappaminen eivät riitä. [Kernelin purkukoodi](https://github.com/torvalds/linux/blob/v6.8/kernel/pid_namespace.c#L160-L258)
+ja [util-linuxin wait-ketju](https://github.com/util-linux/util-linux/blob/v2.39.3/sys-utils/unshare.c#L936-L941)
+ovat tämän lähdepäättelyn peruste, eivät vielä EKY:n koetulos.
+
+Kaikki rajat lasketaan samasta prosessien välillä vertailukelpoisesta
+monotonisesta aloitushetkestä: READY 5 s, työkuorman näyttö 8 s, initin
+expiry 10 s, leafin 12 s, wrapperin rajattu hätäkatkaisu 14 s, sentinelin
+expiry 16 s ja raportointiraja 20 s. Deadline tarkistetaan myös ennen GO:ta,
+EOF:n hyväksymistä, exit 41:tä ja onnistumispäätöstä. Nämä ovat uuden kokeen
+valvontabudjetteja, eivät lupaus kovasta seinäkelloajasta tai nykyisten
+testien aikarajojen muutos. Ei rajatonta forkkia, busy-loopia, SIGSTOPia tai
+ptracea. Hätäkatkaisu kohdistuu vain omaan yhä avoimeen lapsiprosessiin,
+ei PID-hakuun. Epävarmuus estää seuraavan kokeen ja testijuuren poiston.
+Sentinelin on vastattava tuoreeseen haasteeseen ennen ja jälkeen purun,
+ja se pysäytetään sekä odotetaan erikseen.
+
+Kytkentä olisi uusi oletuksena `false` oleva manuaalinen
+`linux_pid_namespace_experiment` nykyisessä caller/reusable-CI-ketjussa,
+vasta kummankin nykyisen Linux-testikomennon onnistumisen jälkeen.
+Nykyinen testivirhe säilyy. Todennettu puuttuva edellytys on kielteinen
+havainto; tuntematon bootstrap-virhe jää epäselväksi, eikä GO:n jälkeistä
+virhettä tulkita puuttuvaksi edellytykseksi. Odottamaton koevirhe hylkää
+ajon. Ei uutta workflowta, jobia, retryä tai heikennettyä hyväksyntää.
+
+Tiedostoraja on nykyisen kokeen alueen `runPidNamespaceExperiment.mjs`,
+`pidNamespaceInit.mjs`, `pidNamespaceActor.mjs`, rajattu sopimus ja testit;
+lisäksi nykyiset kaksi workflowta, niiden kytkentätestit ja omistavat ohjeet.
+Puhtaat testit suojaavat argumentit, kahvat, launch-portin, deadlinet,
+virheet, sentinelin erottelun ja normaalin CI-komennon statuksen.
+Julkaistaan vain rajattu suljettu JSON, sidottuna kuluttajaan, checkoutiin,
+ajoon ja yritykseen. Työkuorma, cleanup ja näyttö erotetaan.
+
+Tämä ei kokeile wrapperin pakkokuolemaa, todellista caller-/owner-lossia,
+Chromiumia tai tuotantoprofiilia eikä hyväksy fixture-siirtoa tai R28:aa.
+Node ei muutu yleiseksi orphan-reaperiksi; lyhyt koe nojaisi lopussa
+kernelin namespace-purkuun. Pitkäikäisen initin reaping ja omistajan
+kuoleman yli säilyvä odotustodiste tarvitsevat edelleen oman ratkaisunsa.
 
 #### T3:n lopullinen hyväksyntänäyttö
 
