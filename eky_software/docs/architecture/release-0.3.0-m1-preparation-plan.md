@@ -29,6 +29,15 @@ T1:n hyväksynnästä sekä T3:n ja tuotantokorjausten jatkotyöstä.
 koskevat vain rajattua toteutettavuuskoetta. Varsinainen
 Windows-/POSIX-/Electron-omistajuusratkaisu ja tavallisten testien siirto
 päätetään edelleen erikseen kokeen näytön perusteella.
+Omistajan hyväksymä [T3b-valmistelu](e2e-test-environment.md#t3b-virhehaaran-ja-alustarajan-valmistelu)
+rajaa nyt Electronin virheketjun, Linuxin read-only-CI-proben ja alustojen
+jatkopäätökset. Riippuvuuskorjausta, probea tai CI-kytkentää ei toteutettu.
+
+**T3:n jatko-Goal 2026-09-25:** omistaja hyväksyi T3b-L:n toteutuksen ja
+yhden seuratun CI-ajon sekä itsenäisen etenemisen T3:n loppuun erilliset
+päätösportit säilyttäen. [Toteutusvaltuus](e2e-test-environment.md#t3b-ln-toteutusvaltuus)
+ei hyväksy vielä riippuvuuskorjausta tai alustamekanismeja. Toteutus ja
+näyttö kirjataan omiin checkpointteihinsa, ei valmistelun läpäisyiksi.
 
 ## Lähtötilan näyttö
 
@@ -74,7 +83,7 @@ tai riippuvuusporttia, jos rajaus myöhemmin koskettaa niitä.
 | T1a / R27 | Startup-failure-testit tavalliseen desktop-testivalintaan ja valinnan regressiosopimus. | Hyväksytty; paikallisen näytön lisäksi PR/main-portit läpäisty. Ei tuotantokoodia. |
 | T1b / R27 | Kuusi puuttuvaa installer-harness-testitiedostoa nykyisten vaadittujen komentojen kautta ajettaviksi, myös ajokytkentää suojaava testi. | Hyväksytty T1a:n kanssa; R27 suljettu. Ei raskaan CI:n kevennystä. |
 | T2 / R29 | `security`/`fault`-projektivalinnan ja koko build-ketjun vastaavuus puhtaasta, vanhentuneesta ja epäonnistuneesta valmistelusta. | Hyväksytty; paikallinen näyttö, Linux-CI sekä PR/main-portit läpäisty. [Integraatio](#t2n-integraatiohyväksyntä). |
-| T3 / R28 | Omistajuus käynnistyksestä todettuun koko puun poistumiseen; epävarma cleanup ei hyväksy restartia tai poista fixtureä. | T3a:n erillinen koe suoritettu: 4/5; varhainen Electron-launch-virhe hylättiin. Varsinainen mekanismi ja kuluttajien siirto odottavat [jatkopäätöstä](e2e-test-environment.md#t3an-tulos-ja-jatkopäätös). R28 avoin. |
+| T3 / R28 | Omistajuus käynnistyksestä todettuun koko puun poistumiseen; epävarma cleanup ei hyväksy restartia tai poista fixtureä. | T3a:n erillinen koe suoritettu: 4/5; varhainen Electron-launch-virhe hylättiin. [T3b-valmistelu](e2e-test-environment.md#t3b-virhehaaran-ja-alustarajan-valmistelu) erottaa riippuvuuskorjauksen, Linux-CI-havainnon ja myöhemmän alustakokeen hyväksynnät. R28 avoin. |
 | A1 / R01 | Luonnoksen avaamisen kohde, näkyvät arvot ja tallennuksen kohde pysyvät samana myös vastausten valmistuessa väärässä järjestyksessä. | T1 ensin; hyväksyntään käytettävän E2E-fixturen T3-puute korjattu ja sen build-valinta todennettu. |
 | A2 / R05, A3 / R06 | Ensimmäisen createn tunnisteen säilyminen ja muokatun lomakkeen vanhentunut readiness. | Omat rajatut jatkopalat; A1:n hyväksyntä ei sulje niitä. Backendin hyväksyntäauktoriteetti säilyy. |
 | W7-valmistelu | Omistajan hyväksyttävä poisto-, karanteeni-, palautus- ja nollan työtilan sopimus. | Suunnittelu kulkee rinnalla; toteutus tarvitsee C/K/G/H:n nimetyt kyvykkyydet. |
@@ -321,6 +330,19 @@ tarkistettiin. Tämä checkpoint säilyttää myös hylätyn koetapauksen ja
 jatkopäätökset; se ei ole kaikkien kokeiden, tavallisten fixturejen tai
 PR/main-integraation hyväksyntä.
 
+### T3b-valmistelun checkpoint
+
+2026-09-25: lukitun Playwrightin virheketju, Windowsin vaihtoehdot ja
+Linux-CI:n read-only-probe valmisteltu ja katselmoitu kahdella read-only-
+aliagentilla. Katselmuksiin ei jäänyt korjattavia huomautuksia.
+Dokumenttien 89 suhteellista linkkiä ja otsikkoankkuria, diffin muotoilu
+sekä julkaistavan sisällön yksityisyys tarkistettiin. Tuotanto-, testi-,
+riippuvuus- ja workflow-koodia ei muutettu eikä uusia prosessikokeita tai
+CI-ajoja tehty. Sovelluksen testi-, diagnostiikka- ja palautusportit eivät
+sovellu tähän dokumentointimuutokseen, eikä niitä merkitä läpäistyiksi.
+Tämä päättää vain rajatun valmistelun; T3b-E/T3b-L:n toteutuspäätökset,
+alustamekanismi ja R28:n hyväksyntä jäävät avoimiksi.
+
 ## Skannaushavaintojen vaikutus jatkoon
 
 S030-01-S030-05:n omistus ja tarkat päätösrajat ovat
@@ -365,6 +387,9 @@ soveltuvuus perustellaan erikseen; T:n testiajot eivät todista W7:n tuotantoa.
 Ensimmäinen hyväksytty toteutusraja T1a/T1b on valmis.
 Myös T2:n paikallinen näyttö, Linux-CI ja PR/main-integraatio on hyväksytty.
 T3a on tutkittu ja sen varhaisen Electron-virheen yhteensopivuusraja kirjattu.
+Rajattu T3b-valmistelu nimeää [seuraavat päätökset](e2e-test-environment.md#seuraavat-päätökset-ja-työn-järjestys):
+täsmällinen riippuvuuskorjaus ja read-only-CI-probe hyväksytään erikseen;
+jälkimmäinen ei todista cgroupin kirjoitusoikeutta tai turvallista cleanupia.
 T3:n omistajuusmekanismi ratkaistaan edelleen ennen tavallisten fixturejen
 muutoksia. A1 käyttää nykyistä
 feature-/API-sopimusta; jos rajaus vaatii

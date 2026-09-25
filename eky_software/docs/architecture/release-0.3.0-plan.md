@@ -3,8 +3,10 @@
 ## Päätös ja nykyinen tila
 
 **Nykytila 2026-09-25: M0, T1 ja T2 hyväksytty; T3-suunnitelma valmisteltu,
-T3a-koe suoritettu osittaisin tuloksin (4/5).** Varhainen Electron-launch-
-virhe on avoin käyttöönoton este; R28:aa ei suljettu.
+T3a-koe suoritettu osittaisin tuloksin (4/5), T3b-jatkovalmistelu kirjattu.**
+Varhainen Electron-launch-virhe on avoin käyttöönoton este; R28:aa ei suljettu.
+Omistaja hyväksyi T3b-L:n toteutuksen ja yhden seuratun CI-ajon; T3:n loppu
+etenee Goalina [nimetyt päätösportit säilyttäen](e2e-test-environment.md#t3b-ln-toteutusvaltuus).
 Viimeisin varmennettu paikallinen ja etäinen
 `main` on T2:n normaali PR #277 -merge
 `5cc58b7139a6616bc9403a5724f93d929e90cf25`. Tämän revision
@@ -38,6 +40,10 @@ mukaan. Myös [Linux-CI ja integraatio](release-0.3.0-m1-preparation-plan.md#t2n
 on hyväksytty. Omistajan hyväksymä T3a-koe on suoritettu;
 [tulos ja jatkopäätös](e2e-test-environment.md#t3an-tulos-ja-jatkopäätös)
 erottavat osittaisen kokeen omistajuusmekanismin hyväksynnästä ja kuluttajien siirrosta.
+[T3b-valmistelu](e2e-test-environment.md#t3b-virhehaaran-ja-alustarajan-valmistelu)
+nimeää lukitun Playwrightin virheenkäsittelyaukon sekä erikseen hyväksyttävän
+Linux-CI:n read-only-proben. Korjausta, probea tai uusia CI-ajoja ei tehty;
+alustojen omistajuusmekanismi ja tavallisten fixturejen siirto ovat avoimia.
 T2 ei sulje M1:n muita testikorjauksia.
 
 ### M0:n historiallinen tapahtumaketju
@@ -352,8 +358,10 @@ M0-selvitys ei avaa muuta 0.3.0-toteutusta ennen integraatioporttia.
 hyväksytyltä M0-pohjalta. T1a/T1b:n toteutus ja PR/main-integraatio on
 hyväksytty. Myös T2:n toteutus, paikallinen näyttö, Linux-CI ja PR/main-
 integraatio on hyväksytty. T3:n lähdekatselmus ja testimatriisi on valmisteltu;
-T3a-koe on suoritettu, mutta Electronin varhaisen virheen yhteensopivuus ja
-alustojen käyttöönotto odottavat jatkopäätöstä. Muut
+T3a-koe on suoritettu ja T3b-valmistelu rajaa riippuvuuden virhekorjauksen,
+Linuxin CI-edellytystarkistuksen sekä myöhemmän alustakokeen erillisiksi
+päätöksiksi. Electronin yhteensopivuus ja alustojen käyttöönotto odottavat
+edelleen toteutus- ja hyväksyntänäyttöä. Muut
 testikorjaukset ovat avoinna.
 Tarkka jako on [M1-suunnitelmassa](release-0.3.0-m1-preparation-plan.md):
 T1a/T1b testien ajokytkentä, T2 projektivalinta ja build-edellytykset,

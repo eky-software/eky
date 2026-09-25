@@ -90,6 +90,11 @@ on suoritettu: kolme Node-tapausta ja normaali Electron läpäisivät;
 varhainen Electron-launch-virhe hylättiin käsittelemättömän rejectionin
 vuoksi. Linuxista tehtiin vain read-only-edellytysselvitys. Tämä osittainen
 näyttö ei muuta alla olevia lopullisia rivejä toteutetuiksi tai hyväksytyiksi.
+[T3b-valmistelu](e2e-test-environment.md#t3b-virhehaaran-ja-alustarajan-valmistelu)
+erottaa riippuvuuden hylkäysjärjestyksen regression, nykyisten Electron-
+koetapausten korjauksen jälkeisen todennuksen ja Linux-CI:n read-only-
+edellytystarkistuksen. Tämä uusi näyttö on vielä tekemättä; mikään näistä
+yksin ei täytä alla olevia rivejä.
 
 | ID | Taso | Koe ja hyväksyntä | Tila |
 | --- | --- | --- | --- |

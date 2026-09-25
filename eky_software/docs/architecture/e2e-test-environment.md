@@ -228,8 +228,10 @@ Suunnitelman todistusrajat säilyvät myös myöhemmissä muutoksissa.
 
 ### T3: Koko prosessipuun poistumistodiste
 
-**Tila 2026-09-25: rajattu T3a-koe suoritettu (4/5); varhainen Electron-
-virhe ja käyttöönoton päätös ovat avoinna.** Lähtökohta on hyväksytty T2-main;
+**Tila 2026-09-25: rajattu T3a-koe suoritettu (4/5); omistaja hyväksyi
+T3b-valmistelun ja sen jälkeen T3b-L:n toteutuksen.** T3:n loppuosa etenee
+Goalina erilliset päätösportit säilyttäen. Varhainen Electron-virhe ja käyttöönoton päätös ovat
+avoimia. Lähtökohta on hyväksytty T2-main;
 [M1:n päätösportti](release-0.3.0-m1-preparation-plan.md#t3n-toteutukseen-siirtymisen-portti)
 erottaa valmistelun, teknisen kokeen ja varsinaisen kuluttajien siirron.
 
@@ -400,7 +402,7 @@ osoittaa Playwrightin luovan launch-rivien promisensa ennen niiden kaikkien
 odottamista; havaitun käsittelemättömän rejectionin tarkka korjaus ratkaistaan
 erikseen. Riippuvuuden lähdettä ei paikattu eikä poikkeusta vaimennettu.
 
-**Suositeltu seuraava rajattu päätös on T3b-valmistelu, ei fixturejen siirto:**
+**Omistajan hyväksymä seuraava rajaus on T3b-valmistelu, ei fixturejen siirto:**
 
 1. Rajaa varhaisen Electron-launch-virheen yhteensopivuus nykyisellä lukitulla
    Playwrightilla ja päätä omistava virhe-/cleanup-sopimus. Mahdollinen
@@ -419,6 +421,218 @@ avoimiksi. Koerajaus ei itsessään edellytä tuotannon Diagnostics-, Activity-,
 audit-, tukipaketti-, käyttöohje- tai backup-muutosta: kyse on vain
 synteettisestä testiharnessista. Uutta tuotantolifecycleä ei toteutettu,
 joten packaged backup/restore- tai installer-hyväksyntää ei väitetä tehdyksi.
+
+#### T3b: Virhehaaran ja alustarajan valmistelu
+
+Omistaja hyväksyi 2026-09-25 tämän rajatun valmistelun. Lähdebaseline on
+T3a:n `babb9557`; aiemman kokeen tuloksia ei nimetä uusiksi testeiksi.
+Tässä vaiheessa luetaan lähteet ja säilynyt näyttö, arvioidaan vaihtoehdot
+sekä valmistellaan seuraavat päätökset. Ei riippuvuuksien tai asennettujen
+pakettien muutoksia, uusia prosessikokeita, CI-ajoa tai fixturejen siirtoa.
+
+##### Electronin virhehaara
+
+Nykyinen `apps/e2e/package.json` lukitsee `@playwright/test`-version 1.62.1.
+Lukitun `playwright-core`-paketin `lib/coreBundle.js`-tiedoston
+`waitForLine` ja `Electron.launch` sekä saman version
+[alkuperäinen lähde](https://github.com/microsoft/playwright/blob/v1.62.1/packages/playwright-core/src/server/electron/electron.ts#L238-L297)
+osoittavat seuraavan käsittelyaukon:
+
+- Node-, Chromium-, X-server- ja debugger-disconnect-odotukset aloitetaan
+  rinnakkain. `nodeMatchPromise` odotetaan ensin, sen jälkeen Node-yhteys.
+- Chromium- ja X-server-promiset liitetään odotettuun raceen vasta tämän
+  jälkeen. Disconnect-promisen catch kytketään vasta Node-yhteyden jälkeen.
+- `waitForLine` hylkää myös prosessin exitin ja stderrin sulkeutumisen
+  vuoksi. Sisäisen promisen käsittely ei käsittele automaattisesti
+  async-funktion palauttaman promisen hylkäystä.
+
+Tämä lähdehavainto selittää T3a:ssa tallennetun Chromium-odotuksen
+käsittelemättömän rejectionin mahdollisen reitin. Muiden odotusten sama
+riski on lähdehavainto, ei väite niiden toteutuneesta virheestä.
+Tarkkaa kaikkien tapahtumien ajoitusjärjestystä ei todistettu uudella ajolla.
+Node kuvaa [unhandledRejection-tapahtuman](https://nodejs.org/docs/latest-v24.x/api/process.html#event-unhandledrejection)
+promisen omaksi käsittelyrajaksi; pelkkä ulomman `launch()`-promisen catch
+ei korjaa erillisen sisäisen promisen käsittelyä.
+
+Kokeen `fixtures/electronDriver.cjs` hylkää käsittelemättömän virheen
+tarkoituksella. Sen muuttaminen onnistumiseksi, globaalin virheen nieleminen,
+Node-virhetilan lieventäminen tai before-ready-vian siirtäminen myöhemmäksi
+ei kelpaa korjaukseksi. Varhainen käynnistysvirhe ja prosessipuun siivous
+ovat eri sopimuksia; native-kuitti ei korjaa Playwrightin virheketjua.
+
+**Rajattu korjauspäätös valmisteltavaksi:** ensin arvioidaan täsmällinen
+ylläpitäjän korjausversio, jos sellainen voidaan osoittaa lähdediffillä ja
+regressiotestillä. Uudempi versionumero ei yksin riitä. Muussa tapauksessa
+vaihtoehto on erikseen hyväksyttävä, versionoitu ja toistettavasti asentuva
+minimikorjaus vain `playwright-core@1.62.1`:n tähän launch-odotusketjuun.
+Se ei ole ajonaikainen monkey patch tai käsin muutettu `node_modules`.
+
+Korjauksen pitää omistaa kaikkien heti käynnistettyjen odotusten hylkäykset
+alusta asti ja välittää alkuperäinen launch-virhe edelleen. Myös abort,
+stdio-close ja cleanupin virhe kuuluvat regressioon. Uutta yleistä
+Electron-ohjauskirjastoa ei rakenneta tämän vuoksi. Oma riippuvuuskorjaus
+kasvattaa ylläpito- ja toimitusketjuvastuuta: tarvitaan tarkka patch/digest,
+lukittu asennus, lisenssi-/NOTICE-tarkistus, poistoehto upstream-korjauksen
+jälkeen sekä [riippuvuuspolitiikan](dependency-policy.md) tarkistukset.
+Tämän vaihtoehdon hyväksyntää tai korjattua julkaisuversiota ei vielä ole.
+
+Hyväksytyn korjauksen ensimmäinen näyttö on hallittu hylkäysjärjestyksen
+regressio; sen jälkeen nykyinen normaali Electron-koe ja sama before-ready-
+virhe muuttamattomilla ehdoilla itsenäisesti omistetussa Jobissa.
+Alkuperäinen T3a-hylkäys säilyy. Vasta todellinen launch-catch, ei timeout
+tai unhandled rejection, sekä erillinen hyväksytty cleanup-kuitti voivat
+täyttää virhekokeen odotuksen. Koko T3-matriisi on edelleen erillinen portti.
+
+##### Windowsin omistajuusrajan valinta
+
+| Vaihtoehto | Vaikutus ja päätösraja |
+| --- | --- |
+| Koko Playwright-ajuri tai testisessio omassa Jobissa | T3a:n kokeilema containment-raja. Nykyiset `Page`- ja `ElectronApplication`-oliot toimivat vain niitä omistavassa ajurissa. Koko session lopetus ei todista yhden runtime-sukupolven poistumista kesken testin ennen restartia; tarvitaan vielä erillinen runtime-raja. |
+| Oma ajuriworker ja rajattu viestirajapinta | Omistus ennen launchia on mahdollinen, mutta nykyiset testit käyttävät suoraan `evaluate`-, `Page`- ja window-kahvoja. Niitä ei voi siirtää JSON-viesteinä. Tämä olisi laajempi testirajapinnan muutos, ei pieni fixture-apuri; ei ensisijainen seuraava pala. |
+| Native-launch-adapteri nykyisen Playwright-kahvan alla | Säilyttäisi nykyiset testien API:t parhaiten. Se on vasta seuraavan kokeen ehdokas: stdio, shell-wrapper, virheketju, ulkopuolinen Job-omistaja ja terminal-kuitti pitää todistaa. `application.process()` ei saa muuttua väitteeksi Electron-mainin tai koko puun identiteetistä. |
+
+Suositus on korjata tai rajata riippuvuuden virheketju ensin ja kokeilla
+sen jälkeen nykyiset testien API:t säilyttävää adapteria erillisellä luvalla.
+T3a:n koko ajurin Job säilyy kokeen turvarajana, ei valmiiksi valittuna
+yleisratkaisuna. Playwrightin sisäinen kill ja omistajan tree-stop eivät
+saa muodostaa kilpailevia siivoojia; omistajaa ei saa menettää wrapperin
+poistuessa. Ellei julkisella rajapinnalla saada tätä todistettua, palataan
+worker-rajan päätökseen eikä yksityistä Playwright-protokollaa kopioida.
+
+##### Linuxin CI-edellytysten rajattu selvitys
+
+T3a:n paikallinen read-only-havainto ei osoita hosted-CI:n delegointia.
+Suositeltu seuraava pala on siksi erikseen hyväksyttävä, pelkästään lukeva
+prerequisite-probe nykyisissä `e2e-system-security`- ja `e2e-web-critical`-
+jobeissa. Se ei käynnistä synteettistä prosessipuuta tai omistajuusadapteria.
+
+Ensimmäinen probe käyttää Node-standardikirjastoa ja lukee vain oman
+prosessin `/proc/self/cgroup`- ja `/proc/self/mountinfo`-kytkennän sekä siitä
+yksiselitteisesti ratkaistun cgroup v2 -kohteen tyyppi-, events- ja
+käyttöoikeusmetadatan. Mountin juuri ja namespace huomioidaan; epäselvä
+kohdistus on `unknown`, ei arvattu juurihakemisto. `cgroup.kill` on
+write-only: siitä tarkistetaan vain olemassaolo ja pääsyvihje, ei sisältöä.
+Ei `cgroup.procs`-jäsenlistaa, PID-inventaariota tai hakemistopuun kiertoa.
+
+Probe ei luo cgroupia, avaa kohdetta kirjoittamista varten, siirrä tai
+signaloi prosessia, aktivoi palvelua eikä nosta oikeuksia. Myös systemd-
+kyselyt jätetään tästä ensimmäisestä rajauksesta pois (`notAttempted`).
+Niiden tarve ja hallintaväylän saatavuus ratkaistaan myöhemmin; systemd:n
+pelkkä asennus ei osoita omistajuuden edellytyksiä.
+
+Ehdotettu suljettu tulossopimus:
+
+- `schemaVersion: 1`, `evidence: ciPrerequisiteOnly`, kuluttaja
+  `system-api` tai `web-chromium`, todellinen checkout-SHA sekä CI-ajon
+  tunniste ja yritys. PR:n head-SHA ei korvaa checkoutin mahdollista merge-SHA:ta.
+- `observation: complete | incomplete`; v2-kohdistus, cgroup-tyyppi,
+  mountin `rw | ro | unknown` ja kill-tiedoston saatavuus suljetuilla enum-arvoilla.
+- `accessHints` erottaa hakemistoon luomisen sekä nykyisten procs-/kill-
+  kohteiden pääsyvihjeet `allowed | denied | unknown`. Ne eivät todista
+  tulevan lapsiryhmän luontia, migraatiota tai kill-operaatiota.
+- `systemd: notAttempted`, `ownershipProof: notAttempted`. Ei `supported`
+  tai cleanup-hyväksyntää pelkän metadatan perusteella.
+
+Lukukohtainen enimmäismäärä on 256 KiB, kokonaisbudjetti 10 sekuntia ja
+julkaistava tulos yksi enintään 4 KiB:n JSON-rivi. Rajanylitys tai lukuvirhe
+tuottaa rajatun syykoodin ja puutteellisen havainnon, ei retryä tai raakaa
+stderr-tulostetta. Ei erillistä tiedostoartifactia, polkuja, PID/UID-arvoja,
+palvelunimiä, kone-/versioinventaarioa tai ympäristömuuttujien sisältöä.
+Puuttuva kyvykkyys on kelvollinen kielteinen havainto, ei Linux-tuen läpäisy.
+Proben oma virhe ei ohita tavallisia testejä tai heikennä niiden statusta;
+puuttuva/puutteellinen havainto ei kelpaa jatkopäätöksen myönteiseksi näytöksi.
+
+**Toteutuksen ehdotettu tiedostoraja ja ajokytkentä:**
+
+1. `apps/e2e/experiments/processOwnership/probeLinuxPrerequisites.mjs`
+   sekä saman alueen `linuxPrerequisiteContract.mjs` ja
+   `linuxPrerequisiteContract.test.mjs`. Puhtaat parseri-, schema-,
+   redaktio-, kokoraja- ja virhetestit ennen CI:tä; synteettiset mountroot-,
+   namespace-, escaped-path-, read-only-, threaded- ja puuttuvan tiedon tapaukset.
+2. Git-juuren `.github/workflows/ci-cadence-contracts.yml` ja sen kutsuma
+   `.github/workflows/ci.yml`: uusi oletuksena `false` oleva manuaalinen
+   `linux_ownership_prerequisites`-valinta välitetään eksplisiittisesti.
+   Nykyiset riskivalinnat, required checkit ja aikarajat säilyvät.
+3. Luku tapahtuu nykyisten `Run isolated system security E2E tests`- ja
+   `Run critical web E2E journeys` -askelten samassa ajokontekstissa juuri
+   ennen nykyistä komentoa; webissä Chromium-asennuksen jälkeen.
+   Askelten nimet ja varsinaiset testikomennot eivät muutu.
+   CI-kytkennän sopimustesti lisätään nykyisten workflow-sopimusten rinnalle;
+   se suojaa oletusarvon, välityksen sekä tavallisen testikomennon suorituksen
+   ja exit-statuksen säilymisen myös proben virheessä tai aikakatkaisussa.
+4. Kytkentä ja yksi seurattu manuaalinen CI-ajo hyväksytään ennen toteutusta.
+   Tämä ei ole kevyt probe-only-workflow: normaali manuaalinen kadenssi
+   ajaa myös nykyiset asennukset, buildit ja testit. Ensimmäinen virhe ja
+   proben puuttuva näyttö säilytetään erikseen, ei uusintaa vihreän hakemiseksi.
+
+[Kernelin cgroup v2 -sopimus](https://docs.kernel.org/admin-guide/cgroup-v2.html)
+erottaa prosessin jäsenyyden ja reapingin: `populated=0` ei todista zombie-
+prosessien odottamista. Käynnistä-ja-siirrä-malli jättää forkkiraon eikä
+siirrä valmiita jälkeläisiä automaattisesti. Migraatio riippuu myös lähteen
+ja kohteen yhteisen esivanhemman oikeudesta, jota tulevan kohteen puuttuessa
+ei ole todistettu. Kill käsittelee operaation aikaiset forkit, ei korjaa
+aiempaa sallittua poistumista omistetusta ryhmästä.
+
+Vasta CI-havainnon jälkeen valitaan erikseen delegoitu cgroup + native-
+omistaja tai hallittu systemd-palveluraja. Systemd-ympäristössä noudatetaan
+[delegointisopimusta](https://systemd.io/CGROUP_DELEGATION/), ei kirjoiteta
+palvelunhallinnan omistamaa puuta mielivaltaisesti. Päätös nimeää syntymisen
+omistettuun ryhmään ennen työkuormaa, build-työkalut, reapingin, poistumisen
+estot ja caller-/owner-lossin siivouksen. Pelkkä cgroup ei anna Windowsin
+kill-on-close-sopimusta. Ensimmäinen oikeaprosessikoe on synteettinen Node-
+puu ja erikseen omistettu ulkopuolinen sentinel, ei tavallisten fixturejen siirto.
+
+##### Jatkon kontrolli- ja tulossopimus
+
+Ennen adapterikoodia hyväksytään yhteinen, testikohtainen sopimus:
+
+- Omistaja luodaan ennen workloadia, sidotaan uuteen sukupolveen ja
+  testijuureen. Omistuskuitti ei ole health/readiness-kuitti.
+- Kontrollikanava on erillinen stdout/stderristä. Rajattu start/stop ja
+  suljettu schema; tuntematon, väärän sukupolven tai toistettu komento ei
+  käynnistä tai kohdista signaalia uuteen prosessiin.
+- Tuloksessa erotetaan `workloadOutcome`, `cleanupOutcome` ja
+  `evidenceOutcome`. Virhe jää virheeksi onnistuneesta cleanupista huolimatta.
+- Terminal vaatii valmistuneen luonnin, suljetun launch-portin, saman
+  omistusobjektin tyhjyystodisteen ja omistajan hallitun sulun. Linuxin
+  reaping-raja ratkaistaan erikseen. Puuttuva tai myöhäinen kuitti ei
+  nollaa jo kirjattua epävarmuutta.
+- Cleanupin epävarmuus estää restartin ja juuren poiston. Säilyvä alkuperäinen
+  virhe ei oikeuta keskeyttämään cleanupia. Julkaistava havainto käyttää vain
+  suljettuja syykoodeja, ei PID:itä, polkuja, ympäristöä tai raakaa virhettä.
+
+Nämä ovat tulevan toteutuksen hyväksyttäväksi valmisteltuja ehtoja, eivät
+T3a:n raakakuittien uusi hyväksymistapa. Tuotannon Diagnostics-, Activity-,
+audit-, tukipaketti- ja backup-sopimukset eivät muutu.
+
+##### Seuraavat päätökset ja työn järjestys
+
+| Pala | Ennen toteutusta hyväksyttävä rajaus | Mitä se ei hyväksy |
+| --- | --- | --- |
+| T3b-E | Täsmällinen Playwright-korjausversio tai versionoitu minimipatch, riippuvuusarvio, kohdistetut regressiot sekä nykyisen normaalin ja varhaisen virhekokeen todennus. Lähderaja riippuvuuden odotusketjuun ja nykyiseen `processOwnership`-koealueeseen. | Globaalin virheen vaimennus, muuttunut fault, uusi yleinen Electron-ajuri, fixturejen siirto tai R28:n sulkeminen. |
+| T3b-L | Yllä rajattu read-only-probe, sen testit ja oletuksena suljettu CI-kytkentä sekä yksi seurattu nykyisen kadenssin ajo. Voi edetä E:stä riippumatta. | cgroup-kirjoitus, systemd-palvelu, delegoinnin/oikeuksien muutos, native-omistaja tai väite Linux-tuen valmistumisesta. |
+| Seuraava alustakoe | E:n ja Linux-havainnon jälkeen oma päätös Windows-adapterin ja Linux-mekanismin lähteistä, build-esiehdoista, kontrollista, terminalista ja testeistä. Windowsin ehdokas on nykyisen koealueen erillinen native-adapteri; Linuxin toteutuspolku päätetään vasta mekanismin mukana. | Kuluttajien siirto ilman lopullista T3-matriisia ja normaaleja hyväksyntäportteja. |
+
+T3b-valmistelun lupa ei itsessään hyväksy mitään näistä toteutuspaloista.
+Seuraavaa koetta ei käynnistetä ennen asianomaisen päätösrajan ratkaisua.
+T3a:n 4/5 jää historiaksi ja R28 avoimeksi. Tässä dokumentointivaiheessa
+ei suoritettu uusia Windows-/Linux-prosessikokeita tai CI-ajoja.
+
+##### T3b-L:n toteutusvaltuus
+
+Omistaja hyväksyi 2026-09-25 yllä rajatun Linux-proben, sen CI-kytkennän
+ja yhden seuratun normaalin kadenssin CI-ajon. Samalla luotiin Goal koko
+T3:n loppuun viemiselle; tämä ei ohita taulukon riippuvuus-, alustamekanismi-
+tai oikeusmuutospäätöksiä. T3b-E:stä valmistellaan täsmällinen ehdotus ennen
+riippuvuusmuutosta. R28 jää avoimeksi lopullisiin hyväksyntäportteihin asti.
+
+T3b-L:n aloitusrajat: vain koealueen Node-standardikirjastoprobe ja sen
+sopimustestit sekä kahden nykyisen workflow'n oletuksena suljettu kytkentä.
+Ei synteettisiä työkuormia, cgroup-kirjoituksia, systemd-kyselyjä tai uusia
+riippuvuuksia. Pääagentti vastaa paikallisten kohdetestien seurannasta;
+CI:lle nimetään erillinen lukuseuranta ennen käynnistystä. Ensimmäinen
+epäonnistunut näyttö säilytetään. Tarkka checkout sidotaan CI:n Git-lukuun,
+ei oletukseen PR:n head-revisiosta. Proben tulos erotetaan testien tuloksesta.
 
 #### T3:n lopullinen hyväksyntänäyttö
 
