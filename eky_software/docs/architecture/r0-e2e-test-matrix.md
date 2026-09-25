@@ -85,6 +85,12 @@ eivät yksin todista R28:n portittoman jälkeläisen poistumista. Niiden aiempaa
 läpäisyä ei peruta eikä koroteta uudeksi koko puun omistajuustodisteeksi.
 UI-/HTTP-/business-audit-/tukipakettimuutokset eivät kuulu näihin testisopimuksiin.
 
+Erillinen [T3a-toteutettavuuskoe](e2e-test-environment.md#t3an-tulos-ja-jatkopäätös)
+on suoritettu: kolme Node-tapausta ja normaali Electron läpäisivät;
+varhainen Electron-launch-virhe hylättiin käsittelemättömän rejectionin
+vuoksi. Linuxista tehtiin vain read-only-edellytysselvitys. Tämä osittainen
+näyttö ei muuta alla olevia lopullisia rivejä toteutetuiksi tai hyväksytyiksi.
+
 | ID | Taso | Koe ja hyväksyntä | Tila |
 | --- | --- | --- | --- |
 | TEST-TREE-OWNERSHIP-001 | Omistajasopimus ja oikeat Windows-/Linux-prosessit | Root ensin tai stopin aikana pois; portiton/vastustava jälkeläinen, myöhäinen fork ja ryhmästä irtautuminen; puu todistetusti tyhjä, ulkopuolinen sentinel säilyy. | blocked-by-decision |

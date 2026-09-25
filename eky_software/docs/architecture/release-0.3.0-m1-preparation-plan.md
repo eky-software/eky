@@ -24,10 +24,11 @@ suunnitelman mukaan. Linux-CI ja täsmällisen merge-revision portit läpäisiv�
 [Toteutusportti](#t2n-toteutukseen-siirtymisen-portti) erottaa tämän
 T1:n hyväksynnästä sekä T3:n ja tuotantokorjausten jatkotyöstä.
 
-**T3 2026-09-25: omistajuusmekanismin suunnitelma ja T3a-koerajaus valmisteltu.**
-Toteutus saa edetä ilman uutta kysymystä vain aiemmin hyväksytyissä
-sopimuksissa. T3:n nimetty Windows-/POSIX-/Electron-omistajuuspäätös
-on edelleen ratkaistava ennen koodimuutoksia.
+**T3 2026-09-25: T3a-koe suoritettu; neljä tapausta läpäisi, yksi hylättiin.**
+[Koetulos ja jatkopäätös](e2e-test-environment.md#t3an-tulos-ja-jatkopäätös)
+koskevat vain rajattua toteutettavuuskoetta. Varsinainen
+Windows-/POSIX-/Electron-omistajuusratkaisu ja tavallisten testien siirto
+päätetään edelleen erikseen kokeen näytön perusteella.
 
 ## Lähtötilan näyttö
 
@@ -73,7 +74,7 @@ tai riippuvuusporttia, jos rajaus myöhemmin koskettaa niitä.
 | T1a / R27 | Startup-failure-testit tavalliseen desktop-testivalintaan ja valinnan regressiosopimus. | Hyväksytty; paikallisen näytön lisäksi PR/main-portit läpäisty. Ei tuotantokoodia. |
 | T1b / R27 | Kuusi puuttuvaa installer-harness-testitiedostoa nykyisten vaadittujen komentojen kautta ajettaviksi, myös ajokytkentää suojaava testi. | Hyväksytty T1a:n kanssa; R27 suljettu. Ei raskaan CI:n kevennystä. |
 | T2 / R29 | `security`/`fault`-projektivalinnan ja koko build-ketjun vastaavuus puhtaasta, vanhentuneesta ja epäonnistuneesta valmistelusta. | Hyväksytty; paikallinen näyttö, Linux-CI sekä PR/main-portit läpäisty. [Integraatio](#t2n-integraatiohyväksyntä). |
-| T3 / R28 | Omistajuus käynnistyksestä todettuun koko puun poistumiseen; epävarma cleanup ei hyväksy restartia tai poista fixtureä. | Lähdekatselmus tehty; [T3a-koerajaus](#t3n-toteutukseen-siirtymisen-portti) odottaa päätöstä. Mekanismia tai kuluttajien siirtoa ei ole toteutettu. |
+| T3 / R28 | Omistajuus käynnistyksestä todettuun koko puun poistumiseen; epävarma cleanup ei hyväksy restartia tai poista fixtureä. | T3a:n erillinen koe suoritettu: 4/5; varhainen Electron-launch-virhe hylättiin. Varsinainen mekanismi ja kuluttajien siirto odottavat [jatkopäätöstä](e2e-test-environment.md#t3an-tulos-ja-jatkopäätös). R28 avoin. |
 | A1 / R01 | Luonnoksen avaamisen kohde, näkyvät arvot ja tallennuksen kohde pysyvät samana myös vastausten valmistuessa väärässä järjestyksessä. | T1 ensin; hyväksyntään käytettävän E2E-fixturen T3-puute korjattu ja sen build-valinta todennettu. |
 | A2 / R05, A3 / R06 | Ensimmäisen createn tunnisteen säilyminen ja muokatun lomakkeen vanhentunut readiness. | Omat rajatut jatkopalat; A1:n hyväksyntä ei sulje niitä. Backendin hyväksyntäauktoriteetti säilyy. |
 | W7-valmistelu | Omistajan hyväksyttävä poisto-, karanteeni-, palautus- ja nollan työtilan sopimus. | Suunnittelu kulkee rinnalla; toteutus tarvitsee C/K/G/H:n nimetyt kyvykkyydet. |
@@ -265,23 +266,36 @@ Electronin launchia ei voi nimetä launch-hetkestä omistetuksi pelkän
 myöhemmin saadun prosessikahvan perusteella. Linuxin nykyiset CI-kuluttajat
 tarvitsevat oman todistettavan ratkaisunsa.
 
-**Suositeltu seuraava hyväksyntä: vain T3a-toteutettavuuskoe.** Se kattaa
+**Omistajan hyväksyntä 2026-09-25: vain T3a-toteutettavuuskoe.** Se kattaa
 erillisen test-only Windows Job -session ja Electron-liitännän kokeen
 nykyisellä työkalupohjalla sekä Linux-edellytysten read-only-tarkistuksen.
 Ei uusia riippuvuuksia, tuotantokoodia, installerin nykyisen protokollan
 muutosta, tavallisten fixturejen siirtoa, pidempiä aikarajoja, kevyempiä
 CI-ehtoja tai koneen suojaus-/palveluasetusten muutosta.
 Linuxin cgroup-kirjoitukset, systemd-palvelu, delegointi, oikeusmuutos tai
-uusi native-toolchain eivät kuulu tähän ehdotukseen. Tarvittava täsmällinen
+uusi native-toolchain eivät kuulu tähän hyväksyntään. Tarvittava täsmällinen
 jatkopäätös valmistellaan näytön perusteella ennen niitä.
+
+Kokeen lähteet rajataan `apps/e2e/experiments/processOwnership`-alueelle.
+Nykyisiä Job-primitiivejä käytetään muuttamatta installerin lähteitä tai
+protokollaa. Erillinen session omistaja käynnistää synteettisen Node-puun
+tai Playwright/Electron-ajurin ennen työkuorman suoritusta omistettuun
+Jobiin. Ajurin omistaminen ei vielä ole tavallisen Electron-fixturen
+läpinäkyvä adapteri. Koe raportoi tämän rajan ja `process()`-kahvan
+todellisen merkityksen; käyttöönottoa ei päätellä pelkästä launch-läpäisystä.
+Pääagentti vastaa ajoseurannasta ja ensimmäisen virheen säilyttämisestä.
+Koedata ja tulokset pidetään eristetyssä temp-juuressa, paikallinen näyttö
+Gitistä ohitettuna. Kokeelle ei lisätä tavallisen testikomennon tai CI:n
+automaattista ajokytkentää.
 
 T3a:n valmistuminen tarkoittaa päätöskelpoista näyttöä valituista
 mekanismeista ja niiden rajoista, ei R28:n korjausta. Varsinaisen siirron
 portti vaatii omistajan hyväksymät alustamekanismit, session/stop-
 sopimuksen, tiedostorajat, build-esiehdot ja omistavan suunnitelman testit.
-Koodimuutoksia tai oikeaprosessikokeita ei tehty tässä suunnittelussa.
-Sovelluksen testit eivät ole dokumenttimuutoksen hyväksyntänäyttöä;
-suunnitelman tarkistus kohdistuu lähdevastaavuuteen, linkkeihin ja rajaukseen.
+Alkuperäisessä suunnittelussa ei tehty koodimuutoksia tai oikeaprosessikokeita.
+Myöhemmän hyväksytyn kokeen todellinen näyttö on
+[T3a-tuloskirjauksessa](e2e-test-environment.md#t3an-tulos-ja-jatkopäätös).
+Se ei ole sovelluksen julkaisu- tai integraatiohyväksyntä.
 
 ### T3-valmistelun checkpoint
 
@@ -291,8 +305,21 @@ agentilla. Katselmuksiin ei jäänyt korjattavia huomautuksia. Muuttuneiden
 dokumenttien 79 suhteellista linkkiä ja niiden otsikkoankkurit sekä diffin
 muotoilu ja julkaistavan sisällön yksityisyys tarkistettiin.
 T2:n integraatiotila varmistettiin uudelleen; aiempia testituloksia ei ajettu
-uudelleen tässä dokumentointivaiheessa. T3a odottaa omistajan päätöstä.
+uudelleen tässä dokumentointivaiheessa. T3a odotti silloin omistajan päätöstä;
+yllä kirjattu myöhempi hyväksyntä koskee vain erillistä koetta.
 Tämä päättää vain valmistelun, ei T3:n toteutusta tai R28:n hyväksyntää.
+
+### T3a-kokeen checkpoint
+
+2026-09-25: erillinen test-only-koe ja tuloskirjaus katselmoitu kahdella
+aliagentilla. Katselmuksessa korjattiin testityökuorman temp-rajaus,
+havaintojen odotus, hätäkatkaisun epävarman tilan raportointi ja myöhäisen
+tuloksen hyväksymisriski. Koetuloksen sanamuoto ja vanhentunut tilateksti
+korjattiin. Viiden muuttuneen ohjetiedoston 84 suhteellista linkkiä ja
+otsikkoankkuria sekä diffin muotoilu ja julkaistavan sisällön rajaus
+tarkistettiin. Tämä checkpoint säilyttää myös hylätyn koetapauksen ja
+jatkopäätökset; se ei ole kaikkien kokeiden, tavallisten fixturejen tai
+PR/main-integraation hyväksyntä.
 
 ## Skannaushavaintojen vaikutus jatkoon
 
@@ -337,8 +364,9 @@ soveltuvuus perustellaan erikseen; T:n testiajot eivät todista W7:n tuotantoa.
 
 Ensimmäinen hyväksytty toteutusraja T1a/T1b on valmis.
 Myös T2:n paikallinen näyttö, Linux-CI ja PR/main-integraatio on hyväksytty.
-T3:n omistajuusmekanismi
-ratkaistaan edelleen ennen sen muutoksia. A1 käyttää nykyistä
+T3a on tutkittu ja sen varhaisen Electron-virheen yhteensopivuusraja kirjattu.
+T3:n omistajuusmekanismi ratkaistaan edelleen ennen tavallisten fixturejen
+muutoksia. A1 käyttää nykyistä
 feature-/API-sopimusta; jos rajaus vaatii
 backendin tai navigoinnin uuden liiketoimintasäännön, se palautuu suunnitteluun.
 W7:n päätöksiä ei kysytä yhtenä epämääräisenä lupana, vaan sen omistavan

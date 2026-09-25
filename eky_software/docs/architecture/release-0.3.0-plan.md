@@ -3,7 +3,9 @@
 ## Päätös ja nykyinen tila
 
 **Nykytila 2026-09-25: M0, T1 ja T2 hyväksytty; T3-suunnitelma valmisteltu,
-T3a-koerajaus odottaa hyväksyntää.** Viimeisin varmennettu paikallinen ja etäinen
+T3a-koe suoritettu osittaisin tuloksin (4/5).** Varhainen Electron-launch-
+virhe on avoin käyttöönoton este; R28:aa ei suljettu.
+Viimeisin varmennettu paikallinen ja etäinen
 `main` on T2:n normaali PR #277 -merge
 `5cc58b7139a6616bc9403a5724f93d929e90cf25`. Tämän revision
 [V2-ajo](https://github.com/eky-software/eky/actions/runs/36094675603) ja
@@ -33,8 +35,9 @@ Seuraavan suunnittelu-Goalin tarkka
 on toteutettu ja paikallisesti todennettu
 [T2-checkpointin](release-0.3.0-m1-preparation-plan.md#t2n-toteutus-ja-paikallinen-näyttö)
 mukaan. Myös [Linux-CI ja integraatio](release-0.3.0-m1-preparation-plan.md#t2n-integraatiohyväksyntä)
-on hyväksytty. Seuraavan [T3:n teknisen kokeen päätösportti](release-0.3.0-m1-preparation-plan.md#t3n-toteutukseen-siirtymisen-portti)
-on valmisteltu; se ei vielä hyväksy omistajuusmekanismia tai kuluttajien siirtoa.
+on hyväksytty. Omistajan hyväksymä T3a-koe on suoritettu;
+[tulos ja jatkopäätös](e2e-test-environment.md#t3an-tulos-ja-jatkopäätös)
+erottavat osittaisen kokeen omistajuusmekanismin hyväksynnästä ja kuluttajien siirrosta.
 T2 ei sulje M1:n muita testikorjauksia.
 
 ### M0:n historiallinen tapahtumaketju
@@ -348,8 +351,9 @@ M0-selvitys ei avaa muuta 0.3.0-toteutusta ennen integraatioporttia.
 **Tila 2026-09-25:** rajattu suunnitteluvalmistelu tehty ja katselmoitu
 hyväksytyltä M0-pohjalta. T1a/T1b:n toteutus ja PR/main-integraatio on
 hyväksytty. Myös T2:n toteutus, paikallinen näyttö, Linux-CI ja PR/main-
-integraatio on hyväksytty. T3:n lähdekatselmus, koerajaus ja testimatriisi on
-valmisteltu; T3a:n tekninen koe tarvitsee erillisen päätöksen. Muut
+integraatio on hyväksytty. T3:n lähdekatselmus ja testimatriisi on valmisteltu;
+T3a-koe on suoritettu, mutta Electronin varhaisen virheen yhteensopivuus ja
+alustojen käyttöönotto odottavat jatkopäätöstä. Muut
 testikorjaukset ovat avoinna.
 Tarkka jako on [M1-suunnitelmassa](release-0.3.0-m1-preparation-plan.md):
 T1a/T1b testien ajokytkentä, T2 projektivalinta ja build-edellytykset,
@@ -403,7 +407,7 @@ katalogisopimus ja retentionin reunaehdot täydentävät D029-listaa; niitä ei
 kuitata valmiiksi pelkän vanhan diagnostiikkalistan läpäisyllä.
 
 T-paketista T1a/T1b ja T2 on hyväksytty yllä mainittujen integraatioiden
-näytöllä. T3:n koerajaus odottaa hyväksyntää. A/B/C/K/D/E/F/G/H/I:n
+näytöllä. T3a:n osittainen koetulos ei sulje T3/R28:aa. A/B/C/K/D/E/F/G/H/I:n
 tila on **suunniteltu / korjaus ja hyväksyntä tekemättä**.
 Päätösportin vaikutusalue odottaa hyväksyntää.
 

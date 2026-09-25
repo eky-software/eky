@@ -228,8 +228,8 @@ Suunnitelman todistusrajat säilyvät myös myöhemmissä muutoksissa.
 
 ### T3: Koko prosessipuun poistumistodiste
 
-**Tila 2026-09-25: lähdekatselmus ja rajattu koesuunnitelma valmisteltu;
-T3a:n toteutuspäätös avoin.** Lähtökohta on hyväksytty T2-main;
+**Tila 2026-09-25: rajattu T3a-koe suoritettu (4/5); varhainen Electron-
+virhe ja käyttöönoton päätös ovat avoinna.** Lähtökohta on hyväksytty T2-main;
 [M1:n päätösportti](release-0.3.0-m1-preparation-plan.md#t3n-toteutukseen-siirtymisen-portti)
 erottaa valmistelun, teknisen kokeen ja varsinaisen kuluttajien siirron.
 
@@ -353,7 +353,7 @@ tukea tai muun alustan poistamista ei päätetä tämän Linux-selvityksen nojal
 
 #### T3a: Rajattu toteutettavuuskoe
 
-Suositus on hyväksyä seuraava pieni checkpoint ennen kuluttajien siirtoa:
+Omistaja hyväksyi seuraavan pienen checkpointin ennen kuluttajien siirtoa:
 
 - Test-only Windows-sessiokoe nykyisillä Job-primitiiveillä ja jo hyväksytyllä
   .NET-työkalupohjalla. Ei uusia npm-/NuGet-riippuvuuksia, tuotantokoodia,
@@ -374,6 +374,51 @@ Suositus on hyväksyä seuraava pieni checkpoint ennen kuluttajien siirtoa:
 T3a:n lupa ei hyväksy hiljaisesti Linux-cgroup-kirjoituksia tai uutta
 testipalvelua. Jos nykyinen Windows-pohja vaatii hyväksytyn rajauksen
 ulkopuolisen muutoksen, myös se palautuu päätettäväksi ennen toteutusta.
+
+#### T3a:n tulos ja jatkopäätös
+
+2026-09-25: omistajan hyväksymä erillinen toteutettavuuskoe on suoritettu.
+[Koelähteet ja manuaalinen ajo-ohje](../../apps/e2e/experiments/processOwnership/README.md)
+eivät ole tavallisen testifixturen tai CI:n ajoketjussa. Installerin lähteet
+ja protokolla, tuotantokoodi, sovellusversio sekä riippuvuudet säilyivät.
+Tulos on päätösaineistoa, ei R28:n sulkeminen tai PR/main-hyväksyntä.
+
+| Näyttö | Tulos ja raja |
+| --- | --- |
+| Erillinen native-koe | Käännös läpäisi ilman uusia pakettiriippuvuuksia. Job-jäsenyys tarkistetaan ennen suspended-prosessin resumea; keskeneräinen luonti estää poistumiskuitin. |
+| Sopimukset ja nykyinen komentokytkentä | Kokeen 6 sopimusta ja olemassa olevat 20 komentokytkennän regressiota läpäisivät. E2E-alueen typecheck läpäisi. Nämä eivät korvaa oikeaprosessinäyttöä. |
+| Synteettiset Node-puut | Pysäytys, root ensin pois ja rootin virheellinen exit läpäisivät. Portiton detached-jälkeläinen jäi rootin jälkeen eloon ja koko Job tyhjennettiin. Alkuperäinen exit 23 säilyi erillisenä. |
+| Normaali Electron | Käynnistys, eristetyt polut, args/env, rajattu stdio, sandbox ja normaali close läpäisivät. `application.process()` ei tässä sopimuskokeessa tunnistanut Electronin main-prosessia; adapteri ei saa rinnastaa niitä. |
+| Varhainen Electron-launch-virhe | **Hylätty.** Before-ready-virhe saavutettiin, mutta Playwrightin launch-ketju tuotti käsittelemättömän `Process failed to launch!` -rejectionin. Se ei ollut fixturen odotettu, launch-catchissa käsitelty virhe. Ensimmäinen näyttö ja kaksi vaihe/origin-diagnostiikkaa säilytettiin; ehtoja, vikaa tai aikarajoja ei muutettu. |
+| Epäonnistuneen kokeen cleanup | Native-kuitti raportoi valmistuneen luonnin ja tyhjän Jobin. Kokonaiskoe pysyi hylättynä; käynnistin ei hyväksy myöhäistä raakakuittia restart-/poistoluvaksi. |
+| Linux | Read-only-edellytysselvitys tehtiin. Varsinaisen CI-runnerin testikohtainen delegointi, launch-hetken jäsenyys ja zombie/reaping-sopimus ovat todentamatta. Ei oikeaprosessinäyttöä tai alustahyväksyntää. Konekohtaiset havainnot pysyvät paikallisina. |
+
+Windows-koe omistaa koko synteettisen Playwright-ajurin ennen sen suoritusta.
+Se ei todista läpinäkyvää Electron-executable-wrapperia tai tavallisen
+testifixturen käyttökelpoista session-rajapintaa. Virhehaaran lähdekatselmus
+osoittaa Playwrightin luovan launch-rivien promisensa ennen niiden kaikkien
+odottamista; havaitun käsittelemättömän rejectionin tarkka korjaus ratkaistaan
+erikseen. Riippuvuuden lähdettä ei paikattu eikä poikkeusta vaimennettu.
+
+**Suositeltu seuraava rajattu päätös on T3b-valmistelu, ei fixturejen siirto:**
+
+1. Rajaa varhaisen Electron-launch-virheen yhteensopivuus nykyisellä lukitulla
+   Playwrightilla ja päätä omistava virhe-/cleanup-sopimus. Mahdollinen
+   riippuvuuspäivitys tarvitsee erillisen riippuvuusportin; virheen
+   vaimentamista, timeoutin nostoa tai tapauksen poistamista ei hyväksytä.
+2. Valmistele erillinen read-only-prerequisite-koe todelliselle Linux-CI-
+   runnerille. Sen ajokytkentä hyväksytään ennen workflow-muutosta; ei
+   cgroup-kirjoituksia, systemd-palvelua tai oikeuksien nostoa tämän nojalla.
+3. Valitse ennen toteutusta Windowsin koko testisession worker-raja tai
+   erillinen native-launch-adapteri sekä Linuxin vastaava omistajuusraja.
+   Nimeä tiedostot, kontrolli-/terminal-sopimus, build-esiehdot ja jäljelle
+   jäävän alla olevan matriisin testausjärjestys.
+
+Tavalliset fixturet, A1:n E2E-hyväksyntä, Linux-tuki ja lopullinen T3 jäävät
+avoimiksi. Koerajaus ei itsessään edellytä tuotannon Diagnostics-, Activity-,
+audit-, tukipaketti-, käyttöohje- tai backup-muutosta: kyse on vain
+synteettisestä testiharnessista. Uutta tuotantolifecycleä ei toteutettu,
+joten packaged backup/restore- tai installer-hyväksyntää ei väitetä tehdyksi.
 
 #### T3:n lopullinen hyväksyntänäyttö
 
