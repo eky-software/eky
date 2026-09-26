@@ -334,6 +334,18 @@ cannot continue inspection or yield success. A metadata receipt is not sudo
 authorization, live manager reachability, feature support or cleanup evidence.
 The injected tests do not inspect the actual host or change its configuration.
 
+The fifth slice extracts the existing observation child lifecycle into internal
+`managedNamespaceCommand`; the show-only API and its tests remain unchanged.
+It adds a fixed manager Version probe and exact, noninteractive policy listings
+for the named observation/stop commands. Prepared launch binds all caller IDs
+and reuses one frozen command for authorization and execution, without retry.
+Policy listing does not guarantee execution. Successful launch means only a
+queued request, not READY, ownership, tree absence or permission to delete roots.
+All commands retain bounded output, strict decoding, exit/close/EOF and original
+deadlines. Stop execution remains unwired until the session owner can bind it
+to its private invocation receipt. Tests inject every command; no live sudo or
+systemd call, service, CI run or consumer migration was performed by this slice.
+
 Use the [current continuation entry](../../../../docs/architecture/release-0.3.0-m1-preparation-plan.md#jatka-tästä)
 for the next task. Historical experiments do not substitute for actual fixture
 migration and removal of the replaced active ownership path after equivalent

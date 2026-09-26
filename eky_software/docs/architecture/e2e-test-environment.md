@@ -2028,6 +2028,43 @@ manageriyhteys, sudo-politiikka, komentojen tuki ja session elinkaari ovat
 seuraavan integraation portteja. Oikeaa host-esitarkistusta, managerikutsua,
 CI-koetta tai fixture-siirtoa ei tässä checkpointissa tehty.
 
+**Viides checkpoint: rajattu komentoadapteri ja kertakäyttöinen launch.**
+Vanhan show-only-lukijan prosessielinkaari on siirretty yhteen sisäiseen
+`managedNamespaceCommand`-toteutukseen; vanha API ja sen 17 testiä säilyvät.
+Suljettu operaatiovalinta sallii vain unit-havainnon, yhden managerin
+Version-kyselyn sekä täsmällisen observation-/stop-komennon oikeuskyselyn.
+Kutsuja ei anna komentoa, verbiä, ympäristöä tai tuloksen parseria.
+Managerin arvo hylätään tuloksesta: kuitti kertoo vain yhteyden toimineen,
+ei tuetuista ominaisuuksista, oikeuksista tai testipuun omistajuudesta.
+
+Kertakäyttöinen launch-valmistelu sitoo konfiguroidut UID/GID-arvot kutsujan
+kaikkiin neljään identiteettiarvoon ennen oikeuskyselyä ja käynnistystä.
+Sama jäädytetty argumenttilista käytetään molemmissa; myöhempi kutsujan
+konfiguraatiomuutos ei vaihda kohdetta. Tarkka `sudo -n -l -- komento ...`
+vain kysyy politiikkaa, ei muuta sitä; sen tuloste rajataan ja hävitetään.
+[Sudon listaus](https://github.com/sudo-project/sudo/blob/SUDO_1_9_15p5/docs/sudo.man.in)
+ei takaa seuraavan noninteractive-suorituksen onnistumista. Kumpaakaan
+operaatiota ei uusita saman valmistelun kautta. Epäonnistuneen launchin
+jälkeen unitin syntyminen voi jäädä epävarmaksi: ei automaattista uutta
+käynnistystä, GO:ta tai juuren poistoa. `commandCleanup` koskee vain
+komentolapsen todellista sulkeutumista, ei unitia tai sen työkuormaa.
+
+Kaikilla komennoilla säilyvät alkuperäinen määräaika, exit/close/EOF-portti,
+tiukka dekoodaus, tavuraja, erillinen stderr ja ensimmäinen virhe. Launchin
+exit 0 ja tyhjä tuloste tuottavat vain `launchCommandAccepted`-kuitin:
+`--no-block` ei todista palvelun valmiutta. Stopin suoritus ei ole vielä
+kytketty eikä pelkkä onnistunut oikeuskysely anna pysäytysvaltuutta.
+
+13 uutta injektoitua testiä sekä muuttamattomat lukijatestit ovat normaalissa
+319/319 läpäisseessä E2E-sopimussarjassa; tyypitys läpäisi. Katselmuksessa
+löytynyt puuttuvan phase-parametrin oletusarvotus korjattiin säilyttämään
+vanha hylkäys ennen spawnia. Regressio todettiin ensin hylkääväksi,
+korjattiin ja katselmoitiin uudelleen ilman jäljelle jäänyttä löydöstä.
+Ei todellista sudo-/systemd-kutsua, CI-ajoa, fixture-siirtoa tai koko
+workspacen uusintaa. Seuraavaksi session omistaja yhdistää metadata- ja
+komentotarkistukset, hyväksytyn launchin, READY:n ja tuoreen invocation-
+kuitin; suljettu tulosskeema ja lukija valmistuvat ennen yhtä seurattua koetta.
+
 #### T3:n lopullinen hyväksyntänäyttö
 
 Moduulikehittäjän rajapinta pidetään pienenä: system-testit käyttävät

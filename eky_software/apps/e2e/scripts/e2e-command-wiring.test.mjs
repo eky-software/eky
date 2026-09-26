@@ -21,7 +21,7 @@ const preparations = [
   'pnpm --filter @eky/desktop e2e:prepare-backend',
 ];
 const projects = '--project=system-api --project=web-chromium --project=electron-development';
-const contractCommand = 'node --test scripts/e2e-command-wiring.test.mjs experiments/processOwnership/playwrightElectronLaunch.test.mjs experiments/processOwnership/adapterContract.test.mjs experiments/processOwnership/adapterControl.test.mjs experiments/processOwnership/adapterRootExitOrdering.test.mjs experiments/processOwnership/boundedChildOutput.test.mjs experiments/processOwnership/pidNamespaceContract.test.mjs experiments/processOwnership/runPidNamespaceExperiment.test.mjs experiments/processOwnership/managedNamespaceContract.test.mjs experiments/processOwnership/managedNamespaceControl.test.mjs experiments/processOwnership/managedNamespaceObservation.test.mjs experiments/processOwnership/managedNamespacePreflight.test.mjs';
+const contractCommand = 'node --test scripts/e2e-command-wiring.test.mjs experiments/processOwnership/playwrightElectronLaunch.test.mjs experiments/processOwnership/adapterContract.test.mjs experiments/processOwnership/adapterControl.test.mjs experiments/processOwnership/adapterRootExitOrdering.test.mjs experiments/processOwnership/boundedChildOutput.test.mjs experiments/processOwnership/pidNamespaceContract.test.mjs experiments/processOwnership/runPidNamespaceExperiment.test.mjs experiments/processOwnership/managedNamespaceContract.test.mjs experiments/processOwnership/managedNamespaceControl.test.mjs experiments/processOwnership/managedNamespaceObservation.test.mjs experiments/processOwnership/managedNamespacePreflight.test.mjs experiments/processOwnership/managedNamespaceCommand.test.mjs';
 
 function assertWiring(rootManifest, e2eManifest) {
   assert.equal(rootManifest.scripts.test, 'pnpm --recursive test');
@@ -88,6 +88,7 @@ const mutations = [
   ['missing managed control regression', (r, e) => { e.scripts.test = e.scripts.test.replace(' experiments/processOwnership/managedNamespaceControl.test.mjs', ''); }],
   ['missing managed observation regression', (r, e) => { e.scripts.test = e.scripts.test.replace(' experiments/processOwnership/managedNamespaceObservation.test.mjs', ''); }],
   ['missing managed preflight regression', (r, e) => { e.scripts.test = e.scripts.test.replace(' experiments/processOwnership/managedNamespacePreflight.test.mjs', ''); }],
+  ['missing managed command regression', (r, e) => { e.scripts.test = e.scripts.test.replace(' experiments/processOwnership/managedNamespaceCommand.test.mjs', ''); }],
   ['missing wiring regression', (r, e) => { e.scripts.test = 'node --test experiments/processOwnership/playwrightElectronLaunch.test.mjs'; }],
   ['wrong self hook', (r, e) => { e.scripts.test = 'node --test scripts/other.test.mjs'; }],
   ['wrong root alias', (r) => { r.scripts['test:e2e:security'] = 'pnpm --filter @eky/e2e e2e:critical'; }],

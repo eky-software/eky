@@ -7,11 +7,11 @@ Modulaarinen monoliitti ja hyväksytty M1-rajaus säilyvät.
 
 | Kohta | Nykyinen lähtötieto |
 | --- | --- |
-| Esitarkistuscheckpointin lähtörevisio | `359157dd580396d4dacca23e1fa9e9f6f5401261`: rajatun Linux-session sopimukset, kontrolli-/init-kytkentä ja show-only-lukija. Tämä ei ole hyväksytty CI- tai main-baseline. Tarkista jatkettava HEAD Gitistä. |
+| Komentoadaptericheckpointin lähtörevisio | `be8262b88e1b0228dec435ac24a0f0350f2aa28f`: rajatun Linux-session sopimukset, kontrolli-/init-kytkentä, show-only-lukija ja metadataesitarkistus. Tämä ei ole hyväksytty CI- tai main-baseline. Tarkista jatkettava HEAD Gitistä. |
 | Viimeisin koko CI:n hyväksytty lähtötila | `a1df082c`; sen jälkeen `93ba537b`:n tavalliset testiryhmät läpäisivät, mutta erilliset Linux-kokeet ja kokonaiskoonti hylättiin. [Erilliset tulokset](e2e-test-environment.md#t3c-lsn-rajatun-ci-kokeen-havainto). |
 | Avoin puute | Pääprosessin poistuminen ei todista koko puun poistumista. Tavalliset fixturet eivät vielä käytä hyväksytysti todennettua uutta omistajuuspolkua. |
-| Viimeisin rajattu näyttö | Kiinteiden host-polkujen metadataesitarkistus katselmoitu; 13/13 kohdetestiä, E2E 305/305 ja paketin tyypitys läpäisty. Injektoitu näyttö, ei todellinen systemd-/sudo-tarkistus. |
-| Seuraava työ | [T3c-LM](e2e-test-environment.md#t3c-lm-rajattu-ci-testisession-hallinta): todellisen manageriyhteyden ja täsmällisten komentojen oikeuksien tarkistus, launch-/stop-omistaja, kokonaisajuri ja suljettu kokeen tuloksen lukija ennen uutta seurattua koetta. |
+| Viimeisin rajattu näyttö | Managerin yhteys-/oikeuskyselyt ja kertakäyttöinen käynnistysketju käyttävät samaa rajattua komentoadapteria kuin vanha lukija. 13 uutta testiä, muuttamattomat 17 lukijatestiä, normaali E2E 319/319 ja paketin tyypitys läpäisty. Katselmushavainto korjattu ja uudelleen katselmoitu. Vain injektoitu näyttö, ei todellinen systemd-/sudo-tarkistus. |
+| Seuraava työ | [T3c-LM](e2e-test-environment.md#t3c-lm-rajattu-ci-testisession-hallinta): yhdistä esitarkistus, rajatut komennot ja kontrollikanava session omistajaan. GO vaatii hyväksytyn käynnistyspyynnön, tuoreen saman invocationin kuitin ja READY:n; stop vaatii omistajan kuittiin sidotun uuden havainnon. Viimeistele kokonaisajuri ja suljettu tuloksen lukija ennen yhtä seurattua oikeaprosessikoetta. |
 | Valmistuminen | Oikeat kuluttajat siirretty, korvattu aktiivinen toteutus poistettu vasta vastaavan kattavuuden jälkeen, T1/T2 säilyneet sekä koko T3-matriisi ja täsmällisen PR/main-revision portit läpäisty. |
 | T3:n jälkeen | Nykyisen M1:n A1:n vanhentuneet vastaukset ja muut hyväksytyt sovelluskorjaukset, sitten roadmapin 0.3.0-käyttöliittymä- ja diagnostiikkatyö. |
 
