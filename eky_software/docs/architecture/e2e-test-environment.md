@@ -2065,6 +2065,41 @@ workspacen uusintaa. Seuraavaksi session omistaja yhdistää metadata- ja
 komentotarkistukset, hyväksytyn launchin, READY:n ja tuoreen invocation-
 kuitin; suljettu tulosskeema ja lukija valmistuvat ennen yhtä seurattua koetta.
 
+**Session integraation checkpoint:** `managedNamespaceSession` yhdistää
+metadataesitarkistuksen, managerin yhteyden, täsmälliset oikeuskyselyt,
+private-kanavan ja kertakäyttöisen launchin. Hyväksytty käynnistyspyyntö,
+READY ja sisäisesti kyselty tuore running-invocation vaaditaan ennen GO:ta.
+Omistajuuskuittia ei vastaanoteta kutsujalta. Pysäytys lukee saman unitin
+uudelleen ja vertaa invocationia sekä aloitusaikaa yksityiseen kuittiin;
+nimen uudelleenkäytön tai kadonneen havainnon perusteella ei arvata kohdetta.
+Tämä ei ole atominen vertaa-ja-pysäytä-operaatio vihamielistä manageria
+vastaan: luotettu CI ja koskaan uudelleen käyttämätön generation säilyvät
+reunaehtoina.
+
+Saman omistajan havainnot ja stop suoritetaan sarjassa. Edellisen
+komentolapsen pitää todella sulkeutua alkuperäisessä aikarajassa ennen uutta
+komentoa; pelkkä tuloslupauksen hylkäys ei riitä. Loppuodotus sulkee uusien
+operaatioiden sisäänoton ja huomioi myös jo jonotetun työn. Toistettu stop
+jakaa saman lupauksen eikä käynnistä uutta komentoa. Odottava manageritila
+ei tuota onnistumista: vain saman invocationin täsmällinen normaali exit 41
+täyttää wrapper-osatodisteen. Ensimmäinen virhe, stopin hylkäys,
+komentolasten sulkeutuminen ja kontrolliprotokolla säilyvät erillisinä.
+
+24 uutta injektoitua testiä on mukana normaalissa 344/344 läpäisseessä
+E2E-sopimussarjassa; koko projektin tyypitys läpäisi. Katselmuksen kolme
+havaintoa todettiin ensin hylkäävillä regressioilla, korjattiin ja katselmoitiin uudelleen ilman
+jäljelle jäävää löydöstä. Koko workspacen hyväksyntä on vielä avoin
+hylätyn ajon vuoksi; kohdesarjan tai rajatun vertailuajon läpäisy ei korvaa
+sitä eikä yksin todista hylkäyksen syytä. Alkuperäinen
+aikaraja-apuri on yhteinen myös vanhalle koeajurille muuttamatta sen
+sopimusta. Ei tuotanto-, riippuvuus-, aikaraja- tai CI-politiikkamuutosta.
+
+Sisäinen session tulos ei vielä todista sentinel-eloisuutta, koko puun
+poistumista tai oikeutta poistaa testijuurta. Ulompi ajuri, uusi suljettu
+tuloksen kirjoitus-/lukuketju ja yksi seurattu oikea CI-koe ovat seuraavat
+työt. Vanhan user-namespace-kokeen skeemaa tai hylkäystä ei tulkita uudelleen.
+Ei fixture-siirtoa, uutta CI-ajoa, PR:ää tai mergeä tässä checkpointissa.
+
 #### T3:n lopullinen hyväksyntänäyttö
 
 Moduulikehittäjän rajapinta pidetään pienenä: system-testit käyttävät

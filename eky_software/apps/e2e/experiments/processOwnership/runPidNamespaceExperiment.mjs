@@ -10,25 +10,10 @@ import {
   actorArguments, childEnvironment, classifyBootstrap, createDeadline, descriptors,
   expectedEofExit, experimentContext, limits, message, NamespaceFailure,
   requireCondition, responseChannel, resultFor, safeReason, serializeResult,
-  unshareArguments, validateIdentity, writeMessage,
+  unshareArguments, validateIdentity, waitWithin, writeMessage,
 } from './pidNamespaceContract.mjs';
 
-export function waitWithin(promise, deadline, phase, time = globalThis) {
-  // The operation may already have rejected before the deadline guard runs.
-  // Always observe it, even when this wait can no longer accept its result.
-  promise = Promise.resolve(promise);
-  promise.catch(() => {});
-  return new Promise((resolve, reject) => {
-    let timer;
-    try { deadline.check(phase); }
-    catch (error) { reject(error); return; }
-    timer = time.setTimeout(() => reject(new NamespaceFailure('deadlineExceeded')), deadline.remaining(phase));
-    promise.then(value => {
-      time.clearTimeout(timer);
-      try { deadline.check(phase); resolve(value); } catch (error) { reject(error); }
-    }, error => { time.clearTimeout(timer); reject(error); });
-  });
-}
+export { waitWithin } from './pidNamespaceContract.mjs';
 
 export function watchChild(child) {
   const state = { child, exited: false, closed: false, spawnCode: null, code: null, signal: null, inputFailed: false };

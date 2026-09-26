@@ -342,9 +342,28 @@ and reuses one frozen command for authorization and execution, without retry.
 Policy listing does not guarantee execution. Successful launch means only a
 queued request, not READY, ownership, tree absence or permission to delete roots.
 All commands retain bounded output, strict decoding, exit/close/EOF and original
-deadlines. Stop execution remains unwired until the session owner can bind it
-to its private invocation receipt. Tests inject every command; no live sudo or
-systemd call, service, CI run or consumer migration was performed by this slice.
+deadlines. At that checkpoint stop execution remained unwired. Tests inject
+every command; no live sudo or systemd call, service, CI run or consumer
+migration was performed by this slice.
+
+The connected `managedNamespaceSession` now composes metadata, manager and exact
+policy checks, private control, accepted launch, READY and a freshly captured
+running-unit receipt before GO. The prepared launch captures that receipt
+internally; callers cannot inject it. Its private unit capability serializes
+observations and stop, requires preceding command closure and reobserves the
+same invocation/start before the one stop request. Drain seals new operations
+and includes queued work even before it has created a command child. A stop
+acknowledgement is never descendant-closure evidence. This is a trusted CI,
+never-reused-generation contract, not an atomic CAS against a hostile manager.
+
+The original clock covers the whole session. Pending manager states only allow
+another paced query; they cannot pass. Workload, valid control closure, exact
+normal wrapper exit, first failure, stop failure and command closure remain
+separate facts. The inner result does not authorize root deletion or claim
+sentinel survival, whole-tree absence, fixture readiness or a CI result.
+The outer experiment driver, closed result writer/reader, sentinel and real
+manager trial remain next. No production diagnostics or backup include this
+test-private state. The old user-namespace schema/result is unchanged.
 
 Use the [current continuation entry](../../../../docs/architecture/release-0.3.0-m1-preparation-plan.md#jatka-tästä)
 for the next task. Historical experiments do not substitute for actual fixture

@@ -87,6 +87,22 @@ export function createDeadline(started, now = () => process.hrtime.bigint()) {
   });
 }
 
+export function waitWithin(promise, deadline, phase, time = globalThis) {
+  // Observe an already-rejected operation even when its deadline has expired.
+  promise = Promise.resolve(promise);
+  promise.catch(() => {});
+  return new Promise((resolve, reject) => {
+    let timer;
+    try { deadline.check(phase); }
+    catch (error) { reject(error); return; }
+    timer = time.setTimeout(() => reject(new NamespaceFailure('deadlineExceeded')), deadline.remaining(phase));
+    promise.then(value => {
+      time.clearTimeout(timer);
+      try { deadline.check(phase); resolve(value); } catch (error) { reject(error); }
+    }, error => { time.clearTimeout(timer); reject(error); });
+  });
+}
+
 export function actorArguments({ generation, started, uid, gid }, role) {
   const args = [`--generation=${generation}`, `--started=${started}`, `--uid=${uid}`, `--gid=${gid}`];
   if (role) args.push(`--role=${role}`);

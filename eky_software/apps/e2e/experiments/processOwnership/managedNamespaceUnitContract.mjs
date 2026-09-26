@@ -77,15 +77,31 @@ function validateReceipt(receipt) {
     decimal(receipt.started, true));
 }
 
+export function verifyOwnedUnitObservation(observation, receipt) {
+  validateReceipt(receipt);
+  const value = validateObservation(observation, receipt.generation);
+  requireUnit(value.InvocationID === receipt.invocation && value.ExecMainStartTimestampMonotonic === receipt.started);
+  return value;
+}
+
+// Nonterminal observations only permit another bounded query, never acceptance.
+export function observeWaitingWrapper(observation, receipt) {
+  const value = verifyOwnedUnitObservation(observation, receipt);
+  if (value.ActiveState === 'active') {
+    captureRunningUnit(value, receipt.generation);
+    return Object.freeze({ waitingWrapper: 'pending' });
+  }
+  if (value.ActiveState === 'deactivating') return Object.freeze({ waitingWrapper: 'pending' });
+  return verifyWaitingWrapperExit(value, receipt);
+}
+
 // This proves ONLY the normal exit of the previously observed waiting wrapper.
 // The intentional protocol exit 41 is NOT a systemd success code. A failed
 // unit retains evidence without RemainAfterExit keeping descendants alive after
 // a clean signal. Protocol/deadline/sentinel/root-cleanup gates remain separate.
 export function verifyWaitingWrapperExit(observation, receipt) {
-  validateReceipt(receipt);
-  const value = validateObservation(observation, receipt.generation);
-  requireUnit(value.InvocationID === receipt.invocation && value.ExecMainStartTimestampMonotonic === receipt.started &&
-    value.ActiveState === 'failed' && value.SubState === 'failed' && value.Result === 'exit-code' &&
+  const value = verifyOwnedUnitObservation(observation, receipt);
+  requireUnit(value.ActiveState === 'failed' && value.SubState === 'failed' && value.Result === 'exit-code' &&
     value.MainPID === '0' && value.ControlPID === '0' && value.ExecMainCode === '1' &&
     value.ExecMainStatus === String(expectedEofExit) && decimal(value.ExecMainExitTimestampMonotonic, true) &&
     BigInt(value.ExecMainExitTimestampMonotonic) >= BigInt(receipt.started));

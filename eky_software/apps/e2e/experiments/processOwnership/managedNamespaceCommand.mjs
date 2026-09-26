@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process';
 import { currentIdentity } from './pidNamespaceActor.mjs';
-import { requireCondition, validateIdentity } from './pidNamespaceContract.mjs';
+import { requireCondition, validateIdentity, waitWithin } from './pidNamespaceContract.mjs';
 import { managedLaunchCommand, managedObservationCommand, managedStopCommand,
   managedSystemTools } from './managedNamespaceLaunchContract.mjs';
-import { parseUnitObservation, unitObservationLimit } from './managedNamespaceUnitContract.mjs';
+import { captureRunningUnit, observeWaitingWrapper, parseUnitObservation, unitObservationLimit,
+  verifyOwnedUnitObservation } from './managedNamespaceUnitContract.mjs';
 
 function guard(runtime, expected) {
   requireCondition(runtime.platform === 'linux' && runtime.env.EKY_E2E === '1' &&
@@ -38,25 +39,53 @@ export function startManagedCommand({ operation, generation, deadline, phase,
   return runCommand({ command, operation, generation, deadline, phase, spawnChild, time });
 }
 
-// One immutable launch request, policy check and execution. This is not unit
-// ownership: a successful --no-block command only queues the start request.
+// One immutable launch request. Acceptance only queues the start; own() must
+// capture a fresh running receipt internally before exposing unit operations.
 export function prepareManagedLaunch({ config, deadline, runtime = process, spawnChild = spawn, time = globalThis }) {
   guard(runtime);
   const command = managedLaunchCommand(config);
+  const generation = config.generation;
   const expected = Object.freeze({ uid: config.uid, gid: config.gid });
   guard(runtime, expected);
   deadline.check('ready');
   let authorizationStarted = false;
   let authorized = false;
   let launchStarted = false;
+  let launchAccepted = false;
+  let ownership;
+  let sealed = false;
+  let pendingOperations = 0;
+  let tail = Promise.resolve();
+  const commands = [];
+  const schedule = (phase, operation) => {
+    requireCondition(!sealed, 'invalidArguments');
+    pendingOperations++;
+    const result = tail.catch(() => {}).then(async () => {
+      // A rejected result is not a closed ChildProcess. Never overlap manager
+      // commands while a preceding child still has uncertain closure.
+      await waitWithin(Promise.all(commands.map(handle => handle.closed)), deadline, phase, time);
+      return operation();
+    }).finally(() => { pendingOperations--; });
+    tail = result;
+    result.catch(() => {});
+    return result;
+  };
+  const track = input => {
+    const handle = runCommand({ ...input, deadline, spawnChild, time });
+    commands.push(handle);
+    return handle;
+  };
+  const observe = phase => {
+    guard(runtime, expected);
+    return track({ command: managedObservationCommand(generation), operation: 'observation', generation, phase });
+  };
   return Object.freeze({
     authorize() {
       guard(runtime, expected);
       deadline.check('ready');
-      requireCondition(!authorizationStarted, 'invalidArguments');
+      requireCondition(!sealed && !authorizationStarted, 'invalidArguments');
       authorizationStarted = true;
-      const query = runCommand({ command: authorization(command), operation: 'authorizeLaunch',
-        deadline, phase: 'ready', spawnChild, time });
+      const query = track({ command: authorization(command), operation: 'authorizeLaunch', phase: 'ready' });
       const result = query.result.then(value => { authorized = true; return value; });
       result.catch(() => {});
       return Object.freeze({ ...query, result });
@@ -64,9 +93,64 @@ export function prepareManagedLaunch({ config, deadline, runtime = process, spaw
     launch() {
       guard(runtime, expected);
       deadline.check('ready');
-      requireCondition(authorized && !launchStarted, 'invalidArguments');
+      requireCondition(!sealed && authorized && !launchStarted, 'invalidArguments');
       launchStarted = true;
-      return runCommand({ command, operation: 'launch', deadline, phase: 'ready', spawnChild, time });
+      const handle = track({ command, operation: 'launch', phase: 'ready' });
+      const result = handle.result.then(value => { launchAccepted = true; return value; });
+      result.catch(() => {});
+      return Object.freeze({ ...handle, result });
+    },
+    own() {
+      guard(runtime, expected);
+      deadline.check('ready');
+      requireCondition(launchAccepted, 'invalidArguments');
+      if (!ownership) {
+        ownership = schedule('ready', async () => {
+          const value = await observe('ready').result;
+          const receipt = captureRunningUnit(value, generation);
+          guard(runtime, expected);
+          deadline.check('ready');
+          let stopping;
+          return Object.freeze({
+            async observeWrapper() {
+              requireCondition(!stopping, 'cleanupUnverified');
+              return schedule('wrapper', async () => {
+                requireCondition(!stopping, 'cleanupUnverified');
+                const value = await observe('wrapper').result;
+                guard(runtime, expected);
+                deadline.check('wrapper');
+                requireCondition(!stopping, 'cleanupUnverified');
+                return observeWaitingWrapper(value, receipt);
+              });
+            },
+            stop() {
+              if (!stopping) {
+                // Schedule once, before observation can fail or reenter. A fresh
+                // receipt check is not an atomic CAS against a hostile manager.
+                stopping = schedule('wrapper', async () => {
+                  const value = await observe('wrapper').result;
+                  verifyOwnedUnitObservation(value, receipt);
+                  guard(runtime, expected);
+                  return track({ command: managedStopCommand(generation), operation: 'stop', phase: 'wrapper' }).result;
+                });
+                stopping.catch(() => {});
+              }
+              return stopping;
+            },
+          });
+        });
+        ownership.catch(() => {});
+      }
+      return ownership;
+    },
+    async settleCommands() {
+      sealed = true;
+      // Includes operations already queued but not yet represented by a child.
+      await waitWithin(tail.catch(() => {}), deadline, 'wrapper', time);
+      await waitWithin(Promise.all(commands.map(handle => handle.closed)), deadline, 'wrapper', time);
+    },
+    commandsClosed() {
+      return pendingOperations === 0 && commands.every(handle => handle.snapshot().commandCleanup !== 'unverified');
     },
   });
 }
@@ -78,9 +162,9 @@ function acceptOutput(text, operation, generation) {
     requireCondition(text.endsWith('\n') && body.trim().length > 0 && !/[^\x20-\x7e]/u.test(body), 'invalidMessage');
     return Object.freeze({ kind: 'managerReachable' });
   }
-  if (operation === 'launch') {
+  if (operation === 'launch' || operation === 'stop') {
     requireCondition(text.length === 0, 'invalidMessage');
-    return Object.freeze({ kind: 'launchCommandAccepted' });
+    return Object.freeze({ kind: operation === 'launch' ? 'launchCommandAccepted' : 'stopCommandAccepted' });
   }
   // Listing policy can have different authentication rules from execution.
   // Discard its bounded output; never promote it to broader permission.
