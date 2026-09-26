@@ -29,6 +29,7 @@ export function runNamespaceInit({
   runtime = process, spawnChild = spawn, readStatus = readOwnStatus,
   socket = options => new Socket(options), nonce = () => randomBytes(16).toString('hex'),
   time = globalThis, now = () => process.hrtime.bigint(),
+  argv = runtime.argv.slice(2), validateStatus = validateInitStatus, openChannels,
 } = {}) {
   let timer;
   let finished = false;
@@ -53,7 +54,7 @@ export function runNamespaceInit({
     requireCondition(runtime.platform === 'linux' && runtime.env.EKY_E2E === '1' &&
       runtime.env.CI === 'true' && runtime.env.GITHUB_ACTIONS === 'true', 'invalidContext');
     phase = 'arguments';
-    const config = parseActorArguments(runtime.argv.slice(2));
+    const config = parseActorArguments(argv);
     phase = 'deadline';
     deadline = createDeadline(config.started, now);
     timer = time.setTimeout(() => finish(failureExit, 'deadlineExceeded'), deadline.remaining('init'));
@@ -65,16 +66,17 @@ export function runNamespaceInit({
     phase = 'statusRead';
     const status = readStatus();
     phase = 'statusValidation';
-    validateInitStatus(status, config);
+    validateStatus(status, config);
     phase = 'deadline';
     deadline.check('ready');
     const protocol = createInitProtocol(config.generation, deadline);
     phase = 'responseOpen';
-    const output = socket({ fd: 3, readable: false, writable: true });
+    const { input, output, waitForConnect = false } = openChannels ? openChannels(config) :
+      { input: runtime.stdin, output: socket({ fd: 3, readable: false, writable: true }) };
     output.on('error', () => finish(failureExit, 'channelFailed'));
     phase = 'controlSetup';
     const control = createFrames(value => {
-      requireCondition(!finished);
+      requireCondition(!finished && !goAccepted && control.pendingBytes === 0);
       protocol.go(value);
       goAccepted = true;
       // Re-check immediately at the only workload launch edge.
@@ -124,19 +126,26 @@ export function runNamespaceInit({
           challengeLeaf();
         } catch { finish(failureExit); }
       });
-    });
-    runtime.stdin.on('data', chunk => { try { control.push(chunk); } catch (error) { fail(error, 'awaitGo'); } });
-    runtime.stdin.on('error', () => finish(failureExit, 'channelFailed', 'awaitGo'));
-    runtime.stdin.on('end', () => {
+    }, () => requireCondition(!finished && !goAccepted));
+    input.on('data', chunk => { try { control.push(chunk); } catch (error) { fail(error, 'awaitGo'); } });
+    input.on('error', () => finish(failureExit, 'channelFailed', 'awaitGo'));
+    input.on('end', () => {
       try { control.end(); finish(protocol.eof()); } catch (error) { fail(error, 'awaitGo'); }
     });
     phase = 'readyWrite';
-    protocol.ready();
-    output.write(encodeMessage(message('READY', config.generation)), error => {
-      try { if (error) return finish(failureExit, 'channelFailed', 'readyWrite'); deadline.check('ready'); }
-      catch (error) { fail(error, 'readyWrite'); }
-    });
-    phase = 'awaitGo';
+    const publishReady = () => {
+      try {
+        requireCondition(!finished, 'channelFailed');
+        protocol.ready();
+        output.write(encodeMessage(message('READY', config.generation)), error => {
+          try { if (error) return finish(failureExit, 'channelFailed', 'readyWrite'); deadline.check('ready'); }
+          catch (error) { fail(error, 'readyWrite'); }
+        });
+        phase = 'awaitGo';
+      } catch (error) { fail(error, 'readyWrite'); }
+    };
+    if (waitForConnect) output.once('connect', publishReady);
+    else publishReady();
   } catch (error) { fail(error); }
 }
 

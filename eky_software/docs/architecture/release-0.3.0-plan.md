@@ -37,8 +37,9 @@ paikantavat virheen `uid_map`-kirjoitusestoon ennen READYä/GO:ta. Estävä
 taustapolitiikka on avoin. Kokonaisajo päättyi hylätyksi vain kahden
 Linux-kokeen ja aggregaatin vuoksi; muut testiryhmät ja riippuvuustarkistus
 läpäisivät. Omistaja hyväksyi seuraavaksi [rajatun CI-session hallinnan](e2e-test-environment.md#t3c-lm-rajattu-ci-testisession-hallinta)
-suunnittelun ja toteutuksen Goalin sisällä. Ensin toteutetaan puhtaat
-oikeus- ja unit-kuittisopimukset, sitten rajattu ajuri ja oikeaprosessinäyttö;
+suunnittelun ja toteutuksen Goalin sisällä. Puhtaat oikeus-/unit-sopimukset
+ja injektoitu kontrolli-/init-kytkentä on katselmoitu ja testattu;
+managerin suoritin, kokonaisajuri ja oikeaprosessinäyttö puuttuvat vielä;
 ei vanhan kokeen automaattista uusintaa. Fixture-siirto odottaa mekanismin
 ja koko vaaditun matriisin näyttöä; tämä ei ole koko T3:n tai
 PR/main-integraation hyväksyntä. Ajurin root-first-odotusjärjestysvirhe on

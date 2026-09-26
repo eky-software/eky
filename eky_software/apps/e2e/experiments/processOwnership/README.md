@@ -301,5 +301,14 @@ Only `CLD_EXITED/41` with the original invocation/start identity can satisfy
 the normal-wrapper gate; unit failure in general is never accepted. This
 record is not by itself a cgroup-cleanup receipt or successful test result.
 No production code, dependency, host protection policy or persistent service is
-changed. Runtime integration, bounded control transport, availability, owner
-loss and real Chromium compatibility remain unverified.
+changed. The second slice adds bounded private AF_UNIX transport and the managed
+nonroot init, tested with injected filesystem, socket, clock and process adapters.
+It rejects pre-existing endpoints, changed root/socket identities, extra
+connections, premature EOF, replay and trailing bytes. Same-chunk GO tails are
+rejected before launch; later unsolicited bytes fail immediately. Both endpoints
+use half-open transport, preserving response observation until process exit.
+Transport closure is not workload, manager or namespace-destruction evidence.
+Init rechecks the original readiness deadline after filesystem validation and
+after connection, before publishing READY. No READY is queued while connecting.
+Manager integration, availability, real owner loss and Chromium compatibility
+remain unverified. No real listener or service was started by these unit tests.

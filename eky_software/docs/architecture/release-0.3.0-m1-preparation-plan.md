@@ -127,8 +127,10 @@ ominaisuuksia. Pelkkä diagnostiikka tai vihreä Electron-osajoukko ei täytä s
    muut testiryhmät ja riippuvuustarkistus läpäisivät. Omistaja hyväksyi
    [T3c-LM:n rajatun CI-session hallinnan](e2e-test-environment.md#t3c-lm-rajattu-ci-testisession-hallinta)
    suunnittelun ja toteutuksen ilman toistuvia välikyselyjä hyväksytyn
-   Goalin sisällä. Puhtaat sopimukset edeltävät ajuria ja uutta rajattua
-   CI-koetta; vanha LS-näyttö säilyy hylättynä. Mekanismin todellinen
+   Goalin sisällä. Puhtaat sopimukset ja injektoitu kontrolli-/init-kytkentä
+   ovat katselmoituja: E2E 273/273, workspace 4 220 läpäisyä ja 8 ennestään
+   ohitettua sekä tyypitys läpäisty. Managerin suoritin, kokonaisajuri ja
+   uusi rajattu CI-koe puuttuvat; vanha LS-näyttö säilyy hylättynä. Mekanismin todellinen
    saatavuus, omistajan katoaminen, Chromium ja tavallisten fixturejen
    siirto ovat vielä todentamatta. Ei hostin suojausmuutosta,
    riippuvuuslisäystä tai hyväksyntäehtojen lievennystä.

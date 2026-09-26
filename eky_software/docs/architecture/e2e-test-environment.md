@@ -1913,7 +1913,7 @@ Tämä vaihe on toteutuksessa, ei vielä oikeaprosessi-, CI- tai fixture-
 hyväksyntä. Sovelluksen koodi, versio, business-data, tuotannon diagnostiikka
 ja backup eivät muutu. Kokeen yksityinen näyttö ei kuulu tukipakettiin.
 
-**Ensimmäinen sopimuscheckpoint:** kiinteän käynnistysketjun, oikeuksien
+**Ensimmäinen sopimuscheckpoint (historiallinen):** kiinteän käynnistysketjun, oikeuksien
 pudotuksen ja unit-havaintojen 11 puhdasta testiä sekä E2E-paketin koko
 252 testin sopimussarja läpäisivät ilman ohituksia. Paketin tyypitys ja
 168 dokumenttilinkkiä tarkistettiin. Riippumaton katselmus löysi yllä
@@ -1923,6 +1923,42 @@ managerin saatavuutta, kontrollikanavan toimintaa tai oikean prosessipuun
 siivousta. Ajuria tai workflow-kytkentää ei ole vielä toteutettu eikä uutta
 CI-koetta, palvelukutsua tai fixture-siirtoa tehty. Vanha LS-ajon hylkäys
 säilyy hylkäyksenä; hyväksyttyä uutta CI-baselinea ei väitetä syntyneeksi.
+
+**Toinen checkpoint: kontrollikanava ja nonroot-init.** Yksityisen
+AF_UNIX-kanavan kuuntelija ja initin kytkentä on toteutettu erilliseen
+koealueeseen. Testit injektoivat tiedostojärjestelmän, socketit, kellon ja
+lapsiprosessit; oikeaa socketia, palvelua tai työkuormaa ei niissä käynnistetä.
+Root on canonical OS-temp -juuren suora satunnainen `0700`-alihakemisto ja
+socket sen kiinteä `0600`-tiedosto. Olemassa olevaa socket-polkua ei poisteta
+uuden käynnistyksen tieltä. Omistajuus, oikeudet sekä rootin ja socketin
+laite-/inode-identiteetti tarkistetaan uudelleen ennen kontrollin käyttöä.
+Toinen yhteys ei koskaan korvaa ensimmäistä; se myrkyttää kokeen tuloksen.
+
+Molemmat päät käyttävät half-open-kanavaa. Kutsujan odotettu kirjoituspuolen
+sulkeminen jättää vastauksen lukuketjun auki initin poistumiseen asti.
+Odottamaton EOF READY:n jälkeenkin hylkää avoimen kanavan portin.
+Kontrollikerroksen sulkemiskuitti ei todista työkuorman onnistumista,
+managerin poistumista tai namespace-puun tuhoutumista.
+
+Katselmus löysi yhteisestä init-protokollasta GO:n perässä samassa chunkissa
+tulevan ylimääräisen datan liian myöhäisen torjunnan. Sekä vanha että uusi
+polku torjuvat nyt kokonaisen tai osittaisen hännän ennen ensimmäistä
+käynnistystä; myöhemmät luvattomat tavut hylätään heti. Uudesta kanavasta
+löytynyt ajoituspuute korjattiin tarkistamalla alkuperäinen ready-määräaika
+tiedostotarkistusten jälkeen ennen connectia sekä connect-tapahtumassa ennen
+READYä. Valmiusviestiä ei jonoteta odottavan yhteyden taakse. Terminaalisen
+epäonnistumisen jälkeen tuleva connect ei voi julkaista valmiutta.
+
+Korjattu checkpoint läpäisi 80 kohdetestiä (20 uutta kanava-/init-testiä ja
+60 vanhan ajurin testiä), E2E-paketin 273 sopimustestiä sekä workspace-sarjan
+4 220 testiä; kahdeksan ennestään ohitettua testiä säilyi ohitettuna.
+Koko projektin tyypitys läpäisi. Ensimmäisen kohdeajon polkutarkistusvirhe
+säilytettiin ja korjattiin. Riippumaton katselmus hyväksyi korjatun rajauksen
+ilman jäljelle jäävää löydöstä. Tämä on injektoitujen adapterien näyttöä,
+ei todellinen AF_UNIX-, systemd-, Chromium- tai prosessipuutodiste.
+Managerin komentojen suoritin, preflight, session kokonaisajuri, suljettu
+tulosskeema/lukuketju ja rajatun CI-kokeen kytkentä ovat seuraavat työt.
+Uutta CI-ajoa, fixture-siirtoa, PR:ää tai mergeä ei tässä checkpointissa tehty.
 
 #### T3:n lopullinen hyväksyntänäyttö
 
