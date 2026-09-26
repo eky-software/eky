@@ -80,6 +80,46 @@ test('managed result roundtrips both consumer bindings as a bounded canonical im
   }
 });
 
+test('Chromium result requires explicit expected workload and leaves old actor bytes unchanged', () => {
+  const old = createManagedResult(binding, completeState());
+  const oldLine = serializeManagedResult(old, binding);
+  assert.equal(serializeManagedResult(old, binding, 'actor'), oldLine);
+  assert.ok(!oldLine.includes('chromiumFailure'));
+  const state = { ...completeState(), chromiumFailure: { status: 'absent', phase: null, reason: null } };
+  const browser = createManagedResult(binding, state, 'chromium');
+  const line = serializeManagedResult(browser, binding, 'chromium');
+  assert.equal(browser.evidence, 'boundedManagedChromiumOnly');
+  assert.equal(browser.evidenceOutcome, 'complete');
+  assert.deepEqual(parseManagedResult(line, binding, 'chromium'), browser);
+  for (const action of [() => parseManagedResult(oldLine, binding, 'chromium'),
+    () => parseManagedResult(line, binding), () => createManagedResult(binding, completeState(), 'chromium'),
+    () => createManagedResult(binding, state), () => createManagedResult(binding, state, 'unknown'),
+    () => parseManagedResult(line.replace('boundedManagedChromiumOnly', 'boundedManagedPidNamespaceOnly'), binding, 'chromium')]) {
+    rejectsSafely(action);
+  }
+});
+
+test('Chromium diagnostics cannot turn uncertainty or first failure into successful removal', () => {
+  for (const chromiumFailure of [{ status: 'valid', phase: 'launch', reason: 'operationFailed' },
+    { status: 'invalid', phase: null, reason: null }, { status: 'unavailable', phase: null, reason: null }]) {
+    const state = { ...failedState(), chromiumFailure };
+    const result = createManagedResult(binding, state, 'chromium');
+    const parsed = parseManagedResult(serializeManagedResult(result, binding, 'chromium'), binding, 'chromium');
+    assert.deepEqual(parsed.failure, state.failure);
+    assert.deepEqual(parsed.chromiumFailure, chromiumFailure);
+    assert.equal(parsed.evidenceOutcome, 'incomplete');
+    for (const root of ['removed', 'removalUnverified']) {
+      rejectsSafely(() => createManagedResult(binding, { ...completeState(), root, chromiumFailure }, 'chromium'));
+    }
+  }
+  for (const chromiumFailure of [{ status: 'absent', phase: 'launch', reason: null },
+    { status: 'valid', phase: 'PRIVATE', reason: 'operationFailed' },
+    { status: 'valid', phase: 'launch', reason: 'PRIVATE' },
+    { status: 'absent', phase: null, reason: null, raw: 'PRIVATE' }]) {
+    rejectsSafely(() => createManagedResult(binding, { ...failedState(), chromiumFailure }, 'chromium'));
+  }
+});
+
 test('every session success flag must be explicitly true and every field must be present', () => {
   for (const key of [...phases, 'commandsClosed']) {
     for (const replacement of [false, undefined, null, 1, 'true']) {

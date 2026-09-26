@@ -1,6 +1,8 @@
 import { types } from 'node:util';
 import { validEvidenceBinding } from './linuxPrerequisiteContract.mjs';
 import { exactKeys, limits, NamespaceFailure } from './pidNamespaceContract.mjs';
+import { validateManagedWorkload } from './managedNamespaceLaunchContract.mjs';
+import { validateManagedChromiumDiagnostic } from './managedChromiumFailure.mjs';
 
 // Keep the inner session's existing classification unchanged when sharing it.
 export const managedSessionFailureReasons = Object.freeze([
@@ -27,7 +29,9 @@ const stateKeys = ['session', 'failure', 'cleanupFailure', 'root', 'sentinel'];
 const resultKeys = ['schemaVersion', 'evidence', ...bindingKeys, ...stateKeys,
   'namespaceOutcome', 'evidenceOutcome'];
 const schemaVersion = 1;
-const evidence = 'boundedManagedPidNamespaceOnly';
+const evidenceFor = workload => validateManagedWorkload(workload) === 'actor'
+  ? 'boundedManagedPidNamespaceOnly' : 'boundedManagedChromiumOnly';
+const keysFor = (keys, workload) => workload === 'chromium' ? [...keys, 'chromiumFailure'] : keys;
 
 function requireResult(condition) {
   if (!condition) throw new NamespaceFailure('reportFailed');
@@ -90,8 +94,9 @@ export function validateManagedSessionResult(value) {
   catch { throw new NamespaceFailure('reportFailed'); }
 }
 
-function copyState(value, unbound) {
-  const state = copyRecord(value, stateKeys);
+function copyState(value, unbound, workload) {
+  const state = copyRecord(value, keysFor(stateKeys, workload));
+  if (workload === 'chromium') state.chromiumFailure = validateManagedChromiumDiagnostic(state.chromiumFailure);
   state.session = state.session === null ? null : copySession(state.session);
   state.failure = copyFailure(state.failure);
   state.cleanupFailure = copyFailure(state.cleanupFailure);
@@ -112,7 +117,10 @@ function copyState(value, unbound) {
   if (['removed', 'removalUnverified'].includes(state.root)) {
     requireResult(state.session?.outcome === 'observed' && sentinelKeys.every(key => sentinel[key]) &&
       state.cleanupFailure === null);
+    requireResult(workload !== 'chromium' || state.chromiumFailure.status === 'absent');
   }
+  requireResult(workload !== 'chromium' || state.chromiumFailure.status !== 'valid' ||
+    (state.root === 'retained' && state.failure !== null));
   return state;
 }
 
@@ -121,7 +129,7 @@ function copyBinding(value) {
   return copyRecord(value, bindingKeys);
 }
 
-function resultFromState(binding, state) {
+function resultFromState(binding, state, workload) {
   // An outer deadline can publish while the inner session is still pending.
   // Once the sentinel has started, a missing session is not proof of no launch.
   const namespaceOutcome = state.session?.outcome === 'observed' ? 'destroyed' :
@@ -129,31 +137,35 @@ function resultFromState(binding, state) {
       state.session.facts.launchAttempted ? 'unverified' : 'notStarted';
   const complete = binding !== null && state.session?.outcome === 'observed' &&
     sentinelKeys.every(key => state.sentinel[key]) && state.root === 'removed' &&
-    state.failure === null && state.cleanupFailure === null;
-  return Object.freeze({ schemaVersion, evidence,
+    state.failure === null && state.cleanupFailure === null &&
+    (workload !== 'chromium' || state.chromiumFailure.status === 'absent');
+  return Object.freeze({ schemaVersion, evidence: evidenceFor(workload),
     consumer: binding?.consumer ?? null, checkoutSha: binding?.checkoutSha ?? null,
     runId: binding?.runId ?? null, runAttempt: binding?.runAttempt ?? null,
     session: state.session, failure: binding === null ? managedFailure('context', { reason: 'invalidContext' }) : state.failure,
     cleanupFailure: state.cleanupFailure, root: state.root, sentinel: state.sentinel,
-    namespaceOutcome, evidenceOutcome: complete ? 'complete' : 'incomplete' });
+    namespaceOutcome, evidenceOutcome: complete ? 'complete' : 'incomplete',
+    ...(workload === 'chromium' ? { chromiumFailure: state.chromiumFailure } : {}) });
 }
 
-export function createManagedResult(binding, state) {
+export function createManagedResult(binding, state, workload = 'actor') {
   try {
+    validateManagedWorkload(workload);
     const context = copyBinding(binding);
-    return resultFromState(context, copyState(state, context === null));
+    return resultFromState(context, copyState(state, context === null, workload), workload);
   }
   catch { throw new NamespaceFailure('reportFailed'); }
 }
 
-export function serializeManagedResult(value, binding) {
+export function serializeManagedResult(value, binding, workload = 'actor') {
   try {
-    const result = copyRecord(value, resultKeys);
+    validateManagedWorkload(workload);
+    const result = copyRecord(value, keysFor(resultKeys, workload));
     const expected = copyBinding(binding);
-    requireResult(result.schemaVersion === schemaVersion && result.evidence === evidence);
+    requireResult(result.schemaVersion === schemaVersion && result.evidence === evidenceFor(workload));
     requireResult(bindingKeys.every(key => result[key] === (expected?.[key] ?? null)));
-    const state = copyState(Object.fromEntries(stateKeys.map(key => [key, result[key]])), expected === null);
-    const canonical = resultFromState(expected, state);
+    const state = copyState(Object.fromEntries(keysFor(stateKeys, workload).map(key => [key, result[key]])), expected === null, workload);
+    const canonical = resultFromState(expected, state, workload);
     requireResult(result.namespaceOutcome === canonical.namespaceOutcome &&
       result.evidenceOutcome === canonical.evidenceOutcome);
     if (expected === null) {
@@ -165,7 +177,7 @@ export function serializeManagedResult(value, binding) {
   } catch { throw new NamespaceFailure('reportFailed'); }
 }
 
-export function parseManagedResult(line, binding) {
+export function parseManagedResult(line, binding, workload = 'actor') {
   try {
     requireResult(typeof line === 'string' && line.length <= limits.result &&
       Buffer.byteLength(line, 'utf8') <= limits.result && line.endsWith('\n'));
@@ -174,7 +186,7 @@ export function parseManagedResult(line, binding) {
     const value = JSON.parse(body);
     // Compare with the writer, not JSON.parse alone: duplicates, reordered keys,
     // alternate encodings, whitespace and trailing bytes are not canonical.
-    requireResult(serializeManagedResult(value, binding) === line);
-    return createManagedResult(binding, Object.fromEntries(stateKeys.map(key => [key, value[key]])));
+    requireResult(serializeManagedResult(value, binding, workload) === line);
+    return createManagedResult(binding, Object.fromEntries(keysFor(stateKeys, workload).map(key => [key, value[key]])), workload);
   } catch { throw new NamespaceFailure('reportFailed'); }
 }

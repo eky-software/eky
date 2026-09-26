@@ -22,6 +22,11 @@ function requireLaunch(condition) {
   if (!condition) throw new Error('Managed namespace launch configuration invalid');
 }
 
+export function validateManagedWorkload(value) {
+  requireLaunch(value === 'actor' || value === 'chromium');
+  return value;
+}
+
 function path(value) {
   // This experiment deliberately fails closed on paths requiring systemd's
   // specifier/quoting expansion; it is not a general command-line builder.
@@ -36,7 +41,9 @@ function command(file, args) {
 }
 
 export function managedLaunchCommand(config) {
-  requireLaunch(exactKeys(config, ['generation', 'started', 'uid', 'gid', 'root', 'node', 'init']));
+  const keys = ['generation', 'started', 'uid', 'gid', 'root', 'node', 'init'];
+  requireLaunch(exactKeys(config, keys) || exactKeys(config, [...keys, 'workload']));
+  const workload = Object.hasOwn(config, 'workload') ? validateManagedWorkload(config.workload) : 'actor';
   requireLaunch(typeof config.generation === 'string' && typeof config.started === 'string' &&
     Number.isSafeInteger(config.uid) && Number.isSafeInteger(config.gid));
   const actor = actorArguments(config);
@@ -63,6 +70,7 @@ export function managedLaunchCommand(config) {
     managedSystemTools.credentials, `--reuid=${config.uid}`, `--regid=${config.gid}`, '--clear-groups',
     '--no-new-privs', '--bounding-set=-all', '--inh-caps=-all', '--ambient-caps=-all', '--',
     node, init, ...actor, `--root=${root}`,
+    ...(Object.hasOwn(config, 'workload') ? [`--workload=${workload}`] : []),
   ]);
 }
 

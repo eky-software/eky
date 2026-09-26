@@ -133,6 +133,18 @@ const launchConfig = { generation, started: '1000000', ...identity,
   root: '/tmp/eky-managed-ns-fixture', node: '/opt/node/bin/node',
   init: '/source/experiments/managedNamespaceInit.mjs' };
 
+test('managed workload selection binds only a fixed actor or Chromium to the exact launch', () => {
+  const legacy = managedLaunchCommand(launchConfig);
+  for (const workload of ['actor', 'chromium']) {
+    const selected = managedLaunchCommand({ ...launchConfig, workload });
+    assert.deepEqual(selected, { ...legacy, args: [...legacy.args, `--workload=${workload}`] });
+  }
+  for (const workload of [undefined, null, true, 'Chromium', 'chromium\n', '/bin/sh', 'chromium --eval=code']) {
+    assert.throws(() => managedLaunchCommand({ ...launchConfig, workload }));
+  }
+  assert.throws(() => managedLaunchCommand({ ...launchConfig, workload: 'chromium', command: '/bin/sh' }));
+});
+
 test('fixed manager command starts only trusted OS tools before an irreversible nonroot Node exec', () => {
   const value = managedLaunchCommand(launchConfig);
   assert.equal(value.file, '/usr/bin/sudo');

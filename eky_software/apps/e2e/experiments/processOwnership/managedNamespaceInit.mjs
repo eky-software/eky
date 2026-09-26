@@ -1,5 +1,5 @@
 import { createConnection } from 'node:net';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { actorArguments, createDeadline, failureExit } from './pidNamespaceContract.mjs';
 import { runNamespaceInit } from './pidNamespaceInit.mjs';
 import { validateManagedInitStatus } from './managedNamespaceIdentity.mjs';
@@ -14,6 +14,10 @@ export function runManagedNamespaceInit({
     runNamespaceInit({
       runtime, argv: actorArguments(config), validateStatus: validateManagedInitStatus,
       readStatus, now, time, spawnChild, nonce,
+      ...(config.workload === 'chromium' ? {
+        rootArguments: actor => [fileURLToPath(new URL('./managedChromiumActor.mjs', import.meta.url)),
+          ...actorArguments(actor, 'root'), `--root=${config.root}`],
+      } : {}),
       openChannels() {
         // runNamespaceInit has checked CI, PID 1 and every credential before
         // this first filesystem/connection edge. A FIN must not auto-close output.

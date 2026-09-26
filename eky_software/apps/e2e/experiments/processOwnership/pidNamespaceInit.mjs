@@ -30,6 +30,8 @@ export function runNamespaceInit({
   socket = options => new Socket(options), nonce = () => randomBytes(16).toString('hex'),
   time = globalThis, now = () => process.hrtime.bigint(),
   argv = runtime.argv.slice(2), validateStatus = validateInitStatus, openChannels,
+  rootArguments = config => [fileURLToPath(new URL('./pidNamespaceActor.mjs', import.meta.url)),
+    ...actorArguments(config, 'root')],
 } = {}) {
   let timer;
   let finished = false;
@@ -81,8 +83,7 @@ export function runNamespaceInit({
       goAccepted = true;
       // Re-check immediately at the only workload launch edge.
       deadline.check('ready');
-      const root = spawnChild(runtime.execPath,
-        [fileURLToPath(new URL('./pidNamespaceActor.mjs', import.meta.url)), ...actorArguments(config, 'root')], {
+      const root = spawnChild(runtime.execPath, rootArguments(config), {
           cwd: runtime.cwd(), env: childEnvironment(), shell: false, detached: false,
           stdio: [...descriptors.root],
         });

@@ -34,6 +34,8 @@ function step(source, name) {
 }
 
 function verify(source, definition) {
+  const workload = definition.file === 'runManagedNamespaceExperiment' && definition.consumer === 'web-chromium'
+    ? ' --workload=chromium' : '';
   const section = job(source, definition.job);
   const normal = step(section, definition.normal);
   assert.ok(normal.endsWith(`          ${definition.command}`));
@@ -46,7 +48,7 @@ function verify(source, definition) {
     "          EKY_E2E: '1'",
     '        run: |',
     '          checkout_sha="$(git rev-parse --verify HEAD 2>/dev/null)" || checkout_sha=""',
-    `          node apps/e2e/experiments/processOwnership/${definition.file}.mjs --consumer=${definition.consumer} --checkout-sha="$checkout_sha" 2>/dev/null`,
+    `          node apps/e2e/experiments/processOwnership/${definition.file}.mjs --consumer=${definition.consumer} --checkout-sha="$checkout_sha"${workload} 2>/dev/null`,
   ].join('\n'));
   return experiment;
 }
@@ -107,7 +109,21 @@ test('only two existing Linux jobs contain the experiment and core/risk/acceptan
   assert.match(job(cadence, 'acceptance'), /needs: \[classification, cadence_contracts, core, supervisor, clean, upgrade, legacy, workspace\]/u);
 });
 
+test('Chromium workload is explicit in the managed web command and absent from the other experiments', () => {
+  assert.equal(core.match(/--workload=chromium/gu)?.length, 1);
+  for (const definition of cases) {
+    const original = step(job(core, definition.job), definition.experiment);
+    const browser = definition.file === 'runManagedNamespaceExperiment' && definition.consumer === 'web-chromium';
+    const variants = browser ? [
+      original.replace(' --workload=chromium', ''),
+      original.replace('--workload=chromium', '--workload=actor'),
+    ] : [original.replace(' 2>/dev/null', ' --workload=chromium 2>/dev/null')];
+    for (const changed of variants) assert.throws(() => verify(core.replace(original, changed), definition));
+  }
+});
+
 test('cadence runs only the pure Linux contract, runtime-mock and wiring tests', () => {
+  const localCommand = JSON.parse(read('../../eky_software/package.json')).scripts['test:ci'];
   const script = job(cadence, 'cadence_contracts').match(/        run: (node --test[^\n]+)/u)?.[1];
   assert.ok(script);
   for (const file of [
@@ -116,7 +132,13 @@ test('cadence runs only the pure Linux contract, runtime-mock and wiring tests',
     'eky_software/apps/e2e/experiments/processOwnership/runPidNamespaceExperiment.test.mjs',
     'eky_software/apps/e2e/experiments/processOwnership/managedNamespaceResult.test.mjs',
     'eky_software/apps/e2e/experiments/processOwnership/runManagedNamespaceExperiment.test.mjs',
-  ]) assert.ok(script.split(' ').includes(file));
+    'eky_software/apps/e2e/experiments/processOwnership/managedChromiumFailure.test.mjs',
+    'eky_software/apps/e2e/experiments/processOwnership/managedChromiumActor.test.mjs',
+  ]) {
+    assert.ok(script.split(' ').includes(file));
+    const local = file.startsWith('eky_software/') ? file.slice('eky_software/'.length) : '../' + file;
+    assert.ok(localCommand.split(' ').includes(local));
+  }
   assert.doesNotMatch(script, /\srun(?:Pid|Managed)NamespaceExperiment\.mjs\s/u);
   assert.match(script, /--test-concurrency=1/u);
 });

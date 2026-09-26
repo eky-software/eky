@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { posix } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { validEvidenceBinding } from './linuxPrerequisiteContract.mjs';
-import { managedLaunchCommand } from './managedNamespaceLaunchContract.mjs';
+import { managedLaunchCommand, validateManagedWorkload } from './managedNamespaceLaunchContract.mjs';
+import { readManagedChromiumFailure, validateManagedChromiumDiagnostic } from './managedChromiumFailure.mjs';
 import { inspectManagedRoot } from './managedNamespaceRoot.mjs';
 import { createManagedResult, managedFailure, serializeManagedResult,
   validateManagedSessionResult } from './managedNamespaceResult.mjs';
@@ -16,17 +17,19 @@ import { actorArguments, childEnvironment, createDeadline, descriptors, experime
 } from './pidNamespaceContract.mjs';
 import { emergencyStop, watchChild } from './runPidNamespaceExperiment.mjs';
 
-function initialState() {
+function initialState(workload = 'actor') {
   return { session: null, failure: null, cleanupFailure: null, root: 'notCreated',
-    sentinel: { started: false, before: false, after: false, closed: false, normalExit: false } };
+    sentinel: { started: false, before: false, after: false, closed: false, normalExit: false },
+    ...(workload === 'chromium' ? { chromiumFailure: { status: 'unavailable', phase: null, reason: null } } : {}) };
 }
 
 // A normal namespace receipt and an independently preserved sentinel are both
 // required. Failed/ambiguous launches never grant authority to remove the root.
-export async function runManagedExperiment({ binding, started, state = initialState(), runtime = process,
+export async function runManagedExperiment({ binding, started, workload = 'actor', state = initialState(workload), runtime = process,
   fs = filesystem, hostFs, tempDirectory = tmpdir, createListener, spawnChild = spawn,
   nonce = () => randomBytes(16).toString('hex'), now = () => process.hrtime.bigint(),
   time = globalThis, session = runManagedSession, isEnded = () => false,
+  readChromiumFailure = readManagedChromiumFailure,
 }) {
   const deadline = createDeadline(started, now);
   const check = phase => { requireCondition(!isEnded(), 'deadlineExceeded'); deadline.check(phase); };
@@ -35,6 +38,7 @@ export async function runManagedExperiment({ binding, started, state = initialSt
   let root;
   let rootReceipt;
   let ids;
+  let failureScope;
   let sentinel;
   let replies;
   let sentinelGeneration;
@@ -63,6 +67,7 @@ export async function runManagedExperiment({ binding, started, state = initialSt
     check(phase);
   };
   try {
+    validateManagedWorkload(workload);
     requireCondition(validEvidenceBinding(binding) && runtime.platform === 'linux' &&
       runtime.env.EKY_E2E === '1' && runtime.env.CI === 'true' && runtime.env.GITHUB_ACTIONS === 'true',
     'invalidContext');
@@ -78,8 +83,11 @@ export async function runManagedExperiment({ binding, started, state = initialSt
     rootReceipt = inspectManagedRoot(root, ids, { fs, tempDirectory });
     const config = Object.freeze({ generation: nonce(), started, uid: ids.uid, gid: ids.gid, root,
       node: fs.realpathSync(runtime.execPath),
-      init: fs.realpathSync(fileURLToPath(new URL('./managedNamespaceInit.mjs', import.meta.url))) });
+      init: fs.realpathSync(fileURLToPath(new URL('./managedNamespaceInit.mjs', import.meta.url))),
+      ...(workload === 'chromium' ? { workload } : {}) });
     managedLaunchCommand(config);
+    failureScope = Object.freeze({ root, generation: config.generation, uid: ids.uid, gid: ids.gid,
+      rootReceipt, tempRoot: temp });
     sentinelGeneration = nonce();
     requireCondition(config.generation !== sentinelGeneration, 'invalidArguments');
     const args = actorArguments({ ...config, generation: sentinelGeneration }, 'sentinel');
@@ -145,8 +153,20 @@ export async function runManagedExperiment({ binding, started, state = initialSt
       time.clearTimeout(sentinelTimer);
     }
   }
+  if (workload === 'chromium' && failureScope) {
+    try {
+      check('report');
+      const diagnostic = validateManagedChromiumDiagnostic(readChromiumFailure(failureScope, { fs, runtime }));
+      check('report');
+      state.chromiumFailure = diagnostic;
+      if (diagnostic.status !== 'absent') state.failure ??= managedFailure('workload', { reason: 'workloadFailed' });
+    } catch {
+      state.failure ??= managedFailure('report', { reason: 'reportFailed' });
+    }
+  }
   if (state.session?.outcome === 'observed' && !state.failure && !state.cleanupFailure &&
-      state.sentinel.before && state.sentinel.after && state.sentinel.closed && state.sentinel.normalExit) {
+      state.sentinel.before && state.sentinel.after && state.sentinel.closed && state.sentinel.normalExit &&
+      (workload !== 'chromium' || state.chromiumFailure.status === 'absent')) {
     try {
       check('report');
       validateIdentity(currentIdentity(runtime), ids);
@@ -160,7 +180,7 @@ export async function runManagedExperiment({ binding, started, state = initialSt
       check('report');
     } catch (error) { state.failure = managedFailure('rootRemoval', error); }
   }
-  return createManagedResult(binding, state);
+  return createManagedResult(binding, state, workload);
 }
 
 export function runManagedNamespaceCli({ argv, runtime = process,
@@ -170,8 +190,11 @@ export function runManagedNamespaceCli({ argv, runtime = process,
 }) {
   const started = now().toString();
   const deadline = createDeadline(started, now);
-  const binding = experimentContext(argv, runtime.env);
-  const state = initialState();
+  const selected = Array.isArray(argv) && argv.length === 3 && ['--workload=actor', '--workload=chromium'].includes(argv[2])
+    ? argv[2].slice(11) : null;
+  const workload = selected ?? 'actor';
+  const binding = experimentContext(selected ? argv.slice(0, 2) : argv, runtime.env);
+  const state = initialState(workload);
   let ended = false;
   let published = false;
   let timer;
@@ -188,8 +211,8 @@ export function runManagedNamespaceCli({ argv, runtime = process,
       let result;
       let line;
       try {
-        result = createManagedResult(binding, state);
-        line = serializeManagedResult(result, binding);
+        result = createManagedResult(binding, state, workload);
+        line = serializeManagedResult(result, binding, workload);
       } catch {
         // Missing evidence fails the caller. Do not replace invalid evidence with
         // invented not-started/not-created facts after side effects may exist.
@@ -206,7 +229,7 @@ export function runManagedNamespaceCli({ argv, runtime = process,
       end(1);
     }, deadline.remaining('report'));
     if (!binding) { state.failure = managedFailure('context', { reason: 'invalidContext' }); publish(); return; }
-    void runManagedExperiment({ ...operations, binding, started, state, runtime, now, time,
+    void runManagedExperiment({ ...operations, binding, started, workload, state, runtime, now, time,
       isEnded: () => ended }).then(publish, error => {
       state.failure ??= managedFailure('report', error);
       publish();

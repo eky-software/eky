@@ -303,6 +303,33 @@ test('managed init connects only to exact private endpoint and shares the origin
   assert.equal(f.socket.ends, 0);
 });
 
+test('managed init selects the fixed Chromium worker only after GO with unchanged process settings', () => {
+  const legacy = initFixture(); legacy.run();
+  legacy.socket.emit('data', encodeMessage(message('GO', config.generation)));
+  for (const workload of ['actor', 'chromium']) {
+    const args = [...actorArguments(config), `--root=${config.root}`, `--workload=${workload}`];
+    assert.deepEqual(parseManagedInitArguments(args), { ...config, workload });
+    const f = initFixture({ runtime: { argv: ['node', 'managedNamespaceInit.mjs', ...args] } });
+    f.run();
+    assert.deepEqual(f.launches, []);
+    f.socket.emit('data', encodeMessage(message('GO', config.generation)));
+    assert.equal(f.launches.length, 1);
+    assert.equal(f.launches[0][0], legacy.launches[0][0]);
+    assert.deepEqual(f.launches[0][2], legacy.launches[0][2]);
+    assert.match(f.launches[0][1][0], workload === 'chromium' ? /managedChromiumActor\.mjs$/u : /pidNamespaceActor\.mjs$/u);
+    assert.deepEqual(f.launches[0][1].slice(1), [...actorArguments(config, 'root'),
+      ...(workload === 'chromium' ? [`--root=${config.root}`] : [])]);
+    f.child.emit('error', Error('PRIVATE_WORKER_ERROR'));
+    assert.deepEqual(f.exits, [failureExit]);
+    assert.equal(f.launches.length, 1); // No fallback to the old actor.
+  }
+  for (const extra of ['--workload=other', '--workload=chromium\n', '--other=chromium']) {
+    assert.throws(() => parseManagedInitArguments([...actorArguments(config), `--root=${config.root}`, extra]));
+  }
+  assert.throws(() => parseManagedInitArguments([...actorArguments(config), `--root=${config.root}`,
+    '--workload=actor', '--workload=chromium']));
+});
+
 test('init rejects same-chunk duplicate or partial GO tails before the first workload launch', () => {
   for (const tail of [Buffer.from('{'), encodeMessage(message('GO', config.generation))]) {
     const f = initFixture(); f.run();

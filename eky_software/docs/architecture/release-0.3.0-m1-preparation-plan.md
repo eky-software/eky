@@ -2,16 +2,16 @@
 
 ## Jatka tästä
 
-**2026-09-26: T1/T2 hyväksytty, T3/R28 kesken; ei uutta rinnakkaista remonttia.**
+**2026-09-27: T1/T2 hyväksytty, T3/R28 kesken; ei uutta rinnakkaista remonttia.**
 Modulaarinen monoliitti ja hyväksytty M1-rajaus säilyvät.
 
 | Kohta | Nykyinen lähtötieto |
 | --- | --- |
-| Viimeisin CI-koerevisio | `08e9a94d907f146f3f8910c219a0d1c45bc305bf`, V2-ajo `36268511274`, yritys 1: päättynyt hylättynä kytkentätestin vuoksi. Molempien LM-kuluttajien rajattu näyttö takaisinluettu hyväksytysti; ei hyväksytty koko CI- tai main-baseline. Tarkista jatkettava HEAD ja ajo Gitistä/GitHubista. |
-| Viimeisin koko CI:n hyväksytty lähtötila | `a1df082c`; sen jälkeen `93ba537b`:n tavalliset testiryhmät läpäisivät, mutta erilliset Linux-kokeet ja kokonaiskoonti hylättiin. [Erilliset tulokset](e2e-test-environment.md#t3c-lsn-rajatun-ci-kokeen-havainto). |
+| Nykyinen lähtörevisio | `e3f647b2de9586868d678ae8c864a492f076630a`: normaali V2 `36270550708` ja riippuvuustarkistus `36270558922`, yritys 1, läpäisty. Tarkista jatkettava HEAD ennen muutoksia. |
+| Viimeisin koko CI:n hyväksytty lähtötila | Sama `e3f647b2`: 38 onnistunutta ryhmää ja yksi tarkoituksellinen valinnaisen kokeen ohitus; kaikki neljä kokeellista valitsinta pois päältä. System 218/218, web 35/35 ja Electron 38/38 ilman retryä tai flaky-tulosta. Lokien checkoutit sekä neljän tuottajan ja kymmenen kuluttajan artifact-sidonnat tarkistettu. Ei PR/main- tai koko T3-hyväksyntä. |
 | Avoin puute | Pääprosessin poistuminen ei todista koko puun poistumista. Tavalliset fixturet eivät vielä käytä hyväksytysti todennettua uutta omistajuuspolkua. |
 | Viimeisin rajattu näyttö | [LM:n CI-takaisinluku](e2e-test-environment.md#t3c-lmn-ensimmäinen-ci-näyttö-ja-kytkentätestin-korjaus) läpäisi molemmissa kuluttajissa. Core hylkäsi T1:n täsmällisen kytkentätestin: uuden manuaalisen valitsimen odotettu rivi puuttui testistä. Rajattu korjaus ja kolme kielteistä regressiota läpäisivät 70/70; koko workspace 4 333 läpäisyä ja 8 aiempaa ohitusta, CI-sopimukset 241/241 sekä tyypitys läpäisivät. Aiemman timeoutin juurisyytä ei väitetä korjatuksi. |
-| Seuraava työ | Julkaise katselmoitu kytkentätestikorjaus ja todenna korjatun revision normaali CI kaikki kokeelliset valitsimet pois päältä; vanhaa ajoa ei uusita vihreyden hakemiseksi. Sen jälkeen [T3c-LM:n](e2e-test-environment.md#t3c-lm-rajattu-ci-testisession-hallinta) Chromium-yhteensopivuus ja oikeat kuluttajasiirrot, ei uutta rinnakkaista alustaa. |
+| Seuraava työ | [Rajattu Chromium-yhteensopivuuskoe](e2e-test-environment.md#t3c-lmn-chromium-yhteensopivuus) nykyisen LM:n sisällä on toteutuksessa. Sen jälkeen oikeat kuluttajasiirrot, ei uutta rinnakkaista alustaa. |
 | Valmistuminen | Oikeat kuluttajat siirretty, korvattu aktiivinen toteutus poistettu vasta vastaavan kattavuuden jälkeen, T1/T2 säilyneet sekä koko T3-matriisi ja täsmällisen PR/main-revision portit läpäisty. |
 | T3:n jälkeen | Nykyisen M1:n A1:n vanhentuneet vastaukset ja muut hyväksytyt sovelluskorjaukset, sitten roadmapin 0.3.0-käyttöliittymä- ja diagnostiikkatyö. |
 
@@ -76,8 +76,8 @@ Toteutus ja näyttö kirjataan omiin checkpointteihinsa, ei valmistelun läpäis
 Goal koskee koko T3/R28:aa ja sen PR/main-integraatiota, ei kaikkia 0.3.0:n
 ominaisuuksia. Pelkkä diagnostiikka tai vihreä Electron-osajoukko ei täytä sitä.
 
-1. LM-kokeen tiukka takaisinluku on suljettu. Sulje korjatun
-   kytkentätestirevision normaali CI-portti ennen seuraavaa toiminnallista vaihetta.
+1. LM-koetyökuorman tiukka takaisinluku ja korjatun kytkentätestirevision
+   normaali CI-portti on suljettu. Vanha hylätty ajo säilyy erillisenä.
 2. Todista mekanismin ja nykyisen Chromium-polun yhteensopivuus muuttamatta
    sandboxia tai aikarajoja. Pidä tavalliset E2E-tulokset, aiemmat LS-hylkäykset,
    LM:n koetyökuorman näyttö ja koko CI:n tila erillisinä havaintoina.

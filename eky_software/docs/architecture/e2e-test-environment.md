@@ -1833,6 +1833,66 @@ palvelun/profiilin asentamista, uutta riippuvuutta, suojausten poistamista,
 runner-vaihtoa tai uutta CI-koetta. Lopulliset Windows-/Linux-mekanismit ja
 T3-matriisi säilyvät omissa hyväksyntäporteissaan.
 
+##### T3c-LM:n Chromium-yhteensopivuus
+
+2026-09-27: toteutuksessa hyväksytyn LM-rajauksen sisällä. Lähtörevisio
+`e3f647b2de9586868d678ae8c864a492f076630a` läpäisi normaalin V2-ajon
+`36270550708` ja riippuvuustarkistuksen `36270558922`, molemmat yrityksellä 1.
+Kaikki neljä kokeellista valitsinta olivat pois päältä. V2:n 38 ryhmää
+onnistui ja yksi valinnainen kokeilu ohitettiin tarkoituksella. Tavalliset
+system 218/218, web 35/35 ja Electron 38/38 läpäisivät ilman uusintoja.
+Checkoutit, lokit ja producer/consumer-artifact-sidonnat takaisinluettiin.
+Aiemmat LS-hylkäykset ja LM-ajon erillinen kytkentätestihylkäys säilyvät.
+
+Seuraava pieni checkpoint käyttää samaa session omistajaa, kontrollikanavaa,
+GO-porttia, nonroot-initia, määräaikoja ja sentineliä. Suljettu `actor` /
+`chromium`-valinta sitoo vain yhden kiinteän sisäisen workerin käynnistykseen;
+kutsuja ei anna komentoa, ympäristöä tai mielivaltaisia argumentteja.
+Vanhat actor- ja LS-tulokset eivät saa uutta merkitystä.
+
+Chromium-worker tekee yhden synteettisen loopback-Page-toiminnon ja yhden
+API-tarkistuksen. Se käyttää lukittua Playwrightia ja nykyisen web-polun
+oletuksia: ei uutta executable-, channel- tai sandbox-overridea. Nykyinen
+web-polku ei ota Chromiumin sandboxia erikseen käyttöön; koe ei todista
+sandboxillista Chromiumia. Electronin oma sandbox-vaatimus säilyy erillisenä.
+Selain-Page ja API-oliot pysyvät workerin sisällä; uutta etäohjausprotokollaa
+tai yleistä testirunneria ei rakenneta.
+
+Import, käynnistys, tarkistukset, sulkeminen, omien scratch-hakemistojen
+tarkistus ja aiempi root/leaf-handoff mahtuvat samaan alkuperäisestä
+aloituksesta laskettuun 8 sekunnin työkuormarajaan. Playwrightin asennettua
+cachea ei vaihdeta, mutta kaikki kirjoitettavat profiili-, temp- ja HOME/XDG-
+polut rajataan alkuperäisen testijuuren alle. Browser API:n sulkeminen ei
+yksin todista koko puun poistumista. Scratch-jäämä estää handoffin;
+ulompi ajuri poistaa edelleen vain tyhjän alkuperäisen juuren.
+
+Ensimmäinen worker-virhe kirjoittaa vain yhden enintään 256 tavun
+kanonisen phase/reason-tiedoston private-juureen. Lukija tarkistaa rootin,
+tiedostotyypin, oikeudet, linkit, generationin ja tavurajan. Puuttuva,
+virheellinen ja lukematta jäänyt havainto erotetaan. Raakaa virhettä,
+stackia, polkua tai selaimen tulostetta ei julkaista. Kokeen Chromium-
+tulos saa oman suljetun evidence-arvonsa; vanhat actor-tavut säilyvät.
+
+Ennen yhtä seurattua CI-koetta vaaditaan valinnan ja oikean käynnistyksen
+sidonta, workerin injektoidut onnistumis-/virhe-/määräaikatestit, koko
+kirjoitus/lukuketju sekä vanhojen actor-, init-, sentinel- ja T1/T2-sopimusten
+regressiot ja riippumaton katselmus. Nykyisen manuaalisen LM-valinnan
+web-kuluttaja käyttää Chromiumia jo asennetulla selaimella; system pysyy
+actor-kokeena. Uutta CI-kadenssia, riippuvuutta tai host-asetusta ei lisätä.
+
+Tämä todistaa vasta kiinteän browser-työkuorman yhteensopivuutta. Elävän
+selaimen pakotettu teardown, owner-loss, oikeat fixturet ja koko T3:n
+valmistumisportti ovat edelleen avoinna. Tuotanto-, business-, backup-,
+Activity-, Diagnostics- ja tukipakettisopimukset eivät muutu: kokeen rajattu
+diagnostiikka kuuluu vain testin tulosketjuun.
+
+Paikallisen tarkistuksen checkpoint: workerin ja failure-tiedoston 66/66
+injektoitua testiä, kanoninen E2E-sopimussarja 460/460, CI-sopimukset 315/315
+ja koko projektin tyypitys läpäisivät. Workspace-sarja läpäisi 4 410 testiä;
+kahdeksan aiempaa ohitusta säilyi. Launch-/init-/result-/outer-kytkennän
+ristiinkatselmuksessa ei löytynyt korjattavaa. Tämä on valmistelua yhdelle
+seuratulle CI-kokeelle, ei vielä oikean Chromiumin yhteensopivuusnäyttö.
+
 ##### T3c-LM: rajattu CI-testisession hallinta
 
 Omistaja hyväksyi 2026-09-26 rajatun CI-testisession hallinnan suunnittelun

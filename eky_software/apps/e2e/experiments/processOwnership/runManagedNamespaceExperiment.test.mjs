@@ -129,6 +129,62 @@ function fixture(options = {}) {
 
 const run = f => runManagedExperiment({ ...f.operations, started, binding });
 
+test('Chromium selection reaches the actual session and its absence-checked diagnostic permits empty-root removal', async () => {
+  const f = fixture();
+  const result = await runManagedExperiment({ ...f.operations, started, binding, workload: 'chromium',
+    readChromiumFailure(scope, operations) {
+      f.calls.push('diagnostic');
+      assert.equal(scope.root, root);
+      assert.equal(scope.generation, f.sessionOptions.config.generation);
+      assert.deepEqual(scope.rootReceipt, { dev: 1, ino: 5 });
+      assert.equal(scope.tempRoot, '/synthetic-temp');
+      assert.equal(operations.runtime, f.runtime);
+      return { status: 'absent', phase: null, reason: null };
+    } });
+  assert.equal(f.sessionOptions.config.workload, 'chromium');
+  assert.equal(result.evidence, 'boundedManagedChromiumOnly');
+  assert.equal(result.evidenceOutcome, 'complete');
+  assert.ok(f.calls.indexOf('STOP') < f.calls.indexOf('diagnostic'));
+  assert.ok(f.calls.indexOf('diagnostic') < f.calls.indexOf('removeRoot'));
+  assert.deepEqual(parseManagedResult(serializeManagedResult(result, binding, 'chromium'), binding, 'chromium'), result);
+});
+
+test('Chromium diagnostics retain the root and first session failure without an actor fallback', async () => {
+  for (const diagnostic of [{ status: 'valid', phase: 'launch', reason: 'operationFailed' },
+    { status: 'invalid', phase: null, reason: null }, { status: 'unavailable', phase: null, reason: null }]) {
+    const f = fixture({ afterSession({ observed }) {
+      observed.outcome = 'unverified'; observed.failure = { stage: 'workload', reason: 'unexpectedEof' };
+      Object.assign(observed.facts, { workload: false, controlClosed: false, waitingWrapper: 'unverified' });
+    } });
+    const result = await runManagedExperiment({ ...f.operations, started, binding, workload: 'chromium',
+      readChromiumFailure: () => diagnostic });
+    assert.equal(result.evidenceOutcome, 'incomplete');
+    assert.deepEqual(result.failure, { stage: 'workload', reason: 'unexpectedEof' });
+    assert.deepEqual(result.chromiumFailure, diagnostic);
+    assert.equal(result.root, 'retained');
+    assert.equal(f.calls.filter(call => call === 'session').length, 1);
+    assert.ok(!f.calls.includes('removeRoot'));
+  }
+});
+
+test('untrusted or late Chromium diagnostic never permits removal even after an observed session', async () => {
+  for (const mode of ['invalid', 'late', 'throw', 'validFailure']) {
+    const f = fixture();
+    const result = await runManagedExperiment({ ...f.operations, started, binding, workload: 'chromium',
+      readChromiumFailure() {
+        if (mode === 'throw') throw Error('PRIVATE_READ');
+        if (mode === 'late') f.set(budgets.report);
+        return mode === 'validFailure' ? { status: 'valid', phase: 'assert', reason: 'postconditionFailed' } :
+          { status: mode === 'invalid' ? 'invalid' : 'absent', phase: null, reason: null };
+      } });
+    assert.equal(result.root, 'retained');
+    assert.equal(result.evidenceOutcome, 'incomplete');
+    assert.ok(result.failure);
+    assert.ok(!f.calls.includes('removeRoot'));
+    assert.doesNotMatch(JSON.stringify(result), /PRIVATE/u);
+  }
+});
+
 test('outer driver combines original deadline, separate sentinel, session and empty-root removal', async () => {
   const f = fixture();
   const result = await run(f);
@@ -285,6 +341,43 @@ function cli(f, extra = {}) {
     writeLine: (line, done) => { lines.push(line); done(); }, exit: code => exits.push(code), ...extra });
   return { lines, exits, promise };
 }
+
+test('CLI binds the exact Chromium selector and rejects unknown, duplicate or injected options', async () => {
+  const args = [`--consumer=${binding.consumer}`, `--checkout-sha=${binding.checkoutSha}`];
+  const f = fixture();
+  const invocation = cli(f, { argv: [...args, '--workload=chromium'],
+    readChromiumFailure: () => ({ status: 'absent', phase: null, reason: null }) });
+  assert.equal(await invocation.promise, 0);
+  assert.equal(parseManagedResult(invocation.lines[0], binding, 'chromium').evidenceOutcome, 'complete');
+  assert.equal(f.sessionOptions.config.workload, 'chromium');
+  for (const selected of [['--workload=other'], ['--workload=chromium\n'],
+    ['--workload=chromium', '--workload=actor'], ['--workload=chromium', '--command=/bin/sh']]) {
+    const bad = fixture(); const run = cli(bad, { argv: [...args, ...selected] });
+    assert.equal(await run.promise, 1);
+    assert.deepEqual(bad.calls, []);
+    assert.equal(JSON.parse(run.lines[0]).evidenceOutcome, 'incomplete');
+  }
+});
+
+test('Chromium report timeout stays Chromium and does not invent absent diagnostic evidence', async () => {
+  const f = fixture(); let release;
+  f.operations.session = async value => {
+    await value.beforeGo();
+    return new Promise(resolve => { release = resolve; });
+  };
+  const invocation = cli(f, { argv: [`--consumer=${binding.consumer}`, `--checkout-sha=${binding.checkoutSha}`, '--workload=chromium'],
+    readChromiumFailure() { assert.fail('Expired report must not read diagnostic'); } });
+  await setImmediate();
+  f.advance(budgets.report);
+  assert.equal(await invocation.promise, 1);
+  const result = parseManagedResult(invocation.lines[0], binding, 'chromium');
+  assert.equal(result.chromiumFailure.status, 'unavailable');
+  assert.equal(result.evidenceOutcome, 'incomplete');
+  release(f.observed);
+  await setImmediate();
+  assert.equal(invocation.lines.length, 1);
+  assert.ok(!f.calls.includes('removeRoot'));
+});
 
 test('CLI success and failure publish one closed bound result with matching exit status', async () => {
   for (const options of [{}, { badChallenge: 2 }]) {

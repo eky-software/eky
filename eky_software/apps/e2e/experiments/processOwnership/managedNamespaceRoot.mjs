@@ -2,6 +2,7 @@ import * as filesystem from 'node:fs';
 import { tmpdir } from 'node:os';
 import { posix } from 'node:path';
 import { parseActorArguments, requireCondition } from './pidNamespaceContract.mjs';
+import { validateManagedWorkload } from './managedNamespaceLaunchContract.mjs';
 
 export function managedControlPath(root) {
   requireCondition(typeof root === 'string' && /^\/[A-Za-z0-9_./-]+$/u.test(root) &&
@@ -13,12 +14,14 @@ export function managedControlPath(root) {
 }
 
 export function parseManagedInitArguments(argv) {
-  requireCondition(Array.isArray(argv) && argv.length === 5 && typeof argv[4] === 'string' &&
+  requireCondition(Array.isArray(argv) && [5, 6].includes(argv.length) && typeof argv[4] === 'string' &&
     argv[4].startsWith('--root='), 'invalidArguments');
   const config = parseActorArguments(argv.slice(0, 4));
   const root = argv[4].slice(7);
   managedControlPath(root);
-  return Object.freeze({ ...config, root });
+  if (argv.length === 5) return Object.freeze({ ...config, root });
+  requireCondition(typeof argv[5] === 'string' && argv[5].startsWith('--workload='), 'invalidArguments');
+  return Object.freeze({ ...config, root, workload: validateManagedWorkload(argv[5].slice(11)) });
 }
 
 // These checks intentionally do not promise isolation from a hostile same-UID
