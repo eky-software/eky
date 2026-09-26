@@ -17,6 +17,10 @@ on:
         required: false
         type: boolean
         default: false
+      linux_pid_namespace_experiment:
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -112,6 +116,14 @@ jobs:
           fi
           pnpm test:e2e:system
 
+      - name: Observe bounded system PID namespace experiment
+        if: success() && inputs.linux_pid_namespace_experiment == true
+        env:
+          EKY_E2E: '1'
+        run: |
+          checkout_sha="$(git rev-parse --verify HEAD 2>/dev/null)" || checkout_sha=""
+          node apps/e2e/experiments/processOwnership/runPidNamespaceExperiment.mjs --consumer=system-api --checkout-sha="$checkout_sha" 2>/dev/null
+
   e2e-web-critical:
     name: Web critical E2E
     if: inputs.risk_plan != ''
@@ -157,6 +169,14 @@ jobs:
             fi
           fi
           pnpm --filter @eky/e2e e2e:web:critical
+
+      - name: Observe bounded web PID namespace experiment
+        if: success() && inputs.linux_pid_namespace_experiment == true
+        env:
+          EKY_E2E: '1'
+        run: |
+          checkout_sha="$(git rev-parse --verify HEAD 2>/dev/null)" || checkout_sha=""
+          node apps/e2e/experiments/processOwnership/runPidNamespaceExperiment.mjs --consumer=web-chromium --checkout-sha="$checkout_sha" 2>/dev/null
 
   e2e-electron-windows-critical:
     name: Windows Electron critical E2E

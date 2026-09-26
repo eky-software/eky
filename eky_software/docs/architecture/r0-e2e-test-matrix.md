@@ -110,14 +110,41 @@ Uusi [normaali baseline](e2e-test-environment.md#t3b-en-vihreä-normaali-baselin
 on tämän jälkeen läpäissyt kokonaisuudessaan revision `1953b6b0` ensimmäisellä
 yrityksellä. Vanhoja virhesyitä ei merkitä ratkaistuiksi. Seuraavan T3b-P-
 revision CI:ssä havaittiin erillinen [komentoharnessin sopimushylkäys](e2e-test-environment.md#t3b-pn-ci-sopimushylkäys-ja-havaintokytkentä).
-Sen havaintokytkennän korjaus ei ratkaise puuttuvan terminal-tuloksen
-juurisyytä. Tämäkään ei täytä alla olevia lopullisia prosessiomistajuuden rivejä.
+Sen havaintokytkennän korjausta seuraava normaali CI ja riippuvuustarkistus
+läpäisivät revision `a1df082c` ensimmäisellä yrityksellä. Checkoutit ja
+artifact-sidonnat on varmistettu; puuttuvan terminal-tuloksen juurisyy ei
+silti ratkennut. Tämäkään ei täytä alla olevia lopullisia prosessiomistajuuden rivejä.
+Omistaja hyväksyi 2026-09-26 erilliset T3c-W- ja T3c-L-kokeet. Niiden
+rajattu tila on alla omassa koetaulukossaan: T3c-W läpäisi neljä tapausta,
+T3c-L on valmis CI-kokeeseen mutta oikea CI-näyttö puuttuu. Kokeet eivät
+muuta lopullisen mekanismin ja fixture-siirron rivejä hyväksytyiksi.
 
 | Valmistelun näyttö | Taso ja rajaus | Tila |
 | --- | --- | --- |
 | TEST-TREE-LINUX-PREREQ-001 | Suljettu metadatahavainto, host-lukujen guard, luku-/aikarajat ja CI-komennon status. Ei prosessipuun omistajuuskoe. | Molempien kuluttajien täydellinen kielteinen pääsyhavainto saatu; ensimmäisen ajon T1-hylkäys säilyy. Korjattu revisio läpäisi oman CI-ajonsa. Ei Linux-omistajuustodiste. |
 | TEST-ELECTRON-LAUNCH-PATCH-001 | Todellisen lukitun riippuvuuden hallittu regressio; ei prosesseja tai verkkoa. Lisäksi kaksi alkuperäistä eristettyä Windows-koetta. | Ennen patchia 17/43 läpäisyä, jälkeen 43/43; normaali ja before-ready exit 29 -koe läpäisivät native-kuitein. Rajattu Windows-CI ja myöhempi täysi normaali baseline läpäisivät; aiemmat erilliset hylkäykset säilyvät. Ei koko R28. |
-| TEST-BACKEND-BUILD-METADATA-001 | Täsmällinen normalisointi, lähdesidonta, linkkien torjunta, vendor-tavujen säilyminen, sisältöportit ja paketointijärjestyksen rakenteellinen suoja. | Kohdesarja 200/200, normaali testisarja ja tyypitys läpäisivät; katselmoitu. Tuore eristetty build, sisältöportit ja samoihin itsenäisiin tavuihin sidottu kaksivaiheinen packaged smoke läpäisivät molempien prosessipuiden terminal-kuitein. Ensimmäinen build-hylkäys säilyy. Uuden revision CI:ssä erillinen komentoharnessin hylkäys; selvitys avoinna. Ei julkaisu- tai koko T3-hyväksyntä. |
+| TEST-BACKEND-BUILD-METADATA-001 | Täsmällinen normalisointi, lähdesidonta, linkkien torjunta, vendor-tavujen säilyminen, sisältöportit ja paketointijärjestyksen rakenteellinen suoja. | Kohdesarja 200/200, normaali testisarja ja tyypitys läpäisivät; katselmoitu. Tuore eristetty build, sisältöportit ja samoihin itsenäisiin tavuihin sidottu kaksivaiheinen packaged smoke läpäisivät molempien prosessipuiden terminal-kuitein. Ensimmäinen build-hylkäys säilyy. CI:ssä havaittu erillinen komentoharnessin hylkäys säilyy avoimena; havaintokorjauksen revision a1df082c normaali CI ja riippuvuustarkistus läpäisivät. Ei julkaisu- tai koko T3-hyväksyntä. |
+
+#### T3c:n rajatut kokeet
+
+Windowsin kaikkien neljän tapauksen takaisinluettu näyttö vahvistaa
+jäsenyyden ennen resumea, sisemmän puun tyhjyyden ja siivousterminalin,
+ulomman omistajan normaalin päättymisen ilman interventiota sekä erillisen
+sentinelin elossaolon ja sulun. Kokeet sidottiin samoihin native-tavuihin.
+[Checkpoint](e2e-test-environment.md#t3c-wn-rajatun-kokeen-checkpoint)
+erottaa nämä tulokset vanhoista hylkäyksistä, kohdetesteistä ja CI-porteista.
+
+| Kokeen ID | Taso ja vaadittu näyttö | Tila |
+| --- | --- | --- |
+| TEST-T3CW-NORMAL-001 | Rajattu Windows-oikeaprosessikoe: todellinen Page/API, argumentit, ympäristö, cwd, sandbox, stdout/stderr ja normaali bridge-close 0. | Rajattu koe läpäisty; ei tavallisen fixturen siirto tai koko T3. |
+| TEST-T3CW-BEFORE-READY-001 | Rajattu Windows-oikeaprosessikoe: root exit 29 ja elävä Electronin luoma leaf ennen stopia; ei readyä tai timeout-launch-hylkäystä; erillinen drain-kuitti ja ei bridge-failurea. Bridge-exit ei ole suoraan havaittu. | Rajattu koe läpäisty; intended exit ei korvaa actual exit -havaintoa tai siivousterminalia. |
+| TEST-T3CW-ROOT-FIRST-001 | Rajattu Windows-oikeaprosessikoe: root exit 0 ja ei-tyhjä Job ennen omistajan tree-stopia; vasta sitten todellinen bridge-close 0. | Rajattu koe läpäisty; ajurin odotusjärjestyskorjaus suojattu sopimustesteillä. Aiemman perityn tulostekahvan kirjoittajan identiteettiä ei väitetä todistetuksi. |
+| TEST-T3CW-BRIDGE-EXIT-001 | Rajattu Windows-oikeaprosessikoe: tarkoituksellinen bridge-close 41; runtime ja omistaja yhä elossa, kontrolli käytössä ja omistajan siivous todennettu. | Rajattu koe läpäisty odotettuna työkuormavirheenä, ei onnistuneena työkuormana. |
+| TEST-T3CL-NAMESPACE-001 | Ehdollinen Linux-CI-koe: namespace-esiehdot, root-exitin jälkeinen tuore leaf-kuittaus, initin odotettu EOF, normaali wrapper-wait ja ulkopuolinen sentinel. | Toteutus ja puhtaat sopimus-/kytkentätestit valmiit; oikea CI-koe odottaa. Uutta ajoa ei ole käynnistetty eikä namespace-tukea väitetä todennetuksi. |
+
+Alla olevat lopullisen T3:n rivit säilyvät erillisinä päätös- ja
+hyväksyntäportteina. T3c-W:n ensimmäisen ennen launchia tapahtuneen
+hylkäyksen syy ja vanhat satunnaiset timeoutit ovat edelleen avoimia.
 
 | ID | Taso | Koe ja hyväksyntä | Tila |
 | --- | --- | --- | --- |

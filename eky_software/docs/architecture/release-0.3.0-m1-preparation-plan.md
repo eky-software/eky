@@ -38,6 +38,12 @@ rajattu Windows-CI ovat läpäisseet. Myös uusi
 [normaali baseline](e2e-test-environment.md#t3b-en-vihreä-normaali-baseline)
 on hyväksytty; koko T3/R28 ja PR/main-integraatio ovat vielä avoinna.
 
+**T3c 2026-09-26:** Windowsin erillinen neljän tapauksen adapterikoe
+[läpäisi rajatut hyväksyntäehdot](e2e-test-environment.md#t3c-wn-rajatun-kokeen-checkpoint).
+Linuxin toteutus on valmis CI-kokeeseen; todellinen CI-näyttö puuttuu eikä
+uutta ajoa ole käynnistetty. Lopullinen mekanismivalinta ja tavallisten
+fixturejen siirto edellyttävät edelleen erillistä hyväksyntää.
+
 **T3:n jatko-Goal 2026-09-25:** omistaja hyväksyi T3b-L:n toteutuksen ja
 yhden seuratun CI-ajon sekä itsenäisen etenemisen T3:n loppuun erilliset
 päätösportit säilyttäen. [Toteutusvaltuus](e2e-test-environment.md#t3b-ln-toteutusvaltuus)
@@ -86,7 +92,7 @@ ominaisuuksia. Pelkkä diagnostiikka tai vihreä Electron-osajoukko ei täytä s
    korjattavaa. Kohdassa 1 hyväksytyssä normaalissa ajossa launch-virhe ei
    toistunut: uuden lokihavainnon virheketjun näyttö pysyy sopimustesteissä,
    eikä eri ajojen osatuloksia yhdistetä hyväksynnäksi.
-3. **Nyt:** hyväksytyn T3b-P:n metatietorajaus on toteutettu ja katselmoitu;
+3. **Valmis lähtötila:** hyväksytyn T3b-P:n metatietorajaus on toteutettu ja katselmoitu;
    kohdesarja, normaalit testit ja tyypitys läpäisivät. Uusi eristetty build,
    sisältöportit ja samoihin tavuihin sidottu kaksivaiheinen packaged smoke
    läpäisivät molempien prosessipuiden päättymistodistein
@@ -94,12 +100,19 @@ ominaisuuksia. Pelkkä diagnostiikka tai vihreä Electron-osajoukko ei täytä s
    Uuden revision normaali CI havaitsi erillisen
    [komentoharnessin sopimushylkäyksen](e2e-test-environment.md#t3b-pn-ci-sopimushylkäys-ja-havaintokytkentä).
    Sen rajattu havaintokytkennän korjaus on katselmoitu ja paikallisesti
-   todennettu; uusi CI-todennus ja keskeytymisen juurisyy säilyvät avoimina.
-   Paikallinen näyttö ei korvaa CI- tai
-   PR/main-porttia. Tuotantotoimintoja ei lisätä tähän.
-4. **Seuraava mekanismivaihe:** T3c-W:n ja T3c-L:n rajatut kokeet säilyvät
-   erillisinä päätösportteina. Hyväksytyn näytön jälkeen toteutetaan varsinainen
-   prosessiomistajuus ja fixture-siirrot sovittujen sopimusten mukaan.
+   todennettu. Revision `a1df082c` normaali CI ja riippuvuustarkistus
+   läpäisivät ensimmäisellä yrityksellä; kaikki valitut jobit sekä
+   producerien ja consumerien artifact-sidonnat varmistettiin.
+   Tämä on uusi hyväksytty CI-lähtötila, ei keskeytymisen juurisyyn ratkaisu
+   tai PR/main-hyväksyntä. Tuotantotoimintoja ei lisätä tähän.
+4. **Nyt:** T3c-W:n neljä rajattua koetta läpäisivät. Ajurin root-first-
+   odotusjärjestyskorjaus on todennettu; perityn tulostekahvan aiempaa
+   kirjoittajaidentiteettiä tai ensimmäisen ennen launchia tapahtuneen
+   hylkäyksen syytä ei ole todistettu. T3c-L:n toteutus ja CI-kytkentä ovat
+   valmiit, mutta oikea CI-koe puuttuu. Kerää sen näyttö hyväksytyssä
+   rajauksessa. Valmistele vasta tämän jälkeen erillinen päätös lopullisesta
+   mekanismista, session/stop-sopimuksesta ja tavallisten fixturejen siirrosta;
+   neljän Windows-kokeen läpäisy ei itsessään hyväksy niitä.
 5. **T3:n valmistuminen:** koko omistajuusmatriisi, katselmukset ja normaali
    PR/main-integraatio; vasta täsmällisen main-revision portit sulkevat R28:n.
 
@@ -152,7 +165,7 @@ tai riippuvuusporttia, jos rajaus myöhemmin koskettaa niitä.
 | T1a / R27 | Startup-failure-testit tavalliseen desktop-testivalintaan ja valinnan regressiosopimus. | Hyväksytty; paikallisen näytön lisäksi PR/main-portit läpäisty. Ei tuotantokoodia. |
 | T1b / R27 | Kuusi puuttuvaa installer-harness-testitiedostoa nykyisten vaadittujen komentojen kautta ajettaviksi, myös ajokytkentää suojaava testi. | Hyväksytty T1a:n kanssa; R27 suljettu. Ei raskaan CI:n kevennystä. |
 | T2 / R29 | `security`/`fault`-projektivalinnan ja koko build-ketjun vastaavuus puhtaasta, vanhentuneesta ja epäonnistuneesta valmistelusta. | Hyväksytty; paikallinen näyttö, Linux-CI sekä PR/main-portit läpäisty. [Integraatio](#t2n-integraatiohyväksyntä). |
-| T3 / R28 | Omistajuus käynnistyksestä todettuun koko puun poistumiseen; epävarma cleanup ei hyväksy restartia tai poista fixtureä. | T3a:n erillinen koe suoritettu: 4/5; varhainen Electron-launch-virhe hylättiin. [T3b-valmistelu](e2e-test-environment.md#t3b-virhehaaran-ja-alustarajan-valmistelu) erottaa riippuvuuskorjauksen, Linux-CI-havainnon ja myöhemmän alustakokeen hyväksynnät. R28 avoin. |
+| T3 / R28 | Omistajuus käynnistyksestä todettuun koko puun poistumiseen; epävarma cleanup ei hyväksy restartia tai poista fixtureä. | T3c-W:n rajattu koe 4/4 läpäisty; T3c-L valmis oikeaan CI-kokeeseen, näyttö odottaa. [Checkpoint](e2e-test-environment.md#t3c-wn-rajatun-kokeen-checkpoint) erottaa kokeen lopullisesta mekanismivalinnasta ja fixture-siirrosta. R28 sekä PR/main-portit avoinna; historiallisia hylkäyksiä ei muuteta. |
 | A1 / R01 | Luonnoksen avaamisen kohde, näkyvät arvot ja tallennuksen kohde pysyvät samana myös vastausten valmistuessa väärässä järjestyksessä. | T1 ensin; hyväksyntään käytettävän E2E-fixturen T3-puute korjattu ja sen build-valinta todennettu. |
 | A2 / R05, A3 / R06 | Ensimmäisen createn tunnisteen säilyminen ja muokatun lomakkeen vanhentunut readiness. | Omat rajatut jatkopalat; A1:n hyväksyntä ei sulje niitä. Backendin hyväksyntäauktoriteetti säilyy. |
 | W7-valmistelu | Omistajan hyväksyttävä poisto-, karanteeni-, palautus- ja nollan työtilan sopimus. | Suunnittelu kulkee rinnalla; toteutus tarvitsee C/K/G/H:n nimetyt kyvykkyydet. |
@@ -474,15 +487,26 @@ alustamekanismien toteutus eivät ala punaisen baselinen päälle.
 Linuxin seuraavaksi päätösehdotukseksi on katselmoitu
 [rajattu T3c-L:n namespace-koe](e2e-test-environment.md#t3c-ln-rajattu-namespace-koe-päätösehdotus).
 Se nimeää valmiin `unshare`-työkalun, namespace-kohtaiset luontioikeudet,
-ehdollisen synteettisen kuorman ja rajatun wait-todisteen. Toteutus ja ajo
-odottavat erillistä hyväksyntää; se ei ratkaise koko R28:aa.
+ehdollisen synteettisen kuorman ja rajatun wait-todisteen. Omistaja hyväksyi
+toteutuksen ja ajon 2026-09-26. Toteutus ja puhtaat sopimus-/kytkentätestit
+ovat valmiit CI-kokeeseen; oikea CI-näyttö puuttuu eikä uutta ajoa ole
+käynnistetty. Tämä ei ratkaise koko R28:aa.
 
 Windowsin seuraava päätösehdotus on
 [T3c-W:n neljän tapauksen adapterikoe](e2e-test-environment.md#t3c-wn-neljän-tapauksen-adapterikoe-päätösehdotus).
 Se rajaa erillisen omistajan, Playwright-bridgen, koekohtaisen native-
 builderin ja uuden kokeen apphost-buildin vain jo saatavilla olevin
-edellytyksin; puuttuva edellytys pysäyttää ilman asennusta. Toteutus odottaa omaa
-hyväksyntää sekä T3b-E:n todennusta; lopullista fixture-siirtoa ei hyväksytä.
+edellytyksin; puuttuva edellytys pysäyttää ilman asennusta. Omistaja hyväksyi
+toteutuksen ja kokeet 2026-09-26. T3b-E ja korjattu CI-lähtötila on todennettu
+ympäristösuunnitelman myöhemmissä checkpointeissa. Windowsin neljä tapausta
+ovat nyt läpäisseet [rajatun kokeen](e2e-test-environment.md#t3c-wn-rajatun-kokeen-checkpoint).
+Native- ja Node-kohdesarjat, komentokytkentä sekä lopullisen lukurajamuutoksen
+sisältävät workspace-testit läpäisivät. Typecheck läpäisi ennen viimeistä
+JavaScript-muutosta, jonka jälkeen TypeScript-lähteet eivät muuttuneet.
+Paikallinen CI-sopimussarja läpäisi 156/156. Windows-koe ei sulje Linuxin puuttuvaa
+oikeaprosessinäyttöä, vanhoja satunnaisia timeouteja eikä T3c-W:n ensimmäisen
+ennen launchia tapahtuneen hylkäyksen avointa syytä. Lopullinen mekanismi,
+fixture-siirto ja koko T3/R28 tarvitsevat erilliset päätökset ja portit.
 
 ## Skannaushavaintojen vaikutus jatkoon
 

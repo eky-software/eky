@@ -17,8 +17,19 @@ läpäisi kokonaisuudessaan. T3b-P:n hyväksytyn paketointikorjauksen rajattu
 toteutus, regressiot ja katselmus sekä tuore eristetty build ja samoihin
 tavuihin sidottu packaged smoke ovat valmistuneet. Uuden revision normaalissa
 CI:ssä tuli erillinen [komentoharnessin sopimushylkäys](e2e-test-environment.md#t3b-pn-ci-sopimushylkäys-ja-havaintokytkentä);
-havaintokytkentä on korjattu ja paikallisesti todennettu, mutta sen CI-portti
-ja keskeytymisen juurisyy säilyvät avoimina.
+havaintokytkentä on korjattu, katselmoitu ja paikallisesti todennettu.
+Korjatun revision `a1df082c` normaali CI ja riippuvuustarkistus läpäisivät
+ensimmäisellä yrityksellä; tarkat checkoutit ja artifact-sidonnat on
+varmistettu. Keskeytymisen juurisyy säilyy avoimena. Omistaja hyväksyi
+2026-09-26 T3c-W:n ja T3c-L:n rajatut kokeet. Windowsin
+[neljä tapausta läpäisivät](e2e-test-environment.md#t3c-wn-rajatun-kokeen-checkpoint);
+Linuxin toteutus on valmis CI-kokeeseen mutta oikea CI-näyttö puuttuu.
+Uuden revision CI-ajoa ei ole käynnistetty. Lopullinen mekanismivalinta ja
+fixture-siirto vaativat erillisen hyväksynnän; tämä ei ole koko T3:n tai
+PR/main-integraation hyväksyntä. Ajurin root-first-odotusjärjestysvirhe on
+korjattu ja todennettu, mutta perityn tulostekahvan kirjoittajaidentiteettiä
+tai T3c-W:n ensimmäisen ennen launchia tapahtuneen hylkäyksen syytä ei
+väitetä ratkaistuksi.
 Vihreys ei todista aiempien satunnaisten virheiden juurisyitä.
 [Ajantasainen työjärjestys](release-0.3.0-m1-preparation-plan.md#t3n-nykyinen-työjärjestys)
 erottaa virheen rajauksen, paketoinnin ja varsinaisen omistajuusratkaisun.
@@ -78,7 +89,8 @@ valmistui hylättynä: ensimmäinen legacy-consumer epäonnistui, toinen läpäi
 Tämä on eri havainto kuin aikaisempi development-fixturen firstWindow-timeout.
 Payloadin [metatietorajauksen erillinen paketointipäätös](e2e-test-environment.md#t3b-p-hyväksytty-metatietorajaus)
 on hyväksytty ja sen paikallinen toteutus-, katselmus- ja packaged-näyttö
-on todennettu läpäisseen lähtötilan jälkeen; uuden revision CI on avoinna.
+on todennettu läpäisseen lähtötilan jälkeen. Korjattu T3b-P:n CI-lähtötila
+läpäisi yllä kuvatusti; uuden T3c-revision CI on vielä avoinna.
 Alustojen omistajuusmekanismi ja tavallisten fixturejen siirto ovat avoimia.
 T2 ei sulje M1:n muita testikorjauksia.
 
@@ -390,14 +402,16 @@ M0-selvitys ei avaa muuta 0.3.0-toteutusta ennen integraatioporttia.
 
 ### M1: Todistuksen ja päätösten valmistelu
 
-**Tila 2026-09-25:** rajattu suunnitteluvalmistelu tehty ja katselmoitu
+**Tila 2026-09-26:** rajattu suunnitteluvalmistelu tehty ja katselmoitu
 hyväksytyltä M0-pohjalta. T1a/T1b:n toteutus ja PR/main-integraatio on
 hyväksytty. Myös T2:n toteutus, paikallinen näyttö, Linux-CI ja PR/main-
 integraatio on hyväksytty. T3:n lähdekatselmus ja testimatriisi on valmisteltu;
 T3a-koe on suoritettu ja T3b-valmistelu rajaa riippuvuuden virhekorjauksen,
 Linuxin CI-edellytystarkistuksen sekä myöhemmän alustakokeen erillisiksi
-päätöksiksi. Electronin yhteensopivuus ja alustojen käyttöönotto odottavat
-edelleen toteutus- ja hyväksyntänäyttöä. Muut
+päätöksiksi. T3c-W:n rajattu neljän tapauksen adapterikoe on läpäisty;
+T3c-L:n toteutus on valmis mutta todellinen CI-koe odottaa. Lopullinen
+alustamekanismi ja tavallisten fixturejen siirto odottavat erillistä
+hyväksyntää ja koko T3:n näyttöä. Muut
 testikorjaukset ovat avoinna.
 Tarkka jako on [M1-suunnitelmassa](release-0.3.0-m1-preparation-plan.md):
 T1a/T1b testien ajokytkentä, T2 projektivalinta ja build-edellytykset,
@@ -451,7 +465,7 @@ katalogisopimus ja retentionin reunaehdot täydentävät D029-listaa; niitä ei
 kuitata valmiiksi pelkän vanhan diagnostiikkalistan läpäisyllä.
 
 T-paketista T1a/T1b ja T2 on hyväksytty yllä mainittujen integraatioiden
-näytöllä. T3a:n osittainen koetulos ei sulje T3/R28:aa. A/B/C/K/D/E/F/G/H/I:n
+näytöllä. T3c-W:n rajattu 4/4-koetuloskaan ei sulje T3/R28:aa. A/B/C/K/D/E/F/G/H/I:n
 tila on **suunniteltu / korjaus ja hyväksyntä tekemättä**.
 Päätösportin vaikutusalue odottaa hyväksyntää.
 

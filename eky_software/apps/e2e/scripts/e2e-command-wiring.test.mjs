@@ -21,7 +21,7 @@ const preparations = [
   'pnpm --filter @eky/desktop e2e:prepare-backend',
 ];
 const projects = '--project=system-api --project=web-chromium --project=electron-development';
-const contractCommand = 'node --test scripts/e2e-command-wiring.test.mjs experiments/processOwnership/playwrightElectronLaunch.test.mjs';
+const contractCommand = 'node --test scripts/e2e-command-wiring.test.mjs experiments/processOwnership/playwrightElectronLaunch.test.mjs experiments/processOwnership/adapterContract.test.mjs experiments/processOwnership/adapterControl.test.mjs experiments/processOwnership/adapterRootExitOrdering.test.mjs experiments/processOwnership/boundedChildOutput.test.mjs experiments/processOwnership/pidNamespaceContract.test.mjs experiments/processOwnership/runPidNamespaceExperiment.test.mjs';
 
 function assertWiring(rootManifest, e2eManifest) {
   assert.equal(rootManifest.scripts.test, 'pnpm --recursive test');
@@ -80,6 +80,10 @@ const mutations = [
   ['missing recursive hook', (r) => { r.scripts.test = 'pnpm --filter @eky/backend test'; }],
   ['missing self hook', (r, e) => { delete e.scripts.test; }],
   ['missing dependency regression', (r, e) => { e.scripts.test = 'node --test scripts/e2e-command-wiring.test.mjs'; }],
+  ['missing adapter control regression', (r, e) => { e.scripts.test = e.scripts.test.replace(' experiments/processOwnership/adapterControl.test.mjs', ''); }],
+  ['missing adapter ordering regression', (r, e) => { e.scripts.test = e.scripts.test.replace(' experiments/processOwnership/adapterRootExitOrdering.test.mjs', ''); }],
+  ['missing bounded output regression', (r, e) => { e.scripts.test = e.scripts.test.replace(' experiments/processOwnership/boundedChildOutput.test.mjs', ''); }],
+  ['missing namespace regression', (r, e) => { e.scripts.test = e.scripts.test.replace(' experiments/processOwnership/pidNamespaceContract.test.mjs', ''); }],
   ['missing wiring regression', (r, e) => { e.scripts.test = 'node --test experiments/processOwnership/playwrightElectronLaunch.test.mjs'; }],
   ['wrong self hook', (r, e) => { e.scripts.test = 'node --test scripts/other.test.mjs'; }],
   ['wrong root alias', (r) => { r.scripts['test:e2e:security'] = 'pnpm --filter @eky/e2e e2e:critical'; }],

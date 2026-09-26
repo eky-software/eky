@@ -172,3 +172,84 @@ redaction tests and the workflow wiring contract. The latter uses the existing
 Bash tool with inert shell functions on both runner platforms, never the host
 probe or a real E2E workload. Real Linux metadata is collected only in the
 explicitly enabled CI steps. Final T3 ownership acceptance remains separate.
+
+## Approved T3c experiments
+
+The owner approved the separate Windows adapter and Linux namespace experiments
+on 2026-09-26. Their canonical limits and decision boundaries are in the
+[T3c-W plan](../../../../docs/architecture/e2e-test-environment.md#t3c-wn-neljän-tapauksen-adapterikoe-päätösehdotus)
+and [T3c-L plan](../../../../docs/architecture/e2e-test-environment.md#t3c-ln-rajattu-namespace-koe-päätösehdotus).
+The four bounded Windows cases passed after implementation and independent
+review; the [checkpoint](../../../../docs/architecture/e2e-test-environment.md#t3c-wn-rajatun-kokeen-checkpoint)
+records their scope and unresolved earlier failures. Linux implementation and
+pure contracts are ready, but actual CI evidence remains pending. Final
+mechanism selection and fixture migration require a separate decision; these
+experiments do not complete T3/R28. Existing T3a cases and T3b-E dependency
+regressions remain unchanged.
+
+The Windows adapter has two modes in a separate framework-dependent apphost:
+an owner outside Playwright's shell/bridge subtree, and a byte-relaying bridge
+passed as `executablePath`. Only the owner launches the pinned Electron binary
+in its inner Job. Four cases require distinct evidence: normal Page/API and
+close, Electron-created leaf before a deliberate pre-ready failure, root exit
+with remaining descendants, and deliberate bridge exit with a live runtime.
+The last case is an expected workload failure, never a successful workload.
+The driver must accept the inner terminal and owner exit before exiting itself.
+The unchanged T3a native owner supplies outer emergency containment; any outer
+intervention rejects the adapter experiment. The external sentinel must answer
+fresh challenges before and after that boundary and then exit separately.
+
+The private configuration binds a fresh generation, one-use launch nonce,
+executable, working directory and explicit isolated environment. The caller
+uses one named-pipe session with monotonically increasing request sequences.
+Control frames are at most 4 KiB including their delimiter; stdout and stderr
+are separate bounded byte channels, not a reimplementation of Playwright's
+debugger protocol. Disk and pipe terminals have separate closed schemas.
+Raw failures and paths stay in the retained synthetic OS-temp root. A failed
+or unverified experiment never deletes that root or starts the next case.
+
+Pure Node contracts are reached by the ordinary `@eky/e2e` test command. They
+do not launch these experiments. Native protocol tests and offline apphost
+prerequisites must also pass, followed by independent review, before running
+the four-case Windows experiment. No application, installer, normal E2E fixture,
+timeout or release version is changed by this experiment.
+
+After those gates, build and inspect the separate apphost with the existing
+Windows toolchain. Its NuGet configuration has no package sources: an absent
+SDK/framework/apphost pack is a prerequisite failure, not permission to install.
+
+```powershell
+dotnet build apps/e2e/experiments/processOwnership/adapterNative/Eky.ProcessOwnershipAdapter.csproj --configuration Release
+$adapter = (Resolve-Path apps/e2e/.artifacts/t3c-adapter/bin/Eky.ProcessOwnershipAdapter/release_win-x64/Eky.ProcessOwnershipAdapter.exe).Path
+$env:DOTNET_ROOT = Split-Path (Get-Command dotnet.exe).Source
+& $adapter --self-test
+$env:EKY_E2E = '1'
+node apps/e2e/experiments/processOwnership/runWindowsAdapterExperiment.mjs --dotnet (Get-Command dotnet.exe).Source --adapter $adapter normal
+```
+
+The unchanged T3a native assembly must already be available at its documented
+artifact location. Inspect the complete normal result before invoking any of
+`beforeReady`, `rootFirst` or `bridgeExit`, one case at a time. Preserve the first
+failure and stop subsequent cases. The runner retains each root, raw bounded
+diagnostics, inner/outer receipts, sentinel checks and executable digests; do
+not publish those local files. Only validated control-channel messages establish
+readiness or terminal state. Standard output is diagnostic/byte relay only.
+
+Root exit and stream closure are separate observations. In a root-first case,
+the driver first proves that the root exited while descendants remain, then
+requests the owner's tree stop before awaiting the bridge's closed streams.
+Waiting for bridge closure before that stop can form a cycle when a surviving
+writer retains a stream. This ordering does not permit dropped output, a longer
+deadline, or a weaker terminal receipt. A bridge drain record is supplementary
+pre-exit evidence, never proof that a process exited. Failed Playwright launch
+does not expose a public process handle; its intended bridge exit code must not
+be reported as an observed exit code.
+
+The Linux experiment is an explicit, default-off
+`linux_pid_namespace_experiment` input on the existing caller/reusable chain.
+Each existing Linux job first completes its ordinary test command successfully.
+Only then may the bounded experiment use the already available `unshare` tool;
+there is no installation, privilege fallback or change to existing test status.
+The approved namespace capabilities, lifecycle proof, deadlines and closed CI
+result are defined in the owning plan. A negative prerequisite observation is
+not ownership support, and an unknown or post-launch failure is not a skip.

@@ -152,6 +152,7 @@ function assertCiWiring({ core, caller, plan, coverage }) {
     '  core:', '    needs: classification', '    uses: ./.github/workflows/ci.yml',
     '    with:', '      risk_plan: ${{ needs.classification.outputs.plan }}',
     "      linux_ownership_prerequisites: ${{ github.event_name == 'workflow_dispatch' && inputs.linux_ownership_prerequisites == true }}",
+    "      linux_pid_namespace_experiment: ${{ github.event_name == 'workflow_dispatch' && inputs.linux_pid_namespace_experiment == true }}",
   ].join('\n'));
   const acceptance = jobBlock(caller, 'acceptance');
   const header = acceptance.split('\n    steps:\n')[0];
@@ -254,6 +255,9 @@ for (const [name, before, after] of [
   ['missing prerequisite opt-in', "      linux_ownership_prerequisites: ${{ github.event_name == 'workflow_dispatch' && inputs.linux_ownership_prerequisites == true }}", ''],
   ['unconditional prerequisite opt-in', "      linux_ownership_prerequisites: ${{ github.event_name == 'workflow_dispatch' && inputs.linux_ownership_prerequisites == true }}", '      linux_ownership_prerequisites: true'],
   ['non-manual prerequisite opt-in', "github.event_name == 'workflow_dispatch' && inputs.linux_ownership_prerequisites == true", 'inputs.linux_ownership_prerequisites == true'],
+  ['missing namespace experiment opt-in', "      linux_pid_namespace_experiment: ${{ github.event_name == 'workflow_dispatch' && inputs.linux_pid_namespace_experiment == true }}", ''],
+  ['unconditional namespace experiment opt-in', "      linux_pid_namespace_experiment: ${{ github.event_name == 'workflow_dispatch' && inputs.linux_pid_namespace_experiment == true }}", '      linux_pid_namespace_experiment: true'],
+  ['non-manual namespace experiment opt-in', "github.event_name == 'workflow_dispatch' && inputs.linux_pid_namespace_experiment == true", 'inputs.linux_pid_namespace_experiment == true'],
   ['acceptance dependency', 'cadence_contracts, core, supervisor', 'cadence_contracts, supervisor'],
   ['acceptance invocation', '        run: node .github/scripts/verifyCiRun.mjs', '        run: node --version'],
   ['pull request trigger', '  pull_request:', '  unrelated_event:'],

@@ -16,8 +16,8 @@ fault injectionia.
 
 ## T-paketin valmistelu
 
-**2026-09-25: T1 ja T2 hyväksytty PR/main-porttien jälkeen; T3:n
-omistajuusmekanismi valmistelussa.** [M1-valmistelu](release-0.3.0-m1-preparation-plan.md)
+**2026-09-26: T1 ja T2 hyväksytty PR/main-porttien jälkeen; T3c-W:n
+rajattu koe läpäisty, T3c-L:n CI-näyttö ja lopullinen T3 avoinna.** [M1-valmistelu](release-0.3.0-m1-preparation-plan.md)
 rajaa R27-R29:n kolmeen erikseen todennettavaan sopimukseen. M0:n erillinen
 Windows Job -supervisor ja Electronin lataus-/purkutodistus eivät sulje näitä.
 
@@ -228,11 +228,13 @@ Suunnitelman todistusrajat säilyvät myös myöhemmissä muutoksissa.
 
 ### T3: Koko prosessipuun poistumistodiste
 
-**Tila 2026-09-25: T3/R28 kesken; T3b-L:n probe todennettu, T3b-E:n patchin
-paikalliset regressiot ja rajattu Windows-CI läpäisty.** Viimeisin
-[kokonaisajo hylättiin legacy-smokessa](#t3b-en-kokonaisajon-legacy-hylkäys).
-T3a:n alkuperäinen 4/5 jää historiaksi. Alustamekanismien ja fixture-siirron
-hyväksyntä on erillinen. Lähtökohta on hyväksytty T2-main;
+**Tila 2026-09-26: T3/R28 kesken; T3c-W:n neljä rajattua koetta läpäisty,
+T3c-L:n toteutus valmis CI-kokeeseen mutta oikea CI-näyttö puuttuu.**
+T3b-E:n ja T3b-P:n korjattu CI-lähtötila on todennettu niiden omissa
+checkpointeissa; uuden T3c-revision CI-ajoa ei ole käynnistetty.
+T3a:n alkuperäinen 4/5 sekä myöhemmät erilliset hylkäykset jäävät historiaksi.
+Alustamekanismien valinta ja fixture-siirto vaativat erillisen hyväksynnän.
+Integraation lähtökohta on hyväksytty T2-main;
 [M1:n päätösportti](release-0.3.0-m1-preparation-plan.md#t3n-toteutukseen-siirtymisen-portti)
 erottaa valmistelun, teknisen kokeen ja varsinaisen kuluttajien siirron.
 
@@ -1061,8 +1063,24 @@ Rajattu diagnostiikka- ja kytkentäsarja läpäisi 7/7, mukaan lukien aidon
 supervisorin observer-virhe ja muuttumaton terminal-tulos. Koko workspace-
 success-komentoryhmä ja workflow-sopimukset läpäisivät yhteisessä ajossa
 43/43 ilman ohituksia. Riippumaton katselmus ei löytänyt korjattavaa.
-CI-havaintokytkennän todennus on vielä avoinna. Muutos ei korjaa todistetusti
-alkuperäistä keskeytymistä eikä avaa T3c- tai PR/main-porttia.
+Revision `a1df082c8c53d06c5d3a3c9d727d4ed2aaf1f877`
+[normaali CI-ajo](https://github.com/eky-software/eky/actions/runs/36236577596)
+läpäisi ensimmäisellä yrityksellä: 38 jobia onnistui ja yksi valinnainen
+koe ohitettiin suunnitellusti. Saman revision
+[riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/36236581813)
+läpäisi. Kaikki 12 komentoryhmäajoa, myös aiemmin hylänneen ryhmän molemmat
+toistot, läpäisivät. Electronin 38 testiä läpäisi ilman retry- tai flaky-
+tuloksia ja system-sarja 218/218. Kaikkien 38 suoritetun jobin lokit,
+todellinen checkout sekä neljän producerin ja kymmenen consumerin
+artifact-sidonnat ja before/after-verifioinnit tarkistettiin erikseen.
+Pakollisia tuloksia tai checkout-todisteita ei puuttunut. Suuria
+asennusarkistoja ei ladattu uudelleen tätä lokivarmennusta varten.
+
+Tämä hyväksyy korjatun revision normaalin CI-lähtötilan, ei alkuperäisen
+keskeytymisen juurisyytä: virhe ei toistunut, joten uuden havaintokytkennän
+virhepolun näyttö säilyy sopimustesteissä. Aiempi hylkäys pysyy omana
+havaintonaan. T3c:n alustakokeiden erilliset päätökset, koko T3/R28 ja
+PR/main-integraatio ovat edelleen avoinna.
 
 ##### Windowsin omistajuusrajan valinta
 
@@ -1082,9 +1100,11 @@ worker-rajan päätökseen eikä yksityistä Playwright-protokollaa kopioida.
 
 ##### T3c-W:n neljän tapauksen adapterikoe: päätösehdotus
 
-Seuraava Windows-päätös rajataan erilliseen neljän tapauksen kokeeseen,
-ei koko T3-matriisin toteutukseen. **Ei vielä hyväksytty tai toteutettu.**
-Ensin vaaditaan korjattu CI-lähtötila ja hyväksytyn T3b-E-patchin todennus.
+Windows-päätös rajataan erilliseen neljän tapauksen kokeeseen,
+ei koko T3-matriisin toteutukseen. **Omistaja hyväksyi toteutuksen ja kokeet
+2026-09-26. Rajattu neljän tapauksen koe on läpäisty; lopullinen mekanismi
+ja fixture-siirto eivät sisälly tähän hyväksyntänäyttöön.** Korjattu
+CI-lähtötila ja T3b-E-patchin todennus on saatu yllä kirjatuista ajoista.
 
 Kokeen ajuri käynnistää itsenäisen native-omistajan ennen Playwright-launchia.
 Playwright saa `executablePath`-arvoksi oman `bridge.exe`-apurin.
@@ -1131,6 +1151,22 @@ Before-ready-adapterikoe on lisätapaus; se ei korvaa tai muuta T3b-E:n
 alkuperäistä ajurin luomaa leafiä käyttävää virhekoetta. Leaf-kuittaus ei
 saa päästää Electronia ready-tilaan ennen vikaa.
 
+Root-first-tapausten odotusjärjestys erottaa pääprosessin poistumisen
+koko puun ja tulostekanavien loppumisesta: ajuri todistaa ensin oikean
+root-exitin ja ei-tyhjän Jobin, pyytää omistajalta tree-stopin ja odottaa
+vasta sitten bridgen sulkeutumista. Elossa oleva kirjoittaja voi pitää
+tulostekanavan avoimena, joten bridge-closea ei odoteta tree-stopin
+edellytyksenä. Before-ready-haarassa launchin hylkäys otetaan heti
+valvontaan ja sama järjestys toteutetaan launchin vielä ollessa kesken.
+
+Bridgen erillinen suljettu drain-kuitti kertoo vain tulostevälityksen
+valmistumisesta ja aiotusta paluuarvosta ennen exit-vaihetta. Se ei korvaa
+prosessin exit-havaintoa, kontrollikanavan terminalia tai omistajan
+siivoustodistetta. Hylätty Playwright-launch ei palauta julkista
+prosessikahvaa; sen bridgen todellista exit-koodia ei väitetä havaituksi.
+Tulosteen katkaisu, välitysvirhe tai puuttuva kuitti ei kelpaa onnistuneen
+välityksen todisteeksi. Native-drainin ja cleanupin aikarajat säilyvät.
+
 Ulompi ohjain omistaa sentinelin kummankin Jobin ulkopuolella. Ajuri pysyy
 elossa sisemmän terminalin ja omistajan hallitun exitin yli. Sisemmän työn
 pitää mahtua ulomman kokeen 25 sekunnin työbudjettiin; sen 5 sekunnin
@@ -1145,6 +1181,45 @@ viestisopimukset katselmoidaan ja testataan ennen oikeita prosesseja.
 Työkuorma, cleanup ja näyttö säilyvät erillisinä; epävarmuus estää restartin
 ja juuren poiston. Tarkoitukselliset caller-/owner-lossit ja muut lopullisen
 T3-matriisin viat ratkaistaan erikseen, ei oleteta tämän kokeen kattamiksi.
+
+##### T3c-W:n rajatun kokeen checkpoint
+
+**2026-09-26: normaali, before-ready, root-first ja bridge-exit läpäisivät
+rajatun kokeen hyväksyntäehdot, yhteensä 4/4.** Kunkin tapauksen näyttö
+luettiin takaisin ja sidottiin samoihin native-artifactin tavuihin.
+Sisemmän omistajan kuitti vahvisti jäsenyyden ennen resumea, valmistuneen
+luonnin, nolla aktiivista Job-jäsentä ja `processTreeAbsent`-siivouksen.
+Ulompi omistaja päättyi normaalisti ilman hätäinterventiota, ja erillisen
+sentinelin vaaditut elossaolo- ja sulkuhavainnot läpäisivät. Bridge-failuren
+artifactia ei ollut hyväksytyissä tapauksissa.
+
+Before-ready todensi rootin tarkoituksellisen exit 29:n ja elävän
+jälkeläisen ennen stopia, odotetun launch-hylkäyksen sekä sukupolveen sidotun
+drain-kuitin. Sen `bridgeExitCode` jää `null`-arvoksi: kuitti kertoo vain
+aiotun exit-koodin. Muissa tapauksissa todellinen bridge-close oli vaadittu
+0 tai tarkoituksellinen 41. Virhehaaran kokeen läpäisy ei muuta sen
+työkuorman virhettä onnistumiseksi.
+
+Ajurin lähteestä osoitettu root-first-odotusjärjestyksen virhe on korjattu:
+root-exit ja ei-tyhjä Job todetaan ennen tree-stopia, bridge-close vasta sen
+jälkeen. Korjaus on suojattu sopimustesteillä ja todennettu rajatussa
+oikeaprosessikokeessa. Tämä ei yksilöi, mikä prosessi piti perittyä
+tulostekahvaa auki aiemmassa hylkäyksessä. Ensimmäisen ennen launchia
+tapahtuneen T3c-W-hylkäyksen tarkka syy jää avoimeksi. Myös aikaisempi
+puutteellinen before-ready-välitysnäyttö ja vanhat satunnaiset timeoutit
+pysyvät erillisinä havaintoina; niitä ei nimetä tämän kokeen korjaamiksi.
+
+Native-sopimustestit, Node-kohdetestit ja komentokytkentäsarja läpäisivät.
+Myös viimeisen 1 KiB:n drain-kuitin lukurajatarkennuksen sisältävät koko
+työtilan normaalit testit läpäisivät. Typecheck läpäisi ennen tätä viimeistä
+JavaScript-muutosta; TypeScript-lähteet eivät muuttuneet sen jälkeen.
+Aiemmat tarkoitukselliset testiohitukset säilyivät erillisinä eivätkä ole
+läpäisyjä. Paikallinen CI-sopimussarja läpäisi 156/156.
+Tämän checkpointin T3c-CI-todennus on seuraava vaihe,
+eikä tämä checkpoint ole PR/main-hyväksyntä. Raakatodisteet ja ajokohtaiset
+tiedot pysyvät yksityisinä. Lopullinen mekanismivalinta, tavallisten
+fixturejen siirto ja koko T3/R28:n hyväksyntä ovat edelleen erillisiä
+avoimia portteja.
 
 ##### Linuxin CI-edellytysten rajattu selvitys
 
@@ -1353,9 +1428,11 @@ patchia. Linuxin pääsyhavainto tulee edelleen ensimmäisestä ajosta.
 ##### T3c-L:n rajattu namespace-koe: päätösehdotus
 
 T3b-L:n kielteiset cgroup-pääsyvihjeet eivät kerro user/PID-namespacejen
-saatavuudesta. Seuraavaksi ehdotetaan yhtä ehdollista synteettistä koetta
-kummassakin nykyisessä Linux-jobissa. **Tätä ei ole vielä hyväksytty eikä
-toteutettu.** Ensin vaaditaan korjatun lähtörevision CI-portti.
+saatavuudesta. Seuraava vaihe on yksi ehdollinen synteettinen koe
+kummassakin nykyisessä Linux-jobissa. **Omistaja hyväksyi toteutuksen ja
+kokeet 2026-09-26. Toteutus ja oletuksena suljettu CI-kytkentä ovat valmiit
+CI-kokeeseen; oikeaa namespace-CI-näyttöä ei vielä ole.**
+Korjatun lähtörevision CI-portti on läpäissyt yllä kuvatusti.
 
 Erikseen hyväksyttävä työkalu on runnerilla ennestään oleva util-linux
 `unshare`; ei asennusta, kääntäjää, systemd-palvelua, cgroup-kirjoitusta,
@@ -1420,7 +1497,7 @@ ei PID-hakuun. Epävarmuus estää seuraavan kokeen ja testijuuren poiston.
 Sentinelin on vastattava tuoreeseen haasteeseen ennen ja jälkeen purun,
 ja se pysäytetään sekä odotetaan erikseen.
 
-Kytkentä olisi uusi oletuksena `false` oleva manuaalinen
+Kytkentä on uusi oletuksena `false` oleva manuaalinen
 `linux_pid_namespace_experiment` nykyisessä caller/reusable-CI-ketjussa,
 vasta kummankin nykyisen Linux-testikomennon onnistumisen jälkeen.
 Nykyinen testivirhe säilyy. Todennettu puuttuva edellytys on kielteinen
@@ -1441,6 +1518,14 @@ Chromiumia tai tuotantoprofiilia eikä hyväksy fixture-siirtoa tai R28:aa.
 Node ei muutu yleiseksi orphan-reaperiksi; lyhyt koe nojaisi lopussa
 kernelin namespace-purkuun. Pitkäikäisen initin reaping ja omistajan
 kuoleman yli säilyvä odotustodiste tarvitsevat edelleen oman ratkaisunsa.
+
+**Checkpoint 2026-09-26:** toteutus ja sen puhtaat sopimus- ja
+kytkentätestit ovat valmiit CI-todennukseen. Nykyisen uuden revision
+CI-ajoa ei ole käynnistetty. Ennen molempien Linux-kuluttajien todellista,
+ajoon ja checkoutiin sidottua havaintoa namespacejen saatavuutta tai
+purkutodistetta ei merkitä läpäistyksi. T3b-L:n vanha metadatahavainto ei
+korvaa tätä koetta. Myös mahdollinen läpäisy jättäisi lopullisen
+alustamekanismin ja fixture-siirron erilliseen hyväksyntään.
 
 #### T3:n lopullinen hyväksyntänäyttö
 
