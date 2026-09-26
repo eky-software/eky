@@ -303,6 +303,43 @@ for (const transform of ['wrongTarget', 'wrongName', 'suffix', 'missing', 'regis
 }
 
 for (const index of [0, 1, 2]) {
+  test(`accepts read-only source manifest ${index} link bookkeeping without changing its bytes`, async (t) => {
+    const f = await fixture(t);
+    const path = f.sourceFiles[index][0];
+    const bytes = await readFile(path);
+    const before = await lstat(path, { bigint: true });
+    const alias = join(f.root, 'deployed-source-manifest');
+    await link(path, alias);
+    assert.equal((await lstat(path, { bigint: true })).nlink, before.nlink + 1n);
+    await normalizeBackendBuildMetadata(f);
+    assert.deepEqual(await readFile(path), bytes);
+    assert.deepEqual(await readFile(alias), bytes);
+    await rm(alias);
+    await normalizeBackendBuildMetadata(f);
+    assert.deepEqual(await readFile(path), bytes);
+  });
+
+  test(`rejects source manifest ${index} mutation through a new hardlink`, async (t) => {
+    const f = await fixture(t);
+    const alias = join(f.root, 'deployed-source-manifest');
+    await link(f.sourceFiles[index][0], alias);
+    await writeFile(alias, `${JSON.stringify(f.sourceFiles[index][1])}\n`);
+    const before = await hashes(f.root);
+    await assert.rejects(normalizeBackendBuildMetadata(f), safeError('SOURCE_CHANGED'));
+    assert.deepEqual(await hashes(f.root), before);
+  });
+
+  test(`rejects replacement of source manifest ${index} even with identical bytes`, async (t) => {
+    const f = await fixture(t);
+    const path = f.sourceFiles[index][0];
+    const replacement = join(f.root, 'replacement-manifest');
+    await writeFile(replacement, await readFile(path));
+    await rename(replacement, path);
+    const before = await hashes(f.root);
+    await assert.rejects(normalizeBackendBuildMetadata(f), safeError('SOURCE_CHANGED'));
+    assert.deepEqual(await hashes(f.root), before);
+  });
+
   test(`rejects source manifest ${index} changed after capture`, async (t) => {
     const f = await fixture(t);
     await writeFile(f.sourceFiles[index][0], `${JSON.stringify(f.sourceFiles[index][1])}\n`);

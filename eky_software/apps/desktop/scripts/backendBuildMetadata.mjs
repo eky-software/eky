@@ -233,7 +233,12 @@ async function assertSourceUnchanged(source) {
     for (const file of source.files) {
       await assertDirectoryUnchanged(file.directory);
       const current = await readManifestFile(file.path, { singleLink: false });
-      if (!sameFile(file.metadata, current.metadata) || !file.bytes.equals(current.bytes)) {
+      // Deploy may hardlink read-only source manifests into its internal stage.
+      // Link bookkeeping is not a content change; each bounded read still checks it.
+      if (!sameIdentity(file.metadata, current.metadata) ||
+          file.metadata.size !== current.metadata.size ||
+          file.metadata.mtimeNs !== current.metadata.mtimeNs ||
+          !file.bytes.equals(current.bytes)) {
         fail('SOURCE_CHANGED');
       }
     }

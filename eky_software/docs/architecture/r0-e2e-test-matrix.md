@@ -115,7 +115,7 @@ alla olevia lopullisia prosessiomistajuuden rivejä.
 | --- | --- | --- |
 | TEST-TREE-LINUX-PREREQ-001 | Suljettu metadatahavainto, host-lukujen guard, luku-/aikarajat ja CI-komennon status. Ei prosessipuun omistajuuskoe. | Molempien kuluttajien täydellinen kielteinen pääsyhavainto saatu; ensimmäisen ajon T1-hylkäys säilyy. Korjattu revisio läpäisi oman CI-ajonsa. Ei Linux-omistajuustodiste. |
 | TEST-ELECTRON-LAUNCH-PATCH-001 | Todellisen lukitun riippuvuuden hallittu regressio; ei prosesseja tai verkkoa. Lisäksi kaksi alkuperäistä eristettyä Windows-koetta. | Ennen patchia 17/43 läpäisyä, jälkeen 43/43; normaali ja before-ready exit 29 -koe läpäisivät native-kuitein. Rajattu Windows-CI ja myöhempi täysi normaali baseline läpäisivät; aiemmat erilliset hylkäykset säilyvät. Ei koko R28. |
-| TEST-BACKEND-BUILD-METADATA-001 | Täsmällinen normalisointi, lähdesidonta, linkkien torjunta, vendor-tavujen säilyminen, sisältöportit ja paketointijärjestyksen rakenteellinen suoja. | Kohdesarja 191/191, normaali testisarja ja tyypitys läpäisivät; katselmoitu. Tuore eristetty build ja samoihin tavuihin sidottu packaged smoke avoinna. Ei julkaisu- tai T3-hyväksyntä. |
+| TEST-BACKEND-BUILD-METADATA-001 | Täsmällinen normalisointi, lähdesidonta, linkkien torjunta, vendor-tavujen säilyminen, sisältöportit ja paketointijärjestyksen rakenteellinen suoja. | Kohdesarja 200/200, normaali testisarja ja tyypitys läpäisivät. Ensimmäinen build hylkäsi lähteen linkkimetadatan; korjaus ja erillinen smoke-ajuri katselmoitu. Tuore build ja samoihin tavuihin sidottu packaged smoke avoinna. Ei julkaisu- tai T3-hyväksyntä. |
 
 | ID | Taso | Koe ja hyväksyntä | Tila |
 | --- | --- | --- | --- |

@@ -990,13 +990,25 @@ epäselvän tai uudelleenserialisoinnissa muuttuvan sisällön. Tätä muotovaat
 ei uloteta lähde- tai vendor-manifesteihin eikä virheellistä sisältöä korjata
 hiljaisesti.
 
-Rajattu regressiosarja läpäisi 191/191 ilman ohituksia. Siihen kuuluu 77
+Rajattu regressiosarja läpäisi 200/200 ilman ohituksia. Siihen kuuluu 86
 apurin tapausta, molempien sisältöporttien regressiot, hookin sopimukset,
 paketoinnin järjestyksen rakenteellinen suoja sekä testikomennon kytkentä.
-Koko normaali testisarja läpäisi 4 000 testillä ja kahdeksalla ennestään
+Koko normaali testisarja läpäisi 4 009 testillä ja kahdeksalla ennestään
 olevalla ohituksella; työtilan tyypitystarkistus läpäisi. Riippumaton
 katselmus ei löytänyt toteutusvirhettä. Katselmuksessa havaittu järjestyksen
 testiaukko täydennettiin ja lisäys katselmoitiin erikseen.
+
+Ensimmäinen tuore build paljasti lähdesidonnan liian tiukan
+metatietovertailun: deployn sisäinen staging voi lisätä read-only-
+lähdemanifestiin kovan linkin muuttamatta tiedoston identiteettiä tai tavuja.
+Korjattu vertailu sitoo lähteen edelleen identiteettiin, kokoon, muokkausaikaan
+ja tavuihin; yksittäisen bounded-luvun aikana myös linkkimetadatan pitää
+pysyä vakaana. Mutaatiokohteiden yhden linkin vaatimus säilyy. Yhdeksän
+lisäregressiota erottaa linkin lisäämisen/poiston sisällön muuttamisesta tai
+lähdetiedoston korvaamisesta. Tämä ei salli lopullisen artifactin jakamista
+hardlinkillä lähteen kanssa. Ensimmäinen hylkäys säilyy erillisenä näyttönä;
+korjatun vertailun ja erillisen smoke-ajurin riippumaton katselmus ei
+löytänyt korjattavaa. Tuore build ja smoke ovat vielä avoinna.
 
 Rakenteellinen järjestystesti ei todista pnpm-deployn ajonaikaista muotoa tai
 paketoidun sovelluksen toimintaa. Uusi eristetty build, samoihin tavuihin
