@@ -2129,6 +2129,41 @@ löytänyt korjattavaa. Oikea CI-koe on vielä tekemättä. Workspace-portti sä
 alemman tason läpäisy ei korvaa sitä. Ei todellista managerikutsua,
 Chromium-yhteensopivuustodistetta, fixture-siirtoa tai T3-hyväksyntää.
 
+#### T3c-LM:n ensimmäinen CI-näyttö ja kytkentätestin korjaus
+
+Revision `08e9a94d907f146f3f8910c219a0d1c45bc305bf` V2-ajo `36268511274`,
+yritys 1, suoritti LM-kokeen molempien tavallisten Linux-testisarjojen
+jälkeen. Vanha PID-namespace-koe, edellytysprobe ja inspector olivat pois
+päältä. Päättyneen ajon, todellisen checkoutin, alkuperäisten lokitavujen,
+käynnistysvalintojen ja omistavan kanonisen tuloslukijan kautta molemmat
+`boundedManagedPidNamespaceOnly`-tulokset hyväksyttiin rajatusti:
+session havainnot täydelliset, normaali wrapperin poistuminen, namespace
+tuhoutunut, sentinel ennen/jälkeen elossa ja normaalisti sulkeutunut,
+alkuperäinen tyhjä testijuuri poistettu. Ei ensimmäistä tai siivousvirhettä.
+Tämä todistaa vain koetyökuorman, ei Chromiumia tai tavallisten fixturejen
+siirtoa. Private-takaisinlukijan 37/37 regressiota läpäisi; se ei myönnä
+koko T3:n hyväksyntää.
+
+Tavalliset system 218/218, web 35/35 ja Windows Electron 38/38 läpäisivät
+ilman retryä tai flaky-tulosta. Myös valitut installer-, legacy-, workspace-
+ja rollback-jobit läpäisivät. Kokonaisajo jäi silti hylätyksi: core-jobin
+T1-kytkentätestin täsmällisestä odotetusta caller-lohkosta puuttui uusi
+manuaalisesti rajattu LM-valitsin, ja hyväksyntäaggregaatti hylkäsi tämän
+oikein. Lopputila oli 36 onnistunutta, kaksi hylättyä ja yksi tarkoituksella
+ohitettu valinnainen diagnostiikkajob. Kaikkien 38 suoritetun jobin lokit ja
+checkoutit säilytettiin; puuttuvia lokeja tai havaittuja seurantakatkoja ei
+raportoitu. Saman revision riippuvuustarkistus `36268521603`, yritys 1,
+läpäisi. Vanhaa hylkäystä ei korvata toisesta ajosta poimitulla vihreydellä.
+
+Rajattu kytkentätestikorjaus lisää puuttuvan odotuksen sekä puuttuvan,
+ehdottoman ja ei-manuaalisen valinnan hylkäävät regressiot. Kohdesarja
+70/70, workspace 4 333 läpäisyä ja 8 aiempaa ohitusta, CI-sopimukset
+241/241 sekä koko projektin tyypitys läpäisivät. Riippumaton katselmus ei
+löytänyt korjattavaa. Tuotanto, workflow-valinnat, aikarajat ja CI-vaatimukset
+eivät muutu. Korjatun revision normaali CI-portti on seuraava työ ennen
+Chromium-kokeen ja oikeiden kuluttajasiirtojen toteutusta. Aiemmat satunnaiset
+timeoutit ja LS-kokeen `uid_map`-esto pysyvät erillisinä avoimina havaintoina.
+
 #### T3:n lopullinen hyväksyntänäyttö
 
 Moduulikehittäjän rajapinta pidetään pienenä: system-testit käyttävät
