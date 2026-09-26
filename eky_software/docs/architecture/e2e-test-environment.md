@@ -21,9 +21,10 @@ fault injectionia.
 
 ## T-paketin valmistelu
 
-**2026-09-26: T1 ja T2 hyväksytty PR/main-porttien jälkeen; T3c-W:n
-rajattu koe läpäisty, Linuxin LS-koe paikantanut UID-map-eston ennen GO:ta;
-rajattu LM-sessionhallinta toteutuksessa, lopullinen T3 avoinna.**
+**2026-09-27: T1 ja T2 hyväksytty PR/main-porttien jälkeen; T3c-W:n
+rajattu koe sekä LM:n actor- ja Chromium-yhteensopivuuskokeet läpäisty.
+Oikeiden fixturejen siirto ja lopullinen T3 ovat avoinna. Linuxin vanha
+LS-hylkäys säilyy erillisenä havaintona.**
 [M1-valmistelu](release-0.3.0-m1-preparation-plan.md)
 rajaa R27-R29:n kolmeen erikseen todennettavaan sopimukseen. M0:n erillinen
 Windows Job -supervisor ja Electronin lataus-/purkutodistus eivät sulje näitä.
@@ -1835,7 +1836,7 @@ T3-matriisi säilyvät omissa hyväksyntäporteissaan.
 
 ##### T3c-LM:n Chromium-yhteensopivuus
 
-2026-09-27: toteutuksessa hyväksytyn LM-rajauksen sisällä. Lähtörevisio
+2026-09-27: rajattu koe läpäisty hyväksytyn LM-rajauksen sisällä. Lähtörevisio
 `e3f647b2de9586868d678ae8c864a492f076630a` läpäisi normaalin V2-ajon
 `36270550708` ja riippuvuustarkistuksen `36270558922`, molemmat yrityksellä 1.
 Kaikki neljä kokeellista valitsinta olivat pois päältä. V2:n 38 ryhmää
@@ -1844,7 +1845,7 @@ system 218/218, web 35/35 ja Electron 38/38 läpäisivät ilman uusintoja.
 Checkoutit, lokit ja producer/consumer-artifact-sidonnat takaisinluettiin.
 Aiemmat LS-hylkäykset ja LM-ajon erillinen kytkentätestihylkäys säilyvät.
 
-Seuraava pieni checkpoint käyttää samaa session omistajaa, kontrollikanavaa,
+Tämä checkpoint käyttää samaa session omistajaa, kontrollikanavaa,
 GO-porttia, nonroot-initia, määräaikoja ja sentineliä. Suljettu `actor` /
 `chromium`-valinta sitoo vain yhden kiinteän sisäisen workerin käynnistykseen;
 kutsuja ei anna komentoa, ympäristöä tai mielivaltaisia argumentteja.
@@ -1890,8 +1891,91 @@ Paikallisen tarkistuksen checkpoint: workerin ja failure-tiedoston 66/66
 injektoitua testiä, kanoninen E2E-sopimussarja 460/460, CI-sopimukset 315/315
 ja koko projektin tyypitys läpäisivät. Workspace-sarja läpäisi 4 410 testiä;
 kahdeksan aiempaa ohitusta säilyi. Launch-/init-/result-/outer-kytkennän
-ristiinkatselmuksessa ei löytynyt korjattavaa. Tämä on valmistelua yhdelle
-seuratulle CI-kokeelle, ei vielä oikean Chromiumin yhteensopivuusnäyttö.
+ristiinkatselmuksessa ei löytynyt korjattavaa. Paikalliset sopimustestit
+eivät yksin ole oikean Chromiumin yhteensopivuusnäyttö.
+
+Revision `c09e88668154f1712d53f39691212dd451564bb5` V2-ajo `36273631324`
+ja riippuvuustarkistus `36273645184` läpäisivät ensimmäisellä yrityksellä.
+V2:ssa oli 38 onnistunutta ryhmää ja yksi tarkoituksellinen ohitus. Vain
+`linux_managed_namespace_experiment` oli päällä; muut kolme kokeellista
+valitsinta olivat pois. Vanha PID-namespace-koe ei käynnistynyt.
+
+System-kuluttajan rajattu actor-koe ja web-kuluttajan Chromium-koe
+takaisinluettiin omista tavusidotuista lokeistaan ja suljetuista tuloksistaan:
+molemmat `complete`, namespace `destroyed`, alkuperäinen juuri `removed`
+ja sentinel säilynyt sekä sulkeutunut normaalisti. Chromiumin failure-havainto
+oli `absent`, ei lukematta jäänyt tai virheellinen. Saman ajon tavalliset
+system 218/218, web 35/35 ja Electron 38/38 läpäisivät ilman retryä tai
+flaky-tulosta. Kaikkien 38 suoritetun ryhmän checkoutit ja lokisidonnat sekä
+neljän tuottajan ja kymmenen kuluttajan artifact-sidonnat tarkistettiin.
+Riippuvuusauditit ja registry-allekirjoitusten tarkistus läpäisivät.
+
+Tämä on uusi vihreä lähderevision lähtötila, ei PR/main- tai koko T3-hyväksyntä.
+Normaalit E2E-fixturet käyttivät edelleen vanhaa elinkaaripolkua; erillinen
+Chromium-koe ei siirtänyt niitä. Aiemmat LS- ja timeout-havainnot säilyvät.
+
+##### T3:n oikeiden kuluttajien siirtoraja
+
+**2026-09-27: lähdeinventaarioon perustuva seuraavan toteutuspalan valmistelu,
+ei vielä kuluttajasiirron hyväksyntänäyttö.** Lähtötilana on yllä hyväksytty
+`c09e8866`. Uutta testialustaa, sovellusarkkitehtuuria tai riippuvuutta ei
+perusteta. Moduulitestin kolme nykyistä `isolated*Test`-fixtureä säilyvät;
+alustasopimus kuuluu niiden sisäiselle elinkaaren omistajalle.
+
+Siirtojärjestys ja nykyisen lähteen kattavuus:
+
+1. **Backend:** `startE2eBackendProcess` ja sen startup-/stop-polku ensin.
+   Mukaan kuuluvat `isolatedBackendTest`, web-fixturen backend, restart,
+   recovery, backup import/replacement, session boundaryn toinen backend,
+   bootstrap, testikoostaminen ja endurance. `createElectronWorkspaceBackupFixture`
+   käyttää samaa käynnistyspolkua, joten sen yhteensopivuus on todistettava
+   samalla ennen muutoksen kutsumista pelkäksi system-testimuutokseksi.
+2. **Web-palvelin ja selain:** `startE2eWebProcess` käyttää samaa palvelun
+   omistajuussopimusta. Nykyinen `isolatedWebTest` saa Playwrightilta jo
+   luodut `context`- ja `page`-oliot; pelkkä backendin/Viten siirto ei siis
+   omista Chromiumia. Todellinen selainliitos ja sen elinkaari ratkaistaan
+   erikseen nykyisten Page/API-olioiden ja loopback-estojen säilyessä.
+   Ei itse rakennettua Page-välityspalvelua tai testin siirtämistä koeworkeriin.
+3. **Electron:** `launchElectronRuntime` ja `stopOwnedElectronRuntime` sekä
+   restart/relaunch, launch-/first-window-virheet ja handoff. Inventaario
+   sisältää myös `isolatedElectronTest`-fixturen suoran toisen instanssin
+   käynnistyksen sekä `desktopCapabilities.spec.ts`:n suoran bootstrap-ajon.
+   Näitä ei jätetä vanhaan root-only-cleanupiin uuden pääpolun rinnalle.
+
+Ennen ensimmäistä backend-siirtoa täsmennetään seuraavat sopimukset:
+
+- **Elävä omistaja:** kokeen `runManagedSession` palaa vasta sulkemisen
+  jälkeen. Sen tulos ei ole käynnissä olevan palvelun kahva. Fixture tarvitsee
+  koko käyttöajan säilyvän omistajuuden, erillisen työkuorman exit-havainnon,
+  idempotentin stopin ja varmennetun terminal-tuloksen. Stop-komennon kuittaus
+  tai manageriprosessin poistuminen ei yksin hyväksy cleanupia.
+- **Oikea prosessi:** nykyiset restart-/backup-/virhetestit lukevat
+  `managedProcess.child`:n PID:n ja exit-tilan; endurance mittaa työkuorman
+  muistia. Managerin, bridgen tai namespace-initin PID ei saa korvata
+  backendin identiteettiä. Linuxin namespace-PID:tä ei käytetä hostin
+  `/proc`-mittauksen PID:nä. Mittauksen omistajuus ja käynnistysidentiteetti
+  ratkaistaan ennen rajapintamuutosta, ei tekaistulla ChildProcess-oliolla.
+- **Ajat ja virheet:** säilytä nykyiset backendin 45 s ja Viten 15 s
+  käynnistysrajat, Electronin vaihebudjetit sekä testikohtaiset kokonaisrajat.
+  Kokeen 8/20 sekunnin vakioita ei kopioida tuotantotestien elinkaareksi.
+  Omistajan alkuperäinen määräaika ei ala uudelleen adapteriin siirryttäessä.
+  Ensimmäinen virhe, cleanup ja havainnon epävarmuus raportoidaan erillisinä.
+- **Juuret ja restart:** kontrollijuurta ei sekoiteta fixtureen, jonka
+  synteettinen tietokanta säilytetään restartissa. Varmistamaton puun poisto
+  estää restartin ja datajuuren poiston. Tyhjän kokeellisen kontrollijuuren
+  poistoehto ei oikeuta täyden fixturejuuren rekursiivista poistoa.
+- **Ympäristöraja avoinna:** LM on hyväksytty vain CI:hin. Paikallisen
+  Windows-testauksen ja Linux-CI:n riittävyys verrattuna paikallisen Linuxin
+  tukeen varmistetaan omistajalta. Rajaa ei laajenneta hostin oikeuksia
+  muuttamalla eikä paikallista Linux-polkuakaan poisteta oletuksen perusteella.
+
+Jokainen siirtopala sisältää käynnistysvirheen, root-firstin, owner-lossin,
+toistetun stopin ja epävarman cleanupin regressiot soveltuvalla tasolla.
+Vasta saman revision vastaavan kattavuuden jälkeen poistetaan korvattu
+aktiivinen toteutus ja sen kutsureunat. Kokeelliset työkuormat eivät jää
+tavallisen fixturen toiseksi ohjauspoluksi. T1/T2-kytkentä, puhdas valmistelu,
+ensimmäisen virheen säilytys ja [lopullinen T3-portti](#t3n-lopullinen-hyväksyntänäyttö)
+säilyvät. Valmistelu ei muuta sovelluskoodia tai testien aikarajoja.
 
 ##### T3c-LM: rajattu CI-testisession hallinta
 

@@ -7,11 +7,11 @@ Modulaarinen monoliitti ja hyväksytty M1-rajaus säilyvät.
 
 | Kohta | Nykyinen lähtötieto |
 | --- | --- |
-| Nykyinen lähtörevisio | `e3f647b2de9586868d678ae8c864a492f076630a`: normaali V2 `36270550708` ja riippuvuustarkistus `36270558922`, yritys 1, läpäisty. Tarkista jatkettava HEAD ennen muutoksia. |
-| Viimeisin koko CI:n hyväksytty lähtötila | Sama `e3f647b2`: 38 onnistunutta ryhmää ja yksi tarkoituksellinen valinnaisen kokeen ohitus; kaikki neljä kokeellista valitsinta pois päältä. System 218/218, web 35/35 ja Electron 38/38 ilman retryä tai flaky-tulosta. Lokien checkoutit sekä neljän tuottajan ja kymmenen kuluttajan artifact-sidonnat tarkistettu. Ei PR/main- tai koko T3-hyväksyntä. |
+| Nykyinen lähtörevisio | `c09e88668154f1712d53f39691212dd451564bb5`: koko V2 `36273631324` ja riippuvuustarkistus `36273645184`, yritys 1, läpäisty. Tarkista jatkettava HEAD ennen muutoksia. |
+| Viimeisin koko CI:n hyväksytty lähtötila | Sama `c09e8866`: 38 onnistunutta ryhmää ja yksi tarkoituksellinen valinnaisen kokeen ohitus. Vain LM-valitsin päällä: systemin erillinen actor-koe ja webin erillinen Chromium-koe läpäisivät tavallisten testien lisäksi. System 218/218, web 35/35 ja Electron 38/38 ilman retryä tai flaky-tulosta. Lokien checkoutit sekä neljän tuottajan ja kymmenen kuluttajan artifact-sidonnat tarkistettu. Ei PR/main- tai koko T3-hyväksyntä. |
 | Avoin puute | Pääprosessin poistuminen ei todista koko puun poistumista. Tavalliset fixturet eivät vielä käytä hyväksytysti todennettua uutta omistajuuspolkua. |
-| Viimeisin rajattu näyttö | [LM:n CI-takaisinluku](e2e-test-environment.md#t3c-lmn-ensimmäinen-ci-näyttö-ja-kytkentätestin-korjaus) läpäisi molemmissa kuluttajissa. Core hylkäsi T1:n täsmällisen kytkentätestin: uuden manuaalisen valitsimen odotettu rivi puuttui testistä. Rajattu korjaus ja kolme kielteistä regressiota läpäisivät 70/70; koko workspace 4 333 läpäisyä ja 8 aiempaa ohitusta, CI-sopimukset 241/241 sekä tyypitys läpäisivät. Aiemman timeoutin juurisyytä ei väitetä korjatuksi. |
-| Seuraava työ | [Rajattu Chromium-yhteensopivuuskoe](e2e-test-environment.md#t3c-lmn-chromium-yhteensopivuus) nykyisen LM:n sisällä on toteutuksessa. Sen jälkeen oikeat kuluttajasiirrot, ei uutta rinnakkaista alustaa. |
+| Viimeisin rajattu näyttö | [Chromium-yhteensopivuuskoe](e2e-test-environment.md#t3c-lmn-chromium-yhteensopivuus) läpäisi oikean Page/API-polun, selaimen sulun ja scratch-siivouksen sekä tämän jälkeisen namespace-/sentinel-ketjun. Tämä ei todista elävän selaimen owner-lossia tai tavallisten fixturejen siirtoa. Vanhat LS-hylkäykset ja satunnaiset timeoutit säilyvät erillisinä havaintoina. |
+| Seuraava työ | [Oikeiden kuluttajien siirtoraja](e2e-test-environment.md#t3n-oikeiden-kuluttajien-siirtoraja): ratkaise elävän palvelun sopimus ja paikallisen testauksen ympäristöraja, sitten backendin ensimmäinen siirto. Ei uutta rinnakkaista alustaa tai kokeen kiinteiden aikarajojen kopiointia fixtureihin. |
 | Valmistuminen | Oikeat kuluttajat siirretty, korvattu aktiivinen toteutus poistettu vasta vastaavan kattavuuden jälkeen, T1/T2 säilyneet sekä koko T3-matriisi ja täsmällisen PR/main-revision portit läpäisty. |
 | T3:n jälkeen | Nykyisen M1:n A1:n vanhentuneet vastaukset ja muut hyväksytyt sovelluskorjaukset, sitten roadmapin 0.3.0-käyttöliittymä- ja diagnostiikkatyö. |
 
@@ -78,9 +78,10 @@ ominaisuuksia. Pelkkä diagnostiikka tai vihreä Electron-osajoukko ei täytä s
 
 1. LM-koetyökuorman tiukka takaisinluku ja korjatun kytkentätestirevision
    normaali CI-portti on suljettu. Vanha hylätty ajo säilyy erillisenä.
-2. Todista mekanismin ja nykyisen Chromium-polun yhteensopivuus muuttamatta
-   sandboxia tai aikarajoja. Pidä tavalliset E2E-tulokset, aiemmat LS-hylkäykset,
-   LM:n koetyökuorman näyttö ja koko CI:n tila erillisinä havaintoina.
+2. Mekanismin ja nykyisen Chromium-polun rajattu yhteensopivuus on todennettu
+   revisiolla `c09e8866` muuttamatta sandboxia tai aikarajoja. Pidä tavalliset
+   E2E-tulokset, aiemmat LS-hylkäykset, LM:n koetyökuorman näyttö ja koko CI:n
+   tila erillisinä havaintoina. Elävän selaimen pakotettu sulku on vielä avoin.
 3. Siirrä oikeat system/web-/Electron-kuluttajat yhteiseen pieneen
    omistajuussopimukseen. Moduulitesti käyttää olemassa olevaa fixtureä;
    Job Object, Linux-mekanismi ja tulosskeemojen historia jäävät sen taakse.
