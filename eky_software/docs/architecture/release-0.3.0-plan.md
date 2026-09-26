@@ -26,8 +26,13 @@ varmistettu. Keskeytymisen juurisyy säilyy avoimena. Omistaja hyväksyi
 Linuxin ensimmäisen CI-ajon molemmat kokeet
 [hylättiin ennen GO:ta](e2e-test-environment.md#t3c-ln-ensimmäisen-ci-kokeen-hylkäys).
 Käynnistysvirheen tarkka syy ja uuden revision hyväksyntä ovat avoinna.
-Omistajan hyväksymä [T3c-LD](e2e-test-environment.md#t3c-ld-rajatun-käynnistysdiagnostiikan-päätösehdotus)
-täydentää kokeen diagnostiikkaa ennen yhtä uutta seurattua CI-koetta.
+Omistajan hyväksymä [T3c-LD](e2e-test-environment.md#t3c-ldn-rajatun-ci-kokeen-havainto)
+rajasi molemmat uudet hylkäykset ennen READYä tapahtuvaan wrapper exit 1:een;
+init-merkki puuttui ja stderr jäi tuntemattomaan luokkaan. Koko ajo päättyi
+hylätyksi, vaikka muut testiryhmät ja riippuvuustarkistus läpäisivät.
+Juurisyy on avoin; [T3c-LS](e2e-test-environment.md#t3c-ls-suljetun-stderr-luokan-tarkennuksen-päätösehdotus)
+on hyväksytty rajattu lisähavainto, jonka toteutus, testit ja riippumaton
+katselmus läpäisivät. Yksi uusi seurattu CI-kierros on seuraava vaihe.
 Lopullinen mekanismivalinta ja
 fixture-siirto vaativat erillisen hyväksynnän; tämä ei ole koko T3:n tai
 PR/main-integraation hyväksyntä. Ajurin root-first-odotusjärjestysvirhe on

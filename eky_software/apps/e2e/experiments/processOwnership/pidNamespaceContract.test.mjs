@@ -345,7 +345,10 @@ const diagnosticFlags = [
 ];
 const diagnosticChoices = {
   wrapperTerminal: ['notObserved', 'spawnFailed', 'exit0', 'exit1', 'exit41', 'exit42', 'otherExit', 'signaled'],
-  stderrClass: ['empty', 'exactUnshareDenied', 'other', 'unreadableOrOverLimit'],
+  stderrClass: ['empty', 'exactUnshareDenied', 'other', 'unreadableOrOverLimit',
+    'unshareMountProcDenied', 'unsharePropagationDenied', 'unshareUidMapDenied',
+    'unshareGidMapDenied', 'unshareSetgroupsDenied', 'unshareCreatePermissionDenied',
+    'unshareMapCurrentUserUnsupported'],
   responseBytes: ['none', 'present'],
   spawnClass: ['none', 'enoent', 'other'],
   toolAbsence: ['notChecked', 'provenAbsent', 'notProven'],
@@ -611,11 +614,11 @@ test('diagnostic validator closes enums, booleans, reason predicate and phase/ca
   assert.equal(validateBootstrapDiagnostic({ ...valid, initDiagnostic: 'valid' }, isDiagnosticReason), false);
 });
 
-test('version-two results strictly validate diagnostics without reinterpreting version one or changing the result cap', () => {
+test('version-three results strictly validate diagnostics without reinterpreting old schemas or changing the result cap', () => {
   const diagnostic = captureBootstrapDiagnostic(diagnosticSnapshot({ stderr: diagnosticMarker }));
   const facts = { reason: 'bootstrapUnknown', launched: true, rootCreated: true, sentinel: true };
   const result = resultFor(binding, { ...facts, bootstrapDiagnostic: diagnostic });
-  assert.equal(resultSchemaVersion, 2);
+  assert.equal(resultSchemaVersion, 3);
   assert.equal(result.schemaVersion, resultSchemaVersion);
   assert.equal(limits.result, 4096);
   const line = serializeResult(result, binding);
@@ -628,6 +631,7 @@ test('version-two results strictly validate diagnostics without reinterpreting v
   delete old.bootstrapDiagnostic;
   assert.throws(() => serializeResult(old, binding), { reason: 'reportFailed' });
   assert.throws(() => serializeResult({ ...result, schemaVersion: 1 }, binding), { reason: 'reportFailed' });
+  assert.throws(() => serializeResult({ ...result, schemaVersion: 2 }, binding), { reason: 'reportFailed' });
   assert.throws(() => serializeResult({ ...old, schemaVersion: resultSchemaVersion }, binding), { reason: 'reportFailed' });
   for (const bootstrapDiagnostic of [undefined, [], 'PRIVATE', 1,
     { ...diagnostic, raw: 'PRIVATE' }, { ...diagnostic, bootstrapCause: 'PRIVATE' },
@@ -645,6 +649,79 @@ test('version-two results strictly validate diagnostics without reinterpreting v
   });
   assert.throws(() => serializeResult(outerAccessor, binding), { reason: 'reportFailed' });
   assert.equal(accessorCalls, 0);
+});
+
+const unshareMessages = [
+  ['mount /proc failed', 'unshareMountProcDenied'],
+  ['cannot change root filesystem propagation', 'unsharePropagationDenied'],
+  ['write failed /proc/self/uid_map', 'unshareUidMapDenied'],
+  ['write failed /proc/self/gid_map', 'unshareGidMapDenied'],
+  ['write failed /proc/self/setgroups', 'unshareSetgroupsDenied'],
+].flatMap(([part, kind]) => ['Operation not permitted', 'Permission denied']
+  .map(errno => [`unshare: ${part}: ${errno}\n`, kind]));
+unshareMessages.push(
+  ['unshare: unshare failed: Permission denied\n', 'unshareCreatePermissionDenied'],
+  ["unshare: unrecognized option '--map-current-user'\nTry 'unshare --help' for more information.\n",
+    'unshareMapCurrentUserUnsupported'],
+);
+
+function closedBootstrap(stderr, changes = {}) {
+  return diagnosticSnapshot({
+    wrapper: { exited: true, closed: true, code: 1, signal: null },
+    stderrEnded: true, stderr, ...changes,
+  });
+}
+
+test('twelve complete unshare messages add only closed diagnostics, never acceptance authority', () => {
+  assert.equal(unshareMessages.length, 12);
+  for (const [stderr, kind] of unshareMessages) {
+    const snapshot = closedBootstrap(stderr);
+    const diagnostic = captureBootstrapDiagnostic(snapshot);
+    assert.equal(diagnostic.stderrClass, kind);
+    assert.equal(validateBootstrapDiagnostic(diagnostic, isDiagnosticReason), true);
+    assert.equal(snapshot.stderr, stderr);
+    assert.equal(diagnostic.initDiagnostic, 'absent');
+    assert.equal(classifyBootstrap({ spawnCode: null, code: 1, signal: null,
+      stderr, ready: false, go: false, streamsClosed: true, responseBytes: 0,
+      toolAbsent: false }), 'bootstrapUnknown');
+    const facts = { reason: 'bootstrapUnknown', launched: true, rootCreated: true, sentinel: true };
+    const result = resultFor(binding, { ...facts, bootstrapDiagnostic: diagnostic });
+    assert.deepEqual({ ...result, bootstrapDiagnostic: null }, resultFor(binding, facts));
+    assert.equal(result.observation, 'failed');
+    assert.equal(result.testRoot, 'retained');
+    const line = serializeResult(result, binding);
+    assert.equal(JSON.parse(line).bootstrapDiagnostic.stderrClass, kind);
+    assert.doesNotMatch(line, /unshare:|\/proc|Permission denied|Operation not permitted/u);
+  }
+});
+
+test('unshare diagnostics require whole-message equality without trimming, partial or duplicate matches', () => {
+  for (const [stderr] of unshareMessages) {
+    for (const malformed of [stderr + stderr, stderr.slice(0, -1), stderr.slice(1),
+      stderr + 'x', 'x' + stderr, stderr + '\0', stderr + '\n', ' ' + stderr,
+      stderr.replaceAll('\n', '\r\n'), stderr.replace('unshare:', '/private/unshare:'),
+      stderr.replace(/Permission denied|Operation not permitted|unrecognized option/u, 'UNKNOWN')]) {
+      const diagnostic = captureBootstrapDiagnostic(closedBootstrap(malformed));
+      assert.equal(diagnostic.stderrClass, 'other');
+      assert.equal(validateBootstrapDiagnostic(diagnostic, isDiagnosticReason), true);
+    }
+  }
+});
+
+test('new unshare classes require closed error-free pre-READY and pre-GO observation', () => {
+  for (const [stderr] of unshareMessages) {
+    for (const changes of [{ wrapper: null }, { wrapper: { exited: true, closed: false, code: 1 } },
+      { stderrEnded: false }, { readyAccepted: true }, { goAttempted: true }]) {
+      assert.equal(captureBootstrapDiagnostic(closedBootstrap(stderr, changes)).stderrClass, 'other');
+    }
+    const failed = captureBootstrapDiagnostic(closedBootstrap(stderr, { stderrFailed: true }));
+    assert.equal(failed.stderrClass, 'unreadableOrOverLimit');
+    assert.equal(failed.initDiagnostic, 'unavailable');
+  }
+  for (const stderr of ['node:internal/modules/run_main:123\nError: PRIVATE\n',
+    'unshare: unshare failed: Invalid argument\n', 'PRIVATE']) {
+    assert.equal(captureBootstrapDiagnostic(closedBootstrap(stderr)).stderrClass, 'other');
+  }
 });
 
 test('diagnostics never authorize acceptance, prerequisite absence or cleanup', () => {

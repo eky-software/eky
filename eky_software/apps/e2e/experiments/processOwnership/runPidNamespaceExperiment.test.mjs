@@ -484,6 +484,64 @@ test('denial and missing-tool classification retain their exact original guards'
   }
 });
 
+test('actual driver projects all twelve closed unshare diagnostics while preserving the failed lifecycle', async () => {
+  const cases = [
+    ['mount /proc failed', 'unshareMountProcDenied'],
+    ['cannot change root filesystem propagation', 'unsharePropagationDenied'],
+    ['write failed /proc/self/uid_map', 'unshareUidMapDenied'],
+    ['write failed /proc/self/gid_map', 'unshareGidMapDenied'],
+    ['write failed /proc/self/setgroups', 'unshareSetgroupsDenied'],
+  ].flatMap(([part, kind]) => ['Operation not permitted', 'Permission denied']
+    .map(errno => [`unshare: ${part}: ${errno}\n`, kind]));
+  cases.push(['unshare: unshare failed: Permission denied\n', 'unshareCreatePermissionDenied'],
+    ["unshare: unrecognized option '--map-current-user'\nTry 'unshare --help' for more information.\n",
+      'unshareMapCurrentUserUnsupported']);
+  for (const [bootstrapRaw, stderrClass] of cases) {
+    const f = fixture({ bootstrap: 'unknown', bootstrapRaw });
+    const result = await experiment(f);
+    assert.equal(result.bootstrapDiagnostic.stderrClass, stderrClass);
+    assert.equal(result.bootstrapDiagnostic.wrapperClosed, true);
+    assert.equal(result.bootstrapDiagnostic.stderrEnded, true);
+    assert.equal(result.bootstrapDiagnostic.stderrFailed, false);
+    assert.equal(result.bootstrapDiagnostic.readyAccepted, false);
+    assert.equal(result.bootstrapDiagnostic.goAttempted, false);
+    assert.equal(result.bootstrapDiagnostic.bootstrapCause, 'unexpectedEof');
+    assert.equal(result.bootstrapDiagnostic.initDiagnostic, 'absent');
+    assert.equal(result.reason, 'bootstrapUnknown');
+    assert.equal(result.observation, 'failed');
+    assert.equal(result.workloadOutcome, 'notStarted');
+    assert.equal(result.cleanupOutcome, 'unverified');
+    assert.equal(result.evidenceOutcome, 'incomplete');
+    assert.equal(result.sentinelOutcome, 'preserved');
+    assert.equal(result.testRoot, 'retained');
+    assert.deepEqual(f.controls, []);
+    assert.deepEqual(f.removed, []);
+    assert.equal(f.calls.length, 2);
+    assert.equal(f.timers.size, 0);
+    assert.doesNotMatch(serializeResult(result, binding), /unshare:|\/proc|Permission denied|Operation not permitted/u);
+  }
+});
+
+test('driver keeps the existing stderr size and read-failure boundaries for new diagnostics', async () => {
+  const raw = 'unshare: mount /proc failed: Permission denied\n';
+  for (const [bootstrapRaw, stderrFailure, expected] of [
+    [raw, true, 'unreadableOrOverLimit'], [raw.padEnd(4096, 'x'), false, 'other'],
+    [raw.padEnd(4097, 'x'), false, 'unreadableOrOverLimit'],
+    [raw + 'x', false, 'other'], [raw + raw, false, 'other'], [raw.slice(0, -1), false, 'other'],
+  ]) {
+    const f = fixture({ bootstrap: 'unknown', bootstrapRaw, stderrFailure });
+    const result = await experiment(f);
+    assert.equal(result.bootstrapDiagnostic.stderrClass, expected);
+    assert.equal(result.reason, 'bootstrapUnknown');
+    assert.equal(result.observation, 'failed');
+    assert.equal(result.cleanupOutcome, 'unverified');
+    assert.equal(result.testRoot, 'retained');
+    assert.deepEqual(f.controls, []);
+    assert.deepEqual(f.removed, []);
+    serializeResult(result, binding);
+  }
+});
+
 test('diagnostic budget is captured after asynchronous absence checks without changing classification', async () => {
   const f = fixture({ bootstrap: 'missing' });
   const spawnChild = f.operations.spawnChild;

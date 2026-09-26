@@ -39,9 +39,36 @@ export function parseInitDiagnostic(stderr, unavailable = false) {
   return { state: 'valid', phase, cause };
 }
 
+// Whole-buffer literals only. These observations never authorize prerequisite absence.
+const unshareStderrClasses = new Map([
+  ['unshare: mount /proc failed: Operation not permitted\n', 'unshareMountProcDenied'],
+  ['unshare: mount /proc failed: Permission denied\n', 'unshareMountProcDenied'],
+  ['unshare: cannot change root filesystem propagation: Operation not permitted\n', 'unsharePropagationDenied'],
+  ['unshare: cannot change root filesystem propagation: Permission denied\n', 'unsharePropagationDenied'],
+  ['unshare: write failed /proc/self/uid_map: Operation not permitted\n', 'unshareUidMapDenied'],
+  ['unshare: write failed /proc/self/uid_map: Permission denied\n', 'unshareUidMapDenied'],
+  ['unshare: write failed /proc/self/gid_map: Operation not permitted\n', 'unshareGidMapDenied'],
+  ['unshare: write failed /proc/self/gid_map: Permission denied\n', 'unshareGidMapDenied'],
+  ['unshare: write failed /proc/self/setgroups: Operation not permitted\n', 'unshareSetgroupsDenied'],
+  ['unshare: write failed /proc/self/setgroups: Permission denied\n', 'unshareSetgroupsDenied'],
+  ['unshare: unshare failed: Permission denied\n', 'unshareCreatePermissionDenied'],
+  ["unshare: unrecognized option '--map-current-user'\nTry 'unshare --help' for more information.\n",
+    'unshareMapCurrentUserUnsupported'],
+]);
+
+function stderrClass(snapshot, unreadable) {
+  if (unreadable) return 'unreadableOrOverLimit';
+  if (snapshot.stderr === '') return 'empty';
+  if (snapshot.stderr === 'unshare: unshare failed: Operation not permitted\n') return 'exactUnshareDenied';
+  if (snapshot.wrapper?.closed !== true || snapshot.stderrEnded !== true ||
+      snapshot.readyAccepted !== false || snapshot.goAttempted !== false) return 'other';
+  return unshareStderrClasses.get(snapshot.stderr) ?? 'other';
+}
+
 const diagnosticEnums = {
   wrapperTerminal: ['notObserved', 'spawnFailed', 'exit0', 'exit1', 'exit41', 'exit42', 'otherExit', 'signaled'],
-  stderrClass: ['empty', 'exactUnshareDenied', 'other', 'unreadableOrOverLimit'],
+  stderrClass: ['empty', 'exactUnshareDenied', 'other', 'unreadableOrOverLimit',
+    ...new Set(unshareStderrClasses.values())],
   responseBytes: ['none', 'present'],
   spawnClass: ['none', 'enoent', 'other'],
   toolAbsence: ['notChecked', 'provenAbsent', 'notProven'],
@@ -78,8 +105,7 @@ export function captureBootstrapDiagnostic(snapshot) {
   return {
     bootstrapCause: snapshot.bootstrapCause,
     wrapperTerminal: wrapperTerminal(wrapper),
-    stderrClass: unreadable ? 'unreadableOrOverLimit' : stderr === '' ? 'empty'
-      : stderr === 'unshare: unshare failed: Operation not permitted\n' ? 'exactUnshareDenied' : 'other',
+    stderrClass: stderrClass(snapshot, unreadable),
     wrapperClosed: wrapper?.closed === true,
     stderrEnded: snapshot.stderrEnded === true,
     stderrFailed: snapshot.stderrFailed === true,

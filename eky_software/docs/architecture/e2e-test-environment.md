@@ -234,8 +234,9 @@ T3c-L:n molemmat ensimmäiset CI-kokeet hylätty ennen GO:ta.**
 T3b-E:n ja T3b-P:n korjattu CI-lähtötila on todennettu niiden omissa
 checkpointeissa. Uuden T3c-revision kokonaisajo on päättynyt hylätyksi;
 [käynnistysvirhe](#t3c-ln-ensimmäisen-ci-kokeen-hylkäys) estää hyväksynnän.
-[T3c-LD:n lisähavainto](#t3c-ld-rajatun-käynnistysdiagnostiikan-päätösehdotus)
-on hyväksytty ja katselmoitu; uusi CI-todennus on seuraava vaihe.
+[T3c-LD:n lisähavainto](#t3c-ldn-rajatun-ci-kokeen-havainto)
+rajasi molempien uusien kokeiden hylkäyksen ennen READYä: wrapper exit 1,
+stderr `other`, init-merkki puuttuu. Tarkka syy on edelleen avoin.
 T3a:n alkuperäinen 4/5 sekä myöhemmät erilliset hylkäykset jäävät historiaksi.
 Alustamekanismien valinta ja fixture-siirto vaativat erillisen hyväksynnän.
 Integraation lähtökohta on hyväksytty T2-main;
@@ -1542,7 +1543,7 @@ prerequisite-probe ja installer-inspector pois päältä.
 Molemmissa erillinen sentinel säilyi ja synteettinen testijuuri jätettiin
 poistamatta. Tämä ei todista namespacen syntymistä, saatavuutta tai
 purkua eikä varsinaisen sovelluksen virhettä. Hylkäystä ei luokitella
-todennetuksi puuttuvaksi edellytykseksi. Nykyinen suljettu raportti ei
+todennetuksi puuttuvaksi edellytykseksi. Ensimmäisen ajon suljettu raportti ei
 erota wrapperin käynnistysvirhettä initin omaa READY-kuittausta edeltävästä
 virheestä; tarkkaa syytä ei voi päätellä tästä aineistosta.
 
@@ -1568,7 +1569,7 @@ CI-hylkäyksen juurisyytä. Ehdotus koskee vain samaa Linux-koetta:
 diagnostiikan täydennys, regressiot ja katselmuksen jälkeen yksi uusi
 seurattu CI-koe molemmissa nykyisissä kuluttajissa. **Omistaja hyväksyi
 T3c-LD:n 2026-09-26. Toteutus, kohdetestit ja riippumaton katselmus ovat
-valmiit yhtä uutta seurattua CI-koetta varten.** Ensimmäinen
+valmiit, ja yksi uusi seurattu CI-koe on päättynyt.** Ensimmäinen
 kokonaisajo on seurattu loppuun eikä sen tulosta muuteta.
 
 Paikallinen kohdesarja läpäisi 92/92 ja CI-sopimukset 194/194. Työtilan
@@ -1619,6 +1620,110 @@ Ei uutta riippuvuutta, oikeutta, palvelua, mekanismia, workflowta tai jobia;
 ei aikarajojen, sovelluksen, nykyisten fixturejen tai CI-ehtojen muutosta.
 Uusi havainto ratkaisee vasta seuraavan korjauksen tai alustapäätöksen,
 ei etukäteen hyväksy fallbackia tai koko T3/R28:aa.
+
+##### T3c-LD:n rajatun CI-kokeen havainto
+
+**Lopputila 2026-09-26:** revisio
+`9c92ca53c296f457168ee2bff934160884738501`,
+[ajo 36249412552](https://github.com/eky-software/eky/actions/runs/36249412552),
+yritys 1. Molemmat nykyiset Linux-testisarjat läpäisivät ensin: system-api
+218/218 ja web-chromium 35/35. Niiden erilliset namespace-kokeet hylättiin.
+Kokonaisajo päättyi hylätyksi: 35 onnistunutta jobia, kolme hylkäystä ja
+yksi ennalta valinnainen ohitus. Hylkäykset ovat kaksi Linux-koetta ja niiden
+vuoksi `V2 acceptance` (`workflowNotSuccessful`). Kaikki Windows-testiryhmät,
+myös Electron 38/38 ilman retryä tai flaky-tulosta sekä packaged-, päivitys-,
+legacy- ja palautumiskokeet, läpäisivät. Tämä ei ole revision hyväksyntä.
+
+Molempien suljettu lisähavainto oli sama: alkuperäinen `unexpectedEof`,
+wrapper `exit1`, stderr `other`, virrat päättyneet, vastaustavuja ei ollut,
+READYä ei hyväksytty eikä GO:ta yritetty. Ei hätäkatkaisua tai READY-budjetin
+ylitystä; luokittelua yritettiin. Initin diagnostiikkamerkki oli `absent`.
+Näyttö ei erottele tuntematonta `unshare`-virhettä mahdollisesta Node-
+bootstrap-virheestä; merkin puuttuminen ei todista initin jääneen käynnistymättä.
+Samat luokat eivät myöskään todista samaa raakavirhettä tai juurisyytä.
+
+Tulos säilyy `bootstrapUnknown` / `notStarted` / `unverified` / `incomplete`.
+Sentinel säilyi ja juuret jätettiin poistamatta. Raw-lokien tiivisteet,
+checkout-kuitit, schema 2 ja täsmälliset ajo-/kuluttaja-/input-sidonnat
+varmennettiin erikseen. Rajattu diagnostiikka toimii, mutta mekanismin
+toimivuutta, puuttuvaa edellytystä tai aiempaa virhettä ei merkitä ratkaistuksi.
+Raaka stderr ei kuulu tulokseen eikä erillistä Linux-raakadiagnostiikkaa
+ole tallennettu artifactiin; sitä ei voi täydentää tähän ajoon jälkikäteen.
+
+Kaikkien 38 suoritetun jobin lokitiivisteet ja checkout-kuitit varmennettiin
+riippumattomasti. Normaali hyväksyntälukija hylkäsi ajon odotetusti; sitä ei
+muutettu hyväksymään epäonnistunutta kokonaisuutta. Saman revision
+[riippuvuustarkistus 36249417179](https://github.com/eky-software/eky/actions/runs/36249417179)
+läpäisi ja sen lähde-/lokisidonnat sekä pakolliset vaiheet varmennettiin.
+Seuraava havainto rajataan alla erikseen hyväksyttyyn T3c-LS:ään;
+ei automaattista uusintaa, suojausmuutosta tai fallbackia.
+PR/main-integraatiota ei ole tehty.
+
+##### T3c-LS: suljetun stderr-luokan tarkennuksen päätösehdotus
+
+**Omistaja hyväksyi T3c-LS:n 2026-09-26. Toteutus, kohdetestit ja
+riippumaton lähde- ja lukuketjukatselmus ovat valmiit.
+Seuraavana on yksi uusi seurattu CI-kierros.**
+Rajattu lähdekatselmus ei löytänyt
+konkreettista virhettä, joka selittäisi CI-hylkäyksen. Seuraava ehdotus
+tarkentaa vain kokeen nykyisen `stderrClass`-kentän tuntematonta luokkaa:
+12 kiinteän kokonaisen stderr-viestin vertailutaulukko. Ei uutta Node-
+virhepinojen jäsennintä, havaintoprosessia, raakaviestien julkaisua tai
+käynnistysmekanismin muutosta.
+
+Alla olevat viisi viestiosaa muodostavat kukin kaksi kokonaista literalia
+muodossa `unshare: <viestiosa>: <errno-teksti>\n`. Errno-teksti on täsmälleen
+`Operation not permitted` tai `Permission denied`. Toteutuksessa verrataan
+valmiisiin kokonaisiin merkkijonoihin, ei poimita käyttäjäarvoja viestistä.
+
+| Kiinteä viestiosa | Diagnostinen luokka |
+| --- | --- |
+| `mount /proc failed` | `unshareMountProcDenied` |
+| `cannot change root filesystem propagation` | `unsharePropagationDenied` |
+| `write failed /proc/self/uid_map` | `unshareUidMapDenied` |
+| `write failed /proc/self/gid_map` | `unshareGidMapDenied` |
+| `write failed /proc/self/setgroups` | `unshareSetgroupsDenied` |
+
+Lisäksi täsmälleen `unshare: unshare failed: Permission denied\n` tuottaa
+diagnostisen luokan `unshareCreatePermissionDenied`. Se **ei** laajenna
+nykyistä `namespaceDenied`-hyväksyntäluokittelua. Kahdestoista literal on
+`unshare: unrecognized option '--map-current-user'\nTry 'unshare --help' for more information.\n`,
+jonka luokka on `unshareMapCurrentUserUnsupported`. Viimeinen rivinvaihto
+vaaditaan. Viestimuodot perustuvat [util-linuxin lähteeseen](https://github.com/util-linux/util-linux/blob/v2.39.3/sys-utils/unshare.c),
+[C-localen errno-teksteihin](https://github.com/bminor/glibc/blob/glibc-2.39/sysdeps/gnu/errlist.h),
+[getoptin ilmoitukseen](https://github.com/bminor/glibc/blob/glibc-2.39/posix/getopt.c#L287-L302)
+ja [help-kehotteeseen](https://github.com/util-linux/util-linux/blob/v2.39.3/include/c.h#L276-L280).
+Nämä lähteet eivät osoita, mikä viesti CI:ssä todella syntyi.
+
+Tarkennus tehdään vain nykyisestä ennen READYä ja GO:ta kerätystä puskurista,
+kun wrapper ja stderr ovat jo päättyneet, luku on virheetön eikä nykyinen
+4 KiB:n raja ylity. Ei lisäodotusta, trimmausta, osamerkkijonohakua tai
+häntätavujen poistoa. Duplikaatti, katkaisu, lisätavu, muu errno, Node-virhe
+tai tuntematon viesti jää `other`-luokkaan; lukematon tai ylisuuri sisältö
+säilyy nykyisessä virheluokassaan. Alkuperäiset neljä stderr-luokkaa säilyvät.
+Enum-sopimuksen laajennus versioidaan schema 3:ksi ja lukuketju päivitetään;
+historiallisia schema 1/2 -tuloksia ei muuteta tai täydennetä jälkikäteen.
+
+Puhtaat regressiot kattavat 12 osumaa ja niiden muunnelmien hylkäykset,
+kesken olevan tai epäonnistuneen virran, tuntemattoman sisällön, kokorajan,
+tuloksen suljetun validoinnin ja todellisen ajurikytkennän. Uusi diagnostinen
+osuma ei saa muuttaa alkuperäistä hylkäystä, GO:ta, cleanupia tai juuren
+säilyttämistä. Muutos rajoittuu kokeen diagnostiikkaan, sopimukseen, tarvittavaan
+ajurikytkentään, testeihin, lukuketjuun ja ohjeisiin. Riippumaton katselmus ja
+nykyiset portit vaaditaan ennen enintään yhtä uutta seurattua CI-kierrosta
+molemmissa nykyisissä kuluttajissa. Ei muutosta tuotantoon, oikeuksiin,
+riippuvuuksiin, komentoon, aikarajoihin, workflowhin tai hyväksyntäehtoihin.
+
+Osuma rajaisi seuraavaa korjaus- tai alustapäätöstä, ei hyväksyisi sitä.
+`other` voi edelleen jäädä tulokseksi: taulukko ei kata kaikkia käynnistys-,
+exec-, Node- tai käyttöjärjestelmävirheitä. Silloin pysähdytään uuden päätöksen
+valmisteluun; tästä ei synny automaattista uusinta- tai fallback-lupaa.
+
+Kohdetestit läpäisivät 97/97, CI-sopimukset 199/199 sekä työtilan normaalit
+testit ja typecheck. Uudet osumat, schema ja ajurikytkentä hylättiin ensin
+vanhalla toteutuksella ja läpäisivät tarkennuksen jälkeen. Lukuketjun
+puhtaat testit läpäisivät; schema 1/2 pysyvät erillisinä historiallisina
+aineistoina. Tämä ei vielä ole oikean Linux-kokeen tai koko T3:n hyväksyntä.
 
 #### T3:n lopullinen hyväksyntänäyttö
 

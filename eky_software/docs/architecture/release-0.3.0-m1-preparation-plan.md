@@ -114,7 +114,13 @@ ominaisuuksia. Pelkkä diagnostiikka tai vihreä Electron-osajoukko ei täytä s
    käynnistyshavainto ja ratkaise jatkokokeen portti ennen uutta ajoa.
    [T3c-LD:n rajattu ehdotus](e2e-test-environment.md#t3c-ld-rajatun-käynnistysdiagnostiikan-päätösehdotus)
    hyväksyttiin 2026-09-26. Toteutus, regressiot ja riippumaton katselmus
-   läpäisivät; yksi uusi seurattu CI-koe on seuraava vaihe. Alusta ja
+   läpäisivät. [Uusi CI-havainto](e2e-test-environment.md#t3c-ldn-rajatun-ci-kokeen-havainto)
+   rajaa molemmat hylkäykset wrapperin exit 1:een ennen READYä, ilman
+   init-merkkiä tai READY-budjetin ylitystä. Tarkka syy on avoin;
+   koko ajo päättyi hylätyksi, mutta muut testiryhmät läpäisivät.
+   [T3c-LS:n suljetun stderr-luokan tarkennus](e2e-test-environment.md#t3c-ls-suljetun-stderr-luokan-tarkennuksen-päätösehdotus)
+   on hyväksytty 2026-09-26. Toteutus, testit, lukuketju ja riippumaton
+   katselmus läpäisivät; seuraavana on yksi uusi seurattu CI-kierros. Alusta ja
    hyväksyntäehdot eivät muutu.
    Valmistele vasta riittävän näytön jälkeen erillinen päätös lopullisesta
    mekanismista, session/stop-sopimuksesta ja tavallisten fixturejen siirrosta;

@@ -257,8 +257,8 @@ The approved namespace capabilities, lifecycle proof, deadlines and closed CI
 result are defined in the owning plan. A negative prerequisite observation is
 not ownership support, and an unknown or post-launch failure is not a skip.
 
-The approved T3c-LD follow-up adds only bounded startup diagnostics. Its result
-schema is version 2, with a nullable, strictly validated `bootstrapDiagnostic`.
+The approved T3c-LD follow-up added only bounded startup diagnostics. Its result
+schema was version 2, with a nullable, strictly validated `bootstrapDiagnostic`.
 Version 1 results remain historical evidence, not new diagnostics. Init can
 attempt one 128-byte ASCII failure marker before GO; it never waits for that
 write or retries it. The driver reports closed categories from its bootstrap
@@ -266,3 +266,11 @@ decision snapshot, never raw stderr, process IDs, identity values or paths.
 A marker is not READY, proof of cleanup, or permission to classify a failure
 as a missing prerequisite. Original classification and all budgets remain.
 See the [owning LD scope](../../../../docs/architecture/e2e-test-environment.md#t3c-ld-rajatun-käynnistysdiagnostiikan-päätösehdotus).
+The [LD CI result](../../../../docs/architecture/e2e-test-environment.md#t3c-ldn-rajatun-ci-kokeen-havainto)
+remains failed before READY in both consumers; all other test groups passed.
+The [LS follow-up proposal](../../../../docs/architecture/e2e-test-environment.md#t3c-ls-suljetun-stderr-luokan-tarkennuksen-päätösehdotus)
+was approved on 2026-09-26. Its exact-message diagnostic table and schema 3
+passed regression tests and independent source/reader review; one new observed
+CI cycle is next. The table applies only before READY and GO, after wrapper
+close and stderr end without read/size failure. It never changes acceptance.
+Schemas 1/2 remain historical evidence; do not reinterpret earlier results.

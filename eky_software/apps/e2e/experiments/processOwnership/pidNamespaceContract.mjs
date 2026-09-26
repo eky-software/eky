@@ -8,7 +8,7 @@ export const budgets = Object.freeze({
 export const limits = Object.freeze({ frame: 512, channel: 4096, status: 16384, result: 4096 });
 export const expectedEofExit = 41;
 export const failureExit = 42;
-export const resultSchemaVersion = 2;
+export const resultSchemaVersion = 3;
 export const unshareArguments = Object.freeze([
   '--user', '--map-current-user', '--setgroups=deny', '--mount',
   '--propagation=private', '--mount-proc=/proc', '--pid', '--fork',

@@ -120,7 +120,16 @@ T3c-L:n molemmat ensimmäiset CI-kokeet hylättiin ennen GO:ta. Kokeet eivät
 muuta lopullisen mekanismin ja fixture-siirron rivejä hyväksytyiksi.
 Omistajan hyväksymän [T3c-LD:n](e2e-test-environment.md#t3c-ld-rajatun-käynnistysdiagnostiikan-päätösehdotus)
 diagnostiikkatäydennyksen 92/92 kohdetestiä, nykyiset paikalliset portit ja
-riippumaton katselmus läpäisivät; uusi oikea CI-koe on seuraava vaihe.
+riippumaton katselmus läpäisivät. [Uuden CI-kokeen havainto](e2e-test-environment.md#t3c-ldn-rajatun-ci-kokeen-havainto)
+rajaa molemmat hylkäykset ennen READYä: wrapper exit 1 ja tuntematon stderr;
+init-merkki puuttuu. Kokonaisajo on päättynyt hylätyksi; muut testiryhmät
+läpäisivät, myös Electron 38/38 ilman retryä tai flaky-tulosta.
+Tarkka syy ja T3-hyväksyntä jäävät avoimiksi. Seuraava
+[T3c-LS-ehdotus](e2e-test-environment.md#t3c-ls-suljetun-stderr-luokan-tarkennuksen-päätösehdotus)
+on hyväksytty 2026-09-26. Tarkennuksen kohdesarja 97/97 ja CI-sopimukset
+199/199 läpäisivät; ajurin alkuperäinen hylkäys, GO-esto, cleanup ja juuren
+säilytys eivät muutu. Oikea CI-koe on vielä ajamatta; tämä ei lisää
+lopullisen prosessiomistajuuden hyväksyntää.
 
 | Valmistelun näyttö | Taso ja rajaus | Tila |
 | --- | --- | --- |
