@@ -1917,8 +1917,9 @@ Chromium-koe ei siirtänyt niitä. Aiemmat LS- ja timeout-havainnot säilyvät.
 ##### T3:n oikeiden kuluttajien siirtoraja
 
 **2026-09-27: lähdeinventaarioon perustuva seuraavan toteutuspalan valmistelu,
-ei vielä kuluttajasiirron hyväksyntänäyttö.** Lähtötilana on yllä hyväksytty
-`c09e8866`. Uutta testialustaa, sovellusarkkitehtuuria tai riippuvuutta ei
+ei vielä kuluttajasiirron hyväksyntänäyttö.** Nykyinen lähtötila on alla
+varmennettu käynnistyshavainnon `83a94fad`; edeltävä `c09e8866` säilyy
+rajatun Chromium-kokeen näyttönä. Uutta testialustaa, sovellusarkkitehtuuria tai riippuvuutta ei
 perusteta. Moduulitestin kolme nykyistä `isolated*Test`-fixtureä säilyvät;
 alustasopimus kuuluu niiden sisäiselle elinkaaren omistajalle.
 
@@ -1979,7 +1980,7 @@ säilyvät. Valmistelu ei muuta sovelluskoodia tai testien aikarajoja.
 
 ###### Backendin käynnistyshavainnon valmistelupala
 
-**2026-09-27: toteutettu ja regressiot läpäisty; uuden revision CI-portti kesken.**
+**2026-09-27: toteutettu; regressiot ja täsmällisen revision CI-portti läpäisty.**
 `waitForE2eBackendStartup` ja terveysodotus irrotetaan suorasta
 `ChildProcess`-luvusta. Ne saavat pienen `readState`/`subscribe`-havainnon,
 jonka nykyinen adapteri kytkee synkronisesti juuri käynnistettyyn työkuormaan.
@@ -2021,8 +2022,17 @@ hyväksyttyyn sopimukseen; tarkka yhtäsuuruus, tuotannon capability-raja ja
 CI-valinta säilyivät. Alkuperäinen hylkäys säilytettiin, eikä sitä nimetä
 startup-timeoutin tai prosessipuun omistajuuden viaksi.
 
-Lähderevision normaali CI-varmennus tarvitaan vielä. Tämä valmistelupala
-ei sulje T3:a: stop-omistajuuden ja oikeiden kuluttajien siirto, korvattujen
+Lähde `83a94fad77f48e8e48d7a50d4cb721d1a388e193` läpäisi normaalin V2-ajon
+`36278433807` ja riippuvuustarkistuksen `36278443919`, kumpikin yrityksellä 1.
+Kaikki neljä kokeellista valitsinta olivat pois. V2:ssa oli 38 onnistunutta
+ryhmää ja yksi tarkoituksellinen valinnaisen kokeen ohitus; system 245/245,
+web 35/35 ja kriittinen Electron 38/38 ilman retryä tai flaky-tulosta.
+Kaikkien 38 suoritetun ryhmän lähdesidonta sekä neljän tuottajan ja kymmenen
+kuluttajan artifact-todistusketju tarkistettiin. Molemmat vanhan version
+päivityskuluttajat ja palautuksen virhepolut läpäisivät. Tämä ei osoita
+aiempien satunnaisten timeoutien juurisyytä eikä uutta Linux-omistajuusnäyttöä.
+
+Tämä valmistelupala ei sulje T3:a: stop-omistajuuden ja oikeiden kuluttajien siirto, korvattujen
 polkujen poisto, koko hyväksyntämatriisi ja PR/main-portit ovat avoinna.
 
 ##### T3c-LM: rajattu CI-testisession hallinta
