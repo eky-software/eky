@@ -1999,6 +1999,35 @@ lukijaa varten; edellisen checkpointin workspace-näyttö pysyy erillisenä.
 Managerin todelliset esiehdot, launch-/stop-omistaja, kokonaisajuri,
 tulosskeema/lukija ja rajattu CI-koe ovat seuraavat työt. Tämä ei sulje T3:a.
 
+**Neljäs checkpoint: kiinteiden host-polkujen metadataesitarkistus.**
+`managedNamespacePreflight` tarkistaa CI-/nonroot-kontekstin ennen I/O:ta,
+kiinteät järjestelmäbinäärit ja niiden canonical, root-omistetut,
+kirjoitussuojatut esi-isähakemistot. Binäärit ovat tavallisia executable-
+tiedostoja; vain sudolle hyväksytään sen tarvitsema setuid-bitti.
+Tarkistus ei avaa tiedostosisältöjä, prosessilistoja, socket-yhteyttä tai
+palvelua eikä muuta oikeuksia. Kutsuja ei anna tutkittavia polkuja.
+
+Systemdin käynnistysmerkki ja private-socketin metadata eivät todista
+toimivaa manageriyhteyttä: myös systemdin oma
+[sd_booted-tarkistus](https://github.com/systemd/systemd/blob/v255/src/libsystemd/sd-daemon/sd-daemon.c#L665-L675)
+lukee vain käynnistysmerkin. Cgroup v2 erotetaan tavallisesta hakemistosta
+`statfs`-tyypillä ja kiinteiden v2-rajapintojen metadatalla. Rajapintojen
+sisältöä tai ohjainten käyttöönottoa ei vaadita prosessien ryhmittelyyn.
+
+Alkuperäinen ready-määräaika tarkistetaan jokaisen asynkronisen luvun
+molemmin puolin ja vielä ennen onnistunutta paluuta. Kesken olevaa
+tiedostojärjestelmäkutsua ei voida perua; myöhäinen paluu ei voi jatkaa
+tarkistusketjua tai tuottaa hyväksyttyä kuittia. Virhe sisältää vain suljetun
+syyn ja vaiheen, ei raakaa tiedostovirhettä tai polkuja.
+
+13/13 injektoitua kohdetestiä, normaali E2E-sarja 305/305 ilman ohituksia
+ja paketin tyypitys läpäisivät. Riippumaton lähdekatselmus ei löytänyt
+korjattavaa. T1/T2-komentosuoja vaatii myös tämän testitiedoston mukanaolon.
+Metadata ei anna launch-, GO-, stop- tai poistovaltuutta: todellinen
+manageriyhteys, sudo-politiikka, komentojen tuki ja session elinkaari ovat
+seuraavan integraation portteja. Oikeaa host-esitarkistusta, managerikutsua,
+CI-koetta tai fixture-siirtoa ei tässä checkpointissa tehty.
+
 #### T3:n lopullinen hyväksyntänäyttö
 
 Moduulikehittäjän rajapinta pidetään pienenä: system-testit käyttävät

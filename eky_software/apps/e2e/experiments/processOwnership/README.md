@@ -324,6 +324,16 @@ there is no retry, PID lookup, unit mutation or cleanup authority in this reader
 Tests inject processes and clocks; no live manager command has been executed.
 Live use still requires the planned preflight and ownership integration.
 
+The fourth slice adds metadata-only `managedNamespacePreflight`. It inspects
+only fixed host paths after the CI/nonroot guard, validating protected canonical
+ancestors, root-owned executables, the systemd boot marker/socket and the cgroup
+v2 filesystem/interface metadata. Only sudo may carry its required setuid bit.
+It opens no files or sockets and runs no commands. The original readiness
+deadline covers all metadata calls and the final return; a late pending call
+cannot continue inspection or yield success. A metadata receipt is not sudo
+authorization, live manager reachability, feature support or cleanup evidence.
+The injected tests do not inspect the actual host or change its configuration.
+
 Use the [current continuation entry](../../../../docs/architecture/release-0.3.0-m1-preparation-plan.md#jatka-tästä)
 for the next task. Historical experiments do not substitute for actual fixture
 migration and removal of the replaced active ownership path after equivalent
