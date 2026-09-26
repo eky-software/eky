@@ -1,10 +1,14 @@
-import type { ManagedChildProcess } from './startManagedProcess.js';
+import type {
+  E2eProcessStartupObservation,
+  E2eProcessStartupTerminal,
+} from './e2eProcessStartupObservation.js';
 
 const startupPhases = new Set([
   'processSpawnRequested',
   'processSpawned',
   'healthWaitStarted',
   'childExitedBeforeHealth',
+  'workloadObservationLost',
   'healthReady',
   'healthTimedOut',
   'cleanupStarted',
@@ -17,6 +21,7 @@ const startupStatuses = new Set(['started', 'completed', 'failed'] as const);
 const startupErrorCodes = new Set([
   'E2E_BACKEND_PROCESS_SPAWN_FAILED',
   'E2E_BACKEND_CHILD_EXITED_BEFORE_HEALTH',
+  'E2E_BACKEND_WORKLOAD_OBSERVATION_LOST',
   'E2E_BACKEND_HEALTH_TIMEOUT',
   'E2E_BACKEND_LOOPBACK_ADDRESS_IN_USE',
   'E2E_BACKEND_PROCESS_TREE_CLEANUP_FAILED',
@@ -28,6 +33,7 @@ export type E2eBackendStartupPhase =
   | 'processSpawned'
   | 'healthWaitStarted'
   | 'childExitedBeforeHealth'
+  | 'workloadObservationLost'
   | 'healthReady'
   | 'healthTimedOut'
   | 'cleanupStarted'
@@ -39,6 +45,7 @@ export type E2eBackendStartupStatus = 'started' | 'completed' | 'failed';
 export type E2eBackendStartupErrorCode =
   | 'E2E_BACKEND_PROCESS_SPAWN_FAILED'
   | 'E2E_BACKEND_CHILD_EXITED_BEFORE_HEALTH'
+  | 'E2E_BACKEND_WORKLOAD_OBSERVATION_LOST'
   | 'E2E_BACKEND_HEALTH_TIMEOUT'
   | 'E2E_BACKEND_LOOPBACK_ADDRESS_IN_USE'
   | 'E2E_BACKEND_PROCESS_TREE_CLEANUP_FAILED'
@@ -99,12 +106,20 @@ export function createE2eBackendStartupReporter(input: {
 }
 
 export async function waitForManagedBackendHealth(input: {
-  readonly child: ManagedChildProcess;
+  readonly startup: E2eProcessStartupObservation;
   readonly observe: E2eBackendStartupObserver;
   readonly waitForHealth: (signal: AbortSignal) => Promise<void>;
 }): Promise<void> {
   input.observe(newProgress('healthWaitStarted', 'started'));
-  const exit = createChildTerminalSignal(input.child);
+  let unsubscribe = () => {};
+  const terminal = new Promise<{ readonly kind: E2eProcessStartupTerminal }>((resolve) => {
+    const readTerminal = () => {
+      const state = input.startup.readState();
+      if (state.terminal !== undefined) resolve({ kind: state.terminal });
+    };
+    unsubscribe = input.startup.subscribe(readTerminal);
+    readTerminal();
+  });
   const healthAbort = new AbortController();
   const health = Promise.resolve()
     .then(() => input.waitForHealth(healthAbort.signal))
@@ -113,45 +128,49 @@ export async function waitForManagedBackendHealth(input: {
       () => ({ kind: 'healthFailed' as const }),
     );
 
+  let outcome;
   try {
-    const outcome = await Promise.race([health, exit.promise]);
-    if (outcome.kind === 'healthy') {
-      input.observe(newProgress('healthReady', 'completed'));
-      return;
-    }
-    if (outcome.kind === 'spawnFailed') {
-      input.observe(
-        newProgress(
-          'processSpawned',
-          'failed',
-          'E2E_BACKEND_PROCESS_SPAWN_FAILED',
-        ),
-      );
-      throw new Error('E2E_BACKEND_PROCESS_SPAWN_FAILED');
-    }
-    if (outcome.kind === 'exited' || hasExited(input.child)) {
-      input.observe(
-        newProgress(
-          'childExitedBeforeHealth',
-          'failed',
-          'E2E_BACKEND_CHILD_EXITED_BEFORE_HEALTH',
-        ),
-      );
-      throw new Error('E2E_BACKEND_CHILD_EXITED_BEFORE_HEALTH');
-    }
-    input.observe(
-      newProgress(
-        'healthTimedOut',
-        'failed',
-        'E2E_BACKEND_HEALTH_TIMEOUT',
-      ),
-    );
-    throw new Error('E2E_BACKEND_HEALTH_TIMEOUT');
+    outcome = await Promise.race([health, terminal]);
   } finally {
     healthAbort.abort();
     await health;
-    exit.dispose();
+    unsubscribe();
   }
+  const state = input.startup.readState();
+  // A queued health response cannot overrule an already observed workload failure.
+  const kind = state.terminal ?? outcome.kind;
+  if (kind === 'healthy' && state.spawnObserved) {
+    input.observe(newProgress('healthReady', 'completed'));
+    return;
+  }
+  if (kind === 'spawnFailed') {
+    input.observe(
+      newProgress(
+        'processSpawned',
+        'failed',
+        'E2E_BACKEND_PROCESS_SPAWN_FAILED',
+      ),
+    );
+    throw new Error('E2E_BACKEND_PROCESS_SPAWN_FAILED');
+  }
+  if (kind === 'exited') {
+    input.observe(
+      newProgress(
+        'childExitedBeforeHealth',
+        'failed',
+        'E2E_BACKEND_CHILD_EXITED_BEFORE_HEALTH',
+      ),
+    );
+    throw new Error('E2E_BACKEND_CHILD_EXITED_BEFORE_HEALTH');
+  }
+  if (kind === 'observationLost' || kind === 'healthy') {
+    input.observe(newProgress(
+      'workloadObservationLost', 'failed', 'E2E_BACKEND_WORKLOAD_OBSERVATION_LOST',
+    ));
+    throw new Error('E2E_BACKEND_WORKLOAD_OBSERVATION_LOST');
+  }
+  input.observe(newProgress('healthTimedOut', 'failed', 'E2E_BACKEND_HEALTH_TIMEOUT'));
+  throw new Error('E2E_BACKEND_HEALTH_TIMEOUT');
 }
 
 export function newProgress(
@@ -167,34 +186,4 @@ export function newProgress(
     scenario: 'e2eBackendStartup',
     status,
   });
-}
-
-function createChildTerminalSignal(child: ManagedChildProcess): {
-  readonly dispose: () => void;
-  readonly promise: Promise<
-    { readonly kind: 'exited' } | { readonly kind: 'spawnFailed' }
-  >;
-} {
-  let dispose = () => undefined;
-  const promise = new Promise<
-    { readonly kind: 'exited' } | { readonly kind: 'spawnFailed' }
-  >((resolveTerminal) => {
-    if (hasExited(child)) {
-      resolveTerminal({ kind: 'exited' });
-      return;
-    }
-    const onExit = () => resolveTerminal({ kind: 'exited' });
-    const onError = () => resolveTerminal({ kind: 'spawnFailed' });
-    child.once('exit', onExit);
-    child.once('error', onError);
-    dispose = () => {
-      child.removeListener('exit', onExit);
-      child.removeListener('error', onError);
-    };
-  });
-  return { dispose, promise };
-}
-
-function hasExited(child: ManagedChildProcess): boolean {
-  return child.exitCode !== null || child.signalCode !== null;
 }

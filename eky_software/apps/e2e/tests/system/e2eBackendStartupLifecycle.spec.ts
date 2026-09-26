@@ -11,6 +11,10 @@ import {
 import {
   E2E_BACKEND_STARTUP_SAFETY_TIMEOUT_MILLISECONDS,
 } from '../../src/environment/e2eServiceStartupBudgets.js';
+import {
+  observeChildProcessStartup,
+  type E2eProcessStartupObservation,
+} from '../../src/environment/e2eProcessStartupObservation.js';
 import { runBoundedWindowsTaskkill } from '../../src/environment/runBoundedWindowsTaskkill.js';
 import type { ManagedChildProcess } from '../../src/environment/startManagedProcess.js';
 import { waitForE2eBackendStartup } from '../../src/environment/startE2eBackendProcess.js';
@@ -25,7 +29,7 @@ test.describe('managed E2E backend startup lifecycle', () => {
     const calls: string[] = [];
     const result = waitForE2eBackendStartup({
       backendOrigin: 'http://127.0.0.1:12345',
-      managedProcess: { child, readStdout: () => '', readStderr: () => '' },
+      managedProcess: { startup: child.startup, readStdout: () => '', readStderr: () => '' },
       observe: (event) => progress.push(event),
       waitForHealth: () => health,
       async stopProcessTree() { calls.push('stop'); },
@@ -39,6 +43,7 @@ test.describe('managed E2E backend startup lifecycle', () => {
     expect(progress.at(-1)).toMatchObject({ phase: 'healthReady', status: 'completed' });
     expect(calls).toEqual([]);
     expect(child.listenerCount('spawn')).toBe(0);
+    child.emit('close', 0, null);
   });
 
   for (const mode of ['beforeListening', 'afterListening', 'cleanupFailure', 'portFailure', 'outputFailure', 'earlyExit', 'spawnFailure'] as const) {
@@ -50,7 +55,7 @@ test.describe('managed E2E backend startup lifecycle', () => {
       const result = waitForE2eBackendStartup({
         backendOrigin: 'http://127.0.0.1:12345',
         managedProcess: {
-          child,
+          startup: child.startup,
           readStdout: () => {
             if (mode === 'outputFailure') throw new Error('private output failure');
             return mode === 'afterListening' ? listening : 'private output and session';
@@ -104,6 +109,8 @@ test.describe('managed E2E backend startup lifecycle', () => {
       expect(JSON.stringify(failure)).not.toMatch(/private|12345|http|session|environment/);
       expect(lines.join('\n')).not.toMatch(/private|12345|http|session|environment/);
       expect(calls).toEqual(['stop', 'release']);
+      // Native observation belongs to the actual child until close, not health.
+      child.emit('close', 1, null);
       expect(child.listenerCount('spawn')).toBe(0);
       expect(child.listenerCount('exit')).toBe(0);
       expect(child.listenerCount('error')).toBe(0);
@@ -116,9 +123,12 @@ test.describe('managed E2E backend startup lifecycle', () => {
 
     await expect(
       waitForManagedBackendHealth({
-        child,
+        startup: child.startup,
         observe: (event) => progress.push(event),
-        waitForHealth: () => Promise.resolve(),
+        waitForHealth: () => {
+          child.emit('spawn');
+          return Promise.resolve();
+        },
       }),
     ).resolves.toBeUndefined();
 
@@ -126,6 +136,10 @@ test.describe('managed E2E backend startup lifecycle', () => {
       { phase: 'healthWaitStarted', status: 'started' },
       { phase: 'healthReady', status: 'completed' },
     ]);
+    expect(child.listenerCount('exit')).toBe(1);
+    expect(child.listenerCount('error')).toBe(1);
+    child.emit('exit', 0, null);
+    child.emit('close', 0, null);
     expect(child.listenerCount('exit')).toBe(0);
     expect(child.listenerCount('error')).toBe(0);
   });
@@ -135,7 +149,7 @@ test.describe('managed E2E backend startup lifecycle', () => {
     const progress: E2eBackendStartupProgress[] = [];
     let healthWaitAborted = false;
     const result = waitForManagedBackendHealth({
-      child,
+      startup: child.startup,
       observe: (event) => progress.push(event),
       waitForHealth: (signal) =>
         new Promise<void>((_resolve, reject) => {
@@ -162,8 +176,10 @@ test.describe('managed E2E backend startup lifecycle', () => {
       status: 'failed',
     });
     expect(child.listenerCount('exit')).toBe(0);
-    expect(child.listenerCount('error')).toBe(0);
+    expect(child.listenerCount('error')).toBe(1);
     expect(healthWaitAborted).toBe(true);
+    child.emit('close', 1, null);
+    expect(child.listenerCount('error')).toBe(0);
   });
 
   test('keeps an alive child health timeout distinct from an early exit', async () => {
@@ -172,7 +188,7 @@ test.describe('managed E2E backend startup lifecycle', () => {
 
     await expect(
       waitForManagedBackendHealth({
-        child,
+        startup: child.startup,
         observe: (event) => progress.push(event),
         waitForHealth: () => Promise.reject(new Error('raw health detail')),
       }),
@@ -182,6 +198,92 @@ test.describe('managed E2E backend startup lifecycle', () => {
       phase: 'healthTimedOut',
       status: 'failed',
     });
+    child.emit('close', 0, null);
+  });
+
+  for (const timing of ['beforeSubscribe', 'withHealth', 'duringFinalization'] as const) {
+    test(`rejects workload observation loss ${timing} without a ChildProcess consumer`, async () => {
+      const child = createFakeChild();
+      const lines: string[] = [];
+      child.emit('spawn');
+      const loseObservation = () => child.emit('error', new Error('private operation failure'));
+      if (timing === 'beforeSubscribe') loseObservation();
+      const calls: string[] = [];
+      const result = waitForE2eBackendStartup({
+        backendOrigin: 'http://127.0.0.1:12345',
+        managedProcess: {
+          startup: child.startup,
+          readStdout: () => '',
+          readStderr: () => 'EADDRINUSE private output must not mask lost observation',
+        },
+        observe: createE2eBackendStartupReporter({ writeLine: (line) => lines.push(line) }),
+        async waitForHealth(signal) {
+          if (timing === 'withHealth') loseObservation();
+          if (timing === 'duringFinalization') {
+            signal.addEventListener('abort', () => queueMicrotask(loseObservation), { once: true });
+          }
+        },
+        async stopProcessTree() {
+          calls.push('stop');
+          child.setExitCode(0);
+          child.emit('exit', 0, null);
+          child.emit('close', 0, null);
+        },
+        async releasePort() { calls.push('release'); },
+      });
+      await expect(result).rejects.toMatchObject({
+        message: 'E2E_BACKEND_WORKLOAD_OBSERVATION_LOST',
+        evidence: {
+          spawnObserved: true,
+          exitedBeforeCleanup: false,
+          cleanup: { processTree: 'stopped', port: 'released' },
+        },
+      });
+      expect(calls).toEqual(['stop', 'release']);
+      expect(lines.join('\n')).toContain('workloadObservationLost');
+      expect(lines.join('\n')).not.toMatch(/healthReady|private|EADDRINUSE|12345/);
+      expect(child.startup.readState().terminal).toBe('observationLost');
+    });
+  }
+
+  test('does not infer workload spawn from health or a numeric PID', async () => {
+    const child = createFakeChild();
+    await expect(waitForManagedBackendHealth({
+      startup: child.startup,
+      observe: () => {},
+      waitForHealth: async () => {},
+    })).rejects.toThrow('E2E_BACKEND_WORKLOAD_OBSERVATION_LOST');
+    child.emit('close', 0, null);
+  });
+
+  test('replays a latched spawn through the observation and releases consumer subscriptions', async () => {
+    const child = createFakeChild();
+    child.emit('spawn');
+    const progress: E2eBackendStartupProgress[] = [];
+    let subscriptions = 0;
+    const startup: E2eProcessStartupObservation = {
+      readState: child.startup.readState,
+      subscribe(listener) {
+        subscriptions++;
+        const unsubscribe = child.startup.subscribe(listener);
+        return () => { subscriptions--; unsubscribe(); };
+      },
+    };
+    await waitForE2eBackendStartup({
+      backendOrigin: 'http://127.0.0.1:12345',
+      managedProcess: { startup, readStdout: () => '', readStderr: () => '' },
+      observe: (event) => progress.push(event),
+      async waitForHealth() {},
+      async stopProcessTree() { throw new Error('must not stop a healthy workload'); },
+      async releasePort() { throw new Error('must not release a healthy workload port'); },
+    });
+    expect(subscriptions).toBe(0);
+    expect(progress.map(({ phase }) => phase)).toEqual([
+      'processSpawned', 'healthWaitStarted', 'healthReady',
+    ]);
+    child.emit('exit', 0, null);
+    child.emit('close', 0, null);
+    expect(progress).toHaveLength(3);
   });
 
   test('writes only closed progress fields and ignores logger failure', () => {
@@ -331,7 +433,7 @@ test.describe('dynamic HTTP health readiness', () => {
 
 test.describe('bounded Windows taskkill', () => {
   test('completes when the taskkill host exits', async () => {
-    const taskkill = createFakeChild();
+    const taskkill = createUnobservedFakeChild();
     const result = runBoundedWindowsTaskkill(
       123,
       100,
@@ -347,7 +449,7 @@ test.describe('bounded Windows taskkill', () => {
 
   test('times out safely and terminates the taskkill host', async () => {
     let killCount = 0;
-    const taskkill = createFakeChild(() => {
+    const taskkill = createUnobservedFakeChild(() => {
       killCount += 1;
       return true;
     });
@@ -371,7 +473,7 @@ test.describe('bounded Windows taskkill', () => {
       }),
     ).rejects.toThrow('E2E_MANAGED_PROCESS_TREE_TASKKILL_FAILED');
 
-    const taskkill = createFakeChild();
+    const taskkill = createUnobservedFakeChild();
     const result = runBoundedWindowsTaskkill(
       123,
       100,
@@ -384,7 +486,12 @@ test.describe('bounded Windows taskkill', () => {
   });
 });
 
-function createFakeChild(
+function createFakeChild() {
+  const child = createUnobservedFakeChild();
+  return Object.assign(child, { startup: observeChildProcessStartup(child) });
+}
+
+function createUnobservedFakeChild(
   kill: (signal?: NodeJS.Signals | number) => boolean = () => true,
 ): ControlledManagedChild {
   let exitCode: number | null = null;

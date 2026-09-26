@@ -1977,6 +1977,54 @@ tavallisen fixturen toiseksi ohjauspoluksi. T1/T2-kytkentä, puhdas valmistelu,
 ensimmäisen virheen säilytys ja [lopullinen T3-portti](#t3n-lopullinen-hyväksyntänäyttö)
 säilyvät. Valmistelu ei muuta sovelluskoodia tai testien aikarajoja.
 
+###### Backendin käynnistyshavainnon valmistelupala
+
+**2026-09-27: toteutettu ja regressiot läpäisty; uuden revision CI-portti kesken.**
+`waitForE2eBackendStartup` ja terveysodotus irrotetaan suorasta
+`ChildProcess`-luvusta. Ne saavat pienen `readState`/`subscribe`-havainnon,
+jonka nykyinen adapteri kytkee synkronisesti juuri käynnistettyyn työkuormaan.
+Kytkentä kuuluu vain backendin käynnistäjälle; yhteinen `startManagedProcess`
+ei muuta Viten tai muiden siirtämättömien kuluttajien virhehavaintoa.
+Tila erottaa todetun spawnin, exitin, spawn-virheen ja havaintovirheen.
+Ensimmäinen terminal-havainto säilyy; managerin PID:tä tai stdoutia ei
+käytetä todisteena. Rekisteröinnin jälkeinen synkroninen tilaluku kattaa
+myös ennen tilaajaa saapuneet tapahtumat. Onnistuminen tarkistetaan vielä
+odotuksen lopetuksen jälkeen, ilman uutta aikarajaa.
+
+`E2E_BACKEND_WORKLOAD_OBSERVATION_LOST` säilyy turvallisessa vaihehavainnossa
+ja fixture-virheen mukana. `exitedBeforeCleanup=false` tarkoittaa, ettei
+exit ole vahvistettu kyseisessä startup-havainnossa, ei todistetta elävästä
+prosessista. Cleanupissa syntyvä exit ei muuta aiempaa virhenäyttöä.
+Kuluttajan tilaus päättyy startupin jälkeen, mutta adapterin native-virheiden
+kuuntelu vasta todellisen lapsen `close`-tapahtumassa. Tämän puuttuminen ei
+ole cleanup-todiste. Tapahtuma on vain testiruntimen havainto, eikä kuulu
+sovelluksen Diagnosticsiin, Activityyn tai tukipakettiin.
+
+Tämä pala ei siirrä stop-omistajuutta, PID-/RSS-kuluttajia, Vite-readinessia,
+Chromiumia tai Electronia uuteen alustamekanismiin. Niiden vanhoja polkuja
+ei poisteta tämän osatodisteen perusteella. Hyväksyntään tarvitaan
+startup-/close-/error-järjestysten sopimustestit, todellisen suoran lapsen
+onnistumis- ja spawn-virhekytkentä, system-kuluttajat ja tyypitys sekä
+backendia käyttävän web-/Electron-fixturen regressiot.
+
+Toteutuksen katselmuksessa ei jäänyt korjattavia havaintoja. Kohdesarja
+117/117, E2E-sopimukset 460/460, CI-kytkentäsopimukset 315/315 sekä koko
+työtilan testit ja tyypitys läpäisivät. Normaali täysi E2E-ajo läpäisi
+331/331: system 245, web 41 ja Electron 45, ilman retryä tai flaky-tulosta.
+Yhteisen käynnistäjän siirtämättömien kuluttajien virhehavainto säilyi.
+
+Ensimmäinen täysi ajo hylkäsi `DESK-RUNTIME-001`:n vanhentuneen tarkan
+renderer-API-odotuksen. Jo hyväksytty W5B.2:n
+`replaceActiveWorkspaceFromBackup` puuttui listasta, ja import-/inspect-nimien
+järjestys poikkesi lajitellusta tuloksesta. Odotus korjattiin nykyiseen
+hyväksyttyyn sopimukseen; tarkka yhtäsuuruus, tuotannon capability-raja ja
+CI-valinta säilyivät. Alkuperäinen hylkäys säilytettiin, eikä sitä nimetä
+startup-timeoutin tai prosessipuun omistajuuden viaksi.
+
+Lähderevision normaali CI-varmennus tarvitaan vielä. Tämä valmistelupala
+ei sulje T3:a: stop-omistajuuden ja oikeiden kuluttajien siirto, korvattujen
+polkujen poisto, koko hyväksyntämatriisi ja PR/main-portit ovat avoinna.
+
 ##### T3c-LM: rajattu CI-testisession hallinta
 
 Omistaja hyväksyi 2026-09-26 rajatun CI-testisession hallinnan suunnittelun

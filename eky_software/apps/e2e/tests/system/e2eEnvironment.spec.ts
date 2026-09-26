@@ -20,6 +20,8 @@ import {
 import { collectFailureArtifacts } from '../../src/environment/collectFailureArtifacts.js';
 import { createE2eRunRoot } from '../../src/environment/createE2eRunRoot.js';
 import { createE2eWorkerPaths } from '../../src/environment/createE2eWorkerPaths.js';
+import { waitForManagedBackendHealth } from '../../src/environment/e2eBackendStartupLifecycle.js';
+import { observeChildProcessStartup } from '../../src/environment/e2eProcessStartupObservation.js';
 import { reserveLoopbackPort } from '../../src/environment/reserveLoopbackPort.js';
 import {
   e2eRunRootRemovalOptions,
@@ -402,6 +404,24 @@ test.describe('managed E2E runtime primitives', () => {
     }
   });
 
+  test('leaves native errors visible until the owning consumer attaches an observer', async () => {
+    const managed = startManagedProcess({
+      args: ['-e', 'setInterval(() => {}, 1000);'],
+      command: process.execPath,
+      cwd: process.cwd(),
+      environment: { EKY_E2E: '1' },
+    });
+    const closed = new Promise<void>((resolveClose) => managed.child.once('close', () => resolveClose()));
+    try {
+      expect(managed.child.listenerCount('error')).toBe(0);
+      const error = new Error('SYNTHETIC_NATIVE_ERROR');
+      expect(() => managed.child.emit('error', error)).toThrow(error);
+    } finally {
+      await stopManagedProcessTree(managed.child);
+      await closed;
+    }
+  });
+
   test('bounds and redacts managed process output and stops the process', async () => {
     const secret = 'synthetic-e2e-secret';
     const managed = startManagedProcess({
@@ -415,17 +435,50 @@ test.describe('managed E2E runtime primitives', () => {
       outputLimitBytes: 1_024,
       redactedValues: [secret],
     });
+    const startup = observeChildProcessStartup(managed.child);
+    const closed = new Promise<void>((resolveClose) => managed.child.once('close', () => resolveClose()));
 
     try {
       await waitForOutput(managed.readStdout);
       expect(managed.readStdout()).toContain('[REDACTED]');
       expect(managed.readStdout()).not.toContain(secret);
+      expect(startup.readState()).toEqual({ spawnObserved: true, terminal: undefined });
     } finally {
       await stopManagedProcessTree(managed.child);
+      await closed;
     }
     expect(
       managed.child.exitCode !== null || managed.child.signalCode !== null,
     ).toBe(true);
+    expect(startup.readState()).toEqual({ spawnObserved: true, terminal: 'exited' });
+    expect(managed.child.listenerCount('error')).toBe(0);
+  });
+
+  test('retains a real failed spawn for a later startup consumer without raw error leakage', async () => {
+    const runRoot = createE2eRunRoot();
+    try {
+      const managed = startManagedProcess({
+        command: join(runRoot, 'missing-synthetic-executable'),
+        args: [],
+        cwd: runRoot,
+        environment: { EKY_E2E: '1' },
+        inheritEnvironment: false,
+      });
+      const startup = observeChildProcessStartup(managed.child);
+      await new Promise<void>((resolveClose) => managed.child.once('close', () => resolveClose()));
+      expect(startup.readState()).toEqual({ spawnObserved: false, terminal: 'spawnFailed' });
+      await expect(waitForManagedBackendHealth({
+        startup,
+        observe: () => {},
+        waitForHealth: async () => {},
+      })).rejects.toThrow('E2E_BACKEND_PROCESS_SPAWN_FAILED');
+      expect(JSON.stringify(startup.readState())).not.toContain(runRoot);
+      for (const event of ['spawn', 'exit', 'error', 'close']) {
+        expect(managed.child.listenerCount(event)).toBe(0);
+      }
+    } finally {
+      rmSync(runRoot, { recursive: true, force: true });
+    }
   });
 
   test('collects only allowlisted files below the run root', async () => {
