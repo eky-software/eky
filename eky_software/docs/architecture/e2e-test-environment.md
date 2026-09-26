@@ -17,8 +17,9 @@ fault injectionia.
 ## T-paketin valmistelu
 
 **2026-09-26: T1 ja T2 hyväksytty PR/main-porttien jälkeen; T3c-W:n
-rajattu koe läpäisty, T3c-L:n ensimmäinen CI-koe hylätty ennen GO:ta;
-lopullinen T3 avoinna.** [M1-valmistelu](release-0.3.0-m1-preparation-plan.md)
+rajattu koe läpäisty, Linuxin LS-koe paikantanut UID-map-eston ennen GO:ta;
+rajattu LM-sessionhallinta toteutuksessa, lopullinen T3 avoinna.**
+[M1-valmistelu](release-0.3.0-m1-preparation-plan.md)
 rajaa R27-R29:n kolmeen erikseen todennettavaan sopimukseen. M0:n erillinen
 Windows Job -supervisor ja Electronin lataus-/purkutodistus eivät sulje näitä.
 
@@ -230,15 +231,18 @@ Suunnitelman todistusrajat säilyvät myös myöhemmissä muutoksissa.
 ### T3: Koko prosessipuun poistumistodiste
 
 **Tila 2026-09-26: T3/R28 kesken; T3c-W:n neljä rajattua koetta läpäisty,
-T3c-L:n molemmat ensimmäiset CI-kokeet hylätty ennen GO:ta.**
+Linuxin LS-koe hylätty ennen GO:ta; rajattu LM-sessionhallinta toteutuksessa.**
 T3b-E:n ja T3b-P:n korjattu CI-lähtötila on todennettu niiden omissa
 checkpointeissa. Uuden T3c-revision kokonaisajo on päättynyt hylätyksi;
 [käynnistysvirhe](#t3c-ln-ensimmäisen-ci-kokeen-hylkäys) estää hyväksynnän.
 [T3c-LD:n lisähavainto](#t3c-ldn-rajatun-ci-kokeen-havainto)
 rajasi molempien uusien kokeiden hylkäyksen ennen READYä: wrapper exit 1,
-stderr `other`, init-merkki puuttuu. Tarkka syy on edelleen avoin.
+stderr `other`, init-merkki puuttuu. [LS:n uusi havainto](#t3c-lsn-rajatun-ci-kokeen-havainto)
+tunnisti UID-map-kirjoituseston; estävä taustapolitiikka on edelleen avoin.
 T3a:n alkuperäinen 4/5 sekä myöhemmät erilliset hylkäykset jäävät historiaksi.
-Alustamekanismien valinta ja fixture-siirto vaativat erillisen hyväksynnän.
+Omistaja hyväksyi [rajatun LM-sessionhallinnan](#t3c-lm-rajattu-ci-testisession-hallinta)
+suunnittelun ja toteutuksen Goalin sisällä. Fixture-siirto odottaa todellisen
+mekanismin ja koko matriisin näyttöä.
 Integraation lähtökohta on hyväksytty T2-main;
 [M1:n päätösportti](release-0.3.0-m1-preparation-plan.md#t3n-toteutukseen-siirtymisen-portti)
 erottaa valmistelun, teknisen kokeen ja varsinaisen kuluttajien siirron.
@@ -1817,12 +1821,108 @@ Suositeltu valmistelusuunta on hallittu, kertakäyttöinen Linux-testisessio:
   Myös nykyinen Chromium-polku jälkeläisineen ja sandbox-vaatimuksineen
   tarvitsee todellisen näytön ennen tavallisten fixturejen siirtoa.
 
-Omistajalta on pyydetty suunnittelun reunaehto: saako erillisen CI-session
+Tässä päätösvalmistelussa omistajalta pyydettiin reunaehto: saako erillisen CI-session
 hallintaan ehdottaa rajattuja uusia valtuuksia vai vaaditaanko ratkaisu
 kokonaan ilman niitä. Kumpikaan vastaus ei vielä hyväksy toteutusta,
 palvelun/profiilin asentamista, uutta riippuvuutta, suojausten poistamista,
 runner-vaihtoa tai uutta CI-koetta. Lopulliset Windows-/Linux-mekanismit ja
 T3-matriisi säilyvät omissa hyväksyntäporteissaan.
+
+##### T3c-LM: rajattu CI-testisession hallinta
+
+Omistaja hyväksyi 2026-09-26 rajatun CI-testisession hallinnan suunnittelun
+pohjaksi sekä jatkamisen toteutukseen ja Goalin loppuun ilman uusia
+välikyselyjä tämän rajauksen sisällä. Edellinen päätöstä odottava tila on
+historiallinen. Tämä ei hyväksy uusia riippuvuuksia, pysyvää palvelua,
+runner-vaihtoa, hostin suojauspolitiikan muuttamista tai root-oikeuksin
+ajettavaa Nodea, Playwrightia tai sovellusta. Vanha user-namespace-koe ja sen
+hylätty näyttö säilyvät; LM ei muuta sitä onnistuneeksi tai skipiksi.
+
+Rajattu mekanismi käyttää CI-runnerin valmista systemd-palvelunhallintaa,
+cgroup v2:ta ja util-linux-työkaluja. Saatavuus ja valtuus todetaan ennen
+käynnistystä, niitä ei asenneta tai korjata kokeessa. Omistaja saa luoda,
+kysellä ja pysäyttää vain oman satunnaisen, kertakäyttöisen transient-unitin.
+Työkuorma ei saa managerin kontrollikanavaa tai yleistä hallintavaltuutta.
+Kyse on luotetun CI-testin prosessien elinkaaresta, ei vihamielisen saman
+käyttäjätunnuksen rinnakkaisohjelman turvallisuuseristyksestä.
+
+Toteutus- ja tarkistusjärjestys:
+
+1. Puhtaat sopimustestit: kiinteä käynnistysketju, oikeuksien pudotus,
+   suljettu unit-havainto, alkuperäinen määräaika ja virheellisten tai
+   vanhentuneiden kuittien torjunta. Import ei käynnistä manageria.
+2. Erillinen CI-only-ajuri ja private AF_UNIX -kontrollikanava. Tyyppi on
+   `exec`, `ExitType=main`, `KillMode=control-group`, `Restart=no` ja
+   `RemainAfterExit=no`. Namespace-initin odottava wrapper on main-prosessi.
+   Nimetyn unitin `CollectMode=inactive` säilyttää failed-tilan havainnot;
+   protokollan tarkoituksellista exit 41:tä ei lisätä systemd-success-listaan.
+   Vain tarkasti sidottu `failed/failed`, `Result=exit-code`, `CLD_EXITED/41`
+   voi olla odottavan wrapperin normaalin poistumisen osatodiste. Muut
+   virheet eivät kelpaa. Ei stdout/stderr-protokollaa tai shell-komentoa.
+3. Luotettu, kiinteä systemd -> unshare -> setpriv -ketju tekee vain
+   mount-/PID-namespacen ja pudottaa identiteetin ennen ensimmäistä Node-execiä.
+   Ei user-namespacea tai UID-mapin fallbackia. Init tarkistaa PID 1:n,
+   kutsujan kaikki neljä UID/GID-arvoa, tyhjät lisäryhmät, `NoNewPrivs=1`
+   sekä kaikki viisi nollattua capability-joukkoa, myös bounding-joukon.
+   Vasta tämä ja saman unit-generationin käynnistyshavainto sallivat GO:n.
+4. Normaalipolun näyttö erottaa työkuorman tuloksen, initin protokollan,
+   odottavan wrapperin normaalin exitin ja managerin terminal-havainnon.
+   [Kernelin namespace-teardown](https://github.com/torvalds/linux/blob/v6.8/kernel/pid_namespace.c#L160-L258)
+   ja [unsharen wait](https://github.com/util-linux/util-linux/blob/v2.39.3/sys-utils/unshare.c#L936-L957)
+   ovat reaping-perusta, eivät `populated=0`, root-exit tai unitin katoaminen.
+   Credential-muutos voi poistaa PDEATHSIGin: `--kill-child` ei ole
+   oikeuksien pudotuksen jälkeinen owner-loss-takuu.
+   Katselmuksessa hylättiin `RemainAfterExit=yes`: systemdille puhdas
+   SIGHUP voi jättää palvelun active/exited-tilaan ilman runtime-ajastinta
+   ja pysäytyssiivousta. `RemainAfterExit=no` säilyttää pysäytyspolun myös
+   puhtaan signaalin tapauksessa. Tämä perustuu
+   [systemdin tilakoneeseen](https://github.com/systemd/systemd/blob/v255/src/core/service.c#L2032-L2062)
+   ja [CollectMode-sopimukseen](https://github.com/systemd/systemd/blob/v255/man/systemd.unit.xml#L938-L952),
+   ei vielä omaan oikeaprosessikokeeseen. Systemdin failed-tila tallennetaan
+   sellaisenaan; vain erillinen testiprotokolla ratkaisee odotetun kokeen
+   tuloksen. Receipt luetaan ennen oman unitin failed-tilan vapauttamista.
+   Managerin `Result` voi säilyttää alkuperäisen exit-code-virheen myös
+   cleanup-virheen yli: sitä tai failed-tilaa ei käytetä koko cgroupin
+   tyhjyystodisteena. Unit-parseri todistaa vain nimetyn wrapperin poistumisen;
+   ajuri yhdistää erikseen namespace-, protokolla- ja siivoushavainnot.
+5. Private-kanavan katkeaminen ja riippumaton managerin runtime-/stop-raja
+   sulkevat session myös kutsujan kadotessa. Wrapperin poikkeava päättyminen,
+   aikaraja, tuntematon unit tai puuttuva havainto pysyvät hylkäyksenä.
+   Alkuperäisestä monotonic-aloituksesta lasketut rajat eivät nollaudu
+   managerikutsun tai credential-dropin kohdalla. Epävarmuus estää restartin
+   ja testijuuren poiston. Ulkopuolinen sentinel säilytetään erillisenä.
+   Managerin rajat (start 5 s, runtime 10 s, stop 1 s) ovat itsenäinen
+   varmistus, eivät alkuperäisen absoluuttisen määräajan todiste:
+   `RuntimeMaxSec` alkaa unitin aktivoitumisesta. Myöhäinen manager-cleanup
+   voi rajoittaa vahinkoa, mutta ei antaa hyväksyntää tai juuren poistolupaa.
+6. Katselmuksen ja kohdetestien jälkeen yksi seurattu rajattu CI-koe
+   nykyisessä kadenssissa, ei vanhan kokeen automaattista uusintaa. Suljettu
+   tulosskeema ja lukuketju valmistuvat ennen ajoa. Oikea system/web-
+   integraatio, Chromiumin muuttumaton sandbox ja koko T3-matriisi vaaditaan
+   ennen tavallisten fixturejen siirtoa ja R28:n hyväksyntää.
+
+Managerin palveluasetukset estävät työkuorman kirjoitukset cgroup-hallintaan
+ja suoran pääsyn managerin paikallisiin kontrollipolkuihin. NNP estää
+execin kautta saatavan lisäoikeuden, mutta ei yksin estä ulkoisen palvelun
+pyytämistä käynnistämään prosessia. Tätä ei saa kutsua yleiseksi sandboxiksi.
+Kiinteät järjestelmäbinäärit, niiden root-omistus, todellinen unit-identiteetti,
+ympäristön rajaaminen ja normal/owner-loss-polku tarkistetaan erikseen.
+Uutta native-helper-riippuvuutta tai yleistä sudo-oikeusmuutosta ei tehdä.
+
+Tämä vaihe on toteutuksessa, ei vielä oikeaprosessi-, CI- tai fixture-
+hyväksyntä. Sovelluksen koodi, versio, business-data, tuotannon diagnostiikka
+ja backup eivät muutu. Kokeen yksityinen näyttö ei kuulu tukipakettiin.
+
+**Ensimmäinen sopimuscheckpoint:** kiinteän käynnistysketjun, oikeuksien
+pudotuksen ja unit-havaintojen 11 puhdasta testiä sekä E2E-paketin koko
+252 testin sopimussarja läpäisivät ilman ohituksia. Paketin tyypitys ja
+168 dokumenttilinkkiä tarkistettiin. Riippumaton katselmus löysi yllä
+kuvatun RemainAfterExit-riskin; korjaus ja regressio katselmoitiin uudelleen
+ilman jäljelle jäänyttä löydöstä tässä rajatussa palassa. Tämä ei todista
+managerin saatavuutta, kontrollikanavan toimintaa tai oikean prosessipuun
+siivousta. Ajuria tai workflow-kytkentää ei ole vielä toteutettu eikä uutta
+CI-koetta, palvelukutsua tai fixture-siirtoa tehty. Vanha LS-ajon hylkäys
+säilyy hylkäyksenä; hyväksyttyä uutta CI-baselinea ei väitetä syntyneeksi.
 
 #### T3:n lopullinen hyväksyntänäyttö
 

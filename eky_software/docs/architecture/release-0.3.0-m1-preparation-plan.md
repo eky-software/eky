@@ -124,13 +124,14 @@ ominaisuuksia. Pelkkä diagnostiikka tai vihreä Electron-osajoukko ei täytä s
    tunnisti molemmissa kuluttajissa `uid_map`-kirjoituseston ennen READYä ja
    GO:ta. Taustapolitiikan syy on avoin; alkuperäinen hylkäys säilyy.
    Kokonaisajo päättyi hylätyksi vain näiden kokeiden ja aggregaatin vuoksi;
-   muut testiryhmät ja riippuvuustarkistus läpäisivät. Seuraava päätös koskee
-   [alusta- ja oikeussopimusta](e2e-test-environment.md#t3c-lsn-jälkeinen-alusta--ja-oikeuspäätös),
-   ei uutta diagnostiikka-only-uusintaa. Alusta ja
-   hyväksyntäehdot eivät muutu ilman päätöstä.
-   Valmistele vasta riittävän näytön jälkeen erillinen päätös lopullisesta
-   mekanismista, session/stop-sopimuksesta ja tavallisten fixturejen siirrosta;
-   neljän Windows-kokeen läpäisy ei itsessään hyväksy niitä.
+   muut testiryhmät ja riippuvuustarkistus läpäisivät. Omistaja hyväksyi
+   [T3c-LM:n rajatun CI-session hallinnan](e2e-test-environment.md#t3c-lm-rajattu-ci-testisession-hallinta)
+   suunnittelun ja toteutuksen ilman toistuvia välikyselyjä hyväksytyn
+   Goalin sisällä. Puhtaat sopimukset edeltävät ajuria ja uutta rajattua
+   CI-koetta; vanha LS-näyttö säilyy hylättynä. Mekanismin todellinen
+   saatavuus, omistajan katoaminen, Chromium ja tavallisten fixturejen
+   siirto ovat vielä todentamatta. Ei hostin suojausmuutosta,
+   riippuvuuslisäystä tai hyväksyntäehtojen lievennystä.
 5. **T3:n valmistuminen:** koko omistajuusmatriisi, katselmukset ja normaali
    PR/main-integraatio; vasta täsmällisen main-revision portit sulkevat R28:n.
 

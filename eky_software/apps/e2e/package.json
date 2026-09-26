@@ -7,7 +7,7 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "test": "node --test scripts/e2e-command-wiring.test.mjs experiments/processOwnership/playwrightElectronLaunch.test.mjs experiments/processOwnership/adapterContract.test.mjs experiments/processOwnership/adapterControl.test.mjs experiments/processOwnership/adapterRootExitOrdering.test.mjs experiments/processOwnership/boundedChildOutput.test.mjs experiments/processOwnership/pidNamespaceContract.test.mjs experiments/processOwnership/runPidNamespaceExperiment.test.mjs",
+    "test": "node --test scripts/e2e-command-wiring.test.mjs experiments/processOwnership/playwrightElectronLaunch.test.mjs experiments/processOwnership/adapterContract.test.mjs experiments/processOwnership/adapterControl.test.mjs experiments/processOwnership/adapterRootExitOrdering.test.mjs experiments/processOwnership/boundedChildOutput.test.mjs experiments/processOwnership/pidNamespaceContract.test.mjs experiments/processOwnership/runPidNamespaceExperiment.test.mjs experiments/processOwnership/managedNamespaceContract.test.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "e2e:prepare": "pnpm --filter @eky/permissions build && pnpm --filter @eky/auth build && pnpm --filter @eky/backend e2e:build",
     "e2e:electron:prepare": "pnpm --filter @eky/desktop e2e:prepare-electron-runtime && pnpm --filter @eky/permissions build && pnpm --filter @eky/auth build && pnpm --filter @eky/backend e2e:build && pnpm --filter @eky/web build && pnpm --filter @eky/desktop build && pnpm --filter @eky/desktop e2e:build && pnpm --filter @eky/desktop e2e:prepare-backend",

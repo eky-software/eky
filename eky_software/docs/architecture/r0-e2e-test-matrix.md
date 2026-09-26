@@ -135,8 +135,15 @@ flaky-tulosta. Kokonaisajo päättyi hylätyksi vain Linux-kokeiden ja
 aggregaatin vuoksi; muut ryhmät läpäisivät. Ei lopullisen prosessiomistajuuden
 hyväksyntää, estävän taustapolitiikan todistetta tai uusintalupaa.
 
+Omistaja hyväksyi tämän jälkeen [T3c-LM:n](e2e-test-environment.md#t3c-lm-rajattu-ci-testisession-hallinta)
+rajatun manageripohjaisen CI-session suunnittelun ja toteutuksen. Ensimmäiset
+puhtaat sopimukset koskevat nonroot-initin oikeuksia ja täsmällisen
+unit-invocationin käynnistys-/normaalin poistumisen havaintoa. Ne eivät ole
+oikeaprosessitodiste tai aikaisemman LS-ajon uusi tulkinta.
+
 | Valmistelun näyttö | Taso ja rajaus | Tila |
 | --- | --- | --- |
+| TEST-TREE-LINUX-MANAGED-CONTRACT-001 | Puhtaat launch-, credential-drop- ja unit-kuittisopimukset: nonroot PID 1, lisäryhmät, NNP, capabilityt, suljettu managerivastaus, vanhentunut identiteetti ja pakotetun exitin hylkäys. | 11/11 kohdetestiä ja 252/252 E2E-paketin sopimustestiä läpäisty. Katselmuksessa löydetty RemainAfterExit-riski korjattu ja uudelleen katselmoitu. Ajuri puuttuu; ei oikeaprosessi-, CI-, fixture- tai R28-hyväksyntä. |
 | TEST-TREE-LINUX-PREREQ-001 | Suljettu metadatahavainto, host-lukujen guard, luku-/aikarajat ja CI-komennon status. Ei prosessipuun omistajuuskoe. | Molempien kuluttajien täydellinen kielteinen pääsyhavainto saatu; ensimmäisen ajon T1-hylkäys säilyy. Korjattu revisio läpäisi oman CI-ajonsa. Ei Linux-omistajuustodiste. |
 | TEST-ELECTRON-LAUNCH-PATCH-001 | Todellisen lukitun riippuvuuden hallittu regressio; ei prosesseja tai verkkoa. Lisäksi kaksi alkuperäistä eristettyä Windows-koetta. | Ennen patchia 17/43 läpäisyä, jälkeen 43/43; normaali ja before-ready exit 29 -koe läpäisivät native-kuitein. Rajattu Windows-CI ja myöhempi täysi normaali baseline läpäisivät; aiemmat erilliset hylkäykset säilyvät. Ei koko R28. |
 | TEST-BACKEND-BUILD-METADATA-001 | Täsmällinen normalisointi, lähdesidonta, linkkien torjunta, vendor-tavujen säilyminen, sisältöportit ja paketointijärjestyksen rakenteellinen suoja. | Kohdesarja 200/200, normaali testisarja ja tyypitys läpäisivät; katselmoitu. Tuore eristetty build, sisältöportit ja samoihin itsenäisiin tavuihin sidottu kaksivaiheinen packaged smoke läpäisivät molempien prosessipuiden terminal-kuitein. Ensimmäinen build-hylkäys säilyy. CI:ssä havaittu erillinen komentoharnessin hylkäys säilyy avoimena; havaintokorjauksen revision a1df082c normaali CI ja riippuvuustarkistus läpäisivät. Ei julkaisu- tai koko T3-hyväksyntä. |

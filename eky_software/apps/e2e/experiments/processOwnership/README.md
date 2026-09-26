@@ -279,3 +279,27 @@ policy cause, ownership support, or earlier runs' unknown stderr.
 The table applies only before READY and GO, after wrapper
 close and stderr end without read/size failure. It never changes acceptance.
 Schemas 1/2 remain historical evidence; do not reinterpret earlier results.
+
+## T3c-LM managed CI session
+
+The owner has approved bounded CI-session management design and implementation
+within the existing Goal. The [owning LM plan](../../../../docs/architecture/e2e-test-environment.md#t3c-lm-rajattu-ci-testisession-hallinta)
+replaces the pending design decision, not the failed historical LS evidence.
+The first slice contains pure launch, credential-drop and systemd observation contracts.
+It neither starts a service nor authorizes an ordinary fixture migration.
+
+The proposed transient service owns a trusted unshare/setpriv bootstrap; Node
+and every workload execute only after dropping root, supplementary groups and
+all capabilities, with NNP enabled. A started unit receipt and the normal exit
+of that exact waiting wrapper are separate gates. Missing/collected units,
+forced exits, stale invocations and unknown properties cannot pass. Kernel
+namespace teardown, not cgroup emptiness, supplies the normal-path reaping basis.
+`RemainAfterExit=no` keeps stop cleanup enabled after clean signals. The
+intentional init/wrapper exit 41 is not registered as systemd success:
+`CollectMode=inactive` retains its failed-unit record for exact inspection.
+Only `CLD_EXITED/41` with the original invocation/start identity can satisfy
+the normal-wrapper gate; unit failure in general is never accepted. This
+record is not by itself a cgroup-cleanup receipt or successful test result.
+No production code, dependency, host protection policy or persistent service is
+changed. Runtime integration, bounded control transport, availability, owner
+loss and real Chromium compatibility remain unverified.
