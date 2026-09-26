@@ -2100,6 +2100,35 @@ tuloksen kirjoitus-/lukuketju ja yksi seurattu oikea CI-koe ovat seuraavat
 työt. Vanhan user-namespace-kokeen skeemaa tai hylkäystä ei tulkita uudelleen.
 Ei fixture-siirtoa, uutta CI-ajoa, PR:ää tai mergeä tässä checkpointissa.
 
+**Ulompi koeajuri ja suljettu lukuketju:** session ympärille on kytketty
+erillinen sentinel, tuoreet ennen/jälkeen-haasteet, normaali sulkeutumiskuitti
+sekä alkuperäisen private-juuren identiteetin tarkistus ennen tyhjän juuren
+ei-rekursiivista poistoa. Odottava sisäinen session lupaus ei siirrä
+sentinelin alkuperäistä 16 sekunnin hätäpysäytysrajaa. Pysäytys kohdistuu
+vain omaan lapsikahvaan kerran; signaalin hyväksyntä ei todista sulkeutumista.
+Raportin 20 sekunnin raja, ensimmäinen virhe ja siivousvirhe säilyvät.
+Myöhäinen session paluu ei salli poistoa tai toista julkaisua.
+
+Uusi `boundedManagedPidNamespaceOnly`-tulos (skeema 1) ja sen kanoninen
+lukija sitovat saman consumerin, checkout-SHA:n, run ID:n ja yrityksen.
+Vain suljettu, ristiriidaton ja tavurajaan mahtuva tulos kelpaa; ylimääräiset
+kentät, kahdentuneet JSON-avaimet ja häntä hylätään. Sisäisen session
+poistumishavainto ja koko kokeen hyväksyntä ovat eri kentät. Puuttuvaa
+näyttöä ei korvata keksityllä ei-käynnistetty-kuittauksella. Vanha skeema 3
+ja LS-hylkäys eivät muutu.
+
+Oletuksena pois oleva manuaalinen `linux_managed_namespace_experiment`
+-valinta suorittaa kokeen vain onnistuneen tavallisen system/web-testin
+jälkeen. Molempien workflow-tasojen kytkentä ja virhestatus on suojattu
+testeillä. LM-ajossa vanha user-namespace-valinta pidetään pois päältä.
+61/61 yhdistettyä kohdetestiä, normaali E2E-sarja 383/383, CI-sopimukset
+241/241 sekä koko projektin tyypitys läpäisivät. Katselmuksessa löydetty
+odottavan session sentinel-siivouspuute toistettiin ensin kahdella
+hylkäävällä regressiolla ja korjattiin. Riippumaton uudelleenkatselmus ei
+löytänyt korjattavaa. Oikea CI-koe on vielä tekemättä. Workspace-portti säilyy avoinna;
+alemman tason läpäisy ei korvaa sitä. Ei todellista managerikutsua,
+Chromium-yhteensopivuustodistetta, fixture-siirtoa tai T3-hyväksyntää.
+
 #### T3:n lopullinen hyväksyntänäyttö
 
 Moduulikehittäjän rajapinta pidetään pienenä: system-testit käyttävät

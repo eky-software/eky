@@ -2,17 +2,12 @@ import { prepareManagedLaunch, startManagedCommand } from './managedNamespaceCom
 import { listenManagedControl } from './managedNamespaceControl.mjs';
 import { managedLaunchCommand } from './managedNamespaceLaunchContract.mjs';
 import { inspectManagedHost } from './managedNamespacePreflight.mjs';
+import { managedSessionFailureReasons } from './managedNamespaceResult.mjs';
 import { currentIdentity } from './pidNamespaceActor.mjs';
 import { createDeadline, message, NamespaceFailure, requireCondition, validateIdentity,
   waitWithin, writeMessage } from './pidNamespaceContract.mjs';
 
-const failureReasons = new Set([
-  'invalidContext', 'invalidIdentity', 'invalidArguments', 'invalidMessage', 'rootFailed', 'sentinelFailed',
-  'channelFailed', 'channelLimit', 'unexpectedEof', 'deadlineExceeded', 'cleanupUnverified',
-  'metadataInvalid', 'metadataReadFailed', 'cgroupV2Unverified', 'spawnFailed', 'processError',
-  'exitFailed', 'terminalIncomplete', 'streamMissing', 'streamError', 'streamIncomplete',
-  'streamInvalid', 'outputLimit', 'stderrNotEmpty', 'outputInvalid', 'observationInvalid',
-]);
+const failureReasons = new Set(managedSessionFailureReasons);
 
 function failureAt(stage, error) {
   return Object.freeze({ stage, reason: failureReasons.has(error?.reason) ? error.reason : 'unverified' });

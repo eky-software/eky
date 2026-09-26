@@ -361,9 +361,28 @@ another paced query; they cannot pass. Workload, valid control closure, exact
 normal wrapper exit, first failure, stop failure and command closure remain
 separate facts. The inner result does not authorize root deletion or claim
 sentinel survival, whole-tree absence, fixture readiness or a CI result.
-The outer experiment driver, closed result writer/reader, sentinel and real
-manager trial remain next. No production diagnostics or backup include this
-test-private state. The old user-namespace schema/result is unchanged.
+The outer `runManagedNamespaceExperiment` driver now composes the session with
+an independently owned sentinel, fresh before/after challenges, normal sentinel
+close and nonrecursive removal of the unchanged, empty private root. The
+sentinel's original deadline also triggers one handle-scoped emergency stop
+while the session is pending. Kill acceptance is not a close receipt. First
+session failure, inner cleanup and outer cleanup remain separate. No production
+diagnostics or backup include this test-private state.
+
+`managedNamespaceResult` writes and reads a bounded, canonical single JSON line
+(`schemaVersion=1`, `evidence=boundedManagedPidNamespaceOnly`). The reader requires
+the expected consumer, checkout SHA, run ID and attempt and rejects contradictory
+facts, unknown fields, duplicate keys and trailing bytes. `namespaceOutcome`
+describes only this bounded namespace protocol; complete evidence additionally
+requires the sentinel, root cleanup and error-free outer chain. Missing or
+invalid evidence fails the caller; it is not replaced by invented no-launch facts.
+The old user-namespace schema 3 and its failed evidence remain unchanged.
+
+The default-off `linux_managed_namespace_experiment` manual CI input adds the
+trial only after the existing system/web test has passed. Failure remains a
+failed job, not a successful skip. Injected tests cover the driver and readback;
+the real manager trial, Chromium compatibility and consumer migration remain
+unverified. Do not enable both old and new experiment flags for the LM trial.
 
 Use the [current continuation entry](../../../../docs/architecture/release-0.3.0-m1-preparation-plan.md#jatka-tästä)
 for the next task. Historical experiments do not substitute for actual fixture

@@ -7,11 +7,11 @@ Modulaarinen monoliitti ja hyväksytty M1-rajaus säilyvät.
 
 | Kohta | Nykyinen lähtötieto |
 | --- | --- |
-| Session integraation lähtörevisio | `af32564212c90ea6cbba8f86f3755c5cd663802a`: rajatun Linux-session sopimukset, kontrolli-/init-kytkentä, metadataesitarkistus ja rajattu komentoadapteri. Tämä ei ole hyväksytty CI- tai main-baseline. Tarkista jatkettava HEAD Gitistä. |
+| Ulomman kokeen lähtörevisio | `29f1803f5ba6de1d9b7e41d73c76378e2b18a0e1`: yhdistetty rajattu Linux-session omistaja. Tämä ei ole hyväksytty CI- tai main-baseline. Tarkista jatkettava HEAD Gitistä. |
 | Viimeisin koko CI:n hyväksytty lähtötila | `a1df082c`; sen jälkeen `93ba537b`:n tavalliset testiryhmät läpäisivät, mutta erilliset Linux-kokeet ja kokonaiskoonti hylättiin. [Erilliset tulokset](e2e-test-environment.md#t3c-lsn-rajatun-ci-kokeen-havainto). |
 | Avoin puute | Pääprosessin poistuminen ei todista koko puun poistumista. Tavalliset fixturet eivät vielä käytä hyväksytysti todennettua uutta omistajuuspolkua. |
-| Viimeisin rajattu näyttö | Yhdistetty session omistaja on toteutettu. 24 uutta injektoitua testiä, normaali E2E 344/344 ja koko projektin tyypitys läpäisty; katselmuksen kolme havaintoa toistettu, korjattu ja uudelleen katselmoitu. Koko workspacen hyväksyntä jäi avoimeksi hylätyn ajon vuoksi; rajattu läpäissyt vertailu ei korvaa sitä. Ei todellista systemd-/sudo-tarkistusta tai uutta CI-baselinea. |
-| Seuraava työ | [T3c-LM](e2e-test-environment.md#t3c-lm-rajattu-ci-testisession-hallinta): viimeistele ulompi kokonaisajuri, sentinel ja suljettu tuloksen kirjoitus-/lukuketju ennen yhtä seurattua oikeaprosessikoetta. Session sisäinen havainto ei yksin anna juuren poistolupaa tai hyväksy prosessipuuta. Selvitä avoin workspace-portti ennen kokonaisuuden hyväksyntää. |
+| Viimeisin rajattu näyttö | Ulompi ajuri, erillinen sentinel, suljettu tulosskeema/lukija ja oletuksena pois oleva CI-kytkentä on toteutettu. Injektoitu kohdesarja 61/61, normaali E2E 383/383, CI-sopimukset 241/241 ja koko projektin tyypitys läpäisivät. Katselmuksen sentinel-siivouspuute toistettu ja korjattu; uudelleenkatselmuksessa ei löydöksiä. Koko workspace-portti on avoin aiemman hylkäyksen vuoksi. Ei oikeaa managerikoetta tai uutta CI-baselinea. |
+| Seuraava työ | [T3c-LM](e2e-test-environment.md#t3c-lm-rajattu-ci-testisession-hallinta): viimeistele katselmus ja nykyisen revision portit, sitten yksi seurattu rajattu CI-koe uuden valinnan kautta. Lue molempien kuluttajien tulokset takaisin tiukalla lukijalla. Selvitä avoin workspace-portti ennen kokonaisuuden hyväksyntää. Sen jälkeen Chromium-yhteensopivuus ja oikeat kuluttajasiirrot, ei uutta rinnakkaista alustaa. |
 | Valmistuminen | Oikeat kuluttajat siirretty, korvattu aktiivinen toteutus poistettu vasta vastaavan kattavuuden jälkeen, T1/T2 säilyneet sekä koko T3-matriisi ja täsmällisen PR/main-revision portit läpäisty. |
 | T3:n jälkeen | Nykyisen M1:n A1:n vanhentuneet vastaukset ja muut hyväksytyt sovelluskorjaukset, sitten roadmapin 0.3.0-käyttöliittymä- ja diagnostiikkatyö. |
 
@@ -76,8 +76,8 @@ Toteutus ja näyttö kirjataan omiin checkpointteihinsa, ei valmistelun läpäis
 Goal koskee koko T3/R28:aa ja sen PR/main-integraatiota, ei kaikkia 0.3.0:n
 ominaisuuksia. Pelkkä diagnostiikka tai vihreä Electron-osajoukko ei täytä sitä.
 
-1. Viimeistele hyväksytyn LM-kokeen puuttuva suoritus- ja lukuketju sekä
-   katselmoi se ennen yhtä seurattua CI-koetta nykyisessä kadenssissa.
+1. Katselmoi hyväksytyn LM-kokeen yhdistetty suoritus- ja lukuketju sekä
+   sen portit ennen yhtä seurattua CI-koetta nykyisessä kadenssissa.
 2. Todista mekanismin ja nykyisen Chromium-polun yhteensopivuus muuttamatta
    sandboxia tai aikarajoja. Säilytä viime CI:n tavallisten testien vihreys ja
    erillisen Linux-kokeen hylkäys erillisinä havaintoina.

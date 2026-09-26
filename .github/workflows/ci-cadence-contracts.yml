@@ -20,6 +20,10 @@ on:
         description: Observe one bounded PID namespace experiment after each successful Linux E2E command
         type: boolean
         default: false
+      linux_managed_namespace_experiment:
+        description: Observe one bounded managed namespace experiment after each successful Linux E2E command
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -73,7 +77,7 @@ jobs:
           node-version-file: eky_software/.node-version
           package-manager-cache: false
       - name: Verify risk and result contracts
-        run: node --test --test-concurrency=1 .github/scripts/ciRiskPolicy.test.mjs .github/scripts/ciAcceptanceResult.test.mjs .github/scripts/classifyCiChanges.test.mjs .github/scripts/ciRunAcceptance.test.mjs .github/scripts/verifyCiRun.test.mjs .github/scripts/legacyCaptureObservation.test.mjs .github/scripts/linuxPrerequisiteWiring.test.mjs eky_software/apps/e2e/experiments/processOwnership/linuxPrerequisiteContract.test.mjs eky_software/apps/e2e/experiments/processOwnership/probeLinuxPrerequisites.test.mjs .github/scripts/linuxNamespaceExperimentWiring.test.mjs eky_software/apps/e2e/experiments/processOwnership/pidNamespaceContract.test.mjs eky_software/apps/e2e/experiments/processOwnership/runPidNamespaceExperiment.test.mjs
+        run: node --test --test-concurrency=1 .github/scripts/ciRiskPolicy.test.mjs .github/scripts/ciAcceptanceResult.test.mjs .github/scripts/classifyCiChanges.test.mjs .github/scripts/ciRunAcceptance.test.mjs .github/scripts/verifyCiRun.test.mjs .github/scripts/legacyCaptureObservation.test.mjs .github/scripts/linuxPrerequisiteWiring.test.mjs eky_software/apps/e2e/experiments/processOwnership/linuxPrerequisiteContract.test.mjs eky_software/apps/e2e/experiments/processOwnership/probeLinuxPrerequisites.test.mjs .github/scripts/linuxNamespaceExperimentWiring.test.mjs eky_software/apps/e2e/experiments/processOwnership/pidNamespaceContract.test.mjs eky_software/apps/e2e/experiments/processOwnership/runPidNamespaceExperiment.test.mjs eky_software/apps/e2e/experiments/processOwnership/managedNamespaceResult.test.mjs eky_software/apps/e2e/experiments/processOwnership/runManagedNamespaceExperiment.test.mjs
 
   core:
     needs: classification
@@ -82,6 +86,7 @@ jobs:
       risk_plan: ${{ needs.classification.outputs.plan }}
       linux_ownership_prerequisites: ${{ github.event_name == 'workflow_dispatch' && inputs.linux_ownership_prerequisites == true }}
       linux_pid_namespace_experiment: ${{ github.event_name == 'workflow_dispatch' && inputs.linux_pid_namespace_experiment == true }}
+      linux_managed_namespace_experiment: ${{ github.event_name == 'workflow_dispatch' && inputs.linux_managed_namespace_experiment == true }}
 
   supervisor:
     needs: classification
