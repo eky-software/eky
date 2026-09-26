@@ -108,14 +108,16 @@ Sen diagnostiikkarevision sopimukset läpäisivät, mutta kaksi
 [firstWindow-ensiyritystä hylättiin](e2e-test-environment.md#t3b-en-toistunut-firstwindow-hylkäys-ja-backendstart-rajaus).
 Uusi [normaali baseline](e2e-test-environment.md#t3b-en-vihreä-normaali-baseline)
 on tämän jälkeen läpäissyt kokonaisuudessaan revision `1953b6b0` ensimmäisellä
-yrityksellä. Vanhoja virhesyitä ei merkitä ratkaistuiksi. Tämäkään ei täytä
-alla olevia lopullisia prosessiomistajuuden rivejä.
+yrityksellä. Vanhoja virhesyitä ei merkitä ratkaistuiksi. Seuraavan T3b-P-
+revision CI:ssä havaittiin erillinen [komentoharnessin sopimushylkäys](e2e-test-environment.md#t3b-pn-ci-sopimushylkäys-ja-havaintokytkentä).
+Sen havaintokytkennän korjaus ei ratkaise puuttuvan terminal-tuloksen
+juurisyytä. Tämäkään ei täytä alla olevia lopullisia prosessiomistajuuden rivejä.
 
 | Valmistelun näyttö | Taso ja rajaus | Tila |
 | --- | --- | --- |
 | TEST-TREE-LINUX-PREREQ-001 | Suljettu metadatahavainto, host-lukujen guard, luku-/aikarajat ja CI-komennon status. Ei prosessipuun omistajuuskoe. | Molempien kuluttajien täydellinen kielteinen pääsyhavainto saatu; ensimmäisen ajon T1-hylkäys säilyy. Korjattu revisio läpäisi oman CI-ajonsa. Ei Linux-omistajuustodiste. |
 | TEST-ELECTRON-LAUNCH-PATCH-001 | Todellisen lukitun riippuvuuden hallittu regressio; ei prosesseja tai verkkoa. Lisäksi kaksi alkuperäistä eristettyä Windows-koetta. | Ennen patchia 17/43 läpäisyä, jälkeen 43/43; normaali ja before-ready exit 29 -koe läpäisivät native-kuitein. Rajattu Windows-CI ja myöhempi täysi normaali baseline läpäisivät; aiemmat erilliset hylkäykset säilyvät. Ei koko R28. |
-| TEST-BACKEND-BUILD-METADATA-001 | Täsmällinen normalisointi, lähdesidonta, linkkien torjunta, vendor-tavujen säilyminen, sisältöportit ja paketointijärjestyksen rakenteellinen suoja. | Kohdesarja 200/200, normaali testisarja ja tyypitys läpäisivät; katselmoitu. Tuore eristetty build, sisältöportit ja samoihin itsenäisiin tavuihin sidottu kaksivaiheinen packaged smoke läpäisivät molempien prosessipuiden terminal-kuitein. Ensimmäinen build-hylkäys säilyy. Uuden revision CI avoinna; ei julkaisu- tai koko T3-hyväksyntä. |
+| TEST-BACKEND-BUILD-METADATA-001 | Täsmällinen normalisointi, lähdesidonta, linkkien torjunta, vendor-tavujen säilyminen, sisältöportit ja paketointijärjestyksen rakenteellinen suoja. | Kohdesarja 200/200, normaali testisarja ja tyypitys läpäisivät; katselmoitu. Tuore eristetty build, sisältöportit ja samoihin itsenäisiin tavuihin sidottu kaksivaiheinen packaged smoke läpäisivät molempien prosessipuiden terminal-kuitein. Ensimmäinen build-hylkäys säilyy. Uuden revision CI:ssä erillinen komentoharnessin hylkäys; selvitys avoinna. Ei julkaisu- tai koko T3-hyväksyntä. |
 
 | ID | Taso | Koe ja hyväksyntä | Tila |
 | --- | --- | --- | --- |

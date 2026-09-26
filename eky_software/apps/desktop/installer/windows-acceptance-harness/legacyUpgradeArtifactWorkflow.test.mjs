@@ -478,6 +478,19 @@ test('inspection command selection runs both existing failure callbacks without 
   assert.doesNotMatch(step, /artifact:build|package:windows|retry|continue-on-error/u);
 });
 
+test('all direct command contracts wire bounded observation except the blocked-output case', () => {
+  for (const kind of ['legacy', 'clean', 'upgrade', 'workspace-success', 'workspace-fault']) {
+    let direct = 0;
+    registerAcceptanceCommandEntrypointContracts(kind, (name, options, callback) => {
+      if (!name.includes('fixed command entrypoint')) return;
+      direct += 1;
+      assert.equal(options.timeout, 90_000);
+      assert.match(callback.toString(), /observeEvidence: blocked \? undefined : \(value\) => recordCommandBoundaryEvidence\(boundaryEvidence, value\)/u);
+    });
+    assert.ok(direct > 0);
+  }
+});
+
 for (const [mode, selectedName, commandName, files] of [
   ['clean-upgrade-command-diagnostic', 'Diagnose existing clean and upgrade command group without MSI',
     'installer:test:windows-supervisor-v2-legacy-clean-upgrade-entry',

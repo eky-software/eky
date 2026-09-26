@@ -91,8 +91,12 @@ ominaisuuksia. Pelkkä diagnostiikka tai vihreä Electron-osajoukko ei täytä s
    sisältöportit ja samoihin tavuihin sidottu kaksivaiheinen packaged smoke
    läpäisivät molempien prosessipuiden päättymistodistein
    [omistavan sopimuksen mukaan](e2e-test-environment.md#t3b-p-hyväksytty-metatietorajaus).
-   Seuraavaksi uuden revision normaali CI; paikallinen näyttö ei korvaa sitä
-   tai PR/main-porttia. Tuotantotoimintoja ei lisätä tähän.
+   Uuden revision normaali CI havaitsi erillisen
+   [komentoharnessin sopimushylkäyksen](e2e-test-environment.md#t3b-pn-ci-sopimushylkäys-ja-havaintokytkentä).
+   Sen rajattu havaintokytkennän korjaus on katselmoitu ja paikallisesti
+   todennettu; uusi CI-todennus ja keskeytymisen juurisyy säilyvät avoimina.
+   Paikallinen näyttö ei korvaa CI- tai
+   PR/main-porttia. Tuotantotoimintoja ei lisätä tähän.
 4. **Seuraava mekanismivaihe:** T3c-W:n ja T3c-L:n rajatut kokeet säilyvät
    erillisinä päätösportteina. Hyväksytyn näytön jälkeen toteutetaan varsinainen
    prosessiomistajuus ja fixture-siirrot sovittujen sopimusten mukaan.

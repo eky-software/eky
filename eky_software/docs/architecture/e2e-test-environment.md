@@ -1021,11 +1021,48 @@ tiedostot olivat itsenäisiä ennen ajoa ja sen jälkeen. Testijuuri poistettiin
 vasta molempien terminal-kuittien jälkeen.
 
 Tämä täyttää T3b-P:n paikallisen build- ja smoke-näytön, ei uuden revision
-CI-, PR/main-, julkaisu- tai koko T3-porttia. Uuden revision normaali CI on
-vielä avoinna. Tiedostotarkistukset torjuvat testatut linkit ja muuttuneet
+CI-, PR/main-, julkaisu- tai koko T3-porttia. Uuden revision normaali CI
+havaitsi alla kuvatun erillisen komentoharnessin sopimushylkäyksen.
+Tiedostotarkistukset torjuvat testatut linkit ja muuttuneet
 identiteetit, mutta eivät lupaa atomista suojaa saman käyttäjän samanaikaista
 vihamielistä hakemistojen vaihtamista vastaan.
 T3c-W:n ja T3c-L:n erillisiä alustakokeita ei hyväksytä tällä päätöksellä.
+
+##### T3b-P:n CI-sopimushylkäys ja havaintokytkentä
+
+Revision `f110cf94` [normaalin CI-ajon](https://github.com/eky-software/eky/actions/runs/36234825253)
+ensimmäinen hylkäys tuli `workspace-success`-komentoryhmän toisen ajon
+`profileChanged`-sopimuksesta. `removal`-vaiheen terminal-tulos ja pakollinen
+caller-tulos puuttuivat. Edeltävät vaihetulokset olivat validoituja ja
+prosessiensa päättymisen vahvistavia. Tarkoituksellinen profiilimuutos kuuluu
+myöhempään `inventoryAfter`-vaiheeseen; tätä haaraa ei vielä saavutettu.
+Saman revision [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/36234830235)
+läpäisi. Ensimmäistä hylkäystä ei korvata uusinta-ajolla tai paikallisella
+läpäisyllä eikä puuttuvaa tulosta tulkita onnistumiseksi.
+Kokonaisajo päättyi hylätyksi: 33 jobia onnistui, tämä sopimus ja sitä
+seuraava koonti hylättiin, ja kolme jobia ohitettiin. Historiallisen paketin
+tuottaja ja kuluttajat eivät siten antaneet tämän revision hyväksyntänäyttöä.
+
+Puuttuvan terminal-tuloksen juurisyy ei selviä tästä näytöstä. Rajattu
+havainto-aukko on kuitenkin varmistettu: olemassa oleva turvallinen
+boundary-observer oli kytketty vain `removalHold`- ja request-preparation-
+tapauksiin, ei epäonnistuneeseen tapaukseen. Korjaus kytkee saman observerin
+kaikkiin tavallisiin suoriin komentotesteihin; tarkoituksella tukittu
+lokituloste ja erillinen CI-komentotulkkiketju säilyvät ennallaan.
+
+Projektio ottaa vaiheiden nimet omistavasta budjettisopimuksesta, mukaan
+lukien `removal`, ja säilyttää vain viimeiset 20 suljetun rakenteen havaintoa.
+Raakavirheitä, polkuja tai prosessitunnisteita ei lisätä raporttiin.
+Observerin virhe ei muuta komennon tulosta, aikarajoja tai pakollisia
+terminal- ja cleanup-todisteita. Rekisteröintikytkennän rakenteellinen testi
+ja projektion regressio täydentävät todellista prosessisopimusta; pelkkä
+callbackin lähdetekstin tarkistus ei todista havaintojen ajonaikaista saapumista.
+Rajattu diagnostiikka- ja kytkentäsarja läpäisi 7/7, mukaan lukien aidon
+supervisorin observer-virhe ja muuttumaton terminal-tulos. Koko workspace-
+success-komentoryhmä ja workflow-sopimukset läpäisivät yhteisessä ajossa
+43/43 ilman ohituksia. Riippumaton katselmus ei löytänyt korjattavaa.
+CI-havaintokytkennän todennus on vielä avoinna. Muutos ei korjaa todistetusti
+alkuperäistä keskeytymistä eikä avaa T3c- tai PR/main-porttia.
 
 ##### Windowsin omistajuusrajan valinta
 

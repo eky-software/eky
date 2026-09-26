@@ -123,6 +123,18 @@ test('command boundary diagnostics keep only a bounded closed projection', () =>
     (error) => error === original);
 });
 
+test('command boundary diagnostics include every fixed phase without copying raw fields', () => {
+  const phases = new Set(Object.values(commandBudgets).filter((plan) => Array.isArray(plan.phases))
+    .flatMap((plan) => plan.phases.map(([phase]) => phase)));
+  assert.ok(phases.has('removal'));
+  for (const phase of [...phases, 'publishFailure']) {
+    const tail = [];
+    recordCommandBoundaryEvidence(tail, { phase, status: 'started', path: 'private', processId: 123 });
+    recordCommandBoundaryEvidence(tail, { phase, status: 'failed', errorCode: 'private failure', resultCode: 'private' });
+    assert.deepEqual(tail, [{ phase, status: 'started' }, { phase, status: 'failed', errorCode: 'other' }]);
+  }
+});
+
 test('product phase diagnostics bind each result and keep reader failure separate', async () => {
   const request = { runNonce: 'c'.repeat(64), scenario: 'installerProductOperation', artifactDescriptorSha256: 'd'.repeat(64) };
   const read = async (path) => {

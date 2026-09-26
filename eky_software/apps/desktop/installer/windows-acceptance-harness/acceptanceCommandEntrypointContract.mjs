@@ -22,6 +22,14 @@ import { upgradeCallerResultFile } from './upgradeCallerResultFile.mjs';
 
 const commandBudgets = JSON.parse(await readFile(new URL('../windows-process-supervisor/supervisorCommandBudgets.json', import.meta.url)));
 const contractAssembly = fileURLToPath(new URL('../bin/windows-process-supervisor-contract-fixture/Release/net10.0/Eky.WindowsProcessSupervisor.ContractFixture.dll', import.meta.url));
+const commandBoundaryPhases = new Set([
+  ...Object.values(commandBudgets).filter((plan) => Array.isArray(plan.phases))
+    .flatMap((plan) => plan.phases.map(([phase]) => phase)),
+  'publishFailure', 'requestValidated', 'jobCreated', 'hostStarted', 'hostAssigned',
+  'waitStarted', 'hostExited', 'deadlineExceeded', 'cleanupStarted', 'cleanupCompleted',
+  'processTreeAbsent', 'workerResultValidated', 'resultPublication', 'resultPublicationLastCompleted',
+  'requestPreparation', 'requestPreparationLastCompleted', 'resultWritten', 'supervisor',
+]);
 
 // Exercise the checked-in CI step with its direct command and result verifier.
 // Only the installed-package worker is replaced by the existing synthetic fixture.
@@ -117,10 +125,7 @@ export async function describeCommandPhase(phaseRoot, phase, read = readCommandP
 }
 
 export function recordCommandBoundaryEvidence(tail, value) {
-  if (!['inventoryAfter', 'fixtureCleanup', 'requestValidated', 'jobCreated', 'hostStarted', 'hostAssigned',
-    'waitStarted', 'hostExited', 'deadlineExceeded', 'cleanupStarted', 'cleanupCompleted',
-    'processTreeAbsent', 'workerResultValidated', 'resultPublication', 'resultPublicationLastCompleted',
-    'requestPreparation', 'requestPreparationLastCompleted', 'resultWritten', 'supervisor'].includes(value?.phase) ||
+  if (!commandBoundaryPhases.has(value?.phase) ||
     !['started', 'completed', 'failed'].includes(value?.status)) return;
   const entry = { phase: value.phase, status: value.status };
   if (value.errorCode !== undefined) entry.errorCode = ['requestFileInvalid', 'unexpectedFailure',
@@ -255,7 +260,7 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
       const boundaryEvidence = [];
       const execution = ciChain ? await startCiCommand(context, kind, descriptor, resultPath, t.signal)
         : startSupervisor(context, { captureOutput: false, environment,
-        observeEvidence: testCase === 'removalHold' || requestPreparation ? (value) => recordCommandBoundaryEvidence(boundaryEvidence, value) : undefined,
+        observeEvidence: blocked ? undefined : (value) => recordCommandBoundaryEvidence(boundaryEvidence, value),
         dotnetAssembly: contractAssembly,
         dotnetArguments: ['--mode', 'legacyCommandEntry', '--request', context.requestPath] });
       const events = execution.events ?? [];

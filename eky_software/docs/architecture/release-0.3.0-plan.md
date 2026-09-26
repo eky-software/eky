@@ -15,8 +15,11 @@ juurisyy ei vielä ole todistettu.
 Uusi [täsmällisen revision normaali baseline](e2e-test-environment.md#t3b-en-vihreä-normaali-baseline)
 läpäisi kokonaisuudessaan. T3b-P:n hyväksytyn paketointikorjauksen rajattu
 toteutus, regressiot ja katselmus sekä tuore eristetty build ja samoihin
-tavuihin sidottu packaged smoke ovat valmistuneet. Uuden revision normaali
-CI on avoinna. Vihreys ei todista aiempien satunnaisten virheiden juurisyitä.
+tavuihin sidottu packaged smoke ovat valmistuneet. Uuden revision normaalissa
+CI:ssä tuli erillinen [komentoharnessin sopimushylkäys](e2e-test-environment.md#t3b-pn-ci-sopimushylkäys-ja-havaintokytkentä);
+havaintokytkentä on korjattu ja paikallisesti todennettu, mutta sen CI-portti
+ja keskeytymisen juurisyy säilyvät avoimina.
+Vihreys ei todista aiempien satunnaisten virheiden juurisyitä.
 [Ajantasainen työjärjestys](release-0.3.0-m1-preparation-plan.md#t3n-nykyinen-työjärjestys)
 erottaa virheen rajauksen, paketoinnin ja varsinaisen omistajuusratkaisun.
 Omistaja hyväksyi T3b-L:n toteutuksen ja yhden seuratun CI-ajon; T3:n loppu
