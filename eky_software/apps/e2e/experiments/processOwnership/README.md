@@ -181,8 +181,11 @@ on 2026-09-26. Their canonical limits and decision boundaries are in the
 and [T3c-L plan](../../../../docs/architecture/e2e-test-environment.md#t3c-ln-rajattu-namespace-koe-päätösehdotus).
 The four bounded Windows cases passed after implementation and independent
 review; the [checkpoint](../../../../docs/architecture/e2e-test-environment.md#t3c-wn-rajatun-kokeen-checkpoint)
-records their scope and unresolved earlier failures. Linux implementation and
-pure contracts are ready, but actual CI evidence remains pending. Final
+records their scope and unresolved earlier failures. Both first Linux CI
+experiments failed before GO with `bootstrapUnknown`; the ordinary system and
+web suites passed before them. The [failure checkpoint](../../../../docs/architecture/e2e-test-environment.md#t3c-ln-ensimmäisen-ci-kokeen-hylkäys)
+preserves the evidence limits; neither namespace support nor a missing
+prerequisite was established. Final
 mechanism selection and fixture migration require a separate decision; these
 experiments do not complete T3/R28. Existing T3a cases and T3b-E dependency
 regressions remain unchanged.
@@ -253,3 +256,13 @@ there is no installation, privilege fallback or change to existing test status.
 The approved namespace capabilities, lifecycle proof, deadlines and closed CI
 result are defined in the owning plan. A negative prerequisite observation is
 not ownership support, and an unknown or post-launch failure is not a skip.
+
+The approved T3c-LD follow-up adds only bounded startup diagnostics. Its result
+schema is version 2, with a nullable, strictly validated `bootstrapDiagnostic`.
+Version 1 results remain historical evidence, not new diagnostics. Init can
+attempt one 128-byte ASCII failure marker before GO; it never waits for that
+write or retries it. The driver reports closed categories from its bootstrap
+decision snapshot, never raw stderr, process IDs, identity values or paths.
+A marker is not READY, proof of cleanup, or permission to classify a failure
+as a missing prerequisite. Original classification and all budgets remain.
+See the [owning LD scope](../../../../docs/architecture/e2e-test-environment.md#t3c-ld-rajatun-käynnistysdiagnostiikan-päätösehdotus).

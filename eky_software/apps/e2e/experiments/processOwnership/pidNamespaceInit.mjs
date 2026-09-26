@@ -7,8 +7,9 @@ import { currentIdentity } from './pidNamespaceActor.mjs';
 import {
   actorArguments, childEnvironment, createDeadline, createFrames, createInitProtocol,
   descriptors, encodeMessage, expectedEofExit, failureExit, limits, message,
-  parseActorArguments, requireCondition, validateIdentity, validateInitStatus,
+  NamespaceFailure, parseActorArguments, requireCondition, safeReason, validateIdentity, validateInitStatus,
 } from './pidNamespaceContract.mjs';
+import { createInitFailureReporter } from './pidNamespaceDiagnostics.mjs';
 
 function readOwnStatus() {
   const fd = openSync('/proc/self/status', constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -32,32 +33,50 @@ export function runNamespaceInit({
   let timer;
   let finished = false;
   let deadline;
-  const finish = code => {
+  let phase = 'context';
+  let goAccepted = false;
+  const reportFailure = createInitFailureReporter((line, done) => runtime.stderr.write(line, done));
+  const finish = (code, cause = 'experimentFailed', failedPhase = phase) => {
     if (finished) return;
     if (code === expectedEofExit) {
       try { deadline.check('init'); } catch { code = failureExit; }
     }
     finished = true;
+    if (code === failureExit && !goAccepted) reportFailure(failedPhase, cause);
     time.clearTimeout(timer);
     runtime.exit(code);
   };
+  const fail = (error, failedPhase = phase) => finish(failureExit,
+    failedPhase === 'statusRead' ? 'statusReadFailed' :
+      error instanceof NamespaceFailure && error.initCause ? error.initCause : safeReason(error), failedPhase);
   try {
     requireCondition(runtime.platform === 'linux' && runtime.env.EKY_E2E === '1' &&
       runtime.env.CI === 'true' && runtime.env.GITHUB_ACTIONS === 'true', 'invalidContext');
+    phase = 'arguments';
     const config = parseActorArguments(runtime.argv.slice(2));
+    phase = 'deadline';
     deadline = createDeadline(config.started, now);
-    timer = time.setTimeout(() => finish(failureExit), deadline.remaining('init'));
+    timer = time.setTimeout(() => finish(failureExit, 'deadlineExceeded'), deadline.remaining('init'));
     deadline.check('ready');
+    phase = 'pid';
     requireCondition(runtime.pid === 1, 'invalidIdentity');
+    phase = 'identity';
     validateIdentity(currentIdentity(runtime), config);
-    validateInitStatus(readStatus(), config);
+    phase = 'statusRead';
+    const status = readStatus();
+    phase = 'statusValidation';
+    validateInitStatus(status, config);
+    phase = 'deadline';
     deadline.check('ready');
     const protocol = createInitProtocol(config.generation, deadline);
+    phase = 'responseOpen';
     const output = socket({ fd: 3, readable: false, writable: true });
-    output.on('error', () => finish(failureExit));
+    output.on('error', () => finish(failureExit, 'channelFailed'));
+    phase = 'controlSetup';
     const control = createFrames(value => {
       requireCondition(!finished);
       protocol.go(value);
+      goAccepted = true;
       // Re-check immediately at the only workload launch edge.
       deadline.check('ready');
       const root = spawnChild(runtime.execPath,
@@ -106,17 +125,19 @@ export function runNamespaceInit({
         } catch { finish(failureExit); }
       });
     });
-    runtime.stdin.on('data', chunk => { try { control.push(chunk); } catch { finish(failureExit); } });
-    runtime.stdin.on('error', () => finish(failureExit));
+    runtime.stdin.on('data', chunk => { try { control.push(chunk); } catch (error) { fail(error, 'awaitGo'); } });
+    runtime.stdin.on('error', () => finish(failureExit, 'channelFailed', 'awaitGo'));
     runtime.stdin.on('end', () => {
-      try { control.end(); finish(protocol.eof()); } catch { finish(failureExit); }
+      try { control.end(); finish(protocol.eof()); } catch (error) { fail(error, 'awaitGo'); }
     });
+    phase = 'readyWrite';
     protocol.ready();
     output.write(encodeMessage(message('READY', config.generation)), error => {
-      try { if (error) return finish(failureExit); deadline.check('ready'); }
-      catch { finish(failureExit); }
+      try { if (error) return finish(failureExit, 'channelFailed', 'readyWrite'); deadline.check('ready'); }
+      catch (error) { fail(error, 'readyWrite'); }
     });
-  } catch { finish(failureExit); }
+    phase = 'awaitGo';
+  } catch (error) { fail(error); }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) runNamespaceInit();

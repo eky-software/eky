@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join, posix } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { currentIdentity } from './pidNamespaceActor.mjs';
+import { captureBootstrapDiagnostic } from './pidNamespaceDiagnostics.mjs';
 import {
   actorArguments, childEnvironment, classifyBootstrap, createDeadline, descriptors,
   expectedEofExit, experimentContext, limits, message, NamespaceFailure,
@@ -175,12 +176,26 @@ export async function runNamespaceExperiment({
       try { await wait(wrapper.completion, 'wrapper'); } catch { /* Emergency timer owns the open wrapper. */ }
     }
     facts.wrapperClosed = Boolean(wrapper?.closed);
+    const bootstrapCause = reason;
+    const recordDiagnostic = (toolAbsence, classificationAttempted) => {
+      if (reason === 'observed') return;
+      // Snapshot only; it never supplies readiness, classification or cleanup authority.
+      let readyBudgetExpired = true;
+      try { readyBudgetExpired = deadline.remaining('ready') === 0; } catch { /* Unknown clock remains failed. */ }
+      facts.bootstrapDiagnostic = captureBootstrapDiagnostic({
+        bootstrapCause, wrapper, stderr, stderrFailed, stderrEnded, replies, toolAbsence,
+        readyAccepted: ready, goAttempted: Boolean(facts.go), emergencyUsed: emergency,
+        readyBudgetExpired, classificationAttempted,
+      });
+    };
     if (wrapper && !ready && !facts.go && !emergency && reason !== 'deadlineExceeded' &&
         deadline.remaining('ready') > 0) {
       // spawn ENOENT can also mean a missing cwd or interpreter. Prove tool absence
       // in the exact fixed search path before calling it a missing prerequisite.
       let toolAbsent = false;
+      let toolAbsence = 'notChecked';
       if (wrapper.spawnCode === 'ENOENT') {
+        toolAbsence = 'notProven';
         try {
           check('wrapper');
           const present = [];
@@ -190,8 +205,10 @@ export async function runNamespaceExperiment({
             check('wrapper');
           }
           toolAbsent = present.every(value => !value);
+          if (toolAbsent) toolAbsence = 'provenAbsent';
         } catch { /* Unknown read failures cannot prove absence. */ }
       }
+      recordDiagnostic(toolAbsence, true);
       const prerequisite = classifyBootstrap({
         spawnCode: wrapper.spawnCode, code: wrapper.code, signal: wrapper.signal,
         stderr, ready, go: Boolean(facts.go), toolAbsent, responseBytes: replies?.receivedBytes,
@@ -199,6 +216,8 @@ export async function runNamespaceExperiment({
       });
       if (prerequisite !== 'bootstrapUnknown') reason = prerequisite;
       else if (!['deadlineExceeded', 'channelLimit', 'invalidMessage'].includes(reason)) reason = 'bootstrapUnknown';
+    } else {
+      recordDiagnostic('notChecked', false);
     }
     if (sentinel) {
       let after = false;

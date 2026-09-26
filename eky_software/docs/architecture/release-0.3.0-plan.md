@@ -23,8 +23,12 @@ ensimmäisellä yrityksellä; tarkat checkoutit ja artifact-sidonnat on
 varmistettu. Keskeytymisen juurisyy säilyy avoimena. Omistaja hyväksyi
 2026-09-26 T3c-W:n ja T3c-L:n rajatut kokeet. Windowsin
 [neljä tapausta läpäisivät](e2e-test-environment.md#t3c-wn-rajatun-kokeen-checkpoint);
-Linuxin toteutus on valmis CI-kokeeseen mutta oikea CI-näyttö puuttuu.
-Uuden revision CI-ajoa ei ole käynnistetty. Lopullinen mekanismivalinta ja
+Linuxin ensimmäisen CI-ajon molemmat kokeet
+[hylättiin ennen GO:ta](e2e-test-environment.md#t3c-ln-ensimmäisen-ci-kokeen-hylkäys).
+Käynnistysvirheen tarkka syy ja uuden revision hyväksyntä ovat avoinna.
+Omistajan hyväksymä [T3c-LD](e2e-test-environment.md#t3c-ld-rajatun-käynnistysdiagnostiikan-päätösehdotus)
+täydentää kokeen diagnostiikkaa ennen yhtä uutta seurattua CI-koetta.
+Lopullinen mekanismivalinta ja
 fixture-siirto vaativat erillisen hyväksynnän; tämä ei ole koko T3:n tai
 PR/main-integraation hyväksyntä. Ajurin root-first-odotusjärjestysvirhe on
 korjattu ja todennettu, mutta perityn tulostekahvan kirjoittajaidentiteettiä
@@ -409,7 +413,7 @@ integraatio on hyväksytty. T3:n lähdekatselmus ja testimatriisi on valmisteltu
 T3a-koe on suoritettu ja T3b-valmistelu rajaa riippuvuuden virhekorjauksen,
 Linuxin CI-edellytystarkistuksen sekä myöhemmän alustakokeen erillisiksi
 päätöksiksi. T3c-W:n rajattu neljän tapauksen adapterikoe on läpäisty;
-T3c-L:n toteutus on valmis mutta todellinen CI-koe odottaa. Lopullinen
+T3c-L:n ensimmäiset CI-kokeet hylättiin ennen GO:ta ja syynrajaus jatkuu. Lopullinen
 alustamekanismi ja tavallisten fixturejen siirto odottavat erillistä
 hyväksyntää ja koko T3:n näyttöä. Muut
 testikorjaukset ovat avoinna.

@@ -4,6 +4,7 @@ import { setImmediate } from 'node:timers/promises';
 import test from 'node:test';
 import { actorGuard, runActor } from './pidNamespaceActor.mjs';
 import { runNamespaceInit } from './pidNamespaceInit.mjs';
+import { initDiagnosticPrefix, parseInitDiagnostic } from './pidNamespaceDiagnostics.mjs';
 import {
   actorArguments, budgets, childEnvironment, descriptors, encodeMessage,
   expectedEofExit, failureExit, message, serializeResult,
@@ -121,9 +122,11 @@ function fixture(options = {}) {
             owned.emit('error', { code: 'ENOENT' });
             return owned.finish(-2);
           }
-          const raw = options.bootstrap === 'denied' ? 'unshare: unshare failed: Operation not permitted\n' : 'PRIVATE raw failure';
+          const raw = options.bootstrapRaw ?? (options.bootstrap === 'denied'
+            ? 'unshare: unshare failed: Operation not permitted\n' : 'PRIVATE raw failure');
           owned.stderr.emit('data', Buffer.from(raw));
-          return owned.finish(1);
+          if (options.stderrFailure) owned.stderr.emit('error', Error('PRIVATE_STREAM_ERROR'));
+          return owned.finish(options.bootstrapExit ?? 1);
         }
         if (!options.missingReady) owned.stdio[3].emit('data', Buffer.concat([
           encodeMessage(message('READY', token)), options.readyTail ? Buffer.from('{') : Buffer.alloc(0),
@@ -339,21 +342,179 @@ function initFixture(options = {}) {
   const exits = [];
   const writes = [];
   const launches = [];
+  const diagnostics = [];
   const output = stream((bytes, done) => { writes.push(JSON.parse(bytes)); done?.(); });
   const root = child();
   const runtime = Object.assign(new EventEmitter(), {
     platform: 'linux', env: environment, argv: ['node', 'init', ...actorArguments(config)], pid: 1,
     getuid: () => 1001, geteuid: () => 1001, getgid: () => 1002, getegid: () => 1002,
     stdin: stream(), cwd: () => '/synthetic-temp', execPath: '/synthetic-node',
+    stderr: stream((line, done) => { diagnostics.push(line); done?.(); }),
     exit: code => exits.push(code),
   }, options.runtime);
   const run = () => runNamespaceInit({ runtime, now: c.now, time: c.time,
-    readStatus: () => options.status ?? status,
-    socket: options => { assert.deepEqual(options, { fd: 3, readable: false, writable: true }); return output; },
+    readStatus: options.readStatus ?? (() => options.status ?? status),
+    socket: options.socket ?? (value => { assert.deepEqual(value, { fd: 3, readable: false, writable: true }); return output; }),
     spawnChild: (...args) => { launches.push(args); return root; }, nonce: () => 'b'.repeat(32),
   });
-  return { ...c, exits, writes, launches, output, root, runtime, run };
+  return { ...c, exits, writes, launches, diagnostics, output, root, runtime, run };
 }
+
+for (const [name, options, change, phase, cause] of [
+  ['context', { runtime: { env: {} } }, null, 'context', 'invalidContext'],
+  ['arguments', { runtime: { argv: ['node', 'init'] } }, null, 'arguments', 'invalidArguments'],
+  ['deadline', {}, f => f.set(budgets.ready), 'deadline', 'deadlineExceeded'],
+  ['pid', { runtime: { pid: 2 } }, null, 'pid', 'invalidIdentity'],
+  ['identity', { runtime: { getuid: () => 0 } }, null, 'identity', 'invalidIdentity'],
+  ['status read', { readStatus: () => { throw Error('PRIVATE_STATUS_PATH'); } }, null, 'statusRead', 'statusReadFailed'],
+  ['malformed status', { status: 'PRIVATE_STATUS' }, null, 'statusValidation', 'statusMalformed'],
+  ['status pid', { status: status.replace('Pid:\t1', 'Pid:\t2') }, null, 'statusValidation', 'statusPidMismatch'],
+  ['status uid', { status: status.replace('Uid:\t1001', 'Uid:\t0') }, null, 'statusValidation', 'statusIdentityMismatch'],
+  ['status gid', { status: status.replace('Gid:\t1002', 'Gid:\t0') }, null, 'statusValidation', 'statusIdentityMismatch'],
+  ...['CapEff', 'CapPrm', 'CapInh', 'CapAmb'].map(field => [field,
+    { status: status.replace(`${field}:\t0000000000000000`, `${field}:\t0000000000000001`) },
+    null, 'statusValidation', 'statusCapabilities']),
+  ['response open', { socket: () => { throw Error('PRIVATE_SOCKET'); } }, null, 'responseOpen', 'experimentFailed'],
+  ['control setup', { runtime: { stdin: { on() { throw Error('PRIVATE_STREAM'); } } } },
+    null, 'controlSetup', 'experimentFailed'],
+  ['ready write', {}, f => { f.output.write = () => { throw Error('PRIVATE_WRITE'); }; }, 'readyWrite', 'experimentFailed'],
+  ['ready callback', {}, f => { f.output.write = (_bytes, done) => done(Error('PRIVATE_WRITE')); }, 'readyWrite', 'channelFailed'],
+]) {
+  test(`init first pre-GO diagnostic identifies ${name} without granting READY or launch`, () => {
+    const f = initFixture(options);
+    change?.(f);
+    f.run();
+    assert.deepEqual(f.exits, [failureExit]);
+    assert.deepEqual(f.launches, []);
+    assert.deepEqual(f.writes, []);
+    assert.equal(f.timers.size, 0);
+    assert.equal(f.diagnostics.length, 1);
+    assert.deepEqual(parseInitDiagnostic(f.diagnostics[0]), { state: 'valid', phase, cause });
+    assert.doesNotMatch(f.diagnostics[0], /PRIVATE|1001|1002|synthetic|status"/u);
+  });
+}
+
+test('pre-GO control failure and expiry report once without accepting later EOF or GO', () => {
+  for (const mode of ['invalid', 'error', 'eof', 'expiry']) {
+    const f = initFixture(); f.run();
+    if (mode === 'invalid') f.runtime.stdin.emit('data', Buffer.from('PRIVATE\n'));
+    if (mode === 'error') f.runtime.stdin.emit('error', Error('PRIVATE'));
+    if (mode === 'eof') f.runtime.stdin.emit('end');
+    if (mode === 'expiry') f.advance(budgets.init);
+    f.runtime.stdin.emit('data', encodeMessage(message('GO', generation)));
+    f.runtime.stdin.emit('end');
+    f.output.emit('error', Error('LATER_PRIVATE'));
+    assert.deepEqual(f.exits, [failureExit]);
+    assert.deepEqual(f.launches, []);
+    assert.equal(f.diagnostics.length, 1);
+    const diagnostic = parseInitDiagnostic(f.diagnostics[0]);
+    assert.equal(diagnostic.state, 'valid');
+    assert.equal(diagnostic.phase, 'awaitGo');
+    assert.equal(diagnostic.cause, mode === 'error' ? 'channelFailed' : mode === 'expiry' ? 'deadlineExceeded' : 'invalidMessage');
+  }
+});
+
+test('missing or failing diagnostic writer cannot wait, retry, launch or change failure exit', () => {
+  for (const mode of ['missingCallback', 'throw', 'callbackError', 'absent']) {
+    const attempts = [];
+    const stderr = mode === 'absent' ? undefined : stream((line, done) => {
+      attempts.push(line);
+      if (mode === 'throw') throw Error('PRIVATE_WRITE');
+      if (mode === 'callbackError') done(Error('PRIVATE_WRITE'));
+    });
+    const f = initFixture({ runtime: { pid: 2, stderr } }); f.run();
+    assert.deepEqual(f.exits, [failureExit]);
+    assert.deepEqual(f.launches, []);
+    assert.equal(f.timers.size, 0);
+    assert.equal(attempts.length, mode === 'absent' ? 0 : 1);
+  }
+});
+
+test('post-GO failures do not claim to be pre-GO init diagnostics', () => {
+  const f = initFixture(); f.run();
+  f.runtime.stdin.emit('data', encodeMessage(message('GO', generation)));
+  f.root.emit('error', Error('PRIVATE_ROOT'));
+  assert.deepEqual(f.exits, [failureExit]);
+  assert.deepEqual(f.diagnostics, []);
+});
+
+test('driver preserves original bootstrap cause and bounded init hint without changing rejection', async () => {
+  const raw = `${initDiagnosticPrefix} statusValidation statusCapabilities\n`;
+  const f = fixture({ bootstrap: 'unknown', bootstrapRaw: raw, bootstrapExit: failureExit });
+  const result = await experiment(f);
+  assert.equal(result.reason, 'bootstrapUnknown');
+  assert.equal(result.observation, 'failed');
+  assert.equal(result.workloadOutcome, 'notStarted');
+  assert.equal(result.cleanupOutcome, 'unverified');
+  assert.equal(result.testRoot, 'retained');
+  assert.deepEqual(f.controls, []);
+  assert.equal(result.bootstrapDiagnostic.bootstrapCause, 'unexpectedEof');
+  assert.equal(result.bootstrapDiagnostic.wrapperTerminal, 'exit42');
+  assert.equal(result.bootstrapDiagnostic.initDiagnostic, 'valid');
+  assert.equal(result.bootstrapDiagnostic.initPhase, 'statusValidation');
+  assert.equal(result.bootstrapDiagnostic.initCause, 'statusCapabilities');
+  assert.equal(result.bootstrapDiagnostic.classificationAttempted, true);
+  assert.equal(result.bootstrapDiagnostic.readyBudgetExpired, false);
+  assert.equal(result.bootstrapDiagnostic.readyAccepted, false);
+  assert.equal(result.bootstrapDiagnostic.goAttempted, false);
+  assert.doesNotMatch(serializeResult(result, binding), /synthetic|PRIVATE|1001|1002/u);
+});
+
+test('diagnostic marker never gets stripped to permit namespace-denial acceptance', async () => {
+  const marker = `${initDiagnosticPrefix} context invalidContext\n`;
+  for (const raw of [marker + 'unshare: unshare failed: Operation not permitted\n', marker + marker,
+    marker + 'PRIVATE', marker.repeat(100)]) {
+    const result = await experiment(fixture({ bootstrap: 'denied', bootstrapRaw: raw }));
+    assert.equal(result.reason, 'bootstrapUnknown');
+    assert.equal(result.observation, 'failed');
+    assert.equal(result.evidenceOutcome, 'incomplete');
+    assert.equal(result.bootstrapDiagnostic.stderrClass, raw.length > 4096 ? 'unreadableOrOverLimit' : 'other');
+    assert.equal(result.bootstrapDiagnostic.initDiagnostic, raw.length > 4096 ? 'unavailable' : 'invalid');
+    assert.doesNotMatch(serializeResult(result, binding), /PRIVATE/u);
+  }
+});
+
+test('denial and missing-tool classification retain their exact original guards', async () => {
+  for (const bootstrap of ['denied', 'missing', 'unknown']) {
+    const result = await experiment(fixture({ bootstrap }));
+    assert.equal(result.reason, { denied: 'namespaceDenied', missing: 'unshareMissing', unknown: 'bootstrapUnknown' }[bootstrap]);
+    assert.equal(result.bootstrapDiagnostic.toolAbsence, bootstrap === 'missing' ? 'provenAbsent' : 'notChecked');
+    assert.equal(result.bootstrapDiagnostic.initDiagnostic, 'absent');
+    assert.equal(result.bootstrapDiagnostic.stderrClass, { denied: 'exactUnshareDenied', missing: 'empty', unknown: 'other' }[bootstrap]);
+  }
+});
+
+test('diagnostic budget is captured after asynchronous absence checks without changing classification', async () => {
+  const f = fixture({ bootstrap: 'missing' });
+  const spawnChild = f.operations.spawnChild;
+  f.operations.spawnChild = (...args) => {
+    if (args[0] === 'unshare') f.set(budgets.ready - 1);
+    return spawnChild(...args);
+  };
+  f.operations.fs.access = async () => {
+    f.set(budgets.ready + 1);
+    throw Object.assign(Error('MISSING_SYNTHETIC_TOOL'), { code: 'ENOENT' });
+  };
+  const result = await experiment(f);
+  assert.equal(result.reason, 'unshareMissing');
+  assert.equal(result.observation, 'prerequisiteUnavailable');
+  assert.equal(result.bootstrapDiagnostic.classificationAttempted, true);
+  assert.equal(result.bootstrapDiagnostic.toolAbsence, 'provenAbsent');
+  assert.equal(result.bootstrapDiagnostic.readyBudgetExpired, true);
+  assert.equal(result.testRoot, 'retained');
+  assert.deepEqual(f.controls, []);
+  assert.deepEqual(f.removed, []);
+});
+
+test('stderr read failure cannot expose even an otherwise valid init marker', async () => {
+  const f = fixture({ bootstrap: 'unknown', stderrFailure: true,
+    bootstrapRaw: `${initDiagnosticPrefix} context invalidContext\n` });
+  const result = await experiment(f);
+  assert.equal(result.observation, 'failed');
+  assert.equal(result.bootstrapDiagnostic.stderrFailed, true);
+  assert.equal(result.bootstrapDiagnostic.initDiagnostic, 'unavailable');
+  assert.equal(result.bootstrapDiagnostic.initCause, null);
+});
 
 test('real init wiring challenges on exit without waiting for close, then accepts only expected EOF', () => {
   const f = initFixture();

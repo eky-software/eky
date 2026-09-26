@@ -116,8 +116,11 @@ artifact-sidonnat on varmistettu; puuttuvan terminal-tuloksen juurisyy ei
 silti ratkennut. Tämäkään ei täytä alla olevia lopullisia prosessiomistajuuden rivejä.
 Omistaja hyväksyi 2026-09-26 erilliset T3c-W- ja T3c-L-kokeet. Niiden
 rajattu tila on alla omassa koetaulukossaan: T3c-W läpäisi neljä tapausta,
-T3c-L on valmis CI-kokeeseen mutta oikea CI-näyttö puuttuu. Kokeet eivät
+T3c-L:n molemmat ensimmäiset CI-kokeet hylättiin ennen GO:ta. Kokeet eivät
 muuta lopullisen mekanismin ja fixture-siirron rivejä hyväksytyiksi.
+Omistajan hyväksymän [T3c-LD:n](e2e-test-environment.md#t3c-ld-rajatun-käynnistysdiagnostiikan-päätösehdotus)
+diagnostiikkatäydennyksen 92/92 kohdetestiä, nykyiset paikalliset portit ja
+riippumaton katselmus läpäisivät; uusi oikea CI-koe on seuraava vaihe.
 
 | Valmistelun näyttö | Taso ja rajaus | Tila |
 | --- | --- | --- |
@@ -140,7 +143,7 @@ erottaa nämä tulokset vanhoista hylkäyksistä, kohdetesteistä ja CI-porteist
 | TEST-T3CW-BEFORE-READY-001 | Rajattu Windows-oikeaprosessikoe: root exit 29 ja elävä Electronin luoma leaf ennen stopia; ei readyä tai timeout-launch-hylkäystä; erillinen drain-kuitti ja ei bridge-failurea. Bridge-exit ei ole suoraan havaittu. | Rajattu koe läpäisty; intended exit ei korvaa actual exit -havaintoa tai siivousterminalia. |
 | TEST-T3CW-ROOT-FIRST-001 | Rajattu Windows-oikeaprosessikoe: root exit 0 ja ei-tyhjä Job ennen omistajan tree-stopia; vasta sitten todellinen bridge-close 0. | Rajattu koe läpäisty; ajurin odotusjärjestyskorjaus suojattu sopimustesteillä. Aiemman perityn tulostekahvan kirjoittajan identiteettiä ei väitetä todistetuksi. |
 | TEST-T3CW-BRIDGE-EXIT-001 | Rajattu Windows-oikeaprosessikoe: tarkoituksellinen bridge-close 41; runtime ja omistaja yhä elossa, kontrolli käytössä ja omistajan siivous todennettu. | Rajattu koe läpäisty odotettuna työkuormavirheenä, ei onnistuneena työkuormana. |
-| TEST-T3CL-NAMESPACE-001 | Ehdollinen Linux-CI-koe: namespace-esiehdot, root-exitin jälkeinen tuore leaf-kuittaus, initin odotettu EOF, normaali wrapper-wait ja ulkopuolinen sentinel. | Toteutus ja puhtaat sopimus-/kytkentätestit valmiit; oikea CI-koe odottaa. Uutta ajoa ei ole käynnistetty eikä namespace-tukea väitetä todennetuksi. |
+| TEST-T3CL-NAMESPACE-001 | Ehdollinen Linux-CI-koe: namespace-esiehdot, root-exitin jälkeinen tuore leaf-kuittaus, initin odotettu EOF, normaali wrapper-wait ja ulkopuolinen sentinel. | Ensimmäisen CI-ajon molemmat kokeet hylätty: `bootstrapUnknown`, ennen GO:ta; sentinel säilyi, cleanup varmistamatta. [Hylkäyskirjaus](e2e-test-environment.md#t3c-ln-ensimmäisen-ci-kokeen-hylkäys). Ei namespace-tuen tai puuttuvan edellytyksen todistetta. |
 
 Alla olevat lopullisen T3:n rivit säilyvät erillisinä päätös- ja
 hyväksyntäportteina. T3c-W:n ensimmäisen ennen launchia tapahtuneen

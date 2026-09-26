@@ -17,7 +17,8 @@ fault injectionia.
 ## T-paketin valmistelu
 
 **2026-09-26: T1 ja T2 hyväksytty PR/main-porttien jälkeen; T3c-W:n
-rajattu koe läpäisty, T3c-L:n CI-näyttö ja lopullinen T3 avoinna.** [M1-valmistelu](release-0.3.0-m1-preparation-plan.md)
+rajattu koe läpäisty, T3c-L:n ensimmäinen CI-koe hylätty ennen GO:ta;
+lopullinen T3 avoinna.** [M1-valmistelu](release-0.3.0-m1-preparation-plan.md)
 rajaa R27-R29:n kolmeen erikseen todennettavaan sopimukseen. M0:n erillinen
 Windows Job -supervisor ja Electronin lataus-/purkutodistus eivät sulje näitä.
 
@@ -229,9 +230,12 @@ Suunnitelman todistusrajat säilyvät myös myöhemmissä muutoksissa.
 ### T3: Koko prosessipuun poistumistodiste
 
 **Tila 2026-09-26: T3/R28 kesken; T3c-W:n neljä rajattua koetta läpäisty,
-T3c-L:n toteutus valmis CI-kokeeseen mutta oikea CI-näyttö puuttuu.**
+T3c-L:n molemmat ensimmäiset CI-kokeet hylätty ennen GO:ta.**
 T3b-E:n ja T3b-P:n korjattu CI-lähtötila on todennettu niiden omissa
-checkpointeissa; uuden T3c-revision CI-ajoa ei ole käynnistetty.
+checkpointeissa. Uuden T3c-revision kokonaisajo on päättynyt hylätyksi;
+[käynnistysvirhe](#t3c-ln-ensimmäisen-ci-kokeen-hylkäys) estää hyväksynnän.
+[T3c-LD:n lisähavainto](#t3c-ld-rajatun-käynnistysdiagnostiikan-päätösehdotus)
+on hyväksytty ja katselmoitu; uusi CI-todennus on seuraava vaihe.
 T3a:n alkuperäinen 4/5 sekä myöhemmät erilliset hylkäykset jäävät historiaksi.
 Alustamekanismien valinta ja fixture-siirto vaativat erillisen hyväksynnän.
 Integraation lähtökohta on hyväksytty T2-main;
@@ -1215,8 +1219,9 @@ työtilan normaalit testit läpäisivät. Typecheck läpäisi ennen tätä viime
 JavaScript-muutosta; TypeScript-lähteet eivät muuttuneet sen jälkeen.
 Aiemmat tarkoitukselliset testiohitukset säilyivät erillisinä eivätkä ole
 läpäisyjä. Paikallinen CI-sopimussarja läpäisi 156/156.
-Tämän checkpointin T3c-CI-todennus on seuraava vaihe,
-eikä tämä checkpoint ole PR/main-hyväksyntä. Raakatodisteet ja ajokohtaiset
+Tämän checkpointin T3c-CI-todennus on aloitettu; Linuxin erillisen kokeen
+[ensimmäinen hylkäys](#t3c-ln-ensimmäisen-ci-kokeen-hylkäys) estää uuden
+baselinen hyväksynnän. Tämä checkpoint ei ole PR/main-hyväksyntä. Raakatodisteet ja ajokohtaiset
 tiedot pysyvät yksityisinä. Lopullinen mekanismivalinta, tavallisten
 fixturejen siirto ja koko T3/R28:n hyväksyntä ovat edelleen erillisiä
 avoimia portteja.
@@ -1430,8 +1435,9 @@ patchia. Linuxin pääsyhavainto tulee edelleen ensimmäisestä ajosta.
 T3b-L:n kielteiset cgroup-pääsyvihjeet eivät kerro user/PID-namespacejen
 saatavuudesta. Seuraava vaihe on yksi ehdollinen synteettinen koe
 kummassakin nykyisessä Linux-jobissa. **Omistaja hyväksyi toteutuksen ja
-kokeet 2026-09-26. Toteutus ja oletuksena suljettu CI-kytkentä ovat valmiit
-CI-kokeeseen; oikeaa namespace-CI-näyttöä ei vielä ole.**
+kokeet 2026-09-26. Toteutus ja oletuksena suljettu CI-kytkentä kokeiltiin
+CI:ssä; molemmat kuluttajat hylättiin ennen GO:ta.**
+Ensimmäinen näyttö ja sen rajat ovat [hylkäyskirjauksessa](#t3c-ln-ensimmäisen-ci-kokeen-hylkäys).
 Korjatun lähtörevision CI-portti on läpäissyt yllä kuvatusti.
 
 Erikseen hyväksyttävä työkalu on runnerilla ennestään oleva util-linux
@@ -1519,13 +1525,100 @@ Node ei muutu yleiseksi orphan-reaperiksi; lyhyt koe nojaisi lopussa
 kernelin namespace-purkuun. Pitkäikäisen initin reaping ja omistajan
 kuoleman yli säilyvä odotustodiste tarvitsevat edelleen oman ratkaisunsa.
 
-**Checkpoint 2026-09-26:** toteutus ja sen puhtaat sopimus- ja
-kytkentätestit ovat valmiit CI-todennukseen. Nykyisen uuden revision
-CI-ajoa ei ole käynnistetty. Ennen molempien Linux-kuluttajien todellista,
-ajoon ja checkoutiin sidottua havaintoa namespacejen saatavuutta tai
-purkutodistetta ei merkitä läpäistyksi. T3b-L:n vanha metadatahavainto ei
-korvaa tätä koetta. Myös mahdollinen läpäisy jättäisi lopullisen
-alustamekanismin ja fixture-siirron erilliseen hyväksyntään.
+##### T3c-L:n ensimmäisen CI-kokeen hylkäys
+
+**Checkpoint 2026-09-26:** revision
+`f47268de1699696c6fc5cd81ce65766b087f9d85`
+[ensimmäisen ajon 36245273190](https://github.com/eky-software/eky/actions/runs/36245273190)
+molemmat Linux-koevaiheet hylättiin. Todelliset checkoutit, ensimmäinen
+yritys ja käynnistysvalinnat tarkistettiin: namespace-koe päällä, vanha
+prerequisite-probe ja installer-inspector pois päältä.
+
+| Kuluttaja | Nykyinen testisarja ennen koetta | Uuden kokeen tulos |
+| --- | --- | --- |
+| `system-api` | 218/218 läpäisi. | `bootstrapUnknown`, työkuorma `notStarted`, cleanup `unverified`, näyttö `incomplete`. |
+| `web-chromium` | 35/35 läpäisi. | Sama käynnistysvaiheen hylkäys ennen GO:ta. |
+
+Molemmissa erillinen sentinel säilyi ja synteettinen testijuuri jätettiin
+poistamatta. Tämä ei todista namespacen syntymistä, saatavuutta tai
+purkua eikä varsinaisen sovelluksen virhettä. Hylkäystä ei luokitella
+todennetuksi puuttuvaksi edellytykseksi. Nykyinen suljettu raportti ei
+erota wrapperin käynnistysvirhettä initin omaa READY-kuittausta edeltävästä
+virheestä; tarkkaa syytä ei voi päätellä tästä aineistosta.
+
+Ensimmäiset täydet job-lokit ja suljetut tulosrivit säilytettiin.
+Kokonaisajo päättyi: 35 onnistunutta jobia, kolme hylkäystä ja yksi ennalta
+valinnainen ohitus. Hylkäykset ovat kaksi Linux-koetta ja niiden vuoksi
+`V2 acceptance` (`workflowNotSuccessful`). Muut testiryhmät, myös Electronin
+38/38 ilman retryä tai flaky-tulosta sekä nykyiset packaged-, päivitys-,
+legacy- ja palautumiskokeet, läpäisivät. Tämä ei hyväksy revisiota.
+Kaikkien 38 suoritetun jobin lokit ja checkout-sidonnat säilytettiin; mitään
+Linuxin tarkempaa raakadiagnostiikka-artifactia ei syntynyt. Saman revision
+[riippuvuustarkistus 36245277549](https://github.com/eky-software/eky/actions/runs/36245277549)
+läpäisi, ja sen lähde-/lokisidonta sekä pakolliset vaiheet varmennettiin.
+Uusintakoetta tai fallbackia ei ole aloitettu. Ensin rajataan tarvittava
+turvallinen lisähavainto; suojausasetuksia, oikeuksia, mekanismia, aikarajoja
+tai hyväksyntäehtoja ei muuteta hylkäyksen vuoksi. Lopullinen alustamekanismi,
+fixture-siirto ja T3/R28 jäävät erillisiin päätös- ja hyväksyntäportteihin.
+
+##### T3c-LD: rajatun käynnistysdiagnostiikan päätösehdotus
+
+Riippumaton lähdekatselmus vahvisti havaintoaukon, ei ensimmäisen
+CI-hylkäyksen juurisyytä. Ehdotus koskee vain samaa Linux-koetta:
+diagnostiikan täydennys, regressiot ja katselmuksen jälkeen yksi uusi
+seurattu CI-koe molemmissa nykyisissä kuluttajissa. **Omistaja hyväksyi
+T3c-LD:n 2026-09-26. Toteutus, kohdetestit ja riippumaton katselmus ovat
+valmiit yhtä uutta seurattua CI-koetta varten.** Ensimmäinen
+kokonaisajo on seurattu loppuun eikä sen tulosta muuteta.
+
+Paikallinen kohdesarja läpäisi 92/92 ja CI-sopimukset 194/194. Työtilan
+normaalit testit ja typecheck läpäisivät; aiemmat ohitukset säilyvät erillisinä.
+Katselmuksessa korjattu diagnostisen aikabudjetin vanhentuminen on suojattu
+ensin hylätyllä, sitten läpäisseellä regressiolla. Se ei muuta luokitteluporttia.
+Suljetun raportin lukuketjun puhtaat testit läpäisivät. Oikeaa Linux-koetta
+ei korvata näillä testeillä eikä uutta revisiota vielä merkitä hyväksytyksi.
+
+Init yrittää ennen GO:ta tapahtuvasta ensimmäisestä virheestä yhden
+enintään 128 tavun ASCII-stderr-merkinnän:
+`EKY_T3CL_INIT_FAILURE_V1 <phase> <cause>`. Suljettu vaihe kertoo yritetyn
+tarkistuksen, ei sen onnistumista: `context`, `arguments`, `deadline`,
+`pid`, `identity`, `statusRead`, `statusValidation`, `responseOpen`,
+`controlSetup`, `readyWrite` tai `awaitGo`. Suljettu syy erottaa nykyiset
+hylkäykset sekä statusluvun, sen rakenteen, PID-/identiteettivastaavuuden
+ja capability-portin. Syy johdetaan samasta nykyisestä ehdosta; ei uutta
+proc-lukua tai hyväksymissääntöä. Ei fd3-viestiä tai onnistumispolun
+stderr-tulostetta. Kirjoitus on best effort, ilman retryä, synkronista
+blokattavaa kirjoitusta tai uutta flush-odotusta. Puuttuva merkki ei todista,
+ettei init käynnistynyt, eikä exit 42 yksin osoita initin suorittamista.
+
+Ajurin suljettu lisähavainto säilyttää alkuperäisen syyluokan, wrapperin
+päättymisluokan, stderr-luokan ja mahdollisen validoidun init-vaiheen/syyn.
+Luokittelun käyttämästä hetkestä tallennetaan myös virtojen valmistumisen
+booleanit, vastaustavujen `none | present`, spawnin `none | enoent | other`,
+työkalun puuttumisen tarkistustila, READY-/GO-/hätäkatkaisutila sekä
+READY-budjetin ja luokitteluyrityksen tila. Raaka stderr, proc-sisältö,
+polut, prosessi-/käyttäjätunnisteet, ympäristöarvot ja poikkeukset jäävät
+pois julkaistavasta tuloksesta. Nykyiset 4 KiB:n stderr- ja tulosrajat säilyvät.
+
+Kokeen suljetun JSON-tuloksen schema on 2; uusi `bootstrapDiagnostic` on
+validoitu suljettu olio tai `null`, jos havaintoa ei ole. Ensimmäisen ajon
+schema 1 -tulokset säilyvät alkuperäisinä eivätkä saa jälkikäteen uusia
+havaintoja. Sovelluksen versiota tai tuotannon formaatteja ei muuteta.
+
+Lisähavainto ei muuta alkuperäistä luokittelua: init-merkkiä ei poisteta
+stderristä onnistumis- tai denial-vertailua varten. Unknown, post-GO-virhe,
+puuttuva cleanup ja puutteellinen näyttö hylkäävät edelleen. Puhtaat testit
+kattavat ensimmäisen syyn säilymisen, kaikki porttihylkäykset, väärän ja
+ylisuuren merkinnän, puuttuvan kirjoituscallbackin sekä nykyiset deadline-,
+READY-tail-, EOF-, sentinel- ja cleanup-ehdot. Riippumaton katselmus ja
+nykyisten testikomentojen portit tarvitaan ennen koetta.
+
+Tiedostoraja säilyy Linux-kokeen initissä, ajurissa, omistavassa suljetussa
+sopimuksessa ja niiden testeissä sekä koetuloksen lukuketjussa ja ohjeissa.
+Ei uutta riippuvuutta, oikeutta, palvelua, mekanismia, workflowta tai jobia;
+ei aikarajojen, sovelluksen, nykyisten fixturejen tai CI-ehtojen muutosta.
+Uusi havainto ratkaisee vasta seuraavan korjauksen tai alustapäätöksen,
+ei etukäteen hyväksy fallbackia tai koko T3/R28:aa.
 
 #### T3:n lopullinen hyväksyntänäyttö
 

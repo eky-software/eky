@@ -5,9 +5,13 @@ import {
   actorArguments, budgets, childEnvironment, classifyBootstrap, createDeadline,
   createFrames, createInitProtocol, descriptors, encodeMessage, expectedEofExit,
   experimentContext, limits, message, parseActorArguments, responseChannel,
-  resultFor, serializeResult, unshareArguments, validateIdentity, validateInitStatus,
+  resultFor, resultSchemaVersion, serializeResult, unshareArguments, validateIdentity, validateInitStatus,
   validateMessage, writeMessage,
 } from './pidNamespaceContract.mjs';
+import {
+  captureBootstrapDiagnostic, createInitFailureReporter, initDiagnosticLimit,
+  initDiagnosticPrefix, parseInitDiagnostic, validateBootstrapDiagnostic,
+} from './pidNamespaceDiagnostics.mjs';
 
 const generation = 'a'.repeat(32);
 const challenge = 'b'.repeat(32);
@@ -323,4 +327,356 @@ test('public result is closed, CI-bound, redacted and separates workload/cleanup
   assert.equal(failed.cleanupOutcome, 'namespaceDestroyed');
   assert.equal(failed.evidenceOutcome, 'incomplete');
   serializeResult(failed, binding);
+});
+
+const diagnosticPhases = [
+  'context', 'arguments', 'deadline', 'pid', 'identity', 'statusRead',
+  'statusValidation', 'responseOpen', 'controlSetup', 'readyWrite', 'awaitGo',
+];
+const diagnosticCauses = [
+  'invalidContext', 'invalidArguments', 'deadlineExceeded', 'invalidIdentity',
+  'invalidStatus', 'invalidMessage', 'channelFailed', 'channelLimit',
+  'unexpectedEof', 'experimentFailed', 'statusReadFailed', 'statusMalformed',
+  'statusPidMismatch', 'statusIdentityMismatch', 'statusCapabilities',
+];
+const diagnosticFlags = [
+  'wrapperClosed', 'stderrEnded', 'stderrFailed', 'responseEnded', 'readyAccepted',
+  'goAttempted', 'emergencyUsed', 'readyBudgetExpired', 'classificationAttempted',
+];
+const diagnosticChoices = {
+  wrapperTerminal: ['notObserved', 'spawnFailed', 'exit0', 'exit1', 'exit41', 'exit42', 'otherExit', 'signaled'],
+  stderrClass: ['empty', 'exactUnshareDenied', 'other', 'unreadableOrOverLimit'],
+  responseBytes: ['none', 'present'],
+  spawnClass: ['none', 'enoent', 'other'],
+  toolAbsence: ['notChecked', 'provenAbsent', 'notProven'],
+  initDiagnostic: ['absent', 'valid', 'invalid', 'unavailable'],
+};
+const diagnosticMarker = `${initDiagnosticPrefix} statusValidation statusCapabilities\n`;
+const isDiagnosticReason = reason => reason === 'bootstrapUnknown' || reason === 'invalidIdentity';
+
+function diagnosticSnapshot(changes = {}) {
+  return {
+    bootstrapCause: 'bootstrapUnknown', wrapper: null, stderr: '', stderrFailed: false,
+    stderrEnded: false, replies: null, toolAbsence: 'notChecked', readyAccepted: false,
+    goAttempted: false, emergencyUsed: false, readyBudgetExpired: false,
+    classificationAttempted: false, ...changes,
+  };
+}
+
+test('init diagnostics use the exact closed eleven-phase ASCII grammar within 128 bytes', () => {
+  assert.equal(initDiagnosticLimit, 128);
+  assert.equal(initDiagnosticPrefix, 'EKY_T3CL_INIT_FAILURE_V1');
+  assert.equal(diagnosticPhases.length, 11);
+  for (const phase of diagnosticPhases) {
+    for (const cause of diagnosticCauses) {
+      const lines = [];
+      const report = createInitFailureReporter((line, callback) => { lines.push(line); callback(); });
+      assert.equal(report(phase, cause), undefined);
+      assert.deepEqual(lines, [`${initDiagnosticPrefix} ${phase} ${cause}\n`]);
+      assert.match(lines[0], /^[\x00-\x7f]+$/u);
+      assert.ok(Buffer.byteLength(lines[0]) <= initDiagnosticLimit);
+      assert.deepEqual(parseInitDiagnostic(lines[0]), { state: 'valid', phase, cause });
+    }
+  }
+});
+
+test('init diagnostics latch the first attempt before writing, callbacks, throws or reentrancy', () => {
+  for (const outcome of ['success', 'callbackError', 'throw', 'noCallback', 'reentrant']) {
+    const lines = [];
+    let callback;
+    const report = createInitFailureReporter((line, done) => {
+      lines.push(line);
+      callback = done;
+      if (outcome === 'throw') throw Error('PRIVATE_WRITER_ERROR');
+      if (outcome === 'noCallback') return false;
+      if (outcome === 'reentrant') report('awaitGo', 'unexpectedEof');
+      done(outcome === 'callbackError' ? Error('PRIVATE_CALLBACK_ERROR') : undefined);
+    });
+    assert.equal(report('statusRead', 'statusReadFailed'), undefined);
+    assert.doesNotThrow(() => report('awaitGo', 'unexpectedEof'));
+    assert.doesNotThrow(() => callback(Error('PRIVATE_LATE_ERROR')));
+    assert.doesNotThrow(() => report('deadline', 'deadlineExceeded'));
+    assert.deepEqual(lines, [`${initDiagnosticPrefix} statusRead statusReadFailed\n`]);
+  }
+  for (const writer of [undefined, null, false, {}]) {
+    const report = createInitFailureReporter(writer);
+    assert.equal(report('context', 'invalidContext'), undefined);
+    assert.equal(report('awaitGo', 'unexpectedEof'), undefined);
+  }
+});
+
+test('invalid init phase or cause publishes nothing and still consumes the first attempt', () => {
+  const hostile = { toString() { throw Error('COERCION_EXECUTED'); } };
+  const invalid = ['', 'PRIVATE', 'context\n', 'statusRead\r', '\u00e4', null, undefined, 1, true,
+    [], hostile, Symbol('PRIVATE'), 'x'.repeat(initDiagnosticLimit + 1)];
+  for (const value of invalid) {
+    for (const pair of [[value, 'invalidContext'], ['context', value]]) {
+      const lines = [];
+      const report = createInitFailureReporter(line => lines.push(line));
+      assert.doesNotThrow(() => report(...pair));
+      report('context', 'invalidContext');
+      assert.deepEqual(lines, []);
+    }
+  }
+  for (const cause of ['observed', 'unshareMissing', 'namespaceDenied', 'cleanupUnverified', 'sentinelFailed']) {
+    const lines = [];
+    createInitFailureReporter(line => lines.push(line))('context', cause);
+    assert.deepEqual(lines, []);
+  }
+});
+
+test('diagnostic parsing distinguishes absence and unavailability without publishing raw text', () => {
+  for (const stderr of ['', 'PRIVATE ordinary stderr\n', 'unshare: unshare failed: Operation not permitted\n',
+    '\u00e4 PRIVATE', 'x'.repeat(initDiagnosticLimit + 1)]) {
+    assert.deepEqual(parseInitDiagnostic(stderr), { state: 'absent', phase: null, cause: null });
+  }
+  for (const stderr of ['', diagnosticMarker, `${diagnosticMarker}${diagnosticMarker}`, null, undefined,
+    1, Buffer.from(diagnosticMarker), { toString() { throw Error('COERCION_EXECUTED'); } }]) {
+    assert.deepEqual(parseInitDiagnostic(stderr, true), { state: 'unavailable', phase: null, cause: null });
+    if (typeof stderr !== 'string') {
+      assert.deepEqual(parseInitDiagnostic(stderr), { state: 'unavailable', phase: null, cause: null });
+    }
+  }
+});
+
+test('untrusted duplicate, trailing, oversized and non-ASCII diagnostic markers are invalid', () => {
+  const junk = [
+    initDiagnosticPrefix, `${diagnosticMarker}${diagnosticMarker}`, `${diagnosticMarker}PRIVATE`,
+    `PRIVATE\n${diagnosticMarker}`, ` ${diagnosticMarker}`, `${diagnosticMarker}\n`,
+    diagnosticMarker.slice(0, -1), diagnosticMarker.replace('\n', '\r\n'),
+    diagnosticMarker.replace(' statusValidation', '\tstatusValidation'),
+    diagnosticMarker.replace(' statusCapabilities', '  statusCapabilities'),
+    `${initDiagnosticPrefix} unknown statusCapabilities\n`, `${initDiagnosticPrefix} context observed\n`,
+    `${initDiagnosticPrefix} context PRIVATE\n`, `${initDiagnosticPrefix} context invalidContext\nPRIVATE`,
+    diagnosticMarker.replace('statusCapabilities', 'statusCapabilities\u00e4'),
+    `\uFEFF${diagnosticMarker}`, `${diagnosticMarker}\0`, `${diagnosticMarker}\uFFFD`,
+    diagnosticMarker.padEnd(initDiagnosticLimit, 'x'), diagnosticMarker.padEnd(initDiagnosticLimit + 1, 'x'),
+    `${'x'.repeat(initDiagnosticLimit)}${diagnosticMarker}`,
+  ];
+  for (const stderr of junk) {
+    assert.deepEqual(parseInitDiagnostic(stderr), { state: 'invalid', phase: null, cause: null });
+  }
+});
+
+test('bootstrap snapshot is flat, closed, detached from inputs and does not retain raw fields', () => {
+  const snapshot = diagnosticSnapshot({
+    bootstrapCause: 'invalidIdentity',
+    wrapper: { exited: true, closed: false, spawnCode: null, code: 42, signal: null, pid: 1234 },
+    stderr: diagnosticMarker, stderrEnded: true, replies: { ended: true, receivedBytes: 12 },
+    toolAbsence: 'notProven', readyAccepted: true, goAttempted: true, emergencyUsed: true,
+    readyBudgetExpired: true, classificationAttempted: true,
+    raw: 'PRIVATE', status: 'PRIVATE', path: '/private', env: { PRIVATE: 'PRIVATE' }, error: Error('PRIVATE'),
+  });
+  const captured = captureBootstrapDiagnostic(snapshot);
+  assert.deepEqual(captured, {
+    bootstrapCause: 'invalidIdentity', wrapperTerminal: 'exit42', stderrClass: 'other',
+    wrapperClosed: false, stderrEnded: true, stderrFailed: false, responseEnded: true,
+    responseBytes: 'present', spawnClass: 'none', toolAbsence: 'notProven', readyAccepted: true,
+    goAttempted: true, emergencyUsed: true, readyBudgetExpired: true, classificationAttempted: true,
+    initDiagnostic: 'valid', initPhase: 'statusValidation', initCause: 'statusCapabilities',
+  });
+  const line = JSON.stringify(captured);
+  snapshot.wrapper.closed = true;
+  snapshot.replies.ended = false;
+  snapshot.stderr = 'PRIVATE';
+  snapshot.bootstrapCause = 'bootstrapUnknown';
+  assert.equal(JSON.stringify(captured), line);
+  assert.doesNotMatch(line, /PRIVATE|private|pid|path|env|status"|error"|stderr"|wrapper"|replies"/u);
+  assert.equal(validateBootstrapDiagnostic(captured, isDiagnosticReason), true);
+  assert.equal(captured.goAttempted, true);
+});
+
+test('bootstrap snapshot records every terminal class without inferring init execution or acceptance', () => {
+  const pending = { exited: false, closed: false, spawnCode: null, code: null, signal: null };
+  const cases = [[null, 'notObserved'], [pending, 'notObserved'],
+    [{ ...pending, code: 42 }, 'notObserved'],
+    [{ ...pending, spawnCode: 'ENOENT' }, 'spawnFailed'],
+    [{ ...pending, spawnCode: 'EACCES', closed: true }, 'spawnFailed'],
+    [{ ...pending, exited: true, signal: 'SIGKILL' }, 'signaled'],
+    [{ ...pending, closed: true, signal: 'SIGTERM', code: 0 }, 'signaled']];
+  for (const [code, expected] of [[0, 'exit0'], [1, 'exit1'], [41, 'exit41'], [42, 'exit42'],
+    [7, 'otherExit'], [-1, 'otherExit'], [null, 'otherExit']]) {
+    cases.push([{ ...pending, exited: true, code }, expected], [{ ...pending, closed: true, code }, expected]);
+  }
+  for (const [wrapper, expected] of cases) {
+    const captured = captureBootstrapDiagnostic(diagnosticSnapshot({ wrapper }));
+    assert.equal(captured.wrapperTerminal, expected);
+    assert.equal(captured.wrapperClosed, wrapper?.closed === true);
+    assert.equal(captured.initDiagnostic, 'absent');
+    assert.equal(captured.bootstrapCause, 'bootstrapUnknown');
+    assert.equal(validateBootstrapDiagnostic(captured, isDiagnosticReason), true);
+  }
+});
+
+test('bootstrap snapshot captures exact stderr, spawn and stream classes without reclassification', () => {
+  const denial = 'unshare: unshare failed: Operation not permitted\n';
+  for (const [stderr, stderrFailed, stderrClass, initDiagnostic] of [
+    ['', false, 'empty', 'absent'], [denial, false, 'exactUnshareDenied', 'absent'],
+    [`${denial}PRIVATE`, false, 'other', 'absent'], [diagnosticMarker, false, 'other', 'valid'],
+    [`${denial}${diagnosticMarker}`, false, 'other', 'invalid'],
+    [diagnosticMarker, true, 'unreadableOrOverLimit', 'unavailable'],
+    ['', true, 'unreadableOrOverLimit', 'unavailable'],
+    [null, false, 'unreadableOrOverLimit', 'unavailable'],
+  ]) {
+    const captured = captureBootstrapDiagnostic(diagnosticSnapshot({ stderr, stderrFailed }));
+    assert.equal(captured.stderrClass, stderrClass);
+    assert.equal(captured.initDiagnostic, initDiagnostic);
+    assert.equal(captured.stderrFailed, stderrFailed);
+    assert.equal(captured.stderrEnded, false);
+    assert.equal(captured.bootstrapCause, 'bootstrapUnknown');
+    assert.equal(validateBootstrapDiagnostic(captured, isDiagnosticReason), true);
+  }
+  for (const [spawnCode, spawnClass] of [[null, 'none'], ['ENOENT', 'enoent'], ['PRIVATE', 'other']]) {
+    const captured = captureBootstrapDiagnostic(diagnosticSnapshot({ wrapper: { spawnCode } }));
+    assert.equal(captured.spawnClass, spawnClass);
+    assert.doesNotMatch(JSON.stringify(captured), /PRIVATE/u);
+  }
+  for (const replies of [null, { ended: false, receivedBytes: 0 }, { ended: true, receivedBytes: 1 }]) {
+    const captured = captureBootstrapDiagnostic(diagnosticSnapshot({ replies }));
+    assert.equal(captured.responseEnded, replies?.ended === true);
+    assert.equal(captured.responseBytes, replies?.receivedBytes > 0 ? 'present' : 'none');
+  }
+  for (const toolAbsence of diagnosticChoices.toolAbsence) {
+    assert.equal(captureBootstrapDiagnostic(diagnosticSnapshot({ toolAbsence })).toolAbsence, toolAbsence);
+  }
+});
+
+test('diagnostic validator accepts only exact plain data objects and never invokes accessors', () => {
+  const valid = captureBootstrapDiagnostic(diagnosticSnapshot());
+  let accessorCalls = 0;
+  assert.equal(validateBootstrapDiagnostic(valid, isDiagnosticReason), true);
+  assert.equal(validateBootstrapDiagnostic(Object.freeze({ ...valid }), isDiagnosticReason), true);
+  assert.equal(validateBootstrapDiagnostic(Object.assign(Object.create(null), valid), isDiagnosticReason), true);
+  const invalid = [null, undefined, true, 1, 'PRIVATE', [], Object.create(valid),
+    { ...valid, raw: 'PRIVATE' }, { ...valid, [Symbol('PRIVATE')]: true },
+    Object.assign(new (class Diagnostic {})(), valid)];
+  for (const key of Object.keys(valid)) {
+    const missing = { ...valid };
+    delete missing[key];
+    invalid.push(missing);
+    invalid.push(Object.defineProperty({ ...valid }, key, { enumerable: false }));
+    invalid.push(Object.defineProperty({ ...valid }, key, {
+      get() { accessorCalls += 1; throw Error('ACCESSOR_EXECUTED'); }, enumerable: true,
+    }));
+    invalid.push(Object.defineProperty({ ...valid }, key, { set() {}, enumerable: true }));
+  }
+  invalid.push(Object.defineProperty({ ...valid }, 'extra', { value: 'PRIVATE', enumerable: false }));
+  let predicateCalls = 0;
+  for (const value of invalid) {
+    assert.equal(validateBootstrapDiagnostic(value, () => { predicateCalls += 1; return true; }), false);
+    assert.equal(validateBootstrapDiagnostic(value, isDiagnosticReason), false);
+  }
+  assert.equal(accessorCalls, 0);
+  assert.equal(predicateCalls, 0);
+  const revoked = Proxy.revocable({}, {});
+  revoked.revoke();
+  assert.equal(validateBootstrapDiagnostic(revoked.proxy, isDiagnosticReason), false);
+});
+
+test('diagnostic validator closes enums, booleans, reason predicate and phase/cause state pairing', () => {
+  const valid = captureBootstrapDiagnostic(diagnosticSnapshot());
+  for (const key of diagnosticFlags) {
+    assert.equal(validateBootstrapDiagnostic({ ...valid, [key]: true }, isDiagnosticReason), true);
+    for (const value of [0, 1, 'false', null, undefined, {}, []]) {
+      assert.equal(validateBootstrapDiagnostic({ ...valid, [key]: value }, isDiagnosticReason), false);
+    }
+  }
+  for (const [key, values] of Object.entries(diagnosticChoices)) {
+    for (const value of values) {
+      const fields = key === 'initDiagnostic' && value === 'valid'
+        ? { initPhase: 'context', initCause: 'invalidContext' } : {};
+      assert.equal(validateBootstrapDiagnostic({ ...valid, [key]: value, ...fields }, isDiagnosticReason), true);
+    }
+    for (const value of ['PRIVATE', '', null, undefined, 0, true, {}, []]) {
+      assert.equal(validateBootstrapDiagnostic({ ...valid, [key]: value }, isDiagnosticReason), false);
+    }
+  }
+  for (const bootstrapCause of [null, undefined, 1, false, {}, [], 'PRIVATE']) {
+    assert.equal(validateBootstrapDiagnostic({ ...valid, bootstrapCause }, isDiagnosticReason), false);
+  }
+  for (const isReason of [undefined, null, {}, () => false, () => 'true', () => 1,
+    () => { throw Error('PRIVATE'); }]) assert.equal(validateBootstrapDiagnostic(valid, isReason), false);
+  for (const phase of diagnosticPhases) {
+    for (const cause of diagnosticCauses) {
+      const marker = { initDiagnostic: 'valid', initPhase: phase, initCause: cause };
+      assert.equal(validateBootstrapDiagnostic({ ...valid, ...marker }, isDiagnosticReason), true);
+    }
+  }
+  for (const initDiagnostic of diagnosticChoices.initDiagnostic) {
+    for (const fields of [{ initPhase: 'context' }, { initCause: 'invalidContext' },
+      { initPhase: 'PRIVATE', initCause: 'PRIVATE' }, { initPhase: {}, initCause: [] }]) {
+      assert.equal(validateBootstrapDiagnostic({ ...valid, initDiagnostic, ...fields }, isDiagnosticReason), false);
+    }
+  }
+  assert.equal(validateBootstrapDiagnostic({ ...valid, initDiagnostic: 'valid' }, isDiagnosticReason), false);
+});
+
+test('version-two results strictly validate diagnostics without reinterpreting version one or changing the result cap', () => {
+  const diagnostic = captureBootstrapDiagnostic(diagnosticSnapshot({ stderr: diagnosticMarker }));
+  const facts = { reason: 'bootstrapUnknown', launched: true, rootCreated: true, sentinel: true };
+  const result = resultFor(binding, { ...facts, bootstrapDiagnostic: diagnostic });
+  assert.equal(resultSchemaVersion, 2);
+  assert.equal(result.schemaVersion, resultSchemaVersion);
+  assert.equal(limits.result, 4096);
+  const line = serializeResult(result, binding);
+  assert.ok(Buffer.byteLength(line) <= limits.result);
+  assert.deepEqual(JSON.parse(line).bootstrapDiagnostic, diagnostic);
+  const withoutDiagnostic = resultFor(binding, facts);
+  assert.equal(withoutDiagnostic.bootstrapDiagnostic, null);
+  serializeResult(withoutDiagnostic, binding);
+  const old = { ...withoutDiagnostic, schemaVersion: 1 };
+  delete old.bootstrapDiagnostic;
+  assert.throws(() => serializeResult(old, binding), { reason: 'reportFailed' });
+  assert.throws(() => serializeResult({ ...result, schemaVersion: 1 }, binding), { reason: 'reportFailed' });
+  assert.throws(() => serializeResult({ ...old, schemaVersion: resultSchemaVersion }, binding), { reason: 'reportFailed' });
+  for (const bootstrapDiagnostic of [undefined, [], 'PRIVATE', 1,
+    { ...diagnostic, raw: 'PRIVATE' }, { ...diagnostic, bootstrapCause: 'PRIVATE' },
+    { ...diagnostic, initCause: 'PRIVATE' }, { ...diagnostic, initDiagnostic: 'absent' },
+    { ...diagnostic, goAttempted: 1 }, { ...diagnostic, [Symbol('extra')]: true }]) {
+    assert.throws(() => serializeResult({ ...result, bootstrapDiagnostic }, binding), { reason: 'reportFailed' });
+  }
+  let accessorCalls = 0;
+  const accessor = Object.defineProperty({ ...diagnostic }, 'initPhase', {
+    get() { accessorCalls += 1; return 'statusValidation'; }, enumerable: true,
+  });
+  assert.throws(() => serializeResult({ ...result, bootstrapDiagnostic: accessor }, binding), { reason: 'reportFailed' });
+  const outerAccessor = Object.defineProperty({ ...result }, 'bootstrapDiagnostic', {
+    get() { accessorCalls += 1; return diagnostic; }, enumerable: true,
+  });
+  assert.throws(() => serializeResult(outerAccessor, binding), { reason: 'reportFailed' });
+  assert.equal(accessorCalls, 0);
+});
+
+test('diagnostics never authorize acceptance, prerequisite absence or cleanup', () => {
+  const bootstrapDiagnostic = captureBootstrapDiagnostic(diagnosticSnapshot({
+    wrapper: { exited: true, closed: true, spawnCode: null, code: 41, signal: null },
+    stderrEnded: true, replies: { ended: true, receivedBytes: 0 },
+    toolAbsence: 'provenAbsent', readyAccepted: true, goAttempted: true, classificationAttempted: true,
+  }));
+  const facts = { reason: 'bootstrapUnknown', launched: true, rootCreated: true, sentinel: true };
+  const failed = resultFor(binding, { ...facts, bootstrapDiagnostic });
+  assert.deepEqual({ ...failed, bootstrapDiagnostic: null }, resultFor(binding, facts));
+  assert.equal(failed.observation, 'failed');
+  assert.equal(failed.cleanupOutcome, 'unverified');
+  assert.equal(failed.evidenceOutcome, 'incomplete');
+  serializeResult(failed, binding);
+  assert.throws(() => serializeResult({ ...failed, observation: 'observed', reason: 'observed',
+    evidenceOutcome: 'complete' }, binding), { reason: 'reportFailed' });
+  assert.throws(() => serializeResult({ ...failed, observation: 'prerequisiteUnavailable',
+    evidenceOutcome: 'complete' }, binding), { reason: 'reportFailed' });
+  const successful = resultFor(binding, { reason: 'observed', workload: true, destroyed: true,
+    sentinel: true, go: true, launched: true, rootCreated: true, removed: true, bootstrapDiagnostic });
+  for (const change of [{ workloadOutcome: 'failed' }, { cleanupOutcome: 'unverified' },
+    { sentinelOutcome: 'unverified' }, { evidenceOutcome: 'incomplete' }, { testRoot: 'retained' }]) {
+    assert.throws(() => serializeResult({ ...successful, ...change }, binding), { reason: 'reportFailed' });
+  }
+  const denial = { spawnCode: null, code: 1, signal: null, ready: false, go: false,
+    streamsClosed: true, responseBytes: 0, toolAbsent: false,
+    stderr: 'unshare: unshare failed: Operation not permitted\n' };
+  for (const stderr of [diagnosticMarker, `${denial.stderr}${diagnosticMarker}`]) {
+    const snapshot = diagnosticSnapshot({ stderr });
+    captureBootstrapDiagnostic(snapshot);
+    assert.equal(snapshot.stderr, stderr);
+    assert.equal(classifyBootstrap({ ...denial, stderr }), 'bootstrapUnknown');
+  }
 });

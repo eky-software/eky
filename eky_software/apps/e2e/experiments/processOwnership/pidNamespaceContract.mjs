@@ -1,4 +1,5 @@
 import { parseProbeContext, validEvidenceBinding } from './linuxPrerequisiteContract.mjs';
+import { validateBootstrapDiagnostic } from './pidNamespaceDiagnostics.mjs';
 
 export const budgets = Object.freeze({
   ready: 5000, workload: 8000, init: 10000, leaf: 12000,
@@ -7,6 +8,7 @@ export const budgets = Object.freeze({
 export const limits = Object.freeze({ frame: 512, channel: 4096, status: 16384, result: 4096 });
 export const expectedEofExit = 41;
 export const failureExit = 42;
+export const resultSchemaVersion = 2;
 export const unshareArguments = Object.freeze([
   '--user', '--map-current-user', '--setgroups=deny', '--mount',
   '--propagation=private', '--mount-proc=/proc', '--pid', '--fork',
@@ -119,20 +121,26 @@ export function validateIdentity({ uid, euid, gid, egid }, expected) {
 }
 
 export function validateInitStatus(text, expected) {
-  requireCondition(typeof text === 'string' && Buffer.byteLength(text) < limits.status &&
-    !/[\0\r\uFFFD]/u.test(text), 'invalidStatus');
+  const requireStatus = (condition, reason, cause) => {
+    if (condition) return;
+    const error = new NamespaceFailure(reason);
+    error.initCause = cause;
+    throw error;
+  };
+  requireStatus(typeof text === 'string' && Buffer.byteLength(text) < limits.status &&
+    !/[\0\r\uFFFD]/u.test(text), 'invalidStatus', 'statusMalformed');
   const field = name => {
     const lines = text.split('\n').filter(line => line.startsWith(`${name}:`));
-    requireCondition(lines.length === 1, 'invalidStatus');
+    requireStatus(lines.length === 1, 'invalidStatus', 'statusMalformed');
     return lines[0].slice(name.length + 1).trim();
   };
-  requireCondition(field('Pid') === '1', 'invalidIdentity');
+  requireStatus(field('Pid') === '1', 'invalidIdentity', 'statusPidMismatch');
   for (const [name, value] of [['Uid', expected.uid], ['Gid', expected.gid]]) {
     const ids = field(name).split(/\s+/u);
-    requireCondition(ids.length === 4 && ids.every(id => id === String(value)), 'invalidIdentity');
+    requireStatus(ids.length === 4 && ids.every(id => id === String(value)), 'invalidIdentity', 'statusIdentityMismatch');
   }
   for (const name of ['CapEff', 'CapPrm', 'CapInh', 'CapAmb']) {
-    requireCondition(/^0{16}$/u.test(field(name)), 'invalidIdentity');
+    requireStatus(/^0{16}$/u.test(field(name)), 'invalidIdentity', 'statusCapabilities');
   }
 }
 
@@ -318,7 +326,7 @@ export function classifyBootstrap({ spawnCode, code, signal, stderr, ready, go, 
 
 const resultFields = ['schemaVersion', 'evidence', 'consumer', 'checkoutSha', 'runId', 'runAttempt',
   'observation', 'reason', 'workloadOutcome', 'cleanupOutcome', 'evidenceOutcome',
-  'sentinelOutcome', 'testRoot'];
+  'sentinelOutcome', 'testRoot', 'bootstrapDiagnostic'];
 
 export function resultFor(binding, facts) {
   const bound = validEvidenceBinding(binding);
@@ -326,7 +334,7 @@ export function resultFor(binding, facts) {
   const success = reason === 'observed' && facts.workload && facts.destroyed && facts.sentinel;
   const absent = ['unshareMissing', 'namespaceDenied'].includes(reason) && !facts.go && facts.wrapperClosed && facts.sentinel;
   return {
-    schemaVersion: 1, evidence: 'boundedPidNamespaceOnly',
+    schemaVersion: resultSchemaVersion, evidence: 'boundedPidNamespaceOnly',
     consumer: bound ? binding.consumer : null, checkoutSha: bound ? binding.checkoutSha : null,
     runId: bound ? binding.runId : null, runAttempt: bound ? binding.runAttempt : null,
     observation: success ? 'observed' : absent ? 'prerequisiteUnavailable' : 'failed',
@@ -336,6 +344,7 @@ export function resultFor(binding, facts) {
     evidenceOutcome: success || absent ? 'complete' : 'incomplete',
     sentinelOutcome: facts.sentinel ? 'preserved' : facts.sentinelStarted ? 'unverified' : 'notStarted',
     testRoot: facts.removed ? 'removed' : facts.removalStarted ? 'removalUnverified' : facts.rootCreated ? 'retained' : 'notCreated',
+    bootstrapDiagnostic: facts.bootstrapDiagnostic ?? null,
   };
 }
 
@@ -346,8 +355,10 @@ export function serializeResult(value, binding) {
   for (const key of ['consumer', 'checkoutSha', 'runId', 'runAttempt']) {
     requireCondition(value[key] === (bound ? binding[key] : null), 'reportFailed');
   }
-  requireCondition(value.schemaVersion === 1 && value.evidence === 'boundedPidNamespaceOnly' &&
+  requireCondition(value.schemaVersion === resultSchemaVersion && value.evidence === 'boundedPidNamespaceOnly' &&
     reasons.includes(value.reason), 'reportFailed');
+  requireCondition(value.bootstrapDiagnostic === null ||
+    validateBootstrapDiagnostic(value.bootstrapDiagnostic, reason => reasons.includes(reason)), 'reportFailed');
   const enums = { observation: ['observed', 'prerequisiteUnavailable', 'failed'],
     workloadOutcome: ['observed', 'failed', 'notStarted'], cleanupOutcome: ['namespaceDestroyed', 'unverified', 'notStarted'],
     evidenceOutcome: ['complete', 'incomplete'], sentinelOutcome: ['preserved', 'unverified', 'notStarted'],
