@@ -120,8 +120,14 @@ ominaisuuksia. Pelkkä diagnostiikka tai vihreä Electron-osajoukko ei täytä s
    koko ajo päättyi hylätyksi, mutta muut testiryhmät läpäisivät.
    [T3c-LS:n suljetun stderr-luokan tarkennus](e2e-test-environment.md#t3c-ls-suljetun-stderr-luokan-tarkennuksen-päätösehdotus)
    on hyväksytty 2026-09-26. Toteutus, testit, lukuketju ja riippumaton
-   katselmus läpäisivät; seuraavana on yksi uusi seurattu CI-kierros. Alusta ja
-   hyväksyntäehdot eivät muutu.
+   katselmus läpäisivät. [Yhden uuden CI-kierroksen Linux-havainto](e2e-test-environment.md#t3c-lsn-rajatun-ci-kokeen-havainto)
+   tunnisti molemmissa kuluttajissa `uid_map`-kirjoituseston ennen READYä ja
+   GO:ta. Taustapolitiikan syy on avoin; alkuperäinen hylkäys säilyy.
+   Kokonaisajo päättyi hylätyksi vain näiden kokeiden ja aggregaatin vuoksi;
+   muut testiryhmät ja riippuvuustarkistus läpäisivät. Seuraava päätös koskee
+   [alusta- ja oikeussopimusta](e2e-test-environment.md#t3c-lsn-jälkeinen-alusta--ja-oikeuspäätös),
+   ei uutta diagnostiikka-only-uusintaa. Alusta ja
+   hyväksyntäehdot eivät muutu ilman päätöstä.
    Valmistele vasta riittävän näytön jälkeen erillinen päätös lopullisesta
    mekanismista, session/stop-sopimuksesta ja tavallisten fixturejen siirrosta;
    neljän Windows-kokeen läpäisy ei itsessään hyväksy niitä.

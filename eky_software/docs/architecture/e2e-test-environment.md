@@ -1663,7 +1663,8 @@ PR/main-integraatiota ei ole tehty.
 
 **Omistaja hyväksyi T3c-LS:n 2026-09-26. Toteutus, kohdetestit ja
 riippumaton lähde- ja lukuketjukatselmus ovat valmiit.
-Seuraavana on yksi uusi seurattu CI-kierros.**
+Yksi uusi seurattu CI-kierros on päättynyt. Molempien Linux-kokeiden
+tarkempi virheluokka on varmennettu; kokonaisajo pysyy hylättynä.**
 Rajattu lähdekatselmus ei löytänyt
 konkreettista virhettä, joka selittäisi CI-hylkäyksen. Seuraava ehdotus
 tarkentaa vain kokeen nykyisen `stderrClass`-kentän tuntematonta luokkaa:
@@ -1724,6 +1725,104 @@ testit ja typecheck. Uudet osumat, schema ja ajurikytkentä hylättiin ensin
 vanhalla toteutuksella ja läpäisivät tarkennuksen jälkeen. Lukuketjun
 puhtaat testit läpäisivät; schema 1/2 pysyvät erillisinä historiallisina
 aineistoina. Tämä ei vielä ole oikean Linux-kokeen tai koko T3:n hyväksyntä.
+
+##### T3c-LS:n rajatun CI-kokeen havainto
+
+Revision `93ba537b26a95cc571d06fd5ed34429ebff7d439`
+[V2-ajo 36255124661](https://github.com/eky-software/eky/actions/runs/36255124661)
+käynnistettiin kerran, yrityksenä 1. Kummankin Linux-kuluttajan todellinen
+checkout, käynnistysvalinnat, lokin tiiviste ja schema 3:n kanoninen tulos
+tarkistettiin alkuperäisistä job-lokeista. Namespace-koe oli päällä;
+vanha prerequisite-probe ja installer-inspector olivat pois päältä.
+
+| Kuluttaja | Tavallinen testisarja | Rajatun kokeen havainto |
+| --- | --- | --- |
+| `system-api` | 218/218, ei retryä tai flaky-tulosta. | `unshareUidMapDenied` ennen READYä ja GO:ta. |
+| `web-chromium` | 35/35, ei retryä tai flaky-tulosta. | Sama suljettu virheluokka. |
+
+Molemmissa wrapper päättyi exit 1:een, stderr päättyi virheettä ja
+vastauskanava päättyi ilman tavuja. READY-budjetti ei ylittynyt eikä
+hätäkatkaisua käytetty. Init-merkkiä ei ollut. Alkuperäinen tulos säilyi
+`bootstrapUnknown`-hylkäyksenä: työkuorma `notStarted`, cleanup `unverified`,
+näyttö `incomplete`, sentinel `preserved` ja testijuuri `retained`.
+
+Uusi luokka osoittaa täsmällisen, kokonaisesta viestistä tunnistetun
+`/proc/self/uid_map`-kirjoituseston. Se yhdistää kaksi errno-tekstiä eikä
+erota niitä toisistaan. Se ei yksilöi taustalla olevaa oikeus- tai
+turvallisuuspolitiikkaa, todista omistajuutta/purkua tai selitä aiempien
+revisioiden tuntematonta stderr-sisältöä jälkikäteen. `namespaceDenied`-
+hyväksyntäluokkaa ei laajennettu eikä hylkäystä muutettu ohitukseksi.
+
+Saman revision [riippuvuustarkistus 36255141048](https://github.com/eky-software/eky/actions/runs/36255141048)
+läpäisi; lähde-/lokisidonta, pakolliset auditoinnit ja 160
+rekisteriallekirjoituksen tarkistus varmennettiin. V2-kokonaisajo päättyi:
+35 onnistunutta jobia, kolme hylkäystä ja yksi ennalta valinnainen ohitus.
+Hylkäykset ovat kaksi Linux-koetta ja `V2 acceptance`
+(`workflowNotSuccessful`). Muut ryhmät läpäisivät, myös Electron 38/38
+ilman retryä tai flaky-tulosta sekä nykyiset packaged-, päivitys-, legacy-
+ja palautumiskokeet.
+
+Kaikkien 38 suoritetun V2-jobin ja riippuvuustarkistuksen alkuperäiset lokit,
+tiivisteet, checkoutit ja ajosidonnat varmennettiin myös pääagentin erillisellä
+takaisinluvulla. Hylkäyskirjaus on nimenomaisesti `accepted: false`;
+muuttumaton normaalin baselinen tarkistin hylkäsi ajon odotetusti.
+Tämä päättää LS:n rajatun diagnostiikkakierroksen, ei hyväksy revisiota,
+namespace-omistajuutta, T3/R28:aa tai PR/main-integraatiota. Uusinta-ajoa
+ei aloitettu eikä aikaisempia tuloksia muutettu.
+
+Seuraava työ on rajattu alusta- ja oikeussopimuksen päätösvalmistelu,
+ei uusi diagnostinen uusinta-ajo. Nykyinen identiteettisopimus tarvitsee
+tunnistemäppäyksen säilyttääkseen muuttumattomat ei-nollaiset UID/GID-arvot.
+Mäppäyksen poistaminen ei poista proc-mountin erillistä oikeusvaatimusta;
+pelkkää `--map-current-user`-valinnan poistamista ei tulkita korjaukseksi.
+Mahdollinen ympäristö- tai oikeusmuutos, uusi mekanismi, koe ja fixture-siirto
+tarvitsevat omat päätöksensä. Nykyinen sovellus, testiaikarajat, CI-vaatimukset
+ja hostin suojausasetukset säilyvät.
+
+##### T3c-LS:n jälkeinen alusta- ja oikeuspäätös
+
+**Päätösvalmistelu, ei toteutus- tai uusinta-ajolupa.** Riippumaton
+lähdekatselmus ei löytänyt nykyisestä komennosta todistettua korjattavaa
+argumenttivirhettä. [Linuxin tunnistemäppäyksen sopimus](https://man7.org/linux/man-pages/man7/user_namespaces.7.html)
+edellyttää kelvollista mäppäystä; sen poistaminen ei säilytä nykyistä
+identiteettisopimusta eikä poista proc-mountin oikeusvaatimusta.
+
+[Ubuntun julkaisutiedot](https://discourse.ubuntu.com/t/ubuntu-24-04-lts-noble-numbat-release-notes/39890)
+kuvaavat oletusprofiilin, joka sallii user-namespacen luonnin mutta rajoittaa
+myöhempää capability-käyttöä. Tämä on havaintoon sopiva **hypoteesi**, ei
+kyseisen CI-ajon aktiivisen politiikan tai virheen juurisyyn todiste.
+
+Yleistä lupaa `unshare`- tai Node-ohjelmalle ei ehdoteta koekohtaisena
+poikkeuksena. [AppArmorin profiilirajaus](https://www.apparmor.net/man/4.0/apparmor.d/)
+ei yksin sido yleiskäyttöisen ohjelman käynnistystä hyväksyttyihin
+koeargumentteihin. Erillinen polku, sama UID tai väliaikainen profiilinimi
+eivät yksin muodosta tällaista valtuusrajaa. Luotetun käynnistyspisteen ja
+suljettujen profiilisiirtymien rakentaminen olisi uusi turvallisuusratkaisu,
+ei LS:n diagnostiikkakorjaus.
+
+Suositeltu valmistelusuunta on hallittu, kertakäyttöinen Linux-testisessio:
+
+- Nimeä todellinen palvelunhallinta, CI-ympäristö ja reaper-vastuu ennen
+  toteutuspäätöstä. Nykyinen aineisto ei todista valmiin delegoinnin saatavuutta.
+- Rajaa luonti-/stop-/wait-valtuus session luotetulle omistajalle. Työkuorma
+  ei saa yleistä hallintaoikeutta tai oikeutta poistua omistetusta ryhmästä.
+  [Systemd-delegointi](https://systemd.io/CGROUP_DELEGATION/) on arvioitava
+  vaihtoehto, ei tässä hyväksytty mekanismi tai oletus sen saatavuudesta.
+- Vaatimukset ovat jäsenyys ennen ensimmäistä työkuorman suoritusta,
+  ulkopuolinen sentinel, ajurin/omistajan katoamisen käsittely ja erillinen
+  reaping-todiste. [Cgroup v2:n](https://docs.kernel.org/admin-guide/cgroup-v2.html)
+  `cgroup.kill` tai `populated=0` ei yksin todista kaikkea tätä.
+- Suojaa puhtailla sopimuksilla ja rajatuilla oikeaprosessikokeilla
+  root-first, myöhäinen fork, TERM-vastustus, poistumisyritys ja owner-loss.
+  Myös nykyinen Chromium-polku jälkeläisineen ja sandbox-vaatimuksineen
+  tarvitsee todellisen näytön ennen tavallisten fixturejen siirtoa.
+
+Omistajalta on pyydetty suunnittelun reunaehto: saako erillisen CI-session
+hallintaan ehdottaa rajattuja uusia valtuuksia vai vaaditaanko ratkaisu
+kokonaan ilman niitä. Kumpikaan vastaus ei vielä hyväksy toteutusta,
+palvelun/profiilin asentamista, uutta riippuvuutta, suojausten poistamista,
+runner-vaihtoa tai uutta CI-koetta. Lopulliset Windows-/Linux-mekanismit ja
+T3-matriisi säilyvät omissa hyväksyntäporteissaan.
 
 #### T3:n lopullinen hyväksyntänäyttö
 

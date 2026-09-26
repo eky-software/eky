@@ -32,7 +32,12 @@ init-merkki puuttui ja stderr jäi tuntemattomaan luokkaan. Koko ajo päättyi
 hylätyksi, vaikka muut testiryhmät ja riippuvuustarkistus läpäisivät.
 Juurisyy on avoin; [T3c-LS](e2e-test-environment.md#t3c-ls-suljetun-stderr-luokan-tarkennuksen-päätösehdotus)
 on hyväksytty rajattu lisähavainto, jonka toteutus, testit ja riippumaton
-katselmus läpäisivät. Yksi uusi seurattu CI-kierros on seuraava vaihe.
+katselmus läpäisivät. [Uuden CI-kierroksen molemmat Linux-tulokset](e2e-test-environment.md#t3c-lsn-rajatun-ci-kokeen-havainto)
+paikantavat virheen `uid_map`-kirjoitusestoon ennen READYä/GO:ta. Estävä
+taustapolitiikka on avoin. Kokonaisajo päättyi hylätyksi vain kahden
+Linux-kokeen ja aggregaatin vuoksi; muut testiryhmät ja riippuvuustarkistus
+läpäisivät. Seuraava askel on [alusta- ja oikeuspäätös](e2e-test-environment.md#t3c-lsn-jälkeinen-alusta--ja-oikeuspäätös),
+ei automaattinen uusinta-ajo.
 Lopullinen mekanismivalinta ja
 fixture-siirto vaativat erillisen hyväksynnän; tämä ei ole koko T3:n tai
 PR/main-integraation hyväksyntä. Ajurin root-first-odotusjärjestysvirhe on

@@ -128,8 +128,12 @@ Tarkka syy ja T3-hyväksyntä jäävät avoimiksi. Seuraava
 [T3c-LS-ehdotus](e2e-test-environment.md#t3c-ls-suljetun-stderr-luokan-tarkennuksen-päätösehdotus)
 on hyväksytty 2026-09-26. Tarkennuksen kohdesarja 97/97 ja CI-sopimukset
 199/199 läpäisivät; ajurin alkuperäinen hylkäys, GO-esto, cleanup ja juuren
-säilytys eivät muutu. Oikea CI-koe on vielä ajamatta; tämä ei lisää
-lopullisen prosessiomistajuuden hyväksyntää.
+säilytys eivät muutu. [Oikean CI-kokeen molemmat Linux-tulokset](e2e-test-environment.md#t3c-lsn-rajatun-ci-kokeen-havainto)
+tunnistivat `unshareUidMapDenied`-luokan ennen READYä ja GO:ta. Tavalliset
+218 system- ja 35 web-testiä sekä Electron 38/38 läpäisivät ilman retryä tai
+flaky-tulosta. Kokonaisajo päättyi hylätyksi vain Linux-kokeiden ja
+aggregaatin vuoksi; muut ryhmät läpäisivät. Ei lopullisen prosessiomistajuuden
+hyväksyntää, estävän taustapolitiikan todistetta tai uusintalupaa.
 
 | Valmistelun näyttö | Taso ja rajaus | Tila |
 | --- | --- | --- |
@@ -152,7 +156,7 @@ erottaa nämä tulokset vanhoista hylkäyksistä, kohdetesteistä ja CI-porteist
 | TEST-T3CW-BEFORE-READY-001 | Rajattu Windows-oikeaprosessikoe: root exit 29 ja elävä Electronin luoma leaf ennen stopia; ei readyä tai timeout-launch-hylkäystä; erillinen drain-kuitti ja ei bridge-failurea. Bridge-exit ei ole suoraan havaittu. | Rajattu koe läpäisty; intended exit ei korvaa actual exit -havaintoa tai siivousterminalia. |
 | TEST-T3CW-ROOT-FIRST-001 | Rajattu Windows-oikeaprosessikoe: root exit 0 ja ei-tyhjä Job ennen omistajan tree-stopia; vasta sitten todellinen bridge-close 0. | Rajattu koe läpäisty; ajurin odotusjärjestyskorjaus suojattu sopimustesteillä. Aiemman perityn tulostekahvan kirjoittajan identiteettiä ei väitetä todistetuksi. |
 | TEST-T3CW-BRIDGE-EXIT-001 | Rajattu Windows-oikeaprosessikoe: tarkoituksellinen bridge-close 41; runtime ja omistaja yhä elossa, kontrolli käytössä ja omistajan siivous todennettu. | Rajattu koe läpäisty odotettuna työkuormavirheenä, ei onnistuneena työkuormana. |
-| TEST-T3CL-NAMESPACE-001 | Ehdollinen Linux-CI-koe: namespace-esiehdot, root-exitin jälkeinen tuore leaf-kuittaus, initin odotettu EOF, normaali wrapper-wait ja ulkopuolinen sentinel. | Ensimmäisen CI-ajon molemmat kokeet hylätty: `bootstrapUnknown`, ennen GO:ta; sentinel säilyi, cleanup varmistamatta. [Hylkäyskirjaus](e2e-test-environment.md#t3c-ln-ensimmäisen-ci-kokeen-hylkäys). Ei namespace-tuen tai puuttuvan edellytyksen todistetta. |
+| TEST-T3CL-NAMESPACE-001 | Ehdollinen Linux-CI-koe: namespace-esiehdot, root-exitin jälkeinen tuore leaf-kuittaus, initin odotettu EOF, normaali wrapper-wait ja ulkopuolinen sentinel. | Ensimmäiset hylkäykset säilyvät. [LS-kierroksen molemmat Linux-kokeet](e2e-test-environment.md#t3c-lsn-rajatun-ci-kokeen-havainto) tunnistivat `unshareUidMapDenied`-luokan; `bootstrapUnknown` ennen READYä/GO:ta, sentinel säilyi, cleanup varmistamatta. Ei namespace-tuen tai puuttuvan edellytyksen hyväksyntätodistetta. |
 
 Alla olevat lopullisen T3:n rivit säilyvät erillisinä päätös- ja
 hyväksyntäportteina. T3c-W:n ensimmäisen ennen launchia tapahtuneen

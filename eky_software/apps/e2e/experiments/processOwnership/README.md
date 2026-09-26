@@ -270,7 +270,12 @@ The [LD CI result](../../../../docs/architecture/e2e-test-environment.md#t3c-ldn
 remains failed before READY in both consumers; all other test groups passed.
 The [LS follow-up proposal](../../../../docs/architecture/e2e-test-environment.md#t3c-ls-suljetun-stderr-luokan-tarkennuksen-päätösehdotus)
 was approved on 2026-09-26. Its exact-message diagnostic table and schema 3
-passed regression tests and independent source/reader review; one new observed
-CI cycle is next. The table applies only before READY and GO, after wrapper
+passed regression tests and independent source/reader review. Both Linux
+consumers in the [single new CI cycle](../../../../docs/architecture/e2e-test-environment.md#t3c-lsn-rajatun-ci-kokeen-havainto)
+reported `unshareUidMapDenied` before READY/GO. The complete cycle finished
+failed only in these two experiments and their aggregate; other test groups
+and the dependency check passed. This identifies the whole-message class, not the underlying
+policy cause, ownership support, or earlier runs' unknown stderr.
+The table applies only before READY and GO, after wrapper
 close and stderr end without read/size failure. It never changes acceptance.
 Schemas 1/2 remain historical evidence; do not reinterpret earlier results.
