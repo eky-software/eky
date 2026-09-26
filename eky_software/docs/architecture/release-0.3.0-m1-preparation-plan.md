@@ -1,5 +1,24 @@
 # 0.3.0 M1 -valmistelu
 
+## Jatka tästä
+
+**2026-09-26: T1/T2 hyväksytty, T3/R28 kesken; ei uutta rinnakkaista remonttia.**
+Modulaarinen monoliitti ja hyväksytty M1-rajaus säilyvät.
+
+| Kohta | Nykyinen lähtötieto |
+| --- | --- |
+| Lukijacheckpointin lähtörevisio | `10dc200b26b0204286b649cb36ea24b1a49bd4fa`: rajatun Linux-session puhtaat sopimukset ja injektoitu kontrolli-/init-kytkentä. Tämä ei ole hyväksytty CI- tai main-baseline. Tarkista jatkettava HEAD Gitistä. |
+| Viimeisin koko CI:n hyväksytty lähtötila | `a1df082c`; sen jälkeen `93ba537b`:n tavalliset testiryhmät läpäisivät, mutta erilliset Linux-kokeet ja kokonaiskoonti hylättiin. [Erilliset tulokset](e2e-test-environment.md#t3c-lsn-rajatun-ci-kokeen-havainto). |
+| Avoin puute | Pääprosessin poistuminen ei todista koko puun poistumista. Tavalliset fixturet eivät vielä käytä hyväksytysti todennettua uutta omistajuuspolkua. |
+| Viimeisin rajattu näyttö | Managerin show-only-lukija katselmoitu; 28/28 kohdetestiä, E2E 291/291 ja paketin tyypitys läpäisty. Injektoitu näyttö, ei todellinen managerikutsu. |
+| Seuraava työ | [T3c-LM](e2e-test-environment.md#t3c-lm-rajattu-ci-testisession-hallinta): todelliset esiehdot, launch-/stop-omistaja, kokonaisajuri ja suljettu kokeen tuloksen lukija ennen uutta seurattua koetta. |
+| Valmistuminen | Oikeat kuluttajat siirretty, korvattu aktiivinen toteutus poistettu vasta vastaavan kattavuuden jälkeen, T1/T2 säilyneet sekä koko T3-matriisi ja täsmällisen PR/main-revision portit läpäisty. |
+| T3:n jälkeen | Nykyisen M1:n A1:n vanhentuneet vastaukset ja muut hyväksytyt sovelluskorjaukset, sitten roadmapin 0.3.0-käyttöliittymä- ja diagnostiikkatyö. |
+
+Alla oleva koehistoria selittää päätökset, mutta ei muuta tätä nykyistä
+työjärjestystä. Tarkista Git- ja CI-tila uudelleen ennen jatkamista;
+vanha vihreä ajo tai alemman tason testimäärä ei hyväksy uutta revisiota.
+
 ## Tila ja valtuus
 
 Omistajan hyväksymä suunnittelu-Goal, valmisteltu ja katselmoitu 2026-09-24. Tämä dokumentti
@@ -56,6 +75,27 @@ Toteutus ja näyttö kirjataan omiin checkpointteihinsa, ei valmistelun läpäis
 
 Goal koskee koko T3/R28:aa ja sen PR/main-integraatiota, ei kaikkia 0.3.0:n
 ominaisuuksia. Pelkkä diagnostiikka tai vihreä Electron-osajoukko ei täytä sitä.
+
+1. Viimeistele hyväksytyn LM-kokeen puuttuva suoritus- ja lukuketju sekä
+   katselmoi se ennen yhtä seurattua CI-koetta nykyisessä kadenssissa.
+2. Todista mekanismin ja nykyisen Chromium-polun yhteensopivuus muuttamatta
+   sandboxia tai aikarajoja. Säilytä viime CI:n tavallisten testien vihreys ja
+   erillisen Linux-kokeen hylkäys erillisinä havaintoina.
+3. Siirrä oikeat system/web-/Electron-kuluttajat yhteiseen pieneen
+   omistajuussopimukseen. Moduulitesti käyttää olemassa olevaa fixtureä;
+   Job Object, Linux-mekanismi ja tulosskeemojen historia jäävät sen taakse.
+4. Todista korvaava kattavuus ja poista korvattu aktiivinen omistajuuspolku.
+   Ei pysyvää vanhan ja uuden cleanupin rinnakkaiskäyttöä tai PID-fallbackia.
+   Säilytä tarpeellinen historiallinen näyttö, ei tarpeetonta ajonaikaista koodia.
+5. Todista koko [T3:n valmistumisportti](e2e-test-environment.md#t3n-lopullinen-hyväksyntänäyttö),
+   T1/T2-suojat ja normaali PR/main-integraatio. Jatka sen jälkeen nykyisiin
+   M1-sovelluskorjauksiin, ei uuteen testialustahankkeeseen.
+
+### T3:n etenemishistoria
+
+Seuraavat revisionkohtaiset checkpointit säilytetään päätösten ja
+virhetodisteiden jäljitettävyyttä varten. Niiden suhteelliset ilmaukset
+kuten "nyt" tarkoittavat kyseisen checkpointin hetkeä.
 
 1. **Hyväksytty lähtötila:** revision
    `1953b6b05dd7bdd4aaea24b509416fafa353d1ce` normaali V2-ajo ja

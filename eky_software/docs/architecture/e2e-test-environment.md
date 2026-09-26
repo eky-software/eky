@@ -3,6 +3,11 @@
 Tämä dokumentti määrittelee Eky R0:n Playwright-pohjaisen järjestelmätestauksen
 turvarajat. E2E-runtime on testausinfrastruktuuria, ei liiketoimintamoduuli.
 
+T3:n jatkaminen: [nykyinen lähtötila, avoin puute ja seuraava työ](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Tämän dokumentin päivätyt koeraportit ovat historiallista näyttöä;
+[lopullinen valmistumisportti](#t3n-lopullinen-hyväksyntänäyttö) koskee
+myös oikeita testikuluttajia, ei vain erillistä koetta.
+
 ## Omistajuus
 
 `apps/e2e` omistaa Playwright-konfiguraation, testien prosessien elinkaaren,
@@ -1960,7 +1965,58 @@ Managerin komentojen suoritin, preflight, session kokonaisajuri, suljettu
 tulosskeema/lukuketju ja rajatun CI-kokeen kytkentä ovat seuraavat työt.
 Uutta CI-ajoa, fixture-siirtoa, PR:ää tai mergeä ei tässä checkpointissa tehty.
 
+**Kolmas checkpoint: suljettu managerihavainnon lukuketju.**
+`managedNamespaceObservation` suorittaa vain kiinteän `systemctl show`
+-kyselyn. Kutsuja ei anna komentoa, verbiä, ympäristöä tai lisäargumentteja.
+Lukija ei käynnistä/pysäytä unitia eikä myönnä GO- tai poistovaltuutta.
+Tuotantofixturet eivät vielä käytä sitä; todellista käyttöä edeltävä
+esiehtotarkistus ja session omistaja ovat edelleen tekemättä.
+
+Hyväksytty yksityinen havainto vaatii exit 0:n ilman signaalia, lapsen
+`close`-tapahtuman, molempien tulostevirtojen EOF:n, tyhjän stderrin ja
+alkuperäisen määräajan. Prosessin `exit` ei yksin sulje tulostevirtoja
+([Node ChildProcess](https://nodejs.org/api/child_process.html#event-close)).
+Stdout säilytetään alle olemassa olevan 8 192 tavun rajan, dekoodataan
+tiukasti vasta kokonaisena ja validoidaan nykyisellä unit-parserilla.
+Ensimmäinen virhe säilyy myös myöhemmän onnistuvan exitin yli.
+
+Virheen jälkeen voidaan yrittää pysäyttää vain oma, vielä poistumaton
+kyselylapsi kerran. Signaalin lähetys ei ole poistumistodiste; epäonnistunut
+tai vielä sulkeutumaton kysely näkyy erillisenä `queryCleanup=unverified`
+-tilana ilman uusintaa, PID-hakua tai kohdeunitin pysäytystä. `closed`-lupaus
+odottaa todellista kyselylapsen sulkeutumista: tuleva session omistaja odottaa
+sitä omalla alkuperäisellä aikarajallaan, ei rajattomasti. Sulkeutunut
+kysely ei todista kysellyn unitin tai prosessipuun poistumista.
+
+Kohdetestit käyttävät injektoituja prosesseja ja kelloa, eivät systemdiä tai
+sudon todellisia oikeuksia. Lukija ja sen testit on kytketty normaaliin
+E2E-sopimuskomentoon T1/T2:n regressiosuoja säilyttäen. Rajauksen
+kohdesarja läpäisi 28/28 (17 uutta lukijatestiä ja 11 nykyistä unit-sopimusta),
+E2E-paketin normaali sarja 291/291 ilman ohituksia sekä paketin tyypitys.
+Riippumaton lähdekatselmus ei löytänyt korjattavaa tässä rajauksessa.
+Koko workspacea ei toistettu tätä erillistä, tuotantoon kytkemätöntä
+lukijaa varten; edellisen checkpointin workspace-näyttö pysyy erillisenä.
+Managerin todelliset esiehdot, launch-/stop-omistaja, kokonaisajuri,
+tulosskeema/lukija ja rajattu CI-koe ovat seuraavat työt. Tämä ei sulje T3:a.
+
 #### T3:n lopullinen hyväksyntänäyttö
+
+Moduulikehittäjän rajapinta pidetään pienenä: system-testit käyttävät
+`isolatedBackendTest`-, selainpolut `isolatedWebTest`- ja Electron-polut
+`isolatedElectronTest`-fixtureä. Alustamekanismi, hallintakuitit ja niiden
+diagnostiset skeemat jäävät `apps/e2e`:n elinkaaren omistajalle, eivät uuden
+laskutus-, kohde- tai tuntikirjaustestin vastuulle. Tämä tarkentaa nykyisen
+T3:n hyväksyntää, ei perusta uutta testialustaa tai yleistä helper-kerrosta.
+
+Kuluttajasiirron katselmuksessa tarkistetaan vähintään backendin ja webin
+`startManagedProcess`/`stopManagedProcessTree`-ketju, Electronin
+`launchElectronRuntime`/`stopOwnedElectronRuntime`-ketju sekä niitä kutsuvat
+restart-, failure-, bootstrap-, handoff- ja endurance-polut. Inventaario
+varmistetaan lähteestä siirron hetkellä, ei oleteta tämän nimilistan kattavan
+myöhemmin lisättyjä kuluttajia. Korvaavan saman revision näytön jälkeen
+poistetaan korvattu aktiivinen toteutus ja sen kutsureunat. Vanhaa PID- tai
+pääprosessiin perustuvaa siivousta ei jätetä rinnakkaiseksi fallbackiksi.
+Historialliset epäonnistumistodisteet säilyvät tästä erillään.
 
 Pysyvä [testimatriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus)
 erottaa tulevat puhtaat sopimukset, oikeaprosessikokeet ja Electron-

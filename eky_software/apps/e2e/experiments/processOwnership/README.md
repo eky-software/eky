@@ -312,3 +312,20 @@ Init rechecks the original readiness deadline after filesystem validation and
 after connection, before publishing READY. No READY is queued while connecting.
 Manager integration, availability, real owner loss and Chromium compatibility
 remain unverified. No real listener or service was started by these unit tests.
+
+The third slice adds the internal show-only `managedNamespaceObservation`
+adapter. Only a complete, bounded, strictly decoded response after exit 0,
+child close and both stream EOFs may reach the existing unit parser. Stderr,
+stream errors and the original deadline fail closed; later success cannot
+erase the first error. Its `queryCleanup` concerns only the query child,
+never the observed unit or namespace. An attempted signal is not closure
+evidence. The future session owner must bound its wait for actual query closure;
+there is no retry, PID lookup, unit mutation or cleanup authority in this reader.
+Tests inject processes and clocks; no live manager command has been executed.
+Live use still requires the planned preflight and ownership integration.
+
+Use the [current continuation entry](../../../../docs/architecture/release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+for the next task. Historical experiments do not substitute for actual fixture
+migration and removal of the replaced active ownership path after equivalent
+coverage. Feature tests continue to use the common fixtures, not these
+platform-specific experiments or diagnostic schemas.

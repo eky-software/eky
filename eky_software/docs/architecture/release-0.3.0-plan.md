@@ -3,6 +3,19 @@
 ## Päätös ja nykyinen tila
 
 **Nykytila 2026-09-26: M0, T1 ja T2 hyväksytty; T3/R28 kesken.**
+Jatkamisen lähtörevisio, avoin puute, seuraava työ ja valmistumiskriteeri
+ovat [M1:n ajantasaisessa aloituskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Nykyinen eteneminen on **T3:n oikeat kuluttajat ja korvatun toteutuksen
+poisto -> M1:n rajatut sovelluskorjaukset -> integraatio ja 0.3.0**.
+Uutta testialustan tai sovellusarkkitehtuurin rinnakkaista uudistusta ei aloiteta.
+T3 ei valmistu pelkillä kokeilla tai diagnostiikalla. Uusi moduulitesti käyttää
+yhteistä fixtureä, ei rakenna omaa prosessienhallintaa.
+
+### Aiemmat checkpointit ja päätösnäyttö
+
+Alla on etenemishistoria; nykyinen seuraava työ luetaan yllä olevasta
+M1-aloituskohdasta. Vanhat hyväksynnät eivät hyväksy myöhempää revisiota.
+
 T3b-L:n probe on todennettu ja T3b-E:n Playwright-korjauksen paikalliset
 regressiot sekä rajattu Windows-CI ovat läpäisseet. Aiempi kokonaisajo
 hylättiin historiallisen 0.2.6-lähtöversion packaged smoke -vaiheessa;
