@@ -1008,14 +1008,23 @@ lisäregressiota erottaa linkin lisäämisen/poiston sisällön muuttamisesta ta
 lähdetiedoston korvaamisesta. Tämä ei salli lopullisen artifactin jakamista
 hardlinkillä lähteen kanssa. Ensimmäinen hylkäys säilyy erillisenä näyttönä;
 korjatun vertailun ja erillisen smoke-ajurin riippumaton katselmus ei
-löytänyt korjattavaa. Tuore build ja smoke ovat vielä avoinna.
+löytänyt korjattavaa.
 
 Rakenteellinen järjestystesti ei todista pnpm-deployn ajonaikaista muotoa tai
-paketoidun sovelluksen toimintaa. Uusi eristetty build, samoihin tavuihin
-sidottu sisältötarkistus ja synteettinen packaged smoke ovat edelleen avoinna;
-T3b-P:tä ei ole hyväksytty valmiiksi. Tiedostotarkistukset torjuvat testatut
-linkit ja muuttuneet identiteetit, mutta eivät lupaa atomista suojaa saman
-käyttäjän samanaikaista vihamielistä hakemistojen vaihtamista vastaan.
+paketoidun sovelluksen toimintaa. Korjatusta puhtaasta revisiosta rakennettu
+eristetty Windows-paketti läpäisi sisältöportit ja Playwrightin sekä oman
+patchin poissulun. Sama muuttumaton paketti läpäisi nykyisen kaksivaiheisen
+synteettisen backup/restore/restart-smoken. Molempien vaiheiden strict-
+supervisor-tulos vahvisti normaalin päättymisen ja tyhjän prosessipuun;
+palautetun vaiheen lopputulos oli `shutdown/ok`. Lopullisen paketin kaikki
+tiedostot olivat itsenäisiä ennen ajoa ja sen jälkeen. Testijuuri poistettiin
+vasta molempien terminal-kuittien jälkeen.
+
+Tämä täyttää T3b-P:n paikallisen build- ja smoke-näytön, ei uuden revision
+CI-, PR/main-, julkaisu- tai koko T3-porttia. Uuden revision normaali CI on
+vielä avoinna. Tiedostotarkistukset torjuvat testatut linkit ja muuttuneet
+identiteetit, mutta eivät lupaa atomista suojaa saman käyttäjän samanaikaista
+vihamielistä hakemistojen vaihtamista vastaan.
 T3c-W:n ja T3c-L:n erillisiä alustakokeita ei hyväksytä tällä päätöksellä.
 
 ##### Windowsin omistajuusrajan valinta

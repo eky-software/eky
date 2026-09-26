@@ -14,9 +14,9 @@ Niiden uusi näyttö rajaa odotuksen testibackendin `backendStart`-vaiheeseen;
 juurisyy ei vielä ole todistettu.
 Uusi [täsmällisen revision normaali baseline](e2e-test-environment.md#t3b-en-vihreä-normaali-baseline)
 läpäisi kokonaisuudessaan. T3b-P:n hyväksytyn paketointikorjauksen rajattu
-toteutus, regressiot ja katselmus ovat valmistuneet; tuore eristetty build
-ja packaged smoke ovat avoinna. Vihreys ei todista aiempien satunnaisten
-virheiden juurisyitä.
+toteutus, regressiot ja katselmus sekä tuore eristetty build ja samoihin
+tavuihin sidottu packaged smoke ovat valmistuneet. Uuden revision normaali
+CI on avoinna. Vihreys ei todista aiempien satunnaisten virheiden juurisyitä.
 [Ajantasainen työjärjestys](release-0.3.0-m1-preparation-plan.md#t3n-nykyinen-työjärjestys)
 erottaa virheen rajauksen, paketoinnin ja varsinaisen omistajuusratkaisun.
 Omistaja hyväksyi T3b-L:n toteutuksen ja yhden seuratun CI-ajon; T3:n loppu
@@ -74,7 +74,8 @@ korjatuksi. Tämä ei korvaa koko V2-hyväksyntää.
 valmistui hylättynä: ensimmäinen legacy-consumer epäonnistui, toinen läpäisi.
 Tämä on eri havainto kuin aikaisempi development-fixturen firstWindow-timeout.
 Payloadin [metatietorajauksen erillinen paketointipäätös](e2e-test-environment.md#t3b-p-hyväksytty-metatietorajaus)
-on hyväksytty ja toteutus aloitettu läpäisseen baseline-portin jälkeen.
+on hyväksytty ja sen paikallinen toteutus-, katselmus- ja packaged-näyttö
+on todennettu läpäisseen lähtötilan jälkeen; uuden revision CI on avoinna.
 Alustojen omistajuusmekanismi ja tavallisten fixturejen siirto ovat avoimia.
 T2 ei sulje M1:n muita testikorjauksia.
 

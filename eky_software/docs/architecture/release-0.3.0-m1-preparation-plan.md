@@ -87,10 +87,12 @@ ominaisuuksia. Pelkkä diagnostiikka tai vihreä Electron-osajoukko ei täytä s
    toistunut: uuden lokihavainnon virheketjun näyttö pysyy sopimustesteissä,
    eikä eri ajojen osatuloksia yhdistetä hyväksynnäksi.
 3. **Nyt:** hyväksytyn T3b-P:n metatietorajaus on toteutettu ja katselmoitu;
-   kohdesarja, normaalit testit ja tyypitys läpäisivät. Tee vielä uusi
-   eristetty build ja samoihin tavuihin sidottu packaged-todennus
+   kohdesarja, normaalit testit ja tyypitys läpäisivät. Uusi eristetty build,
+   sisältöportit ja samoihin tavuihin sidottu kaksivaiheinen packaged smoke
+   läpäisivät molempien prosessipuiden päättymistodistein
    [omistavan sopimuksen mukaan](e2e-test-environment.md#t3b-p-hyväksytty-metatietorajaus).
-   Tuotantotoimintoja ei lisätä tähän eikä vaihetta merkitä valmiiksi ennen näyttöä.
+   Seuraavaksi uuden revision normaali CI; paikallinen näyttö ei korvaa sitä
+   tai PR/main-porttia. Tuotantotoimintoja ei lisätä tähän.
 4. **Seuraava mekanismivaihe:** T3c-W:n ja T3c-L:n rajatut kokeet säilyvät
    erillisinä päätösportteina. Hyväksytyn näytön jälkeen toteutetaan varsinainen
    prosessiomistajuus ja fixture-siirrot sovittujen sopimusten mukaan.
