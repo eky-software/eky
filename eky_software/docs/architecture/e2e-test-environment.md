@@ -2373,10 +2373,12 @@ eriteltyä kahden suoran kuluttajan paikallista näyttöä.
 
 ###### Electronin pääkäynnistyksen avoimet päätösrajat
 
-**2026-09-27: valmistelu; kaksi rajattua ehdotusta odottaa omistajan päätöstä.**
+**2026-09-27: omistaja hyväksyi molemmat rajatut Electron-ehdotukset.**
 Edellä hyväksytty suorien Electron-kuluttajien lähtötila ei muutu. Pääfixturen
-siirtoa ei ole toteutettu eikä uutta kirjastokorjausta, raportointikytkentää
-tai normaalia CI-ajoa käynnistetty tämän valmistelun perusteella.
+siirtoa ei ole toteutettu. Hyväksyntä kattaa turvallisen CI-raportin
+toteutuksen sekä nykyisen kirjastokorjauksen rajatun laajennuksen
+valmistelun ja testauksen. Raportin paikallinen todennus on läpäisty;
+normaali CI odottaa omaa lähderevisiotaan. Tämä ei ole koko T3:n hyväksyntä.
 
 1. **Epäonnistuneen launchin havaittavuus.** Lukittu Playwright palauttaa
    `ElectronApplication`- ja `process()`-kahvat vasta onnistuneen launchin
@@ -2386,8 +2388,9 @@ tai normaalia CI-ajoa käynnistetty tämän valmistelun perusteella.
    failed-launch-kahvaa tai sulkeutumiskuittia. Autentikoidun pipe-peerin
    säilytetty kahva voisi todistaa bridgen poistumisen, ei tätä erillistä
    shelliä. Ehdotus on arvioida nykyisen `playwright-core@1.62.1`-korjauksen
-   rajattua laajennusta native-EXE:n suoraan käynnistykseen. Se ei ole
-   vielä hyväksytty eikä yksin ratkaisisi rekisteröintiä edeltävää aukkoa.
+   rajattua laajennusta native-EXE:n suoraan käynnistykseen. Se ei
+   yksin ratkaise rekisteröintiä edeltävää aukkoa. Valmistelu ja testaus
+   on hyväksytty, lopullista pääfixturen siirtoa ei vielä ole todennettu.
 2. **Testivirheen julkaisuraja.** Nykyinen Electronin yhteyskatkovirhe voi
    sisältää debuggerin capability-osoitteen. Tavallinen konsoliraportti
    voi julkaista sen, vaikka debug-tulostus ei ole käytössä ja turvallisen
@@ -2395,7 +2398,7 @@ tai normaalia CI-ajoa käynnistetty tämän valmistelun perusteella.
    bridgestä. Ehdotus on rajattu CI-raportti Playwrightin julkisella
    Reporter-rajapinnalla: julkiset testitunnisteet, yritykset, tulokset ja
    turvalliset virheluokat erotetaan raakavirheistä ja prosessitulosteesta.
-   Tämä muuttaa julkista virhediagnostiikkaa ja odottaa siksi päätöstä.
+   Tämä muuttaa julkista virhediagnostiikkaa omistajan hyväksymässä rajassa.
 
 Suoran käynnistyksen mahdollinen korjaus vaatii argumenttien, ympäristön,
 kahvojen, streamien, varhaisten virheiden ja muiden alustojen regressiot.
@@ -2405,7 +2408,7 @@ uusi omistaja tai `unknown`-tilan nimeäminen onnistumiseksi eivät kuulu
 ehdotukseen. Nykyisen epävarmuuden säilytys on turvallinen välitila, ei
 koko T3:n valmistuminen.
 
-Raportoinnin mahdollinen korjaus ei muuta testin tulosta, ensimmäistä
+Raportoinnin toteutettu korjaus ei muuta testin tulosta, ensimmäistä
 virhettä, retry-/flaky-ehtoja, trace-asetusta tai artifactien julkaisulupaa.
 Raakatuloksen säilyminen paikallisessa raportissa tai CI-runnerin levyllä
 ei tarkoita uutta pitkäaikaista säilytystä tai lupaa julkaista raporttia.
@@ -2414,6 +2417,65 @@ tulosteen ja julkaisemattoman aineiston erillisyys on todennettava ennen
 kytkentää. Tutkimus, joka odottaa nykyistä puutetta, ei ole korjauksen
 hyväksyntätesti. Nämä rajat koskevat testiharnessia, eivät sovelluksen
 business-, Activity-, Diagnostics- tai backup-sopimuksia.
+
+**CI-raportin toteutussopimus:** normaali `playwright.config.ts` valitsee
+CI:ssä `apps/e2e/scripts/safeCiReporter.mjs`-raportin ja ennallaan säilyvän
+julkaisemattoman HTML-raportin. Paikallinen list-raportti säilyy. Julkisen
+`EKY_E2E_REPORT`-JSON-rivin versio on 1; tapahtumat ovat `begin`,
+`testBegin`, `testEnd`, `runError`, `testOutcome` ja `end`. Tapauksen
+ajokohtainen numero, sallittu projektinimi, testihakemistoon suhteutettu
+lähdekohta ja toiston numero korvaavat vapaamuotoisen otsikon. Yrityksen
+retry-numero, odotettu ja toteutunut tila, kesto, virhemäärä ja suljettu
+virheluokka välitetään; tuntemattomia arvoja ei tulkita onnistumiseksi.
+`testError` ei väitä juurisyytä. Alkuperäinen ensimmäinen virhe löytyy
+samasta julkaisemattomasta raportista, ei julkisesta virhetekstistä.
+
+Testin `timedOut` ja koko ajon `timedout` ovat Playwrightin kaksi eri
+sopimusarvoa. Lopun yhteenveto erottaa expected/unexpected/flaky/skipped,
+ajamatta jääneet tapaukset ja globaalit virheet. Raportti ei palauta
+tilan ylikirjoitusta eikä muokkaa tuloksia, virheitä tai liitteitä.
+Testien stdout/stderr, virheiden message/stack/value, otsikot, annotaatiot
+ja liitepolut eivät kuulu tähän julkiseen projektioon.
+
+CI-kokoonpano torjuu raportin ohittavan `--reporter`-valinnan sekä tunnetut
+debug-, watch-, UI- ja HTML-ympäristöohitukset ennen testien aloitusta.
+Tämä on nykyisen lukitun ajurin testiraportoinnin suoja, ei yleinen
+konsolisalaisuuksien suodatin: ennen kokoonpanon latausta syntyvät virheet,
+valmistelukomennot ja uudet ulkopuoliset tulostajat vaativat oman tarkistuksen.
+CI:n ympäristö pidetään ilman debug-tulostusta jo ennen ajurin käynnistystä.
+Raakaa HTML-, JSON-, trace- tai screenshot-aineistoa ei lisätä julkaistaviin
+artifacteihin. Nykyinen lifecycle-allowlist ja säilytysajat eivät muutu.
+
+Regressio käyttää julkisia Reporter-hookeja ja oikeaa Playwright-ajuria:
+onnistuminen, odotettu ja odottamaton virhe, odottamaton onnistuminen,
+retry/flaky, skip, testin ja koko ajon timeout sekä globaali virhe.
+Kohdennettu Electronin main/renderer-yhteyskatko todentaa erikseen, että
+todellinen capability-osoite säilyy raakavirheessä mutta ei konsolissa.
+Tämä normaali sulkemiskoe ei ole äkillisen prosessikadon tai koko puun
+omistajuuden todiste. Paikallinen normaali E2E läpäisi 604/604 (system 518,
+web 41, Electron 45) ilman retryä tai flaky-tulosta. E2E-työkalujen
+518 sopimustestiä, mukaan lukien 28 raporttitestiä, tyypitys ja 315
+CI-sopimustestiä läpäisivät. Normaali CI vaatii vielä oman todennuksensa.
+Uuden formaatin tuloslukija vaatii täydellisen tapausjoukon, ensimmäisen
+yrityksen onnistumisen, virheettömän loppuyhteenvedon sekä täsmällisen
+puhtaan lähderevision testiluettelon. Pelkkä vihreä loppurivi ei riitä;
+vanhoja checkout-, artifact-, kattavuus- tai CI-portteja ei ohiteta.
+
+**Suoran EXE-käynnistyksen valmistelutulos:** nykyisen lukitun bundle-version
+muistiin sovitettu rajattu lisäys läpäisi 157/157 puhdasta sopimustestiä.
+Valinta koskee Electron-launchin eksplisiittistä absoluuttista Windowsin
+`.exe`-polkua; oletus-, suhteelliset ja skriptipolut sekä muut alustat
+säilyttävät aiemman toiminnan. Tämä ei ole tiedostopolun turvallisuusvalidointi.
+Argumentit, ympäristö, työskentelykansio, viisi stdio-kanavaa, ensimmäinen
+virhe ja cleanupin epävarmuus tarkistettiin ilman oikean prosessin luontia.
+Asennettua riippuvuutta, versionoitua patchia tai lockfilea ei muutettu.
+
+Valmistelu ei vielä todista Windowsin todellista argumenttiparsintaa,
+kahvaperiytymistä, pipejen sulkeutumista tai elävää Electronia. Valitsin
+vaikuttaisi kaikkiin eksplisiittisiin absoluuttisiin Windows-EXE-launcheihin,
+ei vain tulevaan bridgeen. Rekisteröintiä edeltävä aukko säilyy avoimena.
+Seuraava pala on rajatun oikean käynnistyspolun suunnittelu näiden rajojen
+pohjalta, ei pääfixturen siirto pelkän puhtaan testinäytön perusteella.
 
 Rajapintalähteet: [Electron launch](https://playwright.dev/docs/api/class-electron#electron-launch)
 ja [Reporter](https://playwright.dev/docs/api/class-reporter). Lukittu

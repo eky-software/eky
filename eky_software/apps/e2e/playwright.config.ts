@@ -1,4 +1,5 @@
 import { defineConfig } from '@playwright/test';
+import { createE2eReporters } from './scripts/safeCiReporter.mjs';
 
 import {
   ELECTRON_E2E_TEST_TIMEOUT_MILLISECONDS,
@@ -28,10 +29,7 @@ export default defineConfig({
   expect: {
     timeout: 10_000,
   },
-  reporter: [
-    ['list'],
-    ['html', { open: 'never', outputFolder: 'playwright-report' }],
-  ],
+  reporter: createE2eReporters(),
   use: {
     headless: true,
     locale: 'fi-FI',
