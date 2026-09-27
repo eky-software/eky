@@ -1,4 +1,4 @@
-import { _electron as electron, type ElectronApplication } from '@playwright/test';
+import { _electron as electron, errors, type ElectronApplication } from '@playwright/test';
 import type { ChildProcess } from 'node:child_process';
 
 import { createElectronSpawnObservation, type ElectronSpawnObservationFailureCode } from './electronSpawnObservation.js';
@@ -41,7 +41,8 @@ export interface ElectronBridgeCleanupEvidence {
 }
 export class ElectronBridgeCallerFailure extends Error {
   readonly #failure: Readonly<{ error: unknown }> | undefined;
-  constructor(code: 'START_FAILED' | 'CLEANUP_UNVERIFIED', failure?: Readonly<{ error: unknown }>) {
+  constructor(code: 'START_FAILED' | 'CLEANUP_UNVERIFIED', failure?: Readonly<{ error: unknown }>,
+    readonly reason: 'timeout' | 'unknown' = 'unknown') {
     super('E2E_ELECTRON_BRIDGE_' + code);
     this.#failure = failure;
   }
@@ -52,6 +53,7 @@ export interface OwnedWindowsElectronBridge {
   readonly workload: WindowsOwnerSession<'electronBridge'>['service']['workload'];
   stop(): Promise<void>;
   readCleanupEvidence(): Readonly<ElectronBridgeCleanupEvidence>;
+  readObservedWorkloadState(): 'running' | 'exited' | 'unavailable';
   readPrivateLaunchFailure(): Readonly<{ error: unknown }> | undefined;
   readPrivateFailure(): Readonly<{ error: unknown }> | undefined;
 }
@@ -81,7 +83,9 @@ export function startOwnedWindowsElectronBridge(
   let sealedEvidence: Readonly<ElectronBridgeCleanupEvidence> | undefined;
   let orchestration: Promise<ElectronApplication>;
   let stopResult: Promise<void> | undefined;
-  const safeFailure = (code: 'START_FAILED' | 'CLEANUP_UNVERIFIED') => new ElectronBridgeCallerFailure(code, privateFailure);
+  const safeFailure = (code: 'START_FAILED' | 'CLEANUP_UNVERIFIED') => new ElectronBridgeCallerFailure(code, privateFailure,
+    privateFailure?.error instanceof errors.TimeoutError || owner.readCleanupEvidence().firstFailure === 'startupDeadlineExceeded'
+      ? 'timeout' : 'unknown');
   const requireOpen = () => {
     owner.requireStartupOpen();
     if (stopping) throw safeFailure('START_FAILED');
@@ -180,6 +184,7 @@ export function startOwnedWindowsElectronBridge(
         requireOpen();
         launchInvoked = true;
         return dependencies.launch({ executablePath: config.executable, cwd: binding.cwd,
+          windowsProcessOnly: true,
           args: [binding.entrypoint], timeout,
           env: { ...config.ownerEnvironment,
             [electronBridgeEnvironmentKeys.config]: config.configPath,
@@ -238,6 +243,7 @@ export function startOwnedWindowsElectronBridge(
   });
   void application.catch(() => {});
   return { application, workload: owner.service.workload, stop, readCleanupEvidence,
+    readObservedWorkloadState: owner.readObservedWorkloadState,
     readPrivateLaunchFailure: () => privateLaunchFailure ?? observer?.readPrivateLaunchFailure(),
     readPrivateFailure: () => privateFailure };
 }

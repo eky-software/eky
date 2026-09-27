@@ -13,7 +13,7 @@ import {
 import type { ElectronSpawnObservationBinding } from '../../src/environment/electronSpawnObservationBinding.js';
 import {
   assertElectronSpawnObservationVersions, readElectronSpawnObservationVersions,
-  verifiedElectronSpawnNodeVersion, verifiedElectronSpawnPlaywrightVersion,
+  verifiedElectronSpawnNodeVersion, verifiedElectronSpawnPlaywrightVersion, verifiedElectronSpawnBundleSha256,
 } from '../../src/environment/electronSpawnObservationVersions.js';
 
 const binding: ElectronSpawnObservationBinding = {
@@ -512,9 +512,12 @@ test.describe('bounded early Electron spawn observation @security', () => {
     const evidence = readElectronSpawnObservationVersions();
     expect(evidence.nodePin).toBe(verifiedElectronSpawnNodeVersion);
     expect(evidence.playwrightPin).toBe(verifiedElectronSpawnPlaywrightVersion);
+    expect(evidence.bundleSha256).toBe(verifiedElectronSpawnBundleSha256);
     expect(() => assertElectronSpawnObservationVersions()).not.toThrow();
     for (const changed of [
       { ...evidence, nodeVersion: '0.0.0' },
+      { ...evidence, bundleSha256: 'b3ca0c0a9c47f098f221be6053d3b02dac8c4f41cda31ae22438aea21f96e8c4' },
+      { ...evidence, bundleSha256: '' },
       { ...evidence, nodePin: '^' + evidence.nodePin },
       { ...evidence, playwrightPin: '^' + evidence.playwrightPin },
       { ...evidence, nodePin: '99.0.0', nodeVersion: '99.0.0' },

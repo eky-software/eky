@@ -106,6 +106,7 @@ export interface WindowsOwnerSession<P extends WindowsServiceProfile> {
   readCleanupDeadline(): number | undefined;
   subscribeCleanupDeadline(listener: (deadline: number) => void): () => void;
   readCleanupEvidence(): Readonly<WindowsOwnerCleanupEvidence>;
+  readObservedWorkloadState(): 'running' | 'exited' | 'unavailable';
   readPrivateFailure(): Readonly<{ error: unknown }> | undefined;
 }
 export interface OwnedWindowsServiceDependencies<P extends WindowsServiceProfile, Input extends OwnedWindowsServiceInput> {
@@ -544,6 +545,11 @@ export function createWindowsOwnerSession<P extends WindowsServiceProfile, Input
   return {
     config, ready, service, startDirect, stop, requireStartupOpen, beforeStartupDeadline,
     readPrivateFailure: () => privateFailure,
+    readObservedWorkloadState() {
+      if (exitedBeforeCleanup) return 'exited';
+      if (!canReadWorkload()) return 'unavailable';
+      return current?.state.workload === 'running' ? 'running' : 'unavailable';
+    },
     readCleanupDeadline: () => cleanupDeadline,
     subscribeCleanupDeadline(listener) {
       cleanupDeadlineListeners.add(listener);

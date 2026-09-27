@@ -3,7 +3,7 @@ import { channel } from 'node:diagnostics_channel';
 import { EventEmitter } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, test, type ElectronApplication } from '@playwright/test';
+import { errors, expect, test, type ElectronApplication } from '@playwright/test';
 
 import { createWindowsOwnerSession } from '../../src/environment/startOwnedWindowsService.js';
 import { startOwnedWindowsElectronBridge, electronBridgeEnvironmentKeys,
@@ -13,6 +13,7 @@ import { createWindowsServiceControl } from '../../src/environment/windowsServic
 import { windowsServiceProfiles } from '../../src/environment/windowsServiceProfile.js';
 import type { WindowsElectronBridgeCommand, WindowsServiceReply, WindowsServiceRequestKind,
   WindowsServiceState } from '../../src/environment/windowsServiceProtocol.js';
+import { launchElectronRuntime, type ElectronLaunchObservation } from '../../src/fixtures/launchElectronRuntime.js';
 
 const generation = 'a'.repeat(64);
 const nonce = 'b'.repeat(64);
@@ -149,6 +150,7 @@ function fixture() {
       }
     },
     setFailure(failure: string) { state = { ...state, firstFailure: failure }; },
+    exitWorkload() { state = { ...state, workload: 'exited', exitCode: 0, activeProcesses: 0 }; },
   };
 }
 
@@ -161,6 +163,7 @@ test.describe('staged shared Windows owner and public Electron launch driver @se
     expect(f.commands[2]).toEqual({ kind: 'register', launchNonce: nonce, observedBridgePid: 42 });
     expect(f.flags.ownerSpawns).toBe(1);
     expect(f.launchOptions[0]).toEqual({ executablePath: f.config.executable, cwd: f.config.bridge.cwd,
+      windowsProcessOnly: true,
       args: [f.config.bridge.entrypoint], timeout: 3_900, env: { ...f.config.ownerEnvironment,
         [electronBridgeEnvironmentKeys.config]: f.config.configPath,
         [electronBridgeEnvironmentKeys.generation]: generation,
@@ -263,6 +266,46 @@ test.describe('staged shared Windows owner and public Electron launch driver @se
     expect(JSON.stringify(driver.readCleanupEvidence())).not.toContain('synthetic private');
     expect(f.commands.some(command => command.kind === 'go')).toBe(false);
     expect(f.timers.size).toBe(0);
+  });
+
+  test('preserves the original connect timeout across the bridge wrapper and fixture classifier', async () => {
+    const f = fixture(); const release = f.hold('register'); const driver = f.start();
+    const observations: ElectronLaunchObservation[] = [];
+    const launch = launchElectronRuntime({
+      launch: () => driver.application,
+      connected() { throw new Error('MUST_NOT_CONNECT'); },
+      observe: value => observations.push(value),
+      readWorkloadState: driver.readObservedWorkloadState,
+    });
+    const checked = expect(launch).rejects.toThrow('phase=playwrightConnect reason=timeout');
+    await f.when('register');
+    const original = new errors.TimeoutError('synthetic private timeout detail');
+    f.launchResult.reject(original); release();
+    await checked;
+    expect(driver.readPrivateLaunchFailure()?.error).toBe(original);
+    expect(observations.at(-1)).toEqual({ phase: 'playwrightConnect', status: 'failed', reason: 'timeout' });
+    expect(JSON.stringify(observations)).not.toContain('private');
+    expect(f.timers.size).toBe(0);
+  });
+
+  test('reads only cached workload observations and never mistakes cleanup exit for an original exit', async () => {
+    const f = fixture(); const driver = f.start();
+    expect(driver.readObservedWorkloadState()).toBe('unavailable');
+    await driver.application;
+    const before = f.commands.length;
+    expect(driver.readObservedWorkloadState()).toBe('running');
+    expect(f.commands).toHaveLength(before);
+    await driver.stop();
+    expect(driver.readObservedWorkloadState()).toBe('unavailable');
+  });
+
+  test('retains an actual workload exit observed before cleanup', async () => {
+    const f = fixture(); const driver = f.start(); await driver.application;
+    f.exitWorkload();
+    expect(await driver.workload.readState()).toBe('exited');
+    expect(driver.readObservedWorkloadState()).toBe('exited');
+    await driver.stop();
+    expect(driver.readObservedWorkloadState()).toBe('exited');
   });
 
   test('retains the actual registration exception independently of the Playwright rejection', async () => {

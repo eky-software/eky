@@ -14,7 +14,9 @@ Windows backend-service mode used by the ordinary backend fixtures. Its
 preparation runs through the existing E2E preparation commands, not these
 manual experiment launchers or experiment budgets. See the authoritative
 [backend ownership contract and current acceptance state](../../../../docs/architecture/e2e-test-environment.md#backendin-windows-omistajan-toteutusraja).
-This does not migrate Vite, Chromium, Electron or Linux ownership, or close T3.
+Windows Vite and the ordinary Windows Electron fixture now also use their
+approved owner paths. The Electron checkpoint below records its bounded local
+acceptance; this does not migrate Chromium or Linux ownership or close T3.
 
 ## Scope
 
@@ -151,14 +153,84 @@ stdio and lifecycle evidence is required in addition to controlled regressions.
 The current implementation and acceptance state stays in the
 [owning checkpoint](../../../../docs/architecture/e2e-test-environment.md#electronin-pääkäynnistyksen-avoimet-päätösrajat).
 
+The owner also approved the childless Windows bridge's explicit
+`Electron.launch({ windowsProcessOnly: true })` extension. The public optional
+boolean and optional protocol boolean must reach server validation before any
+temporary directory or process is created. Opt-in requires Windows and an
+explicit absolute `.exe` executable path; the internal launcher also rejects
+non-Windows or shell opt-in before spawn. Omitted or false retains the original
+behavior, including the default Windows and POSIX kill paths.
+
+Only the opt-in branch calls the spawned `ChildProcess.kill('SIGKILL')`.
+It never falls back to `taskkill` or another PID-based kill. A false return logs
+`windowsProcessOnlyKillNotDelivered`; false, throw, error events, true and
+`killed` are not close receipts. Existing catch/log behavior must not invent
+successful closure. Actual close and temporary-directory cleanup remain
+awaited, and the separate native owner remains responsible for the workload
+tree. The bridge must remain childless. The caller verifies the exact approved
+bundle digest before creating an owner; the same package version with old
+bytes is rejected.
+
+Both `playwrightElectronLaunch.test.mjs` and
+`playwrightElectronProcessKill.test.mjs` must remain explicitly wired into the
+package test command and its wiring guard. They exercise the digest-verified
+installed bundle with inert boundaries, not copied launch/kill implementations
+or real process, filesystem or network side effects. Provenance reverses only
+the new process-only hunks to the exact prior patched digest, then retains the
+original reverse-selector proof to the pre-selector digest. Both historical
+digests remain rejected and neither historical bundle is evaluated.
+
 On a dependency update, review all patch hunks, the original registry integrity,
-patched bundle digest, LICENSE/NOTICE and normal/error-path regressions. Remove
+patched bundle digest, LICENSE/NOTICE, public types, protocol validation,
+direct-EXE guards and the pinned Node Windows handle semantics. Keep live,
+exit-before-close, signal-exit, already-closed, kill-failure, graceful-error,
+repeated-graceful and caller signal/exit coverage together with unchanged
+default-platform and original-error preservation regressions. Remove
 the patch only after demonstrating an equivalent upstream fix with those tests.
 Keep the dependency audit, signature check, frozen installation and production
-payload exclusion checks. Test evidence is recorded in the
-[owning T3b-E checkpoint](../../../../docs/architecture/e2e-test-environment.md#t3b-en-täsmällinen-riippuvuusehdotus);
-the existence of this maintenance contract is not a claim that these checks have
-already passed.
+payload exclusion checks. The current extension is implemented and reviewed:
+focused observation/bridge contracts 82/82, tooling 678/678 including the
+installed-bundle regressions and 38 new process-kill cases, canonical preparation,
+workspace tests/typecheck and local CI contracts 315/315 passed. Dependency and
+staged-backend exclusion checks also passed. Four bounded real Windows probes
+passed with independently read-back source, original-error and cleanup evidence:
+normal Page/API/close, two early faults and a genuine pending-first-window timeout
+followed by an observed public close event and separate native tree proof.
+Exact acceptance boundaries and preserved first failures are recorded in the
+[owning extension checkpoint](../../../../docs/architecture/e2e-test-environment.md#electron-bridgen-lopetuspolun-jatkoehdotus).
+Subsequent bounded generation and loss evidence is accepted separately:
+restart/relaunch and second-instance second attempts, owner-loss first attempt
+and caller-loss second attempt. Original failed attempts and their immutable
+source snapshots remain failed. Abrupt caller loss requires independent outer
+whole-tree absence before termination, not a receipt from a killed inner owner;
+the exact expected CLI failure, sentinel and port checks remain mandatory.
+The ordinary Windows Electron fixture now retains ownership before awaiting
+launch, shares the original lifetime across generations, and has no legacy
+Windows cleanup fallback. Its source-bound E2E typecheck, focused contracts
+186/186 and canonical preparation plus ordinary `electron-development` 45/45
+passed on the first attempt. Independent readback matched the source binding
+and complete ordinary case inventory. Earlier workspace and targeted-consumer
+results remain tied to their own snapshots, not this later revision.
+Actual-fixture public-close and port-release uncertainty probes now pass:
+both restart attempts remain rejected after eventual cleanup, no new generation
+is admitted, and the root survives actual failing teardown. Exact cleanup
+errors, native/bridge and independent outer-tree proof remain separate.
+The third close attempt and first port attempt passed; earlier close-probe
+lookup/report-parser failures remain failed with their original sources.
+The childless handoff test now uses the existing bounded direct-child helper;
+its six real-process cases and focused 24/24 suite passed independent review.
+The replaced Windows taskkill helper and its three obsolete tests are removed;
+the legacy tree helper refuses Windows before reading child/PID state.
+Two childless primitive tests retain their exact child and await bounded close.
+Replacement stop/timeout/error coverage remains in the owned-backend contracts.
+The subsequent typecheck and canonical system suite passed 607/607 on Windows
+without retries, flakes or skips; the new Windows admission guard is deliberately
+platform-specific. POSIX behaviour remains unchanged pending its migration.
+Separate endurance and full T3 gates remain open; the earlier 45/45 Electron
+result is not relabelled as a run of this later snapshot. Chromium and Linux
+ownership choices remain separate.
+No new remote CI run or PR/main integration is accepted by this checkpoint.
+Future dependency updates require fresh evidence, not reuse of this checkpoint.
 
 ## T3b-L read-only CI prerequisites
 

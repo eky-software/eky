@@ -2,7 +2,7 @@
 
 ## Päätös ja nykyinen tila
 
-**Nykytila 2026-09-26: M0, T1 ja T2 hyväksytty; T3/R28 kesken.**
+**Nykytila 2026-09-27: M0, T1 ja T2 hyväksytty; T3/R28 kesken.**
 Jatkamisen lähtörevisio, avoin puute, seuraava työ ja valmistumiskriteeri
 ovat [M1:n ajantasaisessa aloituskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
 Nykyinen eteneminen on **T3:n oikeat kuluttajat ja korvatun toteutuksen
@@ -10,6 +10,49 @@ poisto -> M1:n rajatut sovelluskorjaukset -> integraatio ja 0.3.0**.
 Uutta testialustan tai sovellusarkkitehtuurin rinnakkaista uudistusta ei aloiteta.
 T3 ei valmistu pelkillä kokeilla tai diagnostiikalla. Uusi moduulitesti käyttää
 yhteistä fixtureä, ei rakenna omaa prosessienhallintaa.
+
+**Uusin valtuus 2026-09-27:** koko nykyisen T3/R28:n toteutus, testit ja
+normaali PR/main-integraatio saavat jatkua hyväksytyssä rajauksessa ilman
+toistuvia välilupia. Nimenomainen päätös kattaa myös `playwright-core@1.62.1`-
+patchin lapsittoman Windows-bridgen rajatun lopetuslisäyksen ja testit;
+lisäpatch ja E2E-only-ikkunapidätys on nyt toteutettu, katselmoitu ja
+paikallisesti todennettu. Goal-työkalun aktiivinen tila on varmennettu
+takaisinluvulla; aiempi `blocked`-kirjaus on historiallinen, ei nykyinen
+etenemiseste. Aktiivinen Goal ei tarkoita valmista T3:a.
+
+**Uusin paikallinen hyväksyntänäyttö:** Windows-Electronin tavallinen
+pääfixture on kytketty bridge-/native-omistajaan. Samaan lähdetilaan sidotut
+E2E-tyyppitarkistus, kohdesopimukset 186/186 ja kanonisen valmistelun jälkeinen
+tavallinen `electron-development` 45/45 läpäisivät ensimmäisellä yrityksellä.
+Riippumaton takaisinluku vahvisti lähdesidonnan ja koko tavallisen tapausjoukon.
+Myös erilliset restart/relaunch-, toinen instanssi-, owner-loss- ja caller-loss-
+kokeet on hyväksytty; aiemmat hylätyt yritykset säilyvät hylättyinä.
+Aiemmat patchin, neljän käynnistys-/ikkunakokeen, workspacen ja riippuvuus-
+sekä pakettisisältöporttien tulokset pysyvät omina lähdesidottuina näyttöinään.
+Tarkka rajaus ja säilyvät hylkäykset ovat
+[omistavassa checkpointissa](e2e-test-environment.md#electron-bridgen-lopetuspolun-jatkoehdotus).
+Tämä hyväksyy pääfixturen normaalin paikallisen kuluttajakytkennän, ei sen
+koko virhematriisia, endurancea, koko T3:a tai uuden revision etä-CI-/PR/main-portteja.
+
+Lisäksi todellisen fixturen julkisen sulkemisen ja portin vapautumisen
+epävarmuuskokeet läpäisivät: molemmat restart-yritykset estyvät pysyvästi
+ja testijuuri säilyy. Handoff-testin rajattu virhesiivous ja sen 24/24-
+kohdesarja on katselmoitu ja todennettu. Tarkat hyväksyntärajat ja
+koeapurin säilyvät hylkäykset ovat yllä linkitetyssä omistavassa checkpointissa.
+Korvattu Windowsin taskkill-varapolku on poistettu. Poiston jälkeinen
+tyyppitarkistus ja kanoninen järjestelmätestisarja 607/607 valmisteluineen
+läpäisivät ensimmäisellä yrityksellä. Linuxin nykyistä haaraa ei muutettu.
+Saman välipaketin koko workspace-testit ja tyyppitarkistus sekä CI-sopimukset
+315/315 läpäisivät. Normaali etä-CI on seuraava tarkistus, ei vielä
+hyväksytty tulos; Chromiumin ja Linuxin päätösrajat säilyvät.
+
+Nykyinen jäljellä oleva työ on [M1:n lyhyessä sulkulistassa](release-0.3.0-m1-preparation-plan.md#t3n-nykyinen-työjärjestys):
+Chromiumin omistajuusraja ja siirto, Linuxin oikeat kuluttajat ja sen
+korvatun toteutuksen poisto, endurance sekä koko nykyinen
+T3-matriisi ja täsmälliset PR/main-portit. Chromiumin worker-/testikohtainen
+valinta ja paikallisen Linux-testauksen ympäristöpäätös pysyvät avoimina;
+jatkolupa ei hyväksy niihin poikkeusta, uusia riippuvuuksia tai heikennettyjä
+vaatimuksia. Hyväksytty riippumaton työ jatkuu näitä päätöksiä odottamatta.
 
 ### Aiemmat checkpointit ja päätösnäyttö
 
@@ -431,17 +474,15 @@ M0-selvitys ei avaa muuta 0.3.0-toteutusta ennen integraatioporttia.
 
 ### M1: Todistuksen ja päätösten valmistelu
 
-**Tila 2026-09-26:** rajattu suunnitteluvalmistelu tehty ja katselmoitu
+**Tila 2026-09-27:** rajattu suunnitteluvalmistelu tehty ja katselmoitu
 hyväksytyltä M0-pohjalta. T1a/T1b:n toteutus ja PR/main-integraatio on
 hyväksytty. Myös T2:n toteutus, paikallinen näyttö, Linux-CI ja PR/main-
-integraatio on hyväksytty. T3:n lähdekatselmus ja testimatriisi on valmisteltu;
-T3a-koe on suoritettu ja T3b-valmistelu rajaa riippuvuuden virhekorjauksen,
-Linuxin CI-edellytystarkistuksen sekä myöhemmän alustakokeen erillisiksi
-päätöksiksi. T3c-W:n rajattu neljän tapauksen adapterikoe on läpäisty;
-T3c-L:n ensimmäiset CI-kokeet hylättiin ennen GO:ta ja syynrajaus jatkuu. Lopullinen
-alustamekanismi ja tavallisten fixturejen siirto odottavat erillistä
-hyväksyntää ja koko T3:n näyttöä. Muut
-testikorjaukset ovat avoinna.
+integraatio on hyväksytty. T3/R28:n jatkovaltuus on yllä; jäljellä ovat
+[nykyisen sulkulistan](release-0.3.0-m1-preparation-plan.md#t3n-nykyinen-työjärjestys)
+oikeat kuluttajasiirrot, nimetyt avoimet päätösrajat, korvatun toteutuksen
+poisto ja täydet hyväksyntäportit. Aiemmat kokeet ja niiden hylkäykset
+säilyvät historiassa, eivät uuden revision hyväksyntänä. T3/R28 ja muut
+M1:n sovelluskorjaukset ovat edelleen avoinna.
 Tarkka jako on [M1-suunnitelmassa](release-0.3.0-m1-preparation-plan.md):
 T1a/T1b testien ajokytkentä, T2 projektivalinta ja build-edellytykset,
 T3 testiprosessien omistajuus sekä A1:n rajattu kohdekorjaus.

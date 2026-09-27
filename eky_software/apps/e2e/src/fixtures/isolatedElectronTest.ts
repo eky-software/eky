@@ -7,7 +7,7 @@ import {
 } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import {
   _electron as electron,
@@ -33,6 +33,11 @@ import type { E2eWorkerPaths } from '../environment/e2eEnvironmentTypes.js';
 import { createE2eFixtureLifetime } from '../environment/e2eFixtureLifetime.js';
 import { DirectElectronRunFailure, runOwnedWindowsElectron } from '../environment/runOwnedWindowsElectron.js';
 import {
+  startOwnedWindowsElectronBridge,
+  type ElectronBridgeCleanupEvidence,
+  type OwnedWindowsElectronBridge,
+} from '../environment/startOwnedWindowsElectronBridge.js';
+import {
   E2eBackendStartupFailure,
   type E2eBackendStartupFailureEvidence,
 } from '../environment/startE2eBackendProcess.js';
@@ -51,6 +56,7 @@ import {
   closeOwnedElectronRuntime,
   stopOwnedElectronRuntime,
 } from './stopOwnedElectronRuntime.js';
+import { closeOwnedWindowsElectronRuntime } from './closeOwnedWindowsElectronRuntime.js';
 import {
   launchElectronRuntime,
   type ElectronLaunchObservation,
@@ -205,6 +211,9 @@ export const test = base.extend<
     let api: APIRequestContext | undefined;
     let electronApp: ElectronApplication | undefined;
     let electronProcess: ReturnType<ElectronApplication['process']> | undefined;
+    let windowsBridge: OwnedWindowsElectronBridge | undefined;
+    let ownership: Readonly<ElectronBridgeCleanupEvidence> | undefined;
+    let applicationClosed = false;
     let connectionPending = false;
     let runtimeCleanupUnverified = false;
     let portReleaseUnverified = false;
@@ -215,13 +224,36 @@ export const test = base.extend<
     let firstStartProof: FirstStartProofCapture = { status: 'notRequested' };
 
     async function launchCurrentRuntime() {
+      if (windowsBridge !== undefined || runtimeCleanupUnverified || portReleaseUnverified) {
+        throw new Error('E2E_ELECTRON_RUNTIME_CLEANUP_UNVERIFIED');
+      }
       assertElectronRuntimeLaunchPrerequisites(runtime, runRoot);
       connectionPending = true;
       electronApp = undefined;
       electronProcess = undefined;
+      applicationClosed = false;
+      ownership = undefined;
       return launchElectronRuntime({
-        launch: () =>
-          electron.launch({
+        async launch() {
+          if (process.platform === 'win32') {
+            // Retain cleanup ownership before awaiting Playwright admission.
+            windowsBridge = startOwnedWindowsElectronBridge({
+              repositoryRoot: resolve(import.meta.dirname, '../../../..'),
+              runRoot,
+              runtimeRoot: runtime.runtimeRoot,
+              runtimeConfigPath: runtime.configPath,
+              environment: createElectronEnvironment({
+                configPath: runtime.configPath,
+                profile: runtime.profile,
+                runRoot: runtime.runtimeRoot,
+              }),
+              lifetime,
+              startupDeadline: performance.now() + ELECTRON_E2E_PROCESS_CONNECT_TIMEOUT_MILLISECONDS,
+              redactedValues: [runtime.sessionSecret],
+            });
+            return windowsBridge.application;
+          }
+          return electron.launch({
             args: [resolveElectronE2eApplicationPath()],
             cwd: runRoot,
             env: createElectronEnvironment({
@@ -231,11 +263,16 @@ export const test = base.extend<
             }),
             executablePath: resolveElectronE2eExecutable(),
             timeout: ELECTRON_E2E_PROCESS_CONNECT_TIMEOUT_MILLISECONDS,
-          }),
+          });
+        },
+        ...(process.platform === 'win32' ? {
+          readWorkloadState: () => windowsBridge?.readObservedWorkloadState() ?? 'unavailable',
+        } : {}),
         connected(application, child) {
           electronApp = application;
           electronProcess = child;
           connectionPending = false;
+          application.on('close', () => { applicationClosed = true; });
           child.stdout?.resume();
           child.stderr?.resume();
         },
@@ -259,7 +296,22 @@ export const test = base.extend<
 
     async function closeCurrentRuntime(alreadyClosed = false): Promise<void> {
       try {
-        if (electronApp !== undefined) {
+        if (windowsBridge !== undefined) {
+          try {
+            await closeOwnedWindowsElectronRuntime({
+              ...(electronApp === undefined ? {} : { application: electronApp }),
+              alreadyClosed: alreadyClosed || applicationClosed,
+              owner: windowsBridge,
+              lifetime,
+            });
+          } finally {
+            ownership = windowsBridge.readCleanupEvidence();
+          }
+          windowsBridge = undefined;
+          electronApp = undefined;
+          electronProcess = undefined;
+          connectionPending = false;
+        } else if (electronApp !== undefined) {
           if (electronProcess === undefined) {
             throw new Error('E2E_ELECTRON_RUNTIME_CLEANUP_UNVERIFIED');
           }
@@ -418,6 +470,7 @@ export const test = base.extend<
               launch: launchObservations,
               observationsTruncated,
               cleanup,
+              ...(ownership === undefined ? {} : { ownership }),
               ...launchFailureCapture.finish(),
               ...(firstStartProof.status === 'notRequested' ? {} : { firstStartProof }),
             });
@@ -490,6 +543,7 @@ export async function reportElectronLifecycleEvidence(
     backendStartupLogs?: ElectronBackendStartupLogsCapture;
     firstStartProof?: FirstStartProofCapture;
     preparation?: ElectronPreparationFailureEvidence;
+    ownership?: Readonly<ElectronBridgeCleanupEvidence>;
   },
 ): Promise<void> {
   const path = testInfo.outputPath('electron-lifecycle.json');
@@ -505,6 +559,7 @@ export async function reportElectronLifecycleEvidence(
       ...(evidence.backendStartupLogs === undefined ? {} : { backendStartupLogs: evidence.backendStartupLogs }),
       ...(evidence.firstStartProof === undefined ? {} : { firstStartProof: evidence.firstStartProof }),
       ...(evidence.preparation === undefined ? {} : { preparation: evidence.preparation }),
+      ...(evidence.ownership === undefined ? {} : { ownership: evidence.ownership }),
     }),
     { encoding: 'utf8', flag: 'wx', mode: 0o600 },
   );

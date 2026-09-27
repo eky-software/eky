@@ -45,7 +45,7 @@ export function createElectronE2eRuntime(input: {
     | 'workspaceBackupReplacement';
   paths: E2eWorkerPaths;
   scenarioId: string;
-  startupMode?: 'backendStartFailure' | 'normal';
+  startupMode?: 'backendStartFailure' | 'normal' | 'pendingFirstWindow';
   workspaceBackupPath?: string;
 }): ElectronE2eRuntime {
   const applicationPath = createPrivateDirectory(

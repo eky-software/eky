@@ -1,22 +1,84 @@
 diff --git a/lib/coreBundle.js b/lib/coreBundle.js
-index d9041dd0f009072511a7d808dec83121ff29e127..cef22148c78471bdae3a889c60a5e8743559db62 100644
+index d9041dd0f009072511a7d808dec83121ff29e127..430c391fa1122d9b747b7759b7921d061adad3bb 100644
 --- a/lib/coreBundle.js
 +++ b/lib/coreBundle.js
-@@ -44004,8 +44004,12 @@ var init_electron = __esm({
+@@ -8896,6 +8896,8 @@ function removeProcessHandlersIfNeeded() {
+   installedHandlers.clear();
+ }
+ async function launchProcess(options) {
++  if (options.windowsProcessOnly && (process.platform !== "win32" || options.shell))
++    throw new Error("windowsProcessOnly requires a direct Windows process");
+   const stdio = options.stdio === "pipe" ? ["ignore", "pipe", "pipe", "pipe", "pipe"] : ["pipe", "pipe", "pipe"];
+   options.log(`<launching> ${options.command} ${options.args ? options.args.join(" ") : ""}`);
+   const spawnOptions = {
+@@ -8985,12 +8987,18 @@ async function launchProcess(options) {
+       options.log(`[pid=${spawnedProcess.pid}] <will force kill>`);
+       try {
+         if (process.platform === "win32") {
+-          const taskkillProcess = childProcess.spawnSync(`taskkill /pid ${spawnedProcess.pid} /T /F`, { shell: true });
+-          const [stdout2, stderr2] = [taskkillProcess.stdout.toString(), taskkillProcess.stderr.toString()];
+-          if (stdout2)
+-            options.log(`[pid=${spawnedProcess.pid}] taskkill stdout: ${stdout2}`);
+-          if (stderr2)
+-            options.log(`[pid=${spawnedProcess.pid}] taskkill stderr: ${stderr2}`);
++          if (options.windowsProcessOnly) {
++            // Eky: the childless bridge has a retained handle, not a PID-tree owner.
++            if (!spawnedProcess.kill("SIGKILL"))
++              options.log("windowsProcessOnlyKillNotDelivered");
++          } else {
++            const taskkillProcess = childProcess.spawnSync(`taskkill /pid ${spawnedProcess.pid} /T /F`, { shell: true });
++            const [stdout2, stderr2] = [taskkillProcess.stdout.toString(), taskkillProcess.stderr.toString()];
++            if (stdout2)
++              options.log(`[pid=${spawnedProcess.pid}] taskkill stdout: ${stdout2}`);
++            if (stderr2)
++              options.log(`[pid=${spawnedProcess.pid}] taskkill stderr: ${stderr2}`);
++          }
+         } else {
+           process.kill(-spawnedProcess.pid, "SIGKILL");
+         }
+@@ -16426,6 +16434,7 @@ var init_validator = __esm({
+     });
+     scheme.ElectronInitializer = tOptional(tObject({}));
+     scheme.ElectronLaunchParams = tObject({
++      windowsProcessOnly: tOptional(tBoolean),
+       executablePath: tOptional(tString),
+       args: tOptional(tArray(tString)),
+       chromiumSandbox: tOptional(tBoolean),
+@@ -43971,6 +43980,14 @@ var init_electron = __esm({
+         this.logName = "browser";
+       }
+       async launch(progress2, options) {
++        // Eky: opt-in is only safe for an explicitly selected childless EXE.
++        if (options.windowsProcessOnly !== void 0 && typeof options.windowsProcessOnly !== "boolean")
++          throw new Error("windowsProcessOnly must be a boolean");
++        const directWindowsExecutable = process.platform === "win32" &&
++          !!options.executablePath && import_path29.default.isAbsolute(options.executablePath) &&
++          import_path29.default.extname(options.executablePath).toLowerCase() === ".exe";
++        if (options.windowsProcessOnly && !directWindowsExecutable)
++          throw new Error("windowsProcessOnly requires an explicit absolute Windows EXE");
+         let app = void 0;
+         let electronArguments = ["--inspect=0", "--remote-debugging-port=0", ...options.args || []];
+         if (import_os14.default.platform() === "linux") {
+@@ -44004,8 +44021,9 @@ var init_electron = __esm({
            }
            electronArguments.unshift("-r", libPath("server", "electron", "loader.js"));
          }
 +        // Eky: explicit absolute EXE paths use direct Windows argument delivery.
-+        const directWindowsExecutable = process.platform === "win32" &&
-+          !!options.executablePath && import_path29.default.isAbsolute(command) &&
-+          import_path29.default.extname(command).toLowerCase() === ".exe";
          let shell = false;
 -        if (process.platform === "win32") {
 +        if (process.platform === "win32" && !directWindowsExecutable) {
            shell = true;
            command = [command, ...electronArguments].map((arg) => `"${escapeDoubleQuotes(arg)}"`).join(" ");
            electronArguments = [];
-@@ -44043,6 +44047,10 @@ var init_electron = __esm({
+@@ -44021,6 +44039,7 @@ var init_electron = __esm({
+           },
+           shell,
+           stdio: "pipe",
++          windowsProcessOnly: options.windowsProcessOnly === true,
+           cwd: options.cwd,
+           tempDirectories,
+           attemptToGracefullyClose: () => app.close(nullProgress),
+@@ -44043,6 +44062,10 @@ var init_electron = __esm({
          const nodeMatchPromise = waitForLine(progress2, launchedProcess, /^Debugger listening on (ws:\/\/.*)$/);
          const chromeMatchPromise = waitForLine(progress2, launchedProcess, /^DevTools listening on (ws:\/\/.*)$/);
          const debuggerDisconnectPromise = waitForLine(progress2, launchedProcess, /Waiting for the debugger to disconnect\.\.\./);
@@ -27,7 +89,7 @@ index d9041dd0f009072511a7d808dec83121ff29e127..cef22148c78471bdae3a889c60a5e874
          try {
            const nodeMatch = await nodeMatchPromise;
            const nodeTransport = await WebSocketTransport.connect(progress2, nodeMatch[1]);
-@@ -44085,8 +44093,14 @@ var init_electron = __esm({
+@@ -44085,8 +44108,14 @@ var init_electron = __esm({
            await progress2.race(app.initialize());
            return app;
          } catch (error) {
@@ -44,3 +106,21 @@ index d9041dd0f009072511a7d808dec83121ff29e127..cef22148c78471bdae3a889c60a5e874
          }
        }
      };
+diff --git a/types/types.d.ts b/types/types.d.ts
+index 101f50fe293a255f64aba9260d898966a7b83ec8..29d4726044d4fcf0ed90cec70ed8d907b67317df 100644
+--- a/types/types.d.ts
++++ b/types/types.d.ts
+@@ -23523,6 +23523,13 @@ export interface Electron {
+      */
+     executablePath?: string;
+ 
++    /**
++     * Eky test-only opt-in for a childless bridge: terminate only the retained Windows child handle.
++     * Requires an explicit absolute EXE path. Descendants must have a separate native owner.
++     * A successful kill request is not proof of process exit or completed cleanup.
++     */
++    windowsProcessOnly?: boolean;
++
+     /**
+      * An object containing additional HTTP headers to be sent with every request. Defaults to none.
+      */

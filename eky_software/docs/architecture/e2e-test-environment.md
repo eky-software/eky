@@ -2804,7 +2804,11 @@ perusteella. Jälkimmäinen koe kattaa pidätetyn GO:n, ei native-omistajalle
 jo saapuneen GO:n kilpailua. Ensimmäinen kattaa bootstrapin aiheuttaman
 poistumisen, ei ulkoista tappoa täsmällisessä ennen-yhteyttä-rajassa.
 
-Varhainen Playwright-hylkäys voi edelleen käynnistää kirjaston oman
+Seuraavat kaksi kappaletta kuvaavat lisäpatchia edeltävää historiallista
+rajaa. Ne eivät kumoa alla kirjattua lopetuspatchin ja ikkunakokeen uutta
+hyväksyntänäyttöä.
+
+Varhainen Playwright-hylkäys saattoi käynnistää kirjaston oman
 PID-pohjaisen `taskkill`-polun jo poistuneelle bridgelle. Sen tulos ei ole
 poissaolon todiste eikä poista PID:n uudelleenkäytön kohdistusriskiä.
 Yllä hyväksytään vain kaksi täsmällistä hylkäys- ja siivoustulosta;
@@ -2818,6 +2822,284 @@ firstWindow-virhettä. Seuraava työ on rajata tämä koe todelliseen odottavaan
 ikkunavaiheeseen, jatkaa relaunch-/toinen instanssi-/katkeamisnäyttöön ja
 vasta sitten pääfixturen siirtoon. Alemman tason näyttö tai normaali sulku
 ei sulje T3:a.
+
+###### Electron-bridgen lopetuspolun jatkoehdotus
+
+**2026-09-27: rajattu lisäpatch, ikkunapidätys ja tavallisen Windows-Electron-
+fixturen kytkentä paikallisesti todennettu; koko T3 avoin.** Omistajan hyväksyntä koskee alla kuvattua
+`playwright-core@1.62.1`-lisäpatchia, sen regressioita sekä aitoa ikkunavaiheen
+odotusvirheen koetta. Neljä oikeaa Windows-koetta on takaisinluettu
+hyväksytysti; tarkka näyttö ja sen rajat ovat jäljempänä. Sama jatkolupa
+sallii nykyisen T3:n loppuun viemisen ilman uusia välivaiheiden lupakysymyksiä;
+uusia riippuvuuksia tai nykyisestä suunnitelmasta poikkeavaa arkkitehtuuria
+ei lisätä. Goal on aktiivinen takaisinluvun perusteella. Tämä rajattu
+hyväksyntä ja jäljempänä kirjattu tavallisen fixturen 45/45 eivät hyväksy
+koko virhematriisia, endurancea, koko T3:a tai uuden revision etä-CI:tä ja
+PR/main-integraatiota.
+
+Alla oleva tutkimus on muutosta edeltävää historiallista näyttöä:
+Muuttumattoman, tiivisteellä sidotun Playwright 1.62.1 -bundlen neljä
+hallittua tutkimustapausta läpäisivät odotetun nykykäyttäytymisen.
+Oikeaa prosessia ei käynnistetty tai lopetettu: käynnistys-, lopetus- ja
+siivousrajat korvattiin inerteillä testivastauksilla, mutta tutkittu
+`launchProcess` oli asennetun kirjaston toteutus.
+
+Sekä exit-koodilla että signaalilla päättynyt lapsi ennen `close`-tapahtumaa
+päätyi PID-pohjaiseen `taskkill /T /F` -haaraan. Jo toimitettu `close` esti
+sen; elävän lapsen kontrollitapaus käytti samaa lopetuspolkua.
+`kill()`-lupaus odotti edelleen sulkua ja hakemistosiivouksen valmistumista.
+Tämä on ohjausvirran todennus, ei onnistunut korjaustesti, väärän prosessin
+lopettamisen havainto tai todellisen Windows-puun poissaolon näyttö.
+
+Toteutettu korjaus on nykyisen versionoidun riippuvuuspatchin
+eksplisiittinen, vain Windowsin lapsittomaan testibridgeen valittava
+prosessikohtainen lopetustapa. Tavallisen Electron-launchin, selainten ja
+muiden alustojen oletukset säilyvät. Nimen, ympäristömuuttujan, PID:n tai
+havaitsijan tekemän olion muokkauksen perusteella tilaa ei päätellä.
+
+- Julkisen `Electron.launch`-kutsun `windowsProcessOnly?: boolean` kulkee
+  protokollan valinnaisena booleanina palvelinpuolen kautta sisäiseen
+  prosessikäynnistimeen. Arvo `true` hyväksytään vain Windowsissa
+  eksplisiittiselle absoluuttiselle `.exe`-polulle ilman shelliä.
+  Väärä tyyppi tai virheellinen opt-in-yhdistelmä hylätään ennen prosessin
+  tai temp-juuren luontia; sisäinen käynnistin torjuu myös ei-Windows- ja
+  shell-yhdistelmän ennen spawnia. Puuttuva tai `false` säilyttää oletushaaran.
+  Pelkkä tuntemattoman kentän lisääminen kutsuun ei toteuta tätä ketjua.
+  Kutsujan esiehto tarkistaa hyväksytyn patchatun bundlen tiivisteen ennen
+  omistajan tai bridgen käynnistystä: sama versionumero vanhoissa tavuissa
+  ei riitä, koska tuntematon valinta voisi muuten kadota protokollassa.
+- Vain tässä tilassa kirjasto käyttää käynnistämänsä `ChildProcess`-olion
+  julkista `kill('SIGKILL')`-metodia, ei PID-pohjaista työkalua. Projektin
+  lukitun Noden Windows-toteutuksessa se käyttää luontihetkestä säilytettyä
+  libuv-prosessikahvaa sen ollessa vielä saatavilla. Node vapauttaa kahvan
+  ennen `exit`-tapahtumaa; exit-before-close voi siksi palauttaa `false`.
+  Tämä ei ole POSIX-alustoja koskeva takuu.
+- `false`, poikkeus tai virhetapahtuma ei oikeuta PID-fallbackiin eikä ole
+  sulkeutumiskuitti. Myöskään `true` tai `killed` ei todista poistumista:
+  todellinen `close`, kanavien valmistuminen ja erillinen native-omistajan
+  puutodiste vaaditaan edelleen alkuperäisten määräaikojen sisällä.
+  `false` kirjataan `windowsProcessOnlyKillNotDelivered`-merkkinä; nykyinen
+  kill-virheen catch/log ei saa tuottaa synteettistä sulkua tai onnistumista.
+- Bridge pysyy lapsittomana; nykyinen native-omistaja vastaa yksin
+  Electronin ja backendin Job-puusta. Havaitsija säilyy passiivisena.
+  Ensimmäinen käynnistysvirhe ja epävarma cleanup pysyvät erillisinä.
+
+Pelkkä `exitCode`-tarkistus ennen nykyistä PID-komentoa ei sulje tarkistuksen
+ja lopetuksen välistä kilpailua. Kaikkien Windows-kuluttajien muuttaminen
+prosessikohtaisiksi voisi jättää niiden jälkeläiset eloon. Oma rinnakkainen
+Electron-käynnistin tai private-API ei ole tämän rajatun muutoksen vaihtoehto.
+Uutta pakettia, versiota tai transitiivista riippuvuutta ei tarvita, mutta
+patchin ylläpitovastuu kasvaa: tyypitys, protokolla, kirjaston eri
+lopetuspolut ja Node-kahvasopimus tarkistetaan jokaisella päivityksellä.
+Omistajan nimenomainen hyväksyntä tälle lisäykselle on kirjattu yllä.
+
+Kontrolloidut regressiot todentavat todellisten, digest-varmennettujen
+patchattujen tavujen oletuskäyttäytymisen, saman version vanhojen tavujen
+torjunnan ja julkisen opt-in-ketjun: elävä lapsi, exit ennen closea,
+jo suljettu lapsi, epäonnistuva kill, graceful-close-virhe, toistuva sulku
+sekä kutsujan signaali-/exit-haarat. Yksikään opt-in-haara ei saa palata
+PID-lopetukseen; oletusten ja aiemman virhepatchin regressiot säilyvät.
+Provenanssitesti palauttaa vain uudet opt-in-hunkit kääntämällä täsmälleen
+aiemman patchatun bundlen ja säilyttää siitä alkuperäisen selector-deltan
+käänteistodisteen. Kumpaakaan historiallista digestia ei hyväksytä runtimeen
+eikä historiallisia tavuja evaluoida. Inertti harness ei käynnistä prosesseja
+eikä tee tutkittavan koodin tiedosto- tai verkkosivuvaikutuksia.
+
+**Ikkunavaiheen toteutettu koesopimus:** olemassa olevaan E2E-only-
+käynnistysasetukseen on lisätty suljettu `pendingFirstWindow`-odotustila `app.whenReady()`-
+vaiheen jälkeen ennen compositionia. Julkinen `evaluate()` lukee nykyisen
+testiohjaimen kautta `hold: { held, runtimeInstanceId }` -pidätyksen,
+runtime-identiteetin sekä nolla ikkunaa ja backend-käynnistystä.
+Kokeen yksityinen Proxy kutsuu oikeaa julkista `firstWindow()`-metodia,
+liittää alkuperäiseen promiseen vain passiivisen virhehavainnon ja palauttaa
+täsmälleen saman promisen muuttumattomana. Snapshot käynnistyy vasta aidon
+kutsun jälkeen. Havainto vaaditaan todelliseen ikkunaodotukseen
+siirtymisen jälkeen mutta ennen sen valmistumista. Julkista waiter-asennuksen
+kuittausta ei ole: ketju perustuu lukitun kirjaston synkroniseen odotuksen
+rekisteröintiin, sen jälkeen ajoitettuun julkiseen arviointiin ja lopulliseen
+aitoon virheeseen. Ennen odotusta vaaditaan alkuperäisessä omistajan
+työbudjetissa tilaa nykyiselle ikkunaodotukselle ja graceful-close-varalle;
+riittämätön budjetti hylkää kokeen eikä aloita uusia määräaikoja.
+Muuttumaton `launchElectronRuntime` odottaa julkista `firstWindow()`-kutsua
+nykyisellä aikarajallaan. Testi vaatii sen todellisen timeout-hylkäyksen ja
+yksityisesti säilytetyn alkuperäisen `TimeoutError`-virheen; ulomman määräajan
+tai ennen odotusta suljetun sovelluksen virhe ei kelpaa. Järjestys on
+todellinen timeout, rajattu julkinen `application.close()` ja vasta sitten
+omistajan stop sekä riippumaton puun ja bridgen sulkutodiste. Epäonnistunut
+graceful close jää erilliseksi virheeksi, vaikka omistaja siivoaisi puun.
+Julkinen `close`-kuuntelija asennetaan heti sovelluksen saannista ennen
+budjettitarkistusta ja ikkunaodotusta, ja poistetaan vasta owner-stopin
+jälkeen. Täsmälleen yhden tapahtuman pitää osua järjestykseen
+`closeStarted <= closeEvent <= closeCompleted <= ownerStopStarted`;
+jo suljetun sovelluksen onnistuva close-kutsu ei kelpaa todisteeksi.
+Julkisen close-kutsun nykyinen 15 sekunnin katto rajataan jäljellä olevaan
+alkuperäiseen työaikaan. Kokeen deadline-sovitin saa vain lyhentää
+kutsukohtaista kattoa, ei uudistaa budjettia.
+Virheen jälkeen todistetaan siis saman omistajan cleanup erikseen. Ei uutta
+pidätyksen vapauttavaa ajastinta, tuotantohookia, palautettua valevirhettä tai
+testin ohitusta.
+
+**Patchin ja ikkunavaiheen aiempi hyväksyntänäyttö 2026-09-27:** havaitsijan ja bridge-istunnon kohdesopimukset
+läpäisivät 82/82. E2E-työkalusarja läpäisi 678/678 sisältäen asennetun bundlen
+regressiot ja 38 uutta prosessikohtaista lopetustestiä. Kanoninen E2E-valmistelu läpäisi native-sarjoin
+515/226/285/1791. Lähdetilaan sidotut koko workspacen testit ja tyyppitarkistus
+läpäisivät: API 144, permissions 6, desktop 1550 ja 253 Node-testiä,
+E2E-työkalut 678, auth 12, web 665 sekä backend 1352. Desktopin kolme ja
+backendin viisi ennestään alustakohtaista ohitusta säilyivät; uusia
+ohituksia ei lisätty. Paikallinen `test:ci` läpäisi 315/315 ilman ohituksia
+tai hylkäyksiä. Se todistaa CI-sopimukset, ei uutta etä-CI-ajoa.
+
+Riippuvuusauditissa ei ollut tunnettuja löydöksiä, registry-allekirjoitukset
+varmistettiin 160/160 ja frozen/offline-asennus läpäisi. Lockfile muuttui
+vain kolmessa patch-hash-viitteessä; riippuvuusversiot sekä LICENSE/NOTICE
+säilyivät. Staged backendin sisältöportti vahvisti testityökalujen poissulun.
+Ensimmäinen sisältötarkistus hylättiin tarkistimen väärän schema-oletuksen
+vuoksi; korjattu tarkistin läpäisi erillisen tarkistuksen. Ensimmäinen
+hylkäys säilyy, eikä tarkistinkorjausta nimetä runtime-korjaukseksi.
+Samoin ensimmäisen työkalusarjan provenance- ja komentoluettelohylkäykset
+säilyvät: rajatut testikorjaukset säilyttivät vanhojen digestien torjunnan
+ja alkuperäisen selector-todisteen ennen hyväksyttyä sarjaa.
+
+Uudella patchilla tehdyt neljä oikeaa Windows-koetta läpäisivät ensimmäisellä
+yrityksellä: ensin normaali Page/API/sulku ja kaksi varhaista virhepolkua,
+sitten erillinen aidosti odottavan ikkunan timeout-koe. Ajot eivät olleet
+päällekkäisiä. Riippumaton takaisinluku vahvisti lähdesidonnan, alkuperäiset
+virheet, bridge-exit/close-havainnot, native-puutodisteen ja portin
+vapautumisen. Varhaisvirheissä GO:ta ei välitetty eikä työkuormaa luotu;
+stopin operational-hylkäys säilyi onnistuneesta siivouksesta erillään.
+Ikkunakokeessa launch valmistui, pidätys ja runtime-identiteetti täsmäsivät,
+ikkuna- ja backend-määrät olivat nolla ja alkuperäinen julkinen
+`TimeoutError` säilyi `firstWindow`/`timeout`-vaiheena. Todellinen
+close-tapahtuma edelsi owner-stopia; bridge ja työkuorma päättyivät
+onnistuneesti, eikä graceful-close- tai cleanup-virhettä ollut.
+Koelähteen myöhempi pelkkä pending-konfiguraation hash-rivin lisäys on
+erotettu aiemmasta lähdehashista täsmällisellä käänteistarkistuksella;
+alkuperäisiä lähdesidontoja tai tuloksia ei korvattu.
+
+**Sukupolvien ja katkeamisten hyväksyntänäyttö 2026-09-27:** erillisten
+restart/relaunch- ja toinen instanssi -kokeiden toiset yritykset on
+takaisinluettu hyväksytysti, kumpikin yhdellä testiyrityksellä. Restart/relaunch
+todensi ennen seuraavaa käynnistystä edellisen ownerin, bridgen ja portin
+poissaolon, runtime-/omistaja-/session-identiteettien vaihtumisen, vanhan
+session 401-hylkäyksen, pysyvän testidatan ja relaunch-kuittauksen.
+Toinen instanssi päättyi oman täsmällisen omistajansa alla muuttamatta
+pääinstanssin identiteettiä, toimivaa UI/API-yhteyttä tai yhtä backendia ja
+ikkunaa. Restartin ensimmäinen yritys hylättiin, koska tarkistin odotti
+observer-stopin jälkeen virheellisesti `null`-tilaa tarkoituksellisen
+`stopped`-tilan sijaan. Toisen instanssin ensimmäinen yritys hylättiin
+suoran profiilin puuttuvien rekisteröinti-/bootstrap-kenttien väärän
+`null`-odotuksen vuoksi. Alkuperäiset lähdesnapshotit ja hylkäykset säilyvät;
+korjatut tarkistimet ja uudet tulokset eivät muuta ensimmäisiä hyväksytyiksi.
+
+Owner-lossin ensimmäinen ja caller-lossin toinen erillinen yritys on
+takaisinluettu hyväksytysti. Owner-loss käytti vain säilytettyä elävän
+omistajan lapsiprosessikahvaa: todelliset owner-, bridge- ja sovelluksen
+close-havainnot edelsivät eksplisiittistä stopia, joka jäi oikein
+`cleanupUnverified`-virheeksi. Äkillisen caller-lossin todellinen yhden
+yrityksen worker-crash ja CLI-hylkäys säilyivät hylkäyksinä. Kummankin
+kokeen hyväksyntä vaati erillisen ulomman omistajan `naturalExit`-todisteen:
+juuri poistunut ja aktiivinen koko puu tyhjä ennen ulomman cleanupin
+terminate-haaraa, ei interventiota, ulkopuolinen sentinel ennen/jälkeen ja
+suljettuna sekä vapautunut portti. Tämä ei muuta sisemmän testin odotettua
+virhettä onnistumiseksi.
+
+Äkillinen kutsujan kato ei ole kooperatiivisen caller-EOF:n koe: kuolleelta
+sisäomistajalta ei vaadita terminal-tiedostoa ulomman puutodisteen tilalle.
+Vain tiedoston stat-luvun `ENOENT` sallii puuttumisen diagnostisena tilana;
+olemassa olevan kuitin luku, JSON, schema, identiteetti ja tilat tarkistetaan.
+Caller-lossin ensimmäinen yritys jäi hylätyksi raportin ANSI-muotoilun
+tarkistimeen; jälkimmäinen sentinel-haaste ja porttitodiste puuttuivat.
+Myöhempi onnistuminen ei hyväksy sitä jälkikäteen. Toisen yrityksen
+alkuperäiset lähteet arkistoitiin ennen erillistä olemassa olevan JSON-`null`-
+kuitin hylkäyskorjausta; korjausta ei nimetä uudeksi ajotulokseksi.
+
+**Tavallisen fixturen nykyinen paikallinen hyväksyntä:** Windowsin
+`isolatedElectronTest` säilyttää bridge-/native-omistajan ennen launchin
+odotusta ja käyttää samaa alkuperäistä elinaikaa restartien, relaunchien ja
+toisen instanssin yli. Julkinen rajattu close ja omistajan stop ovat eri
+vastuut; Windowsissa ei palata legacy-cleanupiin. Cleanupin tai portin
+epävarmuus estää seuraavan sukupolven ja juuren poiston pysyvästi.
+Alkuperäisen timeoutin suljettu syyluokka säilyy; synkroninen välimuistiluku
+luokittelee oikeaa työkuormaa eikä bridgen PID:tä tai vasta siivouksessa
+syntynyttä poistumista. Diagnostiikka ei lisää odotusta. Turvallisen
+lifecycle-artifactin valinnainen ownership-kenttä ei muuta moduulitestin
+fixture-rajapintaa eikä muiden alustojen launch-/cleanup-haaraa.
+
+Samaan nykyiseen lähdetilaan sidotut E2E-tyyppitarkistus ja kohdesopimukset
+186/186 läpäisivät, mukaan lukien yhteisen backend-/Vite-omistajan regressiot.
+Kanoninen `e2e:electron` valmisteluineen läpäisi tavallisen
+`electron-development`-projektin 45/45 ensimmäisellä yrityksellä ilman retryä,
+flaky-tulosta tai ohitusta. Riippumaton takaisinluku vahvisti talletetun
+diffin ja uusien tiedostojen lähdesidonnan sekä raportin täsmällisen
+tapausjoukon tavallista inventaariota vasten. Sarja sisältää sekä sopimus-
+että oikeita kuluttajatestejä, ei 45 erillistä prosessikoetta. Aiemmat neljä
+kohdennettua kuluttajatestiä edelsivät diagnostiikkakorjausta; ne ja yllä
+kuvattu patchivaiheen workspace-/työkalunäyttö eivät ole tämän revision
+uusinta-ajoja.
+
+**Todellisen fixturen epävarmuus ja handoff:** erilliset rajatut kokeet
+käyttävät muuttumatonta `isolatedElectronTest`-fixtureä ja oikeaa sovellusta.
+Toisessa julkinen close raportoi virheen vasta oikean sulun jälkeen; toisessa
+testin oma loopback-palvelin estää portin vapautumisen. Molemmissa myös
+toinen restart torjutaan alkuperäisellä suljetulla virhekoodilla sen jälkeen,
+kun sovellus ja portti ovat jo vapaat. Uutta omistajasukupolvea ei synny,
+testijuuri säilyy myös todellisen teardownin jälkeen, ja teardownin
+täsmällinen cleanup-hylkäys säilyy testiraportissa. Native-puun poissaolo,
+bridgen täsmäävä sulku, puuttuva erillinen owner-/launch-virhe, ulomman
+session puutodiste, sentinel ja portti tarkistetaan erikseen. Kyse ei ole
+native-stopin epäonnistumisen simuloinnista tai CLI-virheen yleisestä
+hyväksymisestä. Close-kokeen kolmas ja porttikokeen ensimmäinen yritys
+läpäisivät, ja riippumaton takaisinluku hyväksyi niiden lähdesidonnat ja
+todisteet. Ensimmäinen close-yritys hylättiin liian laajassa testiapurin
+tiedostohaussa ennen faultia; toinen raportin lähdekoodikehyksen
+virheellisessä tekstivertailussa. Ne ja alkuperäiset lähdesidonnat säilyvät
+hylättyinä; vain nämä rajatut koeapurin virheet korjattiin ennen uusintaa.
+
+Binary-handoffin lapsiton testiapuri käyttää olemassa olevaa rajattua
+prosessinlopetusta, säilytettyä lapsikahvaa ja todellista `exit`-/`close`-
+havaintoa. Alkuperäinen viiden sekunnin testiraja säilyy; neljän sekunnin
+työ ja yhden sekunnin siivous jakavat saman rajan. Normaali release,
+assertion, timeout, abort, väärä release ja stdin-kirjoitusvirhe on
+todennettu kuudessa oikeaprosessitapauksessa. Kohdesarja 24/24 läpäisi,
+ja riippumaton katselmus sekä lähdesidonnan takaisinluku hyväksyivät sen.
+Tuotannon handoffiin, asennukseen tai sovellukseen ei tehty muutosta.
+
+**Korvatun Windows-polun poisto:** `runBoundedWindowsTaskkill` ja sen kolme
+korvattua sopimustestiä on poistettu. `stopManagedProcessTree` torjuu nyt
+Windows-kutsun ennen pääprosessin tilan tai PID:n lukemista, myös jo
+poistuneelle tai syntymättömälle lapselle. Backend, Vite ja Electron
+käyttävät Windowsissa nykyistä omistajaa. Kahden lapsittoman process-output-
+primitiivitestin cleanup käyttää vain niiden säilytettyä lapsikahvaa ja
+rajattua todellista closea; tämä ei ole sovelluspuun fallback. POSIX-haara
+säilyy ennallaan Linuxin hyväksyttyyn kuluttajasiirtoon asti.
+
+Poistetun taskkill-apurin täydellisen sulun, timeoutin ja käynnistys-/owner-
+virheiden korvaava kattavuus on `ownedWindowsBackend`-sopimuksissa.
+Windows-kutsuportille lisättiin oma regressio; se on tarkoituksella vain
+Windowsissa ajettava, ei Linuxin siivouksen onnistumisväite. Poiston jälkeen
+E2E-tyyppitarkistus ja kanoninen `e2e:system` valmisteluineen läpäisivät
+607/607 ensimmäisellä yrityksellä, ilman retryä, flaky-tulosta tai ohitusta.
+Riippumaton takaisinluku vahvisti lähdediffin ja uudet tiedostot sekä kaikki
+40 system-testitiedostoa ja korvaavan kattavuuden; vain ajon jälkeiset
+dokumentointimuutokset erotettiin lähdevertailusta.
+Tämä on poiston jälkeinen Windows-system-näyttö; aiempaa 45/45 Electron-
+ajoa ei nimetä saman myöhemmän revision uusinta-ajoksi.
+
+Jäljellä ovat erillinen endurance nykyisellä riskikadenssilla sekä muut
+lopullisen matriisin portit. Endurance ei ole jokaisen checkpointin uusinta.
+Nämä rajatut paikalliset hyväksynnät eivät sulje
+[lopullista T3-matriisia](#t3n-lopullinen-hyväksyntänäyttö).
+Chromiumin omistajuusvalinta ja Linuxin kuluttajasiirto/paikallisen tuen
+ympäristöpäätös pysyvät erillisinä avoimina kohtina. Uuden revision etä-CI
+sekä täsmälliset PR/main-portit ovat avoinna; historialliset timeoutit ja
+niiden juurisyyt eivät ratkea tällä hyväksynnällä.
+
+Lähdeperusta: projektin lukitun Noden
+[ChildProcess-kill ja onexit](https://github.com/nodejs/node/blob/v24.19.0/lib/internal/child_process.js),
+[ProcessWrap](https://github.com/nodejs/node/blob/v24.19.0/src/process_wrap.cc)
+ja [libuv:n Windows-prosessikahva](https://github.com/nodejs/node/blob/v24.19.0/deps/uv/src/win/process.c).
+Lähdetarkistus perustelee kahvasopimuksen, mutta ei korvaa yllä erikseen
+kirjattuja patchin regressioita ja oikeaprosessinäyttöä.
 
 Lähteet: [Noden Process-kanavien sopimus](https://nodejs.org/docs/latest-v24.x/api/diagnostics_channel.html#process)
 ja [projektin lukituksen spawn-toteutus](https://github.com/nodejs/node/blob/v24.19.0/lib/internal/child_process.js).

@@ -21,6 +21,7 @@ import {
 } from '../../../desktop/e2e/electronE2eStartupObservation.js';
 import { ELECTRON_E2E_FIRST_WINDOW_TIMEOUT_MILLISECONDS } from '../../src/fixtures/electronLaunchBudgets.js';
 import { stopOwnedElectronRuntime } from '../../src/fixtures/stopOwnedElectronRuntime.js';
+import type { ElectronBridgeCleanupEvidence } from '../../src/environment/startOwnedWindowsElectronBridge.js';
 import { createElectronLaunchFailureCapture } from '../../src/fixtures/captureElectronLaunchFailure.js';
 import { createBackendOperationalEvent } from '../../../backend/src/observability/createOperationalEvent.js';
 import { createBackendOperationalLogger } from '../../../backend/src/observability/infrastructure/createBackendOperationalLogger.js';
@@ -130,6 +131,45 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
   test('an observer failure neither masks startup failure nor changes success', async () => {
     await expect(launchFixture({ observerFails: true }).run()).resolves.toHaveProperty('page');
     await expect(launchFixture({ observerFails: true, window: new errors.TimeoutError('private') }).run())
+      .rejects.toThrow('phase=firstWindow reason=timeout');
+  });
+
+  for (const workload of ['running', 'unavailable', 'exited'] as const) {
+    test(`classifies the workload, not the closed Playwright bridge (${workload})`, async () => {
+      const fixture = launchFixture({ dom: new errors.TimeoutError('private timeout'), terminal: 'process' });
+      let reads = 0;
+      await expect(fixture.run(() => { reads++; return workload; }))
+        .rejects.toThrow(`phase=domContentLoaded reason=${workload === 'exited' ? 'processExited' : 'timeout'}`);
+      expect(reads).toBe(1);
+      expect(fixture.owned()).toBe(fixture.application);
+    });
+  }
+
+  test('observes workload exit even while the bridge handle is still live', async () => {
+    const fixture = launchFixture({ window: new Error('private window failure') });
+    await expect(fixture.run(() => 'exited')).rejects.toThrow('phase=firstWindow reason=processExited');
+    expect(fixture.ownedProcess()?.exitCode).toBeNull();
+  });
+
+  test('a failed workload read preserves the original failure classification', async () => {
+    const fixture = launchFixture({ window: new errors.TimeoutError('private window timeout') });
+    await expect(fixture.run(() => { throw new Error('private owner error'); }))
+      .rejects.toThrow('phase=firstWindow reason=timeout');
+    expect(JSON.stringify(fixture.observations)).not.toContain('private');
+  });
+
+  test('does not classify connection cleanup as an original workload exit', async () => {
+    const fixture = launchFixture({ connect: new errors.TimeoutError('private connection timeout') });
+    let reads = 0;
+    await expect(fixture.run(() => { reads++; return 'exited'; }))
+      .rejects.toThrow('phase=playwrightConnect reason=timeout');
+    expect(reads).toBe(0);
+  });
+
+  test('a mistakenly asynchronous diagnostic cannot hold launch failure cleanup pending', async () => {
+    const fixture = launchFixture({ window: new errors.TimeoutError('private window timeout') });
+    const pending = () => new Promise<never>(() => {});
+    await expect(fixture.run(pending as unknown as () => 'unavailable'))
       .rejects.toThrow('phase=firstWindow reason=timeout');
   });
 
@@ -442,6 +482,27 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
   });
 
   for (const unverified of [false, true]) {
+    test(`retains safe native ownership evidence in the existing lifecycle attachment (${unverified})`, async ({}, testInfo) => {
+      const ownership: ElectronBridgeCleanupEvidence = {
+        owner: { status: unverified ? 'cleanupUnverified' : 'processTreeAbsent', firstFailure: null },
+        bridge: unverified ? 'unverified' : 'closed',
+        observerFailure: 'stopped', launchFailure: false, goSent: true,
+        bridgeExit: unverified ? 'unexpected' : 'matched',
+      };
+      await reportElectronLifecycleEvidence(testInfo, {
+        launch: [], observationsTruncated: false,
+        cleanup: { api: 'completed', runtime: unverified ? 'unverified' : 'completed',
+          port: 'released', runRoot: unverified ? 'retained' : 'removed' },
+        ownership,
+      });
+      const bytes = readFileSync(testInfo.outputPath('electron-lifecycle.json'));
+      const attachment = testInfo.attachments.find(item => item.name === 'electron-lifecycle');
+      expect(attachment).toBeDefined();
+      expect(attachment?.body ?? readFileSync(attachment!.path!)).toEqual(bytes);
+      expect(JSON.parse(bytes.toString('utf8')).ownership).toEqual(ownership);
+      expect(bytes.toString('utf8')).not.toMatch(/private|session|path|http/);
+    });
+
     test(`direct Electron cleanup writes the existing CI artifact with uncertainty ${unverified}`, async ({}, testInfo) => {
       const root = createE2eRunRoot();
       const original = new Error('private direct runtime failure');
@@ -504,7 +565,8 @@ function launchFixture(fault: {
     },
   } as ElectronApplication;
   return { calls, observations, application, page, owned: () => owned, ownedProcess: () => ownedProcess,
-    run: () => launchElectronRuntime({
+    run: (readWorkloadState?: () => 'running' | 'exited' | 'unavailable') => launchElectronRuntime({
+      ...(readWorkloadState === undefined ? {} : { readWorkloadState }),
       async launch() { calls.push('connect'); if (fault.connect) throw fault.connect; return application; },
       connected(value, childProcess) { owned = value; ownedProcess = childProcess; calls.push('owned'); },
       observe(value) { if (fault.observerFails) throw new Error('private observer detail'); observe?.(value); observations.push(value); },

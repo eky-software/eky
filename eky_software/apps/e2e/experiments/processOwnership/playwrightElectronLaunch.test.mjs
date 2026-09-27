@@ -390,8 +390,84 @@ function registerLifecycleCases(createElectronHarness) {
   });
 }
 
-test('exact selector-only source delta: old digest is provenance, never an accepted runtime', settings, () => {
+function readPreProcessOnlyBundle() {
   const { version, bytes } = readVerifiedBundle();
+  let source = bytes.toString('utf8');
+  const reverse = (name, current, previous) => {
+    assert.equal(source.split(current).length, 2, `one exact reviewed ${name} hunk`);
+    source = source.replace(current, previous);
+  };
+  reverse('internal process guard', [
+    'async function launchProcess(options) {',
+    '  if (options.windowsProcessOnly && (process.platform !== "win32" || options.shell))',
+    '    throw new Error("windowsProcessOnly requires a direct Windows process");',
+  ].join('\n'), 'async function launchProcess(options) {');
+  reverse('handle-only kill branch', [
+    '          if (options.windowsProcessOnly) {',
+    '            // Eky: the childless bridge has a retained handle, not a PID-tree owner.',
+    '            if (!spawnedProcess.kill("SIGKILL"))',
+    '              options.log("windowsProcessOnlyKillNotDelivered");',
+    '          } else {',
+    '            const taskkillProcess = childProcess.spawnSync(`taskkill /pid ${spawnedProcess.pid} /T /F`, { shell: true });',
+    '            const [stdout2, stderr2] = [taskkillProcess.stdout.toString(), taskkillProcess.stderr.toString()];',
+    '            if (stdout2)',
+    '              options.log(`[pid=${spawnedProcess.pid}] taskkill stdout: ${stdout2}`);',
+    '            if (stderr2)',
+    '              options.log(`[pid=${spawnedProcess.pid}] taskkill stderr: ${stderr2}`);',
+    '          }',
+  ].join('\n'), [
+    '          const taskkillProcess = childProcess.spawnSync(`taskkill /pid ${spawnedProcess.pid} /T /F`, { shell: true });',
+    '          const [stdout2, stderr2] = [taskkillProcess.stdout.toString(), taskkillProcess.stderr.toString()];',
+    '          if (stdout2)',
+    '            options.log(`[pid=${spawnedProcess.pid}] taskkill stdout: ${stdout2}`);',
+    '          if (stderr2)',
+    '            options.log(`[pid=${spawnedProcess.pid}] taskkill stderr: ${stderr2}`);',
+  ].join('\n'));
+  reverse('optional boolean protocol', [
+    '    scheme.ElectronLaunchParams = tObject({',
+    '      windowsProcessOnly: tOptional(tBoolean),',
+  ].join('\n'), '    scheme.ElectronLaunchParams = tObject({');
+  reverse('pre-temp Electron guard', [
+    '        // Eky: opt-in is only safe for an explicitly selected childless EXE.',
+    '        if (options.windowsProcessOnly !== void 0 && typeof options.windowsProcessOnly !== "boolean")',
+    '          throw new Error("windowsProcessOnly must be a boolean");',
+    '        const directWindowsExecutable = process.platform === "win32" &&',
+    '          !!options.executablePath && import_path29.default.isAbsolute(options.executablePath) &&',
+    '          import_path29.default.extname(options.executablePath).toLowerCase() === ".exe";',
+    '        if (options.windowsProcessOnly && !directWindowsExecutable)',
+    '          throw new Error("windowsProcessOnly requires an explicit absolute Windows EXE");',
+    '',
+  ].join('\n'), '');
+  reverse('relocated direct EXE selector', [
+    '        // Eky: explicit absolute EXE paths use direct Windows argument delivery.',
+    '        let shell = false;',
+  ].join('\n'), [
+    '        // Eky: explicit absolute EXE paths use direct Windows argument delivery.',
+    '        const directWindowsExecutable = process.platform === "win32" &&',
+    '          !!options.executablePath && import_path29.default.isAbsolute(command) &&',
+    '          import_path29.default.extname(command).toLowerCase() === ".exe";',
+    '        let shell = false;',
+  ].join('\n'));
+  reverse('internal opt-in forwarding', [
+    '          stdio: "pipe",',
+    '          windowsProcessOnly: options.windowsProcessOnly === true,',
+  ].join('\n'), '          stdio: "pipe",');
+  const previous = Buffer.from(source);
+  assert.equal(createHash('sha256').update(previous).digest('hex'),
+    'b3ca0c0a9c47f098f221be6053d3b02dac8c4f41cda31ae22438aea21f96e8c4',
+    'reversing only the opt-in hunks must restore the exact prior patched bundle');
+  // Historical bytes are provenance only. Never pass them to the evaluator.
+  return { version, bytes: previous };
+}
+
+test('same-version pre-process-only bundle is rejected despite retaining the earlier patches', settings, () => {
+  const { version, bytes } = readPreProcessOnlyBundle();
+  assert.equal(version, BUNDLE_VERSION);
+  assert.throws(() => verifyBundle(version, bytes), /digest before evaluation/);
+});
+
+test('exact selector-only source delta: old digest is provenance, never an accepted runtime', settings, () => {
+  const { version, bytes } = readPreProcessOnlyBundle();
   const current = bytes.toString('utf8');
   const before = '        let shell = false;\n        if (process.platform === "win32") {';
   const after = [

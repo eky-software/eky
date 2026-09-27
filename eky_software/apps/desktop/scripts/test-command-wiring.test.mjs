@@ -15,6 +15,7 @@ const COMMANDS = {
   process: ['installer:test:windows-process', 1],
 };
 const REQUIRED_FILES = [
+  ['e2e/electronE2eStartupHold.test.ts', 'vitest'],
   ['e2e/electronE2eWorkspaceStartupFailure.test.ts', 'vitest'],
   ['scripts/test-command-wiring.test.mjs', 'node'],
   ['scripts/backendBuildMetadata.test.mjs', 'node'],

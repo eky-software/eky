@@ -18,7 +18,7 @@ const bundlePath = coreRequire.resolve('playwright-core/lib/coreBundle');
 export const bundleRequire = createRequire(bundlePath);
 export const BUNDLE_VERSION = '1.62.1';
 // Reviewed installed bytes after the versioned pnpm patch; review again on every update.
-export const BUNDLE_SHA256 = 'b3ca0c0a9c47f098f221be6053d3b02dac8c4f41cda31ae22438aea21f96e8c4';
+export const BUNDLE_SHA256 = 'bc492ac4a38bfdd44a530be7ad32ad16151ffc66e4904ef1adba1301627e8d06';
 // Provenance only, never an alternative accepted/evaluated digest.
 export const PREVIOUS_BUNDLE_SHA256 = '0d8b43a8e50f5453ddde5e5055ca1102ffdd927acf785fb88f90fd00dc94eb85';
 export const turn = () => new Promise((resolve) => setImmediate(resolve));

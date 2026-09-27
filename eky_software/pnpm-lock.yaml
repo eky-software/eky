@@ -9,7 +9,7 @@ overrides:
   '@xmldom/xmldom': 0.9.12
 
 patchedDependencies:
-  playwright-core@1.62.1: 78022d5b55f8880967d33109649d6e9218f52f5587d67a1211f155e1da74685e
+  playwright-core@1.62.1: 1e062e126bbf6324fe6b1d59f3c81002edd41b9abe6d83d9258d49ff5870bd3c
 
 importers:
 
@@ -1349,11 +1349,11 @@ snapshots:
 
   picomatch@4.0.5: {}
 
-  playwright-core@1.62.1(patch_hash=78022d5b55f8880967d33109649d6e9218f52f5587d67a1211f155e1da74685e): {}
+  playwright-core@1.62.1(patch_hash=1e062e126bbf6324fe6b1d59f3c81002edd41b9abe6d83d9258d49ff5870bd3c): {}
 
   playwright@1.62.1:
     dependencies:
-      playwright-core: 1.62.1(patch_hash=78022d5b55f8880967d33109649d6e9218f52f5587d67a1211f155e1da74685e)
+      playwright-core: 1.62.1(patch_hash=1e062e126bbf6324fe6b1d59f3c81002edd41b9abe6d83d9258d49ff5870bd3c)
     optionalDependencies:
       fsevents: 2.3.2
 

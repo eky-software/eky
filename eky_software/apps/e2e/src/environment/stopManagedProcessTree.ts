@@ -1,33 +1,27 @@
-import { runBoundedWindowsTaskkill } from './runBoundedWindowsTaskkill.js';
 import type { ManagedChildProcess } from './startManagedProcess.js';
 
 export async function stopManagedProcessTree(
   child: ManagedChildProcess,
   timeoutMilliseconds = 3_000,
 ): Promise<void> {
+  if (process.platform === 'win32') {
+    throw new Error('E2E_MANAGED_PROCESS_TREE_WINDOWS_OWNER_REQUIRED');
+  }
   if (hasExited(child) || child.pid === undefined) {
     return;
   }
 
-  if (process.platform === 'win32') {
-    await runBoundedWindowsTaskkill(child.pid, timeoutMilliseconds);
-  } else {
-    try {
-      process.kill(-child.pid, 'SIGTERM');
-    } catch {
-      child.kill('SIGTERM');
-    }
+  try {
+    process.kill(-child.pid, 'SIGTERM');
+  } catch {
+    child.kill('SIGTERM');
   }
 
   await waitForManagedProcessExit(child, timeoutMilliseconds);
   if (!hasExited(child)) {
-    if (process.platform !== 'win32') {
-      try {
-        process.kill(-child.pid, 'SIGKILL');
-      } catch {
-        child.kill('SIGKILL');
-      }
-    } else {
+    try {
+      process.kill(-child.pid, 'SIGKILL');
+    } catch {
       child.kill('SIGKILL');
     }
     await waitForManagedProcessExit(child, timeoutMilliseconds);

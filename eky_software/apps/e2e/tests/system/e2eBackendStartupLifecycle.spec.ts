@@ -1,5 +1,4 @@
 import { EventEmitter } from 'node:events';
-import type { ChildProcess } from 'node:child_process';
 
 import { expect, test } from '@playwright/test';
 
@@ -15,7 +14,6 @@ import {
   observeChildProcessStartup,
   type E2eProcessStartupObservation,
 } from '../../src/environment/e2eProcessStartupObservation.js';
-import { runBoundedWindowsTaskkill } from '../../src/environment/runBoundedWindowsTaskkill.js';
 import type { ManagedChildProcess } from '../../src/environment/startManagedProcess.js';
 import { reportOwnedBackendStartupFailure, waitForE2eBackendStartup } from '../../src/environment/startE2eBackendProcess.js';
 import { OwnedWindowsBackendStartupFailure } from '../../src/environment/startOwnedWindowsBackend.js';
@@ -508,61 +506,6 @@ test.describe('dynamic HTTP health readiness', () => {
 
     await expect(result).rejects.toThrow(
       'E2E_BACKEND_HEALTH_WAIT_ABORTED',
-    );
-  });
-});
-
-test.describe('bounded Windows taskkill', () => {
-  test('completes when the taskkill host exits', async () => {
-    const taskkill = createUnobservedFakeChild();
-    const result = runBoundedWindowsTaskkill(
-      123,
-      100,
-      () => taskkill as ChildProcess,
-    );
-    taskkill.setExitCode(0);
-    taskkill.emit('exit', 0, null);
-
-    await expect(result).resolves.toBeUndefined();
-    expect(taskkill.listenerCount('exit')).toBe(0);
-    expect(taskkill.listenerCount('error')).toBe(0);
-  });
-
-  test('times out safely and terminates the taskkill host', async () => {
-    let killCount = 0;
-    const taskkill = createUnobservedFakeChild(() => {
-      killCount += 1;
-      return true;
-    });
-
-    await expect(
-      runBoundedWindowsTaskkill(
-        123,
-        5,
-        () => taskkill as ChildProcess,
-      ),
-    ).rejects.toThrow('E2E_MANAGED_PROCESS_TREE_TASKKILL_TIMEOUT');
-    expect(killCount).toBe(1);
-    expect(taskkill.listenerCount('exit')).toBe(0);
-    expect(taskkill.listenerCount('error')).toBe(0);
-  });
-
-  test('maps launcher and process failures to closed error codes', async () => {
-    await expect(
-      runBoundedWindowsTaskkill(123, 100, () => {
-        throw new Error('raw launcher failure');
-      }),
-    ).rejects.toThrow('E2E_MANAGED_PROCESS_TREE_TASKKILL_FAILED');
-
-    const taskkill = createUnobservedFakeChild();
-    const result = runBoundedWindowsTaskkill(
-      123,
-      100,
-      () => taskkill as ChildProcess,
-    );
-    taskkill.emit('error', new Error('raw process failure'));
-    await expect(result).rejects.toThrow(
-      'E2E_MANAGED_PROCESS_TREE_TASKKILL_FAILED',
     );
   });
 });
