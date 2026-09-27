@@ -39,10 +39,34 @@ export interface ElectronBridgeCleanupEvidence {
   readonly goSent: boolean;
   readonly bridgeExit: 'pending' | 'notLaunched' | 'notCreated' | 'withoutWorkload' | 'matched' | 'unexpected';
 }
+export type ElectronBridgeFailureReason = 'timeout' | 'unknown' | 'versionUnverified'
+  | 'ownerPreparationFailed' | 'ownerConfigurationInvalid' | 'ownerEnvironmentValueInvalid'
+  | 'ownerBuildRequired' | 'ownerSpawnFailed';
+
+function classifyEarlyFailure(error: unknown): ElectronBridgeFailureReason {
+  if (error instanceof OwnedWindowsServiceStartupFailure) {
+    if (error.evidence.startupFailure === 'startupDeadlineExceeded') return 'timeout';
+    if (error.evidence.startupFailure === 'ownerSpawnFailed') return 'ownerSpawnFailed';
+    if (error.evidence.startupFailure !== 'preparationFailed') return 'unknown';
+    const cause = error.readPrivateFailure()?.error;
+    // Exact owned codes only. Never export filesystem errors, paths or environment values.
+    if (cause instanceof Error) {
+      switch (cause.message) {
+        case 'E2E_ELECTRON_OWNER_CONFIGURATION_INVALID': return 'ownerConfigurationInvalid';
+        case 'E2E_ELECTRON_OWNER_ENVIRONMENT_VALUE_INVALID': return 'ownerEnvironmentValueInvalid';
+        case 'E2E_BACKEND_OWNER_BUILD_REQUIRED': return 'ownerBuildRequired';
+      }
+    }
+    return 'ownerPreparationFailed';
+  }
+  return error instanceof Error && error.message === 'E2E_ELECTRON_OBSERVATION_VERSION_UNVERIFIED'
+    ? 'versionUnverified' : 'unknown';
+}
+
 export class ElectronBridgeCallerFailure extends Error {
   readonly #failure: Readonly<{ error: unknown }> | undefined;
   constructor(code: 'START_FAILED' | 'CLEANUP_UNVERIFIED', failure?: Readonly<{ error: unknown }>,
-    readonly reason: 'timeout' | 'unknown' = 'unknown') {
+    readonly reason: ElectronBridgeFailureReason = 'unknown') {
     super('E2E_ELECTRON_BRIDGE_' + code);
     this.#failure = failure;
   }
@@ -69,7 +93,7 @@ export function startOwnedWindowsElectronBridge(
     owner = createWindowsOwnerSession('electronBridge', input, dependencies.owner);
   } catch (error) {
     throw new ElectronBridgeCallerFailure('START_FAILED', error instanceof OwnedWindowsServiceStartupFailure
-      ? error.readPrivateFailure() ?? Object.freeze({ error }) : Object.freeze({ error }));
+      ? error.readPrivateFailure() ?? Object.freeze({ error }) : Object.freeze({ error }), classifyEarlyFailure(error));
   }
   let observer: ReturnType<typeof createElectronSpawnObservation> | undefined;
   let launchInvoked = false;

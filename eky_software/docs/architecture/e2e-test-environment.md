@@ -3113,6 +3113,39 @@ ja [Reporter](https://playwright.dev/docs/api/class-reporter). Lukittu
 lähdekoodi omistaa version tarkan käyttäytymisen; verkkodokumentaatio ei
 yksin todista korjauksen tai sulkeutumisen toimivuutta.
 
+###### Windows Electron -valmistelun CI-hylkäys
+
+**2026-09-28:** revision `4aececfd8a928075c195a4308850daed8748a18a`
+[normaalin V2-ajon 36349083394](https://github.com/eky-software/eky/actions/runs/36349083394)
+ensimmäisen yrityksen Electron-ryhmä hylättiin. 38 kriittisestä tapauksesta
+14 läpäisi ja 24 pääfixturen tapausta epäonnistui valmistelussa sekä
+ensiyrityksellä että CI:n ennestään määritellyssä retryssä. Nämä eivät ole
+agentin käynnistämiä uusinta-ajoja. Paketointi, packaged smoke ja native-
+valmistelu läpäisivät ennen tätä hylkäystä.
+
+Kaikista 48 hylätystä yrityksestä säilytettiin turvallinen lifecycle-liite:
+`playwrightConnect` epäonnistui tuntemattomalla syyllä, runtime-siivous jäi
+varmentamatta ja testijuuri säilyi. Omistajuushavainto puuttui. Tämä rajaa
+tutkimuksen ennen bridge-asiakkaan palautumista tapahtuvaan valmisteluun;
+se ei yksilöi tarkkaa syytä eikä ratkaise historiallisia firstWindow-timeouteja.
+
+Rajattu diagnostiikkamuutos välittää olemassa olevaan vaihehavaintoon vain
+suljetut luokat: versio varmentamatta, omistajan valmistelu-, konfiguraatio-,
+ympäristöarvo-, build- tai spawn-virhe sekä aiempi timeout/unknown.
+Luokitus käyttää tyypitettyä valmisteluvirhettä ja täsmällisiä omistettuja
+virhekoodeja, ei raakavirheen osittaista tekstihakua. Samat ympäristöarvon
+koko-/NUL-rajat, launch-portit, määräajat ja epävarman siivouksen hylkäys
+säilyvät. Polkuja, ympäristöarvoja tai yksityistä poikkeusta ei julkaista.
+
+Riippumaton katselmus, tyyppitarkistus ja rajattu 98/98-sopimussarja
+läpäisivät. Kahdeksan uutta
+varhaisen hylkäyksen tapausta kytkee todellisen bridge-kutsujan virheen
+launch-luokitukseen ja nykyisen lifecycle-writerin liitteeseen ilman
+prosessien käynnistämistä. Tämä todentaa diagnostiikan, ei CI:n juurisyytä.
+Seuraava koe on yksi nykyisen Electron-diagnostiikkatyönkulun ajo
+katselmoidusta revisiosta. Vasta sen havainnon perusteella rajataan korjaus;
+uutta toiminnallista T3-vaihetta ei aloiteta punaisen baselinen päälle.
+
 ###### Chromiumin kuluttajasiirron avoin omistajuusraja
 
 **2026-09-27: vain valmistelu; omistajapäätös avoin, ei toteutusta.**
@@ -3614,7 +3647,9 @@ enimmäisajan sisällä; kiinteä odotus ei ole onnistumissignaali.
 Electron-fixture erottaa `playwrightConnect`-, `firstWindow`- ja
 `domContentLoaded`-vaiheet. Virheen luokka perustuu Playwrightin timeout-tyyppiin
 tai havaittuun prosessin poistumiseen / sivun sulkeutumiseen; tuntematon syy
-säilyy tuntemattomana. Vaihehavainto ei muuta aikarajoja eikä toimi readiness-
+säilyy tuntemattomana. Windows-bridgen synkronisesta valmisteluhylkäyksestä
+säilyy lisäksi yllä määritelty suljettu syyluokka ilman yksityistä virhettä.
+Vaihehavainto ei muuta aikarajoja eikä toimi readiness-
 signaalina. Runtime- ja prosessikahva siirtyvät fixturen omistukseen heti
 yhteyden valmistuttua, ennen ikkunan odottamista. Sama prosessikahva säilyy
 virheluokitusta ja siivousta varten; sitä ei haeta uudelleen jo suljetun

@@ -138,7 +138,9 @@ test.describe('Windows direct Electron fixed configuration without launch', () =
     const f = fixture();
     try {
       f.input.environment.PATH = 'x'.repeat(2048); expect(f.validate).not.toThrow();
-      f.input.environment.PATH += 'x'; expect(f.validate).toThrow();
+      f.input.environment.PATH += 'x'; expect(f.validate).toThrow('E2E_ELECTRON_OWNER_ENVIRONMENT_VALUE_INVALID');
+      f.input.environment.PATH = 'synthetic\0value';
+      expect(f.validate).toThrow('E2E_ELECTRON_OWNER_ENVIRONMENT_VALUE_INVALID');
       delete f.input.environment.PATH;
       const runtimeConfigPath = join(f.input.runtimeRoot, 'other.json'); writeFileSync(runtimeConfigPath, '{}');
       expect(() => validateWindowsElectronServiceInput({ ...f.input, runtimeConfigPath }, f.osTempRoot)).toThrow();

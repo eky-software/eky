@@ -3,6 +3,12 @@
 ## Päätös ja nykyinen tila
 
 **Nykytila 2026-09-27: M0, T1 ja T2 hyväksytty; T3/R28 kesken.**
+**28.9. tarkennus:** Windows-välipaketin `4aececfd` normaali CI hylkäsi
+Electronin yhteisen käynnistysvalmistelun: 24/38 tapausta epäonnistui ennen
+yhteyttä. Ensimmäiset yritykset ja turvalliset liitteet on säilytetty.
+Nykyinen seuraava työ on tämän hylkäyksen rajattu vianhaku, ei seuraava
+kuluttajasiirto. [Havainto ja diagnostiikan rajaus](e2e-test-environment.md#windows-electron--valmistelun-ci-hylkäys)
+eivät muuta testiehtoja tai hyväksy koko T3:a.
 Jatkamisen lähtörevisio, avoin puute, seuraava työ ja valmistumiskriteeri
 ovat [M1:n ajantasaisessa aloituskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
 Nykyinen eteneminen on **T3:n oikeat kuluttajat ja korvatun toteutuksen
@@ -43,8 +49,9 @@ Korvattu Windowsin taskkill-varapolku on poistettu. Poiston jälkeinen
 tyyppitarkistus ja kanoninen järjestelmätestisarja 607/607 valmisteluineen
 läpäisivät ensimmäisellä yrityksellä. Linuxin nykyistä haaraa ei muutettu.
 Saman välipaketin koko workspace-testit ja tyyppitarkistus sekä CI-sopimukset
-315/315 läpäisivät. Normaali etä-CI on seuraava tarkistus, ei vielä
-hyväksytty tulos; Chromiumin ja Linuxin päätösrajat säilyvät.
+315/315 läpäisivät. Näiden jälkeinen normaali etä-CI hylkäsi yllä kuvatun
+Electron-valmistelun; paikallinen näyttö ei korvaa sitä. Chromiumin ja
+Linuxin päätösrajat säilyvät.
 
 Nykyinen jäljellä oleva työ on [M1:n lyhyessä sulkulistassa](release-0.3.0-m1-preparation-plan.md#t3n-nykyinen-työjärjestys):
 Chromiumin omistajuusraja ja siirto, Linuxin oikeat kuluttajat ja sen

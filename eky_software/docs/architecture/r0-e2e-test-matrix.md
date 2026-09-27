@@ -3,6 +3,13 @@
 Tämä on Eky R0:n pysyvä riskiperusteinen järjestelmätestimatriisi. Matriisi ei
 väitä alemman tason testiä E2E-todisteeksi.
 
+Windows-Electronin viimeisin CI-valmisteluhylkäys ja sen rajattu
+diagnostiikka ovat [omistavassa checkpointissa](e2e-test-environment.md#windows-electron--valmistelun-ci-hylkäys).
+`SYS-ELECTRON-LIFECYCLE-001`-sopimusta täydentää kahdeksan varhaisen
+version/preparation/spawn-hylkäyksen testiä: vain suljettu syy kulkee
+bridge-kutsujalta todelliseen lifecycle-liitteeseen. Tyypitys ja 98/98-
+kohdesarja läpäisivät; tämä ei ole CI-juurisyyn tai koko T3:n hyväksyntä.
+
 ## Tilat
 
 - `accepted-contract`: matriisissa nimetty testi-infrastruktuurin sopimus

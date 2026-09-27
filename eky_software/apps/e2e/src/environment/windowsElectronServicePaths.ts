@@ -77,7 +77,9 @@ export function validateWindowsElectronServiceInput(input: {
   }
   for (const key of ['SystemRoot', 'WINDIR']) requireWindowsElectronPath(input.environment[key]!, true);
   for (const value of Object.values(input.environment)) {
-    if (typeof value !== 'string' || value.length > 2048 || value.includes('\0')) throw invalid();
+    if (typeof value !== 'string' || value.length > 2048 || value.includes('\0')) {
+      throw new Error('E2E_ELECTRON_OWNER_ENVIRONMENT_VALUE_INVALID');
+    }
   }
   resolveWindowsElectronServiceExecutable(repository);
 }

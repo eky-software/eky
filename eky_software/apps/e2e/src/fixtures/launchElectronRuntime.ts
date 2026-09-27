@@ -1,5 +1,5 @@
 import { errors, type ElectronApplication, type Page } from '@playwright/test';
-import { ElectronBridgeCallerFailure } from '../environment/startOwnedWindowsElectronBridge.js';
+import { ElectronBridgeCallerFailure, type ElectronBridgeFailureReason } from '../environment/startOwnedWindowsElectronBridge.js';
 
 import { ELECTRON_E2E_FIRST_WINDOW_TIMEOUT_MILLISECONDS } from './electronLaunchBudgets.js';
 import {
@@ -38,7 +38,7 @@ export function captureElectronStartupObservation(
 export interface ElectronLaunchObservation {
   readonly phase: 'playwrightConnect' | 'firstWindow' | 'domContentLoaded';
   readonly status: 'started' | 'completed' | 'failed';
-  readonly reason: 'none' | 'timeout' | 'processExited' | 'pageClosed' | 'unknown';
+  readonly reason: 'none' | 'processExited' | 'pageClosed' | ElectronBridgeFailureReason;
 }
 
 // Playwright owns connection startup. The fixture owns the returned runtime,
@@ -104,9 +104,9 @@ export async function launchElectronRuntime(input: {
         ? 'processExited'
         : page?.isClosed() === true
           ? 'pageClosed'
-          : error instanceof errors.TimeoutError || error instanceof ElectronBridgeCallerFailure && error.reason === 'timeout'
+          : error instanceof errors.TimeoutError
             ? 'timeout'
-            : 'unknown';
+            : error instanceof ElectronBridgeCallerFailure ? error.reason : 'unknown';
     observe('failed', reason);
     throw new Error(`E2E_ELECTRON_STARTUP_FAILED phase=${phase} reason=${reason}`);
   }

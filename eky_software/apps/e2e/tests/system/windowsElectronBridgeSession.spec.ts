@@ -14,6 +14,8 @@ import { windowsServiceProfiles } from '../../src/environment/windowsServiceProf
 import type { WindowsElectronBridgeCommand, WindowsServiceReply, WindowsServiceRequestKind,
   WindowsServiceState } from '../../src/environment/windowsServiceProtocol.js';
 import { launchElectronRuntime, type ElectronLaunchObservation } from '../../src/fixtures/launchElectronRuntime.js';
+import { reportElectronLifecycleEvidence } from '../../src/fixtures/isolatedElectronTest.js';
+import { readFileSync } from 'node:fs';
 
 const generation = 'a'.repeat(64);
 const nonce = 'b'.repeat(64);
@@ -45,7 +47,7 @@ function fixture() {
   const flags = { observation: 'normal' as 'normal' | 'missing' | 'duplicate' | 'beforeOs',
     settleOnStop: true, receipt: true, ownerCloseCode: 0, bridgeExitCode: 0,
     launchCalls: 0, ownerSpawns: 0, kills: 0, destroyedConnections: 0 };
-  const hooks = { beforeReply: (_kind: string) => {}, assertVersions: () => {} };
+  const hooks = { beforeReply: (_kind: string) => {}, assertVersions: () => {}, prepare: () => {}, spawn: () => {} };
   const input = { repositoryRoot: join(tmpdir(), 'uncreated-eky-repository'), runRoot: join(tmpdir(), 'uncreated-eky-run'),
     runtimeRoot: join(tmpdir(), 'uncreated-eky-run', 'runtime'),
     runtimeConfigPath: join(tmpdir(), 'uncreated-eky-run', 'runtime', 'electron-config.json'),
@@ -114,8 +116,8 @@ function fixture() {
   const dependencies: NonNullable<Parameters<typeof startOwnedWindowsElectronBridge>[1]> = {
     assertVersions: () => hooks.assertVersions(),
     owner: {
-      prepare: () => config,
-      spawnOwner: () => { flags.ownerSpawns++; return owner as unknown as ChildProcessWithoutNullStreams; },
+      prepare: () => { hooks.prepare(); return config; },
+      spawnOwner: () => { hooks.spawn(); flags.ownerSpawns++; return owner as unknown as ChildProcessWithoutNullStreams; },
       connect: async value => { connection = value; signal('connect');
         if (holds.has('connect')) await holds.get('connect')!.promise;
         return control; },
@@ -183,8 +185,50 @@ test.describe('staged shared Windows owner and public Electron launch driver @se
     try { f.start(); } catch (error) { failure = error; }
     expect(failure).toBeInstanceOf(ElectronBridgeCallerFailure);
     expect((failure as ElectronBridgeCallerFailure).readPrivateFailure()?.error).toBe(original);
+    expect((failure as ElectronBridgeCallerFailure).reason).toBe('versionUnverified');
     expect(f.flags.ownerSpawns).toBe(0); expect(f.flags.launchCalls).toBe(0);
   });
+
+  for (const [hook, code, reason] of [
+    ['assertVersions', 'E2E_ELECTRON_OBSERVATION_VERSION_UNVERIFIED', 'versionUnverified'],
+    ['assertVersions', 'private unknown version detail', 'unknown'],
+    ['prepare', 'E2E_ELECTRON_OWNER_CONFIGURATION_INVALID', 'ownerConfigurationInvalid'],
+    ['prepare', 'E2E_ELECTRON_OWNER_ENVIRONMENT_VALUE_INVALID', 'ownerEnvironmentValueInvalid'],
+    ['prepare', 'E2E_BACKEND_OWNER_BUILD_REQUIRED', 'ownerBuildRequired'],
+    ['prepare', 'private filesystem path and secret', 'ownerPreparationFailed'],
+    ['prepare', 'E2E_ELECTRON_OWNER_CONFIGURATION_INVALID private extra detail', 'ownerPreparationFailed'],
+    ['spawn', 'private owner spawn detail', 'ownerSpawnFailed'],
+  ] as const) {
+    test(`early ${hook} failure ${reason} reaches the lifecycle attachment without private details (${code})`, async ({}, testInfo) => {
+      const f = fixture(); const original = new Error(code);
+      f.hooks[hook] = () => { throw original; };
+      const observations: ElectronLaunchObservation[] = [];
+      let retained: ElectronBridgeCallerFailure | undefined;
+      await expect(launchElectronRuntime({
+        async launch() {
+          try { return await f.start().application; }
+          catch (error) {
+            expect(error).toBeInstanceOf(ElectronBridgeCallerFailure);
+            retained = error as ElectronBridgeCallerFailure;
+            throw error;
+          }
+        },
+        connected() { throw new Error('MUST_NOT_CONNECT'); },
+        observe(value) { observations.push(value); },
+      })).rejects.toThrow(`phase=playwrightConnect reason=${reason}`);
+      expect(retained?.readPrivateFailure()?.error).toBe(original);
+      expect(f.flags.ownerSpawns).toBe(0); expect(f.flags.launchCalls).toBe(0);
+      expect(f.commands).toEqual([]); expect(f.timers.size).toBe(0);
+      await reportElectronLifecycleEvidence(testInfo, { launch: observations, observationsTruncated: false,
+        cleanup: { api: 'completed', runtime: 'unverified', port: 'released', runRoot: 'retained' } });
+      const text = readFileSync(testInfo.outputPath('electron-lifecycle.json'), 'utf8');
+      const report = JSON.parse(text);
+      expect(report.launch.at(-1)).toEqual({ phase: 'playwrightConnect', status: 'failed', reason });
+      expect(report.cleanup.runtime).toBe('unverified'); expect(report.cleanup.runRoot).toBe('retained');
+      expect(text).not.toMatch(/private|secret|filesystem|E2E_ELECTRON_OWNER|E2E_BACKEND_OWNER/);
+      expect(testInfo.attachments.some(value => value.name === 'electron-lifecycle')).toBe(true);
+    });
+  }
 
   for (const stage of ['connect', 'arm', 'register']) {
     test(`stop during pending ${stage} permanently seals admission`, async () => {
