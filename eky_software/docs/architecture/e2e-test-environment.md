@@ -2377,8 +2377,9 @@ eriteltyä kahden suoran kuluttajan paikallista näyttöä.
 Edellä hyväksytty suorien Electron-kuluttajien lähtötila ei muutu. Pääfixturen
 siirtoa ei ole toteutettu. Hyväksyntä kattaa turvallisen CI-raportin
 toteutuksen sekä nykyisen kirjastokorjauksen rajatun laajennuksen
-valmistelun ja testauksen. Raportin paikallinen todennus on läpäisty;
-normaali CI odottaa omaa lähderevisiotaan. Tämä ei ole koko T3:n hyväksyntä.
+valmistelun ja testauksen. Raportin paikallinen todennus ja revision
+`fe893d6b` normaali CI-portti on läpäisty alla erotellulla näytöllä.
+Tämä ei ole koko T3:n hyväksyntä.
 
 1. **Epäonnistuneen launchin havaittavuus.** Lukittu Playwright palauttaa
    `ElectronApplication`- ja `process()`-kahvat vasta onnistuneen launchin
@@ -2455,11 +2456,35 @@ Tämä normaali sulkemiskoe ei ole äkillisen prosessikadon tai koko puun
 omistajuuden todiste. Paikallinen normaali E2E läpäisi 604/604 (system 518,
 web 41, Electron 45) ilman retryä tai flaky-tulosta. E2E-työkalujen
 518 sopimustestiä, mukaan lukien 28 raporttitestiä, tyypitys ja 315
-CI-sopimustestiä läpäisivät. Normaali CI vaatii vielä oman todennuksensa.
+CI-sopimustestiä läpäisivät.
 Uuden formaatin tuloslukija vaatii täydellisen tapausjoukon, ensimmäisen
 yrityksen onnistumisen, virheettömän loppuyhteenvedon sekä täsmällisen
 puhtaan lähderevision testiluettelon. Pelkkä vihreä loppurivi ei riitä;
 vanhoja checkout-, artifact-, kattavuus- tai CI-portteja ei ohiteta.
+
+**Normaalin CI:n tulos 2026-09-27:** revision
+`fe893d6b0d01b38b83ae9dc89044d61cf9874619`
+[V2 36313499358](https://github.com/eky-software/eky/actions/runs/36313499358)
+läpäisi koko portin: 38 onnistunutta ryhmää, yksi tarkoituksellinen
+valinnaisen kokeen ohitus ja kaikki neljä kokeellista valitsinta pois.
+System 518/518, web 35/35 ja kriittinen Electron 38/38 todennettiin uuden
+raporttimuodon täydellisistä tapahtumaketjuista ilman retryä, flaky-tulosta
+tai globaalia virhettä. Kaikki vaaditut checkoutit, native-selftestit
+510/226/285/408 sekä neljän tuottajan ja kymmenen kuluttajan artifactien
+ennen/jälkeen-sidonnat tarkistettiin. Saman revision
+[riippuvuustarkistus 36312191562](https://github.com/eky-software/eky/actions/runs/36312191562)
+läpäisi auditointi- ja allekirjoitusportit. Tämä hyväksyy raporttimuutoksen
+normaalin CI-lähtötilan, ei koko T3:a, pääfixturen bridgeä tai PR/mainia.
+
+Saman revision ensimmäinen [V2 36312186210](https://github.com/eky-software/eky/actions/runs/36312186210)
+säilyy hylättynä: yhden workspace fault recovery -jobin `Set up job`
+epäonnistui lukitun GitHub-toiminnon arkiston latauksessa ennen checkoutia
+ja testien suoritusta; yhteinen hyväksyntäportti hylkäsi ajon oikein.
+Ensimmäisen virheen näyttö säilytettiin. Sama action-revisio löytyi
+edelleen ja muut jobit käyttivät sitä onnistuneesti. Yksi uusi kokonaisajo
+tehtiin muuttamatta lähdettä, action-pinniä, aikarajoja tai hyväksyntäehtoja;
+eri V2-ajojen osatuloksia ei yhdistetty. Latauspalvelun virheen juurisyytä
+ei väitetä ratkaistuksi eikä aiempia sovellustimeouteja suljeta tällä näytöllä.
 
 **Suoran EXE-käynnistyksen valmistelutulos:** nykyisen lukitun bundle-version
 muistiin sovitettu rajattu lisäys läpäisi 157/157 puhdasta sopimustestiä.
@@ -2469,13 +2494,17 @@ säilyttävät aiemman toiminnan. Tämä ei ole tiedostopolun turvallisuusvalido
 Argumentit, ympäristö, työskentelykansio, viisi stdio-kanavaa, ensimmäinen
 virhe ja cleanupin epävarmuus tarkistettiin ilman oikean prosessin luontia.
 Asennettua riippuvuutta, versionoitua patchia tai lockfilea ei muutettu.
+Riippumaton rajattu lähde- ja regressiokatselmus ei löytänyt korjattavaa.
 
 Valmistelu ei vielä todista Windowsin todellista argumenttiparsintaa,
 kahvaperiytymistä, pipejen sulkeutumista tai elävää Electronia. Valitsin
 vaikuttaisi kaikkiin eksplisiittisiin absoluuttisiin Windows-EXE-launcheihin,
 ei vain tulevaan bridgeen. Rekisteröintiä edeltävä aukko säilyy avoimena.
-Seuraava pala on rajatun oikean käynnistyspolun suunnittelu näiden rajojen
-pohjalta, ei pääfixturen siirto pelkän puhtaan testinäytön perusteella.
+Seuraava pala on rajatun korjauksen käyttöönoton ja oikean käynnistyspolun
+kokeen päätös. Pienin tarvittava näyttö kattaa synteettisen argv/env/cwd-
+ja stdio-sopimuksen, tavallisen Electron-launchin sulun, varhaisen virheen
+ja timeoutin sekä nykyisten neljän adapteriskenaarion regression. Tämä ei
+oikeuta pääfixturen siirtoa pelkän puhtaan testinäytön perusteella.
 
 Rajapintalähteet: [Electron launch](https://playwright.dev/docs/api/class-electron#electron-launch)
 ja [Reporter](https://playwright.dev/docs/api/class-reporter). Lukittu
