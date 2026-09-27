@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
+import childProcess from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { readFileSync } from 'node:fs';
+import fs, { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -14,10 +15,12 @@ const e2eRequire = createRequire(new URL('../../package.json', import.meta.url))
 const playwrightRequire = createRequire(e2eRequire.resolve('@playwright/test'));
 const coreRequire = createRequire(playwrightRequire.resolve('playwright'));
 const bundlePath = coreRequire.resolve('playwright-core/lib/coreBundle');
-const bundleRequire = createRequire(bundlePath);
+export const bundleRequire = createRequire(bundlePath);
 export const BUNDLE_VERSION = '1.62.1';
 // Reviewed installed bytes after the versioned pnpm patch; review again on every update.
-export const BUNDLE_SHA256 = '0d8b43a8e50f5453ddde5e5055ca1102ffdd927acf785fb88f90fd00dc94eb85';
+export const BUNDLE_SHA256 = 'b3ca0c0a9c47f098f221be6053d3b02dac8c4f41cda31ae22438aea21f96e8c4';
+// Provenance only, never an alternative accepted/evaluated digest.
+export const PREVIOUS_BUNDLE_SHA256 = '0d8b43a8e50f5453ddde5e5055ca1102ffdd927acf785fb88f90fd00dc94eb85';
 export const turn = () => new Promise((resolve) => setImmediate(resolve));
 export const deferred = () => Promise.withResolvers();
 
@@ -54,9 +57,13 @@ function compileBundle() {
       addEventListener: (...args) => io.trackListener(EventsHelper.addEventListener(...args)),
       removeEventListeners: listeners => EventsHelper.removeEventListeners(listeners)
     };
+    const originalLaunchProcess = launchProcess;
     launchProcess = options => io.launch(options);
     return {
       Electron, ElectronApplication, ProgressController, ManualPromise, EventsHelper, waitForLine,
+      originalLaunchProcess, localProcess: process,
+      platformObservation: () => ({ process: process.platform,
+        os: import_os14.default.platform(), absolute: import_path29.default.isAbsolute("C:/fixture/test.exe") }),
       installTransports() {
         WebSocketTransport = { connect: (progress, url) => progress.race(io.connect(url)) };
         CRConnection = class { constructor() { this.rootSession = io.session; } };
@@ -70,8 +77,84 @@ function compileBundle() {
 const stageNames = ['launch', 'nodeConnect', 'chromeConnect', 'browserConnect',
   'Runtime.enable', 'Runtime.evaluate', 'kill'];
 
-export function createElectronHarness(t, behavior = {}, { client = false } = {}) {
+const childProcessMethods = ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork'];
+const guardedTests = new WeakSet();
+
+export function createBundleAssetRequire(platformPath, {
+  hostBundlePath = bundlePath, hostPath = path, requireHost = bundleRequire,
+} = {}) {
+  const hostDirectory = hostPath.dirname(hostBundlePath);
+  const runtimeDirectory = hostDirectory.replaceAll('\\', '/');
+  const runtimeRoot = platformPath.join(runtimeDirectory, '..');
+  const assets = new Map(['package.json', 'browsers.json'].map((name) => [
+    platformPath.join(runtimeRoot, name), hostPath.join(hostDirectory, '..', name),
+  ]));
+  // Only the bundle's own metadata crosses from simulated path semantics to host I/O.
+  // Do not normalize caller paths, sibling assets or arbitrary module requests.
+  return (id) => requireHost(assets.get(id) ?? id);
+}
+
+function createBoundary(t, platform, effects, hostAssets) {
+  assert.ok(['win32', 'linux', 'darwin'].includes(platform));
+  const forbidden = [];
+  const deny = (name) => () => {
+    forbidden.push(name);
+    throw new Error(`PURE_TEST_SIDE_EFFECT_BLOCKED: ${name}`);
+  };
+  // Node's test-scoped mocks also block transitive CommonJS imports, and restore on teardown.
+  // Tests using this harness must remain serial within their isolated Node test process.
+  if (!guardedTests.has(t)) {
+    guardedTests.add(t);
+    for (const name of childProcessMethods) t.mock.method(childProcess, name, deny(`child_process.${name}`));
+    for (const name of ['spawn', 'kill'])
+      t.mock.method(childProcess.ChildProcess.prototype, name, deny(`ChildProcess.prototype.${name}`));
+  }
+  t.after(() => assert.deepEqual(forbidden, [], 'no real process or filesystem mutation attempted'));
+  const localProcess = Object.create(process);
+  const events = new EventEmitter();
+  Object.defineProperty(localProcess, 'platform', { value: platform });
+  localProcess.env = {};
+  for (const method of ['on', 'once', 'off', 'addListener', 'removeListener', 'removeAllListeners',
+    'emit', 'listeners', 'listenerCount', 'eventNames']) localProcess[method] = events[method].bind(events);
+  localProcess.kill = deny('process.kill');
+  localProcess.exit = deny('process.exit');
+  const platformPath = platform === 'win32' ? path.win32 : path.posix;
+  const { createAssetRequire = createBundleAssetRequire, ...assetOptions } = hostAssets;
+  const requireAsset = createAssetRequire(platformPath, assetOptions);
+  const platformOs = { ...os, platform: () => platform,
+    tmpdir: () => platform === 'win32' ? 'C:\\eky-synthetic-temp' : '/tmp/eky-synthetic-temp' };
+  const inertChildProcess = Object.fromEntries(childProcessMethods.map((name) => [name, deny(name)]));
+  inertChildProcess.ChildProcess = class { constructor() { deny('ChildProcess')(); } };
+  for (const name of ['spawn', 'spawnSync']) if (effects[name]) inertChildProcess[name] = effects[name];
+  const inertFs = { ...fs, promises: { ...fs.promises } };
+  for (const name of ['mkdir', 'mkdtemp', 'rm', 'rmdir', 'unlink', 'writeFile', 'appendFile',
+    'rename', 'copyFile', 'cp', 'link', 'symlink', 'chmod', 'chown', 'truncate', 'open']) {
+    inertFs[name] = deny(`fs.${name}`);
+    inertFs[name + 'Sync'] = deny(`fs.${name}Sync`);
+    inertFs.promises[name] = deny(`fs.promises.${name}`);
+  }
+  inertFs.createWriteStream = deny('fs.createWriteStream');
+  if (effects.rm) inertFs.promises.rm = effects.rm;
+  const localRequire = (id) => {
+    const name = id.replace(/^node:/, '');
+    if (name === 'child_process') return inertChildProcess;
+    if (name === 'process') return localProcess;
+    if (name === 'path') return platformPath;
+    if (name === 'os') return platformOs;
+    if (name === 'fs') return inertFs;
+    if (name === 'fs/promises') return inertFs.promises;
+    if (id === 'electron/index.js') return 'C:\\eky-default\\electron.exe';
+    return requireAsset(id);
+  };
+  localRequire.resolve = bundleRequire.resolve.bind(bundleRequire);
+  return { localProcess, localRequire };
+}
+
+export function createElectronHarness(t, behavior = {}, {
+  client = false, platform = 'win32', effects = {}, hostAssets = {},
+} = {}) {
   const calls = [];
+  const launches = [];
   const stages = Object.fromEntries(stageNames.map((name) => [name, deferred()]));
   const ready = deferred();
   const interfaces = [];
@@ -94,8 +177,8 @@ export function createElectronHarness(t, behavior = {}, { client = false } = {})
   }
   session.send = (method) => step(method, {});
   const options = {
-    executablePath: path.join(os.tmpdir(), 'eky-unexecuted-electron'),
-    artifactsDir: path.join(os.tmpdir(), 'eky-unwritten-playwright-artifacts'),
+    executablePath: platform === 'win32' ? 'C:\\eky-synthetic\\Electron Folder\\electron.exe' : '/tmp/eky-unexecuted-electron',
+    artifactsDir: platform === 'win32' ? 'C:\\eky-synthetic\\artifacts' : '/tmp/eky-unwritten-playwright-artifacts',
     args: [], env: [], chromiumSandbox: true,
   };
   const io = {
@@ -108,8 +191,11 @@ export function createElectronHarness(t, behavior = {}, { client = false } = {})
     },
     trackListener(listener) { ownedListeners.push(listener); return listener; },
     launch(launchOptions) {
+      launches.push(launchOptions);
       assert.notEqual(launchOptions.env, process.env);
-      assert.deepEqual(launchOptions.env, {});
+      const expectedEnv = Object.fromEntries(options.env.filter((item) => item.name !== 'NODE_OPTIONS')
+        .map((item) => [item.name, item.value]));
+      assert.deepEqual(launchOptions.env, expectedEnv);
       assert.deepEqual(launchOptions.tempDirectories, []);
       return step('launch', { launchedProcess: child, gracefullyClose: async () => {},
         kill: () => step('kill') });
@@ -121,11 +207,18 @@ export function createElectronHarness(t, behavior = {}, { client = false } = {})
     browser: () => step('browserConnect', browser),
   };
   // Trusted dependency test isolation, not a security sandbox. Keep the host Error realm.
-  const localProcess = Object.create(process);
-  localProcess.env = {};
+  const { localProcess, localRequire } = createBoundary(t, platform, effects, hostAssets);
   const module = { exports: {} };
-  const api = compileBundle()(module.exports, bundleRequire, module, bundlePath,
-    path.dirname(bundlePath), localProcess, io);
+  const { hostBundlePath = bundlePath, hostPath = path } = hostAssets;
+  // Forward slashes keep dependency metadata resolution coherent in POSIX simulation on Windows.
+  let api;
+  try {
+    api = compileBundle()(module.exports, localRequire, module, hostBundlePath.replaceAll('\\', '/'),
+      hostPath.dirname(hostBundlePath).replaceAll('\\', '/'), localProcess, io);
+  } catch (error) {
+    child.stderr.destroy();
+    throw error;
+  }
   let clientAPI;
   let controller;
   let electron;
@@ -161,7 +254,7 @@ export function createElectronHarness(t, behavior = {}, { client = false } = {})
       assert.deepEqual(child.stderr.listeners(event), listeners, `readline retained stderr ${event}`);
   }
   const harness = {
-    api, calls, child, interfaces, ownedListeners, controller, nodeTransport, clientAPI, options,
+    api, calls, launches, child, interfaces, ownedListeners, controller, nodeTransport, clientAPI, options,
     ready: ready.promise,
     reached: (stage) => stages[stage].promise,
     line: (line) => child.stderr.write(`${line}\n`),

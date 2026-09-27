@@ -140,7 +140,18 @@ include the actual installed-bundle regressions, and a wiring contract protects
 that inclusion. These controlled dependency tests do not launch a real Electron
 process and are not R28 integration acceptance.
 
-On a dependency update, review both patch hunks, the original registry integrity,
+The separately approved direct-Windows-launch extension selects explicit,
+absolute `.exe` paths (case-insensitive) for direct argument delivery without
+a shell. Default, relative and script paths retain the previous behavior;
+non-Windows paths are unchanged. This is a launch classifier, not executable
+validation. It affects the current explicit Electron launch as well as a
+future native bridge. Failed launch still has no public close receipt, and
+missing registration or closure remains unverified. Actual Windows argument,
+stdio and lifecycle evidence is required in addition to controlled regressions.
+The current implementation and acceptance state stays in the
+[owning checkpoint](../../../../docs/architecture/e2e-test-environment.md#electronin-pääkäynnistyksen-avoimet-päätösrajat).
+
+On a dependency update, review all patch hunks, the original registry integrity,
 patched bundle digest, LICENSE/NOTICE and normal/error-path regressions. Remove
 the patch only after demonstrating an equivalent upstream fix with those tests.
 Keep the dependency audit, signature check, frozen installation and production

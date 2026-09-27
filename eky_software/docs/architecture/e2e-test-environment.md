@@ -2500,11 +2500,54 @@ Valmistelu ei vielä todista Windowsin todellista argumenttiparsintaa,
 kahvaperiytymistä, pipejen sulkeutumista tai elävää Electronia. Valitsin
 vaikuttaisi kaikkiin eksplisiittisiin absoluuttisiin Windows-EXE-launcheihin,
 ei vain tulevaan bridgeen. Rekisteröintiä edeltävä aukko säilyy avoimena.
-Seuraava pala on rajatun korjauksen käyttöönoton ja oikean käynnistyspolun
-kokeen päätös. Pienin tarvittava näyttö kattaa synteettisen argv/env/cwd-
+**Omistajan erillinen hyväksyntä 2026-09-27:** rajattu lisäys nykyiseen
+`playwright-core@1.62.1`-patchiin, sen regressiot ja oikeat Windows-kokeet
+saavat edetä. Valinta koskee kaikkia eksplisiittisiä absoluuttisia
+Windows-EXE-launcheja, ei vain tulevaa bridgeä. Patchin täsmällinen
+pakettihallinnan hash-sidonta päivitetään; riippuvuusversio, tuotantokoodi,
+aikarajat ja CI-ehdot eivät muutu. Valmistelun näyttö ei vielä hyväksy
+asennettua korjausta. Pienin tarvittava näyttö kattaa synteettisen argv/env/cwd-
 ja stdio-sopimuksen, tavallisen Electron-launchin sulun, varhaisen virheen
 ja timeoutin sekä nykyisten neljän adapteriskenaarion regression. Tämä ei
 oikeuta pääfixturen siirtoa pelkän puhtaan testinäytön perusteella.
+
+**Käyttöönoton paikallinen tulos 2026-09-27:** kolmas rajattu hunkki on lisätty
+nykyiseen patchiin pakettihallinnan työnkululla. Molemmat aiemmat
+virheenkäsittelykorjaukset säilyvät. Lukittu asennus, riippuvuusauditoinnit
+ja allekirjoitusten tarkistus läpäisivät. Katselmuksessa löytynyt testiapurin
+Linux-hostin metadatapolkuvirhe korjattiin täsmällisellä oman `package.json`-
+ja `browsers.json`-pyynnön sovituksella. Muita polkuja ei normalisoida.
+Oikean bundlen alustuksen positiivinen ja puuttuvan browsers-sovituksen
+negatiivinen regressio toistavat tämän rajan synteettisellä Linux-ankkurilla.
+Lopulliset 163/163 kohdetestiä, E2E-työkalujen 638/638 sopimustestiä ja koko
+työtilan testit sekä tyypitys läpäisivät. Työtilan kahdeksan ennestään
+ohitettua testiä säilyivät erillisinä. Riippumaton uudelleenkatselmus ei
+löytänyt korjattavaa. Simuloitu Linux-haara ei ole sama asia kuin Linux-hostilla
+suoritettu testi; täsmällisen puhtaan revision normaali CI on vielä avoin.
+
+Seitsemän rajattua oikeaa Windows-koetta läpäisi: tarkka argumenttijono,
+ympäristö ja työkansio sekä normaali Electron-sulku; tarkoituksellinen
+ennen-ready-aikakatkaisu; muuttumaton varhainen exit 29 -koe; ja nykyiset
+neljä adapteritapausta. Normaalissa kokeessa palautettu lapsi oli todellinen
+Electron-pääprosessi, viisi stdio-paikkaa säilyi ja kaikki neljä luettavaa
+parent-streamia päättyivät EOF:ään ja sulkeutuivat virheettä. Kaksi
+ylimääräistä streamia olivat tyhjiä: niiden käyttökelpoista periytymistä
+tulevalle bridgelle ei tällä todisteta.
+
+Aikakatkaisukoe tuotti todellisen Playwrightin `TimeoutError`-virheen ja
+säilytti cleanup-epävarmuusmerkinnän. Muuttumaton ulompi testisession
+omistaja todisti erikseen puun poissaolon ilman ulkoista pakkotoimea;
+tämä ei luo Playwrightille puuttuvaa julkista failed-launch-sulkeutumiskuittia.
+Kokeet eivät siirrä pääfixtureä, ratkaise rekisteröintiä edeltävää aukkoa
+tai sulje T3/R28:aa. Tavalliset hyväksyntäportit ovat edelleen vaadittuja.
+
+Tavallinen paikallinen E2E läpäisi tämän jälkeen 604/604 tapausta:
+system 518, web 41 ja Electron 45, kaikki ensimmäisellä yrityksellä ilman
+flaky-tulosta, ohituksia tai globaalia virhettä. Koko tapausjoukon tallennettu
+raporttiketju ja ajon lähdesidonta tarkistettiin erikseen. CI-kytkennän
+315/315 sopimustestiä läpäisi. Testiapurin erillinen Linux-hostin korjaus
+ei kuulu näiden Playwright-käyttäjäpolkujen ajokoodiin; sen lopullinen
+sopimusnäyttö on yllä, ja puhtaan revision CI vaaditaan edelleen erikseen.
 
 Rajapintalähteet: [Electron launch](https://playwright.dev/docs/api/class-electron#electron-launch)
 ja [Reporter](https://playwright.dev/docs/api/class-reporter). Lukittu

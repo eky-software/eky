@@ -1,8 +1,22 @@
 diff --git a/lib/coreBundle.js b/lib/coreBundle.js
-index d9041dd0f009072511a7d808dec83121ff29e127..88544ae401bd63058c66269167f67699dd7748ee 100644
+index d9041dd0f009072511a7d808dec83121ff29e127..cef22148c78471bdae3a889c60a5e8743559db62 100644
 --- a/lib/coreBundle.js
 +++ b/lib/coreBundle.js
-@@ -44043,6 +44043,10 @@ var init_electron = __esm({
+@@ -44004,8 +44004,12 @@ var init_electron = __esm({
+           }
+           electronArguments.unshift("-r", libPath("server", "electron", "loader.js"));
+         }
++        // Eky: explicit absolute EXE paths use direct Windows argument delivery.
++        const directWindowsExecutable = process.platform === "win32" &&
++          !!options.executablePath && import_path29.default.isAbsolute(command) &&
++          import_path29.default.extname(command).toLowerCase() === ".exe";
+         let shell = false;
+-        if (process.platform === "win32") {
++        if (process.platform === "win32" && !directWindowsExecutable) {
+           shell = true;
+           command = [command, ...electronArguments].map((arg) => `"${escapeDoubleQuotes(arg)}"`).join(" ");
+           electronArguments = [];
+@@ -44043,6 +44047,10 @@ var init_electron = __esm({
          const nodeMatchPromise = waitForLine(progress2, launchedProcess, /^Debugger listening on (ws:\/\/.*)$/);
          const chromeMatchPromise = waitForLine(progress2, launchedProcess, /^DevTools listening on (ws:\/\/.*)$/);
          const debuggerDisconnectPromise = waitForLine(progress2, launchedProcess, /Waiting for the debugger to disconnect\.\.\./);
@@ -13,7 +27,7 @@ index d9041dd0f009072511a7d808dec83121ff29e127..88544ae401bd63058c66269167f67699
          try {
            const nodeMatch = await nodeMatchPromise;
            const nodeTransport = await WebSocketTransport.connect(progress2, nodeMatch[1]);
-@@ -44085,8 +44089,14 @@ var init_electron = __esm({
+@@ -44085,8 +44093,14 @@ var init_electron = __esm({
            await progress2.race(app.initialize());
            return app;
          } catch (error) {
