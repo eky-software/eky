@@ -2291,8 +2291,8 @@ tai tavallisen Vite-dev/buildin käyttäytymistä ei muutettu.
 
 ###### Electronin suorien kuluttajien Windows-siirto
 
-**2026-09-27: kaksi suoraa kuluttajaa toteutettu ja paikallisesti todennettu;
-normaali CI-portti vielä avoin.**
+**2026-09-27: kaksi suoraa kuluttajaa toteutettu; rajatun revision
+paikallinen näyttö ja normaali CI-portti läpäisty.**
 Ensimmäinen Electron-pala siirtää nykyisen toisen instanssin käynnistyksen
 ja `DESK-BOOTFAIL-001`:n suoran bootstrap-ajon samaan Windowsin palveluomistajaan
 kuin backend ja Vite. Playwright-yhteyden bridge, pääfixturen restart/relaunch
@@ -2356,6 +2356,20 @@ tasoa ei yhdistetä väitteeksi uudesta CI-kattavuudesta. Native-konfiguraatio
 ja kontrollikuitti pysyvät testijuuressa; julkaistava lifecycle-raportti
 sisältää vain suljetut tilat. Epävarma siivous säilyttää juuren ja ensimmäisen
 virheen. Raportit eivät kuulu tuotannon diagnostiikkaan tai varmuuskopioihin.
+
+Revision `aaef697fd2d33a10a4b16a6b9968d662b4e5fdca` normaali
+[V2-ajo 36299990800](https://github.com/eky-software/eky/actions/runs/36299990800)
+ja [riippuvuustarkistus 36299995946](https://github.com/eky-software/eky/actions/runs/36299995946)
+läpäisivät ensimmäisellä yrityksellä. Kaikki neljä kokeellista valitsinta
+olivat pois. V2:ssa oli 38 onnistunutta ryhmää ja yksi tarkoituksellinen
+valinnaisen diagnostiikkakokeen ohitus. System 518/518, web 35/35 ja
+kriittinen Electron 38/38 läpäisivät ilman retryä tai flaky-tulosta;
+native-selftestit olivat 510/226/285/408. Kaikkien vaadittujen lokien
+checkoutit, neljän tuottajan ja kymmenen kuluttajan artifact-sidonnat sekä
+ennen/jälkeen-varmennukset tarkistettiin. Tämä hyväksyy rajatun normaalin
+CI-lähtötilan, ei pääfixturen bridgeä, koko T3:a tai PR/main-integraatiota.
+Aiemmat timeout-havainnot säilyvät ratkaisemattomina, eikä CI korvaa yllä
+eriteltyä kahden suoran kuluttajan paikallista näyttöä.
 
 ###### Chromiumin kuluttajasiirron avoin omistajuusraja
 
