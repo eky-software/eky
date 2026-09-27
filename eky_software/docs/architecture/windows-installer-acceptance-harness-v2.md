@@ -6623,6 +6623,21 @@ uusintahyväksyntä. Jos myös uuden diagnoosin loki puuttuu, havainnot jäävä
 varmentamatta; tätä ei korjata automaattisilla uusintakierroksilla tai
 arvaamalla runner-vikaa. Raakaa tulosjuurta tai jälkeä ei julkaista artifactina.
 
+Revision `3c992a26` yksi sidottu [diagnoosi 36290415587](https://github.com/eky-software/eky/actions/runs/36290415587)
+läpäisi: neljä kutsurajaa, nykyinen caller-result-varmennus, native-puiden
+poistuminen, fixture-siivous ja identtinen artifactin ennen/jälkeen-varmennus.
+Ohjausketjun 20 kohdetestiä ja nykyinen 62 testin artifact-/workflow-sarja
+läpäisivät myös. Alkuperäisen a2c826fc-ajon timeoutin syy jäi avoimeksi.
+
+Normaalin V2-hyväksynnän aiempi omistajan jatkopäätös säilyy: kadonneen
+vanhan lokin palautuminen ei ole uuden näytön ennakkoehto. Diagnoosin jälkeen
+tehdään yksi uuden jäädytetyn revision ensimmäinen normaali V2-kierros ja
+sen oma riippuvuustarkistus, kaikki kokeelliset valitsimet pois. Tämä ei ole
+automaattinen infrastruktuuriuusinta, vanhan ajon hyväksyntä tai mergen lupa.
+Uuden kierroksen ensimmäinen hylkäys pysäyttää toiminnallisen jatkon;
+eri ajojen onnistuneita osia ei yhdistetä vihreäksi lähtötilaksi. Lopulliset
+T3-, PR- ja main-portit säilyvät erillisinä ja muuttumattomina.
+
 ### Infrastruktuuriuusinnan rajattu ehdotus
 
 Automaattista uusintaa ei kytketä käyttöön tässä checkpointissa. Mahdollinen

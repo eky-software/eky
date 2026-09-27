@@ -2161,8 +2161,17 @@ Tallennuksen puute raportoidaan erikseen: havaintoketju ei voi luvata
 palauttaa menetetyn runnerin aineistoa. Kutsurajan 20 kohdetestiä ja nykyinen
 62 testin artifact-/workflow-sarja läpäisivät ilman ohituksia. Ne todentavat
 ohjausketjun ja alkuperäisen virheen säilymisen, eivät oikean prosessipuun
-siivousta. Yksi sidotun artifactin diagnoosi on vielä tekemättä; timeout
-ei ole korjattu.
+siivousta. Revision `3c992a26a71a0b78d6fd6199952a2036c85a4589`
+[erillinen diagnoosi 36290415587](https://github.com/eky-software/eky/actions/runs/36290415587)
+läpäisi yrityksellä 1. Sama aiempi workspace-artifact varmennettiin ennen
+ja jälkeen, neljä kutsurajahavaintoa saatiin oikeassa järjestyksessä ja
+nykyinen mandatory-result-verifier hyväksyi komennon tuloksen. Native-vaiheet
+vahvistivat puiden poistumisen, fixture-siivouksen ja tuloksen julkaisun.
+Diagnoosin checkout ja koko loki varmennettiin; havaintoaukkoja ei todettu.
+Tämä ei hyväksy aiempaa V2-yritystä tai ratkaise sen timeoutia.
+Seuraava uuden revision normaali hyväksyntäkierros noudattaa
+[nykyisen V2-jatkopäätöksen rajaa](windows-installer-acceptance-harness-v2.md#workspace-diagnostiikan-kutsurajahavainnot):
+eri yritysten osatuloksia ei yhdistetä, ja uusi hylkäys pysäyttää etenemisen.
 
 Ensimmäinen oikean backendin ajon hylkäys säilytettiin: native-kellon alku
 oli sidottu virheellisesti kutsujan prosessinluontipyynnön alkuun. Edellä
