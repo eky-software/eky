@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { expect, test } from '@playwright/test';
 
+import { createElectronE2eProfile } from '../../src/environment/createElectronE2eProfile.js';
+import { createElectronEnvironment } from '../../src/environment/createElectronEnvironment.js';
 import { prepareWindowsServiceConfiguration } from '../../src/environment/windowsServiceConfiguration.js';
 import { resolveWindowsElectronServiceExecutable, validateWindowsElectronServiceInput } from '../../src/environment/windowsElectronServicePaths.js';
 
@@ -146,6 +148,31 @@ test.describe('Windows direct Electron fixed configuration without launch', () =
       expect(() => validateWindowsElectronServiceInput({ ...f.input, runtimeConfigPath }, f.osTempRoot)).toThrow();
     } finally { f.dispose(); }
   });
+  for (const [name, sourcePath] of Object.entries({
+    ordinary: { PATH: 'C:\\synthetic-tools' },
+    oversizedMixedCase: { pAtH: 'x'.repeat(2049) },
+    embeddedNul: { Path: 'synthetic\0value' },
+    absent: {},
+  })) {
+    test(`generates a valid Windows Electron environment without inheriting ${name} search paths`, () => {
+      const f = fixture();
+      try {
+        const environment = createElectronEnvironment({
+          configPath: f.input.runtimeConfigPath,
+          platform: 'win32',
+          profile: createElectronE2eProfile(f.input.runtimeRoot),
+          runRoot: f.input.runtimeRoot,
+          sourceEnvironment: {
+            SystemRoot: f.input.environment.SystemRoot,
+            WINDIR: f.input.environment.WINDIR,
+            ...sourcePath,
+          },
+        });
+        expect(() => validateWindowsElectronServiceInput({ ...f.input, environment }, f.osTempRoot)).not.toThrow();
+        expect(environment).not.toHaveProperty('PATH');
+      } finally { f.dispose(); }
+    });
+  }
   test('serializes only the direct Electron profile and retains the original deadline', () => {
     const f = fixture();
     try {

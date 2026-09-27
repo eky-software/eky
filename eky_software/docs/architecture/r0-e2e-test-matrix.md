@@ -9,6 +9,23 @@ diagnostiikka ovat [omistavassa checkpointissa](e2e-test-environment.md#windows-
 version/preparation/spawn-hylkäyksen testiä: vain suljettu syy kulkee
 bridge-kutsujalta todelliseen lifecycle-liitteeseen. Tyypitys ja 98/98-
 kohdesarja läpäisivät; tämä ei ole CI-juurisyyn tai koko T3:n hyväksyntä.
+Rajattu CI paikansi kaikki 48 käynnistyshylkäystä ympäristöarvon tarkistukseen.
+Neljä uutta Windowsin ympäristön generointi-/validointisopimusta ja
+`DESK-PROFILE-002`:n tarkka avainjoukko varmistavat, ettei valinnaista
+isäntä-PATHia peritä. Linuxin `DESK-PROFILE-003` ja 2048/NUL-hylkäykset
+säilyvät. Korjauksen tyyppitarkistus ja 102/102-kohdesarja läpäisivät;
+tavallinen Electron-sarja hylättiin 44/45, ja uuden revision CI on avoin.
+Yksi käynnistys poistui ennen ensimmäistä ikkunaa ja testirunkoa; se ei
+todista salasanatoiminnon virhettä. Rajattu `SYS-ELECTRON-NATIVE-STARTUP-001`
+todentaa nykyisen natiiviadapterin turvallisen virheen lukuketjun ennen
+siivousta nykyiseen lifecycle-liitteeseen: erilliset sukupolvitiedostot,
+rajattu linkitön luku, kiinteät virhekoodit ja vain ennen cleanupia havaittu
+exit-koodi. Tämä on testidiagnostiikkaa, ei käynnistysvirheen ratkaisu.
+Täydennyksen jälkeen tyypitys, 136/136-kohdesarja, työkalusarja 678/678
+ja kanonisesti valmisteltu tavallinen Electron 45/45 läpäisivät. Täydellinen
+tapausjoukko, yksi yritys per tapaus ja testatun koodin lähdesidonta
+takaisinluettiin. Aiempi 44/45 säilyy hylättynä ja sen tarkka syy avoimena;
+uuden puhtaan revision normaali CI ja koko T3:n hyväksyntä puuttuvat.
 
 ## Tilat
 
@@ -330,6 +347,7 @@ hylkäyksen syy ja vanhat satunnaiset timeoutit ovat edelleen avoimia.
 | DESK-SUPPORT-001 | P0; packaged-smoke, electron-e2e | Synteettiset logit; stubattu save dialog | `.json.gz` syntyy ja inspect hyväksyy myös legacy-päätteen | Checksumit/projektiot oikein | Salaisuus, PII ja production path | implemented-e2e |
 | DESK-LOGFOLDER-001 | P1; integration, electron-e2e | Stubbaa openPath; paina avauskomentoa | Main avaa vain testilokijuuren | Ei DB/auditia; renderer ei lähetä polkua | Filesystem path rendererille | implemented-e2e |
 | DESK-RESTART-001 | P0; packaged-smoke, electron-e2e, recovery | Hallittu shutdown ja restart samalla testidatalla; jätä vapaaehtoinen main-lukupyyntö keskeneräiseksi | Data säilyy, UI palautuu; vanhan yhteyden lukupyyntö päättyy | Backend sammuu; runtimeInstanceId vaihtuu; vanha session torjutaan | Vanha runtime-session | implemented-e2e |
+| SYS-ELECTRON-NATIVE-STARTUP-001 | P0; contract, security | Todellinen natiiviwriter, sukupolven vaihto, linkki, muuttuva/virheellinen/ylimittainen tiedosto, cleanup ennen ensimmäistä havaintoa | Vain turvallinen nykyisen sukupolven kaappaus säilyy lifecycle-liitteessä juuren poiston jälkeen; cleanup-exit ei ole alkuperäinen käynnistyskoodi | 15 sopimusta; 64 KiB ja 128 riviä; ei fallbackia tai uutta hyväksyntäehtoa | Raakateksti, polku, runtime-tunniste, vapaa smoke-pääte ja salaisuudet | implemented-contract; tyyppitarkistus ja 136/136-kohdesarja läpäisty, ei alkuperäisen poistumisen juurisyy |
 | SYS-ELECTRON-LIFECYCLE-001 | P0; contract, security | Injektoi backup-valmistelun, Playwright-yhteyden, ikkunan, DOM-valmiuden, havaintoluvun ja loppusiivouksen virheet nykyiseen fixture-vastuuseen | Vaihe ja suljettu syyluokka erottuvat; todellisen bridge-virheen timeout-syy säilyy; synkroninen työkuorman välimuistihavainto ei lisää odotusta eikä nimeä cleanup-exitiä alkuperäiseksi virheeksi | Omistaja säilytetään ennen launchin odotusta; rajattu public close ja owner-stop erillään, ei Windows-fallbackia; epävarmuuden restart-/poistoestot ja turvallinen valinnainen ownership-evidence; backendin siivous erillään | Raakavirhe, URL, session, komentorivi, ympäristö ja prosessituloste | implemented-contract; mukana nykyisessä 186/186-kohdesarjassa; ei korvaa todellisen fixturen epävarmuuskoetta |
 | SYS-FIRST-START-EVIDENCE-001 | P0; contract, security | Katkennut proof/evaluate, writer-virhe, osittainen kirjoitus, vanha runtime, kaksoiskutsu, linkki, liian suuri tai virheellinen havainto | Vain validoidut vaihe-/aikakentät jäävät talteen ennen juuren poistoa; alkuperäinen virhe säilyy | Yksi proof-kutsu per runtime, rajattu kirjoitus/luku, capture ei tarvitse Electron-yhteyttä eikä muuta cleanup-ehtoja | Polku, runtime-tunniste, raakavirhe, session tai profiilin sisältö | implemented-contract M0.3; ei osoita alkuperäisen first-start-timeoutin syytä |
 | SYS-FIRST-START-LOAD-OBSERVATION-001 | P0; contract, security | Normaali delegointi, pidätetty lataus, puuttuva/myöhäinen main-frame-tapahtuma, havaintovirhe, peruutus ja shutdown-/cleanup-yhdistelmävirhe | Alkuperäinen promise ja virhe säilyvät; pakotettu lataus vaatii todetun purun; ensivirhe ei peity; normaalin virhekriteerit säilyvät | Suljetut vaiheet kulkevat rajatun journalin ja parserin läpi; väärä dialogi ei kelpaa näytöksi | Dialogiteksti, URL, polut, tunnisteet tai business-data | implemented-contract M0.5; 23 kohdetapausta, ei korvaa Windows-koetta |

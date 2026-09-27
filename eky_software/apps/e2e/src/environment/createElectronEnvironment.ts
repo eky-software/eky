@@ -19,14 +19,15 @@ export function createElectronEnvironment(input: {
     TMP: input.profile.temp,
   };
 
-  copyEnvironmentValue(environment, sourceEnvironment, 'PATH');
-
   if (platform === 'win32') {
     environment.USERPROFILE = input.profile.root;
     environment.APPDATA = input.profile.appDataRoaming;
     environment.LOCALAPPDATA = input.profile.appDataLocal;
     copyEnvironmentValue(environment, sourceEnvironment, 'SystemRoot');
     copyEnvironmentValue(environment, sourceEnvironment, 'WINDIR');
+  } else {
+    // Windows launches the pinned executable directly and does not need the host search path.
+    copyEnvironmentValue(environment, sourceEnvironment, 'PATH');
   }
 
   return environment;

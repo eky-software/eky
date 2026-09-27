@@ -62,8 +62,9 @@ import {
   type ElectronLaunchObservation,
   type ElectronStartupCapture,
 } from './launchElectronRuntime.js';
-import { createElectronLaunchFailureCapture } from './captureElectronLaunchFailure.js';
+import { createElectronLaunchFailureCapture, readObservedElectronLaunchExitCode } from './captureElectronLaunchFailure.js';
 import type { ElectronBackendStartupLogsCapture } from './captureElectronBackendStartupLogs.js';
+import type { ElectronNativeStartupFailureCapture } from './captureElectronNativeStartupFailure.js';
 import { ELECTRON_E2E_PROCESS_CONNECT_TIMEOUT_MILLISECONDS } from './electronLaunchBudgets.js';
 import { captureFirstStartProof } from './captureFirstStartProof.js';
 import type { FirstStartProofCapture } from '../../../desktop/e2e/workspaceFirstStartProofObservation.js';
@@ -280,11 +281,13 @@ export const test = base.extend<
           const application = electronApp;
           launchFailureCapture.observe(observation, {
             runRoot,
+            artifactsRoot: paths.artifactsRoot,
             userDataPath: runtime.userDataPath,
             runtimeInstanceId: runtime.runtimeInstanceId,
           }, () => application === undefined
             ? Promise.resolve(undefined)
-            : readElectronStartupObservation(application));
+            : readElectronStartupObservation(application),
+          readObservedElectronLaunchExitCode(windowsBridge));
           if (launchObservations.length < MAX_ELECTRON_LAUNCH_OBSERVATIONS) {
             launchObservations.push(observation);
           } else {
@@ -541,6 +544,8 @@ export async function reportElectronLifecycleEvidence(
     cleanup: Readonly<ElectronCleanupResult>;
     startupCapture?: ElectronStartupCapture;
     backendStartupLogs?: ElectronBackendStartupLogsCapture;
+    nativeStartupFailure?: ElectronNativeStartupFailureCapture;
+    launchExitCode?: number | null;
     firstStartProof?: FirstStartProofCapture;
     preparation?: ElectronPreparationFailureEvidence;
     ownership?: Readonly<ElectronBridgeCleanupEvidence>;
@@ -557,6 +562,8 @@ export async function reportElectronLifecycleEvidence(
       cleanup: evidence.cleanup,
       startupCapture: evidence.startupCapture ?? { status: 'notRequested' },
       ...(evidence.backendStartupLogs === undefined ? {} : { backendStartupLogs: evidence.backendStartupLogs }),
+      ...(evidence.nativeStartupFailure === undefined ? {} : { nativeStartupFailure: evidence.nativeStartupFailure }),
+      ...(evidence.launchExitCode === undefined ? {} : { launchExitCode: evidence.launchExitCode }),
       ...(evidence.firstStartProof === undefined ? {} : { firstStartProof: evidence.firstStartProof }),
       ...(evidence.preparation === undefined ? {} : { preparation: evidence.preparation }),
       ...(evidence.ownership === undefined ? {} : { ownership: evidence.ownership }),

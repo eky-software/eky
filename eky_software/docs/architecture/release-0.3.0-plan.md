@@ -6,8 +6,20 @@
 **28.9. tarkennus:** Windows-välipaketin `4aececfd` normaali CI hylkäsi
 Electronin yhteisen käynnistysvalmistelun: 24/38 tapausta epäonnistui ennen
 yhteyttä. Ensimmäiset yritykset ja turvalliset liitteet on säilytetty.
-Nykyinen seuraava työ on tämän hylkäyksen rajattu vianhaku, ei seuraava
-kuluttajasiirto. [Havainto ja diagnostiikan rajaus](e2e-test-environment.md#windows-electron--valmistelun-ci-hylkäys)
+Rajattu `23b43c49`-CI paikansi kaikki 48 hylkäystä ympäristöarvon tarkistukseen.
+Windowsin valinnaisen isäntä-PATHin periminen on poistettu testiapurista;
+synteettinen regressio, tyyppitarkistus, 102/102-kohdesarja ja katselmus
+läpäisivät alkuperäisiä turvarajoja muuttamatta. CI:n tarkkaa alkuperäistä
+arvoa ei tallennettu. Tavallinen Electron-sarja hylättiin tuloksella 44/45:
+yksi sovellus poistui ennen ensimmäistä ikkunaa ja testin toimintoa.
+Siivous varmistui, mutta tarkka käynnistyssyy jäi puuttumaan. Rajattu
+sukupolvikohtainen testinatiivi-virheen kaappaus on nyt toteutettu:
+tyypitys, 136/136-kohdesarja, työkalusarja 678/678 ja kanoninen Electron
+45/45 läpäisivät. Tapausjoukko ja sama testattu koodisisältö on takaisinluettu;
+ei retryä tai flaky-tulosta. Alkuperäinen poistuminen säilyy avoimena
+havaintona, ei korjattuna juurisyynä. Seuraava työ on puhtaan revision
+normaali CI ja riippuvuustarkistus; ei seuraava kuluttajasiirto.
+[Havainto ja korjauksen rajaus](e2e-test-environment.md#windows-electron--valmistelun-ci-hylkäys)
 eivät muuta testiehtoja tai hyväksy koko T3:a.
 Jatkamisen lähtörevisio, avoin puute, seuraava työ ja valmistumiskriteeri
 ovat [M1:n ajantasaisessa aloituskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
@@ -26,7 +38,7 @@ paikallisesti todennettu. Goal-työkalun aktiivinen tila on varmennettu
 takaisinluvulla; aiempi `blocked`-kirjaus on historiallinen, ei nykyinen
 etenemiseste. Aktiivinen Goal ei tarkoita valmista T3:a.
 
-**Uusin paikallinen hyväksyntänäyttö:** Windows-Electronin tavallinen
+**Aiempi paikallinen fixture-hyväksyntä:** Windows-Electronin tavallinen
 pääfixture on kytketty bridge-/native-omistajaan. Samaan lähdetilaan sidotut
 E2E-tyyppitarkistus, kohdesopimukset 186/186 ja kanonisen valmistelun jälkeinen
 tavallinen `electron-development` 45/45 läpäisivät ensimmäisellä yrityksellä.

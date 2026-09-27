@@ -3142,9 +3142,65 @@ läpäisivät. Kahdeksan uutta
 varhaisen hylkäyksen tapausta kytkee todellisen bridge-kutsujan virheen
 launch-luokitukseen ja nykyisen lifecycle-writerin liitteeseen ilman
 prosessien käynnistämistä. Tämä todentaa diagnostiikan, ei CI:n juurisyytä.
-Seuraava koe on yksi nykyisen Electron-diagnostiikkatyönkulun ajo
-katselmoidusta revisiosta. Vasta sen havainnon perusteella rajataan korjaus;
-uutta toiminnallista T3-vaihetta ei aloiteta punaisen baselinen päälle.
+
+Revision `23b43c49` [rajattu ajo 36350757744](https://github.com/eky-software/eky/actions/runs/36350757744)
+päättyi hylätyksi: kaikkien 48 lifecycle-liitteen tarkka syy on
+`ownerEnvironmentValueInvalid`. Todellinen checkout varmennettiin lokista.
+Diagnostiikan jälkimmäinen tarkistusvaihe ei käynnistynyt kriittisen sarjan
+hylkäyksen vuoksi; sitä ei merkitä läpäistyksi. Alkuperäistä ympäristöarvoa
+ei kerätty, joten yksittäistä CI:n muuttujaa ei voida nimetä varmasti.
+
+Rajattu korjaus poistaa valinnaisen isäntäympäristön `PATH`-arvon perimisen
+vain Windowsin `createElectronEnvironment`-apurista. Electron käynnistetään
+validoidusta absoluuttisesta polusta, eikä sen utility-backend käytä
+hakupolkua oman käynnistystiedostonsa löytämiseen. Linuxin nykyinen haara
+säilyy. Windowsin 2048 merkin arvoraja, NUL-torjunta, sallitut avaimet,
+profiilipolut, native-konfiguraation rajat ja alkuperäiset määräajat säilyvät
+muuttumattomina; arvoa ei lyhennetä eikä hylkäystä muuteta onnistumiseksi.
+
+Neljä generointi-/validointiregressiota kattaa tavallisen, liian pitkän
+eri kirjainkoolla nimetyn, NUL-merkin sisältävän ja puuttuvan lähde-PATHin.
+Ennen korjausta kolme hylättiin ja puuttuva arvo läpäisi; liian pitkä ja
+NUL-arvo tuottivat saman tarkan ympäristövirheen. Korjauksen tyyppitarkistus
+ja 102/102-kohdesopimukset sekä riippumaton katselmus läpäisivät. Tämä
+todentaa synteettisen periytymisregression, ei jälkikäteen CI:n raakaa arvoa.
+Tavallinen 45 tapauksen Electron-sarja päättyi 44/45-tulokseen:
+`DESK-WORKSPACE-PASSWORD-001` hylättiin ennen testirunkoa vaiheessa
+`firstWindow`, syy `processExited`. Tämä ei ole salasanadialogin testitulos.
+Koko omistettu puu ja portti poistuivat varmennetusti. Ensimmäisen
+epäonnistumisen liitteet säilytettiin. Tarkka käynnistyssyy jäi avoimeksi:
+main-prosessin muistihavaintoa ei voitu enää lukea eikä backendin
+`backend.started`-merkkiä ollut kaapatussa otteessa.
+
+Rajattu testidiagnostiikan täydennys lukee olemassa olevan testinatiivi-
+adapterin käynnistysvirheen ja virheikkunan suljetun syyluokan ennen
+siivousta. Jokaisella runtime-sukupolvella on oma UUID:sta johdettu
+havaintotiedosto; aiempaan yhteiseen tiedostoon ei palata. Luku rajautuu
+testin omaan OS-temp-juureen, varmennettuihin hakemisto- ja tiedosto-
+identiteetteihin, linkittömään tiedostoon, 64 KiB:iin ja 128 riviin.
+Muuttunut tai turvaton lähde ei anna onnistunutta kaappausta. Julkiseen
+lifecycle-liitteeseen viedään vain omistavan startup-suodattimen kiinteät
+virhekoodit (vapaat smoke-päätteet supistetaan luokaksi), virheikkunan
+syyluokat ja ennen cleanupia havaittu numeerinen exit-koodi tai `null`.
+Raakatiedostoa, polkua, UUID:ta, tekstiä tai salaisuuksia ei julkaista.
+Puuttuva havainto ei todista onnistumista. Diagnostiikka ei muuta alkuperäistä
+virhettä, testiehtoja, cleanupia, määräaikoja tai moduulitestin rajapintaa.
+
+Täydennyksen tyyppitarkistus, 136/136-kohdesarja ja riippumaton katselmus
+läpäisivät. Katselmuksessa korjattiin exit-koodin rajaus: kelvollinenkin
+koodi jää `null`-arvoksi, jos poistumista ei havaittu ennen omistajan
+automaattista siivousta. Viisitoista uutta sopimusta sisältää todellisen
+natiiviwriterin ja lifecycle-liitteen ketjun sekä tämän ajoitusrajan.
+Kohdennettu restart-, boot-failure-, yrityksen vaihto- ja salasanan peruutus-
+sarja läpäisi 4/4. Myös kanonisesti valmisteltu tavallinen Electron-sarja
+läpäisi 45/45 ilman retryä, flaky-tulosta, ohitusta tai raporttivirhettä.
+Takaisinluku vahvisti saman täydellisen tapausjoukon kuin aiemmassa
+hylätyssä ajossa sekä tyyppitarkistuksen, kohdesopimusten ja Electron-ajojen
+saman koodisisällön. Työkalusarja läpäisi 678/678 ja dokumenttilinkit 203/203.
+Alkuperäinen poistuminen ei toistunut eikä sen syytä merkitä korjatuksi.
+Seuraava portti on katselmoidun, puhtaan revision normaali CI ja
+riippuvuustarkistus; paikallinen läpäisy ei korvaa niitä.
+Uutta toiminnallista T3-vaihetta ei aloiteta punaisen baselinen päälle.
 
 ###### Chromiumin kuluttajasiirron avoin omistajuusraja
 

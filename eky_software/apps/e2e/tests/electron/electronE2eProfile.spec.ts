@@ -58,7 +58,6 @@ test('DESK-PROFILE-002 @critical exposes only allowlisted Windows launch variabl
       HOME: profile.root,
       LOCALAPPDATA: profile.appDataLocal,
       NODE_ENV: 'test',
-      PATH: 'C:\\Windows\\System32',
       SystemRoot: 'C:\\Windows',
       TEMP: profile.temp,
       TMP: profile.temp,

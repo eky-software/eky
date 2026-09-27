@@ -188,6 +188,8 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
       expect(capture.finish()).toEqual({
         startupCapture: { status: 'notRequested' },
         backendStartupLogs: { status: 'notRequested' },
+        nativeStartupFailure: { status: 'notRequested' },
+        launchExitCode: null,
       });
     } finally { await removeE2eRunRootIfPresent(root); }
   });
