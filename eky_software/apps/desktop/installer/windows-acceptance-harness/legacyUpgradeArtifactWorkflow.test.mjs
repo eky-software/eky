@@ -87,6 +87,139 @@ test('packaged boundary diagnostic reuses exact artifacts without becoming a nor
   assert.match(diagnostic, /\(inputs\.artifact_kind == 'legacy' \|\| inputs\.artifact_kind == 'upgrade'\) && 27 \|\| 25/u);
 });
 
+test('workspace caller markers are four closed optional observations inside the existing diagnostic step', async () => {
+  const source = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
+  const diagnostic = source.split('  packaged-boundary-diagnostic:')[1];
+  const step = diagnostic.split('      - name: Run existing caller and mandatory result verifier once\n')[1]
+    .split('\n      - name:')[0];
+  const markers = [...step.matchAll(/try \{ Write-Host '([^'\r\n]+)' \} catch \{ \}/gu)];
+  const phases = ['commandInvoked', 'commandReturned', 'verifierInvoked', 'verifierReturned'];
+  assert.deepEqual(markers.map(([, literal]) => JSON.parse(literal)), phases.map((phase) => ({
+    schemaVersion: 1, operation: 'workspaceCallerDiagnostic', phase,
+  })));
+  assert.equal(source.match(/workspaceCallerDiagnostic/gu)?.length, phases.length);
+  assert.match(step, /timeout-minutes: \$\{\{ \(inputs\.artifact_kind == 'legacy' \|\| inputs\.artifact_kind == 'upgrade'\) && 27 \|\| 25 \}\}/u);
+  assert.equal(diagnostic.match(/name: Run existing caller and mandatory result verifier once/gu)?.length, 1);
+  assert.deepEqual([...diagnostic.matchAll(/^      ([\w-]+): (read|write)$/gmu)].map(([, key, value]) => [key, value]),
+    [['contents', 'read'], ['actions', 'read']]);
+  assert.doesNotMatch(step, /Start-Process|Start-Job|Start-ThreadJob|Wait-Process|Stop-Process|Start-Sleep|Tee-Object|Out-File|Add-Content|Set-Content|Start-Transcript|\[IO\.File\]|runWorkspaceSuccess\.mjs/u);
+  assert.doesNotMatch(diagnostic, /upload-artifact|artifact:build|package:windows|retry/u);
+  const caller = step.slice(step.indexOf("$legacy = $env:ARTIFACT_KIND -ceq 'legacy'"));
+  assert.match(caller, /\} else \{\s*try \{ Write-Host '[^'\r\n]*"phase":"commandInvoked"[^'\r\n]*' \} catch \{ \}/u);
+  const guarded = [...caller.matchAll(/if \(-not \$legacy\) \{([\s\S]*?)\n {10}\}/gu)];
+  assert.deepEqual(guarded.map(([, block]) => [...block.matchAll(/"phase":"([^"]+)"/gu)].map(([, phase]) => phase)),
+    [['commandReturned', 'verifierInvoked'], ['verifierReturned']]);
+  assert.match(caller, /--workspace-success-command[^\r\n]*\n\s*\}\n\s*\$commandExit = \$LASTEXITCODE\n/u);
+  assert.match(caller, /node [^\r\n]+--command-exit \$commandExit\n\s*\$verifierExit = \$LASTEXITCODE\n/u);
+  assert.match(caller, /if \(\$commandExit -ne 0 -or \$verifierExit -ne 0\) \{ throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED' \}/u);
+  const normal = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-v2-workspace.yml', import.meta.url), 'utf8');
+  assert.doesNotMatch(normal, /workspaceCallerDiagnostic/u);
+});
+
+for (const [kind, commandExit, verifierExit, observer, thrown] of [
+  ['workspace', 0, 0, 'normal', 'none'],
+  ['workspace', 1, 0, 'normal', 'none'],
+  ['workspace', 0, 1, 'normal', 'none'],
+  ['workspace', 1, 1, 'normal', 'none'],
+  ['workspace', 0, 0, 'normal', 'command'],
+  ['workspace', 0, 0, 'normal', 'verifier'],
+  ['workspace', 0, 0, 'normal', 'missingCommand'],
+  ['workspace', 1, 0, 'zero', 'none'],
+  ['workspace', 0, 1, 'zero', 'none'],
+  ['workspace', 1, 1, 'zero', 'none'],
+  ['workspace', 0, 0, 'nonzero', 'none'],
+  ['workspace', 0, 0, 'throw', 'none'],
+  ['workspace', 1, 0, 'throw', 'none'],
+  ['workspace', 0, 1, 'throw', 'none'],
+  ['legacy', 0, 0, 'normal', 'none'],
+  ['legacy', 1, 0, 'normal', 'none'],
+  ['legacy', 0, 1, 'normal', 'none'],
+  ['workspace-fault', 0, 0, 'normal', 'none'],
+  ['upgrade', 0, 0, 'normal', 'none'],
+]) {
+  test(`diagnostic boundary preserves ${kind} command=${commandExit} verifier=${verifierExit} observer=${observer} throw=${thrown}`, {
+    skip: process.platform !== 'win32', timeout: 60_000,
+  }, async (t) => {
+    const source = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
+    const step = source.split('  packaged-boundary-diagnostic:')[1]
+      .split('      - name: Run existing caller and mandatory result verifier once\n')[1].split('\n      - name:')[0];
+    const body = step.split('        run: |\n')[1].trimEnd().split('\n')
+      .map((line) => { assert.ok(line.startsWith('          ')); return line.slice(10); }).join('\n');
+    const context = await createRunContext('workspace-diagnostic-boundary');
+    let passed = false;
+    t.after(() => cleanupRunContext(context, { preserveEvidence: !passed || t.signal.aborted }));
+    const script = join(context.testRoot, 'step.ps1');
+    await writeFile(context.resultPath, '');
+    await writeFile(script, `
+$ErrorActionPreference = 'Stop'
+function dotnet {
+  [IO.File]::AppendAllText($env:TEST_CALLS, (ConvertTo-Json -InputObject (@('dotnet') + $args) -Compress) + [Environment]::NewLine)
+  if ($env:TEST_THROW -ceq 'command') { throw 'TEST_COMMAND_THROWN' }
+  $global:LASTEXITCODE = [int]$env:TEST_COMMAND_EXIT
+}
+function node {
+  [IO.File]::AppendAllText($env:TEST_CALLS, (ConvertTo-Json -InputObject (@('node') + $args) -Compress) + [Environment]::NewLine)
+  if ($env:TEST_THROW -ceq 'verifier') { throw 'TEST_VERIFIER_THROWN' }
+  $global:LASTEXITCODE = [int]$env:TEST_VERIFIER_EXIT
+}
+function Write-Host {
+  param([string]$Object)
+  [IO.File]::AppendAllText($env:TEST_CALLS, (ConvertTo-Json -InputObject @('marker', $Object) -Compress) + [Environment]::NewLine)
+  if ($env:TEST_OBSERVER -cin @('zero', 'throw')) { $global:LASTEXITCODE = 0 }
+  if ($env:TEST_OBSERVER -ceq 'nonzero') { $global:LASTEXITCODE = 9 }
+  if ($env:TEST_OBSERVER -ceq 'throw') { throw 'TEST_OBSERVER_THROWN' }
+}
+if ($env:TEST_THROW -ceq 'missingCommand') {
+  Remove-Item Function:dotnet
+  $env:PATH = ''
+}
+${body}
+`);
+    const child = spawn(resolve(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script], {
+        cwd: context.testRoot, stdio: 'ignore', windowsHide: true, signal: t.signal,
+        env: { ...process.env, ARTIFACT_KIND: kind, INSPECTOR_CAPTURE: 'false', RUNNER_TEMP: context.testRoot,
+          EXPECTED_BUILD_REVISION: 'a'.repeat(40), EXPECTED_DESCRIPTOR_SHA256: 'b'.repeat(64),
+          TEST_CALLS: context.resultPath, TEST_COMMAND_EXIT: String(commandExit), TEST_VERIFIER_EXIT: String(verifierExit),
+          TEST_OBSERVER: observer, TEST_THROW: thrown },
+      });
+    context.fixtureProcesses.add(child);
+    const exited = await new Promise((resolvePromise, rejectPromise) => {
+      child.once('error', rejectPromise);
+      child.once('close', (code, signal) => resolvePromise({ code, signal }));
+    });
+    assert.deepEqual(exited, { code: commandExit || verifierExit || thrown !== 'none' ? 1 : 0, signal: null });
+    const events = (await readFile(context.resultPath, 'utf8')).trim().split(/\r?\n/u).filter(Boolean).map(JSON.parse);
+    const phases = kind !== 'workspace' ? [] : thrown === 'command' || thrown === 'missingCommand'
+      ? ['commandInvoked'] : thrown === 'verifier' ? ['commandInvoked', 'commandReturned', 'verifierInvoked']
+        : ['commandInvoked', 'commandReturned', 'verifierInvoked', 'verifierReturned'];
+    assert.deepEqual(events.filter(([name]) => name === 'marker').map(([, value]) => JSON.parse(value)),
+      phases.map((phase) => ({ schemaVersion: 1, operation: 'workspaceCallerDiagnostic', phase })));
+    const order = kind !== 'workspace'
+      ? Array.from({ length: kind === 'workspace-fault' ? 2 : 1 }, () => ['dotnet', 'node']).flat()
+      : thrown === 'missingCommand' ? ['commandInvoked'] : thrown === 'command' ? ['commandInvoked', 'dotnet']
+        : ['commandInvoked', 'dotnet', 'commandReturned', 'verifierInvoked', 'node',
+          ...(thrown === 'verifier' ? [] : ['verifierReturned'])];
+    assert.deepEqual(events.map(([name, value]) => name === 'marker' ? JSON.parse(value).phase : name), order);
+    const calls = events.filter(([name]) => name !== 'marker');
+    const argument = (call, key) => call[call.indexOf(key) + 1];
+    for (let index = 0; index < calls.length; index += 2) {
+      const [command, verifier] = calls.slice(index, index + 2);
+      assert.ok(command.includes(`--${kind === 'workspace' ? 'workspace-success' : kind}-command`));
+      if (!verifier) continue;
+      assert.ok(verifier[1].endsWith(kind === 'legacy' ? '/verifyLegacyCallerResult.mjs'
+        : kind === 'upgrade' ? '/verifyUpgradeCallerResult.mjs' : '/verifyWorkspaceCallerResult.mjs'));
+      assert.equal(String(argument(verifier, '--command-exit')), String(commandExit));
+      assert.ok(argument(command, '--result-path') === argument(verifier, '--result-path'));
+      for (const call of [command, verifier]) {
+        assert.equal(argument(call, '--expected-build-revision'), 'a'.repeat(40));
+        assert.equal(argument(call, '--expected-descriptor-sha256'), 'b'.repeat(64));
+      }
+    }
+    passed = true;
+  });
+}
+
 test('external inspector capture is opt-in and never replaces command or artifact outcomes', async () => {
   const source = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
   const diagnostic = source.slice(source.indexOf('  packaged-boundary-diagnostic:'));

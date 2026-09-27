@@ -406,11 +406,20 @@ jobs:
           if ($legacy) {
             dotnet apps/desktop/installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --legacy-command --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath
           } else {
+            try { Write-Host '{"schemaVersion":1,"operation":"workspaceCallerDiagnostic","phase":"commandInvoked"}' } catch { }
             dotnet apps/desktop/installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --workspace-success-command --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath
           }
           $commandExit = $LASTEXITCODE
+          if (-not $legacy) {
+            try { Write-Host '{"schemaVersion":1,"operation":"workspaceCallerDiagnostic","phase":"commandReturned"}' } catch { }
+            try { Write-Host '{"schemaVersion":1,"operation":"workspaceCallerDiagnostic","phase":"verifierInvoked"}' } catch { }
+          }
           node "apps/desktop/installer/windows-acceptance-harness/$verifier" --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --result-path $resultPath --command-exit $commandExit
-          if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED' }
+          $verifierExit = $LASTEXITCODE
+          if (-not $legacy) {
+            try { Write-Host '{"schemaVersion":1,"operation":"workspaceCallerDiagnostic","phase":"verifierReturned"}' } catch { }
+          }
+          if ($commandExit -ne 0 -or $verifierExit -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED' }
 
       - name: Stop only the diagnostic recording
         id: capture_stop

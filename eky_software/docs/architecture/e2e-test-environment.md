@@ -2138,7 +2138,31 @@ E2E-työkalujen 487 sopimusta, CI-kytkentöjen 315 sopimusta, workspacen
 Aiemman Electron-adapterin neljä oikeaprosessitapausta läpäisivät ennen
 tätä korjausta; niiden yhteinen toteutus ja vanha protokolla eivät muuttuneet
 viimeisessä korjauksessa. Näitä aiempia ajoja ei nimetä lopullisten tavujen
-koko regressioksi. Normaali CI todentaa seuraavaksi uuden täsmällisen revision.
+koko regressioksi.
+
+Revision `a2c826fc785cc2f9c6d678356e240f13e48611d6` normaali
+[V2-yritys 36286489889](https://github.com/eky-software/eky/actions/runs/36286489889)
+ei läpäissyt: workspace-success run 1 keskeytyi GitHubin vahvistamaan
+30 minuutin job-rajaan ja loppukoonti hylkäsi ajon. System 398/398,
+web 35/35 ja Electron 38/38 ilman retryä sekä erillinen
+[riippuvuustarkistus 36286493376](https://github.com/eky-software/eky/actions/runs/36286493376)
+läpäisivät, mutta eivät korvaa puuttuvaa packaged-hyväksyntää. Keskeytyneen
+jobin loki ei ollut saatavilla myöskään koko ajon lokiarkistossa; sisäinen viimeinen vaihe, caller-result,
+todellinen checkout ja prosessisiivous ovat sen osalta varmentamatta.
+Jobin aikaraja ei yksilöi sovellus-, omistaja- tai runner-vikaa. Aiempi
+samankaltainen timeout ei todista yhteistä syytä. Hyväksytty koko CI:n
+lähtötila säilyy revisiona `83a94fad`; ennen seuraavaa toiminnallista siirtoa
+rajataan puuttuva näyttö nykyisen harnessin vastuilla, ei uudella alustalla.
+Rajattu jatko käyttää nykyisen erillisen workspace-diagnoosimoodin
+[kutsurajahavaintoja](windows-installer-acceptance-harness-v2.md#workspace-diagnostiikan-kutsurajahavainnot)
+yhdessä nykyisten native-vaiheiden kanssa. Kutsun alku ja paluu erotetaan
+verifierin alusta ja paluusta ilman uutta prosessiomistajaa tai aikarajaa.
+Tallennuksen puute raportoidaan erikseen: havaintoketju ei voi luvata
+palauttaa menetetyn runnerin aineistoa. Kutsurajan 20 kohdetestiä ja nykyinen
+62 testin artifact-/workflow-sarja läpäisivät ilman ohituksia. Ne todentavat
+ohjausketjun ja alkuperäisen virheen säilymisen, eivät oikean prosessipuun
+siivousta. Yksi sidotun artifactin diagnoosi on vielä tekemättä; timeout
+ei ole korjattu.
 
 Ensimmäinen oikean backendin ajon hylkäys säilytettiin: native-kellon alku
 oli sidottu virheellisesti kutsujan prosessinluontipyynnön alkuun. Edellä

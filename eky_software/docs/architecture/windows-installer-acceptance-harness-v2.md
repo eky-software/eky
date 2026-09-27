@@ -6600,6 +6600,29 @@ kasva. Saman repositoryn aiemman artifactin lataus käyttää vain
 jotta tavallinen workflow-call ei yritä korottaa oikeuksia. Kirjoitusoikeutta,
 uutta salaisuutta, ulkopuolista repositorya tai automaattista uusintaa ei lisätä.
 
+### Workspace-diagnostiikan kutsurajahavainnot
+
+Workspace-successin erillinen diagnoosimoodi tulostaa neljä kiinteää
+`workspaceCallerDiagnostic`-havaintoa: `commandInvoked`, `commandReturned`,
+`verifierInvoked` ja `verifierReturned`. Ne eivät sisällä polkua, argumentteja,
+raakavirhettä tai profiilitietoa. Molempien kutsujen exit-koodit tallennetaan
+ennen paluuhavaintoa; viimeinen hyväksyntäehto käyttää tallennettuja koodeja.
+Havaintotulostuksen poikkeus ei saa peittää komentoa tai muuttaa sen tulosta.
+
+`commandInvoked` tarkoittaa vain kutsurajan saavuttamista. Nykyinen natiivin
+`prepare/started` vahvistaa komentokoodin vaiheketjuun pääsemisen, ei workerin
+käynnistymistä. `commandReturned` ja `verifierReturned` tarkoittavat paluuta
+PowerShelliin, eivät onnistumista tai prosessipuun siivousta. Nykyinen strict
+caller-result, komennon exit ja verifierin tulos pysyvät hyväksyntäehtoina.
+Merkintöjä ei kytketä normaaliin acceptance-ajoon eikä muihin diagnoosihaaroihin.
+
+Rajattu koe käyttää yhtä olemassa olevaa, identiteetiltään varmennettua
+workspace-artifactia ilman rebuildiä. Saman stepin nykyiset aikarajat ja
+nykyinen prosessiomistajuus säilyvät. Se ei ole epäonnistuneen acceptance-ajon
+uusintahyväksyntä. Jos myös uuden diagnoosin loki puuttuu, havainnot jäävät
+varmentamatta; tätä ei korjata automaattisilla uusintakierroksilla tai
+arvaamalla runner-vikaa. Raakaa tulosjuurta tai jälkeä ei julkaista artifactina.
+
 ### Infrastruktuuriuusinnan rajattu ehdotus
 
 Automaattista uusintaa ei kytketä käyttöön tässä checkpointissa. Mahdollinen
