@@ -2754,13 +2754,70 @@ Kaikissa työkuorma jäi luomatta, terminal todisti suljetun luontivaiheen
 ja tyhjän puun, ja omistajan sulku todennettiin saman siivousrajan sisällä.
 Koe ei lähettänyt GO:ta eikä todistanut bridge-peerin identiteettiä.
 
-Bridge-asiakas, suorat Electron-kuluttajat ja pääfixture eivät vielä käytä
-uutta sopimusta. Oikea pipe-peer-/kahvatodiste, Page/API-polku,
-owner-/caller-loss ja uusi CI-hyväksyntä ovat avoinna. Seuraava työ on
-lapsittoman bridge-asiakkaan ja Node-kutsujan kytkentä tähän omistajaan,
-mukaan lukien alkuperäisen määräajan säilyminen ennen ensimmäistä yhteyttä.
-Vasta katselmuksen ja oikean normaali-/virhe-/katkeamisnäytön jälkeen
-siirretään pääfixture. Alemman tason näyttö ei sulje T3:a.
+**Bridge-asiakkaan ja kutsujan kytkentä 2026-09-27:** lapsiton native-bridge
+ja Node-kutsuja käyttävät nyt samaa palveluomistajaa. Julkinen Playwright-
+launch jää odottamaan rekisteröintiä ja GO:ta; havaitsija säilyttää oikean
+ChildProcess-olion. Tavallista fixtureä tai suoria Electron-kuluttajia ei
+ole vielä siirretty. Moduulitesteihin ei lisätä prosessienhallintaa.
+
+Omistajan ennen konfiguraation lukua aloittama monotonic-kello viedään
+bridgeen rajattuna QPC-määräaikana ennen sen ensimmäistä yhteyttä.
+Node-kutsujan alkuperäinen työraja vain lyhentää omistajan rajaa.
+Bridgen konfiguraation luku ja pipe-yhteyden muodostaminen kuluttavat samaa
+budjettia; stop välittää alkuperäisen siivousrajan, ei uutta odotusaikaa.
+Kello-, generaatio-, nonce- tai kehysristiriita hylätään.
+
+Katselmus tarkensi päättymiskehyksen jälkeistä luku- ja sulkusopimusta:
+osittaisen kehyksen peruutus ei muutu onnistumiseksi, ja native-omistajan
+oman datavälityksen päättyminen ei yksin todista bridgen stdout/stderr-
+välityksen päättymistä. Omistaja käyttää jo säilytettyä read-only-peer-
+kahvaa sulkukilpailun todentamiseen, ei uutta PID-hakua. Kutsuja vaatii
+bridgen todellisen sulun ja sen exit-koodin vastaavuuden työkuorman
+todelliseen exit-koodiin. Launch-virhe ja puun poissaolon näyttö säilyvät
+erillisinä; onnistunut cleanup ei tee epäonnistuneesta launchista onnistunutta.
+
+Native-sarjat läpäisivät 515/226/285/1791 tarkistusta, E2E-paketin
+tyyppitarkistus ja testityökalujen regressiot 638/638 läpäisivät.
+Olemassa olevien palveluomistajien ja uuden bridge-istunnon kohdesarja
+läpäisi 134/134. Ensimmäinen kohdeajo paljasti suoran backend-profiilin
+myöhäisen yhteyden hylkäyksen regression. Se korjattiin rajaten odotus vain
+avoimeen bridge-käynnistykseen; vanha regressiotesti säilyi muuttumattomana
+ja uuden istunnon vastaava hylkäys lisättiin. Ensimmäinen hylkäys säilytetään.
+
+Yksi rajattu oikea Windows-koe läpäisi ensimmäisellä yrityksellä:
+rekisteröinti/GO, oikean sovellusikkunan ja API:n käyttö, julkinen sulku,
+bridgen sulku, työkuorman exit-koodin vastaavuus sekä saman omistajan
+terminal-kuittaus tyhjästä Job-puusta ja valmistuneesta stdio-välityksestä.
+Portin vapautuminen tarkistettiin erikseen. Riippumaton takaisinluku
+vahvisti lähde- ja tulossidonnan. Tämä on normaali Page/API-polku, ei
+negatiivisten peer-vaihtojen, caller-/owner-lossin, relaunchin, toisen
+instanssin, tavallisen fixturen tai koko CI:n hyväksyntä.
+
+Saman kytkennän kaksi varhaista virhekoetta läpäisivät ensimmäisellä
+yrityksellä: virheellinen bootstrap torjuttiin ennen bridgen pipe-yhteyttä,
+ja autentikoitu bridge poistettiin rekisteröinnin jälkeen ennen GO:n
+välittämistä. Molemmissa alkuperäinen Playwright-hylkäys säilyi, GO:ta ei
+välitetty, työkuorma jäi luomatta ja native-terminal, ohjauskanavan sulku
+sekä bridgen ja omistajan todellinen sulku todensivat siivouksen erikseen.
+Stopin operational-hylkäystä ei muutettu onnistumiseksi puun poissaolon
+perusteella. Jälkimmäinen koe kattaa pidätetyn GO:n, ei native-omistajalle
+jo saapuneen GO:n kilpailua. Ensimmäinen kattaa bootstrapin aiheuttaman
+poistumisen, ei ulkoista tappoa täsmällisessä ennen-yhteyttä-rajassa.
+
+Varhainen Playwright-hylkäys voi edelleen käynnistää kirjaston oman
+PID-pohjaisen `taskkill`-polun jo poistuneelle bridgelle. Sen tulos ei ole
+poissaolon todiste eikä poista PID:n uudelleenkäytön kohdistusriskiä.
+Yllä hyväksytään vain kaksi täsmällistä hylkäys- ja siivoustulosta;
+kirjaston tämä ohjausraja jää ratkaistavaksi ennen fixture-siirtoa.
+Uutta riippuvuuspatchia tai poikkeusta ei hyväksytä koetuloksen perusteella.
+
+Ikkunavaiheen koetta ei ajettu: jo suljetun sovelluksen palauttaminen
+kutsujalle voi epäonnistua jo process-kahvan luvussa tai jäädä odottamaan
+tulevaa ikkunatapahtumaa. Se ei luotettavasti todista tarkoitettua
+firstWindow-virhettä. Seuraava työ on rajata tämä koe todelliseen odottavaan
+ikkunavaiheeseen, jatkaa relaunch-/toinen instanssi-/katkeamisnäyttöön ja
+vasta sitten pääfixturen siirtoon. Alemman tason näyttö tai normaali sulku
+ei sulje T3:a.
 
 Lähteet: [Noden Process-kanavien sopimus](https://nodejs.org/docs/latest-v24.x/api/diagnostics_channel.html#process)
 ja [projektin lukituksen spawn-toteutus](https://github.com/nodejs/node/blob/v24.19.0/lib/internal/child_process.js).

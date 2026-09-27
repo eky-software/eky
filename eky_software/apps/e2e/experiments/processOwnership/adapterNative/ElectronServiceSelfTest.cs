@@ -38,6 +38,8 @@ internal static partial class ElectronServiceSelfTest
             checks += ElectronBridgeServiceSelfTest.RunChecks();
             checks += ElectronBridgeLaunchSelfTest.RunChecks();
             checks += await ElectronBridgeSettlementSelfTest.RunChecksAsync();
+            checks += ElectronBridgeClientSelfTest.RunChecks();
+            checks += await ElectronBridgeClientSelfTest.RunRelayChecksAsync();
             WriteResult(true);
             return 0;
         }

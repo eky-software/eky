@@ -81,6 +81,30 @@ internal sealed class BridgePeerObservation : IDisposable
         }
     }
 
+    // Closed pipes do not invalidate this retained process handle. Do not reopen or query peers here.
+    internal bool HasExited()
+    {
+        lock (gate)
+        {
+            RequireUsable();
+            try
+            {
+                return native.WaitForSingleObject(process!, 0) switch
+                {
+                    BridgePeerNativeMethods.WaitObject0 => true,
+                    BridgePeerNativeMethods.WaitTimeout => false,
+                    _ => throw new AdapterFailure("bridgePeerWaitFailed"),
+                };
+            }
+            catch (Exception error)
+            {
+                var safe = SafeFailure(error);
+                failure = safe.Code;
+                throw safe;
+            }
+        }
+    }
+
     private void RequireUsable()
     {
         if (disposed) throw new AdapterFailure("bridgePeerDisposed");

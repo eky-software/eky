@@ -15,6 +15,10 @@ const cleanupFailures = new Set([
 ]);
 
 export type WindowsServiceRequestKind = 'launch' | 'status' | 'rss' | 'stop';
+export type WindowsElectronBridgeCommand =
+  | Readonly<{ kind: 'arm'; launchNonce: string; workDeadlineElapsedMilliseconds: number }>
+  | Readonly<{ kind: 'register'; launchNonce: string; observedBridgePid: number }>
+  | Readonly<{ kind: 'go'; registration: string }>;
 export interface WindowsServiceIdentity {
   readonly pid: number;
   readonly creationTimeFileTimeHex: string;
@@ -40,7 +44,10 @@ export interface WindowsServiceReply<P extends WindowsServiceProfile = WindowsSe
   readonly generation: string;
   readonly sequence: number;
   readonly replyTo: number | null;
-  readonly kind: 'started' | 'status' | 'rss' | 'rootExit' | 'terminal';
+  readonly kind: 'started' | 'status' | 'rss' | 'rootExit' | 'terminal' | 'armed' | 'registering';
+  // Required only on the closed bridge wire; never included in public evidence.
+  readonly registration?: string | null;
+  readonly bootstrap?: string | null;
   readonly state: WindowsServiceState;
   readonly rssBytes: number | null;
   readonly elapsedMilliseconds: number;
@@ -63,6 +70,7 @@ export function createWindowsServiceProtocol<P extends WindowsServiceProfile>(pr
     requireWindowsServiceToken(generation);
     requireCondition(integer(sequence, 1, Number.MAX_SAFE_INTEGER));
     requireCondition(['launch', 'status', 'rss', 'stop'].includes(kind));
+    requireCondition(profile !== 'electronBridge' || kind !== 'launch');
     if (kind === 'launch') {
       requireWindowsServiceToken(launchNonce);
       requireCondition(integer(workDeadlineElapsedMilliseconds, 1, Number.MAX_SAFE_INTEGER));
@@ -73,18 +81,43 @@ export function createWindowsServiceProtocol<P extends WindowsServiceProfile>(pr
     }) + '\n');
   }
 
+  function encodeWindowsElectronBridgeRequest(
+    generation: string, sequence: number, command: WindowsElectronBridgeCommand,
+  ): Buffer {
+    requireCondition(profile === 'electronBridge');
+    requireWindowsServiceToken(generation);
+    requireCondition(integer(sequence, 1, Number.MAX_SAFE_INTEGER));
+    if (command.kind === 'arm') {
+      record(command, ['kind', 'launchNonce', 'workDeadlineElapsedMilliseconds']);
+      requireWindowsServiceToken(command.launchNonce);
+      requireCondition(integer(command.workDeadlineElapsedMilliseconds, 1, Number.MAX_SAFE_INTEGER));
+    } else if (command.kind === 'register') {
+      record(command, ['kind', 'launchNonce', 'observedBridgePid']);
+      requireWindowsServiceToken(command.launchNonce);
+      requireCondition(integer(command.observedBridgePid, 1, 0xffffffff));
+    } else {
+      record(command, ['kind', 'registration']);
+      requireCondition(command.kind === 'go');
+      requireWindowsServiceToken(command.registration);
+    }
+    return Buffer.from(JSON.stringify({ protocol: windowsServiceProtocol,
+      schemaVersion: windowsServiceSchemaVersion, generation, sequence, ...command }) + '\n');
+  }
+
   function validateWindowsServiceReply(
     value: unknown, generation: string, previousSequence: number,
   ): WindowsServiceReply<P> {
     const reply = record(value, ['protocol', 'schemaVersion', 'generation', 'sequence', 'replyTo',
-      'kind', 'state', 'rssBytes', 'elapsedMilliseconds', 'cleanupStartedElapsedMilliseconds', 'remainingCleanupMilliseconds']);
+      'kind', 'state', 'rssBytes', 'elapsedMilliseconds', 'cleanupStartedElapsedMilliseconds', 'remainingCleanupMilliseconds',
+      ...(profile === 'electronBridge' ? ['registration', 'bootstrap'] : [])]);
     requireWindowsServiceToken(generation);
     requireCondition(integer(previousSequence, 0, Number.MAX_SAFE_INTEGER - 1));
     requireCondition(reply.protocol === windowsServiceProtocol && reply.schemaVersion === windowsServiceSchemaVersion &&
       reply.generation === generation && integer(reply.sequence, 1, Number.MAX_SAFE_INTEGER) &&
       reply.sequence === previousSequence + 1);
     requireCondition(reply.replyTo === null || integer(reply.replyTo, 1, Number.MAX_SAFE_INTEGER));
-    requireCondition(typeof reply.kind === 'string' && ['started', 'status', 'rss', 'rootExit', 'terminal'].includes(reply.kind));
+    requireCondition(typeof reply.kind === 'string' && ['started', 'status', 'rss', 'rootExit', 'terminal',
+      ...(profile === 'electronBridge' ? ['armed', 'registering'] : [])].includes(reply.kind));
     const state = validateState(reply.state);
     requireCondition(integer(reply.elapsedMilliseconds, 0, Number.MAX_SAFE_INTEGER - windowsServiceCleanupMilliseconds));
     const stopping = reply.cleanupStartedElapsedMilliseconds !== null;
@@ -104,6 +137,18 @@ export function createWindowsServiceProtocol<P extends WindowsServiceProfile>(pr
     if (reply.kind === 'status' || reply.kind === 'rss') requireCondition(reply.replyTo !== null);
     if (reply.kind === 'terminal') requireCondition(stopping && state.cleanup !== 'pending');
     else requireCondition(state.cleanup === 'pending');
+    if (profile === 'electronBridge') {
+      const admissionOpen = !state.created && !state.started && !state.creationCompleted && !state.launchClosed &&
+        state.workload === 'pending' && state.firstFailure === null && !stopping;
+      requireCondition(reply.registration === null || reply.kind === 'status' && admissionOpen);
+      if (reply.registration !== null) requireWindowsServiceToken(reply.registration);
+      if (reply.kind === 'armed') {
+        requireCondition(admissionOpen && reply.replyTo !== null && typeof reply.bootstrap === 'string' &&
+          reply.bootstrap.length > 0 && !reply.bootstrap.includes('\0') &&
+          Buffer.byteLength(reply.bootstrap, 'utf8') < windowsServiceFrameBytes);
+      } else requireCondition(reply.bootstrap === null);
+      if (reply.kind === 'registering') requireCondition(admissionOpen && reply.replyTo !== null);
+    }
     return Object.freeze({ ...reply, state }) as unknown as WindowsServiceReply<P>;
   }
 
@@ -159,7 +204,11 @@ export function createWindowsServiceProtocol<P extends WindowsServiceProfile>(pr
             }
             const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes.subarray(0, length));
             const value: unknown = JSON.parse(text);
-            requireCondition(JSON.stringify(value) === text);
+            // Native embeds a JSON descriptor as a string. Normalize only JSON
+            // string encodings on this profile; duplicate keys still fail equality.
+            const canonical = profile === 'electronBridge'
+              ? text.replace(/"(?:\\.|[^"\\])*"/gu, token => JSON.stringify(JSON.parse(token))) : text;
+            requireCondition(JSON.stringify(value) === canonical);
             length = 0;
             accept(value);
           }
@@ -188,6 +237,6 @@ export function createWindowsServiceProtocol<P extends WindowsServiceProfile>(pr
     if (!valid) throw new Error(protocolFailure);
   }
 
-  return { requireWindowsServiceToken, encodeWindowsServiceRequest,
+  return { requireWindowsServiceToken, encodeWindowsServiceRequest, encodeWindowsElectronBridgeRequest,
     validateWindowsServiceReply, createWindowsServiceFrameReader };
 }

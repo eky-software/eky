@@ -29,9 +29,12 @@ internal sealed partial class BackendServiceOwner(ServiceConfiguration config, B
     internal static async Task<int> RunConfiguredAsync(string path, ServiceProfile profile = ServiceProfile.Backend)
     {
         // Includes config validation time; receiving a launch never resets this origin.
-        var origin = Stopwatch.StartNew();
+        var qpc = profile == ServiceProfile.ElectronBridge ? ElectronBridgeClock.StartNew() : null;
+        var origin = qpc is null ? Stopwatch.StartNew() : null;
         var config = ServiceConfiguration.Read(path, profile);
-        using var owner = new BackendServiceOwner(config, new(config.WorkBudgetMilliseconds, () => origin.ElapsedMilliseconds));
+        var clock = qpc is null ? new BackendServiceClock(config.WorkBudgetMilliseconds, () => origin!.ElapsedMilliseconds)
+            : new BackendServiceClock(config.WorkBudgetMilliseconds, qpc);
+        using var owner = new BackendServiceOwner(config, clock);
         return await owner.RunAsync();
     }
 
@@ -94,7 +97,12 @@ internal sealed partial class BackendServiceOwner(ServiceConfiguration config, B
                 requestSequence = request.Sequence;
                 pendingReply = request.Sequence;
                 if (request.Kind == "stop") return;
-                if (request.Kind == "register")
+                if (request.Kind == "arm")
+                {
+                    ArmBridge(request);
+                    await ReplyAsync("armed", request.Sequence);
+                }
+                else if (request.Kind == "register")
                 {
                     BeginBridgeRegistration(request);
                     await ReplyAsync("registering", request.Sequence);
@@ -202,7 +210,8 @@ internal sealed partial class BackendServiceOwner(ServiceConfiguration config, B
             timing.CleanupStartedElapsedMilliseconds, timing.RemainingCleanupMilliseconds);
         await ControlFrame.WriteAsync(caller!, config.IsElectronBridge
             ? ElectronBridgeServiceProtocol.Reply(reply, kind == "status" && !state.LaunchClosed &&
-                !state.Stopping && state.FirstFailure is null ? bridgeRegistration?.Receipt : null) : reply, bound.Token);
+                !state.Stopping && state.FirstFailure is null ? bridgeRegistration?.Receipt : null,
+                kind == "armed" ? clock.ReadBridgeWorkTiming(config.Generation, config.LaunchNonce) : null) : reply, bound.Token);
         if (state.Stopping) clock.RequireCleanup(); else clock.RequireWork();
     }
 
@@ -213,6 +222,7 @@ internal sealed partial class BackendServiceOwner(ServiceConfiguration config, B
         StopBridgeRegistration();
         watchdog!.Change(TimeSpan.FromMilliseconds(clock.RemainingCleanup!.Value), Timeout.InfiniteTimeSpan);
         using var cleanup = Bound();
+        await SendBridgeStopAsync(cleanup.Token);
         await CleanupAsync(cleanup.Token);
         var candidate = state.Snapshot(state.CanProveAbsent ? "processTreeAbsent" : "cleanupUnverified");
         try { config.WriteTerminal(candidate, clock.CleanupStarted!.Value, clock.RequireCleanup); }

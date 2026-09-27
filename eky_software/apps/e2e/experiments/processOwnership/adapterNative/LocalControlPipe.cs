@@ -42,12 +42,16 @@ internal static class LocalControlPipe
 // A single frame is bounded including its LF. No StreamReader can prefetch unbounded input.
 internal static class ControlFrame
 {
-    internal static async Task<JsonDocument?> ReadAsync(Stream stream, CancellationToken cancellation)
+    internal static async Task<JsonDocument?> ReadAsync(Stream stream, CancellationToken cancellation,
+        bool rejectPartialCancellation = false)
     {
         var bytes = new byte[AdapterProtocol.FrameBytes];
         for (var index = 0; index < bytes.Length; index++)
         {
-            var count = await stream.ReadAsync(bytes.AsMemory(index, 1), cancellation);
+            int count;
+            try { count = await stream.ReadAsync(bytes.AsMemory(index, 1), cancellation); }
+            catch (OperationCanceledException) when (rejectPartialCancellation && index > 0)
+            { throw new AdapterFailure("frameTruncated"); }
             if (count == 0)
             {
                 if (index == 0) return null;

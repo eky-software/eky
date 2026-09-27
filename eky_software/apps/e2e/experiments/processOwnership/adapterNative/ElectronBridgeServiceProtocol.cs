@@ -18,16 +18,22 @@ internal static class ElectronBridgeServiceProtocol
             long? deadline = null;
             uint? observedPid = null;
             string? registration = null;
-            if (kind == "register")
+            if (kind == "arm")
             {
                 AdapterProtocol.ExactKeys(value, "protocol", "schemaVersion", "generation", "sequence", "kind", "launchNonce",
-                    "observedBridgePid", "workDeadlineElapsedMilliseconds");
+                    "workDeadlineElapsedMilliseconds");
                 if (AdapterProtocol.Token(value, "launchNonce") != nonce) Invalid();
-                if (!value.GetProperty("observedBridgePid").TryGetUInt32(out var pid) || pid == 0) Invalid();
                 if (!value.GetProperty("workDeadlineElapsedMilliseconds").TryGetInt64(out var bound) ||
                     !BackendServiceProtocol.IsWorkDeadline(bound)) Invalid();
-                observedPid = pid;
                 deadline = bound;
+            }
+            else if (kind == "register")
+            {
+                AdapterProtocol.ExactKeys(value, "protocol", "schemaVersion", "generation", "sequence", "kind", "launchNonce",
+                    "observedBridgePid");
+                if (AdapterProtocol.Token(value, "launchNonce") != nonce) Invalid();
+                if (!value.GetProperty("observedBridgePid").TryGetUInt32(out var pid) || pid == 0) Invalid();
+                observedPid = pid;
             }
             else if (kind == "go")
             {
@@ -48,9 +54,18 @@ internal static class ElectronBridgeServiceProtocol
         { throw new AdapterFailure("protocolInvalid"); }
     }
 
-    internal static object Reply(BackendServiceReply reply, string? receipt)
+    internal static object Reply(BackendServiceReply reply, string? receipt, string? bootstrap = null)
     {
         if (reply.Protocol != Name || reply.SchemaVersion != BackendServiceProtocol.Version) Invalid();
+        if ((reply.Kind == "armed") != (bootstrap is not null)) Invalid();
+        if (bootstrap is not null)
+        {
+            if (receipt is not null || reply.State.Created || reply.State.Started || reply.State.CreationCompleted ||
+                reply.State.LaunchClosed || reply.State.FirstFailure is not null || reply.State.Cleanup != "pending" ||
+                reply.CleanupStartedElapsedMilliseconds is not null) Invalid();
+            try { _ = ElectronBridgeBootstrap.Parse(bootstrap, reply.Generation); }
+            catch (AdapterFailure) { Invalid(); }
+        }
         if (receipt is not null)
         {
             // Capabilities are private status data, never terminal evidence or other replies.
@@ -61,11 +76,12 @@ internal static class ElectronBridgeServiceProtocol
         }
         return new { reply.Protocol, reply.SchemaVersion, reply.Generation, reply.Sequence, reply.ReplyTo, reply.Kind,
             reply.State, reply.RssBytes, reply.ElapsedMilliseconds, reply.CleanupStartedElapsedMilliseconds,
-            reply.RemainingCleanupMilliseconds, registration = receipt };
+            reply.RemainingCleanupMilliseconds, registration = receipt, bootstrap };
     }
 
     internal static string OperationalFailure(Exception error) => error is AdapterFailure known
         ? known.Code == "bridgeRegistrationInvalid" ? "launchRejected"
+            : known.Code == "bridgeTimingInvalid" ? "protocolInvalid"
             : BridgePeerObservation.IsFailureCode(known.Code) ? "observationLost"
             : BackendServiceProtocol.OperationalFailure(error)
         : BackendServiceProtocol.OperationalFailure(error);

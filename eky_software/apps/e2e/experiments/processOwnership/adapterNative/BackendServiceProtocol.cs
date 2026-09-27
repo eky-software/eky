@@ -177,10 +177,39 @@ internal sealed class BackendServiceState
 
 internal sealed class BackendServiceClock(long workMilliseconds, Func<long> elapsed)
 {
+    private readonly ElectronBridgeClock? qpc;
     private long previous;
     private bool failed;
     private long? workDeadline;
     internal long? CleanupStarted { get; private set; }
+    internal BackendServiceClock(long workMilliseconds, ElectronBridgeClock qpc)
+        : this(workMilliseconds, qpc.ReadElapsedMilliseconds) { this.qpc = qpc; }
+
+    internal void RequireBridgeArmed()
+    {
+        if (qpc is null || workDeadline is null || CleanupStarted is not null) throw new AdapterFailure("launchRejected");
+        RequireWork();
+    }
+
+    internal string ReadBridgeWorkTiming(string generation, string nonce)
+    {
+        RequireBridgeArmed();
+        return new ElectronBridgeBootstrap(qpc!.DeadlineTimestamp(workDeadline!.Value), qpc.Frequency).Encode(generation, nonce);
+    }
+
+    internal long ReadBridgeDeadlineTimestamp()
+    {
+        if (CleanupStarted is not null) return ReadBridgeCleanupDeadlineTimestamp();
+        RequireBridgeArmed();
+        return qpc!.DeadlineTimestamp(workDeadline!.Value);
+    }
+
+    internal long ReadBridgeCleanupDeadlineTimestamp()
+    {
+        if (qpc is null || CleanupStarted is null) throw new AdapterFailure("ownerFailed");
+        RequireCleanup();
+        return qpc.DeadlineTimestamp(CleanupStarted.Value + BackendServiceProtocol.CleanupMilliseconds);
+    }
     private long Now()
     {
         if (failed) throw new AdapterFailure("ownerFailed");

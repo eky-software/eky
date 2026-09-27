@@ -8,5 +8,8 @@ export const windowsServiceProfiles = Object.freeze({
   electron: Object.freeze({ protocol: 'eky.e2e.electron-service', mode: '--electron-owner',
     pipePrefix: 'eky-e2e-electron-v1-', configName: 'electron-service-config.json',
     terminalName: 'electron-service-terminal.json', errorPrefix: 'E2E_ELECTRON' } as const),
+  electronBridge: Object.freeze({ protocol: 'eky.e2e.electron-bridge-service', mode: '--electron-bridge-owner',
+    pipePrefix: 'eky-e2e-electron-bridge-v1-', configName: 'electron-bridge-service-config.json',
+    terminalName: 'electron-bridge-service-terminal.json', errorPrefix: 'E2E_ELECTRON_BRIDGE' } as const),
 });
 export type WindowsServiceProfile = keyof typeof windowsServiceProfiles;

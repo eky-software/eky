@@ -78,6 +78,9 @@ internal sealed class ElectronBridgeChannel : IDisposable
         RequireNoUnexpectedFrame(false);
     }
 
+    internal bool HasPeerExited() =>
+        (peer ?? throw new AdapterFailure("bridgePeerObservationFailed")).HasExited();
+
     internal void RequireNoUnexpectedFrame(bool rootExited) => RequireNoUnexpectedFrame(unexpected, rootExited);
 
     internal static void RequireNoUnexpectedFrame(Task<JsonDocument?>? unexpected, bool rootExited)
@@ -98,10 +101,9 @@ internal sealed class ElectronBridgeChannel : IDisposable
         return rootExited ? null : "bridgePeerObservationFailed";
     }
 
-    internal Task SendAsync(string kind, int? exitCode, CancellationToken cancellation) =>
-        ControlFrame.WriteAsync(control, new { protocol = BridgeRegistrationProtocol.Name,
-            schemaVersion = BridgeRegistrationProtocol.Version, generation = config.Generation,
-            launchNonce = config.LaunchNonce, kind, exitCode }, cancellation);
+    internal Task SendAsync(string kind, int? exitCode, long deadlineTimestamp, CancellationToken cancellation) =>
+        ControlFrame.WriteAsync(control, ElectronBridgeClientProtocol.Message(config.Generation,
+            config.LaunchNonce, kind, exitCode, deadlineTimestamp), cancellation);
 
     internal string? StopObservation(bool rootExited)
     {

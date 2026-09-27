@@ -30,11 +30,11 @@ internal static class ElectronBridgeServiceSelfTest
             return BackendServiceProtocol.Request(frame.RootElement, Generation, Nonce, previous, profile);
         }
         Check(ServiceConfiguration.Protocol(ServiceProfile.ElectronBridge) == ElectronBridgeServiceProtocol.Name);
-        foreach (var kind in new[] { "register", "go", "status", "rss", "stop" })
+        foreach (var kind in new[] { "arm", "register", "go", "status", "rss", "stop" })
         {
             var value = Request(kind);
             var request = Parse(value);
-            Check(request == new BackendServiceRequest(1, kind, kind == "register" ? 15000 : null,
+            Check(request == new BackendServiceRequest(1, kind, kind == "arm" ? 15000 : null,
                 kind == "register" ? 7u : null, kind == "go" ? Receipt : null));
             Reject(() => Parse(value, previous: 1), "protocolInvalid");
             Reject(() => Parse(value, previous: -1), "protocolInvalid");
@@ -58,18 +58,18 @@ internal static class ElectronBridgeServiceSelfTest
                 Reject(() => Parse(value, profile), "protocolInvalid");
                 var direct = new Dictionary<string, object?>(value) { ["protocol"] = ServiceConfiguration.Protocol(profile) };
                 Reject(() => Parse(direct), "protocolInvalid");
-                if (kind is "register" or "go") Reject(() => Parse(direct, profile), "protocolInvalid");
+                if (kind is "arm" or "register" or "go") Reject(() => Parse(direct, profile), "protocolInvalid");
                 else Check(Parse(direct, profile) == new BackendServiceRequest(1, kind, null));
             }
         }
-        foreach (var kind in new[] { "launch", "restart", "exec", "started", "registering", "" })
+        foreach (var kind in new[] { "launch", "restart", "exec", "started", "armed", "registering", "" })
             Reject(() => Parse(Request(kind)), "protocolInvalid");
         foreach (var profile in new[] { ServiceProfile.Backend, ServiceProfile.Vite, ServiceProfile.Electron })
         {
             var direct = Request("launch"); direct["protocol"] = ServiceConfiguration.Protocol(profile);
             Check(Parse(direct, profile) == new BackendServiceRequest(1, "launch", 15000));
         }
-        foreach (var kind in new[] { "register", "go", "status", "rss", "stop" })
+        foreach (var kind in new[] { "arm", "register", "go", "status", "rss", "stop" })
         foreach (var key in new[] { "launchNonce", "observedBridgePid", "workDeadlineElapsedMilliseconds", "registration" })
         {
             var extra = Request(kind);
@@ -89,12 +89,12 @@ internal static class ElectronBridgeServiceSelfTest
         }
         foreach (var invalid in new object?[] { null, 0, -1, 1.5, "15000", true, BackendServiceProtocol.MaximumSequence + 1 })
         {
-            var value = Request("register"); value["workDeadlineElapsedMilliseconds"] = invalid;
+            var value = Request("arm"); value["workDeadlineElapsedMilliseconds"] = invalid;
             Reject(() => Parse(value), "protocolInvalid");
         }
         foreach (var deadline in new[] { 1L, BackendServiceProtocol.MaximumSequence })
         {
-            var value = Request("register"); value["workDeadlineElapsedMilliseconds"] = deadline;
+            var value = Request("arm"); value["workDeadlineElapsedMilliseconds"] = deadline;
             Check(Parse(value).WorkDeadlineElapsedMilliseconds == deadline);
         }
         foreach (var invalid in new object?[] { null, "", new string('C', 64), new string('c', 63), new string('c', 65),
@@ -123,16 +123,19 @@ internal static class ElectronBridgeServiceSelfTest
             using var original = JsonSerializer.SerializeToDocument(reply, AdapterProtocol.Json);
             using var projected = JsonSerializer.SerializeToDocument(ElectronBridgeServiceProtocol.Reply(reply, receipt), AdapterProtocol.Json);
             AdapterProtocol.ExactKeys(projected.RootElement, "protocol", "schemaVersion", "generation", "sequence", "replyTo", "kind",
-                "state", "rssBytes", "elapsedMilliseconds", "cleanupStartedElapsedMilliseconds", "remainingCleanupMilliseconds", "registration");
+                "state", "rssBytes", "elapsedMilliseconds", "cleanupStartedElapsedMilliseconds", "remainingCleanupMilliseconds", "registration", "bootstrap");
             Check(projected.RootElement.GetProperty("registration").GetString() == receipt);
+            Check(projected.RootElement.GetProperty("bootstrap").ValueKind == JsonValueKind.Null);
             foreach (var property in original.RootElement.EnumerateObject())
                 Check(property.Value.GetRawText() == projected.RootElement.GetProperty(property.Name).GetRawText());
             Check(!original.RootElement.TryGetProperty("registration", out _));
+            Check(!original.RootElement.TryGetProperty("bootstrap", out _));
         }
         foreach (var kind in new[] { "registering", "started", "rss", "rootExit", "terminal" })
         {
             using var projected = JsonSerializer.SerializeToDocument(ElectronBridgeServiceProtocol.Reply(reply with { Kind = kind }, null), AdapterProtocol.Json);
             Check(projected.RootElement.GetProperty("registration").ValueKind == JsonValueKind.Null);
+            Check(projected.RootElement.GetProperty("bootstrap").ValueKind == JsonValueKind.Null);
             Reject(() => ElectronBridgeServiceProtocol.Reply(reply with { Kind = kind }, Receipt), "protocolInvalid");
         }
         foreach (var profile in new[] { ServiceProfile.Backend, ServiceProfile.Vite, ServiceProfile.Electron })
@@ -146,6 +149,30 @@ internal static class ElectronBridgeServiceSelfTest
             reply with { State = state with { Cleanup = "processTreeAbsent" } },
             reply with { CleanupStartedElapsedMilliseconds = 200 },
         }) Reject(() => ElectronBridgeServiceProtocol.Reply(closed, Receipt), "protocolInvalid");
+
+        var bootstrap = new ElectronBridgeBootstrap(200000, 1000).Encode(Generation, Nonce);
+        var armed = reply with { Kind = "armed" };
+        using (var projected = JsonSerializer.SerializeToDocument(ElectronBridgeServiceProtocol.Reply(armed, null, bootstrap), AdapterProtocol.Json))
+        {
+            Check(projected.RootElement.GetProperty("bootstrap").GetString() == bootstrap);
+            Check(projected.RootElement.GetProperty("registration").ValueKind == JsonValueKind.Null);
+        }
+        Reject(() => ElectronBridgeServiceProtocol.Reply(armed, null), "protocolInvalid");
+        Reject(() => ElectronBridgeServiceProtocol.Reply(armed, Receipt, bootstrap), "protocolInvalid");
+        Reject(() => ElectronBridgeServiceProtocol.Reply(armed, null, "{}"), "protocolInvalid");
+        Reject(() => ElectronBridgeServiceProtocol.Reply(armed, null, bootstrap.Replace(Generation, Nonce, StringComparison.Ordinal)), "protocolInvalid");
+        foreach (var kind in new[] { "status", "registering", "started", "rss", "rootExit", "terminal" })
+            Reject(() => ElectronBridgeServiceProtocol.Reply(reply with { Kind = kind }, null, bootstrap), "protocolInvalid");
+        foreach (var closed in new[]
+        {
+            armed with { State = state with { Created = true } },
+            armed with { State = state with { Started = true } },
+            armed with { State = state with { CreationCompleted = true } },
+            armed with { State = state with { LaunchClosed = true } },
+            armed with { State = state with { FirstFailure = "launchRejected" } },
+            armed with { State = state with { Cleanup = "processTreeAbsent" } },
+            armed with { CleanupStartedElapsedMilliseconds = 200 },
+        }) Reject(() => ElectronBridgeServiceProtocol.Reply(closed, null, bootstrap), "protocolInvalid");
 
         using var bridgeDocument = Json(Configuration());
         var bridge = ElectronServiceConfiguration.Parse(bridgeDocument.RootElement, ServiceProfile.ElectronBridge);
@@ -199,6 +226,8 @@ internal static class ElectronBridgeServiceSelfTest
             Check(BackendServiceProtocol.OperationalFailure(new AdapterFailure(code), ServiceProfile.ElectronBridge) == code);
         Check(BackendServiceProtocol.OperationalFailure(new AdapterFailure("bridgeUnknown"), ServiceProfile.ElectronBridge) == "ownerFailed");
         Check(BackendServiceProtocol.OperationalFailure(new AdapterFailure("bridgeRegistrationInvalid")) == "ownerFailed");
+        Check(ElectronBridgeServiceProtocol.OperationalFailure(new AdapterFailure("bridgeTimingInvalid")) == "protocolInvalid");
+        checks += ElectronBridgeClockSelfTest.RunChecks();
         return checks;
     }
 
@@ -211,8 +240,8 @@ internal static class ElectronBridgeServiceSelfTest
             ["protocol"] = ElectronBridgeServiceProtocol.Name, ["schemaVersion"] = 1, ["generation"] = Generation,
             ["sequence"] = 1, ["kind"] = kind,
         };
-        if (kind is "register" or "launch") { value["launchNonce"] = Nonce; value["workDeadlineElapsedMilliseconds"] = 15000; }
-        if (kind == "register") value["observedBridgePid"] = 7;
+        if (kind is "arm" or "launch") { value["launchNonce"] = Nonce; value["workDeadlineElapsedMilliseconds"] = 15000; }
+        if (kind == "register") { value["launchNonce"] = Nonce; value["observedBridgePid"] = 7; }
         if (kind == "go") value["registration"] = Receipt;
         return value;
     }

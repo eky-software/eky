@@ -33,7 +33,8 @@ export interface WindowsElectronServiceInput extends ServiceInput {
 }
 type Selection = { profile: 'backend'; input: WindowsBackendServiceInput }
   | { profile: 'vite'; input: WindowsViteServiceInput }
-  | { profile: 'electron'; input: WindowsElectronServiceInput };
+  | { profile: 'electron'; input: WindowsElectronServiceInput }
+  | { profile: 'electronBridge'; input: WindowsElectronServiceInput };
 export interface WindowsServicePreparationDependencies {
   assertBuild: typeof assertWindowsBackendOwnerBuild;
   now(): number;
@@ -50,7 +51,9 @@ export function prepareWindowsServiceConfiguration(
   const dependencies = { assertBuild: assertWindowsBackendOwnerBuild, now: () => performance.now(), ...overrides };
   const osTempRoot = realpathSync.native(tmpdir());
   if (selection.profile === 'vite') validateWindowsViteServiceInput(selection.input, osTempRoot);
-  if (selection.profile === 'electron') validateWindowsElectronServiceInput(selection.input, osTempRoot);
+  if (selection.profile === 'electron' || selection.profile === 'electronBridge') {
+    validateWindowsElectronServiceInput(selection.input, osTempRoot);
+  }
   const repositoryRoot = realpathSync.native(input.repositoryRoot);
   const runRoot = realpathSync.native(input.runRoot);
   if (selection.profile === 'backend') assertPathUnderRoot(selection.input.runtimeConfigPath, runRoot);
@@ -76,10 +79,10 @@ export function prepareWindowsServiceConfiguration(
       EKY_E2E_ENV_ROOT: requireWindowsVitePath(selection.input.environmentRoot, true),
     } : {}),
   };
-  const executableFields = selection.profile === 'electron'
+  const executableFields = selection.profile === 'electron' || selection.profile === 'electronBridge'
     ? { electronExecutable: resolveWindowsElectronServiceExecutable(repositoryRoot) }
     : { nodeExecutable: realpathSync.native(process.execPath) };
-  const workloadFields = selection.profile === 'electron'
+  const workloadFields = selection.profile === 'electron' || selection.profile === 'electronBridge'
     ? { runtimeConfigPath: realpathSync.native(selection.input.runtimeConfigPath),
       runtimeRoot: realpathSync.native(selection.input.runtimeRoot) }
     : selection.profile === 'backend'
@@ -101,11 +104,14 @@ export function prepareWindowsServiceConfiguration(
     protocol: identity.protocol, schemaVersion: windowsServiceSchemaVersion,
     generation, launchNonce, ...executableFields,
     repositoryRoot, osTempRoot, runRoot, controlRoot, ...workloadFields,
-    environment: selection.profile === 'electron' ? selection.input.environment : environment,
+    environment: selection.profile === 'electron' || selection.profile === 'electronBridge' ? selection.input.environment : environment,
     workBudgetMilliseconds,
   }), { mode: 0o600, flag: 'wx' });
   return {
     generation, launchNonce, configPath, executable, repositoryRoot, workDeadline,
+    ...(selection.profile === 'electronBridge' ? { bridge: {
+      cwd: runRoot, entrypoint: join(repositoryRoot, 'apps', 'desktop', 'e2e-dist'),
+    } } : {}),
     ownerEnvironment: { ...environment, ...(dotnetRoot === undefined ? {} : { DOTNET_ROOT: dotnetRoot }),
       ...(selection.profile === 'vite' ? { EKY_E2E_RUNTIME_SESSION: selection.input.sessionSecret } : {}) },
   };

@@ -3,20 +3,22 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 import { windowsServiceProfiles, type WindowsServiceProfile } from './windowsServiceProfile.js';
 import { createWindowsServiceProtocol, type WindowsServiceReply,
-  type WindowsServiceRequestKind } from './windowsServiceProtocol.js';
+  type WindowsServiceRequestKind, type WindowsElectronBridgeCommand } from './windowsServiceProtocol.js';
 
 const connectionPollMilliseconds = 10;
 
 export interface WindowsServiceControl<P extends WindowsServiceProfile = WindowsServiceProfile> {
   request(kind: WindowsServiceRequestKind, launchNonce?: string,
     workDeadlineElapsedMilliseconds?: number): Promise<WindowsServiceReply<P>>;
+  requestBridge?(command: WindowsElectronBridgeCommand): Promise<WindowsServiceReply<P>>;
   finish(): Promise<void>;
   destroy(): void;
 }
 
 export function createWindowsServiceControl<P extends WindowsServiceProfile>(profile: P) {
   const wire = createWindowsServiceProtocol(profile);
-  const { createWindowsServiceFrameReader, encodeWindowsServiceRequest, validateWindowsServiceReply } = wire;
+  const { createWindowsServiceFrameReader, encodeWindowsServiceRequest, encodeWindowsElectronBridgeRequest,
+    validateWindowsServiceReply } = wire;
   const requireWindowsServiceToken: (value: unknown) => asserts value is string = wire.requireWindowsServiceToken;
   const prefix = windowsServiceProfiles[profile].errorPrefix;
   const connectionFailure = prefix + '_OWNER_CONNECTION_LOST';
@@ -45,13 +47,17 @@ export function createWindowsServiceControl<P extends WindowsServiceProfile>(pro
   async function connectWindowsServiceControl(input: {
     readonly generation: string;
     readonly deadline: number;
+    readonly signal?: AbortSignal;
     readDeadline(): number;
     onReply(reply: WindowsServiceReply<P>, requestSentAt?: number): void;
     onLost(): void;
   }): Promise<WindowsServiceControl<P>> {
     requireWindowsServiceToken(input.generation);
     while (performance.now() < input.deadline) {
+      if (input.signal?.aborted) throw new Error(connectionFailure);
       const socket = new Socket();
+      const abort = () => socket.destroy(new Error(connectionFailure));
+      input.signal?.addEventListener('abort', abort, { once: true });
       // Connection errors are observed even between the connection and protocol phases.
       socket.on('error', () => {});
       try {
@@ -60,13 +66,14 @@ export function createWindowsServiceControl<P extends WindowsServiceProfile>(pro
           socket.once('error', reject);
           socket.connect(`\\\\.\\pipe\\${windowsServiceProfiles[profile].pipePrefix}${input.generation}`);
         }), input.deadline);
+        if (input.signal?.aborted) { socket.destroy(); throw new Error(connectionFailure); }
         return attachWindowsServiceControl(socket, input);
       } catch (error) {
         socket.destroy();
         const code = error !== null && typeof error === 'object' && 'code' in error ? error.code : undefined;
         if (code !== 'ENOENT' && code !== 'EBUSY') throw new Error(connectionFailure);
         await beforeWindowsOwnerDeadline(delay(connectionPollMilliseconds), input.deadline);
-      }
+      } finally { input.signal?.removeEventListener('abort', abort); }
     }
     throw new Error(deadlineFailure);
   }
@@ -88,7 +95,7 @@ export function createWindowsServiceControl<P extends WindowsServiceProfile>(pro
     let ended = false;
     let pending: {
       readonly sequence: number;
-      readonly kind: WindowsServiceRequestKind;
+      readonly kind: WindowsServiceRequestKind | WindowsElectronBridgeCommand['kind'];
       readonly sentAt: number;
       resolve(reply: WindowsServiceReply<P>): void;
       reject(error: Error): void;
@@ -109,7 +116,8 @@ export function createWindowsServiceControl<P extends WindowsServiceProfile>(pro
       validateProgress(previous, reply);
       const request = reply.replyTo === null ? undefined : pending;
       if (reply.replyTo !== null && (request === undefined || request.sequence !== reply.replyTo ||
-        (reply.kind !== 'terminal' && reply.kind !== (request.kind === 'launch' ? 'started' : request.kind)))) {
+        (reply.kind !== 'terminal' && reply.kind !== (request.kind === 'launch' || request.kind === 'go' ? 'started'
+          : request.kind === 'arm' ? 'armed' : request.kind === 'register' ? 'registering' : request.kind)))) {
         throw new Error(protocolFailure);
       }
       if (reply.replyTo === null && reply.kind !== 'rootExit' && reply.kind !== 'terminal') throw new Error(protocolFailure);
@@ -143,12 +151,12 @@ export function createWindowsServiceControl<P extends WindowsServiceProfile>(pro
       resolveClosed();
     });
 
-    return {
-      async request(kind, nonce, workDeadlineElapsedMilliseconds) {
+    async function send(kind: WindowsServiceRequestKind | WindowsElectronBridgeCommand['kind'],
+      encode: (sequence: number) => Buffer): Promise<WindowsServiceReply<P>> {
         if (failure !== undefined) throw failure;
         if (finishing || pending !== undefined || now() >= input.readDeadline()) throw new Error(connectionFailure);
         const sequence = ++sent;
-        const frame = encodeWindowsServiceRequest(input.generation, sequence, kind, nonce, workDeadlineElapsedMilliseconds);
+        const frame = encode(sequence);
         const response = new Promise<WindowsServiceReply<P>>((resolve, reject) => {
           pending = { sequence, kind, sentAt: now(), resolve, reject };
         });
@@ -162,7 +170,12 @@ export function createWindowsServiceControl<P extends WindowsServiceProfile>(pro
           socket.destroy();
           throw failure;
         }
-      },
+    }
+    return {
+      request: (kind, nonce, deadline) => send(kind,
+        sequence => encodeWindowsServiceRequest(input.generation, sequence, kind, nonce, deadline)),
+      requestBridge: command => send(command.kind,
+        sequence => encodeWindowsElectronBridgeRequest(input.generation, sequence, command)),
       async finish() {
         if (failure !== undefined) throw failure;
         if (pending !== undefined || previous?.kind !== 'terminal') throw new Error(protocolFailure);

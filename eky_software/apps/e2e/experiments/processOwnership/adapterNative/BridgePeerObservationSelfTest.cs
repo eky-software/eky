@@ -38,7 +38,46 @@ internal static class BridgePeerObservationSelfTest
             Check(native.Process.IsClosed);
             var calls = native.Calls.Count;
             Reject(observation.RequireAliveAndBound, "bridgePeerDisposed");
+            Reject(() => _ = observation.HasExited(), "bridgePeerDisposed");
             Reject(() => _ = observation.Identity, "bridgePeerDisposed");
+            Check(native.Calls.Count == calls && native.OpenCalls == 1);
+        }
+
+        using (var native = new FakeNative())
+        {
+            using var observation = BridgePeerObservation.Acquire(native, 7);
+            var calls = native.Calls.Count;
+            native.PeerReadSucceeds = native.BirthReadSucceeds = false;
+            native.ProcessId = 0;
+            Check(!observation.HasExited());
+            native.WaitResult = 0;
+            Check(observation.HasExited());
+            Check(observation.HasExited());
+            Check(native.Calls.Skip(calls).SequenceEqual(["wait", "wait", "wait"]));
+            Check(native.OpenCalls == 1 && native.PeerCalls == 2 && native.SameHandle && native.ZeroWaits);
+            Check(!native.Process.IsClosed && observation.Identity == new BridgePeerIdentity(7, 123));
+        }
+        foreach (var result in new uint[] { uint.MaxValue, 0x80 })
+        {
+            using var native = new FakeNative();
+            using var observation = BridgePeerObservation.Acquire(native, 7);
+            native.WaitResult = result;
+            Reject(() => _ = observation.HasExited(), "bridgePeerWaitFailed");
+            native.WaitResult = 0;
+            var calls = native.Calls.Count;
+            Reject(() => _ = observation.HasExited(), "bridgePeerWaitFailed");
+            Reject(observation.RequireAliveAndBound, "bridgePeerWaitFailed");
+            Check(native.Calls.Count == calls && native.OpenCalls == 1);
+        }
+        using (var native = new FakeNative())
+        {
+            using var observation = BridgePeerObservation.Acquire(native, 7);
+            native.ThrowOn = "wait";
+            Reject(() => _ = observation.HasExited(), "bridgePeerObservationFailed");
+            native.ThrowOn = null;
+            native.WaitResult = 0;
+            var calls = native.Calls.Count;
+            Reject(() => _ = observation.HasExited(), "bridgePeerObservationFailed");
             Check(native.Calls.Count == calls && native.OpenCalls == 1);
         }
 
@@ -136,6 +175,7 @@ internal static class BridgePeerObservationSelfTest
             native.ResetResults();
             var calls = native.Calls.Count;
             Reject(observation.RequireAliveAndBound, test.Code);
+            Reject(() => _ = observation.HasExited(), test.Code);
             Reject(() => _ = observation.Identity, test.Code);
             Check(native.Calls.Count == calls && native.OpenCalls == 1);
             observation.Dispose();
