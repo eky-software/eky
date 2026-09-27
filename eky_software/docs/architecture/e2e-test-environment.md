@@ -2570,7 +2570,12 @@ Aiemmat satunnaiset timeoutit ja ensimmäiset hylkäykset säilyvät erillisinä
 
 ###### Electronin varhaisen prosessihavainnon päätösehdotus
 
-**2026-09-27: valmisteltu vaihtoehto, ei hyväksytty fixturen käyttöönotto.**
+**2026-09-27: omistaja hyväksyi rajatun toteutuksen ja testit; toteutus kesken.**
+Hyväksyntä kattaa kokeellisen Node-havainnon ja alla täsmennetyn
+read-only-pipe-peer-sidonnan rekisteröinti/GO-portteineen. Se ei hyväksy
+vielä fixturen siirron tulosta tai koko T3:a. Havaitsija, native-sidonta ja
+niiden virhepolut toteutetaan ensin nykyiseen E2E-omistukseen; oikea
+Windows-kytkentä todennetaan ennen tavallisen fixturen siirtoa.
 Suoran EXE-patchin hyväksyntä ei yksin ratkaise ennen bridge-rekisteröintiä
 tapahtuvaa virhettä. Vaihtoehto on rajattu havaitsija Noden sisäänrakennetulla
 `node:diagnostics_channel`-rajapinnalla. Uutta riippuvuutta, Playwright-patchia,
@@ -2606,8 +2611,8 @@ Ehdotettu rajattu toteutussopimus:
    sisällä. Omistaja ei luo Electronia ennen saman bridgen autentikoitua
    rekisteröintiä ja kutsujan GO:ta. Rekisteröinnin pitää sitoa kaikki
    bridge-kanavat havaittuun instanssiin; nykyinen SID-/nonce-tarkistus ei
-   yksin osoita tätä. Alla rajattu pipe-peer-sidonta tarvitsee omistajan
-   hyväksynnän ennen native-integraation toteutusta.
+   yksin osoita tätä. Omistaja hyväksyi alla rajatun pipe-peer-sidonnan;
+   oikean native-kytkennän todentaminen kuuluu edelleen toteutusporttiin.
 3. Puuttuva, ristiriitainen, monistunut tai myöhäinen havainto estää GO:n.
    Stop, peruutus ja havaittu bridgen sulkeutuminen sulkevat käynnistysluvan
    pysyvästi. Node-/Playwright-päivitys vaatii havaintosopimuksen uuden
@@ -2621,8 +2626,13 @@ Ehdotettu rajattu toteutussopimus:
 5. Ensimmäinen launch-virhe, cleanup ja havaintovirhe pysyvät erillään.
    Epävarmuus estää restartin ja juuren poiston. Alkuperäiset absoluuttiset
    työ- ja siivousmääräajat eivät ala uudelleen rekisteröinnistä tai GO:sta.
-   Tilaaja puretaan vasta launchin suljetun tilan jälkeen; elinkaaren
-   kuuntelijoita ei poisteta ennen vaadittua sulkeutumishavaintoa.
+   Prosessin elinkaarikuuntelijoita ei poisteta ennen vaadittua
+   sulkeutumishavaintoa. Yksi passiivinen ALS-dispatcher jää reitittämään
+   myös saman kontekstin myöhäiset havainnot; se ei ylläpidä launch-listaa.
+   Tunnettujen lasten `close` ja launch-lupauksen päättyminen eivät todista
+   kaiken mahdollisen myöhemmän asynkronisen työn päättymistä eivätkä yksin
+   anna lupaa juuren poistoon. Native-omistajan suljettu luontivaihe ja
+   erillinen terminal-todiste vaaditaan edelleen.
 6. Havaintodata, argumentit, ympäristö, ohjausosoitteet ja raakavirheet
    eivät kuulu julkiseen raporttiin. Nykyinen turvallinen raportti ja
    alkuperäisen virheen julkaisematon lukuketju säilyvät. Ei muutoksia
@@ -2675,8 +2685,8 @@ vihamielisen saman Windows-käyttäjän prosessin turvallisuuseristystä.
 Mekanismin täytyy hylätä vaihdetut pipe-peerit, toistettu rekisteröinti,
 vaihdetut output/error-roolit, vanha haaste, luontiaikaristiriita,
 kahvan hankinnan epäonnistuminen ja
-bridge-exit kaikissa GO/luonti/resume-rajoissa. Menettely on tässä vasta
-toteutusehdotus, ei lähdekatselmuksella saavutettu prosessi-identiteettitodiste.
+bridge-exit kaikissa GO/luonti/resume-rajoissa. Menettelyn toteutus ja testaus
+on hyväksytty, mutta lähdekatselmus ei itsessään ole prosessi-identiteettitodiste.
 
 Ennen tavallisen fixturen siirtoa vaaditaan katselmoidut sopimustestit
 puuttuvalle/monistetulle/myöhäiselle havainnolle, callback-virheelle,
@@ -2699,12 +2709,29 @@ puutodisteena. Moduulitestit käyttävät edelleen nykyistä fixture-rajapintaa.
 Korvattu Windows-cleanup poistetaan vasta vastaavan kattavuuden jälkeen;
 Linuxin vielä siirtämätöntä kuluttajaa ei samalla muuteta tai julisteta valmiiksi.
 
-Omistajalta tarvitaan päätös kokeellisen Node-havainnon ja rajatun
-rekisteröinti/GO-sopimuksen sekä yllä nimetyn read-only-pipe-peer-hankinnan
-käyttöönotosta ennen toteutusta. Hyväksyntää ei pyydetä väittämällä, että
-bridgellä olisi luontihetkestä säilytetty native-kahva. Muut T3:n
-avoimet valinnat eivät ratkea tällä päätöksellä. Hylätyn vaihtoehdon jälkeen
-nykyinen cleanup-epävarmuus säilytetään, ei piiloteta kirjaston lisäpatchilla.
+Omistajan hyväksyntä koskee yllä nimettyä sopimusta, ei väitettä, että
+bridgellä olisi luontihetkestä säilytetty native-kahva. Muut T3:n avoimet
+valinnat eivät ratkea tällä päätöksellä. Nykyinen cleanup-epävarmuus säilyy
+avoimena, kunnes korvaava kytkentä on todennettu; sitä ei piiloteta
+kirjaston lisäpatchilla.
+
+**Rajattu toteutustilanne 2026-09-27:** havaitsijan 38 synteettistä
+sopimustestiä, E2E-paketin tyyppitarkistus sekä nykyisen testituen 638
+regressiotestiä läpäisivät. Native-sarjat läpäisivät 510/226/285/678
+tarkistusta; viimeinen sisältää uudet peer- ja rekisteröintisopimukset.
+Katselmuksessa löydetty viimeisen I/O-valmistumisen peruutuskilpailu on
+korjattu ja testattu jokaisen kanavan luku- ja kirjoitusrajalla.
+Version tarkistus vertaa sekä lukituksia että asennuksia erikseen
+todennettuun Node/Playwright-sopimusversioon; pelkkä molempien päivittäminen
+ei hyväksy uutta havaintorajapintaa. Aiempien tyyppivirheiden ensimmäinen
+hylkäys säilyy erillisenä näyttönä, eikä sitä nimetä läpäisyksi.
+
+Nämä ovat alemman tason tarkistuksia: nykyinen palveluomistaja, bridge,
+suorat Electron-kuluttajat ja pääfixture eivät vielä käytä uutta sopimusta.
+Oikea pipe-peer-/kahvatodiste, owner-/caller-loss ja uusi CI-hyväksyntä
+ovat avoinna. Seuraava työ on rekisteröinnin kytkentä nykyisen omistajan
+sarjalliseen silmukkaan ilman uutta omistajaa tai määräaikaa; vasta sen
+katselmuksen ja oikeaprosessinäytön jälkeen siirretään pääfixture.
 
 Lähteet: [Noden Process-kanavien sopimus](https://nodejs.org/docs/latest-v24.x/api/diagnostics_channel.html#process)
 ja [projektin lukituksen spawn-toteutus](https://github.com/nodejs/node/blob/v24.19.0/lib/internal/child_process.js).

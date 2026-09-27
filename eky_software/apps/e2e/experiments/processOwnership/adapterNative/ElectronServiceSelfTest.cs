@@ -32,6 +32,8 @@ internal static partial class ElectronServiceSelfTest
             TestSharedStateAndClock();
             await TestSerializationAsync();
             TestPathsAndPublication();
+            checks += BridgePeerObservationSelfTest.RunChecks();
+            checks += await BridgeRegistrationSelfTest.RunChecksAsync();
             WriteResult(true);
             return 0;
         }
