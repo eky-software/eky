@@ -2371,6 +2371,55 @@ CI-lähtötilan, ei pääfixturen bridgeä, koko T3:a tai PR/main-integraatiota.
 Aiemmat timeout-havainnot säilyvät ratkaisemattomina, eikä CI korvaa yllä
 eriteltyä kahden suoran kuluttajan paikallista näyttöä.
 
+###### Electronin pääkäynnistyksen avoimet päätösrajat
+
+**2026-09-27: valmistelu; kaksi rajattua ehdotusta odottaa omistajan päätöstä.**
+Edellä hyväksytty suorien Electron-kuluttajien lähtötila ei muutu. Pääfixturen
+siirtoa ei ole toteutettu eikä uutta kirjastokorjausta, raportointikytkentää
+tai normaalia CI-ajoa käynnistetty tämän valmistelun perusteella.
+
+1. **Epäonnistuneen launchin havaittavuus.** Lukittu Playwright palauttaa
+   `ElectronApplication`- ja `process()`-kahvat vasta onnistuneen launchin
+   jälkeen. Windowsissa se käynnistää erillisen shell-väliprosessin.
+   Sisäinen cleanup odottaa sen sulkeutumista, mutta launchin aikakatkaisu
+   voi katkaista tämän odotuksen. Julkisessa rajapinnassa ei ole erillistä
+   failed-launch-kahvaa tai sulkeutumiskuittia. Autentikoidun pipe-peerin
+   säilytetty kahva voisi todistaa bridgen poistumisen, ei tätä erillistä
+   shelliä. Ehdotus on arvioida nykyisen `playwright-core@1.62.1`-korjauksen
+   rajattua laajennusta native-EXE:n suoraan käynnistykseen. Se ei ole
+   vielä hyväksytty eikä yksin ratkaisisi rekisteröintiä edeltävää aukkoa.
+2. **Testivirheen julkaisuraja.** Nykyinen Electronin yhteyskatkovirhe voi
+   sisältää debuggerin capability-osoitteen. Tavallinen konsoliraportti
+   voi julkaista sen, vaikka debug-tulostus ei ole käytössä ja turvallisen
+   lifecycle-artifactin allowlist säilyy. Ongelma ei synny ehdotetusta
+   bridgestä. Ehdotus on rajattu CI-raportti Playwrightin julkisella
+   Reporter-rajapinnalla: julkiset testitunnisteet, yritykset, tulokset ja
+   turvalliset virheluokat erotetaan raakavirheistä ja prosessitulosteesta.
+   Tämä muuttaa julkista virhediagnostiikkaa ja odottaa siksi päätöstä.
+
+Suoran käynnistyksen mahdollinen korjaus vaatii argumenttien, ympäristön,
+kahvojen, streamien, varhaisten virheiden ja muiden alustojen regressiot.
+Bridge rekisteröidään ennen työkuorman sallimista; puuttuva rekisteröinti
+tai sulkeutumishavainto jää epävarmaksi. PID-/nimihaku, aikarajan pidennys,
+uusi omistaja tai `unknown`-tilan nimeäminen onnistumiseksi eivät kuulu
+ehdotukseen. Nykyisen epävarmuuden säilytys on turvallinen välitila, ei
+koko T3:n valmistuminen.
+
+Raportoinnin mahdollinen korjaus ei muuta testin tulosta, ensimmäistä
+virhettä, retry-/flaky-ehtoja, trace-asetusta tai artifactien julkaisulupaa.
+Raakatuloksen säilyminen paikallisessa raportissa tai CI-runnerin levyllä
+ei tarkoita uutta pitkäaikaista säilytystä tai lupaa julkaista raporttia.
+Oikean runnerin virhekoe, turvalliset virhe- ja tuloskentät sekä julkisen
+tulosteen ja julkaisemattoman aineiston erillisyys on todennettava ennen
+kytkentää. Tutkimus, joka odottaa nykyistä puutetta, ei ole korjauksen
+hyväksyntätesti. Nämä rajat koskevat testiharnessia, eivät sovelluksen
+business-, Activity-, Diagnostics- tai backup-sopimuksia.
+
+Rajapintalähteet: [Electron launch](https://playwright.dev/docs/api/class-electron#electron-launch)
+ja [Reporter](https://playwright.dev/docs/api/class-reporter). Lukittu
+lähdekoodi omistaa version tarkan käyttäytymisen; verkkodokumentaatio ei
+yksin todista korjauksen tai sulkeutumisen toimivuutta.
+
 ###### Chromiumin kuluttajasiirron avoin omistajuusraja
 
 **2026-09-27: vain valmistelu; omistajapäätös avoin, ei toteutusta.**
