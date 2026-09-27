@@ -2,25 +2,25 @@
 
 ## Päätös ja nykyinen tila
 
-**Nykytila 2026-09-27: M0, T1 ja T2 hyväksytty; T3/R28 kesken.**
-**28.9. tarkennus:** Windows-välipaketin `4aececfd` normaali CI hylkäsi
-Electronin yhteisen käynnistysvalmistelun: 24/38 tapausta epäonnistui ennen
-yhteyttä. Ensimmäiset yritykset ja turvalliset liitteet on säilytetty.
-Rajattu `23b43c49`-CI paikansi kaikki 48 hylkäystä ympäristöarvon tarkistukseen.
-Windowsin valinnaisen isäntä-PATHin periminen on poistettu testiapurista;
-synteettinen regressio, tyyppitarkistus, 102/102-kohdesarja ja katselmus
-läpäisivät alkuperäisiä turvarajoja muuttamatta. CI:n tarkkaa alkuperäistä
-arvoa ei tallennettu. Tavallinen Electron-sarja hylättiin tuloksella 44/45:
-yksi sovellus poistui ennen ensimmäistä ikkunaa ja testin toimintoa.
-Siivous varmistui, mutta tarkka käynnistyssyy jäi puuttumaan. Rajattu
-sukupolvikohtainen testinatiivi-virheen kaappaus on nyt toteutettu:
-tyypitys, 136/136-kohdesarja, työkalusarja 678/678 ja kanoninen Electron
-45/45 läpäisivät. Tapausjoukko ja sama testattu koodisisältö on takaisinluettu;
-ei retryä tai flaky-tulosta. Alkuperäinen poistuminen säilyy avoimena
-havaintona, ei korjattuna juurisyynä. Seuraava työ on puhtaan revision
-normaali CI ja riippuvuustarkistus; ei seuraava kuluttajasiirto.
-[Havainto ja korjauksen rajaus](e2e-test-environment.md#windows-electron--valmistelun-ci-hylkäys)
-eivät muuta testiehtoja tai hyväksy koko T3:a.
+**Nykytila 2026-09-28: M0, T1 ja T2 hyväksytty; T3/R28 kesken.**
+**Nykyinen vihreä lähtörevisio on `5f61f1863557f1e51b96cf705d9434feae91db8c`.**
+Sen [normaali CI](https://github.com/eky-software/eky/actions/runs/36354387346)
+ja [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/36354390842)
+läpäisivät ensimmäisellä yrityksellä. Koko tapausjoukko, todelliset checkoutit
+ja asennuspakettien tuottaja-/kuluttajasidonnat on takaisinluettu.
+Windows-Electronin valmistelukorjaus ja turvallinen käynnistysvirheen
+kaappaus ovat siten läpäisseet myös oman normaalin CI-porttinsa.
+Windows-Electronin nykyisen kadenssin stress ja täysi 30 minuutin soak
+sekä alkuperäisen virheen säilymisen kaksi rajattua todellisen fixturen
+koetta on nyt paikallisesti todennettu. Chromiumin ja Linuxin avoimet päätösrajat
+säilyvät. [Aiemmat hylkäykset ja korjauksen rajaus](e2e-test-environment.md#windows-electron--valmistelun-ci-hylkäys)
+säilyvät historiatietona; läpäisy ei ratkaise aiemman satunnaisen
+poistumisen syytä eikä hyväksy koko T3:a tai PR/main-integraatiota.
+Stress-portin ensimmäinen yritys hylättiin testin vanhentuneen
+työtilamittauksen vuoksi. [Rajattu korjaus ja loppunäyttö](e2e-test-environment.md#windows-electronin-endurance-ja-virheen-säilymisen-loppunäyttö)
+erottavat säilyvän hylkäyksen korjatun polun läpäisseistä ajoista.
+Mittauskorjauksen uuden revision oma CI-portti on vielä avoin;
+lähtörevision vihreä CI ei hyväksy myöhempää muutosta.
 Jatkamisen lähtörevisio, avoin puute, seuraava työ ja valmistumiskriteeri
 ovat [M1:n ajantasaisessa aloituskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
 Nykyinen eteneminen on **T3:n oikeat kuluttajat ja korvatun toteutuksen
@@ -62,12 +62,13 @@ tyyppitarkistus ja kanoninen järjestelmätestisarja 607/607 valmisteluineen
 läpäisivät ensimmäisellä yrityksellä. Linuxin nykyistä haaraa ei muutettu.
 Saman välipaketin koko workspace-testit ja tyyppitarkistus sekä CI-sopimukset
 315/315 läpäisivät. Näiden jälkeinen normaali etä-CI hylkäsi yllä kuvatun
-Electron-valmistelun; paikallinen näyttö ei korvaa sitä. Chromiumin ja
-Linuxin päätösrajat säilyvät.
+Electron-valmistelun; paikallinen näyttö ei korvannut sitä. Yllä mainittu
+`5f61f186` on korjauspaketin myöhempi, erikseen varmennettu vihreä baseline.
+Chromiumin ja Linuxin päätösrajat säilyvät.
 
 Nykyinen jäljellä oleva työ on [M1:n lyhyessä sulkulistassa](release-0.3.0-m1-preparation-plan.md#t3n-nykyinen-työjärjestys):
 Chromiumin omistajuusraja ja siirto, Linuxin oikeat kuluttajat ja sen
-korvatun toteutuksen poisto, endurance sekä koko nykyinen
+korvatun toteutuksen poisto, muiden siirrettyjen kuluttajien endurance sekä koko nykyinen
 T3-matriisi ja täsmälliset PR/main-portit. Chromiumin worker-/testikohtainen
 valinta ja paikallisen Linux-testauksen ympäristöpäätös pysyvät avoimina;
 jatkolupa ei hyväksy niihin poikkeusta, uusia riippuvuuksia tai heikennettyjä

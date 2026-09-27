@@ -20,6 +20,7 @@ import {
   openInvoicingWorkspace,
 } from '../../src/journeys/invoicingWebJourney.js';
 import { measurePathBytes } from '../../src/stress/measurePathBytes.js';
+import { resolveDesktopEndurancePaths } from '../../src/stress/resolveDesktopEndurancePaths.js';
 import {
   ELECTRON_E2E_ENDURANCE_TIMEOUT_MILLISECONDS,
   ELECTRON_E2E_SOAK_RESERVE_MILLISECONDS,
@@ -85,24 +86,15 @@ enduranceTest('DESK-ENDURANCE-001 @desktop-stress @stress records the desktop en
   );
   expect(existsSync(e2eElectron.runtime.supportBundlePath)).toBe(true);
 
+  const measuredPaths = resolveDesktopEndurancePaths(e2eElectron.runtime.userDataPath);
   const serializedLogs = JSON.stringify(
     readElectronOperationalEvents(
-      join(e2eElectron.runtime.userDataPath, 'runtime', 'logs'),
+      measuredPaths.logsRoot,
     ),
   );
   expect(serializedLogs).not.toContain('desktop-endurance-secret-');
-  expect(
-    existsSync(
-      join(
-        e2eElectron.runtime.userDataPath,
-        'runtime',
-        'secrets',
-        'company-email-smtp-v1.dat',
-      ),
-    ),
-  ).toBe(false);
+  expect(existsSync(measuredPaths.emailSecretFilePath)).toBe(false);
 
-  const measuredPaths = resolveDesktopRuntimeMeasurementPaths(e2eElectron);
   const databaseBytes = measurePathBytes(measuredPaths.databaseFilePath);
   const documentBytes = measurePathBytes(measuredPaths.documentsRoot);
   const logBytes = measurePathBytes(measuredPaths.logsRoot);
@@ -173,7 +165,7 @@ soakTest('DESK-SOAK-001 @soak records a manually invoked desktop soak baseline',
   expect(metricsAfter.processCount).toBeLessThan(20);
   expect(metricsAfter.windowCount).toBe(1);
 
-  const measuredPaths = resolveDesktopRuntimeMeasurementPaths(e2eElectron);
+  const measuredPaths = resolveDesktopEndurancePaths(e2eElectron.runtime.userDataPath);
   await writeEnduranceReport(testInfo, {
     completedAt: new Date().toISOString(),
     cycleCount,
@@ -349,19 +341,4 @@ async function writeEnduranceReport(
     body: Buffer.from(serializedReport, 'utf8'),
     contentType: 'application/json',
   });
-}
-
-function resolveDesktopRuntimeMeasurementPaths(
-  harness: IsolatedElectronHarness,
-): {
-  databaseFilePath: string;
-  documentsRoot: string;
-  logsRoot: string;
-} {
-  const runtimeRoot = join(harness.runtime.userDataPath, 'runtime');
-  return {
-    databaseFilePath: join(runtimeRoot, 'data', 'eky.sqlite'),
-    documentsRoot: join(runtimeRoot, 'storage', 'invoices'),
-    logsRoot: join(runtimeRoot, 'logs'),
-  };
 }

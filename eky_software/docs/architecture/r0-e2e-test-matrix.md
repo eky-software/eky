@@ -14,7 +14,7 @@ Neljä uutta Windowsin ympäristön generointi-/validointisopimusta ja
 `DESK-PROFILE-002`:n tarkka avainjoukko varmistavat, ettei valinnaista
 isäntä-PATHia peritä. Linuxin `DESK-PROFILE-003` ja 2048/NUL-hylkäykset
 säilyvät. Korjauksen tyyppitarkistus ja 102/102-kohdesarja läpäisivät;
-tavallinen Electron-sarja hylättiin 44/45, ja uuden revision CI on avoin.
+tavallinen Electron-sarja hylättiin 44/45.
 Yksi käynnistys poistui ennen ensimmäistä ikkunaa ja testirunkoa; se ei
 todista salasanatoiminnon virhettä. Rajattu `SYS-ELECTRON-NATIVE-STARTUP-001`
 todentaa nykyisen natiiviadapterin turvallisen virheen lukuketjun ennen
@@ -25,7 +25,16 @@ Täydennyksen jälkeen tyypitys, 136/136-kohdesarja, työkalusarja 678/678
 ja kanonisesti valmisteltu tavallinen Electron 45/45 läpäisivät. Täydellinen
 tapausjoukko, yksi yritys per tapaus ja testatun koodin lähdesidonta
 takaisinluettiin. Aiempi 44/45 säilyy hylättynä ja sen tarkka syy avoimena;
-uuden puhtaan revision normaali CI ja koko T3:n hyväksyntä puuttuvat.
+Korjatun revision `5f61f186` normaali CI ja riippuvuustarkistus läpäisivät:
+system 633 läpäisyä ja yksi tunnettu Windows-only-ohitus, web 35/35 ja
+Electron 38/38 ensimmäisillä yrityksillä. Koko T3:n hyväksyntä puuttuu.
+Erillisen stress-portin ensimmäinen yritys hylättiin vanhentuneen workspace-mittauspolun vuoksi;
+[rajattu testikorjaus ja loppunäyttö](e2e-test-environment.md#windows-electronin-endurance-ja-virheen-säilymisen-loppunäyttö)
+on nyt paikallisesti todennettu. `SYS-DESKTOP-ENDURANCE-PATHS-001`:n kolme
+tapausta todentavat polkujen valinnan regressiosopimuksen. Erikseen
+kanoninen stress ja täysi 30 minuutin soak sekä kaksi todellisen fixturen
+alkuperäisen virheen säilymisen koetta läpäisivät ensimmäisillä yrityksillä.
+Mittauskorjauksen uuden revision CI ja koko T3/PR/main-portti ovat avoinna.
 
 ## Tilat
 
@@ -221,7 +230,7 @@ hylkäyksen syy ja vanhat satunnaiset timeoutit ovat edelleen avoimia.
 | TEST-TREE-OWNERSHIP-001 | Omistajasopimus ja oikeat Windows-/Linux-prosessit | Root ensin tai stopin aikana pois; portiton/vastustava jälkeläinen, myöhäinen fork ja ryhmästä irtautuminen; puu todistetusti tyhjä, ulkopuolinen sentinel säilyy. | blocked-by-decision |
 | TEST-TREE-FAILURE-001 | Hallittu sopimus ja oikeaprosessi-integraatio | Launch/resume/query/control/result-virheet, myöhäinen luonti, owner-loss, vanha kuitti ja identiteetin uudelleenkäyttösimulaatio; ei root/PID-fallbackia tai väärää onnistumista. | blocked-by-decision |
 | TEST-TREE-FIXTURE-001 | System/web-fixture-integraatio | Varmentamaton stop estää restartin ja poiston; alkuperäinen virhe, cleanup ja evidence-virhe erillään, stop idempotentti. Wrapper ei korvaa runtime-identiteettiä health-/exit-/mittarirajalla. | blocked-by-decision |
-| TEST-TREE-ELECTRON-001 | Windows Electron development | Omistajuus ennen launchin valmistumista; normaali close, connect-/window-virhe, relaunch, toinen instanssi ja bootstrap, myös stdio-/environment-/process-kahvan sopimus. | Tavallisen Windows-pääfixturen bridge-/native-kytkentä toteutettu ilman legacy-fallbackia. Saman lähdetilan E2E-tyyppitarkistus, kohdesopimukset 186/186 ja kanoninen valmistelu sekä tavallinen Electron 45/45 ensimmäisellä yrityksellä hyväksytty; lähdesidonta ja koko tapausjoukko takaisinluettu. Erilliset käynnistys-/ikkuna-, sukupolvi- ja loss-kokeet hyväksytty omissa checkpointeissaan; hylätyt ensimmäiset yritykset säilyvät. Todellisen fixturen epävarmuusnäyttö on omalla TEST-TREE-ELECTRON-UNCERTAINTY-001-rivillään. Windows-poiston jälkeinen näyttö on erillisellä rivillään. Erillinen endurance, muu matriisi ja uusi etä-CI/PR/main avoinna; ei koko T3-hyväksyntä. |
+| TEST-TREE-ELECTRON-001 | Windows Electron development | Omistajuus ennen launchin valmistumista; normaali close, connect-/window-virhe, relaunch, toinen instanssi ja bootstrap, myös stdio-/environment-/process-kahvan sopimus. | Tavallisen Windows-pääfixturen bridge-/native-kytkentä toteutettu ilman legacy-fallbackia. Saman lähdetilan E2E-tyyppitarkistus, kohdesopimukset 186/186 ja kanoninen valmistelu sekä tavallinen Electron 45/45 ensimmäisellä yrityksellä hyväksytty; lähdesidonta ja koko tapausjoukko takaisinluettu. Erilliset käynnistys-/ikkuna-, sukupolvi- ja loss-kokeet hyväksytty omissa checkpointeissaan; hylätyt ensimmäiset yritykset säilyvät. Todellisen fixturen epävarmuusnäyttö on omalla TEST-TREE-ELECTRON-UNCERTAINTY-001-rivillään. Windows-poiston jälkeinen näyttö on erillisellä rivillään. Korjauspaketin normaali CI `5f61f186`, myöhempi erillinen stress/täysi soak ja todellisen fixturen alkuperäisen virheen säilyminen on todennettu. Mittauskorjauksen oma CI ja PR/main avoinna; ei koko T3-hyväksyntä. |
 | TEST-TREE-HANDOFF-001 | Desktopin eristetty Windows-testiprosessi | Binary-handoff-testin assertion-, timeout-, abort- ja release-virheiden cleanup; alkuperäinen virhe säilyy ja lapsen poistuminen todetaan. | Toteutettu olemassa olevalla rajatulla lapsikahvan omistajalla. Kuusi oikeaprosessitapausta, todelliset exit/close-havainnot ja kohdesarja 24/24 hyväksytty riippumattomassa katselmuksessa ja takaisinluvussa. Alkuperäinen 5 s testiraja säilyy; ei tuotannon muutosta, koko installer-porttia tai T3-hyväksyntää. |
 | TEST-TREE-ELECTRON-UNCERTAINTY-001 | Todellisen Electron-fixturen rajattu virhekoe | Julkinen close epäonnistuu oikean sulun jälkeen tai testin oma loopback-palvelin estää portin vapautumisen. Molemmat restart-yritykset torjutaan myös myöhemmän vapautumisen jälkeen; sama omistajasukupolvi ja juuri säilyvät todellisen cleanup-hylkäyksen yli. | Close-kokeen kolmas ja porttikokeen ensimmäinen yritys läpäisty. Täsmälliset cleanup-tilat, erillisten owner-/bridge-virheiden puuttuminen, ulomman session puun poissaolo, sentinel ja portti tarkistettu. Ensimmäiset close-koeapurin hylkäykset säilyvät; ei väitettä native-stop-virheen simulaatiosta tai koko T3:sta. |
 | TEST-TREE-WINDOWS-LEGACY-REMOVAL-001 | Windows admission-regressio ja kanoninen system-sarja | Korvattu taskkill-apuri poistetaan; legacy-kutsu torjutaan ennen child/PID-tilan lukua. Kahden lapsittoman primitiivitestin siivous odottaa oman lapsikahvan todellista closea. | Poiston jälkeinen tyyppitarkistus ja valmisteltu system 607/607 hyväksytty ilman retryä, flakyä tai ohituksia. Kolmen poistetun helper-testin stop-/timeout-/error-kattavuus säilyy ownedWindowsBackend-sopimuksissa. Uusi Windows-admission-testi ohitetaan tarkoituksella muilla alustoilla; Linuxin nykyinen haara, sen myöhempi siirto ja koko T3-portti ovat erillisiä. |

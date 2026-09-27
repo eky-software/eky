@@ -2,19 +2,19 @@
 
 ## Jatka tästä
 
-**2026-09-27: T1/T2 hyväksytty, T3/R28 kesken; ei uutta rinnakkaista remonttia.**
+**2026-09-28: T1/T2 hyväksytty, T3/R28 kesken; ei uutta rinnakkaista remonttia.**
 Modulaarinen monoliitti ja hyväksytty M1-rajaus säilyvät.
 
 | Kohta | Nykyinen lähtötieto |
 | --- | --- |
-| Nykyinen lähtörevisio | `23b43c4949df1fd98939b589eb8f024a61b8e903`: rajattu diagnostiikkarevisio Windows-Electronin `4aececfd`-välipaketin päälle. Sen kohdennettu CI paikansi valmisteluhylkäyksen ympäristöarvon tarkistukseen. Tämän päälle tehty rajattu PATH-korjaus ja käynnistysvirheen kaappaus ovat paikallisesti todennettuja; niiden oma puhdas revisio ja normaali CI ovat seuraava portti. Viimeisin kokonaan hyväksytty CI-lähtötila on erikseen `587ba540`. Tarkista jatkettava HEAD ennen muutoksia; aiempi vihreys ei hyväksy uutta revisiota. |
-| Viimeisin koko CI:n hyväksytty lähtötila | Sama `587ba540`: 38 onnistunutta ryhmää ja yksi tarkoituksellinen valinnaisen kokeen ohitus. Kaikki neljä kokeellista valitsinta pois. System 518/518, web 35/35 ja Electron 38/38 ilman retryä tai flaky-tulosta; koko tapausjoukko tarkistettu puhtaan revision luetteloa vasten. Lokien checkoutit sekä neljän tuottajan ja kymmenen kuluttajan artifact-sidonnat tarkistettu. Linuxin työkalusarja 638/638; native 510/226/285/408. Ei PR/main- tai koko T3-hyväksyntä. |
-| Avoin puute | Pääprosessin poistuminen ei todista koko puun poistumista. Windows-backendin ja Windows-Viten oikeat kuluttajat on siirretty ja niiden normaali CI-portti läpäisty. Windows-Electronin tavallinen pääfixture ja sen paikallinen 45/45-portti sekä todellisen fixturen close-/port-epävarmuus ja handoffin virhesiivous on todennettu. Korvattu Windows-varapolku on poistettu; poiston jälkeinen tyyppitarkistus ja kanoninen system 607/607 läpäisivät. Endurance ja koko omistajuusmatriisi ovat vielä avoinna. Chromiumin ja Linuxin siirrot ovat erillistä jatkotyötä. Aiemman revision `a2c826fc` packaged-workspace-timeout säilyy erillisenä ratkaisemattomana havaintona. |
-| Viimeisin rajattu näyttö | [Omistava checkpoint](e2e-test-environment.md#electron-bridgen-lopetuspolun-jatkoehdotus): restart/relaunchin ja toisen instanssin erilliset toiset yritykset, owner-lossin ensimmäinen ja caller-lossin toinen yritys hyväksytty; ensimmäiset hylkäykset säilyvät. Nykyisen fixturekytkennän samalle lähdetilalle E2E-tyyppitarkistus ja kohdesopimukset 186/186 sekä kanoninen valmistelu ja tavallinen Electron 45/45 ilman retryä, flaky-tulosta tai ohitusta hyväksytty. Lähdesidonta ja tavallinen tapausjoukko takaisinluettu. Myöhemmät todellisen fixturen close-/port-epävarmuuskokeet ja handoff 24/24 on hyväksytty; Windows-varapolun poiston jälkeinen tyyppitarkistus ja kanoninen system 607/607 läpäisivät omalla lähdesidonnallaan. Ei endurance-, uuden etä-CI:n tai koko T3:n hyväksyntä. Aiemmat 82/82 havaitsija-/bridge-sopimukset, työkalusarja 678/678 sisältäen bundle-regressiot ja 38 uutta lopetustestiä, workspace/typecheck, `test:ci` 315/315 sekä neljä käynnistys-/ikkunakoetta pysyvät erillisen aiemman lähdetilan näyttönä. |
-| Nykyinen toteutuspala | Windowsin `isolatedElectronTest` säilyttää bridge-/native-omistajan ennen launchin odotusta, saman alkuperäisen elinajan sukupolvien ja toisen instanssin yli sekä epävarmuudessa pysyvän restart-/poistoeston. Windowsin sulku ei palaa vanhaan cleanupiin. Synkroninen välimuistihavainto luokittelee oikeaa työkuormaa, ei bridgen PID:tä; timeoutin alkuperä ja sulkuvirhe säilyvät erillisinä. Yhteinen fixture-rajapinta ja muiden alustojen haara säilyvät. Normaali paikallinen kuluttajakytkentä on hyväksytty; muu virhematriisi ja uusi CI avoinna. Koko CI:n hyväksytty lähtörevisio on edelleen `587ba540`; koko T3 avoin. |
-| Viimeisin CI-yritys | Revision `4aececfd` [V2 36349083394](https://github.com/eky-software/eky/actions/runs/36349083394), yritys 1: Electron-ryhmä hylätty, 14/38 läpäisi ja 24/38 epäonnistui ennen yhteyttä. Ensimmäiset yritykset ja nykyisen CI-politiikan retryt sekä 48 lifecycle-liitettä säilytetty. [Riippuvuustarkistus 36349088196](https://github.com/eky-software/eky/actions/runs/36349088196) päättyi onnistuneesti. Tämä ei ole normaali hyväksytty baseline; aiemman `587ba540` vihreät ajot säilyvät omana näyttönään. |
+| Nykyinen lähtörevisio | `5f61f1863557f1e51b96cf705d9434feae91db8c`: viimeisin normaali CI ja riippuvuustarkistus hyväksytty. Sen jälkeen rajattu endurance-mittauskorjaus, kolme regressiota, kanoninen stress ja täysi 30 minuutin soak on paikallisesti todennettu; mittauskorjauksen oma CI on vielä avoin. Tarkista HEAD ja työpuu ennen jatkamista; lähtörevision vihreä CI ei hyväksy myöhempää muutosta. |
+| Viimeisin koko CI:n hyväksytty lähtötila | Sama `5f61f186`: 38 onnistunutta ryhmää ja yksi tarkoituksellinen valinnaisen kokeen ohitus. Kaikki neljä kokeellista valitsinta pois. System 634 valittua, 633 läpäisyä ja yksi Windows-only-suojan tarkoituksellinen ohitus; web 35/35 ja Electron 38/38 ilman retryä tai flaky-tulosta. Koko tapausjoukko, checkoutit sekä neljän tuottajan ja kymmenen kuluttajan artifact-sidonnat takaisinluettu. Native 515/226/285/1791; registry-allekirjoitukset 160/160. Ei endurance-, PR/main- tai koko T3-hyväksyntä. |
+| Avoin puute | Pääprosessin poistuminen ei todista koko puun poistumista. Windows-backendin, Windows-Viten ja Windows-Electronin oikeat kuluttajat on siirretty; korvattu Windows-varapolku on poistettu. Electronin endurance ja todellisen fixturen virheprioriteetti on todennettu, mutta mittauskorjauksen oma CI sekä koko T3-matriisi ja PR/main puuttuvat. Chromiumin ja Linuxin siirrot ovat erillistä jatkotyötä. Aiemman revision `a2c826fc` packaged-workspace-timeout säilyy erillisenä ratkaisemattomana havaintona. |
+| Viimeisin rajattu näyttö | [Endurance ja virheprioriteetti](e2e-test-environment.md#windows-electronin-endurance-ja-virheen-säilymisen-loppunäyttö): tyypitys, kolme mittauspolun regressiota, kanoninen stress ja täysi 30 minuutin soak läpäisivät. Kaksi todellisen fixturen koetta säilytti tarkoituksellisen alkuperäisen virheen ainoana testivirheenä close-/liitevirheen yli; siivous ja näyttö tarkistettiin erikseen. Ensimmäiset yritykset, sama testikoodi ja raportit on riippumattomasti takaisinluettu. Aiemmat kuluttaja-, handoff-, workspace- ja CI-portit säilyvät [omassa checkpointissaan](e2e-test-environment.md#electron-bridgen-lopetuspolun-jatkoehdotus). Ei mittauskorjauksen oman CI:n tai koko T3:n hyväksyntä. |
+| Nykyinen toteutuspala | Windowsin `isolatedElectronTest` säilyttää bridge-/native-omistajan ennen launchin odotusta, saman alkuperäisen elinajan sukupolvien ja toisen instanssin yli sekä epävarmuudessa pysyvän restart-/poistoeston. Korvattu Windows-cleanup on poistettu. Yhteinen fixture-rajapinta ja muiden alustojen haara säilyvät. Normaali kuluttajakytkentä, erillinen endurance ja alkuperäisen testivirheen säilyminen todellisessa cleanup-/raportointivirheessä on todennettu. Mittauskorjauksen oma CI sekä muut T3:n kuluttajat ja loppuportit ovat avoinna. |
+| Viimeisin normaali CI | Revision `5f61f186` [V2 36354387346](https://github.com/eky-software/eky/actions/runs/36354387346) ja [riippuvuustarkistus 36354390842](https://github.com/eky-software/eky/actions/runs/36354390842), molemmat yritys 1, hyväksytty. Tuotanto- ja kokonaisauditissa ei tunnettuja löydöksiä. `4aececfd`:n 14/38-hylkäys ja sen 48 lifecycle-liitettä säilyvät omana historiallisena näyttönään, eivät tämän revision tuloksena. |
 | Viimeisin diagnoosi | `23b43c49`: [36350757744](https://github.com/eky-software/eky/actions/runs/36350757744), yritys 1, hylätty; kaikkien 48 lifecycle-liitteen syy `ownerEnvironmentValueInvalid`, todellinen checkout varmennettu. Tarkkaa alkuperäistä ympäristöarvoa ei kerätty. PATH-korjauksen ensimmäinen tavallinen ajo jäi 44/45-tulokseen erillisen ennen testirunkoa tapahtuneen poistumisen vuoksi. Turvallista ensiyrityksen kaappausta täydennettiin; myöhempi kanoninen 45/45 ei todista alkuperäisen poistumisen syytä. |
-| Seuraava työ | Todista [rajatun Electron-korjauspaketin](e2e-test-environment.md#windows-electron--valmistelun-ci-hylkäys) puhtaan revision normaali CI ja riippuvuustarkistus. Tyypitys, 136/136-kohdesarja, työkalusarja 678/678 ja tavallinen kanoninen Electron 45/45 ilman retryä on todennettu samalle koodisisällölle. Alkuperäisen poistumisen syy säilyy avoimena. Vasta vihreän baselinen jälkeen Chromiumin/Linuxin kuluttajasiirrot avoimet päätösrajat säilyttäen sekä nykyisen kadenssin endurance ja muut [T3-portit](#t3n-nykyinen-työjärjestys). Ei uusia välilupia hyväksytyn rajauksen sisällä eikä avoimien ympäristö-/omistajuusvalintojen olettamista. |
+| Seuraava työ | Viimeistele [endurance-korjauksen ja virheen säilymisen näytön](e2e-test-environment.md#windows-electronin-endurance-ja-virheen-säilymisen-loppunäyttö) katselmus ja mittauskorjauksen oman puhtaan revision normaali CI. Sen jälkeen Chromiumin/Linuxin kuluttajasiirrot avoimet päätösrajat säilyttäen ja muut [T3-portit](#t3n-nykyinen-työjärjestys). Ei uutta rinnakkaista remonttia tai avoimien ympäristö-/omistajuusvalintojen olettamista. |
 | Valmistuminen | Oikeat kuluttajat siirretty, korvattu aktiivinen toteutus poistettu vasta vastaavan kattavuuden jälkeen, T1/T2 säilyneet sekä koko T3-matriisi ja täsmällisen PR/main-revision portit läpäisty. |
 | T3:n jälkeen | Nykyisen M1:n A1:n vanhentuneet vastaukset ja muut hyväksytyt sovelluskorjaukset, sitten roadmapin 0.3.0-käyttöliittymä- ja diagnostiikkatyö. |
 
@@ -25,7 +25,9 @@ toteutettu ja katselmoitu, ja sen jälkeinen kanoninen sarja läpäisi 45/45
 samalla täydellisellä tapausjoukolla. Tyypitys, 136/136-kohdesarja ja
 työkalusarja 678/678 läpäisivät samalla koodilla. Hylätty tulos ja sen
 syyepävarmuus säilyvät; uusi läpäisy ei ole juurisyytodiste.
-Seuraava hyväksyntä on tämän paketin oma normaali CI, ei kuluttajasiirto.
+Paketin oma normaali CI ja riippuvuustarkistus on nyt hyväksytty revision
+`5f61f186` ensimmäisistä yrityksistä. Tämä ei vielä hyväksy endurancea,
+kaikkia kuluttajasiirtoja tai koko T3:a.
 
 **Windows-välipaketin yhteiset portit 2026-09-27:** varapolun poiston
 jälkeinen yhtenäinen lähdetila läpäisi koko workspacen testit ja
@@ -126,7 +128,7 @@ Toteutus ja näyttö kirjataan omiin checkpointteihinsa, ei valmistelun läpäis
 
 ## T3:n nykyinen työjärjestys
 
-**Nykyinen jäljellä oleva sulkulista 2026-09-27.** Valtuus koskee koko
+**Nykyinen jäljellä oleva sulkulista 2026-09-28.** Valtuus koskee koko
 T3/R28:aa ja sen PR/main-integraatiota, ei kaikkia 0.3.0:n ominaisuuksia.
 Tämä ei luo uusia alavaiheita; tarkat sopimukset pysyvät omistavassa
 [E2E-suunnitelmassa](e2e-test-environment.md#t3n-oikeiden-kuluttajien-siirtoraja).
@@ -137,8 +139,13 @@ Tämä ei luo uusia alavaiheita; tarkat sopimukset pysyvät omistavassa
   E2E-tyyppitarkistus ja tavallinen Electron 45/45 on todennettu samalle
   lähdetilalle. Varsinaisen fixturen julkisen close-virheen ja portin
   vapautumisen epävarmuuden pysyvät restart-/poistoestot on todennettu
-  rajatuilla oikeaprosessikokeilla. Koko launch-/katkeamismatriisi ja erillinen
-  endurance ovat vielä avoinna. Säilytä suorien bootstrap-/toinen instanssi-
+  rajatuilla oikeaprosessikokeilla. Uusi normaali CI `5f61f186` on hyväksytty.
+  Alkuperäisen testirungon virheen säilymisen kaksi todellisen fixturen
+  koetta sekä erillinen stress ja täysi 30 minuutin soak on nyt todennettu.
+  Stressin vanhentunut mittauspolku korjattiin yhteisellä workspace-lukijalla
+  ja kolmella regressiolla; alkuperäinen hylkäys säilyy. Mittauskorjauksen
+  oman revision CI on vielä avoin.
+  Säilytä suorien bootstrap-/toinen instanssi-
   kuluttajien kattavuus; erillinen endurance ei sisälly tavalliseen sarjaan.
 - [x] **Handoff-testin virhesiivous:** olemassa oleva rajattu lapsikahvan
   omistus, alkuperäinen viiden sekunnin testiraja ja todellinen close.

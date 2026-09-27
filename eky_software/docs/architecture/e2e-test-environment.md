@@ -3198,9 +3198,57 @@ Takaisinluku vahvisti saman täydellisen tapausjoukon kuin aiemmassa
 hylätyssä ajossa sekä tyyppitarkistuksen, kohdesopimusten ja Electron-ajojen
 saman koodisisällön. Työkalusarja läpäisi 678/678 ja dokumenttilinkit 203/203.
 Alkuperäinen poistuminen ei toistunut eikä sen syytä merkitä korjatuksi.
-Seuraava portti on katselmoidun, puhtaan revision normaali CI ja
-riippuvuustarkistus; paikallinen läpäisy ei korvaa niitä.
-Uutta toiminnallista T3-vaihetta ei aloiteta punaisen baselinen päälle.
+Paketin puhdas revisio `5f61f1863557f1e51b96cf705d9434feae91db8c`
+läpäisi [normaalin V2-ajon 36354387346](https://github.com/eky-software/eky/actions/runs/36354387346)
+ja [riippuvuustarkistuksen 36354390842](https://github.com/eky-software/eky/actions/runs/36354390842),
+molemmat ensimmäisellä yrityksellä. V2:ssa 38 ryhmää läpäisi ja yksi
+valinnainen koe ohitettiin tarkoituksella; kaikki neljä koevalitsinta olivat
+pois. System valitsi 634 tapausta: 633 läpäisyä ja yksi tunnettu Windows-only-
+suojan ohitus. Web 35/35 ja Electron 38/38 läpäisivät ilman retryä tai flakyä.
+Täsmälliset tapausjoukot, checkoutit, neljän artifact-tuottajan ja kymmenen
+kuluttajan sidonnat sekä lifecycle-tulokset takaisinluettiin. Native-portit
+515/226/285/1791 läpäisivät; riippuvuusauditit olivat puhtaat ja registry-
+allekirjoitukset 160/160 varmennettu. Tämä hyväksyy normaalin lähtöbaselinen,
+ei aiemman poistumisen juurisyytä, endurancea tai koko T3/PR/main-porttia.
+
+###### Windows Electronin endurance ja virheen säilymisen loppunäyttö
+
+**2026-09-28: rajattu testikorjaus ja paikallinen loppunäyttö todennettu.**
+Ensimmäinen normaali stress-ajo hylättiin tietokannan kokotarkistuksessa.
+Testi mittasi vanhaa installation-scoped-tietokantapolkua, vaikka nykyinen
+desktop käyttää aktiivisen workspacen runtimea. Myös salaisuustiedoston
+poistotarkistus käytti vanhaa polkua. Mittauskorjaus käyttää olemassa olevaa
+validoivaa `readElectronE2eActiveWorkspace`-apuria; operational-lokit pysyvät
+asennuskohtaisina. Sovelluksen dataa, tuotantopolkuja, työkuormia,
+määräaikoja tai hyväksyntärajoja ei muuteta. Regressio erottaa aktiivisen
+työtilan vanhasta ja toisesta työtilasta, lukee valinnan uudelleen ja hylkää
+virheellisen rekisterin ilman legacy-fallbackia. Tyypitys ja kolme
+regressiotapausta läpäisivät. Korjatun kuluttajapolun kanoninen stress ja
+täysi 30 minuutin soak läpäisivät ensimmäisillä yrityksillä ilman retryä,
+flakyä tai raporttivirhettä. Koko alkuperäinen stress-työkuorma, soakin
+täysi kesto, teardown ja raporttien lähdesidonta takaisinluettiin.
+Vanha hylkäys säilyy; mittauskorjaus ei väitä ratkaisevansa aiempia
+satunnaisia käynnistysvirheitä.
+
+Alkuperäisen testivirheen ja cleanup-/näyttövirheen erillisyyden alempi
+sopimus on jo testattu. Lopullinen T3-portti vaatii lisäksi kaksi rajattua
+todellisen fixturen koetta: alkuperäinen testirungon virhe yhdessä oikean
+sulun jälkeen palautetun close-virheen kanssa sekä alkuperäinen virhe
+yhdessä lifecycle-liitteen julkaisuvirheen kanssa. Testirungon alkuperäinen
+virhe saa säilyä ainoana varsinaisena testivirheenä; cleanupin ja erillisen
+lifecycle-tiedoston tulokset tarkistetaan omista havainnoistaan. Oikea
+omistajuus, ulomman session puun poistuminen, portti ja ulkopuolinen sentinel
+säilyvät kokeiden ehtoina. Molemmat kokeet läpäisivät ensimmäisillä
+yrityksillä: Playwright raportoi tarkoituksellisen alkuperäisen virheen
+ainoana testivirheenä, ei onnistumisena. Close-virheessä runtime-sulku
+jäi epävarmaksi ja testijuuri säilyi; liitevirheessä sulku valmistui,
+testijuuri poistui ja erillinen lifecycle-tiedosto säilyi. Molemmissa
+omistettu puu oli poistunut ennen ulomman omistajan pakkosiivousta,
+portti vapautui ja sentinel säilyi; pakkotoimenpidettä ei tarvittu.
+Tämä on rajattu todellisen fixtureketjun näyttö, ei kaikkien mahdollisten
+levy- tai raportointivirheiden kattavuuslupaus. Ei kolmatta päällekkäistä
+testialustaa tai tuotantokontrollia. Mittauskorjauksen uuden revision oma
+CI, Chromiumin/Linuxin päätösrajat ja koko T3/PR/main-portti säilyvät avoimina.
 
 ###### Chromiumin kuluttajasiirron avoin omistajuusraja
 
