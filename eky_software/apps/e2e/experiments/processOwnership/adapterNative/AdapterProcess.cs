@@ -9,13 +9,24 @@ internal sealed class AdapterProcess : IDisposable
 {
     private readonly SafeProcessHandle process;
     private readonly SafeWaitHandle thread;
+    private readonly uint processId;
     private AdapterProcess(NativeMethods.ProcessInformation information)
     {
         process = new SafeProcessHandle(information.Process, true);
         thread = new SafeWaitHandle(information.Thread, true);
+        processId = information.ProcessId;
     }
 
     internal static AdapterProcess Create(AdapterConfiguration config, string[] args, WindowsJob job, ChildStandardIo io)
+        => Create(config.Electron, args, config.Cwd, config.Environment, job, io);
+
+    internal static AdapterProcess CreateBackend(BackendServiceConfiguration config, WindowsJob job, ChildStandardIo io,
+        BackendServiceState state)
+        => Create(config.NodeExecutable, [config.Entrypoint, "--config", config.RuntimeConfigPath],
+            config.RepositoryRoot, config.Environment, job, io, state.MarkCreated);
+
+    private static AdapterProcess Create(string executable, string[] args, string cwd,
+        IReadOnlyDictionary<string, string> variables, WindowsJob job, ChildStandardIo io, Action? created = null)
     {
         using var attribute = job.CreateProcessAttribute();
         attribute.SetInheritedHandles(io.Input, io.Output, io.Error);
@@ -31,24 +42,34 @@ internal sealed class AdapterProcess : IDisposable
             },
             AttributeList = attribute.List,
         };
-        var block = string.Join('\0', config.Environment.OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)
+        var block = string.Join('\0', variables.OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)
             .Select(entry => $"{entry.Key}={entry.Value}")) + "\0\0";
         var environment = Marshal.StringToHGlobalUni(block);
         try
         {
-            if (!NativeMethods.CreateProcess(config.Electron, new StringBuilder(WindowsCommandLine.Build(config.Electron, args)),
+            if (!NativeMethods.CreateProcess(executable, new StringBuilder(WindowsCommandLine.Build(executable, args)),
                     IntPtr.Zero, IntPtr.Zero, true,
                     NativeMethods.CreateSuspended | NativeMethods.ExtendedStartupInfoPresent | 0x08000000 | 0x00000400,
-                    environment, config.Cwd, ref startup, out var information)) throw new AdapterFailure("processStartFailed");
+                    environment, cwd, ref startup, out var information)) throw new AdapterFailure("processStartFailed");
+            created?.Invoke();
             return new AdapterProcess(information);
         }
         finally { Marshal.FreeHGlobal(environment); }
     }
 
     internal void VerifyAndResume(WindowsJob job, AdapterState state)
+        => VerifyAndResume(job, state.Assigned);
+
+    internal void VerifyAndResume(WindowsJob job, BackendServiceState state)
+    {
+        try { VerifyAndResume(job, state.Assigned); }
+        catch (SupervisorFailure) { throw new AdapterFailure("jobMembershipFailed"); }
+    }
+
+    private void VerifyAndResume(WindowsJob job, Action assigned)
     {
         if (!job.ContainsProcess(process)) throw new AdapterFailure("jobMembershipFailed");
-        state.Assigned();
+        assigned();
         if (NativeMethods.ResumeThread(thread) == uint.MaxValue) throw new AdapterFailure("processResumeFailed");
         thread.Dispose();
     }
@@ -64,6 +85,23 @@ internal sealed class AdapterProcess : IDisposable
     {
         if (!HasExited() || !NativeMethods.GetExitCodeProcess(process, out var code)) throw new AdapterFailure("processExitReadFailed");
         return unchecked((int)code);
+    }
+
+    internal BackendServiceIdentity ReadBackendIdentity()
+    {
+        if (processId == 0 || !AdapterNativeMethods.GetProcessTimes(process, out var created, out _, out _, out _) || created == 0)
+            throw new AdapterFailure("processIdentityFailed");
+        return new(processId, created.ToString("x16", System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    internal long ReadBackendRss()
+    {
+        var counters = new AdapterNativeMethods.ProcessMemoryCounters
+        { Size = (uint)Marshal.SizeOf<AdapterNativeMethods.ProcessMemoryCounters>() };
+        if (HasExited() || !AdapterNativeMethods.K32GetProcessMemoryInfo(process, ref counters, counters.Size) || HasExited() ||
+            counters.WorkingSetSize == 0 || (ulong)counters.WorkingSetSize > (ulong)BackendServiceProtocol.MaximumSequence)
+            throw new AdapterFailure("observationLost");
+        return checked((long)counters.WorkingSetSize);
     }
 
     public void Dispose() { thread.Dispose(); process.Dispose(); }

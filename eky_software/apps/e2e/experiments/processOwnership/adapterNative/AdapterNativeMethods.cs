@@ -9,6 +9,30 @@ internal static class AdapterNativeMethods
     internal const uint FileFlagFirstPipeInstance = 0x00080000;
     internal const uint FileFlagOverlapped = 0x40000000;
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetProcessTimes(SafeProcessHandle process, out ulong creation, out ulong exit,
+        out ulong kernel, out ulong user);
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct ProcessMemoryCounters
+    {
+        internal uint Size;
+        internal uint PageFaultCount;
+        internal nuint PeakWorkingSetSize;
+        internal nuint WorkingSetSize;
+        internal nuint QuotaPeakPagedPoolUsage;
+        internal nuint QuotaPagedPoolUsage;
+        internal nuint QuotaPeakNonPagedPoolUsage;
+        internal nuint QuotaNonPagedPoolUsage;
+        internal nuint PagefileUsage;
+        internal nuint PeakPagefileUsage;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool K32GetProcessMemoryInfo(SafeProcessHandle process, ref ProcessMemoryCounters counters, uint size);
+
     [DllImport("kernel32.dll")]
     internal static extern IntPtr GetStdHandle(int standardHandle);
 

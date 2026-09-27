@@ -79,7 +79,7 @@ test('WORKSPACE-REPLACE-001 @critical @recovery replaces the active exact-lineag
   );
 
   await e2eBackend.backend.stop();
-  assertManagedProcessStopped(e2eBackend.backend.managedProcess.child);
+  expect(await e2eBackend.backend.workload.readState()).toBe('exited');
   const backupPath = join(e2eBackend.runRoot, 'same-lineage-source.ekybackup');
   const backupIdentity = await createRealPortableWorkspaceBackup({
     backupPath,
@@ -98,7 +98,7 @@ test('WORKSPACE-REPLACE-001 @critical @recovery replaces the active exact-lineag
   });
   expect(markerResponse.status()).toBe(201);
   await e2eBackend.backend.stop();
-  assertManagedProcessStopped(e2eBackend.backend.managedProcess.child);
+  expect(await e2eBackend.backend.workload.readState()).toBe('exited');
 
   const fixture = await createReplacementSystemFixture({
     activeArtifactSourceRoot: e2eBackend.paths.documentsRoot,
@@ -170,7 +170,7 @@ test('WORKSPACE-REPLACE-002 @critical @recovery forward-migrates an authenticate
   e2eBackend,
 }) => {
   await e2eBackend.backend.stop();
-  assertManagedProcessStopped(e2eBackend.backend.managedProcess.child);
+  expect(await e2eBackend.backend.workload.readState()).toBe('exited');
   const historical = await createHistoricalPortableWorkspaceBackup({
     backupPath: join(e2eBackend.runRoot, 'historical-replacement.ekybackup'),
     password: backupPassword,
@@ -228,7 +228,7 @@ test('WORKSPACE-REPLACE-003 @security rejects wrong-password and tampered contai
   );
   expect(sourceInvoice.invoiceId).toEqual(expect.any(String));
   await e2eBackend.backend.stop();
-  assertManagedProcessStopped(e2eBackend.backend.managedProcess.child);
+  expect(await e2eBackend.backend.workload.readState()).toBe('exited');
   const backupPath = join(e2eBackend.runRoot, 'authenticated-source.ekybackup');
   const identity = await createRealPortableWorkspaceBackup({
     backupPath,
@@ -590,10 +590,4 @@ async function expectReplacementFailure(
     expect(replacementError.message).not.toContain(forbiddenText);
     expect(replacementError.stack ?? '').not.toContain(forbiddenText);
   }
-}
-
-function assertManagedProcessStopped(
-  child: { readonly exitCode: number | null; readonly signalCode: string | null },
-): void {
-  expect(child.exitCode !== null || child.signalCode !== null).toBe(true);
 }

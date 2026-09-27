@@ -125,7 +125,9 @@ export async function waitForManagedBackendHealth(input: {
     .then(() => input.waitForHealth(healthAbort.signal))
     .then(
       () => ({ kind: 'healthy' as const }),
-      () => ({ kind: 'healthFailed' as const }),
+      (error: unknown) => ({ kind: error instanceof Error &&
+        error.message === 'E2E_BACKEND_WORKLOAD_OBSERVATION_LOST'
+        ? 'observationLost' as const : 'healthFailed' as const }),
     );
 
   let outcome;

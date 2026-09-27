@@ -30,6 +30,7 @@ import { listElectronE2eProfileDirectories } from '../environment/createElectron
 import { createE2eRunRoot } from '../environment/createE2eRunRoot.js';
 import { createE2eWorkerPaths } from '../environment/createE2eWorkerPaths.js';
 import type { E2eWorkerPaths } from '../environment/e2eEnvironmentTypes.js';
+import { createE2eFixtureLifetime } from '../environment/e2eFixtureLifetime.js';
 import {
   E2eBackendStartupFailure,
   type E2eBackendStartupFailureEvidence,
@@ -86,6 +87,7 @@ interface IsolatedElectronFixtures {
 }
 
 interface IsolatedElectronOptions {
+  e2eContainmentTimeoutMilliseconds: number | undefined;
   e2eDialogMode: 'accept' | 'cancel';
   e2eNativeOpenDialogMode: 'accept' | 'cancel';
   e2eNativeOpenDialogPurpose:
@@ -108,12 +110,14 @@ const MAX_ELECTRON_LAUNCH_OBSERVATIONS = 64;
 export const test = base.extend<
   IsolatedElectronFixtures & IsolatedElectronOptions
 >({
+  e2eContainmentTimeoutMilliseconds: [undefined, { option: true }],
   e2eDialogMode: ['accept', { option: true }],
   e2eNativeOpenDialogMode: ['accept', { option: true }],
   e2eNativeOpenDialogPurpose: ['invoicePdfArchive', { option: true }],
   e2eWorkspaceBackupFixture: ['none', { option: true }],
   e2eElectron: async (
     {
+      e2eContainmentTimeoutMilliseconds,
       e2eDialogMode,
       e2eNativeOpenDialogMode,
       e2eNativeOpenDialogPurpose,
@@ -122,6 +126,9 @@ export const test = base.extend<
     use,
     testInfo,
   ) => {
+    const lifetime = createE2eFixtureLifetime(
+      e2eContainmentTimeoutMilliseconds === undefined ? testInfo.timeout : e2eContainmentTimeoutMilliseconds,
+    );
     const scenarioId = readE2eScenarioId(testInfo.title);
     const runRoot = createE2eRunRoot();
     const paths = createE2eWorkerPaths(runRoot, scenarioId);
@@ -146,6 +153,7 @@ export const test = base.extend<
       prepare: async () =>
         e2eWorkspaceBackupFixture === 'synthetic'
           ? await createElectronWorkspaceBackupFixture({
+              lifetime,
               backupPath: join(
                 paths.artifactsRoot,
                 'workspace-import-source.ekybackup',
@@ -154,6 +162,7 @@ export const test = base.extend<
             })
           : e2eWorkspaceBackupFixture === 'activeReplacement'
             ? await createElectronActiveWorkspaceReplacementFixture({
+                lifetime,
                 backupPath: join(
                   paths.artifactsRoot,
                   'active-workspace-replacement.ekybackup',

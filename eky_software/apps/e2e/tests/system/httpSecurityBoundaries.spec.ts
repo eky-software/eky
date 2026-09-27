@@ -212,7 +212,7 @@ test('SEC-SIZE-001 @security enforces bounded invoice fields, arrays and body si
     headers: { 'Content-Type': 'application/json' },
   });
   await expectSafeHttpError(oversizedBody, [413]);
-  expect(e2eBackend.backend.managedProcess.child.exitCode).toBeNull();
+  expect(await e2eBackend.backend.workload.readState()).toBe('running');
   const healthResponse = await fetch(
     `${e2eBackend.backend.backendOrigin}/health`,
   );

@@ -2035,6 +2035,127 @@ aiempien satunnaisten timeoutien juurisyytä eikä uutta Linux-omistajuusnäytt�
 Tämä valmistelupala ei sulje T3:a: stop-omistajuuden ja oikeiden kuluttajien siirto, korvattujen
 polkujen poisto, koko hyväksyntämatriisi ja PR/main-portit ovat avoinna.
 
+###### Backendin Windows-omistajan toteutusraja
+
+**2026-09-27: backend-kuluttajat siirretty ja E2E-regressio läpäisty;
+uuden revision CI sekä koko T3-/PR/main-portti vielä avoinna.**
+Käytetään nykyisen native-adapterin erikseen versioitua backend-palvelutilaa,
+ei uutta koetyökuormaa tai yleistä komentokäynnistintä. Aiemman Electron-kokeen
+konfiguraatio, bridge, tarkka tulosskeema ja 20 sekunnin koeraja säilyvät.
+Yhteisiä Job-, creation-time assignment-, kahva-, framing- ja stdio-osia
+käytetään uudelleen ilman installerin tuotantoprimitiivien muutosta.
+
+- Native-palvelutila sallii vain nykyisen Node-ajurin ja kiinteän E2E-backendin
+  entrypointin sekä `--config`-argumentin. Repositoryn lukemiseen tarkoitettu
+  cwd, synteettinen fixturejuuri ja generation-kohtainen kontrollijuuri ovat
+  erillisiä validoituja polkuja. Ei shelliä, vapaata argv:ta tai salaisuutta
+  kontrollikehyksissä; writable temp/profile-polut pysyvät testijuuressa.
+  E2E-backend saa omistajalta eksplisiittisen `EKY_E2E_OS_TEMP_ROOT`-ankkurin,
+  koska sen oma `TEMP`/`TMP` on eristetty. Native tarkistaa ankkurin vastaavan
+  launch-konfiguraation alkuperäistä OS-temp-juurta; backendin E2E-validator
+  vaatii sekä datan että `TEMP`/`TMP`:n samaan `eky-e2e/run-*`-juureen.
+  Sisarajon temp, suhteellinen polku ja samanaikainen Electronin erillinen
+  root-override hylätään. Tämä ei ole tuotantoruntimen asetus tai uusi
+  fallback, eikä alkuperäistä koko käyttäjän temp-kansiota anneta writableksi.
+- Kontrolliyhteys perustetaan ennen yhden launchin sallimista. Sama native-
+  omistaja säilyttää Jobin ja todellisen backendin prosessikahvan root-exitin
+  yli. Käynnistyshavainto julkaistaan vasta onnistuneen luomisen, jäsenyyden
+  tarkistuksen ja resumoinnin jälkeen. Muistimittaus käyttää tätä kahvaa,
+  ei apuprosessin PID:tä tai uudelleen avattua PID-pohjaista kohdetta.
+- Kuluttajille riittävät todettuun käynnistykseen sidottu instanssi,
+  työkuorman asynkroninen `running`/`exited`/`unavailable`-havainto ja muistiluku.
+  Havainto kysytään säilytetyn prosessikahvan kautta; yhteyden menettäminen
+  ei jätä vanhaa `running`-arvoa voimaan. Todennettu exit saa säilyä normaalin
+  sulkemisen jälkeen. Epävarma muistiluku hylätään, ei korvata nollalla. Bounded
+  output-readerit, `stop()`, nykyiset `isolated*Test`-rajapinnat, API/Page-
+  oliot ja business-assertiot säilyvät. Raakaa `ChildProcess`-oliota ei
+  jäljitellä. Root-exit ei muutu cleanup-todisteeksi rajapinnan nimeämisellä.
+- Yksi fixtureyrityksen monotonic-alkuhetki kulkee myös restarteihin ja
+  backupin valmisteluun. Playwrightin julkinen `testInfo.timeout` on koko
+  testin raja, ei jäljellä oleva aika. Siitä johdettu native-containment-raja
+  on lisävarmistus; Playwright säilyy ensisijaisena myös aiemmin alkaneessa
+  setupissa. Työmääräaikaa ei nollata siirrossa eikä testin timeoutia kasvateta.
+  Ennen launchia kutsuja ottaa korreloidun native-statusnäytteen. Näytteen
+  elapsed-arvo ja launchia muodostettaessa jäljellä oleva kutsujan työaika
+  muodostavat konservatiivisen absoluuttisen native-elapsed-rajan.
+  Native lukitsee rajan kerran ennen lapsen luomista ja vain aikaistaa
+  alustavaa rajaansa; viivästynyt omistajan käynnistys tai viestin kulku
+  ei aloita työbudjettia uudelleen. Erillinen watchdog lyhenee samaan
+  rajaan nykyinen cleanup-varaus säilyttäen. Tämä työrajan sidonta ja
+  jäljempänä kuvattu ensimmäisen stopin cleanup-kellosidonta ovat eri asioita.
+  Cleanup saa ensimmäisestä stopista oman nykyisiin rajoihin sovitetun
+  määräajan: työbudjetin loppuminen ei yksin estä cleanupin todentamista.
+- Stop memoidaan. Luomisen loppu, launchin pysyvä sulkeminen, Jobin tyhjyys
+  ja stdion asettuminen vaaditaan ennen puun poissaolokuittia. Lisäksi
+  vaaditaan joko ettei lasta luotu tai että luodun rootin exit todennettiin.
+  Kutsuja varmentaa lisäksi ownerin ja kanavan sulun sekä portin erikseen.
+  Terminal-kuittaus ja kanavan/ownerin sulku kuuluvat samaan ensimmäisestä
+  stopista alkavaan cleanup-määräaikaan, eivät koko työbudjettiin. Kutsujan
+  stop, työmääräajan täyttyminen ja omistajuushäiriö eivät nollaa määräaikaa.
+  Native-kellon alku ei ole sama kuin kutsujan prosessikäynnistyspyyntö.
+  Korrelatoidun pyynnön lähetysaika ja vastauksen monotonic-elapsed sidotaan
+  konservatiiviseksi alkuhetken alarajaksi; kokonaismillisekunnin pyöristys
+  huomioidaan. Vastauksen vastaanottoaika ei anna lisäaikaa. Ilman pyyntöä
+  saapuva tapahtuma ei tarkenna kellosidontaa, ja jo lukittu cleanup-raja
+  saa vain aikaistua. Alkuperäinen paikallinen stop-raja säilyy rinnalla.
+  Ensimmäinen toimintavirhe ja cleanupin tulos ovat eri asioita: myös
+  epäonnistuneen startupin siivous voi olla todistettu. Myöhäinen tai
+  epävarma kuitti estää restartin ja juuren poiston.
+- Build-esiehto liitetään nykyisiin preparation-komentoihin ja sitä
+  tarvitsevaan Windows CI -kuluttajaan. Vanhan kokeen guardit ja T1/T2:n
+  epäonnistuneen tai vanhentuneen valmistelun torjunta säilyvät.
+
+Saman kokonaisuuden native-sopimus ja kutsujan rajapinta on nyt kytketty
+`startE2eBackendProcess`-käynnistäjään, ajoitus sen kaikkiin käynnistäjiin
+sekä nykyisiin PID-/exit-/RSS-kuluttajiin. Kohdetestit kattavat strict-kontrollin, varhaisen
+virheen, root-firstin, owner-lossin, toistetun stopin ja epävarman cleanupin.
+Oikea backendin health/session/restart/backup-polku ja muistimittaus sekä
+entisen kokeen regressiot todistetaan ennen Windowsin vanhan backend-
+cleanup-reunan poistoa. Ei Windows-fallbackia vanhaan taskkill-polkuun.
+Vite, Chromium ja Electron seuraavat omissa siirtopaloissaan. Linuxia ei
+poisteta tai nimetä siirretyksi tämän Windows-todisteen perusteella.
+
+Tämän keskeneräisen siirron testit on erotettu
+[matriisissa](r0-e2e-test-matrix.md) aiemmasta hyväksytystä
+käynnistyshavainnosta. Tuotantoruntime, käyttäjädiagnostiikka, business-audit,
+backup-formaatti ja sovellusversio eivät muutu. Omistajan konfiguraatio ja
+terminal ovat testikohtaisia teknisiä tiedostoja, eivät business-artifacteja
+tai varmuuskopioita. Niitä ei sisällytetä tuotannon tukipakettiin.
+
+Lopullisen työmääräaikakorjauksen jälkeen rajattu boot/health/session/RSS-sarja
+läpäisi 5/5 ja kuuden nykyisen restart-, yrityksenluonti-, istuntaraja-,
+HTTP-turvallisuus- ja backup import/replacement -tiedoston sarja 22/22.
+Native-adapterin aiemmat 510 ja uuden backend-tilan 226 sopimustarkistusta
+läpäisivät. Kutsujan kellosidonnan, kontrollin ja omistajan regressiosarja
+läpäisi 96/96 ja paketin tyypitys läpäisi. Täysi tavallinen E2E läpäisi
+484/484 (system 398, web 41, Electron 45) ilman retryä, flaky-tulosta tai
+ohituksia. Tämä sisältää oikeita yhteisen backend-käynnistäjän kuluttajia,
+mutta ei siirtämättömien selaimen tai Electronin puiden omistajuustodistetta.
+
+Ennen viimeistä backend-tilan työmääräaikakorjausta läpäisivät myös
+E2E-työkalujen 487 sopimusta, CI-kytkentöjen 315 sopimusta, workspacen
+4 445 testiä (8 ennestään ohitettua) ja kaikkien 11 paketin tyypitys.
+Aiemman Electron-adapterin neljä oikeaprosessitapausta läpäisivät ennen
+tätä korjausta; niiden yhteinen toteutus ja vanha protokolla eivät muuttuneet
+viimeisessä korjauksessa. Näitä aiempia ajoja ei nimetä lopullisten tavujen
+koko regressioksi. Normaali CI todentaa seuraavaksi uuden täsmällisen revision.
+
+Ensimmäinen oikean backendin ajon hylkäys säilytettiin: native-kellon alku
+oli sidottu virheellisesti kutsujan prosessinluontipyynnön alkuun. Edellä
+kuvattu konservatiivinen kellosidonta ja sen viive-/määräaikaregressiot
+korjaavat tämän rajatun syyn, eivät historiallisten timeoutien syytä.
+
+Katselmus löysi erikseen suorien testikuluttajien tarpeettoman
+cleanup-virheen nostamisen alkuperäiseksi testivirheeksi ja endurance-polun
+aiemman epävarman pysäytyksen säilytyspuutteen. Nämä on korjattu, katselmoitu
+ja regressioitu. Viimeinen katselmus korjasi lisäksi työbudjetin
+nollaantumisen viivästyneessä native-startissa yllä kuvatulla prelaunch-
+sidonnalla. Hallitut kellotestit eivät yksin todista oikean watchdogin
+laukeamista pysähtyneen kutsujan aikana; koko T3-matriisi on edelleen avoin.
+Lopullisissa rajatuissa katselmuksissa ei jäänyt avoimia löydöksiä.
+Vanhaa Windows-backendin taskkill-polkuun palaavaa fallbackia ei ole;
+siirtämättömien Vite-/Electron-/Linux-polkujen näyttö ei muutu tällä.
+
 ##### T3c-LM: rajattu CI-testisession hallinta
 
 Omistaja hyväksyi 2026-09-26 rajatun CI-testisession hallinnan suunnittelun

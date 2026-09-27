@@ -12,6 +12,7 @@ const desktop = readManifest('../../desktop/package.json');
 const backend = readManifest('../../backend/package.json');
 const preparations = [
   'pnpm --filter @eky/desktop e2e:prepare-electron-runtime',
+  'pnpm --filter @eky/e2e e2e:prepare-owner',
   'pnpm --filter @eky/permissions build',
   'pnpm --filter @eky/auth build',
   'pnpm --filter @eky/backend e2e:build',
@@ -21,12 +22,14 @@ const preparations = [
   'pnpm --filter @eky/desktop e2e:prepare-backend',
 ];
 const projects = '--project=system-api --project=web-chromium --project=electron-development';
-const contractCommand = 'node --test scripts/e2e-command-wiring.test.mjs experiments/processOwnership/playwrightElectronLaunch.test.mjs experiments/processOwnership/adapterContract.test.mjs experiments/processOwnership/adapterControl.test.mjs experiments/processOwnership/adapterRootExitOrdering.test.mjs experiments/processOwnership/boundedChildOutput.test.mjs experiments/processOwnership/pidNamespaceContract.test.mjs experiments/processOwnership/runPidNamespaceExperiment.test.mjs experiments/processOwnership/managedNamespaceContract.test.mjs experiments/processOwnership/managedNamespaceControl.test.mjs experiments/processOwnership/managedNamespaceObservation.test.mjs experiments/processOwnership/managedNamespacePreflight.test.mjs experiments/processOwnership/managedNamespaceCommand.test.mjs experiments/processOwnership/managedNamespaceSession.test.mjs experiments/processOwnership/managedNamespaceResult.test.mjs experiments/processOwnership/runManagedNamespaceExperiment.test.mjs experiments/processOwnership/managedChromiumFailure.test.mjs experiments/processOwnership/managedChromiumActor.test.mjs';
+const contractCommand = 'node --test scripts/e2e-command-wiring.test.mjs scripts/windowsBackendOwnerBuild.test.mjs experiments/processOwnership/playwrightElectronLaunch.test.mjs experiments/processOwnership/adapterContract.test.mjs experiments/processOwnership/adapterControl.test.mjs experiments/processOwnership/adapterRootExitOrdering.test.mjs experiments/processOwnership/boundedChildOutput.test.mjs experiments/processOwnership/pidNamespaceContract.test.mjs experiments/processOwnership/runPidNamespaceExperiment.test.mjs experiments/processOwnership/managedNamespaceContract.test.mjs experiments/processOwnership/managedNamespaceControl.test.mjs experiments/processOwnership/managedNamespaceObservation.test.mjs experiments/processOwnership/managedNamespacePreflight.test.mjs experiments/processOwnership/managedNamespaceCommand.test.mjs experiments/processOwnership/managedNamespaceSession.test.mjs experiments/processOwnership/managedNamespaceResult.test.mjs experiments/processOwnership/runManagedNamespaceExperiment.test.mjs experiments/processOwnership/managedChromiumFailure.test.mjs experiments/processOwnership/managedChromiumActor.test.mjs';
 
 function assertWiring(rootManifest, e2eManifest) {
   assert.equal(rootManifest.scripts.test, 'pnpm --recursive test');
   assert.equal(e2eManifest.scripts.test, contractCommand);
   assert.deepEqual(e2eManifest.scripts['e2e:electron:prepare'].split(' && '), preparations);
+  assert.equal(e2eManifest.scripts['e2e:prepare-owner'], 'node scripts/prepare-windows-backend-owner.mjs');
+  assert.deepEqual(e2eManifest.scripts['e2e:prepare'].split(' && '), preparations.slice(1, 5));
   for (const tag of ['security', 'fault']) {
     assert.equal(rootManifest.scripts[`test:e2e:${tag}`], `pnpm --filter @eky/e2e e2e:${tag}`);
     assert.equal(
@@ -43,7 +46,7 @@ test('the recursive workspace chain reaches this contract and both complete aggr
 
 test('preparation delegates to existing build and staging owners', () => {
   const manifests = new Map([
-    ['@eky/desktop', desktop], ['@eky/backend', backend],
+    ['@eky/desktop', desktop], ['@eky/backend', backend], ['@eky/e2e', e2e],
     ['@eky/auth', readManifest('../../../packages/auth/package.json')],
     ['@eky/permissions', readManifest('../../../packages/permissions/package.json')],
     ['@eky/web', readManifest('../../web/package.json')],
@@ -63,7 +66,49 @@ test('preparation delegates to existing build and staging owners', () => {
     'node scripts/clean-e2e-dist.mjs && tsc -p tsconfig.e2e.json && node scripts/copy-e2e-migrations.mjs');
 });
 
+function assertWindowsOwnerCiPreparation(source) {
+  const job = source.split('\n  e2e-electron-windows-critical:\n')[1]?.split(/\n  [\w-]+:\n/u)[0];
+  assert.ok(job, 'the actual Windows consumer must remain reachable');
+  const name = '      - name: Set up existing Windows test owner SDK\n';
+  const steps = job.split(name);
+  assert.equal(steps.length, 2, 'the owner SDK must be prepared exactly once');
+  const sdk = steps[1].split('\n      - name:')[0].trimEnd();
+  assert.equal(sdk, [
+    '        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1',
+    '        with:',
+    '          dotnet-version: 10.0.302',
+  ].join('\n'));
+  const consumer = job.indexOf('        run: pnpm test:e2e:electron:critical\n');
+  assert.ok(consumer > job.indexOf(name), 'the SDK must precede the normal consumer');
+  assert.match(job, /    runs-on: windows-latest\n/u);
+  assert.equal(root.scripts['test:e2e:electron:critical'], 'pnpm --filter @eky/e2e e2e:electron:critical');
+  assert.equal(e2e.scripts['e2e:electron:critical'],
+    'pnpm e2e:electron:prepare && playwright test --project=electron-development --grep @critical --workers=1');
+}
+
+const ci = readFileSync(new URL('../../../../.github/workflows/ci.yml', import.meta.url), 'utf8');
+test('the normal Windows consumer prepares the existing SDK before its actual owner build', () => {
+  assertWindowsOwnerCiPreparation(ci);
+});
+
+for (const [name, mutate] of [
+  ['missing SDK', source => source.replace('Set up existing Windows test owner SDK', 'Missing SDK')],
+  ['conditional SDK', source => source.replace('Set up existing Windows test owner SDK\n',
+    'Set up existing Windows test owner SDK\n        if: inputs.electron_diagnostic\n')],
+  ['ignored SDK failure', source => source.replace('Set up existing Windows test owner SDK\n',
+    'Set up existing Windows test owner SDK\n        continue-on-error: true\n')],
+  ['different SDK', source => source.replace('dotnet-version: 10.0.302', 'dotnet-version: 9.0.0')],
+  ['missing actual consumer', source => source.replace('run: pnpm test:e2e:electron:critical', 'run: echo skipped')],
+]) {
+  test(`rejects Windows preparation drift: ${name}`, () => {
+    assert.throws(() => assertWindowsOwnerCiPreparation(mutate(ci)), assert.AssertionError);
+  });
+}
+
 const mutations = [
+  ['missing owner build regression', (r, e) => { e.scripts.test = e.scripts.test.replace(' scripts/windowsBackendOwnerBuild.test.mjs', ''); }],
+  ['missing native owner preparation', (r, e) => { e.scripts['e2e:prepare'] = preparations.slice(2, 5).join(' && '); }],
+  ['wrong native owner build', (r, e) => { e.scripts['e2e:prepare-owner'] = 'node unrelated.mjs'; }],
   ['missing Chromium diagnostic regression', (r, e) => { e.scripts.test = e.scripts.test.replace(' experiments/processOwnership/managedChromiumFailure.test.mjs', ''); }],
   ['missing Chromium worker regression', (r, e) => { e.scripts.test = e.scripts.test.replace(' experiments/processOwnership/managedChromiumActor.test.mjs', ''); }],
   ['missing preparation', (r, e) => { e.scripts['e2e:security'] = e.scripts['e2e:security'].split(' && ')[1]; }],

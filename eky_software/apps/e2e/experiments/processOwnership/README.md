@@ -6,6 +6,16 @@ This is not an ordinary fixture adapter, a production feature, an installer
 protocol change, or acceptance of R28. Linux inspection has a separate
 read-only scope. Do not run this against an application or real company profile.
 
+## Current runtime boundary
+
+The historical manual experiments below remain separate from ordinary E2E.
+The same `adapterNative` assembly now also contains a distinct, versioned
+Windows backend-service mode used by the ordinary backend fixtures. Its
+preparation runs through the existing E2E preparation commands, not these
+manual experiment launchers or experiment budgets. See the authoritative
+[backend ownership contract and current acceptance state](../../../../docs/architecture/e2e-test-environment.md#backendin-windows-omistajan-toteutusraja).
+This does not migrate Vite, Chromium, Electron or Linux ownership, or close T3.
+
 ## Scope
 
 The experiment links existing Windows Job primitives into a separate native

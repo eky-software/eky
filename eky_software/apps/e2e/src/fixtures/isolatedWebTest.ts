@@ -16,6 +16,7 @@ import {
   type E2eBrowserNetworkBoundary,
 } from '../environment/e2eBrowserNetworkBoundary.js';
 import type { E2eWorkerPaths } from '../environment/e2eEnvironmentTypes.js';
+import { createE2eFixtureLifetime } from '../environment/e2eFixtureLifetime.js';
 import { reserveLoopbackPort } from '../environment/reserveLoopbackPort.js';
 import {
   startE2eBackendProcess,
@@ -46,24 +47,27 @@ interface IsolatedWebFixtures {
 }
 
 interface IsolatedWebOptions {
+  e2eContainmentTimeoutMilliseconds: number | undefined;
   e2eFaultPlan: E2eFaultPlan;
 }
 
 export const test = base.extend<
   IsolatedWebFixtures & IsolatedWebOptions
 >({
+  e2eContainmentTimeoutMilliseconds: [undefined, { option: true }],
   e2eFaultPlan: [{ kind: 'none' }, { option: true }],
   e2eWeb: async (
-    { context, e2eFaultPlan, page },
+    { context, e2eContainmentTimeoutMilliseconds, e2eFaultPlan, page },
     use,
     testInfo,
   ) => {
-    await runIsolatedWebTest({ context, e2eFaultPlan, page }, use, testInfo);
+    await runIsolatedWebTest({ context, e2eContainmentTimeoutMilliseconds, e2eFaultPlan, page }, use, testInfo);
   },
 });
 
 const webFixtureDependencies = {
   collectWebFailureArtifacts,
+  createE2eFixtureLifetime,
   createE2eRunRoot,
   createE2eWorkerPaths,
   installE2eBrowserNetworkBoundary,
@@ -76,7 +80,7 @@ const webFixtureDependencies = {
 };
 
 export async function runIsolatedWebTest(
-  { context, e2eFaultPlan, page }: IsolatedWebOptions & {
+  { context, e2eContainmentTimeoutMilliseconds, e2eFaultPlan, page }: IsolatedWebOptions & {
     context: BrowserContext;
     page: Page;
   },
@@ -85,10 +89,13 @@ export async function runIsolatedWebTest(
   dependencies = webFixtureDependencies,
 ): Promise<void> {
   const {
-    collectWebFailureArtifacts, createE2eRunRoot, createE2eWorkerPaths,
+    collectWebFailureArtifacts, createE2eFixtureLifetime, createE2eRunRoot, createE2eWorkerPaths,
     installE2eBrowserNetworkBoundary, requestFactory, removeE2eRunRoot, reserveLoopbackPort,
     startE2eBackendProcess, startE2eWebProcess, waitForLoopbackPortRelease,
   } = dependencies;
+  const lifetime = createE2eFixtureLifetime(
+    e2eContainmentTimeoutMilliseconds === undefined ? testInfo.timeout : e2eContainmentTimeoutMilliseconds,
+  );
   const scenarioId = readE2eScenarioId(testInfo.title);
   const runRoot = createE2eRunRoot();
   const paths = createE2eWorkerPaths(runRoot, scenarioId);
@@ -106,7 +113,7 @@ export async function runIsolatedWebTest(
     webPort = await reserveLoopbackPort();
     try {
       backend = await startE2eBackendProcess({
-        backendPort, faultPlan: e2eFaultPlan, paths, runRoot, scenarioId,
+        backendPort, faultPlan: e2eFaultPlan, lifetime, paths, runRoot, scenarioId,
       });
     } catch (error) {
       priorCleanupUnverified = !(error instanceof E2eBackendStartupFailure &&

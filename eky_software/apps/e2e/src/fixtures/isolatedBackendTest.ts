@@ -11,6 +11,10 @@ import { collectBackendFailureArtifacts } from '../environment/collectBackendFai
 import { createE2eRunRoot } from '../environment/createE2eRunRoot.js';
 import { createE2eWorkerPaths } from '../environment/createE2eWorkerPaths.js';
 import type { E2eWorkerPaths } from '../environment/e2eEnvironmentTypes.js';
+import {
+  createE2eFixtureLifetime,
+  type E2eFixtureLifetime,
+} from '../environment/e2eFixtureLifetime.js';
 import { reserveLoopbackPort } from '../environment/reserveLoopbackPort.js';
 import {
   E2eBackendStartupFailure,
@@ -25,6 +29,7 @@ export interface IsolatedBackendHarness {
   anonymousApi: APIRequestContext;
   api: APIRequestContext;
   backend: StartedE2eBackend;
+  readonly lifetime: E2eFixtureLifetime;
   paths: E2eWorkerPaths;
   restartBackend(): Promise<{
     api: APIRequestContext;
@@ -38,20 +43,23 @@ interface IsolatedBackendFixtures {
 }
 
 interface IsolatedBackendOptions {
+  e2eContainmentTimeoutMilliseconds: number | undefined;
   e2eFaultPlan: E2eFaultPlan;
 }
 
 export const test = base.extend<
   IsolatedBackendFixtures & IsolatedBackendOptions
 >({
+  e2eContainmentTimeoutMilliseconds: [undefined, { option: true }],
   e2eFaultPlan: [{ kind: 'none' }, { option: true }],
-  e2eBackend: async ({ e2eFaultPlan }, use, testInfo) => {
-    await runIsolatedBackendTest({ e2eFaultPlan }, use, testInfo);
+  e2eBackend: async ({ e2eContainmentTimeoutMilliseconds, e2eFaultPlan }, use, testInfo) => {
+    await runIsolatedBackendTest({ e2eContainmentTimeoutMilliseconds, e2eFaultPlan }, use, testInfo);
   },
 });
 
 const backendFixtureDependencies = {
   collectBackendFailureArtifacts,
+  createE2eFixtureLifetime,
   createE2eRunRoot,
   createE2eWorkerPaths,
   requestFactory,
@@ -62,16 +70,19 @@ const backendFixtureDependencies = {
 };
 
 export async function runIsolatedBackendTest(
-  { e2eFaultPlan }: IsolatedBackendOptions,
+  { e2eContainmentTimeoutMilliseconds, e2eFaultPlan }: IsolatedBackendOptions,
   use: (harness: IsolatedBackendHarness) => Promise<void>,
   testInfo: TestInfo,
   dependencies = backendFixtureDependencies,
 ): Promise<void> {
   const {
-    collectBackendFailureArtifacts, createE2eRunRoot, createE2eWorkerPaths,
+    collectBackendFailureArtifacts, createE2eFixtureLifetime, createE2eRunRoot, createE2eWorkerPaths,
     requestFactory, removeE2eRunRoot, reserveLoopbackPort, startE2eBackendProcess,
     waitForLoopbackPortRelease,
   } = dependencies;
+  const lifetime = createE2eFixtureLifetime(
+    e2eContainmentTimeoutMilliseconds === undefined ? testInfo.timeout : e2eContainmentTimeoutMilliseconds,
+  );
   const scenarioId = readE2eScenarioId(testInfo.title);
   const runRoot = createE2eRunRoot();
   const paths = createE2eWorkerPaths(runRoot, scenarioId);
@@ -89,7 +100,7 @@ export async function runIsolatedBackendTest(
     }
     try {
       return await startE2eBackendProcess({
-        backendPort, paths, runRoot, scenarioId,
+        backendPort, lifetime, paths, runRoot, scenarioId,
         ...(faultPlan === undefined ? {} : { faultPlan }),
       });
     } catch (error) {
@@ -117,6 +128,7 @@ export async function runIsolatedBackendTest(
     authenticatedApis.push(api);
     const harness = {
       anonymousApi,
+      lifetime,
       get api() {
         if (api === undefined) {
           throw new Error('E2E backend API is unavailable.');

@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
 
 import type { E2eFaultPlan } from '../../../backend/e2e/e2eBackendConfig.js';
 import { assertE2eSafetyBoundary } from './assertE2eSafetyBoundary.js';
@@ -12,14 +13,19 @@ import {
   E2E_BACKEND_STARTUP_SAFETY_TIMEOUT_MILLISECONDS,
 } from './e2eServiceStartupBudgets.js';
 import type { E2eWorkerPaths } from './e2eEnvironmentTypes.js';
+import type { E2eFixtureLifetime } from './e2eFixtureLifetime.js';
+import type { E2eBackendWorkload } from './e2eBackendWorkload.js';
+import type { ProcessOutput } from './boundedProcessOutput.js';
 import {
   observeChildProcessStartup,
   type E2eProcessStartupObservation,
 } from './e2eProcessStartupObservation.js';
 import {
   startManagedProcess,
-  type ManagedProcess,
 } from './startManagedProcess.js';
+import { OwnedWindowsBackendStartupFailure, startOwnedWindowsBackend } from './startOwnedWindowsBackend.js';
+import { beforeBackendOwnerDeadline } from './windowsBackendServiceControl.js';
+import { readProcessRssBytes } from '../stress/readProcessRssBytes.js';
 import { stopManagedProcessTree } from './stopManagedProcessTree.js';
 import { waitForHttpHealth } from './waitForHttpHealth.js';
 import { waitForLoopbackPortRelease } from './waitForLoopbackPortRelease.js';
@@ -27,7 +33,8 @@ import { writeE2eBackendConfig } from './writeE2eBackendConfig.js';
 
 export interface StartedE2eBackend {
   backendOrigin: string;
-  managedProcess: ManagedProcess;
+  managedProcess: ProcessOutput;
+  readonly workload: E2eBackendWorkload;
   sessionSecret: string;
   stop(): Promise<void>;
 }
@@ -66,6 +73,7 @@ const repositoryRoot = resolve(import.meta.dirname, '../../../..');
 export async function startE2eBackendProcess(input: {
   backendPort: number;
   faultPlan?: E2eFaultPlan;
+  readonly lifetime: E2eFixtureLifetime;
   paths: E2eWorkerPaths;
   runRoot: string;
   scenarioId: string;
@@ -94,10 +102,25 @@ export async function startE2eBackendProcess(input: {
     'apps/backend/e2e-dist/e2e/backendEntrypoint.js',
   );
   observe(newProgress('processSpawnRequested', 'started'));
-  let managedProcess: ManagedProcess;
+  const startupDeadline = performance.now() + E2E_BACKEND_STARTUP_SAFETY_TIMEOUT_MILLISECONDS;
+  let managedProcess: ProcessOutput;
   let startup: E2eProcessStartupObservation;
+  let workload: E2eBackendWorkload;
+  let stopProcessTree: () => Promise<void>;
   try {
-    managedProcess = startManagedProcess({
+    if (process.platform === 'win32') {
+      const owned = await startOwnedWindowsBackend({
+        repositoryRoot, runRoot: input.runRoot, runtimeConfigPath: input.paths.runtimeConfigPath,
+        lifetime: input.lifetime, startupDeadline, redactedValues: [config.backend.sessionSecret],
+      });
+      managedProcess = owned;
+      startup = owned.startup;
+      workload = owned.workload;
+      stopProcessTree = owned.stop;
+    } else {
+      // This is the existing, not-yet-migrated non-Windows path. It is not
+      // accepted as T3 whole-tree ownership evidence.
+      const direct = startManagedProcess({
       args: [entrypoint, '--config', input.paths.runtimeConfigPath],
       command: process.execPath,
       cwd: repositoryRoot,
@@ -112,9 +135,38 @@ export async function startE2eBackendProcess(input: {
       },
       inheritEnvironment: false,
       redactedValues: [config.backend.sessionSecret],
-    });
-    startup = observeChildProcessStartup(managedProcess.child);
-  } catch {
+      });
+      managedProcess = direct;
+      startup = observeChildProcessStartup(direct.child);
+      stopProcessTree = () => stopManagedProcessTree(direct.child);
+      const launchId = randomUUID();
+      workload = Object.freeze({
+        get instanceId() {
+          if (!startup.readState().spawnObserved || direct.child.pid === undefined) {
+            throw new Error('E2E_BACKEND_WORKLOAD_UNAVAILABLE');
+          }
+          return launchId;
+        },
+        async readState() {
+          const state = startup.readState();
+          return state.terminal === 'exited' ? 'exited'
+            : state.spawnObserved && state.terminal === undefined ? 'running' : 'unavailable';
+        },
+        async readRssBytes() {
+          if (startup.readState().terminal !== undefined || direct.child.pid === undefined) {
+            throw new Error('E2E_BACKEND_RSS_UNAVAILABLE');
+          }
+          return readProcessRssBytes(direct.child.pid);
+        },
+      });
+    }
+  } catch (error) {
+    if (error instanceof OwnedWindowsBackendStartupFailure) {
+      return reportOwnedBackendStartupFailure({
+        error, backendOrigin, observe,
+        releasePort: () => waitForLoopbackPortRelease(input.backendPort),
+      });
+    }
     observe(
       newProgress(
         'processSpawned',
@@ -129,29 +181,72 @@ export async function startE2eBackendProcess(input: {
     backendOrigin,
     managedProcess: { ...managedProcess, startup },
     observe,
-    waitForHealth: (signal) =>
-      waitForHttpHealth(`${backendOrigin}/health`, {
+    waitForHealth: async (signal) => {
+      const remaining = Math.floor(startupDeadline - performance.now());
+      if (remaining <= 0) throw new Error('E2E_BACKEND_HEALTH_TIMEOUT');
+      await waitForHttpHealth(`${backendOrigin}/health`, {
         signal,
-        timeoutMilliseconds: E2E_BACKEND_STARTUP_SAFETY_TIMEOUT_MILLISECONDS,
-      }),
-    stopProcessTree: () => stopManagedProcessTree(managedProcess.child),
+        timeoutMilliseconds: remaining,
+      });
+      const state = await beforeBackendOwnerDeadline(workload.readState(), startupDeadline);
+      if (state !== 'running') throw new Error('E2E_BACKEND_WORKLOAD_OBSERVATION_LOST');
+    },
+    stopProcessTree,
     releasePort: () => waitForLoopbackPortRelease(input.backendPort),
   });
 
+  let stopResult: Promise<void> | undefined;
   return {
     backendOrigin,
     managedProcess,
+    workload,
     sessionSecret: config.backend.sessionSecret,
-    stop: async () => {
-      await stopManagedProcessTree(managedProcess.child);
-      await waitForLoopbackPortRelease(input.backendPort);
+    stop: () => {
+      stopResult ??= (async () => {
+        await stopProcessTree();
+        await waitForLoopbackPortRelease(input.backendPort);
+      })();
+      return stopResult;
     },
   };
 }
 
+export async function reportOwnedBackendStartupFailure(input: {
+  readonly error: OwnedWindowsBackendStartupFailure;
+  readonly backendOrigin: string;
+  readonly observe: ReturnType<typeof createE2eBackendStartupReporter>;
+  releasePort(): Promise<void>;
+}): Promise<never> {
+  const { error } = input;
+  const output = readStartupOutput(error);
+  const codes = {
+    preparationFailed: 'E2E_BACKEND_PROCESS_SPAWN_FAILED',
+    ownerSpawnFailed: 'E2E_BACKEND_PROCESS_SPAWN_FAILED',
+    launchFailed: 'E2E_BACKEND_PROCESS_SPAWN_FAILED',
+    startupDeadlineExceeded: 'E2E_BACKEND_HEALTH_TIMEOUT',
+    observationLost: 'E2E_BACKEND_WORKLOAD_OBSERVATION_LOST',
+    workloadExited: 'E2E_BACKEND_CHILD_EXITED_BEFORE_HEALTH',
+  } as const;
+  const errorCode = resolveStartupErrorCode(new Error(codes[error.evidence.startupFailure]), output);
+  input.observe(newProgress('processSpawned', error.evidence.spawnObserved ? 'completed' : 'failed',
+    error.evidence.spawnObserved ? undefined : 'E2E_BACKEND_PROCESS_SPAWN_FAILED'));
+  const cleanup = await cleanupFailedStartup({
+    observe: input.observe, releasePort: input.releasePort,
+    async stopProcessTree() {
+      // The owner already attempted bounded cleanup. Never start a fresh budget.
+      if (error.evidence.processTree !== 'stopped') throw new Error('E2E_BACKEND_PROCESS_TREE_CLEANUP_FAILED');
+    },
+  });
+  throw new E2eBackendStartupFailure({
+    errorCode, spawnObserved: error.evidence.spawnObserved,
+    exitedBeforeCleanup: error.evidence.exitedBeforeCleanup,
+    listeningNotice: readListeningNotice(output, input.backendOrigin), cleanup,
+  });
+}
+
 export async function waitForE2eBackendStartup(input: {
   readonly backendOrigin: string;
-  readonly managedProcess: Pick<ManagedProcess, 'readStdout' | 'readStderr'> & {
+  readonly managedProcess: ProcessOutput & {
     readonly startup: E2eProcessStartupObservation;
   };
   readonly observe: ReturnType<typeof createE2eBackendStartupReporter>;
@@ -183,11 +278,7 @@ export async function waitForE2eBackendStartup(input: {
     const state = startup.readState();
     const spawnedBeforeCleanup = state.spawnObserved;
     const exitedBeforeCleanup = state.terminal === 'exited';
-    const listeningNotice = output === undefined
-      ? 'unavailable'
-      : output.stdout.split(/\r?\n/).includes(`E2E backend listening on ${input.backendOrigin}`)
-        ? 'observed'
-        : 'notObserved';
+    const listeningNotice = readListeningNotice(output, input.backendOrigin);
     const cleanup = await cleanupFailedStartup(input);
     throw new E2eBackendStartupFailure(Object.freeze({
       errorCode,
@@ -214,15 +305,21 @@ async function cleanupFailedStartup(input: {
     await input.stopProcessTree();
     processTree = 'stopped';
     input.observe(newProgress('processTreeStopped', 'completed'));
-  } catch {
-    input.observe(
+  } catch (error) {
+    if (error instanceof OwnedWindowsBackendStartupFailure && error.evidence.processTree === 'stopped') {
+      // Cleanup proof does not turn the earlier operational failure into success.
+      processTree = 'stopped';
+      input.observe(newProgress('processTreeStopped', 'completed'));
+    } else {
+      input.observe(
       newProgress(
         'processTreeStopped',
         'failed',
         'E2E_BACKEND_PROCESS_TREE_CLEANUP_FAILED',
       ),
     );
-    cleanupErrorCode = 'E2E_BACKEND_PROCESS_TREE_CLEANUP_FAILED';
+      cleanupErrorCode = 'E2E_BACKEND_PROCESS_TREE_CLEANUP_FAILED';
+    }
   }
   input.observe(newProgress('portReleaseStarted', 'started'));
   try {
@@ -249,12 +346,20 @@ async function cleanupFailedStartup(input: {
   return Object.freeze({ processTree, port });
 }
 
-function readStartupOutput(managedProcess: Pick<ManagedProcess, 'readStdout' | 'readStderr'>) {
+function readStartupOutput(managedProcess: ProcessOutput) {
   try {
     return { stdout: managedProcess.readStdout(), stderr: managedProcess.readStderr() };
   } catch {
     return undefined;
   }
+}
+
+function readListeningNotice(
+  output: ReturnType<typeof readStartupOutput>, backendOrigin: string,
+): E2eBackendStartupFailureEvidence['listeningNotice'] {
+  return output === undefined ? 'unavailable'
+    : output.stdout.split(/\r?\n/).includes(`E2E backend listening on ${backendOrigin}`)
+      ? 'observed' : 'notObserved';
 }
 
 function resolveStartupErrorCode(

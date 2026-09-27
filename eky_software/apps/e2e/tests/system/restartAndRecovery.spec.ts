@@ -36,7 +36,7 @@ test('SYS-RESTART-001 @critical @recovery preserves data and audit while rotatin
 
   const restarted = await e2eBackend.restartBackend();
   expect(restarted.backend.sessionSecret).not.toBe(oldSessionSecret);
-  expect(await isManagedProcessExited(oldBackend)).toBe(true);
+  expect(await oldBackend.workload.readState()).toBe('exited');
 
   const oldSessionResponse = await oldApi.get('/customers');
   expect([401, 403]).toContain(oldSessionResponse.status());
@@ -268,13 +268,13 @@ test('RUNTIME-EXIT-001 @critical @recovery stops the managed backend and reuses 
   e2eBackend,
 }) => {
   const firstBackend = e2eBackend.backend;
-  const firstPid = firstBackend.managedProcess.child.pid;
+  const firstInstanceId = firstBackend.workload.instanceId;
   const backendPort = Number(new URL(firstBackend.backendOrigin).port);
 
   const restarted = await e2eBackend.restartBackend();
 
-  expect(await isManagedProcessExited(firstBackend)).toBe(true);
-  expect(restarted.backend.managedProcess.child.pid).not.toBe(firstPid);
+  expect(await firstBackend.workload.readState()).toBe('exited');
+  expect(restarted.backend.workload.instanceId).not.toBe(firstInstanceId);
   expect((await restarted.api.get('/health')).status()).toBe(200);
   expect(firstBackend.managedProcess.readStdout()).not.toContain(
     firstBackend.sessionSecret,
@@ -285,7 +285,7 @@ test('RUNTIME-EXIT-001 @critical @recovery stops the managed backend and reuses 
 
   await restarted.backend.stop();
   await waitForLoopbackPortRelease(backendPort);
-  expect(await isManagedProcessExited(restarted.backend)).toBe(true);
+  expect(await restarted.backend.workload.readState()).toBe('exited');
 });
 
 async function readRuntimeSummary(api: {
@@ -294,18 +294,4 @@ async function readRuntimeSummary(api: {
   const response = await api.get('/diagnostics/summary');
   expect(response.status()).toBe(200);
   return response.json() as Promise<{ runtimeInstanceId: string }>;
-}
-
-async function isManagedProcessExited(backend: {
-  managedProcess: {
-    child: {
-      exitCode: number | null;
-      signalCode: NodeJS.Signals | null;
-    };
-  };
-}): Promise<boolean> {
-  return (
-    backend.managedProcess.child.exitCode !== null ||
-    backend.managedProcess.child.signalCode !== null
-  );
 }

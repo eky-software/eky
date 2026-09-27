@@ -3,7 +3,7 @@ import {
   readFileSync,
   realpathSync,
 } from 'node:fs';
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, parse, relative, resolve, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 
 export type E2eSmtpOutcome =
@@ -74,6 +74,7 @@ export function readE2eBackendConfig(
   if (!isAbsolute(configPath)) {
     throw new Error('E2E backend config path must be absolute.');
   }
+  assertNoSymbolicLinkSegments(configPath);
   const configStats = lstatSync(configPath);
   if (!configStats.isFile() || configStats.isSymbolicLink()) {
     throw new Error('E2E backend config must be a regular file.');
@@ -273,11 +274,31 @@ function assertRuntimePaths(
 ): void {
   const runtimeRoot = requireRealDirectory(config.runtimeRoot);
   const electronRuntimeRoot = environment.EKY_ELECTRON_E2E_RUN_ROOT;
+  const hostTempRoot = environment.EKY_E2E_OS_TEMP_ROOT;
+  if (hostTempRoot !== undefined && electronRuntimeRoot !== undefined) {
+    throw new Error('E2E runtime root policies conflict.');
+  }
   if (electronRuntimeRoot === undefined) {
-    const allowedTempRoot = realpathSync.native(
-      resolve(tmpdir(), 'eky-e2e'),
+    const allowedTempRoot = requireRealDirectory(
+      resolve(hostTempRoot === undefined ? tmpdir()
+        : requireRealDirectory(requireAbsolutePath(hostTempRoot, 'host temp root')), 'eky-e2e'),
     );
     assertDescendant(runtimeRoot, allowedTempRoot, false);
+    if (hostTempRoot !== undefined) {
+      // The native owner isolates TEMP/TMP as well as application data. Its
+      // original OS temp anchor must not authorize a sibling test's temp files.
+      const runDirectory = relative(allowedTempRoot, runtimeRoot).split(sep)[0];
+      if (runDirectory === undefined || !runDirectory.startsWith('run-')) {
+        throw new Error('E2E isolated run root is invalid.');
+      }
+      const runRoot = resolve(allowedTempRoot, runDirectory);
+      for (const key of ['TEMP', 'TMP']) {
+        const path = requireAbsolutePath(environment[key], 'isolated temp');
+        assertDescendant(path, runRoot, false);
+        const temp = requireRealDirectory(path);
+        assertDescendant(temp, runRoot, false);
+      }
+    }
   } else if (
     !isAbsolute(electronRuntimeRoot) ||
     requireRealDirectory(electronRuntimeRoot) !== runtimeRoot
@@ -295,13 +316,14 @@ function assertRuntimePaths(
     config.paths.supportBundlesRoot,
     config.paths.tempRoot,
   ]) {
+    assertDescendant(path, runtimeRoot, false);
     const realPath = requireRealDirectory(path);
     assertDescendant(realPath, runtimeRoot, false);
-    assertNoSymbolicLinkSegments(runtimeRoot, realPath);
   }
 }
 
 function requireRealDirectory(path: string): string {
+  assertNoSymbolicLinkSegments(path);
   const stats = lstatSync(path);
   if (!stats.isDirectory() || stats.isSymbolicLink()) {
     throw new Error('E2E runtime path must be a regular directory.');
@@ -318,6 +340,7 @@ function assertDescendant(
   if (
     (allowSame && relativePath === '') ||
     (relativePath !== '' &&
+      !isAbsolute(relativePath) &&
       relativePath !== '..' &&
       !relativePath.startsWith(`..${sep}`))
   ) {
@@ -326,10 +349,12 @@ function assertDescendant(
   throw new Error('E2E runtime path escapes its allowed root.');
 }
 
-function assertNoSymbolicLinkSegments(root: string, candidate: string): void {
-  let current = root;
-  for (const segment of relative(root, candidate).split(sep).filter(Boolean)) {
-    current = resolve(current, segment);
+function assertNoSymbolicLinkSegments(path: string): void {
+  let current = parse(path).root;
+  const segments = path.slice(current.length).split(process.platform === 'win32' ? /[\\/]/u : '/');
+  // Keep the original segments: normalizing or resolving first can hide a junction.
+  for (const segment of segments.filter(Boolean)) {
+    current += `${current.endsWith(sep) ? '' : sep}${segment}`;
     if (lstatSync(current).isSymbolicLink()) {
       throw new Error('E2E runtime path must not contain symbolic links.');
     }

@@ -17,10 +17,78 @@ import {
 } from '../../src/environment/e2eProcessStartupObservation.js';
 import { runBoundedWindowsTaskkill } from '../../src/environment/runBoundedWindowsTaskkill.js';
 import type { ManagedChildProcess } from '../../src/environment/startManagedProcess.js';
-import { waitForE2eBackendStartup } from '../../src/environment/startE2eBackendProcess.js';
+import { reportOwnedBackendStartupFailure, waitForE2eBackendStartup } from '../../src/environment/startE2eBackendProcess.js';
+import { OwnedWindowsBackendStartupFailure } from '../../src/environment/startOwnedWindowsBackend.js';
 import { waitForHttpHealth } from '../../src/environment/waitForHttpHealth.js';
 
 test.describe('managed E2E backend startup lifecycle', () => {
+  for (const [failure, code] of [
+    ['preparationFailed', 'E2E_BACKEND_PROCESS_SPAWN_FAILED'],
+    ['ownerSpawnFailed', 'E2E_BACKEND_PROCESS_SPAWN_FAILED'],
+    ['launchFailed', 'E2E_BACKEND_PROCESS_SPAWN_FAILED'],
+    ['startupDeadlineExceeded', 'E2E_BACKEND_HEALTH_TIMEOUT'],
+    ['observationLost', 'E2E_BACKEND_WORKLOAD_OBSERVATION_LOST'],
+    ['workloadExited', 'E2E_BACKEND_CHILD_EXITED_BEFORE_HEALTH'],
+  ] as const) {
+    test(`retains owner failure and independent cleanup proof: ${failure}`, async () => {
+      let released = 0;
+      const progress: E2eBackendStartupProgress[] = [];
+      const error = new OwnedWindowsBackendStartupFailure({
+        startupFailure: failure, processTree: 'stopped',
+        spawnObserved: true, exitedBeforeCleanup: failure === 'workloadExited',
+      }, { readStdout: () => 'E2E backend listening on http://127.0.0.1:12345\n', readStderr: () => '' });
+      await expect(reportOwnedBackendStartupFailure({
+        error, backendOrigin: 'http://127.0.0.1:12345', observe: event => progress.push(event),
+        async releasePort() { released++; },
+      })).rejects.toMatchObject({
+        message: code, evidence: { errorCode: code, listeningNotice: 'observed',
+          spawnObserved: true, exitedBeforeCleanup: failure === 'workloadExited',
+          cleanup: { processTree: 'stopped', port: 'released' } },
+      });
+      expect(released).toBe(1);
+      expect(progress.at(-1)).toMatchObject({ phase: 'cleanupCompleted', status: 'completed' });
+    });
+  }
+
+  test('retains unverified owner cleanup and port failure without exposing raw output', async () => {
+    const error = new OwnedWindowsBackendStartupFailure({
+      startupFailure: 'workloadExited', processTree: 'unverified',
+      spawnObserved: true, exitedBeforeCleanup: true,
+    }, { readStdout: () => '', readStderr: () => 'EADDRINUSE synthetic private detail' });
+    const result = reportOwnedBackendStartupFailure({
+      error, backendOrigin: 'http://127.0.0.1:12345', observe() {},
+      async releasePort() { throw new Error('private port detail'); },
+    });
+    await expect(result).rejects.toMatchObject({
+      message: 'E2E_BACKEND_LOOPBACK_ADDRESS_IN_USE',
+      evidence: { cleanup: { processTree: 'unverified', port: 'unverified' } },
+    });
+    const failure = await result.catch((caught: unknown) => caught);
+    expect(JSON.stringify(failure)).not.toContain('private');
+  });
+
+  test('health failure retains cleanup proof even when owner stop reports an earlier operational failure', async () => {
+    const child = createFakeChild();
+    child.emit('spawn');
+    await expect(waitForE2eBackendStartup({
+      backendOrigin: 'http://127.0.0.1:12345',
+      managedProcess: { startup: child.startup, readStdout: () => '', readStderr: () => '' },
+      observe() {},
+      async waitForHealth() { throw new Error('E2E_BACKEND_WORKLOAD_OBSERVATION_LOST'); },
+      async stopProcessTree() {
+        throw new OwnedWindowsBackendStartupFailure({
+          startupFailure: 'observationLost', processTree: 'stopped',
+          spawnObserved: true, exitedBeforeCleanup: false,
+        }, { readStdout: () => '', readStderr: () => '' });
+      },
+      async releasePort() {},
+    })).rejects.toMatchObject({
+      message: 'E2E_BACKEND_WORKLOAD_OBSERVATION_LOST',
+      evidence: { cleanup: { processTree: 'stopped', port: 'released' } },
+    });
+    child.emit('close', 0, null);
+  });
+
   test('observes actual spawn after handle return and removes the listener after health', async () => {
     const child = createFakeChild();
     const progress: E2eBackendStartupProgress[] = [];
@@ -253,6 +321,19 @@ test.describe('managed E2E backend startup lifecycle', () => {
       observe: () => {},
       waitForHealth: async () => {},
     })).rejects.toThrow('E2E_BACKEND_WORKLOAD_OBSERVATION_LOST');
+    child.emit('close', 0, null);
+  });
+
+  test('a failed fresh workload check stays distinct from a health timeout', async () => {
+    const child = createFakeChild();
+    child.emit('spawn');
+    const progress: E2eBackendStartupProgress[] = [];
+    await expect(waitForManagedBackendHealth({
+      startup: child.startup,
+      observe: event => progress.push(event),
+      async waitForHealth() { throw new Error('E2E_BACKEND_WORKLOAD_OBSERVATION_LOST'); },
+    })).rejects.toThrow('E2E_BACKEND_WORKLOAD_OBSERVATION_LOST');
+    expect(progress.at(-1)?.phase).toBe('workloadObservationLost');
     child.emit('close', 0, null);
   });
 

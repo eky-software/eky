@@ -11,6 +11,8 @@ internal static class Program
         AdapterConfiguration? bridgeConfig = null;
         try
         {
+            if (args.SequenceEqual(["--backend-self-test"])) return await BackendServiceSelfTest.RunAsync();
+            if (args.Length == 2 && args[0] == "--backend-owner") return await BackendServiceOwner.RunConfiguredAsync(args[1]);
             if (args.SequenceEqual(["--self-test"])) return await AdapterSelfTest.RunAsync();
             if (args.Length == 2 && args[0] == "--owner")
             {

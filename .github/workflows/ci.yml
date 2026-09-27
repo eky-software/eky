@@ -223,6 +223,11 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
+      - name: Set up existing Windows test owner SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: 10.0.302
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
