@@ -2568,6 +2568,151 @@ Tämä sulkee rajatun EXE-patchin normaalin CI-portin. Se ei ole pääfixturen
 siirron, Linuxin prosessiomistajuuden, koko T3:n tai PR/mainin hyväksyntä.
 Aiemmat satunnaiset timeoutit ja ensimmäiset hylkäykset säilyvät erillisinä.
 
+###### Electronin varhaisen prosessihavainnon päätösehdotus
+
+**2026-09-27: valmisteltu vaihtoehto, ei hyväksytty fixturen käyttöönotto.**
+Suoran EXE-patchin hyväksyntä ei yksin ratkaise ennen bridge-rekisteröintiä
+tapahtuvaa virhettä. Vaihtoehto on rajattu havaitsija Noden sisäänrakennetulla
+`node:diagnostics_channel`-rajapinnalla. Uutta riippuvuutta, Playwright-patchia,
+globaalia `spawn`-korvausta tai uutta prosessien omistajaa ei ehdoteta.
+
+Node luokittelee Process-kanavat kokeellisiksi. Projektin `.node-version`-
+lukituksen lähteessä `child_process` julkaistaan jo konstruktorissa ennen
+käynnistysmetatietoja. Sopivampi havaintokohta on
+`tracing:child_process.spawn:start`: se tarjoaa todellisen `ChildProcess`-
+olion ja käynnistysasetukset ennen käyttöjärjestelmän luontikutsua.
+`spawn:end`/`spawn:error` eivät vielä takaa asetettua PID:tä; onnistunut
+`spawn`-tapahtuma ja sulkeutumisen `close` ovat erillisiä havaintoja.
+Tämä järjestys on version lähdekoodisopimus, ei pelkän PID-puutteen päätelmä.
+
+Rajattu toteutettavuustarkistus läpäisi aidon lyhytikäisen Node-lapsen
+olioidentiteetin ja sulun sekä julkisen Playwright-launchin puuttuvan
+EXE:n virhehaaran. Jälkimmäisessä epäonnistuneen spawnin olio saatiin
+talteen viimeistään launch-hylkäyksen käsittelijään mennessä ja sen `close`
+havaittiin erikseen. Tämä ei ole luodun native-prosessin kahvatodiste.
+`AsyncLocalStorage`-konteksti säilyi tarkistetussa in-process-kutsuketjussa;
+sen ulkopuolinen sisarus jätettiin havainnon ulkopuolelle. Rinnakkaisia
+launch-konteksteja, native-bridgeä, GO-porttia tai owner-lossia ei tällä
+todennettu. Normaali fixture ja sen hyväksyntätila eivät muuttuneet.
+
+Ehdotettu rajattu toteutussopimus:
+
+1. Havaitsija aseistetaan ennen yhtä launch-kutsua ja sidotaan sen
+   kertakäyttöiseen kontekstiin, generaatioon, nonceen, validoituun EXE:hen
+   ja työkansioon. Kahva ja error/exit/close-havainnot otetaan talteen ennen
+   metadatan tulkintaa; callback ei heitä eikä muuta käynnistysasetuksia.
+   Pelkkä polku, PID, ajoitus tai prosessin nimi ei riitä sidonnaksi.
+2. Rekisteröinti ja työkuorman salliva GO erotetaan nykyisen native-omistajan
+   sisällä. Omistaja ei luo Electronia ennen saman bridgen autentikoitua
+   rekisteröintiä ja kutsujan GO:ta. Rekisteröinnin pitää sitoa kaikki
+   bridge-kanavat havaittuun instanssiin; nykyinen SID-/nonce-tarkistus ei
+   yksin osoita tätä. Alla rajattu pipe-peer-sidonta tarvitsee omistajan
+   hyväksynnän ennen native-integraation toteutusta.
+3. Puuttuva, ristiriitainen, monistunut tai myöhäinen havainto estää GO:n.
+   Stop, peruutus ja havaittu bridgen sulkeutuminen sulkevat käynnistysluvan
+   pysyvästi. Node-/Playwright-päivitys vaatii havaintosopimuksen uuden
+   todennuksen; hyväksymätön versio torjutaan ennen launchia. Kanavan
+   puuttuminen ei muutu vanhan cleanupin fallbackiksi.
+4. Ennen GO:ta epäonnistunut ajo tarvitsee havaitun bridgen sulun sekä
+   saman omistajan terminal-kuittauksen päättyneestä luontivaiheesta ja
+   työkuorman puuttumisesta. GO:n jälkeen nykyiset Job-, root-, stdio- ja
+   terminal-ehdot säilyvät. Node-havaitsija ei omista tai pysäytä työkuormaa.
+   Launchin hylkäys, pipe-EOF tai aiottu exit-koodi eivät yksin riitä.
+5. Ensimmäinen launch-virhe, cleanup ja havaintovirhe pysyvät erillään.
+   Epävarmuus estää restartin ja juuren poiston. Alkuperäiset absoluuttiset
+   työ- ja siivousmääräajat eivät ala uudelleen rekisteröinnistä tai GO:sta.
+   Tilaaja puretaan vasta launchin suljetun tilan jälkeen; elinkaaren
+   kuuntelijoita ei poisteta ennen vaadittua sulkeutumishavaintoa.
+6. Havaintodata, argumentit, ympäristö, ohjausosoitteet ja raakavirheet
+   eivät kuulu julkiseen raporttiin. Nykyinen turvallinen raportti ja
+   alkuperäisen virheen julkaisematon lukuketju säilyvät. Ei muutoksia
+   tuotantoon, Activityyn, Diagnosticsiin tai business-varmuuskopioihin.
+
+**Sidonnan täsmällinen päätösraja:** JavaScriptin `ChildProcess` ei anna
+native-omistajalle käyttöjärjestelmän luontikutsun palauttamaa Windows-
+kahvaa. Sitä ei väitetä sellaiseksi. Ehdotettu bridge-sidonta on sen sijaan
+autentikoidusta pipe-peeristä hankittu havaintokahva. Tämä on erillinen
+testiharnessin sopimus; Electron-työkuorman luontikahva ja ennen resumea
+varmistettu Job-omistajuus säilyvät muuttumattomina.
+
+- Native-omistaja hyväksyy yhden yhteyden kuhunkin oman generaationsa
+  control/output/error-pipeen. Kaikkien kolmen `GetNamedPipeClientProcessId`
+  -arvon pitää täsmätä havaitsijan onnistuneesta spawnista saamaan bridgen
+  PID:hen. Havaittu error/exit/close tai ristiriitainen ehdokas estää GO:n.
+- Vain tähän autentikoituun pipe-ehdokkaaseen saa hankkia yhden
+  `OpenProcess`-kahvan oikeuksin `SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION`.
+  Kahva ei periydy eikä anna terminate-, kirjoitus- tai duplikointioikeutta.
+  Ei prosessilistausta, nimi-/polkuhakua, mielivaltaista PID-parametria tai
+  epäonnistuneen hankinnan korvaamista uuden PID-instanssin kahvalla.
+- Saman säilytetyn kahvan PID, luontiaika ja elossaolo tarkistetaan.
+  Vasta tämän hankinnan jälkeen omistaja lähettää tuoreet, erilliset
+  kertakäyttöiset haasteet control/output/error-kanaviin. Output/error-
+  kanavien ensimmäiset rajatut kehykset nimeävät kiinteän roolinsa; bridge
+  validoi oikean roolin ennen datan välitystä ja palauttaa haasteet omissa
+  nimetyissä kentissään control-vastauksessa. Vaihdettuja rooleja ei oikaista
+  eikä näitä kehyksiä välitetä Playwrightin stdout/stderr-kanaviin.
+  Vastauksen generaation ja launch-noncen pitää täsmätä, jokaisen haasteen
+  vastata oman kanavansa arvoa sekä bridgen ilmoittaman oman PID:n ja
+  luontiajan täsmätä hankitusta kahvasta luettuun identiteettiin.
+  Pipejen peerit ja saman kahvan elossaolo tarkistetaan uudelleen ennen
+  rekisteröinnin hyväksyntää. Bridgen tulee ennen GO:ta olla lapsiton eikä
+  se saa siirtää pipe-kahvoja. Jos vanha peer kuolee ja PID käytetään
+  uudelleen, vanhan kanavan uusi haaste ei saa hyväksyä korvaavaa prosessia.
+- Kutsujan GO sidotaan täsmälliseen hyväksyttyyn rekisteröintiin ja
+  käsitellään sarjallisesti stopin kanssa. Omistaja tarkistaa säilytetyn
+  peer-kahvan ja käynnistysluvan ennen luontia sekä uudelleen ennen resumea.
+  Fyysinen exit voi silti tapahtua viimeisen tarkistuksen jälkeen: tämä ei
+  ole atominen elossaolotakuu. Tällainen in-flight-luonti kuuluu jo Jobiin,
+  menettää jatkamisoikeuden ja kulkee nykyisen varmennetun tree-stopin kautta.
+  Tulos on työkuorman virhe ja erillinen cleanup, ei onnistunut käynnistys.
+- Havaitsijan ja native-omistajan alkuperäiset sulkeutumisehdot vaaditaan
+  edelleen. Säilytetty peer-kahva ei korvaa Playwrightin streamien sulkua,
+  eikä Node-havaitsija korvaa native-omistajan työkuormatodistetta.
+  Puuttuvan EXE:n failed-spawn-olio ja jo luodun bridgen kato ovat eri tiloja.
+
+Tämä rajaus koskee luotetun testiharnessin instanssien erottelua, ei
+vihamielisen saman Windows-käyttäjän prosessin turvallisuuseristystä.
+Mekanismin täytyy hylätä vaihdetut pipe-peerit, toistettu rekisteröinti,
+vaihdetut output/error-roolit, vanha haaste, luontiaikaristiriita,
+kahvan hankinnan epäonnistuminen ja
+bridge-exit kaikissa GO/luonti/resume-rajoissa. Menettely on tässä vasta
+toteutusehdotus, ei lähdekatselmuksella saavutettu prosessi-identiteettitodiste.
+
+Ennen tavallisen fixturen siirtoa vaaditaan katselmoidut sopimustestit
+puuttuvalle/monistetulle/myöhäiselle havainnolle, callback-virheelle,
+kahdelle rinnakkaiselle launch-kontekstille, stop/GO-kilpailulle sekä
+versio- ja instanssiristiriidalle. Oikea Windows-koe kattaa bridgen kadon
+ennen yhteyttä ja rekisteröinnin jälkeen ennen GO:ta, normaalin Page/API-
+polun, launch-/connect-/window-virheet, relaunchin ja toisen instanssin.
+Caller-loss ja native-owner-loss vaativat itsenäisen näyttönsä: kutsujan
+mukana kuoleva havaitsija ei ole niiden siivoustodiste. Nykyiset neljä
+adapterikoetta, suorat Electron-kuluttajat, T1/T2 ja normaali CI säilyvät.
+Koko T3:n [valmistumisportti](#t3n-lopullinen-hyväksyntänäyttö) ei pienene.
+
+Nykyisen kuluttajan muutosraja on pieni: havaitsija kuuluu
+`apps/e2e/src/environment`-alueelle ja native-protokolla nykyiseen palvelu-
+omistajaan. `isolatedElectronTest.ts` yhdistää nämä launch-/stop-polkuun;
+`launchElectronRuntime.ts` säilyttää Page-/firstWindow-sopimuksen.
+`ElectronApplication.process()` olisi bridgen, ei native-omistajan eikä
+Electron-työkuorman kahva. Sitä ei saa käyttää työkuorman tila-, RSS- tai
+puutodisteena. Moduulitestit käyttävät edelleen nykyistä fixture-rajapintaa.
+Korvattu Windows-cleanup poistetaan vasta vastaavan kattavuuden jälkeen;
+Linuxin vielä siirtämätöntä kuluttajaa ei samalla muuteta tai julisteta valmiiksi.
+
+Omistajalta tarvitaan päätös kokeellisen Node-havainnon ja rajatun
+rekisteröinti/GO-sopimuksen sekä yllä nimetyn read-only-pipe-peer-hankinnan
+käyttöönotosta ennen toteutusta. Hyväksyntää ei pyydetä väittämällä, että
+bridgellä olisi luontihetkestä säilytetty native-kahva. Muut T3:n
+avoimet valinnat eivät ratkea tällä päätöksellä. Hylätyn vaihtoehdon jälkeen
+nykyinen cleanup-epävarmuus säilytetään, ei piiloteta kirjaston lisäpatchilla.
+
+Lähteet: [Noden Process-kanavien sopimus](https://nodejs.org/docs/latest-v24.x/api/diagnostics_channel.html#process)
+ja [projektin lukituksen spawn-toteutus](https://github.com/nodejs/node/blob/v24.19.0/lib/internal/child_process.js).
+Windowsin sidontarajat perustuvat [pipe-peerin PID-kyselyyn](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getnamedpipeclientprocessid)
+ja [prosessikahvan ja PID:n eroon](https://learn.microsoft.com/en-us/windows/win32/procthread/process-handles-and-identifiers).
+In-process-kontekstin lähde on tarkistettu asennettu Playwright-bundle;
+ulkoinen dokumentaatio ei korvaa saman version kokeita.
+
 Rajapintalähteet: [Electron launch](https://playwright.dev/docs/api/class-electron#electron-launch)
 ja [Reporter](https://playwright.dev/docs/api/class-reporter). Lukittu
 lähdekoodi omistaa version tarkan käyttäytymisen; verkkodokumentaatio ei
