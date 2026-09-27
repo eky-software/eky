@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace Eky.ProcessOwnershipAdapter;
 
-internal enum ServiceProfile { Backend, Vite, Electron }
+internal enum ServiceProfile { Backend, Vite, Electron, ElectronBridge }
 
 // Closed launch profiles share the existing owner, control, state and deadlines.
 internal sealed class ServiceConfiguration
@@ -16,12 +16,15 @@ internal sealed class ServiceConfiguration
     private ServiceConfiguration(ViteServiceConfiguration value, string session) { vite = value; runtimeSession = session; }
     private ServiceConfiguration(ElectronServiceConfiguration value) { electron = value; }
 
-    internal ServiceProfile Profile => electron is not null ? ServiceProfile.Electron : vite is not null ? ServiceProfile.Vite : ServiceProfile.Backend;
+    internal ServiceProfile Profile => electron?.Profile ?? (vite is not null ? ServiceProfile.Vite : ServiceProfile.Backend);
+    internal bool IsElectronBridge => Profile == ServiceProfile.ElectronBridge;
+    internal ElectronServiceConfiguration ElectronConfiguration => electron ?? throw new AdapterFailure("configurationInvalid");
     internal static string Protocol(ServiceProfile profile) => profile switch
     {
         ServiceProfile.Backend => BackendServiceProtocol.Name,
         ServiceProfile.Vite => ViteServiceConfiguration.Protocol,
         ServiceProfile.Electron => ElectronServiceConfiguration.Protocol,
+        ServiceProfile.ElectronBridge => ElectronBridgeServiceProtocol.Name,
         _ => throw new AdapterFailure("protocolInvalid"),
     };
     internal string Generation => electron?.Generation ?? vite?.Generation ?? backend!.Generation;
@@ -39,6 +42,7 @@ internal sealed class ServiceConfiguration
         ServiceProfile.Vite => new(ViteServiceConfiguration.Read(path),
             ViteServiceConfiguration.RequireRuntimeSession(Environment.GetEnvironmentVariable(ViteServiceConfiguration.SessionEnvironment))),
         ServiceProfile.Electron => new(ElectronServiceConfiguration.Read(path)),
+        ServiceProfile.ElectronBridge => new(ElectronServiceConfiguration.Read(path, profile)),
         _ => throw new AdapterFailure("configurationInvalid"),
     };
 

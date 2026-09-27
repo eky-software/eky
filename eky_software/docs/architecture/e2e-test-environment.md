@@ -2726,12 +2726,41 @@ todennettuun Node/Playwright-sopimusversioon; pelkkä molempien päivittäminen
 ei hyväksy uutta havaintorajapintaa. Aiempien tyyppivirheiden ensimmäinen
 hylkäys säilyy erillisenä näyttönä, eikä sitä nimetä läpäisyksi.
 
-Nämä ovat alemman tason tarkistuksia: nykyinen palveluomistaja, bridge,
-suorat Electron-kuluttajat ja pääfixture eivät vielä käytä uutta sopimusta.
-Oikea pipe-peer-/kahvatodiste, owner-/caller-loss ja uusi CI-hyväksyntä
-ovat avoinna. Seuraava työ on rekisteröinnin kytkentä nykyisen omistajan
-sarjalliseen silmukkaan ilman uutta omistajaa tai määräaikaa; vasta sen
-katselmuksen ja oikeaprosessinäytön jälkeen siirretään pääfixture.
+**Saman omistajan kytkentä 2026-09-27:** nykyiselle palveluomistajalle on
+lisätty rajattu Electron-bridge-profiili. Rekisteröinti etenee omistajan
+sarjallisessa silmukassa; keskeneräinen yhteys tai haastevastaus ei estä
+stop-pyynnön käsittelyä. Erillinen kertakäyttöiseen kuittaukseen sidottu GO
+käyttää nykyistä Jobiin luontia ja ennen resumea tehtävää tarkistusta.
+Nykyiset backend-, Vite- ja suoran Electron-käynnistyksen profiilit säilyvät.
+Tiukka launch-kehys sallii vain tarkistetun Playwright-version eksplisiittisen
+EXE-käynnistyksen argumentit, ei yleistä komento- tai ympäristörajapintaa.
+Rekisteröinti käyttää alkuperäistä työmääräaikaa ja nykyistä siivousrajaa.
+
+Katselmuksessa korjattiin virheen peittyminen stop-kilpailussa ja
+mahdollinen päättymiskuittauksen uusinta epäselvän kirjoituksen jälkeen.
+Valmistunut rekisteröinti- tai ohjauskanavavirhe tallennetaan ennen siivouksen
+I/O:ta; myös myöhemmin valmistuva virhe säilyy erillään valmistumisen
+todisteesta. Vain omistajan oman peruutuksen täsmällinen token hyväksytään
+odotetuksi peruutukseksi. Output/error suljetaan vasta kyseisen välityksen
+todellisen valmistumisen jälkeen, eikä pääprosessin poistuminen peitä
+virheellistä ohjauskehystä. Päättymisviestin yritys kirjataan ennen
+kirjoitusta: osittaista, epäonnistunutta tai onnistunutta viestiä ei uusita.
+
+Uudet ja olemassa olevat native-sarjat läpäisivät 515/226/285/1457 tarkistusta;
+nykyisen testituen regressiosarja läpäisi 638/638 ilman ohituksia.
+Rajattu oikeaprosessikoe läpäisi pysäytyksen ennen rekisteröintiä,
+yhteyttä odottaessa ja kolmen yhteyden muodostuttua ennen launch-kehystä.
+Kaikissa työkuorma jäi luomatta, terminal todisti suljetun luontivaiheen
+ja tyhjän puun, ja omistajan sulku todennettiin saman siivousrajan sisällä.
+Koe ei lähettänyt GO:ta eikä todistanut bridge-peerin identiteettiä.
+
+Bridge-asiakas, suorat Electron-kuluttajat ja pääfixture eivät vielä käytä
+uutta sopimusta. Oikea pipe-peer-/kahvatodiste, Page/API-polku,
+owner-/caller-loss ja uusi CI-hyväksyntä ovat avoinna. Seuraava työ on
+lapsittoman bridge-asiakkaan ja Node-kutsujan kytkentä tähän omistajaan,
+mukaan lukien alkuperäisen määräajan säilyminen ennen ensimmäistä yhteyttä.
+Vasta katselmuksen ja oikean normaali-/virhe-/katkeamisnäytön jälkeen
+siirretään pääfixture. Alemman tason näyttö ei sulje T3:a.
 
 Lähteet: [Noden Process-kanavien sopimus](https://nodejs.org/docs/latest-v24.x/api/diagnostics_channel.html#process)
 ja [projektin lukituksen spawn-toteutus](https://github.com/nodejs/node/blob/v24.19.0/lib/internal/child_process.js).

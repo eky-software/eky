@@ -4,7 +4,7 @@ namespace Eky.ProcessOwnershipAdapter;
 
 internal sealed record ElectronServiceConfiguration(string Generation, string LaunchNonce, string ElectronExecutable,
     string RepositoryRoot, string OsTempRoot, string RunRoot, string ControlRoot, string RuntimeConfigPath, string RuntimeRoot,
-    IReadOnlyDictionary<string, string> Environment, int WorkBudgetMilliseconds)
+    IReadOnlyDictionary<string, string> Environment, int WorkBudgetMilliseconds, ServiceProfile Profile = ServiceProfile.Electron)
 {
     internal const string Protocol = "eky.e2e.electron-service";
     private const int MaximumBytes = 8192;
@@ -15,9 +15,12 @@ internal sealed record ElectronServiceConfiguration(string Generation, string La
     private ElectronPackage? preparedPackage;
     private string? configurationHash;
     private string? runtimeConfigHash;
-    internal string PipeName => $"eky-e2e-electron-v1-{Generation}";
-    internal string ConfigurationPath => Path.Combine(ControlRoot, "electron-service-config.json");
-    internal string TerminalPath => Path.Combine(ControlRoot, "electron-service-terminal.json");
+    private bool IsBridge { get { RequireProfile(Profile); return Profile == ServiceProfile.ElectronBridge; } }
+    internal string PipeName => IsBridge ? ElectronBridgeServiceProtocol.PipePrefix + Generation : $"eky-e2e-electron-v1-{Generation}";
+    internal string ConfigurationPath => Path.Combine(ControlRoot, IsBridge
+        ? ElectronBridgeServiceProtocol.ConfigurationFileName : "electron-service-config.json");
+    internal string TerminalPath => Path.Combine(ControlRoot, IsBridge
+        ? ElectronBridgeServiceProtocol.TerminalFileName : "electron-service-terminal.json");
     internal string Entrypoint => Path.Combine(RepositoryRoot, "apps", "desktop", "e2e-dist");
     internal string[] Arguments => [Entrypoint];
 
@@ -27,12 +30,18 @@ internal sealed record ElectronServiceConfiguration(string Generation, string La
             throw new AdapterFailure("electronGuardFailed");
     }
 
-    internal static ElectronServiceConfiguration Read(string path)
+    private static void RequireProfile(ServiceProfile profile)
     {
+        if (profile is not (ServiceProfile.Electron or ServiceProfile.ElectronBridge)) throw new AdapterFailure("configurationInvalid");
+    }
+
+    internal static ElectronServiceConfiguration Read(string path, ServiceProfile profile = ServiceProfile.Electron)
+    {
+        RequireProfile(profile);
         RequireGuard();
         var bytes = ElectronPackage.ReadFile(path, MaximumBytes);
         using var document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 4 });
-        var config = Parse(document.RootElement);
+        var config = Parse(document.RootElement, profile);
         if (!AdapterConfiguration.SamePath(path, config.ConfigurationPath)) throw new AdapterFailure("configurationInvalid");
         config.configurationHash = ElectronPackage.Hash(bytes);
         config.ValidatePaths();
@@ -41,12 +50,13 @@ internal sealed record ElectronServiceConfiguration(string Generation, string La
         return config;
     }
 
-    internal static ElectronServiceConfiguration Parse(JsonElement value)
+    internal static ElectronServiceConfiguration Parse(JsonElement value, ServiceProfile profile = ServiceProfile.Electron)
     {
+        RequireProfile(profile);
         AdapterProtocol.ExactKeys(value, "protocol", "schemaVersion", "generation", "launchNonce", "electronExecutable",
             "repositoryRoot", "osTempRoot", "runRoot", "controlRoot", "runtimeConfigPath", "runtimeRoot", "environment", "workBudgetMilliseconds");
         var generation = AdapterProtocol.Token(value, "generation");
-        BackendServiceProtocol.Identity(value, generation, ServiceProfile.Electron);
+        BackendServiceProtocol.Identity(value, generation, profile);
         if (!value.GetProperty("workBudgetMilliseconds").TryGetInt32(out var budget) || budget < 1)
             throw new AdapterFailure("configurationInvalid");
         var environment = AdapterConfiguration.EnvironmentMap(value.GetProperty("environment"));
@@ -55,7 +65,7 @@ internal sealed record ElectronServiceConfiguration(string Generation, string La
             AdapterProtocol.Text(value, "electronExecutable", 1024), AdapterProtocol.Text(value, "repositoryRoot", 1024),
             AdapterProtocol.Text(value, "osTempRoot", 1024), AdapterProtocol.Text(value, "runRoot", 1024),
             AdapterProtocol.Text(value, "controlRoot", 1024), AdapterProtocol.Text(value, "runtimeConfigPath", 1024),
-            AdapterProtocol.Text(value, "runtimeRoot", 1024), environment, budget);
+            AdapterProtocol.Text(value, "runtimeRoot", 1024), environment, budget, profile);
     }
 
     internal static void ValidateEnvironmentKeys(IReadOnlyDictionary<string, string> environment)
@@ -67,6 +77,7 @@ internal sealed record ElectronServiceConfiguration(string Generation, string La
 
     internal void ValidateLayout()
     {
+        RequireProfile(Profile);
         foreach (var path in new[] { ElectronExecutable, RepositoryRoot, OsTempRoot, RunRoot, ControlRoot, RuntimeConfigPath, RuntimeRoot })
             BackendServiceConfiguration.RequireCanonicalSyntax(path);
         if (!AdapterConfiguration.SamePath(Path.GetDirectoryName(RunRoot)!, Path.Combine(OsTempRoot, "eky-e2e")) ||

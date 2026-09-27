@@ -34,6 +34,10 @@ internal static partial class ElectronServiceSelfTest
             TestPathsAndPublication();
             checks += BridgePeerObservationSelfTest.RunChecks();
             checks += await BridgeRegistrationSelfTest.RunChecksAsync();
+            checks += await ElectronBridgeRegistrationSelfTest.RunChecksAsync();
+            checks += ElectronBridgeServiceSelfTest.RunChecks();
+            checks += ElectronBridgeLaunchSelfTest.RunChecks();
+            checks += await ElectronBridgeSettlementSelfTest.RunChecksAsync();
             WriteResult(true);
             return 0;
         }

@@ -32,6 +32,7 @@ internal sealed class ByteRelay
     }
 
     internal Task Completion { get; }
+    internal bool IsSettled => settlement.IsCompleted;
     internal Task<string> Failed => failed.Task;
     internal string? Failure => Volatile.Read(ref failure);
 

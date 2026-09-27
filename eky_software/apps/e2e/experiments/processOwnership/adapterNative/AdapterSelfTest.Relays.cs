@@ -77,6 +77,7 @@ internal static partial class AdapterSelfTest
         using var unused = new MemoryStream();
         var quiet = new ByteRelay(empty, unused, CancellationToken.None);
         var pendingControl = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Check(quiet.IsSettled && unused.CanWrite);
         await RejectAsync(() => RelayFinalization.ControlOrFailureAsync(pendingControl.Task, failed, quiet, CancellationToken.None));
         Check(!pendingControl.Task.IsCompleted);
         await RejectAsync(() => RelayFinalization.ControlOrFailureAsync(Task.FromResult(41), failed, quiet, CancellationToken.None));
@@ -117,6 +118,7 @@ internal static partial class AdapterSelfTest
             var held = await sink.Entered.Task;
             await relay.Completion.WaitAsync(TimeSpan.FromSeconds(3));
             Check(relay.Failure == "stdioWriteStalled" && sink.Writes == 1);
+            Check(!relay.IsSettled && !sink.WasDisposed);
             Check(held.Span.SequenceEqual(bytes.AsSpan(0, AdapterProtocol.RelayChunkBytes)));
             using var expired = new CancellationTokenSource(); expired.Cancel();
             var stopped = Stopped();
@@ -126,6 +128,7 @@ internal static partial class AdapterSelfTest
             else sink.Release.SetResult();
             var final = await relay.SettleAsync(CancellationToken.None);
             Check(final.Settled && final.Failure == "stdioWriteStalled" && sink.Writes == 1);
+            Check(relay.IsSettled && !sink.WasDisposed);
         }
 
         // Even delayed timer dispatch must not turn a late successful write into a pass.

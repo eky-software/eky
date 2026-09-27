@@ -26,6 +26,7 @@ internal static class BackendServiceProtocol
     internal static BackendServiceRequest Request(JsonElement value, string generation, string nonce, long previous,
         ServiceProfile profile = ServiceProfile.Backend)
     {
+        if (profile == ServiceProfile.ElectronBridge) return ElectronBridgeServiceProtocol.Request(value, generation, nonce, previous);
         try
         {
             var kind = AdapterProtocol.Text(value, "kind", 16);
@@ -53,7 +54,8 @@ internal static class BackendServiceProtocol
         { throw new AdapterFailure("protocolInvalid"); }
     }
 
-    internal static string OperationalFailure(Exception error) => error is AdapterFailure known
+    internal static string OperationalFailure(Exception error, ServiceProfile profile = ServiceProfile.Backend)
+        => profile == ServiceProfile.ElectronBridge ? ElectronBridgeServiceProtocol.OperationalFailure(error) : error is AdapterFailure known
         ? OperationalFailures.Contains(known.Code, StringComparer.Ordinal) ? known.Code
             : known.Code.StartsWith("stdio", StringComparison.Ordinal) ? "stdioFailed"
             : known.Code.StartsWith("frame", StringComparison.Ordinal) || known.Code == "controlWriteStalled" ? "protocolInvalid"
@@ -61,7 +63,8 @@ internal static class BackendServiceProtocol
         : error is JsonException ? "protocolInvalid" : "ownerFailed";
 }
 
-internal sealed record BackendServiceRequest(long Sequence, string Kind, long? WorkDeadlineElapsedMilliseconds);
+internal sealed record BackendServiceRequest(long Sequence, string Kind, long? WorkDeadlineElapsedMilliseconds,
+    uint? ObservedBridgePid = null, string? Registration = null);
 internal sealed record BackendServiceIdentity(uint Pid, string CreationTimeFileTimeHex);
 internal sealed record BackendServiceSnapshot(bool Created, bool Started, bool CreationCompleted, bool LaunchClosed,
     BackendServiceIdentity? Identity, string Workload, int? ExitCode, bool AssignedBeforeResume, uint? ActiveProcesses,

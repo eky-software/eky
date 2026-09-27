@@ -24,6 +24,14 @@ internal sealed class AdapterProcess : IDisposable
         BackendServiceState state)
         => Create(config.Executable, config.Arguments, config.WorkingDirectory, config.ChildEnvironment, job, io, state.MarkCreated);
 
+    internal static AdapterProcess CreateElectronBridge(ServiceConfiguration config, string[] arguments, WindowsJob job,
+        ChildStandardIo io, BackendServiceState state)
+    {
+        if (!config.IsElectronBridge) throw new AdapterFailure("launchRejected");
+        ElectronBridgeLaunch.RequireArguments(arguments, config.ElectronConfiguration!);
+        return Create(config.Executable, arguments, config.WorkingDirectory, config.ChildEnvironment, job, io, state.MarkCreated);
+    }
+
     private static AdapterProcess Create(string executable, string[] args, string cwd,
         IReadOnlyDictionary<string, string> variables, WindowsJob job, ChildStandardIo io, Action? created = null)
     {

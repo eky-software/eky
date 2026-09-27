@@ -5,7 +5,7 @@ using Eky.WindowsProcessSupervisor;
 
 namespace Eky.ProcessOwnershipAdapter;
 
-internal sealed class BackendServiceOwner(ServiceConfiguration config, BackendServiceClock clock) : IDisposable
+internal sealed partial class BackendServiceOwner(ServiceConfiguration config, BackendServiceClock clock) : IDisposable
 {
     private readonly BackendServiceState state = new();
     private readonly CancellationTokenSource session = new();
@@ -45,6 +45,7 @@ internal sealed class BackendServiceOwner(ServiceConfiguration config, BackendSe
             {
                 job = WindowsJob.Create();
                 caller = LocalControlPipe.Create(config.PipeName, PipeDirection.InOut);
+                PrepareElectronBridge();
                 clock.RequireWork();
                 using (var connectionBound = Bound()) await caller.WaitForConnectionAsync(connectionBound.Token);
                 clock.RequireWork();
@@ -54,7 +55,8 @@ internal sealed class BackendServiceOwner(ServiceConfiguration config, BackendSe
             catch (Exception failure)
             {
                 state.Fail(failure is OperationCanceledException && clock.RemainingWork == 0
-                    ? "workDeadlineExceeded" : BackendServiceProtocol.OperationalFailure(failure));
+                    ? "workDeadlineExceeded" : config.IsElectronBridge
+                        ? ElectronBridgeServiceProtocol.OperationalFailure(failure) : BackendServiceProtocol.OperationalFailure(failure));
             }
             try { return await StopAndCloseAsync(); }
             catch { return 1; }
@@ -79,6 +81,7 @@ internal sealed class BackendServiceOwner(ServiceConfiguration config, BackendSe
             if (outputRelay?.Failure is not null || errorRelay?.Failure is not null) throw new AdapterFailure("stdioFailed");
             if (state.Workload == "exited" && !rootSent)
             {
+                await SendBridgeAsync("rootExit", state.ExitCode);
                 await ReplyAsync("rootExit", null);
                 rootSent = true;
             }
@@ -91,7 +94,20 @@ internal sealed class BackendServiceOwner(ServiceConfiguration config, BackendSe
                 requestSequence = request.Sequence;
                 pendingReply = request.Sequence;
                 if (request.Kind == "stop") return;
-                if (request.Kind == "launch")
+                if (request.Kind == "register")
+                {
+                    BeginBridgeRegistration(request);
+                    await ReplyAsync("registering", request.Sequence);
+                }
+                else if (request.Kind == "go")
+                {
+                    LaunchRegisteredBridge(request.Registration ?? throw new AdapterFailure("protocolInvalid"));
+                    clock.RequireWork();
+                    Observe();
+                    await SendBridgeAsync("started", null);
+                    await ReplyAsync("started", request.Sequence);
+                }
+                else if (request.Kind == "launch")
                 {
                     Launch(request.WorkDeadlineElapsedMilliseconds ?? throw new AdapterFailure("protocolInvalid"));
                     clock.RequireWork();
@@ -115,6 +131,7 @@ internal sealed class BackendServiceOwner(ServiceConfiguration config, BackendSe
                 if (state.FirstFailure is { } failure) throw new AdapterFailure(failure);
                 read = ControlFrame.ReadAsync(caller!, session.Token);
             }
+            AdvanceBridgeRegistration();
             await Task.WhenAny(read!, Task.Delay(AdapterProtocol.PollMilliseconds, session.Token));
         }
     }
@@ -183,7 +200,9 @@ internal sealed class BackendServiceOwner(ServiceConfiguration config, BackendSe
         var reply = new BackendServiceReply(ServiceConfiguration.Protocol(config.Profile), BackendServiceProtocol.Version, config.Generation,
             ++replySequence, replyTo, kind, terminal ?? state.Snapshot(), rss, timing.ElapsedMilliseconds,
             timing.CleanupStartedElapsedMilliseconds, timing.RemainingCleanupMilliseconds);
-        await ControlFrame.WriteAsync(caller!, reply, bound.Token);
+        await ControlFrame.WriteAsync(caller!, config.IsElectronBridge
+            ? ElectronBridgeServiceProtocol.Reply(reply, kind == "status" && !state.LaunchClosed &&
+                !state.Stopping && state.FirstFailure is null ? bridgeRegistration?.Receipt : null) : reply, bound.Token);
         if (state.Stopping) clock.RequireCleanup(); else clock.RequireWork();
     }
 
@@ -191,6 +210,7 @@ internal sealed class BackendServiceOwner(ServiceConfiguration config, BackendSe
     {
         clock.BeginStop();
         state.BeginStop();
+        StopBridgeRegistration();
         watchdog!.Change(TimeSpan.FromMilliseconds(clock.RemainingCleanup!.Value), Timeout.InfiniteTimeSpan);
         using var cleanup = Bound();
         await CleanupAsync(cleanup.Token);
@@ -241,11 +261,13 @@ internal sealed class BackendServiceOwner(ServiceConfiguration config, BackendSe
         catch (OperationCanceledException) { state.FailCleanup("cleanupDeadlineExceeded"); }
         catch (AdapterFailure failure)
         { state.FailCleanup(failure.Code == "cleanupDeadlineExceeded" ? failure.Code : "observationLost"); }
+        await FinishBridgeWorkloadAsync(cancellation);
         try
         {
             var relays = new[] { outputRelay, errorRelay }.Where(relay => relay is not null).Select(relay => relay!).ToArray();
             var settled = await Task.WhenAll(relays.Select(relay => relay.SettleAsync(cancellation)));
-            state.SetStdioSettled(settled.All(result => result.Settled));
+            var bridgeSettled = await SettleBridgeAsync(cancellation);
+            state.SetStdioSettled(settled.All(result => result.Settled) && bridgeSettled);
             if (settled.Any(result => result.Failure is not null)) state.Fail("stdioFailed");
             if (!state.StdioSettled || clock.RemainingCleanup is not > 0) state.FailCleanup("cleanupDeadlineExceeded");
         }
@@ -258,6 +280,8 @@ internal sealed class BackendServiceOwner(ServiceConfiguration config, BackendSe
         session.Cancel();
         relayCancellation.Cancel();
         caller?.Dispose();
+        bridgeRegistration?.Dispose();
+        bridgeChannel?.Dispose();
         child?.Dispose();
         io?.Dispose();
         output?.Dispose();
