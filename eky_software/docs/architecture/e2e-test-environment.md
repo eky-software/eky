@@ -2523,7 +2523,7 @@ Lopulliset 163/163 kohdetestiä, E2E-työkalujen 638/638 sopimustestiä ja koko
 työtilan testit sekä tyypitys läpäisivät. Työtilan kahdeksan ennestään
 ohitettua testiä säilyivät erillisinä. Riippumaton uudelleenkatselmus ei
 löytänyt korjattavaa. Simuloitu Linux-haara ei ole sama asia kuin Linux-hostilla
-suoritettu testi; täsmällisen puhtaan revision normaali CI on vielä avoin.
+suoritettu testi; puhtaan revision CI-näyttö on erotettu alle.
 
 Seitsemän rajattua oikeaa Windows-koetta läpäisi: tarkka argumenttijono,
 ympäristö ja työkansio sekä normaali Electron-sulku; tarkoituksellinen
@@ -2547,7 +2547,26 @@ flaky-tulosta, ohituksia tai globaalia virhettä. Koko tapausjoukon tallennettu
 raporttiketju ja ajon lähdesidonta tarkistettiin erikseen. CI-kytkennän
 315/315 sopimustestiä läpäisi. Testiapurin erillinen Linux-hostin korjaus
 ei kuulu näiden Playwright-käyttäjäpolkujen ajokoodiin; sen lopullinen
-sopimusnäyttö on yllä, ja puhtaan revision CI vaaditaan edelleen erikseen.
+sopimusnäyttö on yllä, ja puhtaan revision CI on todennettu erikseen.
+
+**Käyttöönoton normaali CI hyväksytty 2026-09-27:** revision
+`587ba5403d6a3d1b19ddba607f664eb5d9e8930c`
+[V2 36321641499](https://github.com/eky-software/eky/actions/runs/36321641499)
+ja [riippuvuustarkistus 36321645670](https://github.com/eky-software/eky/actions/runs/36321645670)
+läpäisivät ensimmäisellä yrityksellä. V2:n kaikki 38 vaadittua ryhmää
+onnistuivat; yksi tarkoituksellinen valinnainen koe jäi pois ja kaikki
+neljä kokeellista valitsinta olivat pois. Alkuperäisten lokien checkoutit,
+neljän tuottajan ja kymmenen kuluttajan artifact-sidonnat sekä native-sarjat
+510/226/285/408 tarkistettiin. System 518/518, web 35/35 ja kriittinen
+Electron 38/38 täsmäsivät puhtaan revision koko testiluetteloon ilman retryä,
+flaky-tulosta, ohituksia tai globaaleja virheitä.
+
+Linuxin normaali työtilatesti suoritti myös 638/638 työkalutestiä, mukaan
+lukien oikean bundlen alustuksen metadatapolkuregressiot. Riippuvuusportti
+todensi molemmat auditoinnit ja 160 paketin rekisteriallekirjoitukset.
+Tämä sulkee rajatun EXE-patchin normaalin CI-portin. Se ei ole pääfixturen
+siirron, Linuxin prosessiomistajuuden, koko T3:n tai PR/mainin hyväksyntä.
+Aiemmat satunnaiset timeoutit ja ensimmäiset hylkäykset säilyvät erillisinä.
 
 Rajapintalähteet: [Electron launch](https://playwright.dev/docs/api/class-electron#electron-launch)
 ja [Reporter](https://playwright.dev/docs/api/class-reporter). Lukittu
