@@ -2204,8 +2204,8 @@ siirtämättömien Vite-/Electron-/Linux-polkujen näyttö ei muutu tällä.
 
 ###### Viten Windows-omistajan toteutusraja
 
-**2026-09-27: toteutettu ja paikallisesti todennettu aa377b46-lähtötilalta;
-uuden lähderevision normaali CI-portti vielä avoin.** Sama omistaja-, kontrolli-, kello-
+**2026-09-27: toteutettu; paikalliset portit ja revision 2b40dcd4 normaali
+CI-portti läpäisty. Koko T3-/PR/main-portti on edelleen avoin.** Sama omistaja-, kontrolli-, kello-
 ja tilakone palvelee backendia ja Viteä suljettuina sisäisinä profiileina.
 Moduulitesti käyttää edelleen `isolatedWebTest`-fixtureä ja Page/API-rajapintaa.
 Ei uutta alustaa, mielivaltaista komentoa tai Chromiumin/Electronin/Linuxin
@@ -2269,14 +2269,56 @@ Paikallinen näyttö samasta jäädytetystä toteutuksesta:
 
 Katselmuksissa ei jäänyt rajatun toteutuksen avoimia löydöksiä. Sopimustestien
 owner-loss-/root-first-havainnot ja vanha adapterikoe eivät yksin todista
-elävän Viten watchdogia tai koko lopullista omistajuusmatriisia. Seuraava
-portti on tämän lähderevision normaali CI ja sen sidottujen tulosten luku;
-paikallisnäyttö ei korvaa sitä eikä PR/main-hyväksyntää.
+elävän Viten watchdogia tai koko lopullista omistajuusmatriisia.
+
+Lähde `2b40dcd4ac500c0f09b813f43737f7c2b18afe95` läpäisi normaalin
+[V2-ajon 36295438797](https://github.com/eky-software/eky/actions/runs/36295438797)
+ja [riippuvuustarkistuksen 36295441492](https://github.com/eky-software/eky/actions/runs/36295441492),
+kumpikin yrityksellä 1. Kaikki 38 vaadittua ryhmää läpäisivät; yksi valinnainen
+diagnoosi ohitettiin tarkoituksellisesti ja kaikki neljä kokeellista
+valitsinta olivat pois. System 462/462, web 35/35 ja kriittinen Electron
+38/38 läpäisivät ilman retryä tai flaky-tulosta. Kaikkien suoritettujen
+ryhmien lokit ja checkoutit, native-sopimusten 510/226/285 tarkistusta sekä
+neljän tuottajan ja kymmenen kuluttajan artifact-sidonnat varmennettiin.
+Tämä on seuraavan rajatun siirtopalan hyväksytty CI-lähtötila. Se ei todista
+Linuxin omistajuutta, Chromiumin/Electronin siirtoa, koko T3:a tai PR/main-
+integraatiota eikä ratkaise aiemman revision packaged-workspace-timeoutia.
 
 Tapahtumat ovat vain testiruntimen startup-/cleanup-havaintoja. Ne eivät
 kuulu tuotannon Diagnosticsiin, Activityyn, tukipakettiin tai business-backupiin.
 Tuotannon ominaisuuksia, versiota, riippuvuuksia, aikarajoja, CI-vaatimuksia
 tai tavallisen Vite-dev/buildin käyttäytymistä ei muutettu.
+
+###### Chromiumin kuluttajasiirron avoin omistajuusraja
+
+**2026-09-27: vain valmistelu; omistajapäätös avoin, ei toteutusta.**
+Nykyinen Playwright-selain on worker-kohtainen, mutta T3:n ehdotettu
+puutodiste on testikohtainen. Ennen siirtoa pitää valita säilyykö jaettu
+selain vai saako jokainen testi oman selainpuun. Tätä eroa ei ratkaista
+hiljaisesti yhteisen fixture-rajapinnan sisällä.
+
+Valmistelussa hylättiin oletus, että testin sisällä tehty `connect` olisi
+turvallinen pelkällä lopullisen virheen sanitoinnilla: lukitun Playwrightin
+API-tallennus voi kirjoittaa salaisen ohjausosoitteen traceen jo ennen
+virheen käsittelyä. Tämä koskee ehdotettua testiliitosta, ei julkaistun
+sovelluksen haavoittuvuutta. Private-instrumentointi, piilotettu
+riippuvuuspatch tai artifactin jälkikäteinen siivous ei ole hyväksytty ratkaisu.
+
+Valmisteltava vaihtoehto säilyttää nykyisen worker-selaimen, muodostaa
+liitoksen ennen testikohtaista tallennusta ja erottaa selaimen oman
+synteettisen juuren testien datajuurista. Testin juuren poisto vaatisi
+sen kontekstin ja palvelujen sulun; selaimen juuren poisto vaatisi koko
+omistetun puun varmennetun päättymisen. Viimeisen siivouksen epäonnistuminen
+hylkäisi testiajon myös onnistuneiden testien jälkeen. Tämä on vielä ehdotus,
+ei testikohtaisen puuvaatimuksen hyväksytty poikkeus.
+
+Valinnan jälkeen täsmennetään alkuperäiset määräajat, retry-/worker-vaihdon
+raja, hallintakanavan ja lokituksen suojaus sekä context/page- ja
+trace/screenshot-kytkennän vastaavuus. Pelkkä lähdekoodin tarkastus ei
+korvaa näiden todellista hyväksyntänäyttöä. Moduulikehittäjän Page/API-
+rajapinta, T1/T2, nykyiset aikarajat ja selaimen turvallisuusasetukset
+säilyvät. Electronin riippumaton valmistelu ja Linuxin erillinen
+ympäristöpäätös eivät saa muuttaa tätä avointa valintaa.
 
 ##### T3c-LM: rajattu CI-testisession hallinta
 
