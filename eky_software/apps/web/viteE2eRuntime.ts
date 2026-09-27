@@ -1,5 +1,5 @@
 import { lstatSync, realpathSync } from 'node:fs';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import type { ProxyOptions } from 'vite';
@@ -25,6 +25,7 @@ export function readE2eViteRuntimeConfig(
     environment.EKY_E2E_BACKEND_ORIGIN,
     environment.EKY_E2E_ENV_ROOT,
     environment.EKY_E2E_RUNTIME_SESSION,
+    environment.EKY_E2E_OS_TEMP_ROOT,
   ].some((value) => value !== undefined);
 
   if (environment.EKY_E2E !== '1') {
@@ -39,6 +40,7 @@ export function readE2eViteRuntimeConfig(
   );
   const environmentDirectory = requireE2eEnvironmentDirectory(
     environment.EKY_E2E_ENV_ROOT,
+    environment,
   );
   const sessionSecret = environment.EKY_E2E_RUNTIME_SESSION;
   if (
@@ -99,26 +101,57 @@ function requireLoopbackOrigin(value: string | undefined): string {
   return url.origin;
 }
 
-function requireE2eEnvironmentDirectory(value: string | undefined): string {
+function requireE2eEnvironmentDirectory(
+  value: string | undefined,
+  environment: Readonly<Record<string, string | undefined>>,
+): string {
   if (value === undefined || !isAbsolute(value)) {
     throw new Error('E2E Vite environment root is invalid.');
   }
 
-  const allowedRoot = realpathSync(resolve(tmpdir(), e2eRootDirectoryName));
-  const stats = lstatSync(value);
-  if (!stats.isDirectory() || stats.isSymbolicLink()) {
-    throw new Error('E2E Vite environment root must be a regular directory.');
-  }
-
-  const environmentDirectory = realpathSync(value);
+  const hostTempRoot = environment.EKY_E2E_OS_TEMP_ROOT;
+  const allowedRoot = requireRealDirectory(resolve(
+    hostTempRoot === undefined ? realpathSync.native(tmpdir()) : requireRealDirectory(hostTempRoot),
+    e2eRootDirectoryName,
+  ));
+  const environmentDirectory = requireRealDirectory(value);
   const relativePath = relative(allowedRoot, environmentDirectory);
   if (
     relativePath === '' ||
     relativePath === '..' ||
-    relativePath.startsWith(`..${sep}`)
+    relativePath.startsWith(`..${sep}`) ||
+    isAbsolute(relativePath) ||
+    !relativePath.split(sep)[0]?.startsWith('run-')
   ) {
     throw new Error('E2E Vite environment root escapes its allowed root.');
   }
 
+  if (hostTempRoot !== undefined) {
+    // An owned Vite has its own TEMP/TMP. Keep their original OS anchor
+    // separate, and require both writable directories in this same run.
+    const runRoot = resolve(allowedRoot, relativePath.split(sep)[0]!);
+    for (const key of ['TEMP', 'TMP']) {
+      const temp = requireRealDirectory(environment[key]);
+      const suffix = relative(runRoot, temp);
+      if (suffix === '' || suffix === '..' || suffix.startsWith(`..${sep}`) || isAbsolute(suffix)) {
+        throw new Error('E2E Vite temp escapes its run root.');
+      }
+    }
+  }
+
   return environmentDirectory;
+}
+
+function requireRealDirectory(value: string | undefined): string {
+  if (value === undefined || !isAbsolute(value) || resolve(value) !== value) {
+    throw new Error('E2E Vite directory is invalid.');
+  }
+  for (let current = value; ; current = dirname(current)) {
+    const stats = lstatSync(current);
+    if (!stats.isDirectory() || stats.isSymbolicLink()) {
+      throw new Error('E2E Vite directory must be regular without links.');
+    }
+    if (dirname(current) === current) break;
+  }
+  return realpathSync.native(value);
 }

@@ -110,19 +110,6 @@ internal sealed record BackendServiceConfiguration(string Generation, string Lau
     }
 
     internal void WriteTerminal(BackendServiceSnapshot state, long cleanupStarted, Action requireDeadline)
-    {
-        requireDeadline();
-        RequireCanonicalPath(ControlRoot, true);
-        var pending = TerminalPath + ".pending";
-        using (var file = new FileStream(pending, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-        {
-            JsonSerializer.Serialize(file, new { protocol = BackendServiceProtocol.Name, schemaVersion = BackendServiceProtocol.Version,
-                generation = Generation, kind = "terminal", state, cleanupStartedElapsedMilliseconds = cleanupStarted }, AdapterProtocol.Json);
-            file.Flush(true);
-        }
-        requireDeadline();
-        RequireCanonicalPath(ControlRoot, true);
-        File.Move(pending, TerminalPath, false);
-        requireDeadline();
-    }
+        => ServiceConfiguration.WriteTerminal(ServiceProfile.Backend, Generation, ControlRoot, TerminalPath,
+            state, cleanupStarted, requireDeadline);
 }

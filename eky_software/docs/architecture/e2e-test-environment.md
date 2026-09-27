@@ -2037,8 +2037,8 @@ polkujen poisto, koko hyväksyntämatriisi ja PR/main-portit ovat avoinna.
 
 ###### Backendin Windows-omistajan toteutusraja
 
-**2026-09-27: backend-kuluttajat siirretty ja E2E-regressio läpäisty;
-uuden revision CI sekä koko T3-/PR/main-portti vielä avoinna.**
+**2026-09-27: backend-kuluttajat siirretty, E2E-regressio ja revision
+aa377b46 normaali CI-portti läpäisty; koko T3-/PR/main-portti vielä avoinna.**
 Käytetään nykyisen native-adapterin erikseen versioitua backend-palvelutilaa,
 ei uutta koetyökuormaa tai yleistä komentokäynnistintä. Aiemman Electron-kokeen
 konfiguraatio, bridge, tarkka tulosskeema ja 20 sekunnin koeraja säilyvät.
@@ -2173,6 +2173,19 @@ Seuraava uuden revision normaali hyväksyntäkierros noudattaa
 [nykyisen V2-jatkopäätöksen rajaa](windows-installer-acceptance-harness-v2.md#workspace-diagnostiikan-kutsurajahavainnot):
 eri yritysten osatuloksia ei yhdistetä, ja uusi hylkäys pysäyttää etenemisen.
 
+Tämän jatkopäätöksen uusi jäädytetty revisio
+`aa377b46378fc0eb1912db67ad734d1fdd30e119` läpäisi normaalin
+[V2-ajon 36291090155](https://github.com/eky-software/eky/actions/runs/36291090155)
+ja [riippuvuustarkistuksen 36291100866](https://github.com/eky-software/eky/actions/runs/36291100866),
+kumpikin yrityksellä 1. V2:n kaikki 38 vaadittua ryhmää läpäisivät ja yksi
+valinnainen diagnoosi ohitettiin tarkoituksellisesti. Kaikki neljä kokeellista
+valitsinta olivat pois. System 398/398, web 35/35 ja kriittinen Electron
+38/38 läpäisivät ilman retryä tai flaky-tulosta. Kaikkien suoritettujen
+ryhmien lokit ja checkoutit, native-sopimusten 510/226 tarkistusta sekä
+neljän tuottajan ja kymmenen kuluttajan artifact-sidonnat varmennettiin.
+Tämä on uusi hyväksytty CI-lähtötila Windows-Viten siirtoon, ei aiemman
+timeoutin juurisyy, Linuxin omistajuustodiste tai koko T3-/PR/main-hyväksyntä.
+
 Ensimmäinen oikean backendin ajon hylkäys säilytettiin: native-kellon alku
 oli sidottu virheellisesti kutsujan prosessinluontipyynnön alkuun. Edellä
 kuvattu konservatiivinen kellosidonta ja sen viive-/määräaikaregressiot
@@ -2188,6 +2201,82 @@ laukeamista pysähtyneen kutsujan aikana; koko T3-matriisi on edelleen avoin.
 Lopullisissa rajatuissa katselmuksissa ei jäänyt avoimia löydöksiä.
 Vanhaa Windows-backendin taskkill-polkuun palaavaa fallbackia ei ole;
 siirtämättömien Vite-/Electron-/Linux-polkujen näyttö ei muutu tällä.
+
+###### Viten Windows-omistajan toteutusraja
+
+**2026-09-27: toteutettu ja paikallisesti todennettu aa377b46-lähtötilalta;
+uuden lähderevision normaali CI-portti vielä avoin.** Sama omistaja-, kontrolli-, kello-
+ja tilakone palvelee backendia ja Viteä suljettuina sisäisinä profiileina.
+Moduulitesti käyttää edelleen `isolatedWebTest`-fixtureä ja Page/API-rajapintaa.
+Ei uutta alustaa, mielivaltaista komentoa tai Chromiumin/Electronin/Linuxin
+siirtoa tämän palan osana.
+
+- Backendin v1-protokolla ja `--backend-owner` säilyvät. Viten oma
+  `eky.e2e.vite-service` v1 ja `--vite-owner` hylkäävät ristiin käytetyn
+  profiilin. Molemmat käyttävät yhteistä yhden launchin ja terminalin
+  omistajuuslogiikkaa; elinkaaritoteutusta ei kopioida.
+- Käynnistys on kiinteä Node + nimetyn `apps/web/node_modules/vite`-paketin
+  manifestiin sidottu `bin/vite.js`, cwd `apps/web`, config `vite.config.ts`,
+  `--configLoader runner`, loopback, validoitu portti, `--strictPort` ja
+  `--mode eky-e2e`. Vain tämän nimetyn pakettivalitsimen hallittu resolvointi
+  sallitaan. Alkuperäiset vanhemmat ja kanoninen kohde tarkistetaan;
+  ei yleistä linkkipoikkeusta, `.bin`-shimmiä tai callerin entrypointia.
+- Vite saa vain eksplisiittiset E2E-, järjestelmä-, alkuperäisen OS-tempin,
+  oman temp/profile-juuren sekä backend-originin ja ympäristöjuuren arvot.
+  Ei perittyä PATHia, HOMEa tai NODE_OPTIONSia. Nykyinen synteettinen runtime-
+  session kulkee erikseen validoidussa owner-to-child-ympäristössä ja Node-
+  proxyssä, ei konfiguraatiossa, kontrollissa, argv:ssa tai rendererissä.
+  Cache ja ympäristökansio validoidaan saman `run-*`-juuren alle. Tavallisen
+  dev/build-konfiguraation toiminta ei muutu.
+- Sama fixture-lifetime kulkee Viteen. Nykyinen 15 sekunnin startup lyhenee
+  jäljellä olevaan työaikaan; native-raja sidotaan samaan konservatiiviseen
+  kellonäytteeseen kuin backendillä. Cleanup saa vain nykyisen kolmen
+  sekunnin ensimmäisen stopin rajan. Ensimmäinen virhe, puun poistuminen ja
+  portin vapautuminen erotetaan, eikä epävarmaa juurta poisteta.
+- Myös endurance-kuluttaja lukee todellisen Vite-työkuorman tilan, ei ownerin
+  PID:tä tai tekaistua ChildProcess-oliota. Nykyinen yhteinen fixture-cleanup
+  säilyttää ensimmäisen virheen. T1/T2:n valmistelun tuoreus ja backendin
+  aiemman protokollan regressiosuoja säilyvät.
+
+Hyväksyntä vaatii suljetun konfiguraation, profiilien erottelun, kellojen,
+virheiden ja cleanupin sopimukset sekä oikean Viten runner-config-, sivu-,
+proxy/session-, eristetyn temp/cache- ja stop/port-polun. Käynnistysvirhe,
+root-first, owner-loss ja toistettu stop todistetaan soveltuvalla tasolla.
+Viten mahdollinen apuprosessi kuuluu samaan Jobiin; mockattu config-koe ei
+todista sitä. Korvattu Windowsin suora spawn/taskkill-polku on poistettu
+oikean kuluttajan vastaavan rajatun näytön jälkeen. Linuxin suora polku ei
+ole Windowsin fallback eikä koko puun omistajuustodiste. Linuxin tuettujen testiympäristöjen päätös on
+erillinen, edelleen avoin. Tämä pala ei sulje koko T3-matriisia.
+
+Paikallinen näyttö samasta jäädytetystä toteutuksesta:
+
+- Normaali täysi E2E: 548/548 (system 462, web 41, Electron 45), ilman
+  retryä, flaky-tulosta tai ohituksia. Nykyinen web-fixture käytti oikeaa
+  Vite-omistajaa; Chromiumin oma omistajuuspolku on edelleen siirtämättä.
+- `WEB-SERVICE-001` todensi oikean backendin ja Viten sivu-/moduuli-/proxy-
+  polun, session-rajan, eristetyn cachen, työkuorman tilan sekä toistetun
+  stopin ja saman generationin native-terminalin. `WEB-SERVICE-002`
+  todensi oikean käynnistysvirheen varatulla portilla: Viten puu päättyi,
+  erikseen omistettu portin varaaja säilyi eikä epävarmuutta hyväksytty
+  normaaliksi cleanupiksi. Testi sulki vain oman varaajansa erikseen.
+- Nykyinen endurance-kuluttaja läpäisi erillisen ajon ilman avoimia
+  hallittuja prosesseja. Vanhat neljä Windows-adapterin oikeaprosessikoetta
+  läpäisivät samoilla native-tavuilla; niiden näyttö on edelleen kokeellista.
+- Native-sopimukset 510/226/285, yhteiset backend-/Vite-sopimukset 130/130,
+  kanoniset E2E-työkalutestit 488/488 sekä CI-sopimukset 315/315 läpäisivät.
+  Workspace-testit läpäisivät 4 446 testiä; kahdeksan aiempaa ohitusta
+  säilyi. Koko projektin tyypitys läpäisi.
+
+Katselmuksissa ei jäänyt rajatun toteutuksen avoimia löydöksiä. Sopimustestien
+owner-loss-/root-first-havainnot ja vanha adapterikoe eivät yksin todista
+elävän Viten watchdogia tai koko lopullista omistajuusmatriisia. Seuraava
+portti on tämän lähderevision normaali CI ja sen sidottujen tulosten luku;
+paikallisnäyttö ei korvaa sitä eikä PR/main-hyväksyntää.
+
+Tapahtumat ovat vain testiruntimen startup-/cleanup-havaintoja. Ne eivät
+kuulu tuotannon Diagnosticsiin, Activityyn, tukipakettiin tai business-backupiin.
+Tuotannon ominaisuuksia, versiota, riippuvuuksia, aikarajoja, CI-vaatimuksia
+tai tavallisen Vite-dev/buildin käyttäytymistä ei muutettu.
 
 ##### T3c-LM: rajattu CI-testisession hallinta
 

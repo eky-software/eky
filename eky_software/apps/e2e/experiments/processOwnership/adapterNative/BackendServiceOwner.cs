@@ -5,7 +5,7 @@ using Eky.WindowsProcessSupervisor;
 
 namespace Eky.ProcessOwnershipAdapter;
 
-internal sealed class BackendServiceOwner(BackendServiceConfiguration config, BackendServiceClock clock) : IDisposable
+internal sealed class BackendServiceOwner(ServiceConfiguration config, BackendServiceClock clock) : IDisposable
 {
     private readonly BackendServiceState state = new();
     private readonly CancellationTokenSource session = new();
@@ -26,11 +26,11 @@ internal sealed class BackendServiceOwner(BackendServiceConfiguration config, Ba
     private long? pendingReply;
     private bool rootSent;
 
-    internal static async Task<int> RunConfiguredAsync(string path)
+    internal static async Task<int> RunConfiguredAsync(string path, ServiceProfile profile = ServiceProfile.Backend)
     {
         // Includes config validation time; receiving a launch never resets this origin.
         var origin = Stopwatch.StartNew();
-        var config = BackendServiceConfiguration.Read(path);
+        var config = ServiceConfiguration.Read(path, profile);
         using var owner = new BackendServiceOwner(config, new(config.WorkBudgetMilliseconds, () => origin.ElapsedMilliseconds));
         return await owner.RunAsync();
     }
@@ -87,7 +87,7 @@ internal sealed class BackendServiceOwner(BackendServiceConfiguration config, Ba
                 using var frame = await read;
                 read = null;
                 if (frame is null) throw new AdapterFailure("callerLost");
-                var request = BackendServiceProtocol.Request(frame.RootElement, config.Generation, config.LaunchNonce, requestSequence);
+                var request = BackendServiceProtocol.Request(frame.RootElement, config.Generation, config.LaunchNonce, requestSequence, config.Profile);
                 requestSequence = request.Sequence;
                 pendingReply = request.Sequence;
                 if (request.Kind == "stop") return;
@@ -137,7 +137,7 @@ internal sealed class BackendServiceOwner(BackendServiceConfiguration config, Ba
             outputRelay = new ByteRelay(io.OutputReader, output, relayCancellation.Token, closeDestination: true);
             errorRelay = new ByteRelay(io.ErrorReader, error, relayCancellation.Token, closeDestination: true);
             clock.RequireWork();
-            child = AdapterProcess.CreateBackend(config, job!, io, state);
+            child = AdapterProcess.CreateService(config, job!, io, state);
             state.Identify(child.ReadBackendIdentity());
             clock.RequireWork();
             child.VerifyAndResume(job!, state);
@@ -180,7 +180,7 @@ internal sealed class BackendServiceOwner(BackendServiceConfiguration config, Ba
         using var bound = Bound();
         if (replySequence >= BackendServiceProtocol.MaximumSequence) throw new AdapterFailure("protocolInvalid");
         var timing = clock.ReadTiming();
-        var reply = new BackendServiceReply(BackendServiceProtocol.Name, BackendServiceProtocol.Version, config.Generation,
+        var reply = new BackendServiceReply(ServiceConfiguration.Protocol(config.Profile), BackendServiceProtocol.Version, config.Generation,
             ++replySequence, replyTo, kind, terminal ?? state.Snapshot(), rss, timing.ElapsedMilliseconds,
             timing.CleanupStartedElapsedMilliseconds, timing.RemainingCleanupMilliseconds);
         await ControlFrame.WriteAsync(caller!, reply, bound.Token);
@@ -215,7 +215,7 @@ internal sealed class BackendServiceOwner(BackendServiceConfiguration config, Ba
                 clock.RequireCleanup();
                 return terminal.Cleanup == "processTreeAbsent" ? 0 : 1;
             }
-            var request = BackendServiceProtocol.Request(frame.RootElement, config.Generation, config.LaunchNonce, requestSequence);
+            var request = BackendServiceProtocol.Request(frame.RootElement, config.Generation, config.LaunchNonce, requestSequence, config.Profile);
             requestSequence = request.Sequence;
             // A request may cross an unsolicited terminal, which already settled the caller's
             // pending request. Return the same terminal without reopening launch or correlating twice.

@@ -85,6 +85,7 @@ export function prepareWindowsBackendOwner(input, dependencies = {}) {
   const selfTestEnvironment = { ...environment, EKY_E2E: '1' };
   execute(dotnet, [join(paths.output, `${assembly}.dll`), '--self-test'], 60_000, selfTestEnvironment);
   execute(dotnet, [join(paths.output, `${assembly}.dll`), '--backend-self-test'], 60_000, selfTestEnvironment);
+  execute(dotnet, [join(paths.output, `${assembly}.dll`), '--vite-service-self-test'], 60_000, selfTestEnvironment);
   if (sourceIdentity(input.repositoryRoot) !== before) throw new Error('E2E_BACKEND_OWNER_SOURCE_CHANGED');
   writeFileSync(paths.marker, JSON.stringify({
     schemaVersion: 1, sourceIdentity: before, outputIdentity: outputIdentity(paths.output),

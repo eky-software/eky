@@ -14,16 +14,17 @@ internal static class BackendServiceProtocol
     internal static readonly string[] CleanupFailures = ["jobTerminateFailed", "observationLost", "stdioFailed",
         "cleanupDeadlineExceeded", "evidenceWriteFailed", "ownerFailed"];
 
-    internal static void Identity(JsonElement value, string generation)
+    internal static void Identity(JsonElement value, string generation, ServiceProfile profile = ServiceProfile.Backend)
     {
-        if (AdapterProtocol.Text(value, "protocol", 64) != Name ||
+        if (AdapterProtocol.Text(value, "protocol", 64) != ServiceConfiguration.Protocol(profile) ||
             !value.GetProperty("schemaVersion").TryGetInt32(out var version) || version != Version ||
             AdapterProtocol.Token(value, "generation") != generation) throw new AdapterFailure("protocolInvalid");
     }
 
     internal static bool IsWorkDeadline(long value) => value is >= 1 and <= MaximumSequence;
 
-    internal static BackendServiceRequest Request(JsonElement value, string generation, string nonce, long previous)
+    internal static BackendServiceRequest Request(JsonElement value, string generation, string nonce, long previous,
+        ServiceProfile profile = ServiceProfile.Backend)
     {
         try
         {
@@ -43,7 +44,7 @@ internal static class BackendServiceProtocol
                 AdapterProtocol.ExactKeys(value, "protocol", "schemaVersion", "generation", "sequence", "kind");
                 if (kind is not ("status" or "rss" or "stop")) throw new AdapterFailure("protocolInvalid");
             }
-            Identity(value, generation);
+            Identity(value, generation, profile);
             if (!value.GetProperty("sequence").TryGetInt64(out var sequence) || previous >= MaximumSequence ||
                 sequence != previous + 1) throw new AdapterFailure("protocolInvalid");
             return new(sequence, kind, workDeadline);

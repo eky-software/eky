@@ -24,9 +24,9 @@ import {
 } from '../../src/environment/startE2eBackendProcess.js';
 import {
   startE2eWebProcess,
+  E2eWebStartupFailure,
   type StartedE2eWeb,
 } from '../../src/environment/startE2eWebProcess.js';
-import type { ManagedProcess } from '../../src/environment/startManagedProcess.js';
 import { waitForLoopbackPortRelease } from '../../src/environment/waitForLoopbackPortRelease.js';
 import { finishServiceFixture } from '../../src/fixtures/finishServiceFixture.js';
 import { measurePathBytes } from '../../src/stress/measurePathBytes.js';
@@ -47,7 +47,7 @@ test('ENDURANCE-BASELINE-001 @stress records a bounded local runtime baseline wi
   const runRoot = createE2eRunRoot();
   let backendPort: number | undefined;
   let webPort: number | undefined;
-  const managedProcesses: ManagedProcess[] = [];
+  const startedWebs: StartedE2eWeb[] = [];
   const startedBackends: StartedE2eBackend[] = [];
   let api: APIRequestContext | undefined;
   let backend: StartedE2eBackend | undefined;
@@ -82,16 +82,14 @@ test('ENDURANCE-BASELINE-001 @stress records a bounded local runtime baseline wi
         'x-eky-local-session': backend.sessionSecret,
       },
     });
-    // Failed web startup does not return a handle or a cleanup receipt.
-    priorCleanupUnverified = true;
-    web = await startE2eWebProcess({
-      backend,
-      paths,
-      runRoot,
-      webPort,
-    });
-    priorCleanupUnverified = false;
-    managedProcesses.push(web.managedProcess);
+    try {
+      web = await startE2eWebProcess({ backend, lifetime, paths, runRoot, webPort });
+    } catch (error) {
+      priorCleanupUnverified = !(error instanceof E2eWebStartupFailure &&
+        error.evidence.cleanup.processTree === 'stopped' && error.evidence.cleanup.port === 'released');
+      throw error;
+    }
+    startedWebs.push(web);
     browserContext = await browser.newContext({
       locale: 'fi-FI',
       timezoneId: 'Europe/Helsinki',
@@ -170,7 +168,12 @@ test('ENDURANCE-BASELINE-001 @stress records a bounded local runtime baseline wi
       }
     }
 
-    let openManagedProcessCount = countRunningProcesses(managedProcesses);
+    let openManagedProcessCount = 0;
+    for (const startedWeb of startedWebs) {
+      const state = await startedWeb.workload.readState();
+      if (state === 'unavailable') throw new Error('E2E_WEB_WORKLOAD_OBSERVATION_LOST');
+      if (state === 'running') openManagedProcessCount += 1;
+    }
     for (const startedBackend of startedBackends) {
       const state = await startedBackend.workload.readState();
       if (state === 'unavailable') throw new Error('ENDURANCE_BACKEND_STATE_UNAVAILABLE');
@@ -280,10 +283,4 @@ async function runWebNavigationWorkload(page: Page): Promise<void> {
       }),
     ).toBeVisible();
   }
-}
-
-function countRunningProcesses(processes: readonly ManagedProcess[]): number {
-  return processes.filter(
-    ({ child }) => child.exitCode === null && child.signalCode === null,
-  ).length;
 }

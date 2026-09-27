@@ -12,6 +12,7 @@ import {
 import { removeE2eRunRoot } from '../../src/environment/removeE2eRunRoot.js';
 import type { ServiceFixtureCleanup } from '../../src/fixtures/finishServiceFixture.js';
 import { E2eBackendStartupFailure } from '../../src/environment/startE2eBackendProcess.js';
+import { E2eWebStartupFailure } from '../../src/environment/startE2eWebProcess.js';
 import { runIsolatedBackendTest } from '../../src/fixtures/isolatedBackendTest.js';
 import { runIsolatedWebTest } from '../../src/fixtures/isolatedWebTest.js';
 
@@ -149,6 +150,40 @@ test.describe('SYS-SERVICE-FIXTURE-LIFECYCLE-001 @critical @security completion'
       expect(existsSync(fixture.marker)).toBe(true);
     } finally { fixture.remove(); }
   });
+  for (const fault of ['webStartupVerified', 'webStartupTreeUnverified', 'webStartupPortUnverified'] as const) {
+    test(`web startup preserves its error and respects ${fault} evidence`, async () => {
+      const fixture = completionFixture(fault);
+      try {
+        await expect(fixture.run('web')).rejects.toBe(fixture.webError);
+        const verified = fault === 'webStartupVerified';
+        expect(fixture.cleanup()).toMatchObject({
+          web: 'notStarted', backend: 'completed',
+          priorCleanup: verified ? 'verified' : 'unverified', runRoot: verified ? 'removed' : 'retained',
+        });
+        expect(existsSync(fixture.marker)).toBe(!verified);
+        expect(fixture.startupReports).toEqual([{ schemaVersion: 1,
+          errorCode: 'E2E_WEB_HEALTH_TIMEOUT', spawnObserved: true, exitedBeforeCleanup: false,
+          cleanup: {
+            processTree: fault === 'webStartupTreeUnverified' ? 'unverified' : 'stopped',
+            port: fault === 'webStartupPortUnverified' ? 'unverified' : 'released',
+          },
+        }]);
+        expect(JSON.stringify(fixture.startupReports)).not.toContain(fixture.runRoot);
+      } finally { fixture.remove(); }
+    });
+  }
+  test('web startup attachment failure cannot mask the original error or stop cleanup', async () => {
+    const fixture = completionFixture('webStartupVerified');
+    const attach = fixture.testInfo.attach;
+    fixture.testInfo.attach = async (name, options) => {
+      if (name === 'web-startup-failure') throw new Error('PRIVATE_ATTACHMENT_FAILURE');
+      await attach(name, options);
+    };
+    try {
+      await expect(fixture.run('web')).rejects.toBe(fixture.webError);
+      expect(fixture.cleanup().runRoot).toBe('removed');
+    } finally { fixture.remove(); }
+  });
   test('failed restart invalidates the old handles and refuses another start', async () => {
     const fixture = completionFixture('restart');
     try {
@@ -220,6 +255,7 @@ test.describe('E2E fixture lifetime propagation', () => {
             expect(fixture.calls.slice(0, 2)).toEqual(['lifetime', 'root']);
             expect(fixture.testInfo.timeout).toBe(timeout);
             const lifetime = fixture.lifetimes[0]!;
+            if (family === 'web') expect(fixture.webLifetimes).toEqual([lifetime]);
             expect(lifetime.readRemainingWorkMilliseconds()).toBe(timeout);
             fixture.testInfo.timeout = 20 * 60_000;
             now = 25_000;
@@ -280,7 +316,8 @@ test.describe('E2E fixture lifetime propagation', () => {
 
 function completionFixture(fault?:
   'api' | 'apiSync' | 'backendStop' | 'port' | 'artifacts' | 'remove' | 'report' | 'webStop' |
-  'webStartup' | 'startupVerified' | 'restart' | 'restartStop',
+  'webStartup' | 'webStartupVerified' | 'webStartupTreeUnverified' | 'webStartupPortUnverified' |
+  'startupVerified' | 'restart' | 'restartStop',
   timing: { containmentTimeoutMilliseconds?: number; now?: () => number } = {},
 ) {
   const runRoot = createE2eRunRoot();
@@ -288,10 +325,17 @@ function completionFixture(fault?:
   writeFileSync(marker, 'synthetic evidence');
   const calls: string[] = [];
   const lifetimes: E2eFixtureLifetime[] = [];
+  const webLifetimes: E2eFixtureLifetime[] = [];
   const reports: { schemaVersion: number; cleanup: ServiceFixtureCleanup }[] = [];
+  const startupReports: unknown[] = [];
   const bodyError = new Error('PRIVATE_BODY_FAILURE');
   const cleanupError = new Error('PRIVATE_CLEANUP_FAILURE');
-  const webError = new Error('PRIVATE_WEB_STARTUP_FAILURE');
+  const webError = fault?.startsWith('webStartup') && fault !== 'webStartup'
+    ? new E2eWebStartupFailure({ errorCode: 'E2E_WEB_HEALTH_TIMEOUT', spawnObserved: true,
+      exitedBeforeCleanup: false, cleanup: {
+        processTree: fault === 'webStartupTreeUnverified' ? 'unverified' : 'stopped',
+        port: fault === 'webStartupPortUnverified' ? 'unverified' : 'released',
+      } }) : new Error('PRIVATE_WEB_STARTUP_FAILURE');
   const startupError = new E2eBackendStartupFailure({
     errorCode: 'E2E_BACKEND_HEALTH_TIMEOUT', spawnObserved: true,
     exitedBeforeCleanup: false, listeningNotice: 'notObserved',
@@ -300,10 +344,11 @@ function completionFixture(fault?:
   const testInfo = {
     title: 'SYS-SERVICE-FIXTURE-LIFECYCLE-001', status: 'passed', expectedStatus: 'passed',
     timeout: 60_000,
-    attach: async (_name: string, options: { body: string }) => {
+    attach: async (name: string, options: { body: string }) => {
       calls.push('report');
       if (fault === 'report') throw cleanupError;
-      reports.push(JSON.parse(options.body));
+      if (name === 'web-startup-failure') startupReports.push(JSON.parse(options.body));
+      else reports.push(JSON.parse(options.body));
     },
   } as unknown as TestInfo;
   let starts = 0;
@@ -335,9 +380,11 @@ function completionFixture(fault?:
         },
       };
     },
-    startE2eWebProcess: async () => {
-      if (fault === 'webStartup') throw webError;
+    startE2eWebProcess: async ({ lifetime }: { lifetime: E2eFixtureLifetime }) => {
+      webLifetimes.push(lifetime);
+      if (fault?.startsWith('webStartup')) throw webError;
       return { webOrigin: 'http://127.0.0.1:12346', managedProcess: {} as never,
+        workload: { readState: async () => { throw new Error('UNEXPECTED_WORKLOAD_STATE_READ'); } },
         stop: async () => {
           calls.push('webStop');
           if (fault === 'webStop') throw cleanupError;
@@ -381,7 +428,7 @@ function completionFixture(fault?:
       page: { goto: async () => undefined } as never,
     }, use, testInfo, dependencies);
   return {
-    runRoot, marker, calls, reports, testInfo, bodyError, cleanupError, webError, startupError, runBackend, runWith, lifetimes,
+    runRoot, marker, calls, reports, startupReports, testInfo, bodyError, cleanupError, webError, startupError, runBackend, runWith, lifetimes, webLifetimes,
     cleanup: () => reports[0]!.cleanup,
     run: (family: 'backend' | 'web', bodyFails = false) => {
       const use = async () => {

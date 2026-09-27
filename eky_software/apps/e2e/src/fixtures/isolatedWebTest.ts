@@ -25,6 +25,7 @@ import {
 } from '../environment/startE2eBackendProcess.js';
 import {
   startE2eWebProcess,
+  E2eWebStartupFailure,
   type StartedE2eWeb,
 } from '../environment/startE2eWebProcess.js';
 import { waitForLoopbackPortRelease } from '../environment/waitForLoopbackPortRelease.js';
@@ -128,11 +129,20 @@ export async function runIsolatedWebTest(
         'x-eky-local-session': backend.sessionSecret,
       },
     });
-    // The web startup contract has no returned handle on failure. A free
-    // port alone cannot verify that missing process ownership.
-    priorCleanupUnverified = true;
-    web = await startE2eWebProcess({ backend, paths, runRoot, webPort });
-    priorCleanupUnverified = false;
+    try {
+      web = await startE2eWebProcess({ backend, lifetime, paths, runRoot, webPort });
+    } catch (error) {
+      priorCleanupUnverified = !(error instanceof E2eWebStartupFailure &&
+        error.evidence.cleanup.processTree === 'stopped' && error.evidence.cleanup.port === 'released');
+      if (error instanceof E2eWebStartupFailure) {
+        try {
+          await testInfo.attach('web-startup-failure', {
+            body: JSON.stringify({ schemaVersion: 1, ...error.evidence }), contentType: 'application/json',
+          });
+        } catch { /* Diagnostic attachment failure must not replace the startup failure. */ }
+      }
+      throw error;
+    }
     networkBoundary = await installE2eBrowserNetworkBoundary(context, {
       backendOrigin: backend.backendOrigin,
       webOrigin: web.webOrigin,

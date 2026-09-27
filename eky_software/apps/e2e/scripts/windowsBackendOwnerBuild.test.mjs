@@ -43,19 +43,21 @@ function fixture(t) {
   return { root, paths, write, calls, run, prepare };
 }
 
-test('clean preparation binds the exact source and executable closure after both self-tests', t => {
+test('clean preparation binds the exact source and executable closure after all service self-tests', t => {
   const f = fixture(t);
   f.write('apps/e2e/.artifacts/t3c-adapter/retained-first-failure.log', 'retain');
   assert.equal(f.prepare(), 'prepared');
   assert.equal(assertWindowsBackendOwnerBuild(f.root), f.paths.executable);
-  assert.equal(f.calls.length, 3);
+  assert.equal(f.calls.length, 4);
   assert.equal(f.calls[0].command, 'synthetic-dotnet');
   assert.deepEqual(f.calls[0].args, ['build', f.paths.project, '--configuration', 'Release', '--nologo']);
   assert.equal(f.calls[1].args[1], '--self-test');
   assert.equal(f.calls[2].args[1], '--backend-self-test');
+  assert.equal(f.calls[3].args[1], '--vite-service-self-test');
   assert.equal(f.calls[0].options.env.EKY_E2E, undefined);
   assert.equal(f.calls[1].options.env.EKY_E2E, '1');
   assert.equal(f.calls[2].options.env.EKY_E2E, '1');
+  assert.equal(f.calls[3].options.env.EKY_E2E, '1');
   for (const call of f.calls) assert.equal(call.options.shell, false);
   assert.equal(readFileSync(join(f.paths.artifacts, 'retained-first-failure.log'), 'utf8'), 'retain');
   const marker = readFileSync(f.paths.marker, 'utf8');
@@ -92,7 +94,7 @@ test('nested source edits invalidate the exact source receipt', t => {
   assert.throws(() => assertWindowsBackendOwnerBuild(f.root), /E2E_BACKEND_OWNER_BUILD_REQUIRED/u);
 });
 
-for (const failedStep of [0, 1, 2]) {
+for (const failedStep of [0, 1, 2, 3]) {
   test(`failure at preparation step ${failedStep} invalidates an earlier success and stops the chain`, t => {
     const f = fixture(t);
     f.prepare();

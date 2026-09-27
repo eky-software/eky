@@ -1,7 +1,7 @@
 import type {
   E2eProcessStartupObservation,
-  E2eProcessStartupTerminal,
 } from './e2eProcessStartupObservation.js';
+import { waitForObservedProcessHealth } from './waitForObservedProcessHealth.js';
 
 const startupPhases = new Set([
   'processSpawnRequested',
@@ -111,37 +111,11 @@ export async function waitForManagedBackendHealth(input: {
   readonly waitForHealth: (signal: AbortSignal) => Promise<void>;
 }): Promise<void> {
   input.observe(newProgress('healthWaitStarted', 'started'));
-  let unsubscribe = () => {};
-  const terminal = new Promise<{ readonly kind: E2eProcessStartupTerminal }>((resolve) => {
-    const readTerminal = () => {
-      const state = input.startup.readState();
-      if (state.terminal !== undefined) resolve({ kind: state.terminal });
-    };
-    unsubscribe = input.startup.subscribe(readTerminal);
-    readTerminal();
-  });
-  const healthAbort = new AbortController();
-  const health = Promise.resolve()
-    .then(() => input.waitForHealth(healthAbort.signal))
-    .then(
-      () => ({ kind: 'healthy' as const }),
-      (error: unknown) => ({ kind: error instanceof Error &&
-        error.message === 'E2E_BACKEND_WORKLOAD_OBSERVATION_LOST'
-        ? 'observationLost' as const : 'healthFailed' as const }),
-    );
-
-  let outcome;
-  try {
-    outcome = await Promise.race([health, terminal]);
-  } finally {
-    healthAbort.abort();
-    await health;
-    unsubscribe();
-  }
-  const state = input.startup.readState();
-  // A queued health response cannot overrule an already observed workload failure.
-  const kind = state.terminal ?? outcome.kind;
-  if (kind === 'healthy' && state.spawnObserved) {
+  const outcome = await waitForObservedProcessHealth(input);
+  const kind = outcome.kind === 'healthFailed' && outcome.error instanceof Error &&
+    outcome.error.message === 'E2E_BACKEND_WORKLOAD_OBSERVATION_LOST'
+    ? 'observationLost' : outcome.kind;
+  if (kind === 'healthy') {
     input.observe(newProgress('healthReady', 'completed'));
     return;
   }
@@ -165,7 +139,7 @@ export async function waitForManagedBackendHealth(input: {
     );
     throw new Error('E2E_BACKEND_CHILD_EXITED_BEFORE_HEALTH');
   }
-  if (kind === 'observationLost' || kind === 'healthy') {
+  if (kind === 'observationLost') {
     input.observe(newProgress(
       'workloadObservationLost', 'failed', 'E2E_BACKEND_WORKLOAD_OBSERVATION_LOST',
     ));

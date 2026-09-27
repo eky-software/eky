@@ -20,10 +20,9 @@ internal sealed class AdapterProcess : IDisposable
     internal static AdapterProcess Create(AdapterConfiguration config, string[] args, WindowsJob job, ChildStandardIo io)
         => Create(config.Electron, args, config.Cwd, config.Environment, job, io);
 
-    internal static AdapterProcess CreateBackend(BackendServiceConfiguration config, WindowsJob job, ChildStandardIo io,
+    internal static AdapterProcess CreateService(ServiceConfiguration config, WindowsJob job, ChildStandardIo io,
         BackendServiceState state)
-        => Create(config.NodeExecutable, [config.Entrypoint, "--config", config.RuntimeConfigPath],
-            config.RepositoryRoot, config.Environment, job, io, state.MarkCreated);
+        => Create(config.NodeExecutable, config.Arguments, config.WorkingDirectory, config.ChildEnvironment, job, io, state.MarkCreated);
 
     private static AdapterProcess Create(string executable, string[] args, string cwd,
         IReadOnlyDictionary<string, string> variables, WindowsJob job, ChildStandardIo io, Action? created = null)

@@ -13,6 +13,8 @@ internal static class Program
         {
             if (args.SequenceEqual(["--backend-self-test"])) return await BackendServiceSelfTest.RunAsync();
             if (args.Length == 2 && args[0] == "--backend-owner") return await BackendServiceOwner.RunConfiguredAsync(args[1]);
+            if (args.SequenceEqual(["--vite-service-self-test"])) return await ViteServiceSelfTest.RunAsync();
+            if (args.Length == 2 && args[0] == "--vite-owner") return await BackendServiceOwner.RunConfiguredAsync(args[1], ServiceProfile.Vite);
             if (args.SequenceEqual(["--self-test"])) return await AdapterSelfTest.RunAsync();
             if (args.Length == 2 && args[0] == "--owner")
             {
