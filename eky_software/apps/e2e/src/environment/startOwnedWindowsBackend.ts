@@ -1,6 +1,6 @@
 import { prepareWindowsBackendService } from './windowsBackendServiceConfiguration.js';
 import { startOwnedWindowsService, windowsServiceDependencies,
-  type OwnedWindowsServiceInput, type OwnedWindowsServiceDependencies } from './startOwnedWindowsService.js';
+  type OwnedWindowsService, type OwnedWindowsServiceInput, type OwnedWindowsServiceDependencies } from './startOwnedWindowsService.js';
 
 export { OwnedWindowsBackendStartupFailure } from './startOwnedWindowsService.js';
 export type { OwnedWindowsService as OwnedWindowsBackend,
@@ -17,7 +17,7 @@ const defaultDependencies = windowsServiceDependencies<'backend', OwnedWindowsBa
 
 export function startOwnedWindowsBackend(
   input: OwnedWindowsBackendInput, overrides: Partial<OwnedWindowsBackendDependencies> = {},
-) {
+): Promise<OwnedWindowsService> {
   return startOwnedWindowsService('backend', input,
     { ...defaultDependencies, ...overrides });
 }

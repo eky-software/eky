@@ -17,6 +17,10 @@ export interface OwnedWindowsService extends ProcessOutput {
   };
   stop(): Promise<void>;
 }
+export interface ObservedWindowsService extends OwnedWindowsService {
+  readonly workload: OwnedWindowsService['workload'] & { readExitCode(): number | null };
+  readCombinedOutput(): string;
+}
 
 export type OwnedWindowsServiceStartupFailureCode =
   | 'preparationFailed' | 'ownerSpawnFailed' | 'startupDeadlineExceeded'
@@ -54,6 +58,11 @@ export class OwnedWindowsBackendStartupFailure extends OwnedWindowsServiceStartu
 export class OwnedWindowsViteStartupFailure extends OwnedWindowsServiceStartupFailure {
   constructor(evidence: OwnedWindowsServiceStartupFailureEvidence, output: ProcessOutput) {
     super('vite', evidence, output);
+  }
+}
+export class OwnedWindowsElectronStartupFailure extends OwnedWindowsServiceStartupFailure {
+  constructor(evidence: OwnedWindowsServiceStartupFailureEvidence, output: ProcessOutput) {
+    super('electron', evidence, output);
   }
 }
 export interface OwnedWindowsServiceInput {
@@ -99,11 +108,13 @@ export function windowsServiceDependencies<P extends WindowsServiceProfile, Inpu
 
 export async function startOwnedWindowsService<P extends WindowsServiceProfile, Input extends OwnedWindowsServiceInput>(
   profile: P, input: Input, dependencies: OwnedWindowsServiceDependencies<P, Input>,
-): Promise<OwnedWindowsService> {
+): Promise<ObservedWindowsService> {
   const prefix = windowsServiceProfiles[profile].errorPrefix;
-  const Failure = profile === 'backend' ? OwnedWindowsBackendStartupFailure : OwnedWindowsViteStartupFailure;
+  const Failure = profile === 'backend' ? OwnedWindowsBackendStartupFailure
+    : profile === 'vite' ? OwnedWindowsViteStartupFailure : OwnedWindowsElectronStartupFailure;
   const stdout = createBoundedProcessOutput(undefined, input.redactedValues);
   const stderr = createBoundedProcessOutput(undefined, input.redactedValues);
+  const combined = profile === 'electron' ? createBoundedProcessOutput(64 * 1024, input.redactedValues) : undefined;
   const output = { readStdout: stdout.read, readStderr: stderr.read };
   let config: PreparedWindowsService;
   try { config = dependencies.prepare(input); }
@@ -202,8 +213,8 @@ export async function startOwnedWindowsService<P extends WindowsServiceProfile, 
     throw new Failure({ spawnObserved: false, exitedBeforeCleanup: false,
       processTree: 'stopped', startupFailure: 'ownerSpawnFailed' }, output);
   }
-  owner.stdout.on('data', (chunk: Buffer) => stdout.append(chunk));
-  owner.stderr.on('data', (chunk: Buffer) => stderr.append(chunk));
+  owner.stdout.on('data', (chunk: Buffer) => { stdout.append(chunk); combined?.append(chunk); });
+  owner.stderr.on('data', (chunk: Buffer) => { stderr.append(chunk); combined?.append(chunk); });
   let ownerSpawnObserved = false;
   owner.once('spawn', () => { ownerSpawnObserved = true; });
   owner.on('error', () => {
@@ -342,7 +353,9 @@ export async function startOwnedWindowsService<P extends WindowsServiceProfile, 
             : reply.state.firstFailure === 'stdioFailed' || reply.state.firstFailure === 'observationLost'
               ? 'observationLost' : 'launchFailed');
         }
-        if (!startupCompleted && reply.state.workload === 'exited') recordFailure('workloadExited');
+        // Direct Electron consumers deliberately observe short-lived successful
+        // or expected-failure launches. Long-lived services still reject this.
+        if (profile !== 'electron' && !startupCompleted && reply.state.workload === 'exited') recordFailure('workloadExited');
         if (reply.state.workload === 'unavailable') recordOperationalFailure('observationLost');
         if (reply.state.started && reply.state.identity !== null) instanceId ??= randomUUID();
         if (reply.cleanupStartedElapsedMilliseconds !== null) {
@@ -402,6 +415,10 @@ export async function startOwnedWindowsService<P extends WindowsServiceProfile, 
 
   return {
     ...output,
+    readCombinedOutput() {
+      if (combined === undefined) throw new Error(prefix + '_COMBINED_OUTPUT_UNAVAILABLE');
+      return combined.read();
+    },
     startup: Object.freeze({
       readState: () => startupState,
       subscribe(listener: (state: E2eProcessStartupState) => void) {
@@ -410,6 +427,10 @@ export async function startOwnedWindowsService<P extends WindowsServiceProfile, 
       },
     }),
     workload: Object.freeze({
+      readExitCode() {
+        return (stopped || canReadWorkload()) && current?.state.workload === 'exited'
+          ? current.state.exitCode : null;
+      },
       get instanceId() {
         if (instanceId === undefined) throw new Error(prefix + '_WORKLOAD_UNAVAILABLE');
         return instanceId;

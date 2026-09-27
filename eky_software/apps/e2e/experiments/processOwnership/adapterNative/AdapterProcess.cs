@@ -22,7 +22,7 @@ internal sealed class AdapterProcess : IDisposable
 
     internal static AdapterProcess CreateService(ServiceConfiguration config, WindowsJob job, ChildStandardIo io,
         BackendServiceState state)
-        => Create(config.NodeExecutable, config.Arguments, config.WorkingDirectory, config.ChildEnvironment, job, io, state.MarkCreated);
+        => Create(config.Executable, config.Arguments, config.WorkingDirectory, config.ChildEnvironment, job, io, state.MarkCreated);
 
     private static AdapterProcess Create(string executable, string[] args, string cwd,
         IReadOnlyDictionary<string, string> variables, WindowsJob job, ChildStandardIo io, Action? created = null)

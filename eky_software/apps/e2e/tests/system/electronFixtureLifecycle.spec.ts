@@ -440,6 +440,39 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
       } finally { await removeE2eRunRootIfPresent(fixture.root); }
     }
   });
+
+  for (const unverified of [false, true]) {
+    test(`direct Electron cleanup writes the existing CI artifact with uncertainty ${unverified}`, async ({}, testInfo) => {
+      const root = createE2eRunRoot();
+      const original = new Error('private direct runtime failure');
+      try {
+        const finished = finishIsolatedElectronTest({
+          failure: unverified ? { error: original } : undefined, testAlreadyFailed: false,
+          async disposeApi() {},
+          async closeRuntime() { if (unverified) throw new Error('private cleanup failure'); },
+          async releasePort() {},
+          removeRoot: () => removeE2eRunRoot(root),
+          report: cleanup => reportElectronLifecycleEvidence(testInfo, {
+            launch: [], observationsTruncated: false, cleanup: { ...cleanup, api: 'notStarted' },
+          }),
+        });
+        if (unverified) await expect(finished).rejects.toBe(original);
+        else await expect(finished).resolves.toBeUndefined();
+        const bytes = readFileSync(testInfo.outputPath('electron-lifecycle.json'));
+        const attachment = testInfo.attachments.find(item => item.name === 'electron-lifecycle');
+        expect(attachment).toBeDefined();
+        expect(attachment?.body ?? readFileSync(attachment!.path!)).toEqual(bytes);
+        expect(JSON.parse(bytes.toString('utf8'))).toEqual({
+          schemaVersion: 1, attempt: 0, launch: [], observationsTruncated: false,
+          cleanup: { api: 'notStarted', runtime: unverified ? 'unverified' : 'completed',
+            port: 'released', runRoot: unverified ? 'retained' : 'removed' },
+          startupCapture: { status: 'notRequested' },
+        });
+        expect(existsSync(root)).toBe(unverified);
+        expect(bytes.toString('utf8')).not.toMatch(/private|session|path|http/);
+      } finally { await removeE2eRunRootIfPresent(root); }
+    });
+  }
 });
 
 function launchFixture(fault: {

@@ -63,7 +63,7 @@ internal static partial class ViteServiceSelfTest
     {
         Check(ServiceConfiguration.Protocol(ServiceProfile.Backend) == BackendServiceProtocol.Name);
         Check(ServiceConfiguration.Protocol(ServiceProfile.Vite) == ViteServiceConfiguration.Protocol);
-        Reject(() => ServiceConfiguration.Protocol((ServiceProfile)2));
+        Reject(() => ServiceConfiguration.Protocol((ServiceProfile)int.MaxValue));
         foreach (var kind in new[] { "launch", "status", "rss", "stop" })
         {
             var values = Request(kind);

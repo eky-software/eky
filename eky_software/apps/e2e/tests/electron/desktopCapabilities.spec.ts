@@ -4,7 +4,6 @@ import {
   copyFileSync,
   existsSync,
   readFileSync,
-  rmSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { gunzipSync } from 'node:zlib';
@@ -40,7 +39,10 @@ import { reserveLoopbackPort } from '../../src/environment/reserveLoopbackPort.j
 import { readElectronE2eActiveWorkspace } from '../../src/environment/readElectronE2eActiveWorkspace.js';
 import { resolveElectronE2eExecutable } from '../../src/environment/resolveElectronE2eExecutable.js';
 import { waitForLoopbackPortRelease } from '../../src/environment/waitForLoopbackPortRelease.js';
-import { test, expect } from '../../src/fixtures/isolatedElectronTest.js';
+import { createE2eFixtureLifetime } from '../../src/environment/e2eFixtureLifetime.js';
+import { DirectElectronRunFailure, runOwnedWindowsElectron } from '../../src/environment/runOwnedWindowsElectron.js';
+import { removeE2eRunRoot } from '../../src/environment/removeE2eRunRoot.js';
+import { test, expect, finishIsolatedElectronTest, reportElectronLifecycleEvidence } from '../../src/fixtures/isolatedElectronTest.js';
 import { captureElectronStartupObservation } from '../../src/fixtures/launchElectronRuntime.js';
 import { createApprovedInvoiceWithPdf } from '../../src/journeys/invoicingApiJourney.js';
 
@@ -574,7 +576,8 @@ test('DESK-RESTART-001 @critical @recovery preserves data and rotates the runtim
   }
 });
 
-test('DESK-BOOTFAIL-001 @fault exposes only an allowlisted startup failure', async () => {
+test('DESK-BOOTFAIL-001 @fault exposes only an allowlisted startup failure', async ({}, testInfo) => {
+  const lifetime = createE2eFixtureLifetime(testInfo.timeout);
   const runRoot = createE2eRunRoot();
   const paths = createE2eWorkerPaths(runRoot, 'DESK-BOOTFAIL-001');
   const backendPort = await reserveLoopbackPort();
@@ -585,8 +588,13 @@ test('DESK-BOOTFAIL-001 @fault exposes only an allowlisted startup failure', asy
     startupMode: 'backendStartFailure',
   });
 
+  let failure: { error: unknown } | undefined;
+  let processTreeVerified = process.platform !== 'win32';
   try {
-    const result = await runElectronProcess(runtime, runRoot);
+    const result = process.platform === 'win32'
+      ? await runOwnedWindowsElectron({ runtime, runRoot, lifetime, timeoutMilliseconds: 30_000, expectedExitCode: 1 })
+      : await runElectronProcess(runtime, runRoot);
+    processTreeVerified = true;
     expect(result.exitCode).toBe(1);
     expect(result.output).not.toContain('node_modules');
     expect(result.output).not.toContain('Users\\');
@@ -603,9 +611,18 @@ test('DESK-BOOTFAIL-001 @fault exposes only an allowlisted startup failure', asy
     expect(readFileSync(runtime.observationsPath, 'utf8')).toContain(
       '"operation":"showErrorBox"',
     );
+  } catch (error) {
+    failure = { error };
+    if (error instanceof DirectElectronRunFailure) processTreeVerified = error.processTree === 'stopped';
   } finally {
-    await waitForLoopbackPortRelease(backendPort);
-    rmSync(runRoot, { force: true, recursive: true });
+    await finishIsolatedElectronTest({ failure, testAlreadyFailed: testInfo.errors.length > 0,
+      disposeApi: async () => {},
+      closeRuntime: async () => { if (!processTreeVerified) throw new Error('E2E_ELECTRON_RUNTIME_CLEANUP_UNVERIFIED'); },
+      releasePort: () => waitForLoopbackPortRelease(backendPort), removeRoot: () => removeE2eRunRoot(runRoot),
+      report: cleanup => reportElectronLifecycleEvidence(testInfo, {
+        launch: [], observationsTruncated: false, cleanup: { ...cleanup, api: 'notStarted' },
+      }),
+    });
   }
 });
 

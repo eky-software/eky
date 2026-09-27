@@ -8,7 +8,7 @@ import { OwnedWindowsViteStartupFailure, startOwnedWindowsVite } from '../../src
 import type { connectViteServiceControl } from '../../src/environment/windowsViteServiceControl.js';
 import type { ViteServiceReply, ViteServiceRequestKind, ViteServiceState } from '../../src/environment/windowsViteServiceProtocol.js';
 
-function fixture() {
+function fixture(launchExitCode: number | null = null) {
   let now = 0;
   let nativeOrigin = 0;
   let sequence = 0;
@@ -29,7 +29,8 @@ function fixture() {
       requests.push({ kind, ...(deadline === undefined ? {} : { deadline }) });
       if (kind === 'launch') state = { ...state, created: true, started: true, creationCompleted: true, launchClosed: true,
         identity: { pid: 42, creationTimeFileTimeHex: '0123456789abcdef' }, workload: 'running',
-        assignedBeforeResume: true, activeProcesses: 1 };
+        assignedBeforeResume: true, activeProcesses: 1,
+        ...(launchExitCode === null ? {} : { workload: 'exited', exitCode: launchExitCode }) };
       if (kind === 'stop') {
         cleanupStart ??= now - nativeOrigin;
         state = { ...state, creationCompleted: true, launchClosed: true,
@@ -64,6 +65,11 @@ function fixture() {
 }
 
 test.describe('Owned Windows Vite facade without native launch', () => {
+  test('still rejects root exit before startup completion for a long-lived service', async () => {
+    const f = fixture(0);
+    await expect(f.start()).rejects.toMatchObject({ evidence: { startupFailure: 'workloadExited',
+      exitedBeforeCleanup: true, processTree: 'stopped' } });
+  });
   test('returns live workload observations, redacts session automatically and memoizes full stop', async () => {
     const f = fixture();
     const vite = await f.start();

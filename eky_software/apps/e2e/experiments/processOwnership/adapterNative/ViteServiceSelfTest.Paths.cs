@@ -74,7 +74,7 @@ internal static partial class ViteServiceSelfTest
     }
 
     // Test-only junctions need neither symlink privilege nor a subprocess. Both ends are synthetic.
-    private static void CreateTestJunction(string path, string target)
+    internal static void CreateTestJunction(string path, string target)
     {
         BackendServiceConfiguration.RequireCanonicalPath(target, true);
         Directory.CreateDirectory(path);

@@ -1,6 +1,6 @@
 import { prepareWindowsViteService } from './windowsViteServiceConfiguration.js';
 import { startOwnedWindowsService, windowsServiceDependencies,
-  type OwnedWindowsServiceInput, type OwnedWindowsServiceDependencies } from './startOwnedWindowsService.js';
+  type OwnedWindowsService, type OwnedWindowsServiceInput, type OwnedWindowsServiceDependencies } from './startOwnedWindowsService.js';
 
 export { OwnedWindowsViteStartupFailure } from './startOwnedWindowsService.js';
 export type { OwnedWindowsService as OwnedWindowsVite,
@@ -20,7 +20,7 @@ const defaultDependencies = windowsServiceDependencies<'vite', OwnedWindowsViteI
 
 export function startOwnedWindowsVite(
   input: OwnedWindowsViteInput, overrides: Partial<OwnedWindowsViteDependencies> = {},
-) {
+): Promise<OwnedWindowsService> {
   return startOwnedWindowsService('vite', { ...input, redactedValues: [...input.redactedValues, input.sessionSecret] },
     { ...defaultDependencies, ...overrides });
 }

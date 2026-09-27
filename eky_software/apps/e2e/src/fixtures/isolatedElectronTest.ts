@@ -31,6 +31,7 @@ import { createE2eRunRoot } from '../environment/createE2eRunRoot.js';
 import { createE2eWorkerPaths } from '../environment/createE2eWorkerPaths.js';
 import type { E2eWorkerPaths } from '../environment/e2eEnvironmentTypes.js';
 import { createE2eFixtureLifetime } from '../environment/e2eFixtureLifetime.js';
+import { DirectElectronRunFailure, runOwnedWindowsElectron } from '../environment/runOwnedWindowsElectron.js';
 import {
   E2eBackendStartupFailure,
   type E2eBackendStartupFailureEvidence,
@@ -318,8 +319,18 @@ export const test = base.extend<
       const harness: IsolatedElectronHarness = {
         api,
         electronApp: launched.electronApp,
-        launchSecondInstance: () =>
-          launchSecondElectronInstance(runtime, runRoot),
+        async launchSecondInstance() {
+          if (runtimeCleanupUnverified) throw new Error('E2E_ELECTRON_RUNTIME_CLEANUP_UNVERIFIED');
+          if (process.platform !== 'win32') return launchSecondElectronInstance(runtime, runRoot);
+          try {
+            await runOwnedWindowsElectron({ runtime, runRoot, lifetime, timeoutMilliseconds: 15_000, expectedExitCode: 0 });
+          } catch (error) {
+            if (error instanceof DirectElectronRunFailure && error.processTree !== 'stopped') {
+              runtimeCleanupUnverified = true;
+            }
+            throw error;
+          }
+        },
         page: launched.page,
         paths,
         async performRelaunchingOperation(operation) {

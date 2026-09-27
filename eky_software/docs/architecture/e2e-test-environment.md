@@ -2289,6 +2289,74 @@ kuulu tuotannon Diagnosticsiin, Activityyn, tukipakettiin tai business-backupiin
 Tuotannon ominaisuuksia, versiota, riippuvuuksia, aikarajoja, CI-vaatimuksia
 tai tavallisen Vite-dev/buildin käyttäytymistä ei muutettu.
 
+###### Electronin suorien kuluttajien Windows-siirto
+
+**2026-09-27: kaksi suoraa kuluttajaa toteutettu ja paikallisesti todennettu;
+normaali CI-portti vielä avoin.**
+Ensimmäinen Electron-pala siirtää nykyisen toisen instanssin käynnistyksen
+ja `DESK-BOOTFAIL-001`:n suoran bootstrap-ajon samaan Windowsin palveluomistajaan
+kuin backend ja Vite. Playwright-yhteyden bridge, pääfixturen restart/relaunch
+ja Linux ovat erillistä keskeneräistä siirtotyötä. Tämä ei sulje T3:a.
+
+- Suljettu `electron`-profiili käyttää nykyistä native-binääriä, Jobia,
+  tilakonetta, kontrollikanavaa, kellosidontaa ja kolmen sekunnin cleanupia.
+  Ei kolmatta prosessinvalvojaa tai yleistä executable/argv/env-rajapintaa.
+- Sallittu suora käynnistys on vain nykyinen desktopin kehitys-Electron ja
+  repositoryn `apps/desktop/e2e-dist`-entrypoint. Native tarkistaa nimetyn
+  pnpm-paketin, desktopin lukitun version, manifestin ja `path.txt`:n sekä
+  alkuperäiset polkusegmentit ennen prosessin luontia. Tavallista tuotanto-
+  artifactia, vapaata komentoa tai lisäargumentteja ei hyväksytä.
+- Runtime-konfiguraatio ja nykyinen eristetty Electron-profiili kuuluvat
+  samaan synteettiseen run-juureen. Kontrollijuurta ei sekoiteta business-
+  profiiliin. Nykyisen `createElectronEnvironment`-funktion suljettu ympäristö
+  säilyy; sessionin sisältöä ei kopioida owner-konfiguraatioon tai viesteihin.
+- Toisen instanssin 15 sekunnin ja bootstrapin 30 sekunnin alkuperäinen raja
+  säilyvät. Native saa niiden ja saman fixture-eliniän pienemmän jäljellä
+  olevan työajan. Omistajan käynnistys, kontrolli tai restart ei uusi aikaa.
+- Suoran työkuorman nopea poistuminen on havainto, ei palvelun startup-
+  virhe: toinen instanssi vaatii edelleen exit 0 ja bootstrap-testi exit 1.
+  Native-omistajan onnistunut cleanup ja exit 0 ovat näistä erillisiä ehtoja.
+  Backendin ja Viten ennen valmiutta poistumisen hylkäys ei muutu.
+- Puun kuitti, kontrollin sulku ja ownerin todellinen poistuminen vaaditaan
+  ennen onnistumista. Epävarmuus estää restartin ja testijuuren poiston;
+  vapaa portti tai odotettu pääprosessin exit ei korvaa puutodistetta.
+  Ensimmäinen toiminta- tai assertion-virhe säilyy cleanup-tuloksen rinnalla.
+
+Todennus kattaa profiilin torjunnat, nopean exitin, kontrollikatkon,
+alkuperäiset määräajat, toistetun stopin ja juuren säilytyksen sekä molemmat
+oikeat Electron-kuluttajat. T1/T2-valmistelu sitoo uuden native-profiilin ja
+sen selftestit samaan lähde-/artifact-identiteettiin. Vanhan suoran Windows-
+polun poisto edellyttää saman revision vastaavaa näyttöä. Tuotantokoodi,
+moduulitestien julkinen fixture, riippuvuudet ja CI-vaatimukset eivät muutu.
+
+Rajattu paikallinen näyttö:
+
+- Täysi normaali E2E läpäisi 602/602 (system 516, web 41, Electron 45),
+  ilman retryä, flaky-tulosta tai ohituksia. Mukana olivat molemmat oikeat
+  suorat kuluttajat ja vastaanottojärjestyksen säilyttävä rajattu tulostepuskuri.
+- Tämän jälkeen korjattiin vain bootstrap-testin siivousraportin kytkentä
+  nykyiseen `electron-lifecycle.json`-tiedostoon ja liitteeseen. Uusi 44/44
+  kohdesarja sisälsi molemmat oikeat Electron-polut sekä onnistuneen ja
+  epävarman siivouksen raportointiregressiot. Oikean bootstrap-ajon tiedosto
+  luettiin takaisin: ei API-käynnistystä, puu ja portti suljettu, juuri poistettu.
+  Aiemman täyden ajon lähdesidonta säilyy erillisenä; 604 testin täyttä
+  uusinta-ajoa ei tämän raportointimuutoksen jälkeen ole tehty.
+- Lopullisen lähteen workspace 4 447 läpäisyä ja kahdeksan aiempaa ohitusta,
+  kaikkien 11 paketin tyypitys sekä CI-sopimukset 315/315 läpäisivät.
+  E2E-työkalusopimukset ovat 489/489. Native-selftestit ovat 510/226/285/408;
+  saman binäärin aiemmat neljä oikeaprosessikoetta läpäisivät.
+- Korvatut Windowsin suorat spawn-kutsut eivät ole fallbackina. Linuxin
+  vanha suora polku säilyy erikseen avoimena siirtona. Pääfixturen
+  Playwright-käynnistys, restart ja relaunch eivät tällä muutu omistetuiksi.
+
+Normaali kriittinen Electron-CI ei sisällä näitä kahta suoraa testiä;
+niiden oikeaprosessinäyttö on yllä oleva erillinen paikallinen ajo.
+Uudet alemmat sopimukset kuuluvat tavalliseen system-sarjaan. Näitä kahta
+tasoa ei yhdistetä väitteeksi uudesta CI-kattavuudesta. Native-konfiguraatio
+ja kontrollikuitti pysyvät testijuuressa; julkaistava lifecycle-raportti
+sisältää vain suljetut tilat. Epävarma siivous säilyttää juuren ja ensimmäisen
+virheen. Raportit eivät kuulu tuotannon diagnostiikkaan tai varmuuskopioihin.
+
 ###### Chromiumin kuluttajasiirron avoin omistajuusraja
 
 **2026-09-27: vain valmistelu; omistajapäätös avoin, ei toteutusta.**
