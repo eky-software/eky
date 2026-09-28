@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { errors, expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import ts from 'typescript';
 
 import { createE2eRunRoot } from '../../src/environment/createE2eRunRoot.js';
 import { removeE2eRunRoot } from '../../src/environment/removeE2eRunRoot.js';
@@ -20,13 +21,45 @@ import {
   parseElectronE2eStartupObservation,
 } from '../../../desktop/e2e/electronE2eStartupObservation.js';
 import { ELECTRON_E2E_FIRST_WINDOW_TIMEOUT_MILLISECONDS } from '../../src/fixtures/electronLaunchBudgets.js';
-import { stopOwnedElectronRuntime } from '../../src/fixtures/stopOwnedElectronRuntime.js';
+import { closeOwnedWindowsElectronRuntime } from '../../src/fixtures/closeOwnedWindowsElectronRuntime.js';
+import { createE2eFixtureLifetime } from '../../src/environment/e2eFixtureLifetime.js';
 import type { ElectronBridgeCleanupEvidence } from '../../src/environment/startOwnedWindowsElectronBridge.js';
 import { createElectronLaunchFailureCapture } from '../../src/fixtures/captureElectronLaunchFailure.js';
 import { createBackendOperationalEvent } from '../../../backend/src/observability/createOperationalEvent.js';
 import { createBackendOperationalLogger } from '../../../backend/src/observability/infrastructure/createBackendOperationalLogger.js';
 
 test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
+  for (const [path, entry] of [
+    ['../../src/fixtures/isolatedElectronTest.ts', 'fixture'],
+    ['../electron/desktopCapabilities.spec.ts', 'bootstrap'],
+  ] as const) {
+    test(`${entry} rejects unsupported platforms before any root, backup or port allocation`, () => {
+      const source = ts.createSourceFile(path, readFileSync(new URL(path, import.meta.url), 'utf8'),
+        ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+      const bodies: ts.Block[] = [];
+      const visit = (node: ts.Node): void => {
+        const callback = entry === 'fixture' && ts.isPropertyAssignment(node) && node.name.getText(source) === 'e2eElectron'
+          ? node.initializer
+          : entry === 'bootstrap' && ts.isCallExpression(node) && node.arguments[0] !== undefined &&
+              ts.isStringLiteral(node.arguments[0]) && node.arguments[0].text.startsWith('DESK-BOOTFAIL-001 ')
+            ? node.arguments[1] : undefined;
+        if (callback && ts.isArrowFunction(callback) && ts.isBlock(callback.body)) bodies.push(callback.body);
+        ts.forEachChild(node, visit);
+      };
+      visit(source);
+      expect(bodies).toHaveLength(1);
+      const first = bodies[0]!.statements[0];
+      expect(first && ts.isExpressionStatement(first) && ts.isCallExpression(first.expression) &&
+        ts.isIdentifier(first.expression.expression) && first.expression.expression.text === 'assertElectronLaunchPlatform' &&
+        first.expression.arguments.length === 0).toBe(true);
+      expect(source.statements.some(node => ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier) &&
+        node.moduleSpecifier.text.endsWith('/environment/assertElectronLaunchPrerequisites.js') &&
+        node.importClause?.namedBindings && ts.isNamedImports(node.importClause.namedBindings) &&
+        node.importClause.namedBindings.elements.some(binding => binding.name.text === 'assertElectronLaunchPlatform' &&
+          binding.propertyName === undefined))).toBe(true);
+    });
+  }
+
   test('backup preparation failure retains the root and writes safe evidence on the first attempt', async ({}, testInfo) => {
     const root = createE2eRunRoot();
     const marker = join(root, 'synthetic-evidence.json');
@@ -374,17 +407,20 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
 
   test('keeps the original process handle after Playwright releases its application channel', async () => {
     const fixture = launchFixture({ terminal: 'process' });
+    const originalProcess = fixture.application.process();
     await expect(fixture.run()).resolves.toHaveProperty('page');
     expect(fixture.application.process()).toBeUndefined();
     const ownedProcess = fixture.ownedProcess();
     expect(ownedProcess).toBeDefined();
+    expect(ownedProcess).toBe(originalProcess);
     expect(ownedProcess?.exitCode).toBe(1);
     let stoppedProcess: unknown;
-    await expect(stopOwnedElectronRuntime(
-      { async close() { throw new Error('synthetic released channel'); } },
-      ownedProcess!,
-      async (child) => { stoppedProcess = child; },
-    )).resolves.toBeUndefined();
+    await expect(closeOwnedWindowsElectronRuntime({
+      application: { async close() { throw new Error('must not close a released channel'); } },
+      alreadyClosed: true,
+      owner: { async stop() { stoppedProcess = fixture.ownedProcess(); } },
+      lifetime: createE2eFixtureLifetime(60_000),
+    })).resolves.toBeUndefined();
     expect(stoppedProcess).toBe(ownedProcess);
   });
 

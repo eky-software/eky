@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { randomBytes } from 'node:crypto';
 import { lstatSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { bridgeDrainFile, bridgeDrainLimit, bridgeFailureFile, encodeFrame, streamLimit, validateAdapterTerminal,
-  parseBridgeDrainCompletion, validateCaseEvidence, workloadOutcomes } from './adapterContract.mjs';
+  parseBridgeDrainCompletion, validateCaseEvidence, workloadOutcomes, createLateForkPermission,
+  lateForkFiles, lateForkLimit, rootFirstEvidenceVersion, validateLateForkEvidence, validateLateForkReceipt,
+  validateRootBeforeStop } from './adapterContract.mjs';
 import { beforeDeadline, connectAdapter } from './adapterControl.mjs';
 import { captureLaunchOutcome, stopRootBeforeBridge } from './adapterRootExitOrdering.mjs';
 import { boundedFailureDetails, observeBoundedChildOutput } from './boundedChildOutput.mjs';
@@ -29,6 +32,7 @@ let bridgeExitCode = null;
 let rootBeforeStop = null;
 let bridgeDrainCompletion = null;
 let launchOutcome;
+let lateFork;
 
 function assertOwnerHealthy() {
   if (nativeFailure) throw nativeFailure;
@@ -89,6 +93,40 @@ function assertNoBridgeFailure() {
   try { lstatSync(path.join(cwd, bridgeFailureFile)); }
   catch (error) { if (error.code === 'ENOENT') return; throw error; }
   throw new Error('bridgeFailureRecorded');
+}
+
+function assertForkFileAbsent(name) {
+  try { lstatSync(path.join(cwd, name)); }
+  catch (error) { if (error.code === 'ENOENT') return; throw error; }
+  throw new Error('unexpectedLateForkEvidence');
+}
+
+async function observeLateFork() {
+  const rootBeforePermission = { ...validateRootBeforeStop(await waitState(state =>
+    state.rootExited && state.rootExitCode === 0 && state.descendantsAfterRoot && state.activeProcesses > 0), 0) };
+  for (const name of Object.values(lateForkFiles)) assertForkFileAbsent(name);
+  const permission = createLateForkPermission(generation, randomBytes(32).toString('hex'), rootBeforePermission);
+  remainingOperationTime();
+  writeOnce(lateForkFiles.permission, permission);
+  remainingOperationTime();
+  let receipt;
+  while (performance.now() < deadline) {
+    assertOwnerHealthy();
+    try {
+      receipt = validateLateForkReceipt(JSON.parse(boundedBytes(lateForkFiles.receipt, lateForkLimit).toString('utf8')), permission);
+      break;
+    } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    await delay(20);
+  }
+  remainingOperationTime();
+  assert.ok(receipt, 'lateForkReceiptMissing');
+  assertForkFileAbsent(lateForkFiles.permission);
+  assert.deepEqual(JSON.parse(boundedBytes(lateForkFiles.consumed, lateForkLimit).toString('utf8')), permission);
+  const observed = await waitState(state => state.rootExited && state.rootExitCode === 0 &&
+    state.descendantsAfterRoot && state.activeProcesses >= 2);
+  remainingOperationTime();
+  lateFork = validateLateForkEvidence({ rootBeforePermission, permission, receipt }, generation, observed);
+  return observed;
 }
 
 async function stopOwner() {
@@ -222,11 +260,11 @@ async function run() {
     } else if (scenario === 'rootFirst') {
       await ownerOperation(application.evaluate(({ app }) => { setImmediate(() => app.exit(0)); }));
       ({ rootBeforeStop } = await stopRootBeforeBridge({ deadline, expectedExitCode: 0, stopOwner,
-        observeRoot: () => waitState(state => state.rootExited && state.rootExitCode === 0 && state.descendantsAfterRoot && state.activeProcesses > 0),
+        observeRoot: observeLateFork,
         settleBridge: async () => assert.deepEqual(await ownerOperation(bridgeClosed), { code: 0, signal: null }),
       }));
       bridgeExitCode = 0;
-      checks = { pageApi: true, rootExitObserved: true, descendantsAfterRoot: true };
+      checks = { pageApi: true, rootExitObserved: true, descendantsAfterRoot: true, lateForkAcknowledged: true };
     } else {
       await control.request('breakBridge');
       assert.deepEqual(await ownerOperation(bridgeClosed), { code: 41, signal: null });
@@ -246,7 +284,8 @@ async function run() {
   assertOwnerHealthy();
   assert.deepEqual(validateAdapterTerminal(boundedJson('adapter-terminal.json'), generation), terminal);
   if (scenario === 'beforeReady') assertNoBridgeFailure();
-  const evidence = { schemaVersion: 1, generation, scenario, workloadOutcome: workloadOutcomes[scenario], bridgeExitCode,
+  const evidence = { schemaVersion: scenario === 'rootFirst' ? rootFirstEvidenceVersion : 1,
+    ...(scenario === 'rootFirst' ? { lateFork } : {}), generation, scenario, workloadOutcome: workloadOutcomes[scenario], bridgeExitCode,
     rootBeforeStop, bridgeDrainCompletion, checks: { ...checks,
     ownerExited: true, terminalAccepted: true, outerInterventionAbsent: true }, terminal };
   validateCaseEvidence(evidence, scenario, generation);

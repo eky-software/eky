@@ -13,6 +13,8 @@ internal static class Program
         {
             if (Environment.GetEnvironmentVariable(ElectronBridgeClient.ConfigurationKey) is not null)
                 return await ElectronBridgeClient.RunConfiguredAsync(args);
+            if (args.Length == 2 && args[0] == "--resume-failure-self-test")
+                return await BackendServiceOwner.RunResumeFailureSelfTestAsync(args[1]);
             if (args.SequenceEqual(["--backend-self-test"])) return await BackendServiceSelfTest.RunAsync();
             if (args.Length == 2 && args[0] == "--backend-owner") return await BackendServiceOwner.RunConfiguredAsync(args[1]);
             if (args.SequenceEqual(["--vite-service-self-test"])) return await ViteServiceSelfTest.RunAsync();

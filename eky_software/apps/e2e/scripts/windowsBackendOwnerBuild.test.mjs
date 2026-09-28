@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
@@ -26,6 +26,7 @@ function fixture(t) {
   }
   const paths = windowsBackendOwnerBuildPaths(root);
   const calls = [];
+  const proofs = [];
   const run = (command, args, options) => {
     calls.push({ command, args, options });
     if (args[0] === 'build') {
@@ -34,13 +35,16 @@ function fixture(t) {
         writeFileSync(join(paths.output, `Eky.ProcessOwnershipAdapter${suffix}`), 'synthetic artifact');
       }
     }
-    return { status: 0, signal: null };
+    return { status: 0, signal: null, ...(args[1] === '--resume-failure-self-test' ? {
+      stdout: JSON.stringify({ schemaVersion: 1, kind: 'resumeFailureSelfTest', passed: true, stage: 'complete', checks: 25 }) + '\r\n',
+      stderr: '',
+    } : {}) };
   };
   const prepare = override => prepareWindowsBackendOwner(
     { repositoryRoot: root, environment: { EKY_DOTNET_EXE: 'synthetic-dotnet' } },
-    { platform: 'win32', run: override ?? run },
+    { platform: 'win32', run: override ?? run, writeResumeProof: proof => proofs.push(proof) },
   );
-  return { root, paths, write, calls, run, prepare };
+  return { root, paths, write, calls, proofs, run, prepare };
 }
 
 test('clean preparation binds the exact source and executable closure after all service self-tests', t => {
@@ -48,7 +52,7 @@ test('clean preparation binds the exact source and executable closure after all 
   f.write('apps/e2e/.artifacts/t3c-adapter/retained-first-failure.log', 'retain');
   assert.equal(f.prepare(), 'prepared');
   assert.equal(assertWindowsBackendOwnerBuild(f.root), f.paths.executable);
-  assert.equal(f.calls.length, 6);
+  assert.equal(f.calls.length, 7);
   assert.equal(f.calls[0].command, 'synthetic-dotnet');
   assert.deepEqual(f.calls[0].args, ['build', f.paths.project, '--configuration', 'Release', '--nologo']);
   assert.equal(f.calls[1].args[1], '--self-test');
@@ -56,12 +60,21 @@ test('clean preparation binds the exact source and executable closure after all 
   assert.equal(f.calls[3].args[1], '--vite-service-self-test');
   assert.equal(f.calls[4].args[1], '--electron-service-self-test');
   assert.equal(f.calls[5].args[1], '--chromium-service-self-test');
+  assert.deepEqual(f.calls[6].args, [join(f.paths.output, 'Eky.ProcessOwnershipAdapter.dll'),
+    '--resume-failure-self-test', realpathSync(process.execPath)]);
   assert.equal(f.calls[0].options.env.EKY_E2E, undefined);
   assert.equal(f.calls[1].options.env.EKY_E2E, '1');
   assert.equal(f.calls[2].options.env.EKY_E2E, '1');
   assert.equal(f.calls[3].options.env.EKY_E2E, '1');
   assert.equal(f.calls[4].options.env.EKY_E2E, '1');
   assert.equal(f.calls[5].options.env.EKY_E2E, '1');
+  assert.equal(f.calls[6].options.env.EKY_E2E, '1');
+  assert.equal(f.calls[6].options.timeout, 60_000);
+  for (const call of f.calls.slice(0, 6)) assert.equal(call.options.stdio, 'inherit');
+  assert.deepEqual(f.calls[6].options.stdio, ['ignore', 'pipe', 'pipe']);
+  assert.equal(f.calls[6].options.encoding, 'utf8');
+  assert.equal(f.calls[6].options.maxBuffer, 4096);
+  assert.deepEqual(f.proofs, [{ schemaVersion: 1, kind: 'resumeFailureSelfTest', passed: true, stage: 'complete', checks: 25 }]);
   for (const call of f.calls) assert.equal(call.options.shell, false);
   assert.equal(readFileSync(join(f.paths.artifacts, 'retained-first-failure.log'), 'utf8'), 'retain');
   const marker = readFileSync(f.paths.marker, 'utf8');
@@ -98,7 +111,7 @@ test('nested source edits invalidate the exact source receipt', t => {
   assert.throws(() => assertWindowsBackendOwnerBuild(f.root), /E2E_BACKEND_OWNER_BUILD_REQUIRED/u);
 });
 
-for (const failedStep of [0, 1, 2, 3, 4, 5]) {
+for (const failedStep of [0, 1, 2, 3, 4, 5, 6]) {
   test(`failure at preparation step ${failedStep} invalidates an earlier success and stops the chain`, t => {
     const f = fixture(t);
     f.prepare();
@@ -109,6 +122,30 @@ for (const failedStep of [0, 1, 2, 3, 4, 5]) {
     }), /E2E_BACKEND_OWNER_PREPARATION_FAILED/u);
     assert.equal(calls, failedStep + 1);
     assert.throws(() => assertWindowsBackendOwnerBuild(f.root), /E2E_BACKEND_OWNER_BUILD_REQUIRED/u);
+  });
+}
+
+for (const [name, change] of [
+  ['missing output', result => ({ ...result, stdout: undefined })],
+  ['non-protocol output', result => ({ ...result, stdout: 'private raw output' })],
+  ['unexpected stderr', result => ({ ...result, stderr: 'private raw stderr' })],
+  ['capture failure', result => ({ ...result, error: new Error('capture failed') })],
+  ...[
+    ['failed proof', { passed: false }],
+    ['incomplete checks', { checks: 24 }],
+    ['incomplete stage', { stage: 'terminal' }],
+    ['unknown stage', { stage: 'private raw stage' }],
+    ['extra field', { privatePath: 'private raw path' }],
+  ].map(([name, fields]) => [name, result => ({ ...result, stdout: JSON.stringify({ ...JSON.parse(result.stdout), ...fields }) })]),
+]) {
+  test(`real resume proof rejects ${name} without a build receipt or raw output`, t => {
+    const f = fixture(t);
+    assert.throws(() => f.prepare((command, args, options) => {
+      const result = f.run(command, args, options);
+      return args[1] === '--resume-failure-self-test' ? change(result) : result;
+    }), /^Error: E2E_BACKEND_OWNER_PREPARATION_FAILED$/u);
+    assert.throws(() => assertWindowsBackendOwnerBuild(f.root), /E2E_BACKEND_OWNER_BUILD_REQUIRED/u);
+    assert.ok(!JSON.stringify(f.proofs).includes('private raw'));
   });
 }
 

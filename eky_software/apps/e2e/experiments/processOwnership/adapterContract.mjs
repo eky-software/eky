@@ -8,6 +8,11 @@ export const outerObservationBudget = 35_000;
 export const bridgeDrainFile = 'adapter-bridge-drain.private.json';
 export const bridgeDrainLimit = 1024;
 export const bridgeFailureFile = 'adapter-bridge-failure.private.json';
+export const lateForkFiles = Object.freeze({ permission: 'adapter-fork-permission.json',
+  consumed: 'adapter-fork-consumed.json', receipt: 'adapter-grandchild.json' });
+export const lateForkLimit = 1024;
+export const lateForkRole = '--grandchild';
+export const rootFirstEvidenceVersion = 2;
 export const workloadOutcomes = Object.freeze({ normal: 'completed', beforeReady: 'expectedLaunchFailure',
   rootFirst: 'expectedRootExit', bridgeExit: 'expectedBridgeFailure' });
 const tokenPattern = /^[a-f0-9]{64}$/;
@@ -105,6 +110,39 @@ export function validateRootBeforeStop(state, expectedExitCode) {
   return state;
 }
 
+export function createLateForkPermission(generation, challenge, rootBeforePermission) {
+  validateRootBeforeStop(rootBeforePermission, 0);
+  return validateLateForkPermission({ schemaVersion: 1, generation, challenge, kind: 'lateForkPermission' }, generation);
+}
+
+export function validateLateForkPermission(value, generation) {
+  exactKeys(value, ['schemaVersion', 'generation', 'challenge', 'kind']);
+  assert.equal(value.schemaVersion, 1);
+  assert.equal(value.generation, requireToken(generation));
+  requireToken(value.challenge);
+  assert.notEqual(value.challenge, generation, 'freshForkChallengeRequired');
+  assert.equal(value.kind, 'lateForkPermission');
+  return value;
+}
+
+export function validateLateForkReceipt(value, permission) {
+  validateLateForkPermission(permission, permission.generation);
+  exactKeys(value, ['schemaVersion', 'generation', 'challenge', 'kind']);
+  assert.deepEqual(value, { schemaVersion: 1, generation: permission.generation,
+    challenge: permission.challenge, kind: 'grandchildReady' });
+  return value;
+}
+
+export function validateLateForkEvidence(value, generation, rootBeforeStop) {
+  exactKeys(value, ['rootBeforePermission', 'permission', 'receipt']);
+  validateRootBeforeStop(value.rootBeforePermission, 0);
+  validateLateForkPermission(value.permission, generation);
+  validateLateForkReceipt(value.receipt, value.permission);
+  validateRootBeforeStop(rootBeforeStop, 0);
+  assert.ok(rootBeforeStop.activeProcesses >= 2, 'lateDescendantMissingBeforeStop');
+  return value;
+}
+
 // This is pre-exit drain proof, never an observed bridge process exit.
 export function parseBridgeDrainCompletion(bytes, generation, expectedExitCode) {
   assert.ok(Buffer.isBuffer(bytes) && bytes.length <= bridgeDrainLimit, 'bridgeDrainOverflow');
@@ -124,8 +162,8 @@ export function validateBridgeDrainCompletion(value, generation, expectedExitCod
 
 export function validateCaseEvidence(value, scenario, generation) {
   exactKeys(value, ['schemaVersion', 'generation', 'scenario', 'workloadOutcome', 'bridgeExitCode',
-    'rootBeforeStop', 'bridgeDrainCompletion', 'checks', 'terminal']);
-  assert.equal(value.schemaVersion, 1);
+    'rootBeforeStop', 'bridgeDrainCompletion', 'checks', 'terminal', ...(scenario === 'rootFirst' ? ['lateFork'] : [])]);
+  assert.equal(value.schemaVersion, scenario === 'rootFirst' ? rootFirstEvidenceVersion : 1);
   assert.equal(value.generation, generation);
   assert.equal(value.scenario, scenario);
   assert.ok(adapterCases.includes(scenario));
@@ -135,13 +173,14 @@ export function validateCaseEvidence(value, scenario, generation) {
   const normal = ['pageApi', 'arguments', 'environment', 'cwd', 'sandbox', 'stdio', 'normalClose'];
   const names = scenario === 'normal' ? [...common, ...normal]
     : scenario === 'beforeReady' ? [...common, 'launchRejected', 'beforeReady', 'leafAcknowledged', 'notTimeout', 'descendantsAfterRoot', 'bridgeFailureAbsent']
-      : scenario === 'rootFirst' ? [...common, 'pageApi', 'rootExitObserved', 'descendantsAfterRoot']
+      : scenario === 'rootFirst' ? [...common, 'pageApi', 'rootExitObserved', 'descendantsAfterRoot', 'lateForkAcknowledged']
         : [...common, 'pageApi', 'bridgeExitObserved', 'rootStillAlive', 'ownerStillAlive'];
   exactKeys(value.checks, names);
   for (const check of names) assert.equal(value.checks[check], true, `missingCheck:${check}`);
   if (scenario === 'beforeReady' || scenario === 'rootFirst')
     validateRootBeforeStop(value.rootBeforeStop, scenario === 'beforeReady' ? 29 : 0);
   else assert.equal(value.rootBeforeStop, null);
+  if (scenario === 'rootFirst') validateLateForkEvidence(value.lateFork, generation, value.rootBeforeStop);
   if (scenario === 'beforeReady') validateBridgeDrainCompletion(value.bridgeDrainCompletion, generation, 29);
   else assert.equal(value.bridgeDrainCompletion, null);
   validateState(value.terminal, true);

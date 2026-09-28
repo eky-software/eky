@@ -3,7 +3,7 @@
 ## Päätös ja nykyinen tila
 
 **Nykytila 2026-09-28: M0, T1 ja T2 hyväksytty; T3/R28 kesken.**
-**Nykyinen vihreä lähtörevisio on `5bbfd4834707b77e1211851a6fb21b09b8572a66`.**
+**Viimeisin täysi normaali baseline on `5bbfd4834707b77e1211851a6fb21b09b8572a66`.**
 Sen [normaali CI](https://github.com/eky-software/eky/actions/runs/36443256758)
 ja [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/36443266084)
 läpäisivät ensimmäisellä yrityksellä. Normaali CI: 38 onnistunutta ryhmää ja
@@ -12,12 +12,32 @@ pois. System 689/690 ja yksi tunnettu alustasuoja, web 37/37 ja Electron 38/38;
 ei retryä tai flakyä. Koko tapausjoukko, kaikki 38 checkoutia sekä neljän
 tuottajan ja kymmenen kuluttajan artifact-sidonnat on takaisinluettu.
 Tämä avaa seuraavan rajatun Linux-kuluttajatyön, ei sulje T3:a tai PR/main-portteja.
-Seitsemän [todellisen Linux-kuluttajan katkeamiskokeen](e2e-test-environment.md#linuxin-todellisten-kuluttajien-katkeamiskokeet)
-ajurit, rajatut tyypitetyt testikytkennät ja manuaalinen CI-valinta on
-toteutettu. Kohdennetut sopimustestit ja katselmus eivät vielä todista
-oikeita Linux-katkeamisia. Seuraava portti on yhteinen paikallinen
-testityökalusarja ja tyypitys, sitten yksi seurattu Linux-CI sekä erillinen
-endurance. Korvatun aktiivisen polun poisto odottaa vastaavaa näyttöä.
+Uudemman revision `7f8df53a16770b5e3206c179ff8f497b76c6cf24`
+[rajattu Linux-CI](https://github.com/eky-software/eky/actions/runs/36456205257)
+läpäisi ensimmäisellä yrityksellä: system 698/699 ja yksi tunnettu
+alustasuoja, web 37/37, kaikki seitsemän
+[todellisen kuluttajan katkeamiskoetta](e2e-test-environment.md#linuxin-todellisten-kuluttajien-katkeamiskokeet)
+sekä erillinen endurance 1/1. Lähde, tapausjoukot ja siivoustodisteet on
+takaisinluettu; retryä tai flakyä ei ollut. Tämä ei ole uuden revision
+täysi normaali CI. Vastaavan näytön kattamat vanhat aktiiviset Electron-
+testien varapolut ja kaksi korvattua siivousapuria on nyt poistettu.
+Poiston kohdesarja 151/151, puhtaat Electron-sopimukset 10/10, koko
+workspacen tyypitys ja CI-sopimukset 318/318 läpäisivät; poistolla on
+riippumaton hyväksyvä katselmus. Poiston jälkeinen tavallinen Windows-sarja
+läpäisi 781/781 ensimmäisellä yrityksellä (system 693, web 43, Electron 45),
+ilman ohituksia, retryä tai flakyä. Koko workspacen testit läpäisivät
+peräkkäin; aiempi rinnakkaisajon timeout säilyy ratkaisemattomana havaintona.
+Pysyvän matriisin kaksi täsmennystä on todennettu: juuren poistumisen jälkeen
+haarautuva jälkeläinen sekä native-resumen virheestä saman omistajan
+siivoukseen kulkeva ketju. Jälkimmäinen sisältyy nyt tavalliseen valmisteluun;
+sen pipe-kytkentä ja suljettu raportti läpäisivät 31/31 sopimustestiä ja
+riippumattoman katselmuksen. Tuotanto ja aikarajat säilyvät.
+Seuraavana ovat täsmällisen PR/main-revision omat tarkistukset.
+[Ajantasainen jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+omistaa seuraavan työvaiheen; aiempi vihreä ajo ei hyväksy uutta lähdetilaa.
+
+### Aiemmat checkpointit
+
 Alla säilyvät aiempien korjausten ja hylkäysten omat checkpointit.
 Windows-Electronin nykyisen kadenssin stress ja täysi 30 minuutin soak
 sekä alkuperäisen virheen säilymisen kaksi rajattua todellisen fixturen
@@ -138,10 +158,10 @@ Chromiumin ja Linuxin myöhemmät hyväksytyt kuluttajasiirrot eivät sisälly
 tähän aiempaan näyttöön.
 
 Nykyinen jäljellä oleva työ on [M1:n lyhyessä sulkulistassa](release-0.3.0-m1-preparation-plan.md#t3n-nykyinen-työjärjestys):
-Chromiumin omistajuusraja ja siirto, Linuxin oikeat kuluttajat ja sen
-korvatun toteutuksen poisto, muiden siirrettyjen kuluttajien endurance sekä koko nykyinen
-T3-matriisi ja täsmälliset PR/main-portit. Chromiumin worker-/testikohtainen
-valinta ja paikallisen Linux-testauksen ympäristöpäätös on ratkaistu yllä.
+korvattujen aktiivisten polkujen poisto ja poiston regressiot, koko nykyisen
+T3-matriisin näytön yhteenveto sekä täsmälliset PR/main-portit. Chromiumin
+worker-/testikohtainen eristys ja Linuxin oikeat kuluttajat on nyt todennettu
+yllä rajatuilla ajoilla. Paikallisen Linux-testauksen ympäristöpäätös on ratkaistu.
 Hyväksyntä ei tarkoita uutta riippuvuutta, laajempia oikeuksia tai
 heikennettyjä vaatimuksia. Seuraava vaihe on hyväksytty toteutus, ei uusi
 rinnakkainen arkkitehtuurisuunnitelma.

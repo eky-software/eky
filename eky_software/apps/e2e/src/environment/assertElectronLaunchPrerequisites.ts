@@ -14,6 +14,12 @@ import {
 
 import { assertPathUnderRoot } from './assertE2eSafetyBoundary.js';
 
+export function assertElectronLaunchPlatform(platform: NodeJS.Platform = process.platform): void {
+  if (platform !== 'win32') {
+    throw new Error('E2E_ELECTRON_OWNER_PLATFORM_INVALID');
+  }
+}
+
 export type ElectronLaunchPrerequisiteErrorCode =
   | 'ELECTRON_APPLICATION_MISSING'
   | 'ELECTRON_CONFIG_MISSING'

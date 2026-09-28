@@ -5,12 +5,10 @@ import {
   mkdirSync,
   readFileSync,
 } from 'node:fs';
-import { spawn } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 import {
-  _electron as electron,
   request as requestFactory,
   test as base,
   type APIRequestContext,
@@ -24,7 +22,7 @@ import {
   resolveElectronE2eApplicationPath,
   type ElectronE2eRuntime,
 } from '../environment/createElectronE2eRuntime.js';
-import { assertElectronLaunchPrerequisites } from '../environment/assertElectronLaunchPrerequisites.js';
+import { assertElectronLaunchPlatform, assertElectronLaunchPrerequisites } from '../environment/assertElectronLaunchPrerequisites.js';
 import { createElectronEnvironment } from '../environment/createElectronEnvironment.js';
 import { listElectronE2eProfileDirectories } from '../environment/createElectronE2eProfile.js';
 import { createE2eRunRoot } from '../environment/createE2eRunRoot.js';
@@ -52,10 +50,6 @@ import {
   type ElectronWorkspaceBackupFixture,
 } from '../workspaces/createElectronWorkspaceBackupFixture.js';
 import { readE2eScenarioId } from './readE2eScenarioId.js';
-import {
-  closeOwnedElectronRuntime,
-  stopOwnedElectronRuntime,
-} from './stopOwnedElectronRuntime.js';
 import { closeOwnedWindowsElectronRuntime } from './closeOwnedWindowsElectronRuntime.js';
 import {
   launchElectronRuntime,
@@ -105,14 +99,6 @@ interface IsolatedElectronOptions {
   e2eWorkspaceBackupFixture: 'activeReplacement' | 'none' | 'synthetic';
 }
 
-type ElectronChildProcess = ReturnType<typeof spawn> & {
-  on(event: 'error', listener: (error: Error) => void): ElectronChildProcess;
-  on(
-    event: 'exit',
-    listener: (code: number | null) => void,
-  ): ElectronChildProcess;
-};
-
 const MAX_ELECTRON_LAUNCH_OBSERVATIONS = 64;
 
 export const test = base.extend<
@@ -134,6 +120,7 @@ export const test = base.extend<
     use,
     testInfo,
   ) => {
+    assertElectronLaunchPlatform();
     const lifetime = createE2eFixtureLifetime(
       e2eContainmentTimeoutMilliseconds === undefined ? testInfo.timeout : e2eContainmentTimeoutMilliseconds,
     );
@@ -211,7 +198,6 @@ export const test = base.extend<
     }
     let api: APIRequestContext | undefined;
     let electronApp: ElectronApplication | undefined;
-    let electronProcess: ReturnType<ElectronApplication['process']> | undefined;
     let windowsBridge: OwnedWindowsElectronBridge | undefined;
     let ownership: Readonly<ElectronBridgeCleanupEvidence> | undefined;
     let applicationClosed = false;
@@ -231,47 +217,30 @@ export const test = base.extend<
       assertElectronRuntimeLaunchPrerequisites(runtime, runRoot);
       connectionPending = true;
       electronApp = undefined;
-      electronProcess = undefined;
       applicationClosed = false;
       ownership = undefined;
       return launchElectronRuntime({
         async launch() {
-          if (process.platform === 'win32') {
-            // Retain cleanup ownership before awaiting Playwright admission.
-            windowsBridge = startOwnedWindowsElectronBridge({
-              repositoryRoot: resolve(import.meta.dirname, '../../../..'),
-              runRoot,
-              runtimeRoot: runtime.runtimeRoot,
-              runtimeConfigPath: runtime.configPath,
-              environment: createElectronEnvironment({
-                configPath: runtime.configPath,
-                profile: runtime.profile,
-                runRoot: runtime.runtimeRoot,
-              }),
-              lifetime,
-              startupDeadline: performance.now() + ELECTRON_E2E_PROCESS_CONNECT_TIMEOUT_MILLISECONDS,
-              redactedValues: [runtime.sessionSecret],
-            });
-            return windowsBridge.application;
-          }
-          return electron.launch({
-            args: [resolveElectronE2eApplicationPath()],
-            cwd: runRoot,
-            env: createElectronEnvironment({
+          // Retain cleanup ownership before awaiting Playwright admission.
+          windowsBridge = startOwnedWindowsElectronBridge({
+            repositoryRoot: resolve(import.meta.dirname, '../../../..'),
+            runRoot,
+            runtimeRoot: runtime.runtimeRoot,
+            runtimeConfigPath: runtime.configPath,
+            environment: createElectronEnvironment({
               configPath: runtime.configPath,
               profile: runtime.profile,
               runRoot: runtime.runtimeRoot,
             }),
-            executablePath: resolveElectronE2eExecutable(),
-            timeout: ELECTRON_E2E_PROCESS_CONNECT_TIMEOUT_MILLISECONDS,
+            lifetime,
+            startupDeadline: performance.now() + ELECTRON_E2E_PROCESS_CONNECT_TIMEOUT_MILLISECONDS,
+            redactedValues: [runtime.sessionSecret],
           });
+          return windowsBridge.application;
         },
-        ...(process.platform === 'win32' ? {
-          readWorkloadState: () => windowsBridge?.readObservedWorkloadState() ?? 'unavailable',
-        } : {}),
+        readWorkloadState: () => windowsBridge?.readObservedWorkloadState() ?? 'unavailable',
         connected(application, child) {
           electronApp = application;
-          electronProcess = child;
           connectionPending = false;
           application.on('close', () => { applicationClosed = true; });
           child.stdout?.resume();
@@ -312,18 +281,9 @@ export const test = base.extend<
           }
           windowsBridge = undefined;
           electronApp = undefined;
-          electronProcess = undefined;
           connectionPending = false;
         } else if (electronApp !== undefined) {
-          if (electronProcess === undefined) {
-            throw new Error('E2E_ELECTRON_RUNTIME_CLEANUP_UNVERIFIED');
-          }
-          const closeRuntime = alreadyClosed
-            ? stopOwnedElectronRuntime
-            : closeOwnedElectronRuntime;
-          await closeRuntime(electronApp, electronProcess);
-          electronApp = undefined;
-          electronProcess = undefined;
+          throw new Error('E2E_ELECTRON_RUNTIME_CLEANUP_UNVERIFIED');
         }
         if (connectionPending || runtimeCleanupUnverified) {
           throw new Error('E2E_ELECTRON_RUNTIME_CLEANUP_UNVERIFIED');
@@ -376,7 +336,6 @@ export const test = base.extend<
         electronApp: launched.electronApp,
         async launchSecondInstance() {
           if (runtimeCleanupUnverified) throw new Error('E2E_ELECTRON_RUNTIME_CLEANUP_UNVERIFIED');
-          if (process.platform !== 'win32') return launchSecondElectronInstance(runtime, runRoot);
           try {
             await runOwnedWindowsElectron({ runtime, runRoot, lifetime, timeoutMilliseconds: 15_000, expectedExitCode: 0 });
           } catch (error) {
@@ -712,51 +671,6 @@ function countWorkspaceRelaunchRequests(observationsPath: string): number {
     }
   }
   return count;
-}
-
-function launchSecondElectronInstance(
-  runtime: ElectronE2eRuntime,
-  runRoot: string,
-): Promise<void> {
-  assertElectronRuntimeLaunchPrerequisites(runtime, runRoot);
-  return new Promise((resolveLaunch, rejectLaunch) => {
-    const child = spawn(
-      resolveElectronE2eExecutable(),
-      [resolveElectronE2eApplicationPath()],
-      {
-        cwd: runRoot,
-        env: createElectronEnvironment({
-          configPath: runtime.configPath,
-          profile: runtime.profile,
-          runRoot: runtime.runtimeRoot,
-        }),
-        shell: false,
-        stdio: 'ignore',
-        windowsHide: true,
-      },
-    ) as ElectronChildProcess;
-    const timer = setTimeout(() => {
-      child.kill();
-      rejectLaunch(new Error('Second Electron instance did not exit.'));
-    }, 15_000);
-
-    child.on('error', (error: Error) => {
-      clearTimeout(timer);
-      rejectLaunch(error);
-    });
-    child.on('exit', (code: number | null) => {
-      clearTimeout(timer);
-      if (code === 0) {
-        resolveLaunch();
-        return;
-      }
-      rejectLaunch(
-        new Error(
-          `Second Electron instance exited with code ${String(code)}.`,
-        ),
-      );
-    });
-  });
 }
 
 function assertElectronRuntimeLaunchPrerequisites(

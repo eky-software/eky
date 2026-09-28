@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import {
   copyFileSync,
   existsSync,
@@ -25,19 +25,12 @@ import {
   runElectronWorkspaceMigrationInventoryProof,
   runElectronWorkspaceStartupRecoveryProof,
 } from '../../src/electron/electronMainCapabilities.js';
-import {
-  createElectronE2eRuntime,
-  resolveElectronE2eApplicationPath,
-  type ElectronE2eRuntime,
-} from '../../src/environment/createElectronE2eRuntime.js';
-import { assertElectronLaunchPrerequisites } from '../../src/environment/assertElectronLaunchPrerequisites.js';
-import { createElectronEnvironment } from '../../src/environment/createElectronEnvironment.js';
-import { listElectronE2eProfileDirectories } from '../../src/environment/createElectronE2eProfile.js';
+import { createElectronE2eRuntime } from '../../src/environment/createElectronE2eRuntime.js';
+import { assertElectronLaunchPlatform } from '../../src/environment/assertElectronLaunchPrerequisites.js';
 import { createE2eRunRoot } from '../../src/environment/createE2eRunRoot.js';
 import { createE2eWorkerPaths } from '../../src/environment/createE2eWorkerPaths.js';
 import { reserveLoopbackPort } from '../../src/environment/reserveLoopbackPort.js';
 import { readElectronE2eActiveWorkspace } from '../../src/environment/readElectronE2eActiveWorkspace.js';
-import { resolveElectronE2eExecutable } from '../../src/environment/resolveElectronE2eExecutable.js';
 import { waitForLoopbackPortRelease } from '../../src/environment/waitForLoopbackPortRelease.js';
 import { createE2eFixtureLifetime } from '../../src/environment/e2eFixtureLifetime.js';
 import { DirectElectronRunFailure, runOwnedWindowsElectron } from '../../src/environment/runOwnedWindowsElectron.js';
@@ -577,6 +570,7 @@ test('DESK-RESTART-001 @critical @recovery preserves data and rotates the runtim
 });
 
 test('DESK-BOOTFAIL-001 @fault exposes only an allowlisted startup failure', async ({}, testInfo) => {
+  assertElectronLaunchPlatform();
   const lifetime = createE2eFixtureLifetime(testInfo.timeout);
   const runRoot = createE2eRunRoot();
   const paths = createE2eWorkerPaths(runRoot, 'DESK-BOOTFAIL-001');
@@ -589,11 +583,9 @@ test('DESK-BOOTFAIL-001 @fault exposes only an allowlisted startup failure', asy
   });
 
   let failure: { error: unknown } | undefined;
-  let processTreeVerified = process.platform !== 'win32';
+  let processTreeVerified = false;
   try {
-    const result = process.platform === 'win32'
-      ? await runOwnedWindowsElectron({ runtime, runRoot, lifetime, timeoutMilliseconds: 30_000, expectedExitCode: 1 })
-      : await runElectronProcess(runtime, runRoot);
+    const result = await runOwnedWindowsElectron({ runtime, runRoot, lifetime, timeoutMilliseconds: 30_000, expectedExitCode: 1 });
     processTreeVerified = true;
     expect(result.exitCode).toBe(1);
     expect(result.output).not.toContain('node_modules');
@@ -657,17 +649,6 @@ interface SupportBundleDocument {
   system: unknown;
 }
 
-type SpawnedElectronProcess = ReturnType<typeof spawn> & {
-  on(
-    event: 'error',
-    listener: (error: Error) => void,
-  ): SpawnedElectronProcess;
-  on(
-    event: 'exit',
-    listener: (exitCode: number | null) => void,
-  ): SpawnedElectronProcess;
-};
-
 function readSupportBundle(path: string): SupportBundleDocument {
   return JSON.parse(gunzipSync(readFileSync(path)).toString('utf8')) as
     SupportBundleDocument;
@@ -705,52 +686,4 @@ function runSupportInspector(path: string): void {
       windowsHide: true,
     },
   );
-}
-
-function runElectronProcess(
-  runtime: ElectronE2eRuntime,
-  runRoot: string,
-): Promise<{ exitCode: number | null; output: string }> {
-  assertElectronLaunchPrerequisites({
-    applicationPath: resolveElectronE2eApplicationPath(),
-    configPath: runtime.configPath,
-    cwd: runRoot,
-    executablePath: resolveElectronE2eExecutable(),
-    profileDirectories: listElectronE2eProfileDirectories(runtime.profile),
-    runRoot,
-  });
-  return new Promise((resolveProcess, rejectProcess) => {
-    const child = spawn(
-      resolveElectronE2eExecutable(),
-      [resolveElectronE2eApplicationPath()],
-      {
-        cwd: runRoot,
-        env: createElectronEnvironment({
-          configPath: runtime.configPath,
-          profile: runtime.profile,
-          runRoot: runtime.runtimeRoot,
-        }),
-        shell: false,
-        windowsHide: true,
-      },
-    ) as SpawnedElectronProcess;
-    let output = '';
-    const timer = setTimeout(() => {
-      child.kill();
-      rejectProcess(new Error('Synthetic Electron bootstrap did not exit.'));
-    }, 30_000);
-    const append = (chunk: Buffer) => {
-      output = `${output}${chunk.toString('utf8')}`.slice(-64 * 1024);
-    };
-    child.stdout?.on('data', append);
-    child.stderr?.on('data', append);
-    child.on('error', (error: Error) => {
-      clearTimeout(timer);
-      rejectProcess(error);
-    });
-    child.on('exit', (exitCode: number | null) => {
-      clearTimeout(timer);
-      resolveProcess({ exitCode, output });
-    });
-  });
 }

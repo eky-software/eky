@@ -2,10 +2,12 @@ using System.Diagnostics;
 using System.IO.Pipes;
 using System.Text.Json;
 using Eky.WindowsProcessSupervisor;
+using Microsoft.Win32.SafeHandles;
 
 namespace Eky.ProcessOwnershipAdapter;
 
-internal sealed partial class BackendServiceOwner(ServiceConfiguration config, BackendServiceClock clock) : IDisposable
+internal sealed partial class BackendServiceOwner(ServiceConfiguration config, BackendServiceClock clock,
+    Func<SafeWaitHandle, uint>? resumeThread = null) : IDisposable
 {
     private readonly BackendServiceState state = new();
     private readonly CancellationTokenSource session = new();
@@ -165,7 +167,7 @@ internal sealed partial class BackendServiceOwner(ServiceConfiguration config, B
             child = AdapterProcess.CreateService(config, job!, io, state);
             state.Identify(child.ReadBackendIdentity());
             clock.RequireWork();
-            child.VerifyAndResume(job!, state);
+            child.VerifyAndResume(job!, state, resumeThread);
             state.MarkStarted();
         }
         finally

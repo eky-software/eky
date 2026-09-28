@@ -67,17 +67,19 @@ internal sealed class AdapterProcess : IDisposable
     internal void VerifyAndResume(WindowsJob job, AdapterState state)
         => VerifyAndResume(job, state.Assigned);
 
-    internal void VerifyAndResume(WindowsJob job, BackendServiceState state)
+    internal void VerifyAndResume(WindowsJob job, BackendServiceState state,
+        Func<SafeWaitHandle, uint>? resumeThread = null)
     {
-        try { VerifyAndResume(job, state.Assigned); }
+        try { VerifyAndResume(job, state.Assigned, resumeThread); }
         catch (SupervisorFailure) { throw new AdapterFailure("jobMembershipFailed"); }
     }
 
-    private void VerifyAndResume(WindowsJob job, Action assigned)
+    private void VerifyAndResume(WindowsJob job, Action assigned, Func<SafeWaitHandle, uint>? resumeThread = null)
     {
         if (!job.ContainsProcess(process)) throw new AdapterFailure("jobMembershipFailed");
         assigned();
-        if (NativeMethods.ResumeThread(thread) == uint.MaxValue) throw new AdapterFailure("processResumeFailed");
+        if ((resumeThread is null ? NativeMethods.ResumeThread(thread) : resumeThread(thread)) == uint.MaxValue)
+            throw new AdapterFailure("processResumeFailed");
         thread.Dispose();
     }
 

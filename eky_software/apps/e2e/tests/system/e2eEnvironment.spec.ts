@@ -1,4 +1,3 @@
-import { EventEmitter } from 'node:events';
 import { createServer } from 'node:http';
 import {
   existsSync,
@@ -17,6 +16,7 @@ import {
   assertE2eSafetyBoundary,
   assertPathUnderRoot,
 } from '../../src/environment/assertE2eSafetyBoundary.js';
+import { assertElectronLaunchPlatform } from '../../src/environment/assertElectronLaunchPrerequisites.js';
 import { collectFailureArtifacts } from '../../src/environment/collectFailureArtifacts.js';
 import { createE2eRunRoot } from '../../src/environment/createE2eRunRoot.js';
 import { createE2eWorkerPaths } from '../../src/environment/createE2eWorkerPaths.js';
@@ -32,14 +32,6 @@ import {
   startManagedProcess,
   type ManagedChildProcess,
 } from '../../src/environment/startManagedProcess.js';
-import {
-  stopManagedProcessTree,
-  waitForManagedProcessExit,
-} from '../../src/environment/stopManagedProcessTree.js';
-import {
-  closeOwnedElectronRuntime,
-  stopOwnedElectronRuntime,
-} from '../../src/fixtures/stopOwnedElectronRuntime.js';
 import { closeOwnedWindowsElectronRuntime } from '../../src/fixtures/closeOwnedWindowsElectronRuntime.js';
 import { ElectronBridgeCallerFailure } from '../../src/environment/startOwnedWindowsElectronBridge.js';
 import { waitForHttpHealth } from '../../src/environment/waitForHttpHealth.js';
@@ -193,197 +185,16 @@ test.describe('managed E2E runtime primitives', () => {
     }
   });
 
-  test('stops an owned Electron process tree before closing its Playwright handle', async () => {
-    const calls: string[] = [];
-    const processToken = {} as ManagedChildProcess;
-
-    await stopOwnedElectronRuntime(
-      {
-        async close() {
-          calls.push('close');
-        },
-      },
-      processToken,
-      async (process) => {
-        expect(process).toBe(processToken);
-        calls.push('stop');
-      },
-    );
-
-    expect(calls).toEqual(['stop', 'close']);
-  });
-
-  test('closes a healthy Electron runtime before applying process-tree cleanup', async () => {
-    const calls: string[] = [];
-    const processToken = {} as ManagedChildProcess;
-
-    await closeOwnedElectronRuntime(
-      {
-        async close() {
-          calls.push('close');
-        },
-      },
-      processToken,
-      async (process) => {
-        expect(process).toBe(processToken);
-        calls.push('stop');
-      },
-      async (process, timeoutMilliseconds) => {
-        expect(process).toBe(processToken);
-        expect(timeoutMilliseconds).toBe(15_000);
-        calls.push('wait');
-        return true;
-      },
-    );
-
-    expect(calls).toEqual(['close', 'wait', 'stop']);
-  });
-
-  test('waits for graceful Electron exit before applying fallback cleanup', async () => {
-    const calls: string[] = [];
-    const processToken = {} as ManagedChildProcess;
-    let reportExit: (() => void) | undefined;
-
-    const action = closeOwnedElectronRuntime(
-      {
-        async close() {
-          calls.push('close');
-        },
-      },
-      processToken,
-      async () => {
-        calls.push('stop');
-      },
-      async () => {
-        calls.push('wait');
-        return new Promise<boolean>((resolveExit) => {
-          reportExit = () => resolveExit(true);
-        });
-      },
-    );
-
-    await expect.poll(() => calls).toEqual(['close', 'wait']);
-    expect(reportExit).toBeDefined();
-    reportExit?.();
-    await expect(action).resolves.toBeUndefined();
-    expect(calls).toEqual(['close', 'wait', 'stop']);
-  });
-
-  test('uses bounded process-tree cleanup when graceful Electron exit is absent', async () => {
-    const calls: string[] = [];
-
-    await closeOwnedElectronRuntime(
-      {
-        async close() {
-          calls.push('close');
-        },
-      },
-      {} as ManagedChildProcess,
-      async () => {
-        calls.push('stop');
-      },
-      async () => {
-        calls.push('wait');
-        return false;
-      },
-    );
-
-    expect(calls).toEqual(['close', 'wait', 'stop']);
-  });
-
-  test('observes managed process exit without consuming the safety deadline', async () => {
-    const synthetic = createSyntheticManagedChildProcess();
-    const exit = waitForManagedProcessExit(synthetic.process, 5_000);
-
-    synthetic.reportExit();
-
-    await expect(exit).resolves.toBe(true);
-  });
-
-  test('keeps an absent managed process exit as a bounded failure signal', async () => {
-    const synthetic = createSyntheticManagedChildProcess();
-
-    await expect(
-      waitForManagedProcessExit(synthetic.process, 5),
-    ).resolves.toBe(false);
-  });
-
-  test('rejects legacy Windows tree cleanup before inspecting or accepting child state', async () => {
-    test.skip(process.platform !== 'win32', 'Windows-only admission guard; the POSIX branch remains supported.');
-    for (const child of [
-      { get exitCode() { throw new Error('Legacy child state must not be inspected.'); } },
-      { exitCode: 0, signalCode: null, pid: 123 },
-      { exitCode: null, signalCode: 'SIGTERM', pid: 123 },
-      { exitCode: null, signalCode: null, pid: undefined },
-    ]) {
-      await expect(stopManagedProcessTree(child as unknown as ManagedChildProcess))
-        .rejects.toThrow('E2E_MANAGED_PROCESS_TREE_WINDOWS_OWNER_REQUIRED');
+  test('admits only Windows for actual Electron launches without changing pure environment contracts', () => {
+    expect(() => assertElectronLaunchPlatform('win32')).not.toThrow();
+    for (const platform of ['aix', 'android', 'darwin', 'freebsd', 'haiku', 'linux', 'openbsd', 'sunos', 'cygwin', 'netbsd'] as const) {
+      expect(() => assertElectronLaunchPlatform(platform)).toThrow('E2E_ELECTRON_OWNER_PLATFORM_INVALID');
     }
   });
 
-  test('still applies process-tree cleanup when graceful Electron close fails', async () => {
-    let stopped = false;
-
-    const action = closeOwnedElectronRuntime(
-      {
-        async close() {
-          throw new Error('raw synthetic close failure');
-        },
-      },
-      {} as ManagedChildProcess,
-      async () => {
-        stopped = true;
-      },
-    );
-
-    await expect(action).rejects.toThrow(
-      'Electron E2E runtime handle cleanup failed.',
-    );
-    expect(stopped).toBe(true);
-  });
-
-  test('still closes the Electron handle when owned process cleanup fails', async () => {
-    let closed = false;
-    const action = stopOwnedElectronRuntime(
-      {
-        async close() {
-          closed = true;
-        },
-      },
-      {} as ManagedChildProcess,
-      async () => {
-        throw new Error('raw synthetic process failure');
-      },
-    );
-
-    const error = await action.catch((candidate: unknown) => candidate);
-    expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toBe(
-      'Electron E2E runtime process cleanup failed.',
-    );
-    expect((error as Error).message).not.toContain(
-      'raw synthetic process failure',
-    );
-    expect(closed).toBe(true);
-  });
-
-  test('does not skip process cleanup when the Electron handle is already closed', async () => {
-    let stopped = false;
-
-    await expect(
-      stopOwnedElectronRuntime(
-        {
-          async close() {
-            throw new Error('synthetic closed handle');
-          },
-        },
-        {} as ManagedChildProcess,
-        async () => {
-          stopped = true;
-        },
-      ),
-    ).resolves.toBeUndefined();
-    expect(stopped).toBe(true);
+  test('checks the actual platform when Electron launch admission has no override', () => {
+    if (process.platform === 'win32') expect(() => assertElectronLaunchPlatform()).not.toThrow();
+    else expect(() => assertElectronLaunchPlatform()).toThrow('E2E_ELECTRON_OWNER_PLATFORM_INVALID');
   });
 
   test.describe('owned Windows Electron close', () => {
@@ -883,25 +694,4 @@ async function waitForOutput(readOutput: () => string): Promise<void> {
     });
   }
   throw new Error('Managed process did not produce output.');
-}
-
-function createSyntheticManagedChildProcess(): {
-  process: ManagedChildProcess;
-  reportExit(): void;
-} {
-  const processEvents = new EventEmitter();
-  const syntheticProcess = Object.assign(processEvents, {
-    exitCode: null as number | null,
-    kill: () => true,
-    pid: 123,
-    signalCode: null as NodeJS.Signals | null,
-  });
-
-  return {
-    process: syntheticProcess as ManagedChildProcess,
-    reportExit() {
-      syntheticProcess.exitCode = 0;
-      syntheticProcess.emit('exit', 0, null);
-    },
-  };
 }

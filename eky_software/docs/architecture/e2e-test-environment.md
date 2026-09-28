@@ -3517,7 +3517,7 @@ Kanoniset fault/success-sopimukset 325/325 ja 332/332, artifact-kytkentä
 regressioajon testiaineistovirhe ja katselmuksen ajolistakorjaus säilyvät
 omistavassa checkpointissa.
 
-**Nykyinen hyväksytty baseline:** `5bbfd4834707b77e1211851a6fb21b09b8572a66`,
+**Viimeisin hyväksytty täysi normaali baseline:** `5bbfd4834707b77e1211851a6fb21b09b8572a66`,
 [normaali CI 36443256758](https://github.com/eky-software/eky/actions/runs/36443256758),
 yritys 1, kaikki neljä kokeellista valitsinta pois: 38 onnistunutta ryhmää
 ja yksi tarkoituksellinen valinnainen ohitus. Täysi 690/37/38-katalogi,
@@ -3528,8 +3528,11 @@ ilman näyttöaukkoja. Native-sopimukset 515/226/285/1791/60 läpäisivät.
 läpäisi ilman tunnettuja audit-löydöksiä; 160/160 registry-allekirjoitusta
 varmennettiin. Molemmat workspace-fault-kuluttajat ja uusi havaintoketju
 valmistuivat. Tämä ei ratkaise historiallisen c2-timeoutin juurisyytä.
-Baseline avaa seuraavan rajatun kuluttajatyön; Linuxin katkeamis-/endurance-
-matriisi, korvattujen polkujen poisto, koko T3 ja PR/main ovat avoinna.
+Baseline avasi rajatun kuluttajatyön. Myöhempi
+[Linuxin katkeamis- ja endurance-näyttö](#linuxin-todellisten-kuluttajien-katkeamiskokeet)
+on hyväksytty omalla lähdesidonnallaan; se ei siirrä täyden normaalin ajon
+hyväksyntää uudelle revisiolle. Korvattujen polkujen poisto, koko T3 ja
+PR/main ovat edelleen avoinna.
 
 **Windowsin rajattu katoamis- ja artifact-näyttö 28.9.:** todellinen
 worker-polku läpäisi erilliset native-omistajan ja kutsuvan Playwright-workerin
@@ -3918,12 +3921,27 @@ timeoutit ja LS-kokeen `uid_map`-esto pysyvät erillisinä avoimina havaintoina.
 
 #### Linuxin todellisten kuluttajien katkeamiskokeet
 
-Tämä on hyväksytyn seitsemän tapauksen koesuunnitelman sopimus, ei
-Linux-ajon hyväksyntätulos. Ajurit ja niiden alemman tason sopimustestit
-ovat eri näyttö kuin oikeiden kuluttajien katkeaminen: keskeneräistä
-toteutusta tai käynnissä olevaa testiä ei merkitä läpäistyksi. Kaikkien
-seitsemän tapauksen saman lähdetilan CI-näyttö ja Linux-endurance ovat
-vielä avoinna. Tavallinen vihreä baseline ei sulje näitä eikä koko T3:a.
+**Hyväksytty rajattu Linux-näyttö:** lähde
+`7f8df53a16770b5e3206c179ff8f497b76c6cf24`,
+[manuaalinen CI 36456205257](https://github.com/eky-software/eky/actions/runs/36456205257),
+yritys 1, `linux_consumer_diagnostic=true` ja `electron_diagnostic=false`.
+Molemmat Linux-jobit ja kaikki alla nimetyt seitsemän todellisen kuluttajan
+katkeamiskoetta läpäisivät. Kolme muuta jobia ohitettiin valinnan mukaisesti.
+Systemin 699 valitusta tapauksesta 698 läpäisi ja yksi ennestään tunnettu
+Windows-only-suoja ohitettiin. Web läpäisi 37/37 ja erillinen stress 1/1
+ilman retryä, flakyä tai raporttivirheitä.
+
+Molempien jobien checkoutit, puhtaiden katalogien tapausidentiteetit,
+seitsemän fault-tuloksen lähde-/ajo-/yrityssidonnat ja stressin täsmällinen
+testi-identiteetti takaisinluettiin riippumattomasti. Tavallisen web-ajon
+ja stress-ajon omat Chromium-workerin siivouskuitit varmennettiin erikseen:
+cleanup oli `verified` ja worker-juuri `removed` ilman owner-virhettä.
+Stressin läpäisy ei yksin korvaa workerin siivousnäyttöä.
+
+Tämä hyväksyntä on erillinen yllä kuvatusta `5bbfd483`:n täydestä normaalista
+CI-baselinesta, eikä muuta historiallisia hylkäyksiä tai sulje koko T3:a.
+Vanhan aktiivisen Linux Electron -fallbackin poisto on toteutuksessa,
+mutta sen poiston jälkeistä hyväksyntää ei vielä ole.
 
 Toteutuksen yhteinen työkalusarja läpäisi 1 258/1 258 tarkistusta
 (755 aiempaa ja 503 uutta) sekä E2E-tyypityksen. Lopputarkastuksen
@@ -3945,7 +3963,7 @@ normaalit oletuspolut, riippuvuudet ja prosessien hallintaoikeudet eivät muutu.
 Rajattujen synteettisten liitteiden kopioinnin on valmistuttava ennen kuin
 fixture saa poistaa niiden lähdejuuren.
 
-| Tapaus | Todellisen kuluttajan vaadittu sopimus; CI-näyttö puuttuu |
+| Tapaus | Todellisen kuluttajan sopimus; hyväksytty yllä sidotussa CI-ajossa |
 | --- | --- |
 | `backend-owner` | Valmiin backendin init katoaa tarkoituksella; alkuperäinen restart epäonnistuu, seuraava torjutaan ilman uutta launchia ja testijuuri säilyy. |
 | `backend-control` | Backendin oikea hyväksytty kontrolliyhteys katkaistaan; samat restartin esto- ja säilytysehdot. |
@@ -4002,6 +4020,42 @@ epäonnistumisen ohitus eivät täytä hyväksyntää; raakaliitteita ei julkais
 Manuaalinen koe ei korvaa tavallista CI:tä; endurance-tulos ja workerin
 cleanup-kuitti hyväksytään erillisinä.
 
+#### Korvattujen Electron-varapolkujen poisto
+
+Revision `7f8df53a` hyväksytyn Linux-kuluttajanäytön jälkeen poistettiin
+aktiiviset ei-Windows-Electronin launch-, toinen instanssi- ja bootstrap-
+varapolut sekä `stopOwnedElectronRuntime` ja `stopManagedProcessTree`.
+Nykyiset Windows-omistajat säilyvät ainoana Electron-käynnistyspolkuna.
+Jaettu alustatarkistus torjuu muut alustat ennen juuren, backup-fixturen
+tai porttivarauksen luontia; puhdas `createElectronEnvironment` ja sen
+ei-Windows-sopimus säilyvät ennallaan.
+
+Poistettujen helper-testien vastuut on sovitettu nykyisiin omistajatesteihin:
+public close, graceful wait, alkuperäinen aikaraja, close-/owner-virhe sekä
+jo suljetun sovelluksen pakollinen owner-stop. Nykyiset 13 Windows-sulkutestiä
+säilyvät muuttumattomina. Alkuperäisen lapsikahvan identiteettiregressio
+käyttää nykyistä close-polkua eikä päättele koko puun poistumista kahvan
+exitistä. Molempien oikeiden aloituskohtien alustatarkistuksen järjestys
+todennetaan lähteen rakenteesta.
+
+Poiston kohdesarja 151/151, puhtaat Electron-sopimukset 10/10 ja E2E-
+tyyppitarkistus läpäisivät ensimmäisellä yrityksellä. Riippumaton katselmus
+hyväksyi poiston ilman löydöksiä. Poiston jälkeinen tavallinen Windows-ajo
+läpäisi 781/781 (system 693, web 43, Electron 45) ilman retryä, flakyä tai
+ohituksia. Workspacen testit läpäisivät peräkkäin ja koko tyypitys sekä
+CI-sopimukset 318/318 läpäisivät. Aiempi muuttumattoman lähderajatestin
+rinnakkaisajon timeout säilyy havaintona, ei korjattuna vikana.
+
+Matriisin myöhäinen fork ja native-resume-virheen saman ownerin cleanup
+on täydennetty ja todennettu rajatuilla oikeaprosessikokeilla. Resume-koe
+käynnistyy myös kanonisessa valmistelussa omilla pipe-kahvoillaan;
+tavallisen terminaalin kahvat eivät kelpaa ownerin tulostesopimukseen.
+Valmistelu rajaa kummankin tulostevirran 4 KiB:iin, julkaisee vain suljetun
+25 tarkistuksen kuitin eikä luo onnistumismerkintää hylätylle kokeelle.
+Kytkennän 31/31 regressiota, tavallisen valmistelun oikea koe ja riippumaton
+katselmus hyväksytty. Viisi aiempaa puhdasta native-sarjaa ja niiden
+määräajat säilyvät. Täsmällisen PR/main-revision portit ovat vielä avoinna.
+
 #### T3:n lopullinen hyväksyntänäyttö
 
 Moduulikehittäjän rajapinta pidetään pienenä: system-testit käyttävät
@@ -4011,12 +4065,14 @@ diagnostiset skeemat jäävät `apps/e2e`:n elinkaaren omistajalle, eivät uuden
 laskutus-, kohde- tai tuntikirjaustestin vastuulle. Tämä tarkentaa nykyisen
 T3:n hyväksyntää, ei perusta uutta testialustaa tai yleistä helper-kerrosta.
 
-Kuluttajasiirron katselmuksessa tarkistetaan vähintään backendin ja webin
-`startManagedProcess`/`stopManagedProcessTree`-ketju, Electronin
-`launchElectronRuntime`/`stopOwnedElectronRuntime`-ketju sekä niitä kutsuvat
+Kuluttajasiirron katselmuksessa tarkistetaan backendin, Viten ja worker-
+Chromiumin nykyiset alustakohtaiset omistajat sekä Electronin
+`launchElectronRuntime`/`closeOwnedWindowsElectronRuntime`-ketju ja niitä kutsuvat
 restart-, failure-, bootstrap-, handoff- ja endurance-polut. Inventaario
 varmistetaan lähteestä siirron hetkellä, ei oleteta tämän nimilistan kattavan
-myöhemmin lisättyjä kuluttajia. Korvaavan saman revision näytön jälkeen
+myöhemmin lisättyjä kuluttajia. Korvatut `stopManagedProcessTree`- ja
+`stopOwnedElectronRuntime`-ketjut ovat yllä kuvatun poiston historiallista
+lähtötilaa, eivät enää rinnakkainen toteutus. Korvaavan saman revision näytön jälkeen
 poistetaan korvattu aktiivinen toteutus ja sen kutsureunat. Vanhaa PID- tai
 pääprosessiin perustuvaa siivousta ei jätetä rinnakkaiseksi fallbackiksi.
 Historialliset epäonnistumistodisteet säilyvät tästä erillään.

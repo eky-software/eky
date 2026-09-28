@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const nativeDirectory = 'apps/e2e/experiments/processOwnership/adapterNative';
@@ -88,6 +88,23 @@ export function prepareWindowsBackendOwner(input, dependencies = {}) {
   execute(dotnet, [join(paths.output, `${assembly}.dll`), '--vite-service-self-test'], 60_000, selfTestEnvironment);
   execute(dotnet, [join(paths.output, `${assembly}.dll`), '--electron-service-self-test'], 60_000, selfTestEnvironment);
   execute(dotnet, [join(paths.output, `${assembly}.dll`), '--chromium-service-self-test'], 60_000, selfTestEnvironment);
+  // The real owner requires pipe handles, including when preparation runs in a terminal.
+  const resume = run(dotnet, [join(paths.output, `${assembly}.dll`), '--resume-failure-self-test', realpathSync(process.execPath)], {
+    cwd: input.repositoryRoot, env: selfTestEnvironment, shell: false, windowsHide: true,
+    stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', maxBuffer: 4096, timeout: 60_000,
+  });
+  let proof;
+  try { proof = JSON.parse(resume.stdout); } catch { /* Missing or non-protocol output is rejected below. */ }
+  const validProof = proof !== null && typeof proof === 'object' && !Array.isArray(proof) &&
+    Object.keys(proof).sort().join(',') === 'checks,kind,passed,schemaVersion,stage' &&
+    proof.schemaVersion === 1 && proof.kind === 'resumeFailureSelfTest' && typeof proof.passed === 'boolean' &&
+    ['guard', 'preparation', 'launch', 'resume', 'terminal', 'ownerClosed', 'complete'].includes(proof.stage) &&
+    Number.isSafeInteger(proof.checks) && proof.checks >= 0 && proof.checks <= 25;
+  if (validProof) (dependencies.writeResumeProof ?? (value => console.log(JSON.stringify(value))))(proof);
+  if (resume.error !== undefined || resume.status !== 0 || resume.signal !== null || resume.stderr !== '' ||
+    !validProof || !proof.passed || proof.stage !== 'complete' || proof.checks !== 25) {
+    throw new Error('E2E_BACKEND_OWNER_PREPARATION_FAILED');
+  }
   if (sourceIdentity(input.repositoryRoot) !== before) throw new Error('E2E_BACKEND_OWNER_SOURCE_CHANGED');
   writeFileSync(paths.marker, JSON.stringify({
     schemaVersion: 1, sourceIdentity: before, outputIdentity: outputIdentity(paths.output),

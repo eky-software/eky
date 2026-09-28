@@ -333,13 +333,35 @@ readiness or terminal state. Standard output is diagnostic/byte relay only.
 
 Root exit and stream closure are separate observations. In a root-first case,
 the driver first proves that the root exited while descendants remain, then
-requests the owner's tree stop before awaiting the bridge's closed streams.
+permits that surviving leaf to fork a detached, portless grandchild. A fresh
+generation-bound challenge, one-use permission and the grandchild's own receipt
+bind the late fork to this observation. At least two descendants must remain
+before the owner's tree stop. Schema-2 root-first evidence requires this chain;
+historical schema-1 results do not prove it. The driver requests that stop
+before awaiting the bridge's closed streams.
 Waiting for bridge closure before that stop can form a cycle when a surviving
 writer retains a stream. This ordering does not permit dropped output, a longer
 deadline, or a weaker terminal receipt. A bridge drain record is supplementary
 pre-exit evidence, never proof that a process exited. Failed Playwright launch
 does not expose a public process handle; its intended bridge exit code must not
 be reported as an observed exit code.
+
+The canonical Windows owner preparation also runs a separate
+`--resume-failure-self-test` with the canonical current Node executable after
+the five process-free contract families. It creates one real suspended child
+inside the real owner Job and injects only the failed `ResumeThread` return.
+The same owner must preserve `processResumeFailed`, prove the original child
+exited and the Job/stdio settled, and keep repeated terminal replies within
+the original cleanup clock. Only verified cleanup permits fixture removal.
+No configuration or environment flag enables this fault in ordinary owners;
+their default resume still calls the native API. Reproduce this proof through
+`pnpm --filter @eky/e2e e2e:prepare-owner`: preparation supplies the required
+pipe handles even from an ordinary terminal, bounds each output stream to
+4 KiB and publishes only the validated closed proof record. Do not invoke
+the native proof directly with inherited console handles.
+This tests the real cleanup branch after an injected error return, not an
+observed operating-system failure. The pure `--backend-self-test` stays
+process-free; a failed proof prevents the preparation success marker.
 
 The Linux experiment is an explicit, default-off
 `linux_pid_namespace_experiment` input on the existing caller/reusable chain.
