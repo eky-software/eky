@@ -2,8 +2,24 @@
 
 ## Jatka tästä
 
-**2026-09-28: T1/T2 hyväksytty, T3/R28 kesken; ei uutta rinnakkaista remonttia.**
+**T1/T2 ja T3/R28 hyväksytty; dokumenttien oma integraatio on erillinen portti.**
 Modulaarinen monoliitti ja hyväksytty M1-rajaus säilyvät.
+
+| Kohta | Nykyinen lähtötieto |
+| --- | --- |
+| Hyväksytty toteutus | PR #278:n lähde `52cdaa1755ca2ed68318bd33fd52805a7753235e`; täsmällinen hyväksytty merge-main ja sen omat ajot ovat kohdassa [T3:n integraatiohyväksyntä](e2e-test-environment.md#t3n-integraatiohyväksyntä). |
+| T3/R28 | Oikeat kuluttajat, korvatun toteutuksen poisto, pysyvä matriisi ja toteutuksen omat PR/main-portit hyväksytty. T1/T2:n sopimukset säilyvät. |
+| Näytön rajaus | Tavallinen Windows 781/781 ja kaksi lopullista oikeaprosessitodistetta säilyvät omana näyttönään. Vanhojen revisioiden katalogeja, stressiä tai soakia ei nimetä uuden CI-ajon tuloksiksi. Historiallisten hylkäysten avoimia syitä ei merkitä korjatuiksi. |
+| Dokumenttimuutoksen oma portti | Tämä neljän dokumentin tilapäivitys vaatii omat normaalit PR-tarkistuksensa, suojatun mergen ja täsmällisen mainin täyden normaalin portin sekä sovitun riippuvuustarkistuksen. T3:n hyväksyntä ei korvaa niitä. |
+| Seuraava työ | Dokumenttimuutoksen porttien jälkeen A1/R01:n rajattu aloitus nykyisen [A1-suunnitelman](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde) ja toiminnon aloitusportin mukaan. Ei A2/A3:n, W7:n tai koko 0.3.0:n toteutusvaltuutta tämän sulun perusteella. |
+| Valmistumisen kirjaus | Dokumenttimuutoksen toteutuneet tarkistukset ja integraation lopputulos kirjataan sen PR:n hyväksyntächeckpointiin ja loppuraporttiin; niiden ilmoittamiseksi ei tarvita uutta tilakirjauscommittia. Ennen A1:tä nykyinen main ja sen portit tarkistetaan uudelleen. |
+
+### Integraatiota edeltävä checkpoint 2026-09-28
+
+Alla oleva aiempi jatkamiskohta sekä päätös- ja Goal-tilakirjaukset kuvaavat
+omia checkpointtejaan. Niiden nykyinen/seuraava-ilmaukset eivät ole uusia
+etenemisesteitä tai nykyisen Goal-työkalun tilaväitteitä. Alkuperäiset
+tulokset, määrät ja syyepävarmuudet säilyvät.
 
 | Kohta | Nykyinen lähtötieto |
 | --- | --- |
@@ -97,6 +113,9 @@ vanha vihreä ajo tai alemman tason testimäärä ei hyväksy uutta revisiota.
 
 ## Tila ja valtuus
 
+Alla olevat päivätyt valtuudet ja välitulokset säilyvät päätöshistoriana.
+Nykyinen hyväksyntä ja seuraava työ ovat kohdassa [Jatka tästä](#jatka-tästä).
+
 Omistajan hyväksymä suunnittelu-Goal, valmisteltu ja katselmoitu 2026-09-24. Tämä dokumentti
 omistaa M1:n rajauksen ja toteutukseen siirtymisen portin. Julkaisun sisältö
 ja työpakettien kokonaistila pysyvät [roadmapissa](release-0.3.0-plan.md).
@@ -149,10 +168,12 @@ Toteutus ja näyttö kirjataan omiin checkpointteihinsa, ei valmistelun läpäis
 
 ## T3:n nykyinen työjärjestys
 
-**Nykyinen jäljellä oleva sulkulista 2026-09-28.** Valtuus koskee koko
-T3/R28:aa ja sen PR/main-integraatiota, ei kaikkia 0.3.0:n ominaisuuksia.
-Tämä ei luo uusia alavaiheita; tarkat sopimukset pysyvät omistavassa
+**T3/R28:n toteutuksen sulkulista on hyväksytty PR/main-porteissa.**
+[T3:n integraatiohyväksyntä](e2e-test-environment.md#t3n-integraatiohyväksyntä) yksilöi sulun. Valtuus ei laajene
+kaikkiin 0.3.0:n ominaisuuksiin. Tarkat sopimukset pysyvät omistavassa
 [E2E-suunnitelmassa](e2e-test-environment.md#t3n-oikeiden-kuluttajien-siirtoraja).
+Alla olevien osanäyttöjen määrät ja hyväksyntärajat kuvaavat omia
+revisioitaan; niiden silloiset PR/main-rajaukset eivät kumoa lopullista sulkua.
 
 - [x] **Electronin oikeat kuluttajat:** patchin ja neljän käynnistys-/ikkunakokeen
   lisäksi erilliset caller-/owner-loss-, relaunch- ja toinen instanssi -kokeet
@@ -214,16 +235,16 @@ Tämä ei luo uusia alavaiheita; tarkat sopimukset pysyvät omistavassa
   katselmus hyväksytty; late-forkin kohdesopimukset 48/48 ja native-resumen
   oikea siivousketju 25/25. Resume-koe sisältyy kanoniseen valmisteluun,
   pipe-kytkentä 31/31. Koko T3:n PR/main-portit säilyvät alla avoimina.
-- [ ] **Koko T3 ja PR/main:** täytä lyhentämättä
-  [lopullinen T3-portti](e2e-test-environment.md#t3n-lopullinen-hyväksyntänäyttö)
-  ja [pysyvä matriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus),
+- [x] **Koko T3 ja PR/main:** [T3:n integraatiohyväksyntä](e2e-test-environment.md#t3n-integraatiohyväksyntä)
+  täyttää [lopullisen T3-portin](e2e-test-environment.md#t3n-lopullinen-hyväksyntänäyttö)
+  ja [pysyvän matriisin](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus),
   myös handoff-/epävarmuuspolut, T1/T2, kohdetestit, workspace/typecheck,
   build-esiehdot, Linux system/web, Windows Electron ja muuttuneen
-  Windows-primitiivin installer-regressiot. Säilytä nykyinen riskikadenssi,
-  riippuvuustarkistus, katselmukset, julkaisuraja, ajoseuranta ja ensimmäisen
-  virheen näyttö. Täsmällisen PR-revision ja merge-commitin omat vaaditut
-  portit ratkaisevat sulun; pending, cancelled, flaky tai epäonnistunut ajo
-  ei kelpaa. Vasta tämän jälkeen jatketaan M1:n sovelluskorjauksiin.
+  Windows-primitiivin installer-regressiot. Riskikadenssi, riippuvuustarkistus,
+  katselmukset, julkaisuraja, ajoseuranta ja ensimmäisen virheen näyttö
+  säilyvät. Sulku perustuu täsmällisen PR:n ja merge-mainin omiin portteihin,
+  ei pending-, cancelled-, flaky- tai epäonnistuneeseen tulokseen.
+  Dokumenttimuutoksen oma integraatio on erillinen ennen A1:tä.
 
 ### T3:n etenemishistoria
 
@@ -360,7 +381,7 @@ tai riippuvuusporttia, jos rajaus myöhemmin koskettaa niitä.
 | T1a / R27 | Startup-failure-testit tavalliseen desktop-testivalintaan ja valinnan regressiosopimus. | Hyväksytty; paikallisen näytön lisäksi PR/main-portit läpäisty. Ei tuotantokoodia. |
 | T1b / R27 | Kuusi puuttuvaa installer-harness-testitiedostoa nykyisten vaadittujen komentojen kautta ajettaviksi, myös ajokytkentää suojaava testi. | Hyväksytty T1a:n kanssa; R27 suljettu. Ei raskaan CI:n kevennystä. |
 | T2 / R29 | `security`/`fault`-projektivalinnan ja koko build-ketjun vastaavuus puhtaasta, vanhentuneesta ja epäonnistuneesta valmistelusta. | Hyväksytty; paikallinen näyttö, Linux-CI sekä PR/main-portit läpäisty. [Integraatio](#t2n-integraatiohyväksyntä). |
-| T3 / R28 | Omistajuus käynnistyksestä todettuun koko puun poistumiseen; epävarma cleanup ei hyväksy restartia tai poista fixtureä. | Oikeat Windows-/Linux-kuluttajat, kohdistettu katkeamis-/endurance-matriisi, korvattujen varapolkujen poisto ja Windows-regressio hyväksytty. Lopullinen PR/main-integraatio kesken. [Nykyinen sulkulista](#t3n-nykyinen-työjärjestys) omistaa jatkon; historiallisia hylkäyksiä ei muuteta. |
+| T3 / R28 | Omistajuus käynnistyksestä todettuun koko puun poistumiseen; epävarma cleanup ei hyväksy restartia tai poista fixtureä. | Oikeat Windows-/Linux-kuluttajat, kohdistettu katkeamis-/endurance-matriisi, korvattujen varapolkujen poisto ja Windows-regressio hyväksytty. [T3:n integraatiohyväksyntä](e2e-test-environment.md#t3n-integraatiohyväksyntä) sulkee lopullisen PR/main-portin. [Sulkulista](#t3n-nykyinen-työjärjestys) säilyttää hyväksynnän rajauksen; historiallisia hylkäyksiä ei muuteta. |
 | A1 / R01 | Luonnoksen avaamisen kohde, näkyvät arvot ja tallennuksen kohde pysyvät samana myös vastausten valmistuessa väärässä järjestyksessä. | T1 ensin; hyväksyntään käytettävän E2E-fixturen T3-puute korjattu ja sen build-valinta todennettu. |
 | A2 / R05, A3 / R06 | Ensimmäisen createn tunnisteen säilyminen ja muokatun lomakkeen vanhentunut readiness. | Omat rajatut jatkopalat; A1:n hyväksyntä ei sulje niitä. Backendin hyväksyntäauktoriteetti säilyy. |
 | W7-valmistelu | Omistajan hyväksyttävä poisto-, karanteeni-, palautus- ja nollan työtilan sopimus. | Suunnittelu kulkee rinnalla; toteutus tarvitsee C/K/G/H:n nimetyt kyvykkyydet. |
@@ -748,14 +769,12 @@ soveltuvuus perustellaan erikseen; T:n testiajot eivät todista W7:n tuotantoa.
 
 Ensimmäinen hyväksytty toteutusraja T1a/T1b on valmis.
 Myös T2:n paikallinen näyttö, Linux-CI ja PR/main-integraatio on hyväksytty.
-T3a on tutkittu ja sen varhaisen Electron-virheen yhteensopivuusraja kirjattu.
-Rajattu T3b-valmistelu nimesi [erilliset päätökset](e2e-test-environment.md#seuraavat-päätökset-ja-työn-järjestys).
-Read-only-CI-probe ja täsmällinen riippuvuuspatch on sittemmin hyväksytty;
-niille ei pyydetä samoja lupia uudelleen. Probe ei todista cgroupin
-kirjoitusoikeutta tai turvallista cleanupia. Nykyinen järjestys on
-[T3:n tilakoosteessa](#t3n-nykyinen-työjärjestys).
-T3:n omistajuusmekanismi ratkaistaan edelleen ennen tavallisten fixturejen
-muutoksia. A1 käyttää nykyistä
+Myös [T3:n integraatiohyväksyntä](e2e-test-environment.md#t3n-integraatiohyväksyntä) on kirjattu: mekanismi,
+oikeat kuluttajat, korvatun aktiivisen toteutuksen poisto ja pysyvä matriisi
+eivät enää ole avoimia toteutuskohtia. T3a/T3b:n alkuperäiset päätökset,
+kokeiden rajoitukset ja hylkäykset säilyvät historiassa. Nykyinen
+[Jatka tästä](#jatka-tästä) erottaa dokumenttien oman integraatioportin
+seuraavasta A1/R01-tuotantopalasta. A1 käyttää nykyistä
 feature-/API-sopimusta; jos rajaus vaatii
 backendin tai navigoinnin uuden liiketoimintasäännön, se palautuu suunnitteluun.
 W7:n päätöksiä ei kysytä yhtenä epämääräisenä lupana, vaan sen omistavan

@@ -3,7 +3,7 @@
 Tämä dokumentti määrittelee Eky R0:n Playwright-pohjaisen järjestelmätestauksen
 turvarajat. E2E-runtime on testausinfrastruktuuria, ei liiketoimintamoduuli.
 
-T3:n jatkaminen: [nykyinen lähtötila, avoin puute ja seuraava työ](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+T3/R28: [hyväksytty integraatio](#t3n-integraatiohyväksyntä); [dokumenttien oma portti ja seuraava A1/R01](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
 Tämän dokumentin päivätyt koeraportit ovat historiallista näyttöä;
 [lopullinen valmistumisportti](#t3n-lopullinen-hyväksyntänäyttö) koskee
 myös oikeita testikuluttajia, ei vain erillistä koetta.
@@ -21,10 +21,12 @@ fault injectionia.
 
 ## T-paketin valmistelu
 
-**2026-09-27: T1 ja T2 hyväksytty PR/main-porttien jälkeen; T3c-W:n
-rajattu koe sekä LM:n actor- ja Chromium-yhteensopivuuskokeet läpäisty.
-Oikeiden fixturejen siirto ja lopullinen T3 ovat avoinna. Linuxin vanha
-LS-hylkäys säilyy erillisenä havaintona.**
+**T1, T2 ja T3/R28 on hyväksytty toteutusten omissa PR/main-porteissa.**
+Oikeiden fixturejen siirto, korvatun aktiivisen toteutuksen poisto ja
+lopullinen matriisi kuuluvat [T3:n integraatiohyväksyntään](#t3n-integraatiohyväksyntä).
+Linuxin vanha LS-hylkäys ja muut historialliset syyepävarmuudet säilyvät
+erillisinä havaintoina. Dokumenttimuutoksen omia tulevia portteja ei
+merkitä tämän toteutushyväksynnän perusteella läpäistyiksi.
 [M1-valmistelu](release-0.3.0-m1-preparation-plan.md)
 rajaa R27-R29:n kolmeen erikseen todennettavaan sopimukseen. M0:n erillinen
 Windows Job -supervisor ja Electronin lataus-/purkutodistus eivät sulje näitä.
@@ -4054,7 +4056,48 @@ Valmistelu rajaa kummankin tulostevirran 4 KiB:iin, julkaisee vain suljetun
 25 tarkistuksen kuitin eikä luo onnistumismerkintää hylätylle kokeelle.
 Kytkennän 31/31 regressiota, tavallisen valmistelun oikea koe ja riippumaton
 katselmus hyväksytty. Viisi aiempaa puhdasta native-sarjaa ja niiden
-määräajat säilyvät. Täsmällisen PR/main-revision portit ovat vielä avoinna.
+määräajat säilyvät. Tässä poiston checkpointissa täsmällisen PR/main-revision
+portit olivat vielä avoinna; niiden myöhempi hyväksyntä on alla.
+
+#### T3:n integraatiohyväksyntä
+
+**T3/R28 hyväksytty toteutuksen normaaleissa PR/main-porteissa.**
+[PR #278](https://github.com/eky-software/eky/pull/278) integroi lähteen
+`52cdaa1755ca2ed68318bd33fd52805a7753235e` pohjalta
+`5cc58b7139a6616bc9403a5724f93d929e90cf25`.
+PR:n todellinen checkout oli `ae2ac846a91fb4bff426df8c6f27273e7a027e0a`.
+[Normaali PR-ajo 36466987573](https://github.com/eky-software/eky/actions/runs/36466987573)
+ja [audit 36466987124](https://github.com/eky-software/eky/actions/runs/36466987124)
+hyväksyttiin; auditin 160 rekisteriallekirjoitusta varmennettiin.
+PR: system 693/693, web 37/37 ja Electron 38/38 ilman retryä tai flakyä.
+Kaikki 38 ryhmää läpäisivät; yksi valinnainen ryhmä ohitettiin tarkoituksellisesti.
+Normaali merge klo 19:09:40 UTC tuotti main-revision
+`816bc7755d5c13ec40e9cc9601bb9a662af8b785`, jonka oma
+[täysi normaali ajo 36470292248](https://github.com/eky-software/eky/actions/runs/36470292248)
+ja [riippuvuustarkistus 36470292022](https://github.com/eky-software/eky/actions/runs/36470292022)
+hyväksyttiin erikseen; mainin auditin 160 rekisteriallekirjoitusta varmennettiin.
+Mainin tapausmäärät ja tulokset kuuluvat sen omiin
+ajoviitteisiin; PR:n lukuja ei siirretä mainin näytöksi.
+Kummankin revision vaadittujen ryhmien päättyneet tulokset,
+todelliset checkoutit, lähde-/katalogisidonnat sekä neljän tuottajan ja
+kymmenen kuluttajan artifact-sidonnat takaisinluettiin. Katselmointi ja
+julkaisurajan tarkistus kuuluvat hyväksyntään; vanha vihreä ajo ei korvaa
+kummankaan revision omaa näyttöä.
+
+Yllä oleva Windows 781/781 on erillinen tavallinen paikallinen regressio,
+ei PR:n tai mainin CI-katalogi. Late-fork- ja saman ownerin resume-virheen
+todisteet sekä muut [pysyvän matriisin](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus)
+osanäytöt säilyvät omilla testitasoillaan ja lähdesidonnoillaan. Vanhoja
+määriä, stressiä tai soakia ei siirretä uusien ajojen tuloksiksi.
+Historialliset hylkäykset ja niiden avoimet juurisyyt säilyvät.
+
+Tämä sulkee T3/R28:n, ei tämän dokumenttimuutoksen omaa integraatiota,
+M1:n sovelluskorjauksia tai 0.3.0-julkaisua. Dokumenttimuutoksen normaalit
+PR-tarkistukset, suojattu merge, oman mainin täysi normaali portti ja
+sovittu riippuvuustarkistus vaaditaan ennen A1/R01:n aloittamista.
+Niiden toteutunut hyväksyntä kirjataan dokumentti-PR:n checkpointiin ja
+loppuraporttiin, ei uudella tilakirjauscommitilla. Tulevia tarkistuksia
+ei oleteta läpäistyiksi; epäonnistuminen pysäyttää seuraavan työn.
 
 #### T3:n lopullinen hyväksyntänäyttö
 
