@@ -35,6 +35,10 @@ import {
   verifyStagedBetterSqliteDatabase,
 } from './staged-better-sqlite-runtime.mjs';
 import { preparePackageBackendStage } from './preparePackageBackendStage.mjs';
+import {
+  captureBackendBuildMetadataSource,
+  normalizeBackendBuildMetadata,
+} from './backendBuildMetadata.mjs';
 const electronVersion = await readDesktopElectronVersion();
 const execFileAsync = promisify(execFile);
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -393,11 +397,18 @@ export async function packageWindowsApplication({
   await rm(outputDirectory, { force: true, recursive: true });
   await mkdir(stagingRoot, { recursive: true });
   observePhase('workspaceBuild');
+  const backendMetadataSource = await captureBackendBuildMetadataSource({
+    repositoryRoot,
+  });
   await buildWorkspaceArtifacts(backendStage);
   observePhase('backendPreparation');
   await preparePackageBackendStage({
     backendStage,
     prepareBackendStage,
+  });
+  await normalizeBackendBuildMetadata({
+    backendStage,
+    source: backendMetadataSource,
   });
   observePhase('buildIdentity');
   const packageBuildInfoModule = await import(

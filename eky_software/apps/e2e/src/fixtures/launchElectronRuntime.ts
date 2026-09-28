@@ -1,4 +1,5 @@
 import { errors, type ElectronApplication, type Page } from '@playwright/test';
+import { ElectronBridgeCallerFailure, type ElectronBridgeFailureReason } from '../environment/startOwnedWindowsElectronBridge.js';
 
 import { ELECTRON_E2E_FIRST_WINDOW_TIMEOUT_MILLISECONDS } from './electronLaunchBudgets.js';
 import {
@@ -37,7 +38,7 @@ export function captureElectronStartupObservation(
 export interface ElectronLaunchObservation {
   readonly phase: 'playwrightConnect' | 'firstWindow' | 'domContentLoaded';
   readonly status: 'started' | 'completed' | 'failed';
-  readonly reason: 'none' | 'timeout' | 'processExited' | 'pageClosed' | 'unknown';
+  readonly reason: 'none' | 'processExited' | 'pageClosed' | ElectronBridgeFailureReason;
 }
 
 // Playwright owns connection startup. The fixture owns the returned runtime,
@@ -49,6 +50,7 @@ export async function launchElectronRuntime(input: {
     process: ReturnType<ElectronApplication['process']>,
   ): void;
   observe(observation: ElectronLaunchObservation): void;
+  readWorkloadState?(): 'running' | 'exited' | 'unavailable';
 }): Promise<{ electronApp: ElectronApplication; page: Page }> {
   let phase: ElectronLaunchObservation['phase'] = 'playwrightConnect';
   let application: ElectronApplication | undefined;
@@ -88,14 +90,23 @@ export async function launchElectronRuntime(input: {
     observe('completed');
     return { electronApp: application, page };
   } catch (error) {
+    let processExited = false;
+    if (phase !== 'playwrightConnect' && input.readWorkloadState !== undefined) {
+      // A Playwright bridge exit is not an Electron workload exit. Observe
+      // the actual owner before fixture cleanup can change the workload.
+      try { processExited = input.readWorkloadState() === 'exited'; }
+      catch { /* Missing diagnostics cannot replace the original failure. */ }
+    } else if (input.readWorkloadState === undefined) {
+      processExited = child !== undefined && (child.exitCode !== null || child.signalCode !== null);
+    }
     const reason: ElectronLaunchObservation['reason'] =
-      child !== undefined && (child.exitCode !== null || child.signalCode !== null)
+      processExited
         ? 'processExited'
         : page?.isClosed() === true
           ? 'pageClosed'
           : error instanceof errors.TimeoutError
             ? 'timeout'
-            : 'unknown';
+            : error instanceof ElectronBridgeCallerFailure ? error.reason : 'unknown';
     observe('failed', reason);
     throw new Error(`E2E_ELECTRON_STARTUP_FAILED phase=${phase} reason=${reason}`);
   }

@@ -3,10 +3,11 @@ import {
   mkdtempSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep, win32 } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -25,6 +26,36 @@ afterEach(() => {
 });
 
 describe('E2E backend runtime path overrides', () => {
+  it('keeps data and isolated process temp under the same native run root', () => {
+    const fixture = createFixture('run-');
+    const temp = createDirectory(fixture.runtimeRoot, 'control', 'temp');
+    writeFileSync(fixture.configPath, JSON.stringify(fixture.config));
+    const environment = {
+      EKY_E2E: '1', EKY_E2E_OS_TEMP_ROOT: realpathSync.native(tmpdir()), TEMP: temp, TMP: temp,
+    };
+    expect(readE2eBackendConfig(fixture.configPath, environment)).toEqual(fixture.config);
+    for (const key of ['TEMP', 'TMP'] as const) {
+      for (const value of [undefined, tmpdir(), createSiblingTestRoot('run-'), 'relative-temp']) {
+        expect(() => readE2eBackendConfig(fixture.configPath, { ...environment, [key]: value })).toThrow();
+      }
+    }
+    expect(() => readE2eBackendConfig(fixture.configPath, {
+      ...environment, EKY_ELECTRON_E2E_RUN_ROOT: fixture.runtimeRoot,
+    })).toThrow('policies conflict');
+    expect(() => readE2eBackendConfig(fixture.configPath, {
+      ...environment, EKY_E2E_OS_TEMP_ROOT: 'relative-root',
+    })).toThrow('E2E backend host temp root is invalid.');
+  });
+
+  it('does not turn an explicit temp anchor into an arbitrary runtime-root override', () => {
+    const fixture = createFixture();
+    writeFileSync(fixture.configPath, JSON.stringify(fixture.config));
+    expect(() => readE2eBackendConfig(fixture.configPath, {
+      EKY_E2E: '1', EKY_E2E_OS_TEMP_ROOT: realpathSync.native(tmpdir()),
+      TEMP: fixture.config.paths.tempRoot, TMP: fixture.config.paths.tempRoot,
+    })).toThrow('isolated run root');
+  });
+
   it('accepts native-canonical standalone paths under the isolated temp root', () => {
     const fixture = createFixture();
     writeFileSync(
@@ -121,16 +152,71 @@ describe('E2E backend runtime path overrides', () => {
       ),
     ).toThrow();
   });
+
+  it.skipIf(process.platform !== 'win32')('rejects another drive before reading its directories', () => {
+    const fixture = createFixture();
+    const otherDrive = win32.parse(fixture.runtimeRoot).root.toUpperCase() === 'C:\\' ? 'D:\\' : 'C:\\';
+    expect(() => applyE2eBackendRuntimePathOverrides(
+      fixture.config,
+      fixture.configPath,
+      {
+        databaseFilePath: fixture.config.paths.databaseFilePath,
+        documentsRoot: win32.join(otherDrive, 'eky-e2e', 'run-outside', 'documents'),
+        logsRoot: fixture.config.paths.logsRoot,
+      },
+      fixture.environment,
+    )).toThrow('E2E runtime path escapes its allowed root.');
+  });
+
+  it.each(['nested', 'parentTraversal'])('rejects an original directory link before realpath: %s', (kind) => {
+    const fixture = createFixture();
+    const alias = join(fixture.runtimeRoot, 'backend-alias');
+    symlinkSync(join(fixture.runtimeRoot, 'backend'), alias, process.platform === 'win32' ? 'junction' : 'dir');
+    const documentsRoot = kind === 'nested' ? join(alias, 'documents')
+      : `${alias}${sep}..${sep}backend${sep}documents`;
+    expect(() => applyE2eBackendRuntimePathOverrides(
+      fixture.config,
+      fixture.configPath,
+      {
+        databaseFilePath: fixture.config.paths.databaseFilePath,
+        documentsRoot,
+        logsRoot: fixture.config.paths.logsRoot,
+      },
+      fixture.environment,
+    )).toThrow('E2E runtime path must not contain symbolic links.');
+  });
+
+  it.each(['TEMP', 'TMP'])('rejects an original directory link in isolated %s', (key) => {
+    const fixture = createFixture('run-');
+    const temp = createDirectory(fixture.runtimeRoot, 'control', 'temp');
+    const alias = join(fixture.runtimeRoot, 'control-alias');
+    symlinkSync(join(fixture.runtimeRoot, 'control'), alias, process.platform === 'win32' ? 'junction' : 'dir');
+    writeFileSync(fixture.configPath, JSON.stringify(fixture.config));
+    expect(() => readE2eBackendConfig(fixture.configPath, {
+      EKY_E2E: '1', EKY_E2E_OS_TEMP_ROOT: realpathSync.native(tmpdir()),
+      TEMP: temp, TMP: temp, [key]: join(alias, 'temp'),
+    })).toThrow('E2E runtime path must not contain symbolic links.');
+  });
+
+  it('rejects an original directory link in the config file path', () => {
+    const fixture = createFixture();
+    const configRoot = createDirectory(fixture.runtimeRoot, 'config-source');
+    const alias = join(fixture.runtimeRoot, 'config-alias');
+    symlinkSync(configRoot, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    writeFileSync(join(configRoot, 'backend-config.json'), JSON.stringify(fixture.config));
+    expect(() => readE2eBackendConfig(join(alias, 'backend-config.json'), fixture.environment))
+      .toThrow('E2E runtime path must not contain symbolic links.');
+  });
 });
 
-function createFixture(): {
+function createFixture(prefix = 'backend-config-'): {
   config: E2eBackendConfig;
   configPath: string;
   environment: Readonly<Record<string, string>>;
   originalDatabaseFilePath: string;
   runtimeRoot: string;
 } {
-  const runtimeRoot = createSiblingTestRoot('backend-config-');
+  const runtimeRoot = createSiblingTestRoot(prefix);
   const databaseRoot = createDirectory(runtimeRoot, 'backend', 'data');
   const configPath = join(runtimeRoot, 'backend-config.json');
   writeFileSync(configPath, '{}', { encoding: 'utf8', mode: 0o600 });

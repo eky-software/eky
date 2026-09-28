@@ -25,6 +25,10 @@ import { WORKSPACE_FAULT_ERRORS, WORKSPACE_FAULT_SCENARIO, workspaceFaultPlan } 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const MSI_ACTIVITY_INSPECTOR = resolve(DIRECTORY, 'inspectWorkspaceSuccessMsiActivity.ps1');
 
+function observeStep(observation, boundary, task) {
+  return observation === undefined ? task() : observation.step(boundary, task);
+}
+
 // The existing supervisor's Job owns every descendant. This adapter only awaits
 // a directly launched command; it has no timeout, kill or process-tree registry.
 export function runWorkspaceSuccessOwnedCommand(command, arguments_, options, spawnProcess = spawn) {
@@ -103,48 +107,50 @@ async function createWorkspaceWindowsRuntime({
   const sessionPhases = faultScenario === undefined ? undefined
     : proofProtocol.getW6b2PackagedFaultSessionPhases(faultScenario);
 
-  async function inspectResult(createInvocation, { commandError, resultError, validate }) {
+  async function inspectResult(createInvocation, { commandError, resultError, validate }, observation, boundary) {
     const resultPath = resolve(scenarioRoot, `workspace-inspection-${inspectionSequence++}.json`);
     let result;
     let failure;
     try {
       try {
         const invocation = createInvocation(resultPath);
-        const exitCode = await runCommand(invocation.command, invocation.arguments, commandOptions);
+        const exitCode = await observeStep(observation, `${boundary}Command`, () =>
+          runCommand(invocation.command, invocation.arguments, commandOptions));
         if (exitCode !== 0) throw new Error(commandError);
       } catch { throw new Error(commandError); }
-      try { result = validate(await readObject(resultPath, resultError, 64 * 1024)); }
+      try { result = validate(await observeStep(observation, `${boundary}Result`, () =>
+        readObject(resultPath, resultError, 64 * 1024))); }
       catch { throw new Error(resultError); }
     } catch (error) { failure = error; }
-    try { await rm(resultPath, { force: true }); }
+    try { await observeStep(observation, `${boundary}Cleanup`, () => rm(resultPath, { force: true })); }
     catch { failure ??= new Error(inspectionErrors.cleanup); }
     if (failure) throw failure;
     return result;
   }
 
-  async function inspectIdleProducts() {
+  async function inspectIdleProducts(observation) {
     // ProductCode queries are separate observations, not an atomic snapshot.
     // Only compare valid observations bracketed by MSI inactivity. A busy
     // sample stays pending; malformed evidence and inspection failures do not.
-    if (!await requireMsiIdle()) return null;
+    if (!await requireMsiIdle(observation, 'activityBefore')) return null;
     const source = await inspectResult(
       resultPath => createNativeProductInspectionCommand(`{${artifact.source.productCode}}`, resultPath, environment), {
         commandError: inspectionErrors.sourceCommand, resultError: inspectionErrors.sourceResult,
         validate: validateInstallerProductStateResult,
-      });
+      }, observation, 'sourceProduct');
     const target = await inspectResult(
       resultPath => createNativeProductInspectionCommand(`{${artifact.target.productCode}}`, resultPath, environment), {
         commandError: inspectionErrors.targetCommand, resultError: inspectionErrors.targetResult,
         validate: validateInstallerProductStateResult,
-      });
-    if (!await requireMsiIdle()) return null;
+      }, observation, 'targetProduct');
+    if (!await requireMsiIdle(observation, 'activityAfter')) return null;
     if (source.ekyProcessCount !== target.ekyProcessCount) throw new Error(inspectionErrors.processMismatch);
     if (source.ownedRegistryExists !== target.ownedRegistryExists) throw new Error(inspectionErrors.registryMismatch);
     return { source, target, ekyProcessCount: source.ekyProcessCount,
       installerRegistryExists: source.ownedRegistryExists };
   }
 
-  async function requireMsiIdle() {
+  async function requireMsiIdle(observation, boundary) {
     return inspectResult(resultPath => ({ command: powershell, arguments: [
       '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', MSI_ACTIVITY_INSPECTOR,
       '-ResultPath', resultPath,
@@ -157,7 +163,7 @@ async function createWorkspaceWindowsRuntime({
         }
         return value.msiClientCount === 0;
       },
-    });
+    }, observation, boundary);
   }
 
   async function verifyBytes() {
@@ -257,11 +263,11 @@ async function createWorkspaceWindowsRuntime({
       if (originalError) throw originalError;
       return result;
     },
-    ...(faultScenario === undefined ? { waitForTargetInstallation: () => waitForInstallation('target') }
+    ...(faultScenario === undefined ? { waitForTargetInstallation: (observation) => waitForInstallation('target', observation) }
       : { waitForInstallation }),
   });
 
-  async function waitForInstallation(role) {
+  async function waitForInstallation(role, observation) {
     if (role !== 'source' && role !== 'target') throw new Error('requestInvalid');
     if (role === 'source' && faultScenario !== 'activeWorkspaceFirstStartFailure') throw new Error('requestInvalid');
     let previousRollbackProgress = [];
@@ -273,12 +279,13 @@ async function createWorkspaceWindowsRuntime({
         // its uninstall/install commands. Require its existing terminal proof
         // before sampling ProductCodes; a failed rollback may still be repairing.
         const path = resolve(runFixture.proofRoot, 'result', proofProtocol.W6B2_PACKAGED_ROLLBACK_PROGRESS_FILE);
-        let present = false;
-        try { await lstat(path); present = true; }
-        catch (error) { if (error?.code !== 'ENOENT') throw new Error('sourceRollbackInstallFailed'); }
-        let records;
-        try { records = present ? await readUpgradeRollbackProgress(path) : []; }
-        catch { throw new Error('sourceRollbackInstallFailed'); }
+        const records = await observeStep(observation, 'rollbackProgressRead', async () => {
+          let present = false;
+          try { await lstat(path); present = true; }
+          catch (error) { if (error?.code !== 'ENOENT') throw new Error('sourceRollbackInstallFailed'); }
+          try { return present ? await readUpgradeRollbackProgress(path) : []; }
+          catch { throw new Error('sourceRollbackInstallFailed'); }
+        });
         if (!isDeepStrictEqual(records.slice(0, previousRollbackProgress.length), previousRollbackProgress)) {
           throw new Error('sourceRollbackInstallFailed');
         }
@@ -286,10 +293,10 @@ async function createWorkspaceWindowsRuntime({
         const last = records.at(-1);
         const terminal = (last?.event === 'failed' && last.phase !== 'rollbackPackageInstall') ||
           (last?.event === 'completed' && ['rollbackPackageInstall', 'failedPackageRepair'].includes(last.phase));
-        if (!terminal) { await nextObservation(); continue; }
+        if (!terminal) { await observeStep(observation, 'nextObservation', nextObservation); continue; }
         if (records.some((record) => record.event === 'failed')) throw new Error('sourceRollbackInstallFailed');
       }
-      const state = await inspectIdleProducts();
+      const state = await inspectIdleProducts(observation);
       if (state !== null) {
         const other = role === 'source' ? 'target' : 'source';
         if (state[other].productState >= 1 || state[role].productState < 1 || state.ekyProcessCount !== 0) {
@@ -297,7 +304,8 @@ async function createWorkspaceWindowsRuntime({
         }
         return;
       }
-      await nextObservation();
+      observation?.busy();
+      await observeStep(observation, 'nextObservation', nextObservation);
     }
   }
 }

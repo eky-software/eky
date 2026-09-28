@@ -1,11 +1,11 @@
 import {
   request as requestFactory,
-  test as base,
   type APIRequestContext,
   type BrowserContext,
   type Page,
   type TestInfo,
 } from '@playwright/test';
+import { test as base } from './ownedChromiumTest.js';
 
 import type { E2eFaultPlan } from '../../../backend/e2e/e2eBackendConfig.js';
 import { collectWebFailureArtifacts } from '../environment/collectWebFailureArtifacts.js';
@@ -16,6 +16,7 @@ import {
   type E2eBrowserNetworkBoundary,
 } from '../environment/e2eBrowserNetworkBoundary.js';
 import type { E2eWorkerPaths } from '../environment/e2eEnvironmentTypes.js';
+import { createE2eFixtureLifetime } from '../environment/e2eFixtureLifetime.js';
 import { reserveLoopbackPort } from '../environment/reserveLoopbackPort.js';
 import {
   startE2eBackendProcess,
@@ -24,6 +25,7 @@ import {
 } from '../environment/startE2eBackendProcess.js';
 import {
   startE2eWebProcess,
+  E2eWebStartupFailure,
   type StartedE2eWeb,
 } from '../environment/startE2eWebProcess.js';
 import { waitForLoopbackPortRelease } from '../environment/waitForLoopbackPortRelease.js';
@@ -46,24 +48,27 @@ interface IsolatedWebFixtures {
 }
 
 interface IsolatedWebOptions {
+  e2eContainmentTimeoutMilliseconds: number | undefined;
   e2eFaultPlan: E2eFaultPlan;
 }
 
 export const test = base.extend<
   IsolatedWebFixtures & IsolatedWebOptions
 >({
+  e2eContainmentTimeoutMilliseconds: [undefined, { option: true }],
   e2eFaultPlan: [{ kind: 'none' }, { option: true }],
   e2eWeb: async (
-    { context, e2eFaultPlan, page },
+    { context, e2eContainmentTimeoutMilliseconds, e2eFaultPlan, page },
     use,
     testInfo,
   ) => {
-    await runIsolatedWebTest({ context, e2eFaultPlan, page }, use, testInfo);
+    await runIsolatedWebTest({ context, e2eContainmentTimeoutMilliseconds, e2eFaultPlan, page }, use, testInfo);
   },
 });
 
 const webFixtureDependencies = {
   collectWebFailureArtifacts,
+  createE2eFixtureLifetime,
   createE2eRunRoot,
   createE2eWorkerPaths,
   installE2eBrowserNetworkBoundary,
@@ -76,7 +81,7 @@ const webFixtureDependencies = {
 };
 
 export async function runIsolatedWebTest(
-  { context, e2eFaultPlan, page }: IsolatedWebOptions & {
+  { context, e2eContainmentTimeoutMilliseconds, e2eFaultPlan, page }: IsolatedWebOptions & {
     context: BrowserContext;
     page: Page;
   },
@@ -85,10 +90,13 @@ export async function runIsolatedWebTest(
   dependencies = webFixtureDependencies,
 ): Promise<void> {
   const {
-    collectWebFailureArtifacts, createE2eRunRoot, createE2eWorkerPaths,
+    collectWebFailureArtifacts, createE2eFixtureLifetime, createE2eRunRoot, createE2eWorkerPaths,
     installE2eBrowserNetworkBoundary, requestFactory, removeE2eRunRoot, reserveLoopbackPort,
     startE2eBackendProcess, startE2eWebProcess, waitForLoopbackPortRelease,
   } = dependencies;
+  const lifetime = createE2eFixtureLifetime(
+    e2eContainmentTimeoutMilliseconds === undefined ? testInfo.timeout : e2eContainmentTimeoutMilliseconds,
+  );
   const scenarioId = readE2eScenarioId(testInfo.title);
   const runRoot = createE2eRunRoot();
   const paths = createE2eWorkerPaths(runRoot, scenarioId);
@@ -106,7 +114,7 @@ export async function runIsolatedWebTest(
     webPort = await reserveLoopbackPort();
     try {
       backend = await startE2eBackendProcess({
-        backendPort, faultPlan: e2eFaultPlan, paths, runRoot, scenarioId,
+        backendPort, faultPlan: e2eFaultPlan, lifetime, paths, runRoot, scenarioId,
       });
     } catch (error) {
       priorCleanupUnverified = !(error instanceof E2eBackendStartupFailure &&
@@ -121,11 +129,20 @@ export async function runIsolatedWebTest(
         'x-eky-local-session': backend.sessionSecret,
       },
     });
-    // The web startup contract has no returned handle on failure. A free
-    // port alone cannot verify that missing process ownership.
-    priorCleanupUnverified = true;
-    web = await startE2eWebProcess({ backend, paths, runRoot, webPort });
-    priorCleanupUnverified = false;
+    try {
+      web = await startE2eWebProcess({ backend, lifetime, paths, runRoot, webPort });
+    } catch (error) {
+      priorCleanupUnverified = !(error instanceof E2eWebStartupFailure &&
+        error.evidence.cleanup.processTree === 'stopped' && error.evidence.cleanup.port === 'released');
+      if (error instanceof E2eWebStartupFailure) {
+        try {
+          await testInfo.attach('web-startup-failure', {
+            body: JSON.stringify({ schemaVersion: 1, ...error.evidence }), contentType: 'application/json',
+          });
+        } catch { /* Diagnostic attachment failure must not replace the startup failure. */ }
+      }
+      throw error;
+    }
     networkBoundary = await installE2eBrowserNetworkBoundary(context, {
       backendOrigin: backend.backendOrigin,
       webOrigin: web.webOrigin,
@@ -139,6 +156,9 @@ export async function runIsolatedWebTest(
   } finally {
     await finishServiceFixture({
       failure, priorCleanupUnverified,
+      // Public close flushes Playwright's context trace/screenshots before
+      // test data removal. Its ordinary fixture teardown is idempotent.
+      closeContext: () => context.close(),
       testAlreadyFailed: testInfo.status !== testInfo.expectedStatus,
       disposeApi: async () => { await api?.dispose(); },
       ...(web === undefined ? {} : { stopWeb: () => web!.stop() }),

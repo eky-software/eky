@@ -1,9 +1,10 @@
 import { join } from 'node:path';
 
-import { request as requestFactory } from '@playwright/test';
+import { request as requestFactory, type APIRequestContext } from '@playwright/test';
 
 import { createE2eWorkerPaths } from '../environment/createE2eWorkerPaths.js';
 import type { E2eWorkerPaths } from '../environment/e2eEnvironmentTypes.js';
+import type { E2eFixtureLifetime } from '../environment/e2eFixtureLifetime.js';
 import { reserveLoopbackPort } from '../environment/reserveLoopbackPort.js';
 import { startE2eBackendProcess } from '../environment/startE2eBackendProcess.js';
 import { waitForLoopbackPortRelease } from '../environment/waitForLoopbackPortRelease.js';
@@ -37,6 +38,7 @@ const activeReplacementCustomerName =
 
 export async function createElectronWorkspaceBackupFixture(input: {
   readonly backupPath: string;
+  readonly lifetime: E2eFixtureLifetime;
   readonly runRoot: string;
 }): Promise<Readonly<ElectronWorkspaceBackupFixture>> {
   const sourcePaths = createE2eWorkerPaths(input.runRoot, sourceScenarioId);
@@ -44,6 +46,7 @@ export async function createElectronWorkspaceBackupFixture(input: {
     backupPath: input.backupPath,
     customerName: syntheticCustomerName,
     customerNumber: 'E2E-IMPORTED-1',
+    lifetime: input.lifetime,
     password: syntheticPassword,
     paths: sourcePaths,
     runRoot: input.runRoot,
@@ -55,6 +58,7 @@ export async function createElectronWorkspaceBackupFixture(input: {
 
 export async function createElectronActiveWorkspaceReplacementFixture(input: {
   readonly backupPath: string;
+  readonly lifetime: E2eFixtureLifetime;
   readonly paths: E2eWorkerPaths;
   readonly runRoot: string;
   readonly scenarioId: string;
@@ -63,6 +67,7 @@ export async function createElectronActiveWorkspaceReplacementFixture(input: {
     backupPath: input.backupPath,
     customerName: activeReplacementCustomerName,
     customerNumber: 'E2E-REPLACE-SOURCE',
+    lifetime: input.lifetime,
     password: activeReplacementPassword,
     paths: input.paths,
     runRoot: input.runRoot,
@@ -76,6 +81,7 @@ async function createWorkspaceBackupFixture(input: {
   readonly backupPath: string;
   readonly customerName: string;
   readonly customerNumber: string;
+  readonly lifetime: E2eFixtureLifetime;
   readonly password: string;
   readonly paths: E2eWorkerPaths;
   readonly runRoot: string;
@@ -86,30 +92,42 @@ async function createWorkspaceBackupFixture(input: {
   const backendPort = await reserveLoopbackPort();
   const backend = await startE2eBackendProcess({
     backendPort,
+    lifetime: input.lifetime,
     paths: input.paths,
     runRoot: input.runRoot,
     scenarioId: input.scenarioId,
   });
-  const api = await requestFactory.newContext({
-    baseURL: backend.backendOrigin,
-    extraHTTPHeaders: {
-      Accept: 'application/json',
-      'x-eky-local-session': backend.sessionSecret,
-    },
-  });
-
+  let api: APIRequestContext | undefined;
+  let failure: { error: unknown } | undefined;
   let invoiceId: string;
   try {
+    api = await requestFactory.newContext({
+      baseURL: backend.backendOrigin,
+      extraHTTPHeaders: {
+        Accept: 'application/json',
+        'x-eky-local-session': backend.sessionSecret,
+      },
+    });
     const invoice = await createApprovedInvoiceWithPdfForWorkspaceBackup(api, {
       customerName: input.customerName,
       customerNumber: input.customerNumber,
       subject: input.subject,
     });
     invoiceId = invoice.invoiceId;
+  } catch (error) {
+    failure = { error };
+    throw error;
   } finally {
-    await api.dispose();
-    await backend.stop();
-    await waitForLoopbackPortRelease(backendPort);
+    let cleanupFailure: { error: unknown } | undefined;
+    for (const cleanup of [
+      async () => { await api?.dispose(); },
+      () => backend.stop(),
+      () => waitForLoopbackPortRelease(backendPort),
+    ]) {
+      try { await cleanup(); }
+      catch (error) { cleanupFailure ??= { error }; }
+    }
+    if (failure === undefined && cleanupFailure !== undefined) throw cleanupFailure.error;
   }
 
   const document = readWorkspaceBackupInvoiceDocument(

@@ -8,11 +8,28 @@ on:
         required: true
         type: boolean
         default: true
+      linux_consumer_diagnostic:
+        description: Run existing Linux jobs with consumer-loss diagnostics and web endurance
+        required: true
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       risk_plan:
         required: true
         type: string
+      linux_ownership_prerequisites:
+        required: false
+        type: boolean
+        default: false
+      linux_pid_namespace_experiment:
+        required: false
+        type: boolean
+        default: false
+      linux_managed_namespace_experiment:
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -67,7 +84,7 @@ jobs:
 
   e2e-system-security:
     name: System security E2E
-    if: inputs.risk_plan != ''
+    if: inputs.risk_plan != '' || (inputs.risk_plan == '' && inputs.linux_consumer_diagnostic == true)
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -94,11 +111,53 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run isolated system security E2E tests
-        run: pnpm test:e2e:system
+        env:
+          EKY_E2E: '1'
+          EKY_LINUX_OWNERSHIP_PREREQUISITES: ${{ inputs.linux_ownership_prerequisites == true }}
+        run: |
+          if [ "$EKY_LINUX_OWNERSHIP_PREREQUISITES" = "true" ]; then
+            checkout_sha="$(git rev-parse --verify HEAD 2>/dev/null)" || checkout_sha=""
+            if node apps/e2e/experiments/processOwnership/probeLinuxPrerequisites.mjs --consumer=system-api --checkout-sha="$checkout_sha" 2>/dev/null; then
+              printf '%s\n' 'LINUX_PREREQUISITE_EXIT_OK'
+            else
+              printf '%s\n' 'LINUX_PREREQUISITE_EXIT_UNVERIFIED'
+            fi
+          fi
+          pnpm test:e2e:system
+
+      - name: Observe bounded system PID namespace experiment
+        if: success() && inputs.linux_pid_namespace_experiment == true
+        env:
+          EKY_E2E: '1'
+        run: |
+          checkout_sha="$(git rev-parse --verify HEAD 2>/dev/null)" || checkout_sha=""
+          node apps/e2e/experiments/processOwnership/runPidNamespaceExperiment.mjs --consumer=system-api --checkout-sha="$checkout_sha" 2>/dev/null
+
+      - name: Observe bounded system managed namespace experiment
+        if: success() && inputs.linux_managed_namespace_experiment == true
+        env:
+          EKY_E2E: '1'
+        run: |
+          checkout_sha="$(git rev-parse --verify HEAD 2>/dev/null)" || checkout_sha=""
+          node apps/e2e/experiments/processOwnership/runManagedNamespaceExperiment.mjs --consumer=system-api --checkout-sha="$checkout_sha" 2>/dev/null
+
+      - name: Build system Linux consumer diagnostic
+        if: success() && inputs.risk_plan == '' && inputs.linux_consumer_diagnostic == true
+        env:
+          EKY_E2E: '1'
+        run: pnpm --filter @eky/e2e linux:consumer:build
+
+      - name: Run system Linux consumer loss diagnostic
+        if: success() && inputs.risk_plan == '' && inputs.linux_consumer_diagnostic == true
+        env:
+          EKY_E2E: '1'
+        run: |
+          checkout_sha="$(git rev-parse --verify HEAD 2>/dev/null)" || checkout_sha=""
+          pnpm --filter @eky/e2e linux:consumer:loss --scope=system --consumer=system-api --checkout-sha="$checkout_sha"
 
   e2e-web-critical:
     name: Web critical E2E
-    if: inputs.risk_plan != ''
+    if: inputs.risk_plan != '' || (inputs.risk_plan == '' && inputs.linux_consumer_diagnostic == true)
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -128,7 +187,55 @@ jobs:
         run: pnpm --filter @eky/e2e exec playwright install --with-deps chromium
 
       - name: Run critical web E2E journeys
-        run: pnpm --filter @eky/e2e e2e:web:critical
+        env:
+          EKY_E2E: '1'
+          EKY_LINUX_OWNERSHIP_PREREQUISITES: ${{ inputs.linux_ownership_prerequisites == true }}
+        run: |
+          if [ "$EKY_LINUX_OWNERSHIP_PREREQUISITES" = "true" ]; then
+            checkout_sha="$(git rev-parse --verify HEAD 2>/dev/null)" || checkout_sha=""
+            if node apps/e2e/experiments/processOwnership/probeLinuxPrerequisites.mjs --consumer=web-chromium --checkout-sha="$checkout_sha" 2>/dev/null; then
+              printf '%s\n' 'LINUX_PREREQUISITE_EXIT_OK'
+            else
+              printf '%s\n' 'LINUX_PREREQUISITE_EXIT_UNVERIFIED'
+            fi
+          fi
+          pnpm --filter @eky/e2e e2e:web:critical
+
+      - name: Observe bounded web PID namespace experiment
+        if: success() && inputs.linux_pid_namespace_experiment == true
+        env:
+          EKY_E2E: '1'
+        run: |
+          checkout_sha="$(git rev-parse --verify HEAD 2>/dev/null)" || checkout_sha=""
+          node apps/e2e/experiments/processOwnership/runPidNamespaceExperiment.mjs --consumer=web-chromium --checkout-sha="$checkout_sha" 2>/dev/null
+
+      - name: Observe bounded web managed namespace experiment
+        if: success() && inputs.linux_managed_namespace_experiment == true
+        env:
+          EKY_E2E: '1'
+        run: |
+          checkout_sha="$(git rev-parse --verify HEAD 2>/dev/null)" || checkout_sha=""
+          node apps/e2e/experiments/processOwnership/runManagedNamespaceExperiment.mjs --consumer=web-chromium --checkout-sha="$checkout_sha" --workload=chromium 2>/dev/null
+
+      - name: Build web Linux consumer diagnostic
+        if: success() && inputs.risk_plan == '' && inputs.linux_consumer_diagnostic == true
+        env:
+          EKY_E2E: '1'
+        run: pnpm --filter @eky/e2e linux:consumer:build
+
+      - name: Run web Linux consumer loss diagnostic
+        if: success() && inputs.risk_plan == '' && inputs.linux_consumer_diagnostic == true
+        env:
+          EKY_E2E: '1'
+        run: |
+          checkout_sha="$(git rev-parse --verify HEAD 2>/dev/null)" || checkout_sha=""
+          pnpm --filter @eky/e2e linux:consumer:loss --scope=web --consumer=web-chromium --checkout-sha="$checkout_sha"
+
+      - name: Run Linux consumer endurance baseline
+        if: success() && inputs.risk_plan == '' && inputs.linux_consumer_diagnostic == true
+        env:
+          EKY_E2E: '1'
+        run: pnpm test:e2e:stress
 
   e2e-electron-windows-critical:
     name: Windows Electron critical E2E
@@ -154,6 +261,11 @@ jobs:
 
       - name: Enable Corepack
         run: corepack enable
+
+      - name: Set up existing Windows test owner SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: 10.0.302
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

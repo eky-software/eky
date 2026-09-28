@@ -13,6 +13,7 @@ import {
   type ElectronE2eProfilePaths,
 } from './createElectronE2eProfile.js';
 import { writeE2eBackendConfig } from './writeE2eBackendConfig.js';
+import { electronNativeObservationsPath } from './electronNativeObservationsPath.js';
 
 export interface ElectronE2eRuntime {
   backendPort: number;
@@ -45,7 +46,7 @@ export function createElectronE2eRuntime(input: {
     | 'workspaceBackupReplacement';
   paths: E2eWorkerPaths;
   scenarioId: string;
-  startupMode?: 'backendStartFailure' | 'normal';
+  startupMode?: 'backendStartFailure' | 'normal' | 'pendingFirstWindow';
   workspaceBackupPath?: string;
 }): ElectronE2eRuntime {
   const applicationPath = createPrivateDirectory(
@@ -116,10 +117,7 @@ export function createElectronE2eRuntime(input: {
     scenarioId: input.scenarioId,
   });
   const runtimeInstanceId = randomUUID();
-  const observationsPath = join(
-    input.paths.artifactsRoot,
-    'electron-observations.jsonl',
-  );
+  const observationsPath = electronNativeObservationsPath(input.paths.artifactsRoot, runtimeInstanceId);
   const invoicePdfArchiveDirectoryPath = createPrivateDirectory(
     join(input.paths.artifactsRoot, 'invoice-pdf-archive'),
   );

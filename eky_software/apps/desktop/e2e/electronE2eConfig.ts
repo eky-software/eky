@@ -34,7 +34,7 @@ export interface ElectronE2eConfig {
   runtimeInstanceId: string;
   runtimeRoot: string;
   scenarioId: string;
-  startupMode: 'backendStartFailure' | 'normal';
+  startupMode: 'backendStartFailure' | 'normal' | 'pendingFirstWindow';
 }
 
 const configSizeLimitBytes = 32 * 1024;
@@ -99,7 +99,8 @@ function parseElectronE2eConfig(value: unknown): ElectronE2eConfig {
     typeof root.runtimeInstanceId !== 'string' ||
     !runtimeInstanceIdPattern.test(root.runtimeInstanceId) ||
     (root.startupMode !== 'backendStartFailure' &&
-      root.startupMode !== 'normal')
+      root.startupMode !== 'normal' &&
+      root.startupMode !== 'pendingFirstWindow')
   ) {
     throw new Error('Electron E2E config identity is invalid.');
   }

@@ -60,6 +60,19 @@ test('worker verifies exact revision and writes both bound results before succes
   assert.deepEqual(Object.keys(writes[1][2]).sort(), ['artifactDescriptorSha256', 'errorCode', 'resultCode', 'runNonce', 'scenario', 'schemaVersion', 'status']);
 });
 
+test('worker binds the real installation diagnostic to the existing progress sink', async () => {
+  const f = fixture();
+  const sink = () => {};
+  f.options.reportProgress = sink;
+  f.options.execute = async (runtime) => {
+    assert.equal(runtime.reportInstallationProgress, sink);
+    assert.equal(runtime.reportProgress, sink);
+    return f.result;
+  };
+  assert.equal(await f.run(), 0);
+  assert.equal(f.calls.filter(([name]) => name === 'disposeSessions').length, 1);
+});
+
 for (const stage of ['readRequest', 'verifyArtifact', 'createRuntime', 'execute']) {
   test(`worker fails closed at ${stage} without leaking the original exception`, async () => {
     const f = fixture();

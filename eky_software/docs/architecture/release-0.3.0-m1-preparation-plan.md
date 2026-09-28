@@ -1,5 +1,100 @@
 # 0.3.0 M1 -valmistelu
 
+## Jatka tästä
+
+**2026-09-28: T1/T2 hyväksytty, T3/R28 kesken; ei uutta rinnakkaista remonttia.**
+Modulaarinen monoliitti ja hyväksytty M1-rajaus säilyvät.
+
+| Kohta | Nykyinen lähtötieto |
+| --- | --- |
+| Nykyinen lähtörevisio | `7f8df53a16770b5e3206c179ff8f497b76c6cf24`: Linuxin oikeiden kuluttajien rajattu CI hyväksytty. Viimeisin täysi normaali baseline on erillinen `5bbfd483`. Electronin stress, täysi 30 minuutin soak ja virheprioriteettikokeet säilyvät aiempien checkpointtien näyttöinä. Tarkista HEAD ja työpuu ennen jatkamista; aiempi vihreä ajo ei hyväksy myöhempää koodimuutosta. |
+| Viimeisin koko CI:n hyväksytty lähtötila | Sama `5bbfd483`: 38 onnistunutta ryhmää ja yksi tarkoituksellinen valinnaisen kokeen ohitus. Kaikki neljä kokeellista valitsinta pois. System 690 valittua, 689 läpäisyä ja yksi Windows-only-suojan tarkoituksellinen ohitus; web 37/37 ja Electron 38/38 ilman retryä tai flaky-tulosta. Koko tapausjoukko, kaikki 38 checkoutia sekä neljän tuottajan ja kymmenen kuluttajan artifact-sidonnat takaisinluettu. Native-sopimukset 515/226/285/1791/60; registry-allekirjoitukset 160/160. Ei PR/main- tai koko T3-hyväksyntä; endurance on erillistä näyttöä. |
+| Avoin puute | Hyväksytyt Windows-/Linux-omistajat on kytketty oikeisiin kuluttajiin; pelkkää pääprosessin poistumista ei hyväksytä puun siivoukseksi. Kuluttajamatriisin kohdistettu näyttö, korvattujen aktiivisten Electron-varapolkujen poisto ja tavallinen Windows-regressio ovat hyväksyttyjä. Täsmällisen uuden revision PR/main-portit ovat avoinna. Aiemmat packaged-workspace-timeoutit säilyvät erillisinä ratkaisemattomina havaintoina. |
+| Viimeisin rajattu näyttö | [Endurance ja virheprioriteetti](e2e-test-environment.md#windows-electronin-endurance-ja-virheen-säilymisen-loppunäyttö): tyypitys, kolme mittauspolun regressiota, kanoninen stress ja täysi 30 minuutin soak läpäisivät. Kaksi todellisen fixturen koetta säilytti tarkoituksellisen alkuperäisen virheen ainoana testivirheenä close-/liitevirheen yli; siivous ja näyttö tarkistettiin erikseen. Ensimmäiset yritykset, sama testikoodi ja raportit on riippumattomasti takaisinluettu. Mittauskorjauksen oma CI on nyt hyväksytty. Aiemmat kuluttaja-, handoff-, workspace- ja CI-portit säilyvät [omassa checkpointissaan](e2e-test-environment.md#electron-bridgen-lopetuspolun-jatkoehdotus). Ei koko T3:n hyväksyntä. |
+| Nykyinen toteutuspala | Korvatut aktiiviset Electron-varapolut ja kaksi siivousapuria poistettu. Molemmat oikeat käynnistyskohdat torjuvat muut alustat ennen varausten luontia; nykyisen Windows-omistajan 13 sulkutestiä ja alkuperäisen lapsikahvan regressio säilyvät. Kohdesarja 151/151, puhtaat sopimukset 10/10, tyypitys, workspace-testit ja CI-sopimukset läpäisivät. Lopullinen tavallinen Windows-sarja 781/781 (693/43/45) läpäisi ilman retryä, flakyä tai ohituksia. Matriisin late-fork- ja saman ownerin resume-virhekokeet sekä niiden katselmus hyväksytty. Valmistelun rajattu pipe-korjaus: 31/31 ja oikea 25 tarkistuksen koe tavallisen valmistelun kautta. |
+| Viimeisin normaali CI | Revision `5bbfd483` [V2 36443256758](https://github.com/eky-software/eky/actions/runs/36443256758), yritys 1, hyväksytty yllä kuvatulla täydellä kattavuudella; ei checkout- tai näyttöaukkoja. [Riippuvuustarkistus 36443266084](https://github.com/eky-software/eky/actions/runs/36443266084) läpäisi ilman tunnettuja audit-löydöksiä, 160 allekirjoitusta varmennettu. |
+| Nykyinen diagnoosiraja | Linux-backendin ja Viten alkuperäinen OS-temp-ankkuri on korjattu ja tavallisen CI:n kuluttajanäyttö saatu. Edeltävä `c2bae3a2` [CI](https://github.com/eky-software/eky/actions/runs/36435533813) jäi hylätyksi: Windows-faultin `targetInstall` ylitti aikarajan, supervisor varmisti `cleanupCompleted/processTreeAbsent` ja seuraava binary-rollback-koe jäi ajamatta. Uusi havaintokytkentä ja molemmat fault-kuluttajat läpäisivät `5bbfd483`:lla. Tämä ei ratkaise c2-timeoutin juurisyytä; aiemmat timeoutit säilyvät erillisinä havaintoina. |
+| Aiempi Electron-diagnoosi | `23b43c49`: [36350757744](https://github.com/eky-software/eky/actions/runs/36350757744), yritys 1, hylätty; kaikkien 48 lifecycle-liitteen syy `ownerEnvironmentValueInvalid`, todellinen checkout varmennettu. Tarkkaa alkuperäistä ympäristöarvoa ei kerätty. PATH-korjauksen ensimmäinen tavallinen ajo jäi 44/45-tulokseen erillisen ennen testirunkoa tapahtuneen poistumisen vuoksi. Turvallista ensiyrityksen kaappausta täydennettiin; myöhempi kanoninen 45/45 ei todista alkuperäisen poistumisen syytä. |
+| Korjauksen paikalliset portit | Vite-jatkokorjauksen käynnistyssopimus ensin 21/22, korjattuna 22/22; Vite-reader 13/13, työkalusarja 740/740, E2E-tyypitys ja Windows-system 690/690 läpäisivät. Riippumaton lähde-/julkaisurajakatselmus hyväksyi rajauksen. Edeltävän backend-korjauksen web 43/43, pakettitestit ja tyypitys säilyvät oman revisionsa näyttönä. Muuttumattomien lähdekoodirajatestien rinnakkaisajon aikakatkaisuja ei merkitä korjatuiksi; CI:n ajotapa ja aikarajat säilyvät. [Omistava checkpoint](e2e-test-environment.md#chromiumin-ja-linuxin-ensimmäinen-yhteinen-ci). |
+| Seuraava työ | Viimeistele julkaisurajan tarkistus ja puhtaan lähteen katalogisidonta; etene normaaliin PR-ajoon sekä mergen oman main-revision tarkistuksiin. [Pysyvän T3-matriisin](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus) kohdistetut todisteet säilyvät; muuttumattomia erikoiskokeita ei uusita pelkän tilakirjauksen vuoksi. Ei sokeaa uusintaa, tuotantomuutosta, uusia rajoja tai rinnakkaista remonttia. |
+| Valmistuminen | Oikeat kuluttajat siirretty, korvattu aktiivinen toteutus poistettu vasta vastaavan kattavuuden jälkeen, T1/T2 säilyneet sekä koko T3-matriisi ja täsmällisen PR/main-revision portit läpäisty. |
+| T3:n jälkeen | Nykyisen M1:n A1:n vanhentuneet vastaukset ja muut hyväksytyt sovelluskorjaukset, sitten roadmapin 0.3.0-käyttöliittymä- ja diagnostiikkatyö. |
+
+**Nykyinen rajattu näyttö:** revision `7f8df53a` manuaalinen
+[Linux-ajo 36456205257](https://github.com/eky-software/eky/actions/runs/36456205257),
+yritys 1, läpäisi molemmat valitut ryhmät: tavallinen system/web, seitsemän
+todellista katkeamista ja erillinen endurance. Lähde- ja katalogisidonnat,
+passiivinen puun poistumistodiste, epävarman juuren säilyminen, ulkopuolinen
+kontrolliprosessi sekä tavallisen ja endurance-ajon omat worker-siivoamiset
+on takaisinluettu. Ei retryä tai flakyä. Tämä rajattu ajo ei korvaa täyttä
+normaalia CI:tä tai PR/main-porttia.
+[Omistava sopimus ja seitsemän tapausta](e2e-test-environment.md#linuxin-todellisten-kuluttajien-katkeamiskokeet)
+erottavat näytön seuraavasta korvattujen polkujen poistosta ja sen regressioista.
+
+**28.9. seuraavan työn tarkennus:** ensimmäinen tavallinen Electron-sarja
+hylättiin 44/45: yksi `firstWindow/processExited` ennen testirunkoa;
+siivous varmistui. Sukupolvikohtainen turvallinen virhekaappaus on nyt
+toteutettu ja katselmoitu, ja sen jälkeinen kanoninen sarja läpäisi 45/45
+samalla täydellisellä tapausjoukolla. Tyypitys, 136/136-kohdesarja ja
+työkalusarja 678/678 läpäisivät samalla koodilla. Hylätty tulos ja sen
+syyepävarmuus säilyvät; uusi läpäisy ei ole juurisyytodiste.
+Paketin oma normaali CI ja riippuvuustarkistus hyväksyttiin revision
+`5f61f186` ensimmäisistä yrityksistä. Sen jälkeen erillinen endurance,
+virheprioriteettikokeet ja mittauskorjauksen `ab5de90b` oma CI hyväksyttiin
+yllä kuvatusti. Tämä ei hyväksy muita kuluttajasiirtoja tai koko T3:a.
+
+**Windows-välipaketin yhteiset portit 2026-09-27:** varapolun poiston
+jälkeinen yhtenäinen lähdetila läpäisi koko workspacen testit ja
+tyyppitarkistuksen sekä CI-sopimukset 315/315. Kahdeksan ennestään
+alustakohtaista ohitusta säilyi workspacen testeissä; uusia ohituksia ei
+lisätty. Tämä täydentää yllä olevaa 607/607-näyttöä. Seuraava riippumaton
+askel oli katselmoidun välipaketin normaali CI ennen uusia kuluttajasiirtoja.
+Sen Electron-hylkäys säilyy yllä historiassa; baselinen korjaaminen oli
+seuraavien siirtojen ehto, ei nykyisen vihreän lähtörevision uusi este.
+
+**Uusin päätös 2026-09-28:** omistaja hyväksyi yhteisen Chromium-selaimen
+testikohtaisella eristyksellä sekä paikalliset Windows-testit ja Linux-CI:n.
+[Omistava sopimus](e2e-test-environment.md#chromiumin-kuluttajasiirron-avoin-omistajuusraja)
+erottaa worker-selaimen ja testin datajuuren siivouksen. Goal on jatkettu
+aktiiviseksi. Päätös avaa toteutuksen, ei hyväksy tulevaa testinäyttöä tai
+uutta riippuvuutta, oikeusmuutosta, timeoutia tai tuotantomuutosta.
+
+**Edeltävä päätös 2026-09-27:** omistaja valtuutti jatkamaan koko nykyisen
+T3/R28:n toteutuksen, testit ja normaalin PR/main-integraation loppuun
+nykyisin hyväksyntäehdoin ilman toistuvia välilupia hyväksytyn rajauksen
+sisällä. Päätös kattaa nimenomaisesti nykyiseen `playwright-core@1.62.1`-
+patchiin valmistellun lapsittoman Windows-bridgen rajatun lopetuslisäyksen,
+kutsujan kytkennän ja testit. Omistavan ehdotuksen aiempi lisäpatchin
+hyväksyntää odottava kirjaus on tämän päätöksen osalta historiallinen;
+tekninen sopimus ja kaikki todennusportit säilyvät. Tämä ei hyväksy uusia
+riippuvuuksia, ympäristömuutoksia, Chromiumin omistajuuspoikkeusta tai
+tuotantoarkkitehtuurin muutosta. Rajattu korjaus ja ikkunapidätys on nyt
+toteutettu ja niiden paikallinen hyväksyntänäyttö kirjattu yllä; koko T3:n
+ja täsmällisen PR/main-revision portit ovat edelleen avoinna.
+
+**Goal-työkalun tila:** aktiivinen, varmennettu takaisinluvulla. Aiempi
+`blocked`-tila ja sen aikainen API:n jatkamisrajoitus säilyvät historiatietona,
+eivät nykyisenä etenemisesteenä. Työkalun tila ja T3/R28:n
+toteutus-/hyväksyntätila ovat eri asioita; Goalia ei merkitä valmiiksi.
+
+**Aiempi päätös 2026-09-27:** omistaja hyväksyi varhaisen Electron-
+prosessihavainnon, rajatun read-only-pipe-peer-sidonnan ja rekisteröinti/GO-
+portin toteutuksen sekä testit. Toteutus etenee E2E-kerroksessa ilman
+tuotantomuutosta, uutta riippuvuutta tai aikarajojen lievennystä.
+Fixturen siirto vaatii edelleen sopimus- ja oikeaprosessinäytön;
+Chromiumin ja paikallisen Linuxin valinnat säilyvät avoimina.
+
+**Edellinen päätös 2026-09-27:** omistaja hyväksyi suoran Windows-EXE-käynnistyksen
+rajatun käyttöönoton nykyiseen Playwright-patchiin sekä regressiot ja
+oikeat Windows-kokeet. Käyttöönoton päätös on siten tehty;
+korjauksen todennus ja pääfixturen myöhempi siirto ovat erillisiä portteja.
+Uutta riippuvuutta, versiopäivitystä, sovellusmuutosta tai aikarajojen
+lievennystä ei tehdä. Chromiumin ja paikallisen Linuxin avoimet valinnat säilyvät.
+
+Alla oleva koehistoria selittää päätökset, mutta ei muuta tätä nykyistä
+työjärjestystä. Tarkista Git- ja CI-tila uudelleen ennen jatkamista;
+vanha vihreä ajo tai alemman tason testimäärä ei hyväksy uutta revisiota.
+
 ## Tila ja valtuus
 
 Omistajan hyväksymä suunnittelu-Goal, valmisteltu ja katselmoitu 2026-09-24. Tämä dokumentti
@@ -18,11 +113,208 @@ PR/main-integraation vaadittujen porttien jälkeen. T2/T3/A/W7 eivät kuulu
 tähän toteutus-Goaliin. Suunnittelu säilyy erillisenä checkpointina;
 toteutuksen näyttö ja valmistuneen integraation viite ovat alla.
 
-**T2 2026-09-25: rajattu toteutus ja paikallinen ajotodistus valmis.** Komentovalinta,
+**T2 2026-09-25: toteutettu ja hyväksytty PR/main-porttien jälkeen.** Komentovalinta,
 build-esiehdot ja regressiosuoja on toteutettu hyväksytyn
-suunnitelman mukaan. Linux-CI ja PR/main-integraatio ovat kesken.
+suunnitelman mukaan. Linux-CI ja täsmällisen merge-revision portit läpäisivät.
 [Toteutusportti](#t2n-toteutukseen-siirtymisen-portti) erottaa tämän
 T1:n hyväksynnästä sekä T3:n ja tuotantokorjausten jatkotyöstä.
+
+**T3 2026-09-25: T3a-koe suoritettu; neljä tapausta läpäisi, yksi hylättiin.**
+[Koetulos ja jatkopäätös](e2e-test-environment.md#t3an-tulos-ja-jatkopäätös)
+koskevat vain rajattua toteutettavuuskoetta. Varsinainen
+Windows-/POSIX-/Electron-omistajuusratkaisu ja tavallisten testien siirto
+päätetään edelleen erikseen kokeen näytön perusteella.
+Omistajan hyväksymä [T3b-valmistelu](e2e-test-environment.md#t3b-virhehaaran-ja-alustarajan-valmistelu)
+rajaa Electronin virheketjun, Linuxin read-only-CI-proben ja alustojen
+jatkopäätökset. Valmistelun jälkeen hyväksytty T3b-L:n probe ja CI-kytkentä
+on toteutettu ja CI-sopimuskorjauksen uusi kokonaisajo on läpäissyt.
+Riippuvuuskorjaus hyväksyttiin myöhemmin erikseen; paikalliset regressiot ja
+rajattu Windows-CI ovat läpäisseet. Myös uusi
+[normaali baseline](e2e-test-environment.md#t3b-en-vihreä-normaali-baseline)
+on hyväksytty; koko T3/R28 ja PR/main-integraatio ovat vielä avoinna.
+
+**T3c 2026-09-26:** Windowsin erillinen neljän tapauksen adapterikoe
+[läpäisi rajatut hyväksyntäehdot](e2e-test-environment.md#t3c-wn-rajatun-kokeen-checkpoint).
+Linuxin ensimmäisen CI-ajon molemmat kokeet
+[hylättiin ennen GO:ta](e2e-test-environment.md#t3c-ln-ensimmäisen-ci-kokeen-hylkäys);
+käynnistysvirheen tarkka syy on avoin. Lopullinen mekanismivalinta ja tavallisten
+fixturejen siirto edellyttävät edelleen erillistä hyväksyntää.
+
+**T3:n jatko-Goal 2026-09-25:** omistaja hyväksyi T3b-L:n toteutuksen ja
+yhden seuratun CI-ajon sekä itsenäisen etenemisen T3:n loppuun erilliset
+päätösportit säilyttäen. [Toteutusvaltuus](e2e-test-environment.md#t3b-ln-toteutusvaltuus)
+ei itsessään hyväksynyt riippuvuuskorjausta tai alustamekanismeja.
+Riippuvuuspatchin myöhempi erillinen päätös on kirjattu omistavaan checkpointiin.
+Toteutus ja näyttö kirjataan omiin checkpointteihinsa, ei valmistelun läpäisyiksi.
+
+## T3:n nykyinen työjärjestys
+
+**Nykyinen jäljellä oleva sulkulista 2026-09-28.** Valtuus koskee koko
+T3/R28:aa ja sen PR/main-integraatiota, ei kaikkia 0.3.0:n ominaisuuksia.
+Tämä ei luo uusia alavaiheita; tarkat sopimukset pysyvät omistavassa
+[E2E-suunnitelmassa](e2e-test-environment.md#t3n-oikeiden-kuluttajien-siirtoraja).
+
+- [x] **Electronin oikeat kuluttajat:** patchin ja neljän käynnistys-/ikkunakokeen
+  lisäksi erilliset caller-/owner-loss-, relaunch- ja toinen instanssi -kokeet
+  on hyväksytty. Pääfixturen normaali kytkentä, kohdesopimukset 186/186,
+  E2E-tyyppitarkistus ja tavallinen Electron 45/45 on todennettu samalle
+  lähdetilalle. Varsinaisen fixturen julkisen close-virheen ja portin
+  vapautumisen epävarmuuden pysyvät restart-/poistoestot on todennettu
+  rajatuilla oikeaprosessikokeilla. Uusi normaali CI `5f61f186` on hyväksytty.
+  Alkuperäisen testirungon virheen säilymisen kaksi todellisen fixturen
+  koetta sekä erillinen stress ja täysi 30 minuutin soak on nyt todennettu.
+  Stressin vanhentunut mittauspolku korjattiin yhteisellä workspace-lukijalla
+  ja kolmella regressiolla; alkuperäinen hylkäys säilyy. Mittauskorjauksen
+  `ab5de90b` oma normaali CI ja riippuvuustarkistus on hyväksytty
+  ensimmäisistä yrityksistä. Tämä sulkee rajatun Electron-kuluttajakohdan,
+  ei koko T3:a tai PR/main-porttia.
+  Säilytä suorien bootstrap-/toinen instanssi-
+  kuluttajien kattavuus; erillinen endurance ei sisälly tavalliseen sarjaan.
+- [x] **Handoff-testin virhesiivous:** olemassa oleva rajattu lapsikahvan
+  omistus, alkuperäinen viiden sekunnin testiraja ja todellinen close.
+  Kuusi oikeaprosessitapausta ja 24/24-kohdesarja läpäisivät; katselmus
+  ja lähdesidonnan takaisinluku hyväksytty. Ei tuotannon handoff-muutosta
+  eikä koko installer- tai T3-portin hyväksyntä.
+- [x] **Chromiumin siirto:** hyväksytty
+  [worker-selain ja testikohtainen eristys](e2e-test-environment.md#chromiumin-kuluttajasiirron-avoin-omistajuusraja).
+  Oikean selaimen Windows-owner-/caller-loss, context/page-eristys,
+  trace/screenshot sekä juurten turvallinen siivous on todennettu.
+  Revision `7f8df53a` Linux-CI todensi myös selaimen kuluttajakohtaiset
+  katkeamiset ja tavallisen sekä endurance-workerin erilliset siivoukset.
+- [x] **Linuxin oikeat kuluttajat:** system/web-kuluttajat on siirretty
+  hyväksyttyyn CI-mekanismiin oikealla runtime-identiteetillä ja alkuperäisillä
+  määräajoilla. Revision `7f8df53a` ensimmäinen rajattu CI-ajo hyväksyttiin:
+  kaikki seitsemän todellista katkeamista, tavalliset system/web-polut ja
+  erillinen endurance ilman retryä tai flakyä. Paikallisen
+  Windows-testauksen + Linux-CI:n riittävyys hyväksyttiin 28.9.;
+  paikallista Linux-tukea tai hostin oikeusmuutosta ei toteuteta.
+  Korvatun polun poisto ja lopullinen yhdistetty lähdetila ovat erillisiä
+  portteja. Näyttö käyttää todellisia kuluttajia, ei pelkkää LM-koetyökuormaa.
+- [x] **Korvatun toteutuksen poisto:** tarkista ajantasaiset kutsureunat ja
+  poista korvattu aktiivinen omistajuus-/cleanup-polku vasta saman revision
+  vastaavan kattavuuden jälkeen. Ei PID-/root-only-fallbackia tai kahta
+  cleanup-omistajaa. Windowsin taskkill-poiston aiempi näyttö säilyy.
+  Nyt myös jäljellä olleet aktiiviset Electron-varapolut ja kaksi korvattua
+  siivousapuria on poistettu; vastaava stop-/timeout-/error-kattavuus on
+  nykyisissä omistajasopimuksissa. Kohdesarja 151/151, puhtaat Electron-
+  sopimukset 10/10 ja E2E-tyypitys läpäisivät. Koko poiston jälkeinen
+  tavallinen Windows-regressio 781/781 ja riippumaton katselmus hyväksytty.
+  Workspace-testit, tyypitys ja CI-sopimukset läpäisivät. PR/main on erillinen.
+  Historialliset hylkäystodisteet säilyvät erillisinä.
+- [x] **Pysyvän matriisin kaksi täsmennystä:** olemassa oleva `rootFirst`-
+  koe laajennettiin yhdellä jälkeläisen luomalla myöhemmällä lapsella:
+  rootin todellinen exit ennen kertaluonteista lupaa, lapsen oma tuore
+  kuitti ja omistajan havainto ennen nykyistä stopia. Native-resume-virhe
+  todennettiin testiadapterin sisäisellä paluuarvon injektiolla ja samalla
+  owner-cleanupilla; normaali `ResumeThread`, puhtaat sopimustestit ja
+  alkuperäiset määräajat säilyvät. Ei tuotannon fault-asetusta, uutta
+  prosessirajapintaa tai uutta alustojen ristikkäismatriisia. Nämä ovat
+  olemassa olevien hyväksyntäehtojen rajattuja testitäydennyksiä, eivät
+  havaittuja tuotantovirheitä. Molempien oikeaprosessinäyttö ja riippumaton
+  katselmus hyväksytty; late-forkin kohdesopimukset 48/48 ja native-resumen
+  oikea siivousketju 25/25. Resume-koe sisältyy kanoniseen valmisteluun,
+  pipe-kytkentä 31/31. Koko T3:n PR/main-portit säilyvät alla avoimina.
+- [ ] **Koko T3 ja PR/main:** täytä lyhentämättä
+  [lopullinen T3-portti](e2e-test-environment.md#t3n-lopullinen-hyväksyntänäyttö)
+  ja [pysyvä matriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus),
+  myös handoff-/epävarmuuspolut, T1/T2, kohdetestit, workspace/typecheck,
+  build-esiehdot, Linux system/web, Windows Electron ja muuttuneen
+  Windows-primitiivin installer-regressiot. Säilytä nykyinen riskikadenssi,
+  riippuvuustarkistus, katselmukset, julkaisuraja, ajoseuranta ja ensimmäisen
+  virheen näyttö. Täsmällisen PR-revision ja merge-commitin omat vaaditut
+  portit ratkaisevat sulun; pending, cancelled, flaky tai epäonnistunut ajo
+  ei kelpaa. Vasta tämän jälkeen jatketaan M1:n sovelluskorjauksiin.
+
+### T3:n etenemishistoria
+
+Seuraavat revisionkohtaiset checkpointit säilytetään päätösten ja
+virhetodisteiden jäljitettävyyttä varten. Niiden suhteelliset ilmaukset
+kuten "nyt" tarkoittavat kyseisen checkpointin hetkeä.
+
+1. **Hyväksytty lähtötila:** revision
+   `1953b6b05dd7bdd4aaea24b509416fafa353d1ce` normaali V2-ajo ja
+   riippuvuustarkistus läpäisivät ensimmäisellä yrityksellä.
+   [Baselinen näyttö](e2e-test-environment.md#t3b-en-vihreä-normaali-baseline)
+   kattaa saman ajon kaikki valitut jobit, Electronin 38/38 ilman flaky-tuloksia
+   sekä producerien ja consumerien artifact-sidonnat. Tämä avaa T3b-P:n,
+   ei hyväksy koko T3:a eikä ratkaise aiempia virheitä.
+2. **Säilyvä virhetutkimus:** säilytä
+   [toistunut firstWindow-hylkäys](e2e-test-environment.md#t3b-en-toistunut-firstwindow-hylkäys-ja-backendstart-rajaus)
+   omana havaintonaan. Sen näyttö todistaa testibackendin päässeen
+   `backendStart`-vaiheeseen, ei sisäisen käynnistystyön valmistumista.
+   [Rollback-sopimushylkäys](e2e-test-environment.md#t3b-en-normaalin-baselinen-rollback-sopimushylkäys),
+   [aiempi legacy-smoken hylkäys](e2e-test-environment.md#t3b-en-kokonaisajon-legacy-hylkäys)
+   ja aiempi, suppeammin havaittu firstWindow-yritys pysyvät erillisinä
+   havaintoina. Samassa katselmuksessa löydetty pending-close-siivouspuute
+   kuuluu T3:n cleanup-regressioon, ei näiden timeoutien todistetuksi syyksi.
+   Selvitä ennen jokaista uutta ajoa jo kerätyn näytön riittävyys. Jos tarvittava
+   tieto puuttuu, rajaa sen turvallinen tallennus ja regressio ensin.
+   Älä muuta jäädytettyä lähtöversiota, pidennä aikarajoja tai hae vihreää uusimalla.
+   Suljettu `smokeFailureClass`-tarkennus ja sen 73/73 kohdetestin näyttö on
+   toteutettu. Katselmus ja yksi saman artifactin kohdekoe läpäisivät,
+   mutta alkuperäinen virhe ei toistunut. Diagnostiikkakorjaus ei ratkaise
+   vanhaa juurisyytä.
+   Rollback-havainnon suljettu tulos- ja vaiheraportointi on toteutettu,
+   katselmoitu ja todennettu 18/18 Windows-prosessisopimuksella sekä 66/66
+   testikytkentä-/validaattoritestillä. Edellinen kokonaisajo päättyi hylättynä;
+   diagnostiikkarevision normaali CI todensi nämä 18/18 sopimusta ja niiden
+   tulosrivit, mutta hylkäsi kaksi Electronin firstWindow-ensiyritystä.
+   [Rajattu backend-lokihavainto](e2e-test-environment.md#t3b-en-rajattu-backend-lokihavainto)
+   säilyttää ensimmäisen launch-virheen jo kirjoitetut vaiheet ennen
+   fixture-siivousta. Toteutus ja writerista liitteeseen ulottuva regressio
+   pysyvät testikerroksessa. Kohdesarja läpäisi 52/52, koko työtilan normaalit
+   testit ja tyypitys läpäisivät, ja riippumaton katselmus ei löytänyt
+   korjattavaa. Kohdassa 1 hyväksytyssä normaalissa ajossa launch-virhe ei
+   toistunut: uuden lokihavainnon virheketjun näyttö pysyy sopimustesteissä,
+   eikä eri ajojen osatuloksia yhdistetä hyväksynnäksi.
+3. **Valmis lähtötila:** hyväksytyn T3b-P:n metatietorajaus on toteutettu ja katselmoitu;
+   kohdesarja, normaalit testit ja tyypitys läpäisivät. Uusi eristetty build,
+   sisältöportit ja samoihin tavuihin sidottu kaksivaiheinen packaged smoke
+   läpäisivät molempien prosessipuiden päättymistodistein
+   [omistavan sopimuksen mukaan](e2e-test-environment.md#t3b-p-hyväksytty-metatietorajaus).
+   Uuden revision normaali CI havaitsi erillisen
+   [komentoharnessin sopimushylkäyksen](e2e-test-environment.md#t3b-pn-ci-sopimushylkäys-ja-havaintokytkentä).
+   Sen rajattu havaintokytkennän korjaus on katselmoitu ja paikallisesti
+   todennettu. Revision `a1df082c` normaali CI ja riippuvuustarkistus
+   läpäisivät ensimmäisellä yrityksellä; kaikki valitut jobit sekä
+   producerien ja consumerien artifact-sidonnat varmistettiin.
+   Tämä on uusi hyväksytty CI-lähtötila, ei keskeytymisen juurisyyn ratkaisu
+   tai PR/main-hyväksyntä. Tuotantotoimintoja ei lisätä tähän.
+4. **Nyt:** T3c-W:n neljä rajattua koetta läpäisivät. Ajurin root-first-
+   odotusjärjestyskorjaus on todennettu; perityn tulostekahvan aiempaa
+   kirjoittajaidentiteettiä tai ensimmäisen ennen launchia tapahtuneen
+   hylkäyksen syytä ei ole todistettu. T3c-L:n ensimmäiset molemmat CI-kokeet
+   hylättiin ennen GO:ta. Säilytä alkuperäinen näyttö, rajaa puuttuva turvallinen
+   käynnistyshavainto ja ratkaise jatkokokeen portti ennen uutta ajoa.
+   [T3c-LD:n rajattu ehdotus](e2e-test-environment.md#t3c-ld-rajatun-käynnistysdiagnostiikan-päätösehdotus)
+   hyväksyttiin 2026-09-26. Toteutus, regressiot ja riippumaton katselmus
+   läpäisivät. [Uusi CI-havainto](e2e-test-environment.md#t3c-ldn-rajatun-ci-kokeen-havainto)
+   rajaa molemmat hylkäykset wrapperin exit 1:een ennen READYä, ilman
+   init-merkkiä tai READY-budjetin ylitystä. Tarkka syy on avoin;
+   koko ajo päättyi hylätyksi, mutta muut testiryhmät läpäisivät.
+   [T3c-LS:n suljetun stderr-luokan tarkennus](e2e-test-environment.md#t3c-ls-suljetun-stderr-luokan-tarkennuksen-päätösehdotus)
+   on hyväksytty 2026-09-26. Toteutus, testit, lukuketju ja riippumaton
+   katselmus läpäisivät. [Yhden uuden CI-kierroksen Linux-havainto](e2e-test-environment.md#t3c-lsn-rajatun-ci-kokeen-havainto)
+   tunnisti molemmissa kuluttajissa `uid_map`-kirjoituseston ennen READYä ja
+   GO:ta. Taustapolitiikan syy on avoin; alkuperäinen hylkäys säilyy.
+   Kokonaisajo päättyi hylätyksi vain näiden kokeiden ja aggregaatin vuoksi;
+   muut testiryhmät ja riippuvuustarkistus läpäisivät. Omistaja hyväksyi
+   [T3c-LM:n rajatun CI-session hallinnan](e2e-test-environment.md#t3c-lm-rajattu-ci-testisession-hallinta)
+   suunnittelun ja toteutuksen ilman toistuvia välikyselyjä hyväksytyn
+   Goalin sisällä. Puhtaat sopimukset ja injektoitu kontrolli-/init-kytkentä
+   ovat katselmoituja: E2E 273/273, workspace 4 220 läpäisyä ja 8 ennestään
+   ohitettua sekä tyypitys läpäisty. Managerin suoritin, kokonaisajuri ja
+   uusi rajattu CI-koe puuttuvat; vanha LS-näyttö säilyy hylättynä. Mekanismin todellinen
+   saatavuus, omistajan katoaminen, Chromium ja tavallisten fixturejen
+   siirto ovat vielä todentamatta. Ei hostin suojausmuutosta,
+   riippuvuuslisäystä tai hyväksyntäehtojen lievennystä.
+5. **T3:n valmistuminen:** koko omistajuusmatriisi, katselmukset ja normaali
+   PR/main-integraatio; vasta täsmällisen main-revision portit sulkevat R28:n.
+
+Tavalliset hyväksytyn rajauksen korjaus-, testi- ja dokumentointiaskeleet
+jatkuvat itsenäisesti. Erilliset riippuvuus-, oikeus- ja arkkitehtuuripäätökset
+säilyvät projektin yleisten ohjeiden mukaisina. A:n toiminnalliset korjaukset
+ja muut 0.3.0-paketit eivät korvaa kesken olevaa T3:a.
 
 ## Lähtötilan näyttö
 
@@ -67,8 +359,8 @@ tai riippuvuusporttia, jos rajaus myöhemmin koskettaa niitä.
 | --- | --- | --- |
 | T1a / R27 | Startup-failure-testit tavalliseen desktop-testivalintaan ja valinnan regressiosopimus. | Hyväksytty; paikallisen näytön lisäksi PR/main-portit läpäisty. Ei tuotantokoodia. |
 | T1b / R27 | Kuusi puuttuvaa installer-harness-testitiedostoa nykyisten vaadittujen komentojen kautta ajettaviksi, myös ajokytkentää suojaava testi. | Hyväksytty T1a:n kanssa; R27 suljettu. Ei raskaan CI:n kevennystä. |
-| T2 / R29 | `security`/`fault`-projektivalinnan ja koko build-ketjun vastaavuus puhtaasta, vanhentuneesta ja epäonnistuneesta valmistelusta. | Hyväksytty [T2-suunnitelma](e2e-test-environment.md#t2-projektivalinta-ja-valmistelu) toteutettu ja paikallisesti todennettu; Linux-CI ja integraatio avoinna. |
-| T3 / R28 | Omistajuus käynnistyksestä todettuun koko puun poistumiseen; epävarma cleanup ei hyväksy restartia tai poista fixtureä. | Windowsin ja POSIXin omistajuusmekanismi sekä Electron-käyttö päätetään erikseen lähdekatselmuksen jälkeen. Pelkkä early returnin poisto ei riitä. |
+| T2 / R29 | `security`/`fault`-projektivalinnan ja koko build-ketjun vastaavuus puhtaasta, vanhentuneesta ja epäonnistuneesta valmistelusta. | Hyväksytty; paikallinen näyttö, Linux-CI sekä PR/main-portit läpäisty. [Integraatio](#t2n-integraatiohyväksyntä). |
+| T3 / R28 | Omistajuus käynnistyksestä todettuun koko puun poistumiseen; epävarma cleanup ei hyväksy restartia tai poista fixtureä. | Oikeat Windows-/Linux-kuluttajat, kohdistettu katkeamis-/endurance-matriisi, korvattujen varapolkujen poisto ja Windows-regressio hyväksytty. Lopullinen PR/main-integraatio kesken. [Nykyinen sulkulista](#t3n-nykyinen-työjärjestys) omistaa jatkon; historiallisia hylkäyksiä ei muuteta. |
 | A1 / R01 | Luonnoksen avaamisen kohde, näkyvät arvot ja tallennuksen kohde pysyvät samana myös vastausten valmistuessa väärässä järjestyksessä. | T1 ensin; hyväksyntään käytettävän E2E-fixturen T3-puute korjattu ja sen build-valinta todennettu. |
 | A2 / R05, A3 / R06 | Ensimmäisen createn tunnisteen säilyminen ja muokatun lomakkeen vanhentunut readiness. | Omat rajatut jatkopalat; A1:n hyväksyntä ei sulje niitä. Backendin hyväksyntäauktoriteetti säilyy. |
 | W7-valmistelu | Omistajan hyväksyttävä poisto-, karanteeni-, palautus- ja nollan työtilan sopimus. | Suunnittelu kulkee rinnalla; toteutus tarvitsee C/K/G/H:n nimetyt kyvykkyydet. |
@@ -186,7 +478,7 @@ kyseisen ajon hyväksynnän; vihreä T2 ei sulje T3:a.
 
 Suunnittelun näyttö oli lähdekatselmus, ei testitulos. Toteutuksen
 [T2-rivien](r0-e2e-test-matrix.md#t2-testivalinnan-ja-valmistelun-sopimukset)
-paikallinen näyttö ja avoin integraatioportti ovat alla. Lähtörevisio on yllä varmennettu
+paikallinen näyttö ja valmistunut integraatioportti ovat alla. Lähtörevisio on yllä varmennettu
 T1-main; se ja työpuun muutokset tarkistettiin uudelleen toteutuksen alussa.
 
 ### T2-valmistelun checkpoint
@@ -230,10 +522,188 @@ backup/restore-porttia tai uutta asennuspakettia ei tuoteta T2:ssa.
 Koodin peruminen ei ole testiprosessin siivouskeino. Uusia riippuvuuksia,
 versionnostoa tai lukitustiedoston muutosta ei ole.
 
-R29:n lopullinen hyväksyntä odottaa Linuxin Node-/system-sopimuksia,
-normaaleja PR-portteja ja mergen tuottaman täsmällisen main-revision
-omia required-ajoja. Niiden viite lisätään integraatiocheckpointiin;
-paikallinen näyttö ei korvaa niitä. T3/R28, A ja W7 jäävät avoimiksi.
+### T2:n integraatiohyväksyntä
+
+R29 on hyväksytty [PR #277:n integraatiocheckpointissa](https://github.com/eky-software/eky/pull/277#issuecomment-5826768078).
+Hyväksytty lähde on `6b323284bf671ad684e8b5774d22bc566cf709c2`,
+todellinen PR-checkout `0714504914cd1b43c4fae73bfb3da0cbd39c0e14`
+ja normaali merge `5cc58b7139a6616bc9403a5724f93d929e90cf25`.
+Checkpoint erottaa paikalliset aggregaatit, Linuxin Node-/system-sopimukset
+sekä PR:n ja mainin omat portit. Mainin
+[V2-ajo](https://github.com/eky-software/eky/actions/runs/36094675603) ja
+[riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/36094675166)
+läpäisivät ensimmäisellä yrityksellä. Paikallinen/etäinen main, merge,
+ajojen revisio ja valmistunut tila sekä checkpoint tarkistettiin uudelleen
+T3-valmistelun alussa. T3/R28, A ja W7 jäävät avoimiksi.
+
+## T3:n toteutukseen siirtymisen portti
+
+2026-09-25: omistaja salli suunnittelun ja toteutuksen ilman uutta kysymystä,
+jos uusia hyväksyttäviä päätöksiä ei tarvita. T3:n aiemmin nimetty
+omistajuusmekanismin päätös on kuitenkin avoin. Tätä ehtoa ei tulkita
+Windowsin installer-supervisorin yleiskäyttöluvan tai Linuxin uuden
+alustavaatimuksen hyväksynnäksi.
+
+[Omistava T3-suunnitelma](e2e-test-environment.md#t3-koko-prosessipuun-poistumistodiste)
+sisältää lähdehavainnot, kuluttajaluettelon, vaihtoehdot ja hyväksyntätestit.
+Windowsin Job-primitiivejä voidaan selvittää uudelleenkäytettäviksi, mutta
+nykyinen installerin batch-protokolla ei ole elävän E2E-session rajapinta.
+Electronin launchia ei voi nimetä launch-hetkestä omistetuksi pelkän
+myöhemmin saadun prosessikahvan perusteella. Linuxin nykyiset CI-kuluttajat
+tarvitsevat oman todistettavan ratkaisunsa.
+
+**Omistajan hyväksyntä 2026-09-25: vain T3a-toteutettavuuskoe.** Se kattaa
+erillisen test-only Windows Job -session ja Electron-liitännän kokeen
+nykyisellä työkalupohjalla sekä Linux-edellytysten read-only-tarkistuksen.
+Ei uusia riippuvuuksia, tuotantokoodia, installerin nykyisen protokollan
+muutosta, tavallisten fixturejen siirtoa, pidempiä aikarajoja, kevyempiä
+CI-ehtoja tai koneen suojaus-/palveluasetusten muutosta.
+Linuxin cgroup-kirjoitukset, systemd-palvelu, delegointi, oikeusmuutos tai
+uusi native-toolchain eivät kuulu tähän hyväksyntään. Tarvittava täsmällinen
+jatkopäätös valmistellaan näytön perusteella ennen niitä.
+
+Kokeen lähteet rajataan `apps/e2e/experiments/processOwnership`-alueelle.
+Nykyisiä Job-primitiivejä käytetään muuttamatta installerin lähteitä tai
+protokollaa. Erillinen session omistaja käynnistää synteettisen Node-puun
+tai Playwright/Electron-ajurin ennen työkuorman suoritusta omistettuun
+Jobiin. Ajurin omistaminen ei vielä ole tavallisen Electron-fixturen
+läpinäkyvä adapteri. Koe raportoi tämän rajan ja `process()`-kahvan
+todellisen merkityksen; käyttöönottoa ei päätellä pelkästä launch-läpäisystä.
+Pääagentti vastaa ajoseurannasta ja ensimmäisen virheen säilyttämisestä.
+Koedata ja tulokset pidetään eristetyssä temp-juuressa, paikallinen näyttö
+Gitistä ohitettuna. Kokeelle ei lisätä tavallisen testikomennon tai CI:n
+automaattista ajokytkentää.
+
+T3a:n valmistuminen tarkoittaa päätöskelpoista näyttöä valituista
+mekanismeista ja niiden rajoista, ei R28:n korjausta. Varsinaisen siirron
+portti vaatii omistajan hyväksymät alustamekanismit, session/stop-
+sopimuksen, tiedostorajat, build-esiehdot ja omistavan suunnitelman testit.
+Alkuperäisessä suunnittelussa ei tehty koodimuutoksia tai oikeaprosessikokeita.
+Myöhemmän hyväksytyn kokeen todellinen näyttö on
+[T3a-tuloskirjauksessa](e2e-test-environment.md#t3an-tulos-ja-jatkopäätös).
+Se ei ole sovelluksen julkaisu- tai integraatiohyväksyntä.
+
+### T3-valmistelun checkpoint
+
+2026-09-25: Windowsin ja Linuxin vaihtoehdot sekä lopullinen neljän
+dokumentin suunnitelmadiffi katselmoitiin kahdella erillisellä read-only-
+agentilla. Katselmuksiin ei jäänyt korjattavia huomautuksia. Muuttuneiden
+dokumenttien 79 suhteellista linkkiä ja niiden otsikkoankkurit sekä diffin
+muotoilu ja julkaistavan sisällön yksityisyys tarkistettiin.
+T2:n integraatiotila varmistettiin uudelleen; aiempia testituloksia ei ajettu
+uudelleen tässä dokumentointivaiheessa. T3a odotti silloin omistajan päätöstä;
+yllä kirjattu myöhempi hyväksyntä koskee vain erillistä koetta.
+Tämä päättää vain valmistelun, ei T3:n toteutusta tai R28:n hyväksyntää.
+
+### T3a-kokeen checkpoint
+
+2026-09-25: erillinen test-only-koe ja tuloskirjaus katselmoitu kahdella
+aliagentilla. Katselmuksessa korjattiin testityökuorman temp-rajaus,
+havaintojen odotus, hätäkatkaisun epävarman tilan raportointi ja myöhäisen
+tuloksen hyväksymisriski. Koetuloksen sanamuoto ja vanhentunut tilateksti
+korjattiin. Viiden muuttuneen ohjetiedoston 84 suhteellista linkkiä ja
+otsikkoankkuria sekä diffin muotoilu ja julkaistavan sisällön rajaus
+tarkistettiin. Tämä checkpoint säilyttää myös hylätyn koetapauksen ja
+jatkopäätökset; se ei ole kaikkien kokeiden, tavallisten fixturejen tai
+PR/main-integraation hyväksyntä.
+
+### T3b-valmistelun checkpoint
+
+2026-09-25: lukitun Playwrightin virheketju, Windowsin vaihtoehdot ja
+Linux-CI:n read-only-probe valmisteltu ja katselmoitu kahdella read-only-
+aliagentilla. Katselmuksiin ei jäänyt korjattavia huomautuksia.
+Dokumenttien 89 suhteellista linkkiä ja otsikkoankkuria, diffin muotoilu
+sekä julkaistavan sisällön yksityisyys tarkistettiin. Tuotanto-, testi-,
+riippuvuus- ja workflow-koodia ei muutettu eikä uusia prosessikokeita tai
+CI-ajoja tehty. Sovelluksen testi-, diagnostiikka- ja palautusportit eivät
+sovellu tähän dokumentointimuutokseen, eikä niitä merkitä läpäistyiksi.
+Tämä päätti vain rajatun valmistelun; T3b-E/T3b-L:n toteutuspäätökset,
+alustamekanismi ja R28:n hyväksyntä jäivät silloin avoimiksi. Myöhemmät
+päätökset ja toteutustila kirjataan alla oleviin checkpointteihin.
+
+### T3b-L:n paikallinen checkpoint
+
+2026-09-25: read-only-probe ja oletuksena suljettu CI-kytkentä toteutettu.
+`pnpm test:ci` läpäisi 95/95 ilman ohituksia. Kytkennän ja lukijan
+katselmukset sekä havaitun stdout-aikarajajärjestyksen korjaus kuuluvat
+[omistavaan checkpointiin](e2e-test-environment.md#t3b-ln-toteutuscheckpoint).
+Todellinen Linux-CI-havainto ja yksi hyväksytty seurattu kokonaisajo olivat
+tässä vaiheessa vielä avoinna. Tämä ei hyväksy alustamekanismia, riippuvuuspatchia,
+fixture-siirtoa, R28:n sulkua tai PR/main-integraatiota.
+
+### T3b-L:n ensimmäinen CI-checkpoint
+
+Molemmat Linux-probet tuottivat täydellisen mutta pääsyvihjeiltään kielteisen
+havainnon. Ensimmäinen kokonaisajo hylkäsi desktopin T1-kytkentätestin
+vanhentuneen odotuksen. Rajattu korjaus ja sen 61/61-kohdesarja, koko
+workspacen 3862 läpäissyttä testiä / kahdeksan aiempaa ohitusta, typecheck
+sekä backendin, webin ja desktopin buildit
+ovat paikallista näyttöä, eivät tämän CI-revision hyväksyntä.
+[Omistava CI-checkpoint](e2e-test-environment.md#t3b-ln-ensimmäinen-ci-havainto-ja-sopimuskorjaus)
+erottaa ensimmäisen hylkäyksen ja korjatun revision oman CI-todennuksen:
+`0235d7270bde2edf43dc4c998ff9bf86f23ec401`, ajo `36140255216`, yritys 1,
+38 onnistunutta jobia ja yksi ennalta valinnainen ohitus, ei hylkäyksiä.
+T3b-E:n nimetty patch ja kokeet on nyt hyväksytty; alustamekanismit eivät.
+
+T3b-E:n [paikallinen korjausnäyttö](e2e-test-environment.md#t3b-en-paikallinen-korjausnäyttö)
+sisältää todellisen RED -> GREEN -regression sekä nykyiset kaksi hyväksyttyä
+Electron-koetta. Koko paikallinen sarja läpäisi 3907 testiä ja säilytti
+kahdeksan aikaisempaa ohitusta. Typecheck läpäisi. Payloadin metatietorajan
+[erillinen paketointikorjaus](e2e-test-environment.md#t3b-p-hyväksytty-metatietorajaus)
+on nyt hyväksytty toteutettavaksi; porttia ei ohiteta pelkän Playwright-koodin
+puuttumisen perusteella. Korjauksen toteutus odottaa kuitenkin
+[oman CI-revision käynnistysvian selvitystä](e2e-test-environment.md#t3b-en-ensimmäinen-ci-havainto).
+Ensimmäisen yrityksen lifecycle-näyttö säilyi: Playwright-yhteys valmistui,
+mutta backendin valmiutta ei havaittu ennen ensimmäisen ikkunan timeoutia.
+Retry onnistui, mutta flaky-tulos ja kokoava CI-portti hylättiin oikein.
+Juurisyytä tai tämän revision baselinea ei ole hyväksytty; T3/R28 ei ole valmis.
+Omistaja hyväksyi tämän jälkeen rajatun Electron-vian selvityksen ja
+korjauksen. Ensimmäinen checkpoint lisää vain testibackendin suljetun
+käynnistysvaiheen havaintoketjun ja sen sopimustestit. Aikarajat,
+onnistumisehdot ja tuotantokoodi säilyvät.
+[Diagnostiikan paikallinen todennus](e2e-test-environment.md#t3b-en-käynnistysdiagnostiikan-paikallinen-todennus)
+läpäisi 33 testin Windows-ajon ilman retryä sekä workspace-testit ja
+typecheckin. Alkuperäinen timeout ei toistunut eikä sen juurisyy ratkennut.
+Omistaja hyväksyi uuden revision julkaisun kehityshaaraan ja yhden seuratun
+Windows-CI-diagnostiikka-ajon. Rajauksen tavalliset commit-, push- ja
+CI-työvaiheet eivät vaadi erillistä uusintahyväksyntää.
+[Rajattu Windows-CI-todennus](e2e-test-environment.md#t3b-en-rajattu-windows-ci-todennus)
+läpäisi revision `cba3fa3db304024c55c76838cd99637d0e1bc0ef` ajossa
+`36164733794`: 38 kriittistä testiä ja yksi diagnostiikkatesti ilman
+uusintayrityksiä sekä paketointi ja packaged smoke. Timeoutin syy pysyy
+avoimena. Rajattu ajo ei korvaa koko V2-baselinea tai aloita T3b-P:tä.
+
+Revision `f007bda2219ad473fc20c3a948b08e4974641451` seuraava
+[kokonaisajo](e2e-test-environment.md#t3b-en-kokonaisajon-legacy-hylkäys)
+hylättiin historiallisen lähtöversion smoke-vaiheessa. Nykyinen Electron
+läpäisi 38/38 ja saman revision riippuvuustarkistus läpäisi. T3b-P ja
+alustamekanismien toteutus eivät ala punaisen baselinen päälle.
+
+Linuxin seuraavaksi päätösehdotukseksi on katselmoitu
+[rajattu T3c-L:n namespace-koe](e2e-test-environment.md#t3c-ln-rajattu-namespace-koe-päätösehdotus).
+Se nimeää valmiin `unshare`-työkalun, namespace-kohtaiset luontioikeudet,
+ehdollisen synteettisen kuorman ja rajatun wait-todisteen. Omistaja hyväksyi
+toteutuksen ja ajon 2026-09-26. Toteutus ja puhtaat sopimus-/kytkentätestit
+läpäisivät, mutta ensimmäisen CI-ajon molemmat varsinaiset kokeet
+hylättiin ennen GO:ta. [Hylkäyskirjaus](e2e-test-environment.md#t3c-ln-ensimmäisen-ci-kokeen-hylkäys)
+erottaa avoimen käynnistysvirheen puuttuvan edellytyksen toteamisesta.
+Tämä ei ratkaise koko R28:aa.
+
+Windowsin seuraava päätösehdotus on
+[T3c-W:n neljän tapauksen adapterikoe](e2e-test-environment.md#t3c-wn-neljän-tapauksen-adapterikoe-päätösehdotus).
+Se rajaa erillisen omistajan, Playwright-bridgen, koekohtaisen native-
+builderin ja uuden kokeen apphost-buildin vain jo saatavilla olevin
+edellytyksin; puuttuva edellytys pysäyttää ilman asennusta. Omistaja hyväksyi
+toteutuksen ja kokeet 2026-09-26. T3b-E ja korjattu CI-lähtötila on todennettu
+ympäristösuunnitelman myöhemmissä checkpointeissa. Windowsin neljä tapausta
+ovat nyt läpäisseet [rajatun kokeen](e2e-test-environment.md#t3c-wn-rajatun-kokeen-checkpoint).
+Native- ja Node-kohdesarjat, komentokytkentä sekä lopullisen lukurajamuutoksen
+sisältävät workspace-testit läpäisivät. Typecheck läpäisi ennen viimeistä
+JavaScript-muutosta, jonka jälkeen TypeScript-lähteet eivät muuttuneet.
+Paikallinen CI-sopimussarja läpäisi 156/156. Windows-koe ei sulje Linuxin puuttuvaa
+oikeaprosessinäyttöä, vanhoja satunnaisia timeouteja eikä T3c-W:n ensimmäisen
+ennen launchia tapahtuneen hylkäyksen avointa syytä. Lopullinen mekanismi,
+fixture-siirto ja koko T3/R28 tarvitsevat erilliset päätökset ja portit.
 
 ## Skannaushavaintojen vaikutus jatkoon
 
@@ -277,9 +747,15 @@ soveltuvuus perustellaan erikseen; T:n testiajot eivät todista W7:n tuotantoa.
 ## Päätösjono ja valmistelun lopetus
 
 Ensimmäinen hyväksytty toteutusraja T1a/T1b on valmis.
-T2 on toteutettu ja paikallisesti todennettu; Linux-CI ja PR/main-integraatio
-ovat avoinna. T3:n omistajuusmekanismi
-ratkaistaan edelleen ennen sen muutoksia. A1 käyttää nykyistä
+Myös T2:n paikallinen näyttö, Linux-CI ja PR/main-integraatio on hyväksytty.
+T3a on tutkittu ja sen varhaisen Electron-virheen yhteensopivuusraja kirjattu.
+Rajattu T3b-valmistelu nimesi [erilliset päätökset](e2e-test-environment.md#seuraavat-päätökset-ja-työn-järjestys).
+Read-only-CI-probe ja täsmällinen riippuvuuspatch on sittemmin hyväksytty;
+niille ei pyydetä samoja lupia uudelleen. Probe ei todista cgroupin
+kirjoitusoikeutta tai turvallista cleanupia. Nykyinen järjestys on
+[T3:n tilakoosteessa](#t3n-nykyinen-työjärjestys).
+T3:n omistajuusmekanismi ratkaistaan edelleen ennen tavallisten fixturejen
+muutoksia. A1 käyttää nykyistä
 feature-/API-sopimusta; jos rajaus vaatii
 backendin tai navigoinnin uuden liiketoimintasäännön, se palautuu suunnitteluun.
 W7:n päätöksiä ei kysytä yhtenä epämääräisenä lupana, vaan sen omistavan

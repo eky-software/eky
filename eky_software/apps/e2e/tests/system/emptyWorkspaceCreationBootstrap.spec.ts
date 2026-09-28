@@ -27,13 +27,16 @@ import { readE2eSqliteRows } from '../../src/assertions/readE2eSqliteRows.js';
 import { createE2eRunRoot } from '../../src/environment/createE2eRunRoot.js';
 import { createE2eWorkerPaths } from '../../src/environment/createE2eWorkerPaths.js';
 import type { E2eWorkerPaths } from '../../src/environment/e2eEnvironmentTypes.js';
+import { createE2eFixtureLifetime } from '../../src/environment/e2eFixtureLifetime.js';
 import { removeE2eRunRoot } from '../../src/environment/removeE2eRunRoot.js';
 import { reserveLoopbackPort } from '../../src/environment/reserveLoopbackPort.js';
 import {
+  E2eBackendStartupFailure,
   startE2eBackendProcess,
   type StartedE2eBackend,
 } from '../../src/environment/startE2eBackendProcess.js';
 import { waitForLoopbackPortRelease } from '../../src/environment/waitForLoopbackPortRelease.js';
+import { finishServiceFixture } from '../../src/fixtures/finishServiceFixture.js';
 
 const operationId = validateWorkspaceCreationOperationId(
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -46,69 +49,80 @@ const migrationsDirectory = resolve(
   '../../../backend/src/database/migrations',
 );
 
-test('WORKSPACE-CREATE-001 @critical @security creates an isolated ready workspace through the real backend', async () => {
+test('WORKSPACE-CREATE-001 @critical @security creates an isolated ready workspace through the real backend', async ({}, testInfo) => {
+  const lifetime = createE2eFixtureLifetime(testInfo.timeout);
   const runRoot = createE2eRunRoot();
   const userDataRoot = join(runRoot, 'user-data');
   const lifecycleEvents: string[] = [];
   const startedBackends: StartedE2eBackend[] = [];
   const usedPorts: number[] = [];
-
-  await mkdir(userDataRoot, { mode: 0o700 });
-  const registry = new WorkspaceRegistryStore({
-    filePath: join(userDataRoot, WORKSPACE_REGISTRY_FILE_NAME),
-    installationRoot: userDataRoot,
-  });
-  const creationJournal = new WorkspaceCreationJournalStore({
-    filePath: join(userDataRoot, WORKSPACE_CREATION_JOURNAL_FILE_NAME),
-    installationRoot: userDataRoot,
-  });
-  const rootStore = new NodeWorkspaceCreationRootStore();
-  const lifecycle = createRecordingLifecycle(lifecycleEvents);
-  const bootstrap = new PrivateEmptyWorkspaceBootstrapAdapter({
-    start: async (input) => {
-      lifecycleEvents.push('bootstrap.start');
-      const workerPaths = createE2eWorkerPaths(
-        runRoot,
-        'WORKSPACE-CREATE-BOOTSTRAP',
-      );
-      const paths: E2eWorkerPaths = {
-        ...workerPaths,
-        databaseFilePath: input.databaseFilePath,
-        documentsRoot: input.artifactRoot,
-        workerRoot: runRoot,
-      };
-      const backendPort = await reserveLoopbackPort();
-      usedPorts.push(backendPort);
-      const backend = await startE2eBackendProcess({
-        backendPort,
-        paths,
-        runRoot,
-        scenarioId: 'WORKSPACE-CREATE-BOOTSTRAP',
-      });
-      startedBackends.push(backend);
-      return createStoppedBackendInspectionRuntime({
-        backend,
-        backendPort,
-        databaseFilePath: input.databaseFilePath,
-        artifactRoot: input.artifactRoot,
-        lifecycleEvents,
-      });
-    },
-  });
-  const coordinator = new EmptyWorkspaceCreationCoordinator({
-    activeWorkspaceLifecycle: lifecycle,
-    bootstrap,
-    creationJournal,
-    generateOperationId: () => operationId,
-    generateWorkspaceId: () => workspaceId,
-    maintenanceLease: new InMemoryWorkspaceMaintenanceLease(),
-    now: () => new Date('2026-08-18T10:00:00.000Z'),
-    registry,
-    rootStore,
-    userDataRoot,
-  });
+  let failure: { error: unknown } | undefined;
+  let priorCleanupUnverified = false;
 
   try {
+    await mkdir(userDataRoot, { mode: 0o700 });
+    const registry = new WorkspaceRegistryStore({
+      filePath: join(userDataRoot, WORKSPACE_REGISTRY_FILE_NAME),
+      installationRoot: userDataRoot,
+    });
+    const creationJournal = new WorkspaceCreationJournalStore({
+      filePath: join(userDataRoot, WORKSPACE_CREATION_JOURNAL_FILE_NAME),
+      installationRoot: userDataRoot,
+    });
+    const rootStore = new NodeWorkspaceCreationRootStore();
+    const lifecycle = createRecordingLifecycle(lifecycleEvents);
+    const bootstrap = new PrivateEmptyWorkspaceBootstrapAdapter({
+      start: async (input) => {
+        lifecycleEvents.push('bootstrap.start');
+        const workerPaths = createE2eWorkerPaths(
+          runRoot,
+          'WORKSPACE-CREATE-BOOTSTRAP',
+        );
+        const paths: E2eWorkerPaths = {
+          ...workerPaths,
+          databaseFilePath: input.databaseFilePath,
+          documentsRoot: input.artifactRoot,
+          workerRoot: runRoot,
+        };
+        const backendPort = await reserveLoopbackPort();
+        usedPorts.push(backendPort);
+        let backend: StartedE2eBackend;
+        try {
+          backend = await startE2eBackendProcess({
+            backendPort,
+            lifetime,
+            paths,
+            runRoot,
+            scenarioId: 'WORKSPACE-CREATE-BOOTSTRAP',
+          });
+        } catch (error) {
+          priorCleanupUnverified ||= !(error instanceof E2eBackendStartupFailure &&
+            error.evidence.cleanup.processTree === 'stopped' && error.evidence.cleanup.port === 'released');
+          throw error;
+        }
+        startedBackends.push(backend);
+        return createStoppedBackendInspectionRuntime({
+          backend,
+          backendPort,
+          databaseFilePath: input.databaseFilePath,
+          artifactRoot: input.artifactRoot,
+          lifecycleEvents,
+        });
+      },
+    });
+    const coordinator = new EmptyWorkspaceCreationCoordinator({
+      activeWorkspaceLifecycle: lifecycle,
+      bootstrap,
+      creationJournal,
+      generateOperationId: () => operationId,
+      generateWorkspaceId: () => workspaceId,
+      maintenanceLease: new InMemoryWorkspaceMaintenanceLease(),
+      now: () => new Date('2026-08-18T10:00:00.000Z'),
+      registry,
+      rootStore,
+      userDataRoot,
+    });
+
     await expect(coordinator.create('Tyhja testiyritys')).resolves.toEqual({
       workspaceId,
       workspaceLabel: 'Tyhja testiyritys',
@@ -171,19 +185,43 @@ test('WORKSPACE-CREATE-001 @critical @security creates an isolated ready workspa
       'bootstrap.inspect',
       'active.ensure.empty',
     ]);
-    expect(
-      startedBackends.every(
-        ({ managedProcess }) =>
-          managedProcess.child.exitCode !== null ||
-          managedProcess.child.signalCode !== null,
-      ),
-    ).toBe(true);
+    for (const backend of startedBackends) {
+      expect(await backend.workload.readState()).toBe('exited');
+    }
     for (const port of usedPorts) {
       await expect(waitForLoopbackPortRelease(port)).resolves.toBeUndefined();
     }
+  } catch (error) {
+    failure = { error };
   } finally {
-    await Promise.allSettled(startedBackends.map((backend) => backend.stop()));
-    await removeE2eRunRoot(runRoot);
+    await finishServiceFixture({
+      failure, priorCleanupUnverified,
+      testAlreadyFailed: testInfo.status !== testInfo.expectedStatus,
+      disposeApi: async () => {},
+      stopBackend: async () => {
+        const results = await Promise.allSettled(startedBackends.map(async backend => {
+          await backend.stop();
+        }));
+        const rejected = results.find(result => result.status === 'rejected');
+        if (rejected?.status === 'rejected') throw rejected.reason;
+      },
+      releaseBackendPort: async () => {
+        const results = await Promise.allSettled(usedPorts.map(async port => {
+          await waitForLoopbackPortRelease(port);
+        }));
+        const rejected = results.find(result => result.status === 'rejected');
+        if (rejected?.status === 'rejected') throw rejected.reason;
+      },
+      collectArtifacts: async () => {},
+      removeRoot: () => removeE2eRunRoot(runRoot),
+      report: async result => {
+        if (failure !== undefined || testInfo.status !== testInfo.expectedStatus || result.runRoot !== 'removed') {
+          await testInfo.attach('workspace-bootstrap-cleanup', {
+            body: JSON.stringify({ schemaVersion: 1, cleanup: result }), contentType: 'application/json',
+          });
+        }
+      },
+    });
   }
 });
 

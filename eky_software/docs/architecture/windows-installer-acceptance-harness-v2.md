@@ -3916,6 +3916,20 @@ tulostiedostoa, liian aikaista poistumista ja sovelluksen raportoimaa virhettä
 ei enää tarvitse päätellä samasta yleisestä lokirivistä. Alkuperäisen
 CI-virheen sisäinen syy ja workspace-asennusodotuksen tarkka raja ovat avoimia.
 
+T3/R28:n myöhempi [legacy-hylkäys ja diagnostiikkatarkennus](e2e-test-environment.md#t3b-en-kokonaisajon-legacy-hylkäys)
+lisää samaan vaihehavaintoon suljetun `smokeFailureClass`-kentän. Harness
+projektoi vain jäädytetyn 0.2.6-kirjoittajan 16 täsmällisesti nimettyä
+startup-virhekoodia ennalta määriteltyihin luokkiin. Esimerkiksi
+`backendReadinessTimeout` ja `backendExitedBeforeReady` erottavat kaksi
+raportoitua virhehaaraa. Muut validit sovelluskoodit, myös avoimen
+`DESKTOP_SMOKE_`-prefiksin arvot, saavat luokan `unclassified`.
+Jos sovelluksen validoitua virhetulosta ei havaittu, luokka on `notReported`.
+Raakaa koodia ei välitetä eikä luokkaa päätellä kestosta, exit-koodista tai
+viimeisestä vaiheesta. Historiallisia sovellustavuja, tulosformaattia,
+deadlinea, prosessiketjua ja terminaalista hyväksyntää ei muuteta.
+Kenttä on vain CI:n vaihehavainto; se ei kuulu sovelluksen Diagnosticsiin,
+Activityyn tai tukipakettiin eikä korvaa varsinaista lopputulosta.
+
 Revision `d13422fe1e7f17d1c3592d5837f76199254c948b`
 [yksi rajattu legacy-koe](https://github.com/eky-software/eky/actions/runs/35038872159)
 läpäisi ensimmäisellä yrityksellä saman epäonnistuneen kierroksen
@@ -5049,6 +5063,62 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 
 ## Nykyinen päätös
 
+### Workspace-asennusodotuksen havaintoraja
+
+Tila 2026-09-28: rajattu testiharnessin diagnostiikkalisäys ja sen oma
+`5bbfd483` [normaali CI](https://github.com/eky-software/eky/actions/runs/36443256758)
+sekä [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/36443266084)
+hyväksytty ensimmäisistä yrityksistä. Tämä ei ratkaise c2-timeoutin juurisyytä.
+[Nykyinen M1-checkpoint](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+erottaa tavallisen CI:n hylkäyksen Linux-kuluttajien keskeneräisestä työstä.
+
+Workspace success- ja fault-worker käyttävät samaa asennusodotuksen
+havainnointia `targetInstall`- ja tarvittaessa `sourceRollbackInstall`-
+vaiheissa. Suljettu `workspaceInstallationObservation`-tapahtuma erottaa
+asennusodotuksen, installed-state-tarkistuksen, payloadin ja immutable
+artifactin tarkistuksen. Asennusodotuksen sisältä erotetaan MSI-aktiivisuuden
+ennen/jälkeen-kyselyt, molempien tuotteiden kyselyt, tulosten luku ja poisto,
+rollback-progressin luku sekä seuraavan havainnon odotus. Havainto kertoo
+viimeisimmän odotusrajan, ei yksin sen hidastumisen tai epäonnistumisen syytä.
+
+Ensimmäinen vaihe-/tilapari julkaistaan heti. Toistuva polling ei tulvi
+lokille: kerran minuutissa julkaistaan nykyinen sisin odotusraja ja rajattu
+busy-havaintojen laskuri. Yksi asennushavainto tuottaa enintään 128 riviä.
+Rajan täyttyessä viimeinen on `truncated`, eikä katkennut havainto muutu onnistumiseksi.
+Ajastin vapautetaan lopussa, eikä se pidä workeria elossa. Tämä ei ole
+uusi deadline, retry tai hyväksyntäprotokolla. Nykyiset kyselyt, virheiden
+etusija, vaiheiden järjestys ja supervisorin prosessi-/siivousvastuu säilyvät.
+
+Julkiseen tapahtumaan päätyvät vain skeemaversio, kiinteä operaatiotunniste,
+source/target-rooli, suljetut vaihe-/tila-/havaintoluokat ja laskuri. Ei
+polkuja, tuotteiden arvoja, PID:itä, komentorivejä tai raakavirheitä.
+Diagnostiikan toimitusvirhe ei korvaa alkuperäistä tulosta. Kohdetestit
+todentavat havaintorajan, toistuvan odotuksen, tuloksen/virheen säilymisen,
+workerin todellisen kytkennän ja runtime-kyselyiden ennallaan säilymisen.
+Ne kuuluvat molempiin kanonisiin workspace-sopimussarjoihin. Rajauksen
+katselmuksen ja paikallisten porttien jälkeinen oman revision seurattu
+normaali CI läpäisi; aiemman hylkäyksen syytä ei päätellä läpäisystä.
+
+Kanoninen fault-sarja läpäisi 325/325, success 332/332, artifact-/ajokytkentä
+62/62, CI-sopimukset 315/315 ja desktopin tyypitys. Ensimmäinen fault-ajo
+keskeytettiin uuden regressiotestin virheellisen aineiston takia: viimeinen
+rivi ilman rivinvaihtoa oli keskeneräinen lokikirjoitus, ei valmis virherivi.
+Testi käyttää nyt kokonaista virheellistä riviä ja kieltää odottamattoman
+uusintahavainnon. Lokilukijaa tai runtimea ei muutettu tämän takia.
+Katselmuksessa havaittu puuttuva ajolistapäivitys korjattiin molempiin
+tiukkoihin workflow-sopimuksiin ennen läpäissyttä artifact-sarjaa.
+Aiempaa hylkäystä ei kumota; nämä portit eivät ole packaged- tai T3-hyväksyntä.
+
+Uusi normaali CI valmistui 38 onnistuneella ryhmällä ja yhdellä
+tarkoituksellisella valinnaisella ohituksella, kaikki neljä kokeellista
+valitsinta pois. Kaikki 38 checkoutia, 690/37/38-katalogi, neljän tuottajan
+ja kymmenen kuluttajan artifact-sidonnat sekä native-sopimukset
+515/226/285/1791/60 takaisinluettiin ilman näyttöaukkoja. Molemmat workspace-
+success- ja fault-kuluttajat sekä uusi havaintoketju valmistuivat.
+Riippuvuustarkistus läpäisi ilman tunnettuja audit-löydöksiä,
+registry-allekirjoitukset 160/160. Tämä on vihreä välivaiheen baseline,
+ei historiallisen timeoutin korjaus, koko T3:n sulku tai PR/main-hyväksyntä.
+
 ### Ajantasainen testikartta ja avoimet rajat
 
 Kartan lähdekatselmuksen perusta on `08eed10d36781a8a893776282ea18c02e93f9ec3`.
@@ -5071,6 +5141,14 @@ CI-kytkentä sijaitsee repositoryn `.github/workflows`-kansiossa.
 | V2 workspace success | Synteettisen paketin päivitys, työtilojen eristys, restart, virheellisen historian torjunta ja vanhan session HTTP-hylkäys | `.NET --workspace-success-command` ja result-verifier; komentoraja 1 440 s, CI-step 25 min, job 30 min |
 | V2 workspace fault | Viisi nimettyä fault/rollback-skenaariota samoilla varmennetuilla artifact-tavuilla | `.NET --workspace-fault-command` ja result-verifier; 25 min / skenaariovaihe, 140 min / consumer; täysi matriisi 5 x 2 |
 | Valinnainen diagnostiikka | Nykyinen ulkoinen tallennus, vienti ja suljettu analyysi; ei hyväksynnän tai prosessisiivouksen omistaja | Erilliset start/stop/analyze-rajat; normaalissa opt-in-legacyssä 1/2/3 min lisävaraus, ei skenaarion työajasta |
+
+Rollback-bootstrapin sopimustesti raportoi supervisorin todellisen `close`-rajan
+jälkeen suljetun terminal-tuloksen ja viimeisen validoidun handoff-vaiheen ennen
+paluukoodiväitettä. `unavailableOrInvalid` säilyttää puuttuvan tai virheellisen
+havainnon erillään onnistumisesta. Raportointi ei korvaa tuloksen sidontaa,
+alkuperäisiä assertioneita tai cleanup-varmennusta eikä julkaise raakaa
+fixture-aineistoa. [Ajankohtainen hylkäys ja rajattu näyttö](e2e-test-environment.md#t3b-en-normaalin-baselinen-rollback-sopimushylkäys)
+eivät muuta yllä olevia aikarajoja tai ratkaise hylkäyksen tuntematonta syytä.
 
 Build-once-producerit omistavat paketoinnin ja immutable descriptorin.
 Consumer ei rakenna MSI-paria uudelleen. Clean-producer varmentaa myös
@@ -6577,6 +6655,44 @@ kasva. Saman repositoryn aiemman artifactin lataus käyttää vain
 `actions: read` -oikeutta; sama read-katto annetaan workflow'n kutsujalle,
 jotta tavallinen workflow-call ei yritä korottaa oikeuksia. Kirjoitusoikeutta,
 uutta salaisuutta, ulkopuolista repositorya tai automaattista uusintaa ei lisätä.
+
+### Workspace-diagnostiikan kutsurajahavainnot
+
+Workspace-successin erillinen diagnoosimoodi tulostaa neljä kiinteää
+`workspaceCallerDiagnostic`-havaintoa: `commandInvoked`, `commandReturned`,
+`verifierInvoked` ja `verifierReturned`. Ne eivät sisällä polkua, argumentteja,
+raakavirhettä tai profiilitietoa. Molempien kutsujen exit-koodit tallennetaan
+ennen paluuhavaintoa; viimeinen hyväksyntäehto käyttää tallennettuja koodeja.
+Havaintotulostuksen poikkeus ei saa peittää komentoa tai muuttaa sen tulosta.
+
+`commandInvoked` tarkoittaa vain kutsurajan saavuttamista. Nykyinen natiivin
+`prepare/started` vahvistaa komentokoodin vaiheketjuun pääsemisen, ei workerin
+käynnistymistä. `commandReturned` ja `verifierReturned` tarkoittavat paluuta
+PowerShelliin, eivät onnistumista tai prosessipuun siivousta. Nykyinen strict
+caller-result, komennon exit ja verifierin tulos pysyvät hyväksyntäehtoina.
+Merkintöjä ei kytketä normaaliin acceptance-ajoon eikä muihin diagnoosihaaroihin.
+
+Rajattu koe käyttää yhtä olemassa olevaa, identiteetiltään varmennettua
+workspace-artifactia ilman rebuildiä. Saman stepin nykyiset aikarajat ja
+nykyinen prosessiomistajuus säilyvät. Se ei ole epäonnistuneen acceptance-ajon
+uusintahyväksyntä. Jos myös uuden diagnoosin loki puuttuu, havainnot jäävät
+varmentamatta; tätä ei korjata automaattisilla uusintakierroksilla tai
+arvaamalla runner-vikaa. Raakaa tulosjuurta tai jälkeä ei julkaista artifactina.
+
+Revision `3c992a26` yksi sidottu [diagnoosi 36290415587](https://github.com/eky-software/eky/actions/runs/36290415587)
+läpäisi: neljä kutsurajaa, nykyinen caller-result-varmennus, native-puiden
+poistuminen, fixture-siivous ja identtinen artifactin ennen/jälkeen-varmennus.
+Ohjausketjun 20 kohdetestiä ja nykyinen 62 testin artifact-/workflow-sarja
+läpäisivät myös. Alkuperäisen a2c826fc-ajon timeoutin syy jäi avoimeksi.
+
+Normaalin V2-hyväksynnän aiempi omistajan jatkopäätös säilyy: kadonneen
+vanhan lokin palautuminen ei ole uuden näytön ennakkoehto. Diagnoosin jälkeen
+tehdään yksi uuden jäädytetyn revision ensimmäinen normaali V2-kierros ja
+sen oma riippuvuustarkistus, kaikki kokeelliset valitsimet pois. Tämä ei ole
+automaattinen infrastruktuuriuusinta, vanhan ajon hyväksyntä tai mergen lupa.
+Uuden kierroksen ensimmäinen hylkäys pysäyttää toiminnallisen jatkon;
+eri ajojen onnistuneita osia ei yhdistetä vihreäksi lähtötilaksi. Lopulliset
+T3-, PR- ja main-portit säilyvät erillisinä ja muuttumattomina.
 
 ### Infrastruktuuriuusinnan rajattu ehdotus
 

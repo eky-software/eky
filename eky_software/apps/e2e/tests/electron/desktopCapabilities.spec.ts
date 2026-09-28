@@ -1,10 +1,9 @@
 import { createHash } from 'node:crypto';
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import {
   copyFileSync,
   existsSync,
   readFileSync,
-  rmSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { gunzipSync } from 'node:zlib';
@@ -26,21 +25,17 @@ import {
   runElectronWorkspaceMigrationInventoryProof,
   runElectronWorkspaceStartupRecoveryProof,
 } from '../../src/electron/electronMainCapabilities.js';
-import {
-  createElectronE2eRuntime,
-  resolveElectronE2eApplicationPath,
-  type ElectronE2eRuntime,
-} from '../../src/environment/createElectronE2eRuntime.js';
-import { assertElectronLaunchPrerequisites } from '../../src/environment/assertElectronLaunchPrerequisites.js';
-import { createElectronEnvironment } from '../../src/environment/createElectronEnvironment.js';
-import { listElectronE2eProfileDirectories } from '../../src/environment/createElectronE2eProfile.js';
+import { createElectronE2eRuntime } from '../../src/environment/createElectronE2eRuntime.js';
+import { assertElectronLaunchPlatform } from '../../src/environment/assertElectronLaunchPrerequisites.js';
 import { createE2eRunRoot } from '../../src/environment/createE2eRunRoot.js';
 import { createE2eWorkerPaths } from '../../src/environment/createE2eWorkerPaths.js';
 import { reserveLoopbackPort } from '../../src/environment/reserveLoopbackPort.js';
 import { readElectronE2eActiveWorkspace } from '../../src/environment/readElectronE2eActiveWorkspace.js';
-import { resolveElectronE2eExecutable } from '../../src/environment/resolveElectronE2eExecutable.js';
 import { waitForLoopbackPortRelease } from '../../src/environment/waitForLoopbackPortRelease.js';
-import { test, expect } from '../../src/fixtures/isolatedElectronTest.js';
+import { createE2eFixtureLifetime } from '../../src/environment/e2eFixtureLifetime.js';
+import { DirectElectronRunFailure, runOwnedWindowsElectron } from '../../src/environment/runOwnedWindowsElectron.js';
+import { removeE2eRunRoot } from '../../src/environment/removeE2eRunRoot.js';
+import { test, expect, finishIsolatedElectronTest, reportElectronLifecycleEvidence } from '../../src/fixtures/isolatedElectronTest.js';
 import { captureElectronStartupObservation } from '../../src/fixtures/launchElectronRuntime.js';
 import { createApprovedInvoiceWithPdf } from '../../src/journeys/invoicingApiJourney.js';
 
@@ -283,13 +278,18 @@ test('DESK-STARTUP-OBSERVATION-001 @diagnostic-contract reads bounded main check
     await readElectronStartupObservation(e2eElectron.electronApp),
   );
   expect(startup).toBeDefined();
+  expect(startup?.schemaVersion).toBe(2);
   expect(startup?.truncated).toBe(false);
+  expect(startup?.backendStartup).toEqual({
+    status: 'observed', stage: 'readyNotification', elapsedMs: expect.any(Number),
+  });
   const checkpoints = startup!.checkpoints.map((entry) => entry.checkpoint);
   expect(checkpoints.filter((checkpoint) => checkpoint === 'firstWindowCreated'))
     .toHaveLength(1);
   let previousIndex = -1;
   for (const checkpoint of [
     'backendStartRequested', 'backendForkRequested', 'backendForkReturned',
+    'backendReadinessWaitStarted',
     'backendProcessSpawned', 'backendStartMessageSent', 'backendReadyReceived',
     'backendReady', 'firstWindowCreated',
   ] as const) {
@@ -297,6 +297,11 @@ test('DESK-STARTUP-OBSERVATION-001 @diagnostic-contract reads bounded main check
     const index = checkpoints.indexOf(checkpoint);
     expect(index).toBeGreaterThan(previousIndex);
     previousIndex = index;
+  }
+  expect(checkpoints).not.toContain('backendReadinessTimedOut');
+  if (startup!.backendStartup.status === 'observed') {
+    const ready = startup!.checkpoints.find((entry) => entry.checkpoint === 'backendReadyReceived')!;
+    expect(startup!.backendStartup.elapsedMs).toBeLessThanOrEqual(ready.elapsedMs);
   }
 });
 
@@ -564,7 +569,9 @@ test('DESK-RESTART-001 @critical @recovery preserves data and rotates the runtim
   }
 });
 
-test('DESK-BOOTFAIL-001 @fault exposes only an allowlisted startup failure', async () => {
+test('DESK-BOOTFAIL-001 @fault exposes only an allowlisted startup failure', async ({}, testInfo) => {
+  assertElectronLaunchPlatform();
+  const lifetime = createE2eFixtureLifetime(testInfo.timeout);
   const runRoot = createE2eRunRoot();
   const paths = createE2eWorkerPaths(runRoot, 'DESK-BOOTFAIL-001');
   const backendPort = await reserveLoopbackPort();
@@ -575,8 +582,11 @@ test('DESK-BOOTFAIL-001 @fault exposes only an allowlisted startup failure', asy
     startupMode: 'backendStartFailure',
   });
 
+  let failure: { error: unknown } | undefined;
+  let processTreeVerified = false;
   try {
-    const result = await runElectronProcess(runtime, runRoot);
+    const result = await runOwnedWindowsElectron({ runtime, runRoot, lifetime, timeoutMilliseconds: 30_000, expectedExitCode: 1 });
+    processTreeVerified = true;
     expect(result.exitCode).toBe(1);
     expect(result.output).not.toContain('node_modules');
     expect(result.output).not.toContain('Users\\');
@@ -593,9 +603,18 @@ test('DESK-BOOTFAIL-001 @fault exposes only an allowlisted startup failure', asy
     expect(readFileSync(runtime.observationsPath, 'utf8')).toContain(
       '"operation":"showErrorBox"',
     );
+  } catch (error) {
+    failure = { error };
+    if (error instanceof DirectElectronRunFailure) processTreeVerified = error.processTree === 'stopped';
   } finally {
-    await waitForLoopbackPortRelease(backendPort);
-    rmSync(runRoot, { force: true, recursive: true });
+    await finishIsolatedElectronTest({ failure, testAlreadyFailed: testInfo.errors.length > 0,
+      disposeApi: async () => {},
+      closeRuntime: async () => { if (!processTreeVerified) throw new Error('E2E_ELECTRON_RUNTIME_CLEANUP_UNVERIFIED'); },
+      releasePort: () => waitForLoopbackPortRelease(backendPort), removeRoot: () => removeE2eRunRoot(runRoot),
+      report: cleanup => reportElectronLifecycleEvidence(testInfo, {
+        launch: [], observationsTruncated: false, cleanup: { ...cleanup, api: 'notStarted' },
+      }),
+    });
   }
 });
 
@@ -629,17 +648,6 @@ interface SupportBundleDocument {
   runtimeSummary: unknown;
   system: unknown;
 }
-
-type SpawnedElectronProcess = ReturnType<typeof spawn> & {
-  on(
-    event: 'error',
-    listener: (error: Error) => void,
-  ): SpawnedElectronProcess;
-  on(
-    event: 'exit',
-    listener: (exitCode: number | null) => void,
-  ): SpawnedElectronProcess;
-};
 
 function readSupportBundle(path: string): SupportBundleDocument {
   return JSON.parse(gunzipSync(readFileSync(path)).toString('utf8')) as
@@ -678,52 +686,4 @@ function runSupportInspector(path: string): void {
       windowsHide: true,
     },
   );
-}
-
-function runElectronProcess(
-  runtime: ElectronE2eRuntime,
-  runRoot: string,
-): Promise<{ exitCode: number | null; output: string }> {
-  assertElectronLaunchPrerequisites({
-    applicationPath: resolveElectronE2eApplicationPath(),
-    configPath: runtime.configPath,
-    cwd: runRoot,
-    executablePath: resolveElectronE2eExecutable(),
-    profileDirectories: listElectronE2eProfileDirectories(runtime.profile),
-    runRoot,
-  });
-  return new Promise((resolveProcess, rejectProcess) => {
-    const child = spawn(
-      resolveElectronE2eExecutable(),
-      [resolveElectronE2eApplicationPath()],
-      {
-        cwd: runRoot,
-        env: createElectronEnvironment({
-          configPath: runtime.configPath,
-          profile: runtime.profile,
-          runRoot: runtime.runtimeRoot,
-        }),
-        shell: false,
-        windowsHide: true,
-      },
-    ) as SpawnedElectronProcess;
-    let output = '';
-    const timer = setTimeout(() => {
-      child.kill();
-      rejectProcess(new Error('Synthetic Electron bootstrap did not exit.'));
-    }, 30_000);
-    const append = (chunk: Buffer) => {
-      output = `${output}${chunk.toString('utf8')}`.slice(-64 * 1024);
-    };
-    child.stdout?.on('data', append);
-    child.stderr?.on('data', append);
-    child.on('error', (error: Error) => {
-      clearTimeout(timer);
-      rejectProcess(error);
-    });
-    child.on('exit', (exitCode: number | null) => {
-      clearTimeout(timer);
-      resolveProcess({ exitCode, output });
-    });
-  });
 }

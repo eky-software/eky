@@ -1,15 +1,13 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 
-const defaultOutputLimitBytes = 256 * 1024;
+import { createBoundedProcessOutput, defaultProcessOutputLimitBytes, type ProcessOutput } from './boundedProcessOutput.js';
 
 export type ManagedChildProcess = ChildProcess & {
   on(event: 'exit', listener: () => void): ManagedChildProcess;
 };
 
-export interface ManagedProcess {
+export interface ManagedProcess extends ProcessOutput {
   child: ManagedChildProcess;
-  readStderr(): string;
-  readStdout(): string;
 }
 
 export function startManagedProcess(input: {
@@ -21,7 +19,9 @@ export function startManagedProcess(input: {
   outputLimitBytes?: number;
   redactedValues?: readonly string[];
 }): ManagedProcess {
-  const outputLimitBytes = input.outputLimitBytes ?? defaultOutputLimitBytes;
+  const outputLimitBytes = input.outputLimitBytes ?? defaultProcessOutputLimitBytes;
+  const stdout = createBoundedProcessOutput(outputLimitBytes, input.redactedValues);
+  const stderr = createBoundedProcessOutput(outputLimitBytes, input.redactedValues);
   const child = spawn(input.command, input.args, {
     cwd: input.cwd,
     detached: process.platform !== 'win32',
@@ -34,8 +34,6 @@ export function startManagedProcess(input: {
     windowsHide: true,
   });
 
-  const stdout = createBoundedOutput(outputLimitBytes, input.redactedValues);
-  const stderr = createBoundedOutput(outputLimitBytes, input.redactedValues);
   child.stdout?.on('data', (chunk: Buffer) => {
     stdout.append(chunk);
   });
@@ -47,30 +45,5 @@ export function startManagedProcess(input: {
     child: child as ManagedChildProcess,
     readStderr: stderr.read,
     readStdout: stdout.read,
-  };
-}
-
-function createBoundedOutput(
-  limitBytes: number,
-  redactedValues: readonly string[] = [],
-): {
-  append(chunk: Buffer): void;
-  read(): string;
-} {
-  let output = Buffer.alloc(0);
-
-  return {
-    append(chunk) {
-      output = Buffer.concat([output, chunk]).subarray(-limitBytes);
-    },
-    read() {
-      let text = output.toString('utf8');
-      for (const value of redactedValues) {
-        if (value !== '') {
-          text = text.replaceAll(value, '[REDACTED]');
-        }
-      }
-      return text;
-    },
   };
 }

@@ -29,7 +29,7 @@ export async function runWorkspaceSuccessWorker(arguments_, {
       expectedDescriptorSha256: request.artifactDescriptorSha256, expectedBuildRevision: request.buildRevision });
     const runtime = await createRuntime(requestPath, request, artifact);
     try {
-      result = await execute({ ...runtime, reportProgress });
+      result = await execute({ ...runtime, reportProgress, reportInstallationProgress: reportProgress });
     } finally { runtime.disposeSessionEvidence(); }
   } catch (error) {
     result = { schemaVersion: 1, status: 'failed', resultCode: 'workspaceSuccessFailed',

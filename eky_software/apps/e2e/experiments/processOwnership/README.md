@@ -1,0 +1,506 @@
+# T3a process ownership experiment
+
+Manual, Windows-only feasibility evidence for
+[T3](../../../../docs/architecture/e2e-test-environment.md#t3-koko-prosessipuun-poistumistodiste).
+This is not an ordinary fixture adapter, a production feature, an installer
+protocol change, or acceptance of R28. Linux inspection has a separate
+read-only scope. Do not run this against an application or real company profile.
+
+## Current runtime boundary
+
+The historical manual experiments below remain separate from ordinary E2E.
+The same `adapterNative` assembly now also contains a distinct, versioned
+Windows backend-service mode used by the ordinary backend fixtures. Its
+preparation runs through the existing E2E preparation commands, not these
+manual experiment launchers or experiment budgets. See the authoritative
+[backend ownership contract and current acceptance state](../../../../docs/architecture/e2e-test-environment.md#backendin-windows-omistajan-toteutusraja).
+Windows Vite and the ordinary Windows Electron fixture now also use their
+approved owner paths. The Electron checkpoint below records its bounded local
+acceptance; this does not migrate Chromium or Linux ownership or close T3.
+
+## Scope
+
+The experiment links existing Windows Job primitives into a separate native
+owner without changing their sources. The owner creates the synthetic Node
+driver suspended and atomically assigned to a non-inherited, kill-on-close Job.
+Only verified membership permits resume. The whole Playwright driver, including
+its Electron descendants, runs inside that Job. This does not replace the
+Electron executable with a transparent wrapper.
+
+The parent generates an isolated direct child of the canonical OS temporary
+directory. Copies are independent files, never hardlinks. Child temporary,
+profile and Electron storage locations are contained in the case directory.
+The launch environment excludes inherited execution hooks and unrelated values.
+The Electron page is static, hidden and sandboxed; external page requests,
+navigation, new windows and permissions are denied. Playwright's local debug
+connections are part of the synthetic tree, not an exposed EKY backend.
+
+Cases:
+
+- `nodeStop`: stop while root and detached, portless leaf are alive.
+- `nodeRootFirst`: root exits successfully while its leaf remains alive.
+- `nodeRootFailure`: root exits with 23 while its leaf remains alive.
+- `electronNormal`: real Playwright launch, isolated paths, arguments,
+  environment, bounded stdout/stderr, hidden sandboxed window and normal close.
+  Process identity and application/process exit order are observations, not
+  assumptions about which process `application.process()` represents.
+- `electronLaunchFailure`: Electron deliberately exits before ready; launch
+  must reject without a launch timeout. A separately acknowledged leaf inside
+  the same owned driver session survives until Job cleanup.
+
+The last case is intended to test session cleanup after launch rejection. It does not
+prove that the surviving leaf was an Electron child or that every Playwright
+launch-failure branch has been tested.
+
+## Manual execution
+
+Use existing approved Windows Node, .NET 10 and locked workspace dependencies.
+Do not install or change tools to satisfy an unmet prerequisite automatically.
+From the `eky_software` directory in Windows PowerShell:
+
+```powershell
+node --test apps/e2e/experiments/processOwnership/experimentContract.test.mjs
+dotnet build apps/e2e/experiments/processOwnership/native/Eky.ProcessOwnershipExperiment.csproj --configuration Release --artifacts-path apps/e2e/.artifacts/t3a-native
+$env:EKY_E2E = '1'
+node apps/e2e/experiments/processOwnership/runExperiment.mjs --dotnet (Get-Command dotnet.exe).Source nodeStop
+```
+
+First inspect the `nodeStop` result and receipt. Only then run the other cases
+by replacing `nodeStop` with explicit case names from the list above. No normal
+test command or CI workflow invokes this experiment. Run serially with active
+monitoring and retain the first failure before modifying or repeating anything.
+
+## Evidence and failure handling
+
+The runner prints the private temporary root. Each case preserves `owned.json`,
+`workload.json`, `root-exited.json` when observed, and `terminal.json`; the root
+contains `summary.json` with the native artifact digest. Native publication is
+create-new plus rename. Generation and case must match before acceptance.
+Logs with `.private.log` suffix and the complete temporary root remain local.
+Never commit, upload or copy host-specific evidence into shared documentation.
+
+Root exit alone is not a cleanup receipt. The native owner must report settled
+creation, root exit where applicable, and zero active Job members. Failure or
+missing evidence prevents the next case and leaves the root intact. A deliberate
+workload exit 23 remains 23; a successful feasibility assertion is not a passing
+production test. The normal Electron case may briefly have Job members after
+driver exit; only eventual native whole-tree absence permits acceptance.
+
+The native session has a 30-second total experiment budget with 5 seconds
+reserved for cleanup. The runner's independent 35-second watchdog can terminate
+only its directly spawned, still-open owner process handle. Kill-on-close is
+emergency containment, not an absence receipt: this path cannot pass. These are
+new experiment budgets, not changes to existing tests or CI. If owner exit or
+tree absence cannot be verified, stop, retain evidence and resolve ownership
+before any cleanup or restart; never use PID/name searches or broad taskkill.
+
+This prototype does not yet prove launch cancellation during native creation,
+owner crash, foreign receipt, restart rejection, outside-sentinel survival or
+Linux cgroup ownership. Contract tests are not substitutes for those real
+process cases. Ordinary fixture migration and final T3 acceptance require the
+owner-approved session contract, platform prerequisites and full matrix.
+
+## Initial T3a checkpoint 2026-09-25
+
+Feasibility observations are complete, not all accepted: the three Node cases
+and normal Electron case passed. `electronLaunchFailure` remains failed.
+Its before-ready fault was reached, but Playwright emitted an unhandled
+`Process failed to launch!` rejection during launch. The fixture fails on that
+event; it is not converted into the expected, caught launch rejection.
+The first failure and two separately instrumented diagnostic attempts remain
+retained. Neither the fault trigger nor the timeouts/assertions were weakened.
+
+The native receipts reported settled creation and an empty owned Job also in
+the failed attempts. Their overall runner result remains failed with
+`terminalAccepted=false` and conservative `cleanupUnverified`; a late raw
+receipt alone does not grant permission to restart or delete a fixture.
+Normal Electron's `application.process()` did not identify its main process;
+the future adapter must preserve that distinction instead of equating the two.
+
+There has been no fixture migration, dependency change, ordinary CI run or
+PR/main acceptance for this experiment. Next decisions and the complete
+remaining acceptance matrix stay in the owning T3 plan. Do not bypass the
+unhandled rejection or modify installed dependency code to make the case green.
+
+## Approved T3b-E dependency correction
+
+The owner separately approved a versioned, minimal correction to
+`playwright-core@1.62.1`, its regressions and the two unchanged Electron
+experiments. The initial failed evidence above remains failed. The correction
+observes the three concurrently started launch waits immediately, while keeping
+their original promises and preserving the original launch error. Cleanup
+failure or cancellation adds the closed call-log marker
+`electronLaunchCleanupUnverified`; the experiment rejects such an error rather
+than accepting it as the expected launch failure. Absence of that marker is not
+tree-absence proof: the independent native terminal receipt is still required.
+
+The patch belongs in `patches/playwright-core@1.62.1.patch`, with an exact pnpm
+workspace mapping and lockfile identity. No runtime monkey-patching, copied
+Electron launch implementation, global rejection suppression, version increase
+or new dependency is authorized. The canonical package `test` command must
+include the actual installed-bundle regressions, and a wiring contract protects
+that inclusion. These controlled dependency tests do not launch a real Electron
+process and are not R28 integration acceptance.
+
+The separately approved direct-Windows-launch extension selects explicit,
+absolute `.exe` paths (case-insensitive) for direct argument delivery without
+a shell. Default, relative and script paths retain the previous behavior;
+non-Windows paths are unchanged. This is a launch classifier, not executable
+validation. It affects the current explicit Electron launch as well as a
+future native bridge. Failed launch still has no public close receipt, and
+missing registration or closure remains unverified. Actual Windows argument,
+stdio and lifecycle evidence is required in addition to controlled regressions.
+The current implementation and acceptance state stays in the
+[owning checkpoint](../../../../docs/architecture/e2e-test-environment.md#electronin-pääkäynnistyksen-avoimet-päätösrajat).
+
+The owner also approved the childless Windows bridge's explicit
+`Electron.launch({ windowsProcessOnly: true })` extension. The public optional
+boolean and optional protocol boolean must reach server validation before any
+temporary directory or process is created. Opt-in requires Windows and an
+explicit absolute `.exe` executable path; the internal launcher also rejects
+non-Windows or shell opt-in before spawn. Omitted or false retains the original
+behavior, including the default Windows and POSIX kill paths.
+
+Only the opt-in branch calls the spawned `ChildProcess.kill('SIGKILL')`.
+It never falls back to `taskkill` or another PID-based kill. A false return logs
+`windowsProcessOnlyKillNotDelivered`; false, throw, error events, true and
+`killed` are not close receipts. Existing catch/log behavior must not invent
+successful closure. Actual close and temporary-directory cleanup remain
+awaited, and the separate native owner remains responsible for the workload
+tree. The bridge must remain childless. The caller verifies the exact approved
+bundle digest before creating an owner; the same package version with old
+bytes is rejected.
+
+Both `playwrightElectronLaunch.test.mjs` and
+`playwrightElectronProcessKill.test.mjs` must remain explicitly wired into the
+package test command and its wiring guard. They exercise the digest-verified
+installed bundle with inert boundaries, not copied launch/kill implementations
+or real process, filesystem or network side effects. Provenance reverses only
+the new process-only hunks to the exact prior patched digest, then retains the
+original reverse-selector proof to the pre-selector digest. Both historical
+digests remain rejected and neither historical bundle is evaluated.
+
+On a dependency update, review all patch hunks, the original registry integrity,
+patched bundle digest, LICENSE/NOTICE, public types, protocol validation,
+direct-EXE guards and the pinned Node Windows handle semantics. Keep live,
+exit-before-close, signal-exit, already-closed, kill-failure, graceful-error,
+repeated-graceful and caller signal/exit coverage together with unchanged
+default-platform and original-error preservation regressions. Remove
+the patch only after demonstrating an equivalent upstream fix with those tests.
+Keep the dependency audit, signature check, frozen installation and production
+payload exclusion checks. The current extension is implemented and reviewed:
+focused observation/bridge contracts 82/82, tooling 678/678 including the
+installed-bundle regressions and 38 new process-kill cases, canonical preparation,
+workspace tests/typecheck and local CI contracts 315/315 passed. Dependency and
+staged-backend exclusion checks also passed. Four bounded real Windows probes
+passed with independently read-back source, original-error and cleanup evidence:
+normal Page/API/close, two early faults and a genuine pending-first-window timeout
+followed by an observed public close event and separate native tree proof.
+Exact acceptance boundaries and preserved first failures are recorded in the
+[owning extension checkpoint](../../../../docs/architecture/e2e-test-environment.md#electron-bridgen-lopetuspolun-jatkoehdotus).
+Subsequent bounded generation and loss evidence is accepted separately:
+restart/relaunch and second-instance second attempts, owner-loss first attempt
+and caller-loss second attempt. Original failed attempts and their immutable
+source snapshots remain failed. Abrupt caller loss requires independent outer
+whole-tree absence before termination, not a receipt from a killed inner owner;
+the exact expected CLI failure, sentinel and port checks remain mandatory.
+The ordinary Windows Electron fixture now retains ownership before awaiting
+launch, shares the original lifetime across generations, and has no legacy
+Windows cleanup fallback. Its source-bound E2E typecheck, focused contracts
+186/186 and canonical preparation plus ordinary `electron-development` 45/45
+passed on the first attempt. Independent readback matched the source binding
+and complete ordinary case inventory. Earlier workspace and targeted-consumer
+results remain tied to their own snapshots, not this later revision.
+Actual-fixture public-close and port-release uncertainty probes now pass:
+both restart attempts remain rejected after eventual cleanup, no new generation
+is admitted, and the root survives actual failing teardown. Exact cleanup
+errors, native/bridge and independent outer-tree proof remain separate.
+The third close attempt and first port attempt passed; earlier close-probe
+lookup/report-parser failures remain failed with their original sources.
+The childless handoff test now uses the existing bounded direct-child helper;
+its six real-process cases and focused 24/24 suite passed independent review.
+The replaced Windows taskkill helper and its three obsolete tests are removed;
+the legacy tree helper refuses Windows before reading child/PID state.
+Two childless primitive tests retain their exact child and await bounded close.
+Replacement stop/timeout/error coverage remains in the owned-backend contracts.
+The subsequent typecheck and canonical system suite passed 607/607 on Windows
+without retries, flakes or skips; the new Windows admission guard is deliberately
+platform-specific. POSIX behaviour remains unchanged pending its migration.
+Separate endurance and full T3 gates remain open; the earlier 45/45 Electron
+result is not relabelled as a run of this later snapshot. Chromium and Linux
+ownership choices remain separate.
+No new remote CI run or PR/main integration is accepted by this checkpoint.
+Future dependency updates require fresh evidence, not reuse of this checkpoint.
+
+## T3b-L read-only CI prerequisites
+
+The separately approved prerequisite probe does not run the Windows experiment
+or a Linux workload. It inspects only its own cgroup v2 mapping and bounded
+metadata, using Node builtins. It never writes a cgroup, reads a process member
+list, queries systemd, installs tools or changes permissions.
+
+Use the existing **V2 risk-based CI** manual dispatch with
+`linux_ownership_prerequisites=true`. The default remains false. The probe runs
+inside each existing Linux system/web test step immediately before its normal
+command, after the normal dependency/browser preparation. This dispatch still
+runs the complete existing CI matrix; it is not a probe-only workflow.
+
+The entrypoint requires `EKY_E2E=1`, the GitHub Actions context, a validated
+run ID/attempt, and the actual checkout SHA read by the step. Do not substitute
+a PR head SHA for a merge checkout. Its single bounded JSON line contains only
+closed observations and CI binding. The step separately records the closed
+`LINUX_PREREQUISITE_EXIT_OK` or `LINUX_PREREQUISITE_EXIT_UNVERIFIED` marker.
+Only a complete, matching JSON result AND normal exit permit an observation
+to be used; an already queued JSON line cannot erase a later output deadline.
+There is no separate artifact. Paths,
+process IDs, accounts, environment contents and raw failures are not published.
+
+An incomplete or missing observation remains unverified. A complete negative
+observation is not Linux ownership support. Access metadata is only a hint:
+it cannot prove child creation, migration, termination, reaping or owner-loss
+cleanup. The normal test always runs independently and its exit status is kept.
+
+`pnpm test:ci` and the CI cadence contracts include the pure parser/schema/
+redaction tests and the workflow wiring contract. The latter uses the existing
+Bash tool with inert shell functions on both runner platforms, never the host
+probe or a real E2E workload. Real Linux metadata is collected only in the
+explicitly enabled CI steps. Final T3 ownership acceptance remains separate.
+
+## Approved T3c experiments
+
+The owner approved the separate Windows adapter and Linux namespace experiments
+on 2026-09-26. Their canonical limits and decision boundaries are in the
+[T3c-W plan](../../../../docs/architecture/e2e-test-environment.md#t3c-wn-neljän-tapauksen-adapterikoe-päätösehdotus)
+and [T3c-L plan](../../../../docs/architecture/e2e-test-environment.md#t3c-ln-rajattu-namespace-koe-päätösehdotus).
+The four bounded Windows cases passed after implementation and independent
+review; the [checkpoint](../../../../docs/architecture/e2e-test-environment.md#t3c-wn-rajatun-kokeen-checkpoint)
+records their scope and unresolved earlier failures. Both first Linux CI
+experiments failed before GO with `bootstrapUnknown`; the ordinary system and
+web suites passed before them. The [failure checkpoint](../../../../docs/architecture/e2e-test-environment.md#t3c-ln-ensimmäisen-ci-kokeen-hylkäys)
+preserves the evidence limits; neither namespace support nor a missing
+prerequisite was established. Final
+mechanism selection and fixture migration require a separate decision; these
+experiments do not complete T3/R28. Existing T3a cases and T3b-E dependency
+regressions remain unchanged.
+
+The Windows adapter has two modes in a separate framework-dependent apphost:
+an owner outside Playwright's shell/bridge subtree, and a byte-relaying bridge
+passed as `executablePath`. Only the owner launches the pinned Electron binary
+in its inner Job. Four cases require distinct evidence: normal Page/API and
+close, Electron-created leaf before a deliberate pre-ready failure, root exit
+with remaining descendants, and deliberate bridge exit with a live runtime.
+The last case is an expected workload failure, never a successful workload.
+The driver must accept the inner terminal and owner exit before exiting itself.
+The unchanged T3a native owner supplies outer emergency containment; any outer
+intervention rejects the adapter experiment. The external sentinel must answer
+fresh challenges before and after that boundary and then exit separately.
+
+The private configuration binds a fresh generation, one-use launch nonce,
+executable, working directory and explicit isolated environment. The caller
+uses one named-pipe session with monotonically increasing request sequences.
+Control frames are at most 4 KiB including their delimiter; stdout and stderr
+are separate bounded byte channels, not a reimplementation of Playwright's
+debugger protocol. Disk and pipe terminals have separate closed schemas.
+Raw failures and paths stay in the retained synthetic OS-temp root. A failed
+or unverified experiment never deletes that root or starts the next case.
+
+Pure Node contracts are reached by the ordinary `@eky/e2e` test command. They
+do not launch these experiments. Native protocol tests and offline apphost
+prerequisites must also pass, followed by independent review, before running
+the four-case Windows experiment. No application, installer, normal E2E fixture,
+timeout or release version is changed by this experiment.
+
+After those gates, build and inspect the separate apphost with the existing
+Windows toolchain. Its NuGet configuration has no package sources: an absent
+SDK/framework/apphost pack is a prerequisite failure, not permission to install.
+
+```powershell
+dotnet build apps/e2e/experiments/processOwnership/adapterNative/Eky.ProcessOwnershipAdapter.csproj --configuration Release
+$adapter = (Resolve-Path apps/e2e/.artifacts/t3c-adapter/bin/Eky.ProcessOwnershipAdapter/release_win-x64/Eky.ProcessOwnershipAdapter.exe).Path
+$env:DOTNET_ROOT = Split-Path (Get-Command dotnet.exe).Source
+& $adapter --self-test
+$env:EKY_E2E = '1'
+node apps/e2e/experiments/processOwnership/runWindowsAdapterExperiment.mjs --dotnet (Get-Command dotnet.exe).Source --adapter $adapter normal
+```
+
+The unchanged T3a native assembly must already be available at its documented
+artifact location. Inspect the complete normal result before invoking any of
+`beforeReady`, `rootFirst` or `bridgeExit`, one case at a time. Preserve the first
+failure and stop subsequent cases. The runner retains each root, raw bounded
+diagnostics, inner/outer receipts, sentinel checks and executable digests; do
+not publish those local files. Only validated control-channel messages establish
+readiness or terminal state. Standard output is diagnostic/byte relay only.
+
+Root exit and stream closure are separate observations. In a root-first case,
+the driver first proves that the root exited while descendants remain, then
+permits that surviving leaf to fork a detached, portless grandchild. A fresh
+generation-bound challenge, one-use permission and the grandchild's own receipt
+bind the late fork to this observation. At least two descendants must remain
+before the owner's tree stop. Schema-2 root-first evidence requires this chain;
+historical schema-1 results do not prove it. The driver requests that stop
+before awaiting the bridge's closed streams.
+Waiting for bridge closure before that stop can form a cycle when a surviving
+writer retains a stream. This ordering does not permit dropped output, a longer
+deadline, or a weaker terminal receipt. A bridge drain record is supplementary
+pre-exit evidence, never proof that a process exited. Failed Playwright launch
+does not expose a public process handle; its intended bridge exit code must not
+be reported as an observed exit code.
+
+The canonical Windows owner preparation also runs a separate
+`--resume-failure-self-test` with the canonical current Node executable after
+the five process-free contract families. It creates one real suspended child
+inside the real owner Job and injects only the failed `ResumeThread` return.
+The same owner must preserve `processResumeFailed`, prove the original child
+exited and the Job/stdio settled, and keep repeated terminal replies within
+the original cleanup clock. Only verified cleanup permits fixture removal.
+No configuration or environment flag enables this fault in ordinary owners;
+their default resume still calls the native API. Reproduce this proof through
+`pnpm --filter @eky/e2e e2e:prepare-owner`: preparation supplies the required
+pipe handles even from an ordinary terminal, bounds each output stream to
+4 KiB and publishes only the validated closed proof record. Do not invoke
+the native proof directly with inherited console handles.
+This tests the real cleanup branch after an injected error return, not an
+observed operating-system failure. The pure `--backend-self-test` stays
+process-free; a failed proof prevents the preparation success marker.
+
+The Linux experiment is an explicit, default-off
+`linux_pid_namespace_experiment` input on the existing caller/reusable chain.
+Each existing Linux job first completes its ordinary test command successfully.
+Only then may the bounded experiment use the already available `unshare` tool;
+there is no installation, privilege fallback or change to existing test status.
+The approved namespace capabilities, lifecycle proof, deadlines and closed CI
+result are defined in the owning plan. A negative prerequisite observation is
+not ownership support, and an unknown or post-launch failure is not a skip.
+
+The approved T3c-LD follow-up added only bounded startup diagnostics. Its result
+schema was version 2, with a nullable, strictly validated `bootstrapDiagnostic`.
+Version 1 results remain historical evidence, not new diagnostics. Init can
+attempt one 128-byte ASCII failure marker before GO; it never waits for that
+write or retries it. The driver reports closed categories from its bootstrap
+decision snapshot, never raw stderr, process IDs, identity values or paths.
+A marker is not READY, proof of cleanup, or permission to classify a failure
+as a missing prerequisite. Original classification and all budgets remain.
+See the [owning LD scope](../../../../docs/architecture/e2e-test-environment.md#t3c-ld-rajatun-käynnistysdiagnostiikan-päätösehdotus).
+The [LD CI result](../../../../docs/architecture/e2e-test-environment.md#t3c-ldn-rajatun-ci-kokeen-havainto)
+remains failed before READY in both consumers; all other test groups passed.
+The [LS follow-up proposal](../../../../docs/architecture/e2e-test-environment.md#t3c-ls-suljetun-stderr-luokan-tarkennuksen-päätösehdotus)
+was approved on 2026-09-26. Its exact-message diagnostic table and schema 3
+passed regression tests and independent source/reader review. Both Linux
+consumers in the [single new CI cycle](../../../../docs/architecture/e2e-test-environment.md#t3c-lsn-rajatun-ci-kokeen-havainto)
+reported `unshareUidMapDenied` before READY/GO. The complete cycle finished
+failed only in these two experiments and their aggregate; other test groups
+and the dependency check passed. This identifies the whole-message class, not the underlying
+policy cause, ownership support, or earlier runs' unknown stderr.
+The table applies only before READY and GO, after wrapper
+close and stderr end without read/size failure. It never changes acceptance.
+Schemas 1/2 remain historical evidence; do not reinterpret earlier results.
+
+## T3c-LM managed CI session
+
+The owner has approved bounded CI-session management design and implementation
+within the existing Goal. The [owning LM plan](../../../../docs/architecture/e2e-test-environment.md#t3c-lm-rajattu-ci-testisession-hallinta)
+replaces the pending design decision, not the failed historical LS evidence.
+The first slice contains pure launch, credential-drop and systemd observation contracts.
+It neither starts a service nor authorizes an ordinary fixture migration.
+
+The proposed transient service owns a trusted unshare/setpriv bootstrap; Node
+and every workload execute only after dropping root, supplementary groups and
+all capabilities, with NNP enabled. A started unit receipt and the normal exit
+of that exact waiting wrapper are separate gates. Missing/collected units,
+forced exits, stale invocations and unknown properties cannot pass. Kernel
+namespace teardown, not cgroup emptiness, supplies the normal-path reaping basis.
+`RemainAfterExit=no` keeps stop cleanup enabled after clean signals. The
+intentional init/wrapper exit 41 is not registered as systemd success:
+`CollectMode=inactive` retains its failed-unit record for exact inspection.
+Only `CLD_EXITED/41` with the original invocation/start identity can satisfy
+the normal-wrapper gate; unit failure in general is never accepted. This
+record is not by itself a cgroup-cleanup receipt or successful test result.
+No production code, dependency, host protection policy or persistent service is
+changed. The second slice adds bounded private AF_UNIX transport and the managed
+nonroot init, tested with injected filesystem, socket, clock and process adapters.
+It rejects pre-existing endpoints, changed root/socket identities, extra
+connections, premature EOF, replay and trailing bytes. Same-chunk GO tails are
+rejected before launch; later unsolicited bytes fail immediately. Both endpoints
+use half-open transport, preserving response observation until process exit.
+Transport closure is not workload, manager or namespace-destruction evidence.
+Init rechecks the original readiness deadline after filesystem validation and
+after connection, before publishing READY. No READY is queued while connecting.
+Manager integration, availability, real owner loss and Chromium compatibility
+remain unverified. No real listener or service was started by these unit tests.
+
+The third slice adds the internal show-only `managedNamespaceObservation`
+adapter. Only a complete, bounded, strictly decoded response after exit 0,
+child close and both stream EOFs may reach the existing unit parser. Stderr,
+stream errors and the original deadline fail closed; later success cannot
+erase the first error. Its `queryCleanup` concerns only the query child,
+never the observed unit or namespace. An attempted signal is not closure
+evidence. The future session owner must bound its wait for actual query closure;
+there is no retry, PID lookup, unit mutation or cleanup authority in this reader.
+Tests inject processes and clocks; no live manager command has been executed.
+Live use still requires the planned preflight and ownership integration.
+
+The fourth slice adds metadata-only `managedNamespacePreflight`. It inspects
+only fixed host paths after the CI/nonroot guard, validating protected canonical
+ancestors, root-owned executables, the systemd boot marker/socket and the cgroup
+v2 filesystem/interface metadata. Only sudo may carry its required setuid bit.
+It opens no files or sockets and runs no commands. The original readiness
+deadline covers all metadata calls and the final return; a late pending call
+cannot continue inspection or yield success. A metadata receipt is not sudo
+authorization, live manager reachability, feature support or cleanup evidence.
+The injected tests do not inspect the actual host or change its configuration.
+
+The fifth slice extracts the existing observation child lifecycle into internal
+`managedNamespaceCommand`; the show-only API and its tests remain unchanged.
+It adds a fixed manager Version probe and exact, noninteractive policy listings
+for the named observation/stop commands. Prepared launch binds all caller IDs
+and reuses one frozen command for authorization and execution, without retry.
+Policy listing does not guarantee execution. Successful launch means only a
+queued request, not READY, ownership, tree absence or permission to delete roots.
+All commands retain bounded output, strict decoding, exit/close/EOF and original
+deadlines. At that checkpoint stop execution remained unwired. Tests inject
+every command; no live sudo or systemd call, service, CI run or consumer
+migration was performed by this slice.
+
+The connected `managedNamespaceSession` now composes metadata, manager and exact
+policy checks, private control, accepted launch, READY and a freshly captured
+running-unit receipt before GO. The prepared launch captures that receipt
+internally; callers cannot inject it. Its private unit capability serializes
+observations and stop, requires preceding command closure and reobserves the
+same invocation/start before the one stop request. Drain seals new operations
+and includes queued work even before it has created a command child. A stop
+acknowledgement is never descendant-closure evidence. This is a trusted CI,
+never-reused-generation contract, not an atomic CAS against a hostile manager.
+
+The original clock covers the whole session. Pending manager states only allow
+another paced query; they cannot pass. Workload, valid control closure, exact
+normal wrapper exit, first failure, stop failure and command closure remain
+separate facts. The inner result does not authorize root deletion or claim
+sentinel survival, whole-tree absence, fixture readiness or a CI result.
+The outer `runManagedNamespaceExperiment` driver now composes the session with
+an independently owned sentinel, fresh before/after challenges, normal sentinel
+close and nonrecursive removal of the unchanged, empty private root. The
+sentinel's original deadline also triggers one handle-scoped emergency stop
+while the session is pending. Kill acceptance is not a close receipt. First
+session failure, inner cleanup and outer cleanup remain separate. No production
+diagnostics or backup include this test-private state.
+
+`managedNamespaceResult` writes and reads a bounded, canonical single JSON line
+(`schemaVersion=1`, `evidence=boundedManagedPidNamespaceOnly`). The reader requires
+the expected consumer, checkout SHA, run ID and attempt and rejects contradictory
+facts, unknown fields, duplicate keys and trailing bytes. `namespaceOutcome`
+describes only this bounded namespace protocol; complete evidence additionally
+requires the sentinel, root cleanup and error-free outer chain. Missing or
+invalid evidence fails the caller; it is not replaced by invented no-launch facts.
+The old user-namespace schema 3 and its failed evidence remain unchanged.
+
+The default-off `linux_managed_namespace_experiment` manual CI input adds the
+trial only after the existing system/web test has passed. Failure remains a
+failed job, not a successful skip. Injected tests cover the driver and readback;
+the real manager trial, Chromium compatibility and consumer migration remain
+unverified. Do not enable both old and new experiment flags for the LM trial.
+
+Use the [current continuation entry](../../../../docs/architecture/release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+for the next task. Historical experiments do not substitute for actual fixture
+migration and removal of the replaced active ownership path after equivalent
+coverage. Feature tests continue to use the common fixtures, not these
+platform-specific experiments or diagnostic schemas.

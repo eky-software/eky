@@ -5,12 +5,10 @@ import {
   mkdirSync,
   readFileSync,
 } from 'node:fs';
-import { spawn } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import {
-  _electron as electron,
   request as requestFactory,
   test as base,
   type APIRequestContext,
@@ -24,12 +22,19 @@ import {
   resolveElectronE2eApplicationPath,
   type ElectronE2eRuntime,
 } from '../environment/createElectronE2eRuntime.js';
-import { assertElectronLaunchPrerequisites } from '../environment/assertElectronLaunchPrerequisites.js';
+import { assertElectronLaunchPlatform, assertElectronLaunchPrerequisites } from '../environment/assertElectronLaunchPrerequisites.js';
 import { createElectronEnvironment } from '../environment/createElectronEnvironment.js';
 import { listElectronE2eProfileDirectories } from '../environment/createElectronE2eProfile.js';
 import { createE2eRunRoot } from '../environment/createE2eRunRoot.js';
 import { createE2eWorkerPaths } from '../environment/createE2eWorkerPaths.js';
 import type { E2eWorkerPaths } from '../environment/e2eEnvironmentTypes.js';
+import { createE2eFixtureLifetime } from '../environment/e2eFixtureLifetime.js';
+import { DirectElectronRunFailure, runOwnedWindowsElectron } from '../environment/runOwnedWindowsElectron.js';
+import {
+  startOwnedWindowsElectronBridge,
+  type ElectronBridgeCleanupEvidence,
+  type OwnedWindowsElectronBridge,
+} from '../environment/startOwnedWindowsElectronBridge.js';
 import {
   E2eBackendStartupFailure,
   type E2eBackendStartupFailureEvidence,
@@ -45,16 +50,15 @@ import {
   type ElectronWorkspaceBackupFixture,
 } from '../workspaces/createElectronWorkspaceBackupFixture.js';
 import { readE2eScenarioId } from './readE2eScenarioId.js';
+import { closeOwnedWindowsElectronRuntime } from './closeOwnedWindowsElectronRuntime.js';
 import {
-  closeOwnedElectronRuntime,
-  stopOwnedElectronRuntime,
-} from './stopOwnedElectronRuntime.js';
-import {
-  captureElectronStartupObservation,
   launchElectronRuntime,
   type ElectronLaunchObservation,
   type ElectronStartupCapture,
 } from './launchElectronRuntime.js';
+import { createElectronLaunchFailureCapture, readObservedElectronLaunchExitCode } from './captureElectronLaunchFailure.js';
+import type { ElectronBackendStartupLogsCapture } from './captureElectronBackendStartupLogs.js';
+import type { ElectronNativeStartupFailureCapture } from './captureElectronNativeStartupFailure.js';
 import { ELECTRON_E2E_PROCESS_CONNECT_TIMEOUT_MILLISECONDS } from './electronLaunchBudgets.js';
 import { captureFirstStartProof } from './captureFirstStartProof.js';
 import type { FirstStartProofCapture } from '../../../desktop/e2e/workspaceFirstStartProofObservation.js';
@@ -85,6 +89,7 @@ interface IsolatedElectronFixtures {
 }
 
 interface IsolatedElectronOptions {
+  e2eContainmentTimeoutMilliseconds: number | undefined;
   e2eDialogMode: 'accept' | 'cancel';
   e2eNativeOpenDialogMode: 'accept' | 'cancel';
   e2eNativeOpenDialogPurpose:
@@ -94,25 +99,19 @@ interface IsolatedElectronOptions {
   e2eWorkspaceBackupFixture: 'activeReplacement' | 'none' | 'synthetic';
 }
 
-type ElectronChildProcess = ReturnType<typeof spawn> & {
-  on(event: 'error', listener: (error: Error) => void): ElectronChildProcess;
-  on(
-    event: 'exit',
-    listener: (code: number | null) => void,
-  ): ElectronChildProcess;
-};
-
 const MAX_ELECTRON_LAUNCH_OBSERVATIONS = 64;
 
 export const test = base.extend<
   IsolatedElectronFixtures & IsolatedElectronOptions
 >({
+  e2eContainmentTimeoutMilliseconds: [undefined, { option: true }],
   e2eDialogMode: ['accept', { option: true }],
   e2eNativeOpenDialogMode: ['accept', { option: true }],
   e2eNativeOpenDialogPurpose: ['invoicePdfArchive', { option: true }],
   e2eWorkspaceBackupFixture: ['none', { option: true }],
   e2eElectron: async (
     {
+      e2eContainmentTimeoutMilliseconds,
       e2eDialogMode,
       e2eNativeOpenDialogMode,
       e2eNativeOpenDialogPurpose,
@@ -121,6 +120,10 @@ export const test = base.extend<
     use,
     testInfo,
   ) => {
+    assertElectronLaunchPlatform();
+    const lifetime = createE2eFixtureLifetime(
+      e2eContainmentTimeoutMilliseconds === undefined ? testInfo.timeout : e2eContainmentTimeoutMilliseconds,
+    );
     const scenarioId = readE2eScenarioId(testInfo.title);
     const runRoot = createE2eRunRoot();
     const paths = createE2eWorkerPaths(runRoot, scenarioId);
@@ -145,6 +148,7 @@ export const test = base.extend<
       prepare: async () =>
         e2eWorkspaceBackupFixture === 'synthetic'
           ? await createElectronWorkspaceBackupFixture({
+              lifetime,
               backupPath: join(
                 paths.artifactsRoot,
                 'workspace-import-source.ekybackup',
@@ -153,6 +157,7 @@ export const test = base.extend<
             })
           : e2eWorkspaceBackupFixture === 'activeReplacement'
             ? await createElectronActiveWorkspaceReplacementFixture({
+                lifetime,
                 backupPath: join(
                   paths.artifactsRoot,
                   'active-workspace-replacement.ekybackup',
@@ -193,49 +198,65 @@ export const test = base.extend<
     }
     let api: APIRequestContext | undefined;
     let electronApp: ElectronApplication | undefined;
-    let electronProcess: ReturnType<ElectronApplication['process']> | undefined;
+    let windowsBridge: OwnedWindowsElectronBridge | undefined;
+    let ownership: Readonly<ElectronBridgeCleanupEvidence> | undefined;
+    let applicationClosed = false;
     let connectionPending = false;
     let runtimeCleanupUnverified = false;
     let portReleaseUnverified = false;
     let failure: { error: unknown } | undefined;
     const launchObservations: ElectronLaunchObservation[] = [];
     let observationsTruncated = false;
-    let finishStartupCapture: () => ElectronStartupCapture =
-      () => ({ status: 'notRequested' });
+    const launchFailureCapture = createElectronLaunchFailureCapture();
     let firstStartProof: FirstStartProofCapture = { status: 'notRequested' };
 
     async function launchCurrentRuntime() {
+      if (windowsBridge !== undefined || runtimeCleanupUnverified || portReleaseUnverified) {
+        throw new Error('E2E_ELECTRON_RUNTIME_CLEANUP_UNVERIFIED');
+      }
       assertElectronRuntimeLaunchPrerequisites(runtime, runRoot);
       connectionPending = true;
       electronApp = undefined;
-      electronProcess = undefined;
+      applicationClosed = false;
+      ownership = undefined;
       return launchElectronRuntime({
-        launch: () =>
-          electron.launch({
-            args: [resolveElectronE2eApplicationPath()],
-            cwd: runRoot,
-            env: createElectronEnvironment({
+        async launch() {
+          // Retain cleanup ownership before awaiting Playwright admission.
+          windowsBridge = startOwnedWindowsElectronBridge({
+            repositoryRoot: resolve(import.meta.dirname, '../../../..'),
+            runRoot,
+            runtimeRoot: runtime.runtimeRoot,
+            runtimeConfigPath: runtime.configPath,
+            environment: createElectronEnvironment({
               configPath: runtime.configPath,
               profile: runtime.profile,
               runRoot: runtime.runtimeRoot,
             }),
-            executablePath: resolveElectronE2eExecutable(),
-            timeout: ELECTRON_E2E_PROCESS_CONNECT_TIMEOUT_MILLISECONDS,
-          }),
+            lifetime,
+            startupDeadline: performance.now() + ELECTRON_E2E_PROCESS_CONNECT_TIMEOUT_MILLISECONDS,
+            redactedValues: [runtime.sessionSecret],
+          });
+          return windowsBridge.application;
+        },
+        readWorkloadState: () => windowsBridge?.readObservedWorkloadState() ?? 'unavailable',
         connected(application, child) {
           electronApp = application;
-          electronProcess = child;
           connectionPending = false;
+          application.on('close', () => { applicationClosed = true; });
           child.stdout?.resume();
           child.stderr?.resume();
         },
         observe(observation) {
-          if (observation.status === 'failed' && electronApp !== undefined) {
-            const application = electronApp;
-            finishStartupCapture = captureElectronStartupObservation(
-              () => readElectronStartupObservation(application),
-            );
-          }
+          const application = electronApp;
+          launchFailureCapture.observe(observation, {
+            runRoot,
+            artifactsRoot: paths.artifactsRoot,
+            userDataPath: runtime.userDataPath,
+            runtimeInstanceId: runtime.runtimeInstanceId,
+          }, () => application === undefined
+            ? Promise.resolve(undefined)
+            : readElectronStartupObservation(application),
+          readObservedElectronLaunchExitCode(windowsBridge));
           if (launchObservations.length < MAX_ELECTRON_LAUNCH_OBSERVATIONS) {
             launchObservations.push(observation);
           } else {
@@ -247,16 +268,22 @@ export const test = base.extend<
 
     async function closeCurrentRuntime(alreadyClosed = false): Promise<void> {
       try {
-        if (electronApp !== undefined) {
-          if (electronProcess === undefined) {
-            throw new Error('E2E_ELECTRON_RUNTIME_CLEANUP_UNVERIFIED');
+        if (windowsBridge !== undefined) {
+          try {
+            await closeOwnedWindowsElectronRuntime({
+              ...(electronApp === undefined ? {} : { application: electronApp }),
+              alreadyClosed: alreadyClosed || applicationClosed,
+              owner: windowsBridge,
+              lifetime,
+            });
+          } finally {
+            ownership = windowsBridge.readCleanupEvidence();
           }
-          const closeRuntime = alreadyClosed
-            ? stopOwnedElectronRuntime
-            : closeOwnedElectronRuntime;
-          await closeRuntime(electronApp, electronProcess);
+          windowsBridge = undefined;
           electronApp = undefined;
-          electronProcess = undefined;
+          connectionPending = false;
+        } else if (electronApp !== undefined) {
+          throw new Error('E2E_ELECTRON_RUNTIME_CLEANUP_UNVERIFIED');
         }
         if (connectionPending || runtimeCleanupUnverified) {
           throw new Error('E2E_ELECTRON_RUNTIME_CLEANUP_UNVERIFIED');
@@ -307,8 +334,17 @@ export const test = base.extend<
       const harness: IsolatedElectronHarness = {
         api,
         electronApp: launched.electronApp,
-        launchSecondInstance: () =>
-          launchSecondElectronInstance(runtime, runRoot),
+        async launchSecondInstance() {
+          if (runtimeCleanupUnverified) throw new Error('E2E_ELECTRON_RUNTIME_CLEANUP_UNVERIFIED');
+          try {
+            await runOwnedWindowsElectron({ runtime, runRoot, lifetime, timeoutMilliseconds: 15_000, expectedExitCode: 0 });
+          } catch (error) {
+            if (error instanceof DirectElectronRunFailure && error.processTree !== 'stopped') {
+              runtimeCleanupUnverified = true;
+            }
+            throw error;
+          }
+        },
         page: launched.page,
         paths,
         async performRelaunchingOperation(operation) {
@@ -396,7 +432,8 @@ export const test = base.extend<
               launch: launchObservations,
               observationsTruncated,
               cleanup,
-              startupCapture: finishStartupCapture(),
+              ...(ownership === undefined ? {} : { ownership }),
+              ...launchFailureCapture.finish(),
               ...(firstStartProof.status === 'notRequested' ? {} : { firstStartProof }),
             });
           }
@@ -465,8 +502,12 @@ export async function reportElectronLifecycleEvidence(
     observationsTruncated: boolean;
     cleanup: Readonly<ElectronCleanupResult>;
     startupCapture?: ElectronStartupCapture;
+    backendStartupLogs?: ElectronBackendStartupLogsCapture;
+    nativeStartupFailure?: ElectronNativeStartupFailureCapture;
+    launchExitCode?: number | null;
     firstStartProof?: FirstStartProofCapture;
     preparation?: ElectronPreparationFailureEvidence;
+    ownership?: Readonly<ElectronBridgeCleanupEvidence>;
   },
 ): Promise<void> {
   const path = testInfo.outputPath('electron-lifecycle.json');
@@ -479,8 +520,12 @@ export async function reportElectronLifecycleEvidence(
       observationsTruncated: evidence.observationsTruncated,
       cleanup: evidence.cleanup,
       startupCapture: evidence.startupCapture ?? { status: 'notRequested' },
+      ...(evidence.backendStartupLogs === undefined ? {} : { backendStartupLogs: evidence.backendStartupLogs }),
+      ...(evidence.nativeStartupFailure === undefined ? {} : { nativeStartupFailure: evidence.nativeStartupFailure }),
+      ...(evidence.launchExitCode === undefined ? {} : { launchExitCode: evidence.launchExitCode }),
       ...(evidence.firstStartProof === undefined ? {} : { firstStartProof: evidence.firstStartProof }),
       ...(evidence.preparation === undefined ? {} : { preparation: evidence.preparation }),
+      ...(evidence.ownership === undefined ? {} : { ownership: evidence.ownership }),
     }),
     { encoding: 'utf8', flag: 'wx', mode: 0o600 },
   );
@@ -626,51 +671,6 @@ function countWorkspaceRelaunchRequests(observationsPath: string): number {
     }
   }
   return count;
-}
-
-function launchSecondElectronInstance(
-  runtime: ElectronE2eRuntime,
-  runRoot: string,
-): Promise<void> {
-  assertElectronRuntimeLaunchPrerequisites(runtime, runRoot);
-  return new Promise((resolveLaunch, rejectLaunch) => {
-    const child = spawn(
-      resolveElectronE2eExecutable(),
-      [resolveElectronE2eApplicationPath()],
-      {
-        cwd: runRoot,
-        env: createElectronEnvironment({
-          configPath: runtime.configPath,
-          profile: runtime.profile,
-          runRoot: runtime.runtimeRoot,
-        }),
-        shell: false,
-        stdio: 'ignore',
-        windowsHide: true,
-      },
-    ) as ElectronChildProcess;
-    const timer = setTimeout(() => {
-      child.kill();
-      rejectLaunch(new Error('Second Electron instance did not exit.'));
-    }, 15_000);
-
-    child.on('error', (error: Error) => {
-      clearTimeout(timer);
-      rejectLaunch(error);
-    });
-    child.on('exit', (code: number | null) => {
-      clearTimeout(timer);
-      if (code === 0) {
-        resolveLaunch();
-        return;
-      }
-      rejectLaunch(
-        new Error(
-          `Second Electron instance exited with code ${String(code)}.`,
-        ),
-      );
-    });
-  });
 }
 
 function assertElectronRuntimeLaunchPrerequisites(

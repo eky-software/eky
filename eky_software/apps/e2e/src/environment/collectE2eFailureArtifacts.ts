@@ -9,14 +9,14 @@ import { join } from 'node:path';
 import type { TestInfo } from '@playwright/test';
 
 import type { E2eWorkerPaths } from './e2eEnvironmentTypes.js';
-import type { ManagedProcess } from './startManagedProcess.js';
+import type { ProcessOutput } from './boundedProcessOutput.js';
 import { collectFailureArtifacts } from './collectFailureArtifacts.js';
 
 export async function collectE2eFailureArtifacts(input: {
   paths: E2eWorkerPaths;
   processes: readonly {
     artifactName: string;
-    managedProcess: ManagedProcess;
+    managedProcess: ProcessOutput;
   }[];
   runRoot: string;
   scenarioId: string;

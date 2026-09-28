@@ -155,11 +155,19 @@ describe('createSupportBundleArchive', () => {
   });
 
   it('trims diagnostics first when core headroom makes the final document exceed the limit', () => {
-    const diagnosticEvents = Array.from({ length: 170 }, (_, index) =>
-      createDiagnosticEvent(index, 98_000),
+    // Exercise the real byte boundary with a small prefix search. The section
+    // test above separately covers many records and both section limits.
+    const diagnosticEvents = Array.from({ length: 8 }, (_, index) =>
+      createDiagnosticEvent(
+        index,
+        supportBundleSizeBudget.diagnosticEventsBytes / 8 - 1024,
+      ),
     );
-    const incidentSummaries = Array.from({ length: 40 }, (_, index) =>
-      createIncidentSummary(index, 95_000),
+    const incidentSummaries = Array.from({ length: 2 }, (_, index) =>
+      createIncidentSummary(
+        index,
+        supportBundleSizeBudget.incidentSummariesBytes / 2 - 1024,
+      ),
     );
     const input = createArchiveInput({
       diagnosticEvents,
@@ -168,18 +176,28 @@ describe('createSupportBundleArchive', () => {
     input.backendData.runtimeSummary.nodeVersion = `v${'x'.repeat(
       6 * 1024 * 1024,
     )}`;
+    expect(Buffer.byteLength(JSON.stringify(diagnosticEvents))).toBeLessThan(
+      supportBundleSizeBudget.diagnosticEventsBytes,
+    );
+    expect(Buffer.byteLength(JSON.stringify(incidentSummaries))).toBeLessThan(
+      supportBundleSizeBudget.incidentSummariesBytes,
+    );
     const archive = createSupportBundleArchive(input);
-    const document = readArchiveDocument(archive);
     const uncompressed = gunzipSync(archive.compressed);
+    const document = JSON.parse(uncompressed.toString('utf8')) as ArchiveDocument;
 
     expect(uncompressed.byteLength).toBeLessThanOrEqual(
       supportBundleSizeBudget.maximumUncompressedBytes,
     );
-    expect(document.diagnosticEvents.length).toBeLessThan(
-      diagnosticEvents.length,
-    );
-    expect(document.incidentSummaries.length).toBe(
-      incidentSummaries.length,
+    expect(document.diagnosticEvents).toEqual(diagnosticEvents.slice(0, 7));
+    expect(document.incidentSummaries).toEqual(incidentSummaries);
+    expect(document.manifest.truncatedSections).toEqual(['diagnosticEvents']);
+    // Adding the next record must cross the total (not section) boundary.
+    expect(Buffer.byteLength(JSON.stringify({
+      ...document,
+      diagnosticEvents,
+    }))).toBeGreaterThan(
+      supportBundleSizeBudget.maximumUncompressedBytes,
     );
     expect(document.operationalSummary.eventCount).toBe(
       document.diagnosticEvents.length,

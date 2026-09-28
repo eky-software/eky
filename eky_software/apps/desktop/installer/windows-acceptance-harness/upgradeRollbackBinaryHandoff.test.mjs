@@ -6,6 +6,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { coordinateUpgradeRollbackBinaryHandoff } from './upgradeRollbackBinaryHandoff.mjs';
+import { runBoundedWindowsAdapterProcess } from './boundedWindowsAdapterProcess.mjs';
 
 const LAUNCHER_FIXTURE_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -146,17 +147,146 @@ test('binary rollback rejects an invalid progress waiter and releases the launch
   assert.equal(releaseCount, 1);
 });
 
+const LAUNCHER_TEST_TIMEOUT = 5_000;
+const LAUNCHER_CLEANUP_RESERVE = 1_000;
+
 test('launcher fixture stays alive until its exact release message', {
-  timeout: 5_000,
-}, async () => {
-  const child = spawn(process.execPath, [LAUNCHER_FIXTURE_PATH], {
-    stdio: ['pipe', 'ignore', 'ignore'],
-    windowsHide: true,
-  });
-  await once(child, 'spawn');
-  assert.equal(child.exitCode, null);
-  child.stdin.end('release\n');
-  const [exitCode, signal] = await once(child, 'close');
-  assert.equal(exitCode, 0);
-  assert.equal(signal, null);
+  timeout: LAUNCHER_TEST_TIMEOUT,
+}, async (context) => {
+  const fixture = startLauncherTestProcess(context);
+  try {
+    await fixture.ready;
+    assert.equal(fixture.child.exitCode, null);
+    await fixture.release('release\n');
+    assert.deepEqual(await fixture.completion, {
+      status: 'completed', resultCode: 'processCompleted', exitCode: 0, directProcessAbsent: true,
+    });
+  } finally {
+    await fixture.stop();
+  }
 });
+
+test('launcher fixture closes after an assertion without replacing the original error', {
+  timeout: LAUNCHER_TEST_TIMEOUT,
+}, async (context) => {
+  const fixture = startLauncherTestProcess(context);
+  const original = new assert.AssertionError({ message: 'synthetic handoff assertion' });
+  await assert.rejects(async () => {
+    try {
+      await fixture.ready;
+      throw original;
+    } finally {
+      await fixture.stop();
+    }
+  }, error => error === original);
+  const result = await fixture.completion;
+  assert.equal(result.resultCode, 'cancelled');
+  assert.equal(result.directProcessAbsent, true);
+});
+
+test('launcher fixture timeout waits for actual close within the original test budget', {
+  timeout: LAUNCHER_TEST_TIMEOUT,
+}, async (context) => {
+  const fixture = startLauncherTestProcess(context);
+  try {
+    await fixture.ready;
+    const result = await fixture.completion;
+    assert.equal(result.status, 'failed');
+    assert.equal(result.resultCode, 'timedOut');
+    assert.equal(result.directProcessAbsent, true);
+  } finally {
+    await fixture.stop();
+  }
+});
+
+test('launcher fixture abort closes its exact child', {
+  timeout: LAUNCHER_TEST_TIMEOUT,
+}, async (context) => {
+  const fixture = startLauncherTestProcess(context);
+  try {
+    await fixture.ready;
+    const result = await fixture.stop();
+    assert.equal(result.status, 'failed');
+    assert.equal(result.resultCode, 'cancelled');
+    assert.equal(result.directProcessAbsent, true);
+  } finally {
+    await fixture.stop();
+  }
+});
+
+test('launcher fixture rejects an inexact release and still observes close', {
+  timeout: LAUNCHER_TEST_TIMEOUT,
+}, async (context) => {
+  const fixture = startLauncherTestProcess(context);
+  try {
+    await fixture.ready;
+    await fixture.release('invalid\n');
+    assert.deepEqual(await fixture.completion, {
+      status: 'completed', resultCode: 'processCompleted', exitCode: 65, directProcessAbsent: true,
+    });
+  } finally {
+    await fixture.stop();
+  }
+});
+
+test('launcher fixture preserves a failed release write and still closes', {
+  timeout: LAUNCHER_TEST_TIMEOUT,
+}, async (context) => {
+  const fixture = startLauncherTestProcess(context);
+  let releaseError;
+  await assert.rejects(async () => {
+    try {
+      await fixture.ready;
+      fixture.child.stdin.destroy();
+      try { await fixture.release('release\n'); }
+      catch (error) { releaseError = error; throw error; }
+    } finally {
+      await fixture.stop();
+    }
+  }, error => error === releaseError && error?.code === 'ERR_STREAM_DESTROYED');
+  assert.equal((await fixture.completion).directProcessAbsent, true);
+});
+
+// This fixture is childless. Reuse the existing direct-process boundary;
+// do not give this isolated contract test another process-tree supervisor.
+function startLauncherTestProcess(context) {
+  const controller = new AbortController();
+  const events = [];
+  let child;
+  let ready;
+  let streamError;
+  const completion = runBoundedWindowsAdapterProcess({
+    command: process.execPath,
+    arguments: [LAUNCHER_FIXTURE_PATH],
+    cwd: dirname(LAUNCHER_FIXTURE_PATH),
+    signal: AbortSignal.any([controller.signal, context.signal]),
+    timeoutMilliseconds: LAUNCHER_TEST_TIMEOUT - LAUNCHER_CLEANUP_RESERVE,
+    terminationTimeoutMilliseconds: LAUNCHER_CLEANUP_RESERVE,
+    spawnProcess(command, arguments_, options) {
+      child = spawn(command, arguments_, { ...options, stdio: ['pipe', 'ignore', 'ignore'] });
+      ready = once(child, 'spawn');
+      void ready.catch(() => {});
+      child.stdin.on('error', error => { streamError ??= error; });
+      child.once('exit', () => events.push('exit'));
+      child.once('close', () => events.push('close'));
+      return child;
+    },
+  });
+  const stop = async () => { controller.abort(); return completion; };
+  // The hook also runs when the test framework aborts before the body finishes.
+  // Its cleanup assertion is separate from the body's original failure.
+  context.after(async () => {
+    const result = await stop();
+    assert.equal(result.directProcessAbsent, true, 'launcher cleanup unverified');
+    assert.deepEqual(events, ['exit', 'close']);
+    if (streamError) assert.equal(streamError.code, 'ERR_STREAM_DESTROYED');
+  });
+  return {
+    child, ready, completion, stop,
+    release(message) {
+      return new Promise((resolveRelease, rejectRelease) => {
+        child.stdin.end(message, error => error ? rejectRelease(error) : resolveRelease());
+      });
+    },
+  };
+}

@@ -3,6 +3,7 @@ import {
 } from './workspaceFaultContracts.mjs';
 import { requireWorkspaceInstalledState } from './workspaceInstalledState.mjs';
 import { hasWorkspaceSuccessExactKeys } from './workspaceSuccessContracts.mjs';
+import { observeWorkspaceInstallation } from './workspaceInstallationObservation.mjs';
 
 export async function executeWorkspaceFaultLifecycle(faultScenario, runtime) {
   const plan = workspaceFaultPlan(faultScenario);
@@ -40,6 +41,15 @@ export async function executeWorkspaceFaultLifecycle(faultScenario, runtime) {
     requireWorkspaceInstalledState(await runtime.inspectState(), role, runtime.versions);
     await runtime.validatePayload(role);
   }
+  async function observeInstallation(role) {
+    return observeWorkspaceInstallation(role, runtime.reportInstallationProgress, async (observation) => {
+      await observation.step('installationWait', () => runtime.waitForInstallation(role, observation));
+      await observation.step('installedState', async () =>
+        requireWorkspaceInstalledState(await runtime.inspectState(), role, runtime.versions));
+      await observation.step('payload', () => runtime.validatePayload(role));
+      await observation.step('artifactFixture', runtime.verifyArtifact);
+    });
+  }
   async function proof(phase, status) {
     await step(phase, phase === 'sourceHandoff' ? 'sourceHandoffFailed' : 'faultProofFailed', async () => {
       const result = await runtime.runProofPhase(phase, status);
@@ -68,9 +78,7 @@ export async function executeWorkspaceFaultLifecycle(faultScenario, runtime) {
     if (faultScenario !== 'preUpdateRecoveryPointFailure') {
       await step('targetInstall', 'targetInstallFailed', async () => {
         // Main owns both upgrade and rollback handoffs. The worker only observes.
-        await runtime.waitForInstallation('target');
-        await installed('target');
-        await runtime.verifyArtifact();
+        await observeInstallation('target');
       });
     }
     switch (faultScenario) {
@@ -79,9 +87,7 @@ export async function executeWorkspaceFaultLifecycle(faultScenario, runtime) {
         await proof('targetFirstStartFailure', 'relaunching');
         await proof('businessRollback', 'relaunching');
         await step('sourceRollbackInstall', 'sourceRollbackInstallFailed', async () => {
-          await runtime.waitForInstallation('source');
-          await installed('source');
-          await runtime.verifyArtifact();
+          await observeInstallation('source');
         });
         await proof('rollbackFirstStart', 'completed');
         break;

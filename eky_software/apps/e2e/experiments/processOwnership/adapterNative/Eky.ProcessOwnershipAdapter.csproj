@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>Eky.ProcessOwnershipAdapter</AssemblyName>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <UseAppHost>true</UseAppHost>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <RestoreConfigFile>$(MSBuildThisFileDirectory)NuGet.Config</RestoreConfigFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../../../desktop/installer/windows-process-supervisor/NativeMethods.cs" Link="Existing/NativeMethods.cs" />
+    <Compile Include="../../../../desktop/installer/windows-process-supervisor/WindowsJob.cs" Link="Existing/WindowsJob.cs" />
+    <Compile Include="../../../../desktop/installer/windows-process-supervisor/WindowsCommandLine.cs" Link="Existing/WindowsCommandLine.cs" />
+    <Compile Include="../../../../desktop/installer/windows-process-supervisor/SupervisorContracts.cs" Link="Existing/SupervisorContracts.cs" />
+  </ItemGroup>
+</Project>

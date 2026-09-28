@@ -64,7 +64,7 @@ Mahdollisia laajennuksia:
 - työmaakohtainen dokumentointi
 - materiaalien seuranta
 - raportointi
-- tarjoushallinta
+- tarjoushallinta: tarjousten laatiminen ja lähettäminen
 - varastonhallinta
 - kirjanpitointegraatiot
 - AI-agentit

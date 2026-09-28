@@ -17,6 +17,13 @@ Mandatory boundaries:
 - use only synthetic data and loopback hosts
 - keep every database, document, log, incident, temp and support path under
   the test-specific OS temp root
+- the approved shared Chromium worker keeps only its browser profile, temp
+  and control files in a separate worker OS temp root; each test still owns
+  its context and business/service data. Follow the
+  [worker ownership decision](../../docs/architecture/e2e-test-environment.md#chromiumin-kuluttajasiirron-avoin-omistajuusraja):
+  delete test data only after its context and services close, and delete the
+  worker root only after verified process-tree cleanup. Uncertain cleanup
+  fails the run and must not become a fresh worker's successful retry.
 - refuse to run unless `EKY_E2E=1` and all safety guards pass
 - never use `%APPDATA%\Eky`, repository storage, real SMTP, DNS, credentials,
   production sessions or customer/invoice data

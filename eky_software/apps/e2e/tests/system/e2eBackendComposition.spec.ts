@@ -16,20 +16,27 @@ import {
 } from '../../../backend/src/modules/invoicing/ports/invoiceSmtpDeliveryProvider.js';
 import { createE2eRunRoot } from '../../src/environment/createE2eRunRoot.js';
 import { createE2eWorkerPaths } from '../../src/environment/createE2eWorkerPaths.js';
+import { createE2eFixtureLifetime } from '../../src/environment/e2eFixtureLifetime.js';
+import { removeE2eRunRoot } from '../../src/environment/removeE2eRunRoot.js';
 import { reserveLoopbackPort } from '../../src/environment/reserveLoopbackPort.js';
-import { startE2eBackendProcess } from '../../src/environment/startE2eBackendProcess.js';
+import { E2eBackendStartupFailure, startE2eBackendProcess } from '../../src/environment/startE2eBackendProcess.js';
+import { waitForLoopbackPortRelease } from '../../src/environment/waitForLoopbackPortRelease.js';
 import { writeE2eBackendConfig } from '../../src/environment/writeE2eBackendConfig.js';
+import { finishServiceFixture } from '../../src/fixtures/finishServiceFixture.js';
 
 test.describe('isolated E2E backend composition', () => {
-  test('boots the real backend with an isolated database and local session', async () => {
+  test('boots the real backend with an isolated database and local session', async ({}, testInfo) => {
+    const lifetime = createE2eFixtureLifetime(testInfo.timeout);
     const runRoot = createE2eRunRoot();
     const paths = createE2eWorkerPaths(runRoot, 'SYS-BOOT-001');
     const backendPort = await reserveLoopbackPort();
     let backend: Awaited<ReturnType<typeof startE2eBackendProcess>> | undefined;
+    let failure: { error: unknown } | undefined;
 
     try {
       backend = await startE2eBackendProcess({
         backendPort,
+        lifetime,
         paths,
         runRoot,
         scenarioId: 'SYS-BOOT-001',
@@ -65,15 +72,42 @@ test.describe('isolated E2E backend composition', () => {
         customers: [],
       });
       expect(existsSync(paths.databaseFilePath)).toBe(true);
+      expect(await backend.workload.readState()).toBe('running');
+      expect(backend.workload.instanceId).toMatch(/^[a-f0-9-]{36}$/u);
+      expect(await backend.workload.readRssBytes()).toBeGreaterThan(0);
       expect(backend.managedProcess.readStdout()).not.toContain(
         backend.sessionSecret,
       );
       expect(backend.managedProcess.readStderr()).not.toContain(
         backend.sessionSecret,
       );
+    } catch (error) {
+      failure = { error };
     } finally {
-      await backend?.stop();
-      rmSync(runRoot, { force: true, recursive: true });
+      const verifiedStartupCleanup = failure?.error instanceof E2eBackendStartupFailure &&
+        failure.error.evidence.cleanup.processTree === 'stopped' &&
+        failure.error.evidence.cleanup.port === 'released';
+      await finishServiceFixture({
+        failure,
+        priorCleanupUnverified: backend === undefined && !verifiedStartupCleanup,
+        testAlreadyFailed: testInfo.status !== testInfo.expectedStatus,
+        disposeApi: async () => {},
+        ...(backend === undefined ? {} : { stopBackend: async () => {
+          await backend!.stop();
+          expect(await backend!.workload.readState()).toBe('exited');
+          await expect(backend!.workload.readRssBytes()).rejects.toThrow('E2E_BACKEND_RSS_UNAVAILABLE');
+        } }),
+        releaseBackendPort: () => waitForLoopbackPortRelease(backendPort),
+        collectArtifacts: async () => {},
+        removeRoot: () => removeE2eRunRoot(runRoot),
+        report: async cleanup => {
+          if (failure !== undefined || cleanup.runRoot !== 'removed') {
+            await testInfo.attach('backend-composition-cleanup', {
+              body: JSON.stringify({ schemaVersion: 1, cleanup }), contentType: 'application/json',
+            });
+          }
+        },
+      });
     }
   });
 

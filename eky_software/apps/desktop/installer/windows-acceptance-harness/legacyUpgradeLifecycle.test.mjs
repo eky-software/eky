@@ -166,9 +166,13 @@ test('legacy failed MSI stays failed when process progress reporting throws', as
   assert.equal(result.targetFirstStartupValidated, false);
 });
 
-for (const [name, content, exitCode, reason, stage, status] of [
+for (const [name, content, exitCode, reason, stage, status, failureClass = 'notReported'] of [
   ['reported failure', { stage: 'backend', status: 'failed', code: 'PRIVATE_FAILURE_DETAIL' },
-    1, 'applicationReportedFailure', 'backend', 'failed'],
+    1, 'applicationReportedFailure', 'backend', 'failed', 'unclassified'],
+  ['backend readiness timeout', { stage: 'backend', status: 'failed', code: 'BACKEND_READINESS_TIMEOUT' },
+    1, 'applicationReportedFailure', 'backend', 'failed', 'backendReadinessTimeout'],
+  ['backend exited before ready', { stage: 'backend', status: 'failed', code: 'BACKEND_EXITED_BEFORE_READY' },
+    1, 'applicationReportedFailure', 'backend', 'failed', 'backendExitedBeforeReady'],
   ['invalid result', '{\n', 0, 'resultInvalid', 'unknown', 'unknown'],
   ['incomplete result at exit', '{', 0, 'processExitedEarly', 'unknown', 'unknown'],
   ['nonzero exit after result', { stage: 'restoreRestart', status: 'started' },
@@ -207,11 +211,12 @@ for (const [name, content, exitCode, reason, stage, status] of [
       const evidence = entries.find(entry => entry.phase === 'sourcePackagedSmoke' && entry.status === 'failed');
       assert.deepEqual(Object.keys(evidence).sort(), [
         'durationMs', 'elapsedMs', 'errorCode', 'operation', 'phase', 'scenario',
-        'schemaVersion', 'smokeGeneration', 'smokeReason', 'smokeStage', 'smokeStatus', 'status',
+        'schemaVersion', 'smokeFailureClass', 'smokeGeneration', 'smokeReason', 'smokeStage', 'smokeStatus', 'status',
       ].sort());
       assert.equal(evidence.smokeReason, reason);
       assert.equal(evidence.smokeStage, stage);
       assert.equal(evidence.smokeStatus, status);
+      assert.equal(evidence.smokeFailureClass, failureClass);
       assert.equal(evidence.smokeGeneration, 'initial');
       assert.doesNotMatch(JSON.stringify({ entries, result }), /PRIVATE_FAILURE_DETAIL|private-path|private-observer/);
     }

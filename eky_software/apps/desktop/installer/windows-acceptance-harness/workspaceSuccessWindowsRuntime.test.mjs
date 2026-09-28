@@ -140,6 +140,7 @@ async function fixture(context, changes = {}) {
         if (changes.profileUnreadable) throw new Error(errorCode);
         return changes.profileResult ?? { formatVersion: 1, operation, status: 'completed' };
       }
+      await changes.inspectionRead?.({ kind: activityQuery ? 'activity' : inspectionRole, resultPath: path });
       if (activityQuery) return changes.activity?.length ? changes.activity.shift() : { schemaVersion: 1, msiClientCount: 0 };
       const installedRole = changes.installedRole ?? 'target';
       const installed = changes.noTarget !== true && inspectionRole === installedRole;
@@ -412,6 +413,216 @@ test('handoff does not query products while the MSI is already observed active',
   });
   await assert.doesNotReject(value.runtime.waitForTargetInstallation());
   assert.deepEqual(roles, ['source', 'target']);
+});
+
+const inspectionBoundaries = ['activityBefore', 'sourceProduct', 'targetProduct', 'activityAfter']
+  .flatMap((prefix) => ['Command', 'Result', 'Cleanup'].map((suffix) => `${prefix}${suffix}`));
+
+function installationObservation() {
+  const boundaries = [];
+  const results = new Map();
+  const failures = new Map();
+  return { boundaries, results, failures, observation: {
+    async step(boundary, task) {
+      boundaries.push(boundary);
+      try {
+        const result = await task();
+        results.set(boundary, result);
+        return result;
+      } catch (error) { failures.set(boundary, error); throw error; }
+    },
+    busy() { boundaries.push('busy'); },
+  } };
+}
+
+for (const mode of ['success', 'fault']) {
+  test(`${mode} installation observation wraps the actual commands, reads and cleanup without extra queries`, async (context) => {
+    const observed = installationObservation();
+    const resultPaths = [];
+    const productResults = new Map();
+    let commandCount = 0;
+    let currentPrefix;
+    const value = await fixture(context, {
+      ...(mode === 'fault' ? { faultScenario: 'passiveWorkspaceMigrationFailure' } : {}),
+      async inspectionCommand({ resultPath }) {
+        currentPrefix = ['activityBefore', 'sourceProduct', 'targetProduct', 'activityAfter'][commandCount++];
+        assert.equal(observed.boundaries.at(-1), `${currentPrefix}Command`);
+        assert.equal(observed.results.has(`${currentPrefix}Command`), false);
+        await writeFile(resultPath, 'synthetic inspection result');
+        resultPaths.push(resultPath);
+        return 0;
+      },
+      async inspectionRead({ resultPath }) {
+        assert.equal(observed.boundaries.at(-1), `${currentPrefix}Result`);
+        assert.equal(observed.results.get(`${currentPrefix}Command`), 0);
+        assert.equal(observed.results.has(`${currentPrefix}Result`), false);
+        await access(resultPath);
+      },
+      productObservation(role, result) { productResults.set(role, result); return result; },
+    });
+    const result = mode === 'success'
+      ? await value.runtime.waitForTargetInstallation(observed.observation)
+      : await value.runtime.waitForInstallation('target', observed.observation);
+    assert.equal(result, undefined);
+    assert.deepEqual(observed.boundaries, inspectionBoundaries);
+    assert.equal(observed.results.size, 12);
+    assert.equal(observed.failures.size, 0);
+    assert.equal(observed.results.get('sourceProductResult'), productResults.get('source'));
+    assert.equal(observed.results.get('targetProductResult'), productResults.get('target'));
+    for (const prefix of ['activityBefore', 'sourceProduct', 'targetProduct', 'activityAfter']) {
+      assert.equal(observed.results.get(`${prefix}Command`), 0);
+      assert.equal(observed.results.get(`${prefix}Cleanup`), undefined);
+    }
+    for (const path of resultPaths) await assert.rejects(access(path), { code: 'ENOENT' });
+    assert.equal(value.calls.filter((call) => call.command).length, 4);
+    assert.equal(value.calls.some((call) => call.observation || call.footprint), false);
+  });
+
+  for (const busyAt of ['before', 'after']) {
+    test(`${mode} installation observation counts only the ${busyAt}-inspection busy retry`, async (context) => {
+      const observed = installationObservation();
+      const value = await fixture(context, {
+        ...(mode === 'fault' ? { faultScenario: 'passiveWorkspaceMigrationFailure' } : {}),
+        activity: (busyAt === 'before' ? [1, 0, 0] : [0, 1, 0, 0])
+          .map((msiClientCount) => ({ schemaVersion: 1, msiClientCount })),
+        onObservation() { assert.equal(observed.boundaries.at(-1), 'nextObservation'); },
+      });
+      if (mode === 'success') await value.runtime.waitForTargetInstallation(observed.observation);
+      else await value.runtime.waitForInstallation('target', observed.observation);
+      assert.deepEqual(observed.boundaries, [
+        ...inspectionBoundaries.slice(0, busyAt === 'before' ? 3 : 12),
+        'busy', 'nextObservation', ...inspectionBoundaries,
+      ]);
+      assert.equal(value.calls.filter((call) => call.command).length, busyAt === 'before' ? 5 : 8);
+      assert.equal(value.calls.filter((call) => call.observation).length, 1);
+      assert.equal(value.calls.some((call) => call.footprint), false);
+    });
+  }
+}
+
+for (const [prefix, errorPrefix] of [
+  ['activityBefore', 'activity'], ['sourceProduct', 'source'],
+  ['targetProduct', 'target'], ['activityAfter', 'activity'],
+]) {
+  test(`${prefix} observation preserves command/read failures and cleanup precedence`, async (context) => {
+    for (const mode of ['exit', 'throw', 'read', 'cleanup', 'throwAndCleanup', 'readAndCleanup']) {
+      const observed = installationObservation();
+      const original = new Error('PRIVATE inspection failure');
+      const cleanupFails = mode === 'cleanup' || mode.endsWith('AndCleanup');
+      const commandFails = ['exit', 'throw', 'throwAndCleanup'].includes(mode);
+      const readFails = mode === 'read' || mode === 'readAndCleanup';
+      let currentPrefix;
+      let activityCount = 0;
+      let retainedPath;
+      const value = await fixture(context, {
+        faultScenario: 'passiveWorkspaceMigrationFailure',
+        async inspectionCommand({ kind, resultPath }) {
+          currentPrefix = kind === 'activity'
+            ? (++activityCount === 1 ? 'activityBefore' : 'activityAfter') : `${kind}Product`;
+          assert.equal(observed.boundaries.at(-1), `${currentPrefix}Command`);
+          if (currentPrefix !== prefix) return 0;
+          if (cleanupFails) { retainedPath = resultPath; await mkdir(resultPath); }
+          if (mode === 'throw' || mode === 'throwAndCleanup') throw original;
+          return mode === 'exit' ? 1 : 0;
+        },
+        inspectionRead() {
+          assert.equal(observed.boundaries.at(-1), `${currentPrefix}Result`);
+          if (currentPrefix === prefix && readFails) throw original;
+        },
+      });
+      const expected = commandFails ? inspectionErrors[`${errorPrefix}Command`]
+        : readFails ? inspectionErrors[`${errorPrefix}Result`] : inspectionErrors.cleanup;
+      await assert.rejects(value.runtime.waitForInstallation('target', observed.observation), { message: expected });
+      const prefixIndex = inspectionBoundaries.indexOf(`${prefix}Command`);
+      assert.deepEqual(observed.boundaries, [
+        ...inspectionBoundaries.slice(0, prefixIndex), `${prefix}Command`,
+        ...(commandFails ? [] : [`${prefix}Result`]), `${prefix}Cleanup`,
+      ]);
+      if (mode.startsWith('throw')) assert.equal(observed.failures.get(`${prefix}Command`), original);
+      if (readFails) assert.equal(observed.failures.get(`${prefix}Result`), original);
+      if (mode === 'exit') assert.equal(observed.results.get(`${prefix}Command`), 1);
+      if (cleanupFails) {
+        assert.ok(observed.failures.get(`${prefix}Cleanup`) instanceof Error);
+        await access(retainedPath);
+      }
+      assert.equal(value.calls.filter((call) => call.command).length, prefixIndex / 3 + 1);
+      assert.equal(value.calls.some((call) => call.observation || call.footprint), false);
+    }
+  });
+}
+
+test('installation observation leaves malformed results terminal rather than busy', async (context) => {
+  const observed = installationObservation();
+  const value = await fixture(context, { activity: [{ schemaVersion: 1, msiClientCount: 0, private: 'PRIVATE' }] });
+  await assert.rejects(value.runtime.waitForTargetInstallation(observed.observation), { message: inspectionErrors.activityResult });
+  assert.deepEqual(observed.boundaries, inspectionBoundaries.slice(0, 3));
+  assert.equal(value.calls.filter((call) => call.command).length, 1);
+  assert.equal(value.calls.some((call) => call.observation), false);
+});
+
+test('installation observation is optional and never retained by later waits or state inspection', async (context) => {
+  for (const mode of ['success', 'fault']) {
+    const observed = installationObservation();
+    const value = await fixture(context, mode === 'fault' ? { faultScenario: 'passiveWorkspaceMigrationFailure' } : {});
+    if (mode === 'success') await value.runtime.waitForTargetInstallation(observed.observation);
+    else await value.runtime.waitForInstallation('target', observed.observation);
+    assert.deepEqual(observed.boundaries, inspectionBoundaries);
+    observed.boundaries.length = 0;
+    if (mode === 'success') await value.runtime.waitForTargetInstallation();
+    else await value.runtime.waitForInstallation('target');
+    await value.runtime.inspectState();
+    assert.deepEqual(observed.boundaries, []);
+    assert.equal(value.calls.filter((call) => call.command).length, 12);
+    assert.equal(value.calls.filter((call) => call.footprint).length, 1);
+    assert.equal(value.calls.some((call) => call.observation), false);
+  }
+});
+
+test('rollback progress observation distinguishes pending progress from an inspected busy retry', async (context) => {
+  const observed = installationObservation();
+  const complete = completedRollbackProgress();
+  const value = await fixture(context, { faultScenario: 'activeWorkspaceFirstStartFailure', installedRole: 'source',
+    activity: [1, 0, 0].map((msiClientCount) => ({ schemaVersion: 1, msiClientCount })),
+    async onObservation({ root }) { await writeRollbackProgress(root, complete); },
+  });
+  await value.runtime.waitForInstallation('source', observed.observation);
+  assert.deepEqual(observed.boundaries, [
+    'rollbackProgressRead', 'nextObservation', 'rollbackProgressRead',
+    ...inspectionBoundaries.slice(0, 3), 'busy', 'nextObservation',
+    'rollbackProgressRead', ...inspectionBoundaries,
+  ]);
+  assert.deepEqual(observed.results.get('rollbackProgressRead'), complete);
+  assert.equal(value.calls.filter((call) => call.observation).length, 2);
+  assert.equal(value.calls.filter((call) => call.command).length, 5);
+});
+
+test('observed retry cancellation retains exact error identity for target and rollback waits', async (context) => {
+  for (const role of ['target', 'source']) {
+    const original = new Error('existingOwnerCancelled');
+    const observed = installationObservation();
+    const value = await fixture(context, { faultScenario: 'activeWorkspaceFirstStartFailure',
+      activity: [{ schemaVersion: 1, msiClientCount: 1 }], onObservation() { throw original; } });
+    await assert.rejects(value.runtime.waitForInstallation(role, observed.observation), (error) => error === original);
+    assert.equal(observed.failures.get('nextObservation'), original);
+    assert.deepEqual(observed.boundaries, role === 'source'
+      ? ['rollbackProgressRead', 'nextObservation'] : [...inspectionBoundaries.slice(0, 3), 'busy', 'nextObservation']);
+    assert.equal(value.calls.filter((call) => call.command).length, role === 'source' ? 0 : 1);
+  }
+});
+
+test('observed invalid rollback progress retains its read failure without product queries', async (context) => {
+  const observed = installationObservation();
+  const retrySentinel = new Error('unexpectedRollbackProgressRetry');
+  const value = await fixture(context, { faultScenario: 'activeWorkspaceFirstStartFailure',
+    onObservation() { throw retrySentinel; } });
+  await writeFile(resolve(value.root, 'result', proofProtocol.W6B2_PACKAGED_ROLLBACK_PROGRESS_FILE), 'invalid\n');
+  await assert.rejects(value.runtime.waitForInstallation('source', observed.observation), (error) => {
+    assert.equal(error.message, 'sourceRollbackInstallFailed');
+    assert.equal(error, observed.failures.get('rollbackProgressRead'));
+    return true;
+  });
+  assert.deepEqual(observed.boundaries, ['rollbackProgressRead']);
+  assert.equal(value.calls.some((call) => call.command || call.observation), false);
 });
 
 for (const [field, change, expected] of [

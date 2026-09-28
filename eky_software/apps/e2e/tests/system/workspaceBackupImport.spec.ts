@@ -60,10 +60,7 @@ test('WORKSPACE-IMPORT-001 @critical @security imports a real encrypted backup w
   const sourcePdfHash = await sha256File(sourcePdfPath);
 
   await e2eBackend.backend.stop();
-  expect(
-    e2eBackend.backend.managedProcess.child.exitCode !== null ||
-      e2eBackend.backend.managedProcess.child.signalCode !== null,
-  ).toBe(true);
+  expect(await e2eBackend.backend.workload.readState()).toBe('exited');
 
   const backupPath = join(e2eBackend.runRoot, 'source-profile.ekybackup');
   const backupIdentity = await createRealPortableWorkspaceBackup({
@@ -115,11 +112,8 @@ test('WORKSPACE-IMPORT-001 @critical @security imports a real encrypted backup w
     workspaceRuntimeAbsence: {
       assertNoActiveWorkspaceRuntime: async () => {
         lifecycleEvents.push('runtime.absent');
-        if (
-          e2eBackend.backend.managedProcess.child.exitCode === null &&
-          e2eBackend.backend.managedProcess.child.signalCode === null
-        ) {
-          throw new Error('SOURCE_BACKEND_STILL_RUNNING');
+        if (await e2eBackend.backend.workload.readState() !== 'exited') {
+          throw new Error('SOURCE_BACKEND_EXIT_UNVERIFIED');
         }
       },
     },
@@ -197,7 +191,7 @@ test('WORKSPACE-IMPORT-002 @critical @recovery migrates an authenticated histori
   e2eBackend,
 }) => {
   await e2eBackend.backend.stop();
-  assertManagedProcessStopped(e2eBackend.backend.managedProcess.child);
+  expect(await e2eBackend.backend.workload.readState()).toBe('exited');
 
   const historical = await createHistoricalPortableWorkspaceBackup({
     backupPath: join(e2eBackend.runRoot, 'historical-profile.ekybackup'),
@@ -334,10 +328,4 @@ function createLifecycle(events: string[]): ActiveWorkspaceLifecyclePort {
       events.push(`active.ensure.${describe(previousActiveWorkspaceId)}`);
     },
   };
-}
-
-function assertManagedProcessStopped(
-  child: { readonly exitCode: number | null; readonly signalCode: string | null },
-): void {
-  expect(child.exitCode !== null || child.signalCode !== null).toBe(true);
 }

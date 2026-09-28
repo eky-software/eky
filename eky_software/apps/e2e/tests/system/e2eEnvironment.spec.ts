@@ -1,4 +1,3 @@
-import { EventEmitter } from 'node:events';
 import { createServer } from 'node:http';
 import {
   existsSync,
@@ -17,9 +16,13 @@ import {
   assertE2eSafetyBoundary,
   assertPathUnderRoot,
 } from '../../src/environment/assertE2eSafetyBoundary.js';
+import { assertElectronLaunchPlatform } from '../../src/environment/assertElectronLaunchPrerequisites.js';
 import { collectFailureArtifacts } from '../../src/environment/collectFailureArtifacts.js';
 import { createE2eRunRoot } from '../../src/environment/createE2eRunRoot.js';
 import { createE2eWorkerPaths } from '../../src/environment/createE2eWorkerPaths.js';
+import { waitForManagedBackendHealth } from '../../src/environment/e2eBackendStartupLifecycle.js';
+import { createE2eFixtureLifetime } from '../../src/environment/e2eFixtureLifetime.js';
+import { observeChildProcessStartup } from '../../src/environment/e2eProcessStartupObservation.js';
 import { reserveLoopbackPort } from '../../src/environment/reserveLoopbackPort.js';
 import {
   e2eRunRootRemovalOptions,
@@ -29,14 +32,8 @@ import {
   startManagedProcess,
   type ManagedChildProcess,
 } from '../../src/environment/startManagedProcess.js';
-import {
-  stopManagedProcessTree,
-  waitForManagedProcessExit,
-} from '../../src/environment/stopManagedProcessTree.js';
-import {
-  closeOwnedElectronRuntime,
-  stopOwnedElectronRuntime,
-} from '../../src/fixtures/stopOwnedElectronRuntime.js';
+import { closeOwnedWindowsElectronRuntime } from '../../src/fixtures/closeOwnedWindowsElectronRuntime.js';
+import { ElectronBridgeCallerFailure } from '../../src/environment/startOwnedWindowsElectronBridge.js';
 import { waitForHttpHealth } from '../../src/environment/waitForHttpHealth.js';
 import { isAllowedE2eBrowserUrl } from '../../src/environment/e2eBrowserNetworkBoundary.js';
 import {
@@ -188,184 +185,175 @@ test.describe('managed E2E runtime primitives', () => {
     }
   });
 
-  test('stops an owned Electron process tree before closing its Playwright handle', async () => {
-    const calls: string[] = [];
-    const processToken = {} as ManagedChildProcess;
-
-    await stopOwnedElectronRuntime(
-      {
-        async close() {
-          calls.push('close');
-        },
-      },
-      processToken,
-      async (process) => {
-        expect(process).toBe(processToken);
-        calls.push('stop');
-      },
-    );
-
-    expect(calls).toEqual(['stop', 'close']);
+  test('admits only Windows for actual Electron launches without changing pure environment contracts', () => {
+    expect(() => assertElectronLaunchPlatform('win32')).not.toThrow();
+    for (const platform of ['aix', 'android', 'darwin', 'freebsd', 'haiku', 'linux', 'openbsd', 'sunos', 'cygwin', 'netbsd'] as const) {
+      expect(() => assertElectronLaunchPlatform(platform)).toThrow('E2E_ELECTRON_OWNER_PLATFORM_INVALID');
+    }
   });
 
-  test('closes a healthy Electron runtime before applying process-tree cleanup', async () => {
-    const calls: string[] = [];
-    const processToken = {} as ManagedChildProcess;
-
-    await closeOwnedElectronRuntime(
-      {
-        async close() {
-          calls.push('close');
-        },
-      },
-      processToken,
-      async (process) => {
-        expect(process).toBe(processToken);
-        calls.push('stop');
-      },
-      async (process, timeoutMilliseconds) => {
-        expect(process).toBe(processToken);
-        expect(timeoutMilliseconds).toBe(15_000);
-        calls.push('wait');
-        return true;
-      },
-    );
-
-    expect(calls).toEqual(['close', 'wait', 'stop']);
+  test('checks the actual platform when Electron launch admission has no override', () => {
+    if (process.platform === 'win32') expect(() => assertElectronLaunchPlatform()).not.toThrow();
+    else expect(() => assertElectronLaunchPlatform()).toThrow('E2E_ELECTRON_OWNER_PLATFORM_INVALID');
   });
 
-  test('waits for graceful Electron exit before applying fallback cleanup', async () => {
-    const calls: string[] = [];
-    const processToken = {} as ManagedChildProcess;
-    let reportExit: (() => void) | undefined;
+  test.describe('owned Windows Electron close', () => {
+    test('closes once before stopping the owner and cancels the graceful timer', async () => {
+      const fixture = createControlledWindowsElectronClose();
+      const action = closeOwnedWindowsElectronRuntime(fixture.input, fixture.clock);
 
-    const action = closeOwnedElectronRuntime(
-      {
-        async close() {
-          calls.push('close');
-        },
-      },
-      processToken,
-      async () => {
-        calls.push('stop');
-      },
-      async () => {
-        calls.push('wait');
-        return new Promise<boolean>((resolveExit) => {
-          reportExit = () => resolveExit(true);
-        });
-      },
-    );
+      expect(fixture.calls).toEqual(['close']);
+      expect(fixture.timers.map(timer => timer.milliseconds)).toEqual([15_000]);
+      fixture.completeClose();
+      await expect(action).resolves.toBeUndefined();
+      expect(fixture.calls).toEqual(['close', 'stop']);
+      expect(fixture.timers.every(timer => timer.cancelled)).toBe(true);
+    });
 
-    await expect.poll(() => calls).toEqual(['close', 'wait']);
-    expect(reportExit).toBeDefined();
-    reportExit?.();
-    await expect(action).resolves.toBeUndefined();
-    expect(calls).toEqual(['close', 'wait', 'stop']);
-  });
+    for (const elapsed of [0, 58_000]) {
+      test(`stops after pending close expires within the original lifetime (${elapsed}ms spent)`, async () => {
+        const fixture = createControlledWindowsElectronClose();
+        fixture.setNow(elapsed);
+        const action = closeOwnedWindowsElectronRuntime(fixture.input, fixture.clock);
+        const result = action.catch((error: unknown) => error);
+        const budget = elapsed === 0 ? 15_000 : 2_000;
 
-  test('uses bounded process-tree cleanup when graceful Electron exit is absent', async () => {
-    const calls: string[] = [];
+        expect(fixture.timers.map(timer => timer.milliseconds)).toEqual([budget]);
+        fixture.setNow(elapsed + budget - 1);
+        fixture.fireDueTimers();
+        expect(fixture.calls).toEqual(['close']);
+        fixture.setNow(elapsed + budget);
+        fixture.fireDueTimers();
 
-    await closeOwnedElectronRuntime(
-      {
-        async close() {
-          calls.push('close');
-        },
-      },
-      {} as ManagedChildProcess,
-      async () => {
-        calls.push('stop');
-      },
-      async () => {
-        calls.push('wait');
-        return false;
-      },
-    );
+        const error = await result;
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toBe('E2E_ELECTRON_PUBLIC_CLOSE_TIMED_OUT');
+        expect(fixture.calls).toEqual(['close', 'stop']);
+        expect(fixture.timers.every(timer => timer.cancelled)).toBe(true);
 
-    expect(calls).toEqual(['close', 'wait', 'stop']);
-  });
+        fixture.completeClose();
+        await Promise.resolve();
+        expect(await result).toBe(error);
+        expect(fixture.calls).toEqual(['close', 'stop']);
+      });
+    }
 
-  test('observes managed process exit without consuming the safety deadline', async () => {
-    const synthetic = createSyntheticManagedChildProcess();
-    const exit = waitForManagedProcessExit(synthetic.process, 5_000);
+    for (const synchronous of [false, true]) {
+      test(`keeps public close failure after successful owner stop (${synchronous ? 'throw' : 'reject'})`, async () => {
+        const fixture = createControlledWindowsElectronClose();
+        const privateError = new Error('synthetic private close details');
+        fixture.input.application.close = () => {
+          fixture.calls.push('close');
+          if (synchronous) throw privateError;
+          return Promise.reject(privateError);
+        };
 
-    synthetic.reportExit();
+        const error = await closeOwnedWindowsElectronRuntime(fixture.input, fixture.clock)
+          .catch((candidate: unknown) => candidate);
+        expect(fixture.calls).toEqual(['close', 'stop']);
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toBe('E2E_ELECTRON_PUBLIC_CLOSE_FAILED');
+        expect(String(error)).not.toContain(privateError.message);
+        expect(JSON.stringify(error)).not.toContain(privateError.message);
+        expect(fixture.timers.every(timer => timer.cancelled)).toBe(true);
+      });
+    }
 
-    await expect(exit).resolves.toBe(true);
-  });
+    test('skips only public close when the application is already closed', async () => {
+      const fixture = createControlledWindowsElectronClose();
+      await closeOwnedWindowsElectronRuntime({ ...fixture.input, alreadyClosed: true }, fixture.clock);
 
-  test('keeps an absent managed process exit as a bounded failure signal', async () => {
-    const synthetic = createSyntheticManagedChildProcess();
+      expect(fixture.calls).toEqual(['stop']);
+      expect(fixture.timers).toEqual([]);
+    });
 
-    await expect(
-      waitForManagedProcessExit(synthetic.process, 5),
-    ).resolves.toBe(false);
-  });
+    test('still stops the owner without an application handle', async () => {
+      const fixture = createControlledWindowsElectronClose();
+      const { owner, lifetime } = fixture.input;
+      await closeOwnedWindowsElectronRuntime({ owner, lifetime }, fixture.clock);
 
-  test('still applies process-tree cleanup when graceful Electron close fails', async () => {
-    let stopped = false;
+      expect(fixture.calls).toEqual(['stop']);
+      expect(fixture.timers).toEqual([]);
+    });
 
-    const action = closeOwnedElectronRuntime(
-      {
-        async close() {
-          throw new Error('raw synthetic close failure');
-        },
-      },
-      {} as ManagedChildProcess,
-      async () => {
-        stopped = true;
-      },
-    );
+    test('does not grant a fresh close budget after the lifetime is exhausted', async () => {
+      const fixture = createControlledWindowsElectronClose();
+      fixture.setNow(60_000);
 
-    await expect(action).rejects.toThrow(
-      'Electron E2E runtime handle cleanup failed.',
-    );
-    expect(stopped).toBe(true);
-  });
+      await expect(closeOwnedWindowsElectronRuntime(fixture.input, fixture.clock))
+        .rejects.toThrow('E2E_ELECTRON_PUBLIC_CLOSE_TIMED_OUT');
+      expect(fixture.calls).toEqual(['stop']);
+      expect(fixture.timers).toEqual([]);
+    });
 
-  test('still closes the Electron handle when owned process cleanup fails', async () => {
-    let closed = false;
-    const action = stopOwnedElectronRuntime(
-      {
-        async close() {
-          closed = true;
-        },
-      },
-      {} as ManagedChildProcess,
-      async () => {
-        throw new Error('raw synthetic process failure');
-      },
-    );
+    test('rejects late close even before the scheduled timeout callback runs', async () => {
+      const fixture = createControlledWindowsElectronClose();
+      const action = closeOwnedWindowsElectronRuntime(fixture.input, fixture.clock);
+      fixture.setNow(15_000);
+      fixture.completeClose();
 
-    const error = await action.catch((candidate: unknown) => candidate);
-    expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toBe(
-      'Electron E2E runtime process cleanup failed.',
-    );
-    expect((error as Error).message).not.toContain(
-      'raw synthetic process failure',
-    );
-    expect(closed).toBe(true);
-  });
+      await expect(action).rejects.toThrow('E2E_ELECTRON_PUBLIC_CLOSE_TIMED_OUT');
+      expect(fixture.calls).toEqual(['close', 'stop']);
+      expect(fixture.timers.every(timer => timer.cancelled)).toBe(true);
+    });
 
-  test('does not skip process cleanup when the Electron handle is already closed', async () => {
-    let stopped = false;
+    test('awaits the existing owner stop after the public close deadline', async () => {
+      const fixture = createControlledWindowsElectronClose();
+      let completeStop!: () => void;
+      let reportStop!: () => void;
+      const stopped = new Promise<void>(resolveStop => { completeStop = resolveStop; });
+      const stopStarted = new Promise<void>(resolveStop => { reportStop = resolveStop; });
+      fixture.input.owner.stop = () => {
+        fixture.calls.push('stop');
+        reportStop();
+        return stopped;
+      };
+      let settled = false;
+      const result = closeOwnedWindowsElectronRuntime(fixture.input, fixture.clock)
+        .catch((error: unknown) => error)
+        .finally(() => { settled = true; });
 
-    await expect(
-      stopOwnedElectronRuntime(
-        {
-          async close() {
-            throw new Error('synthetic closed handle');
-          },
-        },
-        {} as ManagedChildProcess,
-        async () => {
-          stopped = true;
-        },
-      ),
-    ).resolves.toBeUndefined();
-    expect(stopped).toBe(true);
+      fixture.setNow(15_000);
+      fixture.fireDueTimers();
+      await stopStarted;
+      expect(settled).toBe(false);
+      expect(fixture.calls).toEqual(['close', 'stop']);
+      expect(fixture.timers.every(timer => timer.cancelled)).toBe(true);
+      completeStop();
+      expect((await result as Error).message).toBe('E2E_ELECTRON_PUBLIC_CLOSE_TIMED_OUT');
+    });
+
+    for (const publicCloseFails of [false, true]) {
+      test(`preserves the original safe owner failure (${publicCloseFails ? 'failed' : 'successful'} public close)`, async () => {
+        const fixture = createControlledWindowsElectronClose();
+        const privateFailure = { error: new Error('synthetic private owner details') };
+        const ownerFailure = new ElectronBridgeCallerFailure('CLEANUP_UNVERIFIED', privateFailure);
+        fixture.input.owner.stop = async () => {
+          fixture.calls.push('stop');
+          throw ownerFailure;
+        };
+        const result = closeOwnedWindowsElectronRuntime(fixture.input, fixture.clock)
+          .catch((error: unknown) => error);
+        if (publicCloseFails) fixture.rejectClose(new Error('synthetic private close details'));
+        else fixture.completeClose();
+
+        expect(await result).toBe(ownerFailure);
+        expect(ownerFailure.readPrivateFailure()).toBe(privateFailure);
+        expect(String(ownerFailure)).not.toContain(privateFailure.error.message);
+        expect(JSON.stringify(ownerFailure)).not.toContain(privateFailure.error.message);
+        expect(fixture.calls).toEqual(['close', 'stop']);
+      });
+    }
+
+    test('still stops when reading the original lifetime fails', async () => {
+      const fixture = createControlledWindowsElectronClose();
+      fixture.setNow(-1);
+
+      await expect(closeOwnedWindowsElectronRuntime(fixture.input, fixture.clock))
+        .rejects.toThrow('E2E_ELECTRON_PUBLIC_CLOSE_FAILED');
+      expect(fixture.calls).toEqual(['stop']);
+      expect(fixture.timers).toEqual([]);
+    });
   });
 
   test('refuses to remove a directory outside the E2E run-root contract', async () => {
@@ -402,6 +390,23 @@ test.describe('managed E2E runtime primitives', () => {
     }
   });
 
+  test('leaves native errors visible until the owning consumer attaches an observer', async () => {
+    const managed = startManagedProcess({
+      args: ['-e', 'setInterval(() => {}, 1000);'],
+      command: process.execPath,
+      cwd: process.cwd(),
+      environment: { EKY_E2E: '1' },
+    });
+    const closed = new Promise<void>((resolveClose) => managed.child.once('close', () => resolveClose()));
+    try {
+      expect(managed.child.listenerCount('error')).toBe(0);
+      const error = new Error('SYNTHETIC_NATIVE_ERROR');
+      expect(() => managed.child.emit('error', error)).toThrow(error);
+    } finally {
+      await stopChildlessTestProcess(managed.child, closed);
+    }
+  });
+
   test('bounds and redacts managed process output and stops the process', async () => {
     const secret = 'synthetic-e2e-secret';
     const managed = startManagedProcess({
@@ -415,17 +420,49 @@ test.describe('managed E2E runtime primitives', () => {
       outputLimitBytes: 1_024,
       redactedValues: [secret],
     });
+    const startup = observeChildProcessStartup(managed.child);
+    const closed = new Promise<void>((resolveClose) => managed.child.once('close', () => resolveClose()));
 
     try {
       await waitForOutput(managed.readStdout);
       expect(managed.readStdout()).toContain('[REDACTED]');
       expect(managed.readStdout()).not.toContain(secret);
+      expect(startup.readState()).toEqual({ spawnObserved: true, terminal: undefined });
     } finally {
-      await stopManagedProcessTree(managed.child);
+      await stopChildlessTestProcess(managed.child, closed);
     }
     expect(
       managed.child.exitCode !== null || managed.child.signalCode !== null,
     ).toBe(true);
+    expect(startup.readState()).toEqual({ spawnObserved: true, terminal: 'exited' });
+    expect(managed.child.listenerCount('error')).toBe(0);
+  });
+
+  test('retains a real failed spawn for a later startup consumer without raw error leakage', async () => {
+    const runRoot = createE2eRunRoot();
+    try {
+      const managed = startManagedProcess({
+        command: join(runRoot, 'missing-synthetic-executable'),
+        args: [],
+        cwd: runRoot,
+        environment: { EKY_E2E: '1' },
+        inheritEnvironment: false,
+      });
+      const startup = observeChildProcessStartup(managed.child);
+      await new Promise<void>((resolveClose) => managed.child.once('close', () => resolveClose()));
+      expect(startup.readState()).toEqual({ spawnObserved: false, terminal: 'spawnFailed' });
+      await expect(waitForManagedBackendHealth({
+        startup,
+        observe: () => {},
+        waitForHealth: async () => {},
+      })).rejects.toThrow('E2E_BACKEND_PROCESS_SPAWN_FAILED');
+      expect(JSON.stringify(startup.readState())).not.toContain(runRoot);
+      for (const event of ['spawn', 'exit', 'error', 'close']) {
+        expect(managed.child.listenerCount(event)).toBe(0);
+      }
+    } finally {
+      rmSync(runRoot, { recursive: true, force: true });
+    }
   });
 
   test('collects only allowlisted files below the run root', async () => {
@@ -571,6 +608,81 @@ test.describe('isolated web runtime boundaries', () => {
   });
 });
 
+function createControlledWindowsElectronClose() {
+  let now = 0;
+  let completeClose!: () => void;
+  let rejectClose!: (error: unknown) => void;
+  const closed = new Promise<void>((resolveClose, reject) => {
+    completeClose = resolveClose;
+    rejectClose = reject;
+  });
+  const calls: string[] = [];
+  const timers: { due: number; milliseconds: number; callback: () => void; cancelled: boolean }[] = [];
+  const clock = {
+    now: () => now,
+    schedule(callback: () => void, milliseconds: number) {
+      const timer = { due: now + milliseconds, milliseconds, callback, cancelled: false };
+      timers.push(timer);
+      return () => { timer.cancelled = true; };
+    },
+  };
+  return {
+    input: {
+      application: { close() { calls.push('close'); return closed; } },
+      owner: { async stop() { calls.push('stop'); } },
+      lifetime: createE2eFixtureLifetime(60_000, clock.now),
+    },
+    clock,
+    calls,
+    timers,
+    completeClose,
+    rejectClose,
+    setNow(value: number) { now = value; },
+    fireDueTimers() {
+      for (const timer of timers) {
+        if (!timer.cancelled && timer.due <= now) {
+          timer.cancelled = true;
+          timer.callback();
+        }
+      }
+    },
+  };
+}
+
+// Only the two childless Node primitives above use this retained-handle cleanup.
+async function stopChildlessTestProcess(
+  child: ManagedChildProcess,
+  closed: Promise<void>,
+): Promise<void> {
+  const deadline = performance.now() + 3_000;
+  let timer: NodeJS.Timeout | undefined;
+  let failure: { error: unknown } | undefined;
+  const onError = (error: Error) => { failure ??= { error }; };
+  child.on('error', onError);
+  try {
+    const completion = Promise.race([
+      closed,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('E2E_TEST_CHILD_CLOSE_UNVERIFIED')),
+          Math.max(1, deadline - performance.now()));
+      }),
+    ]);
+    try {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill('SIGKILL');
+      }
+    } catch (error) {
+      failure ??= { error };
+    }
+    await completion;
+    if (performance.now() >= deadline) throw new Error('E2E_TEST_CHILD_CLOSE_UNVERIFIED');
+    if (failure !== undefined) throw failure.error;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    child.removeListener('error', onError);
+  }
+}
+
 async function waitForOutput(readOutput: () => string): Promise<void> {
   const deadline = Date.now() + 5_000;
   while (Date.now() < deadline) {
@@ -582,25 +694,4 @@ async function waitForOutput(readOutput: () => string): Promise<void> {
     });
   }
   throw new Error('Managed process did not produce output.');
-}
-
-function createSyntheticManagedChildProcess(): {
-  process: ManagedChildProcess;
-  reportExit(): void;
-} {
-  const processEvents = new EventEmitter();
-  const syntheticProcess = Object.assign(processEvents, {
-    exitCode: null as number | null,
-    kill: () => true,
-    pid: 123,
-    signalCode: null as NodeJS.Signals | null,
-  });
-
-  return {
-    process: syntheticProcess as ManagedChildProcess,
-    reportExit() {
-      syntheticProcess.exitCode = 0;
-      syntheticProcess.emit('exit', 0, null);
-    },
-  };
 }

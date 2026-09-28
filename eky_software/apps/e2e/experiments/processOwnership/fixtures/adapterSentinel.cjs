@@ -1,0 +1,22 @@
+'use strict';
+const assert = require('node:assert/strict');
+assert.equal(process.env.EKY_E2E, '1');
+assert.equal(process.argv.length, 3);
+const generation = process.argv[2];
+assert.match(generation, /^[a-f0-9]{64}$/);
+const seen = new Set();
+process.on('message', value => {
+  assert.ok(value && typeof value === 'object');
+  assert.equal(value.generation, generation);
+  assert.deepEqual(Object.keys(value).sort(), ['generation', 'kind', 'nonce']);
+  assert.match(value.nonce, /^[a-f0-9]{64}$/);
+  assert.equal(seen.has(value.nonce), false);
+  assert.ok(seen.size < 3);
+  seen.add(value.nonce);
+  if (value.kind === 'stop') process.exit(0);
+  assert.equal(value.kind, 'challenge');
+  process.send({ generation, nonce: value.nonce, kind: 'alive' });
+});
+process.on('disconnect', () => process.exit(74));
+setTimeout(() => process.exit(75), 35_000);
+process.send({ generation, kind: 'ready' });

@@ -20,6 +20,24 @@ import {
   openInvoicingWorkspace,
 } from '../../src/journeys/invoicingWebJourney.js';
 import { measurePathBytes } from '../../src/stress/measurePathBytes.js';
+import { resolveDesktopEndurancePaths } from '../../src/stress/resolveDesktopEndurancePaths.js';
+import {
+  ELECTRON_E2E_ENDURANCE_TIMEOUT_MILLISECONDS,
+  ELECTRON_E2E_SOAK_RESERVE_MILLISECONDS,
+  readDesktopSoakDurationMilliseconds,
+} from '../../src/stress/e2eEnduranceBudgets.js';
+
+const enduranceTest = test.extend({
+  e2eContainmentTimeoutMilliseconds: ELECTRON_E2E_ENDURANCE_TIMEOUT_MILLISECONDS,
+});
+const soakTest = test.extend<{ e2eSoakDurationMilliseconds: number }>({
+  e2eSoakDurationMilliseconds: async ({}, use) => {
+    await use(readDesktopSoakDurationMilliseconds(process.env.EKY_E2E_SOAK_DURATION_MINUTES));
+  },
+  e2eContainmentTimeoutMilliseconds: async ({ e2eSoakDurationMilliseconds }, use) => {
+    await use(e2eSoakDurationMilliseconds + ELECTRON_E2E_SOAK_RESERVE_MILLISECONDS);
+  },
+});
 
 const moduleTransitionCount = 200;
 const invoiceDetailOpenCount = 50;
@@ -28,10 +46,10 @@ const supportBundleCount = 20;
 const secretCycleCount = 30;
 const restartCycleCount = 20;
 
-test('DESK-ENDURANCE-001 @desktop-stress @stress records the desktop endurance baseline', async ({
+enduranceTest('DESK-ENDURANCE-001 @desktop-stress @stress records the desktop endurance baseline', async ({
   e2eElectron,
 }, testInfo) => {
-  test.setTimeout(20 * 60_000);
+  test.setTimeout(ELECTRON_E2E_ENDURANCE_TIMEOUT_MILLISECONDS);
 
   const startedAt = Date.now();
   const invoice = await createApprovedInvoiceWithPdf(e2eElectron.api);
@@ -68,24 +86,15 @@ test('DESK-ENDURANCE-001 @desktop-stress @stress records the desktop endurance b
   );
   expect(existsSync(e2eElectron.runtime.supportBundlePath)).toBe(true);
 
+  const measuredPaths = resolveDesktopEndurancePaths(e2eElectron.runtime.userDataPath);
   const serializedLogs = JSON.stringify(
     readElectronOperationalEvents(
-      join(e2eElectron.runtime.userDataPath, 'runtime', 'logs'),
+      measuredPaths.logsRoot,
     ),
   );
   expect(serializedLogs).not.toContain('desktop-endurance-secret-');
-  expect(
-    existsSync(
-      join(
-        e2eElectron.runtime.userDataPath,
-        'runtime',
-        'secrets',
-        'company-email-smtp-v1.dat',
-      ),
-    ),
-  ).toBe(false);
+  expect(existsSync(measuredPaths.emailSecretFilePath)).toBe(false);
 
-  const measuredPaths = resolveDesktopRuntimeMeasurementPaths(e2eElectron);
   const databaseBytes = measurePathBytes(measuredPaths.databaseFilePath);
   const documentBytes = measurePathBytes(measuredPaths.documentsRoot);
   const logBytes = measurePathBytes(measuredPaths.logsRoot);
@@ -111,12 +120,12 @@ test('DESK-ENDURANCE-001 @desktop-stress @stress records the desktop endurance b
   });
 });
 
-test('DESK-SOAK-001 @soak records a manually invoked desktop soak baseline', async ({
+soakTest('DESK-SOAK-001 @soak records a manually invoked desktop soak baseline', async ({
   e2eElectron,
+  e2eSoakDurationMilliseconds,
 }, testInfo) => {
-  const durationMinutes = readSoakDurationMinutes();
-  const durationMilliseconds = durationMinutes * 60_000;
-  test.setTimeout(durationMilliseconds + 5 * 60_000);
+  const durationMilliseconds = e2eSoakDurationMilliseconds;
+  test.setTimeout(durationMilliseconds + ELECTRON_E2E_SOAK_RESERVE_MILLISECONDS);
 
   const startedAt = Date.now();
   const deadline = startedAt + durationMilliseconds;
@@ -156,14 +165,14 @@ test('DESK-SOAK-001 @soak records a manually invoked desktop soak baseline', asy
   expect(metricsAfter.processCount).toBeLessThan(20);
   expect(metricsAfter.windowCount).toBe(1);
 
-  const measuredPaths = resolveDesktopRuntimeMeasurementPaths(e2eElectron);
+  const measuredPaths = resolveDesktopEndurancePaths(e2eElectron.runtime.userDataPath);
   await writeEnduranceReport(testInfo, {
     completedAt: new Date().toISOString(),
     cycleCount,
     databaseBytes: measurePathBytes(measuredPaths.databaseFilePath),
     documentBytes: measurePathBytes(measuredPaths.documentsRoot),
     durationMilliseconds: Date.now() - startedAt,
-    durationMinutes,
+    durationMinutes: durationMilliseconds / 60_000,
     logBytes: measurePathBytes(measuredPaths.logsRoot),
     metricsAfter,
     metricsBefore,
@@ -332,28 +341,4 @@ async function writeEnduranceReport(
     body: Buffer.from(serializedReport, 'utf8'),
     contentType: 'application/json',
   });
-}
-
-function readSoakDurationMinutes(): number {
-  const rawValue = process.env.EKY_E2E_SOAK_DURATION_MINUTES ?? '30';
-  const duration = Number(rawValue);
-  if (!Number.isInteger(duration) || duration < 1 || duration > 240) {
-    throw new Error('Desktop soak duration must be 1-240 whole minutes.');
-  }
-  return duration;
-}
-
-function resolveDesktopRuntimeMeasurementPaths(
-  harness: IsolatedElectronHarness,
-): {
-  databaseFilePath: string;
-  documentsRoot: string;
-  logsRoot: string;
-} {
-  const runtimeRoot = join(harness.runtime.userDataPath, 'runtime');
-  return {
-    databaseFilePath: join(runtimeRoot, 'data', 'eky.sqlite'),
-    documentsRoot: join(runtimeRoot, 'storage', 'invoices'),
-    logsRoot: join(runtimeRoot, 'logs'),
-  };
 }

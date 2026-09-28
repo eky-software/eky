@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <UseAppHost>false</UseAppHost>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../../../desktop/installer/windows-process-supervisor/NativeMethods.cs" Link="Existing/NativeMethods.cs" />
+    <Compile Include="../../../../desktop/installer/windows-process-supervisor/WindowsJob.cs" Link="Existing/WindowsJob.cs" />
+    <Compile Include="../../../../desktop/installer/windows-process-supervisor/ProcessCreationJobAttribute.cs" Link="Existing/ProcessCreationJobAttribute.cs" />
+    <Compile Include="../../../../desktop/installer/windows-process-supervisor/WindowsCommandLine.cs" Link="Existing/WindowsCommandLine.cs" />
+    <Compile Include="../../../../desktop/installer/windows-process-supervisor/SupervisorContracts.cs" Link="Existing/SupervisorContracts.cs" />
+  </ItemGroup>
+</Project>

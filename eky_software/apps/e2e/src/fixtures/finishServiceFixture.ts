@@ -1,6 +1,7 @@
 type CleanupStatus = 'notStarted' | 'completed' | 'failed';
 
 export interface ServiceFixtureCleanup {
+  context: CleanupStatus;
   api: CleanupStatus;
   web: CleanupStatus;
   backend: CleanupStatus;
@@ -18,6 +19,7 @@ export async function finishServiceFixture(input: {
   testAlreadyFailed: boolean;
   priorCleanupUnverified: boolean;
   disposeApi(): Promise<void>;
+  closeContext?: () => Promise<void>;
   stopWeb?: () => Promise<void>;
   stopBackend?: () => Promise<void>;
   releaseWebPort?: () => Promise<void>;
@@ -27,12 +29,14 @@ export async function finishServiceFixture(input: {
   report(result: Readonly<ServiceFixtureCleanup>): Promise<void>;
 }): Promise<void> {
   const result: ServiceFixtureCleanup = {
+    context: 'notStarted',
     api: 'notStarted', web: 'notStarted', backend: 'notStarted',
     webPort: 'notStarted', backendPort: 'notStarted', artifacts: 'notStarted',
     priorCleanup: input.priorCleanupUnverified ? 'unverified' : 'verified',
     runRoot: 'retained',
   };
   const steps = [
+    ['context', input.closeContext],
     ['api', input.disposeApi],
     ['web', input.stopWeb],
     ['backend', input.stopBackend],

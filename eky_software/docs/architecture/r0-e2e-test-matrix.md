@@ -3,8 +3,99 @@
 Tämä on Eky R0:n pysyvä riskiperusteinen järjestelmätestimatriisi. Matriisi ei
 väitä alemman tason testiä E2E-todisteeksi.
 
+Windows-Electronin viimeisin CI-valmisteluhylkäys ja sen rajattu
+diagnostiikka ovat [omistavassa checkpointissa](e2e-test-environment.md#windows-electron--valmistelun-ci-hylkäys).
+`SYS-ELECTRON-LIFECYCLE-001`-sopimusta täydentää kahdeksan varhaisen
+version/preparation/spawn-hylkäyksen testiä: vain suljettu syy kulkee
+bridge-kutsujalta todelliseen lifecycle-liitteeseen. Tyypitys ja 98/98-
+kohdesarja läpäisivät; tämä ei ole CI-juurisyyn tai koko T3:n hyväksyntä.
+Rajattu CI paikansi kaikki 48 käynnistyshylkäystä ympäristöarvon tarkistukseen.
+Neljä uutta Windowsin ympäristön generointi-/validointisopimusta ja
+`DESK-PROFILE-002`:n tarkka avainjoukko varmistavat, ettei valinnaista
+isäntä-PATHia peritä. Linuxin `DESK-PROFILE-003` ja 2048/NUL-hylkäykset
+säilyvät. Korjauksen tyyppitarkistus ja 102/102-kohdesarja läpäisivät;
+tavallinen Electron-sarja hylättiin 44/45.
+Yksi käynnistys poistui ennen ensimmäistä ikkunaa ja testirunkoa; se ei
+todista salasanatoiminnon virhettä. Rajattu `SYS-ELECTRON-NATIVE-STARTUP-001`
+todentaa nykyisen natiiviadapterin turvallisen virheen lukuketjun ennen
+siivousta nykyiseen lifecycle-liitteeseen: erilliset sukupolvitiedostot,
+rajattu linkitön luku, kiinteät virhekoodit ja vain ennen cleanupia havaittu
+exit-koodi. Tämä on testidiagnostiikkaa, ei käynnistysvirheen ratkaisu.
+Täydennyksen jälkeen tyypitys, 136/136-kohdesarja, työkalusarja 678/678
+ja kanonisesti valmisteltu tavallinen Electron 45/45 läpäisivät. Täydellinen
+tapausjoukko, yksi yritys per tapaus ja testatun koodin lähdesidonta
+takaisinluettiin. Aiempi 44/45 säilyy hylättynä ja sen tarkka syy avoimena;
+Korjatun revision `5f61f186` normaali CI ja riippuvuustarkistus läpäisivät:
+system 633 läpäisyä ja yksi tunnettu Windows-only-ohitus, web 35/35 ja
+Electron 38/38 ensimmäisillä yrityksillä. Koko T3:n hyväksyntä puuttuu.
+Erillisen stress-portin ensimmäinen yritys hylättiin vanhentuneen workspace-mittauspolun vuoksi;
+[rajattu testikorjaus ja loppunäyttö](e2e-test-environment.md#windows-electronin-endurance-ja-virheen-säilymisen-loppunäyttö)
+on nyt paikallisesti todennettu. `SYS-DESKTOP-ENDURANCE-PATHS-001`:n kolme
+tapausta todentavat polkujen valinnan regressiosopimuksen. Erikseen
+kanoninen stress ja täysi 30 minuutin soak sekä kaksi todellisen fixturen
+alkuperäisen virheen säilymisen koetta läpäisivät ensimmäisillä yrityksillä.
+Mittauskorjauksen `ab5de90b` oma normaali CI ja riippuvuustarkistus
+läpäisivät ensimmäisillä yrityksillä: system 636 läpäisyä ja yksi tunnettu
+Windows-only-ohitus, web 35/35 ja Electron 38/38 ilman retryä tai flakyä.
+Tämä hyväksyy rajatun Electron-kuluttajaosuuden; Chromium/Linux ja koko
+T3/PR/main-portti ovat edelleen avoinna.
+
+Linuxin oikeiden kuluttajien ensimmäisen yhteisen CI:n hylkäys ja sen
+rajattu havaintokorjaus ovat [omistavassa checkpointissa](e2e-test-environment.md#chromiumin-ja-linuxin-ensimmäinen-yhteinen-ci).
+Raportterin ja Linux-sessionin kohdesarja 50/50 todentaa suljetun
+käynnistysvaiheen, alkuperäisen virheen säilymisen ja puuttuvan siivousnäytön
+erottamisen. Mukana on todellisen Playwright-ajurin tarkoituksellinen
+startup-hylkäys ja automaattinen retry. Tämä on raportoinnin sopimusnäyttö,
+ei hyväksytty Linux-kuluttaja, normaalin CI:n flaky-hyväksyntä tai T3:n sulku.
+
+Samaa checkpointia täydentävät `e2eBackendTempIsolation.spec.ts`:n alemman
+tason `SYS-TEMP-ANCHOR`-sopimus ja `safeCiReporter.test.mjs`:n todellisen
+testiajurin post-launch-virhekoe. Ensimmäinen tarkistaa eristetyn child-tempin
+alkuperäisen run-root-ankkurin sekä viereisen juuren hylkäyksen oikealla
+config-readerilla, ei HTTP-palvelimella. Jälkimmäinen käyttää varsinaisia
+health- ja worker-elinkaarifunktioita simuloiduilla prosessihavainnoilla:
+alkuperäinen virhe ja siivous säilyvät, ja vain suljetut vaiheet pääsevät
+CI-lokiin. Raportointi-/session-/ympäristökohdesarja 74/74 on todennettu;
+korjatun Linux-kuluttajan CI oli tässä checkpointissa vielä avoin.
+Korjauksen Windows-system 690/690 sisältää uuden reader-regression;
+web 43/43 sisältää saman selaimen erillisten testikontekstien ja datan
+todellisen eristyksen. Molemmat läpäisivät ilman retryä tai ohituksia.
+Pakettitestien ja tyypityksen näyttö sekä rinnakkaisajon säilyvä havainto
+on rajattu samassa omistavassa checkpointissa.
+
+Vite-jatkokorjaus vahvistaa olemassa olevaa `WEB-VITE-TEMP-001`-tapausta:
+oikeaa readeria käytetään myös eristetyllä OS-tempillä, ilman ankkuria ja
+sen kanssa. Testi palauttaa ympäristön synkronisesti, eikä tapausten
+kokonaismäärä muutu. Backend/Vite-käynnistyksen yhteinen ympäristösopimus
+toisti puutteen ennen korjausta ja läpäisi sen jälkeen. Vite-rajojen 13/13,
+työkalusarjan 740/740, tyypityksen ja Windows-systemin 690/690 jälkeen
+korjatun `c2bae3a2`:n Linux-CI läpäisi systemin 689/690 (yksi tunnettu
+alustasuoja) ja webin 37/37 ilman retryä tai flakyä. Koko tapausjoukko ja
+workerin siivous takaisinluettiin. Electron läpäisi 38/38. Koko normaali CI
+päättyi kuitenkin hylättynä: workspace-faultin toinen ajo ylitti aikarajan
+`targetInstall`-odotuksessa. Supervisorin siivous varmistui, mutta seuraava
+binary-rollback-koe jäi ajamatta. Hylkäyksen syy sekä T3:n katkeamis-/endurance-
+ja PR/main-näyttö ovat vielä avoinna. Edeltävässä
+CI:ssä system 688/690 ja web 0/37 jäivät hylätyiksi yllä linkitetyin rajauksin.
+
+[Workspace-asennuksen havaintorajan](windows-installer-acceptance-harness-v2.md#workspace-asennusodotuksen-havaintoraja)
+oma `5bbfd483` [normaali CI](https://github.com/eky-software/eky/actions/runs/36443256758)
+ja [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/36443266084)
+on hyväksytty: 38 onnistunutta ryhmää ja yksi tarkoituksellinen valinnainen
+ohitus, täysi 690/37/38-katalogi ilman retryä tai flakyä; systemissä vain
+aiempi Windows-only-ohitus. Kaikki 38 checkoutia ja neljän tuottajan sekä
+kymmenen kuluttajan artifact-sidonnat varmennettiin. Tämä on viimeisin
+hyväksytty täysi normaali baseline, ei c2-timeoutin juurisyyratkaisu eikä
+koko T3:n hyväksyntä. Myöhempi
+[Linuxin rajattu katkeamis-/endurance-hyväksyntä](e2e-test-environment.md#linuxin-todellisten-kuluttajien-katkeamiskokeet)
+on eri revision näyttö, eikä korvaa täyttä normaalia CI:tä. Korvattujen
+polkujen poisto ja PR/main pysyvät avoimina.
+
 ## Tilat
 
+- `accepted-contract`: matriisissa nimetty testi-infrastruktuurin sopimus
+  on todennettu omalla tasollaan ja hyväksytty PR/main-porteissa; ei väite
+  unit-testin muuttumisesta E2E-testiksi
 - `covered-existing`: skenaariolla on nykyinen unit-, integraatio- tai
   packaged-smoke-todiste, mutta uusi Playwright E2E puuttuu
 - `implemented-e2e`: skenaario on toteutettu matriisissa nimetyllä E2E-tasolla
@@ -62,15 +153,173 @@ tietokannan, auditin, operational/security-eventin ja tukipaketin päätöksen.
 Alla olevat rivit ovat [T2-suunnitelman](e2e-test-environment.md#t2-projektivalinta-ja-valmistelu)
 hyväksyttyä toteutusrajausta. Paikallinen näyttö on
 [T2-checkpointissa](release-0.3.0-m1-preparation-plan.md#t2n-toteutus-ja-paikallinen-näyttö);
-Linux-CI ja PR/main-hyväksyntä ovat erilliset avoimet portit. Unit-sopimus
+[Linux-CI ja PR/main-hyväksyntä](release-0.3.0-m1-preparation-plan.md#t2n-integraatiohyväksyntä)
+on todennettu erikseen. Unit-sopimus
 ja discovery eivät ole E2E-läpäisyjä. Nämä rivit eivät muuta UI:ta, HTTP:tä, business-
 auditia tai tuotannon tukipakettia; niiden näyttö kuuluu testiraporttiin.
 
 | ID | Taso | Koe ja hyväksyntä | Tila |
 | --- | --- | --- | --- |
-| TEST-COMMAND-WIRING-001 | Node-sopimus | Jäsennetyt manifestit; oma recursive-kytkentä, juurialiakset, kolme projektia, oikea tagi, täydellinen valmistelu ja järjestys. Kielteiset muutokset hylätään ilman runtime-launchia. | local-pass / integration-pending |
-| TEST-PROJECT-SELECTION-001 | Puhdas Playwright-sopimus ja discovery | Oikea config, erilliset projekti-/hakemistorajat, ei-kriittisten security/fault-tapausten säilyminen ja endurance-poissulku. Baseline ei valitse electron-stressiä. Todellista jäsenyyttä verrataan, ei vain määrää. | local-pass / integration-pending |
-| TEST-PREPARATION-001 | Build-integraatio ja Windows E2E | Tyhjät tai vanhentuneet tuotteet rakennetaan oikein, valmisteluvirhe estää myöhemmät vaiheet ja launchin myös vanhan stagen kanssa. Molemmat oikeat aggregaatit suoritetaan; siivoustulos erillään T3:n avoimesta puutteesta. | local-pass / integration-pending |
+| TEST-COMMAND-WIRING-001 | Node-sopimus | Jäsennetyt manifestit; oma recursive-kytkentä, juurialiakset, kolme projektia, oikea tagi, täydellinen valmistelu ja järjestys. Kielteiset muutokset hylätään ilman runtime-launchia. | accepted-contract |
+| TEST-PROJECT-SELECTION-001 | Puhdas Playwright-sopimus ja discovery | Oikea config, erilliset projekti-/hakemistorajat, ei-kriittisten security/fault-tapausten säilyminen ja endurance-poissulku. Baseline ei valitse electron-stressiä. Todellista jäsenyyttä verrataan, ei vain määrää. | accepted-contract |
+| TEST-PREPARATION-001 | Build-integraatio ja Windows E2E | Tyhjät tai vanhentuneet tuotteet rakennetaan oikein, valmisteluvirhe estää myöhemmät vaiheet ja launchin myös vanhan stagen kanssa. Molemmat oikeat aggregaatit suoritetaan; siivoustulos erillään T3:n avoimesta puutteesta. | accepted-contract |
+
+### T3: Prosessipuun omistajuus
+
+Alla on [T3-ehdotuksen](e2e-test-environment.md#t3n-lopullinen-hyväksyntänäyttö)
+hyväksyntämatriisi. Nykyinen mekanismi- ja kuluttajasiirron tila löytyy
+[M1:n aloituskohdasta](release-0.3.0-m1-preparation-plan.md#jatka-tästä);
+alla oleva koehistoria ei yksin hyväksy lopullista matriisia.
+Nykyinen `RUNTIME-EXIT-001` ja rootin lukumäärään perustuva endurance-tarkistus
+eivät yksin todista R28:n portittoman jälkeläisen poistumista. Niiden aiempaa
+läpäisyä ei peruta eikä koroteta uudeksi koko puun omistajuustodisteeksi.
+UI-/HTTP-/business-audit-/tukipakettimuutokset eivät kuulu näihin testisopimuksiin.
+
+Erillinen [T3a-toteutettavuuskoe](e2e-test-environment.md#t3an-tulos-ja-jatkopäätös)
+on suoritettu: kolme Node-tapausta ja normaali Electron läpäisivät;
+varhainen Electron-launch-virhe hylättiin käsittelemättömän rejectionin
+vuoksi. Linuxista tehtiin vain read-only-edellytysselvitys. Tämä osittainen
+näyttö ei muuta alla olevia lopullisia rivejä toteutetuiksi tai hyväksytyiksi.
+[T3b-valmistelu](e2e-test-environment.md#t3b-virhehaaran-ja-alustarajan-valmistelu)
+erottaa riippuvuuden hylkäysjärjestyksen regression, nykyisten Electron-
+koetapausten korjauksen jälkeisen todennuksen ja Linux-CI:n read-only-
+edellytystarkistuksen. T3b-L:n puhtaat parseri-, lukija- ja CI-kytkentätestit
+sisältyvät läpäisseeseen 95/95-sopimussarjaan. Molemmat Linux-CI-havainnot
+saatiin; pääsyvihjeet olivat kielteiset. Ensimmäisen kokonaisajon T1-
+kytkentähylkäys ja paikallinen korjaus on kirjattu
+[CI-checkpointiin](e2e-test-environment.md#t3b-ln-ensimmäinen-ci-havainto-ja-sopimuskorjaus).
+Korjatun revision oma CI läpäisi. Electron-korjauksen
+[paikalliset regressiot ja kaksi nykyistä koetta läpäisivät](e2e-test-environment.md#t3b-en-paikallinen-korjausnäyttö).
+Patchia seuraava rajattu Windows-CI läpäisi. [Seuraava kokonaisajo](e2e-test-environment.md#t3b-en-kokonaisajon-legacy-hylkäys)
+hylättiin historiallisen lähtöversion smokessa, vaikka nykyisen Electronin
+38 testiä läpäisivät. Diagnostiikan jälkeisessä normaalissa ajossa havaittiin
+erillinen [rollback-prosessisopimuksen hylkäys](e2e-test-environment.md#t3b-en-normaalin-baselinen-rollback-sopimushylkäys).
+Sen diagnostiikkarevision sopimukset läpäisivät, mutta kaksi
+[firstWindow-ensiyritystä hylättiin](e2e-test-environment.md#t3b-en-toistunut-firstwindow-hylkäys-ja-backendstart-rajaus).
+Uusi [normaali baseline](e2e-test-environment.md#t3b-en-vihreä-normaali-baseline)
+on tämän jälkeen läpäissyt kokonaisuudessaan revision `1953b6b0` ensimmäisellä
+yrityksellä. Vanhoja virhesyitä ei merkitä ratkaistuiksi. Seuraavan T3b-P-
+revision CI:ssä havaittiin erillinen [komentoharnessin sopimushylkäys](e2e-test-environment.md#t3b-pn-ci-sopimushylkäys-ja-havaintokytkentä).
+Sen havaintokytkennän korjausta seuraava normaali CI ja riippuvuustarkistus
+läpäisivät revision `a1df082c` ensimmäisellä yrityksellä. Checkoutit ja
+artifact-sidonnat on varmistettu; puuttuvan terminal-tuloksen juurisyy ei
+silti ratkennut. Tämäkään ei täytä alla olevia lopullisia prosessiomistajuuden rivejä.
+Omistaja hyväksyi 2026-09-26 erilliset T3c-W- ja T3c-L-kokeet. Niiden
+rajattu tila on alla omassa koetaulukossaan: T3c-W läpäisi neljä tapausta,
+T3c-L:n molemmat ensimmäiset CI-kokeet hylättiin ennen GO:ta. Kokeet eivät
+muuta lopullisen mekanismin ja fixture-siirron rivejä hyväksytyiksi.
+Omistajan hyväksymän [T3c-LD:n](e2e-test-environment.md#t3c-ld-rajatun-käynnistysdiagnostiikan-päätösehdotus)
+diagnostiikkatäydennyksen 92/92 kohdetestiä, nykyiset paikalliset portit ja
+riippumaton katselmus läpäisivät. [Uuden CI-kokeen havainto](e2e-test-environment.md#t3c-ldn-rajatun-ci-kokeen-havainto)
+rajaa molemmat hylkäykset ennen READYä: wrapper exit 1 ja tuntematon stderr;
+init-merkki puuttuu. Kokonaisajo on päättynyt hylätyksi; muut testiryhmät
+läpäisivät, myös Electron 38/38 ilman retryä tai flaky-tulosta.
+Tarkka syy ja T3-hyväksyntä jäävät avoimiksi. Seuraava
+[T3c-LS-ehdotus](e2e-test-environment.md#t3c-ls-suljetun-stderr-luokan-tarkennuksen-päätösehdotus)
+on hyväksytty 2026-09-26. Tarkennuksen kohdesarja 97/97 ja CI-sopimukset
+199/199 läpäisivät; ajurin alkuperäinen hylkäys, GO-esto, cleanup ja juuren
+säilytys eivät muutu. [Oikean CI-kokeen molemmat Linux-tulokset](e2e-test-environment.md#t3c-lsn-rajatun-ci-kokeen-havainto)
+tunnistivat `unshareUidMapDenied`-luokan ennen READYä ja GO:ta. Tavalliset
+218 system- ja 35 web-testiä sekä Electron 38/38 läpäisivät ilman retryä tai
+flaky-tulosta. Kokonaisajo päättyi hylätyksi vain Linux-kokeiden ja
+aggregaatin vuoksi; muut ryhmät läpäisivät. Ei lopullisen prosessiomistajuuden
+hyväksyntää, estävän taustapolitiikan todistetta tai uusintalupaa.
+
+Omistaja hyväksyi tämän jälkeen [T3c-LM:n](e2e-test-environment.md#t3c-lm-rajattu-ci-testisession-hallinta)
+rajatun manageripohjaisen CI-session suunnittelun ja toteutuksen. Ensimmäiset
+puhtaat sopimukset koskevat nonroot-initin oikeuksia ja täsmällisen
+unit-invocationin käynnistys-/normaalin poistumisen havaintoa. Ne eivät ole
+oikeaprosessitodiste tai aikaisemman LS-ajon uusi tulkinta.
+
+| Valmistelun näyttö | Taso ja rajaus | Tila |
+| --- | --- | --- |
+| TEST-BACKEND-OWNER-CONTRACT-001 | Windows-backendin suljettu native-/kutsujasopimus, yhden launchin ja määräaikojen säilyminen, root-exit, kontrollikatko, vanhan havainnon torjunta, RSS sekä cleanup erillään ensimmäisestä virheestä. | Lopullinen sopimussarja 96/96, oikea boot/health/session/RSS 5/5, nykyiset restart/yrityksenluonti/backup-polut 22/22 ja täysi E2E 484/484 läpäisty. [Revision aa377b46 koko normaali CI](e2e-test-environment.md#backendin-windows-omistajan-toteutusraja) ja riippuvuustarkistus läpäisty, system 398/398, web 35/35 ja Electron 38/38 ilman retryä/flaky-tulosta. Aiempi a2c826fc:n hylkäys säilyy; koko T3 ja PR/main avoinna. |
+| TEST-BACKEND-OWNER-PREPARATION-001 | Nykyiset preparation-komennot rakentavat saman native-omistajan; lähde- ja artifact-sidonta, alihakemistolähteet, selftest-guard ja vanhan tuotteen torjunta. Windows CI:n SDK-esiehto kuuluu normaaliin kuluttajaan. | Lopulliset native-selftestit 510/226 ja normaali E2E-valmistelu läpäisty. Työkalujen 487/487 sekä vanhan Electron-kokeen neljä oikeaprosessitapausta läpäisivät ennen viimeistä backend-tilan kellokorjausta; vanha protokolla ja yhteiset primitiivit eivät muuttuneet korjauksessa. Revision aa377b46 normaali CI läpäisty; PR/main ja koko T3 avoinna. |
+| TEST-BACKEND-OWNER-CLOCK-001 | Viivästetty native-alku, prelaunch-työmääräajan lukitus, pyyntöön sidottu kellon alaraja, myöhäinen terminal sekä alkuperäisen cleanup-rajan säilyminen. | Lopullinen hallittu regressio, backend-kohdepolut ja tavallinen E2E läpäisty. Koko T3:n watchdog-/owner-loss-matriisi avoinna. Ensimmäiset virheet säilytetty; ei aikarajan lievennystä tai historiallisten timeoutien ratkaisuväitettä. |
+| TEST-BACKEND-OWNER-PATH-001 | Test-only-validatorin alkuperäiset junction-segmentit, eri Windows-asema, yksiselitteinen host-temp-ankkuri ja saman run-juuren TEMP/TMP. | Rajatut regressiot läpäisty; tuotannon polkumallia ei muuteta. |
+| TEST-VITE-OWNER-CONTRACT-001 | Suljettu Vite-profiili samassa Windowsin palveluomistajassa; profiilien erottelu, nimetyn pnpm-paketin manifesti ja alkuperäiset polkusegmentit, env/session-raja sekä backendin kellon ja cleanupin säilyminen. | Yhteiset sopimukset 130/130, native 510/226/285 ja työkalut 488/488 läpäisty. [Rajattu toteutus ja revision 2b40dcd4 normaali CI](e2e-test-environment.md#viten-windows-omistajan-toteutusraja) läpäisty; koko T3 ja PR/main avoinna. |
+| TEST-WEB-STARTUP-CLEANUP-001 | Yhteinen health/terminal-kilpailu; Viten todellinen käynnistys, ensimmäinen virhe, prosessipuun ja portin siivous erillisinä havaintoina, fixture-liite ja epävarman juuren säilytys. | Startup-/fixture-sopimukset, oikea ajokytkentä ja täysi E2E 548/548 läpäisty ilman retryä, flakyä tai ohituksia. Revision 2b40dcd4 normaali CI läpäisty: system 462/462, web 35/35, Electron 38/38. Backendin aiempi sopimus säilyy; koko T3 avoinna. |
+| WEB-SERVICE-001 | System-integraatio: oikea backend ja Vite, sivu ja moduuli, session vain Node-proxyssa, eristetty cache, työkuorman tila, toistettu stop sekä Windowsin natiivin terminalin sama generaatio ja Jobin tyhjeneminen. | Oikea integraatio, normaali web-fixture, erillinen endurance-kuluttaja ja revision 2b40dcd4 normaali CI läpäisty. System-koe ei yksin ole selaimen Page- tai owner-loss-näyttö. Chromiumin omistajuussiirto ja koko T3 avoinna. |
+| WEB-SERVICE-002 | Oikean Viten käynnistys testin erikseen omistaman varatun portin kohdalla: ensimmäinen käynnistysvirhe säilyy, Viten prosessipuu päättyy, portin epävarmuus ei muutu onnistumiseksi eikä sen toista palvelinta pysäytetä. Testi sulkee oman varaajansa lopuksi erikseen. | Rajattu oikeaprosessikoe ja revision 2b40dcd4 normaali CI läpäisty. Ei yleistä lupaa sivuuttaa portin cleanupia eikä koko T3:n omistajuusmatriisin hyväksyntä. |
+| TEST-ELECTRON-DIRECT-OWNER-001 | Suljettu Windowsin Electron-profiili samassa omistajassa; kiinteä paketti/entrypoint/env, suoran exit 0/1:n ero puun siivouksesta, alkuperäiset määräajat, ensimmäinen virhe, vastaanottojärjestyksen tulosteraja ja epävarman juuren säilytys. | [Rajattu toteutus](e2e-test-environment.md#electronin-suorien-kuluttajien-windows-siirto): 602/602 normaali paikallinen E2E; raportointikytkennän jälkeen 44/44 kohdetestiä, mukana kaksi oikeaa suoraa Electron-kuluttajaa. Native 510/226/285/408 ja vanhat neljä adapterikoetta läpäisty. Revision `aaef697f` normaali CI läpäisty: system 518, web 35, kriittinen Electron 38. Kahden suoran testin näyttö pysyy erillisenä paikallisena ajona. Playwright-bridge, Linux ja koko T3 avoinna. |
+| TEST-ELECTRON-FAILURE-PUBLICATION-001 | Oikean runnerin yhteyskatkovirhe: julkinen tuloste ei sisällä capability-osoitteita tai raakaa prosessitulostetta; alkuperäinen hylkäys, yritys ja julkaisematon virheaineisto säilyvät. | [Hyväksytty rajaus ja toteutussopimus](e2e-test-environment.md#electronin-pääkäynnistyksen-avoimet-päätösrajat). Turvallinen CI-raportti, 28 regressiota ja main/renderer-kohdekoe läpäisty; normaali paikallinen E2E 604/604. Revision `fe893d6b` normaali CI `36313499358` ja riippuvuusportti `36312191562` todennettu; system 518, web 35, Electron 38 ilman retryä tai flaky-tulosta. Edellinen infrastruktuurihylkäys säilyy erillisenä. Ei koko T3- tai PR/main-hyväksyntä. |
+| TEST-BACKEND-STARTUP-OBSERVATION-001 | Työkuorman startup-havainnon sopimus, terveysvastauksen kilpailutilanne, havaintovirhe, ensimmäisen virheen säilyminen ja todellisen suoran lapsen kytkentä. Ei prosessipuun omistajuustodiste. | Toteutettu; kohdesarja 117/117, täysi E2E 331/331 ja [revision 83a94fad normaali CI](e2e-test-environment.md#backendin-käynnistyshavainnon-valmistelupala) läpäisty. Stop-, PID-/RSS- ja alustasiirto ovat yhä avoinna. |
+| TEST-TREE-LINUX-MANAGED-CONTRACT-001 | Puhtaat launch-, credential-drop- ja unit-kuittisopimukset: nonroot PID 1, lisäryhmät, NNP, capabilityt, suljettu managerivastaus, vanhentunut identiteetti ja pakotetun exitin hylkäys. | Ensimmäisessä checkpointissa 11/11 kohdetestiä ja 252/252 E2E-paketin sopimustestiä läpäisty. Katselmuksessa löydetty RemainAfterExit-riski korjattu ja uudelleen katselmoitu. Manageriajuri puuttuu; ei oikeaprosessi-, CI-, fixture- tai R28-hyväksyntä. |
+| TEST-TREE-LINUX-MANAGED-CONTROL-001 | Injektoitu AF_UNIX-/init-kytkentä: private root/socket, oikeudet ja inode, alkuperäiset määräajat, late connect, yhden yhteyden lukitus, EOF, GO-hännät, replay sekä vanhan fd3-polun regressiot. | 20/20 uutta ja 60/60 vanhan ajurin kohdetestiä, E2E 273/273, workspace 4 220 läpäisyä ja 8 ennestään ohitettua sekä tyypitys läpäisty. Katselmushavainnot korjattu ja uudelleen katselmoitu. Ei oikeaa socket-/manageri-/prosessi- tai CI-koetta. |
+| TEST-TREE-LINUX-MANAGED-OBSERVATION-001 | Injektoitu show-only-lukuketju: alkuperäinen määräaika, exit/close/EOF, tavuraja, UTF-8, ensimmäinen virhe ja epävarma kyselycleanup. Ei launch-/stop- tai poistovaltuutta. | 17/17 uutta lukijatestiä ja 11/11 unit-sopimusta, normaali E2E-komento 291/291 sekä paketin tyypitys läpäisty. Riippumaton katselmus ilman löydöksiä. Ei todellista systemd-, sudo-, unit- tai prosessipuukoetta tai koko workspacen uusintaa. |
+| TEST-TREE-LINUX-MANAGED-PREFLIGHT-001 | Injektoitu metadataesitarkistus: CI-/nonroot-guard, kiinteät binäärit ja esi-isät, root-omistus, linkit/oikeudet, managerin merkki/socket, cgroup v2, alkuperäinen määräaika ja myöhäisen paluun torjunta. Ei oikeuksien tai live-managerin todistus. | 13/13 kohdetestiä, normaali E2E-komento 305/305 ilman ohituksia ja paketin tyypitys läpäisty. Riippumaton katselmus ilman löydöksiä. Ei oikeaa host-tarkistusta, managerikutsua, CI-koetta tai fixture-siirtoa. |
+| TEST-TREE-LINUX-MANAGED-COMMAND-001 | Injektoitu yhteinen komentolapsen elinkaari, manageriyhteyden rajattu kysely, täsmälliset politiikkakyselyt ja kertakäyttöinen launch. Kutsujan identiteetti, jäädytetyt argumentit, alkuperäinen määräaika ja epävarman launchin hylkäys. | 13 uutta testiä ja muuttamattomat 17 lukijatestiä mukana normaalissa 319/319 E2E-sopimussarjassa; tyypitys läpäisty. Katselmuksen phase-regressio korjattu ja uudelleen katselmoitu. Ei oikeaa komentoa/palvelua, omistajuus- tai prosessipuukuittia, fixture-siirtoa tai koko workspacen uusintaa. |
+| TEST-TREE-LINUX-PREREQ-001 | Suljettu metadatahavainto, host-lukujen guard, luku-/aikarajat ja CI-komennon status. Ei prosessipuun omistajuuskoe. | Molempien kuluttajien täydellinen kielteinen pääsyhavainto saatu; ensimmäisen ajon T1-hylkäys säilyy. Korjattu revisio läpäisi oman CI-ajonsa. Ei Linux-omistajuustodiste. |
+| TEST-TREE-LINUX-MANAGED-SESSION-001 | Yhdistetty session omistaja, private invocation-kuitti, kaikki GO-portit, sarjallinen stop/havainto, suljettu sisäänotto loppuodotuksessa, alkuperäinen virhe ja siivouksen epävarmuus erillään. | 24 uutta injektoitua testiä, E2E 344/344 ja koko projektin tyypitys läpäisty. Katselmuksen kolme havaintoa toistettu ja korjattu, uudelleenkatselmuksessa ei löydöksiä. Koko workspace-portti jäi avoimeksi hylätyn ajon vuoksi. Ei todellista manageria, sentinel-/puukuittia, juuren poistolupaa, CI-ajoa tai fixture-siirtoa. |
+| TEST-TREE-LINUX-MANAGED-OUTER-001 | Ulompi ajuri, alkuperäiseen aikaan sidottu itsenäinen sentinel-siivous, tuoreet haasteet, tyhjän alkuperäisen juuren poisto, suljettu kirjoitus/luku ja oletuksena pois oleva CI-kytkentä. | Kohdesarja 61/61, E2E 383/383, CI-sopimukset 241/241 ja tyypitys läpäisty. Sentinel-katselmushavainto toistettu ja korjattu; uudelleenkatselmuksessa ei löydöksiä. Workspace-portti avoin. Ei oikeaa managerikoetta, Chromium- tai kuluttajasiirtotodistetta; vanha LS-hylkäys säilyy. |
+| TEST-ELECTRON-LAUNCH-PATCH-001 | Todellisen digest-varmennetun lukitun riippuvuuden hallittu regressio; ei oikeita prosessi-, tiedosto- tai verkkosivuvaikutuksia. Alkuperäisen virheenkäsittelyn lisäksi julkinen boolean-opt-in/protokolla, validointi ennen temp/spawnia, handle-only kill, todellinen close/cleanup ja muuttumattomat oletushaarat. | Alkuperäinen ennen patchia 17/43 ja jälkeen 43/43 sekä kaksi alkuperäistä Windows-koetta säilyvät historiatietona. [Lisäpatchin checkpointin](e2e-test-environment.md#electron-bridgen-lopetuspolun-jatkoehdotus) työkalusarja 678/678 sisältää asennetun bundlen regressiot ja 38 uutta prosessikohtaista lopetustestiä; erillinen 82/82 koskee havaitsija-/bridge-sopimuksia, ei bundle-testien määrää. Tarkat käänteiset hunkit todistavat aiemmat tavut, mutta molemmat vanhat digestit torjutaan eikä historiaa evaluoida. Oletusten ja ensimmäisen virheen säilymisen regressiot säilyvät. Tämä alempi taso ei yksin hyväksy fixtureä, etä-CI:tä tai koko R28:aa. |
+| TEST-ELECTRON-DIRECT-EXE-PATCH-001 | Nykyisen lukitun patchin lisäys eksplisiittiseen absoluuttiseen Windows-EXE-launchiin; muut polut ja alustat ennallaan. Aiemman virheenkäsittelyn regressiot, tarkka argv/env/cwd, stdio ja todellisen lapsen normaali sulku. | [Hyväksytty käyttöönotto](e2e-test-environment.md#electronin-pääkäynnistyksen-avoimet-päätösrajat). Seitsemän rajattua oikeaa Windows-koetta ja normaali paikallinen E2E 604/604 läpäisty ilman retryä tai flakyä. Katselmuskorjauksen jälkeen 163 kohdetestiä, 638 työkalutestiä ja koko työtilan portit läpäisty. Revision `587ba540` normaali V2 `36321641499` ja riippuvuusportti `36321645670` hyväksytty ensimmäisellä yrityksellä; Linuxin työkalusarja 638/638 sekä system/web/Electron 518/35/38 todennettu. Timeoutin cleanup-epävarmuus säilyy; ulomman omistajan tyhjä puu ei ole Playwrightin failed-launch-kuitti. Tyhjien lisästreamien EOF ei todista bridgen kahvaperiytymistä. Ei pääfixturen siirtoa, PR/mainia tai koko T3:n hyväksyntää. |
+| TEST-ELECTRON-PREREGISTRATION-001 | [Varhainen prosessihavainto](e2e-test-environment.md#electronin-varhaisen-prosessihavainnon-päätösehdotus): oikean ChildProcess-olion talteenotto ennen launchin tulosta sekä rekisteröinti/GO nykyisessä omistajassa. | Lapsiton bridge-asiakas, Node-kutsuja ja [rajattu lopetuspatch](e2e-test-environment.md#electron-bridgen-lopetuspolun-jatkoehdotus) toteutettu ja katselmoitu. Normaali Page/API/sulku, bootstrapin varhainen poistuminen, rekisteröidyn bridgen kato GO pidätettynä ja aito pendingFirstWindow-timeout läpäisty ensimmäisellä yrityksellä; lähde-, alkuperäinen virhe- ja erillinen siivousnäyttö takaisinluettu. Varhaisvirheissä ei GO:ta eikä työkuormaa; ikkunakokeessa sama julkinen promise, snapshot ennen aitoa timeoutia ja julkinen close ennen owner-stopia. Myöhemmät restart/relaunch- ja toinen instanssi -kokeiden toiset yritykset, owner-lossin ensimmäinen ja caller-lossin toinen hyväksytty erillisine puu-/sentinel-/porttitodisteineen. Ensimmäiset hylkäykset ja aiemmat rekisteröinti-/inertit tutkimukset säilyvät erillisinä. Tavallisen fixturen kytkentänäyttö alla; muu peer-/virhe-/katkeamismatriisi ja uusi CI avoinna. |
+| TEST-BACKEND-BUILD-METADATA-001 | Täsmällinen normalisointi, lähdesidonta, linkkien torjunta, vendor-tavujen säilyminen, sisältöportit ja paketointijärjestyksen rakenteellinen suoja. | Kohdesarja 200/200, normaali testisarja ja tyypitys läpäisivät; katselmoitu. Tuore eristetty build, sisältöportit ja samoihin itsenäisiin tavuihin sidottu kaksivaiheinen packaged smoke läpäisivät molempien prosessipuiden terminal-kuitein. Ensimmäinen build-hylkäys säilyy. CI:ssä havaittu erillinen komentoharnessin hylkäys säilyy avoimena; havaintokorjauksen revision a1df082c normaali CI ja riippuvuustarkistus läpäisivät. Ei julkaisu- tai koko T3-hyväksyntä. |
+
+#### T3c:n rajatut kokeet
+
+Windowsin kaikkien neljän tapauksen takaisinluettu näyttö vahvistaa
+jäsenyyden ennen resumea, sisemmän puun tyhjyyden ja siivousterminalin,
+ulomman omistajan normaalin päättymisen ilman interventiota sekä erillisen
+sentinelin elossaolon ja sulun. Kokeet sidottiin samoihin native-tavuihin.
+[Checkpoint](e2e-test-environment.md#t3c-wn-rajatun-kokeen-checkpoint)
+erottaa nämä tulokset vanhoista hylkäyksistä, kohdetesteistä ja CI-porteista.
+
+| Kokeen ID | Taso ja vaadittu näyttö | Tila |
+| --- | --- | --- |
+| TEST-T3CW-NORMAL-001 | Rajattu Windows-oikeaprosessikoe: todellinen Page/API, argumentit, ympäristö, cwd, sandbox, stdout/stderr ja normaali bridge-close 0. | Rajattu koe läpäisty; ei tavallisen fixturen siirto tai koko T3. |
+| TEST-T3CW-BEFORE-READY-001 | Rajattu Windows-oikeaprosessikoe: root exit 29 ja elävä Electronin luoma leaf ennen stopia; ei readyä tai timeout-launch-hylkäystä; erillinen drain-kuitti ja ei bridge-failurea. Bridge-exit ei ole suoraan havaittu. | Rajattu koe läpäisty; intended exit ei korvaa actual exit -havaintoa tai siivousterminalia. |
+| TEST-T3CW-ROOT-FIRST-001 | Rajattu Windows-oikeaprosessikoe: root exit 0 ja ei-tyhjä Job ennen omistajan tree-stopia; vasta sitten todellinen bridge-close 0. | Rajattu koe läpäisty; ajurin odotusjärjestyskorjaus suojattu sopimustesteillä. Aiemman perityn tulostekahvan kirjoittajan identiteettiä ei väitetä todistetuksi. |
+| TEST-T3CW-BRIDGE-EXIT-001 | Rajattu Windows-oikeaprosessikoe: tarkoituksellinen bridge-close 41; runtime ja omistaja yhä elossa, kontrolli käytössä ja omistajan siivous todennettu. | Rajattu koe läpäisty odotettuna työkuormavirheenä, ei onnistuneena työkuormana. |
+| TEST-T3CL-NAMESPACE-001 | Ehdollinen Linux-CI-koe: namespace-esiehdot, root-exitin jälkeinen tuore leaf-kuittaus, initin odotettu EOF, normaali wrapper-wait ja ulkopuolinen sentinel. | Ensimmäiset hylkäykset säilyvät. [LS-kierroksen molemmat Linux-kokeet](e2e-test-environment.md#t3c-lsn-rajatun-ci-kokeen-havainto) tunnistivat `unshareUidMapDenied`-luokan; `bootstrapUnknown` ennen READYä/GO:ta, sentinel säilyi, cleanup varmistamatta. Ei namespace-tuen tai puuttuvan edellytyksen hyväksyntätodistetta. |
+| TEST-T3CL-MANAGED-001 | Rajattu manageripohjainen Linux-CI-koe: nonroot-init, private session-kuitti, GO-portit, root ensin pois, leaf elossa, namespace tuhoutunut, normaali wrapper-wait ja erillinen sentinel. | [LM:n molemmat kuluttajat](e2e-test-environment.md#t3c-lmn-ensimmäinen-ci-näyttö-ja-kytkentätestin-korjaus) takaisinluettu hyväksytysti revision 08e9a94d ensimmäisestä ajosta. Kokonaisajo hylättiin erillisen T1-kytkentätestin vuoksi. Korjatun revision e3f647b2 normaali CI ja riippuvuustarkistus läpäisivät ensimmäisellä yrityksellä; kokeet olivat siinä pois käytöstä. Ei Chromium-, fixture- tai koko T3-hyväksyntää. |
+| TEST-T3CL-MANAGED-CHROMIUM-001 | [Rajattu Chromium-yhteensopivuus](e2e-test-environment.md#t3c-lmn-chromium-yhteensopivuus): nykyinen selainkonfiguraatio, Page/API, sulku, scratch-juurten siivous ja tämän jälkeen muuttumaton leaf-kuittaus. Sama Linux-session omistaja ja alkuperäinen määräaika. | Revision c09e8866 ensimmäinen CI-ajo 36273631324 läpäisi rajatun oikean selaimen kokeen ja koko V2:n; riippuvuustarkistus 36273645184 läpäisi. Actor/Chromium complete, namespace destroyed, juuri removed, sentinel säilynyt ja suljettu. Tavalliset system 218/218, web 35/35 ja Electron 38/38 ilman retryä/flakyä. Aiemmat worker/failure 66/66, E2E 460/460, CI 315/315, workspace 4 410 + 8 aiempaa ohitusta sekä tyypitys läpäisty. Ei elävän selaimen owner-loss-hyväksyntää tai oikeiden fixture-kuluttajien siirtoa. |
+
+Alla olevat lopullisen T3:n rivit säilyvät erillisinä päätös- ja
+hyväksyntäportteina. T3c-W:n ensimmäisen ennen launchia tapahtuneen
+hylkäyksen syy ja vanhat satunnaiset timeoutit ovat edelleen avoimia.
+Omistajan 28.9. päätös hyväksyy yhteisen Chromium-workerin testikohtaisella
+eristyksellä sekä paikalliset Windows-testit ja Linux-CI:n. Näitä koskevat
+päätösestot ovat poistuneet; kuluttajasiirto ja sen todentaminen ovat kesken.
+
+Linuxin seitsemän oikean kuluttajan hyväksyntäskenaariota on rajattu
+[katkeamiskokeiden sopimuksessa](e2e-test-environment.md#linuxin-todellisten-kuluttajien-katkeamiskokeet):
+`backend-owner`, `backend-control`, `vite-owner`, `vite-control`,
+`chromium-owner`, `chromium-control` ja `caller`. Ne täydentävät alla olevia
+omistajuus-, failure-, fixture- ja Chromium-loss-portteja, eivät lisää
+tavalliseen Playwright-katalogiin seitsemää testiä. Kaikki seitsemän
+läpäisivät lähteen `7f8df53a16770b5e3206c179ff8f497b76c6cf24`
+[manuaalisen CI-ajon 36456205257](https://github.com/eky-software/eky/actions/runs/36456205257)
+yrityksessä 1. Samassa rajatussa Linux-ajossa system läpäisi 698 tapausta
+699 valitusta; yksi tunnettu Windows-only-suoja ohitettiin. Web läpäisi
+37/37 ja erillinen stress 1/1 ilman retryä, flakyä tai raporttivirheitä.
+Checkoutit, tapausidentiteetit, seitsemän fault-tuloksen sidonnat ja stressin
+täsmällinen testi-identiteetti varmennettiin. Webin ja stressin omat
+worker-siivoukset ja worker-juurten poistot takaisinluettiin erikseen.
+Tämä hyväksytty näyttö ei korvaa `5bbfd483`:n täyttä normaalia baselinea,
+muuta historiallisia hylkäyksiä tai sulje koko T3:a. Vanhan aktiivisen
+Linux Electron -fallback on nyt poistettu. Poiston kohdesarja 151/151,
+puhtaat Electron-sopimukset 10/10, tyypitys, workspace-testit ja riippumaton
+katselmus läpäisivät. Tavallinen Windows-regressio 781/781 (693/43/45)
+läpäisi ilman retryä, flakyä tai ohituksia. Valmisteluun liitetyn resume-
+kokeen pipe-kytkentä läpäisi 31/31 sopimusta sekä oikean 25 tarkistuksen
+siivousketjun. Taulukon historialliset portit eivät korvaa lopullisen
+revision vielä avoimia PR/main-portteja.
+
+| ID | Taso | Koe ja hyväksyntä | Tila |
+| --- | --- | --- | --- |
+| TEST-TREE-OWNERSHIP-001 | Omistajasopimus ja oikeat Windows-/Linux-prosessit | Root ensin tai stopin aikana pois; portiton/vastustava jälkeläinen, myöhäinen fork ja ryhmästä irtautuminen; puu todistetusti tyhjä, ulkopuolinen sentinel säilyy. | Root/puu-erottelu: [native-tilasopimus](../../apps/e2e/experiments/processOwnership/adapterNative/BackendServiceSelfTest.State.cs) ja [Linux-session regressiot](../../apps/e2e/experiments/processOwnership/linuxServiceSession.test.mjs). T3a:n hyväksytyt Node-tapaukset, T3c-W:n root-first ja LM:n detached/TERM-leaf todistavat rajatut mekanismit; Windowsin kuluttaja-lossit ja `7f8df53a`:n seitsemän Linux-faultia täydentävät niitä oikeilla kuluttajilla ja sentinelillä. [Root-first-laajennuksen](../../apps/e2e/experiments/processOwnership/adapterDriver.mjs) yksi oikeaprosessiajo ja 48/48 kohdesopimusta hyväksytty: todettu root-exit edelsi kertakäyttöistä sukupolvi-/haastelupaa, jälkeläisen uusi lapsi kuittasi itse ja omistaja näki molemmat jälkeläiset ennen stopia. Todelliset sulut, tyhjä Job, luonnollinen ulompi päättyminen ja sentinel sekä terminalin jälkeinen lähde-/binaarisidonta hyväksytty. Näytön skeema 2 ei hyväksy vanhaa root-first-kuittia uutena fork-todisteena; aiempi historia säilyy. Rivin kohdistettu näyttö hyväksytty, yhdistetyn revision portit sekä koko T3 ja PR/main avoinna. |
+| TEST-TREE-FAILURE-001 | Hallittu sopimus ja oikeaprosessi-integraatio | Launch/resume/query/control/result-virheet, myöhäinen luonti, owner-loss, vanha kuitti ja identiteetin uudelleenkäyttösimulaatio; ei root/PID-fallbackia tai väärää onnistumista. | [Windows-ownerin regressiot](../../apps/e2e/tests/system/ownedWindowsBackend.spec.ts), [LM-session regressiot](../../apps/e2e/experiments/processOwnership/managedNamespaceSession.test.mjs), `BridgePeerObservationSelfTest` ja `linuxServiceContract.test.mjs` kattavat virheen/cleanupin erottelun ja vaihtuneen identiteetin torjunnan. [Supervisor-sopimus](../../apps/desktop/installer/windows-process-supervisor/tests/windowsAcceptanceSupervisor.contract.test.mjs) kattaa myöhäisen suoran luonnin ja result-publication-virheen. Oikeat Windows-lossit ja `7f8df53a`:n Linux-lossit hyväksytty. [Kohdistettu native-resume-koe](../../apps/e2e/experiments/processOwnership/adapterNative/BackendServiceOwner.ResumeFailureSelfTest.cs) läpäisi 25 tarkistusta: oikea suspended-lapsi oli omistajan Jobissa ennen sisäisesti injektoitua resume-virhepaluuarvoa; sama owner hoiti todellisen poistumisen, stdion ja tyhjän Jobin sekä terminalin. `processResumeFailed` säilyi, workload ei käynnistynyt, toistettu stop ei uusinut kelloa eikä relaunch onnistunut. Tämä on hallittu virhehaaran oikeaprosessinäyttö, ei väite spontaanista käyttöjärjestelmävirheestä. Rajattu näyttö hyväksytty; yhdistetyn revision regressiot, koko T3 ja PR/main avoinna. |
+| TEST-TREE-FIXTURE-001 | System/web-fixture-integraatio | Varmentamaton stop estää restartin ja poiston; alkuperäinen virhe, cleanup ja evidence-virhe erillään, stop idempotentti. Wrapper ei korvaa runtime-identiteettiä health-/exit-/mittarirajalla. | [Fixture-regressiot](../../apps/e2e/tests/system/serviceFixtureLifecycle.spec.ts), `e2eBackendStartupLifecycle.spec.ts`, `ownedWindowsBackend.spec.ts` sekä Linuxin `linuxServiceContract.test.mjs` ja `linuxServiceSession.test.mjs` kattavat restart-eston, virheprioriteetin, toistetun stopin ja työkuorman identiteetin/RSS:n. Windowsin backend/Vite-näyttö säilyy. `7f8df53a`:n [todellinen kuluttajaketju](../../apps/e2e/experiments/processOwnership/linuxConsumerLossActor.mjs) todisti alkuperäisen runkovirheen, aidon fixture-liitteen, restart-/replacement-eston ja epävarman juuren säilymisen; tavallinen system/web ja erillinen stress hyväksytty. Ei uutta nimettyä invarianttia avoinna tässä rivissä; poiston jälkeinen integraatio ja koko T3 erillisiä. |
+| WEB-WORKER-ISOLATION-001 / 002 | Kaksi peräkkäistä todellista web-fixturea | Sama selain, eri konteksti ja datajuuri; ensimmäinen konteksti suljettu ja juuri poistettu; eväste ei siirry eikä asiakkaita ilmaannu uuteen testiin. | [Todellinen kahden testin ketju](../../apps/e2e/tests/web/sharedChromiumIsolation.spec.ts) sisältyy hyväksyttyyn Windows-web 43/43 -näyttöön ja `7f8df53a`:n tarkasti sidottuun Linux-web 37/37 -katalogiin. Rajattu eristysnäyttö hyväksytty molemmilla alustoilla; ensimmäinen Windowsin nimisopimushylkäys säilyy historiassa. Ei koko T3:n tai lopullisen revision integraation hyväksyntää. |
+| TEST-CHROMIUM-ARTIFACT-001 | Todellisen fixturen rajattu virhe-/retry-koe | Ensimmäisestä virheestä kuvakaappaus; uusinnassa trace ja uusi worker ilman omistajakellon nollausta. Sulut varmistettu; ohjausosoite tai BrowserType.connect ei tallennu. | Rajattu Windows-koe uusittu nykyisen [yhteisen worker-ketjun](../../apps/e2e/src/fixtures/runOwnedChromiumWorker.ts) jälkeen; pakattujen artifactien ja molempien siivousten riippumaton takaisinluku hyväksytty. [Admission-regressiot](../../apps/e2e/tests/system/chromiumWorkerAdmission.spec.ts) suojaavat alkuperäistä kelloa ja replacement-estoa. Odotettu ensimmäinen virhe ei ole tavallisen CI:n flaky-hyväksyntä. Rivin rajattu näyttö hyväksytty, ei koko T3. |
+| TEST-CHROMIUM-LOSS-001 / 002 | Todellinen Chromium-worker ja ulompi omistettu Windows-testisessio | Native-omistaja tai kutsuva worker katoaa; puu päättyy ilman ulomman siivouksen apua, portti vapautuu ja ulkopuolinen sentinel säilyy. Epävarmuus säilyttää juuren/varauksen eikä retry muutu onnistumiseksi. | Molemmat Windows-kokeet sekä lähde-/binaarisidonnan takaisinluku hyväksytty: luonnollinen ulompi päättyminen, portti ja sentinel erikseen; puuttuva sisempi terminal ei ole onnistumiskuitti. Linuxia täydentävät `7f8df53a`:n `chromium-owner`, `chromium-control` ja `caller`: [oikea worker-/fixture-ketju](../../apps/e2e/experiments/processOwnership/linuxConsumerLossActor.mjs), passiivinen puutodiste ennen containmentia ja [tiukka tulossopimus](../../apps/e2e/experiments/processOwnership/linuxConsumerLossOutcome.test.mjs). Rajattu näyttö hyväksytty; lopullinen integraatio ja koko T3 avoinna. |
+| SYS-CHROMIUM-LIFECYCLE-001 / SYS-CHROMIUM-WORKER-LIFECYCLE-001 | Yhteisen yhteyspolun ja todellisen worker-orchestrationin alemmat sopimukset | Myöhäinen connect odotetaan suljetuksi alkuperäisessä cleanup-ajassa; close/owner-virhe tai epävarmuus säilyttää juuren ja varauksen, estää uusinnan eikä peitä alkuperäistä virhettä. Normaali owner-stop ei ole sitä edeltävä yhteyskatkos. | [Yhteyden](../../apps/e2e/tests/system/chromiumConnectionLifecycle.spec.ts) ja [workerin](../../apps/e2e/tests/system/chromiumWorkerLifecycle.spec.ts) kohdesarja 50/50 sisältäen aiemmat 20 admission/ready-tapausta hyväksytty. Samat sopimukset sisältyvät `7f8df53a`:n system-katalogiin. Alempi taso säilyy erillisenä yllä hyväksytyistä oikeista loss-/artifact-kokeista; ei koko T3:n korvike. |
+| TEST-TREE-ELECTRON-001 | Windows Electron development | Omistajuus ennen launchin valmistumista; normaali close, connect-/window-virhe, relaunch, toinen instanssi ja bootstrap, myös stdio-/environment-/process-kahvan sopimus. | Rajattu kuluttajaosuus hyväksytty. [Bridge-session regressiot](../../apps/e2e/tests/system/windowsElectronBridgeSession.spec.ts), [asennetun bundlen kill-regressiot](../../apps/e2e/experiments/processOwnership/playwrightElectronProcessKill.test.mjs), `ownedWindowsElectron.spec.ts` ja `electronFixtureLifecycle.spec.ts` sitovat alemmat sopimukset oikeaan launch-/cleanup-ketjuun. Saman lähdetilan 186/186, tyypitys, valmistelu ja tavallinen Electron 45/45 hyväksytty. Käynnistys-/ikkuna-, relaunch-/toinen instanssi- ja loss-kokeet, erillinen stress/täysi soak sekä kaksi todellisen fixturen virheprioriteettikoetta hyväksytty omissa checkpointeissaan; `ab5de90b`:n oma normaali CI ja riippuvuusportti läpäisivät. Ensimmäiset hylkäykset säilyvät. Epävarmuus ja legacy-poisto ovat omilla riveillään; viimeisen aktiivisen fallbackin poiston regressiot, koko T3 ja PR/main avoinna. |
+| TEST-TREE-HANDOFF-001 | Desktopin eristetty Windows-testiprosessi | Binary-handoff-testin assertion-, timeout-, abort- ja release-virheiden cleanup; alkuperäinen virhe säilyy ja lapsen poistuminen todetaan. | [Binary-handoff-regressiot](../../apps/desktop/installer/windows-acceptance-harness/upgradeRollbackBinaryHandoff.test.mjs) käyttävät olemassa olevaa rajattua lapsikahvan omistajaa. Kuusi oikeaprosessitapausta, todelliset exit/close-havainnot ja kohdesarja 24/24 hyväksytty riippumattomassa katselmuksessa ja takaisinluvussa. Alkuperäinen 5 s testiraja säilyy; ei tuotannon muutosta, koko installer-porttia tai T3-hyväksyntää. |
+| TEST-TREE-ELECTRON-UNCERTAINTY-001 | Todellisen Electron-fixturen rajattu virhekoe | Julkinen close epäonnistuu oikean sulun jälkeen tai testin oma loopback-palvelin estää portin vapautumisen. Molemmat restart-yritykset torjutaan myös myöhemmän vapautumisen jälkeen; sama omistajasukupolvi ja juuri säilyvät todellisen cleanup-hylkäyksen yli. | [Close-sopimukset](../../apps/e2e/tests/system/e2eEnvironment.spec.ts) ja [fixture-regressiot](../../apps/e2e/tests/system/electronFixtureLifecycle.spec.ts) täydentyvät hyväksytyllä close-kokeen kolmannella ja porttikokeen ensimmäisellä yrityksellä. Täsmälliset cleanup-tilat, erillisten owner-/bridge-virheiden puuttuminen, molemmat restart-estot, sama generaatio, säilyvä juuri, ulomman session puun poissaolo, sentinel ja portti takaisinluettu. Ensimmäiset koeapurin hylkäykset säilyvät; ei väitettä native-stop-virheen simulaatiosta tai koko T3:sta. |
+| TEST-TREE-WINDOWS-LEGACY-REMOVAL-001 | Windows admission-regressio ja kanoninen system-sarja | Korvattu taskkill-apuri ja aktiiviset Electron-varapolut poistettu. Unsupported-platform-torjunta ennen varausten luontia; korvaava close/stop/timeout/error- ja lapsikahvakattavuus säilyy. | Aiempi Windows-poisto ja system 607/607 säilyvät omana näyttönään. Lopullisen poiston kohdesarja 151/151, puhtaat Electron-sopimukset 10/10, tyypitys, workspace ja tavallinen Windows 781/781 (693/43/45) hyväksytty ilman retryä tai ohituksia. [Nykyiset omistajatestit](../../apps/e2e/tests/system/ownedWindowsBackend.spec.ts), [13 Windows-sulkutestiä](../../apps/e2e/tests/system/e2eEnvironment.spec.ts) ja [launch-guard-/lapsikahvaregressiot](../../apps/e2e/tests/system/electronFixtureLifecycle.spec.ts) korvaavat poistettujen helperien kattavuuden. Riippumaton katselmus hyväksytty. Täsmällisen revision PR/main ja koko T3 avoinna. |
 
 ## Customers
 
@@ -185,7 +434,7 @@ auditia tai tuotannon tukipakettia; niiden näyttö kuuluu testiraporttiin.
 | DESK-NAV-001 | P0; integration, electron-e2e, security | Yritä external navigation/window.open/webview | Kaikki estyvät | Deduplikoitu turvallinen security-event | Pitkä/raw URL tai query-secret | implemented-e2e |
 | DESK-PERMISSION-001 | P1; integration, electron-e2e, security | Permission check/request | Estyy ilman kohinaa | Ei OS-oikeutta; deduplikoitu event | Raw URL tai device detail | implemented-e2e |
 | DESK-PDF-001 | P0; integration, electron-e2e | Approved PDF; avaa invoiceId:llä ja sulje | Suojattu ikkuna renderöi PDF:n | Ei DB-muutosta; ikkuna poistuu rekisteristä | URL, path, session tai header rendererille | implemented-e2e |
-| DESK-STARTUP-OBSERVATION-001 | P1; electron-e2e, diagnostic-contract | Lue nykyisen E2E-mainin rajattu muistihavainto yksityisellä kanavalla | Fork-pyyntö, kahva, spawn, start-viesti ja validoitu ready erottuvat tässä järjestyksessä ennen ensimmäistä ikkunaa; jokainen havaitaan kerran | Suljettu projektio, ei uutta onnistumisehtoa PDF-käyttäjäpolulle | Raakavirhe, polut, session tai ympäristö | implemented-e2e; erillinen diagnostiikan kytkentätesti, ei critical-käyttäjäpolku |
+| DESK-STARTUP-OBSERVATION-001 | P1; electron-e2e, diagnostic-contract | Lue nykyisen E2E-mainin rajattu muistihavainto yksityisellä kanavalla | Fork-pyyntö, kahva, readiness-odotuksen alku, spawn, start-viesti ja validoitu ready erottuvat ennen ensimmäistä ikkunaa; backendin viimeinen progress näkyy mainin havaintoajalla | Suljettu versioitu projektio, ei uutta onnistumisehtoa PDF-käyttäjäpolulle | Raakavirhe, polut, session tai ympäristö | implemented-e2e; version 2 kytkentä todennettu Windowsissa; erillinen diagnostiikkatesti, ei critical-käyttäjäpolku tai alkuperäisen timeoutin juurisyy |
 | ARCHIVE-PDF-FAILURE-001 | P0; integration, electron-e2e, fault | Arkistointi käytössä; poista valittu kohde ennen manuaalista toimitusta | Toimitus onnistuu ja lasku on `sent`; arkistotask jää pending-tilaan | Queue/delivery-rajat säilyvät eikä paikallista kopiota synny | Polku, invoice/document/delivery id, laskunumero tai raw error lokiin | implemented-e2e |
 | ARCHIVE-PDF-RECOVERY-001 | P0; integration, electron-e2e, recovery | Luo edellisen skenaarion pending-task; palauta kohde ja käynnistä desktop uudelleen | Manuaalinen retry tyhjentää journalin ja tallentaa täsmällisen `%PDF-`-tiedoston | Sama runtime-owned config/journal palautuu; business-tila ei muutu retryssä | Session, polku tai PDF-data rendererille | implemented-e2e |
 | ARCHIVE-PDF-CONFLICT-001 | P0; integration, electron-e2e, recovery | Kohteessa on saman niminen eri sisältöinen PDF ennen toimitusta | Tiedostoa ei korvata; task jää conflict-tilaan eikä restart kasvata attempt-määrää | Konfliktibytes säilyvät muuttumattomina; ei automaattista overwrite/renamea | Polku, tiiviste, laskunumero tai PDF-data lokiin | implemented-e2e |
@@ -193,15 +442,18 @@ auditia tai tuotannon tukipakettia; niiden näyttö kuuluu testiraporttiin.
 | DESK-SUPPORT-001 | P0; packaged-smoke, electron-e2e | Synteettiset logit; stubattu save dialog | `.json.gz` syntyy ja inspect hyväksyy myös legacy-päätteen | Checksumit/projektiot oikein | Salaisuus, PII ja production path | implemented-e2e |
 | DESK-LOGFOLDER-001 | P1; integration, electron-e2e | Stubbaa openPath; paina avauskomentoa | Main avaa vain testilokijuuren | Ei DB/auditia; renderer ei lähetä polkua | Filesystem path rendererille | implemented-e2e |
 | DESK-RESTART-001 | P0; packaged-smoke, electron-e2e, recovery | Hallittu shutdown ja restart samalla testidatalla; jätä vapaaehtoinen main-lukupyyntö keskeneräiseksi | Data säilyy, UI palautuu; vanhan yhteyden lukupyyntö päättyy | Backend sammuu; runtimeInstanceId vaihtuu; vanha session torjutaan | Vanha runtime-session | implemented-e2e |
-| SYS-ELECTRON-LIFECYCLE-001 | P0; contract, security | Injektoi backup-valmistelun, Playwright-yhteyden, ikkunan, DOM-valmiuden, havaintoluvun ja loppusiivouksen virheet nykyiseen fixture-vastuuseen | Vaihe ja suljettu syyluokka erottuvat; alkuperäinen virhe säilyy; puuttuva tai myöhäinen havainto ei lisää odotusta | Runtime omistetaan ennen ikkunaa; epävarma cleanup säilyttää todellisen testijuuren; ensimmäisen yrityksen turvallinen evidence säilyy myös ennen Electronin käynnistystä, backendin siivous erillään | Raakavirhe, URL, session, komentorivi, ympäristö ja prosessituloste | implemented-contract; ei korvaa Electron-käyttäjäpolkua |
+| SYS-ELECTRON-NATIVE-STARTUP-001 | P0; contract, security | Todellinen natiiviwriter, sukupolven vaihto, linkki, muuttuva/virheellinen/ylimittainen tiedosto, cleanup ennen ensimmäistä havaintoa | Vain turvallinen nykyisen sukupolven kaappaus säilyy lifecycle-liitteessä juuren poiston jälkeen; cleanup-exit ei ole alkuperäinen käynnistyskoodi | 15 sopimusta; 64 KiB ja 128 riviä; ei fallbackia tai uutta hyväksyntäehtoa | Raakateksti, polku, runtime-tunniste, vapaa smoke-pääte ja salaisuudet | implemented-contract; tyyppitarkistus ja 136/136-kohdesarja läpäisty, ei alkuperäisen poistumisen juurisyy |
+| SYS-ELECTRON-LIFECYCLE-001 | P0; contract, security | Injektoi backup-valmistelun, Playwright-yhteyden, ikkunan, DOM-valmiuden, havaintoluvun ja loppusiivouksen virheet nykyiseen fixture-vastuuseen | Vaihe ja suljettu syyluokka erottuvat; todellisen bridge-virheen timeout-syy säilyy; synkroninen työkuorman välimuistihavainto ei lisää odotusta eikä nimeä cleanup-exitiä alkuperäiseksi virheeksi | Omistaja säilytetään ennen launchin odotusta; rajattu public close ja owner-stop erillään, ei Windows-fallbackia; epävarmuuden restart-/poistoestot ja turvallinen valinnainen ownership-evidence; backendin siivous erillään | Raakavirhe, URL, session, komentorivi, ympäristö ja prosessituloste | implemented-contract; mukana nykyisessä 186/186-kohdesarjassa; ei korvaa todellisen fixturen epävarmuuskoetta |
 | SYS-FIRST-START-EVIDENCE-001 | P0; contract, security | Katkennut proof/evaluate, writer-virhe, osittainen kirjoitus, vanha runtime, kaksoiskutsu, linkki, liian suuri tai virheellinen havainto | Vain validoidut vaihe-/aikakentät jäävät talteen ennen juuren poistoa; alkuperäinen virhe säilyy | Yksi proof-kutsu per runtime, rajattu kirjoitus/luku, capture ei tarvitse Electron-yhteyttä eikä muuta cleanup-ehtoja | Polku, runtime-tunniste, raakavirhe, session tai profiilin sisältö | implemented-contract M0.3; ei osoita alkuperäisen first-start-timeoutin syytä |
 | SYS-FIRST-START-LOAD-OBSERVATION-001 | P0; contract, security | Normaali delegointi, pidätetty lataus, puuttuva/myöhäinen main-frame-tapahtuma, havaintovirhe, peruutus ja shutdown-/cleanup-yhdistelmävirhe | Alkuperäinen promise ja virhe säilyvät; pakotettu lataus vaatii todetun purun; ensivirhe ei peity; normaalin virhekriteerit säilyvät | Suljetut vaiheet kulkevat rajatun journalin ja parserin läpi; väärä dialogi ei kelpaa näytöksi | Dialogiteksti, URL, polut, tunnisteet tai business-data | implemented-contract M0.5; 23 kohdetapausta, ei korvaa Windows-koetta |
 | SYS-FIRST-START-LOAD-SHUTDOWN-001 | P0; contract, security | Pending/success/failure-lataus, peruutus, puuttuva tai moninkertainen lataus ja shutdown-/cleanup-yhdistelmävirhe | Normaali shutdown odottaa todellista lataustulosta; alkuperäinen virhe säilyy ja cleanup yritetään aina; forced-ohitus ei hyväksy puuttuvaa virheketjua | Hallitut promiset, ei ajoitusarvausta; peruutus ei keksi native-virhettä; testin oma virhe ei peity siivousodotukseen | Raakavirhe, polut, tunnisteet tai business-data havaintojournaliin | implemented-contract M0.6; 13 kohdetapausta, ei korvaa Windows-koetta |
 | DESK-FIRST-START-LOAD-ORDER-001 | P1; electron-e2e, diagnostic-only | Vapauta yhden compositionin todellinen lataus vasta protokollapurun jälkeen | Todellinen latausvirhe ja täsmällinen virheadapteripolku; ei natiivia modaalia; did-fail-load täydentävä havainto | Sama fixture, aikaraja ja cleanup; erillinen konfiguraatio, ei normaalin CI:n skenaario | Dialogiteksti, URL, polut, session tai business-data | M0.5 yksi koe läpäisi; M0.4:n hylkäys säilyy historiassa, ei vanhan timeoutin korjaustodiste |
 | SYS-SERVICE-FIXTURE-LIFECYCLE-001 | P0; contract, security | System/web-fixturen oikea kutsuraja, injektoitu käynnistys, restart ja siivousvirhe | Alkuperäinen virhe säilyy; kaikki omistetut resurssit yritetään sulkea; onnistuneen rungon jälkeinen cleanup-virhe hylkää | Varmentamaton aloitussiivous tai restart säilyttää testijuuren; vanha kahva ei edusta uutta runtimea; poisto vaatii varmistetut tulokset | Raakavirhe, polku, session ja prosessituloste cleanup-liitteessä | implemented-contract; ei korvaa oikeita system/web-polkuja |
-| SYS-ELECTRON-BACKEND-STARTUP-001 | P0; contract, security | Ohjaa nykyisen E2E-backend-controllerin fork-, spawn-, ready-, exit- ja havaintovirheitä synteettisellä prosessikahvalla | Palautunut kahva tai lähetetty start ei ole readiness; väärä ready torjutaan; havaintovirhe ei muuta onnistumista, alkuperäistä virhettä tai sulkua | Sama controller omistaa käynnistyksen ja sulkemisen; suljettu havainto säilyy vain muistissa | Session, polut, viestin sisältö tai environment havaintoprojektiossa | implemented-contract; ei todista oikean prosessin käynnistysnopeutta eikä korvaa Electron-kytkentätestiä |
+| SYS-ELECTRON-BACKEND-STARTUP-001 | P0; contract, security | Ohjaa nykyisen E2E-backend-controllerin fork-, spawn-, progress-, ready-, exit-, timeout- ja havaintovirheitä synteettisellä prosessikahvalla | Kahva, start tai progress ei ole readiness; virheellinen ja terminalin jälkeinen progress torjutaan; progress ei uusi readiness-budjettia; havaintovirhe ei muuta tulosta tai sulkua | Sama controller omistaa käynnistyksen ja sulkemisen; erillinen suljettu stage-projektio käyttää vain mainin havaintoaikaa | Session, polut, viestin sisältö tai environment havaintoprojektiossa | implemented-contract; ei todista oikean prosessin käynnistysnopeutta eikä korvaa Electron-kytkentätestiä |
+| SYS-ELECTRON-BACKEND-STARTUP-LOGS-001 | P0; contract, security | Aito backend-writer, validoitu nykyiseen runtime-generaatioon sidottu rajattu luku; väärä runtime, linkit, ulkopuolinen juuri, virheellinen ja osittainen sisältö sekä kapasiteettirajat | Vain suljetut tapahtumanimi/tulos-joukot ja lukutila; ei aikajanapäätelmiä tai puuttuvan eventin tulkitsemista tekemättömäksi vaiheeksi | Lifecycle-sopimustesti kytkee otoksen ensimmäiseen launch-virheeseen ennen cleanupia ja todelliseen liitteeseen; onnistuva launch ei lue lokia | Polut, tunnisteet, aikaleimat, payloadit ja raakalogit | implemented-contract; 19 lukijatestiä ja yhteensä 52/52 kohdesarjassa, katselmoitu; ei timeoutin syyn tai koko Electron-baselinen todiste |
 | DESK-BACKEND-EXIT-001 | P0; electron-e2e, fault, recovery | Utility-backend lopetetaan odottamatta | Sovellus sulkeutuu hallitusti ja uusi runtime käynnistyy | Turvallinen unexpected-exit-event; backend palautuu terveeksi | Stack, paikallinen polku ja session | implemented-e2e |
-| DESK-BOOTFAIL-001 | P0; electron-e2e, fault | Development bootstrap fault | Turvallinen viesti ja hallittu exit | Ei osittaista runtimea; turvallinen startup failure-event | Stack ja paikallinen polku | implemented-e2e |
+| DESK-SINGLE-INSTANCE-001 | P0; electron-e2e | Käynnistä toinen instanssi aktiivisen eristetyn runtimen rinnalle | Toinen instanssi poistuu exit 0:lla; yksi pääikkuna ja backend säilyvät | Windowsin toisen instanssin puu suljettu yhteisen omistajan kuitilla ennen paluuta; pääinstanssin omistajuussiirto avoin | Session, config-polku tai ownerin kontrollitiedot | implemented-e2e; Windowsin suoran kuluttajan paikallinen näyttö läpäisty, normaali CI ei sisällä tätä ei-kriittistä testiä |
+| DESK-BOOTFAIL-001 | P0; electron-e2e, fault | Development bootstrap fault | Turvallinen viesti ja hallittu exit 1 | Turvallinen startup failure-event; Windowsin puun/portin/juuren siivous erillään työkuorman exitistä, nykyinen lifecycle-tiedosto ja liite; epävarma juuri säilyy | Stack, paikallinen polku ja ownerin kontrollitiedot | implemented-e2e; Windowsin suoran kuluttajan paikallinen näyttö läpäisty, normaali CI ei sisällä tätä ei-kriittistä testiä |
 | DESK-RUNTIME-002 | P0; electron-e2e, dependency | Käynnistä tarkasti lukittu desktop-runtime | Electron, Node, Chromium, V8 ja N-API vastaavat hyväksyttyä yhteensopivuusmatriisia | Electron 43.3.0, Node 24.18.1, Chromium 150.0.7871.212, V8 15.0.245.23-electron.0 ja N-API 10 | Paikalliset polut ja ympäristömuuttujat | implemented-e2e |
 | DESK-ENDURANCE-001 | P1; electron-e2e, endurance | 200 moduulisiirtymää, 50 laskuavausta, 100 PDF-sykliä, 20 tukipakettia, 30 secret-sykliä ja 20 restartia | Työkuorma valmistuu ja synteettinen mittausraportti syntyy | Lopussa yksi ikkuna, hallittu prosessimäärä, terve backend ja ei secret-jäämää | Oikea data, salaisuus, session ja production-polut | implemented-e2e |
 | DESK-SOAK-001 | P1; electron-e2e, endurance | Manuaalinen 30 minuutin toistuva UI-, PDF-, secret-, support- ja restart-kuorma | Työkuorma säilyy terveenä ja raportoi prosessi-, muisti- ja tiedostomittarit | Electron 42.8.0- ja 43.2.0-baselinet valmiit; uusin ajo: 3 250 kierrosta, 325 restartia, 650 tukipakettia, lopussa 5 prosessia, 1 ikkuna ja terve backend | Oikea data, salaisuus, session ja production-polut | implemented-e2e |

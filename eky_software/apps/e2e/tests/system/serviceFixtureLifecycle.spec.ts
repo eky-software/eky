@@ -5,9 +5,14 @@ import { expect, test, type APIRequestContext, type TestInfo } from '@playwright
 
 import { createE2eRunRoot } from '../../src/environment/createE2eRunRoot.js';
 import { createE2eWorkerPaths } from '../../src/environment/createE2eWorkerPaths.js';
+import {
+  createE2eFixtureLifetime,
+  type E2eFixtureLifetime,
+} from '../../src/environment/e2eFixtureLifetime.js';
 import { removeE2eRunRoot } from '../../src/environment/removeE2eRunRoot.js';
 import type { ServiceFixtureCleanup } from '../../src/fixtures/finishServiceFixture.js';
 import { E2eBackendStartupFailure } from '../../src/environment/startE2eBackendProcess.js';
+import { E2eWebStartupFailure } from '../../src/environment/startE2eWebProcess.js';
 import { runIsolatedBackendTest } from '../../src/fixtures/isolatedBackendTest.js';
 import { runIsolatedWebTest } from '../../src/fixtures/isolatedWebTest.js';
 
@@ -26,10 +31,12 @@ test.describe('SYS-SERVICE-FIXTURE-LIFECYCLE-001 @critical @security', () => {
       });
       const testInfo = {
         title: 'SYS-SERVICE-FIXTURE-LIFECYCLE-001',
+        timeout: 60_000,
         status: 'passed', expectedStatus: 'passed',
         attach: async () => undefined,
       } as unknown as TestInfo;
       const dependencies = {
+        createE2eFixtureLifetime,
         createE2eRunRoot: () => runRoot,
         createE2eWorkerPaths,
         removeE2eRunRoot,
@@ -45,10 +52,10 @@ test.describe('SYS-SERVICE-FIXTURE-LIFECYCLE-001 @critical @security', () => {
       try {
         const use = async () => { throw new Error('BODY_MUST_NOT_RUN'); };
         const run = family === 'backend'
-          ? runIsolatedBackendTest({ e2eFaultPlan: { kind: 'none' } }, use, testInfo,
+          ? runIsolatedBackendTest({ e2eContainmentTimeoutMilliseconds: undefined, e2eFaultPlan: { kind: 'none' } }, use, testInfo,
             dependencies)
-          : runIsolatedWebTest({ e2eFaultPlan: { kind: 'none' },
-            context: {} as never, page: {} as never }, use, testInfo,
+          : runIsolatedWebTest({ e2eContainmentTimeoutMilliseconds: undefined, e2eFaultPlan: { kind: 'none' },
+            context: { close: async () => undefined } as never, page: {} as never }, use, testInfo,
             dependencies);
         await expect(run).rejects.toBe(failure);
         expect(existsSync(marker)).toBe(true);
@@ -143,6 +150,56 @@ test.describe('SYS-SERVICE-FIXTURE-LIFECYCLE-001 @critical @security completion'
       expect(existsSync(fixture.marker)).toBe(true);
     } finally { fixture.remove(); }
   });
+  test('web closes its context before services and data removal', async () => {
+    const fixture = completionFixture();
+    try {
+      await fixture.run('web');
+      expect(fixture.calls.indexOf('contextClose')).toBeLessThan(fixture.calls.indexOf('webStop'));
+      expect(fixture.calls.indexOf('contextClose')).toBeLessThan(fixture.calls.indexOf('remove'));
+    } finally { fixture.remove(); }
+  });
+  test('web context-close failure retains data without replacing a body failure', async () => {
+    const fixture = completionFixture('contextClose');
+    try {
+      await expect(fixture.run('web', true)).rejects.toBe(fixture.bodyError);
+      expect(fixture.cleanup()).toMatchObject({ context: 'failed', backend: 'completed', runRoot: 'retained' });
+      expect(existsSync(fixture.marker)).toBe(true);
+    } finally { fixture.remove(); }
+  });
+  for (const fault of ['webStartupVerified', 'webStartupTreeUnverified', 'webStartupPortUnverified'] as const) {
+    test(`web startup preserves its error and respects ${fault} evidence`, async () => {
+      const fixture = completionFixture(fault);
+      try {
+        await expect(fixture.run('web')).rejects.toBe(fixture.webError);
+        const verified = fault === 'webStartupVerified';
+        expect(fixture.cleanup()).toMatchObject({
+          web: 'notStarted', backend: 'completed',
+          priorCleanup: verified ? 'verified' : 'unverified', runRoot: verified ? 'removed' : 'retained',
+        });
+        expect(existsSync(fixture.marker)).toBe(!verified);
+        expect(fixture.startupReports).toEqual([{ schemaVersion: 1,
+          errorCode: 'E2E_WEB_HEALTH_TIMEOUT', spawnObserved: true, exitedBeforeCleanup: false,
+          cleanup: {
+            processTree: fault === 'webStartupTreeUnverified' ? 'unverified' : 'stopped',
+            port: fault === 'webStartupPortUnverified' ? 'unverified' : 'released',
+          },
+        }]);
+        expect(JSON.stringify(fixture.startupReports)).not.toContain(fixture.runRoot);
+      } finally { fixture.remove(); }
+    });
+  }
+  test('web startup attachment failure cannot mask the original error or stop cleanup', async () => {
+    const fixture = completionFixture('webStartupVerified');
+    const attach = fixture.testInfo.attach;
+    fixture.testInfo.attach = async (name, options) => {
+      if (name === 'web-startup-failure') throw new Error('PRIVATE_ATTACHMENT_FAILURE');
+      await attach(name, options);
+    };
+    try {
+      await expect(fixture.run('web')).rejects.toBe(fixture.webError);
+      expect(fixture.cleanup().runRoot).toBe('removed');
+    } finally { fixture.remove(); }
+  });
   test('failed restart invalidates the old handles and refuses another start', async () => {
     const fixture = completionFixture('restart');
     try {
@@ -167,20 +224,134 @@ test.describe('SYS-SERVICE-FIXTURE-LIFECYCLE-001 @critical @security completion'
       expect(fixture.cleanup()).toMatchObject({ backend: 'completed', priorCleanup: 'unverified', runRoot: 'retained' });
     } finally { fixture.remove(); }
   });
+  test('later teardown success preserves the earlier stop error identity and root', async () => {
+    const fixture = completionFixture('restartStop');
+    try {
+      await expect(fixture.runBackend(async (harness) => {
+        await harness.restartBackend();
+      })).rejects.toBe(fixture.cleanupError);
+      expect(fixture.calls.filter((call) => call === 'backendStop')).toHaveLength(2);
+      expect(fixture.calls).toContain('backendPort');
+      expect(fixture.cleanup()).toMatchObject({
+        backend: 'completed', backendPort: 'completed', priorCleanup: 'unverified', runRoot: 'retained',
+      });
+      expect(existsSync(fixture.marker)).toBe(true);
+    } finally { fixture.remove(); }
+  });
+  test('later teardown success preserves the first body error after an unverified stop', async () => {
+    const fixture = completionFixture('restartStop');
+    try {
+      await expect(fixture.runBackend(async (harness) => {
+        try {
+          throw fixture.bodyError;
+        } finally {
+          await expect(harness.restartBackend()).rejects.toBe(fixture.cleanupError);
+        }
+      })).rejects.toBe(fixture.bodyError);
+      expect(fixture.calls.filter((call) => call === 'backendStop')).toHaveLength(2);
+      expect(fixture.cleanup()).toMatchObject({
+        api: 'completed', backend: 'completed', backendPort: 'completed',
+        priorCleanup: 'unverified', runRoot: 'retained',
+      });
+      expect(existsSync(fixture.marker)).toBe(true);
+      expect(JSON.stringify(fixture.reports)).not.toContain('PRIVATE');
+    } finally { fixture.remove(); }
+  });
+});
+
+test.describe('E2E fixture lifetime propagation', () => {
+  for (const family of ['backend', 'web'] as const) {
+    for (const timeout of [60_000, 150_000]) {
+      test(`${family} captures the ${timeout}ms entry ceiling before setup without following later timeout changes`, async () => {
+        let now = 0;
+        const fixture = completionFixture(undefined, { now: () => now });
+        fixture.testInfo.timeout = timeout;
+        try {
+          await fixture.runWith(family, async () => {
+            expect(fixture.calls.slice(0, 2)).toEqual(['lifetime', 'root']);
+            expect(fixture.testInfo.timeout).toBe(timeout);
+            const lifetime = fixture.lifetimes[0]!;
+            if (family === 'web') expect(fixture.webLifetimes).toEqual([lifetime]);
+            expect(lifetime.readRemainingWorkMilliseconds()).toBe(timeout);
+            fixture.testInfo.timeout = 20 * 60_000;
+            now = 25_000;
+            expect(lifetime.readRemainingWorkMilliseconds()).toBe(timeout - 25_000);
+          });
+          expect(fixture.calls.filter((call) => call === 'lifetime')).toHaveLength(1);
+        } finally { fixture.remove(); }
+      });
+    }
+
+    test(`${family} uses an explicit long containment ceiling without increasing the setup timeout`, async () => {
+      let now = 0;
+      const fixture = completionFixture(undefined, {
+        containmentTimeoutMilliseconds: 20 * 60_000, now: () => now,
+      });
+      try {
+        await fixture.runWith(family, async () => {
+          expect(fixture.testInfo.timeout).toBe(60_000);
+          now = 61_000;
+          expect(fixture.lifetimes[0]!.readRemainingWorkMilliseconds()).toBe(20 * 60_000 - 61_000);
+        });
+        expect(fixture.testInfo.timeout).toBe(60_000);
+      } finally { fixture.remove(); }
+    });
+
+    for (const invalid of [0, NaN, Infinity, null as unknown as number]) {
+      test(`${family} rejects an invalid ${String(invalid)} override before setup instead of falling back`, async () => {
+        const fixture = completionFixture(undefined, { containmentTimeoutMilliseconds: invalid });
+        try {
+          await expect(fixture.run(family)).rejects.toThrow('E2E_FIXTURE_LIFETIME_INPUT_INVALID');
+          expect(fixture.calls).toEqual(['lifetime']);
+          expect(fixture.testInfo.timeout).toBe(60_000);
+        } finally { fixture.remove(); }
+      });
+    }
+  }
+
+  test('backend restarts and sibling callers retain the fixture-entry lifetime', async () => {
+    let now = 0;
+    const fixture = completionFixture(undefined, { now: () => now });
+    try {
+      await fixture.runBackend(async (harness) => {
+        const siblingLifetime = harness.lifetime;
+        expect(siblingLifetime).toBe(fixture.lifetimes[0]);
+        now = 25_000;
+        await harness.restartBackend();
+        expect(fixture.lifetimes).toHaveLength(2);
+        expect(fixture.lifetimes[1]).toBe(siblingLifetime);
+        expect(siblingLifetime.readRemainingWorkMilliseconds()).toBe(35_000);
+        now = 60_000;
+        expect(siblingLifetime.readRemainingWorkMilliseconds()).toBe(0);
+      });
+      expect(fixture.calls.filter((call) => call === 'lifetime')).toHaveLength(1);
+      expect(fixture.calls.filter((call) => call === 'backendStop')).toHaveLength(2);
+    } finally { fixture.remove(); }
+  });
 });
 
 function completionFixture(fault?:
   'api' | 'apiSync' | 'backendStop' | 'port' | 'artifacts' | 'remove' | 'report' | 'webStop' |
-  'webStartup' | 'startupVerified' | 'restart' | 'restartStop'
+  'webStartup' | 'webStartupVerified' | 'webStartupTreeUnverified' | 'webStartupPortUnverified' |
+  'startupVerified' | 'restart' | 'restartStop' | 'contextClose',
+  timing: { containmentTimeoutMilliseconds?: number; now?: () => number } = {},
 ) {
   const runRoot = createE2eRunRoot();
   const marker = join(runRoot, 'evidence.txt');
   writeFileSync(marker, 'synthetic evidence');
   const calls: string[] = [];
+  const lifetimes: E2eFixtureLifetime[] = [];
+  const webLifetimes: E2eFixtureLifetime[] = [];
   const reports: { schemaVersion: number; cleanup: ServiceFixtureCleanup }[] = [];
+  const startupReports: unknown[] = [];
   const bodyError = new Error('PRIVATE_BODY_FAILURE');
   const cleanupError = new Error('PRIVATE_CLEANUP_FAILURE');
-  const webError = new Error('PRIVATE_WEB_STARTUP_FAILURE');
+  const webError = fault?.startsWith('webStartup') && fault !== 'webStartup'
+    ? new E2eWebStartupFailure({ errorCode: 'E2E_WEB_HEALTH_TIMEOUT', spawnObserved: true,
+      exitedBeforeCleanup: false, cleanup: {
+        processTree: fault === 'webStartupTreeUnverified' ? 'unverified' : 'stopped',
+        port: fault === 'webStartupPortUnverified' ? 'unverified' : 'released',
+      } }) : new Error('PRIVATE_WEB_STARTUP_FAILURE');
   const startupError = new E2eBackendStartupFailure({
     errorCode: 'E2E_BACKEND_HEALTH_TIMEOUT', spawnObserved: true,
     exitedBeforeCleanup: false, listeningNotice: 'notObserved',
@@ -188,10 +359,12 @@ function completionFixture(fault?:
   });
   const testInfo = {
     title: 'SYS-SERVICE-FIXTURE-LIFECYCLE-001', status: 'passed', expectedStatus: 'passed',
-    attach: async (_name: string, options: { body: string }) => {
+    timeout: 60_000,
+    attach: async (name: string, options: { body: string }) => {
       calls.push('report');
       if (fault === 'report') throw cleanupError;
-      reports.push(JSON.parse(options.body));
+      if (name === 'web-startup-failure') startupReports.push(JSON.parse(options.body));
+      else reports.push(JSON.parse(options.body));
     },
   } as unknown as TestInfo;
   let starts = 0;
@@ -199,23 +372,35 @@ function completionFixture(fault?:
   let ports = 0;
   let apis = 0;
   const dependencies = {
-    createE2eRunRoot: () => runRoot, createE2eWorkerPaths,
+    createE2eFixtureLifetime: (timeout: number) => {
+      calls.push('lifetime');
+      return createE2eFixtureLifetime(timeout, timing.now);
+    },
+    createE2eRunRoot: () => { calls.push('root'); return runRoot; }, createE2eWorkerPaths,
     reserveLoopbackPort: async () => 12345 + ports++,
-    startE2eBackendProcess: async () => {
+    startE2eBackendProcess: async ({ lifetime }: { lifetime: E2eFixtureLifetime }) => {
       calls.push('backendStart');
+      lifetimes.push(lifetime);
       if (fault === 'startupVerified' || (++starts === 2 && fault === 'restart')) throw startupError;
       return {
         backendOrigin: 'http://127.0.0.1:12345', sessionSecret: 'PRIVATE_SYNTHETIC_SESSION',
         managedProcess: {} as never,
+        workload: {
+          instanceId: `synthetic-backend-${String(starts)}`,
+          readState: async () => { throw new Error('UNEXPECTED_WORKLOAD_STATE_READ'); },
+          readRssBytes: async () => { throw new Error('UNEXPECTED_WORKLOAD_RSS_READ'); },
+        },
         stop: async () => {
           calls.push('backendStop');
           if (fault === 'backendStop' || (++stops === 1 && fault === 'restartStop')) throw cleanupError;
         },
       };
     },
-    startE2eWebProcess: async () => {
-      if (fault === 'webStartup') throw webError;
+    startE2eWebProcess: async ({ lifetime }: { lifetime: E2eFixtureLifetime }) => {
+      webLifetimes.push(lifetime);
+      if (fault?.startsWith('webStartup')) throw webError;
       return { webOrigin: 'http://127.0.0.1:12346', managedProcess: {} as never,
+        workload: { readState: async () => { throw new Error('UNEXPECTED_WORKLOAD_STATE_READ'); } },
         stop: async () => {
           calls.push('webStop');
           if (fault === 'webStop') throw cleanupError;
@@ -250,19 +435,26 @@ function completionFixture(fault?:
     },
   };
   const runBackend = (use: Parameters<typeof runIsolatedBackendTest>[1]) =>
-    runIsolatedBackendTest({ e2eFaultPlan: { kind: 'none' } }, use, testInfo, dependencies);
+    runIsolatedBackendTest({ e2eContainmentTimeoutMilliseconds: timing.containmentTimeoutMilliseconds,
+      e2eFaultPlan: { kind: 'none' } }, use, testInfo, dependencies);
+  const runWith = (family: 'backend' | 'web', use: () => Promise<void>) =>
+    family === 'backend' ? runBackend(use) : runIsolatedWebTest({
+      e2eContainmentTimeoutMilliseconds: timing.containmentTimeoutMilliseconds,
+      e2eFaultPlan: { kind: 'none' }, context: { close: async () => {
+        calls.push('contextClose');
+        if (fault === 'contextClose') throw cleanupError;
+      } } as never,
+      page: { goto: async () => undefined } as never,
+    }, use, testInfo, dependencies);
   return {
-    runRoot, marker, calls, reports, testInfo, bodyError, cleanupError, webError, startupError, runBackend,
+    runRoot, marker, calls, reports, startupReports, testInfo, bodyError, cleanupError, webError, startupError, runBackend, runWith, lifetimes, webLifetimes,
     cleanup: () => reports[0]!.cleanup,
     run: (family: 'backend' | 'web', bodyFails = false) => {
       const use = async () => {
         calls.push('body');
         if (bodyFails) throw bodyError;
       };
-      return family === 'backend' ? runBackend(use) : runIsolatedWebTest({
-        e2eFaultPlan: { kind: 'none' }, context: {} as never,
-        page: { goto: async () => undefined } as never,
-      }, use, testInfo, dependencies);
+      return runWith(family, use);
     },
     // Fake services never spawn processes; this test owns its entire temporary root.
     remove: () => rmSync(runRoot, { recursive: true, force: true }),

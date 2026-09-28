@@ -7,3 +7,5 @@ allowBuilds:
   electron: true
 overrides:
   "@xmldom/xmldom": "0.9.12"
+patchedDependencies:
+  playwright-core@1.62.1: patches/playwright-core@1.62.1.patch

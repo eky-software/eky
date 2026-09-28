@@ -8,6 +8,18 @@ Testit eivät kuulu tavalliseen pull request -CI:hin. Niitä ei saa ajaa oikeaa
 AppData-hakemistoa, oikeaa SQLite-kantaa, oikeita SMTP-tunnuksia tai ulkoista
 verkkoa vasten.
 
+## Nykyinen työtilamittaus
+
+Moniyritysmallissa tietokanta, laskudokumentit ja SMTP-salaisuustiedosto
+luetaan testin aktiivisesta workspacesta yhteisen
+`readElectronE2eActiveWorkspace`-apurin avulla. Operational-lokit pysyvät
+asennuskohtaisina. Stress ja soak käyttävät samaa mittauspolkujen ratkaisua;
+puuttuvaa tai virheellistä workspace-rekisteriä ei korvata vanhalla
+yhden yrityksen polulla. `SYS-DESKTOP-ENDURANCE-PATHS-001` suojaa polkujen
+valinnan, mutta ei korvaa oikeaa kuormitusajoa. Nykyisen T3-kierroksen
+[näyttö ja avoin portti](e2e-test-environment.md#windows-electronin-endurance-ja-virheen-säilymisen-loppunäyttö)
+pidetään erillään alla olevista historiallisista vertailuista.
+
 ## Komennot
 
 Rajattu työkuormavertailu:

@@ -18,6 +18,7 @@ import { createElectronE2eBackendController } from './electronE2eBackendProcess.
 import { readElectronE2eConfig } from './electronE2eConfig.js';
 import { createElectronE2eNativeAdapters } from './electronE2eNativeAdapters.js';
 import { readSafeElectronE2eWorkspaceStartupFailureCode } from './electronE2eWorkspaceStartupFailure.js';
+import { createElectronE2eStartupHold } from './electronE2eStartupHold.js';
 import { createElectronE2eStartupObservation } from './electronE2eStartupObservation.js';
 import { createFirstStartProofAdmission, createFirstStartProofObserver } from './workspaceFirstStartProofObservation.js';
 import { WorkspaceFirstStartLoadExperiment, type FirstStartLoadExperimentMode } from './workspaceFirstStartLoadExperiment.js';
@@ -54,6 +55,7 @@ const backendRunnerPath = resolve(
   'electronE2eBackendRunner.js',
 );
 const startupObservation = createElectronE2eStartupObservation();
+const startupHold = createElectronE2eStartupHold(config);
 const admitFirstStartProof = createFirstStartProofAdmission();
 const backendController = createElectronE2eBackendController(
   config,
@@ -61,6 +63,7 @@ const backendController = createElectronE2eBackendController(
   {
     fork: (modulePath, args, options) => utilityProcess.fork(modulePath, args, options),
     observeStartup: (checkpoint) => startupObservation.record(checkpoint),
+    observeBackendStartupStage: (stage) => startupObservation.recordBackendStartupStage(stage),
   },
 );
 const nativeAdapters = createElectronE2eNativeAdapters(config);
@@ -216,6 +219,10 @@ if (hasSingleInstanceLock) {
       startupObservation.record('waitingForAppReady');
       await app.whenReady();
       startupObservation.record('appReady');
+      const pending = startupHold.afterAppReady();
+      if (pending !== undefined) {
+        await pending;
+      }
     },
   });
 }
@@ -237,6 +244,7 @@ app.on('window-all-closed', () => app.quit());
 
 Object.assign(globalThis, {
   __EKY_ELECTRON_E2E__: Object.freeze({
+    startupHold: () => startupHold.snapshot(),
     startupObservation: () => startupObservation.snapshot(),
     backendIsRunning: () => backendController.isRunning(),
     backendStartCount: () => backendController.getStartCount(),

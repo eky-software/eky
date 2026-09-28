@@ -11,7 +11,10 @@ import {
   parseDesktopBackendCommand,
   type DesktopBackendStartMessage,
 } from '../src/runtime/backendMessages.js';
-import type { ElectronE2eBackendStartupStage } from './electronE2eBackendStatus.js';
+import {
+  reportElectronE2eBackendProgress,
+  type ElectronE2eBackendStartupStage,
+} from './electronE2eBackendStatus.js';
 
 interface E2eBackendServer {
   close(): Promise<void>;
@@ -48,6 +51,8 @@ interface StartE2eBackend {
 }
 
 const parentPort = process.parentPort;
+const reportStartupStage = (stage: ElectronE2eBackendStartupStage): void =>
+  reportElectronE2eBackendProgress(stage, (progress) => parentPort.postMessage(progress));
 let server: E2eBackendServer | undefined;
 let secretBrokerClient: CompanyEmailSecretBrokerClient | undefined;
 let invoicePdfArchiveBrokerClient: InvoicePdfArchiveBrokerClient | undefined;
@@ -68,6 +73,7 @@ parentPort.on('message', (event) => {
   void (async () => {
     let startupStage: ElectronE2eBackendStartupStage = 'boundaryValidation';
     try {
+      reportStartupStage(startupStage);
       if (process.env.EKY_E2E !== '1' || event.ports.length !== 3) {
         throw new Error('ELECTRON_E2E_BACKEND_BOUNDARY_INVALID');
       }
@@ -82,6 +88,7 @@ parentPort.on('message', (event) => {
         throw new Error('ELECTRON_E2E_SECRET_BROKER_MISSING');
       }
       startupStage = 'brokerClientCreation';
+      reportStartupStage(startupStage);
       secretBrokerClient = new CompanyEmailSecretBrokerClient(
         createUtilitySecretBrokerTransport(brokerPort),
       );
@@ -94,6 +101,7 @@ parentPort.on('message', (event) => {
         'apps/desktop/e2e-backend-stage/e2e-dist/e2e/startE2eBackend.js',
       );
       startupStage = 'moduleImport';
+      reportStartupStage(startupStage);
       const module = (await import(pathToFileURL(modulePath).href)) as {
         startE2eBackend?: StartE2eBackend;
       };
@@ -102,6 +110,7 @@ parentPort.on('message', (event) => {
       }
 
       startupStage = 'backendStart';
+      reportStartupStage(startupStage);
       const started = await module.startE2eBackend(command.configPath, {
         companyEmailSecretReader: secretBrokerClient,
         companyEmailSecretStore: secretBrokerClient,
@@ -120,6 +129,7 @@ parentPort.on('message', (event) => {
         throw new Error('ELECTRON_E2E_PROFILE_SNAPSHOT_RUNTIME_MISSING');
       }
       startupStage = 'profileSnapshotBrokerStart';
+      reportStartupStage(startupStage);
       profileSnapshotBrokerHandle = startProfileSnapshotBrokerBackend({
         maintenance: started.profileSnapshotRuntime.maintenance,
         snapshot: started.profileSnapshotRuntime.service,
@@ -129,6 +139,7 @@ parentPort.on('message', (event) => {
       });
       server = started.server;
       startupStage = 'readyNotification';
+      reportStartupStage(startupStage);
       parentPort.postMessage({ port: server.port, type: 'ready' });
     } catch {
       secretBrokerClient?.close();
