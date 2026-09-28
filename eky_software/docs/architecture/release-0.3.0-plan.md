@@ -7,10 +7,13 @@ PR #278:n lähde, normaali PR-todennus ja hyväksytty merge-main on yksilöity
 omistavassa checkpointissa: [T3:n integraatiohyväksyntä](e2e-test-environment.md#t3n-integraatiohyväksyntä).
 Tämä sulkee T-paketin, ei M1:tä tai 0.3.0-julkaisua.
 
-Dokumenttien tilapäivityksen PR hyväksyttiin, mutta sen oman mainin täysi
-ajo hylättiin Electron- ja historiallisen legacy-smoken kokeissa.
-[Rajattu diagnostiikkajatko](e2e-test-environment.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko)
-ei muuta toteutuksen aiempaa hyväksyntää eikä väitä hylkäysten syitä korjatuiksi.
+Dokumenttien tilapäivityksen main hylättiin Electron- ja legacy-kokeissa;
+[rajattu diagnostiikkajatko](e2e-test-environment.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko)
+hyväksyttiin PR #280:ssa. Sen oma main `68b7d5a1` hylkäsi erillisen
+rollback-testiapurin negatiivisen tapauksen. [Testiapurin rajattu korjaus](e2e-test-environment.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus)
+säilyttää hylkäyksen ja cleanup-vaatimuksen, mutta poistaa sulkeutuvalle
+apurille tarpeettomasti lähetetyn kyselyn. Tämä ei muuta toteutuksen aiempaa
+hyväksyntää eikä väitä muiden historiallisten hylkäysten syitä korjatuiksi.
 Seuraava tuotantopala on [A1/R01](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde)
 vasta täsmällisen uuden revision normaalien PR- ja main-porttien jälkeen.
 [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
