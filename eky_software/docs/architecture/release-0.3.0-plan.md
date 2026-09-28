@@ -19,8 +19,13 @@ tavallinen Windows-web-sarja läpäisi uusimmalla yhteisellä toteutuksella
 43/43, system-sarja 689/689 ja kanoninen stress-portti. Yhteyden/siivouksen
 kohdesarja 50/50, oikeat Windowsin owner-/caller-loss-kokeet sekä uusittu
 artifact-/retry-koe on myös todennettu. Yhteinen Linux-kytkentä on toteutettu
-ja työkalusarja 734/734 läpäisty; oikeiden Linux-kuluttajien näyttö ja
-uuden lähdetilan CI ovat vielä avoinna. Tämä rajattu näyttö ei sulje T3:a.
+ja työkalusarja 734/734 läpäisty. Revision `6e670190` ensimmäinen
+[normaali CI](https://github.com/eky-software/eky/actions/runs/36419875442)
+hylkäsi kuitenkin Linuxin oikeat system/web-kuluttajat sekä tukipaketin
+kokorajatestin aikakatkaisun. Riippuvuustarkistus läpäisi; tämä ei hyväksy
+muuta ajoa. Ensimmäiset virhetiedot säilytetään, ja baseline korjataan ennen
+seuraavaa toiminnallista vaihetta. [Rajaus ja avoin näyttö](e2e-test-environment.md#chromiumin-ja-linuxin-ensimmäinen-yhteinen-ci)
+erottavat nämä toisistaan. Tämä rajattu näyttö ei sulje T3:a.
 [Aiemmat hylkäykset ja korjauksen rajaus](e2e-test-environment.md#windows-electron--valmistelun-ci-hylkäys)
 säilyvät historiatietona; läpäisy ei ratkaise aiemman satunnaisen
 poistumisen syytä eikä hyväksy koko T3:a tai PR/main-integraatiota.

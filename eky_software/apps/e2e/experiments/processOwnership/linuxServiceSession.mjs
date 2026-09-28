@@ -5,6 +5,7 @@ import { prepareLinuxService, removeLinuxServiceControl } from './linuxServiceCo
 import { createLinuxServiceManager } from './linuxServiceManager.mjs';
 import { listenLinuxServiceControl } from './linuxServiceControl.mjs';
 import { requireService, serviceDeadlines, serviceFailure, linuxChromiumPaths } from './linuxServiceContract.mjs';
+import { encodeLinuxServiceDiagnostic, projectLinuxServiceCause } from './linuxServiceDiagnostic.mjs';
 
 export class OwnedLinuxServiceStartupFailure extends Error {
   constructor(profile, evidence, output) {
@@ -22,7 +23,9 @@ export async function startLinuxService(profile, input, {
   prepare = prepareLinuxService, preflight = inspectManagedHost, createManager = createLinuxServiceManager,
   listen = listenLinuxServiceControl, removeControl = removeLinuxServiceControl,
   now = () => process.hrtime.bigint(), time = globalThis,
+  reportFailure = value => process.stdout.write('\n' + encodeLinuxServiceDiagnostic(value)),
 } = {}) {
+  let phase = 'prepare';
   let prepared;
   let deadline;
   let manager;
@@ -121,16 +124,23 @@ export async function startLinuxService(profile, input, {
   try {
     prepared = prepare(profile, input);
     deadline = serviceDeadlines(prepared.config, now);
+    phase = 'preflight';
     await preflight({ deadline });
     deadline.check('ready');
+    phase = 'managerPrepare';
     manager = createManager(prepared.config, deadline);
     await wait(manager.prepare(), 'ready');
+    phase = 'controlListen';
     control = listen(prepared, deadline, onReply, lose);
     await wait(control.opened, 'ready');
+    phase = 'managerLaunch';
     await wait(manager.launch(), 'ready');
+    phase = 'controlReady';
     await wait(control.ready, 'ready');
+    phase = 'managerOwn';
     await wait(manager.own(), 'ready');
     requireService(!observationLost, 'observationLost');
+    phase = 'workloadStart';
     const started = await wait(serialize(() => control.request('go')), 'ready');
     requireService(started.state === 'running' && state.spawnObserved && state.terminal === undefined &&
       !observationLost, started.state === 'exited' ? 'workloadExited' : 'launchFailed');
@@ -141,6 +151,7 @@ export async function startLinuxService(profile, input, {
       void stop().catch(() => {});
     }, deadline.remaining('work'));
   } catch (error) {
+    const cause = projectLinuxServiceCause(error);
     record(error?.reason === 'deadlineExceeded' ? 'startupDeadlineExceeded'
       : ['preparationFailed', 'startupDeadlineExceeded', 'launchFailed', 'workloadExited', 'observationLost']
       .includes(error?.reason) ? error.reason : prepared ? 'observationLost' : 'preparationFailed');
@@ -155,7 +166,13 @@ export async function startLinuxService(profile, input, {
     } else {
       try { await stop(); } catch { /* Preserve original startup classification separately. */ }
     }
-    throw failure();
+    const original = failure();
+    try {
+      reportFailure({ schemaVersion: 1, profile, phase, ...cause,
+        startupFailure: original.evidence.startupFailure,
+        spawnObserved: original.evidence.spawnObserved, processTree: original.evidence.processTree });
+    } catch { /* Reporting cannot replace the original failure or cleanup evidence. */ }
+    throw original;
   }
   const requireStartupOpen = () => {
     deadline.check('ready');

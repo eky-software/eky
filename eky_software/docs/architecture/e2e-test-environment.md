@@ -3353,6 +3353,56 @@ läpäisivät 734/734-työkalusarjan, mutta se ei ole oikeiden Linux-prosessien 
 Ensimmäisen testisimulaation polkuvirhe ja korjattu lähdetila pidetään erillään.
 Yhteinen CI ja oikeiden Linux-kuluttajien näyttö ovat edelleen avoinna.
 
+###### Chromiumin ja Linuxin ensimmäinen yhteinen CI
+
+Revision `6e670190718ec6c73a2df13710945b1ef4729059`
+[ensimmäinen normaali ajo](https://github.com/eky-software/eky/actions/runs/36419875442)
+ei hyväksy kuluttajasiirtoa. Linux-system valitsi 689 tapausta:
+648 läpäisi, 40 hylättiin ja yksi tunnettu Windows-only-suoja ohitettiin.
+Kriittinen web valitsi 37 tapausta: 36 hylättiin ja yksi jäi sarjan
+keskeytymisen vuoksi ajamatta. Virheet kohdistuvat oikeiden fixturejen
+käynnistykseen. Pelkkä lyhyt kesto ei todista niiden täsmällistä syytä.
+Turvallinen CI-reportteri tallensi tapausidentiteetit ja tulokset, mutta
+ei tarkkaa käynnistyksen syykoodia. Linux-HTML-raporttia ei julkaistu
+artifactina; tätä havaintoaukkoa ei saa nimetä puhtaaksi käynnistykseksi.
+
+Rajattu havaintokorjaus tallentaa Linux-palvelun ensimmäisen epäonnistuneen
+käynnistysvaiheen ennen siivousta ja julkaisee siivouksen jälkeen vain
+suljetun `EKY_LINUX_SERVICE_FAILURE`-rivin. Profiili, vaihe, tunnettu syy,
+mahdollinen tunnettu alitason syy/vaihe, spawn-havainto ja puun siivoustila
+ovat ennalta sallittuja arvoja. Raakaviesti, prosessituloste, polku, session
+tai ympäristöarvo ei kuulu riviin. CI-reportteri validoi rivin uudelleen,
+kestää osittaiset tulostepalat ja hylkää ylimääräiset kentät. Raportin
+kirjoitusvirhe ei korvaa alkuperäistä testivirhettä; rivin puuttuminen on
+puuttuva havainto, ei onnistuminen. Tämä diagnoosi ei yksin ole omistajuuden
+hyväksyntätodiste eikä muuta nykyistä `EKY_E2E_REPORT`-tulosskeemaa.
+Todellisen testiajurin virhe-/retry-koe sekä alemmat elinkaari- ja
+projektiotestit todentavat lukuketjun ilman oikean Linux-virhesyyn arvaamista.
+
+Erillinen workspace-hylkäys oli olemassa olevan tukipaketin 25 MiB:n
+kokonaisrajatestin aikakatkaisu. Sen rajattu korjaus koskee testiaineiston
+rakennetta: samat todelliset osio- ja kokonaisrajat, suurimman mahtuvan
+prefiksin säilyminen sekä checksumit todistetaan harvemmilla suuremmilla
+merkinnöillä. Monen merkinnän osiorajatesti säilyy erillisenä. Tuotantokoodi,
+kokorajat ja testiaikaraja eivät muutu. Korjaus tarvitsee oman kohdennetun
+näytön, katselmuksen ja uuden revision CI-portin.
+
+Kohdennettu arkistosarja 5/5, raportoinnin ja Linux-sessionin sopimukset
+50/50 sekä koko workspace-testit ja tyyppitarkistus läpäisivät.
+Riippumaton katselmus ei löytänyt avoimia korjaustarpeita. Tarkoituksellinen
+ajurivirhe tapahtuu injektoidussa valmistelussa: se todentaa raportoinnin,
+ei oikeaa Linux-käynnistystä tai sen virhesyytä. Uuden revision CI on vielä
+avoin. Alkuperäinen normaali ajo päättyi hylättyyn tilaan; Electron 38/38
+sekä kaikki neljä installer-artifactin tuottajaa ja kymmenen kuluttajaa
+läpäisivät, mutta ne eivät korvaa hylättyjä Linux- ja workspace-portteja.
+
+Saman revision [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/36419886254)
+läpäisi ensimmäisellä yrityksellä ilman tunnettuja löydöksiä; registry-
+allekirjoitukset 160/160 tarkistettiin. Se ei korvaa hylättyjä testejä.
+Ensimmäisen ajon virhetiedot säilyvät. Seuraava normaali CI käyttää rajattua
+havaintoketjua Linuxin käynnistyssyyn selvittämiseen; se ei ole saman
+revision sokkouusinta. T3/R28 ja PR/main pysyvät auki.
+
 **Windowsin rajattu katoamis- ja artifact-näyttö 28.9.:** todellinen
 worker-polku läpäisi erilliset native-omistajan ja kutsuvan Playwright-workerin
 katoamiskokeet. Ulompi omistettu testisessio todensi koko puun päättymisen

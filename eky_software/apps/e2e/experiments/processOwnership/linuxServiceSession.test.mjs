@@ -16,6 +16,7 @@ function fixture(options = {}) {
     { callback, at: clock + BigInt(Math.ceil(milliseconds * 1e6)) }); return serial; },
   clearTimeout(id) { timers.delete(id); } };
   const events = [];
+  const diagnostics = [];
   const channelClose = pending();
   let reply;
   let lost;
@@ -69,8 +70,9 @@ function fixture(options = {}) {
     createManager: () => manager,
     listen(prepared, deadline, onReply, onLost) { reply = onReply; lost = onLost; return control; },
     removeControl() { events.push('removeControl'); }, now: () => clock, time,
+    reportFailure(value) { diagnostics.push(value); if (options.reportFailure) throw new Error('synthetic reporter failure'); },
   };
-  return { events, input, overrides, channelClose, timers,
+  return { events, diagnostics, input, overrides, channelClose, timers,
     start: () => startLinuxService(options.profile ?? 'backend', input, overrides),
     lost: () => lost(), reply: value => reply(value),
     advance(milliseconds) {
@@ -174,6 +176,19 @@ test('prelaunch policy failure distinguishes no workload from launched uncertain
   await assert.rejects(f.start(), error => error.evidence.processTree === 'stopped' &&
     error.evidence.spawnObserved === false && error.evidence.startupFailure === 'preparationFailed');
   assert.ok(!f.events.includes('launch')); assert.ok(f.events.includes('commandsClosed'));
+  assert.deepEqual(f.diagnostics, [{ schemaVersion: 1, profile: 'backend', phase: 'managerPrepare',
+    causeReason: 'preparationFailed', causeStage: 'unverified',
+    startupFailure: 'preparationFailed', spawnObserved: false, processTree: 'stopped' }]);
+});
+
+test('safe startup diagnostics preserve the original failure when reporting fails', async () => {
+  const f = fixture({ earlyExit: true, reportFailure: true });
+  await assert.rejects(f.start(), error => error instanceof OwnedLinuxServiceStartupFailure &&
+    error.evidence.startupFailure === 'workloadExited' && error.evidence.processTree === 'stopped');
+  assert.deepEqual(f.diagnostics, [{ schemaVersion: 1, profile: 'backend', phase: 'workloadStart',
+    causeReason: 'workloadExited', causeStage: 'unverified',
+    startupFailure: 'workloadExited', spawnObserved: true, processTree: 'stopped' }]);
+  assert.ok(f.events.includes('removeControl'));
 });
 
 test('original lifetime expiry triggers failure without renewing stop or fixture deadlines', async () => {

@@ -40,6 +40,14 @@ Windows-only-ohitus, web 35/35 ja Electron 38/38 ilman retryä tai flakyä.
 Tämä hyväksyy rajatun Electron-kuluttajaosuuden; Chromium/Linux ja koko
 T3/PR/main-portti ovat edelleen avoinna.
 
+Linuxin oikeiden kuluttajien ensimmäisen yhteisen CI:n hylkäys ja sen
+rajattu havaintokorjaus ovat [omistavassa checkpointissa](e2e-test-environment.md#chromiumin-ja-linuxin-ensimmäinen-yhteinen-ci).
+Raportterin ja Linux-sessionin kohdesarja 50/50 todentaa suljetun
+käynnistysvaiheen, alkuperäisen virheen säilymisen ja puuttuvan siivousnäytön
+erottamisen. Mukana on todellisen Playwright-ajurin tarkoituksellinen
+startup-hylkäys ja automaattinen retry. Tämä on raportoinnin sopimusnäyttö,
+ei hyväksytty Linux-kuluttaja, normaalin CI:n flaky-hyväksyntä tai T3:n sulku.
+
 ## Tilat
 
 - `accepted-contract`: matriisissa nimetty testi-infrastruktuurin sopimus

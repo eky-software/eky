@@ -7,6 +7,8 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
 import SafeCiReporter, { createE2eReporters, REPORT_PREFIX } from './safeCiReporter.mjs';
+import { encodeLinuxServiceDiagnostic, linuxServiceDiagnosticPrefix, projectLinuxServiceCause }
+  from '../experiments/processOwnership/linuxServiceDiagnostic.mjs';
 
 const reporterPath = fileURLToPath(new URL('./safeCiReporter.mjs', import.meta.url));
 const require = createRequire(import.meta.url);
@@ -15,6 +17,41 @@ const cli = require.resolve('@playwright/test/cli');
 const secret = 'ws://127.0.0.1:43210/synthetic-private-capability';
 const events = output => output.split(/\r?\n/u)
   .filter(line => line.startsWith(REPORT_PREFIX)).map(line => JSON.parse(line.slice(REPORT_PREFIX.length)));
+const linuxFailure = Object.freeze({ schemaVersion: 1, profile: 'backend', phase: 'prepare',
+  causeReason: 'unverified', causeStage: 'unverified',
+  startupFailure: 'preparationFailed', spawnObserved: false, processTree: 'stopped' });
+
+test('only closed Linux failure records survive split, combined and oversized output', t => {
+  let output = '';
+  t.mock.method(process.stdout, 'write', chunk => { output += chunk; return true; });
+  const reporter = new SafeCiReporter();
+  const line = encodeLinuxServiceDiagnostic(linuxFailure);
+  for (const field of Object.keys(linuxFailure)) {
+    const value = { ...linuxFailure, [field]: secret };
+    assert.throws(() => encodeLinuxServiceDiagnostic(value), /E2E_LINUX_SERVICE_DIAGNOSTIC_INVALID/u);
+    reporter.onStdOut(linuxServiceDiagnosticPrefix + JSON.stringify(value) + '\n');
+  }
+  reporter.onStdOut(linuxServiceDiagnosticPrefix + JSON.stringify({ ...linuxFailure, extra: secret }) + '\n');
+  reporter.onStdOut(linuxServiceDiagnosticPrefix + '{invalid}\n');
+  reporter.onStdOut(secret + '\n' + 'x'.repeat(1024) + line + secret + '\n');
+  assert.equal(output, '');
+  for (const character of line) reporter.onStdOut(Buffer.from(character));
+  reporter.onStdOut(line + secret + '\n' + line);
+  reporter.onStdErr(line);
+  reporter.onStdOut(line.slice(0, -1));
+  assert.equal(output, line.repeat(3));
+  assert.equal(output.includes(secret), false);
+});
+
+test('cause projection preserves only known reason and metadata stage without raw errors', () => {
+  assert.deepEqual(projectLinuxServiceCause(Object.assign(new Error(secret), {
+    reason: 'metadataInvalid', stage: 'tools', path: secret,
+  })), { causeReason: 'metadataInvalid', causeStage: 'tools' });
+  for (const error of [null, undefined, secret, { reason: secret, stage: secret },
+    { get reason() { throw new Error(secret); }, get stage() { throw new Error(secret); } }]) {
+    assert.deepEqual(projectLinuxServiceCause(error), { causeReason: 'unverified', causeStage: 'unverified' });
+  }
+});
 
 function caseFixture(overrides = {}) {
   return {
@@ -166,6 +203,27 @@ test('real runner preserves failures, expected failures, retries, skips and raw 
   assert.equal(attemptRows.filter(row => row.errorClass === 'testTimeout').length, 2);
   assert.ok(readFileSync(run.rawReport, 'utf8').includes(secret), 'original private failure remains available');
   assert.ok(readFileSync(join(run.root, 'playwright-report', 'index.html')).length > 0);
+  run.accept();
+});
+
+test('real startup failure reaches safe CI output without replacing the test error', t => {
+  const session = new URL('../experiments/processOwnership/linuxServiceSession.mjs', import.meta.url).href;
+  const run = runnerFixture(t, `
+test('startup failure', async () => {
+  process.stdout.write(${JSON.stringify(secret.repeat(30))});
+  const { startLinuxService } = await import(${JSON.stringify(session)});
+  await startLinuxService('backend', {}, {
+    prepare() { throw new Error(${JSON.stringify(secret)}); }
+  });
+});`);
+  assert.equal(run.code, 1);
+  assert.equal(run.rows.at(-1).unexpected, 1);
+  assert.equal(run.rows.filter(row => row.event === 'testEnd').length, 2);
+  const diagnostics = run.output.split(/\r?\n/u).filter(line => line.startsWith(linuxServiceDiagnosticPrefix));
+  assert.deepEqual(diagnostics, Array(2).fill(encodeLinuxServiceDiagnostic(linuxFailure).trimEnd()));
+  const raw = readFileSync(run.rawReport, 'utf8');
+  assert.ok(raw.includes('E2E_BACKEND_OWNER_START_FAILED'));
+  assert.ok(raw.includes(secret));
   run.accept();
 });
 

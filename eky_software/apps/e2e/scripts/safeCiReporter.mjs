@@ -1,5 +1,6 @@
 import { relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createLinuxServiceDiagnosticRelay } from '../experiments/processOwnership/linuxServiceDiagnostic.mjs';
 
 export const REPORT_PREFIX = 'EKY_E2E_REPORT ';
 const testsRoot = fileURLToPath(new URL('../tests/', import.meta.url));
@@ -46,6 +47,7 @@ export function createE2eReporters(env = process.env, argv = process.argv) {
 export default class SafeCiReporter {
   #cases = new Map();
   #globalErrors = 0;
+  #linuxServiceDiagnostic = createLinuxServiceDiagnosticRelay(line => process.stdout.write(line));
 
   printsToStdio() { return true; }
 
@@ -91,7 +93,7 @@ export default class SafeCiReporter {
     this.#emit('runError', { errorIndex: this.#globalErrors, errorClass: 'runError' });
   }
 
-  onStdOut() {}
+  onStdOut(chunk) { this.#linuxServiceDiagnostic(chunk); }
   onStdErr() {}
 
   onEnd(result) {
