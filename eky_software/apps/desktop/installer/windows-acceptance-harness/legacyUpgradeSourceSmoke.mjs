@@ -30,10 +30,15 @@ const STAGES = Object.freeze([
   'shutdown',
 ]);
 
-// Project only exact startup codes from the frozen 0.2.6 writer, never raw codes.
+// Project only exact codes from the frozen 0.2.6 writer, never raw codes.
 const APPLICATION_FAILURE_CLASSES = new Map([
   ['BACKEND_EXITED_BEFORE_READY', 'backendExitedBeforeReady'],
   ['BACKEND_READINESS_TIMEOUT', 'backendReadinessTimeout'],
+  ['DESKTOP_SMOKE_DIAGNOSTICS_SUMMARY_HTTP_FAILED', 'diagnosticsSummaryHttpFailed'],
+  ['DESKTOP_SMOKE_DIAGNOSTICS_IDENTITY_FAILED', 'diagnosticsIdentityFailed'],
+  ['DESKTOP_SMOKE_DIAGNOSTICS_HTTP_FAILED', 'diagnosticsHttpFailed'],
+  ['DESKTOP_SMOKE_DIAGNOSTICS_EVENT_FAILED', 'diagnosticsEventFailed'],
+  ['DESKTOP_SMOKE_DIAGNOSTICS_VIEW_FAILED', 'diagnosticsViewFailed'],
   ['DESKTOP_START_FAILED', 'desktopStartFailed'],
   ['PACKAGED_BUILD_INFO_INVALID', 'packagedBuildInfoInvalid'],
   ['PACKAGED_SMOKE_FAILED', 'packagedSmokeFailed'],

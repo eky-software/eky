@@ -3919,7 +3919,17 @@ CI-virheen sisäinen syy ja workspace-asennusodotuksen tarkka raja ovat avoimia.
 T3/R28:n myöhempi [legacy-hylkäys ja diagnostiikkatarkennus](e2e-test-environment.md#t3b-en-kokonaisajon-legacy-hylkäys)
 lisää samaan vaihehavaintoon suljetun `smokeFailureClass`-kentän. Harness
 projektoi vain jäädytetyn 0.2.6-kirjoittajan 16 täsmällisesti nimettyä
-startup-virhekoodia ennalta määriteltyihin luokkiin. Esimerkiksi
+startup-virhekoodia ennalta määriteltyihin luokkiin. Myöhempi
+[rajattu diagnostiikkajatko](e2e-test-environment.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko)
+lisää viisi saman kirjoittajan täsmällistä diagnostiikkakoodia:
+`DESKTOP_SMOKE_DIAGNOSTICS_SUMMARY_HTTP_FAILED`,
+`DESKTOP_SMOKE_DIAGNOSTICS_IDENTITY_FAILED`,
+`DESKTOP_SMOKE_DIAGNOSTICS_HTTP_FAILED`,
+`DESKTOP_SMOKE_DIAGNOSTICS_EVENT_FAILED` ja
+`DESKTOP_SMOKE_DIAGNOSTICS_VIEW_FAILED`. Niiden suljetut luokat ovat
+`diagnosticsSummaryHttpFailed`, `diagnosticsIdentityFailed`,
+`diagnosticsHttpFailed`, `diagnosticsEventFailed` ja `diagnosticsViewFailed`.
+Esimerkiksi
 `backendReadinessTimeout` ja `backendExitedBeforeReady` erottavat kaksi
 raportoitua virhehaaraa. Muut validit sovelluskoodit, myös avoimen
 `DESKTOP_SMOKE_`-prefiksin arvot, saavat luokan `unclassified`.
