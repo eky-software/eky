@@ -1,11 +1,11 @@
 import {
   request as requestFactory,
-  test as base,
   type APIRequestContext,
   type BrowserContext,
   type Page,
   type TestInfo,
 } from '@playwright/test';
+import { test as base } from './ownedChromiumTest.js';
 
 import type { E2eFaultPlan } from '../../../backend/e2e/e2eBackendConfig.js';
 import { collectWebFailureArtifacts } from '../environment/collectWebFailureArtifacts.js';
@@ -156,6 +156,9 @@ export async function runIsolatedWebTest(
   } finally {
     await finishServiceFixture({
       failure, priorCleanupUnverified,
+      // Public close flushes Playwright's context trace/screenshots before
+      // test data removal. Its ordinary fixture teardown is idempotent.
+      closeContext: () => context.close(),
       testAlreadyFailed: testInfo.status !== testInfo.expectedStatus,
       disposeApi: async () => { await api?.dispose(); },
       ...(web === undefined ? {} : { stopWeb: () => web!.stop() }),

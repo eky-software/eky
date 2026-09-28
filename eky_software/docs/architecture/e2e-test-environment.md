@@ -1965,10 +1965,11 @@ Ennen ensimmäistä backend-siirtoa täsmennetään seuraavat sopimukset:
   synteettinen tietokanta säilytetään restartissa. Varmistamaton puun poisto
   estää restartin ja datajuuren poiston. Tyhjän kokeellisen kontrollijuuren
   poistoehto ei oikeuta täyden fixturejuuren rekursiivista poistoa.
-- **Ympäristöraja avoinna:** LM on hyväksytty vain CI:hin. Paikallisen
-  Windows-testauksen ja Linux-CI:n riittävyys verrattuna paikallisen Linuxin
-  tukeen varmistetaan omistajalta. Rajaa ei laajenneta hostin oikeuksia
-  muuttamalla eikä paikallista Linux-polkuakaan poisteta oletuksen perusteella.
+- **Ympäristöraja hyväksytty 28.9.:** LM on hyväksytty vain CI:hin.
+  Paikalliset Windows-testit ja Linux-CI riittävät
+  [Chromiumin ja ympäristön päätöksen](#chromiumin-kuluttajasiirron-avoin-omistajuusraja)
+  mukaisesti. Hostin oikeuksia ei muuteta. Korvattu paikallispolku poistetaan
+  vasta vastaavan kattavuuden jälkeen, ei ennen kuluttajasiirron näyttöä.
 
 Jokainen siirtopala sisältää käynnistysvirheen, root-firstin, owner-lossin,
 toistetun stopin ja epävarman cleanupin regressiot soveltuvalla tasolla.
@@ -3247,12 +3248,137 @@ omistettu puu oli poistunut ennen ulomman omistajan pakkosiivousta,
 portti vapautui ja sentinel säilyi; pakkotoimenpidettä ei tarvittu.
 Tämä on rajattu todellisen fixtureketjun näyttö, ei kaikkien mahdollisten
 levy- tai raportointivirheiden kattavuuslupaus. Ei kolmatta päällekkäistä
-testialustaa tai tuotantokontrollia. Mittauskorjauksen uuden revision oma
-CI, Chromiumin/Linuxin päätösrajat ja koko T3/PR/main-portti säilyvät avoimina.
+testialustaa tai tuotantokontrollia.
+
+Mittauskorjauksen puhdas revisio `ab5de90bd28eda08cc5d871521a8a2d9f669deb3`
+läpäisi [normaalin V2-ajon 36359605352](https://github.com/eky-software/eky/actions/runs/36359605352)
+ja [riippuvuustarkistuksen 36359619205](https://github.com/eky-software/eky/actions/runs/36359619205),
+molemmat ensimmäisellä yrityksellä. Kaikki 38 vaadittua ryhmää läpäisivät;
+yksi valinnainen koe oli tarkoituksella pois käytöstä. System 637 valittua
+(636 läpäisyä ja yksi tunnettu Windows-only-suojan ohitus), web 35/35 ja
+Electron 38/38 todennettiin ilman retryä, flakyä tai raporttivirhettä.
+Tarkat lähdekatalogit, todelliset checkoutit, neljä artifact-tuottajaa ja
+kymmenen kuluttajaa sekä lifecycle-tulokset takaisinluettiin. Native-portit
+515/226/285/1791 ja registry-allekirjoitukset 160/160 läpäisivät;
+tuotanto- ja kokonaisauditissa ei tunnettuja löydöksiä.
+Tämä yhdessä yllä rajatun paikallisen näytön kanssa sulkee Electronin
+oikean kuluttajakohdan. Aiemmat hylkäykset ja ratkaisemattomat satunnaiset
+virhesyyt säilyvät. Chromiumin/Linuxin päätösrajat, niiden kuluttajasiirrot
+ja koko T3/PR/main-portti ovat edelleen avoinna tässä checkpointissa.
+Seuraava 28.9. päätös ratkaisee päätösrajat, ei vielä näitä hyväksyntäportteja.
 
 ###### Chromiumin kuluttajasiirron avoin omistajuusraja
 
-**2026-09-27: vain valmistelu; omistajapäätös avoin, ei toteutusta.**
+**2026-09-28: omistaja hyväksyi yhteisen worker-selaimen testikohtaisella
+eristyksellä sekä paikalliset Windows-testit ja Linux-CI:n.** Valinta on
+tehty; kuluttajasiirto ja sen hyväksyntänäyttö ovat kesken.
+Alla oleva 27.9. valmistelu säilyttää päätöksen taustan.
+
+Hyväksytty rajaus säilyttää worker-kohtaisen selaimen sekä jokaisen testin
+omat context/page-oliot, datan, sessionin ja palvelut. Testin datajuuri
+poistetaan vasta sen oman kontekstin, liitteiden ja palvelujen sulkeuduttua.
+Selaimen erillinen synteettinen juuri poistetaan vasta omistetun koko puun
+varmennetun päättymisen jälkeen. Viimeisen worker-siivouksen epäonnistuminen
+hylkää ajon; yksittäisten testien vihreys ei korvaa puun poistumistodistetta.
+Yhteys muodostetaan ennen testin trace-tallennusta julkisilla Playwright-
+rajapinnoilla. Salainen ohjausosoite ei kuulu traceen, lokiin tai liitteeseen.
+Alla täsmennetty määräaika- ja retry-sopimus ohjaa kytkentää.
+Valinta ei hyväksy yksityistä instrumentointia,
+riippuvuuspatchia, uusia aikarajoja tai uutta runneria.
+
+Linuxin hyväksytty managerimekanismi siirretään oikeisiin CI-kuluttajiin.
+Paikallisen Linux-/WSL-ajon tuki ei ole tämän T3:n hyväksyntävaatimus;
+sen sijaan unsupported-ympäristö torjutaan selvästi ennen käynnistystä.
+Hostin oikeuksia, palveluja tai suojausasetuksia ei muuteta. Korvattu
+Linux-polku poistetaan vasta vastaavan CI-kattavuuden todennuksen jälkeen,
+ei jätetä root-only-fallbackiksi. Sovelluskehityksen WSL-työkalukäyttöä
+tämä E2E-ajoympäristön rajaus ei kiellä.
+
+**Kuluttajatoteutuksen sopimus ja rajattu näyttö 28.9.:**
+
+- Nykyinen yhden workerin ajotapa säilyy. Automaattinen worker-fixture
+  avaa julkisen `BrowserType.connect`-yhteyden ennen testien tallennusta.
+  Testin julkiset `context`/`page`-fixturet, asetukset ja moduulitestien
+  rajapinta säilyvät; private-instrumentointia ei lisätä.
+- Ensimmäinen Chromium-worker sitoo monotonic-kellon nykyiseen
+  `globalTimeout`-kattoon. Tämä on omistajan turvakatto, ei väite CLI-ajon
+  todellisesta jäljellä olevasta ajasta; Playwrightin oma alkuperäinen
+  kokonaisaikaraja säilyy. Worker-käynnistys käyttää lisäksi nykyistä
+  projektin testiaikarajaa, eikä uusinta luo uutta omistajan aikabudjettia.
+- Ajokohtaisessa tuloskansiossa oleva keskeneräisen omistajuuden merkki
+  estää korvaavan workerin, kun siivousta ei ole varmennettu. Vain saman
+  omistajan todennettu siivous vapauttaa merkin. Uuden CLI-ajon tyhjentämä
+  tuloskansio ei ole aiemman epävarman prosessipuun siivoustodiste.
+- Julkinen kontekstin sulku odottaa Playwrightin trace-chunkin ja
+  väliaikaisten virhekuvien keräyksen ennen testidatan poistoa.
+  Raportin lopullinen yhdistäminen tapahtuu myöhemmin testidatan ulkopuolella.
+  Kontekstin, palvelujen tai artifact-keräyksen epäonnistuminen estää
+  testijuuren poiston; selaimen työjuuri vaatii erillisen puutodisteen.
+- Windowsin suljettu Chromium-profiili käyttää samaa hyväksyttyä native-
+  omistajaa. Ensimmäinen normaali web-käynnistys ja kahden todellisen testin
+  eristys läpäisivät. Erillisessä tarkoituksellisessa virhe-/retry-kokeessa
+  kuvakaappaus, trace, worker-vaihto, alkuperäinen omistajakello ja molempien
+  workerien siivous todennettiin. Pakatut tallenteet ja raportti tarkistettiin:
+  selaimen hallintayhteyden tallennusta tai ohjausosoitetta ei löytynyt.
+  Tämä odotetun ensimmäisen virheen koe ei ole normaalin CI:n flaky-hyväksyntä.
+- Tyypitys, native-profiilin 60 tarkistusta ja 71 kohdesopimusta läpäisivät.
+  Uuden eristystestin ensimmäinen nimisopimukseen pysähtynyt ajo säilyy
+  hylättynä; korjattu kahden tapauksen ajo läpäisi. Linux-kytkentä,
+  kuluttajien laajempi virhe-/omistajuusmatriisi ja yhteinen CI ovat avoinna.
+  Koko T3:a tai PR/main-porttia ei merkitä tällä valmiiksi.
+
+**Saman kuluttajasiirron jatko 28.9.:** koko tavallinen Windows-web-sarja
+läpäisi 43/43 ilman retryä (aiemmat 41 tapausta ja kaksi uutta eristystapausta).
+Riippumaton katselmus hyväksyi artifact-/retry-näytön rajat mutta tunnisti
+myöhäisen yhteyden ja epäonnistuneen sulkemisen regressioaukot. Niitä varten
+Windows ja Linux käyttävät yhteistä `connectOwnedChromium`-vastuuta:
+myöhäinenkin julkinen yhteys odotetaan suljetuksi saman omistajan alkuperäisen
+cleanup-määräajan sisällä. Pelkkä `close`-kutsun ajoittaminen ei riitä.
+Workerin todellinen suorituspolku on erotettu pieneksi testattavaksi
+`runOwnedChromiumWorker`-funktioksi; moduulitestin rajapinta ei muutu.
+Yhteys-, worker- ja admission-sopimukset läpäisivät 50/50 sekä tyypityksen.
+Mukana ovat reject/throw/hang, myöhäinen connect, katkennut yhteys, toistettu
+stop, alkuperäisen virheen säilyminen sekä juuren/varauksen säilyminen ja
+uusinnan esto epävarmuudessa. Lisäregressio toisti normaalin owner-stopin
+virheellisen tulkinnan aiemmaksi yhteyskatkoksi. Tila luetaan nyt ennen
+omistajan tarkoituksellista sulkua; todellinen aiempi katkos hylätään edelleen.
+Korjattu käynnistys ja kahden testin eristys läpäisivät oikealla selaimella
+3/3. Tämän jälkeen sama yhteinen toteutus läpäisi koko tavallisen
+Windows-systemin 689/689 ja webin 43/43 ilman retryä, flakyä tai ohituksia
+sekä kanonisen system/web-stress-portin. Worker-siivous varmennettiin
+ja selainjuuri poistettiin; aiempaa 43/43-tulosta ei käytetty myöhemmän
+muutoksen hyväksyntänä.
+Linuxin backend/Vite/Chromium-kytkentä ja valmistelun alemmat sopimukset
+läpäisivät 734/734-työkalusarjan, mutta se ei ole oikeiden Linux-prosessien CI-näyttö.
+Ensimmäisen testisimulaation polkuvirhe ja korjattu lähdetila pidetään erillään.
+Yhteinen CI ja oikeiden Linux-kuluttajien näyttö ovat edelleen avoinna.
+
+**Windowsin rajattu katoamis- ja artifact-näyttö 28.9.:** todellinen
+worker-polku läpäisi erilliset native-omistajan ja kutsuvan Playwright-workerin
+katoamiskokeet. Ulompi omistettu testisessio todensi koko puun päättymisen
+ennen omaa loppusiivoustaan; selaimen loopback-portti vapautui ja
+ulkopuolinen vertailuprosessi säilyi. Epävarma sisempi siivous ei muuttunut
+onnistumiseksi: juuri ja keskeneräinen varaus säilyivät, eikä korvaava
+worker saanut aloittaa. Sisemmän terminal-kuitin puuttuminen kirjattiin
+puuttuvaksi, ei onnistuneeksi stop-kuittaukseksi. Kutsujan katoaminen
+hylkäsi varsinaisen Playwright-ajon odotetusti ilman retryä.
+Molempien kokeiden lähde- ja binaarisidonnat sekä lopputulokset
+takaisinluettiin riippumattomasti.
+
+Artifact-/retry-koe ajettiin uudelleen yhteisen sulkupolun jälkeisellä
+toteutuksella. Odotettu ensimmäinen virhe, kuvakaappaus, uusinnan oikea
+selaintrace, korvaava worker samalla omistajakellolla ja molempien puiden
+varmennettu siivous todettiin. Ohjausosoite tai hallintayhteyden avaus ei
+päätynyt tallenteisiin. Tämä on rajattu tarkoituksellisen virheen koe,
+ei tavallisen CI:n flaky-hyväksyntä tai Linux-/T3-/PR/main-hyväksyntä.
+
+Saman välipaketin koko workspace-testit ja tyyppitarkistus sekä
+CI-sopimukset 315/315 läpäisivät. Workspacen kahdeksan ennestään
+alustakohtaista ohitusta säilyi; uusia ohituksia ei lisätty. Seuraava portti
+on tämän katselmoidun lähdetilan oma normaali CI, ei aiemman revision
+vihreän tuloksen siirtäminen uudelle koodille.
+
+**Valmisteluhistoria 2026-09-27:**
 Nykyinen Playwright-selain on worker-kohtainen, mutta T3:n ehdotettu
 puutodiste on testikohtainen. Ennen siirtoa pitää valita säilyykö jaettu
 selain vai saako jokainen testi oman selainpuun. Tätä eroa ei ratkaista

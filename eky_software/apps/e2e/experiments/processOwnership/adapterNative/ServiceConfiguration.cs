@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace Eky.ProcessOwnershipAdapter;
 
-internal enum ServiceProfile { Backend, Vite, Electron, ElectronBridge }
+internal enum ServiceProfile { Backend, Vite, Electron, ElectronBridge, Chromium }
 
 // Closed launch profiles share the existing owner, control, state and deadlines.
 internal sealed class ServiceConfiguration
@@ -10,13 +10,16 @@ internal sealed class ServiceConfiguration
     private readonly BackendServiceConfiguration? backend;
     private readonly ViteServiceConfiguration? vite;
     private readonly ElectronServiceConfiguration? electron;
+    private readonly ChromiumServiceConfiguration? chromium;
     private readonly string? runtimeSession;
 
     private ServiceConfiguration(BackendServiceConfiguration value) { backend = value; }
     private ServiceConfiguration(ViteServiceConfiguration value, string session) { vite = value; runtimeSession = session; }
     private ServiceConfiguration(ElectronServiceConfiguration value) { electron = value; }
+    private ServiceConfiguration(ChromiumServiceConfiguration value) { chromium = value; }
 
-    internal ServiceProfile Profile => electron?.Profile ?? (vite is not null ? ServiceProfile.Vite : ServiceProfile.Backend);
+    internal ServiceProfile Profile => electron?.Profile ?? (chromium is not null ? ServiceProfile.Chromium
+        : vite is not null ? ServiceProfile.Vite : ServiceProfile.Backend);
     internal bool IsElectronBridge => Profile == ServiceProfile.ElectronBridge;
     internal ElectronServiceConfiguration ElectronConfiguration => electron ?? throw new AdapterFailure("configurationInvalid");
     internal static string Protocol(ServiceProfile profile) => profile switch
@@ -25,16 +28,17 @@ internal sealed class ServiceConfiguration
         ServiceProfile.Vite => ViteServiceConfiguration.Protocol,
         ServiceProfile.Electron => ElectronServiceConfiguration.Protocol,
         ServiceProfile.ElectronBridge => ElectronBridgeServiceProtocol.Name,
+        ServiceProfile.Chromium => ChromiumServiceConfiguration.Protocol,
         _ => throw new AdapterFailure("protocolInvalid"),
     };
-    internal string Generation => electron?.Generation ?? vite?.Generation ?? backend!.Generation;
-    internal string LaunchNonce => electron?.LaunchNonce ?? vite?.LaunchNonce ?? backend!.LaunchNonce;
-    internal string Executable => electron?.ElectronExecutable ?? vite?.NodeExecutable ?? backend!.NodeExecutable;
-    internal int WorkBudgetMilliseconds => electron?.WorkBudgetMilliseconds ?? vite?.WorkBudgetMilliseconds ?? backend!.WorkBudgetMilliseconds;
-    internal string PipeName => electron?.PipeName ?? vite?.PipeName ?? backend!.PipeName;
-    internal string WorkingDirectory => electron?.RunRoot ?? vite?.WorkingDirectory ?? backend!.RepositoryRoot;
-    internal string[] Arguments => electron?.Arguments ?? vite?.Arguments ?? [backend!.Entrypoint, "--config", backend.RuntimeConfigPath];
-    internal IReadOnlyDictionary<string, string> ChildEnvironment => electron?.Environment ?? vite?.ChildEnvironment(runtimeSession!) ?? backend!.Environment;
+    internal string Generation => electron?.Generation ?? chromium?.Generation ?? vite?.Generation ?? backend!.Generation;
+    internal string LaunchNonce => electron?.LaunchNonce ?? chromium?.LaunchNonce ?? vite?.LaunchNonce ?? backend!.LaunchNonce;
+    internal string Executable => electron?.ElectronExecutable ?? chromium?.NodeExecutable ?? vite?.NodeExecutable ?? backend!.NodeExecutable;
+    internal int WorkBudgetMilliseconds => electron?.WorkBudgetMilliseconds ?? chromium?.WorkBudgetMilliseconds ?? vite?.WorkBudgetMilliseconds ?? backend!.WorkBudgetMilliseconds;
+    internal string PipeName => electron?.PipeName ?? chromium?.PipeName ?? vite?.PipeName ?? backend!.PipeName;
+    internal string WorkingDirectory => electron?.RunRoot ?? chromium?.RunRoot ?? vite?.WorkingDirectory ?? backend!.RepositoryRoot;
+    internal string[] Arguments => electron?.Arguments ?? chromium?.Arguments ?? vite?.Arguments ?? [backend!.Entrypoint, "--config", backend.RuntimeConfigPath];
+    internal IReadOnlyDictionary<string, string> ChildEnvironment => electron?.Environment ?? chromium?.ChildEnvironment ?? vite?.ChildEnvironment(runtimeSession!) ?? backend!.Environment;
 
     internal static ServiceConfiguration Read(string path, ServiceProfile profile) => profile switch
     {
@@ -43,18 +47,20 @@ internal sealed class ServiceConfiguration
             ViteServiceConfiguration.RequireRuntimeSession(Environment.GetEnvironmentVariable(ViteServiceConfiguration.SessionEnvironment))),
         ServiceProfile.Electron => new(ElectronServiceConfiguration.Read(path)),
         ServiceProfile.ElectronBridge => new(ElectronServiceConfiguration.Read(path, profile)),
+        ServiceProfile.Chromium => new(ChromiumServiceConfiguration.Read(path)),
         _ => throw new AdapterFailure("configurationInvalid"),
     };
 
     internal void ValidatePaths()
     {
         if (electron is not null) electron.ValidatePaths();
+        else if (chromium is not null) chromium.ValidatePaths();
         else if (vite is not null) vite.ValidatePaths(); else backend!.ValidatePaths();
     }
 
     internal void WriteTerminal(BackendServiceSnapshot state, long cleanupStarted, Action requireDeadline)
-        => WriteTerminal(Profile, Generation, electron?.ControlRoot ?? vite?.ControlRoot ?? backend!.ControlRoot,
-            electron?.TerminalPath ?? vite?.TerminalPath ?? backend!.TerminalPath, state, cleanupStarted, requireDeadline);
+        => WriteTerminal(Profile, Generation, electron?.ControlRoot ?? chromium?.ControlRoot ?? vite?.ControlRoot ?? backend!.ControlRoot,
+            electron?.TerminalPath ?? chromium?.TerminalPath ?? vite?.TerminalPath ?? backend!.TerminalPath, state, cleanupStarted, requireDeadline);
 
     internal static void WriteTerminal(ServiceProfile profile, string generation, string controlRoot, string terminalPath,
         BackendServiceSnapshot state, long cleanupStarted, Action requireDeadline)

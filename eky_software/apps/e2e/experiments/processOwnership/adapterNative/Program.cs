@@ -17,6 +17,8 @@ internal static class Program
             if (args.Length == 2 && args[0] == "--backend-owner") return await BackendServiceOwner.RunConfiguredAsync(args[1]);
             if (args.SequenceEqual(["--vite-service-self-test"])) return await ViteServiceSelfTest.RunAsync();
             if (args.Length == 2 && args[0] == "--vite-owner") return await BackendServiceOwner.RunConfiguredAsync(args[1], ServiceProfile.Vite);
+            if (args.Length == 2 && args[0] == "--chromium-owner") return await BackendServiceOwner.RunConfiguredAsync(args[1], ServiceProfile.Chromium);
+            if (args.SequenceEqual(["--chromium-service-self-test"])) return ChromiumServiceSelfTest.Run();
             if (args.SequenceEqual(["--electron-service-self-test"])) return await ElectronServiceSelfTest.RunAsync();
             if (args.Length == 2 && args[0] == "--electron-owner") return await BackendServiceOwner.RunConfiguredAsync(args[1], ServiceProfile.Electron);
             if (args.Length == 2 && args[0] == "--electron-bridge-owner") return await BackendServiceOwner.RunConfiguredAsync(args[1], ServiceProfile.ElectronBridge);

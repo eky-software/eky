@@ -55,7 +55,7 @@ test.describe('SYS-SERVICE-FIXTURE-LIFECYCLE-001 @critical @security', () => {
           ? runIsolatedBackendTest({ e2eContainmentTimeoutMilliseconds: undefined, e2eFaultPlan: { kind: 'none' } }, use, testInfo,
             dependencies)
           : runIsolatedWebTest({ e2eContainmentTimeoutMilliseconds: undefined, e2eFaultPlan: { kind: 'none' },
-            context: {} as never, page: {} as never }, use, testInfo,
+            context: { close: async () => undefined } as never, page: {} as never }, use, testInfo,
             dependencies);
         await expect(run).rejects.toBe(failure);
         expect(existsSync(marker)).toBe(true);
@@ -147,6 +147,22 @@ test.describe('SYS-SERVICE-FIXTURE-LIFECYCLE-001 @critical @security completion'
       await expect(fixture.run('web', true)).rejects.toBe(fixture.bodyError);
       expect(fixture.cleanup()).toMatchObject({ web: 'failed', backend: 'completed', runRoot: 'retained' });
       expect(fixture.calls).toContain('backendPort');
+      expect(existsSync(fixture.marker)).toBe(true);
+    } finally { fixture.remove(); }
+  });
+  test('web closes its context before services and data removal', async () => {
+    const fixture = completionFixture();
+    try {
+      await fixture.run('web');
+      expect(fixture.calls.indexOf('contextClose')).toBeLessThan(fixture.calls.indexOf('webStop'));
+      expect(fixture.calls.indexOf('contextClose')).toBeLessThan(fixture.calls.indexOf('remove'));
+    } finally { fixture.remove(); }
+  });
+  test('web context-close failure retains data without replacing a body failure', async () => {
+    const fixture = completionFixture('contextClose');
+    try {
+      await expect(fixture.run('web', true)).rejects.toBe(fixture.bodyError);
+      expect(fixture.cleanup()).toMatchObject({ context: 'failed', backend: 'completed', runRoot: 'retained' });
       expect(existsSync(fixture.marker)).toBe(true);
     } finally { fixture.remove(); }
   });
@@ -317,7 +333,7 @@ test.describe('E2E fixture lifetime propagation', () => {
 function completionFixture(fault?:
   'api' | 'apiSync' | 'backendStop' | 'port' | 'artifacts' | 'remove' | 'report' | 'webStop' |
   'webStartup' | 'webStartupVerified' | 'webStartupTreeUnverified' | 'webStartupPortUnverified' |
-  'startupVerified' | 'restart' | 'restartStop',
+  'startupVerified' | 'restart' | 'restartStop' | 'contextClose',
   timing: { containmentTimeoutMilliseconds?: number; now?: () => number } = {},
 ) {
   const runRoot = createE2eRunRoot();
@@ -424,7 +440,10 @@ function completionFixture(fault?:
   const runWith = (family: 'backend' | 'web', use: () => Promise<void>) =>
     family === 'backend' ? runBackend(use) : runIsolatedWebTest({
       e2eContainmentTimeoutMilliseconds: timing.containmentTimeoutMilliseconds,
-      e2eFaultPlan: { kind: 'none' }, context: {} as never,
+      e2eFaultPlan: { kind: 'none' }, context: { close: async () => {
+        calls.push('contextClose');
+        if (fault === 'contextClose') throw cleanupError;
+      } } as never,
       page: { goto: async () => undefined } as never,
     }, use, testInfo, dependencies);
   return {

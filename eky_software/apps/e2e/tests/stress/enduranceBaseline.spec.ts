@@ -4,11 +4,11 @@ import { join } from 'node:path';
 import {
   expect,
   request as requestFactory,
-  test,
   type APIRequestContext,
   type BrowserContext,
   type Page,
 } from '@playwright/test';
+import { test } from '../../src/fixtures/ownedChromiumTest.js';
 
 import { readE2eOperationalLogs } from '../../src/assertions/readE2eOperationalLogs.js';
 import { installE2eBrowserNetworkBoundary } from '../../src/environment/e2eBrowserNetworkBoundary.js';

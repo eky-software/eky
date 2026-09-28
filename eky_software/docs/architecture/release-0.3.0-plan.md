@@ -3,24 +3,36 @@
 ## Päätös ja nykyinen tila
 
 **Nykytila 2026-09-28: M0, T1 ja T2 hyväksytty; T3/R28 kesken.**
-**Nykyinen vihreä lähtörevisio on `5f61f1863557f1e51b96cf705d9434feae91db8c`.**
-Sen [normaali CI](https://github.com/eky-software/eky/actions/runs/36354387346)
-ja [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/36354390842)
+**Nykyinen vihreä lähtörevisio on `ab5de90bd28eda08cc5d871521a8a2d9f669deb3`.**
+Sen [normaali CI](https://github.com/eky-software/eky/actions/runs/36359605352)
+ja [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/36359619205)
 läpäisivät ensimmäisellä yrityksellä. Koko tapausjoukko, todelliset checkoutit
 ja asennuspakettien tuottaja-/kuluttajasidonnat on takaisinluettu.
 Windows-Electronin valmistelukorjaus ja turvallinen käynnistysvirheen
 kaappaus ovat siten läpäisseet myös oman normaalin CI-porttinsa.
 Windows-Electronin nykyisen kadenssin stress ja täysi 30 minuutin soak
 sekä alkuperäisen virheen säilymisen kaksi rajattua todellisen fixturen
-koetta on nyt paikallisesti todennettu. Chromiumin ja Linuxin avoimet päätösrajat
-säilyvät. [Aiemmat hylkäykset ja korjauksen rajaus](e2e-test-environment.md#windows-electron--valmistelun-ci-hylkäys)
+koetta on nyt paikallisesti todennettu. Omistaja hyväksyi 28.9. yhteisen
+Chromium-selaimen testikohtaisella eristyksellä sekä paikalliset Windows-testit
+ja Linux-CI:n. Näiden kuluttajasiirrot ovat käynnissä: worker-Chromiumin
+tavallinen Windows-web-sarja läpäisi uusimmalla yhteisellä toteutuksella
+43/43, system-sarja 689/689 ja kanoninen stress-portti. Yhteyden/siivouksen
+kohdesarja 50/50, oikeat Windowsin owner-/caller-loss-kokeet sekä uusittu
+artifact-/retry-koe on myös todennettu. Yhteinen Linux-kytkentä on toteutettu
+ja työkalusarja 734/734 läpäisty; oikeiden Linux-kuluttajien näyttö ja
+uuden lähdetilan CI ovat vielä avoinna. Tämä rajattu näyttö ei sulje T3:a.
+[Aiemmat hylkäykset ja korjauksen rajaus](e2e-test-environment.md#windows-electron--valmistelun-ci-hylkäys)
 säilyvät historiatietona; läpäisy ei ratkaise aiemman satunnaisen
 poistumisen syytä eikä hyväksy koko T3:a tai PR/main-integraatiota.
 Stress-portin ensimmäinen yritys hylättiin testin vanhentuneen
 työtilamittauksen vuoksi. [Rajattu korjaus ja loppunäyttö](e2e-test-environment.md#windows-electronin-endurance-ja-virheen-säilymisen-loppunäyttö)
 erottavat säilyvän hylkäyksen korjatun polun läpäisseistä ajoista.
-Mittauskorjauksen uuden revision oma CI-portti on vielä avoin;
-lähtörevision vihreä CI ei hyväksy myöhempää muutosta.
+Mittauskorjauksen oma CI-portti on nyt hyväksytty: 38 onnistunutta ryhmää
+ja yksi tarkoituksellinen valinnaisen kokeen ohitus. System 637 valittua
+(636 läpäisyä ja yksi tunnettu alustakohtainen ohitus), web 35/35 ja
+Electron 38/38 ilman retryä tai flaky-tulosta. **Electronin rajattu
+kuluttajaosuus on valmis; koko T3 ja PR/main-integraatio eivät ole.**
+Lähtörevision vihreä CI ei hyväksy myöhempää koodimuutosta.
 Jatkamisen lähtörevisio, avoin puute, seuraava työ ja valmistumiskriteeri
 ovat [M1:n ajantasaisessa aloituskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
 Nykyinen eteneminen on **T3:n oikeat kuluttajat ja korvatun toteutuksen
@@ -29,7 +41,13 @@ Uutta testialustan tai sovellusarkkitehtuurin rinnakkaista uudistusta ei aloitet
 T3 ei valmistu pelkillä kokeilla tai diagnostiikalla. Uusi moduulitesti käyttää
 yhteistä fixtureä, ei rakenna omaa prosessienhallintaa.
 
-**Uusin valtuus 2026-09-27:** koko nykyisen T3/R28:n toteutus, testit ja
+**Uusin päätös 2026-09-28:** [Chromiumin worker-omistajuus ja testikohtainen
+eristys sekä Windows-paikallinen/Linux-CI-rajaus](e2e-test-environment.md#chromiumin-kuluttajasiirron-avoin-omistajuusraja)
+on hyväksytty. Toteutus käyttää nykyisiä omistajuusmekanismeja ja aikarajoja.
+Paikallista Linux/WSL-E2E-tukea tai hostin oikeuksien muutoksia ei tarvita.
+Koko T3:n valmistumiskriteerit ja täsmällisen revision portit säilyvät.
+
+**Edeltävä valtuus 2026-09-27:** koko nykyisen T3/R28:n toteutus, testit ja
 normaali PR/main-integraatio saavat jatkua hyväksytyssä rajauksessa ilman
 toistuvia välilupia. Nimenomainen päätös kattaa myös `playwright-core@1.62.1`-
 patchin lapsittoman Windows-bridgen rajatun lopetuslisäyksen ja testit;
@@ -64,15 +82,17 @@ Saman välipaketin koko workspace-testit ja tyyppitarkistus sekä CI-sopimukset
 315/315 läpäisivät. Näiden jälkeinen normaali etä-CI hylkäsi yllä kuvatun
 Electron-valmistelun; paikallinen näyttö ei korvannut sitä. Yllä mainittu
 `5f61f186` on korjauspaketin myöhempi, erikseen varmennettu vihreä baseline.
-Chromiumin ja Linuxin päätösrajat säilyvät.
+Chromiumin ja Linuxin myöhemmät hyväksytyt kuluttajasiirrot eivät sisälly
+tähän aiempaan näyttöön.
 
 Nykyinen jäljellä oleva työ on [M1:n lyhyessä sulkulistassa](release-0.3.0-m1-preparation-plan.md#t3n-nykyinen-työjärjestys):
 Chromiumin omistajuusraja ja siirto, Linuxin oikeat kuluttajat ja sen
 korvatun toteutuksen poisto, muiden siirrettyjen kuluttajien endurance sekä koko nykyinen
 T3-matriisi ja täsmälliset PR/main-portit. Chromiumin worker-/testikohtainen
-valinta ja paikallisen Linux-testauksen ympäristöpäätös pysyvät avoimina;
-jatkolupa ei hyväksy niihin poikkeusta, uusia riippuvuuksia tai heikennettyjä
-vaatimuksia. Hyväksytty riippumaton työ jatkuu näitä päätöksiä odottamatta.
+valinta ja paikallisen Linux-testauksen ympäristöpäätös on ratkaistu yllä.
+Hyväksyntä ei tarkoita uutta riippuvuutta, laajempia oikeuksia tai
+heikennettyjä vaatimuksia. Seuraava vaihe on hyväksytty toteutus, ei uusi
+rinnakkainen arkkitehtuurisuunnitelma.
 
 ### Aiemmat checkpointit ja päätösnäyttö
 

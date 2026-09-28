@@ -65,6 +65,11 @@ export class OwnedWindowsViteStartupFailure extends OwnedWindowsServiceStartupFa
     super('vite', evidence, output, failure);
   }
 }
+export class OwnedWindowsChromiumStartupFailure extends OwnedWindowsServiceStartupFailure {
+  constructor(evidence: OwnedWindowsServiceStartupFailureEvidence, output: ProcessOutput, failure?: Readonly<{ error: unknown }>) {
+    super('chromium', evidence, output, failure);
+  }
+}
 export class OwnedWindowsElectronStartupFailure extends OwnedWindowsServiceStartupFailure {
   constructor(evidence: OwnedWindowsServiceStartupFailureEvidence, output: ProcessOutput, failure?: Readonly<{ error: unknown }>) {
     super('electron', evidence, output, failure);
@@ -147,6 +152,7 @@ export function createWindowsOwnerSession<P extends WindowsServiceProfile, Input
 ): WindowsOwnerSession<P> {
   const prefix = windowsServiceProfiles[profile].errorPrefix;
   const Failure = profile === 'backend' ? OwnedWindowsBackendStartupFailure
+    : profile === 'chromium' ? OwnedWindowsChromiumStartupFailure
     : profile === 'vite' ? OwnedWindowsViteStartupFailure
       : profile === 'electronBridge' ? OwnedWindowsElectronBridgeStartupFailure : OwnedWindowsElectronStartupFailure;
   const stdout = createBoundedProcessOutput(undefined, input.redactedValues);

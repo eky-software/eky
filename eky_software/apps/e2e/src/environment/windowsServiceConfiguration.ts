@@ -11,6 +11,7 @@ import { windowsServiceProfiles } from './windowsServiceProfile.js';
 import { windowsServiceSchemaVersion } from './windowsServiceProtocol.js';
 import { requireWindowsVitePath, validateWindowsViteServiceInput } from './windowsViteServicePaths.js';
 import { resolveWindowsElectronServiceExecutable, validateWindowsElectronServiceInput } from './windowsElectronServicePaths.js';
+import { validateWindowsChromiumServiceInput } from './windowsChromiumServicePaths.js';
 
 interface ServiceInput {
   readonly repositoryRoot: string;
@@ -19,6 +20,9 @@ interface ServiceInput {
 }
 export interface WindowsBackendServiceInput extends ServiceInput {
   readonly runtimeConfigPath: string;
+}
+export interface WindowsChromiumServiceInput extends ServiceInput {
+  readonly browserExecutable: string;
 }
 export interface WindowsViteServiceInput extends ServiceInput {
   readonly webPort: number;
@@ -32,6 +36,7 @@ export interface WindowsElectronServiceInput extends ServiceInput {
   readonly environment: Readonly<Record<string, string>>;
 }
 type Selection = { profile: 'backend'; input: WindowsBackendServiceInput }
+  | { profile: 'chromium'; input: WindowsChromiumServiceInput }
   | { profile: 'vite'; input: WindowsViteServiceInput }
   | { profile: 'electron'; input: WindowsElectronServiceInput }
   | { profile: 'electronBridge'; input: WindowsElectronServiceInput };
@@ -51,6 +56,7 @@ export function prepareWindowsServiceConfiguration(
   const dependencies = { assertBuild: assertWindowsBackendOwnerBuild, now: () => performance.now(), ...overrides };
   const osTempRoot = realpathSync.native(tmpdir());
   if (selection.profile === 'vite') validateWindowsViteServiceInput(selection.input, osTempRoot);
+  if (selection.profile === 'chromium') validateWindowsChromiumServiceInput(selection.input, osTempRoot);
   if (selection.profile === 'electron' || selection.profile === 'electronBridge') {
     validateWindowsElectronServiceInput(selection.input, osTempRoot);
   }
@@ -87,7 +93,9 @@ export function prepareWindowsServiceConfiguration(
       runtimeRoot: realpathSync.native(selection.input.runtimeRoot) }
     : selection.profile === 'backend'
       ? { runtimeConfigPath: realpathSync.native(selection.input.runtimeConfigPath) }
-      : { webPort: selection.input.webPort };
+      : selection.profile === 'chromium'
+        ? { browserExecutable: realpathSync.native(selection.input.browserExecutable) }
+        : { webPort: selection.input.webPort };
   const executable = dependencies.assertBuild(repositoryRoot);
   const dotnetExecutable = process.env.EKY_DOTNET_EXE;
   const dotnetRoot = dotnetExecutable === undefined ? process.env.DOTNET_ROOT

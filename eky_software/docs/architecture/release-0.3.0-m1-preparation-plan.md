@@ -7,14 +7,14 @@ Modulaarinen monoliitti ja hyväksytty M1-rajaus säilyvät.
 
 | Kohta | Nykyinen lähtötieto |
 | --- | --- |
-| Nykyinen lähtörevisio | `5f61f1863557f1e51b96cf705d9434feae91db8c`: viimeisin normaali CI ja riippuvuustarkistus hyväksytty. Sen jälkeen rajattu endurance-mittauskorjaus, kolme regressiota, kanoninen stress ja täysi 30 minuutin soak on paikallisesti todennettu; mittauskorjauksen oma CI on vielä avoin. Tarkista HEAD ja työpuu ennen jatkamista; lähtörevision vihreä CI ei hyväksy myöhempää muutosta. |
-| Viimeisin koko CI:n hyväksytty lähtötila | Sama `5f61f186`: 38 onnistunutta ryhmää ja yksi tarkoituksellinen valinnaisen kokeen ohitus. Kaikki neljä kokeellista valitsinta pois. System 634 valittua, 633 läpäisyä ja yksi Windows-only-suojan tarkoituksellinen ohitus; web 35/35 ja Electron 38/38 ilman retryä tai flaky-tulosta. Koko tapausjoukko, checkoutit sekä neljän tuottajan ja kymmenen kuluttajan artifact-sidonnat takaisinluettu. Native 515/226/285/1791; registry-allekirjoitukset 160/160. Ei endurance-, PR/main- tai koko T3-hyväksyntä. |
-| Avoin puute | Pääprosessin poistuminen ei todista koko puun poistumista. Windows-backendin, Windows-Viten ja Windows-Electronin oikeat kuluttajat on siirretty; korvattu Windows-varapolku on poistettu. Electronin endurance ja todellisen fixturen virheprioriteetti on todennettu, mutta mittauskorjauksen oma CI sekä koko T3-matriisi ja PR/main puuttuvat. Chromiumin ja Linuxin siirrot ovat erillistä jatkotyötä. Aiemman revision `a2c826fc` packaged-workspace-timeout säilyy erillisenä ratkaisemattomana havaintona. |
-| Viimeisin rajattu näyttö | [Endurance ja virheprioriteetti](e2e-test-environment.md#windows-electronin-endurance-ja-virheen-säilymisen-loppunäyttö): tyypitys, kolme mittauspolun regressiota, kanoninen stress ja täysi 30 minuutin soak läpäisivät. Kaksi todellisen fixturen koetta säilytti tarkoituksellisen alkuperäisen virheen ainoana testivirheenä close-/liitevirheen yli; siivous ja näyttö tarkistettiin erikseen. Ensimmäiset yritykset, sama testikoodi ja raportit on riippumattomasti takaisinluettu. Aiemmat kuluttaja-, handoff-, workspace- ja CI-portit säilyvät [omassa checkpointissaan](e2e-test-environment.md#electron-bridgen-lopetuspolun-jatkoehdotus). Ei mittauskorjauksen oman CI:n tai koko T3:n hyväksyntä. |
-| Nykyinen toteutuspala | Windowsin `isolatedElectronTest` säilyttää bridge-/native-omistajan ennen launchin odotusta, saman alkuperäisen elinajan sukupolvien ja toisen instanssin yli sekä epävarmuudessa pysyvän restart-/poistoeston. Korvattu Windows-cleanup on poistettu. Yhteinen fixture-rajapinta ja muiden alustojen haara säilyvät. Normaali kuluttajakytkentä, erillinen endurance ja alkuperäisen testivirheen säilyminen todellisessa cleanup-/raportointivirheessä on todennettu. Mittauskorjauksen oma CI sekä muut T3:n kuluttajat ja loppuportit ovat avoinna. |
-| Viimeisin normaali CI | Revision `5f61f186` [V2 36354387346](https://github.com/eky-software/eky/actions/runs/36354387346) ja [riippuvuustarkistus 36354390842](https://github.com/eky-software/eky/actions/runs/36354390842), molemmat yritys 1, hyväksytty. Tuotanto- ja kokonaisauditissa ei tunnettuja löydöksiä. `4aececfd`:n 14/38-hylkäys ja sen 48 lifecycle-liitettä säilyvät omana historiallisena näyttönään, eivät tämän revision tuloksena. |
+| Nykyinen lähtörevisio | `ab5de90bd28eda08cc5d871521a8a2d9f669deb3`: mittauskorjauksen oma normaali CI ja riippuvuustarkistus hyväksytty. Kolme regressiota, kanoninen stress, täysi 30 minuutin soak ja kaksi virheprioriteettikoetta todennettu erikseen. Tarkista HEAD ja työpuu ennen jatkamista; lähtörevision vihreä CI ei hyväksy myöhempää koodimuutosta. |
+| Viimeisin koko CI:n hyväksytty lähtötila | Sama `ab5de90b`: 38 onnistunutta ryhmää ja yksi tarkoituksellinen valinnaisen kokeen ohitus. Kaikki neljä kokeellista valitsinta pois. System 637 valittua, 636 läpäisyä ja yksi Windows-only-suojan tarkoituksellinen ohitus; web 35/35 ja Electron 38/38 ilman retryä tai flaky-tulosta. Koko tapausjoukko, checkoutit sekä neljän tuottajan ja kymmenen kuluttajan artifact-sidonnat takaisinluettu. Native 515/226/285/1791; registry-allekirjoitukset 160/160. Ei PR/main- tai koko T3-hyväksyntä; endurance on erillistä näyttöä. |
+| Avoin puute | Pääprosessin poistuminen ei todista koko puun poistumista. Windows-backendin, Windows-Viten ja Windows-Electronin oikeat kuluttajat on siirretty; korvattu Windows-varapolku on poistettu. Electronin rajattu kuluttajaosuus on hyväksytty myös erillisen endurancen, virheprioriteetin ja oman CI:n jälkeen. Chromiumin ja Linuxin siirrot, koko T3-matriisi ja PR/main puuttuvat. Aiemman revision `a2c826fc` packaged-workspace-timeout säilyy erillisenä ratkaisemattomana havaintona. |
+| Viimeisin rajattu näyttö | [Endurance ja virheprioriteetti](e2e-test-environment.md#windows-electronin-endurance-ja-virheen-säilymisen-loppunäyttö): tyypitys, kolme mittauspolun regressiota, kanoninen stress ja täysi 30 minuutin soak läpäisivät. Kaksi todellisen fixturen koetta säilytti tarkoituksellisen alkuperäisen virheen ainoana testivirheenä close-/liitevirheen yli; siivous ja näyttö tarkistettiin erikseen. Ensimmäiset yritykset, sama testikoodi ja raportit on riippumattomasti takaisinluettu. Mittauskorjauksen oma CI on nyt hyväksytty. Aiemmat kuluttaja-, handoff-, workspace- ja CI-portit säilyvät [omassa checkpointissaan](e2e-test-environment.md#electron-bridgen-lopetuspolun-jatkoehdotus). Ei koko T3:n hyväksyntä. |
+| Nykyinen toteutuspala | Hyväksytty worker-Chromium on kytketty tavallisiin web-fixtureihin. Uusin yhteinen toteutus läpäisi Windows-systemin 689/689, webin 43/43 ja kanonisen stress-portin. Yhteys-/siivouspolun kohdesarja 50/50, oikeat Windowsin owner-/caller-loss-kokeet sekä uusittu tarkoituksellinen artifact/retry-koe on todennettu ja rajattu virhenäyttö riippumattomasti takaisinluettu. Linuxin backend/Vite/Chromium-kuluttajakytkentä on toteutettu ja työkalusarja 734/734 sekä tyypitys läpäisty; oikea Linux-CI-näyttö puuttuu. Electronin hyväksytty kuluttajaosuus säilyy suljettuna ilman siihen vaikuttavaa uutta muutosta. |
+| Viimeisin normaali CI | Revision `ab5de90b` [V2 36359605352](https://github.com/eky-software/eky/actions/runs/36359605352) ja [riippuvuustarkistus 36359619205](https://github.com/eky-software/eky/actions/runs/36359619205), molemmat yritys 1, hyväksytty. Tuotanto- ja kokonaisauditissa ei tunnettuja löydöksiä. `4aececfd`:n 14/38-hylkäys ja sen 48 lifecycle-liitettä säilyvät omana historiallisena näyttönään, eivät tämän revision tuloksena. |
 | Viimeisin diagnoosi | `23b43c49`: [36350757744](https://github.com/eky-software/eky/actions/runs/36350757744), yritys 1, hylätty; kaikkien 48 lifecycle-liitteen syy `ownerEnvironmentValueInvalid`, todellinen checkout varmennettu. Tarkkaa alkuperäistä ympäristöarvoa ei kerätty. PATH-korjauksen ensimmäinen tavallinen ajo jäi 44/45-tulokseen erillisen ennen testirunkoa tapahtuneen poistumisen vuoksi. Turvallista ensiyrityksen kaappausta täydennettiin; myöhempi kanoninen 45/45 ei todista alkuperäisen poistumisen syytä. |
-| Seuraava työ | Viimeistele [endurance-korjauksen ja virheen säilymisen näytön](e2e-test-environment.md#windows-electronin-endurance-ja-virheen-säilymisen-loppunäyttö) katselmus ja mittauskorjauksen oman puhtaan revision normaali CI. Sen jälkeen Chromiumin/Linuxin kuluttajasiirrot avoimet päätösrajat säilyttäen ja muut [T3-portit](#t3n-nykyinen-työjärjestys). Ei uutta rinnakkaista remonttia tai avoimien ympäristö-/omistajuusvalintojen olettamista. |
+| Seuraava työ | Aja katselmoidun lähdetilan yhteiset tarkistukset ja nykyiset Linux-CI-portit. Todenna Linuxin oikeiden kuluttajien virhe-/omistajuusrajat sekä endurance; poista korvattu polku vasta vastaavan näytön perusteella ja sulje muut [T3-portit](#t3n-nykyinen-työjärjestys). Ei uutta rinnakkaista remonttia. |
 | Valmistuminen | Oikeat kuluttajat siirretty, korvattu aktiivinen toteutus poistettu vasta vastaavan kattavuuden jälkeen, T1/T2 säilyneet sekä koko T3-matriisi ja täsmällisen PR/main-revision portit läpäisty. |
 | T3:n jälkeen | Nykyisen M1:n A1:n vanhentuneet vastaukset ja muut hyväksytyt sovelluskorjaukset, sitten roadmapin 0.3.0-käyttöliittymä- ja diagnostiikkatyö. |
 
@@ -25,9 +25,10 @@ toteutettu ja katselmoitu, ja sen jälkeinen kanoninen sarja läpäisi 45/45
 samalla täydellisellä tapausjoukolla. Tyypitys, 136/136-kohdesarja ja
 työkalusarja 678/678 läpäisivät samalla koodilla. Hylätty tulos ja sen
 syyepävarmuus säilyvät; uusi läpäisy ei ole juurisyytodiste.
-Paketin oma normaali CI ja riippuvuustarkistus on nyt hyväksytty revision
-`5f61f186` ensimmäisistä yrityksistä. Tämä ei vielä hyväksy endurancea,
-kaikkia kuluttajasiirtoja tai koko T3:a.
+Paketin oma normaali CI ja riippuvuustarkistus hyväksyttiin revision
+`5f61f186` ensimmäisistä yrityksistä. Sen jälkeen erillinen endurance,
+virheprioriteettikokeet ja mittauskorjauksen `ab5de90b` oma CI hyväksyttiin
+yllä kuvatusti. Tämä ei hyväksy muita kuluttajasiirtoja tai koko T3:a.
 
 **Windows-välipaketin yhteiset portit 2026-09-27:** varapolun poiston
 jälkeinen yhtenäinen lähdetila läpäisi koko workspacen testit ja
@@ -38,7 +39,14 @@ askel oli katselmoidun välipaketin normaali CI ennen uusia kuluttajasiirtoja.
 Sen Electron-hylkäys on nyt kirjattu yllä; uusia siirtoja ei aloiteta ennen
 vian rajaamista ja baselinen korjaamista.
 
-**Uusin päätös 2026-09-27:** omistaja valtuutti jatkamaan koko nykyisen
+**Uusin päätös 2026-09-28:** omistaja hyväksyi yhteisen Chromium-selaimen
+testikohtaisella eristyksellä sekä paikalliset Windows-testit ja Linux-CI:n.
+[Omistava sopimus](e2e-test-environment.md#chromiumin-kuluttajasiirron-avoin-omistajuusraja)
+erottaa worker-selaimen ja testin datajuuren siivouksen. Goal on jatkettu
+aktiiviseksi. Päätös avaa toteutuksen, ei hyväksy tulevaa testinäyttöä tai
+uutta riippuvuutta, oikeusmuutosta, timeoutia tai tuotantomuutosta.
+
+**Edeltävä päätös 2026-09-27:** omistaja valtuutti jatkamaan koko nykyisen
 T3/R28:n toteutuksen, testit ja normaalin PR/main-integraation loppuun
 nykyisin hyväksyntäehdoin ilman toistuvia välilupia hyväksytyn rajauksen
 sisällä. Päätös kattaa nimenomaisesti nykyiseen `playwright-core@1.62.1`-
@@ -133,7 +141,7 @@ T3/R28:aa ja sen PR/main-integraatiota, ei kaikkia 0.3.0:n ominaisuuksia.
 Tämä ei luo uusia alavaiheita; tarkat sopimukset pysyvät omistavassa
 [E2E-suunnitelmassa](e2e-test-environment.md#t3n-oikeiden-kuluttajien-siirtoraja).
 
-- [ ] **Electronin oikeat kuluttajat:** patchin ja neljän käynnistys-/ikkunakokeen
+- [x] **Electronin oikeat kuluttajat:** patchin ja neljän käynnistys-/ikkunakokeen
   lisäksi erilliset caller-/owner-loss-, relaunch- ja toinen instanssi -kokeet
   on hyväksytty. Pääfixturen normaali kytkentä, kohdesopimukset 186/186,
   E2E-tyyppitarkistus ja tavallinen Electron 45/45 on todennettu samalle
@@ -144,7 +152,9 @@ Tämä ei luo uusia alavaiheita; tarkat sopimukset pysyvät omistavassa
   koetta sekä erillinen stress ja täysi 30 minuutin soak on nyt todennettu.
   Stressin vanhentunut mittauspolku korjattiin yhteisellä workspace-lukijalla
   ja kolmella regressiolla; alkuperäinen hylkäys säilyy. Mittauskorjauksen
-  oman revision CI on vielä avoin.
+  `ab5de90b` oma normaali CI ja riippuvuustarkistus on hyväksytty
+  ensimmäisistä yrityksistä. Tämä sulkee rajatun Electron-kuluttajakohdan,
+  ei koko T3:a tai PR/main-porttia.
   Säilytä suorien bootstrap-/toinen instanssi-
   kuluttajien kattavuus; erillinen endurance ei sisälly tavalliseen sarjaan.
 - [x] **Handoff-testin virhesiivous:** olemassa oleva rajattu lapsikahvan
@@ -152,17 +162,18 @@ Tämä ei luo uusia alavaiheita; tarkat sopimukset pysyvät omistavassa
   Kuusi oikeaprosessitapausta ja 24/24-kohdesarja läpäisivät; katselmus
   ja lähdesidonnan takaisinluku hyväksytty. Ei tuotannon handoff-muutosta
   eikä koko installer- tai T3-portin hyväksyntä.
-- [ ] **Chromiumin rajaus ja siirto:** ratkaise omistajan kanssa avoin
-  [worker- vai testikohtaisen puun valinta](e2e-test-environment.md#chromiumin-kuluttajasiirron-avoin-omistajuusraja)
-  ennen sen vaikutusalueen toteutusta. Todista oikea selain, elävän selaimen
+- [ ] **Chromiumin siirto:** toteuta hyväksytty
+  [worker-selain ja testikohtainen eristys](e2e-test-environment.md#chromiumin-kuluttajasiirron-avoin-omistajuusraja).
+  Todista oikea selain, elävän selaimen
   owner-loss, context/page, trace/screenshot ja juurten turvallinen siivous;
   backendin/Viten siirto tai aiempi yhteensopivuuskoe ei omista selainta.
 - [ ] **Linuxin oikeat kuluttajat:** siirrä system/web-kuluttajat hyväksytyn
   CI-mekanismin piiriin oikealla runtime-identiteetillä ja alkuperäisillä
   määräajoilla; todista restart-, failure- ja endurance-polut. Paikallisen
-  Linux-tuen ja paikallisen Windows-testauksen + Linux-CI:n riittävyyden
-  ympäristöpäätös on avoin; ei hostin oikeusmuutosta tai paikallispolun
-  hiljaista poistamista. LM-koetyökuorma ei ole kuluttajasiirron näyttö.
+  Windows-testauksen + Linux-CI:n riittävyys hyväksyttiin 28.9.;
+  paikallista Linux-tukea tai hostin oikeusmuutosta ei toteuteta.
+  Korvatun polun poisto vaatii ensin vastaavan kattavuuden.
+  LM-koetyökuorma ei ole kuluttajasiirron näyttö.
 - [ ] **Korvatun toteutuksen poisto:** tarkista ajantasaiset kutsureunat ja
   poista korvattu aktiivinen omistajuus-/cleanup-polku vasta saman revision
   vastaavan kattavuuden jälkeen. Ei PID-/root-only-fallbackia tai kahta

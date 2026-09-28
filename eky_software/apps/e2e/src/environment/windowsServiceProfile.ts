@@ -1,4 +1,9 @@
+import { chromiumWorkerProtocol } from './chromiumWorkerContract.mjs';
+
 export const windowsServiceProfiles = Object.freeze({
+  chromium: Object.freeze({ protocol: chromiumWorkerProtocol, mode: '--chromium-owner',
+    pipePrefix: 'eky-e2e-chromium-v1-', configName: 'chromium-service-config.json',
+    terminalName: 'chromium-service-terminal.json', errorPrefix: 'E2E_CHROMIUM' } as const),
   backend: Object.freeze({ protocol: 'eky.e2e.backend-service', mode: '--backend-owner',
     pipePrefix: 'eky-e2e-backend-v1-', configName: 'backend-service-config.json',
     terminalName: 'backend-service-terminal.json', errorPrefix: 'E2E_BACKEND' } as const),

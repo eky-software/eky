@@ -7,12 +7,11 @@ import {
 } from './e2eServiceStartupBudgets.js';
 import type { E2eWorkerPaths } from './e2eEnvironmentTypes.js';
 import type { E2eFixtureLifetime } from './e2eFixtureLifetime.js';
-import { observeChildProcessStartup, type E2eProcessStartupObservation } from './e2eProcessStartupObservation.js';
+import type { E2eProcessStartupObservation } from './e2eProcessStartupObservation.js';
 import { cleanupFailedWebStartup, E2eWebStartupFailure, waitForE2eWebStartup } from './e2eWebStartupLifecycle.js';
-import { startManagedProcess } from './startManagedProcess.js';
 import type { StartedE2eBackend } from './startE2eBackendProcess.js';
 import { OwnedWindowsViteStartupFailure, startOwnedWindowsVite } from './startOwnedWindowsVite.js';
-import { stopManagedProcessTree } from './stopManagedProcessTree.js';
+import { OwnedLinuxServiceStartupFailure, startOwnedLinuxVite } from './startOwnedLinuxVite.js';
 import { waitForHttpHealth } from './waitForHttpHealth.js';
 import { waitForLoopbackPortRelease } from './waitForLoopbackPortRelease.js';
 import { beforeViteOwnerDeadline } from './windowsViteServiceControl.js';
@@ -27,8 +26,6 @@ export interface StartedE2eWeb {
 }
 
 const repositoryRoot = resolve(import.meta.dirname, '../../../..');
-const webRoot = resolve(repositoryRoot, 'apps/web');
-const viteEntrypoint = resolve(webRoot, 'node_modules/vite/bin/vite.js');
 
 export async function startE2eWebProcess(input: {
   backend: StartedE2eBackend;
@@ -57,42 +54,20 @@ export async function startE2eWebProcess(input: {
   const releasePort = () => waitForLoopbackPortRelease(input.webPort);
   try {
     if (performance.now() >= startupDeadline) throw new Error('E2E_WEB_HEALTH_TIMEOUT');
-    if (process.platform === 'win32') {
-      const owned = await startOwnedWindowsVite({
-        repositoryRoot, runRoot: input.runRoot, webPort: input.webPort,
-        environmentRoot: input.paths.tempRoot, backendOrigin: input.backend.backendOrigin,
-        sessionSecret: input.backend.sessionSecret, lifetime: input.lifetime,
-        startupDeadline, redactedValues: [input.backend.sessionSecret],
-      });
-      managedProcess = owned;
-      startup = owned.startup;
-      workload = owned.workload;
-      stopProcessTree = owned.stop;
-    } else {
-      // Existing non-Windows path; not evidence of T3 whole-tree ownership.
-      const direct = startManagedProcess({
-        args: [viteEntrypoint, '--config', 'vite.config.ts', '--host', '127.0.0.1',
-          '--port', String(input.webPort), '--strictPort', '--mode', 'eky-e2e'],
-        command: process.execPath, cwd: webRoot,
-        environment: {
-          EKY_E2E: '1', EKY_E2E_BACKEND_ORIGIN: input.backend.backendOrigin,
-          EKY_E2E_ENV_ROOT: input.paths.tempRoot, EKY_E2E_RUNTIME_SESSION: input.backend.sessionSecret,
-          NODE_ENV: 'test', PATH: process.env.PATH, SystemRoot: process.env.SystemRoot,
-          TEMP: process.env.TEMP, TMP: process.env.TMP, WINDIR: process.env.WINDIR,
-        },
-        inheritEnvironment: false, redactedValues: [input.backend.sessionSecret],
-      });
-      managedProcess = direct;
-      startup = observeChildProcessStartup(direct.child);
-      stopProcessTree = () => stopManagedProcessTree(direct.child);
-      workload = { async readState() {
-        const state = startup.readState();
-        return state.terminal === 'exited' ? 'exited'
-          : state.spawnObserved && state.terminal === undefined ? 'running' : 'unavailable';
-      } };
-    }
+    const startOwned = process.platform === 'win32' ? startOwnedWindowsVite : startOwnedLinuxVite;
+    const owned = await startOwned({
+      repositoryRoot, runRoot: input.runRoot, webPort: input.webPort,
+      environmentRoot: input.paths.tempRoot, backendOrigin: input.backend.backendOrigin,
+      sessionSecret: input.backend.sessionSecret, lifetime: input.lifetime,
+      startupDeadline, redactedValues: [input.backend.sessionSecret],
+    });
+    managedProcess = owned;
+    startup = owned.startup;
+    workload = owned.workload;
+    stopProcessTree = owned.stop;
   } catch (error) {
-    const owned = error instanceof OwnedWindowsViteStartupFailure ? error : undefined;
+    const owned = error instanceof OwnedWindowsViteStartupFailure || error instanceof OwnedLinuxServiceStartupFailure
+      ? error : undefined;
     const cleanup = await cleanupFailedWebStartup({
       async stopProcessTree() {
         // No new cleanup deadline after the owner's already-attempted stop.
