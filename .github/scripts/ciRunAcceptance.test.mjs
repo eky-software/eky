@@ -262,9 +262,15 @@ test('workflow bindings preserve one producer and exact result checks with dynam
   assert.match(contracts, /Run deterministic installer tests/);
 });
 
-test('manual Electron diagnosis selects only its existing job without changing reusable core gates', async () => {
+test('manual diagnostics select independent existing jobs without changing reusable core gates', async () => {
   const core = await readFile(new URL('../workflows/ci.yml', import.meta.url), 'utf8');
-  assert.match(core, /workflow_dispatch:\s+inputs:\s+electron_diagnostic:/);
+  const dispatch = core.split('  workflow_dispatch:\n')[1]?.split('  workflow_call:\n')[0];
+  assert.ok(dispatch);
+  assert.match(dispatch, /electron_diagnostic:\n        description: [^\n]+\n        required: true\n        type: boolean\n        default: true/u);
+  assert.match(dispatch, /linux_consumer_diagnostic:\n        description: [^\n]+\n        required: true\n        type: boolean\n        default: false/u);
+  assert.doesNotMatch(core.split('  workflow_call:\n')[1].split('permissions:')[0], /linux_consumer_diagnostic/u);
+  const cadence = await readFile(new URL('../workflows/ci-cadence-contracts.yml', import.meta.url), 'utf8');
+  assert.doesNotMatch(cadence, /linux_consumer_diagnostic/u);
   const conditions = [...core.matchAll(/^  ([\w-]+):\n    name: [^\n]+\n    if: ([^\n]+)/gm)];
   assert.equal(conditions.length, 5);
   const selected = (inputs) => conditions.filter(([, , expression]) => runInNewContext(
@@ -274,16 +280,166 @@ test('manual Electron diagnosis selects only its existing job without changing r
   for (const eventName of ['pull_request', 'push', 'schedule', 'workflow_dispatch']) {
     for (const changed of [fast, critical]) {
       const plan = planFor([changed], eventName);
-      assert.deepEqual(selected({ risk_plan: JSON.stringify(plan) }), [...base,
-        ...(plan.gates.electronCritical ? ['e2e-electron-windows-critical'] : []),
-        ...(plan.gates.windowsContracts ? ['windows-contracts'] : []),
-      ]);
+      for (const electron of [undefined, false, true]) {
+        for (const linux of [undefined, false, true]) {
+          assert.deepEqual(selected({ risk_plan: JSON.stringify(plan),
+            electron_diagnostic: electron, linux_consumer_diagnostic: linux }), [...base,
+            ...(plan.gates.electronCritical ? ['e2e-electron-windows-critical'] : []),
+            ...(plan.gates.windowsContracts ? ['windows-contracts'] : []),
+          ]);
+        }
+      }
     }
   }
   assert.deepEqual(selected({ risk_plan: '', electron_diagnostic: true }), ['e2e-electron-windows-critical']);
-  assert.throws(() => selected({ risk_plan: 'invalid', electron_diagnostic: true }));
+  for (const electron of [false, true]) {
+    for (const linux of [undefined, false, true]) {
+      assert.deepEqual(selected({ risk_plan: '', electron_diagnostic: electron,
+        linux_consumer_diagnostic: linux }), [
+        ...(linux === true ? ['e2e-system-security', 'e2e-web-critical'] : []),
+        ...(electron ? ['e2e-electron-windows-critical'] : []),
+      ]);
+      assert.throws(() => selected({ risk_plan: 'invalid', electron_diagnostic: electron,
+        linux_consumer_diagnostic: linux }));
+    }
+  }
   const plan = planFor([fast]);
   assert.deepEqual(selected({ risk_plan: JSON.stringify(plan), electron_diagnostic: true }), base);
   assert.doesNotMatch(core, /name: V2 acceptance|uses: .*windows-acceptance/);
   assert.match(core, /name: Verify Electron startup observation wiring\s+if: inputs.risk_plan == '' && inputs.electron_diagnostic\s+run: pnpm --filter @eky\/e2e exec playwright test --project=electron-development --grep @diagnostic-contract --workers=1 --retries=0/);
+});
+
+const linuxConsumers = [
+  { job: 'e2e-system-security', scope: 'system', consumer: 'system-api', timeout: 10,
+    normal: 'Run isolated system security E2E tests' },
+  { job: 'e2e-web-critical', scope: 'web', consumer: 'web-chromium', timeout: 15,
+    normal: 'Run critical web E2E journeys' },
+];
+
+function linuxDiagnosticSteps({ scope }) {
+  return [
+    `Build ${scope} Linux consumer diagnostic`,
+    `Run ${scope} Linux consumer loss diagnostic`,
+    ...(scope === 'web' ? ['Run Linux consumer endurance baseline'] : []),
+  ];
+}
+
+function workflowJob(source, name) {
+  const section = source.split(`\n  ${name}:\n`)[1]?.split(/\n  [\w-]+:\n/u)[0];
+  assert.ok(section, 'JOB_MISSING');
+  return section;
+}
+
+function workflowStep(source, name) {
+  const section = source.split(`      - name: ${name}\n`)[1]?.split('\n      - name:')[0];
+  assert.ok(section, 'STEP_MISSING');
+  return section.trimEnd();
+}
+
+function verifyLinuxDiagnostics(source, definition) {
+  const section = workflowJob(source, definition.job);
+  assert.match(section, /if: inputs\.risk_plan != '' \|\| \(inputs\.risk_plan == '' && inputs\.linux_consumer_diagnostic == true\)\n    runs-on: ubuntu-latest/u);
+  assert.match(section, new RegExp(`    timeout-minutes: ${definition.timeout}\\n`, 'u'));
+  assert.match(section, /working-directory: eky_software/u);
+  assert.doesNotMatch(section, /continue-on-error:|upload-artifact|always\(\)/u);
+  const normal = workflowStep(section, definition.normal);
+  assert.doesNotMatch(normal, /if:|linux:consumer|test:e2e:stress|success\(\)/u);
+  let previous = section.indexOf(`      - name: ${definition.normal}\n`);
+  const steps = linuxDiagnosticSteps(definition);
+  const runs = [
+    '        run: pnpm --filter @eky/e2e linux:consumer:build',
+    [
+      '        run: |',
+      '          checkout_sha="$(git rev-parse --verify HEAD 2>/dev/null)" || checkout_sha=""',
+      `          pnpm --filter @eky/e2e linux:consumer:loss --scope=${definition.scope} --consumer=${definition.consumer} --checkout-sha="$checkout_sha"`,
+    ].join('\n'),
+    ...(definition.scope === 'web' ? ['        run: pnpm test:e2e:stress'] : []),
+  ];
+  for (const [index, name] of steps.entries()) {
+    const position = section.indexOf(`      - name: ${name}\n`);
+    assert.ok(position > previous, 'DIAGNOSTIC_ORDER');
+    previous = position;
+    assert.equal(workflowStep(section, name), [
+      "        if: success() && inputs.risk_plan == '' && inputs.linux_consumer_diagnostic == true",
+      '        env:',
+      "          EKY_E2E: '1'",
+      runs[index],
+    ].join('\n'));
+  }
+  return section;
+}
+
+test('manual Linux consumer diagnostics bind source and preserve normal steps, budgets and stress separation', async () => {
+  const core = await readFile(new URL('../workflows/ci.yml', import.meta.url), 'utf8');
+  for (const definition of linuxConsumers) verifyLinuxDiagnostics(core, definition);
+  assert.equal(core.match(/run: pnpm --filter @eky\/e2e linux:consumer:build/gu)?.length, 2);
+  assert.equal(core.match(/pnpm --filter @eky\/e2e linux:consumer:loss /gu)?.length, 2);
+  assert.equal(core.match(/run: pnpm test:e2e:stress/gu)?.length, 1);
+  for (const name of ['verify', 'e2e-electron-windows-critical', 'windows-contracts']) {
+    assert.doesNotMatch(workflowJob(core, name), /linux:consumer|test:e2e:stress|linux_consumer_diagnostic/u);
+  }
+  const root = JSON.parse(await readFile(new URL('../../eky_software/package.json', import.meta.url), 'utf8'));
+  const e2e = JSON.parse(await readFile(new URL('../../eky_software/apps/e2e/package.json', import.meta.url), 'utf8'));
+  assert.equal(root.scripts['test:e2e:stress'], 'pnpm --filter @eky/e2e e2e:stress');
+  assert.equal(root.scripts['test:e2e:all'], 'pnpm --filter @eky/e2e e2e:all');
+  assert.equal(e2e.scripts['e2e:stress'], 'pnpm e2e:prepare && playwright test --project=endurance-baseline');
+  assert.equal(e2e.scripts['e2e:all'], 'pnpm e2e:electron:prepare && playwright test --project=system-api --project=web-chromium --project=electron-development');
+});
+
+test('every manual Linux diagnostic step requires successful predecessors and an empty risk plan', async () => {
+  const core = await readFile(new URL('../workflows/ci.yml', import.meta.url), 'utf8');
+  for (const definition of linuxConsumers) {
+    const section = verifyLinuxDiagnostics(core, definition);
+    for (const name of linuxDiagnosticSteps(definition)) {
+      const expression = workflowStep(section, name).split('\n')[0].trim().slice('if: '.length);
+      for (const successful of [false, true]) {
+        for (const riskPlan of ['', JSON.stringify(planFor([fast])), 'invalid']) {
+          for (const enabled of [undefined, false, true]) {
+            assert.equal(runInNewContext(expression, { success: () => successful,
+              inputs: { risk_plan: riskPlan, linux_consumer_diagnostic: enabled },
+            }, { timeout: 1000 }), successful && riskPlan === '' && enabled === true);
+          }
+        }
+      }
+    }
+  }
+});
+
+test('Linux diagnostic wiring rejects ungated, unbound, reordered and swallowed-status mutations', async () => {
+  const core = await readFile(new URL('../workflows/ci.yml', import.meta.url), 'utf8');
+  for (const definition of linuxConsumers) {
+    const section = verifyLinuxDiagnostics(core, definition);
+    const steps = linuxDiagnosticSteps(definition);
+    for (const name of steps) {
+      const original = workflowStep(section, name);
+      for (const changed of [
+        original.replace('success() && ', ''),
+        original.replace("inputs.risk_plan == '' && ", ''),
+        original.replace('inputs.linux_consumer_diagnostic == true', 'true'),
+        original.replace("EKY_E2E: '1'", "EKY_E2E: '0'"),
+        `${original} || true`,
+        `${original}\n        continue-on-error: true`,
+        `${original}\n        timeout-minutes: 15`,
+        `${original}\n          exit 0`,
+      ]) assert.throws(() => verifyLinuxDiagnostics(core.replace(section,
+        section.replace(original, changed)), definition));
+      assert.throws(() => verifyLinuxDiagnostics(core.replace(name, 'Missing diagnostic'), definition));
+    }
+    const loss = workflowStep(section, steps[1]);
+    for (const changed of [
+      loss.replace('--checkout-sha="$checkout_sha"', '--checkout-sha=HEAD'),
+      loss.replace('--verify HEAD', '--verify origin/main'),
+      loss.replace(`--scope=${definition.scope}`, '--scope=all'),
+      loss.replace(`--consumer=${definition.consumer}`, '--consumer=electron-development'),
+      loss.replace(`--scope=${definition.scope} --consumer=${definition.consumer}`,
+        `--consumer=${definition.consumer} --scope=${definition.scope}`),
+      `${loss} 2>/dev/null`,
+    ]) assert.throws(() => verifyLinuxDiagnostics(core.replace(loss, changed), definition));
+    const [first, second] = steps;
+    const swapped = section.replace(`name: ${first}`, 'name: swapped')
+      .replace(`name: ${second}`, `name: ${first}`).replace('name: swapped', `name: ${second}`);
+    assert.throws(() => verifyLinuxDiagnostics(core.replace(section, swapped), definition));
+    assert.throws(() => verifyLinuxDiagnostics(core.replace(section,
+      section.replace(`timeout-minutes: ${definition.timeout}`, 'timeout-minutes: 60')), definition));
+  }
 });

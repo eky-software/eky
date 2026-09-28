@@ -3515,9 +3515,21 @@ toteuttaa [asennusodotuksen suljetut alavaihehavainnot](windows-installer-accept
 Kanoniset fault/success-sopimukset 325/325 ja 332/332, artifact-kytkentä
 62/62, CI-sopimukset 315/315 ja desktopin tyypitys läpäisivät. Ensimmäisen
 regressioajon testiaineistovirhe ja katselmuksen ajolistakorjaus säilyvät
-omistavassa checkpointissa. Uuden revision oma CI puuttuu vielä. Linuxin
-temp-ankkurikorjauksen näyttö säilyy erillisenä;
-koko baseline, Linuxin katkeamis-/endurance-matriisi, T3 ja PR/main ovat avoinna.
+omistavassa checkpointissa.
+
+**Nykyinen hyväksytty baseline:** `5bbfd4834707b77e1211851a6fb21b09b8572a66`,
+[normaali CI 36443256758](https://github.com/eky-software/eky/actions/runs/36443256758),
+yritys 1, kaikki neljä kokeellista valitsinta pois: 38 onnistunutta ryhmää
+ja yksi tarkoituksellinen valinnainen ohitus. Täysi 690/37/38-katalogi,
+systemin ainoa tunnettu alustasuoja, retry-/flaky-hylkäys, kaikki 38 checkoutia
+sekä neljän tuottajan ja kymmenen kuluttajan artifact-sidonnat takaisinluettiin
+ilman näyttöaukkoja. Native-sopimukset 515/226/285/1791/60 läpäisivät.
+[Saman revision riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/36443266084)
+läpäisi ilman tunnettuja audit-löydöksiä; 160/160 registry-allekirjoitusta
+varmennettiin. Molemmat workspace-fault-kuluttajat ja uusi havaintoketju
+valmistuivat. Tämä ei ratkaise historiallisen c2-timeoutin juurisyytä.
+Baseline avaa seuraavan rajatun kuluttajatyön; Linuxin katkeamis-/endurance-
+matriisi, korvattujen polkujen poisto, koko T3 ja PR/main ovat avoinna.
 
 **Windowsin rajattu katoamis- ja artifact-näyttö 28.9.:** todellinen
 worker-polku läpäisi erilliset native-omistajan ja kutsuvan Playwright-workerin
@@ -3540,9 +3552,9 @@ ei tavallisen CI:n flaky-hyväksyntä tai Linux-/T3-/PR/main-hyväksyntä.
 
 Saman välipaketin koko workspace-testit ja tyyppitarkistus sekä
 CI-sopimukset 315/315 läpäisivät. Workspacen kahdeksan ennestään
-alustakohtaista ohitusta säilyi; uusia ohituksia ei lisätty. Seuraava portti
-on tämän katselmoidun lähdetilan oma normaali CI, ei aiemman revision
-vihreän tuloksen siirtäminen uudelle koodille.
+alustakohtaista ohitusta säilyi; uusia ohituksia ei lisätty. Tämän välipaketin
+oma normaali CI oli seuraava portti; hylkäykset ja nykyinen hyväksytty
+baseline on erotettu yllä. Vihreää tulosta ei siirretä uudelle koodille.
 
 **Valmisteluhistoria 2026-09-27:**
 Nykyinen Playwright-selain on worker-kohtainen, mutta T3:n ehdotettu
@@ -3903,6 +3915,92 @@ löytänyt korjattavaa. Tuotanto, workflow-valinnat, aikarajat ja CI-vaatimukset
 eivät muutu. Korjatun revision normaali CI-portti on seuraava työ ennen
 Chromium-kokeen ja oikeiden kuluttajasiirtojen toteutusta. Aiemmat satunnaiset
 timeoutit ja LS-kokeen `uid_map`-esto pysyvät erillisinä avoimina havaintoina.
+
+#### Linuxin todellisten kuluttajien katkeamiskokeet
+
+Tämä on hyväksytyn seitsemän tapauksen koesuunnitelman sopimus, ei
+Linux-ajon hyväksyntätulos. Ajurit ja niiden alemman tason sopimustestit
+ovat eri näyttö kuin oikeiden kuluttajien katkeaminen: keskeneräistä
+toteutusta tai käynnissä olevaa testiä ei merkitä läpäistyksi. Kaikkien
+seitsemän tapauksen saman lähdetilan CI-näyttö ja Linux-endurance ovat
+vielä avoinna. Tavallinen vihreä baseline ei sulje näitä eikä koko T3:a.
+
+Toteutuksen yhteinen työkalusarja läpäisi 1 258/1 258 tarkistusta
+(755 aiempaa ja 503 uutta) sekä E2E-tyypityksen. Lopputarkastuksen
+asynkronisen raporttikirjoituksen korjaus läpäisi lisäksi oman 55/55-
+regressiosarjansa. Käännös ja 80 tiedoston importtiraja sekä dokumenttien
+linkit on tarkistettu. Nämä ovat alemman tason portteja, eivät Linuxin
+katkeamis- tai endurance-hyväksyntä. Katselmuksessa ei jäänyt avointa
+toteutuksen estettä rajatun CI-kokeen käynnistämiselle.
+
+Suora, omalla lapsikahvallaan säilytetty Node-actor kutsuu todellisia
+`runIsolatedBackendTest`-, `runIsolatedWebTest`- ja
+`runOwnedChromiumWorker`-koosteita. Nykyinen eksplisiittinen
+[käännösmanifesti](../../apps/e2e/experiments/processOwnership/tsconfig.linux-consumer-loss.json)
+sisältää 80 lähdetiedostoa. Se käyttää nykyistä TypeScript-kääntäjää ilman
+loaderia, importtien uudelleenkirjoitusta tai sisäkkäistä Playwright-ajuria.
+Alkuperäinen validoitu repository- ja init-juuri sekä luokkien identiteetti
+säilyvät siirrettävässä käännöksessä. Tuotanto, fixturejen julkiset API:t,
+normaalit oletuspolut, riippuvuudet ja prosessien hallintaoikeudet eivät muutu.
+Rajattujen synteettisten liitteiden kopioinnin on valmistuttava ennen kuin
+fixture saa poistaa niiden lähdejuuren.
+
+| Tapaus | Todellisen kuluttajan vaadittu sopimus; CI-näyttö puuttuu |
+| --- | --- |
+| `backend-owner` | Valmiin backendin init katoaa tarkoituksella; alkuperäinen restart epäonnistuu, seuraava torjutaan ilman uutta launchia ja testijuuri säilyy. |
+| `backend-control` | Backendin oikea hyväksytty kontrolliyhteys katkaistaan; samat restartin esto- ja säilytysehdot. |
+| `vite-owner` | Todellisen web-fixturen Vite-init katoaa; saman stop-promisen toistuvat kutsut hylätään ja testijuuri säilyy. Vite-fixturelle ei keksitä restart-API:a. |
+| `vite-control` | Viten oikea kontrolliyhteys katkaistaan; samat stop- ja säilytysehdot. Terveet backend ja selain saavat sulkeutua normaalisti. |
+| `chromium-owner` | Todellisen web-fixturen Chromium-init katoaa; worker-juuri ja admission-varaus säilyvät, korvaava worker torjutaan ennen uutta juurta tai launchia. |
+| `chromium-control` | Chromiumin oikea kontrolliyhteys katkaistaan; samat workerin säilytys- ja korvauskiellot. Web-testijuuren poisto vaatii erikseen kaikkien sen omien siivousehtojen täyttymisen. |
+| `caller` | Suora kutsuja poistuu kaikkien kolmen palvelun ollessa valmiina; testijuuri, worker-juuri ja admission säilyvät. Suorittamatta jääneistä finally-lohkoista ei muodosteta onnistunutta cleanup-kuittia. |
+
+Jokainen palvelu rekisteröidään riippumattomalla unit-/InvocationID-/aloitusaika-
+kuitilla ennen juuri sen GO:ta. Fault-portti vaatii todellisen health-/Page-
+valmiuden ja kaikki odotetut kuitit. Jokainen managerin komentolapsi
+rekisteröidään; pelkkä tulos tai exit ei korvaa closea ja streamien sulkua.
+Caller-kokeessa kaikki apukomennot tyhjennetään ja uusien spawnien portti
+suljetaan ennen armingia. Myöhäinen spawn-yritys hylkää kokeen luomatta lasta.
+Ennen armingia kesken jääneen apukomennon sulkua ei päätellä kutsujan exitistä.
+
+Passiivinen poistuminen todistetaan ennen elävän session omistajan
+containmentia: vain vioitetun palvelun `emergencyStop` odottaa omaa ulompaa
+kuittiaan. Havaitsija julkaisee sen heti täsmällisen terminalin ja
+komentostreamien sulun jälkeen, ei vasta callerin, fixturen tai terveiden
+palvelujen valmistuttua. Tarkoituksellisen owner-kadon exit on `43`,
+kontrollin/callerin katkeamisen `42`; normaali cleanup vaatii edelleen `41`.
+Exit-koodi yksin ei ole puutodiste: myös sidottu init/wait-ketju, identiteetti,
+`MainPID=0`, `ControlPID=0` ja poistumisaika vaaditaan. Vain todistettu
+kutsujan kuolema sallii ulomman omistajan takeoverin tuoreilla identiteetti-
+tarkistuksilla; puuttuva tiedosto tai EOF ei siirrä siivousvaltaa.
+
+Koe käyttää kanonisen konfiguraation 60 s työaikaa. Passiivinen portti ja
+session containment jakavat alkuperäisen, kerran lukitun 3 s cleanup-budjetin;
+kelloa ei uusita eikä timeoutia pidennetä. Puuttuva tai myöhäinen kuitti
+hylkää passiivisen näytön, ja olemassa oleva containment saa vain jäljellä
+olevan ajan. Puun ulkopuolisen, omalla kahvallaan säilytetyn sentinelin
+tuore vastaus vaaditaan ennen faultia ja sen jälkeen sekä normaali sulku.
+Kuudessa elävän kutsujan tapauksessa testirungon alkuperäinen virhe säilyy
+ensisijaisena; cleanup- ja evidence-virhe erotetaan siitä. Epävarmuus ja
+juuren/varauksen säilytys eivät poistu ulomman containmentin onnistuessa.
+Chromiumin worker-virhe ei yksin edellytä web-testijuuren säilytystä: sen
+poisto tarvitsee contextin, API:n, palvelujen, porttien ja liitteiden varman
+siivouksen ilman aiempaa epävarmuutta.
+
+Manuaalinen `linux_consumer_diagnostic` on oletuksena `false`. Tyhjällä
+`risk_plan`-arvolla se valitsee nykyiset system- ja web-Linux-jobit; ei-tyhjän
+riskisuunnitelman portit säilyvät. Tavallisen kriittisen askeleen jälkeen
+vain onnistunut edeltävä suoritus sallii `linux:consumer:build`- ja
+`linux:consumer:loss`-askeleet: system ajaa kaksi backend-tapausta, web muut
+viisi. Komennot sidotaan todelliseen checkoutiin, CI-ajoon ja yritykseen.
+Webissä onnistuneen diagnostiikan jälkeen ajetaan erillinen
+`pnpm test:e2e:stress`; systemin 10 min ja webin 15 min jobirajat säilyvät.
+Electron-valitsin on riippumaton ja sen oletus säilyy; pelkässä Linux-ajossa
+`electron_diagnostic=false`. `workflow_call`, normaali kadenssi, neljä aiempaa
+kokeellista valitsinta ja `e2e:all` eivät muutu. Retry, flaky-tulos tai
+epäonnistumisen ohitus eivät täytä hyväksyntää; raakaliitteita ei julkaista.
+Manuaalinen koe ei korvaa tavallista CI:tä; endurance-tulos ja workerin
+cleanup-kuitti hyväksytään erillisinä.
 
 #### T3:n lopullinen hyväksyntänäyttö
 

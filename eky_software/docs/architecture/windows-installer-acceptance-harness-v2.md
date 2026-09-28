@@ -5065,9 +5065,10 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 
 ### Workspace-asennusodotuksen havaintoraja
 
-Tila 2026-09-28: rajattu testiharnessin diagnostiikkalisäys toteutettu ja
-alemman tason portit läpäisty; oman revision normaali CI on vielä ajamatta.
-Tämä ei ratkaise timeoutin juurisyytä.
+Tila 2026-09-28: rajattu testiharnessin diagnostiikkalisäys ja sen oma
+`5bbfd483` [normaali CI](https://github.com/eky-software/eky/actions/runs/36443256758)
+sekä [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/36443266084)
+hyväksytty ensimmäisistä yrityksistä. Tämä ei ratkaise c2-timeoutin juurisyytä.
 [Nykyinen M1-checkpoint](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
 erottaa tavallisen CI:n hylkäyksen Linux-kuluttajien keskeneräisestä työstä.
 
@@ -5095,8 +5096,8 @@ Diagnostiikan toimitusvirhe ei korvaa alkuperäistä tulosta. Kohdetestit
 todentavat havaintorajan, toistuvan odotuksen, tuloksen/virheen säilymisen,
 workerin todellisen kytkennän ja runtime-kyselyiden ennallaan säilymisen.
 Ne kuuluvat molempiin kanonisiin workspace-sopimussarjoihin. Rajauksen
-katselmuksen ja paikallisten porttien jälkeen tarvitaan uuden revision
-oma seurattu normaali CI; aiemman hylkäyksen syytä ei päätellä läpäisystä.
+katselmuksen ja paikallisten porttien jälkeinen oman revision seurattu
+normaali CI läpäisi; aiemman hylkäyksen syytä ei päätellä läpäisystä.
 
 Kanoninen fault-sarja läpäisi 325/325, success 332/332, artifact-/ajokytkentä
 62/62, CI-sopimukset 315/315 ja desktopin tyypitys. Ensimmäinen fault-ajo
@@ -5107,6 +5108,16 @@ uusintahavainnon. Lokilukijaa tai runtimea ei muutettu tämän takia.
 Katselmuksessa havaittu puuttuva ajolistapäivitys korjattiin molempiin
 tiukkoihin workflow-sopimuksiin ennen läpäissyttä artifact-sarjaa.
 Aiempaa hylkäystä ei kumota; nämä portit eivät ole packaged- tai T3-hyväksyntä.
+
+Uusi normaali CI valmistui 38 onnistuneella ryhmällä ja yhdellä
+tarkoituksellisella valinnaisella ohituksella, kaikki neljä kokeellista
+valitsinta pois. Kaikki 38 checkoutia, 690/37/38-katalogi, neljän tuottajan
+ja kymmenen kuluttajan artifact-sidonnat sekä native-sopimukset
+515/226/285/1791/60 takaisinluettiin ilman näyttöaukkoja. Molemmat workspace-
+success- ja fault-kuluttajat sekä uusi havaintoketju valmistuivat.
+Riippuvuustarkistus läpäisi ilman tunnettuja audit-löydöksiä,
+registry-allekirjoitukset 160/160. Tämä on vihreä välivaiheen baseline,
+ei historiallisen timeoutin korjaus, koko T3:n sulku tai PR/main-hyväksyntä.
 
 ### Ajantasainen testikartta ja avoimet rajat
 

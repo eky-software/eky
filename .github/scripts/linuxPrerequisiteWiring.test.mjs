@@ -98,7 +98,7 @@ test('Linux prerequisite observation requires explicit manual opt-in across the 
 test('observation remains in each existing Linux test step after its prerequisites', () => {
   for (const consumer of consumers) {
     const block = jobBlock(core, consumer.job);
-    assert.match(block, /if: inputs\.risk_plan != ''\n    runs-on: ubuntu-latest/u);
+    assert.match(block, /if: inputs\.risk_plan != '' \|\| \(inputs\.risk_plan == '' && inputs\.linux_consumer_diagnostic == true\)\n    runs-on: ubuntu-latest/u);
     assert.ok(block.includes(`timeout-minutes: ${consumer.timeout}\n`));
     assert.match(block, /working-directory: eky_software/u);
     assert.equal(stepScript(block, consumer.step), expectedScript(consumer));

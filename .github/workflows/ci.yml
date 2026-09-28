@@ -8,6 +8,11 @@ on:
         required: true
         type: boolean
         default: true
+      linux_consumer_diagnostic:
+        description: Run existing Linux jobs with consumer-loss diagnostics and web endurance
+        required: true
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       risk_plan:
@@ -79,7 +84,7 @@ jobs:
 
   e2e-system-security:
     name: System security E2E
-    if: inputs.risk_plan != ''
+    if: inputs.risk_plan != '' || (inputs.risk_plan == '' && inputs.linux_consumer_diagnostic == true)
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -136,9 +141,23 @@ jobs:
           checkout_sha="$(git rev-parse --verify HEAD 2>/dev/null)" || checkout_sha=""
           node apps/e2e/experiments/processOwnership/runManagedNamespaceExperiment.mjs --consumer=system-api --checkout-sha="$checkout_sha" 2>/dev/null
 
+      - name: Build system Linux consumer diagnostic
+        if: success() && inputs.risk_plan == '' && inputs.linux_consumer_diagnostic == true
+        env:
+          EKY_E2E: '1'
+        run: pnpm --filter @eky/e2e linux:consumer:build
+
+      - name: Run system Linux consumer loss diagnostic
+        if: success() && inputs.risk_plan == '' && inputs.linux_consumer_diagnostic == true
+        env:
+          EKY_E2E: '1'
+        run: |
+          checkout_sha="$(git rev-parse --verify HEAD 2>/dev/null)" || checkout_sha=""
+          pnpm --filter @eky/e2e linux:consumer:loss --scope=system --consumer=system-api --checkout-sha="$checkout_sha"
+
   e2e-web-critical:
     name: Web critical E2E
-    if: inputs.risk_plan != ''
+    if: inputs.risk_plan != '' || (inputs.risk_plan == '' && inputs.linux_consumer_diagnostic == true)
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -197,6 +216,26 @@ jobs:
         run: |
           checkout_sha="$(git rev-parse --verify HEAD 2>/dev/null)" || checkout_sha=""
           node apps/e2e/experiments/processOwnership/runManagedNamespaceExperiment.mjs --consumer=web-chromium --checkout-sha="$checkout_sha" --workload=chromium 2>/dev/null
+
+      - name: Build web Linux consumer diagnostic
+        if: success() && inputs.risk_plan == '' && inputs.linux_consumer_diagnostic == true
+        env:
+          EKY_E2E: '1'
+        run: pnpm --filter @eky/e2e linux:consumer:build
+
+      - name: Run web Linux consumer loss diagnostic
+        if: success() && inputs.risk_plan == '' && inputs.linux_consumer_diagnostic == true
+        env:
+          EKY_E2E: '1'
+        run: |
+          checkout_sha="$(git rev-parse --verify HEAD 2>/dev/null)" || checkout_sha=""
+          pnpm --filter @eky/e2e linux:consumer:loss --scope=web --consumer=web-chromium --checkout-sha="$checkout_sha"
+
+      - name: Run Linux consumer endurance baseline
+        if: success() && inputs.risk_plan == '' && inputs.linux_consumer_diagnostic == true
+        env:
+          EKY_E2E: '1'
+        run: pnpm test:e2e:stress
 
   e2e-electron-windows-critical:
     name: Windows Electron critical E2E

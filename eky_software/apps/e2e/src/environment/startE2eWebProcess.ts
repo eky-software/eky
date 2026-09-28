@@ -25,6 +25,10 @@ export interface StartedE2eWeb {
   webOrigin: string;
 }
 
+export interface E2eWebProcessDependencies {
+  readonly startOwned?: (input: Parameters<typeof startOwnedLinuxVite>[0]) => ReturnType<typeof startOwnedLinuxVite>;
+}
+
 const repositoryRoot = resolve(import.meta.dirname, '../../../..');
 
 export async function startE2eWebProcess(input: {
@@ -33,7 +37,7 @@ export async function startE2eWebProcess(input: {
   paths: E2eWorkerPaths;
   runRoot: string;
   webPort: number;
-}): Promise<StartedE2eWeb> {
+}, dependencies: E2eWebProcessDependencies = {}): Promise<StartedE2eWeb> {
   const webOrigin = `http://127.0.0.1:${String(input.webPort)}`;
   assertE2eSafetyBoundary({
     backendHost: '127.0.0.1',
@@ -54,7 +58,8 @@ export async function startE2eWebProcess(input: {
   const releasePort = () => waitForLoopbackPortRelease(input.webPort);
   try {
     if (performance.now() >= startupDeadline) throw new Error('E2E_WEB_HEALTH_TIMEOUT');
-    const startOwned = process.platform === 'win32' ? startOwnedWindowsVite : startOwnedLinuxVite;
+    const startOwned = dependencies.startOwned ??
+      (process.platform === 'win32' ? startOwnedWindowsVite : startOwnedLinuxVite);
     const owned = await startOwned({
       repositoryRoot, runRoot: input.runRoot, webPort: input.webPort,
       environmentRoot: input.paths.tempRoot, backendOrigin: input.backend.backendOrigin,

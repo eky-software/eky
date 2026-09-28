@@ -26,7 +26,12 @@ const contractCommand = 'node --test scripts/e2e-command-wiring.test.mjs scripts
 
 function assertWiring(rootManifest, e2eManifest) {
   assert.equal(rootManifest.scripts.test, 'pnpm --recursive test');
-  assert.equal(e2eManifest.scripts.test, contractCommand);
+  assert.equal(e2eManifest.scripts.test, contractCommand + ' && pnpm test:consumer-loss');
+  assert.equal(e2eManifest.scripts['test:consumer-loss'], consumerContractCommand);
+  assert.equal(e2eManifest.scripts['linux:consumer:build'],
+    'node experiments/processOwnership/linuxConsumerLossBuildCli.mjs');
+  assert.equal(e2eManifest.scripts['linux:consumer:loss'],
+    'node experiments/processOwnership/runLinuxConsumerLoss.mjs');
   assert.deepEqual(e2eManifest.scripts['e2e:electron:prepare'].split(' && '), preparations);
   assert.equal(e2eManifest.scripts['e2e:prepare-owner'], 'node scripts/prepare-windows-backend-owner.mjs');
   assert.deepEqual(e2eManifest.scripts['e2e:prepare'].split(' && '), preparations.slice(1, 5));
@@ -38,6 +43,29 @@ function assertWiring(rootManifest, e2eManifest) {
     );
   }
 }
+
+const consumerContracts = ['linuxConsumerLossContract', 'linuxConsumerLossRecords', 'linuxConsumerLossOutcome',
+  'linuxConsumerSessionProbe', 'linuxConsumerLossInit', 'linuxConsumerExchange', 'linuxConsumerCommandGate',
+  'linuxConsumerAttachments', 'linuxConsumerObserver', 'linuxConsumerSentinel', 'linuxConsumerLossBuild',
+  'linuxConsumerLossBuildCli', 'runLinuxConsumerLossCase', 'runLinuxConsumerLoss'];
+const consumerContractCommand = 'node --test ' + consumerContracts
+  .map(name => `experiments/processOwnership/${name}.test.mjs`).join(' ');
+
+for (const name of consumerContracts) {
+  test(`the recursive contract gate cannot omit ${name}`, () => {
+    const modified = structuredClone(e2e);
+    modified.scripts['test:consumer-loss'] = modified.scripts['test:consumer-loss']
+      .replace(` experiments/processOwnership/${name}.test.mjs`, '');
+    assert.throws(() => assertWiring(root, modified), assert.AssertionError);
+  });
+}
+
+test('manual consumer faults cannot join ordinary or endurance project commands', () => {
+  for (const name of ['e2e:all', 'e2e:system', 'e2e:web', 'e2e:web:critical', 'e2e:stress']) {
+    assert.doesNotMatch(e2e.scripts[name], /linux:consumer|runLinuxConsumerLoss/u);
+  }
+  assert.equal(e2e.scripts['e2e:stress'], 'pnpm e2e:prepare && playwright test --project=endurance-baseline');
+});
 
 test('the recursive workspace chain reaches this contract and both complete aggregates', () => {
   assertWiring(root, e2e);

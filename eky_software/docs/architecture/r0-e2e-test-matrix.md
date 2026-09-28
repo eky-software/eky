@@ -56,7 +56,7 @@ config-readerilla, ei HTTP-palvelimella. Jälkimmäinen käyttää varsinaisia
 health- ja worker-elinkaarifunktioita simuloiduilla prosessihavainnoilla:
 alkuperäinen virhe ja siivous säilyvät, ja vain suljetut vaiheet pääsevät
 CI-lokiin. Raportointi-/session-/ympäristökohdesarja 74/74 on todennettu;
-korjatun Linux-kuluttajan CI ja T3:n sulku pysyvät avoimina.
+korjatun Linux-kuluttajan CI oli tässä checkpointissa vielä avoin.
 Korjauksen Windows-system 690/690 sisältää uuden reader-regression;
 web 43/43 sisältää saman selaimen erillisten testikontekstien ja datan
 todellisen eristyksen. Molemmat läpäisivät ilman retryä tai ohituksia.
@@ -78,10 +78,16 @@ binary-rollback-koe jäi ajamatta. Hylkäyksen syy sekä T3:n katkeamis-/enduran
 ja PR/main-näyttö ovat vielä avoinna. Edeltävässä
 CI:ssä system 688/690 ja web 0/37 jäivät hylätyiksi yllä linkitetyin rajauksin.
 
-Seuraavaa ajoa varten [workspace-asennuksen havaintoraja](windows-installer-acceptance-harness-v2.md#workspace-asennusodotuksen-havaintoraja)
-on täsmennetty. Rajattu testiharnessilisäys läpäisi omat sopimus- ja
-ajokytkentäporttinsa, mutta oman revision CI on vielä ajamatta. Se ei muuta
-sovelluksen E2E-tapausjoukkoa eikä ratkaise yllä olevan odotuksen juurisyytä.
+[Workspace-asennuksen havaintorajan](windows-installer-acceptance-harness-v2.md#workspace-asennusodotuksen-havaintoraja)
+oma `5bbfd483` [normaali CI](https://github.com/eky-software/eky/actions/runs/36443256758)
+ja [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/36443266084)
+on hyväksytty: 38 onnistunutta ryhmää ja yksi tarkoituksellinen valinnainen
+ohitus, täysi 690/37/38-katalogi ilman retryä tai flakyä; systemissä vain
+aiempi Windows-only-ohitus. Kaikki 38 checkoutia ja neljän tuottajan sekä
+kymmenen kuluttajan artifact-sidonnat varmennettiin. Tämä on nykyinen vihreä
+baseline, ei c2-timeoutin juurisyyratkaisu eikä koko T3:n hyväksyntä.
+Linuxin katkeamis-/endurance-näyttö, korvattujen polkujen poisto ja PR/main
+pysyvät avoimina.
 
 ## Tilat
 
@@ -274,6 +280,17 @@ hylkäyksen syy ja vanhat satunnaiset timeoutit ovat edelleen avoimia.
 Omistajan 28.9. päätös hyväksyy yhteisen Chromium-workerin testikohtaisella
 eristyksellä sekä paikalliset Windows-testit ja Linux-CI:n. Näitä koskevat
 päätösestot ovat poistuneet; kuluttajasiirto ja sen todentaminen ovat kesken.
+
+Linuxin seuraavat seitsemän suunniteltua oikean kuluttajan
+hyväksyntäskenaariota on rajattu
+[katkeamiskokeiden sopimuksessa](e2e-test-environment.md#linuxin-todellisten-kuluttajien-katkeamiskokeet):
+`backend-owner`, `backend-control`, `vite-owner`, `vite-control`,
+`chromium-owner`, `chromium-control` ja `caller`. Ne täydentävät alla olevia
+omistajuus-, failure-, fixture- ja Chromium-loss-portteja, eivät lisää
+tavalliseen Playwright-katalogiin seitsemää testiä. Ajurien toteutus ja
+alemman tason sopimusnäyttö erotetaan oikeasta CI-ajosta: kaikkien seitsemän
+katkeamisen sekä erillisen Linux-endurancen hyväksyntänäyttö puuttuu vielä.
+Tämä suunnitelma ei muuta historiallisia tuloksia eikä sulje koko T3:a.
 
 | ID | Taso | Koe ja hyväksyntä | Tila |
 | --- | --- | --- | --- |

@@ -33,6 +33,10 @@ export interface StartedE2eBackend {
   stop(): Promise<void>;
 }
 
+export interface E2eBackendProcessDependencies {
+  readonly startOwned?: (input: Parameters<typeof startOwnedLinuxBackend>[0]) => ReturnType<typeof startOwnedLinuxBackend>;
+}
+
 export interface E2eBackendStartupFailureEvidence {
   readonly errorCode: E2eBackendStartupErrorCode;
   readonly spawnObserved: boolean;
@@ -71,7 +75,7 @@ export async function startE2eBackendProcess(input: {
   paths: E2eWorkerPaths;
   runRoot: string;
   scenarioId: string;
-}): Promise<StartedE2eBackend> {
+}, dependencies: E2eBackendProcessDependencies = {}): Promise<StartedE2eBackend> {
   const observe = createE2eBackendStartupReporter();
   const backendOrigin = `http://127.0.0.1:${String(input.backendPort)}`;
   assertE2eSafetyBoundary({
@@ -98,7 +102,8 @@ export async function startE2eBackendProcess(input: {
   let workload: E2eBackendWorkload;
   let stopProcessTree: () => Promise<void>;
   try {
-    const startOwned = process.platform === 'win32' ? startOwnedWindowsBackend : startOwnedLinuxBackend;
+    const startOwned = dependencies.startOwned ??
+      (process.platform === 'win32' ? startOwnedWindowsBackend : startOwnedLinuxBackend);
     const owned = await startOwned({
       repositoryRoot, runRoot: input.runRoot, runtimeConfigPath: input.paths.runtimeConfigPath,
       lifetime: input.lifetime, startupDeadline, redactedValues: [config.backend.sessionSecret],

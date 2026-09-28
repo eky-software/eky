@@ -3,13 +3,22 @@
 ## Päätös ja nykyinen tila
 
 **Nykytila 2026-09-28: M0, T1 ja T2 hyväksytty; T3/R28 kesken.**
-**Nykyinen vihreä lähtörevisio on `ab5de90bd28eda08cc5d871521a8a2d9f669deb3`.**
-Sen [normaali CI](https://github.com/eky-software/eky/actions/runs/36359605352)
-ja [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/36359619205)
-läpäisivät ensimmäisellä yrityksellä. Koko tapausjoukko, todelliset checkoutit
-ja asennuspakettien tuottaja-/kuluttajasidonnat on takaisinluettu.
-Windows-Electronin valmistelukorjaus ja turvallinen käynnistysvirheen
-kaappaus ovat siten läpäisseet myös oman normaalin CI-porttinsa.
+**Nykyinen vihreä lähtörevisio on `5bbfd4834707b77e1211851a6fb21b09b8572a66`.**
+Sen [normaali CI](https://github.com/eky-software/eky/actions/runs/36443256758)
+ja [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/36443266084)
+läpäisivät ensimmäisellä yrityksellä. Normaali CI: 38 onnistunutta ryhmää ja
+yksi tarkoituksellinen valinnainen ohitus, kaikki neljä kokeellista valitsinta
+pois. System 689/690 ja yksi tunnettu alustasuoja, web 37/37 ja Electron 38/38;
+ei retryä tai flakyä. Koko tapausjoukko, kaikki 38 checkoutia sekä neljän
+tuottajan ja kymmenen kuluttajan artifact-sidonnat on takaisinluettu.
+Tämä avaa seuraavan rajatun Linux-kuluttajatyön, ei sulje T3:a tai PR/main-portteja.
+Seitsemän [todellisen Linux-kuluttajan katkeamiskokeen](e2e-test-environment.md#linuxin-todellisten-kuluttajien-katkeamiskokeet)
+ajurit, rajatut tyypitetyt testikytkennät ja manuaalinen CI-valinta on
+toteutettu. Kohdennetut sopimustestit ja katselmus eivät vielä todista
+oikeita Linux-katkeamisia. Seuraava portti on yhteinen paikallinen
+testityökalusarja ja tyypitys, sitten yksi seurattu Linux-CI sekä erillinen
+endurance. Korvatun aktiivisen polun poisto odottaa vastaavaa näyttöä.
+Alla säilyvät aiempien korjausten ja hylkäysten omat checkpointit.
 Windows-Electronin nykyisen kadenssin stress ja täysi 30 minuutin soak
 sekä alkuperäisen virheen säilymisen kaksi rajattua todellisen fixturen
 koetta on nyt paikallisesti todennettu. Omistaja hyväksyi 28.9. yhteisen
@@ -23,17 +32,17 @@ ja työkalusarja 734/734 läpäisty. Revision `6e670190` ensimmäinen
 [normaali CI](https://github.com/eky-software/eky/actions/runs/36419875442)
 hylkäsi kuitenkin Linuxin oikeat system/web-kuluttajat sekä tukipaketin
 kokorajatestin aikakatkaisun. Riippuvuustarkistus läpäisi; tämä ei hyväksy
-muuta ajoa. Ensimmäiset virhetiedot säilytetään, ja baseline korjataan ennen
-seuraavaa toiminnallista vaihetta. [Rajaus ja avoin näyttö](e2e-test-environment.md#chromiumin-ja-linuxin-ensimmäinen-yhteinen-ci)
+muuta ajoa. Ensimmäiset virhetiedot säilyvät; baselinen korjaus oli ehto
+seuraavalle toiminnalliselle vaiheelle. [Rajaus ja avoin näyttö](e2e-test-environment.md#chromiumin-ja-linuxin-ensimmäinen-yhteinen-ci)
 erottavat nämä toisistaan. Tämä rajattu näyttö ei sulje T3:a.
 Seuraavan diagnostiikkarevision `5c8bb24a`
 [CI:ssä](https://github.com/eky-software/eky/actions/runs/36423687950)
 workspace-portti läpäisi, mutta Linuxin samat system/web-hylkäykset säilyivät.
 Palvelun käynnistysvaiheen virherivi ei syntynyt; tämä ei todista onnistunutta
-backendin health-vaihetta. Nykyinen korjaus kohdistuu Linux-testibackendin
+backendin health-vaihetta. Tätä seurannut korjaus kohdistui Linux-testibackendin
 puuttuvaan alkuperäisen OS-temp-juuren ankkuriin. Oikean config-readerin
 regressio sekä suljettu backend-/Chromium-vaiheiden raportointiketju
-todentavat rajauksen; korjatun revision tavallinen Linux-CI on vielä avoin.
+todentavat rajauksen; korjatun revision tavallinen Linux-CI oli tuolloin avoin.
 Korjauksen Windows-system 690/690, web 43/43, työkalusarja 740/740 ja
 tyypitys läpäisivät. Kaikki pakettitestit läpäisivät paikallisesti peräkkäin;
 [säilyvä rinnakkaisajon aikakatkaisuhavainto](e2e-test-environment.md#chromiumin-ja-linuxin-ensimmäinen-yhteinen-ci)
@@ -59,10 +68,10 @@ Workspace-faultin toinen ajo ylitti nykyisen aikarajansa `targetInstall`-
 vaiheessa; palautumiskoe ei ehtinyt alkaa. Supervisor varmisti prosessipuun
 siivouksen. Tämä ei osoita odotuksen juurisyytä. Rajatut
 [asennusodotuksen alavaihehavainnot](windows-installer-acceptance-harness-v2.md#workspace-asennusodotuksen-havaintoraja)
-ja niiden sopimustestit on toteutettu; seuraavaksi uuden revision oma
-seurattu CI. Ei sokeaa uusintaa tai aikarajan muutosta.
+ja niiden sopimustestit on toteutettu; niiden oma seurattu CI hyväksyttiin
+yllä mainitulla `5bbfd483`-revisiolla. c2-timeoutin juurisyy jää avoimeksi.
 [Tarkka tila](e2e-test-environment.md#chromiumin-ja-linuxin-ensimmäinen-yhteinen-ci)
-ei hyväksy koko baselinea tai sulje T3:a.
+erottaa hyväksytyn baselinen historiallisista hylkäyksistä; T3 pysyy avoinna.
 Tuotanto, Chromiumin asetukset, sovelluksen E2E-tapausjoukot ja aikarajat säilyvät.
 [Aiemmat hylkäykset ja korjauksen rajaus](e2e-test-environment.md#windows-electron--valmistelun-ci-hylkäys)
 säilyvät historiatietona; läpäisy ei ratkaise aiemman satunnaisen
