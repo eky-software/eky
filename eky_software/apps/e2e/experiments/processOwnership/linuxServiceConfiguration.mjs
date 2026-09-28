@@ -91,15 +91,16 @@ export function linuxServiceWorkload(config, { fs = filesystem, tempDirectory = 
   const temp = inspectServicePath(config.profile === 'backend'
     ? posix.join(posix.dirname(config.runtimeConfigPath), 'temp') : config.environmentRoot, true, fs);
   below(temp, run);
-  const env = { ...childEnvironment(), NODE_ENV: 'test', TMPDIR: temp, HOME: temp };
+  // Both readers validate the original test root independently of the child's
+  // isolated OS temp directory, using the existing owner contract.
+  const env = { ...childEnvironment(), NODE_ENV: 'test', TMPDIR: temp, HOME: temp,
+    EKY_E2E_OS_TEMP_ROOT: hostTempRoot, TEMP: temp, TMP: temp };
   if (config.profile === 'backend') {
     const entry = inspectServicePath(posix.join(repository, 'apps/backend/e2e-dist/e2e/backendEntrypoint.js'), false, fs);
     const path = inspectServicePath(below(config.runtimeConfigPath, run), false, fs);
     requireService(fs.lstatSync(path).nlink === 1);
-    // The config reader validates the original test root independently of the
-    // child's isolated OS temp directory, using the existing owner contract.
     return Object.freeze({ file: node, args: Object.freeze([entry, '--config', path]), cwd: repository,
-      env: Object.freeze({ ...env, EKY_E2E_OS_TEMP_ROOT: hostTempRoot, TEMP: temp, TMP: temp }) });
+      env: Object.freeze(env) });
   }
   inspectServicePath(below(config.environmentRoot, run), true, fs);
   return Object.freeze({ file: node, args: Object.freeze([resolveLinuxViteEntrypoint(repository, fs),

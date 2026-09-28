@@ -11,12 +11,26 @@ import { createE2eWorkerPaths } from '../../src/environment/createE2eWorkerPaths
 test.describe('WEB-VITE-TEMP-001 @critical @security', () => {
   test('owned Vite retains the OS anchor with writable temp inside the same run', () => {
     const f = fixture();
+    const tempKeys = ['TEMP', 'TMP', 'TMPDIR'] as const;
+    const previous = tempKeys.map(key => process.env[key]);
     try {
+      // This synchronous test exercises the reader with the owned child's
+      // actual OS-temp boundary, not the test runner's original directory.
+      for (const key of tempKeys) process.env[key] = f.temp;
+      expect(realpathSync.native(tmpdir())).toBe(f.temp);
+      const { EKY_E2E_OS_TEMP_ROOT: _anchor, ...withoutAnchor } = f.environment;
+      expect(() => readE2eViteRuntimeConfig(withoutAnchor)).toThrow(/ENOENT/u);
       expect(readE2eViteRuntimeConfig(f.environment)).toMatchObject({
         backendOrigin: 'http://127.0.0.1:34567', environmentDirectory: f.paths.tempRoot,
         cacheDirectory: join(f.paths.tempRoot, 'vite-cache'),
       });
-    } finally { f.dispose(); }
+    } finally {
+      tempKeys.forEach((key, index) => {
+        if (previous[index] === undefined) delete process.env[key];
+        else process.env[key] = previous[index];
+      });
+      f.dispose();
+    }
   });
 
   for (const key of ['TEMP', 'TMP'] as const) {

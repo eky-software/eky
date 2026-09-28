@@ -3456,6 +3456,34 @@ aikarajoja tai CI:n ajokytkentää ei muutettu tämän havainnon vuoksi.
 Riippumaton lähde- ja julkaisurajakatselmus hyväksyi korjauksen rajauksen;
 tämä ei korvaa korjatun revision omaa normaalia CI:tä.
 
+**Viten temp-ankkurin jatkokorjaus:** backend-korjauksen `201600aa`
+[CI 36431463750](https://github.com/eky-software/eky/actions/runs/36431463750)
+todensi backendin health-vaiheen. System-sarjan 690 tapauksesta 688 läpäisi,
+`WEB-SERVICE-001` hylättiin ja yksi tunnettu alustasuoja ohitettiin.
+Webissä 36 hylättiin ja yksi jäi sarjan keskeytyksen vuoksi ajamatta;
+workerin siivous varmistui. Nämä eivät hyväksy kuluttajasiirtoa. Koko ajon
+terminal-takaisinluku on vielä kesken. Saman revision riippuvuustarkistus
+läpäisi, mutta ei korvaa hylättyjä testejä. Edeltävä `5c8bb24a`-ajo päättyi
+hylättynä; sen legacy2-jobin 37 minuutin aikarajaperuutus on erillinen havainto,
+ei temp-ankkurikorjauksella ratkaistuksi väitetty vika.
+
+Vite-profiili jätti pois saman olemassa olevan reader-sopimuksen ankkurin
+sekä `TEMP`/`TMP`:n. Rajattu ympäristösopimus toisti puutteen 21/22-tuloksella
+ja läpäisi 22/22 korjauksen jälkeen. Validoitu alkuperäinen OS-temp-ankkuri
+ja saman testin kirjoitushakemisto määritellään nyt kerran backend/Vite-
+profiileille; Chromiumin worker-hakemisto ei käytä tätä asetusta.
+`WEB-VITE-TEMP-001`:n olemassa oleva testi vaihtaa synkronisesti testin
+OS-tempin eristetyksi ja palauttaa kaikki ympäristöarvot `finally`-haarassa.
+Oikea reader hylkää puuttuvan ankkurin ja hyväksyy oikean; muut 12 tapausta
+säilyttävät viereisen juuren, linkin ja virheellisten asetusten torjunnan.
+Tämä on config-readerin regressiotodiste, ei uuden Linux-CI:n korvike.
+
+Jatkokorjauksen työkalusarja 740/740, E2E-tyypitys ja kanonisesti valmisteltu
+Windows-system 690/690 läpäisivät ilman retryä, flakyä tai ohituksia.
+Riippumaton lähde- ja julkaisurajakatselmus hyväksyi rajauksen.
+Tuotantokoodi, readerien turvarajat, tapausmäärä, aikarajat ja CI-vaatimukset
+eivät muutu. Oma Linux-CI ja T3:n muut loppuportit pysyvät avoimina.
+
 **Windowsin rajattu katoamis- ja artifact-näyttö 28.9.:** todellinen
 worker-polku läpäisi erilliset native-omistajan ja kutsuvan Playwright-workerin
 katoamiskokeet. Ulompi omistettu testisessio todensi koko puun päättymisen

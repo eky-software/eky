@@ -63,6 +63,15 @@ todellisen eristyksen. Molemmat läpäisivät ilman retryä tai ohituksia.
 Pakettitestien ja tyypityksen näyttö sekä rinnakkaisajon säilyvä havainto
 on rajattu samassa omistavassa checkpointissa.
 
+Vite-jatkokorjaus vahvistaa olemassa olevaa `WEB-VITE-TEMP-001`-tapausta:
+oikeaa readeria käytetään myös eristetyllä OS-tempillä, ilman ankkuria ja
+sen kanssa. Testi palauttaa ympäristön synkronisesti, eikä tapausten
+kokonaismäärä muutu. Backend/Vite-käynnistyksen yhteinen ympäristösopimus
+toisti puutteen ennen korjausta ja läpäisi sen jälkeen. Vite-rajojen 13/13,
+työkalusarjan 740/740, tyypityksen ja Windows-systemin 690/690 läpäisyt eivät
+vielä hyväksy korjatun Linux-Viten käynnistystä tai koko T3:a. Edeltävässä
+CI:ssä system 688/690 ja web 0/37 jäivät hylätyiksi yllä linkitetyin rajauksin.
+
 ## Tilat
 
 - `accepted-contract`: matriisissa nimetty testi-infrastruktuurin sopimus

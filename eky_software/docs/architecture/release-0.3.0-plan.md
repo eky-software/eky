@@ -38,6 +38,17 @@ Korjauksen Windows-system 690/690, web 43/43, työkalusarja 740/740 ja
 tyypitys läpäisivät. Kaikki pakettitestit läpäisivät paikallisesti peräkkäin;
 [säilyvä rinnakkaisajon aikakatkaisuhavainto](e2e-test-environment.md#chromiumin-ja-linuxin-ensimmäinen-yhteinen-ci)
 ei muuta CI:n ajotapaa tai aikarajoja eikä ole merkitty korjatuksi.
+Revision `201600aa` [CI](https://github.com/eky-software/eky/actions/runs/36431463750)
+todensi backendin health-vaiheen: Linux-systemissä läpäisi 688/690,
+yksi Vite-composition-testi hylättiin ja yksi tunnettu alustasuoja ohitettiin.
+Webin 36 hylkäystä ja yksi sarjan keskeytysohitus säilyivät. Koko ajon
+loppulukua odotetaan; [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/36431475154)
+läpäisi. Viten kiinteästä testiympäristöstä löytyi sama puuttuva temp-ankkuri.
+Rajattu jatkokorjaus käyttää backendin ja Viten yhteistä validoitua asetusta:
+RED/GREEN-sopimus, oikean Vite-readerin 13 turvarajatestiä, työkalusarja
+740/740, tyypitys ja Windows-system 690/690 läpäisivät; katselmus hyväksytty.
+**Seuraava portti on tämän Vite-korjauksen oma Linux-CI**, ei T3:n sulku.
+Tuotanto, Chromiumin asetukset, testimäärät ja aikarajat säilyvät.
 [Aiemmat hylkäykset ja korjauksen rajaus](e2e-test-environment.md#windows-electron--valmistelun-ci-hylkäys)
 säilyvät historiatietona; läpäisy ei ratkaise aiemman satunnaisen
 poistumisen syytä eikä hyväksy koko T3:a tai PR/main-integraatiota.
