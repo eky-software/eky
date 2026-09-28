@@ -1,6 +1,6 @@
 import {
-  isElectronE2eBackendStartupStage,
-  type ElectronE2eBackendStartupStage,
+  isElectronE2eBackendObservationStage,
+  type ElectronE2eBackendObservationStage,
 } from './electronE2eBackendStatus.js';
 
 const checkpoints = [
@@ -30,7 +30,7 @@ export type ElectronE2eBackendStartupObservation =
   | Readonly<{ status: 'unobserved' }>
   | Readonly<{
       status: 'observed';
-      stage: ElectronE2eBackendStartupStage;
+      stage: ElectronE2eBackendObservationStage;
       elapsedMs: number;
     }>;
 
@@ -49,7 +49,7 @@ export function createElectronE2eStartupObservation(
   now: () => number = () => performance.now(),
 ): {
   record(checkpoint: ElectronE2eStartupCheckpoint): void;
-  recordBackendStartupStage(stage: ElectronE2eBackendStartupStage): void;
+  recordBackendStartupStage(stage: ElectronE2eBackendObservationStage): void;
   snapshot(): ElectronE2eStartupObservation;
 } {
   const started = now();
@@ -70,7 +70,7 @@ export function createElectronE2eStartupObservation(
     },
     recordBackendStartupStage(stage) {
       try {
-        if (!isElectronE2eBackendStartupStage(stage)) return;
+        if (!isElectronE2eBackendObservationStage(stage)) return;
         const elapsedMs = Math.max(0, Math.floor(now() - started));
         if (!Number.isSafeInteger(elapsedMs)) return;
         backendStartup = Object.freeze({ status: 'observed', stage, elapsedMs });
@@ -131,7 +131,7 @@ function parseBackendStartupObservation(
   if (
     keys === 'elapsedMs,stage,status' &&
     value.status === 'observed' &&
-    isElectronE2eBackendStartupStage(value.stage) &&
+    isElectronE2eBackendObservationStage(value.stage) &&
     typeof value.elapsedMs === 'number' &&
     Number.isSafeInteger(value.elapsedMs) && value.elapsedMs >= 0
   ) {

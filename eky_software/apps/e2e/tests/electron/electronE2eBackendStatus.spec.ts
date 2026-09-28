@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 import {
+  electronE2eBackendLogStages,
   electronE2eBackendStartupStages,
   parseElectronE2eBackendStatus,
   readElectronE2eBackendFailureCode,
@@ -8,6 +9,14 @@ import {
 import { readSafeStartupFailureCode } from '../../../desktop/src/main/earlyStartup.js';
 
 test('DESK-BACKEND-STATUS-001 @critical exposes only closed safe startup stages', () => {
+  expect(electronE2eBackendStartupStages.map(readElectronE2eBackendFailureCode)).toEqual([
+    'DESKTOP_SMOKE_E2E_BACKEND_BOUNDARY_VALIDATION_FAILED',
+    'DESKTOP_SMOKE_E2E_BACKEND_BROKER_CLIENT_CREATION_FAILED',
+    'DESKTOP_SMOKE_E2E_BACKEND_MODULE_IMPORT_FAILED',
+    'DESKTOP_SMOKE_E2E_BACKEND_START_FAILED',
+    'DESKTOP_SMOKE_E2E_BACKEND_PROFILE_SNAPSHOT_BROKER_START_FAILED',
+    'DESKTOP_SMOKE_E2E_BACKEND_READY_NOTIFICATION_FAILED',
+  ]);
   for (const stage of electronE2eBackendStartupStages) {
     const status = parseElectronE2eBackendStatus({ stage, type: 'failed' });
     expect(status).toEqual({ stage, type: 'failed' });
@@ -22,6 +31,9 @@ test('DESK-BACKEND-STATUS-001 @critical exposes only closed safe startup stages'
 });
 
 test('DESK-BACKEND-STATUS-002 @critical rejects unknown and extended status payloads', () => {
+  for (const stage of electronE2eBackendLogStages) {
+    expect(parseElectronE2eBackendStatus({ stage, type: 'failed' })).toBeUndefined();
+  }
   expect(
     parseElectronE2eBackendStatus({
       stage: 'unknownStage',

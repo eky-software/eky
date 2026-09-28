@@ -2,7 +2,7 @@
 
 ## Jatka tästä
 
-**T1/T2 ja T3/R28 hyväksytty; dokumenttien oma integraatio on erillinen portti.**
+**T1/T2 ja T3/R28:n toteutus hyväksytty; uudemman mainin portti on hylätty.**
 Modulaarinen monoliitti ja hyväksytty M1-rajaus säilyvät.
 
 | Kohta | Nykyinen lähtötieto |
@@ -10,8 +10,9 @@ Modulaarinen monoliitti ja hyväksytty M1-rajaus säilyvät.
 | Hyväksytty toteutus | PR #278:n lähde `52cdaa1755ca2ed68318bd33fd52805a7753235e`; täsmällinen hyväksytty merge-main ja sen omat ajot ovat kohdassa [T3:n integraatiohyväksyntä](e2e-test-environment.md#t3n-integraatiohyväksyntä). |
 | T3/R28 | Oikeat kuluttajat, korvatun toteutuksen poisto, pysyvä matriisi ja toteutuksen omat PR/main-portit hyväksytty. T1/T2:n sopimukset säilyvät. |
 | Näytön rajaus | Tavallinen Windows 781/781 ja kaksi lopullista oikeaprosessitodistetta säilyvät omana näyttönään. Vanhojen revisioiden katalogeja, stressiä tai soakia ei nimetä uuden CI-ajon tuloksiksi. Historiallisten hylkäysten avoimia syitä ei merkitä korjatuiksi. |
-| Dokumenttimuutoksen oma portti | Tämä neljän dokumentin tilapäivitys vaatii omat normaalit PR-tarkistuksensa, suojatun mergen ja täsmällisen mainin täyden normaalin portin sekä sovitun riippuvuustarkistuksen. T3:n hyväksyntä ei korvaa niitä. |
-| Seuraava työ | Dokumenttimuutoksen porttien jälkeen A1/R01:n rajattu aloitus nykyisen [A1-suunnitelman](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde) ja toiminnon aloitusportin mukaan. Ei A2/A3:n, W7:n tai koko 0.3.0:n toteutusvaltuutta tämän sulun perusteella. |
+| Nykyinen lähtö ja avoin portti | Dokumentti-PR #279 hyväksyttiin ja yhdistettiin normaalisti. Main `18f9be05aa59316223eeefb14a4e6e3afd2736c9`: täysi normaali ajo hylätty, audit hyväksytty. [Todisteet ja rajaus](e2e-test-environment.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko). Aiempi toteutushyväksyntä ei korvaa tätä porttia. |
+| Seuraava työ | Rajattu testidiagnostiikka on toteutettu ja katselmoitu: migraatiolokin kutsurajat Electron-kokeessa ja historiallisen diagnostiikkavirheen täsmälliset luokat. Kohdeportit 13/17/70, tyypitys ja tavallinen Windows 783/783 läpäisty; [näytön rajaus](e2e-test-environment.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko). Seuraavaksi puhtaan lähteen normaali PR ja mergen omat main-portit. Ei sokeaa uusintaa, aikarajamuutosta tai tuotantomuutosta. |
+| Tämän jälkeen | Täsmällisen uuden revision normaalien PR/main-porttien jälkeen A1/R01:n rajattu aloitus nykyisen [A1-suunnitelman](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde) ja toiminnon aloitusportin mukaan. Ei A2/A3:n, W7:n tai koko 0.3.0:n toteutusvaltuutta tämän sulun perusteella. |
 | Valmistumisen kirjaus | Dokumenttimuutoksen toteutuneet tarkistukset ja integraation lopputulos kirjataan sen PR:n hyväksyntächeckpointiin ja loppuraporttiin; niiden ilmoittamiseksi ei tarvita uutta tilakirjauscommittia. Ennen A1:tä nykyinen main ja sen portit tarkistetaan uudelleen. |
 
 ### Integraatiota edeltävä checkpoint 2026-09-28

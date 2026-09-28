@@ -13,6 +13,10 @@ import { E2eCompanyEmailSecretStore } from './e2eCompanyEmailSecretStore.js';
 import { E2eFakeSmtpProvider } from './e2eFakeSmtpProvider.js';
 import { createE2eInvoiceDocumentStorage } from './e2eInvoiceDocumentStorage.js';
 import { createE2eOperationalLogger } from './e2eOperationalLogger.js';
+import {
+  observeE2eStartupLogs,
+  type E2eStartupLogObserver,
+} from './e2eStartupLogObserver.js';
 import { installE2eDatabaseFault } from './installE2eDatabaseFault.js';
 import { ProfileMaintenanceState } from '../src/runtime/profileMaintenance/profileMaintenanceState.js';
 import type { ProfileSnapshotRuntimeService } from '../src/runtime/profileSnapshot/profileSnapshotTypes.js';
@@ -44,6 +48,7 @@ export interface StartE2eBackendOptions {
   companyEmailSecretReader?: E2eBackendSecretReader;
   companyEmailSecretStore?: E2eBackendSecretStore;
   deliveredInvoiceArchiveTaskSink?: E2eDeliveredInvoiceArchiveTaskSink;
+  observeStartupLog?: E2eStartupLogObserver;
   profileSnapshotStagingRoot?: string;
   runtimePaths?: E2eBackendRuntimePathOverrides;
   runtimeSessionSecret?: string;
@@ -91,11 +96,14 @@ export async function startE2eBackend(
       runtimeInstanceId: options.runtimeInstanceId ?? randomUUID(),
     },
   });
-  const operationalLogger = createE2eOperationalLogger({
-    faultPlan: config.faultPlan,
-    logsRoot: config.paths.logsRoot,
-    operationalIdentity,
-  });
+  const operationalLogger = observeE2eStartupLogs(
+    createE2eOperationalLogger({
+      faultPlan: config.faultPlan,
+      logsRoot: config.paths.logsRoot,
+      operationalIdentity,
+    }),
+    options.observeStartupLog,
+  );
   const fakeSmtpProvider = new E2eFakeSmtpProvider(config.faultPlan, {
     operationalIdentity,
     operationalLogger,

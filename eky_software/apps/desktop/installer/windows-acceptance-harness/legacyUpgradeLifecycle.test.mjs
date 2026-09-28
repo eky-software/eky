@@ -173,6 +173,24 @@ for (const [name, content, exitCode, reason, stage, status, failureClass = 'notR
     1, 'applicationReportedFailure', 'backend', 'failed', 'backendReadinessTimeout'],
   ['backend exited before ready', { stage: 'backend', status: 'failed', code: 'BACKEND_EXITED_BEFORE_READY' },
     1, 'applicationReportedFailure', 'backend', 'failed', 'backendExitedBeforeReady'],
+  ['diagnostics summary HTTP failure', { stage: 'diagnostics', status: 'failed', code: 'DESKTOP_SMOKE_DIAGNOSTICS_SUMMARY_HTTP_FAILED' },
+    1, 'applicationReportedFailure', 'diagnostics', 'failed', 'diagnosticsSummaryHttpFailed'],
+  ['diagnostics identity failure', { stage: 'diagnostics', status: 'failed', code: 'DESKTOP_SMOKE_DIAGNOSTICS_IDENTITY_FAILED' },
+    1, 'applicationReportedFailure', 'diagnostics', 'failed', 'diagnosticsIdentityFailed'],
+  ['diagnostics HTTP failure', { stage: 'diagnostics', status: 'failed', code: 'DESKTOP_SMOKE_DIAGNOSTICS_HTTP_FAILED' },
+    1, 'applicationReportedFailure', 'diagnostics', 'failed', 'diagnosticsHttpFailed'],
+  ['diagnostics event failure', { stage: 'diagnostics', status: 'failed', code: 'DESKTOP_SMOKE_DIAGNOSTICS_EVENT_FAILED' },
+    1, 'applicationReportedFailure', 'diagnostics', 'failed', 'diagnosticsEventFailed'],
+  ['diagnostics view failure', { stage: 'diagnostics', status: 'failed', code: 'DESKTOP_SMOKE_DIAGNOSTICS_VIEW_FAILED' },
+    1, 'applicationReportedFailure', 'diagnostics', 'failed', 'diagnosticsViewFailed'],
+  ['unknown diagnostics code', { stage: 'diagnostics', status: 'failed', code: 'DESKTOP_SMOKE_DIAGNOSTICS_PRIVATE_APPLICATION_DETAIL' },
+    1, 'applicationReportedFailure', 'diagnostics', 'failed', 'unclassified'],
+  ['prefixed diagnostics code', { stage: 'diagnostics', status: 'failed', code: 'PRIVATE_DESKTOP_SMOKE_DIAGNOSTICS_VIEW_FAILED' },
+    1, 'applicationReportedFailure', 'diagnostics', 'failed', 'unclassified'],
+  ['suffixed diagnostics code', { stage: 'diagnostics', status: 'failed', code: 'DESKTOP_SMOKE_DIAGNOSTICS_VIEW_FAILED_PRIVATE_APPLICATION_DETAIL' },
+    1, 'applicationReportedFailure', 'diagnostics', 'failed', 'unclassified'],
+  ['diagnostics code without writer prefix', { stage: 'diagnostics', status: 'failed', code: 'DIAGNOSTICS_VIEW_FAILED' },
+    1, 'applicationReportedFailure', 'diagnostics', 'failed', 'unclassified'],
   ['invalid result', '{\n', 0, 'resultInvalid', 'unknown', 'unknown'],
   ['incomplete result at exit', '{', 0, 'processExitedEarly', 'unknown', 'unknown'],
   ['nonzero exit after result', { stage: 'restoreRestart', status: 'started' },
@@ -184,7 +202,7 @@ for (const [name, content, exitCode, reason, stage, status, failureClass = 'notR
     t.after(() => rm(root, { recursive: true, force: true }));
     for (const brokenObserver of [false, true]) {
       const resultPath = join(root, `result-${brokenObserver}.json`);
-      const entries = [];
+      const publishedLines = [];
       const starts = [];
       const dependencies = successfulDependencies({
         runSourcePackagedSmoke: () => runHistoricalPackagedSmokeProcessChain({
@@ -197,17 +215,24 @@ for (const [name, content, exitCode, reason, stage, status, failureClass = 'notR
           },
         }),
         reportProgress(entry) {
-          entries.push(entry);
+          publishedLines.push(JSON.stringify(entry));
           if (brokenObserver) throw new Error('private-observer-failure');
         },
       });
       const result = await executeLegacyUpgradeLifecycle(dependencies);
+      const entries = publishedLines.map((line) => JSON.parse(line));
       assert.equal(result.status, 'failed');
       assert.equal(result.errorCode, 'sourcePackagedSmokeFailed');
       assert.equal(result.sourcePackagedSmokeValidated, false);
+      assert.equal(result.sourceNormalStartupValidated, false);
+      assert.equal(result.majorUpgradeValidated, false);
+      assert.equal(result.targetFirstStartupValidated, false);
       assert.equal(dependencies.calls.includes('sourceStartup'), false);
       assert.equal(dependencies.calls.includes('majorUpgrade'), false);
+      assert.deepEqual(dependencies.calls, ['artifact', 'sourceInstall']);
       assert.deepEqual(starts, ['initial']);
+      assert.equal(entries.filter(entry => entry.phase === 'sourcePackagedSmoke' && entry.status === 'failed').length, 1);
+      assert.equal(entries.filter(entry => entry.phase === 'lifecycle' && entry.status === 'failed').length, 1);
       const evidence = entries.find(entry => entry.phase === 'sourcePackagedSmoke' && entry.status === 'failed');
       assert.deepEqual(Object.keys(evidence).sort(), [
         'durationMs', 'elapsedMs', 'errorCode', 'operation', 'phase', 'scenario',
@@ -219,6 +244,10 @@ for (const [name, content, exitCode, reason, stage, status, failureClass = 'notR
       assert.equal(evidence.smokeFailureClass, failureClass);
       assert.equal(evidence.smokeGeneration, 'initial');
       assert.doesNotMatch(JSON.stringify({ entries, result }), /PRIVATE_FAILURE_DETAIL|private-path|private-observer/);
+      if (typeof content?.code === 'string') {
+        assert.equal(publishedLines.join('\n').includes(content.code), false);
+        assert.equal(JSON.stringify(result).includes(content.code), false);
+      }
     }
   });
 }

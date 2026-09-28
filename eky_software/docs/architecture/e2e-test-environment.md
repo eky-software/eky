@@ -4099,6 +4099,72 @@ Niiden toteutunut hyväksyntä kirjataan dokumentti-PR:n checkpointiin ja
 loppuraporttiin, ei uudella tilakirjauscommitilla. Tulevia tarkistuksia
 ei oleteta läpäistyiksi; epäonnistuminen pysäyttää seuraavan työn.
 
+#### Dokumentti-mainin hylkäys ja rajattu diagnostiikkajatko
+
+Dokumentti-PR #279 yhdistettiin normaalisti mainiin
+`18f9be05aa59316223eeefb14a4e6e3afd2736c9`. Sen
+[täysi normaali ajo 36474910925](https://github.com/eky-software/eky/actions/runs/36474910925),
+yritys 1, hylättiin: 35 ryhmää läpäisi, Electron ja legacy run 1 hylättiin,
+ja kokoava hyväksyntäportti hylättiin niiden vuoksi. Yksi ennalta valinnainen
+ryhmä ohitettiin tarkoituksellisesti. Kaikkien 38 suoritetun ryhmän checkoutit
+ja loppulokit takaisinluettiin. Saman mainin
+[riippuvuustarkistus 36475043247](https://github.com/eky-software/eky/actions/runs/36475043247)
+läpäisi; 160 rekisteriallekirjoitusta varmennettiin. Tämä main ei ole
+hyväksytty lähtötila A1:lle, vaikka toteutuksen aiempi integraatio on hyväksytty.
+
+Electronin `DESK-WORKSPACE-IMPORT-001` saavutti ensimmäisellä yrityksellä
+`firstWindow`-aikarajan onnistuneen backup-valmistelun jälkeen. Käynnistyksen
+projektiossa havaittiin `migration.started`, mutta ei valmistumis- tai
+virhetapahtumaa. Projektio on deduplikoitu katalogijärjestys, ei aikajana;
+se ei osoita migraation alkaneen eikä nimeä viimeistä suoritettua kutsua.
+Nykyiseen ajoon kuulunut retry hylättiin jo erillisen valmistelubackendin
+health-odotuksessa ennen Electronin käynnistystä. Siivoustodisteet säilyivät.
+Nämä ovat eri havaintorajoja, eivät todiste yhdestä yhteisestä juurisyystä.
+
+Legacy run 1:n historiallinen lähdesmoke raportoi virheen `diagnostics`-
+vaiheessa, luokkana `unclassified`. Artifactien ennen/jälkeen-tavusidos
+läpäisi; samoilla tavuilla läpäissyt run 2 ei kumoa hylkäystä. Vanhaan
+projektioon jäämätöntä tarkkaa virhekoodia ei voi palauttaa jälkikäteen.
+
+Rajattu muutos on toteutettu vain testidiagnostiikkaan:
+
+- Testibackend välittää kolmen migraatiolokitapahtuman olemassa olevan
+  logger-kutsun rajat: `entered`, `returned` tai `threw`. Varsinaista
+  migraatiota, SQL-kutsuja tai tuotantologgeria ei instrumentoida.
+  Delegatea kutsutaan kerran alkuperäisellä vastaanottajalla ja tapahtumalla;
+  sen alkuperäinen poikkeus säilyy. Havaintokutsun oma virhe ei muuta tulosta.
+- Suljetut havainnot käyttävät nykyistä utility/main/readiness-ketjua ja
+  `backendStartup`-projektiota. Ne ovat havaintovaiheita, eivät uusia
+  backendin käynnistysvirheluokkia. Pelkkä `entered` ilman loppuhavaintoa
+  tarkoittaa, ettei paluuta havaittu; se ei todista pysyvää lukkiutumista.
+  `migration.started`-lokikutsun paluu ei todista migraation suoritusta tai
+  lokin levytallennuksen onnistumista. Puuttuva IPC jää tuntemattomaksi.
+- Legacy-lukija tunnistaa jäädytetyn kirjoittajan viisi täsmällistä
+  diagnostiikkavirhekoodia: summary-HTTP, identity, HTTP, event ja view.
+  Muut arvot jäävät `unclassified`-luokkaan. Raakaa koodia tai sisältöä
+  ei julkaista, ja havaintoketjun virheestä huolimatta koe pysyy hylättynä.
+
+Regressiot kattavat loggerin kutsusopimuksen, suljetut IPC-lukijat ja
+legacy-luokan koko vaihejulkaisuketjun. Tarkistetaan myös alkuperäisen
+virheen säilyminen ja havaintojen yksityisyys. Kentät kuuluvat vain
+testiharnessiin, eivät sovelluksen Diagnosticsiin, Activityyn tai
+tukipakettiin. Aikarajat, retry-käytäntö, CI-ehdot, historialliset paketit ja
+moduulitestin käyttämä fixture-rajapinta eivät muutu. Uusi seurattu ajo
+käyttää katselmoitua lähdettä; diagnostiikan lisäys tai myöhempi läpäisy ei
+yksin todista alkuperäisiä syitä korjatuiksi.
+
+Toteutuksen kohdeportit läpäisivät: backendin loggeri- ja kytkentätestit
+13/13, Electronin käynnistyssopimukset 17/17 sekä legacy-lukijan ja
+vaihejulkaisun regressiot 70/70. Muuttuneiden testiruntimejen tyypitys ja
+riippumaton katselmus hyväksyttiin. Tavallinen Windows-kokonaisuus läpäisi
+783/783 (system 695, web 43, Electron 45) ensimmäisellä yrityksellä ilman
+retryä, flakyä, ohituksia tai yleisiä raporttivirheitä. Toteutunut tapausjoukko
+ja lähdesidos tarkistettiin erikseen. Tämä ei ole uuden revision CI- tai
+main-hyväksyntä eikä alkuperäisten aikakatkaisujen juurisyytodiste.
+Normaali PR ja sen mergen oma main-ajo ovat seuraavat portit; niiden
+lopputulos kirjataan PR:n hyväksyntächeckpointiin ilman uutta pelkkää
+tilakirjauscommittia. A1 alkaa vasta hyväksytyltä mainilta.
+
 #### T3:n lopullinen hyväksyntänäyttö
 
 Moduulikehittäjän rajapinta pidetään pienenä: system-testit käyttävät

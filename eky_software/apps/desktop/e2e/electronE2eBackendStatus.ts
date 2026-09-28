@@ -7,12 +7,32 @@ export const electronE2eBackendStartupStages = [
   'readyNotification',
 ] as const;
 
-export type ElectronE2eBackendStartupStage =
+export type ElectronE2eBackendFailureStage =
   (typeof electronE2eBackendStartupStages)[number];
+
+export const electronE2eBackendLogStages = [
+  'migration.started.log.entered',
+  'migration.started.log.returned',
+  'migration.started.log.threw',
+  'migration.completed.log.entered',
+  'migration.completed.log.returned',
+  'migration.completed.log.threw',
+  'migration.failed.log.entered',
+  'migration.failed.log.returned',
+  'migration.failed.log.threw',
+] as const;
+
+export type ElectronE2eBackendLogStage = (typeof electronE2eBackendLogStages)[number];
+export type ElectronE2eBackendObservationStage =
+  | ElectronE2eBackendFailureStage
+  | ElectronE2eBackendLogStage;
+
+// The controller's existing startup callback carries observation-only stages too.
+export type ElectronE2eBackendStartupStage = ElectronE2eBackendObservationStage;
 
 export interface ElectronE2eBackendProgress {
   readonly type: 'progress';
-  readonly stage: ElectronE2eBackendStartupStage;
+  readonly stage: ElectronE2eBackendObservationStage;
 }
 
 export type ElectronE2eBackendStatus =
@@ -21,12 +41,12 @@ export type ElectronE2eBackendStatus =
       type: 'ready';
     }
   | {
-      stage: ElectronE2eBackendStartupStage;
+      stage: ElectronE2eBackendFailureStage;
       type: 'failed';
     };
 
 const failureCodeByStage: Record<
-  ElectronE2eBackendStartupStage,
+  ElectronE2eBackendFailureStage,
   `DESKTOP_SMOKE_E2E_BACKEND_${string}_FAILED`
 > = {
   backendStart: 'DESKTOP_SMOKE_E2E_BACKEND_START_FAILED',
@@ -52,7 +72,7 @@ export function parseElectronE2eBackendProgress(
     if (
       record.type === 'progress' &&
       hasExactlyKeys(record, ['stage', 'type']) &&
-      isElectronE2eBackendStartupStage(record.stage)
+      isElectronE2eBackendObservationStage(record.stage)
     ) {
       return Object.freeze({ stage: record.stage, type: 'progress' });
     }
@@ -63,11 +83,11 @@ export function parseElectronE2eBackendProgress(
 }
 
 export function reportElectronE2eBackendProgress(
-  stage: ElectronE2eBackendStartupStage,
+  stage: ElectronE2eBackendObservationStage,
   send: (progress: ElectronE2eBackendProgress) => void,
 ): void {
   try {
-    if (isElectronE2eBackendStartupStage(stage)) {
+    if (isElectronE2eBackendObservationStage(stage)) {
       send(Object.freeze({ stage, type: 'progress' }));
     }
   } catch {
@@ -94,7 +114,7 @@ export function parseElectronE2eBackendStatus(
   if (
     record.type === 'failed' &&
     hasExactlyKeys(record, ['stage', 'type']) &&
-    isElectronE2eBackendStartupStage(record.stage)
+    isElectronE2eBackendFailureStage(record.stage)
   ) {
     return { stage: record.stage, type: 'failed' };
   }
@@ -102,7 +122,7 @@ export function parseElectronE2eBackendStatus(
 }
 
 export function readElectronE2eBackendFailureCode(
-  stage: ElectronE2eBackendStartupStage,
+  stage: ElectronE2eBackendFailureStage,
 ): `DESKTOP_SMOKE_E2E_BACKEND_${string}_FAILED` {
   return failureCodeByStage[stage];
 }
@@ -119,11 +139,20 @@ function hasExactlyKeys(
   );
 }
 
-export function isElectronE2eBackendStartupStage(
+export function isElectronE2eBackendFailureStage(
   value: unknown,
-): value is ElectronE2eBackendStartupStage {
+): value is ElectronE2eBackendFailureStage {
   return (
     typeof value === 'string' &&
     electronE2eBackendStartupStages.some((stage) => stage === value)
+  );
+}
+
+export function isElectronE2eBackendObservationStage(
+  value: unknown,
+): value is ElectronE2eBackendObservationStage {
+  return isElectronE2eBackendFailureStage(value) || (
+    typeof value === 'string' &&
+    electronE2eBackendLogStages.some((stage) => stage === value)
   );
 }

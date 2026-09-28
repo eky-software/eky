@@ -5,6 +5,7 @@ import { expect, test } from '@playwright/test';
 
 import { createElectronE2eBackendController } from '../../../desktop/e2e/electronE2eBackendProcess.js';
 import {
+  electronE2eBackendLogStages,
   electronE2eBackendStartupStages,
   parseElectronE2eBackendProgress,
   parseElectronE2eBackendStatus,
@@ -118,7 +119,7 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
   });
 
   test('progress accepts only the closed stage projection and never parses as readiness', () => {
-    for (const stage of electronE2eBackendStartupStages) {
+    for (const stage of [...electronE2eBackendStartupStages, ...electronE2eBackendLogStages]) {
       const value = { type: 'progress', stage };
       expect(parseElectronE2eBackendProgress(value)).toEqual(value);
       expect(parseElectronE2eBackendStatus(value)).toBeUndefined();
@@ -132,6 +133,63 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
       { type: 'failed', stage: 'moduleImport' },
       { type: 'ready', port: 43127 },
     ]) expect(parseElectronE2eBackendProgress(value)).toBeUndefined();
+  });
+
+  test('log boundaries round-trip through strict progress and snapshot parsers without becoming failures', () => {
+    let clock = 0;
+    const observation = createElectronE2eStartupObservation(() => clock);
+    for (const stage of electronE2eBackendLogStages) {
+      clock += 1;
+      reportElectronE2eBackendProgress(stage, (value) => {
+        const progress = parseElectronE2eBackendProgress(value);
+        expect(progress).toEqual({ type: 'progress', stage });
+        observation.recordBackendStartupStage(progress!.stage);
+      });
+      const snapshot = observation.snapshot();
+      expect(snapshot).toEqual({
+        schemaVersion: 2, checkpoints: [], truncated: false,
+        backendStartup: { status: 'observed', stage, elapsedMs: clock },
+      });
+      expect(parseElectronE2eStartupObservation(snapshot)).toEqual(snapshot);
+      expect(Object.isFrozen(snapshot.backendStartup)).toBe(true);
+      expect(parseElectronE2eBackendStatus({ type: 'failed', stage })).toBeUndefined();
+      for (const extra of [{ code: 'PRIVATE_CODE' }, { data: 'private data' }, { error: 'private error' }]) {
+        expect(parseElectronE2eBackendProgress({ type: 'progress', stage, ...extra })).toBeUndefined();
+        expect(parseElectronE2eStartupObservation({
+          ...snapshot, backendStartup: { ...snapshot.backendStartup, ...extra },
+        })).toBeUndefined();
+      }
+    }
+    for (const stage of ['database.opened.log.returned', 'migration.started.log.unknown', 'private']) {
+      expect(parseElectronE2eBackendProgress({ type: 'progress', stage })).toBeUndefined();
+      expect(parseElectronE2eStartupObservation({
+        ...observation.snapshot(), backendStartup: { status: 'observed', stage, elapsedMs: 1 },
+      })).toBeUndefined();
+    }
+  });
+
+  test('log observations do not resolve startup or replace its actual backendStart failure', async () => {
+    const fixture = backendFixture();
+    const started = fixture.start();
+    let settled = false;
+    void started.then(() => { settled = true; }, () => { settled = true; });
+    fixture.child.emit('spawn');
+    for (const stage of electronE2eBackendLogStages) {
+      fixture.child.emit('message', { type: 'progress', stage });
+      fixture.child.emit('message', { type: 'failed', stage });
+    }
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(fixture.kills()).toBe(0);
+    const rejected = expect(started).rejects.toThrow('E2E_BACKEND_START_FAILED');
+    fixture.child.emit('message', { type: 'failed', stage: 'backendStart' });
+    fixture.child.emit('message', { type: 'progress', stage: 'readyNotification' });
+    await rejected;
+    expect(fixture.observation.snapshot().backendStartup).toEqual({
+      status: 'observed', stage: 'migration.failed.log.threw', elapsedMs: 0,
+    });
+    expect(fixture.kills()).toBe(1);
+    expect(fixture.controller.isRunning()).toBe(false);
   });
 
   test('progress observes the main clock but cannot resolve startup or accept unsafe fields', async () => {
@@ -167,10 +225,11 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
 
   test('the reporter sends only immutable progress and a send failure cannot replace startup work', () => {
     const sent: unknown[] = [];
-    for (const stage of electronE2eBackendStartupStages) {
+    for (const stage of [...electronE2eBackendStartupStages, ...electronE2eBackendLogStages]) {
       reportElectronE2eBackendProgress(stage, (value) => { sent.push(value); });
     }
-    expect(sent).toEqual(electronE2eBackendStartupStages.map((stage) => ({ type: 'progress', stage })));
+    expect(sent).toEqual([...electronE2eBackendStartupStages, ...electronE2eBackendLogStages]
+      .map((stage) => ({ type: 'progress', stage })));
     expect(sent.every(Object.isFrozen)).toBe(true);
     expect(() => reportElectronE2eBackendProgress('moduleImport', () => {
       throw new Error('private send failure');
@@ -220,7 +279,7 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
       started = fixture.start();
       rejected = expect(started).rejects.toThrow('E2E_BACKEND_READY_TIMEOUT_FAILED');
       fixture.child.emit('spawn');
-      for (const stage of electronE2eBackendStartupStages) {
+      for (const stage of [...electronE2eBackendStartupStages, ...electronE2eBackendLogStages]) {
         fixture.child.emit('message', { type: 'progress', stage });
       }
       expect(timers).toHaveLength(1);
@@ -236,7 +295,7 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
     }
     await rejected;
     expect(fixture.observation.snapshot().backendStartup).toEqual({
-      status: 'observed', stage: 'readyNotification', elapsedMs: 0,
+      status: 'observed', stage: 'migration.failed.log.threw', elapsedMs: 0,
     });
     expect(fixture.checkpoints()).toContain('backendReadinessTimedOut');
     expect(fixture.checkpoints()).not.toContain('backendReadyReceived');

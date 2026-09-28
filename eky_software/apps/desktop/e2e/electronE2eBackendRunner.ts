@@ -13,7 +13,9 @@ import {
 } from '../src/runtime/backendMessages.js';
 import {
   reportElectronE2eBackendProgress,
-  type ElectronE2eBackendStartupStage,
+  type ElectronE2eBackendFailureStage,
+  type ElectronE2eBackendLogStage,
+  type ElectronE2eBackendObservationStage,
 } from './electronE2eBackendStatus.js';
 
 interface E2eBackendServer {
@@ -28,6 +30,7 @@ interface StartE2eBackend {
       companyEmailSecretReader: CompanyEmailSecretBrokerClient;
       companyEmailSecretStore: CompanyEmailSecretBrokerClient;
       deliveredInvoiceArchiveTaskSink: InvoicePdfArchiveBrokerClient;
+      observeStartupLog?: (stage: ElectronE2eBackendLogStage) => void;
       profileSnapshotStagingRoot: string;
       runtimePaths: {
         databaseFilePath: string;
@@ -51,7 +54,7 @@ interface StartE2eBackend {
 }
 
 const parentPort = process.parentPort;
-const reportStartupStage = (stage: ElectronE2eBackendStartupStage): void =>
+const reportStartupStage = (stage: ElectronE2eBackendObservationStage): void =>
   reportElectronE2eBackendProgress(stage, (progress) => parentPort.postMessage(progress));
 let server: E2eBackendServer | undefined;
 let secretBrokerClient: CompanyEmailSecretBrokerClient | undefined;
@@ -71,7 +74,7 @@ parentPort.on('message', (event) => {
   startAttempted = true;
 
   void (async () => {
-    let startupStage: ElectronE2eBackendStartupStage = 'boundaryValidation';
+    let startupStage: ElectronE2eBackendFailureStage = 'boundaryValidation';
     try {
       reportStartupStage(startupStage);
       if (process.env.EKY_E2E !== '1' || event.ports.length !== 3) {
@@ -115,6 +118,7 @@ parentPort.on('message', (event) => {
         companyEmailSecretReader: secretBrokerClient,
         companyEmailSecretStore: secretBrokerClient,
         deliveredInvoiceArchiveTaskSink: invoicePdfArchiveBrokerClient,
+        observeStartupLog: reportStartupStage,
         profileSnapshotStagingRoot:
           command.config.profileSnapshotStagingRoot,
         runtimeInstanceId: command.config.runtimeInstanceId,

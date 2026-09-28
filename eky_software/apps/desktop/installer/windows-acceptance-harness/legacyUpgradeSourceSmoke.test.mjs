@@ -228,9 +228,18 @@ test('historical smoke chain rejects a failed generation without adding another'
   assert.equal(starts, 1);
 });
 
-for (const [code, expectedClass] of [
+for (const [code, expectedClass, stage = 'backend'] of [
   ['BACKEND_EXITED_BEFORE_READY', 'backendExitedBeforeReady'],
   ['BACKEND_READINESS_TIMEOUT', 'backendReadinessTimeout'],
+  ['DESKTOP_SMOKE_DIAGNOSTICS_SUMMARY_HTTP_FAILED', 'diagnosticsSummaryHttpFailed', 'diagnostics'],
+  ['DESKTOP_SMOKE_DIAGNOSTICS_IDENTITY_FAILED', 'diagnosticsIdentityFailed', 'diagnostics'],
+  ['DESKTOP_SMOKE_DIAGNOSTICS_HTTP_FAILED', 'diagnosticsHttpFailed', 'diagnostics'],
+  ['DESKTOP_SMOKE_DIAGNOSTICS_EVENT_FAILED', 'diagnosticsEventFailed', 'diagnostics'],
+  ['DESKTOP_SMOKE_DIAGNOSTICS_VIEW_FAILED', 'diagnosticsViewFailed', 'diagnostics'],
+  ['DESKTOP_SMOKE_DIAGNOSTICS_PRIVATE_APPLICATION_DETAIL', 'unclassified', 'diagnostics'],
+  ['PRIVATE_DESKTOP_SMOKE_DIAGNOSTICS_VIEW_FAILED', 'unclassified', 'diagnostics'],
+  ['DESKTOP_SMOKE_DIAGNOSTICS_VIEW_FAILED_PRIVATE_APPLICATION_DETAIL', 'unclassified', 'diagnostics'],
+  ['DIAGNOSTICS_VIEW_FAILED', 'unclassified', 'diagnostics'],
   ['DESKTOP_START_FAILED', 'desktopStartFailed'],
   ['PACKAGED_BUILD_INFO_INVALID', 'packagedBuildInfoInvalid'],
   ['PACKAGED_SMOKE_FAILED', 'packagedSmokeFailed'],
@@ -258,14 +267,14 @@ for (const [code, expectedClass] of [
       resultPath,
       async startGeneration(generation) {
         starts.push(generation);
-        await writeFile(resultPath, `${JSON.stringify({ stage: 'backend', status: 'failed', code })}\n`);
+        await writeFile(resultPath, `${JSON.stringify({ stage, status: 'failed', code })}\n`);
         return { completion: Promise.resolve({ exitCode: 1 }) };
       },
     }), (error) => {
       assert.equal(error.message, 'sourcePackagedSmokeFailed');
       const evidence = describeHistoricalPackagedSmokeFailure(error);
       assert.deepEqual(evidence, {
-        smokeReason: 'applicationReportedFailure', smokeStage: 'backend',
+        smokeReason: 'applicationReportedFailure', smokeStage: stage,
         smokeStatus: 'failed', smokeGeneration: 'initial', smokeFailureClass: expectedClass,
       });
       assert.equal(Object.isFrozen(evidence), true);

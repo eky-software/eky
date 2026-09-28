@@ -7,6 +7,13 @@ väitä alemman tason testiä E2E-todisteeksi.
 [T3:n integraatiohyväksyntä](e2e-test-environment.md#t3n-integraatiohyväksyntä) yksilöi lähteen, checkoutin,
 merge-mainin ja hyväksytyt ajot. Dokumenttimuutoksen oma integraatio sekä
 seuraava A1/R01 ovat erillisiä [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Uudemman dokumentti-mainin hylkäys ei kumoa aiempaa toteutusnäyttöä, mutta
+estää A1:n aloittamisen. Sen [rajattu diagnostiikkajatko](e2e-test-environment.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko)
+täydentää nykyistä `SYS-ELECTRON-BACKEND-STARTUP-001`-sopimusta suljetuilla
+migraatiolokin kutsurajoilla sekä backendin alemman tason logger-testeillä.
+Legacy-luokitus ja sen vaihejulkaisu todennetaan harness-sopimustesteissä,
+eivät uutena E2E-käyttäjäpolkuna. Näiden uusien testien tulokset kirjataan
+oman lähteen näytöksi; aikaisemmat määrät eivät sisällä niitä.
 
 ## Aiemmat checkpointit
 
