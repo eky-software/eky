@@ -2,6 +2,25 @@
 
 ## Päätös ja nykyinen tila
 
+**M0, T1, T2 ja T3/R28 on hyväksytty; M1:n sovelluskorjaukset ovat avoinna.**
+PR #278:n lähde, normaali PR-todennus ja hyväksytty merge-main on yksilöity
+omistavassa checkpointissa: [T3:n integraatiohyväksyntä](e2e-test-environment.md#t3n-integraatiohyväksyntä).
+Tämä sulkee T-paketin, ei M1:tä tai 0.3.0-julkaisua.
+
+Dokumenttien tilapäivityksen oma PR/main-integraatio hyväksytään erikseen;
+T3:n hyväksyntä ei väitä sen tulevia tarkistuksia läpäistyiksi. Seuraava
+tuotantopala on [A1/R01](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde)
+vasta dokumenttimuutoksen normaalien PR- ja main-porttien jälkeen.
+[M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+omistaa rajauksen. Ei rinnakkaista arkkitehtuuri- tai dokumentaatioremonttia.
+
+### Integraatiota edeltävä checkpoint 2026-09-28
+
+Seuraava tilannekuva ja aiemmat checkpointit säilyvät historiatietona.
+Niiden nykytila-, seuraava työ- ja pending-ilmaukset koskevat omaa
+checkpointiaan, eivät yllä hyväksyttyä integraatiota. Testimäärät ja
+hylkäysten syyepävarmuudet pysyvät sidottuina alkuperäisiin näyttöihin.
+
 **Nykytila 2026-09-28: M0, T1 ja T2 hyväksytty; T3/R28 kesken.**
 **Viimeisin täysi normaali baseline on `5bbfd4834707b77e1211851a6fb21b09b8572a66`.**
 Sen [normaali CI](https://github.com/eky-software/eky/actions/runs/36443256758)
@@ -157,7 +176,7 @@ Electron-valmistelun; paikallinen näyttö ei korvannut sitä. Yllä mainittu
 Chromiumin ja Linuxin myöhemmät hyväksytyt kuluttajasiirrot eivät sisälly
 tähän aiempaan näyttöön.
 
-Nykyinen jäljellä oleva työ on [M1:n lyhyessä sulkulistassa](release-0.3.0-m1-preparation-plan.md#t3n-nykyinen-työjärjestys):
+Tässä checkpointissa jäljellä oleva työ oli [M1:n lyhyessä sulkulistassa](release-0.3.0-m1-preparation-plan.md#t3n-nykyinen-työjärjestys):
 korvattujen aktiivisten polkujen poisto ja poiston regressiot, koko nykyisen
 T3-matriisin näytön yhteenveto sekä täsmälliset PR/main-portit. Chromiumin
 worker-/testikohtainen eristys ja Linuxin oikeat kuluttajat on nyt todennettu
@@ -586,15 +605,14 @@ M0-selvitys ei avaa muuta 0.3.0-toteutusta ennen integraatioporttia.
 
 ### M1: Todistuksen ja päätösten valmistelu
 
-**Tila 2026-09-27:** rajattu suunnitteluvalmistelu tehty ja katselmoitu
-hyväksytyltä M0-pohjalta. T1a/T1b:n toteutus ja PR/main-integraatio on
-hyväksytty. Myös T2:n toteutus, paikallinen näyttö, Linux-CI ja PR/main-
-integraatio on hyväksytty. T3/R28:n jatkovaltuus on yllä; jäljellä ovat
-[nykyisen sulkulistan](release-0.3.0-m1-preparation-plan.md#t3n-nykyinen-työjärjestys)
-oikeat kuluttajasiirrot, nimetyt avoimet päätösrajat, korvatun toteutuksen
-poisto ja täydet hyväksyntäportit. Aiemmat kokeet ja niiden hylkäykset
-säilyvät historiassa, eivät uuden revision hyväksyntänä. T3/R28 ja muut
-M1:n sovelluskorjaukset ovat edelleen avoinna.
+**Tila:** suunnitteluvalmistelu sekä T1a/T1b, T2 ja T3/R28 on hyväksytty,
+myös niiden omat PR/main-portit. [T3:n integraatiohyväksyntä](e2e-test-environment.md#t3n-integraatiohyväksyntä)
+sulkee prosessiomistajuuden, oikeiden kuluttajien siirron ja korvatun
+aktiivisen toteutuksen poiston hyväksytyssä rajauksessa. Aiemmat kokeet,
+määrät ja hylkäysten syyepävarmuudet säilyvät omina checkpointteinaan.
+M1:n sovelluskorjaukset ovat edelleen avoinna. Dokumenttien tilapäivityksen
+oman normaalin PR/main-integraation jälkeen seuraava rajattu tuotantopala
+on A1/R01; se ei sulje A2/R05:tä, A3/R06:ta tai muita paketteja.
 Tarkka jako on [M1-suunnitelmassa](release-0.3.0-m1-preparation-plan.md):
 T1a/T1b testien ajokytkentä, T2 projektivalinta ja build-edellytykset,
 T3 testiprosessien omistajuus sekä A1:n rajattu kohdekorjaus.
@@ -646,8 +664,9 @@ ovat samoja töitä G/H-paketeissa, eivät toinen korjausjono. PDF-arkiston
 katalogisopimus ja retentionin reunaehdot täydentävät D029-listaa; niitä ei
 kuitata valmiiksi pelkän vanhan diagnostiikkalistan läpäisyllä.
 
-T-paketista T1a/T1b ja T2 on hyväksytty yllä mainittujen integraatioiden
-näytöllä. T3c-W:n rajattu 4/4-koetuloskaan ei sulje T3/R28:aa. A/B/C/K/D/E/F/G/H/I:n
+T-paketin T1a/T1b, T2 ja T3/R28 on hyväksytty niiden omien
+integraatioiden näytöllä; [T3:n integraatiohyväksyntä](e2e-test-environment.md#t3n-integraatiohyväksyntä) ei perustu
+pelkkään historialliseen T3c-W:n 4/4-koetulokseen. A/B/C/K/D/E/F/G/H/I:n
 tila on **suunniteltu / korjaus ja hyväksyntä tekemättä**.
 Päätösportin vaikutusalue odottaa hyväksyntää.
 
