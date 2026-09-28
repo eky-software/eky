@@ -48,6 +48,21 @@ erottamisen. Mukana on todellisen Playwright-ajurin tarkoituksellinen
 startup-hylkäys ja automaattinen retry. Tämä on raportoinnin sopimusnäyttö,
 ei hyväksytty Linux-kuluttaja, normaalin CI:n flaky-hyväksyntä tai T3:n sulku.
 
+Samaa checkpointia täydentävät `e2eBackendTempIsolation.spec.ts`:n alemman
+tason `SYS-TEMP-ANCHOR`-sopimus ja `safeCiReporter.test.mjs`:n todellisen
+testiajurin post-launch-virhekoe. Ensimmäinen tarkistaa eristetyn child-tempin
+alkuperäisen run-root-ankkurin sekä viereisen juuren hylkäyksen oikealla
+config-readerilla, ei HTTP-palvelimella. Jälkimmäinen käyttää varsinaisia
+health- ja worker-elinkaarifunktioita simuloiduilla prosessihavainnoilla:
+alkuperäinen virhe ja siivous säilyvät, ja vain suljetut vaiheet pääsevät
+CI-lokiin. Raportointi-/session-/ympäristökohdesarja 74/74 on todennettu;
+korjatun Linux-kuluttajan CI ja T3:n sulku pysyvät avoimina.
+Korjauksen Windows-system 690/690 sisältää uuden reader-regression;
+web 43/43 sisältää saman selaimen erillisten testikontekstien ja datan
+todellisen eristyksen. Molemmat läpäisivät ilman retryä tai ohituksia.
+Pakettitestien ja tyypityksen näyttö sekä rinnakkaisajon säilyvä havainto
+on rajattu samassa omistavassa checkpointissa.
+
 ## Tilat
 
 - `accepted-contract`: matriisissa nimetty testi-infrastruktuurin sopimus

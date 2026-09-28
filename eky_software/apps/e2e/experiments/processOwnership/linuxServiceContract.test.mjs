@@ -114,8 +114,13 @@ test('fixed backend and Vite launches inherit no environment or shell hooks', ()
     assert.equal(command.env.PATH, '/usr/bin:/bin');
     assert.equal(command.env.HOME, '/tmp/eky-e2e/run-abcdef/CASE/temp');
     assert.equal(command.env.TMPDIR, command.env.HOME);
-    if (profile === 'backend') assert.deepEqual(command.args,
-      ['/source/apps/backend/e2e-dist/e2e/backendEntrypoint.js', '--config', config().runtimeConfigPath]);
+    if (profile === 'backend') {
+      assert.deepEqual(command.args,
+        ['/source/apps/backend/e2e-dist/e2e/backendEntrypoint.js', '--config', config().runtimeConfigPath]);
+      assert.equal(command.env.EKY_E2E_OS_TEMP_ROOT, '/tmp');
+      assert.equal(command.env.TEMP, command.env.TMPDIR);
+      assert.equal(command.env.TMP, command.env.TMPDIR);
+    }
     else {
       assert.deepEqual(command.args.slice(1), ['--config', 'vite.config.ts', '--host', '127.0.0.1',
         '--port', '3456', '--strictPort', '--mode', 'eky-e2e']);

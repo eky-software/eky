@@ -2,31 +2,7 @@ import type {
   E2eProcessStartupObservation,
 } from './e2eProcessStartupObservation.js';
 import { waitForObservedProcessHealth } from './waitForObservedProcessHealth.js';
-
-const startupPhases = new Set([
-  'processSpawnRequested',
-  'processSpawned',
-  'healthWaitStarted',
-  'childExitedBeforeHealth',
-  'workloadObservationLost',
-  'healthReady',
-  'healthTimedOut',
-  'cleanupStarted',
-  'processTreeStopped',
-  'portReleaseStarted',
-  'portReleased',
-  'cleanupCompleted',
-] as const);
-const startupStatuses = new Set(['started', 'completed', 'failed'] as const);
-const startupErrorCodes = new Set([
-  'E2E_BACKEND_PROCESS_SPAWN_FAILED',
-  'E2E_BACKEND_CHILD_EXITED_BEFORE_HEALTH',
-  'E2E_BACKEND_WORKLOAD_OBSERVATION_LOST',
-  'E2E_BACKEND_HEALTH_TIMEOUT',
-  'E2E_BACKEND_LOOPBACK_ADDRESS_IN_USE',
-  'E2E_BACKEND_PROCESS_TREE_CLEANUP_FAILED',
-  'E2E_BACKEND_PORT_RELEASE_FAILED',
-] as const);
+import { encodeServiceProgress, isBackendStartupProgressKind } from './serviceProgressDiagnostic.mjs';
 
 export type E2eBackendStartupPhase =
   | 'processSpawnRequested'
@@ -69,18 +45,12 @@ export function createE2eBackendStartupReporter(input: {
   readonly writeLine?: (line: string) => void;
 } = {}): E2eBackendStartupObserver {
   const now = input.now ?? Date.now;
-  const writeLine = input.writeLine ?? ((line: string) => console.log(line));
+  const writeLine = input.writeLine ?? ((line: string) => console.log('\n' + line));
   const startedAt = now();
   let phaseStartedAt = startedAt;
 
   return (progress) => {
-    if (
-      !startupPhases.has(progress.phase) ||
-      !startupStatuses.has(progress.status) ||
-      (progress.errorCode !== undefined &&
-        (!startupErrorCodes.has(progress.errorCode) ||
-          progress.status !== 'failed'))
-    ) {
+    if (!isBackendStartupProgressKind(progress)) {
       return;
     }
     const observedAt = now();
@@ -98,7 +68,7 @@ export function createE2eBackendStartupReporter(input: {
       status: progress.status,
     });
     try {
-      writeLine(JSON.stringify(safeProgress));
+      writeLine(encodeServiceProgress(safeProgress));
     } catch {
       // Test observability must not alter the startup result.
     }

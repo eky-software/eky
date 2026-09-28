@@ -26,6 +26,18 @@ kokorajatestin aikakatkaisun. Riippuvuustarkistus läpäisi; tämä ei hyväksy
 muuta ajoa. Ensimmäiset virhetiedot säilytetään, ja baseline korjataan ennen
 seuraavaa toiminnallista vaihetta. [Rajaus ja avoin näyttö](e2e-test-environment.md#chromiumin-ja-linuxin-ensimmäinen-yhteinen-ci)
 erottavat nämä toisistaan. Tämä rajattu näyttö ei sulje T3:a.
+Seuraavan diagnostiikkarevision `5c8bb24a`
+[CI:ssä](https://github.com/eky-software/eky/actions/runs/36423687950)
+workspace-portti läpäisi, mutta Linuxin samat system/web-hylkäykset säilyivät.
+Palvelun käynnistysvaiheen virherivi ei syntynyt; tämä ei todista onnistunutta
+backendin health-vaihetta. Nykyinen korjaus kohdistuu Linux-testibackendin
+puuttuvaan alkuperäisen OS-temp-juuren ankkuriin. Oikean config-readerin
+regressio sekä suljettu backend-/Chromium-vaiheiden raportointiketju
+todentavat rajauksen; korjatun revision tavallinen Linux-CI on vielä avoin.
+Korjauksen Windows-system 690/690, web 43/43, työkalusarja 740/740 ja
+tyypitys läpäisivät. Kaikki pakettitestit läpäisivät paikallisesti peräkkäin;
+[säilyvä rinnakkaisajon aikakatkaisuhavainto](e2e-test-environment.md#chromiumin-ja-linuxin-ensimmäinen-yhteinen-ci)
+ei muuta CI:n ajotapaa tai aikarajoja eikä ole merkitty korjatuksi.
 [Aiemmat hylkäykset ja korjauksen rajaus](e2e-test-environment.md#windows-electron--valmistelun-ci-hylkäys)
 säilyvät historiatietona; läpäisy ei ratkaise aiemman satunnaisen
 poistumisen syytä eikä hyväksy koko T3:a tai PR/main-integraatiota.

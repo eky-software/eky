@@ -1,7 +1,6 @@
 import { managedSessionFailureReasons } from './managedNamespaceResult.mjs';
 
 export const linuxServiceDiagnosticPrefix = 'EKY_LINUX_SERVICE_FAILURE ';
-const maximumLineLength = 512;
 const phases = new Set(['prepare', 'preflight', 'managerPrepare', 'controlListen',
   'managerLaunch', 'controlReady', 'managerOwn', 'workloadStart']);
 const reasons = new Set(['preparationFailed', 'startupDeadlineExceeded', 'launchFailed',
@@ -33,33 +32,4 @@ export function encodeLinuxServiceDiagnostic(value) {
     profile: value.profile, phase: value.phase, startupFailure: value.startupFailure,
     causeReason: value.causeReason, causeStage: value.causeStage,
     spawnObserved: value.spawnObserved, processTree: value.processTree }) + '\n';
-}
-
-// The reporter may receive partial or combined public stdout chunks. Drop
-// arbitrary output and oversized lines without retaining raw diagnostics.
-export function createLinuxServiceDiagnosticRelay(emit) {
-  let pending = '';
-  let discarding = false;
-  return chunk => {
-    const text = Buffer.isBuffer(chunk) ? chunk.toString('utf8') : chunk;
-    if (typeof text !== 'string') return;
-    for (const character of text) {
-      if (character !== '\n') {
-        if (!discarding) {
-          pending += character;
-          if (pending.length > maximumLineLength) { pending = ''; discarding = true; }
-        }
-        continue;
-      }
-      const line = pending;
-      pending = '';
-      const dropped = discarding;
-      discarding = false;
-      if (dropped || !line.startsWith(linuxServiceDiagnosticPrefix)) continue;
-      try {
-        const safe = encodeLinuxServiceDiagnostic(JSON.parse(line.slice(linuxServiceDiagnosticPrefix.length)));
-        emit(safe);
-      } catch { /* Unknown, malformed or extended records remain private. */ }
-    }
-  };
 }

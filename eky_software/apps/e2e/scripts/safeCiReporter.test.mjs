@@ -9,6 +9,8 @@ import test from 'node:test';
 import SafeCiReporter, { createE2eReporters, REPORT_PREFIX } from './safeCiReporter.mjs';
 import { encodeLinuxServiceDiagnostic, linuxServiceDiagnosticPrefix, projectLinuxServiceCause }
   from '../experiments/processOwnership/linuxServiceDiagnostic.mjs';
+import { serviceProgressPrefix } from './safeCiOutputRelay.mjs';
+import { encodeServiceProgress } from '../src/environment/serviceProgressDiagnostic.mjs';
 
 const reporterPath = fileURLToPath(new URL('./safeCiReporter.mjs', import.meta.url));
 const require = createRequire(import.meta.url);
@@ -20,6 +22,42 @@ const events = output => output.split(/\r?\n/u)
 const linuxFailure = Object.freeze({ schemaVersion: 1, profile: 'backend', phase: 'prepare',
   causeReason: 'unverified', causeStage: 'unverified',
   startupFailure: 'preparationFailed', spawnObserved: false, processTree: 'stopped' });
+const backendProgress = Object.freeze({ durationMs: 2, elapsedMs: 10,
+  errorCode: 'E2E_BACKEND_CHILD_EXITED_BEFORE_HEALTH', phase: 'childExitedBeforeHealth',
+  scenario: 'e2eBackendStartup', status: 'failed' });
+const workerProgress = Object.freeze({ schemaVersion: 1, operation: 'chromiumWorker',
+  phase: 'workerTeardown', ownerFailure: null, cleanup: 'verified', workerRoot: 'removed' });
+
+test('service progress accepts only exact closed schemas and bounded integers', t => {
+  let output = '';
+  t.mock.method(process.stdout, 'write', chunk => { output += chunk; return true; });
+  const reporter = new SafeCiReporter();
+  for (const value of [backendProgress, workerProgress]) {
+    const line = encodeServiceProgress(value) + '\n';
+    for (const field of Object.keys(value)) {
+      const invalid = { ...value, [field]: secret };
+      assert.throws(() => encodeServiceProgress(invalid), /E2E_SERVICE_PROGRESS_INVALID/u);
+      reporter.onStdOut(JSON.stringify(invalid) + '\n');
+    }
+    for (const invalid of [{ ...value, extra: secret }, { ...value, phase: 'unknown' }]) {
+      reporter.onStdOut(JSON.stringify(invalid) + '\n');
+    }
+    reporter.onStdOut('x'.repeat(1024) + line);
+    reporter.onStdOut('{invalid}\n');
+    reporter.onStdErr(line);
+    for (const character of line) reporter.onStdOut(Buffer.from(character));
+    reporter.onStdOut(secret + '\n' + line);
+  }
+  for (const field of ['durationMs', 'elapsedMs']) {
+    for (const invalid of [-1, 0.5, Infinity, NaN, Number.MAX_SAFE_INTEGER + 1]) {
+      reporter.onStdOut(JSON.stringify({ ...backendProgress, [field]: invalid }) + '\n');
+    }
+  }
+  reporter.onStdOut(JSON.stringify({ ...backendProgress, status: 'completed' }) + '\n');
+  assert.equal(output, [backendProgress, workerProgress].map(value =>
+    (serviceProgressPrefix + encodeServiceProgress(value) + '\n').repeat(2)).join(''));
+  assert.equal(output.includes(secret), false);
+});
 
 test('only closed Linux failure records survive split, combined and oversized output', t => {
   let output = '';
@@ -141,14 +179,17 @@ for (const argument of ['--reporter', '--reporter=list', '--debug', '--ui', '--u
   });
 }
 
-function runnerFixture(t, body, { grep, setup, extraArgs = [] } = {}) {
+function runnerFixture(t, body, { grep, setup, extraArgs = [], typescript = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'eky-reporter-contract-'));
   let accepted = false;
   t.after(() => { if (accepted) rmSync(root, { recursive: true, force: true }); });
   const rawReport = join(root, 'private-results.json');
   mkdirSync(join(root, 'tests'));
-  writeFileSync(join(root, 'tests', 'projection.spec.cjs'),
-    `const { test, expect } = require(${JSON.stringify(playwrightTest)});\n${body}`);
+  if (typescript) writeFileSync(join(root, 'package.json'), JSON.stringify({ type: 'module' }));
+  writeFileSync(join(root, 'tests', typescript ? 'projection.spec.ts' : 'projection.spec.cjs'),
+    (typescript
+      ? `import { test, expect } from ${JSON.stringify(new URL('./index.mjs', pathToFileURL(playwrightTest)).href)};\n`
+      : `const { test, expect } = require(${JSON.stringify(playwrightTest)});\n`) + body);
   if (setup) writeFileSync(join(root, 'setup.cjs'), setup === 'hang'
     ? 'module.exports = () => new Promise(() => {});'
     : `module.exports = () => { throw new Error(${JSON.stringify(secret)}); };`);
@@ -223,6 +264,74 @@ test('startup failure', async () => {
   assert.deepEqual(diagnostics, Array(2).fill(encodeLinuxServiceDiagnostic(linuxFailure).trimEnd()));
   const raw = readFileSync(run.rawReport, 'utf8');
   assert.ok(raw.includes('E2E_BACKEND_OWNER_START_FAILED'));
+  assert.ok(raw.includes(secret));
+  run.accept();
+});
+
+test('real runner relays post-launch backend failure and worker teardown without masking failure', t => {
+  const source = path => JSON.stringify(new URL(path, import.meta.url).href);
+  const run = runnerFixture(t, `
+import { waitForE2eBackendStartup } from ${source('../src/environment/startE2eBackendProcess.ts')};
+import { createE2eBackendStartupReporter } from ${source('../src/environment/e2eBackendStartupLifecycle.ts')};
+import { runOwnedChromiumWorker } from ${source('../src/fixtures/runOwnedChromiumWorker.ts')};
+import { writeServiceProgress } from ${source('../src/environment/serviceProgressDiagnostic.mjs')};
+test('post-launch failure', async () => {
+  const calls = [];
+  let original;
+  try {
+    await runOwnedChromiumWorker({ playwright: { chromium: { executablePath: () => 'synthetic' } } },
+      async () => {
+        process.stdout.write(${JSON.stringify(secret.repeat(30))});
+        try {
+          await waitForE2eBackendStartup({ backendOrigin: 'http://127.0.0.1:43210',
+            managedProcess: { readStdout: () => ${JSON.stringify(secret)}, readStderr: () => ${JSON.stringify(secret)},
+              startup: { readState: () => ({ spawnObserved: true, terminal: 'exited' }), subscribe: () => () => {} } },
+            observe: createE2eBackendStartupReporter(),
+            async waitForHealth() { throw new Error(${JSON.stringify(secret)}); },
+            async stopProcessTree() { calls.push('backendStopped'); },
+            async releasePort() { calls.push('portReleased'); },
+          });
+        } catch (error) { original = error; throw error; }
+      }, { config: { globalTimeout: 30000, workers: 1 }, parallelIndex: 0,
+        project: { outputDir: 'synthetic', timeout: 1000 } }, {
+        createE2eRunRoot: () => 'synthetic',
+        claimChromiumWorker: () => ({ lifetime: { readRemainingWorkMilliseconds: () => 1000 },
+          releaseAfterVerifiedCleanup() { calls.push('released'); } }),
+        async startOwnedChromium() { return { browser: {}, async stop() { calls.push('workerStopped'); } }; },
+        async removeE2eRunRoot() { calls.push('removed'); }, report: writeServiceProgress,
+      });
+  } catch (error) {
+    expect(error).toBe(original);
+    expect(error.message).toBe('E2E_BACKEND_CHILD_EXITED_BEFORE_HEALTH');
+    expect(error.evidence.cleanup).toEqual({ processTree: 'stopped', port: 'released' });
+    expect(calls).toEqual(['backendStopped', 'portReleased', 'workerStopped', 'removed', 'released']);
+    throw error;
+  }
+});`, { typescript: true });
+  assert.equal(run.code, 1);
+  assert.equal(run.rows.at(-1).unexpected, 1);
+  assert.equal(run.rows.filter(row => row.event === 'testEnd').length, 2);
+  const progress = run.output.split(/\r?\n/u).filter(line => line.startsWith(serviceProgressPrefix))
+    .map(line => JSON.parse(line.slice(serviceProgressPrefix.length)));
+  for (const phase of ['processSpawned', 'childExitedBeforeHealth', 'processTreeStopped', 'portReleased', 'cleanupCompleted']) {
+    assert.equal(progress.filter(row => row.phase === phase).length, 2, phase);
+  }
+  assert.deepEqual(progress.filter(row => row.operation === 'chromiumWorker'), [workerProgress, workerProgress]);
+  const raw = readFileSync(run.rawReport, 'utf8');
+  const report = JSON.parse(raw);
+  const results = [];
+  const visit = suite => {
+    for (const spec of suite.specs ?? []) for (const test of spec.tests) results.push(...test.results);
+    for (const child of suite.suites ?? []) visit(child);
+  };
+  for (const suite of report.suites) visit(suite);
+  assert.deepEqual(report.errors, []);
+  // Playwright's JSON error message can include the stack after its first line.
+  // Compare that exact error header, never a substring of the whole report.
+  assert.deepEqual(results.map(result => ({ retry: result.retry, status: result.status,
+    errors: result.errors.map(error => error.message.split(/\r?\n/u)[0]) })), [0, 1].map(retry => ({
+    retry, status: 'failed', errors: ['Error: E2E_BACKEND_CHILD_EXITED_BEFORE_HEALTH'],
+  })));
   assert.ok(raw.includes(secret));
   run.accept();
 });

@@ -3403,6 +3403,59 @@ Ensimmäisen ajon virhetiedot säilyvät. Seuraava normaali CI käyttää rajatt
 havaintoketjua Linuxin käynnistyssyyn selvittämiseen; se ei ole saman
 revision sokkouusinta. T3/R28 ja PR/main pysyvät auki.
 
+**Diagnostiikkarevision jälkeinen rajaus:** `5c8bb24a`-revision
+[CI 36423687950](https://github.com/eky-software/eky/actions/runs/36423687950)
+läpäisi workspace-testit, tyypityksen ja buildin. Linux system/web säilyivät
+samoissa hylätyissä tuloksissa. `EKY_LINUX_SERVICE_FAILURE`-rivin puuttuminen
+ei sulje pois GO:n jälkeistä backend-virhettä: health-odotus kuuluu kutsujalle.
+Web-fixture käynnistää myös backendin, joten erillistä Chromium-vikaa ei
+ole näillä tuloksilla osoitettu.
+
+Linuxin backend-profiili asetti testikohtaisen `TMPDIR`:n mutta jätti pois
+olemassa olevan reader-sopimuksen `EKY_E2E_OS_TEMP_ROOT`-ankkurin. Lapsen
+`os.tmpdir()` vaihtui, jolloin alkuperäisen run-rootin tarkistus etsi väärää
+juurta. Korjaus johtaa ankkurin jo varmennetusta alkuperäisestä OS-tempistä
+ja rajaa myös `TEMP`/`TMP`:n saman testin temp-kansioon. Viten, Chromiumin,
+tuotantobackendin tai config-readerin turvasopimus ei muutu. Alempi
+ympäristösopimus hylkäsi puuttuvan ankkurin ennen korjausta ja läpäisi sen
+jälkeen. Oikean readerin lapsiprosessiregressio tarkistaa lisäksi ankkurin
+puuttumisen, hyväksytyn eristyksen ja viereiseen run-rootiin osoittavan
+`TEMP`/`TMP`:n hylkäyksen ilman palvelimen tai tietokannan käynnistämistä.
+
+CI:n `EKY_SERVICE_PROGRESS` välittää vain nykyisen backend-startupin
+suljetut vaiheet, ei-negatiiviset kokonaislukukestot ja virhekoodit sekä
+Chromium-workerin suljetun loppuyhteenvedon. Yhteinen encoder omistaa
+arvojoukot; reportteri tarkistaa täsmällisen kenttäjoukon uudelleen.
+512 merkin riviraja, osittaiset tulosteet ja ylipitkän rivin jälkeinen
+synkronointi on katettu. Raakatuloste, polut, tuntemattomat arvot ja
+lisäkentät eivät pääse julkiseen lokiin. `workerTeardown` ei yksin todista
+selaimen käynnistymisen onnistumista. `EKY_E2E_REPORT`, retry ja testien
+hyväksyntä säilyvät muuttumattomina; havainnot eivät ohjaa readinessia.
+Nämä testiruntimen tapahtumat eivät kuulu sovelluksen Diagnostics-, Activity-,
+tukipaketti- tai incident-katalogeihin.
+
+Raportointi-/session-/ympäristökohdesarja läpäisi 74/74. Todellinen
+Playwright-ajuri käyttää varsinaista backendin health-kutsujaa ja
+Chromium-workerin elinkaarta simuloidulla jo käynnistyneellä ja poistuneella
+backendillä: alkuperäinen virhe, siivous ja retry säilyvät, eikä raakatieto
+vuoda. Koe ei käynnistä oikeaa Linux-palvelua tai selainta. Ensimmäinen
+uuden kokeen moduulimäärityshylkäys säilyy erillisenä koejärjestelyn virheenä.
+Rajattu korjaus tarvitsee vielä tavallisten kuluttajien uuden CI-todisteen;
+alempaa testiä ei nimetä aiemman CI-ajon täsmälliseksi juurisyyksi.
+
+Korjauksen Windows-system 690/690 ja web 43/43 läpäisivät ilman retryä,
+flakyä tai ohituksia. Web-sarja todensi myös uuden oletuswriterin kautta
+workerin varmennetun siivouksen ja juuren poiston sekä testikohtaisen
+context-/dataeristyksen. Koko työtilan tyypitys ja kaikki pakettitestit
+läpäisivät; pakettitestit ajettiin tässä paikallisessa tarkistuksessa
+peräkkäin, olemassa olevat kahdeksan alustakohtaista ohitusta säilyttäen.
+Työkalusarja läpäisi 740/740. Aiemmat rinnakkaisen työtila-ajon muuttumattomien
+lähdekoodirajatestien aikakatkaisut säilyvät hylättyinä: erillinen läpäisy
+tai peräkkäinen ajo ei todista niiden juurisyytä korjatuksi. Testikoodia,
+aikarajoja tai CI:n ajokytkentää ei muutettu tämän havainnon vuoksi.
+Riippumaton lähde- ja julkaisurajakatselmus hyväksyi korjauksen rajauksen;
+tämä ei korvaa korjatun revision omaa normaalia CI:tä.
+
 **Windowsin rajattu katoamis- ja artifact-näyttö 28.9.:** todellinen
 worker-polku läpäisi erilliset native-omistajan ja kutsuvan Playwright-workerin
 katoamiskokeet. Ulompi omistettu testisessio todensi koko puun päättymisen

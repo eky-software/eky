@@ -6,10 +6,11 @@ import { OwnedChromiumStartupFailure, type StartedOwnedChromium } from '../envir
 import { startOwnedWindowsChromium } from '../environment/startOwnedWindowsChromium.js';
 import { startOwnedLinuxChromium } from '../environment/startOwnedLinuxChromium.js';
 import { claimChromiumWorker } from './chromiumWorkerAdmission.js';
+import { writeServiceProgress } from '../environment/serviceProgressDiagnostic.mjs';
 
 const defaults = { createE2eRunRoot, removeE2eRunRoot, claimChromiumWorker,
   startOwnedChromium: process.platform === 'win32' ? startOwnedWindowsChromium : startOwnedLinuxChromium,
-  report: (record: object) => { process.stdout.write(JSON.stringify(record) + '\n'); } };
+  report: (record: object) => writeServiceProgress(record) };
 
 export async function runOwnedChromiumWorker(input: {
   playwright: Pick<typeof import('@playwright/test'), 'chromium'>;

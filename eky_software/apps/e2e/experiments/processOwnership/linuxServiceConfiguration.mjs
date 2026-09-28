@@ -70,7 +70,8 @@ export function linuxServiceWorkload(config, { fs = filesystem, tempDirectory = 
   validateServiceConfig(config);
   const repository = inspectServicePath(config.repositoryRoot, true, fs);
   const run = inspectServicePath(config.runRoot, true, fs);
-  requireService(posix.dirname(run) === posix.join(fs.realpathSync(tempDirectory()), 'eky-e2e') &&
+  const hostTempRoot = fs.realpathSync(tempDirectory());
+  requireService(posix.dirname(run) === posix.join(hostTempRoot, 'eky-e2e') &&
     run !== repository && !run.startsWith(repository + '/') && !repository.startsWith(run + '/'));
   const node = inspectServicePath(config.node, false, fs);
   requireService((fs.lstatSync(node).mode & 0o111) !== 0);
@@ -95,8 +96,10 @@ export function linuxServiceWorkload(config, { fs = filesystem, tempDirectory = 
     const entry = inspectServicePath(posix.join(repository, 'apps/backend/e2e-dist/e2e/backendEntrypoint.js'), false, fs);
     const path = inspectServicePath(below(config.runtimeConfigPath, run), false, fs);
     requireService(fs.lstatSync(path).nlink === 1);
+    // The config reader validates the original test root independently of the
+    // child's isolated OS temp directory, using the existing owner contract.
     return Object.freeze({ file: node, args: Object.freeze([entry, '--config', path]), cwd: repository,
-      env: Object.freeze(env) });
+      env: Object.freeze({ ...env, EKY_E2E_OS_TEMP_ROOT: hostTempRoot, TEMP: temp, TMP: temp }) });
   }
   inspectServicePath(below(config.environmentRoot, run), true, fs);
   return Object.freeze({ file: node, args: Object.freeze([resolveLinuxViteEntrypoint(repository, fs),
