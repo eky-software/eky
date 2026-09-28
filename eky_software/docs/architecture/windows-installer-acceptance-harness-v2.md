@@ -5160,6 +5160,13 @@ alkuperäisiä assertioneita tai cleanup-varmennusta eikä julkaise raakaa
 fixture-aineistoa. [Ajankohtainen hylkäys ja rajattu näyttö](e2e-test-environment.md#t3b-en-normaalin-baselinen-rollback-sopimushylkäys)
 eivät muuta yllä olevia aikarajoja tai ratkaise hylkäyksen tuntematonta syytä.
 
+Myöhemmän `earlyHelperExit`-hylkäyksen
+[rajattu testiapurikorjaus](e2e-test-environment.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus)
+jättää tässä tarkoituksellisessa ennenaikaisen poistumisen kokeessa `probe`-
+kyselyn lähettämättä. Puuttuva kuittaus todistetaan EOF:llä, ei hyväksymällä
+mikä tahansa kanavavirhe. Onnistuvan handoffin viestit, worker-result,
+validoitu vaiheketju ja supervisorin cleanup-vaatimukset säilyvät ennallaan.
+
 Build-once-producerit omistavat paketoinnin ja immutable descriptorin.
 Consumer ei rakenna MSI-paria uudelleen. Clean-producer varmentaa myös
 samojen MSI-tavujen pilot-bundlen nykyisellä työkalulla ja poistaa

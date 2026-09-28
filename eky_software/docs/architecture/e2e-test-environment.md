@@ -4165,6 +4165,45 @@ Normaali PR ja sen mergen oma main-ajo ovat seuraavat portit; niiden
 lopputulos kirjataan PR:n hyväksyntächeckpointiin ilman uutta pelkkää
 tilakirjauscommittia. A1 alkaa vasta hyväksytyltä mainilta.
 
+#### Rollback-testiapurin ennenaikaisen poistumisen korjaus
+
+Diagnostiikka-PR #280 yhdistettiin normaalisti mainiin
+`68b7d5a19258ebc4bfb64d885568f1dadbfe6499`. Sen
+[oma normaali ajo 36485712282](https://github.com/eky-software/eky/actions/runs/36485712282)
+hylkäsi Windows installer contract -ryhmän `earlyHelperExit`-tapauksen:
+odotetun `helperTerminalMissing`-luokan sijaan worker palautti yleisen
+`rollbackContractFailed`-luokan. Supervisorin validoitu tulos oli
+`processExitFailed`, viimeinen handoff-vaihe `helperStarted`, ja koko
+prosessipuun poissaolo varmistui. Tämä ei ole Electronin käynnistysvirhe
+eikä todiste tuotannon rollbackin epäonnistumisesta.
+
+Testiapuri ilmoittaa `started` ja poistuu tässä negatiivisessa tapauksessa
+tarkoituksella ennen `alive`-kuittausta. Lukija lähetti silti `probe`-viestin,
+joka saattoi kilpailla kanavan sulkeutumisen kanssa. Korjaus jättää vain
+tämän negatiivisen tapauksen kyselyn lähettämättä ja odottaa edelleen
+alkuperäistä vaadittua viestiä tai todellista EOF:ää. EOF tuottaa edelleen
+`helperTerminalMissing`-hylkäyksen. Muu kanavavirhe ei muutu EOF-todisteeksi,
+onnistumiseksi tai hyväksyttäväksi vaihtoehtoiseksi virheluokaksi.
+
+Regressio osoittaa vanhan kyselyn rikkovan suljetun kanavan sopimuksen ja
+korjauksen säilyttävän puuttuvan loppukuittauksen hylkäyksen. Saman tiedoston
+pieni `readHelperHandoff`-funktio sisältää todellisen fixturen viestiketjun;
+se ei ole uusi moduulitestin rajapinta. Onnistumisen probe/release-järjestys,
+viestien tunnisteet ja järjestys sekä alkuperäisen kanavavirheen säilyminen
+testataan erikseen. Testin alkuperäiset worker-result-, vaihe- ja cleanup-
+assertionit säilyvät. Tuotantobootstrap, PowerShell-helper, supervisor,
+aikarajat, riippuvuudet ja CI-valinta eivät muutu.
+
+Kohderegressio hylättiin ensin vanhalla järjestyksellä; korjatun ketjun neljä
+kohdetestiä ja kanoninen Windows-prosessisopimussarja 27/27 läpäisivät.
+Asentimen yksikkösarja 113/113 ja riippumaton lähdekatselmus hyväksyttiin.
+Vanhan CI-ajon raakaa kanavavirhettä ei tallennettu, joten sen täsmällistä
+virhekoodia ei nimetä jälkikäteen varmaksi. Tämä korjaa todennetun
+testiprotokollan kilpailutilanteen; aiemmat eri timeout-havainnot säilyvät
+avoimina. Korjausrevision normaalit PR- ja main-portit vaaditaan ennen
+A1:tä. Integraation lopputulos kirjataan PR:n
+hyväksyntächeckpointiin ilman uutta pelkkää tilakirjauscommittia.
+
 #### T3:n lopullinen hyväksyntänäyttö
 
 Moduulikehittäjän rajapinta pidetään pienenä: system-testit käyttävät

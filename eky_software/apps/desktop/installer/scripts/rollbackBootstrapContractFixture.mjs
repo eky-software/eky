@@ -38,6 +38,24 @@ export function readBootstrapExit(child) {
   });
 }
 
+export async function readHelperHandoff(channel, runNonce, testCase, observe) {
+  const lines = createInterface({ input: channel, crlfDelay: Infinity })[Symbol.asyncIterator]();
+  const receive = async (expected) => {
+    const line = await lines.next();
+    if (line.done) throw new Error('ROLLBACK_HELPER_TERMINAL_MISSING');
+    assert.equal(line.value, runNonce + ':' + expected);
+  };
+  await receive('started');
+  await observe('helperStarted');
+  // The early-exit fixture closes after started; a probe would race its EOF.
+  if (testCase !== 'earlyHelperExit') channel.write('probe\n');
+  await receive('alive');
+  await observe('helperAliveAfterBootstrapExit');
+  if (testCase !== 'helperHold') channel.write('release\n');
+  await receive('completed');
+  await observe('helperTerminalReceived');
+}
+
 async function runFixture(inputPath) {
   const input = JSON.parse(await readFile(inputPath, 'utf8'));
   const { root, testCase, runNonce, scenario, artifactDescriptorSha256 } = input;
@@ -89,20 +107,7 @@ async function runFixture(inputPath) {
     assert.equal(result.stdout, acknowledgement);
     assert.equal(result.stderr, '');
     const channel = await connection;
-    const lines = createInterface({ input: channel, crlfDelay: Infinity })[Symbol.asyncIterator]();
-    const receive = async (expected) => {
-      const line = await lines.next();
-      if (line.done) throw new Error('ROLLBACK_HELPER_TERMINAL_MISSING');
-      assert.equal(line.value, runNonce + ':' + expected);
-    };
-    await receive('started');
-    await observe('helperStarted');
-    channel.write('probe\n');
-    await receive('alive');
-    await observe('helperAliveAfterBootstrapExit');
-    if (testCase !== 'helperHold') channel.write('release\n');
-    await receive('completed');
-    await observe('helperTerminalReceived');
+    await readHelperHandoff(channel, runNonce, testCase, observe);
     await closed;
     await observe('bootstrapClosed');
   } catch (error) {

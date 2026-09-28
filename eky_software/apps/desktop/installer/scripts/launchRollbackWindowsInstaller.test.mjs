@@ -3,12 +3,13 @@ import { EventEmitter } from 'node:events';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { Duplex } from 'node:stream';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { cleanupRunContext, createRunContext, createRequest, startSupervisor, writeRequest }
   from '../windows-process-supervisor/tests/supervisorContractTestSupport.mjs';
 import { readWindowsAcceptanceSupervisorResult } from '../windows-process-supervisor/windowsAcceptanceSupervisorResult.mjs';
-import { readBootstrapExit } from './rollbackBootstrapContractFixture.mjs';
+import { readBootstrapExit, readHelperHandoff } from './rollbackBootstrapContractFixture.mjs';
 import { readRollbackBootstrapContractDiagnostics } from './rollbackBootstrapContractDiagnostics.mjs';
 
 for (const testCase of ['completed', 'missingHelper', 'earlyHelperExit', 'helperHold']) {
@@ -142,6 +143,66 @@ function eventChild() {
   child.stderr = new EventEmitter();
   return child;
 }
+
+test('rollback helper early exit reads EOF without probing a closed peer', async (t) => {
+  const channel = new Duplex({ read() {}, write(_chunk, _encoding, callback) { callback(); } });
+  t.after(() => channel.destroy());
+  const writes = [];
+  channel.write = (chunk) => {
+    writes.push(chunk);
+    throw Object.assign(new Error('write EPIPE'), { code: 'EPIPE' });
+  };
+  const phases = [];
+  const completion = readHelperHandoff(channel, 'fixture-nonce', 'earlyHelperExit', async (phase) => {
+    phases.push(phase);
+    channel.push(null);
+  });
+  channel.push('fixture-nonce:started\n');
+  await assert.rejects(completion, { message: 'ROLLBACK_HELPER_TERMINAL_MISSING' });
+  assert.deepEqual(writes, []);
+  assert.deepEqual(phases, ['helperStarted']);
+});
+
+test('rollback helper success still requires probe, release and all acknowledgements', async (t) => {
+  const writes = [];
+  const channel = new Duplex({ read() {}, write(chunk, _encoding, callback) {
+    const command = chunk.toString();
+    writes.push(command);
+    assert.ok(['probe\n', 'release\n'].includes(command));
+    this.push('fixture-nonce:' + (command === 'probe\n' ? 'alive' : 'completed') + '\n');
+    callback();
+  } });
+  t.after(() => channel.destroy());
+  const phases = [];
+  const completion = readHelperHandoff(channel, 'fixture-nonce', 'completed', async (phase) => phases.push(phase));
+  channel.push('fixture-nonce:started\n');
+  await completion;
+  assert.deepEqual(writes, ['probe\n', 'release\n']);
+  assert.deepEqual(phases, ['helperStarted', 'helperAliveAfterBootstrapExit', 'helperTerminalReceived']);
+});
+
+test('rollback helper transport errors are not converted into missing-terminal evidence', async (t) => {
+  const channel = new Duplex({ read() {}, write(_chunk, _encoding, callback) { callback(); } });
+  t.after(() => channel.destroy());
+  const failure = Object.assign(new Error('synthetic transport failure'), { code: 'EPIPE' });
+  const completion = readHelperHandoff(channel, 'fixture-nonce', 'earlyHelperExit', async () => {
+    channel.destroy(failure);
+  });
+  channel.push('fixture-nonce:started\n');
+  await assert.rejects(completion, error => error === failure);
+});
+
+test('rollback helper rejects wrong identity and out-of-order messages', async (t) => {
+  for (const message of ['other-nonce:started\n', 'fixture-nonce:completed\n']) {
+    const channel = new Duplex({ read() {}, write(_chunk, _encoding, callback) { callback(); } });
+    t.after(() => channel.destroy());
+    const phases = [];
+    const completion = readHelperHandoff(channel, 'fixture-nonce', 'earlyHelperExit', async phase => phases.push(phase));
+    channel.push(message);
+    await assert.rejects(completion, { code: 'ERR_ASSERTION' });
+    assert.deepEqual(phases, []);
+  }
+});
 
 test('rollback bootstrap reader preserves non-zero exit without success acknowledgement', async () => {
   const child = eventChild();
