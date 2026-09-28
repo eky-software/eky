@@ -170,3 +170,29 @@ test('progress contains only the closed phase contract', async () => {
     assert.ok(Number.isSafeInteger(entry.elapsedMs) && entry.elapsedMs >= 0);
   }
 });
+
+test('installation substeps use a separate diagnostic without changing the terminal lifecycle', async () => {
+  const value = fixture();
+  const observations = [];
+  value.runtime.reportInstallationProgress = (entry) => observations.push(entry);
+  const wait = value.runtime.waitForTargetInstallation;
+  value.runtime.waitForTargetInstallation = (observation) =>
+    observation.step('activityBeforeCommand', wait);
+  const result = await executeWorkspaceSuccessLifecycle(value.runtime);
+  assert.equal(result.status, 'completed');
+  assert.deepEqual(result.completedPhases, WORKSPACE_SUCCESS_PHASES);
+  assert.deepEqual(observations.filter((entry) => entry.status === 'completed').map((entry) => entry.phase), [
+    'activityBeforeCommand', 'installationWait', 'installedState', 'payload', 'artifactFixture', 'installation',
+  ]);
+  assert.equal(value.evidence.every((entry) => entry.operation === 'workspaceSuccessLifecycle'), true);
+  assert.equal(observations.every((entry) => entry.role === 'target'), true);
+});
+
+test('throwing installation diagnostics cannot replace the first failed postcondition', async () => {
+  const value = fixture({ failPhase: 'targetInstall' });
+  value.runtime.reportInstallationProgress = () => { throw new Error('PRIVATE diagnostic failure'); };
+  const result = await executeWorkspaceSuccessLifecycle(value.runtime);
+  assert.equal(result.errorCode, 'targetInstallFailed');
+  assert.equal(result.failedPhase, 'targetInstall');
+  assert.equal(value.calls.includes('proof:targetFirstStart:completed'), false);
+});

@@ -68,9 +68,20 @@ oikeaa readeria käytetään myös eristetyllä OS-tempillä, ilman ankkuria ja
 sen kanssa. Testi palauttaa ympäristön synkronisesti, eikä tapausten
 kokonaismäärä muutu. Backend/Vite-käynnistyksen yhteinen ympäristösopimus
 toisti puutteen ennen korjausta ja läpäisi sen jälkeen. Vite-rajojen 13/13,
-työkalusarjan 740/740, tyypityksen ja Windows-systemin 690/690 läpäisyt eivät
-vielä hyväksy korjatun Linux-Viten käynnistystä tai koko T3:a. Edeltävässä
+työkalusarjan 740/740, tyypityksen ja Windows-systemin 690/690 jälkeen
+korjatun `c2bae3a2`:n Linux-CI läpäisi systemin 689/690 (yksi tunnettu
+alustasuoja) ja webin 37/37 ilman retryä tai flakyä. Koko tapausjoukko ja
+workerin siivous takaisinluettiin. Electron läpäisi 38/38. Koko normaali CI
+päättyi kuitenkin hylättynä: workspace-faultin toinen ajo ylitti aikarajan
+`targetInstall`-odotuksessa. Supervisorin siivous varmistui, mutta seuraava
+binary-rollback-koe jäi ajamatta. Hylkäyksen syy sekä T3:n katkeamis-/endurance-
+ja PR/main-näyttö ovat vielä avoinna. Edeltävässä
 CI:ssä system 688/690 ja web 0/37 jäivät hylätyiksi yllä linkitetyin rajauksin.
+
+Seuraavaa ajoa varten [workspace-asennuksen havaintoraja](windows-installer-acceptance-harness-v2.md#workspace-asennusodotuksen-havaintoraja)
+on täsmennetty. Rajattu testiharnessilisäys läpäisi omat sopimus- ja
+ajokytkentäporttinsa, mutta oman revision CI on vielä ajamatta. Se ei muuta
+sovelluksen E2E-tapausjoukkoa eikä ratkaise yllä olevan odotuksen juurisyytä.
 
 ## Tilat
 

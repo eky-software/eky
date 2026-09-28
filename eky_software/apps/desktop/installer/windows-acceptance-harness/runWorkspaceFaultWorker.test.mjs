@@ -65,6 +65,19 @@ test('all five worker results bind the exact scenario, artifact and request befo
   }
 });
 
+test('fault worker binds installation diagnostics to the existing progress sink', async () => {
+  const f = fixture();
+  const sink = () => {};
+  f.options.reportProgress = sink;
+  f.options.execute = async (_scenario, runtime) => {
+    assert.equal(runtime.reportInstallationProgress, sink);
+    assert.equal(runtime.reportProgress, sink);
+    return f.result;
+  };
+  assert.equal(await f.run(), 0);
+  assert.equal(f.calls.filter(([name]) => name === 'dispose').length, 1);
+});
+
 for (const stage of ['readRequest', 'verifyArtifact', 'createRuntime', 'execute']) {
   test(`fault worker safely classifies ${stage} failure`, async () => {
     const f = fixture(); f.options[stage] = async () => { throw new Error('private path and secret'); };

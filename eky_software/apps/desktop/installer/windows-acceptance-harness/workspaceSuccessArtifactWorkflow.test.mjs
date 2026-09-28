@@ -41,6 +41,7 @@ test('V2.6 runtime checkpoint executes lifecycle, failure and read-only Windows 
   assert.match(source, /pnpm --filter @eky\/desktop installer:test:windows-acceptance-workspace\s/);
   const script = desktop.scripts['installer:test:windows-acceptance-workspace'];
   assert.equal(script, 'pnpm e2e:prepare-electron-runtime && pnpm e2e:build && node --test --test-concurrency=1 ' + [
+    'workspaceInstallationObservation',
     'workspaceSuccessContracts', 'workspaceSuccessLifecycle', 'workspaceSuccessWindowsRuntime',
     'workspaceSuccessFailureBoundary', 'inspectWorkspaceSuccessMsiActivity',
     'workspaceSuccessProfileEvidence', 'workspaceSuccessPostcondition',
@@ -116,6 +117,7 @@ test('V2.7 canonical commands retain the same worker, terminal, session and read
     'pnpm installer:supervisor:build && pnpm e2e:prepare-electron-runtime && pnpm e2e:build && dotnet installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --workspace-fault-command');
   assert.equal(desktop.scripts['installer:test:windows-acceptance-workspace-fault'],
     'pnpm e2e:prepare-electron-runtime && pnpm e2e:build && node --test --test-concurrency=1 ' + [
+      'workspaceInstallationObservation',
       'workspaceFaultContracts', 'workspaceFaultLifecycle', 'workspaceFaultSessionProof', 'workspaceFaultSessionEvidence',
       'workspaceFaultPostcondition', 'workspaceFaultFailureBoundary', 'runWorkspaceFaultWorker', 'workspaceCommandAdmission',
       'workspaceSuccessProfileEvidence', 'workspaceSuccessLifecycle', 'workspaceSuccessWindowsRuntime',

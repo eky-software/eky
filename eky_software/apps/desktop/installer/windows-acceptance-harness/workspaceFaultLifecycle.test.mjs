@@ -49,6 +49,37 @@ function fixture(faultScenario, { failPhase, progressThrows = false } = {}) {
 const COMMON = ['inspect', 'artifact', 'installSource', 'inspect', 'payload:source',
   'prepare', 'checkpoint:sourceBaseline', 'proof:sourceHandoff:completed'];
 const TARGET = ['observe:target', 'inspect', 'payload:target', 'artifact'];
+
+test('fault installation observation covers target and rollback waits without changing phase ownership', async () => {
+  const scenario = 'activeWorkspaceFirstStartFailure';
+  const value = fixture(scenario);
+  const observations = [];
+  value.runtime.reportInstallationProgress = (entry) => observations.push(entry);
+  const wait = value.runtime.waitForInstallation;
+  value.runtime.waitForInstallation = (role, observation) =>
+    observation.step('targetProductCommand', () => wait(role));
+  const result = await executeWorkspaceFaultLifecycle(scenario, value.runtime);
+  assert.equal(result.status, 'completed');
+  assert.deepEqual(result.completedPhases, WORKSPACE_FAULT_PLANS[scenario].phases);
+  for (const role of ['target', 'source']) {
+    assert.deepEqual(observations.filter((entry) => entry.role === role && entry.status === 'completed')
+      .map((entry) => entry.phase), [
+      'targetProductCommand', 'installationWait', 'installedState', 'payload', 'artifactFixture', 'installation',
+    ]);
+  }
+  assert.equal(value.evidence.every((entry) => entry.operation === 'workspaceFaultLifecycle'), true);
+});
+
+test('fault installation diagnostics preserve failure precedence and do not execute later proof', async () => {
+  const scenario = 'passiveWorkspaceMigrationFailure';
+  const value = fixture(scenario, { failPhase: 'targetInstall' });
+  value.runtime.reportInstallationProgress = () => { throw new Error('PRIVATE report failure'); };
+  const result = await executeWorkspaceFaultLifecycle(scenario, value.runtime);
+  assert.equal(result.errorCode, 'targetInstallFailed');
+  assert.equal(result.failedPhase, 'targetInstall');
+  assert.equal(value.calls.includes('proof:targetFirstStart:completed'), false);
+});
+
 const SCENARIO_CALLS = {
   preUpdateRecoveryPointFailure: [],
   activeWorkspaceFirstStartFailure: [...TARGET,

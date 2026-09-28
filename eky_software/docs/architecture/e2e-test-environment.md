@@ -3461,8 +3461,11 @@ tämä ei korvaa korjatun revision omaa normaalia CI:tä.
 todensi backendin health-vaiheen. System-sarjan 690 tapauksesta 688 läpäisi,
 `WEB-SERVICE-001` hylättiin ja yksi tunnettu alustasuoja ohitettiin.
 Webissä 36 hylättiin ja yksi jäi sarjan keskeytyksen vuoksi ajamatta;
-workerin siivous varmistui. Nämä eivät hyväksy kuluttajasiirtoa. Koko ajon
-terminal-takaisinluku on vielä kesken. Saman revision riippuvuustarkistus
+workerin siivous varmistui. Nämä eivät hyväksy kuluttajasiirtoa. Koko ajo
+päättyi hylättynä: 35 ryhmää läpäisi, kolme hylättiin ja yksi tarkoituksellinen
+valinnainen koe ohitettiin. Electron 38/38 sekä neljä artifact-tuottajaa ja
+kymmenen kuluttajaa läpäisivät, mutta eivät korvaa Linux-hylkäyksiä.
+Saman revision riippuvuustarkistus
 läpäisi, mutta ei korvaa hylättyjä testejä. Edeltävä `5c8bb24a`-ajo päättyi
 hylättynä; sen legacy2-jobin 37 minuutin aikarajaperuutus on erillinen havainto,
 ei temp-ankkurikorjauksella ratkaistuksi väitetty vika.
@@ -3482,7 +3485,39 @@ Jatkokorjauksen työkalusarja 740/740, E2E-tyypitys ja kanonisesti valmisteltu
 Windows-system 690/690 läpäisivät ilman retryä, flakyä tai ohituksia.
 Riippumaton lähde- ja julkaisurajakatselmus hyväksyi rajauksen.
 Tuotantokoodi, readerien turvarajat, tapausmäärä, aikarajat ja CI-vaatimukset
-eivät muutu. Oma Linux-CI ja T3:n muut loppuportit pysyvät avoimina.
+eivät muutu.
+
+Korjatun `c2bae3a2276a3ab9798679f2aa30ee0b11322e2d`:n
+[oma normaali CI](https://github.com/eky-software/eky/actions/runs/36435533813)
+on päättynyt: yritys 1, kaikki neljä kokeellista valintaa pois. Linux-system valitsi 690
+tapausta: 689 läpäisi ja yksi täsmällisesti tunnettu Windows-only-suoja
+ohitettiin. Web läpäisi 37/37; kummassakaan ei retryä, flakyä tai
+raporttivirhettä. Tapausten lähdekoordinaatit vastaavat puhtaan revision
+690/37/38-katalogeja. Webin worker-siivous varmistui ja selainjuuri poistui.
+[Saman revision riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/36434517009)
+läpäisi: molemmat auditit ilman tunnettuja löydöksiä, 160 registry-
+allekirjoitusta varmennettu. Koko normaali ajo päättyi hylättynä:
+36 ryhmää läpäisi, workspace-faultin toinen ajo ja sen yhteenvetoportti
+hylättiin, yksi tarkoituksellinen valinnainen koe ohitettiin. Electron
+läpäisi 38/38; kaikki 38 suoritetun ryhmän checkoutit vastasivat revisiota.
+Neljä artifact-tuottajaa ja yhdeksän muuta kuluttajaa läpäisivät.
+
+Workspace-faultin toisessa ajossa `passiveWorkspaceMigrationFailure`-
+skenaarion viimeinen valmistunut vaihe oli `sourceHandoff`; `targetInstall`
+alkoi, mutta ei päättynyt ennen supervisorin nykyistä `deadlineExceeded`-
+rajaa. `cleanupCompleted` ja `processTreeAbsent` varmistuivat. Myöhempi
+`publish/processExitFailed` on seuraushylkäys, ei havaittu ensimmäinen
+virhe. Saman jobin seuraavaa binary-rollback-koetta ei ajettu; artifactin
+jälkitarkistus läpäisi. Saman revision toinen fault-kuluttaja läpäisi,
+mutta tämä ei korvaa hylkäystä eikä ratkaise odotuksen juurisyytä.
+Säilynyt näyttö ei erottele odotuksen sisäisiä vaiheita. Rajattu lisäys
+toteuttaa [asennusodotuksen suljetut alavaihehavainnot](windows-installer-acceptance-harness-v2.md#workspace-asennusodotuksen-havaintoraja).
+Kanoniset fault/success-sopimukset 325/325 ja 332/332, artifact-kytkentä
+62/62, CI-sopimukset 315/315 ja desktopin tyypitys läpäisivät. Ensimmäisen
+regressioajon testiaineistovirhe ja katselmuksen ajolistakorjaus säilyvät
+omistavassa checkpointissa. Uuden revision oma CI puuttuu vielä. Linuxin
+temp-ankkurikorjauksen näyttö säilyy erillisenä;
+koko baseline, Linuxin katkeamis-/endurance-matriisi, T3 ja PR/main ovat avoinna.
 
 **Windowsin rajattu katoamis- ja artifact-näyttö 28.9.:** todellinen
 worker-polku läpäisi erilliset native-omistajan ja kutsuvan Playwright-workerin

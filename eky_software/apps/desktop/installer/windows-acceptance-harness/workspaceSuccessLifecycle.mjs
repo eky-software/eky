@@ -2,6 +2,7 @@ import {
   WORKSPACE_SUCCESS_PHASES, WORKSPACE_SUCCESS_SCENARIO, workspaceSuccessErrorCode,
 } from './workspaceSuccessContracts.mjs';
 import { requireWorkspaceInstalledState as requireState } from './workspaceInstalledState.mjs';
+import { observeWorkspaceInstallation } from './workspaceInstallationObservation.mjs';
 
 function fail(code) { throw new Error(code); }
 
@@ -60,10 +61,13 @@ export async function executeWorkspaceSuccessLifecycle(runtime) {
     await step('sourceHandoff', 'sourceHandoffFailed', () => proof('sourceHandoff', 'completed'));
     await step('targetInstall', 'targetInstallFailed', async () => {
       // The application owns the handoff. This worker must not launch another MSI.
-      await runtime.waitForTargetInstallation();
-      requireState(await runtime.inspectState(), 'target', runtime.versions);
-      await runtime.validatePayload('target');
-      await runtime.verifyArtifact();
+      await observeWorkspaceInstallation('target', runtime.reportInstallationProgress, async (observation) => {
+        await observation.step('installationWait', () => runtime.waitForTargetInstallation(observation));
+        await observation.step('installedState', async () =>
+          requireState(await runtime.inspectState(), 'target', runtime.versions));
+        await observation.step('payload', () => runtime.validatePayload('target'));
+        await observation.step('artifactFixture', runtime.verifyArtifact);
+      });
     });
     await step('targetFirstStart', 'targetFirstStartFailed', async () => {
       await proof('targetFirstStart', 'completed');

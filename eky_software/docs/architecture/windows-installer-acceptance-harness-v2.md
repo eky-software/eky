@@ -5063,6 +5063,51 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 
 ## Nykyinen päätös
 
+### Workspace-asennusodotuksen havaintoraja
+
+Tila 2026-09-28: rajattu testiharnessin diagnostiikkalisäys toteutettu ja
+alemman tason portit läpäisty; oman revision normaali CI on vielä ajamatta.
+Tämä ei ratkaise timeoutin juurisyytä.
+[Nykyinen M1-checkpoint](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+erottaa tavallisen CI:n hylkäyksen Linux-kuluttajien keskeneräisestä työstä.
+
+Workspace success- ja fault-worker käyttävät samaa asennusodotuksen
+havainnointia `targetInstall`- ja tarvittaessa `sourceRollbackInstall`-
+vaiheissa. Suljettu `workspaceInstallationObservation`-tapahtuma erottaa
+asennusodotuksen, installed-state-tarkistuksen, payloadin ja immutable
+artifactin tarkistuksen. Asennusodotuksen sisältä erotetaan MSI-aktiivisuuden
+ennen/jälkeen-kyselyt, molempien tuotteiden kyselyt, tulosten luku ja poisto,
+rollback-progressin luku sekä seuraavan havainnon odotus. Havainto kertoo
+viimeisimmän odotusrajan, ei yksin sen hidastumisen tai epäonnistumisen syytä.
+
+Ensimmäinen vaihe-/tilapari julkaistaan heti. Toistuva polling ei tulvi
+lokille: kerran minuutissa julkaistaan nykyinen sisin odotusraja ja rajattu
+busy-havaintojen laskuri. Yksi asennushavainto tuottaa enintään 128 riviä.
+Rajan täyttyessä viimeinen on `truncated`, eikä katkennut havainto muutu onnistumiseksi.
+Ajastin vapautetaan lopussa, eikä se pidä workeria elossa. Tämä ei ole
+uusi deadline, retry tai hyväksyntäprotokolla. Nykyiset kyselyt, virheiden
+etusija, vaiheiden järjestys ja supervisorin prosessi-/siivousvastuu säilyvät.
+
+Julkiseen tapahtumaan päätyvät vain skeemaversio, kiinteä operaatiotunniste,
+source/target-rooli, suljetut vaihe-/tila-/havaintoluokat ja laskuri. Ei
+polkuja, tuotteiden arvoja, PID:itä, komentorivejä tai raakavirheitä.
+Diagnostiikan toimitusvirhe ei korvaa alkuperäistä tulosta. Kohdetestit
+todentavat havaintorajan, toistuvan odotuksen, tuloksen/virheen säilymisen,
+workerin todellisen kytkennän ja runtime-kyselyiden ennallaan säilymisen.
+Ne kuuluvat molempiin kanonisiin workspace-sopimussarjoihin. Rajauksen
+katselmuksen ja paikallisten porttien jälkeen tarvitaan uuden revision
+oma seurattu normaali CI; aiemman hylkäyksen syytä ei päätellä läpäisystä.
+
+Kanoninen fault-sarja läpäisi 325/325, success 332/332, artifact-/ajokytkentä
+62/62, CI-sopimukset 315/315 ja desktopin tyypitys. Ensimmäinen fault-ajo
+keskeytettiin uuden regressiotestin virheellisen aineiston takia: viimeinen
+rivi ilman rivinvaihtoa oli keskeneräinen lokikirjoitus, ei valmis virherivi.
+Testi käyttää nyt kokonaista virheellistä riviä ja kieltää odottamattoman
+uusintahavainnon. Lokilukijaa tai runtimea ei muutettu tämän takia.
+Katselmuksessa havaittu puuttuva ajolistapäivitys korjattiin molempiin
+tiukkoihin workflow-sopimuksiin ennen läpäissyttä artifact-sarjaa.
+Aiempaa hylkäystä ei kumota; nämä portit eivät ole packaged- tai T3-hyväksyntä.
+
 ### Ajantasainen testikartta ja avoimet rajat
 
 Kartan lähdekatselmuksen perusta on `08eed10d36781a8a893776282ea18c02e93f9ec3`.
