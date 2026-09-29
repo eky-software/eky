@@ -3,7 +3,8 @@
 Tämä dokumentti kirjaa `apps/desktop`-paketointispiken ensimmäisen rajatun
 riippuvuuspäätöksen 14.7.2026, Electron 43 / better-sqlite3 13
 -yhteensopivuuden varmennuksen 3.8.2026, Electron 43.3.0 -patch-päivityksen
-17.8.2026 sekä transitiivisen XML-kirjaston tietoturvakorjauksen 2.9.2026.
+17.8.2026, transitiivisen XML-kirjaston tietoturvakorjauksen 2.9.2026
+sekä `undici`-korjauspäivityksen 29.9.2026.
 Versiot tarkistetaan uudelleen ennen
 tuotantojulkaisua, allekirjoitusta tai automaattipäivityksen toteutusta.
 
@@ -47,6 +48,38 @@ uutta suoraa riippuvuutta eikä muuta Eky-sovelluksen runtime-payloadia;
 se rajaa nykyisen paketointityökaluketjun transitiivisen XML-kirjaston
 korjattuun versioon. Override voidaan poistaa, kun hyväksytty upstream-ketju
 ratkaisee saman tai uudemman tarkistetun version ilman sitä.
+
+### Undici-korjauspäivitys
+
+Omistaja hyväksyi 29.9.2026 nykyisen development-ketjun
+`@electron/get@5.1.0 -> undici@7.29.0` rajatun päivityksen versioon `7.29.1`.
+[GHSA-3wwx-pv8p-q78v](https://github.com/advisories/GHSA-3wwx-pv8p-q78v)
+koskee WebSocketin pakatun viestin purkurajan jälkeistä käsittelemätöntä
+virhettä. Korjattu versio pysäyttää inflaterin hallitusti.
+`@electron/get`-paketin nykyinen optional-versioalue `^7.24.4` sallii
+korjatun version, joten vain lukitustiedoston ratkaisu ja julkaistun paketin
+integrity muuttuvat. Overridea, suoraa riippuvuutta tai uutta pakettia ei lisätä.
+MIT-lisenssi ja Node-alaraja `>=20.18.1` säilyvät; paketti ei tuo uusia
+runtime-riippuvuuksia tai install-skriptejä.
+
+Nykyinen lataaja käyttää HTTP Fetch -polkua sekä valinnaisesti Undicin
+`EnvHttpProxyAgent`-kytkentää. Eky-tuotannosta ei löytynyt tämän paketin
+WebSocket-kutsupolkua; riippuvuuden virhettä ei siksi nimetä todetuksi
+Eky-sovelluksen hyökkäyspoluksi. Päivitys ei muuta Node- tai Electron-runtimen
+sisäistä Undicia, Electronin versiota, checksum-tarkistusta tai fuseja.
+[Julkaisu](https://github.com/nodejs/undici/releases/tag/v7.29.1)
+sisältää myös muita saman kirjaston korjauksia, joten pelkkä versionumeron
+vaihto ei korvaa yhteensopivuustarkistusta.
+
+Rajattu todennus: vanhan version purkuvirhe toistui ja sama syöte hylättiin
+korjatulla versiolla ilman prosessin kaatumista. Myös toinen virheellinen
+purkusyöte, ehjän viestin kokoraja ja sallittu viesti tarkistettiin.
+Todellinen moduuliresoluutio, optional-dispatcherin alustus ja valmistajan
+tarkistussumman HTTPS-lataus toimivat. Nykyiset versio-/paketointi-/inventory-
+sopimustestit läpäisivät 59/59 sekä tuotanto- ja kokoriippuvuusauditit ja
+160 rekisteriallekirjoituksen tarkistus läpäisivät. Tämä ei yksin hyväksy
+PR/main-integraatiota: lukitustiedoston muutos käy normaalin täyden
+CI-riskiluokan läpi nykyisine vaatimuksineen.
 
 Rajattu installer-build käyttää lisäksi erikseen hyväksyttyjä build-työkaluja:
 

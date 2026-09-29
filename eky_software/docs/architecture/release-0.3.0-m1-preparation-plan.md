@@ -13,7 +13,7 @@ hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohd
 | Mainin omat portit | [Normaali CI 36491715165](https://github.com/eky-software/eky/actions/runs/36491715165), yritys 1: kaikki 38 vaadittua ryhmää läpäisivät; vain nimenomaisesti valinnainen diagnostiikkakoe ohitettiin. Linux system 695/695, kriittinen web 37/37 ja Windowsin kriittinen Electron 38/38 vastasivat ajovalintojaan ilman retryä, flakyä tai puuttuvia tapauksia. Neljän artifact-tuottajan ja kymmenen packaged-kuluttajan identiteetit ja elinkaarinäyttö hyväksyttiin. [Saman revision riippuvuustarkistus 36491789402](https://github.com/eky-software/eky/actions/runs/36491789402) läpäisi. |
 | Suljettu työ | T1/R27:n ajokytkentä, T2/R29:n puhtaan valmistelun suoja ja T3/R28:n todellisten kuluttajien koko prosessipuun omistajuus. Korvatut aktiiviset fallbackit on poistettu ja [pysyvä T3-matriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus) hyväksytty. PR #281 sulki tämän jälkeisen rollback-testiapurin integraatiojatkon. |
 | Avoimet havainnot | Aiemmat satunnaiset Electron-käynnistys- ja packaged/legacy-timeoutit säilyvät epäonnistuneina havaintoina omille revisioilleen. Myöhempi vihreä ajo ei todista niiden kaikkia syitä korjatuiksi. [Hylkäysten historia](e2e-test-environment-history.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko) ja [rajattu apurikorjaus](e2e-test-environment-history.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus) erotetaan toisistaan. |
-| Seuraava työ | Tämän rajatun ohjeselkeytyksen jälkeen A1/R01:n aloitusportti: ajantasaiset ohjeet, työpuu, lähtörevisio ja sen hyväksyntänäyttö sekä [avattavan luonnoksen kohteen suunnitelma](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde). Rajaa avoimet kysymykset ja regressio ennen toteutusta. |
+| Seuraava työ | Ennen ohjeselkeytyksen mergeä hyväksytty [Undici-korjauspäivitys](local-desktop-dependency-review.md#undici-korjauspäivitys), erillisen CI-hylkäyksen selvitys ja uuden revision omat portit. Sen jälkeen A1/R01:n aloitusportti: ajantasaiset ohjeet, työpuu, lähtörevisio ja sen hyväksyntänäyttö sekä [avattavan luonnoksen kohteen suunnitelma](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde). Rajaa avoimet kysymykset ja regressio ennen toteutusta. |
 | Ei vielä valmis | A1-A3, W7, M1:n muu sovellustyö ja koko 0.3.0. Testiperustan hyväksyntä ei hyväksy niiden tulevaa toteutusta tai muuttunutta liiketoimintasääntöä. |
 
 Hyväksyntä on sidottu yllä olevaan revisioon, ei automaattisesti myöhempään
@@ -41,6 +41,18 @@ pikaohje ja lukureitit lisätty sekä sisältö katselmoitu. Suhteelliset linkit
 otsikkoankkurit, siirretyn historian säilyminen ja kolmen esimerkin tyypitys
 tarkistettu. Tämä on dokumentointinäyttöä, ei uusi sovellus-/E2E-läpäisy
 tai dokumenttipalan PR/main-hyväksyntä.
+
+PR #282:n ensimmäisen dokumenttirevision `afa422bb` integraatio ei läpäissyt:
+[riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/36580426753)
+löysi `undici@7.29.0`-haavoittuvuuden. Omistaja hyväksyi erillisen rajatun
+`7.29.1`-korjauspäivityksen ennen mergeä ja A1:tä. Lisäksi
+[normaalin CI:n](https://github.com/eky-software/eky/actions/runs/36580427104)
+upgrade/rollback-ajossa 2 havaittiin `publicationDeadlineExceeded`
+tuloksen kirjoituksen `flush`-vaiheessa (`resultWriteFailed`). Se on
+erillinen epäonnistunut havainto, ei riippuvuuspäivityksen vaikutus eikä
+todistettu sovelluksen rollback-virhe. Ensimmäinen virhenäyttö on säilytetty;
+sen syy ja integraation hyväksyntä ovat avoimia. Aikarajoja tai CI-ehtoja
+ei muuteta riippuvuuskorjauksen perusteella.
 
 ## Lukureitit
 

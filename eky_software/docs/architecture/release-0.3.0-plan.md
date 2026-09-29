@@ -12,8 +12,13 @@ T3:n nykyohje, testinkirjoittajan pikaohje ja historian lukureitit on
 selkeytetty rajattuna dokumentointityönä. Linkit, historian säilyminen ja
 kolmen esimerkin tyypit on tarkistettu; sovellus- tai E2E-testejä ei ajettu
 tämän työn perusteella. Testikoodia, aikarajoja, riippuvuuksia tai
-CI-vaatimuksia ei muutettu. Dokumenttipalan oma integraationäyttö kirjataan
-erikseen, eikä PR #281:n tulosta nimetä sen testitulokseksi.
+CI-vaatimuksia ei muutettu dokumentointiosuudessa. Sen PR #282:n auditointi
+löysi kuitenkin nykyisen `undici@7.29.0`-haavoittuvuuden: omistaja hyväksyi
+rajatun `7.29.1`-korjauspäivityksen ennen mergeä. Erillinen upgrade/rollback-
+CI-hylkäys säilyy selvityskohteena. [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+erottaa nämä esteet A1:stä; riippuvuuden korjaus ei yksin hyväksy integraatiota.
+Oma integraationäyttö kirjataan erikseen, eikä PR #281:n tulosta nimetä
+tämän palan testitulokseksi.
 Seuraava tuotantopala on [A1/R01](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde)
 uuden preflightin ja omistavan aloitusportin kautta. Laaja ohjeverkon
 tarkistus pysyy [M3:n I-paketissa](#m3-muut-invariantit-diagnostiikka-ja-ylläpidettävyys);
