@@ -508,8 +508,13 @@ test('V2.5 phase acceptance requires all same-revision contract groups before it
   assert.ok(contracts.includes('run: pnpm installer:test:windows-supervisor-v2-legacy-${{ matrix.group }}'));
   assert.equal(contracts.match(/run: pnpm installer:supervisor:build/gu)?.length, 1);
   assert.ok(contracts.indexOf('name: Prepare locked package manager') < contracts.indexOf('name: Build existing supervisor once'));
-  assert.match(contracts, /\$actual = pnpm --version/u);
-  assert.match(contracts, /Get-Content ..\/..\/package.json -Raw/u);
+  const preparation = contracts.split('      - name: Prepare locked package manager\n')[1]?.split('\n      - name:')[0];
+  assert.equal(preparation?.trim(), 'working-directory: .\n        run: node .github/scripts/prepareLockedPnpm.mjs');
+  // The shared helper owns the root pin and fail-closed version/signature checks.
+  const cadence = await readFile(new URL('../../../../../.github/workflows/ci-cadence-contracts.yml', import.meta.url), 'utf8');
+  for (const file of ['prepareLockedPnpm.test.mjs', 'lockedPnpmWiring.test.mjs']) {
+    assert.ok(cadence.includes(`.github/scripts/${file}`));
+  }
   assert.match(contracts, /fail-fast: false/u);
   assert.match(producer, /needs: legacy_contracts/u);
   assert.equal(source.match(/ref: \$\{\{ github\.sha \}\}/gu)?.length, 3);
@@ -642,7 +647,7 @@ for (const [mode, selectedName, commandName, files] of [
       mode === 'product-command-diagnostic' ? 'clean-upgrade-command-diagnostic' : 'product-command-diagnostic', undefined]) {
       assert.equal(enabled(selected, other), false);
     }
-    for (const name of ['Enable existing package manager for diagnostic contracts',
+    for (const name of ['Prepare locked package manager for diagnostic contracts',
       'Prepare locked package manager before inspection command contracts']) {
       assert.equal(enabled(step(name), mode), true);
     }
@@ -667,7 +672,7 @@ for (const [mode, selectedName, commandName, files] of [
         .split('\n      - name:')[0].match(/run: (.+)/u)[1];
       assert.equal(step('Build existing supervisor for clean and upgrade diagnosis').match(/run: (.+)/u)[1], normalBuild);
       assert.equal(enabled(step('Record diagnostic revision and runner image'), mode), true);
-      const preparation = ['Enable existing package manager for diagnostic contracts',
+      const preparation = ['Prepare locked package manager for diagnostic contracts',
         'Prepare locked package manager before inspection command contracts',
         'Record diagnostic revision and runner image',
         'Build existing supervisor for clean and upgrade diagnosis', selectedName];
