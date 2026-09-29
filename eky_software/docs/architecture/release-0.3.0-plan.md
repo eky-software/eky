@@ -20,6 +20,11 @@ selvityskohteina. [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatk
 erottaa nämä esteet A1:stä; riippuvuuden korjaus ei yksin hyväksy integraatiota.
 Oma integraationäyttö kirjataan erikseen, eikä PR #281:n tulosta nimetä
 tämän palan testitulokseksi.
+Revision `9756e90e` erillinen CI-valmisteluhylkäys tapahtui Corepackin
+pnpm-latauksessa ennen legacy/core-testejä. Omistaja hyväksyi saman pnpm:n
+[varmennetun npm-valmistelun](dependency-policy.md#ci-paketinhallinnan-valmistelu)
+ilman työkaluversioiden tai testiehtojen muutoksia. Sen oma todennus ja
+integraatio ovat seuraava rajattu työ; vanhat timeout-havainnot säilyvät.
 Seuraava tuotantopala on [A1/R01](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde)
 uuden preflightin ja omistavan aloitusportin kautta. Laaja ohjeverkon
 tarkistus pysyy [M3:n I-paketissa](#m3-muut-invariantit-diagnostiikka-ja-ylläpidettävyys);

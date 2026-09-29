@@ -13,7 +13,7 @@ hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohd
 | Mainin omat portit | [Normaali CI 36491715165](https://github.com/eky-software/eky/actions/runs/36491715165), yritys 1: kaikki 38 vaadittua ryhmää läpäisivät; vain nimenomaisesti valinnainen diagnostiikkakoe ohitettiin. Linux system 695/695, kriittinen web 37/37 ja Windowsin kriittinen Electron 38/38 vastasivat ajovalintojaan ilman retryä, flakyä tai puuttuvia tapauksia. Neljän artifact-tuottajan ja kymmenen packaged-kuluttajan identiteetit ja elinkaarinäyttö hyväksyttiin. [Saman revision riippuvuustarkistus 36491789402](https://github.com/eky-software/eky/actions/runs/36491789402) läpäisi. |
 | Suljettu työ | T1/R27:n ajokytkentä, T2/R29:n puhtaan valmistelun suoja ja T3/R28:n todellisten kuluttajien koko prosessipuun omistajuus. Korvatut aktiiviset fallbackit on poistettu ja [pysyvä T3-matriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus) hyväksytty. PR #281 sulki tämän jälkeisen rollback-testiapurin integraatiojatkon. |
 | Avoimet havainnot | Aiemmat satunnaiset Electron-käynnistys- ja packaged/legacy-timeoutit säilyvät epäonnistuneina havaintoina omille revisioilleen. Myöhempi vihreä ajo ei todista niiden kaikkia syitä korjatuiksi. [Hylkäysten historia](e2e-test-environment-history.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko) ja [rajattu apurikorjaus](e2e-test-environment-history.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus) erotetaan toisistaan. |
-| Seuraava työ | Ennen ohjeselkeytyksen mergeä hyväksytty [Undici-korjauspäivitys](local-desktop-dependency-review.md#undici-korjauspäivitys), erillisen CI-hylkäyksen selvitys ja uuden revision omat portit. Sen jälkeen A1/R01:n aloitusportti: ajantasaiset ohjeet, työpuu, lähtörevisio ja sen hyväksyntänäyttö sekä [avattavan luonnoksen kohteen suunnitelma](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde). Rajaa avoimet kysymykset ja regressio ennen toteutusta. |
+| Seuraava työ | Ennen ohjeselkeytyksen mergeä hyväksytty [Undici-korjauspäivitys](local-desktop-dependency-review.md#undici-korjauspäivitys), rajattu [CI-paketinhallinnan valmistelukorjaus](dependency-policy.md#ci-paketinhallinnan-valmistelu) ja uuden revision omat portit. Sen jälkeen A1/R01:n aloitusportti: ajantasaiset ohjeet, työpuu, lähtörevisio ja sen hyväksyntänäyttö sekä [avattavan luonnoksen kohteen suunnitelma](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde). Rajaa avoimet kysymykset ja regressio ennen toteutusta. |
 | Ei vielä valmis | A1-A3, W7, M1:n muu sovellustyö ja koko 0.3.0. Testiperustan hyväksyntä ei hyväksy niiden tulevaa toteutusta tai muuttunutta liiketoimintasääntöä. |
 
 Hyväksyntä on sidottu yllä olevaan revisioon, ei automaattisesti myöhempään
@@ -76,6 +76,22 @@ diagnostiikan tarkennus, ei vanhan timeoutin todistettu korjaus. Uuden
 revision integraation hyväksyntä sekä erillisen asennusodotuksen selvitys
 ovat vielä avoimia. Omistava sopimus on
 [Windows-harnessin ohjeessa](windows-installer-acceptance-harness-v2.md).
+
+Revision `9756e90e` [riippuvuustarkistus 36588427564](https://github.com/eky-software/eky/actions/runs/36588427564)
+läpäisi, mutta [normaali CI 36588428320](https://github.com/eky-software/eky/actions/runs/36588428320)
+hylättiin ennen legacy/core-testien alkua: Corepackin pnpm-lataus päättyi
+Noden sisäisen HTTP-asiakkaan assertion-virheeseen. Kokonaistulos oli 33
+läpäisyä, kaksi hylkäystä (valmistelujob ja hyväksyntäkoonti) sekä kolme
+ohitusta (valinnainen koe ja kaksi estynyttä legacy-jobia). Tätä ei tulkita
+sovellustestin epäonnistumiseksi tai kaikkien vanhojen timeoutien korjaukseksi.
+
+Omistaja hyväksyi 2026-09-29 rajatun valmistelukorjauksen: sama pnpm
+asennetaan Noden mukana tulevalla npm:llä erilliseen ajokansioon ja sen
+eheys, rekisteriallekirjoitus ja versio varmennetaan ennen käyttöä.
+Yhteinen apuri korvaa nykyisten CI-kuluttajien Corepack-latauksen. Node-,
+pnpm-, Electron- ja tietokantaversiot, sovelluskoodi, testikomennot,
+aikarajat ja hyväksyntäehdot säilyvät. Tämä ei aloita A1:tä eikä hyväksy
+mergeä ennen uuden revision omia portteja.
 
 ## Lukureitit
 

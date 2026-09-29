@@ -38,8 +38,9 @@ jobs:
           node-version-file: eky_software/.node-version
           package-manager-cache: false
 
-      - name: Enable Corepack
-        run: corepack enable
+      - name: Prepare locked package manager
+        working-directory: .
+        run: node .github/scripts/prepareLockedPnpm.mjs
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -94,8 +95,9 @@ jobs:
         shell: pwsh
         run: |
           if ((dotnet --version) -ne '10.0.302') { throw 'WINDOWS_ACCEPTANCE_WORKSPACE_DOTNET_SDK_INVALID' }
-      - name: Enable Corepack
-        run: corepack enable
+      - name: Prepare locked package manager
+        working-directory: .
+        run: node .github/scripts/prepareLockedPnpm.mjs
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Restore locked WiX toolchain
@@ -184,8 +186,9 @@ jobs:
         shell: pwsh
         run: |
           if ((dotnet --version) -ne '10.0.302') { throw 'WINDOWS_ACCEPTANCE_WORKSPACE_DOTNET_SDK_INVALID' }
-      - name: Enable Corepack
-        run: corepack enable
+      - name: Prepare locked package manager
+        working-directory: .
+        run: node .github/scripts/prepareLockedPnpm.mjs
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Download exact workspace artifact
@@ -280,8 +283,9 @@ jobs:
         shell: pwsh
         run: |
           if ((dotnet --version) -ne '10.0.302') { throw 'WINDOWS_ACCEPTANCE_WORKSPACE_DOTNET_SDK_INVALID' }
-      - name: Enable Corepack
-        run: corepack enable
+      - name: Prepare locked package manager
+        working-directory: .
+        run: node .github/scripts/prepareLockedPnpm.mjs
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Download exact workspace artifact

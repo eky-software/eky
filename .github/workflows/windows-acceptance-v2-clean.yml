@@ -64,8 +64,9 @@ jobs:
             throw 'WINDOWS_ACCEPTANCE_ARTIFACT_DOTNET_SDK_INVALID'
           }
 
-      - name: Enable Corepack
-        run: corepack enable
+      - name: Prepare locked package manager
+        working-directory: .
+        run: node .github/scripts/prepareLockedPnpm.mjs
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -201,8 +202,9 @@ jobs:
             throw 'WINDOWS_ACCEPTANCE_ARTIFACT_DOTNET_SDK_INVALID'
           }
 
-      - name: Enable Corepack
-        run: corepack enable
+      - name: Prepare locked package manager
+        working-directory: .
+        run: node .github/scripts/prepareLockedPnpm.mjs
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

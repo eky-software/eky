@@ -112,9 +112,10 @@ jobs:
           --test-name-pattern="^native close observation: visible$"
           installer/windows-acceptance-harness/requestWindowsApplicationClose.test.mjs
 
-      - name: Enable existing package manager for diagnostic contracts
+      - name: Prepare locked package manager for diagnostic contracts
         if: inputs.mode == 'legacy-contracts-diagnostic' || inputs.mode == 'inspection-command-contracts' || inputs.mode == 'clean-upgrade-command-diagnostic' || inputs.mode == 'product-command-diagnostic'
-        run: corepack enable
+        working-directory: .
+        run: node .github/scripts/prepareLockedPnpm.mjs
 
       - name: Prepare locked package manager before inspection command contracts
         if: inputs.mode == 'inspection-command-contracts' || inputs.mode == 'clean-upgrade-command-diagnostic' || inputs.mode == 'product-command-diagnostic' || (inputs.mode == 'legacy-contracts-diagnostic' && inputs.legacy_contract_scope == 'core')
@@ -292,6 +293,10 @@ jobs:
         with:
           dotnet-version: 10.0.302
 
+      - name: Prepare locked package manager
+        working-directory: .
+        run: node .github/scripts/prepareLockedPnpm.mjs
+
       - name: Bind verified SDK and install existing locked dependencies
         run: |
           $dotnet = (Get-Command dotnet.exe -CommandType Application -ErrorAction Stop).Source
@@ -299,7 +304,6 @@ jobs:
             throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_SDK_INVALID'
           }
           "EKY_DOTNET_EXE=$dotnet" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          corepack enable
           pnpm install --frozen-lockfile
           if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_PREPARATION_FAILED' }
 
