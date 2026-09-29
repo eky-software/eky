@@ -1,8 +1,16 @@
 # T3a process ownership experiment
 
+This directory contains both historical experiment launchers and runtime
+components used by the current fixtures. Start ordinary test work from the
+[author quickstart](../../../../docs/ai/e2e-test-authoring-guide.md) and the
+[current ownership contract](../../../../docs/architecture/e2e-test-environment.md#koko-prosessipuun-omistajuus).
+The [M1 checkpoint](../../../../docs/architecture/release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+owns the accepted baseline and next work. Dated results and pending decisions
+below describe their historical revisions, not the current integration gate.
+
 Manual, Windows-only feasibility evidence for
-[T3](../../../../docs/architecture/e2e-test-environment.md#t3-koko-prosessipuun-poistumistodiste).
-This is not an ordinary fixture adapter, a production feature, an installer
+[T3](../../../../docs/architecture/e2e-test-environment-history.md#t3-koko-prosessipuun-poistumistodiste).
+The T3a launcher is not an ordinary fixture adapter, a production feature, an installer
 protocol change, or acceptance of R28. Linux inspection has a separate
 read-only scope. Do not run this against an application or real company profile.
 
@@ -13,10 +21,11 @@ The same `adapterNative` assembly now also contains a distinct, versioned
 Windows backend-service mode used by the ordinary backend fixtures. Its
 preparation runs through the existing E2E preparation commands, not these
 manual experiment launchers or experiment budgets. See the authoritative
-[backend ownership contract and current acceptance state](../../../../docs/architecture/e2e-test-environment.md#backendin-windows-omistajan-toteutusraja).
+[current Windows ownership contract](../../../../docs/architecture/e2e-test-environment.md#windows).
 Windows Vite and the ordinary Windows Electron fixture now also use their
-approved owner paths. The Electron checkpoint below records its bounded local
-acceptance; this does not migrate Chromium or Linux ownership or close T3.
+approved owner paths. The historical Electron checkpoint below records its
+bounded local acceptance; the later complete T3 acceptance is recorded in
+the M1 checkpoint linked above, not inferred from an individual experiment.
 
 ## Scope
 
@@ -150,8 +159,8 @@ validation. It affects the current explicit Electron launch as well as a
 future native bridge. Failed launch still has no public close receipt, and
 missing registration or closure remains unverified. Actual Windows argument,
 stdio and lifecycle evidence is required in addition to controlled regressions.
-The current implementation and acceptance state stays in the
-[owning checkpoint](../../../../docs/architecture/e2e-test-environment.md#electronin-pääkäynnistyksen-avoimet-päätösrajat).
+The original implementation boundary and its acceptance stay in the
+[historical checkpoint](../../../../docs/architecture/e2e-test-environment-history.md#electronin-pääkäynnistyksen-avoimet-päätösrajat).
 
 The owner also approved the childless Windows bridge's explicit
 `Electron.launch({ windowsProcessOnly: true })` extension. The public optional
@@ -197,7 +206,7 @@ passed with independently read-back source, original-error and cleanup evidence:
 normal Page/API/close, two early faults and a genuine pending-first-window timeout
 followed by an observed public close event and separate native tree proof.
 Exact acceptance boundaries and preserved first failures are recorded in the
-[owning extension checkpoint](../../../../docs/architecture/e2e-test-environment.md#electron-bridgen-lopetuspolun-jatkoehdotus).
+[owning extension checkpoint](../../../../docs/architecture/e2e-test-environment-history.md#electron-bridgen-lopetuspolun-jatkoehdotus).
 Subsequent bounded generation and loss evidence is accepted separately:
 restart/relaunch and second-instance second attempts, owner-loss first attempt
 and caller-loss second attempt. Original failed attempts and their immutable
@@ -270,13 +279,13 @@ explicitly enabled CI steps. Final T3 ownership acceptance remains separate.
 
 The owner approved the separate Windows adapter and Linux namespace experiments
 on 2026-09-26. Their canonical limits and decision boundaries are in the
-[T3c-W plan](../../../../docs/architecture/e2e-test-environment.md#t3c-wn-neljän-tapauksen-adapterikoe-päätösehdotus)
-and [T3c-L plan](../../../../docs/architecture/e2e-test-environment.md#t3c-ln-rajattu-namespace-koe-päätösehdotus).
+[T3c-W plan](../../../../docs/architecture/e2e-test-environment-history.md#t3c-wn-neljän-tapauksen-adapterikoe-päätösehdotus)
+and [T3c-L plan](../../../../docs/architecture/e2e-test-environment-history.md#t3c-ln-rajattu-namespace-koe-päätösehdotus).
 The four bounded Windows cases passed after implementation and independent
-review; the [checkpoint](../../../../docs/architecture/e2e-test-environment.md#t3c-wn-rajatun-kokeen-checkpoint)
+review; the [checkpoint](../../../../docs/architecture/e2e-test-environment-history.md#t3c-wn-rajatun-kokeen-checkpoint)
 records their scope and unresolved earlier failures. Both first Linux CI
 experiments failed before GO with `bootstrapUnknown`; the ordinary system and
-web suites passed before them. The [failure checkpoint](../../../../docs/architecture/e2e-test-environment.md#t3c-ln-ensimmäisen-ci-kokeen-hylkäys)
+web suites passed before them. The [failure checkpoint](../../../../docs/architecture/e2e-test-environment-history.md#t3c-ln-ensimmäisen-ci-kokeen-hylkäys)
 preserves the evidence limits; neither namespace support nor a missing
 prerequisite was established. Final
 mechanism selection and fixture migration require a separate decision; these
@@ -380,13 +389,13 @@ write or retries it. The driver reports closed categories from its bootstrap
 decision snapshot, never raw stderr, process IDs, identity values or paths.
 A marker is not READY, proof of cleanup, or permission to classify a failure
 as a missing prerequisite. Original classification and all budgets remain.
-See the [owning LD scope](../../../../docs/architecture/e2e-test-environment.md#t3c-ld-rajatun-käynnistysdiagnostiikan-päätösehdotus).
-The [LD CI result](../../../../docs/architecture/e2e-test-environment.md#t3c-ldn-rajatun-ci-kokeen-havainto)
+See the [owning LD scope](../../../../docs/architecture/e2e-test-environment-history.md#t3c-ld-rajatun-käynnistysdiagnostiikan-päätösehdotus).
+The [LD CI result](../../../../docs/architecture/e2e-test-environment-history.md#t3c-ldn-rajatun-ci-kokeen-havainto)
 remains failed before READY in both consumers; all other test groups passed.
-The [LS follow-up proposal](../../../../docs/architecture/e2e-test-environment.md#t3c-ls-suljetun-stderr-luokan-tarkennuksen-päätösehdotus)
+The [LS follow-up proposal](../../../../docs/architecture/e2e-test-environment-history.md#t3c-ls-suljetun-stderr-luokan-tarkennuksen-päätösehdotus)
 was approved on 2026-09-26. Its exact-message diagnostic table and schema 3
 passed regression tests and independent source/reader review. Both Linux
-consumers in the [single new CI cycle](../../../../docs/architecture/e2e-test-environment.md#t3c-lsn-rajatun-ci-kokeen-havainto)
+consumers in the [single new CI cycle](../../../../docs/architecture/e2e-test-environment-history.md#t3c-lsn-rajatun-ci-kokeen-havainto)
 reported `unshareUidMapDenied` before READY/GO. The complete cycle finished
 failed only in these two experiments and their aggregate; other test groups
 and the dependency check passed. This identifies the whole-message class, not the underlying
@@ -398,7 +407,7 @@ Schemas 1/2 remain historical evidence; do not reinterpret earlier results.
 ## T3c-LM managed CI session
 
 The owner has approved bounded CI-session management design and implementation
-within the existing Goal. The [owning LM plan](../../../../docs/architecture/e2e-test-environment.md#t3c-lm-rajattu-ci-testisession-hallinta)
+within the existing Goal. The [owning LM plan](../../../../docs/architecture/e2e-test-environment-history.md#t3c-lm-rajattu-ci-testisession-hallinta)
 replaces the pending design decision, not the failed historical LS evidence.
 The first slice contains pure launch, credential-drop and systemd observation contracts.
 It neither starts a service nor authorizes an ordinary fixture migration.

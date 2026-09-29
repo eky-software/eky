@@ -2,8 +2,10 @@
 
 Tämä dokumentti määrittelee Eky R0:n system-, selain-, Electron development-
 ja packaged-smoke-testitasot. Pysyvä skenaarioluettelo on
-`r0-e2e-test-matrix.md`-tiedostossa ja turvallinen runtime
-`e2e-test-environment.md`-tiedostossa.
+[R0-testimatriisissa](r0-e2e-test-matrix.md) ja turvallinen runtime
+[E2E-testiympäristössä](e2e-test-environment.md).
+Käytännön testipohjat, ajokomennot ja vianhaun aloitus ovat
+[testinkirjoittajan pikaohjeessa](../ai/e2e-test-authoring-guide.md).
 
 ## Testitasot
 
@@ -24,13 +26,19 @@ smoke/recovery-polulla.
 
 ## Eristys
 
-Jokainen E2E-worker saa omat:
+Jokainen E2E-testi saa omat:
 
 - SQLite-tietokannan
 - PDF-varaston
 - operational/security-lokihakemiston
 - temp- ja support bundle -hakemiston
 - synteettisen testidatan
+
+Web-worker jakaa vain Chromium-selainprosessin: jokaisella testillä on oma
+context, page, session ja backend/Vite-palvelut. Selaimen worker-juuri ja
+testin datajuuri siivotaan omilla varmennetuilla elinkaarillaan
+[nykyisen omistajuussopimuksen](e2e-test-environment.md#chromiumin-worker--ja-testikohtainen-eristys)
+mukaan. Testin tiedot eivät siirry seuraavaan testiin.
 
 E2E ei käytä oikeaa SMTP:tä, ulkoista verkkoa, oikeita salaisuuksia,
 asiakastietoja tai laskuja.
@@ -78,9 +86,10 @@ automaattisesti uudelleen.
 Packaged smoke säilyy erillisenä hardened-artifactin porttina. Salattu
 backup/restore-, recovery point-, activation journal- ja rollback-polku on
 toteutettu ja todennettu kaksiprosessisella Windows packaged -testillä.
-Installer/update-arkkitehtuuri on hyväksytty, mutta sen tuotantokoodi ja
-E2E-polut ovat edelleen oma myöhempi distribution-checkpoint. Pilvi-
-identiteetin tenant-matriisi on myöhempi erillinen checkpoint. Ensimmäinen
+Installer/update-polut käyttävät erillistä
+[Windows-hyväksyntäharnessia](windows-installer-acceptance-harness-v2.md),
+eivät näiden kolmen Playwright-fixturen läpäisyä korvaavana todisteena.
+Pilvi-identiteetin tenant-matriisi on myöhempi erillinen checkpoint. Ensimmäinen
 30 minuutin Electron-soak on dokumentoitu
 `e2e-desktop-endurance-baseline.md`-tiedostossa ja backup/restore-kohtainen
 release-todiste `local-backup-and-restore-plan.md`-tiedostossa.
@@ -115,7 +124,7 @@ Playwright-jobit käyttävät yhtä CI-retryä vain trace-todisteen keräämisee
 `failOnFlakyTests`-asetusta, joten retryllä vasta läpäisevä testi epäonnistaa
 jobin. Raskaita E2E-jobeja ei ajeta erikseen jokaisessa `antsa`-pushissa.
 
-Valmistellussa cutoverissa `ci-cadence-contracts.yml` omistaa laukaisun ja
+Nykyisessä V2-kytkennässä `ci-cadence-contracts.yml` omistaa laukaisun ja
 vakaan `V2 acceptance` -koonnin. `ci.yml` on sen reusable core, ei toinen
 suoraan PR:stä käynnistyvä testiketju. Sen erillinen `electron_diagnostic`
 -käsikäynnistys käyttää vain nykyistä Electron-jobia ja erillistä
@@ -124,9 +133,8 @@ normaalia hyväksyntää. Koonti vaatii kaikki valitut perheet,
 toistot ja pakolliset vaiheet; odottamaton skip, puuttuva tulos tai peruutus
 ei kelpaa onnistumiseksi. Riippuvuusturva säilyy erillisenä työnkulkuna.
 
-Mainin tarkistetut nykyiset required checkit ja ehdotettu vaihto ovat
-`windows-installer-acceptance-harness-v2.md`-dokumentin ajantasaisessa
-käyttöönottolistassa. Vaihtoa ei ole tehty tämän lähdekoodidiffin perusteella.
+CI-kytkennän ja required-check-sopimuksen omistava ohje on
+[Windows-hyväksyntäharness](windows-installer-acceptance-harness-v2.md).
 Repositorion todellinen ruleset varmistetaan GitHubista ennen asetusten
 muutosta; paikallinen dokumentaatio ei muuta GitHub-asetuksia.
 Checkien nimiä ei muuteta hiljaisesti, koska branch protection viittaa

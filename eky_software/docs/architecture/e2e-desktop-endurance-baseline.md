@@ -16,9 +16,11 @@ luetaan testin aktiivisesta workspacesta yhteisen
 asennuskohtaisina. Stress ja soak käyttävät samaa mittauspolkujen ratkaisua;
 puuttuvaa tai virheellistä workspace-rekisteriä ei korvata vanhalla
 yhden yrityksen polulla. `SYS-DESKTOP-ENDURANCE-PATHS-001` suojaa polkujen
-valinnan, mutta ei korvaa oikeaa kuormitusajoa. Nykyisen T3-kierroksen
-[näyttö ja avoin portti](e2e-test-environment.md#windows-electronin-endurance-ja-virheen-säilymisen-loppunäyttö)
+valinnan, mutta ei korvaa oikeaa kuormitusajoa. T3-kierroksen
+[revisiokohtainen näyttö](e2e-test-environment-history.md#windows-electronin-endurance-ja-virheen-säilymisen-loppunäyttö)
 pidetään erillään alla olevista historiallisista vertailuista.
+Nykyinen hyväksytty lähtörevisio ja seuraava työ ovat
+[M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
 
 ## Komennot
 

@@ -107,6 +107,13 @@ Usean kerroksen system-, selain- ja Electron development -E2E-testit kuuluvat
 `apps/e2e`-workspaceen. Hardened packaged-artifactin smoke-testit säilyvät
 desktop-paketin omistuksessa.
 
+Uuden tai muuttuvan E2E-testin käytännön lukureitti on
+[testinkirjoittajan pikaohje](e2e-test-authoring-guide.md): oikea fixture,
+synteettinen eristys, kanoninen ajokomento ja ensivirheen näyttö.
+[Tekninen runtime-sopimus](../architecture/e2e-test-environment.md) ja
+[kattavuusmatriisi](../architecture/r0-e2e-test-matrix.md) pysyvät omistavina
+ohjeina; pikaohje ei luo uutta testitasoa tai hyväksyntäpoikkeusta.
+
 Yleistä `test-utils`-kaatopaikkaa ei luoda. Toistuva testi-infrastruktuuri
 irrotetaan vasta todelliseen tarpeeseen ja nimetään vastuun mukaan.
 

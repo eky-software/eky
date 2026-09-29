@@ -3916,11 +3916,11 @@ tulostiedostoa, liian aikaista poistumista ja sovelluksen raportoimaa virhettä
 ei enää tarvitse päätellä samasta yleisestä lokirivistä. Alkuperäisen
 CI-virheen sisäinen syy ja workspace-asennusodotuksen tarkka raja ovat avoimia.
 
-T3/R28:n myöhempi [legacy-hylkäys ja diagnostiikkatarkennus](e2e-test-environment.md#t3b-en-kokonaisajon-legacy-hylkäys)
+T3/R28:n myöhempi [legacy-hylkäys ja diagnostiikkatarkennus](e2e-test-environment-history.md#t3b-en-kokonaisajon-legacy-hylkäys)
 lisää samaan vaihehavaintoon suljetun `smokeFailureClass`-kentän. Harness
 projektoi vain jäädytetyn 0.2.6-kirjoittajan 16 täsmällisesti nimettyä
 startup-virhekoodia ennalta määriteltyihin luokkiin. Myöhempi
-[rajattu diagnostiikkajatko](e2e-test-environment.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko)
+[rajattu diagnostiikkajatko](e2e-test-environment-history.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko)
 lisää viisi saman kirjoittajan täsmällistä diagnostiikkakoodia:
 `DESKTOP_SMOKE_DIAGNOSTICS_SUMMARY_HTTP_FAILED`,
 `DESKTOP_SMOKE_DIAGNOSTICS_IDENTITY_FAILED`,
@@ -5157,11 +5157,11 @@ jälkeen suljetun terminal-tuloksen ja viimeisen validoidun handoff-vaiheen enne
 paluukoodiväitettä. `unavailableOrInvalid` säilyttää puuttuvan tai virheellisen
 havainnon erillään onnistumisesta. Raportointi ei korvaa tuloksen sidontaa,
 alkuperäisiä assertioneita tai cleanup-varmennusta eikä julkaise raakaa
-fixture-aineistoa. [Ajankohtainen hylkäys ja rajattu näyttö](e2e-test-environment.md#t3b-en-normaalin-baselinen-rollback-sopimushylkäys)
+fixture-aineistoa. [Historiallinen hylkäys ja rajattu näyttö](e2e-test-environment-history.md#t3b-en-normaalin-baselinen-rollback-sopimushylkäys)
 eivät muuta yllä olevia aikarajoja tai ratkaise hylkäyksen tuntematonta syytä.
 
 Myöhemmän `earlyHelperExit`-hylkäyksen
-[rajattu testiapurikorjaus](e2e-test-environment.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus)
+[rajattu testiapurikorjaus](e2e-test-environment-history.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus)
 jättää tässä tarkoituksellisessa ennenaikaisen poistumisen kokeessa `probe`-
 kyselyn lähettämättä. Puuttuva kuittaus todistetaan EOF:llä, ei hyväksymällä
 mikä tahansa kanavavirhe. Onnistuvan handoffin viestit, worker-result,

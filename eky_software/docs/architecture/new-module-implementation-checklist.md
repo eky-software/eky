@@ -170,6 +170,9 @@ log ja tukipaketti ovat eri vastuita.
   näkymäpolku.
 - [ ] Pidä yksikkö- ja komponenttitestit toteutuksen vieressä; tee erillinen
   E2E-alue vasta usean kerroksen käyttäjäpoluille.
+- [ ] Käytä kerrokset yhdistävissä testeissä yhteistä
+  [E2E-pikaohjetta](../ai/e2e-test-authoring-guide.md) ja sen kolmea
+  eristettyä fixtureä. Moduuli ei toteuta omaa prosessienhallintaa.
 - [ ] Päivitä `r0-e2e-test-matrix.md`: vähintään onnistuva käyttäjäpolku,
   permission-/tenant-esto ja failure-/recovery-polku.
 - [ ] Lisää cross-module E2E -skenaario, jos moduuli lukee tai komentaa toista

@@ -160,8 +160,11 @@ Jos työ koskee E2E-testejä, Playwrightia, selain- tai Electron development
 packaged-smoken testikattavuutta, lue myös
 `docs/architecture/e2e-testing-strategy.md`,
 `docs/architecture/r0-e2e-test-matrix.md` ja
-`docs/architecture/e2e-test-environment.md`. Jos muutat `apps/e2e`-aluetta,
-lue myös sen oma `AGENTS.md`.
+`docs/architecture/e2e-test-environment.md` sekä
+[testinkirjoittajan pikaohje](docs/ai/e2e-test-authoring-guide.md).
+Pikaohje yhdistää nykyiset testipohjat, ajokomennot ja virhetodisteet;
+päivätty koehistoria ei korvaa nykyistä runtime-sopimusta.
+Jos muutat `apps/e2e`-aluetta, lue myös sen oma `AGENTS.md`.
 
 Jos työ koskee uuden liiketoimintamoduulin tai moduulikansion perustamista,
 `docs/modules/`-vastuudokumenttia, moduulikohtaista `AGENTS.md`-tiedostoa,
