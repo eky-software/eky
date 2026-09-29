@@ -30,13 +30,13 @@ internal static class SupervisorProgram
     internal static SupervisorPhaseCompletion RunPhase(
         string[] arguments,
         Func<SupervisorRequest, Stopwatch, SafeEvidenceWriter, SupervisorOutcome> execute,
-        Action<SupervisorRequest, SupervisorOutcome, long>? writeResult = null
+        Action<SupervisorRequest, SupervisorOutcome, long, Action<SupervisorResultWritePhase, bool>>? writeResult = null
     ) => RunPhase(observe => SupervisorRequestReader.Read(arguments, observe), execute, writeResult);
 
     internal static SupervisorPhaseCompletion RunPhase(
         Func<Action<SupervisorRequestPreparationPhase, bool>, SupervisorRequest> prepareRequest,
         Func<SupervisorRequest, Stopwatch, SafeEvidenceWriter, SupervisorOutcome>? execute = null,
-        Action<SupervisorRequest, SupervisorOutcome, long>? writeResult = null,
+        Action<SupervisorRequest, SupervisorOutcome, long, Action<SupervisorResultWritePhase, bool>>? writeResult = null,
         SafeEvidenceWriter? commandEvidence = null,
         int? preparationTimeoutMilliseconds = null
     )
@@ -162,7 +162,7 @@ internal static class SupervisorProgram
         SupervisorOutcome outcome,
         Stopwatch stopwatch,
         SafeEvidenceWriter? evidence,
-        Action<SupervisorRequest, SupervisorOutcome, long>? writeResult
+        Action<SupervisorRequest, SupervisorOutcome, long, Action<SupervisorResultWritePhase, bool>>? writeResult
     )
     {
         var publicationPhase = (int)SupervisorResultWritePhase.NotStarted;
@@ -184,8 +184,8 @@ internal static class SupervisorProgram
             var publication = Task.Run(() =>
             {
                 Volatile.Write(ref publicationPhase, (int)SupervisorResultWritePhase.WriterStarted);
-                if (writeResult is not null) writeResult(request, outcome, duration);
-                else SupervisorResultWriter.Write(request, outcome, duration,
+                var writer = writeResult ?? SupervisorResultWriter.Write;
+                writer(request, outcome, duration,
                     (phase, completed) =>
                     {
                         Volatile.Write(ref publicationPhase, (int)phase);

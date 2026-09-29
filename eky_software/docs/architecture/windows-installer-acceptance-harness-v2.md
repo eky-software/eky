@@ -3554,8 +3554,15 @@ säilyttää alkuperäisen vaiherajan myös tilapäistiedoston siivouksen jälke
 Pakollinen `resultWriteFailed`, alkuperäiset process/worker/cleanup-tulokset,
 nykyinen viiden sekunnin poistumisvaraus ja jatkamisen esto säilyvät.
 Havaintovirhe ei saa muuttaa tulostiedostoa tai komennon onnistumista.
+Kirjoittimen `bufferFlush` erottaa serialisoinnin jälkeisen muistipuskurin
+tyhjennyksen (`Flush(false)`) sitä seuraavasta levylle varmistamisesta
+(`flush`, `Flush(true)`). `WriteThrough`, yksinomainen tilapäistiedosto,
+sulkeminen ennen julkaisua ja ylikirjoituksen estävä julkaisu säilyvät.
+Vaiheen aloitus tarkoittaa havaintopisteen saavuttamista, ei todistetta
+käyttöjärjestelmäkutsun sisäisestä viiveestä tai sen aiheuttajasta.
 Nykyisen komentofixturen regressio vapauttaa estyneen oikean kirjoittimen
-vasta hylätyn vaiheen palattua: myöhäinen tiedosto ei muuta exit-koodia,
+erikseen kummankin flush-vaiheen rajalta vasta hylätyn vaiheen palattua:
+myöhäinen tiedosto ei muuta exit-koodia,
 valtuuta seuraavaa vaihetta tai poista aineistoa. Lukija hylkää onnistuneeksi
 merkityn myöhäisen tiedoston, kun todellinen komentoprosessi poistui virheenä.
 Tämä täsmentää seuraavan mahdollisen virheen näyttöä, ei nimeä aiemman

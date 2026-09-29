@@ -54,6 +54,29 @@ todistettu sovelluksen rollback-virhe. Ensimmäinen virhenäyttö on säilytetty
 sen syy ja integraation hyväksyntä ovat avoimia. Aikarajoja tai CI-ehtoja
 ei muuteta riippuvuuskorjauksen perusteella.
 
+Sama normaali CI päättyi hylättynä: 35 ryhmää läpäisi, kolme hylättiin
+(kaksi suoritusryhmää ja hyväksyntäkoonti), yksi valinnainen koe ohitettiin.
+Toinen suoritusvirhe oli `passiveWorkspaceMigrationFailure`-skenaarion
+`targetInstall`-odotuksen aikakatkaisu. Sen prosessipuun poistuminen,
+tuloksen kirjoitus ja fixturen siivous todettiin, mutta seuraava vaadittu
+recovery-only-koe ei enää käynnistynyt. Idle-portti pysyi kiinni saman
+Windows-istunnon `msiexec`-havainnon vuoksi. Nykyinen havaitsin ei sido sitä
+target-handoffiin tai omistettuun Jobiin, joten viiveen aiheuttaja ja
+mahdollinen koodivika jäävät avoimiksi. Tämä ei ole sama virhe kuin
+upgrade-ajon tuloskirjoituksen viive; migraation vikainjektioon ei päästy.
+
+Rajattu jatkoselvitys erottaa testiharnessin tuloskirjoittimen
+muistipuskurin tyhjennyksen ja levylle varmistamisen omiksi suljetuiksi
+havaintovaiheikseen. Tallennussuojat, viiden sekunnin julkaisuvara ja
+myöhäisen tuloksen hylkäys säilyvät; kumpikin viiveraja katetaan nykyisellä
+komentofixturellä, normaalin supervisorin havaintoketjun läpi.
+Rajattu Windows-sopimussarja läpäisi 175/175 ilman ohituksia tai uusintoja;
+käännös, riippumaton katselmus ja ohjelinkit on tarkistettu. Tämä on
+diagnostiikan tarkennus, ei vanhan timeoutin todistettu korjaus. Uuden
+revision integraation hyväksyntä sekä erillisen asennusodotuksen selvitys
+ovat vielä avoimia. Omistava sopimus on
+[Windows-harnessin ohjeessa](windows-installer-acceptance-harness-v2.md).
+
 ## Lukureitit
 
 Jokainen toteutuspala aloittaa juuri-`AGENTS.md`:stä ja

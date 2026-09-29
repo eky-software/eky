@@ -14,8 +14,9 @@ kolmen esimerkin tyypit on tarkistettu; sovellus- tai E2E-testejä ei ajettu
 tämän työn perusteella. Testikoodia, aikarajoja, riippuvuuksia tai
 CI-vaatimuksia ei muutettu dokumentointiosuudessa. Sen PR #282:n auditointi
 löysi kuitenkin nykyisen `undici@7.29.0`-haavoittuvuuden: omistaja hyväksyi
-rajatun `7.29.1`-korjauspäivityksen ennen mergeä. Erillinen upgrade/rollback-
-CI-hylkäys säilyy selvityskohteena. [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+rajatun `7.29.1`-korjauspäivityksen ennen mergeä. Erilliset upgrade/rollback-
+tuloskirjoituksen ja workspace-asennusodotuksen CI-hylkäykset säilyvät
+selvityskohteina. [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
 erottaa nämä esteet A1:stä; riippuvuuden korjaus ei yksin hyväksy integraatiota.
 Oma integraationäyttö kirjataan erikseen, eikä PR #281:n tulosta nimetä
 tämän palan testitulokseksi.

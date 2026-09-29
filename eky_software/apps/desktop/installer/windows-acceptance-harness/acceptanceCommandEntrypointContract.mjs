@@ -133,7 +133,7 @@ export function recordCommandBoundaryEvidence(tail, value) {
     'processExitFailed', 'publicationBudgetExhausted', 'publicationDeadlineExceeded',
     'publicationWriteException', 'preparationDeadlineExceeded', 'preparationException'].includes(value.errorCode) ? value.errorCode : 'other';
   if (['resultPublication', 'resultPublicationLastCompleted'].includes(value.phase) && value.resultCode !== undefined) {
-    entry.resultCode = ['notStarted', 'writerStarted', 'temporaryCreate', 'serialize', 'flush', 'close',
+    entry.resultCode = ['notStarted', 'writerStarted', 'temporaryCreate', 'serialize', 'bufferFlush', 'flush', 'close',
       'publish', 'temporaryCleanup', 'completed'].includes(value.resultCode) ? value.resultCode : 'other';
   }
   if (['requestPreparation', 'requestPreparationLastCompleted'].includes(value.phase) && value.resultCode !== undefined) {

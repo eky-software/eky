@@ -67,6 +67,9 @@ internal static class SupervisorResultWriter
                 Enter(SupervisorResultWritePhase.Serialize);
                 JsonSerializer.Serialize(stream, CreateValue(request, outcome, durationMilliseconds));
                 Complete();
+                Enter(SupervisorResultWritePhase.BufferFlush);
+                stream.Flush(false);
+                Complete();
                 Enter(SupervisorResultWritePhase.Flush);
                 stream.Flush(true);
                 Complete();
@@ -101,7 +104,7 @@ internal static class SupervisorResultWriter
 
 internal enum SupervisorResultWritePhase
 {
-    NotStarted, WriterStarted, TemporaryCreate, Serialize, Flush, Close, Publish, TemporaryCleanup, Completed,
+    NotStarted, WriterStarted, TemporaryCreate, Serialize, BufferFlush, Flush, Close, Publish, TemporaryCleanup, Completed,
 }
 
 internal sealed class SupervisorResultWriteFailure(SupervisorResultWritePhase? phase = null,

@@ -100,6 +100,12 @@ test('command boundary diagnostics keep only a bounded closed projection', () =>
     errorCode: 'publicationWriteException', resultCode: 'close', path: 'private' });
   assert.deepEqual(tail.at(-1), { phase: 'resultPublicationLastCompleted', status: 'failed',
     errorCode: 'publicationWriteException', resultCode: 'close' });
+  for (const phase of ['resultPublication', 'resultPublicationLastCompleted']) {
+    recordCommandBoundaryEvidence(tail, { phase, status: 'failed',
+      errorCode: 'publicationDeadlineExceeded', resultCode: 'bufferFlush', path: 'private' });
+    assert.deepEqual(tail.at(-1), { phase, status: 'failed',
+      errorCode: 'publicationDeadlineExceeded', resultCode: 'bufferFlush' });
+  }
   recordCommandBoundaryEvidence(tail, { phase: 'requestPreparation', status: 'failed',
     errorCode: 'preparationDeadlineExceeded', resultCode: 'phaseInputWrite', path: 'private' });
   recordCommandBoundaryEvidence(tail, { phase: 'requestPreparationLastCompleted', status: 'failed',
@@ -354,44 +360,59 @@ for (const stage of ['WorkerReadHold', 'ResultWriteHold', 'ResultWriteHoldAfterF
   });
 }
 
-test('late publication cannot revive a failed command or authorize another phase', {
-  skip: process.platform !== 'win32', timeout: 30_000,
-}, async (t) => {
-  const context = await createRunContext('late-publication');
-  t.after(() => cleanupRunContext(context, { preserveEvidence: true }));
-  await writeRequest(context, createRequest(context, 'exitZero', {
-    timeoutMilliseconds: 4_000, cleanupReserveMilliseconds: 1_000,
-  }));
-  const execution = startProgramFailureFixture(context, 'phaseContinuationLateResultWrite');
-  const receipts = [];
-  execution.child.once('exit', () => receipts.push('exit'));
-  execution.child.once('close', () => receipts.push('close'));
-  const completed = await execution.completion;
-  assert.deepEqual(receipts, ['exit', 'close']);
-  assert.equal(completed.signal, null);
-  assert.equal(completed.exitCode, 1);
-  const report = JSON.parse(await readFile(join(context.testRoot, 'phase-completion.json'), 'utf8'));
-  assert.deepEqual(report.events, ['firstPhaseReturned', 'lateWriterReturned']);
-  assert.equal(report.rootPresentBeforeRelease, true);
-  assert.equal(report.resultAbsentBeforeRelease, true);
-  assert.equal(report.lateWriteCompleted, true);
-  assert.equal(report.first.resultWritten, false);
-  assert.equal(report.first.processBoundaryVerified, false);
-  assert.equal(report.first.processResultCode, 'processCompleted');
-  assert.equal(report.first.workerResultCode, 'workerResultValidated');
-  assert.equal(report.first.cleanupResultCode, 'notRequired');
-  assert.equal(report.first.processTreeAbsent, true);
-  assert.equal(report.second, null);
-  assert.ok(report.publicationPhases.includes('publish:completed'));
-  assert.equal((await lstat(context.resultPath)).isFile(), true);
-  await assert.rejects(readWindowsAcceptanceSupervisorResult(context.resultPath, {
-    artifactDescriptorSha256: context.artifactDescriptorSha256, runNonce: context.runNonce,
-    scenario: context.scenario, supervisorExitCode: completed.exitCode,
-  }), /WINDOWS_ACCEPTANCE_SUPERVISOR_RESULT_OUTCOME_INVALID/);
-  assert.equal(context.supervisorProcesses.size, 0);
-  await cleanupRunContext(context, { preserveEvidence: true });
-  assert.equal((await lstat(context.testRoot)).isDirectory(), true);
-});
+for (const [stage, phase] of [['LateResultWrite', 'flush'], ['LateBufferFlush', 'bufferFlush']]) {
+  test(`late publication cannot revive a failed command or authorize another phase: ${phase}`, {
+    skip: process.platform !== 'win32', timeout: 30_000,
+  }, async (t) => {
+    const context = await createRunContext('late-publication');
+    t.after(() => cleanupRunContext(context, { preserveEvidence: true }));
+    await writeRequest(context, createRequest(context, 'exitZero', {
+      timeoutMilliseconds: 4_000, cleanupReserveMilliseconds: 1_000,
+    }));
+    const execution = startProgramFailureFixture(context, 'phaseContinuation' + stage);
+    const receipts = [];
+    execution.child.once('exit', () => receipts.push('exit'));
+    execution.child.once('close', () => receipts.push('close'));
+    const completed = await execution.completion;
+    assert.deepEqual(receipts, ['exit', 'close']);
+    assert.equal(completed.signal, null);
+    assert.equal(completed.exitCode, 1);
+    const held = JSON.parse(await readFile(join(context.testRoot, 'host-io-entered.json'), 'utf8'));
+    assert.deepEqual(held, { schemaVersion: 1, phase });
+    const publication = completed.evidence.filter((entry) =>
+      ['resultPublication', 'resultPublicationLastCompleted'].includes(entry.phase));
+    assert.deepEqual(publication.map(({ phase, status, errorCode, resultCode }) =>
+      ({ phase, status, errorCode, resultCode })), [
+      { phase: 'resultPublication', status: 'failed', errorCode: 'publicationDeadlineExceeded', resultCode: phase },
+      { phase: 'resultPublicationLastCompleted', status: 'failed', errorCode: 'publicationDeadlineExceeded',
+        resultCode: phase === 'bufferFlush' ? 'serialize' : 'bufferFlush' },
+    ]);
+    const report = JSON.parse(await readFile(join(context.testRoot, 'phase-completion.json'), 'utf8'));
+    assert.deepEqual(report.events, ['firstPhaseReturned', 'lateWriterReturned']);
+    assert.equal(report.rootPresentBeforeRelease, true);
+    assert.equal(report.resultAbsentBeforeRelease, true);
+    assert.equal(report.lateWriteCompleted, true);
+    assert.equal(report.first.resultWritten, false);
+    assert.equal(report.first.processBoundaryVerified, false);
+    assert.equal(report.first.processResultCode, 'processCompleted');
+    assert.equal(report.first.workerResultCode, 'workerResultValidated');
+    assert.equal(report.first.cleanupResultCode, 'notRequired');
+    assert.equal(report.first.processTreeAbsent, true);
+    assert.equal(report.second, null);
+    const bufferCompleted = report.publicationPhases.indexOf('bufferFlush:completed');
+    const flushStarted = report.publicationPhases.indexOf('flush:started');
+    assert.ok(bufferCompleted >= 0 && bufferCompleted < flushStarted);
+    assert.ok(report.publicationPhases.includes('publish:completed'));
+    assert.equal((await lstat(context.resultPath)).isFile(), true);
+    await assert.rejects(readWindowsAcceptanceSupervisorResult(context.resultPath, {
+      artifactDescriptorSha256: context.artifactDescriptorSha256, runNonce: context.runNonce,
+      scenario: context.scenario, supervisorExitCode: completed.exitCode,
+    }), /WINDOWS_ACCEPTANCE_SUPERVISOR_RESULT_OUTCOME_INVALID/);
+    assert.equal(context.supervisorProcesses.size, 0);
+    await cleanupRunContext(context, { preserveEvidence: true });
+    assert.equal((await lstat(context.testRoot)).isDirectory(), true);
+  });
+}
 
 for (const stage of ['Completed', 'WorkerFailed', 'Deadline', 'CleanupUnverified',
   'PublicationFailed', 'RequestInvalid', 'BlockedEvidence']) {
@@ -429,7 +450,7 @@ for (const stage of ['Completed', 'WorkerFailed', 'Deadline', 'CleanupUnverified
     const continued = !['CleanupUnverified', 'PublicationFailed', 'RequestInvalid'].includes(stage);
     if (stage === 'Completed') {
       assert.deepEqual(report.publicationPhases,
-        ['temporaryCreate', 'serialize', 'flush', 'close', 'publish', 'temporaryCleanup', 'completed']
+        ['temporaryCreate', 'serialize', 'bufferFlush', 'flush', 'close', 'publish', 'temporaryCleanup', 'completed']
           .flatMap((phase) => [phase + ':started', phase + ':completed']));
       assert.equal(completed.standardOutput.includes('privateFixtureObserverFailure'), false);
     }

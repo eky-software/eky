@@ -17,26 +17,32 @@ internal static class SupervisorPhaseContinuationContract
             "phaseContinuationPublicationFailed" or "phaseContinuationRequestInvalid" or
             "phaseContinuationBlockedEvidence" or "phaseContinuationWorkerReadHold" or
             "phaseContinuationResultWriteHold" or "phaseContinuationResultWriteHoldAfterFailure" or
-            "phaseContinuationPublicationBudgetExhausted" or "phaseContinuationLateResultWrite")) return 64;
+            "phaseContinuationPublicationBudgetExhausted" or "phaseContinuationLateResultWrite" or
+            "phaseContinuationLateBufferFlush")) return 64;
 
         var root = Path.GetDirectoryName(requestPath)!;
         var events = new List<string>();
         var publicationPhases = new List<string>();
         using var releaseWrite = new ManualResetEvent(false);
         using var writeFinished = new ManualResetEvent(false);
-        void ObservedWrite(SupervisorRequest request, SupervisorOutcome outcome, long duration)
+        var lateWrite = mode is "phaseContinuationLateResultWrite" or "phaseContinuationLateBufferFlush";
+        var heldPhase = mode == "phaseContinuationLateBufferFlush"
+            ? SupervisorResultWritePhase.BufferFlush : SupervisorResultWritePhase.Flush;
+        void ObservedWrite(SupervisorRequest request, SupervisorOutcome outcome, long duration,
+            Action<SupervisorResultWritePhase, bool> observe)
         {
             try
             {
                 SupervisorResultWriter.Write(request, outcome, duration, (phase, completed) =>
                 {
+                    observe(phase, completed);
                     publicationPhases.Add(JsonNamingPolicy.CamelCase.ConvertName(phase.ToString()) +
                         (completed ? ":completed" : ":started"));
-                    if (mode == "phaseContinuationLateResultWrite" &&
-                        phase == SupervisorResultWritePhase.Flush && !completed)
+                    if (lateWrite && phase == heldPhase && !completed)
                     {
                         File.WriteAllText(Path.Combine(root, "host-io-entered.json"),
-                            "{\"schemaVersion\":1,\"phase\":\"flush\"}");
+                            JsonSerializer.Serialize(new { schemaVersion = 1,
+                                phase = JsonNamingPolicy.CamelCase.ConvertName(phase.ToString()) }));
                         releaseWrite.WaitOne();
                     }
                     throw new InvalidOperationException("privateFixtureObserverFailure");
@@ -75,13 +81,13 @@ internal static class SupervisorPhaseContinuationContract
                 : outcome;
         }, mode is "phaseContinuationResultWriteHold" or "phaseContinuationResultWriteHoldAfterFailure" or
             "phaseContinuationPublicationBudgetExhausted"
-            ? HeldResultWrite : mode is "phaseContinuationCompleted" or "phaseContinuationLateResultWrite"
+            ? HeldResultWrite : mode == "phaseContinuationCompleted" || lateWrite
                 ? ObservedWrite : null);
         events.Add("firstPhaseReturned");
         bool? rootPresentBeforeRelease = null;
         bool? resultAbsentBeforeRelease = null;
         bool? lateWriteCompleted = null;
-        if (mode == "phaseContinuationLateResultWrite")
+        if (lateWrite)
         {
             rootPresentBeforeRelease = Directory.Exists(root);
             resultAbsentBeforeRelease = !File.Exists(Path.Combine(root, "result.json"));
@@ -210,7 +216,7 @@ internal static class SupervisorPhaseContinuationContract
         {
             workerStarted = true;
             return new WindowsJobProcessSupervisor(clock, evidence).Run(request);
-        }, (_, _, _) => { resultWriterStarted = true; });
+        }, (_, _, _, _) => { resultWriterStarted = true; });
         var events = new List<string> { "firstPhaseReturned" };
         bool? latePreparationCompleted = null;
         if (mode is "phaseContinuationLateRequestPreparation" or "phaseContinuationLateRequestPreparationFailure")
@@ -228,7 +234,8 @@ internal static class SupervisorPhaseContinuationContract
         return first.ExitCode;
     }
 
-    private static void HeldResultWrite(SupervisorRequest request, SupervisorOutcome _, long __) =>
+    private static void HeldResultWrite(SupervisorRequest request, SupervisorOutcome _, long __,
+        Action<SupervisorResultWritePhase, bool> ___) =>
         Hold(request, "resultWrite");
 
     private static void Hold(SupervisorRequest request, string phase)
