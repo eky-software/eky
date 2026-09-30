@@ -146,9 +146,53 @@ Tavallinen workspace-sarja läpäisi rajattujen testiapurimuutosten jälkeen.
 Revisio `1e91b328` läpäisi täyden Electron-sarjan 46/46, tavallisen
 desktop-stressin koko työkuorman ja täyden 30 minuutin soakin jäädytetyllä
 lähteellä ilman vaatimusten lievennystä. Aiemmat hylkäykset eivät poistu
-eikä niiden kaikkia syitä väitetä ratkaistuiksi. Tuoreen lopullisen
-payloadin, riippuvuusauditoinnin ja PR/main-integraation portit ovat vielä
-avoinna; yllä olevat ensimmäisen kierroksen tulokset eivät korvaa niitä.
+eikä niiden kaikkia syitä väitetä ratkaistuiksi. Revision `27a0b6c3` tuore
+tuotantopayload ja hardened-palautuspolku läpäisivät muuttumattomilla
+pakettitavuilla. Production audit ja 160 rekisteriallekirjoitusta läpäisivät,
+mutta full audit hylättiin alla kuvattuun uuteen riippuvuushavaintoon.
+PR/main-integraatio on vielä avoin; ensimmäisen kierroksen vihreä auditointi
+ei korvaa uutta hylkäystä.
+
+### Brace-expansion: paketointiketjun uusi auditointihylkäys
+
+30.9.2026 tehty full audit löysi nykyisestä `brace-expansion 5.0.9`
+-versiosta kolme advisorya:
+
+- [GHSA-qhr7-859c-m2p7](https://github.com/advisories/GHSA-qhr7-859c-m2p7):
+  sisäkkäisten lausekkeiden rekursion aiheuttama stack exhaustion;
+  High, korjattu `5.0.11`:ssä.
+- [GHSA-6j4f-fj2g-mc7p](https://github.com/advisories/GHSA-6j4f-fj2g-mc7p):
+  `parseCommaParts`-rekursion stack exhaustion; High, korjattu `5.0.10`:ssä.
+- [GHSA-q2hr-2g5m-vwhr](https://github.com/advisories/GHSA-q2hr-2g5m-vwhr):
+  neliöllinen uudelleenkirjoitus ja CPU-palvelunesto;
+  Moderate, korjattu `5.0.12`:ssa.
+
+Riippuvuus kuuluu `@electron/packager`-työkalun transitiiviseen
+`glob`/`minimatch`-ketjuun. Nykyinen `minimatch 10.2.6` sallii
+`brace-expansion ^5.0.8`:n. Eky-paketointi käyttää projektin omistamaa
+stagingia ja asetuksia; hyökkääjän hallitseman lausekkeen kulkua tähän
+kirjastoon ei ole todistettu. Tulos ei ole vahvistettu Eky-tuotannon
+hyökkäyspolku, mutta pakollista auditointihylkäystä ei ohiteta.
+
+Ehdotus on vain nykyisen lukitusratkaisun `5.0.9 -> 5.0.12`-päivitys,
+ei uusi suora riippuvuus tai override. Molemmissa versioissa MIT-lisenssi,
+Node-raja `20 || >=22` ja ainoa aliriippuvuus `balanced-match ^4.0.2`
+säilyvät; install-elinkaariskriptejä ei ole. Rekisterin julkaisutieto ja
+allekirjoitusmetadata on tarkistettu. Korjattu versio ylittää nykyisen
+24 tunnin varoajan, joten uutta varoaikapoikkeusta ei tarvita.
+
+Vaihtoehtoinen oman glob-toteutuksen lisääminen tai koko paketointiketjun
+päivitys laajentaisi muutosta tarpeettomasti. Paikallinen lähdekoodipatch
+lisäisi ylläpidettävän poikkeuksen jo julkaistun yhteensopivan korjauksen
+sijaan. Rajattu lukituspäivitys arvioidaan siksi ensisijaisena vaihtoehtona.
+
+Omistajan hyväksyntä odottaa; riippuvuutta tai lockfilea ei ole vielä muutettu.
+Hyväksynnän jälkeen tarkistetaan rajattu diffi, production/full audit,
+rekisteriallekirjoitukset, nykyiset paketointisopimukset sekä tuore
+eristetty tuotantopayload ja sen synteettinen hardened-palautuspolku.
+Lopullisen revision PR/main-portit säilyvät. Electron-, SQLite- ja
+sovellusversio, tietomalli sekä testivaatimukset eivät muutu tämän
+ehdotuksen perusteella.
 
 ### Undici-korjauspäivitys
 
