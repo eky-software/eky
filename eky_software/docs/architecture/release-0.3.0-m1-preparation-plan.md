@@ -45,7 +45,7 @@ paikallisia liitepolkuja tai tutkimustietoja ei siirretä dokumentaatioon.
 | V1a: syntypaikka ja viesti | Electronin E2E-backendin runner hukkaa poikkeuksen ja lähettää vain vaiheen. Brokerin sulkemisvirhe voi estää viestin. Omistaja: `apps/desktop/e2e` ja sen tiukka status-sopimus. | Suljettu syyluokitus tai `unknown`, täsmällinen lähettäjä/parseri/vastaanottaja, ensivirheen säilyminen ja brokerien erilliset sulkutulokset. Nopeat sopimus- ja vuotosuojatestit; ei tuotantokoodin muutosta. |
 | V1b: säilyminen ja raportti | Prosessin muistihavainto voi puuttua poistumisen jälkeen; CI:n testikooste yleistää virheen `testError`-tasolle. Omistaja: nykyinen native-havaintotiedosto, Electron-fixture ja turvallinen CI-raportoija. | Todellinen ennen ensimmäistä ikkunaa epäonnistuva prosessiketju säilyttää tunnetun syyn lopullisessa suoritusyrityskohtaisessa raportissa. Testitapaus, suoritusyritys (`attempt`) ja käynnistyssukupolvi eivät sekoitu. Puuttuva/myöhäinen havainto, raportointivirhe ja epävarma cleanup pysyvät näkyvinä erillään. Nykyinen onnistumispolku säilyy. |
 | V2a: riippuvuuden hyväksyntä | Hyväksytyn Electron-päivityksen runtime-/native- ja integraatioportit ovat kesken. Omistaja: [riippuvuusarvio](local-desktop-dependency-review.md#electron-4376--turvallisuuspäivitys). | Nykyisen täsmäversion, `better-sqlite3 13.0.2`:n ja synteettisen packaged-/palautuspolun portit sekä ennalta nimetyt vakausajot; lopullisen revision PR/main-todennus. |
-| V2b: pakollisten porttien hylkäykset | Tavallinen workspace-sarja sekä revision `1e91b328` täysi Electron-sarja, stress ja täysi soak ovat läpäisseet. Revision `27a0b6c3` tuore packaged-/palautuspolku läpäisi, mutta full audit löysi paketointiketjun `brace-expansion 5.0.9`:stä kolme advisorya. Rajattu `5.0.12`-päivitysehdotus odottaa omistajan päätöstä. Aiemmat ajoitushylkäykset säilyvät erillisinä; PR/main-portit ovat avoimia. | Rajaa nykyistä hyväksyntää estävä vika näytöstä, korjaa omistavassa vastuussa ja lisää regressio. Muuttumaton erillinen läpäisy ei sulje alkuperäisen vian syytä. Historiallisten hylkäysten täydellinen jälkiselitys ei ole uusi hyväksyntäehto. |
+| V2b: pakollisten porttien hylkäykset | Tavallinen workspace-sarja sekä revision `1e91b328` täysi Electron-sarja, stress ja täysi soak ovat läpäisseet. Revision `27a0b6c3` tuore packaged-/palautuspolku läpäisi, mutta full audit löysi paketointiketjun `brace-expansion 5.0.9`:stä kolme advisorya. Omistaja hyväksyi rajatun `5.0.12`-päivityksen ja testauksen 30.9.2026; todennus on kesken. Aiemmat ajoitushylkäykset säilyvät erillisinä; PR/main-portit ovat avoimia. | Rajaa nykyistä hyväksyntää estävä vika näytöstä, korjaa omistavassa vastuussa ja lisää regressio. Muuttumaton erillinen läpäisy ei sulje alkuperäisen vian syytä. Historiallisten hylkäysten täydellinen jälkiselitys ei ole uusi hyväksyntäehto. |
 
 V1 toteutetaan ensin. V1a käyttää alkuperäisen poikkeuksen rajattua
 koodiluokitusta ennen siivousta; vaihe ei ole juurisyy. V1b käyttää nykyistä
@@ -263,6 +263,15 @@ Rajattu päivitysehdotus ja sen päätösportti ovat
 Mergeä ei tehdä eikä auditointia ohiteta. Hyväksytyn korjauksen jälkeen
 vaaditaan tuore auditointi, paketointinäyttö ja lopullisen revision omat
 PR/main-portit. V2 ja integraatio ovat vielä avoimia.
+
+Omistaja hyväksyi rajatun `brace-expansion 5.0.12` -päivityksen ja testauksen.
+Lukituspäivityksen jälkeen kirjaston molempien lataustapojen rajatut
+virhe- ja yhteensopivuuskokeet sekä nykyiset 253 paketointisopimusta
+läpäisivät. Production/full audit ja 160 rekisteriallekirjoitusta
+läpäisivät. Seuraavaksi vaaditaan puhtaan revision uusi tuotantopayload,
+samoilla tavuilla tehty hardened-palautus ja lopullinen PR/main-todennus.
+Paketointiketjun päivitys ei muuta aiemmin hyväksyttyjä sovelluksen
+endurance-polkuja; niitä ei avata uudelleen ilman omaa muutosperustetta.
 
 ## Ohje ja historia
 

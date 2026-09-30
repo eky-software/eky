@@ -186,13 +186,25 @@ päivitys laajentaisi muutosta tarpeettomasti. Paikallinen lähdekoodipatch
 lisäisi ylläpidettävän poikkeuksen jo julkaistun yhteensopivan korjauksen
 sijaan. Rajattu lukituspäivitys arvioidaan siksi ensisijaisena vaihtoehtona.
 
-Omistajan hyväksyntä odottaa; riippuvuutta tai lockfilea ei ole vielä muutettu.
-Hyväksynnän jälkeen tarkistetaan rajattu diffi, production/full audit,
+Omistaja hyväksyi 30.9.2026 rajatun `5.0.12`-päivityksen ja testauksen.
+Hyväksyntä ei sulje todennusta: tarkistetaan rajattu diffi, production/full audit,
 rekisteriallekirjoitukset, nykyiset paketointisopimukset sekä tuore
 eristetty tuotantopayload ja sen synteettinen hardened-palautuspolku.
 Lopullisen revision PR/main-portit säilyvät. Electron-, SQLite- ja
 sovellusversio, tietomalli sekä testivaatimukset eivät muutu tämän
-ehdotuksen perusteella.
+päivityksen perusteella.
+
+Rajattu lukituspäivitys on toteutettu ilman muita paketti- tai
+asetuksenmuutoksia. Todellinen paketointiketjun moduuliresoluutio käyttää
+`5.0.12`:ta. Sisäkkäisten ja pilkulla eroteltujen syötteiden stack-virhe
+toistui vanhalla versiolla; korjattu versio käsitteli samat rajatut
+koesyötteet molemmilla CJS-/ESM-lataustavoilla. Uudelleenkirjoituksen
+raja säilytti liiallisen syötteen literaalina. Tavalliset brace-, range-,
+escape- ja native-addonin unpack-kuviot läpäisivät kontrollit.
+Nykyiset desktopin Node-paketointisopimukset läpäisivät 253/253,
+production/full audit olivat puhtaat ja 160 rekisteriallekirjoitusta
+varmennettiin. Tuore tuotantopayload, hardened-palautus ja PR/main-portit
+ovat vielä avoimia; nämä alemmat tarkistukset eivät korvaa niitä.
 
 ### Undici-korjauspäivitys
 
