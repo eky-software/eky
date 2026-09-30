@@ -151,3 +151,27 @@ test('keeps direct downgrade blocked and rollback outside MSI authoring', async 
   assert.doesNotMatch(rollbackLaunchScript, /Invoke-Expression/);
   assert.doesNotMatch(rollbackLaunchScript, /Start-Job/);
 });
+
+test('owns equal-version payload replacement in the MSI without forcing a downgrade', async () => {
+  const packageSource = await readFile(
+    join(installerDirectory, 'wix', 'Package.wxs'), 'utf8',
+  );
+  const inspectorSource = await readFile(
+    join(installerDirectory, 'scripts', 'inspectWindowsInstaller.ps1'), 'utf8',
+  );
+
+  assert.match(packageSource, /<Property Id="REINSTALLMODE" Value="emus"\s*\/>/u);
+  assert.equal((packageSource.match(/Id="REINSTALLMODE"/gu) ?? []).length, 1);
+  assert.doesNotMatch(packageSource, /Id="REINSTALL"/u);
+  assert.match(packageSource, /Schedule="afterInstallExecute"/u);
+  assert.match(packageSource, /AllowDowngrades="no"/u);
+  assert.match(packageSource, /AllowSameVersionUpgrades="no"/u);
+  assert.match(
+    inspectorSource,
+    /if \(\s*-not \$properties\.ContainsKey\('REINSTALLMODE'\) -or\s*\$properties\['REINSTALLMODE'\] -cne 'emus'\s*\) \{\s*throw 'INSTALLER_REINSTALL_MODE_INVALID'\s*\}/u,
+  );
+  assert.match(
+    inspectorSource,
+    /if \(\$properties\.ContainsKey\('REINSTALL'\)\) \{\s*throw 'INSTALLER_REINSTALL_FORBIDDEN'\s*\}/u,
+  );
+});

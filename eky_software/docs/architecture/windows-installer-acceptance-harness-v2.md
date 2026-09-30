@@ -5107,8 +5107,9 @@ staattista katselmusta tarkistivat luokittelun, todellisen runtime-kytkennän,
 kertatarkistuksen ja virheen säilymisen. Koko integraatioportti ei ole
 vielä hyväksytty. [M1:n avoin este](release-0.3.0-m1-preparation-plan.md#v2n-ensimmäisen-pr-ajon-rajatut-esteet)
 on rajattu muuttumattoman paketin CI-kokeessa kokonaiskoon eroksi.
-Eroavat tiedostot ja niiden korvauspäätös ovat vielä avoimia;
-diagnostiikkakoe ei korvaa normaalia hyväksyntäajoa.
+Alla kuvattu jatkokoe vahvisti kolmen nimetyn tiedoston vanhojen tavujen
+säilymisen ja MSI:n samaversion korvauspäätöksen. Kaikkia payload-eroja
+ei ole luetteloitu; diagnostiikkakoe ei korvaa normaalia hyväksyntäajoa.
 
 ### Rajattu legacy-tiedostohavainto
 
@@ -5151,8 +5152,15 @@ kuvaavat tulkinnan pohjan, eivät täydellistä lokiformaatin lupausta.
 Alkuperäinen payload-hylkäys, kohdekäynnistyksen esto ja siivoussopimus
 säilyvät myös havainto- ja toimitusvirheissä. Ensimmäinen vaihehylkäys
 julkaistaan ennen valinnaista havaintolukua. Havainto ei ole uusi
-hyväksyntäehto. Koe suoritetaan kerran vasta kohdetestien ja katselmuksen
-jälkeen; varsinainen asennuskorjaus edellyttää näytön perusteella päätöstä.
+hyväksyntäehto. Koe suoritettiin kerran kohdetestien ja katselmuksen
+jälkeen revisiolla `f84abf37`: jokaisesta kolmesta tiedostosta saatiin
+`BytesUnchanged` ja `MsiEqualVersionRetained`. Alkuperäinen
+`targetPayloadSizeMismatch` ja käynnistyksen esto säilyivät, eikä
+paketteja muutettu. [Kokeen tulos ja päätösraja](release-0.3.0-m1-preparation-plan.md#v2n-ensimmäisen-pr-ajon-rajatut-esteet)
+ovat omistavassa M1-suunnitelmassa. Omistaja hyväksyi tämän jälkeen
+[asentimen korvaussäännön](windows-installer-and-update-plan.md#saman-tiedostoversion-korvaaminen)
+korjauksen; se vaatii oman oikean paketin todennuksen eikä väljenna
+hyväksyntäehtoja.
 
 ### Workspace-asennusodotuksen havaintoraja
 

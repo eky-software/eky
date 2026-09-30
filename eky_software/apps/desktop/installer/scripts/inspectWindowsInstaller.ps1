@@ -200,6 +200,15 @@ try {
   Assert-Equal $properties['ProductVersion'] $ExpectedProductVersion 'INSTALLER_VERSION_INVALID'
   Assert-Equal $properties['ProductCode'] "{$($ExpectedProductCode.ToUpperInvariant())}" 'INSTALLER_PRODUCT_CODE_INVALID'
   Assert-Equal $properties['UpgradeCode'] "{$($ExpectedUpgradeCode.ToUpperInvariant())}" 'INSTALLER_UPGRADE_CODE_INVALID'
+  if (
+    -not $properties.ContainsKey('REINSTALLMODE') -or
+    $properties['REINSTALLMODE'] -cne 'emus'
+  ) {
+    throw 'INSTALLER_REINSTALL_MODE_INVALID'
+  }
+  if ($properties.ContainsKey('REINSTALL')) {
+    throw 'INSTALLER_REINSTALL_FORBIDDEN'
+  }
 
   if ($properties.ContainsKey('ALLUSERS') -and $properties['ALLUSERS'] -ne '') {
     throw 'INSTALLER_SCOPE_NOT_PER_USER'

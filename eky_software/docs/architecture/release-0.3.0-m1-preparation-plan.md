@@ -13,7 +13,7 @@ hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohd
 | Mainin omat portit | [Normaali CI 36491715165](https://github.com/eky-software/eky/actions/runs/36491715165), yritys 1: kaikki 38 vaadittua ryhmää läpäisivät; vain nimenomaisesti valinnainen diagnostiikkakoe ohitettiin. Linux system 695/695, kriittinen web 37/37 ja Windowsin kriittinen Electron 38/38 vastasivat ajovalintojaan ilman retryä, flakyä tai puuttuvia tapauksia. Neljän artifact-tuottajan ja kymmenen packaged-kuluttajan identiteetit ja elinkaarinäyttö hyväksyttiin. [Saman revision riippuvuustarkistus 36491789402](https://github.com/eky-software/eky/actions/runs/36491789402) läpäisi. |
 | Suljettu työ | T1/R27:n ajokytkentä, T2/R29:n puhtaan valmistelun suoja ja T3/R28:n todellisten kuluttajien koko prosessipuun omistajuus. Korvatut aktiiviset fallbackit on poistettu ja [pysyvä T3-matriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus) hyväksytty. PR #281 sulki tämän jälkeisen rollback-testiapurin integraatiojatkon. |
 | Avoimet havainnot | Aiemmat satunnaiset Electron-käynnistys- ja packaged/legacy-timeoutit säilyvät epäonnistuneina havaintoina omille revisioilleen. Myöhempi vihreä ajo ei todista niiden kaikkia syitä korjatuiksi. [Hylkäysten historia](e2e-test-environment-history.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko) ja [rajattu apurikorjaus](e2e-test-environment-history.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus) erotetaan toisistaan. |
-| Seuraava työ | Ennen ohjeselkeytyksen mergeä hyväksytty [Electron 43.7.6 -turvallisuuspäivitys](local-desktop-dependency-review.md#electron-4376--turvallisuuspäivitys) ja sen omat runtime-, tietokanta-, packaged- ja CI-portit. Undici-korjauksen ja varmennetun pnpm-valmistelun CI-näyttö koskee alla nimettyä aiempaa revisiota, ei uutta Electron-versiota. Sen jälkeen A1/R01:n aloitusportti: ajantasaiset ohjeet, työpuu, lähtörevisio ja sen hyväksyntänäyttö sekä [avattavan luonnoksen kohteen suunnitelma](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde). Rajaa avoimet kysymykset ja regressio ennen toteutusta. |
+| Seuraava työ | Electron `43.7.6` ja Undici `7.29.1` ovat jo toteutettuja täsmäpäivityksiä; `better-sqlite3 13.0.2` säilyy. Ei uutta päivityskierrosta eikä turvallisuuskorjausten lykkäystä. Toteuta hyväksytty [asennuskorjaus](#asennuskorjauksen-päätös), sen rajatut regressiot ja oikean paketin näyttö, sitten yksi normaali hyväksyntäkierros jäädytetystä revisiosta. Audit, toimintatestit ja main-haaran Dependabot-hälytysten sulkeutuminen todennetaan erikseen. Vasta integraation jälkeen A1/R01:n aloitusportti ja [avattavan luonnoksen kohteen suunnitelma](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde). |
 | Ei vielä valmis | A1-A3, W7, M1:n muu sovellustyö ja koko 0.3.0. Testiperustan hyväksyntä ei hyväksy niiden tulevaa toteutusta tai muuttunutta liiketoimintasääntöä. |
 
 Hyväksyntä on sidottu yllä olevaan revisioon, ei automaattisesti myöhempään
@@ -45,7 +45,7 @@ paikallisia liitepolkuja tai tutkimustietoja ei siirretä dokumentaatioon.
 | V1a: syntypaikka ja viesti | Electronin E2E-backendin runner hukkaa poikkeuksen ja lähettää vain vaiheen. Brokerin sulkemisvirhe voi estää viestin. Omistaja: `apps/desktop/e2e` ja sen tiukka status-sopimus. | Suljettu syyluokitus tai `unknown`, täsmällinen lähettäjä/parseri/vastaanottaja, ensivirheen säilyminen ja brokerien erilliset sulkutulokset. Nopeat sopimus- ja vuotosuojatestit; ei tuotantokoodin muutosta. |
 | V1b: säilyminen ja raportti | Prosessin muistihavainto voi puuttua poistumisen jälkeen; CI:n testikooste yleistää virheen `testError`-tasolle. Omistaja: nykyinen native-havaintotiedosto, Electron-fixture ja turvallinen CI-raportoija. | Todellinen ennen ensimmäistä ikkunaa epäonnistuva prosessiketju säilyttää tunnetun syyn lopullisessa suoritusyrityskohtaisessa raportissa. Testitapaus, suoritusyritys (`attempt`) ja käynnistyssukupolvi eivät sekoitu. Puuttuva/myöhäinen havainto, raportointivirhe ja epävarma cleanup pysyvät näkyvinä erillään. Nykyinen onnistumispolku säilyy. |
 | V2a: riippuvuuden hyväksyntä | Hyväksytyn Electron-päivityksen runtime-/native- ja integraatioportit ovat kesken. Omistaja: [riippuvuusarvio](local-desktop-dependency-review.md#electron-4376--turvallisuuspäivitys). | Nykyisen täsmäversion, `better-sqlite3 13.0.2`:n ja synteettisen packaged-/palautuspolun portit sekä ennalta nimetyt vakausajot; lopullisen revision PR/main-todennus. |
-| V2b: pakollisten porttien hylkäykset | Hyväksytyn `brace-expansion 5.0.12` -korjauksen kohde-, auditointi- ja tuore packaged-/palautusnäyttö läpäisivät. Revision `416d06f3` ensimmäinen PR-ajo hylkäsi raportointiregression keräyksen sekä molempien legacy-toistojen `targetPayload`-vaiheen. Raportoinnin build-riippuvuus on rajattu ja korjattu alemmilla testeillä; legacy-haaran tarkempi syy on avoin. Aiempi runtime-/endurance-näyttö ja ajoitushylkäykset säilyvät erillisinä; PR/main-portit ovat avoimia. | Rajaa nykyistä hyväksyntää estävä vika näytöstä, korjaa omistavassa vastuussa ja lisää regressio. Muuttumaton erillinen läpäisy ei sulje alkuperäisen vian syytä. Historiallisten hylkäysten täydellinen jälkiselitys ei ole uusi hyväksyntäehto. |
+| V2b: pakollisten porttien hylkäykset | Hyväksytyn `brace-expansion 5.0.12` -korjauksen kohde-, auditointi- ja tuore packaged-/palautusnäyttö läpäisivät. Revision `416d06f3` ensimmäinen PR-ajo hylkäsi raportointiregression keräyksen sekä molempien legacy-toistojen `targetPayload`-vaiheen. Raportoinnin build-riippuvuus on rajattu ja korjattu alemmilla testeillä. Samojen legacy-pakettien rajattu koe vahvisti kolmen vanhan Electron-kirjaston säilymisen MSI:n samaversion korvaussäännön vuoksi; omistaja hyväksyi `emus`-asennuskorjauksen ja testauksen. Aiempi runtime-/endurance-näyttö ja ajoitushylkäykset säilyvät erillisinä; PR/main-portit ovat avoimia. | Korjaa varmennettu asennuspuute omistavassa vastuussa ja lisää regressio. Muuttumaton erillinen läpäisy ei sulje alkuperäisen vian syytä. Historiallisten hylkäysten täydellinen jälkiselitys ei ole uusi hyväksyntäehto. |
 
 V1 toteutetaan ensin. V1a käyttää alkuperäisen poikkeuksen rajattua
 koodiluokitusta ennen siivousta; vaihe ei ole juurisyy. V1b käyttää nykyistä
@@ -294,6 +294,14 @@ sisältöä; oikea Electron-fixture käyttää ja jälleenvie samaa funktiota.
 Korjattu koe läpäisi import-eston kanssa. Se ei väitä kaikkien mahdollisten
 polkupohjaisten riippuvuuksien olevan estettyjä.
 
+Säilytetyn yksityisen toistokokeen sisäinen raportti vahvistaa
+keräysvaiheen: nolla suitea ja valittua testiä sekä import-eston ja
+tyhjän testivalinnan runner-virheet. Tämä ei ole käynnistyneen testin
+syytiedon katoaminen. Korjauksen regressio vaatii edelleen molemmat
+`testEnd`-rivit ja alkuperäisen syyn kummastakin suoritusyrityksestä;
+odotusta tai aikarajaa ei muuteta. Jatkotarkistuksessa raportointisopimuksen
+34 testiä ja legacy-syyluokittelun sekä havaintorajan 152 testiä läpäisivät.
+
 Korjatun työpuun 787 + 515 alemman tason E2E-sopimusta, E2E-tyyppitarkistus
 ja 113 kohdennettua lifecycle-/julkaisu-/native-sopimusta läpäisivät.
 Kaksi riippumatonta staattista katselmusta ei löytänyt korjattavaa.
@@ -339,7 +347,55 @@ katselmoidaan [suljetut tulosluokat ja lukurajat](windows-installer-acceptance-h
 Raakaa lokia, polkuja tai tiivisteitä ei julkaista. Asennuskäytäntöä,
 sovellusta ja hyväksyntäehtoja ei muuteta tämän vianrajauksen perusteella.
 Mahdollinen varsinainen korjaus päätetään näytön perusteella.
-PR/main-portti pysyy avoimena.
+
+Hyväksytty [jatkokoe 36731090799](https://github.com/eky-software/eky/actions/runs/36731090799),
+suoritusyritys 1, valmistui harness-revisiolla `f84abf37` ja samoilla
+muuttumattomilla paketeilla. Ennen ajoa jäädytetyn revision 152 kohdetestiä,
+kaksi workflow-sopimusta ja riippumaton katselmointi läpäisivät.
+Ensivirhe säilyi `targetPayloadSizeMismatch`-koodina ennen lisähavaintoja.
+Kaikille kolmelle nimetylle tiedostolle saatiin `BytesUnchanged` ja
+`MsiEqualVersionRetained`: vanhan asennuksen tavut säilyivät ja MSI:n
+päätös oli jättää saman version tiedosto korvaamatta. Uuden paketin
+tiedostokoot erosivat näistä aiemman muuttumattomien MSI-taulukoiden
+vertailun perusteella. Tämä vahvistaa todellisen tiedostojen
+korvauspuutteen, ei vain mahdollista ajoitusselitystä.
+
+Koe ei luettele kaikkia asennetun payloadin eroja eikä todista
+kohde-Electronin ja SQLite-ajurin käynnistysyhteensopivuutta, koska
+käynnistysportti jäi oikein kiinni. Artifactin ennen/jälkeen-varmennus
+täsmäsi. Poistot, jälkitarkistukset, fixture-siivous ja omistettujen
+prosessipuiden poistuminen valmistuivat; niitä ei tulkita alkuperäisen
+hylkäyksen läpäisyksi. Kokeessa ei muutettu asennuskäytäntöä.
+Seuraava toteutus koskee alla hyväksyttyä asennuksen korvaussääntöä ja sen
+regressio-/rollback-todennusta. PR/main-portti pysyy avoimena.
+
+#### Asennuskorjauksen päätös
+
+**Omistaja hyväksyi 30.9.2026 `emus`-korjauksen ja testauksen** vaihtoehtojen
+käsittelyn jälkeen. Asentimen omistama sääntö ja sen rajat kuvataan
+[Windows-asennussuunnitelmassa](windows-installer-and-update-plan.md#saman-tiedostoversion-korvaaminen).
+Nykyiset komponenttitunnisteet, `RemoveExistingProducts`-sekvenssi ja
+täydellinen payload-vastaavuus säilyvät. DLL-muokkausta tai CI:n omaa
+kiertävää asennusargumenttia ei lisätä. Uusi ero ei oikeuta laajempaa
+korvauspolitiikkaa ilman päätöstä.
+
+Todennetaan rajattu authoring-sopimus, valmiin MSI:n ominaisuus ja yksi
+uusi build-once-kohdepaketti muuttumatonta historiallista lähde-MSI:tä
+vasten. Kohdeinventaarion täydellinen vastaavuus, käynnistys,
+repair/downgrade/rollback ja business-datan muuttumattomuus sekä nykyiset
+PR/main-portit säilyvät. Diagnostiikkakoe ei hyväksy korjattua pakettia.
+Laajempi `amus`-pakotus, companion-versionoinnin uusi omistajuussopimus
+tai asennussekvenssin siirto eivät kuulu ehdotukseen.
+
+Rajattu toteutus lisää `emus`-arvon asentimeen ja tarkastaa sen valmiin
+MSI:n Property-taulusta ennen sidecarin julkaisua. Väärä tai puuttuva
+arvo sekä erikseen asetettu `REINSTALL` hylätään kiinteillä virhekoodeilla.
+Asentimen yksikkötestit 116/116 ja nykyinen Windows-prosessitestisarja
+41/41 läpäisivät; jälkimmäinen sisältää myös uuden guardien suoritus- ja
+vuotosuojatestin. Muuttumattoman aiemman MSI:n read-only-tarkistus hylkäsi
+puuttuvan säännön odotetulla koodilla. Riippumaton katselmointi ei löytänyt
+korjattavaa. Nämä eivät vielä todista korjatun paketin asennusta tai
+hyväksy V2:ta; oikean paketin ja PR/main-porttien näyttö on kesken.
 
 ## Ohje ja historia
 

@@ -10,6 +10,8 @@
     Scope="perUser"
     InstallerVersion="500"
     Compressed="yes">
+    <!-- Vendor binaries can change bytes without changing their file version. -->
+    <Property Id="REINSTALLMODE" Value="emus" />
     <MajorUpgrade
       AllowDowngrades="no"
       AllowSameVersionUpgrades="no"

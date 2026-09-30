@@ -84,6 +84,34 @@ test('does not publish a sidecar if inspection changes the MSI bytes', async () 
   await assert.rejects(access(manifestPath));
 });
 
+for (const code of ['INSTALLER_REINSTALL_MODE_INVALID', 'INSTALLER_REINSTALL_FORBIDDEN']) {
+  test(`does not publish a sidecar when the MSI policy inspector rejects ${code}`, async () => {
+    const root = await mkdtemp(join(tmpdir(), 'eky-installer-release-'));
+    temporaryDirectories.push(root);
+    const installerPath = join(root, 'Eky-0.1.0-alpha.1-x64.msi');
+    const failure = new Error(code);
+    let buildCalls = 0;
+    let inspectionCalls = 0;
+
+    await assert.rejects(createWindowsInstallerRelease({
+      buildInstaller: async () => {
+        buildCalls += 1;
+        await writeFile(installerPath, 'synthetic MSI release bytes');
+        return installerBuildResult(installerPath);
+      },
+      buildRevision,
+      inspectInstaller: async () => {
+        inspectionCalls += 1;
+        throw failure;
+      },
+    }), (error) => error === failure);
+
+    assert.equal(buildCalls, 1);
+    assert.equal(inspectionCalls, 1);
+    await assert.rejects(access(createInstallerSidecarPath(installerPath)));
+  });
+}
+
 test('separate verification rejects MSI changes without rebuilding', async () => {
   const root = await mkdtemp(join(tmpdir(), 'eky-installer-release-'));
   temporaryDirectories.push(root);

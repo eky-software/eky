@@ -121,6 +121,35 @@ sisältävän MSI-lähdepolun sekä lopullisen uninstallin. `%APPDATA%\\Eky`-
 business-data inventoidaan ennen testiä ja todetaan muuttumattomaksi jokaisen
 vaiheen jälkeen.
 
+### Saman tiedostoversion korvaaminen
+
+Omistaja hyväksyi 30.9.2026 MSI:n omistaman `REINSTALLMODE=emus`-säännön.
+Valmistajan binäärit voivat sisältää uudet tavut samalla tiedostoversiolla;
+pelkkä version kasvuun perustuva korvaus voi jättää päivitykseen vanhan
+kirjaston. `e` sallii puuttuvan, saman tai vanhemman tiedostoversion
+korvaamisen ja säilyttää uudemman tiedostoversion suojan. `u`, `m` ja `s`
+säilyttävät MSI:n tavanomaiset rekisteri- ja pikakuvaketoiminnot.
+Sääntö koskee koko asennettavaksi valittua EKY-pakettia, ei vain
+diagnostiikassa nimettyjä kirjastoja. Lähde:
+[Microsoftin REINSTALLMODE-sopimus](https://learn.microsoft.com/en-us/windows/win32/msi/reinstallmode).
+
+Ominaisuus kuuluu `Package.wxs`:ään, ei testin komentoriville. Uuden
+MSI:n release-tarkastin vaatii saman arvon todellisesta Property-taulusta
+ennen sidecarin muodostamista. Historiallisen lähdepaketin oma
+identiteettitarkastus säilyy ennallaan. `REINSTALL=ALL`-valintaa,
+versiometadatan muuttamista, pakotettua downgradea tai komponenttien
+tunnisteiden/järjestyksen muutosta ei lisätä. Asennin omistaa edelleen
+vain ohjelmabinaarit, ei profiileja tai business-dataa.
+
+Täydellinen hash-, tiedostotyyppi- ja sisältövertailu pysyy pakollisena.
+Sääntö ei lupaa korvata asennukseen ulkopuolelta tuotua uudempaa tiedostoa:
+sen aiheuttama inventaarioero hylätään edelleen. Hyväksyntä vaatii
+korjatun build-once-paketin päivityksen, käynnistyksen, repairin,
+downgrade-eston ja rollbackin nykyisten porttien mukaisesti; politiikan
+hyväksyntä tai lähdekoodin sopimustesti ei yksin ole tämä näyttö.
+
+### Build-once ja CI
+
 B5:n release-komento vaatii puhtaan työpuun ja täyden Git HEAD -revision.
 Komento rakentaa jaeltavan MSI:n kerran, tarkastaa MSI:n read-only-
 inspektorilla ja sitoo tiedostonimen, koon, SHA-256-tiivisteen, release-
