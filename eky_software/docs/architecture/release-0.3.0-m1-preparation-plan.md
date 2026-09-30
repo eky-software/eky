@@ -380,8 +380,15 @@ kiertävää asennusargumenttia ei lisätä. Uusi ero ei oikeuta laajempaa
 korvauspolitiikkaa ilman päätöstä.
 
 Todennetaan rajattu authoring-sopimus, valmiin MSI:n ominaisuus ja yksi
-uusi build-once-kohdepaketti muuttumatonta historiallista lähde-MSI:tä
-vasten. Kohdeinventaarion täydellinen vastaavuus, käynnistys,
+uusi build-once-kohdepaketti historiallista lähdepakettia vasten.
+Omistaja hyväksyi nykyisen erillisen CI-kokeen: lähdepaketti rakennetaan
+kerran lukitusta historiallisesta lähteestä ja kohde korjatusta
+jäädytetystä revisiosta. Tämä on `historical-source-rebuild`, ei lupaus
+aiemman hylätyn ajon identtisistä MSI-tavuista. Alkuperäiset paketit ja
+ensivirheen näyttö säilyvät muuttamattomina. Kokeen kaksi kuluttajaa
+käyttävät samoja uusia varmennettuja lähde- ja kohdepaketteja; valinnainen
+inspektorihavainto on pois käytöstä. CI-toteutusta ei muuteta tätä varten.
+Kohdeinventaarion täydellinen vastaavuus, käynnistys,
 repair/downgrade/rollback ja business-datan muuttumattomuus sekä nykyiset
 PR/main-portit säilyvät. Diagnostiikkakoe ei hyväksy korjattua pakettia.
 Laajempi `amus`-pakotus, companion-versionoinnin uusi omistajuussopimus
