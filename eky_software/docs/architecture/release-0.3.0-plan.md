@@ -31,11 +31,11 @@ hyväksymä [Electron 43.7.6 -turvallisuuspäivitys](local-desktop-dependency-re
 nykyisine runtime-, tietokanta-, packaged- ja CI-portteineen. Sen todennus
 on kesken, eikä aikaisempi vihreä ajo hyväksy uutta runtimea. Vanhojen
 timeout-havaintojen syyepävarmuus säilyy.
-Uuden runtimen ja synteettisen paketoidun palautusketjun kokeet läpäisivät,
-mutta kokonaiset testisarjat eivät vielä ole hyväksyttyjä. Riippuvuusarvio
-erottaa käynnistys-, moduulirajojen luku- ja stress-hylkäykset myöhemmistä
-diagnostiikkakokeista sekä kirjaa seuraavan rajatun selvityksen. Pitkä soak
-ja tämän muutoksen CI eivät vielä ole tehtyjä.
+Tavallinen workspace-sarja läpäisi rajattujen testiapurikorjausten jälkeen.
+Puhtaalla revisiolla `1e91b328` täysi Electron-sarja 46/46, normaali
+desktop-stress ja täysi 30 minuutin soak läpäisivät ilman vaatimusten
+lievennystä. Aiemmat käynnistys-, luku- ja stress-hylkäykset säilyvät
+erillisinä havaintoina; niiden kaikkia juurisyitä ei väitetä korjatuiksi.
 Rajattu käynnistyskoodien diagnostiikkakorjaus on toteutettu ja katselmoitu:
 89 sopimustestiä, tyypitys ja yksi normaalisti valmisteltu aktivointikoe
 läpäisivät. Tämä ei osoita aiemman käynnistysvirheen syytä korjatuksi eikä
@@ -43,11 +43,17 @@ korvaa kokonaisen testisarjan hyväksyntää.
 Omistajan hyväksymä rajattu jatko erottaa
 [V1:n virhetietoketjun ja V2:n runtime-/integraatioportit](release-0.3.0-m1-preparation-plan.md#rajattu-ongelmalista).
 V1:n oikeaprosessikoe säilytti tunnetun backend-syyn lopulliseen raporttiin
-ja seuraavien ajojen yli; tavallinen käynnistyspolku läpäisi. V1 on suljettu
-revisioon `8bcf1c74` loppukatselmuksen ja tyyppitarkistusten jälkeen.
-V2:n normaali sarja pysähtyi lähdekoodin moduulirajojen lukutestin
-aikakatkaisuun. Sen testikohtainen lukutapakorjaus ja puuttuvat
-hyväksyntäajot jatkuvat M1:n nykyisessä rajauksessa.
+ja seuraavien ajojen yli; tavallinen käynnistyspolku läpäisi. V1:n
+revisioon `8bcf1c74` suljettua ketjua täydensi revision `27a0b6c3`
+katselmoitu loppuprojektion korjaus ja sen regressiot.
+V2:n pakollisessa full auditissa löytyneen `brace-expansion`-riippuvuuden
+rajattu `5.0.12`-päivitys hyväksyttiin erikseen. Puhtaan revision
+`b5833b22` uusi tuotantopayload ja synteettinen hardened-palautus samalla
+paketilla läpäisivät. Production/full audit, 160 rekisteriallekirjoitusta
+ja 253 nykyistä paketointisopimusta läpäisivät. Lopullisen revision
+omat PR/main-portit ovat seuraava työ, eivät vielä hyväksytty tulos.
+[M1:n nykyinen checkpoint](release-0.3.0-m1-preparation-plan.md#v2n-nykyinen-hyväksyntächeckpoint)
+omistaa tarkemman näytön ja V2:n sulkemisehdot.
 Seuraava tuotantopala on [A1/R01](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde)
 uuden preflightin ja omistavan aloitusportin kautta. Laaja ohjeverkon
 tarkistus pysyy [M3:n I-paketissa](#m3-muut-invariantit-diagnostiikka-ja-ylläpidettävyys);
