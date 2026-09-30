@@ -87,6 +87,19 @@ test('packaged boundary diagnostic reuses exact artifacts without becoming a nor
   assert.match(diagnostic, /\(inputs\.artifact_kind == 'legacy' \|\| inputs\.artifact_kind == 'upgrade'\) && 27 \|\| 25/u);
 });
 
+test('fixed legacy payload observation is enabled only in the existing explicit diagnostic caller', async () => {
+  const source = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
+  const step = source.split('      - name: Run existing caller and mandatory result verifier once\n')[1].split('\n      - name:')[0];
+  const expression = step.match(/EKY_ACCEPTANCE_LEGACY_PAYLOAD_OBSERVATION: \$\{\{ (.+) \}\}/u)?.[1];
+  assert.ok(expression);
+  for (const artifact_kind of ['legacy', 'workspace', 'workspace-fault', 'upgrade', 'unknown']) {
+    assert.equal(runInNewContext(expression, { inputs: { artifact_kind } }, { timeout: 1000 }), artifact_kind === 'legacy' ? '1' : '0');
+  }
+  assert.equal(source.match(/EKY_ACCEPTANCE_LEGACY_PAYLOAD_OBSERVATION/gu)?.length, 1);
+  const normal = await readFile(WORKFLOW_URL, 'utf8');
+  assert.doesNotMatch(normal, /EKY_ACCEPTANCE_LEGACY_PAYLOAD_OBSERVATION/u);
+});
+
 test('workspace caller markers are four closed optional observations inside the existing diagnostic step', async () => {
   const source = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
   const diagnostic = source.split('  packaged-boundary-diagnostic:')[1];

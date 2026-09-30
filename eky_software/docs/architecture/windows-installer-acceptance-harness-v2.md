@@ -5106,8 +5106,53 @@ siivous ja tulosskeema eivät muutu. 83 kohdetestiä ja kaksi riippumatonta
 staattista katselmusta tarkistivat luokittelun, todellisen runtime-kytkennän,
 kertatarkistuksen ja virheen säilymisen. Koko integraatioportti ei ole
 vielä hyväksytty. [M1:n avoin este](release-0.3.0-m1-preparation-plan.md#v2n-ensimmäisen-pr-ajon-rajatut-esteet)
-varmennetaan seuraavaksi olemassa olevan paketin rajatulla CI-kokeella;
+on rajattu muuttumattoman paketin CI-kokeessa kokonaiskoon eroksi.
+Eroavat tiedostot ja niiden korvauspäätös ovat vielä avoimia;
 diagnostiikkakoe ei korvaa normaalia hyväksyntäajoa.
+
+### Rajattu legacy-tiedostohavainto
+
+Omistaja hyväksyi yhden jatkokokeen samoilla muuttumattomilla CI-paketeilla.
+Kohteet ovat vain `dxcompiler.dll`, `vk_swiftshader.dll` ja `vulkan-1.dll`.
+Nykyisen `packaged-boundary-diagnostic`-polun legacy-caller ottaa havainnon
+käyttöön täsmällisellä `EKY_ACCEPTANCE_LEGACY_PAYLOAD_OBSERVATION=1`-arvolla.
+Normaali hyväksyntäajo ei ota havaintoa käyttöön eikä lue näitä lisäotoksia.
+
+Ennen major upgradea talletetaan kolmen tiedoston tiivisteet vain workerin
+muistiin. Payload-hylkäyksessä verrataan niihin asennuksen senhetkisiä
+tavuja ja luetaan nykyinen `majorUpgrade.log` kerran ennen siivousta.
+Luku hyväksyy vain tavallisen single-link-tiedoston, tarkistaa avatun
+tiedoston identiteetin ja muuttumattomuuden sekä rajaa jokaisen luvun
+32 MiB:iin. Ei uusia lokitiedostoja, kirjoitinta, odotuskuittausta,
+uusintaa, valvojaa tai aikarajaa. Nykyinen supervisor omistaa myös nämä
+asynkroniset luvut ja niiden keskeytyksen.
+
+Nykyisen `targetPayload`-vaihehavainnon `resultCode` muodostetaan vain
+kiinteästä etuliitteestä `dxcompiler`, `vkSwiftshader` tai `vulkanLoader`
+ja jostakin seuraavista suljetuista luokista:
+
+- `BytesUnchanged`, `BytesChanged`, `BytesUnavailable`.
+- `MsiEqualVersionRetained`, `MsiOverwriteScheduled`, `MsiConflicting`,
+  `MsiUnavailable`.
+
+Tiivisteet, koot, polut, lokiteksti ja käyttäjätiedot eivät ylitä rajaa.
+MSI-luokka kertoo vain tunnistetun lokipäätöksen, ei toteutunutta kopiointia.
+Luokittelu yhdistää koko johdetun tiedostopolun ja päätöksen samasta
+englanninkielisestä server-recordista ennen ensimmäistä
+`RemoveExistingProducts`-aloitusta. Rajan puuttuminen, tuntematon muoto,
+epävarma luku tai rollback-havainto eivät muutu kielteiseksi todisteeksi.
+Ristiriitaisia tunnistettuja päätöksiä ei ratkaista valitsemalla viimeistä.
+Tämä rajaus perustuu nykyiseen varmennettuun päivityssekvenssiin, ei
+yleiseen MSI-lokien tulkitsimeen. Microsoftin
+[tiedostopäätöksen esimerkki](https://learn.microsoft.com/en-us/windows/win32/msi/checking-the-installation-of-features-components-files)
+ja [RemoveExistingProducts](https://learn.microsoft.com/en-us/windows/win32/msi/removeexistingproducts-action)
+kuvaavat tulkinnan pohjan, eivät täydellistä lokiformaatin lupausta.
+
+Alkuperäinen payload-hylkäys, kohdekäynnistyksen esto ja siivoussopimus
+säilyvät myös havainto- ja toimitusvirheissä. Ensimmäinen vaihehylkäys
+julkaistaan ennen valinnaista havaintolukua. Havainto ei ole uusi
+hyväksyntäehto. Koe suoritetaan kerran vasta kohdetestien ja katselmuksen
+jälkeen; varsinainen asennuskorjaus edellyttää näytön perusteella päätöstä.
 
 ### Workspace-asennusodotuksen havaintoraja
 

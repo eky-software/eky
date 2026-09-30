@@ -375,6 +375,8 @@ jobs:
 
       - name: Run existing caller and mandatory result verifier once
         timeout-minutes: ${{ (inputs.artifact_kind == 'legacy' || inputs.artifact_kind == 'upgrade') && 27 || 25 }}
+        env:
+          EKY_ACCEPTANCE_LEGACY_PAYLOAD_OBSERVATION: ${{ inputs.artifact_kind == 'legacy' && '1' || '0' }}
         run: |
           if ($env:ARTIFACT_KIND -ceq 'upgrade') {
             $descriptorPath = Join-Path (Join-Path $env:RUNNER_TEMP 'eky-existing-boundary-artifact') 'upgrade-rollback-artifact.json'

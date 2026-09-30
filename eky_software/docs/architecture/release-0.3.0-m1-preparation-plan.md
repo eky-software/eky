@@ -318,14 +318,28 @@ riippumatonta staattista katselmusta ei löytänyt korjattavaa. Koko
 legacy-core-sarjaa ei ole tällä muutoksella hyväksytty; sen puhdas
 CI-todennus on edelleen pakollinen.
 
-Seuraava rajattu koe käyttää olemassa olevaa
-`packaged-boundary-diagnostic`-polkua ja ensimmäisen hylätyn PR-ajon
-täsmällistä legacy-artifactia. Asennuspaketteja ei rakenneta uudelleen.
-Havainnon tuottavan harnessin revisio ja vanhan artifactin build-revisio
-sidotaan erikseen; kumpikaan ei korvaa toista. Koe erottaa tarkistuksen
-epäonnistumisen ja vertailueron ennen mahdollista varsinaista korjausta.
-Kokeen läpäisy ei yksin selittäisi alkuperäistä hylkäystä eikä sulkisi
-PR/main-porttia. Vanha epäonnistunut yritys säilyy näyttönä.
+[Rajattu koe 36725649333](https://github.com/eky-software/eky/actions/runs/36725649333)
+käytti olemassa olevaa `packaged-boundary-diagnostic`-polkua, harnessia
+`8fa8e72a` ja ensimmäisen hylätyn PR-ajon muuttumatonta legacy-artifactia.
+Artifactin build-revisio oli erikseen sidottu `69960d7d`; paketteja ei
+rakennettu uudelleen. Ensimmäinen yritys hylättiin tarkemmalla koodilla
+`targetPayloadSizeMismatch`: inventaarion tarkistus onnistui ja
+tiedostomäärä täsmäsi, mutta kokonaiskoko ei. Tämä ei vielä nimeä
+eroavia tiedostoja; sama määrä ei myöskään todista samoja tiedostopolkuja.
+Ennen/jälkeen-artifactvarmennukset täsmäsivät. Poisto-, jälkitarkistus-,
+fixture-siivous- ja prosessipuun poistumisvaiheet valmistuivat. Alkuperäinen
+hylkäys säilyi, eikä tämä diagnostiikkakoe ole hyväksyntänäyttö.
+
+Muuttumattomien MSI-taulukoiden vertailu rajasi kolme Electron-kirjastoa,
+joiden tiedostokoot eroavat samalla versio- ja kielimetadatalla. Tämä on
+tutkittava ehdokasjoukko, ei näyttö asennukseen jääneistä vanhoista tavuista.
+Omistaja hyväksyi yhden rajatun havaintokokeen näille tiedostoille ja
+MSI:n korvauspäätökselle samoilla paketeilla. Ennen ajoa toteutetaan ja
+katselmoidaan [suljetut tulosluokat ja lukurajat](windows-installer-acceptance-harness-v2.md#rajattu-legacy-tiedostohavainto).
+Raakaa lokia, polkuja tai tiivisteitä ei julkaista. Asennuskäytäntöä,
+sovellusta ja hyväksyntäehtoja ei muuteta tämän vianrajauksen perusteella.
+Mahdollinen varsinainen korjaus päätetään näytön perusteella.
+PR/main-portti pysyy avoimena.
 
 ## Ohje ja historia
 

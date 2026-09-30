@@ -25,6 +25,7 @@ import {
 import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
 import { verifyLegacyUpgradeArtifact } from './legacyUpgradeArtifact.mjs';
 import { createNativeProductInspectionCommand } from './nativeMsiAdapterCommand.mjs';
+import { createLegacyPayloadObservation } from './legacyPayloadObservation.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const CLOSE_REQUEST_PATH = resolve(DIRECTORY, 'requestWindowsApplicationClose.ps1');
@@ -176,7 +177,11 @@ export async function validateLegacyTargetPayload(
   }
 }
 
-export async function createLegacyUpgradeWindowsRuntime(request, artifact, { spawnMsiProcess = spawn } = {}) {
+export async function createLegacyUpgradeWindowsRuntime(request, artifact, {
+  spawnMsiProcess = spawn,
+  observePayload = process.env.EKY_ACCEPTANCE_LEGACY_PAYLOAD_OBSERVATION === '1',
+  createPayloadObservation = createLegacyPayloadObservation,
+} = {}) {
   const appData = process.env.APPDATA;
   const localAppData = process.env.LOCALAPPDATA;
   const systemRoot = process.env.SystemRoot;
@@ -204,6 +209,8 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact, { spa
     'Eky.lnk',
   );
   const logRoot = resolve(scenarioRoot, 'msi-logs');
+  const payloadObservation = observePayload === true
+    ? createPayloadObservation(installRoot, resolve(logRoot, 'majorUpgrade.log')) : null;
   const evidenceRoot = resolve(scenarioRoot, 'private-evidence');
   const isolatedAppDataRoot = resolve(scenarioRoot, 'isolated-app-data');
   const sourceSmokeTempRoot = resolve(scenarioRoot, 'source-smoke-temp');
@@ -308,6 +315,9 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact, { spa
           ? 'target'
           : null;
     if (roleName === null) throw new Error('unexpectedFailure');
+    if (operation === 'majorUpgrade') {
+      try { await payloadObservation?.captureSource(); } catch { /* Optional diagnostic only. */ }
+    }
     try {
       return (
         await runOwnedProcess(
@@ -343,6 +353,10 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact, { spa
 
   async function validateTargetPayload() {
     await validateLegacyTargetPayload(installRoot, artifact.target.payloadInventory);
+  }
+
+  async function observeTargetPayloadRejection(observe) {
+    await payloadObservation?.observeRejection(observe);
   }
 
   async function runSourcePackagedSmoke() {
@@ -469,6 +483,7 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact, { spa
   return Object.freeze({
     captureSourceEvidence,
     inspectState,
+    observeTargetPayloadRejection,
     runMsiOperation,
     runSourceStartup,
     runSourcePackagedSmoke,
