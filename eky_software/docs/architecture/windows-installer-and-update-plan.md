@@ -124,12 +124,14 @@ vaiheen jälkeen.
 
 ### Saman tiedostoversion korvaaminen
 
-**Toteutuksen tila 30.9.2026:** `emus`-politiikka on hyväksytty, mutta
-ensimmäinen Property-taulun toteutus ei ole toimituskelpoinen. Kohdepaketin
-rakennus hylättiin `ICE40`-validoinnissa; katso
+**Toteutuksen tila 30.9.2026:** hyväksytty `emus`-politiikka on toteutettu
+nimetyllä Type 51 -toiminnolla. Ensimmäinen Property-taulun toteutus
+hylättiin `ICE40`-validoinnissa; katso
 [M1:n pakettikokeen näyttö ja päätös](release-0.3.0-m1-preparation-plan.md#asennuskorjauksen-päätös).
-Omistaja hyväksyi korvaavan Type 51 -toteutuksen ja testauksen samana
-päivänä. Sen todennus on kesken; ICE-validointia ei sivuuteta.
+Korvaava toteutus läpäisi rakennuksen, metadatan sekä molemmat oikean
+pakettiparin hiljaiset legacy-päivityskokeet ilman ICE40-poikkeusta.
+UI-, ohitus- ja uudemman tiedostoversion käyttäytymistodisteet sekä
+normaalit integraatioportit ovat vielä avoinna; tämä ei ole julkaisuhyväksyntä.
 
 Omistaja hyväksyi 30.9.2026 MSI:n omistaman `REINSTALLMODE=emus`-säännön.
 Valmistajan binäärit voivat sisältää uudet tavut samalla tiedostoversiolla;

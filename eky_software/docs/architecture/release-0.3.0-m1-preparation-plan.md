@@ -13,7 +13,7 @@ hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohd
 | Mainin omat portit | [Normaali CI 36491715165](https://github.com/eky-software/eky/actions/runs/36491715165), yritys 1: kaikki 38 vaadittua ryhmää läpäisivät; vain nimenomaisesti valinnainen diagnostiikkakoe ohitettiin. Linux system 695/695, kriittinen web 37/37 ja Windowsin kriittinen Electron 38/38 vastasivat ajovalintojaan ilman retryä, flakyä tai puuttuvia tapauksia. Neljän artifact-tuottajan ja kymmenen packaged-kuluttajan identiteetit ja elinkaarinäyttö hyväksyttiin. [Saman revision riippuvuustarkistus 36491789402](https://github.com/eky-software/eky/actions/runs/36491789402) läpäisi. |
 | Suljettu työ | T1/R27:n ajokytkentä, T2/R29:n puhtaan valmistelun suoja ja T3/R28:n todellisten kuluttajien koko prosessipuun omistajuus. Korvatut aktiiviset fallbackit on poistettu ja [pysyvä T3-matriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus) hyväksytty. PR #281 sulki tämän jälkeisen rollback-testiapurin integraatiojatkon. |
 | Avoimet havainnot | Aiemmat satunnaiset Electron-käynnistys- ja packaged/legacy-timeoutit säilyvät epäonnistuneina havaintoina omille revisioilleen. Myöhempi vihreä ajo ei todista niiden kaikkia syitä korjatuiksi. [Hylkäysten historia](e2e-test-environment-history.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko) ja [rajattu apurikorjaus](e2e-test-environment-history.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus) erotetaan toisistaan. |
-| Seuraava työ | Electron `43.7.6` ja Undici `7.29.1` ovat jo toteutettuja täsmäpäivityksiä; `better-sqlite3 13.0.2` säilyy. Ei uutta päivityskierrosta eikä turvallisuuskorjausten lykkäystä. Toteuta hyväksytty [asennuskorjaus](#asennuskorjauksen-päätös), sen rajatut regressiot ja oikean paketin näyttö, sitten yksi normaali hyväksyntäkierros jäädytetystä revisiosta. Audit, toimintatestit ja main-haaran Dependabot-hälytysten sulkeutuminen todennetaan erikseen. Vasta integraation jälkeen A1/R01:n aloitusportti ja [avattavan luonnoksen kohteen suunnitelma](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde). |
+| Seuraava työ | Electron `43.7.6` ja Undici `7.29.1` ovat jo toteutettuja täsmäpäivityksiä; `better-sqlite3 13.0.2` säilyy. Ei uutta päivityskierrosta eikä turvallisuuskorjausten lykkäystä. Hyväksytyn [asennuskorjauksen](#asennuskorjauksen-päätös) regressiot ja hiljaisen legacy-päivityksen oikea pakettikoe läpäisivät. Täydennä saman rajauksen UI-, eksplisiittisen ohituksen ja uudemman tiedostoversion käyttäytymistodisteet, sitten yksi normaali hyväksyntäkierros jäädytetystä revisiosta. Audit, toimintatestit ja main-haaran Dependabot-hälytysten sulkeutuminen todennetaan erikseen. Vasta integraation jälkeen A1/R01:n aloitusportti ja [avattavan luonnoksen kohteen suunnitelma](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde). |
 | Ei vielä valmis | A1-A3, W7, M1:n muu sovellustyö ja koko 0.3.0. Testiperustan hyväksyntä ei hyväksy niiden tulevaa toteutusta tai muuttunutta liiketoimintasääntöä. |
 
 Hyväksyntä on sidottu yllä olevaan revisioon, ei automaattisesti myöhempään
@@ -471,12 +471,32 @@ read-only-tarkastus läpäisi sarakemetadatan COM-lukukorjauksen jälkeen.
 Ensimmäinen lukuhylkäys ja erilliset regressiofixturen valmisteluhylkäykset
 säilyvät; myöhempi läpäisy ei muuta niitä onnistumisiksi.
 
-Tämä on rakennus- ja metadatanäyttöä, ei oikean sovelluksen asennus,
-UI-asennuksen ajonaikainen hyväksyntä tai V2:n sulkeminen. Seuraava työ on
-hyväksytty rajattu oikean paketin koe jäädytetystä revisiosta. Molemmat
-kuluttajat käyttävät samaa kerran rakennettua pakettiparia. Nykyiset
-payload-, käynnistys-, palautus- ja PR/main-portit säilyvät avoimina,
-kunnes niiden oma näyttö on hyväksytty.
+Rakennus- ja metadatanäyttö ei yksin hyväksynyt asennusta. Sen jälkeinen
+[pakettikoe 36755818882](https://github.com/eky-software/eky/actions/runs/36755818882)
+jäädytetystä revisiosta `5a8dd5d6` läpäisi 15/15 jobia: 12 sopimusajoa,
+yhden tuottajan ja kaksi suoritettua legacy-kuluttajaa. Molemmat käyttivät
+samaa kerran rakennettua historiallista lähde- ja korjattua kohdepakettia;
+valinnainen inspektorihavainto oli pois käytöstä. Täydellinen kohdepayload,
+kaksi käynnistystä, lopputuloksen tarkastin, siivous ja prosessipuiden
+poistuminen läpäisivät. Tuottajan sekä molempien kuluttajien ennen/jälkeen-
+pakettisidonnat täsmäsivät. Ensimmäisen suoritusyrityksen lokit ja
+checkout-sidonnat säilytettiin; havaintokatkoja ei todettu.
+
+Tämä todentaa hiljaisen legacy-päivityksen korjauksen, ei koko V2:ta.
+Erillinen kahdeksan tapauksen turvallinen MSI-istuntokoe todensi molempien
+sekvenssien ehdot ja nimetyn Type 51 -toiminnon arvon sekä huolto- ja
+ohitustilanteiden säilymisen. Se ei suorita koko asennussekvenssiä tai
+kopioi tiedostoja, joten sitä ei nimetä UI-asennuksen todisteeksi.
+
+Hyväksytystä Type 51 -rajauksesta ovat vielä avoinna todellinen
+UI-asennuksen oletus, kutsujan eksplisiittisen ohituksen säilyminen
+asennuksessa ja uudemman **tiedostoversion** käyttäytymissuoja. Viimeinen
+ei ole sama asia kuin nykyisen tuoteversion downgrade-testi. Nämä rajataan
+olemassa oleviin testimekanismeihin; uutta testialustaa, riippuvuutta tai
+käyttäjäasennuksen muutosta ei lisätä. Nykyinen normaali kierros todentaa
+erikseen clean/repair/uninstall-, downgrade- ja rollback-portit.
+PR/main-portit ja riippuvuushälytysten oletushaaran tila ovat edelleen
+avoimia. Aiemmat hylkäykset säilyvät alkuperäisinä.
 
 ## Ohje ja historia
 
