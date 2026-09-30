@@ -152,15 +152,23 @@ V1-revision tavallinen workspace-testisarja pysähtyi olemassa olevan
 aikakatkaisuun. Virhe kuuluu alemman tason lähdekoodinlukutestiin, ei
 Electronin käynnistyshavaintoon. Alkuperäinen hylkäys säilytetään.
 
-Testin sarjallinen tiedostonluku korvataan saman testin sisällä enintään
-kahdeksan lukemisen erillä. Tiedostojoukko, import-tulkinta, virheiden
+Rekisterin rajatestin korjaus lukittiin revisioon `d55f5a80`. Sen normaalissa
+workspace-ajossa rekisteritesti läpäisi, mutta muuttamaton
+`workspaceBackupImportBoundaries.test.ts` pysähtyi vastaavan sarjallisen
+lukuketjun aikakatkaisuun. Molemmat hylkäykset säilyvät erillisinä.
+
+Näiden kahden testin sarjallinen tiedostonluku on korvattu kummankin
+testin sisällä enintään kahdeksan lukemisen erillä. Tiedostojoukko,
+import-tulkinta, virheiden
 tarkistusjärjestys ja aikaraja säilyvät. Aloitetun erän kaikki lukemiset
 valmistuvat ennen virheen välitystä; lukuvirhe pysäyttää seuraavan erän.
-Rajattu 11/11-regressiosarja ja desktopin tyypitys läpäisivät. Tämä todentaa
+Tuonnin rajatestin erillinen SQLite-ajurin tarkistus ja sen tuotantolähteiden
+rajaus säilyvät muuttumattomina. Yhteinen 24/24-regressiosarja, desktopin
+tyypitys ja riippumaton katselmointi läpäisivät. Tämä todentaa
 lukutavan, kattavuuden ja virheiden säilymisen, mutta ei yksin selitä
 alkuperäisen kokonaissarjan kuormituksen tarkkaa vaikutusta tai hyväksy
-normaalia workspace-sarjaa. Katselmoinnin jälkeen jatketaan sen nimettyyn
-ajoon muuttuneella lähteellä ja edelleen V2:n nykyisiin portteihin.
+normaalia workspace-sarjaa. Seuraavaksi jatketaan sen nimettyyn ajoon
+muuttuneella lähteellä ja edelleen V2:n nykyisiin portteihin.
 Aikarajat, testivaatimukset ja aiemmat hylkäykset säilyvät ennallaan.
 
 ## Ohje ja historia
