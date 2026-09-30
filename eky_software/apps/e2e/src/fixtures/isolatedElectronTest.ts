@@ -5,7 +5,6 @@ import {
   mkdirSync,
   readFileSync,
 } from 'node:fs';
-import { writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 import {
@@ -37,7 +36,6 @@ import {
 } from '../environment/startOwnedWindowsElectronBridge.js';
 import {
   E2eBackendStartupFailure,
-  type E2eBackendStartupFailureEvidence,
 } from '../environment/startE2eBackendProcess.js';
 import { reserveLoopbackPort } from '../environment/reserveLoopbackPort.js';
 import { removeE2eRunRoot } from '../environment/removeE2eRunRoot.js';
@@ -54,15 +52,19 @@ import { closeOwnedWindowsElectronRuntime } from './closeOwnedWindowsElectronRun
 import {
   launchElectronRuntime,
   type ElectronLaunchObservation,
-  type ElectronStartupCapture,
 } from './launchElectronRuntime.js';
-import { createElectronLaunchFailureCapture, readObservedElectronLaunchExitCode, type ElectronFirstLaunchFailure } from './captureElectronLaunchFailure.js';
-import type { ElectronBackendStartupLogsCapture } from './captureElectronBackendStartupLogs.js';
-import type { ElectronNativeStartupFailureCapture } from './captureElectronNativeStartupFailure.js';
+import { createElectronLaunchFailureCapture, readObservedElectronLaunchExitCode } from './captureElectronLaunchFailure.js';
 import { ELECTRON_E2E_PROCESS_CONNECT_TIMEOUT_MILLISECONDS } from './electronLaunchBudgets.js';
 import { captureFirstStartProof } from './captureFirstStartProof.js';
 import type { FirstStartProofCapture } from '../../../desktop/e2e/workspaceFirstStartProofObservation.js';
 import { recordElectronEvidenceFailure } from '../../scripts/electronLifecycleProjection.mjs';
+import {
+  reportElectronLifecycleEvidence,
+  type ElectronCleanupResult,
+  type ElectronPreparationFailureEvidence,
+} from './reportElectronLifecycleEvidence.js';
+
+export { reportElectronLifecycleEvidence } from './reportElectronLifecycleEvidence.js';
 
 export interface IsolatedElectronHarness {
   api: APIRequestContext;
@@ -476,18 +478,6 @@ function seedLegacyWorkspaceForActiveReplacement(input: {
   cpSync(input.sourceDocumentsRoot, documentsRoot, { recursive: true });
 }
 
-interface ElectronCleanupResult {
-  api: 'completed' | 'failed' | 'notStarted';
-  runtime: 'completed' | 'unverified' | 'notStarted';
-  port: 'released' | 'unverified' | 'notStarted';
-  runRoot: 'removed' | 'retained' | 'removalFailed';
-}
-
-interface ElectronPreparationFailureEvidence {
-  readonly stage: 'workspaceBackup';
-  readonly backend: E2eBackendStartupFailureEvidence | null;
-}
-
 export async function prepareElectronWorkspaceBackup(input: {
   prepare(): Promise<Readonly<ElectronWorkspaceBackupFixture> | undefined>;
   report(evidence: ElectronPreparationFailureEvidence): Promise<void>;
@@ -505,54 +495,6 @@ export async function prepareElectronWorkspaceBackup(input: {
     }
     throw error;
   }
-}
-
-export async function reportElectronLifecycleEvidence(
-  testInfo: TestInfo,
-  evidence: {
-    launch: readonly ElectronLaunchObservation[];
-    observationsTruncated: boolean;
-    cleanup: Readonly<ElectronCleanupResult>;
-    startupCapture?: ElectronStartupCapture;
-    backendStartupLogs?: ElectronBackendStartupLogsCapture;
-    nativeStartupFailure?: ElectronNativeStartupFailureCapture;
-    launchExitCode?: number | null;
-    firstLaunchFailure?: Readonly<ElectronFirstLaunchFailure> | null;
-    firstStartProof?: FirstStartProofCapture;
-    preparation?: ElectronPreparationFailureEvidence;
-    ownership?: Readonly<ElectronBridgeCleanupEvidence>;
-  },
-): Promise<void> {
-  const body = JSON.stringify({
-      schemaVersion: 1,
-      attempt: testInfo.retry,
-      launch: evidence.launch,
-      observationsTruncated: evidence.observationsTruncated,
-      cleanup: evidence.cleanup,
-      startupCapture: evidence.startupCapture ?? { status: 'notRequested' },
-      ...(evidence.backendStartupLogs === undefined ? {} : { backendStartupLogs: evidence.backendStartupLogs }),
-      ...(evidence.nativeStartupFailure === undefined ? {} : { nativeStartupFailure: evidence.nativeStartupFailure }),
-      ...(evidence.launchExitCode === undefined ? {} : { launchExitCode: evidence.launchExitCode }),
-      ...(evidence.firstLaunchFailure === undefined ? {} : { firstLaunchFailure: evidence.firstLaunchFailure }),
-      ...(evidence.firstStartProof === undefined ? {} : { firstStartProof: evidence.firstStartProof }),
-      ...(evidence.preparation === undefined ? {} : { preparation: evidence.preparation }),
-      ...(evidence.ownership === undefined ? {} : { ownership: evidence.ownership }),
-    });
-  let failed = false;
-  try {
-    await writeFile(testInfo.outputPath('electron-lifecycle.json'), body,
-      { encoding: 'utf8', flag: 'wx', mode: 0o600 });
-  } catch {
-    failed = true;
-    recordElectronEvidenceFailure(testInfo, 'fileWriteFailed');
-  }
-  try {
-    await testInfo.attach('electron-lifecycle', { contentType: 'application/json', body });
-  } catch {
-    failed = true;
-    recordElectronEvidenceFailure(testInfo, 'attachmentFailed');
-  }
-  if (failed) throw new Error('E2E_ELECTRON_EVIDENCE_FAILED');
 }
 
 export async function finishIsolatedElectronTest(input: {

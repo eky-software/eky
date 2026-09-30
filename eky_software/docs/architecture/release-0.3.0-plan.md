@@ -52,6 +52,10 @@ rajattu `5.0.12`-päivitys hyväksyttiin erikseen. Puhtaan revision
 paketilla läpäisivät. Production/full audit, 160 rekisteriallekirjoitusta
 ja 253 nykyistä paketointisopimusta läpäisivät. Lopullisen revision
 omat PR/main-portit ovat seuraava työ, eivät vielä hyväksytty tulos.
+Revision `416d06f3` ensimmäinen PR-ajo hylkäsi raportointiregression keräyksen
+sekä legacy-päivityksen payload-tarkistuksen. Raportointitestin tarpeeton
+build-riippuvuus on rajatusti korjattu ja alemmilla testeillä todennettu;
+legacy-haaran tarkempi syy ja uusi integraationäyttö ovat avoimia.
 [M1:n nykyinen checkpoint](release-0.3.0-m1-preparation-plan.md#v2n-nykyinen-hyväksyntächeckpoint)
 omistaa tarkemman näytön ja V2:n sulkemisehdot.
 Seuraava tuotantopala on [A1/R01](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde)

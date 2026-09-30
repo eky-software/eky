@@ -303,7 +303,11 @@ pelkkä exit 1 tai odotetuksi merkitty testihylkäys ei riitä näytöksi.
 Tavalliset moduulitestit eivät käytä tätä infrastruktuurin vikavalintaa.
 
 V1b käyttää samaa lifecycle-sisältöä tiedostossa ja Playwrightin
-muistiliitteessä. CI-raportoija ei avaa liitepolkuja eikä jäsennä raakaa
+muistiliitteessä. Sen `reportElectronLifecycleEvidence.ts`-apuri omistaa
+raportin muodostuksen ilman sovelluspakettien runtime-importteja;
+Electron-fixture käyttää samaa toteutusta. Raportoinnin sopimustesti ei
+lataa koko runtime-fixtureä eikä edellytä backendin tai auth-paketin
+valmista buildia. CI-raportoija ei avaa liitepolkuja eikä jäsennä raakaa
 poikkeusta: se projektoi rajatusta muistiliitteestä suoritusyrityksen,
 käynnistyskerran, vaiheen, native-havainnon saatavuuden, katalogin mukaisen
 backend-syyn, alkuperäisen exit-koodin ja erilliset cleanup-tulokset.

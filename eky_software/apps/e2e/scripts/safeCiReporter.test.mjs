@@ -183,7 +183,7 @@ for (const argument of ['--reporter', '--reporter=list', '--debug', '--ui', '--u
   });
 }
 
-function runnerFixture(t, body, { grep, setup, extraArgs = [], typescript = false } = {}) {
+function runnerFixture(t, body, { grep, setup, extraArgs = [], typescript = false, rejectWorkspaceImports = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'eky-reporter-contract-'));
   let accepted = false;
   t.after(() => { if (accepted) rmSync(root, { recursive: true, force: true }); });
@@ -199,6 +199,14 @@ function runnerFixture(t, body, { grep, setup, extraArgs = [], typescript = fals
     : `module.exports = () => { throw new Error(${JSON.stringify(secret)}); };`);
   writeFileSync(join(root, 'playwright.config.mjs'), [
     `import { createE2eReporters } from ${JSON.stringify(pathToFileURL(reporterPath).href)};`,
+    // Reporting-only regressions must not depend on prebuilt business packages.
+    rejectWorkspaceImports ? [
+      'import { registerHooks } from "node:module";',
+      'registerHooks({ resolve(specifier, context, nextResolve) {',
+      '  if (specifier.startsWith("@eky/")) throw new Error("REPORTER_WORKSPACE_IMPORT_REJECTED");',
+      '  return nextResolve(specifier, context);',
+      '} });',
+    ].join('\n') : '',
     'const reporter = createE2eReporters();',
     // The extra JSON sink is private test evidence, never selected by real CI config.
     `reporter.push(['json', { outputFile: ${JSON.stringify(rawReport)} }]);`,
@@ -275,7 +283,7 @@ test('startup failure', async () => {
 test('real runner preserves the first cause with sorted native codes in the final report per attempt', t => {
   const source = path => JSON.stringify(new URL(path, import.meta.url).href);
   const run = runnerFixture(t, `
-import { reportElectronLifecycleEvidence } from ${source('../src/fixtures/isolatedElectronTest.ts')};
+import { reportElectronLifecycleEvidence } from ${source('../src/fixtures/reportElectronLifecycleEvidence.ts')};
 import { reportElectronE2eBackendFailure } from ${source('../../desktop/e2e/electronE2eBackendFailure.ts')};
 import { parseElectronE2eBackendStatus, readElectronE2eBackendFailureCode } from ${source('../../desktop/e2e/electronE2eBackendStatus.ts')};
 test('startup lifecycle', async ({}, info) => {
@@ -294,8 +302,9 @@ test('startup lifecycle', async ({}, info) => {
     launchExitCode: 1,
   });
   throw new Error(${JSON.stringify(secret)});
-});`, { typescript: true });
+});`, { typescript: true, rejectWorkspaceImports: true });
   assert.equal(run.code, 1);
+  assert.equal(run.rows.at(-1).globalErrors, 0, 'reporting fixture must collect without a workspace build');
   const attempts = run.rows.filter(row => row.event === 'testEnd');
   assert.equal(attempts.length, 2);
   for (const [index, attempt] of attempts.entries()) {

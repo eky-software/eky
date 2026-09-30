@@ -45,7 +45,7 @@ paikallisia liitepolkuja tai tutkimustietoja ei siirretä dokumentaatioon.
 | V1a: syntypaikka ja viesti | Electronin E2E-backendin runner hukkaa poikkeuksen ja lähettää vain vaiheen. Brokerin sulkemisvirhe voi estää viestin. Omistaja: `apps/desktop/e2e` ja sen tiukka status-sopimus. | Suljettu syyluokitus tai `unknown`, täsmällinen lähettäjä/parseri/vastaanottaja, ensivirheen säilyminen ja brokerien erilliset sulkutulokset. Nopeat sopimus- ja vuotosuojatestit; ei tuotantokoodin muutosta. |
 | V1b: säilyminen ja raportti | Prosessin muistihavainto voi puuttua poistumisen jälkeen; CI:n testikooste yleistää virheen `testError`-tasolle. Omistaja: nykyinen native-havaintotiedosto, Electron-fixture ja turvallinen CI-raportoija. | Todellinen ennen ensimmäistä ikkunaa epäonnistuva prosessiketju säilyttää tunnetun syyn lopullisessa suoritusyrityskohtaisessa raportissa. Testitapaus, suoritusyritys (`attempt`) ja käynnistyssukupolvi eivät sekoitu. Puuttuva/myöhäinen havainto, raportointivirhe ja epävarma cleanup pysyvät näkyvinä erillään. Nykyinen onnistumispolku säilyy. |
 | V2a: riippuvuuden hyväksyntä | Hyväksytyn Electron-päivityksen runtime-/native- ja integraatioportit ovat kesken. Omistaja: [riippuvuusarvio](local-desktop-dependency-review.md#electron-4376--turvallisuuspäivitys). | Nykyisen täsmäversion, `better-sqlite3 13.0.2`:n ja synteettisen packaged-/palautuspolun portit sekä ennalta nimetyt vakausajot; lopullisen revision PR/main-todennus. |
-| V2b: pakollisten porttien hylkäykset | Tavallinen workspace-sarja sekä revision `1e91b328` täysi Electron-sarja, stress ja täysi soak ovat läpäisseet. Revision `27a0b6c3` tuore packaged-/palautuspolku läpäisi, mutta full audit löysi paketointiketjun `brace-expansion 5.0.9`:stä kolme advisorya. Omistaja hyväksyi rajatun `5.0.12`-päivityksen ja testauksen 30.9.2026; todennus on kesken. Aiemmat ajoitushylkäykset säilyvät erillisinä; PR/main-portit ovat avoimia. | Rajaa nykyistä hyväksyntää estävä vika näytöstä, korjaa omistavassa vastuussa ja lisää regressio. Muuttumaton erillinen läpäisy ei sulje alkuperäisen vian syytä. Historiallisten hylkäysten täydellinen jälkiselitys ei ole uusi hyväksyntäehto. |
+| V2b: pakollisten porttien hylkäykset | Hyväksytyn `brace-expansion 5.0.12` -korjauksen kohde-, auditointi- ja tuore packaged-/palautusnäyttö läpäisivät. Revision `416d06f3` ensimmäinen PR-ajo hylkäsi raportointiregression keräyksen sekä molempien legacy-toistojen `targetPayload`-vaiheen. Raportoinnin build-riippuvuus on rajattu ja korjattu alemmilla testeillä; legacy-haaran tarkempi syy on avoin. Aiempi runtime-/endurance-näyttö ja ajoitushylkäykset säilyvät erillisinä; PR/main-portit ovat avoimia. | Rajaa nykyistä hyväksyntää estävä vika näytöstä, korjaa omistavassa vastuussa ja lisää regressio. Muuttumaton erillinen läpäisy ei sulje alkuperäisen vian syytä. Historiallisten hylkäysten täydellinen jälkiselitys ei ole uusi hyväksyntäehto. |
 
 V1 toteutetaan ensin. V1a käyttää alkuperäisen poikkeuksen rajattua
 koodiluokitusta ennen siivousta; vaihe ei ole juurisyy. V1b käyttää nykyistä
@@ -275,6 +275,39 @@ poistuivat ennen synteettisen juuren siivousta. Seuraavaksi vaaditaan
 lopullisen revision oma PR/main-todennus; V2 ei ole vielä suljettu.
 Paketointiketjun päivitys ei muuta aiemmin hyväksyttyjä sovelluksen
 endurance-polkuja; niitä ei avata uudelleen ilman omaa muutosperustetta.
+
+### V2:n ensimmäisen PR-ajon rajatut esteet
+
+Revision `416d06f3` [normaalin PR-ajon 36718389502](https://github.com/eky-software/eky/actions/runs/36718389502)
+ensimmäinen suoritusyritys hylkäsi alemman tason raportointiregression:
+kahden odotetun `testEnd`-rivin sijaan kerättiin nolla. Alkuperäisen
+sisäisen Playwright-ajon raakapoikkeus ei sisälly julkaistuun aineistoon,
+joten juuri sen poikkeuksen sisältöä ei väitetä varmistetuksi.
+
+Import-ketju osoitti kuitenkin konkreettisen valmisteluriippuvuuden:
+raportointitesti latasi koko Electron-fixturen kautta backendin ja
+rakennettua `@eky/auth`-pakettia vaativan moduulin. Raportin muodostus ei
+tarvitse tätä ketjua. Rajattu regressio estää raportointiajossa `@eky/`-
+runtime-importit ja toisti keräyshylkäyksen ennen korjausta. Sama raportti-
+funktio tyyppeineen siirrettiin omaan fixture-apuriinsa muuttamatta sen
+sisältöä; oikea Electron-fixture käyttää ja jälleenvie samaa funktiota.
+Korjattu koe läpäisi import-eston kanssa. Se ei väitä kaikkien mahdollisten
+polkupohjaisten riippuvuuksien olevan estettyjä.
+
+Korjatun työpuun 787 + 515 alemman tason E2E-sopimusta, E2E-tyyppitarkistus
+ja 113 kohdennettua lifecycle-/julkaisu-/native-sopimusta läpäisivät.
+Kaksi riippumatonta staattista katselmusta ei löytänyt korjattavaa.
+Kyseessä ei ole uusi Electron-prosessirajan tai täyden CI:n hyväksyntä.
+
+Samalla ensimmäisellä PR-ajolla molempien legacy-toistojen asennustila
+läpäisi mutta `targetPayload` hylättiin koodilla `majorUpgradeStateInvalid`.
+Nykyinen koodi yhdistää inventaarion lukuhylkäyksen ja inventaarioiden
+sisältöeron samaan virheeseen; niiden välillä ei päätellä ilman näyttöä.
+Hylkäys ei ollut timeout, ja prosessipuun poistuminen vahvistettiin.
+Kohdeohjelman käynnistys on tämän portin jälkeen, joten havainto ei vielä
+osoita Electronin ja SQLite-ajurin yhteensopivuusvirhettä. Tämä jää
+erilliseksi pakollisen integraatioportin esteeksi. Ei sokeaa uusintaa,
+hyväksyntäehtojen muutosta tai mergeä punaisella ajolla.
 
 ## Ohje ja historia
 

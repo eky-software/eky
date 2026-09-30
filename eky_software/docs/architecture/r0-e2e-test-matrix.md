@@ -37,7 +37,9 @@ Nykyisen `SYS-ELECTRON-NATIVE-STARTUP-001`-sopimuksen järjestysregressiot
 varmistavat lisäksi lajitellun koodijoukon ja ensimmäisen tapahtuman syyn
 erottamisen sekä tuntemattoman ensimmäisen syyn säilymisen loppuprojektiossa.
 Oikean ajurin raportointiregressio todentaa monikoodisen liitteen saman
-syyprojektion jokaisessa suoritusyrityksessä. Testitaso ja skenaariot säilyvät.
+syyprojektion jokaisessa suoritusyrityksessä myös sovelluspakettien
+`@eky/`-runtime-importit estettyinä. Keräysvirhe ei saa korvata odotettuja
+testituloksia. Testitaso ja skenaariot säilyvät.
 
 <details>
 <summary>Aiemmat checkpointit (revisiokohtaista näyttöä, ei nykyinen työjono)</summary>
