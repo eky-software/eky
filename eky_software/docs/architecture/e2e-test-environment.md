@@ -272,6 +272,75 @@ Sama turvallinen sisältö tallentuu yrityskohtaiseen
 yhden päivän artifactina, myös ensimmäisestä epäonnistumisesta ennen retryä.
 Koko `test-results`-kansiota, tracea, profiilia tai raakaa lokia ei julkaista.
 
+V1:n rajattu toteutus täydentää tätä ketjua, mutta sen hyväksyntä on vielä
+[M1:n ongelmalistalla](release-0.3.0-m1-preparation-plan.md#rajattu-ongelmalista).
+Testibackend luokittelee alkuperäisen poikkeuksen ennen brokerien sulkemista.
+Status sisältää vain omistavan katalogin `reason`-arvon tai `unknown`:in,
+vaiheen ja erillisen `brokerCleanupFailures`-luettelon. Kaikki omistetut
+brokerit yritetään sulkea, vaikka yksi sulku epäonnistuisi. Viestin
+toimitusvirhe ei muutu onnistuneeksi käynnistykseksi.
+
+Controller säilyttää ensimmäisen hyväksytyn failure-viestin ja backendin
+suoritusyrityksen (`backendAttempt`). Sama tiukka parseri tarkistaa native-
+kirjoittajan ja lukijan rakenteen. Vaihevirhekoodin ja rakenteisen vaiheen on
+vastattava toisiaan; myöhemmän virheen syytä ei lainata ensimmäiseen.
+Fixturen `firstLaunchFailure` säilyttää ensimmäisen epäonnistuneen vaiheen,
+luokan ja testin sisäisen käynnistyskerran (`startupGeneration`) riippumatta
+vaiheluettelon täyttymisestä. Puuttuva sukupolvi on `null`, ei arvattu numero.
+Playwrightin `attempt` erottaa testin suoritusyritykset; mikään näistä ei ole
+asiakasyrityksen tai runtime-sessionin tunniste. Onnistuva käynnistys ei
+käynnistä virheen lisähavaintoa.
+
+Ketjun rajattu oikeaprosessikoe käyttää vain Electron-fixturen
+`e2eBackendStartupFault: 'missingIncidentsDirectory'` -valintaa. Se muuttaa
+backendin testikonfiguraation incident-polun olemattomaan alihakemistoon
+testin oman incident-juuren sisällä; mitään ei poisteta eikä uutta
+palvelua käynnistetä. Oletus on `none` ja desktopin startupMode pysyy
+`normal`-tilassa. Backendin todellinen reader tuottaa `ENOENT`:in utility-
+prosessissa. Koe odottaa normaalia setup-hylkäystä ennen testirunkoa ja
+varmentaa syyn, yrityssidonnan ja cleanupin lopullisesta raportista;
+pelkkä exit 1 tai odotetuksi merkitty testihylkäys ei riitä näytöksi.
+Tavalliset moduulitestit eivät käytä tätä infrastruktuurin vikavalintaa.
+
+V1b käyttää samaa lifecycle-sisältöä tiedostossa ja Playwrightin
+muistiliitteessä. CI-raportoija ei avaa liitepolkuja eikä jäsennä raakaa
+poikkeusta: se projektoi rajatusta muistiliitteestä suoritusyrityksen,
+käynnistyskerran, vaiheen, native-havainnon saatavuuden, katalogin mukaisen
+backend-syyn, alkuperäisen exit-koodin ja erilliset cleanup-tulokset.
+Backendin syykatalogi on yhteinen lähettäjälle ja raportoijalle.
+Puuttuva, virheellinen, liian suuri tai väärän yrityksen liite ei muutu
+arvatuksi syyksi. CI:n testitulos ja flaky-hylkäys säilyvät ennallaan.
+
+Tiedostokirjoitus ja muistiliitteen toimitus yritetään kumpikin kerran;
+toisen epäonnistuminen ei estä toista. Suljetut `fileWriteFailed`-,
+`attachmentFailed`-, `captureFailed`- ja `reportFailed`-merkinnät kulkevat
+testin suoritusyrityskohtaisissa metadatahavainnoissa ilman raakavirhettä.
+Alkuperäinen testivirhe pysyy ensisijaisena. Jos varsinainen testi onnistui
+mutta todisteen julkaisu epäonnistuu, testi ei saa hyväksyntää.
+
+Jokainen tavallinen Playwright-komennon käynnistys saa oman
+`test-results/run-<uuid>`- ja `playwright-report/run-<uuid>`-hakemistonsa.
+Saman komennon workerit ja retryt käyttävät samaa run-juurta, jonka alla
+Playwright erottaa testit ja suoritusyritykset. Uusi CLI-ajo ei hyväksy
+vanhaa perittyä run-tunnistetta. Nykyiset build-siivoukset eivät omista näitä
+hakemistoja. Erillinen `--output`-valinta jää kutsujan vastuulle: saman
+manuaalisen hakemiston uudelleenkäyttö voi edelleen poistaa aiempaa näyttöä.
+Paikallinen HTML-override on vastaavasti kutsujan vastuulla; CI estää sen.
+CI:n julkaisu kattaa edelleen vain nimetyt turvalliset lifecycle-JSONit
+samalla yhden päivän säilytysajalla, ei koko ajohakemistoa.
+
+Epäonnistuneen testin tai epäonnistuneen capture-vaiheen lähdejuuri jää
+talteen riippumatta raportoinnin onnistumisesta. Prosessien ja porttien
+siivous yritetään silti; tahallinen aineiston säilyttäminen ei tarkoita
+prosessisiivouksen epäonnistumista. Tavallinen onnistunut testi poistaa
+juurensa varmennetun siivouksen jälkeen. Pelkkä sen jälkeinen raportointivirhe
+ei palauta jo poistettua onnistuneen ajon juurta; se ei myöskään muuta
+todistamatonta raporttia hyväksytyksi. Tämä erotetaan aiemmin epäonnistuneen
+ajon ensivirheen säilyttämisestä.
+
+V1b:n sopimus- ja todellisen prosessirajan hyväksyntä ovat vielä avoimia;
+toteutuksen olemassaolo ei sulje koko V1:tä.
+
 M0.3:n `DESK-WORKSPACE-FIRST-START-001` tallentaa lisäksi first-start-proofin
 suljetut vaihehavainnot ja kuluneen ajan runtime-kohtaiseen testitiedostoon.
 Se sijaitsee validoidussa E2E-userData-juuressa, erillään proofin poistettavasta
@@ -370,6 +439,19 @@ vastaus ei todista mainin jumittumista. Myöhäinen vastaus ei muuta jo
 muodostettua raporttia. Suljettu projektio hyväksyy vain nimetyt vaiheet,
 ei raakavirhettä, polkua, tunnisteita tai vapaata metadataa. Havainto ja sen
 puuttuminen säilyvät erillisinä testivirheestä ja siivoustuloksesta.
+
+Ennen siivousta kerättävä `nativeStartupFailure` säilyttää lisäksi nykyisen
+sukupolven natiiviadapterin suljetut virhekoodit, vaikka main-yhteys olisi jo
+katkennut. Testibackendin kuusi vaihevirhettä luetaan niiden omistajan
+`electronE2eBackendStatus`-määrittelystä täsmällisellä jäsenyystarkistuksella.
+Muut `DESKTOP_SMOKE_`-koodit, myös tunnettuun koodiin liitetty vapaa pääte,
+pelkistetään edelleen `PACKAGED_SMOKE_FAILED`-koodiksi. Tuotannon oma
+virhekoodisuodatin ei muutu. Lukija rajaa tiedoston 64 KiB:iin ja 128 riviin;
+linkki-, sukupolvi- ja muuttuvan lähteen tarkistukset säilyvät. Raakatekstiä,
+polkuja tai runtime-tunnisteita ei kopioida lifecycle-liitteeseen.
+`SYS-ELECTRON-NATIVE-STARTUP-001` todistaa jokaisen vaihevirheen ketjun
+natiiviwriteristä kaappauksen ja cleanupin yli liitteeseen. Havainto ei ole
+uusi valmiusehto eikä yksin todista käynnistysvirheen juurisyytä.
 
 Testijuurta ei poisteta, jos runtimen, portin tai API-kahvan siivous jäi
 varmentamatta. Yhteyden epäonnistuessa ennen runtime-kahvan saamista sen

@@ -10,6 +10,7 @@ import {
   parseElectronE2eBackendProgress,
   parseElectronE2eBackendStatus,
   reportElectronE2eBackendProgress,
+  type ElectronE2eBackendFailureStatus,
 } from '../../../desktop/e2e/electronE2eBackendStatus.js';
 import type { ElectronE2eConfig } from '../../../desktop/e2e/electronE2eConfig.js';
 import {
@@ -98,7 +99,7 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
         expect(fixture.kills()).toBe(0);
       } else {
         const rejected = expect(started).rejects.toThrow('E2E_BACKEND_MODULE_IMPORT_FAILED');
-        fixture.child.emit('message', { type: 'failed', stage: 'moduleImport' });
+        fixture.child.emit('message', failureStatus('moduleImport'));
         await rejected;
         expect(fixture.kills()).toBe(1);
       }
@@ -130,7 +131,7 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
       { type: 'progress', stage: 'moduleImport', elapsedMs: 0 },
       { type: 'progress', stage: 'moduleImport', session: 'private' },
       { type: 'progress', stage: 'moduleImport', port: 43127 },
-      { type: 'failed', stage: 'moduleImport' },
+      failureStatus('moduleImport'),
       { type: 'ready', port: 43127 },
     ]) expect(parseElectronE2eBackendProgress(value)).toBeUndefined();
   });
@@ -152,7 +153,9 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
       });
       expect(parseElectronE2eStartupObservation(snapshot)).toEqual(snapshot);
       expect(Object.isFrozen(snapshot.backendStartup)).toBe(true);
-      expect(parseElectronE2eBackendStatus({ type: 'failed', stage })).toBeUndefined();
+      expect(parseElectronE2eBackendStatus({
+        type: 'failed', stage, reason: 'unknown', brokerCleanupFailures: [],
+      })).toBeUndefined();
       for (const extra of [{ code: 'PRIVATE_CODE' }, { data: 'private data' }, { error: 'private error' }]) {
         expect(parseElectronE2eBackendProgress({ type: 'progress', stage, ...extra })).toBeUndefined();
         expect(parseElectronE2eStartupObservation({
@@ -176,13 +179,15 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
     fixture.child.emit('spawn');
     for (const stage of electronE2eBackendLogStages) {
       fixture.child.emit('message', { type: 'progress', stage });
-      fixture.child.emit('message', { type: 'failed', stage });
+      fixture.child.emit('message', {
+        type: 'failed', stage, reason: 'unknown', brokerCleanupFailures: [],
+      });
     }
     await Promise.resolve();
     expect(settled).toBe(false);
     expect(fixture.kills()).toBe(0);
     const rejected = expect(started).rejects.toThrow('E2E_BACKEND_START_FAILED');
-    fixture.child.emit('message', { type: 'failed', stage: 'backendStart' });
+    fixture.child.emit('message', failureStatus('backendStart'));
     fixture.child.emit('message', { type: 'progress', stage: 'readyNotification' });
     await rejected;
     expect(fixture.observation.snapshot().backendStartup).toEqual({
@@ -248,7 +253,7 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
       fixture.child.emit('message', { type: 'progress', stage: 'moduleImport' });
       if (terminal === 'exit') fixture.child.emit('exit', 1);
       else fixture.child.emit('message', terminal === 'failed'
-        ? { type: 'failed', stage: 'moduleImport' } : { type: 'ready', port: 43128 });
+        ? failureStatus('moduleImport') : { type: 'ready', port: 43128 });
       // Deliberately deliver before the synthetic kill's queued exit callback.
       fixture.child.emit('message', { type: 'progress', stage: 'backendStart' });
       await rejected;
@@ -288,6 +293,8 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
       expect(cleared).toEqual([]);
       timer.callback();
       fixture.child.emit('message', { type: 'progress', stage: 'moduleImport' });
+      fixture.child.emit('message', failureStatus('moduleImport'));
+      fixture.child.emit('message', { type: 'ready', port: 43127 });
       fixture.child.emit('exit', 1);
     } finally {
       globalThis.setTimeout = originalSet;
@@ -301,12 +308,133 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
     expect(fixture.checkpoints()).not.toContain('backendReadyReceived');
     expect(fixture.kills()).toBe(1);
     expect(fixture.controller.isRunning()).toBe(false);
+    expect(fixture.controller.getStartupFailure()).toBeUndefined();
+  });
+
+  for (const synchronousKillExit of [false, true]) {
+    test(`retains the first failure across ${synchronousKillExit ? 'synchronous' : 'queued'} kill exit and late outcomes`, async () => {
+      const fixture = backendFixture({ synchronousKillExit });
+      const started = fixture.start();
+      const rejected = expect(started).rejects.toThrow('E2E_BACKEND_MODULE_IMPORT_FAILED');
+      fixture.child.emit('spawn');
+      const status = {
+        ...failureStatus('moduleImport', 'ERR_MODULE_NOT_FOUND'),
+        brokerCleanupFailures: ['secretBroker'],
+      };
+      fixture.child.emit('message', status);
+      const first = fixture.controller.getStartupFailure();
+      expect(first).toEqual({
+        backendAttempt: 1,
+        status: { ...failureStatus('moduleImport', 'ERR_MODULE_NOT_FOUND'), brokerCleanupFailures: ['secretBroker'] },
+      });
+      expect(Object.isFrozen(first)).toBe(true);
+      expect(Object.isFrozen(first?.status)).toBe(true);
+      expect(Object.isFrozen(first?.status.brokerCleanupFailures)).toBe(true);
+      status.brokerCleanupFailures.push('profileSnapshotBroker');
+      fixture.child.emit('message', failureStatus('backendStart', 'SQLITE_BUSY'));
+      fixture.child.emit('message', { type: 'ready', port: 43127 });
+      fixture.child.emit('message', { type: 'progress', stage: 'readyNotification' });
+      await rejected;
+      expect(fixture.controller.getStartupFailure()).toBe(first);
+      expect(first?.status.brokerCleanupFailures).toEqual(['secretBroker']);
+      expect(fixture.kills()).toBe(1);
+      expect(fixture.checkpoints()).not.toContain('backendReadyReceived');
+      expect(fixture.controller.isRunning()).toBe(false);
+    });
+  }
+
+  test('only a strict failure settles startup and records a reason', async () => {
+    const fixture = backendFixture();
+    const started = fixture.start();
+    let settled = false;
+    void started.then(() => { settled = true; }, () => { settled = true; });
+    fixture.child.emit('spawn');
+    for (const value of [
+      { type: 'failed', stage: 'moduleImport' },
+      { ...failureStatus('moduleImport'), reason: 'PRIVATE_CODE' },
+      { ...failureStatus('moduleImport'), brokerCleanupFailures: ['privateBroker'] },
+      { ...failureStatus('moduleImport'), companyId: 'synthetic-company' },
+    ]) fixture.child.emit('message', value);
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(fixture.kills()).toBe(0);
+    expect(fixture.controller.getStartupFailure()).toBeUndefined();
+    const rejected = expect(started).rejects.toThrow('E2E_BACKEND_MODULE_IMPORT_FAILED');
+    fixture.child.emit('message', failureStatus('moduleImport', 'unknown'));
+    await rejected;
+    expect(fixture.controller.getStartupFailure()).toEqual({
+      backendAttempt: 1, status: failureStatus('moduleImport', 'unknown'),
+    });
+  });
+
+  test('new backend attempts reset active evidence without mutating a retained first failure', async () => {
+    const fixture = backendFixture();
+    const firstStart = fixture.start();
+    const firstRejected = expect(firstStart).rejects.toThrow('E2E_BACKEND_MODULE_IMPORT_FAILED');
+    const firstChild = fixture.child;
+    firstChild.emit('spawn');
+    firstChild.emit('message', failureStatus('moduleImport', 'MODULE_NOT_FOUND'));
+    await firstRejected;
+    const firstFailure = fixture.controller.getStartupFailure();
+    const secondStart = fixture.start();
+    const secondRejected = expect(secondStart).rejects.toThrow('E2E_BACKEND_START_FAILED');
+    expect(fixture.controller.getStartCount()).toBe(2);
+    expect(fixture.controller.getStartupFailure()).toBeUndefined();
+    expect(fixture.child).not.toBe(firstChild);
+    firstChild.emit('message', failureStatus('moduleImport', 'ENOENT'));
+    firstChild.emit('message', { type: 'ready', port: 43127 });
+    expect(fixture.controller.getStartupFailure()).toBeUndefined();
+    fixture.child.emit('spawn');
+    fixture.child.emit('message', failureStatus('backendStart', 'SQLITE_BUSY'));
+    await secondRejected;
+    expect(fixture.controller.getStartupFailure()).toEqual({
+      backendAttempt: 2, status: failureStatus('backendStart', 'SQLITE_BUSY'),
+    });
+    expect(firstFailure).toEqual({
+      backendAttempt: 1, status: failureStatus('moduleImport', 'MODULE_NOT_FOUND'),
+    });
+    const thirdStart = fixture.start();
+    expect(fixture.controller.getStartupFailure()).toBeUndefined();
+    fixture.child.emit('spawn');
+    fixture.child.emit('message', { type: 'ready', port: 43127 });
+    const handle = await thirdStart;
+    fixture.child.emit('message', failureStatus('backendStart', 'SQLITE_CORRUPT'));
+    expect(fixture.controller.getStartCount()).toBe(3);
+    expect(fixture.controller.getStartupFailure()).toBeUndefined();
+    expect(fixture.kills()).toBe(2);
+    await handle.stopForUpdate();
+  });
+
+  test('exit before failure leaves its cause unknown instead of inventing a backend reason', async () => {
+    const fixture = backendFixture();
+    const started = fixture.start();
+    const rejected = expect(started).rejects.toThrow('E2E_BACKEND_EXITED_BEFORE_READY_FAILED');
+    fixture.child.emit('spawn');
+    fixture.child.emit('exit', 1);
+    fixture.child.emit('message', failureStatus('backendStart', 'SQLITE_CORRUPT'));
+    fixture.child.emit('message', { type: 'ready', port: 43127 });
+    await rejected;
+    expect(fixture.controller.getStartupFailure()).toBeUndefined();
+    expect(fixture.kills()).toBe(0);
+    expect(fixture.controller.isRunning()).toBe(false);
   });
 });
 
-function backendFixture(fault: { forkFailure?: Error; observerFails?: boolean } = {}) {
-  const child = new EventEmitter();
+function failureStatus(
+  stage: ElectronE2eBackendFailureStatus['stage'],
+  reason: ElectronE2eBackendFailureStatus['reason'] = 'unknown',
+): ElectronE2eBackendFailureStatus {
+  return { type: 'failed', stage, reason, brokerCleanupFailures: [] };
+}
+
+function backendFixture(fault: {
+  forkFailure?: Error;
+  observerFails?: boolean;
+  synchronousKillExit?: boolean;
+} = {}) {
+  let child = new EventEmitter();
   fixtureProcesses.add(child);
+  let forkCount = 0;
   let killCount = 0;
   const messages: { message: unknown; ports: unknown }[] = [];
   let elapsed = 0;
@@ -324,14 +452,21 @@ function backendFixture(fault: { forkFailure?: Error; observerFails?: boolean } 
     fork() {
       duringFork = checkpoints();
       if (fault.forkFailure !== undefined) throw fault.forkFailure;
-      return Object.assign(child, {
+      if (forkCount > 0) {
+        child = new EventEmitter();
+        fixtureProcesses.add(child);
+      }
+      forkCount += 1;
+      const forkedChild = child;
+      return Object.assign(forkedChild, {
         postMessage(message: { type: string }, ports: unknown) {
           messages.push({ message, ports });
-          if (message.type === 'shutdown') queueMicrotask(() => child.emit('exit', 0));
+          if (message.type === 'shutdown') queueMicrotask(() => forkedChild.emit('exit', 0));
         },
         kill() {
           killCount += 1;
-          queueMicrotask(() => child.emit('exit', 1));
+          if (fault.synchronousKillExit) forkedChild.emit('exit', 1);
+          else queueMicrotask(() => forkedChild.emit('exit', 1));
           return true;
         },
       }) as unknown as UtilityProcess;
@@ -346,7 +481,8 @@ function backendFixture(fault: { forkFailure?: Error; observerFails?: boolean } 
     },
   });
   return {
-    child, controller, observation, options, messages, checkpoints,
+    get child() { return child; },
+    controller, observation, options, messages, checkpoints,
     get duringFork() { return duringFork; },
     setClock: (value: number) => { elapsed = value; },
     kills: () => killCount,

@@ -1,6 +1,20 @@
 # Electron 43 ja better-sqlite3 13 -yhteensopivuussuunnitelma
 
-Tämä dokumentti rajaa Eky Localin hallitun yhteensopivuuspäivityksen:
+## Nykyinen patch-päivitys
+
+Omistajan 29.9.2026 hyväksymän Electron `43.3.0 -> 43.7.6` -päivityksen
+rajaus ja avoimet hyväksyntäportit ovat
+[riippuvuusarviossa](local-desktop-dependency-review.md#electron-4376--turvallisuuspäivitys).
+`better-sqlite3 13.0.2`, tietokantaskeema ja testien hyväksyntäehdot säilyvät.
+Electron `43.7.6`:n päivitys on hyväksytty ja todennus kesken. Alla oleva major-spike
+ja sen onnistuneet checkpointit säilyvät historiallisena näyttönä, eivät
+uuden patch-version hyväksyntänä tai lupana käyttää oikeita tietokantoja.
+Nykyinen päivitys käyttää vain synteettistä profiilia eikä muuta asennettua
+Ekyä tai historiallisen asenninfixturen Electron `43.3.0` -sidontaa.
+
+## Historiallinen major-spike
+
+Tämä historiallinen suunnitelma rajasi Eky Localin hallitun yhteensopivuuspäivityksen:
 
 - `electron` `42.8.0` -> `43.2.0`
 - `better-sqlite3` `12.11.1` -> `13.0.2`

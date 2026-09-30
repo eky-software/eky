@@ -20,7 +20,7 @@ import { removeE2eRunRoot } from '../../src/environment/removeE2eRunRoot.js';
 import { finishIsolatedElectronTest, reportElectronLifecycleEvidence } from '../../src/fixtures/isolatedElectronTest.js';
 
 test.describe('SYS-FIRST-START-EVIDENCE-001 @critical @security', () => {
-  test('keeps timed-out proof progress through owned cleanup and root deletion without evaluate', async ({}, testInfo) => {
+  test('keeps timed-out proof progress and its source through owned cleanup without evaluate', async ({}, testInfo) => {
     const root = createE2eRunRoot();
     const runtimeId = randomUUID();
     let time = 10;
@@ -52,13 +52,13 @@ test.describe('SYS-FIRST-START-EVIDENCE-001 @critical @security', () => {
         async removeRoot() { calls.push('remove'); await removeE2eRunRoot(root); },
         async report(cleanup) {
           calls.push('report');
-          expect(existsSync(root)).toBe(false);
+          expect(existsSync(root)).toBe(true);
           await reportElectronLifecycleEvidence(testInfo, {
             launch: [], observationsTruncated: false, cleanup, firstStartProof: captured,
           });
         },
       })).rejects.toBe(original);
-      expect(calls).toEqual(['api', 'runtime', 'port', 'capture', 'remove', 'report']);
+      expect(calls).toEqual(['api', 'runtime', 'port', 'capture', 'report']);
       const text = readFileSync(testInfo.outputPath('electron-lifecycle.json'), 'utf8');
       const evidence = JSON.parse(text);
       expect(evidence.firstStartProof).toEqual({
@@ -68,9 +68,45 @@ test.describe('SYS-FIRST-START-EVIDENCE-001 @critical @security', () => {
           record('proofStarted', 5), record('mixedStartup', 12),
         ],
       });
-      expect(evidence.cleanup).toEqual({ api: 'completed', runtime: 'completed', port: 'released', runRoot: 'removed' });
+      expect(evidence.cleanup).toEqual({ api: 'completed', runtime: 'completed', port: 'released', runRoot: 'retained' });
+      expect(captureFirstStartProof(root, runtimeId)).toEqual(captured);
       expect(text).not.toContain(runtimeId);
       expect(text).not.toMatch(/private|w6-synthetic|session|userData/);
+    } finally { observer.close(); await removeIfPresent(root); }
+  });
+
+  test('successful proof capture still removes the root and reports final cleanup', async ({}, testInfo) => {
+    const root = createE2eRunRoot();
+    const runtimeId = randomUUID();
+    const observer = createFirstStartProofObserver(root, runtimeId, () => 0);
+    observer.record('proofStarted');
+    observer.record('proofCompleted');
+    observer.close();
+    let captured: FirstStartProofCapture = { status: 'notRequested' };
+    const calls: string[] = [];
+    try {
+      await expect(finishIsolatedElectronTest({
+        failure: undefined, testAlreadyFailed: false,
+        async disposeApi() { calls.push('api'); },
+        async closeRuntime() { calls.push('runtime'); },
+        async releasePort() { calls.push('port'); },
+        captureEvidence() { calls.push('capture'); captured = captureFirstStartProof(root, runtimeId); },
+        async removeRoot() { calls.push('remove'); await removeE2eRunRoot(root); },
+        async report(cleanup) {
+          calls.push('report');
+          await reportElectronLifecycleEvidence(testInfo, {
+            launch: [], observationsTruncated: false, cleanup, firstStartProof: captured,
+          });
+        },
+      })).resolves.toBeUndefined();
+      expect(calls).toEqual(['api', 'runtime', 'port', 'capture', 'remove', 'report']);
+      expect(existsSync(root)).toBe(false);
+      const evidence = JSON.parse(readFileSync(testInfo.outputPath('electron-lifecycle.json'), 'utf8'));
+      expect(evidence.cleanup).toEqual({ api: 'completed', runtime: 'completed', port: 'released', runRoot: 'removed' });
+      expect(evidence.firstStartProof).toEqual({
+        status: 'captured', truncated: false,
+        observations: [record('proofStarted'), record('proofCompleted')],
+      });
     } finally { observer.close(); await removeIfPresent(root); }
   });
 
@@ -100,22 +136,72 @@ test.describe('SYS-FIRST-START-EVIDENCE-001 @critical @security', () => {
     } finally { await removeIfPresent(root); }
   });
 
-  test('capture failure cannot skip cleanup, replace the first error or silently pass', async () => {
-    for (const original of [new Error('private original'), undefined]) {
+  test('capture failure retains source bytes without masking the primary or silently passing', async () => {
+    for (const primary of ['setup', 'body', 'none'] as const) {
+      for (const reportFails of [false, true]) {
+        const root = createE2eRunRoot();
+        const marker = join(root, 'synthetic-evidence.json');
+        const bytes = Buffer.from('{"source":"first-attempt"}\n');
+        writeFileSync(marker, bytes, { flag: 'wx' });
+        const original = Object.freeze(new Error('private original'));
+        const calls: string[] = [];
+        const evidenceFailures: string[] = [];
+        let reported: unknown;
+        try {
+          const promise = finishIsolatedElectronTest({
+            failure: primary === 'setup' ? { error: original } : undefined,
+            testAlreadyFailed: primary === 'body',
+            async disposeApi() { calls.push('api'); },
+            async closeRuntime() { calls.push('runtime'); },
+            async releasePort() { calls.push('port'); },
+            captureEvidence() { calls.push('capture'); throw new Error('private read'); },
+            async removeRoot() { calls.push('remove'); await removeE2eRunRoot(root); },
+            async report(cleanup) {
+              calls.push('report');
+              reported = cleanup;
+              if (reportFails) throw new Error('private report');
+            },
+            reportEvidenceFailure(kind) {
+              evidenceFailures.push(kind);
+              throw new Error('private metadata error');
+            },
+          });
+          if (primary === 'setup') await expect(promise).rejects.toBe(original);
+          else if (primary === 'body') await expect(promise).resolves.toBeUndefined();
+          else await expect(promise).rejects.toThrow('E2E_ELECTRON_EVIDENCE_FAILED');
+          expect(calls).toEqual(['api', 'runtime', 'port', 'capture', 'report']);
+          expect(reported).toEqual({ api: 'completed', runtime: 'completed', port: 'released', runRoot: 'retained' });
+          expect(readFileSync(marker)).toEqual(bytes);
+          expect(evidenceFailures).toEqual(reportFails ? ['captureFailed', 'reportFailed'] : ['captureFailed']);
+        } finally { await removeIfPresent(root); }
+      }
+    }
+  });
+
+  test('independent cleanup failures remain visible alongside capture and reporting failures', async () => {
+    for (const original of [Object.freeze(new Error('private original')), undefined]) {
+      const root = createE2eRunRoot();
       const calls: string[] = [];
-      const promise = finishIsolatedElectronTest({
-        failure: original === undefined ? undefined : { error: original },
-        testAlreadyFailed: false,
-        async disposeApi() { calls.push('api'); },
-        async closeRuntime() { calls.push('runtime'); },
-        async releasePort() { calls.push('port'); },
-        captureEvidence() { calls.push('capture'); throw new Error('private read'); },
-        async removeRoot() { calls.push('remove'); },
-        async report() { calls.push('report'); },
-      });
-      if (original === undefined) await expect(promise).rejects.toThrow('E2E_ELECTRON_EVIDENCE_FAILED');
-      else await expect(promise).rejects.toBe(original);
-      expect(calls).toEqual(['api', 'runtime', 'port', 'capture', 'remove', 'report']);
+      const evidenceFailures: string[] = [];
+      let reported: unknown;
+      try {
+        const promise = finishIsolatedElectronTest({
+          failure: original === undefined ? undefined : { error: original }, testAlreadyFailed: false,
+          async disposeApi() { calls.push('api'); throw new Error('private API failure'); },
+          async closeRuntime() { calls.push('runtime'); throw new Error('private runtime failure'); },
+          async releasePort() { calls.push('port'); throw new Error('private port failure'); },
+          captureEvidence() { calls.push('capture'); throw new Error('private capture failure'); },
+          async removeRoot() { calls.push('remove'); await removeE2eRunRoot(root); },
+          async report(cleanup) { calls.push('report'); reported = cleanup; throw new Error('private report failure'); },
+          reportEvidenceFailure(kind) { evidenceFailures.push(kind); },
+        });
+        if (original === undefined) await expect(promise).rejects.toThrow('E2E_ELECTRON_CLEANUP_FAILED');
+        else await expect(promise).rejects.toBe(original);
+        expect(calls).toEqual(['api', 'runtime', 'port', 'capture', 'report']);
+        expect(reported).toEqual({ api: 'failed', runtime: 'unverified', port: 'unverified', runRoot: 'retained' });
+        expect(evidenceFailures).toEqual(['captureFailed', 'reportFailed']);
+        expect(existsSync(root)).toBe(true);
+      } finally { await removeIfPresent(root); }
     }
   });
 

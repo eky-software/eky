@@ -13,7 +13,7 @@ hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohd
 | Mainin omat portit | [Normaali CI 36491715165](https://github.com/eky-software/eky/actions/runs/36491715165), yritys 1: kaikki 38 vaadittua ryhmää läpäisivät; vain nimenomaisesti valinnainen diagnostiikkakoe ohitettiin. Linux system 695/695, kriittinen web 37/37 ja Windowsin kriittinen Electron 38/38 vastasivat ajovalintojaan ilman retryä, flakyä tai puuttuvia tapauksia. Neljän artifact-tuottajan ja kymmenen packaged-kuluttajan identiteetit ja elinkaarinäyttö hyväksyttiin. [Saman revision riippuvuustarkistus 36491789402](https://github.com/eky-software/eky/actions/runs/36491789402) läpäisi. |
 | Suljettu työ | T1/R27:n ajokytkentä, T2/R29:n puhtaan valmistelun suoja ja T3/R28:n todellisten kuluttajien koko prosessipuun omistajuus. Korvatut aktiiviset fallbackit on poistettu ja [pysyvä T3-matriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus) hyväksytty. PR #281 sulki tämän jälkeisen rollback-testiapurin integraatiojatkon. |
 | Avoimet havainnot | Aiemmat satunnaiset Electron-käynnistys- ja packaged/legacy-timeoutit säilyvät epäonnistuneina havaintoina omille revisioilleen. Myöhempi vihreä ajo ei todista niiden kaikkia syitä korjatuiksi. [Hylkäysten historia](e2e-test-environment-history.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko) ja [rajattu apurikorjaus](e2e-test-environment-history.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus) erotetaan toisistaan. |
-| Seuraava työ | Ennen ohjeselkeytyksen mergeä hyväksytty [Undici-korjauspäivitys](local-desktop-dependency-review.md#undici-korjauspäivitys), rajattu [CI-paketinhallinnan valmistelukorjaus](dependency-policy.md#ci-paketinhallinnan-valmistelu) ja uuden revision omat portit. Sen jälkeen A1/R01:n aloitusportti: ajantasaiset ohjeet, työpuu, lähtörevisio ja sen hyväksyntänäyttö sekä [avattavan luonnoksen kohteen suunnitelma](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde). Rajaa avoimet kysymykset ja regressio ennen toteutusta. |
+| Seuraava työ | Ennen ohjeselkeytyksen mergeä hyväksytty [Electron 43.7.6 -turvallisuuspäivitys](local-desktop-dependency-review.md#electron-4376--turvallisuuspäivitys) ja sen omat runtime-, tietokanta-, packaged- ja CI-portit. Undici-korjauksen ja varmennetun pnpm-valmistelun CI-näyttö koskee alla nimettyä aiempaa revisiota, ei uutta Electron-versiota. Sen jälkeen A1/R01:n aloitusportti: ajantasaiset ohjeet, työpuu, lähtörevisio ja sen hyväksyntänäyttö sekä [avattavan luonnoksen kohteen suunnitelma](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde). Rajaa avoimet kysymykset ja regressio ennen toteutusta. |
 | Ei vielä valmis | A1-A3, W7, M1:n muu sovellustyö ja koko 0.3.0. Testiperustan hyväksyntä ei hyväksy niiden tulevaa toteutusta tai muuttunutta liiketoimintasääntöä. |
 
 Hyväksyntä on sidottu yllä olevaan revisioon, ei automaattisesti myöhempään
@@ -22,6 +22,125 @@ integraation lopputulos kirjataan sen omaan hyväksyntächeckpointiin;
 pelkän tuloksen ilmoittamiseksi ei tehdä uutta tilakirjauscommittia.
 Ennen A1:tä tehdään uusi preflight. Sivulla ei ylläpidetä Goal-työkalun
 ajonaikaista tilaa.
+
+## Virhetiedon ja Electron-päivityksen rajattu jatko
+
+Omistaja hyväksyi 30.9.2026 yhden kokonaisuuden, jossa on kaksi erikseen
+suljettavaa välitavoitetta. Tämä on nykyisen M1:n jatko ennen A1:tä, ei uusi
+roadmap tai T3/R28:n avaaminen uudelleen. Lähtörevisio on PR #282:n
+`35ba04c033ca260f4065652e25bc46eea60bd59f`; sen vihreät tarkistukset eivät
+kata myöhempiä työpuun muutoksia. Electron `43.7.6` ja kuuden vaihevirhekoodin
+lukuketjukorjaus ovat jo toteutettuja mutta eivät vielä integroituja.
+
+Uusi hyväksytty tehtävänanto korvaa aikaisemman Goal-luonnoksen kokonaan.
+Vanha luonnos on historiaa, ei rinnakkainen lisävaatimusten lähde.
+Juuri- ja aluekohtaiset AGENTS-ohjeet sekä omistavat suunnitelmat säilyvät
+voimassa. Tässä osassa ylläpidetään hyväksyttyä julkaisukelpoista rajausta;
+paikallisia liitepolkuja tai tutkimustietoja ei siirretä dokumentaatioon.
+
+### Rajattu ongelmalista
+
+| Kohta | Havaittu puute ja omistaja | Tarvittava näyttö ja sulkemisehto |
+| --- | --- | --- |
+| V1a: syntypaikka ja viesti | Electronin E2E-backendin runner hukkaa poikkeuksen ja lähettää vain vaiheen. Brokerin sulkemisvirhe voi estää viestin. Omistaja: `apps/desktop/e2e` ja sen tiukka status-sopimus. | Suljettu syyluokitus tai `unknown`, täsmällinen lähettäjä/parseri/vastaanottaja, ensivirheen säilyminen ja brokerien erilliset sulkutulokset. Nopeat sopimus- ja vuotosuojatestit; ei tuotantokoodin muutosta. |
+| V1b: säilyminen ja raportti | Prosessin muistihavainto voi puuttua poistumisen jälkeen; CI:n testikooste yleistää virheen `testError`-tasolle. Omistaja: nykyinen native-havaintotiedosto, Electron-fixture ja turvallinen CI-raportoija. | Todellinen ennen ensimmäistä ikkunaa epäonnistuva prosessiketju säilyttää tunnetun syyn lopullisessa suoritusyrityskohtaisessa raportissa. Testitapaus, suoritusyritys (`attempt`) ja käynnistyssukupolvi eivät sekoitu. Puuttuva/myöhäinen havainto, raportointivirhe ja epävarma cleanup pysyvät näkyvinä erillään. Nykyinen onnistumispolku säilyy. |
+| V2a: riippuvuuden hyväksyntä | Hyväksytyn Electron-päivityksen runtime-/native- ja integraatioportit ovat kesken. Omistaja: [riippuvuusarvio](local-desktop-dependency-review.md#electron-4376--turvallisuuspäivitys). | Nykyisen täsmäversion, `better-sqlite3 13.0.2`:n ja synteettisen packaged-/palautuspolun portit sekä ennalta nimetyt vakausajot; lopullisen revision PR/main-todennus. |
+| V2b: pakollisten porttien hylkäykset | Avoimina ovat Electronin käynnistysvirhe, moduulirajojen alemman tason testin timeout ja stress-testin näkymäsiirtymän hylkäys. Niitä ei nimetä samaksi juurisyyksi. | Rajaa nykyistä hyväksyntää estävä vika näytöstä, korjaa omistavassa vastuussa ja lisää regressio. Muuttumaton erillinen läpäisy ei sulje alkuperäisen vian syytä. Historiallisten hylkäysten täydellinen jälkiselitys ei ole uusi hyväksyntäehto. |
+
+V1 toteutetaan ensin. V1a käyttää alkuperäisen poikkeuksen rajattua
+koodiluokitusta ennen siivousta; vaihe ei ole juurisyy. V1b käyttää nykyistä
+runtime-kohtaista native-havaintotiedostoa ja lifecycle-liitettä. Varsinainen
+käynnistystulos ja omistettu cleanup ovat pakollisia; lisähavainto ei ole
+uusi readiness-ehto. Raportoinnin virhe ei saa peittää toimintavirhettä.
+Tuntemattomasta tai toimittamatta jääneestä syystä ei tehdä päätelmää.
+Sidonnan suoritusyritys tarkoittaa testin `attempt`-arvoa, ei asiakasyritystä.
+Tämä vaatimus ei lisää raportointiin `companyId`- tai muuta
+liiketoimintatunnistetta.
+
+Raportointi ei lisää käynnistyksen, siivouksen tai komentopoistumisen
+kriittiselle polulle estävää kirjoitusta tai rajaamatonta kuittausodotusta.
+Käytetään nykyisiä rajattuja toimitusmekanismeja, ei uutta kirjoitinta tai
+valvojaa. Varmentamaton siivous estää siihen liittyvän tutkimusaineiston
+poistamisen. Ensivirheen aineisto säilytetään erillään uusista
+suoritusyrityksistä ja buildin tyhjentämistä hakemistoista.
+
+V1:n sulkemiseen kirjataan testattu revisio, oikean prosessirajan todistus,
+vuotosuoja, onnistumispolku ja rajaukset. Se avataan uudelleen vain oman
+sopimuksensa puutteen tai regression vuoksi. V2 käyttää valmista havaintoa
+vikojen korjaamiseen. Hyväksyntäajon lähde- ja build-syötteet jäädytetään
+jälkivarmennukseen asti, yritykset säilytetään ja ajoja seurataan
+[nykyisen ohjeen](../ai/workflow.md#ci-ajon-seuranta-ja-virhetodisteet) mukaan.
+
+Ei uutta testialustaa, supervisoria, yleistä loggeria, rinnakkaista cleanupia,
+riippuvuutta, aikarajojen lievennystä tai raakajälkien julkaisua. Laajempi
+aikajana ja virheen lähderivi eivät kuulu automaattisesti V1:een. Uusi
+löydös kuuluu mukaan vain muutoksen regressiona tai pakollisen hyväksynnän
+esteenä; muita parannuksia käsitellään myöhemmin. Kahden viikon tavoite ei
+muuta hyväksyntää. Molemmat välitavoitteet ovat vielä avoimia; koko 0.3.0:n
+julkaisu ei kuulu tähän rajaukseen.
+
+### V1:n ensimmäinen toteutuscheckpoint
+
+Syyluokitus, brokerien erilliset sulut, tiukka failure-status, controllerin
+ensivirheen säilytys ja native/lifecycle-liitteen lukuketju on toteutettu
+työpuuhun. Ensimmäinen käynnistyskerta säilyy erillään rajatusta
+vaiheluettelosta. Luokitus ei lue raakaa stackia tai kutsu poikkeuksen
+gettereitä; tuntematon arvo jää tuntemattomaksi. Status hylkää myös harvan
+cleanup-taulukon eikä pudota sen tarkistamatonta kohtaa hiljaisesti.
+
+Rajattu 120/120-sopimussarja ja E2E-/desktop-E2E-tyyppitarkistukset läpäisivät
+ensimmäisillä ajoilla. Lähtö-HEAD oli yllä nimetty `35ba04c0` ja muutokset
+vielä commitoimattomia; testatun työpuun muuttumattomuus tarkistettiin
+takaisinluvussa. Lopullisesta lifecycle-liitteestä varmennettiin tunnettu
+syy, broker-sulkuvirhe ja erilliset testin suoritusyritys-, käynnistyskerta-
+ja backend-yritysarvot. Rajattu riippumaton staattinen katselmus ei löytänyt
+uusia regressioita. Tämä on sopimus-/integraatiotason näyttöä, ei oikean
+Electron-prosessirajan, satunnaisen käynnistysvian tai koko V1:n hyväksyntä.
+
+### V1b:n toteutus ja avoin todennus
+
+Työpuuhun on lisätty nykyisen CI-raportoijan suljettu syyprojektio,
+lähteen kanssa yhteinen koodiluettelo, suorituskohtaiset tuloshakemistot
+sekä epäonnistuneen suoritusyrityksen aineiston säilyttäminen. Raportin
+tiedostotallennus ja liitteen välitys yrittävät valmistua toisistaan
+riippumatta. Raportoinnin lisävirhe ei korvaa alkuperäistä toimintavirhettä.
+Nykyinen onnistumispolku poistaa testijuuren varmennetun siivouksen jälkeen;
+vasta sen jälkeinen raportointivirhe ei palauta poistettua juurta.
+Tekninen sopimus ja rajaus ovat [E2E-testiympäristöohjeessa](e2e-test-environment.md).
+
+E2E- ja desktop-E2E-tyyppitarkistukset läpäisivät tämän toteutusvaiheen.
+Rajattu Node-sarja päättyi tulokseen 110/112: kaksi hylkäystä koski
+testikomennon täsmällistä odotusta, josta puuttuivat kaksi lisättyä
+regressiotiedostoa. Odotus korjattiin ja kummankin tiedoston poisjättöä
+vastaan lisättiin testi. Korjatun sarjan seuraavasta ajosta ei saatu
+lopputulosta; osatuloksia ei hyväksytä koko sarjan läpäisyksi. Ensimmäisen
+ajon hylkäys ja seuraavan ajon keskeneräinen näyttö säilytetään erillisinä.
+
+Jatketussa todennuksessa korjattu Node-sarja läpäisi 114/114 ja rajatut
+lähde-, status-, fixture-, native- ja julkaisusopimukset 138/138.
+Niiden lähdesidonta varmennettiin takaisinluvussa. Riippumaton staattinen
+katselmus ei löytänyt vahvistettuja korjaustarpeita.
+
+Oikean Electron-prosessirajan koe käytti tavallista fixtureä ja backendin
+todellista konfiguraatiolukua: vain testin oma incident-hakemisto osoitettiin
+puuttuvaan alihakemistoon. Utility-prosessin `backendStart`-vaiheen `ENOENT`
+säilyi native-tiedoston ja muistiliitteen kautta lopulliseen turvalliseen
+raporttiin. Testirunko ja ensimmäinen ikkuna eivät käynnistyneet; muistista
+luettava lisähavainto jäi oikein `unavailable`-tilaan. Suoritusyritys,
+käynnistyskerta, backend-yritys, alkuperäinen exit ja varmennettu siivous
+erottuivat. Koe jäi tarkoituksellisesti hylätyksi eikä sitä merkitty
+onnistuneeksi sovellustestiksi. Säilyneen ensivirheen tiedosto- ja liitetavut
+varmennettiin myös seuraavien testien jälkeen.
+
+Tavallinen eristetty käynnistys ja tarkka runtime-tunnistus läpäisivät 2/2.
+`DESK-STARTUP-CONFIG-001` läpäisi oletuksen, eksplisiittisen normaalitilan
+ja rajatun vikavalinnan regression ilman prosessikäynnistystä. Tämä ei
+korvaa yllä olevaa oikean prosessirajan koetta.
+
+V1:n loppukatselmus, viimeisten muutosten tyypitys ja revision lukitseminen
+ovat seuraava portti. Sen jälkeen jatketaan V2:n jo sovittuihin testeihin;
+tämä checkpoint ei hyväksy koko Electron-päivitystä, CI:tä tai integraatiota.
+Aikarajat, testivaatimukset ja aiemmat hylkäykset säilyvät ennallaan.
 
 ## Ohje ja historia
 
@@ -92,6 +211,18 @@ Yhteinen apuri korvaa nykyisten CI-kuluttajien Corepack-latauksen. Node-,
 pnpm-, Electron- ja tietokantaversiot, sovelluskoodi, testikomennot,
 aikarajat ja hyväksyntäehdot säilyvät. Tämä ei aloita A1:tä eikä hyväksy
 mergeä ennen uuden revision omia portteja.
+
+Revision `35ba04c033ca260f4065652e25bc46eea60bd59f`
+[normaali CI 36614511596](https://github.com/eky-software/eky/actions/runs/36614511596)
+läpäisi ensimmäisellä yrityksellä kaikki 38 vaadittua ryhmää; vain
+valinnainen diagnostiikkakoe ohitettiin. System 695/695, kriittinen web
+37/37 ja kriittinen Electron 38/38 vastasivat ajovalintoja ilman uusintoja.
+Lähdepuu, neljä artifact-tuottajaa ja kymmenen packaged-kuluttajaa on
+takaisinluettu. Myös [riippuvuustarkistus 36614510787](https://github.com/eky-software/eky/actions/runs/36614510787)
+läpäisi. Tämä todentaa Undici- ja pnpm-valmistelukorjauksen integraation
+PR:ssä, ei merge-mainia, historiallisten timeoutien syitä tai myöhemmin
+hyväksyttyä Electron `43.7.6` -päivitystä. Electronin oma hyväksyntä on
+kesken; `better-sqlite3 13.0.2`, tietokantamalli ja testiehdot säilyvät.
 
 ## Lukureitit
 

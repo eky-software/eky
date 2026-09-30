@@ -1,14 +1,15 @@
-export const electronE2eBackendStartupStages = [
-  'boundaryValidation',
-  'brokerClientCreation',
-  'moduleImport',
-  'backendStart',
-  'profileSnapshotBrokerStart',
-  'readyNotification',
-] as const;
+import {
+  electronE2eBackendBrokers,
+  isElectronE2eBackendFailureReason,
+  type ElectronE2eBackendBroker,
+  type ElectronE2eBackendFailureReason,
+} from './electronE2eBackendFailure.js';
+import catalog from './electronE2eBackendFailureCatalog.json' with { type: 'json' };
 
-export type ElectronE2eBackendFailureStage =
-  (typeof electronE2eBackendStartupStages)[number];
+export type ElectronE2eBackendFailureStage = keyof typeof catalog.stageCodes;
+export const electronE2eBackendStartupStages = Object.freeze(
+  Object.keys(catalog.stageCodes) as ElectronE2eBackendFailureStage[],
+);
 
 export const electronE2eBackendLogStages = [
   'migration.started.log.entered',
@@ -40,26 +41,19 @@ export type ElectronE2eBackendStatus =
       port: number;
       type: 'ready';
     }
-  | {
-      stage: ElectronE2eBackendFailureStage;
-      type: 'failed';
-    };
+  | ElectronE2eBackendFailureStatus;
 
-const failureCodeByStage: Record<
-  ElectronE2eBackendFailureStage,
-  `DESKTOP_SMOKE_E2E_BACKEND_${string}_FAILED`
-> = {
-  backendStart: 'DESKTOP_SMOKE_E2E_BACKEND_START_FAILED',
-  boundaryValidation:
-    'DESKTOP_SMOKE_E2E_BACKEND_BOUNDARY_VALIDATION_FAILED',
-  brokerClientCreation:
-    'DESKTOP_SMOKE_E2E_BACKEND_BROKER_CLIENT_CREATION_FAILED',
-  moduleImport: 'DESKTOP_SMOKE_E2E_BACKEND_MODULE_IMPORT_FAILED',
-  profileSnapshotBrokerStart:
-    'DESKTOP_SMOKE_E2E_BACKEND_PROFILE_SNAPSHOT_BROKER_START_FAILED',
-  readyNotification:
-    'DESKTOP_SMOKE_E2E_BACKEND_READY_NOTIFICATION_FAILED',
-};
+export interface ElectronE2eBackendFailureStatus {
+  readonly stage: ElectronE2eBackendFailureStage;
+  readonly type: 'failed';
+  readonly reason: ElectronE2eBackendFailureReason;
+  readonly brokerCleanupFailures: readonly ElectronE2eBackendBroker[];
+}
+
+export interface ElectronE2eBackendFailureObservation {
+  readonly backendAttempt: number;
+  readonly status: ElectronE2eBackendFailureStatus;
+}
 
 export function parseElectronE2eBackendProgress(
   value: unknown,
@@ -98,6 +92,14 @@ export function reportElectronE2eBackendProgress(
 export function parseElectronE2eBackendStatus(
   value: unknown,
 ): ElectronE2eBackendStatus | undefined {
+  try {
+    return parseStatus(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function parseStatus(value: unknown): ElectronE2eBackendStatus | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return undefined;
   }
@@ -113,18 +115,43 @@ export function parseElectronE2eBackendStatus(
   }
   if (
     record.type === 'failed' &&
-    hasExactlyKeys(record, ['stage', 'type']) &&
-    isElectronE2eBackendFailureStage(record.stage)
+    hasExactlyKeys(record, ['stage', 'type', 'reason', 'brokerCleanupFailures']) &&
+    isElectronE2eBackendFailureStage(record.stage) &&
+    isElectronE2eBackendFailureReason(record.reason) &&
+    Array.isArray(record.brokerCleanupFailures) &&
+    record.brokerCleanupFailures.length <= electronE2eBackendBrokers.length &&
+    Array.from(record.brokerCleanupFailures).every((value) => electronE2eBackendBrokers.some((name) => name === value)) &&
+    new Set(record.brokerCleanupFailures).size === record.brokerCleanupFailures.length
   ) {
-    return { stage: record.stage, type: 'failed' };
+    return Object.freeze({ stage: record.stage, type: 'failed', reason: record.reason,
+      brokerCleanupFailures: Object.freeze(electronE2eBackendBrokers.filter(
+        (name) => (record.brokerCleanupFailures as unknown[]).includes(name),
+      )) });
   }
   return undefined;
+}
+
+export function parseElectronE2eBackendFailureObservation(
+  value: unknown,
+): ElectronE2eBackendFailureObservation | undefined {
+  try {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+    const record = value as Record<string, unknown>;
+    if (!hasExactlyKeys(record, ['backendAttempt', 'status']) ||
+        typeof record.backendAttempt !== 'number' || !Number.isSafeInteger(record.backendAttempt) ||
+        record.backendAttempt < 1) return undefined;
+    const status = parseElectronE2eBackendStatus(record.status);
+    if (status?.type !== 'failed') return undefined;
+    return Object.freeze({ backendAttempt: record.backendAttempt, status });
+  } catch {
+    return undefined;
+  }
 }
 
 export function readElectronE2eBackendFailureCode(
   stage: ElectronE2eBackendFailureStage,
 ): `DESKTOP_SMOKE_E2E_BACKEND_${string}_FAILED` {
-  return failureCodeByStage[stage];
+  return catalog.stageCodes[stage] as `DESKTOP_SMOKE_E2E_BACKEND_${string}_FAILED`;
 }
 
 function hasExactlyKeys(

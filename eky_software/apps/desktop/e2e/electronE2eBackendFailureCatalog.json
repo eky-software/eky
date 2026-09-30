@@ -1,0 +1,41 @@
+{
+  "reasons": {
+    "unknown": true,
+    "EADDRINUSE": true,
+    "EACCES": true,
+    "EPERM": true,
+    "ENOENT": true,
+    "EIO": true,
+    "EMFILE": true,
+    "ENFILE": true,
+    "ENOSPC": true,
+    "ERR_MODULE_NOT_FOUND": true,
+    "MODULE_NOT_FOUND": true,
+    "ERR_DLOPEN_FAILED": true,
+    "SQLITE_BUSY": true,
+    "SQLITE_LOCKED": true,
+    "SQLITE_CANTOPEN": true,
+    "SQLITE_CORRUPT": true,
+    "SQLITE_NOTADB": true,
+    "SQLITE_IOERR": true,
+    "SQLITE_FULL": true,
+    "SQLITE_READONLY": true,
+    "ELECTRON_E2E_BACKEND_BOUNDARY_INVALID": true,
+    "ELECTRON_E2E_SECRET_BROKER_MISSING": true,
+    "ELECTRON_E2E_BACKEND_MODULE_INVALID": true,
+    "ELECTRON_E2E_PROFILE_SNAPSHOT_RUNTIME_MISSING": true
+  },
+  "brokers": {
+    "secretBroker": true,
+    "invoicePdfArchiveBroker": true,
+    "profileSnapshotBroker": true
+  },
+  "stageCodes": {
+    "boundaryValidation": "DESKTOP_SMOKE_E2E_BACKEND_BOUNDARY_VALIDATION_FAILED",
+    "brokerClientCreation": "DESKTOP_SMOKE_E2E_BACKEND_BROKER_CLIENT_CREATION_FAILED",
+    "moduleImport": "DESKTOP_SMOKE_E2E_BACKEND_MODULE_IMPORT_FAILED",
+    "backendStart": "DESKTOP_SMOKE_E2E_BACKEND_START_FAILED",
+    "profileSnapshotBrokerStart": "DESKTOP_SMOKE_E2E_BACKEND_PROFILE_SNAPSHOT_BROKER_START_FAILED",
+    "readyNotification": "DESKTOP_SMOKE_E2E_BACKEND_READY_NOTIFICATION_FAILED"
+  }
+}

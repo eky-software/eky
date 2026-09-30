@@ -2,6 +2,7 @@ import { errors, type ElectronApplication, type Page } from '@playwright/test';
 import { ElectronBridgeCallerFailure, type ElectronBridgeFailureReason } from '../environment/startOwnedWindowsElectronBridge.js';
 
 import { ELECTRON_E2E_FIRST_WINDOW_TIMEOUT_MILLISECONDS } from './electronLaunchBudgets.js';
+import launchPhases from './electronLaunchPhases.json' with { type: 'json' };
 import {
   parseElectronE2eStartupObservation,
   type ElectronE2eStartupObservation,
@@ -36,7 +37,7 @@ export function captureElectronStartupObservation(
 }
 
 export interface ElectronLaunchObservation {
-  readonly phase: 'playwrightConnect' | 'firstWindow' | 'domContentLoaded';
+  readonly phase: keyof typeof launchPhases;
   readonly status: 'started' | 'completed' | 'failed';
   readonly reason: 'none' | 'processExited' | 'pageClosed' | ElectronBridgeFailureReason;
 }

@@ -12,11 +12,13 @@ import {
   parseElectronE2eBackendProgress,
   parseElectronE2eBackendStatus,
   readElectronE2eBackendFailureCode,
+  type ElectronE2eBackendFailureObservation,
   type ElectronE2eBackendStartupStage,
 } from './electronE2eBackendStatus.js';
 
 export interface ElectronE2eBackendController {
   getStartCount(): number;
+  getStartupFailure(): ElectronE2eBackendFailureObservation | undefined;
   isRunning(): boolean;
   killUnexpectedly(): void;
   startBackend(
@@ -38,6 +40,7 @@ export function createElectronE2eBackendController(
 ): ElectronE2eBackendController {
   let processHandle: UtilityProcess | undefined;
   let startCount = 0;
+  let startupFailure: ElectronE2eBackendFailureObservation | undefined;
 
   function observe(checkpoint: ElectronE2eStartupCheckpoint): void {
     try {
@@ -49,6 +52,7 @@ export function createElectronE2eBackendController(
 
   return {
     getStartCount: () => startCount,
+    getStartupFailure: () => startupFailure,
     isRunning: () => processHandle !== undefined,
     killUnexpectedly() {
       processHandle?.kill();
@@ -65,6 +69,7 @@ export function createElectronE2eBackendController(
 
       return new Promise((resolveStart, rejectStart) => {
         startCount += 1;
+        startupFailure = undefined;
         options.operationalLogger?.write(
           createDesktopOperationalEvent(
             { eventName: 'backendProcess.starting' },
@@ -122,16 +127,17 @@ export function createElectronE2eBackendController(
             return;
           }
           const status = parseElectronE2eBackendStatus(value);
-          if (status === undefined || ready) {
+          if (status === undefined || startupSettled) {
             return;
           }
           if (status.type === 'failed') {
             startupSettled = true;
             clearTimeout(timer);
-            child.kill();
+            startupFailure = Object.freeze({ backendAttempt: startCount, status });
             rejectStart(
               new Error(readElectronE2eBackendFailureCode(status.stage)),
             );
+            child.kill();
             return;
           }
           if (status.port !== config.backend.port) {

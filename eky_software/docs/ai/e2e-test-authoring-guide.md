@@ -254,8 +254,11 @@ mukaan ennen käynnistystä. Säilytä ensimmäisen epäonnistuneen yrityksen
 revisio, komento, scenario ID, yritysnumero, vaihe, turvallinen virheluokka
 ja erillinen cleanup-tulos ennen mahdollista uutta ajoa.
 
-- Paikallinen HTML-raportti on `apps/e2e/playwright-report/`; avaa se komennolla
-  `pnpm test:e2e:report`. Yrityskohtaiset tulokset ovat `apps/e2e/test-results/`.
+- Jokaisella ajolla on oma `apps/e2e/playwright-report/run-<uuid>/`-raportti.
+  Avaa valittu ajo komennolla
+  `pnpm test:e2e:report playwright-report/run-<uuid>`; korvaa tunniste
+  kyseisen ajon kansion nimellä. Suoritusyrityskohtaiset tulokset ovat
+  vastaavan `apps/e2e/test-results/run-<uuid>/`-juuren alla.
 - System/web-fixture liittää saatavilla olevat synteettiset virhetodisteet
   raporttiin ja tarvittaessa `service-fixture-cleanup`-tuloksen. Electronin
   vastaava todiste on `electron-lifecycle` / `electron-lifecycle.json`.
@@ -264,12 +267,19 @@ ja erillinen cleanup-tulos ennen mahdollista uutta ajoa.
   `trace: on-first-retry` ei lupaa ensiyrityksen tracea. Kuvakaappausasetus on
   `only-on-failure`, video pois. Puuttuva liite ei todista onnistumista.
 - Älä käynnistä sokkona uudelleen, pidennä timeoutia, lisää sleepiä tai löysennä
-  assertionia. Uusi ajo voi tyhjentää aiemman tuloshakemiston; säilytä ensivirhe
-  ensin. Tarkista setup, testin ehto ja cleanup erillisinä tuloksina.
+  assertionia. Tavallinen uusi ajo säilyttää aiemmat ajohakemistot. Jos käytät
+  itse `--output`- tai paikallista HTML-overridea, valitse uusi hakemisto
+  joka ajolle: override voi tyhjentää aiemman näytön. Tarkista setup,
+  testin ehto ja cleanup erillisinä tuloksina.
 - Epävarmasti siivottu testijuuri jää yksityiseen temp-alueeseen. Älä poista
   prosessinomistajan varauksia tai säilytettyä juurta onnistumisen saamiseksi.
   Raakaraportti ei ole julkaistava artifact: nykyinen Electron-CI julkaisee
   vain rajatut lifecycle-JSONit, ei koko tuloshakemistoa tai tracea.
+- Electronin epäonnistuneen testin tai capture-vaiheen lähdejuuri säilyy
+  myös raportointivirheessä. Raportin suljettu syykoodi, native-havainnon
+  saatavuus ja `electronEvidenceFailures` erotetaan testin alkuperäisestä
+  virheestä. Säilytettyjä kansioita ei tyhjennetä automaattisesti uudella
+  ajolla; niiden tutkiminen ja myöhempi poistaminen ovat erillisiä toimia.
 
 Noudata [artefaktisopimusta](../architecture/e2e-test-environment.md#artefaktit),
 [selainverkon rajaa](../architecture/e2e-test-environment.md#selainverkon-raja) ja

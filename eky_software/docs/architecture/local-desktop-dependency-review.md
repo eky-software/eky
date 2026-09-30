@@ -4,7 +4,8 @@ Tämä dokumentti kirjaa `apps/desktop`-paketointispiken ensimmäisen rajatun
 riippuvuuspäätöksen 14.7.2026, Electron 43 / better-sqlite3 13
 -yhteensopivuuden varmennuksen 3.8.2026, Electron 43.3.0 -patch-päivityksen
 17.8.2026, transitiivisen XML-kirjaston tietoturvakorjauksen 2.9.2026
-sekä `undici`-korjauspäivityksen 29.9.2026.
+sekä `undici`-korjauspäivityksen ja Electron `43.7.6` -päivityksen
+hyväksynnän 29.9.2026.
 Versiot tarkistetaan uudelleen ennen
 tuotantojulkaisua, allekirjoitusta tai automaattipäivityksen toteutusta.
 
@@ -35,7 +36,7 @@ Spikessä käytetään tarkasti lukittuja development-riippuvuuksia vain
 
 | Paketti | Versio | Vastuu |
 | --- | --- | --- |
-| `electron` | `43.3.0` | desktop-runtime ja Windows-binääri |
+| `electron` | `43.7.6` | desktop-runtime ja Windows-binääri; päivityksen todennus kesken |
 | `@electron/packager` | `20.0.4` | rajattu paketoitu sovellushakemisto |
 | `@electron/fuses` | `2.1.3` | production-fusejen lukitseminen |
 
@@ -48,6 +49,97 @@ uutta suoraa riippuvuutta eikä muuta Eky-sovelluksen runtime-payloadia;
 se rajaa nykyisen paketointityökaluketjun transitiivisen XML-kirjaston
 korjattuun versioon. Override voidaan poistaa, kun hyväksytty upstream-ketju
 ratkaisee saman tai uudemman tarkistetun version ilman sitä.
+
+### Electron 43.7.6 -turvallisuuspäivitys
+
+Omistaja hyväksyi 29.9.2026 rajatun `43.3.0 -> 43.7.6` -päivityksen.
+`better-sqlite3 13.0.2`, tietokantamalli, migraatiot, projektin Node 24- ja
+pnpm-versiosopimus sekä testien aikarajat ja hyväksyntäehdot säilyvät.
+Historiallisen 0.2.6-asenninfixturen Electron `43.3.0` -sidonta säilyy:
+vanhan version todistus ei saa huomaamatta käyttää uutta runtimea.
+
+GitHubin kahdeksan manifesti-/lockfile-hälytystä vastaavat neljää High-
+advisorya, eivät kahdeksaa erillistä haavoittuvuutta:
+
+- [GHSA-gr2m-v5gq-v685](https://github.com/advisories/GHSA-gr2m-v5gq-v685):
+  sandbox-rajojen periytyminen popupiin; nykyiset ikkunat estävät popupit.
+- [GHSA-j84w-jfhq-vhvj](https://github.com/advisories/GHSA-j84w-jfhq-vhvj):
+  vanhojen protokolla-API:en cross-origin-luku; Eky käyttää `protocol.handle`a.
+- [GHSA-9qh4-3jw8-366w](https://github.com/advisories/GHSA-9qh4-3jw8-366w):
+  webview/worker-raja; nykyiset ikkunat ovat sandboxattuja ja estävät webviewn.
+- [GHSA-qmv3-fv6v-rmhq](https://github.com/advisories/GHSA-qmv3-fv6v-rmhq):
+  murretun rendererin preload-välimuistin myrkytys. Eky käyttää sandboxattuja
+  preload-skriptejä; konkreettista rendererin murtoa tai Eky-hyökkäyspolkua ei
+  ole toistettu. Päivitys tarvitaan tämän alemman luottamusrajan suojaamiseksi.
+
+Ensimmäisten kolmen korjausraja on `43.4.1`. Preload-advisoryn päivitetty
+tietue ilmoittaa `43.5.0`; upstreamin vanhempi teksti ilmoittaa `43.4.2`.
+Hyväksytty `43.7.6` ylittää kummankin. Sovelluksen olemassa olevat estot
+eivät korvaa korjattua riippuvuutta eikä auditin vihreä tulos yksin sulje
+Dependabot-hälytyksiä. Hälytyksiä ei dismissata tämän työn perusteella.
+
+[Virallinen julkaisu](https://github.com/electron/electron/releases/tag/v43.7.6)
+ja [runtime-metadata](https://releases.electronjs.org/releases.json)
+määrittävät Node `24.21.0`, Chromium `150.0.7871.250` ja V8 `15.0.245.31`.
+Electronin Node ei ole kehityskoneen Node-version päivitys. MIT-lisenssi,
+paketin Node-alaraja `>=22.12.0` ja nykyiset kolme suoraa riippuvuusaluetta
+säilyvät. Uutta riippuvuutta, overridea tai native-rebuildia ei lisätä.
+
+Omistaja hyväksyi erikseen 29.9.2026 vain `electron@43.7.6`:n
+`minimumReleaseAgeExclude`-poikkeuksen, koska uusi julkaisu ei vielä täytä
+pnpm:n 24 tunnin varoaikaa ja backendin deploy-valmistelu hylkää sen.
+Poikkeus ei koske tulevia Electron-versioita tai muita paketteja eikä ohita
+integrity-, allekirjoitus-, auditointi- tai testivaatimuksia. Merkintä voidaan
+poistaa varoajan täytyttyä; yleistä varoaikaa tai strict-asetusta ei muuteta.
+
+Hyväksyntä on vielä kesken. Vaaditaan rajattu lockfile-diffi, production- ja
+full audit, rekisteriallekirjoitukset, alemmat testit ja tyypitys, todellisen
+Electron-runtimen tarkka versiotuple, nykyiset turvaraja- ja käyttäjäpolut,
+Windows-paketointi sekä hardened backup -> inspect -> restore -> restart ->
+compare synteettisellä profiililla. Stress, täysi 30 minuutin soak ja uuden
+revision normaali CI säilyvät erillisinä portteina. Oikeita tietokantoja tai
+asennettuja EKY-ohjelmia ei käytetä. Julkaisun prosessien sulkukorjaukset eivät
+vielä todista historiallisten legacy-/timeout-havaintojen syitä korjatuiksi.
+
+Rajauksen tämänhetkinen testitila (ei toimitus- tai integraatiohyväksyntä):
+
+- Production- ja full audit sekä 160 rekisteriallekirjoituksen tarkistus
+  läpäisivät. Koko workspacen tyypitys ja 253 paketointi-/script-sopimustestiä
+  läpäisivät. Riippumaton rajatun muutoksen katselmointi ei löytänyt uutta
+  vahvistettua ohitusta tai regressiota.
+- Todellinen Electron `43.7.6` / Node `24.21.0` / Chromium `150.0.7871.250` /
+  V8 `15.0.245.31-electron.0` / N-API `10` -tunnistus läpäisi.
+  Eristetty tuotantopaketointi, native SQLite -validointi, fuse-tarkistus ja
+  hardened backup -> inspect -> restore -> restart -> compare läpäisivät
+  synteettisellä profiililla. Sovelluksen tietomallia ei muutettu.
+- Täysi Electron-sarja hylättiin: 44/45 läpäisi, mutta
+  `DESK-WORKSPACE-ACTIVATION-001`:n fixture pysähtyi ennen testirunkoa
+  käynnistysvirheeseen. Tämä ei osoita varsinaisen aktivointiväitteen
+  epäonnistuneen eikä yksilöi Electron-päivitystä syyksi. Ajoa ei hyväksytä.
+- Normaali desktop-yksikkösarja hylättiin yhden lähdekoodin moduulirajoja
+  lukevan tarkistuksen aikakatkaisuun. Muuttamattoman tiedoston erillinen
+  läpäisy on diagnostiikkaa, ei koko sarjan hyväksyntä tai juurisyyn korjaus.
+- Ensimmäinen stress-ajo hylättiin näkymäsiirtymän odotukseen. Yksi
+  kohdennettu tapahtumajäljellä ajettu diagnostiikkakoe läpäisi saman koko
+  työkuorman. Se ei ratkaise alkuperäisen hylkäyksen syytä eikä pyyhi sitä pois.
+- Käynnistysvirheen lukuketjussa todettiin tarkkuuden menetys: testiadapterin
+  `DESKTOP_SMOKE_*`-koodit yleistettiin lifecycle-liitteessä kaikki samaksi
+  `PACKAGED_SMOKE_FAILED`-koodiksi. Omistajan erikseen hyväksymä rajattu
+  korjaus säilyttää nyt [testibackendin kuusi nimettyä vaihevirhettä](e2e-test-environment.md)
+  niiden nykyisestä yhteisestä määrittelystä; muut smoke-koodit peitetään
+  edelleen. Tuotantokoodi, aikarajat ja hyväksyntäehdot eivät muutu.
+  Tyypitys, 22/22 oman lukuketjun regressiota ja 67/67 viereistä
+  käynnistys-/cleanup-sopimusta läpäisivät. Tämä korjaa raportoinnin
+  tarkkuutta, ei vielä varsinaista käynnistysvirhettä. Riippumaton katselmointi
+  ei löytänyt rajauksesta korjattavaa. Yksi normaalin valmistelun kautta
+  ajettu `DESK-WORKSPACE-ACTIVATION-001`-koe läpäisi ilman uusintaa.
+  Se todentaa tämän kokeen varsinaisen aktivointipolun, mutta käynnistysvirhe
+  ei toistunut eikä aiemman koko sarjan hylkäys poistu. Seuraava työ on
+  avoimien hylkäysten rajattu selvitys ja puuttuva hyväksyntänäyttö; uusia
+  kokeita ei ajeta vain vihreän tuloksen saamiseksi.
+- Täyttä soakia ja uuden revision CI:tä ei vielä ajettu. Hylkäysten syyt ja
+  hyväksyntä jäävät avoimiksi. Aikarajoja, vaatimuksia tai automaattisia
+  uusintoja ei lisätty.
 
 ### Undici-korjauspäivitys
 
@@ -111,8 +203,9 @@ Ensimmäinen spike käytti Electron `42.6.1`- ja `better-sqlite3 12.11.1`
 -versioita. Tämä historiallinen yhdistelmä tarvitsi Electronin ABI:lle
 rakennetun staged-binäärin.
 
-Nykyinen varmennettu yhdistelmä on Electron `43.3.0` ja `better-sqlite3
-13.0.2`. better-sqlite3 13 käyttää paketin mukana toimitettua N-API-binääriä,
+Viimeisin ennen yllä olevaa päivitystä varmennettu yhdistelmä on Electron
+`43.3.0` ja `better-sqlite3 13.0.2`. Uuden yhdistelmän hyväksyntä käsitellään
+erikseen. better-sqlite3 13 käyttää paketin mukana toimitettua N-API-binääriä,
 joten paketointi ei enää:
 
 - skannaa pnpm-virtuaalivarastoa native-paketin löytämiseksi

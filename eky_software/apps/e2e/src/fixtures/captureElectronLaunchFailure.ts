@@ -13,6 +13,12 @@ import {
 } from './captureElectronNativeStartupFailure.js';
 import type { OwnedWindowsElectronBridge } from '../environment/startOwnedWindowsElectronBridge.js';
 
+export interface ElectronFirstLaunchFailure {
+  readonly startupGeneration: number | null;
+  readonly phase: ElectronLaunchObservation['phase'];
+  readonly reason: ElectronLaunchObservation['reason'];
+}
+
 export function readObservedElectronLaunchExitCode(
   owner: (Pick<OwnedWindowsElectronBridge, 'readObservedWorkloadState'> & {
     workload: Pick<OwnedWindowsElectronBridge['workload'], 'readExitCode'>;
@@ -35,16 +41,27 @@ export function createElectronLaunchFailureCapture() {
     () => Object.freeze({ status: 'notRequested' });
   let nativeStartupFailure: ElectronNativeStartupFailureCapture = Object.freeze({ status: 'notRequested' });
   let launchExitCode: number | null = null;
+  let firstLaunchFailure: Readonly<ElectronFirstLaunchFailure> | null = null;
 
   return {
     observe(
       observation: ElectronLaunchObservation,
-      runtime: Parameters<typeof captureElectronBackendStartupLogs>[0] & { artifactsRoot?: string },
+      runtime: Parameters<typeof captureElectronBackendStartupLogs>[0] & {
+        artifactsRoot?: string;
+        startupGeneration?: number;
+      },
       readStartup: () => Promise<unknown>,
       observedExitCode?: number | null,
     ): void {
       if (observation.status !== 'failed' || requested) return;
       requested = true;
+      firstLaunchFailure = Object.freeze({
+        startupGeneration: typeof runtime.startupGeneration === 'number' &&
+          Number.isSafeInteger(runtime.startupGeneration) && runtime.startupGeneration > 0
+          ? runtime.startupGeneration : null,
+        phase: observation.phase,
+        reason: observation.reason,
+      });
       // Only the synchronous pre-cleanup observation; never the code caused by teardown.
       launchExitCode = typeof observedExitCode === 'number' && Number.isInteger(observedExitCode) &&
         observedExitCode >= -0x80000000 && observedExitCode <= 0x7fffffff ? observedExitCode : null;
@@ -63,6 +80,7 @@ export function createElectronLaunchFailureCapture() {
         backendStartupLogs,
         nativeStartupFailure,
         launchExitCode,
+        firstLaunchFailure,
       });
     },
   };

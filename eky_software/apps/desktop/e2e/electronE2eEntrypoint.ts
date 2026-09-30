@@ -137,7 +137,7 @@ if (hasSingleInstanceLock) {
     loadRuntime: async () => ({ startDesktopComposition }),
     async onFailure(errorCode) {
       startupObservation.record('startupFailed');
-      nativeAdapters.recordStartupFailure(errorCode);
+      nativeAdapters.recordStartupFailure(errorCode, backendController.getStartupFailure());
       nativeAdapters.showErrorBox(
         'Eky ei käynnistynyt',
         'Paikallista testisovellusta ei voitu käynnistää turvallisesti.',

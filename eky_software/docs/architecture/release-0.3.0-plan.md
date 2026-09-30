@@ -23,8 +23,28 @@ tämän palan testitulokseksi.
 Revision `9756e90e` erillinen CI-valmisteluhylkäys tapahtui Corepackin
 pnpm-latauksessa ennen legacy/core-testejä. Omistaja hyväksyi saman pnpm:n
 [varmennetun npm-valmistelun](dependency-policy.md#ci-paketinhallinnan-valmistelu)
-ilman työkaluversioiden tai testiehtojen muutoksia. Sen oma todennus ja
-integraatio ovat seuraava rajattu työ; vanhat timeout-havainnot säilyvät.
+ilman työkaluversioiden tai testiehtojen muutoksia. Valmistelukorjauksen ja
+Undici-päivityksen revision `35ba04c0` PR-portit läpäisivät;
+[M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+sitoo näytön täsmälliseen revisioon. Ennen mergeä tehdään lisäksi omistajan
+hyväksymä [Electron 43.7.6 -turvallisuuspäivitys](local-desktop-dependency-review.md#electron-4376--turvallisuuspäivitys)
+nykyisine runtime-, tietokanta-, packaged- ja CI-portteineen. Sen todennus
+on kesken, eikä aikaisempi vihreä ajo hyväksy uutta runtimea. Vanhojen
+timeout-havaintojen syyepävarmuus säilyy.
+Uuden runtimen ja synteettisen paketoidun palautusketjun kokeet läpäisivät,
+mutta kokonaiset testisarjat eivät vielä ole hyväksyttyjä. Riippuvuusarvio
+erottaa käynnistys-, moduulirajojen luku- ja stress-hylkäykset myöhemmistä
+diagnostiikkakokeista sekä kirjaa seuraavan rajatun selvityksen. Pitkä soak
+ja tämän muutoksen CI eivät vielä ole tehtyjä.
+Rajattu käynnistyskoodien diagnostiikkakorjaus on toteutettu ja katselmoitu:
+89 sopimustestiä, tyypitys ja yksi normaalisti valmisteltu aktivointikoe
+läpäisivät. Tämä ei osoita aiemman käynnistysvirheen syytä korjatuksi eikä
+korvaa kokonaisen testisarjan hyväksyntää.
+Omistajan hyväksymä rajattu jatko erottaa
+[V1:n virhetietoketjun ja V2:n runtime-/integraatioportit](release-0.3.0-m1-preparation-plan.md#rajattu-ongelmalista).
+V1:n oikeaprosessikoe säilytti tunnetun backend-syyn lopulliseen raporttiin
+ja seuraavien ajojen yli; tavallinen käynnistyspolku läpäisi. Loppukatselmus
+ja revision lukitseminen edeltävät V2:n puuttuvia hyväksyntäajoja.
 Seuraava tuotantopala on [A1/R01](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde)
 uuden preflightin ja omistavan aloitusportin kautta. Laaja ohjeverkon
 tarkistus pysyy [M3:n I-paketissa](#m3-muut-invariantit-diagnostiikka-ja-ylläpidettävyys);

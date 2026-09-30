@@ -1,5 +1,6 @@
 import { defineConfig } from '@playwright/test';
 import { createE2eReporters } from './scripts/safeCiReporter.mjs';
+import { getE2eRunArtifacts } from './scripts/e2eRunArtifacts.mjs';
 
 import {
   ELECTRON_E2E_TEST_TIMEOUT_MILLISECONDS,
@@ -15,10 +16,11 @@ const isCi = Boolean(
 const isDesktopSoak = process.argv.some((argument) =>
   argument.includes('@soak'),
 );
+const artifacts = getE2eRunArtifacts();
 
 export default defineConfig({
   testDir: './tests',
-  outputDir: './test-results',
+  outputDir: artifacts.outputDir,
   forbidOnly: isCi,
   fullyParallel: false,
   workers: 1,
@@ -29,7 +31,7 @@ export default defineConfig({
   expect: {
     timeout: 10_000,
   },
-  reporter: createE2eReporters(),
+  reporter: createE2eReporters(undefined, undefined, artifacts),
   use: {
     headless: true,
     locale: 'fi-FI',

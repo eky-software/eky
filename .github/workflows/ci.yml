@@ -295,7 +295,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: electron-lifecycle-${{ github.run_id }}-${{ github.run_attempt }}
-          path: eky_software/apps/e2e/test-results/*/electron-lifecycle.json
+          path: eky_software/apps/e2e/test-results/run-*/*/electron-lifecycle.json
           if-no-files-found: ignore
           retention-days: 1
           overwrite: false

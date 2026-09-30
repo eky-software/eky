@@ -223,6 +223,7 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
         backendStartupLogs: { status: 'notRequested' },
         nativeStartupFailure: { status: 'notRequested' },
         launchExitCode: null,
+        firstLaunchFailure: null,
       });
     } finally { await removeE2eRunRootIfPresent(root); }
   });
@@ -285,13 +286,13 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
       })).rejects.toBe(failure?.error);
       expect(capture.finish()).toEqual(beforeCleanup);
       expect(mainReads).toBe(1);
-      expect(existsSync(root)).toBe(false);
+      expect(existsSync(root)).toBe(true);
       const text = readFileSync(testInfo.outputPath('electron-lifecycle.json'), 'utf8');
       const report = JSON.parse(text);
       expect(report.backendStartupLogs).toEqual(beforeCleanup.backendStartupLogs);
       expect(report.startupCapture).toEqual({ status: 'unavailable' });
       expect(report.launch.at(-1)).toEqual({ phase: 'firstWindow', status: 'failed', reason: 'timeout' });
-      expect(report.cleanup.runRoot).toBe('removed');
+      expect(report.cleanup).toEqual({ api: 'completed', runtime: 'completed', port: 'released', runRoot: 'retained' });
       expect(text).not.toMatch(/backend\.started|backend\.shutdownStarted|private|11111111|22222222|desktop-user-data/);
       expect(testInfo.attachments.some((item) => item.name === 'electron-lifecycle')).toBe(true);
     } finally { await removeE2eRunRootIfPresent(root); }
@@ -376,7 +377,7 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
       expect(captured).toEqual({ status: 'captured', observation: observation.snapshot() });
       observation.recordBackendStartupStage('backendStart');
       expect(finishCapture()).toEqual(captured);
-      expect(existsSync(fixture.root)).toBe(false);
+      expect(existsSync(fixture.root)).toBe(true);
     } finally { await removeE2eRunRootIfPresent(fixture.root); }
   });
 
@@ -388,7 +389,7 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
     const fixture = cleanupFixture();
     try {
       await expect(fixture.finish({ error: original })).rejects.toBe(original);
-      expect(existsSync(fixture.root)).toBe(false);
+      expect(existsSync(fixture.root)).toBe(true);
       expect(finishCapture()).toEqual({ status: 'unavailable' });
       resolveRead(createElectronE2eStartupObservation().snapshot());
       await read;
@@ -431,6 +432,7 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
       expect(fixture.calls).toEqual(['api', 'runtime', 'port', 'remove', 'report']);
       expect(existsSync(fixture.root)).toBe(false);
       expect(fixture.results).toEqual([{ api: 'completed', runtime: 'completed', port: 'released', runRoot: 'removed' }]);
+      expect(fixture.evidenceFailures).toEqual([]);
     } finally { await removeE2eRunRootIfPresent(fixture.root); }
   });
 
@@ -447,25 +449,62 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
   });
 
   test('preserves the exact original exception even when cleanup or reporting fails', async () => {
-    const original = new Error('original test failure');
-    for (const fail of ['runtime', 'port', 'remove', 'report', undefined] as const) {
+    const original = Object.freeze(new Error('original test failure'));
+    for (const fail of ['api', 'runtime', 'port', 'report', undefined] as const) {
       const fixture = cleanupFixture(fail);
+      const marker = join(fixture.root, 'synthetic-evidence.json');
+      const bytes = readFileSync(marker);
       try {
         await expect(fixture.finish({ error: original })).rejects.toBe(original);
-        expect(fixture.results).toHaveLength(1);
-        if (fail === 'runtime' || fail === 'port' || fail === 'remove') expect(existsSync(fixture.root)).toBe(true);
+        expect(fixture.calls).toEqual(['api', 'runtime', 'port', 'report']);
+        expect(fixture.results).toEqual([{
+          api: fail === 'api' ? 'failed' : 'completed',
+          runtime: fail === 'runtime' ? 'unverified' : 'completed',
+          port: fail === 'port' ? 'unverified' : 'released', runRoot: 'retained',
+        }]);
+        expect(readFileSync(marker)).toEqual(bytes);
+        expect(fixture.evidenceFailures).toEqual(fail === 'report' ? ['reportFailed'] : []);
       } finally { await removeE2eRunRootIfPresent(fixture.root); }
     }
   });
 
   test('Playwright-recorded body failure keeps its outcome and separate cleanup evidence', async () => {
-    const fixture = cleanupFixture('runtime');
+    for (const fail of ['api', 'runtime', 'port', 'report', undefined] as const) {
+      const fixture = cleanupFixture(fail);
+      const marker = join(fixture.root, 'synthetic-evidence.json');
+      const bytes = readFileSync(marker);
+      try {
+        // The fixture must not throw a replacement error during body-failure teardown.
+        await expect(fixture.finish(undefined, true)).resolves.toBeUndefined();
+        expect(fixture.calls).toEqual(['api', 'runtime', 'port', 'report']);
+        expect(fixture.results).toEqual([{
+          api: fail === 'api' ? 'failed' : 'completed',
+          runtime: fail === 'runtime' ? 'unverified' : 'completed',
+          port: fail === 'port' ? 'unverified' : 'released', runRoot: 'retained',
+        }]);
+        expect(readFileSync(marker)).toEqual(bytes);
+        expect(fixture.evidenceFailures).toEqual(fail === 'report' ? ['reportFailed'] : []);
+      } finally { await removeE2eRunRootIfPresent(fixture.root); }
+    }
+  });
+
+  test('a later successful attempt cannot remove source evidence retained after reporting failure', async () => {
+    const first = cleanupFixture('report');
+    const next = cleanupFixture();
+    const marker = join(first.root, 'synthetic-evidence.json');
+    const bytes = readFileSync(marker);
+    const original = new Error('original first-attempt failure');
     try {
-      // The fixture must not throw a replacement error during body-failure teardown.
-      await expect(fixture.finish(undefined, true)).resolves.toBeUndefined();
-      expect(fixture.results).toEqual([{ api: 'completed', runtime: 'unverified', port: 'released', runRoot: 'retained' }]);
-      expect(existsSync(fixture.root)).toBe(true);
-    } finally { await removeE2eRunRootIfPresent(fixture.root); }
+      await expect(first.finish({ error: original })).rejects.toBe(original);
+      await expect(next.finish()).resolves.toBeUndefined();
+      expect(first.root).not.toBe(next.root);
+      expect(existsSync(next.root)).toBe(false);
+      expect(readFileSync(marker)).toEqual(bytes);
+      expect(first.results).toEqual([{ api: 'completed', runtime: 'completed', port: 'released', runRoot: 'retained' }]);
+    } finally {
+      await removeE2eRunRootIfPresent(first.root);
+      await removeE2eRunRootIfPresent(next.root);
+    }
   });
 
   test('first failed startup keeps safe per-attempt evidence before any retry', async ({}, testInfo) => {
@@ -494,7 +533,7 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
         }),
       })).rejects.toBe(failure?.error);
       expect(stoppedApplication).toBe(fixture.application);
-      expect(existsSync(root)).toBe(false);
+      expect(existsSync(root)).toBe(true);
       const attachment = testInfo.attachments.find((item) => item.name === 'electron-lifecycle');
       expect(attachment).toBeDefined();
       const bytes = attachment?.body ?? readFileSync(attachment!.path!);
@@ -505,7 +544,7 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
       expect(evidence.startupCapture.observation.backendStartup.stage).toBe('readyNotification');
       expect(evidence.attempt).toBe(0);
       expect(evidence.launch.at(-1)).toEqual({ phase: 'domContentLoaded', status: 'failed', reason: 'timeout' });
-      expect(evidence.cleanup.runRoot).toBe('removed');
+      expect(evidence.cleanup).toEqual({ api: 'completed', runtime: 'completed', port: 'released', runRoot: 'retained' });
       expect(bytes.toString('utf8')).not.toMatch(/private|URL|session|environment/);
     } finally { await removeE2eRunRootIfPresent(root); }
   });
@@ -515,6 +554,14 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
       const fixture = cleanupFixture(fail);
       try {
         await expect(fixture.finish()).rejects.toThrow(fail === 'remove' ? 'E2E_ELECTRON_CLEANUP_FAILED' : 'E2E_ELECTRON_EVIDENCE_FAILED');
+        expect(fixture.calls).toEqual(['api', 'runtime', 'port', 'remove', 'report']);
+        expect(fixture.results).toEqual([{
+          api: 'completed', runtime: 'completed', port: 'released',
+          runRoot: fail === 'remove' ? 'removalFailed' : 'removed',
+        }]);
+        // A report-only failure does not retroactively retain a successfully removed root.
+        expect(existsSync(fixture.root)).toBe(fail === 'remove');
+        expect(fixture.evidenceFailures).toEqual(fail === 'report' ? ['reportFailed'] : []);
       } finally { await removeE2eRunRootIfPresent(fixture.root); }
     }
   });
@@ -617,13 +664,15 @@ function cleanupFixture(fail?: 'api' | 'runtime' | 'port' | 'remove' | 'report')
   writeFileSync(join(root, 'synthetic-evidence.json'), '{}', { flag: 'wx' });
   const calls: string[] = [];
   const results: unknown[] = [];
+  const evidenceFailures: string[] = [];
   const step = async (name: string) => { calls.push(name); if (name === fail) throw new Error('private cleanup error'); };
-  return { root, calls, results,
+  return { root, calls, results, evidenceFailures,
     finish: (failure?: { error: unknown }, testAlreadyFailed = false) => finishIsolatedElectronTest({
       failure, testAlreadyFailed,
       disposeApi: () => step('api'), closeRuntime: () => step('runtime'), releasePort: () => step('port'),
       async removeRoot() { await step('remove'); await removeE2eRunRoot(root); },
       async report(result) { results.push(result); await step('report'); },
+      reportEvidenceFailure(kind) { evidenceFailures.push(kind); },
     }),
   };
 }

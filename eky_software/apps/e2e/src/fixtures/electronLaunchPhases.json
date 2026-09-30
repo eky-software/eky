@@ -1,0 +1,5 @@
+{
+  "playwrightConnect": true,
+  "firstWindow": true,
+  "domContentLoaded": true
+}
