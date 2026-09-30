@@ -272,7 +272,7 @@ test('startup failure', async () => {
   run.accept();
 });
 
-test('real runner delivers the lifecycle body to the final report per attempt without another file read', t => {
+test('real runner preserves the first cause with sorted native codes in the final report per attempt', t => {
   const source = path => JSON.stringify(new URL(path, import.meta.url).href);
   const run = runnerFixture(t, `
 import { reportElectronLifecycleEvidence } from ${source('../src/fixtures/isolatedElectronTest.ts')};
@@ -287,7 +287,9 @@ test('startup lifecycle', async ({}, info) => {
     launch: [{ phase: 'firstWindow', status: 'failed', reason: 'processExited' }], observationsTruncated: false,
     cleanup: { api: 'completed', runtime: 'unverified', port: 'released', runRoot: 'retained' },
     firstLaunchFailure: { startupGeneration: 3, phase: 'firstWindow', reason: 'processExited' },
-    nativeStartupFailure: { status: 'captured', startupFailureCodes: [readElectronE2eBackendFailureCode(status.stage)],
+    nativeStartupFailure: { status: 'captured', startupFailureCodes: [
+      readElectronE2eBackendFailureCode(status.stage), 'BACKEND_EXITED_BEFORE_READY',
+    ].sort(),
       errorBoxReasons: ['startupFailed'], backendFailure: { backendAttempt: 1, status } },
     launchExitCode: 1,
   });

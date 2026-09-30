@@ -47,7 +47,16 @@ test('uses every source catalog stage and reason, including unknown, without a s
   }
 });
 
-test('does not borrow another attempt, later native cause or unknown fields inside the status', () => {
+test('accepts the matching stage in a sorted code set without treating its order as chronology', () => {
+  const value = evidence();
+  value.nativeStartupFailure.startupFailureCodes = [
+    catalog.stageCodes.backendStart, 'BACKEND_EXITED_BEFORE_READY',
+  ].sort();
+  assert.notEqual(value.nativeStartupFailure.startupFailureCodes[0], catalog.stageCodes.backendStart);
+  assert.deepEqual(projectElectronLifecycle(result(value)), projectElectronLifecycle(result()));
+});
+
+test('rejects mismatched attempt, stage codes or unknown fields inside the status', () => {
   for (const mutate of [
     v => { v.attempt = 1; },
     v => { v.attempt = -1; },
@@ -55,7 +64,10 @@ test('does not borrow another attempt, later native cause or unknown fields insi
     v => { v.firstLaunchFailure.startupGeneration = 0; },
     v => { v.firstLaunchFailure.startupGeneration = 1.1; },
     v => { v.firstLaunchFailure.phase = secret; },
-    v => { v.nativeStartupFailure.startupFailureCodes.unshift('earlierFailure'); },
+    v => { delete v.nativeStartupFailure.startupFailureCodes; },
+    v => { v.nativeStartupFailure.startupFailureCodes = catalog.stageCodes.backendStart; },
+    v => { v.nativeStartupFailure.startupFailureCodes = []; },
+    v => { v.nativeStartupFailure.startupFailureCodes = [catalog.stageCodes.moduleImport]; },
     v => { v.nativeStartupFailure.backendFailure.status.extra = secret; },
     v => { v.nativeStartupFailure.backendFailure.backendAttempt = -1; },
     v => { v.nativeStartupFailure.backendFailure.status.reason = secret; },

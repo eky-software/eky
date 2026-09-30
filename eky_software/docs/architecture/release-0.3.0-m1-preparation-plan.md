@@ -45,7 +45,7 @@ paikallisia liitepolkuja tai tutkimustietoja ei siirretä dokumentaatioon.
 | V1a: syntypaikka ja viesti | Electronin E2E-backendin runner hukkaa poikkeuksen ja lähettää vain vaiheen. Brokerin sulkemisvirhe voi estää viestin. Omistaja: `apps/desktop/e2e` ja sen tiukka status-sopimus. | Suljettu syyluokitus tai `unknown`, täsmällinen lähettäjä/parseri/vastaanottaja, ensivirheen säilyminen ja brokerien erilliset sulkutulokset. Nopeat sopimus- ja vuotosuojatestit; ei tuotantokoodin muutosta. |
 | V1b: säilyminen ja raportti | Prosessin muistihavainto voi puuttua poistumisen jälkeen; CI:n testikooste yleistää virheen `testError`-tasolle. Omistaja: nykyinen native-havaintotiedosto, Electron-fixture ja turvallinen CI-raportoija. | Todellinen ennen ensimmäistä ikkunaa epäonnistuva prosessiketju säilyttää tunnetun syyn lopullisessa suoritusyrityskohtaisessa raportissa. Testitapaus, suoritusyritys (`attempt`) ja käynnistyssukupolvi eivät sekoitu. Puuttuva/myöhäinen havainto, raportointivirhe ja epävarma cleanup pysyvät näkyvinä erillään. Nykyinen onnistumispolku säilyy. |
 | V2a: riippuvuuden hyväksyntä | Hyväksytyn Electron-päivityksen runtime-/native- ja integraatioportit ovat kesken. Omistaja: [riippuvuusarvio](local-desktop-dependency-review.md#electron-4376--turvallisuuspäivitys). | Nykyisen täsmäversion, `better-sqlite3 13.0.2`:n ja synteettisen packaged-/palautuspolun portit sekä ennalta nimetyt vakausajot; lopullisen revision PR/main-todennus. |
-| V2b: pakollisten porttien hylkäykset | Avoimina ovat Electronin käynnistysvirhe, päivityspaketin rollback-testin timeout ja stress-testin näkymäsiirtymän hylkäys. Neljän lähdekoodirajojen testin korjaus on läpäissyt normaalisarjassa alla nimetyllä revisiolla, mutta koko sarja ei vielä läpäissyt. Hylkäyksiä ei nimetä samaksi juurisyyksi. | Rajaa nykyistä hyväksyntää estävä vika näytöstä, korjaa omistavassa vastuussa ja lisää regressio. Muuttumaton erillinen läpäisy ei sulje alkuperäisen vian syytä. Historiallisten hylkäysten täydellinen jälkiselitys ei ole uusi hyväksyntäehto. |
+| V2b: pakollisten porttien hylkäykset | Tavallinen workspace-sarja sekä revision `1e91b328` täysi Electron-sarja, stress ja täysi soak ovat läpäisseet alla kuvatusti. Aiemmat käynnistys-, rollback-testin timeout- ja näkymäsiirtymähylkäykset säilyvät omien revisioidensa havaintoina; kaikkien syitä ei ole ratkaistu. Lopullisen lähteen packaged-/palautus- ja PR/main-portit ovat vielä avoimia. | Rajaa nykyistä hyväksyntää estävä vika näytöstä, korjaa omistavassa vastuussa ja lisää regressio. Muuttumaton erillinen läpäisy ei sulje alkuperäisen vian syytä. Historiallisten hylkäysten täydellinen jälkiselitys ei ole uusi hyväksyntäehto. |
 
 V1 toteutetaan ensin. V1a käyttää alkuperäisen poikkeuksen rajattua
 koodiluokitusta ennen siivousta; vaihe ei ole juurisyy. V1b käyttää nykyistä
@@ -145,6 +145,30 @@ säilyivät samoina; sitä seurasi vain pysyvä konfiguraatioregressio ja
 dokumentoinnin checkpoint. Näin V1:n rajattu virhetietoketju on suljettu.
 Tämä ei vielä hyväksy koko Electron-päivitystä, CI:tä tai integraatiota.
 
+#### V1b:n järjestysregressio
+
+Riippumaton jatkokatselmus avasi V1b:n uudelleen sen oman sopimuspuutteen
+vuoksi: native-lukija palauttaa lajitellun virhekoodijoukon, mutta
+loppuraportti tulkitsi joukon ensimmäisen alkion ensimmäiseksi tapahtumaksi.
+Myöhempi aakkosjärjestyksessä aikaisempi koodi saattoi siksi hylätä koko
+muuten kelvollisen syyprojektion. Native-lähde ja lifecycle-liite säilyivät.
+
+Rajattu korjaus tarkistaa vaihevirhekoodin kuulumisen joukkoon. Ensimmäisen
+tapahtuman syyn valinta säilyy native-lukijan vastuulla; jos se ei tuntenut
+ensimmäistä syytä, myöhempää syytä ei lainata. Skeema, lajittelu, muut
+validaatiot, raportin julkaisuraja ja testin tulos säilyvät ennallaan.
+
+Regressiot toistivat puutteen sekä suorassa projektiossa että oikean
+Playwright-ajurin loppuraportissa. Korjauksen jälkeen 41/41
+raportointisopimusta, 27/27 native-kirjoittimen/lukuketjun sopimusta ja
+E2E-tyypitys läpäisivät samalla muuttumattomalla työpuulla lähtörevision
+`1e91b328` päällä. Todellinen native-kirjoitin, lajittelu, lifecycle-liite
+ja loppuprojektio säilyttivät alkuperäisen syyn, poistumisen ja cleanupin;
+erillinen oikea ajuri todensi lopullisen raportin suoritusyrityksittäin.
+Nämä ovat rajatun sopimuskorjauksen näyttöä, eivät uusi Electron-prosessikoe
+tai integraatiohyväksyntä. Aiempi prosessirajan näyttö säilyy yllä omalla
+revisiollaan; lähteen syyluokitusta, capturea tai runtimea ei muutettu.
+
 ### V2:n nykyinen hyväksyntächeckpoint
 
 V1-revision tavallinen workspace-testisarja pysähtyi olemassa olevan
@@ -207,8 +231,21 @@ onnistuneena sovellustestinä. Tutkimuskokeen ensimmäinen nimivalinta ei
 valinnut testiä; sitä ei hyväksytty todisteeksi. Tavallisen testin aikarajaa
 ei muutettu. Tämä tarkentaa virhetodisteen säilymistä, mutta ei todista
 alkuperäisen kuormitetun timeoutin juurisyytä korjatuksi. Aiemmat hylkäykset
-säilyvät. Seuraavaksi ovat varsinaiset Electron-käyttäjäpolut ja V2:n muut
-nykyiset hyväksyntäportit.
+säilyvät.
+
+Tämä rajattu testiapurimuutos lukittiin revisioon
+`1e91b32892c73e35f77b67ff05ddba5eae1fb01b`. Sen puhtaalla, ajon yli
+jäädytetyllä lähteellä tavallinen täysi Electron-sarja läpäisi 46/46 ilman
+retryä tai ohituksia. Tavallinen desktop-stress läpäisi koko ennakkoon
+määritellyn työkuormansa ja täysi 30 minuutin soak läpäisi ilman
+kesto-overridea. Tulokset ja lähdesidonta varmennettiin takaisinluvussa;
+ne eivät todista vanhojen ajoitushylkäysten juurisyitä korjatuiksi.
+
+Seuraavana varmennetaan tuore eristetty tuotantopayload ja sen hardened
+backup -> inspect -> restore -> restart -> compare sekä riippuvuusauditit.
+V1b:n rajattu loppuprojektion korjaus ei muuta yllä ajettuja sovellus-,
+runtime- tai endurance-polkuja. Lopullinen korjattu revisio tarvitsee silti
+omat PR/main-porttinsa. V2 ja integraatio ovat vielä avoimia.
 
 ## Ohje ja historia
 

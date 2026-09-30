@@ -40,7 +40,7 @@ function backendFailure(value, startupFailureCodes) {
       status.brokerCleanupFailures.length > Object.keys(catalog.brokers).length ||
       !status.brokerCleanupFailures.every(name => typeof name === 'string' && Object.hasOwn(catalog.brokers, name)) ||
       new Set(status.brokerCleanupFailures).size !== status.brokerCleanupFailures.length ||
-      !Array.isArray(startupFailureCodes) || startupFailureCodes[0] !== catalog.stageCodes[status.stage]) {
+      !Array.isArray(startupFailureCodes) || !startupFailureCodes.includes(catalog.stageCodes[status.stage])) {
     return undefined;
   }
   return {

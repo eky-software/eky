@@ -101,7 +101,7 @@ revision normaali CI säilyvät erillisinä portteina. Oikeita tietokantoja tai
 asennettuja EKY-ohjelmia ei käytetä. Julkaisun prosessien sulkukorjaukset eivät
 vielä todista historiallisten legacy-/timeout-havaintojen syitä korjatuiksi.
 
-Rajauksen tämänhetkinen testitila (ei toimitus- tai integraatiohyväksyntä):
+Ensimmäisen todennuskierroksen tulokset (ei toimitus- tai integraatiohyväksyntä):
 
 - Production- ja full audit sekä 160 rekisteriallekirjoituksen tarkistus
   läpäisivät. Koko workspacen tyypitys ja 253 paketointi-/script-sopimustestiä
@@ -140,6 +140,15 @@ Rajauksen tämänhetkinen testitila (ei toimitus- tai integraatiohyväksyntä):
 - Täyttä soakia ja uuden revision CI:tä ei vielä ajettu. Hylkäysten syyt ja
   hyväksyntä jäävät avoimiksi. Aikarajoja, vaatimuksia tai automaattisia
   uusintoja ei lisätty.
+
+Jatkettu V1/V2-todennus on [M1:n omistavassa checkpointissa](release-0.3.0-m1-preparation-plan.md#v2n-nykyinen-hyväksyntächeckpoint).
+Tavallinen workspace-sarja läpäisi rajattujen testiapurimuutosten jälkeen.
+Revisio `1e91b328` läpäisi täyden Electron-sarjan 46/46, tavallisen
+desktop-stressin koko työkuorman ja täyden 30 minuutin soakin jäädytetyllä
+lähteellä ilman vaatimusten lievennystä. Aiemmat hylkäykset eivät poistu
+eikä niiden kaikkia syitä väitetä ratkaistuiksi. Tuoreen lopullisen
+payloadin, riippuvuusauditoinnin ja PR/main-integraation portit ovat vielä
+avoinna; yllä olevat ensimmäisen kierroksen tulokset eivät korvaa niitä.
 
 ### Undici-korjauspäivitys
 

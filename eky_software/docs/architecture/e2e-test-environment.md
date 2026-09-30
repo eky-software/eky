@@ -272,8 +272,8 @@ Sama turvallinen sisältö tallentuu yrityskohtaiseen
 yhden päivän artifactina, myös ensimmäisestä epäonnistumisesta ennen retryä.
 Koko `test-results`-kansiota, tracea, profiilia tai raakaa lokia ei julkaista.
 
-V1:n rajattu toteutus täydentää tätä ketjua, mutta sen hyväksyntä on vielä
-[M1:n ongelmalistalla](release-0.3.0-m1-preparation-plan.md#rajattu-ongelmalista).
+V1:n rajattu toteutus täydentää tätä ketjua. Revisiokohtainen näyttö ja
+integraation tila ovat [M1:n omistavassa checkpointissa](release-0.3.0-m1-preparation-plan.md#v1bn-toteutus-ja-todennus).
 Testibackend luokittelee alkuperäisen poikkeuksen ennen brokerien sulkemista.
 Status sisältää vain omistavan katalogin `reason`-arvon tai `unknown`:in,
 vaiheen ja erillisen `brokerCleanupFailures`-luettelon. Kaikki omistetut
@@ -308,6 +308,10 @@ poikkeusta: se projektoi rajatusta muistiliitteestä suoritusyrityksen,
 käynnistyskerran, vaiheen, native-havainnon saatavuuden, katalogin mukaisen
 backend-syyn, alkuperäisen exit-koodin ja erilliset cleanup-tulokset.
 Backendin syykatalogi on yhteinen lähettäjälle ja raportoijalle.
+Native-lukijan virhekoodit ovat lajiteltu joukko, eivät tapahtumajärjestys.
+Projektio tarkistaa syyn vaihevirhekoodin kuulumisen tähän joukkoon;
+ensimmäisen syyn valinta kuuluu native-lukijalle. Ilman ensimmäisen
+tapahtuman tunnettua syytä projektio ei käytä myöhemmän tapahtuman syytä.
 Puuttuva, virheellinen, liian suuri tai väärän yrityksen liite ei muutu
 arvatuksi syyksi. CI:n testitulos ja flaky-hylkäys säilyvät ennallaan.
 
@@ -338,8 +342,9 @@ ei palauta jo poistettua onnistuneen ajon juurta; se ei myöskään muuta
 todistamatonta raporttia hyväksytyksi. Tämä erotetaan aiemmin epäonnistuneen
 ajon ensivirheen säilyttämisestä.
 
-V1b:n sopimus- ja todellisen prosessirajan hyväksyntä ovat vielä avoimia;
-toteutuksen olemassaolo ei sulje koko V1:tä.
+V1b:n sopimus- ja prosessirajan näytöt eivät yksin hyväksy Electron-päivitystä
+tai integraatiota. Niiden ajantasainen tila ylläpidetään M1-checkpointissa,
+ei tämän teknisen sopimuksen rinnakkaisena työjonona.
 
 M0.3:n `DESK-WORKSPACE-FIRST-START-001` tallentaa lisäksi first-start-proofin
 suljetut vaihehavainnot ja kuluneen ajan runtime-kohtaiseen testitiedostoon.

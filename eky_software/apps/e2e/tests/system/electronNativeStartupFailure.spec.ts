@@ -8,6 +8,7 @@ import { electronE2eBackendStartupStages, readElectronE2eBackendFailureCode } fr
 import { reportElectronE2eBackendFailure } from '../../../desktop/e2e/electronE2eBackendFailure.js';
 import type { ElectronE2eConfig } from '../../../desktop/e2e/electronE2eConfig.js';
 import { createElectronE2eNativeAdapters } from '../../../desktop/e2e/electronE2eNativeAdapters.js';
+import { projectElectronLifecycle } from '../../scripts/electronLifecycleProjection.mjs';
 import { createE2eRunRoot } from '../../src/environment/createE2eRunRoot.js';
 import { electronNativeObservationsPath } from '../../src/environment/electronNativeObservationsPath.js';
 import { removeE2eRunRoot } from '../../src/environment/removeE2eRunRoot.js';
@@ -76,7 +77,7 @@ test.describe('SYS-ELECTRON-NATIVE-STARTUP-001 @critical @security', () => {
     });
   });
 
-  test('preserves the first classified cause and separate broker cleanup through the real native writer and attachment', async ({}, testInfo) => {
+  test('preserves the first classified cause through sorted native codes, cleanup and final report projection', async ({}, testInfo) => {
     const native = createElectronE2eNativeAdapters(config(input));
     const original = Object.assign(new Error('private database path'), { code: 'SQLITE_CANTOPEN' });
     reportElectronE2eBackendFailure({
@@ -88,6 +89,7 @@ test.describe('SYS-ELECTRON-NATIVE-STARTUP-001 @critical @security', () => {
         });
       },
     });
+    native.recordStartupFailure('BACKEND_EXITED_BEFORE_READY');
     const capture = createElectronLaunchFailureCapture();
     const observation = { phase: 'firstWindow', status: 'failed', reason: 'processExited' } as const;
     const runtime = { ...input, userDataPath: join(input.runRoot, 'user-data'), startupGeneration: 4 };
@@ -110,6 +112,17 @@ test.describe('SYS-ELECTRON-NATIVE-STARTUP-001 @critical @security', () => {
     expect(evidence.nativeStartupFailure.backendFailure).toEqual({
       backendAttempt: 2,
       status: { type: 'failed', stage: 'backendStart', reason: 'SQLITE_CANTOPEN', brokerCleanupFailures: ['secretBroker'] },
+    });
+    expect(evidence.nativeStartupFailure.startupFailureCodes).toEqual([
+      'BACKEND_EXITED_BEFORE_READY', readElectronE2eBackendFailureCode('backendStart'),
+    ]);
+    expect(projectElectronLifecycle({ retry: testInfo.retry, attachments: testInfo.attachments })).toEqual({
+      status: 'captured', attempt: testInfo.retry, startupGeneration: 4, launchPhase: 'firstWindow',
+      nativeCapture: 'captured',
+      backendFailure: { backendAttempt: 2, stage: 'backendStart', reason: 'SQLITE_CANTOPEN',
+        brokerCleanupFailures: ['secretBroker'] },
+      launchExitCode: 1, observationsTruncated: true,
+      cleanup: { api: 'completed', runtime: 'completed', port: 'released', runRoot: 'retained' },
     });
     expect(capture.finish().firstLaunchFailure).toEqual(evidence.firstLaunchFailure);
     expect(Object.isFrozen(capture.finish().firstLaunchFailure)).toBe(true);
@@ -167,7 +180,7 @@ test.describe('SYS-ELECTRON-NATIVE-STARTUP-001 @critical @security', () => {
     }
   });
 
-  test('does not borrow the cause of a later failure when the first cause was unavailable', () => {
+  test('does not borrow the cause of a later failure when the first cause was unavailable', async ({}, testInfo) => {
     const native = createElectronE2eNativeAdapters(config(input));
     native.recordStartupFailure('BACKEND_EXITED_BEFORE_READY');
     native.recordStartupFailure(readElectronE2eBackendFailureCode('backendStart'), {
@@ -177,6 +190,17 @@ test.describe('SYS-ELECTRON-NATIVE-STARTUP-001 @critical @security', () => {
     const captured = captureElectronNativeStartupFailure(input);
     expect(captured.status).toBe('captured');
     expect(captured).not.toHaveProperty('backendFailure');
+    const cleanup = { api: 'completed', runtime: 'completed', port: 'released', runRoot: 'retained' } as const;
+    await reportElectronLifecycleEvidence(testInfo, {
+      launch: [], observationsTruncated: false, cleanup, nativeStartupFailure: captured,
+      firstLaunchFailure: { startupGeneration: 3, phase: 'firstWindow', reason: 'processExited' },
+      launchExitCode: 1,
+    });
+    expect(projectElectronLifecycle({ retry: testInfo.retry, attachments: testInfo.attachments })).toEqual({
+      status: 'captured', attempt: testInfo.retry, startupGeneration: 3, launchPhase: 'firstWindow',
+      nativeCapture: 'captured', backendFailure: null, launchExitCode: 1,
+      observationsTruncated: false, cleanup,
+    });
   });
 
   test('unavailable or invalid startup generation remains unknown without coercion', () => {

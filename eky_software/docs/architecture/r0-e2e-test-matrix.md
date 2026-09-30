@@ -24,8 +24,8 @@ luokittelusopimuksen ja `SYS-ELECTRON-BACKEND-FAILURE-STATUS-001`-viestisopimuks
 sekä ensimmäisen syyn, broker-sulkujen ja käynnistyskerran
 säilymisen nykyiseen native/lifecycle-ketjuun. Alla olevien rivien aiemmat
 läpäisymäärät eivät kata tätä täydennystä. Todellisen prosessirajan,
-turvallisen loppuraportin ja säilytyksen rajattu näyttö sekä vielä avoin
-revision ja integraation hyväksyntä ovat
+turvallisen loppuraportin ja säilytyksen rajattu näyttö sekä revision ja
+integraation hyväksyntätilat ovat
 [M1:n V1-portissa](release-0.3.0-m1-preparation-plan.md#rajattu-ongelmalista).
 V1b lisää lisäksi `SYS-ELECTRON-EVIDENCE-PUBLICATION-001`-sopimuksen:
 tiedostokirjoituksen ja muistiliitteen erilliset virheet, ensimmäisten
@@ -33,6 +33,11 @@ tavujen säilyminen ja suljettu metadata. Node-raportoijan sopimukset
 todentavat projektion oikeassa Playwright-ajossa sekä kahden komennon
 tulosten säilymisen build-siivouksen yli. Nämä eivät ole uusia
 liiketoiminnan E2E-käyttäjäpolkuja tai Electron-prosessirajan näyttöä.
+Nykyisen `SYS-ELECTRON-NATIVE-STARTUP-001`-sopimuksen järjestysregressiot
+varmistavat lisäksi lajitellun koodijoukon ja ensimmäisen tapahtuman syyn
+erottamisen sekä tuntemattoman ensimmäisen syyn säilymisen loppuprojektiossa.
+Oikean ajurin raportointiregressio todentaa monikoodisen liitteen saman
+syyprojektion jokaisessa suoritusyrityksessä. Testitaso ja skenaariot säilyvät.
 
 <details>
 <summary>Aiemmat checkpointit (revisiokohtaista näyttöä, ei nykyinen työjono)</summary>
