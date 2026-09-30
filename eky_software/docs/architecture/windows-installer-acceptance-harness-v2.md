@@ -5080,6 +5080,35 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 
 ## Nykyinen päätös
 
+### Legacy-kohdepayloadin hylkäyssyy
+
+Historiallisen päivityksen `targetPayload` säilyttää täsmälleen aiemman
+inventaariovertailun. Yksi inventaarion tarkistus erottaa hylkäyksestä
+seuraavat suljetut koodit nykyiseen `errorCode`-kenttään:
+
+- `targetPayloadInspectionFailed`: inventaariota ei voitu tarkistaa;
+  tämä ei yksin tarkoita tiedostojärjestelmän lukuvirhettä.
+- `targetPayloadFileCountMismatch`: tiedostomäärä eroaa.
+- `targetPayloadSizeMismatch`: kokonaiskoko eroaa.
+- `targetPayloadIdentityMismatch`: sisältöidentiteetti eroaa.
+- `targetPayloadSummaryMismatch`: muu tarkan yhteenvedon ero.
+
+Eroluokat tarkistetaan yllä olevassa järjestyksessä. Koodi nimeää
+ensimmäisen eron, ei kaikkia eroja, yksittäistä tiedostoa tai juurisyytä.
+Vertailua ei väljennetä eikä uudelleen järjestetä diagnostiikan vuoksi.
+Kohdeohjelman käynnistys jää hylkäyksessä edelleen estetyksi. Sama koodi
+säilyy lifecycle-tuloksesta nykyisen komentorajan suljettuun koodiin;
+onnistunut siivous ei korvaa alkuperäistä hylkäystä hyväksynnällä.
+
+Julkisiin kenttiin ei lisätä polkuja, tiivisteitä, tiedostomääriä,
+kokoarvoja tai tarkistuspoikkeuksen tekstiä. Aikarajat, asennuskäytäntö,
+siivous ja tulosskeema eivät muutu. 83 kohdetestiä ja kaksi riippumatonta
+staattista katselmusta tarkistivat luokittelun, todellisen runtime-kytkennän,
+kertatarkistuksen ja virheen säilymisen. Koko integraatioportti ei ole
+vielä hyväksytty. [M1:n avoin este](release-0.3.0-m1-preparation-plan.md#v2n-ensimmäisen-pr-ajon-rajatut-esteet)
+varmennetaan seuraavaksi olemassa olevan paketin rajatulla CI-kokeella;
+diagnostiikkakoe ei korvaa normaalia hyväksyntäajoa.
+
 ### Workspace-asennusodotuksen havaintoraja
 
 Tila 2026-09-28: rajattu testiharnessin diagnostiikkalisäys ja sen oma

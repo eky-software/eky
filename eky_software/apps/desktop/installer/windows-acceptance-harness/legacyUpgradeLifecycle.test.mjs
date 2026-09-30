@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import { executeLegacyUpgradeLifecycle } from './legacyUpgradeLifecycle.mjs';
-import { LEGACY_FOOTPRINT_ERROR_CODES } from './legacyUpgradeContracts.mjs';
+import { LEGACY_FOOTPRINT_ERROR_CODES, LEGACY_PAYLOAD_ERROR_CODES } from './legacyUpgradeContracts.mjs';
 import { runHistoricalPackagedSmokeProcessChain } from './legacyUpgradeSourceSmoke.mjs';
 import { startLegacyOwnedProcess } from './legacyUpgradeWindowsRuntime.mjs';
 
@@ -286,6 +286,27 @@ test('every closed footprint rejection survives lifecycle progress and blocks ta
     assert.equal(result.targetFirstStartupValidated, false);
     assert.equal(dependencies.calls.includes('first'), false);
     assert.equal(entries.find((entry) => entry.phase === 'targetPostcondition' && entry.status === 'failed').errorCode, errorCode);
+  }
+});
+
+test('every closed payload rejection survives lifecycle progress and blocks target startup', async () => {
+  for (const errorCode of Object.keys(LEGACY_PAYLOAD_ERROR_CODES)) {
+    const entries = [];
+    const dependencies = successfulDependencies({
+      validateTargetPayload: async () => { throw new Error(errorCode); },
+      reportProgress: (entry) => entries.push(entry),
+    });
+    const result = await executeLegacyUpgradeLifecycle(dependencies);
+    assert.equal(result.status, 'failed');
+    assert.equal(result.errorCode, errorCode);
+    assert.equal(result.majorUpgradeValidated, false);
+    assert.equal(result.targetFirstStartupValidated, false);
+    assert.equal(dependencies.calls.includes('first'), false);
+    const rejected = entries.find((entry) => entry.phase === 'targetPayload' && entry.status === 'failed');
+    assert.equal(rejected.errorCode, errorCode);
+    assert.deepEqual(Object.keys(rejected).sort(), [
+      'durationMs', 'elapsedMs', 'errorCode', 'operation', 'phase', 'scenario', 'schemaVersion', 'status',
+    ]);
   }
 });
 

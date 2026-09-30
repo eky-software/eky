@@ -156,6 +156,26 @@ function inventoriesEqual(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+export async function validateLegacyTargetPayload(
+  root,
+  expected,
+  { inspectInventory = inspectPackageArtifactInventory } = {},
+) {
+  let actual;
+  try {
+    actual = await inspectInventory({ root, stage: 'packagedApp' });
+  } catch {
+    throw new Error('targetPayloadInspectionFailed');
+  }
+  if (!inventoriesEqual(actual, expected)) {
+    // Refine a rejection without changing the existing exact comparison.
+    if (actual.fileCount !== expected.fileCount) throw new Error('targetPayloadFileCountMismatch');
+    if (actual.totalByteSize !== expected.totalByteSize) throw new Error('targetPayloadSizeMismatch');
+    if (actual.identity !== expected.identity) throw new Error('targetPayloadIdentityMismatch');
+    throw new Error('targetPayloadSummaryMismatch');
+  }
+}
+
 export async function createLegacyUpgradeWindowsRuntime(request, artifact, { spawnMsiProcess = spawn } = {}) {
   const appData = process.env.APPDATA;
   const localAppData = process.env.LOCALAPPDATA;
@@ -322,15 +342,7 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact, { spa
   }
 
   async function validateTargetPayload() {
-    const actual = await inspectPackageArtifactInventory({
-      root: installRoot,
-      stage: 'packagedApp',
-    }).catch(() => {
-      throw new Error('majorUpgradeStateInvalid');
-    });
-    if (!inventoriesEqual(actual, artifact.target.payloadInventory)) {
-      throw new Error('majorUpgradeStateInvalid');
-    }
+    await validateLegacyTargetPayload(installRoot, artifact.target.payloadInventory);
   }
 
   async function runSourcePackagedSmoke() {

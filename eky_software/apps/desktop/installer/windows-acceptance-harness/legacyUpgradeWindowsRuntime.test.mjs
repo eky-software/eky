@@ -7,9 +7,44 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
-import { createLegacyUpgradeWindowsRuntime, inspectLegacyInstallerFootprint, startLegacyOwnedProcess } from './legacyUpgradeWindowsRuntime.mjs';
+import { createLegacyUpgradeWindowsRuntime, inspectLegacyInstallerFootprint, startLegacyOwnedProcess, validateLegacyTargetPayload } from './legacyUpgradeWindowsRuntime.mjs';
+import { inspectPackageArtifactInventory } from '../../scripts/package-artifact-inventory.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
+
+test('legacy target payload retains the exact inventory acceptance and closed rejection causes', async (context) => {
+  const root = await mkdtemp(resolve(tmpdir(), 'eky-legacy-payload-contract-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(resolve(root, 'synthetic.txt'), 'original');
+  const expected = await inspectPackageArtifactInventory({ root, stage: 'packagedApp' });
+  await validateLegacyTargetPayload(root, expected);
+  const cases = [
+    [{ ...expected, fileCount: expected.fileCount + 1 }, 'targetPayloadFileCountMismatch'],
+    [{ ...expected, totalByteSize: expected.totalByteSize + 1 }, 'targetPayloadSizeMismatch'],
+    [{ ...expected, identity: 'f'.repeat(64) }, 'targetPayloadIdentityMismatch'],
+    [Object.fromEntries(Object.entries(expected).reverse()), 'targetPayloadSummaryMismatch'],
+  ];
+  for (const [summary, code] of cases) {
+    await assert.rejects(validateLegacyTargetPayload(root, summary), { message: code });
+  }
+  await writeFile(resolve(root, 'synthetic.txt'), 'modified');
+  await assert.rejects(validateLegacyTargetPayload(root, expected), {
+    message: 'targetPayloadIdentityMismatch',
+  });
+});
+
+test('legacy target payload hides inspection errors and inspects only once', async () => {
+  let calls = 0;
+  const expected = { fileCount: 1, identity: 'a'.repeat(64), stage: 'packagedApp', totalByteSize: 1 };
+  await assert.rejects(validateLegacyTargetPayload('synthetic-root', expected, {
+    async inspectInventory(input) {
+      calls += 1;
+      assert.deepEqual(input, { root: 'synthetic-root', stage: 'packagedApp' });
+      throw new Error('private-path-and-secret');
+    },
+  }), { message: 'targetPayloadInspectionFailed' });
+  assert.equal(calls, 1);
+});
 
 test('legacy runtime binds both MSI operations to the observed process with unchanged install policy', {
   skip: process.platform !== 'win32',

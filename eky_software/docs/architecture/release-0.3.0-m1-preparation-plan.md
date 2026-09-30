@@ -301,13 +301,31 @@ Kyseessä ei ole uusi Electron-prosessirajan tai täyden CI:n hyväksyntä.
 
 Samalla ensimmäisellä PR-ajolla molempien legacy-toistojen asennustila
 läpäisi mutta `targetPayload` hylättiin koodilla `majorUpgradeStateInvalid`.
-Nykyinen koodi yhdistää inventaarion lukuhylkäyksen ja inventaarioiden
+Kyseisen revision koodi yhdisti inventaarion tarkistushylkäyksen ja inventaarioiden
 sisältöeron samaan virheeseen; niiden välillä ei päätellä ilman näyttöä.
 Hylkäys ei ollut timeout, ja prosessipuun poistuminen vahvistettiin.
 Kohdeohjelman käynnistys on tämän portin jälkeen, joten havainto ei vielä
 osoita Electronin ja SQLite-ajurin yhteensopivuusvirhettä. Tämä jää
 erilliseksi pakollisen integraatioportin esteeksi. Ei sokeaa uusintaa,
 hyväksyntäehtojen muutosta tai mergeä punaisella ajolla.
+
+Rajattu testiharnessin täsmennys erottaa nyt viisi
+[kohdepayloadin hylkäyssyytä](windows-installer-acceptance-harness-v2.md#legacy-kohdepayloadin-hylkäyssyy)
+olemassa olevissa virhekoodikentissä. Alkuperäinen tarkka vertailu,
+kertatarkistus, käynnistysportti ja siivous säilyvät. Raaka-arvoja tai
+uutta raportointikanavaa ei lisätä. 83 kohdetestiä läpäisi ja kaksi
+riippumatonta staattista katselmusta ei löytänyt korjattavaa. Koko
+legacy-core-sarjaa ei ole tällä muutoksella hyväksytty; sen puhdas
+CI-todennus on edelleen pakollinen.
+
+Seuraava rajattu koe käyttää olemassa olevaa
+`packaged-boundary-diagnostic`-polkua ja ensimmäisen hylätyn PR-ajon
+täsmällistä legacy-artifactia. Asennuspaketteja ei rakenneta uudelleen.
+Havainnon tuottavan harnessin revisio ja vanhan artifactin build-revisio
+sidotaan erikseen; kumpikaan ei korvaa toista. Koe erottaa tarkistuksen
+epäonnistumisen ja vertailueron ennen mahdollista varsinaista korjausta.
+Kokeen läpäisy ei yksin selittäisi alkuperäistä hylkäystä eikä sulkisi
+PR/main-porttia. Vanha epäonnistunut yritys säilyy näyttönä.
 
 ## Ohje ja historia
 
