@@ -1,14 +1,14 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { dirname, extname, join } from 'node:path';
-import { setImmediate } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
+
+import { boundarySourceReadBatchSize, inspectBoundarySourcesForTest } from '../boundarySourceTestSupport.js';
 
 const importPathPattern = /(?:^|\/)workspaces\/import(?:\/|$)/;
 const prohibitedDatabaseImports = new Set(['better-sqlite3', 'node:sqlite']);
 const sourceExtensions = new Set(['.cts', '.js', '.jsx', '.mts', '.ts', '.tsx']);
-const sourceReadBatchSize = 8;
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
 const desktopSourceRoot = join(currentDirectory, '..', '..');
 const desktopPackageRoot = join(desktopSourceRoot, '..');
@@ -92,29 +92,7 @@ describe('workspace backup import boundaries', () => {
   });
 });
 
-describe('workspace backup import boundary source reading', () => {
-  it('bounds reads and covers the final partial batch without dropping test files', async () => {
-    const sourceFiles = Array.from(
-      { length: sourceReadBatchSize * 2 + 1 },
-      (_, index) => `source-${index}.test.ts`,
-    );
-    let activeReads = 0;
-    let peakReads = 0;
-    const readSource = vi.fn(async (_file: string) => {
-      activeReads += 1;
-      peakReads = Math.max(peakReads, activeReads);
-      await Promise.resolve();
-      activeReads -= 1;
-      return 'export const value = 1;';
-    });
-
-    await expectNoImportFeatureImports(sourceFiles, readSource);
-
-    expect(readSource.mock.calls.map(([file]) => file)).toEqual(sourceFiles);
-    expect(peakReads).toBe(sourceReadBatchSize);
-    expect(activeReads).toBe(0);
-  });
-
+describe('workspace backup import boundary rejection', () => {
   it.each([
     "import { value } from '../workspaces/import/value.js';",
     "const value = import('../workspaces/import/value.js');",
@@ -123,73 +101,29 @@ describe('workspace backup import boundary source reading', () => {
     "import { value } from '..\\workspaces\\import\\value.js';",
   ])('rejects the prohibited import in the final partial batch: %s', async (source) => {
     const sourceFiles = Array.from(
-      { length: sourceReadBatchSize + 1 },
+      { length: boundarySourceReadBatchSize + 1 },
       (_, index) => `source-${index}.test.ts`,
     );
-    const forbiddenFile = `source-${sourceReadBatchSize}.test.ts`;
+    const forbiddenFile = `source-${boundarySourceReadBatchSize}.test.ts`;
 
     await expect(expectNoImportFeatureImports(sourceFiles, async (file) =>
       file === forbiddenFile ? source : 'export const value = 1;',
     )).rejects.toThrow(forbiddenFile);
   });
-
-  it('drains started reads, preserves the original error and does not start another batch', async () => {
-    const sourceFiles = Array.from(
-      { length: sourceReadBatchSize + 1 },
-      (_, index) => `source-${index}.ts`,
-    );
-    const readFailure = new Error('SOURCE_READ_FAILED');
-    let releaseReads!: () => void;
-    const pendingReads = new Promise<void>((resolve) => { releaseReads = resolve; });
-    const readSource = vi.fn(async (file: string) => {
-      if (file === sourceFiles[0]) throw readFailure;
-      await pendingReads;
-      return '';
-    });
-    let finished = false;
-    const result = expectNoImportFeatureImports(sourceFiles, readSource).then(
-      () => { finished = true; return undefined; },
-      (error: unknown) => { finished = true; return error; },
-    );
-
-    try {
-      await setImmediate();
-      expect(finished).toBe(false);
-      expect(readSource.mock.calls.map(([file]) => file)).toEqual(sourceFiles.slice(0, sourceReadBatchSize));
-    } finally {
-      releaseReads();
-    }
-
-    expect(await result).toBe(readFailure);
-    expect(readSource).toHaveBeenCalledTimes(sourceReadBatchSize);
-  });
-
-  it('does not read an empty source list', async () => {
-    const readSource = vi.fn(async () => '');
-    await expectNoImportFeatureImports([], readSource);
-    expect(readSource).not.toHaveBeenCalled();
-  });
 });
 
 async function expectNoImportFeatureImports(
   sourceFiles: readonly string[],
-  readSource: (sourceFile: string) => Promise<string> = (sourceFile) => readFile(sourceFile, 'utf8'),
+  readSource?: (sourceFile: string) => Promise<string>,
 ) {
-  for (let offset = 0; offset < sourceFiles.length; offset += sourceReadBatchSize) {
-    const batch = sourceFiles.slice(offset, offset + sourceReadBatchSize);
-    // Drain all owned reads before asserting or surfacing a read failure.
-    const sources = await Promise.allSettled(batch.map(async (sourceFile) => readSource(sourceFile)));
-
-    for (const [index, source] of sources.entries()) {
-      if (source.status === 'rejected') throw source.reason;
-      expect(
-        readImportSpecifiers(source.value).filter(
-          (specifier) => importPathPattern.test(specifier.replaceAll('\\', '/')),
-        ),
-        batch[index],
-      ).toEqual([]);
-    }
-  }
+  await inspectBoundarySourcesForTest(sourceFiles, (source, sourceFile) => {
+    expect(
+      readImportSpecifiers(source).filter(
+        (specifier) => importPathPattern.test(specifier.replaceAll('\\', '/')),
+      ),
+      sourceFile,
+    ).toEqual([]);
+  }, readSource);
 }
 
 function readImportSpecifiers(source: string): readonly string[] {

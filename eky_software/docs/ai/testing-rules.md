@@ -103,6 +103,18 @@ ei luoda juureen toteutusrakennetta peilaavaa yleistä `tests/`-kansiota.
 
 Laajemmat integraatio- ja sopimustestit sijoitetaan selkeästi nimettyihin
 vastuualueisiin, jos kokonaisuus ei kuulu yhdelle tiedostolle tai moduulille.
+
+Desktopin workspace-lähdekoodirajojen testit käyttävät
+[`inspectBoundarySourcesForTest`-lukijaa](../../apps/desktop/src/workspaces/boundarySourceTestSupport.ts).
+Se lukee enintään kahdeksan tiedostoa kerrallaan ja odottaa aloitetun erän
+loppuun ennen lähdejärjestyksessä tehtävää synkronista tarkistusta tai
+alkuperäisen virheen välitystä. Kukin rajatesti omistaa edelleen
+tiedostojoukon, poissulut, import-tulkinnan ja kielletyt riippuvuudet.
+Lukijan [regressiot](../../apps/desktop/src/workspaces/boundarySourceTestSupport.test.ts)
+todentavat rinnakkaisuusrajan, virheen säilymisen ja tyhjän/vajaan erän.
+Apuri noudattaa nykyistä `*TestSupport.ts`-poissulkua tuotantobuildista;
+se ei ole sovelluksen tiedosto-API tai uusi testiruntime.
+
 Usean kerroksen system-, selain- ja Electron development -E2E-testit kuuluvat
 `apps/e2e`-workspaceen. Hardened packaged-artifactin smoke-testit säilyvät
 desktop-paketin omistuksessa.

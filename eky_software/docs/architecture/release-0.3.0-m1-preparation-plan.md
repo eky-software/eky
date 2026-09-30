@@ -157,15 +157,25 @@ workspace-ajossa rekisteritesti läpäisi, mutta muuttamaton
 `workspaceBackupImportBoundaries.test.ts` pysähtyi vastaavan sarjallisen
 lukuketjun aikakatkaisuun. Molemmat hylkäykset säilyvät erillisinä.
 
-Näiden kahden testin sarjallinen tiedostonluku on korvattu kummankin
-testin sisällä enintään kahdeksan lukemisen erillä. Tiedostojoukko,
-import-tulkinta, virheiden
-tarkistusjärjestys ja aikaraja säilyvät. Aloitetun erän kaikki lukemiset
-valmistuvat ennen virheen välitystä; lukuvirhe pysäyttää seuraavan erän.
-Tuonnin rajatestin erillinen SQLite-ajurin tarkistus ja sen tuotantolähteiden
-rajaus säilyvät muuttumattomina. Yhteinen 24/24-regressiosarja, desktopin
-tyypitys ja riippumaton katselmointi läpäisivät. Tämä todentaa
-lukutavan, kattavuuden ja virheiden säilymisen, mutta ei yksin selitä
+Tuonnin korjauksen revisio `2390c0b1` läpäisi rekisterin ja tuonnin
+rajatestit normaalisarjassa, mutta vastaavat muuttamattomat creation- ja
+first-start migration -rajatestit ylittivät aikarajan. Hylkäykset rajautuvat
+näiden neljän lähdekoodiskannauksen samaan sarjalliseen lukutapaan; tarkkaa
+kuormituksen tai käyttöjärjestelmän vaikutusta ei väitetä todistetuksi.
+
+Neljä rajatestiä käyttää nyt yhtä pientä, tuotantobuildista pois jätettävää
+[`boundarySourceTestSupport`-lukijaa](../../apps/desktop/src/workspaces/boundarySourceTestSupport.ts).
+Enintään kahdeksan lukemisen erä valmistuu kokonaan ennen virheen välitystä;
+seuraavaa erää ei aloiteta virheen jälkeen. Jokaisen testin tiedostojoukko,
+import-tulkinta, tarkistusjärjestys, SQLite-ajurirajaukset ja aikaraja
+säilyvät. Aiemmat kahden testin päällekkäiset lukutaparegressiot on siirretty
+yhteisen apurin viereen; moduulikohtaiset kielteiset import-kokeet säilyvät
+omissa tiedostoissaan. Ei yleistä testialustaa tai tuotantomuutosta.
+
+Rajattu 42/42-sarja, desktopin tyypitys ja tuotantobuild läpäisivät.
+Apurin puuttuminen tuotantobuildista tarkistettiin. Riippumaton katselmointi
+ei löytänyt vahvistettuja korjaustarpeita. Tämä todentaa lukutavan,
+kattavuuden ja virheiden säilymisen, mutta ei yksin selitä
 alkuperäisen kokonaissarjan kuormituksen tarkkaa vaikutusta tai hyväksy
 normaalia workspace-sarjaa. Seuraavaksi jatketaan sen nimettyyn ajoon
 muuttuneella lähteellä ja edelleen V2:n nykyisiin portteihin.
