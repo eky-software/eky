@@ -333,3 +333,7 @@ jobs:
         run: pnpm --filter @eky/desktop installer:test:unit
       - name: Run Windows process-contract tests serially
         run: pnpm --filter @eky/desktop installer:test:windows-process
+      - name: Run deterministic MSI file-policy contracts
+        run: pnpm --filter @eky/desktop installer:test:msi-file-policy
+      - name: Verify synthetic MSI UI and file-version policy
+        run: node apps/desktop/installer/windows-acceptance-harness/fixtures/runMsiFileVersionPolicyProbe.mjs

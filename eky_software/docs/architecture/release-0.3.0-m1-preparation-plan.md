@@ -498,6 +498,35 @@ erikseen clean/repair/uninstall-, downgrade- ja rollback-portit.
 PR/main-portit ja riippuvuushälytysten oletushaaran tila ovat edelleen
 avoimia. Aiemmat hylkäykset säilyvät alkuperäisinä.
 
+Näitä kolmea käyttäytymisehtoa täydentävä rajattu synteettinen MSI-pari
+käyttää tuotannon täsmällistä Type 51 -authoringia, per-user-asennusta,
+rekisteriavainta komponentin key pathina ja samaa major-upgrade-järjestystä.
+Kolme vaaratonta DLL:ää todentavat vanhemman, saman ja uudemman
+**tiedostoversion** erikseen. Oletusajo sekä eksplisiittinen `omus`-ajo
+käyttävät `/qr`-asennusta, joka suorittaa UI-sekvenssin. Tulos vaatii
+asennetut tavut ja tiedostoversiot, oikeaan tuotteeseen sidotut
+UI-/execute-ominaisuudet sekä täsmällisten testituotteiden poiston.
+Uudemman tiedostoversion pitää säilyä molemmissa ajoissa. Tämä täydentää,
+ei korvaa jo läpäissyttä oikean EKY-paketin hiljaista legacy-porttia.
+
+Koe käyttää nykyistä native supervisoria ja sen nykyisiä budjetteja.
+Asennuspolku sallitaan vain GitHubin hallitussa Windows-runnerissa;
+paikallinen `--prepare-only` vain rakentaa ja tarkistaa metadatan.
+Testi ei käynnistä EKYä, käsittele käyttäjätietokantaa tai käytä EKYn
+tuotetunnuksia. Ensivirheen turvallinen syy, vaihe, siivous ja prosessitulos
+ovat erillisiä. Raaka MSI-loki ja descriptor jäävät yksityiseen
+ajohakemistoon, eivät julkiseen lokiin tai ladattavaan artifactiin.
+Epäonnistumisen tai varmentamattoman siivouksen aineistoa ei poisteta.
+
+Kohdesarja `pnpm --filter @eky/desktop installer:test:msi-file-policy`
+läpäisi 47/47 testiä. Todellinen paketin rakennus ja read-only-metadata
+läpäisivät erillisiä tiedostokopioita vaativan build-korjauksen jälkeen;
+alkuperäinen valmisteluhylkäys säilyy erillisenä. Tämä ei vielä todista
+asennusta. Manuaalinen CI-valinta on `msi-file-version-policy` nykyisessä
+supervisor-koetyönkulussa. Normaali Windows-contract-ajo sisältää samat
+regressiot ja varsinaisen synteettisen asennuskokeen; sen läpäisy sekä
+kolmen käyttäytymisehdon sulkeminen ovat vielä avoimia.
+
 ## Ohje ja historia
 
 - Uusi tai muuttuva testi: [testinkirjoittajan pikaohje](../ai/e2e-test-authoring-guide.md).

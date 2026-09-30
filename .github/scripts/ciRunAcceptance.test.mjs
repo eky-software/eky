@@ -83,6 +83,17 @@ test('legacy coverage requires every responsibility group and selected repetitio
   }
 });
 
+test('skipped manual MSI policy job does not replace mandatory normal policy steps', () => {
+  const plan = planFor([critical], 'push');
+  const { needs, jobs } = evidence(plan);
+  jobs.push({ id: jobs.length + 1, name: 'supervisor / Synthetic MSI file-version policy',
+    status: 'completed', conclusion: 'skipped', steps: [] });
+  assert.equal(evaluateCiRun(plan, needs, jobs).status, 'completed');
+  const required = jobs.find(job => job.name.endsWith('Windows installer contract tests'));
+  required.steps.find(step => step.name === 'Verify synthetic MSI UI and file-version policy').conclusion = 'skipped';
+  assert.equal(evaluateCiRun(plan, needs, jobs).resultCode, 'CI_REQUIRED_STEP_INCOMPLETE');
+});
+
 test('deleted and moved critical paths flow from Git diff into required consumers', () => {
   const environment = { GITHUB_EVENT_NAME: 'pull_request', GITHUB_REF: 'refs/pull/1/merge',
     CI_BASE_SHA: 'a'.repeat(40), CI_HEAD_SHA: 'b'.repeat(40) };
@@ -260,6 +271,22 @@ test('workflow bindings preserve one producer and exact result checks with dynam
   assert.doesNotMatch(core, /installer-windows:|installer-w6b|installer:w6b|installer:upgrade/);
   assert.match(contracts, /persist-credentials: false\s+fetch-depth: 0/);
   assert.match(contracts, /Run deterministic installer tests/);
+  assert.match(contracts, /Run deterministic MSI file-policy contracts\s+run: pnpm --filter @eky\/desktop installer:test:msi-file-policy/);
+  assert.match(contracts, /Verify synthetic MSI UI and file-version policy\s+run: node apps\/desktop\/installer\/windows-acceptance-harness\/fixtures\/runMsiFileVersionPolicyProbe\.mjs/);
+});
+
+test('MSI file policy has a hosted-only manual path without replacing supervisor acceptance', async () => {
+  const source = await readFile(new URL('../workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
+  const policy = source.split('\n  msi-file-version-policy:')[1]?.split('\n  job-object-feasibility:')[0];
+  assert.ok(policy);
+  assert.match(policy, /if: github.event_name == 'workflow_dispatch' && inputs.mode == 'msi-file-version-policy'/);
+  assert.match(policy, /runs-on: windows-latest/);
+  assert.match(policy, /ref: \$\{\{ github.sha \}\}/);
+  assert.match(policy, /persist-credentials: false/);
+  assert.match(policy, /node installer\/windows-process-supervisor\/buildWindowsAcceptanceSupervisor\.mjs/);
+  assert.match(policy, /node installer\/windows-acceptance-harness\/fixtures\/runMsiFileVersionPolicyProbe\.mjs/);
+  assert.doesNotMatch(policy, /upload-artifact|continue-on-error|--prepare-only/);
+  assert.match(source, /job-object-feasibility:\n    if: inputs.mode != 'packaged-boundary-diagnostic' && inputs.mode != 'msi-file-version-policy'/);
 });
 
 test('manual diagnostics select independent existing jobs without changing reusable core gates', async () => {

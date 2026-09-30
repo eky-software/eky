@@ -19,6 +19,7 @@ on:
           - inspector-analysis-diagnostic
           - inspector-external-diagnostic
           - packaged-boundary-diagnostic
+          - msi-file-version-policy
       legacy_contract_scope:
         description: Existing legacy contract diagnosis only; core does not build MSI artifacts or record traces
         type: choice
@@ -53,8 +54,50 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  msi-file-version-policy:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'msi-file-version-policy'
+    name: Synthetic MSI file-version policy
+    runs-on: windows-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: eky_software/apps/desktop
+    steps:
+      - name: Check out exact policy revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: eky_software/.node-version
+          package-manager-cache: false
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: 10.0.302
+      - name: Bind the verified SDK executable
+        shell: pwsh
+        run: |
+          $dotnet = (Get-Command dotnet.exe -CommandType Application -ErrorAction Stop).Source
+          if (-not [IO.Path]::IsPathFullyQualified($dotnet) -or (& $dotnet --version) -cne '10.0.302') {
+            throw 'WINDOWS_ACCEPTANCE_POLICY_DOTNET_SDK_INVALID'
+          }
+          "EKY_DOTNET_EXE=$dotnet" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Run deterministic MSI file-policy contracts
+        run: >-
+          node --test
+          installer/windows-acceptance-harness/fixtures/buildMsiFileVersionPolicyFixture.test.mjs
+          installer/windows-acceptance-harness/fixtures/msiFileVersionPolicyLifecycle.test.mjs
+          installer/windows-acceptance-harness/fixtures/msiFileVersionPolicyRuntime.test.mjs
+      - name: Build existing supervisor once
+        run: node installer/windows-process-supervisor/buildWindowsAcceptanceSupervisor.mjs
+      - name: Verify synthetic MSI UI and file-version policy
+        run: node installer/windows-acceptance-harness/fixtures/runMsiFileVersionPolicyProbe.mjs
+
   job-object-feasibility:
-    if: inputs.mode != 'packaged-boundary-diagnostic'
+    if: inputs.mode != 'packaged-boundary-diagnostic' && inputs.mode != 'msi-file-version-policy'
     name: ${{ inputs.mode == 'product-command-diagnostic' && format('Product command diagnostic run {0} (no MSI, not acceptance)', matrix.repetition) || inputs.mode == 'clean-upgrade-command-diagnostic' && format('Clean and upgrade command diagnostic run {0} (no MSI, not acceptance)', matrix.repetition) || inputs.mode == 'inspection-command-contracts' && 'Inspection failure command contracts (no MSI, not acceptance)' || inputs.mode == 'inspector-external-diagnostic' && 'External inspector capture (no MSI, not acceptance)' || inputs.mode == 'inspector-analysis-diagnostic' && 'Inspector analysis diagnostic (no MSI, not acceptance)' || inputs.mode == 'window-startup-diagnostic' && 'V2.5 window startup diagnostic (not acceptance)' || inputs.mode == 'legacy-worker-diagnostic' && format('V2.5 worker diagnostic run {0} (not acceptance)', matrix.repetition) || inputs.mode == 'legacy-contracts-diagnostic' && format('V2.5 contracts diagnostic run {0} (not acceptance)', matrix.repetition) || format('Windows Job Object feasibility run {0}', matrix.repetition) }}
     runs-on: windows-latest
     timeout-minutes: 10

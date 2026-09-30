@@ -16,6 +16,9 @@ nykyisen revision hyväksyntää. Tämä on projektin suunnitelma, ei omistajan
 koneen diagnostiikkapäiväkirja. Yksityinen aineisto kuuluu vain Gitistä
 ohitettuihin paikallisiin paikkoihin; epäonnistuneita testituloksia ei kumota.
 
+Asentimen tiedostoversion korvaussäännön rajattu nykyinen testipolku on
+[MSI-tiedostoversiosäännön koe](#msi-tiedostoversiosäännön-koe).
+
 ## M0: Valmiusmerkinnän selvitys
 
 Tila 2026-09-24: omistaja hyväksyi selvityksen ja suunnittelun ennen
@@ -5161,6 +5164,41 @@ ovat omistavassa M1-suunnitelmassa. Omistaja hyväksyi tämän jälkeen
 [asentimen korvaussäännön](windows-installer-and-update-plan.md#saman-tiedostoversion-korvaaminen)
 korjauksen; se vaatii oman oikean paketin todennuksen eikä väljenna
 hyväksyntäehtoja.
+
+### MSI-tiedostoversiosäännön koe
+
+Omistava toteutus on
+`apps/desktop/installer/windows-acceptance-harness/fixtures/`-hakemiston
+`msiFileVersionPolicy`-perhe. Builder omistaa vain synteettiset paketit,
+lifecycle vertailu- ja siivousjärjestyksen, runtime nykyisten komento- ja
+MSI-lukijoiden käytön. Nykyinen native supervisor omistaa koko prosessipuun;
+fixturessa ei ole rinnakkaista prosessiomistajaa, retryä tai uutta deadlinea.
+Testituotteet eivät käytä EKYn tuotetunnuksia tai käyttäjäprofiilia.
+
+- Yksikkö- ja sopimustestit: `pnpm --filter @eky/desktop installer:test:msi-file-policy`.
+- Rakennus ja read-only-metadata ilman asennusta:
+  `pnpm --filter @eky/desktop installer:probe:msi-file-policy --prepare-only`.
+- Todellinen koe: nykyisen supervisor-koetyönkulun manuaalinen
+  `msi-file-version-policy`-valinta tai normaalin CI:n Windows-contract-ajo.
+  Asennus sallitaan vain GitHub-hosted Windows-ympäristössä, ei kehittäjän
+  koneella. Paikallisia ympäristömuuttujia ei muuteta tämän eston ohittamiseksi.
+
+Sama kerran rakennettu pari ajetaan ensin UI-oletuksella ja tarkan poiston
+jälkeen eksplisiittisellä `REINSTALLMODE=omus`-ohituksella. Vanhemman,
+saman ja uudemman DLL-tiedostoversion sisältö tarkistetaan omilla SHA-256-
+ja tiedostoversioehdoillaan. UI-/execute-todiste sidotaan oikeaan tuotteeseen;
+sisäkkäisen vanhan tuotteen poiston property-dump ei korvaa sitä.
+Valmiiden MSI-taulujen tarkistus käyttää tuotannon read-only-policy-guardia.
+Buildin välitulos ei saa jakaa testipaketin tiedostotavuja hardlinkillä.
+
+`policy-result.json` säilyttää nykyiseen ajoon sidotun ensivirheen, suljetun
+syyn tai `unknown`-arvon sekä siivouksen erillisen tuloksen. Supervisorin
+poistumistodiste on erillinen hyväksyntäehto. Julkinen koerivi sisältää vain
+sallitut luokat; MSI-loki ja descriptor pysyvät ajon yksityisessä juuressa.
+Ensimmäisen epäonnistumisen tai epävarman siivouksen aineistoa ei poisteta.
+Koe täydentää, ei korvaa oikean EKY-paketin legacy-, clean-, repair-,
+uninstall-, downgrade- ja rollback-portteja. Ajantasainen hyväksyntätila on
+[M1:n asennuskorjauksen päätöksessä](release-0.3.0-m1-preparation-plan.md#asennuskorjauksen-päätös).
 
 ### Workspace-asennusodotuksen havaintoraja
 

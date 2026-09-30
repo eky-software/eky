@@ -189,8 +189,11 @@ Installerin deterministiset sopimustestit ajetaan komennolla
 `pnpm --filter @eky/desktop installer:test:unit`. Oikeita Windows-prosesseja
 käynnistävät prosessisopimustestit ajetaan erikseen ja sarjassa komennolla
 `pnpm --filter @eky/desktop installer:test:windows-process`. Yhdistelmäkomento
-`pnpm --filter @eky/desktop installer:test` ajaa molemmat ryhmät tässä
-järjestyksessä, eikä samaa testiä saa sisällyttää kumpaankin ryhmään.
+`pnpm --filter @eky/desktop installer:test` ajaa yksikkötestit, rajatut
+`installer:test:msi-file-policy`-sopimustestit ja Windows-prosessitestit tässä
+järjestyksessä. Samaa testiä ei sisällytetä useampaan ryhmään. Varsinainen
+[MSI-tiedostoversiosäännön asennuskoe](windows-installer-acceptance-harness-v2.md#msi-tiedostoversiosäännön-koe)
+on erillinen, vain hallitussa Windows-CI:ssä suoritettava portti.
 Prosessikomento rakentaa nykyisen V2-supervisorin ennen rollback-bootstrapin
 sopimusta. Synteettinen helper jää saman Job Object -puun omistukseen;
 tuotannon launcher ja jaeltava payload eivät sisällä testifixtureä.
