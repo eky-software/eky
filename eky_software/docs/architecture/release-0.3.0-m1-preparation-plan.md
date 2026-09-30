@@ -13,7 +13,7 @@ hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohd
 | Mainin omat portit | [Normaali CI 36491715165](https://github.com/eky-software/eky/actions/runs/36491715165), yritys 1: kaikki 38 vaadittua ryhmää läpäisivät; vain nimenomaisesti valinnainen diagnostiikkakoe ohitettiin. Linux system 695/695, kriittinen web 37/37 ja Windowsin kriittinen Electron 38/38 vastasivat ajovalintojaan ilman retryä, flakyä tai puuttuvia tapauksia. Neljän artifact-tuottajan ja kymmenen packaged-kuluttajan identiteetit ja elinkaarinäyttö hyväksyttiin. [Saman revision riippuvuustarkistus 36491789402](https://github.com/eky-software/eky/actions/runs/36491789402) läpäisi. |
 | Suljettu työ | T1/R27:n ajokytkentä, T2/R29:n puhtaan valmistelun suoja ja T3/R28:n todellisten kuluttajien koko prosessipuun omistajuus. Korvatut aktiiviset fallbackit on poistettu ja [pysyvä T3-matriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus) hyväksytty. PR #281 sulki tämän jälkeisen rollback-testiapurin integraatiojatkon. |
 | Avoimet havainnot | Aiemmat satunnaiset Electron-käynnistys- ja packaged/legacy-timeoutit säilyvät epäonnistuneina havaintoina omille revisioilleen. Myöhempi vihreä ajo ei todista niiden kaikkia syitä korjatuiksi. [Hylkäysten historia](e2e-test-environment-history.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko) ja [rajattu apurikorjaus](e2e-test-environment-history.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus) erotetaan toisistaan. |
-| Seuraava työ | Electron `43.7.6` ja Undici `7.29.1` ovat jo toteutettuja täsmäpäivityksiä; `better-sqlite3 13.0.2` säilyy. Ei uutta päivityskierrosta eikä turvallisuuskorjausten lykkäystä. Hyväksytyn [asennuskorjauksen](#asennuskorjauksen-päätös) regressiot ja hiljaisen legacy-päivityksen oikea pakettikoe läpäisivät. Revision `0fa4c2f3` täydentävä koe todensi myös UI-oletuksen, eksplisiittisen ohituksen ja uudemman tiedostoversion suojan. Varmenna paikallinen integraatiocheckpoint, sitten yksi normaali PR-hyväksyntäkierros jäädytetystä revisiosta ja normaalin mergen jälkeen mainin omat portit. Audit, toimintatestit ja main-haaran Dependabot-hälytysten sulkeutuminen todennetaan erikseen. Vasta integraation jälkeen A1/R01:n aloitusportti ja [avattavan luonnoksen kohteen suunnitelma](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde). |
+| Seuraava työ | Electron `43.7.6` ja Undici `7.29.1` ovat jo toteutettuja täsmäpäivityksiä; `better-sqlite3 13.0.2` säilyy. Hyväksytyn [asennuskorjauksen](#asennuskorjauksen-päätös) kohdennetut portit läpäisivät. Revision `fa343f19` PR-hylkäyksen jälkeen hyväksytty [valmiuskyselyhavainto on todennettu](#valmiuskyselyhavainnon-todennus). Seuraavaksi muutospaketin lopullinen katselmus ja uuden jäädytetyn revision normaali PR-kierros. Alkuperäisen timeoutin juurisyytä ei väitetä ratkaistuksi; A1 odottaa V2:n ja mainin omia portteja. Audit, toimintatestit ja main-haaran Dependabot-hälytysten sulkeutuminen todennetaan erikseen. |
 | Ei vielä valmis | A1-A3, W7, M1:n muu sovellustyö ja koko 0.3.0. Testiperustan hyväksyntä ei hyväksy niiden tulevaa toteutusta tai muuttunutta liiketoimintasääntöä. |
 
 Hyväksyntä on sidottu yllä olevaan revisioon, ei automaattisesti myöhempään
@@ -45,7 +45,7 @@ paikallisia liitepolkuja tai tutkimustietoja ei siirretä dokumentaatioon.
 | V1a: syntypaikka ja viesti | Electronin E2E-backendin runner hukkaa poikkeuksen ja lähettää vain vaiheen. Brokerin sulkemisvirhe voi estää viestin. Omistaja: `apps/desktop/e2e` ja sen tiukka status-sopimus. | Suljettu syyluokitus tai `unknown`, täsmällinen lähettäjä/parseri/vastaanottaja, ensivirheen säilyminen ja brokerien erilliset sulkutulokset. Nopeat sopimus- ja vuotosuojatestit; ei tuotantokoodin muutosta. |
 | V1b: säilyminen ja raportti | Prosessin muistihavainto voi puuttua poistumisen jälkeen; CI:n testikooste yleistää virheen `testError`-tasolle. Omistaja: nykyinen native-havaintotiedosto, Electron-fixture ja turvallinen CI-raportoija. | Todellinen ennen ensimmäistä ikkunaa epäonnistuva prosessiketju säilyttää tunnetun syyn lopullisessa suoritusyrityskohtaisessa raportissa. Testitapaus, suoritusyritys (`attempt`) ja käynnistyssukupolvi eivät sekoitu. Puuttuva/myöhäinen havainto, raportointivirhe ja epävarma cleanup pysyvät näkyvinä erillään. Nykyinen onnistumispolku säilyy. |
 | V2a: riippuvuuden hyväksyntä | Hyväksytyn Electron-päivityksen runtime-/native- ja integraatioportit ovat kesken. Omistaja: [riippuvuusarvio](local-desktop-dependency-review.md#electron-4376--turvallisuuspäivitys). | Nykyisen täsmäversion, `better-sqlite3 13.0.2`:n ja synteettisen packaged-/palautuspolun portit sekä ennalta nimetyt vakausajot; lopullisen revision PR/main-todennus. |
-| V2b: pakollisten porttien hylkäykset | Hyväksytyn `brace-expansion 5.0.12` -korjauksen kohde-, auditointi- ja tuore packaged-/palautusnäyttö läpäisivät. Revision `416d06f3` ensimmäinen PR-ajo hylkäsi raportointiregression keräyksen sekä molempien legacy-toistojen `targetPayload`-vaiheen. Raportoinnin build-riippuvuus on rajattu ja korjattu alemmilla testeillä. Samojen legacy-pakettien rajattu koe vahvisti kolmen vanhan Electron-kirjaston säilymisen MSI:n samaversion korvaussäännön vuoksi; omistaja hyväksyi `emus`-asennuskorjauksen ja testauksen. Aiempi runtime-/endurance-näyttö ja ajoitushylkäykset säilyvät erillisinä; PR/main-portit ovat avoimia. | Korjaa varmennettu asennuspuute omistavassa vastuussa ja lisää regressio. Muuttumaton erillinen läpäisy ei sulje alkuperäisen vian syytä. Historiallisten hylkäysten täydellinen jälkiselitys ei ole uusi hyväksyntäehto. |
+| V2b: pakollisten porttien hylkäykset | Raportoinnin keräysriippuvuus ja MSI:n samaversion korvaussääntö on korjattu; rajatut portit ja revision `fa343f19` normaalin PR-ajon installer-/legacy-ryhmät läpäisivät. Uusin hylkäys on backup-fixturen valmistelubackendin valmiusraja ennen Electronin käynnistystä. Omistaja: `apps/e2e`-valmistelu; [hyväksytty lisähavainto ja rajaus](#normaalin-pr-kierroksen-valmisteluhylkäys). | Todista viimeisen valmiuskyselyn suljettu luokka ja säilyminen ennen siivousta, sitten yksi kohdennettu Windowsin kriittinen Electron-ajo. PR/main vaatii oman hyväksynnän; läpäisy ei todista vanhan timeoutin syytä. Historiallisten hylkäysten täydellinen jälkiselitys ei ole uusi hyväksyntäehto. |
 
 V1 toteutetaan ensin. V1a käyttää alkuperäisen poikkeuksen rajattua
 koodiluokitusta ennen siivousta; vaihe ei ole juurisyy. V1b käyttää nykyistä
@@ -275,6 +275,71 @@ poistuivat ennen synteettisen juuren siivousta. Seuraavaksi vaaditaan
 lopullisen revision oma PR/main-todennus; V2 ei ole vielä suljettu.
 Paketointiketjun päivitys ei muuta aiemmin hyväksyttyjä sovelluksen
 endurance-polkuja; niitä ei avata uudelleen ilman omaa muutosperustetta.
+
+### Normaalin PR-kierroksen valmisteluhylkäys
+
+Revision `fa343f19970aa14f088d0f664374f7f76a4debd7`
+[normaali PR-ajo 36776623662](https://github.com/eky-software/eky/actions/runs/36776623662),
+suoritusyritys 1, päättyi hylätyksi. Todellinen PR-checkout oli
+`7b98ec3648ea2b3f363d95b2b85787cfd1f018a0`. Ryhmistä 36 onnistui,
+Electron-ryhmä ja sen vuoksi koonti hylättiin; kaksi ennalta valinnaista
+diagnostiikkaryhmää ohitettiin. Riippuvuustarkistus
+[36776622975](https://github.com/eky-software/eky/actions/runs/36776622975)
+läpäisi omana porttinaan. Tämä ei sulje mainin riippuvuushälytyksiä.
+
+`DESK-WORKSPACE-IMPORT-001`:n ensimmäinen testisuoritusyritys pysähtyi
+synteettisen varmuuskopion valmistelubackendin 45 sekunnin valmiusrajaan
+(`E2E_BACKEND_HEALTH_TIMEOUT`). Electronia tai testin käyttäjäpolkua ei
+vielä käynnistetty. Nykyinen lifecycle-liite säilytti valmisteluvaiheen,
+prosessin käynnistyshavainnon, ennen siivousta havaitun poistumisen
+puuttumisen sekä varmennetun prosessipuun ja portin siivouksen.
+Kuunteluilmoitusta ei havaittu; nykyisen sopimuksen mukaan se ei yksin
+todista kuuntelun puuttumista. Testijuuri säilytettiin.
+
+Automaattinen toinen testisuoritusyritys läpäisi, mutta `failOnFlakyTests`
+hylkäsi ryhmän oikein. Ensimmäinen loki ja lifecycle-liite säilyvät
+erillisinä; toinen yritys ei todista vian korjaantumista. Muut
+asennus-/palautusryhmät, myös molemmat legacy-toistot, onnistuivat. Niiden
+läpäisy ei korvaa Electron-ryhmän tai koko integraation hyväksyntää.
+
+Omistaja on `apps/e2e`-valmistelu yhdessä erillisen `apps/backend/e2e`-
+entrypointin kanssa. Nykyinen näyttö ei yksilöi sisäisen käynnistyksen
+pysähtymiskohtaa tai syytä. Omistaja hyväksyi rajatun lisähavainnon:
+viimeisen valmistelubackendin valmiuskyselyn tulos säilytetään suljettuna
+luokkana nykyisessä lifecycle-liitteessä. Yhteyden torjunta, kyselyn oma
+aikakatkaisu, virhevastaus ja muu yhteysvirhe erotetaan; onnistunut kysely
+ja havainnon puuttuminen eivät sekoitu. Havainto jäädytetään ennen siivousta.
+Ei raakavirhettä, osoitetta, polkua, vastaussisältöä tai uutta kirjoitinta.
+
+Rajatut regressiot ja katselmus tehdään ennen yhtä kohdennettua Windowsin
+kriittistä Electron-ajoa. Tuotantobackendiä, aikarajoja, retry-ehtoja,
+sisältövertailuja tai T3:n prosessiomistajuutta ei muuteta. Lisähavainto tai
+uuden kokeen läpäisy ei yksin todista alkuperäisen aikakatkaisun syytä.
+V1:n suljettua Electron-virhetietoketjua ei avata uudelleen ilman siihen
+kohdistuvaa löydöstä. V2, PR/main ja A1 ovat auki.
+
+### Valmiuskyselyhavainnon todennus
+
+Hyväksytty lisähavainto on toteutettu nykyiseen E2E-valmiuskyselyyn ja
+valmisteluvirheen lifecycle-liitteeseen. Suljetut luokat ja ennen siivousta
+jäädytetty havainto eivät muuta onnistumista, aikarajoja, retryjä tai
+prosessiomistajuutta. Tuotantokoodi, riippuvuudet ja CI-vaatimukset säilyvät.
+
+Rajattu lopullinen sopimussarja läpäisi 146/146, nykyinen CI-raportointi
+41/41 ja viereinen web-/HTTP-sopimus 12/12. Tyyppitarkistus ja riippumaton
+lähdekatselmus läpäisivät. Ensimmäisen regressioajon yksi uusi synteettinen
+testiodotus ei reagoinut peruutukseen; se korjattiin vain testifixtureen
+ja ensitulos säilytettiin. Tämä ei ollut todettu runtime-vika.
+
+Yksi hyväksytty Windowsin kriittinen Electron-ajo läpäisi 39/39 ilman
+retryä, flaky-tulosta tai ohituksia. Myös aiemmin hylätty backup-importin
+valmistelu ja käyttäjäpolku läpäisivät. Ajon lähdesidonta tarkistettiin
+ennen dokumentoinnin tulospäivitystä. Tämä on lisähavainnon ja nykyisen
+onnistumispolun todennus, ei alkuperäisen CI-timeoutin syytodiste.
+
+Seuraavaksi vaaditaan lopullisen muutospaketin normaali PR-todennus ja
+mahdollisen hyväksytyn mergen jälkeen mainin omat portit. Ensimmäinen
+CI-hylkäys säilyy erillisenä. V1 pysyy suljettuna; V2 ja A1 ovat avoimia.
 
 ### V2:n ensimmäisen PR-ajon rajatut esteet
 

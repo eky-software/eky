@@ -70,6 +70,13 @@ Integraatiotarkistuksen pakettivälimuistin testiaikakatkaisu käsitellään
 säilyttäen molemmat keskeytyshaarat, täsmälliset sisältöehdot ja aikarajan.
 [M1:n nykyinen checkpoint](release-0.3.0-m1-preparation-plan.md#v2n-nykyinen-hyväksyntächeckpoint)
 omistaa tarkemman näytön ja V2:n sulkemisehdot.
+Revision `fa343f19` normaali PR-kierros hylkäsi backup-fixturen
+valmistelubackendin valmiusodotuksen ennen Electronin käynnistystä.
+Ensivirheen ja siivouksen tiedot säilyivät; automaattisen toisen yrityksen
+läpäisy ei hyväksy kierrosta. Hyväksytty [rajattu valmiuskyselyhavainto ja sen todennus](release-0.3.0-m1-preparation-plan.md#valmiuskyselyhavainnon-todennus)
+on toteutettu. Seuraavaksi vaaditaan uuden revision normaali PR-todennus;
+alkuperäisen timeoutin syytä ei väitetä ratkaistuksi. Ei asennuskorjauksen
+tai T3:n uutta toteutusta.
 Seuraava tuotantopala on [A1/R01](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde)
 uuden preflightin ja omistavan aloitusportin kautta. Laaja ohjeverkon
 tarkistus pysyy [M3:n I-paketissa](#m3-muut-invariantit-diagnostiikka-ja-ylläpidettävyys);

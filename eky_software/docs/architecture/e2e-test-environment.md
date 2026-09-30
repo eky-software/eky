@@ -417,6 +417,19 @@ siivoustulokset. Tuntematon valmisteluvirhe ei väitä näitä varmistetuiksi.
 Kuunteluilmoitus on rajatun diagnostiikkapuskurin havainto, ei health-signaali
 tai ajastusprotokolla; sen puuttuminen ei todista kuuntelun puuttumista.
 Raakaa tulostetta, alkuperää tai porttinumeroa ei kopioida liitteeseen.
+`preparation.backend.lastHealthProbe` säilyttää viimeisen valmistuneen
+valmiuskyselyn luokan: `healthy`, `connectionRefused`, `requestTimedOut`,
+`responseNotOk` tai `transportFailed`. `notObserved` tarkoittaa, ettei
+valmistunutta kyselyhavaintoa ole; kesken oleva kysely ei ole aikakatkaisu.
+Kyselyn oma aikaraja erotetaan kutsujan peruutuksesta. `healthy` kertoo
+vain kyselyn vastauksesta, ei koko käynnistyksen tai omistajan hyväksynnästä.
+Havainto päivittyy vain muistissa ja jäädytetään ennen siivousta; myöhäinen
+tulos ei korvaa ensivirheen aineistoa. Ei uutta kirjoitusta tai kuittauksen
+odotusta kriittiselle polulle. Vastauskoodia, bodya, otsakkeita tai raakaa
+transport-virhettä ei julkaista. Luokka on lisähavainto, ei juurisyy.
+Rajatut regressiot kattavat [kyselyn luokat ja peruutuksen](../../apps/e2e/tests/system/httpHealthProbeEvidence.spec.ts),
+[backend-kytkennän ja jäädytyksen](../../apps/e2e/tests/system/e2eBackendStartupLifecycle.spec.ts)
+sekä [lopullisen lifecycle-liitteen](../../apps/e2e/tests/system/electronFixtureLifecycle.spec.ts).
 Tulosteen lukijan tai raportoinnin virhe ei peitä käynnistysvirhettä;
 prosessin tai portin epävarma siivous säilyy erillisenä epäonnistumisena.
 Valmistelun raportointiraja ei omista siivousta eikä poista testijuurta.

@@ -21,7 +21,7 @@ import {
 import { OwnedWindowsBackendStartupFailure, startOwnedWindowsBackend } from './startOwnedWindowsBackend.js';
 import { OwnedLinuxServiceStartupFailure, startOwnedLinuxBackend } from './startOwnedLinuxBackend.js';
 import { beforeBackendOwnerDeadline } from './windowsBackendServiceControl.js';
-import { waitForHttpHealth } from './waitForHttpHealth.js';
+import { readHttpHealthProbeOutcome, waitForHttpHealth, type HttpHealthProbeOutcome } from './waitForHttpHealth.js';
 import { waitForLoopbackPortRelease } from './waitForLoopbackPortRelease.js';
 import { writeE2eBackendConfig } from './writeE2eBackendConfig.js';
 
@@ -42,6 +42,7 @@ export interface E2eBackendStartupFailureEvidence {
   readonly spawnObserved: boolean;
   readonly exitedBeforeCleanup: boolean;
   readonly listeningNotice: 'observed' | 'notObserved' | 'unavailable';
+  readonly lastHealthProbe: HttpHealthProbeOutcome | 'notObserved';
   readonly cleanup: Readonly<{
     processTree: 'stopped' | 'unverified';
     port: 'released' | 'unverified';
@@ -58,6 +59,7 @@ export class E2eBackendStartupFailure extends Error {
       spawnObserved: evidence.spawnObserved,
       exitedBeforeCleanup: evidence.exitedBeforeCleanup,
       listeningNotice: evidence.listeningNotice,
+      lastHealthProbe: readHttpHealthProbeOutcome(evidence.lastHealthProbe),
       cleanup: Object.freeze({
         processTree: evidence.cleanup.processTree,
         port: evidence.cleanup.port,
@@ -133,11 +135,12 @@ export async function startE2eBackendProcess(input: {
     backendOrigin,
     managedProcess: { ...managedProcess, startup },
     observe,
-    waitForHealth: async (signal) => {
+    waitForHealth: async (signal, onProbeCompleted) => {
       const remaining = Math.floor(startupDeadline - performance.now());
       if (remaining <= 0) throw new Error('E2E_BACKEND_HEALTH_TIMEOUT');
       await waitForHttpHealth(`${backendOrigin}/health`, {
         signal,
+        onProbeCompleted,
         timeoutMilliseconds: remaining,
       });
       const state = await beforeBackendOwnerDeadline(workload.readState(), startupDeadline);
@@ -192,7 +195,7 @@ export async function reportOwnedBackendStartupFailure(input: {
   throw new E2eBackendStartupFailure({
     errorCode, spawnObserved: error.evidence.spawnObserved,
     exitedBeforeCleanup: error.evidence.exitedBeforeCleanup,
-    listeningNotice: readListeningNotice(output, input.backendOrigin), cleanup,
+    listeningNotice: readListeningNotice(output, input.backendOrigin), lastHealthProbe: 'notObserved', cleanup,
   });
 }
 
@@ -202,12 +205,14 @@ export async function waitForE2eBackendStartup(input: {
     readonly startup: E2eProcessStartupObservation;
   };
   readonly observe: ReturnType<typeof createE2eBackendStartupReporter>;
-  waitForHealth(signal: AbortSignal): Promise<void>;
+  waitForHealth(signal: AbortSignal, onProbeCompleted: (outcome: HttpHealthProbeOutcome) => void): Promise<void>;
   stopProcessTree(): Promise<void>;
   releasePort(): Promise<void>;
 }): Promise<void> {
   const startup = input.managedProcess.startup;
   let spawnObserved = false;
+  let lastHealthProbe: E2eBackendStartupFailureEvidence['lastHealthProbe'] = 'notObserved';
+  let observationSealed = false;
   const reportSpawn = () => {
     const state = startup.readState();
     if (state.spawnObserved && !spawnObserved) {
@@ -221,10 +226,13 @@ export async function waitForE2eBackendStartup(input: {
     await waitForManagedBackendHealth({
       startup,
       observe: input.observe,
-      waitForHealth: input.waitForHealth,
+      waitForHealth: (signal) => input.waitForHealth(signal, (outcome) => {
+        if (!observationSealed && !signal.aborted) lastHealthProbe = readHttpHealthProbeOutcome(outcome);
+      }),
     });
   } catch (error) {
     // Capture before cleanup, which can itself change process/output state.
+    observationSealed = true;
     const output = readStartupOutput(input.managedProcess);
     const errorCode = resolveStartupErrorCode(error, output);
     const state = startup.readState();
@@ -237,9 +245,11 @@ export async function waitForE2eBackendStartup(input: {
       spawnObserved: spawnedBeforeCleanup,
       exitedBeforeCleanup,
       listeningNotice,
+      lastHealthProbe,
       cleanup,
     }));
   } finally {
+    observationSealed = true;
     unsubscribe();
   }
 }

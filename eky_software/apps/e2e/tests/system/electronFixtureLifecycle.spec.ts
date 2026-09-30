@@ -69,6 +69,7 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
       spawnObserved: true,
       exitedBeforeCleanup: false,
       listeningNotice: 'notObserved',
+      lastHealthProbe: 'connectionRefused',
       cleanup: { processTree: 'unverified', port: 'released' },
       privateDetail: 'private process output',
     } as E2eBackendStartupFailureEvidence);
@@ -93,7 +94,7 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
       expect(Object.isFrozen(original.evidence)).toBe(true);
       expect(Object.isFrozen(original.evidence.cleanup)).toBe(true);
       expect(Object.keys(evidence.preparation.backend).sort()).toEqual([
-        'cleanup', 'errorCode', 'exitedBeforeCleanup', 'listeningNotice', 'spawnObserved',
+        'cleanup', 'errorCode', 'exitedBeforeCleanup', 'lastHealthProbe', 'listeningNotice', 'spawnObserved',
       ]);
       expect(text).not.toMatch(/private|session|path|http/);
       expect(testInfo.attachments.some((item) => item.name === 'electron-lifecycle')).toBe(true);
