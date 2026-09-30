@@ -76,8 +76,9 @@ riippuvuutta, aikarajojen lievennystä tai raakajälkien julkaisua. Laajempi
 aikajana ja virheen lähderivi eivät kuulu automaattisesti V1:een. Uusi
 löydös kuuluu mukaan vain muutoksen regressiona tai pakollisen hyväksynnän
 esteenä; muita parannuksia käsitellään myöhemmin. Kahden viikon tavoite ei
-muuta hyväksyntää. Molemmat välitavoitteet ovat vielä avoimia; koko 0.3.0:n
-julkaisu ei kuulu tähän rajaukseen.
+muuta hyväksyntää. V1 on suljettu alla nimetyllä revisionäytöllä; V2:n
+hyväksyntä ja integraatio ovat vielä avoimia. Koko 0.3.0:n julkaisu ei kuulu
+tähän rajaukseen.
 
 ### V1:n ensimmäinen toteutuscheckpoint
 
@@ -97,7 +98,7 @@ ja backend-yritysarvot. Rajattu riippumaton staattinen katselmus ei löytänyt
 uusia regressioita. Tämä on sopimus-/integraatiotason näyttöä, ei oikean
 Electron-prosessirajan, satunnaisen käynnistysvian tai koko V1:n hyväksyntä.
 
-### V1b:n toteutus ja avoin todennus
+### V1b:n toteutus ja todennus
 
 Työpuuhun on lisätty nykyisen CI-raportoijan suljettu syyprojektio,
 lähteen kanssa yhteinen koodiluettelo, suorituskohtaiset tuloshakemistot
@@ -137,9 +138,29 @@ Tavallinen eristetty käynnistys ja tarkka runtime-tunnistus läpäisivät 2/2.
 ja rajatun vikavalinnan regression ilman prosessikäynnistystä. Tämä ei
 korvaa yllä olevaa oikean prosessirajan koetta.
 
-V1:n loppukatselmus, viimeisten muutosten tyypitys ja revision lukitseminen
-ovat seuraava portti. Sen jälkeen jatketaan V2:n jo sovittuihin testeihin;
-tämä checkpoint ei hyväksy koko Electron-päivitystä, CI:tä tai integraatiota.
+V1:n toteutus on lukittu revisioon
+`8bcf1c7484cc3e9693306f7abd0d0cdad5d3fda3`. Loppukatselmus sekä E2E- ja
+desktop-E2E-tyypitys läpäisivät. Oikeaprosessikokeen toteutustiedostot
+säilyivät samoina; sitä seurasi vain pysyvä konfiguraatioregressio ja
+dokumentoinnin checkpoint. Näin V1:n rajattu virhetietoketju on suljettu.
+Tämä ei vielä hyväksy koko Electron-päivitystä, CI:tä tai integraatiota.
+
+### V2:n nykyinen hyväksyntächeckpoint
+
+V1-revision tavallinen workspace-testisarja pysähtyi olemassa olevan
+`workspaceRegistryBoundaries.test.ts`-rajatestin viiden sekunnin
+aikakatkaisuun. Virhe kuuluu alemman tason lähdekoodinlukutestiin, ei
+Electronin käynnistyshavaintoon. Alkuperäinen hylkäys säilytetään.
+
+Testin sarjallinen tiedostonluku korvataan saman testin sisällä enintään
+kahdeksan lukemisen erillä. Tiedostojoukko, import-tulkinta, virheiden
+tarkistusjärjestys ja aikaraja säilyvät. Aloitetun erän kaikki lukemiset
+valmistuvat ennen virheen välitystä; lukuvirhe pysäyttää seuraavan erän.
+Rajattu 11/11-regressiosarja ja desktopin tyypitys läpäisivät. Tämä todentaa
+lukutavan, kattavuuden ja virheiden säilymisen, mutta ei yksin selitä
+alkuperäisen kokonaissarjan kuormituksen tarkkaa vaikutusta tai hyväksy
+normaalia workspace-sarjaa. Katselmoinnin jälkeen jatketaan sen nimettyyn
+ajoon muuttuneella lähteellä ja edelleen V2:n nykyisiin portteihin.
 Aikarajat, testivaatimukset ja aiemmat hylkäykset säilyvät ennallaan.
 
 ## Ohje ja historia

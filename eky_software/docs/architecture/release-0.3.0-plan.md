@@ -43,8 +43,11 @@ korvaa kokonaisen testisarjan hyväksyntää.
 Omistajan hyväksymä rajattu jatko erottaa
 [V1:n virhetietoketjun ja V2:n runtime-/integraatioportit](release-0.3.0-m1-preparation-plan.md#rajattu-ongelmalista).
 V1:n oikeaprosessikoe säilytti tunnetun backend-syyn lopulliseen raporttiin
-ja seuraavien ajojen yli; tavallinen käynnistyspolku läpäisi. Loppukatselmus
-ja revision lukitseminen edeltävät V2:n puuttuvia hyväksyntäajoja.
+ja seuraavien ajojen yli; tavallinen käynnistyspolku läpäisi. V1 on suljettu
+revisioon `8bcf1c74` loppukatselmuksen ja tyyppitarkistusten jälkeen.
+V2:n normaali sarja pysähtyi lähdekoodin moduulirajojen lukutestin
+aikakatkaisuun. Sen testikohtainen lukutapakorjaus ja puuttuvat
+hyväksyntäajot jatkuvat M1:n nykyisessä rajauksessa.
 Seuraava tuotantopala on [A1/R01](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde)
 uuden preflightin ja omistavan aloitusportin kautta. Laaja ohjeverkon
 tarkistus pysyy [M3:n I-paketissa](#m3-muut-invariantit-diagnostiikka-ja-ylläpidettävyys);
