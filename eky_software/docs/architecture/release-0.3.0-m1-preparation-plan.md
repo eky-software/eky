@@ -404,6 +404,20 @@ puuttuvan säännön odotetulla koodilla. Riippumaton katselmointi ei löytänyt
 korjattavaa. Nämä eivät vielä todista korjatun paketin asennusta tai
 hyväksy V2:ta; oikean paketin ja PR/main-porttien näyttö on kesken.
 
+Ensimmäinen [korjatun paketin koe 36741073269](https://github.com/eky-software/eky/actions/runs/36741073269)
+revisiosta `9b863587` läpäisi kaikki 12 sopimusajoa mutta pysähtyi
+tuottajan omaan workflow-sopimukseen ennen paketin rakentamista.
+Legacy-ryhmien tarkasta odotuslistasta puuttui aiemmin ajokomentoon lisätty
+`legacyPayloadObservation.test.mjs`: toteutunut tiedostojoukko sisälsi
+44 nimeä, odotettu 43. Kyse ei ollut asennuksen tai prosessien hylkäyksestä.
+Sama virhe toistettiin rajatusti ennen puuttuvan nimen lisäämistä;
+tarkka joukkovertailu ja duplikaattien esto säilyvät. Pakettikuluttajat
+eivät käynnistyneet eikä tästä ajosta syntynyt hyväksyttävää pakettia.
+Ensivirhe säilyy. Korjauksen jälkeen koko tuottajan sopimussarja läpäisi
+63/63 testiä; riippumaton katselmointi varmisti täsmällisen inventaarion
+säilymisen. Seuraavaksi vaaditaan uusi rajattu pakettikoe uudesta
+jäädytetystä revisiosta, ei alkuperäisen epäonnistuneen ajon uusintaa.
+
 ## Ohje ja historia
 
 - Uusi tai muuttuva testi: [testinkirjoittajan pikaohje](../ai/e2e-test-authoring-guide.md).

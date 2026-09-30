@@ -555,7 +555,7 @@ test('legacy contract groups partition the complete existing inventory without o
       'legacyCallerResult', 'legacyCommandCompletion.process',
       'legacyCommandEntrypoint.process', 'workspaceSuccessCommandEntrypoint.process', 'workspaceFaultCommandEntrypoint.process',
       'legacyUpgradeBudget', 'legacyUpgradeFilesystem', 'legacyUpgradeContracts', 'legacyUpgradeFailureBoundary',
-      'legacyUpgradeLifecycle', 'legacyUpgradePostcondition', 'legacyUpgradeProfileEvidence', 'legacyUpgradeSourceSmoke',
+      'legacyUpgradeLifecycle', 'legacyPayloadObservation', 'legacyUpgradePostcondition', 'legacyUpgradeProfileEvidence', 'legacyUpgradeSourceSmoke',
       'legacyUpgradeStartupObserver', 'legacyUpgradeWindowsRuntime', 'fixtures/windowsApplicationCloseFixtureIdentity',
       'requestWindowsApplicationClose', 'legacyUpgradeAdmission', 'runLegacyUpgradeWorker',
       'upgradeRollbackPostSupervisorWindowsRuntime'].map((name) => `installer/windows-acceptance-harness/${name}.test.mjs`),
