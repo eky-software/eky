@@ -45,7 +45,7 @@ paikallisia liitepolkuja tai tutkimustietoja ei siirretä dokumentaatioon.
 | V1a: syntypaikka ja viesti | Electronin E2E-backendin runner hukkaa poikkeuksen ja lähettää vain vaiheen. Brokerin sulkemisvirhe voi estää viestin. Omistaja: `apps/desktop/e2e` ja sen tiukka status-sopimus. | Suljettu syyluokitus tai `unknown`, täsmällinen lähettäjä/parseri/vastaanottaja, ensivirheen säilyminen ja brokerien erilliset sulkutulokset. Nopeat sopimus- ja vuotosuojatestit; ei tuotantokoodin muutosta. |
 | V1b: säilyminen ja raportti | Prosessin muistihavainto voi puuttua poistumisen jälkeen; CI:n testikooste yleistää virheen `testError`-tasolle. Omistaja: nykyinen native-havaintotiedosto, Electron-fixture ja turvallinen CI-raportoija. | Todellinen ennen ensimmäistä ikkunaa epäonnistuva prosessiketju säilyttää tunnetun syyn lopullisessa suoritusyrityskohtaisessa raportissa. Testitapaus, suoritusyritys (`attempt`) ja käynnistyssukupolvi eivät sekoitu. Puuttuva/myöhäinen havainto, raportointivirhe ja epävarma cleanup pysyvät näkyvinä erillään. Nykyinen onnistumispolku säilyy. |
 | V2a: riippuvuuden hyväksyntä | Hyväksytyn Electron-päivityksen runtime-/native- ja integraatioportit ovat kesken. Omistaja: [riippuvuusarvio](local-desktop-dependency-review.md#electron-4376--turvallisuuspäivitys). | Nykyisen täsmäversion, `better-sqlite3 13.0.2`:n ja synteettisen packaged-/palautuspolun portit sekä ennalta nimetyt vakausajot; lopullisen revision PR/main-todennus. |
-| V2b: pakollisten porttien hylkäykset | Avoimina ovat Electronin käynnistysvirhe, moduulirajojen alemman tason testin timeout ja stress-testin näkymäsiirtymän hylkäys. Niitä ei nimetä samaksi juurisyyksi. | Rajaa nykyistä hyväksyntää estävä vika näytöstä, korjaa omistavassa vastuussa ja lisää regressio. Muuttumaton erillinen läpäisy ei sulje alkuperäisen vian syytä. Historiallisten hylkäysten täydellinen jälkiselitys ei ole uusi hyväksyntäehto. |
+| V2b: pakollisten porttien hylkäykset | Avoimina ovat Electronin käynnistysvirhe, päivityspaketin rollback-testin timeout ja stress-testin näkymäsiirtymän hylkäys. Neljän lähdekoodirajojen testin korjaus on läpäissyt normaalisarjassa alla nimetyllä revisiolla, mutta koko sarja ei vielä läpäissyt. Hylkäyksiä ei nimetä samaksi juurisyyksi. | Rajaa nykyistä hyväksyntää estävä vika näytöstä, korjaa omistavassa vastuussa ja lisää regressio. Muuttumaton erillinen läpäisy ei sulje alkuperäisen vian syytä. Historiallisten hylkäysten täydellinen jälkiselitys ei ole uusi hyväksyntäehto. |
 
 V1 toteutetaan ensin. V1a käyttää alkuperäisen poikkeuksen rajattua
 koodiluokitusta ennen siivousta; vaihe ei ole juurisyy. V1b käyttää nykyistä
@@ -177,9 +177,38 @@ Apurin puuttuminen tuotantobuildista tarkistettiin. Riippumaton katselmointi
 ei löytänyt vahvistettuja korjaustarpeita. Tämä todentaa lukutavan,
 kattavuuden ja virheiden säilymisen, mutta ei yksin selitä
 alkuperäisen kokonaissarjan kuormituksen tarkkaa vaikutusta tai hyväksy
-normaalia workspace-sarjaa. Seuraavaksi jatketaan sen nimettyyn ajoon
-muuttuneella lähteellä ja edelleen V2:n nykyisiin portteihin.
-Aikarajat, testivaatimukset ja aiemmat hylkäykset säilyvät ennallaan.
+normaalia workspace-sarjaa.
+
+Lukutavan korjaus lukittiin revisioon `31e7dcca`. Sen tavallisessa
+workspace-ajossa kaikki neljä lähdekoodirajojen testiä läpäisivät. Koko
+sarja pysähtyi erillisen `localUpdatePackageCache.test.ts`-palautustestin
+aikakatkaisuun ja sitä seuranneeseen siivousvirheeseen. Alkuperäisen
+aikakatkaisun tarkka syy ja siivousvirheen suhde siihen ovat vielä avoimia;
+tätä ei nimetä Electron-päivityksen tai tuotannon rollbackin virheeksi.
+
+Seuraava rajattu tutkimus lisää vain kyseiseen testiin nimetyt vaihehavainnot
+ja oman fixture-juurten kokoelman. Aikakatkaisu ei takaa asynkronisen rungon
+valmistumista: epäonnistuneen tai keskeneräisen rungon juuria ei anneta
+muiden testien siivottaviksi. Säilytetty hakemisto ei ole muuttumaton
+aikakatkaisuhetken snapshot, jos aloitettu operaatio vielä jatkuu.
+Raporttiin ei lisätä polkuja tai raakavirheitä. Rajattu 28/28-sarja ja
+desktopin tyypitys läpäisivät. Riippumaton katselmointi ei löytänyt
+vahvistettua korjaustarvetta. Seuraava ennalta nimetty tavallinen
+workspace-sarja läpäisi samoilla vaatimuksilla: desktop 1577/1577 ja
+253/253 script-sopimusta, backend 1365/1365 sekä web 665/665. Desktopin
+kolme ja backendin viisi ennestään ohitettua tapausta pysyivät ennallaan.
+E2E-paketin alemmat sopimussarjat läpäisivät 786/786 ja 515/515; ne eivät
+korvaa oikeita käyttäjäpolkuja. Testatun lähteen muuttumattomuus tarkistettiin.
+
+Erillinen tarkoituksella aikakatkaistu koe todensi keskeneräisen rungon
+turvallisen vaihehavainnon ja omistetun fixture-juuren säilymisen ilman
+siivousvirhettä. Sen hylkäys säilytettiin odotettuna vikakokeena, ei
+onnistuneena sovellustestinä. Tutkimuskokeen ensimmäinen nimivalinta ei
+valinnut testiä; sitä ei hyväksytty todisteeksi. Tavallisen testin aikarajaa
+ei muutettu. Tämä tarkentaa virhetodisteen säilymistä, mutta ei todista
+alkuperäisen kuormitetun timeoutin juurisyytä korjatuksi. Aiemmat hylkäykset
+säilyvät. Seuraavaksi ovat varsinaiset Electron-käyttäjäpolut ja V2:n muut
+nykyiset hyväksyntäportit.
 
 ## Ohje ja historia
 
