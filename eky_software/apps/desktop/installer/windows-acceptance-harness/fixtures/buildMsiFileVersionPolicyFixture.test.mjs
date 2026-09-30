@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { link, lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { link, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import test from 'node:test';
@@ -17,8 +17,8 @@ const NONCE = 'ab'.repeat(32);
 const GUID = /^\{[0-9A-F]{8}(?:-[0-9A-F]{4}){3}-[0-9A-F]{12}\}$/;
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 
-async function fixture(t) {
-  const directory = await mkdtemp(join(tmpdir(), 'eky-msi-policy-unit-'));
+async function fixture(t, temporaryParent = tmpdir()) {
+  const directory = await realpath(await mkdtemp(join(temporaryParent, 'eky-msi-policy-unit-')));
   const root = join(directory, 'preparation');
   await mkdir(root);
   const environment = {
@@ -183,6 +183,30 @@ test('prepares independent synthetic MSI pairs through only the injected executo
   }
   assert.notEqual(second.installRoot, result.installRoot);
   assert.notEqual(second.registryKey, result.registryKey);
+});
+
+test('canonicalizes a temporary parent alias without relaxing builder root admission', async t => {
+  const parent = await realpath(await mkdtemp(join(tmpdir(), 'eky-msi-policy-parent-')));
+  t.after(() => rm(parent, { recursive: true, force: true }));
+  const physical = join(parent, 'physical');
+  const alias = join(parent, 'alias');
+  await mkdir(physical);
+  await symlink(physical, alias, 'junction');
+  const input = await fixture(t, alias);
+  const aliasRoot = join(alias, basename(input.directory), 'preparation');
+  assert.equal((await lstat(aliasRoot)).isSymbolicLink(), false);
+  assert.notEqual(aliasRoot, await realpath(aliasRoot));
+  const rejected = fakeExecutor();
+  await assert.rejects(prepareMsiFileVersionPolicyFixture({
+    ...input, root: aliasRoot, execute: rejected.execute,
+  }), closedError('msiPolicyRequestInvalid'));
+  assert.equal(rejected.calls.length, 0);
+  assert.deepEqual(await readdir(input.root), []);
+
+  const accepted = fakeExecutor();
+  const result = await prepareMsiFileVersionPolicyFixture({ ...input, execute: accepted.execute });
+  assert.equal(result.root, await realpath(input.root));
+  assert.equal(accepted.calls.length, 8);
 });
 
 test('rejects production Type51 drift rather than silently authoring a different policy', async () => {

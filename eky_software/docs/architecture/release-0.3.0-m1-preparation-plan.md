@@ -527,6 +527,19 @@ supervisor-koetyönkulussa. Normaali Windows-contract-ajo sisältää samat
 regressiot ja varsinaisen synteettisen asennuskokeen; sen läpäisy sekä
 kolmen käyttäytymisehdon sulkeminen ovat vielä avoimia.
 
+Ensimmäinen [synteettisen kokeen CI-ajo 36768360138](https://github.com/eky-software/eky/actions/runs/36768360138)
+revisiosta `945039f4` pysähtyi valmistelun yksikkötesteihin: 27/47 läpäisi,
+ja ensimmäinen syy oli `msiPolicyRequestInvalid`. Supervisoria ei rakennettu
+eikä MSI-asennusta ajettu. Testifixturen väliaikaisjuurelta puuttui
+kanonisointi, vaikka valmistelija vaatii kanonisen juuren. Aliaksen kautta
+luotu juuritesti toisti hylkäyksen ennen korjausta; kanonisoinnin jälkeen
+48/48 kohdetestiä läpäisi. Sama regressio vaatii edelleen aliaksen
+hylkäämisen ennen yhtäkään työkalukutsua. Valmistelijan turvallisuusrajaa,
+asennussääntöä tai aikarajoja ei muutettu. Ensimmäisen CI-ajon tarkka
+polkualias ei ilmene säilyneestä lokista; korjaus ei vielä todista hosted-
+asennuskokeen läpäisyä. Seuraava rajattu koe ajetaan korjatusta jäädytetystä
+revisiosta, ei epäonnistuneen yrityksen uusintana.
+
 ## Ohje ja historia
 
 - Uusi tai muuttuva testi: [testinkirjoittajan pikaohje](../ai/e2e-test-authoring-guide.md).
