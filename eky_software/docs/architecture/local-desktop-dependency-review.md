@@ -257,6 +257,13 @@ Hyväksyntä ei kata WiX-extensioneita, custom actioneita, Burnia, uutta
 runtime-riippuvuutta, code signingia tai allekirjoittamattoman prototyypin
 jakelua oikeaan käyttöön.
 
+Omistaja hyväksyi 30.9.2026 yhden rajatun poikkeuksen custom action -kieltoon:
+MSI:n sisäinen Type 51 `EkySetReinstallMode` asettaa literaalin `emus`
+`REINSTALLMODE`-ominaisuuteen ennen costingia. Tarkka ehto, sekvenssit,
+tarkastin ja testaus omistetaan [asennussuunnitelmassa](windows-installer-and-update-plan.md#saman-tiedostoversion-korvaaminen).
+Poikkeus ei lisää ulkoista koodia, WiX-extensionia tai riippuvuutta eikä
+salli muita custom actioneita tai ICE-validoinnin heikentämistä.
+
 Paketit eivät kuulu domainiin, application serviceihin, API-clientiin,
 web-featureihin tai backendin liiketoimintamoduuleihin.
 

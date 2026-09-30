@@ -394,7 +394,7 @@ PR/main-portit säilyvät. Diagnostiikkakoe ei hyväksy korjattua pakettia.
 Laajempi `amus`-pakotus, companion-versionoinnin uusi omistajuussopimus
 tai asennussekvenssin siirto eivät kuulu ehdotukseen.
 
-Rajattu toteutus lisää `emus`-arvon asentimeen ja tarkastaa sen valmiin
+Ensimmäinen toteutus lisäsi `emus`-arvon asentimeen ja tarkasti sen valmiin
 MSI:n Property-taulusta ennen sidecarin julkaisua. Väärä tai puuttuva
 arvo sekä erikseen asetettu `REINSTALL` hylätään kiinteillä virhekoodeilla.
 Asentimen yksikkötestit 116/116 ja nykyinen Windows-prosessitestisarja
@@ -417,6 +417,66 @@ Ensivirhe säilyy. Korjauksen jälkeen koko tuottajan sopimussarja läpäisi
 63/63 testiä; riippumaton katselmointi varmisti täsmällisen inventaarion
 säilymisen. Seuraavaksi vaaditaan uusi rajattu pakettikoe uudesta
 jäädytetystä revisiosta, ei alkuperäisen epäonnistuneen ajon uusintaa.
+
+Korjauksen jälkeinen [pakettikoe 36743397265](https://github.com/eky-software/eky/actions/runs/36743397265)
+revisiosta `ac910d17` läpäisi 12 sopimusajoa ja tuottajan 63/63 testiä.
+Historiallinen lähdepaketti valmistui, mutta kohdepaketin WiX-validointi
+hylkäsi Property-tauluun määritellyn `REINSTALLMODE`-arvon (`WIX1076 / ICE40`).
+Artifactia ei julkaistu eikä kumpikaan asennuskuluttaja käynnistynyt.
+Tämä on varmennettu paketoinnin määritysongelma, ei ajoitus- tai
+käynnistysvirhe eikä korjatun paketin hyväksyntä.
+
+`ICE40`:tä ei vaimenneta. Microsoftin
+[ICE40-ohje](https://learn.microsoft.com/en-us/windows/win32/msi/ice40)
+varoittaa tästä Property-taulun määrittelystä. Omistaja hyväksyi korvaavan
+Type 51 -toteutuksen ja testauksen 30.9.2026. `emus`-tavoite, uudemman
+tiedostoversion suoja, täydellinen payload-vertailu, palautusjärjestys ja
+muut hyväksyntäehdot säilyvät. Alkuperäiset epäonnistumiset säilytetään;
+PR/main-integraatio on edelleen avoin.
+
+**Hyväksytty toteutusraja, todennus kesken:** korvaa staattinen Property-rivi
+yhdellä täsmällisesti sallitulla, nimetyllä Type 51 -toiminnolla
+(`EkySetReinstallMode`, `REINSTALLMODE`, literaali `emus`). WiX:n
+[SetProperty](https://docs.firegiant.com/wix/schema/wxs/setproperty/)
+ei tarvitse ulkoista ohjelmaa, DLL:ää tai skriptiä, mutta on silti nykyisen
+asennus- ja riippuvuussopimuksen tarkoittama custom action. Päätös rajaa
+oletuksen uuteen asennukseen ja major upgradeen ehdolla
+`NOT Installed AND NOT REINSTALLMODE`: nykyisen tuotteen huolto ja
+kutsujan eksplisiittinen korvausvalinta säilyvät. Oletusarvo ei ole
+muuttumaton turvallisuusraja.
+
+Arvon asetus sijoitetaan ennen `CostInitialize`-vaihetta sekä UI- että
+execute-sekvenssiin. Read-only-tarkastin vaatii täsmällisen toimintorivin,
+tyypin, lähteen, literaalin, molemmat sekvenssirivit ja ehdot sekä
+Property-taulun `REINSTALLMODE`- ja `REINSTALL`-rivien puuttumisen. Kaikki
+muut custom actionit, ylimääräiset tyypin liput ja toiminnon sijoittaminen
+muihin sekvensseihin hylätään; vain aiempi `ICE91`-poikkeus säilyy.
+Tämä on nimetty poikkeus, ei yleinen custom action -hyväksyntä.
+
+Todennus kattaa todellisen MSI:n hiljaisen ja UI-asennuksen
+oletuksen, eksplisiittisen ohituksen säilymisen, saman tiedostoversion
+korvaamisen, uudemman suojan sekä nykyiset käynnistys-, repair-, poisto-,
+downgrade- ja rollback-portit. Ennen uutta raskasta CI-kierrosta tehdään
+rajattu paketin rakennus- ja metadata-todistus ilman käyttäjäasennusta.
+Pelkät lähdetekstin tai AST:n sopimustestit eivät todista MSI-validoinnin
+tai ajonaikaisen ehdon toimintaa.
+
+Type 51 -authoring ja tarkastimen täsmällinen sallintaraja on toteutettu.
+Asenninyksikkötestit 120/120 ja sarjallinen Windows-prosessisarja 111/111
+läpäisivät. Jälkimmäinen tarkistaa myös oikean COM-lukijan synteettisillä
+MSI-tietokannoilla, ei vain guardille annettuja valmiita tietorakenteita.
+Rajattu rakennus nykyisellä WiX-projektilla ja synteettisellä payloadilla
+läpäisi ilman ICE40-poikkeusta. Saman muuttumattoman MSI:n koko
+read-only-tarkastus läpäisi sarakemetadatan COM-lukukorjauksen jälkeen.
+Ensimmäinen lukuhylkäys ja erilliset regressiofixturen valmisteluhylkäykset
+säilyvät; myöhempi läpäisy ei muuta niitä onnistumisiksi.
+
+Tämä on rakennus- ja metadatanäyttöä, ei oikean sovelluksen asennus,
+UI-asennuksen ajonaikainen hyväksyntä tai V2:n sulkeminen. Seuraava työ on
+hyväksytty rajattu oikean paketin koe jäädytetystä revisiosta. Molemmat
+kuluttajat käyttävät samaa kerran rakennettua pakettiparia. Nykyiset
+payload-, käynnistys-, palautus- ja PR/main-portit säilyvät avoimina,
+kunnes niiden oma näyttö on hyväksytty.
 
 ## Ohje ja historia
 

@@ -11,7 +11,13 @@
     InstallerVersion="500"
     Compressed="yes">
     <!-- Vendor binaries can change bytes without changing their file version. -->
-    <Property Id="REINSTALLMODE" Value="emus" />
+    <SetProperty
+      Action="EkySetReinstallMode"
+      Id="REINSTALLMODE"
+      Value="emus"
+      Before="CostInitialize"
+      Sequence="both"
+      Condition="NOT Installed AND NOT REINSTALLMODE" />
     <MajorUpgrade
       AllowDowngrades="no"
       AllowSameVersionUpgrades="no"

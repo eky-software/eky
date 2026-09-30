@@ -84,7 +84,9 @@ test('does not publish a sidecar if inspection changes the MSI bytes', async () 
   await assert.rejects(access(manifestPath));
 });
 
-for (const code of ['INSTALLER_REINSTALL_MODE_INVALID', 'INSTALLER_REINSTALL_FORBIDDEN']) {
+for (const code of ['INSTALLER_REINSTALL_MODE_INVALID', 'INSTALLER_REINSTALL_FORBIDDEN',
+  'INSTALLER_CUSTOM_ACTION_FORBIDDEN', 'INSTALLER_REINSTALL_SEQUENCE_INVALID',
+  'INSTALLER_REINSTALL_POLICY_READ_FAILED']) {
   test(`does not publish a sidecar when the MSI policy inspector rejects ${code}`, async () => {
     const root = await mkdtemp(join(tmpdir(), 'eky-installer-release-'));
     temporaryDirectories.push(root);

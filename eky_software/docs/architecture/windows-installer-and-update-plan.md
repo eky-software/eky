@@ -71,8 +71,9 @@ rekisteripohjaiset per-user key pathit, MSI:n omistamien asennushakemistojen
 tyhjien kansioiden poistomerkinnät ja yhden Start Menu -pikakuvakkeen.
 Read-only-inspektori varmistaa ProductCode-, UpgradeCode-, ProductVersion-,
 scope-, install root-, komponentti-, tiedosto-, rekisteri-, RemoveFile- ja
-shortcut-sopimukset sekä sen, ettei paketissa ole custom actioneita tai
-business-datan tunnettuja standardihakemistoja.
+shortcut-sopimukset sekä business-datan tunnettujen standardihakemistojen
+puuttumisen. Alkuperäiseen custom action -kieltoon on hyväksytty vain
+[nimetty Type 51 -poikkeus](#saman-tiedostoversion-korvaaminen).
 
 WiX:n ICE-validointi ajetaan eikä sitä poisteta käytöstä. Vain täsmällinen
 `ICE91` on suppressattu WiX-projektissa; yleistä warning suppressionia ei
@@ -123,6 +124,13 @@ vaiheen jälkeen.
 
 ### Saman tiedostoversion korvaaminen
 
+**Toteutuksen tila 30.9.2026:** `emus`-politiikka on hyväksytty, mutta
+ensimmäinen Property-taulun toteutus ei ole toimituskelpoinen. Kohdepaketin
+rakennus hylättiin `ICE40`-validoinnissa; katso
+[M1:n pakettikokeen näyttö ja päätös](release-0.3.0-m1-preparation-plan.md#asennuskorjauksen-päätös).
+Omistaja hyväksyi korvaavan Type 51 -toteutuksen ja testauksen samana
+päivänä. Sen todennus on kesken; ICE-validointia ei sivuuteta.
+
 Omistaja hyväksyi 30.9.2026 MSI:n omistaman `REINSTALLMODE=emus`-säännön.
 Valmistajan binäärit voivat sisältää uudet tavut samalla tiedostoversiolla;
 pelkkä version kasvuun perustuva korvaus voi jättää päivitykseen vanhan
@@ -133,9 +141,19 @@ Sääntö koskee koko asennettavaksi valittua EKY-pakettia, ei vain
 diagnostiikassa nimettyjä kirjastoja. Lähde:
 [Microsoftin REINSTALLMODE-sopimus](https://learn.microsoft.com/en-us/windows/win32/msi/reinstallmode).
 
-Ominaisuus kuuluu `Package.wxs`:ään, ei testin komentoriville. Uuden
-MSI:n release-tarkastin vaatii saman arvon todellisesta Property-taulusta
-ennen sidecarin muodostamista. Historiallisen lähdepaketin oma
+Ominaisuus kuuluu `Package.wxs`:ään, ei testin komentoriville. Nimetty
+`EkySetReinstallMode` on ainoa sallittu custom action: Type `51`, Source
+`REINSTALLMODE`, Target `emus`, ei ylimääräisiä tyypin tai ExtendedType-lippuja.
+Se suoritetaan ennen `CostInitialize`-vaihetta UI- ja execute-sekvensseissä
+ehdolla `NOT Installed AND NOT REINSTALLMODE`. Näin oletus koskee uutta
+asennusta ja major upgradea, ei nykyisen tuotteen huoltoa tai kutsujan
+eksplisiittisen korvausvalinnan ylikirjoittamista.
+
+Release-tarkastin vaatii todellisesta MSI:stä täsmällisen toimintorivin,
+molemmat sekvenssit ja niiden ehdot sekä Property-taulun `REINSTALLMODE`-
+ja `REINSTALL`-rivien puuttumisen ennen sidecarin muodostamista. Muu custom
+action, ylimääräiset liput ja tämän toiminnon ajo muissa sekvensseissä
+hylätään. Historiallisen lähdepaketin oma
 identiteettitarkastus säilyy ennallaan. `REINSTALL=ALL`-valintaa,
 versiometadatan muuttamista, pakotettua downgradea tai komponenttien
 tunnisteiden/järjestyksen muutosta ei lisätä. Asennin omistaa edelleen
