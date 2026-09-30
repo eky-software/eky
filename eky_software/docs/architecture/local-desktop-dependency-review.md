@@ -203,8 +203,12 @@ raja säilytti liiallisen syötteen literaalina. Tavalliset brace-, range-,
 escape- ja native-addonin unpack-kuviot läpäisivät kontrollit.
 Nykyiset desktopin Node-paketointisopimukset läpäisivät 253/253,
 production/full audit olivat puhtaat ja 160 rekisteriallekirjoitusta
-varmennettiin. Tuore tuotantopayload, hardened-palautus ja PR/main-portit
-ovat vielä avoimia; nämä alemmat tarkistukset eivät korvaa niitä.
+varmennettiin. Riippumaton rajatun patchin katselmus ei löytänyt
+korjattavaa. Puhtaan revision `b5833b22` tuore tuotantopayload läpäisi
+native-, versio-, fuse- ja sisältötarkistukset. Sen hardened-palautuspolku
+läpäisi samoilla muuttumattomilla pakettitavuilla; molempien vaiheiden
+prosessipuiden poistuminen todennettiin ennen synteettisen juuren poistoa.
+PR/main-portit ovat vielä avoimia; paikallinen näyttö ei korvaa niitä.
 
 ### Undici-korjauspäivitys
 

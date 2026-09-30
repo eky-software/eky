@@ -268,8 +268,11 @@ Omistaja hyväksyi rajatun `brace-expansion 5.0.12` -päivityksen ja testauksen.
 Lukituspäivityksen jälkeen kirjaston molempien lataustapojen rajatut
 virhe- ja yhteensopivuuskokeet sekä nykyiset 253 paketointisopimusta
 läpäisivät. Production/full audit ja 160 rekisteriallekirjoitusta
-läpäisivät. Seuraavaksi vaaditaan puhtaan revision uusi tuotantopayload,
-samoilla tavuilla tehty hardened-palautus ja lopullinen PR/main-todennus.
+läpäisivät. Riippumaton patch-katselmus ei löytänyt korjattavaa.
+Puhtaan revision `b5833b22` tuore tuotantopayload ja samoilla tavuilla
+tehty hardened-palautus läpäisivät. Molempien vaiheiden prosessipuut
+poistuivat ennen synteettisen juuren siivousta. Seuraavaksi vaaditaan
+lopullisen revision oma PR/main-todennus; V2 ei ole vielä suljettu.
 Paketointiketjun päivitys ei muuta aiemmin hyväksyttyjä sovelluksen
 endurance-polkuja; niitä ei avata uudelleen ilman omaa muutosperustetta.
 
