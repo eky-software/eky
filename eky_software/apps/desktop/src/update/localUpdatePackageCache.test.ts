@@ -464,12 +464,13 @@ describe('local update package cache', () => {
       await Promise.all(ownedRoots.map((root) => rm(root, { force: true, recursive: true })));
     });
     try {
+      progress.scenario = 'preparePair';
+      const pair = await createCurrentAndCandidatePair(ownedRoots, advance);
       for (const interruption of ['afterCurrentRename', 'afterPreviousRename']) {
         signal.throwIfAborted();
         progress.scenario = interruption;
         progress.phase = 'notStarted';
         progress.lastCompletedPhase = 'none';
-        const pair = await createCurrentAndCandidatePair(ownedRoots, advance);
         advance('promoteCandidate');
         await pair.cache.promoteAcceptedCandidate({
           candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
@@ -499,6 +500,27 @@ describe('local update package cache', () => {
           'candidate',
           'current',
         ]);
+        // Reuse the pair only after both slots prove the exact reset state.
+        advance('verifyCurrentPackage');
+        await expect(pair.cache.revalidateJournalPackage({
+          expectedIdentity: expectedIdentityOf(pair.current.manifest),
+          role: 'current',
+        })).resolves.toMatchObject({
+          appVersion: pair.current.manifest.appVersion,
+          buildRevision: pair.current.manifest.buildRevision,
+          msiProductVersion: pair.current.manifest.msiProductVersion,
+          manifest: expectedIdentityOf(pair.current.manifest),
+        });
+        advance('verifyCandidatePackage');
+        await expect(pair.cache.revalidateJournalPackage({
+          expectedIdentity: expectedIdentityOf(pair.candidate.manifest),
+          role: 'candidate',
+        })).resolves.toMatchObject({
+          appVersion: pair.candidate.manifest.appVersion,
+          buildRevision: pair.candidate.manifest.buildRevision,
+          msiProductVersion: pair.candidate.manifest.msiProductVersion,
+          manifest: expectedIdentityOf(pair.candidate.manifest),
+        });
         advance('completed');
       }
     } finally {

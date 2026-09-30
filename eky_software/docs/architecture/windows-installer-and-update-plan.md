@@ -130,8 +130,10 @@ hylättiin `ICE40`-validoinnissa; katso
 [M1:n pakettikokeen näyttö ja päätös](release-0.3.0-m1-preparation-plan.md#asennuskorjauksen-päätös).
 Korvaava toteutus läpäisi rakennuksen, metadatan sekä molemmat oikean
 pakettiparin hiljaiset legacy-päivityskokeet ilman ICE40-poikkeusta.
-UI-, ohitus- ja uudemman tiedostoversion käyttäytymistodisteet sekä
-normaalit integraatioportit ovat vielä avoinna; tämä ei ole julkaisuhyväksyntä.
+Revision `0fa4c2f3` täydentävä synteettinen MSI-koe todensi UI-oletuksen,
+eksplisiittisen ohituksen ja uudemman tiedostoversion suojan sekä siivouksen.
+Normaalit PR/main-integraatioportit ovat vielä avoinna; tämä ei ole
+julkaisuhyväksyntä. Tarkka ajosidonta on yllä linkitetyssä M1-checkpointissa.
 
 Omistaja hyväksyi 30.9.2026 MSI:n omistaman `REINSTALLMODE=emus`-säännön.
 Valmistajan binäärit voivat sisältää uudet tavut samalla tiedostoversiolla;

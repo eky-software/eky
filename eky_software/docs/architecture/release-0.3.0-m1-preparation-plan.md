@@ -13,7 +13,7 @@ hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohd
 | Mainin omat portit | [Normaali CI 36491715165](https://github.com/eky-software/eky/actions/runs/36491715165), yritys 1: kaikki 38 vaadittua ryhmää läpäisivät; vain nimenomaisesti valinnainen diagnostiikkakoe ohitettiin. Linux system 695/695, kriittinen web 37/37 ja Windowsin kriittinen Electron 38/38 vastasivat ajovalintojaan ilman retryä, flakyä tai puuttuvia tapauksia. Neljän artifact-tuottajan ja kymmenen packaged-kuluttajan identiteetit ja elinkaarinäyttö hyväksyttiin. [Saman revision riippuvuustarkistus 36491789402](https://github.com/eky-software/eky/actions/runs/36491789402) läpäisi. |
 | Suljettu työ | T1/R27:n ajokytkentä, T2/R29:n puhtaan valmistelun suoja ja T3/R28:n todellisten kuluttajien koko prosessipuun omistajuus. Korvatut aktiiviset fallbackit on poistettu ja [pysyvä T3-matriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus) hyväksytty. PR #281 sulki tämän jälkeisen rollback-testiapurin integraatiojatkon. |
 | Avoimet havainnot | Aiemmat satunnaiset Electron-käynnistys- ja packaged/legacy-timeoutit säilyvät epäonnistuneina havaintoina omille revisioilleen. Myöhempi vihreä ajo ei todista niiden kaikkia syitä korjatuiksi. [Hylkäysten historia](e2e-test-environment-history.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko) ja [rajattu apurikorjaus](e2e-test-environment-history.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus) erotetaan toisistaan. |
-| Seuraava työ | Electron `43.7.6` ja Undici `7.29.1` ovat jo toteutettuja täsmäpäivityksiä; `better-sqlite3 13.0.2` säilyy. Ei uutta päivityskierrosta eikä turvallisuuskorjausten lykkäystä. Hyväksytyn [asennuskorjauksen](#asennuskorjauksen-päätös) regressiot ja hiljaisen legacy-päivityksen oikea pakettikoe läpäisivät. Täydennä saman rajauksen UI-, eksplisiittisen ohituksen ja uudemman tiedostoversion käyttäytymistodisteet, sitten yksi normaali hyväksyntäkierros jäädytetystä revisiosta. Audit, toimintatestit ja main-haaran Dependabot-hälytysten sulkeutuminen todennetaan erikseen. Vasta integraation jälkeen A1/R01:n aloitusportti ja [avattavan luonnoksen kohteen suunnitelma](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde). |
+| Seuraava työ | Electron `43.7.6` ja Undici `7.29.1` ovat jo toteutettuja täsmäpäivityksiä; `better-sqlite3 13.0.2` säilyy. Ei uutta päivityskierrosta eikä turvallisuuskorjausten lykkäystä. Hyväksytyn [asennuskorjauksen](#asennuskorjauksen-päätös) regressiot ja hiljaisen legacy-päivityksen oikea pakettikoe läpäisivät. Revision `0fa4c2f3` täydentävä koe todensi myös UI-oletuksen, eksplisiittisen ohituksen ja uudemman tiedostoversion suojan. Varmenna paikallinen integraatiocheckpoint, sitten yksi normaali PR-hyväksyntäkierros jäädytetystä revisiosta ja normaalin mergen jälkeen mainin omat portit. Audit, toimintatestit ja main-haaran Dependabot-hälytysten sulkeutuminen todennetaan erikseen. Vasta integraation jälkeen A1/R01:n aloitusportti ja [avattavan luonnoksen kohteen suunnitelma](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde). |
 | Ei vielä valmis | A1-A3, W7, M1:n muu sovellustyö ja koko 0.3.0. Testiperustan hyväksyntä ei hyväksy niiden tulevaa toteutusta tai muuttunutta liiketoimintasääntöä. |
 
 Hyväksyntä on sidottu yllä olevaan revisioon, ei automaattisesti myöhempään
@@ -488,12 +488,13 @@ sekvenssien ehdot ja nimetyn Type 51 -toiminnon arvon sekä huolto- ja
 ohitustilanteiden säilymisen. Se ei suorita koko asennussekvenssiä tai
 kopioi tiedostoja, joten sitä ei nimetä UI-asennuksen todisteeksi.
 
-Hyväksytystä Type 51 -rajauksesta ovat vielä avoinna todellinen
+Hiljaisen pakettikokeen jälkeen Type 51 -rajauksesta jäivät avoimiksi todellinen
 UI-asennuksen oletus, kutsujan eksplisiittisen ohituksen säilyminen
 asennuksessa ja uudemman **tiedostoversion** käyttäytymissuoja. Viimeinen
-ei ole sama asia kuin nykyisen tuoteversion downgrade-testi. Nämä rajataan
+ei ole sama asia kuin nykyisen tuoteversion downgrade-testi. Nämä rajattiin
 olemassa oleviin testimekanismeihin; uutta testialustaa, riippuvuutta tai
-käyttäjäasennuksen muutosta ei lisätä. Nykyinen normaali kierros todentaa
+käyttäjäasennuksen muutosta ei lisätty. Alla oleva täydentävä koe sulkee
+nämä kolme käyttäytymisehtoa. Normaali integraatiokierros todentaa edelleen
 erikseen clean/repair/uninstall-, downgrade- ja rollback-portit.
 PR/main-portit ja riippuvuushälytysten oletushaaran tila ovat edelleen
 avoimia. Aiemmat hylkäykset säilyvät alkuperäisinä.
@@ -518,14 +519,14 @@ ovat erillisiä. Raaka MSI-loki ja descriptor jäävät yksityiseen
 ajohakemistoon, eivät julkiseen lokiin tai ladattavaan artifactiin.
 Epäonnistumisen tai varmentamattoman siivouksen aineistoa ei poisteta.
 
-Kohdesarja `pnpm --filter @eky/desktop installer:test:msi-file-policy`
+Ensimmäinen kohdesarja `pnpm --filter @eky/desktop installer:test:msi-file-policy`
 läpäisi 47/47 testiä. Todellinen paketin rakennus ja read-only-metadata
 läpäisivät erillisiä tiedostokopioita vaativan build-korjauksen jälkeen;
-alkuperäinen valmisteluhylkäys säilyy erillisenä. Tämä ei vielä todista
-asennusta. Manuaalinen CI-valinta on `msi-file-version-policy` nykyisessä
+alkuperäinen valmisteluhylkäys säilyy erillisenä. Tämä valmistelunäyttö ei
+vielä todistanut asennusta. Manuaalinen CI-valinta on `msi-file-version-policy` nykyisessä
 supervisor-koetyönkulussa. Normaali Windows-contract-ajo sisältää samat
-regressiot ja varsinaisen synteettisen asennuskokeen; sen läpäisy sekä
-kolmen käyttäytymisehdon sulkeminen ovat vielä avoimia.
+regressiot ja varsinaisen synteettisen asennuskokeen; sen oman normaalin
+integraatioajon läpäisy on vielä avoin.
 
 Ensimmäinen [synteettisen kokeen CI-ajo 36768360138](https://github.com/eky-software/eky/actions/runs/36768360138)
 revisiosta `945039f4` pysähtyi valmistelun yksikkötesteihin: 27/47 läpäisi,
@@ -536,9 +537,55 @@ luotu juuritesti toisti hylkäyksen ennen korjausta; kanonisoinnin jälkeen
 48/48 kohdetestiä läpäisi. Sama regressio vaatii edelleen aliaksen
 hylkäämisen ennen yhtäkään työkalukutsua. Valmistelijan turvallisuusrajaa,
 asennussääntöä tai aikarajoja ei muutettu. Ensimmäisen CI-ajon tarkka
-polkualias ei ilmene säilyneestä lokista; korjaus ei vielä todista hosted-
-asennuskokeen läpäisyä. Seuraava rajattu koe ajetaan korjatusta jäädytetystä
-revisiosta, ei epäonnistuneen yrityksen uusintana.
+polkualias ei ilmene säilyneestä lokista. Korjauksen paikallinen läpäisy ei
+yksin todistanut hosted-asennusta, joten seuraava rajattu koe ajettiin
+korjatusta jäädytetystä revisiosta, ei epäonnistuneen yrityksen uusintana.
+
+[Täydentävä CI-koe 36770080450](https://github.com/eky-software/eky/actions/runs/36770080450),
+suoritusyritys 1, läpäisi revisiolla
+`0fa4c2f3c3fb60b1880cfc4f1e3cc453e8c97c4c`. Todellinen checkout,
+kaikki 48 sopimustestiä ja valitun jobin pakolliset vaiheet varmennettiin.
+Saman synteettisen MSI-parin UI-oletusajo ja eksplisiittinen `omus`-ajo
+läpäisivät asennettujen tavujen ja tiedostoversioiden vertailun, tuotteeseen
+sidotun UI-/execute-ominaisuustarkistuksen sekä lähdetuotteen poistumisen.
+Oletus korvasi saman tiedostoversion, eksplisiittinen valinta säilyi ja
+uudempi tiedostoversio säilyi kummassakin ajossa. Pakettitavut säilyivät
+muuttumattomina. Molempien ajojen testituotteiden poisto, tiedosto- ja
+rekisterijälkien poissaolo sekä prosessipuiden poistuminen varmennettiin.
+Tulosten ensivirhe-, syy- ja siivousvirhekentät olivat tyhjiä; ajoseurannassa
+ei todettu havaintokatkosta. Kaksi tämän valinnan ulkopuolista diagnostista
+jobia ohitettiin suunnitellusti, ei pakollista koevaihetta.
+
+Tämä sulkee nimetyt kolme täydentävää käyttäytymisehtoa, ei normaalia
+PR/main-integraatiota. Seuraava portti on paikallisen integraatiocheckpointin
+varmennus ja yksi jäädytetty normaali PR-kierros omine riippuvuustarkistuksineen.
+Sen jälkeen tarvitaan normaalin mergen täsmällisen main-revision omat portit
+sekä erillinen Dependabot-tilan tarkistus. Aiemmin hyväksyttyä runtime-,
+native-, hardened-palautus- tai endurance-näyttöä ei ajeta uudelleen pelkän
+testifixture- tai dokumenttimuutoksen vuoksi ilman vaikutusta niiden sopimukseen.
+
+#### Pakettivälimuistin testivalmistelun rajaus
+
+Revision `0fa4c2f3` integraatiotarkistus hylkäsi pakettivälimuistin
+keskeytyneen palautuksen testin aikakatkaisuun. Turvallinen vaihehavainto
+säilyi: ensimmäinen keskeytyshaara valmistui ja toinen oli vielä
+lähtöpakettien valmistelussa. Ensivirheen aineisto säilytettiin erillään;
+sitä ei nimetä tuotannon palautusvirheeksi. Muuttamattoman lähteen
+diagnostiikka-ajon läpäisy ei selitä alkuperäistä aikakatkaisua.
+
+Rajattu testimuutos valmistelee saman current/candidate-parin vain kerran
+yhden testin sisällä. Molemmat todelliset promotion-, rename- ja
+normalisointihaarat säilyvät. Kummankin haaran jälkeen varmennetaan
+kummankin slotin täsmällinen paketti-identiteetti, sisältö ja metadatan rooli
+ennen parin uudelleenkäyttöä. Testin yksi aikaraja, abort-tarkistus ja
+epäonnistuneen tai keskeneräisen rungon omien juurten säilyttäminen pysyvät.
+Tuotantokoodia, tiedostojen synkronointia tai turvallisuustarkistuksia ei
+muuteta. Näin poistetaan toistuva valmistelutyö, ei väitetä todistetuksi
+alkuperäisen viiveen tarkkaa syytä. Rajattu 28/28-sarja ja koko workspacen
+tyypitys läpäisivät. Riippumaton katselmointi ei löytänyt korjaustarvetta;
+toisen haaran lähtötilan vaihto uudesta aineistosta varmennettuun palautuneeseen
+tilaan on tämän testin nimenomainen rajaus. Tavallinen jäädytetyn revision
+integraatioajo ja PR/main-portit ovat vielä avoimia.
 
 ## Ohje ja historia
 

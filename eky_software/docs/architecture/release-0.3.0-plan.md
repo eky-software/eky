@@ -60,9 +60,14 @@ Omistaja hyväksyi rajatun `emus`-korjauksen ja sen Type 51 -toteutuksen;
 regressiot sekä synteettisen MSI:n rakennus- ja metadatatodistus läpäisivät.
 Revision `5a8dd5d6` oikean pakettiparin molemmat hiljaiset legacy-päivitykset
 läpäisivät täydellisen sisältövertailun ja käynnistykset; rajattu CI oli
-15/15 vihreä. UI-, ohitus- ja uudemman tiedostoversion käyttäytymistodisteet
-sekä normaali PR/main-integraatio ovat edelleen avoimia. Hiljaisen
-päivityksen hyväksyntä ei sulje muita portteja.
+15/15 vihreä. Revision `0fa4c2f3` täydentävä synteettinen MSI-koe läpäisi
+48/48 sopimustestiä ja todensi UI-oletuksen, eksplisiittisen ohituksen sekä
+uudemman tiedostoversion suojan siivouksineen. Normaali PR/main-integraatio
+ja riippuvuushälytysten oletushaaran tila ovat edelleen avoimia;
+kohdennetut kokeet eivät korvaa näitä portteja.
+Integraatiotarkistuksen pakettivälimuistin testiaikakatkaisu käsitellään
+[rajatulla valmistelumuutoksella](release-0.3.0-m1-preparation-plan.md#pakettivälimuistin-testivalmistelun-rajaus)
+säilyttäen molemmat keskeytyshaarat, täsmälliset sisältöehdot ja aikarajan.
 [M1:n nykyinen checkpoint](release-0.3.0-m1-preparation-plan.md#v2n-nykyinen-hyväksyntächeckpoint)
 omistaa tarkemman näytön ja V2:n sulkemisehdot.
 Seuraava tuotantopala on [A1/R01](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde)
