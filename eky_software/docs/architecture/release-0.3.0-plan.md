@@ -2,6 +2,14 @@
 
 ## Päätös ja nykyinen tila
 
+**Ajantasainen jatko 2.10.2026:** salatun toimituksen jälkeen ajettu normaali
+PR-kierros hylkäsi Hono-riippuvuuden auditoinnin ja legacy-testiluettelon
+täsmällisyyden. Omistaja hyväksyi Hono `4.13.7` -päivityksen, luettelon
+rajatun korjauksen, kohdetestit ja katselmuksen sekä yhden uuden normaalin
+kierroksen. [M1:n nykyinen checkpoint](release-0.3.0-m1-preparation-plan.md#normaalin-kierroksen-tulos-ja-rajatut-korjaukset)
+erottaa nämä esteet alkuperäisestä timeoutista ja salatun aineiston
+ETL-puutteesta. Merge, A1 ja koko 0.3.0 ovat edelleen avoinna.
+
 **M0, T1, T2 ja T3/R28 on hyväksytty; M1:n sovelluskorjaukset ovat avoinna.**
 Myös T-paketin jälkeinen integraatiojatko on hyväksytty PR #281:n mainissa.
 [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)

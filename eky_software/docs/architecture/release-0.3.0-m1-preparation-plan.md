@@ -7,8 +7,10 @@
 Se täydentää ensimmäisen epäonnistumisen säilytystä, mutta ei nimeä
 alkuperäistä timeoutia korjatuksi tai avaa A1:n hyväksyntäporttia.
 Omistaja hyväksyi [yhden normaalin hyväksyntäkierroksen](#seuraava-etenemispäätös).
-Seuraava työ on sen revision jäädytys, seurattu PR-kierros ja pakollisten
-tulosten tarkistus. Mergeä tai A1:tä ei ole hyväksytty tällä päätöksellä.
+Ensimmäinen normaali kierros päättyi kahteen rajattuun esteeseen:
+[Hono-auditointiin ja legacy-testiluetteloon](#normaalin-kierroksen-tulos-ja-rajatut-korjaukset).
+Omistaja hyväksyi niiden korjaukset, kohdetestit ja katselmuksen sekä yhden
+uuden normaalin kierroksen. Mergeä tai A1:tä ei ole hyväksytty.
 
 **T1/T2/T3 ja niiden integraatiojatko ovat hyväksyttyjä. Seuraava
 sovelluspala on A1/R01; sitä ei ole aloitettu.** Modulaarinen monoliitti ja
@@ -33,6 +35,73 @@ ajonaikaista tilaa.
 
 ## Riskiperusteinen jatko 1.10.2026
 
+### Normaalin kierroksen tulos ja rajatut korjaukset
+
+PR-lähteen `0729641db5f5a941df44d7054983b6d6a0834ed8`
+[normaali CI 36932543705](https://github.com/eky-software/eky/actions/runs/36932543705)
+ja [Dependency security 36932543522](https://github.com/eky-software/eky/actions/runs/36932543522)
+päättyivät hylättyinä suoritusyrityksellä 1. Todellinen PR-checkout oli
+`b929300b02b920829ec5aad700a7b0e5377323e2`, jonka vanhemmat vastaavat
+main-lähtörevisiota ja yllä nimettyä PR-lähdettä. Kyse ei ole main-mergestä.
+Kierrosta seurattiin valmistumiseen ja ensimmäiset virhelokit säilytettiin.
+
+- Tuotantoaudit hylkäsi `hono@4.13.5`:n löydökseen
+  [GHSA-hxh3-vqpv-xpqv](https://github.com/honojs/hono/security/advisories/GHSA-hxh3-vqpv-xpqv).
+  Korjattu täsmäversio on `4.13.7`. Löydös koskee JSX SSR -escapingia;
+  Eky käyttää Honoa HTTP-adapterina, eikä tarkastetuista lähteistä löytynyt
+  tämän SSR-polun käyttöä. Tämä ei poista riippuvuuden päivitystarvetta tai
+  muuta auditoinnin hylkäystä hyväksynnäksi.
+- Legacy-tuottajan testiluettelosopimus hylkäsi 45 tiedoston joukon, koska
+  sen odotettu luettelo sisälsi 44. Aiemmin core-ryhmään lisätty
+  `captureExporterMetadata.test.mjs` puuttui odotetusta joukosta.
+  Paketin rakennus ja legacy-kuluttajat eivät käynnistyneet. Tämä on
+  todennettu sopimustestin ylläpitopuute, ei vanhan asennustimeoutin syy.
+- Molemmat workspace-success-ajot ja molempien toistojen kaikki viisi
+  fault-skenaariota läpäisivät. Kriittinen Electron-sarja läpäisi 39/39
+  ilman retryä, flakyä tai puuttuvia tapauksia. V2-koonti hylkäsi kierroksen
+  oikein legacy-portin vuoksi; muiden jobien vihreys ei ohita sitä.
+- Molempien workspace-success-ajojen salatut paketit ladattiin ja purettiin;
+  sidonta, säilyneet tavut ja tiivisteet hyväksyttiin. Testi, paketti ja
+  siivous läpäisivät, tallennus sulkeutui ja analyysi oli `skipped`.
+  **ETL-tiedosto jäi kummastakin paketista pois tilassa `unverified`.**
+  Toimitus ei siis todista koko tapahtumajäljen säilymistä. Tarkka poisjäännin
+  syy on avoin, eikä puuttuvaa sisältöä palauteta näistä paketeista.
+
+**Omistajan jatkopäätös 2.10.2026:** päivitetään vain Hono `4.13.5 -> 4.13.7`
+ja täydennetään legacy-testin odotettu tiedostojoukko. Rajatut regressiot,
+HTTP-adapterin testit, tyypitys, auditoinnit ja katselmus edeltävät yhtä uutta
+normaalia CI-kierrosta uudesta jäädytetystä revisiosta. Electron `43.7.6`,
+`better-sqlite3 13.0.2`, Undici `7.29.1`, tietomalli, T3:n omistajuus,
+aikarajat ja hyväksyntäehdot säilyvät. Ei uutta riippuvuutta tai mergeä.
+ETL-puutteen nykyisen aineiston tarkistus ei yksilöinyt hylkäyssyytä:
+kerääjä yhdistää koko-, identiteetti- ja lukuvirheet `unverified`-tilaan.
+Tallennusprofiilin enimmäiskoko on keräysrajaa suurempi, mutta pois jääneen
+tiedoston kokoa ei tallennettu. Mahdollinen suljetun hylkäyskoodin ja koon
+lisäys salattuun manifestiin on erikseen päätettävä jatkotyö, ei tämän
+korjauskierroksen toteutus tai keräysrajan nosto.
+Rajattu Hono-päivitys ja testiluettelon täydennys on toteutettu.
+Lockfile-diffi muuttaa vain Honoa, sen eheystiivistettä ja nykyisen
+`@hono/node-server`-adapterin peer-sidontaa. Alkuperäinen timeout ja vanha
+vientivirhe pysyvät avoimina. Uuden revision CI-hyväksyntä on vielä tekemättä.
+
+Paikallinen kohdennettu näyttö ennen uuden revision jäädytystä:
+
+- Legacy-workflow'n nykyiset 45/45 sopimustestiä läpäisivät ilman ohituksia.
+  Täsmällisen testijoukon ja duplikaattien hylkäys säilyvät.
+- Backendin 191 testitiedostoa läpäisi: 1365 testiä onnistui ja nykyiset viisi
+  alustakohtaista testiä ohitettiin. Ohituksia ei lasketa läpäisyiksi eikä
+  tämä korvaa Linux-CI:tä. Backendin tyypitys ja tuotantobuild läpäisivät.
+- Inertti merkkijono sekä array-root toistivat upstreamin JSX SSR -escaping-
+  puutteen vanhassa riippuvuudessa. Samat syötteet escapetaan uudessa;
+  tavallinen tekstikontrolli säilyi. Koe ei osoita hyökkäyspolkua EKY:ssä.
+- Production- ja full audit eivät löytäneet haavoittuvuuksia; kaikki 160
+  rekisteriallekirjoitusta varmistettiin. Oletushaaran Dependabot-tila ja
+  uuden revision toimintatestit ovat edelleen erillisiä tarkistuksia.
+- Riippumaton rajatun muutoksen katselmus ei löytänyt estäviä havaintoja.
+  Se tarkisti riippuvuusrajan, muuttumattomat runtime-pinnit, 45 tiedoston
+  yksikäsitteisen testijoukon ja dokumenttien vastaavuuden toteutukseen.
+  Katselmus ei korvaa uuden revision CI-kierrosta tai julkaisuhyväksyntää.
+
 ### Nykyisen työn rajaus
 
 Alla kuvattu timeout-tutkimus ja sen päätösraportti säilyvät historiana.
@@ -46,8 +115,9 @@ revisiolla `f69f3d76`, [ajo 36930438493](https://github.com/eky-software/eky/act
 suoritusyritys 1. Paikallisesti toistettu Git-hakuvirhe korjattiin ja
 hosted-toimitus sekä yksityinen purku läpäisivät. Tämä ei ole normaalin
 workspace-testin, ETL-tallennuksen tai alkuperäisen timeoutin hyväksyntä.
-Keräyksen julkisen avaimen vahvistus on voimassa; uusia ajoja ei ole
-käynnistetty. Alla säilyvät aiempien vaiheiden tulokset, eivät rinnakkaiset
+Keräyksen julkisen avaimen vahvistus on voimassa; myöhempi normaali kierros
+on erotettu [omaan checkpointiinsa](#normaalin-kierroksen-tulos-ja-rajatut-korjaukset).
+Alla säilyvät aiempien vaiheiden tulokset, eivät rinnakkaiset
 työjonot. Tarkka lopputulos on [hyväksyntächeckpointissa](#salatun-toimituksen-hyväksyntä).
 
 Omistaja hyväksyi Gitin GnuPG:n rajatuksi testityökaluksi ja nimettyjen

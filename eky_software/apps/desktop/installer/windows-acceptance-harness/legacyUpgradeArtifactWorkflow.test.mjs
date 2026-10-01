@@ -579,7 +579,7 @@ test('legacy contract groups partition the complete existing inventory without o
       'upgradeCallerResult', 'upgradeCommandPhase', 'upgradeRollbackFailureBoundary', 'upgradeCommandEntrypoint.process',
       'upgradeRollbackContracts', 'upgradeRollbackLifecycle',
       'upgradeRunningApplication', 'runningUpgradeObservation', 'nativeMsiUpgradeProcess',
-      'buildWindowsApplicationCloseFixture', 'closedDirectoryInventory', 'inspectWindowsInstallerProductState', 'installerProductInspectionTrace',
+      'buildWindowsApplicationCloseFixture', 'captureExporterMetadata', 'closedDirectoryInventory', 'inspectWindowsInstallerProductState', 'installerProductInspectionTrace',
       'installerProductOperationWorker', 'installerProductOperationResult',
       'legacyCallerResult', 'legacyCommandCompletion.process',
       'legacyCommandEntrypoint.process', 'workspaceSuccessCommandEntrypoint.process', 'workspaceFaultCommandEntrypoint.process',

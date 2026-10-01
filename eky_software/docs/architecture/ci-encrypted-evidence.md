@@ -102,7 +102,10 @@ Kerääjä lukee vain ennalta nimetyt ETL-, vienti-/tallennuslokit ja callerin
 tulostiedoston. Se ei kopioi koko temp- tai profiilikansiota, ympäristöä,
 Git-tunnuksia tai tietokantoja. Symboliset linkit, uudelleenohjaukset ja
 hardlinkit hylätään. Tiedostojen määrä, yksittäiset koot ja yhteiskoko on
-rajattu. Puuttuva, muuttunut tai liian suuri tiedosto merkitään erikseen.
+rajattu. Puuttuva tiedosto merkitään `missing`-tilaan; muuttunut, liian suuri
+tai muuten varmentamatta jäänyt tiedosto saa yhteisen `unverified`-tilan.
+Nykyinen manifesti ei erota näitä hylkäyssyitä eikä säilytä hylätyn
+tiedoston kokoa. Tilaa ei saa tulkita todisteeksi juuri kokoylityksestä.
 ETL otetaan mukaan vain varmennetun tallennuksen pysäytyksen jälkeen.
 Rajattu järjestelmäjälki voi silti sisältää arkaluonteisia komentorivejä
 tai istuntotietoja. Pelkkä tiedostorajaus ei puhdista niiden sisältöä;
