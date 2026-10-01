@@ -76,6 +76,16 @@ nimenomaisesti.
 
 ## Kerroskohtaiset säännöt
 
+### Rajattu CI-salaustyökalu
+
+Omistaja on hyväksynyt Git-työkaluketjun GnuPG:n vain
+[CI-tutkimusaineiston OpenPGP-salaukseen](ci-encrypted-evidence.md).
+Työkalu pysyy testiapurin takana; se ei ole sovellus- tai npm-riippuvuus
+eikä kuulu EKY-asentimeen. Hyväksyntä ei salli uusia salauskirjastoja,
+automaattisia asennuksia tai työkalun käyttöä business-datan suojaukseen.
+
+### Sovelluskerrokset
+
 React kuuluu vain web-käyttöliittymään.
 
 React Router tai muu reitityskirjasto voidaan lisätä vain erillisellä

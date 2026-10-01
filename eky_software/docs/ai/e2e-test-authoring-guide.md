@@ -291,6 +291,11 @@ uusinta ei muuta hylkäystä hyväksynnäksi eikä aloita uutta testialustatyöt
 | Electron development | `electron-lifecycle` ja turvallinen suoritusyrityskohtainen raportti kertovat myös ennen ikkunaa tapahtuvista virheistä. Pelkkä trace-asetuksen vaihto ei kytke nykyisen erikseen käynnistetyn Electron-contextin täyttä tapahtuma-/verkkotallennusta. Runnerin API-jälki ei todista rendererin jäljen olemassaoloa. |
 | Windows packaged / installer | Käytä nykyisen supervisorin vaihehavaintoja, workerin tulosta ja siivouksen näyttöä. MSI:n tai paketin käynnistysjumi ei ole Playwright-selaintesti; sen tutkimiseen tarvitaan sen oman prosessin aineisto. |
 
+Windowsin workspace-kuluttajan valinnainen [salattu tutkimuspaketti](../architecture/ci-encrypted-evidence.md)
+säilyttää nimetyn raaka-aineiston ennen yksityistä analyysiä. Sen aktivointi
+vaatii erillisen purkuavaimen varmennuksen; se ei ole kaikkien testien
+oletus eikä lupa julkaista tracea salaamattomana.
+
 Ensiyrityksen tracea ei ole kytketty yleiseksi oletukseksi. Rajattu
 selainkoe voi käyttää yllä nimettyä nykyisen CLI:n valintaa ja `--retries=0`
 samassa ennalta valitussa testissä, mutta vasta kun kerättävä sisältö

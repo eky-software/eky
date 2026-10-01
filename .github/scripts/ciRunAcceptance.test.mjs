@@ -289,6 +289,115 @@ test('MSI file policy has a hosted-only manual path without replacing supervisor
   assert.match(source, /job-object-feasibility:\n    if: inputs.mode != 'packaged-boundary-diagnostic' && inputs.mode != 'msi-file-version-policy'/);
 });
 
+test('synthetic evidence proof selects exactly one manual job and preserves reusable supervisor acceptance', async () => {
+  const source = await readFile(new URL('../workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
+  const mode = 'encrypted-evidence-delivery-proof';
+  const conditions = [...source.matchAll(/^  ([\w-]+):\n    if: ([^\n]+)/gm)];
+  const selected = (eventName, mode) => conditions.filter(([, , expression]) => runInNewContext(expression,
+    { github: { event_name: eventName }, inputs: { mode } }, { timeout: 1000 })).map(([, name]) => name);
+  assert.equal(conditions.length, 5);
+  assert.deepEqual(selected('workflow_dispatch', mode), [mode]);
+  for (const eventName of ['pull_request', 'push', 'schedule', 'workflow_call']) {
+    assert.deepEqual(selected(eventName, mode), []);
+    assert.deepEqual(selected(eventName, undefined), ['job-object-feasibility']);
+  }
+  assert.deepEqual(selected('workflow_dispatch', 'contracts'), ['job-object-feasibility']);
+  for (const other of ['inspector-cutoff-diagnostic', 'msi-file-version-policy', 'packaged-boundary-diagnostic']) {
+    assert.deepEqual(selected('workflow_dispatch', other), [other]);
+  }
+  assert.match(source, /default: contracts/);
+  assert.match(source, /workflow_call:\n  workflow_dispatch:/);
+  const group = source.match(/group: windows-acceptance-supervisor-[^\n]+\$\{\{ ([^\n]+) \}\}/)?.[1];
+  assert.ok(group);
+  const suffix = (mode, artifact_kind) => runInNewContext(group, { inputs: { mode, artifact_kind } }, { timeout: 1000 });
+  assert.equal(suffix(mode), mode);
+  assert.equal(suffix('contracts'), '');
+  assert.equal(suffix(undefined), '');
+  assert.equal(suffix('packaged-boundary-diagnostic', 'workspace'), 'workspace');
+  const normal = source.split('  job-object-feasibility:')[1].split('  packaged-boundary-diagnostic:')[0];
+  assert.match(normal, /format\('Windows Job Object feasibility run \{0\}', matrix.repetition\)/);
+  assert.match(normal, /'\[1\]' \|\| '\[1, 2\]'/);
+});
+
+test('synthetic evidence proof uses pinned tools and required encrypted-only publication without builds', async () => {
+  const source = await readFile(new URL('../workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
+  const job = source.split('  encrypted-evidence-delivery-proof:')[1].split('  inspector-cutoff-diagnostic:')[0];
+  const blocks = job.split('      - name:');
+  const step = name => {
+    const result = blocks.find(value => value.startsWith(' ' + name + '\n'));
+    assert.ok(result, name);
+    return result;
+  };
+  assert.match(job, /runs-on: windows-latest/);
+  assert.match(job, /timeout-minutes: 5/);
+  assert.match(job, /ref: \$\{\{ github.sha \}\}/);
+  assert.match(job, /persist-credentials: false/);
+  assert.doesNotMatch(job, /needs:|matrix:|continue-on-error|\b(?:pnpm|npm|msiexec|dotnet|wpr)\b|setup-dotnet|buildWindows|captureInstaller|download-artifact/);
+  assert.deepEqual([...job.matchAll(/uses: ([^\s]+)/g)].map(([, action]) => action), [
+    'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
+    'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
+    'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
+  ]);
+  assert.match(step('Set up pinned Node.js'), /node-version-file: eky_software\/\.node-version/);
+  assert.match(step('Set up pinned Node.js'), /package-manager-cache: false/);
+  const tools = step('Verify pinned Node and provisioned Git GnuPG');
+  assert.match(tools, /\$actual -cne "v\$expected"/);
+  assert.match(tools, /\.node-version/);
+  for (const executable of ['node', 'git']) {
+    assert.ok(tools.includes(`Get-Command ${executable}.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1`));
+  }
+  assert.match(tools, /\.\.\/usr\/bin\/gpg.exe/);
+  assert.match(tools, /\. \.\/apps\/desktop\/installer\/windows-acceptance-harness\/encryptedEvidenceOpenPgp.ps1/);
+  assert.match(tools, /IsPathFullyQualified\(\$env:RUNNER_TEMP\)/);
+  assert.match(tools, /Join-Path \$env:RUNNER_TEMP \('eky-delivery-preflight-' \+ \[Guid\]::NewGuid\(\)/);
+  assert.match(tools, /Test-Path -LiteralPath \$homePath/);
+  assert.match(tools, /\[void\]\[IO.Directory\]::CreateDirectory\(\$homePath\)/);
+  assert.match(tools, /Invoke-EvidenceGpgProcess -Executable \$node -Arguments @\('--version'\)/);
+  assert.match(tools, /Invoke-EvidenceGpgProcess -Executable \$gpg -Arguments \$arguments/);
+  assert.match(tools, /'--homedir', \(ConvertTo-EvidenceGpgPath \$homePath\)/);
+  for (const option of ['--no-options', '--no-keyring', '--batch', '--no-tty', '--no-autostart', '--disable-dirmngr', '--version']) {
+    assert.ok(tools.includes(`'${option}'`));
+  }
+  assert.equal([...tools.matchAll(/-HomePath \$homePath -ErrorPath \(Join-Path \$homePath '(?:node|gpg)\.stderr\.private\.log'\) -TimeoutMilliseconds 10000 -TotalBudgetMilliseconds 10000/g)].length, 2);
+  for (const capability of ['AES256', 'RSA', 'ECDH', 'EDDSA']) assert.ok(tools.includes(capability));
+  assert.doesNotMatch(tools, /& \$(?:node|gpg)|Invoke-WebRequest|Invoke-RestMethod|winget|choco|Write-Host|Write-Output/);
+  assert.match(tools, /\[Console\]::Error.WriteLine\('WORKSPACE_ENCRYPTED_EVIDENCE_TOOLS_UNVERIFIED'\)/);
+  assert.match(tools, /exit 1/);
+  const seal = step('Seal one synthetic delivery proof');
+  assert.match(seal, /EKY_EVIDENCE_DELIVERY_PROOF: '1'/);
+  for (const name of ['PUBLIC_KEY', 'KEY_FINGERPRINT', 'VERIFIED_FINGERPRINT']) {
+    assert.ok(seal.includes(`EKY_DIAGNOSTIC_${name}: \${{ vars.EKY_DIAGNOSTIC_${name} }}`));
+  }
+  assert.match(seal, /workspaceEncryptedEvidence.mjs delivery-proof/);
+  assert.doesNotMatch(seal, /if:|EXPECTED_DESCRIPTOR|EXPECTED_BUILD_REVISION/);
+  const upload = step('Upload encrypted delivery proof only');
+  const expression = upload.match(/if: (.+)/)?.[1];
+  for (const succeeded of [false, true]) {
+    for (const outcome of ['success', 'failure', 'cancelled', 'skipped']) {
+      for (const sealed of ['', 'false', 'true']) {
+        assert.equal(runInNewContext(expression, { success: () => succeeded,
+          steps: { evidence_seal: { outcome, outputs: { sealed } } } }, { timeout: 1000 }),
+        succeeded && outcome === 'success' && sealed === 'true');
+      }
+    }
+  }
+  assert.match(upload, /path: \$\{\{ steps.evidence_seal.outputs.ciphertext \}\}/);
+  assert.match(upload, /if-no-files-found: error/);
+  assert.match(upload, /retention-days: 1/);
+  assert.match(upload, /overwrite: false/);
+  assert.match(upload, /include-hidden-files: false/);
+  assert.doesNotMatch(upload, /\.etl|\.log|\.private|\*|recipient/);
+  const required = step('Require encrypted delivery publication');
+  assert.match(required, /if: always\(\)/);
+  assert.match(required, /UPLOAD_OUTCOME: \$\{\{ steps.evidence_upload.outcome \}\}/);
+  assert.match(required, /ARTIFACT_ID: \$\{\{ steps.evidence_upload.outputs.artifact-id \}\}/);
+  assert.match(required, /\$env:UPLOAD_OUTCOME -cne 'success'/);
+  assert.match(required, /\$env:SEALED -cne 'true'/);
+  assert.match(required, /exit 1/);
+  const cadence = await readFile(new URL('../workflows/ci-cadence-contracts.yml', import.meta.url), 'utf8');
+  assert.doesNotMatch(cadence, /encrypted-evidence-delivery-proof/);
+});
+
 test('manual diagnostics select independent existing jobs without changing reusable core gates', async () => {
   const core = await readFile(new URL('../workflows/ci.yml', import.meta.url), 'utf8');
   const dispatch = core.split('  workflow_dispatch:\n')[1]?.split('  workflow_call:\n')[0];

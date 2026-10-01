@@ -108,13 +108,24 @@ ensiyrityksen trace säilyy erillisenä rajattuna jatkoehdotuksena.
 [Yksityisen vientiaineiston säilytysehdotus](release-0.3.0-m1-preparation-plan.md#yksityisen-vientiaineiston-säilytysehdotus)
 rajaa työn yhteen no-MSI-kokeeseen, erilliseen yksityiseen säilytyspaikkaan
 ja nimettyihin käyttöoikeus-/säilytysrajoihin. Omistaja hyväksyi repositoryn
-perustamisen, rajatun raakasiirron ja kertakokeen. Rajattu toteutus,
-katselmuksen korjaukset ja paikalliset regressiot on tehty; hosted-koetta
-ei ole ajettu. Omistajan uusin päätös sallii maksuttoman kertakokeen
-nykyisillä tilin oikeuksilla M1:ssä kuvatuin ennakkotarkistuksin;
-kiintiörajan täyttyminen saa estää ajon. Seuraavaksi jäädytetään lähderevisio.
+perustamisen, rajatun raakasiirron ja kertakokeen. Yksi jäädytetyn lähteen
+ajo [päättyi käynnistimen ennakkotarkistukseen](release-0.3.0-m1-preparation-plan.md#yksityisen-kertakokeen-valmisteluhylkäys)
+ennen fixtureä ja tallennusta. Omistajan erikseen hyväksymä yksi korjattu
+no-MSI-koe samalla lähteellä [läpäisi tallennuksen ja vientianalyysin](release-0.3.0-m1-preparation-plan.md#korjatun-yksityisen-kertakokeen-päätösraportti).
+Käynnistimen tarkistukset läpäisivät 17/17; korjaus todennettiin myös
+hosted-ajossa. Molemmat aineistoerät säilytettiin yksityisesti ja niiden
+eheys varmennettiin. Kokonaissiivous säilyy varmentamattomana, eikä uusi
+läpäisy ratkaise vanhaa vientivirhettä tai alkuperäistä timeoutia.
+Käynnistin ja ajon salliva portti on suljettu. Vientitutkimus päättyy
+päätösraporttiin ilman automaattista lisäajoa; normaalin hyväksynnän
+avaamiseen tarvittava näyttö tai uusi valmistumisehdon päätös puuttuu.
 Maksullista käyttöä ei sallita. Yksityisestä kokeesta ei tule tavallista
 ajopaikkaa: EKY:n julkisuus ja normaalit CI-portit säilyvät.
+Omistaja hyväksyi seuraavaksi [salatun tutkimusaineiston rajatun välitavoitteen](release-0.3.0-m1-preparation-plan.md#salatun-tutkimusaineiston-välitavoite):
+nykyisen workspace-kuluttajan nimetty aineisto salataan GnuPG:llä ennen
+julkista artifact-siirtoa. Purkuavain jää paikalliseksi, salattu liite
+säilyy yhden vuorokauden ja käyttöönotto edellyttää avaimen purkutestiä.
+Toteutus ei muuta normaaleja hyväksyntäehtoja tai sulje vanhoja havaintoja.
 Alkuperäisten timeoutien syitä ei väitetä ratkaistuiksi. Ei asennuskorjauksen
 tai T3:n uutta toteutusta.
 Seuraava tuotantopala on [A1/R01](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde)

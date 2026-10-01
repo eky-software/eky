@@ -108,6 +108,17 @@ korjaus, vanha historia ja mahdolliset etäkopiot käsitellään erillisinä;
 historiaa ei kirjoiteta uudelleen eikä väitetä poistuneeksi ilman erillistä
 päätöstä ja varmennusta.
 
+### Rajattu CI-tutkimusaineiston salaus
+
+Omistajan erillisellä päätöksellä synteettisen Windows CI -workspace-testin
+nimetty tutkimusaineisto voidaan toimittaa julkisena artifactina vain
+kokonaan OpenPGP-salattuna. [Salatun tutkimusaineiston sopimus](ci-encrypted-evidence.md)
+omistaa tiedostorajauksen, avaimen vahvistuksen, yhden vuorokauden
+artifact-säilytyksen ja yksityisen purun. CI saa vain julkisen avaimen;
+purkuavain pysyy paikallisena. Salaamaton fallback on kielletty.
+Poikkeus ei koske omistajan konehavaintoja, sovelluksen business-dataa,
+raakakonsolilokeja tai kaikkien testien yleistä raakajulkaisua.
+
 ## Backup-, restore- ja päivitysturvallisuus
 
 - siirrettävä business-datan varmuuskopio on aina autentikoidusti salattu

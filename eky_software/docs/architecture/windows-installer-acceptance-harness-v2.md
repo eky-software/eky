@@ -1022,6 +1022,10 @@ ei saa riippua konsolivirran sulkeutumisesta.
 
 ## Evidence ja result-artifactit
 
+Nykyinen rajattu [salatun CI-tutkimusaineiston sopimus](ci-encrypted-evidence.md)
+täydentää workspace-consumerin aineiston säilymistä. Se ei muuta alla olevia
+tulos-, prosessiomistajuus- tai hyväksyntäsopimuksia.
+
 Nykyisiä turvallisia todisteita ovat muun muassa:
 
 - konsoliin kirjoitettu allowlistattu JSONL progress

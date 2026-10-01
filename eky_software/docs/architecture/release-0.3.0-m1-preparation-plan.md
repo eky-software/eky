@@ -2,6 +2,10 @@
 
 ## Jatka tästä
 
+**Uusin rajattu työ:** [salatun tutkimusaineiston välitavoite](#salatun-tutkimusaineiston-välitavoite).
+Se täydentää ensimmäisen epäonnistumisen säilytystä, mutta ei nimeä
+alkuperäistä timeoutia korjatuksi tai avaa A1:n hyväksyntäporttia.
+
 **T1/T2/T3 ja niiden integraatiojatko ovat hyväksyttyjä. Seuraava
 sovelluspala on A1/R01; sitä ei ole aloitettu.** Modulaarinen monoliitti ja
 hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohdan;
@@ -27,6 +31,75 @@ ajonaikaista tilaa.
 
 ### Nykyisen työn rajaus
 
+Alla kuvattu timeout-tutkimus ja sen päätösraportti säilyvät historiana.
+Omistajan uusin hyväksyntä lisää seuraavan rajatun toimitusvälitavoitteen;
+se ei käynnistä yksityisiä kertakokeita uudelleen.
+
+### Salatun tutkimusaineiston välitavoite
+
+Omistaja hyväksyi Gitin GnuPG:n rajatuksi testityökaluksi ja nimettyjen
+CI-tiedostojen salatun julkaisun. Toteutus kytketään nykyiseen Windowsin
+workspace-kuluttajaan, ei uuteen testialustaan. Nykyinen julkinen turvallinen
+raportti säilyy; raakasisältö toimitetaan vain paikallisesti hallitun
+purkuavaimen julkiselle vastinavaimelle salattuna. Tarkka käyttö- ja
+ylläpitosopimus on [CI:n salatussa tutkimusaineistossa](ci-encrypted-evidence.md).
+
+Tämä välitavoite valmistuu, kun tiedostorajauksen ja salauksen regressiot,
+todellinen synteettinen salaus/purku sekä normaaliin kuluttajaan kytkentä on
+katselmoitu ja kohdennettu hosted-toimitus on varmennettu. Käyttöönottoa ei
+avata ennen ylläpitäjän oman avaimen purkutestiä. Puuttuva avain tai
+toimitustodiste merkitään puuttuvaksi, ei onnistuneeksi.
+
+Ensimmäisen toteutuksen rajat:
+
+- Vain ennalta nimetyt ETL-, tallennus-/vientilokit ja caller-tulos;
+  ei koko runnerin tiedostoja, ympäristöä tai oikeaa käyttäjädataa.
+- GnuPG eristetään testiapuriin. Ei npm- tai sovellusriippuvuutta,
+  omaa salausalgoritmia, uutta loggeria tai supervisor-remonttia.
+- Salattu liite säilyy yhden vuorokauden. Purkuavain ei mene GitHubiin.
+  Paikallinen säilytys ja ratkaisemattoman näytön säilytysvelvoite jatkuvat.
+- Alkuperäinen testitulos, siivous, paketin eheys, tallennus, toimitus ja
+  analyysi pysyvät erillisinä. ETL toimitetaan ennen valinnaista analyysiä.
+- Nykyiset aikarajat, riippuvuuksien täsmäversiot, retry-ehdot ja pakolliset
+  testit säilyvät. Jobin pakkokatkaisun jälkeistä toimitusta ei luvata.
+- Playwrightin ensiyrityksen trace on tämän jälkeen erillinen pieni työ
+  nykyisiin fixtureihin. T3/V2-prosessiomistajuutta ei avata uudelleen.
+
+Työpuun rajattu toteutus läpäisi 55/55 paikallista Windows-tarkistusta
+ilman ohituksia. Mukana ovat todellinen keräys -> salaus -> purku,
+muutetun salatekstin ja väärän avaimen hylkäys, avainprofiilin rajat,
+viivytetyn GPG-lapsen pysäytys, siivouksen erillinen todistus sekä nykyiset
+CI-hyväksyntä- ja työkalukytkennät. Riippumaton lukukatselmus ei löytänyt
+korjausten jälkeen estettä rajatusta kytkennästä. Yhteinen GPG-budjetti on
+88 sekuntia ja erillinen kahden sekunnin pysäytysvara ulomman 120 sekunnin
+rajan sisällä. Tämä ei muuta varsinaisen testin aikarajoja.
+Synteettisen toimituskokeen todellinen CLI -> salaus -> purku -ketju
+läpäisi, ja yhteinen `test:ci` läpäisi 357/357 sopimustestiä ilman ohituksia.
+Toimituskokeen erillinen lukukatselmus ei löytänyt estävää puutetta.
+Sen nimeämät puuttuneet CLI-hylkäysregressiot lisättiin: väärä lähderevisio,
+rikkinäinen tapahtuma-JSON ja liian suuri tapahtuma-JSON hylätään ennen
+aineiston valmistelua tai julkaisuoutputin muutosta. Täydennetty
+OpenPGP-kohdesarja läpäisi 16/16 ilman ohituksia. Tämä testitäydennys ei
+muuttanut toteutusta tai workflow'ta; aiempaa 357/357-tulosta ei esitetä
+uutena koko CI:n ajona.
+Julkaisua edeltävä yhdistetty kohdesarja läpäisi 58/58 tarkistusta ilman
+ohituksia. Julkaisukatselmuksessa yksityiskohtaiset käyttöönottohavainnot
+rajattiin yksityiseen näyttöön; yhteinen ohje säilyttää vain portin tilan.
+
+Kyse on työpuun paikallisesta näytöstä, ei hyväksytystä hosted- tai
+release-revisiosta. Käyttöönoton paikallinen hyväksyntäportti on täytetty;
+sen yksityiskohtainen näyttö säilyy yksityisenä. Avainmuuttujia ei ole vielä
+asetettu eikä uutta hosted-ajoa tai aineiston julkaisua tehty. Kohdennetun
+hosted-toimituksen varmennus on vielä avoinna.
+Toimituksen seuraava koe on [rajattu synteettinen toimituskoe](ci-encrypted-evidence.md#rajattu-toimituskoe)
+olemassa olevan feasibility-workflow'n omana valintana. Se ei käynnistä
+MSI:tä, WPR:ää tai uutta paketointia eikä korvaa normaalia hyväksyntää.
+Alkuperäinen workspace-timeout ja aiempi vientivirhe pysyvät avoimina.
+Tämän välitavoitteen sulkeminen ei itsessään sulje niitä, hyväksy normaalia
+PR/main-kierrosta tai anna mergevaltuutta.
+
+### Aiemman timeout-tutkimuksen rajaus
+
 Omistajan uusin tehtävänanto korvaa aikaisemman laajan Goal-luonnoksen
 kokonaan. Nykyinen työ on revision `8913dc48` `packagedWorkspaceSuccess`
 run 2:n aikakatkaisun selvitys, näytön perusteella tarvittava rajattu
@@ -47,12 +120,17 @@ yksin täytä ehtoa. Riittämätön näyttö raportoidaan täsmällisenä puutte
 ja seuraavana päätöksenä ilman automaattista laajennusta. PR/main-integraatio,
 merge, A1 ja koko 0.3.0-julkaisu kuuluvat seuraaviin erillisiin vaiheisiin.
 
-Omistaja hyväksyi seuraavaksi yhden no-MSI-vientikokeen sekä rajatun
-yksityisen säilytysratkaisun. [Hyväksytty säilytysrajaus](#yksityisen-vientiaineiston-säilytysehdotus)
-rajaa ajon maksuttomaan kertakokeeseen omistajan uusimman ajopäätöksen
-mukaisesti. Se ei muuta alkuperäistä valmistumisehtoa; Playwrightin ensiyrityksen
-trace pysyy erillisenä työnä. Hyväksytyt V1- ja T3-sopimukset eivät avaudu
-uudelleen.
+Ensimmäinen no-MSI-vientikoe päättyi
+[käynnistimen ennakkotarkistukseen](#yksityisen-kertakokeen-valmisteluhylkäys).
+Omistajan erikseen hyväksymä yksi korjattu koe samalla lähderevisiolla
+[läpäisi tallennuksen ja vientianalyysin](#korjatun-yksityisen-kertakokeen-päätösraportti).
+Aineisto säilytettiin ja varmennettiin paikallisesti
+[hyväksytyn säilytysrajauksen](#yksityisen-vientiaineiston-säilytysehdotus)
+mukaan. Rajattu vientitutkimus päättyy päätösraporttiin; kolmatta
+diagnostista ajoa tai normaalia hyväksyntäkierrosta ei käynnistetä
+automaattisesti. Alkuperäisen timeoutin valmistumisehto ei ole täyttynyt.
+Playwrightin ensiyrityksen trace pysyy erillisenä työnä. Hyväksytyt V1- ja
+T3-sopimukset eivät avaudu uudelleen.
 
 ### Lähtönäyttö ja uusinnan raja
 
@@ -394,9 +472,11 @@ diagnostiikkakerrosta tai T3/V2-omistajuustyötä ei aloiteta.
 
 ### Yksityisen vientiaineiston säilytysehdotus
 
-**Tila: omistaja hyväksyi rajatun yksityisen kertakokeen ja alla kuvatun
-säilytyksen. Rajattu toteutus ja sen paikalliset regressiot ovat valmiit;
-ajon ennakkoehdot ja lähderevision jäädytys ovat kesken. Koetta ei ole ajettu.**
+**Nykytila: ensimmäinen ajo päättyi valmistelun ennakkotarkistukseen.
+Erikseen hyväksytty korjattu kertakoe läpäisi no-MSI-vientiketjun;
+[päätösraportti](#korjatun-yksityisen-kertakokeen-päätösraportti) erottaa
+sen alkuperäisestä timeoutista. Käynnistin on jälleen poistettu käytöstä.
+Alla olevat ehdot kuvaavat toteutettua kertakoetta, eivät jatkuvaa ajolupaa.**
 Omistajan uusin ajopäätös sallii kertakokeen nykyisillä tilin oikeuksilla
 maksuttoman käytön rajoissa. Kiintiön täyttyminen saa estää ajon; se ei
 oikeuta maksulliseen ylitykseen, laskutusmuutokseen tai uuteen yritykseen.
@@ -534,12 +614,11 @@ puutteellinen fixture tai metadata näkyy erikseen ja polku-alias hylätään
 ennen kirjoituksia. Vientivirhe ja aineiston täydellinen säilyminen voivat
 olla samanaikaisia tuloksia; säilymisen vihreys ei hyväksy analyysiä.
 
-Tämä on työpuun rajattu ennakkotodennus, ei hosted-kokeen, alkuperäisen
+Tämä checkpoint on työpuun rajattu ennakkotodennus, ei hosted-kokeen, alkuperäisen
 timeoutin tai normaalin hyväksyntäkierroksen tulos. Kertakokeen käynnistin
 ja raaka-aineiston talteenotin pidetään julkisen EKY-lähteen ulkopuolella.
-Seuraavaksi noudatetaan yllä kirjattua uusinta ajopäätöstä, jäädytetään
-katselmoitu lähde sekä yksityinen käynnistin ja ajetaan hyväksytty koe
-kerran. Kiintiöstä estynyttä ajoa ei kierretä. Riippuvuudet,
+Checkpointin jälkeen lähde ja käynnistin jäädytettiin yhtä hyväksyttyä
+ajoa varten; sen tulos on alla. Kiintiöstä estynyttä ajoa ei kierretä. Riippuvuudet,
 sovelluskoodi, nykyiset prosessiomistajat ja tavalliset hyväksyntäportit
 eivät muuttuneet.
 
@@ -547,6 +626,89 @@ Lähteet: [artifactien lukuoikeus](https://docs.github.com/en/actions/how-tos/ma
 [artifactin säilytysaika](https://github.com/actions/upload-artifact#retention-period),
 [yksityisen CI:n kiintiöt](https://docs.github.com/en/billing/concepts/product-billing/github-actions)
 ja [runnerien resurssierot](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
+
+### Yksityisen kertakokeen valmisteluhylkäys
+
+Yksi hyväksytty ajo käytti julkista lähderevisiota
+`068aba187a84cd1d29e26a4432252785c97ae9f8` ja erikseen jäädytettyä
+yksityistä käynnistintä. Ajo päättyi ennakkotarkistuksen
+`PRIVATE_EXPORT_PROBE_SOURCE_OR_SDK_INVALID`-hylkäykseen ennen
+supervisor-buildiä, fixtureä, tallennusta, vientiä tai MSI-toimintoja.
+Checkoutit sekä työkalujen valmisteluaskeleet läpäisivät. Molempien
+identiteettikyselyjen native-paluukoodit tarkistettiin ennen epäonnistunutta
+arvovertailua; lähdecheckout täsmäsi jäädytettyyn revisioon. Valitun
+SDK:n tarkka versio ei säilynyt tulosteeseen.
+
+Käynnistimen staattinen tarkistus vahvisti puutteen: SDK-kysely suoritettiin
+checkoutien yläkansiossa, ei EKY:n `global.json`-lukituksen vaikutusalueella.
+SDK:n asentaminen ei yksin valitse sitä projektin ulkopuoliselle kyselylle.
+Tämä on valmisteluhylkäykseen sopiva käynnistinvirhe, ei alkuperäisen
+workspace-timeoutin tai jäljen vientivirheen juurisyy.
+
+Korjaus rajattiin vain yksityiseen käynnistimeen: tarkistus suoritetaan
+projektikansiossa, Git-kysely sidotaan absoluuttiseen checkout-juureen ja
+työkalun hausta valitaan yksi suoritettava polku ennen täsmäversion
+varmennusta. `10.0.302`-lukitus ja kaikki kokeen rajat säilyvät. Päivitetyt
+17/17 paikallista tarkistusta läpäisivät ilman ohituksia; mukana ovat
+työhakemistoregressio ja todellisen SDK-/Git-tarkistuslohkon lukukoe.
+Epäonnistuneet valmistelutarkistukset säilytettiin erillisinä, eikä
+paikallinen läpäisy ole uuden hosted-ajon todiste.
+
+Ajoloki ja tilatiedot säilytettiin yksityisesti. Artifacteja oli nolla:
+ETL:ää tai vientitulosteita ei ehtinyt syntyä. Fixturen, tallennuksen,
+siivouksen ja analyysin tulokset ovat **ei suoritettu**, eivät hyväksytty.
+Käynnistin poistettiin käytöstä ja erillinen käynnistysportti suljettiin;
+kumpikin varmennettiin. Normaali julkinen CI ja PR/main eivät muuttuneet.
+
+Omistaja hyväksyi tämän jälkeen yhden korjatun no-MSI-kertakokeen samalla
+lähderevisiolla ja samoilla säilytys-, kustannus- ja aikarajoilla. Sen
+[tulos](#korjatun-yksityisen-kertakokeen-päätösraportti) on erillinen
+diagnostinen yritys, ei alkuperäisen testin muuttumaton uusinta. Tämä
+valmisteluhylkäys säilyy ensimmäisen ajon tuloksena; sitä ei korvata
+myöhemmällä läpäisyllä.
+
+Menetelmän lähde: [.NET SDK:n valinta ja global.json-hakujärjestys](https://learn.microsoft.com/en-us/dotnet/core/tools/global-json).
+
+### Korjatun yksityisen kertakokeen päätösraportti
+
+Yksi erikseen hyväksytty korjattu ajo läpäisi samalla julkisella lähteellä
+`068aba187a84cd1d29e26a4432252785c97ae9f8`. Muutos oli vain yksityisen
+käynnistimen SDK-/lähdetarkistuksessa; nykyinen fixture, vientiketju,
+riippuvuudet ja testien rajat säilyivät. Ennen ajoa käynnistimen tarkistukset
+läpäisivät uudelleen 17/17 ilman ohituksia. Käynnistimen lähdesidonta ja
+SDK-ennakkotarkistus läpäisivät nyt myös hosted-ajossa.
+
+| Osatulos | Varmennettu tulos ja rajaus |
+| --- | --- |
+| Synteettinen fixture | Yksi valittu `productInspectionNativeHold`-sopimustesti läpäisi. Se vaatii tarkoituksella aiheutetun odotuksen hylkäämistä, ei onnistunutta asennusta. MSI:tä tai käyttäjätietokantaa ei käsitelty. |
+| Tallennus ja ensiaineisto | Tallennuksen aloitus ja pysäytys läpäisivät. Pysäytetty ETL ja rajatut fixture-tulokset siirrettiin yksityiseen säilytykseen ennen analyysiä. |
+| Vientikutsut | Sekä `event-statistics` että `command-export` poistuivat havaitusti koodilla 0. Metatiedon kirjoitukset valmistuivat; stderr-tiedostot olivat tyhjiä. Tämä todistaa vain uuden tallenteen viennin. |
+| Analyysi | Odotettu `scriptStarted` -> `productStateStarted`-raja ja `switchIntervalAfterLastEvent` havaittiin ilman `scriptFinished`-merkintää. Kattavuus on rajattu tallennus, ei koko historia tai vanhan timeoutin juurisyy. |
+| Säilytys ja eheys | Molemmat aineistoerät ladattiin paikalliseen yksityiseen tutkimusalueeseen ajon valmistuttua. Kaikkien 20 manifestiin kuuluvan tiedoston koot, SHA-256-tiivisteet ja ajosidonta täsmäsivät; ylimääräisiä tiedostoja ei löytynyt. Sama ETL säilyi muuttumattomana analyysin yli. |
+| Prosessit ja siivous | Viiden säilytetyn vaiheen tulokset todistavat oman prosessipuunsa poissaolon. Caller säilyttää kuitenkin `processTreeAbsent: false`- ja `retainedUnverified`-tuloksen; kokonaissiivous pysyy varmentamattomana. Tästä ei yksin päätellä prosessivuotoa, eikä aineiston täydellinen säilyminen korvaa siivoustodistetta. |
+
+Käynnistin poistettiin käytöstä ja kertakokeen käynnistysmuuttuja poistettiin;
+kumpikin varmennettiin. Raaka-aineisto jää vain hyväksyttyyn yksityiseen
+säilytykseen. Seitsemän vuorokauden palvelusäilytys, paikallinen 14 vuorokauden
+tarkistus ja varmentamattoman siivouksen aineiston säilytysvelvoite pysyvät.
+Yksityisestä kohteesta ei tehdä normaalia CI-ajopaikkaa. Tässä vaiheessa
+ei muutettu julkisen PR:n lähdettä, hyväksyntäehtoja tai sovelluskoodia.
+
+**Suljettu:** käynnistinkorjauksen hosted-todennus ja tämän uuden no-MSI-
+tallenteen säilytys-/vientikoe. Riippumaton lukukatselmus vahvisti osatulosten
+erottelun ja siivousnäytön rajan. **Ei suljettu:** aiemman `commandExport`-
+virheen syy, alkuperäinen workspace run 2 -timeout tai normaali hyväksyntä.
+Vanhan virheen ETL ja raakavirhe puuttuvat edelleen. Uusi läpäisy ei
+palauta niitä eikä osoita vikaa infrastruktuurihäiriöksi.
+
+**Jatkosuositus:** päätetään tämä erillinen vientitutkimus tähän raporttiin.
+Nykyinen näyttö ei perustele uutta vientikorjausta, MSI-koetta tai yleistä
+diagnostiikkakerrosta. Normaaliin hyväksyntään paluu tarvitsee aiemmin
+määritellyn korjaus-/infrastruktuurinäytön tai omistajan uuden päätöksen
+tehtävän valmistumisehdosta. Mahdollinen päätös jatkaa alkuperäinen havainto
+avoimena ei saa kirjata sitä korjatuksi tai siivousta varmennetuksi.
+Kaikki normaalin kierroksen pakolliset data-, turvallisuus-, sisältö- ja
+siivoustarkistukset säilyvät. Tätä päätöstä tai uutta ajoa ei ole tehty.
 
 ### Playwright-ensivirheen jatkoehdotus
 
