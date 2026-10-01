@@ -118,7 +118,8 @@ eheys varmennettiin. Kokonaissiivous säilyy varmentamattomana, eikä uusi
 läpäisy ratkaise vanhaa vientivirhettä tai alkuperäistä timeoutia.
 Käynnistin ja ajon salliva portti on suljettu. Vientitutkimus päättyy
 päätösraporttiin ilman automaattista lisäajoa; normaalin hyväksynnän
-avaamiseen tarvittava näyttö tai uusi valmistumisehdon päätös puuttuu.
+avaamiseen tarvittava näyttö tai uusi valmistumisehdon päätös puuttui
+tuolloin. Uudempi päätös on kirjattu alla.
 Maksullista käyttöä ei sallita. Yksityisestä kokeesta ei tule tavallista
 ajopaikkaa: EKY:n julkisuus ja normaalit CI-portit säilyvät.
 Omistaja hyväksyi seuraavaksi [salatun tutkimusaineiston rajatun välitavoitteen](release-0.3.0-m1-preparation-plan.md#salatun-tutkimusaineiston-välitavoite):
@@ -128,13 +129,20 @@ säilyy yhden vuorokauden ja käyttöönotto edellyttää avaimen purkutestiä.
 Toteutus ei muuta normaaleja hyväksyntäehtoja tai sulje vanhoja havaintoja.
 Paikallinen salausportti läpäisi, mutta ensimmäinen synteettinen hosted-
 toimituskoe hylättiin ennen liitteen syntymistä. Toimituksen hyväksyntä
-on avoin. Vaihe-erottelun ja turvallisen sisäisen virhekoodin välityksen
+oli vielä avoin. Vaihe-erottelun ja turvallisen sisäisen virhekoodin välityksen
 jälkeen kolmas koe hylättiin koodilla `EVIDENCE_GPG_UNAVAILABLE`.
 Usean Git-osuman työkaluhakuvirhe toistettiin ja korjattiin; rajatut
-regressiot läpäisivät 63/63. Korjauksen hosted-vastaavuus ja liitteen purku
-odottavat seuraavan nimetyn kertakokeen ajopäätöstä. Keräyksen vahvistus
-on poistettu. Rajatun päätöksen ja näytön omistaa M1-suunnitelma.
-Normaalia hyväksyntää ei vielä käynnistetä.
+regressiot läpäisivät 63/63. Omistajan hyväksymä korjatun revision
+`f69f3d76` [kertakoe 36930438493](https://github.com/eky-software/eky/actions/runs/36930438493)
+sekä yksityinen purku- ja sisältötarkistus läpäisivät. Rajattu salatun
+toimituksen välitavoite on hyväksytty; keräyksen vahvistus on käytössä.
+[M1:n hyväksyntä ja seuraava etenemispäätös](release-0.3.0-m1-preparation-plan.md#salatun-toimituksen-hyväksyntä)
+erottavat toimituksen valmistumisen vanhasta timeoutista. Omistaja hyväksyi
+2.10.2026 yhden jäädytetyn revision normaalin CI-kierroksen sekä rajatun
+Goalin valmistumisehdon muutoksen: vanha timeout jää avoimeksi havainnoksi,
+mutta sen jälkikäteinen juurisyy ei estä uuden revision hyväksyntää.
+Kaikki nykyiset pakolliset tarkistukset säilyvät. Merge ja A1 eivät kuulu
+tähän päätökseen; tulos hyväksytään vasta kierroksen todennuksen jälkeen.
 Alkuperäisten timeoutien syitä ei väitetä ratkaistuiksi. Ei asennuskorjauksen
 tai T3:n uutta toteutusta.
 Seuraava tuotantopala on [A1/R01](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde)

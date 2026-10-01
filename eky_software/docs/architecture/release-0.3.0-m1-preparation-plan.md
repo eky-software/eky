@@ -2,9 +2,13 @@
 
 ## Jatka tästä
 
-**Uusin rajattu työ:** [salatun tutkimusaineiston välitavoite](#salatun-tutkimusaineiston-välitavoite).
+**Salatun tutkimusaineiston välitavoite on todennettu** revisiolla
+`f69f3d76`: [toimitus ja purku](#salatun-toimituksen-hyväksyntä).
 Se täydentää ensimmäisen epäonnistumisen säilytystä, mutta ei nimeä
 alkuperäistä timeoutia korjatuksi tai avaa A1:n hyväksyntäporttia.
+Omistaja hyväksyi [yhden normaalin hyväksyntäkierroksen](#seuraava-etenemispäätös).
+Seuraava työ on sen revision jäädytys, seurattu PR-kierros ja pakollisten
+tulosten tarkistus. Mergeä tai A1:tä ei ole hyväksytty tällä päätöksellä.
 
 **T1/T2/T3 ja niiden integraatiojatko ovat hyväksyttyjä. Seuraava
 sovelluspala on A1/R01; sitä ei ole aloitettu.** Modulaarinen monoliitti ja
@@ -37,13 +41,14 @@ se ei käynnistä yksityisiä kertakokeita uudelleen.
 
 ### Salatun tutkimusaineiston välitavoite
 
-**Nykytila:** kolmas rajattu hosted-koe hylättiin turvallisella koodilla
-`EVIDENCE_GPG_UNAVAILABLE`; liitettä ei syntynyt. Usean `git.exe`-osuman
-työkaluhakuvirhe toistettiin synteettisesti ja korjattiin. Korjauksen
-kohdesarja läpäisi 63/63 ilman ohituksia. Hosted-vastaavuus ja toimitus/purku
-ovat vielä todentamatta; seuraava nimetty kertakoe tarvitsee ajopäätöksen.
-Keräyksen vahvistusportti on suljettu. Alla säilyvät aiempien vaiheiden
-tulokset, eivät rinnakkaiset työjonot.
+**Nykytila 2.10.2026:** rajattu salattu toimitus/purku on hyväksytty
+revisiolla `f69f3d76`, [ajo 36930438493](https://github.com/eky-software/eky/actions/runs/36930438493),
+suoritusyritys 1. Paikallisesti toistettu Git-hakuvirhe korjattiin ja
+hosted-toimitus sekä yksityinen purku läpäisivät. Tämä ei ole normaalin
+workspace-testin, ETL-tallennuksen tai alkuperäisen timeoutin hyväksyntä.
+Keräyksen julkisen avaimen vahvistus on voimassa; uusia ajoja ei ole
+käynnistetty. Alla säilyvät aiempien vaiheiden tulokset, eivät rinnakkaiset
+työjonot. Tarkka lopputulos on [hyväksyntächeckpointissa](#salatun-toimituksen-hyväksyntä).
 
 Omistaja hyväksyi Gitin GnuPG:n rajatuksi testityökaluksi ja nimettyjen
 CI-tiedostojen salatun julkaisun. Toteutus kytketään nykyiseen Windowsin
@@ -156,8 +161,8 @@ työkaluhakua, latausta, riippuvuutta tai salaamatonta fallbackia.
 Regressio hylättiin ennen korjausta ja läpäisi korjauksen jälkeen myös
 todellisen salaus/purku-ketjun; yhdistetty kohdesarja läpäisi 63/63 ilman
 ohituksia. Tämä todistaa rajatun apurivirheen ja korjauksen, ei vielä sen
-vastaavuutta hosted-hylkäykseen. Neljättä hosted-koetta ei ajettu.
-Seuraava päätös on yksi enintään viiden minuutin synteettinen toimituskoe
+vastaavuutta hosted-hylkäykseen. Tässä vaiheessa neljättä hosted-koetta ei
+ollut ajettu. Omistajalle esitettiin yksi enintään viiden minuutin synteettinen toimituskoe
 korjatusta jäädytetystä revisiosta sekä onnistuneen liitteen yksityinen
 purku ja sidonnan tarkistus. Ei automaattista uusintaa tai yleistä
 diagnostiikkalaajennusta, jos tämäkin jää avoimeksi.
@@ -168,6 +173,54 @@ MSI:tä, WPR:ää tai uutta paketointia eikä korvaa normaalia hyväksyntää.
 Alkuperäinen workspace-timeout ja aiempi vientivirhe pysyvät avoimina.
 Tämän välitavoitteen sulkeminen ei itsessään sulje niitä, hyväksy normaalia
 PR/main-kierrosta tai anna mergevaltuutta.
+
+### Salatun toimituksen hyväksyntä
+
+Omistaja hyväksyi yhden korjauksen todennuksen ja yksityisen purkutarkistuksen.
+Jäädytetyn revision `f69f3d76aa463ea1e48f0b48d8d307d4588f81ad`
+[ajo 36930438493](https://github.com/eky-software/eky/actions/runs/36930438493),
+suoritusyritys 1, läpäisi. Ajon seuranta alkoi jonotuksessa ja jatkui
+valmistumiseen; loki oli luettavissa jobin päätyttyä. Synteettinen jobi
+kesti 41 sekuntia. Muut neljä jobia ohitettiin valinnan mukaisesti.
+
+| Portti | Todennettu tila ja rajaus |
+| --- | --- |
+| Korjaus ja regressiot | Usean Git-osuman regressio hylättiin ennen korjausta samalla turvallisella virhekoodilla. Korjattu kohdesarja läpäisi 63/63 ilman ohituksia. Riippumaton rajatun muutoksen katselmus ei löytänyt estettä. |
+| Hosted-salaus ja julkaisu | Tarkka checkout, työkalujen ennakkotarkistus, salaus, yhden nimetyn `.gpg`-liitteen upload ja julkaisuportti läpäisivät. Artifact `11195722296` syntyi yhden vuorokauden säilytyksellä. |
+| Toimitus ja purku | Yksityinen lataus, artifactin tiiviste, purku tyhjennetyn salasanavälimuistin jälkeen sekä manifestin run/attempt/revision-sidonta, tiedostojoukko, tavut ja tiivisteet hyväksyttiin. Purkuagentin sulku varmennettiin erikseen. |
+| Normaali kytkentä | Nykyisen workspace-kuluttajan prepare/start/stop/seal/upload-ketjun sopimustestit ja katselmus ovat mukana kohdesarjassa. Normaalia sovellus- tai MSI-ajoa ei tehty toimituskokeessa. |
+| Tallennus, analyysi ja siivous | Synteettinen näyte ei käynnistä WPR:ää tai sovellusta. Sen tallennus- ja analyysitulokset ovat `skipped`, `captureClosed: false` ja callerin siivous `unverified`, eivät onnistuneeksi keksittyjä tuloksia. |
+
+Rajattu salatun toimituksen välitavoite on suljettu yllä olevaan revisioon.
+Kolme aikaisempaa hylkäystä säilyvät hylkäyksinä. Git-hakuvirheen paikallinen
+syy ja korjauksen hosted-toimivuus on todennettu; vanhojen hylkäysten
+puuttuvaa raakasisältöä ei ole palautettu. Tuotantokoodi, riippuvuudet,
+aikarajat ja normaalin testin hyväksyntäehdot eivät muuttuneet.
+Tämä ei sulje alkuperäistä workspace-timeoutia tai vanhaa vientivirhettä.
+
+### Seuraava etenemispäätös
+
+**Omistajan päätös 2.10.2026:** yksi jäädytetyn revision normaali
+CI-hyväksyntäkierros salattu talteenotto käytössä on hyväksytty.
+Samalla omistaja muutti tämän rajatun Goalin valmistumisehtoa: alkuperäinen
+timeout jää avoimeksi seurantahavainnoksi, eikä valmistuminen enää edellytä
+sen jälkikäteisen juurisyyn todistamista. Tämä uudempi päätös korvaa vain
+historian ristiriitaisen jatko-/valmistumisehdon, ei kriittisiä testiehtoja.
+Vikaa ei nimetä korjatuksi, infrastruktuurihäiriöksi tai ei-kriittiseksi
+kehityspoikkeukseksi. Goalin valmistuminen vaatii uuden jäädytetyn revision
+kaikki nykyiset pakolliset tarkistukset ja niiden todellisen kattavuuden.
+
+Mahdollisen kierroksen kaikki nykyiset data-, turvallisuus-, sisältö-,
+prosessi- ja siivousportit sekä aikarajat säilyvät. Ensivirhe säilytetään;
+uusi hylkäys luokitellaan olemassa olevasta aineistosta, eikä kierroksia
+toisteta vihreään asti. Toimituksen onnistuminen ei lupaa aineistoa runnerin
+pakkokatkaisun jälkeen. Normaali kierros tarkoittaa nykyisen PR-haaran
+päivityksen käynnistämiä `V2 risk-based CI`- ja `Dependency security`-ajoja,
+ei erillistä lisädispatchia tai uutta MSI-diagnostiikkakokeiden sarjaa.
+PR/main-integraatio, merge ja A1 eivät sisälly tähän päätökseen. Ennen
+kierrosta kirjataan jäädytetty HEAD ja odotettu riskimatriisi; todellinen
+PR-checkout varmennetaan ajosta. Seurannan omistaa pääagentti tai nimetty vain lukeva agentti;
+salatut liitteet ladataan ja varmennetaan ennen vanhenemista.
 
 ### Aiemman timeout-tutkimuksen rajaus
 

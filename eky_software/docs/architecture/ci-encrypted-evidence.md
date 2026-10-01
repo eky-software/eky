@@ -205,9 +205,9 @@ pelkän testitäydennyksen vuoksi uudelleen.
 Julkaisua edeltävä yhdistetty kohdesarja läpäisi tämän jälkeen 58/58
 tarkistusta ilman ohituksia, mukaan lukien täydentävät hylkäysregressiot.
 Tämä on työpuun näyttöä, ei jäädytetyn hosted-revision hyväksyntä.
-Käyttöönoton paikallinen hyväksyntäportti on täytetty; yksityiskohtainen
-näyttö säilyy yksityisenä. Hosted-toimitus on vielä avoinna, eikä
-paikallinen käyttöönotto yksin aktivoi GitHubin avainmuuttujia.
+Käyttöönoton paikallinen hyväksyntäportti täyttyi; yksityiskohtainen
+näyttö säilyy yksityisenä. Tässä vaiheessa hosted-toimitus oli vielä
+avoinna. Paikallinen käyttöönotto ei yksin aktivoi GitHubin avainmuuttujia.
 
 Ensimmäinen revision `9daf3209` hosted-toimituskoe hylättiin salausaskeleen
 yleisellä virhekoodilla työkalujen ennakkotarkistuksen jälkeen. Salattua
@@ -220,10 +220,18 @@ kolmas koe hylättiin koodilla `EVIDENCE_GPG_UNAVAILABLE`; liitteitä ei
 syntynyt. Usean Git-osuman työkaluhakuvirhe toistettiin erillisellä
 synteettisellä regressiolla ja korjattiin yllä kuvattuun ensimmäisen osuman
 valintaan. Korjauksen yhdistetty kohdesarja läpäisi 63/63 ilman ohituksia,
-mukaan lukien usean osuman todellinen salaus/purku. Hosted-vastaavuutta ei
-vielä ole todennettu. Toimitus-/purkuportti on avoin ja keräyksen vahvistus
-on poistettu. Seuraavan kertakokeen päätös ja työn nykytila ovat
-[M1-suunnitelmassa](release-0.3.0-m1-preparation-plan.md#salatun-tutkimusaineiston-välitavoite).
+mukaan lukien usean osuman todellinen salaus/purku. Tässä vaiheessa
+hosted-vastaavuus oli vielä todentamatta ja keräyksen vahvistus poistettu.
+
+Omistajan hyväksymä korjatun revision `f69f3d76` kertakoe
+[36930438493](https://github.com/eky-software/eky/actions/runs/36930438493),
+suoritusyritys 1, läpäisi tämän jälkeen salauksen ja julkaisun.
+Artifactin `11195722296` yksityinen lataus, eheys, kylmä purku,
+manifestin sidonta ja tavujen vertailu todennettiin. Vahvistusportti on
+käytössä; purkuavain ja salasana pysyvät paikallisina. Rajattu toimitusportti
+on hyväksytty, ei alkuperäinen timeout tai normaali hyväksyntäkierros.
+Ajantasaisen hyväksynnän ja seuraavan päätöksen omistaa
+[M1-suunnitelma](release-0.3.0-m1-preparation-plan.md#salatun-toimituksen-hyväksyntä).
 
 Lähteet: [GnuPG:n vastaanottajavalinta](https://www.gnupg.org/documentation/manuals/gnupg/GPG-Key-related-Options.html),
 [artifactien säilytys](https://github.com/actions/upload-artifact#retention-period)
