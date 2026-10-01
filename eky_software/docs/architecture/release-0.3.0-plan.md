@@ -93,8 +93,28 @@ katkaisun yli; koko analyysi jäi hylätyksi synteettisestä kokeesta puuttuvien
 MSI-tapahtumien vuoksi. Omistaja hyväksyi tämän jälkeen yhden
 [workspace-success-havaintokokeen](release-0.3.0-m1-preparation-plan.md#hyväksytty-workspace-success-havaintokoe)
 alkuperäisellä paketilla ja nykyisen tallennuksen rajatulla kytkennällä.
-Toteutus ja sen todennus ovat kesken. Tutkimustulos ei ole PR/main-hyväksyntä eikä Goal ole
-tällä valmis.
+[Kokeen tulos](release-0.3.0-m1-preparation-plan.md#workspace-success-havaintokokeen-tulos):
+caller, pakollinen verifier ja kaikki 21 komentovaihetta läpäisivät, mutta
+erillinen jäljen vientityökalu epäonnistui ennen lukijaa. Koko diagnoosi
+on hylätty, alkuperäinen vika ei toistunut eikä syytä ole varmistettu.
+Uutta ajoa ei käynnistetä automaattisesti. Tutkimustulos ei ole
+PR/main-hyväksyntä eikä Goal ole tällä valmis.
+[Tutkimuspaketin päätösraportti](release-0.3.0-m1-preparation-plan.md#tutkimuspaketin-päätösraportti)
+vahvistaa, ettei saman ajon ETL:ää tai raakaa vientivirhettä ole saatavilla
+tarkistetuista aineistolähteistä. Pienin jatkoehdotus on nykyinen no-MSI-
+vientikoe vasta yksityisen luku- ja säilytysreitin ratkettua, ei uusi
+asennuspäivitys tai automaattinen hyväksyntäkierros. Playwrightin
+ensiyrityksen trace säilyy erillisenä rajattuna jatkoehdotuksena.
+[Yksityisen vientiaineiston säilytysehdotus](release-0.3.0-m1-preparation-plan.md#yksityisen-vientiaineiston-säilytysehdotus)
+rajaa työn yhteen no-MSI-kokeeseen, erilliseen yksityiseen säilytyspaikkaan
+ja nimettyihin käyttöoikeus-/säilytysrajoihin. Omistaja hyväksyi repositoryn
+perustamisen, rajatun raakasiirron ja kertakokeen. Rajattu toteutus,
+katselmuksen korjaukset ja paikalliset regressiot on tehty; hosted-koetta
+ei ole ajettu. Omistajan uusin päätös sallii maksuttoman kertakokeen
+nykyisillä tilin oikeuksilla M1:ssä kuvatuin ennakkotarkistuksin;
+kiintiörajan täyttyminen saa estää ajon. Seuraavaksi jäädytetään lähderevisio.
+Maksullista käyttöä ei sallita. Yksityisestä kokeesta ei tule tavallista
+ajopaikkaa: EKY:n julkisuus ja normaalit CI-portit säilyvät.
 Alkuperäisten timeoutien syitä ei väitetä ratkaistuiksi. Ei asennuskorjauksen
 tai T3:n uutta toteutusta.
 Seuraava tuotantopala on [A1/R01](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde)

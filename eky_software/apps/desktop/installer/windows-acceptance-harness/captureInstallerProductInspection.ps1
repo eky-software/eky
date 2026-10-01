@@ -21,17 +21,51 @@ function Invoke-CaptureTool([string]$Tool, [string[]]$Arguments, [string]$Label)
     $_ -match '["\r\n\x00]' -or $_.EndsWith('\')
   }).Count -ne 0) { throw 'INSPECTOR_CAPTURE_ARGUMENTS_INVALID' }
   $argumentLine = ($Arguments | ForEach-Object { '"' + $_ + '"' }) -join ' '
-  $process = Start-Process -FilePath $Tool -ArgumentList $argumentLine -Wait -PassThru -NoNewWindow `
-    -RedirectStandardOutput (Join-Path $root "$Label.private.log") `
-    -RedirectStandardError (Join-Path $root "$Label.stderr.private.log")
+  $metadata = $null
+  if ($Label -cin @('event-statistics', 'command-export')) {
+    if ($null -eq (Get-Variable -Name captureExporterMetadata -Scope Script -ErrorAction SilentlyContinue)) {
+      $script:captureExporterMetadata = [ordered]@{ schemaVersion = 1; writesComplete = $true; exports = [ordered]@{
+        'event-statistics' = [ordered]@{ invocationStarted = $false; exitObserved = $false; nativeExitCode = $null }
+        'command-export' = [ordered]@{ invocationStarted = $false; exitObserved = $false; nativeExitCode = $null }
+      } }
+    }
+    $metadata = $script:captureExporterMetadata
+    $metadata.exports[$Label] = [ordered]@{ invocationStarted = $true; exitObserved = $false; nativeExitCode = $null }
+    # This is an invocation attempt, not proof that Start-Process created a process.
+    try {
+      [IO.File]::WriteAllText((Join-Path $root 'export-metadata.private.json'), ($metadata | ConvertTo-Json -Depth 4 -Compress))
+    } catch {
+      $metadata.writesComplete = $false
+      try { Write-Warning 'INSPECTOR_CAPTURE_EXPORT_METADATA_UNAVAILABLE' -WarningAction Continue } catch { }
+    }
+  }
+  $process = $null
   try {
+    $process = Start-Process -FilePath $Tool -ArgumentList $argumentLine -Wait -PassThru -NoNewWindow `
+      -RedirectStandardOutput (Join-Path $root "$Label.private.log") `
+      -RedirectStandardError (Join-Path $root "$Label.stderr.private.log")
     if (!$process.HasExited) { throw 'INSPECTOR_CAPTURE_TOOL_EXIT_UNVERIFIED' }
+    if ($null -ne $metadata -and $process.ExitCode -is [int]) {
+      $metadata.exports[$Label].exitObserved = $true
+      $metadata.exports[$Label].nativeExitCode = $process.ExitCode
+    }
     if ($process.ExitCode -ne 0) {
       $failure = [InvalidOperationException]::new('INSPECTOR_CAPTURE_TOOL_FAILED')
       $failure.Data['toolExitCode'] = $process.ExitCode
       throw $failure
     }
-  } finally { $process.Dispose() }
+  } finally {
+    # Persist the native observation before any caller parses the exported text.
+    if ($null -ne $metadata) {
+      try {
+        [IO.File]::WriteAllText((Join-Path $root 'export-metadata.private.json'), ($metadata | ConvertTo-Json -Depth 4 -Compress))
+      } catch {
+        $metadata.writesComplete = $false
+        try { Write-Warning 'INSPECTOR_CAPTURE_EXPORT_METADATA_UNAVAILABLE' -WarningAction Continue } catch { }
+      }
+    }
+    if ($null -ne $process) { $process.Dispose() }
+  }
 }
 
 function Get-CaptureTraceStatistics([string]$TracePath) {
