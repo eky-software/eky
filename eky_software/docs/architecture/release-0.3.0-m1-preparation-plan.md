@@ -102,8 +102,25 @@ minuutin synteettisen kokeen. Erottelu koskee vain toimituskokeen
 käynnistys-, keräys-, salaus- ja julkaisuportteja: julkiseen virheeseen
 tulee koodin määräämä vaihe, ei raakavirhettä tai pääteltyä juurisyytä.
 Rajatut regressiot ja workflow-sopimukset läpäisivät 60/60 tarkistusta;
-erillinen staattinen katselmus ei löytänyt estettä. Uuden hosted-kokeen
-ja purun näyttö puuttuu vielä. Aikarajat ja normaalin testin ehdot säilyvät.
+erillinen staattinen katselmus ei löytänyt estettä. Hyväksytty yksi jatkokoe
+ajettiin revisiosta `9f8f7c34`: [ajo 36924369649](https://github.com/eky-software/eky/actions/runs/36924369649),
+suoritusyritys 1, hylättiin vaiheeseen `encryption`. Aiemmat kutsu-,
+revisio- ja keräysportit läpäistiin. Tämä vaihe kattaa salausapurin
+käynnistyksen ja sen suorittamisen, eikä vielä todista sisäistä juurisyytä.
+Salattua liitettä ei syntynyt; purku ja toimitus ovat edelleen avoimia.
+Muut jobit ohitettiin, eikä MSI:tä tai normaalia hyväksyntää ajettu.
+Aikarajat ja normaalin testin ehdot säilyvät. Molempien yritysten näyttö
+säilytetään erikseen; keräyksen vahvistusportti suljettiin epäonnistumisen
+jälkeen. Kolmatta hosted-koetta ei käynnistetty.
+
+Rajattu seuraava päätös: `Invoke-EvidenceEncryption` muodostaa jo
+suljetun virhekoodin, mutta `sealWorkspaceEvidence.ps1` ja sen Node-kutsuja
+peittävät sen yleisellä hylkäyksellä. Säilyneen aineiston perusteella
+puuttuvat tämän koodin välitys sekä käynnistysvirheen erottaminen apurin
+sisäisestä hylkäyksestä. Mahdollinen täsmennys rajataan olemassa olevan
+sopimuksen sallittuihin koodeihin ja regressioihin, ei raakatulosteiden
+julkaisuun tai uuteen raportointikerrokseen. Uusi hosted-todennus tarvitsee
+erillisen ajopäätöksen; aiempi yhden kokeen lupa on käytetty.
 Toimituksen todentamistapa on [rajattu synteettinen toimituskoe](ci-encrypted-evidence.md#rajattu-toimituskoe)
 olemassa olevan feasibility-workflow'n omana valintana. Se ei käynnistä
 MSI:tä, WPR:ää tai uutta paketointia eikä korvaa normaalia hyväksyntää.

@@ -199,8 +199,11 @@ paikallinen käyttöönotto yksin aktivoi GitHubin avainmuuttujia.
 Ensimmäinen revision `9daf3209` hosted-toimituskoe hylättiin salausaskeleen
 yleisellä virhekoodilla työkalujen ennakkotarkistuksen jälkeen. Salattua
 liitettä ei syntynyt eikä salaamatonta varavaihtoehtoa käytetty. Normaalia
-hyväksyntää tai MSI-asennusta ei ajettu. Ensivirhe säilyy hylkäyksenä;
-toimitus-/purkuportti on avoin. Seuraavan rajatun kokeen päätös ja työn
+hyväksyntää tai MSI-asennusta ei ajettu. Hyväksytty revision `9f8f7c34`
+jatkokoe rajasi hylkäyksen vaiheeseen `encryption`, mutta ei salausapurin
+sisäiseen syyhyn. Tästäkään ajosta ei syntynyt liitettä. Molemmat hylkäykset
+säilyvät; toimitus-/purkuportti on avoin ja keräyksen vahvistus on poistettu.
+Turvallisen sisäisen virhekoodin puuttuvan välityksen seuraava päätös ja työn
 nykytila ovat [M1-suunnitelmassa](release-0.3.0-m1-preparation-plan.md#salatun-tutkimusaineiston-välitavoite).
 
 Lähteet: [GnuPG:n vastaanottajavalinta](https://www.gnupg.org/documentation/manuals/gnupg/GPG-Key-related-Options.html),
