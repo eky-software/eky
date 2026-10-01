@@ -13,7 +13,7 @@ hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohd
 | Mainin omat portit | [Normaali CI 36491715165](https://github.com/eky-software/eky/actions/runs/36491715165), yritys 1: kaikki 38 vaadittua ryhmää läpäisivät; vain nimenomaisesti valinnainen diagnostiikkakoe ohitettiin. Linux system 695/695, kriittinen web 37/37 ja Windowsin kriittinen Electron 38/38 vastasivat ajovalintojaan ilman retryä, flakyä tai puuttuvia tapauksia. Neljän artifact-tuottajan ja kymmenen packaged-kuluttajan identiteetit ja elinkaarinäyttö hyväksyttiin. [Saman revision riippuvuustarkistus 36491789402](https://github.com/eky-software/eky/actions/runs/36491789402) läpäisi. |
 | Suljettu työ | T1/R27:n ajokytkentä, T2/R29:n puhtaan valmistelun suoja ja T3/R28:n todellisten kuluttajien koko prosessipuun omistajuus. Korvatut aktiiviset fallbackit on poistettu ja [pysyvä T3-matriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus) hyväksytty. PR #281 sulki tämän jälkeisen rollback-testiapurin integraatiojatkon. |
 | Avoimet havainnot | Aiemmat satunnaiset Electron-käynnistys- ja packaged/legacy-timeoutit säilyvät epäonnistuneina havaintoina omille revisioilleen. Myöhempi vihreä ajo ei todista niiden kaikkia syitä korjatuiksi. [Hylkäysten historia](e2e-test-environment-history.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko) ja [rajattu apurikorjaus](e2e-test-environment-history.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus) erotetaan toisistaan. |
-| Seuraava työ | Electron `43.7.6` ja Undici `7.29.1` ovat jo toteutettuja täsmäpäivityksiä; `better-sqlite3 13.0.2` säilyy. Hyväksytyn [asennuskorjauksen](#asennuskorjauksen-päätös) kohdennetut portit ja [valmiuskyselyhavainto](#valmiuskyselyhavainnon-todennus) läpäisivät. Revision `8913dc48` normaali PR-kierros pysähtyi yhden packaged-workspace-ajon job-aikarajaan; E2E-perheet läpäisivät. [Ainoa diagnostinen uusinta läpäisi](#rajatun-uusinnan-tulos) samalla lähteellä ja paketilla, mutta alkuperäinen syy ja korjaus ovat todentamatta. Seuraavaksi toteutetaan [hyväksytty rajattu katkaisukoe](#hyväksytty-katkaisukoe), ei toista muuttumatonta uusintaa tai uutta testialustaa. A1 odottaa V2:n ja mainin portteja tai erikseen hyväksyttyä ei-kriittistä kehityspoikkeusta. Audit, toimintatestit ja main-haaran Dependabot-hälytysten sulkeutuminen todennetaan erikseen. |
+| Seuraava työ | Electron `43.7.6` ja Undici `7.29.1` ovat jo toteutettuja täsmäpäivityksiä; `better-sqlite3 13.0.2` säilyy. Hyväksytyn [asennuskorjauksen](#asennuskorjauksen-päätös) kohdennetut portit ja [valmiuskyselyhavainto](#valmiuskyselyhavainnon-todennus) läpäisivät. Revision `8913dc48` normaali PR-kierros pysähtyi yhden packaged-workspace-ajon job-aikarajaan; E2E-perheet läpäisivät. [Ainoa diagnostinen uusinta läpäisi](#rajatun-uusinnan-tulos) samalla lähteellä ja paketilla, mutta alkuperäinen syy ja korjaus ovat todentamatta. [Katkaisukoe on tehty](#katkaisukokeen-tulos): vaihehavainnot säilyivät, koko analyysi jäi hylätyksi. Omistaja hyväksyi [workspace-success-havaintokokeen](#hyväksytty-workspace-success-havaintokoe): rajattu lukijakytkentä, kohderegressiot ja yksi ajo alkuperäisillä paketeilla ovat työn alla. Tämä ei ole toinen muuttumaton uusinta tai uusi testialusta. A1 odottaa V2:n ja mainin portteja tai erikseen hyväksyttyä ei-kriittistä kehityspoikkeusta. Audit, toimintatestit ja main-haaran Dependabot-hälytysten sulkeutuminen todennetaan erikseen. |
 | Ei vielä valmis | A1-A3, W7, M1:n muu sovellustyö ja koko 0.3.0. Testiperustan hyväksyntä ei hyväksy niiden tulevaa toteutusta tai muuttunutta liiketoimintasääntöä. |
 
 Hyväksyntä on sidottu yllä olevaan revisioon, ei automaattisesti myöhempään
@@ -207,6 +207,96 @@ eikä puuttuvan siivoustodisteen perusteella poisteta tutkimusjuuria.
 Koe ei todista koko jobin tai runnerin katoamisen jälkeistä keräystä,
 workspace-success-polun tallennustukea tai alkuperäistä juurisyytä.
 Uutta oikean paketin ajoa ei ole tällä hyväksytty.
+
+### Katkaisukokeen tulos
+
+Revision `709c27fb` [yksi koe 36854893331](https://github.com/eky-software/eky/actions/runs/36854893331),
+suoritusyritys 1, todensi komentoaskelen yhden minuutin aikakatkaisun
+GitHubin omasta merkinnästä. Tallennus käynnistyi ennen komentoa ja sen
+pysäytys valmistui katkaisun jälkeen. Sidottu vaiheketju jäi `scenario`-
+vaiheeseen: caller- ja scenario-lopputulos puuttuivat eikä myöhempiä
+vaiheita ollut. Nykyinen jälkianalyysi säilytti komennon ja seitsemän
+worker-vaiheen havainnot, myös kesken jääneen scenarion. Havaitut
+poistumiset eivät muuttaneet `cleanup: notInferred`- tai
+`cause: notEstablished`-luokitusta.
+
+Jobin kokonaislopputulos on **hylätty**, ei hyväksyntätestin läpäisy.
+Synteettinen koe ei tuottanut MSI-inspektorin tapahtumia: providerin
+puuttuminen ja nollamäärä todettiin, ja viimeinen analyysi hylättiin
+`eventRead / INSPECTOR_TRACE_EVENTS_MISSING`-rajalla. Jo julkaistut
+prosessi- ja vaihehavainnot säilyivät tästä huolimatta. Tämä on
+katkaisun jälkeisen havaintoketjun rajattu todiste, ei kokonaisanalyysin,
+testikomennon siivouksen tai alkuperäisen workspace-vian korjauksen
+todistus. Raakajälkeä ei julkaistu artifactina; säilyminen tässä
+tarkoittaa runnerilla jälkianalyysiin asti säilymistä, ei pysyvää arkistoa.
+
+Valmistelun viisi fixture-/workflow-testiä, kolme trace-kohdetestiä ja
+49 viereistä workflow-regressiota läpäisivät. Riippumaton katselmointi
+havaitsi uuden analyysiaskeleen tulostuspuskuroinnin riskin. Se korjattiin
+ennen CI-koetta välittömäksi suljettujen rivien tulostukseksi, neljä
+muuttuneen rajauksen kohdetestiä läpäisi ja uusintakatselmointi hyväksyi
+korjauksen. Dokumenttilinkit tarkistettiin. Kokeen sovelluskoodi,
+riippuvuudet ja normaalien hyväksyntätestien ehdot eivät muuttuneet.
+
+Katkaisukokeen jälkeinen erillinen päätös koski nykyisen tallennuslukijan täsmällistä
+workspace-success-rajausta ja yhtä nimettyä havaintoajoa alkuperäisen
+paketin tavuilla. Tämä ei ole uusi muuttumaton uusinta, vaan eri
+tutkimuskysymys; kerättävä tieto ja normaaleista aikarajoista erillinen
+keräyksen raja pitää määrittää ennen ajoa. Tästä kokeesta ei seuraa lupaa
+ajaa uutta pakettikoetta, muuttaa aikarajoja tai avata T3:a uudelleen.
+Alkuperäinen aikakatkaisu ja nykyisen Goalin korjaus-/todennusehto
+pysyvät avoimina. Omistaja hyväksyi tämän rajatun jatkon seuraavasti.
+
+### Hyväksytty workspace-success-havaintokoe
+
+Omistaja hyväksyi 1.10.2026 nykyisen tallennuslukijan täsmällisen
+workspace-success-kytkennän, kohderegressiot ja yhden nimetyn havaintoajon.
+Kysymys on, mihin komentovaiheeseen alkuperäisen paketin suoritus etenee
+ja mitä vaiheprosessien elinkaarista havaitaan mahdollisen katkaisun yli.
+Tämä ei ole toinen muuttumaton uusinta tai alkuperäisen vian korjausväite.
+
+- Käytetään alkuperäisen ajon `36785505567` artifactia `11129842041`,
+  sen build-revisiota `fd1be0a33fb5887ba01e56a5df9244570c6ae95e` ja
+  alkuperäistä descriptor-sidontaa. MSI-tavut varmennetaan ennen ja jälkeen;
+  produceria tai sovelluspakettia ei rakenneta uudelleen.
+- Nykyinen feasibility-workflow saa workspace-successille nimenomaisen
+  lukijavalinnan. Komentotunnus, nykyinen vaihebudjetti ja worker sidotaan
+  täsmällisesti. Ristiriitaiset valinnat ja epäselvä prosessi-identiteetti
+  hylätään. Kesken jäänyt vaihehistoria ei saa muuttua cleanup-todisteeksi.
+- Vain tallentavan workspace-diagnostiikkajobin kokonaisraja on 38 minuuttia,
+  aiempi 30 minuuttia ja kahdeksan minuutin havaintovaraus. Tallentimen
+  aloitus saa yhden minuutin, pysäytys kaksi, artifactin jälkivarmennus
+  kaksi ja analyysi kolme. Nykyinen 25 minuutin komentoaskel, sisäiset
+  työ-/siivousrajat sekä normaalit hyväksyntäworkflowit säilyvät.
+  Jäljelle jäävä viiden minuutin valmisteluvara on yhteinen, ei erikseen
+  pakotettu määräaika. Sen ylittäminen voi pienentää jälkikeräyksen
+  käytettävissä olevaa aikaa; 38 minuuttia ei ole valmistumistakuu.
+- Pysäytys ja analyysi yritetään myös komentoaskelen epäonnistuessa;
+  havainnot välitetään ilman koko analyysin valmistumista odottavaa
+  tulostuspuskurointia. Koko jobin tai runnerin katoaminen voi edelleen
+  estää jälkikeräyksen. Tämä ei lupaa raakajäljen pysyvää arkistointia.
+- Raw ETL, CSV, komentorivit, polut ja tunnisteet jäävät runnerin nykyiseen
+  yksityiseen tallennusjuureen. Julkaistaan vain nykyiset suljetut luokat.
+  Ei uusia artifact-upload-polkuja tai epävarman tutkimusjuuren poistamista.
+- Pääagentti vastaa revision, pakettisidonnan ja lopputuloksen varmennuksesta;
+  vain lukeva aliagentti seuraa yhtä nimettyä ajoa. Ensivirhe, aiempi uusinta
+  ja tämä havaintokoe pysyvät erillisinä. Jos vika ei toistu tai näyttö jää
+  puutteelliseksi, tulos raportoidaan ilman automaattista uutta pakettiajoa.
+
+Valmistelun portti on rajattujen lukija-/kytkentätestien ja katselmuksen
+läpäisy ennen yhtä CI-ajoa. Sovellusta, tietokantaa, riippuvuuksia,
+prosessien omistajuutta tai hyväksyntäehtoja ei muuteta. Havaintokoe ei
+itsessään sulje Goalin korjaus-/todennusehtoa.
+
+Ensimmäisen epäonnistumisen Playwright-trace on erillinen jatkoehdotus,
+ei tämän installer-kokeen korvike. Nykyinen `on-first-retry` ei kerää
+ensiyrityksen tracea, ja Electronin oma context tarvitsee erillisen
+kytkennän. Mahdollinen `retain-on-failure`-muutos vaatii ensin sessionin
+ja muun kielletyn aineiston poissulun sekä failure-/restart-todennuksen.
+Kuvakaappauksen, trace-tiedoston ja verkkopyyntöjen tallentaminen ei
+tarkoita kaiken verkkoliikenteen kaappausta tai julkaisulupaa.
+Nykyiset CI-artifactien sisältörajat säilyvät; tätä ehdotusta ei ole
+lisätty nykyisen Goalin valmistumisehdoksi.
 
 [Vianetsintäreitti](../ai/e2e-test-authoring-guide.md#valitse-aineisto-epäonnistuneen-vaiheen-mukaan)
 erottaa selaintracen, Electronin käynnistystiedon ja asennuspaketin

@@ -243,7 +243,7 @@ test('external inspector capture is opt-in and never replaces command or artifac
   for (const inspector_capture of [false, true]) {
     for (const artifact_kind of ['legacy', 'upgrade', 'workspace', 'workspace-fault']) {
       assert.equal(runInNewContext(selection, { inputs: { inspector_capture, artifact_kind } }, { timeout: 1000 }),
-        inspector_capture && ['legacy', 'upgrade', 'workspace-fault'].includes(artifact_kind));
+        inspector_capture && ['legacy', 'upgrade', 'workspace', 'workspace-fault'].includes(artifact_kind));
     }
   }
   assert.ok(diagnostic.indexOf('-Mode start') < diagnostic.indexOf('Run existing caller and mandatory result verifier once'));
@@ -270,8 +270,9 @@ test('diagnostic preflight admits only the selected capture families and verifie
     .map((line) => { assert.ok(line.startsWith('          ')); return line.slice(10); }).join('\n');
   for (const [kind, capture, invalidIdentity, expectedCode] of [
     ['legacy', 'true', false, 0], ['upgrade', 'true', false, 0],
-    ['workspace', 'true', false, 1], ['workspace-fault', 'true', false, 0],
+    ['workspace', 'true', false, 0], ['workspace-fault', 'true', false, 0],
     ['workspace', 'false', false, 0], ['unknown', 'false', false, 1],
+    ['workspace', 'true', true, 1], ['unknown', 'true', false, 1],
     ['upgrade', 'true', true, 1],
   ]) {
     const context = await createRunContext('diagnostic-preflight-routing');
@@ -306,15 +307,16 @@ test('diagnostic analysis uses the selected existing reader and preserves its pr
     .map((line) => { assert.ok(line.startsWith('          ')); return line.slice(10); }).join('\n');
   for (const [kind, analysis, expectedCode] of [['legacy', '0', 0], ['upgrade', '0', 0],
     ['upgrade', '1', 1], ['upgrade', 'throw', 1], ['workspace-fault', '0', 0],
-    ['workspace-fault', '1', 1], ['workspace-fault', 'throw', 1]]) {
+    ['workspace-fault', '1', 1], ['workspace-fault', 'throw', 1],
+    ['workspace', '0', 0], ['workspace', '1', 1], ['workspace', 'throw', 1]]) {
     const context = await createRunContext('diagnostic-reader-routing');
     let passed = false;
     t.after(() => cleanupRunContext(context, { preserveEvidence: !passed || t.signal.aborted }));
     const directory = join(context.testRoot, 'apps/desktop/installer/windows-acceptance-harness');
     await mkdir(directory, { recursive: true });
     await writeFile(join(directory, 'captureInstallerProductInspection.ps1'), `
-param([string]$Mode, [switch]$LegacyCommand, [switch]$WorkspaceFaultCommand)
-[IO.File]::WriteAllText($env:TEST_READER_RESULT, ([ordered]@{ mode = $Mode; legacy = [bool]$LegacyCommand; workspaceFault = [bool]$WorkspaceFaultCommand } | ConvertTo-Json -Compress))
+param([string]$Mode, [switch]$LegacyCommand, [switch]$WorkspaceFaultCommand, [switch]$WorkspaceSuccessCommand)
+[IO.File]::WriteAllText($env:TEST_READER_RESULT, ([ordered]@{ mode = $Mode; legacy = [bool]$LegacyCommand; workspaceFault = [bool]$WorkspaceFaultCommand; workspaceSuccess = [bool]$WorkspaceSuccessCommand } | ConvertTo-Json -Compress))
 if ($env:TEST_ANALYSIS -ceq 'throw') { throw 'private-analysis-error' }
 exit ([int]$env:TEST_ANALYSIS)
 `);
@@ -333,6 +335,7 @@ exit ([int]$env:TEST_ANALYSIS)
     assert.deepEqual(completion, { code: expectedCode, signal: null });
     assert.deepEqual(JSON.parse(await readFile(context.resultPath, 'utf8')), {
       mode: 'analyze', legacy: kind === 'legacy', workspaceFault: kind === 'workspace-fault',
+      workspaceSuccess: kind === 'workspace',
     });
     passed = true;
   }
@@ -421,7 +424,8 @@ test('workspace capture preserves ordered prefix and separates the approved job 
   assert.ok(jobBudget);
   for (const capture of [false, true]) for (const kind of ['legacy', 'upgrade', 'workspace', 'workspace-fault']) {
     assert.equal(runInNewContext(jobBudget, { inputs: { inspector_capture: capture, artifact_kind: kind } }),
-      capture && kind === 'workspace-fault' ? 3 * 25 + 15 + 6 : ['legacy', 'upgrade'].includes(kind) ? 37 : 30);
+      capture && kind === 'workspace-fault' ? 3 * 25 + 15 + 6 :
+        capture && kind === 'workspace' ? 30 + 8 : ['legacy', 'upgrade'].includes(kind) ? 37 : 30);
   }
   const order = ['Preserve workspace pre-update failure prefix', 'Preserve workspace active rollback prefix',
     'Start opt-in external inspector capture', 'Run existing caller and mandatory result verifier once',
@@ -430,6 +434,31 @@ test('workspace capture preserves ordered prefix and separates the approved job 
   for (let index = 1; index < order.length; index++) {
     assert.ok(diagnostic.indexOf(`- name: ${order[index - 1]}`) < diagnostic.indexOf(`- name: ${order[index]}`));
   }
+});
+
+test('workspace-success observation keeps the command budget and bounds post-cutoff collection', async () => {
+  const source = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
+  const diagnostic = source.split('  packaged-boundary-diagnostic:')[1];
+  const step = (name) => diagnostic.split(`      - name: ${name}\n`)[1].split('\n      - name:')[0];
+  const caller = step('Run existing caller and mandatory result verifier once');
+  const expression = caller.match(/timeout-minutes: \$\{\{ (.+) \}\}/u)?.[1];
+  assert.ok(expression);
+  assert.equal(runInNewContext(expression, { inputs: { artifact_kind: 'workspace', inspector_capture: true } }), 25);
+  assert.doesNotMatch(caller, /continue-on-error|Start-Sleep|retry/u);
+  assert.match(step('Start opt-in external inspector capture'), /timeout-minutes: 1/u);
+  assert.match(step('Stop only the diagnostic recording'), /timeout-minutes: 2/u);
+  const reverify = step('Reverify immutable artifact after diagnostic');
+  const reverifyBudget = reverify.match(/timeout-minutes: \$\{\{ (.+) \}\}/u)?.[1];
+  assert.ok(reverifyBudget);
+  for (const inspector_capture of [false, true]) for (const artifact_kind of ['legacy', 'upgrade', 'workspace', 'workspace-fault']) {
+    assert.equal(runInNewContext(reverifyBudget, { inputs: { inspector_capture, artifact_kind } }),
+      inspector_capture && artifact_kind === 'workspace' ? 2 : 360);
+  }
+  const analysis = step('Extract closed inspector observations without publishing raw trace');
+  assert.match(analysis, /timeout-minutes: 3/u);
+  assert.match(analysis, /-Mode analyze -WorkspaceSuccessCommand/u);
+  assert.doesNotMatch(analysis, /\$output\s*=|Out-String|Out-File/u);
+  assert.doesNotMatch(diagnostic, /upload-artifact|artifact:build|package:windows|Remove-Item/u);
 });
 
 test('inspector analysis diagnosis reuses one native hold without a packaged lifecycle', async () => {

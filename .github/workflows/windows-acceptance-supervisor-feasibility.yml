@@ -43,7 +43,7 @@ on:
         description: Expected original descriptor SHA-256
         type: string
       inspector_capture:
-        description: Opt-in legacy, upgrade or ordered workspace fault diagnostic; raw WPR data stays in runner temp
+        description: Opt-in legacy, upgrade or workspace diagnostic; raw WPR data stays in runner temp
         type: boolean
         default: false
 
@@ -366,7 +366,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'packaged-boundary-diagnostic'
     name: Existing ${{ inputs.artifact_kind }} artifact caller diagnostic (not acceptance)
     runs-on: windows-latest
-    timeout-minutes: ${{ inputs.inspector_capture && inputs.artifact_kind == 'workspace-fault' && 96 || (inputs.artifact_kind == 'legacy' || inputs.artifact_kind == 'upgrade') && 37 || 30 }}
+    timeout-minutes: ${{ inputs.inspector_capture && inputs.artifact_kind == 'workspace-fault' && 96 || inputs.inspector_capture && inputs.artifact_kind == 'workspace' && 38 || (inputs.artifact_kind == 'legacy' || inputs.artifact_kind == 'upgrade') && 37 || 30 }}
     permissions:
       contents: read
       actions: read
@@ -390,7 +390,7 @@ jobs:
 
       - name: Validate closed diagnostic identity before download
         run: |
-          if ($env:INSPECTOR_CAPTURE -ceq 'true' -and $env:ARTIFACT_KIND -cnotin @('legacy', 'upgrade', 'workspace-fault')) {
+          if ($env:INSPECTOR_CAPTURE -ceq 'true' -and $env:ARTIFACT_KIND -cnotin @('legacy', 'upgrade', 'workspace', 'workspace-fault')) {
             throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CAPTURE_SCOPE_INVALID'
           }
           if ($env:ARTIFACT_KIND -cnotin @('legacy', 'workspace', 'workspace-fault', 'upgrade') -or
@@ -495,7 +495,7 @@ jobs:
 
       - name: Start opt-in external inspector capture
         id: capture
-        if: inputs.inspector_capture && (inputs.artifact_kind == 'legacy' || inputs.artifact_kind == 'upgrade' || inputs.artifact_kind == 'workspace-fault')
+        if: inputs.inspector_capture && (inputs.artifact_kind == 'legacy' || inputs.artifact_kind == 'upgrade' || inputs.artifact_kind == 'workspace' || inputs.artifact_kind == 'workspace-fault')
         continue-on-error: ${{ inputs.artifact_kind == 'workspace-fault' }}
         timeout-minutes: 1
         run: ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode start
@@ -563,6 +563,7 @@ jobs:
 
       - name: Reverify immutable artifact after diagnostic
         if: always() && steps.download.outcome == 'success'
+        timeout-minutes: ${{ inputs.inspector_capture && inputs.artifact_kind == 'workspace' && 2 || 360 }}
         run: |
           $verifier = switch -CaseSensitive ($env:ARTIFACT_KIND) {
             'legacy' { 'verifyLegacyUpgradeArtifact.mjs' }
@@ -583,6 +584,8 @@ jobs:
             ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode analyze -LegacyCommand
           } elseif ($env:ARTIFACT_KIND -ceq 'workspace-fault') {
             ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode analyze -WorkspaceFaultCommand
+          } elseif ($env:ARTIFACT_KIND -ceq 'workspace') {
+            ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode analyze -WorkspaceSuccessCommand
           } else {
             ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode analyze
           }

@@ -87,8 +87,14 @@ erottaa sen myöhemmästä PR/main-integraatiosta, mergestä ja A1:stä.
 [Ainoa diagnostinen uusinta](release-0.3.0-m1-preparation-plan.md#rajatun-uusinnan-tulos)
 läpäisi samalla lähteellä ja alkuperäisellä paketilla. Sen 21 komentovaihetta
 ja pakollinen lopputulostarkistus valmistuivat, mutta alkuperäinen syy ja
-korjaus eivät ole todennettuja. Uusintaraja on käytetty; seuraava
-tutkimuspäätös erotetaan PR/main-hyväksynnästä eikä Goal ole tällä valmis.
+korjaus eivät ole todennettuja. Uusintaraja on käytetty. [Hyväksytty rajattu katkaisukoe](release-0.3.0-m1-preparation-plan.md#katkaisukokeen-tulos)
+säilytti komennon ja kesken jääneen vaiheen havainnot CI-komentoaskelen
+katkaisun yli; koko analyysi jäi hylätyksi synteettisestä kokeesta puuttuvien
+MSI-tapahtumien vuoksi. Omistaja hyväksyi tämän jälkeen yhden
+[workspace-success-havaintokokeen](release-0.3.0-m1-preparation-plan.md#hyväksytty-workspace-success-havaintokoe)
+alkuperäisellä paketilla ja nykyisen tallennuksen rajatulla kytkennällä.
+Toteutus ja sen todennus ovat kesken. Tutkimustulos ei ole PR/main-hyväksyntä eikä Goal ole
+tällä valmis.
 Alkuperäisten timeoutien syitä ei väitetä ratkaistuiksi. Ei asennuskorjauksen
 tai T3:n uutta toteutusta.
 Seuraava tuotantopala on [A1/R01](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde)
