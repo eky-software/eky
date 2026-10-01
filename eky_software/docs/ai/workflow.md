@@ -260,11 +260,16 @@ Jos vianrajaus tai hyväksyntä tarvitsee puuttuvan havainnon, suunnittele sen
 rajattu tallennus ennen kyseistä koetta; kaikkea mahdollista diagnostiikkaa
 ei lisätä jokaisen ajon ehdoksi. Virhettä ei nimetä korjatuksi uusinta-ajon
 vihreyden perusteella eikä hyväksyntäehtoja muuteta seurantaa varten.
+Mahdollinen yksi hallittu uusinta ja rajattu kehityspoikkeus käsitellään
+[testausohjeen](testing-rules.md#ensivirhe-uusinta-ja-rajattu-poikkeus) mukaan.
+Seuranta-agentin vain lukeva rooli ei muutu.
 
 ## Puhdas baseline ja julkaistavan artifactin portti
 
-Uutta toiminnallista vaihetta ei aloiteta tietoisesti punaisen tai
-keskeneräisen baselinen päälle. Ennen seuraavaa vaihetta pitää olla selvää,
+Uuden toiminnallisen vaiheen oletus on vihreä baseline. Rajattu,
+ei-kriittinen puute voi sallia siitä riippumattoman kehitystyön vain
+[omistajan hyväksymällä määräaikaisella poikkeuksella](testing-rules.md#määräaikainen-kehityspoikkeus).
+Ennen seuraavaa vaihetta pitää olla selvää,
 mikä commit on kanoninen lähde ja mitkä sen vastuuseen kuuluvat paikalliset
 sekä GitHub-tarkistukset ovat päättyneet vihreinä. Odottavaa, peruttua,
 flakyksi merkittyä tai epäonnistunutta tarkistusta ei tulkita onnistuneeksi.
@@ -286,9 +291,11 @@ artifactin:
 - pushin tai mergen jälkeen odotetaan kyseisen täsmällisen commitin omat
   vaaditut GitHub-ajot loppuun ennen kuin työ ilmoitetaan valmiiksi
 
-Jos merge-commitin `main`-ajo epäonnistuu, uusi työ pysäytetään ja baseline
-korjataan ensin. PR:n aiempi vihreä ajo ei korvaa merge-commitin omaa
-todistetta silloin, kun repository ajaa tarkistukset myös `main`-pushille.
+Jos merge-commitin `main`-ajo epäonnistuu, pysäytä siihen nojaava kehitys ja
+julkaisu, rajaa vaikutus ja korjaa baseline. Riippumaton kehitys edellyttää
+yllä nimettyä poikkeuspäätöstä. PR:n aiempi vihreä ajo ei korvaa
+merge-commitin omaa todistetta silloin, kun repository ajaa tarkistukset
+myös `main`-pushille.
 
 ## Ihmisen tarkistus
 

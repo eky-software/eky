@@ -74,8 +74,22 @@ Revision `fa343f19` normaali PR-kierros hylkäsi backup-fixturen
 valmistelubackendin valmiusodotuksen ennen Electronin käynnistystä.
 Ensivirheen ja siivouksen tiedot säilyivät; automaattisen toisen yrityksen
 läpäisy ei hyväksy kierrosta. Hyväksytty [rajattu valmiuskyselyhavainto ja sen todennus](release-0.3.0-m1-preparation-plan.md#valmiuskyselyhavainnon-todennus)
-on toteutettu. Seuraavaksi vaaditaan uuden revision normaali PR-todennus;
-alkuperäisen timeoutin syytä ei väitetä ratkaistuksi. Ei asennuskorjauksen
+on toteutettu. Revision `8913dc48` normaali PR-kierros läpäisi kaikki kolme
+E2E-perhettä sekä installer-/legacy-ryhmät, mutta yksi packaged-workspace-
+ajo saavutti jobin aikarajan ja koonti hylättiin. [M1:n riskiperusteinen jatko](release-0.3.0-m1-preparation-plan.md#riskiperusteinen-jatko-1102026)
+omistaa nykyisen näytön ja seuraavan rajatun tutkimuksen. Hyväksytty
+[ensivirheen, yhden uusinnan ja määräaikaisen kehityspoikkeuksen käytäntö](../ai/testing-rules.md#ensivirhe-uusinta-ja-rajattu-poikkeus)
+ei muuta kriittisiä hyväksyntäportteja tai hyväksy tätä hylkäystä.
+Nykyinen erikseen rajattu tehtävä kattaa vain tämän Windows-aikakatkaisun
+näyttöön perustuvan korjauksen, kohdetestit, oikean paketin todennuksen ja
+katselmuksen. [M1:n työn rajaus](release-0.3.0-m1-preparation-plan.md#nykyisen-työn-rajaus)
+erottaa sen myöhemmästä PR/main-integraatiosta, mergestä ja A1:stä.
+[Ainoa diagnostinen uusinta](release-0.3.0-m1-preparation-plan.md#rajatun-uusinnan-tulos)
+läpäisi samalla lähteellä ja alkuperäisellä paketilla. Sen 21 komentovaihetta
+ja pakollinen lopputulostarkistus valmistuivat, mutta alkuperäinen syy ja
+korjaus eivät ole todennettuja. Uusintaraja on käytetty; seuraava
+tutkimuspäätös erotetaan PR/main-hyväksynnästä eikä Goal ole tällä valmis.
+Alkuperäisten timeoutien syitä ei väitetä ratkaistuiksi. Ei asennuskorjauksen
 tai T3:n uutta toteutusta.
 Seuraava tuotantopala on [A1/R01](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde)
 uuden preflightin ja omistavan aloitusportin kautta. Laaja ohjeverkon

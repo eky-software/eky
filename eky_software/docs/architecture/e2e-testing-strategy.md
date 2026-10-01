@@ -120,9 +120,11 @@ E2E-perheet ovat:
 - Windows-paketoinnin, packaged smoken ja kriittiset Electron development
   -käyttäjäpolut yhdellä workerilla.
 
-Playwright-jobit käyttävät yhtä CI-retryä vain trace-todisteen keräämiseen ja
+Playwright-jobit käyttävät yhtä CI-retryä lisätodisteen keräämiseen ja
 `failOnFlakyTests`-asetusta, joten retryllä vasta läpäisevä testi epäonnistaa
-jobin. Raskaita E2E-jobeja ei ajeta erikseen jokaisessa `antsa`-pushissa.
+jobin. Se kuluttaa [yhteisen uusintakäytännön](../ai/testing-rules.md#enintään-yksi-uusinta)
+yhden uusinnan. Trace ei korvaa [testityypin omaa virhetodistetta](../ai/e2e-test-authoring-guide.md#kun-testi-epäonnistuu).
+Raskaita E2E-jobeja ei ajeta erikseen jokaisessa `antsa`-pushissa.
 
 Nykyisessä V2-kytkennässä `ci-cadence-contracts.yml` omistaa laukaisun ja
 vakaan `V2 acceptance` -koonnin. `ci.yml` on sen reusable core, ei toinen

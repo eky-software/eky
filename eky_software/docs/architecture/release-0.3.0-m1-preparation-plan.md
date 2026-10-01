@@ -13,7 +13,7 @@ hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohd
 | Mainin omat portit | [Normaali CI 36491715165](https://github.com/eky-software/eky/actions/runs/36491715165), yritys 1: kaikki 38 vaadittua ryhmää läpäisivät; vain nimenomaisesti valinnainen diagnostiikkakoe ohitettiin. Linux system 695/695, kriittinen web 37/37 ja Windowsin kriittinen Electron 38/38 vastasivat ajovalintojaan ilman retryä, flakyä tai puuttuvia tapauksia. Neljän artifact-tuottajan ja kymmenen packaged-kuluttajan identiteetit ja elinkaarinäyttö hyväksyttiin. [Saman revision riippuvuustarkistus 36491789402](https://github.com/eky-software/eky/actions/runs/36491789402) läpäisi. |
 | Suljettu työ | T1/R27:n ajokytkentä, T2/R29:n puhtaan valmistelun suoja ja T3/R28:n todellisten kuluttajien koko prosessipuun omistajuus. Korvatut aktiiviset fallbackit on poistettu ja [pysyvä T3-matriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus) hyväksytty. PR #281 sulki tämän jälkeisen rollback-testiapurin integraatiojatkon. |
 | Avoimet havainnot | Aiemmat satunnaiset Electron-käynnistys- ja packaged/legacy-timeoutit säilyvät epäonnistuneina havaintoina omille revisioilleen. Myöhempi vihreä ajo ei todista niiden kaikkia syitä korjatuiksi. [Hylkäysten historia](e2e-test-environment-history.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko) ja [rajattu apurikorjaus](e2e-test-environment-history.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus) erotetaan toisistaan. |
-| Seuraava työ | Electron `43.7.6` ja Undici `7.29.1` ovat jo toteutettuja täsmäpäivityksiä; `better-sqlite3 13.0.2` säilyy. Hyväksytyn [asennuskorjauksen](#asennuskorjauksen-päätös) kohdennetut portit läpäisivät. Revision `fa343f19` PR-hylkäyksen jälkeen hyväksytty [valmiuskyselyhavainto on todennettu](#valmiuskyselyhavainnon-todennus). Seuraavaksi muutospaketin lopullinen katselmus ja uuden jäädytetyn revision normaali PR-kierros. Alkuperäisen timeoutin juurisyytä ei väitetä ratkaistuksi; A1 odottaa V2:n ja mainin omia portteja. Audit, toimintatestit ja main-haaran Dependabot-hälytysten sulkeutuminen todennetaan erikseen. |
+| Seuraava työ | Electron `43.7.6` ja Undici `7.29.1` ovat jo toteutettuja täsmäpäivityksiä; `better-sqlite3 13.0.2` säilyy. Hyväksytyn [asennuskorjauksen](#asennuskorjauksen-päätös) kohdennetut portit ja [valmiuskyselyhavainto](#valmiuskyselyhavainnon-todennus) läpäisivät. Revision `8913dc48` normaali PR-kierros pysähtyi yhden packaged-workspace-ajon job-aikarajaan; E2E-perheet läpäisivät. [Ainoa diagnostinen uusinta läpäisi](#rajatun-uusinnan-tulos) samalla lähteellä ja paketilla, mutta alkuperäinen syy ja korjaus ovat todentamatta. Seuraavaksi toteutetaan [hyväksytty rajattu katkaisukoe](#hyväksytty-katkaisukoe), ei toista muuttumatonta uusintaa tai uutta testialustaa. A1 odottaa V2:n ja mainin portteja tai erikseen hyväksyttyä ei-kriittistä kehityspoikkeusta. Audit, toimintatestit ja main-haaran Dependabot-hälytysten sulkeutuminen todennetaan erikseen. |
 | Ei vielä valmis | A1-A3, W7, M1:n muu sovellustyö ja koko 0.3.0. Testiperustan hyväksyntä ei hyväksy niiden tulevaa toteutusta tai muuttunutta liiketoimintasääntöä. |
 
 Hyväksyntä on sidottu yllä olevaan revisioon, ei automaattisesti myöhempään
@@ -22,6 +22,199 @@ integraation lopputulos kirjataan sen omaan hyväksyntächeckpointiin;
 pelkän tuloksen ilmoittamiseksi ei tehdä uutta tilakirjauscommittia.
 Ennen A1:tä tehdään uusi preflight. Sivulla ei ylläpidetä Goal-työkalun
 ajonaikaista tilaa.
+
+## Riskiperusteinen jatko 1.10.2026
+
+### Nykyisen työn rajaus
+
+Omistajan uusin tehtävänanto korvaa aikaisemman laajan Goal-luonnoksen
+kokonaan. Nykyinen työ on revision `8913dc48` `packagedWorkspaceSuccess`
+run 2:n aikakatkaisun selvitys, näytön perusteella tarvittava rajattu
+testiharness-korjaus ja sen todennus. Aiemman V1/V2-kokonaisuuden hyväksytyt
+tulokset ja jäljellä olevat integraatioportit säilyvät tämän sivun
+historia- ja jatkotietona, eivät tämän tehtävän lisävaatimuksina.
+
+V1 ja T3 pysyvät suljettuina, ellei niiden omaan sopimukseen löydy
+konkreettista regressiota. Ensin erotetaan valmistelu, skenaarion suoritus,
+tuloksen julkaisu, siivous ja CI:n pakkokatkaisu. Rajattu testiharness-
+korjaus regressioineen kuuluu hyväksyntään; uusia riippuvuuksia,
+tuotantomuutoksia tai tietosuoja-, arkkitehtuuri- ja hyväksyntäpoikkeuksia
+ei ole tällä hyväksytty.
+
+Valmistuminen vaatii esteen korjauksen, sen kohdetestit, tarvittavan oikean
+paketin todennuksen ja katselmuksen. Lisälokitus tai onnistunut uusinta ei
+yksin täytä ehtoa. Riittämätön näyttö raportoidaan täsmällisenä puutteena
+ja seuraavana päätöksenä ilman automaattista laajennusta. PR/main-integraatio,
+merge, A1 ja koko 0.3.0-julkaisu kuuluvat seuraaviin erillisiin vaiheisiin.
+
+### Lähtönäyttö ja uusinnan raja
+
+Omistaja hyväksyi [yhteisen testauskäytännön](../ai/testing-rules.md#ensivirhe-uusinta-ja-rajattu-poikkeus):
+nykyinen virhetietoketju säilyy, enintään yksi hallittu uusinta sallitaan,
+ja nimetty ei-kriittinen puute voi saada määräaikaisen kehityspoikkeuksen.
+Uusinta ei yksin hyväksy testiä, eikä tässä myönnetä yksittäistä poikkeusta.
+Kriittiset data-, turvallisuus-, sisältö- ja siivousportit säilyvät.
+
+Tämän checkpointin lähde on `8913dc48e3103aed6c27e221e0b8483fbb70c40d`.
+[Normaali PR-ajo 36785505567](https://github.com/eky-software/eky/actions/runs/36785505567),
+yritys 1: 36 jobia läpäisi, kaksi valinnaista koetta ohitettiin,
+`packagedWorkspaceSuccess` run 2 peruttiin jobin 30 minuutin enimmäisajan
+täyttyessä ja koonti hylättiin. System 769/769, web 37/37 ja Electron 39/39
+läpäisivät ilman retryä tai flakyä. Installer-/legacy-porttien läpäisy ja
+[riippuvuustarkistuksen 36785505035](https://github.com/eky-software/eky/actions/runs/36785505035)
+onnistuminen eivät korvaa puuttuvaa workspace-porttia tai mainin hyväksyntää.
+Job-aikaraja kertoo katkaisun syyn, ei prosessin sisäistä juurisyytä.
+
+Alkuperäisen yrityksen kokonaislokivienti saatiin talteen, mutta siitä
+puuttuu juuri katkenneen työn loki; myös kyseisen jobin oma lokihaku
+epäonnistui. Julkaistuissa artefakteissa on alkuperäinen workspace-paketti,
+ei tämän kuluttajan lopputulosraporttia. Puuttuva aineisto ei todista,
+ettei tulosta syntynyt runnerille. Valmistelun vaiheajat eivät osoita
+komennon normaalin aikavarauksen kuluneen ennen sen käynnistymistä.
+Viimeinen `descendantObserved` todistaa vain jälkeläisen havaitsemisen,
+ei sen valmistumista, aktiivisen vaiheen nimeä tai jumittumisen syytä.
+
+Seuraavan rajatun tutkimuksen kohde on vain tämän packaged-jobin
+valmistuminen ja nykyisen tulos-/siivousaineiston säilyminen. Ensin
+tarkistetaan olemassa oleva aineisto ja sen saatavuus; puuttuva loki tai
+tulos merkitään puuttuvaksi. Jos tarvitaan uusinta, käytetään samaa
+lähdettä ja samaa hyväksyntäpakettia tuoreessa eristetyssä ympäristössä,
+nimetään seuranta sekä ensivirheen säilytys ja sovelletaan yhden uusinnan
+rajaa. Muut lähteet tai uudet paketit eivät ole saman kokeen uusinta.
+Tulos luokitellaan ennen seuraavaa korjausta; kriittisen polun tuntematonta
+timeoutia ei nimetä infrastruktuurihäiriöksi tai poikkeukseksi.
+
+Tätä varten nimetty ainoa diagnostinen uusinta kohdistuu alkuperäisen ajon
+workspace-success run 2 -kuluttajaan ja sen automaattiseen koontiin, ei
+produceriin tai koko matriisiin. Kysymys on, syntyvätkö muuttumattomasta
+lähteestä ja alkuperäisestä paketista sidotut prosessi-, worker-, siivous-
+ja caller-lopputulokset tuoreessa ympäristössä; muuten etsitään säilynyt
+nimetty virheraja. Pääagentti vastaa aineistosta ja vain lukeva aliagentti
+seurannasta. Alkuperäinen epäonnistuminen ja uusinta säilytetään erillisinä.
+Nykyinen työnkulku ei takaa tulostiedostojen säilymistä pakkokatkaisussa;
+tämä rajaa kokeen johtopäätöksiä.
+
+### Rajatun uusinnan tulos
+
+[Ajossa 36785505567, yritys 2](https://github.com/eky-software/eky/actions/runs/36785505567/attempts/2)
+uusittiin vain workspace-success run 2 ja riippuvainen koonti. Molemmat
+läpäisivät. Muiden jobien yritykseen kopioidut tulokset ovat alkuperäisen
+kierroksen näyttöä, eivät uusia testisuorituksia; produceria ei rakennettu
+uudelleen. Lähde pysyi `8913dc48`:ssa ja todellinen checkout
+`fd1be0a33fb5887ba01e56a5df9244570c6ae95e`:ssä. Kuluttajan alku- ja
+lopputarkistus vastasivat alkuperäistä artifactia `11129842041` sekä sen
+descriptor- ja MSI-tiivisteitä. Kaikki 21 komentovaihetta, fixture-siivoaminen,
+lopputuloksen julkaisu ja pakollisen caller-result-tarkistimen sisältävä
+komentovaihe valmistuivat. Itse caller-result-tiedostoa ei ladattu; sen
+tarkistus todennettiin muuttumattoman pakollisen verifierin ja jobin
+vaihetuloksen kautta.
+
+Tämä on diagnostisen uusinnan läpäisy, ei alkuperäisen syyn, korjauksen tai
+infrastruktuurihäiriön todistus. Yhden uusinnan raja on käytetty. Rajattu
+koodikatselmus ei osoittanut tulostuskohdetta odottavaa pääsäikeen
+kirjoitusta tai deadline-kellon nollausta. Siitä ei seuraa, että kaikki
+mahdolliset jumittumissyyt olisi suljettu pois. Sovellusta, harnessia,
+riippuvuuksia tai aikarajoja ei muutettu tätä koetta varten.
+
+Puuttuva tieto on alkuperäisen run 2:n viimeinen nimetty komentovaihe sekä
+sen terminal-/siivoustila ja runnerin tila katkaisuhetkellä. Nykyiset neljä
+vaiheriviä tai onnistunut sisarajo eivät palauta näitä tietoja. Seuraava
+päätös tarvitaan, jos alkuperäistä lisänäyttöä ei ole saatavilla: rajataanko
+erillinen havaintokoe olemassa oleviin välineisiin ja puuttuvaan
+katkaisutilaan. Toista muuttumatonta uusintaa, uutta diagnostiikkakehystä,
+hyväksyntäpoikkeusta tai mergeä ei käynnistetä tämän tuloksen perusteella.
+Nykyisen korjaustehtävän valmistumisehto ei ole täyttynyt.
+
+Rajattu lähdetarkistus täsmensi seuraavan kokeen päätösrajaa. Nykyinen
+`windows-acceptance-supervisor-feasibility.yml` hylkää `inspector_capture`-
+valinnan workspace-success-kuluttajalle. Myös nykyinen
+`Read-LegacyCommandTrace`-lukija sitoo komentohavainnon vain legacyyn tai
+nimettyyn workspace-fault-skenaarioon; pelkkä workflow-valitsimen avaaminen
+ei riitä. Tallennuksen pysäytys ja analyysi ovat komennon jälkeisiä askelia,
+joten koko jobin pakkokatkaisun jälkeistä aineiston saantia ei ole tällä
+todistettu. Uuden kokeen pitää ensin osoittaa nykyisillä välineillä, että
+nimetty komentovaihe, prosessihavainto ja tiedon saatavuus säilyvät myös
+hallitussa katkaisussa. Tämän jälkeen voidaan päättää yhdestä erillisestä
+oikean paketin havaintokokeesta. Tämä ei hyväksy uutta keräys- tai
+julkaisurajaa, lisäuusintaa tai aikarajojen muuttamista. Kokeen normaali
+läpäisy ei yksin sulkisi alkuperäistä timeoutia.
+
+Nykyisestä `8913dc48`-lähteestä tarkistettiin tämän jälkeen kahdeksan
+olemassa olevaa kohdetestiä: workspace-success-komennon `scenarioHold` ja
+`blockedEvidence`, supervisorin estetty tulostus jälkeläisen jäädessä
+odottamaan sekä viisi vaihe-/virhetiedon projektiotestiä. Kaikki läpäisivät
+ilman uusintaa tai ohitusta. Hallittu jumitus tuotti odotetun virhetuloksen
+ja varmennetun prosessisiivouksen; lokitulostuksen esto ei estänyt
+komennon valmistumista. Sovellusta tai MSI-pakettia ei asennettu, eikä
+lähdekoodia, aikarajoja tai riippuvuuksia muutettu.
+
+Tämä näyttö rajaa seuraavan kokeen kysymystä, ei sulje alkuperäistä vikaa:
+
+| Tilanne | Nykyinen näyttö ja sen raja |
+| --- | --- |
+| Worker jää odottamaan, supervisor toimii | Hallittu fixture tuottaa `deadlineExceeded`-tuloksen, säilyttää alkuperäisen virheen ja todistaa oman puun siivouksen. Fixturen lyhyt koeaika ei ole varsinaisen packaged-ajon aikaraja. |
+| Lokitulostus estyy, supervisor toimii | Kohdetestit todistavat komennon poistumisen ja tiedostomuotoisen lopputuloksen. Ne eivät todista konsolirivien saapumista GitHubiin. |
+| Komento tai koko CI-job katkaistaan ulkopuolelta | Edelliset kohdetestit eivät kata tätä. Erillinen nykyinen supervisorin tappotesti odottaa puuttuvaa terminal-tulosta; sen eloon jäävä testiprosessi ei vastaa koko jobin katoamista. |
+| Supervisorin oma suoritus ei etene | Alkuperäisestä ajosta puuttuu tämän erottava havainto. Worker-hold tai onnistunut uusinta ei yksilöi estävää kutsua eikä osoita runnerin kuormitusta syyksi. |
+
+Mahdollinen seuraava havaintokoe tarvitsee ensin todennetun ketjun
+komentoaskelen hallitusta katkaisusta nykyisen tallentimen pysäytykseen ja
+suljettuun raporttiin. Pelkkä parserin workspace-success-tuki tai
+onnistuvan komennon tallennus ei riitä. Koko runnerin katoaminen jää tämänkin
+ketjun rajaukseksi; puuttuvaa tallennetta ei tulkita siivoustodisteeksi.
+Oikean paketin uusi ajo edellyttää erillistä nimettyä päätöstä, koska
+alkuperäisen hylkäyksen ainoa diagnostinen uusinta on jo käytetty.
+
+### Hyväksytty katkaisukoe
+
+Omistaja hyväksyi 1.10.2026 pienimmän jatkon: yhden ilman MSI-asennusta
+tehtävän tallennuksen katkaisukokeen nykyisellä, jo tuetulla
+legacy-contract-fixture-polulla.
+Komentoaskel keskeytetään hallitusti runnerin jäädessä toimintaan; tuloksesta
+vaaditaan sallittu vaihe-/prosessihavainto, puuttuvan terminal-tuloksen
+luokitus, aineiston saatavuus ja tallentimen siivoustila. Tämä ei vielä
+laajenna tallennusta workspace-success-polkuun tai hyväksy uutta oikean
+paketin ajoa. Jos jälkikeräys ei toteudu, koe jää siltä osin puutteelliseksi
+eikä sitä uusita automaattisesti. Raaka-aineiston nykyinen yksityisyysraja
+säilyy.
+
+Koe käyttää olemassa olevan feasibility-workflow'n erillistä
+`inspector-cutoff-diagnostic`-valintaa ilman matriisia. Nykyinen
+`scenarioHold`-fixture ja komennon normaalit aikavaraukset säilyvät;
+vain kokeen CI-komentoaskelen yhden minuutin katkaisu injektoi vian.
+Katkaisuaskel saa jatkaa jälkikeräykseen virheestä huolimatta, mutta
+normaalien hyväksyntätestien ehtoja ei muuteta. Katkaisun pitää näkyä
+CI:n omassa vaihehavainnossa: pelkkä epäonnistunut komento ei todista
+odotettua injektiota.
+
+Kohdetarkistus vaatii edeltävien vaiheiden nykyisen sidotun ketjun,
+`scenario`-vaiheen valmistelun, puuttuvan scenario- ja caller-lopputuloksen
+sekä myöhempien vaiheiden puuttumisen. Tallentimen nykyisen jälkianalyysin
+pitää havaita erikseen komento ja scenario-worker; valmisteltu pyyntö
+ei yksin todista workerin käynnistymistä. Tallentimen pysäytys ja sen
+mahdollinen hylkäys säilytetään erillään testikomennon siivouksesta.
+Molempien prosessihavaintojen `cleanup: notInferred` ja
+`cause: notEstablished` säilyvät myös nähtyjen poistumisten jälkeen.
+Synteettinen hold ei tuota oikean MSI-inspektorin tapahtumia. Niiden
+puuttumisen vuoksi hylätty jatkoanalyysi ei saa hävittää jo saatua
+prosessihavaintoa eikä muuttua kokonaisanalyysin läpäisyksi.
+
+Valmisteluun kuuluvat suljetun raportin, sidonnan, paikallisen omistetun
+komennon katkaisun, workflow-rajauksen ja katkenneen trace-havainnon
+regressiot sekä riippumaton katselmointi. Paikallinen prosessikatkaisu
+ei korvaa yhtä nimettyä CI-komentoaskelen koetta. Aineisto säilytetään
+eikä puuttuvan siivoustodisteen perusteella poisteta tutkimusjuuria.
+Koe ei todista koko jobin tai runnerin katoamisen jälkeistä keräystä,
+workspace-success-polun tallennustukea tai alkuperäistä juurisyytä.
+Uutta oikean paketin ajoa ei ole tällä hyväksytty.
+
+[Vianetsintäreitti](../ai/e2e-test-authoring-guide.md#valitse-aineisto-epäonnistuneen-vaiheen-mukaan)
+erottaa selaintracen, Electronin käynnistystiedon ja asennuspaketin
+prosessiaineiston. Yleistä trace-asetusta, julkisia artifacteja, aikarajoja,
+retry-asetuksia tai prosessiomistajuutta ei muuteta tällä ohjepäätöksellä.
+Uutta loggeria tai T3/V2-omistajuusremonttia ei aloiteta. V1 pysyy suljettuna;
+V2:n integraatio on avoin. Tämän dokumenttityön tarkistukset eivät ole uusi
+sovellustestien tai CI:n hyväksyntä.
 
 ## Virhetiedon ja Electron-päivityksen rajattu jatko
 
@@ -45,7 +238,7 @@ paikallisia liitepolkuja tai tutkimustietoja ei siirretä dokumentaatioon.
 | V1a: syntypaikka ja viesti | Electronin E2E-backendin runner hukkaa poikkeuksen ja lähettää vain vaiheen. Brokerin sulkemisvirhe voi estää viestin. Omistaja: `apps/desktop/e2e` ja sen tiukka status-sopimus. | Suljettu syyluokitus tai `unknown`, täsmällinen lähettäjä/parseri/vastaanottaja, ensivirheen säilyminen ja brokerien erilliset sulkutulokset. Nopeat sopimus- ja vuotosuojatestit; ei tuotantokoodin muutosta. |
 | V1b: säilyminen ja raportti | Prosessin muistihavainto voi puuttua poistumisen jälkeen; CI:n testikooste yleistää virheen `testError`-tasolle. Omistaja: nykyinen native-havaintotiedosto, Electron-fixture ja turvallinen CI-raportoija. | Todellinen ennen ensimmäistä ikkunaa epäonnistuva prosessiketju säilyttää tunnetun syyn lopullisessa suoritusyrityskohtaisessa raportissa. Testitapaus, suoritusyritys (`attempt`) ja käynnistyssukupolvi eivät sekoitu. Puuttuva/myöhäinen havainto, raportointivirhe ja epävarma cleanup pysyvät näkyvinä erillään. Nykyinen onnistumispolku säilyy. |
 | V2a: riippuvuuden hyväksyntä | Hyväksytyn Electron-päivityksen runtime-/native- ja integraatioportit ovat kesken. Omistaja: [riippuvuusarvio](local-desktop-dependency-review.md#electron-4376--turvallisuuspäivitys). | Nykyisen täsmäversion, `better-sqlite3 13.0.2`:n ja synteettisen packaged-/palautuspolun portit sekä ennalta nimetyt vakausajot; lopullisen revision PR/main-todennus. |
-| V2b: pakollisten porttien hylkäykset | Raportoinnin keräysriippuvuus ja MSI:n samaversion korvaussääntö on korjattu; rajatut portit ja revision `fa343f19` normaalin PR-ajon installer-/legacy-ryhmät läpäisivät. Uusin hylkäys on backup-fixturen valmistelubackendin valmiusraja ennen Electronin käynnistystä. Omistaja: `apps/e2e`-valmistelu; [hyväksytty lisähavainto ja rajaus](#normaalin-pr-kierroksen-valmisteluhylkäys). | Todista viimeisen valmiuskyselyn suljettu luokka ja säilyminen ennen siivousta, sitten yksi kohdennettu Windowsin kriittinen Electron-ajo. PR/main vaatii oman hyväksynnän; läpäisy ei todista vanhan timeoutin syytä. Historiallisten hylkäysten täydellinen jälkiselitys ei ole uusi hyväksyntäehto. |
+| V2b: pakollisten porttien hylkäykset | Raportoinnin keräysriippuvuus ja MSI:n samaversion korvaussääntö on korjattu. Valmiuskyselyhavainto ja revision `8913dc48` E2E-perheet sekä installer-/legacy-ryhmät läpäisivät. Avoin hylkäys on saman PR-ajon packaged-workspace run 2:n job-aikaraja. Omistaja: nykyinen Windows acceptance -polku; [rajattu jatko](#riskiperusteinen-jatko-1102026). | Erota prosessin alkuperäinen vika, tuloksen saatavuus ja siivous; sovella yhteistä uusintakäytäntöä ilman hyväksyntäehtojen lievennystä. PR/main vaatii oman hyväksynnän; läpäisy ei todista vanhojen timeoutien syitä. Historiallisten hylkäysten täydellinen jälkiselitys ei ole uusi hyväksyntäehto. |
 
 V1 toteutetaan ensin. V1a käyttää alkuperäisen poikkeuksen rajattua
 koodiluokitusta ennen siivousta; vaihe ei ole juurisyy. V1b käyttää nykyistä

@@ -253,6 +253,8 @@ Sovi ajon seuranta [workflow-ohjeen](workflow.md#ci-ajon-seuranta-ja-virhetodist
 mukaan ennen käynnistystä. Säilytä ensimmäisen epäonnistuneen yrityksen
 revisio, komento, scenario ID, yritysnumero, vaihe, turvallinen virheluokka
 ja erillinen cleanup-tulos ennen mahdollista uutta ajoa.
+Noudata [yhden hallitun uusinnan ja kehityspoikkeuksen käytäntöä](testing-rules.md#ensivirhe-uusinta-ja-rajattu-poikkeus):
+uusinta ei muuta hylkäystä hyväksynnäksi eikä aloita uutta testialustatyötä.
 
 - Jokaisella ajolla on oma `apps/e2e/playwright-report/run-<uuid>/`-raportti.
   Avaa valittu ajo komennolla
@@ -280,6 +282,28 @@ ja erillinen cleanup-tulos ennen mahdollista uutta ajoa.
   saatavuus ja `electronEvidenceFailures` erotetaan testin alkuperäisestä
   virheestä. Säilytettyjä kansioita ei tyhjennetä automaattisesti uudella
   ajolla; niiden tutkiminen ja myöhempi poistaminen ovat erillisiä toimia.
+
+### Valitse aineisto epäonnistuneen vaiheen mukaan
+
+| Testipolku | Nykyinen todiste ja rajaus |
+| --- | --- |
+| Selain / `web-chromium` | Playwright omistaa testin contextin ja pagen. Rajattu `--trace=retain-on-failure` voi tallentaa jo ensiyrityksen jäljen; tavallinen contextin sulkeminen viimeistelee sen. Ennen käyttöä tarkista alla oleva salaisuusraja. |
+| Electron development | `electron-lifecycle` ja turvallinen suoritusyrityskohtainen raportti kertovat myös ennen ikkunaa tapahtuvista virheistä. Pelkkä trace-asetuksen vaihto ei kytke nykyisen erikseen käynnistetyn Electron-contextin täyttä tapahtuma-/verkkotallennusta. Runnerin API-jälki ei todista rendererin jäljen olemassaoloa. |
+| Windows packaged / installer | Käytä nykyisen supervisorin vaihehavaintoja, workerin tulosta ja siivouksen näyttöä. MSI:n tai paketin käynnistysjumi ei ole Playwright-selaintesti; sen tutkimiseen tarvitaan sen oman prosessin aineisto. |
+
+Ensiyrityksen tracea ei ole kytketty yleiseksi oletukseksi. Rajattu
+selainkoe voi käyttää yllä nimettyä nykyisen CLI:n valintaa ja `--retries=0`
+samassa ennalta valitussa testissä, mutta vasta kun kerättävä sisältö
+täyttää artefaktisopimuksen. Nykyinen web-fixture käyttää testi-istunnon
+otsaketta: tarkistamaton trace voi tallentaa sen myös synteettisessä
+testissä. Tämä ohje ei salli runtime-sessionin tallentamista eikä muuta
+julkaisulupaa. Electronin mahdollinen context-tracing vaatii erikseen
+rajatun toteutuksen ja restart-/close-todennuksen; sitä ei väitetä valmiiksi.
+
+Ensivirheen tracea, kuvakaappausta tai loppuraporttia ei voida luvata aina:
+ikkunaa ei välttämättä synny, eikä pakkokatkaistu runner välttämättä ehdi
+viimeistellä tai siirtää tiedostoja. Puuttuminen raportoidaan näyttöaukkona.
+Älä korvaa tätä pidemmällä aikarajalla tai uudella lokituskehyksellä.
 
 Noudata [artefaktisopimusta](../architecture/e2e-test-environment.md#artefaktit),
 [selainverkon rajaa](../architecture/e2e-test-environment.md#selainverkon-raja) ja

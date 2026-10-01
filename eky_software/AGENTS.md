@@ -94,6 +94,8 @@ ovat olemassa. Niihin ei saa tallentaa salaisuuksia.
 
 Testiajojen, CI:n, pushin, PR:n ja mergen yhteydessä noudata myös
 [CI-ajon seurannan ja virhetodisteiden ohjetta](docs/ai/workflow.md#ci-ajon-seuranta-ja-virhetodisteet).
+Ensivirheen säilyttämistä, yhtä hallittua uusintaa ja määräaikaisia
+kehityspoikkeuksia ohjaa [yhteinen testauskäytäntö](docs/ai/testing-rules.md#ensivirhe-uusinta-ja-rajattu-poikkeus).
 
 Lue lisäksi tehtävän mukaan seuraavat dokumentit:
 

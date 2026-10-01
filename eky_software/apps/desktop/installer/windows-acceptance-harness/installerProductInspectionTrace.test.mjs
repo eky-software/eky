@@ -17,7 +17,7 @@ const COMPLETED_PHASES = ['scriptStarted', 'readerLoaded', 'profileStarted', 'pr
   'eventsReadStarted', 'eventsReadCompleted', 'switchesReadStarted', 'switchesReadCompleted',
   'summaryCompleted', 'resultWriteStarted', 'resultWritten'];
 
-for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureStop', 'decimal', 'toolExit', 'exportOutput', 'eventStatistics', 'externalView', 'commandLifetimes', 'workspaceLifetimes', 'commandAnalysis', 'workspaceAnalysis', 'commandReadFailure', 'commandSessionReadFailure', 'commandExportFailure', 'commandExportFailureUnreadable', 'cancelledPreparation', 'cancelledCompletion', 'hostUnavailable']) test(
+for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureStop', 'decimal', 'toolExit', 'exportOutput', 'eventStatistics', 'externalView', 'commandLifetimes', 'workspaceLifetimes', 'commandAnalysis', 'contractFixtureAnalysis', 'workspaceAnalysis', 'commandReadFailure', 'commandSessionReadFailure', 'commandExportFailure', 'commandExportFailureUnreadable', 'cancelledPreparation', 'cancelledCompletion', 'hostUnavailable']) test(
   `external inspector trace keeps ${kind} evidence closed and separate from acceptance`,
   { skip: process.platform !== 'win32', timeout: INSPECTOR_TIMEOUT_MILLISECONDS },
   async (t) => {
@@ -57,6 +57,7 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
           [],
           [['truncated']],
         ]
+      : kind === 'contractFixtureAnalysis' ? [[]]
       : [[event('scriptStarted', '1'), event('requestValidated', '2'),
           event(kind === 'completed' ? 'scriptFinished' : 'comCreationStarted', '3')]];
     for (const [index, events] of cases.entries()) {
@@ -66,7 +67,7 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
       ['synthetic.exe (123)', '456', '30', '3.1', 'PRIVATE-STACK'],
       ['foreign.exe (789)', '456', '90', '3.1', 'PRIVATE-FOREIGN-STACK'],
     ]));
-    if (['commandLifetimes', 'workspaceLifetimes', 'commandAnalysis', 'workspaceAnalysis', 'commandReadFailure', 'commandSessionReadFailure'].includes(kind)) {
+    if (['commandLifetimes', 'workspaceLifetimes', 'commandAnalysis', 'contractFixtureAnalysis', 'workspaceAnalysis', 'commandReadFailure', 'commandSessionReadFailure'].includes(kind)) {
       const header = [
         'Start Time, End Time, Process, DataPtr, Process Name ( PID), ParentPID, SessionID, UniqueKey, Command Line',
         'Start Time, End Time, Thread, DataPtr, Process Name ( PID), ThreadID, StackBase, StackLimit, UsrStkBase, UsrStkLmt, TebBase, StartAddr',
@@ -105,6 +106,10 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
         sessionlessInvalidKey: [root, thread, background.replace('0x999', 'PRIVATE-KEY'), backgroundThread],
         sessionlessInvalidTimestamp: [root, thread, background.replace('MIN', 'PRIVATE-TIME'), backgroundThread],
       };
+      const fixtureWorker = worker.replace('legacyCommandPhase.mjs', 'legacyCommandWorkerFixture.mjs');
+      fixtures.fixtureScenario = [...fixtures.fixture, fixtureWorker, workerThread];
+      fixtures.fixtureScenarioClipped = [fixtures.fixture[0].replace('9000000', 'MAX'), thread.replace('8900000', 'MAX'),
+        fixtureWorker.replace('8000000', 'MAX'), workerThread.replace('7900000', 'MAX')];
       fixtures.sessionlessReused = fixtures.reused.map(withoutSession).map((row, index) => index === 0 ? root : row);
       fixtures.fixtureSessionlessCommand = fixtures.fixture.map(withoutSession);
       for (const [name, value] of Object.entries({ emptySession: '', malformedSession: 'PRIVATE-SESSION', negativeSession: '-2', noncanonicalSession: '-01' })) {
@@ -355,7 +360,7 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
         }
         throw 'expectedExportFailureMissing'
       }
-      if ($env:EKY_TRACE_TEST_KIND -cin @('commandAnalysis', 'workspaceAnalysis', 'commandReadFailure', 'commandSessionReadFailure')) {
+      if ($env:EKY_TRACE_TEST_KIND -cin @('commandAnalysis', 'contractFixtureAnalysis', 'workspaceAnalysis', 'commandReadFailure', 'commandSessionReadFailure')) {
         $tokens = $null; $errors = $null
         $ast = [Management.Automation.Language.Parser]::ParseFile(
           (Join-Path (Split-Path $env:EKY_TRACE_TEST_SCRIPT -Parent) 'captureInstallerProductInspection.ps1'), [ref]$tokens, [ref]$errors)
@@ -373,7 +378,8 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
         $root = $env:EKY_TRACE_TEST_ROOT; $xperf = $env:EKY_TRACE_TEST_NODE
         $exporter = $xperf; $catalog = ''; $WorkspaceFaultCommand = $env:EKY_TRACE_TEST_KIND -ceq 'workspaceAnalysis'
         $LegacyCommand = !$WorkspaceFaultCommand; $boundary = 'stopVerification'
-        $ContractFixture = $commandReadFailure
+        $contractFixtureAnalysis = $env:EKY_TRACE_TEST_KIND -ceq 'contractFixtureAnalysis'
+        $ContractFixture = $commandReadFailure -or $contractFixtureAnalysis
         [IO.File]::WriteAllText((Join-Path $root 'stopped'), '')
         function Invoke-CaptureTool([string]$Tool, [string[]]$Arguments, [string]$Label) {
           if ($commandReadFailure) {
@@ -384,6 +390,7 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
           elseif ($Label -ceq 'command-export') {
             $inputName = if ($env:EKY_TRACE_TEST_KIND -ceq 'commandSessionReadFailure') { 'command-fixtureSessionlessCommand.txt' }
               elseif ($commandReadFailure) { 'command-fixtureInvalidThread.txt' }
+              elseif ($contractFixtureAnalysis) { 'command-fixtureScenarioClipped.txt' }
               elseif ($WorkspaceFaultCommand) { 'command-workspace.txt' } else { 'command-completed.txt' }
             Copy-Item -LiteralPath (Join-Path $root $inputName) -Destination (Join-Path $root 'command-export.private.log')
           } elseif ($Label -ceq 'events-export') {
@@ -444,22 +451,39 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
           }
           exit 97
         }
-        foreach ($analysisCase in @('eventExport', 'bytes', 'rows')) {
+        $analysisCases = if ($contractFixtureAnalysis) { @('emptyEvents') } else { @('eventExport', 'bytes', 'rows') }
+        foreach ($analysisCase in $analysisCases) {
           $observations = [Collections.Generic.List[object]]::new()
           $rejected = $false
           try { . $analysis | ForEach-Object { $observations.Add(($_ | ConvertFrom-Json)) } }
           catch {
             $rejected = if ($analysisCase -ceq 'eventExport') { $_.Exception.Message -ceq 'INSPECTOR_CAPTURE_TOOL_FAILED' }
+              elseif ($analysisCase -ceq 'emptyEvents') { $_.Exception.Message -ceq 'INSPECTOR_TRACE_EVENTS_MISSING' }
               else { $_.Exception.Message -ceq 'INSPECTOR_TRACE_TABLE_LIMIT' -and $_.Exception.Data['tableLimitKind'] -ceq $analysisCase }
           }
-          $expectedCount = $(if ($analysisCase -ceq 'eventExport') { 5 } else { 3 }) + $(if ($WorkspaceFaultCommand) { 3 } else { 0 })
-          $expectedBoundary = if ($analysisCase -ceq 'eventExport') { 'eventExport' } else { 'schedulingRead' }
+          $expectedCount = $(if ($analysisCase -cin @('eventExport', 'emptyEvents')) { 5 } else { 3 }) + $(if ($WorkspaceFaultCommand) { 3 } else { 0 })
+          $expectedBoundary = if ($analysisCase -ceq 'eventExport') { 'eventExport' }
+            elseif ($analysisCase -ceq 'emptyEvents') { 'eventRead' } else { 'schedulingRead' }
           if (!$rejected -or $boundary -cne $expectedBoundary -or $observations.Count -ne $expectedCount -or
               $observations[0].phase -cne 'eventStatistics' -or $observations[0].status -cne 'failed' -or
               @($observations | Where-Object { $_.phase -cne 'eventStatistics' -and $_.cleanup -cne 'notInferred' }).Count -ne 0 -or
               @($observations | Where-Object { $_.phase -ceq 'commandLifetimeAnalysis' -and
                 $_.schedulingObservation -ceq 'notProjected' }).Count -ne 2) {
             throw 'failedSchedulingErasedCommandEvidence'
+          }
+          if ($contractFixtureAnalysis) {
+            foreach ($summaryPhase in @('commandLifetimeAnalysis', 'commandAnalysis')) {
+              $summaries = @($observations | Where-Object { $_.phase -ceq $summaryPhase })
+              if (($summaries.commandPhase -join ',') -cne 'command,scenario' -or
+                  @($summaries | Where-Object {
+                    $_.status -cne 'completed' -or $_.resultCode -cne 'diagnosticOnly' -or
+                    $_.processExit -cne 'notObservedBeforeTraceEnd' -or $_.threadExit -cne 'notAllObservedBeforeTraceEnd' -or
+                    $_.traceCoverage -cne 'boundedCaptureNotFullHistory' -or $_.cause -cne 'notEstablished'
+                  }).Count -ne 0) { throw 'emptyEventsErasedFixtureLifetimes' }
+            }
+            if (($observations | ConvertTo-Json -Depth 5) -match 'PRIVATE|source|123|234|456|567|dotnet.exe|node.exe') {
+              throw 'emptyEventsFixtureProjectionLeaked'
+            }
           }
           if ($WorkspaceFaultCommand -and @($observations | Where-Object {
             $_.phase -ceq 'workspaceInstallationAnalysis' -and $_.resultCode -ceq 'diagnosticOnly' -and
@@ -594,6 +618,23 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
         if ($null -ne (Get-InspectorTraceLifetimeFailureBranch $failure)) { throw 'lifetimeFailureMisclassified' }
         $projection = Read-LegacyCommandTrace (Join-Path $env:EKY_TRACE_TEST_ROOT 'command-fixture.txt') -ContractFixture
         if ($projection.processes.Count -ne 1) { throw 'retainedFixtureNotSelected' }
+        foreach ($fixtureCase in @('fixtureScenario', 'fixtureScenarioClipped')) {
+          $projection = Read-LegacyCommandTrace (Join-Path $env:EKY_TRACE_TEST_ROOT ('command-' + $fixtureCase + '.txt')) -ContractFixture
+          if ($projection.processes.Count -ne 2 -or $projection.schedulingThreads.Count -ne 2 -or
+              ($projection.processes.phase -join ',') -cne 'command,scenario') { throw 'fixtureScenarioNotSelected' }
+          $clipped = $fixtureCase -ceq 'fixtureScenarioClipped'
+          $processExit = if ($clipped) { 'notObservedBeforeTraceEnd' } else { 'observedInTrace' }
+          $threadExit = if ($clipped) { 'notAllObservedBeforeTraceEnd' } else { 'allProjectedExitsObserved' }
+          $summaries = @(Get-LegacyCommandTraceSummary $projection @() -LifetimeOnly)
+          $expected = @('command', 'scenario' | ForEach-Object {
+            [ordered]@{ schemaVersion = 1; operation = 'installerProductInspectionCapture';
+              phase = 'commandLifetimeAnalysis'; status = 'completed'; resultCode = 'diagnosticOnly'; commandPhase = $_;
+              processExit = $processExit; threadExit = $threadExit; schedulingObservation = 'notProjected';
+              traceCoverage = 'boundedCaptureNotFullHistory'; cleanup = 'notInferred'; cause = 'notEstablished' }
+          })
+          if (($summaries | ConvertTo-Json -Compress) -cne ($expected | ConvertTo-Json -Compress)) { throw 'fixtureLifetimeProjectionInvalid' }
+          if (($summaries | ConvertTo-Json) -match 'PRIVATE|source|123|234|456|567|dotnet.exe|node.exe') { throw 'fixtureLifetimeProjectionLeaked' }
+        }
         [IO.File]::WriteAllText($env:EKY_TRACE_TEST_RESULT, '{"status":"validated"}')
         exit 0
       }
@@ -986,7 +1027,7 @@ for (const kind of ['completed', 'interrupted', 'invalid', 'capture', 'captureSt
               fileCorruptionMessage: false,
             } },
       });
-    } else if (['capture', 'captureStop', 'decimal', 'toolExit', 'exportOutput', 'eventStatistics', 'externalView', 'commandLifetimes', 'workspaceLifetimes', 'commandAnalysis', 'workspaceAnalysis'].includes(kind)) {
+    } else if (['capture', 'captureStop', 'decimal', 'toolExit', 'exportOutput', 'eventStatistics', 'externalView', 'commandLifetimes', 'workspaceLifetimes', 'commandAnalysis', 'contractFixtureAnalysis', 'workspaceAnalysis'].includes(kind)) {
       assert.deepEqual(results, { status: 'validated' });
     } else if (kind === 'invalid') {
       assert.deepEqual(results, ['INSPECTOR_TRACE_EVENT_NAME_INVALID', 'INSPECTOR_TRACE_PROVIDER_INVALID',
