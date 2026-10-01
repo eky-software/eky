@@ -152,6 +152,13 @@ Tavallisen sovellustestin valinnainen diagnostiikka on eri asia: sen tulosta
 ei muuteta sovelluksen toiminnalliseksi hylkäykseksi. Kokeella on oma
 concurrency-ryhmä, jotta se ei peruuta varsinaista hyväksyntäajoa.
 
+Toimituskokeen virhetuloste erottaa suljetulla vaihe-arvolla kutsun
+kontekstin, Node-version, tapahtumatiedoston ja sen JSON-tulkinnan,
+checkout-revision, keräyksen, salauksen, salatekstin tarkistuksen sekä
+output-julkaisun. Vaihe kertoo hylkäyskohdan, ei juurisyytä. Raakavirhe,
+polku tai ympäristö ei kuulu tulosteeseen. Normaali workspace-kuluttaja
+ei käytä tätä kertakokeen lisätulostetta.
+
 Valmistuminen vaatii ajon seuraajalta yksityisen latauksen ja purun,
 manifestin run/attempt/revision-sidonnan tarkistuksen sekä näytteen tavujen
 ja tiivisteiden vertailun. Hosted-ajon vihreä salaus/upload ei yksin täytä
@@ -188,6 +195,13 @@ Tämä on työpuun näyttöä, ei jäädytetyn hosted-revision hyväksyntä.
 Käyttöönoton paikallinen hyväksyntäportti on täytetty; yksityiskohtainen
 näyttö säilyy yksityisenä. Hosted-toimitus on vielä avoinna, eikä
 paikallinen käyttöönotto yksin aktivoi GitHubin avainmuuttujia.
+
+Ensimmäinen revision `9daf3209` hosted-toimituskoe hylättiin salausaskeleen
+yleisellä virhekoodilla työkalujen ennakkotarkistuksen jälkeen. Salattua
+liitettä ei syntynyt eikä salaamatonta varavaihtoehtoa käytetty. Normaalia
+hyväksyntää tai MSI-asennusta ei ajettu. Ensivirhe säilyy hylkäyksenä;
+toimitus-/purkuportti on avoin. Seuraavan rajatun kokeen päätös ja työn
+nykytila ovat [M1-suunnitelmassa](release-0.3.0-m1-preparation-plan.md#salatun-tutkimusaineiston-välitavoite).
 
 Lähteet: [GnuPG:n vastaanottajavalinta](https://www.gnupg.org/documentation/manuals/gnupg/GPG-Key-related-Options.html),
 [artifactien säilytys](https://github.com/actions/upload-artifact#retention-period)

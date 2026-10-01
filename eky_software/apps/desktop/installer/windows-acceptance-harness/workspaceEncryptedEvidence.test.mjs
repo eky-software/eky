@@ -232,7 +232,11 @@ test('delivery proof CLI rejects extra arguments and non-opt-in invocations with
     assert.equal(result.error, undefined);
     assert.equal(result.status, 1);
     assert.equal(result.stdout, '');
-    assert.equal(result.stderr.trim(), 'WORKSPACE_ENCRYPTED_EVIDENCE_UNVERIFIED');
+    const phase = Object.keys(patch).length > 0 ? 'invocationContext' : 'eventJson';
+    const failure = process.platform === 'win32' && extra.length === 0
+      ? JSON.stringify({ schemaVersion: 1, operation: 'syntheticEncryptedEvidenceDelivery', status: 'failed', phase }) + '\n'
+      : '';
+    assert.equal(result.stderr, failure + 'WORKSPACE_ENCRYPTED_EVIDENCE_UNVERIFIED\n');
     assert.equal(await readFile(output, 'utf8'), '');
   }
   await assert.rejects(readFile(join(f.env.RUNNER_TEMP, 'eky-encrypted-delivery-proof-12345-1', 'context.private.json')),

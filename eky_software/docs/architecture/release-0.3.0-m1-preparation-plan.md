@@ -88,10 +88,23 @@ rajattiin yksityiseen näyttöön; yhteinen ohje säilyttää vain portin tilan.
 
 Kyse on työpuun paikallisesta näytöstä, ei hyväksytystä hosted- tai
 release-revisiosta. Käyttöönoton paikallinen hyväksyntäportti on täytetty;
-sen yksityiskohtainen näyttö säilyy yksityisenä. Avainmuuttujia ei ole vielä
-asetettu eikä uutta hosted-ajoa tai aineiston julkaisua tehty. Kohdennetun
-hosted-toimituksen varmennus on vielä avoinna.
-Toimituksen seuraava koe on [rajattu synteettinen toimituskoe](ci-encrypted-evidence.md#rajattu-toimituskoe)
+sen yksityiskohtainen näyttö säilyy yksityisenä. Yksi revision `9daf3209`
+synteettinen hosted-toimituskoe päättyi salausaskeleen yleiseen
+`WORKSPACE_ENCRYPTED_EVIDENCE_UNVERIFIED`-hylkäykseen. Checkout sekä
+Node-/GnuPG-ennakkotarkistus läpäisivät. Salattua liitettä ei syntynyt,
+eikä purkua tai toimitusta merkitä hyväksytyksi. Muut workflow'n jobit
+ohitettiin suunnitellusti; MSI:tä tai normaalia hyväksyntää ei ajettu.
+Yleinen hylkäys ei vielä erota CLI:n käynnistysehtoja, keräystä ja
+salausprosessia. Sama paikallinen kutsu läpäisi, mutta ei todista hosted-
+syytä. Ensimmäisen ajon näyttö säilytettiin. Kohdennettu toimitus on avoin.
+Omistaja hyväksyi rajatun vaihe-erottelun ja yhden uuden enintään viiden
+minuutin synteettisen kokeen. Erottelu koskee vain toimituskokeen
+käynnistys-, keräys-, salaus- ja julkaisuportteja: julkiseen virheeseen
+tulee koodin määräämä vaihe, ei raakavirhettä tai pääteltyä juurisyytä.
+Rajatut regressiot ja workflow-sopimukset läpäisivät 60/60 tarkistusta;
+erillinen staattinen katselmus ei löytänyt estettä. Uuden hosted-kokeen
+ja purun näyttö puuttuu vielä. Aikarajat ja normaalin testin ehdot säilyvät.
+Toimituksen todentamistapa on [rajattu synteettinen toimituskoe](ci-encrypted-evidence.md#rajattu-toimituskoe)
 olemassa olevan feasibility-workflow'n omana valintana. Se ei käynnistä
 MSI:tä, WPR:ää tai uutta paketointia eikä korvaa normaalia hyväksyntää.
 Alkuperäinen workspace-timeout ja aiempi vientivirhe pysyvät avoimina.

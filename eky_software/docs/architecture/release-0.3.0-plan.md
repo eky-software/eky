@@ -126,6 +126,10 @@ nykyisen workspace-kuluttajan nimetty aineisto salataan GnuPG:llä ennen
 julkista artifact-siirtoa. Purkuavain jää paikalliseksi, salattu liite
 säilyy yhden vuorokauden ja käyttöönotto edellyttää avaimen purkutestiä.
 Toteutus ei muuta normaaleja hyväksyntäehtoja tai sulje vanhoja havaintoja.
+Paikallinen salausportti läpäisi, mutta ensimmäinen synteettinen hosted-
+toimituskoe hylättiin ennen liitteen syntymistä. Toimituksen hyväksyntä
+on avoin; hyväksytty vaihe-erottelu ja yksi rajattu jatkokoe ovat
+M1-suunnitelmassa. Normaalia hyväksyntää ei vielä käynnistetä.
 Alkuperäisten timeoutien syitä ei väitetä ratkaistuiksi. Ei asennuskorjauksen
 tai T3:n uutta toteutusta.
 Seuraava tuotantopala on [A1/R01](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde)

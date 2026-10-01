@@ -247,13 +247,18 @@ export async function prepareDeliveryProof(env) {
   return { root, collected: await collectBoundEvidence(env, root, binding) };
 }
 
-async function verifyDeliveryProofInvocation(env) {
+async function verifyDeliveryProofInvocation(env, observePhase) {
+  observePhase('invocationContext');
   deliveryProofBinding(env);
+  observePhase('nodeVersion');
   if (!isAbsolute(env.GITHUB_EVENT_PATH ?? '') ||
       process.versions.node !== (await readFile(resolve(HERE, '../../../../.node-version'), 'utf8')).trim()) fail();
+  observePhase('eventFile');
   const event = await lstat(env.GITHUB_EVENT_PATH);
   if (!event.isFile() || event.isSymbolicLink() || event.size > MiB) fail();
+  observePhase('eventJson');
   if (JSON.parse(await readFile(env.GITHUB_EVENT_PATH, 'utf8')).inputs?.mode !== DELIVERY_PROOF_MODE) fail();
+  observePhase('checkoutRevision');
   await new Promise((accept, reject) => {
     execFile('git.exe', ['rev-parse', 'HEAD'], { cwd: HERE, timeout: 10_000, maxBuffer: 4096, windowsHide: true },
       (error, stdout) => error || stdout.trim() !== env.GITHUB_SHA
@@ -281,24 +286,36 @@ export async function runEvidence(mode, env = process.env) {
   }
   let root;
   let collected;
-  if (mode === 'delivery-proof') {
-    await verifyDeliveryProofInvocation(env);
-    ({ root, collected } = await prepareDeliveryProof(env));
-  } else {
-    if (mode !== 'seal') fail();
-    root = env.EKY_EVIDENCE_ROOT;
-    collected = await collectEvidence(env, root);
+  let deliveryPhase = 'invocationContext';
+  try {
+    if (mode === 'delivery-proof') {
+      await verifyDeliveryProofInvocation(env, phase => { deliveryPhase = phase; });
+      deliveryPhase = 'evidenceCollection';
+      ({ root, collected } = await prepareDeliveryProof(env));
+    } else {
+      if (mode !== 'seal') fail();
+      root = env.EKY_EVIDENCE_ROOT;
+      collected = await collectEvidence(env, root);
+    }
+    deliveryPhase = 'encryption';
+    await encryptArchive(root, collected);
+    deliveryPhase = 'ciphertextVerification';
+    const ciphertext = join(root, 'evidence.json.gz.gpg');
+    const proof = await ordinaryPath(await realpath(env.RUNNER_TEMP), ciphertext);
+    if (proof.size === 0 || proof.size > MAX_TOTAL * 2) fail();
+    console.log(JSON.stringify({ schemaVersion: 1,
+      operation: mode === 'delivery-proof' ? DELIVERY_PROOF_SCENARIO : 'workspaceEncryptedEvidence',
+      status: 'sealed', outcomes: collected.manifest.outcomes, cleanup: collected.manifest.cleanup,
+      captureClosed: collected.manifest.captureClosed,
+      retainedFiles: collected.manifest.files.filter(item => item.status === 'retained').length }));
+    deliveryPhase = 'outputPublication';
+    await appendFile(env.GITHUB_OUTPUT, `ciphertext=${ciphertext}\nsealed=true\n`);
+  } catch (error) {
+    // Only code-owned phases cross the public boundary; never the native error.
+    if (mode === 'delivery-proof') console.error(JSON.stringify({ schemaVersion: 1,
+      operation: DELIVERY_PROOF_SCENARIO, status: 'failed', phase: deliveryPhase }));
+    throw error;
   }
-  await encryptArchive(root, collected);
-  const ciphertext = join(root, 'evidence.json.gz.gpg');
-  const proof = await ordinaryPath(await realpath(env.RUNNER_TEMP), ciphertext);
-  if (proof.size === 0 || proof.size > MAX_TOTAL * 2) fail();
-  console.log(JSON.stringify({ schemaVersion: 1,
-    operation: mode === 'delivery-proof' ? DELIVERY_PROOF_SCENARIO : 'workspaceEncryptedEvidence',
-    status: 'sealed', outcomes: collected.manifest.outcomes, cleanup: collected.manifest.cleanup,
-    captureClosed: collected.manifest.captureClosed,
-    retainedFiles: collected.manifest.files.filter(item => item.status === 'retained').length }));
-  await appendFile(env.GITHUB_OUTPUT, `ciphertext=${ciphertext}\nsealed=true\n`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -221,12 +221,16 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
       true, 'OPENPGP_TEST_NODE_PIN_REQUIRED');
     const validDeliveryEvent = JSON.stringify({ inputs: { mode: 'encrypted-evidence-delivery-proof' } });
     const wrongRevision = `${deliveryRevision[0] === '0' ? '1' : '0'}${deliveryRevision.slice(1)}`;
-    for (const [name, revision, event] of [
-      ['wrong-checkout', wrongRevision, validDeliveryEvent],
-      ['malformed-event', deliveryRevision, '{"inputs":'],
-      ['oversized-event', deliveryRevision, validDeliveryEvent.padEnd(1024 * 1024 + 1, ' ')],
+    for (const [name, revision, event, phase, patch = {}] of [
+      ['wrong-checkout', wrongRevision, validDeliveryEvent, 'checkoutRevision'],
+      ['malformed-event', deliveryRevision, '{"inputs":', 'eventJson'],
+      ['oversized-event', deliveryRevision, validDeliveryEvent.padEnd(1024 * 1024 + 1, ' '), 'eventFile'],
+      ['unverified-recipient', deliveryRevision, validDeliveryEvent, 'evidenceCollection',
+        { EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: '' }],
+      ['recipient-mismatch', deliveryRevision, validDeliveryEvent, 'encryption',
+        { EKY_DIAGNOSTIC_KEY_FINGERPRINT: other.fingerprint, EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: other.fingerprint }],
     ]) {
-      await check(`delivery CLI rejects ${name} before evidence preparation or output publication`, async () => {
+      await check(`delivery CLI reports ${phase} for ${name} without raw errors or output publication`, async () => {
         const temp = join(root, `delivery-rejected-${name}`);
         await mkdir(temp);
         const eventPath = join(temp, 'event.json');
@@ -240,7 +244,7 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
             RUNNER_TEMP: temp, GITHUB_OUTPUT: outputPath, GITHUB_EVENT_PATH: eventPath,
             EKY_DIAGNOSTIC_PUBLIC_KEY: await readFile(publicPath, 'utf8'),
             EKY_DIAGNOSTIC_KEY_FINGERPRINT: recipient.fingerprint,
-            EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: recipient.fingerprint },
+            EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: recipient.fingerprint, ...patch },
           timeout: 130_000, maxBuffer: 64 * 1024, encoding: 'buffer', windowsHide: true,
         });
         await writeFile(join(root, `delivery-${name}.stdout.private.log`), child.stdout ?? Buffer.alloc(0));
@@ -248,12 +252,19 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
         assert.equal(child.error === undefined, true, 'OPENPGP_TEST_DELIVERY_PROCESS_FAILED');
         assert.equal(child.status, 1, 'OPENPGP_TEST_DELIVERY_REJECTION_MISSING');
         assert.equal(child.stdout.length, 0, 'OPENPGP_TEST_DELIVERY_UNSAFE_STDOUT');
-        assert.equal(child.stderr.toString('utf8') === 'WORKSPACE_ENCRYPTED_EVIDENCE_UNVERIFIED\n',
+        const expectedFailure = JSON.stringify({ schemaVersion: 1, operation: 'syntheticEncryptedEvidenceDelivery',
+          status: 'failed', phase }) + '\nWORKSPACE_ENCRYPTED_EVIDENCE_UNVERIFIED\n';
+        assert.equal(child.stderr.toString('utf8') === expectedFailure,
           true, 'OPENPGP_TEST_DELIVERY_UNSAFE_ERROR');
         assert.equal(await readFile(outputPath, 'utf8') === 'existing=value\n',
           true, 'OPENPGP_TEST_FAILED_OUTPUT_PUBLISHED');
-        assert.deepEqual((await readdir(temp)).sort(), ['event.json', 'output.txt'],
-          'OPENPGP_TEST_REJECTED_INPUT_PREPARED_EVIDENCE');
+        if (phase !== 'encryption') {
+          assert.deepEqual((await readdir(temp)).sort(), ['event.json', 'output.txt'],
+            'OPENPGP_TEST_REJECTED_INPUT_PREPARED_EVIDENCE');
+        } else {
+          await assert.rejects(readFile(join(temp, 'eky-encrypted-delivery-proof-98765-1', 'evidence.json.gz.gpg')),
+            { code: 'ENOENT' });
+        }
       });
     }
     await check('modified ciphertext and wrong private key cannot decrypt successfully', async () => {
