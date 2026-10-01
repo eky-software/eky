@@ -159,6 +159,14 @@ output-julkaisun. Vaihe kertoo hylkäyskohdan, ei juurisyytä. Raakavirhe,
 polku tai ympäristö ei kuulu tulosteeseen. Normaali workspace-kuluttaja
 ei käytä tätä kertakokeen lisätulostetta.
 
+Salauksen kohdalla kertakoe välittää lisäksi vain yhteisen
+`encryptedEvidenceFailureCodes.json`-sopimuksen täsmällisen koodin.
+PowerShell ei julkaise poikkeustekstiä, eikä Node poimi tunnettua sanaa
+muun tulosteen sisältä: vain yksi kokonainen sallittu koodirivi hyväksytään.
+Apurin puuttuminen tai käynnistysoikeuden puute erotetaan nimellä
+`EVIDENCE_HELPER_START_FAILED`. Tuntematon tai virheellinen vastaus pysyy
+yleisenä hylkäyksenä. Normaalin workspace-kuluttajan ilmoitus ei muutu.
+
 Valmistuminen vaatii ajon seuraajalta yksityisen latauksen ja purun,
 manifestin run/attempt/revision-sidonnan tarkistuksen sekä näytteen tavujen
 ja tiivisteiden vertailun. Hosted-ajon vihreä salaus/upload ei yksin täytä

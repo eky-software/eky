@@ -8,6 +8,7 @@ import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { createGzip } from 'node:zlib';
 import { validateWorkspaceCallerResult } from './workspaceCallerResult.mjs';
+import encryptionFailureCodes from './encryptedEvidenceFailureCodes.json' with { type: 'json' };
 
 const MiB = 1024 * 1024;
 const MAX_TOTAL = 400 * MiB;
@@ -17,6 +18,8 @@ const DELIVERY_PROOF_MODE = 'encrypted-evidence-delivery-proof';
 const DELIVERY_PROOF_SCENARIO = 'syntheticEncryptedEvidenceDelivery';
 const DELIVERY_PROOF_FILE = 'command-export.stderr.private.log';
 const DELIVERY_PROOF_BYTES = Buffer.from('EKY synthetic encrypted delivery proof v1\n', 'utf8');
+const ENCRYPTION_FAILURE_CODES = new Set(encryptionFailureCodes);
+const HELPER_START_FAILED = 'EVIDENCE_HELPER_START_FAILED';
 const CAPTURE_FILES = Object.freeze({
   'capture.etl': 256 * MiB,
   'event-statistics.private.log': 32 * MiB,
@@ -266,13 +269,27 @@ async function verifyDeliveryProofInvocation(env, observePhase) {
   });
 }
 
-export function encryptArchive(root, collected) {
+export function encryptionFailureCode(error, stderr) {
+  if (['ENOENT', 'EACCES', 'EPERM'].includes(error?.code)) return HELPER_START_FAILED;
+  // Accept exactly one known line, not a token found inside an arbitrary error.
+  const match = typeof stderr === 'string' && stderr.length <= 128
+    ? /^([A-Z_]+)\r?\n$/u.exec(stderr) : null;
+  return match && match[0] === stderr && ENCRYPTION_FAILURE_CODES.has(match[1])
+    ? match[1] : 'EVIDENCE_ENCRYPTION_FAILED';
+}
+
+export function encryptArchive(root, collected, reportFailureCode = false) {
   return new Promise((accept, reject) => {
     execFile('pwsh.exe', ['-NoProfile', '-NonInteractive', '-File', join(HERE, 'sealWorkspaceEvidence.ps1'),
       '-ArchivePath', collected.archivePath, '-OutputPath', join(root, 'evidence.json.gz.gpg'),
       '-PublicKeyPath', join(root, 'recipient.asc'), '-ExpectedFingerprint', collected.fingerprint,
-      '-WorkRoot', root], { timeout: 120_000, maxBuffer: 64 * 1024, windowsHide: true },
-    error => error ? reject(new Error('WORKSPACE_ENCRYPTED_EVIDENCE_UNVERIFIED')) : accept());
+      '-WorkRoot', root, ...(reportFailureCode ? ['-ReportFailureCode'] : [])],
+    { timeout: 120_000, maxBuffer: 64 * 1024, windowsHide: true }, (error, stdout, stderr) => {
+      if (!error) { accept(); return; }
+      const failure = new Error('WORKSPACE_ENCRYPTED_EVIDENCE_UNVERIFIED');
+      if (reportFailureCode) failure.evidenceCode = encryptionFailureCode(error, stderr);
+      reject(failure);
+    });
   });
 }
 
@@ -298,7 +315,7 @@ export async function runEvidence(mode, env = process.env) {
       collected = await collectEvidence(env, root);
     }
     deliveryPhase = 'encryption';
-    await encryptArchive(root, collected);
+    await encryptArchive(root, collected, mode === 'delivery-proof');
     deliveryPhase = 'ciphertextVerification';
     const ciphertext = join(root, 'evidence.json.gz.gpg');
     const proof = await ordinaryPath(await realpath(env.RUNNER_TEMP), ciphertext);
@@ -312,8 +329,13 @@ export async function runEvidence(mode, env = process.env) {
     await appendFile(env.GITHUB_OUTPUT, `ciphertext=${ciphertext}\nsealed=true\n`);
   } catch (error) {
     // Only code-owned phases cross the public boundary; never the native error.
-    if (mode === 'delivery-proof') console.error(JSON.stringify({ schemaVersion: 1,
-      operation: DELIVERY_PROOF_SCENARIO, status: 'failed', phase: deliveryPhase }));
+    if (mode === 'delivery-proof') {
+      const errorCode = deliveryPhase === 'encryption' &&
+        (error?.evidenceCode === HELPER_START_FAILED || ENCRYPTION_FAILURE_CODES.has(error?.evidenceCode))
+        ? { errorCode: error.evidenceCode } : {};
+      console.error(JSON.stringify({ schemaVersion: 1,
+        operation: DELIVERY_PROOF_SCENARIO, status: 'failed', phase: deliveryPhase, ...errorCode }));
+    }
     throw error;
   }
 }

@@ -121,6 +121,17 @@ sisäisestä hylkäyksestä. Mahdollinen täsmennys rajataan olemassa olevan
 sopimuksen sallittuihin koodeihin ja regressioihin, ei raakatulosteiden
 julkaisuun tai uuteen raportointikerrokseen. Uusi hosted-todennus tarvitsee
 erillisen ajopäätöksen; aiempi yhden kokeen lupa on käytetty.
+Omistaja hyväksyi tämän jälkeen rajatun jatkon: olemassa olevan turvallisen
+virhekoodin välitys, regressiot ja yksi uusi enintään viiden minuutin
+synteettinen todennus. Normaalin kuluttajan yleinen virheilmoitus säilyy;
+yksityiskohtaisempi suljettu koodi kuuluu vain toimituskokeeseen.
+Jos tämä ei ratkaise etenemistä, tulos ja vaihtoehdot käsitellään ennen
+lisäkokeita. Vuorokauden säilytys ei anna lupaa salaamattomaan julkaisuun.
+Toteutettu koodien välitys ja tarkka parseri läpäisivät 62/62 rajattua
+tarkistusta ilman ohituksia. Mukana olivat todellinen puuttuvan apurin
+käynnistysvirhe, apurin avainhylkäyksen välitys lopulliseen CLI-tulosteeseen,
+normaalin virheilmoituksen säilyminen ja onnistunut salaus/purku.
+Tämä on paikallinen näyttö, ei vielä uuden hosted-kokeen tulos.
 Toimituksen todentamistapa on [rajattu synteettinen toimituskoe](ci-encrypted-evidence.md#rajattu-toimituskoe)
 olemassa olevan feasibility-workflow'n omana valintana. Se ei käynnistä
 MSI:tä, WPR:ää tai uutta paketointia eikä korvaa normaalia hyväksyntää.

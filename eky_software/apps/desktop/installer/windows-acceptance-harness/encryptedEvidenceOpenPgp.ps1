@@ -1,5 +1,7 @@
 # Dot-source in PowerShell 7 on Windows. The caller owns private directories,
 # immutable input collection, retention and upload of ONLY the final output.
+$script:EvidenceEncryptionFailureCodes = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'encryptedEvidenceFailureCodes.json') -Raw | ConvertFrom-Json
+
 function ConvertTo-EvidenceGpgPath([string]$Path) {
   # Git's bundled GPG uses MSYS paths even when launched by native PowerShell.
   $fullPath = [IO.Path]::GetFullPath($Path)
@@ -243,10 +245,7 @@ function Invoke-EvidenceEncryption {
     [IO.File]::Move($partialPath, $OutputPath, $false)
     return [pscustomobject]@{ Status = 'encrypted'; Format = 'OpenPGP'; Cipher = 'AES256' }
   } catch {
-    $closedCodes = @('EVIDENCE_PLATFORM_UNSUPPORTED', 'EVIDENCE_INPUT_INVALID', 'EVIDENCE_KEY_INVALID',
-      'EVIDENCE_GPG_UNAVAILABLE', 'EVIDENCE_GPG_FAILED', 'EVIDENCE_GPG_TIMEOUT', 'EVIDENCE_GPG_OUTPUT_LIMIT',
-      'EVIDENCE_GPG_STOP_UNVERIFIED', 'EVIDENCE_OUTPUT_EXISTS', 'EVIDENCE_OUTPUT_INVALID')
-    if ($_.Exception.Message -cin $closedCodes) { $failureCode = $_.Exception.Message }
+    if ($_.Exception.Message -cin $script:EvidenceEncryptionFailureCodes) { $failureCode = $_.Exception.Message }
     throw [InvalidOperationException]::new($failureCode)
   }
 }

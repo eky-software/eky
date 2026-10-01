@@ -253,7 +253,8 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
         assert.equal(child.status, 1, 'OPENPGP_TEST_DELIVERY_REJECTION_MISSING');
         assert.equal(child.stdout.length, 0, 'OPENPGP_TEST_DELIVERY_UNSAFE_STDOUT');
         const expectedFailure = JSON.stringify({ schemaVersion: 1, operation: 'syntheticEncryptedEvidenceDelivery',
-          status: 'failed', phase }) + '\nWORKSPACE_ENCRYPTED_EVIDENCE_UNVERIFIED\n';
+          status: 'failed', phase, ...(phase === 'encryption' ? { errorCode: 'EVIDENCE_KEY_INVALID' } : {}) }) +
+          '\nWORKSPACE_ENCRYPTED_EVIDENCE_UNVERIFIED\n';
         assert.equal(child.stderr.toString('utf8') === expectedFailure,
           true, 'OPENPGP_TEST_DELIVERY_UNSAFE_ERROR');
         assert.equal(await readFile(outputPath, 'utf8') === 'existing=value\n',
@@ -267,6 +268,27 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
         }
       });
     }
+    await check('real missing PowerShell distinguishes startup without changing the normal failure result', async () => {
+      const script = `import { encryptArchive } from ${JSON.stringify(new URL('./workspaceEncryptedEvidence.mjs', import.meta.url).href)};
+        for (const detailed of [false, true]) {
+          try { await encryptArchive(${JSON.stringify(root)}, { archivePath: ${JSON.stringify(archive)},
+            fingerprint: ${JSON.stringify(recipient.fingerprint)} }, detailed); process.exitCode = 2; }
+          catch (error) { console.log(JSON.stringify({ message: error.message, code: error.evidenceCode ?? null })); }
+        }`;
+      const child = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+        env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toLowerCase() !== 'path')), Path: root },
+        encoding: 'buffer', timeout: 10000, maxBuffer: 4096, windowsHide: true,
+      });
+      await writeFile(join(root, 'missing-helper.stdout.private.log'), child.stdout ?? Buffer.alloc(0));
+      await writeFile(join(root, 'missing-helper.stderr.private.log'), child.stderr ?? Buffer.alloc(0));
+      assert.equal(child.error === undefined && child.status === 0, true, 'OPENPGP_TEST_MISSING_HELPER_FAILED');
+      assert.equal(child.stderr.length, 0, 'OPENPGP_TEST_MISSING_HELPER_RAW_ERROR');
+      const lines = child.stdout.toString('utf8').trim().split('\n').map(line => JSON.parse(line));
+      assert.deepEqual(lines, [
+        { message: 'WORKSPACE_ENCRYPTED_EVIDENCE_UNVERIFIED', code: null },
+        { message: 'WORKSPACE_ENCRYPTED_EVIDENCE_UNVERIFIED', code: 'EVIDENCE_HELPER_START_FAILED' },
+      ]);
+    });
     await check('modified ciphertext and wrong private key cannot decrypt successfully', async () => {
       assert.equal(sealed?.status, 0, 'OPENPGP_TEST_ROUNDTRIP_REQUIRED');
       const tampered = await readFile(sealed.output);

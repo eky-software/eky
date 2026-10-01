@@ -7,10 +7,28 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 import test from 'node:test';
-import { collectEvidence, deliveryProofBinding, evidenceBinding, prepareDeliveryProof, prepareEvidence } from './workspaceEncryptedEvidence.mjs';
+import { collectEvidence, deliveryProofBinding, encryptionFailureCode, evidenceBinding, prepareDeliveryProof, prepareEvidence } from './workspaceEncryptedEvidence.mjs';
+import encryptionFailureCodes from './encryptedEvidenceFailureCodes.json' with { type: 'json' };
 import { validateWorkspaceCallerResult } from './workspaceCallerResult.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+
+test('encryption failure parsing accepts only a complete known line and separates helper startup', () => {
+  for (const code of encryptionFailureCodes) {
+    for (const newline of ['\n', '\r\n']) {
+      assert.equal(encryptionFailureCode({ code: 1 }, code + newline), code);
+    }
+  }
+  for (const stderr of [undefined, '', 'EVIDENCE_KEY_INVALID', 'EVIDENCE_KEY_INVALID\nPRIVATE',
+    'PRIVATE\nEVIDENCE_KEY_INVALID\n', 'EVIDENCE_UNKNOWN\n', 'EVIDENCE_KEY_INVALID\n\n',
+    'C:\\private\\secret.txt', 'PRIVATE'.repeat(30), Buffer.from('EVIDENCE_KEY_INVALID\n')]) {
+    assert.equal(encryptionFailureCode({ code: 1 }, stderr), 'EVIDENCE_ENCRYPTION_FAILED');
+  }
+  for (const code of ['ENOENT', 'EACCES', 'EPERM']) {
+    assert.equal(encryptionFailureCode({ code }, 'private executable location'), 'EVIDENCE_HELPER_START_FAILED');
+  }
+  assert.equal(encryptionFailureCode({ code: 'ETIMEDOUT' }, ''), 'EVIDENCE_ENCRYPTION_FAILED');
+});
 async function fixture(t) {
   const temp = await mkdtemp(join(await realpath(tmpdir()), 'eky-encrypted-test-'));
   t.after(() => rm(temp, { recursive: true, force: true }));
