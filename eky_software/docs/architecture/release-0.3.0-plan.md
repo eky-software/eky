@@ -128,10 +128,13 @@ säilyy yhden vuorokauden ja käyttöönotto edellyttää avaimen purkutestiä.
 Toteutus ei muuta normaaleja hyväksyntäehtoja tai sulje vanhoja havaintoja.
 Paikallinen salausportti läpäisi, mutta ensimmäinen synteettinen hosted-
 toimituskoe hylättiin ennen liitteen syntymistä. Toimituksen hyväksyntä
-on avoin. Hyväksytty vaihe-erottelu ja yksi jatkokoe rajasivat hylkäyksen
-salausapurin vaiheeseen, eivät vielä sen sisäiseen syyhyn. Seuraavan rajatun
-päätöksen ja näytön omistaa M1-suunnitelma. Normaalia hyväksyntää ei vielä
-käynnistetä.
+on avoin. Vaihe-erottelun ja turvallisen sisäisen virhekoodin välityksen
+jälkeen kolmas koe hylättiin koodilla `EVIDENCE_GPG_UNAVAILABLE`.
+Usean Git-osuman työkaluhakuvirhe toistettiin ja korjattiin; rajatut
+regressiot läpäisivät 63/63. Korjauksen hosted-vastaavuus ja liitteen purku
+odottavat seuraavan nimetyn kertakokeen ajopäätöstä. Keräyksen vahvistus
+on poistettu. Rajatun päätöksen ja näytön omistaa M1-suunnitelma.
+Normaalia hyväksyntää ei vielä käynnistetä.
 Alkuperäisten timeoutien syitä ei väitetä ratkaistuiksi. Ei asennuskorjauksen
 tai T3:n uutta toteutusta.
 Seuraava tuotantopala on [A1/R01](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde)

@@ -24,6 +24,11 @@ ylläpitoon, vaikka npm-audit ei niitä kata. Runnerilta puuttuva tai
 yhteensopimaton työkalu estää salatun aineiston toimituksen, ei salli
 automaattista latausta tai salaamattomaan tapaan palaamista.
 
+Apuri valitsee `Get-Command git.exe` -tuloksen ensimmäisen sovelluksen,
+samoin kuin workflow'n ennakkotarkistus. Useita PATH-osumia ei käsitellä
+yhtenä tiedostopolkuna. Valitun Gitin yhteydestä puuttuva GnuPG hylkää
+toimituksen; valintaa ei vaihdeta automaattisesti toiseen Git-asennukseen.
+
 Noden omat kryptografiaprimitiivit edellyttäisivät tässä oman siirto- ja
 avainformaatin ylläpitoa. Uutta JavaScript-salauskirjastoa ei tarvita, kun
 jo Gitin mukana oleva OpenPGP-työkalu rajataan erilliseen testiapuriin.
@@ -210,9 +215,15 @@ liitettä ei syntynyt eikä salaamatonta varavaihtoehtoa käytetty. Normaalia
 hyväksyntää tai MSI-asennusta ei ajettu. Hyväksytty revision `9f8f7c34`
 jatkokoe rajasi hylkäyksen vaiheeseen `encryption`, mutta ei salausapurin
 sisäiseen syyhyn. Tästäkään ajosta ei syntynyt liitettä. Molemmat hylkäykset
-säilyvät; toimitus-/purkuportti on avoin ja keräyksen vahvistus on poistettu.
-Turvallisen sisäisen virhekoodin puuttuvan välityksen seuraava päätös ja työn
-nykytila ovat [M1-suunnitelmassa](release-0.3.0-m1-preparation-plan.md#salatun-tutkimusaineiston-välitavoite).
+säilyvät. Turvallisen sisäisen koodin välityksen jälkeen revision `b5c26c05`
+kolmas koe hylättiin koodilla `EVIDENCE_GPG_UNAVAILABLE`; liitteitä ei
+syntynyt. Usean Git-osuman työkaluhakuvirhe toistettiin erillisellä
+synteettisellä regressiolla ja korjattiin yllä kuvattuun ensimmäisen osuman
+valintaan. Korjauksen yhdistetty kohdesarja läpäisi 63/63 ilman ohituksia,
+mukaan lukien usean osuman todellinen salaus/purku. Hosted-vastaavuutta ei
+vielä ole todennettu. Toimitus-/purkuportti on avoin ja keräyksen vahvistus
+on poistettu. Seuraavan kertakokeen päätös ja työn nykytila ovat
+[M1-suunnitelmassa](release-0.3.0-m1-preparation-plan.md#salatun-tutkimusaineiston-välitavoite).
 
 Lähteet: [GnuPG:n vastaanottajavalinta](https://www.gnupg.org/documentation/manuals/gnupg/GPG-Key-related-Options.html),
 [artifactien säilytys](https://github.com/actions/upload-artifact#retention-period)

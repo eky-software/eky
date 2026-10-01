@@ -72,7 +72,7 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
     try { await body(); } catch (error) { failed = true; throw error; }
   });
   try {
-    const discovered = await ps(`$git = (Get-Command git.exe -CommandType Application).Source;
+    const discovered = await ps(`$git = (Get-Command git.exe -CommandType Application | Select-Object -First 1).Source;
       $dir = [IO.Path]::GetDirectoryName($git); $gpg = $null;
       foreach ($relative in @('../usr/bin/gpg.exe', '../../usr/bin/gpg.exe')) {
         $candidate = [IO.Path]::GetFullPath([IO.Path]::Combine($dir, $relative));
@@ -93,14 +93,14 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
     const plaintext = Buffer.from('SYNTHETIC-PRIVATE-EVIDENCE\0arbitrary archive bytes\n'.repeat(50));
     await writeFile(archive, plaintext);
     let invocation = 0;
-    const encrypt = async (overrides = {}) => {
+    const encrypt = async (overrides = {}, beforeInvocation = '') => {
       const work = join(root, `work-${invocation++}`);
       await mkdir(work);
       const output = overrides.OutputPath ?? join(root, `ciphertext-${invocation}.gpg`);
       const parameters = { ArchivePath: archive, OutputPath: output, PublicKeyPath: publicPath,
         ExpectedFingerprint: recipient.fingerprint, WorkRoot: work, ...overrides };
       const args = Object.entries(parameters).map(([key, value]) => `-${key} ${quote(value)}`).join(' ');
-      const result = await ps(`. ${quote(SCRIPT)};
+      const result = await ps(`${beforeInvocation}; . ${quote(SCRIPT)};
         try { Invoke-EvidenceEncryption ${args} | ConvertTo-Json -Compress }
         catch { [Console]::Error.Write($_.Exception.Message); exit 17 }`, 140_000);
       return { ...result, output, work };
@@ -137,6 +137,19 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
           'OPENPGP_TEST_SECRET_STORAGE_CREATED');
       }
       assert.equal((await readdir(privateRoot)).includes('encrypt.stderr.private.log'), true);
+    });
+    await check('multiple Git applications use the first PATH match just like the tool preflight', async () => {
+      const gitRoot = resolve(dirname(gpg), '../..');
+      const gitBin = join(gitRoot, 'bin');
+      const gitCmd = join(gitRoot, 'cmd');
+      const prefix = `$env:Path = ${quote(gitBin + ';' + gitCmd + ';')} + $env:Path;
+        if (@(Get-Command git.exe -CommandType Application).Count -lt 2) { throw 'OPENPGP_TEST_MULTIPLE_GIT_REQUIRED' }`;
+      const result = await encrypt({}, prefix);
+      assert.equal(result.status, 0, 'OPENPGP_TEST_MULTIPLE_GIT_ENCRYPTION_FAILED');
+      assert.equal(result.stderr.length, 0, 'OPENPGP_TEST_MULTIPLE_GIT_UNSAFE_ERROR');
+      assert.deepEqual(JSON.parse(result.stdout.toString('utf8')), SUCCESS);
+      const decrypted = await invokeGpg(recipient.home, ['--decrypt', result.output]);
+      assert.equal(decrypted.stdout.equals(plaintext), true, 'OPENPGP_TEST_MULTIPLE_GIT_ROUNDTRIP_FAILED');
     });
     await check('collector -> PowerShell entry -> OpenPGP -> decrypt preserves the trace and manifest', async () => {
       const temp = join(root, 'runner-temp');

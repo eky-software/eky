@@ -201,7 +201,7 @@ function Invoke-EvidenceEncryption {
 
     $failureCode = 'EVIDENCE_GPG_UNAVAILABLE'
     if ([string]::IsNullOrEmpty($GpgPath)) {
-      $git = (Get-Command git.exe -CommandType Application -ErrorAction Stop).Source
+      $git = (Get-Command git.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
       $gitDirectory = [IO.Path]::GetDirectoryName($git)
       foreach ($relative in @('../usr/bin/gpg.exe', '../../usr/bin/gpg.exe')) {
         $candidate = [IO.Path]::GetFullPath([IO.Path]::Combine($gitDirectory, $relative))

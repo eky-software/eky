@@ -37,6 +37,14 @@ se ei käynnistä yksityisiä kertakokeita uudelleen.
 
 ### Salatun tutkimusaineiston välitavoite
 
+**Nykytila:** kolmas rajattu hosted-koe hylättiin turvallisella koodilla
+`EVIDENCE_GPG_UNAVAILABLE`; liitettä ei syntynyt. Usean `git.exe`-osuman
+työkaluhakuvirhe toistettiin synteettisesti ja korjattiin. Korjauksen
+kohdesarja läpäisi 63/63 ilman ohituksia. Hosted-vastaavuus ja toimitus/purku
+ovat vielä todentamatta; seuraava nimetty kertakoe tarvitsee ajopäätöksen.
+Keräyksen vahvistusportti on suljettu. Alla säilyvät aiempien vaiheiden
+tulokset, eivät rinnakkaiset työjonot.
+
 Omistaja hyväksyi Gitin GnuPG:n rajatuksi testityökaluksi ja nimettyjen
 CI-tiedostojen salatun julkaisun. Toteutus kytketään nykyiseen Windowsin
 workspace-kuluttajaan, ei uuteen testialustaan. Nykyinen julkinen turvallinen
@@ -111,9 +119,9 @@ Salattua liitettä ei syntynyt; purku ja toimitus ovat edelleen avoimia.
 Muut jobit ohitettiin, eikä MSI:tä tai normaalia hyväksyntää ajettu.
 Aikarajat ja normaalin testin ehdot säilyvät. Molempien yritysten näyttö
 säilytetään erikseen; keräyksen vahvistusportti suljettiin epäonnistumisen
-jälkeen. Kolmatta hosted-koetta ei käynnistetty.
+jälkeen. Tässä vaiheessa kolmatta hosted-koetta ei ollut käynnistetty.
 
-Rajattu seuraava päätös: `Invoke-EvidenceEncryption` muodostaa jo
+Tämän jälkeen käsitelty rajattu päätös: `Invoke-EvidenceEncryption` muodostaa jo
 suljetun virhekoodin, mutta `sealWorkspaceEvidence.ps1` ja sen Node-kutsuja
 peittävät sen yleisellä hylkäyksellä. Säilyneen aineiston perusteella
 puuttuvat tämän koodin välitys sekä käynnistysvirheen erottaminen apurin
@@ -131,7 +139,29 @@ Toteutettu koodien välitys ja tarkka parseri läpäisivät 62/62 rajattua
 tarkistusta ilman ohituksia. Mukana olivat todellinen puuttuvan apurin
 käynnistysvirhe, apurin avainhylkäyksen välitys lopulliseen CLI-tulosteeseen,
 normaalin virheilmoituksen säilyminen ja onnistunut salaus/purku.
-Tämä on paikallinen näyttö, ei vielä uuden hosted-kokeen tulos.
+Tämä paikallinen näyttö edelsi uutta hosted-koetta.
+Hyväksytty yksi koe ajettiin revisiosta `b5c26c05`:
+[ajo 36925953259](https://github.com/eky-software/eky/actions/runs/36925953259),
+suoritusyritys 1, hylättiin vaiheessa `encryption` koodilla
+`EVIDENCE_GPG_UNAVAILABLE`. Työkalujen ennakkotarkistus läpäisi; salattuja
+liitteitä oli nolla. Purkua ei yritetty. Muita hyväksyntäajoja, MSI-asennusta
+tai WPR-tallennusta ei käynnistetty. Kolmen yrityksen näyttö säilyy
+erillisenä, ja keräyksen vahvistus poistettiin tämänkin hylkäyksen jälkeen.
+
+Rajattu synteettinen regressio toisti saman koodin, kun `Get-Command git.exe`
+palauttaa useita PATH-osumia. Ennakkotarkistus valitsi ensimmäisen osuman,
+mutta salausapuri välitti koko tuloksen polunkäsittelyyn. Apuri korjattiin
+valitsemaan ensimmäinen osuma ennakkotarkistuksen tavoin. Ei uutta
+työkaluhakua, latausta, riippuvuutta tai salaamatonta fallbackia.
+Regressio hylättiin ennen korjausta ja läpäisi korjauksen jälkeen myös
+todellisen salaus/purku-ketjun; yhdistetty kohdesarja läpäisi 63/63 ilman
+ohituksia. Tämä todistaa rajatun apurivirheen ja korjauksen, ei vielä sen
+vastaavuutta hosted-hylkäykseen. Neljättä hosted-koetta ei ajettu.
+Seuraava päätös on yksi enintään viiden minuutin synteettinen toimituskoe
+korjatusta jäädytetystä revisiosta sekä onnistuneen liitteen yksityinen
+purku ja sidonnan tarkistus. Ei automaattista uusintaa tai yleistä
+diagnostiikkalaajennusta, jos tämäkin jää avoimeksi.
+
 Toimituksen todentamistapa on [rajattu synteettinen toimituskoe](ci-encrypted-evidence.md#rajattu-toimituskoe)
 olemassa olevan feasibility-workflow'n omana valintana. Se ei käynnistä
 MSI:tä, WPR:ää tai uutta paketointia eikä korvaa normaalia hyväksyntää.
