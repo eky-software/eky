@@ -55,8 +55,9 @@ Hyväksyntä käyttää hallittuja vastauksia, ei sattumanvaraista hitautta:
 Unit-/hook-sopimuksen lisäksi todellinen UI-polku käyttää synteettistä
 backendia ja pysyvän tilan jälkilukua. Selaimen testiadapteri saa hallita
 GET-vastauksen valmistumisjärjestystä, mutta ei keksiä kirjoituksen
-lopputulosta. Fixture käyttää [T-paketin](e2e-test-environment.md#t-paketin-valmistelu)
-hyväksyttyä cleanupia. Nykyiset asiakaskortilta avaamisen sekä laskutus-
+lopputulosta. Fixture käyttää [nykyistä omistajuussopimusta](e2e-test-environment.md#koko-prosessipuun-omistajuus)
+ja sen varmennettua cleanupia; [pikaohje](../ai/e2e-test-authoring-guide.md)
+kuvaa testin käytännön rajapinnan. Nykyiset asiakaskortilta avaamisen sekä laskutus-
 lifecycle-polut uusitaan. Testimatriisiin lisätään erilliset tilat ennen
 kuin niitä merkitään toteutetuiksi tai läpäistyiksi.
 

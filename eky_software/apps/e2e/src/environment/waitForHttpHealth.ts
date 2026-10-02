@@ -1,5 +1,27 @@
 const loopbackHost = '127.0.0.1';
 
+export type HttpHealthProbeOutcome =
+  | 'healthy'
+  | 'connectionRefused'
+  | 'requestTimedOut'
+  | 'responseNotOk'
+  | 'transportFailed';
+
+export function readHttpHealthProbeOutcome(value: unknown): HttpHealthProbeOutcome | 'notObserved' {
+  switch (value) {
+    case 'healthy':
+    case 'connectionRefused':
+    case 'requestTimedOut':
+    case 'responseNotOk':
+    case 'transportFailed':
+      return value;
+    default:
+      return 'notObserved';
+  }
+}
+
+class HttpHealthRequestTimeout extends Error {}
+
 type HttpHealthProbe = (
   healthUrl: URL,
   requestTimeoutMilliseconds: number,
@@ -9,6 +31,7 @@ type HttpHealthProbe = (
 interface WaitForHttpHealthOptions {
   readonly intervalMilliseconds?: number;
   readonly now?: () => number;
+  readonly onProbeCompleted?: (outcome: HttpHealthProbeOutcome) => void;
   readonly probe?: HttpHealthProbe;
   readonly signal?: AbortSignal;
   readonly timeoutMilliseconds: number;
@@ -53,19 +76,20 @@ export async function waitForHttpHealth(
       break;
     }
     try {
-      if (
-        await probe(
-          healthUrl,
-          Math.min(1_000, requestBudget),
-          signal,
-        )
-      ) {
+      const healthy = await probe(
+        healthUrl,
+        Math.min(1_000, requestBudget),
+        signal,
+      );
+      reportProbe(healthy ? 'healthy' : 'responseNotOk');
+      if (healthy) {
         return;
       }
-    } catch {
+    } catch (error) {
       if (signal.aborted) {
         throw new Error('E2E_BACKEND_HEALTH_WAIT_ABORTED');
       }
+      reportProbe(classifyProbeFailure(error));
       // The managed process may still be starting.
     }
 
@@ -83,6 +107,12 @@ export async function waitForHttpHealth(
     throw new Error('E2E_BACKEND_HEALTH_WAIT_ABORTED');
   }
   throw new Error('E2E_BACKEND_HEALTH_TIMEOUT');
+
+  function reportProbe(outcome: HttpHealthProbeOutcome): void {
+    if (signal.aborted) return;
+    // The owner only stores this closed value in memory; never await reporting.
+    try { options.onProbeCompleted?.(outcome); } catch { /* Optional observation. */ }
+  }
 }
 
 async function probeHttpHealth(
@@ -90,13 +120,31 @@ async function probeHttpHealth(
   requestTimeoutMilliseconds: number,
   signal: AbortSignal,
 ): Promise<boolean> {
-  const response = await fetch(healthUrl, {
-    signal: AbortSignal.any([
-      signal,
-      AbortSignal.timeout(requestTimeoutMilliseconds),
-    ]),
-  });
-  return response.ok;
+  const requestTimeout = AbortSignal.timeout(requestTimeoutMilliseconds);
+  try {
+    const response = await fetch(healthUrl, {
+      signal: AbortSignal.any([signal, requestTimeout]),
+    });
+    return response.ok;
+  } catch (error) {
+    if (!signal.aborted && requestTimeout.aborted) throw new HttpHealthRequestTimeout();
+    throw error;
+  }
+}
+
+function classifyProbeFailure(error: unknown): HttpHealthProbeOutcome {
+  // Node fetch wraps the socket error once. Do not read messages or invoke getters.
+  try {
+    if (error instanceof HttpHealthRequestTimeout) return 'requestTimedOut';
+    const readOwnValue = (value: unknown, key: string): unknown =>
+      typeof value === 'object' && value !== null
+        ? Object.getOwnPropertyDescriptor(value, key)?.value : undefined;
+    if (readOwnValue(error, 'code') === 'ECONNREFUSED' ||
+        readOwnValue(readOwnValue(error, 'cause'), 'code') === 'ECONNREFUSED') {
+      return 'connectionRefused';
+    }
+  } catch { /* Unreadable transport failures stay unclassified. */ }
+  return 'transportFailed';
 }
 
 function waitWithAbort(

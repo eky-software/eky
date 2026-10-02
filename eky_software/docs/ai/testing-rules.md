@@ -63,12 +63,11 @@ release-portteina. Required checkin nimi ja aggregaattorin terminal-tulos
 pidetään vakaana myös silloin, kun raskas alijoukko on riskiluokituksen vuoksi
 ohitettu.
 
-Seuraava checkpoint aloitetaan vain tunnetulta vihreältä baselinelta. Jos
-edellisen checkpointin paikallinen pakollinen testi tai sen täsmällisen
-commitin vaadittu GitHub-tarkistus on punainen, peruttu, flaky tai vielä
-kesken, virhe rajataan ja baseline palautetaan vihreäksi ennen uuden
-toiminnallisuuden aloittamista. Testin ohittaminen, pidempi timeout tai uusi
-rebuild ei ole todiste ilman dokumentoitua juurisyytä.
+Seuraavan checkpointin lähtökohta on tunnettu vihreä baseline. Punainen,
+peruttu, flaky tai keskeneräinen tarkistus ei ole läpäisy. Rajatun,
+ei-kriittisen puutteen aikana riippumaton kehitystyö voi jatkua vain alla
+kuvatulla määräaikaisella poikkeuksella. Uusinta, testin ohitus, pidempi
+timeout tai uusi rebuild eivät itsessään todista vikaa korjatuksi.
 
 Asynkronisen testin valmistuminen sidotaan aina havaittavaan tapahtumaan tai
 tilaehtoon, kuten prosessin `exit`- ja `close`-tapahtumiin, health-vastaukseen,
@@ -85,6 +84,82 @@ koska poistuneen prosessin PID voidaan käyttää uudelleen. Omistetun lapsen
 pitää kuulua samaan täsmälliseen creation identity -ketjuun ja sen syntymäajan
 pitää olla sama tai myöhempi kuin todistetun vanhemman. Ennen omistettua juurta
 syntynyt prosessi ja sen jälkeläiset torjutaan siivouksesta fail closed.
+
+## Ensivirhe, uusinta ja rajattu poikkeus
+
+Tämä on yhteinen käytäntö paikallisille testeille ja CI:lle. Se ei korvaa
+testiperheen omia hyväksyntäehtoja tai muuta required check -asetuksia.
+Tavoite on rajata tutkimus ja mahdollistaa turvallinen eteneminen, ei
+selittää jokaista historiallista hylkäystä ennen muuta kehitystä.
+
+### Ensivirheen aineisto
+
+Säilytä ensimmäisen epäonnistumisen nykyiset todisteet ennen uusintaa:
+lähderevisio, todellinen checkout, testitapaus, suoritusyritys (`attempt`),
+käynnistyssukupolvi ja paketin identiteetti siltä osin kuin ne koskevat ajoa.
+Erota alkuperäinen virhe, viimeinen havaittu vaihe, siivoustulos sekä
+aineiston puuttuminen toisistaan. Uusi yritys ei saa korvata ensivirheen
+hakemistoa, eikä aineisto kuulu buildin tyhjentämään hakemistoon.
+
+Kerää ongelman vaiheeseen sopiva rajattu aineisto nykyisillä välineillä:
+testiraportti, prosessin tulosteet, trace tai erikseen perusteltu vedos.
+Kaikkea raakadataa ei kerätä oletuksena. [Testinkirjoittajan vianetsintäreitti](e2e-test-authoring-guide.md#kun-testi-epäonnistuu)
+erottaa selaimen, Electronin ja packaged-ajon. Pelkkä trace-asetus ei takaa
+valmista jälkeä prosessin tai runnerin pakkokatkaisussa.
+Nykyiset [julkaisurajat](../architecture/security-principles.md#omistajan-tietojen-julkaisuraja)
+säilyvät: synteettinen business-data ei tee istuntotunnisteista, raakavirheistä
+tai konekohtaisista tiedoista julkisia. Uusi keräys ei saa lisätä estävää
+kirjoitusta tai rajaamatonta kuittausodotusta kriittiselle polulle.
+
+Rajattu [salattu CI-tutkimuspaketti](../architecture/ci-encrypted-evidence.md)
+on erikseen hyväksytty toimitusreitti Windowsin workspace-testin nimetyille
+tiedostoille. Se ei avaa yleistä raakajulkaisua eikä korvaa testin tulosta.
+Purkuavaimen käyttöönotto ja yhden vuorokauden sisällä tapahtuva yksityinen
+talteenotto on varmistettava ennen reitin käyttöä.
+
+### Enintään yksi uusinta
+
+Ensimmäisen hylkäyksen jälkeen pääagentti voi tehdä yhden rajatun
+diagnostisen uusinnan ilman erillistä lupaa, kun ajaminen kuuluu hyväksyttyyn
+tehtävään. Ennen ajoa nimetään kysymys, sama lähde ja sama valmis paketti,
+aineiston säilytyspaikka sekä seurannan omistaja. Pakettia ei rakenneta
+uudelleen uusintaa varten. Uusinta tehdään tuoreessa eristetyssä ympäristössä
+tai vasta varmennetun siivouksen jälkeen. Epävarman vanhan ympäristön
+aineistoa tai omistajuustodistetta ei poisteta.
+
+Nykyinen automaattinen Playwright-retry kuluttaa tämän yhden uusinnan;
+sen jälkeen ei tehdä lisäksi job-, workflow- tai paikallista uusintaa
+saman hylkäyksen vuoksi. Ennalta sovitut vakaustoistot ovat eri asia, mutta
+niilläkään ei korvata hylättyä yritystä. Uusinnan epäonnistuessa tai syyn
+jäädessä avoimeksi pysähdytään luokittelemaan tulos, ei ajeta vihreään asti.
+Näyttöön perustuva korjaus ja sen nimetty todennus eivät ole saman lähteen
+uusinta; pelkkä dokumentti- tai muu asiaan liittymätön commit ei nollaa rajaa.
+
+Uusinta ei ole hyväksyntä: toisella yrityksellä läpäisevä testi on edelleen
+epävakaa, ellei alkuperäistä estettä osoiteta testin ulkopuoliseksi
+infrastruktuurihäiriöksi. Pelkkä timeout, paikallinen läpäisy tai runnerin
+kuormitusepäily ei todista tätä. Todennettu infrastruktuurihäiriö kirjataan
+erikseen, mutta korvaavan ajon on silti täytettävä nykyiset hyväksyntäehdot
+samalle lähteelle ja paketille. `failOnFlakyTests` säilyy CI:ssä; sitä ei
+poisteta yleisesti eikä hylättyä ajoa nimetä jälkikäteen onnistuneeksi.
+
+### Määräaikainen kehityspoikkeus
+
+Omistaja voi hyväksyä nimetylle ei-kriittiselle testipuutteelle rajatun
+poikkeuksen, jotta siitä riippumaton ominaisuustyö voi jatkua. Päätökseen
+kirjataan testitapaus, näyttö ja avoin syy, riskin perustelu, sallittu
+kehitystyö, vastuuhenkilö, korjaustehtävä, täsmällinen päättymispäivä sekä
+uudelleenarvioinnin ehto. Tiedot kuuluvat työn omistavaan suunnitelmaan,
+eivät uuteen rinnakkaiseen poikkeusjärjestelmään. Yleinen lupa käyttää tätä
+menettelyä ei hyväksy yksittäistä poikkeusta.
+
+Tietoturvaa, yrityseristystä, tietokannan tai palautuksen eheyttä, tarkkaa
+asennettua sisältöä tai epävarmaa prosessisiivousta ei ohiteta tällä
+menettelyllä. Luokittelematon kriittisen polun aikakatkaisu ei ole
+ei-kriittinen poikkeus. Poikkeus ei tarkoita testin läpäisyä, required checkin
+ohitusta, merge-lupaa tai julkaisuvalmiutta. Se raukeaa määräpäivänä tai
+vaikutusalueen laajentuessa. Julkaisu- ja main-portit todennetaan erikseen;
+niiden muuttaminen vaatii oman nimenomaisen päätöksen.
 
 ## Testien Sijainti
 
@@ -103,9 +178,28 @@ ei luoda juureen toteutusrakennetta peilaavaa yleistä `tests/`-kansiota.
 
 Laajemmat integraatio- ja sopimustestit sijoitetaan selkeästi nimettyihin
 vastuualueisiin, jos kokonaisuus ei kuulu yhdelle tiedostolle tai moduulille.
+
+Desktopin workspace-lähdekoodirajojen testit käyttävät
+[`inspectBoundarySourcesForTest`-lukijaa](../../apps/desktop/src/workspaces/boundarySourceTestSupport.ts).
+Se lukee enintään kahdeksan tiedostoa kerrallaan ja odottaa aloitetun erän
+loppuun ennen lähdejärjestyksessä tehtävää synkronista tarkistusta tai
+alkuperäisen virheen välitystä. Kukin rajatesti omistaa edelleen
+tiedostojoukon, poissulut, import-tulkinnan ja kielletyt riippuvuudet.
+Lukijan [regressiot](../../apps/desktop/src/workspaces/boundarySourceTestSupport.test.ts)
+todentavat rinnakkaisuusrajan, virheen säilymisen ja tyhjän/vajaan erän.
+Apuri noudattaa nykyistä `*TestSupport.ts`-poissulkua tuotantobuildista;
+se ei ole sovelluksen tiedosto-API tai uusi testiruntime.
+
 Usean kerroksen system-, selain- ja Electron development -E2E-testit kuuluvat
 `apps/e2e`-workspaceen. Hardened packaged-artifactin smoke-testit säilyvät
 desktop-paketin omistuksessa.
+
+Uuden tai muuttuvan E2E-testin käytännön lukureitti on
+[testinkirjoittajan pikaohje](e2e-test-authoring-guide.md): oikea fixture,
+synteettinen eristys, kanoninen ajokomento ja ensivirheen näyttö.
+[Tekninen runtime-sopimus](../architecture/e2e-test-environment.md) ja
+[kattavuusmatriisi](../architecture/r0-e2e-test-matrix.md) pysyvät omistavina
+ohjeina; pikaohje ei luo uutta testitasoa tai hyväksyntäpoikkeusta.
 
 Yleistä `test-utils`-kaatopaikkaa ei luoda. Toistuva testi-infrastruktuuri
 irrotetaan vasta todelliseen tarpeeseen ja nimetään vastuun mukaan.
@@ -323,7 +417,8 @@ käynnistyneen workflow-ajon perusteella. Jos AI on pushannut tai mergeyttänyt
 muutoksen, sen pitää tarkistaa juuri pushatun PR-commitin vaaditut ajot ja
 mergeämisen jälkeen juuri syntyneen `main`-commitin vaaditut push-ajot loppuun
 asti. Punainen, peruttu, flaky tai kesken oleva ajo pitää raportoida
-avoimeksi eikä sen päälle aloiteta seuraavaa vaihetta.
+avoimeksi. Siihen nojaavaa seuraavaa vaihetta ei aloiteta; riippumaton
+kehitystyö voi jatkua vain [hyväksytyllä määräaikaisella poikkeuksella](#määräaikainen-kehityspoikkeus).
 
 CI:
 

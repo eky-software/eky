@@ -71,8 +71,9 @@ rekisteripohjaiset per-user key pathit, MSI:n omistamien asennushakemistojen
 tyhjien kansioiden poistomerkinnät ja yhden Start Menu -pikakuvakkeen.
 Read-only-inspektori varmistaa ProductCode-, UpgradeCode-, ProductVersion-,
 scope-, install root-, komponentti-, tiedosto-, rekisteri-, RemoveFile- ja
-shortcut-sopimukset sekä sen, ettei paketissa ole custom actioneita tai
-business-datan tunnettuja standardihakemistoja.
+shortcut-sopimukset sekä business-datan tunnettujen standardihakemistojen
+puuttumisen. Alkuperäiseen custom action -kieltoon on hyväksytty vain
+[nimetty Type 51 -poikkeus](#saman-tiedostoversion-korvaaminen).
 
 WiX:n ICE-validointi ajetaan eikä sitä poisteta käytöstä. Vain täsmällinen
 `ICE91` on suppressattu WiX-projektissa; yleistä warning suppressionia ei
@@ -121,6 +122,56 @@ sisältävän MSI-lähdepolun sekä lopullisen uninstallin. `%APPDATA%\\Eky`-
 business-data inventoidaan ennen testiä ja todetaan muuttumattomaksi jokaisen
 vaiheen jälkeen.
 
+### Saman tiedostoversion korvaaminen
+
+**Toteutuksen tila 30.9.2026:** hyväksytty `emus`-politiikka on toteutettu
+nimetyllä Type 51 -toiminnolla. Ensimmäinen Property-taulun toteutus
+hylättiin `ICE40`-validoinnissa; katso
+[M1:n pakettikokeen näyttö ja päätös](release-0.3.0-m1-preparation-plan.md#asennuskorjauksen-päätös).
+Korvaava toteutus läpäisi rakennuksen, metadatan sekä molemmat oikean
+pakettiparin hiljaiset legacy-päivityskokeet ilman ICE40-poikkeusta.
+Revision `0fa4c2f3` täydentävä synteettinen MSI-koe todensi UI-oletuksen,
+eksplisiittisen ohituksen ja uudemman tiedostoversion suojan sekä siivouksen.
+Normaalit PR/main-integraatioportit ovat vielä avoinna; tämä ei ole
+julkaisuhyväksyntä. Tarkka ajosidonta on yllä linkitetyssä M1-checkpointissa.
+
+Omistaja hyväksyi 30.9.2026 MSI:n omistaman `REINSTALLMODE=emus`-säännön.
+Valmistajan binäärit voivat sisältää uudet tavut samalla tiedostoversiolla;
+pelkkä version kasvuun perustuva korvaus voi jättää päivitykseen vanhan
+kirjaston. `e` sallii puuttuvan, saman tai vanhemman tiedostoversion
+korvaamisen ja säilyttää uudemman tiedostoversion suojan. `u`, `m` ja `s`
+säilyttävät MSI:n tavanomaiset rekisteri- ja pikakuvaketoiminnot.
+Sääntö koskee koko asennettavaksi valittua EKY-pakettia, ei vain
+diagnostiikassa nimettyjä kirjastoja. Lähde:
+[Microsoftin REINSTALLMODE-sopimus](https://learn.microsoft.com/en-us/windows/win32/msi/reinstallmode).
+
+Ominaisuus kuuluu `Package.wxs`:ään, ei testin komentoriville. Nimetty
+`EkySetReinstallMode` on ainoa sallittu custom action: Type `51`, Source
+`REINSTALLMODE`, Target `emus`, ei ylimääräisiä tyypin tai ExtendedType-lippuja.
+Se suoritetaan ennen `CostInitialize`-vaihetta UI- ja execute-sekvensseissä
+ehdolla `NOT Installed AND NOT REINSTALLMODE`. Näin oletus koskee uutta
+asennusta ja major upgradea, ei nykyisen tuotteen huoltoa tai kutsujan
+eksplisiittisen korvausvalinnan ylikirjoittamista.
+
+Release-tarkastin vaatii todellisesta MSI:stä täsmällisen toimintorivin,
+molemmat sekvenssit ja niiden ehdot sekä Property-taulun `REINSTALLMODE`-
+ja `REINSTALL`-rivien puuttumisen ennen sidecarin muodostamista. Muu custom
+action, ylimääräiset liput ja tämän toiminnon ajo muissa sekvensseissä
+hylätään. Historiallisen lähdepaketin oma
+identiteettitarkastus säilyy ennallaan. `REINSTALL=ALL`-valintaa,
+versiometadatan muuttamista, pakotettua downgradea tai komponenttien
+tunnisteiden/järjestyksen muutosta ei lisätä. Asennin omistaa edelleen
+vain ohjelmabinaarit, ei profiileja tai business-dataa.
+
+Täydellinen hash-, tiedostotyyppi- ja sisältövertailu pysyy pakollisena.
+Sääntö ei lupaa korvata asennukseen ulkopuolelta tuotua uudempaa tiedostoa:
+sen aiheuttama inventaarioero hylätään edelleen. Hyväksyntä vaatii
+korjatun build-once-paketin päivityksen, käynnistyksen, repairin,
+downgrade-eston ja rollbackin nykyisten porttien mukaisesti; politiikan
+hyväksyntä tai lähdekoodin sopimustesti ei yksin ole tämä näyttö.
+
+### Build-once ja CI
+
 B5:n release-komento vaatii puhtaan työpuun ja täyden Git HEAD -revision.
 Komento rakentaa jaeltavan MSI:n kerran, tarkastaa MSI:n read-only-
 inspektorilla ja sitoo tiedostonimen, koon, SHA-256-tiivisteen, release-
@@ -140,8 +191,11 @@ Installerin deterministiset sopimustestit ajetaan komennolla
 `pnpm --filter @eky/desktop installer:test:unit`. Oikeita Windows-prosesseja
 käynnistävät prosessisopimustestit ajetaan erikseen ja sarjassa komennolla
 `pnpm --filter @eky/desktop installer:test:windows-process`. Yhdistelmäkomento
-`pnpm --filter @eky/desktop installer:test` ajaa molemmat ryhmät tässä
-järjestyksessä, eikä samaa testiä saa sisällyttää kumpaankin ryhmään.
+`pnpm --filter @eky/desktop installer:test` ajaa yksikkötestit, rajatut
+`installer:test:msi-file-policy`-sopimustestit ja Windows-prosessitestit tässä
+järjestyksessä. Samaa testiä ei sisällytetä useampaan ryhmään. Varsinainen
+[MSI-tiedostoversiosäännön asennuskoe](windows-installer-acceptance-harness-v2.md#msi-tiedostoversiosäännön-koe)
+on erillinen, vain hallitussa Windows-CI:ssä suoritettava portti.
 Prosessikomento rakentaa nykyisen V2-supervisorin ennen rollback-bootstrapin
 sopimusta. Synteettinen helper jää saman Job Object -puun omistukseen;
 tuotannon launcher ja jaeltava payload eivät sisällä testifixtureä.

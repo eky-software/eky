@@ -7,9 +7,10 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import { executeLegacyUpgradeLifecycle } from './legacyUpgradeLifecycle.mjs';
-import { LEGACY_FOOTPRINT_ERROR_CODES } from './legacyUpgradeContracts.mjs';
+import { LEGACY_FOOTPRINT_ERROR_CODES, LEGACY_PAYLOAD_ERROR_CODES } from './legacyUpgradeContracts.mjs';
 import { runHistoricalPackagedSmokeProcessChain } from './legacyUpgradeSourceSmoke.mjs';
 import { startLegacyOwnedProcess } from './legacyUpgradeWindowsRuntime.mjs';
+import { LEGACY_PAYLOAD_OBSERVATIONS } from './legacyPayloadObservation.mjs';
 
 const VERSIONS = Object.freeze({ source: '0.2.6', target: '0.2.7' });
 
@@ -106,6 +107,44 @@ test('safe progress failure cannot alter lifecycle semantics', async () => {
       },
     }),
   );
+  assert.equal(result.status, 'completed');
+});
+
+test('payload evidence uses only closed progress values and never replaces the rejection', async () => {
+  for (const brokenReporter of [false, true]) {
+    const entries = [];
+    const dependencies = successfulDependencies({
+      reportProgress(entry) {
+        entries.push(entry);
+        if (brokenReporter) throw new Error('private observer error');
+      },
+      async validateTargetPayload() { throw new Error('targetPayloadSizeMismatch'); },
+      async observeTargetPayloadRejection(observe) {
+        assert.ok(entries.some(entry => entry.phase === 'targetPayload' && entry.status === 'failed' && entry.errorCode === 'targetPayloadSizeMismatch'));
+        for (const code of [...LEGACY_PAYLOAD_OBSERVATIONS, 'private-path-and-secret', null, { path: 'private' }]) observe(code);
+        if (brokenReporter) throw new Error('private read error');
+      },
+    });
+    const result = await executeLegacyUpgradeLifecycle(dependencies);
+    assert.equal(result.errorCode, 'targetPayloadSizeMismatch');
+    assert.equal(result.status, 'failed');
+    assert.equal(result.targetFirstStartupValidated, false);
+    assert.equal(dependencies.calls.includes('first'), false);
+    const observations = entries.filter(entry => entry.phase === 'targetPayload' && entry.status === 'observed');
+    assert.deepEqual(observations.map(entry => entry.resultCode), LEGACY_PAYLOAD_OBSERVATIONS);
+    for (const entry of observations) {
+      assert.deepEqual(Object.keys(entry).sort(), [
+        'durationMs', 'elapsedMs', 'operation', 'phase', 'resultCode', 'scenario', 'schemaVersion', 'status',
+      ]);
+    }
+    assert.doesNotMatch(JSON.stringify({ entries, result }), /private|hash|path/);
+  }
+});
+
+test('successful payload verification never starts optional rejection observation', async () => {
+  const result = await executeLegacyUpgradeLifecycle(successfulDependencies({
+    observeTargetPayloadRejection() { assert.fail('success must not observe'); },
+  }));
   assert.equal(result.status, 'completed');
 });
 
@@ -286,6 +325,27 @@ test('every closed footprint rejection survives lifecycle progress and blocks ta
     assert.equal(result.targetFirstStartupValidated, false);
     assert.equal(dependencies.calls.includes('first'), false);
     assert.equal(entries.find((entry) => entry.phase === 'targetPostcondition' && entry.status === 'failed').errorCode, errorCode);
+  }
+});
+
+test('every closed payload rejection survives lifecycle progress and blocks target startup', async () => {
+  for (const errorCode of Object.keys(LEGACY_PAYLOAD_ERROR_CODES)) {
+    const entries = [];
+    const dependencies = successfulDependencies({
+      validateTargetPayload: async () => { throw new Error(errorCode); },
+      reportProgress: (entry) => entries.push(entry),
+    });
+    const result = await executeLegacyUpgradeLifecycle(dependencies);
+    assert.equal(result.status, 'failed');
+    assert.equal(result.errorCode, errorCode);
+    assert.equal(result.majorUpgradeValidated, false);
+    assert.equal(result.targetFirstStartupValidated, false);
+    assert.equal(dependencies.calls.includes('first'), false);
+    const rejected = entries.find((entry) => entry.phase === 'targetPayload' && entry.status === 'failed');
+    assert.equal(rejected.errorCode, errorCode);
+    assert.deepEqual(Object.keys(rejected).sort(), [
+      'durationMs', 'elapsedMs', 'errorCode', 'operation', 'phase', 'scenario', 'schemaVersion', 'status',
+    ]);
   }
 });
 

@@ -38,6 +38,7 @@ const profileSnapshotRuntimeFiles = [
 
 export function createElectronE2eRuntime(input: {
   backendPort: number;
+  backendStartupFault?: 'none' | 'missingIncidentsDirectory';
   dialogMode?: 'accept' | 'cancel';
   nativeOpenDialogMode?: 'accept' | 'cancel';
   nativeOpenDialogPurpose?:
@@ -113,7 +114,10 @@ export function createElectronE2eRuntime(input: {
 
   const backendConfig = writeE2eBackendConfig({
     backendPort: input.backendPort,
-    paths: input.paths,
+    // A real ENOENT in the backend reader, confined to this synthetic runtime.
+    paths: input.backendStartupFault === 'missingIncidentsDirectory'
+      ? { ...input.paths, incidentsRoot: join(input.paths.incidentsRoot, 'missing-startup-probe') }
+      : input.paths,
     scenarioId: input.scenarioId,
   });
   const runtimeInstanceId = randomUUID();

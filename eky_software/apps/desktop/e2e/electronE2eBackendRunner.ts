@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { reportElectronE2eBackendFailure } from './electronE2eBackendFailure.js';
 
 import { CompanyEmailSecretBrokerClient } from '../src/secrets/secretBrokerClient.js';
 import { createUtilitySecretBrokerTransport } from '../src/secrets/electronSecretBrokerTransport.js';
@@ -145,13 +146,16 @@ parentPort.on('message', (event) => {
       startupStage = 'readyNotification';
       reportStartupStage(startupStage);
       parentPort.postMessage({ port: server.port, type: 'ready' });
-    } catch {
-      secretBrokerClient?.close();
-      invoicePdfArchiveBrokerClient?.close();
-      profileSnapshotBrokerHandle?.close();
-      parentPort.postMessage({
+    } catch (error) {
+      reportElectronE2eBackendFailure({
+        error,
         stage: startupStage,
-        type: 'failed',
+        brokers: {
+          ...(secretBrokerClient === undefined ? {} : { secretBroker: secretBrokerClient }),
+          ...(invoicePdfArchiveBrokerClient === undefined ? {} : { invoicePdfArchiveBroker: invoicePdfArchiveBrokerClient }),
+          ...(profileSnapshotBrokerHandle === undefined ? {} : { profileSnapshotBroker: profileSnapshotBrokerHandle }),
+        },
+        send: (status) => parentPort.postMessage(status),
       });
     }
   })();

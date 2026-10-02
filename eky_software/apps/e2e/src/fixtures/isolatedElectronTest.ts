@@ -5,7 +5,6 @@ import {
   mkdirSync,
   readFileSync,
 } from 'node:fs';
-import { writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 import {
@@ -37,7 +36,6 @@ import {
 } from '../environment/startOwnedWindowsElectronBridge.js';
 import {
   E2eBackendStartupFailure,
-  type E2eBackendStartupFailureEvidence,
 } from '../environment/startE2eBackendProcess.js';
 import { reserveLoopbackPort } from '../environment/reserveLoopbackPort.js';
 import { removeE2eRunRoot } from '../environment/removeE2eRunRoot.js';
@@ -54,14 +52,19 @@ import { closeOwnedWindowsElectronRuntime } from './closeOwnedWindowsElectronRun
 import {
   launchElectronRuntime,
   type ElectronLaunchObservation,
-  type ElectronStartupCapture,
 } from './launchElectronRuntime.js';
 import { createElectronLaunchFailureCapture, readObservedElectronLaunchExitCode } from './captureElectronLaunchFailure.js';
-import type { ElectronBackendStartupLogsCapture } from './captureElectronBackendStartupLogs.js';
-import type { ElectronNativeStartupFailureCapture } from './captureElectronNativeStartupFailure.js';
 import { ELECTRON_E2E_PROCESS_CONNECT_TIMEOUT_MILLISECONDS } from './electronLaunchBudgets.js';
 import { captureFirstStartProof } from './captureFirstStartProof.js';
 import type { FirstStartProofCapture } from '../../../desktop/e2e/workspaceFirstStartProofObservation.js';
+import { recordElectronEvidenceFailure } from '../../scripts/electronLifecycleProjection.mjs';
+import {
+  reportElectronLifecycleEvidence,
+  type ElectronCleanupResult,
+  type ElectronPreparationFailureEvidence,
+} from './reportElectronLifecycleEvidence.js';
+
+export { reportElectronLifecycleEvidence } from './reportElectronLifecycleEvidence.js';
 
 export interface IsolatedElectronHarness {
   api: APIRequestContext;
@@ -89,6 +92,7 @@ interface IsolatedElectronFixtures {
 }
 
 interface IsolatedElectronOptions {
+  e2eBackendStartupFault: 'none' | 'missingIncidentsDirectory';
   e2eContainmentTimeoutMilliseconds: number | undefined;
   e2eDialogMode: 'accept' | 'cancel';
   e2eNativeOpenDialogMode: 'accept' | 'cancel';
@@ -104,6 +108,7 @@ const MAX_ELECTRON_LAUNCH_OBSERVATIONS = 64;
 export const test = base.extend<
   IsolatedElectronFixtures & IsolatedElectronOptions
 >({
+  e2eBackendStartupFault: ['none', { option: true }],
   e2eContainmentTimeoutMilliseconds: [undefined, { option: true }],
   e2eDialogMode: ['accept', { option: true }],
   e2eNativeOpenDialogMode: ['accept', { option: true }],
@@ -111,6 +116,7 @@ export const test = base.extend<
   e2eWorkspaceBackupFixture: ['none', { option: true }],
   e2eElectron: async (
     {
+      e2eBackendStartupFault,
       e2eContainmentTimeoutMilliseconds,
       e2eDialogMode,
       e2eNativeOpenDialogMode,
@@ -177,6 +183,7 @@ export const test = base.extend<
     let backendPort = await reserveLoopbackPort();
     let runtime = createElectronE2eRuntime({
       backendPort,
+      backendStartupFault: e2eBackendStartupFault,
       dialogMode: e2eDialogMode,
       nativeOpenDialogMode: e2eNativeOpenDialogMode,
       nativeOpenDialogPurpose: e2eNativeOpenDialogPurpose,
@@ -207,6 +214,7 @@ export const test = base.extend<
     let failure: { error: unknown } | undefined;
     const launchObservations: ElectronLaunchObservation[] = [];
     let observationsTruncated = false;
+    let startupGeneration = 0;
     const launchFailureCapture = createElectronLaunchFailureCapture();
     let firstStartProof: FirstStartProofCapture = { status: 'notRequested' };
 
@@ -215,6 +223,7 @@ export const test = base.extend<
         throw new Error('E2E_ELECTRON_RUNTIME_CLEANUP_UNVERIFIED');
       }
       assertElectronRuntimeLaunchPrerequisites(runtime, runRoot);
+      const currentStartupGeneration = ++startupGeneration;
       connectionPending = true;
       electronApp = undefined;
       applicationClosed = false;
@@ -250,6 +259,7 @@ export const test = base.extend<
           const application = electronApp;
           launchFailureCapture.observe(observation, {
             runRoot,
+            startupGeneration: currentStartupGeneration,
             artifactsRoot: paths.artifactsRoot,
             userDataPath: runtime.userDataPath,
             runtimeInstanceId: runtime.runtimeInstanceId,
@@ -314,6 +324,7 @@ export const test = base.extend<
         backendPort = await reserveLoopbackPort();
         runtime = createElectronE2eRuntime({
           backendPort,
+          backendStartupFault: e2eBackendStartupFault,
           dialogMode: e2eDialogMode,
           nativeOpenDialogMode: e2eNativeOpenDialogMode,
           nativeOpenDialogPurpose: e2eNativeOpenDialogPurpose,
@@ -408,6 +419,7 @@ export const test = base.extend<
     } catch (error) {
       failure = { error };
     } finally {
+      let launchFailureEvidence: ReturnType<typeof launchFailureCapture.finish> | undefined;
       await finishIsolatedElectronTest({
         failure,
         testAlreadyFailed: testInfo.errors.length > 0,
@@ -417,10 +429,12 @@ export const test = base.extend<
         closeRuntime: closeCurrentRuntime,
         releasePort: releaseCurrentPort,
         captureEvidence() {
+          launchFailureEvidence = launchFailureCapture.finish();
           if (scenarioId === 'DESK-WORKSPACE-FIRST-START-001' || scenarioId === 'DESK-FIRST-START-LOAD-ORDER-001') {
             firstStartProof = captureFirstStartProof(runtime.userDataPath, runtime.runtimeInstanceId);
           }
         },
+        reportEvidenceFailure: (kind) => recordElectronEvidenceFailure(testInfo, kind),
         removeRoot: () => removeE2eRunRoot(runRoot),
         async report(cleanup) {
           if (
@@ -433,7 +447,7 @@ export const test = base.extend<
               observationsTruncated,
               cleanup,
               ...(ownership === undefined ? {} : { ownership }),
-              ...launchFailureCapture.finish(),
+              ...launchFailureEvidence,
               ...(firstStartProof.status === 'notRequested' ? {} : { firstStartProof }),
             });
           }
@@ -464,18 +478,6 @@ function seedLegacyWorkspaceForActiveReplacement(input: {
   cpSync(input.sourceDocumentsRoot, documentsRoot, { recursive: true });
 }
 
-interface ElectronCleanupResult {
-  api: 'completed' | 'failed' | 'notStarted';
-  runtime: 'completed' | 'unverified' | 'notStarted';
-  port: 'released' | 'unverified' | 'notStarted';
-  runRoot: 'removed' | 'retained' | 'removalFailed';
-}
-
-interface ElectronPreparationFailureEvidence {
-  readonly stage: 'workspaceBackup';
-  readonly backend: E2eBackendStartupFailureEvidence | null;
-}
-
 export async function prepareElectronWorkspaceBackup(input: {
   prepare(): Promise<Readonly<ElectronWorkspaceBackupFixture> | undefined>;
   report(evidence: ElectronPreparationFailureEvidence): Promise<void>;
@@ -495,46 +497,6 @@ export async function prepareElectronWorkspaceBackup(input: {
   }
 }
 
-export async function reportElectronLifecycleEvidence(
-  testInfo: TestInfo,
-  evidence: {
-    launch: readonly ElectronLaunchObservation[];
-    observationsTruncated: boolean;
-    cleanup: Readonly<ElectronCleanupResult>;
-    startupCapture?: ElectronStartupCapture;
-    backendStartupLogs?: ElectronBackendStartupLogsCapture;
-    nativeStartupFailure?: ElectronNativeStartupFailureCapture;
-    launchExitCode?: number | null;
-    firstStartProof?: FirstStartProofCapture;
-    preparation?: ElectronPreparationFailureEvidence;
-    ownership?: Readonly<ElectronBridgeCleanupEvidence>;
-  },
-): Promise<void> {
-  const path = testInfo.outputPath('electron-lifecycle.json');
-  await writeFile(
-    path,
-    JSON.stringify({
-      schemaVersion: 1,
-      attempt: testInfo.retry,
-      launch: evidence.launch,
-      observationsTruncated: evidence.observationsTruncated,
-      cleanup: evidence.cleanup,
-      startupCapture: evidence.startupCapture ?? { status: 'notRequested' },
-      ...(evidence.backendStartupLogs === undefined ? {} : { backendStartupLogs: evidence.backendStartupLogs }),
-      ...(evidence.nativeStartupFailure === undefined ? {} : { nativeStartupFailure: evidence.nativeStartupFailure }),
-      ...(evidence.launchExitCode === undefined ? {} : { launchExitCode: evidence.launchExitCode }),
-      ...(evidence.firstStartProof === undefined ? {} : { firstStartProof: evidence.firstStartProof }),
-      ...(evidence.preparation === undefined ? {} : { preparation: evidence.preparation }),
-      ...(evidence.ownership === undefined ? {} : { ownership: evidence.ownership }),
-    }),
-    { encoding: 'utf8', flag: 'wx', mode: 0o600 },
-  );
-  await testInfo.attach('electron-lifecycle', {
-    contentType: 'application/json',
-    path,
-  });
-}
-
 export async function finishIsolatedElectronTest(input: {
   failure: { error: unknown } | undefined;
   testAlreadyFailed: boolean;
@@ -544,6 +506,7 @@ export async function finishIsolatedElectronTest(input: {
   captureEvidence?(): void;
   removeRoot(): Promise<void>;
   report(result: Readonly<ElectronCleanupResult>): Promise<void>;
+  reportEvidenceFailure?(kind: 'captureFailed' | 'reportFailed'): void;
 }): Promise<void> {
   const result: ElectronCleanupResult = {
     api: 'completed',
@@ -566,12 +529,25 @@ export async function finishIsolatedElectronTest(input: {
   } catch {
     result.port = 'unverified';
   }
-  let reportFailed = false;
-  try { input.captureEvidence?.(); } catch { reportFailed = true; }
-  if (
+  const cleanupVerified =
     result.api === 'completed' &&
     result.runtime === 'completed' &&
-    result.port === 'released'
+    result.port === 'released';
+  const reportEvidenceFailure = (kind: 'captureFailed' | 'reportFailed'): void => {
+    try { input.reportEvidenceFailure?.(kind); } catch {
+      // Secondary metadata cannot replace the original failure.
+    }
+  };
+  let captureFailed = false;
+  try { input.captureEvidence?.(); } catch {
+    captureFailed = true;
+    reportEvidenceFailure('captureFailed');
+  }
+  // Preserve failed-attempt sources independently of report delivery. A report-only
+  // error after successful deletion cannot restore that otherwise successful root.
+  if (
+    cleanupVerified && input.failure === undefined &&
+    !input.testAlreadyFailed && !captureFailed
   ) {
     try {
       await input.removeRoot();
@@ -580,20 +556,23 @@ export async function finishIsolatedElectronTest(input: {
       result.runRoot = 'removalFailed';
     }
   }
+  let reportFailed = false;
   try {
     await input.report(Object.freeze(result));
   } catch {
     reportFailed = true;
+    reportEvidenceFailure('reportFailed');
   }
   // Playwright records body failures before fixture teardown. Never replace
   // that failure, or a setup exception, with a secondary cleanup exception.
   if (input.failure !== undefined) throw input.failure.error;
-  if (!input.testAlreadyFailed && result.runRoot !== 'removed') {
+  if (input.testAlreadyFailed) return;
+  if (!cleanupVerified || result.runRoot === 'removalFailed') {
     throw new Error(
       `E2E_ELECTRON_CLEANUP_FAILED runtime=${result.runtime} port=${result.port} root=${result.runRoot}`,
     );
   }
-  if (!input.testAlreadyFailed && reportFailed) {
+  if (captureFailed || reportFailed) {
     throw new Error('E2E_ELECTRON_EVIDENCE_FAILED');
   }
 }

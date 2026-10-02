@@ -151,3 +151,51 @@ test('keeps direct downgrade blocked and rollback outside MSI authoring', async 
   assert.doesNotMatch(rollbackLaunchScript, /Invoke-Expression/);
   assert.doesNotMatch(rollbackLaunchScript, /Start-Job/);
 });
+
+test('owns equal-version payload replacement with one guarded Type51 action', async () => {
+  const packageSource = await readFile(
+    join(installerDirectory, 'wix', 'Package.wxs'), 'utf8',
+  );
+
+  const setPropertyActions = packageSource.match(/<SetProperty\b[^>]*>/gu) ?? [];
+  assert.equal(setPropertyActions.length, 1);
+  assert.match(
+    setPropertyActions[0],
+    /^<SetProperty\s+Action="EkySetReinstallMode"\s+Id="REINSTALLMODE"\s+Value="emus"\s+Before="CostInitialize"\s+Sequence="both"\s+Condition="NOT Installed AND NOT REINSTALLMODE"\s*\/>$/u,
+  );
+  assert.equal(
+    (packageSource.match(/\bAction\s*=\s*["']EkySetReinstallMode["']/gu) ?? []).length,
+    1,
+  );
+  assert.equal(
+    (packageSource.match(/\bId\s*=\s*["']REINSTALLMODE["']/gu) ?? []).length,
+    1,
+  );
+  assert.doesNotMatch(
+    packageSource,
+    /<Property\b[^>]*\bId\s*=\s*["']REINSTALL(?:MODE)?["']/u,
+  );
+  assert.doesNotMatch(packageSource, /\bId\s*=\s*["']REINSTALL["']/u);
+  assert.doesNotMatch(packageSource, /<CustomAction(?:Ref)?\b/u);
+  assert.match(packageSource, /Schedule="afterInstallExecute"/u);
+  assert.match(packageSource, /AllowDowngrades="no"/u);
+  assert.match(packageSource, /AllowSameVersionUpgrades="no"/u);
+});
+
+test('wires the inspector reinstall policy without accepting authored reinstall properties', async () => {
+  const inspectorSource = await readFile(
+    join(installerDirectory, 'scripts', 'inspectWindowsInstaller.ps1'), 'utf8',
+  );
+
+  assert.match(
+    inspectorSource,
+    /function Assert-ReinstallModePolicy\b/u,
+  );
+  assert.match(
+    inspectorSource,
+    /Assert-ReinstallModePolicy\s+-Properties\s+\$properties\s+`?\s*-CustomActions\s+\$\w+\s+`?\s*-Sequences\s+\$\w+/u,
+  );
+  assert.match(inspectorSource, /throw 'INSTALLER_REINSTALL_MODE_INVALID'/u);
+  assert.match(inspectorSource, /throw 'INSTALLER_REINSTALL_FORBIDDEN'/u);
+  assert.doesNotMatch(inspectorSource, /\$properties\['REINSTALLMODE'\]\s+-cne\s+'emus'/iu);
+});

@@ -14,6 +14,9 @@ on:
     paths:
       - eky_software/**/package.json
       - eky_software/pnpm-lock.yaml
+      - .github/bootstrap/pnpm/**
+      - .github/scripts/lockedPnpmContract.mjs
+      - .github/scripts/prepareLockedPnpm.mjs
       - .github/dependabot.yml
       - .github/workflows/dependency-security.yml
       - .github/workflows/ci.yml
@@ -47,8 +50,9 @@ jobs:
           node-version-file: eky_software/.node-version
           package-manager-cache: false
 
-      - name: Enable Corepack
-        run: corepack enable
+      - name: Prepare locked package manager
+        working-directory: .
+        run: node .github/scripts/prepareLockedPnpm.mjs
 
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile

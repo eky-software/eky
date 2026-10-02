@@ -1,5 +1,6 @@
 param([Parameter(Mandatory = $true)][ValidateSet('start', 'stop', 'analyze', 'compareEvents')][string]$Mode,
-  [switch]$LegacyCommand, [switch]$WorkspaceFaultCommand, [switch]$ContractFixture)
+  [switch]$LegacyCommand, [switch]$WorkspaceFaultCommand, [switch]$ContractFixture,
+  [switch]$WorkspaceSuccessCommand)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -20,17 +21,51 @@ function Invoke-CaptureTool([string]$Tool, [string[]]$Arguments, [string]$Label)
     $_ -match '["\r\n\x00]' -or $_.EndsWith('\')
   }).Count -ne 0) { throw 'INSPECTOR_CAPTURE_ARGUMENTS_INVALID' }
   $argumentLine = ($Arguments | ForEach-Object { '"' + $_ + '"' }) -join ' '
-  $process = Start-Process -FilePath $Tool -ArgumentList $argumentLine -Wait -PassThru -NoNewWindow `
-    -RedirectStandardOutput (Join-Path $root "$Label.private.log") `
-    -RedirectStandardError (Join-Path $root "$Label.stderr.private.log")
+  $metadata = $null
+  if ($Label -cin @('event-statistics', 'command-export')) {
+    if ($null -eq (Get-Variable -Name captureExporterMetadata -Scope Script -ErrorAction SilentlyContinue)) {
+      $script:captureExporterMetadata = [ordered]@{ schemaVersion = 1; writesComplete = $true; exports = [ordered]@{
+        'event-statistics' = [ordered]@{ invocationStarted = $false; exitObserved = $false; nativeExitCode = $null }
+        'command-export' = [ordered]@{ invocationStarted = $false; exitObserved = $false; nativeExitCode = $null }
+      } }
+    }
+    $metadata = $script:captureExporterMetadata
+    $metadata.exports[$Label] = [ordered]@{ invocationStarted = $true; exitObserved = $false; nativeExitCode = $null }
+    # This is an invocation attempt, not proof that Start-Process created a process.
+    try {
+      [IO.File]::WriteAllText((Join-Path $root 'export-metadata.private.json'), ($metadata | ConvertTo-Json -Depth 4 -Compress))
+    } catch {
+      $metadata.writesComplete = $false
+      try { Write-Warning 'INSPECTOR_CAPTURE_EXPORT_METADATA_UNAVAILABLE' -WarningAction Continue } catch { }
+    }
+  }
+  $process = $null
   try {
+    $process = Start-Process -FilePath $Tool -ArgumentList $argumentLine -Wait -PassThru -NoNewWindow `
+      -RedirectStandardOutput (Join-Path $root "$Label.private.log") `
+      -RedirectStandardError (Join-Path $root "$Label.stderr.private.log")
     if (!$process.HasExited) { throw 'INSPECTOR_CAPTURE_TOOL_EXIT_UNVERIFIED' }
+    if ($null -ne $metadata -and $process.ExitCode -is [int]) {
+      $metadata.exports[$Label].exitObserved = $true
+      $metadata.exports[$Label].nativeExitCode = $process.ExitCode
+    }
     if ($process.ExitCode -ne 0) {
       $failure = [InvalidOperationException]::new('INSPECTOR_CAPTURE_TOOL_FAILED')
       $failure.Data['toolExitCode'] = $process.ExitCode
       throw $failure
     }
-  } finally { $process.Dispose() }
+  } finally {
+    # Persist the native observation before any caller parses the exported text.
+    if ($null -ne $metadata) {
+      try {
+        [IO.File]::WriteAllText((Join-Path $root 'export-metadata.private.json'), ($metadata | ConvertTo-Json -Depth 4 -Compress))
+      } catch {
+        $metadata.writesComplete = $false
+        try { Write-Warning 'INSPECTOR_CAPTURE_EXPORT_METADATA_UNAVAILABLE' -WarningAction Continue } catch { }
+      }
+    }
+    if ($null -ne $process) { $process.Dispose() }
+  }
 }
 
 function Get-CaptureTraceStatistics([string]$TracePath) {
@@ -73,8 +108,9 @@ try {
   $catalog = Join-Path $toolkit 'Catalog/AppLaunch.wpaProfile'
   . (Join-Path $PSScriptRoot 'installerProductInspectionTrace.ps1')
   $readerLoaded = $true
-  if ((($LegacyCommand -or $WorkspaceFaultCommand) -and $Mode -cne 'analyze') -or
+  if ((($LegacyCommand -or $WorkspaceFaultCommand -or $WorkspaceSuccessCommand) -and $Mode -cne 'analyze') -or
       ($LegacyCommand -and $WorkspaceFaultCommand) -or
+      ($WorkspaceSuccessCommand -and ($LegacyCommand -or $WorkspaceFaultCommand -or $ContractFixture)) -or
       ($ContractFixture -and !$LegacyCommand)) { throw 'INSPECTOR_CAPTURE_ARGUMENTS_INVALID' }
 
   if ($Mode -ceq 'start') {
@@ -207,12 +243,12 @@ try {
     if (!(Test-Path -LiteralPath (Join-Path $root 'stopped'))) { throw 'INSPECTOR_CAPTURE_STOP_UNVERIFIED' }
     Get-CaptureTraceStatistics (Join-Path $root 'capture.etl') | ConvertTo-Json -Compress
     $commandProjection = $null
-    if ($LegacyCommand -or $WorkspaceFaultCommand) {
+    if ($LegacyCommand -or $WorkspaceFaultCommand -or $WorkspaceSuccessCommand) {
       $boundary = 'commandExport'
       if (!(Test-Path -LiteralPath $xperf -PathType Leaf)) { throw 'INSPECTOR_CAPTURE_TOOL_UNAVAILABLE' }
       Invoke-CaptureTool $xperf @('-i', (Join-Path $root 'capture.etl'), '-a', 'process', '-thread', '-withcmdline') 'command-export'
       $boundary = 'commandRead'
-      $commandProjection = Read-LegacyCommandTrace (Join-Path $root 'command-export.private.log') -WorkspaceFaultCommand:$WorkspaceFaultCommand -ContractFixture:$ContractFixture
+      $commandProjection = Read-LegacyCommandTrace (Join-Path $root 'command-export.private.log') -WorkspaceFaultCommand:$WorkspaceFaultCommand -ContractFixture:$ContractFixture -WorkspaceSuccessCommand:$WorkspaceSuccessCommand
       # Scheduling export is a separate observation. Its failure must not erase
       # already validated lifetimes or turn them into acceptance/cleanup proof.
       foreach ($summary in @(Get-LegacyCommandTraceSummary $commandProjection @() -LifetimeOnly)) {

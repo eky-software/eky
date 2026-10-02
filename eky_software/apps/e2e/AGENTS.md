@@ -3,7 +3,8 @@
 Read the repository root `AGENTS.md`, testing rules, security principles,
 review checklist, [E2E strategy](../../docs/architecture/e2e-testing-strategy.md),
 [R0 E2E matrix](../../docs/architecture/r0-e2e-test-matrix.md) and
-[E2E environment](../../docs/architecture/e2e-test-environment.md)
+[E2E environment](../../docs/architecture/e2e-test-environment.md) and
+[test author quickstart](../../docs/ai/e2e-test-authoring-guide.md)
 before changing this package.
 
 For test runs and CI follow-up, use the canonical
@@ -20,7 +21,7 @@ Mandatory boundaries:
 - the approved shared Chromium worker keeps only its browser profile, temp
   and control files in a separate worker OS temp root; each test still owns
   its context and business/service data. Follow the
-  [worker ownership decision](../../docs/architecture/e2e-test-environment.md#chromiumin-kuluttajasiirron-avoin-omistajuusraja):
+  [current worker ownership contract](../../docs/architecture/e2e-test-environment.md#chromiumin-worker--ja-testikohtainen-eristys):
   delete test data only after its context and services close, and delete the
   worker root only after verified process-tree cleanup. Uncertain cleanup
   fails the run and must not become a fresh worker's successful retry.

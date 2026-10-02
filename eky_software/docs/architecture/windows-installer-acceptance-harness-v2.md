@@ -16,6 +16,9 @@ nykyisen revision hyväksyntää. Tämä on projektin suunnitelma, ei omistajan
 koneen diagnostiikkapäiväkirja. Yksityinen aineisto kuuluu vain Gitistä
 ohitettuihin paikallisiin paikkoihin; epäonnistuneita testituloksia ei kumota.
 
+Asentimen tiedostoversion korvaussäännön rajattu nykyinen testipolku on
+[MSI-tiedostoversiosäännön koe](#msi-tiedostoversiosäännön-koe).
+
 ## M0: Valmiusmerkinnän selvitys
 
 Tila 2026-09-24: omistaja hyväksyi selvityksen ja suunnittelun ennen
@@ -1018,6 +1021,10 @@ stdioa että eri kohdissa `exit`-pohjaista odotusta. V2:ssa kontrollisignaali
 ei saa riippua konsolivirran sulkeutumisesta.
 
 ## Evidence ja result-artifactit
+
+Nykyinen rajattu [salatun CI-tutkimusaineiston sopimus](ci-encrypted-evidence.md)
+täydentää workspace-consumerin aineiston säilymistä. Se ei muuta alla olevia
+tulos-, prosessiomistajuus- tai hyväksyntäsopimuksia.
 
 Nykyisiä turvallisia todisteita ovat muun muassa:
 
@@ -3554,8 +3561,15 @@ säilyttää alkuperäisen vaiherajan myös tilapäistiedoston siivouksen jälke
 Pakollinen `resultWriteFailed`, alkuperäiset process/worker/cleanup-tulokset,
 nykyinen viiden sekunnin poistumisvaraus ja jatkamisen esto säilyvät.
 Havaintovirhe ei saa muuttaa tulostiedostoa tai komennon onnistumista.
+Kirjoittimen `bufferFlush` erottaa serialisoinnin jälkeisen muistipuskurin
+tyhjennyksen (`Flush(false)`) sitä seuraavasta levylle varmistamisesta
+(`flush`, `Flush(true)`). `WriteThrough`, yksinomainen tilapäistiedosto,
+sulkeminen ennen julkaisua ja ylikirjoituksen estävä julkaisu säilyvät.
+Vaiheen aloitus tarkoittaa havaintopisteen saavuttamista, ei todistetta
+käyttöjärjestelmäkutsun sisäisestä viiveestä tai sen aiheuttajasta.
 Nykyisen komentofixturen regressio vapauttaa estyneen oikean kirjoittimen
-vasta hylätyn vaiheen palattua: myöhäinen tiedosto ei muuta exit-koodia,
+erikseen kummankin flush-vaiheen rajalta vasta hylätyn vaiheen palattua:
+myöhäinen tiedosto ei muuta exit-koodia,
 valtuuta seuraavaa vaihetta tai poista aineistoa. Lukija hylkää onnistuneeksi
 merkityn myöhäisen tiedoston, kun todellinen komentoprosessi poistui virheenä.
 Tämä täsmentää seuraavan mahdollisen virheen näyttöä, ei nimeä aiemman
@@ -3916,11 +3930,11 @@ tulostiedostoa, liian aikaista poistumista ja sovelluksen raportoimaa virhettä
 ei enää tarvitse päätellä samasta yleisestä lokirivistä. Alkuperäisen
 CI-virheen sisäinen syy ja workspace-asennusodotuksen tarkka raja ovat avoimia.
 
-T3/R28:n myöhempi [legacy-hylkäys ja diagnostiikkatarkennus](e2e-test-environment.md#t3b-en-kokonaisajon-legacy-hylkäys)
+T3/R28:n myöhempi [legacy-hylkäys ja diagnostiikkatarkennus](e2e-test-environment-history.md#t3b-en-kokonaisajon-legacy-hylkäys)
 lisää samaan vaihehavaintoon suljetun `smokeFailureClass`-kentän. Harness
 projektoi vain jäädytetyn 0.2.6-kirjoittajan 16 täsmällisesti nimettyä
 startup-virhekoodia ennalta määriteltyihin luokkiin. Myöhempi
-[rajattu diagnostiikkajatko](e2e-test-environment.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko)
+[rajattu diagnostiikkajatko](e2e-test-environment-history.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko)
 lisää viisi saman kirjoittajan täsmällistä diagnostiikkakoodia:
 `DESKTOP_SMOKE_DIAGNOSTICS_SUMMARY_HTTP_FAILED`,
 `DESKTOP_SMOKE_DIAGNOSTICS_IDENTITY_FAILED`,
@@ -5073,6 +5087,123 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 
 ## Nykyinen päätös
 
+### Legacy-kohdepayloadin hylkäyssyy
+
+Historiallisen päivityksen `targetPayload` säilyttää täsmälleen aiemman
+inventaariovertailun. Yksi inventaarion tarkistus erottaa hylkäyksestä
+seuraavat suljetut koodit nykyiseen `errorCode`-kenttään:
+
+- `targetPayloadInspectionFailed`: inventaariota ei voitu tarkistaa;
+  tämä ei yksin tarkoita tiedostojärjestelmän lukuvirhettä.
+- `targetPayloadFileCountMismatch`: tiedostomäärä eroaa.
+- `targetPayloadSizeMismatch`: kokonaiskoko eroaa.
+- `targetPayloadIdentityMismatch`: sisältöidentiteetti eroaa.
+- `targetPayloadSummaryMismatch`: muu tarkan yhteenvedon ero.
+
+Eroluokat tarkistetaan yllä olevassa järjestyksessä. Koodi nimeää
+ensimmäisen eron, ei kaikkia eroja, yksittäistä tiedostoa tai juurisyytä.
+Vertailua ei väljennetä eikä uudelleen järjestetä diagnostiikan vuoksi.
+Kohdeohjelman käynnistys jää hylkäyksessä edelleen estetyksi. Sama koodi
+säilyy lifecycle-tuloksesta nykyisen komentorajan suljettuun koodiin;
+onnistunut siivous ei korvaa alkuperäistä hylkäystä hyväksynnällä.
+
+Julkisiin kenttiin ei lisätä polkuja, tiivisteitä, tiedostomääriä,
+kokoarvoja tai tarkistuspoikkeuksen tekstiä. Aikarajat, asennuskäytäntö,
+siivous ja tulosskeema eivät muutu. 83 kohdetestiä ja kaksi riippumatonta
+staattista katselmusta tarkistivat luokittelun, todellisen runtime-kytkennän,
+kertatarkistuksen ja virheen säilymisen. Koko integraatioportti ei ole
+vielä hyväksytty. [M1:n avoin este](release-0.3.0-m1-preparation-plan.md#v2n-ensimmäisen-pr-ajon-rajatut-esteet)
+on rajattu muuttumattoman paketin CI-kokeessa kokonaiskoon eroksi.
+Alla kuvattu jatkokoe vahvisti kolmen nimetyn tiedoston vanhojen tavujen
+säilymisen ja MSI:n samaversion korvauspäätöksen. Kaikkia payload-eroja
+ei ole luetteloitu; diagnostiikkakoe ei korvaa normaalia hyväksyntäajoa.
+
+### Rajattu legacy-tiedostohavainto
+
+Omistaja hyväksyi yhden jatkokokeen samoilla muuttumattomilla CI-paketeilla.
+Kohteet ovat vain `dxcompiler.dll`, `vk_swiftshader.dll` ja `vulkan-1.dll`.
+Nykyisen `packaged-boundary-diagnostic`-polun legacy-caller ottaa havainnon
+käyttöön täsmällisellä `EKY_ACCEPTANCE_LEGACY_PAYLOAD_OBSERVATION=1`-arvolla.
+Normaali hyväksyntäajo ei ota havaintoa käyttöön eikä lue näitä lisäotoksia.
+
+Ennen major upgradea talletetaan kolmen tiedoston tiivisteet vain workerin
+muistiin. Payload-hylkäyksessä verrataan niihin asennuksen senhetkisiä
+tavuja ja luetaan nykyinen `majorUpgrade.log` kerran ennen siivousta.
+Luku hyväksyy vain tavallisen single-link-tiedoston, tarkistaa avatun
+tiedoston identiteetin ja muuttumattomuuden sekä rajaa jokaisen luvun
+32 MiB:iin. Ei uusia lokitiedostoja, kirjoitinta, odotuskuittausta,
+uusintaa, valvojaa tai aikarajaa. Nykyinen supervisor omistaa myös nämä
+asynkroniset luvut ja niiden keskeytyksen.
+
+Nykyisen `targetPayload`-vaihehavainnon `resultCode` muodostetaan vain
+kiinteästä etuliitteestä `dxcompiler`, `vkSwiftshader` tai `vulkanLoader`
+ja jostakin seuraavista suljetuista luokista:
+
+- `BytesUnchanged`, `BytesChanged`, `BytesUnavailable`.
+- `MsiEqualVersionRetained`, `MsiOverwriteScheduled`, `MsiConflicting`,
+  `MsiUnavailable`.
+
+Tiivisteet, koot, polut, lokiteksti ja käyttäjätiedot eivät ylitä rajaa.
+MSI-luokka kertoo vain tunnistetun lokipäätöksen, ei toteutunutta kopiointia.
+Luokittelu yhdistää koko johdetun tiedostopolun ja päätöksen samasta
+englanninkielisestä server-recordista ennen ensimmäistä
+`RemoveExistingProducts`-aloitusta. Rajan puuttuminen, tuntematon muoto,
+epävarma luku tai rollback-havainto eivät muutu kielteiseksi todisteeksi.
+Ristiriitaisia tunnistettuja päätöksiä ei ratkaista valitsemalla viimeistä.
+Tämä rajaus perustuu nykyiseen varmennettuun päivityssekvenssiin, ei
+yleiseen MSI-lokien tulkitsimeen. Microsoftin
+[tiedostopäätöksen esimerkki](https://learn.microsoft.com/en-us/windows/win32/msi/checking-the-installation-of-features-components-files)
+ja [RemoveExistingProducts](https://learn.microsoft.com/en-us/windows/win32/msi/removeexistingproducts-action)
+kuvaavat tulkinnan pohjan, eivät täydellistä lokiformaatin lupausta.
+
+Alkuperäinen payload-hylkäys, kohdekäynnistyksen esto ja siivoussopimus
+säilyvät myös havainto- ja toimitusvirheissä. Ensimmäinen vaihehylkäys
+julkaistaan ennen valinnaista havaintolukua. Havainto ei ole uusi
+hyväksyntäehto. Koe suoritettiin kerran kohdetestien ja katselmuksen
+jälkeen revisiolla `f84abf37`: jokaisesta kolmesta tiedostosta saatiin
+`BytesUnchanged` ja `MsiEqualVersionRetained`. Alkuperäinen
+`targetPayloadSizeMismatch` ja käynnistyksen esto säilyivät, eikä
+paketteja muutettu. [Kokeen tulos ja päätösraja](release-0.3.0-m1-preparation-plan.md#v2n-ensimmäisen-pr-ajon-rajatut-esteet)
+ovat omistavassa M1-suunnitelmassa. Omistaja hyväksyi tämän jälkeen
+[asentimen korvaussäännön](windows-installer-and-update-plan.md#saman-tiedostoversion-korvaaminen)
+korjauksen; se vaatii oman oikean paketin todennuksen eikä väljenna
+hyväksyntäehtoja.
+
+### MSI-tiedostoversiosäännön koe
+
+Omistava toteutus on
+`apps/desktop/installer/windows-acceptance-harness/fixtures/`-hakemiston
+`msiFileVersionPolicy`-perhe. Builder omistaa vain synteettiset paketit,
+lifecycle vertailu- ja siivousjärjestyksen, runtime nykyisten komento- ja
+MSI-lukijoiden käytön. Nykyinen native supervisor omistaa koko prosessipuun;
+fixturessa ei ole rinnakkaista prosessiomistajaa, retryä tai uutta deadlinea.
+Testituotteet eivät käytä EKYn tuotetunnuksia tai käyttäjäprofiilia.
+
+- Yksikkö- ja sopimustestit: `pnpm --filter @eky/desktop installer:test:msi-file-policy`.
+- Rakennus ja read-only-metadata ilman asennusta:
+  `pnpm --filter @eky/desktop installer:probe:msi-file-policy --prepare-only`.
+- Todellinen koe: nykyisen supervisor-koetyönkulun manuaalinen
+  `msi-file-version-policy`-valinta tai normaalin CI:n Windows-contract-ajo.
+  Asennus sallitaan vain GitHub-hosted Windows-ympäristössä, ei kehittäjän
+  koneella. Paikallisia ympäristömuuttujia ei muuteta tämän eston ohittamiseksi.
+
+Sama kerran rakennettu pari ajetaan ensin UI-oletuksella ja tarkan poiston
+jälkeen eksplisiittisellä `REINSTALLMODE=omus`-ohituksella. Vanhemman,
+saman ja uudemman DLL-tiedostoversion sisältö tarkistetaan omilla SHA-256-
+ja tiedostoversioehdoillaan. UI-/execute-todiste sidotaan oikeaan tuotteeseen;
+sisäkkäisen vanhan tuotteen poiston property-dump ei korvaa sitä.
+Valmiiden MSI-taulujen tarkistus käyttää tuotannon read-only-policy-guardia.
+Buildin välitulos ei saa jakaa testipaketin tiedostotavuja hardlinkillä.
+
+`policy-result.json` säilyttää nykyiseen ajoon sidotun ensivirheen, suljetun
+syyn tai `unknown`-arvon sekä siivouksen erillisen tuloksen. Supervisorin
+poistumistodiste on erillinen hyväksyntäehto. Julkinen koerivi sisältää vain
+sallitut luokat; MSI-loki ja descriptor pysyvät ajon yksityisessä juuressa.
+Ensimmäisen epäonnistumisen tai epävarman siivouksen aineistoa ei poisteta.
+Koe täydentää, ei korvaa oikean EKY-paketin legacy-, clean-, repair-,
+uninstall-, downgrade- ja rollback-portteja. Ajantasainen hyväksyntätila on
+[M1:n asennuskorjauksen päätöksessä](release-0.3.0-m1-preparation-plan.md#asennuskorjauksen-päätös).
+
 ### Workspace-asennusodotuksen havaintoraja
 
 Tila 2026-09-28: rajattu testiharnessin diagnostiikkalisäys ja sen oma
@@ -5157,11 +5288,11 @@ jälkeen suljetun terminal-tuloksen ja viimeisen validoidun handoff-vaiheen enne
 paluukoodiväitettä. `unavailableOrInvalid` säilyttää puuttuvan tai virheellisen
 havainnon erillään onnistumisesta. Raportointi ei korvaa tuloksen sidontaa,
 alkuperäisiä assertioneita tai cleanup-varmennusta eikä julkaise raakaa
-fixture-aineistoa. [Ajankohtainen hylkäys ja rajattu näyttö](e2e-test-environment.md#t3b-en-normaalin-baselinen-rollback-sopimushylkäys)
+fixture-aineistoa. [Historiallinen hylkäys ja rajattu näyttö](e2e-test-environment-history.md#t3b-en-normaalin-baselinen-rollback-sopimushylkäys)
 eivät muuta yllä olevia aikarajoja tai ratkaise hylkäyksen tuntematonta syytä.
 
 Myöhemmän `earlyHelperExit`-hylkäyksen
-[rajattu testiapurikorjaus](e2e-test-environment.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus)
+[rajattu testiapurikorjaus](e2e-test-environment-history.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus)
 jättää tässä tarkoituksellisessa ennenaikaisen poistumisen kokeessa `probe`-
 kyselyn lähettämättä. Puuttuva kuittaus todistetaan EOF:llä, ei hyväksymällä
 mikä tahansa kanavavirhe. Onnistuvan handoffin viestit, worker-result,

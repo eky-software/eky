@@ -1,6 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "resolveJsonModule": true,
     "rootDir": ".",
     "outDir": "e2e-dist",
     "types": ["electron", "node"]

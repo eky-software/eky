@@ -66,17 +66,9 @@ jobs:
           }
           "EKY_DOTNET_EXE=$dotnet" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Enable existing package manager
-        run: corepack enable
-
       - name: Prepare locked package manager
-        shell: pwsh
-        run: |
-          $expected = ((Get-Content ../../package.json -Raw | ConvertFrom-Json).packageManager -split '@')[1]
-          $actual = pnpm --version
-          if ($LASTEXITCODE -ne 0 -or $actual.Trim() -cne $expected) {
-            throw 'WINDOWS_ACCEPTANCE_LEGACY_PACKAGE_MANAGER_UNAVAILABLE'
-          }
+        working-directory: .
+        run: node .github/scripts/prepareLockedPnpm.mjs
 
       - name: Record phase revision and runner image
         shell: pwsh
@@ -139,8 +131,9 @@ jobs:
           }
           "EKY_DOTNET_EXE=$dotnet" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Enable Corepack
-        run: corepack enable
+      - name: Prepare locked package manager
+        working-directory: .
+        run: node .github/scripts/prepareLockedPnpm.mjs
 
       - name: Install existing locked dependencies
         run: pnpm install --frozen-lockfile
@@ -264,8 +257,9 @@ jobs:
           }
           "EKY_DOTNET_EXE=$dotnet" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Enable Corepack
-        run: corepack enable
+      - name: Prepare locked package manager
+        working-directory: .
+        run: node .github/scripts/prepareLockedPnpm.mjs
 
       - name: Install existing locked dependencies
         run: pnpm install --frozen-lockfile

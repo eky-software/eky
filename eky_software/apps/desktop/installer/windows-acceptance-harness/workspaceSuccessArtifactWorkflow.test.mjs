@@ -68,7 +68,13 @@ test('producer publishes exactly one immutable pair and consumers use the same a
   assert.match(consumer, /fail-fast: false/);
   assert.match(consumer, /artifact-ids: \$\{\{ needs.workspace_artifact_producer.outputs.artifact_id \}\}/);
   assert.match(consumer, /merge-multiple: true/);
-  assert.doesNotMatch(consumer, /installer:v2-workspace-artifact:build|installer:w6b2|msiexec|upload-artifact|retry|rerun/);
+  assert.doesNotMatch(consumer, /installer:v2-workspace-artifact:build|installer:w6b2|msiexec|retry|rerun/);
+  const upload = consumer.split('      - name: Upload encrypted workspace evidence only')[1];
+  assert.ok(upload);
+  assert.match(upload, /steps\.evidence_seal\.outcome == 'success' && steps\.evidence_seal\.outputs\.sealed == 'true'/);
+  assert.match(upload, /path: \$\{\{ steps\.evidence_seal\.outputs\.ciphertext \}\}/);
+  assert.match(upload, /retention-days: 1/);
+  assert.match(upload, /overwrite: false/);
   assert.equal(consumer.match(/--workspace-success-command --artifact-descriptor/g).length, 1);
   assert.equal(consumer.match(/installer:v2-workspace-artifact:verify/g).length, 2);
   assert.match(consumer, /always\(\) && steps.download.outcome == 'success'/);

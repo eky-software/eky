@@ -23,8 +23,14 @@ palautuspisteen luonti, health-tarkistus, ajastus ja rotaatio on toteutettu
 signingia ei ole vielä toteutettu eikä installeriteknologiaa ole valittu.
 
 Electron `43.3.0`- ja better-sqlite3 `13.0.2` -yhdistelmä on varmennettu
-17.8.2026. Paketointi käyttää better-sqlite3:n mukana toimitettua Windows x64
-N-API-binääriä eikä enää rakenna staged-kopiota Electron ABI:lle.
+17.8.2026. Tämä on päivitystä edeltävä varmennettu baseline. Omistaja hyväksyi
+29.9.2026 Electron `43.7.6` -patch-päivityksen, jonka todennus on kesken.
+Rajaus, nykyinen testitila ja avoimet hyväksyntäportit ovat
+[riippuvuusarviossa](local-desktop-dependency-review.md#electron-4376--turvallisuuspäivitys).
+`better-sqlite3 13.0.2`, tietokantaskeema ja testien hyväksyntäehdot säilyvät.
+Paketointi käyttää better-sqlite3:n mukana toimitettua Windows x64
+N-API-binääriä eikä enää rakenna staged-kopiota Electron ABI:lle. Aiempi
+testinäyttö ei todista uuden Electron-version yhteensopivuutta.
 
 Paikallisten yritystyötilojen W5B.1-valitsin on toteutettu 20.8.2026. Renderer
 saa vain versionoidut status-, create-, import-as-new-, switch- ja rename-
@@ -65,10 +71,11 @@ paketoidut UI-resurssit ja välittää vain eksplisiittisesti allowlistatut
 backend-reitit ja HTTP-metodit. Preload ei tässä vaiheessa paljasta rendererille
 yhtään Node-, tiedosto-, prosessi- tai yleistä IPC-API:a.
 
-Package-spike ei ole loppukäyttäjän release. Nykyinen varmennettu runtime
-käyttää virallisesta npm-rekisteristä saatavia Electron `43.3.0`- ja
+Package-spike ei ole loppukäyttäjän release. Päivitystä edeltävä varmennettu
+runtime käytti virallisesta npm-rekisteristä saatavia Electron `43.3.0`- ja
 `better-sqlite3 13.0.2` -versioita. Windows package-, smoke-, Electron-E2E-,
-stressi- ja soak-testit läpäisevät yhdistelmän. Installer, code signing,
+stressi- ja soak-testien aiempi läpäisy koskee tätä yhdistelmää, ei vielä
+kokonaisuutena vielä hyväksymätöntä Electron `43.7.6` -päivitystä. Installer, code signing,
 tavallisen Windows-käyttäjän manuaalinen hyväksymistesti ja päivityskanava
 ovat edelleen avoimia toimitusvaiheita.
 

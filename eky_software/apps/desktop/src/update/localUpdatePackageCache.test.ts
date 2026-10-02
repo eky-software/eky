@@ -437,33 +437,107 @@ describe('local update package cache', () => {
     ).resolves.toBeDefined();
   });
 
-  it('resumes rollback normalization after either durable directory rename', async () => {
-    for (const interruption of ['afterCurrentRename', 'afterPreviousRename']) {
-      const pair = await createCurrentAndCandidatePair();
-      await pair.cache.promoteAcceptedCandidate({
-        candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
-        currentIdentity: expectedIdentityOf(pair.current.manifest),
-      });
-      await rename(
-        join(pair.current.cacheRoot, 'current'),
-        join(pair.current.cacheRoot, '.rollback-candidate-next'),
-      );
-      if (interruption === 'afterPreviousRename') {
-        await rename(
-          join(pair.current.cacheRoot, 'previous'),
-          join(pair.current.cacheRoot, 'current'),
-        );
+  it('resumes rollback normalization after either durable directory rename', async ({ onTestFinished, signal }) => {
+    const ownedRoots: string[] = [];
+    const progress = {
+      scenario: 'notStarted',
+      phase: 'notStarted',
+      lastCompletedPhase: 'none',
+      bodySettled: false,
+    };
+    const advance = (phase: string) => {
+      signal.throwIfAborted();
+      progress.lastCompletedPhase = progress.phase;
+      progress.phase = phase;
+    };
+    onTestFinished(async ({ task }) => {
+      // Timeout does not settle the body. Its roots must not enter another
+      // test's cleanup or be deleted while an owned operation can still write.
+      if (task.result?.state !== 'pass' || !progress.bodySettled) {
+        console.error(JSON.stringify({
+          diagnostic: 'updateCacheRollbackTest',
+          ...progress,
+          rootsRetained: true,
+        }));
+        return;
       }
+      await Promise.all(ownedRoots.map((root) => rm(root, { force: true, recursive: true })));
+    });
+    try {
+      progress.scenario = 'preparePair';
+      const pair = await createCurrentAndCandidatePair(ownedRoots, advance);
+      for (const interruption of ['afterCurrentRename', 'afterPreviousRename']) {
+        signal.throwIfAborted();
+        progress.scenario = interruption;
+        progress.phase = 'notStarted';
+        progress.lastCompletedPhase = 'none';
+        advance('promoteCandidate');
+        await pair.cache.promoteAcceptedCandidate({
+          candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
+          currentIdentity: expectedIdentityOf(pair.current.manifest),
+        });
+        advance('renameCurrent');
+        await rename(
+          join(pair.current.cacheRoot, 'current'),
+          join(pair.current.cacheRoot, '.rollback-candidate-next'),
+        );
+        if (interruption === 'afterPreviousRename') {
+          advance('renamePrevious');
+          await rename(
+            join(pair.current.cacheRoot, 'previous'),
+            join(pair.current.cacheRoot, 'current'),
+          );
+        }
 
-      await pair.cache.normalizeRolledBackPackages({
-        candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
-        currentIdentity: expectedIdentityOf(pair.current.manifest),
-      });
+        advance('normalizeRollback');
+        await pair.cache.normalizeRolledBackPackages({
+          candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
+          currentIdentity: expectedIdentityOf(pair.current.manifest),
+        });
 
-      expect((await readdir(pair.current.cacheRoot)).sort()).toEqual([
-        'candidate',
-        'current',
-      ]);
+        advance('verifySlots');
+        expect((await readdir(pair.current.cacheRoot)).sort()).toEqual([
+          'candidate',
+          'current',
+        ]);
+        // Reuse the pair only after both slots prove the exact reset state.
+        advance('verifyCurrentPackage');
+        await expect(pair.cache.revalidateJournalPackage({
+          expectedIdentity: expectedIdentityOf(pair.current.manifest),
+          role: 'current',
+        })).resolves.toMatchObject({
+          appVersion: pair.current.manifest.appVersion,
+          buildRevision: pair.current.manifest.buildRevision,
+          msiProductVersion: pair.current.manifest.msiProductVersion,
+          manifest: expectedIdentityOf(pair.current.manifest),
+        });
+        advance('verifyCandidatePackage');
+        await expect(pair.cache.revalidateJournalPackage({
+          expectedIdentity: expectedIdentityOf(pair.candidate.manifest),
+          role: 'candidate',
+        })).resolves.toMatchObject({
+          appVersion: pair.candidate.manifest.appVersion,
+          buildRevision: pair.candidate.manifest.buildRevision,
+          msiProductVersion: pair.candidate.manifest.msiProductVersion,
+          manifest: expectedIdentityOf(pair.candidate.manifest),
+        });
+        advance('completed');
+      }
+    } finally {
+      progress.bodySettled = true;
+    }
+  });
+
+  it('keeps explicit fixture roots outside the shared cleanup collection', async () => {
+    const ownedRoots: string[] = [];
+    try {
+      const pair = await createCurrentAndCandidatePair(ownedRoots);
+      expect(ownedRoots).toEqual([pair.current.root]);
+      expect(pair.candidate.root).toBe(pair.current.root);
+      expect(roots).not.toContain(pair.current.root);
+      expect((await readdir(pair.current.cacheRoot)).sort()).toEqual(['candidate', 'current']);
+    } finally {
+      await Promise.all(ownedRoots.map((root) => rm(root, { force: true, recursive: true })));
     }
   });
 
@@ -705,10 +779,11 @@ interface FixtureOptions {
 async function createFixture(
   options: FixtureOptions = {},
   shared?: { cacheRoot: string; root: string },
+  ownedRoots: string[] = roots,
 ) {
   const root = shared?.root ?? await mkdtemp(join(tmpdir(), 'eky-update-cache-'));
   if (shared === undefined) {
-    roots.push(root);
+    ownedRoots.push(root);
   }
   const appVersion = options.appVersion ?? releaseInfo.appVersion;
   const buildRevision = options.buildRevision ?? releaseInfo.buildRevision;
@@ -749,8 +824,13 @@ async function createFixture(
   return { cacheRoot, manifest, manifestPath, packagePath, root };
 }
 
-async function createCurrentAndCandidatePair() {
-  const current = await createFixture();
+async function createCurrentAndCandidatePair(
+  ownedRoots: string[] = roots,
+  observePhase: (phase: string) => void = () => {},
+) {
+  observePhase('createCurrentFixture');
+  const current = await createFixture({}, undefined, ownedRoots);
+  observePhase('createCandidateFixture');
   const candidate = await createFixture(
     {
       appVersion: '0.1.0-alpha.2',
@@ -758,12 +838,15 @@ async function createCurrentAndCandidatePair() {
       msiProductVersion: '0.1.2',
     },
     current,
+    ownedRoots,
   );
   const cache = createCache(current.cacheRoot);
+  observePhase('stageCurrentPackage');
   await cache.stageSelectedPackage({
     manifestPath: current.manifestPath,
     role: 'current',
   });
+  observePhase('stageCandidatePackage');
   await cache.stageSelectedPackage({
     manifestPath: candidate.manifestPath,
     role: 'candidate',

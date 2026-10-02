@@ -76,6 +76,16 @@ nimenomaisesti.
 
 ## Kerroskohtaiset säännöt
 
+### Rajattu CI-salaustyökalu
+
+Omistaja on hyväksynyt Git-työkaluketjun GnuPG:n vain
+[CI-tutkimusaineiston OpenPGP-salaukseen](ci-encrypted-evidence.md).
+Työkalu pysyy testiapurin takana; se ei ole sovellus- tai npm-riippuvuus
+eikä kuulu EKY-asentimeen. Hyväksyntä ei salli uusia salauskirjastoja,
+automaattisia asennuksia tai työkalun käyttöä business-datan suojaukseen.
+
+### Sovelluskerrokset
+
 React kuuluu vain web-käyttöliittymään.
 
 React Router tai muu reitityskirjasto voidaan lisätä vain erillisellä
@@ -248,7 +258,7 @@ Erillinen vain lukeva `Dependency security` -workflow:
 - ajetaan käsin `workflow_dispatch`-toiminnolla
 - ajetaan jokaisessa `main`-haaraan kohdistuvassa pull requestissa
 - ajetaan `main`-pushissa vain, kun package manifest, lockfile,
-  Dependabot-konfiguraatio tai dependency-/CI-workflow muuttuu
+  paketinhallinnan valmistelu, Dependabot-konfiguraatio tai dependency-/CI-workflow muuttuu
 - ajaa `pnpm audit --prod`-, `pnpm audit`- ja
   `pnpm audit signatures` -tarkistukset
 - ei käytä `audit --fix` -komentoa
@@ -272,6 +282,56 @@ raportoidaan varmistamattomaksi.
 
 Merge-portteina pidetään vähintään nykyiset `Test, typecheck and build`,
 `System security E2E` ja `Web critical E2E` -tarkistukset.
+
+### CI-paketinhallinnan valmistelu
+
+CI:n yhteinen omistaja on repositoryn
+`.github/scripts/prepareLockedPnpm.mjs`. Se ei päivitä Nodea, pnpm:ää tai
+sovellusriippuvuuksia. `eky_software/package.json` määrää tarkan pnpm-version;
+`.github/bootstrap/pnpm/package.json` ja sen npm-lockfile lukitsevat saman
+työkalun tarballin ja SHA-512-eheyden erillään sovelluksen pnpm-lockfilesta.
+Näiden ristiriita hylätään ennen asennusta. Muutos tähän sopimukseen tai
+työkaluversioon arvioidaan normaalin riippuvuusportin kautta.
+
+Valmistelu tapahtuu jokaisessa pnpm:ää käyttävässä jobissa ennen ensimmäistä
+pnpm-kutsua, checkoutin ulkopuolisessa uudessa `RUNNER_TEMP`-alikansiossa:
+
+1. Valitun Node-jakelun mukana tuleva npm asentaa vain lukitun pnpm:n
+   `npm ci` -komennolla, lifecycle-skriptit ja automaattinen audit pois päältä.
+2. `npm audit signatures` tarkistaa rekisteriallekirjoitukset sekä tarjolla
+   olevat alkuperätodistukset normaalilla npm:n varmennusketjulla. Sen uusi
+   varmennusvälimuisti on erillään asennuksen välimuistista: myöhempi
+   offline-luku ei voi osua asentimen aiemmin hakemaan metadataan.
+3. `npm view ... --offline` lukee tämän auditoinnin käyttämän täydellisen
+   pakettimetadatan samasta yksityisestä välimuistista. Nimi, versio,
+   tarball-osoite ja allekirjoitettu eheystiiviste sidotaan omaan lockfileen.
+   Uutta verkkohakua ei tehdä tämän sidonnan kohdalla.
+4. Asennetun paketin ja npm:n asennuslockfilen identiteetit sekä oman
+   lockfilen muuttumattomuus tarkistetaan. Vasta sen jälkeen pnpm suoritetaan
+   version varmistamiseksi ja sen paikallinen bin-kansio lisätään
+   seuraavien vaiheiden `GITHUB_PATH`-polkuun.
+
+Asennus ei ole globaali, eikä se käytä Corepackin lataajaa. Käyttäjän npm-
+konfiguraatio, ympäristön paketinhallinnan valinnat ja Node-käynnistysoptiot
+eivät siirry valmistelun lapsiprosesseille. Rekisteri ja TLS-tarkistus ovat
+kiinteät; välimuisti ja konfiguraatiot ovat ajokohtaisia. Workspace-/omit-
+suodatusta ei käytetä: erillinen manifesti sisältää vain pnpm:n. Verkkohaut
+eivät tee automaattisia uusintoja (`fetch-retries=0`). Virhe pysäyttää jobin;
+ei varalataajaa, allekirjoituksen ohitusta tai vanhan välimuistin hyväksyntää.
+
+Tämä olettaa luotetun CI-runnerin. Se ei suojaa rinnakkaiselta haitalliselta
+prosessilta, joka muuttaa ajokansiota tai välimuistia. Väliaikainen asennus
+säilyy jobin käytössä ja poistuu runnerin siivouksessa. Raakaa npm-virhettä,
+konepolkuja tai ympäristöä ei julkaista apurin tulosteessa: suljettu vaihe
+ja `CI_PNPM_*`-virhekoodi paikantavat hylkäyksen. Rajattu paikallinen
+tutkinta käyttää yksityisen välimuistin npm-lokia julkaisusäännön mukaisesti.
+
+`prepareLockedPnpm.test.mjs` testaa epäonnistumiset, varmennusjärjestyksen ja
+sen, ettei työkalua käynnistetä tai polkua julkaista ennen hyväksyntää.
+`lockedPnpmWiring.test.mjs` suojaa kaikki workflow-kuluttajat ja molemmat
+testisisääntulot (`pnpm test:ci` ja kahden alustan CI-sopimukset).
+Stubatut sopimustestit eivät korvaa oikeaa tyhjän välimuistin latauskoetta
+eivätkä uuden revision Windows-/Linux-CI:tä.
 
 ## Supply chain -riskit
 

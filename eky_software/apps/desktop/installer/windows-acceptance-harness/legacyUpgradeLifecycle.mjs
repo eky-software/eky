@@ -1,8 +1,10 @@
-import { LEGACY_FOOTPRINT_ERROR_CODES, LEGACY_PROCESS_OBSERVATIONS } from './legacyUpgradeContracts.mjs';
+import { LEGACY_FOOTPRINT_ERROR_CODES, LEGACY_PAYLOAD_ERROR_CODES, LEGACY_PROCESS_OBSERVATIONS } from './legacyUpgradeContracts.mjs';
 import { describeHistoricalPackagedSmokeFailure } from './legacyUpgradeSourceSmoke.mjs';
+import { LEGACY_PAYLOAD_OBSERVATIONS } from './legacyPayloadObservation.mjs';
 
 const FAILURE_CODES = new Set([
   ...Object.keys(LEGACY_FOOTPRINT_ERROR_CODES),
+  ...Object.keys(LEGACY_PAYLOAD_ERROR_CODES),
   'artifactVerificationFailed',
   'installerFootprintInspectionFailed',
   'installerSourceProductInspectionFailed',
@@ -145,7 +147,7 @@ function createProgress(reportProgress) {
       // Safe progress is evidence only and cannot change terminal semantics.
     }
   }
-  async function step(phase, completedCode, failureCode, task) {
+  async function step(phase, completedCode, failureCode, task, observeFailure) {
     const phaseStartedAt = performance.now();
     emit(phase, 'started', phaseStartedAt, { resultCode: 'started' });
     try {
@@ -159,6 +161,7 @@ function createProgress(reportProgress) {
         errorCode,
         ...(phase === 'sourcePackagedSmoke' ? describeHistoricalPackagedSmokeFailure(error) : {}),
       });
+      try { await observeFailure?.(); } catch { /* The first failure is already published and remains primary. */ }
       fail(errorCode);
     }
   }
@@ -168,6 +171,7 @@ function createProgress(reportProgress) {
 export async function executeLegacyUpgradeLifecycle({
   captureSourceEvidence,
   inspectState,
+  observeTargetPayloadRejection,
   reportProgress,
   runMsiOperation,
   runSourceStartup,
@@ -266,11 +270,17 @@ export async function executeLegacyUpgradeLifecycle({
       ),
       versions,
     );
+    const payloadStartedAt = performance.now();
     await progress.step(
       'targetPayload',
       'targetPayloadValidated',
       'majorUpgradeStateInvalid',
       validateTargetPayload,
+      () => observeTargetPayloadRejection?.((code) => {
+        if (LEGACY_PAYLOAD_OBSERVATIONS.includes(code)) {
+          progress.emit('targetPayload', 'observed', payloadStartedAt, { resultCode: code });
+        }
+      }),
     );
     result.majorUpgradeValidated = true;
     await progress.step(

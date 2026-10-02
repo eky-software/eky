@@ -1,6 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "resolveJsonModule": true,
     "lib": ["DOM", "ES2022"],
     "noEmit": true,
     "types": ["@playwright/test"]

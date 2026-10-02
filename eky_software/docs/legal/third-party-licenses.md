@@ -39,9 +39,12 @@ PDFKit-polun nykytila:
 
 Nykyisen Windows-paketointipolun suorat desktop-riippuvuudet:
 
-- `electron` 43.3.0, MIT
+- `electron` 43.7.6, MIT
 - `@electron/packager` 20.0.4, BSD-2-Clause
 - `@electron/fuses` 2.1.3, MIT
+
+Electron `43.7.6` on hyväksytty päivitettäväksi; todennus on kesken. Rajaus ja
+avoimet hyväksyntäportit ovat [riippuvuusarviossa](../architecture/local-desktop-dependency-review.md#electron-4376--turvallisuuspäivitys).
 
 Electron ja paketointityökalut kuuluvat vain `apps/desktop`-runtimeen. Ne eivät
 vuoda domainiin, application serviceihin, API-clientiin tai web-featureihin.

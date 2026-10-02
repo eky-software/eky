@@ -14,6 +14,11 @@ import type {
 import type { DesktopCompositionDependencies } from '../src/main/desktopComposition.js';
 import { readSafeStartupFailureCode } from '../src/main/earlyStartup.js';
 import type { ElectronE2eConfig } from './electronE2eConfig.js';
+import {
+  parseElectronE2eBackendFailureObservation,
+  readElectronE2eBackendFailureCode,
+  type ElectronE2eBackendFailureObservation,
+} from './electronE2eBackendStatus.js';
 
 type NativeAdapterDependencies = Pick<
   DesktopCompositionDependencies,
@@ -35,7 +40,7 @@ export interface ElectronE2eNativeAdapterSnapshot {
 export function createElectronE2eNativeAdapters(
   config: ElectronE2eConfig,
 ): NativeAdapterDependencies & {
-  recordStartupFailure(errorCode: string): void;
+  recordStartupFailure(errorCode: string, backendFailure?: ElectronE2eBackendFailureObservation): void;
   recordWorkspaceRelaunchRequested(): void;
   snapshot(): ElectronE2eNativeAdapterSnapshot;
 } {
@@ -50,7 +55,7 @@ export function createElectronE2eNativeAdapters(
     'logs',
   );
 
-  function record(event: Record<string, boolean | number | string>): void {
+  function record(event: Record<string, unknown>): void {
     appendFileSync(
       config.paths.observationsPath,
       `${JSON.stringify(event)}\n`,
@@ -67,10 +72,13 @@ export function createElectronE2eNativeAdapters(
       record({ operation: 'openPath' });
       return '';
     },
-    recordStartupFailure(errorCode) {
+    recordStartupFailure(errorCode, backendFailure) {
+      const safeFailure = parseElectronE2eBackendFailureObservation(backendFailure);
       record({
         errorCode: readSafeStartupFailureCode(new Error(errorCode)),
         operation: 'startupFailure',
+        ...(safeFailure !== undefined && errorCode === readElectronE2eBackendFailureCode(safeFailure.status.stage)
+          ? { backendFailure: safeFailure } : {}),
       });
     },
     recordWorkspaceRelaunchRequested() {

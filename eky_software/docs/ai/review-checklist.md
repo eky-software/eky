@@ -165,6 +165,13 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
 
 ## Testit
 
+- Säilyivätkö ensivirhe, sen suoritusyritys ja siivoustulos erillään
+  mahdollisesta uusinnasta, ja käyttikö uusinta samaa lähdettä sekä samoja
+  testattavan paketin tavuja?
+- Noudatettiinko [yhden uusinnan ja rajatun poikkeuksen käytäntöä](testing-rules.md#ensivirhe-uusinta-ja-rajattu-poikkeus)
+  ilman retryllä viherryttämistä tai required checkin ohitusta?
+- Onko mahdollinen kehityspoikkeus nimetty, omistajan hyväksymä ja voimassa,
+  eivätkä kriittiset data-, turvallisuus- tai siivousportit kuulu siihen?
 - Tarvitaanko testi?
 - Jaettiinko laaja työ toiminnallisiin checkpointteihin, joiden jälkeen
   muuttuneen vastuun kohdetestit ajettiin?
@@ -271,7 +278,8 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
   säilyivätkö ensimmäisen virheen todisteet ja raportoitiinko mahdolliset
   seuranta-/tallennuskatkokset?
 - Onko Git-tila hallinnassa?
-- Onko lähtöbaseline todistetusti vihreä ennen seuraavan vaiheen aloittamista?
+- Onko lähtöbaseline todistetusti vihreä tai rajattu riippumaton kehitystyö
+  [voimassa olevan kehityspoikkeuksen](testing-rules.md#määräaikainen-kehityspoikkeus) piirissä?
 - Onko muutos helppo perua tarvittaessa?
 - Vastaavatko roadmapin ja omistavan suunnitelman tilat päätöksiä sekä
   todellista toteutus- ja testinäyttöä?

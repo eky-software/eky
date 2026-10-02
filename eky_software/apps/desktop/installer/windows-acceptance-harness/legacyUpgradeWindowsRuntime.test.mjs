@@ -7,9 +7,114 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
-import { createLegacyUpgradeWindowsRuntime, inspectLegacyInstallerFootprint, startLegacyOwnedProcess } from './legacyUpgradeWindowsRuntime.mjs';
+import { createLegacyUpgradeWindowsRuntime, inspectLegacyInstallerFootprint, startLegacyOwnedProcess, validateLegacyTargetPayload } from './legacyUpgradeWindowsRuntime.mjs';
+import { inspectPackageArtifactInventory } from '../../scripts/package-artifact-inventory.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
+
+test('legacy runtime keeps payload observation opt-in, ordered and outside acceptance', {
+  skip: process.platform !== 'win32',
+}, async (context) => {
+  const root = await mkdtemp(resolve(tmpdir(), 'eky-legacy-payload-wiring-'));
+  const previous = process.env.LOCALAPPDATA;
+  const previousFlag = process.env.EKY_ACCEPTANCE_LEGACY_PAYLOAD_OBSERVATION;
+  process.env.LOCALAPPDATA = root;
+  context.after(async () => {
+    if (previous === undefined) delete process.env.LOCALAPPDATA; else process.env.LOCALAPPDATA = previous;
+    if (previousFlag === undefined) delete process.env.EKY_ACCEPTANCE_LEGACY_PAYLOAD_OBSERVATION;
+    else process.env.EKY_ACCEPTANCE_LEGACY_PAYLOAD_OBSERVATION = previousFlag;
+    await rm(root, { recursive: true, force: true });
+  });
+  const installRoot = resolve(root, 'Programs', 'Eky');
+  await mkdir(installRoot, { recursive: true });
+  await writeFile(resolve(installRoot, 'synthetic.txt'), 'original');
+  const expected = await inspectPackageArtifactInventory({ root: installRoot, stage: 'packagedApp' });
+  for (const flag of [undefined, '0', 'true', '1']) {
+    if (flag === undefined) delete process.env.EKY_ACCEPTANCE_LEGACY_PAYLOAD_OBSERVATION;
+    else process.env.EKY_ACCEPTANCE_LEGACY_PAYLOAD_OBSERVATION = flag;
+    const scenarioRoot = resolve(root, String(flag));
+    await mkdir(scenarioRoot);
+    const calls = [];
+    let rejectObservation = false;
+    const artifact = {
+      source: { appVersion: '0.2.6', runtimeBuildRevision: 'a'.repeat(40), installerPath: resolve(root, 'source.msi') },
+      target: { appVersion: '0.2.7', buildRevision: 'b'.repeat(40), installerPath: resolve(root, 'target.msi'), payloadInventory: expected },
+    };
+    const runtime = await createLegacyUpgradeWindowsRuntime({ fixtureRoot: resolve(scenarioRoot, 'fixture'), runNonce: 'a'.repeat(64) }, artifact, {
+      createPayloadObservation(observedRoot, observedLog) {
+        calls.push('create');
+        assert.equal(observedRoot, installRoot);
+        assert.equal(observedLog, resolve(scenarioRoot, 'msi-logs', 'majorUpgrade.log'));
+        return {
+          async captureSource() { calls.push('capture'); },
+          async observeRejection(observe) {
+            calls.push('observe');
+            observe('dxcompilerBytesUnchanged');
+            if (rejectObservation) throw new Error('private observation error');
+          },
+        };
+      },
+      spawnMsiProcess() {
+        calls.push('spawn');
+        const child = new EventEmitter();
+        child.pid = 17;
+        queueMicrotask(() => { child.emit('spawn'); child.emit('exit', 0, null); child.emit('close', 0, null); });
+        return child;
+      },
+    });
+    await runtime.runMsiOperation('sourceInstall');
+    await runtime.runMsiOperation('majorUpgrade');
+    assert.deepEqual(calls, flag === '1' ? ['create', 'spawn', 'capture', 'spawn'] : ['spawn', 'spawn']);
+    const before = [...calls];
+    await runtime.validateTargetPayload();
+    assert.deepEqual(calls, before);
+    await writeFile(resolve(installRoot, 'synthetic.txt'), 'changed-size');
+    for (const broken of [false, true]) {
+      rejectObservation = broken;
+      const codes = [];
+      await assert.rejects(runtime.validateTargetPayload(), { message: 'targetPayloadSizeMismatch' });
+      const observation = runtime.observeTargetPayloadRejection(code => codes.push(code));
+      if (flag === '1' && broken) await assert.rejects(observation, { message: 'private observation error' });
+      else await observation;
+      assert.deepEqual(codes, flag === '1' ? ['dxcompilerBytesUnchanged'] : []);
+    }
+    await writeFile(resolve(installRoot, 'synthetic.txt'), 'original');
+  }
+});
+
+test('legacy target payload retains the exact inventory acceptance and closed rejection causes', async (context) => {
+  const root = await mkdtemp(resolve(tmpdir(), 'eky-legacy-payload-contract-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(resolve(root, 'synthetic.txt'), 'original');
+  const expected = await inspectPackageArtifactInventory({ root, stage: 'packagedApp' });
+  await validateLegacyTargetPayload(root, expected);
+  const cases = [
+    [{ ...expected, fileCount: expected.fileCount + 1 }, 'targetPayloadFileCountMismatch'],
+    [{ ...expected, totalByteSize: expected.totalByteSize + 1 }, 'targetPayloadSizeMismatch'],
+    [{ ...expected, identity: 'f'.repeat(64) }, 'targetPayloadIdentityMismatch'],
+    [Object.fromEntries(Object.entries(expected).reverse()), 'targetPayloadSummaryMismatch'],
+  ];
+  for (const [summary, code] of cases) {
+    await assert.rejects(validateLegacyTargetPayload(root, summary), { message: code });
+  }
+  await writeFile(resolve(root, 'synthetic.txt'), 'modified');
+  await assert.rejects(validateLegacyTargetPayload(root, expected), {
+    message: 'targetPayloadIdentityMismatch',
+  });
+});
+
+test('legacy target payload hides inspection errors and inspects only once', async () => {
+  let calls = 0;
+  const expected = { fileCount: 1, identity: 'a'.repeat(64), stage: 'packagedApp', totalByteSize: 1 };
+  await assert.rejects(validateLegacyTargetPayload('synthetic-root', expected, {
+    async inspectInventory(input) {
+      calls += 1;
+      assert.deepEqual(input, { root: 'synthetic-root', stage: 'packagedApp' });
+      throw new Error('private-path-and-secret');
+    },
+  }), { message: 'targetPayloadInspectionFailed' });
+  assert.equal(calls, 1);
+});
 
 test('legacy runtime binds both MSI operations to the observed process with unchanged install policy', {
   skip: process.platform !== 'win32',

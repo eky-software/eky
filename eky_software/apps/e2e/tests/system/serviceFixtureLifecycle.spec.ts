@@ -27,6 +27,7 @@ test.describe('SYS-SERVICE-FIXTURE-LIFECYCLE-001 @critical @security', () => {
         spawnObserved: true,
         exitedBeforeCleanup: false,
         listeningNotice: 'notObserved',
+        lastHealthProbe: 'notObserved',
         cleanup: { processTree: 'unverified', port: 'released' },
       });
       const testInfo = {
@@ -355,6 +356,7 @@ function completionFixture(fault?:
   const startupError = new E2eBackendStartupFailure({
     errorCode: 'E2E_BACKEND_HEALTH_TIMEOUT', spawnObserved: true,
     exitedBeforeCleanup: false, listeningNotice: 'notObserved',
+    lastHealthProbe: 'notObserved',
     cleanup: { processTree: fault === 'startupVerified' ? 'stopped' : 'unverified', port: 'released' },
   });
   const testInfo = {

@@ -229,8 +229,10 @@ function Read-InspectorTraceTable([string]$Path) {
 # xperf's process action emits two fixed headers and interleaved process/thread
 # records. Command lines are an opaque, unquoted remainder, not CSV strings.
 # This projection is diagnostic only: neither parentage nor ETW exit is a Job proof.
-function Read-LegacyCommandTrace([string]$Path, [switch]$ContractFixture, [switch]$WorkspaceFaultCommand) {
-  if ($ContractFixture -and $WorkspaceFaultCommand) { throw 'INSPECTOR_TRACE_PHASE_INVALID' }
+function Read-LegacyCommandTrace([string]$Path, [switch]$ContractFixture, [switch]$WorkspaceFaultCommand,
+  [switch]$WorkspaceSuccessCommand) {
+  if (($ContractFixture -and ($WorkspaceFaultCommand -or $WorkspaceSuccessCommand)) -or
+      ($WorkspaceFaultCommand -and $WorkspaceSuccessCommand)) { throw 'INSPECTOR_TRACE_PHASE_INVALID' }
   if ((Get-Item -LiteralPath $Path).Length -gt 32MB) { Stop-InspectorTraceTableLimit 'bytes' }
   Add-Type -AssemblyName Microsoft.VisualBasic
   $parser = [Microsoft.VisualBasic.FileIO.TextFieldParser]::new($Path, [Text.Encoding]::UTF8)
@@ -277,7 +279,8 @@ function Read-LegacyCommandTrace([string]$Path, [switch]$ContractFixture, [switc
   $hostToken = '(?:"[^"\r\n]*[\\/]dotnet(?:\.exe)?"|[^\s"]*dotnet(?:\.exe)?)'
   $assembly = if ($ContractFixture) { 'Eky.WindowsProcessSupervisor.ContractFixture.dll' } else { 'Eky.WindowsProcessSupervisor.dll' }
   $entry = if ($ContractFixture) { '--mode legacyCommandEntry' }
-    elseif ($WorkspaceFaultCommand) { '--workspace-fault-command' } else { '--legacy-command' }
+    elseif ($WorkspaceFaultCommand) { '--workspace-fault-command' }
+    elseif ($WorkspaceSuccessCommand) { '(?-i:--workspace-success-command)' } else { '--legacy-command' }
   $assemblyToken = '(?:"[^"\r\n]*[\\/]' + [regex]::Escape($assembly) + '"|[^\s"]*[\\/]' + [regex]::Escape($assembly) + ')'
   $commands = @($processes | Where-Object {
     $_.name -ieq 'dotnet.exe' -and $_.commandLine -match ('^' + $hostToken + '\s+' + $assemblyToken + '\s+' + $entry + '(?:\s|$)')
@@ -286,6 +289,11 @@ function Read-LegacyCommandTrace([string]$Path, [switch]$ContractFixture, [switc
   if ($commands.Count -ne 1) { throw 'INSPECTOR_TRACE_COMMAND_AMBIGUOUS' }
   $command = $commands[0]
   if ($null -eq $command.session) { Stop-InspectorTraceLifetime 'processIdentity' }
+  if ($WorkspaceSuccessCommand -and
+      ([regex]::Matches($command.commandLine, '\s--(?:legacy|clean|upgrade|workspace-success|workspace-fault)-command(?:\s|$)').Count -ne 1 -or
+       $command.commandLine -match '\s--(?:fault-scenario|mode)(?:\s|$)')) {
+    throw 'INSPECTOR_TRACE_PHASE_INVALID'
+  }
   if ($WorkspaceFaultCommand -and
       ([regex]::Matches($command.commandLine, '\s--fault-scenario(?:\s|$)').Count -ne 1 -or
        $command.commandLine -cnotmatch '\s--fault-scenario\s+acceptanceInterruption\s+--result-path\s+')) {
@@ -296,10 +304,10 @@ function Read-LegacyCommandTrace([string]$Path, [switch]$ContractFixture, [switc
   $command | Add-Member -NotePropertyName phase -NotePropertyValue 'command'
   $selected.Add($command)
   $budgets = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../windows-process-supervisor/supervisorCommandBudgets.json') -Raw | ConvertFrom-Json
-  $plan = if ($WorkspaceFaultCommand) { $budgets.workspaceCommand } else { $budgets.legacyCommand }
+  $plan = if ($WorkspaceFaultCommand -or $WorkspaceSuccessCommand) { $budgets.workspaceCommand } else { $budgets.legacyCommand }
   $phases = @($plan.phases | ForEach-Object { $_[0] }) + 'publishFailure'
   $worker = if ($ContractFixture) { 'legacyCommandWorkerFixture.mjs' }
-    elseif ($WorkspaceFaultCommand) { 'workspaceCommandPhase.mjs' } else { 'legacyCommandPhase.mjs' }
+    elseif ($WorkspaceFaultCommand -or $WorkspaceSuccessCommand) { 'workspaceCommandPhase.mjs' } else { 'legacyCommandPhase.mjs' }
   $workerToken = '(?:"[^"\r\n]*[\\/]' + [regex]::Escape($worker) + '"|[^\s"]*[\\/]' + [regex]::Escape($worker) + ')'
   foreach ($process in $processes) {
     if ($process.parent -cne $command.identifier -or $process.start -lt $command.start -or $process.start -gt $command.end) { continue }
@@ -311,6 +319,8 @@ function Read-LegacyCommandTrace([string]$Path, [switch]$ContractFixture, [switc
     $selected.Add($process)
   }
   $installation = [Collections.Generic.List[object]]::new()
+  # Installation-role projection remains fault-specific. A success capture may
+  # end before scenario starts and still contain valid command lifetimes.
   if ($WorkspaceFaultCommand) {
     $scenario = @($selected | Where-Object { $_.phase -ceq 'scenario' })
     if ($scenario.Count -ne 1) { throw 'INSPECTOR_TRACE_PHASE_INVALID' }

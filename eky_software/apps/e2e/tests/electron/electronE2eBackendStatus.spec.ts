@@ -18,8 +18,9 @@ test('DESK-BACKEND-STATUS-001 @critical exposes only closed safe startup stages'
     'DESKTOP_SMOKE_E2E_BACKEND_READY_NOTIFICATION_FAILED',
   ]);
   for (const stage of electronE2eBackendStartupStages) {
-    const status = parseElectronE2eBackendStatus({ stage, type: 'failed' });
-    expect(status).toEqual({ stage, type: 'failed' });
+    const failure = { stage, type: 'failed', reason: 'unknown', brokerCleanupFailures: [] };
+    const status = parseElectronE2eBackendStatus(failure);
+    expect(status).toEqual(failure);
 
     const errorCode = readElectronE2eBackendFailureCode(stage);
     expect(errorCode).toMatch(
@@ -32,12 +33,13 @@ test('DESK-BACKEND-STATUS-001 @critical exposes only closed safe startup stages'
 
 test('DESK-BACKEND-STATUS-002 @critical rejects unknown and extended status payloads', () => {
   for (const stage of electronE2eBackendLogStages) {
-    expect(parseElectronE2eBackendStatus({ stage, type: 'failed' })).toBeUndefined();
+    expect(parseElectronE2eBackendStatus({ stage, type: 'failed', reason: 'unknown', brokerCleanupFailures: [] })).toBeUndefined();
   }
   expect(
     parseElectronE2eBackendStatus({
       stage: 'unknownStage',
       type: 'failed',
+      reason: 'unknown', brokerCleanupFailures: [],
     }),
   ).toBeUndefined();
   expect(
@@ -45,6 +47,7 @@ test('DESK-BACKEND-STATUS-002 @critical rejects unknown and extended status payl
       error: new Error('C:\\Users\\Example\\secret.txt'),
       stage: 'backendStart',
       type: 'failed',
+      reason: 'unknown', brokerCleanupFailures: [],
     }),
   ).toBeUndefined();
   expect(

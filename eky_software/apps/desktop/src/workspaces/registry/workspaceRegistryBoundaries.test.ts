@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
+import { boundarySourceReadBatchSize, inspectBoundarySourcesForTest } from '../boundarySourceTestSupport.js';
+
 const registryImportPathPattern = /(?:^|\/)workspaces\/registry(?:\/|$)/;
 const sourceExtensions = new Set(['.cts', '.js', '.jsx', '.mts', '.ts', '.tsx']);
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
@@ -51,9 +53,28 @@ describe('workspace registry activation boundaries', () => {
   });
 });
 
-async function expectNoRegistryImports(sourceFiles: readonly string[]) {
-  for (const sourceFile of sourceFiles) {
-    const source = await readFile(sourceFile, 'utf8');
+describe('workspace registry boundary rejection', () => {
+  it.each([
+    "import { value } from '../workspaces/registry/value.js';",
+    "const value = import('../workspaces/registry/value.js');",
+    "const value = require('../workspaces/registry/value.js');",
+    "import '../workspaces/registry/value.js';",
+    "import { value } from '..\\workspaces\\registry\\value.js';",
+  ])('still rejects a registry import after the first batch: %s', async (source) => {
+    const sourceFiles = Array.from({ length: boundarySourceReadBatchSize + 1 }, (_, index) => `source-${index}.ts`);
+    const forbiddenFile = `source-${boundarySourceReadBatchSize}.ts`;
+
+    await expect(expectNoRegistryImports(sourceFiles, async (file) =>
+      file === forbiddenFile ? source : 'export const value = 1;',
+    )).rejects.toThrow(forbiddenFile);
+  });
+});
+
+async function expectNoRegistryImports(
+  sourceFiles: readonly string[],
+  readSource?: (sourceFile: string) => Promise<string>,
+) {
+  await inspectBoundarySourcesForTest(sourceFiles, (source, sourceFile) => {
     const importSpecifiers = readImportSpecifiers(source);
 
     expect(
@@ -62,7 +83,7 @@ async function expectNoRegistryImports(sourceFiles: readonly string[]) {
       ),
       sourceFile,
     ).toEqual([]);
-  }
+  }, readSource);
 }
 
 function readImportSpecifiers(source: string): readonly string[] {

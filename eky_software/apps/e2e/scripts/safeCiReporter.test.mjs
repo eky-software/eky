@@ -125,7 +125,7 @@ test('public hooks emit a closed projection and leave the original failure untou
   assert.deepEqual(rows[2], { schemaVersion: 1, event: 'testEnd', caseIndex: 1,
     project: 'electron-development', file: 'electron/example.spec.ts', line: 12, column: 3,
     repeatEachIndex: 0, retry: 1, status: 'failed', expectedStatus: 'passed', durationMs: 123,
-    errorCount: 1, errorClass: 'testError' });
+    errorCount: 1, errorClass: 'testError', electronLifecycle: { status: 'notAttached' }, electronEvidenceFailures: [] });
   assert.equal(rows.at(-1).globalErrors, 1);
   assert.equal(rows.at(-1).unexpected, 1);
   assert.equal(result.errors[0].message, secret);
@@ -157,7 +157,11 @@ test('CI selects only safe console plus unchanged unpublished HTML; local list r
   assert.deepEqual(createE2eReporters({}, []), [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]]);
   assert.deepEqual(createE2eReporters({ CI: 'true' }, []), [[reporterPath], ['html', { open: 'never', outputFolder: 'playwright-report' }]]);
   const config = readFileSync(new URL('../playwright.config.ts', import.meta.url), 'utf8');
-  assert.match(config, /reporter: createE2eReporters\(\),/u);
+  assert.match(config, /reporter: createE2eReporters\(undefined, undefined, artifacts\),/u);
+  assert.match(config, /const artifacts = getE2eRunArtifacts\(\);/u);
+  assert.match(config, /outputDir: artifacts.outputDir,/u);
+  assert.deepEqual(createE2eReporters({ CI: '1' }, [], { htmlOutputFolder: 'playwright-report/run-synthetic' }),
+    [[reporterPath], ['html', { open: 'never', outputFolder: 'playwright-report/run-synthetic' }]]);
   assert.match(config, /retries: isCi \? 1 : 0,/u);
   assert.match(config, /failOnFlakyTests: isCi,/u);
   assert.match(config, /trace: 'on-first-retry'/u);
@@ -179,7 +183,7 @@ for (const argument of ['--reporter', '--reporter=list', '--debug', '--ui', '--u
   });
 }
 
-function runnerFixture(t, body, { grep, setup, extraArgs = [], typescript = false } = {}) {
+function runnerFixture(t, body, { grep, setup, extraArgs = [], typescript = false, rejectWorkspaceImports = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'eky-reporter-contract-'));
   let accepted = false;
   t.after(() => { if (accepted) rmSync(root, { recursive: true, force: true }); });
@@ -195,6 +199,14 @@ function runnerFixture(t, body, { grep, setup, extraArgs = [], typescript = fals
     : `module.exports = () => { throw new Error(${JSON.stringify(secret)}); };`);
   writeFileSync(join(root, 'playwright.config.mjs'), [
     `import { createE2eReporters } from ${JSON.stringify(pathToFileURL(reporterPath).href)};`,
+    // Reporting-only regressions must not depend on prebuilt business packages.
+    rejectWorkspaceImports ? [
+      'import { registerHooks } from "node:module";',
+      'registerHooks({ resolve(specifier, context, nextResolve) {',
+      '  if (specifier.startsWith("@eky/")) throw new Error("REPORTER_WORKSPACE_IMPORT_REJECTED");',
+      '  return nextResolve(specifier, context);',
+      '} });',
+    ].join('\n') : '',
     'const reporter = createE2eReporters();',
     // The extra JSON sink is private test evidence, never selected by real CI config.
     `reporter.push(['json', { outputFile: ${JSON.stringify(rawReport)} }]);`,
@@ -265,6 +277,48 @@ test('startup failure', async () => {
   const raw = readFileSync(run.rawReport, 'utf8');
   assert.ok(raw.includes('E2E_BACKEND_OWNER_START_FAILED'));
   assert.ok(raw.includes(secret));
+  run.accept();
+});
+
+test('real runner preserves the first cause with sorted native codes in the final report per attempt', t => {
+  const source = path => JSON.stringify(new URL(path, import.meta.url).href);
+  const run = runnerFixture(t, `
+import { reportElectronLifecycleEvidence } from ${source('../src/fixtures/reportElectronLifecycleEvidence.ts')};
+import { reportElectronE2eBackendFailure } from ${source('../../desktop/e2e/electronE2eBackendFailure.ts')};
+import { parseElectronE2eBackendStatus, readElectronE2eBackendFailureCode } from ${source('../../desktop/e2e/electronE2eBackendStatus.ts')};
+test('startup lifecycle', async ({}, info) => {
+  let status;
+  reportElectronE2eBackendFailure({ error: Object.assign(new Error(${JSON.stringify(secret)}), { code: 'SQLITE_CANTOPEN' }),
+    stage: 'backendStart', brokers: { secretBroker: { close() { throw new Error(${JSON.stringify(secret)}); } } },
+    send(value) { status = parseElectronE2eBackendStatus(JSON.parse(JSON.stringify(value))); } });
+  await reportElectronLifecycleEvidence(info, {
+    launch: [{ phase: 'firstWindow', status: 'failed', reason: 'processExited' }], observationsTruncated: false,
+    cleanup: { api: 'completed', runtime: 'unverified', port: 'released', runRoot: 'retained' },
+    firstLaunchFailure: { startupGeneration: 3, phase: 'firstWindow', reason: 'processExited' },
+    nativeStartupFailure: { status: 'captured', startupFailureCodes: [
+      readElectronE2eBackendFailureCode(status.stage), 'BACKEND_EXITED_BEFORE_READY',
+    ].sort(),
+      errorBoxReasons: ['startupFailed'], backendFailure: { backendAttempt: 1, status } },
+    launchExitCode: 1,
+  });
+  throw new Error(${JSON.stringify(secret)});
+});`, { typescript: true, rejectWorkspaceImports: true });
+  assert.equal(run.code, 1);
+  assert.equal(run.rows.at(-1).globalErrors, 0, 'reporting fixture must collect without a workspace build');
+  const attempts = run.rows.filter(row => row.event === 'testEnd');
+  assert.equal(attempts.length, 2);
+  for (const [index, attempt] of attempts.entries()) {
+    assert.equal(attempt.status, 'failed');
+    assert.equal(attempt.errorClass, 'testError');
+    assert.deepEqual(attempt.electronLifecycle, {
+      status: 'captured', attempt: index, startupGeneration: 3, launchPhase: 'firstWindow', nativeCapture: 'captured',
+      backendFailure: { backendAttempt: 1, stage: 'backendStart', reason: 'SQLITE_CANTOPEN',
+        brokerCleanupFailures: ['secretBroker'] },
+      launchExitCode: 1, observationsTruncated: false,
+      cleanup: { api: 'completed', runtime: 'unverified', port: 'released', runRoot: 'retained' },
+    });
+  }
+  assert.ok(readFileSync(run.rawReport, 'utf8').includes(secret));
   run.accept();
 });
 

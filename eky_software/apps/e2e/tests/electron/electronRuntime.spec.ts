@@ -1,9 +1,15 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 
 import { readElectronMainState } from '../../src/electron/readElectronMainState.js';
 import { readElectronE2eActiveWorkspace } from '../../src/environment/readElectronE2eActiveWorkspace.js';
+import { readE2eBackendConfig } from '../../../backend/e2e/e2eBackendConfig.js';
+import { readElectronE2eConfig } from '../../../desktop/e2e/electronE2eConfig.js';
+import { createElectronE2eRuntime } from '../../src/environment/createElectronE2eRuntime.js';
+import { createE2eRunRoot } from '../../src/environment/createE2eRunRoot.js';
+import { createE2eWorkerPaths } from '../../src/environment/createE2eWorkerPaths.js';
+import { removeE2eRunRoot } from '../../src/environment/removeE2eRunRoot.js';
 import { test, expect } from '../../src/fixtures/isolatedElectronTest.js';
 
 test('DESK-RUNTIME-001 starts an isolated Electron runtime', async ({
@@ -106,11 +112,11 @@ test('DESK-RUNTIME-002 @critical identifies the approved Electron 43 runtime', a
   }));
 
   expect(runtimeVersions).toEqual({
-    chrome: '150.0.7871.212',
-    electron: '43.3.0',
+    chrome: '150.0.7871.250',
+    electron: '43.7.6',
     napi: '10',
-    node: '24.18.1',
-    v8: '15.0.245.23-electron.0',
+    node: '24.21.0',
+    v8: '15.0.245.31-electron.0',
   });
 
   const diagnosticsResponse = await e2eElectron.api.get(
@@ -122,9 +128,54 @@ test('DESK-RUNTIME-002 @critical identifies the approved Electron 43 runtime', a
       appliedMigrationCount: 38,
       databaseHealth: 'ok',
       electronVersion: null,
-      nodeVersion: 'v24.18.1',
+      nodeVersion: 'v24.21.0',
     }),
   );
+});
+
+test('DESK-STARTUP-CONFIG-001 @critical @fault confines the startup proof to a missing synthetic directory', async () => {
+  const runRoot = createE2eRunRoot();
+  let verified = false;
+  try {
+    for (const backendStartupFault of [undefined, 'none', 'missingIncidentsDirectory'] as const) {
+      const paths = createE2eWorkerPaths(runRoot, `DESK-STARTUP-CONFIG-${backendStartupFault === undefined ? 'DEFAULT' : backendStartupFault === 'none' ? 'NONE' : 'FAULT'}`);
+      const originalPaths = { ...paths };
+      const runtime = createElectronE2eRuntime({
+        backendPort: 43123,
+        ...(backendStartupFault === undefined ? {} : { backendStartupFault }),
+        paths,
+        scenarioId: 'DESK-STARTUP-CONFIG-001',
+      });
+      const environment = { EKY_E2E: '1', EKY_ELECTRON_E2E_RUN_ROOT: runtime.runtimeRoot };
+      expect(readElectronE2eConfig(runtime.configPath, environment).startupMode).toBe('normal');
+      const config = JSON.parse(readFileSync(paths.runtimeConfigPath, 'utf8'));
+      expect(paths).toEqual(originalPaths);
+      expect(config.paths).toEqual({
+        artifactsRoot: paths.artifactsRoot,
+        databaseFilePath: paths.databaseFilePath,
+        documentsRoot: paths.documentsRoot,
+        incidentsRoot: backendStartupFault === 'missingIncidentsDirectory'
+          ? join(paths.incidentsRoot, 'missing-startup-probe') : paths.incidentsRoot,
+        logsRoot: paths.logsRoot,
+        supportBundlesRoot: paths.supportBundlesRoot,
+        tempRoot: paths.tempRoot,
+      });
+      expect(existsSync(paths.incidentsRoot)).toBe(true);
+      if (backendStartupFault === 'missingIncidentsDirectory') {
+        expect(existsSync(config.paths.incidentsRoot)).toBe(false);
+        let failure: unknown;
+        try { readE2eBackendConfig(paths.runtimeConfigPath, environment); }
+        catch (error) { failure = error; }
+        expect(failure).toMatchObject({ code: 'ENOENT' });
+      } else {
+        expect(readE2eBackendConfig(paths.runtimeConfigPath, environment)).toEqual(config);
+      }
+    }
+    verified = true;
+  } finally {
+    // No processes are started here; retain failed configuration evidence.
+    if (verified) await removeE2eRunRoot(runRoot);
+  }
 });
 
 function isDescendant(candidate: string, root: string): boolean {

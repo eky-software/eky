@@ -1,6 +1,7 @@
 import { relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createSafeCiOutputRelay } from './safeCiOutputRelay.mjs';
+import { projectElectronLifecycle, projectElectronEvidenceFailures } from './electronLifecycleProjection.mjs';
 
 export const REPORT_PREFIX = 'EKY_E2E_REPORT ';
 const testsRoot = fileURLToPath(new URL('../tests/', import.meta.url));
@@ -24,7 +25,7 @@ function sourceLocation(test) {
     : { file: 'withheld', line: null, column: null };
 }
 
-export function createE2eReporters(env = process.env, argv = process.argv) {
+export function createE2eReporters(env = process.env, argv = process.argv, artifacts) {
   const ci = Boolean(env.CI);
   if (ci) {
     const forbidden = Object.entries(env).some(([name, value]) => value && (
@@ -39,7 +40,7 @@ export function createE2eReporters(env = process.env, argv = process.argv) {
   }
   return [
     [ci ? fileURLToPath(import.meta.url) : 'list'],
-    ['html', { open: 'never', outputFolder: 'playwright-report' }],
+    ['html', { open: 'never', outputFolder: artifacts?.htmlOutputFolder ?? 'playwright-report' }],
   ];
 }
 
@@ -85,6 +86,8 @@ export default class SafeCiReporter {
       errorCount,
       errorClass: result.status === 'timedOut' ? 'testTimeout'
         : errorCount > 0 ? 'testError' : 'none',
+      electronLifecycle: projectElectronLifecycle(result),
+      electronEvidenceFailures: projectElectronEvidenceFailures(result),
     });
   }
 

@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
+import { boundarySourceReadBatchSize, inspectBoundarySourcesForTest } from '../boundarySourceTestSupport.js';
+
 const importPathPattern = /(?:^|\/)workspaces\/import(?:\/|$)/;
 const prohibitedDatabaseImports = new Set(['better-sqlite3', 'node:sqlite']);
 const sourceExtensions = new Set(['.cts', '.js', '.jsx', '.mts', '.ts', '.tsx']);
@@ -90,15 +92,38 @@ describe('workspace backup import boundaries', () => {
   });
 });
 
-async function expectNoImportFeatureImports(sourceFiles: readonly string[]) {
-  for (const sourceFile of sourceFiles) {
+describe('workspace backup import boundary rejection', () => {
+  it.each([
+    "import { value } from '../workspaces/import/value.js';",
+    "const value = import('../workspaces/import/value.js');",
+    "const value = require('../workspaces/import/value.js');",
+    "import '../workspaces/import/value.js';",
+    "import { value } from '..\\workspaces\\import\\value.js';",
+  ])('rejects the prohibited import in the final partial batch: %s', async (source) => {
+    const sourceFiles = Array.from(
+      { length: boundarySourceReadBatchSize + 1 },
+      (_, index) => `source-${index}.test.ts`,
+    );
+    const forbiddenFile = `source-${boundarySourceReadBatchSize}.test.ts`;
+
+    await expect(expectNoImportFeatureImports(sourceFiles, async (file) =>
+      file === forbiddenFile ? source : 'export const value = 1;',
+    )).rejects.toThrow(forbiddenFile);
+  });
+});
+
+async function expectNoImportFeatureImports(
+  sourceFiles: readonly string[],
+  readSource?: (sourceFile: string) => Promise<string>,
+) {
+  await inspectBoundarySourcesForTest(sourceFiles, (source, sourceFile) => {
     expect(
-      readImportSpecifiers(await readFile(sourceFile, 'utf8')).filter(
+      readImportSpecifiers(source).filter(
         (specifier) => importPathPattern.test(specifier.replaceAll('\\', '/')),
       ),
       sourceFile,
     ).toEqual([]);
-  }
+  }, readSource);
 }
 
 function readImportSpecifiers(source: string): readonly string[] {
