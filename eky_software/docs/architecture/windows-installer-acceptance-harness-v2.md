@@ -5087,6 +5087,30 @@ V2 voidaan korvata nykyisen harnessin tilalle vasta, kun sama commit täyttää:
 
 ## Nykyinen päätös
 
+### Komentotestin siivousvirheen havainto
+
+Kiinteän komennon testin `describeCommandPhase` säilyttää nykyisen tiukasti
+validoidun tuloksen vaihe-, prosessi-, worker- ja siivousluokat.
+`cleanupFailed`-tapauksessa julkinen projektio sisältää lisäksi
+`cleanupNativeError`-havainnon: `reported`, kun `cleanupWin32ErrorCode`
+sisältää validoidun kokonaisluvun (myös nolla), tai `notReported`, kun se on
+`null`. Itse numeroa, ajoituksia, polkuja, tunnisteita tai raakavirhettä ei
+kopioida yhteenvetoon. Muille siivoustuloksille kenttää ei lisätä.
+
+Havainto erottaa native-virheen raportoinnin sen puuttumisesta. Se ei yksin
+nimeä juurisyytä: `notReported` ei yleisesti todista määräajan ylittymistä,
+vaan tulkinta vaatii myös todistetun suoritushaaran. Puuttuva tai virheellinen
+kenttä ja väärään ajoon sidottu tulos pysyvät `invalidOrUnreadable`-tilassa;
+puuttuvasta tuloksesta ei muodosteta oletusarvoa.
+
+Tämä on olemassa olevan jälkilukijan projektio, ei uusi tallennus, odotus,
+prosessinhallinta tai siivouspäätös. Raportointivirhe ei peitä alkuperäistä
+assertiota. `processTreeAbsent=false` estää edelleen hyväksynnän ja kertoo,
+ettei poissaoloa varmennettu; se ei yksin todista eloon jäänyttä prosessia.
+Regressiot ovat nykyisessä `legacyCommandCompletion.process.test.mjs`-
+tiedostossa. [M1:n nykyinen este](release-0.3.0-m1-preparation-plan.md#pnpm-huollon-pr-porttien-rajatut-esteet)
+omistaa ajokohtaisen näytön ja jatkopäätöksen.
+
 ### Legacy-kohdepayloadin hylkäyssyy
 
 Historiallisen päivityksen `targetPayload` säilyttää täsmälleen aiemman

@@ -1,4 +1,4 @@
-import { relative, sep } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createSafeCiOutputRelay } from './safeCiOutputRelay.mjs';
 import { projectElectronLifecycle, projectElectronEvidenceFailures } from './electronLifecycleProjection.mjs';
@@ -30,7 +30,7 @@ export function createE2eReporters(env = process.env, argv = process.argv, artif
   if (ci) {
     const forbidden = Object.entries(env).some(([name, value]) => value && (
       /^(?:DEBUG|DEBUG_FILE|DEBUG_GIT_COMMIT_INFO|PWDEBUG|PWDEBUGIMPL|PWTEST_WATCH|PW_RUNNER_DEBUG|PW_TEST_REPORTER|PW_TEST_DEBUG_REPORTERS|PW_TEST_HTML_REPORT_OPEN)$/iu.test(name)
-      || /^PLAYWRIGHT_HTML_/iu.test(name)
+      || /^PLAYWRIGHT_(?:HTML|JSON)_/iu.test(name)
     ));
     if (forbidden || argv.some(arg => /^--(?:reporter|debug|ui(?:-host|-port)?)(?:=|$)/u.test(arg))) {
       const error = new Error('EKY_E2E_CI_REPORTING_CONFIGURATION_REJECTED');
@@ -41,10 +41,11 @@ export function createE2eReporters(env = process.env, argv = process.argv, artif
   return [
     [ci ? fileURLToPath(import.meta.url) : 'list'],
     ['html', { open: 'never', outputFolder: artifacts?.htmlOutputFolder ?? 'playwright-report' }],
+    ['json', { outputFile: join(artifacts?.htmlOutputFolder ?? 'playwright-report', 'results.private.json') }],
   ];
 }
 
-// Public Reporter API only. The companion HTML reporter retains original errors.
+// Public Reporter API only. Private HTML/JSON reporters retain original errors.
 export default class SafeCiReporter {
   #cases = new Map();
   #globalErrors = 0;

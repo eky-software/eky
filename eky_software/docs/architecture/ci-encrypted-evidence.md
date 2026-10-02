@@ -3,8 +3,10 @@
 ## Rajaus
 
 Omistaja hyväksyi rajatun GnuPG/OpenPGP-salauksen testityökaluksi.
-Ensimmäinen kuluttaja on normaali Windowsin `workspace_consumer`, ei uusi
-testialusta tai pysyvä yksityinen CI. Tämä sopimus ei koske käyttäjän koneen
+Ensimmäinen kuluttaja oli normaali Windowsin `workspace_consumer`.
+Omistajan hyväksymä [testiperheiden virheaineisto](#testiperheiden-virheaineisto)
+laajentaa samaa salattua toimitusta, ei testialustaa tai pysyvää yksityistä CI:tä.
+Tämä sopimus ei koske käyttäjän koneen
 mittauksia, sovelluksen tukipakettia, tuotantodataa tai varmuuskopioita.
 Työn nykytilan omistaa [M1-suunnitelma](release-0.3.0-m1-preparation-plan.md#salatun-tutkimusaineiston-välitavoite).
 
@@ -15,7 +17,8 @@ ei lähetetä salaamatonta tiedostoa, kansiota tai lokia varavaihtoehtona.
 
 ## Työkalu ja avain
 
-Käytetään Git-työkaluketjun GnuPG:tä eristetystä apurista. Se ei ole uusi
+Windowsissa käytetään Git-työkaluketjun GnuPG:tä ja Linuxissa hosted-runnerin
+valmiiksi tarjoamaa GnuPG:tä saman eristetyn PowerShell 7 -apurin kautta. Se ei ole uusi
 npm-riippuvuus eikä kuulu toimitettavaan EKY-sovellukseen. Käytössä ovat
 OpenPGP:n julkisen avaimen salaus ja AES-256; omaa salausformaattia ei
 toteuteta. GnuPG on ylläpidetty GPL-3.0-or-later-työkalu. Sen ja Gitin
@@ -24,10 +27,15 @@ ylläpitoon, vaikka npm-audit ei niitä kata. Runnerilta puuttuva tai
 yhteensopimaton työkalu estää salatun aineiston toimituksen, ei salli
 automaattista latausta tai salaamattomaan tapaan palaamista.
 
-Apuri valitsee `Get-Command git.exe` -tuloksen ensimmäisen sovelluksen,
+Windows-apuri valitsee `Get-Command git.exe` -tuloksen ensimmäisen sovelluksen,
 samoin kuin workflow'n ennakkotarkistus. Useita PATH-osumia ei käsitellä
 yhtenä tiedostopolkuna. Valitun Gitin yhteydestä puuttuva GnuPG hylkää
 toimituksen; valintaa ei vaihdeta automaattisesti toiseen Git-asennukseen.
+Linuxissa valitaan ensimmäinen `Get-Command gpg` -sovellus; puuttuvaa
+työkalua ei asenneta eikä Windowsin MSYS-polkuja käytetä. Linuxin erillinen
+avainkoti saa oikeudet `0700`. Molemmat alustat käyttävät samaa avainprofiilia,
+salauksen tilavarmennusta, rajattuja putkia ja kokonaismääräaikaa. Apuri ei
+käynnistä agenttia tai dirmngriä eikä nouda avaimia verkosta.
 
 Noden omat kryptografiaprimitiivit edellyttäisivät tässä oman siirto- ja
 avainformaatin ylläpitoa. Uutta JavaScript-salauskirjastoa ei tarvita, kun
@@ -86,7 +94,64 @@ uudelleen. Tyhjä vahvistus poistaa keräyksen käytöstä. Fork-PR ei käynnist
 tätä valinnaista keräystä. Työnkulun luotettavuus on edelleen tärkeää:
 salaus ei suojaa haitallisen työnkulun tahalliselta raakajulkaisulta.
 
-## Keräys ja tulokset
+## Testiperheiden virheaineisto
+
+`ciFailureEvidence.mjs` käyttää workspace-keräimen nykyistä varmennettua
+tiedostokopiointia, gzip/JSON-kuorta ja OpenPGP-apuria. Se ei käynnistä tai
+pysäytä testiprosesseja, tulkitse testiä hyväksytyksi eikä korvaa T3:n tai
+V2:n prosessiomistajuutta. Windowsin ja Linuxin normaaliin testijobiin kytketään yksi
+virheen jälkeinen keräys samalla julkisen avaimen vahvistuksella ja
+fork-PR-estolla. Kytkentä ei riipu epäonnistuneen testitapauksen nimestä.
+Uuden normaalin Windows- tai Linux-testijobin on käytettävä samaa jälkiaskeletta;
+workflow-regressio tarkistaa kattavuuden. Käyttöönotto vaatii kyseisen alustan
+hosted-toimituksen ja paikallisen purun todistuksen, ei vain toisen alustan
+läpäisyä. Keräys sallitaan vain alustan kanssa täsmäävällä `RUNNER_OS`-arvolla
+GitHubin hosted-ajossa. Tavalliset push-, schedule- ja workflow_dispatch-ajot
+sekä saman repositoryn PR sallitaan; fork-PR ja `pull_request_target` estetään.
+Luokittelu-, koonti- ja riippuvuusauditointijobit eivät tuota tämän sopimuksen
+raakaa testiaineistoa eivätkä saa yleistä koko jobin tulostekaappausta.
+
+| Lähde | Kerättävä sisältö | Rajaus |
+| --- | --- | --- |
+| Playwright system/web/Electron | Ajokohtaisen `results.private.json`-raportin virheet, testitulokset, stdout/stderr ja retry-yritykset. | Ennen salausta poistetaan konfiguraatio, metadata ja inline-liitteiden sisältö; alkuperäiset virhekentät säilyvät. Ei koko HTML-/attachment-hakemistoa tai siinä olevia SQLite-tiedostoja. Ennen runnerin raportin valmistumista katkennut ajo voi jäädä ilman tätä tiedostoa. |
+| Backend/web/Electron-fixture | Nykyisten redaktoitujen stdout/stderr-lukijoiden rajattu otos omassa suoritusyrityskohtaisessa tiedostossaan myös testin rungon tai siivouksen epäonnistuessa. | Otos säilyy ennen muistitiedon katoamista, tiedosto liitetään nykyisen fixturen jälkiraportoinnissa. Windows-Electronin lähde on natiivi omistajaprosessi; workloadin omaa putkea ei muuteta tällä työllä. Käynnistyksen tai siivouksen kriittiselle polulle ei lisätä tiedostokuittausta. |
+| Native-komennot ja supervisorin sopimustestit | Nimetyt vaihe-, worker- ja caller-tulokset sekä olemassa olevat yksityiset prosessitulosteet. | Ei request/config-tiedostoja, profiileja tai tietokantoja. Siivouksen raakatulos säilyy erillään alkuperäisestä hylkäyksestä. Tarkoituksella lukemattoman putken koe säilyttää oman sopimuksensa. |
+| Packaged smoke | Rajattu prosessituloste ja nykyinen smoke-tulos. | Epäonnistuneen testin juurta ei poisteta; keräin ei lue sen profiilia. Tyhjentynyt tuloste ei todista onnistunutta käynnistystä. |
+| Muut komennot ja valmistelu | Nykyinen turvallinen GitHub-komentoloki. | Salattu keräys ei palauta tulostetta, jota aliohjelma ei tuottanut tai säilyttänyt. Riippuvuustyökalun raakavirheet jäävät erikseen rajatuiksi pois. |
+
+Jokainen paketti sidotaan run/attempt/job/matrix-revisioon. Testitapaus ja
+sen retry sekä käynnistyssukupolvi säilyvät lähderaporteissa. Uusi paketti
+ei kirjoita aiemman päälle. Keräys käsittelee sekä runnerin että natiivin
+käyttöjärjestelmän temp-juuren, jotka eivät välttämättä ole sama hakemisto.
+Vain tunnettujen testiraporttien nimialueet tutkitaan. Tiedostolinkit,
+uudelleenohjaukset ja muuttuneet tiedostot hylätään.
+Playwright-raportin projektio merkitään manifestiin: alkuperäisen lähteen
+tiiviste ja salattavan projektion tiiviste eivät ole sama todiste.
+Muiden sallittujen tiedostojen tavut säilyvät muuttamattomina.
+
+Rajana on 256 tiedostoa, 8 MiB yksittäiselle tiedostolle ja 128 MiB yhteensä;
+hakemistoluvulla on oma määrä-, syvyys- ja aikaraja. Raportit kerätään
+ennen natiiveja tuloksia lähdekohtaisin tilavarauksin; saman lähteen uusimmat
+testijuuret käsitellään ensin. Aiemmin säilyneet natiivitulokset eivät siten
+voi käyttää raporttien koko tiedostokiintiötä. Asiaankuulumattomat temp-nimet
+eivät kuluta 4 096 soveltuvan hakemistomerkinnän rajaa, mutta niidenkin
+läpikäynti kuuluu lähteen viiden sekunnin hakubudjettiin. Tämä ei muuta
+testin aikarajaa eikä lisää odotusta testin kriittiselle polulle.
+Manifesti erottaa säilyneen,
+puuttuvan, liian suuren, kokonaisrajan ylittäneen ja varmentamattoman tiedoston
+sekä puuttuvan/osittaisen/rajatun lähdehaun. `complete` tarkoittaa vain
+lähdehaun valmistumista, ei täydellistä kaatumisvedosta. Nolla säilynyttä
+tiedostoa ei ole vian selitys. Testi, cleanup, keräys, salaus, upload ja purku
+ovat erillisiä tuloksia. Jobin tila ei yksin todista prosessisiivousta.
+
+Koko tracea, verkkokaappausta, muistivedosta, ympäristöä tai tietokantaa ei
+kytketä tällä muutoksella. Erityisesti `retain-on-failure` ei yksin ratkaise
+Electron-contextin tallennusta tai testi-istunnon salaisuuksien rajausta.
+Runnerin pakkokatkaisu voi estää myös tämän jälkikeräyksen. Puuttuva näyttö
+ilmoitetaan sellaisena; sitä ei korvata automaattisella uusinnalla tai
+väitteellä infrastruktuuriviasta.
+
+## Workspace-keräys ja tulokset
 
 `workspaceEncryptedEvidence.mjs` valmistelee erillisen temp-juuren ennen
 testin käynnistystä. Sidonta sisältää CI-ajon, suoritusyrityksen, matriisin
@@ -160,6 +225,22 @@ Tavallisen sovellustestin valinnainen diagnostiikka on eri asia: sen tulosta
 ei muuteta sovelluksen toiminnalliseksi hylkäykseksi. Kokeella on oma
 concurrency-ryhmä, jotta se ei peruuta varsinaista hyväksyntäajoa.
 
+Testiperheiden laajennuksen toimituskoe lisää samaan valintaan tarkoituksella
+epäonnistuvan synteettisen aliprosessin. Ennalta määrätty poistumiskoodi ja
+näytteen syntyminen varmistetaan ennen yhteisen jälkikeräysactionin kutsua.
+Normaalin työn valinnaisuudesta poiketen kokeen salaus ja upload ovat
+pakollisia; odottamaton onnistuminen tai puuttuva näyte hylkää kokeen.
+Paikallisen purun pitää palauttaa ensivirheen täsmälliset tavut.
+
+Linux-kytkennällä on oma `linux-encrypted-evidence-delivery-proof`-valinta
+samassa workflow'ssa. Se ajaa olemassa olevat keräys- ja OpenPGP-regressiot
+valmiilla työkaluilla sekä tarkoituksella epäonnistuvan aliprosessin ja
+yhteisen salatun toimituksen. Viiden minuutin rajattu koe ei käynnistä
+Windows-koetta, MSI-asennusta tai normaalia hyväksyntäkierrosta. Hosted-kokeen
+onnistumisen lisäksi sama salattu liite puretaan oikealla paikallisella
+avaimella: lähde, suoritusyritys, job, tiivisteet ja ensivirheen tavut
+varmistetaan ennen tavallisten Linux-jobien kytkennän julkaisemista.
+
 Toimituskokeen virhetuloste erottaa suljetulla vaihe-arvolla kutsun
 kontekstin, Node-version, tapahtumatiedoston ja sen JSON-tulkinnan,
 checkout-revision, keräyksen, salauksen, salatekstin tarkistuksen sekä
@@ -187,7 +268,13 @@ arvioidaan sen omasta manifestista.
 Rajattu komento on `pnpm --filter @eky/desktop installer:test:encrypted-evidence`.
 Testit kattavat tiedostorajat, ensiyrityksen erottelun, väärät avaimet,
 salauksen ja purun sekä todellisen workflow-kytkennän sopimuksen. Windowsin
-GnuPG-kokeet käyttävät vain erillisiä synteettisiä testiavaimia.
+ja Linuxin GnuPG-kokeet käyttävät vain erillisiä synteettisiä testiavaimia.
+Niiden preferenssit nimetään sovitulle MDC-profiilille; työkalun vaihtuva
+AEAD-oletus ei muuta testifixtureä tai salauksen hyväksyntää. Varsinaisen
+toimituksen algoritmi ja MDC varmistetaan edelleen GnuPG:n tilatulosteesta.
+Vain Windowsin workspace-toimitus-CLI:n ja Git-asennuksen erityiskokeet
+ohitetaan Linuxissa; yhteinen oikean prosessin keräys, CLI, salaus, purku,
+väärän avaimen esto ja määräajan todistus suoritetaan molemmissa.
 Keräyksen käyttöönotto vaatii lisäksi ylläpitäjän oman avaimen purkukokeen
 ja kohdennetun hosted-toimituksen varmennuksen. Paikallinen läpäisy ei ole
 hosted-toimituksen todiste eikä alkuperäisen timeoutin korjaus.

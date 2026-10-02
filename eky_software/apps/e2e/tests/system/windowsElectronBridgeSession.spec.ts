@@ -16,6 +16,7 @@ import type { WindowsElectronBridgeCommand, WindowsServiceReply, WindowsServiceR
 import { launchElectronRuntime, type ElectronLaunchObservation } from '../../src/fixtures/launchElectronRuntime.js';
 import { reportElectronLifecycleEvidence } from '../../src/fixtures/isolatedElectronTest.js';
 import { readFileSync } from 'node:fs';
+import { defaultProcessOutputLimitBytes } from '../../src/environment/boundedProcessOutput.js';
 
 const generation = 'a'.repeat(64);
 const nonce = 'b'.repeat(64);
@@ -52,7 +53,7 @@ function fixture() {
     runtimeRoot: join(tmpdir(), 'uncreated-eky-run', 'runtime'),
     runtimeConfigPath: join(tmpdir(), 'uncreated-eky-run', 'runtime', 'electron-config.json'),
     environment: { EKY_E2E: '1', EKY_ELECTRON_E2E_CONFIG: 'synthetic-runtime-only' },
-    lifetime: { readRemainingWorkMilliseconds: () => 8_000 - now }, startupDeadline: 4_000, redactedValues: [] };
+    lifetime: { readRemainingWorkMilliseconds: () => 8_000 - now }, startupDeadline: 4_000, redactedValues: [] as string[] };
   const config = { generation, launchNonce: nonce, configPath: join(input.runRoot, 'private-config.json'),
     executable: join(tmpdir(), 'unexecuted-bridge.exe'), repositoryRoot: input.repositoryRoot, workDeadline: 8_000,
     bridge: { cwd: input.runRoot, entrypoint: join(input.repositoryRoot, 'apps', 'desktop', 'e2e-dist') },
@@ -157,6 +158,21 @@ function fixture() {
 }
 
 test.describe('staged shared Windows owner and public Electron launch driver @security', () => {
+  test('retains existing bounded redacted output readers through owner teardown', async () => {
+    const f = fixture();
+    f.input.redactedValues.push('synthetic-capability');
+    const driver = f.start();
+    f.owner.stdout.emit('data', Buffer.from('x'.repeat(defaultProcessOutputLimitBytes) + 'synthetic-capability'));
+    f.owner.stderr.emit('data', Buffer.from('synthetic early failure'));
+    await driver.application;
+    await driver.stop();
+    expect(driver.readStdout()).not.toContain('synthetic-capability');
+    expect(driver.readStdout()).toContain('[REDACTED]');
+    expect(Buffer.byteLength(driver.readStdout())).toBeLessThanOrEqual(defaultProcessOutputLimitBytes);
+    expect(driver.readStderr()).toBe('synthetic early failure');
+    expect(f.flags.kills).toBe(0);
+  });
+
   test('arms before public launch and registers before GO while Playwright is pending', async () => {
     const f = fixture(); const driver = f.start();
     expect(await driver.application).toBe(f.application);

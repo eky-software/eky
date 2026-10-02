@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { withoutOptionalEvidenceAllowance } from './ciFailureEvidenceTestContract.mjs';
 import { spawnSync } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -120,7 +121,8 @@ test('one cadence entry calls existing owners and always aggregates without repl
   assert.match(source, /timeout-minutes: 5/);
   assert.match(source, /CI_BASE_SHA: \$\{\{ github.event.pull_request.base.sha \}\}/);
   assert.match(source, /CI_HEAD_SHA: \$\{\{ github.event.pull_request.head.sha \}\}/);
-  assert.doesNotMatch(source, /pull_request_target|continue-on-error|msiexec|installer:|upload-artifact|: write/);
+  assert.doesNotMatch(withoutOptionalEvidenceAllowance(source, 1, false, 'Windows/Linux'),
+    /pull_request_target|continue-on-error|msiexec|installer:|upload-artifact|: write/);
   for (const action of [...source.matchAll(/uses: (\S+)/g)].map((match) => match[1])) {
     if (action.startsWith('./.github/workflows/')) {
       const child = await readFile(new URL(`../../${action}`, import.meta.url), 'utf8');
@@ -129,6 +131,7 @@ test('one cadence entry calls existing owners and always aggregates without repl
       continue;
     }
     assert.ok(['actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
-      'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020'].includes(action));
+      'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
+      './.github/actions/collect-ci-failure-evidence'].includes(action));
   }
 });

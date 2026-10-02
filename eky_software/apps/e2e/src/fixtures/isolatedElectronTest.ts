@@ -56,6 +56,7 @@ import {
 import { createElectronLaunchFailureCapture, readObservedElectronLaunchExitCode } from './captureElectronLaunchFailure.js';
 import { ELECTRON_E2E_PROCESS_CONNECT_TIMEOUT_MILLISECONDS } from './electronLaunchBudgets.js';
 import { captureFirstStartProof } from './captureFirstStartProof.js';
+import { reportFixtureProcessOutput, reportStartupProcessOutput } from './reportStartupProcessOutput.js';
 import type { FirstStartProofCapture } from '../../../desktop/e2e/workspaceFirstStartProofObservation.js';
 import { recordElectronEvidenceFailure } from '../../scripts/electronLifecycleProjection.mjs';
 import {
@@ -104,6 +105,10 @@ interface IsolatedElectronOptions {
 }
 
 const MAX_ELECTRON_LAUNCH_OBSERVATIONS = 64;
+interface ElectronOutputGeneration {
+  bridge: Pick<OwnedWindowsElectronBridge, 'readStdout' | 'readStderr'> | undefined;
+  generation: number;
+}
 
 export const test = base.extend<
   IsolatedElectronFixtures & IsolatedElectronOptions
@@ -173,12 +178,16 @@ export const test = base.extend<
                 scenarioId,
               })
             : undefined,
-      report: (preparation) => reportElectronLifecycleEvidence(testInfo, {
-        launch: [],
-        observationsTruncated: false,
-        cleanup: { api: 'notStarted', runtime: 'notStarted', port: 'notStarted', runRoot: 'retained' },
-        preparation,
-      }),
+      report: async (preparation, error) => {
+        await reportStartupProcessOutput(testInfo, 'backend-startup', () =>
+          error instanceof E2eBackendStartupFailure ? error.readPrivateOutput() : undefined);
+        await reportElectronLifecycleEvidence(testInfo, {
+          launch: [],
+          observationsTruncated: false,
+          cleanup: { api: 'notStarted', runtime: 'notStarted', port: 'notStarted', runRoot: 'retained' },
+          preparation,
+        });
+      },
     });
     let backendPort = await reserveLoopbackPort();
     let runtime = createElectronE2eRuntime({
@@ -216,6 +225,8 @@ export const test = base.extend<
     let observationsTruncated = false;
     let startupGeneration = 0;
     const launchFailureCapture = createElectronLaunchFailureCapture();
+    let currentOutput: ElectronOutputGeneration = { bridge: undefined, generation: 0 };
+    let firstFailedLaunch: typeof currentOutput | undefined;
     let firstStartProof: FirstStartProofCapture = { status: 'notRequested' };
 
     async function launchCurrentRuntime() {
@@ -224,6 +235,7 @@ export const test = base.extend<
       }
       assertElectronRuntimeLaunchPrerequisites(runtime, runRoot);
       const currentStartupGeneration = ++startupGeneration;
+      currentOutput = { bridge: undefined, generation: currentStartupGeneration };
       connectionPending = true;
       electronApp = undefined;
       applicationClosed = false;
@@ -245,6 +257,7 @@ export const test = base.extend<
             startupDeadline: performance.now() + ELECTRON_E2E_PROCESS_CONNECT_TIMEOUT_MILLISECONDS,
             redactedValues: [runtime.sessionSecret],
           });
+          currentOutput.bridge = windowsBridge;
           return windowsBridge.application;
         },
         readWorkloadState: () => windowsBridge?.readObservedWorkloadState() ?? 'unavailable',
@@ -256,6 +269,7 @@ export const test = base.extend<
           child.stderr?.resume();
         },
         observe(observation) {
+          if (observation.status === 'failed') firstFailedLaunch ??= { ...currentOutput };
           const application = electronApp;
           launchFailureCapture.observe(observation, {
             runRoot,
@@ -437,25 +451,47 @@ export const test = base.extend<
         reportEvidenceFailure: (kind) => recordElectronEvidenceFailure(testInfo, kind),
         removeRoot: () => removeE2eRunRoot(runRoot),
         async report(cleanup) {
-          if (
-            failure !== undefined ||
-            testInfo.errors.length > 0 ||
-            cleanup.runRoot !== 'removed' || firstStartProof.status !== 'notRequested'
-          ) {
-            await reportElectronLifecycleEvidence(testInfo, {
-              launch: launchObservations,
-              observationsTruncated,
-              cleanup,
+          await reportElectronFixtureCompletion(testInfo, {
+            failed: failure !== undefined || testInfo.errors.length > 0 || cleanup.runRoot !== 'removed',
+            currentOutput, firstFailedLaunch,
+            evidence: {
+              launch: launchObservations, observationsTruncated, cleanup,
               ...(ownership === undefined ? {} : { ownership }),
               ...launchFailureEvidence,
               ...(firstStartProof.status === 'notRequested' ? {} : { firstStartProof }),
-            });
-          }
+            },
+          });
         },
       });
     }
   },
 });
+
+export async function reportElectronFixtureCompletion(testInfo: TestInfo, input: {
+  failed: boolean;
+  currentOutput: Readonly<ElectronOutputGeneration>;
+  firstFailedLaunch: Readonly<ElectronOutputGeneration> | undefined;
+  evidence: Parameters<typeof reportElectronLifecycleEvidence>[1];
+}): Promise<void> {
+  let reportingFailed = false;
+  try {
+    if (input.failed || input.evidence.firstStartProof !== undefined) {
+      await reportElectronLifecycleEvidence(testInfo, input.evidence);
+    }
+  } catch (error) {
+    reportingFailed = true;
+    throw error;
+  } finally {
+    if (input.failed || reportingFailed || input.firstFailedLaunch !== undefined) {
+      const generations = input.firstFailedLaunch !== undefined && input.firstFailedLaunch.generation !== input.currentOutput.generation
+        ? [input.firstFailedLaunch, input.currentOutput] : [input.currentOutput];
+      await reportFixtureProcessOutput(testInfo, 'electron', generations.map(({ bridge, generation }) => ({
+        name: 'nativeOwner', role: generation === input.currentOutput.generation ? 'current' : 'firstLaunchFailure', generation,
+        read: () => bridge === undefined ? undefined : { stdout: bridge.readStdout(), stderr: bridge.readStderr() },
+      })));
+    }
+  }
+}
 
 function seedLegacyWorkspaceForActiveReplacement(input: {
   readonly fixture: Readonly<ElectronWorkspaceBackupFixture>;
@@ -480,7 +516,7 @@ function seedLegacyWorkspaceForActiveReplacement(input: {
 
 export async function prepareElectronWorkspaceBackup(input: {
   prepare(): Promise<Readonly<ElectronWorkspaceBackupFixture> | undefined>;
-  report(evidence: ElectronPreparationFailureEvidence): Promise<void>;
+  report(evidence: ElectronPreparationFailureEvidence, error: unknown): Promise<void>;
 }): Promise<Readonly<ElectronWorkspaceBackupFixture> | undefined> {
   try {
     return await input.prepare();
@@ -489,7 +525,7 @@ export async function prepareElectronWorkspaceBackup(input: {
       await input.report({
         stage: 'workspaceBackup',
         backend: error instanceof E2eBackendStartupFailure ? error.evidence : null,
-      });
+      }, error);
     } catch {
       // Reporting cannot replace the original preparation failure.
     }

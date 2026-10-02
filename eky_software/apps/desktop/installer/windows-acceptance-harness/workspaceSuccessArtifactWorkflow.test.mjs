@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { withoutOptionalEvidenceAllowance } from '../../../../../.github/scripts/ciFailureEvidenceTestContract.mjs';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,6 +21,7 @@ test('V2.6 contract checkpoint is a bounded read-only-permission Windows job wit
     'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
     'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
     'actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1',
+    './.github/actions/collect-ci-failure-evidence',
     'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
     'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c',
   ]);
@@ -97,7 +99,8 @@ test('V2.7 uses two consumers of the same producer and all five existing fault c
   assert.match(consumer, /fail-fast: false/);
   assert.match(consumer, /artifact-ids: \$\{\{ needs.workspace_artifact_producer.outputs.artifact_id \}\}/);
   assert.match(consumer, /always\(\) && steps.download.outcome == 'success'/);
-  assert.doesNotMatch(consumer, /installer:v2-workspace-artifact:build|installer:w6b2|msiexec|upload-artifact|retry|rerun|continue-on-error/);
+  assert.doesNotMatch(withoutOptionalEvidenceAllowance(consumer, 1),
+    /installer:v2-workspace-artifact:build|installer:w6b2|msiexec|upload-artifact|retry|rerun|continue-on-error/);
   assert.equal(consumer.match(/installer:supervisor:build/g).length, 1);
   assert.equal(consumer.match(/ e2e:build/g).length, 1);
   assert.equal(consumer.match(/installer:v2-workspace-artifact:verify/g).length, 2);

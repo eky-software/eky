@@ -18,6 +18,7 @@ import {
   readWindowsAcceptanceSupervisorResult,
   validateWindowsAcceptanceSupervisorResult,
 } from '../windowsAcceptanceSupervisorResult.mjs';
+import { captureContractOutput, preserveContractOutput } from './supervisorContractPrivateEvidence.mjs';
 
 const TEST_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const TOOL_DIRECTORY = resolve(TEST_DIRECTORY, '..');
@@ -42,6 +43,7 @@ const PROGRAM_FAILURE_FIXTURE_DLL = resolve(
 const FIXTURE_PATH = resolve(TEST_DIRECTORY, 'processTreeFixture.mjs');
 const DOTNET_EXECUTABLE = process.env.EKY_DOTNET_EXE || 'dotnet';
 const activeSupervisorProcesses = new Set();
+const testRunContexts = new WeakMap();
 const EVIDENCE_KEYS = new Set([
   'durationMs',
   'elapsedMs',
@@ -90,6 +92,19 @@ export async function createRunContext(label) {
     testRoot,
     workerResultPath,
   };
+}
+
+export async function createTestRunContext(testContext, label) {
+  const context = await createRunContext(label);
+  let contexts = testRunContexts.get(testContext);
+  if (!contexts) {
+    contexts = [];
+    testRunContexts.set(testContext, contexts);
+    // A later context's cleanup can fail after the test body has passed.
+    testContext.after(() => cleanupRunContexts(contexts, { preserveEvidence: testContext.passed !== true }));
+  }
+  contexts.push(context);
+  return context;
 }
 
 export function createRequest(
@@ -182,6 +197,8 @@ export function startSupervisor(
   let evidenceFailure;
   let standardError = '';
   let standardOutput = '';
+  const privateOutput = captureContractOutput(context,
+    captureOutput || observeEvidence ? 'observed' : unreadOutput ? 'unread' : 'ignored');
 
   const child = spawn(
     DOTNET_EXECUTABLE,
@@ -194,18 +211,22 @@ export function startSupervisor(
     },
   );
   registerSupervisorProcess(context, child);
+  child.once('close', () => privateOutput.close());
 
   if (captureOutput || observeEvidence) {
     let pending = '';
     child.stdout.setEncoding('utf8');
+    child.stdout.once('end', () => privateOutput.end('stdout'));
     child.stdout.on('data', (chunk) => {
-      if (captureOutput) standardOutput += chunk;
-      if (standardOutput.length > 65_536) {
+      privateOutput.append('stdout', chunk);
+      if (captureOutput && standardOutput.length + chunk.length > 65_536) {
+        standardOutput = (standardOutput + chunk).slice(0, 65_536);
         evidenceFailure = new Error(
           'WINDOWS_ACCEPTANCE_SUPERVISOR_EVIDENCE_TOO_LARGE',
         );
         return;
       }
+      if (captureOutput) standardOutput += chunk;
       pending += chunk;
       if (!captureOutput && pending.length > 65_536) {
         pending = '';
@@ -228,8 +249,10 @@ export function startSupervisor(
       }
     });
     child.stderr.setEncoding('utf8');
+    child.stderr.once('end', () => privateOutput.end('stderr'));
     child.stderr.on('data', (chunk) => {
-      if (captureOutput) standardError += chunk;
+      privateOutput.append('stderr', chunk);
+      if (captureOutput && chunk !== '') standardError = 'observed';
     });
   }
 
@@ -705,33 +728,42 @@ export async function startForeignSentinel(context) {
 }
 
 export async function cleanupRunContext(context, { preserveEvidence = false } = {}) {
+  return cleanupRunContexts([context], { preserveEvidence });
+}
+
+async function cleanupRunContexts(contexts, { preserveEvidence }) {
   let cleanupFailure;
-  for (const processes of [
-    context.supervisorProcesses,
-    context.fixtureProcesses,
-  ]) {
-    try {
-      await terminateChildHandles(processes);
-    } catch (error) {
-      cleanupFailure ??= error;
+  for (const context of contexts) {
+    for (const processes of [
+      context.supervisorProcesses,
+      context.fixtureProcesses,
+    ]) {
+      try {
+        await terminateChildHandles(processes);
+      } catch (error) {
+        cleanupFailure ??= error;
+      }
+    }
+
+    for (const role of ['root', 'grandchild', 'sentinel']) {
+      try {
+        const marker = await readCompletedMarker(context, role);
+        await waitForProcessAbsent(marker.processId);
+      } catch (error) {
+        if (error.message === 'WINDOWS_ACCEPTANCE_FIXTURE_MARKER_MISSING') continue;
+        cleanupFailure ??= error;
+      }
     }
   }
 
-  for (const role of ['root', 'grandchild', 'sentinel']) {
-    try {
-      const marker = await readCompletedMarker(context, role);
-      await waitForProcessAbsent(marker.processId);
-    } catch (error) {
-      if (error.message === 'WINDOWS_ACCEPTANCE_FIXTURE_MARKER_MISSING') continue;
-      cleanupFailure ??= error;
-    }
+  if (preserveEvidence || cleanupFailure) {
+    for (const context of contexts) await preserveContractOutput(context);
   }
-
   if (cleanupFailure) {
     throw cleanupFailure;
   }
   if (!preserveEvidence) {
-    await rm(context.testRoot, { force: true, recursive: true });
+    for (const context of contexts) await rm(context.testRoot, { force: true, recursive: true });
   }
 }
 

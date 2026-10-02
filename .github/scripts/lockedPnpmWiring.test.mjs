@@ -60,3 +60,14 @@ test('bootstrap changes trigger dependency checks and both test entrypoints incl
     assert.ok(local.includes(`../.github/scripts/${name}`));
   }
 });
+
+test('Dependabot tracks the bootstrap separately from application dependencies', () => {
+  const updates = read('../dependabot.yml').split(/^  - package-ecosystem: /m).slice(1);
+  const bootstrap = updates.filter(block => block.startsWith('npm\n') &&
+    /^    directory: \/\.github\/bootstrap\/pnpm$/m.test(block));
+  assert.equal(bootstrap.length, 1);
+  assert.match(bootstrap[0], /^      interval: weekly$/m);
+  assert.match(bootstrap[0], /^    open-pull-requests-limit: 1$/m);
+  assert.doesNotMatch(bootstrap[0], /^    (?:ignore|exclude-paths):/m);
+  assert.ok(updates.some(block => block.startsWith('npm\n') && /^    directory: \/eky_software$/m.test(block)));
+});

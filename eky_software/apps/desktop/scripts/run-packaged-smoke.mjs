@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { readFile, rm } from 'node:fs/promises';
+import { readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +14,7 @@ import {
 } from '../dist/main/packagedSmoke.js';
 import { readDesktopElectronVersion } from './read-desktop-electron-version.mjs';
 import { preparePackagedReleaseCandidateSmoke } from './packaged-release-candidate.mjs';
+import { observeSmokeOutput } from './packagedSmokeFailureEvidence.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const executablePath = resolve(
@@ -35,6 +36,8 @@ const smokeResultPath = resolve(
 const expectedElectronVersion = await readDesktopElectronVersion();
 const scriptArguments = process.argv.slice(2);
 const releaseCandidateSmoke = scriptArguments.includes('--release-candidate');
+const phaseOutputs = [];
+let smokeSucceeded = false;
 
 if (
   scriptArguments.some((argument) => argument !== '--release-candidate') ||
@@ -81,8 +84,16 @@ try {
     'shutdown',
   );
   console.log('Packaged Windows smoke check passed.');
+  smokeSucceeded = true;
+} catch (error) {
+  try {
+    await writeFile(resolve(smokeRootDirectory, 'smoke-output.private.json'), JSON.stringify({
+      schemaVersion: 1, cleanup: 'notVerified', phases: phaseOutputs.map(read => read()),
+    }), { flag: 'wx', mode: 0o600 });
+  } catch { console.error('PACKAGED_SMOKE_PRIVATE_EVIDENCE_UNAVAILABLE'); }
+  throw error;
 } finally {
-  await rm(smokeRootDirectory, {
+  if (smokeSucceeded) await rm(smokeRootDirectory, {
     force: true,
     maxRetries: 20,
     recursive: true,
@@ -101,34 +112,54 @@ async function runSmokePhase(argumentsList, expectedStage) {
         stdio: ['ignore', 'pipe', 'pipe'],
       },
     );
-    const timer = setTimeout(async () => {
-      processHandle.kill();
-      const smokeResult = await readSmokeResult();
-
-      rejectSmoke(new Error(createPackagedSmokeTimeoutMessage(smokeResult)));
+    phaseOutputs.push(observeSmokeOutput(processHandle, expectedStage));
+    let firstError;
+    let exitObserved = false;
+    let outputClosed = false;
+    let resultChecked = false;
+    let settled = false;
+    let smokeResult;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (firstError) rejectSmoke(firstError);
+      else resolveSmoke();
+    };
+    const finishAfterClose = () => {
+      if (outputClosed && resultChecked) finish();
+    };
+    // The original phase deadline also bounds stdio drain and result inspection.
+    const timer = setTimeout(() => {
+      if (settled) return;
+      firstError ??= new Error(createPackagedSmokeTimeoutMessage(smokeResult));
+      try {
+        if (!exitObserved) processHandle.kill();
+      } catch {
+        // Termination failure must not replace the first error; cleanup stays unverified.
+      }
+      finish();
     }, smokeTimeoutMilliseconds);
 
     processHandle.once('error', () => {
-      clearTimeout(timer);
-      rejectSmoke(
-        new Error('Packaged desktop smoke process could not be started.'),
-      );
+      if (settled) return;
+      firstError ??= new Error('Packaged desktop smoke process could not be started.');
+      resultChecked = true;
+      finishAfterClose();
     });
     processHandle.once('exit', async (code) => {
-      clearTimeout(timer);
-
-      const smokeResult = await readSmokeResult();
-
+      exitObserved = true;
+      if (settled) return;
+      // Reserve the observed exit failure before any asynchronous result read.
+      const exitError = code !== 0
+        ? new Error(createPackagedSmokeFailureMessage(undefined, code)) : undefined;
+      firstError ??= exitError;
+      smokeResult = await readSmokeResult();
+      if (settled) return;
+      let failureMessage;
       if (smokeResult === undefined) {
-        rejectSmoke(
-          new Error(
-            `Packaged desktop smoke check did not produce a result (code ${String(code)}).`,
-          ),
-        );
-        return;
-      }
-
-      if (
+        failureMessage = `Packaged desktop smoke check did not produce a result (code ${String(code)}).`;
+      } else if (
         code !== 0 ||
         smokeResult.stage !== expectedStage ||
         (expectedStage === 'shutdown' &&
@@ -137,13 +168,18 @@ async function runSmokePhase(argumentsList, expectedStage) {
         (expectedStage === 'restoreRestart' &&
           smokeResult.status !== 'started')
       ) {
-        rejectSmoke(
-          new Error(createPackagedSmokeFailureMessage(smokeResult, code)),
-        );
-        return;
+        failureMessage = createPackagedSmokeFailureMessage(smokeResult, code);
       }
-
-      resolveSmoke();
+      if (failureMessage !== undefined) {
+        if (firstError === undefined) firstError = new Error(failureMessage);
+        else if (firstError === exitError) firstError.message = failureMessage;
+      }
+      resultChecked = true;
+      finishAfterClose();
+    });
+    processHandle.once('close', () => {
+      outputClosed = true;
+      finishAfterClose();
     });
   });
 }

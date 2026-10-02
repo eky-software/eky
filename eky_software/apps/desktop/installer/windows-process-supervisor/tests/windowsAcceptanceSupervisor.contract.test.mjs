@@ -1,13 +1,17 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { EventEmitter, once } from 'node:events';
 import { access, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { captureContractOutput, CONTRACT_OUTPUT_LIMIT } from './supervisorContractPrivateEvidence.mjs';
 import {
   cleanupRunContext,
   cleanupActiveSupervisors,
   createRequest,
   createRunContext,
+  createTestRunContext as contextFor,
   isProcessAlive,
   readCompletedMarker,
   readControlledDeadlineProof,
@@ -45,12 +49,6 @@ if (!Number.isInteger(repetitions) || repetitions < 1 || repetitions > 50) {
 
 test.afterEach(async () => cleanupActiveSupervisors());
 
-async function contextFor(testContext, label) {
-  const context = await createRunContext(label);
-  testContext.after(async () => cleanupRunContext(context));
-  return context;
-}
-
 async function readCompletedExecution(context, execution) {
   const completion = await execution.completion;
   const result = await readWindowsAcceptanceSupervisorResult(
@@ -68,7 +66,7 @@ async function readCompletedExecution(context, execution) {
 async function diagnosticContext(t) {
   const context = await createRunContext('deadline-diagnostics');
   // These unit fixtures never launch processes; real handle cleanup has its own test.
-  t.after(() => rm(context.testRoot, { force: true, recursive: true }));
+  t.after(() => t.passed === true ? rm(context.testRoot, { force: true, recursive: true }) : undefined);
   await mkdir(context.runRoot);
   return context;
 }
@@ -131,6 +129,172 @@ function proofPublicationFailure(context) {
     artifactDescriptorSha256: context.artifactDescriptorSha256,
     resultCode: 'proofWriteFailed', writePhase: 'publish',
   };
+}
+
+test('private evidence: bounded streams are retained after cleanup without replacing existing results', async (t) => {
+  const context = await diagnosticContext(t);
+  const output = captureContractOutput(context, 'observed');
+  const result = '{"syntheticResult":true}';
+  await writeFile(context.resultPath, result, { flag: 'wx' });
+  await writeFile(join(context.testRoot, 'ci-step.stdout.private'), 'first ci output', { flag: 'wx' });
+  await writeFile(join(context.testRoot, 'ci-step.stderr.private'), 'first ci error', { flag: 'wx' });
+  output.append('stdout', 'x'.repeat(CONTRACT_OUTPUT_LIMIT + 10));
+  output.append('stdout', 'later output');
+  output.append('stderr', 'synthetic error');
+  output.end('stdout');
+  output.end('stderr');
+  output.close();
+  await assert.rejects(access(join(context.testRoot, 'supervisor-1.stdout.private')), { code: 'ENOENT' });
+  await cleanupRunContext(context, { preserveEvidence: true });
+  assert.equal((await readFile(join(context.testRoot, 'supervisor-1.stdout.private'))).length, CONTRACT_OUTPUT_LIMIT);
+  assert.equal(await readFile(join(context.testRoot, 'supervisor-1.stderr.private'), 'utf8'), 'synthetic error');
+  assert.equal(await readFile(context.resultPath, 'utf8'), result);
+  assert.equal(await readFile(join(context.testRoot, 'ci-step.stdout.private'), 'utf8'), 'first ci output');
+  assert.equal(await readFile(join(context.testRoot, 'ci-step.stderr.private'), 'utf8'), 'first ci error');
+  const metadata = JSON.parse(await readFile(join(context.testRoot, 'supervisor-output.private.json'), 'utf8'));
+  assert.deepEqual(metadata.captures[0], { invocation: 1, mode: 'observed', closed: true,
+    stdout: { status: 'retained', bytes: CONTRACT_OUTPUT_LIMIT, truncated: true, ended: true },
+    stderr: { status: 'retained', bytes: 15, truncated: false, ended: true } });
+  await cleanupRunContext(context, { preserveEvidence: true });
+  assert.equal(await readFile(join(context.testRoot, 'supervisor-1.stderr.private'), 'utf8'), 'synthetic error');
+});
+
+test('private evidence: cleanup failure preserves partial output and continues through owned handles', async (t) => {
+  const context = await diagnosticContext(t);
+  const output = captureContractOutput(context, 'observed');
+  const cleanupError = new Error('synthetic cleanup failure');
+  const failed = Object.assign(new EventEmitter(), { exitCode: null, signalCode: null });
+  failed.kill = () => {
+    failed.exitCode = 1;
+    queueMicrotask(() => failed.emit('close'));
+    throw cleanupError;
+  };
+  const remaining = Object.assign(new EventEmitter(), { exitCode: null, signalCode: null });
+  remaining.kill = () => {
+    output.append('stderr', 'last cleanup output');
+    remaining.exitCode = 0;
+    queueMicrotask(() => remaining.emit('close'));
+    return true;
+  };
+  context.supervisorProcesses.add(failed);
+  context.fixtureProcesses.add(remaining);
+  await writeFile(context.resultPath, 'first result', { flag: 'wx' });
+  await assert.rejects(cleanupRunContext(context), error => error === cleanupError);
+  assert.equal(remaining.exitCode, 0);
+  assert.equal(await readFile(context.resultPath, 'utf8'), 'first result');
+  assert.equal(await readFile(join(context.testRoot, 'supervisor-1.stderr.private'), 'utf8'), 'last cleanup output');
+  const metadata = JSON.parse(await readFile(join(context.testRoot, 'supervisor-output.private.json'), 'utf8'));
+  assert.equal(metadata.captures[0].closed, false);
+  assert.equal(metadata.captures[0].stderr.ended, false);
+});
+
+test('private evidence: an unavailable destination does not replace the first cleanup failure', async (t) => {
+  const context = await diagnosticContext(t);
+  const output = captureContractOutput(context, 'observed');
+  output.append('stdout', 'new output');
+  output.append('stderr', 'retained error');
+  await writeFile(join(context.testRoot, 'supervisor-1.stdout.private'), 'first output', { flag: 'wx' });
+  await mkdir(join(context.runRoot, 'root.ready.json'));
+  await assert.rejects(cleanupRunContext(context), { message: 'WINDOWS_ACCEPTANCE_FIXTURE_MARKER_READ_FAILED' });
+  assert.equal(await readFile(join(context.testRoot, 'supervisor-1.stdout.private'), 'utf8'), 'first output');
+  assert.equal(await readFile(join(context.testRoot, 'supervisor-1.stderr.private'), 'utf8'), 'retained error');
+  const metadata = JSON.parse(await readFile(join(context.testRoot, 'supervisor-output.private.json'), 'utf8'));
+  assert.equal(metadata.captures[0].stdout.status, 'unavailable');
+  assert.equal(context.privateOutputRetention, 'partial');
+});
+
+test('private evidence: separate invocations and overflow cannot overwrite the first capture', async (t) => {
+  const context = await diagnosticContext(t);
+  for (let index = 1; index <= 17; index++) {
+    const output = captureContractOutput(context, 'observed');
+    output.append('stderr', `invocation-${index}`);
+    output.close();
+  }
+  await cleanupRunContext(context, { preserveEvidence: true });
+  assert.equal(await readFile(join(context.testRoot, 'supervisor-1.stderr.private'), 'utf8'), 'invocation-1');
+  assert.equal(await readFile(join(context.testRoot, 'supervisor-16.stderr.private'), 'utf8'), 'invocation-16');
+  await assert.rejects(access(join(context.testRoot, 'supervisor-17.stderr.private')), { code: 'ENOENT' });
+  const metadata = JSON.parse(await readFile(join(context.testRoot, 'supervisor-output.private.json'), 'utf8'));
+  assert.equal(metadata.invocationOverflow, true);
+  assert.equal(metadata.captures.length, 16);
+});
+
+for (const mode of ['assertion', 'stderr', 'observer', 'unread', 'ignored', 'success']) {
+  test(`private evidence: real test hook retains failed contract only (${mode})`, { timeout: 20_000 }, async (t) => {
+    const parent = await diagnosticContext(t);
+    const receipt = join(parent.testRoot, 'context-root.private');
+    const result = spawnSync(process.execPath, [
+      fileURLToPath(new URL('./privateEvidenceTestFixture.mjs', import.meta.url)), receipt, mode], {
+      env: { ...process.env, EKY_DOTNET_EXE: process.execPath },
+      encoding: 'utf8', timeout: 10_000, maxBuffer: 131_072, windowsHide: true,
+    });
+    // The intentionally failing child's TAP stays private, including filesystem paths.
+    await writeFile(join(parent.testRoot, 'ci-step.stdout.private'), result.stdout ?? '', { flag: 'wx' });
+    await writeFile(join(parent.testRoot, 'ci-step.stderr.private'), result.stderr ?? '', { flag: 'wx' });
+    assert.equal(result.error, undefined, 'Synthetic test runner must finish');
+    assert.equal(result.status, mode === 'success' ? 0 : 1);
+    if (mode !== 'success') assert.ok(result.stdout.includes(mode === 'stderr'
+      ? 'WINDOWS_ACCEPTANCE_SUPERVISOR_STDERR_NOT_EMPTY' : 'synthetic contract assertion'),
+    'The intended first failure must survive the test hook');
+    const root = await readFile(receipt, 'utf8');
+    t.after(() => t.passed === true ? rm(root, { recursive: true, force: true }) : undefined);
+    if (mode === 'success') {
+      await assert.rejects(access(root), { code: 'ENOENT' });
+      return;
+    }
+    assert.equal(await readFile(join(root, 'result.json'), 'utf8'), '{"syntheticResult":true}');
+    assert.equal(await readFile(join(root, 'ci-step.stderr.private'), 'utf8'), 'synthetic ci stderr');
+    const metadata = JSON.parse(await readFile(join(root, 'supervisor-output.private.json'), 'utf8'));
+    const unobserved = mode === 'unread' || mode === 'ignored';
+    assert.equal(metadata.captures[0].mode, unobserved ? mode : 'observed');
+    assert.equal(metadata.captures[0].closed, true);
+    if (unobserved) {
+      assert.equal(metadata.captures[0].stdout.status, 'notRead');
+      await assert.rejects(access(join(root, 'supervisor-1.stdout.private')), { code: 'ENOENT' });
+    } else {
+      assert.match(await readFile(join(root, 'supervisor-1.stdout.private'), 'utf8'), /"phase":"hostExited"/);
+      assert.equal(metadata.captures[0].stdout.ended, true);
+      assert.equal(await readFile(join(root, 'supervisor-1.stderr.private'), 'utf8'),
+        mode === 'stderr' ? 'synthetic native failure\n' : '');
+    }
+  });
+}
+
+for (const mode of ['multi-success', 'multi-cleanup-failure', 'multi-body-failure', 'multi-first-cleanup-failure']) {
+  test(`private evidence: all test contexts share the cleanup decision (${mode})`, { timeout: 20_000 }, async (t) => {
+    const parent = await diagnosticContext(t);
+    const receipt = join(parent.testRoot, 'context-roots.private.json');
+    const result = spawnSync(process.execPath, [
+      fileURLToPath(new URL('./privateEvidenceTestFixture.mjs', import.meta.url)), receipt, mode], {
+      encoding: 'utf8', timeout: 10_000, maxBuffer: 131_072, windowsHide: true,
+    });
+    await writeFile(join(parent.testRoot, 'ci-step.stdout.private'), result.stdout ?? '', { flag: 'wx' });
+    await writeFile(join(parent.testRoot, 'ci-step.stderr.private'), result.stderr ?? '', { flag: 'wx' });
+    assert.equal(result.error, undefined, 'Synthetic test runner must finish');
+    const roots = JSON.parse(await readFile(receipt, 'utf8'));
+    t.after(async () => {
+      if (t.passed === true) for (const root of roots) await rm(root, { recursive: true, force: true });
+    });
+    assert.equal(roots.length, 3);
+    assert.equal(result.status, mode === 'multi-success' ? 0 : 1);
+    if (mode === 'multi-success') {
+      for (const root of roots) await assert.rejects(access(root), { code: 'ENOENT' });
+      return;
+    }
+    const expectedFailure = mode === 'multi-body-failure' ? 'synthetic contract assertion'
+      : mode === 'multi-first-cleanup-failure' ? 'synthetic first cleanup failure' : 'synthetic second cleanup failure';
+    assert.ok(result.stdout.includes(expectedFailure), 'The original body or first cleanup failure must survive');
+    for (const [index, root] of roots.entries()) {
+      assert.equal(await readFile(join(root, 'result.json'), 'utf8'), JSON.stringify({ syntheticResult: index + 1 }));
+      assert.equal(await readFile(join(root, 'supervisor-1.stdout.private'), 'utf8'), `cleanup-${index + 1}`);
+      assert.equal(await readFile(join(root, 'supervisor-1.stderr.private'), 'utf8'),
+        `bodyPassed=${mode !== 'multi-body-failure'}`);
+      const metadata = JSON.parse(await readFile(join(root, 'supervisor-output.private.json'), 'utf8'));
+      assert.equal(metadata.captures[0].closed, true);
+      assert.equal(metadata.captures[0].stdout.status, 'retained');
+      assert.equal(metadata.captures[0].stdout.ended, true);
+    }
+  });
 }
 
 test('deadline proof publication requires bound failure and genuine both-live observations', async (t) => {
@@ -541,14 +705,13 @@ test('contract fixtures resolve a temporary directory alias before creating owne
   try {
     process.env.TEMP = alias;
     process.env.TMP = alias;
-    context = await createRunContext('canonical-owned-paths');
+    context = await contextFor(t, 'canonical-owned-paths');
   } finally {
     for (const key of ['TEMP', 'TMP']) {
       if (previous[key] === undefined) delete process.env[key];
       else process.env[key] = previous[key];
     }
   }
-  t.after(() => cleanupRunContext(context));
   assert.ok(context.testRoot === await realpath(context.testRoot), 'Fixture root must be canonical');
   assert.equal(context.requestPath, join(context.testRoot, 'request.json'));
 });
@@ -578,8 +741,8 @@ for (const preserveEvidence of [false, true]) {
     const context = await createRunContext('context-cleanup-invalid-marker');
     const markerPath = join(context.runRoot, 'root.ready.json');
     t.after(async () => {
-      await rm(markerPath, { force: true });
-      await cleanupRunContext(context);
+      if (t.passed === true) await rm(markerPath, { force: true });
+      await cleanupRunContext(context, { preserveEvidence: t.passed !== true });
     });
     const sentinel = await startForeignSentinel(context);
     const invalidMarker = JSON.stringify({ runNonce: 'invalid', processId: sentinel.marker.processId });
@@ -610,7 +773,7 @@ test('context cleanup preserves evidence after handle timeout and still closes r
     t.mock.timers.reset();
     unresponsive.exitCode = 1;
     remaining.exitCode = 0;
-    await cleanupRunContext(context);
+    await cleanupRunContext(context, { preserveEvidence: t.passed !== true });
   });
   const evidencePath = join(context.testRoot, 'retained-evidence.json');
   await writeFile(evidencePath, 'synthetic evidence', { flag: 'wx' });
@@ -646,7 +809,7 @@ test('context cleanup preserves a handle error and still closes the next process
   t.after(async () => {
     failing.exitCode = 1;
     remaining.exitCode = 0;
-    await cleanupRunContext(context);
+    await cleanupRunContext(context, { preserveEvidence: t.passed !== true });
   });
   const evidencePath = join(context.testRoot, 'retained-evidence.json');
   await writeFile(evidencePath, 'synthetic evidence', { flag: 'wx' });

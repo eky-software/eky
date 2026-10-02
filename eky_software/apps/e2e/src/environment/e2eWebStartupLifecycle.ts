@@ -1,3 +1,4 @@
+import type { ProcessOutput } from './boundedProcessOutput.js';
 import type { E2eProcessStartupObservation } from './e2eProcessStartupObservation.js';
 import { OwnedWindowsViteStartupFailure } from './startOwnedWindowsVite.js';
 import { waitForObservedProcessHealth } from './waitForObservedProcessHealth.js';
@@ -17,15 +18,22 @@ export interface E2eWebStartupFailureEvidence {
 
 export class E2eWebStartupFailure extends Error {
   readonly evidence: Readonly<E2eWebStartupFailureEvidence>;
+  readonly #output: Readonly<{ stdout: string; stderr: string }> | undefined;
 
-  constructor(evidence: E2eWebStartupFailureEvidence) {
+  constructor(evidence: E2eWebStartupFailureEvidence, output?: Readonly<{ stdout: string; stderr: string }>) {
     super(evidence.errorCode);
     this.evidence = Object.freeze({ ...evidence, cleanup: Object.freeze({ ...evidence.cleanup }) });
+    this.#output = output === undefined ? undefined : Object.freeze({ stdout: output.stdout, stderr: output.stderr });
+  }
+
+  readPrivateOutput(): Readonly<{ stdout: string; stderr: string }> | undefined {
+    return this.#output;
   }
 }
 
 export async function waitForE2eWebStartup(input: {
   readonly startup: E2eProcessStartupObservation;
+  readonly managedProcess?: ProcessOutput;
   waitForHealth(signal: AbortSignal): Promise<void>;
   stopProcessTree(): Promise<void>;
   releasePort(): Promise<void>;
@@ -40,8 +48,16 @@ export async function waitForE2eWebStartup(input: {
       ? 'E2E_WEB_WORKLOAD_OBSERVATION_LOST' : 'E2E_WEB_HEALTH_TIMEOUT';
   const evidence = { errorCode, spawnObserved: state.spawnObserved,
     exitedBeforeCleanup: state.terminal === 'exited' } as const;
+  const output = readWebStartupOutput(input.managedProcess);
   const cleanup = await cleanupFailedWebStartup(input);
-  throw new E2eWebStartupFailure({ ...evidence, cleanup });
+  throw new E2eWebStartupFailure({ ...evidence, cleanup }, output);
+}
+
+export function readWebStartupOutput(output: ProcessOutput | undefined): Readonly<{ stdout: string; stderr: string }> | undefined {
+  if (output === undefined) return undefined;
+  // The owner already bounds and redacts these streams; never expose them as error properties.
+  try { return { stdout: output.readStdout(), stderr: output.readStderr() }; }
+  catch { return undefined; }
 }
 
 export async function cleanupFailedWebStartup(input: {

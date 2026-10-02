@@ -12,18 +12,26 @@ const lock = read('../bootstrap/pnpm/package-lock.json');
 const project = read('../../eky_software/package.json');
 const expected = validateBootstrap(project, manifest, lock);
 const writeJson = (file, value) => writeFileSync(file, JSON.stringify(value));
+const cleanAudit = {
+  auditReportVersion: 2, vulnerabilities: {}, metadata: {
+    vulnerabilities: { info: 0, low: 0, moderate: 0, high: 0, critical: 0, total: 0 },
+    dependencies: { prod: 2, dev: 0, optional: 0, peer: 0, peerOptional: 0, total: 1 },
+  },
+};
+const commandName = args => args[1] === 'audit'
+  ? args[2] === 'signatures' ? 'signatures' : 'vulnerabilities' : args[1];
 
 test('the committed isolated lock follows the root exact package manager pin', () => {
   assert.equal(expected.version, project.packageManager.slice('pnpm@'.length));
 });
 
 for (const [name, mutate] of [
-  ['version range', value => { value.project.packageManager = 'pnpm@^11.1.3'; }],
-  ['different root pin', value => { value.project.packageManager = 'pnpm@11.1.4'; }],
+  ['version range', value => { value.project.packageManager = `pnpm@^${expected.version}`; }],
+  ['different root pin', value => { value.project.packageManager = 'pnpm@0.0.1'; }],
   ['manifest script', value => { value.manifest.scripts = { install: 'example' }; }],
   ['extra dependency', value => { value.manifest.dependencies.other = '1.0.0'; }],
   ['extra locked package', value => { value.lock.packages['node_modules/other'] = {}; }],
-  ['HTTP tarball', value => { value.lock.packages['node_modules/pnpm'].resolved = 'http://registry.npmjs.org/pnpm/-/pnpm-11.1.3.tgz'; }],
+  ['HTTP tarball', value => { value.lock.packages['node_modules/pnpm'].resolved = expected.tarball.replace('https:', 'http:'); }],
   ['missing digest', value => { delete value.lock.packages['node_modules/pnpm'].integrity; }],
   ['dependency link', value => { value.lock.packages['node_modules/pnpm'].link = true; }],
   ['unexpected bin', value => { value.lock.packages['node_modules/pnpm'].bin.pnpm = '../other.mjs'; }],
@@ -49,7 +57,7 @@ test('caller package manager and Node configuration cannot weaken verification o
   }), { PATH: 'trusted', HOME: 'home' });
 });
 
-function fixture(t, failure) {
+function fixture(t, failure, audit = cleanAudit) {
   const directory = mkdtempSync(path.join(os.tmpdir(), 'eky-pnpm-contract-'));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const root = path.join(directory, 'repository');
@@ -69,8 +77,11 @@ function fixture(t, failure) {
     commands.push(args);
     assert.equal(readFileSync(githubPath, 'utf8'), '');
     assert.equal(options.env.NODE_OPTIONS, undefined);
-    const command = args[1];
+    const command = commandName(args);
     if (command === failure) throw new Error('CI_PNPM_COMMAND_FAILED');
+    if (command === 'vulnerabilities') {
+      return failure === 'truncated-audit' ? '{' : JSON.stringify(audit);
+    }
     if (command === 'ci') {
       const modules = path.join(options.cwd, 'node_modules');
       mkdirSync(path.join(modules, 'pnpm'), { recursive: true });
@@ -86,7 +97,7 @@ function fixture(t, failure) {
       if (failure === 'lock-mutation') writeFileSync(path.join(options.cwd, 'package-lock.json'), '{}');
       return '';
     }
-    if (command === 'audit') {
+    if (command === 'signatures') {
       if (failure === 'malformed-audit') return '{}';
       if (failure === 'invalid-signature') return '{"invalid":[{}],"missing":[]}';
       if (failure === 'missing-signature') return '{"invalid":[],"missing":[{}]}';
@@ -114,11 +125,13 @@ function fixture(t, failure) {
   };
 }
 
-test('only publishes the isolated bin after locked install, audit, offline binding and exact version', t => {
+test('only publishes the isolated bin after vulnerability audit, install, signatures, binding and version', t => {
   const f = fixture(t);
   const result = prepareLockedPnpm(f.options);
-  assert.deepEqual(f.commands.map(args => args[1]), ['ci', 'audit', 'view', '--version']);
-  const npmCommands = f.commands.slice(0, 3);
+  assert.deepEqual(f.commands.map(commandName), ['vulnerabilities', 'ci', 'signatures', 'view', '--version']);
+  assert.deepEqual(f.phases, ['validate-lock', 'audit-locked-tool', 'install-locked-tool',
+    'verify-registry-signatures', 'bind-signed-integrity', 'verify-installed-tool', 'ready']);
+  const npmCommands = f.commands.slice(0, 4);
   for (const command of npmCommands) {
     for (const option of ['--ignore-scripts', '--no-audit', '--fetch-retries=0', '--strict-ssl=true',
       '--registry=https://registry.npmjs.org/']) {
@@ -128,18 +141,26 @@ test('only publishes the isolated bin after locked install, audit, offline bindi
     // signature filter can exclude the root dependency edge entirely.
     assert.ok(command.every(value => !/^--(?:workspace|workspaces|omit)(?:=|$)/.test(value)));
   }
-  assert.ok(f.commands[0].includes(`--cache=${path.join(result.stage, 'install-cache')}`));
-  for (const command of f.commands.slice(1, 3)) {
+  for (const command of f.commands.slice(0, 2)) {
+    assert.ok(command.includes(`--cache=${path.join(result.stage, 'install-cache')}`));
+  }
+  for (const command of f.commands.slice(2, 4)) {
     assert.ok(command.includes(`--cache=${path.join(result.stage, 'verification-cache')}`));
   }
-  assert.ok(f.commands[1].includes('--prefer-online'));
-  assert.ok(!f.commands[1].includes('--offline'));
-  assert.ok(f.commands[2].includes('--offline'));
+  assert.ok(f.commands[0].includes('--package-lock-only'));
+  assert.ok(f.commands[0].includes('--audit-level=low'));
+  for (const command of [f.commands[0], f.commands[2]]) {
+    assert.ok(command.includes('--prefer-online'));
+    assert.ok(!command.includes('--offline'));
+  }
+  assert.ok(f.commands[3].includes('--offline'));
+  assert.equal(readFileSync(path.join(result.stage, 'package-lock.json'), 'utf8'),
+    readFileSync(new URL('../bootstrap/pnpm/package-lock.json', import.meta.url), 'utf8'));
   assert.equal(readFileSync(f.githubPath, 'utf8'), `${result.bin}\n`);
   assert.equal(f.phases.at(-1), 'ready');
 });
 
-for (const failure of ['ci', 'audit', 'view', 'malformed-audit', 'invalid-signature',
+for (const failure of ['vulnerabilities', 'truncated-audit', 'ci', 'signatures', 'view', 'malformed-audit', 'invalid-signature',
   'missing-signature', 'cached-identity', 'cached-integrity', 'cached-tarball',
   'cached-signature', 'truncated-metadata', 'installed-version', 'installed-integrity',
   'extra-installed-package', 'lock-mutation', 'executed-version']) {
@@ -148,8 +169,38 @@ for (const failure of ['ci', 'audit', 'view', 'malformed-audit', 'invalid-signat
     assert.throws(() => prepareLockedPnpm(f.options));
     assert.equal(readFileSync(f.githubPath, 'utf8'), '');
     assert.ok(!f.phases.includes('ready'));
-    assert.equal(new Set(f.commands.map(args => args[1])).size, f.commands.length);
+    assert.equal(new Set(f.commands.map(commandName)).size, f.commands.length);
     assert.equal(f.commands.some(args => args[1] === '--version'), failure === 'executed-version');
+    if (['vulnerabilities', 'truncated-audit'].includes(failure)) {
+      assert.deepEqual(f.commands.map(commandName), ['vulnerabilities']);
+      assert.equal(f.phases.at(-1), 'audit-locked-tool');
+    }
+  });
+}
+
+for (const [name, mutate] of [
+  ['null report', () => null],
+  ['empty report', () => ({})],
+  ['unsupported version', report => ({ ...report, auditReportVersion: 1 })],
+  ['tool error', report => ({ ...report, error: {} })],
+  ['missing vulnerabilities', report => { delete report.vulnerabilities; return report; }],
+  ['array vulnerabilities', report => ({ ...report, vulnerabilities: [] })],
+  ['advisory with zero counts', report => ({ ...report, vulnerabilities: { pnpm: { severity: 'high' } } })],
+  ['missing metadata', report => { delete report.metadata; return report; }],
+  ['no dependency audited', report => { report.metadata.dependencies.prod = 1; report.metadata.dependencies.total = 0; return report; }],
+  ['filtered prod', report => { report.metadata.dependencies.prod = 1; return report; }],
+  ['unexpected dependency', report => { report.metadata.dependencies.dev = 1; return report; }],
+  ...['info', 'low', 'moderate', 'high', 'critical', 'total'].map(severity =>
+    [`nonzero ${severity}`, report => { report.metadata.vulnerabilities[severity] = 1; return report; }]),
+  ['string count', report => { report.metadata.vulnerabilities.total = '0'; return report; }],
+  ['missing count', report => { delete report.metadata.vulnerabilities.total; return report; }],
+]) {
+  test(`${name} cannot approve installation even with a zero audit exit`, t => {
+    const f = fixture(t, undefined, mutate(structuredClone(cleanAudit)));
+    assert.throws(() => prepareLockedPnpm(f.options), /CI_PNPM_VULNERABILITY_AUDIT_INVALID/);
+    assert.deepEqual(f.commands.map(commandName), ['vulnerabilities']);
+    assert.equal(f.phases.at(-1), 'audit-locked-tool');
+    assert.equal(readFileSync(f.githubPath, 'utf8'), '');
   });
 }
 

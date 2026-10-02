@@ -11,6 +11,7 @@ on:
         options:
           - contracts
           - encrypted-evidence-delivery-proof
+          - linux-encrypted-evidence-delivery-proof
           - window-startup-diagnostic
           - legacy-contracts-diagnostic
           - legacy-worker-diagnostic
@@ -52,10 +53,68 @@ permissions:
   contents: read
 
 concurrency:
-  group: windows-acceptance-supervisor-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}-${{ inputs.mode == 'packaged-boundary-diagnostic' && inputs.artifact_kind || inputs.mode == 'encrypted-evidence-delivery-proof' && 'encrypted-evidence-delivery-proof' || '' }}
+  group: windows-acceptance-supervisor-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}-${{ inputs.mode == 'packaged-boundary-diagnostic' && inputs.artifact_kind || inputs.mode == 'encrypted-evidence-delivery-proof' && 'encrypted-evidence-delivery-proof' || inputs.mode == 'linux-encrypted-evidence-delivery-proof' && 'linux-encrypted-evidence-delivery-proof' || '' }}
   cancel-in-progress: true
 
 jobs:
+  linux-encrypted-evidence-delivery-proof:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'linux-encrypted-evidence-delivery-proof'
+    name: Linux synthetic encrypted delivery proof (no MSI, not acceptance)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: eky_software/apps/desktop
+    steps:
+      - name: Check out exact delivery proof revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Set up pinned Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: eky_software/.node-version
+          package-manager-cache: false
+      - name: Verify real OpenPGP and failure collector regressions
+        run: node --test --test-concurrency=1 installer/windows-acceptance-harness/ciFailureEvidence.test.mjs installer/windows-acceptance-harness/encryptedEvidenceOpenPgp.test.mjs
+
+      - name: Produce one verified synthetic first failure
+        id: failure_probe
+        continue-on-error: true
+        working-directory: .
+        run: node .github/scripts/ciFailureEvidenceProbe.mjs
+
+      - name: Deliver synthetic first failure through the normal collector
+        id: failure_evidence
+        if: ${{ always() && steps.failure_probe.outcome == 'failure' && steps.failure_probe.outputs.probe_verified == 'true' }}
+        timeout-minutes: 3
+        uses: ./.github/actions/collect-ci-failure-evidence
+        with:
+          job-key: linux-delivery-proof-${{ strategy.job-index || 0 }}
+          job-outcome: failure
+          public-key: ${{ vars.EKY_DIAGNOSTIC_PUBLIC_KEY }}
+          fingerprint: ${{ vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT }}
+          verified-fingerprint: ${{ vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT }}
+
+      - name: Require verified first failure and encrypted publication
+        if: always()
+        shell: pwsh
+        env:
+          PROBE_OUTCOME: ${{ steps.failure_probe.outcome }}
+          PROBE_VERIFIED: ${{ steps.failure_probe.outputs.probe_verified }}
+          DELIVERY_OUTCOME: ${{ steps.failure_evidence.outcome }}
+          SEALED: ${{ steps.failure_evidence.outputs.sealed }}
+          UPLOAD_OUTCOME: ${{ steps.failure_evidence.outputs.upload-outcome }}
+          ARTIFACT_ID: ${{ steps.failure_evidence.outputs.artifact-id }}
+        run: |
+          if ($env:PROBE_OUTCOME -cne 'failure' -or $env:PROBE_VERIFIED -cne 'true' -or
+              $env:DELIVERY_OUTCOME -cne 'success' -or $env:SEALED -cne 'true' -or
+              $env:UPLOAD_OUTCOME -cne 'success' -or $env:ARTIFACT_ID -cnotmatch '^[1-9][0-9]*$') {
+            [Console]::Error.WriteLine('CI_FIRST_FAILURE_EVIDENCE_DELIVERY_UNVERIFIED')
+            exit 1
+          }
+
   encrypted-evidence-delivery-proof:
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'encrypted-evidence-delivery-proof'
     name: Synthetic encrypted delivery proof (no MSI, not acceptance)
@@ -144,6 +203,42 @@ jobs:
           if ($env:SEAL_OUTCOME -cne 'success' -or $env:SEALED -cne 'true' -or
               $env:UPLOAD_OUTCOME -cne 'success' -or $env:ARTIFACT_ID -cnotmatch '^[1-9][0-9]*$') {
             [Console]::Error.WriteLine('WORKSPACE_ENCRYPTED_EVIDENCE_DELIVERY_UNVERIFIED')
+            exit 1
+          }
+
+      - name: Produce one verified synthetic first failure
+        id: failure_probe
+        continue-on-error: true
+        working-directory: .
+        run: node .github/scripts/ciFailureEvidenceProbe.mjs
+
+      - name: Deliver synthetic first failure through the normal collector
+        id: failure_evidence
+        if: ${{ always() && steps.failure_probe.outcome == 'failure' && steps.failure_probe.outputs.probe_verified == 'true' }}
+        timeout-minutes: 3
+        uses: ./.github/actions/collect-ci-failure-evidence
+        with:
+          job-key: delivery-proof-${{ strategy.job-index || 0 }}
+          job-outcome: failure
+          public-key: ${{ vars.EKY_DIAGNOSTIC_PUBLIC_KEY }}
+          fingerprint: ${{ vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT }}
+          verified-fingerprint: ${{ vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT }}
+
+      - name: Require verified first failure and encrypted publication
+        if: always()
+        shell: pwsh
+        env:
+          PROBE_OUTCOME: ${{ steps.failure_probe.outcome }}
+          PROBE_VERIFIED: ${{ steps.failure_probe.outputs.probe_verified }}
+          DELIVERY_OUTCOME: ${{ steps.failure_evidence.outcome }}
+          SEALED: ${{ steps.failure_evidence.outputs.sealed }}
+          UPLOAD_OUTCOME: ${{ steps.failure_evidence.outputs.upload-outcome }}
+          ARTIFACT_ID: ${{ steps.failure_evidence.outputs.artifact-id }}
+        run: |
+          if ($env:PROBE_OUTCOME -cne 'failure' -or $env:PROBE_VERIFIED -cne 'true' -or
+              $env:DELIVERY_OUTCOME -cne 'success' -or $env:SEALED -cne 'true' -or
+              $env:UPLOAD_OUTCOME -cne 'success' -or $env:ARTIFACT_ID -cnotmatch '^[1-9][0-9]*$') {
+            [Console]::Error.WriteLine('CI_FIRST_FAILURE_EVIDENCE_DELIVERY_UNVERIFIED')
             exit 1
           }
 
@@ -273,7 +368,7 @@ jobs:
         run: node installer/windows-acceptance-harness/fixtures/runMsiFileVersionPolicyProbe.mjs
 
   job-object-feasibility:
-    if: inputs.mode != 'packaged-boundary-diagnostic' && inputs.mode != 'msi-file-version-policy' && inputs.mode != 'inspector-cutoff-diagnostic' && inputs.mode != 'encrypted-evidence-delivery-proof'
+    if: inputs.mode != 'packaged-boundary-diagnostic' && inputs.mode != 'msi-file-version-policy' && inputs.mode != 'inspector-cutoff-diagnostic' && inputs.mode != 'encrypted-evidence-delivery-proof' && inputs.mode != 'linux-encrypted-evidence-delivery-proof'
     name: ${{ inputs.mode == 'product-command-diagnostic' && format('Product command diagnostic run {0} (no MSI, not acceptance)', matrix.repetition) || inputs.mode == 'clean-upgrade-command-diagnostic' && format('Clean and upgrade command diagnostic run {0} (no MSI, not acceptance)', matrix.repetition) || inputs.mode == 'inspection-command-contracts' && 'Inspection failure command contracts (no MSI, not acceptance)' || inputs.mode == 'inspector-external-diagnostic' && 'External inspector capture (no MSI, not acceptance)' || inputs.mode == 'inspector-analysis-diagnostic' && 'Inspector analysis diagnostic (no MSI, not acceptance)' || inputs.mode == 'window-startup-diagnostic' && 'V2.5 window startup diagnostic (not acceptance)' || inputs.mode == 'legacy-worker-diagnostic' && format('V2.5 worker diagnostic run {0} (not acceptance)', matrix.repetition) || inputs.mode == 'legacy-contracts-diagnostic' && format('V2.5 contracts diagnostic run {0} (not acceptance)', matrix.repetition) || format('Windows Job Object feasibility run {0}', matrix.repetition) }}
     runs-on: windows-latest
     timeout-minutes: 10
@@ -453,6 +548,28 @@ jobs:
         timeout-minutes: 3
         shell: pwsh
         run: ./installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode compareEvents
+
+      - name: Preserve encrypted CI failure evidence
+        if: >-
+          ${{ always() && runner.os == 'Windows' && runner.environment == 'github-hosted'
+            && (job.status == 'failure' || job.status == 'cancelled')
+            && vars.EKY_DIAGNOSTIC_PUBLIC_KEY != '' && vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT != ''
+            && vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT == vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT
+            && (github.event_name == 'push' || github.event_name == 'schedule'
+              || github.event_name == 'workflow_dispatch'
+              || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+            && (inputs.mode == '' || inputs.mode == 'contracts')
+            && hashFiles('.github/actions/collect-ci-failure-evidence/action.yml') != ''
+            && hashFiles('eky_software/apps/desktop/installer/windows-acceptance-harness/ciFailureEvidence.mjs') != '' }}
+        continue-on-error: true
+        timeout-minutes: 3
+        uses: ./.github/actions/collect-ci-failure-evidence
+        with:
+          job-key: supervisor-contracts-${{ strategy.job-index || 0 }}
+          job-outcome: ${{ job.status }}
+          public-key: ${{ vars.EKY_DIAGNOSTIC_PUBLIC_KEY }}
+          fingerprint: ${{ vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT }}
+          verified-fingerprint: ${{ vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT }}
 
   packaged-boundary-diagnostic:
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'packaged-boundary-diagnostic'

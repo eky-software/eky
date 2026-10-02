@@ -120,7 +120,10 @@ export async function describeCommandPhase(phaseRoot, phase, read = readCommandP
       supervisorExitCode: value.status === 'completed' ? 0 : 1,
     });
     return { phase, result: 'validated', process: result.processResultCode,
-      worker: result.workerResultCode, cleanup: result.cleanupResultCode, processTreeAbsent: result.processTreeAbsent };
+      worker: result.workerResultCode, cleanup: result.cleanupResultCode, processTreeAbsent: result.processTreeAbsent,
+      ...(result.cleanupResultCode === 'cleanupFailed'
+        ? { cleanupNativeError: result.cleanupWin32ErrorCode === null ? 'notReported' : 'reported' }
+        : {}) };
   } catch (error) { return { phase, result: error?.code === 'ENOENT' ? 'missing' : 'invalidOrUnreadable' }; }
 }
 
@@ -152,6 +155,16 @@ export function reportCommandFailure(t, evidence, original, boundaryEvidence = [
   throw original;
 }
 
+export async function cleanupCommandContractContext(context, { preserveEvidence, callerRoot, commandTemp }) {
+  // Keep the evidence until every non-evidence cleanup has succeeded. In
+  // particular, caller-result removal must not precede owned-handle cleanup.
+  await cleanupRunContext(context, { preserveEvidence: true });
+  if (preserveEvidence) return;
+  if (callerRoot) await rm(callerRoot, { recursive: true });
+  if (commandTemp) await rm(commandTemp, { recursive: true });
+  await rm(context.testRoot, { force: true, recursive: true });
+}
+
 // Registers the same command contract for each fixed entrypoint; it does not
 // execute or supervise processes until the existing test callback runs.
 export function registerAcceptanceCommandEntrypointContracts(kind, register = test) {
@@ -173,7 +186,7 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
   }, async (t) => {
     const context = await createRunContext(kind + '-public-entry');
     let verified = false;
-    t.after(() => cleanupRunContext(context, { preserveEvidence: !verified }));
+    t.after(() => cleanupCommandContractContext(context, { preserveEvidence: !verified || t.passed !== true }));
     const temp = join(context.testRoot, 'temporary');
     const profile = join(context.testRoot, 'synthetic-appdata');
     await mkdir(temp);
@@ -244,9 +257,9 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
       let verified = false;
       t.after(async () => {
         const removePassed = ['completed', 'productInspectionReadOnly', 'temporaryRootAlias', 'requestPreparationDelayed'].includes(testCase);
-        if (verified && removePassed) await rm(callerRoot, { recursive: true });
-        await cleanupRunContext(context, { preserveEvidence: !verified || !removePassed });
-        if (verified && testCase === 'temporaryRootAlias') await rm(commandTemp, { recursive: true });
+        const preserveEvidence = !verified || t.passed !== true || !removePassed;
+        await cleanupCommandContractContext(context, { preserveEvidence, callerRoot,
+          commandTemp: testCase === 'temporaryRootAlias' ? commandTemp : undefined });
       });
       await writeFile(descriptor, JSON.stringify({ testCase }));
       const evidenceRequestPath = join(context.testRoot, 'evidence-request.json');

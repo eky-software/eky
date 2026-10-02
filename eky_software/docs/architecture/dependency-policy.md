@@ -78,7 +78,8 @@ nimenomaisesti.
 
 ### Rajattu CI-salaustyökalu
 
-Omistaja on hyväksynyt Git-työkaluketjun GnuPG:n vain
+Omistaja on hyväksynyt Windowsin Git-työkaluketjun GnuPG:n sekä Linuxin
+hosted-runnerin valmiin GnuPG:n ja PowerShellin vain
 [CI-tutkimusaineiston OpenPGP-salaukseen](ci-encrypted-evidence.md).
 Työkalu pysyy testiapurin takana; se ei ole sovellus- tai npm-riippuvuus
 eikä kuulu EKY-asentimeen. Hyväksyntä ei salli uusia salauskirjastoja,
@@ -230,7 +231,7 @@ Tietoturvapäivitykset käsitellään nopeasti, mutta testaten.
 
 ## Automaattinen päivitysvalvonta
 
-Dependabot version updates tarkistaa npm-workspacen ja GitHub Actions
+Dependabot version updates tarkistaa npm-workspacen, erillisen pnpm-bootstrapin ja GitHub Actions
 -viittaukset viikoittain `.github/dependabot.yml`-tiedoston mukaisesti.
 Dependabotin avaama pull request on katselmointiehdotus, ei hyväksyntä:
 
@@ -246,6 +247,11 @@ Dependabotin avaama pull request on katselmointiehdotus, ei hyväksyntä:
   päivityksinä myös patch- ja minor-tasolla
 - muut yhteensopivat patch- ja minor-päivitykset voidaan ryhmitellä
 
+Bootstrapin `/.github/bootstrap/pnpm`-ehdotus käsitellään erikseen, enintään
+yksi versionpäivitys-PR kerrallaan. Sen täsmäversio sovitetaan myös
+`eky_software/package.json`-tiedoston `packageManager`-arvoon. Eriävät pinnit
+hylätään valmistelussa; Dependabot-ehdotus ei ohita tätä yhteensopivuusporttia.
+
 GitHub Actions -viittaukset säilytetään commit-SHA:lla lukittuina. Dependabot
 saa ehdottaa SHA:n päivittämistä, mutta muutos katselmoidaan eikä sitä
 mergeytetä automaattisesti.
@@ -259,6 +265,8 @@ Erillinen vain lukeva `Dependency security` -workflow:
 - ajetaan jokaisessa `main`-haaraan kohdistuvassa pull requestissa
 - ajetaan `main`-pushissa vain, kun package manifest, lockfile,
   paketinhallinnan valmistelu, Dependabot-konfiguraatio tai dependency-/CI-workflow muuttuu
+- tarkistaa ensin pnpm-bootstrapin haavoittuvuudet valitun Noden npm:llä
+  alla kuvatun valmistelusopimuksen mukaan, ennen pnpm:n asentamista tai ajamista
 - ajaa `pnpm audit --prod`-, `pnpm audit`- ja
   `pnpm audit signatures` -tarkistukset
 - ei käytä `audit --fix` -komentoa
@@ -296,17 +304,25 @@ työkaluversioon arvioidaan normaalin riippuvuusportin kautta.
 Valmistelu tapahtuu jokaisessa pnpm:ää käyttävässä jobissa ennen ensimmäistä
 pnpm-kutsua, checkoutin ulkopuolisessa uudessa `RUNNER_TEMP`-alikansiossa:
 
-1. Valitun Node-jakelun mukana tuleva npm asentaa vain lukitun pnpm:n
+1. Valitun Node-jakelun mukana tuleva npm tarkistaa kopioidun bootstrap-lockfilen
+   komennolla `npm audit --package-lock-only --json --audit-level=low`.
+   Vain onnistunut komento ja ehjä versio 2 -raportti hyväksytään: ei
+   virhekenttää, ei haavoittuvuuksia millään vakavuustasolla, ja auditoidun
+   riippuvuusjoukon pitää vastata erillistä yhden pnpm-paketin lukitusta.
+   Tyhjä tai suodatettu joukko ei ole puhdas tulos. Haku käyttää asennuksen
+   välimuistia ja `--prefer-online`-valintaa; allekirjoitusvälimuistiin ei
+   kirjoiteta tässä vaiheessa. `audit fix` ei kuulu valmisteluun.
+2. npm asentaa vain lukitun pnpm:n
    `npm ci` -komennolla, lifecycle-skriptit ja automaattinen audit pois päältä.
-2. `npm audit signatures` tarkistaa rekisteriallekirjoitukset sekä tarjolla
+3. `npm audit signatures` tarkistaa rekisteriallekirjoitukset sekä tarjolla
    olevat alkuperätodistukset normaalilla npm:n varmennusketjulla. Sen uusi
    varmennusvälimuisti on erillään asennuksen välimuistista: myöhempi
    offline-luku ei voi osua asentimen aiemmin hakemaan metadataan.
-3. `npm view ... --offline` lukee tämän auditoinnin käyttämän täydellisen
+4. `npm view ... --offline` lukee tämän allekirjoitustarkistuksen käyttämän täydellisen
    pakettimetadatan samasta yksityisestä välimuistista. Nimi, versio,
    tarball-osoite ja allekirjoitettu eheystiiviste sidotaan omaan lockfileen.
    Uutta verkkohakua ei tehdä tämän sidonnan kohdalla.
-4. Asennetun paketin ja npm:n asennuslockfilen identiteetit sekä oman
+5. Asennetun paketin ja npm:n asennuslockfilen identiteetit sekä oman
    lockfilen muuttumattomuus tarkistetaan. Vasta sen jälkeen pnpm suoritetaan
    version varmistamiseksi ja sen paikallinen bin-kansio lisätään
    seuraavien vaiheiden `GITHUB_PATH`-polkuun.
@@ -326,7 +342,12 @@ konepolkuja tai ympäristöä ei julkaista apurin tulosteessa: suljettu vaihe
 ja `CI_PNPM_*`-virhekoodi paikantavat hylkäyksen. Rajattu paikallinen
 tutkinta käyttää yksityisen välimuistin npm-lokia julkaisusäännön mukaisesti.
 
-`prepareLockedPnpm.test.mjs` testaa epäonnistumiset, varmennusjärjestyksen ja
+Haavoittuvuustarkistus, tavujen/allekirjoituksen varmennus, toimintatestit ja
+oletushaaran Dependabot-hälytysten sulkeutuminen ovat erillisiä todisteita.
+Rekisteriallekirjoitus ei todista pakettia haavoittuvuudettomaksi.
+
+`prepareLockedPnpm.test.mjs` testaa epäonnistumiset, auditoinnin kattavuuden,
+varmennusjärjestyksen ja
 sen, ettei työkalua käynnistetä tai polkua julkaista ennen hyväksyntää.
 `lockedPnpmWiring.test.mjs` suojaa kaikki workflow-kuluttajat ja molemmat
 testisisääntulot (`pnpm test:ci` ja kahden alustan CI-sopimukset).

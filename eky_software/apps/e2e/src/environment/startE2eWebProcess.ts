@@ -8,7 +8,7 @@ import {
 import type { E2eWorkerPaths } from './e2eEnvironmentTypes.js';
 import type { E2eFixtureLifetime } from './e2eFixtureLifetime.js';
 import type { E2eProcessStartupObservation } from './e2eProcessStartupObservation.js';
-import { cleanupFailedWebStartup, E2eWebStartupFailure, waitForE2eWebStartup } from './e2eWebStartupLifecycle.js';
+import { cleanupFailedWebStartup, E2eWebStartupFailure, readWebStartupOutput, waitForE2eWebStartup } from './e2eWebStartupLifecycle.js';
 import type { StartedE2eBackend } from './startE2eBackendProcess.js';
 import { OwnedWindowsViteStartupFailure, startOwnedWindowsVite } from './startOwnedWindowsVite.js';
 import { OwnedLinuxServiceStartupFailure, startOwnedLinuxVite } from './startOwnedLinuxVite.js';
@@ -73,6 +73,7 @@ export async function startE2eWebProcess(input: {
   } catch (error) {
     const owned = error instanceof OwnedWindowsViteStartupFailure || error instanceof OwnedLinuxServiceStartupFailure
       ? error : undefined;
+    const output = readWebStartupOutput(owned);
     const cleanup = await cleanupFailedWebStartup({
       async stopProcessTree() {
         // No new cleanup deadline after the owner's already-attempted stop.
@@ -87,11 +88,11 @@ export async function startE2eWebProcess(input: {
         : code === 'workloadExited' ? 'E2E_WEB_CHILD_EXITED_BEFORE_HEALTH' : 'E2E_WEB_PROCESS_SPAWN_FAILED',
       spawnObserved: owned?.evidence.spawnObserved ?? false,
       exitedBeforeCleanup: owned?.evidence.exitedBeforeCleanup ?? false, cleanup,
-    });
+    }, output);
   }
 
   await waitForE2eWebStartup({
-    startup, stopProcessTree, releasePort,
+    startup, managedProcess, stopProcessTree, releasePort,
     async waitForHealth(signal) {
       const remaining = Math.floor(startupDeadline - performance.now());
       if (remaining <= 0) throw new Error('E2E_WEB_HEALTH_TIMEOUT');

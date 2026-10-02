@@ -190,6 +190,17 @@ function run(fixture, label, { marker, pass = false, output } = {}) {
   assert.ok(new Set(attempts.map(attempt => attempt.workerIndex)).size >= 2);
   assert.equal(attempts.filter(attempt => attempt.attempt === 1).length, pass ? 0 : 2);
   assert.ok(readFileSync(join(fixture.cwd, artifacts.htmlOutputFolder, 'index.html')).length > 0);
+  const report = JSON.parse(readFileSync(join(fixture.cwd, artifacts.htmlOutputFolder, 'results.private.json'), 'utf8'));
+  const reportedAttempts = report.suites.flatMap(suite => suite.specs.flatMap(spec =>
+    spec.tests.flatMap(test => test.results)));
+  assert.equal(reportedAttempts.length, attempts.length);
+  assert.equal(reportedAttempts.filter(attempt => attempt.retry === 1).length, pass ? 0 : 2);
+  assert.equal(JSON.stringify(report.errors).includes(sentinel), false);
+  assert.equal(JSON.stringify(reportedAttempts).includes(sentinel), !pass);
+  for (const attachment of reportedAttempts.flatMap(attempt => attempt.attachments)) {
+    assert.equal(typeof attachment.path, 'string');
+    assert.equal(attachment.body, undefined, 'path attachments must not embed file or database bytes');
+  }
   return artifacts;
 }
 

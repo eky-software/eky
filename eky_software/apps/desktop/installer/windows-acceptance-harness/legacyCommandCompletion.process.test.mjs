@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,7 +9,7 @@ import { cleanupRunContext, createRunContext, createRequest, startProgramFailure
   from '../windows-process-supervisor/tests/supervisorContractTestSupport.mjs';
 import { readWindowsAcceptanceSupervisorResult } from '../windows-process-supervisor/windowsAcceptanceSupervisorResult.mjs';
 
-import { describeCommandPhase, describeCommandPhases, recordCommandBoundaryEvidence, reportCommandFailure } from './acceptanceCommandEntrypointContract.mjs';
+import { cleanupCommandContractContext, describeCommandPhase, describeCommandPhases, recordCommandBoundaryEvidence, reportCommandFailure } from './acceptanceCommandEntrypointContract.mjs';
 
 const commandBudgets = JSON.parse(await readFile(new URL('../windows-process-supervisor/supervisorCommandBudgets.json', import.meta.url)));
 const [, readerTimeoutMilliseconds, readerCleanupReserveMilliseconds] = commandBudgets.legacyCommand.phases
@@ -20,6 +20,60 @@ function createProductConsumerRequest(context, stage) {
     ? { timeoutMilliseconds: 4_000, cleanupReserveMilliseconds: 1_000 }
     : { timeoutMilliseconds: readerTimeoutMilliseconds, cleanupReserveMilliseconds: readerCleanupReserveMilliseconds });
 }
+
+for (const preserveEvidence of [true, false]) {
+  test(`command context evidence: caller and stream files follow the contract outcome (${preserveEvidence})`, async (t) => {
+    const context = await createRunContext('command-evidence-outcome');
+    const caller = await createRunContext('command-caller-evidence');
+    t.after(async () => {
+      if (t.passed !== true) return;
+      await rm(context.testRoot, { recursive: true, force: true });
+      await rm(caller.testRoot, { recursive: true, force: true });
+    });
+    await writeFile(context.resultPath, 'first native result', { flag: 'wx' });
+    await writeFile(join(context.testRoot, 'ci-step.stderr.private'), 'first ci error', { flag: 'wx' });
+    await writeFile(caller.resultPath, 'first caller result', { flag: 'wx' });
+    await cleanupCommandContractContext(context, { preserveEvidence, callerRoot: caller.testRoot });
+    if (preserveEvidence) {
+      assert.equal(await readFile(context.resultPath, 'utf8'), 'first native result');
+      assert.equal(await readFile(join(context.testRoot, 'ci-step.stderr.private'), 'utf8'), 'first ci error');
+      assert.equal(await readFile(caller.resultPath, 'utf8'), 'first caller result');
+    } else {
+      await assert.rejects(lstat(context.testRoot), { code: 'ENOENT' });
+      await assert.rejects(lstat(caller.testRoot), { code: 'ENOENT' });
+    }
+  });
+}
+
+test('command context evidence: unverified process cleanup never removes caller results', async (t) => {
+  const context = await createRunContext('command-evidence-cleanup-failed');
+  const caller = await createRunContext('command-caller-cleanup-failed');
+  t.after(async () => {
+    if (t.passed !== true) return;
+    await rm(context.testRoot, { recursive: true, force: true });
+    await rm(caller.testRoot, { recursive: true, force: true });
+  });
+  await mkdir(context.runRoot);
+  await writeFile(join(context.runRoot, 'root.ready.json'), '{}', { flag: 'wx' });
+  await writeFile(context.resultPath, 'first native result', { flag: 'wx' });
+  await writeFile(caller.resultPath, 'first caller result', { flag: 'wx' });
+  await assert.rejects(cleanupCommandContractContext(context, { preserveEvidence: false, callerRoot: caller.testRoot }),
+    { message: 'WINDOWS_ACCEPTANCE_FIXTURE_MARKER_INVALID' });
+  assert.equal(await readFile(context.resultPath, 'utf8'), 'first native result');
+  assert.equal(await readFile(caller.resultPath, 'utf8'), 'first caller result');
+});
+
+test('command context evidence: later caller removal failure retains the native result and streams', async (t) => {
+  const context = await createRunContext('command-evidence-removal-failed');
+  t.after(() => t.passed === true ? rm(context.testRoot, { recursive: true, force: true }) : undefined);
+  await writeFile(context.resultPath, 'first native result', { flag: 'wx' });
+  await writeFile(join(context.testRoot, 'ci-step.stdout.private'), 'first ci output', { flag: 'wx' });
+  await assert.rejects(cleanupCommandContractContext(context, {
+    preserveEvidence: false, callerRoot: join(context.testRoot, 'missing-caller'),
+  }), { code: 'ENOENT' });
+  assert.equal(await readFile(context.resultPath, 'utf8'), 'first native result');
+  assert.equal(await readFile(join(context.testRoot, 'ci-step.stdout.private'), 'utf8'), 'first ci output');
+});
 
 test('product result reader uses the normal phase budget without changing the injected hold', () => {
   const context = { runNonce: 'c'.repeat(64), scenario: 'installerProductOperation',
@@ -67,6 +121,50 @@ test('command failure diagnostics keep worker loss separate from unverified clea
     { phase: 'prepare', result: 'validated', process: 'processCompleted', worker: 'workerResultMissing', cleanup: 'notRequired', processTreeAbsent: true },
     { phase: 'scenario', result: 'validated', process: 'deadlineExceeded', worker: 'notChecked', cleanup: 'cleanupUnverified', processTreeAbsent: false },
   ]);
+});
+
+test('command failure diagnostics preserve native cleanup error presence without publishing its value', async () => {
+  const root = join(tmpdir(), 'synthetic-command');
+  const request = { runNonce: 'c'.repeat(64), scenario: 'acceptanceCommandPhase', artifactDescriptorSha256: 'a'.repeat(64) };
+  for (const cleanupWin32ErrorCode of [null, 0, 5, 2_147_483_647]) {
+    const read = async (path) => basename(path) === 'request.json' ? request : {
+      ...request, schemaVersion: 1, status: 'failed', durationMs: 4_000,
+      processResultCode: 'deadlineExceeded', childExitCode: null, workerResultCode: 'notChecked',
+      cleanupResultCode: 'cleanupFailed', processTreeAbsent: false, processWin32ErrorCode: null,
+      cleanupWin32ErrorCode,
+    };
+    const evidence = await describeCommandPhase(root, 'prepare', read);
+    const expected = { phase: 'prepare', result: 'validated', process: 'deadlineExceeded',
+      worker: 'notChecked', cleanup: 'cleanupFailed', processTreeAbsent: false,
+      cleanupNativeError: cleanupWin32ErrorCode === null ? 'notReported' : 'reported' };
+    assert.deepEqual(evidence, expected);
+    const original = new Error('original absence assertion');
+    let published;
+    assert.throws(() => reportCommandFailure({ diagnostic(value) { published = JSON.parse(value); } }, [evidence], original),
+      (error) => error === original);
+    assert.deepEqual(published, { commandPhases: [expected], boundaryEvidence: [] });
+  }
+});
+
+test('command failure diagnostics reject invalid cleanup error fields before classifying them', async () => {
+  const root = join(tmpdir(), 'synthetic-command');
+  const request = { runNonce: 'c'.repeat(64), scenario: 'acceptanceCommandPhase', artifactDescriptorSha256: 'a'.repeat(64) };
+  const result = { ...request, schemaVersion: 1, status: 'failed', durationMs: 4_000,
+    processResultCode: 'deadlineExceeded', childExitCode: null, workerResultCode: 'notChecked',
+    cleanupResultCode: 'cleanupFailed', processTreeAbsent: false, processWin32ErrorCode: null,
+    cleanupWin32ErrorCode: null };
+  const missing = { ...result };
+  delete missing.cleanupWin32ErrorCode;
+  for (const invalid of [
+    ...[-1, 2_147_483_648, 1.5, 'private native error', undefined].map((code) => ({ ...result, cleanupWin32ErrorCode: code })),
+    missing,
+    { ...result, cleanupWin32ErrorCode: 5, cleanupResultCode: 'cleanupUnverified' },
+    { ...result, cleanupWin32ErrorCode: 5, runNonce: 'd'.repeat(64) },
+    { ...result, cleanupWin32ErrorCode: 5, rawError: 'private' },
+  ]) {
+    assert.deepEqual(await describeCommandPhase(root, 'prepare', async (path) =>
+      basename(path) === 'request.json' ? request : invalid), { phase: 'prepare', result: 'invalidOrUnreadable' });
+  }
 });
 
 test('command boundary diagnostics keep only a bounded closed projection', () => {
