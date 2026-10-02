@@ -120,7 +120,10 @@ export async function describeCommandPhase(phaseRoot, phase, read = readCommandP
       supervisorExitCode: value.status === 'completed' ? 0 : 1,
     });
     return { phase, result: 'validated', process: result.processResultCode,
-      worker: result.workerResultCode, cleanup: result.cleanupResultCode, processTreeAbsent: result.processTreeAbsent };
+      worker: result.workerResultCode, cleanup: result.cleanupResultCode, processTreeAbsent: result.processTreeAbsent,
+      ...(result.cleanupResultCode === 'cleanupFailed'
+        ? { cleanupNativeError: result.cleanupWin32ErrorCode === null ? 'notReported' : 'reported' }
+        : {}) };
   } catch (error) { return { phase, result: error?.code === 'ENOENT' ? 'missing' : 'invalidOrUnreadable' }; }
 }
 

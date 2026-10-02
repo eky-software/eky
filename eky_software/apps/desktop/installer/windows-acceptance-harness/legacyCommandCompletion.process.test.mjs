@@ -69,6 +69,50 @@ test('command failure diagnostics keep worker loss separate from unverified clea
   ]);
 });
 
+test('command failure diagnostics preserve native cleanup error presence without publishing its value', async () => {
+  const root = join(tmpdir(), 'synthetic-command');
+  const request = { runNonce: 'c'.repeat(64), scenario: 'acceptanceCommandPhase', artifactDescriptorSha256: 'a'.repeat(64) };
+  for (const cleanupWin32ErrorCode of [null, 0, 5, 2_147_483_647]) {
+    const read = async (path) => basename(path) === 'request.json' ? request : {
+      ...request, schemaVersion: 1, status: 'failed', durationMs: 4_000,
+      processResultCode: 'deadlineExceeded', childExitCode: null, workerResultCode: 'notChecked',
+      cleanupResultCode: 'cleanupFailed', processTreeAbsent: false, processWin32ErrorCode: null,
+      cleanupWin32ErrorCode,
+    };
+    const evidence = await describeCommandPhase(root, 'prepare', read);
+    const expected = { phase: 'prepare', result: 'validated', process: 'deadlineExceeded',
+      worker: 'notChecked', cleanup: 'cleanupFailed', processTreeAbsent: false,
+      cleanupNativeError: cleanupWin32ErrorCode === null ? 'notReported' : 'reported' };
+    assert.deepEqual(evidence, expected);
+    const original = new Error('original absence assertion');
+    let published;
+    assert.throws(() => reportCommandFailure({ diagnostic(value) { published = JSON.parse(value); } }, [evidence], original),
+      (error) => error === original);
+    assert.deepEqual(published, { commandPhases: [expected], boundaryEvidence: [] });
+  }
+});
+
+test('command failure diagnostics reject invalid cleanup error fields before classifying them', async () => {
+  const root = join(tmpdir(), 'synthetic-command');
+  const request = { runNonce: 'c'.repeat(64), scenario: 'acceptanceCommandPhase', artifactDescriptorSha256: 'a'.repeat(64) };
+  const result = { ...request, schemaVersion: 1, status: 'failed', durationMs: 4_000,
+    processResultCode: 'deadlineExceeded', childExitCode: null, workerResultCode: 'notChecked',
+    cleanupResultCode: 'cleanupFailed', processTreeAbsent: false, processWin32ErrorCode: null,
+    cleanupWin32ErrorCode: null };
+  const missing = { ...result };
+  delete missing.cleanupWin32ErrorCode;
+  for (const invalid of [
+    ...[-1, 2_147_483_648, 1.5, 'private native error', undefined].map((code) => ({ ...result, cleanupWin32ErrorCode: code })),
+    missing,
+    { ...result, cleanupWin32ErrorCode: 5, cleanupResultCode: 'cleanupUnverified' },
+    { ...result, cleanupWin32ErrorCode: 5, runNonce: 'd'.repeat(64) },
+    { ...result, cleanupWin32ErrorCode: 5, rawError: 'private' },
+  ]) {
+    assert.deepEqual(await describeCommandPhase(root, 'prepare', async (path) =>
+      basename(path) === 'request.json' ? request : invalid), { phase: 'prepare', result: 'invalidOrUnreadable' });
+  }
+});
+
 test('command boundary diagnostics keep only a bounded closed projection', () => {
   const tail = [];
   for (let index = 0; index < 25; index += 1) {

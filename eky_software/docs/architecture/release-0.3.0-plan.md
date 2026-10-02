@@ -9,7 +9,10 @@ sitoo hyväksynnän revisioon ja säilyttää vanhat timeout-/ETL-havainnot
 avoimina. Ennen A1:tä omistaja hyväksyi rajatun
 [pnpm-bootstrapin tietoturvahuollon](release-0.3.0-m1-preparation-plan.md#pnpm-bootstrapin-tietoturvahuolto):
 pnpm `11.11.0`, bootstrapin oma haavoittuvuusportti ja Dependabot-seuranta.
-Sen hyväksyntä, A1 ja koko 0.3.0 ovat vielä avoinna.
+Toteutus on PR #283:ssa. Riippuvuustarkistus läpäisi, mutta hyväksyntä
+odottaa [kahden rajatun testihylkäyksen jatkoa](release-0.3.0-m1-preparation-plan.md#pnpm-huollon-pr-porttien-rajatut-esteet).
+Salattu workspace-aineisto ei kata näitä hylättyjä testitöitä. Huollon
+hyväksyntä, A1 ja koko 0.3.0 ovat vielä avoinna.
 
 **M0, T1, T2 ja T3/R28 on hyväksytty; M1:n sovelluskorjaukset ovat avoinna.**
 Myös T-paketin jälkeinen integraatiojatko on hyväksytty PR #281:n mainissa.

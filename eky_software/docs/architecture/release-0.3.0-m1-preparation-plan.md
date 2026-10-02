@@ -20,7 +20,7 @@ hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohd
 | Mainin omat portit | [Normaali CI 36989952802](https://github.com/eky-software/eky/actions/runs/36989952802), suoritusyritys 1: kaikki 11 porttia ja 38 vaadittua jobia läpäisivät; neljä valinnaista diagnostiikkajobia ohitettiin. Linux system 769/769, kriittinen web 37/37 ja Windowsin kriittinen Electron 39/39 läpäisivät ilman retryä, flakyä tai puuttuvia tapauksia. Nykyiset kahden toiston packaged-portit läpäisivät. [Saman revision riippuvuustarkistus 36989952310](https://github.com/eky-software/eky/actions/runs/36989952310) läpäisi sovellusriippuvuuksien auditoinnin ja 160 allekirjoitusta. Tämä auditointi ei vielä kattanut erillistä pnpm-bootstrapia. |
 | Suljettu työ | T1/R27:n ajokytkentä, T2/R29:n puhtaan valmistelun suoja ja T3/R28:n todellisten kuluttajien koko prosessipuun omistajuus. Korvatut aktiiviset fallbackit on poistettu ja [pysyvä T3-matriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus) hyväksytty. PR #281 sulki tämän jälkeisen rollback-testiapurin integraatiojatkon. |
 | Avoimet havainnot | Aiemmat satunnaiset Electron-käynnistys- ja packaged/legacy-timeoutit säilyvät epäonnistuneina havaintoina omille revisioilleen. Myöhempi vihreä ajo ei todista niiden kaikkia syitä korjatuiksi. [Hylkäysten historia](e2e-test-environment-history.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko) ja [rajattu apurikorjaus](e2e-test-environment-history.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus) erotetaan toisistaan. |
-| Seuraava työ | pnpm `11.1.3 -> 11.11.0`, bootstrapin oma haavoittuvuusportti ja Dependabot-seuranta. Sovellusriippuvuudet, Electron `43.7.6`, Undici `7.29.1`, `better-sqlite3 13.0.2`, tietomalli, T3 ja testivaatimukset säilyvät. A1/R01 aloitetaan vasta tämän huollon hyväksynnän ja oman preflightin jälkeen. |
+| Seuraava työ | pnpm `11.11.0`, bootstrapin haavoittuvuusportti ja Dependabot-seuranta on toteutettu PR #283:ssa. Hyväksyntä pysähtyi [kahteen rajattuun testihylkäykseen](#pnpm-huollon-pr-porttien-rajatut-esteet). Sovellusriippuvuudet, Electron `43.7.6`, Undici `7.29.1`, `better-sqlite3 13.0.2`, tietomalli, T3 ja testivaatimukset säilyvät. A1/R01 aloitetaan vasta tämän huollon hyväksynnän ja oman preflightin jälkeen. |
 | Ei vielä valmis | A1-A3, W7, M1:n muu sovellustyö ja koko 0.3.0. Testiperustan hyväksyntä ei hyväksy niiden tulevaa toteutusta tai muuttunutta liiketoimintasääntöä. |
 
 Hyväksyntä on sidottu yllä olevaan revisioon, ei automaattisesti myöhempään
@@ -62,7 +62,7 @@ katselmusta ja valtuutetun mergen jälkeen mainin omia portteja. Auditoinnin
 vihreys, toimintatestit ja oletushaaran hälytysten sulkeutuminen kirjataan
 erikseen. Repoasetukset tarkistetaan tämän jälkeen vain lukien; maksullisia
 palveluja tai suojausasetusten muutoksia ei hyväksytä tällä päätöksellä.
-Toteutus ja sen hyväksyntä ovat kesken. A1:tä tai vanhaa timeout-/ETL-
+Pnpm-korjaus on toteutettu; sen hyväksyntä on kesken. A1:tä tai vanhaa timeout-/ETL-
 tutkimusta ei aloiteta tämän tehtävän perusteella.
 
 Kohdennettu näyttö ennen uuden revision jäädytystä:
@@ -75,7 +75,47 @@ Kohdennettu näyttö ennen uuden revision jäädytystä:
   eivät ole läpäisyjä tai korvaa Linux-todennusta. Sovelluksen lockfile säilyi.
 - Tuotanto- ja full audit olivat puhtaita, ja 160 rekisteriallekirjoitusta
   varmistettiin. Muutettujen ohjeiden 157 suhteellista linkkiä ja ankkuria
-  tarkistettiin. Uuden revision PR/main-portit ovat vielä tekemättä.
+  tarkistettiin. Tämän lähtöcheckpointin jälkeinen PR-tulos on alla;
+  main-integraatiota ei ole tehty.
+
+### Pnpm-huollon PR-porttien rajatut esteet
+
+PR #283:n lähde `315098db14130bc9399e07671e0d1a81039fe350` ja sen
+PR-checkout `f61d37f7c83dbae10d3701a3fd5c2213182d08f0` sisältävät saman
+lähdepuun. [Riippuvuustarkistus 36996596000](https://github.com/eky-software/eky/actions/runs/36996596000)
+läpäisi, mutta [normaali CI 36996596291](https://github.com/eky-software/eky/actions/runs/36996596291)
+hylättiin suoritusyrityksellä 1. Kaikki 30 toteutunutta pnpm-valmistelua
+läpäisivät auditoinnin ja työkalun varmennuksen. Se ei korvaa toimintatestejä
+eikä osoita nykyisten testivirheiden syytä. Omistaja hyväksyi näiden kahden
+esteen rajatun selvityksen ja näyttöön perustuvat korjaukset.
+
+| Este ja omistaja | Säilynyt näyttö | Sulkemisehto |
+| --- | --- | --- |
+| Kiinteän komennon testiharness: upgrade `preparationHold`, clean-upgrade-entry-toisto 1 | Tarkoituksellinen työvaiheen timeout toteutui. Validoitu vaihetulos oli `deadlineExceeded / cleanupFailed / processTreeAbsent=false`. Nykyinen yhteenveto ei säilyttänyt native-siivousvirheen esiintymistä; siivouksen tarkka syy jäi avoimeksi. | Säilytä epäonnistunut havainto. Mahdollinen korjaus edellyttää yksilöityä syytä ja regressiota; nykyinen prosessipuun poissaolovaatimus ja normaalit hyväksyntäportit säilyvät. Toiston 2 läpäisy ei korvaa toistoa 1. |
+| Electron E2E -valmistelu: `DESK-WORKSPACE-REPLACE-CANCEL-002` | Ensimmäinen suoritusyritys päättyi `workspaceBackup`-valmistelussa `E2E_BACKEND_HEALTH_TIMEOUT`-virheeseen ennen Electronin käynnistystä. Prosessi havaittiin, kuunteluilmoitusta ei saatu ja viimeinen health-kysely torjuttiin. Valmisteluprosessien siivous ja portin vapautuminen varmistettiin. Nykyinen retry läpäisi, joten 39 tapauksen sarjan tulos oli yksi flaky, ei hyväksytty sarja. | Säilytä ensiyritys erillään retrystä. Täsmennä valmistelun pysähtymiskohta ennen käyttäytymiskorjausta; samat valmius-, siivous- ja flaky-ehdot säilyvät. Käytetty retry ei oikeuta uuteen automaattiseen uusintaan. |
+
+Molemmat ajon salatut liitteet purettiin ja niiden run/attempt/revision-
+sidonta sekä mukana olevien tiedostojen eheys varmennettiin. Ne kuuluvat
+**onnistuneille workspace-success-kuluttajille**, eivät yllä oleville
+hylätyille testitöille. Kummankin ETL jäi `unverified`-tilaan pois paketista.
+Nykyinen [salatun aineiston sopimus](ci-encrypted-evidence.md) ei siis anna
+näiden kahden virheen raakadataa. Salaus toimii toimitusrajalla, mutta
+keräyksen kattavuutta ei saa tulkita kaikkien testien raakalogitukseksi.
+
+Rajattu raportointikorjaus säilyttää jo validoidun siivoustuloksen
+native-virheen esiintymisen suljettuna `reported`/`notReported`-havaintona
+[nykyisessä vaiheprojektiossa](windows-installer-acceptance-harness-v2.md#komentotestin-siivousvirheen-havainto).
+Se ei palauta vanhan ajon puuttuvaa tietoa eikä korjaa vielä kumpaakaan
+juurisyytä. Supervisor, aikarajat, varsinainen tulosparseri ja pakollinen
+poissaoloassertio säilyvät. Kohdetodennus kattaa projektion ja alkuperäisen
+virheen säilymisen sekä tiukan parserin, ei uutta hosted-hyväksyntää.
+
+Seuraava ehdotus on käyttää nykyistä salattua toimitusta myös näiden kahden
+testityön ensimmäisen epäonnistumisen rajattuihin tulosteisiin ja olemassa
+oleviin vaihe-/siivoustuloksiin. Tämä julkaisurajan laajennus ja sitä seuraava
+yksi normaali CI-kierros odottavat omistajan erillistä päätöstä. Ei tietokantoja,
+ympäristön kopiointia, uusia keräystyökaluja tai salaamatonta fallbackia.
+Nykyisiä hylkäyksiä ei ohiteta, T3:a ei avata uudelleen eikä mergeä tehdä.
 
 ## Riskiperusteinen jatko 1.10.2026
 
