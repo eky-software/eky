@@ -8,24 +8,25 @@ testattavina vaiheina olemassa olevan Invoicing-domainin, backend-reittien ja
 
 ## A-paketin valmistelu
 
-**2026-09-24: suunnitelma, ei toteutettu.** [M1-valmistelu](release-0.3.0-m1-preparation-plan.md)
+**3.10.2026: A1:n toteutus ja kohdetodennus tehty, integraatio avoinna.**
+[M1-valmistelu](release-0.3.0-m1-preparation-plan.md)
 rajaa ensimmäisen tuotantokorjauksen A1:een. R01, R05 ja R06 pidetään
 erillisinä seurattavina kohtina; yhden läpäisy ei sulje koko A-pakettia.
 
 ### A1: Avattavan luonnoksen kohde
 
-Nykyinen `useInvoiceDraftEditor.openDraft` julkaisee valmistuvan vastauksen,
-virheen ja loading-tilan ilman nykyisen avauspyynnön tarkistusta. `clearDraft`
-ei mitätöi keskeneräistä avaamista. `NewInvoiceForm` alustaa tilansa vain
-mountissa; myöhäinen draft-propin kohdevaihto ei saa jättää näkyviä arvoja
-ja tallennuksen kohdetta eri laskuihin.
+Korjauksen lähtötilanteessa `useInvoiceDraftEditor.openDraft` julkaisi
+valmistuvan vastauksen, virheen ja loading-tilan ilman nykyisen avauspyynnön
+tarkistusta. `clearDraft` ei mitätöinyt keskeneräistä avaamista.
+`NewInvoiceForm` alustaa tilansa vain mountissa; myöhäinen draft-propin
+kohdevaihto ei saa jättää näkyviä arvoja ja tallennuksen kohdetta eri laskuihin.
 
 Rajaus on `apps/web/src/features/invoicing`: avaushookki, sitä käyttävä
 editori/lomakkeen kohderaja ja vain tarpeelliset `InvoicingPage`-kutsukohdat.
 Ei domain-, repository-, schema-, HTTP-, permission- tai yleistä
 navigaatioarkkitehtuurin muutosta, uutta tilakirjastoa tai shared-manageria.
 
-Ehdotettu korjaussopimus:
+Hyväksytty korjaussopimus:
 
 1. Jokainen tarkoituksellinen avaus saa uuden pyynnön sukupolven myös
    samalle draftId:lle. Kohteen vaihtaminen, `clearDraft` ja unmount
@@ -68,6 +69,41 @@ backend-virheiden nykyinen turvallinen diagnostiikkaketju tarkistetaan.
 Raakavastauksia tai laskun arvoja ei lisätä lokiin/tukipakettiin.
 Koodimuutoksen peruminen ei korjaa mahdollisia aiempia väärään kohteeseen
 tallennuksia; niitä ei arvata tai yhdistetä automaattisesti.
+
+#### A1:n toteutus ja todentaminen
+
+- [Avaushookki](../../apps/web/src/features/invoicing/hooks/useInvoiceDraftEditor.ts)
+  omistaa avausgeneration ja mount-tilan. StrictModen efektitoisto ei
+  mitätöi samaan elävään komponenttiin kuuluvaa asiakaskortin avauspyyntöä;
+  todellinen unmount estää sen tuloksen käytön.
+- [Paikallinen tilapäivitys](../../apps/web/src/features/invoicing/state/invoiceDraftEditorState.ts)
+  käsittelee draftin, virheen, loadingin ja muokkaussession yhtenä tilana.
+  Vanha onnistuminen ja virhe hylätään myös tilapäivityksessä.
+- [Editorin näkymä](../../apps/web/src/features/invoicing/components/InvoiceDraftEditorView.tsx)
+  antaa lomakkeelle session avaimen. Clear, avaus ja valmiin kopion avaus
+  aloittavat uuden session. Saman session tallennus ja ensimmäisen createn
+  tunniste eivät vaihda avainta. A2:n vanhentunut kirjoitusvastaus on yhä
+  erillinen avoin työ, eikä GET-suoja peruuta backend-kirjoituksia.
+- [Tilaregressiot](../../apps/web/src/features/invoicing/state/invoiceDraftEditorState.test.ts)
+  todistavat myös kaksi peräkkäistä avausta ilman välissä olevaa cleariä;
+  näkymän testit tarkistavat avaimen kohde-/tallennuseron. Tätä ei nimetä
+  selaimessa todistetuksi välirenderöinnin puuttumiseksi.
+- [INV-OPEN-001...006](../../apps/e2e/tests/web/invoiceDraftOpeningJourneys.spec.ts)
+  käyttävät nykyistä eristettyä web-fixtureä ja pidättävät todellisen
+  GET-vastauksen. Kirjoituksia ei mockata: backendin jälkiluku todistaa
+  oikean tallennuskohteen ja toisen luonnoksen muuttumattomuuden.
+  Asiakaskortin CUS-OVERVIEW-006 sekä INV-LIFECYCLE-001,
+  INV-REAPPROVAL-001 ja INV-COPY-001 on lisäksi ajettu.
+
+Kohdetestit eivät yksin hyväksy PR/main-integraatiota. Nykyisen toteutuksen
+katselmus, koko workspacen hyväksyntä ja vaaditut CI-portit kirjataan
+[M1:n jatkamiskohtaan](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Uutta lokitapahtumaa ei lisätty: backendin `invoiceDraft.get` käyttää
+nykyistä HTTP-operaatioluokitusta, middlewarea ja `http.requestFailed`-
+sopimusta. Selaintestin synteettinen toimitusvirhe ei ole todiste aidon
+backend-virheen lokikirjauksesta. Virheen turvallinen client-/UI-muunnos
+säilyy nykyisissä kohdetesteissä; lokeihin tai Activityyn ei lisätä laskun
+sisältöä eikä vanhan GETin hylkäystä.
 
 ### A2 ja A3: Erilliset jatkopalat
 

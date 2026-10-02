@@ -25,6 +25,7 @@ interface InvoiceDraftEditorViewProps {
   invoiceVatRatesState: InvoiceVatRatesState;
   initialCustomerId: string | null;
   isDraftLoading: boolean;
+  sessionRevision: number;
   onBack(): void;
   onDraftApproved(approvedInvoice: ApprovedInvoiceResult): void;
   onDraftSaved(savedDraft: InvoiceDraft): void;
@@ -42,6 +43,7 @@ export function InvoiceDraftEditorView({
   invoiceVatRatesState,
   initialCustomerId,
   isDraftLoading,
+  sessionRevision,
   onBack,
   onDraftApproved,
   onDraftSaved,
@@ -81,6 +83,7 @@ export function InvoiceDraftEditorView({
 
   return (
     <NewInvoiceForm
+      key={sessionRevision}
       apiClient={apiClient}
       companySettingsState={companySettingsState}
       customerListState={customerListState}

@@ -10,9 +10,9 @@ V1/V2-vakautuksen hyväksyntä säilyy. Myöhempi onnistuminen ei sulje vanhojen
 timeout- tai siivoushavaintojen jälkikäteistä juurisyytä.
 Alla päivätyt tutkimusvaiheet ovat historiaa, eivät rinnakkaisia työjonoja.
 
-**T1/T2/T3 ja niiden integraatiojatko ovat hyväksyttyjä. Seuraava
-sovelluspala on A1/R01; sen valmistelu on aloitettu, toteutus ja hyväksyntä
-ovat avoinna.** Modulaarinen monoliitti ja
+**T1/T2/T3 ja niiden integraatiojatko ovat hyväksyttyjä. A1/R01:n toteutus
+ja kohdetodennus ovat valmiit 3.10.2026; integraation hyväksyntä on avoinna.**
+Modulaarinen monoliitti ja
 hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohdan;
 [julkaisusuunnitelma](release-0.3.0-plan.md) omistaa koko 0.3.0:n sisällön.
 
@@ -22,7 +22,7 @@ hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohd
 | Mainin omat portit | [Normaali CI 37048020333](https://github.com/eky-software/eky/actions/runs/37048020333), suoritusyritys 1: kaikki 11 porttia ja 38 vaadittua jobia läpäisivät; viisi valinnaista diagnostiikkajobia ei kuulunut valintaan. Linux system 807/807, kriittinen web 37/37 ja Windowsin kriittinen Electron 39/39 läpäisivät ilman retryä, flakyä tai puuttuvia tapauksia. Nykyiset kahden toiston packaged-portit läpäisivät. [Saman revision riippuvuustarkistus 37048019765](https://github.com/eky-software/eky/actions/runs/37048019765) sekä kaikki 33 toteutunutta auditoitua pnpm-valmistelua läpäisivät. Sovellusriippuvuuksien tuotanto-/full-auditointi ja 160 rekisteriallekirjoitusta varmistettiin erikseen. |
 | Suljettu työ | T1/R27:n ajokytkentä, T2/R29:n puhtaan valmistelun suoja ja T3/R28:n todellisten kuluttajien koko prosessipuun omistajuus. Korvatut aktiiviset fallbackit on poistettu ja [pysyvä T3-matriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus) hyväksytty. PR #281 sulki tämän jälkeisen rollback-testiapurin integraatiojatkon. |
 | Avoimet havainnot | Aiemmat satunnaiset Electron-käynnistys- ja packaged/legacy-timeoutit säilyvät epäonnistuneina havaintoina omille revisioilleen. Myöhempi vihreä ajo ei todista niiden kaikkia syitä korjatuiksi. [Hylkäysten historia](e2e-test-environment-history.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko) ja [rajattu apurikorjaus](e2e-test-environment-history.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus) erotetaan toisistaan. |
-| Seuraava työ | [A1/R01:n avattavan luonnoksen kohdesopimus](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde): vanha avausvastaus ei saa vaihtaa nykyistä muokkaus- tai tallennuskohdetta, virhettä tai lataustilaa. Varmista sopimus nykyisestä koodista, toteuta rajatusti laskutuksen web-featuressa ja todenna hallitut vastausjärjestykset sekä oikean UI:n pysyvä jälkiluku. A2/R05, A3/R06 ja W7 eivät kuulu tähän toteutukseen. pnpm `11.11.0`, Electron `43.7.6`, Undici `7.29.1`, `better-sqlite3 13.0.2`, tietomalli, T3 ja testivaatimukset säilyvät. |
+| Seuraava työ | Viimeistele [A1:n hyväksyntä](#a1r01-toteutus-ja-hyväksyntä): ratkaise alla nimetty hyväksyntäesteen jatkopäätös, jäädytä lähde ja todenna nykyiset PR-portit. Merge vaatii oman valtuutuksen ja sen jälkeen mainin omat portit. A2/R05, A3/R06 ja W7 eivät kuulu tähän toteutukseen. pnpm `11.11.0`, Electron `43.7.6`, Undici `7.29.1`, `better-sqlite3 13.0.2`, tietomalli, T3 ja testivaatimukset säilyvät. |
 | Ei vielä valmis | A1-A3, W7, M1:n muu sovellustyö ja koko 0.3.0. Testiperustan hyväksyntä ei hyväksy niiden tulevaa toteutusta tai muuttunutta liiketoimintasääntöä. |
 
 Hyväksyntä on sidottu yllä olevaan revisioon, ei automaattisesti myöhempään
@@ -31,6 +31,43 @@ integraation lopputulos kirjataan sen omaan hyväksyntächeckpointiin;
 pelkän tuloksen ilmoittamiseksi ei tehdä uutta tilakirjauscommittia.
 Jokainen uusi toteutuspala alkaa omalla preflightilla. Sivulla ei ylläpidetä Goal-työkalun
 ajonaikaista tilaa.
+
+## A1/R01: toteutus ja hyväksyntä
+
+[Omistava kohdesopimus](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde)
+on toteutettu nykyisessä laskutuksen web-featuressa. Avaussukupolvi ja
+muokkaussession avain pitävät näkyvät arvot ja tallennuskohteen yhdessä.
+Vanha onnistuminen tai virhe ei muuta nykyistä kohdetta, virhettä tai
+lataustilaa. Unmount mitätöi vanhan vastauksen; React StrictModen
+effect-uusinta ei hukkaa nykyistä asiakaskortilta aloitettua avausta.
+Tavallinen tallennus ja ensimmäinen create-vastaus eivät vaihda session
+avainta. A2:n myöhäisen kirjoitusvastauksen sopimus jää erikseen avoimeksi.
+
+Kohdennettu näyttö ennen PR-jäädytystä:
+
+- Tilasiirtymien ja lomakeavaimen regressiot sekä nykyiset view-testit
+  läpäisivät. Koko web-yksikkösarja, backend-sarja, workspace-tyypitys ja
+  web-build läpäisivät; backendin viisi nykyistä ohitusta eivät ole läpäisyjä.
+- [INV-OPEN-001...006](r0-e2e-test-matrix.md#invoicing)
+  läpäisivät oikealla UI:lla, hallituilla GET-vastausjärjestyksillä ja
+  todellisilla tallennuksilla. Pysyvä jälkiluku varmistaa oikean kohteen ja
+  aiemman luonnoksen muuttumattomuuden. Testiprosessien siivous varmistettiin.
+- Asiakaskortilta avaamisen, luonnoksen elinkaaren, uudelleenhyväksynnän ja
+  kopioinnin nykyiset selainregressiot läpäisivät. Riippumaton katselmus
+  johti StrictMode- ja testiapurin ensivirheen säilytyksen korjauksiin.
+- Testien kehitysvaiheen hylkäykset säilyvät erillisinä; vain korjatun
+  lopullisen kohdesarjan tulos on yllä kuvattu näyttö. Koko workspace-ajoa
+  tai PR/main-integraatiota ei ole hyväksytty kohdesarjan perusteella.
+
+| Avoin hyväksyntähavainto | Omistaja ja rajaus | Sulkemisehto |
+| --- | --- | --- |
+| Muuttumattoman `localUpdatePackageCache.test.ts`-tiedoston `resumes rollback normalization after either durable directory rename` -testi aikakatkaistiin laajassa sarjassa. Yksi rajattu diagnostinen uusinta läpäisi; syy jäi avoimeksi. | Desktopin update-testin omistaja. Ensivirhe ja siihen liittyvä aineisto säilytetään. A1 ei muuta cachea, asenninta, aikarajoja tai siivoussopimusta. | Näyttöön perustuva korjaus ja sen todennus tai omistajan nimenomainen päätös seuraavasta hyväksyntäkierroksesta. Uusinnan läpäisy ei yksin sulje havaintoa. Nykyiset pakolliset PR/main-portit säilyvät. |
+
+Seuraavaa normaalia PR-kierrosta varten on pyydetty rajattu päätös;
+ajoa tai mergeä ei merkitä hyväksytyksi etukäteen. Lopullinen hyväksyntä
+sidotaan jäädytettyyn revisioon ja sen omaan checkpointiin ilman uutta
+tilakirjauscommittien kierrosta. Tämän jälkeen seuraava sovelluspala on
+A2/R05, ei T3:n tai koko testijärjestelmän uusi toteutus.
 
 ## Pnpm-bootstrapin tietoturvahuolto
 

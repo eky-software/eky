@@ -114,6 +114,23 @@ describe('InvoiceDraftEditorView', () => {
     expect(html).toContain(uiText.invoicing.invoiceVatRatesDefaultNotice);
     expect(html).toContain(uiText.invoicing.save);
   });
+
+  it('keys the form by editing session, not the first create or a saved DTO', () => {
+    const created = InvoiceDraftEditorView(createEditorProps({ editorMode: 'create' }));
+    const saved = InvoiceDraftEditorView(createEditorProps({ draft: createInvoiceDraft() }));
+    const updated = InvoiceDraftEditorView(createEditorProps({
+      draft: { ...createInvoiceDraft(), subject: 'Updated draft' },
+    }));
+    const reopened = InvoiceDraftEditorView(createEditorProps({
+      draft: createInvoiceDraft(),
+      sessionRevision: 2,
+    }));
+
+    expect(created.key).toBe('1');
+    expect(saved.key).toBe(created.key);
+    expect(updated.key).toBe(saved.key);
+    expect(reopened.key).not.toBe(saved.key);
+  });
 });
 
 type InvoiceDraftEditorViewProps = React.ComponentProps<
@@ -123,25 +140,30 @@ type InvoiceDraftEditorViewProps = React.ComponentProps<
 function renderEditor(
   overrides: Partial<InvoiceDraftEditorViewProps> = {},
 ): string {
-  return renderToStaticMarkup(
-    <InvoiceDraftEditorView
-      apiClient={createApiClient()}
-      companySettingsState={createCompanySettingsState()}
-      customerListState={createCustomerListState()}
-      draft={null}
-      draftErrorMessage={null}
-      editorMode="edit"
-      invoicePaymentDefaultsState={createInvoicePaymentDefaultsState()}
-      invoiceVatRatesState={createInvoiceVatRatesState()}
-      initialCustomerId={null}
-      isDraftLoading={false}
-      onBack={vi.fn()}
-      onDraftApproved={vi.fn()}
-      onDraftSaved={vi.fn()}
-      onOpenApprovedInvoice={vi.fn()}
-      {...overrides}
-    />,
-  );
+  return renderToStaticMarkup(<InvoiceDraftEditorView {...createEditorProps(overrides)} />);
+}
+
+function createEditorProps(
+  overrides: Partial<InvoiceDraftEditorViewProps> = {},
+): InvoiceDraftEditorViewProps {
+  return {
+    apiClient: createApiClient(),
+    companySettingsState: createCompanySettingsState(),
+    customerListState: createCustomerListState(),
+    draft: null,
+    draftErrorMessage: null,
+    editorMode: 'edit',
+    invoicePaymentDefaultsState: createInvoicePaymentDefaultsState(),
+    invoiceVatRatesState: createInvoiceVatRatesState(),
+    initialCustomerId: null,
+    isDraftLoading: false,
+    sessionRevision: 1,
+    onBack: vi.fn(),
+    onDraftApproved: vi.fn(),
+    onDraftSaved: vi.fn(),
+    onOpenApprovedInvoice: vi.fn(),
+    ...overrides,
+  };
 }
 
 function createApiClient(): InvoiceDraftEditorViewProps['apiClient'] {

@@ -596,7 +596,9 @@ function createDraftEditorState(
     errorMessage: null,
     isLoading: false,
     openDraft: vi.fn(),
+    openLoadedDraft: vi.fn(),
     replaceDraft: vi.fn(),
+    sessionRevision: 0,
     ...overrides,
   };
 }

@@ -321,7 +321,7 @@ export function InvoicingPage({
     sendApprovedInvoiceEmailState.clearStatus();
     sendApprovedInvoiceEmailSmtpTestState.clearStatus();
     sendApprovedInvoiceEmailSmtpState.clearStatus();
-    draftEditorState.replaceDraft(copiedDraft);
+    draftEditorState.openLoadedDraft(copiedDraft);
     dispatch({ type: 'openEditInvoice' });
     void draftState.refreshDrafts();
   }

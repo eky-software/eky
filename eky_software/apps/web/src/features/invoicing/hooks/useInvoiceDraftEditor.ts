@@ -3,60 +3,87 @@ import {
   type EkyApiClient,
   type InvoiceDraft,
 } from '@eky/api-client';
-import { useState } from 'react';
+import { useEffect, useReducer, useRef } from 'react';
 
 import { getFinnishApiErrorMessage, uiText } from '../../../i18n/fi.js';
+import {
+  initialInvoiceDraftEditorState,
+  reduceInvoiceDraftEditor,
+  type InvoiceDraftEditorSnapshot,
+} from '../state/invoiceDraftEditorState.js';
 
 type InvoiceDraftEditorClient = Pick<EkyApiClient, 'getInvoiceDraft'>;
 
-export interface InvoiceDraftEditorState {
-  draft: InvoiceDraft | null;
-  errorMessage: string | null;
-  isLoading: boolean;
+export interface InvoiceDraftEditorState extends InvoiceDraftEditorSnapshot {
   clearDraft(): void;
   openDraft(id: string): Promise<InvoiceDraft | null>;
+  openLoadedDraft(draft: InvoiceDraft): void;
   replaceDraft(draft: InvoiceDraft): void;
 }
 
 export function useInvoiceDraftEditor(
   apiClient: InvoiceDraftEditorClient,
 ): InvoiceDraftEditorState {
-  const [draft, setDraft] = useState<InvoiceDraft | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [state, dispatch] = useReducer(
+    reduceInvoiceDraftEditor,
+    initialInvoiceDraftEditorState,
+  );
+  const generation = useRef(0);
+  const isMounted = useRef(false);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      // Effect replay keeps the same request; a real unmount rejects its result.
+      isMounted.current = false;
+    };
+  }, []);
 
   function clearDraft(): void {
-    setDraft(null);
-    setErrorMessage(null);
+    dispatch({ type: 'clear', sessionRevision: ++generation.current });
+  }
+
+  function openLoadedDraft(draft: InvoiceDraft): void {
+    dispatch({
+      type: 'openLoaded',
+      sessionRevision: ++generation.current,
+      draft,
+    });
   }
 
   async function openDraft(id: string): Promise<InvoiceDraft | null> {
-    setIsLoading(true);
-    setErrorMessage(null);
-    setDraft(null);
+    const sessionRevision = ++generation.current;
+    dispatch({ type: 'open', sessionRevision });
 
     try {
       const loadedDraft = await loadInvoiceDraft(id, apiClient);
 
-      setDraft(loadedDraft);
+      if (!isMounted.current || sessionRevision !== generation.current) {
+        return null;
+      }
+
+      dispatch({ type: 'loaded', sessionRevision, draft: loadedDraft });
 
       return loadedDraft;
     } catch (error) {
-      setErrorMessage(getOpenInvoiceDraftErrorMessage(error));
+      if (isMounted.current && sessionRevision === generation.current) {
+        dispatch({
+          type: 'failed',
+          sessionRevision,
+          errorMessage: getOpenInvoiceDraftErrorMessage(error),
+        });
+      }
 
       return null;
-    } finally {
-      setIsLoading(false);
     }
   }
 
   return {
+    ...state,
     clearDraft,
-    draft,
-    errorMessage,
-    isLoading,
     openDraft,
-    replaceDraft: setDraft,
+    openLoadedDraft,
+    replaceDraft: (draft) => dispatch({ type: 'saved', draft }),
   };
 }
 
