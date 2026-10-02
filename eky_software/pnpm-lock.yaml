@@ -32,13 +32,13 @@ importers:
         version: link:../../packages/permissions
       '@hono/node-server':
         specifier: 2.1.0
-        version: 2.1.0(hono@4.13.7)
+        version: 2.1.0(hono@4.13.11)
       better-sqlite3:
         specifier: 13.0.2
         version: 13.0.2
       hono:
-        specifier: 4.13.7
-        version: 4.13.7
+        specifier: 4.13.11
+        version: 4.13.11
       pdfkit:
         specifier: ^0.19.1
         version: 0.19.1
@@ -501,8 +501,8 @@ packages:
   graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
 
-  hono@4.13.7:
-    resolution: {integrity: sha512-c8/gF9ac8Y78/agExVocyLevgR+JlpNB444Py0FSX8pJoPdYUfUzRcXtYEYGwt6l19qIlVZPN5Mfsw9jFShmQQ==}
+  hono@4.13.11:
+    resolution: {integrity: sha512-/SMX/RQNJn7oNmFwH6DtwDqcrzZU2otm1FD6OJe2cWF6cfy/F8hq0XVBv7xW3FTJshRQwuBnXHDq2kNsdZnshg==}
     engines: {node: '>=16.9.0'}
 
   isbinaryfile@4.0.10:
@@ -971,9 +971,9 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@hono/node-server@2.1.0(hono@4.13.7)':
+  '@hono/node-server@2.1.0(hono@4.13.11)':
     dependencies:
-      hono: 4.13.7
+      hono: 4.13.11
 
   '@jridgewell/sourcemap-codec@1.5.5': {}
 
@@ -1237,7 +1237,7 @@ snapshots:
 
   graceful-fs@4.2.11: {}
 
-  hono@4.13.7: {}
+  hono@4.13.11: {}
 
   isbinaryfile@4.0.10: {}
 
