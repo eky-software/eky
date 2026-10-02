@@ -1,8 +1,9 @@
-import { existsSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { expect, test, type APIRequestContext, type TestInfo } from '@playwright/test';
 
+import { createBoundedProcessOutput } from '../../src/environment/boundedProcessOutput.js';
 import { createE2eRunRoot } from '../../src/environment/createE2eRunRoot.js';
 import { createE2eWorkerPaths } from '../../src/environment/createE2eWorkerPaths.js';
 import {
@@ -10,31 +11,40 @@ import {
   type E2eFixtureLifetime,
 } from '../../src/environment/e2eFixtureLifetime.js';
 import { removeE2eRunRoot } from '../../src/environment/removeE2eRunRoot.js';
+import { reserveLoopbackPort } from '../../src/environment/reserveLoopbackPort.js';
 import type { ServiceFixtureCleanup } from '../../src/fixtures/finishServiceFixture.js';
 import { E2eBackendStartupFailure } from '../../src/environment/startE2eBackendProcess.js';
-import { E2eWebStartupFailure } from '../../src/environment/startE2eWebProcess.js';
+import { E2eWebStartupFailure, startE2eWebProcess } from '../../src/environment/startE2eWebProcess.js';
+import { OwnedWindowsViteStartupFailure } from '../../src/environment/startOwnedWindowsVite.js';
 import { runIsolatedBackendTest } from '../../src/fixtures/isolatedBackendTest.js';
 import { runIsolatedWebTest } from '../../src/fixtures/isolatedWebTest.js';
 
 test.describe('SYS-SERVICE-FIXTURE-LIFECYCLE-001 @critical @security', () => {
-  for (const family of ['backend', 'web'] as const) {
-    test(`${family} preserves the root after unverified first-start cleanup`, async () => {
+  for (const [family, hasOutput] of [['backend', true], ['web', true], ['backend', false], ['web', false]] as const) {
+    test(`${family} preserves first-start failure and root with output ${hasOutput ? 'available' : 'unavailable'}`, async ({}, reportInfo) => {
       const runRoot = createE2eRunRoot();
       const marker = join(runRoot, 'evidence.txt');
       writeFileSync(marker, 'synthetic evidence');
-      const failure = new E2eBackendStartupFailure({
+      const failure = hasOutput ? new E2eBackendStartupFailure({
         errorCode: 'E2E_BACKEND_HEALTH_TIMEOUT',
         spawnObserved: true,
         exitedBeforeCleanup: false,
         listeningNotice: 'notObserved',
         lastHealthProbe: 'notObserved',
         cleanup: { processTree: 'unverified', port: 'released' },
-      });
+      }, { stdout: 'synthetic startup [REDACTED]', stderr: 'synthetic first-start error' }) : new Error('synthetic preparation failure');
+      let portReleased = false;
+      const attachments: string[] = [];
       const testInfo = {
         title: 'SYS-SERVICE-FIXTURE-LIFECYCLE-001',
         timeout: 60_000,
         status: 'passed', expectedStatus: 'passed',
-        attach: async () => undefined,
+        outputPath: (name: string) => reportInfo.outputPath(name),
+        annotations: reportInfo.annotations,
+        attach: async (name: string) => {
+          expect(portReleased).toBe(true);
+          attachments.push(name);
+        },
       } as unknown as TestInfo;
       const dependencies = {
         createE2eFixtureLifetime,
@@ -43,7 +53,7 @@ test.describe('SYS-SERVICE-FIXTURE-LIFECYCLE-001 @critical @security', () => {
         removeE2eRunRoot,
         reserveLoopbackPort: async () => 12345,
         startE2eBackendProcess: async () => { throw failure; },
-        waitForLoopbackPortRelease: async () => undefined,
+        waitForLoopbackPortRelease: async () => { portReleased = true; },
         collectBackendFailureArtifacts: async () => { throw new Error('UNREACHABLE'); },
         collectWebFailureArtifacts: async () => { throw new Error('UNREACHABLE'); },
         requestFactory: { newContext: async () => { throw new Error('UNREACHABLE'); } },
@@ -60,6 +70,11 @@ test.describe('SYS-SERVICE-FIXTURE-LIFECYCLE-001 @critical @security', () => {
             dependencies);
         await expect(run).rejects.toBe(failure);
         expect(existsSync(marker)).toBe(true);
+        expect(attachments).toEqual(['backend-startup-output', 'fixture-process-output', 'service-fixture-cleanup']);
+        const evidence = JSON.parse(readFileSync(reportInfo.outputPath('backend-startup.private.json'), 'utf8'));
+        expect(evidence.source).toBe(hasOutput ? 'available' : 'unavailable');
+        expect(evidence.stdout).toBe(hasOutput ? 'synthetic startup [REDACTED]' : undefined);
+        expect(evidence.stderr).toBe(hasOutput ? 'synthetic first-start error' : undefined);
       } finally {
         // These fixtures never spawn a process; the contract test owns this root.
         rmSync(runRoot, { recursive: true, force: true });
@@ -69,7 +84,110 @@ test.describe('SYS-SERVICE-FIXTURE-LIFECYCLE-001 @critical @security', () => {
 });
 
 test.describe('SYS-SERVICE-FIXTURE-LIFECYCLE-001 @critical @security completion', () => {
+  for (const reportFault of ['none', 'write', 'attach', 'cleanupReport'] as const) {
+    test(`rejected web owner output reaches post-cleanup reporting with ${reportFault} failure`, async ({}, info) => {
+      let original: unknown;
+      const output = createBoundedProcessOutput(128, ['PRIVATE_SYNTHETIC_SESSION']);
+      output.append(Buffer.from(`${'x'.repeat(256)}PRIVATE_SYNTHETIC_SESSION first Vite rejection`));
+      const fixture = completionFixture(undefined, {
+        startWeb: async input => {
+          try {
+            // Exercise the real adapter -> error -> fixture -> private writer chain.
+            // The injected owner never starts a process; the real port check uses a free loopback port.
+            return await startE2eWebProcess({ ...input, webPort: await reserveLoopbackPort() }, {
+              startOwned: async () => {
+                throw new OwnedWindowsViteStartupFailure({ startupFailure: 'workloadExited',
+                  spawnObserved: true, exitedBeforeCleanup: true, processTree: 'stopped',
+                }, { readStdout: () => 'synthetic Vite stdout', readStderr: output.read });
+              },
+            });
+          } catch (error) {
+            original = error;
+            output.append(Buffer.from('later cleanup output'.repeat(128)));
+            throw error;
+          }
+        },
+      });
+      fixture.testInfo.annotations = [];
+      fixture.testInfo.outputPath = (...segments) => {
+        expect(fixture.calls).toContain('backendStop');
+        expect(fixture.calls).toContain('webPort');
+        expect(fixture.calls).toContain('backendPort');
+        expect(existsSync(fixture.runRoot)).toBe(false);
+        if (reportFault === 'write') throw new Error('PRIVATE_OUTPUT_PATH_FAILURE');
+        return info.outputPath(...segments);
+      };
+      const attach = fixture.testInfo.attach;
+      fixture.testInfo.attach = async (name, options) => {
+        if ((reportFault === 'attach' && name === 'fixture-process-output') ||
+          (reportFault === 'cleanupReport' && name === 'service-fixture-cleanup')) {
+          throw new Error('PRIVATE_ATTACHMENT_FAILURE');
+        }
+        await attach(name, options);
+      };
+      try {
+        let rejected: unknown;
+        try { await fixture.run('web'); } catch (error) { rejected = error; }
+        expect(rejected).toBeInstanceOf(E2eWebStartupFailure);
+        expect(rejected === original).toBe(true);
+        const error = rejected as E2eWebStartupFailure;
+        expect(error.message).toBe('E2E_WEB_CHILD_EXITED_BEFORE_HEALTH');
+        expect(error.evidence.cleanup).toEqual({ processTree: 'stopped', port: 'released' });
+        expect(fixture.calls).not.toContain('body');
+        expect(fixture.calls).not.toContain('webStop');
+        expect(fixture.calls.filter(call => call === 'backendStop')).toHaveLength(1);
+        if (reportFault === 'write') {
+          expect(existsSync(info.outputPath('process-output.private.json'))).toBe(false);
+        } else {
+          const report = JSON.parse(readFileSync(info.outputPath('process-output.private.json'), 'utf8'));
+          const stream = report.streams.find((value: { name: string }) => value.name === 'web');
+          expect(stream).toMatchObject({ source: 'available', stdout: 'synthetic Vite stdout' });
+          expect(stream.stderr).toBe(error.readPrivateOutput()!.stderr);
+          expect(stream.stderr).toContain('[REDACTED] first Vite rejection');
+          expect(Buffer.byteLength(stream.stderr)).toBeLessThanOrEqual(128);
+          expect(stream.stderr).not.toMatch(/PRIVATE|later cleanup/);
+        }
+        const annotation = fixture.testInfo.annotations.find(value => value.type === 'fixture-output-evidence');
+        expect(annotation).toBeDefined();
+        expect(JSON.parse(annotation!.description!)).toMatchObject({
+          file: reportFault === 'write' ? 'writeFailed' : 'written',
+          attachment: reportFault === 'write' ? 'notAttempted' : reportFault === 'attach' ? 'attachmentFailed' : 'attached',
+        });
+        expect(JSON.stringify([error, fixture.startupReports, fixture.reports, fixture.testInfo.annotations]))
+          .not.toMatch(/PRIVATE|first Vite rejection|synthetic Vite stdout|later cleanup/);
+      } finally { fixture.remove(); }
+    });
+  }
+
   for (const family of ['backend', 'web'] as const) {
+    for (const failure of ['body', 'assertion', 'backendStop', 'port', 'artifacts', 'remove'] as const) {
+      test(`${family} exports bounded process output after ${failure} without database or config capture`, async ({}, info) => {
+        const fixture = completionFixture(failure === 'body' || failure === 'assertion' ? undefined : failure);
+        fixture.testInfo.outputPath = (...segments) => info.outputPath(...segments);
+        fixture.testInfo.annotations = info.annotations;
+        if (failure === 'assertion' || failure === 'artifacts') fixture.testInfo.status = 'failed';
+        try {
+          const run = fixture.run(family, failure === 'body');
+          if (failure === 'body') await expect(run).rejects.toBe(fixture.bodyError);
+          else if (failure === 'assertion' || failure === 'artifacts') await expect(run).resolves.toBeUndefined();
+          else await expect(run).rejects.toThrow('E2E_SERVICE_FIXTURE_CLEANUP_FAILED');
+          const text = readFileSync(info.outputPath('process-output.private.json'), 'utf8');
+          const report = JSON.parse(text);
+          expect(report.family).toBe(family);
+          expect(report.streams.map((stream: { name: string }) => stream.name))
+            .toEqual(family === 'backend' ? ['backend'] : ['backend', 'web']);
+          expect(report.streams[0]).toMatchObject({ source: 'available', stdout: 'synthetic backend [REDACTED]', stderr: 'synthetic backend error' });
+          if (family === 'web') expect(report.streams[1]).toMatchObject({ source: 'available', stderr: 'synthetic web error' });
+          expect(report.operationalLogs).toBe('notIncluded');
+          expect(text).not.toMatch(/PRIVATE|sqlite|runtime-config/);
+          expect(fixture.calls.indexOf('backendStdout')).toBeGreaterThan(fixture.calls.indexOf('backendPort'));
+          expect(fixture.calls.indexOf('backendStdout')).toBeGreaterThan(fixture.calls.indexOf('artifacts'));
+          if (failure === 'body' || failure === 'assertion' || failure === 'remove') {
+            expect(fixture.calls.indexOf('backendStdout')).toBeGreaterThan(fixture.calls.indexOf('remove'));
+          }
+        } finally { fixture.remove(); }
+      });
+    }
     for (const fault of ['api', 'apiSync', 'backendStop', 'port', 'artifacts', 'remove'] as const) {
       test(`${family} preserves the original failure and root when ${fault} fails`, async () => {
         const fixture = completionFixture(fault);
@@ -335,7 +453,7 @@ function completionFixture(fault?:
   'api' | 'apiSync' | 'backendStop' | 'port' | 'artifacts' | 'remove' | 'report' | 'webStop' |
   'webStartup' | 'webStartupVerified' | 'webStartupTreeUnverified' | 'webStartupPortUnverified' |
   'startupVerified' | 'restart' | 'restartStop' | 'contextClose',
-  timing: { containmentTimeoutMilliseconds?: number; now?: () => number } = {},
+  timing: { containmentTimeoutMilliseconds?: number; now?: () => number; startWeb?: typeof startE2eWebProcess } = {},
 ) {
   const runRoot = createE2eRunRoot();
   const marker = join(runRoot, 'evidence.txt');
@@ -365,6 +483,7 @@ function completionFixture(fault?:
     attach: async (name: string, options: { body: string }) => {
       calls.push('report');
       if (fault === 'report') throw cleanupError;
+      if (name === 'fixture-process-output' || name === 'backend-startup-output') return;
       if (name === 'web-startup-failure') startupReports.push(JSON.parse(options.body));
       else reports.push(JSON.parse(options.body));
     },
@@ -386,7 +505,10 @@ function completionFixture(fault?:
       if (fault === 'startupVerified' || (++starts === 2 && fault === 'restart')) throw startupError;
       return {
         backendOrigin: 'http://127.0.0.1:12345', sessionSecret: 'PRIVATE_SYNTHETIC_SESSION',
-        managedProcess: {} as never,
+        managedProcess: {
+          readStdout: () => { calls.push('backendStdout'); return 'synthetic backend [REDACTED]'; },
+          readStderr: () => 'synthetic backend error',
+        } as never,
         workload: {
           instanceId: `synthetic-backend-${String(starts)}`,
           readState: async () => { throw new Error('UNEXPECTED_WORKLOAD_STATE_READ'); },
@@ -398,10 +520,14 @@ function completionFixture(fault?:
         },
       };
     },
-    startE2eWebProcess: async ({ lifetime }: { lifetime: E2eFixtureLifetime }) => {
+    startE2eWebProcess: async (input: Parameters<typeof startE2eWebProcess>[0]) => {
+      const { lifetime } = input;
       webLifetimes.push(lifetime);
+      if (timing.startWeb !== undefined) return timing.startWeb(input);
       if (fault?.startsWith('webStartup')) throw webError;
-      return { webOrigin: 'http://127.0.0.1:12346', managedProcess: {} as never,
+      return { webOrigin: 'http://127.0.0.1:12346', managedProcess: {
+        readStdout: () => 'synthetic web output', readStderr: () => 'synthetic web error',
+      } as never,
         workload: { readState: async () => { throw new Error('UNEXPECTED_WORKLOAD_STATE_READ'); } },
         stop: async () => {
           calls.push('webStop');

@@ -301,6 +301,27 @@ jobs:
           overwrite: false
           include-hidden-files: false
 
+      - name: Preserve encrypted CI failure evidence
+        if: >-
+          ${{ always() && runner.os == 'Windows' && runner.environment == 'github-hosted'
+            && (job.status == 'failure' || job.status == 'cancelled')
+            && vars.EKY_DIAGNOSTIC_PUBLIC_KEY != '' && vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT != ''
+            && vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT == vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT
+            && (github.event_name == 'push' || github.event_name == 'schedule'
+              || github.event_name == 'workflow_dispatch'
+              || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+            && hashFiles('.github/actions/collect-ci-failure-evidence/action.yml') != ''
+            && hashFiles('eky_software/apps/desktop/installer/windows-acceptance-harness/ciFailureEvidence.mjs') != '' }}
+        continue-on-error: true
+        timeout-minutes: 3
+        uses: ./.github/actions/collect-ci-failure-evidence
+        with:
+          job-key: core-electron-${{ strategy.job-index || 0 }}
+          job-outcome: ${{ job.status }}
+          public-key: ${{ vars.EKY_DIAGNOSTIC_PUBLIC_KEY }}
+          fingerprint: ${{ vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT }}
+          verified-fingerprint: ${{ vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT }}
+
   windows-contracts:
     name: Windows installer contract tests
     if: inputs.risk_plan != '' && fromJSON(inputs.risk_plan).gates.windowsContracts
@@ -337,3 +358,24 @@ jobs:
         run: pnpm --filter @eky/desktop installer:test:msi-file-policy
       - name: Verify synthetic MSI UI and file-version policy
         run: node apps/desktop/installer/windows-acceptance-harness/fixtures/runMsiFileVersionPolicyProbe.mjs
+
+      - name: Preserve encrypted CI failure evidence
+        if: >-
+          ${{ always() && runner.os == 'Windows' && runner.environment == 'github-hosted'
+            && (job.status == 'failure' || job.status == 'cancelled')
+            && vars.EKY_DIAGNOSTIC_PUBLIC_KEY != '' && vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT != ''
+            && vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT == vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT
+            && (github.event_name == 'push' || github.event_name == 'schedule'
+              || github.event_name == 'workflow_dispatch'
+              || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+            && hashFiles('.github/actions/collect-ci-failure-evidence/action.yml') != ''
+            && hashFiles('eky_software/apps/desktop/installer/windows-acceptance-harness/ciFailureEvidence.mjs') != '' }}
+        continue-on-error: true
+        timeout-minutes: 3
+        uses: ./.github/actions/collect-ci-failure-evidence
+        with:
+          job-key: core-installer-${{ strategy.job-index || 0 }}
+          job-outcome: ${{ job.status }}
+          public-key: ${{ vars.EKY_DIAGNOSTIC_PUBLIC_KEY }}
+          fingerprint: ${{ vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT }}
+          verified-fingerprint: ${{ vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT }}

@@ -1,5 +1,6 @@
 import { _electron as electron, errors, type ElectronApplication } from '@playwright/test';
 import type { ChildProcess } from 'node:child_process';
+import type { ProcessOutput } from './boundedProcessOutput.js';
 
 import { createElectronSpawnObservation, type ElectronSpawnObservationFailureCode } from './electronSpawnObservation.js';
 import { assertElectronSpawnObservationVersions } from './electronSpawnObservationVersions.js';
@@ -72,7 +73,7 @@ export class ElectronBridgeCallerFailure extends Error {
   }
   readPrivateFailure() { return this.#failure; }
 }
-export interface OwnedWindowsElectronBridge {
+export interface OwnedWindowsElectronBridge extends ProcessOutput {
   readonly application: Promise<ElectronApplication>;
   readonly workload: WindowsOwnerSession<'electronBridge'>['service']['workload'];
   stop(): Promise<void>;
@@ -267,6 +268,8 @@ export function startOwnedWindowsElectronBridge(
   });
   void application.catch(() => {});
   return { application, workload: owner.service.workload, stop, readCleanupEvidence,
+    readStdout: () => owner.service.readStdout(),
+    readStderr: () => owner.service.readStderr(),
     readObservedWorkloadState: owner.readObservedWorkloadState,
     readPrivateLaunchFailure: () => privateLaunchFailure ?? observer?.readPrivateLaunchFailure(),
     readPrivateFailure: () => privateFailure };

@@ -332,11 +332,31 @@ test('synthetic evidence proof uses pinned tools and required encrypted-only pub
   assert.match(job, /timeout-minutes: 5/);
   assert.match(job, /ref: \$\{\{ github.sha \}\}/);
   assert.match(job, /persist-credentials: false/);
-  assert.doesNotMatch(job, /needs:|matrix:|continue-on-error|\b(?:pnpm|npm|msiexec|dotnet|wpr)\b|setup-dotnet|buildWindows|captureInstaller|download-artifact/);
+  const probe = step('Produce one verified synthetic first failure');
+  assert.equal(blocks.filter(value => value.startsWith(' Produce one verified synthetic first failure\n')).length, 1);
+  assert.match(probe, /^        id: failure_probe$/m);
+  assert.match(probe, /^        working-directory: \.$/m);
+  assert.match(probe, /^        run: node \.github\/scripts\/ciFailureEvidenceProbe\.mjs$/m);
+  assert.deepEqual(probe.match(/^        continue-on-error: .+$/gm), ['        continue-on-error: true']);
+  const requiredJob = job.replace(probe, probe.replace(/^        continue-on-error: true\r?\n/m, ''));
+  assert.doesNotMatch(requiredJob, /needs:|matrix:|continue-on-error|\b(?:pnpm|npm|msiexec|dotnet|wpr)\b|setup-dotnet|buildWindows|captureInstaller|download-artifact/);
+  const delivery = step('Deliver synthetic first failure through the normal collector');
+  assert.match(delivery, /^        uses: \.\/\.github\/actions\/collect-ci-failure-evidence$/m);
+  assert.equal(delivery.match(/^        if: (.+)$/m)?.[1],
+    "${{ always() && steps.failure_probe.outcome == 'failure' && steps.failure_probe.outputs.probe_verified == 'true' }}");
+  const terminal = step('Require verified first failure and encrypted publication');
+  assert.match(terminal, /^        if: always\(\)$/m);
+  for (const [variable, expected] of [['PROBE_OUTCOME', 'failure'], ['PROBE_VERIFIED', 'true'],
+    ['DELIVERY_OUTCOME', 'success'], ['SEALED', 'true'], ['UPLOAD_OUTCOME', 'success']]) {
+    assert.ok(terminal.includes(`$env:${variable} -cne '${expected}'`));
+  }
+  assert.ok(terminal.includes("$env:ARTIFACT_ID -cnotmatch '^[1-9][0-9]*$'"));
+  assert.match(terminal, /CI_FIRST_FAILURE_EVIDENCE_DELIVERY_UNVERIFIED'\)\n\s+exit 1/);
   assert.deepEqual([...job.matchAll(/uses: ([^\s]+)/g)].map(([, action]) => action), [
     'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
     'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
     'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
+    './.github/actions/collect-ci-failure-evidence',
   ]);
   assert.match(step('Set up pinned Node.js'), /node-version-file: eky_software\/\.node-version/);
   assert.match(step('Set up pinned Node.js'), /package-manager-cache: false/);

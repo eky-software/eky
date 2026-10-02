@@ -333,9 +333,22 @@ Playwright erottaa testit ja suoritusyritykset. Uusi CLI-ajo ei hyväksy
 vanhaa perittyä run-tunnistetta. Nykyiset build-siivoukset eivät omista näitä
 hakemistoja. Erillinen `--output`-valinta jää kutsujan vastuulle: saman
 manuaalisen hakemiston uudelleenkäyttö voi edelleen poistaa aiempaa näyttöä.
-Paikallinen HTML-override on vastaavasti kutsujan vastuulla; CI estää sen.
-CI:n julkaisu kattaa edelleen vain nimetyt turvalliset lifecycle-JSONit
+Paikallinen HTML-override on vastaavasti kutsujan vastuulla; CI estää sen
+sekä JSON-reporterin ympäristöohjaukset. Ajokohtainen yksityinen
+`results.private.json` säilyttää alkuperäiset virheet, stdout/stderr-kentät
+ja kaikki retry-tulokset samalla nykyisellä Playwright-reporterilla.
+CI:n salaamaton julkaisu kattaa edelleen vain nimetyt turvalliset lifecycle-JSONit
 samalla yhden päivän säilytysajalla, ei koko ajohakemistoa.
+
+Valinnainen [salattu virheaineisto](ci-encrypted-evidence.md#testiperheiden-virheaineisto)
+on pakollisesta lifecycle-todisteesta erillinen. Sen fixturekohtaiset
+`backend-startup.private.json`- ja `process-output.private.json`-tiedostot
+luetaan nykyisistä rajatuista redaktoiduista puskureista jälkiraportoinnissa.
+Kirjoitus-/liitevirhe merkitään saatavuushavaintoon eikä korvaa ensivirhettä.
+Windows-Electronin omistajaprosessin tulostetta ei nimetä workloadin omaksi
+tulosteeksi. JSON-raportista salataan vain määritelty virhetietoprojektio,
+ei konfiguraatiota tai inline-liitteiden sisältöä. Tämän toimituksen puute
+ei muuta sovellustestiä onnistuneeksi eikä itsessään todista sovellusvikaa.
 
 Epäonnistuneen testin tai epäonnistuneen capture-vaiheen lähdejuuri jää
 talteen riippumatta raportoinnin onnistumisesta. Prosessien ja porttien

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { withoutOptionalEvidenceAllowance } from '../../../../../.github/scripts/ciFailureEvidenceTestContract.mjs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { join, resolve } from 'node:path';
@@ -11,6 +12,24 @@ const WORKFLOW_URL = new URL(
   '../../../../../.github/workflows/windows-acceptance-v2-legacy-diagnostic.yml',
   import.meta.url,
 );
+
+
+test('optional evidence allowance cannot hide job or mandatory-step failure policy', async () => {
+  const source = await readFile(WORKFLOW_URL, 'utf8');
+  const contracts = source.slice(source.indexOf('  legacy_contracts:'), source.indexOf('  legacy_artifact_producer:'));
+  assert.doesNotMatch(withoutOptionalEvidenceAllowance(contracts, 1), /continue-on-error/u);
+  for (const changed of [
+    contracts.replace('  legacy_contracts:\n', '  legacy_contracts:\n    continue-on-error: true\n'),
+    contracts.replace('      - name: Prepare locked package manager\n',
+      '      - name: Prepare locked package manager\n        continue-on-error: true\n'),
+  ]) assert.match(withoutOptionalEvidenceAllowance(changed, 1), /continue-on-error/u);
+  for (const changed of [
+    contracts.replace("job.status == 'failure'", "job.status == 'success'"),
+    contracts.replace('always() &&', 'always() ||'),
+    contracts.replace('uses: ./.github/actions/collect-ci-failure-evidence', 'uses: ./.github/actions/other'),
+    contracts.replace('timeout-minutes: 3\n', 'timeout-minutes: 4\n'),
+  ]) assert.throws(() => withoutOptionalEvidenceAllowance(changed, 1));
+});
 
 test('existing contract diagnosis can select the unchanged core group without MSI or recording', async () => {
   const source = await readFile(new URL(
@@ -480,7 +499,8 @@ test('inspector analysis diagnosis reuses one native hold without a packaged lif
   assert.match(steps, /productStateStarted/u);
   assert.doesNotMatch(steps, /comCreationStarted/u);
   assert.match(steps, /switchIntervalAfterLastEvent/u);
-  assert.doesNotMatch(job, /download-artifact|upload-artifact|package:windows|artifact:build|continue-on-error|retry/u);
+  assert.doesNotMatch(withoutOptionalEvidenceAllowance(job, 1, true),
+    /download-artifact|upload-artifact|package:windows|artifact:build|continue-on-error|retry/u);
 });
 
 test('intentional native wait workflow accepts its current boundary and rejects retired or finished waits', {
@@ -529,7 +549,8 @@ test('external-only inspector diagnosis uses one real query and two views of one
   assert.ok(job.indexOf('-Mode stop') > job.indexOf('productInspectionReadOnly'));
   assert.ok(job.indexOf('-Mode compareEvents') > job.indexOf('-Mode stop'));
   assert.match(job, /always\(\) && inputs\.mode == 'inspector-external-diagnostic' && steps\.inspector_analysis_stop\.outcome == 'success'/u);
-  assert.doesNotMatch(job, /download-artifact|upload-artifact|artifact:build|package:windows|continue-on-error|retry/u);
+  assert.doesNotMatch(withoutOptionalEvidenceAllowance(job, 1, true),
+    /download-artifact|upload-artifact|artifact:build|package:windows|continue-on-error|retry/u);
 });
 
 test('V2.5 phase acceptance requires all same-revision contract groups before its producer', async () => {
@@ -541,7 +562,7 @@ test('V2.5 phase acceptance requires all same-revision contract groups before it
   assert.match(source, /workflow_call:\s+inputs:\s+risk_plan:/u);
   assert.doesNotMatch(source.split('permissions:')[0], /push:/u);
   assert.doesNotMatch(source, /pull_request:|\bmain\b|retry|workflow_run:/u);
-  assert.doesNotMatch(contracts + producer, /continue-on-error/u);
+  assert.doesNotMatch(withoutOptionalEvidenceAllowance(contracts + producer, 2), /continue-on-error/u);
   assert.match(source, /cancel-in-progress: false/u);
   assert.ok(contracts.includes("repetition: ${{ fromJSON(inputs.risk_plan != '' && fromJSON(inputs.risk_plan).repetitions == 1 && '[1]' || '[1, 2]') }}"));
   assert.match(contracts, /group: \[core, commands, legacy-entry, clean-upgrade-entry, workspace-success-entry, workspace-fault-entry\]/u);
@@ -808,7 +829,8 @@ test('optional normal capture uses separate bounded steps without weakening life
     assert.ok(block.includes('continue-on-error: true'));
     assert.ok(block.includes(`timeout-minutes: ${minutes}`));
   }
-  assert.equal(source.match(/continue-on-error:/gu)?.length, 3);
+  assert.equal(source.match(/continue-on-error:/gu)?.length, 6);
+  assert.equal(withoutOptionalEvidenceAllowance(source, 3).match(/continue-on-error:/gu)?.length, 3);
   assert.match(start, /if: env\.LEGACY_CAPTURE_ENABLED == 'true'/u);
   assert.match(stop, /always\(\).*steps\.capture_start\.outcome == 'success'.*steps\.capture_start\.outcome == 'failure'.*steps\.capture_start\.outcome == 'cancelled'/u);
   assert.match(analysis, /always\(\).*steps\.capture_start\.outcome != 'skipped'/u);
@@ -834,7 +856,8 @@ test('the optional analysis step exits and preserves original outcomes when anal
   skip: process.platform !== 'win32', timeout: 60_000,
 }, async (t) => {
   const workflow = await readFile(WORKFLOW_URL, 'utf8');
-  const step = workflow.split('      - name: Analyze and report optional inspector capture\n')[1];
+  const step = workflow.split('      - name: Analyze and report optional inspector capture\n')[1]
+    ?.split('\n      - name:')[0];
   assert.ok(step);
   const body = step.split('        run: |\n')[1].trimEnd().split('\n')
     .map((line) => { assert.ok(line.startsWith('          ')); return line.slice(10); }).join('\n');

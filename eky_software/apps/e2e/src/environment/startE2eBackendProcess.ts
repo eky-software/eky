@@ -51,9 +51,11 @@ export interface E2eBackendStartupFailureEvidence {
 
 export class E2eBackendStartupFailure extends Error {
   readonly evidence: E2eBackendStartupFailureEvidence;
+  readonly #output: Readonly<{ stdout: string; stderr: string }> | undefined;
 
-  constructor(evidence: E2eBackendStartupFailureEvidence) {
+  constructor(evidence: E2eBackendStartupFailureEvidence, output?: Readonly<{ stdout: string; stderr: string }>) {
     super(evidence.errorCode);
+    this.#output = output === undefined ? undefined : Object.freeze({ stdout: output.stdout, stderr: output.stderr });
     this.evidence = Object.freeze({
       errorCode: evidence.errorCode,
       spawnObserved: evidence.spawnObserved,
@@ -66,6 +68,8 @@ export class E2eBackendStartupFailure extends Error {
       }),
     });
   }
+
+  readPrivateOutput() { return this.#output; }
 }
 
 const repositoryRoot = resolve(import.meta.dirname, '../../../..');
@@ -196,7 +200,7 @@ export async function reportOwnedBackendStartupFailure(input: {
     errorCode, spawnObserved: error.evidence.spawnObserved,
     exitedBeforeCleanup: error.evidence.exitedBeforeCleanup,
     listeningNotice: readListeningNotice(output, input.backendOrigin), lastHealthProbe: 'notObserved', cleanup,
-  });
+  }, output);
 }
 
 export async function waitForE2eBackendStartup(input: {
@@ -247,7 +251,7 @@ export async function waitForE2eBackendStartup(input: {
       listeningNotice,
       lastHealthProbe,
       cleanup,
-    }));
+    }), output);
   } finally {
     observationSealed = true;
     unsubscribe();

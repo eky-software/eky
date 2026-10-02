@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 import test from 'node:test';
 import { prepareEvidence, collectEvidence, encryptArchive } from './workspaceEncryptedEvidence.mjs';
+import { collectJobFailureEvidence } from './ciFailureEvidence.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./encryptedEvidenceOpenPgp.ps1', import.meta.url));
 const ROOT = resolve(dirname(SCRIPT), '../../../..');
@@ -179,6 +180,48 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
       assert.equal(value.manifest.outcomes.test, 'failure');
       assert.equal(value.manifest.cleanup, 'unverified');
       assert.equal(value.manifest.unresolvedEvidenceHold, true);
+    });
+    await check('failed child output and native cleanup result survive job collection, encryption and real decryption', async () => {
+      const temp = join(root, 'job-runner-temp');
+      const checkout = join(root, 'job-checkout');
+      const native = join(temp, 'eky supervisor abc');
+      await mkdir(native, { recursive: true }); await mkdir(checkout);
+      const failed = await run(process.execPath, ['-e', 'console.error("SYNTHETIC-FIRST-FAILURE"); process.exit(9)']);
+      assert.equal(failed.status, 9);
+      await writeFile(join(native, 'ci-step.stderr.private'), failed.stderr);
+      await writeFile(join(native, 'result.json'), JSON.stringify({ cleanupWin32ErrorCode: 5, processTreeAbsent: false }));
+      const reportRoot = join(checkout, 'eky_software/apps/e2e/playwright-report/run-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee');
+      await mkdir(reportRoot, { recursive: true });
+      const reportBytes = Buffer.from(JSON.stringify({ config: { secret: 'EXCLUDED-CONFIG' }, errors: [],
+        suites: [{ specs: [{ tests: [{ results: [{ retry: 0, error: { message: 'first assertion', stack: 'synthetic stack' },
+          attachments: [{ name: 'excluded', body: 'EXCLUDED-BODY' }] }, { retry: 1, status: 'passed' }] }] }] }] }));
+      await writeFile(join(reportRoot, 'results.private.json'), reportBytes);
+      const env = { GITHUB_RUN_ID: '98765', GITHUB_RUN_ATTEMPT: '1', GITHUB_JOB: 'legacy_contracts',
+        EKY_EVIDENCE_JOB_KEY: 'legacy-contracts-0', GITHUB_SHA: 'a'.repeat(40),
+        EKY_EVIDENCE_JOB_OUTCOME: 'failure', RUNNER_TEMP: temp, GITHUB_WORKSPACE: checkout,
+        EKY_DIAGNOSTIC_KEY_FINGERPRINT: recipient.fingerprint,
+        EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: recipient.fingerprint,
+        EKY_DIAGNOSTIC_PUBLIC_KEY: await readFile(publicPath, 'utf8') };
+      const collected = await collectJobFailureEvidence(env);
+      await encryptArchive(collected.root, collected);
+      const decrypted = await invokeGpg(recipient.home, ['--decrypt', join(collected.root, 'evidence.json.gz.gpg')]);
+      const value = JSON.parse(gunzipSync(decrypted.stdout));
+      assert.equal(value.manifest.binding.attempt, '1');
+      assert.equal(value.manifest.jobOutcome, 'failure');
+      assert.equal(value.manifest.cleanup, 'notInferred');
+      assert.equal(value.manifest.files.length, 3);
+      const original = value.manifest.files.find(file => file.source.endsWith('ci-step.stderr.private'));
+      assert.equal(Buffer.from(value.files[original.name], 'base64').equals(failed.stderr), true);
+      assert.equal(original.sha256, createHash('sha256').update(failed.stderr).digest('hex'));
+      const reportEntry = value.manifest.files.find(file => file.kind === 'playwrightReport');
+      const projected = Buffer.from(value.files[reportEntry.name], 'base64');
+      assert.equal(reportEntry.sourceProof.sha256, createHash('sha256').update(reportBytes).digest('hex'));
+      assert.equal(reportEntry.sha256, createHash('sha256').update(projected).digest('hex'));
+      assert.notEqual(reportEntry.sourceProof.sha256, reportEntry.sha256);
+      assert.equal(projected.toString().includes('EXCLUDED'), false);
+      const results = JSON.parse(projected).suites[0].specs[0].tests[0].results;
+      assert.equal(results[0].error.stack, 'synthetic stack');
+      assert.deepEqual(results.map(result => result.retry), [0, 1]);
     });
     await check('synthetic delivery CLI seals only its fixed sample and preserves the real checkout binding', async () => {
       const temp = join(root, 'delivery-runner-temp');

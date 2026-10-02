@@ -88,7 +88,14 @@ test('CI transfers one exact short-lived artifact to two isolated consumers', as
   assert.match(consumer, /max-parallel: 2/u);
   assert.equal(occurrenceCount(consumer, 'timeout-minutes: 27'), 1);
   assert.equal(occurrenceCount(consumer, 'timeout-minutes: 17'), 1);
-  assert.equal(occurrenceCount(consumer, 'timeout-minutes: 3'), 1);
+  assert.equal(occurrenceCount(consumer, 'timeout-minutes: 3'), 2);
+  const boundedSteps = consumer.split('\n      - name: ').slice(1)
+    .filter((step) => /^        timeout-minutes: 3$/mu.test(step));
+  assert.deepEqual(boundedSteps.map((step) => step.split('\n')[0]), [
+    'Build acceptance supervisor', 'Preserve encrypted CI failure evidence',
+  ]);
+  assert.doesNotMatch(boundedSteps[0], /continue-on-error/u);
+  assert.match(boundedSteps[1], /^        uses: \.\/\.github\/actions\/collect-ci-failure-evidence$/mu);
   assert.equal(occurrenceCount(consumer, 'installer:supervisor:build'), 1);
   assert.equal(occurrenceCount(consumer, ' --clean-command '), 1);
   assert.equal(occurrenceCount(consumer, 'verifyCleanCallerResult.mjs'), 1);

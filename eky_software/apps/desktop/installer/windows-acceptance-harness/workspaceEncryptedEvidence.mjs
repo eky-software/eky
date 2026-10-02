@@ -48,7 +48,7 @@ function fail() { throw new Error('WORKSPACE_ENCRYPTED_EVIDENCE_UNVERIFIED'); }
 function outcome(value) { return OUTCOMES.has(value) ? value : 'unknown'; }
 
 // Only known files below the caller's private temp directory may enter the envelope.
-async function ordinaryPath(root, path, directory = false) {
+export async function ordinaryPath(root, path, directory = false) {
   const base = await realpath(root);
   const rel = relative(base, resolve(path));
   if (!rel || rel.startsWith('..') || isAbsolute(rel)) fail();
@@ -65,7 +65,7 @@ async function ordinaryPath(root, path, directory = false) {
   return stat;
 }
 
-async function retain(root, source, destination, limit) {
+export async function retain(root, source, destination, limit) {
   const before = await ordinaryPath(root, source);
   if (before.size > limit) fail();
   const input = await open(source, 'r');
@@ -132,12 +132,17 @@ export async function prepareEvidence(env) {
   return prepareBoundEvidence(env, evidenceBinding(env));
 }
 
-async function prepareBoundEvidence(env, binding) {
+export function evidenceRecipient(env) {
   const fingerprint = env.EKY_DIAGNOSTIC_KEY_FINGERPRINT ?? '';
   const key = env.EKY_DIAGNOSTIC_PUBLIC_KEY ?? '';
   if (!/^[0-9A-F]{40}$/.test(fingerprint) || env.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT !== fingerprint ||
       key.length > 64 * 1024 || !/^-----BEGIN PGP PUBLIC KEY BLOCK-----[\s\S]+-----END PGP PUBLIC KEY BLOCK-----\s*$/.test(key) ||
       key.includes('PRIVATE KEY')) fail();
+  return { fingerprint, key };
+}
+
+async function prepareBoundEvidence(env, binding) {
+  const { fingerprint, key } = evidenceRecipient(env);
   const temp = await realpath(env.RUNNER_TEMP);
   const root = evidenceRoot(temp, binding);
   await mkdir(root, { mode: 0o700 });
@@ -216,6 +221,11 @@ async function collectBoundEvidence(env, root, binding) {
     } catch { /* Retain invalid/incomplete bytes without trusting their cleanup claim. */ }
   }
   const archivePath = join(root, 'evidence.private.json.gz');
+  await writeEvidenceArchive({ temp, stage, archivePath, manifest });
+  return { archivePath, fingerprint: context.fingerprint, manifest };
+}
+
+export async function writeEvidenceArchive({ temp, stage, archivePath, manifest }) {
   async function* jsonChunks() {
     yield '{"manifest":' + JSON.stringify(manifest) + ',"files":{';
     let separator = '';
@@ -237,7 +247,6 @@ async function collectBoundEvidence(env, root, binding) {
     yield '}}';
   }
   await pipeline(Readable.from(jsonChunks()), createGzip(), createWriteStream(archivePath, { flags: 'wx', mode: 0o600 }));
-  return { archivePath, fingerprint: context.fingerprint, manifest };
 }
 
 export async function prepareDeliveryProof(env) {

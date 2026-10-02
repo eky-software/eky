@@ -261,9 +261,17 @@ uusinta ei muuta hylkäystä hyväksynnäksi eikä aloita uutta testialustatyöt
   `pnpm test:e2e:report playwright-report/run-<uuid>`; korvaa tunniste
   kyseisen ajon kansion nimellä. Suoritusyrityskohtaiset tulokset ovat
   vastaavan `apps/e2e/test-results/run-<uuid>/`-juuren alla.
+  Saman raporttijuuren `results.private.json` säilyttää alkuperäiset
+  virheet ja kaikki suoritusyritykset. Se on yksityinen, ei suoraan
+  julkaistava raportti.
 - System/web-fixture liittää saatavilla olevat synteettiset virhetodisteet
   raporttiin ja tarvittaessa `service-fixture-cleanup`-tuloksen. Electronin
   vastaava todiste on `electron-lifecycle` / `electron-lifecycle.json`.
+  `backend-startup.private.json` ja `process-output.private.json`
+  säilyttävät saatavilla olevan rajatun, redaktoidun prosessitulosteen
+  myös setup-, testin runko- ja cleanup-virheissä. Tiedosto kertoo
+  lähteen ja saatavuuden; Electronin natiivi omistajatuloste ei ole
+  Electron-workloadin oma stdout/stderr.
 - Nykyinen config käyttää paikallisesti nollaa retryä ja CI:ssä yhtä;
   `failOnFlakyTests` hylkää CI:ssä vasta retryllä läpäisevän testin.
   `trace: on-first-retry` ei lupaa ensiyrityksen tracea. Kuvakaappausasetus on
@@ -276,7 +284,8 @@ uusinta ei muuta hylkäystä hyväksynnäksi eikä aloita uutta testialustatyöt
 - Epävarmasti siivottu testijuuri jää yksityiseen temp-alueeseen. Älä poista
   prosessinomistajan varauksia tai säilytettyä juurta onnistumisen saamiseksi.
   Raakaraportti ei ole julkaistava artifact: nykyinen Electron-CI julkaisee
-  vain rajatut lifecycle-JSONit, ei koko tuloshakemistoa tai tracea.
+  salaamattomana vain rajatut lifecycle-JSONit, ei koko tuloshakemistoa
+  tai tracea. Salattu toimitus on alla kuvattu erillinen rajattu polku.
 - Electronin epäonnistuneen testin tai capture-vaiheen lähdejuuri säilyy
   myös raportointivirheessä. Raportin suljettu syykoodi, native-havainnon
   saatavuus ja `electronEvidenceFailures` erotetaan testin alkuperäisestä
@@ -291,10 +300,13 @@ uusinta ei muuta hylkäystä hyväksynnäksi eikä aloita uutta testialustatyöt
 | Electron development | `electron-lifecycle` ja turvallinen suoritusyrityskohtainen raportti kertovat myös ennen ikkunaa tapahtuvista virheistä. Pelkkä trace-asetuksen vaihto ei kytke nykyisen erikseen käynnistetyn Electron-contextin täyttä tapahtuma-/verkkotallennusta. Runnerin API-jälki ei todista rendererin jäljen olemassaoloa. |
 | Windows packaged / installer | Käytä nykyisen supervisorin vaihehavaintoja, workerin tulosta ja siivouksen näyttöä. MSI:n tai paketin käynnistysjumi ei ole Playwright-selaintesti; sen tutkimiseen tarvitaan sen oman prosessin aineisto. |
 
-Windowsin workspace-kuluttajan valinnainen [salattu tutkimuspaketti](../architecture/ci-encrypted-evidence.md)
-säilyttää nimetyn raaka-aineiston ennen yksityistä analyysiä. Sen aktivointi
-vaatii erillisen purkuavaimen varmennuksen; se ei ole kaikkien testien
-oletus eikä lupa julkaista tracea salaamattomana.
+Windowsin testiperheiden valinnainen [salattu tutkimuspaketti](../architecture/ci-encrypted-evidence.md#testiperheiden-virheaineisto)
+säilyttää nimetyn virheaineiston ennen yksityistä analyysiä yhteisellä
+jälkikeräysaskeleella. Kytkentä ei riipu yksittäisestä testinimestä.
+Aktivointi vaatii purkuavaimen varmennuksen; Linux-toimitus ja tarkistamaton
+trace eivät kuulu tähän Windows-kytkentään. JSON-raportista jätetään
+salattavassakin paketissa pois asetukset ja inline-liitteiden sisällöt.
+Testinkirjoittaja käyttää yllä olevia yhteisiä fixtureitä, ei omaa salainta.
 
 Ensiyrityksen tracea ei ole kytketty yleiseksi oletukseksi. Rajattu
 selainkoe voi käyttää yllä nimettyä nykyisen CLI:n valintaa ja `--retries=0`

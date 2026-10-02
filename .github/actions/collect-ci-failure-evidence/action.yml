@@ -1,0 +1,79 @@
+name: Collect encrypted CI failure evidence
+description: Deliver only the bounded collector's verified ciphertext after a Windows job fails.
+
+inputs:
+  job-key:
+    description: Static workflow and job family followed by the strategy job index.
+    required: true
+  job-outcome:
+    description: Job status before this optional diagnostic action starts.
+    required: true
+  public-key:
+    description: Approved ASCII-armored public encryption key, never a private key.
+    required: true
+  fingerprint:
+    description: Full expected recipient fingerprint.
+    required: true
+  verified-fingerprint:
+    description: Recipient fingerprint whose private decryption was verified.
+    required: true
+
+outputs:
+  sealed:
+    description: Collector verified ciphertext; this alone does not prove publication or decryption.
+    value: ${{ steps.seal.outputs.sealed }}
+  upload-outcome:
+    description: Outcome of the exact ciphertext upload.
+    value: ${{ steps.upload.outcome }}
+  artifact-id:
+    description: Uploaded encrypted artifact identifier.
+    value: ${{ steps.upload.outputs.artifact-id }}
+
+runs:
+  using: composite
+  steps:
+    - name: Seal named failure evidence
+      id: seal
+      if: >-
+        ${{ always() && runner.os == 'Windows' && runner.environment == 'github-hosted'
+          && (inputs.job-outcome == 'failure' || inputs.job-outcome == 'cancelled')
+          && inputs.public-key != '' && inputs.fingerprint != ''
+          && inputs.fingerprint == inputs.verified-fingerprint
+          && (github.event_name == 'push' || github.event_name == 'schedule'
+            || github.event_name == 'workflow_dispatch'
+            || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) }}
+      shell: pwsh
+      working-directory: ${{ github.workspace }}
+      env:
+        EKY_DIAGNOSTIC_PUBLIC_KEY: ${{ inputs.public-key }}
+        EKY_DIAGNOSTIC_KEY_FINGERPRINT: ${{ inputs.fingerprint }}
+        EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: ${{ inputs.verified-fingerprint }}
+        EKY_EVIDENCE_JOB_KEY: ${{ inputs.job-key }}
+        EKY_EVIDENCE_JOB_OUTCOME: ${{ inputs.job-outcome }}
+      run: |
+        try {
+          $node = Get-Command node -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+          $collector = Join-Path $env:GITHUB_WORKSPACE 'eky_software/apps/desktop/installer/windows-acceptance-harness/ciFailureEvidence.mjs'
+          if (-not $node -or -not (Test-Path -LiteralPath $collector -PathType Leaf)) {
+            Write-Output 'CI_FAILURE_EVIDENCE_UNAVAILABLE'
+            exit 1
+          }
+          & $node.Source $collector
+          exit $LASTEXITCODE
+        } catch {
+          Write-Output 'CI_FAILURE_EVIDENCE_UNVERIFIED'
+          exit 1
+        }
+
+    - name: Upload only sealed failure evidence
+      id: upload
+      if: ${{ always() && steps.seal.outcome == 'success' && steps.seal.outputs.sealed == 'true' && steps.seal.outputs.ciphertext != '' }}
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: ci-failure-${{ inputs.job-key }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ steps.seal.outputs.ciphertext }}
+        if-no-files-found: error
+        retention-days: 1
+        compression-level: 0
+        overwrite: false
+        include-hidden-files: false

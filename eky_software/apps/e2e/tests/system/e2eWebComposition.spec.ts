@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
+import { defaultProcessOutputLimitBytes } from '../../src/environment/boundedProcessOutput.js';
 import { createE2eRunRoot } from '../../src/environment/createE2eRunRoot.js';
 import { createE2eWorkerPaths } from '../../src/environment/createE2eWorkerPaths.js';
 import { createE2eFixtureLifetime } from '../../src/environment/e2eFixtureLifetime.js';
@@ -161,6 +162,14 @@ test('WEB-SERVICE-002 @critical @fault rejects an occupied port and preserves th
       errorCode: 'E2E_WEB_CHILD_EXITED_BEFORE_HEALTH', spawnObserved: true, exitedBeforeCleanup: true,
       cleanup: { processTree: 'stopped', port: 'unverified' },
     });
+    const startupOutput = rejected.readPrivateOutput();
+    expect(startupOutput !== undefined).toBe(true);
+    // Boolean assertions keep the real Vite output and its port out of public failures.
+    expect(startupOutput!.stderr.includes('already in use')).toBe(true);
+    expect(`${startupOutput!.stdout}${startupOutput!.stderr}`.includes(backend.sessionSecret)).toBe(false);
+    expect(Buffer.byteLength(startupOutput!.stdout)).toBeLessThanOrEqual(defaultProcessOutputLimitBytes);
+    expect(Buffer.byteLength(startupOutput!.stderr)).toBeLessThanOrEqual(defaultProcessOutputLimitBytes);
+    expect(JSON.stringify(rejected).includes('already in use')).toBe(false);
     expect(blocker.listening).toBe(true);
     expect((await fetch(`http://127.0.0.1:${String(webPort)}`)).status).toBe(404);
     expect(await backend.workload.readState()).toBe('running');

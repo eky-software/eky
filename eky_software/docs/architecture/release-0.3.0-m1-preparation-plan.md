@@ -110,12 +110,38 @@ juurisyytä. Supervisor, aikarajat, varsinainen tulosparseri ja pakollinen
 poissaoloassertio säilyvät. Kohdetodennus kattaa projektion ja alkuperäisen
 virheen säilymisen sekä tiukan parserin, ei uutta hosted-hyväksyntää.
 
-Seuraava ehdotus on käyttää nykyistä salattua toimitusta myös näiden kahden
-testityön ensimmäisen epäonnistumisen rajattuihin tulosteisiin ja olemassa
-oleviin vaihe-/siivoustuloksiin. Tämä julkaisurajan laajennus ja sitä seuraava
-yksi normaali CI-kierros odottavat omistajan erillistä päätöstä. Ei tietokantoja,
-ympäristön kopiointia, uusia keräystyökaluja tai salaamatonta fallbackia.
-Nykyisiä hylkäyksiä ei ohiteta, T3:a ei avata uudelleen eikä mergeä tehdä.
+Omistaja hyväksyi nykyisen salatun toimituksen laajentamisen tavallisten
+testiperheiden ensimmäisen epäonnistumisen rajattuihin tulosteisiin ja
+olemassa oleviin vaihe-/siivoustuloksiin. Keräystä ei rajata vain yllä
+nimettyihin kahteen testitapaukseen. Toteutuksen omistaa
+[CI-tutkimusaineiston sopimus](ci-encrypted-evidence.md#testiperheiden-virheaineisto).
+Ennen yhtä normaalia CI-kierrosta vaaditaan kohderegressiot, katselmus ja
+kontrolloidun virheen keräys -> salaus -> purku -todistus.
+Ei tietokantoja, ympäristön kopiointia, uusia keräystyökaluja tai
+salaamatonta fallbackia. Linuxin salausapurin alustatuki on erillinen
+avoin hyväksyntä; sitä ei oteta käyttöön Windows-näytön perusteella.
+Riippuvuustyökalun mahdollisesti tunnuksia sisältävää raakaa tulostetta
+ei lisätä keräykseen. Nykyisiä hylkäyksiä ei ohiteta, T3:a ei avata
+uudelleen eikä mergeä tehdä. Tämä toteutus ei vielä sulje kahta estettä.
+
+Keräyskorjauksen rajattu näyttö ennen hosted-kertakoetta:
+
+- Yhteinen keräys-, smoke- ja OpenPGP-sarja läpäisi 63/63. Mukana on oikean
+  epäonnistuneen lapsiprosessin tulosteen keräys, salaus ja tavuntarkka purku.
+- Native-sopimus- ja command-sarja läpäisi 106/106 sekä parserit 5/5.
+  Saman testin myöhempi siivousvirhe säilyttää kaikkien sen kontekstien näytön.
+- CI-sopimukset läpäisivät 387/387 ja Windowsin workflow-/komentokytkennät
+  161/161. Aiemmat 258 workflow-askelta säilyivät muuttumattomina.
+- E2E-kohdesarja läpäisi 186/186. Katselmuksessa korjatun web-startupin
+  jatkotodennus läpäisi 123/123 sekä oikean Viten kaksi koostekoetta.
+  E2E-tyypitys ja ohjeiden 144 suhteellista linkkiä/ankkuria tarkistettiin.
+- Riippumaton katselmus löysi ja rajatut regressiot kattoivat smoke-putken
+  viimeisten tavujen, usean cleanup-kontekstin ja web-startupin säilytysaukot.
+  Nämä eivät ole aiempien kahden CI-hylkäyksen juurisyykorjauksia.
+
+Hosted-toimitus ja normaali CI hyväksytään vasta omista ajoistaan; yllä oleva
+kohdennettu näyttö ei korvaa niitä. Lopputulos sidotaan jäädytettyyn revisioon
+PR:n checkpointissa ilman erillistä tilakirjauscommittien kierrosta.
 
 ## Riskiperusteinen jatko 1.10.2026
 

@@ -147,6 +147,42 @@ jobs:
             exit 1
           }
 
+      - name: Produce one verified synthetic first failure
+        id: failure_probe
+        continue-on-error: true
+        working-directory: .
+        run: node .github/scripts/ciFailureEvidenceProbe.mjs
+
+      - name: Deliver synthetic first failure through the normal collector
+        id: failure_evidence
+        if: ${{ always() && steps.failure_probe.outcome == 'failure' && steps.failure_probe.outputs.probe_verified == 'true' }}
+        timeout-minutes: 3
+        uses: ./.github/actions/collect-ci-failure-evidence
+        with:
+          job-key: delivery-proof-${{ strategy.job-index || 0 }}
+          job-outcome: failure
+          public-key: ${{ vars.EKY_DIAGNOSTIC_PUBLIC_KEY }}
+          fingerprint: ${{ vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT }}
+          verified-fingerprint: ${{ vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT }}
+
+      - name: Require verified first failure and encrypted publication
+        if: always()
+        shell: pwsh
+        env:
+          PROBE_OUTCOME: ${{ steps.failure_probe.outcome }}
+          PROBE_VERIFIED: ${{ steps.failure_probe.outputs.probe_verified }}
+          DELIVERY_OUTCOME: ${{ steps.failure_evidence.outcome }}
+          SEALED: ${{ steps.failure_evidence.outputs.sealed }}
+          UPLOAD_OUTCOME: ${{ steps.failure_evidence.outputs.upload-outcome }}
+          ARTIFACT_ID: ${{ steps.failure_evidence.outputs.artifact-id }}
+        run: |
+          if ($env:PROBE_OUTCOME -cne 'failure' -or $env:PROBE_VERIFIED -cne 'true' -or
+              $env:DELIVERY_OUTCOME -cne 'success' -or $env:SEALED -cne 'true' -or
+              $env:UPLOAD_OUTCOME -cne 'success' -or $env:ARTIFACT_ID -cnotmatch '^[1-9][0-9]*$') {
+            [Console]::Error.WriteLine('CI_FIRST_FAILURE_EVIDENCE_DELIVERY_UNVERIFIED')
+            exit 1
+          }
+
   inspector-cutoff-diagnostic:
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'inspector-cutoff-diagnostic'
     name: Inspector capture across command cutoff (no MSI, not acceptance)
@@ -453,6 +489,28 @@ jobs:
         timeout-minutes: 3
         shell: pwsh
         run: ./installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode compareEvents
+
+      - name: Preserve encrypted CI failure evidence
+        if: >-
+          ${{ always() && runner.os == 'Windows' && runner.environment == 'github-hosted'
+            && (job.status == 'failure' || job.status == 'cancelled')
+            && vars.EKY_DIAGNOSTIC_PUBLIC_KEY != '' && vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT != ''
+            && vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT == vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT
+            && (github.event_name == 'push' || github.event_name == 'schedule'
+              || github.event_name == 'workflow_dispatch'
+              || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+            && (inputs.mode == '' || inputs.mode == 'contracts')
+            && hashFiles('.github/actions/collect-ci-failure-evidence/action.yml') != ''
+            && hashFiles('eky_software/apps/desktop/installer/windows-acceptance-harness/ciFailureEvidence.mjs') != '' }}
+        continue-on-error: true
+        timeout-minutes: 3
+        uses: ./.github/actions/collect-ci-failure-evidence
+        with:
+          job-key: supervisor-contracts-${{ strategy.job-index || 0 }}
+          job-outcome: ${{ job.status }}
+          public-key: ${{ vars.EKY_DIAGNOSTIC_PUBLIC_KEY }}
+          fingerprint: ${{ vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT }}
+          verified-fingerprint: ${{ vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT }}
 
   packaged-boundary-diagnostic:
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'packaged-boundary-diagnostic'

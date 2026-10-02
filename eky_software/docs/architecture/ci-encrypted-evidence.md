@@ -3,8 +3,10 @@
 ## Rajaus
 
 Omistaja hyväksyi rajatun GnuPG/OpenPGP-salauksen testityökaluksi.
-Ensimmäinen kuluttaja on normaali Windowsin `workspace_consumer`, ei uusi
-testialusta tai pysyvä yksityinen CI. Tämä sopimus ei koske käyttäjän koneen
+Ensimmäinen kuluttaja oli normaali Windowsin `workspace_consumer`.
+Omistajan hyväksymä [testiperheiden virheaineisto](#testiperheiden-virheaineisto)
+laajentaa samaa salattua toimitusta, ei testialustaa tai pysyvää yksityistä CI:tä.
+Tämä sopimus ei koske käyttäjän koneen
 mittauksia, sovelluksen tukipakettia, tuotantodataa tai varmuuskopioita.
 Työn nykytilan omistaa [M1-suunnitelma](release-0.3.0-m1-preparation-plan.md#salatun-tutkimusaineiston-välitavoite).
 
@@ -86,7 +88,59 @@ uudelleen. Tyhjä vahvistus poistaa keräyksen käytöstä. Fork-PR ei käynnist
 tätä valinnaista keräystä. Työnkulun luotettavuus on edelleen tärkeää:
 salaus ei suojaa haitallisen työnkulun tahalliselta raakajulkaisulta.
 
-## Keräys ja tulokset
+## Testiperheiden virheaineisto
+
+`ciFailureEvidence.mjs` käyttää workspace-keräimen nykyistä varmennettua
+tiedostokopiointia, gzip/JSON-kuorta ja OpenPGP-apuria. Se ei käynnistä tai
+pysäytä testiprosesseja, tulkitse testiä hyväksytyksi eikä korvaa T3:n tai
+V2:n prosessiomistajuutta. Windowsin normaaliin testijobiin kytketään yksi
+virheen jälkeinen keräys samalla julkisen avaimen vahvistuksella ja
+fork-PR-estolla. Kytkentä ei riipu epäonnistuneen testitapauksen nimestä.
+Uuden normaalin Windows-testijobin on käytettävä samaa jälkiaskeletta;
+workflow-regressio tarkistaa kattavuuden. Linux-toimitusta ei väitetä
+valmiiksi Windowsin kytkennän perusteella.
+
+| Lähde | Kerättävä sisältö | Rajaus |
+| --- | --- | --- |
+| Playwright system/web/Electron | Ajokohtaisen `results.private.json`-raportin virheet, testitulokset, stdout/stderr ja retry-yritykset. | Ennen salausta poistetaan konfiguraatio, metadata ja inline-liitteiden sisältö; alkuperäiset virhekentät säilyvät. Ei koko HTML-/attachment-hakemistoa tai siinä olevia SQLite-tiedostoja. Ennen runnerin raportin valmistumista katkennut ajo voi jäädä ilman tätä tiedostoa. |
+| Backend/web/Electron-fixture | Nykyisten redaktoitujen stdout/stderr-lukijoiden rajattu otos omassa suoritusyrityskohtaisessa tiedostossaan myös testin rungon tai siivouksen epäonnistuessa. | Otos säilyy ennen muistitiedon katoamista, tiedosto liitetään nykyisen fixturen jälkiraportoinnissa. Windows-Electronin lähde on natiivi omistajaprosessi; workloadin omaa putkea ei muuteta tällä työllä. Käynnistyksen tai siivouksen kriittiselle polulle ei lisätä tiedostokuittausta. |
+| Native-komennot ja supervisorin sopimustestit | Nimetyt vaihe-, worker- ja caller-tulokset sekä olemassa olevat yksityiset prosessitulosteet. | Ei request/config-tiedostoja, profiileja tai tietokantoja. Siivouksen raakatulos säilyy erillään alkuperäisestä hylkäyksestä. Tarkoituksella lukemattoman putken koe säilyttää oman sopimuksensa. |
+| Packaged smoke | Rajattu prosessituloste ja nykyinen smoke-tulos. | Epäonnistuneen testin juurta ei poisteta; keräin ei lue sen profiilia. Tyhjentynyt tuloste ei todista onnistunutta käynnistystä. |
+| Muut komennot ja valmistelu | Nykyinen turvallinen GitHub-komentoloki. | Salattu keräys ei palauta tulostetta, jota aliohjelma ei tuottanut tai säilyttänyt. Riippuvuustyökalun raakavirheet jäävät erikseen rajatuiksi pois. |
+
+Jokainen paketti sidotaan run/attempt/job/matrix-revisioon. Testitapaus ja
+sen retry sekä käynnistyssukupolvi säilyvät lähderaporteissa. Uusi paketti
+ei kirjoita aiemman päälle. Keräys käsittelee sekä runnerin että natiivin
+käyttöjärjestelmän temp-juuren, jotka eivät välttämättä ole sama hakemisto.
+Vain tunnettujen testiraporttien nimialueet tutkitaan. Tiedostolinkit,
+uudelleenohjaukset ja muuttuneet tiedostot hylätään.
+Playwright-raportin projektio merkitään manifestiin: alkuperäisen lähteen
+tiiviste ja salattavan projektion tiiviste eivät ole sama todiste.
+Muiden sallittujen tiedostojen tavut säilyvät muuttamattomina.
+
+Rajana on 256 tiedostoa, 8 MiB yksittäiselle tiedostolle ja 128 MiB yhteensä;
+hakemistoluvulla on oma määrä-, syvyys- ja aikaraja. Raportit kerätään
+ennen natiiveja tuloksia lähdekohtaisin tilavarauksin; saman lähteen uusimmat
+testijuuret käsitellään ensin. Aiemmin säilyneet natiivitulokset eivät siten
+voi käyttää raporttien koko tiedostokiintiötä. Asiaankuulumattomat temp-nimet
+eivät kuluta 4 096 soveltuvan hakemistomerkinnän rajaa, mutta niidenkin
+läpikäynti kuuluu lähteen viiden sekunnin hakubudjettiin. Tämä ei muuta
+testin aikarajaa eikä lisää odotusta testin kriittiselle polulle.
+Manifesti erottaa säilyneen,
+puuttuvan, liian suuren, kokonaisrajan ylittäneen ja varmentamattoman tiedoston
+sekä puuttuvan/osittaisen/rajatun lähdehaun. `complete` tarkoittaa vain
+lähdehaun valmistumista, ei täydellistä kaatumisvedosta. Nolla säilynyttä
+tiedostoa ei ole vian selitys. Testi, cleanup, keräys, salaus, upload ja purku
+ovat erillisiä tuloksia. Jobin tila ei yksin todista prosessisiivousta.
+
+Koko tracea, verkkokaappausta, muistivedosta, ympäristöä tai tietokantaa ei
+kytketä tällä muutoksella. Erityisesti `retain-on-failure` ei yksin ratkaise
+Electron-contextin tallennusta tai testi-istunnon salaisuuksien rajausta.
+Runnerin pakkokatkaisu voi estää myös tämän jälkikeräyksen. Puuttuva näyttö
+ilmoitetaan sellaisena; sitä ei korvata automaattisella uusinnalla tai
+väitteellä infrastruktuuriviasta.
+
+## Workspace-keräys ja tulokset
 
 `workspaceEncryptedEvidence.mjs` valmistelee erillisen temp-juuren ennen
 testin käynnistystä. Sidonta sisältää CI-ajon, suoritusyrityksen, matriisin
@@ -159,6 +213,13 @@ tai täsmällisen salatun liitteen uploadin virhe hylkää toimituskokeen.
 Tavallisen sovellustestin valinnainen diagnostiikka on eri asia: sen tulosta
 ei muuteta sovelluksen toiminnalliseksi hylkäykseksi. Kokeella on oma
 concurrency-ryhmä, jotta se ei peruuta varsinaista hyväksyntäajoa.
+
+Testiperheiden laajennuksen toimituskoe lisää samaan valintaan tarkoituksella
+epäonnistuvan synteettisen aliprosessin. Ennalta määrätty poistumiskoodi ja
+näytteen syntyminen varmistetaan ennen yhteisen jälkikeräysactionin kutsua.
+Normaalin työn valinnaisuudesta poiketen kokeen salaus ja upload ovat
+pakollisia; odottamaton onnistuminen tai puuttuva näyte hylkää kokeen.
+Paikallisen purun pitää palauttaa ensivirheen täsmälliset tavut.
 
 Toimituskokeen virhetuloste erottaa suljetulla vaihe-arvolla kutsun
 kontekstin, Node-version, tapahtumatiedoston ja sen JSON-tulkinnan,

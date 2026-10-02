@@ -153,15 +153,18 @@ test('unknown metadata is withheld; timeout, not-run and flaky remain distinct',
     selected: 3, globalErrors: 0, expected: 0, unexpected: 0, flaky: 1, skipped: 0, notRun: 1, unknown: 1 });
 });
 
-test('CI selects only safe console plus unchanged unpublished HTML; local list remains', () => {
-  assert.deepEqual(createE2eReporters({}, []), [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]]);
-  assert.deepEqual(createE2eReporters({ CI: 'true' }, []), [[reporterPath], ['html', { open: 'never', outputFolder: 'playwright-report' }]]);
+test('CI selects safe console plus private HTML and JSON; local list remains', () => {
+  const privateReporters = [['html', { open: 'never', outputFolder: 'playwright-report' }],
+    ['json', { outputFile: join('playwright-report', 'results.private.json') }]];
+  assert.deepEqual(createE2eReporters({}, []), [['list'], ...privateReporters]);
+  assert.deepEqual(createE2eReporters({ CI: 'true' }, []), [[reporterPath], ...privateReporters]);
   const config = readFileSync(new URL('../playwright.config.ts', import.meta.url), 'utf8');
   assert.match(config, /reporter: createE2eReporters\(undefined, undefined, artifacts\),/u);
   assert.match(config, /const artifacts = getE2eRunArtifacts\(\);/u);
   assert.match(config, /outputDir: artifacts.outputDir,/u);
   assert.deepEqual(createE2eReporters({ CI: '1' }, [], { htmlOutputFolder: 'playwright-report/run-synthetic' }),
-    [[reporterPath], ['html', { open: 'never', outputFolder: 'playwright-report/run-synthetic' }]]);
+    [[reporterPath], ['html', { open: 'never', outputFolder: 'playwright-report/run-synthetic' }],
+      ['json', { outputFile: join('playwright-report/run-synthetic', 'results.private.json') }]]);
   assert.match(config, /retries: isCi \? 1 : 0,/u);
   assert.match(config, /failOnFlakyTests: isCi,/u);
   assert.match(config, /trace: 'on-first-retry'/u);
@@ -169,7 +172,8 @@ test('CI selects only safe console plus unchanged unpublished HTML; local list r
 
 for (const name of ['DEBUG', 'DEBUG_FILE', 'DEBUG_GIT_COMMIT_INFO', 'PWDEBUG', 'PWDEBUGIMPL', 'PWTEST_WATCH',
   'PW_RUNNER_DEBUG', 'PW_TEST_REPORTER', 'PW_TEST_DEBUG_REPORTERS', 'PW_TEST_HTML_REPORT_OPEN',
-  'PLAYWRIGHT_HTML_OPEN', 'PLAYWRIGHT_HTML_OUTPUT_DIR', 'PLAYWRIGHT_HTML_REPORT', 'PLAYWRIGHT_HTML_TITLE']) {
+  'PLAYWRIGHT_HTML_OPEN', 'PLAYWRIGHT_HTML_OUTPUT_DIR', 'PLAYWRIGHT_HTML_REPORT', 'PLAYWRIGHT_HTML_TITLE',
+  'PLAYWRIGHT_JSON_OUTPUT_FILE', 'PLAYWRIGHT_JSON_OUTPUT_DIR', 'PLAYWRIGHT_JSON_OUTPUT_NAME']) {
   test(`CI refuses the ${name} escape without echoing its value`, () => {
     assert.throws(() => createE2eReporters({ CI: '1', [name]: secret }, []), error => {
       assert.equal(error.stack, 'Error: EKY_E2E_CI_REPORTING_CONFIGURATION_REJECTED');
@@ -187,7 +191,7 @@ function runnerFixture(t, body, { grep, setup, extraArgs = [], typescript = fals
   const root = mkdtempSync(join(tmpdir(), 'eky-reporter-contract-'));
   let accepted = false;
   t.after(() => { if (accepted) rmSync(root, { recursive: true, force: true }); });
-  const rawReport = join(root, 'private-results.json');
+  const rawReport = join(root, 'playwright-report', 'results.private.json');
   mkdirSync(join(root, 'tests'));
   if (typescript) writeFileSync(join(root, 'package.json'), JSON.stringify({ type: 'module' }));
   writeFileSync(join(root, 'tests', typescript ? 'projection.spec.ts' : 'projection.spec.cjs'),
@@ -208,8 +212,6 @@ function runnerFixture(t, body, { grep, setup, extraArgs = [], typescript = fals
       '} });',
     ].join('\n') : '',
     'const reporter = createE2eReporters();',
-    // The extra JSON sink is private test evidence, never selected by real CI config.
-    `reporter.push(['json', { outputFile: ${JSON.stringify(rawReport)} }]);`,
     'export default { testDir: "./tests", workers: 1, retries: 1, failOnFlakyTests: true,',
     `timeout: 1000, globalTimeout: ${setup === 'hang' ? 1000 : 30000}, reporter,`,
     'projects: [{ name: "electron-development" }],',

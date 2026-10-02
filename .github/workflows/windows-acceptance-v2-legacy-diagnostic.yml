@@ -89,6 +89,27 @@ jobs:
       - name: Run legacy ${{ matrix.group }} contracts
         run: pnpm installer:test:windows-supervisor-v2-legacy-${{ matrix.group }}
 
+      - name: Preserve encrypted CI failure evidence
+        if: >-
+          ${{ always() && runner.os == 'Windows' && runner.environment == 'github-hosted'
+            && (job.status == 'failure' || job.status == 'cancelled')
+            && vars.EKY_DIAGNOSTIC_PUBLIC_KEY != '' && vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT != ''
+            && vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT == vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT
+            && (github.event_name == 'push' || github.event_name == 'schedule'
+              || github.event_name == 'workflow_dispatch'
+              || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+            && hashFiles('.github/actions/collect-ci-failure-evidence/action.yml') != ''
+            && hashFiles('eky_software/apps/desktop/installer/windows-acceptance-harness/ciFailureEvidence.mjs') != '' }}
+        continue-on-error: true
+        timeout-minutes: 3
+        uses: ./.github/actions/collect-ci-failure-evidence
+        with:
+          job-key: legacy-contracts-${{ strategy.job-index || 0 }}
+          job-outcome: ${{ job.status }}
+          public-key: ${{ vars.EKY_DIAGNOSTIC_PUBLIC_KEY }}
+          fingerprint: ${{ vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT }}
+          verified-fingerprint: ${{ vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT }}
+
   legacy_artifact_producer:
     name: Build one historical source and target phase artifact
     needs: legacy_contracts
@@ -213,6 +234,27 @@ jobs:
           compression-level: 0
           overwrite: false
           include-hidden-files: false
+
+      - name: Preserve encrypted CI failure evidence
+        if: >-
+          ${{ always() && runner.os == 'Windows' && runner.environment == 'github-hosted'
+            && (job.status == 'failure' || job.status == 'cancelled')
+            && vars.EKY_DIAGNOSTIC_PUBLIC_KEY != '' && vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT != ''
+            && vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT == vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT
+            && (github.event_name == 'push' || github.event_name == 'schedule'
+              || github.event_name == 'workflow_dispatch'
+              || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+            && hashFiles('.github/actions/collect-ci-failure-evidence/action.yml') != ''
+            && hashFiles('eky_software/apps/desktop/installer/windows-acceptance-harness/ciFailureEvidence.mjs') != '' }}
+        continue-on-error: true
+        timeout-minutes: 3
+        uses: ./.github/actions/collect-ci-failure-evidence
+        with:
+          job-key: legacy-producer-${{ strategy.job-index || 0 }}
+          job-outcome: ${{ job.status }}
+          public-key: ${{ vars.EKY_DIAGNOSTIC_PUBLIC_KEY }}
+          fingerprint: ${{ vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT }}
+          verified-fingerprint: ${{ vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT }}
 
   legacy_consumer:
     name: V2.5 packaged legacy phase run ${{ matrix.repetition }}
@@ -367,3 +409,24 @@ jobs:
             node ../.github/scripts/legacyCaptureObservation.mjs
             if ($analysisExit -ne 0 -or $LASTEXITCODE -ne 0) { exit 1 }
           }
+
+      - name: Preserve encrypted CI failure evidence
+        if: >-
+          ${{ always() && runner.os == 'Windows' && runner.environment == 'github-hosted'
+            && (job.status == 'failure' || job.status == 'cancelled')
+            && vars.EKY_DIAGNOSTIC_PUBLIC_KEY != '' && vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT != ''
+            && vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT == vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT
+            && (github.event_name == 'push' || github.event_name == 'schedule'
+              || github.event_name == 'workflow_dispatch'
+              || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+            && hashFiles('.github/actions/collect-ci-failure-evidence/action.yml') != ''
+            && hashFiles('eky_software/apps/desktop/installer/windows-acceptance-harness/ciFailureEvidence.mjs') != '' }}
+        continue-on-error: true
+        timeout-minutes: 3
+        uses: ./.github/actions/collect-ci-failure-evidence
+        with:
+          job-key: legacy-consumer-${{ strategy.job-index || 0 }}
+          job-outcome: ${{ job.status }}
+          public-key: ${{ vars.EKY_DIAGNOSTIC_PUBLIC_KEY }}
+          fingerprint: ${{ vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT }}
+          verified-fingerprint: ${{ vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT }}

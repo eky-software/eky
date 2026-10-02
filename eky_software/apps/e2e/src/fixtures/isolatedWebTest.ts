@@ -32,6 +32,7 @@ import { waitForLoopbackPortRelease } from '../environment/waitForLoopbackPortRe
 import { readE2eScenarioId } from './readE2eScenarioId.js';
 import { removeE2eRunRoot } from '../environment/removeE2eRunRoot.js';
 import { finishServiceFixture } from './finishServiceFixture.js';
+import { reportFixtureProcessOutput, reportStartupProcessOutput } from './reportStartupProcessOutput.js';
 
 export interface IsolatedWebHarness {
   api: APIRequestContext;
@@ -105,6 +106,8 @@ export async function runIsolatedWebTest(
   let backend: StartedE2eBackend | undefined;
   let api: APIRequestContext | undefined;
   let failure: { error: unknown } | undefined;
+  let startupFailure: { error: unknown } | undefined;
+  let webStartupFailure: E2eWebStartupFailure | undefined;
   let priorCleanupUnverified = false;
   let networkBoundary: E2eBrowserNetworkBoundary | undefined;
   let web: StartedE2eWeb | undefined;
@@ -117,6 +120,7 @@ export async function runIsolatedWebTest(
         backendPort, faultPlan: e2eFaultPlan, lifetime, paths, runRoot, scenarioId,
       });
     } catch (error) {
+      startupFailure = { error };
       priorCleanupUnverified = !(error instanceof E2eBackendStartupFailure &&
         error.evidence.cleanup.processTree === 'stopped' &&
         error.evidence.cleanup.port === 'released');
@@ -135,6 +139,7 @@ export async function runIsolatedWebTest(
       priorCleanupUnverified = !(error instanceof E2eWebStartupFailure &&
         error.evidence.cleanup.processTree === 'stopped' && error.evidence.cleanup.port === 'released');
       if (error instanceof E2eWebStartupFailure) {
+        webStartupFailure = error;
         try {
           await testInfo.attach('web-startup-failure', {
             body: JSON.stringify({ schemaVersion: 1, ...error.evidence }), contentType: 'application/json',
@@ -173,7 +178,20 @@ export async function runIsolatedWebTest(
       },
       removeRoot: () => removeE2eRunRoot(runRoot),
       report: async (cleanup) => {
+        if (startupFailure !== undefined) {
+          const error = startupFailure.error;
+          await reportStartupProcessOutput(testInfo, 'backend-startup', () =>
+            error instanceof E2eBackendStartupFailure ? error.readPrivateOutput() : undefined);
+        }
         if (failure !== undefined || testInfo.status !== testInfo.expectedStatus || cleanup.runRoot !== 'removed') {
+          await reportFixtureProcessOutput(testInfo, 'web', [
+            { name: 'backend', role: 'current', generation: null, read: () => backend === undefined ? undefined : {
+              stdout: backend.managedProcess.readStdout(), stderr: backend.managedProcess.readStderr(),
+            } },
+            { name: 'web', role: 'current', generation: null, read: () => web === undefined ? webStartupFailure?.readPrivateOutput() : {
+              stdout: web.managedProcess.readStdout(), stderr: web.managedProcess.readStderr(),
+            } },
+          ]);
           await testInfo.attach('service-fixture-cleanup', {
             body: JSON.stringify({ schemaVersion: 1, cleanup }), contentType: 'application/json',
           });

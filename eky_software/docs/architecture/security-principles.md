@@ -110,14 +110,17 @@ päätöstä ja varmennusta.
 
 ### Rajattu CI-tutkimusaineiston salaus
 
-Omistajan erillisellä päätöksellä synteettisen Windows CI -workspace-testin
+Omistajan erillisellä päätöksellä synteettisten Windows CI -testien
 nimetty tutkimusaineisto voidaan toimittaa julkisena artifactina vain
 kokonaan OpenPGP-salattuna. [Salatun tutkimusaineiston sopimus](ci-encrypted-evidence.md)
 omistaa tiedostorajauksen, avaimen vahvistuksen, yhden vuorokauden
 artifact-säilytyksen ja yksityisen purun. CI saa vain julkisen avaimen;
 purkuavain pysyy paikallisena. Salaamaton fallback on kielletty.
-Poikkeus ei koske omistajan konehavaintoja, sovelluksen business-dataa,
-raakakonsolilokeja tai kaikkien testien yleistä raakajulkaisua.
+Poikkeus kattaa nykyisten testien rajatut virheraportit, redaktoidut
+prosessitulosteet sekä native-vaihe- ja siivoustulokset, ei koko testijuuren
+kopiointia. Poikkeus ei koske omistajan konehavaintoja, sovelluksen
+business-dataa, riippuvuustyökalun raakaa tulostetta eikä raakakonsolilokien
+tai tracejen yleistä julkaisua. Salaus ei poista sisältörajausta.
 
 ## Backup-, restore- ja päivitysturvallisuus
 

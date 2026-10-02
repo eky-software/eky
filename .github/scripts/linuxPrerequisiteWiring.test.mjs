@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { withoutOptionalEvidenceAllowance } from './ciFailureEvidenceTestContract.mjs';
 import { spawnSync } from 'node:child_process';
 import { readFileSync, statSync } from 'node:fs';
 import { win32 } from 'node:path';
@@ -108,7 +109,11 @@ test('observation remains in each existing Linux test step after its prerequisit
     }
   }
   assert.equal(core.match(/probeLinuxPrerequisites\.mjs/gu)?.length, 2);
-  assert.doesNotMatch(core, /continue-on-error:/u);
+  const required = withoutOptionalEvidenceAllowance(core, 2);
+  assert.doesNotMatch(required, /continue-on-error:/u);
+  for (const id of ['verify', 'e2e-system-security', 'e2e-web-critical']) {
+    assert.doesNotMatch(jobBlock(core, id), /collect-ci-failure-evidence/u);
+  }
 });
 
 test('both the local CI command and CI cadence run the new wiring and pure probe contracts', () => {

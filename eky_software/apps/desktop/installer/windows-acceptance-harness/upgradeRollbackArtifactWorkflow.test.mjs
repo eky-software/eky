@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { withoutOptionalEvidenceAllowance } from '../../../../../.github/scripts/ciFailureEvidenceTestContract.mjs';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -41,7 +42,8 @@ test('V2.4 workflow builds once and fans identical bytes to two consumers', asyn
     /Remove producer staging after native loader process exit/u,
   );
   assert.match(source, /WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_STAGE_CLEANUP_FAILED/u);
-  assert.doesNotMatch(source, /continue-on-error|retry|re-run/iu);
+  const required = withoutOptionalEvidenceAllowance(source, 2);
+  assert.doesNotMatch(required, /continue-on-error|retry|re-run/iu);
   const consumer = source.split('  upgrade_consumer:')[1];
   assert.match(consumer, /timeout-minutes: 37/u);
   assert.match(consumer, /name: Build acceptance supervisor\s+shell: pwsh\s+timeout-minutes: 3/u);

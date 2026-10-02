@@ -115,6 +115,32 @@ test.describe('managed E2E backend startup lifecycle', () => {
     });
     const failure = await result.catch((caught: unknown) => caught);
     expect(JSON.stringify(failure)).not.toContain('private');
+    expect(failure).toBeInstanceOf(E2eBackendStartupFailure);
+    const output = (failure as E2eBackendStartupFailure).readPrivateOutput();
+    expect(output).toEqual({ stdout: '', stderr: 'EADDRINUSE synthetic private detail' });
+    expect(Object.isFrozen(output)).toBe(true);
+  });
+
+  test('snapshots redacted startup output before cleanup can change the process buffer', async () => {
+    const child = createFakeChild();
+    child.emit('spawn');
+    let stderr = 'synthetic [REDACTED] first failure';
+    let released = false;
+    const result = waitForE2eBackendStartup({
+      backendOrigin: 'http://127.0.0.1:12345',
+      managedProcess: { startup: child.startup, readStdout: () => 'synthetic startup', readStderr: () => stderr },
+      observe() {},
+      async waitForHealth() { throw new Error('E2E_BACKEND_HEALTH_TIMEOUT'); },
+      async stopProcessTree() { stderr = 'cleanup output'; child.emit('close', 0, null); },
+      async releasePort() { released = true; },
+    });
+    const failure = await result.catch((error: unknown) => error);
+    expect(released).toBe(true);
+    expect(failure).toBeInstanceOf(E2eBackendStartupFailure);
+    expect((failure as E2eBackendStartupFailure).readPrivateOutput()).toEqual({
+      stdout: 'synthetic startup', stderr: 'synthetic [REDACTED] first failure',
+    });
+    expect(JSON.stringify(failure)).not.toContain('synthetic');
   });
 
   test('health failure retains cleanup proof even when owner stop reports an earlier operational failure', async () => {

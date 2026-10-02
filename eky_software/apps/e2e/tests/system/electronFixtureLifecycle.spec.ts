@@ -25,6 +25,7 @@ import { closeOwnedWindowsElectronRuntime } from '../../src/fixtures/closeOwnedW
 import { createE2eFixtureLifetime } from '../../src/environment/e2eFixtureLifetime.js';
 import type { ElectronBridgeCleanupEvidence } from '../../src/environment/startOwnedWindowsElectronBridge.js';
 import { createElectronLaunchFailureCapture } from '../../src/fixtures/captureElectronLaunchFailure.js';
+import { reportStartupProcessOutput } from '../../src/fixtures/reportStartupProcessOutput.js';
 import { createBackendOperationalEvent } from '../../../backend/src/observability/createOperationalEvent.js';
 import { createBackendOperationalLogger } from '../../../backend/src/observability/infrastructure/createBackendOperationalLogger.js';
 
@@ -72,16 +73,20 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
       lastHealthProbe: 'connectionRefused',
       cleanup: { processTree: 'unverified', port: 'released' },
       privateDetail: 'private process output',
-    } as E2eBackendStartupFailureEvidence);
+    } as E2eBackendStartupFailureEvidence, { stdout: 'synthetic startup [REDACTED]', stderr: 'synthetic backup preparation error' });
     Object.assign(original, { privateDetail: 'private path and session' });
     try {
       await expect(prepareElectronWorkspaceBackup({
         async prepare() { throw original; },
-        report: (preparation) => reportElectronLifecycleEvidence(testInfo, {
-          launch: [], observationsTruncated: false,
-          cleanup: { api: 'notStarted', runtime: 'notStarted', port: 'notStarted', runRoot: 'retained' },
-          preparation,
-        }),
+        report: async (preparation, error) => {
+          expect(error).toBe(original);
+          await reportStartupProcessOutput(testInfo, 'backend-startup', () => original.readPrivateOutput());
+          await reportElectronLifecycleEvidence(testInfo, {
+            launch: [], observationsTruncated: false,
+            cleanup: { api: 'notStarted', runtime: 'notStarted', port: 'notStarted', runRoot: 'retained' },
+            preparation,
+          });
+        },
       })).rejects.toBe(original);
       expect(existsSync(marker)).toBe(true);
       const text = readFileSync(testInfo.outputPath('electron-lifecycle.json'), 'utf8');
@@ -98,6 +103,8 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
       ]);
       expect(text).not.toMatch(/private|session|path|http/);
       expect(testInfo.attachments.some((item) => item.name === 'electron-lifecycle')).toBe(true);
+      expect(JSON.parse(readFileSync(testInfo.outputPath('backend-startup.private.json'), 'utf8')))
+        .toMatchObject({ source: 'available', stderr: 'synthetic backup preparation error' });
     } finally { await removeE2eRunRootIfPresent(root); }
   });
 

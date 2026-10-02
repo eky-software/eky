@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 
+import { createBoundedProcessOutput, type ProcessOutput } from '../../src/environment/boundedProcessOutput.js';
 import type { E2eProcessStartupState } from '../../src/environment/e2eProcessStartupObservation.js';
 import { E2eWebStartupFailure, waitForE2eWebStartup } from '../../src/environment/e2eWebStartupLifecycle.js';
 import { OwnedWindowsViteStartupFailure } from '../../src/environment/startOwnedWindowsVite.js';
@@ -7,9 +8,59 @@ import { OwnedWindowsViteStartupFailure } from '../../src/environment/startOwned
 test.describe('WEB-STARTUP-LIFECYCLE-001 @critical @security', () => {
   test('successful health requires observed spawn and does not perform cleanup', async () => {
     const f = fixture();
-    await expect(waitForE2eWebStartup(f.input)).resolves.toBeUndefined();
+    let outputRead = false;
+    await expect(waitForE2eWebStartup({ ...f.input, managedProcess: {
+      readStdout: () => { outputRead = true; return ''; },
+      readStderr: () => { outputRead = true; return ''; },
+    } })).resolves.toBeUndefined();
+    expect(outputRead).toBe(false);
     expect(f.calls).toEqual(['health', 'unsubscribe']);
   });
+
+  test('health rejection snapshots bounded redacted output before cleanup without public error fields', async () => {
+    const f = fixture();
+    const output = createBoundedProcessOutput(128, ['PRIVATE_SYNTHETIC_SESSION']);
+    output.append(Buffer.from(`${'x'.repeat(256)}PRIVATE_SYNTHETIC_SESSION first Vite error`));
+    const beforeCleanup = output.read();
+    f.input.waitForHealth = async () => { throw new Error('PRIVATE_HEALTH_FAILURE'); };
+    f.input.stopProcessTree = async () => {
+      f.calls.push('stop');
+      output.append(Buffer.from('cleanup output'.repeat(128)));
+      throw new Error('PRIVATE_STOP_FAILURE');
+    };
+    const error = await failure(waitForE2eWebStartup({ ...f.input,
+      managedProcess: { readStdout: () => '', readStderr: output.read },
+    }));
+    expect(error.message).toBe('E2E_WEB_HEALTH_TIMEOUT');
+    expect(error.evidence.cleanup).toEqual({ processTree: 'unverified', port: 'released' });
+    expect(error.readPrivateOutput()).toEqual({ stdout: '', stderr: beforeCleanup });
+    expect(error.readPrivateOutput()!.stderr).toContain('[REDACTED] first Vite error');
+    expect(Buffer.byteLength(error.readPrivateOutput()!.stderr)).toBeLessThanOrEqual(128);
+    expect(Object.isFrozen(error.readPrivateOutput())).toBe(true);
+    expect(JSON.stringify(error)).not.toMatch(/PRIVATE|Vite error|stdout|stderr/);
+    expect(f.calls.slice(-2)).toEqual(['stop', 'port']);
+  });
+
+  for (const unavailable of ['missing', 'stdoutThrows', 'stderrThrows'] as const) {
+    test(`${unavailable} output cannot mask health rejection or prevent cleanup`, async () => {
+      const f = fixture();
+      f.input.waitForHealth = async () => { throw new Error('PRIVATE_HEALTH_FAILURE'); };
+      const managedProcess: ProcessOutput | undefined = unavailable === 'missing' ? undefined : {
+        readStdout: () => {
+          if (unavailable === 'stdoutThrows') throw new Error('PRIVATE_OUTPUT_FAILURE');
+          return 'synthetic stdout';
+        },
+        readStderr: () => { throw new Error('PRIVATE_OUTPUT_FAILURE'); },
+      };
+      const error = await failure(waitForE2eWebStartup({ ...f.input,
+        ...(managedProcess === undefined ? {} : { managedProcess }),
+      }));
+      expect(error.message).toBe('E2E_WEB_HEALTH_TIMEOUT');
+      expect(error.readPrivateOutput()).toBeUndefined();
+      expect(error.evidence.cleanup).toEqual({ processTree: 'stopped', port: 'released' });
+      expect(f.calls.slice(-2)).toEqual(['stop', 'port']);
+    });
+  }
 
   for (const [terminal, errorCode] of [
     ['exited', 'E2E_WEB_CHILD_EXITED_BEFORE_HEALTH'],
