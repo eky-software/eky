@@ -36,6 +36,12 @@ käyttöä. Erillistä lupaa delegointiin ei tarvitse kysyä joka tehtävässä.
 Lupa koskee kaikkia käytettävissä olevia päättelytasoja, ei vain Ultraa,
 eikä edellytä agenttien käyttöä pienessä tai suoraviivaisessa tehtävässä.
 
+Sovella [agenttien tarkoituksenmukaisen käytön ohjetta](docs/ai/workflow.md#agenttien-tarkoituksenmukainen-käyttö):
+vältä päällekkäistä työtä ja tarpeetonta kontekstin kopiointia. Agenttien
+määrä on pääagentin harkinnassa, ei kiinteä kiintiö tai uusi lupaportti.
+Pakollisia lukureittejä, katselmuksia tai testinäyttöä ei kevennetä
+tokenisäästön vuoksi.
+
 Pääagentti arvioi hyödyn, rajaa vastuut ja antaa kullekin aliagentille
 tarvittavat projektiohjeet, tehtävärajauksen ja hyväksyntäehdot. Rinnakkaisten
 muokkausten kirjoitusalueet erotetaan. Pääagentti tarkistaa tulokset ja
@@ -47,6 +53,15 @@ hyväksyntäsäännöt koskevat kaikkia agentteja. Delegointi ei laajenna tehtä
 valtuuksia, ohita työkalujen rajoituksia tai käynnistä keskeytettyä työtä
 uudelleen. Tämä lupa koskee kehitystyön avustajia, ei sovelluksen tulevien
 AI-toimijoiden ajonaikaisia käyttöoikeuksia.
+
+### Mallin ja päättelytason suositus
+
+Anna jokaisen uuden tehtävän alussa lyhyt, perusteltu suositus siihen
+sopivasta mallista ja päättelytasosta. Myös nykyisen valinnan säilyttäminen
+on suositus. Arvioi valinta uudelleen työn vaikeuden tai riskin muuttuessa;
+samaa suositusta ei tarvitse toistaa jokaisessa väliviestissä. Noudata
+[työnkulun valintaohjetta](docs/ai/workflow.md#mallin-ja-päättelytason-valinta).
+Suositus ei vaihda käyttäjän asetusta eikä alenna hyväksyntävaatimuksia.
 
 ## Ohjeiden etusija ja ristiriitatilanteet
 

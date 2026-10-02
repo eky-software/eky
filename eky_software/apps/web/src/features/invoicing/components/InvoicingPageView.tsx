@@ -215,6 +215,7 @@ export function InvoicingPageView({
             activeView === 'editInvoice' ? draftEditorState.errorMessage : null
           }
           editorMode={activeView === 'newInvoice' ? 'create' : 'edit'}
+          sessionRevision={draftEditorState.sessionRevision}
           invoicePaymentDefaultsState={invoicePaymentDefaultsState}
           invoiceVatRatesState={invoiceVatRatesState}
           initialCustomerId={

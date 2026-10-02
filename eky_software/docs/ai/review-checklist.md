@@ -268,6 +268,11 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
 ## AI-työtapa
 
 - Oliko tehtävä riittävän pieni?
+- Annettiinko tehtävälle [malli- ja päättelytasosuositus](workflow.md#mallin-ja-päättelytason-valinta)
+  ja erotettiinko suositus todellisesta asetuksesta?
+- Oliko [agenttijako tarkoituksenmukainen](workflow.md#agenttien-tarkoituksenmukainen-käyttö):
+  rajatut vastuut, tarvittava riippumaton katselmus ja pääagentin tarkistama
+  näyttö ilman päällekkäistä tutkimusta tai CI-tilaseurantaa?
 - Käytiinkö toiminnon aloitusportti läpi ja ratkaistiinko vaikutusalueen
   avoimet kysymykset ennen toteutusta?
 - Annettiinko toteutussuunnitelma ennen laajaa muutosta?
