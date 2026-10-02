@@ -20,7 +20,7 @@ importers:
         version: 6.0.3
       vitest:
         specifier: 4.1.11
-        version: 4.1.11(@types/node@24.13.3)(vite@8.2.1(@types/node@24.13.3))
+        version: 4.1.11(@types/node@24.13.3)(vite@8.2.1(@types/node@24.13.6))
 
   apps/backend:
     dependencies:
@@ -65,8 +65,8 @@ importers:
         specifier: ^24.13.3
         version: 24.13.3
       electron:
-        specifier: 43.7.6
-        version: 43.7.6
+        specifier: 44.1.1
+        version: 44.1.1
 
   apps/e2e:
     devDependencies:
@@ -307,6 +307,9 @@ packages:
   '@types/node@24.13.3':
     resolution: {integrity: sha512-Dh8vAsV36ig5wa9OX4pXvMc9D3Veibfw2wix0CUwYODLD8nkj9UsLjASr49nPg+2eKzxhBV+v7L8pXvT4e639Q==}
 
+  '@types/node@24.13.6':
+    resolution: {integrity: sha512-SGrw/h3KPFshy3OE6ZL53LMBG5vGQQ8/gIpiqz/kRZhPJ7HgwCEs8LBuNtWLa8dvGZVpSF7+Bf+c11HUrCb/yg==}
+
   '@types/pdfkit@0.17.6':
     resolution: {integrity: sha512-tIwzxk2uWKp0Cq9JIluQXJid77lYhF52EsIOwhsMF4iWLA6YneoBR1xVKYYdAysHuepUB0OX4tdwMiUDdGKmig==}
 
@@ -431,8 +434,8 @@ packages:
   dfa@1.2.0:
     resolution: {integrity: sha512-ED3jP8saaweFTjeGX8HQPjeC1YYyZs98jGNZx6IiBvxW7JG5v492kamAQB3m2wop07CvU/RQmzcKr6bgcC5D/Q==}
 
-  electron@43.7.6:
-    resolution: {integrity: sha512-dLKMEDmUFG9hyL5fj0wOPXxxtIbhH+I6gSXOFMGSLiOIxeU2LjNb9YkQQOH7clD2TSBf2fa+gz8EEQ46FTpMaA==}
+  electron@44.1.1:
+    resolution: {integrity: sha512-N2WCq2sbOkqQgvXJYx2lS6UiO8bF+Yr67trDnS6JKa2WxTCRQsAjGl57SUtdW9h6r5PlduBFjIhxhgd3dzv1hg==}
     engines: {node: '>= 22.12.0'}
     hasBin: true
 
@@ -1058,6 +1061,10 @@ snapshots:
     dependencies:
       undici-types: 7.18.2
 
+  '@types/node@24.13.6':
+    dependencies:
+      undici-types: 7.18.2
+
   '@types/pdfkit@0.17.6':
     dependencies:
       '@types/node': 24.13.3
@@ -1084,13 +1091,13 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.1
 
-  '@vitest/mocker@4.1.11(vite@8.2.1(@types/node@24.13.3))':
+  '@vitest/mocker@4.1.11(vite@8.2.1(@types/node@24.13.6))':
     dependencies:
       '@vitest/spy': 4.1.11
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 8.2.1(@types/node@24.13.3)
+      vite: 8.2.1(@types/node@24.13.6)
 
   '@vitest/pretty-format@4.1.11':
     dependencies:
@@ -1166,11 +1173,11 @@ snapshots:
 
   dfa@1.2.0: {}
 
-  electron@43.7.6:
+  electron@44.1.1:
     dependencies:
       '@electron-internal/extract-zip': 1.0.5
       '@electron/get': 5.1.0
-      '@types/node': 24.13.3
+      '@types/node': 24.13.6
     transitivePeerDependencies:
       - supports-color
 
@@ -1486,10 +1493,21 @@ snapshots:
       '@types/node': 24.13.3
       fsevents: 2.3.3
 
-  vitest@4.1.11(@types/node@24.13.3)(vite@8.2.1(@types/node@24.13.3)):
+  vite@8.2.1(@types/node@24.13.6):
+    dependencies:
+      lightningcss: 1.33.0
+      picomatch: 4.0.5
+      postcss: 8.5.26
+      rolldown: 1.2.3
+      tinyglobby: 0.2.17
+    optionalDependencies:
+      '@types/node': 24.13.6
+      fsevents: 2.3.3
+
+  vitest@4.1.11(@types/node@24.13.3)(vite@8.2.1(@types/node@24.13.6)):
     dependencies:
       '@vitest/expect': 4.1.11
-      '@vitest/mocker': 4.1.11(vite@8.2.1(@types/node@24.13.3))
+      '@vitest/mocker': 4.1.11(vite@8.2.1(@types/node@24.13.6))
       '@vitest/pretty-format': 4.1.11
       '@vitest/runner': 4.1.11
       '@vitest/snapshot': 4.1.11
@@ -1506,7 +1524,7 @@ snapshots:
       tinyexec: 1.2.4
       tinyglobby: 0.2.17
       tinyrainbow: 3.1.1
-      vite: 8.2.1(@types/node@24.13.3)
+      vite: 8.2.1(@types/node@24.13.6)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 24.13.3
