@@ -63,6 +63,17 @@ samaa suositusta ei tarvitse toistaa jokaisessa väliviestissä. Noudata
 [työnkulun valintaohjetta](docs/ai/workflow.md#mallin-ja-päättelytason-valinta).
 Suositus ei vaihda käyttäjän asetusta eikä alenna hyväksyntävaatimuksia.
 
+### Mergen valtuus hyväksytyssä Goalissa
+
+Projektin omistaja antaa pysyvän luvan hyväksytyn, käynnissä olevan Goalin
+rajaukseen kuuluvaan normaaliin PR-mergeen ilman uutta lupakysymystä, kun
+tehtävän vaatimukset, katselmus ja kyseisen revision nykyiset PR-portit ovat
+hyväksytysti täyttyneet. Noudata [mergen valtuus- ja tarkistusohjetta](docs/ai/workflow.md#mergen-valtuus-hyväksytyssä-goalissa)
+ja varmista mergen jälkeen mainin omat vaaditut tarkistukset.
+Omistajan uudempi kielto, tauko tai rajaus on aina ensisijainen. Lupa ei
+laajenna Goalia eikä ohita riippuvuus-, arkkitehtuuri-, tietosuoja-,
+julkaisu- tai muita erillisiä päätösportteja.
+
 ## Ohjeiden etusija ja ristiriitatilanteet
 
 Jos kaksi projektin ohjetta vaikuttavat ristiriitaisilta, noudata seuraavaa etusijajärjestystä:
