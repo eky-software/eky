@@ -6,12 +6,26 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
 import { gunzipSync } from 'node:zlib';
-import { collectJobFailureEvidence, evidenceSourceKind, jobEvidenceBinding } from './ciFailureEvidence.mjs';
+import { collectJobFailureEvidence, evidenceSourceKind, jobEvidenceBinding, jobEvidenceGit } from './ciFailureEvidence.mjs';
 import { projectPlaywrightFailureReport } from './playwrightFailureReport.mjs';
 
 const run = 'run-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const fingerprint = 'A'.repeat(40);
 const nativeId = 'a'.repeat(32);
+
+test('only matching hosted Windows or Linux contexts select their native Git', () => {
+  for (const [platform, runner, git] of [['win32', 'Windows', 'git.exe'], ['linux', 'Linux', 'git']]) {
+    const env = { RUNNER_OS: runner, RUNNER_ENVIRONMENT: 'github-hosted', GITHUB_ACTIONS: 'true',
+      GITHUB_EVENT_NAME: 'workflow_dispatch' };
+    assert.equal(jobEvidenceGit(env, platform), git);
+    for (const patch of [{ RUNNER_OS: 'macOS' }, { RUNNER_OS: runner === 'Linux' ? 'Windows' : 'Linux' },
+      { RUNNER_ENVIRONMENT: 'self-hosted' }, { GITHUB_ACTIONS: 'false' },
+      { GITHUB_EVENT_NAME: 'pull_request_target' }, { GITHUB_EVENT_NAME: '' }]) {
+      assert.throws(() => jobEvidenceGit({ ...env, ...patch }, platform), /CI_FAILURE_EVIDENCE_UNVERIFIED/u);
+    }
+    assert.throws(() => jobEvidenceGit(env, 'darwin'), /CI_FAILURE_EVIDENCE_UNVERIFIED/u);
+  }
+});
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'eky-evidence-test-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -223,25 +237,29 @@ test('hosted proof entrypoint produces a real first failure, not only a fabricat
   assert.equal(Buffer.from(archive.files[entry.name], 'base64').toString(), 'SYNTHETIC_FIRST_FAILURE_PRIVATE\n');
 });
 
-test('job CLI rejects untrusted context before publishing or staging evidence', { skip: process.platform !== 'win32' }, async t => {
+test('job CLI rejects untrusted context before publishing or staging evidence', { skip: !['win32', 'linux'].includes(process.platform) }, async t => {
   const { env, temp, root } = await fixture(t);
   const workspace = resolve(import.meta.dirname, '../../../../..');
-  const head = spawnSync('git.exe', ['rev-parse', 'HEAD'], { cwd: workspace, encoding: 'utf8', timeout: 10000 });
+  const head = spawnSync(process.platform === 'win32' ? 'git.exe' : 'git', ['rev-parse', 'HEAD'], { cwd: workspace, encoding: 'utf8', timeout: 10000 });
   assert.equal(head.status, 0);
   const revision = head.stdout.trim();
   const eventPath = join(root, 'event.json');
   const outputPath = join(root, 'output.txt');
-  for (const [event, patch] of [
-    ['{}', { RUNNER_ENVIRONMENT: 'self-hosted' }],
+  const event = JSON.stringify({ pull_request: { head: { repo: { full_name: 'synthetic/repo' } } } });
+  for (const [payload, patch] of [
+    [event, { RUNNER_ENVIRONMENT: 'self-hosted' }],
+    [event, { RUNNER_OS: process.platform === 'win32' ? 'Linux' : 'Windows' }],
+    [event, { GITHUB_EVENT_NAME: 'pull_request_target' }],
+    ['{}', {}],
     [JSON.stringify({ pull_request: { head: { repo: { full_name: 'untrusted/fork' } } } }), {}],
     ['{malformed', {}],
     [' '.repeat(2 * 1024 * 1024 + 1), {}],
-    ['{}', { GITHUB_SHA: revision[0] === 'a' ? 'b'.repeat(40) : 'a'.repeat(40) }],
-    ['{}', { EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: '' }],
+    [event, { GITHUB_SHA: revision[0] === 'a' ? 'b'.repeat(40) : 'a'.repeat(40) }],
+    [event, { EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: '' }],
   ]) {
-    await writeFile(eventPath, event); await writeFile(outputPath, 'existing=value\n');
+    await writeFile(eventPath, payload); await writeFile(outputPath, 'existing=value\n');
     const child = spawnSync(process.execPath, [resolve(import.meta.dirname, 'ciFailureEvidence.mjs')], {
-      env: { ...process.env, ...env, GITHUB_ACTIONS: 'true', RUNNER_OS: 'Windows', RUNNER_ENVIRONMENT: 'github-hosted',
+      env: { ...process.env, ...env, GITHUB_ACTIONS: 'true', RUNNER_OS: process.platform === 'win32' ? 'Windows' : 'Linux', RUNNER_ENVIRONMENT: 'github-hosted',
         GITHUB_EVENT_NAME: 'pull_request', GITHUB_REPOSITORY: 'synthetic/repo', GITHUB_SHA: revision,
         GITHUB_WORKSPACE: workspace, GITHUB_OUTPUT: outputPath, GITHUB_EVENT_PATH: eventPath, ...patch },
       encoding: 'utf8', timeout: 15000, maxBuffer: 4096, windowsHide: true,

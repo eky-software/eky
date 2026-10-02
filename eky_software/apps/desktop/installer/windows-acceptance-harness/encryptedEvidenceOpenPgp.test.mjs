@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { appendFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 import test from 'node:test';
@@ -15,13 +16,18 @@ const quote = (value) => `'${value.replaceAll("'", "''")}'`;
 const gpgPath = (value) => /^[A-Za-z]:[\\/]/u.test(value)
   ? `/${value[0].toLowerCase()}${value.slice(2).replaceAll('\\', '/')}` : value;
 const SUCCESS = { Status: 'encrypted', Format: 'OpenPGP', Cipher: 'AES256' };
+const windows = process.platform === 'win32';
+const powershell = windows ? 'pwsh.exe' : 'pwsh';
+const git = windows ? 'git.exe' : 'git';
+const windowsOnly = { skip: !windows ? 'Windows workspace delivery contract, not the shared Linux collector.' : false };
 
 test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', {
-  skip: process.platform !== 'win32' ? 'Requires native Windows pwsh.exe and existing Git GnuPG; no installation.' : false,
+  skip: !['win32', 'linux'].includes(process.platform) ? 'Requires Windows or Linux with provisioned PowerShell/GnuPG; no installation.' : false,
   timeout: 240_000,
 }, async (t) => {
   await mkdir(join(ROOT, '.eky-local'), { recursive: true });
-  const root = await mkdtemp(join(ROOT, '.eky-local', 'openpgp-test-'));
+  // Linux test-key agents need short Unix socket paths; failure evidence stays outside builds.
+  const root = await mkdtemp(windows ? join(ROOT, '.eky-local', 'openpgp-test-') : join(tmpdir(), 'eky-gpg-'));
   const homes = [];
   let gpg;
   let gpgconf;
@@ -42,7 +48,7 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
     }
     return result;
   };
-  const ps = async (body, timeout) => run('pwsh.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand',
+  const ps = async (body, timeout) => run(powershell, ['-NoProfile', '-NonInteractive', '-EncodedCommand',
     Buffer.from(`$ErrorActionPreference = 'Stop'; ${body}`, 'utf16le').toString('base64')], timeout);
   const invokeGpg = async (home, args, expectSuccess = true) => {
     const result = await run(gpg, ['--no-options', '--homedir', gpgPath(home), '--batch', '--no-tty',
@@ -52,7 +58,7 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
   };
   const generate = async (label, options = []) => {
     const home = join(root, label);
-    await mkdir(home);
+    await mkdir(home, { mode: 0o700 });
     homes.push(home);
     // Only ephemeral, passphrase-free TEST keys; never a user's GnuPG home.
     await invokeGpg(home, [...options, '--pinentry-mode', 'loopback', '--passphrase', '',
@@ -69,18 +75,20 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
       secret ? '--export-secret-keys' : '--export', key.fingerprint]);
     return path;
   };
-  const check = async (name, body) => t.test(name, async () => {
+  const check = async (name, body, options = {}) => t.test(name, options, async () => {
     try { await body(); } catch (error) { failed = true; throw error; }
   });
   try {
-    const discovered = await ps(`$git = (Get-Command git.exe -CommandType Application | Select-Object -First 1).Source;
+    const discovered = await ps(windows ? `$git = (Get-Command git.exe -CommandType Application | Select-Object -First 1).Source;
       $dir = [IO.Path]::GetDirectoryName($git); $gpg = $null;
       foreach ($relative in @('../usr/bin/gpg.exe', '../../usr/bin/gpg.exe')) {
         $candidate = [IO.Path]::GetFullPath([IO.Path]::Combine($dir, $relative));
         if ([IO.File]::Exists($candidate)) { $gpg = $candidate; break }
       }
       if (!$gpg) { throw 'OPENPGP_TEST_GPG_UNAVAILABLE' }
-      @{ gpg = $gpg; gpgconf = (Join-Path ([IO.Path]::GetDirectoryName($gpg)) 'gpgconf.exe') } | ConvertTo-Json -Compress`);
+      @{ gpg = $gpg; gpgconf = (Join-Path ([IO.Path]::GetDirectoryName($gpg)) 'gpgconf.exe') } | ConvertTo-Json -Compress`
+      : `@{ gpg = (Get-Command gpg -CommandType Application | Select-Object -First 1).Source;
+        gpgconf = (Get-Command gpgconf -CommandType Application | Select-Object -First 1).Source } | ConvertTo-Json -Compress`);
     assert.equal(discovered.status, 0, 'OPENPGP_TEST_TOOL_DISCOVERY_FAILED');
     ({ gpg, gpgconf } = JSON.parse(discovered.stdout.toString('utf8')));
     const recipient = await generate('recipient');
@@ -117,7 +125,7 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
       return result;
     };
     let sealed;
-    await check('roundtrip AES256, isolated home, default Git tool discovery, bounded safe result', async () => {
+    await check('roundtrip AES256, isolated home, provisioned tool discovery, bounded safe result', async () => {
       sealed = await encrypt();
       assert.equal(sealed.status, 0, 'OPENPGP_TEST_ENCRYPTION_FAILED');
       assert.equal(sealed.stderr.length, 0, 'OPENPGP_TEST_STDERR_EXPOSED');
@@ -138,6 +146,7 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
           'OPENPGP_TEST_SECRET_STORAGE_CREATED');
       }
       assert.equal((await readdir(privateRoot)).includes('encrypt.stderr.private.log'), true);
+      if (!windows) assert.equal((await stat(privateRoot)).mode & 0o777, 0o700);
     });
     await check('multiple Git applications use the first PATH match just like the tool preflight', async () => {
       const gitRoot = resolve(dirname(gpg), '../..');
@@ -151,7 +160,7 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
       assert.deepEqual(JSON.parse(result.stdout.toString('utf8')), SUCCESS);
       const decrypted = await invokeGpg(recipient.home, ['--decrypt', result.output]);
       assert.equal(decrypted.stdout.equals(plaintext), true, 'OPENPGP_TEST_MULTIPLE_GIT_ROUNDTRIP_FAILED');
-    });
+    }, windowsOnly);
     await check('collector -> PowerShell entry -> OpenPGP -> decrypt preserves the trace and manifest', async () => {
       const temp = join(root, 'runner-temp');
       await mkdir(temp);
@@ -223,6 +232,57 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
       assert.equal(results[0].error.stack, 'synthetic stack');
       assert.deepEqual(results.map(result => result.retry), [0, 1]);
     });
+    await check('job CLI encrypts the actual first failure with matching native platform and checkout', async () => {
+      const checkout = join(root, 'cli-checkout');
+      const temp = join(root, 'cli-temp');
+      const native = join(root, 'cli-native');
+      await mkdir(checkout); await mkdir(temp); await mkdir(native);
+      for (const args of [['init', checkout], ['-C', checkout, '-c', 'user.name=Evidence TEST',
+        '-c', 'user.email=evidence@example.invalid', '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'Synthetic evidence fixture']]) {
+        assert.equal((await run(git, args)).status, 0, 'OPENPGP_TEST_REPOSITORY_FAILED');
+      }
+      const head = await run(git, ['-C', checkout, 'rev-parse', 'HEAD']);
+      assert.equal(head.status, 0, 'OPENPGP_TEST_CHECKOUT_UNVERIFIED');
+      const revision = head.stdout.toString('utf8').trim();
+      const source = join(native, 'eky supervisor sample');
+      await mkdir(source);
+      const original = await run(process.execPath, ['-e', 'process.stderr.write("SYNTHETIC-CLI-FIRST-FAILURE\\n"); process.exit(19)']);
+      assert.equal(original.status, 19);
+      await writeFile(join(source, 'ci-step.stderr.private'), original.stderr);
+      const eventPath = join(temp, 'event.json');
+      const outputPath = join(temp, 'output.txt');
+      await writeFile(eventPath, '{}'); await writeFile(outputPath, '');
+      const child = spawnSync(process.execPath, [join(dirname(SCRIPT), 'ciFailureEvidence.mjs')], {
+        env: { ...process.env, GITHUB_ACTIONS: 'true', RUNNER_OS: windows ? 'Windows' : 'Linux',
+          RUNNER_ENVIRONMENT: 'github-hosted', GITHUB_EVENT_NAME: 'workflow_dispatch',
+          GITHUB_JOB: 'evidence-proof', EKY_EVIDENCE_JOB_KEY: 'proof-0', EKY_EVIDENCE_JOB_OUTCOME: 'failure',
+          GITHUB_SHA: revision, GITHUB_RUN_ID: '98765', GITHUB_RUN_ATTEMPT: '1',
+          GITHUB_WORKSPACE: checkout, GITHUB_OUTPUT: outputPath, GITHUB_EVENT_PATH: eventPath,
+          RUNNER_TEMP: temp, TMP: native, TEMP: native, TMPDIR: native,
+          EKY_DIAGNOSTIC_PUBLIC_KEY: await readFile(publicPath, 'utf8'),
+          EKY_DIAGNOSTIC_KEY_FINGERPRINT: recipient.fingerprint,
+          EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: recipient.fingerprint },
+        timeout: 130_000, maxBuffer: 64 * 1024, encoding: 'buffer', windowsHide: true,
+      });
+      await writeFile(join(root, 'job-cli.stdout.private.log'), child.stdout ?? Buffer.alloc(0));
+      await writeFile(join(root, 'job-cli.stderr.private.log'), child.stderr ?? Buffer.alloc(0));
+      assert.equal(child.error === undefined && child.status === 0, true, 'OPENPGP_TEST_JOB_CLI_FAILED');
+      assert.equal(child.stderr.length, 0, 'OPENPGP_TEST_JOB_CLI_UNSAFE_ERROR');
+      assert.equal(JSON.parse(child.stdout).retainedFiles, 1);
+      const output = await readFile(outputPath, 'utf8');
+      const match = /^ciphertext=([^\r\n]+)\nsealed=true\n$/u.exec(output);
+      assert.equal(match !== null, true, 'OPENPGP_TEST_JOB_OUTPUT_INVALID');
+      const decrypted = await invokeGpg(recipient.home, ['--decrypt', match[1]]);
+      const value = JSON.parse(gunzipSync(decrypted.stdout));
+      assert.deepEqual(value.manifest.binding, { runId: '98765', attempt: '1', job: 'evidence-proof',
+        jobKey: 'proof-0', sourceRevision: revision });
+      assert.equal(value.manifest.cleanup, 'notInferred');
+      assert.equal(value.manifest.files.length, 1);
+      const entry = value.manifest.files[0];
+      assert.equal(entry.location, 'nativeTemp');
+      assert.equal(entry.sha256, createHash('sha256').update(original.stderr).digest('hex'));
+      assert.equal(Buffer.from(value.files[entry.name], 'base64').equals(original.stderr), true);
+    });
     await check('synthetic delivery CLI seals only its fixed sample and preserves the real checkout binding', async () => {
       const temp = join(root, 'delivery-runner-temp');
       await mkdir(temp);
@@ -268,8 +328,8 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
       assert.equal(value.manifest.binding.artifactDescriptorSha256, undefined);
       assert.equal(Object.values(value.manifest.outcomes).every(outcome => outcome === 'skipped'), true);
       assert.equal(value.manifest.captureClosed, false);
-    });
-    const deliveryHead = await run('git.exe', ['-C', ROOT, 'rev-parse', 'HEAD']);
+    }, windowsOnly);
+    const deliveryHead = await run(git, ['-C', ROOT, 'rev-parse', 'HEAD']);
     assert.equal(deliveryHead.status, 0, 'OPENPGP_TEST_CHECKOUT_UNVERIFIED');
     const deliveryRevision = deliveryHead.stdout.toString('utf8').trim();
     assert.match(deliveryRevision, /^[0-9a-f]{40}$/u);
@@ -322,7 +382,7 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
           await assert.rejects(readFile(join(temp, 'eky-encrypted-delivery-proof-98765-1', 'evidence.json.gz.gpg')),
             { code: 'ENOENT' });
         }
-      });
+      }, windowsOnly);
     }
     await check('real missing PowerShell distinguishes startup without changing the normal failure result', async () => {
       const script = `import { encryptArchive } from ${JSON.stringify(new URL('./workspaceEncryptedEvidence.mjs', import.meta.url).href)};
@@ -332,7 +392,7 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
           catch (error) { console.log(JSON.stringify({ message: error.message, code: error.evidenceCode ?? null })); }
         }`;
       const child = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
-        env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toLowerCase() !== 'path')), Path: root },
+        env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toLowerCase() !== 'path')), [windows ? 'Path' : 'PATH']: root },
         encoding: 'buffer', timeout: 10000, maxBuffer: 4096, windowsHide: true,
       });
       await writeFile(join(root, 'missing-helper.stdout.private.log'), child.stdout ?? Buffer.alloc(0));
@@ -382,6 +442,14 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
       assert.equal(result.stderr.toString('utf8') === 'EVIDENCE_OUTPUT_EXISTS', true);
       assert.equal(await readFile(output, 'utf8'), 'existing ciphertext');
       assert.equal((await readdir(result.work)).length, 0);
+    });
+    await check('missing provisioned GnuPG fails closed without discovery fallback or output', async () => {
+      const result = await encrypt({}, "$env:PATH = ''");
+      assert.equal(result.status, 17);
+      assert.equal(result.stdout.length, 0);
+      assert.equal(result.stderr.toString('utf8') === 'EVIDENCE_GPG_UNAVAILABLE', true);
+      assert.deepEqual(await readdir(result.work), []);
+      assert.equal((await readdir(root)).includes(result.output.slice(root.length + 1)), false);
     });
     await check('native failure retains raw stderr privately without plaintext publication', async () => {
       const result = await rejected({ GpgPath: process.execPath }, 'EVIDENCE_GPG_FAILED');

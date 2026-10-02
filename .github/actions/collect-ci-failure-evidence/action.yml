@@ -1,5 +1,5 @@
 name: Collect encrypted CI failure evidence
-description: Deliver only the bounded collector's verified ciphertext after a Windows job fails.
+description: Deliver only the bounded collector's verified ciphertext after a supported hosted job fails.
 
 inputs:
   job-key:
@@ -35,7 +35,7 @@ runs:
     - name: Seal named failure evidence
       id: seal
       if: >-
-        ${{ always() && runner.os == 'Windows' && runner.environment == 'github-hosted'
+        ${{ always() && (runner.os == 'Windows' || runner.os == 'Linux') && runner.environment == 'github-hosted'
           && (inputs.job-outcome == 'failure' || inputs.job-outcome == 'cancelled')
           && inputs.public-key != '' && inputs.fingerprint != ''
           && inputs.fingerprint == inputs.verified-fingerprint

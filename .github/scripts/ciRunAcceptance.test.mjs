@@ -7,6 +7,7 @@ import { classifyCiRisk } from './ciRiskPolicy.mjs';
 import { requiredCiJobs } from './ciJobCoverage.mjs';
 import { CI_WORKFLOWS, evaluateCiRun } from './ciRunAcceptance.mjs';
 import { summarizeLegacyCapture } from './legacyCaptureObservation.mjs';
+import { withoutOptionalEvidenceAllowance } from './ciFailureEvidenceTestContract.mjs';
 
 const fast = 'eky_software/apps/web/src/features/customers/CustomerList.tsx';
 const critical = 'eky_software/apps/desktop/src/profileBackup/restore/profileRestoreStartupRecovery.ts';
@@ -291,15 +292,17 @@ test('MSI file policy has a hosted-only manual path without replacing supervisor
 
 test('synthetic evidence proof selects exactly one manual job and preserves reusable supervisor acceptance', async () => {
   const source = await readFile(new URL('../workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
-  const mode = 'encrypted-evidence-delivery-proof';
+  const modes = ['encrypted-evidence-delivery-proof', 'linux-encrypted-evidence-delivery-proof'];
   const conditions = [...source.matchAll(/^  ([\w-]+):\n    if: ([^\n]+)/gm)];
   const selected = (eventName, mode) => conditions.filter(([, , expression]) => runInNewContext(expression,
     { github: { event_name: eventName }, inputs: { mode } }, { timeout: 1000 })).map(([, name]) => name);
-  assert.equal(conditions.length, 5);
-  assert.deepEqual(selected('workflow_dispatch', mode), [mode]);
-  for (const eventName of ['pull_request', 'push', 'schedule', 'workflow_call']) {
-    assert.deepEqual(selected(eventName, mode), []);
-    assert.deepEqual(selected(eventName, undefined), ['job-object-feasibility']);
+  assert.equal(conditions.length, 6);
+  for (const mode of modes) {
+    assert.deepEqual(selected('workflow_dispatch', mode), [mode]);
+    for (const eventName of ['pull_request', 'pull_request_target', 'push', 'schedule', 'workflow_call', 'workflow_run']) {
+      assert.deepEqual(selected(eventName, mode), []);
+      assert.deepEqual(selected(eventName, undefined), ['job-object-feasibility']);
+    }
   }
   assert.deepEqual(selected('workflow_dispatch', 'contracts'), ['job-object-feasibility']);
   for (const other of ['inspector-cutoff-diagnostic', 'msi-file-version-policy', 'packaged-boundary-diagnostic']) {
@@ -310,7 +313,7 @@ test('synthetic evidence proof selects exactly one manual job and preserves reus
   const group = source.match(/group: windows-acceptance-supervisor-[^\n]+\$\{\{ ([^\n]+) \}\}/)?.[1];
   assert.ok(group);
   const suffix = (mode, artifact_kind) => runInNewContext(group, { inputs: { mode, artifact_kind } }, { timeout: 1000 });
-  assert.equal(suffix(mode), mode);
+  for (const mode of modes) assert.equal(suffix(mode), mode);
   assert.equal(suffix('contracts'), '');
   assert.equal(suffix(undefined), '');
   assert.equal(suffix('packaged-boundary-diagnostic', 'workspace'), 'workspace');
@@ -497,7 +500,10 @@ function verifyLinuxDiagnostics(source, definition) {
   assert.match(section, /if: inputs\.risk_plan != '' \|\| \(inputs\.risk_plan == '' && inputs\.linux_consumer_diagnostic == true\)\n    runs-on: ubuntu-latest/u);
   assert.match(section, new RegExp(`    timeout-minutes: ${definition.timeout}\\n`, 'u'));
   assert.match(section, /working-directory: eky_software/u);
-  assert.doesNotMatch(section, /continue-on-error:|upload-artifact|always\(\)/u);
+  const required = withoutOptionalEvidenceAllowance(section, 1, false, 'Linux')
+    .split(/(?=^      - name: )/mu)
+    .filter(step => !step.startsWith('      - name: Preserve encrypted CI failure evidence\n')).join('');
+  assert.doesNotMatch(required, /continue-on-error:|upload-artifact|always\(\)/u);
   const normal = workflowStep(section, definition.normal);
   assert.doesNotMatch(normal, /if:|linux:consumer|test:e2e:stress|success\(\)/u);
   let previous = section.indexOf(`      - name: ${definition.normal}\n`);

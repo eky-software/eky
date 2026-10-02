@@ -17,7 +17,8 @@ ei lähetetä salaamatonta tiedostoa, kansiota tai lokia varavaihtoehtona.
 
 ## Työkalu ja avain
 
-Käytetään Git-työkaluketjun GnuPG:tä eristetystä apurista. Se ei ole uusi
+Windowsissa käytetään Git-työkaluketjun GnuPG:tä ja Linuxissa hosted-runnerin
+valmiiksi tarjoamaa GnuPG:tä saman eristetyn PowerShell 7 -apurin kautta. Se ei ole uusi
 npm-riippuvuus eikä kuulu toimitettavaan EKY-sovellukseen. Käytössä ovat
 OpenPGP:n julkisen avaimen salaus ja AES-256; omaa salausformaattia ei
 toteuteta. GnuPG on ylläpidetty GPL-3.0-or-later-työkalu. Sen ja Gitin
@@ -26,10 +27,15 @@ ylläpitoon, vaikka npm-audit ei niitä kata. Runnerilta puuttuva tai
 yhteensopimaton työkalu estää salatun aineiston toimituksen, ei salli
 automaattista latausta tai salaamattomaan tapaan palaamista.
 
-Apuri valitsee `Get-Command git.exe` -tuloksen ensimmäisen sovelluksen,
+Windows-apuri valitsee `Get-Command git.exe` -tuloksen ensimmäisen sovelluksen,
 samoin kuin workflow'n ennakkotarkistus. Useita PATH-osumia ei käsitellä
 yhtenä tiedostopolkuna. Valitun Gitin yhteydestä puuttuva GnuPG hylkää
 toimituksen; valintaa ei vaihdeta automaattisesti toiseen Git-asennukseen.
+Linuxissa valitaan ensimmäinen `Get-Command gpg` -sovellus; puuttuvaa
+työkalua ei asenneta eikä Windowsin MSYS-polkuja käytetä. Linuxin erillinen
+avainkoti saa oikeudet `0700`. Molemmat alustat käyttävät samaa avainprofiilia,
+salauksen tilavarmennusta, rajattuja putkia ja kokonaismääräaikaa. Apuri ei
+käynnistä agenttia tai dirmngriä eikä nouda avaimia verkosta.
 
 Noden omat kryptografiaprimitiivit edellyttäisivät tässä oman siirto- ja
 avainformaatin ylläpitoa. Uutta JavaScript-salauskirjastoa ei tarvita, kun
@@ -93,12 +99,17 @@ salaus ei suojaa haitallisen työnkulun tahalliselta raakajulkaisulta.
 `ciFailureEvidence.mjs` käyttää workspace-keräimen nykyistä varmennettua
 tiedostokopiointia, gzip/JSON-kuorta ja OpenPGP-apuria. Se ei käynnistä tai
 pysäytä testiprosesseja, tulkitse testiä hyväksytyksi eikä korvaa T3:n tai
-V2:n prosessiomistajuutta. Windowsin normaaliin testijobiin kytketään yksi
+V2:n prosessiomistajuutta. Windowsin ja Linuxin normaaliin testijobiin kytketään yksi
 virheen jälkeinen keräys samalla julkisen avaimen vahvistuksella ja
 fork-PR-estolla. Kytkentä ei riipu epäonnistuneen testitapauksen nimestä.
-Uuden normaalin Windows-testijobin on käytettävä samaa jälkiaskeletta;
-workflow-regressio tarkistaa kattavuuden. Linux-toimitusta ei väitetä
-valmiiksi Windowsin kytkennän perusteella.
+Uuden normaalin Windows- tai Linux-testijobin on käytettävä samaa jälkiaskeletta;
+workflow-regressio tarkistaa kattavuuden. Käyttöönotto vaatii kyseisen alustan
+hosted-toimituksen ja paikallisen purun todistuksen, ei vain toisen alustan
+läpäisyä. Keräys sallitaan vain alustan kanssa täsmäävällä `RUNNER_OS`-arvolla
+GitHubin hosted-ajossa. Tavalliset push-, schedule- ja workflow_dispatch-ajot
+sekä saman repositoryn PR sallitaan; fork-PR ja `pull_request_target` estetään.
+Luokittelu-, koonti- ja riippuvuusauditointijobit eivät tuota tämän sopimuksen
+raakaa testiaineistoa eivätkä saa yleistä koko jobin tulostekaappausta.
 
 | Lähde | Kerättävä sisältö | Rajaus |
 | --- | --- | --- |
@@ -221,6 +232,15 @@ Normaalin työn valinnaisuudesta poiketen kokeen salaus ja upload ovat
 pakollisia; odottamaton onnistuminen tai puuttuva näyte hylkää kokeen.
 Paikallisen purun pitää palauttaa ensivirheen täsmälliset tavut.
 
+Linux-kytkennällä on oma `linux-encrypted-evidence-delivery-proof`-valinta
+samassa workflow'ssa. Se ajaa olemassa olevat keräys- ja OpenPGP-regressiot
+valmiilla työkaluilla sekä tarkoituksella epäonnistuvan aliprosessin ja
+yhteisen salatun toimituksen. Viiden minuutin rajattu koe ei käynnistä
+Windows-koetta, MSI-asennusta tai normaalia hyväksyntäkierrosta. Hosted-kokeen
+onnistumisen lisäksi sama salattu liite puretaan oikealla paikallisella
+avaimella: lähde, suoritusyritys, job, tiivisteet ja ensivirheen tavut
+varmistetaan ennen tavallisten Linux-jobien kytkennän julkaisemista.
+
 Toimituskokeen virhetuloste erottaa suljetulla vaihe-arvolla kutsun
 kontekstin, Node-version, tapahtumatiedoston ja sen JSON-tulkinnan,
 checkout-revision, keräyksen, salauksen, salatekstin tarkistuksen sekä
@@ -248,7 +268,10 @@ arvioidaan sen omasta manifestista.
 Rajattu komento on `pnpm --filter @eky/desktop installer:test:encrypted-evidence`.
 Testit kattavat tiedostorajat, ensiyrityksen erottelun, väärät avaimet,
 salauksen ja purun sekä todellisen workflow-kytkennän sopimuksen. Windowsin
-GnuPG-kokeet käyttävät vain erillisiä synteettisiä testiavaimia.
+ja Linuxin GnuPG-kokeet käyttävät vain erillisiä synteettisiä testiavaimia.
+Vain Windowsin workspace-toimitus-CLI:n ja Git-asennuksen erityiskokeet
+ohitetaan Linuxissa; yhteinen oikean prosessin keräys, CLI, salaus, purku,
+väärän avaimen esto ja määräajan todistus suoritetaan molemmissa.
 Keräyksen käyttöönotto vaatii lisäksi ylläpitäjän oman avaimen purkukokeen
 ja kohdennetun hosted-toimituksen varmennuksen. Paikallinen läpäisy ei ole
 hosted-toimituksen todiste eikä alkuperäisen timeoutin korjaus.

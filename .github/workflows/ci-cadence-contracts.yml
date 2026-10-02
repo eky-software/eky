@@ -84,7 +84,7 @@ jobs:
 
       - name: Preserve encrypted CI failure evidence
         if: >-
-          ${{ always() && runner.os == 'Windows' && runner.environment == 'github-hosted'
+          ${{ always() && (runner.os == 'Windows' || runner.os == 'Linux') && runner.environment == 'github-hosted'
             && (job.status == 'failure' || job.status == 'cancelled')
             && vars.EKY_DIAGNOSTIC_PUBLIC_KEY != '' && vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT != ''
             && vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT == vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT

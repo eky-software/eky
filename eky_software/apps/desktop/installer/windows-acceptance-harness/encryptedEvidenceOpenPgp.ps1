@@ -1,10 +1,11 @@
-# Dot-source in PowerShell 7 on Windows. The caller owns private directories,
+# Dot-source in PowerShell 7 on Windows or Linux. The caller owns private directories,
 # immutable input collection, retention and upload of ONLY the final output.
 $script:EvidenceEncryptionFailureCodes = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'encryptedEvidenceFailureCodes.json') -Raw | ConvertFrom-Json
 
 function ConvertTo-EvidenceGpgPath([string]$Path) {
   # Git's bundled GPG uses MSYS paths even when launched by native PowerShell.
   $fullPath = [IO.Path]::GetFullPath($Path)
+  if ($IsLinux) { return $fullPath }
   if ($fullPath -notmatch '^[A-Za-z]:[\\/]') { throw 'EVIDENCE_INPUT_INVALID' }
   return '/' + $fullPath.Substring(0, 1).ToLowerInvariant() + $fullPath.Substring(2).Replace('\', '/')
 }
@@ -156,7 +157,7 @@ function Invoke-EvidenceEncryption {
   $lifetime = [Diagnostics.Stopwatch]::StartNew()
   $failureCode = 'EVIDENCE_INPUT_INVALID'
   try {
-    if ($PSVersionTable.PSVersion.Major -lt 7 -or !$IsWindows) { throw 'EVIDENCE_PLATFORM_UNSUPPORTED' }
+    if ($PSVersionTable.PSVersion.Major -lt 7 -or (!$IsWindows -and !$IsLinux)) { throw 'EVIDENCE_PLATFORM_UNSUPPORTED' }
     if ($ExpectedFingerprint -cnotmatch '^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$') {
       throw 'EVIDENCE_KEY_INVALID'
     }
@@ -200,7 +201,9 @@ function Invoke-EvidenceEncryption {
         [regex]::Matches($armor, '-----END ').Count -ne 1) { throw 'EVIDENCE_KEY_INVALID' }
 
     $failureCode = 'EVIDENCE_GPG_UNAVAILABLE'
-    if ([string]::IsNullOrEmpty($GpgPath)) {
+    if ([string]::IsNullOrEmpty($GpgPath) -and $IsLinux) {
+      $GpgPath = (Get-Command gpg -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+    } elseif ([string]::IsNullOrEmpty($GpgPath)) {
       $git = (Get-Command git.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
       $gitDirectory = [IO.Path]::GetDirectoryName($git)
       foreach ($relative in @('../usr/bin/gpg.exe', '../../usr/bin/gpg.exe')) {
@@ -216,6 +219,10 @@ function Invoke-EvidenceEncryption {
     # Keep the child short for MSYS GPG's socket-path limit even with no autostart.
     $runPath = Join-Path $WorkRoot 'openpgp'
     [void](New-Item -ItemType Directory -Path $runPath)
+    if ($IsLinux) {
+      [IO.File]::SetUnixFileMode($runPath, [IO.UnixFileMode]::UserRead -bor
+        [IO.UnixFileMode]::UserWrite -bor [IO.UnixFileMode]::UserExecute)
+    }
     $homePath = $runPath
     $keyPath = Join-Path $runPath 'recipient.asc'
     [IO.File]::WriteAllBytes($keyPath, $keyBytes)

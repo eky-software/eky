@@ -289,7 +289,13 @@ export function encryptionFailureCode(error, stderr) {
 
 export function encryptArchive(root, collected, reportFailureCode = false) {
   return new Promise((accept, reject) => {
-    execFile('pwsh.exe', ['-NoProfile', '-NonInteractive', '-File', join(HERE, 'sealWorkspaceEvidence.ps1'),
+    const executable = { win32: 'pwsh.exe', linux: 'pwsh' }[process.platform];
+    if (!executable) {
+      const failure = new Error('WORKSPACE_ENCRYPTED_EVIDENCE_UNVERIFIED');
+      if (reportFailureCode) failure.evidenceCode = 'EVIDENCE_PLATFORM_UNSUPPORTED';
+      reject(failure); return;
+    }
+    execFile(executable, ['-NoProfile', '-NonInteractive', '-File', join(HERE, 'sealWorkspaceEvidence.ps1'),
       '-ArchivePath', collected.archivePath, '-OutputPath', join(root, 'evidence.json.gz.gpg'),
       '-PublicKeyPath', join(root, 'recipient.asc'), '-ExpectedFingerprint', collected.fingerprint,
       '-WorkRoot', root, ...(reportFailureCode ? ['-ReportFailureCode'] : [])],

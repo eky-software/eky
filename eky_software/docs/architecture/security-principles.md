@@ -110,7 +110,7 @@ päätöstä ja varmennusta.
 
 ### Rajattu CI-tutkimusaineiston salaus
 
-Omistajan erillisellä päätöksellä synteettisten Windows CI -testien
+Omistajan erillisellä päätöksellä synteettisten Windows- ja Linux-CI-testien
 nimetty tutkimusaineisto voidaan toimittaa julkisena artifactina vain
 kokonaan OpenPGP-salattuna. [Salatun tutkimusaineiston sopimus](ci-encrypted-evidence.md)
 omistaa tiedostorajauksen, avaimen vahvistuksen, yhden vuorokauden

@@ -78,7 +78,8 @@ nimenomaisesti.
 
 ### Rajattu CI-salaustyökalu
 
-Omistaja on hyväksynyt Git-työkaluketjun GnuPG:n vain
+Omistaja on hyväksynyt Windowsin Git-työkaluketjun GnuPG:n sekä Linuxin
+hosted-runnerin valmiin GnuPG:n ja PowerShellin vain
 [CI-tutkimusaineiston OpenPGP-salaukseen](ci-encrypted-evidence.md).
 Työkalu pysyy testiapurin takana; se ei ole sovellus- tai npm-riippuvuus
 eikä kuulu EKY-asentimeen. Hyväksyntä ei salli uusia salauskirjastoja,

@@ -113,7 +113,8 @@ kirjoitusta tai rajaamatonta kuittausodotusta kriittiselle polulle.
 
 Rajattu [salattu CI-tutkimuspaketti](../architecture/ci-encrypted-evidence.md)
 on erikseen hyväksytty toimitusreitti Windowsin workspace-testin nimetyille
-tiedostoille. Se ei avaa yleistä raakajulkaisua eikä korvaa testin tulosta.
+tiedostoille sekä Windowsin ja Linuxin testiperheiden rajatulle ensivirheen
+aineistolle. Se ei avaa yleistä raakajulkaisua eikä korvaa testin tulosta.
 Purkuavaimen käyttöönotto ja yhden vuorokauden sisällä tapahtuva yksityinen
 talteenotto on varmistettava ennen reitin käyttöä.
 

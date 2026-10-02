@@ -140,16 +140,25 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
   return { root, archivePath, fingerprint, manifest };
 }
 
-export async function runJobEvidence(env = process.env) {
-  if (process.platform !== 'win32' || env.RUNNER_OS !== 'Windows'
+export function jobEvidenceGit(env, platform = process.platform) {
+  const tools = { win32: { runner: 'Windows', git: 'git.exe' }, linux: { runner: 'Linux', git: 'git' } }[platform];
+  if (!tools || env.RUNNER_OS !== tools.runner
     || env.GITHUB_ACTIONS !== 'true' || env.RUNNER_ENVIRONMENT !== 'github-hosted'
-    || !isAbsolute(env.GITHUB_OUTPUT ?? '') || !isAbsolute(env.GITHUB_EVENT_PATH ?? '')) throw failure();
+    || !['push', 'schedule', 'workflow_dispatch', 'pull_request'].includes(env.GITHUB_EVENT_NAME)) throw failure();
+  return tools.git;
+}
+
+export async function runJobEvidence(env = process.env) {
+  const git = jobEvidenceGit(env);
+  if (!isAbsolute(env.GITHUB_OUTPUT ?? '') || !isAbsolute(env.GITHUB_EVENT_PATH ?? '')) throw failure();
   const eventInfo = await lstat(env.GITHUB_EVENT_PATH);
   if (!eventInfo.isFile() || eventInfo.isSymbolicLink() || eventInfo.size > 2 * MiB) throw failure();
   const event = JSON.parse(await readFile(env.GITHUB_EVENT_PATH, 'utf8'));
+  if (env.GITHUB_EVENT_NAME === 'pull_request' &&
+    (!env.GITHUB_REPOSITORY || event.pull_request?.head?.repo?.full_name !== env.GITHUB_REPOSITORY)) throw failure();
   if (event.pull_request && event.pull_request.head?.repo?.full_name !== env.GITHUB_REPOSITORY) throw failure();
   await new Promise((accept, reject) => {
-    execFile('git.exe', ['rev-parse', 'HEAD'], { cwd: env.GITHUB_WORKSPACE,
+    execFile(git, ['rev-parse', 'HEAD'], { cwd: env.GITHUB_WORKSPACE,
       timeout: 10_000, maxBuffer: 4096, windowsHide: true }, (error, stdout) => {
       if (error || stdout.trim() !== env.GITHUB_SHA) reject(failure()); else accept();
     });

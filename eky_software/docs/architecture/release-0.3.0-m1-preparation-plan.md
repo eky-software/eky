@@ -20,7 +20,7 @@ hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohd
 | Mainin omat portit | [Normaali CI 36989952802](https://github.com/eky-software/eky/actions/runs/36989952802), suoritusyritys 1: kaikki 11 porttia ja 38 vaadittua jobia läpäisivät; neljä valinnaista diagnostiikkajobia ohitettiin. Linux system 769/769, kriittinen web 37/37 ja Windowsin kriittinen Electron 39/39 läpäisivät ilman retryä, flakyä tai puuttuvia tapauksia. Nykyiset kahden toiston packaged-portit läpäisivät. [Saman revision riippuvuustarkistus 36989952310](https://github.com/eky-software/eky/actions/runs/36989952310) läpäisi sovellusriippuvuuksien auditoinnin ja 160 allekirjoitusta. Tämä auditointi ei vielä kattanut erillistä pnpm-bootstrapia. |
 | Suljettu työ | T1/R27:n ajokytkentä, T2/R29:n puhtaan valmistelun suoja ja T3/R28:n todellisten kuluttajien koko prosessipuun omistajuus. Korvatut aktiiviset fallbackit on poistettu ja [pysyvä T3-matriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus) hyväksytty. PR #281 sulki tämän jälkeisen rollback-testiapurin integraatiojatkon. |
 | Avoimet havainnot | Aiemmat satunnaiset Electron-käynnistys- ja packaged/legacy-timeoutit säilyvät epäonnistuneina havaintoina omille revisioilleen. Myöhempi vihreä ajo ei todista niiden kaikkia syitä korjatuiksi. [Hylkäysten historia](e2e-test-environment-history.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko) ja [rajattu apurikorjaus](e2e-test-environment-history.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus) erotetaan toisistaan. |
-| Seuraava työ | pnpm `11.11.0`, bootstrapin haavoittuvuusportti ja Dependabot-seuranta on toteutettu PR #283:ssa. Hyväksyntä pysähtyi [kahteen rajattuun testihylkäykseen](#pnpm-huollon-pr-porttien-rajatut-esteet). Sovellusriippuvuudet, Electron `43.7.6`, Undici `7.29.1`, `better-sqlite3 13.0.2`, tietomalli, T3 ja testivaatimukset säilyvät. A1/R01 aloitetaan vasta tämän huollon hyväksynnän ja oman preflightin jälkeen. |
+| Seuraava työ | pnpm `11.11.0`, bootstrapin haavoittuvuusportti ja Dependabot-seuranta on toteutettu PR #283:ssa. Windowsin ensivirhekeräys ja sen normaali PR-kierros läpäisivät [checkpointin](https://github.com/eky-software/eky/pull/283#issuecomment-5957053770). Nyt todennetaan hyväksytty Linux-salauskytkentä; merge on erillinen päätös. [Aiemmat kaksi testihylkäystä](#pnpm-huollon-pr-porttien-rajatut-esteet) säilyvät avoimina syyhavaintoina, eivät myöhemmän revision tuloksina. Sovellusriippuvuudet, Electron `43.7.6`, Undici `7.29.1`, `better-sqlite3 13.0.2`, tietomalli, T3 ja testivaatimukset säilyvät. A1/R01 aloitetaan vasta tämän huollon hyväksynnän ja oman preflightin jälkeen. |
 | Ei vielä valmis | A1-A3, W7, M1:n muu sovellustyö ja koko 0.3.0. Testiperustan hyväksyntä ei hyväksy niiden tulevaa toteutusta tai muuttunutta liiketoimintasääntöä. |
 
 Hyväksyntä on sidottu yllä olevaan revisioon, ei automaattisesti myöhempään
@@ -118,11 +118,23 @@ nimettyihin kahteen testitapaukseen. Toteutuksen omistaa
 Ennen yhtä normaalia CI-kierrosta vaaditaan kohderegressiot, katselmus ja
 kontrolloidun virheen keräys -> salaus -> purku -todistus.
 Ei tietokantoja, ympäristön kopiointia, uusia keräystyökaluja tai
-salaamatonta fallbackia. Linuxin salausapurin alustatuki on erillinen
-avoin hyväksyntä; sitä ei oteta käyttöön Windows-näytön perusteella.
+salaamatonta fallbackia. Omistaja hyväksyi tämän jälkeen myös Linuxin
+salauskytkennän runnerin valmiilla GnuPG- ja PowerShell-työkaluilla.
+Sitä ei oteta käyttöön Windows-näytön perusteella: rajatut regressiot,
+riippumaton katselmus ja oma synteettinen hosted-koe sekä oikean avaimen
+paikallinen purku vaaditaan ennen normaalien Linux-jobien toimitusta.
+Puuttuva tai yhteensopimaton työkalu estää toimituksen; asennuksia,
+uusia riippuvuuksia, testiehtojen muutoksia tai salaamatonta varareittiä
+ei lisätä. Tämän rajatun jatkon hosted- ja PR-hyväksyntä on jäädytyshetkellä
+avoin; toteutunut tulos sidotaan lähderevisioon PR #283:n omassa checkpointissa.
 Riippuvuustyökalun mahdollisesti tunnuksia sisältävää raakaa tulostetta
 ei lisätä keräykseen. Nykyisiä hylkäyksiä ei ohiteta, T3:a ei avata
 uudelleen eikä mergeä tehdä. Tämä toteutus ei vielä sulje kahta estettä.
+
+Linux-laajennuksen kohderegressiot ennen hosted-koetta: yhteinen keräys-,
+workspace- ja OpenPGP-sarja 51/51 sekä CI-sopimukset 389/389 läpäisivät.
+Riippumaton katselmus ei löytänyt korjattavaa. Nämä eivät korvaa Linuxin
+todellista salaus-/purkutodistusta tai uuden revision normaalia PR-kierrosta.
 
 Keräyskorjauksen rajattu näyttö ennen hosted-kertakoetta:
 

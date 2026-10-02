@@ -121,7 +121,7 @@ test('one cadence entry calls existing owners and always aggregates without repl
   assert.match(source, /timeout-minutes: 5/);
   assert.match(source, /CI_BASE_SHA: \$\{\{ github.event.pull_request.base.sha \}\}/);
   assert.match(source, /CI_HEAD_SHA: \$\{\{ github.event.pull_request.head.sha \}\}/);
-  assert.doesNotMatch(withoutOptionalEvidenceAllowance(source, 1),
+  assert.doesNotMatch(withoutOptionalEvidenceAllowance(source, 1, false, 'Windows/Linux'),
     /pull_request_target|continue-on-error|msiexec|installer:|upload-artifact|: write/);
   for (const action of [...source.matchAll(/uses: (\S+)/g)].map((match) => match[1])) {
     if (action.startsWith('./.github/workflows/')) {
