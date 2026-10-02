@@ -2,17 +2,20 @@
 
 ## Päätös ja nykyinen tila
 
-**Ajantasainen jatko 2.10.2026:** PR #282 on yhdistetty ja mainin omat
+**Ajantasainen jatko 2.10.2026:** PR #283 on yhdistetty ja mainin omat
 normaali CI sekä riippuvuustarkistus ovat hyväksyttyjä.
 [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
 sitoo hyväksynnän revisioon ja säilyttää vanhat timeout-/ETL-havainnot
-avoimina. Ennen A1:tä omistaja hyväksyi rajatun
+avoimina. Ennen A1:tä hyväksytty rajattu
 [pnpm-bootstrapin tietoturvahuollon](release-0.3.0-m1-preparation-plan.md#pnpm-bootstrapin-tietoturvahuolto):
-pnpm `11.11.0`, bootstrapin oma haavoittuvuusportti ja Dependabot-seuranta.
-Toteutus on PR #283:ssa. Riippuvuustarkistus läpäisi, mutta hyväksyntä
-odottaa [kahden rajatun testihylkäyksen jatkoa](release-0.3.0-m1-preparation-plan.md#pnpm-huollon-pr-porttien-rajatut-esteet).
-Salattu workspace-aineisto ei kata näitä hylättyjä testitöitä. Huollon
-hyväksyntä, A1 ja koko 0.3.0 ovat vielä avoinna.
+pnpm `11.11.0`, bootstrapin oma haavoittuvuusportti ja Dependabot-seuranta
+on todennettu. Samassa PR:ssä hyväksyttiin Windowsin ja Linuxin rajattu
+salatun ensivirheaineiston toimitus. Keräys ei palauta vanhoista ajoista
+puuttuvaa aineistoa eikä takaa kaikkien mahdollisten vikojen juurisyytä.
+[Lopullinen checkpoint](https://github.com/eky-software/eky/pull/283#issuecomment-5959719891)
+erottaa riippuvuusturvan, toimintatestien ja hälytysten readbackin näytön.
+Seuraava työ on [A1/R01:n luonnoksen avaamisen kohdesuoja](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde).
+Sen valmistelu on aloitettu; toteutus, hyväksyntä ja koko 0.3.0 ovat avoinna.
 
 **M0, T1, T2 ja T3/R28 on hyväksytty; M1:n sovelluskorjaukset ovat avoinna.**
 Myös T-paketin jälkeinen integraatiojatko on hyväksytty PR #281:n mainissa.

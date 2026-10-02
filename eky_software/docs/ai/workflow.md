@@ -26,6 +26,68 @@ pysyvän delegointiluvan mukaisesti, ellei omistaja erikseen kiellä tai rajaa
 sitä. Käytä delegointia tarpeen mukaan; pääagentti vastaa työn rajauksesta,
 tulosten tarkistamisesta ja yhteisten hyväksyntäporttien noudattamisesta.
 
+### Agenttien tarkoituksenmukainen käyttö
+
+Pääagentti valitsee delegoinnin tehtävän hyödyn ja riskin perusteella ilman
+uutta lupapyyntöä. Lupa ei tarkoita velvollisuutta käyttää aliagentteja.
+Tavoite on vähentää päällekkäistä työtä, ei turvallisuutta tai tarkistuksia.
+
+- Pieni, suoraviivainen muutos tehdään yleensä ilman aliagenttia. Rajatussa
+  työssä yksi riippumaton katselmoija voi riittää; laajemmassa työssä
+  lähtökohtana voi olla 1–2 aidosti erillistä osatehtävää. Nämä eivät ole
+  ylärajoja: pääagentti voi käyttää enemmän agentteja, kun erillinen vastuu
+  tai tarkistus tuo todellista hyötyä.
+- Delegoi nimetty kysymys tai rajattu tulos, älä samaa kokonaistutkimusta
+  usealle agentille ilman perusteltua riippumattoman vertailun tarvetta.
+  Turvallisuuden, palautuksen, migraation ja prosessielinkaaren vaatimaa
+  riippumatonta katselmusta ei poisteta säästön vuoksi. Toteuttajan oma
+  jatkotarkistus ei korvaa riippumatonta katselmoijaa.
+- Anna tehtävänanto, soveltuvat ajantasaiset ohjepolut, lähtörevisio,
+  sallitut luku-/kirjoitusalueet, rajauksen ulkopuoliset asiat ja
+  valmistumisehto. Linkitä olemassa oleva näyttö koko keskustelun tai
+  raakalokien toistamisen sijaan. Aliagentti lukee oman vastuunsa pakolliset
+  ohjeet; pääagentin tiivistelmä ei korvaa niitä.
+- Pyydä tiivis tulos: havainnot ja niiden todisteviitteet, muuttuneet
+  tiedostot, tehdyt tarkistukset sekä avoimet riskit. Raportin lyhyys ei saa
+  piilottaa epäonnistumista tai puuttuvaa näyttöä. Pääagentti tarkistaa
+  olennaisen lähde- ja testinäytön, ei vain aliagentin johtopäätöstä.
+- Jatka läheistä osatehtävää samalla agentilla, jos sen konteksti on vielä
+  käyttökelpoinen. Anna muuttuneet ohjeet ja revisio uudelleen. Älä jatka
+  vanhentuneesta tilasta tai käytä toteuttajaa riippumattomana arvioijanaan.
+  Sulje tarpeeton agentti tehtävän valmistuttua tai vastuun siirryttyä.
+- Sovita aliagentin päättelyteho sen rajattuun tehtävään työkalujen
+  mahdollisuuksien ja omistajan valintojen puitteissa. Älä tilaa uutta
+  täysimittaista analyysia pelkkää odottamista tai muuttumatonta tilatietoa
+  varten. Käytä CI:ssä [yhtä seurantavastuuta](#ci-ajon-seuranta-ja-virhetodisteet)
+  ja olemassa olevia keräystyökaluja.
+
+Arvioi delegoinnin hyötyä valmistuneiden tulosten ja päällekkäisen työn
+perusteella. Älä lupaa tokenisäästön prosenttia ilman vertailukelpoista
+mittausta. Näiden käytäntöjen vuoksi ei rakenneta uutta agentti- tai
+seurantajärjestelmää.
+
+### Mallin ja päättelytason valinta
+
+Anna uuden tehtävän aloitusviestissä mallia ja päättelytasoa koskeva lyhyt
+suositus sekä syy. Nykyisen mallin pitäminen voi olla paras valinta.
+Arvioi tehtävän rajaus, epäselvyys, vastuurajat ja virheen seuraukset:
+tavallinen ohjaus tai kirjaus tarvitsee yleensä vähemmän päättelyä kuin
+usean vastuun suunnittelu tai vaikea turvallisuus-, data- tai elinkaarivirhe.
+Laatu ja vaadittu näyttö ratkaisevat; pienin tokenikulutus ei ole tavoite
+niiden kustannuksella.
+
+Erota malli ja päättelytaso toisistaan ja suositus todellisesta asetuksesta.
+Suosittele vain käytettävissä olevia vaihtoehtoja, älä väitä nähneesi tai
+muuttaneesi asetusta ilman vahvistusta. Konekohtaiset mallitoiveet säilyvät
+paikallisissa ohjeissa, eivät tässä yhteisessä dokumentissa.
+
+Jos vaikeus tai riski muuttuu olennaisesti, anna uusi suositus ennen siihen
+liittyvää toteutusta. Jos työn turvallinen jatkaminen edellyttää suositeltua
+vaihtoa tai omistaja on pyytänyt vaihtosuosituksen yhteydessä taukoa,
+pysäytä kyseinen työ ja odota omistajan vaihtoa tai jatkopäätöstä.
+Muulloin lyhyt suositus riittää eikä samaan tehtävään tarvita toistuvia
+asetuskyselyjä. Kaikilla tasoilla noudatetaan samoja hyväksyntäportteja.
+
 ## Työn aloitusjärjestys
 
 Aina luettava:
@@ -48,6 +110,9 @@ Tämä on jokaisen tehtävän pysyvä aloitusportti, ei julkaisukohtainen tarkis
 4. Jos tehtävän aikana sivutaan uutta osaa, toista tarkistus sen osalta ennen
    muutoksia. Anna aliagentille sama rajattu lukureitti; pääagentti tarkistaa
    tulosten ohjeenmukaisuuden.
+5. Anna [malli- ja päättelytasosuositus](#mallin-ja-päättelytason-valinta)
+   ja valitse [tarkoituksenmukainen agenttijako](#agenttien-tarkoituksenmukainen-käyttö).
+   Pienessä tehtävässä pääagentin oma työ ja yhden virkkeen suositus riittävät.
 
 Koko `docs`-kansiota ei lueta joka kerta, mutta ohjetta ei sivuuteta siksi,
 ettei se ollut ensimmäisessä luetussa listassa. Etsi puuttuva reitti alueen
@@ -238,6 +303,16 @@ myös PR:n mergen jälkeisessä `main`-ajossa. Kun pääagentti tekee muuta työ
 käytä erillistä seuranta-agenttia, jos se on saatavilla ja sallittu; muuten
 pääagentti hoitaa seurannan itse. Älä jätä ajoa pelkän lopputuloksen varaan.
 
+- Yhdellä ajolla on yksi nimetty aktiivinen seurantavastuu. Käytä nykyistä
+  automaattista keräystä lokien ja tilamuutosten säilyttämiseen; se ei yksin
+  korvaa agentin vastuuta havaintojen käsittelystä. Pääagentti ei toista
+  seuranta-agentin tilakyselyjä rinnakkaisena kyselysilmukkana. Vastuun siirto
+  kirjataan, eikä seuranta saa katketa säästön vuoksi.
+- Seuranta-agentti ilmoittaa merkityksellisestä muutoksesta, ensimmäisestä
+  hylkäyksestä, puuttuvasta aineistosta, valmistumisesta tai päätöstarpeesta.
+  Muuttumattomia tiloja ei analysoida ja raportoida toistuvasti. Pääagentin
+  oma lopullinen revision, kattavuuden ja hyväksyntänäytön tarkistus säilyy;
+  se on eri tehtävä kuin jatkuvan tilaseurannan kahdentaminen.
 - Sido seuranta lähderevisioon ja ajokomentoon; CI:ssä lisäksi todelliseen
   checkoutiin, run ID:hen, yritykseen ja valittuihin jobeihin.
   Käytä nykyisiä luku-/odotustyökaluja
