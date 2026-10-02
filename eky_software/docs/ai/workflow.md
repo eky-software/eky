@@ -294,6 +294,36 @@ koneeseen liittyvää diagnostiikkaa. Epäselvä sisältö jää paikalliseksi,
 kunnes julkaisukelpoisuus on ratkaistu. Jo julkaistu poikkeama kerrotaan
 omistajalle; historian siivousta ei käynnistetä ilman erillistä päätöstä.
 
+### Mergen valtuus hyväksytyssä Goalissa
+
+Juuri-[AGENTS.md:n](../../AGENTS.md#mergen-valtuus-hyväksytyssä-goalissa)
+pysyvä lupa kattaa pääagentin tekemän normaalin PR-mergen hyväksytyn,
+käynnissä olevan Goalin sisällä. Erillistä merge-lupaa ei kysytä uudelleen
+vain siksi, että hyväksytty työ saavutti integraatiovaiheen. Goalin rajaus,
+omistajan nykyiset päätökset ja kaikki muut hyväksyntäportit säilyvät.
+Omistajan myöhempi kielto, tauko tai täsmällisempi valtuusraja ohittaa
+tämän yleisen luvan. Pelkkä automaattinen Goal-jatko ei kumoa niitä.
+
+Ennen mergeä pääagentti varmistaa ja kirjaa nykyiseen hyväksyntächeckpointiin:
+
+- PR kuuluu hyväksyttyyn Goaliin, eikä avoinna ole sen estävää päätöstä,
+  katselmushavaintoa tai hyväksymätöntä poikkeusta.
+- Base, head ja julkaistava diff ovat odotetut; PR ei ole draft ja merge on
+  konfliktiton. Lähteen tai basen muutos vaatii hyväksyntänäytön tarkistuksen.
+- Juuri kyseisen revision katselmus sekä valitut ja vaaditut tarkistukset
+  ovat valmistuneet hyväksytysti. Pending-, cancelled- tai flaky-tulosta
+  ei tulkita onnistumiseksi eikä ensivirhettä poisteta myöhemmän vihreyden vuoksi.
+- Tavallinen suojattu merge tehdään eksplisiittisellä strategialla ja
+  hyväksyttyyn head-revisioon sidottuna. Operaation tulos varmistetaan ja
+  uuden main-revision omat vaaditut ajot seurataan loppuun.
+
+Lupa ei kata force pushia, historian uudelleenkirjoitusta, admin-ohitusta,
+branch-suojausten tai required checkien kiertämistä, punaisen tai
+keskeneräisen PR:n mergeä eikä Goalin ulkopuolista työtä. Se ei ota käyttöön
+GitHubin auto-mergeä eikä muuta Dependabot- tai muiden riippuvuuspäätösten
+hyväksyntäkäytäntöä. Erillinen riippuvuus-, arkkitehtuuri-, tietosuoja- tai
+julkaisupäätös pyydetään edelleen silloin, kun sellainen tarvitaan.
+
 ### CI-ajon seuranta ja virhetodisteet
 
 Ennen tehtävään kuuluvaa testi- tai CI-ajoa nimeä seurannan omistaja ja

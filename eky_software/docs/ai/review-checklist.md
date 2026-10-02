@@ -283,6 +283,9 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
   säilyivätkö ensimmäisen virheen todisteet ja raportoitiinko mahdolliset
   seuranta-/tallennuskatkokset?
 - Onko Git-tila hallinnassa?
+- Kuuluuko merge [hyväksytyn Goalin pysyvään valtuuteen](workflow.md#mergen-valtuus-hyväksytyssä-goalissa)
+  tai erilliseen omistajan päätökseen, ja onko täsmärevision hyväksyntänäyttö
+  sekä mainin omien tarkistusten seuranta varmistettu ilman suojausten ohitusta?
 - Onko lähtöbaseline todistetusti vihreä tai rajattu riippumaton kehitystyö
   [voimassa olevan kehityspoikkeuksen](testing-rules.md#määräaikainen-kehityspoikkeus) piirissä?
 - Onko muutos helppo perua tarvittaessa?
