@@ -2,15 +2,12 @@
 
 ## Jatka tästä
 
-**Salatun tutkimusaineiston välitavoite on todennettu** revisiolla
-`f69f3d76`: [toimitus ja purku](#salatun-toimituksen-hyväksyntä).
-Se täydentää ensimmäisen epäonnistumisen säilytystä, mutta ei nimeä
-alkuperäistä timeoutia korjatuksi tai avaa A1:n hyväksyntäporttia.
-Omistaja hyväksyi [yhden normaalin hyväksyntäkierroksen](#seuraava-etenemispäätös).
-Ensimmäinen normaali kierros päättyi kahteen rajattuun esteeseen:
-[Hono-auditointiin ja legacy-testiluetteloon](#normaalin-kierroksen-tulos-ja-rajatut-korjaukset).
-Omistaja hyväksyi niiden korjaukset, kohdetestit ja katselmuksen sekä yhden
-uuden normaalin kierroksen. Mergeä tai A1:tä ei ole hyväksytty.
+**PR #282 ja sen main-integraatio on hyväksytty 2.10.2026.**
+[Lopullinen checkpoint](https://github.com/eky-software/eky/pull/282#issuecomment-5949788717)
+sulkee nykyisen V1/V2-vakautuksen ja integraation, ei alkuperäisen timeoutin
+jälkikäteistä juurisyytä. Ennen A1:tä omistaja hyväksyi uuden rajatun
+[pnpm-tietoturvahuollon](#pnpm-bootstrapin-tietoturvahuolto).
+Alla päivätyt tutkimusvaiheet ovat historiaa, eivät rinnakkaisia työjonoja.
 
 **T1/T2/T3 ja niiden integraatiojatko ovat hyväksyttyjä. Seuraava
 sovelluspala on A1/R01; sitä ei ole aloitettu.** Modulaarinen monoliitti ja
@@ -19,11 +16,11 @@ hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohd
 
 | Kohta | Nykyinen lähtötieto |
 | --- | --- |
-| Hyväksytty lähtörevisio | PR #281:n merge-main `0389026edd4d1eff6a38f61bbf41451622713ec9`. Sen koko lähdepuu vastaa hyväksyttyä PR-lähdettä ja checkoutia. [Lopullinen hyväksyntä](https://github.com/eky-software/eky/pull/281#issuecomment-5880101997). |
-| Mainin omat portit | [Normaali CI 36491715165](https://github.com/eky-software/eky/actions/runs/36491715165), yritys 1: kaikki 38 vaadittua ryhmää läpäisivät; vain nimenomaisesti valinnainen diagnostiikkakoe ohitettiin. Linux system 695/695, kriittinen web 37/37 ja Windowsin kriittinen Electron 38/38 vastasivat ajovalintojaan ilman retryä, flakyä tai puuttuvia tapauksia. Neljän artifact-tuottajan ja kymmenen packaged-kuluttajan identiteetit ja elinkaarinäyttö hyväksyttiin. [Saman revision riippuvuustarkistus 36491789402](https://github.com/eky-software/eky/actions/runs/36491789402) läpäisi. |
+| Hyväksytty lähtörevisio | PR #282:n merge-main `0a91f80d3be2d435e9af62c42e24a64c6b17bf05`. Sen koko lähdepuu vastaa hyväksyttyä PR-lähdettä. [Lopullinen hyväksyntä](https://github.com/eky-software/eky/pull/282#issuecomment-5949788717). |
+| Mainin omat portit | [Normaali CI 36989952802](https://github.com/eky-software/eky/actions/runs/36989952802), suoritusyritys 1: kaikki 11 porttia ja 38 vaadittua jobia läpäisivät; neljä valinnaista diagnostiikkajobia ohitettiin. Linux system 769/769, kriittinen web 37/37 ja Windowsin kriittinen Electron 39/39 läpäisivät ilman retryä, flakyä tai puuttuvia tapauksia. Nykyiset kahden toiston packaged-portit läpäisivät. [Saman revision riippuvuustarkistus 36989952310](https://github.com/eky-software/eky/actions/runs/36989952310) läpäisi sovellusriippuvuuksien auditoinnin ja 160 allekirjoitusta. Tämä auditointi ei vielä kattanut erillistä pnpm-bootstrapia. |
 | Suljettu työ | T1/R27:n ajokytkentä, T2/R29:n puhtaan valmistelun suoja ja T3/R28:n todellisten kuluttajien koko prosessipuun omistajuus. Korvatut aktiiviset fallbackit on poistettu ja [pysyvä T3-matriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus) hyväksytty. PR #281 sulki tämän jälkeisen rollback-testiapurin integraatiojatkon. |
 | Avoimet havainnot | Aiemmat satunnaiset Electron-käynnistys- ja packaged/legacy-timeoutit säilyvät epäonnistuneina havaintoina omille revisioilleen. Myöhempi vihreä ajo ei todista niiden kaikkia syitä korjatuiksi. [Hylkäysten historia](e2e-test-environment-history.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko) ja [rajattu apurikorjaus](e2e-test-environment-history.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus) erotetaan toisistaan. |
-| Seuraava työ | Electron `43.7.6` ja Undici `7.29.1` ovat jo toteutettuja täsmäpäivityksiä; `better-sqlite3 13.0.2` säilyy. [Asennuskorjauksen](#asennuskorjauksen-päätös) kohdennetut portit ja [valmiuskyselyhavainto](#valmiuskyselyhavainnon-todennus) läpäisivät. Revision `8913dc48` workspace-jobin timeout ei toistunut [ainoassa muuttumattomassa uusinnassa](#rajatun-uusinnan-tulos). [Workspace-success-havaintokokeessa](#workspace-success-havaintokokeen-tulos) caller ja verifier läpäisivät, mutta erillinen jäljen vienti epäonnistui ennen lukijaa. [Tutkimuspaketin päätösraportti](#tutkimuspaketin-päätösraportti) erottaa osatulokset, puuttuvan raaka-aineiston ja pienimmän jatkoehdotuksen ilman MSI-ajoa. Syy ja korjaus ovat edelleen todentamatta; lisäajoa ei käynnistetä automaattisesti. A1 odottaa V2:n ja mainin portteja tai erikseen hyväksyttyä ei-kriittistä kehityspoikkeusta; luokittelematon kriittisen polun timeout ei kelpaa sellaiseksi. Audit, toimintatestit ja main-haaran Dependabot-hälytysten sulkeutuminen todennetaan erikseen. |
+| Seuraava työ | pnpm `11.1.3 -> 11.11.0`, bootstrapin oma haavoittuvuusportti ja Dependabot-seuranta. Sovellusriippuvuudet, Electron `43.7.6`, Undici `7.29.1`, `better-sqlite3 13.0.2`, tietomalli, T3 ja testivaatimukset säilyvät. A1/R01 aloitetaan vasta tämän huollon hyväksynnän ja oman preflightin jälkeen. |
 | Ei vielä valmis | A1-A3, W7, M1:n muu sovellustyö ja koko 0.3.0. Testiperustan hyväksyntä ei hyväksy niiden tulevaa toteutusta tai muuttunutta liiketoimintasääntöä. |
 
 Hyväksyntä on sidottu yllä olevaan revisioon, ei automaattisesti myöhempään
@@ -32,6 +29,53 @@ integraation lopputulos kirjataan sen omaan hyväksyntächeckpointiin;
 pelkän tuloksen ilmoittamiseksi ei tehdä uutta tilakirjauscommittia.
 Ennen A1:tä tehdään uusi preflight. Sivulla ei ylläpidetä Goal-työkalun
 ajonaikaista tilaa.
+
+## Pnpm-bootstrapin tietoturvahuolto
+
+Omistaja hyväksyi 2.10.2026 pnpm-päivityksen ja erillisen bootstrap-auditoinnin
+puutteen korjauksen ennen A1:tä. Oletushaaran 17 avointa Dependabot-hälytystä
+koskevat samaa `pnpm@11.1.3`-pakettia, eivät 17:ää sovellusriippuvuutta.
+Hälytysten korjaukset kattava pienin täsmäversio on `11.11.0`.
+[Upstreamin julkaisu](https://github.com/pnpm/pnpm/releases/tag/v11.11.0)
+sisältää myös nykyisiin patch-, allowBuilds- ja workspace-asennuspolkuihin
+liittyviä suojauksia. Löydökset eivät osoita toteutunutta hyväksikäyttöä.
+
+Rajattu toteutus käyttää nykyistä valmisteluomistajaa. Valitun Noden npm
+auditoi kopioidun bootstrap-lockfilen ennen työkalun asentamista tai ajamista.
+Exit-koodi, raportin muoto, nollalöydökset ja auditoidun joukon kattavuus
+varmistetaan; allekirjoituksen ja offline-eheyssidonnan ketju säilyy erillisenä.
+Bootstrap saa oman viikoittaisen Dependabot-seurannan. Täsmällinen
+[valmistelusopimus](dependency-policy.md#ci-paketinhallinnan-valmistelu)
+omistaa jatkokäytön, ei uusi testialusta.
+
+Yhteensopivuusraja: pnpm pysyy saman pääversion sisällä, MIT-lisenssi,
+Node-vaatimus `>=22.13` ja nykyinen bin-rajapinta säilyvät; uutta erillistä
+riippuvuutta ei lisätä. Sovelluksen pnpm-lockfile, runtime-pinnit,
+tietokanta, aikarajat ja hyväksyntäehdot eivät muutu. Välimuistin,
+workspace-injektion, patchin ja paketoinnin toiminta todennetaan olemassa
+olevilla porteilla, ei pelkän versionumeron perusteella.
+
+Valmistuminen edellyttää kohdennettuja regressioita, vanhan lockfilen
+auditointihylkäystä, uuden työkalun tyhjän välimuistin varmennusta,
+jäädytetyn revision nykyisiä Windows-/Linux- ja PR-portteja, riippumatonta
+katselmusta ja valtuutetun mergen jälkeen mainin omia portteja. Auditoinnin
+vihreys, toimintatestit ja oletushaaran hälytysten sulkeutuminen kirjataan
+erikseen. Repoasetukset tarkistetaan tämän jälkeen vain lukien; maksullisia
+palveluja tai suojausasetusten muutoksia ei hyväksytä tällä päätöksellä.
+Toteutus ja sen hyväksyntä ovat kesken. A1:tä tai vanhaa timeout-/ETL-
+tutkimusta ei aloiteta tämän tehtävän perusteella.
+
+Kohdennettu näyttö ennen uuden revision jäädytystä:
+
+- Bootstrapin 57/57 regressiota läpäisi. Vanhan lukituksen oikea auditointi
+  hylättiin ennen asennusta tai pnpm:n käynnistystä. Uuden työkalun auditointi,
+  allekirjoitus, offline-eheyssidonta ja versio läpäisivät tyhjästä välimuistista.
+- Nykyinen CI-sopimussarja läpäisi 379/379. Lukittu työtilaasennus, workspace-
+  testit ja tyypitys läpäisivät; kahdeksan nykyistä alustakohtaista ohitusta
+  eivät ole läpäisyjä tai korvaa Linux-todennusta. Sovelluksen lockfile säilyi.
+- Tuotanto- ja full audit olivat puhtaita, ja 160 rekisteriallekirjoitusta
+  varmistettiin. Muutettujen ohjeiden 157 suhteellista linkkiä ja ankkuria
+  tarkistettiin. Uuden revision PR/main-portit ovat vielä tekemättä.
 
 ## Riskiperusteinen jatko 1.10.2026
 

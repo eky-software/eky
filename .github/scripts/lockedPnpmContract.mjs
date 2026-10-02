@@ -59,6 +59,24 @@ export function validateSignatureResult(result) {
     result.missing.length === 0, 'SIGNATURES_INVALID');
 }
 
+export function validateVulnerabilityResult(result) {
+  requireValue(result?.auditReportVersion === 2 && !Object.hasOwn(result, 'error'),
+    'VULNERABILITY_AUDIT_INVALID');
+  try {
+    assert.deepEqual(result.vulnerabilities, {});
+    assert.deepEqual(result.metadata.vulnerabilities, {
+      info: 0, low: 0, moderate: 0, high: 0, critical: 0, total: 0,
+    });
+    // npm counts the manifest root in prod, but not in the dependency total.
+    // An empty or filtered report must not approve this single-package lock.
+    assert.deepEqual(result.metadata.dependencies, {
+      prod: 2, dev: 0, optional: 0, peer: 0, peerOptional: 0, total: 1,
+    });
+  } catch {
+    throw new Error('CI_PNPM_VULNERABILITY_AUDIT_INVALID');
+  }
+}
+
 // npm's signature verifier authenticates registry metadata, not the installed
 // lockfile. Bind its cached full metadata to our immutable install digest too.
 export function validateSignedMetadata(metadata, expected) {

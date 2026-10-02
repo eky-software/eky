@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   bundledNpmPath, isolatedNpmEnvironment, npmArguments, safeCommandFailure, validateBootstrap,
-  validateInstalledPackage, validateSignatureResult, validateSignedMetadata,
+  validateInstalledPackage, validateSignatureResult, validateSignedMetadata, validateVulnerabilityResult,
 } from './lockedPnpmContract.mjs';
 
 const repositoryRoot = fileURLToPath(new URL('../../', import.meta.url));
@@ -63,6 +63,10 @@ export function prepareLockedPnpm({
   const npmRun = (args, verification = true) =>
     run([npm, ...args, ...npmArguments(stage, verification)], options);
 
+  report('audit-locked-tool');
+  validateVulnerabilityResult(JSON.parse(npmRun([
+    'audit', '--package-lock-only', '--json', '--audit-level=low', '--prefer-online',
+  ], false)));
   report('install-locked-tool');
   npmRun(['ci', '--json'], false);
   report('verify-registry-signatures');
