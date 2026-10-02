@@ -60,8 +60,10 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
     const home = join(root, label);
     await mkdir(home, { mode: 0o700 });
     homes.push(home);
+    // Pin TEST-key preferences to the approved MDC profile, not GPG's changing AEAD default.
     // Only ephemeral, passphrase-free TEST keys; never a user's GnuPG home.
-    await invokeGpg(home, [...options, '--pinentry-mode', 'loopback', '--passphrase', '',
+    await invokeGpg(home, [...options, '--default-preference-list', 'AES256 SHA256 Uncompressed',
+      '--pinentry-mode', 'loopback', '--passphrase', '',
       '--quick-generate-key', `Evidence TEST ${label} <${label}@example.invalid>`, 'ed25519', 'cert,sign', '1d']);
     const listing = await invokeGpg(home, ['--with-colons', '--list-keys']);
     const fingerprint = listing.stdout.toString('utf8').split(/\r?\n/u)

@@ -269,6 +269,9 @@ Rajattu komento on `pnpm --filter @eky/desktop installer:test:encrypted-evidence
 Testit kattavat tiedostorajat, ensiyrityksen erottelun, väärät avaimet,
 salauksen ja purun sekä todellisen workflow-kytkennän sopimuksen. Windowsin
 ja Linuxin GnuPG-kokeet käyttävät vain erillisiä synteettisiä testiavaimia.
+Niiden preferenssit nimetään sovitulle MDC-profiilille; työkalun vaihtuva
+AEAD-oletus ei muuta testifixtureä tai salauksen hyväksyntää. Varsinaisen
+toimituksen algoritmi ja MDC varmistetaan edelleen GnuPG:n tilatulosteesta.
 Vain Windowsin workspace-toimitus-CLI:n ja Git-asennuksen erityiskokeet
 ohitetaan Linuxissa; yhteinen oikean prosessin keräys, CLI, salaus, purku,
 väärän avaimen esto ja määräajan todistus suoritetaan molemmissa.
