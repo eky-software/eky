@@ -365,7 +365,33 @@ jobs:
       - name: Build existing supervisor once
         run: node installer/windows-process-supervisor/buildWindowsAcceptanceSupervisor.mjs
       - name: Verify synthetic MSI UI and file-version policy
-        run: node installer/windows-acceptance-harness/fixtures/runMsiFileVersionPolicyProbe.mjs
+        run: node installer/windows-acceptance-harness/fixtures/runMsiFileVersionPolicyProbe.mjs --retain-evidence
+      - name: Seal named MSI policy evidence
+        id: policy-evidence
+        if: >-
+          ${{ always() && runner.os == 'Windows' && runner.environment == 'github-hosted'
+            && github.event_name == 'workflow_dispatch' && inputs.mode == 'msi-file-version-policy'
+            && vars.EKY_DIAGNOSTIC_PUBLIC_KEY != '' && vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT != ''
+            && vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT == vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT }}
+        timeout-minutes: 3
+        env:
+          EKY_DIAGNOSTIC_PUBLIC_KEY: ${{ vars.EKY_DIAGNOSTIC_PUBLIC_KEY }}
+          EKY_DIAGNOSTIC_KEY_FINGERPRINT: ${{ vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT }}
+          EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: ${{ vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT }}
+          EKY_EVIDENCE_JOB_KEY: msi-policy-0
+          EKY_EVIDENCE_JOB_OUTCOME: ${{ job.status }}
+        run: node installer/windows-acceptance-harness/ciFailureEvidence.mjs
+      - name: Upload only sealed MSI policy evidence
+        if: ${{ always() && steps.policy-evidence.outcome == 'success' && steps.policy-evidence.outputs.sealed == 'true' && steps.policy-evidence.outputs.ciphertext != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ci-failure-msi-policy-0-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.policy-evidence.outputs.ciphertext }}
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
 
   job-object-feasibility:
     if: inputs.mode != 'packaged-boundary-diagnostic' && inputs.mode != 'msi-file-version-policy' && inputs.mode != 'inspector-cutoff-diagnostic' && inputs.mode != 'encrypted-evidence-delivery-proof' && inputs.mode != 'linux-encrypted-evidence-delivery-proof'

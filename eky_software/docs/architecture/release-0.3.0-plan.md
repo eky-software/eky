@@ -16,9 +16,11 @@ puuttuvaa aineistoa eikä takaa kaikkien mahdollisten vikojen juurisyytä.
 erottaa riippuvuusturvan, toimintatestien ja hälytysten readbackin näytön.
 [A1/R01:n luonnoksen avaamisen kohdesuoja](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde)
 on toteutettu ja kohdetodennettu. Seuraava työ on
-[A1:n integraation hyväksyntä](release-0.3.0-m1-preparation-plan.md#a1r01-toteutus-ja-hyväksyntä);
-laajan sarjan erillinen rollback-testihavainto on avoinna, eikä kohdetodennus
-korvaa PR/main-portteja. A2, A3 ja koko 0.3.0 ovat edelleen avoinna.
+[A1:n jälkeen ilmenneen MSI-testihylkäyksen rajattu selvitys](release-0.3.0-m1-preparation-plan.md#msi-politiikkakokeen-virheaineisto).
+A1:n PR #288 ja sen main-portit on hyväksytty. Myöhemmän ohje-PR #289:n
+main-ajo hylkäsi synteettisen MSI-politiikkakokeen; samaa hylkäystä ei
+merkitä A1:n sovellusviaksi. Vanha rollback-testihavainto säilyy avoimena.
+A2, A3 ja koko 0.3.0 ovat edelleen avoinna.
 
 **M0, T1, T2 ja T3/R28 on hyväksytty; M1:n sovelluskorjaukset ovat avoinna.**
 Myös T-paketin jälkeinen integraatiojatko on hyväksytty PR #281:n mainissa.

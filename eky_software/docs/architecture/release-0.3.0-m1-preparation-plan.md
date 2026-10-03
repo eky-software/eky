@@ -10,20 +10,21 @@ V1/V2-vakautuksen hyväksyntä säilyy. Myöhempi onnistuminen ei sulje vanhojen
 timeout- tai siivoushavaintojen jälkikäteistä juurisyytä.
 Alla päivätyt tutkimusvaiheet ovat historiaa, eivät rinnakkaisia työjonoja.
 
-**T1/T2/T3 ja niiden integraatiojatko ovat hyväksyttyjä. A1/R01:n toteutus
-ja kohdetodennus ovat valmiit 3.10.2026; integraation hyväksyntä on avoinna.**
+**T1/T2/T3 ja niiden integraatiojatko sekä A1/R01:n PR #288 ja sen main
+ovat hyväksyttyjä. Myöhemmän ohje-PR #289:n main-ajo on hylätty
+synteettisessä MSI-politiikkakokeessa; sen rajattu selvitys on seuraava työ.**
 Modulaarinen monoliitti ja
 hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohdan;
 [julkaisusuunnitelma](release-0.3.0-plan.md) omistaa koko 0.3.0:n sisällön.
 
 | Kohta | Nykyinen lähtötieto |
 | --- | --- |
-| Hyväksytty lähtörevisio | PR #283:n merge-main `8a37bbeabf7aa4c152d972fcff5441986abe6a9b`. Sen koko lähdepuu vastaa hyväksyttyä PR-lähdettä. [Lopullinen hyväksyntä](https://github.com/eky-software/eky/pull/283#issuecomment-5959719891). |
-| Mainin omat portit | [Normaali CI 37048020333](https://github.com/eky-software/eky/actions/runs/37048020333), suoritusyritys 1: kaikki 11 porttia ja 38 vaadittua jobia läpäisivät; viisi valinnaista diagnostiikkajobia ei kuulunut valintaan. Linux system 807/807, kriittinen web 37/37 ja Windowsin kriittinen Electron 39/39 läpäisivät ilman retryä, flakyä tai puuttuvia tapauksia. Nykyiset kahden toiston packaged-portit läpäisivät. [Saman revision riippuvuustarkistus 37048019765](https://github.com/eky-software/eky/actions/runs/37048019765) sekä kaikki 33 toteutunutta auditoitua pnpm-valmistelua läpäisivät. Sovellusriippuvuuksien tuotanto-/full-auditointi ja 160 rekisteriallekirjoitusta varmistettiin erikseen. |
+| Hyväksytty lähtörevisio | A1:n PR #288:n main `c21b8377480d1fb37c1387b93e0f481fcb721968`. [Lopullinen hyväksyntä](https://github.com/eky-software/eky/pull/288#issuecomment-5963057259). Uudempi ohje-main `b9245ba6b31b8001c225a7cd7bb8e93ca4fbf124` on tämän selvityksen lähtökohta, ei hyväksytty integraatiotulos. |
+| Mainin omat portit | A1:n [CI 37074929943](https://github.com/eky-software/eky/actions/runs/37074929943) läpäisi kaikki 11 porttia suoritusyrityksellä 1: system 807, web 43 ja Electron 39 ilman retryä. Ohje-mainin [CI 37078912651](https://github.com/eky-software/eky/actions/runs/37078912651) hylkäsi installer-portin ja sen koonnin; muut kymmenen porttia sekä samat sovellustestit läpäisivät. PR-porttien vihreys ei korvaa tätä main-hylkäystä. |
 | Suljettu työ | T1/R27:n ajokytkentä, T2/R29:n puhtaan valmistelun suoja ja T3/R28:n todellisten kuluttajien koko prosessipuun omistajuus. Korvatut aktiiviset fallbackit on poistettu ja [pysyvä T3-matriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus) hyväksytty. PR #281 sulki tämän jälkeisen rollback-testiapurin integraatiojatkon. |
 | Avoimet havainnot | Aiemmat satunnaiset Electron-käynnistys- ja packaged/legacy-timeoutit säilyvät epäonnistuneina havaintoina omille revisioilleen. Myöhempi vihreä ajo ei todista niiden kaikkia syitä korjatuiksi. [Hylkäysten historia](e2e-test-environment-history.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko) ja [rajattu apurikorjaus](e2e-test-environment-history.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus) erotetaan toisistaan. |
-| Seuraava työ | Viimeistele [A1:n hyväksyntä](#a1r01-toteutus-ja-hyväksyntä): ratkaise alla nimetty hyväksyntäesteen jatkopäätös, jäädytä lähde ja todenna nykyiset PR-portit. Merge vaatii oman valtuutuksen ja sen jälkeen mainin omat portit. A2/R05, A3/R06 ja W7 eivät kuulu tähän toteutukseen. pnpm `11.11.0`, Electron `43.7.6`, Undici `7.29.1`, `better-sqlite3 13.0.2`, tietomalli, T3 ja testivaatimukset säilyvät. |
-| Ei vielä valmis | A1-A3, W7, M1:n muu sovellustyö ja koko 0.3.0. Testiperustan hyväksyntä ei hyväksy niiden tulevaa toteutusta tai muuttunutta liiketoimintasääntöä. |
+| Seuraava työ | [MSI-politiikkakokeen virheaineisto](#msi-politiikkakokeen-virheaineisto): säilytä puuttuvat nimetyt lokit salattuina, todenna toimitus ja selvitä hylkäys nykyisestä asennussäännöstä sekä validatorista. Ei A2:ta, T3-remonttia tai testiehtojen lievennyksiä tämän selvityksen aikana. pnpm `11.11.0`, Electron `43.7.6`, Undici `7.29.1`, `better-sqlite3 13.0.2` ja tietomalli säilyvät. |
+| Ei vielä valmis | Uusimman mainin hyväksyntä, A2-A3, W7, M1:n muu sovellustyö ja koko 0.3.0. A1:n hyväksyntä ei hyväksy niiden tulevaa toteutusta tai muuttunutta liiketoimintasääntöä. |
 
 Hyväksyntä on sidottu yllä olevaan revisioon, ei automaattisesti myöhempään
 työpuuhun. Dokumenttimuutoksen toteutuneet tarkistukset ja mahdollisen
@@ -33,6 +34,10 @@ Jokainen uusi toteutuspala alkaa omalla preflightilla. Sivulla ei ylläpidetä G
 ajonaikaista tilaa.
 
 ## A1/R01: toteutus ja hyväksyntä
+
+**Integraatio hyväksytty PR #288:n mainissa.** Yllä oleva checkpoint omistaa
+lopullisen revision ja portit. Alla säilyy kohdetodennuksen sekä sitä
+edeltäneen rollback-havainnon historia; havaintoa ei väitetä korjatuksi.
 
 [Omistava kohdesopimus](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde)
 on toteutettu nykyisessä laskutuksen web-featuressa. Avaussukupolvi ja
@@ -63,11 +68,40 @@ Kohdennettu näyttö ennen PR-jäädytystä:
 | --- | --- | --- |
 | Muuttumattoman `localUpdatePackageCache.test.ts`-tiedoston `resumes rollback normalization after either durable directory rename` -testi aikakatkaistiin laajassa sarjassa. Yksi rajattu diagnostinen uusinta läpäisi; syy jäi avoimeksi. | Desktopin update-testin omistaja. Ensivirhe ja siihen liittyvä aineisto säilytetään. A1 ei muuta cachea, asenninta, aikarajoja tai siivoussopimusta. | Näyttöön perustuva korjaus ja sen todennus tai omistajan nimenomainen päätös seuraavasta hyväksyntäkierroksesta. Uusinnan läpäisy ei yksin sulje havaintoa. Nykyiset pakolliset PR/main-portit säilyvät. |
 
-Seuraavaa normaalia PR-kierrosta varten on pyydetty rajattu päätös;
-ajoa tai mergeä ei merkitä hyväksytyksi etukäteen. Lopullinen hyväksyntä
-sidotaan jäädytettyyn revisioon ja sen omaan checkpointiin ilman uutta
-tilakirjauscommittien kierrosta. Tämän jälkeen seuraava sovelluspala on
-A2/R05, ei T3:n tai koko testijärjestelmän uusi toteutus.
+Omistaja hyväksyi rajatun normaalin PR-kierroksen ja mergen; hyväksyntä
+toteutui yllä linkitetyssä A1-checkpointissa. Rollback-testin vanha
+timeout jää seurantahavainnoksi. Seuraava sovelluspala on A2/R05 nykyisen
+MSI-hylkäyksen käsittelyn jälkeen, ei T3:n uusi toteutus.
+
+## MSI-politiikkakokeen virheaineisto
+
+Ohje-mainin synteettinen `uiOverride`-koe hylkäsi jo lähdepaketin
+`sourceInstall`-vaiheen syyllä `msiPolicyLogInvalid`. Siivous raportoitiin
+valmiiksi ja prosessipuu poissa olevaksi. Lähdekoodissa lokin validointi
+tapahtuu onnistuneen MSI-komennon jälkeen; tämä syy ei yksin osoita
+asenninprosessin kaatumista tai varsinaisen override-päivityksen virhettä.
+Salattu keräys toimi, mutta sen sallituista tiedostoista puuttuivat kokeen
+MSI-lokit ja `policy-result.json`. Vanhan ajon tarkkaa lokiehtoa ei voi
+jälkikäteen palauttaa puuttuvasta aineistosta.
+
+Omistajan hyväksymä rajattu jatko:
+
+1. Lisää vain tämän synteettisen kokeen nimetyt lokit ja tulos nykyiseen
+   [salattuun toimitukseen](ci-encrypted-evidence.md#testiperheiden-virheaineisto).
+2. Todista epäonnistuneen ja keskeytyneen komennon aineiston säilyminen,
+   nykyiset turvarajat sekä oikea salaus ja purku. Tee yksi nimetty hosted-koe;
+   säilytä siinä myös läpäisseiden varianttien lokit vertailua varten.
+3. Tutki tuotannon MSI-sääntö, synteettiseen pakettiin kopioitu sääntö ja
+   validatorin ehdot yhdessä. Testi, prosessitulos, siivous, keräys ja
+   analyysin tulos pysyvät erillisinä.
+4. Korjaa vain todennettu syy regressioineen. Jos alkuperäinen vika ei
+   toistu tai näyttö ei riitä, kirjaa täsmällinen puute ja jatkopäätös;
+   uuden kokeen läpäisy ei ole juurisyyn korjaus.
+
+Normaalin CI:n ja mahdollisen mergen hyväksyntä säilyy omana porttinaan.
+Ei uusia riippuvuuksia, prosessiomistajaa, raw-julkaisua, pidennettyjä
+aikarajoja tai kevennettyä MSI-sisällön tarkistusta. Tutkimusaineiston
+säilytysvalinta ei säilytä asennettua testituotetta tai ohita siivousta.
 
 ## Pnpm-bootstrapin tietoturvahuolto
 

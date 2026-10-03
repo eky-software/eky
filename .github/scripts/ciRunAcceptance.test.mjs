@@ -286,7 +286,16 @@ test('MSI file policy has a hosted-only manual path without replacing supervisor
   assert.match(policy, /persist-credentials: false/);
   assert.match(policy, /node installer\/windows-process-supervisor\/buildWindowsAcceptanceSupervisor\.mjs/);
   assert.match(policy, /node installer\/windows-acceptance-harness\/fixtures\/runMsiFileVersionPolicyProbe\.mjs/);
-  assert.doesNotMatch(policy, /upload-artifact|continue-on-error|--prepare-only/);
+  assert.doesNotMatch(policy, /continue-on-error|--prepare-only/);
+  assert.match(policy, /runMsiFileVersionPolicyProbe\.mjs --retain-evidence/);
+  assert.match(policy, /EKY_EVIDENCE_JOB_OUTCOME: \$\{\{ job.status \}\}/);
+  assert.match(policy, /run: node installer\/windows-acceptance-harness\/ciFailureEvidence\.mjs/);
+  assert.match(policy, /path: \$\{\{ steps.policy-evidence.outputs.ciphertext \}\}/);
+  assert.match(policy, /steps.policy-evidence.outcome == 'success' && steps.policy-evidence.outputs.sealed == 'true'/);
+  assert.match(policy, /retention-days: 1/);
+  assert.match(policy, /overwrite: false/);
+  assert.match(policy, /always\(\) && runner.os == 'Windows' && runner.environment == 'github-hosted'/);
+  assert.match(policy, /vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT == vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT/);
   assert.match(source, /job-object-feasibility:\n    if: inputs.mode != 'packaged-boundary-diagnostic' && inputs.mode != 'msi-file-version-policy'/);
 });
 

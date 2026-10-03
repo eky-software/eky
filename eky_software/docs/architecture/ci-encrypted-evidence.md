@@ -116,6 +116,7 @@ raakaa testiaineistoa eivätkä saa yleistä koko jobin tulostekaappausta.
 | Playwright system/web/Electron | Ajokohtaisen `results.private.json`-raportin virheet, testitulokset, stdout/stderr ja retry-yritykset. | Ennen salausta poistetaan konfiguraatio, metadata ja inline-liitteiden sisältö; alkuperäiset virhekentät säilyvät. Ei koko HTML-/attachment-hakemistoa tai siinä olevia SQLite-tiedostoja. Ennen runnerin raportin valmistumista katkennut ajo voi jäädä ilman tätä tiedostoa. |
 | Backend/web/Electron-fixture | Nykyisten redaktoitujen stdout/stderr-lukijoiden rajattu otos omassa suoritusyrityskohtaisessa tiedostossaan myös testin rungon tai siivouksen epäonnistuessa. | Otos säilyy ennen muistitiedon katoamista, tiedosto liitetään nykyisen fixturen jälkiraportoinnissa. Windows-Electronin lähde on natiivi omistajaprosessi; workloadin omaa putkea ei muuteta tällä työllä. Käynnistyksen tai siivouksen kriittiselle polulle ei lisätä tiedostokuittausta. |
 | Native-komennot ja supervisorin sopimustestit | Nimetyt vaihe-, worker- ja caller-tulokset sekä olemassa olevat yksityiset prosessitulosteet. | Ei request/config-tiedostoja, profiileja tai tietokantoja. Siivouksen raakatulos säilyy erillään alkuperäisestä hylkäyksestä. Tarkoituksella lukemattoman putken koe säilyttää oman sopimuksensa. |
+| Synteettinen MSI-versiopolitiikan koe | Oman supervisor-testijuuren `policy-result.json` sekä numeroidut `source`, `target` ja `uninstall` -MSI-lokit muuttamattomina tavuina. | Vain suoraan testijuuren alla olevat nimet; ei descriptor-, request-, profiili- tai tietokantatiedostoja. Keskeytyneen MSI-komennon osittainen loki voidaan säilyttää ilman workerin lopputulosta. Samat koko-, linkki- ja muuttumattomuusrajat kuin muilla lähteillä. |
 | Packaged smoke | Rajattu prosessituloste ja nykyinen smoke-tulos. | Epäonnistuneen testin juurta ei poisteta; keräin ei lue sen profiilia. Tyhjentynyt tuloste ei todista onnistunutta käynnistystä. |
 | Muut komennot ja valmistelu | Nykyinen turvallinen GitHub-komentoloki. | Salattu keräys ei palauta tulostetta, jota aliohjelma ei tuottanut tai säilyttänyt. Riippuvuustyökalun raakavirheet jäävät erikseen rajatuiksi pois. |
 
@@ -128,6 +129,15 @@ uudelleenohjaukset ja muuttuneet tiedostot hylätään.
 Playwright-raportin projektio merkitään manifestiin: alkuperäisen lähteen
 tiiviste ja salattavan projektion tiiviste eivät ole sama todiste.
 Muiden sallittujen tiedostojen tavut säilyvät muuttamattomina.
+
+MSI-politiikan erillisessä manuaalisessa `msi-file-version-policy`-kokeessa
+`--retain-evidence` säilyttää myös läpäisseen kokeen nimetyn tutkimusaineiston.
+Tämä ei ohita hosted-admissiota, tuotteen poistamista tai prosessisiivouksen
+varmennusta. Sama keräin salaa aineiston kokeen jälkeen myös epäonnistuttaessa;
+jobin todellinen tila säilyy sidonnassa eikä onnistumista muuteta virheeksi
+keräyksen käynnistämiseksi. Julkaisu sallii vain varmennetun salatekstin
+yhdeksi vuorokaudeksi. Normaali CI säilyttää nykyisen virheen jälkeisen
+keräyksen; manuaalisen kokeen onnistunut toimitus ei hyväksy normaaleja portteja.
 
 Rajana on 256 tiedostoa, 8 MiB yksittäiselle tiedostolle ja 128 MiB yhteensä;
 hakemistoluvulla on oma määrä-, syvyys- ja aikaraja. Raportit kerätään
