@@ -75,7 +75,14 @@ uusi toteutus.
 
 ## A2/R05: tallennuksen omistajuus
 
-**Rajattu toteutus ja kohdetodennus valmiit; PR/main-integraatio avoinna.**
+**Rajattu toteutus ja PR #291:n merge valmiit; main-hyväksyntä avoinna.**
+Integraation rajattu jatko on omistajan hyväksymä synteettisen
+[MSI-testin append-lokituskoe](windows-installer-acceptance-harness-v2.md#msi-tiedostoversiosäännön-koe).
+Se sisältää kutsuargumenttien ja puutteellisen lokin regressiot sekä yhden
+hosted-Windows-kokeen. Tuotantoasennin, sisältövaatimukset ja nykyiset
+hyväksyntäportit säilyvät. Koe ei yksin sulje aiempaa syytä eikä korvaa
+normaalia hyväksyntää. A3:a ei aloiteta tämän jatkon osana.
+
 Omistaja hyväksyi tämän rajatun sovelluspalan aloittamisen 3.10.2026.
 [Omistava tallennussopimus ja testiketjut](invoicing-ui-roadmap.md#a2-tallennusvastuun-valmistelu)
 erottavat hyväksytyn tavoitteen, toteutussuunnitelman ja epäselvän

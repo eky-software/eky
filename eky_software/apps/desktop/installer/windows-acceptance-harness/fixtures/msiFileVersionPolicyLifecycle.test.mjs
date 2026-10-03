@@ -131,3 +131,13 @@ test('UI policy proof binds property dumps to the target, not nested source remo
   assert.equal(verifyMsiPolicyUiLog(nested + uiLog('emus'), 'uiDefault', productCode), true);
   assert.throws(() => verifyMsiPolicyUiLog(uiLog('emus').replaceAll(productCode, other), 'uiDefault', productCode), /msiPolicyLogInvalid/);
 });
+
+test('UI proof rejects missing or truncated client records even with correct final properties', () => {
+  const valid = uiLog('emus');
+  for (const record of valid.split('\r\n').filter(value => value.startsWith('MSI (c)'))) {
+    for (const replacement of ['', record.slice(1), record.slice(0, -1)]) {
+      assert.throws(() => verifyMsiPolicyUiLog(valid.replace(record, replacement),
+        'uiDefault', productCode), /msiPolicyLogInvalid/);
+    }
+  }
+});
