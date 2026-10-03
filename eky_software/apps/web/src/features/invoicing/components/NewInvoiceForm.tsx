@@ -99,7 +99,6 @@ export function NewInvoiceForm({
     ),
   );
   const hasManualPriceInputModeOverride = useRef(mode.type === 'edit');
-  const [formRevision, setFormRevision] = useState(0);
   const [hasValidated, setHasValidated] = useState(false);
   const [isApprovalConfirmationVisible, setIsApprovalConfirmationVisible] =
     useState(false);
@@ -109,16 +108,15 @@ export function NewInvoiceForm({
   ] = useState(false);
   const [approvalGuardMessage, setApprovalGuardMessage] =
     useState<string | null>(null);
-  const saveState = useSaveInvoiceDraft(apiClient, createSaveMode(mode));
+  const saveState = useSaveInvoiceDraft(
+    apiClient, createSaveMode(mode), handleDraftSaved,
+  );
+  const formRevision = saveState.revision;
   const approveState = useApproveInvoiceDraft(apiClient);
   const issuanceReadinessState = useInvoiceIssuanceReadiness(apiClient);
   const autosaveState = useInvoiceDraftAutosave({
-    apiClient,
     form,
-    formRevision,
-    manualSavedDraft: saveState.savedDraft,
-    mode,
-    onDraftAutosaved: handleDraftAutosaved,
+    saveState,
     reverseChargeCustomerEligible:
       isReverseChargeCustomerEligible(
         form.customerId,
@@ -182,14 +180,13 @@ export function NewInvoiceForm({
   function handleFormChange(
     updateForm: (currentForm: NewInvoiceFormState) => NewInvoiceFormState,
   ): void {
-    saveState.clearSaveResult();
+    saveState.markEdited();
     approveState.clearApprovalResult();
     issuanceReadinessState.clearReadiness();
     setApprovalGuardMessage(null);
     setIsApprovalConfirmationVisible(false);
     setReverseChargeEligibilityConfirmed(false);
     setForm(updateForm);
-    setFormRevision((currentRevision) => currentRevision + 1);
   }
 
   function handleTaxTreatmentChange(
@@ -308,26 +305,19 @@ export function NewInvoiceForm({
       return;
     }
 
-    const savedDraft = await saveState.saveInvoiceDraft(preparedInput.input);
+    await saveState.saveInvoiceDraft(preparedInput.input, formRevision);
+  }
 
-    if (savedDraft === null) {
-      return;
+  function handleDraftSaved(
+    savedDraft: InvoiceDraft,
+    isCurrentRevision: boolean,
+  ): void {
+    if (isCurrentRevision) {
+      setForm((currentForm) =>
+        toNewInvoiceFormStateFromDraft(savedDraft, currentForm.lines),
+      );
     }
-
-    replaceFormWithDraft(savedDraft);
     onDraftSaved(savedDraft);
-  }
-
-  function handleDraftAutosaved(savedDraft: InvoiceDraft): void {
-    replaceFormWithDraft(savedDraft);
-    onDraftSaved(savedDraft);
-  }
-
-  function replaceFormWithDraft(savedDraft: InvoiceDraft): void {
-    setForm((currentForm) =>
-      toNewInvoiceFormStateFromDraft(savedDraft, currentForm.lines),
-    );
-    setFormRevision((currentRevision) => currentRevision + 1);
   }
 
   async function handleRequestApproval(): Promise<void> {
@@ -338,7 +328,7 @@ export function NewInvoiceForm({
       return;
     }
 
-    if (autosaveState.status !== 'saved' || saveState.isSaving) {
+    if (!saveState.isCurrentRevisionSaved()) {
       setApprovalGuardMessage(uiText.invoicing.approveDraftUnsavedChanges);
       setIsApprovalConfirmationVisible(false);
       return;
@@ -348,7 +338,10 @@ export function NewInvoiceForm({
       mode.draft.id,
     );
 
-    if (readiness === null || !readiness.isReady) {
+    if (
+      readiness === null || !readiness.isReady ||
+      !saveState.isCurrentRevisionSaved()
+    ) {
       setIsApprovalConfirmationVisible(false);
       return;
     }
@@ -358,7 +351,7 @@ export function NewInvoiceForm({
   }
 
   async function handleConfirmApproval(): Promise<void> {
-    if (mode.type !== 'edit') {
+    if (mode.type !== 'edit' || !saveState.isCurrentRevisionSaved()) {
       return;
     }
 
@@ -380,8 +373,9 @@ export function NewInvoiceForm({
     onDraftApproved(approvedInvoice);
   }
 
-  const isSaving =
-    saveState.isSaving || autosaveState.status === 'saving';
+  const isSaving = saveState.isSaving;
+  const showManualSaveSuccess =
+    saveState.isSaved && saveState.savedBy === 'manual';
   const saveButtonText = isSaving
     ? mode.type === 'edit'
       ? uiText.invoicing.savingDraftChanges
@@ -389,7 +383,7 @@ export function NewInvoiceForm({
     : uiText.invoicing.save;
   const shouldShowAutosaveMessage =
     autosaveState.message !== null &&
-    saveState.savedDraft === null &&
+    !showManualSaveSuccess &&
     (mode.type === 'edit' || formRevision > 0);
   const successMessage =
     mode.type === 'edit'
@@ -459,7 +453,7 @@ export function NewInvoiceForm({
         </p>
       ) : null}
 
-      {saveState.savedDraft !== null ? (
+      {showManualSaveSuccess ? (
         <p
           className={`message success-message ${styles.validationMessage}`}
           role="status"
@@ -574,7 +568,7 @@ export function NewInvoiceForm({
       />
       <InvoiceTotalsPreview form={form} />
 
-      {isApprovalConfirmationVisible ? (
+      {isApprovalConfirmationVisible && saveState.isSaved ? (
         <InvoiceApprovalConfirmation
           isApproving={approveState.isApproving}
           isReverseCharge={
@@ -597,6 +591,7 @@ export function NewInvoiceForm({
             className="ghost-button"
             disabled={
               isSaving ||
+              !saveState.isSaved ||
               approveState.isApproving ||
               issuanceReadinessState.isChecking
             }
@@ -612,7 +607,9 @@ export function NewInvoiceForm({
           {uiText.invoicing.backToDrafts}
         </button>
         <button
-          disabled={isSaving || saveState.savedDraft !== null}
+          disabled={
+            isSaving || saveState.isSaved || saveState.isCreateOutcomeUnknown
+          }
           type="submit"
         >
           {saveButtonText}

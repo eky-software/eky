@@ -218,6 +218,13 @@ Kohde on valinnainen. Work Orders -moduulia ei tarvita tämän polun käyttämis
 
 ### Laskuluonnoksen Automaattitallennus
 
+Auto- ja käsintallennus käyttävät yhtä muokkaussession kirjoitusomistajaa.
+Ensimmäisen tallennuksen tunniste säilyy myös uudemman syötteen rinnalla;
+vain lähetetty revisio vahvistetaan tallennetuksi. Epäselvä create-tulos
+estää uuden luontiyrityksen samassa lomakkeessa ja ohjaa tarkistamaan tuoreen
+luonnoslistan. Backendin validointi ja hyväksyntä pysyvät auktoriteettina.
+Rajaus ja regressiot ovat [A2:n omistavassa sopimuksessa](../architecture/invoicing-ui-roadmap.md#a2-tallennusvastuun-valmistelu).
+
 Web-UI voi tukea laskuluonnoksen automaattitallennusta käyttökokemuksen
 parantamiseksi.
 

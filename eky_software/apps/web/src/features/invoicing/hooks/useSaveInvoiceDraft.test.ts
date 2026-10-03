@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   getSaveInvoiceDraftErrorMessage,
+  isInvoiceDraftValidationRejection,
   prepareInvoiceDraftSaveInput,
   saveInvoiceDraftInput,
 } from './useSaveInvoiceDraft.js';
@@ -145,6 +146,26 @@ describe('getSaveInvoiceDraftErrorMessage', () => {
     expect(getSaveInvoiceDraftErrorMessage(new Error('stack trace'))).toBe(
       uiText.invoicing.saveDraftError,
     );
+  });
+});
+
+describe('isInvoiceDraftValidationRejection', () => {
+  it('accepts a structured pre-write rejection from the create route', () => {
+    expect(isInvoiceDraftValidationRejection(new EkyApiError('Invalid invoice draft body.', {
+      status: 400, responseBody: { error: 'Invalid invoice draft body.' },
+    }))).toBe(true);
+  });
+
+  it.each([
+    new Error('network failure'),
+    new EkyApiError('Invalid JSON response.', { status: 201 }),
+    new EkyApiError('Invalid JSON response.', { status: 400 }),
+    new EkyApiError('Invalid invoice draft response.', { responseBody: {} }),
+    new EkyApiError('Failure', { status: 500, responseBody: { error: 'Failure' } }),
+    new EkyApiError('Invalid', { status: 400, responseBody: { error: 'Different' } }),
+    new EkyApiError('', { status: 400, responseBody: { error: '' } }),
+  ])('does not interpret an unverified response as proof of no write: %s', (error) => {
+    expect(isInvoiceDraftValidationRejection(error)).toBe(false);
   });
 });
 
