@@ -18,7 +18,7 @@ export interface InvoiceDraftEditorState extends InvoiceDraftEditorSnapshot {
   clearDraft(): void;
   openDraft(id: string): Promise<InvoiceDraft | null>;
   openLoadedDraft(draft: InvoiceDraft): void;
-  replaceDraft(draft: InvoiceDraft): void;
+  replaceDraft(draft: InvoiceDraft): boolean;
 }
 
 export function useInvoiceDraftEditor(
@@ -83,7 +83,13 @@ export function useInvoiceDraftEditor(
     clearDraft,
     openDraft,
     openLoadedDraft,
-    replaceDraft: (draft) => dispatch({ type: 'saved', draft }),
+    replaceDraft: (draft) => {
+      if (!isMounted.current || state.sessionRevision !== generation.current) {
+        return false;
+      }
+      dispatch({ type: 'saved', sessionRevision: state.sessionRevision, draft });
+      return true;
+    },
   };
 }
 

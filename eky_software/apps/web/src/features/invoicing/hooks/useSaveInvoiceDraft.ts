@@ -4,7 +4,7 @@ import {
   type InvoiceDraft,
   type InvoiceDraftInput,
 } from '@eky/api-client';
-import { useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 
 import { toInvoiceDraftInput } from '../form/invoiceDraftFormMapping.js';
 import {
@@ -14,15 +14,19 @@ import {
 } from '../form/invoiceDraftFormValidation.js';
 import type { NewInvoiceFormState } from '../form/newInvoiceFormState.js';
 import { getFinnishApiErrorMessage, uiText } from '../../../i18n/fi.js';
+import {
+  InvoiceDraftSaveSession,
+  type InvoiceDraftSaveMode,
+  type InvoiceDraftSaveSnapshot,
+  type InvoiceDraftSaveSource,
+} from '../state/invoiceDraftSaveSession.js';
+
+export type { InvoiceDraftSaveMode } from '../state/invoiceDraftSaveSession.js';
 
 type InvoiceDraftSaveClient = Pick<
   EkyApiClient,
   'createInvoiceDraft' | 'updateInvoiceDraft'
 >;
-
-export type InvoiceDraftSaveMode =
-  | { type: 'create' }
-  | { draftId: string; type: 'edit' };
 
 export type PreparedInvoiceDraftSave =
   | {
@@ -36,12 +40,16 @@ export type PreparedInvoiceDraftSave =
       isValid: true;
     };
 
-export interface SaveInvoiceDraftState {
-  errorMessage: string | null;
-  isSaving: boolean;
-  savedDraft: InvoiceDraft | null;
+export interface SaveInvoiceDraftState extends InvoiceDraftSaveSnapshot {
+  isSaved: boolean;
+  isCurrentRevisionSaved(): boolean;
+  markEdited(): void;
   clearSaveResult(): void;
-  saveInvoiceDraft(input: InvoiceDraftInput): Promise<InvoiceDraft | null>;
+  saveInvoiceDraft(
+    input: InvoiceDraftInput,
+    revision: number,
+    source?: InvoiceDraftSaveSource,
+  ): Promise<void>;
 }
 
 export function prepareInvoiceDraftSaveInput(
@@ -67,45 +75,86 @@ export function prepareInvoiceDraftSaveInput(
 export function useSaveInvoiceDraft(
   apiClient: InvoiceDraftSaveClient,
   mode: InvoiceDraftSaveMode,
+  onSaved: (draft: InvoiceDraft, isCurrentRevision: boolean) => void,
 ): SaveInvoiceDraftState {
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [savedDraft, setSavedDraft] = useState<InvoiceDraft | null>(null);
+  const [session] = useState(() => new InvoiceDraftSaveSession(mode));
+  const [snapshot, setSnapshot] = useState(() => session.getSnapshot());
+  const onSavedRef = useRef(onSaved);
+
+  useLayoutEffect(() => {
+    onSavedRef.current = onSaved;
+  }, [onSaved]);
+
+  useLayoutEffect(() => {
+    session.setActive(true);
+    return () => session.setActive(false);
+  }, [session]);
 
   function clearSaveResult(): void {
-    setErrorMessage(null);
-    setSavedDraft(null);
+    session.clearError();
+    setSnapshot(session.getSnapshot());
   }
 
-  async function saveInvoiceDraft(
+  function markEdited(): void {
+    session.markEdited();
+    setSnapshot(session.getSnapshot());
+  }
+
+  const saveInvoiceDraft = useCallback(async (
     input: InvoiceDraftInput,
-  ): Promise<InvoiceDraft | null> {
-    setIsSaving(true);
-    setErrorMessage(null);
-
-    try {
-      const draft = await saveInvoiceDraftInput(input, apiClient, mode);
-
-      setSavedDraft(draft);
-
-      return draft;
-    } catch (error) {
-      setSavedDraft(null);
-      setErrorMessage(getSaveInvoiceDraftErrorMessage(error));
-
-      return null;
-    } finally {
-      setIsSaving(false);
+    revision: number,
+    source: InvoiceDraftSaveSource = 'manual',
+  ): Promise<void> => {
+    const request = session.begin(revision, source);
+    if (request === null) {
+      return;
     }
-  }
+    setSnapshot(session.getSnapshot());
+
+    let draft: InvoiceDraft;
+    try {
+      draft = await saveInvoiceDraftInput(input, apiClient, request.mode);
+    } catch (error) {
+      const isDefiniteRejection = isInvoiceDraftValidationRejection(error);
+      const message = request.mode.type === 'create' && !isDefiniteRejection
+        ? uiText.invoicing.createDraftOutcomeUnknown
+        : getSaveInvoiceDraftErrorMessage(error);
+      if (session.fail(request, message, isDefiniteRejection)) {
+        setSnapshot(session.getSnapshot());
+      }
+      return;
+    }
+
+    const result = session.succeed(request, draft);
+    if (result !== null) {
+      setSnapshot(session.getSnapshot());
+      onSavedRef.current(draft, result.isCurrentRevision);
+    }
+  }, [apiClient, session]);
 
   return {
+    ...snapshot,
     clearSaveResult,
-    errorMessage,
-    isSaving,
+    isSaved: !snapshot.isSaving && !snapshot.isCreateOutcomeUnknown &&
+      snapshot.revision === snapshot.savedRevision,
+    isCurrentRevisionSaved: () => session.isSaved(),
+    markEdited,
     saveInvoiceDraft,
-    savedDraft,
   };
+}
+
+export function isInvoiceDraftValidationRejection(error: unknown): boolean {
+  if (!(error instanceof EkyApiError) || error.status !== 400) {
+    return false;
+  }
+  const body = error.responseBody;
+  // This route's structured 400 rejection precedes persistence. A status alone
+  // (for example unreadable JSON) does not establish a rejected write.
+  return (
+    typeof body === 'object' && body !== null && !Array.isArray(body) &&
+    'error' in body && typeof body.error === 'string' &&
+    body.error.length > 0 && body.error === error.message
+  );
 }
 
 export function saveInvoiceDraftInput(

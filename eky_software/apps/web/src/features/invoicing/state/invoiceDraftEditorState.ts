@@ -13,7 +13,7 @@ export type InvoiceDraftEditorAction =
   | { type: 'openLoaded'; sessionRevision: number; draft: InvoiceDraft }
   | { type: 'loaded'; sessionRevision: number; draft: InvoiceDraft }
   | { type: 'failed'; sessionRevision: number; errorMessage: string }
-  | { type: 'saved'; draft: InvoiceDraft };
+  | { type: 'saved'; sessionRevision: number; draft: InvoiceDraft };
 
 export const initialInvoiceDraftEditorState: InvoiceDraftEditorSnapshot = {
   draft: null,
@@ -49,6 +49,9 @@ export function reduceInvoiceDraftEditor(
         isLoading: false,
       };
     case 'saved':
+      if (action.sessionRevision !== state.sessionRevision) {
+        return state;
+      }
       // Saving the same editing session must not remount its form.
       return { ...state, draft: action.draft };
   }

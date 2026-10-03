@@ -10,21 +10,21 @@ V1/V2-vakautuksen hyväksyntä säilyy. Myöhempi onnistuminen ei sulje vanhojen
 timeout- tai siivoushavaintojen jälkikäteistä juurisyytä.
 Alla päivätyt tutkimusvaiheet ovat historiaa, eivät rinnakkaisia työjonoja.
 
-**T1/T2/T3 ja niiden integraatiojatko sekä A1/R01:n PR #288 ja sen main
-ovat hyväksyttyjä. Myöhemmän ohje-PR #289:n main-ajo on hylätty
-synteettisessä MSI-politiikkakokeessa; sen rajattu selvitys on seuraava työ.**
+**T1/T2/T3, A1/R01 ja MSI-virheaineiston rajattu integraatiojatko ovat
+hyväksyttyjä. Nykyinen sovelluspala on A2/R05:n tallennusvastauksen suoja;
+epäselvän ensitallennuksen käyttötapa on hyväksytty toteutukseen.**
 Modulaarinen monoliitti ja
 hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohdan;
 [julkaisusuunnitelma](release-0.3.0-plan.md) omistaa koko 0.3.0:n sisällön.
 
 | Kohta | Nykyinen lähtötieto |
 | --- | --- |
-| Hyväksytty lähtörevisio | A1:n PR #288:n main `c21b8377480d1fb37c1387b93e0f481fcb721968`. [Lopullinen hyväksyntä](https://github.com/eky-software/eky/pull/288#issuecomment-5963057259). Uudempi ohje-main `b9245ba6b31b8001c225a7cd7bb8e93ca4fbf124` on tämän selvityksen lähtökohta, ei hyväksytty integraatiotulos. |
-| Mainin omat portit | A1:n [CI 37074929943](https://github.com/eky-software/eky/actions/runs/37074929943) läpäisi kaikki 11 porttia suoritusyrityksellä 1: system 807, web 43 ja Electron 39 ilman retryä. Ohje-mainin [CI 37078912651](https://github.com/eky-software/eky/actions/runs/37078912651) hylkäsi installer-portin ja sen koonnin; muut kymmenen porttia sekä samat sovellustestit läpäisivät. PR-porttien vihreys ei korvaa tätä main-hylkäystä. |
+| Hyväksytty lähtörevisio | PR #290:n main `e6286c466f7281498e1256521eb5f24042616d79`. [Lopullinen hyväksyntä](https://github.com/eky-software/eky/pull/290#issuecomment-5968984119). A1:n PR #288:n [hyväksyntä](https://github.com/eky-software/eky/pull/288#issuecomment-5963057259) säilyy. |
+| Mainin omat portit | [CI 37120284589](https://github.com/eky-software/eky/actions/runs/37120284589) läpäisi kaikki 11 valittua porttia suoritusyrityksellä 1: system 807, web 43 ja Electron 39 ilman retryä tai flaky-tulosta. Täysi riskimatriisi ja kaksi vaadittua toistoa säilyivät. Erillinen riippuvuusauditointi ei valikoitunut tämän main-pushin muuttumattomalla polkusuodattimella; sitä ei merkitä mainissa ajetuksi. PR:n auditoinnin oma näyttö on checkpointissa. |
 | Suljettu työ | T1/R27:n ajokytkentä, T2/R29:n puhtaan valmistelun suoja ja T3/R28:n todellisten kuluttajien koko prosessipuun omistajuus. Korvatut aktiiviset fallbackit on poistettu ja [pysyvä T3-matriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus) hyväksytty. PR #281 sulki tämän jälkeisen rollback-testiapurin integraatiojatkon. |
 | Avoimet havainnot | Aiemmat satunnaiset Electron-käynnistys- ja packaged/legacy-timeoutit säilyvät epäonnistuneina havaintoina omille revisioilleen. Myöhempi vihreä ajo ei todista niiden kaikkia syitä korjatuiksi. [Hylkäysten historia](e2e-test-environment-history.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko) ja [rajattu apurikorjaus](e2e-test-environment-history.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus) erotetaan toisistaan. |
-| Seuraava työ | [MSI-politiikkakokeen virheaineisto](#msi-politiikkakokeen-virheaineisto): säilytä puuttuvat nimetyt lokit salattuina, todenna toimitus ja selvitä hylkäys nykyisestä asennussäännöstä sekä validatorista. Ei A2:ta, T3-remonttia tai testiehtojen lievennyksiä tämän selvityksen aikana. pnpm `11.11.0`, Electron `43.7.6`, Undici `7.29.1`, `better-sqlite3 13.0.2` ja tietomalli säilyvät. |
-| Ei vielä valmis | Uusimman mainin hyväksyntä, A2-A3, W7, M1:n muu sovellustyö ja koko 0.3.0. A1:n hyväksyntä ei hyväksy niiden tulevaa toteutusta tai muuttunutta liiketoimintasääntöä. |
+| Nykyinen työ | [A2/R05](#a2r05-tallennuksen-omistajuus): ensimmäisen tallennuksen tunniste, uudemman syötteen säilyminen ja auto-/käsintallennuksen yhteinen omistajuus. Epäselvä ensitallennus estää uuden sokkona tehtävän createn samassa sessiossa; käyttötapa hyväksytty. Ei T3-remonttia, uusia riippuvuuksia, tietomallimuutosta tai testiehtojen lievennyksiä. |
+| Ei vielä valmis | A2-A3, W7, M1:n muu sovellustyö ja koko 0.3.0. Lähtörevision hyväksyntä ei hyväksy A2:n tulevaa toteutusta tai muuttunutta liiketoimintasääntöä. |
 
 Hyväksyntä on sidottu yllä olevaan revisioon, ei automaattisesti myöhempään
 työpuuhun. Dokumenttimuutoksen toteutuneet tarkistukset ja mahdollisen
@@ -70,10 +70,72 @@ Kohdennettu näyttö ennen PR-jäädytystä:
 
 Omistaja hyväksyi rajatun normaalin PR-kierroksen ja mergen; hyväksyntä
 toteutui yllä linkitetyssä A1-checkpointissa. Rollback-testin vanha
-timeout jää seurantahavainnoksi. Seuraava sovelluspala on A2/R05 nykyisen
-MSI-hylkäyksen käsittelyn jälkeen, ei T3:n uusi toteutus.
+timeout jää seurantahavainnoksi. Seuraava sovelluspala on A2/R05, ei T3:n
+uusi toteutus.
+
+## A2/R05: tallennuksen omistajuus
+
+**Rajattu toteutus ja kohdetodennus valmiit; PR/main-integraatio avoinna.**
+Omistaja hyväksyi tämän rajatun sovelluspalan aloittamisen 3.10.2026.
+[Omistava tallennussopimus ja testiketjut](invoicing-ui-roadmap.md#a2-tallennusvastuun-valmistelu)
+erottavat hyväksytyn tavoitteen, toteutussuunnitelman ja epäselvän
+ensitallennuksen hyväksytyn käyttötavan. A1:n kohdesuoja säilytetään, A3:n laajempaa
+hyväksyntävalmiuden vastaussidontaa ei toteuteta samalla.
+
+Kooditarkistuksessa vahvistui, että automaattitallennus voi hylätä koko
+onnistuneen create-vastauksen lomakkeen muuttuessa; käsin tallennus voi
+puolestaan korvata uudemman syötteen vanhalla vastauksella. Molemmat
+kirjoitusreitit tarvitsevat saman omistajan ja tallennetun revision
+tarkistuksen. Poistuneen muokkaussession vastaus ei saa palauttaa editoria.
+
+Rajattu toteutus käyttää yhtä featuren tallennussessiota ja API-kirjoittajaa.
+Onnistunut create-ID säilyy, mutta uudempi syöte vahvistetaan vasta oman
+PUTinsa jälkeen. Epäselvä create estää molemmat uudet luontireitit samassa
+lomakkeessa. Paluu listalle tekee tuoreen, uusimpaan hakuun sidotun luvun.
+
+Kohdennettu näyttö ennen PR-jäädytystä:
+
+- Tallennusomistajan/editorin kohdetestit ja koko web-yksikkösarja läpäisivät;
+  backendin nykyiset kirjoitus-, hyväksyntä- ja draft-repository-kohdetestit
+  läpäisivät. Workspace-tyypitys ja web-build läpäisivät.
+- Koko workspace-testiajo läpäisi: 5 352 onnistunutta ja kahdeksan
+  ennestään ohitettua testiä. Ohituksia ei lasketa läpäisyiksi.
+- [INV-SAVE-001...011](r0-e2e-test-matrix.md#invoicing) läpäisivät oikealla
+  UI:lla ja backendin jälkiluvulla. Mukana ovat menetetty create-vastaus,
+  molempien kirjoitusreittien esto, session vaihto sekä palautumisen
+  tuoreen listan virhe- ja vastausjärjestykset. Siivous varmistettiin.
+- A1:n kuusi avaustestiä sekä nykyiset asiakaskortti-, elinkaari-,
+  uudelleenhyväksyntä-, kopiointi- ja kaksoispainalluspolut läpäisivät.
+  Ensimmäinen viereinen ajo hylättiin vanhaa listan otsikkoa odottaneeseen
+  testiin; odotus päivitettiin tuoreeseen summaryyn säilyttäen saman ID:n,
+  viivästetyn detail-vastauksen ja pysyvän jälkiluvun vaatimukset.
+- Riippumaton katselmus löysi palautumisen vanhentuneen listan riskin.
+  Tuore listahaku ja success/error/finally-suoja korjattiin ja katselmoitiin.
+  Uudet listaregressiot todentavat tämän korjauksen.
+
+Nämä paikalliset tarkistukset eivät yksin hyväksy PR/main-integraatiota.
+Lopullinen hyväksyntä kirjataan täsmärevision checkpointiin;
+pelkän CI-tuloksen vuoksi ei avata uutta dokumentti-integraatiokierrosta.
+
+Valmistumiseen tarvitaan hyväksytyn sopimuksen rajattu toteutus,
+deterministiset UI-/backend-ketjut ja nykyiset viereiset regressiot,
+riippumaton katselmus sekä täsmärevision PR- ja main-portit. Vanhojen
+MSI-, timeout- ja ETL-havaintojen jälkiselitys ei ole A2:n tavoite eikä niitä
+väitetä suljetuiksi. Uusi todellinen regressio tai pakollisen portin este
+käsitellään nykyisen testauskäytännön mukaan.
 
 ## MSI-politiikkakokeen virheaineisto
+
+**Rajattu toimituskorjaus ja integraatio hyväksytty PR #290:n mainissa.**
+[Lopullinen checkpoint](https://github.com/eky-software/eky/pull/290#issuecomment-5968984119)
+erottaa kohderegressiot, yhden hosted-kokeen salauksen ja purun sekä PR/main-
+hyväksynnän. Nimetyt MSI-lokit ja tulos sisältyvät nyt nykyiseen salattuun
+toimitukseen. Asennussääntöä, validatorin ehtoja tai sovellusta ei muutettu.
+Ohje-mainin `b9245ba6b31b8001c225a7cd7bb8e93ca4fbf124`
+[alkuperäinen hylkäys](https://github.com/eky-software/eky/actions/runs/37078912651)
+säilyy avoimena havaintona: puuttuneesta MSI-lokista ei voida palauttaa
+hylättyä tarkkaa ehtoa. Uudempi läpäisy ei todista sen syytä korjatuksi.
+Alla säilyy valmisteluhistoria, ei uusi avoin toteutusjono.
 
 Ohje-mainin synteettinen `uiOverride`-koe hylkäsi jo lähdepaketin
 `sourceInstall`-vaiheen syyllä `msiPolicyLogInvalid`. Siivous raportoitiin

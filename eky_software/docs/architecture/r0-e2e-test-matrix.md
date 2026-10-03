@@ -409,6 +409,13 @@ revision omia PR/main-portteja; niiden hyväksyntä on kirjattu erikseen
 
 ## Invoicing
 
+A2:n tallennuksen omistajuus ja epäselvän ensimmäisen tallennuksen käyttötapa
+on määritelty [laskutuksen UI-roadmapissa](invoicing-ui-roadmap.md#a2-tallennusvastuun-valmistelu).
+`INV-SAVE-001...011` käyttävät nykyistä eristettyä web-fixtureä ja oikeaa
+backendia: vastauksen toimitus pidätetään tai katkaistaan vasta todellisen
+kirjoituksen jälkeen. Pysyvä jälkiluku erottaa kirjoituksen tuloksen
+käyttöliittymän vastaanottamasta vastauksesta.
+
 | ID | Riski ja tasot | Lähtö / toiminto / fault | Odotus | Tila ja havainnot | Erityinen vuotokielto | Tila |
 |---|---|---|---|---|---|---|
 | INV-LIFECYCLE-001 | P0; web-e2e | Asiakas ja asetukset; draft, rivit, autosave, refresh, approve, PDF ja fake delivery | Näkymä etenee Lähetettyihin | Yksi invoice, numero, PDF, delivery-event ja Activity-ketju | PDF-bytes, email body tai recipient lokiin | implemented-e2e |
@@ -418,6 +425,17 @@ revision omia PR/main-portteja; niiden hyväksyntä on kirjattu erikseen
 | INV-OPEN-004 | P0; web-e2e, critical | A:n virhe saapuu B:n GETin ollessa kesken; myös B epäonnistuu | B:n loading säilyy omaan tulokseen asti; nykyinen turvallinen virhe näkyy | Uusi avaus palauttaa normaalin editorin, ei kirjoituksia | Tekninen virhe tai väärän avauksen palaute | implemented-e2e |
 | INV-OPEN-005 | P0; web-e2e, critical | Sama ID avataan uudestaan; vanha snapshot saapuu viimeisenä | Vain uudemman avauksen arvot julkaistaan | Oikea PUT säilyttää uuden sisällön samassa luonnoksessa | Vanhentuneen sisällön palautuminen | implemented-e2e |
 | INV-OPEN-006 | P0; web-e2e, critical | Clear ja uusi luonnos A:n GETin aikana | Myöhäinen A ei muuta uuden lomakkeen kohdetta | Yksi POST, seuraava tallennus PUT samalle ID:lle; A ennallaan | Vanhan luonnoksen sekoittuminen uuteen | implemented-e2e |
+| INV-SAVE-001 | P0; web-e2e, critical | Käsin tehty POST pidätetään, syöte muuttuu, autosave jatkaa | Yksi create; vanha vastaus ei korvaa uutta syötettä tai kuittaa sitä | Sama ID, yksi PUT ja pysyvä uusi sisältö; dirty hyväksyntä estetty | Laskusisältö julkiseen diagnostiikkaan | implemented-e2e |
+| INV-SAVE-002 | P0; web-e2e, critical | Autosave-POST pidätetään, syöte muuttuu, käsin tallennus jatkaa | Auto/manual ja toistuva submit käyttävät yhtä kirjoitusomistajaa | Yksi POST ja PUT samaan ID:hen; uusi sisältö uudelleenavauksessa | Vanhentuneen syötteen tallentuminen | implemented-e2e |
+| INV-SAVE-003 | P0; web-e2e, critical | Poistu listalle valmistuneen kirjoituksen vastauksen ollessa pidätetty | Myöhäinen onnistuminen ei avaa editoria takaisin | Lista säilyy, kirjoitettu luonnos jälkiluetaan | Vanhan session vaikutus näkymään | implemented-e2e |
+| INV-SAVE-004 | P0; web-e2e, critical | Vanha create onnistuu uuden session createn aikana | Vanha callback ei vapauta uutta kirjoitusta | Molemmilla omat ID:t; seuraava PUT vain nykyiseen, vanha ennallaan | Kohteiden sekoittuminen | implemented-e2e |
+| INV-SAVE-005 | P0; web-e2e, critical | Unmount ja uusi create; vanha kirjoitusvastaus katoaa | Vanha virhe ei muuta uutta syötettä, kohdetta tai varattu-tilaa | Nykyinen kirjoitus valmistuu ja jatkuu PUTilla; molemmat jälkiluetaan | Vanha virhe uudessa sessiossa | implemented-e2e |
+| INV-SAVE-006 | P0; web-e2e, critical, fault | Backend kirjoittaa, mutta create-vastaus katoaa | Suomenkielinen epäselvän lopputuloksen ilmoitus; syöte näkyy, molemmat uudet createt estetty | Yksi pysyvä luonnos; suora paluu hakee tuoreen listan ja luonnos avautuu | Väärä varmuus kirjoituksen peruuntumisesta | implemented-e2e |
+| INV-SAVE-007 | P0; web-e2e, critical | Backend hylkää virheellisen syötteen ennen kirjoitusta | Syötteen voi korjata ja tallentaa uudelleen | Hylkäyksen jälkeen ei luonnosta; korjattu create onnistuu ilman automaattista virhesilmukkaa | Raaka virhe UI:ssa | implemented-e2e |
+| INV-SAVE-008 | P0; web-e2e, critical | Normaali luonti, muokkaus, paluu ja avaus | Uusin tallennettu sisältö ja sama luonnos säilyvät | Yksi POST, yksi PUT ja backend-jälkiluku | Virheellinen tallennettu-ilmoitus | implemented-e2e |
+| INV-SAVE-009 | P0; web-e2e, critical, fault, recovery | Epäselvän kirjoituksen jälkeinen listahaku epäonnistuu | Turvallinen virhe, ei tyhjä lista tai vanha taulukko | Jo kirjoitettu luonnos säilyy; ei uutta POSTia | Tekninen virhe tai olematon rollback-väite | implemented-e2e |
+| INV-SAVE-010 | P0; web-e2e, critical, recovery | Vanhoja tyhjiä listavastauksia ennen ja jälkeen tuoreen palautumishaun | Vanha onnistuminen ei lopeta latausta tai korvaa uutta listaa | Nykyinen lista näyttää syntyneen luonnoksen | Vanhentunut lista nykyisenä tietona | implemented-e2e |
+| INV-SAVE-011 | P0; web-e2e, critical, recovery | Vanhat listavirheet ennen ja jälkeen tuoreen palautumishaun | Vanha virhe/finally ei muuta nykyistä latausta tai listaa | Tuore luonnos säilyy näkyvissä; backend ennallaan | Vanhentunut virhe nykyisenä tietona | implemented-e2e |
 | INV-REAPPROVAL-001 | P0; web-e2e, critical | Draft hyväksytään, avataan uudelleen, riviä muutetaan ja hyväksytään uudelleen | Sama lasku ja numero avautuvat päivitetyllä sisällöllä | Snapshot ja current PDF vaihtuvat; audit säilyttää siirtymien järjestyksen; numeroa ei kuluteta uudelleen | Vanhan snapshotin tai PDF:n sekoittuminen uuteen | implemented-e2e |
 | INV-COPY-001 | P0; web-e2e, critical | Sent invoice kopioidaan luonnokseksi ja kopio hyväksytään | Uusi lasku saa uuden id:n ja numeron | Lähdelaskun status, PDF ja delivery-historia eivät muutu | Lähdelaskun identiteetin tai toimitushistorian kopioituminen | implemented-e2e |
 | INV-MANUAL-DELIVERY-001 | P0; web-e2e, critical | Approved invoice; luo PDF ja merkitse käsin toimitetuksi | Lasku näkyy sent-tilassa myös refreshin jälkeen | Yksi manual delivery event ja audit; current PDF säilyy | Vastaanottaja- tai PDF-data auditissa | implemented-e2e |

@@ -8,9 +8,9 @@ testattavina vaiheina olemassa olevan Invoicing-domainin, backend-reittien ja
 
 ## A-paketin valmistelu
 
-**3.10.2026: A1:n toteutus ja kohdetodennus tehty, integraatio avoinna.**
-[M1-valmistelu](release-0.3.0-m1-preparation-plan.md)
-rajaa ensimmäisen tuotantokorjauksen A1:een. R01, R05 ja R06 pidetään
+**3.10.2026: A1:n integraatio hyväksytty, A2:n toteutus ja todennus käynnissä.**
+[M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+omistaa hyväksytyn lähtörevision ja portit. R01, R05 ja R06 pidetään
 erillisinä seurattavina kohtina; yhden läpäisy ei sulje koko A-pakettia.
 
 ### A1: Avattavan luonnoksen kohde
@@ -124,6 +124,112 @@ syöte ei saa `saved`-tilaa, ja PUT tallentaa uuden revision samalle ID:lle.
 Backendin jälkiluku vahvistaa uudemman sisällön; POSTeja on vain yksi eikä
 hyväksyntä ole käytettävissä ennen uudemman revision tallentumista.
 Tämä on A2:n vaatimus, ei A1:n rajauksen laajennus.
+
+#### A2: Tallennusvastuun valmistelu
+
+Rajaus pysyy nykyisessä Invoicing-web-featuressa. Luonnoksen luonti,
+päivitys ja hyväksyntä käyttävät edelleen nykyistä API-clientiä ja backendin
+yritysrajattuja käyttötapauksia. Ei uutta idempotenssiprotokollaa,
+tietomallia, riippuvuutta tai yleistä navigaatiovahtia. Alla oleva
+käyttötapa on omistajan hyväksymä toteutuspäätös 3.10.2026.
+
+Vahvistettu lähtötilanne ennen A2-korjausta:
+
+- [Automaattitallennus](../../apps/web/src/features/invoicing/hooks/useInvoiceDraftAutosave.ts)
+  hylkää myös onnistuneen createn tunnisteen, jos form-revisio ehti muuttua.
+- [Lomakkeen käsin tallennus](../../apps/web/src/features/invoicing/components/NewInvoiceForm.tsx)
+  voi palauttaa vanhan vastauksen arvot uudemman syötteen tilalle. Erilliset
+  tallennushookit eivät muodosta yhtä kirjoitusten omistajaa.
+- [Sivun tallennuscallback](../../apps/web/src/features/invoicing/components/InvoicingPage.tsx)
+  voi palauttaa editorin ilman muokkaussession tarkistusta. A1:n GET-suoja
+  ei kata tätä kirjoitusvastauksen reittiä.
+- [Backendin luonti](../../apps/backend/src/modules/invoicing/application/saveInvoiceDraft.ts)
+  tuottaa uuden tunnisteen jokaiseen hyväksyttyyn POSTiin. Transaktio voi
+  valmistua ennen vastauksen toimitusta; API ei nykyisellään kohdista
+  kadonnutta create-vastausta varmasti alkuperäiseen kirjoitusyritykseen.
+
+Toteutussuunnitelma hyväksytyn A2-tavoitteen sisällä:
+
+1. Yksi feature-kohtainen tallennusomistaja palvelee automaattista ja käsin
+   tehtävää tallennusta. Vain yksi kirjoitus on kerrallaan käynnissä;
+   saman keskeneräisen createn rinnalle ei lähetetä toista POSTia.
+2. Pyyntö sitoutuu muokkaussessioon ja sen lähettämään form-revisioon.
+   Ensimmäisen onnistumisen tunniste otetaan talteen ennen seuraavaa
+   kirjoitusta. Vastauksen sisältöä saa käyttää lomakkeen täyttämiseen vain,
+   jos se vastaa yhä nykyistä revisiota. Uudempi syöte jatkaa samaan ID:hen
+   PUTilla; pelkkä tunnisteen saaminen ei tuota `saved`-tilaa.
+3. Onnistuminen, virhe ja `finally` noudattavat samaa session rajaa.
+   Poistuneen lomakkeen vastaus ei käynnistä uutta tallennusta eikä muuta
+   uuden session kohdetta, syötettä, virhettä tai tallennustilaa.
+4. Hyväksynnän UI-portti huomioi keskeneräisen ja tallentamattoman revision.
+   A3:n myöhäisen readiness-vastauksen laajempi sidonta jää erilliseksi.
+   Backendin hyväksyntä, validointi ja transaktio säilyvät auktoriteettina.
+
+Vastuun sijoitus: nykyiset tallennushookit palvelevat vain tätä lomaketta.
+Yhteinen kirjoitusvastuu pidetään featuren `hooks/`- ja tarvittaessa
+`state/`-alueella, ei `app/`-kerroksessa tai uutena yleisenä managerina.
+Autosave omistaa ajoituksen, ei toista rinnakkaista API-kirjoittajaa.
+Poistuvan lomakkeen suojan lisäksi vastaanottava editoriraja tarkistaa
+A1:n nykyisen muokkaussession ennen kohteen tai sivutilan vaihtamista;
+pelkkä form-revision tarkistus ei riitä. Käyttäjän valitsema uusi kohde
+ja ensimmäisen tallennuksen create -> edit -siirtymä pysyvät eri asioina.
+
+**Hyväksytty käyttötapapäätös:** kun ensimmäisen kirjoituksen tulosta ei voida
+varmistaa, lomake säilyy näkyvissä mutta tallennus estää tässä sessiossa
+uuden luontiyrityksen. Turvallinen ilmoitus kertoo luonnoksen mahdollisesti
+tallentuneen ja ohjaa tarkistamaan luonnoslistan ennen uuden luomista.
+Vahvistettu, ennen kirjoitusta tehty validointihylkäys sallii syötteen
+korjaamisen ja uuden tallennuksen; se ei kumoa aiempaa epäselvää yritystä.
+Nykyinen navigointi säilyy, mutta myöhäinen vastaus ei palauta
+poistuttua lomaketta. Abortia tai poistumista ei esitetä palvelimella
+valmistuneen kirjoituksen perumisena. Esto koskee sekä automaattista että
+käsin tehtävää uutta luontiyritystä, ei vain painikkeen ulkoasua.
+
+Luonnoslistalle palaaminen hakee sisällön uudelleen. Vanhentunut listavastaus
+ei saa korvata uudempaa hakua tai vapauttaa sen lataustilaa. Epäonnistunut
+tarkistushaku näytetään virheenä, ei tyhjänä listana tai vahvistuksena siitä,
+ettei luonnosta syntynyt. Tämä ei ole automaattinen epäselvän kirjoituksen
+kohdistus tai uusi yleinen navigaatiosuoja.
+
+Toteutuksen omistajat:
+
+- [Tallennussessio](../../apps/web/src/features/invoicing/state/invoiceDraftSaveSession.ts)
+  omistaa kirjoituskohteen, keskeneräisen pyynnön sekä nykyisen ja tallennetun
+  revision. Se ei omista API-kutsuja tai Reactin elinkaarta.
+- [Tallennushook](../../apps/web/src/features/invoicing/hooks/useSaveInvoiceDraft.ts)
+  omistaa ainoan auto-/käsintallennuksen API-reitin ja turvallisen palautteen.
+  Autosave-hook omistaa vain validointiin perustuvan ajastuksen ja esitystilan.
+- Lomake säilyttää uudemman syötteen; vastaanottava editori tarkistaa A1:n
+  session ennen sivutilan muutosta. Luonnoslistan hook omistaa uusimman haun.
+
+Kohdetodennuksen vaatimukset; toteutuksen hyväksyntä vaatii myös ajetun näytön:
+
+| Ketju | Vaadittu näyttö |
+| --- | --- |
+| Auto- ja käsintallennuksen create-vastaus pidätetään; syöte muuttuu | Yksi POST, tunniste säilyy, uudempi syöte ei katoa tai näy tallennettuna; PUT samaan ID:hen ja pysyvä jälkiluku. |
+| Auto-/käsintallennus ja toistuva submit kohtaavat keskeneräisen kirjoituksen | Ei rinnakkaista luontia tai vanhemman revision myöhempää ylikirjoitusta. |
+| Navigointi tai unmount ennen success/error/finally-vastausta | Uusi sessio ja näkymä säilyvät; vanha vastaus ei avaa editoria takaisin. |
+| Create valmistuu backendissä mutta vastaus katoaa tai ei ole luettavissa | Pysyvässä tilassa on vain yksi luonnos; ei sokkona toistettua POSTia, ei väärää onnistumis-/epäonnistumisväitettä. Lomake säilyy ja käyttäjä ohjataan tarkistamaan luonnoslista. |
+| Vahvistettu validointihylkäys, korjaus ja tallennus | Ymmärrettävä virhe, korjattu syöte voidaan tallentaa ilman väärää tunnistetta. |
+| Epäselvän tallennuksen jälkeinen listahaku | Tuore lista näyttää syntyneen luonnoksen; hakuvika ei näytä tyhjää listaa, eikä vanha vastaus korvaa uuden haun tilaa. |
+| Normaali luonti, muokkaus, uudelleenavaus ja A1:n kohdevaihto | Nykyinen toiminta säilyy, laskun sisältö ja kohde pysyvät yhdessä. |
+
+Unit-/hook-todistus ei korvaa hallittua UI-ketjua ja backendin jälkilukua.
+Testit käyttävät nykyisiä fixtureitä; tuotantoon ei lisätä testikontrolleja.
+Laskun sisältöä tai raakavirheitä ei lisätä lokeihin. Todellisen backend-
+virheen nykyinen HTTP-operaatio- ja diagnostiikkaketju tarkistetaan;
+hylätty vanha UI-vastaus ei ole uusi business-audit-tapahtuma.
+
+Valmistelussa nykyiset neljä tallennuksen/editorin kohdetestitiedostoa
+läpäisivät yhteensä 37 testiä. Tämä on muuttumattoman koodin vertailutaso,
+ei A2:n korjauksen tai yllä olevien uusien ketjujen hyväksyntä.
+Nykyinen backend kytkee yhteisen operational-middlewaren HTTP-sovellukseen;
+create-reitti nimeää operaation ja validointivirheen ennen vastausta.
+Yhteyskatko onnistuneen backend-kirjoituksen jälkeen ei välttämättä tuota
+backend-virhetapahtumaa. Pelkkää HTTP-lokia ei siksi tulkita todisteeksi
+käyttöliittymälle toimitetusta tallennustuloksesta.
+
+#### A3: Hyväksyntävalmiuden vastaussidonta
 
 R06/A3 sitoo readinessin kohteeseen, muokkaussessioon ja form-revisioon.
 Muutos, navigointi tai muuttunut tallennustila mitätöi vanhan tuloksen ja
