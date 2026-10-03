@@ -900,6 +900,8 @@ export const uiText = {
     approvedAt: 'Hyväksytty',
     approvingDraft: 'Hyväksytään...',
     autosaveError: 'Automaattitallennus epäonnistui.',
+    createDraftOutcomeUnknown:
+      'Luonnos on saattanut tallentua. Tarkista luonnoslista ennen uuden luonnoksen luomista. Automaattinen ja käsin tehtävä tallennus on keskeytetty tässä lomakkeessa.',
     autosaveSaved: 'Tallennettu',
     autosaveSaving: 'Tallennetaan...',
     autosaveWaitingForValidForm:

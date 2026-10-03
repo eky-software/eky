@@ -15,11 +15,14 @@ puuttuvaa aineistoa eikä takaa kaikkien mahdollisten vikojen juurisyytä.
 [Lopullinen checkpoint](https://github.com/eky-software/eky/pull/283#issuecomment-5959719891)
 erottaa riippuvuusturvan, toimintatestien ja hälytysten readbackin näytön.
 [A1/R01:n luonnoksen avaamisen kohdesuoja](invoicing-ui-roadmap.md#a1-avattavan-luonnoksen-kohde)
-on toteutettu ja kohdetodennettu. Seuraava työ on
-[A1:n jälkeen ilmenneen MSI-testihylkäyksen rajattu selvitys](release-0.3.0-m1-preparation-plan.md#msi-politiikkakokeen-virheaineisto).
-A1:n PR #288 ja sen main-portit on hyväksytty. Myöhemmän ohje-PR #289:n
-main-ajo hylkäsi synteettisen MSI-politiikkakokeen; samaa hylkäystä ei
-merkitä A1:n sovellusviaksi. Vanha rollback-testihavainto säilyy avoimena.
+on hyväksytty PR #288:n mainissa. Sen jälkeinen
+[MSI-virheaineiston toimituskorjaus](release-0.3.0-m1-preparation-plan.md#msi-politiikkakokeen-virheaineisto)
+ja PR #290:n main-portit on hyväksytty. Alkuperäisen MSI-hylkäyksen
+juurisyy sekä vanha rollback-testihavainto säilyvät avoimina omille
+revisioilleen; niitä ei merkitä A1:n sovellusvioiksi tai myöhemmin korjatuiksi.
+Nykyinen työ on [A2/R05:n tallennusvastuun toteutus ja todennus](invoicing-ui-roadmap.md#a2-tallennusvastuun-valmistelu).
+Epäselvän ensitallennuksen uuden luontiyrityksen esto on hyväksytty;
+rajattu toteutus ja kohdetodennus ovat käynnissä.
 A2, A3 ja koko 0.3.0 ovat edelleen avoinna.
 
 **M0, T1, T2 ja T3/R28 on hyväksytty; M1:n sovelluskorjaukset ovat avoinna.**

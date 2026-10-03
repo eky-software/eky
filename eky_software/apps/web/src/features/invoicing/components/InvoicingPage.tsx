@@ -122,6 +122,7 @@ export function InvoicingPage({
     invoicePaymentState.clearStatus();
     setPendingDeleteDraftId(null);
     dispatch({ type: 'showDraftList' });
+    void draftState.refreshDrafts();
   }
 
   function handleOpenNewInvoice(customerId: string | null): void {
@@ -219,7 +220,9 @@ export function InvoicingPage({
   }
 
   function handleDraftSaved(savedDraft: InvoiceDraft): void {
-    draftEditorState.replaceDraft(savedDraft);
+    if (!draftEditorState.replaceDraft(savedDraft)) {
+      return;
+    }
     dispatch({ type: 'draftSaved' });
     void draftState.refreshDrafts();
   }

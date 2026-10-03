@@ -96,15 +96,26 @@ describe('invoice draft opening ownership', () => {
   it('keeps the form session across first create and subsequent save responses', () => {
     const creating = reduceInvoicing({ type: 'clear', sessionRevision: 4 });
     const created = reduceInvoiceDraftEditor(creating, {
-      type: 'saved', draft: draftA,
+      type: 'saved', sessionRevision: 4, draft: draftA,
     });
     const updated = reduceInvoiceDraftEditor(created, {
-      type: 'saved', draft: { ...draftA, subject: 'Saved change' },
+      type: 'saved', sessionRevision: 4, draft: { ...draftA, subject: 'Saved change' },
     });
     expect(created.sessionRevision).toBe(4);
     expect(updated.sessionRevision).toBe(4);
     expect(updated.draft?.subject).toBe('Saved change');
   });
+
+  it.each(['clear', 'open', 'openLoaded'] as const)(
+    'ignores a departed session save after %s', (type) => {
+      const current = reduceInvoicing(type === 'openLoaded'
+        ? { type, sessionRevision: 5, draft: draftB }
+        : { type, sessionRevision: 5 });
+      expect(reduceInvoiceDraftEditor(current, {
+        type: 'saved', sessionRevision: 4, draft: draftA,
+      })).toBe(current);
+    },
+  );
 });
 
 function reduceInvoicing(action: InvoiceDraftEditorAction) {

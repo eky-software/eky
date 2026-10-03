@@ -101,8 +101,8 @@ test('INV-OPEN-005 @critical ignores an older snapshot when the same draft is re
     });
     expect(response.status()).toBe(200);
     await openInvoicingWorkspace(page);
-    // The list may still show the original summary; the detail GET must be fresh.
-    await openInvoiceDraftFromList(page, first.subject);
+    // Returning now refreshes the list; reopen the same ID via its fresh summary.
+    await openInvoiceDraftFromList(page, 'Synthetic newer snapshot');
     await expect(page.getByLabel('Aihe')).toHaveValue('Synthetic newer snapshot');
     await older.release(false);
     await expect(page.getByLabel('Aihe')).toHaveValue('Synthetic newer snapshot');

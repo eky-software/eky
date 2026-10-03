@@ -367,6 +367,12 @@ ei lisätä jokaisen ajon ehdoksi. Virhettä ei nimetä korjatuksi uusinta-ajon
 vihreyden perusteella eikä hyväksyntäehtoja muuteta seurantaa varten.
 Mahdollinen yksi hallittu uusinta ja rajattu kehityspoikkeus käsitellään
 [testausohjeen](testing-rules.md#ensivirhe-uusinta-ja-rajattu-poikkeus) mukaan.
+Punaisen tai jumittuneelta näyttävän ajon käytännön etenemisjärjestys on
+[rajattu vianrajaus ennen uusintaa](testing-rules.md#rajattu-vianrajaus-ennen-uusintaa):
+varmenna tila, säilytä ensivirhe, tarkista myös sovelluskoodi ja hyödynnä
+saatavilla olevaa GitHubin tekoälyselitystä tarkistettavana hypoteesina.
+Selvä vika korjataan; avoimeksi jäänyt syy ei yksin estä yhtä rajattua
+uusintaa. Uusinnan salliminen ja tuloksen hyväksyminen ovat eri päätöksiä.
 Seuranta-agentin vain lukeva rooli ei muutu.
 
 ## Puhdas baseline ja julkaistavan artifactin portti
