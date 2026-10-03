@@ -92,11 +92,12 @@ export function msiPolicyExpectedRole(name, variant) {
 
 // Every invocation here runs inside the existing native Job supervisor. This
 // fixture adds no timers, process-tree owner, application start or payload bypass.
-export function createMsiPolicyRuntime(value, descriptorPath, evidenceRoot) {
+export function createMsiPolicyRuntime(value, descriptorPath, evidenceRoot, {
+  execute = runInstallerProductCommand,
+} = {}) {
   let sequence = 0;
   let targetLog;
   const unique = suffix => resolve(evidenceRoot, `${++sequence}-${suffix}`);
-  const execute = runInstallerProductCommand;
   const msi = resolve(process.env.SystemRoot, 'System32', 'msiexec.exe');
   const powershell = resolve(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
 
@@ -170,7 +171,10 @@ export function createMsiPolicyRuntime(value, descriptorPath, evidenceRoot) {
     async install(role, variant) {
       await verifyMsiPolicyFixture(value);
       const log = unique(`${role}.log`);
-      const args = ['/i', value[role].installerPath, '/qr', '/norestart', '/l*v', log];
+      // Append within this invocation, never to evidence from an earlier one.
+      await lstat(log).then(() => { throw new Error('msiPolicyFileInvalid'); },
+        error => { if (error?.code !== 'ENOENT') throw error; });
+      const args = ['/i', value[role].installerPath, '/qr', '/norestart', '/l*v+', log];
       if (role === 'target') {
         targetLog = log;
         if (variant === 'uiOverride') args.push('REINSTALLMODE=omus');

@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path';
 import test from 'node:test';
 import { INSTALLER_UPGRADE_CODE } from '../../installerIdentity.mjs';
 import {
+  createMsiPolicyRuntime,
   msiPolicyExpectedRole,
   readMsiPolicyDescriptor,
   readPolicyBytes,
@@ -19,6 +20,15 @@ const NONCE = 'ab'.repeat(32);
 const NAMES = ['older.dll', 'equal.dll', 'newer.dll'];
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const error = message => ({ name: 'Error', message });
+
+function setSystemRoot(t, directory) {
+  const previous = process.env.SystemRoot;
+  process.env.SystemRoot = directory;
+  t.after(() => {
+    if (previous === undefined) delete process.env.SystemRoot;
+    else process.env.SystemRoot = previous;
+  });
+}
 
 // Fake bytes only: none of these files are compiled, installed or executed.
 async function fixture(t) {
@@ -275,4 +285,60 @@ test('manual evidence retention requires an explicit exclusive argument', () => 
     ['--retain-evidence', '--retain-evidence'], ['--retain-evidence=false']]) {
     assert.throws(() => parseMsiPolicyProbeArguments(args), /msiPolicyArgumentsInvalid/);
   }
+});
+
+test('policy install appends verbose output to a unique invocation log without per-line flushing', async t => {
+  const { value, path, directory } = await fixture(t);
+  setSystemRoot(t, directory);
+  const evidenceRoot = join(directory, 'evidence');
+  await mkdir(evidenceRoot);
+  const calls = [];
+  const runtime = createMsiPolicyRuntime(value, path, evidenceRoot, {
+    execute: async (...args) => {
+      calls.push(args);
+      throw new Error('syntheticCommandFailure');
+    },
+  });
+  const cases = [['source', 'uiDefault'], ['target', 'uiDefault'], ['target', 'uiOverride']];
+  for (const [index, [role, variant]] of cases.entries()) {
+    await assert.rejects(runtime.install(role, variant), error('syntheticCommandFailure'));
+    assert.deepEqual(calls[index], [resolve(directory, 'System32', 'msiexec.exe'),
+      ['/i', value[role].installerPath, '/qr', '/norestart', '/l*v+',
+        join(evidenceRoot, `${index + 1}-${role}.log`),
+        ...(variant === 'uiOverride' ? ['REINSTALLMODE=omus'] : [])], evidenceRoot]);
+  }
+  assert.equal(calls.length, cases.length);
+});
+
+test('policy append logging rejects an existing invocation log without executing or changing its bytes', async t => {
+  const { value, path, directory } = await fixture(t);
+  setSystemRoot(t, directory);
+  const evidenceRoot = join(directory, 'evidence');
+  await mkdir(evidenceRoot);
+  const log = join(evidenceRoot, '1-source.log');
+  const original = Buffer.from('synthetic earlier evidence');
+  await writeFile(log, original, { flag: 'wx' });
+  let executed = false;
+  const runtime = createMsiPolicyRuntime(value, path, evidenceRoot, {
+    execute: async () => { executed = true; },
+  });
+  await assert.rejects(runtime.install('source', 'uiDefault'), error('msiPolicyFileInvalid'));
+  assert.equal(executed, false);
+  assert.deepEqual(await readFile(log), original);
+});
+
+test('policy source install still rejects incomplete MSI output after a successful command', async t => {
+  const { value, path, directory } = await fixture(t);
+  setSystemRoot(t, directory);
+  const evidenceRoot = join(directory, 'evidence');
+  await mkdir(evidenceRoot);
+  const incomplete = Buffer.from('\uFEFF' + ['C', 'S'].flatMap(channel => [
+    `Property(${channel}): ProductCode = ${value.source.productCode}`,
+    `Property(${channel}): REINSTALLMODE = emus`,
+  ]).join('\r\n'), 'utf16le');
+  const runtime = createMsiPolicyRuntime(value, path, evidenceRoot, {
+    execute: async (_command, args) => { await writeFile(args[5], incomplete, { flag: 'wx' }); },
+  });
+  await assert.rejects(runtime.install('source', 'uiDefault'), error('msiPolicyLogInvalid'));
+  assert.deepEqual(await readFile(join(evidenceRoot, '1-source.log')), incomplete);
 });

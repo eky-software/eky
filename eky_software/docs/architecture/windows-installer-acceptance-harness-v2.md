@@ -5219,6 +5219,16 @@ sisäkkäisen vanhan tuotteen poiston property-dump ei korvaa sitä.
 Valmiiden MSI-taulujen tarkistus käyttää tuotannon read-only-policy-guardia.
 Buildin välitulos ei saa jakaa testipaketin tiedostotavuja hardlinkillä.
 
+Asennuskutsun verbose-lokitus käyttää rajatussa append-kokeessa `/l*v+`-
+valintaa. Jokaisella kutsulla on oma uusi lokipolku; ennestään olemassa oleva
+kohde hylätään ennen komentoa. Aiempien suoritusyritysten aineistoa ei
+yhdistetä uuteen lokiin. Rivikohtaista `!`-flush-valintaa ei oteta käyttöön.
+Tuotteeseen sidottu UI-/execute-järjestys, tiedostojen sisältövertailu,
+siivous, kokorajat ja aikarajat säilyvät. Puuttuva tai katkennut UI-rivi
+hylätään myös silloin, kun lopulliset property-arvot ovat oikein.
+Microsoftin [lokitusvalinnat](https://learn.microsoft.com/en-us/windows/win32/msi/command-line-options)
+määrittelevät appendin toiminnan, eivät todista aiemman lokihäiriön syytä.
+
 `policy-result.json` säilyttää nykyiseen ajoon sidotun ensivirheen, suljetun
 syyn tai `unknown`-arvon sekä siivouksen erillisen tuloksen. Supervisorin
 poistumistodiste on erillinen hyväksyntäehto. Julkinen koerivi sisältää vain
