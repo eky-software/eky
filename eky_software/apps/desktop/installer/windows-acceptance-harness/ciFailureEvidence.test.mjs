@@ -76,6 +76,58 @@ test('binding rejects missing attempts, invalid job names and unknown revisions'
   }
 });
 
+test('MSI policy evidence admits only its named files in the supervisor-owned root', () => {
+  for (const name of ['policy-result.json', '1-source.log', '12-target.log', '23-uninstall.log']) {
+    assert.equal(evidenceSourceKind('temporary', `eky supervisor abc/${name}`), 'msiPolicyEvidence');
+    assert.equal(evidenceSourceKind('results', `eky supervisor abc/${name}`), null);
+    assert.equal(evidenceSourceKind('temporary', `other/${name}`), null);
+    assert.equal(evidenceSourceKind('temporary', `eky supervisor abc/profiles/${name}`), null);
+  }
+  for (const name of ['source.log', '0-source.log', '01-source.log', '1-source.log.bak',
+    '1-files.json', '1-product.json', '1-arbitrary.log', 'descriptor.json', 'request.json',
+    'policy-result.json.tmp', 'fixture/policy-result.json', '../1-source.log']) {
+    assert.equal(evidenceSourceKind('temporary', `eky supervisor abc/${name}`), null);
+  }
+});
+
+test('MSI failure evidence preserves log bytes and separate cleanup even without a worker result', async t => {
+  const { temp, env, put } = await fixture(t);
+  const source = Buffer.from('\uFEFFMSI synthetic source failure\r\n', 'utf16le');
+  await put(temp, 'eky supervisor failed/1-source.log', source);
+  await put(temp, 'eky supervisor failed/2-uninstall.log', 'synthetic cleanup completed');
+  await put(temp, 'eky supervisor failed/policy-result.json', '{"result":{"status":"failed","cleanupStatus":"completed"}}');
+  // A killed worker may leave only its in-progress log, not a terminal result.
+  await put(temp, 'eky supervisor interrupted/1-source.log', 'partial synthetic log');
+  await put(temp, 'eky supervisor failed/fixture/descriptor.json', 'EXCLUDED-DESCRIPTOR');
+  await put(temp, 'eky supervisor failed/request.json', 'EXCLUDED-REQUEST');
+  const collected = await collectJobFailureEvidence(env);
+  const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+  assert.equal(archive.manifest.files.length, 4);
+  assert.equal(archive.manifest.cleanup, 'notInferred');
+  for (const entry of archive.manifest.files) {
+    assert.equal(entry.status, 'retained');
+    assert.equal(entry.kind, 'msiPolicyEvidence');
+    const bytes = Buffer.from(archive.files[entry.name], 'base64');
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), entry.sha256);
+    assert.equal(bytes.includes(Buffer.from('EXCLUDED')), false);
+  }
+  const entry = archive.manifest.files.find(file => file.source.endsWith('failed/1-source.log'));
+  assert.deepEqual(Buffer.from(archive.files[entry.name], 'base64'), source);
+  assert.ok(archive.manifest.files.some(file => file.source.endsWith('interrupted/1-source.log')));
+});
+
+test('MSI logs retain the existing size and hardlink rejection instead of expanding collection', async t => {
+  const { temp, env, put } = await fixture(t);
+  await put(temp, 'eky supervisor sample/1-source.log', Buffer.alloc(8 * 1024 * 1024 + 1));
+  const linked = await put(temp, 'eky supervisor sample/2-target.log', 'not safe to copy');
+  await link(linked, join(temp, 'eky supervisor sample/3-uninstall.log'));
+  const { manifest } = await collectJobFailureEvidence(env);
+  assert.equal(manifest.files.length, 3);
+  assert.equal(manifest.files.find(file => file.source.endsWith('1-source.log')).status, 'tooLarge');
+  assert.ok(manifest.files.filter(file => !file.source.endsWith('1-source.log'))
+    .every(file => file.status === 'unverified'));
+});
+
 test('first-failure bytes from different families and attempts survive collection without DB content', async t => {
   const { temp, checkout, env, put } = await fixture(t);
   await put(temp, `eky supervisor abc/temporary/eky-acceptance-command-${nativeId}/prepare/result.json`, '{"cleanupWin32ErrorCode":5}');

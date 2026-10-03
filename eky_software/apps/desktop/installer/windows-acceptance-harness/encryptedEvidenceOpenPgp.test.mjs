@@ -197,7 +197,20 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
       const checkout = join(root, 'job-checkout');
       const native = join(temp, 'eky supervisor abc');
       await mkdir(native, { recursive: true }); await mkdir(checkout);
-      const failed = await run(process.execPath, ['-e', 'console.error("SYNTHETIC-FIRST-FAILURE"); process.exit(9)']);
+      const policyFiles = {
+        '1-source.log': '\uFEFFMSI synthetic source failure\r\n',
+        '2-target.log': 'MSI synthetic target evidence\r\n',
+        '3-uninstall.log': 'MSI synthetic cleanup evidence\r\n',
+        'policy-result.json': JSON.stringify({ result: { status: 'failed', cleanupStatus: 'completed' } }),
+      };
+      const failed = await run(process.execPath, ['-e', `
+        const { writeFileSync } = require('node:fs');
+        const { join } = require('node:path');
+        for (const [name, value] of Object.entries(${JSON.stringify(policyFiles)})) {
+          writeFileSync(join(${JSON.stringify(native)}, name), value, name === '1-source.log' ? 'utf16le' : 'utf8');
+        }
+        console.error('SYNTHETIC-FIRST-FAILURE'); process.exit(9);
+      `]);
       assert.equal(failed.status, 9);
       await writeFile(join(native, 'ci-step.stderr.private'), failed.stderr);
       await writeFile(join(native, 'result.json'), JSON.stringify({ cleanupWin32ErrorCode: 5, processTreeAbsent: false }));
@@ -220,7 +233,15 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
       assert.equal(value.manifest.binding.attempt, '1');
       assert.equal(value.manifest.jobOutcome, 'failure');
       assert.equal(value.manifest.cleanup, 'notInferred');
-      assert.equal(value.manifest.files.length, 3);
+      assert.equal(value.manifest.files.length, 7);
+      for (const [name, text] of Object.entries(policyFiles)) {
+        const expected = Buffer.from(text, name === '1-source.log' ? 'utf16le' : 'utf8');
+        const entry = value.manifest.files.find(file => file.source.endsWith('/' + name));
+        assert.equal(entry?.status, 'retained');
+        assert.equal(entry.kind, 'msiPolicyEvidence');
+        assert.equal(entry.sha256, createHash('sha256').update(expected).digest('hex'));
+        assert.deepEqual(Buffer.from(value.files[entry.name], 'base64'), expected);
+      }
       const original = value.manifest.files.find(file => file.source.endsWith('ci-step.stderr.private'));
       assert.equal(Buffer.from(value.files[original.name], 'base64').equals(failed.stderr), true);
       assert.equal(original.sha256, createHash('sha256').update(failed.stderr).digest('hex'));

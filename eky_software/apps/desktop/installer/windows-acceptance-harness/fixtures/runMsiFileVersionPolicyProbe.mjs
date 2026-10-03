@@ -51,7 +51,7 @@ async function runPhase(mode, bindingHash, contexts, descriptorPath) {
   return context;
 }
 
-export async function runMsiFileVersionPolicyProbe({ prepareOnly = false } = {}) {
+export async function runMsiFileVersionPolicyProbe({ prepareOnly = false, retainEvidence = false } = {}) {
   if (!prepareOnly) requireHostedMsiPolicyEnvironment(process.env);
   if (process.platform !== 'win32') throw new Error('msiPolicyWindowsRequired');
   const contexts = [];
@@ -81,18 +81,22 @@ export async function runMsiFileVersionPolicyProbe({ prepareOnly = false } = {})
         passed = false;
       }
     }
-    if (passed && contexts.every(context => context.provenAbsent)) {
+    if (passed && !retainEvidence && contexts.every(context => context.provenAbsent)) {
       for (const context of contexts) await cleanupRunContext(context);
     }
   }
   if (failure) throw failure;
 }
 
+export function parseMsiPolicyProbeArguments(args) {
+  if (args.length === 0) return {};
+  if (args.length === 1 && args[0] === '--prepare-only') return { prepareOnly: true };
+  if (args.length === 1 && args[0] === '--retain-evidence') return { retainEvidence: true };
+  throw new Error('msiPolicyArgumentsInvalid');
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    if (process.argv.length !== 2 && !(process.argv.length === 3 && process.argv[2] === '--prepare-only')) {
-      throw new Error('msiPolicyArgumentsInvalid');
-    }
-    await runMsiFileVersionPolicyProbe({ prepareOnly: process.argv[2] === '--prepare-only' });
+    await runMsiFileVersionPolicyProbe(parseMsiPolicyProbeArguments(process.argv.slice(2)));
   } catch { console.error('MSI_POLICY_PROBE_FAILED'); process.exitCode = 1; }
 }

@@ -28,6 +28,7 @@ export function evidenceSourceKind(area, path) {
   if (area === 'reports' && new RegExp(`^${runPattern}/results\\.private\\.json$`, 'u').test(path)) return 'playwrightReport';
   if (area === 'results' && new RegExp(`^${runPattern}/[^/]+/(?:backend-startup|process-output|failure)\\.private\\.json$`, 'u').test(path)) return 'processOutput';
   if (area !== 'temporary') return null;
+  if (/^eky supervisor [a-zA-Z0-9]+\/(?:policy-result\.json|[1-9][0-9]*-(?:source|target|uninstall)\.log)$/u.test(path)) return 'msiPolicyEvidence';
   if (/^eky-desktop-smoke\/[a-f0-9]{32}\/(?:result\/desktop-smoke-result\.json|smoke-output\.private\.json)$/u.test(path)) return 'packagedSmoke';
   const fixturePrefix = '(?:(?:eky supervisor [a-zA-Z0-9]+/temporary|eky-t-[a-zA-Z0-9]+)/)?';
   if (new RegExp(`^${fixturePrefix}eky-(?:clean|upgrade|legacy|workspace)-caller-[a-f0-9]{32}/result\\.json$`, 'u').test(path)) return 'nativeResult';

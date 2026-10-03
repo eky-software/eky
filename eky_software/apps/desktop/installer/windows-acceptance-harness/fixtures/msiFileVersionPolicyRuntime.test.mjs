@@ -13,6 +13,7 @@ import {
   verifyMsiPolicyFixture,
 } from './msiFileVersionPolicyRuntime.mjs';
 import { requireHostedMsiPolicyEnvironment } from './msiFileVersionPolicyWorker.mjs';
+import { parseMsiPolicyProbeArguments } from './runMsiFileVersionPolicyProbe.mjs';
 
 const NONCE = 'ab'.repeat(32);
 const NAMES = ['older.dll', 'equal.dll', 'newer.dll'];
@@ -264,4 +265,14 @@ test('installation admission requires all hosted Windows runner signals', () => 
   }
   assert.throws(() => requireHostedMsiPolicyEnvironment({}, 'win32'), error('msiPolicyHostedRunnerRequired'));
   assert.deepEqual(hosted, { GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted', RUNNER_OS: 'Windows' });
+});
+
+test('manual evidence retention requires an explicit exclusive argument', () => {
+  assert.deepEqual(parseMsiPolicyProbeArguments([]), {});
+  assert.deepEqual(parseMsiPolicyProbeArguments(['--prepare-only']), { prepareOnly: true });
+  assert.deepEqual(parseMsiPolicyProbeArguments(['--retain-evidence']), { retainEvidence: true });
+  for (const args of [['--unknown'], ['--retain-evidence', '--prepare-only'],
+    ['--retain-evidence', '--retain-evidence'], ['--retain-evidence=false']]) {
+    assert.throws(() => parseMsiPolicyProbeArguments(args), /msiPolicyArgumentsInvalid/);
+  }
 });
