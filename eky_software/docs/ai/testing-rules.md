@@ -118,17 +118,46 @@ aineistolle. Se ei avaa yleistä raakajulkaisua eikä korvaa testin tulosta.
 Purkuavaimen käyttöönotto ja yhden vuorokauden sisällä tapahtuva yksityinen
 talteenotto on varmistettava ennen reitin käyttöä.
 
+### Rajattu vianrajaus ennen uusintaa
+
+Punainen tai jumittuneelta näyttävä CI-ajo tutkitaan ensin rajatusti:
+
+1. Varmenna palvelusta ajon, suoritusyrityksen, jobin ja askeleen todellinen
+   tila. Pelkkä hiljainen loki ei todista jumiutumista. Käynnissä olevan tai
+   tilaltaan epävarman ajon rinnalle ei käynnistetä uusintaa; noudata nykyistä
+   aikaraja-, katkaisu- ja siivousmenettelyä.
+2. Säilytä ensivirhe ja vertaa lokia juuri suoritetun revision job-määrittelyyn
+   sekä kutsuttuun koodiin. Erota sovellusvirhe, testiharnessin virhe,
+   valmisteluhäiriö ja puuttuva havainto; älä oleta vikaa vain testiin.
+3. Hyödynnä saatavilla olevaa GitHubin tekoälyn virheselitystä, kuten
+   `Explain problem`, yhtenä hypoteesina. Tarkista sen nimeämä job, vaihe,
+   tiedosto ja aikaraja alkuperäisistä lähteistä ennen korjausta. Selitys ei
+   yksin todista juurisyytä tai oikeuta aikarajan nostoa. Toiminnon puuttuminen
+   ei estä vianrajausta tai alla sallittua uusintaa. Yksityisiä lokeja,
+   purettua tutkimusaineistoa tai salaisuuksia ei lähetetä sille tämän ohjeen
+   nojalla; nykyiset julkaisu- ja käyttöoikeusrajat säilyvät.
+4. Jos selvä syy löytyy, tee hyväksyttyyn rajaukseen kuuluva korjaus ja sen
+   regressiotesti. Uusintaa ei käytetä tunnetun vian korjaamisen korvikkeena.
+   Jos syy jää tämän tarkistuksen jälkeen avoimeksi, käytä tarvittaessa alla
+   sallittua yhtä uusintaa. Sitä varten ei edellytetä loputonta tutkimusta,
+   uutta diagnostiikkakerrosta tai ennalta todistettua infrastruktuurivikaa.
+
 ### Enintään yksi uusinta
 
 Ensimmäisen hylkäyksen jälkeen pääagentti voi tehdä yhden rajatun
 diagnostisen uusinnan ilman erillistä lupaa, kun ajaminen kuuluu hyväksyttyyn
-tehtävään. Ennen ajoa nimetään kysymys, sama lähde ja sama valmis paketti,
+tehtävään. Lupa koskee myös rajatun vianrajaamisen jälkeen avoimeksi jäänyttä
+syytä; kysymys voi olla, toistuuko sama hylkäys samassa vaiheessa puhtaassa
+ympäristössä. Valitse kyseinen testi tai pienin nykyisen työnkulun tukema
+job sen pakollisine riippuvuus- ja koontivaiheineen, ei koko matriisia
+varmuuden vuoksi. Ennen ajoa nimetään kysymys, sama lähde ja sama valmis paketti,
 aineiston säilytyspaikka sekä seurannan omistaja. Pakettia ei rakenneta
 uudelleen uusintaa varten. Uusinta tehdään tuoreessa eristetyssä ympäristössä
 tai vasta varmennetun siivouksen jälkeen. Epävarman vanhan ympäristön
 aineistoa tai omistajuustodistetta ei poisteta.
 
-Nykyinen automaattinen Playwright-retry kuluttaa tämän yhden uusinnan;
+Nykyinen automaattinen Playwright-retry sekä ihmisen tai agentin käsin
+käynnistämä uusinta lasketaan samaan yhden uusinnan rajaan;
 sen jälkeen ei tehdä lisäksi job-, workflow- tai paikallista uusintaa
 saman hylkäyksen vuoksi. Ennalta sovitut vakaustoistot ovat eri asia, mutta
 niilläkään ei korvata hylättyä yritystä. Uusinnan epäonnistuessa tai syyn
@@ -143,6 +172,9 @@ kuormitusepäily ei todista tätä. Todennettu infrastruktuurihäiriö kirjataan
 erikseen, mutta korvaavan ajon on silti täytettävä nykyiset hyväksyntäehdot
 samalle lähteelle ja paketille. `failOnFlakyTests` säilyy CI:ssä; sitä ei
 poisteta yleisesti eikä hylättyä ajoa nimetä jälkikäteen onnistuneeksi.
+Kirjaa ensimmäisen yrityksen hylkäys, uusinnan tulos ja avoin syy erikseen.
+GitHubin vihreä uusintatulos ei yksin muuta tätä hyväksyntäpäätöstä. Uusinnan
+salliminen ei muuta merge-, julkaisu- tai kriittisten testien vaatimuksia.
 
 ### Määräaikainen kehityspoikkeus
 

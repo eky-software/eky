@@ -117,6 +117,18 @@ Nämä paikalliset tarkistukset eivät yksin hyväksy PR/main-integraatiota.
 Lopullinen hyväksyntä kirjataan täsmärevision checkpointiin;
 pelkän CI-tuloksen vuoksi ei avata uutta dokumentti-integraatiokierrosta.
 
+**Rajattu etenemispäätös 3.10.2026:** omistaja hyväksyi PR #291:n
+integraation jatkamisen myös revision `6e3a521e` yhden onnistuneen uusinnan
+perusteella. [Ajossa 37130979386](https://github.com/eky-software/eky/actions/runs/37130979386)
+ensimmäinen yritys aikakatkaistiin asennusodotukseen; toinen käytti samaa
+lähdettä ja alkuperäistä pakettia sekä läpäisi palautus- ja siivousportit.
+Ensivirhe ja sen tuntematon syy säilyvät seurantahavaintona, eivät korjattuna
+vikana. Päätös koskee vain tätä tapausta, ei yleistä uusinnalla hyväksymistä.
+Muut täsmärevision PR-portit ja mainin omat portit säilyvät. Samalla mukaan
+otettava [uusintaohjeen täsmennys](../ai/testing-rules.md#rajattu-vianrajaus-ennen-uusintaa)
+tarvitsee päivitetyn PR-revision tarkistukset eikä nollaa vanhan hylkäyksen
+uusintarajaa tai muuta sovelluksen hyväksyntäehtoja.
+
 Valmistumiseen tarvitaan hyväksytyn sopimuksen rajattu toteutus,
 deterministiset UI-/backend-ketjut ja nykyiset viereiset regressiot,
 riippumaton katselmus sekä täsmärevision PR- ja main-portit. Vanhojen

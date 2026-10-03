@@ -165,11 +165,17 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
 
 ## Testit
 
+- Tehtiinkö [rajattu vianrajaus ennen uusintaa](testing-rules.md#rajattu-vianrajaus-ennen-uusintaa),
+  tarkistettiinko myös sovelluskoodi ja erotettiinko mahdollisen GitHubin
+  tekoälyselityksen hypoteesi varmennetusta syystä?
 - Säilyivätkö ensivirhe, sen suoritusyritys ja siivoustulos erillään
   mahdollisesta uusinnasta, ja käyttikö uusinta samaa lähdettä sekä samoja
   testattavan paketin tavuja?
 - Noudatettiinko [yhden uusinnan ja rajatun poikkeuksen käytäntöä](testing-rules.md#ensivirhe-uusinta-ja-rajattu-poikkeus)
   ilman retryllä viherryttämistä tai required checkin ohitusta?
+- Laskettiinko automaattinen retry ja ihmisen tai agentin käynnistämä
+  uusinta samaan rajaan, ja raportoitiinko uusinnan tulos erillään
+  alkuperäisen vian korjaamisesta ja merge-hyväksynnästä?
 - Onko mahdollinen kehityspoikkeus nimetty, omistajan hyväksymä ja voimassa,
   eivätkä kriittiset data-, turvallisuus- tai siivousportit kuulu siihen?
 - Tarvitaanko testi?
