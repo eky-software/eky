@@ -8,7 +8,8 @@ testattavina vaiheina olemassa olevan Invoicing-domainin, backend-reittien ja
 
 ## A-paketin valmistelu
 
-**3.10.2026: A1:n integraatio hyväksytty, A2:n toteutus ja todennus käynnissä.**
+**4.10.2026: A1/A2 ja Oma yritys -korjausten integraatio hyväksytty;
+A3/R06:n toteutus ja todennus käynnissä.**
 [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
 omistaa hyväksytyn lähtörevision ja portit. R01, R05 ja R06 pidetään
 erillisinä seurattavina kohtina; yhden läpäisy ei sulje koko A-pakettia.
@@ -82,8 +83,8 @@ tallennuksia; niitä ei arvata tai yhdistetä automaattisesti.
 - [Editorin näkymä](../../apps/web/src/features/invoicing/components/InvoiceDraftEditorView.tsx)
   antaa lomakkeelle session avaimen. Clear, avaus ja valmiin kopion avaus
   aloittavat uuden session. Saman session tallennus ja ensimmäisen createn
-  tunniste eivät vaihda avainta. A2:n vanhentunut kirjoitusvastaus on yhä
-  erillinen avoin työ, eikä GET-suoja peruuta backend-kirjoituksia.
+  tunniste eivät vaihda avainta. A2:n kirjoitusvastauksen suoja toteutettiin
+  erikseen alla kuvatulla tavalla; GET-suoja ei peruuta backend-kirjoituksia.
 - [Tilaregressiot](../../apps/web/src/features/invoicing/state/invoiceDraftEditorState.test.ts)
   todistavat myös kaksi peräkkäistä avausta ilman välissä olevaa cleariä;
   näkymän testit tarkistavat avaimen kohde-/tallennuseron. Tätä ei nimetä
@@ -236,6 +237,35 @@ Muutos, navigointi tai muuttunut tallennustila mitätöi vanhan tuloksen ja
 hyväksyntävahvistuksen. Tallentumaton lomake ei saa hyväksyntää myöhäisellä
 vastauksella. Backendin transaktio tarkistaa edelleen varsinaisen
 hyväksynnän; UI-readiness ei ole valtuutus.
+
+Rajattu toteutus käyttää yhtä featuren readiness-sessiota nykyisen keyed
+editorin sisällä. Se omistaa keskeneräisen kyselyn ja sen tuloksen:
+
+- konteksti on luonnoksen tunniste, lomakerevisio ja nykyisen revision
+  tallennustila; editorin uusi mount erottaa myös saman tunnisteen avaamisen
+- muokkaus mitätöi pyynnön synkronisesti; tallennustilan/kohteen muutos,
+  peruutus, uusi kysely ja unmount mitätöivät vanhan tuloksen
+- vain nykyinen pyyntö saa julkaista tuloksen, turvallisen virheen tai
+  lopettaa tarkistuksen; vanha virhe ei päätä uudemman kyselyn odotusta
+- vahvistus johdetaan nykyisestä onnistuneesta tuloksesta, ei erillisestä
+  odottavan kutsun jälkeen asetettavasta booleanista; myös vahvistuspainikkeen
+  käsittelijä tarkistaa session ja tallennustilan
+- muokkaus ja sen jälkeinen uusi tallennus eivät herätä vanhaa readinessia:
+  käyttäjä tekee uuden valmiustarkistuksen ennen tietoista hyväksyntää.
+
+Kohdetodennus kattaa tilan yksikkötestit ja oikean selaimen hallitut
+ready/not-ready/error-vastausjärjestykset, muokkauksen ja uudelleentallennuksen,
+navigoinnin sekä vahvistuksen perumisen. Kirjoituksia ei mockata. Tavallinen
+hyväksyntä todennetaan backendin jälkiluvulla ja nykyisillä hyväksynnän
+transaktioregressioilla. A1/A2:n viereiset käyttäjäpolut säilytetään.
+
+Nykyiset API-clientin virherajat, suomenkieliset virheet, backendin
+`http.requestFailed` ja hyväksynnän atominen audit säilyvät. Vanhentuneen
+UI-lukutuloksen sivuuttaminen ei lisää business-tapahtumaa, operational-
+lokia, Diagnostics-, Activity-, tukipaketti- tai incident-projektiota.
+Ei uutta riippuvuutta, HTTP-sopimusta, tietomallia, palautusmuutosta,
+backendin kirjoitusperuutusta tai yleistä tilanhallintaratkaisua.
+Toteutuksen portit ja avoimet kohdat kirjataan [M1:n A3-kohtaan](release-0.3.0-m1-preparation-plan.md#a3r06-hyväksyntävalmiuden-vastaussidonta).
 
 Näiden testit kattavat hallitut vastausjärjestykset ja backendin lopputilan.
 A1 ei sulje R05/R06:ta. Jos niiden vaatimaa kytkentää ei voi erottaa A1:stä

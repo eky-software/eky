@@ -3,7 +3,12 @@ import {
   type EkyApiClient,
   type InvoiceIssuanceReadiness,
 } from '@eky/api-client';
-import { useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
+
+import {
+  InvoiceReadinessSession,
+  type InvoiceReadinessContext,
+} from '../state/invoiceReadinessSession.js';
 
 import { uiText } from '../../../i18n/fi.js';
 
@@ -14,49 +19,55 @@ type InvoiceIssuanceReadinessClient = Pick<
 
 export function useInvoiceIssuanceReadiness(
   apiClient: InvoiceIssuanceReadinessClient,
+  context: InvoiceReadinessContext,
 ) {
-  const [readiness, setReadiness] =
-    useState<InvoiceIssuanceReadiness | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isChecking, setIsChecking] = useState(false);
+  const [session] = useState(() => new InvoiceReadinessSession(context));
+  const [snapshot, setSnapshot] = useState(() => session.getSnapshot());
+  const { draftId, formRevision, isSaved } = context;
+
+  useLayoutEffect(() => {
+    session.updateContext({ draftId, formRevision, isSaved });
+    session.setActive(true);
+    setSnapshot(session.getSnapshot());
+    return () => session.setActive(false);
+  }, [apiClient, draftId, formRevision, isSaved, session]);
 
   function clearReadiness(): void {
-    setReadiness(null);
-    setErrorMessage(null);
+    session.clear();
+    setSnapshot(session.getSnapshot());
   }
 
-  async function checkReadiness(
-    invoiceDraftId: string,
-  ): Promise<InvoiceIssuanceReadiness | null> {
-    setIsChecking(true);
-    setErrorMessage(null);
+  async function checkReadiness(): Promise<void> {
+    const request = session.begin();
+    if (request === null) {
+      return;
+    }
+    setSnapshot(session.getSnapshot());
 
     try {
       const result = await getInvoiceIssuanceReadinessWithClient(
         apiClient,
-        invoiceDraftId,
+        request.draftId,
       );
-      setReadiness(result);
-      return result;
+      if (session.succeed(request, result)) {
+        setSnapshot(session.getSnapshot());
+      }
     } catch (error) {
-      setReadiness(null);
-      setErrorMessage(
+      const message =
         error instanceof EkyApiError && error.status === 404
           ? uiText.invoicing.approveDraftNotFound
-          : uiText.invoicing.invoiceIssuanceReadinessError,
-      );
-      return null;
-    } finally {
-      setIsChecking(false);
+          : uiText.invoicing.invoiceIssuanceReadinessError;
+      if (session.fail(request, message)) {
+        setSnapshot(session.getSnapshot());
+      }
     }
   }
 
   return {
+    ...snapshot,
+    canConfirmApproval: () => session.canConfirm(),
     checkReadiness,
     clearReadiness,
-    errorMessage,
-    isChecking,
-    readiness,
   };
 }
 

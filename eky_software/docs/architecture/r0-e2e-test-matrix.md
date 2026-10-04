@@ -423,6 +423,15 @@ backendia: vastauksen toimitus pidätetään tai katkaistaan vasta todellisen
 kirjoituksen jälkeen. Pysyvä jälkiluku erottaa kirjoituksen tuloksen
 käyttöliittymän vastaanottamasta vastauksesta.
 
+A3:n [valmiustuloksen vastaussidonta](invoicing-ui-roadmap.md#a3-hyväksyntävalmiuden-vastaussidonta)
+todennetaan `INV-READY-001...008`-tapauksissa. Ne pidättävät aidon backendin
+lukuvastauksen toimitusta; kirjoitukset ja hyväksyntä jälkiluetaan oikeasta
+backendista. Vanhentuneen UI-tuloksen hylkäyksestä ei lisätä audit- tai
+diagnostiikkatapahtumaa. Hyväksynnän nykyinen business audit ja turvalliset
+HTTP-virheet säilyvät; selaimen synteettinen toimitusvirhe ei todista aidon
+backend-virheen operational-kirjausta. Unit-/repository-regressiot kattavat
+session invariantit ja hyväksynnän nykyisen atomisen auditin.
+
 | ID | Riski ja tasot | Lähtö / toiminto / fault | Odotus | Tila ja havainnot | Erityinen vuotokielto | Tila |
 |---|---|---|---|---|---|---|
 | INV-LIFECYCLE-001 | P0; web-e2e | Asiakas ja asetukset; draft, rivit, autosave, refresh, approve, PDF ja fake delivery | Näkymä etenee Lähetettyihin | Yksi invoice, numero, PDF, delivery-event ja Activity-ketju | PDF-bytes, email body tai recipient lokiin | implemented-e2e |
@@ -443,6 +452,14 @@ käyttöliittymän vastaanottamasta vastauksesta.
 | INV-SAVE-009 | P0; web-e2e, critical, fault, recovery | Epäselvän kirjoituksen jälkeinen listahaku epäonnistuu | Turvallinen virhe, ei tyhjä lista tai vanha taulukko | Jo kirjoitettu luonnos säilyy; ei uutta POSTia | Tekninen virhe tai olematon rollback-väite | implemented-e2e |
 | INV-SAVE-010 | P0; web-e2e, critical, recovery | Vanhoja tyhjiä listavastauksia ennen ja jälkeen tuoreen palautumishaun | Vanha onnistuminen ei lopeta latausta tai korvaa uutta listaa | Nykyinen lista näyttää syntyneen luonnoksen | Vanhentunut lista nykyisenä tietona | implemented-e2e |
 | INV-SAVE-011 | P0; web-e2e, critical, recovery | Vanhat listavirheet ennen ja jälkeen tuoreen palautumishaun | Vanha virhe/finally ei muuta nykyistä latausta tai listaa | Tuore luonnos säilyy näkyvissä; backend ennallaan | Vanhentunut virhe nykyisenä tietona | implemented-e2e |
+| INV-READY-001 | P0; web-e2e, critical | Ready-vastaus pidätetään, lomaketta muokataan ja tallennetaan uudelleen | Vanha ready ei avaa vahvistusta; uusi kysely vaaditaan | Vain uusin tallennettu sisältö hyväksytään, yksi invoice ja numero | Laskusisältö julkiseen diagnostiikkaan | implemented-e2e |
+| INV-READY-002 | P0; web-e2e, critical, fault | Kaksi vanhaa virhettä vapautetaan nykyisen tarkistuksen aikana ja sen jälkeen | Nykyinen busy ja vahvistus säilyvät | Ei hyväksyntää ennen tietoista vahvistusta, lopputila jälkiluetaan | Vanha tai raaka virhe nykyisessä UI:ssa | implemented-e2e |
+| INV-READY-003 | P0; web-e2e, critical, fault | Vanhat puutteellisen IBANin tulokset ennen ja jälkeen nykyisen readyn | Vanha not-ready ei päätä odotusta tai korvaa vahvistusta | Nykyinen sisältö hyväksytään korjatulla master-datalla | Vanhentunut valmiustulos nykyisenä tietona | implemented-e2e |
+| INV-READY-004 | P0; web-e2e, critical | Unmount, sama ID uudelleen auki ja uusi tarkistus, vanha ready vapautetaan | Uusi editorisessio omistaa tuloksen ja busy-tilan | Luonnos ennallaan; vain tuore tulos sallii vahvistuksen | Session sekoittuminen | implemented-e2e |
+| INV-READY-005 | P0; web-e2e, critical | Palaa listaan, avaa B, vapauta A:n ready | B ei saa A:n valmiutta | A ennallaan; tuore kysely ja hyväksyntä kohdistuvat vain B:hen | Kohteiden sekoittuminen | implemented-e2e |
+| INV-READY-006 | P0; web-e2e, critical | Hyväksytty valmius, muokkaus, tallennus ja vahvistuksen peruutus | Edit/cancel tyhjentävät vahvistuksen; dirty hyväksyntä estyy | Uusi tarkistus vaaditaan tallennuksen/peruutuksen jälkeen; yksi invoice | Väärä tallennetun tai hyväksyttävän tilan palaute | implemented-e2e |
+| INV-READY-007 | P0; web-e2e, critical, fault | Nykyinen not-ready, sitten nykyinen toimitusvirhe ja palautuminen | Suomenkielinen turvallinen virhe, ei raakatekstiä; fresh check onnistuu | Ei invoicea hylkäyksissä, normaali hyväksyntä ja jälkiluku onnistuvat | Raakavastaus UI:ssa tai julkisessa lokissa | implemented-e2e |
+| INV-READY-008 | P0; web-e2e, critical | Valmius onnistuu, master-data muuttuu ennen hyväksyntää | Backend hylkää vaikka UI:lla on aiempi ready | Luonnos säilyy; korjauksen jälkeen ensimmäinen numero ja yksi invoice | UI-readinessin tulkitseminen valtuutukseksi | implemented-e2e |
 | INV-REAPPROVAL-001 | P0; web-e2e, critical | Draft hyväksytään, avataan uudelleen, riviä muutetaan ja hyväksytään uudelleen | Sama lasku ja numero avautuvat päivitetyllä sisällöllä | Snapshot ja current PDF vaihtuvat; audit säilyttää siirtymien järjestyksen; numeroa ei kuluteta uudelleen | Vanhan snapshotin tai PDF:n sekoittuminen uuteen | implemented-e2e |
 | INV-COPY-001 | P0; web-e2e, critical | Sent invoice kopioidaan luonnokseksi ja kopio hyväksytään | Uusi lasku saa uuden id:n ja numeron | Lähdelaskun status, PDF ja delivery-historia eivät muutu | Lähdelaskun identiteetin tai toimitushistorian kopioituminen | implemented-e2e |
 | INV-MANUAL-DELIVERY-001 | P0; web-e2e, critical | Approved invoice; luo PDF ja merkitse käsin toimitetuksi | Lasku näkyy sent-tilassa myös refreshin jälkeen | Yksi manual delivery event ja audit; current PDF säilyy | Vastaanottaja- tai PDF-data auditissa | implemented-e2e |
