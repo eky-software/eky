@@ -218,6 +218,15 @@ uudelleenlähetys jättää tilan ennalleen.
 
 ## Uudelleenlähetys
 
+**0.3.0:n hyväksytty jatkosuunnitelma, ei vielä toteutettu:**
+[B-P3](release-0.3.0-m1-preparation-plan.md#b-p3-turvallisen-uudelleenlähetyksen-vaihtoehto)
+rajaa vanhan jo lähetetyn laskun tarkistetun, säilyneen PDF:n erikseen
+vahvistettavan uuden lähetyksen ilman regenerointia. Uusi toimitus sidotaan
+tarkkoihin tavuihin; vanhalle toimitukselle ei keksitä puuttuvaa revisiota.
+[B3/B4:n portti- ja migraatiosopimus](release-0.3.0-m1-preparation-plan.md#b3b4-tietomalli-portit-ja-migraatiojärjestys)
+erottaa tämän variantin tavallisesta nykyisen revision lähetyksestä sekä
+historian lukemisesta. Alla on nykyinen current-PDF-käytäntö.
+
 `sent`-laskun uudelleenlähetys:
 
 - ei luo uutta laskua

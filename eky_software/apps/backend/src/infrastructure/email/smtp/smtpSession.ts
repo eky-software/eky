@@ -162,8 +162,8 @@ export async function deliverSmtpMessage(
     );
 
     state.transition('quitting');
-    await connection
-      .sendCommand(
+    try {
+      await connection.sendCommand(
         'QUIT',
         remainingTimeout(
           dependencies.timeouts.commandMilliseconds,
@@ -171,8 +171,10 @@ export async function deliverSmtpMessage(
           'quit',
         ),
         'quit',
-      )
-      .catch(() => undefined);
+      );
+    } catch {
+      // Final DATA acceptance is authoritative even if QUIT cannot complete.
+    }
     state.transition('completed');
 
     return {
@@ -192,7 +194,11 @@ export async function deliverSmtpMessage(
     throw new SmtpTransportError('SMTP_CONNECTION_FAILED', state.current);
   } finally {
     encodedData.fill(0);
-    connection?.close();
+    try {
+      connection?.close();
+    } catch {
+      // Cleanup must not replace either acceptance or the original failure.
+    }
   }
 }
 

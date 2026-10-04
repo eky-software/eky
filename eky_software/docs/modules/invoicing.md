@@ -4,6 +4,13 @@ Tämä dokumentti kuvaa laskutusmoduulin.
 
 Laskutus on kriittinen moduuli. Muutokset laskutukseen vaativat erityistä huolellisuutta.
 
+0.3.0:n laskenta-, SMTP- ja lasku/PDF/toimitusrevision korjausten nykyinen
+[B-paketin valmistelu ja päätösportti](../architecture/release-0.3.0-m1-preparation-plan.md#b0-laskun-sisältö-ja-toimitus)
+luetaan ennen näiden polkujen muuttamista. B-P1:n revisiosidonta ja rajatut
+migraatiot on hyväksytty. B-P2:n muokkaamisen säilyttävä toimitushistoria on
+valittu suunnittelusuunnaksi ja B-P3:n rajattu legacy-uudelleenlähetys on
+hyväksytty. Alla olevat nykyiset sopimukset eivät kuvaa näitä toteutetuiksi.
+
 ## Tarkoitus
 
 Invoicing-moduuli hallitsee laskuluonnoksia, laskuja, laskurivejä, laskun tiloja ja laskutuksen sääntöjä.

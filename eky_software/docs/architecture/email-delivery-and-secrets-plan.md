@@ -106,6 +106,16 @@ Kerros sisältää:
   DATA-vaiheen kirjoituksen tai palvelimen lopullisen hyväksynnän tulos jää
   epäselväksi
 
+Vastausparserin koko- ja protokollarajat kohdistuvat SMTP-riviin ja koko
+vastaukseen, eivät TLS-chunkin kokoon. Sama tavujono tulkitaan samoin myös
+CRLF:n, rivien ja vastausten rajojen osuessa eri verkkolohkoihin.
+Lopullinen DATA-250 on kuljetuksen hyväksyntä: sen jälkeinen QUIT- tai
+sulkuvirhe ei muuta toimitusta epäonnistuneeksi. Sulku ei myöskään korvaa
+ennen hyväksyntää syntynyttä virhettä tai `outcomeUnknown`-tulosta.
+Nykyinen provider ja sen diagnostiikka käyttävät tätä samaa lopputulosta.
+R12/R13-korjauksen integraatiotila on
+[B1/B2:n omistavassa suunnitelmassa](release-0.3.0-m1-preparation-plan.md#b1b2-rajattu-toteutus).
+
 Kerros ei sisällä:
 
 - DNA- tai muuta provider-päätöstä
@@ -682,7 +692,15 @@ muuta laskua `sent`-tilaan.
 
 ## Oikean Lähetyksen Turvallisuusvaatimukset
 
-Oikea SMTP/Gmail-lähetys vaatii vähintään:
+**0.3.0:n hyväksytty jatkosuunnitelma, ei vielä toteutettu:**
+[B-P3:n rajattu legacy-uudelleenlähetys](release-0.3.0-m1-preparation-plan.md#b-p3-turvallisen-uudelleenlähetyksen-vaihtoehto)
+lisää alla olevaan current-PDF-sääntöön erillisen, eksplisiittisesti
+vahvistettavan säilyneen dokumentin lähetyspolun. Se ei regeneroi PDF:ää eikä
+väitä vanhan toimituksen sisältöä takautuvasti varmennetuksi. Muut lähetykset
+pysyvät nykyiseen hyväksyttyyn revisioon sidottuina. Puuttuva tai ristiriitainen
+aineisto ja ratkaisematon toimitus estävät legacy-polun.
+
+Oikea SMTP/Gmail-lähetys vaatii nykyisen sopimuksen mukaan vähintään:
 
 - PDF varmistetaan backendissä
 - vain current PDF voidaan lähettää
