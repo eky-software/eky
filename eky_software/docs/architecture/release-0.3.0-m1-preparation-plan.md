@@ -25,7 +25,7 @@ hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohd
 | Mainin omat portit | [CI 37201894369](https://github.com/eky-software/eky/actions/runs/37201894369) läpäisi ensimmäisellä yrityksellä: kaikki 11 porttia, täysi riskivalinta ja kaksi asennuskoetoistoa. System 807, web 65 ja Electron 39 läpäisivät ilman uusintoja tai flaky-tuloksia. Viittä valinnaista diagnostiikkaohitusta ei lasketa läpäisyiksi. PR:n oma CI ja erillinen riippuvuustarkistus läpäisivät; main-push ei valinnut erillistä audit-workflowta nykyisellä polkusuodattimella. V2:n auditoitu valmistelu läpäisi. |
 | Suljettu työ | T1/R27:n ajokytkentä, T2/R29:n puhtaan valmistelun suoja ja T3/R28:n todellisten kuluttajien koko prosessipuun omistajuus. Korvatut aktiiviset fallbackit on poistettu ja [pysyvä T3-matriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus) hyväksytty. PR #281 sulki tämän jälkeisen rollback-testiapurin integraatiojatkon. |
 | Avoimet havainnot | Aiemmat satunnaiset Electron-käynnistys- ja packaged/legacy-timeoutit säilyvät epäonnistuneina havaintoina omille revisioilleen. Myöhempi vihreä ajo ei todista niiden kaikkia syitä korjatuiksi. [Hylkäysten historia](e2e-test-environment-history.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko) ja [rajattu apurikorjaus](e2e-test-environment-history.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus) erotetaan toisistaan. |
-| Nykyinen työ | B0:n pohjalta hyväksytty B1/R12/R13:n SMTP-korjaus ja B2/R08:n hyvityslaskenta. Kohdetoteutus ja regressiot ovat käynnissä; riippumaton katselmus ja uuden revision PR/main-portit ovat avoinna. B3/B4:n historia ja migraatiot eivät kuulu tähän toteutuspalaan. |
+| Nykyinen työ | B1/R12/R13:n SMTP-korjaus ja B2/R08:n hyvityslaskenta on katselmoitu ja yhdistetty PR #295:ssä. Sen main-hyväksyntä on avoinna Electronin loppusulun hylkäyksen vuoksi; [rajattu katselmus](#b1b2-mainin-electron-sulkuhavainto) erottaa sovelluksen, testin ja raportoinnin. B3/B4:n historia ja migraatiot eivät kuulu tähän toteutuspalaan. |
 | Ei vielä valmis | B:n toteutus ja hyväksyntä, W7, M1:n muu sovellustyö, D-paketin muut ehdot ja koko 0.3.0. Lähtörevision läpäisy ei hyväksy uuden revision puuttuvia portteja. |
 
 Hyväksyntä on sidottu yllä olevaan revisioon, ei automaattisesti myöhempään
@@ -50,6 +50,76 @@ ei näiden vaiheiden uusiminen.
 Tämä järjestys ei avaa T3:a tai muuta vanhojen hylkäysten uusintarajoja.
 Tuotannon staging-siivoamisen erillinen sopimushavainto käsitellään sen
 omistavassa palautustyössä, ei tämän testikorjauksen sivuvaikutuksena.
+
+## B1/B2-mainin Electron-sulkuhavainto
+
+PR #295:n lähde `71240316d95ee22c4ee7269cc67c732e6cd9588f` läpäisi
+omat porttinsa ja yhdistettiin mainiin
+`b5dada6f6ca24c21ffc2cc817fa763070078fd1f`. [Loppuyhteenveto](https://github.com/eky-software/eky/pull/295#issuecomment-5983583757)
+erottaa PR-hyväksynnän avoimesta main-hyväksynnästä.
+[Main-ajo 37226396756](https://github.com/eky-software/eky/actions/runs/37226396756)
+hylkäsi `DESK-WORKSPACE-REPLACE-CANCEL-003`:n ensimmäisen yrityksen
+loppusiivouksen. Automaattinen uusinta läpäisi, mutta flaky-portti ja
+kokonaishyväksyntä eivät läpäisseet. Alkuperäinen hylkäys säilyy.
+
+Omistajan hyväksymä rajattu katselmus kattaa sovelluksen sulkemisketjun ja
+testin sulkuvarmistuksen; koko Electronia tai T3:a ei rakenneta uudelleen.
+Varmistettu raportointipuute: nykyisen sulkuapurin tarkempi julkisen sulun
+virheluokka katosi fixturen yleiseen cleanup-hylkäykseen. Korjaus säilyttää
+sen nykyisessä lifecycle-liitteessä erillään omistajan siivoustodisteesta.
+Raportointikorjaus ei muuta tuotantokoodia. Aikarajat, retry-asetukset ja
+hyväksyntäehdot säilyvät myös alla hyväksytyssä erillisessä sulkukorjauksessa.
+Kohderegressiot ja oikean Windows-Electron-polun todennus eivät yksin sulje
+alkuperäisen hylkäyksen syytä tai main-porttia. Yksi erikseen hyväksytty
+rajattu uusinta ei tarkoita ajoja vihreään asti; tulokset arvioidaan erikseen.
+
+**Erillinen sulkukorjaus hyväksytty 4.10.2026.** Katselmus löysi kaksi
+toistettavaa sovelluspuutetta: uusi quit-pyyntö saattoi ohittaa keskeneräisen
+sammutuksen, ja backendin pakkopysäytys saattoi kirjoittaa puhtaan
+sammutuksen merkin. Näitä ei ole yhdistetty yllä olevan CI-hylkäyksen
+juurisyyksi. Rajattu korjaus pitää quit-eston voimassa, palauttaa
+rinnakkaisille composition-sulkukutsuille saman lopputuloksen ja välittää
+backendin todellisen sulkuluokan markerin omistajalle. Ei uutta
+prosessivalvojaa, riippuvuutta, schemaa tai business-sääntöä.
+
+Saman marker-sopimuksen katselmus tarkensi myös virhekoodillisen
+poistumisen: hallitun sulun `exit` hyväksytään vain koodilla 0. Pakkopysäytyksen
+vahvistettu poistuminen säilyy erillisenä tuloksena. E2E-kääreet välittävät
+saman sulkutuloksen eivätkä hävitä sitä `void`-sovitukseen.
+
+[Desktopin sulkusopimus](local-desktop-implementation-plan.md#sovelluksen-sulkemisen-nykyinen-sopimus)
+ja [palautuspisteen marker-sopimus](local-backup-and-restore-plan.md#machine-local-recovery-point)
+omistavat pysyvän käyttäytymisen. Hyväksyntä vaatii kohderegressiot,
+desktop-sarjan, tyypityksen, riippumattoman katselmuksen, hardened Windows
+packaged backup -> inspect -> restore -> restart -> compare -todennuksen
+ja oikean Electron-polun tarkistuksen. Paikallinen näyttö ei sulje
+main-hylkäystä eikä korvaa uuden revision PR/main-portteja.
+
+Kohdetodennus läpäisi: 47 sulku-/marker-regressiota, 90 system-sopimusta,
+46 raportointi-/projektiosopimusta, desktopin 1 608 testiä ja 253
+skriptitestiä sekä desktopin ja E2E:n tyypitys. Desktop-sarjan kolme
+ennestään ohitettua testiä eivät ole läpäisyjä. Lopullisen testipaketin
+backup -> inspect -> restore -> restart -> compare läpäisi; kriittisen
+Electron-sarjan kaikki 39 tapausta, myös CANCEL-003, läpäisivät ilman
+uusintoja tai flaky-tuloksia. Katselmus ei löytänyt korjaukseen uutta
+hyväksynnän estävää puutetta. PR/main-todennus on silti vielä avoin eikä
+alkuperäistä CI-häiriötä nimetä korjatuksi tämän paikallisen näytön perusteella.
+
+**Erillinen avoin päivityshavainto:** staattinen katselmus osoittaa
+`desktopComposition`-kytkennän antavan installer handoffille tavallisen,
+pakkopysäytyksen sallivan `lifecycleHandle.shutdown()`-polun, vaikka
+backend-kahvalla on myös tiukempi `stopForUpdate()`-portti. Tämä edeltää
+nykyistä korjausta eikä ole sen regressio tai alkuperäisen CI-virheen
+osoitettu syy. Omistaja on desktopin update-composition; jatkotyössä on
+todennettava tuotannon handoff-kytkentä ja estettävä installerin käynnistys,
+jos päivityksen hallittu sulku ei toteudu. Asennuksen sulkupolitiikkaa ei
+muuteta tämän tavallisen sulun korjauspalassa. Havainto jää avoimeksi
+0.3.0:n hyväksyntään, ei hiljaiseksi hyväksymispoikkeukseksi.
+
+Integraation valmistelussa myös koko työtilan testit ja tyyppitarkistus
+läpäisivät. Riippuvuuksia, aikarajoja tai CI-hyväksyntäehtoja ei muutettu.
+Elinkaarimuutoksen erillinen 30 minuutin desktop-soak varmennetaan ennen
+lopullista hyväksyntää [nykyisellä endurance-portilla](e2e-desktop-endurance-baseline.md).
 
 ## A3/R06: hyväksyntävalmiuden vastaussidonta
 
@@ -582,8 +652,10 @@ valmiiksi. Koko ohjelman katselmus ja myöhempi Deep Scan pysyvät M5:ssä.
 
 ### B1/B2: rajattu toteutus
 
-**Omistajan hyväksymä rajaus 4.10.2026; toteutus ja rajatut regressiot valmiina,
-PR/main-integraatio vielä avoin.**
+**Omistajan hyväksymä rajaus 4.10.2026; toteutus, katselmus ja PR #295:n
+merge valmiina, main-hyväksyntä vielä avoin.**
+Nykyinen jatko on [rajattu Electron-sulkukorjaus](#b1b2-mainin-electron-sulkuhavainto),
+ei B1/B2:n uudelleentoteutus.
 Lähtökohtana on yllä hyväksytty PR #294:n main. B0:n kuusi
 suunnitteludokumenttia säilyvät suunnittelupohjana, eivät toteutusnäyttönä.
 

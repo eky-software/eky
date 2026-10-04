@@ -200,13 +200,28 @@ test.describe('managed E2E runtime primitives', () => {
   test.describe('owned Windows Electron close', () => {
     test('closes once before stopping the owner and cancels the graceful timer', async () => {
       const fixture = createControlledWindowsElectronClose();
-      const action = closeOwnedWindowsElectronRuntime(fixture.input, fixture.clock);
+      const observations: string[] = [];
+      const action = closeOwnedWindowsElectronRuntime({ ...fixture.input,
+        observePublicCloseFailure: reason => { observations.push(reason); },
+      }, fixture.clock);
 
       expect(fixture.calls).toEqual(['close']);
       expect(fixture.timers.map(timer => timer.milliseconds)).toEqual([15_000]);
       fixture.completeClose();
       await expect(action).resolves.toBeUndefined();
       expect(fixture.calls).toEqual(['close', 'stop']);
+      expect(fixture.timers.every(timer => timer.cancelled)).toBe(true);
+      expect(observations).toEqual([]);
+    });
+
+    test('an observer exception cannot skip owner stop or replace the close failure', async () => {
+      const fixture = createControlledWindowsElectronClose();
+      const action = closeOwnedWindowsElectronRuntime({ ...fixture.input,
+        observePublicCloseFailure() { fixture.calls.push('observe'); throw new Error('private observer detail'); },
+      }, fixture.clock);
+      fixture.rejectClose(new Error('private close detail'));
+      await expect(action).rejects.toThrow('E2E_ELECTRON_PUBLIC_CLOSE_FAILED');
+      expect(fixture.calls).toEqual(['close', 'observe', 'stop']);
       expect(fixture.timers.every(timer => timer.cancelled)).toBe(true);
     });
 

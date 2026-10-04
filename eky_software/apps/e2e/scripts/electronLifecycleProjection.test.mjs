@@ -139,3 +139,42 @@ test('secondary report failures use closed per-attempt metadata, never a raw exc
   assert.deepEqual(projectElectronEvidenceFailures({ annotations: [] }), []);
   assert.doesNotThrow(() => recordElectronEvidenceFailure(Object.freeze({ annotations: Object.freeze([]) }), 'reportFailed'));
 });
+
+test('preserves public close failure independently of startup and owner cleanup', () => {
+  for (const reason of ['failed', 'timedOut']) {
+    const value = evidence();
+    value.cleanup.runtime = 'unverified';
+    value.cleanup.runRoot = 'retained';
+    value.publicCloseFailure = { startupGeneration: 4, reason };
+    value.ownership = { owner: { status: 'processTreeAbsent' }, privateDetail: secret };
+    const projected = projectElectronLifecycle(result(value));
+    assert.deepEqual(projected.publicCloseFailure, { startupGeneration: 4, reason });
+    assert.equal(projected.startupGeneration, 3);
+    assert.equal(projected.cleanup.runtime, 'unverified');
+    assert.equal(JSON.stringify(projected).includes(secret), false);
+  }
+  assert.equal(Object.hasOwn(projectElectronLifecycle(result()), 'publicCloseFailure'), false);
+});
+
+test('rejects unbounded or contradictory public close evidence without guessing a reason', () => {
+  for (const mutate of [
+    v => { v.publicCloseFailure.reason = secret; },
+    v => { v.publicCloseFailure.reason = ['timedOut']; },
+    v => { v.publicCloseFailure.reason = 'toString'; },
+    v => { v.publicCloseFailure.startupGeneration = 0; },
+    v => { v.publicCloseFailure.startupGeneration = 1.5; },
+    v => { v.publicCloseFailure.startupGeneration = null; },
+    v => { v.publicCloseFailure.extra = secret; },
+    v => { delete v.publicCloseFailure.reason; },
+    v => { v.publicCloseFailure = null; },
+    v => { v.cleanup.runtime = 'completed'; },
+    v => { v.cleanup.runRoot = 'removed'; },
+  ]) {
+    const value = evidence();
+    value.cleanup.runtime = 'unverified';
+    value.cleanup.runRoot = 'retained';
+    value.publicCloseFailure = { startupGeneration: 4, reason: 'timedOut' };
+    mutate(value);
+    assert.deepEqual(projectElectronLifecycle(result(value)), { status: 'invalid' });
+  }
+});

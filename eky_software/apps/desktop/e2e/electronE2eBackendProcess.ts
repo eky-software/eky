@@ -4,7 +4,10 @@ import type {
   DesktopBackendHandle,
   StartDesktopBackendOptions,
 } from '../src/runtime/backendProcess.js';
-import { waitForBackendShutdown } from '../src/runtime/backendShutdown.js';
+import {
+  waitForBackendShutdown,
+  type BackendShutdownOutcome,
+} from '../src/runtime/backendShutdown.js';
 import { createDesktopOperationalEvent } from '../src/observability/createDesktopOperationalEvent.js';
 import type { ElectronE2eConfig } from './electronE2eConfig.js';
 import type { ElectronE2eStartupCheckpoint } from './electronE2eStartupObservation.js';
@@ -170,20 +173,20 @@ export function createElectronE2eBackendController(
             stop() {
               return stopBackend(true);
             },
-            stopForUpdate() {
-              return stopBackend(false);
+            async stopForUpdate() {
+              await stopBackend(false);
             },
           });
 
           async function stopBackend(
             forceAfterTimeout: boolean,
-          ): Promise<void> {
+          ): Promise<BackendShutdownOutcome> {
             if (stopping) {
               throw new Error('ELECTRON_E2E_BACKEND_STOP_ALREADY_STARTED');
             }
             stopping = true;
             child.postMessage({ type: 'shutdown' });
-            await waitForBackendShutdown(child, {
+            return await waitForBackendShutdown(child, {
               forceAfterTimeout,
               timeoutMilliseconds: shutdownTimeoutMilliseconds,
             });

@@ -15,7 +15,10 @@ import {
   noOpDesktopOperationalLogger,
   type DesktopOperationalLogger,
 } from '../observability/desktopOperationalLogger.js';
-import { waitForBackendShutdown } from './backendShutdown.js';
+import {
+  waitForBackendShutdown,
+  type BackendShutdownOutcome,
+} from './backendShutdown.js';
 
 const backendReadinessTimeoutMilliseconds = 30_000;
 const backendMigrationGateTimeoutMilliseconds = 5 * 60_000;
@@ -51,7 +54,7 @@ export class DesktopBackendStartupStoppedError extends Error {
 export interface DesktopBackendHandle {
   onUnexpectedExit(callback: () => void): void;
   port: number;
-  stop(): Promise<void>;
+  stop(): Promise<BackendShutdownOutcome>;
   stopForUpdate(): Promise<void>;
 }
 
@@ -102,7 +105,9 @@ export function startDesktopBackend(
     let migrationGatePending = false;
     let migrationGateTask: Promise<'completed' | 'failed'> | undefined;
 
-    async function stopBackend(forceAfterTimeout: boolean): Promise<void> {
+    async function stopBackend(
+      forceAfterTimeout: boolean,
+    ): Promise<BackendShutdownOutcome> {
       if (stopping) {
         throw new Error('BACKEND_STOP_ALREADY_STARTED');
       }
@@ -131,6 +136,7 @@ export function startDesktopBackend(
           ),
         );
       }
+      return exitOutcome;
     }
 
     processHandle.once('spawn', () => {
@@ -241,8 +247,8 @@ export function startDesktopBackend(
         stop() {
           return stopBackend(true);
         },
-        stopForUpdate() {
-          return stopBackend(false);
+        async stopForUpdate() {
+          await stopBackend(false);
         },
       });
     });

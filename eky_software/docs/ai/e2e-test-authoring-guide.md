@@ -294,6 +294,13 @@ uusinta ei muuta hylkäystä hyväksynnäksi eikä aloita uutta testialustatyöt
 
 ### Valitse aineisto epäonnistuneen vaiheen mukaan
 
+Jos Electronin käyttäjäpolku valmistuu mutta teardown hylätään, tarkista
+`electron-lifecycle`-liitteen `publicCloseFailure` erillään `ownership`- ja
+`cleanup`-tuloksista. Sulkukutsun virhe tai aikakatkaisu ei yksin todista
+jäljelle jäänyttä prosessipuuta. Vastaavasti `processTreeAbsent` ei muuta
+epäonnistunutta julkista sulkua hyväksytyksi. Vanhan liitteen puuttuva kenttä
+on näyttöaukko, ei jälkikäteen arvattava syy.
+
 | Testipolku | Nykyinen todiste ja rajaus |
 | --- | --- |
 | Selain / `web-chromium` | Playwright omistaa testin contextin ja pagen. Rajattu `--trace=retain-on-failure` voi tallentaa jo ensiyrityksen jäljen; tavallinen contextin sulkeminen viimeistelee sen. Ennen käyttöä tarkista alla oleva salaisuusraja. |

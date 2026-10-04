@@ -688,7 +688,7 @@ function createTrackedBackendStarter(input: {
       port: delegateHandle.port,
       async stop() {
         try {
-          await delegateHandle.stop();
+          return await delegateHandle.stop();
         } finally {
           release();
         }

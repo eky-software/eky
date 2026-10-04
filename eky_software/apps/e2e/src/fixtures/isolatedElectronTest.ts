@@ -219,6 +219,7 @@ export const test = base.extend<
     let applicationClosed = false;
     let connectionPending = false;
     let runtimeCleanupUnverified = false;
+    let publicCloseFailure: Parameters<typeof reportElectronLifecycleEvidence>[1]['publicCloseFailure'];
     let portReleaseUnverified = false;
     let failure: { error: unknown } | undefined;
     const launchObservations: ElectronLaunchObservation[] = [];
@@ -299,6 +300,9 @@ export const test = base.extend<
               alreadyClosed: alreadyClosed || applicationClosed,
               owner: windowsBridge,
               lifetime,
+              observePublicCloseFailure(reason) {
+                publicCloseFailure ??= Object.freeze({ startupGeneration, reason });
+              },
             });
           } finally {
             ownership = windowsBridge.readCleanupEvidence();
@@ -457,6 +461,7 @@ export const test = base.extend<
             evidence: {
               launch: launchObservations, observationsTruncated, cleanup,
               ...(ownership === undefined ? {} : { ownership }),
+              ...(publicCloseFailure === undefined ? {} : { publicCloseFailure }),
               ...launchFailureEvidence,
               ...(firstStartProof.status === 'notRequested' ? {} : { firstStartProof }),
             },

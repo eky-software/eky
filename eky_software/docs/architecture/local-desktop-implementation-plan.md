@@ -419,6 +419,31 @@ Spikessä käytetään vain synteettistä dataa ja erillistä testitietokantaa.
 
 ## Testit
 
+### Sovelluksen sulkemisen nykyinen sopimus
+
+Electron mainin `before-quit`-käsittelijä estää jokaisen uuden
+sulkemispyynnön niin kauan kuin ensimmäisen pyynnön käynnistämä sammutus
+on kesken. Desktop-composition palauttaa rinnakkaisille `shutdown()`-
+kutsuille saman odotettavan lopputuloksen myös virhetilanteessa.
+Viimeinen `app.quit()` sallitaan vasta sulkuketjun valmistuttua tai
+virheen tultua käsitellyksi; elinkaari omistaa nykyisen virheraportoinnin.
+W6-pakettitodennuksen oma quit-ohitus sallitaan vain sen jo odottaman
+onnistuneen sammutuksen jälkeen. Tämä ei muuta käyttöjärjestelmän
+pakottaman lopetuksen käsittelyä eikä takaa havaintoa jokaisesta
+prosessin keskeytyksestä.
+
+Prosessin todettu poistuminen ja hallittu sammutus pidetään erillään.
+Pakkopysäytys ei tuota
+[palautuspisteiden puhtaan sammutuksen merkkiä](local-backup-and-restore-plan.md#machine-local-recovery-point).
+Tavallisen sulun nykyinen rajattu pakkopysäytys ja `stopForUpdate()`-
+polun tiukempi vaatimus säilyvät; aikarajoja ei muuteta.
+
+Kohderegressiot omistavat `desktopBeforeQuit.test.ts`,
+`desktopRestoreStartup.test.ts`, `backendProcess.test.ts` ja
+`backendShutdown.test.ts`. Tuotannon elinkaarimuutos vaatii lisäksi
+synteettisen hardened Windows packaged backup -> inspect -> restore ->
+restart -> compare -todennuksen ja muuttuneen revision muut nykyiset portit.
+
 Toteutusvaiheessa lisätään riskin mukaan vähintään:
 
 - main/preload IPC allowlist -yksikkötestit

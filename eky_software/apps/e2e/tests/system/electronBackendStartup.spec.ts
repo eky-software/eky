@@ -57,10 +57,46 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
     expect(parseElectronE2eStartupObservation(fixture.observation.snapshot()))
       .toEqual(fixture.observation.snapshot());
     expect(JSON.stringify(fixture.observation.snapshot())).not.toMatch(/synthetic|private|43127/);
-    await handle.stopForUpdate();
+    await expect(handle.stopForUpdate()).resolves.toBeUndefined();
     expect(fixture.kills()).toBe(0);
     expect(fixture.controller.isRunning()).toBe(false);
   });
+
+  test('ordinary shutdown preserves the confirmed exit outcome', async () => {
+    const fixture = backendFixture();
+    const started = fixture.start();
+    fixture.child.emit('spawn');
+    fixture.child.emit('message', { type: 'ready', port: 43127 });
+    const handle = await started;
+
+    const stopped = handle.stop();
+    expect(fixture.controller.isRunning()).toBe(true);
+    expect(fixture.messages.at(-1)?.message).toEqual({ type: 'shutdown' });
+    await expect(stopped).resolves.toBe('exited');
+
+    expect(fixture.kills()).toBe(0);
+    expect(fixture.controller.isRunning()).toBe(false);
+    expect(fixture.controller.getStartupFailure()).toBeUndefined();
+  });
+
+  for (const method of ['stop', 'stopForUpdate'] as const) {
+    test(`${method} preserves a nonzero shutdown exit failure`, async () => {
+      const fixture = backendFixture({ shutdownExitCode: 1 });
+      const started = fixture.start();
+      fixture.child.emit('spawn');
+      fixture.child.emit('message', { type: 'ready', port: 43127 });
+      const handle = await started;
+
+      await expect(handle[method]()).rejects.toMatchObject({
+        name: 'BackendShutdownExitError',
+      });
+
+      expect(fixture.messages.at(-1)?.message).toEqual({ type: 'shutdown' });
+      expect(fixture.kills()).toBe(0);
+      expect(fixture.controller.isRunning()).toBe(false);
+      expect(fixture.controller.getStartupFailure()).toBeUndefined();
+    });
+  }
 
   test('a returned handle without spawn is not readiness and early exit stays a failure', async () => {
     const fixture = backendFixture();
@@ -430,6 +466,7 @@ function failureStatus(
 function backendFixture(fault: {
   forkFailure?: Error;
   observerFails?: boolean;
+  shutdownExitCode?: number;
   synchronousKillExit?: boolean;
 } = {}) {
   let child = new EventEmitter();
@@ -461,7 +498,9 @@ function backendFixture(fault: {
       return Object.assign(forkedChild, {
         postMessage(message: { type: string }, ports: unknown) {
           messages.push({ message, ports });
-          if (message.type === 'shutdown') queueMicrotask(() => forkedChild.emit('exit', 0));
+          if (message.type === 'shutdown') {
+            queueMicrotask(() => forkedChild.emit('exit', fault.shutdownExitCode ?? 0));
+          }
         },
         kill() {
           killCount += 1;

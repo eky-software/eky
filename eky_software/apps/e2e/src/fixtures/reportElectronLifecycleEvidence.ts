@@ -9,6 +9,12 @@ import type { ElectronBackendStartupLogsCapture } from './captureElectronBackend
 import type { ElectronFirstLaunchFailure } from './captureElectronLaunchFailure.js';
 import type { ElectronNativeStartupFailureCapture } from './captureElectronNativeStartupFailure.js';
 import type { ElectronLaunchObservation, ElectronStartupCapture } from './launchElectronRuntime.js';
+import type { ElectronPublicCloseFailureReason } from './closeOwnedWindowsElectronRuntime.js';
+
+export interface ElectronPublicCloseFailureEvidence {
+  readonly startupGeneration: number;
+  readonly reason: ElectronPublicCloseFailureReason;
+}
 
 export interface ElectronCleanupResult {
   api: 'completed' | 'failed' | 'notStarted';
@@ -36,6 +42,7 @@ export async function reportElectronLifecycleEvidence(
     firstStartProof?: FirstStartProofCapture;
     preparation?: ElectronPreparationFailureEvidence;
     ownership?: Readonly<ElectronBridgeCleanupEvidence>;
+    publicCloseFailure?: ElectronPublicCloseFailureEvidence;
   },
 ): Promise<void> {
   const body = JSON.stringify({
@@ -52,6 +59,7 @@ export async function reportElectronLifecycleEvidence(
       ...(evidence.firstStartProof === undefined ? {} : { firstStartProof: evidence.firstStartProof }),
       ...(evidence.preparation === undefined ? {} : { preparation: evidence.preparation }),
       ...(evidence.ownership === undefined ? {} : { ownership: evidence.ownership }),
+      ...(evidence.publicCloseFailure === undefined ? {} : { publicCloseFailure: evidence.publicCloseFailure }),
     });
   let failed = false;
   try {

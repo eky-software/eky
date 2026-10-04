@@ -302,6 +302,7 @@ test('startup lifecycle', async ({}, info) => {
     ].sort(),
       errorBoxReasons: ['startupFailed'], backendFailure: { backendAttempt: 1, status } },
     launchExitCode: 1,
+    publicCloseFailure: { startupGeneration: 3, reason: info.retry === 0 ? 'failed' : 'timedOut' },
   });
   throw new Error(${JSON.stringify(secret)});
 });`, { typescript: true, rejectWorkspaceImports: true });
@@ -318,6 +319,7 @@ test('startup lifecycle', async ({}, info) => {
         brokerCleanupFailures: ['secretBroker'] },
       launchExitCode: 1, observationsTruncated: false,
       cleanup: { api: 'completed', runtime: 'unverified', port: 'released', runRoot: 'retained' },
+      publicCloseFailure: { startupGeneration: 3, reason: index === 0 ? 'failed' : 'timedOut' },
     });
   }
   assert.ok(readFileSync(run.rawReport, 'utf8').includes(secret));
