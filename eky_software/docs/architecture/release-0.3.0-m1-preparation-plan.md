@@ -10,21 +10,22 @@ V1/V2-vakautuksen hyväksyntä säilyy. Myöhempi onnistuminen ei sulje vanhojen
 timeout- tai siivoushavaintojen jälkikäteistä juurisyytä.
 Alla päivätyt tutkimusvaiheet ovat historiaa, eivät rinnakkaisia työjonoja.
 
-**T1/T2/T3, A1/R01 ja MSI-virheaineiston rajattu integraatiojatko ovat
-hyväksyttyjä. Nykyinen sovelluspala on A2/R05:n tallennusvastauksen suoja;
-epäselvän ensitallennuksen käyttötapa on hyväksytty toteutukseen.**
+**T1/T2/T3, A1/R01 ja A2/R05 integraatiojatkoineen ovat hyväksyttyjä
+jatkokehitykseen. Nykyinen sovelluspala on Oma yritys -tallennuksen kaksi
+rajattua virhekorjausta.** A2:n main-hyväksyntä sisältää alla nimetyn
+tapauskohtaisen etenemispäätöksen, ei väitettä vihreästä main-CI:stä.
 Modulaarinen monoliitti ja
 hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohdan;
 [julkaisusuunnitelma](release-0.3.0-plan.md) omistaa koko 0.3.0:n sisällön.
 
 | Kohta | Nykyinen lähtötieto |
 | --- | --- |
-| Hyväksytty lähtörevisio | PR #290:n main `e6286c466f7281498e1256521eb5f24042616d79`. [Lopullinen hyväksyntä](https://github.com/eky-software/eky/pull/290#issuecomment-5968984119). A1:n PR #288:n [hyväksyntä](https://github.com/eky-software/eky/pull/288#issuecomment-5963057259) säilyy. |
-| Mainin omat portit | [CI 37120284589](https://github.com/eky-software/eky/actions/runs/37120284589) läpäisi kaikki 11 valittua porttia suoritusyrityksellä 1: system 807, web 43 ja Electron 39 ilman retryä tai flaky-tulosta. Täysi riskimatriisi ja kaksi vaadittua toistoa säilyivät. Erillinen riippuvuusauditointi ei valikoitunut tämän main-pushin muuttumattomalla polkusuodattimella; sitä ei merkitä mainissa ajetuksi. PR:n auditoinnin oma näyttö on checkpointissa. |
+| Hyväksytty lähtörevisio | PR #292:n main `4f89171aad57ceff00f49cdf4d048f0e415a0dca`, A2:n PR #291 ja rajattu MSI-append-jatko. A1:n ja PR #290:n aiempi hyväksyntä säilyy. Tämän mainin jatkokehityshyväksyntä perustuu alla nimettyyn omistajan tapauskohtaiseen päätökseen. |
+| Mainin omat portit | [CI 37146769411](https://github.com/eky-software/eky/actions/runs/37146769411) jäi punaiseksi: DESK-BRIDGE-001 epäonnistui ennen testirunkoa `firstWindow`-vaiheessa ja läpäisi yhden automaattisen uusinnan; alkuperäisen yrityksen siivous varmennettiin. Electron-jobi ja koonti hylättiin flaky-politiikan mukaisesti. Muut suoritetut portit, myös installer, läpäisivät. System 807 ja web 54 läpäisivät; Electronissa 38 expected ja yksi flaky. Omistaja hyväksyi 4.10.2026 tämän täsmätapauksen jatkokehitykseen, ei yleistä flaky-poikkeusta, uutta uusintaa tai toimitushyväksyntää. |
 | Suljettu työ | T1/R27:n ajokytkentä, T2/R29:n puhtaan valmistelun suoja ja T3/R28:n todellisten kuluttajien koko prosessipuun omistajuus. Korvatut aktiiviset fallbackit on poistettu ja [pysyvä T3-matriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus) hyväksytty. PR #281 sulki tämän jälkeisen rollback-testiapurin integraatiojatkon. |
 | Avoimet havainnot | Aiemmat satunnaiset Electron-käynnistys- ja packaged/legacy-timeoutit säilyvät epäonnistuneina havaintoina omille revisioilleen. Myöhempi vihreä ajo ei todista niiden kaikkia syitä korjatuiksi. [Hylkäysten historia](e2e-test-environment-history.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko) ja [rajattu apurikorjaus](e2e-test-environment-history.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus) erotetaan toisistaan. |
-| Nykyinen työ | [A2/R05](#a2r05-tallennuksen-omistajuus): ensimmäisen tallennuksen tunniste, uudemman syötteen säilyminen ja auto-/käsintallennuksen yhteinen omistajuus. Epäselvä ensitallennus estää uuden sokkona tehtävän createn samassa sessiossa; käyttötapa hyväksytty. Ei T3-remonttia, uusia riippuvuuksia, tietomallimuutosta tai testiehtojen lievennyksiä. |
-| Ei vielä valmis | A2-A3, W7, M1:n muu sovellustyö ja koko 0.3.0. Lähtörevision hyväksyntä ei hyväksy A2:n tulevaa toteutusta tai muuttunutta liiketoimintasääntöä. |
+| Nykyinen työ | [Oma yritys -tallennuskorjaus](#oma-yritys-rajattu-tallennuskorjaus): toteutus, kohdetestit ja riippumaton katselmus valmiit. Rajattu palautustestin siivouskorjaus ja hyväksytty rollback-testin jako on todennettu; koko workspace-sarja ja tyypitys läpäisivät. PR/main-integraatiota ei ole vielä tehty. Ei T3-remonttia, uusia riippuvuuksia tai tietomallimuutosta. Rollback-testiparin hyväksytty aikabudjetin muutos on kirjattu alla. |
+| Ei vielä valmis | Oma yritys -korjauksen hyväksyntä, A3, W7, M1:n muu sovellustyö, D-paketin muut ehdot ja koko 0.3.0. Lähtörevision poikkeus ei hyväksy uuden revision puuttuvia portteja. |
 
 Hyväksyntä on sidottu yllä olevaan revisioon, ei automaattisesti myöhempään
 työpuuhun. Dokumenttimuutoksen toteutuneet tarkistukset ja mahdollisen
@@ -32,6 +33,20 @@ integraation lopputulos kirjataan sen omaan hyväksyntächeckpointiin;
 pelkän tuloksen ilmoittamiseksi ei tehdä uutta tilakirjauscommittia.
 Jokainen uusi toteutuspala alkaa omalla preflightilla. Sivulla ei ylläpidetä Goal-työkalun
 ajonaikaista tilaa.
+
+**Omistajan hyväksymä seuraava järjestys 4.10.2026:**
+
+1. Rajattu palautustestin juurten omistajuus- ja siivouskorjaus sekä sen
+   regressiot. Tuotannon palautuspolkua, aikarajoja tai sisältövaatimuksia
+   ei muuteta.
+2. Jo toteutettujen Oma yritys -korjausten hyväksyntä ja normaali PR/main-
+   integraatio katselmuksineen ja täsmärevision nykyisine portteineen.
+3. Sen jälkeen [A3/R06:n hyväksyntävalmiuden vastaussidonta](invoicing-ui-roadmap.md#a3-hyväksyntävalmiuden-vastaussidonta)
+   omalla aloitusportillaan, toteutuksellaan ja hyväksynnällään.
+
+Tämä järjestys ei avaa T3:a tai muuta vanhojen hylkäysten uusintarajoja.
+Tuotannon staging-siivoamisen erillinen sopimushavainto käsitellään sen
+omistavassa palautustyössä, ei tämän testikorjauksen sivuvaikutuksena.
 
 ## A1/R01: toteutus ja hyväksyntä
 
@@ -46,7 +61,8 @@ Vanha onnistuminen tai virhe ei muuta nykyistä kohdetta, virhettä tai
 lataustilaa. Unmount mitätöi vanhan vastauksen; React StrictModen
 effect-uusinta ei hukkaa nykyistä asiakaskortilta aloitettua avausta.
 Tavallinen tallennus ja ensimmäinen create-vastaus eivät vaihda session
-avainta. A2:n myöhäisen kirjoitusvastauksen sopimus jää erikseen avoimeksi.
+avainta. A1 ei muuttanut myöhäisen kirjoitusvastauksen sopimusta; sen
+myöhempi A2-toteutus ja hyväksyntä kuvataan alla.
 
 Kohdennettu näyttö ennen PR-jäädytystä:
 
@@ -75,13 +91,16 @@ uusi toteutus.
 
 ## A2/R05: tallennuksen omistajuus
 
-**Rajattu toteutus ja PR #291:n merge valmiit; main-hyväksyntä avoinna.**
-Integraation rajattu jatko on omistajan hyväksymä synteettisen
-[MSI-testin append-lokituskoe](windows-installer-acceptance-harness-v2.md#msi-tiedostoversiosäännön-koe).
-Se sisältää kutsuargumenttien ja puutteellisen lokin regressiot sekä yhden
-hosted-Windows-kokeen. Tuotantoasennin, sisältövaatimukset ja nykyiset
-hyväksyntäportit säilyvät. Koe ei yksin sulje aiempaa syytä eikä korvaa
-normaalia hyväksyntää. A3:a ei aloiteta tämän jatkon osana.
+**A2 ja rajattu integraatiojatko hyväksytty jatkokehitykseen 4.10.2026.**
+PR #291:n [V2 37137894577](https://github.com/eky-software/eky/actions/runs/37137894577)
+ja auditointi sekä PR #292:n
+[V2 37144831349](https://github.com/eky-software/eky/actions/runs/37144831349)
+ja auditointi läpäisivät. PR #292:n append-korjaus koskee vain synteettisen
+MSI-kokeen lokia; tiukka validator ja alkuperäinen hylkäys säilyvät.
+Mainin oma hylkäys ja omistajan rajattu etenemispäätös ovat yllä.
+Se ei osoita alkuperäistä Electron-käynnistyssyytä korjatuksi.
+Alla on toteutuksen kohdennettu näyttö ja aiempien päätösten historia.
+A3:a ei toteutettu tämän jatkon osana.
 
 Omistaja hyväksyi tämän rajatun sovelluspalan aloittamisen 3.10.2026.
 [Omistava tallennussopimus ja testiketjut](invoicing-ui-roadmap.md#a2-tallennusvastuun-valmistelu)
@@ -142,6 +161,102 @@ riippumaton katselmus sekä täsmärevision PR- ja main-portit. Vanhojen
 MSI-, timeout- ja ETL-havaintojen jälkiselitys ei ole A2:n tavoite eikä niitä
 väitetä suljetuiksi. Uusi todellinen regressio tai pakollisen portin este
 käsitellään nykyisen testauskäytännön mukaan.
+
+## Oma yritys: rajattu tallennuskorjaus
+
+**Tila 4.10.2026: toteutettu ja riippumattomasti katselmoitu; kohdetestit,
+workspace-sarja ja tyypitys läpäisty. PR/main-integraatiota ei ole tehty.** Omistaja
+hyväksyi kaksi toistettua sovellusvikaa korjattaviksi ennen seuraavaa
+roadmap-palaa. [Company Settingsin tallennussopimus](../modules/company-settings.md#perustietojen-tallennusvastauksen-sopimus)
+omistaa käyttäytymisen; tätä ei laajenneta koko D-paketin toteutukseksi.
+
+| Kohta | Korjaus ja sulkemisehto |
+| --- | --- |
+| CS-1: statuskysely commitin jälkeen | Permission ja täysi validointi ennen secret-statusta, status ennen master-datan ja auditin atomista kirjoitusta. Pending/failed status ei muuta kantaa/auditia; onnistunut vastaus käyttää luettua todellista tilaa. Application-, composition-/HTTP- ja vuotosuojaregressiot. |
+| CS-2: vanha vastaus korvaa uudemman syötteen | Yksi keskeneräinen perustietojen tallennus, session ja muokkausrevision tarkistus ennen response-hydraatiota. Uudempi syöte säilyy ilman väärää onnistumisilmoitusta; failure ja poistunut näkymä eivät hukkaa sitä. Oikea UI/backend-jälkiluku, seuraava käsintallennus ja refresh. |
+
+Muutoksen yhteydessä tarkistetaan nykyinen turvallinen virhe-/operational-
+ketju ja business audit. Uutta loggeria tai tapahtumaa ei lisätä pelkän
+UI-vastauksen sivuuttamista varten. Riippuvuudet, tietomalli, SQL-adapteri,
+secret-brokerin aikarajat, CI-ehdot ja prosessiomistajuus säilyvät.
+Kohdesarja, viereiset Company Settings -polut, workspace-testit, tyypitys,
+build ja riippumaton katselmus erotetaan myöhemmästä PR/main-hyväksynnästä.
+
+Kohdennettu näyttö nykyisestä muutoksesta:
+
+- Backendin 133 kohdetestiä läpäisivät, mukana aidon composition-/HTTP-
+  kytkennän ja SQLite-repositoryn pending/failure/status/audit-rollback-
+  tapaukset. Virhevastauksen ja operational-ketjun vuotosuojat tarkistettiin.
+- Kolme uutta `COMPANY-SAVE-001...003`-selainregressiota ja kolme nykyistä
+  viereistä käyttäjäpolkua läpäisivät oikealla backendillä. Prosessien
+  siivous varmennettiin. Ensimmäisen kehitysajon virheellinen
+  virheilmoitusselektori korjattiin; sen hylkäys säilyy erillisenä.
+- Webin kaikki 690 testiä ja backendin 1 406 testiä läpäisivät. Backendin
+  viisi ennestään ohitettua testiä eivät ole läpäisyjä. Workspace-tyypitys,
+  E2E-tyypitys ja web-build läpäisivät.
+- Riippumaton katselmus ei löytänyt korjattavaa. API-clientin vaihtumisen
+  session suoja tarkistettiin koodista; lisätyt selaintestit todentavat
+  näkymästä poistumisen ja palaamisen, eivät erillistä client-vaihtokoetta.
+
+Ensimmäistä workspace-testiajoa ei hyväksytty. Muuttumaton desktopin
+`resumes rollback normalization after either durable directory rename`
+-testi aikakatkaistiin; yksi saman lähteen rajattu diagnostinen uusinta
+läpäisi, mutta juurisyy jäi avoimeksi. Tämän jälkeen väärin rajattu
+tarkistuskomento käynnisti tahattomasti myös juuren testiketjun. Siinä
+muuttumaton `rejects a different valid container selected after inspection`
+-palautustesti aikakatkaistiin ja sen siivous epäonnistui. Tätä ajoa ei
+käsitellä onnistuneena korvaavana hyväksyntänä tai perusteena uudelle
+uusintaketjulle. Ensivirheet ja epävarman siivouksen aineisto säilytetään.
+Palautustestin yksi rajattu saman lähteen diagnostinen uusinta läpäisi;
+alkuperäisen aikakatkaisun tai siivousvirheen syy ei silti varmistunut.
+Desktop-testien omistaja selvittää nämä erilliset havainnot nykyisen
+testauskäytännön mukaan; myöhempi integraatio vaatii omat porttinsa tai
+nimenomaisen rajauspäätöksen. Aikakatkaisua ei luokitella pelkän uusinnan
+perusteella ympäristöviaksi tai tämän sovelluskorjauksen regressioksi.
+
+Rajattu koodikatselmus havaitsi lisäksi, että palautustestin yhteinen
+`afterEach` voi poistaa juuren ennen aikakatkaistun testirungon valmistumista.
+Tämä on testin siivousriski, ei todiste alkuperäisen hylkäyksen juurisyystä.
+Omistajan hyväksymä hyväksyntävalmistelu rajataan tämän testitiedoston
+juurten omistajuuteen ja epävarman valmistumisen aineiston säilyttämiseen
+nykyisen siivoussopimuksen mukaan. Aikarajat, testin sisältöassertiot,
+tuotantokoodi ja yhteinen T3-testialusta säilyvät. Testikohtainen siivous on
+toteutettu: vain onnistunut, päättynyt ja keskeyttämätön testirunko sallii
+omien juurtensa poiston. Kuusi regressiota tarkistavat onnistumisen,
+keskeneräisen ja myöhäisen työn eristyksen, ensivirheen säilymisen,
+keskeytyksen sekä siivousvirheen näkyvyyden. Kohdeajo läpäisi kaikki kuusi
+alkuperäistä testiä ja nämä kuusi regressiota; desktopin tyypitys ja
+riippumaton katselmus läpäisivät. Katselmuksen löytämä regression oman
+konsolikaappauksen palautuspuute korjattiin ja myöhäinen hylkäys testattiin.
+
+Siivouskorjauksen jälkeinen normaali workspace-ajo jäi erilliseen,
+muuttumattomaan rollback-testin aikakatkaisuun. Palautustestin kaikki siinä
+ajossa olleet tapaukset läpäisivät. Rollbackin viimeinen havaittu vaihe oli
+toisen keskeytystapauksen normalisointi; testirunko oli kesken ja sen aineisto
+säilytettiin. Tämä ei yksilöi juurisyytä. Aiempi uusintaraja säilyy eikä
+lisäuusintaa tai PR-ajoa ole käynnistetty.
+
+**Hyväksytty rajattu jatko 4.10.2026:** omistaja hyväksyi rollback-testin
+kahden keskeytyskohdan erottamisen omiksi tuoreen fixturen testeikseen.
+Molemmat säilyttävät sisältö-, eheyden jälkiluku- ja siivousvaatimukset sekä
+nykyisen viiden sekunnin testikohtaisen aikarajan. Kahden testin yhteinen
+enimmäisaika kasvaa aiempaan yhteiseen rajaan verrattuna. Tuotantokoodia ei
+muuteta. Jako on toteutettu ja riippumattomasti katselmoitu ilman avoimia
+löydöksiä. Molempien testitiedostojen kohdesarja läpäisi 41 testiä; koko
+workspace-sarja läpäisi 5 400 testiä, ja kahdeksan ennestään ohitettua testiä
+säilyi ohitettuna. Koko workspacen tyypitys läpäisi. Nämä eivät todista
+vanhan aikakatkaisun juurisyytä korjatuksi eivätkä korvaa nykyisen revision
+normaaleja PR/main-portteja, joiden hyväksyntä on vielä avoin.
+
+Sovelluksen staging-hylkäyspolun siivousvirheen nykyinen best-effort-käsittely
+arvioidaan erikseen palautuksen omistavassa työssä, ei uutena sivumuutoksena
+Company Settingsiin. Kumpaakaan havaintoa ei suljeta uusinnan läpäisyllä.
+
+Korjaus ei selitä historiallista käyttöliittymän jähmettymistä tai
+Electron-CI:n käynnistystimeoutia. D-paketin epäonnistuneen alkuluvun
+tallennusesto ja secret-operaatioiden myöhäiset sivuvaikutukset jäävät omiin
+kohtiin. Koko koodin myöhempi syväkatselmus ennen Deep Scania kuuluu
+[M5:n järjestykseen](release-0.3.0-plan.md#m5-uusi-katselmus-deep-scan-ja-julkaisuportti).
 
 ## MSI-politiikkakokeen virheaineisto
 

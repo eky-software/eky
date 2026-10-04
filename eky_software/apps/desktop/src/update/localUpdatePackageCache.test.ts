@@ -437,40 +437,36 @@ describe('local update package cache', () => {
     ).resolves.toBeDefined();
   });
 
-  it('resumes rollback normalization after either durable directory rename', async ({ onTestFinished, signal }) => {
-    const ownedRoots: string[] = [];
-    const progress = {
-      scenario: 'notStarted',
-      phase: 'notStarted',
-      lastCompletedPhase: 'none',
-      bodySettled: false,
-    };
-    const advance = (phase: string) => {
-      signal.throwIfAborted();
-      progress.lastCompletedPhase = progress.phase;
-      progress.phase = phase;
-    };
-    onTestFinished(async ({ task }) => {
-      // Timeout does not settle the body. Its roots must not enter another
-      // test's cleanup or be deleted while an owned operation can still write.
-      if (task.result?.state !== 'pass' || !progress.bodySettled) {
-        console.error(JSON.stringify({
-          diagnostic: 'updateCacheRollbackTest',
-          ...progress,
-          rootsRetained: true,
-        }));
-        return;
-      }
-      await Promise.all(ownedRoots.map((root) => rm(root, { force: true, recursive: true })));
-    });
-    try {
-      progress.scenario = 'preparePair';
-      const pair = await createCurrentAndCandidatePair(ownedRoots, advance);
-      for (const interruption of ['afterCurrentRename', 'afterPreviousRename']) {
+  it.for(['afterCurrentRename', 'afterPreviousRename'] as const)(
+    'resumes rollback normalization %s',
+    async (interruption, { onTestFinished, signal }) => {
+      const ownedRoots: string[] = [];
+      const progress = {
+        scenario: interruption,
+        phase: 'notStarted',
+        lastCompletedPhase: 'none',
+        bodySettled: false,
+      };
+      const advance = (phase: string) => {
         signal.throwIfAborted();
-        progress.scenario = interruption;
-        progress.phase = 'notStarted';
-        progress.lastCompletedPhase = 'none';
+        progress.lastCompletedPhase = progress.phase;
+        progress.phase = phase;
+      };
+      onTestFinished(async ({ task }) => {
+        // Timeout does not settle the body. Its roots must not enter another
+        // test's cleanup or be deleted while an owned operation can still write.
+        if (task.result?.state !== 'pass' || !progress.bodySettled) {
+          console.error(JSON.stringify({
+            diagnostic: 'updateCacheRollbackTest',
+            ...progress,
+            rootsRetained: true,
+          }));
+          return;
+        }
+        await Promise.all(ownedRoots.map((root) => rm(root, { force: true, recursive: true })));
+      });
+      try {
+        const pair = await createCurrentAndCandidatePair(ownedRoots, advance);
         advance('promoteCandidate');
         await pair.cache.promoteAcceptedCandidate({
           candidateIdentity: expectedIdentityOf(pair.candidate.manifest),
@@ -500,7 +496,7 @@ describe('local update package cache', () => {
           'candidate',
           'current',
         ]);
-        // Reuse the pair only after both slots prove the exact reset state.
+        // Both recovered slots must match their exact original identities.
         advance('verifyCurrentPackage');
         await expect(pair.cache.revalidateJournalPackage({
           expectedIdentity: expectedIdentityOf(pair.current.manifest),
@@ -522,11 +518,11 @@ describe('local update package cache', () => {
           manifest: expectedIdentityOf(pair.candidate.manifest),
         });
         advance('completed');
+      } finally {
+        progress.bodySettled = true;
       }
-    } finally {
-      progress.bodySettled = true;
-    }
-  });
+    },
+  );
 
   it('keeps explicit fixture roots outside the shared cleanup collection', async () => {
     const ownedRoots: string[] = [];

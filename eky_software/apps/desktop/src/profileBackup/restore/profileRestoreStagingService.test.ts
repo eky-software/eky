@@ -3,7 +3,7 @@ import { promises as fileSystem } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, type TestContext } from 'vitest';
 
 import {
   writeBackupContainer,
@@ -15,19 +15,10 @@ import { ProfileRestoreStagingService } from './profileRestoreStagingService.js'
 const password = 'Eky restore staging password 2026!';
 const migrationChainIdentity = 'b'.repeat(64);
 const profileId = 'a'.repeat(64);
-const temporaryRoots: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    temporaryRoots.splice(0).map((root) =>
-      fileSystem.rm(root, { force: true, recursive: true }),
-    ),
-  );
-});
 
 describe('profile restore staging service', () => {
-  it('RESTORE-STAGE-001 @critical creates a pre-restore point and retains a validated same-profile staging tree', async () => {
-    const fixture = await createFixture();
+  it('RESTORE-STAGE-001 @critical creates a pre-restore point and retains a validated same-profile staging tree', withOwnedRoots(async (roots) => {
+    const fixture = await createFixture(roots);
     const inspection = await fixture.service.inspect({
       containerPath: fixture.containerPath,
       password,
@@ -75,10 +66,10 @@ describe('profile restore staging service', () => {
     await expect(
       fileSystem.readFile(fixture.activeSentinelPath, 'utf8'),
     ).resolves.toBe('active profile remains untouched');
-  });
+  }));
 
-  it('allows a foreign profile only when the active installation is demonstrably empty', async () => {
-    const fixture = await createFixture({
+  it('allows a foreign profile only when the active installation is demonstrably empty', withOwnedRoots(async (roots) => {
+    const fixture = await createFixture(roots, {
       activeProfileIsEmpty: true,
       profileMatchesActive: false,
     });
@@ -95,10 +86,10 @@ describe('profile restore staging service', () => {
     ).resolves.toMatchObject({
       targetDisposition: 'replaceEmptyProfile',
     });
-  });
+  }));
 
-  it('RESTORE-CROSS-COMPANY-001 @security rejects a foreign profile over a non-empty installation and removes staging', async () => {
-    const fixture = await createFixture({
+  it('RESTORE-CROSS-COMPANY-001 @security rejects a foreign profile over a non-empty installation and removes staging', withOwnedRoots(async (roots) => {
+    const fixture = await createFixture(roots, {
       activeProfileIsEmpty: false,
       profileMatchesActive: false,
     });
@@ -124,10 +115,10 @@ describe('profile restore staging service', () => {
         eventName: 'restore.stagingFailed',
       }),
     );
-  });
+  }));
 
-  it('rejects a different valid container selected after inspection', async () => {
-    const fixture = await createFixture();
+  it('rejects a different valid container selected after inspection', withOwnedRoots(async (roots) => {
+    const fixture = await createFixture(roots);
     const inspection = await fixture.service.inspect({
       containerPath: fixture.containerPath,
       password,
@@ -146,10 +137,10 @@ describe('profile restore staging service', () => {
     await expect(
       fileSystem.readdir(fixture.stagingRoot),
     ).resolves.toEqual([]);
-  });
+  }));
 
-  it('does not stage when the required pre-restore point fails', async () => {
-    const fixture = await createFixture({
+  it('does not stage when the required pre-restore point fails', withOwnedRoots(async (roots) => {
+    const fixture = await createFixture(roots, {
       preRestoreError: new Error('safeStorage unavailable'),
     });
     const inspection = await fixture.service.inspect({
@@ -168,10 +159,10 @@ describe('profile restore staging service', () => {
     await expect(
       fileSystem.readdir(fixture.stagingRoot),
     ).resolves.toEqual([]);
-  });
+  }));
 
-  it('expires and consumes inspection identifiers', async () => {
-    const fixture = await createFixture();
+  it('expires and consumes inspection identifiers', withOwnedRoots(async (roots) => {
+    const fixture = await createFixture(roots);
     const inspection = await fixture.service.inspect({
       containerPath: fixture.containerPath,
       password,
@@ -194,8 +185,205 @@ describe('profile restore staging service', () => {
     ).rejects.toMatchObject({
       code: 'PROFILE_RESTORE_INSPECTION_EXPIRED',
     });
-  });
+  }));
 });
+
+describe('restore staging test root ownership', () => {
+  it('removes only the settled successful test roots', withOwnedRoots(async (roots, context) => {
+    const parent = await createCleanupProbeRoot(roots);
+    const root = join(parent, 'successful');
+    const completion = captureCompletion(context);
+    await withOwnedRoots(async (ownedRoots) => {
+      ownedRoots.push(root);
+      await fileSystem.mkdir(root);
+    })(completion.context);
+
+    await expect(fileSystem.stat(root)).resolves.toBeDefined();
+    await completion.finish('pass');
+    await expect(fileSystem.stat(root)).rejects.toMatchObject({ code: 'ENOENT' });
+  }));
+
+  it.for([false, true])('retains pending and late-created roots independently of the next test (late rejection: %s)', (lateRejection, context) => withOwnedRoots(async (roots) => {
+    const parent = await createCleanupProbeRoot(roots);
+    const firstRoot = join(parent, 'first');
+    const lateRoot = join(parent, 'late');
+    const secondRoot = join(parent, 'second');
+    let markEntered!: () => void;
+    let releaseBody!: () => void;
+    const entered = new Promise<void>((resolve) => { markEntered = resolve; });
+    const released = new Promise<void>((resolve) => { releaseBody = resolve; });
+    const first = captureCompletion(context);
+    const second = captureCompletion(context);
+    const originalConsoleError = console.error;
+    const diagnostic = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const lateFailure = new Error('synthetic late staging failure');
+    const pending = withOwnedRoots(async (ownedRoots) => {
+      ownedRoots.push(firstRoot);
+      await fileSystem.mkdir(firstRoot);
+      markEntered();
+      await released;
+      ownedRoots.push(lateRoot);
+      await fileSystem.mkdir(lateRoot);
+      if (lateRejection) throw lateFailure;
+    })(first.context);
+    // Observe late rejection immediately; the probe must not leak a rejection
+    // or skip restoring its console spy while settling its simulated timeout.
+    const outcome = pending.then(() => undefined, (error: unknown) => error);
+    try {
+      await Promise.race([entered, outcome]);
+      // Even a premature pass notification cannot delete a running body.
+      await first.finish('pass');
+      first.abort();
+      await first.finish('fail');
+      await expect(fileSystem.stat(firstRoot)).resolves.toBeDefined();
+
+      await withOwnedRoots(async (ownedRoots) => {
+        ownedRoots.push(secondRoot);
+        await fileSystem.mkdir(secondRoot);
+      })(second.context);
+      releaseBody();
+      expect(await outcome).toBe(lateRejection ? lateFailure : undefined);
+      await second.finish('pass');
+      await first.finish('fail');
+
+      await expect(fileSystem.stat(secondRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(fileSystem.stat(firstRoot)).resolves.toBeDefined();
+      await expect(fileSystem.stat(lateRoot)).resolves.toBeDefined();
+      expect(diagnostic.mock.calls).toEqual([
+        [JSON.stringify({ diagnostic: 'restoreStagingTest', bodySettled: false, rootsRetained: true })],
+        [JSON.stringify({ diagnostic: 'restoreStagingTest', bodySettled: false, rootsRetained: true })],
+        [JSON.stringify({ diagnostic: 'restoreStagingTest', bodySettled: true, rootsRetained: true })],
+      ]);
+    } finally {
+      releaseBody();
+      try {
+        await outcome;
+      } finally {
+        diagnostic.mockRestore();
+      }
+    }
+    expect(console.error).toBe(originalConsoleError);
+  })(context));
+
+  it('preserves the original failure without attempting destructive cleanup', withOwnedRoots(async (roots, context) => {
+    const parent = await createCleanupProbeRoot(roots);
+    const root = join(parent, 'failed');
+    const original = new Error('synthetic staging failure');
+    const completion = captureCompletion(context);
+    const diagnostic = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await expect(withOwnedRoots(async (ownedRoots) => {
+        ownedRoots.push(root);
+        await fileSystem.mkdir(root);
+        throw original;
+      })(completion.context)).rejects.toBe(original);
+      await expect(completion.finish('fail')).resolves.toBeUndefined();
+      await expect(completion.finish('pass')).resolves.toBeUndefined();
+      await expect(fileSystem.stat(root)).resolves.toBeDefined();
+    } finally {
+      diagnostic.mockRestore();
+    }
+  }));
+
+  it('does not treat an aborted successful body as safe to delete', withOwnedRoots(async (roots, context) => {
+    const parent = await createCleanupProbeRoot(roots);
+    const root = join(parent, 'aborted');
+    const completion = captureCompletion(context);
+    const diagnostic = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await withOwnedRoots(async (ownedRoots) => {
+        ownedRoots.push(root);
+        await fileSystem.mkdir(root);
+      })(completion.context);
+      completion.abort();
+      await completion.finish('pass');
+      await expect(fileSystem.stat(root)).resolves.toBeDefined();
+    } finally {
+      diagnostic.mockRestore();
+    }
+  }));
+
+  it('reports cleanup failure after attempting every owned root', withOwnedRoots(async (roots, context) => {
+    const parent = await createCleanupProbeRoot(roots);
+    const retainedRoot = join(parent, 'retained');
+    const removedRoot = join(parent, 'removed');
+    const completion = captureCompletion(context);
+    await withOwnedRoots(async (ownedRoots) => {
+      ownedRoots.push(retainedRoot, removedRoot);
+      await fileSystem.mkdir(retainedRoot);
+      await fileSystem.mkdir(removedRoot);
+    })(completion.context);
+    const failure = new Error('synthetic cleanup failure');
+    const remove = fileSystem.rm;
+    const cleanup = vi.spyOn(fileSystem, 'rm').mockImplementation(async (path, options) => {
+      if (path === retainedRoot) throw failure;
+      await remove(path, options);
+    });
+    try {
+      await expect(completion.finish('pass')).rejects.toMatchObject({ errors: [failure] });
+      expect(cleanup).toHaveBeenCalledTimes(2);
+      await expect(fileSystem.stat(retainedRoot)).resolves.toBeDefined();
+      await expect(fileSystem.stat(removedRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      cleanup.mockRestore();
+    }
+  }));
+});
+
+function withOwnedRoots(body: (roots: string[], context: TestContext) => Promise<void>) {
+  return async (context: TestContext): Promise<void> => {
+    const roots: string[] = [];
+    let bodySettled = false;
+    let bodySucceeded = false;
+    context.onTestFinished(async ({ task }) => {
+      // A timeout does not settle the body. Keep its roots out of subsequent
+      // test cleanup, including roots registered by a late continuation.
+      if (task.result?.state !== 'pass' || !bodySettled || !bodySucceeded || context.signal.aborted) {
+        console.error(JSON.stringify({ diagnostic: 'restoreStagingTest', bodySettled, rootsRetained: true }));
+        return;
+      }
+      const results = await Promise.allSettled(roots.map((root) =>
+        fileSystem.rm(root, { force: true, recursive: true }),
+      ));
+      const failures = results.filter((result) => result.status === 'rejected');
+      if (failures.length > 0) {
+        throw new AggregateError(failures.map((result) => result.reason), 'Restore staging test cleanup failed');
+      }
+    });
+    try {
+      context.signal.throwIfAborted();
+      await body(roots, context);
+      bodySucceeded = true;
+    } finally {
+      bodySettled = true;
+    }
+  };
+}
+
+function captureCompletion(context: TestContext) {
+  let finish: Parameters<TestContext['onTestFinished']>[0] | undefined;
+  const controller = new AbortController();
+  return {
+    context: {
+      ...context,
+      signal: controller.signal,
+      onTestFinished(callback: Parameters<TestContext['onTestFinished']>[0]) {
+        finish = callback;
+      },
+    },
+    abort: () => controller.abort(),
+    async finish(state: 'pass' | 'fail') {
+      if (!finish) throw new Error('Completion hook was not registered');
+      await finish({ ...context, task: { ...context.task, result: { state } } });
+    },
+  };
+}
+
+async function createCleanupProbeRoot(roots: string[]): Promise<string> {
+  const root = await fileSystem.mkdtemp(join(tmpdir(), 'eky-restore-cleanup-'));
+  roots.push(root);
+  return root;
+}
 
 interface Fixture {
   activeSentinelPath: string;
@@ -210,6 +398,7 @@ interface Fixture {
 }
 
 async function createFixture(
+  ownedRoots: string[],
   options: {
     activeProfileIsEmpty?: boolean;
     preRestoreError?: Error;
@@ -219,7 +408,7 @@ async function createFixture(
   const root = await fileSystem.mkdtemp(
     join(tmpdir(), 'eky-restore-staging-'),
   );
-  temporaryRoots.push(root);
+  ownedRoots.push(root);
   const sourceRoot = join(root, 'source');
   const quarantineRoot = join(root, 'quarantine');
   const stagingRoot = join(root, 'staging');

@@ -328,6 +328,35 @@ Work Orders ja Work Entries omistavat:
 
 Toinen moduuli ei saa muuttaa Company Settings -dataa suoraan.
 
+## Perustietojen tallennusvastauksen sopimus
+
+Oma yritys -perustietojen PUT tarkistaa permissionin ja koko syötteen ennen
+secret storen tilalukua. Vastaukseen tarvittava `emailSecretConfigured`
+luetaan ennen master-datan ja pakollisen auditin atomista kirjoitusta.
+Pending- tai epäonnistunut tilaluku ei saa muuttaa kumpaakaan. Onnistunut
+kirjoitus palauttaa jo luetun boolean-tilan ilman uutta, commitin jälkeistä
+secret store -kutsua. Tilaluvun virhettä ei muuteta arvoksi `false`.
+GET ja erilliset salaisuuden lifecycle-operaatiot säilyvät erillisinä.
+Tämä ei takaa vastauksen toimitusta verkkokatkossa eikä poista mahdollista
+salaisuuden tilan muuttumista erillisen samanaikaisen operaation vuoksi.
+
+Web-feature sallii vain yhden perustietojen tallennuksen kerrallaan.
+Kenttiä voi muokata odotusaikana: vastaus saa normalisoida lomakkeen ja näyttää
+tallennusonnistumisen vain, jos saman muokkaussession syöte ei ole muuttunut.
+Uudempi syöte säilyy tallentamattomana seuraavaa käyttäjän tallennusta varten.
+Poistuneen näkymän tai vaihtuneen API-clientin vastaus ei muuta uuden session
+lomaketta, palautetta tai tallennuksen varattu-tilaa. Virhe säilyttää syötteen
+ja vapauttaa saman session käsintallennuksen; automaattista uusintaa ei tehdä.
+
+Master-datan audit ja sen turvallinen Activity-projektio säilyvät. Pelkkä
+vanhan UI-vastauksen sivuuttaminen ei ole uusi business- tai diagnostics-event.
+Tilaluvun tekninen virhe kulkee nykyisen turvallisen HTTP-/operational-ketjun
+kautta ilman raakavirhettä, asetusten arvoja tai salaisuutta. Rajattu korjaus
+ei muuta tietomallia, backup-sisältöä tai tietokanta-adapterin transaktiota.
+[M1:n checkpoint](../architecture/release-0.3.0-m1-preparation-plan.md#oma-yritys-rajattu-tallennuskorjaus)
+omistaa toteutus- ja hyväksyntätilan;
+[testimatriisi](../architecture/r0-e2e-test-matrix.md#company-settings) kattavuuden.
+
 ## UI-Ajatus
 
 Sivupalkkiin voidaan myöhemmin lisätä kohta:
