@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 
 import type { DesktopLifecycleHandle } from './desktopComposition.js';
+import { createDesktopBeforeQuitHandler } from './desktopBeforeQuit.js';
 import { resolveDesktopPackageUserDataOverride } from './desktopPackageProfile.js';
 import { runSafeDesktopStartup } from './earlyStartup.js';
 import { readDesktopBuildInfo } from '../release/desktopBuildInfoReader.js';
@@ -133,7 +134,6 @@ if (!hasSingleInstanceLock && 'mode' in packageModeResult) {
 }
 
 let desktopLifecycle: DesktopLifecycleHandle | undefined;
-let shutdownStarted = false;
 const runtimeInstanceId = randomUUID();
 let w6b2ProofConfiguration:
   | Readonly<W6b2PackagedProofConfiguration>
@@ -141,6 +141,7 @@ let w6b2ProofConfiguration:
 let w6b2ProofQuitRequested = false;
 let w6b2ProofRelaunchRequested = false;
 let w6b2ProofResultWritten = false;
+let w6b2ProofShutdownCompleted = false;
 
 async function startDesktopRuntime(
   startDesktopComposition: StartDesktopComposition,
@@ -256,7 +257,7 @@ async function startDesktopRuntime(
     await terminateW6b2PackagedProofRuntime({
       lifecycle: desktopLifecycle,
       quitApplication() {
-        shutdownStarted = true;
+        w6b2ProofShutdownCompleted = true;
         app.quit();
       },
       quitRequested: w6b2ProofQuitRequested,
@@ -273,16 +274,14 @@ app.on('second-instance', () => {
   desktopLifecycle?.focusApplicationWindow();
 });
 
-app.on('before-quit', (event) => {
-  if (desktopLifecycle === undefined || shutdownStarted) {
-    return;
-  }
+const handleBeforeQuit = createDesktopBeforeQuitHandler({
+  readLifecycle: () => desktopLifecycle,
+  quitApplication: () => app.quit(),
+});
 
-  event.preventDefault();
-  shutdownStarted = true;
-  void desktopLifecycle.shutdown().finally(() => {
-    app.quit();
-  });
+app.on('before-quit', (event) => {
+  if (w6b2ProofShutdownCompleted) return;
+  void handleBeforeQuit(event);
 });
 
 app.on('window-all-closed', () => {

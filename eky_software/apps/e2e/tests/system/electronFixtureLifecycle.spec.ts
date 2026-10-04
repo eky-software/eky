@@ -28,6 +28,8 @@ import { createElectronLaunchFailureCapture } from '../../src/fixtures/captureEl
 import { reportStartupProcessOutput } from '../../src/fixtures/reportStartupProcessOutput.js';
 import { createBackendOperationalEvent } from '../../../backend/src/observability/createOperationalEvent.js';
 import { createBackendOperationalLogger } from '../../../backend/src/observability/infrastructure/createBackendOperationalLogger.js';
+import { projectElectronLifecycle } from '../../scripts/electronLifecycleProjection.mjs';
+import type { ElectronPublicCloseFailureEvidence } from '../../src/fixtures/reportElectronLifecycleEvidence.js';
 
 test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
   for (const [path, entry] of [
@@ -455,6 +457,63 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
       } finally { await removeE2eRunRootIfPresent(fixture.root); }
     }
   });
+
+  for (const reason of ['failed', 'timedOut'] as const) for (const ownerFails of [false, true]) {
+    test(`public close ${reason} survives generic cleanup and owner failure=${ownerFails}`, async ({}, testInfo) => {
+      const root = createE2eRunRoot();
+      let observation: ElectronPublicCloseFailureEvidence | undefined;
+      const calls: string[] = [];
+      try {
+        await expect(finishIsolatedElectronTest({
+          failure: undefined, testAlreadyFailed: false,
+          async disposeApi() { calls.push('api'); },
+          async closeRuntime() {
+            try {
+              await closeOwnedWindowsElectronRuntime({
+                application: { close() {
+                  if (reason === 'failed') throw new Error('synthetic private close detail');
+                  return new Promise<void>(() => {});
+                } },
+                lifetime: createE2eFixtureLifetime(60_000, () => 0),
+                owner: { async stop() {
+                  calls.push('owner');
+                  expect(observation).toEqual({ startupGeneration: 2, reason });
+                  if (ownerFails) throw new Error('synthetic private owner detail');
+                } },
+                observePublicCloseFailure(value) {
+                  calls.push('observe');
+                  observation ??= Object.freeze({ startupGeneration: 2, reason: value });
+                },
+              }, {
+                now: () => 0,
+                schedule(callback) {
+                  let cancelled = false;
+                  if (reason === 'timedOut') queueMicrotask(() => { if (!cancelled) callback(); });
+                  return () => { cancelled = true; };
+                },
+              });
+            } catch { throw new Error('E2E_ELECTRON_RUNTIME_CLEANUP_UNVERIFIED'); }
+          },
+          async releasePort() { calls.push('port'); },
+          removeRoot: () => removeE2eRunRoot(root),
+          report: cleanup => reportElectronLifecycleEvidence(testInfo, {
+            launch: [], observationsTruncated: false, cleanup,
+            ...(observation === undefined ? {} : { publicCloseFailure: observation }),
+          }),
+        })).rejects.toThrow('E2E_ELECTRON_CLEANUP_FAILED');
+        expect(calls).toEqual(['api', 'observe', 'owner', 'port']);
+        expect(existsSync(root)).toBe(true);
+        const attachment = testInfo.attachments.find(item => item.name === 'electron-lifecycle')!;
+        const bytes = attachment.body ?? readFileSync(attachment.path!);
+        expect(readFileSync(testInfo.outputPath('electron-lifecycle.json'))).toEqual(bytes);
+        expect(bytes.toString('utf8')).not.toContain('private');
+        expect(projectElectronLifecycle({ retry: testInfo.retry, attachments: [{ ...attachment, body: bytes }] }))
+          .toMatchObject({ status: 'captured', attempt: testInfo.retry,
+            publicCloseFailure: { startupGeneration: 2, reason },
+            cleanup: { runtime: 'unverified', port: 'released', runRoot: 'retained' } });
+      } finally { await removeE2eRunRootIfPresent(root); }
+    });
+  }
 
   test('preserves the exact original exception even when cleanup or reporting fails', async () => {
     const original = Object.freeze(new Error('original test failure'));

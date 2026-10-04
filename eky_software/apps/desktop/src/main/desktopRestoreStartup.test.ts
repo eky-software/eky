@@ -2,11 +2,14 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
+import type { BrowserWindow } from 'electron';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ProfileSnapshotBrokerClient } from '../profileBackup/profileSnapshotBrokerClient.js';
 import { createProfileSnapshotRuntimePaths } from '../profileBackup/profileSnapshotRuntimePaths.js';
 import { RecoveryPointScheduler } from '../profileBackup/recoveryPoint/recoveryPointScheduler.js';
+import { RecoveryPointCleanShutdownMarker } from '../profileBackup/recoveryPoint/recoveryPointCleanShutdownMarker.js';
+import { BackendShutdownExitError, type BackendShutdownOutcome } from '../runtime/backendShutdown.js';
 import { ProfileRestoreActivationJournalStore } from '../profileBackup/restore/profileRestoreActivationJournalStore.js';
 import { ProfileRestoreActivationTransaction } from '../profileBackup/restore/profileRestoreActivationTransaction.js';
 import { createDesktopProfilePaths } from '../runtime/desktopProfilePaths.js';
@@ -39,7 +42,7 @@ vi.mock('electron', async () => {
       port2 = new Port();
     },
     dialog: {},
-    ipcMain: {},
+    ipcMain: { handle: vi.fn(), removeHandler: vi.fn() },
     net: { fetch: electronBoundary.fetch },
     safeStorage: {},
     session: { defaultSession: {} },
@@ -55,7 +58,7 @@ vi.mock('../security/electronPermissionPolicy.js', () => ({
 }));
 vi.mock('./applicationWindow.js', () => ({
   createApplicationWindow: electronBoundary.createWindow,
-  loadApplicationWindow: vi.fn(),
+  loadApplicationWindow: vi.fn(async () => undefined),
 }));
 
 const roots: string[] = [];
@@ -93,6 +96,78 @@ afterEach(async () => {
 });
 
 describe('desktop restore startup composition', () => {
+  it.each(['exited', 'forced'] as const)(
+    'marks only a graceful backend shutdown clean after restored startup (%s)',
+    async (outcome) => {
+      const fixture = await createFixture(originalProfileId, { completeStartup: true });
+      fixture.stop.mockResolvedValue(outcome);
+      const lifecycle = await fixture.start();
+      expect(lifecycle).toBeDefined();
+
+      await lifecycle!.shutdown();
+
+      expect(fixture.stop).toHaveBeenCalledOnce();
+      await expect(fixture.marker.consume()).resolves.toBe(
+        outcome === 'exited' ? 'clean' : 'unclean',
+      );
+      await fixture.assertRegistryUnchanged();
+    },
+  );
+
+  it.each([false, true])(
+    'shares pending shutdown completion and failure between callers (failure: %s)',
+    async (failure) => {
+      const fixture = await createFixture(originalProfileId, { completeStartup: true });
+      const gate = createCompletionGate();
+      const entered = createCompletionGate();
+      vi.mocked(RecoveryPointScheduler.prototype.stopChecks).mockImplementationOnce(() => {
+        entered.resolve();
+        return gate.promise;
+      });
+      if (failure) fixture.stop.mockRejectedValue(new Error('SYNTHETIC_STOP_FAILED'));
+      const lifecycle = (await fixture.start())!;
+      const first = lifecycle.shutdown();
+      await entered.promise;
+      let secondSettled = false;
+      const second = lifecycle.shutdown();
+      void second.then(() => { secondSettled = true; }, () => { secondSettled = true; });
+      const results = Promise.allSettled([first, second]);
+      await Promise.resolve();
+      const settledBeforeRelease = secondSettled;
+      gate.resolve();
+      const actual = await results;
+
+      expect(settledBeforeRelease).toBe(false);
+      expect(actual.map(({ status }) => status)).toEqual(
+        failure ? ['rejected', 'rejected'] : ['fulfilled', 'fulfilled'],
+      );
+      if (failure) {
+        for (const result of actual) {
+          expect(result).toMatchObject({
+            status: 'rejected', reason: new Error('DESKTOP_SHUTDOWN_FAILED'),
+          });
+        }
+        await expect(lifecycle.shutdown()).rejects.toThrow('DESKTOP_SHUTDOWN_FAILED');
+      } else {
+        await lifecycle.shutdown();
+        expect(fixture.stop).toHaveBeenCalledOnce();
+      }
+      await expect(fixture.marker.consume()).resolves.toBe(failure ? 'unclean' : 'clean');
+      await fixture.assertRegistryUnchanged();
+    },
+  );
+
+  it('does not mark an unsuccessful backend exit as a clean shutdown', async () => {
+    const fixture = await createFixture(originalProfileId, { completeStartup: true });
+    fixture.stop.mockRejectedValue(new BackendShutdownExitError());
+    const lifecycle = (await fixture.start())!;
+
+    await expect(lifecycle.shutdown()).rejects.toThrow('DESKTOP_SHUTDOWN_FAILED');
+
+    await expect(fixture.marker.consume()).resolves.toBe('unclean');
+    await fixture.assertRegistryUnchanged();
+  });
+
   it('rejects foreign restored lineage, restores original bytes and validates them on restart', async () => {
     const fixture = await createFixture(foreignProfileId);
 
@@ -180,12 +255,25 @@ describe('desktop restore startup composition', () => {
   });
 });
 
+function createCompletionGate() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((complete) => { resolve = complete; });
+  return { promise, resolve };
+}
+
 async function createFixture(
   restoredProfileId: string,
-  options: { replacementTarget?: boolean } = {},
+  options: { replacementTarget?: boolean; completeStartup?: boolean } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'eky-desktop-restore-startup-'));
   roots.push(root);
+  if (options.completeStartup) {
+    electronBoundary.createWindow.mockReturnValue({} as BrowserWindow);
+    const candidateRunner = join(root, 'resources', 'desktop-runtime', 'runtime', 'workspaceCandidateRunner.js');
+    await mkdir(dirname(candidateRunner), { recursive: true });
+    await writeFile(candidateRunner, '// Synthetic boundary; never executed.\n');
+    await mkdir(join(root, 'resources', 'backend', 'dist', 'database', 'migrations'), { recursive: true });
+  }
   const { workspaceRoot } = deriveWorkspaceRoot(root, workspaceId, 1);
   const paths = createDesktopProfilePaths(workspaceRoot);
   const backupPaths = createProfileSnapshotRuntimePaths(paths.runtimeRoot);
@@ -289,8 +377,9 @@ async function createFixture(
       migrationChainIdentity: 'c'.repeat(64),
       profileId: (JSON.parse(await readFile(paths.databaseFilePath, 'utf8')) as { profileId: string }).profileId,
     }));
-  const stop = vi.fn(async () => {
+  const stop = vi.fn(async (): Promise<BackendShutdownOutcome> => {
     events.push('backendStopped');
+    return 'exited';
   });
   const relaunch = vi.fn();
   const assertRegistryUnchanged = async () => {
@@ -300,6 +389,7 @@ async function createFixture(
     databasePath: paths.databaseFilePath,
     events,
     journal,
+    marker: new RecoveryPointCleanShutdownMarker(backupPaths.recoveryPointCleanShutdownMarkerPath),
     pdfPath,
     relaunch,
     restoredBytes,

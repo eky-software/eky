@@ -1,5 +1,6 @@
 import catalog from '../../desktop/e2e/electronE2eBackendFailureCatalog.json' with { type: 'json' };
 import launchPhases from '../src/fixtures/electronLaunchPhases.json' with { type: 'json' };
+import publicCloseFailureCodes from '../src/fixtures/electronPublicCloseFailureCodes.json' with { type: 'json' };
 
 const maximumBytes = 256 * 1024;
 const evidenceFailureAnnotation = 'electron-evidence-failure';
@@ -71,6 +72,14 @@ export function projectElectronLifecycle(result) {
         !['released', 'unverified', 'notStarted'].includes(cleanup.port) ||
         !['removed', 'retained', 'removalFailed'].includes(cleanup.runRoot)) return { status: 'invalid' };
     const first = value.firstLaunchFailure;
+    const publicCloseFailure = value.publicCloseFailure;
+    if (publicCloseFailure !== undefined && (
+      !keysAre(publicCloseFailure, 'reason,startupGeneration') ||
+      !positive(publicCloseFailure.startupGeneration) ||
+      typeof publicCloseFailure.reason !== 'string' ||
+      !Object.hasOwn(publicCloseFailureCodes, publicCloseFailure.reason) ||
+      cleanup.runtime !== 'unverified' || cleanup.runRoot === 'removed'
+    )) return { status: 'invalid' };
     if (first !== undefined && first !== null && (!record(first) ||
         typeof first.phase !== 'string' || !Object.hasOwn(launchPhases, first.phase) ||
         (first.startupGeneration !== null && !positive(first.startupGeneration)))) return { status: 'invalid' };
@@ -92,6 +101,9 @@ export function projectElectronLifecycle(result) {
       nativeCapture: native.status, backendFailure: failure, launchExitCode: exitCode,
       observationsTruncated: value.observationsTruncated,
       cleanup: { api: cleanup.api, runtime: cleanup.runtime, port: cleanup.port, runRoot: cleanup.runRoot },
+      ...(publicCloseFailure === undefined ? {} : { publicCloseFailure: {
+        startupGeneration: publicCloseFailure.startupGeneration, reason: publicCloseFailure.reason,
+      } }),
     };
   } catch {
     return { status: 'invalid' };

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   BackendForcedShutdownTimeoutError,
   BackendGracefulShutdownTimeoutError,
+  BackendShutdownExitError,
   waitForBackendShutdown,
   type BackendShutdownProcess,
 } from './backendShutdown.js';
@@ -43,6 +44,22 @@ describe('backend shutdown', () => {
     expect(fixture.kill).not.toHaveBeenCalled();
   });
 
+  it.each([1, -1, Number.NaN])('rejects an unsuccessful or unknown exit code (%s)', async (exitCode) => {
+    vi.useFakeTimers();
+    const fixture = createProcessFixture();
+    const outcome = waitForBackendShutdown(fixture.processHandle, {
+      forceAfterTimeout: true,
+      timeoutMilliseconds: 3_000,
+    });
+    const rejection = expect(outcome).rejects.toBeInstanceOf(BackendShutdownExitError);
+
+    fixture.exit(exitCode);
+
+    await rejection;
+    expect(fixture.kill).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('proves process exit after forced termination for ordinary app shutdown', async () => {
     vi.useFakeTimers();
     const fixture = createProcessFixture();
@@ -56,7 +73,7 @@ describe('backend shutdown', () => {
     expect(fixture.kill).toHaveBeenCalledOnce();
     expect(fixture.hasExited()).toBe(false);
 
-    fixture.exit();
+    fixture.exit(1);
 
     await expect(outcome).resolves.toBe('forced');
   });
@@ -80,18 +97,18 @@ describe('backend shutdown', () => {
 });
 
 function createProcessFixture(): {
-  exit(): void;
+  exit(exitCode?: number): void;
   hasExited(): boolean;
   kill: ReturnType<typeof vi.fn>;
   processHandle: BackendShutdownProcess;
 } {
-  let exitListener: (() => void) | undefined;
+  let exitListener: ((exitCode: number) => void) | undefined;
   let exited = false;
   const kill = vi.fn(() => true);
   return {
-    exit() {
+    exit(exitCode = 0) {
       exited = true;
-      exitListener?.();
+      exitListener?.(exitCode);
     },
     hasExited: () => exited,
     kill,

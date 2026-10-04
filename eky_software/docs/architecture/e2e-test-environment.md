@@ -245,6 +245,18 @@ timeout-fallback. [Sulun omistaja](../../apps/e2e/src/fixtures/closeOwnedWindows
 erottaa julkisen close-virheen koko puun siivouksesta; kiinteä odotus ei
 ole kummankaan onnistumissignaali.
 
+Julkisen sulun ensimmäinen hylkäys säilyy nykyisen lifecycle-liitteen
+valinnaisessa `publicCloseFailure`-kentässä: `failed` tai `timedOut` sekä
+testin sisäinen `startupGeneration`. Havainto tallennetaan vain muistiin
+ennen omistajan stop-kutsua; siivouksen myöhempi virhe ei hävitä sitä.
+Havaintopoikkeus ei estä stop-kutsua tai korvaa alkuperäistä virhettä.
+Fixturen yleinen cleanup-hylkäys, omistajuustodiste ja porttitulos säilyvät
+erillisinä. `failed` voi tarkoittaa myös sulkukellon validointivirhettä,
+eikä kumpikaan luokka yksin nimeä sovelluksen juurisyytä. Puuttuvasta
+havainnosta ei päätellä onnistunutta sulkua. Turvallinen CI-projektio
+hyväksyy vain samasta katalogista nimetyt luokat ja positiivisen sukupolven;
+raakaa poikkeusta, polkua tai prosessitietoa ei lisätä julkaistavaan raporttiin.
+
 Electron-fixture erottaa `playwrightConnect`-, `firstWindow`- ja
 `domContentLoaded`-vaiheet. Virheen luokka perustuu Playwrightin timeout-tyyppiin
 tai havaittuun prosessin poistumiseen / sivun sulkeutumiseen; tuntematon syy

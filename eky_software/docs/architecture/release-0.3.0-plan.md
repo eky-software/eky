@@ -40,6 +40,11 @@ hyväksytty PR #294:n mainissa `082e187bb680b1c7a8dc5d0a5e967adf33403a7a`.
 sulkee A-paketin kolme korjausta. Nykyinen työ on
 [B1/B2:n rajattu toteutus](release-0.3.0-m1-preparation-plan.md#b1b2-rajattu-toteutus)
 B0:n hyväksyttyjen rajausten pohjalta.
+B1/B2 on yhdistetty PR #295:ssä, mutta sen main-hyväksyntä jäi avoimeksi
+Electronin loppusulun hylkäyksen vuoksi. Nykyinen integraatiojatko on
+[hyväksytty rajattu sulkukorjaus](release-0.3.0-m1-preparation-plan.md#b1b2-mainin-electron-sulkuhavainto)
+regressioineen ja muuttumattomine PR/main-portteineen. Tämä ei avaa T3:a
+eikä nimeä alkuperäistä CI-häiriötä korjatuksi.
 B:n toteutus, D-paketin muut ehdot ja koko 0.3.0 ovat edelleen avoinna.
 
 **M0, T1, T2, T3/R28 ja A1/A2/A3 on hyväksytty; M1:n muu työ on avoinna.**

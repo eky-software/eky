@@ -526,6 +526,16 @@ sammutuksen jälkeen. Markerissa on vain formaattiversio ja ISO-aikaleima.
 Väärä rakenne, puuttuva merkki tai kesken jäänyt marker-korvaus tulkitaan
 unclean shutdowniksi.
 
+Backendin sulkukahva säilyttää eron hallitun poistumisen (`exited`) ja
+pakkopysäytyksen (`forced`) välillä. Tavallisen sulun pakkopysäytys voi
+todistaa prosessin poistumisen, mutta se ei oikeuta puhtaan sammutuksen
+merkkiin. Aikakatkaisu, muu sulkuvirhe tai hallitun sulun virhekoodillinen
+poistuminen ei myöskään kirjoita merkkiä; `exited` edellyttää poistumiskoodia 0.
+Samanaikaiset desktopin `shutdown()`-kutsut odottavat samaa lopputulosta;
+keskeneräistä sulkua ei käsitellä jo valmistuneena. Sopimus todennetaan
+backend-kahvan regressioilla sekä todellisen desktop-compositionin ja
+marker-tiedoston yhteisellä testillä, ei pelkällä markerin yksikkötestillä.
+
 ## Päivitysten yhteensopivuus
 
 Normaali versiopäivitys säilyttää aiemmin tallennetun business-datan ja

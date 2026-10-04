@@ -750,6 +750,7 @@ async function startDesktopCompositionRuntime({
     | WorkspaceManagementCapability
     | undefined;
   let shutdownStarted = false;
+  let shutdownTask: Promise<void> | undefined;
   let workspaceStartupAccepted = false;
   let targetBuildAccepted = false;
   let restoredProfileAwaitingDecision = false;
@@ -1212,7 +1213,9 @@ async function startDesktopCompositionRuntime({
           ? { deferRestoredProfileAcceptance: true }
           : {}),
         mode: profileRestoreStartupMode,
-        stopBackend: () => backendHandle!.stop(),
+        async stopBackend() {
+          await backendHandle!.stop();
+        },
         async validateActiveProfile() {
           activeProfileValidation =
             await profileSnapshotBrokerClient.validateActiveProfile();
@@ -1710,8 +1713,10 @@ async function startDesktopCompositionRuntime({
       closeBrokers: closeWorkspaceRuntimeBrokers,
       disposeCapabilities: disposeWorkspaceRuntimeCapabilities,
       async stopBackend() {
-        await backendHandle.stop();
-        await recoveryPointScheduler.markCleanShutdown();
+        const outcome = await backendHandle.stop();
+        if (outcome === 'exited') {
+          await recoveryPointScheduler.markCleanShutdown();
+        }
       },
       stopRecoveryPointScheduler: () => recoveryPointScheduler.stopChecks(),
     },
@@ -1790,66 +1795,70 @@ async function startDesktopCompositionRuntime({
     focusApplicationWindow() {
       restoreWindowInputFocus(mainWindow);
     },
-    async shutdown() {
-      if (shutdownStarted) {
-        return;
+    shutdown() {
+      if (shutdownTask !== undefined) {
+        return shutdownTask;
       }
 
       shutdownStarted = true;
-      const shutdownStartedAt = Date.now();
-      desktopOperationalLogger.write(
-        createDesktopOperationalEvent(
-          { eventName: 'desktop.shutdownStarted' },
-          desktopOperationalIdentity,
-        ),
-      );
-      try {
-        const runtimeState = activeWorkspaceLifecycle.readState();
-        if (runtimeState === 'active') {
-          await activeWorkspaceLifecycle.quiesceWrites(
-            activeWorkspace.workspaceId,
-          );
-        }
-        if (activeWorkspaceLifecycle.readState() === 'quiesced') {
-          await activeWorkspaceLifecycle.stopAndProveHandlesClosed(
-            activeWorkspace.workspaceId,
-          );
-        } else if (activeWorkspaceLifecycle.readState() !== 'stopped') {
-          throw new Error('WORKSPACE_RUNTIME_RECOVERY_REQUIRED');
-        }
+      // Publish the shared task before any shutdown callback can re-enter.
+      shutdownTask = Promise.resolve().then(async () => {
+        const shutdownStartedAt = Date.now();
         desktopOperationalLogger.write(
           createDesktopOperationalEvent(
-            {
-              durationMs: Date.now() - shutdownStartedAt,
-              eventName: 'desktop.shutdownCompleted',
-            },
+            { eventName: 'desktop.shutdownStarted' },
             desktopOperationalIdentity,
           ),
         );
-      } catch {
-        await recoveryPointScheduler.stopChecks().catch(() => undefined);
-        await disposeWorkspaceRuntimeCapabilities().catch(() => undefined);
-        await backendHandle.stop().catch(() => undefined);
-        await closeWorkspaceRuntimeBrokers().catch(() => undefined);
-        desktopOperationalLogger.write(
-          createDesktopOperationalEvent(
-            {
-              durationMs: Date.now() - shutdownStartedAt,
-              errorCode: 'DESKTOP_SHUTDOWN_FAILED',
-              eventName: 'desktop.shutdownFailed',
-              retryable: false,
-              sideEffectState: 'unknown',
-              stage: 'shutdown',
-            },
-            desktopOperationalIdentity,
-          ),
-        );
-        throw new Error('DESKTOP_SHUTDOWN_FAILED');
-      } finally {
-        workspaceManagementCapability?.dispose();
-        workspaceManagementCapability = undefined;
-        workspaceManagementComposition.dispose();
-      }
+        try {
+          const runtimeState = activeWorkspaceLifecycle.readState();
+          if (runtimeState === 'active') {
+            await activeWorkspaceLifecycle.quiesceWrites(
+              activeWorkspace.workspaceId,
+            );
+          }
+          if (activeWorkspaceLifecycle.readState() === 'quiesced') {
+            await activeWorkspaceLifecycle.stopAndProveHandlesClosed(
+              activeWorkspace.workspaceId,
+            );
+          } else if (activeWorkspaceLifecycle.readState() !== 'stopped') {
+            throw new Error('WORKSPACE_RUNTIME_RECOVERY_REQUIRED');
+          }
+          desktopOperationalLogger.write(
+            createDesktopOperationalEvent(
+              {
+                durationMs: Date.now() - shutdownStartedAt,
+                eventName: 'desktop.shutdownCompleted',
+              },
+              desktopOperationalIdentity,
+            ),
+          );
+        } catch {
+          await recoveryPointScheduler.stopChecks().catch(() => undefined);
+          await disposeWorkspaceRuntimeCapabilities().catch(() => undefined);
+          await backendHandle.stop().catch(() => undefined);
+          await closeWorkspaceRuntimeBrokers().catch(() => undefined);
+          desktopOperationalLogger.write(
+            createDesktopOperationalEvent(
+              {
+                durationMs: Date.now() - shutdownStartedAt,
+                errorCode: 'DESKTOP_SHUTDOWN_FAILED',
+                eventName: 'desktop.shutdownFailed',
+                retryable: false,
+                sideEffectState: 'unknown',
+                stage: 'shutdown',
+              },
+              desktopOperationalIdentity,
+            ),
+          );
+          throw new Error('DESKTOP_SHUTDOWN_FAILED');
+        } finally {
+          workspaceManagementCapability?.dispose();
+          workspaceManagementCapability = undefined;
+          workspaceManagementComposition.dispose();
+        }
+      });
+      return shutdownTask;
     },
   };
 

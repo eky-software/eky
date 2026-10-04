@@ -1,6 +1,15 @@
 export interface BackendShutdownProcess {
   kill(): boolean;
-  once(event: 'exit', listener: () => void): unknown;
+  once(event: 'exit', listener: (exitCode: number) => void): unknown;
+}
+
+export type BackendShutdownOutcome = 'exited' | 'forced';
+
+export class BackendShutdownExitError extends Error {
+  constructor() {
+    super('The backend exited unsuccessfully during shutdown.');
+    this.name = 'BackendShutdownExitError';
+  }
 }
 
 export class BackendGracefulShutdownTimeoutError extends Error {
@@ -23,7 +32,7 @@ export function waitForBackendShutdown(
     forceAfterTimeout: boolean;
     timeoutMilliseconds: number;
   },
-): Promise<'exited' | 'forced'> {
+): Promise<BackendShutdownOutcome> {
   return new Promise((resolve, reject) => {
     let phase: 'graceful' | 'forced' | 'settled' = 'graceful';
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -62,7 +71,7 @@ export function waitForBackendShutdown(
       }
     };
 
-    processHandle.once('exit', () => {
+    processHandle.once('exit', (exitCode) => {
       if (phase === 'settled') {
         return;
       }
@@ -70,6 +79,10 @@ export function waitForBackendShutdown(
       phase = 'settled';
       if (timer !== undefined) {
         clearTimeout(timer);
+      }
+      if (outcome === 'exited' && exitCode !== 0) {
+        reject(new BackendShutdownExitError());
+        return;
       }
       resolve(outcome);
     });

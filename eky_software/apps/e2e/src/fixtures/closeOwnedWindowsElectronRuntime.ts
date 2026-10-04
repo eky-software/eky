@@ -1,12 +1,16 @@
 import type { E2eFixtureLifetime } from '../environment/e2eFixtureLifetime.js';
 import type { OwnedWindowsElectronBridge } from '../environment/startOwnedWindowsElectronBridge.js';
 import { ELECTRON_E2E_GRACEFUL_EXIT_SAFETY_TIMEOUT_MILLISECONDS } from './electronLaunchBudgets.js';
+import failureCodes from './electronPublicCloseFailureCodes.json' with { type: 'json' };
+
+export type ElectronPublicCloseFailureReason = keyof typeof failureCodes;
 
 interface CloseInput {
   application?: { close(): Promise<void> };
   alreadyClosed?: boolean;
   owner: Pick<OwnedWindowsElectronBridge, 'stop'>;
   lifetime: E2eFixtureLifetime;
+  observePublicCloseFailure?(reason: ElectronPublicCloseFailureReason): void;
 }
 
 interface CloseDependencies {
@@ -76,9 +80,12 @@ export async function closeOwnedWindowsElectronRuntime(
       }
     }
   } catch {
-    closeFailure = new Error(timedOut
-      ? 'E2E_ELECTRON_PUBLIC_CLOSE_TIMED_OUT'
-      : 'E2E_ELECTRON_PUBLIC_CLOSE_FAILED');
+    const reason = timedOut ? 'timedOut' : 'failed';
+    closeFailure = new Error(failureCodes[reason]);
+    // Record before owner-stop can replace the public-close error. No I/O or wait.
+    try { input.observePublicCloseFailure?.(reason); } catch {
+      // An optional observation cannot interrupt the existing cleanup chain.
+    }
   }
 
   // The existing owner alone verifies cleanup; retain its safe, private-backed error.
