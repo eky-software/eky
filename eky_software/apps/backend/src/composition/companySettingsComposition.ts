@@ -76,13 +76,15 @@ export function createCompanySettingsComposition(
           await getCompanySettings(input, companySettingsRepository),
           options.companyEmailSecretStore,
         ),
-      updateCompanySettings: async (input) =>
-        withCompanyEmailSecretStatus(
-          await logAuditWriteFailure(
-            () => updateCompanySettings(input, companySettingsRepository),
-            options,
-          ),
-          options.companyEmailSecretStore,
+      updateCompanySettings: (input) =>
+        logAuditWriteFailure(
+          () =>
+            updateCompanySettings(
+              input,
+              companySettingsRepository,
+              options.companyEmailSecretStore,
+            ),
+          options,
         ),
     }),
   );

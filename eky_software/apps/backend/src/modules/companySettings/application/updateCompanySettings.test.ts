@@ -1,11 +1,15 @@
 import { createActorContext } from '@eky/auth';
-import { AuthorizationError } from '@eky/permissions';
-import { describe, expect, it } from 'vitest';
+import { AuthorizationError, type Permission } from '@eky/permissions';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { CompanySettings } from '../domain/companySettings.js';
 import type { CompanySettingsAuditEvent } from '../domain/companySettingsAuditEvent.js';
+import { CompanySettingsValidationError } from '../domain/companySettingsRules.js';
 import type { CompanySettingsRepository } from '../ports/companySettingsRepository.js';
-import { updateCompanySettings } from './updateCompanySettings.js';
+import {
+  updateCompanySettings,
+  type UpdateCompanySettingsInput,
+} from './updateCompanySettings.js';
 
 class FakeCompanySettingsRepository implements CompanySettingsRepository {
   savedAuditEvent: CompanySettingsAuditEvent | undefined;
@@ -56,7 +60,7 @@ describe('updateCompanySettings', () => {
       repository,
     );
 
-    expect(repository.savedSettings).toBe(settings);
+    expect(repository.savedSettings).toEqual(settings);
     expect(repository.savedAuditEvent).toMatchObject({
       action: 'companySettings.updated',
       actorUserId: 'local-owner',
@@ -163,10 +167,78 @@ describe('updateCompanySettings', () => {
     ).rejects.toBeInstanceOf(AuthorizationError);
     expect(repository.savedSettings).toBeUndefined();
   });
+
+  it.each<{ name: string; permissions: Permission[] }>([
+    { name: 'no permissions', permissions: [] },
+    { name: 'secret permission only', permissions: ['manageCompanyEmailSecret'] },
+    { name: 'email settings permission only', permissions: ['manageCompanyEmailSettings'] },
+  ])('does not read secret status with $name', async ({ permissions }) => {
+    const repository = new FakeCompanySettingsRepository();
+    const findByCompanyId = vi.spyOn(repository, 'findByCompanyId');
+    const hasSecret = vi.fn(async () => true);
+
+    await expect(
+      updateCompanySettings(
+        {
+          ...createValidInput(),
+          actorContext: createCompanySettingsActorContext(permissions),
+          streetAddress: 'x'.repeat(201),
+        },
+        repository,
+        { hasSecret },
+      ),
+    ).rejects.toBeInstanceOf(AuthorizationError);
+
+    expect(hasSecret).not.toHaveBeenCalled();
+    expect(findByCompanyId).not.toHaveBeenCalled();
+    expect(repository.savedSettings).toBeUndefined();
+    expect(repository.savedAuditEvent).toBeUndefined();
+  });
+
+  it.each<[keyof Omit<UpdateCompanySettingsInput, 'actorContext'>, unknown]>([
+    ['businessId', 'x'.repeat(201)],
+    ['city', 'x'.repeat(201)],
+    ['companyName', 'x'.repeat(201)],
+    ['vatNumber', 'not-a-vat-number'],
+    ['defaultHourlyRateCents', -1],
+    ['defaultHourlyRateCents', '6500'],
+    ['hourlyRateShortcut', 'two\nlines'],
+    ['iban', 'not-an-iban'],
+    ['bic', 'not-a-bic'],
+    ['bankName', 'x'.repeat(201)],
+    ['email', 'x'.repeat(201)],
+    ['emailDeliveryProvider', 'unsupported-provider'],
+    ['emailDeliveryProvider', 'dnaSmtp'],
+    ['emailSenderName', 'two\nlines'],
+    ['emailSenderAddress', 'not-an-email'],
+    ['emailUsername', 'not-an-email'],
+    ['emailTestRecipientOverride', 'not-an-email'],
+    ['phone', 'x'.repeat(201)],
+    ['website', 'x'.repeat(201)],
+    ['postalCode', 'x'.repeat(201)],
+    ['streetAddress', 'x'.repeat(201)],
+  ])('validates %s before reading secret status or the repository', async (field, value) => {
+    const repository = new FakeCompanySettingsRepository();
+    const findByCompanyId = vi.spyOn(repository, 'findByCompanyId');
+    const hasSecret = vi.fn(async () => true);
+
+    await expect(
+      updateCompanySettings(
+        { ...createValidInput(), [field]: value },
+        repository,
+        { hasSecret },
+      ),
+    ).rejects.toBeInstanceOf(CompanySettingsValidationError);
+
+    expect(hasSecret).not.toHaveBeenCalled();
+    expect(findByCompanyId).not.toHaveBeenCalled();
+    expect(repository.savedSettings).toBeUndefined();
+    expect(repository.savedAuditEvent).toBeUndefined();
+  });
 });
 
 function createCompanySettingsActorContext(
-  permissions: Array<'manageCompanySettings'> = ['manageCompanySettings'],
+  permissions: Permission[] = ['manageCompanySettings'],
 ) {
   return createActorContext({
     actorId: 'local-owner',
@@ -174,4 +246,29 @@ function createCompanySettingsActorContext(
     companyId: 'dev-company',
     permissions,
   });
+}
+
+function createValidInput(): UpdateCompanySettingsInput {
+  return {
+    actorContext: createCompanySettingsActorContext(),
+    businessId: '',
+    city: '',
+    companyName: 'Synthetic Company',
+    vatNumber: '',
+    defaultHourlyRateCents: null,
+    hourlyRateShortcut: '',
+    iban: '',
+    bic: '',
+    bankName: '',
+    email: '',
+    emailDeliveryProvider: 'dryRun',
+    emailSenderName: '',
+    emailSenderAddress: '',
+    emailUsername: '',
+    emailTestRecipientOverride: '',
+    phone: '',
+    website: '',
+    postalCode: '',
+    streetAddress: '',
+  };
 }

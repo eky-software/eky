@@ -1,5 +1,5 @@
 import { EkyApiError, type EkyApiClient } from '@eky/api-client';
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { CompanySettingsForm } from './CompanySettingsForm.js';
 import { CompanyEmailSecretPanel } from './CompanyEmailSecretPanel.js';
@@ -52,6 +52,12 @@ interface CompanySettingsPageProps {
   profileProtectionCapability?: ProfileProtectionCapability;
 }
 
+interface CompanySettingsEditSession {
+  apiClient: CompanySettingsPageClient;
+  editRevision: number;
+  savePending: boolean;
+}
+
 export function CompanySettingsPage({
   apiClient,
   invoicePdfArchiveCapability,
@@ -67,6 +73,19 @@ export function CompanySettingsPage({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const editSession = useRef<CompanySettingsEditSession | null>(null);
+
+  useLayoutEffect(() => {
+    editSession.current = { apiClient, editRevision: 0, savePending: false };
+    setIsSaving(false);
+    setIsLoading(true);
+    setSaveErrorMessage(null);
+    setSuccessMessage(null);
+
+    return () => {
+      editSession.current = null;
+    };
+  }, [apiClient]);
 
   useEffect(() => {
     let isActive = true;
@@ -100,10 +119,13 @@ export function CompanySettingsPage({
   }, [apiClient]);
 
   async function handleSave(): Promise<void> {
-    if (isSaving) {
+    const session = editSession.current;
+    if (!session || session.apiClient !== apiClient || session.savePending || isLoading) {
       return;
     }
 
+    session.savePending = true;
+    const savedRevision = session.editRevision;
     setIsSaving(true);
     setSaveErrorMessage(null);
     setSuccessMessage(null);
@@ -113,16 +135,27 @@ export function CompanySettingsPage({
         toUpdateCompanySettingsRequest(form),
       );
 
-      setForm(toCompanySettingsForm(updatedSettings));
-      setSuccessMessage(uiText.companySettings.saveSuccess);
+      // A committed response acknowledges only the submitted form, not newer edits.
+      if (editSession.current === session && session.editRevision === savedRevision) {
+        setForm(toCompanySettingsForm(updatedSettings));
+        setSuccessMessage(uiText.companySettings.saveSuccess);
+      }
     } catch (error) {
-      setSaveErrorMessage(getErrorMessage(error));
+      if (editSession.current === session) {
+        setSaveErrorMessage(getErrorMessage(error));
+      }
     } finally {
-      setIsSaving(false);
+      if (editSession.current === session) {
+        session.savePending = false;
+        setIsSaving(false);
+      }
     }
   }
 
   function handleFieldChange(fieldName: keyof CompanySettingsFormModel, value: string): void {
+    if (editSession.current) {
+      editSession.current.editRevision += 1;
+    }
     setSuccessMessage(null);
     setForm((currentForm) => {
       if (fieldName === 'emailSenderAddress') {

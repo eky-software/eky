@@ -2,7 +2,7 @@
 
 ## Päätös ja nykyinen tila
 
-**Ajantasainen jatko 3.10.2026:** PR #283 on yhdistetty ja mainin omat
+**Ajantasainen jatko 4.10.2026:** PR #283 on yhdistetty ja mainin omat
 normaali CI sekä riippuvuustarkistus ovat hyväksyttyjä.
 [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
 sitoo hyväksynnän revisioon ja säilyttää vanhat timeout-/ETL-havainnot
@@ -20,10 +20,19 @@ on hyväksytty PR #288:n mainissa. Sen jälkeinen
 ja PR #290:n main-portit on hyväksytty. Alkuperäisen MSI-hylkäyksen
 juurisyy sekä vanha rollback-testihavainto säilyvät avoimina omille
 revisioilleen; niitä ei merkitä A1:n sovellusvioiksi tai myöhemmin korjatuiksi.
-Nykyinen työ on [A2/R05:n tallennusvastuun toteutus ja todennus](invoicing-ui-roadmap.md#a2-tallennusvastuun-valmistelu).
-Epäselvän ensitallennuksen uuden luontiyrityksen esto on hyväksytty;
-rajattu toteutus ja kohdetodennus ovat käynnissä.
-A2, A3 ja koko 0.3.0 ovat edelleen avoinna.
+A2/R05 ja sen rajattu MSI-integraatiojatko ovat hyväksyttyjä jatkokehitykseen
+PR #292:n mainissa tapauskohtaisella Electron-uusintapäätöksellä. Mainin
+CI jäi punaiseksi flaky-tuloksen vuoksi; syytä ei ole todistettu korjatuksi.
+[M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+erottaa hyväksynnän ja avoimen havainnon. Nykyinen työ on omistajan hyväksymä
+[Oma yritys -tallennuksen kahden vian korjaus](release-0.3.0-m1-preparation-plan.md#oma-yritys-rajattu-tallennuskorjaus).
+Hyväksytty etenemisjärjestys on rajattu palautustestin siivouskorjaus,
+Oma yritys -korjausten PR/main-hyväksyntä ja vasta sen jälkeen A3/R06.
+Palautustestin siivous ja erikseen hyväksytty rollback-testin jako on
+katselmoitu; workspace-testit ja tyypitys läpäisivät. PR/main-hyväksyntä
+on vielä avoin, eikä jako sulje vanhojen aikakatkaisujen juurisyitä.
+Tarkka rajaus ja näyttö kuuluvat M1:n nykyiseen jatkamiskohtaan.
+A3, D-paketin muut ehdot ja koko 0.3.0 ovat edelleen avoinna.
 
 **M0, T1, T2 ja T3/R28 on hyväksytty; M1:n sovelluskorjaukset ovat avoinna.**
 Myös T-paketin jälkeinen integraatiojatko on hyväksytty PR #281:n mainissa.
@@ -789,9 +798,11 @@ sulkee prosessiomistajuuden, oikeiden kuluttajien siirron ja korvatun
 aktiivisen toteutuksen poiston hyväksytyssä rajauksessa. Aiemmat kokeet,
 määrät ja hylkäysten syyepävarmuudet säilyvät omina checkpointteinaan.
 Myös integraation jatkokorjaus on hyväksytty PR #281:n omissa main-porteissa.
-M1:n sovelluskorjaukset ovat edelleen avoinna. Seuraava rajattu tuotantopala
-on A1/R01 tuoreen aloitusportin jälkeen; se ei sulje A2/R05:tä, A3/R06:ta
-tai muita paketteja.
+M1:n sovelluskorjaukset ovat osittain valmiit: A1/R01 ja A2/R05 ovat
+hyväksyttyjä yllä kuvatulla integraationäytöllä ja A2:n rajatulla
+etenemispäätöksellä. Nykyinen pala on Oma yritys -tallennuskorjauksen
+hyväksyntä; sen jälkeen valmistellaan A3/R06 omalla aloitusportillaan.
+Kohdetestit eivät yksin sulje uuden revision integraatiota tai muita paketteja.
 Tarkka jako on [M1-suunnitelmassa](release-0.3.0-m1-preparation-plan.md):
 T1a/T1b testien ajokytkentä, T2 projektivalinta ja build-edellytykset,
 T3 testiprosessien omistajuus sekä A1:n rajattu kohdekorjaus.
@@ -846,7 +857,11 @@ kuitata valmiiksi pelkän vanhan diagnostiikkalistan läpäisyllä.
 T-paketin T1a/T1b, T2 ja T3/R28 on hyväksytty niiden omien
 integraatioiden näytöllä; [T3:n integraatiohyväksyntä](e2e-test-environment-history.md#t3n-integraatiohyväksyntä) ei perustu
 pelkkään historialliseen T3c-W:n 4/4-koetulokseen. A/B/C/K/D/E/F/G/H/I:n
-tila on **suunniteltu / korjaus ja hyväksyntä tekemättä**.
+kokonaishyväksyntä on edelleen avoin. A-paketista A1/R01 ja A2/R05 on
+hyväksytty jatkokehitykseen; A3/R06 on tekemättä. D-paketin Oma yritys
+-tallennuksen rajatut korjaukset on kohdetestattu, mutta niiden integraatio
+ja D:n muut ehdot ovat avoinna. B/C/K/E/F/G/H/I ovat suunniteltuja, eivät
+toteutuksen tai hyväksynnän osalta valmiita.
 Päätösportin vaikutusalue odottaa hyväksyntää.
 
 I-paketin dokumentaatiokatselmukseen kuuluu myös ohjelmanosittainen
@@ -959,10 +974,38 @@ onnistuminen/esto/virhe/peruutus, turvallinen jäljitettävyys, sovitut
 diagnostiikka- ja tukiprojektiot, ilmoitukset, ohje ja palautettavuus.
 Uusi toiminto tuo nämä mukanaan eikä vain onnellisen polun testiä.
 
-Koko korjaus- ja ominaisuuskokonaisuuden valmistuttua tehdään uusi vastaavan
-laajuinen arkkitehtuuri-/ylläpidettävyyskatselmus ja uusi Codex Security
-Deep Scan `Ultra`-päättelyllä. Ajankohta on 0.3.0-toteutuskokonaisuuden
-jälkeen mutta ennen lopullista toimitushyväksyntää. Ajo on uusi erikseen
+Koko korjaus- ja ominaisuuskokonaisuuden valmistuttua tehdään ensin koko
+sovelluksen syvä koodi-, arkkitehtuuri- ja ylläpidettävyyskatselmus, vasta
+sen jälkeen uusi Codex Security Deep Scan `Ultra`-päättelyllä. Omistajan
+4.10.2026 täsmennys määrää tämän järjestyksen, ei uutta rinnakkaista roadmapia
+tai kaikkien suurten tiedostojen automaattista uudelleenkirjoitusta.
+
+Koodikatselmus kattaa backendin, webin, desktopin, jaetut paketit, jokaisen
+toteutetun moduulin ja yhteisen testiperustan:
+
+- vastaako todellinen riippuvuussuunta hyväksyttyä modulaarista monoliittia,
+  Clean Architecture -kerrosrajoja sekä domain/application/port/adapter-jakoa
+- säilyvätkö datan omistajuus, composition rootin vastuu ja moduulien julkiset
+  luku-/kirjoitusportit ilman oikopolkuja tai kiertäviä riippuvuuksia
+- löytyykö vaikeasti seurattavaa ohjausta, päällekkäistä logiikkaa tai usean
+  vastuun koodikeskittymiä, joiden jakaminen oikeasti parantaa ylläpidettävyyttä;
+  rivimäärä yksin ei ole refaktorointiperuste
+- tarvitseeko todellinen toisto yhteisen työkalun vai kuuluuko se edelleen
+  moduuliin; ei yleistä utils-kerrosta tai uutta riippuvuutta ennakolta
+- ovatko uudet moduulit ja testit lisättävissä nykyisten pienten rajapintojen
+  kautta, ja vastaavatko ohjeet, lukureitit, testit ja diagnostiikka toteutusta.
+
+Tuloksena kirjataan lähdeviitteellinen, priorisoitu havaintolista, omistajat,
+korjausten rajaus ja hyväksyntäehdot nykyiseen suunnitelmaan. Vertailuperustana
+ovat hyväksytyt ADR:t, [moduulirajat](module-boundaries.md),
+[integraatiomatriisi](module-integration-matrix.md) ja
+[siivousroadmapin vastuusäännöt](codebase-cleanup-roadmap.md).
+Korjaukset tehdään erillisinä katselmoituina paloina; laaja arkkitehtuurimuutos
+vaatii edelleen päätöksen. Sovitut ennen julkaisua tarvittavat korjaukset ja
+niiden regressiot valmistuvat ennen Deep Scanin ehdokasrevision jäädytystä.
+
+Ajankohta on 0.3.0-toteutuskokonaisuuden jälkeen mutta ennen lopullista
+toimitushyväksyntää. Deep Scan on uusi erikseen
 käynnistettävä tarkistus täsmälliseen ehdokasrevisioon, ei keskeytetyn ajon
 automaattinen jatko tai tämän suunnitelmatyön sivutoimi. Varmista silloin
 työkalun saatavuus ja asetukset; päättelytaso ei itsessään todista kattavuutta.

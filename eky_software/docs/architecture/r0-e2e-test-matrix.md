@@ -406,6 +406,13 @@ revision omia PR/main-portteja; niiden hyväksyntä on kirjattu erikseen
 | COMPANY-UI-001 | P0; web-e2e | Synteettiset asetukset; muuta yhteys-, pankki- ja ei-salaisia sähköpostitietoja | Tallennus onnistuu ja refresh säilyttää arvot | Master data muuttuu; auditissa vain changed category | Vanhat/uudet arvot auditissa | implemented-e2e |
 | COMPANY-AUDIT-001 | P0; integration, system | Nykyiset asetukset; muuta pankki- ja sähköpostiasetuksia | 2xx ja turvallinen Activity | Arvot kannassa; auditissa vain sallitut kategoriat; tukipaketin poissulku säilyy integraatiotestien todistamana | IBAN, sender email, SMTP username | implemented-e2e |
 | COMPANY-SECRET-001 | P0; integration, electron-e2e, security | Ei testisalaisuutta; aseta, tarkista status, poista ja restart | Renderer näkee vain boolean-tilan | Salaisuus vain safeStorage-testialueella; salattu blob säilyy restartissa ja kaikki slotit poistuvat | Secret, hash, pituus, ref tai plaintext | implemented-e2e |
+| COMPANY-SAVE-001 | P0; web-e2e | Oikea PUT commitataan, vastaus pidätetään; muokkaa nimeä ja sähköpostia, yritä toista lähetystä | Uudempi lomake säilyy ilman väärää saved-palautetta, vain yksi keskeneräinen kirjoitus | Ensimmäinen arvo ja yksi audit, seuraava käsintallennus ja refresh säilyttävät uudet arvot | Lomakearvot technical logissa | implemented-e2e; kohdetodennus läpäisi |
+| COMPANY-SAVE-002 | P0; web-e2e, fault | Rajattu HTTP-hylkäys ilman kirjoitusta, uudempi syöte odotusaikana | Turvallinen virhe, arvot säilyvät ja käsintallennus vapautuu | Hylkäys ei muuta tietoja/auditia; käyttäjän uusi tallennus onnistuu | Tekninen virhe tai lomakearvot lokissa | implemented-e2e; kohdetodennus läpäisi |
+| COMPANY-SAVE-003 | P1; web-e2e | Tallennusvastaus pidätetään näkymästä poistumisen ja paluun yli | Vanha vastaus ei muuta uuden näkymän arvoja tai palautetta | Uusi käyttäjän tallennus säilyttää nykyisen syötteen | Vanhan session data uudessa näkymässä | implemented-e2e; kohdetodennus läpäisi |
+| COMPANY-SAVE-STATUS-001 | P0; application, HTTP integration, security | Permission/validointi, pending/rejected/true/false secret-status ja auditin kirjoitusvirhe | Statusongelma ennen mutaatiota, ei false-fallbackia; onnistumisessa todellinen tila | Asetukset ja audit atomiset, ei commitin jälkeistä statuskyselyä | Raakavirhe, salaisuus ja asetusten arvot vastauksessa/lokissa | integration-kohdetodennus läpäisi; ei Playwright-E2E |
+
+Tallennuskorjauksen [hyväksyntätila ja erilliset avoimet havainnot](release-0.3.0-m1-preparation-plan.md#oma-yritys-rajattu-tallennuskorjaus)
+erottavat kohdetodennuksen koko workspace- ja PR/main-porttien hyväksynnästä.
 
 ## Invoicing
 

@@ -16,6 +16,7 @@ import {
 } from '../domain/companySettingsRules.js';
 import { normalizeCompanyEmailSettings } from '../domain/companyEmailSettings.js';
 import { normalizeCompanyBankDetails } from '../domain/companyBankDetails.js';
+import type { CompanyEmailSecretStore } from '../ports/companyEmailSecretStore.js';
 import type { CompanySettingsRepository } from '../ports/companySettingsRepository.js';
 
 export interface UpdateCompanySettingsInput {
@@ -44,6 +45,7 @@ export interface UpdateCompanySettingsInput {
 export async function updateCompanySettings(
   input: UpdateCompanySettingsInput,
   companySettingsRepository: CompanySettingsRepository,
+  companyEmailSecretStore?: Pick<CompanyEmailSecretStore, 'hasSecret'>,
 ): Promise<CompanySettings> {
   requirePermission(input.actorContext, 'manageCompanySettings');
 
@@ -88,11 +90,17 @@ export async function updateCompanySettings(
     streetAddress: normalizeCompanySettingsField(input.streetAddress, 'Company street address'),
   });
 
+  // Resolve response-only status before the atomic settings and audit write.
+  const emailSecretConfigured =
+    companyEmailSecretStore === undefined
+      ? false
+      : await companyEmailSecretStore.hasSecret(settings.companyId);
+
   const current = await companySettingsRepository.findByCompanyId(
     input.actorContext.companyId,
   );
 
-  return companySettingsRepository.upsertCompanySettings(
+  const savedSettings = await companySettingsRepository.upsertCompanySettings(
     settings,
     createCompanySettingsAuditEvent({
       actorUserId: input.actorContext.actorId,
@@ -100,4 +108,6 @@ export async function updateCompanySettings(
       updated: settings,
     }),
   );
+
+  return { ...savedSettings, emailSecretConfigured };
 }
