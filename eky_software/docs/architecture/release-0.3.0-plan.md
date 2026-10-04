@@ -33,11 +33,16 @@ Palautustestin siivous, erikseen hyväksytty rollback-testin jako ja
 Oma yritys -korjaukset on katselmoitu ja hyväksytty PR #293:n mainissa
 `b7194db56208c3526ed48b94083849a404f28ab8`. Sen omat 11 porttia ja
 kaksi asennuskoetoistoa läpäisivät ilman uusintoja. Tämä ei sulje vanhojen
-aikakatkaisujen juurisyitä. Nykyinen työ on [A3/R06](invoicing-ui-roadmap.md#a3-hyväksyntävalmiuden-vastaussidonta),
-jonka rajaus ja hyväksyntänäyttö kuuluvat M1:n nykyiseen jatkamiskohtaan.
-A3, D-paketin muut ehdot ja koko 0.3.0 ovat edelleen avoinna.
+aikakatkaisujen juurisyitä. Myös
+[A3/R06](invoicing-ui-roadmap.md#a3-hyväksyntävalmiuden-vastaussidonta) on
+hyväksytty PR #294:n mainissa `082e187bb680b1c7a8dc5d0a5e967adf33403a7a`.
+[Loppuhyväksyntä](https://github.com/eky-software/eky/pull/294#issuecomment-5980132408)
+sulkee A-paketin kolme korjausta. Nykyinen työ on
+[B1/B2:n rajattu toteutus](release-0.3.0-m1-preparation-plan.md#b1b2-rajattu-toteutus)
+B0:n hyväksyttyjen rajausten pohjalta.
+B:n toteutus, D-paketin muut ehdot ja koko 0.3.0 ovat edelleen avoinna.
 
-**M0, T1, T2 ja T3/R28 on hyväksytty; M1:n sovelluskorjaukset ovat avoinna.**
+**M0, T1, T2, T3/R28 ja A1/A2/A3 on hyväksytty; M1:n muu työ on avoinna.**
 Myös T-paketin jälkeinen integraatiojatko on hyväksytty PR #281:n mainissa.
 [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
 omistaa täsmällisen lähtörevision, sen omat portit ja avoimet
@@ -805,7 +810,19 @@ M1:n sovelluskorjaukset ovat osittain valmiit: A1/R01 ja A2/R05 ovat
 hyväksyttyjä yllä kuvatulla integraationäytöllä ja A2:n rajatulla
 etenemispäätöksellä. Oma yritys -tallennuskorjauksen ja rajattujen
 testikorjausten integraatio on hyväksytty PR #293:n mainissa.
-Nykyinen pala on A3/R06:n toteutus ja todennus omilla porteillaan.
+Myös A3/R06 on hyväksytty PR #294:n mainissa; sen
+[loppuhyväksyntä](https://github.com/eky-software/eky/pull/294#issuecomment-5980132408)
+sulkee A-paketin kolme rajattua korjausta. Nykyinen työ on
+[B1/B2-toteutus](release-0.3.0-m1-preparation-plan.md#b1b2-rajattu-toteutus):
+SMTP:n R12/R13 ja hyvityksen R08. B0:ssa tarkistettiin alkuperäiset
+turvallisuushavainnot, B1-B5-toteutusjärjestys ja
+revision, toimitussuojan sekä vanhan datan päätösportit. Omistaja hyväksyi
+B-P1:n revisiosidonnan ja rajatut migraatiot. B-P2:ssa valittiin onnistuneen
+testilähetyksen jälkeisen muokkaamisen säilyttävä toimitushistoria
+suunnitteluun. B-P3:n säilyneen, tarkistetun legacy-PDF:n erikseen vahvistettu
+uusi lähetys on hyväksytty ilman regenerointia tai takautuvaa varmuusväitettä.
+Yleistä vanhan SMTP-historian estoa ei hyväksytty. B3/B4:n historia ja
+migraatiot eivät ole alkaneet eivätkä kuulu rajattuun B1/B2-toteutukseen.
 Kohdetestit eivät yksin sulje uuden revision integraatiota tai muita paketteja.
 Tarkka jako on [M1-suunnitelmassa](release-0.3.0-m1-preparation-plan.md):
 T1a/T1b testien ajokytkentä, T2 projektivalinta ja build-edellytykset,
@@ -860,13 +877,13 @@ kuitata valmiiksi pelkän vanhan diagnostiikkalistan läpäisyllä.
 
 T-paketin T1a/T1b, T2 ja T3/R28 on hyväksytty niiden omien
 integraatioiden näytöllä; [T3:n integraatiohyväksyntä](e2e-test-environment-history.md#t3n-integraatiohyväksyntä) ei perustu
-pelkkään historialliseen T3c-W:n 4/4-koetulokseen. A/B/C/K/D/E/F/G/H/I:n
-kokonaishyväksyntä on edelleen avoin. A-paketista A1/R01 ja A2/R05 on
-hyväksytty jatkokehitykseen; A3/R06:n todennus ja integraatio ovat kesken.
+pelkkään historialliseen T3c-W:n 4/4-koetulokseen. A-paketin A1/R01, A2/R05
+ja A3/R06 ovat hyväksyttyjä; viimeisin hyväksyntä on PR #294:n mainissa.
+B/C/K/D/E/F/G/H/I:n kokonaishyväksyntä on edelleen avoin.
 D-paketin Oma yritys -tallennuksen rajatut korjaukset on hyväksytty
 PR #293:n mainissa, mutta D:n muut ehdot ovat avoinna.
-B/C/K/E/F/G/H/I ovat suunniteltuja, eivät
-toteutuksen tai hyväksynnän osalta valmiita.
+B:n lähdevertailun jälkeen B1/B2:n rajattu toteutus on käynnissä.
+B/C/K/E/F/G/H/I eivät ole toteutuksen tai hyväksynnän osalta valmiita.
 Päätösportin vaikutusalue odottaa hyväksyntää.
 
 I-paketin dokumentaatiokatselmukseen kuuluu myös ohjelmanosittainen
@@ -903,8 +920,10 @@ M1-valmistelussa tallennetut 13 havaintoinstanssia ja korjausehdotukset
 luettiin uudelleen lisäosasta. Ajon tila on yhä `canceled`, eikä suljettua
 loppuraporttia ole saatavilla. Alla oleva viiden ryhmän työjako säilyy;
 alkuperäisiä vakavuusluokkia tai validointirajoituksia ei yhdistetä uudeksi
-skannerin tulokseksi. Nykyisen mainin tuotantolähteet näillä alueilla eivät
-ole muuttuneet skannauksen jälkeen; tämä vertailu ei ole uusi runtime-testi.
+skannerin tulokseksi. B0:ssa 4.10.2026 vertailtiin lisäksi B:n Invoicing-/SMTP-
+tuotantopolut hyväksyttyyn PR #294:n mainiin: niiden toteutukset eivät olleet
+muuttuneet skannauksen lähtörevisiosta. Tämä rajattu vertailu ei ole uusi
+runtime-testi eikä muiden pakettien ajantasainen tarkastus.
 
 | Tunnus | Suunniteltu turvasopimus | Suhde muuhun työhön |
 | --- | --- | --- |
@@ -943,6 +962,13 @@ riippuvuustiedot kuuluvat loppukatselmuksen kattavuuslistaan.
   manager-kerros tai globaali lukko. SMTP-verkkokutsua ei pidetä avoimen
   SQLite-transaktion sisällä. Hyvityksen laskenta seuraa hyväksyttyä
   laskentasopimusta; epäselvä pyöristysratkaisu hyväksytään ensin.
+  [B0:n päätöstaulukko](release-0.3.0-m1-preparation-plan.md#päätökset-ennen-bn-toteutusta)
+  erottaa hyväksytyn B-P1:n revisiosidonnan/migraatiot, B-P2:n valitun
+  historiasuunnan ja B-P3:n hyväksytyn rajatun legacy-uudelleenlähetyksen.
+  Onnistunut itselle tehty testilähetys ei saa aiheuttaa pysyvää
+  muokkausestoa. Historiatietomalli ja backup/restore täsmennetään ennen
+  vaikutusalueensa toteutusta; legacy-resendin sisältövarmuuden raja säilyy.
+  Nykyistä `sent`-sääntöä tai unresolved-toimituksen suojaa ei lievennetä.
 - D/E: secret-operaation todennettu peruutus tai epävarman tilan sovitus,
   asetusten osittaisen saatavuuden palaute, viitatun asiakastyypin muutoksen
   esto tai hallittu siirto sekä numeroinnin loppurajan käyttäytyminen.

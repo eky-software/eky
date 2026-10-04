@@ -359,6 +359,16 @@ veroa erikseen. Net-tilassa kumulatiivinen ALV lasketaan ryhmän
 kumulatiivisesta verottomasta summasta. Gross-tilassa kumulatiivinen veroton
 summa erotellaan ryhmän kumulatiivisesta verollisesta summasta.
 
+Sama ryhmäsääntö muodostaa myös alkuperäisen laskun hyvityskapasiteetin.
+Snapshotin rivikohtaiset vero-osuudet ovat näyttöarvoja, eikä niiden summa
+korvaa laskun auktoritatiivista ALV-ryhmää. Net-ryhmän lähtöarvo on
+tallennettu veroton summa, gross-ryhmän tallennettu verollinen summa.
+Tämä ei laske rivejä uudelleen nykyisestä hinnastosta eikä muuta vanhoja
+laskuja tai jo tallennettuja hyvityksiä. Rivien validointi, turvalliset
+kokonaislukurajat ja kumulatiivisten ylitysten estot säilyvät.
+R08-korjauksen integraatiotila on
+[B1/B2-suunnitelmassa](release-0.3.0-m1-preparation-plan.md#b1b2-rajattu-toteutus).
+
 Nykyiselle hyvitykselle kuuluva ryhmän vero tai veroton summa on
 kumulatiivisen tavoitteen ja aiempien ei-peruttujen hyvitysten erotus. Se
 jaetaan nykyisille hyvitysriveille deterministisesti kokonaisluvuilla niin,

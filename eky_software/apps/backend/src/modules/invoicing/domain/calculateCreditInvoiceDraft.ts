@@ -238,6 +238,23 @@ function createVatCapacities(
       grossCents: addSafe(current?.grossCents ?? 0, line.grossCents),
     });
   }
+
+  // Snapshot line taxes are display values; capacity follows invoice VAT groups.
+  for (const [vatRateBasisPoints, capacity] of capacities) {
+    if (capacity.priceInputMode === 'net') {
+      capacity.vatCents = roundHalfUp(
+        BigInt(capacity.netCents) * BigInt(vatRateBasisPoints),
+        basisPointsScale,
+      );
+      capacity.grossCents = addSafe(capacity.netCents, capacity.vatCents);
+    } else {
+      capacity.netCents = roundHalfUp(
+        BigInt(capacity.grossCents) * basisPointsScale,
+        basisPointsScale + BigInt(vatRateBasisPoints),
+      );
+      capacity.vatCents = subtractSafe(capacity.grossCents, capacity.netCents);
+    }
+  }
   return capacities;
 }
 

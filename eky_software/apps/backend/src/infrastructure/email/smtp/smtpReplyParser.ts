@@ -23,18 +23,36 @@ export class SmtpReplyParser {
   }
 
   push(chunk: Uint8Array): SmtpReply[] {
-    this.buffer += Buffer.from(chunk).toString('latin1');
-    this.assertBufferedDataIsBoundedAndCanonical();
-
     const replies: SmtpReply[] = [];
-    let lineEnd = this.buffer.indexOf('\r\n');
 
-    while (lineEnd >= 0) {
-      const line = this.buffer.slice(0, lineEnd);
-      this.buffer = this.buffer.slice(lineEnd + 2);
-      replies.push(...this.consumeLine(line));
-      this.assertBufferedDataIsBoundedAndCanonical();
-      lineEnd = this.buffer.indexOf('\r\n');
+    // Bound the current line and reply, not an arbitrary TLS chunk.
+    for (const byte of chunk) {
+      const character = String.fromCharCode(byte);
+      const afterCarriageReturn = this.buffer.endsWith('\r');
+      if (
+        character === '\0' ||
+        (afterCarriageReturn && character !== '\n') ||
+        (character === '\n' && !afterCarriageReturn)
+      ) {
+        throw protocolError();
+      }
+
+      if (character === '\n') {
+        replies.push(...this.consumeLine(this.buffer.slice(0, -1)));
+        this.buffer = '';
+        continue;
+      }
+
+      const nextLength = this.buffer.length + 1;
+      const lineLimit =
+        this.maximumReplyLineBytes + (character === '\r' ? 1 : 0);
+      if (
+        nextLength > lineLimit ||
+        this.currentReplyBytes + nextLength > this.maximumReplyBytes
+      ) {
+        throw protocolError();
+      }
+      this.buffer += character;
     }
 
     return replies;
@@ -95,31 +113,6 @@ export class SmtpReplyParser {
     this.currentReplyBytes = 0;
 
     return [reply];
-  }
-
-  private assertBufferedDataIsBoundedAndCanonical(): void {
-    if (
-      Buffer.byteLength(this.buffer, 'latin1') > this.maximumReplyLineBytes + 2 ||
-      this.buffer.includes('\0')
-    ) {
-      throw protocolError();
-    }
-
-    for (let index = 0; index < this.buffer.length; index += 1) {
-      const character = this.buffer[index];
-
-      if (character === '\n' && this.buffer[index - 1] !== '\r') {
-        throw protocolError();
-      }
-
-      if (
-        character === '\r' &&
-        index < this.buffer.length - 1 &&
-        this.buffer[index + 1] !== '\n'
-      ) {
-        throw protocolError();
-      }
-    }
   }
 }
 

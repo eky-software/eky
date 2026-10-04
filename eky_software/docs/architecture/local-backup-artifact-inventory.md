@@ -79,6 +79,13 @@ suoraa SQL-pääsyä Invoicingin tauluihin eikä yleistä filesystem-listausta.
 
 ### Current PDF -malli
 
+**Suunniteltu 0.3.0-muutos, ei vielä toteutettu:**
+[B3/B4:n sisältöhistoria ja backup-sopimus](release-0.3.0-m1-preparation-plan.md#b3b4-tietomalli-portit-ja-migraatiojärjestys)
+laajentaa Invoicingin auktoritatiivisen catalogin myös saman laskun
+historiallisiin PDF:iin ja hyväksytyn legacy-polun säilytettyyn artifactiin.
+Nykyisen containerin ja katalogiesityksen säilyttäminen on suunnittelusuunta;
+schema-/palautustodistus kuuluu B5:een. Alla kuvataan vielä nykyinen toteutus.
+
 Nykyinen tietomalli säilyttää enintään yhden `approved_invoice_pdf`-rivin
 yrityksen ja laskun yhdistelmälle. Sama malli kattaa:
 

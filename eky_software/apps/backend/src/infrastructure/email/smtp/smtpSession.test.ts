@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { SmtpConnection } from './smtpConnection.js';
 import { SmtpTransportError } from './smtpErrors.js';
@@ -12,6 +12,8 @@ const defaultTimeouts = {
   greetingMilliseconds: 1_000,
   totalMilliseconds: 10_000,
 };
+
+afterEach(() => vi.restoreAllMocks());
 
 describe('deliverSmtpMessage', () => {
   it('delivers with advertised AUTH PLAIN and never exposes credentials as commands', async () => {
@@ -55,6 +57,73 @@ describe('deliverSmtpMessage', () => {
       Buffer.from('secret-value').toString('base64'),
     ]);
   });
+
+  it.each(['deadline', 'quitThrow', 'quitReject', 'closeThrow'] as const)(
+    'preserves final acceptance when cleanup fails: %s',
+    async (failure) => {
+      const connection = new FakeSmtpConnection('PLAIN');
+      let now = 100;
+      vi.spyOn(Date, 'now').mockImplementation(() => now);
+      const sendData = connection.sendData.bind(connection);
+      const dataSpy = vi.spyOn(connection, 'sendData').mockImplementation(async (data) => {
+        const accepted = await sendData(data);
+        if (failure === 'deadline') now += defaultTimeouts.totalMilliseconds;
+        return accepted;
+      });
+      const sendCommand = connection.sendCommand.bind(connection);
+      vi.spyOn(connection, 'sendCommand').mockImplementation((command) => {
+        if (command === 'QUIT') {
+          if (failure === 'quitThrow') throw new Error('Synthetic QUIT failure');
+          if (failure === 'quitReject') return Promise.reject(new Error('Synthetic QUIT failure'));
+        }
+        return sendCommand(command);
+      });
+      const closeSpy = vi.spyOn(connection, 'close').mockImplementation(() => {
+        connection.closed = true;
+        if (failure === 'closeThrow') throw new Error('Synthetic close failure');
+      });
+
+      await expect(deliverSmtpMessage(createInput(), {
+        connect: async () => connection,
+        timeouts: defaultTimeouts,
+      })).resolves.toEqual({ accepted: true, providerMessageId: null });
+
+      expect(dataSpy).toHaveBeenCalledTimes(1);
+      expect(dataSpy.mock.calls[0]?.[0].every((byte) => byte === 0)).toBe(true);
+      expect(closeSpy).toHaveBeenCalledTimes(1);
+      expect(connection.closed).toBe(true);
+      if (failure === 'deadline') expect(connection.commands).not.toContain('QUIT');
+    },
+  );
+
+  it.each(['rejected', 'unknown'] as const)(
+    'preserves a nonaccepted DATA outcome despite a close failure: %s',
+    async (outcome) => {
+      const connection = new FakeSmtpConnection('PLAIN');
+      const dataSpy = vi.spyOn(connection, 'sendData').mockImplementation(async () => {
+        if (outcome === 'unknown') {
+          throw new SmtpTransportError('SMTP_OUTCOME_UNKNOWN', 'finalAcceptance', 'outcomeUnknown');
+        }
+        return reply(550, 'rejected');
+      });
+      const closeSpy = vi.spyOn(connection, 'close').mockImplementation(() => {
+        throw new Error('Synthetic close failure');
+      });
+
+      await expect(deliverSmtpMessage(createInput(), {
+        connect: async () => connection,
+        timeouts: defaultTimeouts,
+      })).rejects.toMatchObject({
+        code: outcome === 'unknown' ? 'SMTP_OUTCOME_UNKNOWN' : 'SMTP_DATA_REJECTED',
+        outcome: outcome === 'unknown' ? 'outcomeUnknown' : 'failed',
+        phase: 'finalAcceptance',
+      });
+      expect(dataSpy).toHaveBeenCalledTimes(1);
+      expect(dataSpy.mock.calls[0]?.[0].every((byte) => byte === 0)).toBe(true);
+      expect(closeSpy).toHaveBeenCalledTimes(1);
+      expect(connection.commands).not.toContain('QUIT');
+    },
+  );
 
   it('fails closed when the server advertises no supported authentication', async () => {
     const connection = new FakeSmtpConnection('NONE');

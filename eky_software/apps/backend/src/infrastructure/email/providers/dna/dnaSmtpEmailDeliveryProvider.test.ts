@@ -1,14 +1,18 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CompanyEmailSecretReader } from '../../../../modules/companySettings/ports/companyEmailSecretReader.js';
+import * as smtpConnection from '../../smtp/smtpConnection.js';
 import { SmtpTransportError } from '../../smtp/smtpErrors.js';
-import type { SmtpMessageDeliveryInput } from '../../smtp/smtpTypes.js';
+import type { SmtpMessageDeliveryInput, SmtpReply } from '../../smtp/smtpTypes.js';
 import type { SmtpTransportSecuritySummary } from '../../smtp/smtpTransportSecurity.js';
 import { DnaSmtpEmailDeliveryProvider } from './dnaSmtpEmailDeliveryProvider.js';
+import { dnaSmtpConnectionProfile, dnaSmtpSessionTimeouts } from './dnaSmtpConfiguration.js';
 import type {
   DnaSmtpEmailInput,
   DnaSmtpTestEmailInput,
 } from './dnaSmtpTypes.js';
+
+afterEach(() => vi.restoreAllMocks());
 
 describe('DnaSmtpEmailDeliveryProvider', () => {
   it('uses only the trusted test recipient and a stable attempt Message-ID', async () => {
@@ -74,6 +78,75 @@ describe('DnaSmtpEmailDeliveryProvider', () => {
     expect(message).toContain('To: customer@example.com');
     expect(message).toContain('Cc: copy@example.com');
     expect(message).toContain('Message-ID: <attempt-1@example.com>');
+  });
+
+  it.each([
+    { testMode: true, deadlineExpired: true },
+    { testMode: false, deadlineExpired: true },
+    { testMode: true, deadlineExpired: false },
+    { testMode: false, deadlineExpired: false },
+  ])('keeps default-transport acceptance and diagnostics after cleanup failure: %o', async ({ testMode, deadlineExpired }) => {
+    let now = 100;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const connection = {
+      transportSecurity,
+      readReply: vi.fn(async () => smtpReply(220, 'ready')),
+      sendCommand: vi.fn(async (command: string) => {
+        if (command.startsWith('EHLO')) {
+          return {
+            code: 250,
+            lines: [
+              { code: 250, separator: '-' as const, text: 'smtp.example.test' },
+              { code: 250, separator: ' ' as const, text: 'AUTH PLAIN' },
+            ],
+          };
+        }
+        if (command === 'AUTH PLAIN') return smtpReply(334, 'challenge');
+        if (command === 'DATA') return smtpReply(354, 'continue');
+        if (command === 'QUIT') throw new Error('Synthetic QUIT failure');
+        return smtpReply(250, 'accepted');
+      }),
+      sendSensitiveLine: vi.fn(async (token: Buffer) => {
+        token.fill(0);
+        return smtpReply(235, 'authenticated');
+      }),
+      sendData: vi.fn(async (_data: Buffer) => {
+        if (deadlineExpired) now += dnaSmtpSessionTimeouts.totalMilliseconds;
+        return smtpReply(250, 'queued');
+      }),
+      close: vi.fn(() => { throw new Error('Synthetic close failure'); }),
+    };
+    const connect = vi.spyOn(smtpConnection, 'connectImplicitTlsSmtp')
+      .mockResolvedValue(connection);
+    const diagnostics = {
+      recordConnectionSecured: vi.fn(),
+      recordDeliveryCompleted: vi.fn(),
+      recordFailure: vi.fn(),
+    };
+    const provider = new DnaSmtpEmailDeliveryProvider({
+      companyEmailSecretReader: createSecretReader('synthetic-password'),
+      transportDiagnostics: diagnostics,
+    });
+
+    const result = testMode
+      ? provider.sendTestEmail(createInput())
+      : provider.sendEmail(createCustomerInput());
+    await expect(result).resolves.toMatchObject({
+      deliveredTo: testMode ? 'safe-recipient@example.com' : 'customer@example.com',
+      provider: 'smtp',
+      providerMessageId: null,
+      testMode,
+    });
+    expect(connect).toHaveBeenCalledExactlyOnceWith(dnaSmtpConnectionProfile);
+    expect(connection.sendData).toHaveBeenCalledTimes(1);
+    expect(connection.sendData.mock.calls[0]?.[0].every((byte) => byte === 0)).toBe(true);
+    expect(connection.close).toHaveBeenCalledTimes(1);
+    expect(diagnostics.recordDeliveryCompleted).toHaveBeenCalledExactlyOnceWith({
+      ...transportSecurity,
+      durationMs: expect.any(Number),
+      operationId: 'attempt-1',
+    });
+    expect(diagnostics.recordFailure).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -344,4 +417,8 @@ function createSecretReader(secret: string | null): CompanyEmailSecretReader {
   return {
     getSecret: async () => secret,
   };
+}
+
+function smtpReply(code: number, text: string): SmtpReply {
+  return { code, lines: [{ code, separator: ' ', text }] };
 }
