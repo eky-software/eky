@@ -24,14 +24,17 @@ A2/R05 ja sen rajattu MSI-integraatiojatko ovat hyväksyttyjä jatkokehitykseen
 PR #292:n mainissa tapauskohtaisella Electron-uusintapäätöksellä. Mainin
 CI jäi punaiseksi flaky-tuloksen vuoksi; syytä ei ole todistettu korjatuksi.
 [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
-erottaa hyväksynnän ja avoimen havainnon. Nykyinen työ on omistajan hyväksymä
-[Oma yritys -tallennuksen kahden vian korjaus](release-0.3.0-m1-preparation-plan.md#oma-yritys-rajattu-tallennuskorjaus).
+erottaa hyväksynnän ja avoimen havainnon. Omistajan hyväksymä
+[Oma yritys -tallennuksen kahden vian korjaus](release-0.3.0-m1-preparation-plan.md#oma-yritys-rajattu-tallennuskorjaus)
+vietiin tämän jälkeen omaan integraatioonsa.
 Hyväksytty etenemisjärjestys on rajattu palautustestin siivouskorjaus,
 Oma yritys -korjausten PR/main-hyväksyntä ja vasta sen jälkeen A3/R06.
-Palautustestin siivous ja erikseen hyväksytty rollback-testin jako on
-katselmoitu; workspace-testit ja tyypitys läpäisivät. PR/main-hyväksyntä
-on vielä avoin, eikä jako sulje vanhojen aikakatkaisujen juurisyitä.
-Tarkka rajaus ja näyttö kuuluvat M1:n nykyiseen jatkamiskohtaan.
+Palautustestin siivous, erikseen hyväksytty rollback-testin jako ja
+Oma yritys -korjaukset on katselmoitu ja hyväksytty PR #293:n mainissa
+`b7194db56208c3526ed48b94083849a404f28ab8`. Sen omat 11 porttia ja
+kaksi asennuskoetoistoa läpäisivät ilman uusintoja. Tämä ei sulje vanhojen
+aikakatkaisujen juurisyitä. Nykyinen työ on [A3/R06](invoicing-ui-roadmap.md#a3-hyväksyntävalmiuden-vastaussidonta),
+jonka rajaus ja hyväksyntänäyttö kuuluvat M1:n nykyiseen jatkamiskohtaan.
 A3, D-paketin muut ehdot ja koko 0.3.0 ovat edelleen avoinna.
 
 **M0, T1, T2 ja T3/R28 on hyväksytty; M1:n sovelluskorjaukset ovat avoinna.**
@@ -800,8 +803,9 @@ määrät ja hylkäysten syyepävarmuudet säilyvät omina checkpointteinaan.
 Myös integraation jatkokorjaus on hyväksytty PR #281:n omissa main-porteissa.
 M1:n sovelluskorjaukset ovat osittain valmiit: A1/R01 ja A2/R05 ovat
 hyväksyttyjä yllä kuvatulla integraationäytöllä ja A2:n rajatulla
-etenemispäätöksellä. Nykyinen pala on Oma yritys -tallennuskorjauksen
-hyväksyntä; sen jälkeen valmistellaan A3/R06 omalla aloitusportillaan.
+etenemispäätöksellä. Oma yritys -tallennuskorjauksen ja rajattujen
+testikorjausten integraatio on hyväksytty PR #293:n mainissa.
+Nykyinen pala on A3/R06:n toteutus ja todennus omilla porteillaan.
 Kohdetestit eivät yksin sulje uuden revision integraatiota tai muita paketteja.
 Tarkka jako on [M1-suunnitelmassa](release-0.3.0-m1-preparation-plan.md):
 T1a/T1b testien ajokytkentä, T2 projektivalinta ja build-edellytykset,
@@ -858,9 +862,10 @@ T-paketin T1a/T1b, T2 ja T3/R28 on hyväksytty niiden omien
 integraatioiden näytöllä; [T3:n integraatiohyväksyntä](e2e-test-environment-history.md#t3n-integraatiohyväksyntä) ei perustu
 pelkkään historialliseen T3c-W:n 4/4-koetulokseen. A/B/C/K/D/E/F/G/H/I:n
 kokonaishyväksyntä on edelleen avoin. A-paketista A1/R01 ja A2/R05 on
-hyväksytty jatkokehitykseen; A3/R06 on tekemättä. D-paketin Oma yritys
--tallennuksen rajatut korjaukset on kohdetestattu, mutta niiden integraatio
-ja D:n muut ehdot ovat avoinna. B/C/K/E/F/G/H/I ovat suunniteltuja, eivät
+hyväksytty jatkokehitykseen; A3/R06:n todennus ja integraatio ovat kesken.
+D-paketin Oma yritys -tallennuksen rajatut korjaukset on hyväksytty
+PR #293:n mainissa, mutta D:n muut ehdot ovat avoinna.
+B/C/K/E/F/G/H/I ovat suunniteltuja, eivät
 toteutuksen tai hyväksynnän osalta valmiita.
 Päätösportin vaikutusalue odottaa hyväksyntää.
 

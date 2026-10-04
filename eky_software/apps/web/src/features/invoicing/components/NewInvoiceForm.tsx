@@ -100,8 +100,6 @@ export function NewInvoiceForm({
   );
   const hasManualPriceInputModeOverride = useRef(mode.type === 'edit');
   const [hasValidated, setHasValidated] = useState(false);
-  const [isApprovalConfirmationVisible, setIsApprovalConfirmationVisible] =
-    useState(false);
   const [
     reverseChargeEligibilityConfirmed,
     setReverseChargeEligibilityConfirmed,
@@ -113,7 +111,11 @@ export function NewInvoiceForm({
   );
   const formRevision = saveState.revision;
   const approveState = useApproveInvoiceDraft(apiClient);
-  const issuanceReadinessState = useInvoiceIssuanceReadiness(apiClient);
+  const issuanceReadinessState = useInvoiceIssuanceReadiness(apiClient, {
+    draftId: mode.type === 'edit' ? mode.draft.id : null,
+    formRevision,
+    isSaved: saveState.isSaved,
+  });
   const autosaveState = useInvoiceDraftAutosave({
     form,
     saveState,
@@ -184,7 +186,6 @@ export function NewInvoiceForm({
     approveState.clearApprovalResult();
     issuanceReadinessState.clearReadiness();
     setApprovalGuardMessage(null);
-    setIsApprovalConfirmationVisible(false);
     setReverseChargeEligibilityConfirmed(false);
     setForm(updateForm);
   }
@@ -330,28 +331,19 @@ export function NewInvoiceForm({
 
     if (!saveState.isCurrentRevisionSaved()) {
       setApprovalGuardMessage(uiText.invoicing.approveDraftUnsavedChanges);
-      setIsApprovalConfirmationVisible(false);
+      issuanceReadinessState.clearReadiness();
       return;
     }
 
-    const readiness = await issuanceReadinessState.checkReadiness(
-      mode.draft.id,
-    );
-
-    if (
-      readiness === null || !readiness.isReady ||
-      !saveState.isCurrentRevisionSaved()
-    ) {
-      setIsApprovalConfirmationVisible(false);
-      return;
-    }
-
-    setIsApprovalConfirmationVisible(true);
     setReverseChargeEligibilityConfirmed(false);
+    await issuanceReadinessState.checkReadiness();
   }
 
   async function handleConfirmApproval(): Promise<void> {
-    if (mode.type !== 'edit' || !saveState.isCurrentRevisionSaved()) {
+    if (
+      mode.type !== 'edit' || !saveState.isCurrentRevisionSaved() ||
+      !issuanceReadinessState.canConfirmApproval()
+    ) {
       return;
     }
 
@@ -369,7 +361,7 @@ export function NewInvoiceForm({
       return;
     }
 
-    setIsApprovalConfirmationVisible(false);
+    issuanceReadinessState.clearReadiness();
     onDraftApproved(approvedInvoice);
   }
 
@@ -568,7 +560,7 @@ export function NewInvoiceForm({
       />
       <InvoiceTotalsPreview form={form} />
 
-      {isApprovalConfirmationVisible && saveState.isSaved ? (
+      {issuanceReadinessState.readiness?.isReady && saveState.isSaved ? (
         <InvoiceApprovalConfirmation
           isApproving={approveState.isApproving}
           isReverseCharge={
@@ -577,7 +569,10 @@ export function NewInvoiceForm({
           isReverseChargeConfirmed={reverseChargeEligibilityConfirmed}
           legalCustomerBusinessId={selectedCustomer?.businessId ?? ''}
           legalCustomerName={selectedCustomer?.name ?? ''}
-          onCancel={() => setIsApprovalConfirmationVisible(false)}
+          onCancel={() => {
+            issuanceReadinessState.clearReadiness();
+            setReverseChargeEligibilityConfirmed(false);
+          }}
           onConfirm={() => void handleConfirmApproval()}
           onReverseChargeConfirmationChange={
             setReverseChargeEligibilityConfirmed
