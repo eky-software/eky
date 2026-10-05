@@ -43,8 +43,10 @@ B0:n hyväksyttyjen rajausten pohjalta.
 B1/B2 on yhdistetty PR #295:ssä, mutta sen main-hyväksyntä jäi avoimeksi
 Electronin loppusulun hylkäyksen vuoksi. Nykyinen integraatiojatko on
 [hyväksytty rajattu sulkukorjaus](release-0.3.0-m1-preparation-plan.md#b1b2-mainin-electron-sulkuhavainto)
-regressioineen ja muuttumattomine PR/main-portteineen. Tämä ei avaa T3:a
-eikä nimeä alkuperäistä CI-häiriötä korjatuksi.
+ja sen PR #296:n jälkeinen lifecycle-todisteen salatun keräyksen täydennys.
+PR-portit läpäisivät, mutta uusi main-kierros hylättiin toisen testin
+loppusulun aikakatkaisuun. Muuttumattomat PR/main-portit säilyvät;
+keräysjatko ei avaa T3:a eikä nimeä CI-häiriötä korjatuksi.
 B:n toteutus, D-paketin muut ehdot ja koko 0.3.0 ovat edelleen avoinna.
 
 **M0, T1, T2, T3/R28 ja A1/A2/A3 on hyväksytty; M1:n muu työ on avoinna.**

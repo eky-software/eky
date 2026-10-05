@@ -313,6 +313,12 @@ jälkikeräysaskeleella. Kytkentä ei riipu yksittäisestä testinimestä.
 Aktivointi vaatii purkuavaimen varmennuksen; Linux-toimitus ja tarkistamaton
 trace eivät kuulu tähän Windows-kytkentään. JSON-raportista jätetään
 salattavassakin paketissa pois asetukset ja inline-liitteiden sisällöt.
+Electronin `electron-lifecycle.json` kerätään erikseen täsmällisellä
+tiedostonimellä ja suoritusyrityskohtaisella polulla. Siten `ownership`
+säilyy julkisen sulkuvirheen rinnalla, vaikka inline-liitteen sisältö ei
+kuulu JSON-raportin projektioon. Keräys ei muuta testin tai cleanupin tulosta.
+Tiedosto syntyy nykyisessä fixturessa epäonnistumisesta tai
+ensikäynnistystodisteesta, ei jokaisesta läpäisseestä testistä.
 Testinkirjoittaja käyttää yllä olevia yhteisiä fixtureitä, ei omaa salainta.
 
 Ensiyrityksen tracea ei ole kytketty yleiseksi oletukseksi. Rajattu
