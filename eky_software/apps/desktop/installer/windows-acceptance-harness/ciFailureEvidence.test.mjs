@@ -76,6 +76,86 @@ test('binding rejects missing attempts, invalid job names and unknown revisions'
   }
 });
 
+test('Electron lifecycle collection admits only the named attempt file', () => {
+  assert.equal(evidenceSourceKind('results', `${run}/test-attempt0/electron-lifecycle.json`), 'electronLifecycle');
+  for (const area of ['reports', 'temporary']) {
+    assert.equal(evidenceSourceKind(area, `${run}/test-attempt0/electron-lifecycle.json`), null);
+  }
+  for (const path of [`${run}/electron-lifecycle.json`, 'other/test/electron-lifecycle.json',
+    `${run}/test/electron-lifecycle.private.json`, `${run}/test/electron-lifecycle.json.bak`,
+    `${run}/test/attachments/electron-lifecycle.json`, `${run}/../electron-lifecycle.json`,
+    `${run}/./electron-lifecycle.json`, `${run}/test/config.json`, `${run}/test/trace.zip`]) {
+    assert.equal(evidenceSourceKind('results', path), null);
+  }
+});
+
+test('Electron lifecycle collection preserves first failure, retry and ownership as separate evidence', async t => {
+  const { checkout, env, put } = await fixture(t);
+  const root = `eky_software/apps/e2e/test-results/${run}`;
+  const common = { schemaVersion: 1, observationsTruncated: false,
+    startupCapture: { status: 'notRequested' },
+    ownership: { owner: { status: 'processTreeAbsent', firstFailure: null },
+      bridge: 'closed', observerFailure: null, launchFailure: false, goSent: true, bridgeExit: 'matched' } };
+  const first = { ...common, attempt: 0, launch: [{ generation: 2, phase: 'connected' }],
+    publicCloseFailure: { startupGeneration: 2, reason: 'timedOut' },
+    cleanup: { api: 'completed', runtime: 'unverified', port: 'released', runRoot: 'retained' } };
+  const retry = { ...common, attempt: 1, launch: [{ generation: 1, phase: 'connected' }],
+    cleanup: { api: 'completed', runtime: 'completed', port: 'released', runRoot: 'removed' } };
+  const expected = new Map();
+  for (const [directory, content] of [['test-attempt0', first], ['test-retry1', retry]]) {
+    const source = `results/${run}/${directory}/electron-lifecycle.json`;
+    const bytes = Buffer.from(JSON.stringify(content, null, 2) + '\n');
+    expected.set(source, bytes);
+    await put(checkout, `${root}/${directory}/electron-lifecycle.json`, bytes);
+  }
+  for (const file of ['test-attempt0/data.sqlite', 'test-attempt0/config.json',
+    'test-attempt0/attachments/electron-lifecycle.json', 'profiles/electron-lifecycle.json']) {
+    await put(checkout, `${root}/${file}`, 'EXCLUDED');
+  }
+  const collected = await collectJobFailureEvidence(env);
+  const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+  assert.equal(archive.manifest.files.length, 2);
+  assert.equal(archive.manifest.cleanup, 'notInferred');
+  assert.equal(archive.manifest.unresolvedEvidenceHold, true);
+  for (const entry of archive.manifest.files) {
+    assert.equal(entry.kind, 'electronLifecycle');
+    assert.equal(entry.status, 'retained');
+    const bytes = Buffer.from(archive.files[entry.name], 'base64');
+    assert.deepEqual(bytes, expected.get(entry.source));
+    assert.equal(entry.bytes, bytes.length);
+    assert.equal(entry.sha256, createHash('sha256').update(bytes).digest('hex'));
+    expected.delete(entry.source);
+  }
+  assert.equal(expected.size, 0);
+});
+
+test('Electron lifecycle collection retains existing size and hardlink rejection', async t => {
+  const { checkout, env, put } = await fixture(t);
+  const root = `eky_software/apps/e2e/test-results/${run}`;
+  await put(checkout, `${root}/large/electron-lifecycle.json`, Buffer.alloc(8 * 1024 * 1024 + 1));
+  const original = await put(checkout, `${root}/linked/electron-lifecycle.json`, 'EXCLUDED-LINK');
+  await link(original, join(checkout, 'alias.json'));
+  const collected = await collectJobFailureEvidence(env);
+  const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+  assert.equal(archive.manifest.files.length, 2);
+  assert.equal(archive.manifest.files.find(file => file.source.includes('/large/')).status, 'tooLarge');
+  assert.equal(archive.manifest.files.find(file => file.source.includes('/linked/')).status, 'unverified');
+  assert.deepEqual(archive.files, {});
+});
+
+test('Electron lifecycle collection never follows an attempt directory outside the checkout', async t => {
+  const { root, checkout, env, put } = await fixture(t);
+  await put(root, 'outside/electron-lifecycle.json', 'EXCLUDED-OUTSIDE');
+  const results = join(checkout, 'eky_software/apps/e2e/test-results', run);
+  await mkdir(results, { recursive: true });
+  await symlink(join(root, 'outside'), join(results, 'test-attempt0'), process.platform === 'win32' ? 'junction' : 'dir');
+  const collected = await collectJobFailureEvidence(env);
+  const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+  assert.equal(archive.manifest.files.length, 0);
+  assert.equal(archive.manifest.sources.find(source => source.area === 'results').status, 'partial');
+  assert.deepEqual(archive.files, {});
+});
+
 test('MSI policy evidence admits only its named files in the supervisor-owned root', () => {
   for (const name of ['policy-result.json', '1-source.log', '12-target.log', '23-uninstall.log']) {
     assert.equal(evidenceSourceKind('temporary', `eky supervisor abc/${name}`), 'msiPolicyEvidence');

@@ -25,7 +25,7 @@ hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohd
 | Mainin omat portit | [CI 37201894369](https://github.com/eky-software/eky/actions/runs/37201894369) läpäisi ensimmäisellä yrityksellä: kaikki 11 porttia, täysi riskivalinta ja kaksi asennuskoetoistoa. System 807, web 65 ja Electron 39 läpäisivät ilman uusintoja tai flaky-tuloksia. Viittä valinnaista diagnostiikkaohitusta ei lasketa läpäisyiksi. PR:n oma CI ja erillinen riippuvuustarkistus läpäisivät; main-push ei valinnut erillistä audit-workflowta nykyisellä polkusuodattimella. V2:n auditoitu valmistelu läpäisi. |
 | Suljettu työ | T1/R27:n ajokytkentä, T2/R29:n puhtaan valmistelun suoja ja T3/R28:n todellisten kuluttajien koko prosessipuun omistajuus. Korvatut aktiiviset fallbackit on poistettu ja [pysyvä T3-matriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus) hyväksytty. PR #281 sulki tämän jälkeisen rollback-testiapurin integraatiojatkon. |
 | Avoimet havainnot | Aiemmat satunnaiset Electron-käynnistys- ja packaged/legacy-timeoutit säilyvät epäonnistuneina havaintoina omille revisioilleen. Myöhempi vihreä ajo ei todista niiden kaikkia syitä korjatuiksi. [Hylkäysten historia](e2e-test-environment-history.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko) ja [rajattu apurikorjaus](e2e-test-environment-history.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus) erotetaan toisistaan. |
-| Nykyinen työ | B1/R12/R13:n SMTP-korjaus ja B2/R08:n hyvityslaskenta on katselmoitu ja yhdistetty PR #295:ssä. Sen main-hyväksyntä on avoinna Electronin loppusulun hylkäyksen vuoksi; [rajattu katselmus](#b1b2-mainin-electron-sulkuhavainto) erottaa sovelluksen, testin ja raportoinnin. B3/B4:n historia ja migraatiot eivät kuulu tähän toteutuspalaan. |
+| Nykyinen työ | B1/R12/R13:n SMTP-korjaus ja B2/R08:n hyvityslaskenta on katselmoitu ja yhdistetty PR #295:ssä. Erillinen sulkukorjaus yhdistettiin PR #296:ssa, mutta senkin main-hyväksyntä jäi avoimeksi Electronin loppusulun hylkäyksen vuoksi. Seuraava rajattu työ täydentää olemassa olevan lifecycle-tiedoston salattua keräystä; [sulkuhavainnon jatko](#b1b2-mainin-electron-sulkuhavainto) erottaa sovelluksen, testin ja raportoinnin. B3/B4:n historia ja migraatiot eivät kuulu tähän toteutuspalaan. |
 | Ei vielä valmis | B:n toteutus ja hyväksyntä, W7, M1:n muu sovellustyö, D-paketin muut ehdot ja koko 0.3.0. Lähtörevision läpäisy ei hyväksy uuden revision puuttuvia portteja. |
 
 Hyväksyntä on sidottu yllä olevaan revisioon, ei automaattisesti myöhempään
@@ -102,8 +102,41 @@ ennestään ohitettua testiä eivät ole läpäisyjä. Lopullisen testipaketin
 backup -> inspect -> restore -> restart -> compare läpäisi; kriittisen
 Electron-sarjan kaikki 39 tapausta, myös CANCEL-003, läpäisivät ilman
 uusintoja tai flaky-tuloksia. Katselmus ei löytänyt korjaukseen uutta
-hyväksynnän estävää puutetta. PR/main-todennus on silti vielä avoin eikä
-alkuperäistä CI-häiriötä nimetä korjatuksi tämän paikallisen näytön perusteella.
+hyväksynnän estävää puutetta. PR #296:n omat portit ja erillinen
+riippuvuustarkistus läpäisivät, mutta alla kuvattu main-todennus hylättiin;
+alkuperäistä CI-häiriötä ei nimetä korjatuksi paikallisen näytön perusteella.
+
+**Keräysjatko hyväksytty 5.10.2026.** [PR #296](https://github.com/eky-software/eky/pull/296)
+yhdistettiin mainiin `5af35c64dac7e5049fbb49e8511fab0761f5285e`.
+Sen [oma CI 37238922484](https://github.com/eky-software/eky/actions/runs/37238922484)
+hylkäsi `DESK-SECRET-001`:n ensimmäisen yrityksen loppusulun. Testirunko
+läpäisi, mutta toisen käynnistyssukupolven julkinen sulku aikakatkaistiin.
+Automaattinen uusinta läpäisi; flaky-portti ja hyväksyntäkoonti eivät.
+Tämä käytti kyseisen tapauksen yhden uusinnan eikä anna lupaa yleiseen
+uudelleenajoon. Muut pakolliset testijobit läpäisivät; viisi valinnaista
+diagnostiikkaohitusta eivät ole läpäisyjä.
+
+Uusi raportointi säilytti `publicCloseFailure`-syyn, mutta salatun keräimen
+sallintalista ei ottanut mukaan fixturen jo kirjoittamaa
+`electron-lifecycle.json`-tiedostoa. Raporttiprojektio poisti inline-liitteen
+sisällön tarkoituksellisesti. Siksi toimitettu aineisto ei varmista
+prosessinomistajan lopputilaa, eikä yleinen `runtime: unverified` yksilöi
+omistajan siivousvirhettä. [Salatun aineiston sopimuksen](ci-encrypted-evidence.md#testiperheiden-virheaineisto)
+rajattu täydennys säilyttää tämän yhden tiedostolähteen nykyisten rajojen
+puitteissa. Hyväksyntänä ovat keräysregressiot ja yksi nimetty
+Windows-Electron-todennus; ei uutta loggeria, sovellusmuutosta tai
+aikarajan korotusta. Keräyskorjaus ei palauta vanhasta ajosta puuttuvaa
+näyttöä eikä itsessään korjaa sulkuaikakatkaisua tai hyväksy mainia.
+
+Keräyksen 77 kohdesopimusta läpäisi, mukaan lukien ensimmäisen
+epäonnistuneen yrityksen ja uusinnan tavujen sekä tiivisteiden säilyminen
+oikean OpenPGP-salauksen ja purun yli. Nimetty `DESK-SECRET-001` läpäisi
+ilman uusintaa. Se ei kirjoittanut lifecycle-tiedostoa, koska tavallinen
+onnistuminen ei kuulu fixturen kirjoitusehtoon. Erillinen keräyskytkennän
+todistus käytti aiemman oikean Electron-fixturen säilynyttä tiedostoa ja
+varmisti raporttiliitteen vastaavuuden sekä tavujen ja `ownership`-kenttien
+säilymisen nykyisen keräimen läpi. Tämä ei ole uusi hosted-toimitus eikä
+alkuperäisen sulkuvirheen toisto. Uuden revision PR/main-todennus on avoin.
 
 **Erillinen avoin päivityshavainto:** staattinen katselmus osoittaa
 `desktopComposition`-kytkennän antavan installer handoffille tavallisen,
@@ -118,8 +151,9 @@ muuteta tämän tavallisen sulun korjauspalassa. Havainto jää avoimeksi
 
 Integraation valmistelussa myös koko työtilan testit ja tyyppitarkistus
 läpäisivät. Riippuvuuksia, aikarajoja tai CI-hyväksyntäehtoja ei muutettu.
-Elinkaarimuutoksen erillinen 30 minuutin desktop-soak varmennetaan ennen
-lopullista hyväksyntää [nykyisellä endurance-portilla](e2e-desktop-endurance-baseline.md).
+Elinkaarimuutoksen erillinen 30 minuutin desktop-soak läpäisi samalla
+jäädytetyllä lähteellä [nykyisen endurance-portin](e2e-desktop-endurance-baseline.md).
+Se ei korvaa yllä hylättyä main-todennusta.
 
 ## A3/R06: hyväksyntävalmiuden vastaussidonta
 

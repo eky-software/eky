@@ -115,6 +115,7 @@ raakaa testiaineistoa eivätkä saa yleistä koko jobin tulostekaappausta.
 | --- | --- | --- |
 | Playwright system/web/Electron | Ajokohtaisen `results.private.json`-raportin virheet, testitulokset, stdout/stderr ja retry-yritykset. | Ennen salausta poistetaan konfiguraatio, metadata ja inline-liitteiden sisältö; alkuperäiset virhekentät säilyvät. Ei koko HTML-/attachment-hakemistoa tai siinä olevia SQLite-tiedostoja. Ennen runnerin raportin valmistumista katkennut ajo voi jäädä ilman tätä tiedostoa. |
 | Backend/web/Electron-fixture | Nykyisten redaktoitujen stdout/stderr-lukijoiden rajattu otos omassa suoritusyrityskohtaisessa tiedostossaan myös testin rungon tai siivouksen epäonnistuessa. | Otos säilyy ennen muistitiedon katoamista, tiedosto liitetään nykyisen fixturen jälkiraportoinnissa. Windows-Electronin lähde on natiivi omistajaprosessi; workloadin omaa putkea ei muuteta tällä työllä. Käynnistyksen tai siivouksen kriittiselle polulle ei lisätä tiedostokuittausta. |
+| Electronin lifecycle-todiste | Fixturen jo kirjoittama `test-results/run-<uuid>/<testin suoritusyritys>/electron-lifecycle.json` muuttamattomina tavuina. | Vain tämä täsmällinen nimi ja syvyys; ei yleistä JSON- tai liitekansion keräystä. `attempt`, käynnistyssukupolvet, `publicCloseFailure`, `ownership` ja `cleanup` säilyvät erillisinä havaintoina. Samat koko-, linkki- ja muuttumattomuusrajat kuin muilla lähteillä. |
 | Native-komennot ja supervisorin sopimustestit | Nimetyt vaihe-, worker- ja caller-tulokset sekä olemassa olevat yksityiset prosessitulosteet. | Ei request/config-tiedostoja, profiileja tai tietokantoja. Siivouksen raakatulos säilyy erillään alkuperäisestä hylkäyksestä. Tarkoituksella lukemattoman putken koe säilyttää oman sopimuksensa. |
 | Synteettinen MSI-versiopolitiikan koe | Oman supervisor-testijuuren `policy-result.json` sekä numeroidut `source`, `target` ja `uninstall` -MSI-lokit muuttamattomina tavuina. | Vain suoraan testijuuren alla olevat nimet; ei descriptor-, request-, profiili- tai tietokantatiedostoja. Keskeytyneen MSI-komennon osittainen loki voidaan säilyttää ilman workerin lopputulosta. Samat koko-, linkki- ja muuttumattomuusrajat kuin muilla lähteillä. |
 | Packaged smoke | Rajattu prosessituloste ja nykyinen smoke-tulos. | Epäonnistuneen testin juurta ei poisteta; keräin ei lue sen profiilia. Tyhjentynyt tuloste ei todista onnistunutta käynnistystä. |
@@ -129,6 +130,16 @@ uudelleenohjaukset ja muuttuneet tiedostot hylätään.
 Playwright-raportin projektio merkitään manifestiin: alkuperäisen lähteen
 tiiviste ja salattavan projektion tiiviste eivät ole sama todiste.
 Muiden sallittujen tiedostojen tavut säilyvät muuttamattomina.
+Electronin lifecycle-tiedosto kerätään omana lähteenään, koska raportin
+inline-liitteiden sisältö poistetaan edelleen. Keräin ei päättele julkisen
+sulkukutsun aikakatkaisusta prosessipuun tilaa eikä muuta cleanup-hylkäystä
+hyväksynnäksi omistajatodisteen perusteella. Puuttuva tai kesken jäänyt
+lifecycle-tiedosto ei synny keräyksessä uudelleen; julkisen raportin rajattu
+projektio ei korvaa sen puuttuvia kenttiä.
+Nykyinen fixture kirjoittaa lifecycle-tiedoston epäonnistuessaan tai
+ensikäynnistystodisteen yhteydessä. Tavallinen läpäissyt testi ei siis
+välttämättä tuota sitä. Keräys säilyttää vain tiedostossa olevat kentät;
+puuttuvaa käynnistyssukupolvea tai omistajan lopputilaa ei päätellä.
 
 MSI-politiikan erillisessä manuaalisessa `msi-file-version-policy`-kokeessa
 `--retain-evidence` säilyttää myös läpäisseen kokeen nimetyn tutkimusaineiston.
@@ -147,6 +158,9 @@ voi käyttää raporttien koko tiedostokiintiötä. Asiaankuulumattomat temp-nim
 eivät kuluta 4 096 soveltuvan hakemistomerkinnän rajaa, mutta niidenkin
 läpikäynti kuuluu lähteen viiden sekunnin hakubudjettiin. Tämä ei muuta
 testin aikarajaa eikä lisää odotusta testin kriittiselle polulle.
+`results`-lähteen nykyinen 64 tiedoston kiintiö on yhteinen prosessitulosteille
+ja lifecycle-tiedostoille. Monen testin epäonnistuminen voi täyttää sen;
+lähteen `limited`-tila ei lupaa kaikkien yritysten aineistoa.
 Manifesti erottaa säilyneen,
 puuttuvan, liian suuren, kokonaisrajan ylittäneen ja varmentamattoman tiedoston
 sekä puuttuvan/osittaisen/rajatun lähdehaun. `complete` tarkoittaa vain

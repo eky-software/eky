@@ -220,6 +220,17 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
         suites: [{ specs: [{ tests: [{ results: [{ retry: 0, error: { message: 'first assertion', stack: 'synthetic stack' },
           attachments: [{ name: 'excluded', body: 'EXCLUDED-BODY' }] }, { retry: 1, status: 'passed' }] }] }] }] }));
       await writeFile(join(reportRoot, 'results.private.json'), reportBytes);
+      const lifecycleFiles = new Map();
+      for (const attempt of [0, 1]) {
+        const source = `results/run-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee/test-attempt${attempt}/electron-lifecycle.json`;
+        const destination = join(checkout, 'eky_software/apps/e2e/test-results', source.slice('results/'.length));
+        const bytes = Buffer.from(JSON.stringify({ schemaVersion: 1, attempt,
+          publicCloseFailure: attempt === 0 ? { startupGeneration: 2, reason: 'timedOut' } : null,
+          ownership: { owner: { status: 'processTreeAbsent', firstFailure: null } } }));
+        await mkdir(dirname(destination), { recursive: true });
+        await writeFile(destination, bytes);
+        lifecycleFiles.set(source, bytes);
+      }
       const env = { GITHUB_RUN_ID: '98765', GITHUB_RUN_ATTEMPT: '1', GITHUB_JOB: 'legacy_contracts',
         EKY_EVIDENCE_JOB_KEY: 'legacy-contracts-0', GITHUB_SHA: 'a'.repeat(40),
         EKY_EVIDENCE_JOB_OUTCOME: 'failure', RUNNER_TEMP: temp, GITHUB_WORKSPACE: checkout,
@@ -233,7 +244,15 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
       assert.equal(value.manifest.binding.attempt, '1');
       assert.equal(value.manifest.jobOutcome, 'failure');
       assert.equal(value.manifest.cleanup, 'notInferred');
-      assert.equal(value.manifest.files.length, 7);
+      assert.equal(value.manifest.files.length, 9);
+      for (const [source, bytes] of lifecycleFiles) {
+        const entry = value.manifest.files.find(file => file.source === source);
+        assert.equal(entry?.status, 'retained');
+        assert.equal(entry.kind, 'electronLifecycle');
+        assert.equal(entry.bytes, bytes.length);
+        assert.equal(entry.sha256, createHash('sha256').update(bytes).digest('hex'));
+        assert.deepEqual(Buffer.from(value.files[entry.name], 'base64'), bytes);
+      }
       for (const [name, text] of Object.entries(policyFiles)) {
         const expected = Buffer.from(text, name === '1-source.log' ? 'utf16le' : 'utf8');
         const entry = value.manifest.files.find(file => file.source.endsWith('/' + name));
