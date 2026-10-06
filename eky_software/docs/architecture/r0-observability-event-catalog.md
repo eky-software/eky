@@ -72,6 +72,61 @@ edelleen geneeristä turvallista fallback-luokitusta.
 - `smtp.deliveryOutcomeUnknown`
 - `businessAudit.writeFailed`
 
+B3:n nykyisen PDF:n GET-/metadataluvun ja tapahtumaan sidotun historiallisen
+PDF-luvun eheysvirhe käyttää olemassa olevaa
+`invoicePdf.storageFailed`-eventtiä: `INVOICE_PDF_INTEGRITY_FAILED`,
+`stage=read`, `retryable=false`, `sideEffectState=none`. Puuttuva esikatselu
+(404), puuttuva historiallinen tapahtuma (404), vanhan tapahtuman alkuperäinen
+null-PDF-viite (409) tai välissä vaihtunut nykyvalinta (409) ei ole
+tiedostoeheysvirhe. Tapahtuman rikkinäinen ei-null-viite on eheysvirhe.
+Detailed-eventin rajatut entity-tunnisteet eivät siirry Diagnosticsiin,
+tukipaketin lukuprojektioon tai incident-indeksiin. Raakavirheitä, PDF-tavuja,
+tiivisteitä tai polkuja ei kirjata. Luku ei tuota business-audit-tapahtumaa.
+
+B-P3:n säilytetyn PDF:n esivalmistelu käyttää samaa eheysvirheen tapahtumaa,
+mutta `sideEffectState=unknown`: itsenäinen kopio on voinut jo syntyä.
+Jos julkaisukonfliktin jälkeen operaation oman ehdokastiedoston siivous
+epäonnistuu, sama `invoicePdf.storageFailed` sisältää
+`INVOICE_PDF_CLEANUP_FAILED`, `stage=cleanup`, `retryable=false` ja
+`sideEffectState=unknown`. Alkuperäinen konfliktivastaus säilyy eikä
+lokitusvirhe korvaa sitä. Diagnostics, tukipaketin diagnostiikkaprojektio ja
+incident-indeksi lukevat nykyistä sanitoitua ketjua; polkua, raakavirhettä,
+PDF-tavuja tai tiivistettä ei julkaista. Esivalmistelu ei luo toimitus- tai
+Activity-tapahtumaa. Tämä ei muuta lokien säilytysaikoja tai käynnistä
+automaattista tiedostojen lisäsiivousta.
+
+Säilytetyn dokumentin täsmällinen HTTP-luku käsittelee tunnetun eheysvirheen
+yllä olevalla `invoicePdf.storageFailed`-tapahtumalla ja `none`-
+sivuvaikutuksella. Odottamaton luokittelematon poikkeama rajataan geneeriseksi
+500-vastaukseksi ennen kehyksen raakaa stderr-käsittelyä. Nykyinen HTTP-
+middleware kirjaa silloin `http.requestFailed` / `HTTP_REQUEST_FAILED`;
+luokittelematonta syytä ei väitetä tiedostoeheysvirheeksi. Tämä käyttää
+olemassa olevaa Diagnostics-/tukipaketti-/incident-ketjua eikä muuta
+tapahtumien kenttä- tai säilytysrajoja.
+
+B4:n durablen asiakaslähetyksen jälkeinen laskun vastausluvun virhe käyttää
+olemassa olevaa `invoiceDelivery.finalizationFailed`-eventtiä:
+`INVOICE_DELIVERY_COMMITTED_READ_FAILED`, `stage=read`, `retryable=false`,
+`sideEffectState=committed`. Tämä ei tarkoita SMTP-lähetyksen epäonnistumista
+eikä oikeuta automaattista uudelleenlähetystä. Tapahtuma, laskun sent-tila ja
+attemptin onnistuminen säilyvät. Diagnostics, tukipaketin diagnostiikkaluku
+ja incident-indeksi käyttävät nykyisiä minimoituja projektioita; raakavirhe,
+viestisisältö, valtuutus ja business-tunnisteet eivät siirry niihin.
+Oikean composition-/HTTP-/lokikytkennän alempi testi on
+`invoicingSmtpComposition.test.ts`; UI-/native-hyväksyntä on vielä avoin.
+
+B-P3:n vanhan approved-laskun selvitysesto käyttää nykyistä
+`invoiceDelivery.prepareBlocked`-varoitusta:
+`INVOICE_LEGACY_DELIVERY_REVIEW_REQUIRED`, `stage=prepare`,
+`retryable=false`, `sideEffectState=none`. Esto koskee myös vanhan laskun
+uudelleenavausta muokattavaksi; se ei ole SMTP-providerin virhe.
+Tapahtumaan ei lisätä lasku-, yritys- tai käyttäjätunnisteita tai raakavirhettä.
+Diagnostics ja tukipaketin diagnostiikkaluku säilyttävät turvallisen syyn.
+Varoitus ei kuulu pitkän ajan incident-indeksiin eikä luo business-audit-
+tapahtumaa tai Activity-merkintää. Oikea composition-/HTTP-/lokikytkentä ja
+lukuprojektiot todennetaan `invoicingLegacyReviewComposition.test.ts`:ssä;
+käyttöliittymän koko native-polun hyväksyntä on erillinen portti.
+
 `smtp.connectionSecured` ja `smtp.deliveryCompleted` ovat 12 kuukauden
 info-eventtejä. Detailed-loki saa sisältää vain SMTP-profiilin, portin 465,
 TLS-version, allowlistatun cipherin, sertifikaatin SHA-256-sormenjäljen,

@@ -127,6 +127,39 @@ describe('getApprovedInvoice', () => {
     });
   });
 
+  it.each(['standard', 'credit'] as const)(
+    'rejects a missing normal VAT rate for a %s invoice',
+    async (invoiceKind) => {
+      const invoice = createApprovedInvoiceView({
+        invoiceKind,
+        lines: [{ ...createApprovedInvoiceLine('line-1', 1, 67), vatRateBasisPoints: null }],
+      });
+      await expect(getApprovedInvoice(
+        { companyId: invoice.companyId, invoiceId: invoice.id },
+        new FakeApprovedInvoiceReader(invoice),
+      )).rejects.toThrow('Normal VAT line is missing its VAT rate.');
+    },
+  );
+
+  it('does not silently repair stored credit totals while projecting its lines', async () => {
+    const invoice = createApprovedInvoiceView({
+      invoiceKind: 'credit',
+      lines: [{ ...createApprovedInvoiceLine('line-1', 1, 67), vatCents: 18, grossCents: 85 }],
+      totals: { netTotalCents: 99, vatTotalCents: 1, grossTotalCents: 100, vatBreakdown: [] },
+    });
+    const original = structuredClone(invoice);
+    const projected = await getApprovedInvoice(
+      { companyId: invoice.companyId, invoiceId: invoice.id },
+      new FakeApprovedInvoiceReader(invoice),
+    );
+    const expectedBreakdown = [
+      { vatRateBasisPoints: 2550, netCents: 67, vatCents: 18, grossCents: 85 },
+    ];
+    expect(projected.vatBreakdown).toEqual(expectedBreakdown);
+    expect(projected.totals).toEqual({ ...original.totals, vatBreakdown: expectedBreakdown });
+    expect(invoice).toEqual(original);
+  });
+
   it('throws not found when the reader cannot find an approved invoice', async () => {
     const reader = new FakeApprovedInvoiceReader(undefined);
 

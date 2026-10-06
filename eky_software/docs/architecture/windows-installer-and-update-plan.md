@@ -289,6 +289,10 @@ ympäristötiedostoa, salaisuutta, E2E-runtimea, fixtureä, testiä, lähdehakem
 eikä oikeaa käyttäjäprofiilia. Backend deployataan linkittömänä hoisted-
 rakenteena, ja symboliset linkit torjutaan jokaisessa inventoidussa vaiheessa.
 Packaged-smoke-helperit sallitaan vain täsmällisestä nimilistasta.
+Legacy-palautuksen `dist/profileBackup/packagedLegacyProfileSmoke.js` on
+täsmällisesti nimetty helper samalla smoke-tokenin ja eristetyn juuren rajalla.
+Se ohjaa nykyistä workspace-palautuspalvelua; synteettisen kannan valmistelija,
+SQLite-testilukija ja E2E-entrypoint eivät kuulu production-pakettiin.
 
 Lopullinen inventaario torjuu Eky-omisteiset `.json.gz`-, `.log`-, `.bak`-,
 `.backup`-, `.dmp`- ja `.pem`-jäämät. Yksityisavaimet (`.key`, `.p12`,
@@ -322,6 +326,18 @@ Rajoja ei nosteta vain siksi, että uusi artifacti ei mahdu niihin. Ylitys
 vaatii paketin sisällön tarkastuksen, perustellun dokumenttipäivityksen ja
 uuden puhtaan baseline-mittauksen. Pilot-manifestin nykyistä formaattia ei
 muuteta tällä kovennuksella.
+
+B3–B5:n hyväksytty rajattu kokobudjettimuutos nostaa vain
+`applicationStage.maximumTotalBytes`-rajan 2,25 MiB:iin (2 359 296 tavua).
+Revision ja toimitushistorian toteutus sekä moniversioisen palautuskokeen
+nykyiseen sallittuun smoke-helperiin lisätty polku kasvattavat sovellusosaa.
+Muutos ei salli uusia tiedostolajeja tai hakemistoja: sisältötarkastus,
+tiedostomäärä, yksittäisen tiedoston koko ja kaikkien muiden stagejen rajat
+säilyvät. Rajatesti hyväksyy täsmälleen uuden rajan ja hylkää yhden tavun
+ylityksen. Yllä oleva päivätty mittaustaulukko on historiaa, ei tämän
+muutoksen baseline. Uusi puhtaaseen revisioon sidottu sisältöinventaario
+ja baseline vaaditaan ennen tämän paketointimuutoksen loppuhyväksyntää;
+keskeneräisen työpuun kehityspaketointi ei korvaa niitä.
 
 Normaali `package:windows` jää kehityskäyttöön. Erillinen
 `package:windows:pilot` vaatii puhtaan ja HEADiin sidotun buildin, `pilot`-

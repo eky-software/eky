@@ -90,6 +90,17 @@ tarkan vastaavuuden, backupin jälkeisen mutaation poistumisen sekä
 backupista poissuljetun SMTP-salaisuuden jatkuvuuden. Smoke-tilatiedosto ei
 sisällä salasanaa, sessionia, raakaa polkua eikä business dataa.
 
+B5:n työpuussa nykyinen PDF-smoke-valmistelu tuottaa samalle laskulle kaksi
+revisiota. Ensimmäisen PDF:n jälkeen kirjataan verkoton dry-run-tapahtuma,
+lasku avataan muokkaukseen ja hyväksytään uudelleen muuttuneella sisällöllä.
+Laskuidentiteetin ja numeron pitää säilyä, uuden dokumentin ja PDF-tavujen
+erota vanhasta sekä tapahtuman PDF:n vastata alkuperäisiä tavuja. Nykyinen
+backup/restore-smoke vertailee katalogin kaikkia artifacteja, ei vain
+uusinta PDF:ää. Tämä ei ole SMTP-testilähetyksen todiste eikä vielä vanhan
+038-profiilin paketoitu migraatio-/palautustodistus. Erillisen legacy-kokeen
+ja puhtaan revision hyväksynnän viimeisin tila on
+[B5-checkpointissa](release-0.3.0-m1-preparation-plan.md#b5-katalogin-ja-palautuksen-checkpoint).
+
 Tämä checkpoint ei toteuta Windows-installeria, code signingia,
 automaattipäivitystä, pilvivarmuuskopiota, osapalautusta tai usean profiilin
 yhdistämistä. Ne säilyvät erillisten hyväksyntä- ja release-porttien takana.
@@ -245,7 +256,8 @@ palvelujen eikä IPC-capabilityjen omistajuutta.
 - versionoidun manifestin
 - SQLite-tietokannan transaktionaalisesti eheän snapshotin
 - tietokannan schema- ja migration-identiteetin
-- hyväksyttyjen laskujen current PDF:t
+- Invoicingin katalogin kaikki säilytettävät lasku-PDF:t; B3-B5:n
+  työpuutoteutuksessa myös aikaisemmat revisiot ja legacy-kopiot
 - muut module ownerin nimeämät auktoritatiiviset business-artifactit, joita
   ei voida luotettavasti muodostaa uudelleen
 - jokaisen osion koon ja SHA-256-checksumin
@@ -544,6 +556,15 @@ toteutetaan hallituilla forward-migraatioilla; profiilin tyhjentäminen tai
 uuden yrityksen luomisen vaatiminen ei ole migraation korvaava ratkaisu.
 Tuettujen aiempien versioiden varmuuskopiot validoidaan ja päivitetään
 nykyiseen rakenteeseen restore-stagingissa ennen aktivointia.
+
+B5:n työpuutoteutuksessa katalogin skeema valitaan tarkistetusta
+migraatiohistoriasta. Lähteen katalogi ja PDF-tavut validoidaan ennen
+forward-migraatiota, ja nykytilan validointi vaatii sen jälkeen saman
+alkuperäisen katalogin ennen tiedostojen materiaalistamista. Sisäinen
+historiatieto ei laajenna startup-viestiä tai backup-manifestia; container ja
+catalog-v1 säilyvät ennallaan. Alempien testitasojen sekä kehityspaketin
+moniversioisen/legacy-palautuksen näyttö ja puhtaan revision avoin hyväksyntä kuvataan
+[B5-checkpointissa](release-0.3.0-m1-preparation-plan.md#b5-katalogin-ja-palautuksen-checkpoint).
 
 Yhteensopivuus ei tarkoita tuntemattoman, tulevan tai ristiriitaisen
 migraatiohistorian tai profiili-identiteetin hyväksymistä. Näissä tilanteissa

@@ -130,6 +130,11 @@ uudelleenohjaukset ja muuttuneet tiedostot hylätään.
 Playwright-raportin projektio merkitään manifestiin: alkuperäisen lähteen
 tiiviste ja salattavan projektion tiiviste eivät ole sama todiste.
 Muiden sallittujen tiedostojen tavut säilyvät muuttamattomina.
+Packaged-legacy-palautus käyttää samoja `eky-desktop-smoke/<token>`-juuren
+nimettyjä tulos- ja prosessitulostetiedostoja. Keräyksen regressio varmistaa
+niiden säilymisen myös OS-native-temp-juuresta; `legacy-input`-backup,
+identiteetti, vertailutila ja käyttäjäprofiili jäävät pois. Tämä ei lisää
+uutta kerättävää tiedostolajia tai laajenna julkaisurajaa.
 Electronin lifecycle-tiedosto kerätään omana lähteenään, koska raportin
 inline-liitteiden sisältö poistetaan edelleen. Keräin ei päättele julkisen
 sulkukutsun aikakatkaisusta prosessipuun tilaa eikä muuta cleanup-hylkäystä

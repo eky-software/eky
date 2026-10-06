@@ -199,6 +199,18 @@ Peruutus:
 
 Peruutus tehdään yhtenä transaktiona.
 
+B4:n revisiotyö säilyttää tämän peruutuskäytännön: mikä tahansa
+`succeeded`-toimitustapahtuma estää peruutuksen, myös itselle tehty SMTP-testi
+tai dry-run. Tätä ei pidä sekoittaa reopen-käytäntöön, joka sallii muokkauksen
+onnistuneen itselle-testin jälkeen historiaa säilyttäen. `attempted` ja
+`outcomeUnknown` estävät molemmat toimet; varmasti `failed` ei yksin estä
+peruutusta. Varaus ja peruutus tarkistavat kelpoisuuden omissa
+tietokantatransaktioissaan: ensin valmistunut peruutus estää varauksen,
+ensin valmistunut varaus estää peruutuksen. Backend-kohdetestit kattavat
+molemmat SMTP-moodit, molemmat järjestykset eri yhteyksillä, kirjoituslukon
+ja pysyvän päätöksen tietokannan uudelleenavaamisen jälkeen. Tämä ei yksin
+korvaa B3-B5:n UI-/native-/palautustodennusta.
+
 Peruutuspyyntö sisältää vain:
 
 ```text
@@ -397,6 +409,11 @@ hyvitystä yli alkuperäisen snapshotin.
 
 Laskutason hyvityssummat ja ALV-erittely muodostetaan valmiiksi lasketuista
 hyvitysriveistä. Niitä ei lasketa uudelleen toisella tavalla.
+Hyväksytyn hyvityksen katselu ja uuden PDF:n syöte käyttävät samaa
+`sumCreditTotals`-summausta kuin hyvitysluonnoksen laskenta, eivät tavallisen
+laskun uutta ryhmäpyöristystä. Lukupolku ei kirjoita tallennettuja loppusummia
+tai olemassa olevia PDF:iä uudelleen. Rajatun korjauksen hyväksyntätila on
+[B3-B5-valmistelussa](release-0.3.0-m1-preparation-plan.md#alv-lukupolun-tarkennus).
 
 ## Hyvityksen Hyväksyntä
 
@@ -406,7 +423,8 @@ SQLite-transaktio.
 Transaktio:
 
 1. lukee hyvitysluonnoksen yritysrajattuna
-2. lukee alkuperäisen lähetetyn tavallisen laskun ja sen rivit
+2. tarkistaa alkuperäisen laskun yritys-/standard-/sent-kelpoisuuden ja lukee
+   sisällön sekä rivit sen muuttumattomasta nykyrevisiosta
 3. lukee kaikki alkuperäiseen laskuun liittyvät aiemmat ei-perutut
    hyvitysrivit, mukaan lukien vapaat rivit
 4. varmistaa lähdeviittaukset ja muuttumattomat snapshot-kentät
@@ -415,20 +433,32 @@ Transaktio:
    summaylitykset
 7. varaa uuden laskunumeron nykyisestä yrityskohtaisesta numerointisarjasta
 8. tallentaa hyvityslaskun ja rivit
-9. linkittää hyvitysluonnoksen hyväksyttyyn hyvityslaskuun
-10. kirjaa `invoice.credit_approved`-audit-tapahtuman
+9. julkaisee hyvityksen muuttumattoman revision, lähderevisio-/rivisidokset
+   ja auktoritatiivisen ALV-erittelyn sekä vaihtaa nykyrevisio-osoittimen
+10. kirjaa `invoice.credit_approved`-audit-tapahtuman ja linkittää
+    hyvitysluonnoksen hyväksyttyyn hyvityslaskuun
 
 Kaikki onnistuu tai peruuntuu yhdessä. Transaktion pitää estää kahden
 samanaikaisen hyväksynnän ylittämästä alkuperäisen laskun jäljellä olevaa
 hyvityskapasiteettia.
 
+Revisiosidonnan toteutus ja rajattu testinäyttö kuuluvat
+[B3-B5-valmisteluun](release-0.3.0-m1-preparation-plan.md#tietomallin-katselmointiehdotus).
+Vanhan lähetetyn standardilaskun `legacySnapshot` kelpaa hyvityksen
+lähteeksi, mutta tämä ei varmista sen historiallista PDF:ää tai anna
+uudelleenlähetysoikeutta. Lähdenumero ja -päivämäärä tulevat samasta
+lähderevisiosta; vapaalla hyvitysrivillä lähderevisio ja lähderivi ovat null.
+Puuttuvaa tai ristiriitaista revisiota ei korvata elävän laskusisällön luvulla.
+Nykyiset aiempien hyvitysten kohdistukset ja kapasiteettisäännöt säilyvät.
+
 Hyvityslasku saa oman virallisen laskunumeron. Se ei saa tavallisen laskun
 viitenumeroa eikä muodosta asiakkaalle maksuvaatimusta.
 
-Jos hyväksytty mutta toimittamaton hyvityslasku palautetaan muokattavaksi,
-uudelleenhyväksyntä säilyttää saman hyvityslaskun numeron ja kirjaa
-`invoice.credit_reapproved`-audit-tapahtuman. Lähetettyä hyvityslaskua ei
-reopen-muokata.
+Hyvityksen erillinen reopen/uudelleenhyväksyntä on myöhempi laajennus, ei
+nykyisen B3-B5-työn toteutuspolku. Jos se myöhemmin toteutetaan hyväksytylle
+mutta toimittamattomalle hyvitykselle, sen tulee säilyttää sama laskunumero
+ja kirjata `invoice.credit_reapproved`-audit-tapahtuma. Lähetettyä
+hyvityslaskua ei reopen-muokata. Nykyinen standardilaskun rajaus on alla.
 
 ## Hyväksyntä- Ja Reopen-Rajat
 

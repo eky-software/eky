@@ -43,6 +43,10 @@ import {
 import { SqliteInvoiceApprovalQueries } from './sqliteInvoiceApprovalQueries.js';
 import { SqliteInvoiceApprovalSnapshotReader } from './sqliteInvoiceApprovalSnapshotReader.js';
 import { SqliteInvoiceApprovalStatements } from './sqliteInvoiceApprovalStatements.js';
+import { publishInvoiceApprovalRevision } from './publishInvoiceApprovalRevision.js';
+import { InvoiceDeliveryConflictError } from '../domain/invoiceDeliveryConflictError.js';
+import { InvoiceLegacyDeliveryReviewRequiredError } from '../domain/invoiceLegacyDeliveryReviewRequiredError.js';
+import { requiresLegacyInvoiceDeliveryReview } from './requiresLegacyInvoiceDeliveryReview.js';
 
 export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepository {
   private readonly queries: SqliteInvoiceApprovalQueries;
@@ -76,7 +80,7 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
       this.reopenApprovedInvoiceWithinTransaction(input),
     );
 
-    return reopenTransaction();
+    return reopenTransaction.immediate();
   }
 
   async markApprovedInvoiceSent(
@@ -225,10 +229,14 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
     });
     this.statements.insertInvoice(invoiceRow);
     this.statements.insertInvoiceLines(lineRows);
+    const revisionId = publishInvoiceApprovalRevision(this.database, invoiceRow, lineRows, totals, null);
     this.statements.insertAuditEvent(auditEventRow);
     this.statements.markDraftApproved(numberedInput);
 
     return {
+      revisionKey: {
+        companyId: input.companyId, invoiceId: invoiceRow.id, revisionId,
+      },
       invoiceId: input.invoiceId,
       draftId: input.draftId,
       invoiceNumber,
@@ -248,6 +256,9 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
     totals: InvoiceTotals,
     reopenedInvoice: InvoiceRow,
   ): ApprovedInvoiceResult {
+    if (this.queries.hasUnresolvedDelivery(input.companyId, reopenedInvoice.id)) {
+      throw new InvoiceDeliveryConflictError();
+    }
     const snapshot = this.snapshotReader.getSnapshotData({
       billingRecipientCustomerId: draft.billing_recipient_customer_id,
       companyId: input.companyId,
@@ -278,10 +289,14 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
     this.statements.updateInvoice(invoiceRow);
     this.statements.deleteInvoiceLines(reopenedInvoice.id);
     this.statements.insertInvoiceLines(lineRows);
+    const revisionId = publishInvoiceApprovalRevision(this.database, invoiceRow, lineRows, totals, null);
     this.statements.insertAuditEvent(auditEventRow);
     this.statements.markDraftApproved(reapprovedInput);
 
     return {
+      revisionKey: {
+        companyId: input.companyId, invoiceId: reopenedInvoice.id, revisionId,
+      },
       invoiceId: reopenedInvoice.id,
       draftId: input.draftId,
       invoiceNumber: reopenedInvoice.invoice_number,
@@ -341,13 +356,15 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
       return undefined;
     }
 
+    if (requiresLegacyInvoiceDeliveryReview(this.database, input)) {
+      throw new InvoiceLegacyDeliveryReviewRequiredError();
+    }
+    if (this.queries.hasUnresolvedDelivery(input.companyId, input.invoiceId)) {
+      throw new InvoiceDeliveryConflictError();
+    }
     this.statements.markInvoiceReopenedForEditing(input);
     this.statements.unlockSourceDraftForEditing(input, invoice.source_draft_id);
-    const removedDocumentStoragePaths =
-      this.statements.deleteApprovedInvoicePdfDocumentRows(
-        input.companyId,
-        input.invoiceId,
-      );
+    this.statements.detachCurrentInvoiceRevision(input.companyId, input.invoiceId);
     this.statements.insertAuditEvent(
       createAuditEventRow(
         {
@@ -366,7 +383,6 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
     return {
       draftId: invoice.source_draft_id,
       invoiceId: invoice.id,
-      removedDocumentStoragePaths,
     };
   }
 
@@ -382,6 +398,9 @@ export class SqliteInvoiceApprovalRepository implements InvoiceApprovalRepositor
       return undefined;
     }
 
+    if (requiresLegacyInvoiceDeliveryReview(this.database, input)) {
+      throw new InvoiceLegacyDeliveryReviewRequiredError();
+    }
     if (invoice.status === 'sent') {
       return {
         invoiceId: invoice.id,

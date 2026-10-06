@@ -4,6 +4,8 @@ import { isAbsolute, posix, resolve } from 'node:path';
 
 import type { DatabaseConnection } from '../../database/connection/createDatabaseConnection.js';
 import { readLocalRuntimeIdentity } from '../../database/localRuntimeIdentityReader.js';
+import type { MigrationHistoryInspection } from '../../database/migration/migrationMetadata.js';
+import { selectInvoiceBackupArtifactCatalogSchema } from '../../modules/invoicing/infrastructure/selectInvoiceBackupArtifactCatalogSchema.js';
 import { SqliteInvoiceBackupArtifactCatalog } from '../../modules/invoicing/infrastructure/sqliteInvoiceBackupArtifactCatalog.js';
 import type { InvoiceBackupArtifactCatalogItem } from '../../modules/invoicing/ports/invoiceBackupArtifactCatalog.js';
 import type {
@@ -26,7 +28,7 @@ export class CurrentActiveProfileValidationService
   constructor(
     private readonly database: DatabaseConnection,
     invoiceDocumentStorageRoot: string,
-    private readonly readMigrationChainIdentity: () => string,
+    private readonly readMigrationHistory: () => MigrationHistoryInspection,
   ) {
     if (!isAbsolute(invoiceDocumentStorageRoot)) {
       throw new Error('ACTIVE_PROFILE_VALIDATION_FAILED');
@@ -47,9 +49,12 @@ export class CurrentActiveProfileValidationService
         throw new Error('ACTIVE_PROFILE_VALIDATION_FAILED');
       }
 
+      const history = this.readMigrationHistory();
+      const identity = readLocalRuntimeIdentity(this.database);
       const artifacts =
         await new SqliteInvoiceBackupArtifactCatalog(
           this.database,
+          selectInvoiceBackupArtifactCatalogSchema(history),
         ).listAuthoritativeArtifacts();
       if (artifacts.length > maximumArtifactCount) {
         throw new Error('ACTIVE_PROFILE_VALIDATION_FAILED');
@@ -74,10 +79,8 @@ export class CurrentActiveProfileValidationService
         artifactCount: artifacts.length,
         artifactTotalByteSize,
         databaseHealth: 'healthy',
-        migrationChainIdentity: this.readMigrationChainIdentity(),
-        profileId: createProfileBackupIdentity(
-          readLocalRuntimeIdentity(this.database).companyId,
-        ),
+        migrationChainIdentity: history.migrationChainIdentity,
+        profileId: createProfileBackupIdentity(identity.companyId),
       };
     } catch {
       throw new Error('ACTIVE_PROFILE_VALIDATION_FAILED');

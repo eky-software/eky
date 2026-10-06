@@ -159,11 +159,14 @@ for (const smtpScenario of [
       expectNoPrivateOperationalData(e2eWeb);
 
       if (smtpScenario.expectedStatus === 'outcomeUnknown') {
+        const { documentTarget } = sendResponse.request().postDataJSON();
+        expect(documentTarget).toEqual({ kind: 'revision', documentId: expect.any(String) });
         const blockedResponse = await e2eWeb.api.post(
           `/invoices/${approved.invoiceId}/email/smtp/prepare`,
           {
             data: {
               body: privateEmailBody,
+              documentTarget,
               cc: '',
               subject: 'Synthetic blocked retry',
               to: privateRecipient,

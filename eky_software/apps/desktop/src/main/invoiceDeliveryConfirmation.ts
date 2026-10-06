@@ -62,17 +62,23 @@ export function createInvoiceDeliveryConfirmation(
 
   return {
     async confirmInvoiceEmailPreparation(preparation) {
+      const preservedLegacy =
+        preparation.documentTarget.kind === 'preservedLegacy';
       const response = await showApplicationMessageBox({
         buttons: [
-          preparation.resend ? 'Lähetä uudelleen' : 'Lähetä lasku',
+          preservedLegacy
+            ? 'Lähetä säilytetty PDF'
+            : preparation.resend ? 'Lähetä uudelleen' : 'Lähetä lasku',
           'Peruuta',
         ],
         cancelId: 1,
         defaultId: 1,
         detail: createInvoiceEmailConfirmationDetail(preparation),
-        message: preparation.resend
-          ? 'Vahvista laskun uudelleenlähetys'
-          : 'Vahvista laskun lähetys',
+        message: preservedLegacy
+          ? 'Vahvista säilytetyn PDF:n uudelleenlähetys'
+          : preparation.resend
+            ? 'Vahvista laskun uudelleenlähetys'
+            : 'Vahvista laskun lähetys',
         noLink: true,
         title: 'Eky - laskun sähköposti',
         type: 'question',

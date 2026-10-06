@@ -614,11 +614,13 @@ describe('approved invoices api client', () => {
         ccEmail: '',
         createdAt: '2026-07-20T20:00:00.000Z',
         deliveryMethod: 'print',
+        documentSource: 'revision',
         id: 'event-1',
         provider: 'manual',
         providerMessageId: '<must-not-be-forwarded@example.fi>',
         recipientEmail: '',
         safeErrorMessage: null,
+        sendMode: 'manual',
         technicalErrorCode: 'must-not-be-forwarded',
         status: 'succeeded',
       },
@@ -632,10 +634,12 @@ describe('approved invoices api client', () => {
         ccEmail: '',
         createdAt: '2026-07-20T20:00:00.000Z',
         deliveryMethod: 'print',
+        documentSource: 'revision',
         id: 'event-1',
         provider: 'manual',
         recipientEmail: '',
         safeErrorMessage: null,
+        sendMode: 'manual',
         status: 'succeeded',
       },
     ]);
@@ -711,6 +715,7 @@ describe('approved invoices api client', () => {
       body: 'Hei',
       companyId: 'other-company',
       deliveryEventId: 'event-from-client',
+      documentTarget: { kind: 'preservedLegacy', documentId: 'untrusted-document' },
       providerResult: { provider: 'smtp' },
       status: 'succeeded',
       subject: 'Lasku',
@@ -738,9 +743,10 @@ describe('approved invoices api client', () => {
         authorizationToken: 'one-time-authorization',
         body: 'Hei, liitteenä lasku.',
         cc: 'copy@example.fi',
+        documentTarget: { kind: 'preservedLegacy', documentId: 'untrusted-document' },
         subject: 'Lasku 20260001',
         to: 'customer@example.fi',
-      },
+      } as never,
     );
 
     expect(result).toEqual(delivery);
@@ -783,9 +789,10 @@ describe('approved invoices api client', () => {
       {
         body: 'Hei, liitteenä lasku.',
         cc: 'copy@example.fi',
+        documentTarget: { kind: 'preservedLegacy', documentId: 'untrusted-document' },
         subject: 'Lasku 20260001',
         to: 'customer@example.fi',
-      },
+      } as never,
     );
 
     expect(result).toEqual(preparation);
@@ -808,13 +815,15 @@ describe('approved invoices api client', () => {
     });
   });
 
-  it('prepares and sends a customer SMTP delivery through exact endpoints', async () => {
+  it.each(['revision', 'preservedLegacy'] as const)('prepares and sends a customer SMTP delivery with the exact %s target', async (kind) => {
+    const documentTarget = { kind, documentId: 'document-1' };
     const preparation = {
-      attachment: { fileName: 'invoice.pdf', sizeBytes: 2048 },
+      attachment: { documentId: 'document-1', fileName: 'invoice.pdf', sizeBytes: 2048 },
       attemptId: 'attempt-1',
       authorizationToken: 'one-time-authorization',
       body: 'Hei, liitteenä lasku.',
       cc: 'copy@example.fi',
+      documentTarget,
       expiresAt: '2026-07-17T22:01:00.000Z',
       invoiceId: 'invoice-1',
       invoiceNumber: '20260001',
@@ -828,6 +837,7 @@ describe('approved invoices api client', () => {
     const emailFields = {
       body: 'Hei, liitteenä lasku.',
       cc: 'copy@example.fi',
+      documentTarget,
       subject: 'Lasku 20260001',
       to: 'customer@example.fi',
     };
@@ -867,11 +877,12 @@ describe('approved invoices api client', () => {
     const requests = createRequestLog();
     const client = createTestClient(requests, {
       preparation: {
-        attachment: { fileName: 'invoice.pdf', sizeBytes: 2048 },
+        attachment: { documentId: 'document-1', fileName: 'invoice.pdf', sizeBytes: 2048 },
         attemptId: 'attempt-1',
         authorizationToken: 'one-time-authorization',
         body: 'Hei',
         cc: '',
+        documentTarget: { kind: 'preservedLegacy', documentId: 'document-1' },
         expiresAt: '2026-07-17T22:01:00.000Z',
         invoiceId: 'invoice-1',
         invoiceNumber: '20260001',
@@ -882,19 +893,45 @@ describe('approved invoices api client', () => {
       },
     });
 
-    await client.prepareApprovedInvoiceEmailSmtp('invoice-1', {
+    const unsafeInput = {
       body: 'Hei',
       companyId: 'other-company',
+      documentTarget: {
+        kind: 'preservedLegacy',
+        documentId: 'document-1',
+        sourceDocumentId: 'untrusted-source',
+        revisionId: 'untrusted-revision',
+        sha256: 'untrusted-hash',
+        storagePath: 'untrusted/path',
+      },
       invoiceId: 'other-invoice',
       status: 'sent',
       subject: 'Lasku',
       to: 'customer@example.fi',
-    } as never);
+    };
+    await client.prepareApprovedInvoiceEmailSmtp('invoice-1', unsafeInput as never);
 
-    expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({
+    const expectedFields = {
       body: 'Hei',
+      documentTarget: { kind: 'preservedLegacy', documentId: 'document-1' },
       subject: 'Lasku',
       to: 'customer@example.fi',
+    };
+    expect(JSON.parse(String(requests[0]?.init?.body))).toEqual(expectedFields);
+
+    const sendRequests = createRequestLog();
+    const sendClient = createTestClient(sendRequests, {
+      delivery: createTestApprovedInvoiceEmailSmtpSendResult(),
+    });
+    await sendClient.sendApprovedInvoiceEmailSmtp('invoice-1', {
+      ...unsafeInput,
+      attemptId: 'attempt-1',
+      authorizationToken: 'one-time-authorization',
+    } as never);
+    expect(JSON.parse(String(sendRequests[0]?.init?.body))).toEqual({
+      ...expectedFields,
+      attemptId: 'attempt-1',
+      authorizationToken: 'one-time-authorization',
     });
   });
 
@@ -1338,6 +1375,7 @@ function createTestApprovedInvoiceEmailPreview(): ApprovedInvoiceEmailPreview {
       sizeBytes: 1234,
     },
     body: 'Hei,\n\nLiitteenä lasku 20260001.',
+    documentTarget: { kind: 'revision', documentId: 'document-1' },
     invoiceId: 'invoice-1',
     invoiceNumber: '20260001',
     provider: 'dryRun',
@@ -1347,13 +1385,19 @@ function createTestApprovedInvoiceEmailPreview(): ApprovedInvoiceEmailPreview {
 }
 
 function createTestApprovedInvoiceEmailDryRunSendResult(): ApprovedInvoiceEmailDryRunSendResult {
+  const preview = createTestApprovedInvoiceEmailPreview();
+
   return {
     deliveryEventId: 'delivery-event-1',
     email: {
-      ...createTestApprovedInvoiceEmailPreview(),
+      attachment: preview.attachment,
       body: 'Hei,\n\nMuokattu viesti.',
       cc: 'copy@example.fi',
+      invoiceId: preview.invoiceId,
+      invoiceNumber: preview.invoiceNumber,
+      provider: preview.provider,
       subject: 'Lasku 20260001 - muokattu',
+      to: preview.to,
     },
     providerResult: {
       provider: 'dryRun',

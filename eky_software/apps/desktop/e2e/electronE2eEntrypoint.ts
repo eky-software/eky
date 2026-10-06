@@ -20,6 +20,7 @@ import { createElectronE2eNativeAdapters } from './electronE2eNativeAdapters.js'
 import { readSafeElectronE2eWorkspaceStartupFailureCode } from './electronE2eWorkspaceStartupFailure.js';
 import { createElectronE2eStartupHold } from './electronE2eStartupHold.js';
 import { createElectronE2eStartupObservation } from './electronE2eStartupObservation.js';
+import { isElectronPdfPreviewUrl } from './electronPdfPreviewProbe.js';
 import { createFirstStartProofAdmission, createFirstStartProofObserver } from './workspaceFirstStartProofObservation.js';
 import { WorkspaceFirstStartLoadExperiment, type FirstStartLoadExperimentMode } from './workspaceFirstStartLoadExperiment.js';
 
@@ -125,9 +126,7 @@ function getPdfPreviewWindows(): BrowserWindow[] {
     (window) =>
       !window.isDestroyed() &&
       !window.webContents.isDestroyed() &&
-      /^eky:\/\/app\/invoices\/[A-Za-z0-9_-]{1,100}\/pdf$/u.test(
-        window.webContents.getURL(),
-      ),
+      isElectronPdfPreviewUrl(window.webContents.getURL()),
   );
 }
 

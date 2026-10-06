@@ -280,7 +280,7 @@ Electron-runtimessa session- ja transport-raja on toteutettu seuraavasti:
   asetuksessa tai lokitettavassa ympäristömuuttujassa
 - renderer ja React-koodi eivät saa raakaa session-salaisuutta
 - preload paljastaa vain nimetyt ja rajatut desktop-toiminnot; ensimmäinen
-  toiminto on `openInvoicePdf(invoiceId)`, eikä se hyväksy URL:ia tai polkua
+  toiminto on `openInvoicePdf(invoiceId, target?)`, eikä se hyväksy URL:ia tai polkua
 - main process hyväksyy vain suhteelliset allowlistatut API-polut ja sallitut
   HTTP-metodit
 - renderer ei saa asettaa tai korvata session- tai authorization-otsaketta
@@ -303,7 +303,8 @@ featureissä ei tehdä `window.electron`-ehtoja.
 
 Paketoitu Electron-sovellus avaa hyväksytyn laskun PDF:n main-prosessin
 omistamaan erilliseen esikatseluikkunaan. Renderer saa välittää vain tiukalla
-resource-id-säännöllä validoitavan `invoiceId`-arvon. Renderer ei saa välittää
+resource-id-säännöllä validoitavan `invoiceId`-arvon ja valinnaisen, alla
+rajatun säilytetyn dokumentin kohteen. Renderer ei saa välittää
 URL:ia, tiedostopolkua, backend-originia, headereita tai runtime-sessionia.
 
 Main process muodostaa itse täsmällisen osoitteen:
@@ -312,14 +313,44 @@ Main process muodostaa itse täsmällisen osoitteen:
 eky://app/invoices/{invoiceId}/pdf
 ```
 
+B-P3:n työpuutoteutus laajentaa samaa capabilityä valinnaisella kohteella
+`{ kind: 'preservedLegacy', documentId }`. Main validoi molemmat tunnisteet,
+tarkan variantin ja kenttäjoukon. Väärä, puuttuvakenttäinen tai tuntematon
+kohde ei palaudu tavalliseen PDF-polkuun; vain koko valinnaisen argumentin
+puuttuminen tarkoittaa aiempaa toimintoa. Main muodostaa osoitteen
+`eky://app/invoices/{invoiceId}/preserved-documents/{documentId}/pdf`.
+Allowlist sallii tästä polusta vain GET-pyynnön. Backend tarkistaa
+`sendInvoices`-oikeuden, yritys-/laskurajan sekä nimetyn säilytetyn PDF:n ja
+sen lähteen eheyden. Luku ei generoi tai valmistele puuttuvaa kopiota eikä
+anna lähetyslupaa. Lomakkeen avaus välittää tämän kohteen app-kerroksen
+callbackin kautta; se ei vaihda selaimeen native-virheessä. Rajattu
+selainkytkentätesti korvaa native-callbackin, eikä todista oikeaa Electron-
+esikatselua. SMTP-vahvistuksen kohdesidonta ja kokonaisketjun
+hyväksyntä ovat [omistavassa B-P3-suunnitelmassa](release-0.3.0-m1-preparation-plan.md#säilytetyn-dokumentin-täsmäluku-ja-vahvistuksen-järjestys).
+
+Asiakas-SMTP:n valmistelu estyy ennen backend-kutsua, jos mainin
+vahvistuscallback puuttuu. Main vertaa valmisteluvastauksen lasku- ja
+dokumenttikohdetta alkuperäiseen pyyntöön ja palauttaa kertaluvan vasta
+hyväksytyn native-vahvistuksen jälkeen. Säilytetyn PDF:n dialogi kertoo,
+ettei vanhan toimituksen sisältöä väitetä takautuvasti varmennetuksi.
+Peruutus, callbackin virhe tai kohdepoikkeama ei palauta lupaa rendererille.
+Tämä ei pidennä backendin valtuutusaikaa eikä luo automaattista uusintaa.
+
 Custom protocol lisää backendin runtime-sessionin vasta main-prosessissa.
 Backendin `ActorContext`-, permission- ja `companyId`-rajaukset pysyvät siten
 voimassa myös esikatselussa.
 
 PDF-ikkunassa ei ole preloadia, Node-integraatiota, webviewta tai DevToolsia.
 Ikkuna estää popupit, permission-pyynnöt ja navigoinnin pois täsmälleen mainin
-muodostamasta PDF-osoitteesta. Ikkunoita ei luoda rajattomasti: sama lasku
-fokusoidaan uudelleen ja eri laskua avattaessa aiempi esikatselu suljetaan.
+muodostamasta PDF-osoitteesta. Ikkunoita ei luoda rajattomasti: vain sama
+täsmällinen historian tai säilytetyn dokumentin PDF-osoite fokusoidaan uudelleen.
+Nykyisen PDF:n osoite ei vaihdu revision mukana. Sen uusi avaus sulkee vanhan
+samannimisen esikatselun ennen saatavuustarkistusta ja lataa sisällön uudelleen;
+tarkistuksen epäonnistuessa vanha sisältö ei jää nykyisen PDF:n korvikkeeksi.
+Samanaikaiset avaukset voivat käyttää juuri uudelleen luotua ikkunaa.
+Eri laskun, eri dokumentin
+tai tavallisen ja säilytetyn PDF:n välillä vaihdettaessa aiempi esikatselu
+suljetaan. Pelkkä lasku-ID ei ole säilytetyn dokumentin cache-avain.
 Main varmistaa custom protocol -polun kautta ennen ikkunan luontia, että vastaus
 on onnistunut `application/pdf`-vastaus. Puuttuva PDF tai latausvirhe sulkee
 ikkunan ja näyttää vain turvallisen yleisvirheen.

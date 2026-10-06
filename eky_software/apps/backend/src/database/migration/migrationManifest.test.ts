@@ -50,13 +50,16 @@ describe('readMigrationManifest', () => {
     );
   });
 
-  it('keeps the published 38-migration chain continuous', () => {
+  it('keeps the 39-migration chain continuous after the published prefix', () => {
     const manifest = readMigrationManifest(publishedMigrationsDirectory);
 
-    expect(manifest).toHaveLength(38);
+    expect(manifest).toHaveLength(39);
     expect(manifest.at(0)?.fileName).toBe('001_create_customers.sql');
-    expect(manifest.at(-1)?.fileName).toBe(
+    expect(manifest.at(37)?.fileName).toBe(
       '038_create_invoice_numbering_series_transitions.sql',
+    );
+    expect(manifest.at(-1)?.fileName).toBe(
+      '039_add_invoice_content_revisions.sql',
     );
   });
 });

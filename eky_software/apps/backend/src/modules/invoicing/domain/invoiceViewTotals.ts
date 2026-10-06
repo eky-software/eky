@@ -3,6 +3,7 @@ import type {
   ApprovedInvoiceViewLine,
 } from './approvedInvoiceView.js';
 import { calculateInvoiceTotals } from './calculateInvoiceTotals.js';
+import { sumCreditTotals } from './calculateCreditInvoiceDraft.js';
 import { calculateReverseChargeInvoice } from './calculateReverseChargeInvoice.js';
 import type { PriceInputMode } from './invoiceCalculation.js';
 import type { InvoiceDraft, InvoiceDraftLine } from './invoiceDraft.js';
@@ -42,8 +43,11 @@ export function withCalculatedApprovedInvoiceVatBreakdown(
     };
   }
 
-  const vatBreakdown = calculateInvoiceTotals(
-    toNormalCalculatedLines(invoice.lines, invoice.priceInputMode),
+  const lines = toNormalCalculatedLines(invoice.lines, invoice.priceInputMode);
+  // Credit lines already own their cumulative rounding remainder.
+  const vatBreakdown = (invoice.invoiceKind === 'credit'
+    ? sumCreditTotals(lines)
+    : calculateInvoiceTotals(lines)
   ).vatBreakdown;
 
   return {

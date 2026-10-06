@@ -21,6 +21,8 @@ import { InvoiceCreditRelations } from './InvoiceCreditRelations.js';
 import { InvoicePaymentPanel } from './InvoicePaymentPanel.js';
 import styles from './ApprovedInvoicePreview.module.css';
 import { uiText } from '../../../i18n/fi.js';
+import type { OpenPreservedInvoicePdf } from '../approved/openPreservedInvoicePdf.js';
+import type { OpenInvoiceDeliveryEventPdf } from '../approved/openInvoiceDeliveryEventPdf.js';
 
 interface ApprovedInvoicePreviewProps {
   cancellationErrorMessage: string | null;
@@ -68,6 +70,8 @@ interface ApprovedInvoicePreviewProps {
   onMarkSent(id: string): void;
   onMarkInvoicePaid(id: string, paidOn: string): void;
   onOpenPdf(id: string): void;
+  onOpenPreservedPdf: OpenPreservedInvoicePdf;
+  onOpenDeliveryEventPdf: OpenInvoiceDeliveryEventPdf;
   onOpenRelatedDraft(id: string): void;
   onOpenRelatedInvoice(id: string): void;
   onPrepareEmail(id: string): void;
@@ -132,6 +136,8 @@ export function ApprovedInvoicePreview({
   onMarkSent,
   onMarkInvoicePaid,
   onOpenPdf,
+  onOpenPreservedPdf,
+  onOpenDeliveryEventPdf,
   onOpenRelatedDraft,
   onOpenRelatedInvoice,
   onPrepareEmail,
@@ -202,7 +208,7 @@ export function ApprovedInvoicePreview({
         onRevertPaidMark={onRevertInvoicePaidMark}
       />
 
-      {!isCancelled && email !== null ? (
+      {!isCancelled && email !== null && email.invoiceId === invoice.id ? (
         <ApprovedInvoiceEmailPreview
           email={email}
           errorMessage={emailSendErrorMessage}
@@ -218,6 +224,7 @@ export function ApprovedInvoicePreview({
           smtpTestUnavailableMessage={emailSmtpTestUnavailableMessage}
           smtpTestSuccessMessage={emailSmtpTestSuccessMessage}
           successMessage={emailSendSuccessMessage}
+          onOpenPreservedPdf={onOpenPreservedPdf}
           onSendDryRun={(input) => onSendEmailDryRun(invoice.id, input)}
           onSendSmtp={(input) => onSendEmailSmtp(invoice.id, input)}
           onSendSmtpTest={(input) =>
@@ -227,9 +234,11 @@ export function ApprovedInvoicePreview({
       ) : null}
 
       <InvoiceDeliveryHistory
+        invoiceId={invoice.id}
         errorMessage={deliveryEventsErrorMessage}
         events={deliveryEvents}
         isLoading={isLoadingDeliveryEvents}
+        onOpenPdf={onOpenDeliveryEventPdf}
       />
 
       <div className={styles.detailsStack}>

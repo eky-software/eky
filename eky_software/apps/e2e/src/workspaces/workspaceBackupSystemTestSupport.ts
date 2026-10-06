@@ -15,10 +15,12 @@ import { createDatabaseConnection } from '../../../backend/src/database/connecti
 import { readLocalRuntimeIdentity } from '../../../backend/src/database/localRuntimeIdentityReader.js';
 import { readMigrationManifest } from '../../../backend/src/database/migration/migrationManifest.js';
 import { runMigrations } from '../../../backend/src/database/migration/runMigrations.js';
+import { selectInvoiceBackupArtifactCatalogSchema } from '../../../backend/src/modules/invoicing/infrastructure/selectInvoiceBackupArtifactCatalogSchema.js';
 import { SqliteInvoiceBackupArtifactCatalog } from '../../../backend/src/modules/invoicing/infrastructure/sqliteInvoiceBackupArtifactCatalog.js';
 import { ProfileMaintenanceState } from '../../../backend/src/runtime/profileMaintenance/profileMaintenanceState.js';
 import { createConsistentProfileSnapshotService } from '../../../backend/src/runtime/profileSnapshot/createConsistentProfileSnapshot.js';
 import { inspectSqliteProfileDatabase } from '../../../backend/src/runtime/profileSnapshot/inspectSqliteProfileDatabase.js';
+import type { ProfileSnapshotMigrationPolicy } from '../../../backend/src/runtime/profileSnapshot/profileSnapshotTypes.js';
 import { validateProfileArtifactCatalog } from '../../../backend/src/runtime/profileSnapshot/validateProfileArtifactCatalog.js';
 import { writeBackupContainer } from '../../../desktop/src/profileBackup/container/backupContainerWriter.js';
 import { createProfileBackupSourceEntries } from '../../../desktop/src/profileBackup/createProfileBackupSourceEntries.js';
@@ -199,6 +201,11 @@ export function createWorkspaceBackupCandidateRuntimeFactory() {
         databaseFilePath: input.databaseFilePath,
       });
       try {
+        await validateProfileArtifactCatalog({
+          database,
+          operationRoot: input.importStagingRoot,
+          schema: selectInvoiceBackupArtifactCatalogSchema(sourceInspection),
+        });
         await runMigrations(database, {
           migrationsDirectory: workspaceBackupMigrationsDirectory,
           releaseIdentity: {
@@ -211,14 +218,18 @@ export function createWorkspaceBackupCandidateRuntimeFactory() {
       }
       return {
         stopAndProveHandlesClosed: async () => true,
-        inspectStoppedMigrationResult: async () => ({
-          ...inspectSqliteProfileDatabase(
+        inspectStoppedMigrationResult: async () => {
+          const inspection = inspectSqliteProfileDatabase(
             input.databaseFilePath,
             workspaceBackupMigrationsDirectory,
             'exactCurrentManifest',
-          ),
-          handlesClosed: true as const,
-        }),
+          );
+          return {
+            migrationChainIdentity: inspection.migrationChainIdentity,
+            profileId: inspection.profileId,
+            handlesClosed: true as const,
+          };
+        },
       };
     },
     startValidation: async (
@@ -257,6 +268,7 @@ export async function inspectWorkspaceCandidateReadiness(input: {
     const artifacts =
       await new SqliteInvoiceBackupArtifactCatalog(
         database,
+        selectInvoiceBackupArtifactCatalogSchema(inspection),
       ).listAuthoritativeArtifacts();
     const actualStoragePaths = await readRelativeFilePaths(input.artifactRoot);
     const expectedStoragePaths = artifacts
@@ -299,7 +311,9 @@ export async function createRealPortableWorkspaceBackup(input: {
   readonly invoiceDocumentStorageRoot: string;
   readonly password: string;
   readonly stagingRoot: string;
+  readonly migrationPolicy?: ProfileSnapshotMigrationPolicy;
 }): Promise<{ migrationChainIdentity: string; profileId: string }> {
+  const migrationPolicy = input.migrationPolicy ?? 'exactCurrentManifest';
   await mkdir(input.stagingRoot, { mode: 0o700 });
   const snapshotOperationId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
   const maintenanceState = new ProfileMaintenanceState();
@@ -308,8 +322,16 @@ export async function createRealPortableWorkspaceBackup(input: {
   });
   await maintenanceState.begin(snapshotOperationId, 5_000);
   try {
+    const sourceInspection = inspectSqliteProfileDatabase(
+      input.databaseFilePath,
+      workspaceBackupMigrationsDirectory,
+      migrationPolicy,
+    );
     const snapshotService = createConsistentProfileSnapshotService({
-      catalog: new SqliteInvoiceBackupArtifactCatalog(database),
+      catalog: new SqliteInvoiceBackupArtifactCatalog(
+        database,
+        selectInvoiceBackupArtifactCatalogSchema(sourceInspection),
+      ),
       database,
       invoiceDocumentStorageRoot: input.invoiceDocumentStorageRoot,
       maintenanceState,
@@ -317,7 +339,7 @@ export async function createRealPortableWorkspaceBackup(input: {
       stagingRoot: input.stagingRoot,
     });
     await snapshotService.createProfileSnapshot({
-      migrationPolicy: 'exactCurrentManifest',
+      migrationPolicy,
       operationId: snapshotOperationId,
       signal: new AbortController().signal,
     });
@@ -331,7 +353,7 @@ export async function createRealPortableWorkspaceBackup(input: {
   const inspection = inspectSqliteProfileDatabase(
     databaseFilePath,
     workspaceBackupMigrationsDirectory,
-    'exactCurrentManifest',
+    migrationPolicy,
   );
   await chmod(databaseFilePath, 0o600);
   const snapshotDatabase = createDatabaseConnection({ databaseFilePath });
@@ -339,6 +361,7 @@ export async function createRealPortableWorkspaceBackup(input: {
     await validateProfileArtifactCatalog({
       database: snapshotDatabase,
       operationRoot,
+      schema: selectInvoiceBackupArtifactCatalogSchema(inspection),
     });
   } finally {
     snapshotDatabase.close();
@@ -351,7 +374,8 @@ export async function createRealPortableWorkspaceBackup(input: {
       createdAtEpochMilliseconds: BigInt(
         new Date('2026-08-19T11:00:00.000Z').getTime(),
       ),
-      ...inspection,
+      migrationChainIdentity: inspection.migrationChainIdentity,
+      profileId: inspection.profileId,
     },
     password: input.password,
   });
@@ -418,7 +442,8 @@ export async function createHistoricalPortableWorkspaceBackup(input: {
       createdAtEpochMilliseconds: BigInt(
         new Date('2026-08-18T11:00:00.000Z').getTime(),
       ),
-      ...inspection,
+      migrationChainIdentity: inspection.migrationChainIdentity,
+      profileId: inspection.profileId,
     },
     password: input.password,
   });
@@ -461,6 +486,14 @@ export async function sha256File(path: string): Promise<string> {
 async function materializeValidatedArtifacts(
   input: Readonly<WorkspaceBackupCandidateValidationInput>,
 ): Promise<void> {
+  const inspection = inspectSqliteProfileDatabase(
+    input.databaseFilePath,
+    workspaceBackupMigrationsDirectory,
+    'exactCurrentManifest',
+  );
+  if (inspection.profileId !== input.expectedProfileId) {
+    throw new Error('PUBLISHED_PROFILE_MISMATCH');
+  }
   const database = createDatabaseConnection({
     databaseFilePath: input.databaseFilePath,
   });
@@ -468,6 +501,7 @@ async function materializeValidatedArtifacts(
     const validation = await validateProfileArtifactCatalog({
       database,
       operationRoot: input.importStagingRoot,
+      schema: selectInvoiceBackupArtifactCatalogSchema(inspection),
     });
     for (const artifact of validation.artifacts) {
       const sourcePath = resolveContainedPath(
@@ -534,6 +568,7 @@ async function inspectHistoricalWorkspaceCandidateReadiness(
     const artifacts =
       await new SqliteInvoiceBackupArtifactCatalog(
         database,
+        selectInvoiceBackupArtifactCatalogSchema(inspection),
       ).listAuthoritativeArtifacts();
     const actualStoragePaths = await readRelativeFilePaths(input.artifactRoot);
     const expectedStoragePaths = artifacts

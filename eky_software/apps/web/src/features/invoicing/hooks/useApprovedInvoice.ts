@@ -3,7 +3,7 @@ import {
   type ApprovedInvoiceView,
   type EkyApiClient,
 } from '@eky/api-client';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { getFinnishApiErrorMessage, uiText } from '../../../i18n/fi.js';
 
@@ -25,37 +25,54 @@ export function useApprovedInvoice(
     useState<ApprovedInvoiceView | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const generation = useRef(0);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; ++generation.current; };
+  }, []);
 
   function clearApprovedInvoice(): void {
+    ++generation.current;
     setApprovedInvoice(null);
     setErrorMessage(null);
+    setIsLoading(false);
   }
 
   async function openApprovedInvoice(
     id: string,
   ): Promise<ApprovedInvoiceView | null> {
+    if (!mounted.current) return null;
+    const requestGeneration = ++generation.current;
+    const isCurrent = (): boolean =>
+      mounted.current && requestGeneration === generation.current;
+    setApprovedInvoice(null);
     setIsLoading(true);
     setErrorMessage(null);
 
     try {
       const invoice = await getApprovedInvoiceWithClient(apiClient, id);
-
+      if (!isCurrent()) return null;
       setApprovedInvoice(invoice);
 
       return invoice;
     } catch (error) {
-      setApprovedInvoice(null);
-      setErrorMessage(getApprovedInvoiceErrorMessage(error));
+      if (isCurrent()) {
+        setApprovedInvoice(null);
+        setErrorMessage(getApprovedInvoiceErrorMessage(error));
+      }
 
       return null;
     } finally {
-      setIsLoading(false);
+      if (isCurrent()) setIsLoading(false);
     }
   }
 
   function replaceApprovedInvoice(invoice: ApprovedInvoiceView): void {
+    ++generation.current;
     setApprovedInvoice(invoice);
     setErrorMessage(null);
+    setIsLoading(false);
   }
 
   return {

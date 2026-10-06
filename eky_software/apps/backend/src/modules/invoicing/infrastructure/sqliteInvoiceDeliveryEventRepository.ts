@@ -1,15 +1,13 @@
 import type { DatabaseConnection } from '../../../database/connection/createDatabaseConnection.js';
 import type { InvoiceDeliveryEvent } from '../domain/invoiceDeliveryEvent.js';
+import type { InvoiceDryRunDeliveryEvent } from '../domain/invoiceRecordedDeliveryEvent.js';
+import { assertInvoiceDeliveryTarget, hasBlockingDeliveryHistory, readDeliveryTarget, readEligibleDeliveryInvoice } from './invoiceDeliveryReservationPersistence.js';
 import type { InvoiceDeliveryEventSummary } from '../domain/invoiceDeliveryEventSummary.js';
 import { InvoiceDeliveryConflictError } from '../domain/invoiceDeliveryConflictError.js';
 import type { InvoiceDeliveryEventReader } from '../ports/invoiceDeliveryEventReader.js';
-import type { InvoiceDeliveryEventRepository } from '../ports/invoiceDeliveryEventRepository.js';
-import type { CompleteInvoiceDeliveryEventInput } from '../ports/invoiceDeliveryEventRepository.js';
-import type {
-  CompleteSuccessfulInvoiceEmailDeliveryInput,
-  CompleteSuccessfulInvoiceEmailDeliveryResult,
-  InvoiceEmailDeliveryFinalizer,
-} from '../ports/invoiceEmailDeliveryFinalizer.js';
+import type { InvoiceDeliveryEventRepository, ReserveEmailDeliveryInput, ReserveEmailDeliveryResult } from '../ports/invoiceDeliveryEventRepository.js';
+import type { CustomerEmailCompletionInput, OtherEmailCompletionInput, EmailCompletionResult } from '../domain/invoiceDeliveryReservation.js';
+import type { InvoiceEmailDeliveryFinalizer } from '../ports/invoiceEmailDeliveryFinalizer.js';
 import type {
   CompleteManualInvoiceDeliveryInput,
   CompleteManualInvoiceDeliveryResult,
@@ -17,6 +15,12 @@ import type {
 } from '../ports/invoiceManualDeliveryFinalizer.js';
 import { SqliteInvoiceDeliveryEventQueries } from './sqliteInvoiceDeliveryEventQueries.js';
 import { SqliteInvoiceDeliveryEventStatements } from './sqliteInvoiceDeliveryEventStatements.js';
+import type { InvoiceScope } from '../domain/invoiceContentRevision.js';
+import type { InvoiceEventDocument } from '../ports/invoiceDeliveryEventReader.js';
+import { readInvoiceEventDocument } from './readInvoiceEventDocument.js';
+import { reserveInvoiceEmailDelivery } from './reserveInvoiceEmailDelivery.js';
+import { completeReservedInvoiceEmailDelivery } from './completeReservedInvoiceEmailDelivery.js';
+import { requiresLegacyInvoiceDeliveryReview } from './requiresLegacyInvoiceDeliveryReview.js';
 
 export { toInvoiceDeliveryEvent } from './invoiceDeliveryEventPersistenceRows.js';
 
@@ -36,19 +40,19 @@ export class SqliteInvoiceDeliveryEventRepository
   }
 
   async completeSuccessfulEmailDelivery(
-    input: CompleteSuccessfulInvoiceEmailDeliveryInput,
-  ): Promise<CompleteSuccessfulInvoiceEmailDeliveryResult> {
-    const completeTransaction = this.database.transaction(() =>
-      this.completeSuccessfulEmailDeliveryWithinTransaction(input),
-    );
+    input: CustomerEmailCompletionInput,
+  ): Promise<EmailCompletionResult> {
+    return completeReservedInvoiceEmailDelivery(this.database, input, true);
+  }
 
-    return completeTransaction();
+  async reserveEmailDelivery(input: ReserveEmailDeliveryInput): Promise<ReserveEmailDeliveryResult> {
+    return reserveInvoiceEmailDelivery(this.database, input);
   }
 
   async completeDeliveryEvent(
-    input: CompleteInvoiceDeliveryEventInput,
-  ): Promise<void> {
-    this.statements.completeDeliveryEvent(input);
+    input: OtherEmailCompletionInput,
+  ): Promise<EmailCompletionResult> {
+    return completeReservedInvoiceEmailDelivery(this.database, input, false);
   }
 
   async completeManualDelivery(
@@ -58,7 +62,7 @@ export class SqliteInvoiceDeliveryEventRepository
       this.completeManualDeliveryWithinTransaction(input),
     );
 
-    return completeTransaction();
+    return completeTransaction.immediate();
   }
 
   async hasUnresolvedDeliveryEvent(
@@ -66,6 +70,20 @@ export class SqliteInvoiceDeliveryEventRepository
     invoiceId: string,
   ): Promise<boolean> {
     return this.queries.hasUnresolvedDeliveryEvent(companyId, invoiceId);
+  }
+
+  async requiresLegacyDeliveryReview(scope: InvoiceScope): Promise<boolean> {
+    return requiresLegacyInvoiceDeliveryReview(this.database, scope);
+  }
+
+  async hasInvoiceIdentity(scope: InvoiceScope): Promise<boolean> {
+    return this.database.prepare<[string, string], { id: string }>(`
+      SELECT id FROM invoices WHERE company_id = ? AND id = ?
+    `).get(scope.companyId, scope.invoiceId) !== undefined;
+  }
+
+  async findEventDocument(scope: InvoiceScope, eventId: string): Promise<InvoiceEventDocument | undefined> {
+    return readInvoiceEventDocument(this.database, scope, eventId);
   }
 
   async listDeliveryEvents(
@@ -76,83 +94,63 @@ export class SqliteInvoiceDeliveryEventRepository
   }
 
   async saveDeliveryEvent(
-    event: InvoiceDeliveryEvent,
+    event: InvoiceDryRunDeliveryEvent,
   ): Promise<InvoiceDeliveryEvent> {
-    this.statements.insertDeliveryEvent(event);
+    if (event.provider !== 'dryRun' || event.deliveryMethod !== 'email'
+      || (event.status !== 'succeeded' && event.status !== 'failed')) throw new InvoiceDeliveryConflictError();
+    assertInvoiceDeliveryTarget(event.target);
+    if (event.target.kind !== 'revision' || event.companyId !== event.target.companyId
+      || event.invoiceId !== event.target.invoiceId || event.documentId !== event.target.documentId) {
+      throw new InvoiceDeliveryConflictError();
+    }
+    this.database.transaction(() => {
+      if (readEligibleDeliveryInvoice(this.database, event.target) === undefined
+        || !readDeliveryTarget(this.database, event.target)) throw new InvoiceDeliveryConflictError();
+      this.statements.insertDeliveryEvent(event);
+    }).immediate();
 
     return event;
-  }
-
-  private completeSuccessfulEmailDeliveryWithinTransaction(
-    input: CompleteSuccessfulInvoiceEmailDeliveryInput,
-  ): CompleteSuccessfulInvoiceEmailDeliveryResult {
-    const invoice = this.queries.getSuccessfulEmailDeliveryInvoice(
-      input.companyId,
-      input.invoiceId,
-    );
-
-    if (invoice === undefined) {
-      throw new Error('Approved invoice could not be finalized after delivery.');
-    }
-
-    this.statements.completeSuccessfulEmailDeliveryEvent({
-      companyId: input.companyId,
-      eventId: input.eventId,
-      invoiceId: input.invoiceId,
-      providerMessageId: input.providerMessageId,
-    });
-
-    if (invoice.status === 'approved') {
-      this.statements.markApprovedInvoiceSent({
-        companyId: input.companyId,
-        invoiceId: input.invoiceId,
-        sentAt: input.sentAt,
-      });
-    }
-
-    return {
-      invoiceStatus: 'sent',
-      updatedAt:
-        invoice.status === 'approved' ? input.sentAt : invoice.updated_at,
-      wasResend: invoice.status === 'sent',
-    };
   }
 
   private completeManualDeliveryWithinTransaction(
     input: CompleteManualInvoiceDeliveryInput,
   ): CompleteManualInvoiceDeliveryResult | undefined {
+    const target = input.target;
+    assertInvoiceDeliveryTarget(target);
+    if (target.kind !== 'revision' || (input.deliveryMethod !== 'manual' && input.deliveryMethod !== 'print')) {
+      throw new InvoiceDeliveryConflictError();
+    }
     const invoice = this.queries.getManualDeliveryInvoice(
-      input.companyId,
-      input.invoiceId,
+      target.companyId,
+      target.invoiceId,
     );
 
     if (invoice === undefined) {
       return undefined;
     }
 
+    if (readEligibleDeliveryInvoice(this.database, target) === undefined
+      || !readDeliveryTarget(this.database, target)) throw new InvoiceDeliveryConflictError();
+
     if (invoice.status === 'sent') {
-      return { updatedAt: invoice.updated_at };
+      return { outcome: 'alreadySent', updatedAt: invoice.updated_at };
     }
 
-    const hasUnresolvedDeliveryEvent = this.queries.hasUnresolvedDeliveryEvent(
-      input.companyId,
-      input.invoiceId,
-    );
-
-    if (hasUnresolvedDeliveryEvent) {
+    if (hasBlockingDeliveryHistory(this.database, target)) {
       throw new InvoiceDeliveryConflictError();
     }
 
     this.statements.insertDeliveryEvent({
       bodyPreview: '',
       ccEmail: '',
-      companyId: input.companyId,
+      companyId: target.companyId,
       createdAt: input.deliveredAt,
       createdBy: input.actorUserId,
       deliveryMethod: input.deliveryMethod,
-      documentId: input.documentId,
+      documentId: target.documentId,
+      target,
       id: input.deliveryEventId,
-      invoiceId: input.invoiceId,
+      invoiceId: target.invoiceId,
       provider: 'manual',
       providerMessageId: null,
       recipientEmail: '',
@@ -163,22 +161,22 @@ export class SqliteInvoiceDeliveryEventRepository
     });
 
     this.statements.markApprovedInvoiceSent({
-      companyId: input.companyId,
-      invoiceId: input.invoiceId,
+      companyId: target.companyId,
+      invoiceId: target.invoiceId,
       sentAt: input.deliveredAt,
     });
 
     this.statements.insertManualDeliveryAuditEvent({
       action: 'invoice.marked_sent_manually',
       actorUserId: input.actorUserId,
-      companyId: input.companyId,
+      companyId: target.companyId,
       createdAt: input.deliveredAt,
       draftId: invoice.source_draft_id,
       id: input.auditEventId,
-      invoiceId: input.invoiceId,
+      invoiceId: target.invoiceId,
       invoiceNumber: invoice.invoice_number,
     });
 
-    return { updatedAt: input.deliveredAt };
+    return { outcome: 'completed', updatedAt: input.deliveredAt };
   }
 }

@@ -1,6 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { DatabaseConnection } from '../../../database/connection/createDatabaseConnection.js';
+import { migrationDirectories, migrate, removeDirectories } from '../../../database/migration/invoiceContentRevisionMigration.fixture.js';
 import { createInvoiceReadModelTestDatabase } from '../../../testFixtures/invoiceReadModelTestFixtures.js';
 import { SqliteInvoiceActivityReader } from './sqliteInvoiceActivityReader.js';
 
@@ -8,10 +9,11 @@ describe('SqliteInvoiceActivityReader', () => {
   let database: DatabaseConnection;
 
   beforeEach(async () => {
-    database = await createInvoiceReadModelTestDatabase();
+    database = await createInvoiceReadModelTestDatabase(migrationDirectories().before);
   });
 
   afterEach(() => database.close());
+  afterAll(removeDirectories);
 
   it('combines audit and real delivery activity without dry-run events', async () => {
     insertInvoiceAudit(database);
@@ -26,6 +28,7 @@ describe('SqliteInvoiceActivityReader', () => {
     );
     insertDeliveryEvent(database, 'delivery-pending', 'smtp', 'attempted', 14);
     insertDeliveryEvent(database, 'delivery-dry-run', 'dryRun', 'failed', 15);
+    await migrate(database);
     const reader = new SqliteInvoiceActivityReader(database);
 
     await expect(reader.listInvoiceActivity({
@@ -77,6 +80,7 @@ describe('SqliteInvoiceActivityReader', () => {
     insertInvoiceAudit(database);
     insertDeliveryEvent(database, 'delivery-success', 'smtp', 'succeeded', 11);
     insertDeliveryEvent(database, 'delivery-failed', 'smtp', 'failed', 12);
+    await migrate(database);
     const reader = new SqliteInvoiceActivityReader(database);
 
     await expect(reader.listInvoiceActivity({
@@ -98,6 +102,7 @@ describe('SqliteInvoiceActivityReader', () => {
 
   it('returns module-owned settings audit without setting values', async () => {
     insertInvoiceSettingsAudit(database);
+    await migrate(database);
     const reader = new SqliteInvoiceActivityReader(database);
 
     await expect(
@@ -121,6 +126,7 @@ describe('SqliteInvoiceActivityReader', () => {
 
   it('projects numbering series activation without audit-only details', async () => {
     insertInvoiceNumberingSeriesEvent(database);
+    await migrate(database);
     const reader = new SqliteInvoiceActivityReader(database);
 
     const entries = await reader.listInvoiceActivity({
@@ -160,6 +166,7 @@ describe('SqliteInvoiceActivityReader', () => {
       'paymentMarkReverted',
       '2026-07-27T17:00:00.000Z',
     );
+    await migrate(database);
     const reader = new SqliteInvoiceActivityReader(database);
 
     const entries = await reader.listInvoiceActivity({
@@ -193,6 +200,7 @@ describe('SqliteInvoiceActivityReader', () => {
 
   it('does not return another company activity', async () => {
     insertInvoiceAudit(database);
+    await migrate(database);
     const reader = new SqliteInvoiceActivityReader(database);
 
     await expect(reader.listInvoiceActivity({

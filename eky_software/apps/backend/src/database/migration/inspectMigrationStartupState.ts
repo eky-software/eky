@@ -16,11 +16,15 @@ export interface MigrationStartupInspection {
   profileState: 'empty' | 'existing';
 }
 
+export interface InspectedMigrationStartupState extends MigrationStartupInspection {
+  readonly appliedMigrationNames: readonly string[];
+}
+
 export function inspectMigrationStartupState(
   database: DatabaseConnection,
   migrationsDirectory: string,
   migrationPolicy: MigrationStartupPolicy = 'exactCurrentManifest',
-): Readonly<MigrationStartupInspection> {
+): Readonly<InspectedMigrationStartupState> {
   const manifest = readMigrationManifest(migrationsDirectory);
   const hasMigrationHistory = tableExists(database, 'schema_migrations');
   const hasMigrationMetadata = tableExists(
@@ -36,6 +40,7 @@ export function inspectMigrationStartupState(
 
     return Object.freeze({
       appliedMigrationCount: 0,
+      appliedMigrationNames: Object.freeze([]),
       migrationChainIdentity: '',
       pendingMigrationCount: manifest.length,
       profileState: 'empty',
@@ -55,6 +60,7 @@ export function inspectMigrationStartupState(
 
     return Object.freeze({
       appliedMigrationCount: history.appliedMigrationNames.length,
+      appliedMigrationNames: Object.freeze([...history.appliedMigrationNames]),
       migrationChainIdentity: history.migrationChainIdentity,
       pendingMigrationCount:
         manifest.length - history.appliedMigrationNames.length,

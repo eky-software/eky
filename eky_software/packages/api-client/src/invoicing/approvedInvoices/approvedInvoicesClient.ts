@@ -29,6 +29,7 @@ import type {
   ApprovedInvoiceEmailDryRunSendResult,
   ApprovedInvoiceEmailSmtpTestSendInput,
   ApprovedInvoiceEmailSmtpTestSendResult,
+  ApprovedInvoiceEmailSmtpPrepareInput,
   ApprovedInvoiceEmailSmtpSendInput,
   ApprovedInvoiceEmailSmtpSendResult,
   ApprovedInvoicesApi,
@@ -129,6 +130,14 @@ export function createApprovedInvoicesApi(
 
     getApprovedInvoicePdfUrl(id): string {
       return `${baseUrl}/invoices/${encodeURIComponent(id)}/pdf`;
+    },
+
+    getPreservedLegacyInvoicePdfUrl(id, documentId): string {
+      return `${baseUrl}/invoices/${encodeURIComponent(id)}/preserved-documents/${encodeURIComponent(documentId)}/pdf`;
+    },
+
+    getInvoiceDeliveryEventPdfUrl(invoiceId, eventId): string {
+      return `${baseUrl}/invoices/${encodeURIComponent(invoiceId)}/delivery-events/${encodeURIComponent(eventId)}/pdf`;
     },
 
     async listApprovedInvoices(query): Promise<ApprovedInvoiceListPage> {
@@ -281,7 +290,7 @@ export function createApprovedInvoicesApi(
         baseUrl,
         `/invoices/${encodeURIComponent(id)}/email/smtp/prepare`,
         {
-          body: JSON.stringify(createApprovedInvoiceEmailSendBody(input)),
+          body: JSON.stringify(createApprovedInvoiceEmailSmtpBody(input)),
           headers: {
             'Content-Type': 'application/json',
           },
@@ -302,7 +311,7 @@ export function createApprovedInvoicesApi(
         `/invoices/${encodeURIComponent(id)}/email/smtp/send`,
         {
           body: JSON.stringify({
-            ...createApprovedInvoiceEmailSendBody(input),
+            ...createApprovedInvoiceEmailSmtpBody(input),
             attemptId: input.attemptId,
             authorizationToken: input.authorizationToken,
           }),
@@ -338,6 +347,18 @@ export function createApprovedInvoicesApi(
       );
 
       return readInvoicePaymentResponse(responseBody);
+    },
+  };
+}
+
+function createApprovedInvoiceEmailSmtpBody(
+  input: ApprovedInvoiceEmailSmtpPrepareInput,
+): ApprovedInvoiceEmailSmtpPrepareInput {
+  return {
+    ...createApprovedInvoiceEmailSendBody(input),
+    documentTarget: {
+      kind: input.documentTarget.kind,
+      documentId: input.documentTarget.documentId,
     },
   };
 }

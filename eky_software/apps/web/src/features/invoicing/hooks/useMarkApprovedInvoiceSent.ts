@@ -6,6 +6,7 @@ import {
 } from '@eky/api-client';
 import { useState } from 'react';
 
+import { getInvoiceLegacyDeliveryReviewErrorMessage } from './invoiceLegacyDeliveryReviewError.js';
 import { uiText } from '../../../i18n/fi.js';
 
 type MarkApprovedInvoiceSentClient = Pick<
@@ -71,6 +72,12 @@ export function markApprovedInvoiceSentWithClient(
 }
 
 export function getMarkApprovedInvoiceSentErrorMessage(error: unknown): string {
+  const legacyReviewMessage = getInvoiceLegacyDeliveryReviewErrorMessage(error);
+
+  if (legacyReviewMessage !== null) {
+    return legacyReviewMessage;
+  }
+
   if (error instanceof EkyApiError) {
     return error.status === 404
       ? uiText.invoicing.approvedInvoiceNotFound

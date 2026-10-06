@@ -1,5 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+import type {
+  InvoicePdfPreviewApi,
+  InvoicePdfPreviewTarget,
+} from '../pdf/invoicePdfPreviewTypes.js';
+
 const invoicePdfPreviewIpcChannel = 'eky:invoice-pdf-preview:open';
 const openOperationalLogFolderIpcChannel =
   'eky:diagnostics:open-operational-log-folder';
@@ -40,7 +45,7 @@ const replaceActiveWorkspaceFromBackupIpcChannel =
 const switchWorkspaceIpcChannel = 'eky:workspace-management:v1:switch';
 const renameWorkspaceIpcChannel = 'eky:workspace-management:v1:rename';
 
-interface EkyDesktopApi {
+interface EkyDesktopApi extends InvoicePdfPreviewApi {
   chooseInvoicePdfArchiveDirectory(): Promise<unknown>;
   createEncryptedProfileBackup(): Promise<unknown>;
   createManualRecoveryPoint(): Promise<unknown>;
@@ -56,7 +61,6 @@ interface EkyDesktopApi {
     workspaceLabel: string;
   }): Promise<unknown>;
   replaceActiveWorkspaceFromBackup(): Promise<unknown>;
-  openInvoicePdf(invoiceId: string): Promise<void>;
   openInvoicePdfArchiveDirectory(): Promise<void>;
   openOperationalLogFolder(): Promise<void>;
   retryPendingInvoicePdfArchiveTasks(): Promise<unknown>;
@@ -111,8 +115,12 @@ const ekyDesktopApi: EkyDesktopApi = Object.freeze({
   replaceActiveWorkspaceFromBackup() {
     return ipcRenderer.invoke(replaceActiveWorkspaceFromBackupIpcChannel);
   },
-  openInvoicePdf(invoiceId: string) {
-    return ipcRenderer.invoke(invoicePdfPreviewIpcChannel, invoiceId);
+  openInvoicePdf(invoiceId: string, target?: InvoicePdfPreviewTarget) {
+    return ipcRenderer.invoke(
+      invoicePdfPreviewIpcChannel,
+      invoiceId,
+      ...(target === undefined ? [] : [target]),
+    );
   },
   openInvoicePdfArchiveDirectory() {
     return ipcRenderer.invoke(openInvoicePdfArchiveDirectoryIpcChannel);

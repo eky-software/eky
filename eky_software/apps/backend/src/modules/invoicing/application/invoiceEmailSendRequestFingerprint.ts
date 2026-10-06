@@ -1,9 +1,11 @@
 import { createHash } from 'node:crypto';
+import type { InvoiceDocumentBinding } from '../domain/invoiceDocumentBinding.js';
 
 export interface InvoiceEmailSendRequestFingerprintInput {
   body: string;
   cc: string;
   document: {
+    binding: InvoiceDocumentBinding;
     fileName: string;
     id: string;
     sha256: string;
@@ -24,7 +26,7 @@ export function createInvoiceEmailSendRequestFingerprint(
   return createHash('sha256')
     .update(
       JSON.stringify([
-        'invoice-email-send-v2',
+        'invoice-email-send-v3',
         input.recipient,
         input.to,
         input.cc,
@@ -32,6 +34,9 @@ export function createInvoiceEmailSendRequestFingerprint(
         input.body,
         input.sender.address,
         input.sender.name,
+        input.document.binding.kind,
+        input.document.binding.kind === 'revision'
+          ? input.document.binding.revisionId : input.document.binding.sourceDocumentId,
         input.document.id,
         input.document.sha256,
         input.document.fileName,

@@ -24,6 +24,7 @@ import { runPackagedSupportBundleSmoke } from './packagedSupportBundleSmoke.js';
 
 export interface PackagedSmokeConfiguration {
   enabled: boolean;
+  scenario?: 'legacyInvoice';
   phase: 'initial' | 'restoredProfile';
   root: string | undefined;
   userDataPath: string | undefined;
@@ -56,6 +57,14 @@ export const packagedSmokeStages = Object.freeze([
   'secondBackup',
   'shutdown',
 ] as const);
+
+const legacyPackagedSmokeStages: readonly PackagedSmokeStage[] = Object.freeze([
+  'startup', 'backend', 'profileBackup', 'profileSnapshotMaintenance',
+  'profileSnapshotCreated', 'profileSnapshotCaptured', 'profileBackupVerified',
+  'profileMutationCreated', 'profileRestore', 'restoreRestart',
+  'restoredStartup', 'restoreActivationJournalLoaded', 'restoredBackend',
+  'restoredSessionValidated', 'profileComparison', 'secondBackup', 'shutdown',
+]);
 
 export type PackagedSmokeStage = (typeof packagedSmokeStages)[number];
 
@@ -112,6 +121,7 @@ interface RunPackagedSmokeCheckOptions {
 }
 
 export function createPackagedSmokeConfiguration(options: {
+  hasLegacyInvoiceSwitch?: boolean;
   hasRestoredProfileSwitch?: boolean;
   hasSmokeSwitch: boolean;
   tempPath: string;
@@ -130,6 +140,8 @@ export function createPackagedSmokeConfiguration(options: {
 
   return {
     enabled,
+    ...(enabled && options.hasLegacyInvoiceSwitch === true
+      ? { scenario: 'legacyInvoice' as const } : {}),
     phase:
       enabled && options.hasRestoredProfileSwitch === true
         ? 'restoredProfile'
@@ -171,17 +183,19 @@ export function createPackagedSmokeSecretFileStore(
 export function createPackagedSmokeProgressReporter(
   configuration: PackagedSmokeConfiguration,
 ): PackagedSmokeProgressReporter {
+  const stages = configuration.scenario === 'legacyInvoice'
+    ? legacyPackagedSmokeStages : packagedSmokeStages;
   let currentStageIndex =
     configuration.phase === 'restoredProfile'
-      ? packagedSmokeStages.indexOf('restoreRestart')
+      ? stages.indexOf('restoreRestart')
       : -1;
 
   return Object.freeze({
     currentStage() {
-      return packagedSmokeStages[currentStageIndex] ?? 'startup';
+      return stages[currentStageIndex] ?? 'startup';
     },
     async reportStage(stage: PackagedSmokeStage) {
-      const nextStageIndex = packagedSmokeStages.indexOf(stage);
+      const nextStageIndex = stages.indexOf(stage);
 
       if (nextStageIndex !== currentStageIndex + 1) {
         throw new Error('DESKTOP_SMOKE_STAGE_INVALID');

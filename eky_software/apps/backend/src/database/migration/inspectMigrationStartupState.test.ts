@@ -37,6 +37,7 @@ describe('inspectMigrationStartupState', () => {
       inspectMigrationStartupState(database, fixture.migrationsDirectory),
     ).toEqual({
       appliedMigrationCount: 0,
+      appliedMigrationNames: [],
       migrationChainIdentity: '',
       pendingMigrationCount: 2,
       profileState: 'empty',
@@ -66,10 +67,12 @@ describe('inspectMigrationStartupState', () => {
 
     expect(inspection).toMatchObject({
       appliedMigrationCount: 1,
+      appliedMigrationNames: ['001_probe.sql'],
       pendingMigrationCount: 1,
       profileState: 'existing',
     });
     expect(inspection.migrationChainIdentity).toMatch(/^[0-9a-f]{64}$/);
+    expect(Object.isFrozen(inspection.appliedMigrationNames)).toBe(true);
     expect(readTableNames(database)).not.toContain('second_probe');
     database.close();
   });
@@ -127,6 +130,7 @@ describe('inspectMigrationStartupState', () => {
       ),
     ).toEqual({
       appliedMigrationCount: 38,
+      appliedMigrationNames: manifest.slice(0, 38).map(entry => entry.fileName),
       migrationChainIdentity: approvedLegacyMigrationChainIdentity,
       pendingMigrationCount: manifest.length - 38,
       profileState: 'existing',
@@ -148,6 +152,7 @@ describe('inspectMigrationStartupState', () => {
       ),
     ).toEqual({
       appliedMigrationCount: manifest.length,
+      appliedMigrationNames: manifest.map(entry => entry.fileName),
       migrationChainIdentity: manifest.at(-1)?.chainSha256 ?? '',
       pendingMigrationCount: 0,
       profileState: 'existing',

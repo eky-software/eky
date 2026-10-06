@@ -14,6 +14,7 @@ import { materializeValidatedProfileArtifacts } from '../profileSnapshot/materia
 import { createProfileBackupIdentity } from '../profileSnapshot/inspectSqliteProfileDatabase.js';
 import { CurrentActiveProfileValidationService } from '../profileSnapshot/validateActiveProfile.js';
 import { validateProfileArtifactCatalog } from '../profileSnapshot/validateProfileArtifactCatalog.js';
+import { selectInvoiceBackupArtifactCatalogSchema } from '../../modules/invoicing/infrastructure/selectInvoiceBackupArtifactCatalogSchema.js';
 import {
   inspectPublishedWorkspaceMigration,
   type PublishedWorkspaceMigrationInspection,
@@ -192,6 +193,12 @@ export async function runWorkspaceCandidateOperation(
           throw new Error('WORKSPACE_CANDIDATE_SOURCE_MISMATCH');
         }
         throwIfCancelled(control.signal);
+        await validateProfileArtifactCatalog({
+          database,
+          operationRoot: importStagingRoot,
+          schema: selectInvoiceBackupArtifactCatalogSchema(source),
+        });
+        throwIfCancelled(control.signal);
         await runMigrations(database, {
           migrationsDirectory: paths.migrationsDirectory,
           releaseIdentity: readReleaseIdentity(operation),
@@ -260,6 +267,7 @@ export async function runWorkspaceCandidateOperation(
         const artifacts = await validateProfileArtifactCatalog({
           database,
           operationRoot: importStagingRoot,
+          schema: selectInvoiceBackupArtifactCatalogSchema(current),
         });
         throwIfCancelled(control.signal);
         await materializeValidatedProfileArtifacts({
@@ -384,7 +392,7 @@ async function readReadiness(
   const active = await new CurrentActiveProfileValidationService(
     database,
     paths.artifactRoot,
-    () => migration.migrationChainIdentity,
+    () => migration,
   ).validateActiveProfile();
   throwIfCancelled(options.signal);
   const profileId = createProfileBackupIdentity(identity.companyId);

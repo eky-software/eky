@@ -22,7 +22,7 @@ type InvoiceNumberSequenceUpsertParameters = [
 
 type InvoiceInsertParameters = NewInvoiceRow;
 type InvoiceUpdateParameters = NewInvoiceRow;
-type InvoiceDocumentDeleteParameters = [string, string];
+type CurrentInvoiceRevisionDeleteParameters = [string, string];
 type InvoiceLineDeleteParameters = [string];
 
 type InvoiceLineInsertParameters = [
@@ -61,10 +61,6 @@ type InvoiceDraftApproveParameters = [string, string, string, string, string];
 type InvoiceDraftUnlockParameters = [string, string, string, string];
 type InvoiceStatusUpdateParameters = [string, string, string];
 type MarkInvoiceSentParameters = [string, string, string];
-
-interface InvoiceDocumentStoragePathRow {
-  storage_path: string;
-}
 
 interface MarkInvoiceDraftApprovedInput {
   approvedAt: string;
@@ -397,36 +393,20 @@ export class SqliteInvoiceApprovalStatements {
       .run(invoiceId);
   }
 
-  deleteApprovedInvoicePdfDocumentRows(
+  detachCurrentInvoiceRevision(
     companyId: string,
     invoiceId: string,
-  ): string[] {
-    const rows = this.database
-      .prepare<InvoiceDocumentDeleteParameters, InvoiceDocumentStoragePathRow>(
-        `
-          SELECT storage_path
-          FROM invoice_documents
-          WHERE
-            company_id = ?
-            AND invoice_id = ?
-            AND document_type = 'approved_invoice_pdf'
-        `,
-      )
-      .all(companyId, invoiceId);
-
+  ): void {
     this.database
-      .prepare<InvoiceDocumentDeleteParameters>(
+      .prepare<CurrentInvoiceRevisionDeleteParameters>(
         `
-          DELETE FROM invoice_documents
+          DELETE FROM invoice_current_revisions
           WHERE
             company_id = ?
             AND invoice_id = ?
-            AND document_type = 'approved_invoice_pdf'
         `,
       )
       .run(companyId, invoiceId);
-
-    return rows.map((row) => row.storage_path);
   }
 
   insertAuditEvent(auditEvent: NewInvoiceAuditEventRow): void {

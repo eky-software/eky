@@ -63,7 +63,7 @@ let fixtureId = 0;
 
 // Execute the actual driver with synthetic children, in-memory files and its
 // unchanged deadline on Node's test clock. No Electron, MSI or profile is opened.
-function startSmokeDriver(t, readResult = async () => ({ stage: 'startup', status: 'started' })) {
+function startSmokeDriver(t, readResult = async () => ({ stage: 'startup', status: 'started' }), options) {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const target = new URL('./run-packaged-smoke.mjs', import.meta.url);
   const key = `__ekySmokeEvidenceFixture${++fixtureId}`;
@@ -74,8 +74,9 @@ function startSmokeDriver(t, readResult = async () => ({ stage: 'startup', statu
   const removed = [];
   const mocks = {
     'node:child_process': {
-      spawn: () => {
+      spawn: (_executable, argumentsList) => {
         const child = new EventEmitter();
+        child.argumentsList = argumentsList;
         child.stdout = new EventEmitter();
         child.stderr = new EventEmitter();
         child.killCalls = 0;
@@ -112,7 +113,8 @@ function startSmokeDriver(t, readResult = async () => ({ stage: 'startup', statu
     },
   });
   t.after(() => { hooks.deregister(); delete globalThis[key]; });
-  const outcome = import(target.href).then(() => ({ status: 'passed' }), error => ({ status: 'failed', error }));
+  const outcome = import(target.href).then(module => module.runPackagedSmoke(options))
+    .then(() => ({ status: 'passed' }), error => ({ status: 'failed', error }));
   return { outcome, writes, removed,
     nextChild: () => children.length ? Promise.resolve(children.shift()) : new Promise(accept => waiting.push(accept)) };
 }
@@ -276,5 +278,46 @@ test('an error observed before exit survives later result validation', async t =
   await nextTurn();
   closeChild(child, 9);
   assert.equal((await fixture.outcome).error.message, 'Packaged desktop smoke process could not be started.');
+  assert.equal(fixture.removed.length, 0);
+});
+
+test('legacy preparation brackets the same two phases and verifies source before cleanup', async t => {
+  let smokeResult = { stage: 'restoreRestart', status: 'started' };
+  const calls = [];
+  const fixture = startSmokeDriver(t, async () => smokeResult, { legacyPreparation: {
+    async prepare(context) { assert.match(context.smokeToken, /^[a-f0-9]{32}$/); calls.push('prepare'); },
+    async afterRestoreExit() { calls.push('closedRestore'); },
+    async verifySourcePreserved() { calls.push('sourceVerified'); assert.equal(fixture.removed.length, 0); },
+  } });
+  const first = await fixture.nextChild();
+  assert.deepEqual(calls, ['prepare']);
+  assert.deepEqual(first.argumentsList, ['--desktop-smoke', '--desktop-smoke-legacy-invoice']);
+  first.emit('exit', 0);
+  await nextTurn();
+  assert.deepEqual(calls, ['prepare']);
+  closeChild(first, 0);
+  const second = await fixture.nextChild();
+  assert.deepEqual(calls, ['prepare', 'closedRestore']);
+  assert.deepEqual(second.argumentsList, ['--desktop-smoke', '--desktop-smoke-restored', '--desktop-smoke-legacy-invoice']);
+  smokeResult = { stage: 'shutdown', status: 'ok', electronVersion: 'synthetic-version' };
+  second.emit('exit', 0);
+  closeChild(second, 0);
+  assert.equal((await fixture.outcome).status, 'passed');
+  assert.deepEqual(calls, ['prepare', 'closedRestore', 'sourceVerified']);
+  assert.equal(fixture.removed.length, 1);
+});
+
+test('failed closed-candidate inspection retains evidence and prevents the second launch', async t => {
+  const fixture = startSmokeDriver(t, async () => ({ stage: 'restoreRestart', status: 'started' }), {
+    legacyPreparation: { async prepare() {},
+      async afterRestoreExit() { throw new Error('CANDIDATE_INVALID'); },
+      async verifySourcePreserved() { assert.fail('must not continue'); },
+    },
+  });
+  const first = await fixture.nextChild();
+  first.emit('exit', 0);
+  closeChild(first, 0);
+  assert.equal((await fixture.outcome).error.message, 'CANDIDATE_INVALID');
+  assert.equal(fixture.writes[0].value.phases.length, 1);
   assert.equal(fixture.removed.length, 0);
 });

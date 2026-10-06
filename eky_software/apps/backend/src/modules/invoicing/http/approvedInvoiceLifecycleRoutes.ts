@@ -11,6 +11,8 @@ import { InvoiceCancellationConfirmationError } from '../application/invoiceCanc
 import { InvoiceCancellationConflictError } from '../application/invoiceCancellationConflictError.js';
 import type { ReopenApprovedInvoiceForEditingInput } from '../application/reopenApprovedInvoiceForEditing.js';
 import type { InvoiceDraft } from '../domain/invoiceDraft.js';
+import { InvoiceDeliveryConflictError } from '../domain/invoiceDeliveryConflictError.js';
+import { InvoiceLegacyDeliveryReviewRequiredError } from '../domain/invoiceLegacyDeliveryReviewRequiredError.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
 import type { CancelledApprovedInvoiceResult } from '../ports/invoiceCorrectionRepository.js';
 import {
@@ -127,6 +129,13 @@ export function createApprovedInvoiceLifecycleRoutes(
       } catch (error) {
         if (error instanceof ApprovedInvoiceNotFoundError) {
           return context.json({ error: error.message }, 404);
+        }
+
+        if (error instanceof InvoiceLegacyDeliveryReviewRequiredError) {
+          return context.json({ error: error.message, code: error.code }, 409);
+        }
+        if (error instanceof InvoiceDeliveryConflictError) {
+          return context.json({ error: error.message }, 409);
         }
 
         if (error instanceof InvoiceDraftValidationError) {

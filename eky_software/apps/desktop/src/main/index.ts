@@ -79,6 +79,7 @@ if ('mode' in packageModeResult) {
 }
 
 const smokeConfiguration = createPackagedSmokeConfiguration({
+  hasLegacyInvoiceSwitch: app.commandLine.hasSwitch('desktop-smoke-legacy-invoice'),
   hasRestoredProfileSwitch: app.commandLine.hasSwitch(
     'desktop-smoke-restored',
   ),

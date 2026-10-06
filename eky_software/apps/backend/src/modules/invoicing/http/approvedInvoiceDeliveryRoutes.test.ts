@@ -95,10 +95,12 @@ describe('approved invoice delivery routes', () => {
         ccEmail: '',
         createdAt: '2026-07-20T20:00:00.000Z',
         deliveryMethod: 'print',
+        documentSource: 'revision',
         id: 'event-1',
         provider: 'manual',
         recipientEmail: '',
         safeErrorMessage: null,
+        sendMode: 'manual',
         status: 'succeeded',
       },
     ];
@@ -299,6 +301,7 @@ describe('approved invoice delivery routes', () => {
     const emailBody = {
       body: 'Hei, liitteenä lasku.',
       cc: 'copy@example.fi',
+      documentTarget: { kind: 'revision', documentId: 'document-1' },
       subject: 'Lasku 20260001',
       to: 'customer@example.fi',
     };
@@ -313,6 +316,7 @@ describe('approved invoice delivery routes', () => {
 
     expect(preparationResponse.status).toBe(200);
     expect(getEmailSmtpPreparationInput()).toMatchObject({
+      documentTarget: emailBody.documentTarget,
       actorContext: { actorId: 'dev-user', companyId: 'dev-company' },
       invoiceId: 'invoice-1',
       to: 'customer@example.fi',
@@ -334,6 +338,7 @@ describe('approved invoice delivery routes', () => {
     expect(sendResponse.status).toBe(200);
     await expect(sendResponse.json()).resolves.toEqual({ delivery });
     expect(getEmailSmtpInput()).toMatchObject({
+      documentTarget: emailBody.documentTarget,
       actorContext: { actorId: 'dev-user', companyId: 'dev-company' },
       invoiceId: 'invoice-1',
       attemptId: 'attempt-1',
@@ -362,6 +367,39 @@ describe('approved invoice delivery routes', () => {
     expect(getEmailSmtpPreparationInput()).toBeUndefined();
   });
 
+  it.each(['prepare', 'send'] as const)('rejects malformed exact targets before customer %s application entry', async operation => {
+    const { app, getEmailSmtpInput, getEmailSmtpPreparationInput } = createTestApp({});
+    for (const documentTarget of [undefined, { kind: 'unknown', documentId: 'document-1' },
+      { kind: 'revision', documentId: ' document-1' }, { kind: 'revision', documentId: 'document-1', sourceDocumentId: 'source-1' }]) {
+      const response = await app.request(`/invoices/invoice-1/email/smtp/${operation}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+          body: 'Synthetic body', subject: 'Synthetic invoice', to: 'customer@example.invalid', documentTarget,
+          ...(operation === 'send' ? { attemptId: 'attempt-1', authorizationToken: 'synthetic-token' } : {}),
+        }),
+      });
+      expect(response.status).toBe(400);
+    }
+    expect(getEmailSmtpInput()).toBeUndefined();
+    expect(getEmailSmtpPreparationInput()).toBeUndefined();
+  });
+
+  it.each(['prepare', 'send'] as const)('does not leak unexpected customer %s errors to the framework handler', async operation => {
+    const error = new Error('synthetic-private-reader-path');
+    const { app } = createTestApp(operation === 'prepare' ? { emailSmtpPreparationError: error } : { emailSendError: error });
+    let reachedFramework = false;
+    app.onError((_error, context) => { reachedFramework = true; return context.json({ error: 'Unexpected framework entry.' }, 500); });
+    const response = await app.request(`/invoices/invoice-1/email/smtp/${operation}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        body: 'Synthetic body', subject: 'Synthetic invoice', to: 'customer@example.invalid',
+        documentTarget: { kind: 'preservedLegacy', documentId: 'document-1' },
+        ...(operation === 'send' ? { attemptId: 'attempt-1', authorizationToken: 'synthetic-token' } : {}),
+      }),
+    });
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: 'Internal server error.' });
+    expect(reachedFramework).toBe(false);
+  });
+
   it('returns a distinguishable safe conflict for an unresolved delivery', async () => {
     const { app, getEmailSmtpPreparationInput } = createTestApp({
       emailSmtpPreparationError: new InvoiceDeliveryConflictError(),
@@ -371,6 +409,7 @@ describe('approved invoice delivery routes', () => {
       '/invoices/invoice-1/email/smtp/prepare',
       {
         body: JSON.stringify({
+          documentTarget: { kind: 'revision', documentId: 'document-1' },
           body: 'Hei',
           subject: 'Lasku',
           to: 'customer@example.fi',
@@ -593,7 +632,8 @@ function createTestApp(options: {
       }
 
       return {
-        attachment: { fileName: 'invoice.pdf', sizeBytes: 2048 },
+        attachment: { documentId: nextInput.documentTarget.documentId, fileName: 'invoice.pdf', sizeBytes: 2048 },
+        documentTarget: nextInput.documentTarget,
         attemptId: 'attempt-1',
         authorizationToken: 'one-time-authorization',
         body: nextInput.body,
@@ -712,6 +752,7 @@ function createApprovedInvoiceEmailSmtpSendResult(): SendApprovedInvoiceEmailSmt
 
 function createApprovedInvoiceEmailPreview(): ApprovedInvoiceEmailPreview {
   return {
+    documentTarget: { kind: 'revision', documentId: 'document-1' },
     attachment: {
       documentId: 'document-1',
       fileName: 'lasku-20260001.pdf',

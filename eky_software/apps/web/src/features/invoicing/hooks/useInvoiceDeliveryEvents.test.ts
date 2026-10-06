@@ -16,6 +16,8 @@ describe('listInvoiceDeliveryEventsWithClient', () => {
         deliveryMethod: 'print' as const,
         id: 'event-1',
         provider: 'manual' as const,
+        sendMode: 'manual' as const,
+        documentSource: 'revision' as const,
         recipientEmail: '',
         safeErrorMessage: null,
         status: 'succeeded' as const,

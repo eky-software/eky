@@ -57,6 +57,7 @@ function createResult(
   overrides: Partial<ApprovedInvoiceResult> = {},
 ): ApprovedInvoiceResult {
   return {
+    revisionKey: { companyId: 'dev-company', invoiceId: 'invoice-1', revisionId: 'revision-1' },
     draftId: 'draft-1',
     invoiceId: 'invoice-1',
     invoiceNumber: '20260001',

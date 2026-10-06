@@ -10,7 +10,8 @@ describe('readInvoiceEmailPreparationConfirmation', () => {
     expect(
       readInvoiceEmailPreparationConfirmation({
         preparation: {
-          attachment: { fileName: 'lasku-20260001.pdf', sizeBytes: 2048 },
+          attachment: { documentId: 'document-1', fileName: 'lasku-20260001.pdf', sizeBytes: 2048 },
+          documentTarget: { kind: 'revision', documentId: 'document-1' },
           attemptId: 'secret-attempt-id-is-not-forwarded',
           authorizationToken: 'secret-token-is-not-forwarded',
           body: 'Hei,\n\nLiitteenä lasku.',
@@ -26,6 +27,7 @@ describe('readInvoiceEmailPreparationConfirmation', () => {
     ).toEqual({
       attachmentFileName: 'lasku-20260001.pdf',
       attachmentSizeBytes: 2048,
+      documentTarget: { kind: 'revision', documentId: 'document-1' },
       body: 'Hei,\n\nLiitteenä lasku.',
       cc: 'copy@example.fi',
       invoiceId: 'invoice-1',
@@ -41,10 +43,11 @@ describe('readInvoiceEmailPreparationConfirmation', () => {
     { recipient: 'customer@example.fi\nBcc: attacker@example.fi' },
     { subject: 'Lasku\r\nBcc: attacker@example.fi' },
     { invoiceId: '../invoice-1' },
-    { attachment: { fileName: 'invoice.pdf', sizeBytes: -1 } },
+    { attachment: { documentId: 'document-1', fileName: 'invoice.pdf', sizeBytes: -1 } },
   ])('rejects malformed or control-character data: %o', (override) => {
     const preparation = {
-      attachment: { fileName: 'lasku-20260001.pdf', sizeBytes: 2048 },
+      attachment: { documentId: 'document-1', fileName: 'lasku-20260001.pdf', sizeBytes: 2048 },
+      documentTarget: { kind: 'revision', documentId: 'document-1' },
       body: 'Hei,\n\nLiitteenä lasku.',
       cc: '',
       invoiceId: 'invoice-1',
@@ -65,7 +68,8 @@ describe('readInvoiceEmailPreparationConfirmation', () => {
     const safeBody = `Hei,\n\n${'Laskurivi '.repeat(100)}\n\nYstävällisin terveisin`;
     const value = {
       preparation: {
-        attachment: { fileName: 'lasku-20260001.pdf', sizeBytes: 2048 },
+        attachment: { documentId: 'document-1', fileName: 'lasku-20260001.pdf', sizeBytes: 2048 },
+        documentTarget: { kind: 'revision', documentId: 'document-1' },
         body: safeBody,
         cc: '',
         invoiceId: 'invoice-1',
@@ -84,6 +88,7 @@ describe('readInvoiceEmailPreparationConfirmation', () => {
 
   it('shows every trusted delivery field and the full body for a resend', () => {
     const detail = createInvoiceEmailConfirmationDetail({
+      documentTarget: { kind: 'revision', documentId: 'document-1' },
       attachmentFileName: 'lasku-20260001.pdf',
       attachmentSizeBytes: 2048,
       body: 'Hei,\n\nKoko viesti näkyy tässä.\n\nTerveisin',

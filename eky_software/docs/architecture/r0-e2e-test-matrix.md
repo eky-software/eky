@@ -486,6 +486,30 @@ session invariantit ja hyväksynnän nykyisen atomisen auditin.
 | INV-RACE-001 | P0; integration, system, security | Sama draft; kaksi rinnakkaista approve-pyyntöä | Yksi onnistuu tai dokumentoitu idempotentti tulos | Yksi numero, invoice ja audit | Sekvenssin tuplakulutus | covered-existing |
 | INV-AUTH-001 | P0; integration, system, security | Prepared send; expired/reused/mismatched token, invoice, hash tai recipient | Turvallinen 4xx ilman provider-kutsua | Ei eventtiä/finalisointia eikä muutosta | Authorization fingerprint tai session | covered-existing |
 | INV-PDF-FAIL-001 | P0; system, web-e2e, fault | Approved invoice; PDF-write fault | Turvallinen virhe, ei sent-tilaa | Ei osittaista metadataa; diagnostics ja turvallinen support-havainto | Filesystem-polku tai PDF-bytes | implemented-e2e |
+| INV-PRESERVED-PREVIEW-UI-001 | P1; web-e2e, critical | Testisovittimen säilytetty liite; estetty popup ja onnistuva uusi avaus | Kiinteä virhe tai täsmä-GET-kohde ilman openeria; ei generointia | Toimitushistoria säilyy; avauspainike toimii näppäimistöllä ja sopii kapeaan näkymään | Raw API/native-virhe; avaushandoffin väittäminen PDF-lukukuittaukseksi | implemented-e2e |
+| INV-PRESERVED-PREVIEW-UI-002 | P1; web-e2e, critical | Testisovittimen native-avaus odottaa; liitekohde vaihtuu ja vanha avaus epäonnistuu | Yksi kutsu kohteelle, pending-palaute; vanha virhe ei näy uudelle liitteelle | Callback saa täsmällisen lasku-/dokumenttiparin; ei selainfallbackia | Native-poikkeaman sisältö | implemented-e2e |
+| INV-PRESERVED-PREVIEW-UI-003-409 / 003-500 | P1; web-e2e, critical, fault | Onnistuneen valmistelun jälkeen uusi valmistelu hylätään | Vanha esikatselu ja avattava liite eivät palaa; turvallinen virhe | Ei lähetysvaltuutusta tai toimitusta | Raaka valmisteluvirhe | implemented-e2e |
+| INV-PRESERVED-PREVIEW-UI-004 / 005 | P1; web-e2e, critical | Clear tai unmount, paluu samalle laskulle ja vanha valmisteluvastaus | Vanha esikatselu ei palaudu | Nykyisen näkymän kohde ja pyyntösukupolvi säilyvät | Toisen tai vanhan kohteen esittäminen nykyisenä | implemented-e2e |
+| INV-PRESERVED-PREVIEW-UI-006 | P1; web-e2e, critical | Vanha hylkäys saapuu uudemman valmistelun aikana | Uusi pyyntö pysyy pending-tilassa ja saa oman liitteensä | Vanhan pyynnön catch/finally ei päivitä nykyistä tilaa | Raaka virhe tai virheellinen onnistumispalaute | implemented-e2e |
+| INV-PRESERVED-SMTP-UI-001-exact / changed | P0; web-e2e, critical | Testisovittimen säilytetty liite; SMTP-valmistelu säilyttää tai vaihtaa kohteen | Sama kohde kulkee prepare/send-pyyntöihin; muuttunut vastauskohde estää sendin turvallisella palautteella | Ei provider-kutsua tai historiakirjoitusta; itselle-testi ja dry-run-send estetty säilytetylle liitteelle | Testisovittimen väittäminen native-/SMTP-kokonaisnäytöksi | implemented-e2e |
+| INV-HISTORY-PDF-001 | P0; integration, web-e2e, electron-e2e, recovery | SMTP-testin vanha revisio; reopen/reapprove ja uusi eri sisältöinen PDF; avaa vanha toimitus | Vanhan tapahtuman PDF säilyy erillään nykyisestä ja avautuu restartin jälkeen | Ei laskun, numeron, saatavan tai tapahtuman monistumista; katselu ei anna lähetysvaltuutta | Historiallisen ja nykyisen sisällön sekoittuminen | planned-r0 |
+| INV-HISTORY-PDF-UI-001 | P0; web-e2e, critical | Itselle-SMTP-testin jälkeen luonnoksen uudelleenavaus listalta, historian PDF, muokkaus, uudelleenhyväksyntä ja uusi PDF | Historia toimii myös editorissa; alkuperäisen tapahtuman PDF vastaa vanhoja tavuja, ei nykyisiä; estetty popup näyttää turvallisen virheen | Sama laskuidentiteetti ja historia; katselu ei kirjoita tai lähetä | Raakavirhe tai historian korvaaminen nykyisellä PDF:llä | implemented-e2e |
+| INV-HISTORY-PDF-UI-002 | P0; web-e2e, critical | A-laskun vastaus viipyy, käyttäjä avaa B:n; lisäksi asiakaskortin suora avaus | B:n otsikko, historia ja PDF-kohde säilyvät; StrictMode-aloitus valmistuu | Vanha vastaus ei vaihda valintaa tai sen historiaa | Väärän laskun tietojen näyttäminen nykyisenä | implemented-e2e |
+| DESK-HISTORY-PDF-001 | P0; electron-e2e, critical, security | API:lla valmisteltu itselle-testin historia; editorin PDF-avaus, UI-muokkaus ja uudelleenhyväksyntä, historian uusi avaus | Täsmällinen tapahtuma-PDF avautuu editorista ja hyväksytyltä laskulta eristetyssä native-ikkunassa ja sulkeutuu | Lasku-/luonnosidentiteetti, numero, vanhat tavut ja historia säilyvät; rendererillä ei Node-globaaleja tai openeria | API-valmistelun väittäminen native-lähetys- tai palautustodisteeksi | implemented-e2e |
+| DESK-SMTP-CONFIRM-001 / 002 | P0; electron-e2e, critical, security | Normaalirevision SMTP-valmistelun native-vahvistuksen hyväksyntä tai peruutus | Oikea protokolla/main/backend lähettää vain hyväksytyn täsmäkohteen | Hyväksynnän tapahtuma-PDF vastaa alkuperäisiä tavuja; peruutus ei luovuta tokenia eikä muuta laskua tai historiaa | Token testitulosteeseen; sovittimien väittäminen aidoksi SMTP- tai OS-dialogikokeeksi | implemented-e2e |
+| DESK-LEGACY-RESEND-001 / 002 | P0; electron-e2e, critical, security, recovery | Synteettinen 038 sent-lasku ja SMTP-historia; oikea startup-migraatio, UI-esivalmistelu, native-PDF sekä hyväksyntä/peruutus | Hyväksyntä lähettää kerran saman säilytetyn liitteen ja valinnainen arkisto saa samat tavut; peruutus näyttää oikean viestin eikä lähetä | Pysyvä dokumentti-/alkuperäsidonta, alkuperäinen historia, numero ja PDF-tavut säilyvät restartissa; arkisto käyttää toimituksen eikä current-PDF:n viitettä | Historiallisen lähetysmoodin arvaaminen; kehityskokeen väittäminen packaged-palautusnäytöksi | implemented-e2e |
+| SYS-LEGACY-INVOICE-FIXTURE-001 / 002 / 003 | P0; contract, critical, security | Synteettinen 038-kanta ja PDF; 039-migraatio, väärä juuri, linkki ja olemassa oleva runtime | Migraatio säilyttää alkuperän ja tavut; väärä tai käytetty valmistelujuuri torjutaan | Ei profiilin ylikirjoitusta tai yritysrajan ulkopuolista tiedostoa | Oikea käyttäjädata, polku tai salaisuus | implemented-contract |
+| SYS-LEGACY-BACKUP-FIXTURE-001 / 002 | P0; contract, critical, recovery, security | Sama 038-laskufixture kirjoitetaan aidoksi salatuksi backupiksi nykyisellä snapshot/container-ketjulla; autentikointi ja purku | Purettu kanta on yhä 038 ilman revisiotaulua; vanha tapahtuma ja alkuperäiset PDF-tavut täsmäävät; väärä salasana hylätään | Ei esimikraatiota tai vanhan backupin ylikirjoitusta; tavallinen apuri vaatii edelleen nykyisen skeeman ja uusi valmistelu E2E-merkin | Salasana, polut tai sisältö julkisessa raportissa; sopimustestin väittäminen paketoiduksi palautukseksi | implemented-contract |
+| SYS-LEGACY-PACKAGED-INPUT-001 / 002 / 003 | P0; contract, critical, recovery, security | Suljetun 038-kannan, PDF:n ja salatun backupin kopiot uuteen packaged-smoke-juureen | Kohteen migraatio ja muutokset eivät muuta lähdettä; käytetty tai linkitetty juuri, väärä token ja puuttuva E2E-merkki hylätään | Vain kolme nimettyä itsenäistä tiedostoa; ei käsin tehtyä registryä, sessionia tai hyväksyttyä buildia | Valmistelun väittäminen paketoiduksi restore/restart-todisteeksi | implemented-contract |
+| SYS-LEGACY-COMPARISON-001 / 002 | P0; contract, critical, recovery | Alkuperäinen 038-kanta ja 039:ään migroitu itsenäinen kopio | Kaikki vanhat lasku-, rivi-, dokumentti- ja historiakentät säilyvät; muuttunut tapahtuma-aikaleima hylätään | Uudet revisiosarakkeet eivät peitä vanhan sisällön muutosta; lähde säilyy | Palautetun kannan hyväksyminen omaksi odotuksekseen ilman sisältövertailua | implemented-contract |
+| DESK-LEGACY-PACKAGED-RESTORE-001 | P0; packaged-smoke, recovery | Hardened Windows -startup ja alkuperäisen salatun 038-backupin saman lineagen korvaus | Oikea migraatio, inspect, restore, prosessirestart ja sisältövertailu; historiat, PDF, sessionvaihto ja toinen backup säilyvät oikein | Ei valmistelun esimikraatiota tai käsin kirjoitettua registryä; molemmat nykyiset 120 s vaiherajat | Raakasisältö tai yksityiset palautuspolut julkisessa raportissa | passed-development-package; clean-release/PR/main pending |
+| INV-HISTORY-PDF-002 | P0; integration, system, security | Väärä permission/yritys/lasku/tapahtuma, ristiriitainen sidos tai vioittunut tiedosto | Turvallinen 403/404/500; ei regenerointia | Alkuperäinen aineisto säilyy ja eheysvirhe löytyy Diagnosticsista/tukiprojektiosta | Raakavirhe, polku, sisältö tai business-tunniste diagnostiikassa | planned-r0 |
+| INV-HISTORY-PDF-003 | P0; integration, web-e2e, recovery | Migroitu legacy-tapahtuma, säilynyt alkuperäinen PDF ja alkuperäinen null-viite | Alkuperä näkyy oikein; puuttuvaa historiaa ei korvata nykyisellä PDF:llä | Ei arvattua revisiota, SMTP-moodia tai jälkikäteistä toimitusvarmuutta | Väärä sisältö tai perusteeton onnistumisväite | planned-r0 |
+| INV-LEGACY-FIRST-DELIVERY-001 | P0; integration, security, recovery | Migroitu approved-lasku ilman SMTP-historiaa; PDF, sähköpostin esivalmistelu ja manuaalinen toimitus | Varmennettu uusi revisio ja täsmä-PDF, sama laskunumero; toisto ei monista revisiota | Oikeus/yritys, current-avain, historia ja summat tarkistetaan; vanha sisältö säilyy; virhe ei kirjoita tai vuoda stderr:iin | Historiallisten summien hiljainen muuttaminen tai vanhan PDF:n väittäminen varmennetuksi | implemented-integration; packaged acceptance pending |
+| INV-SMTP-RESERVATION-001 | P0; integration, system, concurrency, recovery | Sama lasku; varaus kilpailee reopenin/cancelin kanssa; restart ennen loppukuittausta | Vain kelpoinen täsmäsidos saa yhden provider-kutsun; unresolved estää uuden toimituksen ja sisällön muutoksen | Varaus, täsmäkuittaus ja mahdollinen sent/audit ovat atomisia; sama loppukuittaus idempotentti | Väärä revisio, automaattinen uudelleenlähetys tai kaksinkertainen saatava | planned-r0 |
+| INV-SMTP-REAPPROVAL-001 | P0; integration, system, recovery | Vanha jo reopened-lasku ja migroitu attempted/outcomeUnknown; suora uudelleenhyväksyntä | Turvallinen 409 myös puuttuvalla current-osoittimella | Historia, snapshot, numerointi ja audit säilyvät; toisen yrityksen tapahtuma ei estä omaa laskua | Vanhan tuntemattoman SMTP-moodin arvaaminen | planned-r0 |
+| INV-SMTP-COMMITTED-READ-001 | P0; integration, system, web-e2e, fault | Asiakas-SMTP:n durable onnistuminen; laskun vastausluku epäonnistuu | Erillinen turvallinen palaute, ei kehotusta lähettää uudelleen | Event succeeded, lasku sent ja attempt succeeded säilyvät; Diagnostics/support/incident erottavat committed-lukuhäiriön | Raakavirhe, sisältö tai valtuutus; onnistumisen muuttaminen lähetysvirheeksi | planned-r0 |
+| INV-SMTP-COMMITTED-READ-UI-001 | P0; web-e2e, critical, fault | Oikea fake-SMTP onnistuu, vastaussovitin palauttaa committed-read-koodin | Lomake kertoo onnistumisesta ja ohjaa tarkistamaan historian lähettämättä uudelleen | Yksi onnistunut tapahtuma ja sent-lasku; ei automaattista uusintaa tai raakavirheen renderöintiä | Sovitinrajan väittäminen backendin todelliseksi lukuhäiriöksi | implemented-e2e |
 | INV-SMTP-AUTH-001 | P1; system, web-e2e, fault | Prepared send; fake authentication failure | Turvallinen provider-virhe | Failed event, invoice ei sent; turvallinen retry-semantics | Username tai password | implemented-e2e |
 | INV-SMTP-TLS-001 | P0; system, web-e2e, fault, security | Prepared send; fake TLS failure | Lähetys estyy, ei fallbackia | Failed/none event sopimuksen mukaan; invoice ei sent | Sertifikaattiraaka-arvo tai secret | implemented-e2e |
 | INV-SMTP-REJECT-001 | P1; system, web-e2e, fault | Prepared send; fake DATA rejection | Turvallinen failed-tulos | outcome failed, sideEffectState none | SMTP-dialogi tai viestin sisältö | implemented-e2e |
@@ -497,6 +521,118 @@ session invariantit ja hyväksynnän nykyisen atomisen auditin.
 | INV-PAYMENT-004 | P0; integration, web-e2e, cross-module | Osittain hyvitetty sent-lasku; merkitse maksetuksi | Backend käyttää jäljellä olevaa summaa ja asiakaskortin Maksetut-osio päivittyy | Snapshot ja credit capacity säilyvät | Clientin lähettämä summa | implemented-e2e |
 | INV-PAYMENT-005 | P0; integration, web-e2e, critical | Sama mark-paid kahdesti tai rinnakkain | Yksi nykytila ja yksi mark-event | Sama päivä idempotentti; eri päivä konflikti | Kaksoistapahtuma | implemented-e2e |
 | INV-PAYMENT-006 | P0; integration, system, web-e2e, fault | Event-write failure kesken mark-paid-transaktion | Nykytilaprojektio palautuu ja seuraava validi toiminto onnistuu | Atominen rollback | SQL- tai raw driver error | implemented-e2e |
+
+Historian `INV-HISTORY-PDF-001..003`-rivien backend-osat on kohdetodennettu
+application-, SQLite/tiedosto-, HTTP- ja composition-testeissä.
+Tarkat lukuketjun testit ovat `invoiceEventPdfRead.test.ts` ja
+`invoicingHistoryPdfComposition.test.ts`; ne kattavat myös eri tavuisen
+uudemman PDF:n julkaisun kesken lukemisen ja diagnostiikan lukuprojektiot.
+`invoiceDeliveryHistoryJourneys.spec.ts` todentaa oikeassa selaimessa
+historian päivityksen, vanhan PDF:n tavut uudelleenhyväksynnän jälkeen,
+valinnan vaihtumisen ja asiakaskortista avaamisen. Headless-selain vastaanottaa
+PDF:n latauksena; Electron-renderöinti on erillisessä
+`invoiceDeliveryHistoryPreview.spec.ts`-kokeessa. Native-kokeen esivalmistelu
+käyttää API:a ja synteettistä provideria, mutta muokkaus ja uudelleenhyväksyntä
+kulkevat käyttöliittymän kautta. Molemmat polut avaavat historian PDF:n myös
+reopened-editorista. `getInvoiceDraftDeliveryHistory.test.ts`,
+`sqliteInvoiceDraftDeliveryHistoryReader.test.ts` ja
+`invoicingDraftDeliveryHistoryComposition.test.ts` todentavat sen erillisen
+read-only-sopimuksen ja turvallisen diagnostiikkaketjun. Nämä eivät vielä
+sulje restartin, legacy-aineiston tai B5-palautuksen kokonaisrivejä.
+Varaus-, kuittaus- ja reopen-adapterien backend-osia todistavat lisäksi
+`invoiceEmailReservation.test.ts`, `invoiceEmailCompletion.test.ts`,
+`invoiceEmailReopen.test.ts` ja `invoicingReopenComposition.test.ts`.
+Mukana ovat kaksi tietokantayhteyttä, kirjoituslukko, audit-rollback,
+tietokannan uudelleenavaus, migroitu jo reopened unresolved-historia ja
+HTTP-polun vanha sekä uusi PDF. `loadInvoiceEmailDeliveryDocument.test.ts`,
+`prepareInvoiceSmtpDocument.test.ts`, molemmat `sendApprovedInvoiceEmailSmtp`-
+testit ja `invoicingSmtpComposition.test.ts` todistavat tarkistettujen tavujen,
+valtuutuksen, varauksen ja loppukuittauksen application/HTTP-ketjun
+synteettisellä providerilla. Mukana ovat reopen-kilpa, tallennusvirheen
+jälkeinen uuden sovellusinstanssin unresolved-esto sekä durablen onnistumisen
+jälkeisen lukuhäiriön todellinen diagnostiikkaketju. `invoiceEmailCancel.test.ts`
+ja saman composition-testin cancel-tapaukset kattavat molemmat SMTP-moodit,
+peruutuksen/varauksen järjestykset, eri tietokantayhteydet, kirjoituslukon
+ja tietokannan uudelleenavaamisen. `invoiceNonSmtpDelivery.test.ts` sekä
+`invoicingNonSmtpComposition.test.ts` todistavat manual-/dry-run-kohdesidoksen,
+revision vaihdon turvallisen konfliktin sekä kahden kilpailevan manual-pyynnön
+yhden tapahtuman ja arkistointipyynnön. `sqliteInvoiceLegacyResendReader.test.ts`
+ja `preparePreservedLegacyInvoiceDocument.test.ts` todentavat vanhan lähteen
+yksiselitteisyyden, estävän historian, todelliset itsenäiset PDF-tavut,
+rinnakkaisen kopioinnin, epävarman commitin säilytyksen ja tietokannan
+uudelleenavauksen. SMTP-varauksen legacy-estot testataan myös olemassa
+olevalla, muuten kelvollisella kohdedokumentilla.
+`readPreservedLegacyInvoiceDocument.test.ts` erottaa valmistelun vain
+lukevasta täsmävalinnasta: jo valmisteltu dokumentti, todelliset alkuperäisen
+ja kopion tavut, väärä kohde/yritys/oikeus, puuttuva tai muuttunut tiedosto,
+IO:n yli muuttunut kelpoisuus sekä tietokannan uudelleenavaus. Luku ei
+kirjoita korvaavaa dokumenttia eikä anna SMTP-valtuutusta. Tämä on
+application-/storage-osatodiste; koko native-käyttäjäpolku ja vahvistus ovat kesken.
+`preservedLegacyInvoiceDocumentRoutes.test.ts` ja
+`invoicingPreservedPdfComposition.test.ts` kattavat nimetyn kopion HTTP-
+lukureitin, oikean compositionin, yritys-/oikeusrajat, IO:n yli muuttuneen
+kelpoisuuden, tavujen eheyden, kirjoittamattomuuden ja turvallisen diagnoosin.
+Desktopin `invoicePdfPreviewPolicy.test.ts`, `invoicePdfPreviewWindow.test.ts`
+sekä `invoicePdfPreviewWindowBoundary.test.ts` kattavat tiukan kohteen,
+täsmä-URL:iin sidotun ikkunan ja todellisen preload-lähteen/protokollan
+kutsut testisovittimilla. Lomakkeen rajatut `INV-PRESERVED-PREVIEW-UI-*`-
+kokeet ovat `invoicePreservedAttachmentJourneys.spec.ts`-tiedostossa. Ne
+käyttävät oikeaa selainta ja nykyistä eristettyä web-fixtureä, mutta
+preserved-preflight-vastaus, popupin sisältö ja native-callback ovat
+testisovittimia. Ne todentavat lomakkeen kohdekytkennän ja vastausjärjestyksen,
+eivät oikeaa legacy-valintaa, PDF-renderöintiä tai Electron-/SMTP-vahvistusta.
+Saman tiedoston `INV-PRESERVED-SMTP-UI-001-exact/changed` todentavat oikean
+lomakkeen ja API-clientin kohteen prepare/send-ketjussa. Testisovitin antaa
+prepare-vastauksen ja pysäyttää sendin 409:ään; väärä kohde estetään jo
+clientissä. Testit eivät lähetä sähköpostia eivätkä esitä native-vahvistusta.
+`invoicingLegacySmtpComposition.test.ts` todentaa erikseen oikean backendin
+ja legacy-tavujen ketjun fake-providerilla, varauskilvan, historian sekä
+diagnostiikan säilymisen. `invoiceEmailProtocolConfirmation.test.ts` ja
+`invoiceDeliveryConfirmation.test.ts` todentavat mainin vahvistuksen
+sovitinrajalla, myös callbackin puuttumisen ennen backend-kutsua.
+Näiden kokonaispolkujen oikean Electronin ja palautuksen portit säilyvät avoimina.
+`invoiceSmtpConfirmation.spec.ts` täydentää normaalirevision näyttöä
+oikeassa development-Electronissa. Renderer käyttää tuotannon protokollaa,
+main-vahvistusta ja backend-ketjua; vain OS-dialogi ja SMTP-provider ovat
+nykyisiä testisovittimia. Kertalupa pysyy renderer-kutsun sisällä.
+Hyväksyntä ja peruutus läpäisivät ensimmäisellä yrityksellä. Legacy-ketjua
+tai paketoidun palautuksen hyväksyntää ei päätellä näistä kahdesta kokeesta.
+`invoiceCommittedDeliveryJourneys.spec.ts` todentaa erikseen jälkilukuvirheen
+palautteen oikeassa lomakkeessa ja API-clientissä vastauksen testisovittimella.
+Todellinen backendin lukuvirhe, pysyvä onnistuminen ja diagnostiikan lukijat
+kuuluvat `invoicingSmtpComposition.test.ts`:n integraationäyttöön. Desktopin
+protokollatesti säilyttää koodin ilman uutta vahvistusta/kutsua. Kokonaisen
+`INV-SMTP-COMMITTED-READ-001`-polun system-todennusta ei suljeta osanäytöllä.
+`useApprovedInvoiceEmailDryRun.state.test.ts` täydentää UI-006:tta
+deterministisellä state-write-näytöllä: vanhan komennon resolve/reject ja
+catch/finally odotetaan loppuun uudemman pyynnön pysyessä pidätettynä.
+Unmount-tapaus todistaa callerin null-tuloksen ja tilakirjoitusten eston.
+Hookin React-rajat ovat tässä yksikkötestisovittimia; oikea mount/näkymänvaihto
+kuuluu selainkokeille. HTTP-vastauksen valmistumista ei yksin tulkita hookin
+valmistumiseksi.
+`invoiceLegacyConflictMigration.test.ts` vie tunnetun R02:n katkenneen
+viitteen ja epävarman toimituksen jälkitilat aidon 038 -> 039 -migraation läpi:
+myöhempi ehjä tapahtuma/PDF ei salli historian ohittamista valinnassa,
+julkaisussa tai varauksessa. Tämä on jälkitilan regressio, ei vanhan runtimen
+virhetoisto. `invoiceLegacyDeliveryReview.test.ts` ja
+`invoicingLegacyReviewComposition.test.ts` kattavat hyväksytyn vanhan approved-
+laskun selvityseston, suorat kirjoitusportit, kahdeksan HTTP-toimintoa,
+yritysrajan, lähetysoikeuden, säilyvän lukupolun sekä oikean diagnostisen
+loggerin ja tukipaketin lukijat. `invoiceLegacyDeliveryReviewError.test.ts`
+kattaa UI:n vakiopalautteen ja vuotosuojan.
+`InvoicingPage.delivery.test.tsx` todentaa oikeiden sivun callbackien ja
+hookkien kytkennän: manual-/email-prepare ei tee edeltävää PDF-pyyntöä,
+estetty toiminto ei lue metadataa ja onnistunut current-revision toiminto
+päivittää sen erikseen. Preserved-haara ei lue current-PDF:n metadataa tai
+generoi PDF:ää, ja avaus välittää exact-kohteen. Näkymälapsi ja API-vastaukset on testissä korvattu; kyse ei ole
+selaimen tai Electronin E2E-ajosta. Legacy-vahvistuksen ja koko
+käyttäjäpolun kytkentä ovat kesken.
+PDF:n tarkistuksen sisäinen reopen-kilpa katetaan lisäksi molempien moodien
+prepare/send-reiteillä: 409 ilman varausta/provideria tai väärää
+SMTP-virheluokitusta. Neljä tapausta toisti virheen ennen korjausta.
+Nämä eivät vielä todista koko toimitusketjua, käyttäjän UI-/native-polkua,
+koko runtime-restartia tai paketoitua backup/restorea. Uusien rivien E2E-tila säilyy
+siksi suunniteltuna [B3-B5:n omistavassa rajauksessa](release-0.3.0-m1-preparation-plan.md#b-p2-toimitusversioiden-historia).
 
 ## Observability
 
@@ -543,6 +679,7 @@ Electron-sulkuhylkäyksen juurisyytä tai korvaa oikeaa Electron-ajoa.
 | DESK-NAV-001 | P0; integration, electron-e2e, security | Yritä external navigation/window.open/webview | Kaikki estyvät | Deduplikoitu turvallinen security-event | Pitkä/raw URL tai query-secret | implemented-e2e |
 | DESK-PERMISSION-001 | P1; integration, electron-e2e, security | Permission check/request | Estyy ilman kohinaa | Ei OS-oikeutta; deduplikoitu event | Raw URL tai device detail | implemented-e2e |
 | DESK-PDF-001 | P0; integration, electron-e2e | Approved PDF; avaa invoiceId:llä ja sulje | Suojattu ikkuna renderöi PDF:n | Ei DB-muutosta; ikkuna poistuu rekisteristä | URL, path, session tai header rendererille | implemented-e2e |
+| DESK-PDF-REVISION-001 | P0; electron-e2e, critical | Pidä nykyisen PDF:n ikkuna auki; reopen, UI-muokkaus, uudelleenhyväksyntä ja PDF:n uusi avaus | Vanha ikkuna sulkeutuu ja sama current-URL ladataan uuteen ikkunaan | Numero ja lasku-ID säilyvät; nykyiset PDF-tavut muuttuvat; vain yksi esikatselu | Vanhan revision näyttäminen nykyisenä pelkän saman URL:n vuoksi | implemented-e2e |
 | DESK-STARTUP-OBSERVATION-001 | P1; electron-e2e, diagnostic-contract | Lue nykyisen E2E-mainin rajattu muistihavainto yksityisellä kanavalla | Fork-pyyntö, kahva, readiness-odotuksen alku, spawn, start-viesti ja validoitu ready erottuvat ennen ensimmäistä ikkunaa; backendin viimeinen progress näkyy mainin havaintoajalla | Suljettu versioitu projektio, ei uutta onnistumisehtoa PDF-käyttäjäpolulle | Raakavirhe, polut, session tai ympäristö | implemented-e2e; version 2 kytkentä todennettu Windowsissa; erillinen diagnostiikkatesti, ei critical-käyttäjäpolku tai alkuperäisen timeoutin juurisyy |
 | ARCHIVE-PDF-FAILURE-001 | P0; integration, electron-e2e, fault | Arkistointi käytössä; poista valittu kohde ennen manuaalista toimitusta | Toimitus onnistuu ja lasku on `sent`; arkistotask jää pending-tilaan | Queue/delivery-rajat säilyvät eikä paikallista kopiota synny | Polku, invoice/document/delivery id, laskunumero tai raw error lokiin | implemented-e2e |
 | ARCHIVE-PDF-RECOVERY-001 | P0; integration, electron-e2e, recovery | Luo edellisen skenaarion pending-task; palauta kohde ja käynnistä desktop uudelleen | Manuaalinen retry tyhjentää journalin ja tallentaa täsmällisen `%PDF-`-tiedoston | Sama runtime-owned config/journal palautuu; business-tila ei muutu retryssä | Session, polku tai PDF-data rendererille | implemented-e2e |
@@ -589,6 +726,7 @@ Electron-sulkuhylkäyksen juurisyytä tai korvaa oikeaa Electron-ajoa.
 | BACKUP-KDF-001 | P0; unit, security | Tuntematon, heikko tai ylikokoinen KDF-profiili | Hylätään ennen scryptiä | Vain lukittu `N = 2^17`, `r = 8`, `p = 1` hyväksytään | Salasana tai johdettu avain | covered-existing |
 | BACKUP-SNAPSHOT-001 | P0; integration, critical | Maintenance; SQLite + catalog + kaikki auktoritatiiviset PDF:t | Konsistentti snapshot validoituu | Tietokanta ja artifactit ovat samasta suljetusta kirjoitusrajasta | Raaka polku tai business data lokiin | covered-existing |
 | BACKUP-EMPTY-ARTIFACTS-001 | P0; integration, packaged-smoke, recovery | Luo palautuspiste ja varmuuskopio profiilista, jossa `invoice_documents` on tyhjä; palauta ja käynnistä uudelleen | Tyhjä artifact-katalogi validoituu ilman ylimääräistä hakemistopuuta ja profiili palautuu terveenä | Katalogi, SQLite, migraatioketju ja suljettu tiedostojoukko täsmäävät; aktiivinen profiili ei muutu failure-polussa | Raaka polku, katalogi, business-data tai SQL-virhe | implemented-e2e; packaged backup -> inspect -> restore -> restart -> compare todennettu kahdesti 14.8.2026 |
+| BACKUP-INVOICE-REVISIONS-001 | P0; packaged-smoke, recovery | Sama lasku, ensimmäisen revision PDF ja dry-run-tapahtuma, reopen/edit/reapprove ja toinen PDF; nykyinen backup -> inspect -> restore -> restart -> compare | Sama lasku ja numero, eri revisio-PDF:t; vanhan tapahtuman PDF säilyy; palautetun kannan ja kaikkien katalogiartifaktien tavut täsmäävät | Dry-run ei tee SMTP-yhteyttä eikä merkitse laskua lähetetyksi; normaali erillinen manual-arkistointikoe säilyy | PDF-sisältö, business-data, session tai raakapalautuspolku | passed-development-package; clean-release/legacy gate pending, ks. B5-checkpoint |
 | BACKUP-MISSING-DOCUMENT-001 | P0; integration, fault | DB viittaa puuttuvaan tai muuttuneeseen PDF:ään | Backup estyy turvallisesti | Lopullista backup-artifactia ei synny | Dokumenttipolku tai SQL-virhe | covered-existing |
 | BACKUP-WRITER-001 | P0; integration, critical | Luo, self-inspect ja yritä overwritea | Uusi backup syntyy ja olemassa oleva säilyy | Writer julkaisee vain itse tarkastetun containerin | Salasana, payload tai temp-polku | covered-existing |
 | RECOVERY-POINT-001 | P0; integration, critical | Terve startup, 24 h -raja ja `safeStorage` käytettävissä | Valid machine-local recovery point | Satunnainen data-avain on `safeStorage`-suojattu | Data-avain tai plaintext-profiili | covered-existing |

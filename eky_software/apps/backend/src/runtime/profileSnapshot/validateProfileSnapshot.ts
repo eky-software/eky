@@ -24,6 +24,7 @@ import type {
 } from './profileSnapshotTypes.js';
 import { isActiveProfileRestoreTargetEmpty } from './inspectActiveProfileRestoreTarget.js';
 import { validateProfileArtifactCatalog } from './validateProfileArtifactCatalog.js';
+import { selectInvoiceBackupArtifactCatalogSchema } from '../../modules/invoicing/infrastructure/selectInvoiceBackupArtifactCatalogSchema.js';
 import { materializeValidatedProfileArtifacts } from './materializeValidatedProfileArtifacts.js';
 
 const operationIdPattern =
@@ -161,6 +162,7 @@ export class StagedProfileSnapshotValidationService
         const artifacts = await validateProfileArtifactCatalog({
           database: stagedDatabase,
           operationRoot,
+          schema: selectInvoiceBackupArtifactCatalogSchema(databaseInspection),
         });
 
         return {

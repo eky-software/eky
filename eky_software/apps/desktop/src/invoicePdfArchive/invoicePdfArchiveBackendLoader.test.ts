@@ -45,11 +45,27 @@ describe('createInvoicePdfArchiveBackendLoader', () => {
       mimeType: 'application/pdf',
     });
     expect(fetchImplementation).toHaveBeenCalledTimes(2);
+    expect(fetchImplementation.mock.calls.map(([url]) => url)).toEqual([
+      'http://127.0.0.1:3000/invoices/invoice-1/delivery-events/delivery-event-1/pdf/metadata',
+      'http://127.0.0.1:3000/invoices/invoice-1/delivery-events/delivery-event-1/pdf',
+    ]);
     for (const [, init] of fetchImplementation.mock.calls) {
       expect(new Headers(init?.headers).get('x-eky-local-session')).toBe(
         'session-secret',
       );
     }
+  });
+
+  it.each([403, 404, 409, 500])('never falls back to a current PDF when event metadata returns %s', async status => {
+    const task = createTask(Uint8Array.from(Buffer.from('%PDF-1.7\nsynthetic')));
+    const fetchImplementation = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status }));
+    await expect(createInvoicePdfArchiveBackendLoader({
+      backendOrigin: 'http://127.0.0.1:3000', fetchImplementation, runtimeSessionSecret: 'session-secret',
+    })(task)).rejects.toMatchObject({ code: 'ARCHIVE_REQUEST_FAILED' });
+    expect(fetchImplementation).toHaveBeenCalledTimes(1);
+    expect(fetchImplementation.mock.calls[0]?.[0]).toBe(
+      'http://127.0.0.1:3000/invoices/invoice-1/delivery-events/delivery-event-1/pdf/metadata',
+    );
   });
 
   it('stops before loading bytes when metadata is not bound to the task', async () => {

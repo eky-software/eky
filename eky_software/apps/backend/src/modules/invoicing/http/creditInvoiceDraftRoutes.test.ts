@@ -126,7 +126,7 @@ describe('credit invoice draft routes', () => {
     });
   });
 
-  it('approves a credit draft with trusted actor data and no request body', async () => {
+  it('approves with trusted actor data and excludes internal revision fields from the response', async () => {
     const { app, getApproveInput } = createTestApp();
 
     const response = await app.request(
@@ -154,7 +154,24 @@ describe('credit invoice draft routes', () => {
       draftId: 'draft-1',
     });
     expect(getApproveInput()).not.toHaveProperty('seriesKey');
+    expect(getApproveInput()).not.toHaveProperty('revisionKey');
     expect(getApproveInput()?.approvedAt).toEqual(expect.any(String));
+  });
+
+  it.each([
+    { revisionId: 'caller-selected-revision' },
+    { revisionKey: { companyId: 'other-company', invoiceId: 'credit-invoice-1', revisionId: 'caller-selected-revision' } },
+  ])('rejects caller-selected revision data %j before credit approval', async (body) => {
+    const { app, getApproveInput } = createTestApp();
+    const response = await app.request('/invoice-drafts/draft-1/approve-credit', {
+      body: JSON.stringify(body),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'Request body is not allowed.' });
+    expect(getApproveInput()).toBeUndefined();
   });
 
   it('rejects server-owned credit approval data', async () => {
@@ -293,6 +310,8 @@ function createTestApp(options: { createError?: Error } = {}) {
         approveInput = input;
 
         return {
+          revisionKey: { companyId: 'dev-company', invoiceId: 'credit-invoice-1', revisionId: 'credit-revision-1' },
+          internalOnly: 'synthetic-internal-value',
           draftId: 'draft-1',
           invoiceId: 'credit-invoice-1',
           invoiceNumber: '20260002',

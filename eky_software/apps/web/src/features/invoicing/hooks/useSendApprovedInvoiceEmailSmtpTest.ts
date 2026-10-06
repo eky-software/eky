@@ -6,6 +6,7 @@ import {
 } from '@eky/api-client';
 import { useState } from 'react';
 
+import { getInvoiceLegacyDeliveryReviewErrorMessage } from './invoiceLegacyDeliveryReviewError.js';
 import { uiText } from '../../../i18n/fi.js';
 
 type SendApprovedInvoiceEmailSmtpTestClient = Pick<
@@ -92,6 +93,12 @@ export function sendApprovedInvoiceEmailSmtpTestWithClient(
 export function getSendApprovedInvoiceEmailSmtpTestErrorMessage(
   error: unknown,
 ): string {
+  const legacyReviewMessage = getInvoiceLegacyDeliveryReviewErrorMessage(error);
+
+  if (legacyReviewMessage !== null) {
+    return legacyReviewMessage;
+  }
+
   if (error instanceof EkyApiError && error.status === 404) {
     return uiText.invoicing.approvedInvoiceNotFound;
   }

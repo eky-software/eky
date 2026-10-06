@@ -13,8 +13,7 @@ import {
 
 const profileIdentityDomain = 'Eky profile identity v1\0';
 
-export interface SqliteProfileDatabaseInspection {
-  migrationChainIdentity: string;
+export interface SqliteProfileDatabaseInspection extends MigrationHistoryInspection {
   profileId: string;
 }
 
@@ -66,6 +65,7 @@ export function inspectSqliteProfileDatabase(
     const identity = readLocalRuntimeIdentity(database);
 
     return {
+      appliedMigrationNames: Object.freeze([...migrationHistory.appliedMigrationNames]),
       migrationChainIdentity: migrationHistory.migrationChainIdentity,
       profileId: createProfileBackupIdentity(identity.companyId),
     };

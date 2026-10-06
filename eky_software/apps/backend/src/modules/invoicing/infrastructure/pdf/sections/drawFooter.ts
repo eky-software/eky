@@ -1,10 +1,10 @@
-import type { ApprovedInvoiceView } from '../../../domain/approvedInvoiceView.js';
+import type { ApprovedInvoicePdfContent } from '../../../domain/approvedInvoicePdfContent.js';
 import { formatPdfIban } from '../approvedInvoicePdfFormatting.js';
 import { invoicePdfLayout } from '../approvedInvoicePdfLayout.js';
 
 export function drawFooter(
   doc: PDFKit.PDFDocument,
-  invoice: ApprovedInvoiceView,
+  invoice: ApprovedInvoicePdfContent,
 ): void {
   const y = invoicePdfLayout.footerTop + 4;
   const x = invoicePdfLayout.margin;

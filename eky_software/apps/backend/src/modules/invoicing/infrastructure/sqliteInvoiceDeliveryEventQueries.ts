@@ -5,11 +5,6 @@ import {
   toInvoiceDeliveryEventSummary,
 } from './invoiceDeliveryEventPersistenceRows.js';
 
-export interface SuccessfulEmailDeliveryInvoiceRow {
-  status: 'approved' | 'sent';
-  updated_at: string;
-}
-
 export interface ManualDeliveryInvoiceRow {
   invoice_number: string;
   source_draft_id: string;
@@ -19,27 +14,6 @@ export interface ManualDeliveryInvoiceRow {
 
 export class SqliteInvoiceDeliveryEventQueries {
   constructor(private readonly database: DatabaseConnection) {}
-
-  getSuccessfulEmailDeliveryInvoice(
-    companyId: string,
-    invoiceId: string,
-  ): SuccessfulEmailDeliveryInvoiceRow | undefined {
-    return this.database
-      .prepare<
-        { company_id: string; id: string },
-        SuccessfulEmailDeliveryInvoiceRow
-      >(
-        `
-          SELECT status, updated_at
-          FROM invoices
-          WHERE
-            company_id = @company_id
-            AND id = @id
-            AND status IN ('approved', 'sent')
-        `,
-      )
-      .get({ company_id: companyId, id: invoiceId });
-  }
 
   getManualDeliveryInvoice(
     companyId: string,
@@ -98,6 +72,9 @@ export class SqliteInvoiceDeliveryEventQueries {
             created_at,
             delivery_method,
             provider,
+            send_mode,
+            binding_kind,
+            document_id,
             recipient_email,
             cc_email,
             safe_error_message,

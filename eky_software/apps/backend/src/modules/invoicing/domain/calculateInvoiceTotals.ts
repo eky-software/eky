@@ -24,7 +24,16 @@ function toSafeInteger(value: bigint): number {
   return Number(value);
 }
 
-function validateCalculatedLine(line: CalculatedInvoiceLine): void {
+export function validateCalculatedInvoiceLine(
+  line: Pick<CalculatedInvoiceLine,
+    | 'vatRateBasisPoints'
+    | 'baseCents'
+    | 'discountCents'
+    | 'netCents'
+    | 'vatCents'
+    | 'grossCents'
+  >,
+): void {
   const monetaryValues = [
     line.baseCents,
     line.discountCents,
@@ -128,7 +137,7 @@ export function calculateInvoiceTotals(
   const breakdownByRate = new Map<number, MutableVatBreakdown>();
 
   for (const line of lines) {
-    validateCalculatedLine(line);
+    validateCalculatedInvoiceLine(line);
     addToVatBreakdown(breakdownByRate, line);
   }
 

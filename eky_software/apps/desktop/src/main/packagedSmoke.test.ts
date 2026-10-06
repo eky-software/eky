@@ -209,6 +209,28 @@ describe('packaged smoke progress', () => {
     ).toBe('Packaged desktop smoke check timed out (stage startup).');
   });
 
+  it('admits legacy smoke only with the normal smoke token and switch', async () => {
+    const disabled = createPackagedSmokeConfiguration({ hasLegacyInvoiceSwitch: true,
+      hasSmokeSwitch: false, tempPath: tmpdir(), tokenValue: undefined });
+    expect(disabled.scenario).toBeUndefined();
+    const configuration = createPackagedSmokeConfiguration({ hasLegacyInvoiceSwitch: true,
+      hasSmokeSwitch: true, tempPath: tmpdir(), tokenValue: 'a'.repeat(32) });
+    expect(configuration.scenario).toBe('legacyInvoice');
+    const reporter = createPackagedSmokeProgressReporter({ ...configuration, enabled: false });
+    await reporter.reportStage('startup');
+    await reporter.reportStage('backend');
+    await expect(reporter.reportStage('emptyArtifactSnapshot')).rejects.toThrow('DESKTOP_SMOKE_STAGE_INVALID');
+    for (const stage of ['profileBackup', 'profileSnapshotMaintenance', 'profileSnapshotCreated',
+      'profileSnapshotCaptured', 'profileBackupVerified', 'profileMutationCreated',
+      'profileRestore', 'restoreRestart'] as const) await reporter.reportStage(stage);
+    const restored = createPackagedSmokeProgressReporter({ ...configuration, enabled: false, phase: 'restoredProfile' });
+    for (const stage of ['restoredStartup', 'restoreActivationJournalLoaded', 'restoredBackend',
+      'restoredSessionValidated', 'profileComparison', 'secondBackup', 'shutdown'] as const) {
+      await restored.reportStage(stage);
+    }
+    expect(restored.currentStage()).toBe('shutdown');
+  });
+
   it('reports only the safe smoke code and stage in failure messages', () => {
     expect(
       createPackagedSmokeFailureMessage(

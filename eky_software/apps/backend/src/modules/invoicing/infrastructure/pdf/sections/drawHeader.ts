@@ -1,11 +1,11 @@
-import type { ApprovedInvoiceView } from '../../../domain/approvedInvoiceView.js';
+import type { ApprovedInvoicePdfContent } from '../../../domain/approvedInvoicePdfContent.js';
 import { formatPdfDate } from '../approvedInvoicePdfFormatting.js';
 import { drawHorizontalLine, invoicePdfLayout } from '../approvedInvoicePdfLayout.js';
 import { drawAddressLines } from '../approvedInvoicePdfParty.js';
 
 export function drawHeader(
   doc: PDFKit.PDFDocument,
-  invoice: ApprovedInvoiceView,
+  invoice: ApprovedInvoicePdfContent,
 ): void {
   const leftX = invoicePdfLayout.margin;
   const rightX = 385;

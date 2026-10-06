@@ -58,7 +58,7 @@ export async function createInvoicePdfPreviewSmokeFixture(
     'id',
   );
   const invoiceDate = new Date().toISOString().slice(0, 10);
-  const draftResponse = await request('/invoice-drafts', 'POST', {
+  const draftInput = {
     customerId,
     deliveryAddressText: 'Paketoidun desktopin PDF-esikatselutesti',
     invoiceDate,
@@ -78,7 +78,8 @@ export async function createInvoicePdfPreviewSmokeFixture(
     priceInputMode: 'net',
     reminderPeriodDays: 8,
     subject: 'Desktop PDF smoke',
-  });
+  };
+  const draftResponse = await request('/invoice-drafts', 'POST', draftInput);
   const draftId = readNestedIdentifier(draftResponse, 'invoiceDraft', 'id');
   const approvalResponse = await request(
     `/invoice-drafts/${draftId}/approve`,
@@ -90,9 +91,67 @@ export async function createInvoicePdfPreviewSmokeFixture(
     'invoiceId',
   );
 
-  await request(`/invoices/${invoiceId}/pdf`, 'POST');
+  const firstDocument = await request(`/invoices/${invoiceId}/pdf`, 'POST');
+  const firstDocumentId = readNestedIdentifier(firstDocument, 'document', 'id');
+  const firstPdf = await readSmokePdf(input, `/invoices/${invoiceId}/pdf`);
+  const delivery = await request(`/invoices/${invoiceId}/email/dry-run/send`, 'POST', {
+    to: 'customer@example.invalid',
+    cc: '',
+    subject: 'Synthetic first revision delivery',
+    body: 'Synthetic dry-run only; no SMTP connection.',
+  });
+  const eventId = readNestedIdentifier(delivery, 'delivery', 'deliveryEventId');
+  const reopened = await request(`/invoices/${invoiceId}/reopen-for-edit`, 'POST');
+  const reopenedDraftId = readIdentifier(reopened, 'invoiceDraftId');
+  if (reopenedDraftId !== draftId) {
+    throw new Error('DESKTOP_SMOKE_INVOICE_REVISION_IDENTITY_FAILED');
+  }
+  await request(`/invoice-drafts/${draftId}`, 'PUT', {
+    ...draftInput,
+    subject: 'Desktop PDF smoke second revision',
+  });
+  const reapproved = await request(`/invoice-drafts/${draftId}/approve`, 'POST');
+  if (
+    readNestedIdentifier(reapproved, 'approvedInvoice', 'invoiceId') !== invoiceId ||
+    readNestedIdentifier(reapproved, 'approvedInvoice', 'invoiceNumber') !==
+      readNestedIdentifier(approvalResponse, 'approvedInvoice', 'invoiceNumber')
+  ) {
+    throw new Error('DESKTOP_SMOKE_INVOICE_REVISION_IDENTITY_FAILED');
+  }
+  const secondDocument = await request(`/invoices/${invoiceId}/pdf`, 'POST');
+  const secondPdf = await readSmokePdf(input, `/invoices/${invoiceId}/pdf`);
+  const historicalPdf = await readSmokePdf(
+    input, `/invoices/${invoiceId}/delivery-events/${eventId}/pdf`,
+  );
+  if (
+    readNestedIdentifier(secondDocument, 'document', 'id') === firstDocumentId ||
+    firstPdf.equals(secondPdf) || !firstPdf.equals(historicalPdf)
+  ) {
+    throw new Error('DESKTOP_SMOKE_INVOICE_REVISION_CONTENT_FAILED');
+  }
 
   return invoiceId;
+}
+
+async function readSmokePdf(
+  input: CreateInvoicePdfPreviewSmokeFixtureInput,
+  pathname: string,
+): Promise<Buffer> {
+  const response = await fetch(`http://127.0.0.1:${input.backendPort}${pathname}`, {
+    headers: {
+      accept: 'application/pdf',
+      [localRuntimeSessionHeaderName]: input.runtimeSessionSecret,
+    },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok || response.headers.get('content-type') !== 'application/pdf') {
+    throw new Error('DESKTOP_SMOKE_INVOICE_REVISION_CONTENT_FAILED');
+  }
+  const content = Buffer.from(await response.arrayBuffer());
+  if (content.subarray(0, 4).toString('ascii') !== '%PDF') {
+    throw new Error('DESKTOP_SMOKE_INVOICE_REVISION_CONTENT_FAILED');
+  }
+  return content;
 }
 
 function createSmokeRequest(
@@ -151,15 +210,15 @@ function readNestedIdentifier(
 
   const parent = (value as Record<string, unknown>)[parentField];
 
-  if (
-    typeof parent !== 'object' ||
-    parent === null ||
-    !(identifierField in parent)
-  ) {
+  return readIdentifier(parent, identifierField);
+}
+
+function readIdentifier(value: unknown, identifierField: string): string {
+  if (typeof value !== 'object' || value === null || !(identifierField in value)) {
     throw new Error('DESKTOP_SMOKE_PDF_PREVIEW_FIXTURE_FAILED');
   }
 
-  const identifier = (parent as Record<string, unknown>)[identifierField];
+  const identifier = (value as Record<string, unknown>)[identifierField];
 
   if (typeof identifier !== 'string' || identifier.length === 0) {
     throw new Error('DESKTOP_SMOKE_PDF_PREVIEW_FIXTURE_FAILED');

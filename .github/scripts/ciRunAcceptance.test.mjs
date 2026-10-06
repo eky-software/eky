@@ -84,6 +84,21 @@ test('legacy coverage requires every responsibility group and selected repetitio
   }
 });
 
+test('packaged recovery cannot pass without the legacy preparation and restore steps', () => {
+  const plan = planFor([critical], 'push');
+  for (const name of ['Prepare packaged legacy recovery runtime', 'Run packaged legacy recovery']) {
+    for (const outcome of ['missing', 'skipped', 'failure', 'cancelled']) {
+      const { needs, jobs } = evidence(plan);
+      const job = jobs.find(value => value.name.endsWith('Windows Electron critical E2E'));
+      const step = job.steps.find(value => value.name === name);
+      assert.ok(step, 'coverage must explicitly require the legacy step');
+      if (outcome === 'missing') job.steps = job.steps.filter(value => value !== step);
+      else step.conclusion = outcome;
+      assert.equal(evaluateCiRun(plan, needs, jobs).resultCode, 'CI_REQUIRED_STEP_INCOMPLETE');
+    }
+  }
+});
+
 test('skipped manual MSI policy job does not replace mandatory normal policy steps', () => {
   const plan = planFor([critical], 'push');
   const { needs, jobs } = evidence(plan);

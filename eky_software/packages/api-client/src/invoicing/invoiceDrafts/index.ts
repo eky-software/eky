@@ -4,6 +4,7 @@ export type {
   ApproveInvoiceDraftInput,
   ApprovedInvoiceStatus,
   InvoiceDraft,
+  InvoiceDraftDeliveryHistory,
   InvoiceDraftInput,
   InvoiceDraftLine,
   InvoiceDraftLineInput,

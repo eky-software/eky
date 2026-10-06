@@ -12,9 +12,8 @@ export function createE2eInvoiceDocumentStorage(
   }
 
   return {
-    deleteFile: (storagePath) => storage.deleteFile(storagePath),
-    readFile: (storagePath) => storage.readFile(storagePath),
-    async writeFile() {
+    readVerifiedDocument: (document) => storage.readVerifiedDocument(document),
+    async writeCandidate() {
       throw new Error('E2E PDF storage write failed.');
     },
   };

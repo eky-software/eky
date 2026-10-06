@@ -6,5 +6,5 @@
     "noEmit": true,
     "types": ["@playwright/test"]
   },
-  "include": ["playwright.config.ts", "playwright.first-start-diagnostic.config.ts", "src", "tests"]
+  "include": ["playwright.config.ts", "playwright.first-start-diagnostic.config.ts", "playwright.packaged-legacy.config.ts", "src", "tests"]
 }

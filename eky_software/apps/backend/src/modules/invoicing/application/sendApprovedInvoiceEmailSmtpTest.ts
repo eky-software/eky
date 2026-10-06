@@ -9,16 +9,13 @@ import {
   normalizeApprovedInvoiceEmailSendFields,
 } from './approvedInvoiceEmailSendValidation.js';
 import { createInvoiceEmailSendRequestFingerprint } from './invoiceEmailSendRequestFingerprint.js';
-import type {
-  ApprovedInvoicePdfDocumentFile,
-  GetApprovedInvoicePdfDocumentInput,
-} from './getApprovedInvoicePdfDocument.js';
+import type { InvoiceEmailDeliveryDocument } from './loadInvoiceEmailDeliveryDocument.js';
 import type {
   GenerateApprovedInvoicePdfDocumentInput,
 } from './generateApprovedInvoicePdfDocument.js';
-import { recordInvoiceDeliveryEvent } from './recordInvoiceDeliveryEvent.js';
+import { InvoiceDeliveryConflictError } from './invoiceDeliveryConflictError.js';
 import { requireInvoiceDeliveryEligible } from './requireInvoiceDeliveryEligible.js';
-import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
+import { requireLegacyInvoiceDeliveryReviewed, type InvoiceLegacyDeliveryReviewReader } from './requireLegacyInvoiceDeliveryReviewed.js';
 import { requireIdentifier } from '../domain/invoiceDraftRules.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
 import type { InvoiceDeliveryEventRepository } from '../ports/invoiceDeliveryEventRepository.js';
@@ -53,13 +50,11 @@ export interface SendApprovedInvoiceEmailSmtpTestResult {
 }
 
 export interface SendApprovedInvoiceEmailSmtpTestDependencies {
+  invoiceDeliveryEventReader: InvoiceLegacyDeliveryReviewReader;
   approvedInvoiceReader: ApprovedInvoiceReader;
-  ensureApprovedInvoicePdfDocument(
+  loadInvoiceEmailDeliveryDocument(
     input: GenerateApprovedInvoicePdfDocumentInput,
-  ): Promise<ApprovedInvoiceDocumentMetadata>;
-  getApprovedInvoicePdfDocument(
-    input: GetApprovedInvoicePdfDocumentInput,
-  ): Promise<ApprovedInvoicePdfDocumentFile>;
+  ): Promise<InvoiceEmailDeliveryDocument>;
   invoiceDeliveryEventRepository: InvoiceDeliveryEventRepository;
   invoiceEmailSettingsReader: InvoiceEmailSettingsReader;
   invoiceEmailSendAttemptStore: InvoiceEmailSendAttemptStore;
@@ -94,6 +89,7 @@ export async function sendApprovedInvoiceEmailSmtpTest(
   }
 
   requireInvoiceDeliveryEligible(invoice);
+  await requireLegacyInvoiceDeliveryReviewed({ companyId, invoiceId }, dependencies.invoiceDeliveryEventReader);
 
   const settings = await dependencies.invoiceEmailSettingsReader.getEmailSettings(
     companyId,
@@ -110,13 +106,10 @@ export async function sendApprovedInvoiceEmailSmtpTest(
     subject: emailFields.subject,
     to: settings.emailTestRecipientOverride,
   }).to;
-  await dependencies.ensureApprovedInvoicePdfDocument({
+  const pdfDocument = await dependencies.loadInvoiceEmailDeliveryDocument({
+    actorContext: input.actorContext,
     companyId,
     createdAt: sentAt,
-    invoiceId,
-  });
-  const pdfDocument = await dependencies.getApprovedInvoicePdfDocument({
-    companyId,
     invoiceId,
   });
 
@@ -134,6 +127,7 @@ export async function sendApprovedInvoiceEmailSmtpTest(
         body: emailFields.body,
         cc: emailFields.cc,
         document: {
+          binding: pdfDocument.metadata.binding,
           fileName: pdfDocument.metadata.fileName,
           id: pdfDocument.metadata.id,
           sha256: pdfDocument.metadata.sha256,
@@ -162,7 +156,6 @@ export async function sendApprovedInvoiceEmailSmtpTest(
       companyId,
       dependencies,
       emailFields,
-      invoiceId,
       pdfDocument,
       sentAt,
       settings,
@@ -193,8 +186,7 @@ interface DeliverPreparedSmtpTestInput {
   companyId: string;
   dependencies: SendApprovedInvoiceEmailSmtpTestDependencies;
   emailFields: ReturnType<typeof normalizeApprovedInvoiceEmailSendFields>;
-  invoiceId: string;
-  pdfDocument: ApprovedInvoicePdfDocumentFile;
+  pdfDocument: InvoiceEmailDeliveryDocument;
   sentAt: string;
   settings: NonNullable<
     Awaited<ReturnType<InvoiceEmailSettingsReader['getEmailSettings']>>
@@ -205,27 +197,23 @@ interface DeliverPreparedSmtpTestInput {
 async function deliverPreparedSmtpTest(
   input: DeliverPreparedSmtpTestInput,
 ): Promise<SendApprovedInvoiceEmailSmtpTestResult> {
-  const deliveryEvent = await recordInvoiceDeliveryEvent(
+  const reserved = await input.dependencies.invoiceDeliveryEventRepository.reserveEmailDelivery(
     {
-      body: input.emailFields.body,
+      bodyPreview: input.emailFields.body,
       ccEmail: '',
-      companyId: input.companyId,
       createdAt: input.sentAt,
       createdBy: input.actorUserId,
-      deliveryMethod: 'email',
-      documentId: input.pdfDocument.metadata.id,
-      id: input.attemptId,
-      invoiceId: input.invoiceId,
-      provider: 'smtp',
+      eventId: input.attemptId,
+      mode: 'smtpTest',
+      target: input.pdfDocument.target,
       recipientEmail: input.testRecipient,
-      status: 'attempted',
       subject: input.emailFields.subject,
     },
-    {
-      invoiceDeliveryEventRepository:
-        input.dependencies.invoiceDeliveryEventRepository,
-    },
   );
+  if (reserved.outcome !== 'reserved' || reserved.reservation.mode !== 'smtpTest') {
+    throw new InvoiceDeliveryConflictError();
+  }
+  const reservation = reserved.reservation;
 
   let providerResult: Awaited<
     ReturnType<InvoiceSmtpTestDeliveryProvider['sendTestEmail']>
@@ -233,7 +221,7 @@ async function deliverPreparedSmtpTest(
 
   try {
     providerResult = await input.dependencies.invoiceSmtpTestDeliveryProvider.sendTestEmail({
-      attemptId: deliveryEvent.id,
+      attemptId: reservation.eventId,
       ...input.settings,
       body: input.emailFields.body,
       companyId: input.companyId,
@@ -245,21 +233,24 @@ async function deliverPreparedSmtpTest(
     const providerError =
       error instanceof InvoiceSmtpTestDeliveryError
         ? error
-        : new InvoiceSmtpTestDeliveryError('failed', null);
+        : new InvoiceSmtpTestDeliveryError('outcomeUnknown', null);
 
-    await completeInvoiceDeliveryEvent(
-      {
-        companyId: input.companyId,
-        eventId: deliveryEvent.id,
-        safeErrorMessage:
-          providerError.outcome === 'outcomeUnknown'
-            ? 'Invoice email delivery outcome is unknown.'
-            : 'Invoice SMTP test delivery failed.',
-        status: providerError.outcome,
-        technicalErrorCode: providerError.technicalErrorCode,
-      },
-      input.dependencies.invoiceDeliveryEventRepository,
-    ).catch(() => undefined);
+    try {
+      await completeInvoiceDeliveryEvent(
+        {
+          reservation,
+          result: {
+            safeErrorMessage:
+              providerError.outcome === 'outcomeUnknown'
+                ? 'Invoice email delivery outcome is unknown.'
+                : 'Invoice SMTP test delivery failed.',
+            status: providerError.outcome,
+            technicalErrorCode: providerError.technicalErrorCode,
+          },
+        },
+        input.dependencies.invoiceDeliveryEventRepository,
+      );
+    } catch { throw new ApprovedInvoiceEmailDeliveryOutcomeUnknownError(); }
 
     if (providerError.outcome === 'outcomeUnknown') {
       throw new ApprovedInvoiceEmailDeliveryOutcomeUnknownError();
@@ -271,16 +262,18 @@ async function deliverPreparedSmtpTest(
   }
 
   if (
-    providerResult.provider !== 'smtp' ||
+    providerResult?.provider !== 'smtp' ||
     providerResult.testMode !== true ||
     providerResult.deliveredTo !== input.testRecipient
   ) {
     await completeInvoiceDeliveryEvent(
       {
-        companyId: input.companyId,
-        eventId: deliveryEvent.id,
-        safeErrorMessage: 'Invoice email delivery outcome is unknown.',
-        status: 'outcomeUnknown',
+        reservation,
+        result: {
+          safeErrorMessage: 'Invoice email delivery outcome is unknown.',
+          status: 'outcomeUnknown',
+          technicalErrorCode: null,
+        },
       },
       input.dependencies.invoiceDeliveryEventRepository,
     ).catch(() => undefined);
@@ -291,20 +284,22 @@ async function deliverPreparedSmtpTest(
   try {
     await completeInvoiceDeliveryEvent(
       {
-        companyId: input.companyId,
-        eventId: deliveryEvent.id,
-        providerMessageId: providerResult.providerMessageId,
-        status: 'succeeded',
+        reservation,
+        result: { providerMessageId: providerResult.providerMessageId, status: 'succeeded' },
       },
       input.dependencies.invoiceDeliveryEventRepository,
     );
   } catch {
+    await completeInvoiceDeliveryEvent({
+      reservation,
+      result: { status: 'outcomeUnknown', safeErrorMessage: 'Invoice email delivery outcome is unknown.', technicalErrorCode: null },
+    }, input.dependencies.invoiceDeliveryEventRepository).catch(() => undefined);
     throw new ApprovedInvoiceEmailDeliveryOutcomeUnknownError();
   }
 
   return {
     deliveredTo: providerResult.deliveredTo,
-    deliveryEventId: deliveryEvent.id,
+    deliveryEventId: reservation.eventId,
     provider: providerResult.provider,
     providerMessageId: providerResult.providerMessageId,
     testMode: true,

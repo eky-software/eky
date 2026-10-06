@@ -1,4 +1,4 @@
-import type { ApprovedInvoiceView } from '../../../domain/approvedInvoiceView.js';
+import type { ApprovedInvoicePdfContent } from '../../../domain/approvedInvoicePdfContent.js';
 import {
   formatPdfDate,
   formatPdfPercentBasisPoints,
@@ -13,7 +13,7 @@ import { drawParty, getBillingRecipient } from '../approvedInvoicePdfParty.js';
 
 export function drawRecipientAndMeta(
   doc: PDFKit.PDFDocument,
-  invoice: ApprovedInvoiceView,
+  invoice: ApprovedInvoicePdfContent,
   y: number,
 ): number {
   const recipient = getBillingRecipient(invoice);

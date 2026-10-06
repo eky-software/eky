@@ -1,30 +1,43 @@
+import { createUnexpectedLegacyRevisionPromoter } from './prepareInvoiceDeliveryRevision.fixture.js';
 import { createActorContext } from '@eky/auth';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
 import { InvoiceDeliveryConflictError } from './invoiceDeliveryConflictError.js';
+import { InvoiceDocumentIntegrityError } from './invoiceDocumentIntegrityError.js';
+import { InvoiceDocumentPublicationConflictError } from './invoiceDocumentPublicationConflictError.js';
+import { createInvoiceRevisionPdfContentFixture } from './toInvoiceRevisionPdfContent.fixture.js';
 import {
   markApprovedInvoiceSent,
   type MarkApprovedInvoiceSentInput,
 } from './markApprovedInvoiceSent.js';
-import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
+import type { RevisionInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
+import type { InvoiceContentRevisionReader } from '../ports/invoiceContentRevisionReader.js';
+import type { InvoiceManualDeliveryFinalizer } from '../ports/invoiceManualDeliveryFinalizer.js';
 
 describe('markApprovedInvoiceSent', () => {
-  it('ensures the PDF and atomically records a bounded manual delivery', async () => {
+  it.each(['manual', 'print'] as const)('ensures the PDF and atomically records a bounded %s delivery', async (deliveryMethod) => {
     const approvedInvoice = createApprovedInvoiceView({ status: 'approved' });
-    const sentInvoice = createApprovedInvoiceView({ status: 'sent' });
+    const sentInvoice = createApprovedInvoiceView({
+      status: 'sent',
+      updatedAt: '2026-07-08T10:00:00.000Z',
+    });
     const getApprovedInvoiceById = vi.fn(async () => approvedInvoice);
-    const ensureApprovedInvoicePdfDocument = vi.fn(async () =>
+    const invoiceContentRevisionReader = createRevisionReader();
+    const ensureInvoiceRevisionPdfDocument = vi.fn(async () =>
       createDocumentMetadata(),
     );
-    const completeManualDelivery = vi.fn(async () => ({
+    const completeManualDelivery = vi.fn<
+      InvoiceManualDeliveryFinalizer['completeManualDelivery']
+    >().mockResolvedValue({
+      outcome: 'completed',
       updatedAt: sentInvoice.updatedAt,
-    }));
+    });
     const queueDeliveredInvoiceArchiveTask = vi.fn(async () => undefined);
 
     await expect(
-      markApprovedInvoiceSent(createInput(), {
+      markApprovedInvoiceSent(createInput({ deliveryMethod }), {
         approvedInvoiceReader: {
           getApprovedInvoiceById,
           listApprovedInvoiceSummaries: vi.fn(),
@@ -34,32 +47,44 @@ describe('markApprovedInvoiceSent', () => {
         deliveredInvoiceArchiveTaskSink: {
           queueDeliveredInvoiceArchiveTask,
         },
-        ensureApprovedInvoicePdfDocument,
+        invoiceLegacyRevisionPromoter: createUnexpectedLegacyRevisionPromoter(),        ensureInvoiceRevisionPdfDocument,
+        invoiceContentRevisionReader,
         invoiceDeliveryEventReader: createDeliveryEventReader(false),
         invoiceManualDeliveryFinalizer: { completeManualDelivery },
       }),
     ).resolves.toStrictEqual(sentInvoice);
 
-    expect(ensureApprovedInvoicePdfDocument).toHaveBeenCalledWith({
-      companyId: 'dev-company',
+    expect(ensureInvoiceRevisionPdfDocument).toHaveBeenCalledWith({
+      key: { companyId: 'dev-company', invoiceId: 'invoice-1', revisionId: 'revision-1' },
       createdAt: '2026-07-08T10:00:00.000Z',
-      invoiceId: 'invoice-1',
     });
     expect(completeManualDelivery).toHaveBeenCalledWith({
       actorUserId: 'user-1',
       auditEventId: expectUuid(),
-      companyId: 'dev-company',
       deliveredAt: '2026-07-08T10:00:00.000Z',
       deliveryEventId: expectUuid(),
-      deliveryMethod: 'print',
-      documentId: 'document-1',
-      invoiceId: 'invoice-1',
+      deliveryMethod,
+      target: {
+        kind: 'revision',
+        companyId: 'dev-company',
+        invoiceId: 'invoice-1',
+        revisionId: 'revision-1',
+        documentId: 'document-1',
+        sha256: '0'.repeat(64),
+        sizeBytes: 2048,
+      },
     });
     expect(getApprovedInvoiceById).toHaveBeenCalledOnce();
+    expect(invoiceContentRevisionReader.getCurrentRevision).toHaveBeenCalledExactlyOnceWith({
+      companyId: 'dev-company',
+      invoiceId: 'invoice-1',
+    });
+    expect(invoiceContentRevisionReader.getCurrentRevision.mock.invocationCallOrder[0])
+      .toBeLessThan(getApprovedInvoiceById.mock.invocationCallOrder[0]!);
     expect(queueDeliveredInvoiceArchiveTask).toHaveBeenCalledWith(
       expect.objectContaining({
         createdAt: '2026-07-08T10:00:00.000Z',
-        deliveryEventId: expectUuid(),
+        deliveryEventId: completeManualDelivery.mock.calls[0]?.[0].deliveryEventId,
         documentId: 'document-1',
         expectedPdfSha256: '0'.repeat(64),
         expectedPdfSize: 2048,
@@ -69,6 +94,8 @@ describe('markApprovedInvoiceSent', () => {
         taskId: expectUuid(),
       }),
     );
+    expect(completeManualDelivery).toHaveBeenCalledOnce();
+    expect(queueDeliveredInvoiceArchiveTask).toHaveBeenCalledOnce();
   });
 
   it('does not finalize manual delivery when PDF ensuring fails', async () => {
@@ -82,9 +109,10 @@ describe('markApprovedInvoiceSent', () => {
         deliveredInvoiceArchiveQueueFailureReporter:
           createArchiveQueueFailureReporter(),
         deliveredInvoiceArchiveTaskSink: createArchiveTaskSink(),
-        ensureApprovedInvoicePdfDocument: vi.fn(async () => {
+        invoiceLegacyRevisionPromoter: createUnexpectedLegacyRevisionPromoter(),        ensureInvoiceRevisionPdfDocument: vi.fn(async () => {
           throw new Error('PDF could not be generated.');
         }),
+        invoiceContentRevisionReader: createRevisionReader(),
         invoiceDeliveryEventReader: createDeliveryEventReader(false),
         invoiceManualDeliveryFinalizer: { completeManualDelivery },
       }),
@@ -94,47 +122,191 @@ describe('markApprovedInvoiceSent', () => {
   });
 
   it('does not create another event for an invoice already marked sent', async () => {
-    const ensureApprovedInvoicePdfDocument = vi.fn();
+    const ensureInvoiceRevisionPdfDocument = vi.fn();
     const completeManualDelivery = vi.fn();
     const sentInvoice = createApprovedInvoiceView({ status: 'sent' });
+    const archiveTaskSink = createArchiveTaskSink();
 
     await expect(
       markApprovedInvoiceSent(createInput(), {
         approvedInvoiceReader: createReader(sentInvoice),
         deliveredInvoiceArchiveQueueFailureReporter:
           createArchiveQueueFailureReporter(),
-        deliveredInvoiceArchiveTaskSink: createArchiveTaskSink(),
-        ensureApprovedInvoicePdfDocument,
+        deliveredInvoiceArchiveTaskSink: archiveTaskSink,
+        invoiceLegacyRevisionPromoter: createUnexpectedLegacyRevisionPromoter(),        ensureInvoiceRevisionPdfDocument,
+        invoiceContentRevisionReader: createRevisionReader(),
         invoiceDeliveryEventReader: createDeliveryEventReader(false),
         invoiceManualDeliveryFinalizer: { completeManualDelivery },
       }),
     ).resolves.toStrictEqual(sentInvoice);
 
-    expect(ensureApprovedInvoicePdfDocument).not.toHaveBeenCalled();
+    expect(ensureInvoiceRevisionPdfDocument).not.toHaveBeenCalled();
     expect(completeManualDelivery).not.toHaveBeenCalled();
+    expect(archiveTaskSink.queueDeliveredInvoiceArchiveTask).not.toHaveBeenCalled();
   });
 
-  it('throws a generic not-found error without invoking persistence', async () => {
-    const completeManualDelivery = vi.fn();
+  it('does not queue a phantom archive when the finalizer reports alreadySent', async () => {
+    const sentInvoice = createApprovedInvoiceView({
+      status: 'sent',
+      updatedAt: '2026-07-08T09:59:00.000Z',
+    });
+    const completeManualDelivery = vi.fn<
+      InvoiceManualDeliveryFinalizer['completeManualDelivery']
+    >().mockResolvedValue({
+      outcome: 'alreadySent',
+      updatedAt: sentInvoice.updatedAt,
+    });
+    const archiveTaskSink = createArchiveTaskSink();
+    const queueFailureReporter = createArchiveQueueFailureReporter();
 
     await expect(
       markApprovedInvoiceSent(createInput(), {
-        approvedInvoiceReader: createReader(undefined),
-        deliveredInvoiceArchiveQueueFailureReporter:
-          createArchiveQueueFailureReporter(),
-        deliveredInvoiceArchiveTaskSink: createArchiveTaskSink(),
-        ensureApprovedInvoicePdfDocument: vi.fn(),
+        approvedInvoiceReader: createReader(
+          createApprovedInvoiceView({ status: 'approved' }),
+        ),
+        deliveredInvoiceArchiveQueueFailureReporter: queueFailureReporter,
+        deliveredInvoiceArchiveTaskSink: archiveTaskSink,
+        invoiceLegacyRevisionPromoter: createUnexpectedLegacyRevisionPromoter(),        ensureInvoiceRevisionPdfDocument: vi.fn(async () => createDocumentMetadata()),
+        invoiceContentRevisionReader: createRevisionReader(),
+        invoiceDeliveryEventReader: createDeliveryEventReader(false),
+        invoiceManualDeliveryFinalizer: { completeManualDelivery },
+      }),
+    ).resolves.toStrictEqual(sentInvoice);
+
+    expect(completeManualDelivery).toHaveBeenCalledOnce();
+    expect(archiveTaskSink.queueDeliveredInvoiceArchiveTask).not.toHaveBeenCalled();
+    expect(queueFailureReporter.reportQueueFailure).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['company', { companyId: 'other-company' }],
+    ['invoice', { invoiceId: 'other-invoice' }],
+  ] as const)('rejects a PDF from another %s before finalizing or archiving', async (_scope, overrides) => {
+    const completeManualDelivery = vi.fn();
+    const archiveTaskSink = createArchiveTaskSink();
+
+    await expect(
+      markApprovedInvoiceSent(createInput(), {
+        approvedInvoiceReader: createReader(createApprovedInvoiceView()),
+        deliveredInvoiceArchiveQueueFailureReporter: createArchiveQueueFailureReporter(),
+        deliveredInvoiceArchiveTaskSink: archiveTaskSink,
+        invoiceLegacyRevisionPromoter: createUnexpectedLegacyRevisionPromoter(),        ensureInvoiceRevisionPdfDocument: vi.fn(async () => ({
+          ...createDocumentMetadata(),
+          ...overrides,
+        })),
+        invoiceContentRevisionReader: createRevisionReader(),
+        invoiceDeliveryEventReader: createDeliveryEventReader(false),
+        invoiceManualDeliveryFinalizer: { completeManualDelivery },
+      }),
+    ).rejects.toEqual(new InvoiceDocumentIntegrityError());
+
+    expect(completeManualDelivery).not.toHaveBeenCalled();
+    expect(archiveTaskSink.queueDeliveredInvoiceArchiveTask).not.toHaveBeenCalled();
+  });
+
+  it('rejects a PDF from a newer revision without finalizing or archiving the older view', async () => {
+    const approvedInvoiceReader = createReader(createApprovedInvoiceView());
+    const invoiceContentRevisionReader = createRevisionReader();
+    const completeManualDelivery = vi.fn();
+    const archiveTaskSink = createArchiveTaskSink();
+
+    await expect(
+      markApprovedInvoiceSent(createInput(), {
+        approvedInvoiceReader,
+        invoiceContentRevisionReader,
+        deliveredInvoiceArchiveQueueFailureReporter: createArchiveQueueFailureReporter(),
+        deliveredInvoiceArchiveTaskSink: archiveTaskSink,
+        invoiceLegacyRevisionPromoter: createUnexpectedLegacyRevisionPromoter(),        ensureInvoiceRevisionPdfDocument: vi.fn(async () => ({
+          ...createDocumentMetadata(),
+          binding: { kind: 'revision' as const, revisionId: 'revision-2' },
+        })),
+        invoiceDeliveryEventReader: createDeliveryEventReader(false),
+        invoiceManualDeliveryFinalizer: { completeManualDelivery },
+      }),
+    ).rejects.toEqual(new InvoiceDocumentPublicationConflictError());
+
+    expect(invoiceContentRevisionReader.getCurrentRevision).toHaveBeenCalledOnce();
+    expect(invoiceContentRevisionReader.getCurrentRevision.mock.invocationCallOrder[0])
+      .toBeLessThan(approvedInvoiceReader.getApprovedInvoiceById.mock.invocationCallOrder[0]!);
+    expect(completeManualDelivery).not.toHaveBeenCalled();
+    expect(archiveTaskSink.queueDeliveredInvoiceArchiveTask).not.toHaveBeenCalled();
+  });
+
+  it('does not archive when the finalizer no longer finds the invoice', async () => {
+    const completeManualDelivery = vi.fn<
+      InvoiceManualDeliveryFinalizer['completeManualDelivery']
+    >().mockResolvedValue(undefined);
+    const archiveTaskSink = createArchiveTaskSink();
+
+    await expect(
+      markApprovedInvoiceSent(createInput(), {
+        approvedInvoiceReader: createReader(createApprovedInvoiceView()),
+        deliveredInvoiceArchiveQueueFailureReporter: createArchiveQueueFailureReporter(),
+        deliveredInvoiceArchiveTaskSink: archiveTaskSink,
+        invoiceLegacyRevisionPromoter: createUnexpectedLegacyRevisionPromoter(),        ensureInvoiceRevisionPdfDocument: vi.fn(async () => createDocumentMetadata()),
+        invoiceContentRevisionReader: createRevisionReader(),
         invoiceDeliveryEventReader: createDeliveryEventReader(false),
         invoiceManualDeliveryFinalizer: { completeManualDelivery },
       }),
     ).rejects.toEqual(new ApprovedInvoiceNotFoundError());
 
+    expect(completeManualDelivery).toHaveBeenCalledOnce();
+    expect(archiveTaskSink.queueDeliveredInvoiceArchiveTask).not.toHaveBeenCalled();
+  });
+
+  it('does not archive when manual finalization conflicts', async () => {
+    const error = new InvoiceDeliveryConflictError();
+    const completeManualDelivery = vi.fn<
+      InvoiceManualDeliveryFinalizer['completeManualDelivery']
+    >().mockRejectedValue(error);
+    const archiveTaskSink = createArchiveTaskSink();
+
+    await expect(
+      markApprovedInvoiceSent(createInput(), {
+        approvedInvoiceReader: createReader(createApprovedInvoiceView()),
+        deliveredInvoiceArchiveQueueFailureReporter: createArchiveQueueFailureReporter(),
+        deliveredInvoiceArchiveTaskSink: archiveTaskSink,
+        invoiceLegacyRevisionPromoter: createUnexpectedLegacyRevisionPromoter(),        ensureInvoiceRevisionPdfDocument: vi.fn(async () => createDocumentMetadata()),
+        invoiceContentRevisionReader: createRevisionReader(),
+        invoiceDeliveryEventReader: createDeliveryEventReader(false),
+        invoiceManualDeliveryFinalizer: { completeManualDelivery },
+      }),
+    ).rejects.toBe(error);
+
+    expect(completeManualDelivery).toHaveBeenCalledOnce();
+    expect(archiveTaskSink.queueDeliveredInvoiceArchiveTask).not.toHaveBeenCalled();
+  });
+
+  it.each(['invoice', 'revision'] as const)('throws a generic not-found error for a missing %s without invoking persistence', async (missing) => {
+    const completeManualDelivery = vi.fn();
+    const invoiceContentRevisionReader = createRevisionReader();
+    const ensureInvoiceRevisionPdfDocument = vi.fn();
+    if (missing === 'revision') {
+      invoiceContentRevisionReader.getCurrentRevision.mockResolvedValue(undefined);
+    }
+
+    await expect(
+      markApprovedInvoiceSent(createInput(), {
+        approvedInvoiceReader: createReader(
+          missing === 'invoice' ? undefined : createApprovedInvoiceView(),
+        ),
+        deliveredInvoiceArchiveQueueFailureReporter:
+          createArchiveQueueFailureReporter(),
+        deliveredInvoiceArchiveTaskSink: createArchiveTaskSink(),
+        invoiceLegacyRevisionPromoter: createUnexpectedLegacyRevisionPromoter(),        ensureInvoiceRevisionPdfDocument,
+        invoiceContentRevisionReader,
+        invoiceDeliveryEventReader: createDeliveryEventReader(false),
+        invoiceManualDeliveryFinalizer: { completeManualDelivery },
+      }),
+    ).rejects.toEqual(new ApprovedInvoiceNotFoundError());
+
+    expect(ensureInvoiceRevisionPdfDocument).not.toHaveBeenCalled();
     expect(completeManualDelivery).not.toHaveBeenCalled();
   });
 
   it('rejects a cancelled invoice before delivery state, PDF, or finalization', async () => {
     const invoiceDeliveryEventReader = createDeliveryEventReader(false);
-    const ensureApprovedInvoicePdfDocument = vi.fn();
+    const ensureInvoiceRevisionPdfDocument = vi.fn();
     const completeManualDelivery = vi.fn();
 
     await expect(
@@ -145,7 +317,8 @@ describe('markApprovedInvoiceSent', () => {
         deliveredInvoiceArchiveQueueFailureReporter:
           createArchiveQueueFailureReporter(),
         deliveredInvoiceArchiveTaskSink: createArchiveTaskSink(),
-        ensureApprovedInvoicePdfDocument,
+        invoiceLegacyRevisionPromoter: createUnexpectedLegacyRevisionPromoter(),        ensureInvoiceRevisionPdfDocument,
+        invoiceContentRevisionReader: createRevisionReader(),
         invoiceDeliveryEventReader,
         invoiceManualDeliveryFinalizer: { completeManualDelivery },
       }),
@@ -154,12 +327,13 @@ describe('markApprovedInvoiceSent', () => {
     expect(
       invoiceDeliveryEventReader.hasUnresolvedDeliveryEvent,
     ).not.toHaveBeenCalled();
-    expect(ensureApprovedInvoicePdfDocument).not.toHaveBeenCalled();
+    expect(ensureInvoiceRevisionPdfDocument).not.toHaveBeenCalled();
     expect(completeManualDelivery).not.toHaveBeenCalled();
   });
 
   it('rejects missing permission before reading invoice data', async () => {
     const getApprovedInvoiceById = vi.fn();
+    const invoiceContentRevisionReader = createRevisionReader();
 
     await expect(
       markApprovedInvoiceSent(
@@ -179,7 +353,8 @@ describe('markApprovedInvoiceSent', () => {
           deliveredInvoiceArchiveQueueFailureReporter:
             createArchiveQueueFailureReporter(),
           deliveredInvoiceArchiveTaskSink: createArchiveTaskSink(),
-          ensureApprovedInvoicePdfDocument: vi.fn(),
+          invoiceLegacyRevisionPromoter: createUnexpectedLegacyRevisionPromoter(),          ensureInvoiceRevisionPdfDocument: vi.fn(),
+          invoiceContentRevisionReader,
           invoiceDeliveryEventReader: createDeliveryEventReader(false),
           invoiceManualDeliveryFinalizer: {
             completeManualDelivery: vi.fn(),
@@ -189,10 +364,11 @@ describe('markApprovedInvoiceSent', () => {
     ).rejects.toThrow('Permission denied');
 
     expect(getApprovedInvoiceById).not.toHaveBeenCalled();
+    expect(invoiceContentRevisionReader.getCurrentRevision).not.toHaveBeenCalled();
   });
 
   it('blocks manual delivery while an earlier delivery attempt is unresolved', async () => {
-    const ensureApprovedInvoicePdfDocument = vi.fn();
+    const ensureInvoiceRevisionPdfDocument = vi.fn();
     const completeManualDelivery = vi.fn();
 
     await expect(
@@ -203,13 +379,14 @@ describe('markApprovedInvoiceSent', () => {
         deliveredInvoiceArchiveQueueFailureReporter:
           createArchiveQueueFailureReporter(),
         deliveredInvoiceArchiveTaskSink: createArchiveTaskSink(),
-        ensureApprovedInvoicePdfDocument,
+        invoiceLegacyRevisionPromoter: createUnexpectedLegacyRevisionPromoter(),        ensureInvoiceRevisionPdfDocument,
+        invoiceContentRevisionReader: createRevisionReader(),
         invoiceDeliveryEventReader: createDeliveryEventReader(true),
         invoiceManualDeliveryFinalizer: { completeManualDelivery },
       }),
     ).rejects.toEqual(new InvoiceDeliveryConflictError());
 
-    expect(ensureApprovedInvoicePdfDocument).not.toHaveBeenCalled();
+    expect(ensureInvoiceRevisionPdfDocument).not.toHaveBeenCalled();
     expect(completeManualDelivery).not.toHaveBeenCalled();
   });
 
@@ -228,14 +405,18 @@ describe('markApprovedInvoiceSent', () => {
             throw new Error('local archive unavailable');
           }),
         },
-        ensureApprovedInvoicePdfDocument: vi.fn(async () =>
+        invoiceLegacyRevisionPromoter: createUnexpectedLegacyRevisionPromoter(),        ensureInvoiceRevisionPdfDocument: vi.fn(async () =>
           createDocumentMetadata(),
         ),
+        invoiceContentRevisionReader: createRevisionReader(),
         invoiceDeliveryEventReader: createDeliveryEventReader(false),
         invoiceManualDeliveryFinalizer: {
-          completeManualDelivery: vi.fn(async () => ({
+          completeManualDelivery: vi.fn<
+            InvoiceManualDeliveryFinalizer['completeManualDelivery']
+          >().mockResolvedValue({
+            outcome: 'completed',
             updatedAt: sentInvoice.updatedAt,
-          })),
+          }),
         },
       }),
     ).resolves.toStrictEqual(sentInvoice);
@@ -267,8 +448,25 @@ function createReader(invoice: ApprovedInvoiceView | undefined) {
   };
 }
 
+function createRevisionReader() {
+  const revision = createInvoiceRevisionPdfContentFixture();
+
+  return {
+    getCurrentRevision: vi.fn<
+      InvoiceContentRevisionReader['getCurrentRevision']
+    >().mockResolvedValue({
+      ...revision,
+      companyId: 'dev-company',
+      invoiceId: 'invoice-1',
+      revisionId: 'revision-1',
+      lines: revision.lines.map((line) => ({ ...line, invoiceId: 'invoice-1' })),
+    }),
+  };
+}
+
 function createDeliveryEventReader(hasUnresolvedEvent: boolean) {
   return {
+    requiresLegacyDeliveryReview: vi.fn(async () => false),
     hasUnresolvedDeliveryEvent: vi.fn(async () => hasUnresolvedEvent),
     listDeliveryEvents: vi.fn(async () => []),
   };
@@ -286,8 +484,9 @@ function createArchiveQueueFailureReporter() {
   };
 }
 
-function createDocumentMetadata(): ApprovedInvoiceDocumentMetadata {
+function createDocumentMetadata(): RevisionInvoiceDocumentMetadata {
   return {
+    binding: { kind: 'revision', revisionId: 'revision-1' },
     companyId: 'dev-company',
     createdAt: '2026-07-08T10:00:00.000Z',
     documentType: 'approved_invoice_pdf',

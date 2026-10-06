@@ -11,6 +11,14 @@ import {
 } from './desktopBridge.js';
 
 describe('desktop bridge', () => {
+  it('forwards the exact historical event target without dropping it', async () => {
+    const openInvoicePdf = vi.fn(async () => undefined);
+    const preview = getDesktopInvoicePdfPreview({ ekyDesktop: createDesktopApi({ openInvoicePdf }) });
+    await preview?.('invoice-1', { kind: 'deliveryEvent', eventId: 'event-old' });
+    expect(openInvoicePdf).toHaveBeenCalledExactlyOnceWith('invoice-1', {
+      kind: 'deliveryEvent', eventId: 'event-old',
+    });
+  });
   it('returns only the narrow invoice PDF preview callback when available', async () => {
     const openInvoicePdf = vi.fn(async () => undefined);
     const preview = getDesktopInvoicePdfPreview({
@@ -26,6 +34,15 @@ describe('desktop bridge', () => {
     expect(
       getDesktopInvoicePdfPreview({} as Pick<Window, 'ekyDesktop'>),
     ).toBeUndefined();
+  });
+
+  it('forwards the exact preserved document target without dropping it', async () => {
+    const openInvoicePdf = vi.fn(async () => undefined);
+    const preview = getDesktopInvoicePdfPreview({ ekyDesktop: createDesktopApi({ openInvoicePdf }) });
+    await preview?.('invoice-1', { kind: 'preservedLegacy', documentId: 'copy-2' });
+    expect(openInvoicePdf).toHaveBeenCalledExactlyOnceWith('invoice-1', {
+      kind: 'preservedLegacy', documentId: 'copy-2',
+    });
   });
 
   it('does not expose desktop-only capabilities through a malformed bridge', () => {

@@ -9,6 +9,7 @@ import {
 } from './approvedInvoiceResponsePrimitives.js';
 import { parseApprovedInvoiceView } from './approvedInvoiceViewResponse.js';
 import type {
+  ApprovedInvoiceEmailDocumentTarget,
   ApprovedInvoiceEmailDryRunProviderResult,
   ApprovedInvoiceEmailDryRunSend,
   ApprovedInvoiceEmailDryRunSendResult,
@@ -22,6 +23,8 @@ import type {
   InvoiceDeliveryProvider,
   InvoiceDeliveryStatus,
 } from './approvedInvoicesTypes.js';
+
+const invoiceEmailDocumentIdPattern = /^[A-Za-z0-9_-]{1,100}$/;
 
 export function readInvoiceDeliveryEventListResponse(
   responseBody: unknown,
@@ -115,8 +118,14 @@ export function readApprovedInvoiceEmailSmtpPreparationResponse(
     throw invalidApprovedInvoiceResponse(responseBody);
   }
 
+  const documentTarget = parseApprovedInvoiceEmailDocumentTarget(
+    preparation.documentTarget,
+    preparation.attachment.documentId,
+  );
+
   return {
     attachment: {
+      documentId: documentTarget.documentId,
       fileName: readString(preparation.attachment, 'fileName'),
       sizeBytes: readSafeInteger(preparation.attachment, 'sizeBytes'),
     },
@@ -124,6 +133,7 @@ export function readApprovedInvoiceEmailSmtpPreparationResponse(
     authorizationToken: readString(preparation, 'authorizationToken'),
     body: readString(preparation, 'body'),
     cc: readString(preparation, 'cc'),
+    documentTarget,
     expiresAt: readString(preparation, 'expiresAt'),
     invoiceId: readString(preparation, 'invoiceId'),
     invoiceNumber: readString(preparation, 'invoiceNumber'),
@@ -170,10 +180,12 @@ function parseInvoiceDeliveryEventSummary(
     ccEmail: readString(value, 'ccEmail'),
     createdAt: readString(value, 'createdAt'),
     deliveryMethod: parseDeliveryMethod(value.deliveryMethod),
+    documentSource: parseDeliveryDocumentSource(value.documentSource),
     id: readString(value, 'id'),
     provider: parseDeliveryProvider(value.provider),
     recipientEmail: readString(value, 'recipientEmail'),
     safeErrorMessage: readNullableString(value, 'safeErrorMessage'),
+    sendMode: parseDeliverySendMode(value.sendMode),
     status: parseDeliveryStatus(value.status),
   };
 }
@@ -187,6 +199,10 @@ function parseApprovedInvoiceEmailPreview(
 
   const provider = readString(value, 'provider');
   const mimeType = readString(value.attachment, 'mimeType');
+  const documentTarget = parseApprovedInvoiceEmailDocumentTarget(
+    value.documentTarget,
+    value.attachment.documentId,
+  );
 
   if (provider !== 'dryRun' || mimeType !== 'application/pdf') {
     throw invalidApprovedInvoiceResponse(value);
@@ -194,18 +210,47 @@ function parseApprovedInvoiceEmailPreview(
 
   return {
     attachment: {
-      documentId: readString(value.attachment, 'documentId'),
+      documentId: documentTarget.documentId,
       fileName: readString(value.attachment, 'fileName'),
       mimeType,
       sizeBytes: readSafeInteger(value.attachment, 'sizeBytes'),
     },
     body: readString(value, 'body'),
+    documentTarget,
     invoiceId: readString(value, 'invoiceId'),
     invoiceNumber: readString(value, 'invoiceNumber'),
     provider,
     subject: readString(value, 'subject'),
     to: readString(value, 'to'),
   };
+}
+
+function parseApprovedInvoiceEmailDocumentTarget(
+  value: unknown,
+  attachmentDocumentId: unknown,
+): ApprovedInvoiceEmailDocumentTarget {
+  if (
+    !isRecord(value) ||
+    Object.keys(value).length !== 2 ||
+    !Object.hasOwn(value, 'kind') ||
+    !Object.hasOwn(value, 'documentId')
+  ) {
+    throw invalidApprovedInvoiceResponse(value);
+  }
+
+  const kind = value.kind;
+  const documentId = readString(value, 'documentId');
+
+  if (
+    (kind !== 'revision' && kind !== 'preservedLegacy') ||
+    !invoiceEmailDocumentIdPattern.test(documentId) ||
+    documentId.trim() !== documentId ||
+    documentId !== attachmentDocumentId
+  ) {
+    throw invalidApprovedInvoiceResponse(value);
+  }
+
+  return { kind, documentId };
 }
 
 function parseApprovedInvoiceEmailDryRunSendResult(
@@ -282,6 +327,37 @@ function parseDeliveryMethod(value: unknown): InvoiceDeliveryMethod {
     value === 'manual' ||
     value === 'print' ||
     value === 'other'
+  ) {
+    return value;
+  }
+
+  throw invalidApprovedInvoiceResponse(value);
+}
+
+function parseDeliverySendMode(
+  value: unknown,
+): InvoiceDeliveryEventSummary['sendMode'] {
+  if (
+    value === 'customer' ||
+    value === 'smtpTest' ||
+    value === 'dryRun' ||
+    value === 'manual' ||
+    value === 'legacyUnknown'
+  ) {
+    return value;
+  }
+
+  throw invalidApprovedInvoiceResponse(value);
+}
+
+function parseDeliveryDocumentSource(
+  value: unknown,
+): InvoiceDeliveryEventSummary['documentSource'] {
+  if (
+    value === 'revision' ||
+    value === 'preservedLegacy' ||
+    value === 'legacyOriginal' ||
+    value === 'legacyMissingDocument'
   ) {
     return value;
   }

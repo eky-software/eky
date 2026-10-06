@@ -1,4 +1,8 @@
+import { InvoiceDeliveryConflictError } from '../application/invoiceDeliveryConflictError.js';
+import { InvoiceLegacyDeliveryReviewRequiredError } from '../domain/invoiceLegacyDeliveryReviewRequiredError.js';
+import { InvoiceContentRevisionIntegrityError } from '../application/invoiceContentRevisionIntegrityError.js';
 import { Hono } from 'hono';
+import { AuthorizationError } from '@eky/permissions';
 import { bodyLimit } from 'hono/body-limit';
 
 import { readJsonRequestBody } from '../../../http/readJsonRequestBody.js';
@@ -13,6 +17,10 @@ import type {
 import type { GetApprovedInvoicePdfMetadataInput } from '../application/getApprovedInvoicePdfMetadata.js';
 import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
+import { InvoiceDocumentPublicationConflictError } from '../application/invoiceDocumentPublicationConflictError.js';
+import { InvoiceDocumentReadConflictError } from '../application/invoiceDocumentReadConflictError.js';
+import { InvoiceDocumentIntegrityError } from '../application/invoiceDocumentIntegrityError.js';
+import { toInvoiceDocumentResponse } from './invoiceDocumentResponse.js';
 
 export interface ApprovedInvoiceDocumentRouteDependencies {
   generateApprovedInvoicePdfDocument(
@@ -53,19 +61,35 @@ export function createApprovedInvoiceDocumentRoutes(
       try {
         const actorContext = context.get('actorContext');
         const document = await dependencies.generateApprovedInvoicePdfDocument({
+          actorContext,
           companyId: actorContext.companyId,
           createdAt: new Date().toISOString(),
           invoiceId: context.req.param('id'),
         });
 
-        return context.json({ document });
+        return context.json({ document: toInvoiceDocumentResponse(document) });
       } catch (error) {
+        if (error instanceof AuthorizationError) {
+          return context.json({ error: error.message }, 403);
+        }
         if (error instanceof ApprovedInvoiceNotFoundError) {
           return context.json({ error: error.message }, 404);
         }
 
         if (error instanceof InvoiceDraftValidationError) {
           return context.json({ error: error.message }, 400);
+        }
+
+        if (error instanceof InvoiceLegacyDeliveryReviewRequiredError) {
+          return context.json({ error: error.message, code: error.code }, 409);
+        }
+
+        if (error instanceof InvoiceDocumentPublicationConflictError || error instanceof InvoiceDeliveryConflictError) {
+          return context.json({ error: error.message }, 409);
+        }
+
+        if (error instanceof InvoiceContentRevisionIntegrityError) {
+          return context.json({ error: 'Stored invoice content could not be verified.' }, 500);
         }
 
         throw error;
@@ -94,6 +118,12 @@ export function createApprovedInvoiceDocumentRoutes(
         status: 200,
       });
     } catch (error) {
+      if (error instanceof InvoiceDocumentReadConflictError) {
+        return context.json({ error: error.message }, 409);
+      }
+      if (error instanceof InvoiceDocumentIntegrityError) {
+        return context.json({ error: error.message }, 500);
+      }
       if (
         error instanceof ApprovedInvoiceDocumentNotFoundError ||
         error instanceof ApprovedInvoiceNotFoundError
@@ -103,6 +133,10 @@ export function createApprovedInvoiceDocumentRoutes(
 
       if (error instanceof InvoiceDraftValidationError) {
         return context.json({ error: error.message }, 400);
+      }
+
+      if (error instanceof InvoiceContentRevisionIntegrityError) {
+        return context.json({ error: 'Stored invoice content could not be verified.' }, 500);
       }
 
       throw error;
@@ -117,8 +151,14 @@ export function createApprovedInvoiceDocumentRoutes(
         invoiceId: context.req.param('id'),
       });
 
-      return context.json({ document });
+      return context.json({ document: toInvoiceDocumentResponse(document) });
     } catch (error) {
+      if (error instanceof InvoiceDocumentReadConflictError) {
+        return context.json({ error: error.message }, 409);
+      }
+      if (error instanceof InvoiceDocumentIntegrityError) {
+        return context.json({ error: error.message }, 500);
+      }
       if (
         error instanceof ApprovedInvoiceDocumentNotFoundError ||
         error instanceof ApprovedInvoiceNotFoundError
@@ -128,6 +168,10 @@ export function createApprovedInvoiceDocumentRoutes(
 
       if (error instanceof InvoiceDraftValidationError) {
         return context.json({ error: error.message }, 400);
+      }
+
+      if (error instanceof InvoiceContentRevisionIntegrityError) {
+        return context.json({ error: 'Stored invoice content could not be verified.' }, 500);
       }
 
       throw error;

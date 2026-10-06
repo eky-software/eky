@@ -2,7 +2,133 @@
 
 ## Päätös ja nykyinen tila
 
-**Ajantasainen jatko 4.10.2026:** PR #283 on yhdistetty ja mainin omat
+**Ajantasainen jatko 6.10.2026:** A1/A2/A3, Oma yritys -korjaukset sekä
+B1/B2 ja niiden sulku-/keräysjatkot on hyväksytty. Lähtö on PR #297:n main;
+[M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+omistaa täsmärevision ja sen hyväksyntänäytön. Nykyinen työ on
+[B3-B5:n toteutusvalmistelu](release-0.3.0-m1-preparation-plan.md#b3-b5-toteutusvalmistelu):
+ALV-lukupolun rajattu korjaus on kohdetodennettu työpuussa, ja revisioiden,
+PDF:ien, toimitusten sekä palautuksen tekninen sopimus on katselmoitu.
+Tietoja säilyttävä migraatio 039 ja tietokantatyypit ovat työpuussa.
+Migraation ja käynnistystilan 117 kohdetestiä sekä runnerin/manifestin
+17 testiä läpäisivät; rajattu SQL-katselmus ei löytänyt korjattavaa.
+Tavallisen laskun hyväksynnän ja PDF:ttömän uudelleenhyväksynnän
+revisiokirjoituksen 13 kohdetestiä läpäisivät. Hyvityksen lähderevisiosidonta
+ja revisiokirjoitus läpäisivät 24 uutta sekä 23 aiempaa hyvitystestiä;
+application-/HTTP-sopimusten 19 testiä läpäisivät erikseen. Täsmärevision
+lukijan 97 kohdetestiä läpäisivät: vanha sisältö ja sen alkuperä säilyvät,
+rikkinäistä sidosta ei korvata uusimmalla versiolla. Rajatut riippumattomat
+tuotantokatselmukset eivät löytäneet korjattavaa. Hyväksynnän sisäinen
+revisioavain ja HTTP-vastauksen kenttärajaus läpäisivät 132 kohdetestiä;
+julkinen hyväksyntävastaus ei muutu. Revision PDF-sisältömuunnos ja nykyinen
+renderer läpäisivät 39 kohdetestiä, yhdessä hyväksyntäavaimen kanssa
+171/171. Ulkoasu ja laskentasäännöt säilyvät. Ehdollisen dokumenttimetadatan
+julkaisun, dokumenttikohtaisen polkusäännön ja julkisen metadatavastauksen
+84 kohdetestiä läpäisivät; rajatut katselmukset eivät löytäneet korjattavaa.
+Omistetun tiedostokirjoituksen, rajatun PDF-tavujen tarkistuksen ja vain oman
+julkaisemattoman ehdokkaan siivouksen 73 testiä läpäisivät; rajattu
+tuotantokatselmus ei löytänyt korjattavaa. Generaattorin ja hyväksynnän
+PDF-koukkujen täsmärevisiokytkentä sekä kirjoittamaton välimuistin
+kelpoisuusluku on nyt kohdetodennettu: 206 yhdistettyä generointi-,
+tietokanta-, tiedosto-, HTTP-, composition- ja diagnostiikkatestiä läpäisivät.
+Rajattu riippumaton tuotantokatselmus ei löytänyt korjattavaa.
+Nykyisen PDF:n GET-/metadataluku valitsee täsmädokumentin, varmentaa tavut
+ja hylkää välissä vaihtuneen valinnan. Legacy-alkuperäinen säilyy luettavana
+ilman revisioväitettä, mutta uuden revision puuttuva PDF ei käytä vanhaa
+sisältöä varavaihtoehtona. Generoinnin ja lukemisen yhdistetty tarkistus
+läpäisi 269 testiä; myös eheysvirheen todellinen diagnostiikan lukuketju
+on kohdetodennettu. Myös tapahtumaan sidotun historian backend-luku on nyt
+kytketty: tarkat PDF-tavut, `sendInvoices`-oikeus, yritysraja ja turvallinen
+diagnostiikka säilyvät, eikä reopened-historia muuta lähetyskelpoisuutta.
+Yhdistetty historian lukuketjun tarkistus läpäisi 359 testiä. B4:n atomisen
+SMTP-varauksen ja täsmällisen loppukuittauksen SQLite-adapterit sekä
+historian säilyttävä reopen/uudelleenhyväksynnän unresolved-esto ovat nyt
+kohdetodennettuja. Laajennettu PDF-/revisio-/hyvitys-/varaus-/reopen-ajo
+läpäisi 650 testiä. Sen jälkeen asiakas- ja itselle-SMTP:n prepare/send on
+kytketty tarkistettuun täsmädokumenttiin, revision sisältävään valtuutukseen
+ja pysyvään varaukseen ennen provideria. Onnistuneen lähetyksen jälkeinen
+lukuhäiriö erotetaan lähetysvirheestä myös diagnostiikan lukuketjussa.
+Myös manual-/dry-run-kirjoittajat ovat nyt revisiosidottuja. Kilpaileva
+manual-pyyntö ei luo olematonta arkistotapahtumaa. Cancel-/SMTP-varausjärjestykset
+ja päätöksen säilyminen tietokannan uudelleenavauksessa on kohdetodennettu.
+Lopullinen laskutusmoduulin ja kolmen toimitus-/reopen-compositionin sarja
+läpäisi 1 472 testiä 122 tiedostossa ja backendin tyypitys läpäisi.
+Rajattu riippumaton katselmus ja sen testitäydennysten tarkistus valmistuivat
+ilman korjattavia löydöksiä. Activity-lukuketjun rajattu todennus säilyttää
+manuaalisen toimituksen turvallisen historian ja dry-runin poissulun.
+Legacy-lähteen valinta ja tarkistettujen tavujen itsenäinen säilyttäminen on
+lisätty työpuuhun. Julkaisu ja varaus tarkistavat saman historian kelpoisuuden;
+epäselvä commit-tulos säilyttää tiedoston. Tämän jälkeinen laskutusmoduulin
+ja viiden compositionin regressio läpäisi 1 525 testiä 126 tiedostossa ja
+backendin tyypitys läpäisi. Rajattu riippumaton katselmus valmistui ilman
+korjattavia löydöksiä.
+Legacy-uudelleenlähetyksen vahvistus- ja lähetyskytkentä,
+historian ja uuden virhepalautteen client/UI/native-ketju sekä
+palautustodennus ovat kesken. [M1:n checkpoint](release-0.3.0-m1-preparation-plan.md#b3-b5-toteutusvalmistelu)
+omistaa rajatun näytön ja puuttuvat portit.
+Omistaja hyväksyi 6.10.2026 rajatun selvityseston vanhalle approved-laskulle,
+jonka SMTP-historian tarkoitusta ei voida todentaa. Backendin esto ja
+selkeä UI-virhepalaute on toteutettu; laskun ja historian luku säilyy.
+Tunnetun R02-jälkitilan null-viitteiden säilyminen ja estot on todennettu
+aidon 038 -> 039 -migraation läpi. Tämän jälkeinen backendin laskutus- ja
+composition-sarja läpäisi 1 587 testiä 130 tiedostossa. Rajattu riippumaton
+katselmus valmistui; siinä löytynyt kahden UI-toiminnon ennenaikainen
+PDF-pyyntö korjattiin ja todennettiin. Laskutuksen web-sarja läpäisi
+586 testiä 78 tiedostossa, ja backendin sekä webin tyypitys läpäisivät.
+Legacy-lähetyksen, käyttöliittymän ja palautuksen
+yhtenäinen sovitus on yhä kesken. Osittaista toteutusta ei julkaista käyttäjälle.
+Säilytetyn legacy-PDF:n kirjoittamaton täsmäluku on tämän jälkeen lisätty:
+valmistelun, esikatselun ja kertaluvan järjestys on täsmennetty
+[omistavassa suunnitelmassa](release-0.3.0-m1-preparation-plan.md#säilytetyn-dokumentin-täsmäluku-ja-vahvistuksen-järjestys).
+Sen jälkeen lomakkeen esivalmistelu sekä täsmäesikatselun HTTP-, client- ja
+desktop-rajat on kohdetodennettu. Uusin laskutus-/composition-/HTTP-
+lokitusregressio läpäisi 1 676 testiä 136 tiedostossa, API-client 191 testiä ja desktopin
+kohdesarja 87 testiä. Lomakkeen täsmäesikatselu on nyt kytketty ja
+vanhentuneen valmisteluvastauksen puute korjattu. Webin 885 testiä ja build
+läpäisivät; rajattu selainnäyttö käyttää eksplisiittisiä preflight-/native-
+testisovittimia. SMTP-prepare/sendin täsmäkohde ja pakollinen native-vahvistus
+ovat tämän jälkeen työpuussa kohdetodennettuja: laskutus/composition
+1 747, API-client 266, web-kohdesarja 50 ja desktop-kohdesarja 72 testiä
+sekä koko työtilan tyypitys läpäisivät. Rajattu lähdekatselmus ei löytänyt
+uusia korjattavia puutteita. Koko web-sarja läpäisi 900 testiä ja kaksi
+normaalirevision Electron-vahvistuskoetta läpäisivät oikean main-/backend-
+ketjun nykyisillä dialogi-/SMTP-testisovittimilla. Oikean legacy-/native-kokonaisketjun, historian
+käyttöliittymän ja palautuksen hyväksyntä ovat edelleen avoinna.
+Onnistuneen lähetyksen jälkilukuvirheen UI-palaute on tämän jälkeen
+korjattu: kehotus uuteen valmisteluun korvautuu onnistumisen ja tarkistustarpeen
+kertovalla viestillä ilman automaattista uudelleenlähetystä. Rajattu
+selainkoe, backendin 17 composition-testiä, desktop-protokollan 21 testiä
+ja koko webin 911 testiä läpäisivät; riippumaton kohdekatselmus valmistui.
+Myös hyväksytyn laskun tapahtuma-PDF:n client/UI/native-polku on tämän jälkeen
+[kohdetodennettu](release-0.3.0-m1-preparation-plan.md#b4-historian-käyttöpolun-checkpoint):
+vanha toimitus säilyttää alkuperäiset tavut muokkauksen ja uudelleenhyväksynnän
+jälkeen. Selain- ja development-Electron-kokeet sekä laskutuksen 1 795,
+webin 939 ja desktopin 160 regressiota läpäisivät. Editorin jatkokytkentä
+on tämän jälkeen todennettu backendin auktoritatiivisella lukusopimuksella,
+39 rajatestillä sekä selain- ja development-Electron-polulla. Myös koko
+webin 947 ja API-clientin 314 testiä läpäisivät. Myös
+[legacy-native-uudelleenlähetys ja peruutus](release-0.3.0-m1-preparation-plan.md#b4-legacy-uudelleenlähetyksen-checkpoint)
+on tämän jälkeen todennettu startup-migraation ja restartin yli.
+[B5:n katalogi- ja palautuskytkentä](release-0.3.0-m1-preparation-plan.md#b5-katalogin-ja-palautuksen-checkpoint)
+on toteutettu ja alemmilla testitasoilla todennettu. Hardened Windows
+-kehityspaketin moniversioinen ja alkuperäisen 038-backupin palautus
+läpäisivät. Legacy-testin CI-ajokytkentä ja salatun virheaineiston keräys
+on kohdetodennettu. Katselmuksen current-PDF-esikatselun ja historian
+turvallisen virhepalautteen puutteet on korjattu. Hyväksytyn legacy-laskun
+ensimmäisen toimituksen revisiosiirtymä on kohdetodennettu, mukaan lukien
+oikeusrajat ja suora itselle-testilähetys fake-providerilla. Loppukatselmuksen
+legacy-arkistokopion täsmäsidonta on korjattu ja todennettu regressioilla
+sekä viidellä development-Electron-kokeella. Riippumaton jatkokatselmus on
+suljettu. Seuraavana ovat puhtaan revision paketointinäyttö ja PR/main. Koko testisarjan
+erillinen workspace-adoption aikakatkaisu on edelleen avoin, ei korjatuksi
+merkitty yhden kohdennetun uusinnan perusteella.
+Nykyinen jatkamiskohta säilyy M1-suunnitelmassa.
+Koko B:n hyväksyntä ja 0.3.0-julkaisu ovat edelleen avoinna.
+
+Alla säilyy tähän johtanut integraatiohistoria; sen silloiset avoimet
+main-portit eivät avaa hyväksyttyjä vaiheita uudelleen.
+
+PR #283 on yhdistetty ja mainin omat
 normaali CI sekä riippuvuustarkistus ovat hyväksyttyjä.
 [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
 sitoo hyväksynnän revisioon ja säilyttää vanhat timeout-/ETL-havainnot
@@ -37,17 +163,18 @@ aikakatkaisujen juurisyitä. Myös
 [A3/R06](invoicing-ui-roadmap.md#a3-hyväksyntävalmiuden-vastaussidonta) on
 hyväksytty PR #294:n mainissa `082e187bb680b1c7a8dc5d0a5e967adf33403a7a`.
 [Loppuhyväksyntä](https://github.com/eky-software/eky/pull/294#issuecomment-5980132408)
-sulkee A-paketin kolme korjausta. Nykyinen työ on
+sulkee A-paketin kolme korjausta. Sitä seurasi
 [B1/B2:n rajattu toteutus](release-0.3.0-m1-preparation-plan.md#b1b2-rajattu-toteutus)
 B0:n hyväksyttyjen rajausten pohjalta.
 B1/B2 on yhdistetty PR #295:ssä, mutta sen main-hyväksyntä jäi avoimeksi
-Electronin loppusulun hylkäyksen vuoksi. Nykyinen integraatiojatko on
+Electronin loppusulun hylkäyksen vuoksi. Silloinen integraatiojatko oli
 [hyväksytty rajattu sulkukorjaus](release-0.3.0-m1-preparation-plan.md#b1b2-mainin-electron-sulkuhavainto)
 ja sen PR #296:n jälkeinen lifecycle-todisteen salatun keräyksen täydennys.
 PR-portit läpäisivät, mutta uusi main-kierros hylättiin toisen testin
 loppusulun aikakatkaisuun. Muuttumattomat PR/main-portit säilyvät;
 keräysjatko ei avaa T3:a eikä nimeä CI-häiriötä korjatuksi.
-B:n toteutus, D-paketin muut ehdot ja koko 0.3.0 ovat edelleen avoinna.
+B1/B2:n lopullinen hyväksyntä on PR #297:ssä. B3-B5:n toteutus,
+D-paketin muut ehdot ja koko 0.3.0 ovat edelleen avoinna.
 
 **M0, T1, T2, T3/R28 ja A1/A2/A3 on hyväksytty; M1:n muu työ on avoinna.**
 Myös T-paketin jälkeinen integraatiojatko on hyväksytty PR #281:n mainissa.
@@ -675,6 +802,11 @@ hakusuodattimia. Tarkat turvallisuus- ja testiehdot ovat
   jätetty ajatuksen tasolle. Nykyinen palautus ei yhdistä tietokantoja.
 - Pilvipalvelut ensin ja työntekijän mobiilisovellus sen jälkeen ovat
   myöhempiä erikseen hyväksyttäviä kokonaisuuksia, eivät `0.3.0`:n sisältöä.
+- Ohjeiston laajempi tiivistäminen ja tutkimushistorian uudelleenjärjestely
+  voidaan tehdä `0.3.0`:n jälkeen. Julkaisun I/M5-vaiheiden ajantasaisuus-,
+  lukureitti-, rakenne- ja tietoturvatarkistuksia ei siirretä tämän vuoksi.
+  Muuttuvan alueen ohjeet pidetään kunnossa jo jokaisen toteutuspalan mukana;
+  vaatimukset ja hyväksyntänäyttö säilyvät tiivistettäessä.
 - Ei piilotettuja varmuuskopioita, yleistä tietokannan salausuudistusta,
   uusia sähköpostiprovidereita, laajaa refaktorointia tai uutta
   riippuvuutta tämän suunnitelman sivutyönä.
@@ -819,17 +951,25 @@ etenemispäätöksellä. Oma yritys -tallennuskorjauksen ja rajattujen
 testikorjausten integraatio on hyväksytty PR #293:n mainissa.
 Myös A3/R06 on hyväksytty PR #294:n mainissa; sen
 [loppuhyväksyntä](https://github.com/eky-software/eky/pull/294#issuecomment-5980132408)
-sulkee A-paketin kolme rajattua korjausta. Nykyinen työ on
-[B1/B2-toteutus](release-0.3.0-m1-preparation-plan.md#b1b2-rajattu-toteutus):
-SMTP:n R12/R13 ja hyvityksen R08. B0:ssa tarkistettiin alkuperäiset
+sulkee A-paketin kolme rajattua korjausta. Myös
+[B1/B2](release-0.3.0-m1-preparation-plan.md#b1b2-rajattu-toteutus),
+niiden rajattu sulkukorjaus ja salatun keräyksen jatko ovat hyväksyttyjä
+[PR #297:n mainissa](https://github.com/eky-software/eky/pull/297#issuecomment-5992208049).
+Nykyinen työ on [B3-B5:n toteutusvalmistelu](release-0.3.0-m1-preparation-plan.md#b3-b5-toteutusvalmistelu),
+ei B1/B2:n tai testiperustan uusiminen. Vanhat sulkuaikakatkaisut eivät
+muutu korjatuiksi tämän integraation perusteella. B0:ssa tarkistettiin alkuperäiset
 turvallisuushavainnot, B1-B5-toteutusjärjestys ja
 revision, toimitussuojan sekä vanhan datan päätösportit. Omistaja hyväksyi
 B-P1:n revisiosidonnan ja rajatut migraatiot. B-P2:ssa valittiin onnistuneen
 testilähetyksen jälkeisen muokkaamisen säilyttävä toimitushistoria
 suunnitteluun. B-P3:n säilyneen, tarkistetun legacy-PDF:n erikseen vahvistettu
 uusi lähetys on hyväksytty ilman regenerointia tai takautuvaa varmuusväitettä.
-Yleistä vanhan SMTP-historian estoa ei hyväksytty. B3/B4:n historia ja
-migraatiot eivät ole alkaneet eivätkä kuulu rajattuun B1/B2-toteutukseen.
+Yleistä vanhan SMTP-historian estoa ei hyväksytty. B3/B4:n historian ja
+migraatioiden toteutus on osittain työpuussa; legacy-lähetyksen,
+client/UI/native-ketjun ja B5-palautuksen yhtenäinen todennus on kesken.
+Osahyvityksen ALV-erittelyn lukupolun rajattu korjaus on kohdetodennettu
+nykyisen kumulatiivisen laskentasäännön mukaan, vanhoja summia tai PDF:iä
+muuttamatta. Tarkka nykytila ja hyväksyntänäyttö luetaan M1:n jatkamiskohdasta.
 Kohdetestit eivät yksin sulje uuden revision integraatiota tai muita paketteja.
 Tarkka jako on [M1-suunnitelmassa](release-0.3.0-m1-preparation-plan.md):
 T1a/T1b testien ajokytkentä, T2 projektivalinta ja build-edellytykset,
@@ -889,9 +1029,10 @@ ja A3/R06 ovat hyväksyttyjä; viimeisin hyväksyntä on PR #294:n mainissa.
 B/C/K/D/E/F/G/H/I:n kokonaishyväksyntä on edelleen avoin.
 D-paketin Oma yritys -tallennuksen rajatut korjaukset on hyväksytty
 PR #293:n mainissa, mutta D:n muut ehdot ovat avoinna.
-B:n lähdevertailun jälkeen B1/B2:n rajattu toteutus on käynnissä.
-B/C/K/E/F/G/H/I eivät ole toteutuksen tai hyväksynnän osalta valmiita.
-Päätösportin vaikutusalue odottaa hyväksyntää.
+B1/B2 ja niiden sulku-/keräysjatkot ovat hyväksyttyjä. B3-B5 on kesken;
+sen ajantasaisen tilan ja näytön omistaa [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Muiden pakettien avoimet päätökset ratkaistaan ennen niiden vaikutusalueen
+toteutusta. B:n osahyväksyntä ei sulje koko B-pakettia.
 
 I-paketin dokumentaatiokatselmukseen kuuluu myös ohjelmanosittainen
 ohjeiden löydettävyys: juuri- ja paikalliset `AGENTS.md`-tiedostot,

@@ -1,17 +1,17 @@
 import type { InvoiceDeliveryMethod } from '../domain/invoiceDeliveryEvent.js';
+import type { RevisionInvoiceDeliveryTarget } from '../domain/invoiceDeliveryReservation.js';
 
 export interface CompleteManualInvoiceDeliveryInput {
   actorUserId: string;
   auditEventId: string;
-  companyId: string;
   deliveredAt: string;
   deliveryEventId: string;
   deliveryMethod: Extract<InvoiceDeliveryMethod, 'manual' | 'print'>;
-  documentId: string;
-  invoiceId: string;
+  target: RevisionInvoiceDeliveryTarget;
 }
 
 export interface CompleteManualInvoiceDeliveryResult {
+  outcome: 'completed' | 'alreadySent';
   updatedAt: string;
 }
 

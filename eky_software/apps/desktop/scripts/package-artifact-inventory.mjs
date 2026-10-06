@@ -14,6 +14,7 @@ const smokeAllowlist = new Set([
   'dist/main/packagedSupportBundleSmoke.js',
   'dist/pdf/invoicePdfPreviewSmoke.js',
   'dist/profileBackup/packagedProfileBackupSmoke.js',
+  'dist/profileBackup/packagedLegacyProfileSmoke.js',
 ]);
 const updateRuntimeAllowlist = new Set([
   'inspectWindowsInstallerIdentity.ps1',
@@ -36,7 +37,7 @@ const stageLimits = Object.freeze({
     maximumFileCount: 336,
     maximumLogicalPathBytes: 96,
     maximumProjectOwnedFileBytes: 1_048_576,
-    maximumTotalBytes: 2_097_152,
+    maximumTotalBytes: 2_359_296,
   }),
   backendStage: Object.freeze({
     maximumDirectoryDepth: 9,

@@ -354,6 +354,67 @@ describe('runWorkspaceCandidateOperation', () => {
     ).resolves.toBeUndefined();
   });
 
+  it('rejects the source catalog before applying pending backup migrations', async () => {
+    const fixture = await createImportedCandidateFixture(true);
+    await writeFile(join(fixture.importStagingRoot, 'snapshot-catalog-v1.json'),
+      JSON.stringify({ artifacts: [], formatVersion: 2 }), { mode: 0o600 });
+
+    await expect(runWorkspaceCandidateOperation({
+      ...releaseIdentity, ...fixture.target,
+      expectedProfileId: fixture.profileId,
+      expectedSourceMigrationChainIdentity: fixture.migrationChainIdentity,
+      importStagingRoot: fixture.importStagingRoot,
+      migrationsDirectory, operation: 'migrateBackup',
+    })).rejects.toThrow('WORKSPACE_CANDIDATE_OPERATION_FAILED');
+
+    const source = new Database(join(fixture.importStagingRoot, 'profile.sqlite'), { readonly: true });
+    const candidate = new Database(fixture.target.databaseFilePath, { readonly: true });
+    try {
+      expect(candidate.prepare('SELECT * FROM schema_migrations ORDER BY name').all())
+        .toEqual(source.prepare('SELECT * FROM schema_migrations ORDER BY name').all());
+      expect(candidate.prepare('SELECT * FROM schema_migration_metadata ORDER BY migration_name').all())
+        .toEqual(source.prepare('SELECT * FROM schema_migration_metadata ORDER BY migration_name').all());
+    } finally {
+      source.close();
+      candidate.close();
+    }
+    expect(await readdir(fixture.target.artifactRoot)).toEqual([]);
+  });
+
+  it('migrates a historical backup and rechecks its original catalog before materialization', async () => {
+    const fixture = await createImportedCandidateFixture(true);
+    const catalogPath = join(fixture.importStagingRoot, 'snapshot-catalog-v1.json');
+    const original = await readFile(catalogPath);
+    const migrated = await runWorkspaceCandidateOperation({
+      ...releaseIdentity, ...fixture.target,
+      expectedProfileId: fixture.profileId,
+      expectedSourceMigrationChainIdentity: fixture.migrationChainIdentity,
+      importStagingRoot: fixture.importStagingRoot,
+      migrationsDirectory, operation: 'migrateBackup',
+    });
+    expect(migrated.kind).toBe('migration');
+    if (migrated.kind !== 'migration') throw new Error('invalid fixture');
+    expect(migrated.migrationChainIdentity).not.toBe(fixture.migrationChainIdentity);
+    expect(await readFile(catalogPath)).toEqual(original);
+
+    await rm(catalogPath);
+    await expect(runWorkspaceCandidateOperation({
+      ...releaseIdentity, ...fixture.target,
+      expectedProfileId: fixture.profileId,
+      importStagingRoot: fixture.importStagingRoot,
+      migrationsDirectory, operation: 'validateAndMaterialize',
+    })).rejects.toThrow('WORKSPACE_CANDIDATE_OPERATION_FAILED');
+    expect(await readdir(fixture.target.artifactRoot)).toEqual([]);
+
+    await writeFile(catalogPath, original, { mode: 0o600 });
+    await expect(runWorkspaceCandidateOperation({
+      ...releaseIdentity, ...fixture.target,
+      expectedProfileId: fixture.profileId,
+      importStagingRoot: fixture.importStagingRoot,
+      migrationsDirectory, operation: 'validateAndMaterialize',
+    })).resolves.toMatchObject({ kind: 'readiness', profileId: fixture.profileId });
+  });
+
   it('rejects foreign-key failures in a published candidate', async () => {
     const root = await createPrivateTempRoot();
     const candidate = await createCandidateLayout(join(root, 'candidate'));
@@ -510,13 +571,13 @@ describe('runWorkspaceCandidateOperation', () => {
   });
 });
 
-async function createImportedCandidateFixture() {
+async function createImportedCandidateFixture(historical = false) {
   const root = await createPrivateTempRoot();
   const source = await createCandidateLayout(join(root, 'source'));
   const bootstrapped = await runWorkspaceCandidateOperation({
     ...releaseIdentity,
     ...source,
-    migrationsDirectory,
+    migrationsDirectory: historical ? await createHistoricalPrefixMigrations(root) : migrationsDirectory,
     operation: 'bootstrapEmpty',
   });
   if (bootstrapped.kind !== 'readiness') throw new Error('invalid fixture');
@@ -526,6 +587,8 @@ async function createImportedCandidateFixture() {
     source.databaseFilePath,
     join(importStagingRoot, 'profile.sqlite'),
   );
+  await writeFile(join(importStagingRoot, 'snapshot-catalog-v1.json'),
+    JSON.stringify({ artifacts: [], formatVersion: 1 }), { mode: 0o600 });
   return {
     importStagingRoot,
     migrationChainIdentity: bootstrapped.migrationChainIdentity,

@@ -15,6 +15,7 @@ import {
   type SmtpTestPreparationConfirmation,
 } from './smtpTestConfirmation.js';
 import {
+  matchesInvoiceEmailPreparationRequest,
   readInvoiceEmailPreparationConfirmation,
   type InvoiceEmailPreparationConfirmation,
 } from './invoiceEmailConfirmation.js';
@@ -47,7 +48,7 @@ export interface RegisterApplicationProtocolOptions {
 }
 
 function jsonError(status: number, message: string): Response {
-  return Response.json({ message }, { status });
+  return Response.json({ error: message }, { status });
 }
 
 async function proxyBackendRequest(
@@ -61,6 +62,12 @@ async function proxyBackendRequest(
     preparation: InvoiceEmailPreparationConfirmation,
   ) => Promise<boolean>,
 ): Promise<Response> {
+  const customerPreparation = targetUrl.pathname.endsWith(
+    '/email/smtp/prepare',
+  );
+  if (customerPreparation && confirmInvoiceEmailPreparation === undefined) {
+    return jsonError(502, 'Sähköpostilähetystä ei voitu vahvistaa.');
+  }
   const contentLength = Number(request.headers.get('content-length') ?? '0');
 
   if (
@@ -79,8 +86,10 @@ async function proxyBackendRequest(
     method: request.method,
   };
 
+  let requestBody: ArrayBuffer | undefined;
   if (!['GET', 'HEAD'].includes(request.method.toUpperCase())) {
     const body = await request.arrayBuffer();
+    requestBody = body;
 
     if (body.byteLength > maximumBackendRequestBodyBytes) {
       return jsonError(413, 'Pyyntö on liian suuri.');
@@ -120,7 +129,7 @@ async function proxyBackendRequest(
 
     if (
       backendResponse.ok &&
-      targetUrl.pathname.endsWith('/email/smtp/prepare') &&
+      customerPreparation &&
       confirmInvoiceEmailPreparation !== undefined
     ) {
       let responseBody: unknown;
@@ -133,7 +142,21 @@ async function proxyBackendRequest(
 
       const confirmation = readInvoiceEmailPreparationConfirmation(responseBody);
 
-      if (confirmation === undefined) {
+      const expectedInvoiceId = targetUrl.pathname.split('/')[2];
+      let requested: unknown;
+      try {
+        requested = JSON.parse(new TextDecoder().decode(requestBody));
+      } catch {
+        return jsonError(502, 'Sähköpostilähetystä ei voitu vahvistaa.');
+      }
+      if (
+        confirmation === undefined ||
+        !matchesInvoiceEmailPreparationRequest(
+          confirmation,
+          requested,
+          expectedInvoiceId,
+        )
+      ) {
         return jsonError(502, 'Sähköpostilähetystä ei voitu vahvistaa.');
       }
 

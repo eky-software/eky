@@ -2,6 +2,10 @@ import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceD
 
 export type ApprovedInvoiceEmailProvider = 'dryRun';
 
+export type ApprovedInvoiceEmailDocumentTarget =
+  | { kind: 'revision'; documentId: string }
+  | { kind: 'preservedLegacy'; documentId: string };
+
 export interface ApprovedInvoiceEmailAttachmentPreview {
   documentId: string;
   fileName: string;
@@ -17,6 +21,7 @@ export interface ApprovedInvoiceEmailPreview {
   subject: string;
   body: string;
   attachment: ApprovedInvoiceEmailAttachmentPreview;
+  documentTarget: ApprovedInvoiceEmailDocumentTarget;
 }
 
 export interface ApprovedInvoiceEmailDryRunSend {

@@ -133,6 +133,10 @@ import {
   verifyPackagedRestoredDatabaseBeforeBackend,
 } from '../profileBackup/packagedProfileBackupSmoke.js';
 import {
+  runPackagedLegacyProfileBeforeRestore,
+  verifyPackagedLegacyInvoice,
+} from '../profileBackup/packagedLegacyProfileSmoke.js';
+import {
   createLocalUpdateFoundationComposition,
   createLocalUpdatePackageCacheComposition,
 } from '../update/localUpdateFoundationComposition.js';
@@ -929,6 +933,10 @@ async function startDesktopCompositionRuntime({
   ) {
     if (profileRestoreStartupMode !== 'validateRestoredProfile') {
       throw new Error('DESKTOP_SMOKE_RESTORE_STARTUP_MODE_FAILED');
+    }
+    if (options.smokeConfiguration.scenario === 'legacyInvoice' &&
+        startupRecoveryAuthority !== 'workspaceReplacement') {
+      throw new Error('DESKTOP_SMOKE_LEGACY_REPLACEMENT_REQUIRED');
     }
     await verifyPackagedRestoredDatabaseBeforeBackend({
       activeDatabasePath: databaseFilePath,
@@ -2002,6 +2010,18 @@ async function startDesktopCompositionRuntime({
 
       if (options.smokeConfiguration.phase === 'initial') {
         await loadApplicationWindow(mainWindow);
+        if (options.smokeConfiguration.scenario === 'legacyInvoice') {
+          await runPackagedLegacyProfileBeforeRestore({
+            smokeRoot, backendPort: backendHandle.port, runtimeSessionSecret,
+            runtimeInstanceId: options.runtimeInstanceId,
+            backupService: portableProfileBackupService,
+            profileSnapshotClient: profileSnapshotBrokerClient,
+            stagingRoot: profileSnapshotPaths.stagingRoot,
+            management: workspaceManagementComposition.service,
+            reportStage: options.reportSmokeStage,
+          });
+          return undefined;
+        }
         await runPackagedEmptyArtifactSnapshotSmoke({
           profileSnapshotClient: profileSnapshotBrokerClient,
           reportStage: options.reportSmokeStage,
@@ -2069,6 +2089,10 @@ async function startDesktopCompositionRuntime({
         smokeRoot,
         stagingRoot: profileSnapshotPaths.stagingRoot,
       });
+      if (options.smokeConfiguration.scenario === 'legacyInvoice') {
+        await verifyPackagedLegacyInvoice({ smokeRoot,
+          backendPort: backendHandle.port, runtimeSessionSecret });
+      }
       desktopOperationalLogger.write(
         createDesktopOperationalEvent(
           {

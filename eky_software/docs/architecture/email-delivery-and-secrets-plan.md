@@ -692,13 +692,42 @@ muuta laskua `sent`-tilaan.
 
 ## Oikean Lähetyksen Turvallisuusvaatimukset
 
-**0.3.0:n hyväksytty jatkosuunnitelma, ei vielä toteutettu:**
+**0.3.0:n hyväksytty jatkosuunnitelma, toteutus työpuussa, kokonaisportit avoinna:**
 [B-P3:n rajattu legacy-uudelleenlähetys](release-0.3.0-m1-preparation-plan.md#b-p3-turvallisen-uudelleenlähetyksen-vaihtoehto)
 lisää alla olevaan current-PDF-sääntöön erillisen, eksplisiittisesti
 vahvistettavan säilyneen dokumentin lähetyspolun. Se ei regeneroi PDF:ää eikä
 väitä vanhan toimituksen sisältöä takautuvasti varmennetuksi. Muut lähetykset
 pysyvät nykyiseen hyväksyttyyn revisioon sidottuina. Puuttuva tai ristiriitainen
 aineisto ja ratkaisematon toimitus estävät legacy-polun.
+
+Työpuun sähköpostilomakkeen esivalmistelu (`email/dry-run`) palauttaa nyt
+backendin valitseman `documentTarget`-kohteen: `revision` tai
+`preservedLegacy` sekä liitteen kanssa täsmäävä dokumentti-ID. Legacy-haara
+valmistelee tarkistetun säilytetyn kopion ja neutraalin viestipohjan ilman
+snapshotista pääteltyjä maksutietoja. Tämä ei ole toimitus tai SMTP-
+valtuutus. Nimetyn kopion kirjoittamaton HTTP-luku ja desktopin nykyisen
+esikatselun tarkka dokumenttikohde on kytketty ja kohdetestattu. Lomakkeen
+säilytetyn liitteen avaus välittää tämän täsmäkohteen eikä generoi PDF:ää
+tai lue nykyrevision metadataa. Uusi valmistelu mitätöi vanhan esikatselun;
+myöhäinen vastaus tai vanhan avauksen virhe ei vaihda nykyistä kohdetta.
+Selaimen popup-avaus ei vielä vahvista itse PDF-vastauksen onnistumista.
+Customer-prepare ja send vaativat saman täsmäkohteen; backend päättää
+alkuperän pysyvästä tilasta ja tarkistaa tavut kummassakin vaiheessa.
+Desktopin erillinen vahvistus näyttää säilytetyn sisällön historiallisen
+rajan. Puuttuva vahvistaja estää valmistelun ennen backend-kutsua;
+peruutus tai kohdepoikkeama ei palauta kertalupaa rendererille.
+Nykyinen 60 sekunnin valtuutus ja atominen varaus säilyvät. Itselle-SMTP
+ja dry-run-send pysyvät revision polkuina. Koko legacy-/native-ketjun ja
+paketoidun palautuksen hyväksyntä on yhä avoin. Toteutusjärjestys ja osanäyttö
+ovat [M1:n kytkentäsopimuksessa](release-0.3.0-m1-preparation-plan.md#säilytetyn-dokumentin-täsmäluku-ja-vahvistuksen-järjestys).
+
+Durablen onnistumisen jälkeinen laskun lukuhäiriö palauttaa erillisen
+`INVOICE_DELIVERY_COMMITTED_READ_FAILED`-koodin (409). API-client säilyttää
+sen ja UI kertoo toimituksen onnistuneen sekä pyytää tarkistamaan historian
+lähettämättä uudelleen. Yleinen konflikti, tuntematon virhe tai epävarma
+SMTP-tulos ei muutu tällä onnistumiseksi. UI ei arvaa päivitettyä laskua
+eikä lisää automaattista uusintaa. Backendin pysyvä tulos ja nykyinen
+diagnostiikkaketju säilyvät auktoritatiivisina.
 
 Oikea SMTP/Gmail-lähetys vaatii nykyisen sopimuksen mukaan vähintään:
 
@@ -799,6 +828,18 @@ R0:n SMTP-failure-instrumentointi, turvallisuusportin ja diagnostiikkametadatan
 erotus sekä Diagnostics- ja tukipakettiprojektiot on toteutettu. Tämä
 tekninen toteutus ja dokumentaatio eivät yksin muodosta oikeudellista
 compliance-sertifiointia.
+
+B3-B5:n keskeneräisessä työpuussa
+[revision toimitussopimus](release-0.3.0-m1-preparation-plan.md#b-p2-toimitusversioiden-historia)
+tarkentaa tätä ketjua: `invoice-email-send-v3` sitoo fingerprintiin myös
+revision tai säilytetyn alkuperän avaimen. Prepare ja send käyttävät samaa
+tarkistettua täsmädokumentin lukupolkua, eivät uusimman esikatselun valintaa;
+prepare tyhjentää väliaikaisen PDF-puskurin. Send varaa pysyvän tapahtuman
+atomisesti ennen provideria, ja loppukuittaus käyttää palautettua varausta.
+Unresolved-esto säilyy uuden sovellusinstanssin yli eikä riipu pelkästä
+muistissa olevasta kertavaltuutuksesta. Uutta jonoa tai automaattista
+uudelleenlähetystä ei lisätä. Tämä alempi kytkentänäyttö ei vielä hyväksy
+legacy-vahvistusta, koko UI/native-ketjua tai palautusta.
 
 Ensimmäinen oikea SMTP-lähetys saa olla synkroninen. UI näyttää lähetyksen
 olevan käynnissä ja estää saman toiminnon uudelleen pyynnön aikana. Backend

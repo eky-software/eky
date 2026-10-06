@@ -102,6 +102,15 @@ export class SqliteInvoiceApprovalQueries {
       .get(companyId, invoiceId);
   }
 
+  hasUnresolvedDelivery(companyId: string, invoiceId: string): boolean {
+    return this.database.prepare<[string, string], { id: string }>(`
+      SELECT id FROM invoice_delivery_events
+      WHERE company_id = ? AND invoice_id = ?
+        AND status IN ('attempted', 'outcomeUnknown')
+      LIMIT 1
+    `).get(companyId, invoiceId) !== undefined;
+  }
+
   getReopenedInvoiceForDraft(
     companyId: string,
     draftId: string,

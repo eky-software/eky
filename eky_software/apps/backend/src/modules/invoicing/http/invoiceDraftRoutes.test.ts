@@ -8,6 +8,7 @@ import type { BackendOperationalEvent } from '../../../observability/operational
 
 import type { ApproveInvoiceDraftInput } from '../application/approveInvoiceDraft.js';
 import { ApproveInvoiceDraftError } from '../application/approveInvoiceDraftError.js';
+import { InvoiceDeliveryConflictError } from '../domain/invoiceDeliveryConflictError.js';
 import {
   deleteInvoiceDraft,
   type DeleteInvoiceDraftInput,
@@ -298,6 +299,7 @@ function createApprovedInvoiceResult(
   overrides: Partial<ApprovedInvoiceResult> = {},
 ): ApprovedInvoiceResult {
   return {
+    revisionKey: { companyId: 'dev-company', invoiceId: 'invoice-1', revisionId: 'revision-1' },
     draftId: 'draft-1',
     invoiceId: 'invoice-1',
     invoiceNumber: '20260001',
@@ -638,31 +640,38 @@ describe('invoiceDraftRoutes', () => {
     });
   });
 
-  it('approves a draft using only the backend company context', async () => {
-    const approvedInvoice = createApprovedInvoiceResult({
-      draftId: 'draft-1',
-      invoiceId: 'invoice-1',
-      invoiceNumber: '20260001',
-      referenceNumber: '202600017',
-    });
+  it('approves with trusted company context and returns only the public fields', async () => {
+    const approvedInvoice = {
+      ...createApprovedInvoiceResult(),
+      internalOnly: 'synthetic-internal-value',
+    };
     const testContext = createTestApp(true, { approveResult: approvedInvoice });
 
     const response = await testContext.app.request(
       '/invoice-drafts/draft-1/approve?companyId=other-company',
       { method: 'POST' },
     );
-    const body = (await response.json()) as {
-      approvedInvoice: ApprovedInvoiceResult;
-    };
+    const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body).toEqual({ approvedInvoice });
+    expect(body).toEqual({ approvedInvoice: {
+      draftId: 'draft-1',
+      invoiceId: 'invoice-1',
+      invoiceNumber: '20260001',
+      numberingMode: 'calendarYearSequence',
+      referenceNumber: '202600017',
+      referenceNumberType: 'finnishDomestic',
+      sequenceNumber: 1,
+      sequenceScope: 'calendar-year:2026',
+      status: 'approved',
+    } });
     expect(testContext.getApproveInput()).toMatchObject({
       actorUserId: 'local-user',
       companyId: 'dev-company',
       draftId: 'draft-1',
     });
     expect(testContext.getApproveInput()).not.toHaveProperty('seriesKey');
+    expect(testContext.getApproveInput()).not.toHaveProperty('revisionKey');
     expect(testContext.getApproveInput()?.approvedAt).toEqual(
       expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
     );
@@ -691,6 +700,22 @@ describe('invoiceDraftRoutes', () => {
     expect(await response.json()).toEqual({
       error: 'Invalid approval body.',
     });
+    expect(testContext.getApproveInput()).toBeUndefined();
+  });
+
+  it.each([
+    { revisionId: 'caller-selected-revision' },
+    { revisionKey: { companyId: 'other-company', invoiceId: 'invoice-1', revisionId: 'caller-selected-revision' } },
+  ])('rejects caller-selected revision data %j before approval', async (body) => {
+    const testContext = createTestApp();
+    const response = await testContext.app.request('/invoice-drafts/draft-1/approve', {
+      body: JSON.stringify(body),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'Invalid approval body.' });
     expect(testContext.getApproveInput()).toBeUndefined();
   });
 
@@ -798,6 +823,13 @@ describe('invoiceDraftRoutes', () => {
     expect(await response.json()).toEqual({
       error: 'Invoice draft not found.',
     });
+  });
+
+  it('returns a safe conflict when persistent delivery prevents reapproval', async () => {
+    const { app } = createTestApp(true, { approveError: new InvoiceDeliveryConflictError() });
+    const response = await app.request('/invoice-drafts/draft-1/approve', { method: 'POST' });
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error: new InvoiceDeliveryConflictError().message });
   });
 
   it('returns the generic not-found response when a credit draft uses the standard approval route', async () => {

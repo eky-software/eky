@@ -3,6 +3,7 @@ import {
   copyFile,
   cp,
   mkdtemp,
+  mkdir,
   readFile,
   rm,
   writeFile,
@@ -13,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { runMigrations } from '../../database/migration/runMigrations.js';
+import { readMigrationManifest } from '../../database/migration/migrationManifest.js';
 import { inspectSqliteProfileDatabase } from './inspectSqliteProfileDatabase.js';
 
 const approvedLegacyMigrationChainIdentity =
@@ -57,6 +59,8 @@ describe('SQLite profile database migration compatibility', () => {
         'restoreCompatible',
       ),
     ).toEqual({
+      appliedMigrationNames: readMigrationManifest(publishedMigrationsDirectory)
+        .slice(0, 38).map(entry => entry.fileName),
       migrationChainIdentity: approvedLegacyMigrationChainIdentity,
       profileId: expect.stringMatching(/^[0-9a-f]{64}$/),
     });
@@ -167,9 +171,10 @@ describe('SQLite profile database migration compatibility', () => {
       .all() as Array<{ metadata_origin: string }>;
     database.close();
 
-    expect(metadataRows).toHaveLength(38);
+    const manifest = readMigrationManifest(publishedMigrationsDirectory);
+    expect(metadataRows).toHaveLength(manifest.length);
     expect(
-      metadataRows.every(
+      metadataRows.slice(0, 38).every(
         ({ metadata_origin }) => metadata_origin === 'legacy_baseline',
       ),
     ).toBe(true);
@@ -178,7 +183,7 @@ describe('SQLite profile database migration compatibility', () => {
         databasePath,
         publishedMigrationsDirectory,
       ).migrationChainIdentity,
-    ).toBe(approvedLegacyMigrationChainIdentity);
+    ).toBe(manifest.at(-1)?.chainSha256);
   });
 });
 
@@ -188,9 +193,17 @@ async function createPublishedDatabase(
   const root = await mkdtemp(join(tmpdir(), 'eky-legacy-profile-'));
   temporaryRoots.push(root);
   const databasePath = join(root, 'profile.sqlite');
+  let migrationsDirectory = publishedMigrationsDirectory;
+  if (options.removeMigrationMetadata) {
+    migrationsDirectory = join(root, 'legacy-migrations');
+    await mkdir(migrationsDirectory);
+    for (const entry of readMigrationManifest(publishedMigrationsDirectory).slice(0, 38)) {
+      await writeFile(join(migrationsDirectory, entry.fileName), entry.content);
+    }
+  }
   const database = new Database(databasePath);
   await runMigrations(database, {
-    migrationsDirectory: publishedMigrationsDirectory,
+    migrationsDirectory,
   });
 
   if (options.removeMigrationMetadata) {

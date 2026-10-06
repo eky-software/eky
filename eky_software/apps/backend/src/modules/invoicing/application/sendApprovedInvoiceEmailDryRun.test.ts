@@ -1,3 +1,4 @@
+import { createUnexpectedLegacyRevisionPromoter } from './prepareInvoiceDeliveryRevision.fixture.js';
 import { createActorContext } from '@eky/auth';
 import { AuthorizationError } from '@eky/permissions';
 import { describe, expect, it, vi } from 'vitest';
@@ -7,15 +8,19 @@ import type {
 } from './approvedInvoiceEmailPreview.js';
 import { ApprovedInvoiceEmailDeliveryError } from './approvedInvoiceEmailDeliveryError.js';
 import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
+import { InvoiceDocumentIntegrityError } from './invoiceDocumentIntegrityError.js';
+import { InvoiceDocumentPublicationConflictError } from './invoiceDocumentPublicationConflictError.js';
+import { createInvoiceRevisionPdfContentFixture } from './toInvoiceRevisionPdfContent.fixture.js';
 import {
   sendApprovedInvoiceEmailDryRun,
   type SendApprovedInvoiceEmailDryRunInput,
 } from './sendApprovedInvoiceEmailDryRun.js';
-import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
+import type { RevisionInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
-import type { InvoiceDeliveryEvent } from '../domain/invoiceDeliveryEvent.js';
 import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationError.js';
+import type { InvoiceDryRunDeliveryEvent } from '../domain/invoiceRecordedDeliveryEvent.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
+import type { InvoiceContentRevisionReader } from '../ports/invoiceContentRevisionReader.js';
 import type { InvoiceDeliveryEventRepository } from '../ports/invoiceDeliveryEventRepository.js';
 import type { InvoiceEmailDeliveryProvider } from '../ports/invoiceEmailDeliveryProvider.js';
 
@@ -35,15 +40,13 @@ class FakeApprovedInvoiceReader implements ApprovedInvoiceReader {
 }
 
 class FakeInvoiceDeliveryEventRepository
-  implements InvoiceDeliveryEventRepository
+  implements Pick<InvoiceDeliveryEventRepository, 'saveDeliveryEvent'>
 {
-  events: InvoiceDeliveryEvent[] = [];
-
-  async completeDeliveryEvent(): Promise<void> {}
+  events: InvoiceDryRunDeliveryEvent[] = [];
 
   async saveDeliveryEvent(
-    event: InvoiceDeliveryEvent,
-  ): Promise<InvoiceDeliveryEvent> {
+    event: InvoiceDryRunDeliveryEvent,
+  ): Promise<InvoiceDryRunDeliveryEvent> {
     this.events.push(event);
 
     return event;
@@ -81,6 +84,10 @@ class FakeEmailDeliveryProvider implements InvoiceEmailDeliveryProvider {
 describe('sendApprovedInvoiceEmailDryRun', () => {
   it('validates user-edited email fields, ensures the PDF, calls the provider, and records a delivery event', async () => {
     const dependencies = createDependencies();
+    const getApprovedInvoiceById = vi.spyOn(
+      dependencies.approvedInvoiceReader,
+      'getApprovedInvoiceById',
+    );
 
     const result = await sendApprovedInvoiceEmailDryRun(
       createInput({
@@ -92,10 +99,15 @@ describe('sendApprovedInvoiceEmailDryRun', () => {
       dependencies,
     );
 
-    expect(dependencies.ensureApprovedInvoicePdfDocument).toHaveBeenCalledWith({
+    expect(dependencies.invoiceContentRevisionReader.getCurrentRevision).toHaveBeenCalledExactlyOnceWith({
       companyId: 'dev-company',
-      createdAt: '2026-07-10T10:00:00.000Z',
       invoiceId: 'invoice-1',
+    });
+    expect(dependencies.invoiceContentRevisionReader.getCurrentRevision.mock.invocationCallOrder[0])
+      .toBeLessThan(getApprovedInvoiceById.mock.invocationCallOrder[0]!);
+    expect(dependencies.ensureInvoiceRevisionPdfDocument).toHaveBeenCalledWith({
+      key: { companyId: 'dev-company', invoiceId: 'invoice-1', revisionId: 'revision-1' },
+      createdAt: '2026-07-10T10:00:00.000Z',
     });
     expect(dependencies.provider.sentEmails).toEqual([
       expect.objectContaining({
@@ -129,6 +141,15 @@ describe('sendApprovedInvoiceEmailDryRun', () => {
         recipientEmail: 'recipient@example.fi',
         status: 'succeeded',
         subject: 'Lasku 20260001 - muokattu',
+        target: {
+          kind: 'revision',
+          companyId: 'dev-company',
+          invoiceId: 'invoice-1',
+          revisionId: 'revision-1',
+          documentId: 'document-1',
+          sha256: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+          sizeBytes: 2048,
+        },
       }),
     ]);
     expect(result.deliveryEventId).toBe(
@@ -143,7 +164,7 @@ describe('sendApprovedInvoiceEmailDryRun', () => {
       sendApprovedInvoiceEmailDryRun(createInput({ to: 'not-an-email' }), dependencies),
     ).rejects.toBeInstanceOf(InvoiceDraftValidationError);
 
-    expect(dependencies.ensureApprovedInvoicePdfDocument).not.toHaveBeenCalled();
+    expect(dependencies.ensureInvoiceRevisionPdfDocument).not.toHaveBeenCalled();
     expect(dependencies.provider.sentEmails).toEqual([]);
     expect(dependencies.deliveryEventRepository.events).toEqual([]);
   });
@@ -155,7 +176,20 @@ describe('sendApprovedInvoiceEmailDryRun', () => {
       sendApprovedInvoiceEmailDryRun(createInput(), dependencies),
     ).rejects.toBeInstanceOf(ApprovedInvoiceNotFoundError);
 
-    expect(dependencies.ensureApprovedInvoicePdfDocument).not.toHaveBeenCalled();
+    expect(dependencies.ensureInvoiceRevisionPdfDocument).not.toHaveBeenCalled();
+    expect(dependencies.provider.sentEmails).toEqual([]);
+    expect(dependencies.deliveryEventRepository.events).toEqual([]);
+  });
+
+  it('does not send or record when the current revision is missing', async () => {
+    const dependencies = createDependencies();
+    dependencies.invoiceContentRevisionReader.getCurrentRevision.mockResolvedValue(undefined);
+
+    await expect(
+      sendApprovedInvoiceEmailDryRun(createInput(), dependencies),
+    ).rejects.toEqual(new ApprovedInvoiceNotFoundError());
+
+    expect(dependencies.ensureInvoiceRevisionPdfDocument).not.toHaveBeenCalled();
     expect(dependencies.provider.sentEmails).toEqual([]);
     expect(dependencies.deliveryEventRepository.events).toEqual([]);
   });
@@ -169,7 +203,61 @@ describe('sendApprovedInvoiceEmailDryRun', () => {
       sendApprovedInvoiceEmailDryRun(createInput(), dependencies),
     ).rejects.toBeInstanceOf(ApprovedInvoiceNotFoundError);
 
-    expect(dependencies.ensureApprovedInvoicePdfDocument).not.toHaveBeenCalled();
+    expect(dependencies.ensureInvoiceRevisionPdfDocument).not.toHaveBeenCalled();
+    expect(dependencies.provider.sentEmails).toEqual([]);
+    expect(dependencies.deliveryEventRepository.events).toEqual([]);
+  });
+
+  it.each([
+    ['company', { companyId: 'other-company' }],
+    ['invoice', { invoiceId: 'other-invoice' }],
+  ] as const)('rejects a PDF from another %s before sending or recording', async (_scope, overrides) => {
+    const dependencies = createDependencies();
+    dependencies.ensureInvoiceRevisionPdfDocument.mockResolvedValue({
+      ...createApprovedInvoiceDocumentMetadata(),
+      ...overrides,
+    });
+
+    await expect(
+      sendApprovedInvoiceEmailDryRun(createInput(), dependencies),
+    ).rejects.toEqual(new InvoiceDocumentIntegrityError());
+
+    expect(dependencies.provider.sentEmails).toEqual([]);
+    expect(dependencies.provider.preparedEmails).toEqual([]);
+    expect(dependencies.deliveryEventRepository.events).toEqual([]);
+  });
+
+  it('rejects a PDF from a newer revision without sending or recording the older view', async () => {
+    const dependencies = createDependencies();
+    const getApprovedInvoiceById = vi.spyOn(
+      dependencies.approvedInvoiceReader,
+      'getApprovedInvoiceById',
+    );
+    dependencies.ensureInvoiceRevisionPdfDocument.mockResolvedValue({
+      ...createApprovedInvoiceDocumentMetadata(),
+      binding: { kind: 'revision', revisionId: 'revision-2' },
+    });
+
+    await expect(
+      sendApprovedInvoiceEmailDryRun(createInput(), dependencies),
+    ).rejects.toEqual(new InvoiceDocumentPublicationConflictError());
+
+    expect(dependencies.invoiceContentRevisionReader.getCurrentRevision).toHaveBeenCalledOnce();
+    expect(dependencies.invoiceContentRevisionReader.getCurrentRevision.mock.invocationCallOrder[0])
+      .toBeLessThan(getApprovedInvoiceById.mock.invocationCallOrder[0]!);
+    expect(dependencies.provider.sentEmails).toEqual([]);
+    expect(dependencies.deliveryEventRepository.events).toEqual([]);
+  });
+
+  it('does not send or record when PDF ensuring fails', async () => {
+    const dependencies = createDependencies();
+    const error = new Error('PDF could not be generated.');
+    dependencies.ensureInvoiceRevisionPdfDocument.mockRejectedValue(error);
+
+    await expect(
+      sendApprovedInvoiceEmailDryRun(createInput(), dependencies),
+    ).rejects.toBe(error);
+
     expect(dependencies.provider.sentEmails).toEqual([]);
     expect(dependencies.deliveryEventRepository.events).toEqual([]);
   });
@@ -187,18 +275,37 @@ describe('sendApprovedInvoiceEmailDryRun', () => {
 
     expect(dependencies.deliveryEventRepository.events).toEqual([
       expect.objectContaining({
+        companyId: 'dev-company',
+        invoiceId: 'invoice-1',
+        documentId: 'document-1',
+        deliveryMethod: 'email',
+        provider: 'dryRun',
         safeErrorMessage: 'Invoice email dry-run failed.',
         status: 'failed',
+        target: {
+          kind: 'revision',
+          companyId: 'dev-company',
+          invoiceId: 'invoice-1',
+          revisionId: 'revision-1',
+          documentId: 'document-1',
+          sha256: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+          sizeBytes: 2048,
+        },
         technicalErrorCode: 'Error',
       }),
     ]);
     expect(
       dependencies.deliveryEventRepository.events[0]?.safeErrorMessage,
     ).not.toContain('secret-value');
+    expect(JSON.stringify(dependencies.deliveryEventRepository.events)).not.toContain('secret-value');
   });
 
   it('denies sending before reading invoice data without sendInvoices permission', async () => {
     const dependencies = createDependencies();
+    const getApprovedInvoiceById = vi.spyOn(
+      dependencies.approvedInvoiceReader,
+      'getApprovedInvoiceById',
+    );
 
     await expect(
       sendApprovedInvoiceEmailDryRun(
@@ -213,7 +320,10 @@ describe('sendApprovedInvoiceEmailDryRun', () => {
         dependencies,
       ),
     ).rejects.toBeInstanceOf(AuthorizationError);
-    expect(dependencies.ensureApprovedInvoicePdfDocument).not.toHaveBeenCalled();
+    expect(getApprovedInvoiceById).not.toHaveBeenCalled();
+    expect(dependencies.invoiceContentRevisionReader.getCurrentRevision).not.toHaveBeenCalled();
+    expect(dependencies.ensureInvoiceRevisionPdfDocument).not.toHaveBeenCalled();
+    expect(dependencies.provider.sentEmails).toEqual([]);
     expect(dependencies.deliveryEventRepository.events).toEqual([]);
   });
 });
@@ -224,15 +334,28 @@ function createDependencies(options: {
 } = {}) {
   const deliveryEventRepository = new FakeInvoiceDeliveryEventRepository();
   const provider = new FakeEmailDeliveryProvider(options.sendError);
+  const revision = createInvoiceRevisionPdfContentFixture();
 
   return {
     approvedInvoiceReader: new FakeApprovedInvoiceReader(
       'invoice' in options ? options.invoice : createApprovedInvoiceView(),
     ),
     deliveryEventRepository,
-    ensureApprovedInvoicePdfDocument: vi.fn(
+    invoiceLegacyRevisionPromoter: createUnexpectedLegacyRevisionPromoter(),    ensureInvoiceRevisionPdfDocument: vi.fn(
       async () => createApprovedInvoiceDocumentMetadata(),
     ),
+    invoiceContentRevisionReader: {
+      getCurrentRevision: vi.fn<
+        InvoiceContentRevisionReader['getCurrentRevision']
+      >().mockResolvedValue({
+        ...revision,
+        companyId: 'dev-company',
+        invoiceId: 'invoice-1',
+        revisionId: 'revision-1',
+        lines: revision.lines.map((line) => ({ ...line, invoiceId: 'invoice-1' })),
+      }),
+    },
+    invoiceDeliveryEventReader: { requiresLegacyDeliveryReview: vi.fn(async () => false) },
     invoiceDeliveryEventRepository: deliveryEventRepository,
     invoiceEmailDeliveryProvider: provider,
     provider,
@@ -258,8 +381,9 @@ function createInput(
   };
 }
 
-function createApprovedInvoiceDocumentMetadata(): ApprovedInvoiceDocumentMetadata {
+function createApprovedInvoiceDocumentMetadata(): RevisionInvoiceDocumentMetadata {
   return {
+    binding: { kind: 'revision', revisionId: 'revision-1' },
     companyId: 'dev-company',
     createdAt: '2026-07-10T10:00:00.000Z',
     documentType: 'approved_invoice_pdf',

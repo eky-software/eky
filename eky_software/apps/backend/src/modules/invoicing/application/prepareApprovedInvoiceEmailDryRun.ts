@@ -3,14 +3,21 @@ import { requirePermission } from '@eky/permissions';
 
 import {
   createApprovedInvoiceEmailAttachmentPreview,
+  type ApprovedInvoiceEmailDocumentTarget,
   type ApprovedInvoiceEmailPreview,
 } from './approvedInvoiceEmailPreview.js';
 import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
 import { requireInvoiceDeliveryEligible } from './requireInvoiceDeliveryEligible.js';
+import { requireLegacyInvoiceDeliveryReviewed, type InvoiceLegacyDeliveryReviewReader } from './requireLegacyInvoiceDeliveryReviewed.js';
 import type {
-  GenerateApprovedInvoicePdfDocumentInput,
+  GenerateInvoiceRevisionPdfDocumentInput,
 } from './generateApprovedInvoicePdfDocument.js';
-import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
+import type { ApprovedInvoiceDocumentMetadata, PreservedLegacyInvoiceDocumentMetadata, RevisionInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
+import { InvoiceDocumentIntegrityError } from './invoiceDocumentIntegrityError.js';
+import { toRevisionInvoiceDeliveryTarget } from './toRevisionInvoiceDeliveryTarget.js';
+import type { InvoiceContentRevisionReader } from '../ports/invoiceContentRevisionReader.js';
+import type { InvoiceLegacyRevisionPromoter } from '../ports/invoiceLegacyRevisionPromoter.js';
+import { prepareInvoiceDeliveryRevision } from './prepareInvoiceDeliveryRevision.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import { requireIdentifier } from '../domain/invoiceDraftRules.js';
 import { withCalculatedApprovedInvoiceVatBreakdown } from '../domain/invoiceViewTotals.js';
@@ -24,10 +31,16 @@ export interface PrepareApprovedInvoiceEmailDryRunInput {
 }
 
 export interface PrepareApprovedInvoiceEmailDryRunDependencies {
+  invoiceDeliveryEventReader: InvoiceLegacyDeliveryReviewReader;
   approvedInvoiceReader: ApprovedInvoiceReader;
-  ensureApprovedInvoicePdfDocument(
-    input: GenerateApprovedInvoicePdfDocumentInput,
-  ): Promise<ApprovedInvoiceDocumentMetadata>;
+  invoiceContentRevisionReader: Pick<InvoiceContentRevisionReader, 'getCurrentRevision'>;
+  invoiceLegacyRevisionPromoter: InvoiceLegacyRevisionPromoter;
+  ensureInvoiceRevisionPdfDocument(
+    input: GenerateInvoiceRevisionPdfDocumentInput,
+  ): Promise<RevisionInvoiceDocumentMetadata>;
+  preparePreservedLegacyInvoiceDocument(input: {
+    actorContext: ActorContext; invoiceId: string; createdAt: string;
+  }): Promise<PreservedLegacyInvoiceDocumentMetadata>;
   invoiceEmailDeliveryProvider: InvoiceEmailDeliveryProvider;
 }
 
@@ -43,25 +56,42 @@ export async function prepareApprovedInvoiceEmailDryRun(
   );
   const invoiceId = requireIdentifier(input.invoiceId, 'Approved invoice id');
   const preparedAt = requireIdentifier(input.preparedAt, 'Email timestamp');
+  const revision = await dependencies.invoiceContentRevisionReader.getCurrentRevision({ companyId, invoiceId });
 
   const invoice = await dependencies.approvedInvoiceReader.getApprovedInvoiceById(
     companyId,
     invoiceId,
   );
 
-  if (invoice === undefined) {
+  if (invoice === undefined || revision === undefined) {
     throw new ApprovedInvoiceNotFoundError();
   }
 
   requireInvoiceDeliveryEligible(invoice);
+  await requireLegacyInvoiceDeliveryReviewed({ companyId, invoiceId }, dependencies.invoiceDeliveryEventReader);
 
+  if (revision.origin === 'legacySnapshot' && invoice.status === 'sent') {
+    const document = await dependencies.preparePreservedLegacyInvoiceDocument({
+      actorContext: input.actorContext, invoiceId, createdAt: preparedAt,
+    });
+    if (document.companyId !== companyId || document.invoiceId !== invoiceId
+      || document.binding.kind !== 'preservedLegacy') throw new InvoiceDocumentIntegrityError();
+    const email = createApprovedInvoiceEmailPreview(invoice, document, {
+      kind: 'preservedLegacy', documentId: document.id,
+    });
+    return dependencies.invoiceEmailDeliveryProvider.prepareDryRunEmail(email);
+  }
+
+  const key = await prepareInvoiceDeliveryRevision(revision, { companyId, invoiceId }, dependencies.invoiceLegacyRevisionPromoter);
   const invoiceForEmail = withCalculatedApprovedInvoiceVatBreakdown(invoice);
-  const document = await dependencies.ensureApprovedInvoicePdfDocument({
-    companyId,
+  const document = await dependencies.ensureInvoiceRevisionPdfDocument({
+    key,
     createdAt: preparedAt,
-    invoiceId,
   });
-  const email = createApprovedInvoiceEmailPreview(invoiceForEmail, document);
+  toRevisionInvoiceDeliveryTarget(key, document);
+  const email = createApprovedInvoiceEmailPreview(invoiceForEmail, document, {
+    kind: 'revision', documentId: document.id,
+  });
 
   return dependencies.invoiceEmailDeliveryProvider.prepareDryRunEmail(email);
 }
@@ -69,10 +99,13 @@ export async function prepareApprovedInvoiceEmailDryRun(
 function createApprovedInvoiceEmailPreview(
   invoice: ApprovedInvoiceView,
   document: ApprovedInvoiceDocumentMetadata,
+  documentTarget: ApprovedInvoiceEmailDocumentTarget,
 ): ApprovedInvoiceEmailPreview {
   return {
     attachment: createApprovedInvoiceEmailAttachmentPreview(document),
-    body: createEmailBody(invoice),
+    body: documentTarget.kind === 'preservedLegacy'
+      ? createPreservedLegacyEmailBody(invoice) : createEmailBody(invoice),
+    documentTarget,
     invoiceId: invoice.id,
     invoiceNumber: invoice.invoiceNumber,
     provider: 'dryRun',
@@ -81,6 +114,15 @@ function createApprovedInvoiceEmailPreview(
     } ${invoice.invoiceNumber}`,
     to: getDefaultRecipientEmail(invoice),
   };
+}
+
+function createPreservedLegacyEmailBody(invoice: ApprovedInvoiceView): string {
+  const label = invoice.invoiceKind === 'credit' ? 'hyvityslaskun' : 'laskun';
+  return [
+    'Hei,', '',
+    `Liitteenä ${label} ${invoice.invoiceNumber} säilytetty PDF.`, '',
+    'Ystävällisin terveisin', invoice.companyNameSnapshot.trim() || 'Eky',
+  ].join('\n');
 }
 
 function getDefaultRecipientEmail(invoice: ApprovedInvoiceView): string {

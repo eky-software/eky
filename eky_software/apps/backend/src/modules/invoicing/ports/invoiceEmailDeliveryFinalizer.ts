@@ -1,19 +1,7 @@
-export interface CompleteSuccessfulInvoiceEmailDeliveryInput {
-  companyId: string;
-  eventId: string;
-  invoiceId: string;
-  providerMessageId: string | null;
-  sentAt: string;
-}
-
-export interface CompleteSuccessfulInvoiceEmailDeliveryResult {
-  invoiceStatus: 'sent';
-  updatedAt: string;
-  wasResend: boolean;
-}
+import type { CustomerEmailCompletionInput, EmailCompletionResult } from '../domain/invoiceDeliveryReservation.js';
 
 export interface InvoiceEmailDeliveryFinalizer {
   completeSuccessfulEmailDelivery(
-    input: CompleteSuccessfulInvoiceEmailDeliveryInput,
-  ): Promise<CompleteSuccessfulInvoiceEmailDeliveryResult>;
+    input: CustomerEmailCompletionInput,
+  ): Promise<EmailCompletionResult>;
 }

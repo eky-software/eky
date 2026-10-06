@@ -34,6 +34,10 @@ const backendRoutes: ReadonlyArray<{
   },
   { methods: new Set(['GET', 'POST']), pathname: /^\/invoice-drafts$/ },
   {
+    methods: new Set(['GET']),
+    pathname: new RegExp(`^/invoice-drafts/${resourceId}/delivery-history$`),
+  },
+  {
     methods: new Set(['DELETE', 'GET', 'PUT']),
     pathname: new RegExp(`^/invoice-drafts/${resourceId}$`),
   },
@@ -70,6 +74,12 @@ const backendRoutes: ReadonlyArray<{
     pathname: new RegExp(`^/invoices/${resourceId}/delivery-events$`),
   },
   {
+    methods: new Set(['GET']),
+    pathname: new RegExp(
+      `^/invoices/${resourceId}/delivery-events/${resourceId}/pdf$`,
+    ),
+  },
+  {
     methods: new Set(['DELETE', 'PUT']),
     pathname: new RegExp(`^/invoices/${resourceId}/payment$`),
   },
@@ -80,6 +90,12 @@ const backendRoutes: ReadonlyArray<{
   {
     methods: new Set(['GET']),
     pathname: new RegExp(`^/invoices/${resourceId}/pdf/metadata$`),
+  },
+  {
+    methods: new Set(['GET']),
+    pathname: new RegExp(
+      `^/invoices/${resourceId}/preserved-documents/${resourceId}/pdf$`,
+    ),
   },
   {
     methods: new Set(['POST']),

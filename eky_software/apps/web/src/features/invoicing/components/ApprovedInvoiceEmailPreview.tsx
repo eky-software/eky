@@ -12,6 +12,8 @@ import {
   validateInvoiceEmailForm,
 } from '../approved/invoiceEmailFormValidation.js';
 import styles from './ApprovedInvoiceEmailPreview.module.css';
+import { PreservedInvoicePdfAction } from './PreservedInvoicePdfAction.js';
+import type { OpenPreservedInvoicePdf } from '../approved/openPreservedInvoicePdf.js';
 
 interface ApprovedInvoiceEmailPreviewProps {
   email: ApprovedInvoiceEmailPreviewData;
@@ -28,6 +30,7 @@ interface ApprovedInvoiceEmailPreviewProps {
   smtpTestUnavailableMessage: string | null;
   smtpTestSuccessMessage: string | null;
   successMessage: string | null;
+  onOpenPreservedPdf: OpenPreservedInvoicePdf;
   onSendDryRun(input: ApprovedInvoiceEmailDryRunSendInput): void;
   onSendSmtp(input: ApprovedInvoiceEmailSmtpPrepareInput): void;
   onSendSmtpTest(input: ApprovedInvoiceEmailSmtpTestPrepareInput): void;
@@ -48,6 +51,7 @@ export function ApprovedInvoiceEmailPreview({
   smtpTestUnavailableMessage,
   smtpTestSuccessMessage,
   successMessage,
+  onOpenPreservedPdf,
   onSendDryRun,
   onSendSmtp,
   onSendSmtpTest,
@@ -58,6 +62,7 @@ export function ApprovedInvoiceEmailPreview({
   const [editableBody, setEditableBody] = useState(email.body);
   const [validationErrors, setValidationErrors] =
     useState<InvoiceEmailFormErrors>({});
+  const isRevisionTarget = email.documentTarget.kind === 'revision';
 
   useEffect(() => {
     setEditableTo(email.to);
@@ -166,6 +171,15 @@ export function ApprovedInvoiceEmailPreview({
         </div>
         <div className={styles.attachmentValue}>
           {email.attachment.fileName} ({formatBytes(email.attachment.sizeBytes)})
+          {email.documentTarget.kind === 'preservedLegacy' ? (
+            <PreservedInvoicePdfAction
+              key={JSON.stringify([email.invoiceId, email.documentTarget.documentId])}
+              invoiceId={email.invoiceId}
+              documentId={email.documentTarget.documentId}
+              disabled={isSending || isSendingSmtp || isSendingSmtpTest}
+              onOpen={onOpenPreservedPdf}
+            />
+          ) : null}
         </div>
         <label htmlFor="invoice-email-body">
           {uiText.invoicing.invoiceEmailBody}
@@ -204,7 +218,7 @@ export function ApprovedInvoiceEmailPreview({
             const input = createValidatedSendInput();
 
             if (input !== null) {
-              onSendSmtp(input);
+              onSendSmtp({ ...input, documentTarget: email.documentTarget });
             }
           }}
           type="button"
@@ -252,11 +266,11 @@ export function ApprovedInvoiceEmailPreview({
           <div className={styles.actions}>
             <button
               className="secondary-action"
-              disabled={isSending || isSendingSmtp || isSendingSmtpTest}
+              disabled={isSending || isSendingSmtp || isSendingSmtpTest || !isRevisionTarget}
               onClick={() => {
                 const input = createValidatedSendInput();
 
-                if (input !== null) {
+                if (input !== null && isRevisionTarget) {
                   onSendDryRun(input);
                 }
               }}
@@ -272,13 +286,14 @@ export function ApprovedInvoiceEmailPreview({
                 isSending ||
                 isSendingSmtp ||
                 isSendingSmtpTest ||
+                !isRevisionTarget ||
                 smtpTestRecipient === null ||
                 smtpTestUnavailableMessage !== null
               }
               onClick={() => {
                 const input = createValidatedSendInput();
 
-                if (input !== null) {
+                if (input !== null && isRevisionTarget) {
                   onSendSmtpTest(input);
                 }
               }}

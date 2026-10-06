@@ -1,10 +1,10 @@
 import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
 import { requireIdentifier } from '../domain/invoiceDraftRules.js';
-import type { InvoiceDocumentRepository } from '../ports/invoiceDocumentRepository.js';
-import type { InvoiceDocumentStorage } from '../ports/invoiceDocumentStorage.js';
+import type { InvoiceDocumentPreviewReader } from '../ports/invoiceDocumentPreviewReader.js';
 import { ApprovedInvoiceDocumentNotFoundError } from './approvedInvoiceDocumentNotFoundError.js';
-
-const approvedInvoicePdfDocumentType = 'approved_invoice_pdf';
+import { InvoiceDocumentIntegrityError } from './invoiceDocumentIntegrityError.js';
+import { InvoiceDocumentReadConflictError } from './invoiceDocumentReadConflictError.js';
+import { readStoredInvoiceDocument, type ReadStoredInvoiceDocumentDependencies } from './readStoredInvoiceDocument.js';
 
 export interface ApprovedInvoicePdfDocumentFile {
   content: Uint8Array;
@@ -16,9 +16,8 @@ export interface GetApprovedInvoicePdfDocumentInput {
   invoiceId: string;
 }
 
-export interface GetApprovedInvoicePdfDocumentDependencies {
-  invoiceDocumentRepository: InvoiceDocumentRepository;
-  invoiceDocumentStorage: InvoiceDocumentStorage;
+export interface GetApprovedInvoicePdfDocumentDependencies extends ReadStoredInvoiceDocumentDependencies {
+  invoiceDocumentPreviewReader: InvoiceDocumentPreviewReader;
 }
 
 export async function getApprovedInvoicePdfDocument(
@@ -28,24 +27,17 @@ export async function getApprovedInvoicePdfDocument(
   const companyId = requireIdentifier(input.companyId, 'Company id');
   const invoiceId = requireIdentifier(input.invoiceId, 'Approved invoice id');
 
-  const metadata =
-    await dependencies.invoiceDocumentRepository.findDocumentForInvoice(
-      companyId,
-      invoiceId,
-      approvedInvoicePdfDocumentType,
-    );
+  const scope = { companyId, invoiceId };
+  const reader = dependencies.invoiceDocumentPreviewReader;
+  const documentId = await reader.findPreviewDocumentId(scope);
+  if (documentId === undefined) throw new ApprovedInvoiceDocumentNotFoundError();
 
-  if (metadata === undefined) {
-    throw new ApprovedInvoiceDocumentNotFoundError();
-  }
-
-  try {
-    const content = await dependencies.invoiceDocumentStorage.readFile(
-      metadata.storagePath,
-    );
-
-    return { content, metadata };
-  } catch {
-    throw new ApprovedInvoiceDocumentNotFoundError();
-  }
+  const document = await readStoredInvoiceDocument({ ...scope, documentId }, dependencies)
+    .catch((error: unknown) => {
+      // A selected non-null reference must not silently become an absent PDF.
+      if (error instanceof ApprovedInvoiceDocumentNotFoundError) throw new InvoiceDocumentIntegrityError();
+      throw error;
+    });
+  if (await reader.findPreviewDocumentId(scope) !== documentId) throw new InvoiceDocumentReadConflictError();
+  return document;
 }

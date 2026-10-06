@@ -65,6 +65,7 @@ const migrationNames = [
   '036_create_invoice_settings_audit_events.sql',
   '037_add_invoice_payment_tracking.sql',
   '038_create_invoice_numbering_series_transitions.sql',
+  '039_add_invoice_content_revisions.sql',
 ];
 
 const migrationSql = migrationNames.map((migrationName) =>
@@ -472,7 +473,10 @@ function insertInvoiceDocument(
           mime_type,
           sha256,
           size_bytes,
-          created_at
+          created_at,
+          binding_kind,
+          revision_id,
+          source_document_id
         )
         VALUES (
           'document-1',
@@ -482,13 +486,17 @@ function insertInvoiceDocument(
           'lasku-20270001.pdf',
           ?,
           'application/pdf',
-          '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+          ?,
           8,
-          '2027-01-15T12:00:00.000Z'
+          '2027-01-15T12:00:00.000Z',
+          'revision',
+          (SELECT revision_id FROM invoice_current_revisions
+            WHERE company_id = 'dev-company' AND invoice_id = ?),
+          NULL
         )
       `,
     )
-    .run(input.invoiceId, input.storagePath);
+    .run(input.invoiceId, input.storagePath, '0123456789abcdef'.repeat(4), input.invoiceId);
 }
 
 function getSequence(
@@ -539,6 +547,7 @@ describe('SqliteInvoiceApprovalRepository', () => {
     await saveDraft(database, draft);
 
     await expect(repository.approveDraft(createApprovalInput())).resolves.toEqual({
+      revisionKey: { companyId: 'dev-company', invoiceId: 'invoice-1', revisionId: expect.any(String) },
       draftId: 'draft-1',
       invoiceId: 'invoice-1',
       invoiceNumber: '20270001',
@@ -1144,7 +1153,6 @@ describe('SqliteInvoiceApprovalRepository', () => {
     ).resolves.toEqual({
       draftId: 'draft-1',
       invoiceId: 'invoice-1',
-      removedDocumentStoragePaths: [],
     });
 
     const draftRow = database
@@ -1174,7 +1182,7 @@ describe('SqliteInvoiceApprovalRepository', () => {
     ]);
   });
 
-  it('removes approved invoice PDF metadata when an invoice is reopened', async () => {
+  it('retains approved invoice PDF metadata and detaches the current revision when reopened', async () => {
     const repository = new SqliteInvoiceApprovalRepository(database);
 
     await saveDraft(database, createDraft());
@@ -1193,9 +1201,8 @@ describe('SqliteInvoiceApprovalRepository', () => {
         reopenedAt: '2027-01-15T13:00:00.000Z',
       }),
     ).resolves.toMatchObject({
-      removedDocumentStoragePaths: [
-        'dev-company/invoice-1/approved-invoice.pdf',
-      ],
+      invoiceId: 'invoice-1',
+      draftId: 'draft-1',
     });
 
     const documentCount = database
@@ -1204,7 +1211,8 @@ describe('SqliteInvoiceApprovalRepository', () => {
       )
       .get();
 
-    expect(documentCount?.count).toBe(0);
+    expect(documentCount?.count).toBe(1);
+    expect(database.prepare('SELECT * FROM invoice_current_revisions').all()).toEqual([]);
   });
 
   it('does not reopen an approved invoice outside the company scope', async () => {
@@ -1616,6 +1624,7 @@ describe('SqliteInvoiceApprovalRepository', () => {
         }),
       ),
     ).resolves.toEqual({
+      revisionKey: { companyId: 'dev-company', invoiceId: 'invoice-1', revisionId: expect.any(String) },
       draftId: 'draft-1',
       invoiceId: 'invoice-1',
       invoiceNumber: '20270001',

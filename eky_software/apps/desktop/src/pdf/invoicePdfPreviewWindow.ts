@@ -24,7 +24,7 @@ interface InvoicePdfPreviewWindowControllerOptions {
 }
 
 interface ActiveInvoicePdfPreview {
-  invoiceId: string;
+  expectedUrl: string;
   ready: Promise<void>;
   window: BrowserWindow;
 }
@@ -57,17 +57,34 @@ export function createInvoicePdfPreviewWindowController(
 ): InvoicePdfPreviewWindowController {
   let activePreview: ActiveInvoicePdfPreview | undefined;
 
-  async function openInvoicePdf(invoiceId: unknown): Promise<void> {
-    const expectedUrl = createInvoicePdfPreviewUrl(invoiceId);
+  async function focusPreview(preview: ActiveInvoicePdfPreview): Promise<void> {
+    await preview.ready;
+
+    if (activePreview === preview && !preview.window.isDestroyed()) {
+      preview.window.focus();
+    }
+  }
+
+  async function openInvoicePdf(
+    invoiceId: unknown,
+    target?: unknown,
+  ): Promise<void> {
+    const expectedUrl = createInvoicePdfPreviewUrl(invoiceId, target);
 
     if (
       activePreview !== undefined &&
-      activePreview.invoiceId === invoiceId &&
+      activePreview.expectedUrl === expectedUrl &&
       !activePreview.window.isDestroyed()
     ) {
-      await activePreview.ready;
-      activePreview.window.focus();
-      return;
+      if (target !== undefined) {
+        await focusPreview(activePreview);
+        return;
+      }
+
+      // The current-PDF URL is mutable across reopen/reapproval. Never focus
+      // bytes from an earlier open, even if the new availability check fails.
+      activePreview.window.close();
+      activePreview = undefined;
     }
 
     let pdfAvailable = false;
@@ -85,11 +102,10 @@ export function createInvoicePdfPreviewWindowController(
 
     if (
       activePreview !== undefined &&
-      activePreview.invoiceId === invoiceId &&
+      activePreview.expectedUrl === expectedUrl &&
       !activePreview.window.isDestroyed()
     ) {
-      await activePreview.ready;
-      activePreview.window.focus();
+      await focusPreview(activePreview);
       return;
     }
 
@@ -138,7 +154,7 @@ export function createInvoicePdfPreviewWindowController(
       });
 
     activePreview = {
-      invoiceId: invoiceId as string,
+      expectedUrl,
       ready,
       window: previewWindow,
     };
@@ -156,12 +172,16 @@ export function createInvoicePdfPreviewWindowController(
   options.ipcMain.removeHandler(invoicePdfPreviewIpcChannel);
   options.ipcMain.handle(
     invoicePdfPreviewIpcChannel,
-    async (event, invoiceId: unknown) => {
+    async (event, invoiceId: unknown, target?: unknown, ...extraArgs: unknown[]) => {
       if (!isTrustedMainWindowRequest(event, options.mainWindow)) {
         throw new Error('INVOICE_PDF_PREVIEW_FORBIDDEN');
       }
 
-      await openInvoicePdf(invoiceId);
+      if (extraArgs.length > 0) {
+        throw new Error('INVOICE_PDF_PREVIEW_INVALID_TARGET');
+      }
+
+      await openInvoicePdf(invoiceId, target);
     },
   );
 
@@ -230,7 +250,7 @@ export function createInvoicePdfPreviewWindowController(
 
       if (
         activePreview === undefined ||
-        activePreview.invoiceId !== invoiceId ||
+        activePreview.expectedUrl !== createInvoicePdfPreviewUrl(invoiceId) ||
         activePreview.window.isDestroyed()
       ) {
         throw new Error('DESKTOP_SMOKE_PDF_PREVIEW_SECURITY_FAILED');

@@ -1,326 +1,275 @@
+import { createHash } from 'node:crypto';
+import { createActorContext } from '@eky/auth';
+import { AuthorizationError } from '@eky/permissions';
+
 import { describe, expect, it } from 'vitest';
 
-import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
-import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
-import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
-import type { InvoiceDocumentRepository } from '../ports/invoiceDocumentRepository.js';
-import type { InvoiceDocumentStorage } from '../ports/invoiceDocumentStorage.js';
+import type { RevisionInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
 import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
 import {
-  generateApprovedInvoicePdfDocument,
-} from './generateApprovedInvoicePdfDocument.js';
+  createControlledPromise,
+  createCurrentInput,
+  createDocumentMetadata,
+  createPdfGeneratorFixture,
+  createRevisionInput,
+} from './generateApprovedInvoicePdfDocument.fixture.js';
+import { generateApprovedInvoicePdfDocument } from './generateApprovedInvoicePdfDocument.js';
+import { InvoiceContentRevisionIntegrityError } from './invoiceContentRevisionIntegrityError.js';
+import { InvoiceDocumentIntegrityError } from './invoiceDocumentIntegrityError.js';
+import { InvoiceDocumentPublicationConflictError } from './invoiceDocumentPublicationConflictError.js';
+import {
+  createCreditRevisionPdfContentFixture,
+  createInvoiceRevisionPdfContentFixture,
+} from './toInvoiceRevisionPdfContent.fixture.js';
 
 describe('generateApprovedInvoicePdfDocument', () => {
-  it('renders an approved invoice PDF, writes it to storage, and stores metadata', async () => {
-    const dependencies = createDependencies();
-
-    const metadata = await generateApprovedInvoicePdfDocument(
-      createInput(),
-      dependencies,
-    );
-
-    expect(metadata).toMatchObject({
-      companyId: 'dev-company',
-      documentType: 'approved_invoice_pdf',
-      fileName: 'lasku-20260001.pdf',
-      invoiceId: 'invoice-1',
-      mimeType: 'application/pdf',
-      sizeBytes: 8,
-      storagePath: 'dev-company/invoice-1/approved-invoice.pdf',
+  it.each(['absent', 'denied', 'foreign'] as const)('does not promote legacy content with %s authorization', async mode => {
+    const revision = {
+      ...createInvoiceRevisionPdfContentFixture(),
+      origin: 'legacySnapshot' as const, vatBreakdownState: 'unavailable' as const, vatBreakdown: null,
+    };
+    const fixture = createPdfGeneratorFixture(revision);
+    const input = createCurrentInput(revision);
+    const actorContext = createActorContext({
+      actorId: 'actor-1', authenticationMode: 'local',
+      companyId: mode === 'foreign' ? 'foreign-company' : revision.companyId,
+      permissions: mode === 'denied' ? [] : ['sendInvoices'],
     });
-    expect(metadata.sha256).toBe(
-      '9d26fb5bd7159f32638ed3f1b58e2cd5c375e2febbaa863b3c09df778fa39704',
-    );
-    expect(dependencies.repository.savedDocuments).toEqual([metadata]);
-    expect(dependencies.storage.writes).toEqual([
-      {
-        content: new Uint8Array([37, 80, 68, 70, 45, 116, 101, 115]),
-        storagePath: 'dev-company/invoice-1/approved-invoice.pdf',
+    await expect(generateApprovedInvoicePdfDocument(
+      mode === 'absent' ? input : { ...input, actorContext }, fixture.dependencies,
+    )).rejects.toBeInstanceOf(AuthorizationError);
+    expect(fixture.dependencies.invoiceLegacyRevisionPromoter.promoteLegacyRevisionIfCurrent).not.toHaveBeenCalled();
+    expect(fixture.reader.getRevision).not.toHaveBeenCalled();
+    expect(fixture.storage.writeCandidate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { kind: 'standard', createRevision: createInvoiceRevisionPdfContentFixture, fileName: 'lasku-20261001.pdf' },
+    { kind: 'credit', createRevision: createCreditRevisionPdfContentFixture, fileName: 'hyvityslasku-20261001.pdf' },
+  ])('publishes the exact immutable $kind source without recalculating VAT', async ({ kind, createRevision, fileName }) => {
+    const revision = createRevision();
+    const before = structuredClone(revision);
+    revision.lines.forEach(Object.freeze);
+    revision.vatBreakdown.forEach(Object.freeze);
+    Object.freeze(revision.lines);
+    Object.freeze(revision.vatBreakdown);
+    Object.freeze(revision);
+    const fixture = createPdfGeneratorFixture(revision);
+    // The wrapper selects a key; the exact reader supplies rendering content.
+    fixture.reader.getCurrentRevision.mockResolvedValue({
+      ...revision,
+      companyNameSnapshot: 'Different current projection',
+      note: 'Must not be rendered',
+      totalVatCents: 999,
+    });
+    const input = createCurrentInput(revision);
+    const { key } = createRevisionInput(revision);
+
+    const metadata = await generateApprovedInvoicePdfDocument(input, fixture.dependencies);
+
+    expect(fixture.reader.getCurrentRevision).toHaveBeenCalledExactlyOnceWith({
+      companyId: key.companyId, invoiceId: key.invoiceId,
+    });
+    expect(fixture.reader.getRevision).toHaveBeenCalledExactlyOnceWith(key);
+    expect(fixture.repository.findDocumentForRevision).toHaveBeenCalledExactlyOnceWith(key);
+    expect(fixture.renderApprovedInvoicePdf).toHaveBeenCalledOnce();
+    const content = fixture.renderApprovedInvoicePdf.mock.calls[0]![0];
+    expect(content).toMatchObject({
+      invoiceKind: kind,
+      invoiceNumber: '20261001',
+      companyNameSnapshot: 'Example Seller Oy',
+      customerNameSnapshot: 'Example Customer Oy',
+      billingRecipientNameSnapshot: 'Example Recipient Oy',
+      note: '  Snapshot note\nSecond line  ',
+      performancePeriod: { type: 'singleDate', date: '2026-09-29' },
+    });
+    expect(content.vatBreakdown).toStrictEqual(before.vatBreakdown);
+    expect(content.totals).toStrictEqual(kind === 'credit'
+      ? { netTotalCents: 67, vatTotalCents: 18, grossTotalCents: 85 }
+      : { netTotalCents: 104, vatTotalCents: 15, grossTotalCents: 119 });
+    expect(content.lines.map(({ netCents, grossCents }) => ({ netCents, grossCents })))
+      .toStrictEqual(kind === 'credit'
+        ? [{ netCents: 67, grossCents: 85 }]
+        : [{ netCents: 2, grossCents: 3 }, { netCents: 2, grossCents: 3 }, { netCents: 100, grossCents: 114 }]);
+    expect(content.referenceNumber).toBe(kind === 'credit' ? '' : '202610010');
+    expect(content.creditedInvoiceNumber).toBe(kind === 'credit' ? '20260991' : null);
+    expect(content.creditedInvoiceDate).toBe(kind === 'credit' ? '2026-09-01' : null);
+    for (const field of ['companyId', 'invoiceId', 'revisionId', 'status', 'paymentState', 'cancelledAt']) {
+      expect(content).not.toHaveProperty(field);
+    }
+    expect(revision).toStrictEqual(before);
+    expect(fixture.storage.writeCandidate).toHaveBeenCalledExactlyOnceWith({
+      scope: key, documentId: metadata.id, content: fixture.pdf,
+    });
+    expect(fixture.storage.writeCandidate.mock.calls[0]![0].content).toBe(fixture.pdf);
+    expect(metadata).toStrictEqual({
+      id: expect.any(String), companyId: key.companyId, invoiceId: key.invoiceId,
+      binding: { kind: 'revision', revisionId: key.revisionId },
+      documentType: 'approved_invoice_pdf', mimeType: 'application/pdf',
+      fileName, createdAt: input.createdAt,
+      storagePath: `${key.companyId}/${key.invoiceId}/${metadata.id}.pdf`,
+      sha256: createHash('sha256').update(fixture.pdf).digest('hex'),
+      sizeBytes: fixture.pdf.byteLength,
+    });
+    expect(fixture.repository.publishDocumentIfCurrent).toHaveBeenCalledExactlyOnceWith({
+      key,
+      candidate: {
+        id: metadata.id, createdAt: input.createdAt, fileName,
+        storagePath: metadata.storagePath, sha256: metadata.sha256, sizeBytes: metadata.sizeBytes,
       },
-    ]);
+    });
+    expect(fixture.retainedCandidates.get(metadata.id)).toStrictEqual(fixture.pdf);
+    expect(fixture.discardCandidate).not.toHaveBeenCalled();
+    expect(fixture.repository.publishPreservedLegacyDocument).not.toHaveBeenCalled();
   });
 
-  it('returns existing metadata without rendering or writing a duplicate PDF', async () => {
-    const existingDocument = createDocumentMetadata();
-    const dependencies = createDependencies({
-      existingDocument,
+  it('does not read an exact revision when the scoped current invoice is missing', async () => {
+    const fixture = createPdfGeneratorFixture();
+    fixture.reader.getCurrentRevision.mockResolvedValue(undefined);
+
+    await expect(generateApprovedInvoicePdfDocument(createCurrentInput(), fixture.dependencies))
+      .rejects.toEqual(new ApprovedInvoiceNotFoundError());
+
+    expect(fixture.reader.getRevision).not.toHaveBeenCalled();
+    expect(fixture.repository.findDocumentForRevision).not.toHaveBeenCalled();
+    expect(fixture.renderApprovedInvoicePdf).not.toHaveBeenCalled();
+    expect(fixture.storage.writeCandidate).not.toHaveBeenCalled();
+  });
+
+  it.each(['companyId', 'invoiceId'] as const)('rejects a current source with foreign %s', async (field) => {
+    const fixture = createPdfGeneratorFixture();
+    fixture.reader.getCurrentRevision.mockResolvedValue({
+      ...createInvoiceRevisionPdfContentFixture(), [field]: 'foreign-scope',
     });
 
-    await expect(
-      generateApprovedInvoicePdfDocument(createInput(), dependencies),
-    ).resolves.toEqual(existingDocument);
+    await expect(generateApprovedInvoicePdfDocument(createCurrentInput(), fixture.dependencies))
+      .rejects.toEqual(new InvoiceContentRevisionIntegrityError());
 
-    expect(dependencies.renderCalls).toBe(0);
-    expect(dependencies.storage.reads).toEqual([
-      'dev-company/invoice-1/approved-invoice.pdf',
-    ]);
-    expect(dependencies.storage.writes).toEqual([]);
-    expect(dependencies.repository.savedDocuments).toEqual([]);
+    expect(fixture.reader.getRevision).not.toHaveBeenCalled();
+    expect(fixture.repository.findDocumentForRevision).not.toHaveBeenCalled();
+    expect(fixture.storage.writeCandidate).not.toHaveBeenCalled();
   });
 
-  it('uses a credit invoice filename for a credit snapshot', async () => {
-    const dependencies = createDependencies({
-      invoice: {
-        ...createApprovedInvoiceView(),
-        creditedInvoiceId: 'source-invoice-1',
-        creditedInvoiceNumber: '20260001',
-        creditedInvoiceDate: '2026-07-01',
-        invoiceKind: 'credit',
-        invoiceNumber: '20260002',
-      },
+  it.each([
+    { kind: 'standard', createRevision: createInvoiceRevisionPdfContentFixture },
+    { kind: 'credit', createRevision: createCreditRevisionPdfContentFixture },
+  ])('verifies cached $kind bytes before the read-only current eligibility check', async ({ createRevision }) => {
+    const revision = createRevision();
+    const fixture = createPdfGeneratorFixture(revision);
+    const { key } = createRevisionInput(revision);
+    const existing = createDocumentMetadata(key);
+    const verificationStarted = createControlledPromise<void>();
+    const verificationFinished = createControlledPromise<Uint8Array>();
+    fixture.repository.findDocumentForRevision.mockResolvedValue(existing);
+    fixture.repository.findCurrentDocumentForRevision.mockResolvedValue(existing);
+    fixture.storage.readVerifiedDocument.mockImplementation(() => {
+      verificationStarted.resolve();
+      return verificationFinished.promise;
     });
 
-    const metadata = await generateApprovedInvoicePdfDocument(
-      createInput(),
-      dependencies,
-    );
-
-    expect(metadata.fileName).toBe('hyvityslasku-20260002.pdf');
-  });
-
-  it('regenerates the PDF when metadata exists but the local file is missing', async () => {
-    const existingDocument = createDocumentMetadata();
-    const dependencies = createDependencies({
-      existingDocument,
-      missingStoragePaths: [existingDocument.storagePath],
-    });
-
-    const metadata = await generateApprovedInvoicePdfDocument(
-      createInput(),
-      dependencies,
-    );
-
-    expect(metadata.id).not.toBe(existingDocument.id);
-    expect(dependencies.repository.deletedDocuments).toEqual([
-      {
-        companyId: 'dev-company',
-        documentType: 'approved_invoice_pdf',
-        invoiceId: 'invoice-1',
-      },
-    ]);
-    expect(dependencies.renderCalls).toBe(1);
-    expect(dependencies.storage.writes).toHaveLength(1);
-  });
-
-  it('throws a safe not-found error when the approved invoice is not available', async () => {
-    const dependencies = createDependencies({
-      invoice: null,
-    });
-
-    await expect(
-      generateApprovedInvoicePdfDocument(createInput(), dependencies),
-    ).rejects.toEqual(new ApprovedInvoiceNotFoundError());
-  });
-});
-
-function createInput() {
-  return {
-    companyId: 'dev-company',
-    createdAt: '2026-07-05T10:00:00.000Z',
-    invoiceId: 'invoice-1',
-  };
-}
-
-function createDependencies(options: {
-  existingDocument?: ApprovedInvoiceDocumentMetadata;
-  invoice?: ApprovedInvoiceView | null;
-  missingStoragePaths?: string[];
-} = {}) {
-  const repository = new FakeInvoiceDocumentRepository(options.existingDocument);
-  const storage = new FakeInvoiceDocumentStorage(options.missingStoragePaths);
-  const invoice =
-    'invoice' in options ? options.invoice : createApprovedInvoiceView();
-  const reader = new FakeApprovedInvoiceReader(invoice);
-  let renderCalls = 0;
-
-  return {
-    approvedInvoiceReader: reader,
-    get renderCalls() {
-      return renderCalls;
-    },
-    invoiceDocumentRepository: repository,
-    invoiceDocumentStorage: storage,
-    repository,
-    async renderApprovedInvoicePdf(): Promise<Uint8Array> {
-      renderCalls += 1;
-
-      return new Uint8Array([37, 80, 68, 70, 45, 116, 101, 115]);
-    },
-    storage,
-  };
-}
-
-class FakeApprovedInvoiceReader implements ApprovedInvoiceReader {
-  constructor(private readonly invoice: ApprovedInvoiceView | null | undefined) {}
-
-  async getApprovedInvoiceById(): Promise<ApprovedInvoiceView | undefined> {
-    return this.invoice ?? undefined;
-  }
-
-  async listApprovedInvoiceSummaries(): Promise<never> {
-    throw new Error('Not implemented in this PDF document test.');
-  }
-}
-
-class FakeInvoiceDocumentRepository implements InvoiceDocumentRepository {
-  deletedDocuments: Array<{
-    companyId: string;
-    documentType: string;
-    invoiceId: string;
-  }> = [];
-  savedDocuments: ApprovedInvoiceDocumentMetadata[] = [];
-
-  constructor(
-    private readonly existingDocument: ApprovedInvoiceDocumentMetadata | undefined,
-  ) {}
-
-  async deleteDocumentsForInvoice(
-    companyId: string,
-    invoiceId: string,
-    documentType: 'approved_invoice_pdf',
-  ): Promise<string[]> {
-    this.deletedDocuments.push({ companyId, documentType, invoiceId });
-
-    return [createDocumentMetadata().storagePath];
-  }
-
-  async findDocumentForInvoice(): Promise<
-    ApprovedInvoiceDocumentMetadata | undefined
-  > {
-    return this.existingDocument;
-  }
-
-  async saveDocument(
-    metadata: ApprovedInvoiceDocumentMetadata,
-  ): Promise<ApprovedInvoiceDocumentMetadata> {
-    this.savedDocuments.push(metadata);
-
-    return metadata;
-  }
-}
-
-class FakeInvoiceDocumentStorage implements InvoiceDocumentStorage {
-  reads: string[] = [];
-  writes: Array<{ content: Uint8Array; storagePath: string }> = [];
-
-  constructor(private readonly missingStoragePaths: string[] = []) {}
-
-  async deleteFile(): Promise<void> {
-    throw new Error('Not implemented in this PDF document test.');
-  }
-
-  async readFile(storagePath: string): Promise<Uint8Array> {
-    this.reads.push(storagePath);
-
-    if (this.missingStoragePaths.includes(storagePath)) {
-      throw new Error('Missing test file.');
+    const pending = generateApprovedInvoicePdfDocument(createCurrentInput(revision), fixture.dependencies);
+    try {
+      await verificationStarted.promise;
+      expect(fixture.repository.findCurrentDocumentForRevision).not.toHaveBeenCalled();
+      expect(fixture.repository.publishDocumentIfCurrent).not.toHaveBeenCalled();
+    } finally {
+      verificationFinished.resolve(fixture.pdf);
+      await pending;
     }
 
-    return new Uint8Array([37, 80, 68, 70]);
-  }
+    expect(await pending).toBe(existing);
+    expect(fixture.storage.readVerifiedDocument).toHaveBeenCalledExactlyOnceWith(existing);
+    expect(fixture.repository.findCurrentDocumentForRevision).toHaveBeenCalledExactlyOnceWith(key);
+    expect(fixture.renderApprovedInvoicePdf).not.toHaveBeenCalled();
+    expect(fixture.storage.writeCandidate).not.toHaveBeenCalled();
+    expect(fixture.repository.publishDocumentIfCurrent).not.toHaveBeenCalled();
+    expect(fixture.repository.publishPreservedLegacyDocument).not.toHaveBeenCalled();
+    expect(fixture.discardCandidate).not.toHaveBeenCalled();
+  });
 
-  async writeFile(storagePath: string, content: Uint8Array): Promise<void> {
-    this.writes.push({ content, storagePath });
-  }
-}
+  it.each([
+    { fault: 'missing file', error: new Error('Synthetic missing PDF.') },
+    { fault: 'corrupt bytes', error: new InvoiceDocumentIntegrityError() },
+  ])('retains a cached document with $fault without regeneration', async ({ error }) => {
+    const fixture = createPdfGeneratorFixture();
+    const existing = createDocumentMetadata();
+    const before = structuredClone(existing);
+    fixture.repository.findDocumentForRevision.mockResolvedValue(existing);
+    fixture.storage.readVerifiedDocument.mockRejectedValue(error);
 
-function createDocumentMetadata(): ApprovedInvoiceDocumentMetadata {
-  return {
-    id: 'document-1',
-    companyId: 'dev-company',
-    invoiceId: 'invoice-1',
-    documentType: 'approved_invoice_pdf',
-    fileName: 'lasku-20260001.pdf',
-    storagePath: 'dev-company/invoice-1/approved-invoice.pdf',
-    mimeType: 'application/pdf',
-    sha256:
-      '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-    sizeBytes: 8,
-    createdAt: '2026-07-05T10:00:00.000Z',
-  };
-}
+    await expect(generateApprovedInvoicePdfDocument(createCurrentInput(), fixture.dependencies))
+      .rejects.toBe(error);
 
-function createApprovedInvoiceView(): ApprovedInvoiceView {
-  return {
-    id: 'invoice-1',
-    companyId: 'dev-company',
-    sourceDraftId: 'draft-1',
-    invoiceKind: 'standard',
-    creditedInvoiceId: null,
-    creditedInvoiceNumber: null,
-    creditedInvoiceDate: null,
-    invoiceNumber: '20260001',
-    referenceNumber: '202600017',
-    referenceNumberType: 'finnishDomestic',
-    seriesKey: 'default',
-    sequenceScope: 'calendar-year:2026',
-    sequenceNumber: 1,
-    numberingMode: 'calendarYearSequence',
-    status: 'approved',
-    customerId: 'customer-1',
-    customerNumberSnapshot: '1001',
-    customerNameSnapshot: 'Example Customer Oy',
-    customerBusinessIdSnapshot: '1234567-8',
-    customerTypeSnapshot: 'company',
-    customerEmailSnapshot: 'customer@example.fi',
-    customerPhoneSnapshot: '040 111 2222',
-    customerStreetAddressSnapshot: 'Customer Street 1',
-    customerPostalCodeSnapshot: '00100',
-    customerCitySnapshot: 'Helsinki',
-    companyNameSnapshot: 'Example Builder Oy',
-    companyBusinessIdSnapshot: '7654321-0',
-    companyVatNumberSnapshot: 'FI76543210',
-    companyStreetAddressSnapshot: 'Builder Street 2',
-    companyPostalCodeSnapshot: '33100',
-    companyCitySnapshot: 'Tampere',
-    companyEmailSnapshot: 'office@example.fi',
-    companyPhoneSnapshot: '040 000 0000',
-    companyWebsiteSnapshot: 'www.example-builder.fi',
-    companyIbanSnapshot: 'FI2112345600000785',
-    companyBicSnapshot: 'NDEAFIHH',
-    companyBankNameSnapshot: 'Test Bank',
-    billingRecipientCustomerId: null,
-    billingRecipientCustomerNumberSnapshot: '1001',
-    billingRecipientNameSnapshot: 'Example Customer Oy',
-    billingRecipientBusinessIdSnapshot: '1234567-8',
-    billingRecipientCustomerTypeSnapshot: 'company',
-    billingRecipientEmailSnapshot: 'customer@example.fi',
-    billingRecipientPhoneSnapshot: '040 111 2222',
-    billingRecipientStreetAddressSnapshot: 'Customer Street 1',
-    billingRecipientPostalCodeSnapshot: '00100',
-    billingRecipientCitySnapshot: 'Helsinki',
-    invoiceDate: '2026-07-05',
-    dueDate: '2026-07-19',
-    paymentTermDays: 14,
-    reminderPeriodDays: 8,
-    latePaymentInterestBasisPoints: 950,
-    priceInputMode: 'net',
-    taxTreatment: 'normalVat',
-    taxTreatmentLabelSnapshot: '',
-    taxLegalBasisSnapshot: '',
-    performancePeriod: { type: 'invoiceDate' },
-    refundIbanSnapshot: '',
-    subject: 'Test invoice',
-    orderNumber: '',
-    note: '',
-    deliveryAddressText: '',
-    lines: [],
-    totals: {
-      netTotalCents: 0,
-      vatBreakdown: [],
-      vatTotalCents: 0,
-      grossTotalCents: 0,
-    },
-    vatBreakdown: [],
-    createdAt: '2026-07-05T10:00:00.000Z',
-    approvedAt: '2026-07-05T10:00:00.000Z',
-    updatedAt: '2026-07-05T10:00:00.000Z',
-    paymentState: 'unpaid',
-    paidOn: null,
-    paidAmountCents: null,
-    paymentSource: null,
-    cancelledAt: null,
-    cancelledBy: null,
-    cancellationReason: null,
-  };
-}
+    expect(existing).toStrictEqual(before);
+    expect(fixture.storage.readVerifiedDocument).toHaveBeenCalledExactlyOnceWith(existing);
+    expect(fixture.repository.findCurrentDocumentForRevision).not.toHaveBeenCalled();
+    expect(fixture.renderApprovedInvoicePdf).not.toHaveBeenCalled();
+    expect(fixture.storage.writeCandidate).not.toHaveBeenCalled();
+    expect(fixture.repository.publishDocumentIfCurrent).not.toHaveBeenCalled();
+    expect(fixture.discardCandidate).not.toHaveBeenCalled();
+  });
+
+  it('retains verified cached history when it is no longer current', async () => {
+    const fixture = createPdfGeneratorFixture();
+    const existing = createDocumentMetadata();
+    fixture.repository.findDocumentForRevision.mockResolvedValue(existing);
+
+    await expect(generateApprovedInvoicePdfDocument(createCurrentInput(), fixture.dependencies))
+      .rejects.toMatchObject({
+        name: 'InvoiceDocumentPublicationConflictError', candidateCleanupFailed: false,
+        message: new InvoiceDocumentPublicationConflictError().message,
+      });
+
+    expect(fixture.storage.readVerifiedDocument).toHaveBeenCalledExactlyOnceWith(existing);
+    expect(fixture.repository.findCurrentDocumentForRevision).toHaveBeenCalledExactlyOnceWith(createRevisionInput().key);
+    expect(fixture.renderApprovedInvoicePdf).not.toHaveBeenCalled();
+    expect(fixture.storage.writeCandidate).not.toHaveBeenCalled();
+    expect(fixture.repository.publishDocumentIfCurrent).not.toHaveBeenCalled();
+    expect(fixture.discardCandidate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { companyId: 'foreign-company' },
+    { invoiceId: 'foreign-invoice' },
+    { binding: { kind: 'revision', revisionId: 'foreign-revision' } },
+    { binding: { kind: 'legacyOriginal' } },
+  ])('rejects a foreign cache binding before reading its file: %j', async (overrides) => {
+    const fixture = createPdfGeneratorFixture();
+    fixture.repository.findDocumentForRevision.mockResolvedValue({
+      ...createDocumentMetadata(), ...overrides,
+    } as RevisionInvoiceDocumentMetadata);
+
+    await expect(generateApprovedInvoicePdfDocument(createCurrentInput(), fixture.dependencies))
+      .rejects.toEqual(new InvoiceDocumentIntegrityError());
+
+    expect(fixture.storage.readVerifiedDocument).not.toHaveBeenCalled();
+    expect(fixture.repository.findCurrentDocumentForRevision).not.toHaveBeenCalled();
+    expect(fixture.storage.writeCandidate).not.toHaveBeenCalled();
+    expect(fixture.repository.publishDocumentIfCurrent).not.toHaveBeenCalled();
+    expect(fixture.discardCandidate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { id: 'other-document' },
+    { storagePath: 'other-document.pdf' },
+    { sha256: 'b'.repeat(64) },
+    { sizeBytes: 101 },
+    { companyId: 'foreign-company' },
+    { invoiceId: 'foreign-invoice' },
+    { binding: { kind: 'revision' as const, revisionId: 'other-revision' } },
+  ])('does not return current metadata differing from the verified document: %j', async (overrides) => {
+    const fixture = createPdfGeneratorFixture();
+    const existing = createDocumentMetadata();
+    fixture.repository.findDocumentForRevision.mockResolvedValue(existing);
+    fixture.repository.findCurrentDocumentForRevision.mockResolvedValue({ ...existing, ...overrides });
+
+    await expect(generateApprovedInvoicePdfDocument(createCurrentInput(), fixture.dependencies))
+      .rejects.toEqual(new InvoiceDocumentIntegrityError());
+
+    expect(fixture.storage.readVerifiedDocument).toHaveBeenCalledExactlyOnceWith(existing);
+    expect(fixture.renderApprovedInvoicePdf).not.toHaveBeenCalled();
+    expect(fixture.storage.writeCandidate).not.toHaveBeenCalled();
+    expect(fixture.repository.publishDocumentIfCurrent).not.toHaveBeenCalled();
+    expect(fixture.discardCandidate).not.toHaveBeenCalled();
+  });
+});

@@ -38,6 +38,70 @@ kohde- tai tuntikirjaustesti ei rakenna omaa prosessienhallintaa tai tunne
 Job Objectia, Linuxin eristysmekanismia tai diagnostiikan tulosskeemoja.
 Hardened packaged -todistus säilyy erillisenä desktopin hyväksyntäporttina.
 
+Laskutuksen vanhan aineiston native-kokeessa sama Electron-fixture tarjoaa
+`e2eLegacyInvoiceProfile: 'sent'` -valinnan. Se luo vain testijuureen
+synteettisen 038-profiilin; tuotannon startup suorittaa migraation.
+Valintaa ei yhdistetä workspace-backup-fixtureen eikä profiilia kylvetä
+uudelleen restartissa. [Valmistelija](../../apps/e2e/src/data/createLegacyInvoiceProfile.ts)
+torjuu vieraat juuret, linkit ja olemassa olevan runtimen. Valmisteluvirhe
+säilyttää aineiston ja `legacyInvoiceProfile`-vaiheen nykyisessä
+`electron-lifecycle`-liitteessä; raportointivirhe ei korvaa ensivirhettä.
+Tämä ei lisää tuotantoon testiohjausta tai muodosta uutta testipohjaa.
+
+Paketoidun legacy-palautuksen syöte muodostetaan erillisellä
+[salatun legacy-backupin valmistelijalla](../../apps/e2e/src/data/createLegacyInvoiceBackup.ts).
+Se käyttää samaa juuriltaan validoitua 038-fixtureä ja nykyistä
+snapshot/container-ketjua. Vain tämä kutsuja valitsee eksplisiittisen
+historiallisen prefixin; tavallisen varmuuskopioapurin oletus on edelleen
+`exactCurrentManifest`. Valmistelija vaatii `EKY_E2E=1`, ei migroi kantaa,
+ei lue käyttäjäprofiileja eikä kirjoita desktopin production-buildiin.
+Salasanan antaa synteettisen kokeen kutsuja; sitä ei tallenneta
+koordinaatiotiedostoon tai julkaista raportissa. Autentikoidun backupin
+038-skeema, alkuperäinen tapahtuma ja täsmällinen PDF todennetaan
+[valmistelijan sopimustestissä](../../apps/e2e/tests/system/legacyInvoiceBackup.spec.ts).
+Tämä syötteen todiste ei vielä ole paketoidun palautuksen hyväksyntä.
+
+[Paketoidun kokeen valmistelija](../../apps/e2e/src/data/prepareLegacyInvoicePackagedSmoke.ts)
+siirtää tästä vain suljetun kannan, alkuperäisen PDF:n ja salatun backupin
+itsenäisinä tavuina nykyisen packaged-smoken uuteen token-juureen.
+Kohde varataan yksinoikeudella; käytetty tai linkitetty juuri ei kelpaa.
+Se ei kirjoita työtilarekisteriä, hyväksyttyä buildia tai sessionia eikä
+tee migraatiota. Lähde ja epäonnistuneen valmistelun kohde säilytetään.
+[Sopimustesti](../../apps/e2e/tests/system/legacyInvoicePackagedInput.spec.ts)
+todistaa kopioiden erillisyyden myös kohdekannan oikean migraation jälkeen.
+Sovelluksen käyttöönotto ja saman lineagen palautus on edelleen todennettava
+paketoidussa runtimessa, ei tällä valmistelutestillä.
+
+Varsinainen [legacy-palautuskoe](../../apps/e2e/tests/packaged/legacyInvoiceRecovery.spec.ts)
+ajetaan Windowsissa komennolla `pnpm --filter @eky/e2e e2e:packaged:legacy`.
+Komento valmistelee nykyisen E2E-backendin ja rakentaa tuoreen hardened-paketin.
+Windowsin nykyinen CI-jobi käyttää juuri edeltävässä askeleessa rakentamaansa
+samaa pakettia: `Prepare packaged legacy recovery runtime` valmistelee
+E2E-apurit ja `Run packaged legacy recovery` ajaa eksplisiittisen configin.
+Ajokytkentäregressio vaatii tämän järjestyksen ilman ehtoja tai virheohitusta;
+CI:n hyväksyntäkoonti vaatii molempien askeleiden onnistumisen.
+Erillinen Playwright-projekti käyttää nykyistä packaged-smoke-ajuria ja sen
+kahta 120 sekunnin vaihetta ilman uusintaa; tavallinen `e2e:all` ei valitse sitä.
+Todellinen startup ottaa vanhan profiilin käyttöön ja migroi sen. Koe tarkistaa
+salatun alkuperäisen backupin, luo palautuksessa poistuvan muutoksen ja käyttää
+workspace-managementin saman lineagen korvausta. Relaunchin jälkeen vaaditaan
+`workspaceReplacement`-palautusvaltuus, uusi runtime/session sekä säilyneet
+lasku-, historia- ja PDF-tiedot, konekohtainen synteettinen salaisuus ja toinen
+onnistunut backup/inspect.
+
+Migraatio muuttaa tietokannan tavut. Siksi ennen seuraavaa backend-käynnistystä
+[vertailija](../../apps/e2e/src/data/legacyInvoiceRecoveryComparison.ts) vaatii
+lähteen lasku-, laskurivi-, dokumentti- ja toimitustapahtumataulujen kaikkien
+alkuperäisten rivien ja kenttien säilymisen. Vasta sen jälkeen suljetun
+palautuskannan hash sidotaan seuraavan käynnistyksen tavutarkistukseen.
+PDF-katalogi ja PDF-tavut verrataan edelleen alkuperäiseen odotukseen;
+muuttunutta historiakenttää hylkäävä regressio on erillinen system-testi.
+Epäonnistuneen kokeen aineisto säilyy nykyisissä yksityisissä testijuurissa.
+Nykyinen salattu CI-keräin poimii vain nimetyn smoke-tuloksen ja rajatun
+prosessitulosteen sekä Playwrightin virheraportin. Legacy-syötteen backup,
+identiteettitiedosto, vertailutila ja profiili eivät kuulu keräykseen.
+Kehityspaketin läpäisy ei korvaa puhtaan releasekandidaatin hyväksyntää.
+
 ### Ajokytkentä ja puhdas valmistelu
 
 T1:n suoja yhdistää vaaditun testitiedoston todelliseen package-komentoon,

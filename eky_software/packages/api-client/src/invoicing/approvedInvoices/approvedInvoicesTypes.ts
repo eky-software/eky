@@ -275,10 +275,15 @@ export interface ApprovedInvoiceEmailAttachmentPreview {
   sizeBytes: number;
 }
 
+export type ApprovedInvoiceEmailDocumentTarget =
+  | { kind: 'revision'; documentId: string }
+  | { kind: 'preservedLegacy'; documentId: string };
+
 export interface ApprovedInvoiceEmailPreview {
   provider: ApprovedInvoiceEmailProvider;
   invoiceId: string;
   invoiceNumber: string;
+  documentTarget: ApprovedInvoiceEmailDocumentTarget;
   to: string;
   subject: string;
   body: string;
@@ -345,16 +350,19 @@ export interface ApprovedInvoiceEmailSmtpTestSendResult {
 }
 
 export type ApprovedInvoiceEmailSmtpPrepareInput =
-  ApprovedInvoiceEmailDryRunSendInput;
+  ApprovedInvoiceEmailDryRunSendInput & {
+    documentTarget: ApprovedInvoiceEmailDocumentTarget;
+  };
 
 export type ApprovedInvoiceEmailSmtpSendInput =
-  ApprovedInvoiceEmailDryRunSendInput & {
+  ApprovedInvoiceEmailSmtpPrepareInput & {
     attemptId: string;
     authorizationToken: string;
   };
 
 export interface ApprovedInvoiceEmailSmtpPreparation {
   attachment: {
+    documentId: string;
     fileName: string;
     sizeBytes: number;
   };
@@ -362,6 +370,7 @@ export interface ApprovedInvoiceEmailSmtpPreparation {
   authorizationToken: string;
   body: string;
   cc: string;
+  documentTarget: ApprovedInvoiceEmailDocumentTarget;
   expiresAt: string;
   invoiceId: string;
   invoiceNumber: string;
@@ -407,6 +416,13 @@ export interface InvoiceDeliveryEventSummary {
   createdAt: string;
   deliveryMethod: InvoiceDeliveryMethod;
   provider: InvoiceDeliveryProvider;
+  sendMode: 'customer' | 'smtpTest' | 'dryRun' | 'manual' | 'legacyUnknown';
+  // Stored provenance only; the PDF read separately verifies document bytes.
+  documentSource:
+    | 'revision'
+    | 'preservedLegacy'
+    | 'legacyOriginal'
+    | 'legacyMissingDocument';
   recipientEmail: string;
   ccEmail: string;
   safeErrorMessage: string | null;
@@ -426,6 +442,8 @@ export interface ApprovedInvoicesApi {
   getApprovedInvoice(id: string): Promise<ApprovedInvoiceView>;
   getInvoiceCreditContext(id: string): Promise<InvoiceCreditContext>;
   getApprovedInvoicePdfUrl(id: string): string;
+  getPreservedLegacyInvoicePdfUrl(id: string, documentId: string): string;
+  getInvoiceDeliveryEventPdfUrl(invoiceId: string, eventId: string): string;
   listApprovedInvoices(
     query: ApprovedInvoiceListQuery,
   ): Promise<ApprovedInvoiceListPage>;

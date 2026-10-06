@@ -314,6 +314,11 @@ test('INV-CANCEL-001 @critical cancels an undelivered invoice without deleting i
   });
   const approved = await approveCurrentInvoiceDraft(e2eWeb.page);
   await createCurrentInvoicePdf(e2eWeb.page);
+  const previewResponse = await e2eWeb.api.post(
+    `/invoices/${approved.invoiceId}/email/dry-run`,
+  );
+  expect(previewResponse.status()).toBe(200);
+  const { email } = await previewResponse.json();
   await cancelCurrentApprovedInvoice(e2eWeb.page, approved.invoiceNumber);
 
   await openApprovedInvoiceFromList(
@@ -342,6 +347,7 @@ test('INV-CANCEL-001 @critical cancels an undelivered invoice without deleting i
     {
       data: {
         body: 'Synthetic blocked delivery',
+        documentTarget: email.documentTarget,
         cc: '',
         subject: 'Synthetic blocked delivery',
         to: 'invoice-recipient@example.invalid',

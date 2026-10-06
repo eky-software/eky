@@ -7,8 +7,9 @@ import { createInvoiceEmailSendRequestFingerprint } from './invoiceEmailSendRequ
 import { normalizeApprovedInvoiceEmailSendFields } from './approvedInvoiceEmailSendValidation.js';
 import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
 import { requireInvoiceDeliveryEligible } from './requireInvoiceDeliveryEligible.js';
-import type { GenerateApprovedInvoicePdfDocumentInput } from './generateApprovedInvoicePdfDocument.js';
-import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
+import { requireLegacyInvoiceDeliveryReviewed } from './requireLegacyInvoiceDeliveryReviewed.js';
+import type { ApprovedInvoiceEmailDocumentTarget } from './approvedInvoiceEmailPreview.js';
+import type { CustomerInvoiceEmailDocument, LoadCustomerInvoiceEmailDocumentInput } from './loadCustomerInvoiceEmailDocument.js';
 import { requireIdentifier } from '../domain/invoiceDraftRules.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
 import type { InvoiceDeliveryEventReader } from '../ports/invoiceDeliveryEventReader.js';
@@ -19,6 +20,7 @@ export interface PrepareApprovedInvoiceEmailSmtpInput {
   actorContext: ActorContext;
   body: string;
   cc?: string;
+  documentTarget: ApprovedInvoiceEmailDocumentTarget;
   invoiceId: string;
   preparedAt: string;
   subject: string;
@@ -27,6 +29,7 @@ export interface PrepareApprovedInvoiceEmailSmtpInput {
 
 export interface ApprovedInvoiceEmailSmtpPreparation {
   attachment: {
+    documentId: string;
     fileName: string;
     sizeBytes: number;
   };
@@ -34,6 +37,7 @@ export interface ApprovedInvoiceEmailSmtpPreparation {
   authorizationToken: string;
   body: string;
   cc: string;
+  documentTarget: ApprovedInvoiceEmailDocumentTarget;
   expiresAt: string;
   invoiceId: string;
   invoiceNumber: string;
@@ -45,12 +49,12 @@ export interface ApprovedInvoiceEmailSmtpPreparation {
 
 export interface PrepareApprovedInvoiceEmailSmtpDependencies {
   approvedInvoiceReader: ApprovedInvoiceReader;
-  ensureApprovedInvoicePdfDocument(
-    input: GenerateApprovedInvoicePdfDocumentInput,
-  ): Promise<ApprovedInvoiceDocumentMetadata>;
+  loadCustomerInvoiceEmailDocument(
+    input: LoadCustomerInvoiceEmailDocumentInput,
+  ): Promise<CustomerInvoiceEmailDocument>;
   invoiceEmailSendAttemptStore: InvoiceEmailSendAttemptStore;
   invoiceEmailSettingsReader: InvoiceEmailSettingsReader;
-  invoiceDeliveryEventReader: InvoiceDeliveryEventReader;
+  invoiceDeliveryEventReader: Pick<InvoiceDeliveryEventReader, 'hasUnresolvedDeliveryEvent' | 'requiresLegacyDeliveryReview'>;
 }
 
 export async function prepareApprovedInvoiceEmailSmtp(
@@ -77,6 +81,7 @@ export async function prepareApprovedInvoiceEmailSmtp(
   }
 
   requireInvoiceDeliveryEligible(invoice);
+  await requireLegacyInvoiceDeliveryReviewed({ companyId, invoiceId }, dependencies.invoiceDeliveryEventReader);
 
   if (
     await dependencies.invoiceDeliveryEventReader.hasUnresolvedDeliveryEvent(
@@ -97,52 +102,59 @@ export async function prepareApprovedInvoiceEmailSmtp(
     );
   }
 
-  const document = await dependencies.ensureApprovedInvoicePdfDocument({
-    companyId,
+  const loaded = await dependencies.loadCustomerInvoiceEmailDocument({
+    actorContext: input.actorContext,
+    documentTarget: input.documentTarget,
     createdAt: preparedAt,
     invoiceId,
   });
-  const preparedAttempt = dependencies.invoiceEmailSendAttemptStore.prepare({
-    actorId,
-    companyId,
-    invoiceId,
-    mode: 'customer',
-    provider: 'dnaSmtp',
-    recipient: emailFields.to,
-    requestFingerprint: createInvoiceEmailSendRequestFingerprint({
-      body: emailFields.body,
-      cc: emailFields.cc,
-      document: {
+  const document = loaded.metadata;
+  try {
+    const preparedAttempt = dependencies.invoiceEmailSendAttemptStore.prepare({
+      actorId,
+      companyId,
+      invoiceId,
+      mode: 'customer',
+      provider: 'dnaSmtp',
+      recipient: emailFields.to,
+      requestFingerprint: createInvoiceEmailSendRequestFingerprint({
+        body: emailFields.body,
+        cc: emailFields.cc,
+        document: {
+          binding: document.binding,
+          fileName: document.fileName,
+          id: document.id,
+          sha256: document.sha256,
+          sizeBytes: document.sizeBytes,
+        },
+        recipient: emailFields.to,
+        sender: {
+          address: settings.emailSenderAddress,
+          name: settings.emailSenderName,
+        },
+        subject: emailFields.subject,
+        to: emailFields.to,
+      }),
+    });
+
+    return {
+      attachment: {
+        documentId: document.id,
         fileName: document.fileName,
-        id: document.id,
-        sha256: document.sha256,
         sizeBytes: document.sizeBytes,
       },
+      ...preparedAttempt,
+      body: emailFields.body,
+      cc: emailFields.cc,
+      documentTarget: { kind: document.binding.kind, documentId: document.id },
+      invoiceId,
+      invoiceNumber: invoice.invoiceNumber,
       recipient: emailFields.to,
-      sender: {
-        address: settings.emailSenderAddress,
-        name: settings.emailSenderName,
-      },
+      resend: invoice.status === 'sent',
+      sender: formatSender(settings.emailSenderName, settings.emailSenderAddress),
       subject: emailFields.subject,
-      to: emailFields.to,
-    }),
-  });
-
-  return {
-    attachment: {
-      fileName: document.fileName,
-      sizeBytes: document.sizeBytes,
-    },
-    ...preparedAttempt,
-    body: emailFields.body,
-    cc: emailFields.cc,
-    invoiceId,
-    invoiceNumber: invoice.invoiceNumber,
-    recipient: emailFields.to,
-    resend: invoice.status === 'sent',
-    sender: formatSender(settings.emailSenderName, settings.emailSenderAddress),
-    subject: emailFields.subject,
-  };
+    };
+  } finally { loaded.content.fill(0); }
 }
 
 function formatSender(name: string, address: string): string {

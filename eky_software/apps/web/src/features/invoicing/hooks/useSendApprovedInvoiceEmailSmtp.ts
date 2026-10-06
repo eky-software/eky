@@ -6,6 +6,7 @@ import {
 } from '@eky/api-client';
 import { useState } from 'react';
 
+import { getInvoiceLegacyDeliveryReviewErrorMessage } from './invoiceLegacyDeliveryReviewError.js';
 import { uiText } from '../../../i18n/fi.js';
 
 type SendApprovedInvoiceEmailSmtpClient = Pick<
@@ -80,19 +81,53 @@ export function sendApprovedInvoiceEmailSmtpWithClient(
   id: string,
   input: ApprovedInvoiceEmailSmtpPrepareInput,
 ): Promise<ApprovedInvoiceEmailSmtpSendResult> {
-  return client.prepareApprovedInvoiceEmailSmtp(id, input).then(
-    (preparation) =>
-      client.sendApprovedInvoiceEmailSmtp(id, {
-        ...input,
+  // Keep the submitted preview target stable while native confirmation is pending.
+  const request: ApprovedInvoiceEmailSmtpPrepareInput = {
+    ...input,
+    documentTarget: { ...input.documentTarget },
+  };
+
+  return client.prepareApprovedInvoiceEmailSmtp(id, request).then(
+    (preparation) => {
+      if (
+        preparation.invoiceId !== id ||
+        preparation.documentTarget.kind !== request.documentTarget.kind ||
+        preparation.documentTarget.documentId !== request.documentTarget.documentId ||
+        preparation.attachment.documentId !== request.documentTarget.documentId
+      ) {
+        throw new EkyApiError('Invoice email preparation does not match the preview.', {
+          status: 409,
+        });
+      }
+
+      return client.sendApprovedInvoiceEmailSmtp(id, {
+        ...request,
         attemptId: preparation.attemptId,
         authorizationToken: preparation.authorizationToken,
-      }),
+      });
+    },
   );
 }
 
 export function getSendApprovedInvoiceEmailSmtpErrorMessage(
   error: unknown,
 ): string {
+  const legacyReviewMessage = getInvoiceLegacyDeliveryReviewErrorMessage(error);
+
+  if (legacyReviewMessage !== null) {
+    return legacyReviewMessage;
+  }
+
+  if (error instanceof EkyApiError && error.status === 409) {
+    const body = error.responseBody;
+    if (
+      typeof body === 'object' && body !== null && !Array.isArray(body) &&
+      'code' in body && body.code === 'INVOICE_DELIVERY_COMMITTED_READ_FAILED'
+    ) {
+      return uiText.invoicing.invoiceEmailSmtpCommittedReadFailed;
+    }
+  }
+
   if (
     error instanceof EkyApiError &&
     error.status === 409 &&

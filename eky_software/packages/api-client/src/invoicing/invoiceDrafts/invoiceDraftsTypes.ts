@@ -1,3 +1,10 @@
+import type { InvoiceDeliveryEventSummary } from '../approvedInvoices/approvedInvoicesTypes.js';
+
+export interface InvoiceDraftDeliveryHistory {
+  invoiceId: string | null;
+  events: InvoiceDeliveryEventSummary[];
+}
+
 export type InvoicePriceInputMode = 'net' | 'gross';
 export type InvoiceTaxTreatment =
   | 'normalVat'
@@ -169,6 +176,7 @@ export interface InvoiceDraftsApi {
   createInvoiceDraft(input: InvoiceDraftInput): Promise<InvoiceDraft>;
   deleteInvoiceDraft(id: string): Promise<void>;
   getInvoiceDraft(id: string): Promise<InvoiceDraft>;
+  getInvoiceDraftDeliveryHistory(id: string): Promise<InvoiceDraftDeliveryHistory>;
   getInvoiceIssuanceReadiness(id: string): Promise<InvoiceIssuanceReadiness>;
   listInvoiceDrafts(
     query?: InvoiceDraftListQuery,

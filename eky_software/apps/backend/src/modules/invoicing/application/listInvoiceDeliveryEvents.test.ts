@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
 import { listInvoiceDeliveryEvents } from './listInvoiceDeliveryEvents.js';
-import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 
 describe('listInvoiceDeliveryEvents', () => {
   it('reads safe summaries through company-scoped ports', async () => {
@@ -13,19 +12,20 @@ describe('listInvoiceDeliveryEvents', () => {
         ccEmail: '',
         createdAt: '2026-07-20T20:00:00.000Z',
         deliveryMethod: 'print' as const,
+        documentSource: 'revision' as const,
         id: 'event-1',
         provider: 'manual' as const,
         recipientEmail: '',
         safeErrorMessage: null,
+        sendMode: 'manual' as const,
         status: 'succeeded' as const,
       },
     ]);
 
     await expect(
       listInvoiceDeliveryEvents(createInput(), {
-        approvedInvoiceReader: createReader(createInvoice()),
         invoiceDeliveryEventReader: {
-          hasUnresolvedDeliveryEvent: vi.fn(),
+          hasInvoiceIdentity: vi.fn(async () => true),
           listDeliveryEvents,
         },
       }),
@@ -44,9 +44,8 @@ describe('listInvoiceDeliveryEvents', () => {
 
     await expect(
       listInvoiceDeliveryEvents(createInput(), {
-        approvedInvoiceReader: createReader(undefined),
         invoiceDeliveryEventReader: {
-          hasUnresolvedDeliveryEvent: vi.fn(),
+          hasInvoiceIdentity: vi.fn(async () => false),
           listDeliveryEvents,
         },
       }),
@@ -56,7 +55,7 @@ describe('listInvoiceDeliveryEvents', () => {
   });
 
   it('requires sendInvoices permission before reading delivery metadata', async () => {
-    const getApprovedInvoiceById = vi.fn();
+    const hasInvoiceIdentity = vi.fn();
 
     await expect(
       listInvoiceDeliveryEvents(
@@ -70,19 +69,15 @@ describe('listInvoiceDeliveryEvents', () => {
           invoiceId: 'invoice-1',
         },
         {
-          approvedInvoiceReader: {
-            getApprovedInvoiceById,
-            listApprovedInvoiceSummaries: vi.fn(),
-          },
           invoiceDeliveryEventReader: {
-            hasUnresolvedDeliveryEvent: vi.fn(),
+            hasInvoiceIdentity,
             listDeliveryEvents: vi.fn(),
           },
         },
       ),
     ).rejects.toBeInstanceOf(AuthorizationError);
 
-    expect(getApprovedInvoiceById).not.toHaveBeenCalled();
+    expect(hasInvoiceIdentity).not.toHaveBeenCalled();
   });
 });
 
@@ -96,19 +91,4 @@ function createInput() {
     }),
     invoiceId: 'invoice-1',
   };
-}
-
-function createReader(invoice: ApprovedInvoiceView | undefined) {
-  return {
-    getApprovedInvoiceById: vi.fn(async () => invoice),
-    listApprovedInvoiceSummaries: vi.fn(),
-  };
-}
-
-function createInvoice(): ApprovedInvoiceView {
-  return {
-    companyId: 'company-1',
-    id: 'invoice-1',
-    status: 'approved',
-  } as ApprovedInvoiceView;
 }

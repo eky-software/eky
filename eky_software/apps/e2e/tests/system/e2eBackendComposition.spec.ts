@@ -1,15 +1,18 @@
 import {
   existsSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
+import { join } from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
 import { readE2eBackendConfig } from '../../../backend/e2e/e2eBackendConfig.js';
 import { E2eFakeSmtpProvider } from '../../../backend/e2e/e2eFakeSmtpProvider.js';
 import { createE2eInvoiceDocumentStorage } from '../../../backend/e2e/e2eInvoiceDocumentStorage.js';
+import { InvoiceDocumentIntegrityError } from '../../../backend/src/modules/invoicing/application/invoiceDocumentIntegrityError.js';
 import {
   InvoiceSmtpDeliveryError,
   type InvoiceSmtpEmailInput,
@@ -273,16 +276,40 @@ test.describe('isolated E2E backend composition', () => {
     const runRoot = createE2eRunRoot();
     try {
       const paths = createE2eWorkerPaths(runRoot, 'SYS-PDF-FAULT-001');
+      const scope = { companyId: 'dev-company', invoiceId: 'synthetic-invoice' };
+      const content = Buffer.from('%PDF-1.7\n% Synthetic E2E document\n%%EOF\n');
+      const expectedContent = Buffer.from(content);
+      const candidate = await createE2eInvoiceDocumentStorage(
+        paths.documentsRoot,
+        { kind: 'none' },
+      ).writeCandidate({ scope, documentId: 'existing-document', content });
+      content.fill(0);
+      const storedPaths = readdirSync(paths.documentsRoot, { recursive: true }).sort();
       const storage = createE2eInvoiceDocumentStorage(
         paths.documentsRoot,
         { kind: 'pdfStorageWriteFailed' },
       );
       await expect(
-        storage.writeFile('synthetic/invoice.pdf', new Uint8Array([1, 2, 3])),
+        storage.writeCandidate({
+          scope,
+          documentId: 'failed-document',
+          content: expectedContent,
+        }),
       ).rejects.toThrow('E2E PDF storage write failed');
-      expect(existsSync(`${paths.documentsRoot}/synthetic/invoice.pdf`)).toBe(
-        false,
+      expect(readdirSync(paths.documentsRoot, { recursive: true }).sort()).toEqual(
+        storedPaths,
       );
+      expect(Buffer.from(await storage.readVerifiedDocument(candidate))).toEqual(
+        expectedContent,
+      );
+      await expect(
+        storage.readVerifiedDocument({ ...candidate, sha256: '0'.repeat(64) }),
+      ).rejects.toBeInstanceOf(InvoiceDocumentIntegrityError);
+      await expect(
+        storage.readVerifiedDocument({ ...candidate, sizeBytes: candidate.sizeBytes + 1 }),
+      ).rejects.toBeInstanceOf(InvoiceDocumentIntegrityError);
+      await candidate.discard();
+      expect(existsSync(join(paths.documentsRoot, candidate.storagePath))).toBe(false);
     } finally {
       rmSync(runRoot, { force: true, recursive: true });
     }

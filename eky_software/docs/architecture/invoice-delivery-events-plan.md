@@ -14,6 +14,112 @@ lockfile-muutosta.
 
 ## Tavoite
 
+B3-B5:n [omistava revisiosopimus](release-0.3.0-m1-preparation-plan.md#b-p2-toimitusversioiden-historia)
+tarkentaa alla olevan ensitoteutuksen current-PDF-mallia. Työpuussa on nyt
+yritysrajattu `InvoiceDeliveryEventReader.findEventDocument`: tapahtuman
+tarkka muuttumaton dokumentti, alkuperäinen legacy-null tai ei tapahtumaa.
+Ei-null-viitteen puuttuva tai ristiriitainen kohde on eheysvirhe, ei lupa
+nykyisen PDF:n käyttöön tai regenerointiin. Revision ja dokumentin sidoksen,
+tiivisteen ja koon tarkistus tehdään samassa lukutransaktiossa; tiedoston
+todelliset tavut varmennetaan tallennusportissa.
+
+Historian lista ja GET `/invoices/:id/delivery-events/:eventId/pdf` vaativat
+`sendInvoices`-oikeuden. Reopened-laskun historia säilyy luettavana ilman
+yleisen approved-lukijan lähetyskelpoisuuden muuttamista. PDF-reitti palauttaa
+onnistumisessa vain tarkistetun PDF:n, puuttuvasta tapahtumasta 404:n,
+alkuperäisestä legacy-nullista 409:n ja eheysvirheestä turvallisen 500:n.
+Odottamaton historian PDF:n repository-lukuvirhe palauttaa yleisen 500:n
+ilman Hono-oletuskäsittelijän raakaa stderr-tulostetta. Nykyinen HTTP-
+operational-ketju säilyttää `HTTP_REQUEST_FAILED`-tapahtuman Diagnosticsiin,
+tukipaketin tapahtumiin ja incident-yhteenvetoon. Pelkkä luku ei lisää
+business-auditia tai Activity-tapahtumaa.
+Historian listan `sendMode` erottaa asiakaslähetyksen, itselle-testin,
+dry-runin, manuaalisen toimituksen ja tuntemattoman legacy-moodin.
+`documentSource` erottaa revision, säilytetyn legacy-kopion, alkuperäisen
+legacy-viitteen ja alkuperäisen puuttuvan viitteen. Ristiriitainen tallennettu
+yhdistelmä hylätään eheysvirheenä, eikä sen tilalle päätellä nykyistä PDF:ää.
+Projektio ei sisällä sisäisiä revisio-/dokumenttiavaimia, tiivisteitä tai
+polkuja; luokan näyttäminen ei korvaa tavujen tarkistusta avaamisessa.
+Legacy-luku ei todista jälkikäteen vanhan SMTP-lähetyksen sisältöä.
+
+Vanha `approved`-lasku ilman SMTP-historiaa siirtyy ensimmäisessä nykyisen
+PDF:n tai toimituksen valmistelussa varmennettuun revisioon. Moduulin
+`InvoiceLegacyRevisionPromoter` tarkistaa samassa transaktiossa tarkan
+current-avaimen, tilan, snapshotin vastaavuuden, SMTP-/unresolved-estot ja
+olemassa olevien laskentasääntöjen mukaiset summat. Standardirivit
+tarkistetaan nykyisillä laskureilla; hyvityksen allokoituja senttejä ei
+hinnoitella uudelleen. Ristiriitaa ei korjata hiljaisesti. Uusi
+`validatedLegacySnapshot` ja current-osoitin julkaistaan atomisesti;
+vanhat revisiot, PDF:t, numerointi ja historia säilyvät muuttumattomina.
+
+Myös PDF:n muodostuksen kautta tapahtuva revisiosiirtymä vaatii backendin
+vahvistaman saman yrityksen `ActorContext`-kontekstin ja `sendInvoices`-
+oikeuden. Tavallisen jo varmennetun revision PDF-polun oikeusmalli ei muutu.
+Toimitus käyttää siirtymän palauttamaa täsmäavainta. Sähköpostin valmistelu
+laskee esitystiedot vasta tämän tarkistuksen jälkeen. Ristiriitainen sisältö
+palauttaa turvallisen 500:n ilman raakaa stderr-poikkeusta; nykyinen HTTP-
+operational-ketju välittää virheen Diagnosticsiin, tukipakettiin ja
+incident-yhteenvetoon. Kyseessä ei ole uusi hyväksyntä tai lähetys, joten
+siirtymä ei lisää näiden business-tapahtumia tai Activity-merkintää.
+Jo lähetetty legacy-lasku käyttää edelleen vain erikseen hyväksyttyä
+säilytetyn PDF:n uudelleenlähetyspolkua.
+
+Clientin ja hyväksytyn laskun web-näkymän historia käyttää näitä luokkia
+ja avaa vain valitun tapahtuman PDF:n. Alkuperäiselle puuttuvalle viitteelle
+ei näytetä avauspainiketta. Popupin/native-kutsun epäonnistuminen näyttää
+kiinteän virheen, eikä avaus generoi tai lähetä mitään. Electron käyttää
+tiukkaa `deliveryEvent`-kohdetta ja vain vastaavan GET-reitin sallintaa;
+nykyisen ja säilytetyn PDF:n kohteet säilyvät erillisinä. Laskun ja historian
+vanhat vastaukset eivät saa vaihtaa uuden valinnan sisältöä. SMTP-testin ja
+dry-runin jälkeen historia päivitetään myös ilman laskun tilan muuttumista.
+Reopened-editori lukee identiteetin erillisestä yritysrajatusta GET
+`/invoice-drafts/:id/delivery-history` -projektiosta. Sovelluspalvelu vaatii
+`sendInvoices`-oikeuden; lukijaportti tarkistaa muokattavan tavallisen
+luonnoksen ja olemassa olevan laskun sidoksen samassa lukutransaktiossa.
+Puuttuva tai ei-muokattava kohde palauttaa 404:n. Tavallinen luonnos ilman
+laskuidentiteettiä palauttaa tyhjän historian, mutta ristiriita on turvallinen
+500, ei tyhjä onnistuminen. Clientin validoima luku ei muuta tallennus-DTO:ta
+tai anna lähetysvaltuutta. Vanha vastaus hylätään näkymän vaihtuessa.
+
+Lukuvirhe kirjautuu nykyisen operational-ketjun `http.requestFailed`-
+tapahtumana: `invoiceDraft.deliveryHistory`, vaihe `read`, sivuvaikutus
+`none` ja koodi `INVOICE_DRAFT_DELIVERY_HISTORY_INTEGRITY_FAILED` tai
+`INVOICE_DRAFT_DELIVERY_HISTORY_READ_FAILED`. Sama turvallinen projektio
+kuuluu Diagnosticsiin, tukipaketin tapahtumiin ja incident-yhteenvetoon.
+Business-auditia tai Activity-tapahtumaa ei synny pelkästä luvusta.
+Nykyinen HTTP-middleware kirjaa lisäksi yleisen 500-tapahtuman samalla
+korrelaatiolla; se ei ole toinen business-epäonnistuminen. Raakavirheitä,
+liiketoimintatunnisteita tai PDF-sisältöä ei liitetä diagnostiikkaan.
+Koko palautusketjun todennus on edelleen avoin.
+
+Työpuun B4-adapteri varaa SMTP-toimituksen atomisesti täsmärevisiolle ja
+dokumentille tai erikseen säilytetylle legacy-kopiolle. `attempted` kirjataan
+saman transaktion sisällä tehdyn kelpoisuus-/unresolved-tarkistuksen jälkeen;
+yleinen save-portti ei salli SMTP-varauksen ohitusta. Loppukuittaus sitoutuu
+tarkasti tähän varaukseen. Vain onnistunut customer-moodi merkitsee laskun
+lähetetyksi; onnistunut `smtpTest` jättää muokkauksen sallituksi säilyttäen
+vanhan historian. Reopen irrottaa current-osoittimen poistamatta PDF:ää,
+ja unresolved-esto tarkistetaan myös uudelleenhyväksynnässä. Asiakas- ja
+itselle-SMTP:n prepare/send on nyt kytketty tarkistettuihin täsmätavuihin,
+revision sisältävään valtuutukseen ja varauksen palauttamaan loppukuittaukseen.
+Tyypittämätön provider-virhe tai epäonnistunut tuloksen tallennus ei muutu
+varmaksi failed-tulokseksi. Jos tulosta ei saada tallennettua, alkuperäinen
+`attempted` säilyy ja estää uuden toimituksen myös uuden sovellusinstanssin
+kautta. Durablen asiakastoimituksen jälkeinen vastausluku ei puolestaan
+muuta onnistunutta toimitusta epäonnistuneeksi: HTTP palauttaa erillisen
+`INVOICE_DELIVERY_COMMITTED_READ_FAILED`-koodin ja diagnostiikka erottaa
+committed-lukuvaiheen SMTP-virheestä. Client/UI kertoo onnistuneesta lähetyksestä
+ja ohjaa tarkistamaan historian lähettämättä uudelleen. Manual-/dry-run-kirjoittajat
+ovat revisiosidottuja ja cancel-kilvan backend-todistus on lisätty.
+Legacy-valmistelun, täsmäesikatselun ja native-vahvistuksen kytkentä on
+työpuussa, mutta oikean legacy-/native-kokonaispolun todistus, palautus ja
+koko B3-B5-hyväksyntä eivät ole valmiita. Alla oleva ensitoteutuksen
+tietomalli ja vanhat current-PDF-kutsut eivät korvaa omistavaa revisiosopimusta.
+
+PDF:n tarkistuksen aikainen revision vaihtuminen palauttaa kummankin
+SMTP-moodin prepare/send-reitillä turvallisen 409:n ennen varausta ja
+provideria. Sitä ei luokitella asiakkaan SMTP-toimitusvirheeksi.
+
 Hyväksytyn laskun toimitus pitää pystyä jäljittämään myöhemmin turvallisesti.
 
 Delivery event -malli vastaa kysymyksiin:
@@ -134,6 +240,14 @@ vielä yritetä.
 Käyttäjän vahvistama dry-run send kirjataan delivery eventiksi providerilla
 `dryRun`. Se ei lähetä oikeaa sähköpostia eikä saa merkitä laskua `sent`-tilaan.
 
+B4:n työpuussa yleinen `saveDeliveryEvent` ja sitä käyttävä application-palvelu
+hyväksyvät vain revision PDF:ään sidotun dry-run-tuloksen `succeeded` tai
+`failed`. SMTP ja manual eivät voi kiertää omia atomisia porttejaan tämän
+kirjoittajan kautta. Current-revisio ja tarkka dokumentti/tiiviste/koko
+tarkistetaan dry-run-tapahtuman kirjoitustransaktiossa. Esikatselu ei edelleenkään
+kirjoita tapahtumaa. Dry-run-tulos ei lukitse laskun muokkausta eikä arkistoi
+PDF:ää toimitettuna.
+
 Hallittu DNA SMTP -testilähetys kirjataan providerilla `smtp`. Ennen
 provider-kutsua luodaan yksi `attempted`-tapahtuma, joka viimeistellään saman
 tunnisteen alla tilaan `succeeded`, `failed` tai `outcomeUnknown`.
@@ -250,6 +364,19 @@ viimeistellä. Muussa tapauksessa backend varmistaa current PDF:n, minkä jälke
 manual-providerin `succeeded`-delivery event, laskun `sent`-siirtymä ja laskun
 audit-tapahtuma tallennetaan samassa SQLite-transaktiossa. Pelkkä PDF:n avaaminen
 tai tulostusikkunan näyttäminen ei tee tätä tilasiirtymää.
+
+B4:n työpuussa manual-finalizer saa täsmällisen revision/dokumentin kohteen.
+Se varmistaa kelpoisuuden, sidoksen ja ratkaisemattoman historian saman
+`IMMEDIATE`-transaktion sisällä. Tulos erottaa uuden `completed`-toimituksen
+idempotentista `alreadySent`-tuloksesta. Vain uusi tapahtuma jonotetaan
+valinnaiseen arkistoon: kilpaileva toinen pyyntö ei keksi uutta tapahtumaa
+tai arkistointia eikä muuta alkuperäistä aikaleimaa.
+
+Manual sekä dry-run prepare/send ottavat revisioavaimen ennen laskun
+vastausmallin lukua ja vaativat PDF:ltä saman revision. Muokkauksen ja
+uudelleenhyväksynnän välissä palautunut vanha laskunäkymä ei näin yhdisty
+uuden revision PDF:ään. Havaittu revision vaihtuminen palauttaa turvallisen
+409-vastauksen ennen toimituksen viimeistelyä.
 
 Tulostuksen auditointi päätetään erikseen. PDF:n avaaminen ei välttämättä
 tarkoita, että lasku on tulostettu tai toimitettu asiakkaalle.

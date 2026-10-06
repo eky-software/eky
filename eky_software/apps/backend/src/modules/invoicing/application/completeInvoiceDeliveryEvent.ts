@@ -2,46 +2,31 @@ import {
   normalizeDeliveryProviderMessageId,
   normalizeDeliverySafeErrorMessage,
   normalizeDeliveryTechnicalErrorCode,
-  requireInvoiceDeliveryStatus,
 } from '../domain/invoiceDeliveryEventRules.js';
-import { requireIdentifier } from '../domain/invoiceDraftRules.js';
+import type { OtherEmailCompletionInput, EmailCompletionResult } from '../domain/invoiceDeliveryReservation.js';
 import type { InvoiceDeliveryEventRepository } from '../ports/invoiceDeliveryEventRepository.js';
 
-export interface CompleteInvoiceDeliveryEventInput {
-  companyId: string;
-  eventId: string;
-  providerMessageId?: string | null;
-  safeErrorMessage?: string | null;
-  status: 'succeeded' | 'failed' | 'outcomeUnknown';
-  technicalErrorCode?: string | null;
-}
-
 export async function completeInvoiceDeliveryEvent(
-  input: CompleteInvoiceDeliveryEventInput,
+  input: OtherEmailCompletionInput,
   invoiceDeliveryEventRepository: InvoiceDeliveryEventRepository,
-): Promise<void> {
-  const status = requireInvoiceDeliveryStatus(input.status);
-
-  if (
-    status !== 'succeeded' &&
-    status !== 'failed' &&
-    status !== 'outcomeUnknown'
-  ) {
-    throw new Error('Delivery event completion status is invalid.');
+): Promise<EmailCompletionResult> {
+  if (input.result.status === 'succeeded' && input.reservation.mode === 'smtpTest') {
+    return invoiceDeliveryEventRepository.completeDeliveryEvent({
+      reservation: input.reservation,
+      result: { status: 'succeeded', providerMessageId: normalizeDeliveryProviderMessageId(input.result.providerMessageId) },
+    });
   }
-
-  await invoiceDeliveryEventRepository.completeDeliveryEvent({
-    companyId: requireIdentifier(input.companyId, 'Company id'),
-    eventId: requireIdentifier(input.eventId, 'Delivery event id'),
-    providerMessageId: normalizeDeliveryProviderMessageId(
-      input.providerMessageId,
-    ),
-    safeErrorMessage: normalizeDeliverySafeErrorMessage(
-      input.safeErrorMessage,
-    ),
-    status,
-    technicalErrorCode: normalizeDeliveryTechnicalErrorCode(
-      input.technicalErrorCode,
-    ),
+  if (input.result.status === 'succeeded') throw new Error('Customer success requires the invoice finalizer.');
+  return invoiceDeliveryEventRepository.completeDeliveryEvent({
+    reservation: input.reservation,
+    result: {
+      safeErrorMessage: normalizeDeliverySafeErrorMessage(
+        input.result.safeErrorMessage,
+      ),
+      status: input.result.status,
+      technicalErrorCode: normalizeDeliveryTechnicalErrorCode(
+        input.result.technicalErrorCode,
+      ),
+    },
   });
 }

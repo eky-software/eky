@@ -117,6 +117,7 @@ function createInput(
 
 function createResult() {
   return {
+    revisionKey: { companyId: 'company-1', invoiceId: 'credit-invoice-1', revisionId: 'credit-revision-1' },
     invoiceId: 'credit-invoice-1',
     draftId: 'credit-draft-1',
     invoiceNumber: '20260002',

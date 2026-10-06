@@ -4,6 +4,9 @@ import { describe, expect, it } from 'vitest';
 
 import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 import { ApprovedInvoiceDocumentNotFoundError } from '../application/approvedInvoiceDocumentNotFoundError.js';
+import { InvoiceDocumentIntegrityError } from '../application/invoiceDocumentIntegrityError.js';
+import { InvoiceDocumentPublicationConflictError } from '../application/invoiceDocumentPublicationConflictError.js';
+import { InvoiceDocumentReadConflictError } from '../application/invoiceDocumentReadConflictError.js';
 import type { GenerateApprovedInvoicePdfDocumentInput } from '../application/generateApprovedInvoicePdfDocument.js';
 import type {
   ApprovedInvoicePdfDocumentFile,
@@ -15,6 +18,44 @@ import { InvoiceDraftValidationError } from '../domain/invoiceDraftValidationErr
 import { createApprovedInvoiceDocumentRoutes } from './approvedInvoiceDocumentRoutes.js';
 
 describe('approved invoice document routes', () => {
+  it.each(['', '/metadata'])('distinguishes a stale PDF read from integrity failure (%s)', async (suffix) => {
+    for (const [documentError, status] of [
+      [new InvoiceDocumentReadConflictError(), 409],
+      [new InvoiceDocumentIntegrityError(), 500],
+    ] as const) {
+      const { app } = createTestApp({ documentError });
+      const response = await app.request(`/invoices/invoice-1/pdf${suffix}`);
+      expect(response.status).toBe(status);
+      await expect(response.json()).resolves.toStrictEqual({ error: documentError.message });
+    }
+  });
+  it.each([false, true])('returns a safe conflict without internal cleanup details (%s)', async (cleanupFailed) => {
+    const { app } = createTestApp({
+      generateError: new InvoiceDocumentPublicationConflictError(cleanupFailed),
+    });
+    const response = await app.request('/invoices/invoice-1/pdf', { method: 'POST' });
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: 'Invoice changed before the PDF operation completed.',
+    });
+  });
+  it.each([
+    { kind: 'revision', revisionId: 'internal-revision' },
+    { kind: 'preservedLegacy', sourceDocumentId: 'internal-source' },
+    { kind: 'legacyOriginal' },
+  ])('keeps $kind binding and arbitrary internal fields out of both metadata responses', async (binding) => {
+    const publicDocument = createDocumentMetadata();
+    const document = { ...publicDocument, binding, internalOnly: 'not-a-public-field' };
+    const { app } = createTestApp({ document });
+    const generated = await app.request('/invoices/invoice-1/pdf', { method: 'POST' });
+    const stored = await app.request('/invoices/invoice-1/pdf/metadata');
+
+    expect(generated.status).toBe(200);
+    expect(stored.status).toBe(200);
+    await expect(generated.json()).resolves.toStrictEqual({ document: publicDocument });
+    await expect(stored.json()).resolves.toStrictEqual({ document: publicDocument });
+  });
+
   it('creates PDF metadata in the trusted company scope', async () => {
     const document = createDocumentMetadata();
     const { app, getGenerateInput } = createTestApp({ document });
@@ -26,6 +67,7 @@ describe('approved invoice document routes', () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ document });
     expect(getGenerateInput()).toMatchObject({
+      actorContext: { actorId: 'dev-user', companyId: 'dev-company', permissions: [] },
       companyId: 'dev-company',
       invoiceId: 'invoice-1',
     });

@@ -76,6 +76,33 @@ test('binding rejects missing attempts, invalid job names and unknown revisions'
   }
 });
 
+test('legacy packaged failure retains existing smoke output but excludes the profile and backup', async t => {
+  const { root, env, put } = await fixture(t);
+  const nativeTemp = join(root, 'native');
+  await mkdir(nativeTemp);
+  const smoke = `eky-desktop-smoke/${nativeId}`;
+  const expected = new Map([
+    [`${smoke}/result/desktop-smoke-result.json`, Buffer.from('{"status":"failed","stage":"profileComparison"}')],
+    [`${smoke}/smoke-output.private.json`, Buffer.from('{"stderr":"synthetic legacy failure"}')],
+  ]);
+  for (const [path, bytes] of expected) await put(nativeTemp, path, bytes);
+  for (const path of ['user-data/runtime/data/eky.sqlite', 'legacy-input/original.ekybackup',
+    'legacy-input/identity.json', 'profile-backup-smoke-state.json']) {
+    await put(nativeTemp, `${smoke}/${path}`, 'EXCLUDED-LEGACY-CONTENT');
+  }
+  const collected = await collectJobFailureEvidence(env, { nativeTemp });
+  const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+  assert.equal(archive.manifest.files.length, expected.size);
+  for (const entry of archive.manifest.files) {
+    assert.equal(entry.kind, 'packagedSmoke');
+    assert.equal(entry.location, 'nativeTemp');
+    assert.equal(entry.status, 'retained');
+    const bytes = Buffer.from(archive.files[entry.name], 'base64');
+    assert.deepEqual(bytes, expected.get(entry.source.slice('temporary/'.length)));
+    assert.equal(bytes.includes(Buffer.from('EXCLUDED-LEGACY-CONTENT')), false);
+  }
+});
+
 test('Electron lifecycle collection admits only the named attempt file', () => {
   assert.equal(evidenceSourceKind('results', `${run}/test-attempt0/electron-lifecycle.json`), 'electronLifecycle');
   for (const area of ['reports', 'temporary']) {

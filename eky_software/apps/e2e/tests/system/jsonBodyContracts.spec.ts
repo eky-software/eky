@@ -243,7 +243,10 @@ function createRequiredContracts(input: {
     },
     {
       acceptedStatuses: [404],
-      createValidBody: () => emailSendBody,
+      createValidBody: () => ({
+        ...emailSendBody,
+        documentTarget: { kind: 'revision', documentId: 'synthetic-document' },
+      }),
       method: 'POST',
       maximumBodySizeBytes: 96 * 1024,
       name: 'send SMTP invoice email',
@@ -251,7 +254,10 @@ function createRequiredContracts(input: {
     },
     {
       acceptedStatuses: [404],
-      createValidBody: () => emailBody,
+      createValidBody: () => ({
+        ...emailBody,
+        documentTarget: { kind: 'revision', documentId: 'synthetic-document' },
+      }),
       method: 'POST',
       maximumBodySizeBytes: 96 * 1024,
       name: 'prepare SMTP invoice email',
