@@ -1,10 +1,11 @@
-import { LEGACY_FOOTPRINT_ERROR_CODES, LEGACY_PAYLOAD_ERROR_CODES, LEGACY_PROCESS_OBSERVATIONS } from './legacyUpgradeContracts.mjs';
+import { LEGACY_FOOTPRINT_ERROR_CODES, LEGACY_PAYLOAD_ERROR_CODES, LEGACY_PROCESS_OBSERVATIONS, LEGACY_STARTUP_ERROR_CODES } from './legacyUpgradeContracts.mjs';
 import { describeHistoricalPackagedSmokeFailure } from './legacyUpgradeSourceSmoke.mjs';
 import { LEGACY_PAYLOAD_OBSERVATIONS } from './legacyPayloadObservation.mjs';
 
 const FAILURE_CODES = new Set([
   ...Object.keys(LEGACY_FOOTPRINT_ERROR_CODES),
   ...Object.keys(LEGACY_PAYLOAD_ERROR_CODES),
+  ...Object.keys(LEGACY_STARTUP_ERROR_CODES),
   'artifactVerificationFailed',
   'installerFootprintInspectionFailed',
   'installerSourceProductInspectionFailed',
@@ -156,7 +157,9 @@ function createProgress(reportProgress) {
       return value;
     } catch (error) {
       const known = errorCodeOf(error);
-      const errorCode = known === 'unexpectedFailure' ? failureCode : known;
+      const targetCauseInOtherPhase = Object.hasOwn(LEGACY_STARTUP_ERROR_CODES, known) &&
+        phase !== 'targetFirstStartup' && phase !== 'targetSecondStartup';
+      const errorCode = known === 'unexpectedFailure' || targetCauseInOtherPhase ? failureCode : known;
       emit(phase, 'failed', phaseStartedAt, {
         errorCode,
         ...(phase === 'sourcePackagedSmoke' ? describeHistoricalPackagedSmokeFailure(error) : {}),

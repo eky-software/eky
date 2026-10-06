@@ -5142,6 +5142,27 @@ Alla kuvattu jatkokoe vahvisti kolmen nimetyn tiedoston vanhojen tavujen
 säilymisen ja MSI:n samaversion korvauspäätöksen. Kaikkia payload-eroja
 ei ole luetteloitu; diagnostiikkakoe ei korvaa normaalia hyväksyntäajoa.
 
+### Legacy-käynnistyksen hylkäyssyy
+
+Historiallisen kohdesovelluksen ensimmäinen ja toinen käynnistys säilyttävät
+olemassa olevan havaitsijan suljetut syykoodit lifecycle-tuloksessa,
+vaihetiedossa ja nykyisessä komentorajan virhekoodissa. Yksi keskitetty
+`LEGACY_STARTUP_ERROR_CODES`-luettelo sitoo seuraavat havainnot:
+
+- `targetBootstrapFailed`: vastaavan ajon bootstrap-virhe havaittiin.
+- `targetApplicationExitedEarly`: prosessi poistui ennen vaadittua valmiutta.
+- `targetOperationalLogInvalid`: vaadittua lokihavaintoa ei voitu validoida.
+- `targetGracefulShutdownFailed`: hallitun sulun pyyntö tai poistuminen epäonnistui.
+- `targetShutdownEvidenceInvalid`: vaadittu puhtaan sulun näyttö ei täsmää.
+- `targetStartupPreconditionFailed`: käynnistyspolun edellytys puuttuu.
+
+Koodit ovat havaintoja, eivät sovelluksen juurisyyn selitys. Ensimmäisen ja
+toisen käynnistyksen vaihe säilyy erikseen; lähdesovelluksen käynnistys
+säilyttää oman vaihekohtaisen luokkansa. Tuntematon tai lisätekstiä sisältävä
+virhe saa edelleen yleisen vaihekoodin. Onnistunut siivous ei korvaa
+alkuperäistä hylkäystä. Uutta loggeria, raportointiskeemaa, asennuskäytäntöä,
+aikarajaa tai uusintaa ei lisätä eikä raakapoikkeuksia julkaista.
+
 ### Rajattu legacy-tiedostohavainto
 
 Omistaja hyväksyi yhden jatkokokeen samoilla muuttumattomilla CI-paketeilla.

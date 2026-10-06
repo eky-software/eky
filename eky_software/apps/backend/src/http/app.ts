@@ -503,9 +503,6 @@ function registerProfileSnapshotServices(input: {
         input.database,
         input.migrationsDirectory,
       );
-      if (history.pendingMigrationCount !== 0) {
-        throw new Error('MIGRATION_STARTUP_INSPECTION_FAILED');
-      }
       return history;
     },
   );

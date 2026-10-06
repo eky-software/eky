@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { LEGACY_FOOTPRINT_ERROR_CODES, LEGACY_PAYLOAD_ERROR_CODES } from './legacyUpgradeContracts.mjs';
+import { LEGACY_FOOTPRINT_ERROR_CODES, LEGACY_PAYLOAD_ERROR_CODES, LEGACY_STARTUP_ERROR_CODES } from './legacyUpgradeContracts.mjs';
 
 import {
   completeLegacyUpgradeTerminalOutcome,
@@ -117,8 +117,10 @@ for (const processTreeAbsent of [false, true]) {
   });
 }
 
-test('closed footprint and payload causes remain primary after successful semantic cleanup', async () => {
-  for (const [errorCode, publicCode] of Object.entries({ ...LEGACY_FOOTPRINT_ERROR_CODES, ...LEGACY_PAYLOAD_ERROR_CODES })) {
+test('closed footprint, payload and startup causes remain primary after successful semantic cleanup', async () => {
+  for (const [errorCode, publicCode] of Object.entries({
+    ...LEGACY_FOOTPRINT_ERROR_CODES, ...LEGACY_PAYLOAD_ERROR_CODES, ...LEGACY_STARTUP_ERROR_CODES,
+  })) {
     const inspections = [products('targetProductPresent'), products('exactProductsAbsent')];
     let cleanupCalls = 0;
     await assert.rejects(resolveLegacyUpgradeTerminalOutcome({

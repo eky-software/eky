@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { expect, test } from '@playwright/test';
@@ -69,4 +70,42 @@ test('SYS-LEGACY-INVOICE-FIXTURE-003 @critical retains preparation evidence with
     expect(readFileSync(evidence, 'utf8')).toBe('{"synthetic":true}');
     expect(existsSync(join(userDataPath, 'legacy-invoice-source-migrations'))).toBe(false);
   } finally { await removeE2eRunRoot(runRoot); }
+});
+
+test('SYS-LEGACY-INVOICE-FIXTURE-004 @critical @security admits a canonical run root beneath a Windows short temp alias', async () => {
+  test.skip(process.platform !== 'win32', 'Windows short-path admission contract');
+  const outerRoot = createE2eRunRoot();
+  const temporaryDirectory = join(outerRoot, 'synthetic-long-temp-directory');
+  mkdirSync(temporaryDirectory);
+  const prior = { TEMP: process.env.TEMP, TMP: process.env.TMP, TMPDIR: process.env.TMPDIR };
+  let runRoot: string | undefined;
+  try {
+    expect(temporaryDirectory).not.toMatch(/["\r\n]/);
+    const query = spawnSync(process.env.ComSpec!, ['/d', '/s', '/c',
+      `"for %I in ("${temporaryDirectory}") do @echo %~sI"`],
+    { encoding: 'utf8', windowsVerbatimArguments: true, timeout: 5000 });
+    expect(query.status).toBe(0);
+    const shortPath = query.stdout.trim();
+    test.skip(shortPath === temporaryDirectory, 'The test volume does not provide short aliases');
+    expect(realpathSync.native(shortPath)).toBe(realpathSync.native(temporaryDirectory));
+    expect(realpathSync(shortPath)).not.toBe(realpathSync.native(shortPath));
+    for (const key of ['TEMP', 'TMP', 'TMPDIR'] as const) process.env[key] = shortPath;
+    runRoot = createE2eRunRoot();
+    const userDataPath = join(runRoot, 'user-data');
+    mkdirSync(userDataPath);
+    const fixture = await createLegacyInvoiceProfile({ runRoot, userDataPath });
+    expect(fixture.invoiceId).toBe('invoice-1');
+  } finally {
+    // Cleanup uses the same canonical temp root; no process owns this fixture.
+    for (const key of ['TEMP', 'TMP', 'TMPDIR'] as const) process.env[key] = temporaryDirectory;
+    try {
+      if (runRoot !== undefined) await removeE2eRunRoot(runRoot);
+    } finally {
+      for (const key of ['TEMP', 'TMP', 'TMPDIR'] as const) {
+        if (prior[key] === undefined) delete process.env[key];
+        else process.env[key] = prior[key];
+      }
+      await removeE2eRunRoot(outerRoot);
+    }
+  }
 });

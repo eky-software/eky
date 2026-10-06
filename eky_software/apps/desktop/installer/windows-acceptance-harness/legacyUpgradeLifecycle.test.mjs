@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import { executeLegacyUpgradeLifecycle } from './legacyUpgradeLifecycle.mjs';
-import { LEGACY_FOOTPRINT_ERROR_CODES, LEGACY_PAYLOAD_ERROR_CODES } from './legacyUpgradeContracts.mjs';
+import { LEGACY_FOOTPRINT_ERROR_CODES, LEGACY_PAYLOAD_ERROR_CODES, LEGACY_STARTUP_ERROR_CODES } from './legacyUpgradeContracts.mjs';
 import { runHistoricalPackagedSmokeProcessChain } from './legacyUpgradeSourceSmoke.mjs';
 import { startLegacyOwnedProcess } from './legacyUpgradeWindowsRuntime.mjs';
 import { LEGACY_PAYLOAD_OBSERVATIONS } from './legacyPayloadObservation.mjs';
@@ -371,6 +371,33 @@ for (const [dependency, errorCode, forbiddenCall] of [
 }
 
 for (const failingGeneration of ['first', 'second']) {
+  test(`closed target ${failingGeneration} startup causes survive progress without accepting the upgrade`, async () => {
+    for (const errorCode of Object.keys(LEGACY_STARTUP_ERROR_CODES)) {
+      const entries = [];
+      const starts = [];
+      const result = await executeLegacyUpgradeLifecycle(successfulDependencies({
+        runTargetStartup: async (generation) => {
+          starts.push(generation);
+          if (generation === failingGeneration) throw new Error(errorCode);
+        },
+        reportProgress: entry => entries.push(entry),
+      }));
+      assert.equal(result.status, 'failed');
+      assert.equal(result.errorCode, errorCode);
+      assert.equal(result.targetSecondStartupValidated, false);
+      assert.equal(result.targetFirstStartupValidated, failingGeneration === 'second');
+      assert.equal(result.artifactBytesValidated, false);
+      assert.deepEqual(starts, failingGeneration === 'first' ? ['first'] : ['first', 'second']);
+      const rejected = entries.find(entry =>
+        entry.phase === (failingGeneration === 'first' ? 'targetFirstStartup' : 'targetSecondStartup') &&
+        entry.status === 'failed');
+      assert.equal(rejected.errorCode, errorCode);
+      assert.deepEqual(Object.keys(rejected).sort(), [
+        'durationMs', 'elapsedMs', 'errorCode', 'operation', 'phase', 'scenario', 'schemaVersion', 'status',
+      ]);
+    }
+  });
+
   test(`target ${failingGeneration} startup failure cannot accept the upgrade`, async () => {
     const starts = [];
     const result = await executeLegacyUpgradeLifecycle(successfulDependencies({
@@ -387,3 +414,21 @@ for (const failingGeneration of ['first', 'second']) {
     assert.deepEqual(starts, failingGeneration === 'first' ? ['first'] : ['first', 'second']);
   });
 }
+
+test('a startup cause with private suffix remains a generic phase failure', async () => {
+  const entries = [];
+  const result = await executeLegacyUpgradeLifecycle(successfulDependencies({
+    runTargetStartup: async () => { throw new Error('targetBootstrapFailed private-path-and-secret'); },
+    reportProgress: entry => entries.push(entry),
+  }));
+  assert.equal(result.errorCode, 'targetFirstStartupFailed');
+  assert.equal(JSON.stringify(entries).includes('private-path-and-secret'), false);
+});
+
+test('shared observer failure in source startup retains the source phase classification', async () => {
+  const result = await executeLegacyUpgradeLifecycle(successfulDependencies({
+    runSourceStartup: async () => { throw new Error('targetBootstrapFailed'); },
+  }));
+  assert.equal(result.errorCode, 'sourceNormalStartupFailed');
+  assert.equal(result.sourceNormalStartupValidated, false);
+});

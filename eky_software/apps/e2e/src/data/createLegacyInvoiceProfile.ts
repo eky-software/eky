@@ -21,8 +21,8 @@ export async function createLegacyInvoiceProfile(input: {
   runRoot: string;
   userDataPath: string;
 }): Promise<Readonly<LegacyInvoiceProfile>> {
-  const baseRoot = realpathSync(resolve(tmpdir(), 'eky-e2e'));
-  const rootRelative = relative(baseRoot, realpathSync(input.runRoot));
+  const baseRoot = realpathSync.native(resolve(tmpdir(), 'eky-e2e'));
+  const rootRelative = relative(baseRoot, realpathSync.native(input.runRoot));
   const profileRelative = relative(input.runRoot, input.userDataPath);
   if (dirname(rootRelative) !== '.' || !basename(rootRelative).startsWith('run-') ||
       lstatSync(input.runRoot).isSymbolicLink() || profileRelative === '' ||

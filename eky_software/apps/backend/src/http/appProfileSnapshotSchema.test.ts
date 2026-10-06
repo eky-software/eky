@@ -91,7 +91,12 @@ describe('profile snapshot catalog schema composition', () => {
           'appliedMigrationCount', 'migrationChainIdentity', 'pendingMigrationCount', 'profileState',
         ]);
         expect(inspection.appliedMigrationCount).toBe(38);
+        expect(inspection.pendingMigrationCount).toBe(1);
         if (services === undefined) throw new Error('missing registration');
+        await expect(services.validateActiveProfile()).resolves.toMatchObject({
+          artifactCount: 1,
+          migrationChainIdentity: inspection.migrationChainIdentity,
+        });
         const operationId = await snapshot(f, services, 'compatibleHistoricalPrefix', 1);
         originalCatalog = await readFile(join(f.stagingRoot, operationId, 'snapshot-catalog-v1.json'), 'utf8');
         expect(inspectSqliteProfileDatabase(

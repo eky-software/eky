@@ -6,11 +6,13 @@ import {
   createSyntheticCustomerInput,
   createSyntheticInvoiceDraftInput,
 } from '../../src/data/syntheticBusinessInputs.js';
-import { expect, test } from '../../src/fixtures/isolatedBackendTest.js';
+import { expect, test, type IsolatedBackendHarness } from '../../src/fixtures/isolatedBackendTest.js';
 
 test('CUS-RECIPIENT-002 @security keeps other-company recipient and customer invoices hidden', async ({
   e2eBackend,
 }) => {
+  const originalCompanyId = selectFixtureCompany(e2eBackend.paths.databaseFilePath, 'other-e2e-company');
+  await e2eBackend.restartBackend();
   await configureInvoicing(e2eBackend.api);
   const propertyManagerId = await createCustomer(e2eBackend.api, {
     customerNumber: 'E2E-TENANT-PM',
@@ -37,10 +39,11 @@ test('CUS-RECIPIENT-002 @security keeps other-company recipient and customer inv
   );
   await markInvoiceSent(e2eBackend.api, sentInvoiceId);
 
-  moveFixtureToAnotherCompany(e2eBackend.paths.databaseFilePath, {
-    customerIds: [propertyManagerId, housingCompanyId],
-    invoiceIds: [approvedInvoiceId, sentInvoiceId],
-  });
+  // Create the complete foreign revision/document chain through its own trusted
+  // runtime context; never rewrite immutable rows or disable their constraints.
+  selectFixtureCompany(e2eBackend.paths.databaseFilePath, originalCompanyId);
+  await e2eBackend.restartBackend();
+  assertFixtureIntegrity(e2eBackend, [approvedInvoiceId, sentInvoiceId]);
 
   const recipientApproved = await e2eBackend.api.get(
     `/invoices?status=approved&page=1&pageSize=5&sort=invoiceDateDesc&billingRecipientCustomerId=${propertyManagerId}`,
@@ -162,36 +165,37 @@ async function markInvoiceSent(
   ).toBe(200);
 }
 
-function moveFixtureToAnotherCompany(
+function selectFixtureCompany(
   databaseFilePath: string,
-  input: {
-    customerIds: readonly string[];
-    invoiceIds: readonly string[];
-  },
-): void {
+  companyId: string,
+): string {
   const database = new DatabaseSync(databaseFilePath);
 
   try {
     database.exec('PRAGMA busy_timeout = 5000;');
-    database.exec('BEGIN IMMEDIATE;');
-    const updateCustomer = database.prepare(
-      'UPDATE customers SET company_id = ? WHERE id = ?',
-    );
-    const updateInvoice = database.prepare(
-      'UPDATE invoices SET company_id = ? WHERE id = ?',
-    );
-
-    for (const customerId of input.customerIds) {
-      updateCustomer.run('other-e2e-company', customerId);
-    }
-    for (const invoiceId of input.invoiceIds) {
-      updateInvoice.run('other-e2e-company', invoiceId);
-    }
-    database.exec('COMMIT;');
-  } catch (error) {
-    database.exec('ROLLBACK;');
-    throw error;
+    const identity = database.prepare(
+      "SELECT company_id FROM local_runtime_identity WHERE singleton_key = 'local-runtime'",
+    ).get() as { company_id: string };
+    expect(database.prepare(
+      "UPDATE local_runtime_identity SET company_id = ? WHERE singleton_key = 'local-runtime' AND company_id = ?",
+    ).run(companyId, identity.company_id).changes).toBe(1);
+    return identity.company_id;
   } finally {
     database.close();
   }
+}
+
+function assertFixtureIntegrity(harness: IsolatedBackendHarness, invoiceIds: readonly string[]): void {
+  const database = new DatabaseSync(harness.paths.databaseFilePath, { readOnly: true });
+  try {
+    expect(database.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    expect(database.prepare('PRAGMA integrity_check').all()).toEqual([{ integrity_check: 'ok' }]);
+    for (const invoiceId of invoiceIds) {
+      expect(database.prepare(`SELECT r.company_id, r.origin FROM invoice_content_revisions r
+        JOIN invoice_current_revisions c ON c.company_id = r.company_id
+          AND c.invoice_id = r.invoice_id AND c.revision_id = r.id
+        WHERE r.invoice_id = ?`).all(invoiceId))
+        .toEqual([{ company_id: 'other-e2e-company', origin: 'approval' }]);
+    }
+  } finally { database.close(); }
 }

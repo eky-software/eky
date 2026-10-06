@@ -22,7 +22,7 @@ test('DB-SQLITE-UPGRADE-001 @critical @recovery completes the invoicing lifecycl
       e2eBackend.paths.databaseFilePath,
       'SELECT COUNT(*) AS count FROM schema_migrations',
     ),
-  ).toEqual([{ count: 38 }]);
+  ).toEqual([{ count: 39 }]);
 
   const customerId = await seedPrerequisites(e2eBackend.api);
   const sourceInvoice = await createApprovedInvoice(

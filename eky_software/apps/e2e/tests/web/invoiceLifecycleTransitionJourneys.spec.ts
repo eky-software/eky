@@ -216,7 +216,9 @@ test('INV-MANUAL-DELIVERY-001 @critical finalizes one manual delivery and surviv
   await openInvoicingWorkspace(e2eWeb.page);
   await openApprovedInvoiceFromList(e2eWeb.page, invoice.invoiceNumber);
   await expect(e2eWeb.page.getByText('Lähetetty', { exact: true })).toBeVisible();
-  await expect(e2eWeb.page.getByText('Käsin', { exact: true })).toBeVisible();
+  const history = e2eWeb.page.getByRole('region', { name: 'Toimitushistoria', exact: true });
+  await expect(history.getByRole('cell', { name: 'Muu käsin toimitettu', exact: true })).toBeVisible();
+  await expect(history.getByRole('cell', { name: 'Käsin Manuaalinen toimitus', exact: true })).toBeVisible();
 });
 
 test('INV-RESEND-001 @critical resends the same invoice and current PDF as a new delivery event', async ({
@@ -247,7 +249,7 @@ test('INV-RESEND-001 @critical resends the same invoice and current PDF as a new
         SELECT delivery_method, provider, status
         FROM invoice_delivery_events
         WHERE invoice_id = ?
-        ORDER BY created_at, rowid
+        ORDER BY created_at, id
       `,
       invoice.invoiceId,
     ),

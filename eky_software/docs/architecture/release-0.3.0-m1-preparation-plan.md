@@ -13,7 +13,7 @@ Alla päivätyt tutkimusvaiheet ovat historiaa, eivät rinnakkaisia työjonoja.
 **T1/T2/T3, A1/R01, A2/R05, A3/R06 ja Oma yritys -tallennuskorjaukset
 integraatiojatkoineen ovat hyväksyttyjä. B1/B2 ja niiden hyväksytyt sulku-/
 keräysjatkot on hyväksytty PR #297:n mainissa. Nykyinen työ on
-[B3-B5:n toteutusvalmistelu](#b3-b5-toteutusvalmistelu).** PR #294:n oma main-kierros
+[B3-B5:n integraatio ja rajatut PR-korjaukset](#b3-b5n-ensimmäisen-pr-kierroksen-rajatut-korjaukset).** PR #294:n oma main-kierros
 läpäisi; A2:n aiemman main-kierroksen tapauskohtainen etenemispäätös ja
 alkuperäinen flaky-havainto säilyvät historiassa eivätkä muutu korjatuiksi.
 Modulaarinen monoliitti ja
@@ -35,6 +35,52 @@ integraation lopputulos kirjataan sen omaan hyväksyntächeckpointiin;
 pelkän tuloksen ilmoittamiseksi ei tehdä uutta tilakirjauscommittia.
 Jokainen uusi toteutuspala alkaa omalla preflightilla. Sivulla ei ylläpidetä Goal-työkalun
 ajonaikaista tilaa.
+
+### B3-B5:n ensimmäisen PR-kierroksen rajatut korjaukset
+
+[PR #298](https://github.com/eky-software/eky/pull/298):n lähde
+`1c6abf69bd6f64165290c82a1a877c68c1238166` säilyy alkuperäisen kierroksen
+lähtönä. [V2-ajo 37510139120](https://github.com/eky-software/eky/actions/runs/37510139120)
+hylättiin; erillinen [riippuvuustarkistus 37510138692](https://github.com/eky-software/eky/actions/runs/37510138692)
+läpäisi. Riippuvuuksien vihreys ei hyväksy toimintatestejä. Ensimmäisten
+hylkäysten aineisto säilytetään, eikä myöhempi kohdetodennus muuta niiden
+alkuperäistä tulosta.
+
+Rajatut testisovitukset koskevat hyväksytyn packaged-legacy-konfiguraation
+manifestiodotusta, nykyisen migraatiomäärän odotusta, eristetyn vieraan
+yrityskontekstin muodostamista muuttumattoman laskun jälkikirjoituksen
+sijasta sekä toimitushistorian UI-lukijaa ja rivitöntä tapahtumataulua.
+Legacy-fixturen juurivertailu käyttää samaa native-kanonisointia kuin
+testijuuren omistaja: Windowsin lyhyt alias ei saa hylätä samaa fyysistä
+juurta. Linkkien, sisaruuden ja omistetun testijuuren suojat säilyvät.
+Näiden kohdetestit läpäisivät; ne eivät vielä hyväksy uutta PR-revisiota.
+
+Tuotantokorjaus erottaa aktiivisen profiilin **eheyden validoinnin**
+normaalin backendin **nykyskeeman käynnistysportista**. Ennen migraatioita
+rekisteröity validaattori voi tarkistaa eheän, metadataa sisältävän vanhan
+prefixin sen oman katalogisopimuksen mukaan, vaikka forward-migraatio olisi
+vielä tekemättä. Business-rollback vertaa tämän lisäksi odotettua vanhaa
+chain-identiteettiä ennen binary rollbackia. Normaali backend ei kuitenkaan
+avaa business-runtimea ennen onnistuneita migraatioita ja erillistä
+nolla-pending-tarkistusta. Historian, identiteetin, katalogin, PDF-tavujen,
+koon ja tiivisteen tarkistuksia ei löysennetä.
+
+Todellisen backend-kokoamisen regressio hylättiin ensin väärään
+pending-ehtoon ja läpäisi korjauksen jälkeen. Rajattu historian/profiilin
+testijoukko sekä olemassa olevat first-start-/business-rollback-testit
+läpäisivät; riippumaton staattinen katselmus ei löytänyt P1/P2-puutteita.
+Uuden paketin palautustodennus ja uuden jäädytetyn revision PR/main-portit
+ovat edelleen erillisiä hyväksyntäehtoja.
+
+Hosted workspace-fault -ajon ensimmäinen hylkäys oli business-rollbackissa,
+kun taas historical-legacy -ajo hylättiin jo ensimmäisessä kohdekäynnistyksessä.
+Legacy-ajon myöhempi supervisor-deadline ja siivoustulos eivät ole sama
+havainto kuin alkuperäinen käynnistysvirhe. Säilynyt aineisto ei vahvista
+sen sovellustason juurisyytä. [Nykyisten suljettujen käynnistyskoodien
+säilyttäminen](windows-installer-acceptance-harness-v2.md#legacy-käynnistyksen-hylkäyssyy)
+tarkentaa raportointia, mutta ei yksin sulje tätä hylkäystä. Seuraavaksi
+vaaditaan katselmoidun korjausrevision paketti- ja normaali PR-todennus;
+aikarajat, eheysvaatimukset, prosessiomistajuus ja uusintarajat säilyvät.
 
 ### B3-B5:n aikana havaittu riippuvuuspäivitys
 
@@ -2543,7 +2589,7 @@ Versionvalinnan tarkennettu kytkentä, polut `apps/backend/src`-juuresta:
 | `runtime/profileSnapshot/inspectSqliteProfileDatabase.ts` | Palauta jo tarkistetusta `MigrationHistoryInspection`-tuloksesta myös käytössä oleva tunnettu migraatioprefixi. `restoreCompatible` säilyttää nykyisen tarkan 038-legacy-ankkurin; virhe ei anna yleistä legacy-fallbackia. |
 | `runtime/profileSnapshot/validateProfileSnapshot.ts` → `validateProfileArtifactCatalog.ts` | Välitä juuri tarkistetun staging-tietokannan prefixiin perustuva katalogitila. Ennen forward-migraatiota vanha katalogi validoidaan vanhalla sopimuksella; nykyisen sovelluksen pakettiversio ei yksin valitse uuden skeeman kyselyä. |
 | `runtime/workspaceCandidate/runWorkspaceCandidateOperation.ts` | `migrateBackup` tarkistaa lähteen katalogin ja PDF:t lähdehistorian valitsemalla sopimuksella **ennen** `runMigrations`-kutsua. Containerin autentikointi ja purku eivät korvaa tätä. `validateAndMaterialize` käyttää tuoreesti vahvistettua, pending-migraatiotonta nykytilaa ja vertaa samaan alkuperäiseen katalogiin ennen materiaalistamista. `validateHistoricalPublished`/`historicalReadiness` säilyttää oman historiapolitiikkansa. |
-| `runtime/profileSnapshot/validateActiveProfile.ts` | Nykyinen callback palauttaa vain chain-identiteetin ja sitä kutsutaan katalogin jälkeen. Tarkenna se palauttamaan tarkistettu historia ja tee tämä tarkistus ennen katalogin valintaa; valinta ja palautettu chain kuuluvat samaan tarkastukseen. |
+| `runtime/profileSnapshot/validateActiveProfile.ts` | Callback palauttaa tarkistetun historian ennen katalogin valintaa; valinta ja palautettu chain kuuluvat samaan tarkastukseen. Eheän historiallisen prefixin pending-migraatio ei yksin hylkää eheyden tarkistusta. Normaalin business-runtimen nolla-pending-portti pysyy erillisenä migraatioiden jälkeen. |
 | `http/app.ts`-snapshot-kokoaminen ja `composition/invoicingComposition.ts` | Snapshot-palvelut rekisteröidään jo ennen migraatiota, myös tyhjälle kannalle: portin kokoaminen on laiska, ja katalogitila valitaan `listAuthoritativeArtifacts()`-kutsussa luotetusta silloisesta historiasta maintenance-rajan sisällä. Normaali Invoicing-composition saa tilan vasta migraation jälkeisestä nykytilatarkistuksesta. Käytä samaa ratkaistua migrationsDirectorya kuin runner, myös kun optiona ei annettu hakemistoa. |
 | `http/app.ts`-`beforeMigrations` ja desktopin `runtime/backendMessages.ts` | Sisäisesti rikastettu historiatulos **ei** mene sellaisenaan nykyiseen strict-viestiin. Eksplisiittinen projektio säilyttää neljä nykyistä kenttää: appliedMigrationCount, migrationChainIdentity, pendingMigrationCount ja profileState. Desktop-protokollaa ei laajenneta tällä valmistelulla. |
 | `runtime/profileSnapshot/createConsistentProfileSnapshot.ts` → `stageProfileBusinessArtifacts.ts` | Nykyinen producer käyttää samaa yllä laiskasti koottua katalogiporttia. Snapshot-/broker-metadatan tai catalog-v1:n laajennus ei ole tarpeen. |
@@ -2589,6 +2635,10 @@ Valittu katalogiskeema ja callerin historiapolitiikka eivät ole sama asia.
 Nykyinen `inspectMigrationStartupState` voi hyväksyä eheän prefixin, jolla
 on pending-migraatioita, myös `exactCurrentManifest`-nimisellä politiikalla.
 Normaalin aktiivisen runtimen nolla-pending-portti säilyy erillisenä.
+`validateActiveProfile` ei lisää tätä käynnistysporttia ennen migraatioita
+rekisteröityyn eheyden tarkistukseen: business-rollback tarvitsee vanhan
+profiilin validoinnin ennen binary rollbackia. Kutsuja vaatii oman
+odotetun chain-identiteetin eikä validointi yksin avaa business-runtimea.
 Historiallinen readiness säilyttää oman hyväksytyn pending-ehtonsa: joskus
 myös revisionHistory-kanta voi olla historiallinen suhteessa myöhempään
 manifestiin. Metadataa vailla oleva legacy-poikkeus säilyy vain nykyisessä
