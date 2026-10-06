@@ -496,18 +496,12 @@ async function createProofFixtures(input: {
   readonly factories: Readonly<WorkspaceFirstStartProofFactories>;
   readonly proofRoot: string;
 }): Promise<Readonly<ProofFixtures>> {
-  const currentSource = await createWorkspaceFirstStartProofFixture({
-    factory: input.factories.current,
-    userDataRoot: input.proofRoot,
-  });
+  const currentSource = await input.factories.createCurrentFixture(input.proofRoot);
   const compatibleTarget = await createWorkspaceFirstStartProofFixture({
     factory: input.factories.historical,
     userDataRoot: input.proofRoot,
   });
-  const invalidTarget = await createWorkspaceFirstStartProofFixture({
-    factory: input.factories.current,
-    userDataRoot: input.proofRoot,
-  });
+  const invalidTarget = await input.factories.createCurrentFixture(input.proofRoot);
   await corruptWorkspaceFirstStartProofDatabase(invalidTarget);
   const faultTarget = await createWorkspaceFirstStartProofFixture({
     factory: input.factories.historical,

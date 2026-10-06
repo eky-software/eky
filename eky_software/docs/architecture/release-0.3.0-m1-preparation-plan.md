@@ -82,6 +82,39 @@ tarkentaa raportointia, mutta ei yksin sulje tätä hylkäystä. Seuraavaksi
 vaaditaan katselmoidun korjausrevision paketti- ja normaali PR-todennus;
 aikarajat, eheysvaatimukset, prosessiomistajuus ja uusintarajat säilyvät.
 
+Korjausrevision `cb44ec8bfbe8c018ab4a0dd0156e61ef34c1530c`
+[V2-kierros 37519343905](https://github.com/eky-software/eky/actions/runs/37519343905)
+päättyi hylkäykseen: 32 jobia läpäisi, kaksi varsinaista jobia ja
+hyväksyntäkoonti hylättiin, yksi keskeytyi ja kuusi riippuvaista jobia
+ohitettiin. Paketoidun workspace-fault-palautuksen molemmat toistot
+läpäisivät, myös business-rollback sekä keskeytetyn palautuksen restart.
+Erillinen [riippuvuustarkistus 37519343381](https://github.com/eky-software/eky/actions/runs/37519343381)
+läpäisi. Koko kierros ei silti ole hyväksytty.
+
+Electronin kolme determinististä hylkäystä toistuivat myös kohdeajossa:
+first-start- ja activation-fixture kylvivät vanhan dokumenttirakenteen jo
+nykyskeemaan, ja runtime-testi odotti vanhaa migraatiomäärää. Nykyinen
+fixture muodostetaan nyt historiallisen syötteen kautta ja migroidaan
+staged backendin omalla runnerilla vain testivalmistelussa. Business/PDF-
+snapshot säilyy, ja olemassa oleva kandidaattilukija validoi historian,
+katalogin ja nolla-pending-tilan ennen varsinaista koetta. Varsinaisten
+first-start-/activation-kokeiden historialliset syötteet pysyvät pending-
+tilassa siihen asti, kun testattava tuotantopolku migroi ne. Runtime-odotus
+vastaa 39 migraatiota. Kolme kohdetapausta ja 16 alemman tason regressiota
+läpäisivät ilman uusintaa; tyypitys ja riippumaton rajattu katselmus
+läpäisivät. Tuotantokoodia tai hyväksyntäehtoja ei muutettu tässä palassa.
+
+Historical-legacy-paketin valmistelu katkesi registry-allekirjoitusten
+tarkistuksen yhteysvirheeseen ennen paketin rakentamista. Tätä ei tulkita
+sovelluksen käynnistysvirheeksi tai hyväksytyksi legacy-todisteeksi.
+Web-jobi keskeytyi nykyisellä 15 minuutin jobirajalla ilman lopullista
+testiraporttia; yksittäiset valmistuneet tapaukset eivät hyväksy sarjaa.
+Salattu keskeytyspaketti varmistettiin, mutta siinä ei ollut säilynyt
+testikohtaista virhetietoa. Puute kirjataan, eikä siitä arvata jäätymisen
+juurisyytä tai onnistunutta siivousta. Seuraava vaihe on katselmoidun
+testisovitusrevision normaali PR-todennus samoilla valmistelu-, palautus-,
+eheys-, aikaraja- ja main-porteilla; tämä ei ole uusinta vihreyteen asti.
+
 ### B3-B5:n aikana havaittu riippuvuuspäivitys
 
 Mainin samaan lähtörevisioon kohdistunut [ajastettu auditointi 6.10.2026](https://github.com/eky-software/eky/actions/runs/37441556812/job/112196274405)

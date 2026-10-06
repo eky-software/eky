@@ -38,6 +38,18 @@ kohde- tai tuntikirjaustesti ei rakenna omaa prosessienhallintaa tai tunne
 Job Objectia, Linuxin eristysmekanismia tai diagnostiikan tulosskeemoja.
 Hardened packaged -todistus säilyy erillisenä desktopin hyväksyntäporttina.
 
+Desktopin first-start-/activation-kokeiden
+[profiilivalmistelija](../../apps/desktop/e2e/workspaceFirstStartMigrationProofFixtures.ts)
+erottaa historiallisen pending-syötteen ja jo nykyiseen skeemaan siirretyn
+syötteen. `createCurrentFixture` kylvää historiallisen business/PDF-aineiston,
+käyttää staged backendin omistamaa migraatioajuria ja vertaa säilyvää
+business/PDF-snapshotia. Olemassa oleva kandidaattilukija vaatii nykyisen
+historian, katalogin ja nolla-pending-tilan. Testattavan first-start- tai
+activation-polun historiallisia syötteitä ei valmistelussa migroida.
+Tämä offline-valmistelu on vain E2E-buildissa; se ei anna tuotannon Electron
+mainille tietokantakäyttöoikeutta eikä lisää uutta testipohjaa tai julkista
+rajapintaa.
+
 Laskutuksen vanhan aineiston native-kokeessa sama Electron-fixture tarjoaa
 `e2eLegacyInvoiceProfile: 'sent'` -valinnan. Se luo vain testijuureen
 synteettisen 038-profiilin; tuotannon startup suorittaa migraation.
