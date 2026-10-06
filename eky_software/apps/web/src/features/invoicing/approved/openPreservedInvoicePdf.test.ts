@@ -15,6 +15,26 @@ function setup() {
 }
 
 describe('openPreservedInvoicePdf', () => {
+  it.each(['completed', 'failed'] as const)('awaits native opening until it is %s without a browser fallback', async (outcome) => {
+    const { input } = setup();
+    let finish!: () => void;
+    let fail!: (reason: Error) => void;
+    const nativeOpening = new Promise<void>((resolve, reject) => { finish = resolve; fail = reject; });
+    let completed = false;
+    const opening = openPreservedInvoicePdf({
+      ...input, openDesktopPreview: vi.fn(() => nativeOpening),
+    }).then((opened) => { completed = true; return opened; });
+
+    await Promise.resolve();
+    expect(completed).toBe(false);
+    if (outcome === 'completed') finish();
+    else fail(new Error('synthetic native opening failure'));
+    expect(await opening).toBe(outcome === 'completed');
+    expect(completed).toBe(true);
+    expect(input.getPdfUrl).not.toHaveBeenCalled();
+    expect(input.openBrowserWindow).not.toHaveBeenCalled();
+  });
+
   it('uses the named desktop copy, not an invoice-only preview or browser fallback', async () => {
     const { input } = setup();
     const openDesktopPreview = vi.fn(async () => undefined);

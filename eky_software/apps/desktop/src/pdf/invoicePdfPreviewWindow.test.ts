@@ -33,6 +33,31 @@ const previewCases = [
 ];
 
 describe('invoice PDF preview window controller', () => {
+  it('does not complete or show a preserved preview merely because its URL is committed', async () => {
+    let finishLoad!: () => void;
+    const loadCompletion = new Promise<void>((resolve) => { finishLoad = resolve; });
+    const context = createContext({ loadCompletion });
+    let completed = false;
+    const opening = context.getHandler()(context.trustedEvent, 'invoice-1', preservedTarget)
+      .then(() => { completed = true; });
+
+    await vi.waitFor(() => expect(context.windows).toHaveLength(1));
+    const preview = context.windows[0]!;
+    expect(preview.loadedUrls).toEqual([previewCases[1]!.expectedUrl]);
+    expect(completed).toBe(false);
+    expect(preview.show).not.toHaveBeenCalled();
+    expect(preview.focus).not.toHaveBeenCalled();
+
+    finishLoad();
+    await opening;
+    expect(completed).toBe(true);
+    expect(preview.show).toHaveBeenCalledOnce();
+    expect(preview.focus).toHaveBeenCalledOnce();
+    preview.close();
+    expect(context.restoreMainWindowFocus).toHaveBeenCalledOnce();
+    expect(context.showSafeError).not.toHaveBeenCalled();
+  });
+
   it('accepts only the known main window main frame and forwards only the id', async () => {
     const context = createContext();
     const handler = context.getHandler();
@@ -459,7 +484,7 @@ type IpcHandler = (
 ) => Promise<void>;
 
 function createContext(
-  options: { failLoad?: boolean; pdfAvailable?: boolean } = {},
+  options: { failLoad?: boolean; pdfAvailable?: boolean; loadCompletion?: Promise<void> } = {},
 ) {
   const handlers = new Map<string, IpcHandler>();
   const mainFrame = {};
@@ -488,7 +513,7 @@ function createContext(
 
   createInvoicePdfPreviewWindowController({
     createWindow(windowOptions) {
-      const window = new FakeBrowserWindow(windowOptions, options.failLoad === true);
+      const window = new FakeBrowserWindow(windowOptions, options.failLoad === true, options.loadCompletion);
       windows.push(window);
       return window as unknown as BrowserWindow;
     },
@@ -546,7 +571,11 @@ class FakeBrowserWindow {
     },
   };
 
-  constructor(options: BrowserWindowConstructorOptions, failLoad: boolean) {
+  constructor(
+    options: BrowserWindowConstructorOptions,
+    failLoad: boolean,
+    private readonly loadCompletion?: Promise<void>,
+  ) {
     this.options = options;
     this.failLoad = failLoad;
   }
@@ -571,6 +600,8 @@ class FakeBrowserWindow {
 
   async loadURL(url: string): Promise<void> {
     this.loadedUrls.push(url);
+
+    if (this.loadCompletion !== undefined) await this.loadCompletion;
 
     if (this.failLoad) {
       throw new Error('raw load failure');

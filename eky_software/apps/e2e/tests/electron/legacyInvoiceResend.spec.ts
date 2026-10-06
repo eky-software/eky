@@ -71,8 +71,15 @@ for (const mode of ['accept', 'cancel'] as const) {
       expect(await preservedPdf.body()).toEqual(originalBytes);
       await page.getByRole('button', { name: 'Avaa säilytetty PDF-liite' }).click();
       await expect.poll(() => readElectronPdfPreviewUrls(electronApp)).toEqual([`eky://app${preservedPdfPath}`]);
+      // A committed URL can precede loadURL completion. Do not abort the
+      // native open by closing its still-loading, hidden preview window.
+      const openAttachment = page.getByRole('button', { name: 'Avaa säilytetty PDF-liite', exact: true });
+      await expect(openAttachment).toBeEnabled();
+      await expect(openAttachment).toHaveAttribute('aria-busy', 'false');
+      await expect(page.getByRole('alert')).toHaveCount(0);
       await closeElectronPdfPreviews(electronApp);
       await expect.poll(() => electronApp.windows().length).toBe(1);
+      await expect(page.getByRole('alert')).toHaveCount(0);
       await page.getByLabel('Vastaanottajan sähköposti', { exact: true }).fill('recipient@example.invalid');
       await page.getByLabel('Viestin sisältö').fill('Synthetic preserved invoice resend');
       const nativeBefore = await readElectronNativeAdapterSnapshot(electronApp);

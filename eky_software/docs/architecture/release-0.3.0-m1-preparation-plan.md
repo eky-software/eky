@@ -115,6 +115,27 @@ juurisyytä tai onnistunutta siivousta. Seuraava vaihe on katselmoidun
 testisovitusrevision normaali PR-todennus samoilla valmistelu-, palautus-,
 eheys-, aikaraja- ja main-porteilla; tämä ei ole uusinta vihreyteen asti.
 
+Revision `394e09730426e7556f8b29ed380838bc4f90a10b`
+[V2-kierroksella 37524315673](https://github.com/eky-software/eky/actions/runs/37524315673)
+webin kriittinen sarja läpäisi ja aiemmat kolme Electron-fixturehylkäystä
+läpäisivät. Electron-sarja kuitenkin hylättiin legacy-uudelleenlähetyksen
+peruutustapauksen flaky-tulokseen. Ensimmäisessä yrityksessä PDF:n avausvirhe
+oli näkyvissä lähetyksen peruutusilmoituksen rinnalla; automaattinen uusinta
+ei muuta alkuperäistä yritystä onnistuneeksi.
+
+Rajattu lähdekatselmus löysi testin ennenaikaisen sulkemismahdollisuuden:
+esikatselun URL voi näkyä ennen native-avauspromisen valmistumista. Testi
+odottaa nyt nykyisen avauspainikkeen valmistumistilaa ja vaatii virheettömän
+näkymän sekä ennen sulkemista että sen jälkeen. PDF-virhettä ei suodateta
+pois peruutusilmoituksen valitsimella. Native-latauksen ja kutsuketjun
+valmistumisrajan hallitut sopimustestit sekä molemmat varsinaiset
+legacy-uudelleenlähetyksen Electron-polut läpäisivät ilman uusintaa;
+tyypitys ja riippumaton rajattu katselmus läpäisivät. Tuotantokoodia,
+aikarajoja, toimitussisältöä tai hyväksyntäehtoja ei muuteta tässä palassa.
+Tämä korjaa osoitetun testijärjestyksen puutteen, mutta ei yksin todista
+alkuperäisen CI-hylkäyksen syy-yhteyttä tai uuden revision vakautta.
+Uuden jäädytetyn revision PR/main-portit ovat edelleen erillisiä ehtoja.
+
 ### B3-B5:n aikana havaittu riippuvuuspäivitys
 
 Mainin samaan lähtörevisioon kohdistunut [ajastettu auditointi 6.10.2026](https://github.com/eky-software/eky/actions/runs/37441556812/job/112196274405)

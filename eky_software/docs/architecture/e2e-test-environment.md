@@ -60,6 +60,14 @@ säilyttää aineiston ja `legacyInvoiceProfile`-vaiheen nykyisessä
 `electron-lifecycle`-liitteessä; raportointivirhe ei korvaa ensivirhettä.
 Tämä ei lisää tuotantoon testiohjausta tai muodosta uutta testipohjaa.
 
+Legacy-uudelleenlähetyksen PDF-esikatselu suljetaan vasta nykyisen
+avauspainikkeen valmistumistilan jälkeen: painike on käytettävissä,
+`aria-busy` on `false` eikä avausvirhettä näy. Esikatselun URL yksin
+ei todista native-latauksen valmistumista. Sulkemisen jälkeenkin vaaditaan
+virheetön näkymä; PDF-virhettä ei piiloteta lähetyksen ilmoitusvalitsimella.
+Lataus- ja native-kutsun valmistumisraja on todennettu myös hallituilla
+promise-sopimustesteillä, ilman kiinteää odotusta tai tuotannon testiohjausta.
+
 Paketoidun legacy-palautuksen syöte muodostetaan erillisellä
 [salatun legacy-backupin valmistelijalla](../../apps/e2e/src/data/createLegacyInvoiceBackup.ts).
 Se käyttää samaa juuriltaan validoitua 038-fixtureä ja nykyistä
