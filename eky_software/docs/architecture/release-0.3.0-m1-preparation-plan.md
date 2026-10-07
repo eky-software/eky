@@ -136,6 +136,39 @@ Tämä korjaa osoitetun testijärjestyksen puutteen, mutta ei yksin todista
 alkuperäisen CI-hylkäyksen syy-yhteyttä tai uuden revision vakautta.
 Uuden jäädytetyn revision PR/main-portit ovat edelleen erillisiä ehtoja.
 
+**Kierroksen lopputila tarkistettu 7.10.2026:** V2-ajo päättyi
+hylkäykseen: 34 jobia läpäisi, neljä hylättiin ja viisi valinnaista jobia
+ohitettiin. Hylkäykset koskevat Electron-sarjaa, molempia historical-legacy-
+toistoja ja niiden hyväksyntäkoontia. Tavallisten päivitys-, workspace-success-
+ja workspace-fault-kokeiden molemmat toistot läpäisivät. Erillinen
+[riippuvuustarkistus 37524315139](https://github.com/eky-software/eky/actions/runs/37524315139)
+läpäisi; se ei hyväksy epäonnistuneita toimintaportteja.
+
+Molempien legacy-toistojen salatut paketit purettiin ja niiden ajosidonnat
+sekä säilyneiden tiedostojen tiivisteet varmennettiin. Niissä säilyvät
+supervisorin lopputulos ja erillinen varmennettu siivous, mutta ei
+alkuperäisen bootstrap-hylkäyksen sovellustason syytä. Nykyinen havaitsija
+projektoi lokista vain elinkaaren identiteetin, ja testiprofiili poistuu
+varmennetun siivouksen jälkeen ennen jälkikeräystä. Keräin ei lue profiilin
+operational-lokeja. Lähdehaun `complete` ei tässä tarkoita täydellistä
+syytietoa. Myöhempi deadline ei korvaa aiempaa bootstrap-hylkäystä.
+Omistaja hyväksyi 7.10.2026 rajatun tämän käynnistyksen syy-/vaiheotteen
+säilytyksen, regressiot ja yhden nimetyn Windows-todennuksen. Toteutus
+käyttää nykyisen `fixtureCleanup`-vaiheen yhtä terminal-kirjoitusta ja
+[salatun keräimen täsmällistä projektiota](ci-encrypted-evidence.md#legacy-käynnistyksen-rajattu-syyote).
+Käynnistyssyy ei ole yleisen supervisor-deadlinen korvaaja. Puuttuva tai
+varmentamaton syytieto estää alkuperäisen fixturen poiston.
+Havaitsijan, oikean siivousvaiheen, sidontojen ja salatun keräysketjun
+rajatut 112 regressiota ja 70 työnkulku-/toimitussopimustarkistusta
+läpäisivät; ensimmäinen regressio toisti syykentän katoamisen ennen
+korjausta. Riippumaton katselmus tarkisti myös synteettisen fixturen
+revisio- ja lokisidonnan. Tämä ei vielä todista hosted-toimitusta tai
+alkuperäistä sovellusvikaa. Yksi olemassa olevia muuttumattomia legacy-
+paketteja käyttävä Windows-todennus on seuraava erillinen näyttöportti.
+Mahdollinen sovelluskorjaus päätetään sen näytön perusteella; uutta yleistä
+loggeria, profiilin kopiointia tai aikarajojen muutosta ei oteta käyttöön.
+B3-B5:n integraatio ja merge pysyvät avoimina.
+
 ### B3-B5:n aikana havaittu riippuvuuspäivitys
 
 Mainin samaan lähtörevisioon kohdistunut [ajastettu auditointi 6.10.2026](https://github.com/eky-software/eky/actions/runs/37441556812/job/112196274405)

@@ -5163,6 +5163,15 @@ virhe saa edelleen yleisen vaihekoodin. Onnistunut siivous ei korvaa
 alkuperäistä hylkäystä. Uutta loggeria, raportointiskeemaa, asennuskäytäntöä,
 aikarajaa tai uusintaa ei lisätä eikä raakapoikkeuksia julkaista.
 
+Sovelluksen jo tallentama bootstrap-syy ja vaihe säilytetään erillisenä
+[salattuna legacy-syyotteena](ci-encrypted-evidence.md#legacy-käynnistyksen-rajattu-syyote).
+Se ei korvaa yllä olevia suljettuja lifecycle-tuloskoodeja tai supervisorin
+ensivirhettä. Nykyinen `fixtureCleanup`-vaihe säilyttää tämän käynnistyksen
+rajatun otteen omassa terminal-kirjoituksessaan ennen fixturen poistoa,
+kun skenaarion prosessipuun poissaolo on jo todistettu. Puutteellinen
+syytieto säilyttää alkuperäisen aineiston. Skenaarion hyväksyntä, MSI:n
+lopputila ja siivouksen varmennus pysyvät erillisinä tuloksina.
+
 ### Rajattu legacy-tiedostohavainto
 
 Omistaja hyväksyi yhden jatkokokeen samoilla muuttumattomilla CI-paketeilla.

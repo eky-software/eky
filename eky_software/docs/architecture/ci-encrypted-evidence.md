@@ -117,6 +117,7 @@ raakaa testiaineistoa eivätkä saa yleistä koko jobin tulostekaappausta.
 | Backend/web/Electron-fixture | Nykyisten redaktoitujen stdout/stderr-lukijoiden rajattu otos omassa suoritusyrityskohtaisessa tiedostossaan myös testin rungon tai siivouksen epäonnistuessa. | Otos säilyy ennen muistitiedon katoamista, tiedosto liitetään nykyisen fixturen jälkiraportoinnissa. Windows-Electronin lähde on natiivi omistajaprosessi; workloadin omaa putkea ei muuteta tällä työllä. Käynnistyksen tai siivouksen kriittiselle polulle ei lisätä tiedostokuittausta. |
 | Electronin lifecycle-todiste | Fixturen jo kirjoittama `test-results/run-<uuid>/<testin suoritusyritys>/electron-lifecycle.json` muuttamattomina tavuina. | Vain tämä täsmällinen nimi ja syvyys; ei yleistä JSON- tai liitekansion keräystä. `attempt`, käynnistyssukupolvet, `publicCloseFailure`, `ownership` ja `cleanup` säilyvät erillisinä havaintoina. Samat koko-, linkki- ja muuttumattomuusrajat kuin muilla lähteillä. |
 | Native-komennot ja supervisorin sopimustestit | Nimetyt vaihe-, worker- ja caller-tulokset sekä olemassa olevat yksityiset prosessitulosteet. | Ei request/config-tiedostoja, profiileja tai tietokantoja. Siivouksen raakatulos säilyy erillään alkuperäisestä hylkäyksestä. Tarkoituksella lukemattoman putken koe säilyttää oman sopimuksensa. |
+| Historical-legacy-käynnistyksen syyote | Legacy-komennon `fixtureCleanup/legacy-startup-terminal.json`-tiedostosta vain varmennettu ajosidonta ja `startupEvidence`-projektio. | Nykyinen terminal-kirjoitus säilyttää otteen ennen profiilin poistoa. Ei koko operational-lokia, profiilia, tietokantaa tai terminalin muuta sisältöä. Syykoodit ja vaiheet eivät tule julkiseen testitulosteeseen. |
 | Synteettinen MSI-versiopolitiikan koe | Oman supervisor-testijuuren `policy-result.json` sekä numeroidut `source`, `target` ja `uninstall` -MSI-lokit muuttamattomina tavuina. | Vain suoraan testijuuren alla olevat nimet; ei descriptor-, request-, profiili- tai tietokantatiedostoja. Keskeytyneen MSI-komennon osittainen loki voidaan säilyttää ilman workerin lopputulosta. Samat koko-, linkki- ja muuttumattomuusrajat kuin muilla lähteillä. |
 | Packaged smoke | Rajattu prosessituloste ja nykyinen smoke-tulos. | Epäonnistuneen testin juurta ei poisteta; keräin ei lue sen profiilia. Tyhjentynyt tuloste ei todista onnistunutta käynnistystä. |
 | Muut komennot ja valmistelu | Nykyinen turvallinen GitHub-komentoloki. | Salattu keräys ei palauta tulostetta, jota aliohjelma ei tuottanut tai säilyttänyt. Riippuvuustyökalun raakavirheet jäävät erikseen rajatuiksi pois. |
@@ -129,6 +130,8 @@ Vain tunnettujen testiraporttien nimialueet tutkitaan. Tiedostolinkit,
 uudelleenohjaukset ja muuttuneet tiedostot hylätään.
 Playwright-raportin projektio merkitään manifestiin: alkuperäisen lähteen
 tiiviste ja salattavan projektion tiiviste eivät ole sama todiste.
+Legacy-syyotteen manifesti erottaa samalla tavalla alkuperäisen
+terminal-tiedoston tiivisteen ja salattavan projektion tiivisteen.
 Muiden sallittujen tiedostojen tavut säilyvät muuttamattomina.
 Packaged-legacy-palautus käyttää samoja `eky-desktop-smoke/<token>`-juuren
 nimettyjä tulos- ja prosessitulostetiedostoja. Keräyksen regressio varmistaa
@@ -145,6 +148,47 @@ Nykyinen fixture kirjoittaa lifecycle-tiedoston epäonnistuessaan tai
 ensikäynnistystodisteen yhteydessä. Tavallinen läpäissyt testi ei siis
 välttämättä tuota sitä. Keräys säilyttää vain tiedostossa olevat kentät;
 puuttuvaa käynnistyssukupolvea tai omistajan lopputilaa ei päätellä.
+
+### Legacy-käynnistyksen rajattu syyote
+
+Nykyinen legacy-komennon omistaja lukee vain oman eristetyn
+testikäynnistyksen desktop-lokin sen jälkeen, kun skenaarion olemassa oleva
+supervisor-tulos todistaa prosessipuun poissaolon. Enintään kaksi
+`desktop.bootstrapFailed`-tapahtumaa sidotaan skenaarion `runNonce`-arvoon,
+artifact-descriptorin tiivisteeseen ja odotettuun kohdeversion build-revisioon.
+Tapahtuman oma `runtimeInstanceId`, `eventId` ja UTC-aika säilyvät; ensimmäisen
+tai toisen käynnistyksen järjestystä ei arvata aikaleimasta.
+
+Ote sisältää vain nämä sidontakentät, syntaktisesti rajatun
+`[A-Z][A-Z0-9_]{0,127}`-syykoodin, nykyisen sovelluskirjoittajan vaiheen
+(`preWorkspaceBuildAdmission`, `workspaceFirstStartMigration` tai `startup`)
+ja syytiedon saatavuuden. Virheviesti, pino, mielivaltainen payload ja
+liiketoimintatunnisteet jäävät pois. Koodi on lokikirjoittajan tallentama
+havainto, ei keräimen todistama juurisyy eikä uusi julkinen virhekoodiluettelo.
+
+Luku rajataan 16 nykyisen nimisäännön mukaiseen lokitiedostoon ja nykyiseen
+5 MiB:n tiedostorajaan. Linkit, muuttunut sisältö, keskeneräinen viimeinen
+rivi, virheellinen sidonta tai puuttuva aineisto eivät muutu onnistuneeksi
+havainnoksi. Puuttuva tai varmentamaton syytieto säilyttää alkuperäisen
+testifixturen; sille ei päätellä poistamislupaa onnistuneesta MSI-siivouksesta.
+Normaalin hyväksyntätuloksen ja siivouksen nykyiset ehdot säilyvät.
+
+Otetta ei toimiteta uudella kirjoittimella: nykyinen `fixtureCleanup`-vaiheen
+atominen terminal-kirjoitus sisältää sen ennen mahdollista profiilin poistoa.
+Keräin hyväksyy vain tämän legacy-terminalin täsmällisen nimen ja projektoi
+sen erikseen ennen salausta. Käynnistykseen ei lisätä lokikuittausta,
+valmiusehtoa tai odotusaikaa. Keräimen nykyiset kokonaisrajat ja salauksen
+fail-closed-käytäntö säilyvät. Tämä testikohtainen yksityinen ote ei kuulu
+Diagnosticsiin, Activityyn tai sovelluksen tukipakettiin.
+
+Erillinen olemassa olevia asennuspaketteja käyttävä
+`packaged-boundary-diagnostic` kutsuu samaa jälkikeräysactionia vain
+legacy-variantin hylkäyksen tai keskeytyksen jälkeen. Valmiiksi tarkistetun
+julkisen salausavaimen ja hosted-admission ehdot säilyvät. Asennuskomento,
+pakollinen tulosverifier ja paketin jälkivarmennus eivät saa
+`continue-on-error`-poikkeusta; vain nykyinen valinnainen salattu toimitus saa
+olemassa olevan kolmen minuutin rajauksensa. Diagnostiikka ei korvaa
+normaalia saman revision PR/main-hyväksyntää.
 
 MSI-politiikan erillisessä manuaalisessa `msi-file-version-policy`-kokeessa
 `--retain-evidence` säilyttää myös läpäisseen kokeen nimetyn tutkimusaineiston.

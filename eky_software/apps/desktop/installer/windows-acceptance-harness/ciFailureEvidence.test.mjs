@@ -8,6 +8,7 @@ import test from 'node:test';
 import { gunzipSync } from 'node:zlib';
 import { collectJobFailureEvidence, evidenceSourceKind, jobEvidenceBinding, jobEvidenceGit } from './ciFailureEvidence.mjs';
 import { projectPlaywrightFailureReport } from './playwrightFailureReport.mjs';
+import { LEGACY_STARTUP_TERMINAL_FILENAME } from './legacyStartupFailureEvidence.mjs';
 
 const run = 'run-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const fingerprint = 'A'.repeat(40);
@@ -74,6 +75,44 @@ test('binding rejects missing attempts, invalid job names and unknown revisions'
     ['EKY_EVIDENCE_JOB_KEY', '../job'], ['GITHUB_JOB', 'job\nunsafe']]) {
     assert.throws(() => jobEvidenceBinding({ ...env, [field]: value }), /CI_FAILURE_EVIDENCE_UNVERIFIED/u);
   }
+});
+
+test('legacy collection admits only the bound cause projection from the existing cleanup terminal file', async t => {
+  const { temp, env, put } = await fixture(t);
+  const prefix = `eky-acceptance-command-${nativeId}/fixtureCleanup`;
+  const terminal = LEGACY_STARTUP_TERMINAL_FILENAME;
+  assert.equal(evidenceSourceKind('temporary', `${prefix}/${terminal}`), 'legacyStartupEvidence');
+  for (const path of [`${prefix}/${terminal}.bak`, `${prefix}/profile/${terminal}`, `${prefix}/terminal.json`,
+    `eky-acceptance-command-${nativeId}/scenario/${terminal}`,
+    `eky-acceptance-command-${nativeId}/fixtureCleanup/operational.jsonl`]) {
+    assert.equal(evidenceSourceKind('temporary', path), null);
+  }
+  const binding = { schemaVersion: 1, runNonce: 'b'.repeat(64), scenario: 'acceptanceCommandPhase',
+    artifactDescriptorSha256: 'c'.repeat(64) };
+  const startupEvidence = { schemaVersion: 1, scenarioRunNonce: 'd'.repeat(64),
+    artifactDescriptorSha256: binding.artifactDescriptorSha256,
+    targetIdentity: { appVersion: '0.2.7', buildRevision: 'a'.repeat(40) }, status: 'recorded', events: [{
+      appVersion: '0.2.7', buildRevision: 'a'.repeat(12), eventName: 'desktop.bootstrapFailed',
+      eventId: '12345678-1234-4abc-8abc-1234567890ab', runtimeInstanceId: '22345678-1234-4abc-8abc-1234567890ab',
+      timestamp: '2026-09-04T08:00:00.000Z', errorCode: 'PROFILE_SNAPSHOT_VALIDATION_FAILED',
+      stage: 'startup', causeStatus: 'recorded',
+    }] };
+  await put(temp, `${prefix}/${terminal}`, JSON.stringify({ binding, startupEvidence,
+    outcome: { errorCode: 'EXCLUDED raw outcome' } }));
+  await put(temp, `eky-acceptance-command-${'f'.repeat(32)}/fixtureCleanup/${terminal}`,
+    JSON.stringify({ binding, startupEvidence: { ...startupEvidence, password: 'EXCLUDED' }, outcome: {} }));
+  await put(temp, `eky-acceptance-command-${'e'.repeat(32)}/fixtureCleanup/${terminal}`,
+    `{"binding":${JSON.stringify(binding)},"startupEvidence":${JSON.stringify(startupEvidence)},"outcome":{},"outcome":{}}`);
+  const collected = await collectJobFailureEvidence(env);
+  const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+  const retained = archive.manifest.files.find(entry => entry.status === 'retained');
+  const bytes = Buffer.from(archive.files[retained.name], 'base64');
+  assert.equal(retained.kind, 'legacyStartupEvidence');
+  assert.equal(retained.projection, 'boundBootstrapCauseAndStageWithoutOutcomeOrProfile');
+  assert.deepEqual(JSON.parse(bytes), { binding, startupEvidence });
+  assert.equal(bytes.includes(Buffer.from('EXCLUDED')), false);
+  assert.equal(archive.manifest.files.filter(entry => entry.status === 'unverified').length, 2);
+  assert.equal(Object.keys(archive.files).length, 1);
 });
 
 test('legacy packaged failure retains existing smoke output but excludes the profile and backup', async t => {

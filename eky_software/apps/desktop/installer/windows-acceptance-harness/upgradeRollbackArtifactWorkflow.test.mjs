@@ -106,8 +106,11 @@ test('existing diagnostic can consume the exact upgrade artifact without rebuild
   assert.match(diagnostic, /if \(\$commandExit -ne 0 -or \$LASTEXITCODE -ne 0\) \{ throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED' \}/u);
   assert.doesNotMatch(diagnostic, /runUpgradeRollback\.mjs/u);
   assert.doesNotMatch(diagnostic, /installer:v2-upgrade-artifact:build|upload-artifact/u);
-  const optionalSteps = [...diagnostic.matchAll(/^        continue-on-error: \$\{\{ (.+) \}\}$/gmu)];
-  assert.equal(optionalSteps.length, diagnostic.match(/continue-on-error:/gu)?.length ?? 0);
+  const scope = "            && inputs.artifact_kind == 'legacy'\n";
+  assert.equal(diagnostic.split(scope).length, 2);
+  const required = withoutOptionalEvidenceAllowance(diagnostic.replace(scope, ''), 1);
+  const optionalSteps = [...required.matchAll(/^        continue-on-error: \$\{\{ (.+) \}\}$/gmu)];
+  assert.equal(optionalSteps.length, required.match(/continue-on-error:/gu)?.length ?? 0);
   for (const [, expression] of optionalSteps) {
     for (const inspector_capture of [false, true]) {
       assert.equal(runInNewContext(expression, {

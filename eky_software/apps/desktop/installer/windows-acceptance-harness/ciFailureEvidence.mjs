@@ -9,6 +9,8 @@ import {
 } from './workspaceEncryptedEvidence.mjs';
 import commandBudgets from '../windows-process-supervisor/supervisorCommandBudgets.json' with { type: 'json' };
 import { projectPlaywrightFailureReport } from './playwrightFailureReport.mjs';
+import { LEGACY_STARTUP_TERMINAL_FILENAME, projectLegacyStartupTerminalEvidence } from './legacyStartupFailureEvidence.mjs';
+import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
 
 const MiB = 1024 * 1024;
 const MAX_FILE = 8 * MiB;
@@ -32,6 +34,7 @@ export function evidenceSourceKind(area, path) {
   if (/^eky supervisor [a-zA-Z0-9]+\/(?:policy-result\.json|[1-9][0-9]*-(?:source|target|uninstall)\.log)$/u.test(path)) return 'msiPolicyEvidence';
   if (/^eky-desktop-smoke\/[a-f0-9]{32}\/(?:result\/desktop-smoke-result\.json|smoke-output\.private\.json)$/u.test(path)) return 'packagedSmoke';
   const fixturePrefix = '(?:(?:eky supervisor [a-zA-Z0-9]+/temporary|eky-t-[a-zA-Z0-9]+)/)?';
+  if (new RegExp(`^${fixturePrefix}eky-acceptance-command-[a-f0-9]{32}/fixtureCleanup/${LEGACY_STARTUP_TERMINAL_FILENAME.replace('.', '\\.')}$`, 'u').test(path)) return 'legacyStartupEvidence';
   if (new RegExp(`^${fixturePrefix}eky-(?:clean|upgrade|legacy|workspace)-caller-[a-f0-9]{32}/result\\.json$`, 'u').test(path)) return 'nativeResult';
   if (/^eky supervisor [a-zA-Z0-9]+\/(?:result\.json|worker-result\.json|ci-step\.(?:stdout|stderr)\.private|supervisor-(?:[1-9]|1[0-6])\.(?:stdout|stderr)\.private|supervisor-output\.private\.json)$/u.test(path)) return 'nativeResult';
   const command = new RegExp(`^${fixturePrefix}eky-acceptance-command-[a-f0-9]{32}/([^/]+)/(?:result|worker-result)\\.json$`, 'u').exec(path);
@@ -78,12 +81,17 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
       if (info.size > MAX_FILE) { entry.status = 'tooLarge'; return; }
       if (info.size > MAX_TOTAL - total) { entry.status = 'totalLimit'; return; }
       let proof = await retain(base, path, join(stage, name), MAX_FILE);
-      if (kind === 'playwrightReport') {
-        const bytes = Buffer.from(JSON.stringify(projectPlaywrightFailureReport(
-          JSON.parse(await readFile(join(stage, name), 'utf8')))));
+      if (kind === 'playwrightReport' || kind === 'legacyStartupEvidence') {
+        const project = kind === 'playwrightReport' ? projectPlaywrightFailureReport : projectLegacyStartupTerminalEvidence;
+        const retained = await readFile(join(stage, name));
+        const value = kind === 'legacyStartupEvidence'
+          ? parseStrictJsonObjectBytes(retained, { errorCode: 'legacyStartupEvidenceInvalid', maximumBytes: MAX_FILE })
+          : JSON.parse(retained.toString('utf8'));
+        const bytes = Buffer.from(JSON.stringify(project(value)));
         if (bytes.length > MAX_FILE || bytes.length > MAX_TOTAL - total) { entry.status = 'tooLarge'; return; }
         entry.sourceProof = proof;
-        entry.projection = 'failureFieldsWithoutConfigurationOrInlineAttachments';
+        entry.projection = kind === 'playwrightReport' ? 'failureFieldsWithoutConfigurationOrInlineAttachments'
+          : 'boundBootstrapCauseAndStageWithoutOutcomeOrProfile';
         await writeFile(join(stage, name), bytes);
         proof = { bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };
       }

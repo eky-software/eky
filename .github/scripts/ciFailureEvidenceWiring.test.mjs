@@ -56,8 +56,10 @@ const exclusions = {
     'linux-encrypted-evidence-delivery-proof': 'Explicit Linux experiment with its own delivery contract',
     'inspector-cutoff-diagnostic': 'Explicit experiment, not normal required acceptance',
     'msi-file-version-policy': 'Explicit experiment, not normal required acceptance',
-    'packaged-boundary-diagnostic': 'Explicit experiment, not normal required acceptance',
   },
+};
+const diagnosticFamilies = {
+  'windows-acceptance-supervisor-feasibility.yml': ['packaged-boundary-diagnostic'],
 };
 
 function platformsFor(key) {
@@ -108,7 +110,7 @@ function evaluate(expression, mutate = () => {}, runnerOs = 'Windows') {
   mutate(values);
   // All compared values are fixed strings; this exercises the boolean gate,
   // not GitHub's general expression coercion rules.
-  const script = expression.replace(/inputs\.([a-z][a-z-]*)/gu, 'inputs["$1"]');
+  const script = expression.replace(/inputs\.([a-z][a-z_-]*)/gu, 'inputs["$1"]');
   return Boolean(runInNewContext(script, values, { timeout: 1000 }));
 }
 
@@ -229,7 +231,8 @@ test('every current CI job has an explicit failure-delivery or exclusion decisio
   for (const [file, jobMap] of workflows) {
     const covered = normalFamilies[file] ?? {};
     const excluded = exclusions[file] ?? {};
-    assert.deepEqual([...jobMap.keys()].sort(), [...Object.keys(covered), ...Object.keys(excluded)].sort(), file);
+    const diagnostic = diagnosticFamilies[file] ?? [];
+    assert.deepEqual([...jobMap.keys()].sort(), [...Object.keys(covered), ...Object.keys(excluded), ...diagnostic].sort(), file);
     for (const [id, reason] of Object.entries(excluded)) {
       assert.ok(reason.length > 20, `${file}/${id}: exclusion needs a rationale`);
       if (!['encrypted-evidence-delivery-proof', 'linux-encrypted-evidence-delivery-proof'].includes(id)) {
@@ -237,6 +240,36 @@ test('every current CI job has an explicit failure-delivery or exclusion decisio
       }
     }
   }
+});
+
+test('legacy packaged diagnostic uses the existing failure collector last without changing mandatory steps', () => {
+  const job = workflows.get('windows-acceptance-supervisor-feasibility.yml').get('packaged-boundary-diagnostic');
+  const allSteps = steps(job, 6);
+  const hook = allSteps.at(-1);
+  assert.equal(allSteps.filter(step => step.includes(`uses: ${actionUse}\n`)).length, 1);
+  assert.ok(hook.startsWith(`      - name: ${hookName}\n`));
+  assert.ok(hook.includes('          job-key: legacy-boundary-diagnostic-0\n'));
+  assert.ok(hook.includes('          job-outcome: ${{ job.status }}\n'));
+  assert.match(job.split('\n    steps:\n')[0], /github\.event_name == 'workflow_dispatch' && inputs\.mode == 'packaged-boundary-diagnostic'/u);
+  const scope = "            && inputs.artifact_kind == 'legacy'\n";
+  assert.equal(hook.split(scope).length, 2);
+  withoutOptionalEvidenceAllowance(hook.replace(scope, ''), 1);
+  const gate = condition(hook, 8);
+  const legacyContext = c => { c.github.event_name = 'workflow_dispatch'; c.inputs.artifact_kind = 'legacy'; };
+  assert.ok(evaluate(gate, legacyContext));
+  for (const mutate of [
+    c => { c.inputs.artifact_kind = 'workspace'; },
+    c => { c.inputs.artifact_kind = 'upgrade'; },
+    c => { c.job.status = 'success'; },
+    c => { c.runner.os = 'Linux'; },
+    c => { c.runner.environment = 'self-hosted'; },
+    c => { c.vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT = ''; },
+    c => { c.github.event_name = 'pull_request_target'; },
+  ]) assert.equal(evaluate(gate, c => { legacyContext(c); mutate(c); }), false);
+  const mandatory = allSteps.find(step => step.includes('- name: Run existing caller and mandatory result verifier once\n'));
+  assert.ok(mandatory);
+  assert.doesNotMatch(mandatory, /continue-on-error:/u);
+  assert.match(mandatory, /WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED/u);
 });
 
 test('all normal Linux and Windows families collect last, independently of which preparation or test failed', () => {

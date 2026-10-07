@@ -275,7 +275,12 @@ test('external inspector capture is opt-in and never replaces command or artifac
   for (const step of steps) {
     const optional = ['Start opt-in external inspector capture', 'Stop only the diagnostic recording',
       'Extract closed inspector observations without publishing raw trace'].includes(step.split('\n')[0]);
-    if (optional) assert.match(step, /continue-on-error: \$\{\{ inputs\.artifact_kind == 'workspace-fault' \}\}/u);
+    if (step.startsWith('Preserve encrypted CI failure evidence\n')) {
+      const scope = "            && inputs.artifact_kind == 'legacy'\n";
+      assert.equal(step.split(scope).length, 2);
+      withoutOptionalEvidenceAllowance(`      - name: ${step}`.replace(scope, ''), 1);
+    }
+    else if (optional) assert.match(step, /continue-on-error: \$\{\{ inputs\.artifact_kind == 'workspace-fault' \}\}/u);
     else assert.doesNotMatch(step, /continue-on-error/u);
   }
 });
@@ -320,7 +325,8 @@ test('diagnostic analysis uses the selected existing reader and preserves its pr
   skip: process.platform !== 'win32', timeout: 60_000,
 }, async (t) => {
   const workflow = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
-  const step = workflow.split('      - name: Extract closed inspector observations without publishing raw trace\n')[1];
+  const step = workflow.split('      - name: Extract closed inspector observations without publishing raw trace\n')[1]
+    .split('\n      - name:')[0];
   assert.ok(step);
   const body = step.split('        run: |\n')[1].trimEnd().split('\n')
     .map((line) => { assert.ok(line.startsWith('          ')); return line.slice(10); }).join('\n');
