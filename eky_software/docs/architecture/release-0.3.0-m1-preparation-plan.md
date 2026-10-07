@@ -204,6 +204,15 @@ sen uudelleenajo ei todistaisi uuden poikkeuksen keräystä. Varsinainen
 legacy-sovellusvika, jäädytetyn paketin todennus ja normaali hyväksyntä
 säilyvät erillisinä avoimina kohtina.
 
+**Rajattu keräystodennus valmistui:** [yksi nimetty no-MSI Windows-koe](https://github.com/eky-software/eky/actions/runs/37616471588)
+läpäisi revisiolla `6c096474`. Oikea Electron-poistuminen, prosessipuun
+poissaolo, salattu julkaisu ja yksityinen sisällön purkuvarmennus on
+todennettu [omistavan sopimuksen mukaisesti](ci-encrypted-evidence.md#hyväksytty-alkuperäisen-poikkeuksen-rajaus).
+Tämä ei merkitse alkuperäistä legacy-vikaa korjatuksi eikä sulje B3-B5:n
+paketoituja hyväksyntäportteja. Seuraava sovellusvian todennus tarvitsee
+uuden runtime-kytkennän sisältävän jäädytetyn paketin; vanhan artifactin
+uusinta ei korvaa sitä. T3:n omistajuutta tai testialustaa ei avata uudelleen.
+
 ### B3-B5:n aikana havaittu riippuvuuspäivitys
 
 Mainin samaan lähtörevisioon kohdistunut [ajastettu auditointi 6.10.2026](https://github.com/eky-software/eky/actions/runs/37441556812/job/112196274405)

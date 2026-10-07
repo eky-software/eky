@@ -200,11 +200,16 @@ ja onnistunut polku eivät odota. Kirjoituksen virhe tai aikakatkaisu ei muuta
 alkuperäistä käynnistysvirhettä eikä anna fixturen poistamislupaa ilman
 varmennettua otetta. Nykyiset testien hyväksyntäaikarajat säilyvät.
 
-**Toimituksen hyväksyntä on vielä avoin:** valmistumisodotus ja oikea
-`app.exit()`-raja on todennettava nykyisen Windows-supervisorin omistamassa
-Electron-prosessissa. Luonnollinen Node-poistuminen ei korvaa tätä näyttöä.
-Paketoidun legacy-käynnistyksen alkuperäinen sovellusvika ja uuden paketin
-normaali hyväksyntä säilyvät erillisinä avoimina kohtina.
+**Rajattu toimitus on todennettu:** [nimetty Windows-koe](https://github.com/eky-software/eky/actions/runs/37616471588)
+läpäisi revisiolla `6c096474`. Nykyisen Windows-supervisorin omistama
+Electron-fixture todisti alkuperäisen poikkeuksen säilymisen oikean
+`app.exit()`-rajan yli ja prosessipuun poissaolon. Salattu julkaisu ja
+yksityinen purku varmistivat viestin, pinon, syyketjun, ajosidonnan ja
+tiivisteet. Onnistuneen fixturen native-tulosta ei sisällytetä liitteeseen:
+poistumistodiste perustuu saman jäädytetyn kokeen tiukkoihin assertioihin,
+liitteen sisältötodiste purkuun. Luonnollinen Node-poistuminen ei korvaa tätä
+näyttöä. Tämä ei ole paketoidun tuotantokäynnistyksen hyväksyntä:
+legacy-sovellusvika ja uuden paketin normaali hyväksyntä säilyvät avoimina.
 
 Nimetty `startup-exception-exit-proof` on nykyisen feasibility-workflowin
 manuaalinen kertakoe, ei normaali hyväksyntäportti. Se kääntää jäädytetyn
