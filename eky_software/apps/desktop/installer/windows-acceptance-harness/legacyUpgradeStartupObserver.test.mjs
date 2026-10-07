@@ -8,6 +8,7 @@ import { readWindowsShortPathFixture } from '../windows-process-supervisor/tests
 import { deriveLegacySourceUserDataRoot } from './legacyUpgradeProfileEvidence.mjs';
 import { executeLegacyCommandPhase } from './legacyCommandPhase.mjs';
 import { createLegacyUpgradeWorkerRequest } from './legacyUpgradeContracts.mjs';
+import { resolveLegacyUpgradeTemporaryRoot } from './legacyUpgradeAdmission.mjs';
 import { LEGACY_STARTUP_TERMINAL_FILENAME, projectLegacyStartupTerminalEvidence, readLegacyStartupFailureEvidence,
   startupEvidenceAllowsFixtureRemoval, validateLegacyStartupFailureEvidence } from './legacyStartupFailureEvidence.mjs';
 import { projectStartupException, STARTUP_EXCEPTION_CONTROL, STARTUP_EXCEPTION_SUFFIX } from '../../src/main/startupExceptionEvidence.ts';
@@ -40,8 +41,8 @@ function event(eventName, eventId, overrides = {}) {
   };
 }
 
-async function fixture(t, automaticCleanup = true) {
-  const root = await mkdtemp(join(tmpdir(), 'eky-legacy-observer-'));
+async function fixture(t, automaticCleanup = true, temporaryRoot = tmpdir()) {
+  const root = await mkdtemp(join(await resolveLegacyUpgradeTemporaryRoot(temporaryRoot), 'eky-legacy-observer-'));
   if (automaticCleanup) {
     t.after(() => rm(root, { force: true, recursive: true }));
   }
@@ -152,8 +153,8 @@ test('bootstrap projection retains the recorded cause and stage without arbitrar
   assert.equal(JSON.stringify(failure).includes('EXCLUDED'), false);
 });
 
-async function failureEvidenceFixture(t, fields = {}) {
-  const files = await fixture(t);
+async function failureEvidenceFixture(t, fields = {}, temporaryRoot = tmpdir()) {
+  const files = await fixture(t, true, temporaryRoot);
   const runNonce = 'b'.repeat(64);
   const logDirectory = resolve(deriveLegacySourceUserDataRoot(files.root, runNonce), 'runtime', 'logs', 'desktop');
   await mkdir(resolve(logDirectory, '..'), { recursive: true });
@@ -264,6 +265,28 @@ async function cleanupContext(t, f) {
     reports: { scenario: { ...f.input.supervisorResult, status: 'failed', processResultCode: 'deadlineExceeded',
       workerResultCode: 'notChecked', cleanupResultCode: 'processTreeAbsent' } } };
 }
+
+test('fixture cleanup uses the canonical run root when temporary storage has a Windows 8.3 alias', {
+  skip: process.platform !== 'win32',
+}, async t => {
+  const parent = await fixture(t);
+  const shortRoot = await readWindowsShortPathFixture(parent.root, { directory: parent.root });
+  assert.notEqual(shortRoot, parent.root);
+  assert.match(shortRoot, /~[0-9]/);
+  assert.equal(await realpath(shortRoot), await realpath(parent.root));
+  const f = await failureEvidenceFixture(t, {}, shortRoot);
+  assert.equal(f.root, await realpath(f.root));
+  const context = await cleanupContext(t, f);
+  await executeLegacyCommandPhase(context, { filesystem: async ({ operation, payload }) => {
+    assert.equal(operation, 'remove');
+    const saved = JSON.parse(await readFile(resolve(context.phaseRoot, LEGACY_STARTUP_TERMINAL_FILENAME), 'utf8'));
+    assert.equal(saved.startupEvidence.events[0].errorCode, 'PROFILE_SNAPSHOT_VALIDATION_FAILED');
+    assert.equal(saved.originalExceptionEvidence.status, 'notEnabled');
+    await rm(payload.root, { recursive: true });
+  } });
+  assert.equal(context.state.fixtureRemoved, true);
+  await assert.rejects(lstat(f.root), { code: 'ENOENT' });
+});
 
 test('actual fixture cleanup preserves the cause in its existing terminal write before removing the profile', async t => {
   const f = await failureEvidenceFixture(t);

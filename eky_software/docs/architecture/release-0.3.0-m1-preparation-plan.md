@@ -213,6 +213,17 @@ paketoituja hyväksyntäportteja. Seuraava sovellusvian todennus tarvitsee
 uuden runtime-kytkennän sisältävän jäädytetyn paketin; vanhan artifactin
 uusinta ei korvaa sitä. T3:n omistajuutta tai testialustaa ei avata uudelleen.
 
+**Uuden paketin valmistelussa löytynyt testifixturen virhe:** [rajattu legacy-kierros](https://github.com/eky-software/eky/actions/runs/37623117906)
+hylkäsi kaksi syyotteen siivousregressiota molemmissa core-toistoissa ennen
+paketin valmistusta. Fixturen temp-juuren on käytettävä samaa kanonista
+polkua kuin varsinaisen legacy-ajajan nykyinen admission-portti, myös
+Windowsin 8.3-aliaksen kautta valmisteltuna. Korjaus rajataan testifixtureen
+ja aidon aliaksen regressioon; nykyiset todiste-, linkki-, sisältö- ja
+siivousvaatimukset säilyvät. Ensihylkäys ja sen aineisto säilytetään.
+Seuraava nimetty todennus on korjatun jäädytetyn revision nykyinen
+legacy-paketointikierros. Tämä valmisteluvirhe ei selitä vanhaa sovelluksen
+käynnistysvirhettä, jota kierros ei vielä suorittanut.
+
 ### B3-B5:n aikana havaittu riippuvuuspäivitys
 
 Mainin samaan lähtörevisioon kohdistunut [ajastettu auditointi 6.10.2026](https://github.com/eky-software/eky/actions/runs/37441556812/job/112196274405)
