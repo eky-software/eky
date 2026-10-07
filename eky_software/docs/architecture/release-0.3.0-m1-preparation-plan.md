@@ -235,6 +235,26 @@ kielteisen muutoksen regressioilla; workflow ja sen loppuportti eivät muutu.
 Tämäkin hylkäys tapahtui ennen paketin valmistusta ja varsinaista
 sovelluskäynnistystä. Korjattu revisio tarvitsee oman nimetyn todennuksensa.
 
+**Uusi paketti ja aidon käynnistysvirheen keräys todennettiin:** [nimetty kierros](https://github.com/eky-software/eky/actions/runs/37628169512)
+revisiolla `5f2ad09a` läpäisi kaikki 12 valmistelujobia, paketin 65 esitestiä,
+rakentamisen ja alkuvarmennuksen. Molemmat saman paketin legacy-kuluttajat
+hylättiin uuden sovelluksen ensimmäisessä käynnistyksessä. Salattu toimitus,
+yksityinen purku sekä poikkeuksen revisio-, suoritus- ja tiedostoeheys on
+tarkistettu kummassakin. Talteen saatiin `runtimeStartup`-vaiheen viesti ja
+pino, jotka rajaavat virheen backendin migraatiokäynnistysporttiin, mutta
+eivät vielä todista sen alemman hylkäyksen syytä. Myöhempi aikakatkaisu on
+erillinen havainto; prosessien ja tuotteiden siivous sekä paketin
+jälkivarmennus läpäisivät.
+
+Seuraava tutkimus rajataan nykyisen `beforeMigrations`-päätöksen ja
+ensimmäisen käynnistyksen profiilisuojan hylkäykseen. Nykyinen
+backend-prosessin vastausketju hukkaa callbackin poikkeuksen ennen yleistä
+virhekoodia; salaus ei palauta jo hukattua syyketjua. Mahdollinen täsmennys
+käyttää hyväksyttyä ensimmäisen poikkeuksen kytkentää eikä uutta loggeria,
+profiilikopiota tai testialustaa. Ensin tarvitaan rajattu paikallinen näyttö;
+uutta CI-kierrosta, hyväksynnän lievennystä tai mergeä ei tehdä tämän
+koetuloksen perusteella. B3-B5:n legacy-käynnistysportti pysyy avoimena.
+
 ### B3-B5:n aikana havaittu riippuvuuspäivitys
 
 Mainin samaan lähtörevisioon kohdistunut [ajastettu auditointi 6.10.2026](https://github.com/eky-software/eky/actions/runs/37441556812/job/112196274405)
