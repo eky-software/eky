@@ -185,6 +185,14 @@ erikseen Noden nykyisen toteutuksen perusteella.
 
 Poikkeus tarjotaan havaitsijalle ennen siivousta tai yleiseksi koodiksi
 muuntamista. Ensimmäistä otetta ei korvata myöhemmällä fallbackilla.
+Migraatiota edeltävän päätöksen kohdalla sekä ensimmäisen käynnistyksen
+koordinaattori että backend-prosessin callback-vastaanottaja käyttävät
+compositionin samaa opt-in-havaitsijaa. Se saa alkuperäisen hylkäyksen ennen
+recovery-journalin kirjoitusta tai `abortStartup`-viestiä, myös jos
+koordinaattori on jo pysäyttänyt käynnistysprosessin. Havaitsijaa ei odoteta
+tässä rajassa eikä sen virhe muuta päätöstä. Julkiset virheet, statusviestit
+ja operational-tapahtumat eivät saa raakaa `cause`-ketjua. Tämä kytkentä ei
+väitä, että alemman palvelun jo korvaama poikkeus voitaisiin palauttaa.
 Jokainen runtime saa oman exclusive-tiedoston. Prosessipuun poissaolon jälkeen
 nykyinen fixtureCleanup omistaa luvun ja terminal-kirjoituksen ennen poistoa.
 Kelvollinen ensimmäinen ote säilytetään, vaikka toinen olisi rikkinäinen.

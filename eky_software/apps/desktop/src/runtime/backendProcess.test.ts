@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import type { MessagePortMain } from 'electron';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { startDesktopBackend } from './backendProcess.js';
+import { startDesktopBackend, type StartDesktopBackendOptions } from './backendProcess.js';
 
 const boundary = vi.hoisted(() => ({ fork: vi.fn() }));
 vi.mock('electron', () => ({ utilityProcess: { fork: boundary.fork } }));
@@ -80,7 +80,93 @@ describe('backend process shutdown result', () => {
   );
 });
 
+describe('backend migration gate private exception observation', () => {
+  it.each([false, true])('preserves the original rejection before abort without leaking it (observer throws: %s)', async (observerThrows) => {
+    vi.useFakeTimers();
+    const original = new Error('synthetic private gate detail', { cause: new Error('synthetic inner cause') });
+    const abortedAtObservation: boolean[] = [];
+    const observeStartupException = vi.fn((_error: unknown) => {
+      abortedAtObservation.push(fixture.postMessage.mock.calls.some(([message]) => message.type === 'abortStartup'));
+      if (observerThrows) throw new Error('synthetic evidence failure');
+    });
+    const fixture = createStartingFixture({
+      beforeMigrations: async () => { throw original; }, observeStartupException,
+    });
+    const rejected = fixture.started.then(() => undefined, (error: unknown) => error);
+    fixture.process.emit('message', { type: 'migrationGateReady', inspection: {
+      appliedMigrationCount: 38, migrationChainIdentity: 'b'.repeat(64),
+      pendingMigrationCount: 1, profileState: 'existing',
+    } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(observeStartupException).toHaveBeenCalledExactlyOnceWith(original);
+    expect(abortedAtObservation).toEqual([false]);
+    expect(fixture.postMessage).toHaveBeenLastCalledWith({ type: 'abortStartup' });
+    fixture.process.emit('message', { type: 'failed', code: 'BACKEND_MIGRATION_STARTUP_GATE_FAILED' });
+    const result = await rejected;
+    expect(result).toEqual(new Error('BACKEND_MIGRATION_STARTUP_GATE_FAILED'));
+    expect(result).not.toHaveProperty('cause');
+    expect(fixture.kill).toHaveBeenCalledOnce();
+    expect(JSON.stringify(fixture.write.mock.calls)).not.toContain('synthetic private');
+    expect(JSON.stringify(fixture.write.mock.calls)).not.toContain('synthetic inner');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('observes a rejection after the coordinator has already stopped the startup process', async () => {
+    vi.useFakeTimers();
+    const original = new Error('synthetic failure after requested shutdown');
+    const observeStartupException = vi.fn();
+    const fixture = createStartingFixture({
+      async beforeMigrations(_inspection, control) {
+        await control.stopStartupRuntime();
+        throw original;
+      },
+      observeStartupException,
+    });
+    const result = fixture.started.then(() => undefined, (error: unknown) => error);
+    fixture.process.emit('message', { type: 'migrationGateReady', inspection: {
+      appliedMigrationCount: 38, migrationChainIdentity: 'b'.repeat(64),
+      pendingMigrationCount: 1, profileState: 'existing',
+    } });
+    expect(fixture.postMessage).toHaveBeenLastCalledWith({ type: 'shutdown' });
+    fixture.process.emit('exit', 0);
+    expect(await result).toEqual(new Error('BACKEND_MIGRATION_STARTUP_GATE_FAILED'));
+    expect(observeStartupException).toHaveBeenCalledExactlyOnceWith(original);
+    expect(fixture.postMessage).not.toHaveBeenCalledWith({ type: 'abortStartup' });
+    expect(fixture.kill).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('does not invoke private observation on a successful migration decision', async () => {
+    vi.useFakeTimers();
+    const observeStartupException = vi.fn();
+    const fixture = createStartingFixture({ observeStartupException });
+    fixture.process.emit('message', { type: 'migrationGateReady', inspection: {
+      appliedMigrationCount: 38, migrationChainIdentity: 'b'.repeat(64),
+      pendingMigrationCount: 1, profileState: 'existing',
+    } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fixture.postMessage).toHaveBeenLastCalledWith({ type: 'continueStartup' });
+    fixture.process.emit('message', { type: 'ready', port: 12345,
+      smokePdfCreated: false, smokeSecretBrokerVerified: false });
+    const backend = await fixture.started;
+    const stopped = backend.stop();
+    fixture.process.emit('exit', 0);
+    await expect(stopped).resolves.toBe('exited');
+    expect(observeStartupException).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
 async function createFixture() {
+  const fixture = createStartingFixture();
+  fixture.process.emit('message', {
+    type: 'ready', port: 12345, smokePdfCreated: false, smokeSecretBrokerVerified: false,
+  });
+  return { ...fixture, backend: await fixture.started };
+}
+
+function createStartingFixture(options: Partial<Pick<StartDesktopBackendOptions,
+  'beforeMigrations' | 'observeStartupException'>> = {}) {
   const process = new EventEmitter();
   const postMessage = vi.fn();
   const kill = vi.fn(() => true);
@@ -89,6 +175,7 @@ async function createFixture() {
   const root = resolve('synthetic-backend-process-test');
   const started = startDesktopBackend({
     beforeMigrations: async () => undefined,
+    ...options,
     config: {
       appVersion: '0.2.81', architecture: 'x64', backendRoot: root,
       buildCreatedAt: '2026-10-04T10:00:00.000Z', buildDirty: false,
@@ -114,8 +201,5 @@ async function createFixture() {
     secretBrokerPort: {} as MessagePortMain,
   });
   process.emit('spawn');
-  process.emit('message', {
-    type: 'ready', port: 12345, smokePdfCreated: false, smokeSecretBrokerVerified: false,
-  });
-  return { backend: await started, process, kill, postMessage, write };
+  return { started, process, kill, postMessage, write };
 }

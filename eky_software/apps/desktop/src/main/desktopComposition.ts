@@ -497,6 +497,10 @@ async function startDesktopCompositionRuntime({
 }: DesktopCompositionRuntimeOptions): Promise<
   DesktopLifecycleHandle | undefined
 > {
+  const startupExceptionObservation = options.observeStartupException === undefined ? {} : {
+    observeStartupException: (error: unknown) =>
+      options.observeStartupException?.(error, 'runtimeStartup', [runtimeSessionSecret]),
+  };
   const workspaceProfilePaths = createDesktopProfilePaths(
     activeWorkspace.workspaceRoot,
   );
@@ -694,6 +698,7 @@ async function startDesktopCompositionRuntime({
           directSetupRecoveryStore: directSetupMigrationRecoveryStore,
           journalStore: updateJournalStore,
           observer: updateObserver,
+          ...startupExceptionObservation,
           profileProtection: updateProfileProtection,
           readSecretStorageIdentity: () =>
             readEncryptedSecretStorageIdentity(encryptedSecretFile),
@@ -1068,6 +1073,7 @@ async function startDesktopCompositionRuntime({
         : 'backend',
     );
     backendHandle = await dependencies.startBackend({
+      ...startupExceptionObservation,
       async beforeMigrations(inspection, control) {
         backendStartupControl = control;
         await profileSnapshotBrokerClient.waitUntilReady();

@@ -10,6 +10,7 @@ import { createProfileSnapshotRuntimePaths } from '../profileBackup/profileSnaps
 import { RecoveryPointScheduler } from '../profileBackup/recoveryPoint/recoveryPointScheduler.js';
 import { RecoveryPointCleanShutdownMarker } from '../profileBackup/recoveryPoint/recoveryPointCleanShutdownMarker.js';
 import { BackendShutdownExitError, type BackendShutdownOutcome } from '../runtime/backendShutdown.js';
+import type { StartDesktopBackendOptions } from '../runtime/backendProcess.js';
 import { ProfileRestoreActivationJournalStore } from '../profileBackup/restore/profileRestoreActivationJournalStore.js';
 import { ProfileRestoreActivationTransaction } from '../profileBackup/restore/profileRestoreActivationTransaction.js';
 import { createDesktopProfilePaths } from '../runtime/desktopProfilePaths.js';
@@ -96,6 +97,28 @@ afterEach(async () => {
 });
 
 describe('desktop restore startup composition', () => {
+  it.each([false, true])('wires private gate observation with the session secret only when enabled (enabled: %s)', async enabled => {
+    const original = new Error('synthetic private migration rejection');
+    let installedObserver: StartDesktopBackendOptions['observeStartupException'];
+    const fixture = await createFixture(originalProfileId, {
+      async inspectBackendStartup(input) {
+        installedObserver = input.observeStartupException;
+        input.observeStartupException?.(original);
+        throw new Error('BACKEND_MIGRATION_STARTUP_GATE_FAILED');
+      },
+    });
+    const observe = vi.fn();
+    await expect(fixture.start(enabled ? observe : undefined)).rejects.toThrow('DESKTOP_START_FAILED');
+    if (enabled) {
+      expect(installedObserver).toBeTypeOf('function');
+      expect(observe.mock.calls[0]).toEqual([original, 'runtimeStartup', ['d'.repeat(64)]]);
+    } else {
+      expect(installedObserver).toBeUndefined();
+      expect(observe).not.toHaveBeenCalled();
+    }
+    expect(RecoveryPointScheduler.prototype.stopChecks).toHaveBeenCalled();
+  });
+
   it('observes the first runtime startup exception before recovery cleanup', async () => {
     const fixture = await createFixture(originalProfileId);
     const original = new Error('synthetic-original-before-backend', { cause: new Error('synthetic cause') });
@@ -289,7 +312,11 @@ function createCompletionGate() {
 
 async function createFixture(
   restoredProfileId: string,
-  options: { replacementTarget?: boolean; completeStartup?: boolean } = {},
+  options: {
+    replacementTarget?: boolean;
+    completeStartup?: boolean;
+    inspectBackendStartup?(input: StartDesktopBackendOptions): Promise<void>;
+  } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'eky-desktop-restore-startup-'));
   roots.push(root);
@@ -455,8 +482,9 @@ async function createFixture(
       releaseInfo: undefined,
       dependencies: {
         createRuntimeSession: () => 'd'.repeat(64),
-        async startBackend() {
+        async startBackend(input) {
           events.push('backendStarted');
+          await options.inspectBackendStartup?.(input);
           return { port: 12345, stop, onUnexpectedExit: vi.fn(), stopForUpdate: vi.fn() };
         },
       },

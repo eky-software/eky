@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { runSafeDesktopStartup } from './earlyStartup.js';
 import { createStartupExceptionCapture, STARTUP_EXCEPTION_CONTROL,
-  STARTUP_EXCEPTION_DELIVERY_TIMEOUT_MS, startupExceptionDirectory } from './startupExceptionEvidence.js';
+  STARTUP_EXCEPTION_DELIVERY_TIMEOUT_MS, startupExceptionDirectory,
+  validateStartupExceptionEvidence } from './startupExceptionEvidence.js';
 
 vi.mock('node:fs/promises', async importOriginal => ({
   ...await importOriginal<typeof import('node:fs/promises')>(),
@@ -37,6 +38,27 @@ function fixture() {
 }
 
 describe('bounded synthetic startup exception delivery', () => {
+  it('serializes the first migration decision cause with redaction instead of later safe wrappers', async () => {
+    vi.mocked(writeFile).mockResolvedValue();
+    const { capture } = fixture();
+    const session = 'd'.repeat(64);
+    capture(new Error(`synthetic migration detail ${session}`, {
+      cause: new Error('synthetic recovery cause'),
+    }), 'runtimeStartup', [session]);
+    capture(new Error('BACKEND_MIGRATION_STARTUP_GATE_FAILED'), 'runtimeStartup', [session]);
+    capture(new Error('DESKTOP_START_FAILED'), 'compositionStartup', [session]);
+    expect(await capture.waitForDelivery()).toBe('recorded');
+    expect(writeFile).toHaveBeenCalledOnce();
+    const serialized = String(vi.mocked(writeFile).mock.calls[0]![1]);
+    const evidence = validateStartupExceptionEvidence(JSON.parse(serialized));
+    expect(evidence.stage).toBe('runtimeStartup');
+    expect(evidence.chain.map(part => part.message))
+      .toEqual(['synthetic migration detail [redacted]', 'synthetic recovery cause']);
+    expect(serialized).not.toContain(session);
+    expect(serialized).not.toContain('BACKEND_MIGRATION_STARTUP_GATE_FAILED');
+    expect(serialized).not.toContain('DESKTOP_START_FAILED');
+  });
+
   it('does not write or start a timer without a failure, or activate for normal startup', async () => {
     vi.useFakeTimers();
     const { input, capture } = fixture();

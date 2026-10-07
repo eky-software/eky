@@ -35,6 +35,7 @@ export interface StartDesktopBackendOptions {
   invoicePdfArchiveBrokerPort: MessagePortMain;
   operationalIdentity: DesktopOperationalIdentity;
   operationalLogger?: DesktopOperationalLogger;
+  observeStartupException?(error: unknown): void;
   profileSnapshotBrokerPort: MessagePortMain;
   runnerPath: string;
   secretBrokerPort: MessagePortMain;
@@ -190,7 +191,8 @@ export function startDesktopBackend(
             processHandle.postMessage({ type: 'continueStartup' });
             return 'completed' as const;
           })
-          .catch(() => {
+          .catch((error: unknown) => {
+            try { options.observeStartupException?.(error); } catch { /* Optional private evidence. */ }
             if (!migrationGatePending || ready) {
               return 'failed' as const;
             }

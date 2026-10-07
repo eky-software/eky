@@ -246,14 +246,23 @@ eivät vielä todista sen alemman hylkäyksen syytä. Myöhempi aikakatkaisu on
 erillinen havainto; prosessien ja tuotteiden siivous sekä paketin
 jälkivarmennus läpäisivät.
 
-Seuraava tutkimus rajataan nykyisen `beforeMigrations`-päätöksen ja
-ensimmäisen käynnistyksen profiilisuojan hylkäykseen. Nykyinen
-backend-prosessin vastausketju hukkaa callbackin poikkeuksen ennen yleistä
-virhekoodia; salaus ei palauta jo hukattua syyketjua. Mahdollinen täsmennys
-käyttää hyväksyttyä ensimmäisen poikkeuksen kytkentää eikä uutta loggeria,
-profiilikopiota tai testialustaa. Ensin tarvitaan rajattu paikallinen näyttö;
-uutta CI-kierrosta, hyväksynnän lievennystä tai mergeä ei tehdä tämän
-koetuloksen perusteella. B3-B5:n legacy-käynnistysportti pysyy avoimena.
+**Rajattu keräyskorjaus työpuussa:** `beforeMigrations`-callbackin ja
+`FirstStartUpdateCoordinator`-omistajan hylkäykset tarjotaan nyt nykyiselle
+opt-in-havaitsijalle ennen yleistä virhekoodia ja palautussiivousta.
+Composition välittää molemmille saman valinnaisen havaitsijan sekä nykyisen
+session redaktion. Alkuperäistä poikkeusta ei lisätä julkisen virheen
+`cause`-kenttään. Havaitsijan virhe ei estä aborttia tai recovery-journalin
+siirtymää; havainto säilyy myös koordinaattorin jo pysäyttämän käynnistyksen
+jälkeisessä hylkäyksessä. Ei uutta loggeria, kirjoitinta, odotusta tai
+hyväksyntäehtoa.
+
+Kohderegressiot kattavat syyn identiteetin, järjestyksen, opt-in-kytkennän,
+session redaktion, ensimmäisen otteen säilymisen myöhempien wrapperien yli
+ja onnistuvan polun. Tämä on keräysketjun korjaus, ei todistettu SQL- tai
+palautuspistevika. Tarkistettava seuraava näyttö on korjatun, jäädytetyn
+revision paketoitu käynnistys ja mahdollisen hylkäyksen salattu syyote.
+Aiempaa koetulosta ei muuteta läpäisyksi, eikä tämän työpuukorjauksen
+perusteella tehdä mergeä. B3-B5:n legacy-käynnistysportti pysyy avoimena.
 
 ### B3-B5:n aikana havaittu riippuvuuspäivitys
 
