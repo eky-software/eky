@@ -246,7 +246,7 @@ eivät vielä todista sen alemman hylkäyksen syytä. Myöhempi aikakatkaisu on
 erillinen havainto; prosessien ja tuotteiden siivous sekä paketin
 jälkivarmennus läpäisivät.
 
-**Rajattu keräyskorjaus työpuussa:** `beforeMigrations`-callbackin ja
+**Rajattu keräyskorjaus revisiossa `502864d6`:** `beforeMigrations`-callbackin ja
 `FirstStartUpdateCoordinator`-omistajan hylkäykset tarjotaan nyt nykyiselle
 opt-in-havaitsijalle ennen yleistä virhekoodia ja palautussiivousta.
 Composition välittää molemmille saman valinnaisen havaitsijan sekä nykyisen
@@ -261,8 +261,17 @@ session redaktion, ensimmäisen otteen säilymisen myöhempien wrapperien yli
 ja onnistuvan polun. Tämä on keräysketjun korjaus, ei todistettu SQL- tai
 palautuspistevika. Tarkistettava seuraava näyttö on korjatun, jäädytetyn
 revision paketoitu käynnistys ja mahdollisen hylkäyksen salattu syyote.
-Aiempaa koetulosta ei muuteta läpäisyksi, eikä tämän työpuukorjauksen
+Aiempaa koetulosta ei muuteta läpäisyksi, eikä tämän keräyskorjauksen
 perusteella tehdä mergeä. B3-B5:n legacy-käynnistysportti pysyy avoimena.
+
+[Nimetty Windows-todennus](https://github.com/eky-software/eky/actions/runs/37641940845)
+päättyi GitHubin sisäiseen palvelinvirheeseen ennen pakettijobin luomista.
+Kaikki 12 valmisteluryhmää läpäisivät, mutta asennuspakettia tai sovelluksen
+käynnistyskoetta ei syntynyt. Myös rajatun uusinnan palvelupyynnöt hylättiin
+ilman uutta suoritusta. Tämä ei todista keräyskorjauksen toimintaa aidossa
+paketissa eikä muuta aiempaa sovelluksen käynnistyshylkäystä. Seuraava
+todennus jatkuu samasta jäädytetystä revisiosta palveluesteen poistuttua;
+hyväksyntäehtoja tai aikarajoja ei muuteta tämän vuoksi.
 
 ### B3-B5:n aikana havaittu riippuvuuspäivitys
 
