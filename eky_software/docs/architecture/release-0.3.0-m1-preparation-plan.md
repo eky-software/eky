@@ -372,13 +372,11 @@ lähdeinventaarioon. Migraation schema- ja historiakirjoitukset muuttavat
 SQLite-tavuja tarkoituksellisesti. Tämä ei yksin osoita, että todetun ajon
 kaikki erot olivat sallittuja tai että liiketoimintatiedot säilyivät oikein.
 
-Seuraava rajattu työ on alla oleva [migraatiotodisteen
-korjausehdotus](#legacy-testin-038039-migraatiotodisteen-korjausehdotus).
+Tästä edettiin omistajan hyväksymään [migraatiotodisteen
+rajattuun korjaukseen](#legacy-testin-038039-migraatiotodisteen-korjausehdotus).
 Alkuperäisen lähteen, PDF:ien, tiedostotyyppien, sisällön ja hyväksytyn
-migraation tarkistukset säilyvät. Ehdotus tarvitsee omistajan päätöksen ennen
-testin vertailuperusteen toteutusmuutosta. Uutta diagnostiikkakerrosta tai
-pitkää koetta ei aloiteta tämän kirjauksen perusteella. Nykyisen hylkäyksen
-korjaus ja sen todennus ovat vielä avoinna.
+migraation tarkistukset säilyvät. Uutta diagnostiikkakerrosta ei lisätä;
+korjauksen näyttö ja vielä avoin hyväksyntä ovat alla olevassa checkpointissa.
 
 Rajattu diagnostiikkakoe ei ole normaali PR-hyväksyntä. PR #298:n vanhaa
 `394e09730426e7556f8b29ed380838bc4f90a10b`-headia ei mergetä. Kun rajattu
@@ -391,6 +389,32 @@ B3-B5:n hyväksyntä ja merge ovat edelleen avoinna.
 **Tila: omistajan jatkoluvalla rajattu toteutus käynnissä, ei vielä todennettu.**
 Tämä kuuluu nykyisen B3-B5-integraation rajaukseen. Sovelluksen migraatioita,
 liiketoimintasopimusta, moduulirajoja tai prosessien omistajuutta ei muuteta.
+
+**Paketoidun ajon uusi hylkäys ja rajattu korjaus.** Nimetty ajo
+`37691934073` revisiosta `d9248549` läpäisi historiallisella lähteellä
+asennuksen, käynnistyksen ja business-polun sekä kohteen major-upgraden,
+mutta hylättiin `legacyDatabasePackageBindingInvalid`-syyllä ennen kohteen
+sovelluskäynnistystä. Prosessipuun poissaolo, exact-tuotesiivous,
+fixture-poisto ja artifactien jälkivarmennus läpäisivät erikseen. Tämä ei
+ollut timeout eikä sovelluksen bootstrap-hylkäys. Ensivirheen salattu
+aineisto säilytettiin ja varmennettiin.
+
+Testilukija oletti `resources/app/dist/build-info.json`-tavallisen
+tiedoston, vaikka muuttumaton alkuperäinen MSI sisältää tunnistetiedot
+`resources/app.asar`-arkistossa. Sama hylkäys toistettiin alkuperäisistä
+pakettitavuista staattisesti ilman asennusta; SQL-ketju vastasi sopimusta.
+Testifixturen aiempi tavallinen hakemisto peitti tämän puutteen. Omistaja
+hyväksyi jo lukitun `@electron/asar@4.2.1`:n suoran testityökalusidonnan.
+Lukija ja fixture käyttävät nyt todellista ASAR-muotoa ilman vaihtoehtoista
+polkua tai testiehtojen lievennystä. Korjattu staattinen luku läpäisi samat
+alkuperäiset pakettitavut. Production- ja full audit sekä 160
+rekisteriallekirjoitusta läpäisivät. Rajatut alemmat regressiot 222/222 ja
+desktopin tyypitys läpäisivät; mukaan kuuluu ASARin väärien jäsenmuotojen
+hylkäys, välimuistin vaihtuminen sekä worker/caller/postcondition-ketju.
+Riippumaton rajattu katselmus ei löytänyt korjattavaa. Seuraava näyttö on
+yksi nimetty jäädytetyn revision Windows-ajo samalla alkuperäisellä
+paketilla. Sen näyttö, normaalit PR-portit ja uuden mainin portit ovat yhä
+avoimia.
 
 **Todettu ristiriita.** Historiallisen lähteen ja kohteen migraatiot 001–038
 ovat samoja SQL-tavuja; kohde lisää 039:n. Myös historiallinen runner

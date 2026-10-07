@@ -1,13 +1,16 @@
 import assert from 'node:assert/strict';
 import { appendFileSync } from 'node:fs';
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve, toNamespacedPath } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { Readable } from 'node:stream';
 import test from 'node:test';
+import { createPackageFromStreams } from '@electron/asar';
 
 import { createClosedDirectoryInventory, inventoriesMatch } from './closedDirectoryInventory.mjs';
-import { createLegacyDatabaseFixture, generateLegacyDatabaseContract, TARGET_DATABASE_IDENTITY } from './legacyUpgradeDatabaseEvidence.fixture.mjs';
+import { createLegacyDatabaseFixture, createLegacyDatabasePackageFixture, generateLegacyDatabaseContract,
+  TARGET_DATABASE_IDENTITY, writeLegacyDatabaseBuildInfoFixture } from './legacyUpgradeDatabaseEvidence.fixture.mjs';
 import { readLegacyDatabaseContract, readLegacyDatabasePackageBinding, verifyLegacyUpgradeDatabaseEvidence } from './legacyUpgradeDatabaseEvidence.mjs';
 
 async function fixture(t, options) {
@@ -191,20 +194,60 @@ test('missing or unknown migration package binding fails closed', async t => {
 
 test('package binding pins installed SQL and the exact packaged runtime build identity', async t => {
   const value = await fixture(t);
-  const migrationRoot = resolve(value.root, 'package/resources/backend/dist/database/migrations');
-  const appRoot = resolve(value.root, 'package/resources/app/dist');
-  await mkdir(migrationRoot, { recursive: true });
-  await mkdir(appRoot, { recursive: true });
-  for (const entry of value.contract.migrations) {
-    await copyFile(new URL(`../../../backend/src/database/migrations/${entry.fileName}`, import.meta.url), resolve(migrationRoot, entry.fileName));
-  }
+  const installRoot = resolve(value.root, 'package');
+  const migrationRoot = resolve(installRoot, 'resources/backend/dist/database/migrations');
+  await createLegacyDatabasePackageFixture(installRoot);
   const info = { ...TARGET_DATABASE_IDENTITY, schemaVersion: 1, buildDirty: false, buildCreatedAt: '2026-09-04T08:00:00.000Z' };
-  await writeFile(resolve(appRoot, 'build-info.json'), JSON.stringify(info));
   const identity = { ...TARGET_DATABASE_IDENTITY, buildRevision: 'b'.repeat(40) };
-  assert.deepEqual(await readLegacyDatabasePackageBinding(resolve(value.root, 'package'), identity), value.input.packageBinding);
-  await writeFile(resolve(appRoot, 'build-info.json'), JSON.stringify({ ...info, buildRevision: 'c'.repeat(12) }));
-  await assert.rejects(readLegacyDatabasePackageBinding(resolve(value.root, 'package'), identity), /legacyDatabasePackageBindingInvalid/);
-  await writeFile(resolve(appRoot, 'build-info.json'), JSON.stringify(info));
+  await assert.rejects(readFile(resolve(installRoot, 'resources/app/dist/build-info.json')), error => error.code === 'ENOENT');
+  const before = await createClosedDirectoryInventory(installRoot);
+  assert.deepEqual(await readLegacyDatabasePackageBinding(installRoot, identity), value.input.packageBinding);
+  assert.deepEqual(await createClosedDirectoryInventory(installRoot), before);
+  await writeLegacyDatabaseBuildInfoFixture(installRoot, { ...info, buildRevision: 'c'.repeat(12) });
+  await assert.rejects(readLegacyDatabasePackageBinding(installRoot, identity), /legacyDatabasePackageBindingInvalid/);
+  await writeLegacyDatabaseBuildInfoFixture(installRoot, info);
   await writeFile(resolve(migrationRoot, value.contract.migrations[38].fileName), '-- changed SQL');
-  await assert.rejects(readLegacyDatabasePackageBinding(resolve(value.root, 'package'), identity), /legacyDatabasePackageBindingInvalid/);
+  await assert.rejects(readLegacyDatabasePackageBinding(installRoot, identity), /legacyDatabasePackageBindingInvalid/);
 });
+
+for (const variant of ['missing', 'corrupt', 'oversized']) {
+  test(`package binding rejects ${variant} ASAR build-info without unpacked fallback`, async t => {
+    const value = await fixture(t);
+    const installRoot = resolve(value.root, 'package');
+    await createLegacyDatabasePackageFixture(installRoot);
+    const info = { ...TARGET_DATABASE_IDENTITY, schemaVersion: 1, buildDirty: false, buildCreatedAt: '2026-09-04T08:00:00.000Z' };
+    const fakeRoot = resolve(installRoot, 'resources/app/dist');
+    await mkdir(fakeRoot, { recursive: true });
+    await writeFile(resolve(fakeRoot, 'build-info.json'), JSON.stringify(info));
+    const archive = resolve(installRoot, 'resources/app.asar');
+    if (variant === 'missing') await rm(archive);
+    if (variant === 'corrupt') await writeFile(archive, 'not-an-asar-archive');
+    if (variant === 'oversized') await writeLegacyDatabaseBuildInfoFixture(installRoot, { ...info, padding: 'x'.repeat(128 * 1024) });
+    await assert.rejects(readLegacyDatabasePackageBinding(installRoot, TARGET_DATABASE_IDENTITY), /legacyDatabasePackageBindingInvalid/);
+  });
+}
+
+for (const variant of ['unpacked', 'link', 'directory', 'duplicateKey']) {
+  test(`package binding rejects ${variant} ASAR build-info`, async t => {
+    const value = await fixture(t);
+    const installRoot = resolve(value.root, 'package');
+    await createLegacyDatabasePackageFixture(installRoot);
+    const info = { ...TARGET_DATABASE_IDENTITY, schemaVersion: 1, buildDirty: false,
+      buildCreatedAt: '2026-09-04T08:00:00.000Z' };
+    const bytes = Buffer.from(variant === 'duplicateKey'
+      ? `{"schemaVersion":1,${JSON.stringify(info).slice(1)}` : JSON.stringify(info));
+    const file = { type: 'file', path: 'dist/build-info.json', unpacked: variant === 'unpacked',
+      streamGenerator: () => Readable.from([bytes]), stat: { size: bytes.length, mode: 0o100644 } };
+    const streams = [{ type: 'directory', path: 'dist', unpacked: false }];
+    if (variant === 'directory') streams.push({ type: 'directory', path: file.path, unpacked: false });
+    else if (variant === 'link') streams.push({ ...file, path: 'dist/other.json', unpacked: false },
+      { type: 'link', path: file.path, symlink: 'other.json', unpacked: false,
+        streamGenerator: () => Readable.from([]), stat: { size: 0, mode: 0o120777 } });
+    else streams.push(file);
+    await createPackageFromStreams(resolve(installRoot, 'resources/app.asar'), streams);
+    const before = await createClosedDirectoryInventory(installRoot);
+    await assert.rejects(readLegacyDatabasePackageBinding(installRoot, TARGET_DATABASE_IDENTITY),
+      /legacyDatabasePackageBindingInvalid/);
+    assert.deepEqual(await createClosedDirectoryInventory(installRoot), before);
+  });
+}

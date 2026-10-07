@@ -2023,6 +2023,18 @@ paketin metadata. Uudet revisiot, laskurivit, hyvitysviitteet, nykyrevision
 osoittimet sekä dokumentti- ja tapahtumaprovenanssi tarkistetaan kokonaisina.
 Vanhoja summia tai lähetystarkoituksia ei lasketa tai päätellä uudelleen.
 
+Runtime-buildin tunnistetiedot luetaan todellisen paketoijan tuottaman
+`resources/app.asar`-arkiston kiinteästä `dist/build-info.json`-jäsenestä
+hyväksytyllä `@electron/asar@4.2.1`-testityökalulla. Tavallista
+`resources/app/dist`-hakemistoa ei oleteta eikä käytetä varavaihtoehtona.
+Vain arkiston sisäinen tavallinen tiedosto, enintään 64 KiB, kelpaa:
+hakemisto, linkki, unpacked-jäsen, väärä koko tai ristiriitainen JSON
+hylätään. Nykyinen tiukka JSON- ja build-info-parseri omistaa kenttien
+validoinnin. Header-välimuisti tyhjennetään ennen lukua ja sen jälkeen,
+jotta samaan polkuun vaihdettu arkisto ei peri aiempaa identiteettiä.
+Luku ei pura tai muuta payloadia. Testifixture käyttää samaa oikeaa
+ASAR-muotoa; myös hylkäyspolun byte-identtisyys tarkistetaan.
+
 Historiallinen lähde, muut datatiedostot ja kaikki PDF-tavut säilyvät täydessä
 inventaariovertailussa. Keskeneräinen WAL/SHM/journal hylätään ennen SQLiten
 avausta. Inventaario ja tiedostoidentiteetit eivät saa muuttua lukemisen aikana.

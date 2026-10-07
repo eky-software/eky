@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { copyFile, mkdir, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { resolve, toNamespacedPath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
+import { createPackage } from '@electron/asar';
 
 import { readMigrationManifest } from '../../../backend/src/database/migration/migrationManifest.ts';
 import { prepareMigrationHistoryForRun, recordAppliedMigrationMetadata } from '../../../backend/src/database/migration/migrationMetadata.ts';
@@ -55,14 +57,22 @@ export function generateLegacyDatabaseContract() {
 
 export async function createLegacyDatabasePackageFixture(installRoot) {
   const sqlRoot = resolve(installRoot, 'resources/backend/dist/database/migrations');
-  const appRoot = resolve(installRoot, 'resources/app/dist');
   await mkdir(sqlRoot, { recursive: true });
-  await mkdir(appRoot, { recursive: true });
   for (const entry of readMigrationManifest(migrationRoot)) {
     await writeFile(resolve(sqlRoot, entry.fileName), entry.content, { flag: 'wx' });
   }
-  await writeFile(resolve(appRoot, 'build-info.json'), JSON.stringify({ ...TARGET_DATABASE_IDENTITY,
-    schemaVersion: 1, buildDirty: false, buildCreatedAt: timestamp }), { flag: 'wx' });
+  await writeLegacyDatabaseBuildInfoFixture(installRoot, { ...TARGET_DATABASE_IDENTITY,
+    schemaVersion: 1, buildDirty: false, buildCreatedAt: timestamp });
+}
+
+export async function writeLegacyDatabaseBuildInfoFixture(installRoot, buildInfo) {
+  const stage = await mkdtemp(resolve(tmpdir(), 'eky-legacy-build-info-'));
+  try {
+    await mkdir(resolve(stage, 'dist'));
+    await writeFile(resolve(stage, 'dist/build-info.json'), JSON.stringify(buildInfo));
+    await mkdir(resolve(installRoot, 'resources'), { recursive: true });
+    await createPackage(stage, resolve(installRoot, 'resources/app.asar'));
+  } finally { await rm(stage, { recursive: true, force: true }); }
 }
 
 function insertFixtureRow(database, table, overrides) {

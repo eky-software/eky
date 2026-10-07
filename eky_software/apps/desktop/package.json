@@ -65,6 +65,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
+    "@electron/asar": "4.2.1",
     "@electron/fuses": "2.1.3",
     "@electron/packager": "20.0.4",
     "@types/node": "^24.13.3",

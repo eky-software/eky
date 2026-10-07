@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { lstat, readFile } from 'node:fs/promises';
 import { resolve, toNamespacedPath } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { extractFile, statFile, uncache } from '@electron/asar';
 
 import { readMigrationManifest } from '../../../backend/src/database/migration/migrationManifest.ts';
 import { parseDesktopBuildInfo } from '../../src/release/desktopBuildInfo.ts';
@@ -19,6 +20,8 @@ export const LEGACY_DATABASE_ERROR_CODES = Object.freeze({
 });
 const contractPath = new URL('./legacyUpgradeDatabase038To039.contract.json', import.meta.url);
 const CONTRACT_MAXIMUM_BYTES = 256 * 1024;
+const BUILD_INFO_MAXIMUM_BYTES = 64 * 1024;
+const BUILD_INFO_ARCHIVE_PATH = 'dist/build-info.json';
 const sha256Pattern = /^[0-9a-f]{64}$/;
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const serialized = value => JSON.stringify(value, (_, entry) =>
@@ -94,9 +97,7 @@ export async function readLegacyDatabasePackageBinding(installRoot, identity) {
       ({ fileName, sourceSha256, chainSha256 })), contract.migrations.slice(0, manifest.length))) {
       fail('legacyDatabasePackageBindingInvalid');
     }
-    const buildInfo = parseDesktopBuildInfo(JSON.parse(await readFile(
-      resolve(installRoot, 'resources', 'app', 'dist', 'build-info.json'), 'utf8')),
-    { expectedAppVersion: identity.appVersion });
+    const buildInfo = readPackagedBuildInfo(installRoot, identity.appVersion);
     if (buildInfo.buildDirty || !identity.buildRevision.startsWith(buildInfo.buildRevision)) {
       fail('legacyDatabasePackageBindingInvalid');
     }
@@ -104,6 +105,24 @@ export async function readLegacyDatabasePackageBinding(installRoot, identity) {
       migrationChainSha256: manifest.at(-1).chainSha256,
       appVersion: buildInfo.appVersion, buildRevision: buildInfo.buildRevision });
   } catch { fail('legacyDatabasePackageBindingInvalid'); }
+}
+
+function readPackagedBuildInfo(installRoot, appVersion) {
+  const archive = resolve(installRoot, 'resources', 'app.asar');
+  // Each verified payload read must use its current header, not a prior archive.
+  uncache(archive);
+  try {
+    const entry = statFile(archive, BUILD_INFO_ARCHIVE_PATH, false);
+    if ('files' in entry || 'link' in entry || entry.unpacked === true ||
+        !Number.isSafeInteger(entry.size) || entry.size < 2 || entry.size > BUILD_INFO_MAXIMUM_BYTES) {
+      fail('legacyDatabasePackageBindingInvalid');
+    }
+    const bytes = extractFile(archive, BUILD_INFO_ARCHIVE_PATH, false);
+    if (bytes.length !== entry.size) fail('legacyDatabasePackageBindingInvalid');
+    return parseDesktopBuildInfo(parseStrictJsonObjectBytes(bytes, {
+      errorCode: 'legacyDatabasePackageBindingInvalid', maximumBytes: BUILD_INFO_MAXIMUM_BYTES,
+    }), { expectedAppVersion: appVersion });
+  } finally { uncache(archive); }
 }
 
 export function snapshotLegacyDatabaseSchema(database) {

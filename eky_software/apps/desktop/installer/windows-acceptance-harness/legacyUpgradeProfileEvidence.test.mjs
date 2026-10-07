@@ -19,7 +19,8 @@ import {
   LEGACY_FIRST_START_EVIDENCE_FILENAME,
   LEGACY_SECOND_START_EVIDENCE_FILENAME,
 } from './legacyUpgradeProfileEvidence.mjs';
-import { createLegacyDatabaseFixture, createLegacyDatabasePackageFixture, TARGET_DATABASE_IDENTITY } from './legacyUpgradeDatabaseEvidence.fixture.mjs';
+import { createLegacyDatabaseFixture, createLegacyDatabasePackageFixture, TARGET_DATABASE_IDENTITY,
+  writeLegacyDatabaseBuildInfoFixture } from './legacyUpgradeDatabaseEvidence.fixture.mjs';
 import { readLegacyDatabaseContract, verifyLegacyUpgradeDatabaseEvidence } from './legacyUpgradeDatabaseEvidence.mjs';
 import { inspectPackageArtifactInventory } from '../../scripts/package-artifact-inventory.mjs';
 import { verifyLegacyUpgradeSemanticPostcondition } from './legacyUpgradePostcondition.mjs';
@@ -241,9 +242,10 @@ test('real migration is required at first adoption and complete bytes are requir
   assert.deepEqual(await verifyLegacyUpgradeSemanticPostcondition(postconditionInput), {
     status: 'failed', errorCode: 'legacyArtifactReverificationFailed',
   });
-  const buildPath = resolve(installRoot, 'resources/app/dist/build-info.json');
-  const buildInfo = await readFile(buildPath);
-  await writeFile(buildPath, JSON.stringify({ ...JSON.parse(buildInfo), buildRevision: 'c'.repeat(12) }));
+  const buildPath = resolve(installRoot, 'resources/app.asar');
+  const originalArchive = await readFile(buildPath);
+  await writeLegacyDatabaseBuildInfoFixture(installRoot, { ...TARGET_DATABASE_IDENTITY,
+    schemaVersion: 1, buildDirty: false, buildCreatedAt: '2026-09-04T08:00:00.000Z', buildRevision: 'c'.repeat(12) });
   assert.deepEqual(await verifyLegacyUpgradeSemanticPostcondition(postconditionInput), {
     status: 'failed', errorCode: 'legacyTargetPayloadChanged',
   });
@@ -251,7 +253,7 @@ test('real migration is required at first adoption and complete bytes are requir
   assert.deepEqual(await verifyLegacyUpgradeSemanticPostcondition(postconditionInput), {
     status: 'failed', errorCode: 'legacyDatabasePackageBindingInvalid',
   });
-  await writeFile(buildPath, buildInfo);
+  await writeFile(buildPath, originalArchive);
   artifact.target.payloadInventory = payloadInventory;
   for (const proof of [undefined, {}, { ...first.databaseProof, extra: 'not-allowed' },
     { ...first.databaseProof, appVersion: ['0.2.7'] }, { ...first.databaseProof, buildRevision: ['b'.repeat(12)] }]) {
