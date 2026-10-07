@@ -147,7 +147,7 @@ läpäisi; se ei hyväksy epäonnistuneita toimintaportteja.
 Molempien legacy-toistojen salatut paketit purettiin ja niiden ajosidonnat
 sekä säilyneiden tiedostojen tiivisteet varmennettiin. Niissä säilyvät
 supervisorin lopputulos ja erillinen varmennettu siivous, mutta ei
-alkuperäisen bootstrap-hylkäyksen sovellustason syytä. Nykyinen havaitsija
+alkuperäisen bootstrap-hylkäyksen sovellustason syytä. Tuon revision havaitsija
 projektoi lokista vain elinkaaren identiteetin, ja testiprofiili poistuu
 varmennetun siivouksen jälkeen ennen jälkikeräystä. Keräin ei lue profiilin
 operational-lokeja. Lähdehaun `complete` ei tässä tarkoita täydellistä
@@ -162,10 +162,29 @@ Havaitsijan, oikean siivousvaiheen, sidontojen ja salatun keräysketjun
 rajatut 112 regressiota ja 70 työnkulku-/toimitussopimustarkistusta
 läpäisivät; ensimmäinen regressio toisti syykentän katoamisen ennen
 korjausta. Riippumaton katselmus tarkisti myös synteettisen fixturen
-revisio- ja lokisidonnan. Tämä ei vielä todista hosted-toimitusta tai
-alkuperäistä sovellusvikaa. Yksi olemassa olevia muuttumattomia legacy-
-paketteja käyttävä Windows-todennus on seuraava erillinen näyttöportti.
-Mahdollinen sovelluskorjaus päätetään sen näytön perusteella; uutta yleistä
+revisio- ja lokisidonnan.
+
+**Nimetty toimitustodennus 7.10.2026:**
+[kertakoe 37601619299](https://github.com/eky-software/eky/actions/runs/37601619299)
+käytti samaa olemassa olevaa muuttumatonta legacy-artifactia ja
+keräyskorjauksen revisiota `ffbfb1a2`. Kohdeversion ensimmäinen käynnistys
+hylättiin noin 1,1 sekunnissa. Salattu toimitus, paikallinen purku,
+ajosidonnat ja kaikkien 42 säilyneen tiedoston tiivisteet varmennettiin.
+Syyote sisälsi tämän käynnistyksen `DESKTOP_START_FAILED`-koodin ja
+`startup`-vaiheen. Paketin jälkivarmennus sekä prosessien ja asennusten
+siivoustodisteet läpäisivät; varsinaisen skenaarion myöhempi deadline
+säilyi erillisenä hylkäyksenä.
+
+Näin rajatun syyotteen toimitusketju on todennettu myös oikean
+epäonnistuneen legacy-käynnistyksen jälkeen. Tämä ei sulje sovellusvikaa:
+`DESKTOP_START_FAILED` on sovelluksen sallittu yleinen fallback, ei tarkka
+juurisyy. Seuraava päätettävä tutkimus kohdistuu alkuperäisen poikkeuksen
+syntypaikkaan ja turvalliseen luokitteluun, ei yleisen keräimen uusimiseen.
+Yhtä läpäisemätöntä paikallista admission-sopimuskoetta ei merkitä
+onnistuneeksi; puhtaan Windows-ympäristön normaali hyväksyntä vaaditaan
+edelleen. Toista kertakoetta tai normaalia PR-kierrosta ei käynnistetä
+tämän toimitusnäytön perusteella automaattisesti.
+Mahdollinen sovelluskorjaus päätetään tarkemman näytön perusteella; uutta yleistä
 loggeria, profiilin kopiointia tai aikarajojen muutosta ei oteta käyttöön.
 B3-B5:n integraatio ja merge pysyvät avoimina.
 
