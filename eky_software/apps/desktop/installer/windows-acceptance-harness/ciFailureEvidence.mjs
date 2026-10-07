@@ -91,7 +91,9 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
         if (bytes.length > MAX_FILE || bytes.length > MAX_TOTAL - total) { entry.status = 'tooLarge'; return; }
         entry.sourceProof = proof;
         entry.projection = kind === 'playwrightReport' ? 'failureFieldsWithoutConfigurationOrInlineAttachments'
-          : 'boundBootstrapCauseAndStageWithoutOutcomeOrProfile';
+          : Object.hasOwn(value, 'originalExceptionEvidence')
+            ? 'boundStartupExceptionWithoutOutcomeOrProfile'
+            : 'boundBootstrapCauseAndStageWithoutOutcomeOrProfile';
         await writeFile(join(stage, name), bytes);
         proof = { bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };
       }

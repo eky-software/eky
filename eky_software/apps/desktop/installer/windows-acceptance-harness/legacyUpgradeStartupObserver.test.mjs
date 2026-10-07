@@ -10,6 +10,7 @@ import { executeLegacyCommandPhase } from './legacyCommandPhase.mjs';
 import { createLegacyUpgradeWorkerRequest } from './legacyUpgradeContracts.mjs';
 import { LEGACY_STARTUP_TERMINAL_FILENAME, projectLegacyStartupTerminalEvidence, readLegacyStartupFailureEvidence,
   startupEvidenceAllowsFixtureRemoval, validateLegacyStartupFailureEvidence } from './legacyStartupFailureEvidence.mjs';
+import { projectStartupException, STARTUP_EXCEPTION_CONTROL, STARTUP_EXCEPTION_SUFFIX } from '../../src/main/startupExceptionEvidence.ts';
 
 import {
   captureDesktopLifecycleBaseline,
@@ -297,6 +298,28 @@ test('actual fixture cleanup retains the profile when the cause is unavailable o
     { filesystem: async () => assert.fail('fixture removal before delivery') }));
   assert.equal(blockedContext.state.fixtureRemoved, false);
   assert.equal((await lstat(blocked.root)).isDirectory(), true);
+});
+
+test('actual fixture cleanup preserves the original exception before removing its synthetic profile', async t => {
+  const f = await failureEvidenceFixture(t);
+  const context = await cleanupContext(t, f);
+  const resultRoot = resolve(deriveLegacySourceUserDataRoot(f.root, f.input.supervisorResult.runNonce), '..', 'result');
+  await mkdir(resultRoot);
+  await writeFile(resolve(resultRoot, STARTUP_EXCEPTION_CONTROL), JSON.stringify({ schemaVersion: 1,
+    scenarioRunNonce: f.input.supervisorResult.runNonce, ...APP }));
+  const record = projectStartupException(new Error('synthetic first original failure', { cause: new Error('synthetic cause') }),
+    { scenarioRunNonce: f.input.supervisorResult.runNonce, ...APP, runtimeInstanceId: RUNTIME }, 'compositionStartup');
+  await writeFile(resolve(resultRoot, `${RUNTIME}${STARTUP_EXCEPTION_SUFFIX}`), JSON.stringify(record));
+  await executeLegacyCommandPhase(context, { filesystem: async ({ operation, payload }) => {
+    assert.equal(operation, 'remove');
+    const saved = JSON.parse(await readFile(resolve(context.phaseRoot, LEGACY_STARTUP_TERMINAL_FILENAME), 'utf8'));
+    assert.equal(saved.originalExceptionEvidence.status, 'recorded');
+    assert.equal(saved.originalExceptionEvidence.exceptions[0].chain[0].message === 'synthetic first original failure', true);
+    await rm(payload.root, { recursive: true });
+  } });
+  assert.equal(context.state.fixtureRemoved, true);
+  const saved = JSON.parse(await readFile(resolve(context.phaseRoot, LEGACY_STARTUP_TERMINAL_FILENAME), 'utf8'));
+  assert.equal(projectLegacyStartupTerminalEvidence(saved).originalExceptionEvidence.exceptions[0].chain.length, 2);
 });
 
 test('startup observer rejects a process exit without readiness', async (t) => {

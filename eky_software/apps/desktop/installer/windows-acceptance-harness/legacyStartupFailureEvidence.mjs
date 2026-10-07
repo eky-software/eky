@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { deriveLegacySourceUserDataRoot } from './legacyUpgradeProfileEvidence.mjs';
 import { projectBootstrapFailureFields, readDesktopLifecycleEvents } from './legacyUpgradeStartupObserver.mjs';
 import { ordinaryPath } from './workspaceEncryptedEvidence.mjs';
+import { validateLegacyOriginalExceptionEvidence } from './legacyOriginalExceptionEvidence.mjs';
 
 export const LEGACY_STARTUP_TERMINAL_FILENAME = 'legacy-startup-terminal.json';
 const SHA = /^[a-f0-9]{64}$/;
@@ -73,11 +74,13 @@ export function startupEvidenceAllowsFixtureRemoval(evidence) {
 }
 
 export function projectLegacyStartupTerminalEvidence(saved) {
-  if (!exact(saved, ['binding', 'outcome', 'startupEvidence']) ||
+  const hasOriginal = Object.hasOwn(saved ?? {}, 'originalExceptionEvidence');
+  if (!exact(saved, ['binding', 'outcome', 'startupEvidence', ...(hasOriginal ? ['originalExceptionEvidence'] : [])]) ||
     !exact(saved.binding, ['schemaVersion', 'runNonce', 'scenario', 'artifactDescriptorSha256']) ||
     saved.binding.schemaVersion !== 1 || saved.binding.scenario !== 'acceptanceCommandPhase' ||
     !matches(SHA, saved.binding.runNonce) || !matches(SHA, saved.binding.artifactDescriptorSha256)) invalid();
   const evidence = validateLegacyStartupFailureEvidence(saved.startupEvidence);
   if (evidence.artifactDescriptorSha256 !== saved.binding.artifactDescriptorSha256) invalid();
-  return { binding: saved.binding, startupEvidence: evidence };
+  return { binding: saved.binding, startupEvidence: evidence,
+    ...(hasOriginal ? { originalExceptionEvidence: validateLegacyOriginalExceptionEvidence(saved.originalExceptionEvidence, evidence) } : {}) };
 }

@@ -188,6 +188,22 @@ Mahdollinen sovelluskorjaus päätetään tarkemman näytön perusteella; uutta 
 loggeria, profiilin kopiointia tai aikarajojen muutosta ei oteta käyttöön.
 B3-B5:n integraatio ja merge pysyvät avoimina.
 
+**Alkuperäisen poikkeuksen rajattu jatko:** omistaja hyväksyi 7.10.2026 vain
+synteettisen testikäynnistyksen ensimmäisen alkuperäisen viestin, pinon ja
+syyketjun säilyttämisen ennen turvallista luokittelua. Rajaus ja poistumisrajan
+avoin toimitusehto ovat [salatun aineiston omistavassa sopimuksessa](ci-encrypted-evidence.md#hyväksytty-alkuperäisen-poikkeuksen-rajaus).
+Tämä ei ole uusi loggeri, testialusta tai lupa muuttaa normaaleja aikarajoja.
+Omistaja hyväksyi tämän jälkeen vain eristetylle testikäynnistyksen virhepolulle
+enintään 500 ms:n asynkronisen valmistumisodotuksen ennen hallittua poistumista.
+Normaali ja onnistunut käynnistys eivät odota. Oikea Electron-poistumisraja,
+prosessiomistajuus ja salattu toimitus todennetaan erillään sovelluksen
+legacy-virheen selvityksestä.
+Pakotettu prosessiraja ja oikea salaus/purku tarkistetaan ennen yhtä nimettyä
+Windows-todennusta. Vanha artifact ei sisällä uutta runtime-kytkentää;
+sen uudelleenajo ei todistaisi uuden poikkeuksen keräystä. Varsinainen
+legacy-sovellusvika, jäädytetyn paketin todennus ja normaali hyväksyntä
+säilyvät erillisinä avoimina kohtina.
+
 ### B3-B5:n aikana havaittu riippuvuuspäivitys
 
 Mainin samaan lähtörevisioon kohdistunut [ajastettu auditointi 6.10.2026](https://github.com/eky-software/eky/actions/runs/37441556812/job/112196274405)

@@ -19,7 +19,7 @@ import { WorkspaceRegistryStore } from '../workspaces/registry/workspaceRegistry
 import { validateWorkspaceId } from '../workspaces/registry/workspaceIdValidation.js';
 import { deriveWorkspaceBackupReplacementRuntimePaths } from '../workspaces/replacement/workspaceBackupReplacementPaths.js';
 import { WorkspaceSwitchJournalStore } from '../workspaces/switch/workspaceSwitchJournal.js';
-import { startDesktopComposition } from './desktopComposition.js';
+import { startDesktopComposition, type StartDesktopCompositionOptions } from './desktopComposition.js';
 
 const electronBoundary = vi.hoisted(() => ({
   fetch: vi.fn(),
@@ -96,6 +96,32 @@ afterEach(async () => {
 });
 
 describe('desktop restore startup composition', () => {
+  it('observes the first runtime startup exception before recovery cleanup', async () => {
+    const fixture = await createFixture(originalProfileId);
+    const original = new Error('synthetic-original-before-backend', { cause: new Error('synthetic cause') });
+    const observations: { error: unknown; stage: string; cleanupCalls: number }[] = [];
+    await expect(fixture.start((error, stage) => {
+      observations.push({ error, stage, cleanupCalls: vi.mocked(RecoveryPointScheduler.prototype.stopChecks).mock.calls.length });
+    }, async stage => { if (stage === 'backend') throw original; })).rejects.toThrow('DESKTOP_START_FAILED');
+    expect(observations[0]?.error).toBe(original);
+    expect(observations[0]?.stage).toBe('runtimeStartup');
+    expect(observations[0]?.cleanupCalls).toBe(0);
+    expect(RecoveryPointScheduler.prototype.stopChecks).toHaveBeenCalled();
+  });
+  it('observes the original window exception and session secret before safe-code replacement', async () => {
+    const fixture = await createFixture(originalProfileId);
+    const original = new Error('synthetic-original-window-failure', { cause: new Error('synthetic-root-cause') });
+    electronBoundary.createWindow.mockImplementationOnce(() => { throw original; });
+    const observed: { error: unknown; stage: string; secrets: readonly string[] | undefined; stopCount: number }[] = [];
+    await expect(fixture.start((error, stage, secrets) => {
+      observed.push({ error, stage, secrets, stopCount: fixture.stop.mock.calls.length });
+    })).rejects.toThrow('DESKTOP_START_FAILED');
+    expect(observed[0]?.error).toBe(original);
+    expect(observed[0]?.stage).toBe('compositionStartup');
+    expect(observed[0]?.secrets).toEqual(['d'.repeat(64)]);
+    expect(observed[0]?.stopCount).toBe(0);
+    expect(fixture.stop).not.toHaveBeenCalled();
+  });
   it.each(['exited', 'forced'] as const)(
     'marks only a graceful backend shutdown clean after restored startup (%s)',
     async (outcome) => {
@@ -414,7 +440,9 @@ async function createFixture(
       ), 'utf8')).resolves.toBe('original pdf');
       await assertRegistryUnchanged();
     },
-    start: () => startDesktopComposition({
+    start: (observeStartupException?: StartDesktopCompositionOptions['observeStartupException'],
+      reportSmokeStage: StartDesktopCompositionOptions['reportSmokeStage'] = async () => undefined) => startDesktopComposition({
+      ...(observeStartupException === undefined ? {} : { observeStartupException }),
       appVersion: '0.2.8',
       applicationPath: join(root, 'app'),
       buildInfo: {
@@ -436,7 +464,7 @@ async function createFixture(
       relaunchApplication: relaunch,
       resourcesPath: join(root, 'resources'),
       runtimeInstanceId: '33333333-3333-4333-8333-333333333333',
-      reportSmokeStage: async () => undefined,
+      reportSmokeStage,
       smokeConfiguration: {
         enabled: false,
         phase: 'initial',

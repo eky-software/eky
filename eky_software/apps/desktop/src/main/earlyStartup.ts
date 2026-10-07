@@ -41,6 +41,7 @@ interface RunSafeDesktopStartupOptions<Runtime> {
   exitApplication(code: number): void;
   loadRuntime(): Promise<DesktopRuntimeModule<Runtime>>;
   onFailure(errorCode: string): Promise<void> | void;
+  observeStartupException?(error: unknown): void;
   startRuntime(runtime: Runtime): Promise<void>;
   waitUntilReady(): Promise<void>;
 }
@@ -53,6 +54,7 @@ export async function runSafeDesktopStartup<Runtime>(
     const runtimeModule = await options.loadRuntime();
     await options.startRuntime(runtimeModule.startDesktopComposition);
   } catch (error) {
+    try { options.observeStartupException?.(error); } catch { /* Optional private evidence. */ }
     const errorCode = readSafeStartupFailureCode(error);
 
     try {

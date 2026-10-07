@@ -35,6 +35,17 @@ const CI_EDGES = [
     step: 'Run Windows process-contract tests serially', run: 'pnpm --filter @eky/desktop installer:test:windows-process' },
 ];
 
+test('startup exception exit proof uses the existing compiled owner and explicit opt-in failure wait', async () => {
+  const desktop = JSON.parse(await readFile(new URL('package.json', DESKTOP_ROOT), 'utf8'));
+  assert.equal(desktop.scripts['installer:proof:startup-exception-exit'],
+    'pnpm build && pnpm e2e:prepare-electron-runtime && pnpm installer:supervisor:build && node --test --test-concurrency=1 installer/windows-acceptance-harness/startupExceptionElectronExit.test.mjs');
+  const index = await readFile(new URL('src/main/index.ts', DESKTOP_ROOT), 'utf8');
+  assert.match(index, /if \(app.commandLine.hasSwitch\(STARTUP_EXCEPTION_SWITCH\)\)/u);
+  const failure = index.slice(index.indexOf('async onFailure(errorCode)'));
+  assert.match(failure, /if \(observeStartupException !== undefined\) await observeStartupException.waitForDelivery\(\);/u);
+  assert.ok(failure.indexOf('waitForDelivery()') < failure.indexOf('dialog.showErrorBox('));
+});
+
 async function readFixture() {
   const root = JSON.parse(await readFile(new URL('../../../package.json', import.meta.url), 'utf8'));
   const desktop = JSON.parse(await readFile(new URL('package.json', DESKTOP_ROOT), 'utf8'));

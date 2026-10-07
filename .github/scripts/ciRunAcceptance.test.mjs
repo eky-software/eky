@@ -316,11 +316,11 @@ test('MSI file policy has a hosted-only manual path without replacing supervisor
 
 test('synthetic evidence proof selects exactly one manual job and preserves reusable supervisor acceptance', async () => {
   const source = await readFile(new URL('../workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
-  const modes = ['encrypted-evidence-delivery-proof', 'linux-encrypted-evidence-delivery-proof'];
+  const modes = ['encrypted-evidence-delivery-proof', 'linux-encrypted-evidence-delivery-proof', 'startup-exception-exit-proof'];
   const conditions = [...source.matchAll(/^  ([\w-]+):\n    if: ([^\n]+)/gm)];
   const selected = (eventName, mode) => conditions.filter(([, , expression]) => runInNewContext(expression,
     { github: { event_name: eventName }, inputs: { mode } }, { timeout: 1000 })).map(([, name]) => name);
-  assert.equal(conditions.length, 6);
+  assert.equal(conditions.length, 7);
   for (const mode of modes) {
     assert.deepEqual(selected('workflow_dispatch', mode), [mode]);
     for (const eventName of ['pull_request', 'pull_request_target', 'push', 'schedule', 'workflow_call', 'workflow_run']) {

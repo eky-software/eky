@@ -6,6 +6,15 @@ import {
 } from './earlyStartup.js';
 
 describe('safe desktop early startup', () => {
+  it('offers the original exception privately before classification without changing the public code', async () => {
+    const original = new Error('synthetic original exception', { cause: new Error('synthetic cause') });
+    const fixture = createFixture({ startRuntime: async () => { throw original; } });
+    const observeStartupException = vi.fn(() => { throw new Error('private reporter failure'); });
+    await runSafeDesktopStartup({ ...fixture.options, observeStartupException });
+    expect(observeStartupException).toHaveBeenCalledWith(original);
+    expect(fixture.onFailure).toHaveBeenCalledWith('DESKTOP_START_FAILED');
+    expect(fixture.exitApplication).toHaveBeenCalledWith(1);
+  });
   it('maps a runtime module import failure to a safe code and exits', async () => {
     const fixture = createFixture({
       loadRuntime: async () => {

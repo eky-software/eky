@@ -26,6 +26,8 @@ import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
 import { verifyLegacyUpgradeArtifact } from './legacyUpgradeArtifact.mjs';
 import { createNativeProductInspectionCommand } from './nativeMsiAdapterCommand.mjs';
 import { createLegacyPayloadObservation } from './legacyPayloadObservation.mjs';
+import { STARTUP_EXCEPTION_SWITCH, STARTUP_EXCEPTION_TOKEN_ENV } from '../../src/main/startupExceptionEvidence.ts';
+import { prepareLegacyStartupExceptionControl } from './legacyOriginalExceptionEvidence.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const CLOSE_REQUEST_PATH = resolve(DIRECTORY, 'requestWindowsApplicationClose.ps1');
@@ -418,12 +420,21 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact, {
   async function runInstalledApplication(expectedIdentity) {
     const logDirectory = resolve(userDataRoot, 'runtime', 'logs', 'desktop');
     const baselineEventIds = await captureDesktopLifecycleBaseline(logDirectory);
+    const target = expectedIdentity.buildRevision === identities.target.buildRevision;
+    const resultRoot = resolve(userDataRoot, '..', 'result');
+    if (target) {
+      await mkdir(resultRoot, { recursive: true });
+      await prepareLegacyStartupExceptionControl(scenarioRoot, request.runNonce, expectedIdentity);
+    }
     const application = await startLegacyOwnedProcess(
       executablePath,
-      [`--user-data-dir=${userDataRoot}`],
+      [`--user-data-dir=${userDataRoot}`, ...(target ? [`--${STARTUP_EXCEPTION_SWITCH}`] : [])],
       {
         cwd: scenarioRoot,
-        env: withoutElectronNodeMode({ APPDATA: isolatedAppDataRoot }),
+        env: withoutElectronNodeMode({ APPDATA: isolatedAppDataRoot, ...(target ? {
+          TEMP: resolve(scenarioRoot, 'source-smoke-temp'), TMP: resolve(scenarioRoot, 'source-smoke-temp'),
+          [STARTUP_EXCEPTION_TOKEN_ENV]: request.runNonce,
+        } : {}) }),
         windowsHide: false,
       },
     );

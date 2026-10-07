@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { StartupExceptionStage } from './startupExceptionEvidence.js';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -230,6 +231,7 @@ export interface StartDesktopCompositionOptions {
   reportSmokeStage(stage: PackagedSmokeStage): Promise<void>;
   smokeConfiguration: PackagedSmokeConfiguration;
   userDataPath: string;
+  observeStartupException?(error: unknown, stage: StartupExceptionStage, secrets?: readonly string[]): void;
   w6b2PackagedProof?: Readonly<{
     configuration: Readonly<W6b2PackagedProofConfiguration>;
     interruptProcess(
@@ -293,6 +295,8 @@ export async function startDesktopComposition(
     runtimeInstanceId: options.runtimeInstanceId,
   } as const;
 
+  let startupSessionSecret: string | undefined;
+
   try {
     desktopOperationalLogger.write(
       createDesktopOperationalEvent(
@@ -349,6 +353,7 @@ export async function startDesktopComposition(
     });
     if (workspaceStartup.status === 'relaunching') return undefined;
     const { activeWorkspace, runtimeSessionSecret } = workspaceStartup;
+    startupSessionSecret = runtimeSessionSecret;
     await workspaceFirstStartMigration.prepareBeforeBackend({
       activeWorkspaceId: activeWorkspace.workspaceId,
       workspaceState:
@@ -373,6 +378,7 @@ export async function startDesktopComposition(
       workspaceFirstStartMigration,
     });
   } catch (error) {
+    try { options.observeStartupException?.(error, 'compositionStartup', startupSessionSecret === undefined ? [] : [startupSessionSecret]); } catch { /* Optional private evidence. */ }
     const errorCode = readSafeStartupFailureCode(error);
     try {
       desktopOperationalLogger.write(
@@ -1307,6 +1313,7 @@ async function startDesktopCompositionRuntime({
     await workspaceFirstStartMigration.completeAfterTargetAcceptance();
     await recoveryPointScheduler.start();
   } catch (error) {
+    try { options.observeStartupException?.(error, 'runtimeStartup', [runtimeSessionSecret]); } catch { /* Optional private evidence. */ }
     await recoveryPointScheduler.stopChecks().catch(() => undefined);
     const backendStopped = await Promise.resolve()
       .then(() => backendHandle?.stop())

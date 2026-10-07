@@ -122,6 +122,13 @@ kopiointia. Poikkeus ei koske omistajan konehavaintoja, sovelluksen
 business-dataa, riippuvuustyökalun raakaa tulostetta eikä raakakonsolilokien
 tai tracejen yleistä julkaisua. Salaus ei poista sisältörajausta.
 
+Erikseen hyväksytty synteettisen Electron-testikäynnistyksen ensimmäisen
+alkuperäisen poikkeuksen rajattu viesti, pino ja syyketju kuuluvat vain
+[nimettyyn salattuun projektioon](ci-encrypted-evidence.md#hyväksytty-alkuperäisen-poikkeuksen-rajaus).
+Salaisuudet redaktoidaan eikä tavallisen käyttäjäprofiilin keräystä sallita.
+Tuotannon lokit, tukipaketti, julkiset virhekoodit ja koko profiilin
+kopiointikielto säilyvät ennallaan. Poikkeus ei salli raakakonsolijulkaisua.
+
 ## Backup-, restore- ja päivitysturvallisuus
 
 - siirrettävä business-datan varmuuskopio on aina autentikoidusti salattu

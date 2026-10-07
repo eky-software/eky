@@ -5,8 +5,9 @@
   "type": "module",
   "main": "dist/main/index.js",
   "scripts": {
-    "installer:test:encrypted-evidence": "node --test --test-concurrency=1 installer/windows-acceptance-harness/workspaceEncryptedEvidence.test.mjs installer/windows-acceptance-harness/ciFailureEvidence.test.mjs scripts/packagedSmokeFailureEvidence.test.mjs installer/windows-acceptance-harness/encryptedEvidenceOpenPgp.test.mjs",
+    "installer:test:encrypted-evidence": "node --test --test-concurrency=1 installer/windows-acceptance-harness/workspaceEncryptedEvidence.test.mjs installer/windows-acceptance-harness/ciFailureEvidence.test.mjs installer/windows-acceptance-harness/startupExceptionEvidence.test.mjs scripts/packagedSmokeFailureEvidence.test.mjs installer/windows-acceptance-harness/encryptedEvidenceOpenPgp.test.mjs",
     "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.build.json",
+    "installer:proof:startup-exception-exit": "pnpm build && pnpm e2e:prepare-electron-runtime && pnpm installer:supervisor:build && node --test --test-concurrency=1 installer/windows-acceptance-harness/startupExceptionElectronExit.test.mjs",
     "installer:test:windows-acceptance-phase-writer": "pnpm installer:supervisor:build && node --test --test-concurrency=1 installer/windows-acceptance-harness/boundedWindowsAdapterProcess.test.mjs installer/windows-acceptance-harness/workspaceCallerResult.test.mjs installer/windows-acceptance-harness/workspacePhaseWriter.test.mjs installer/windows-acceptance-harness/workspacePhaseWriter.process.test.mjs",
     "backup:scrypt-benchmark": "node scripts/benchmark-backup-scrypt.mjs",
     "e2e:build": "node scripts/clean-e2e-dist.mjs && tsc -p tsconfig.e2e.json && node scripts/write-electron-e2e-package.mjs",

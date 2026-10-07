@@ -166,6 +166,58 @@ ja syytiedon saatavuuden. Virheviesti, pino, mielivaltainen payload ja
 liiketoimintatunnisteet jäävät pois. Koodi on lokikirjoittajan tallentama
 havainto, ei keräimen todistama juurisyy eikä uusi julkinen virhekoodiluettelo.
 
+#### Hyväksytty alkuperäisen poikkeuksen rajaus
+
+Erillisellä omistajapäätöksellä synteettisen Electron-käynnistyksen ensimmäinen
+alkuperäinen poikkeus voidaan liittää samaan salattuun terminal-projektioon.
+Tämä ei muuta production operational -lokin, Diagnosticsin tai tukipaketin
+skeemaa. Opt-in vaatii nimetyn testikytkimen, skenaarion nonce-arvon,
+odotetun build-identiteetin kontrollin ja täsmälleen johdetun eristetyn
+testiprofiilin. Tavallinen käyttäjäprofiili ei voi aktivoida keräystä.
+
+`startupExceptionEvidence.ts` omistaa rajat ja skeeman: viesti 2 048 merkkiä,
+pino 8 192 merkkiä, enintään neljä syyketjun osaa ja 192 KiB tiedostoraja.
+Muut poikkeuksen kentät, mielivaltaiset getterit, ympäristö, profiili,
+tietokanta ja business-payload eivät kuulu otteeseen. Session-salaisuus ja
+tunnetut ympäristösalaisuudet redaktoidaan; redaktion käsittelyrajan ylitys
+peittää tekstin, ei päästä salaisuutta läpi. Native stack -accessor tunnistetaan
+erikseen Noden nykyisen toteutuksen perusteella.
+
+Poikkeus tarjotaan havaitsijalle ennen siivousta tai yleiseksi koodiksi
+muuntamista. Ensimmäistä otetta ei korvata myöhemmällä fallbackilla.
+Jokainen runtime saa oman exclusive-tiedoston. Prosessipuun poissaolon jälkeen
+nykyinen fixtureCleanup omistaa luvun ja terminal-kirjoituksen ennen poistoa.
+Kelvollinen ensimmäinen ote säilytetään, vaikka toinen olisi rikkinäinen.
+Puuttuva, osittainen tai varmentamaton ote ei anna fixturen poistamislupaa.
+Havainto ei ole sama asia kuin todistettu juurisyy.
+
+Omistaja hyväksyi vain tämän eristetyn synteettisen käynnistyksen
+virhepolulle enintään 500 ms:n asynkronisen tallennuksen valmistumisodotuksen
+ennen hallittua `app.exit()`-poistumista. Odotus päättyy heti kirjoituksen
+valmistuttua; ei kiinteää unta, synkronista kirjoitusta tai rajaamatonta
+kuittausta. Sama odotus ei käynnisty toistamiseen. Tavallinen käyttäjäkäynnistys
+ja onnistunut polku eivät odota. Kirjoituksen virhe tai aikakatkaisu ei muuta
+alkuperäistä käynnistysvirhettä eikä anna fixturen poistamislupaa ilman
+varmennettua otetta. Nykyiset testien hyväksyntäaikarajat säilyvät.
+
+**Toimituksen hyväksyntä on vielä avoin:** valmistumisodotus ja oikea
+`app.exit()`-raja on todennettava nykyisen Windows-supervisorin omistamassa
+Electron-prosessissa. Luonnollinen Node-poistuminen ei korvaa tätä näyttöä.
+Paketoidun legacy-käynnistyksen alkuperäinen sovellusvika ja uuden paketin
+normaali hyväksyntä säilyvät erillisinä avoimina kohtina.
+
+Nimetty `startup-exception-exit-proof` on nykyisen feasibility-workflowin
+manuaalinen kertakoe, ei normaali hyväksyntäportti. Se kääntää jäädytetyn
+revision nykyisen omistajakoodin, käynnistää yhden eristetyn Electron-fixturen
+nykyisen Job Object -supervisorin alla ja vaatii alkuperäisen poikkeuksen
+säilymisen todellisen `app.exit()`-rajan yli. Vasta tämän todisteen jälkeen
+nykyinen salattu keräin toimittaa täsmälleen nykyisen legacy-terminalin.
+Jobin vihreys edellyttää myös onnistunutta salattua julkaisua; paikallinen
+purku varmistaa sisällön, sidonnan ja tiivisteet. Ei MSI-asennusta, raakajäljen
+uploadia, uutta riippuvuutta tai testien automaattista uusintaa.
+Rajattu paikallinen komento on
+`pnpm --filter @eky/desktop installer:proof:startup-exception-exit`.
+
 Luku rajataan 16 nykyisen nimisäännön mukaiseen lokitiedostoon ja nykyiseen
 5 MiB:n tiedostorajaan. Linkit, muuttunut sisältö, keskeneräinen viimeinen
 rivi, virheellinen sidonta tai puuttuva aineisto eivät muutu onnistuneeksi
@@ -176,8 +228,9 @@ Normaalin hyväksyntätuloksen ja siivouksen nykyiset ehdot säilyvät.
 Otetta ei toimiteta uudella kirjoittimella: nykyinen `fixtureCleanup`-vaiheen
 atominen terminal-kirjoitus sisältää sen ennen mahdollista profiilin poistoa.
 Keräin hyväksyy vain tämän legacy-terminalin täsmällisen nimen ja projektoi
-sen erikseen ennen salausta. Käynnistykseen ei lisätä lokikuittausta,
-valmiusehtoa tai odotusaikaa. Keräimen nykyiset kokonaisrajat ja salauksen
+sen erikseen ennen salausta. Onnistuneeseen käynnistykseen ei lisätä lokikuittausta,
+valmiusehtoa tai odotusaikaa; edellä hyväksytty rajattu virhepolku on erillinen.
+Keräimen nykyiset kokonaisrajat ja salauksen
 fail-closed-käytäntö säilyvät. Tämä testikohtainen yksityinen ote ei kuulu
 Diagnosticsiin, Activityyn tai sovelluksen tukipakettiin.
 
