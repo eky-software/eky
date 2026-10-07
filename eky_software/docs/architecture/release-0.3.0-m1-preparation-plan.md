@@ -224,6 +224,17 @@ Seuraava nimetty todennus on korjatun jäädytetyn revision nykyinen
 legacy-paketointikierros. Tämä valmisteluvirhe ei selitä vanhaa sovelluksen
 käynnistysvirhettä, jota kierros ei vielä suorittanut.
 
+**Fixture-korjaus läpäisi valmistelusopimukset:** [korjatun revision kierros](https://github.com/eky-software/eky/actions/runs/37625704938)
+läpäisi kaikki 12 valmistelujobia, mukaan lukien molempien core-toistojen
+605 testiä. Paketin esitesti löysi erillisen workflow-testin rajausvirheen:
+`packaged-boundary-diagnostic`-jobin tarkistus ulottui seuraavaan,
+tarkoituksella epäonnistuvaan synteettiseen poikkeuskokeeseen. Rajaus
+korjataan omistavaan jobiin nykyisellä testien lukutavalla. Jobin ja
+pakollisten askelten virheiden ohitus hylätään edelleen erillisillä
+kielteisen muutoksen regressioilla; workflow ja sen loppuportti eivät muutu.
+Tämäkin hylkäys tapahtui ennen paketin valmistusta ja varsinaista
+sovelluskäynnistystä. Korjattu revisio tarvitsee oman nimetyn todennuksensa.
+
 ### B3-B5:n aikana havaittu riippuvuuspäivitys
 
 Mainin samaan lähtörevisioon kohdistunut [ajastettu auditointi 6.10.2026](https://github.com/eky-software/eky/actions/runs/37441556812/job/112196274405)
