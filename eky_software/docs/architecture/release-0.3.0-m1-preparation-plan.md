@@ -301,10 +301,20 @@ Regressio kattaa historiallisen ja nykyisen skeeman sekä säilyneen PDF:n
 samassa compositionissa ja tarkistaa myös snapshotin jälkivalidoinnin.
 Rajattu snapshot-/composition-sarja läpäisi 59 testiä; kaksi olemassa olevaa
 alustakohtaista ohitusta eivät ole läpäisyjä. Backendin tyypitys ja
-riippumaton rajattu katselmus läpäisivät. Jäädytetyn revision oikean paketin
-todennus on vielä tekemättä. Alkuperäisen CI-hylkäyksen juurisyytä ei nimetä varmaksi
-pelkän paikallisen toiston perusteella. B3-B5:n hyväksyntä ja merge ovat
-edelleen avoinna.
+riippumaton rajattu katselmus läpäisivät. Jäädytetyn korjausrevision
+`5cd9ef1475ee03e8449c331583ed4bd0e118047e` hardened Windows -paketointi ja
+backup -> inspect -> restore -> restart -> compare -smoke läpäisivät.
+
+[Saman revision nimetty legacy-todennus](https://github.com/eky-software/eky/actions/runs/37653984615)
+päättyi GitHubin `Internal server error` -ilmoitukseen ennen kahden
+varsinaisen päivitysjobin luomista. Kaikki 12 valmisteluryhmää ja vanhan sekä
+uuden paketin valmistus läpäisivät. Alkuperäinen paketti on säilytetty ja sen
+palvelutiiviste sekä revisiosidonta varmennettu. Päivitysajoa ei merkitä
+läpäistyksi eikä tämän palveluvirheen perusteella tehdä sovelluskorjausta.
+Seuraava avoin näyttö on saman korjausrevision varsinainen legacy-päivitys;
+automaattista uusintaa ei käynnistetty. Alkuperäisen snapshot-hylkäyksen
+juurisyytä ei nimetä varmaksi pelkän paikallisen toiston perusteella.
+B3-B5:n hyväksyntä ja merge ovat edelleen avoinna.
 
 ### B3-B5:n aikana havaittu riippuvuuspäivitys
 
