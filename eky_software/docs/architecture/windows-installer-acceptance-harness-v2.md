@@ -2034,6 +2034,10 @@ validoinnin. Header-välimuisti tyhjennetään ennen lukua ja sen jälkeen,
 jotta samaan polkuun vaihdettu arkisto ei peri aiempaa identiteettiä.
 Luku ei pura tai muuta payloadia. Testifixture käyttää samaa oikeaa
 ASAR-muotoa; myös hylkäyspolun byte-identtisyys tarkistetaan.
+Kirjasto ladataan vasta tämän vaaditun pakettisidonnan lukemisessa.
+Riippuvuudettomien supervisor-sopimusten import ei tarvitse paketointityökalua;
+puuttuva työkalu varsinaisessa luvussa hylkää sidonnan samalla suljetulla
+virhekoodilla. Eristetty resoluutioregressio todistaa molemmat rajat.
 
 PDF-katalogin `storage_path` on laskutusmoduulin juureen suhteellinen,
 ei koko `runtime/storage`-juureen suhteellinen. Testilukija johtaa

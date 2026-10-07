@@ -11,7 +11,7 @@ const expectedJobs = {
   'windows-acceptance-v2-upgrade.yml': 2,
   'windows-acceptance-v2-workspace.yml': 4,
   'windows-acceptance-v2-legacy-diagnostic.yml': 3,
-  'windows-acceptance-supervisor-feasibility.yml': 2,
+  'windows-acceptance-supervisor-feasibility.yml': 3,
 };
 
 test('every existing pnpm consumer prepares the same verified tool in its own preceding step', () => {

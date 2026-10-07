@@ -76,15 +76,20 @@ test('capture reads main startup and shutdown events from the real logger stream
   const logger = new JsonLineDesktopOperationalLogger({ logsRoot: resolve(profile.runtimeRoot, 'logs'),
     failureSink: { recordFailure() { writeFailures += 1; } } });
   const identity = { appVersion: f.state.targetVersion, buildRevision: f.state.buildRevision, runtimeInstanceId: randomUUID() };
-  reportDesktopStarted({ identity, logger, startedAt: Date.now() });
+  const writtenEvents = [];
+  reportDesktopStarted({ identity, logger: { write(event) {
+    writtenEvents.push(event);
+    logger.write(event);
+  } }, startedAt: Date.now() });
   const shutdown = createDesktopOperationalEvent({ eventName: 'desktop.shutdownCompleted' }, identity);
+  writtenEvents.push(shutdown);
   logger.write(shutdown);
   assert.equal(writeFailures, 0);
   const before = await createClosedDirectoryInventory(f.root);
   const result = await captureWorkspaceSuccessProfileEvidence({ ...f.input, checkpoint: 'targetFirstStart' });
-  assert.deepEqual(result.events.map(({ eventId, ...event }) => event), [
-    { ...identity, eventName: 'desktop.started' }, { ...identity, eventName: 'desktop.shutdownCompleted' },
-  ]);
+  assert.deepEqual(result.events, writtenEvents.map(({ appVersion, buildRevision, eventId,
+    eventName, runtimeInstanceId, timestamp }) => ({ appVersion, buildRevision, eventId,
+    eventName, runtimeInstanceId, timestamp })));
   assert.equal(result.events[1].eventId, shutdown.eventId);
   assert.notEqual(result.events[0].eventId, shutdown.eventId);
   assert.deepEqual(await createClosedDirectoryInventory(f.root), before);

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -275,6 +276,38 @@ test('package binding pins installed SQL and the exact packaged runtime build id
   await writeLegacyDatabaseBuildInfoFixture(installRoot, info);
   await writeFile(resolve(migrationRoot, value.contract.migrations[38].fileName), '-- changed SQL');
   await assert.rejects(readLegacyDatabasePackageBinding(installRoot, identity), /legacyDatabasePackageBindingInvalid/);
+});
+
+test('contract imports do not load ASAR, but required package reads fail closed without it', async t => {
+  const root = await mkdtemp(resolve(tmpdir(), 'eky-legacy-asar-import-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await createLegacyDatabasePackageFixture(root);
+  const before = await createClosedDirectoryInventory(root);
+  const moduleUrl = new URL('./legacyUpgradeDatabaseEvidence.mjs', import.meta.url).href;
+  const probe = `
+    import assert from 'node:assert/strict';
+    import { registerHooks } from 'node:module';
+    let resolutions = 0;
+    registerHooks({ resolve(specifier, context, nextResolve) {
+      if (specifier === '@electron/asar') {
+        resolutions += 1;
+        throw new Error('syntheticAsarUnavailable');
+      }
+      return nextResolve(specifier, context);
+    } });
+    const { readLegacyDatabasePackageBinding } = await import(${JSON.stringify(moduleUrl)});
+    assert.equal(resolutions, 0);
+    await assert.rejects(readLegacyDatabasePackageBinding(${JSON.stringify(root)},
+      ${JSON.stringify(TARGET_DATABASE_IDENTITY)}), { message: 'legacyDatabasePackageBindingInvalid' });
+    assert.equal(resolutions, 1);
+  `;
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', probe], {
+    encoding: 'utf8', timeout: 10_000, maxBuffer: 4096, windowsHide: true,
+  });
+  assert.equal(child.error?.code ?? null, null);
+  assert.equal(child.signal, null);
+  assert.equal(child.status, 0, 'isolated ASAR dependency boundary failed');
+  assert.deepEqual(await createClosedDirectoryInventory(root), before);
 });
 
 for (const variant of ['missing', 'corrupt', 'oversized']) {

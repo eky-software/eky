@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { lstat, readFile } from 'node:fs/promises';
 import { dirname, relative, resolve, sep, toNamespacedPath } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { extractFile, statFile, uncache } from '@electron/asar';
 
 import { readMigrationManifest } from '../../../backend/src/database/migration/migrationManifest.ts';
 import { parseDesktopBuildInfo } from '../../src/release/desktopBuildInfo.ts';
@@ -98,7 +97,7 @@ export async function readLegacyDatabasePackageBinding(installRoot, identity) {
       ({ fileName, sourceSha256, chainSha256 })), contract.migrations.slice(0, manifest.length))) {
       fail('legacyDatabasePackageBindingInvalid');
     }
-    const buildInfo = readPackagedBuildInfo(installRoot, identity.appVersion);
+    const buildInfo = await readPackagedBuildInfo(installRoot, identity.appVersion);
     if (buildInfo.buildDirty || !identity.buildRevision.startsWith(buildInfo.buildRevision)) {
       fail('legacyDatabasePackageBindingInvalid');
     }
@@ -108,7 +107,9 @@ export async function readLegacyDatabasePackageBinding(installRoot, identity) {
   } catch { fail('legacyDatabasePackageBindingInvalid'); }
 }
 
-function readPackagedBuildInfo(installRoot, appVersion) {
+async function readPackagedBuildInfo(installRoot, appVersion) {
+  // Dependency-free supervisor contracts do not read a packaged archive.
+  const { extractFile, statFile, uncache } = await import('@electron/asar');
   const archive = resolve(installRoot, 'resources', 'app.asar');
   // Each verified payload read must use its current header, not a prior archive.
   uncache(archive);

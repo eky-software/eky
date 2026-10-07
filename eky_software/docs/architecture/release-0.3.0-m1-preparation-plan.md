@@ -13,7 +13,7 @@ Alla päivätyt tutkimusvaiheet ovat historiaa, eivät rinnakkaisia työjonoja.
 **T1/T2/T3, A1/R01, A2/R05, A3/R06 ja Oma yritys -tallennuskorjaukset
 integraatiojatkoineen ovat hyväksyttyjä. B1/B2 ja niiden hyväksytyt sulku-/
 keräysjatkot on hyväksytty PR #297:n mainissa. Nykyinen työ on
-[B3-B5:n integraatio ja rajatut PR-korjaukset](#b3-b5n-ensimmäisen-pr-kierroksen-rajatut-korjaukset).** PR #294:n oma main-kierros
+[B3-B5:n integraatio ja rajatut PR-korjaukset](#b3-b5n-normaalin-integraatiokierroksen-testisopimukset).** PR #294:n oma main-kierros
 läpäisi; A2:n aiemman main-kierroksen tapauskohtainen etenemispäätös ja
 alkuperäinen flaky-havainto säilyvät historiassa eivätkä muutu korjatuiksi.
 Modulaarinen monoliitti ja
@@ -35,6 +35,32 @@ integraation lopputulos kirjataan sen omaan hyväksyntächeckpointiin;
 pelkän tuloksen ilmoittamiseksi ei tehdä uutta tilakirjauscommittia.
 Jokainen uusi toteutuspala alkaa omalla preflightilla. Sivulla ei ylläpidetä Goal-työkalun
 ajonaikaista tilaa.
+
+### B3-B5:n normaalin integraatiokierroksen testisopimukset
+
+Revision `0feabeeab441170713e362b786c79a2086511dc3`
+[V2-kierros 37701326723](https://github.com/eky-software/eky/actions/runs/37701326723)
+hylättiin testien valmistelu- ja sopimusporteissa. Webin ja Electronin
+kriittiset käyttäjäpolut läpäisivät. Erillinen
+[riippuvuustarkistus 37701326643](https://github.com/eky-software/eky/actions/runs/37701326643)
+läpäisi. Tämä ei hyväksy koko integraatiota tai muuta aiempien hylkäysten
+tuloksia. Ensivirheet säilytetään ennen korjausrevision normaalia kierrosta.
+
+Rajattu korjaus koskee viittä testikytkentää: lukitun pnpm:n työluettelo
+sisältää myös hyväksytyn synteettisen poistumiskokeen, upgrade-workflowtesti
+rajaa vain omistavan jobin, legacy-ryhmien suljettu inventaario sisältää jo
+ajossa olevan migraatiotodisteen ja oikean loggerin testi vertaa aikaleimaa
+kirjoitettuun tapahtumaan. ASAR-työkalu ladataan vasta vaaditussa paketin
+lukemisessa, ei riippuvuudettomien supervisor-sopimusten importissa.
+Puuttuva työkalu hylkää varsinaisen pakettisidonnan, eikä synny unpacked-
+varapolkua. Paketin sisältö-, eheys- ja siivousehdot säilyvät ennallaan.
+
+Kohdistetut 190 tarkistusta, 232 tarkistuksen legacy-ketju ja 149 tarkistuksen
+native-supervisor-sarja läpäisivät; joukot ovat osin päällekkäisiä.
+Tyypitys ja omistavien ohjeiden linkit läpäisivät. Riippumaton katselmus ja
+uuden täsmällisen revision PR/main-portit vaaditaan edelleen.
+Tässä palassa ei muuteta sovelluskoodia,
+tietomallia, riippuvuusversioita, aikarajoja tai prosessiomistajuutta.
 
 ### B3-B5:n ensimmäisen PR-kierroksen rajatut korjaukset
 
