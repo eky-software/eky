@@ -158,7 +158,8 @@ function createProgress(reportProgress) {
     } catch (error) {
       const known = errorCodeOf(error);
       const targetCauseInOtherPhase = Object.hasOwn(LEGACY_STARTUP_ERROR_CODES, known) &&
-        phase !== 'targetFirstStartup' && phase !== 'targetSecondStartup';
+        phase !== 'targetFirstStartup' && phase !== 'targetSecondStartup' &&
+        !(phase === 'targetPayload' && Object.hasOwn(LEGACY_PAYLOAD_ERROR_CODES, known));
       const errorCode = known === 'unexpectedFailure' || targetCauseInOtherPhase ? failureCode : known;
       emit(phase, 'failed', phaseStartedAt, {
         errorCode,

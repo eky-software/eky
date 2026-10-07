@@ -353,11 +353,188 @@ näyttö sekä katselmus. Seuraava epäonnistuminen voi silloin erottaa
 hyväksytyn buildin, rekisterin, adoption jäämän tai tarkan sisältövertailun
 hylkäyksen; sama yleinen vaiherivi ei yksin perustele uutta pitkää ajoa.
 
+**Syyn rajaus 7.10.2026:** [nimetty syykooditodennus 37680733028](https://github.com/eky-software/eky/actions/runs/37680733028)
+käytti harness-revisiota `f39407078b9184689962ed198ce471deda798ba3`
+ja samoja sovelluspaketin `5cd9ef14`-tavuja. Ensimmäisen käynnistyksen
+jälkitarkistus hylkäsi tuloksen koodilla
+`WINDOWS_ACCEPTANCE_LEGACY_ADOPTED_DATA_MISMATCH`. Suljettu ensimmäinen syy
+säilyi callerin tuloksessa myös prosessin poistumisen jälkeen; salatun
+aineiston sidonta, purku ja tiedostotiivisteet varmennettiin. Prosessipuun
+poissaolo, semanttinen asennussiivous ja tarkkojen tuotteiden poissaolo
+läpäisivät erikseen. Fixture jäi jälleen säilytettäväksi, eikä sen poistoa
+merkitä läpäistyksi. Tämä hylkäys ei ollut deadline eikä normaali hyväksyntä.
+
+Rajattu lähdevertailu osoitti sopimusristiriidan: historiallinen lähde
+`6ed99f53` sisältää migraatiot 001–038 ja kohde `5cd9ef14` myös hyväksytyn
+039-migraation. `captureLegacyTargetEvidence` vertaa ensimmäisen
+käynnistyksen jälkeistä koko data-inventaariota silti alkuperäiseen
+lähdeinventaarioon. Migraation schema- ja historiakirjoitukset muuttavat
+SQLite-tavuja tarkoituksellisesti. Tämä ei yksin osoita, että todetun ajon
+kaikki erot olivat sallittuja tai että liiketoimintatiedot säilyivät oikein.
+
+Seuraava rajattu työ on alla oleva [migraatiotodisteen
+korjausehdotus](#legacy-testin-038039-migraatiotodisteen-korjausehdotus).
+Alkuperäisen lähteen, PDF:ien, tiedostotyyppien, sisällön ja hyväksytyn
+migraation tarkistukset säilyvät. Ehdotus tarvitsee omistajan päätöksen ennen
+testin vertailuperusteen toteutusmuutosta. Uutta diagnostiikkakerrosta tai
+pitkää koetta ei aloiteta tämän kirjauksen perusteella. Nykyisen hylkäyksen
+korjaus ja sen todennus ovat vielä avoinna.
+
 Rajattu diagnostiikkakoe ei ole normaali PR-hyväksyntä. PR #298:n vanhaa
 `394e09730426e7556f8b29ed380838bc4f90a10b`-headia ei mergetä. Kun rajattu
 näyttö täyttyy, sen lineaarinen jatko viedään PR:n täsmälliseksi headiksi
 ja kaikki nykyiset PR- sekä uuden mainin portit vaaditaan erikseen.
 B3-B5:n hyväksyntä ja merge ovat edelleen avoinna.
+
+#### Legacy-testin 038–039-migraatiotodisteen korjausehdotus
+
+**Tila: omistajan jatkoluvalla rajattu toteutus käynnissä, ei vielä todennettu.**
+Tämä kuuluu nykyisen B3-B5-integraation rajaukseen. Sovelluksen migraatioita,
+liiketoimintasopimusta, moduulirajoja tai prosessien omistajuutta ei muuteta.
+
+**Todettu ristiriita.** Historiallisen lähteen ja kohteen migraatiot 001–038
+ovat samoja SQL-tavuja; kohde lisää 039:n. Myös historiallinen runner
+kirjoittaa `schema_migration_metadata`-taulun: puuttuvan tai ristiriitaisen
+metadatan salliminen ei kuulu tämän nimetyn testiaineiston korjaukseen.
+039 luo revision tunnisteet `randomblob`-kutsulla ja säilyttää vanhat lasku-,
+rivi-, dokumentti- ja tapahtumakentät. Siksi kahden erikseen oikein
+migroidun kopion koko SQLite-hashkaan ei ole sopiva odotusarvo. Tunnettua
+ristiriitaa ei ratkaista uusinnalla, hyväksymällä ensimmäinen kohde
+sellaisenaan tai muuttamalla migraation tunnisteiden muodostamista.
+
+**Ehdotettu todistusraja:**
+
+1. Historiallisen lähteen koko `data` ja `storage` säilyvät alkuperäiseen
+   inventaarioon nähden byte-identtisinä. Kohteen tiedosto- ja hakemistoluettelo,
+   tiedostotyypit, linkki-/polkurajat sekä kaikki muut kuin täsmälleen nimetty
+   `eky.sqlite` säilyvät nykyisessä tarkassa vertailussa. Kaikki PDF-tavut,
+   koot ja tiivisteet sekä niiden tietokantaviitteet tarkistetaan; PDF:ää ei
+   muodosteta uudelleen.
+2. Vain todistettu 038→039-siirtymä saa käyttää alla olevaa tietokannan
+   sisältövertailua ensimmäisellä kohdekäynnistyksellä. Sama migraatioketju
+   käyttää edelleen koko tiedoston byte-vertailua. Tuntematon siirtymä,
+   väärä SQL-tiiviste tai puuttuva todistus hylätään, ei ohiteta.
+3. Odotuksen omistaa testikohtainen, versionhallittu 038/039-sopimus.
+   Se sitoo historiallisten ja uusien SQL-tavujen tiivisteet sekä odotetut
+   schema-objektit, kentät ja sidokset. Sopimus muodostetaan ja katselmoidaan
+   muuttumattomasta SQL-ketjusta ja nykyisistä migraatioregressioista, ei
+   epäonnistuneen kohteen sisällöstä. Sen suljettu rakenne sisältää
+   sopimusversion, lähde-/kohdeketjun tiivisteet, migraatioiden nimikohtaiset
+   tiivisteet sekä kummankin scheman tarkat objektit ja sarakkeet. Schema-
+   odotus johdetaan tyhjään eristettyyn testikantaan ajetusta hyväksytystä
+   ketjusta ja tallennetaan testisopimuksena; sitä ei opita tutkitusta
+   business-profiilista. Kohteen SQL-ketju luetaan jo
+   payload-identiteetiltään varmennetusta asennuspaketista; checkoutin
+   nykyinen versio ei korvaa paketin identiteettiä. Schemaan kuuluu myös
+   indeksien, triggerien, constraintien ja SQLite-managed-objektien tarkka
+   odotettu joukko. Yleistä tuntemattomien objektien poissulkua ei lisätä.
+4. Kaikkien alkuperäisten taulujen kaikki alkuperäiset sarakkeet ja rivit
+   verrataan arvo-, tyyppi- ja monikertasäilyttävästi. Pelkkä rivimäärä,
+   valikoidut summat tai olemassa olevan W6B.2-fixturen seitsemän rivin
+   projektio eivät riitä. Audit-, identiteetti- tai historiatauluja ei
+   ohiteta yleisellä listalla. Vanhan migraatioledgerin rivit säilyvät
+   täsmälleen; vain nimetty 039-rivi ja sen oikea metadata saavat tulla lisää.
+   Uuden rivin aika validoidaan sovitun kanonisen aikaleimasopimuksen mukaan
+   ja sen on oltava sama kuin metadatan `recorded_at`. Metadatan alkuperä on
+   `applied`; release ja runtime-build vastaavat varmennetun paketin
+   build-identiteettiä, eivät vain syntaktisesti kelvollista versiota tai
+   SHA:ta. SQL-/ketjutiivisteet sidotaan samaan kohdepakettiin. Uuden ajan
+   tarkkaa kellonaikaa ei arvata eikä vanhoja aikaleimoja normalisoida.
+5. Uudet revisiot tarkistetaan täydellisenä suhteena alkuperäisiin laskuihin,
+   riveihin ja hyvityslähteisiin. Tunnisteiden muoto, yksikäsitteisyys,
+   täsmällinen lukumäärä ja kaikki ristiinviitteet vaaditaan; tunnisteita ei
+   vain poisteta vertailusta. 039:n tunniste on 32 pientä hex-merkkiä, ei
+   UUID-v4. Snapshotin kaikki sisältökentät kopioituvat
+   alkuperäisinä, ilman ALV:n tai summien uudelleenlaskentaa. Nykyrevision
+   osoitin puuttuu vain sopimuksen mukaiselta uudelleenavatulta laskulta.
+   Vanhojen dokumenttien ja toimitustapahtumien uudet provenance-kentät
+   vastaavat 039:ää; vanhaa lähetystarkoitusta ei arvata. Legacy-ALV-erittely
+   pysyy tyhjänä. Ylimääräinen, puuttuva tai väärään laskuun sidottu rivi
+   hylätään, vaikka vierasavaintarkistus yksin läpäisisi.
+6. Luku tehdään synteettisestä profiilista nykyisen hallitun sulun jälkeen
+   readonly-yhteydellä. Se ei käynnistä sovellusta, migroi, korjaa, checkpointtaa
+   SQLitea tai luo palautuspistettä. Ratkaisematon WAL/SHM/journal-tila
+   hylätään ennen avausta; sitä ei siivota hyväksynnän vuoksi. Nykyiset
+   inventaariot ja tiedostoidentiteetit tarkistetaan ennen ja jälkeen luvun.
+   SQLite-integrity, vierasavaimet ja dokumenttikatalogin sulkeuma vaaditaan.
+7. Vasta kaikkien ensimmäisen käynnistyksen tarkistusten jälkeen talletetaan
+   kohteen täysi inventaario olemassa olevaan todisteeseen. Toinen käynnistys
+   ja lopullinen erillinen postcondition vaativat saman tietokannan ja
+   storage-puun byte-identtisyyden, eri runtime-instanssin ja samat
+   workspace-/registry-sidokset. Postcondition tarkistaa myös sisältösopimuksen
+   uudelleen; aiempi onnistumisboolean ei riitä.
+
+**Toteutusraja.** Nykyinen `legacyUpgradeProfileEvidence.mjs` säilyy
+profiilitodisteen omistajana. Sen viereen rajataan yksi nimetty readonly-
+`legacyUpgradeDatabaseEvidence.mjs` ja vain 038/039:ää kuvaava testisopimus
+sekä niiden regressiot. Käytetään nykyisen testityökaluketjun `node:sqlite`-
+lukutapaa, ei uutta riippuvuutta tai tuotannon DB-porttia. SQL-odotukset
+eivät siirry Electron mainiin tai sovelluksen business-logiikaksi.
+Manifestin nimeämis-, jatkuvuus- ja ketjutiivistyssopimus käytetään nykyisestä
+`migrationManifest.ts`-toteutuksesta testiapurin kautta; toista heikompaa
+tiivistysalgoritmia ei kopioida audit-skriptistä. Testisopimuksen generointi
+on erillinen kohdetestin valmistelu, ei uusi ajonaikainen migration runner.
+`legacyUpgradeWindowsRuntime.mjs` välittää varmennetun pakettisidoksen;
+`legacyUpgradePostcondition.mjs` käyttää samaa tarkistajaa jälkitodennuksessa.
+Myös postconditionin asennetun payloadin tarkistus tehdään ennen sen SQL:n
+käyttöä odotuksen lähteenä; nykyinen tarkistus vasta profiilin lukemisen
+jälkeen ei riitä tähän uuteen sidokseen. Lopullinen artifactin jälkivarmennus
+säilyy lisäksi omana porttinaan.
+Strict readerit, nykyiset suljetut syykoodit ja niitä koskevat testit
+päivitetään yhdessä vain tarvittavilta osin. Laskurivejä tai tietokantakopioita
+ei lisätä julkiseen lokiin eikä salatun tutkimuspaketin sisältörajaukseen.
+
+**Todennus ennen pitkää ajoa.** Käytä todellista muuttumatonta 039-SQL:ää
+nykyiseen synteettiseen 038-fixtureen: vanhan byte-ehdon pitää hylätä sen
+muutos, ja uuden sisältötodisteen pitää hyväksyä vain oikea lopputulos.
+Negatiiviset regressiot kattavat muuttuneen vanhan arvon tai tyypin,
+puuttuvan/ylimääräisen rivin tai schema-objektin (myös muuttumattomilla riveillä
+puuttuvan immutable-triggerin), virheellisen ledgerin ja
+pakettisidoksen, väärät revisio-/hyvitys-/dokumentti-/tapahtumaviitteet,
+muuttuneen PDF:n, keskeneräisen SQLite-tilan sekä itse lukemisen aiheuttaman
+muutoksen. Toisen käynnistyksen byte-muutos hylätään myös semanttisesti saman
+sisällön tapauksessa. Mukana ovat pitkän Windows-polun luku sekä nykyiset
+onnistuva polku, syyn välitys ja erillinen siivoustulos.
+Nykyisten kevyiden profiilitestien `sqlite-fixture`-merkkijono säilyy vain
+tiedostoturvan fixturena: semanttinen hyväksyntä todennetaan oikeilla
+SQLite-tavuilla, eikä SQL-tarkistusta ohittava testikytkentä saa vuotaa
+workerin tai erillisen postconditionin oikeaan polkuun.
+
+Kohdetestien ja riippumattoman katselmuksen jälkeen jäädytetään yksi korjaus-
+revisio ja ajetaan yksi nimetty Windows legacy -todennus samoilla hyväksytyillä
+pakettitavuilla ja nykyisillä aikarajoilla. Seuraava hylkäys erottaa
+tiedostojoukon, scheman/ledgerin, alkuperäissisällön, uusien sidosten sekä
+readonly-tarkistuksen epäonnistumisen nykyisellä syykanavalla. Jos täsmällistä
+alkuperäistä artifactia ei enää saada, siitä kirjataan erillinen valmistelueste;
+uutta buildia ei esitetä samana pakettina. Läpäisy avaa normaalit täsmällisen
+PR-headin ja uuden mainin portit, ei ohita niitä tai ratkaise vanhaa peruttua
+timeout-havaintoa.
+
+**Rajattu toteutus- ja kohdenäyttö 8.10.2026:** tarkistaja, riippumaton
+038/039-schema-/SQL-sopimus ja niiden oikeilla SQLite-tavuilla toimivat
+regressiot on kytketty profiilinäyttöön, runtimeen ja erilliseen
+postconditioniin. Uudet testit kuuluvat nykyiseen legacy-core-komentoon.
+Target-evidencen versio 2 sitoo sisältöodotuksen sekä paketin release-/build-
+identiteetin; postcondition vaatii täydellisen todistuksen ja toistaa luvun.
+Paketoidun backendin oikea `dist/database/migrations`-asettelu ja
+inventaarion varmennus ennen SQL-sidontaa testataan oikeassa lukuketjussa.
+
+Rajattu ketjusarja läpäisi ensin 145/145 ja laajennettu syy-/caller-/worker-
+ketju 215/215 testiä. Mukana ovat kaikki 64 kopioitua
+header-kenttää, vanhan arvon ja tyypin säilyminen, schema-/trigger-/ledger-
+virheet, uudet revisio-, rivi-, hyvitys- ja provenance-sidokset, PDF-katalogi,
+WAL/SHM/journal, readonly-luvun aiheuttama muutos, pitkä Windows-polku sekä
+toisen käynnistyksen semanttisesti saman tietokannan tavumuutoksen hylkäys.
+Toteutusvaiheen fixturen valmistelu- ja pakettiasettelupoikkeamat säilyvät
+erillisinä eivätkä ole uusia sovellus- tai alkuperäisen CI-ajon vikapäätelmiä.
+Nykyinen tekninen sopimus ja lukureitti ovat
+[hyväksyntäharnessin ohjeessa](windows-installer-acceptance-harness-v2.md#legacy-038039--sisältötodiste).
+Riippumaton toteutuskatselmus on tehty. Siinä havaittu pakettisidoksen
+ensisyykoodin yleistyminen payload-vaiheessa korjattiin nykyiseen suljettuun
+syykanavaan ja todennettiin regressioilla; muiden vaiheiden syyrajat eivät
+laajentuneet. Katselmuksen täsmädeltassa ei jäänyt avoimia havaintoja.
+Nimetty saman paketin Windows-todennus ja nykyiset PR/main-portit ovat vielä
+erillisiä hyväksyntäportteja; kohdetestien tulos ei korvaa niitä.
 
 ### B3-B5:n aikana havaittu riippuvuuspäivitys
 

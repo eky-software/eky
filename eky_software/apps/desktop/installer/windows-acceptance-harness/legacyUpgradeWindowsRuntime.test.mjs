@@ -9,6 +9,7 @@ import test from 'node:test';
 
 import { createLegacyUpgradeWindowsRuntime, inspectLegacyInstallerFootprint, startLegacyOwnedProcess, validateLegacyTargetPayload } from './legacyUpgradeWindowsRuntime.mjs';
 import { inspectPackageArtifactInventory } from '../../scripts/package-artifact-inventory.mjs';
+import { createLegacyDatabasePackageFixture } from './legacyUpgradeDatabaseEvidence.fixture.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 
@@ -27,6 +28,7 @@ test('legacy runtime keeps payload observation opt-in, ordered and outside accep
   });
   const installRoot = resolve(root, 'Programs', 'Eky');
   await mkdir(installRoot, { recursive: true });
+  await createLegacyDatabasePackageFixture(installRoot);
   await writeFile(resolve(installRoot, 'synthetic.txt'), 'original');
   const expected = await inspectPackageArtifactInventory({ root: installRoot, stage: 'packagedApp' });
   for (const flag of [undefined, '0', 'true', '1']) {
@@ -80,6 +82,17 @@ test('legacy runtime keeps payload observation opt-in, ordered and outside accep
     }
     await writeFile(resolve(installRoot, 'synthetic.txt'), 'original');
   }
+});
+
+test('the real runtime cannot start a target before a verified package binding exists', {
+  skip: process.platform !== 'win32',
+}, async t => {
+  const root = await mkdtemp(resolve(tmpdir(), 'eky-legacy-binding-required-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const artifact = { source: { appVersion: '0.2.6', runtimeBuildRevision: 'a'.repeat(12) },
+    target: { appVersion: '0.2.7', buildRevision: 'b'.repeat(40) } };
+  const runtime = await createLegacyUpgradeWindowsRuntime({ fixtureRoot: resolve(root, 'fixture'), runNonce: 'a'.repeat(64) }, artifact);
+  await assert.rejects(runtime.runTargetStartup('first'), /targetStartupPreconditionFailed/);
 });
 
 test('legacy target payload retains the exact inventory acceptance and closed rejection causes', async (context) => {

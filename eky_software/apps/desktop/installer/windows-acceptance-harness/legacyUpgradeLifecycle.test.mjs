@@ -148,6 +148,37 @@ test('successful payload verification never starts optional rejection observatio
   assert.equal(result.status, 'completed');
 });
 
+test('package binding rejection keeps its first cause at payload verification before any target start', async () => {
+  const entries = [];
+  const dependencies = successfulDependencies({
+    reportProgress: entry => entries.push(entry),
+    async validateTargetPayload() { throw new Error('legacyDatabasePackageBindingInvalid'); },
+    async observeTargetPayloadRejection() { throw new Error('private observer failure'); },
+  });
+  const result = await executeLegacyUpgradeLifecycle(dependencies);
+  assert.equal(result.errorCode, 'legacyDatabasePackageBindingInvalid');
+  assert.equal(result.targetFirstStartupValidated, false);
+  assert.equal(dependencies.calls.includes('first'), false);
+  assert.equal(entries.find(entry => entry.phase === 'targetPayload' && entry.status === 'failed').errorCode,
+    'legacyDatabasePackageBindingInvalid');
+});
+
+test('database startup causes remain phase-local outside their explicit payload binding check', async () => {
+  for (const cause of Object.keys(LEGACY_STARTUP_ERROR_CODES).filter(code => code.startsWith('legacyDatabase'))) {
+    const source = await executeLegacyUpgradeLifecycle(successfulDependencies({
+      async runSourceStartup() { throw new Error(cause); },
+    }));
+    assert.equal(source.errorCode, 'sourceNormalStartupFailed');
+    assert.equal(source.targetFirstStartupValidated, false);
+    if (Object.hasOwn(LEGACY_PAYLOAD_ERROR_CODES, cause)) continue;
+    const payload = await executeLegacyUpgradeLifecycle(successfulDependencies({
+      async validateTargetPayload() { throw new Error(cause); },
+    }));
+    assert.equal(payload.errorCode, 'majorUpgradeStateInvalid');
+    assert.equal(payload.targetFirstStartupValidated, false);
+  }
+});
+
 test('legacy MSI observations preserve the close boundary before target postconditions', async () => {
   const child = new EventEmitter();
   child.pid = 17;

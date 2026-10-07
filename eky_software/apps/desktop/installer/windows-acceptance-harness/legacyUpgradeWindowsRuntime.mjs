@@ -28,6 +28,7 @@ import { createNativeProductInspectionCommand } from './nativeMsiAdapterCommand.
 import { createLegacyPayloadObservation } from './legacyPayloadObservation.mjs';
 import { STARTUP_EXCEPTION_SWITCH, STARTUP_EXCEPTION_TOKEN_ENV } from '../../src/main/startupExceptionEvidence.ts';
 import { prepareLegacyStartupExceptionControl } from './legacyOriginalExceptionEvidence.mjs';
+import { readLegacyDatabasePackageBinding } from './legacyUpgradeDatabaseEvidence.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const CLOSE_REQUEST_PATH = resolve(DIRECTORY, 'requestWindowsApplicationClose.ps1');
@@ -249,6 +250,7 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact, {
   let inspectionSequence = 0;
   let sourceEvidence = null;
   let firstTargetEvidence = null;
+  let packageBinding = null;
 
   async function inspectExactProduct(roleName) {
     const errorCode =
@@ -363,6 +365,7 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact, {
 
   async function validateTargetPayload() {
     await validateLegacyTargetPayload(installRoot, artifact.target.payloadInventory);
+    packageBinding = await readLegacyDatabasePackageBinding(installRoot, identities.target);
   }
 
   async function observeTargetPayloadRejection(observe) {
@@ -475,6 +478,7 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact, {
   async function runTargetStartup(generation) {
     if (
       sourceEvidence === null ||
+      packageBinding === null ||
       !['first', 'second'].includes(generation) ||
       (generation === 'second' && firstTargetEvidence === null)
     ) {
@@ -483,6 +487,7 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact, {
     const started = await runInstalledApplication(identities.target);
     const evidence = await captureLegacyTargetEvidence({
       identities,
+      packageBinding,
       previousEvidence:
         generation === 'second' ? firstTargetEvidence : undefined,
       runtimeInstanceId: started.runtimeInstanceId,

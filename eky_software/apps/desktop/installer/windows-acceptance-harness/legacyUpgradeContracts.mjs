@@ -4,6 +4,7 @@ import { dirname, isAbsolute, resolve } from 'node:path';
 
 import { writeJsonAtomicExclusive } from './cleanInstallUninstallContracts.mjs';
 import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
+import { LEGACY_DATABASE_ERROR_CODES } from './legacyUpgradeDatabaseEvidence.mjs';
 
 export const LEGACY_UPGRADE_SCENARIO = 'historicalLegacyUpgrade';
 export const LEGACY_UPGRADE_WORKER_EXIT_CODES = Object.freeze({
@@ -60,6 +61,7 @@ export const LEGACY_FOOTPRINT_ERROR_CODES = Object.freeze({
 });
 
 export const LEGACY_PAYLOAD_ERROR_CODES = Object.freeze({
+  legacyDatabasePackageBindingInvalid: LEGACY_DATABASE_ERROR_CODES.legacyDatabasePackageBindingInvalid,
   targetPayloadInspectionFailed: 'WINDOWS_ACCEPTANCE_LEGACY_TARGET_PAYLOAD_INSPECTION_FAILED',
   targetPayloadFileCountMismatch: 'WINDOWS_ACCEPTANCE_LEGACY_TARGET_PAYLOAD_FILE_COUNT_MISMATCH',
   targetPayloadSizeMismatch: 'WINDOWS_ACCEPTANCE_LEGACY_TARGET_PAYLOAD_SIZE_MISMATCH',
@@ -68,6 +70,7 @@ export const LEGACY_PAYLOAD_ERROR_CODES = Object.freeze({
 });
 
 export const LEGACY_STARTUP_ERROR_CODES = Object.freeze({
+  ...LEGACY_DATABASE_ERROR_CODES,
   targetBootstrapFailed: 'WINDOWS_ACCEPTANCE_LEGACY_TARGET_BOOTSTRAP_FAILED',
   targetApplicationExitedEarly: 'WINDOWS_ACCEPTANCE_LEGACY_TARGET_APPLICATION_EXITED_EARLY',
   targetOperationalLogInvalid: 'WINDOWS_ACCEPTANCE_LEGACY_TARGET_OPERATIONAL_LOG_INVALID',

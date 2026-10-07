@@ -2004,6 +2004,43 @@ verifier tarkistaa ennen semanttista cleanupia:
   inventorya
 - source- ja target-artifactien tavut ovat edelleen muuttumattomat.
 
+#### Legacy 038–039 -sisältötodiste
+
+Ensimmäinen kohdekäynnistys ei voi vaatia koko SQLite-tiedoston samaa hashia,
+kun varmennettu paketti lisää 039-migraation. Tässä nimetyssä siirtymässä
+`legacyUpgradeDatabaseEvidence.mjs` tarkistaa suljetun profiilin readonly-
+yhteydellä versionhallittua `legacyUpgradeDatabase038To039.contract.json`-
+sopimusta vasten. Sopimus johdetaan erikseen hyväksytyistä SQL-tavuista tyhjään
+testikantaan, ei tarkasteltavasta profiilista. Manifestin jatkuvuus ja tiivistys
+käyttävät nykyistä backendin manifestinomistajaa.
+
+Asennetun payloadin täysi inventaario varmennetaan ennen paketoidun
+`backend/dist/database/migrations`-ketjun tai runtime-buildin käyttämistä
+sidonnan lähteenä. Kaikki vanhat taulut, sarakkeet, arvojen SQLite-tyypit ja
+rivien monikerrat säilyvät. Schemaobjektit, indeksit ja triggerit vastaavat
+riippumatonta odotusta; ledgeriin saa tulla vain nimetty 039-rivi ja saman
+paketin metadata. Uudet revisiot, laskurivit, hyvitysviitteet, nykyrevision
+osoittimet sekä dokumentti- ja tapahtumaprovenanssi tarkistetaan kokonaisina.
+Vanhoja summia tai lähetystarkoituksia ei lasketa tai päätellä uudelleen.
+
+Historiallinen lähde, muut datatiedostot ja kaikki PDF-tavut säilyvät täydessä
+inventaariovertailussa. Keskeneräinen WAL/SHM/journal hylätään ennen SQLiten
+avausta. Inventaario ja tiedostoidentiteetit eivät saa muuttua lukemisen aikana.
+Vasta hyväksytyn sisältötodisteen jälkeen tallennetaan ensimmäisen kohteen
+koko tavuinventaario. Toinen käynnistys ja erillinen postcondition vaativat
+sen saman inventaarion; myös semanttisesti saman tietokannan tavumuutos
+hylätään. Sama migraatioketju käyttää ensimmäiselläkin kerralla vanhaa
+täyttä tavuehtoa. Tuntematon siirtymä tai puuttuva pakettisidonta estää ajon.
+
+Target-evidencen versio 2 sisältää suljetun `databaseProof`-sidonnan.
+Kevyiden tiedostoturvatestien `null`-todiste ei kelpaa oikean workerin tai
+erillisen semanttisen postconditionin hyväksynnäksi. Uudet regressiot kuuluvat
+nykyiseen `installer:test:windows-supervisor-v2-legacy-core`-sarjaan.
+Toteutus ja tämän julkaisun vielä tarvittava paketoitu näyttö ovat
+[M1:n omistavassa suunnitelmassa](release-0.3.0-m1-preparation-plan.md#legacy-testin-038039-migraatiotodisteen-korjausehdotus).
+Tämä testikorjaus ei muuta sovelluksen migraatioita, prosessien omistajuutta,
+aikarajoja, artifact- tai siivousportteja eikä tutkimusaineiston julkaisurajaa.
+
 Scenario-result, supervisor-result, semanttinen proof, exact ProductCode
 -cleanup ja lopullinen postcondition pysyvät eri tuloksina. Ensisijainen virhe
 ei peity cleanup-virheeseen. Semanttinen cleanup käyttää jo olemassa olevaa
