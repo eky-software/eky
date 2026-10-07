@@ -5172,6 +5172,41 @@ kun skenaarion prosessipuun poissaolo on jo todistettu. Puutteellinen
 syytieto säilyttää alkuperäisen aineiston. Skenaarion hyväksyntä, MSI:n
 lopputila ja siivouksen varmennus pysyvät erillisinä tuloksina.
 
+### Legacy-työntekijän eteneminen terminal-odotuksen aikana
+
+Nykyisen legacy-komennon skenaariovaihe käynnistää Node-työntekijän, joka
+suorittaa `runLegacyUpgradeWorker`-polun samassa omistetussa prosessissa.
+Supervisor hyväksyy terminalin vasta juuriprosessin poistumiskuittauksen
+ja koko Jobin tyhjenemisen jälkeen. Pelkkä lapsen poistuminen tai
+lopputulostiedoston olemassaolo ei täytä tätä ehtoa.
+
+Työntekijä käyttää olemassa olevaa rajattua `workspacePhaseWriter`-lehteä.
+`legacyUpgradeWorker`-havainto erottaa pyynnön validoinnin, artifactin
+tarkistuksen, runtimen valmistelun, lifecycle-vaiheen ja tuloksen julkaisun.
+Sallitut vaihe- ja prosessiroolit omistaa `legacyUpgradeContracts.mjs`;
+nykyinen tiukka parseri hylkää muut arvot ja ylimääräiset kentät. Omistetun
+lapsen spawn-, exit- ja close-kuittaus on erillinen havainto. Se ei tarkoita
+koko skenaarion valmistumista. Epäonnistuneen skenaarion tuloksen onnistunut
+julkaisu on `resultPublication=completed`, ei skenaarion läpäisy.
+
+Supervisorin nykyinen `terminalWait` ja heartbeat erottavat kolme suljettua
+odotusluokkaa: `rootProcessPending`, `descendantsPending` ja
+`rootExitReceiptPending`. Viimeinen tarkoittaa tyhjää Jobia ennen
+juuriprosessin poistumiskuittausta, ei uutta valmiusehtoa. Sama suljettu
+projektio säilyy nykyisen komentotestin turvallisessa jälkilukijassa.
+
+Vaihetoimitus on valinnainen ja voi jäädä osittaiseksi. Se ei odota
+kirjoituskuittausta eikä flushia; nykyinen rajattu lopetus ja ulompi Job
+omistavat lehden. Nopean onnistumisen hyväksyntä ei riipu viestin
+toimittamisesta. Pakotettu odotus ennen lifecycleä ja lapsen poistuminen
+ennen terminalia todistetaan synteettisellä prosessifixturellä. Nykyiset
+estetyn kanavan, ensivirheen säilymisen, onnistumisen ja prosessisiivouksen
+regressiot säilyvät. Aikarajoja ja tulosvaatimuksia ei muuteta.
+
+Perutun jobin puuttuva jälkikeräys tai supervisorin lopputulos ei todista
+siivousta. Kova keskeytys voi edelleen estää viimeiset havainnot; sitä ei
+muuteta oletetuksi onnistumiseksi tai nimetä sovelluksen juurisyyksi.
+
 ### Rajattu legacy-tiedostohavainto
 
 Omistaja hyväksyi yhden jatkokokeen samoilla muuttumattomilla CI-paketeilla.

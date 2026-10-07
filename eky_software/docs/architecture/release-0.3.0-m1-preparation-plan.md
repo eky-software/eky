@@ -311,9 +311,34 @@ varsinaisen päivitysjobin luomista. Kaikki 12 valmisteluryhmää ja vanhan sek�
 uuden paketin valmistus läpäisivät. Alkuperäinen paketti on säilytetty ja sen
 palvelutiiviste sekä revisiosidonta varmennettu. Päivitysajoa ei merkitä
 läpäistyksi eikä tämän palveluvirheen perusteella tehdä sovelluskorjausta.
-Seuraava avoin näyttö on saman korjausrevision varsinainen legacy-päivitys;
-automaattista uusintaa ei käynnistetty. Alkuperäisen snapshot-hylkäyksen
-juurisyytä ei nimetä varmaksi pelkän paikallisen toiston perusteella.
+Alkuperäisen snapshot-hylkäyksen juurisyytä ei nimetä varmaksi pelkän
+paikallisen toiston perusteella.
+
+[Saman paketin rajattu caller-koe 37657587639](https://github.com/eky-software/eky/actions/runs/37657587639)
+läpäisi valmistelun ja artifactin tarkistuksen, mutta jäi skenaariovaiheen
+terminal-odotukseen. Ajo peruttiin eikä jälkikeräys valmistunut. Sovelluksen
+sisäinen vaihe, lopullinen prosessi- ja asennussiivous sekä juurisyy eivät
+varmistuneet. Tätä ei yhdistetä snapshot-korjauksen syyksi eikä hyväksynnäksi.
+
+**Nykyinen integraatiojatko:** olemassa olevaan havaintoketjuun lisätään
+[rajattu työntekijä- ja terminal-odotuksen erottelu](windows-installer-acceptance-harness-v2.md#legacy-työntekijän-eteneminen-terminal-odotuksen-aikana).
+Omistettu prosessi on skenaariovaiheen Node-työntekijä; supervisor vaatii
+sen poistumiskuittauksen ja koko Jobin tyhjenemisen ennen tiukkaa terminalin
+lukua. Suljetut havainnot erottavat valmistelun, lifecycle-vaiheen, lapsen
+poistumisen, tuloksen julkaisun ja supervisorin odotusluokan. Uutta loggeria,
+supervisoria, kriittistä kirjoitusodotusta tai aikarajan muutosta ei lisätä.
+Synteettinen odotus ja ennen terminalia poistuva lapsi, normaalin onnistumisen
+säilyminen sekä nykyinen kanavan siivous on kohdetodennettu; riippumaton
+katselmus ei löytänyt avointa korjauskohtaa. Nopea onnistuminen ei vaadi
+valinnaisen viestin toimitusta. Puuttuva terminal tai perutun ajon jälkikeräys
+ei anna siivouskuittausta.
+
+Seuraava vaihe on yksi nimetty legacy-caller-todennus jäädytetystä
+havaintokorjausrevisiosta samalla hyväksytyllä paketilla. Se on rajattu
+diagnostiikkakoe, ei normaali PR-hyväksyntä. PR #298:n vanhaa
+`394e09730426e7556f8b29ed380838bc4f90a10b`-headia ei mergetä. Kun rajattu
+näyttö täyttyy, sen lineaarinen jatko viedään PR:n täsmälliseksi headiksi
+ja kaikki nykyiset PR- sekä uuden mainin portit vaaditaan erikseen.
 B3-B5:n hyväksyntä ja merge ovat edelleen avoinna.
 
 ### B3-B5:n aikana havaittu riippuvuuspäivitys

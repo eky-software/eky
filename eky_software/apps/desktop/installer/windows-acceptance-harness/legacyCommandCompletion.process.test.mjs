@@ -169,6 +169,12 @@ test('command failure diagnostics reject invalid cleanup error fields before cla
 
 test('command boundary diagnostics keep only a bounded closed projection', () => {
   const tail = [];
+  for (const resultCode of ['rootProcessPending', 'descendantsPending', 'rootExitReceiptPending', 'private-path']) {
+    recordCommandBoundaryEvidence(tail, { phase: 'terminalWait', status: 'started', resultCode });
+    assert.deepEqual(tail.at(-1), { phase: 'terminalWait', status: 'started',
+      resultCode: resultCode === 'private-path' ? 'other' : resultCode });
+  }
+  tail.length = 0;
   for (let index = 0; index < 25; index += 1) {
     recordCommandBoundaryEvidence(tail, { phase: 'hostStarted', status: 'completed',
       path: 'private', processId: index, elapsedMs: index });

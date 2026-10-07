@@ -129,7 +129,11 @@ export async function executeLegacyCommandPhase(context, dependencies = {}) {
       artifactDescriptorSha256: binding.artifactDescriptorSha256, fixtureRoot: state.artifact.artifactRoot });
     const path = resolve(state.runRoot, 'scenario', 'worker-request.json');
     await writeJsonAtomicExclusive(path, request);
-    return (dependencies.runScenario ?? runLegacyUpgradeWorker)(['--request', path]);
+    const [, timeoutMilliseconds, terminationTimeoutMilliseconds] = commandBudgets.legacyCommand.phases
+      .find(([name]) => name === 'scenario');
+    return (dependencies.runScenario ?? runLegacyUpgradeWorker)(['--request', path], {
+      phaseObservation: { timeoutMilliseconds, terminationTimeoutMilliseconds },
+    });
   } else if (phase === 'semantic') {
     await terminalPlan(context, async () => {
       try {

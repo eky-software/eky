@@ -21,6 +21,19 @@ export const LEGACY_PROCESS_OBSERVATIONS = Object.freeze([
   'processClosed',
 ]);
 
+export const LEGACY_WORKER_OBSERVATION_OPERATION = 'legacyUpgradeWorker';
+export const LEGACY_RUNTIME_PROCESS_ROLES = Object.freeze([
+  'sourceProductInspection', 'targetProductInspection', 'sourceInstall', 'majorUpgrade',
+  'sourceApplication', 'targetApplication', 'gracefulClose',
+]);
+export const LEGACY_WORKER_OBSERVATION_PHASES = Object.freeze([
+  'requestValidated', 'artifactVerification', 'runtimePreparation', 'resultPublication',
+  'lifecycle', 'preflight', 'artifactBeforeInstall', 'sourcePostcondition',
+  'sourcePackagedSmoke', 'sourceNormalStartup', 'legacyBusinessEvidence',
+  'targetPostcondition', 'targetPayload', 'targetFirstStartup', 'targetSecondStartup',
+  'artifactAfterStartup', ...LEGACY_RUNTIME_PROCESS_ROLES,
+]);
+
 export const LEGACY_FOOTPRINT_ERROR_CODES = Object.freeze({
   installerFootprintInstallRootMetadataReadFailed:
     'WINDOWS_ACCEPTANCE_LEGACY_FOOTPRINT_INSTALL_ROOT_METADATA_READ_FAILED',

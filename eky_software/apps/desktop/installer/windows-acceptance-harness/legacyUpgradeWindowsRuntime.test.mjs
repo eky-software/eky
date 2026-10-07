@@ -126,10 +126,15 @@ test('legacy runtime binds both MSI operations to the observed process with unch
     target: { appVersion: '0.2.7', buildRevision: 'b'.repeat(40), installerPath: resolve(root, 'target.msi') },
   };
   const invocations = [];
+  const workerObservations = [];
   let child;
   const runtime = await createLegacyUpgradeWindowsRuntime({
     fixtureRoot: resolve(root, 'fixture'), runNonce: 'a'.repeat(64),
   }, artifact, {
+    observeOwnedProcess(role, code) {
+      workerObservations.push([role, code]);
+      if (code === 'processExited') throw new Error('private worker observer');
+    },
     spawnMsiProcess(command, arguments_, options) {
       invocations.push({ command, arguments_, options });
       child = new EventEmitter();
@@ -157,6 +162,7 @@ test('legacy runtime binds both MSI operations to the observed process with unch
     child.emit('close', exitCode, null);
     assert.equal(await outcome, exitCode);
     assert.deepEqual(observations, ['processSpawnRequested', 'processSpawned', 'processExited', 'processClosed']);
+    assert.deepEqual(workerObservations.filter(([role]) => role === operation).map(([, code]) => code), observations);
   }
   assert.equal(invocations.length, 2);
 });

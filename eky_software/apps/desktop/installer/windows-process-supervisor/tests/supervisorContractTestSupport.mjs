@@ -19,6 +19,7 @@ import {
   validateWindowsAcceptanceSupervisorResult,
 } from '../windowsAcceptanceSupervisorResult.mjs';
 import { captureContractOutput, preserveContractOutput } from './supervisorContractPrivateEvidence.mjs';
+import { parseWorkspacePhaseObservation } from '../../windows-acceptance-harness/workspacePhaseObservation.mjs';
 
 const TEST_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const TOOL_DIRECTORY = resolve(TEST_DIRECTORY, '..');
@@ -150,6 +151,9 @@ function parseEvidenceLine(line, context) {
     value = JSON.parse(line);
   } catch {
     throw new Error('WINDOWS_ACCEPTANCE_SUPERVISOR_EVIDENCE_INVALID');
+  }
+  if (value?.operation === 'legacyUpgradeWorker') {
+    return parseWorkspacePhaseObservation(Buffer.from(line));
   }
   if (
     typeof value !== 'object' ||

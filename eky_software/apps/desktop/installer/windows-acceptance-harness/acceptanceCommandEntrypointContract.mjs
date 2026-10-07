@@ -27,7 +27,7 @@ const commandBoundaryPhases = new Set([
   ...Object.values(commandBudgets).filter((plan) => Array.isArray(plan.phases))
     .flatMap((plan) => plan.phases.map(([phase]) => phase)),
   'publishFailure', 'requestValidated', 'jobCreated', 'hostStarted', 'hostAssigned',
-  'waitStarted', 'hostExited', 'deadlineExceeded', 'cleanupStarted', 'cleanupCompleted',
+  'waitStarted', 'terminalWait', 'hostExited', 'deadlineExceeded', 'cleanupStarted', 'cleanupCompleted',
   'processTreeAbsent', 'workerResultValidated', 'resultPublication', 'resultPublicationLastCompleted',
   'requestPreparation', 'requestPreparationLastCompleted', 'resultWritten', 'supervisor',
 ]);
@@ -145,6 +145,10 @@ export function recordCommandBoundaryEvidence(tail, value) {
       'phaseInputWrite', 'nodeExecutableResolution', 'requestWrite', 'requestFileCreate',
       'requestSerialize', 'requestFlush', 'requestClose', 'requestFileValidation', 'requestFileRead', 'requestSchemaValidation',
       'commandFileValidation', 'workingDirectoryValidation', 'resultDestinationValidation', 'completed']
+      .includes(value.resultCode) ? value.resultCode : 'other';
+  }
+  if (value.phase === 'terminalWait' && value.resultCode !== undefined) {
+    entry.resultCode = ['rootProcessPending', 'descendantsPending', 'rootExitReceiptPending']
       .includes(value.resultCode) ? value.resultCode : 'other';
   }
   tail.push(entry);

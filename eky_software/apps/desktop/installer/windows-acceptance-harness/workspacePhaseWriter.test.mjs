@@ -5,6 +5,8 @@ import test from 'node:test';
 
 import { createWorkspacePhaseWriter, WORKSPACE_PHASE_QUEUE_CAPACITY } from './workspacePhaseWriter.mjs';
 import { encodeWorkspacePhaseObservation, parseWorkspacePhaseObservation } from './workspacePhaseObservation.mjs';
+import { LEGACY_PROCESS_OBSERVATIONS, LEGACY_RUNTIME_PROCESS_ROLES, LEGACY_WORKER_OBSERVATION_PHASES }
+  from './legacyUpgradeContracts.mjs';
 
 const observation = Object.freeze({
   schemaVersion: 1, operation: 'workspaceAcceptanceCaller', scenario: 'packagedWorkspaceSuccess',
@@ -72,6 +74,30 @@ test('writer bounds the queue and does not wait for a write acknowledgement', as
     assert.equal(fixture.starts, 1);
     assert.equal(fixture.child.stdin.destroyed, true);
   } finally { await fixture.writer.finish(); }
+});
+
+test('legacy worker observations reuse the strict bounded writer without widening caller fields', () => {
+  const worker = { ...observation, operation: 'legacyUpgradeWorker', scenario: 'historicalLegacyUpgrade' };
+  for (const phase of LEGACY_WORKER_OBSERVATION_PHASES) {
+    const value = { ...worker, phase };
+    assert.deepEqual(parseWorkspacePhaseObservation(encodeWorkspacePhaseObservation(value)), value);
+  }
+  for (const phase of LEGACY_RUNTIME_PROCESS_ROLES) {
+    for (const resultCode of LEGACY_PROCESS_OBSERVATIONS) {
+      const value = { ...worker, phase, resultCode };
+      assert.deepEqual(parseWorkspacePhaseObservation(encodeWorkspacePhaseObservation(value)), value);
+    }
+  }
+  for (const invalid of [
+    { ...worker, phase: 'private-path' }, { ...worker, phase: 'artifactVerification', resultCode: 'processExited' },
+    { ...worker, phase: 'targetApplication', resultCode: 'private-error' },
+    { ...worker, phase: 'targetApplication', resultCode: 'processExited', companyId: 'private' },
+    { ...worker, phase: 'targetApplication', resultCode: 'processExited', errorCode: 'private' },
+    { ...worker, phase: 'targetApplication', resultCode: 'processExited', scenario: 'packagedWorkspaceSuccess' },
+  ]) {
+    assert.throws(() => encodeWorkspacePhaseObservation(invalid));
+    assert.throws(() => parseWorkspacePhaseObservation(Buffer.from(JSON.stringify(invalid))));
+  }
 });
 
 test('invalid fields never reach the channel and a broken channel is not replaced', async () => {

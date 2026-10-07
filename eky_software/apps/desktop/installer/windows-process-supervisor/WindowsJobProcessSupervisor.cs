@@ -150,6 +150,7 @@ internal sealed class WindowsJobProcessSupervisor(
         var descendantObserved = false;
         var rootExited = false;
         int? childExitCode = null;
+        string? lastTerminalWaitState = null;
 
         while (supervisorDeadline.ElapsedMilliseconds < workDeadline)
         {
@@ -229,9 +230,17 @@ internal sealed class WindowsJobProcessSupervisor(
                 );
             }
 
+            var terminalWaitState = rootExited ? "descendantsPending"
+                : activeProcessCount == 0 ? "rootExitReceiptPending" : "rootProcessPending";
+            if (terminalWaitState != lastTerminalWaitState)
+            {
+                evidence.Write("terminalWait", "started", terminalWaitState);
+                lastTerminalWaitState = terminalWaitState;
+            }
+
             if (supervisorDeadline.ElapsedMilliseconds >= nextHeartbeat)
             {
-                evidence.Write("waitHeartbeat", "heartbeat");
+                evidence.Write("waitHeartbeat", "heartbeat", terminalWaitState);
                 nextHeartbeat += HeartbeatMilliseconds;
             }
 

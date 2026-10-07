@@ -977,6 +977,8 @@ for (const mode of ['exitZero', 'exitNonZero']) {
     assert.equal(result.processResultCode, mode === 'exitZero' ? 'processCompleted' : 'processExitFailed');
     assert.equal(result.processTreeAbsent, true);
     assert.equal(completion.exitCode, mode === 'exitZero' ? 0 : 1);
+    assert.ok(completion.evidence.some(entry => entry.phase === 'terminalWait' &&
+      entry.resultCode === 'rootExitReceiptPending'));
   });
 }
 
@@ -1104,6 +1106,8 @@ test(
     assert.equal(terminal.completion.exitCode, 1);
     assert.equal(terminal.result.processResultCode, 'deadlineExceeded');
     assert.equal(terminal.result.childExitCode, 0);
+    assert.ok(terminal.completion.evidence.some(entry => entry.phase === 'terminalWait' &&
+      entry.resultCode === 'descendantsPending'));
     assert.equal(terminal.result.cleanupResultCode, 'processTreeAbsent');
     await waitForProcessAbsent(grandchild.processId);
   },

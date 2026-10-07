@@ -23,7 +23,8 @@ import {
   readLegacyUpgradeResult,
 } from './legacyUpgradeContracts.mjs';
 import { executeLegacyUpgradeLifecycle } from './legacyUpgradeLifecycle.mjs';
-import { writeLegacyUpgradeWorkerOutcome } from './runLegacyUpgradeWorker.mjs';
+import { runLegacyUpgradeWorker, writeLegacyUpgradeWorkerOutcome } from './runLegacyUpgradeWorker.mjs';
+import { encodeWorkspacePhaseObservation, parseWorkspacePhaseObservation } from './workspacePhaseObservation.mjs';
 import { legacyUpgradeFailureDetails, resolveLegacyUpgradeTerminalOutcome } from './legacyUpgradeFailureBoundary.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
@@ -38,8 +39,9 @@ async function createWorkerContext(t) {
   return { request, requestPath: resolve(root, 'request.json') };
 }
 
-async function failedLifecycle() {
+async function failedLifecycle(runtime = {}) {
   return executeLegacyUpgradeLifecycle({
+    ...runtime,
     inspectState: async () => { throw new Error('installerStateInspectionFailed'); },
   });
 }
@@ -91,6 +93,129 @@ test('worker result writer failure cannot overwrite an existing result or return
   assert.equal(await writeLegacyUpgradeWorkerOutcome(requestPath, request, await failedLifecycle()), 1);
   assert.equal(await readFile(terminalPath, 'utf8'), 'existing-result');
 });
+
+test('worker publication receipts distinguish a published failure from failed publication', async (t) => {
+  for (const conflict of [false, true]) {
+    const { request, requestPath } = await createWorkerContext(t);
+    if (conflict) await writeFile(legacyUpgradeWorkerResultPathForRequest(requestPath), 'first-result', { flag: 'wx' });
+    const statuses = [];
+    assert.equal(await writeLegacyUpgradeWorkerOutcome(requestPath, request, await failedLifecycle(), {
+      observePublication(status) { statuses.push(status); throw new Error('private-observer'); },
+    }), 1);
+    assert.deepEqual(statuses, ['started', conflict ? 'failed' : 'completed']);
+  }
+});
+
+for (const fault of ['none', 'constructor', 'send', 'finish', 'artifact', 'runtime']) {
+  test(`worker optional observation preserves the first outcome: ${fault}`, { skip: process.platform !== 'win32' }, async (t) => {
+    const { request, requestPath } = await createWorkerContext(t);
+    await writeFile(requestPath, JSON.stringify(request), { flag: 'wx' });
+    const observations = [];
+    let finishes = 0;
+    const exitCode = await runLegacyUpgradeWorker(['--request', requestPath], {
+      phaseObservation: { timeoutMilliseconds: 4_000, terminationTimeoutMilliseconds: 1_000 },
+      createPhaseWriter() {
+        if (fault === 'constructor') throw new Error('private-constructor');
+        return {
+          send(value) {
+            observations.push(parseWorkspacePhaseObservation(encodeWorkspacePhaseObservation(value)));
+            if (fault === 'send') throw new Error('private-send');
+            return false; // Missing delivery is not a scenario failure.
+          },
+          async finish() { finishes += 1; if (fault === 'finish') throw new Error('private-finish'); },
+        };
+      },
+      async verifyArtifact() {
+        if (fault === 'artifact') throw new Error('artifactValidationFailed');
+        return { source: { msiProductVersion: '0.2.6' }, target: { msiProductVersion: '0.2.7' } };
+      },
+      async createRuntime(_request, _artifact, { observeOwnedProcess }) {
+        if (fault === 'runtime') throw new Error('runtimePreparationFailed');
+        observeOwnedProcess('targetApplication', 'processExited');
+        observeOwnedProcess('private-role', 'processExited');
+        observeOwnedProcess('targetApplication', 'private-error');
+        return {};
+      },
+      executeLifecycle: failedLifecycle,
+    });
+    assert.equal(exitCode, 1);
+    const result = await readLegacyUpgradeResult(legacyUpgradeResultPathForRequest(requestPath), request);
+    assert.equal(result.errorCode, fault === 'artifact' ? 'artifactValidationFailed'
+      : fault === 'runtime' ? 'runtimePreparationFailed' : 'installerStateInspectionFailed');
+    assert.equal(finishes, fault === 'constructor' ? 0 : 1);
+    if (fault !== 'constructor') {
+      assert.equal(observations[0].phase, 'requestValidated');
+      assert.deepEqual(observations.slice(-2).map(value => [value.phase, value.status]),
+        [['resultPublication', 'started'], ['resultPublication', 'completed']]);
+      if (['artifact', 'runtime'].includes(fault)) assert.ok(observations.some(value => value.phase ===
+        (fault === 'artifact' ? 'artifactVerification' : 'runtimePreparation') && value.status === 'failed'));
+      else assert.ok(observations.some(value => value.phase === 'preflight' && value.status === 'started'));
+      assert.doesNotMatch(JSON.stringify(observations), /private|companyId|stack|fixtureRoot/);
+    }
+  });
+}
+
+for (const mode of ['heldBeforeLifecycle', 'childExitedBeforeTerminal', 'success']) {
+  test(`worker observation crosses the existing Job before terminal: ${mode}`, {
+    skip: process.platform !== 'win32', timeout: 30_000,
+  }, async (t) => {
+    const context = await createRunContext('legacy-worker-observation-' + mode);
+    let verified = false;
+    t.after(() => cleanupRunContext(context, { preserveEvidence: !verified || t.passed !== true }));
+    context.scenario = 'historicalLegacyUpgrade';
+    const request = createLegacyUpgradeWorkerRequest({ ...context, fixtureRoot: resolve(context.runRoot, 'artifact') });
+    const inputPath = resolve(context.testRoot, 'observation-input.json');
+    const requestPath = resolve(context.testRoot, 'legacy-request.json');
+    await writeFile(requestPath, JSON.stringify(request), { flag: 'wx' });
+    await writeFile(inputPath, JSON.stringify({ mode, requestPath, runRoot: context.runRoot,
+      workerResultPath: context.workerResultPath }), { flag: 'wx' });
+    const supervisorRequest = createRequest(context, 'exitZero', {
+      timeoutMilliseconds: 8_000, cleanupReserveMilliseconds: 1_000,
+    });
+    supervisorRequest.arguments = [resolve(DIRECTORY, 'fixtures', 'legacyWorkerObservationFixture.mjs'), inputPath];
+    await writeRequest(context, supervisorRequest);
+    const releasePath = resolve(context.testRoot, 'observation-release');
+    let release;
+    const execution = startSupervisor(context, {
+      observeEvidence(entry) {
+        if (mode === 'childExitedBeforeTerminal' && entry.operation === 'legacyUpgradeWorker' &&
+            entry.phase === 'targetApplication' && entry.resultCode === 'processClosed' && !release) {
+          release = writeFile(releasePath, '', { flag: 'wx' });
+          release.catch(() => undefined);
+        }
+      },
+    });
+    const completed = await execution.completion;
+    if (release) await release;
+    const terminal = await readWindowsAcceptanceSupervisorResult(context.resultPath, { ...context,
+      supervisorExitCode: completed.exitCode });
+    assert.equal(terminal.processTreeAbsent, true);
+    const entries = completed.evidence.filter(value => value.operation === 'legacyUpgradeWorker');
+    if (mode !== 'success') {
+      assert.equal(completed.evidence.some(value => value.phase === 'terminalWait' && value.resultCode === 'rootProcessPending'), true);
+      assert.ok(entries.some(value => value.phase === 'artifactVerification' && value.status === 'started'));
+    }
+    if (mode === 'heldBeforeLifecycle') {
+      assert.equal(terminal.processResultCode, 'deadlineExceeded');
+      assert.equal(terminal.cleanupResultCode, 'processTreeAbsent');
+      assert.equal(entries.some(value => value.phase === 'runtimePreparation'), false);
+    } else if (mode === 'childExitedBeforeTerminal') {
+      assert.ok(entries.some(value => value.resultCode === 'processExited'));
+      assert.ok(entries.some(value => value.resultCode === 'processClosed'));
+      assert.equal(terminal.processResultCode, 'processExitFailed');
+      // A closed input can let the leaf exit before Job cleanup is needed.
+      assert.ok(['notRequired', 'processTreeAbsent'].includes(terminal.cleanupResultCode));
+      assert.equal(entries.some(value => value.phase === 'resultPublication'), false);
+      await assert.rejects(readFile(context.workerResultPath), { code: 'ENOENT' });
+    } else {
+      assert.equal(completed.exitCode, 0);
+      assert.equal(terminal.workerResultCode, 'workerResultValidated');
+      assert.equal(terminal.cleanupResultCode, 'notRequired');
+      assert.equal((await readLegacyUpgradeResult(legacyUpgradeResultPathForRequest(requestPath), request)).status, 'completed');
+    }
+    verified = true;
+  });
+}
 
 test('failed legacy worker exits with a live child and the existing Job supervisor cleans it', {
   skip: process.platform !== 'win32',

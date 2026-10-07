@@ -183,7 +183,11 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact, {
   spawnMsiProcess = spawn,
   observePayload = process.env.EKY_ACCEPTANCE_LEGACY_PAYLOAD_OBSERVATION === '1',
   createPayloadObservation = createLegacyPayloadObservation,
+  observeOwnedProcess,
 } = {}) {
+  const processObservation = (role) => (code) => {
+    try { observeOwnedProcess?.(role, code); } catch { /* Evidence only. */ }
+  };
   const appData = process.env.APPDATA;
   const localAppData = process.env.LOCALAPPDATA;
   const systemRoot = process.env.SystemRoot;
@@ -262,6 +266,7 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact, {
         invocation.command,
         invocation.arguments,
         { cwd: scenarioRoot },
+        { observe: processObservation(roleName === 'source' ? 'sourceProductInspection' : 'targetProductInspection') },
       );
       if (processResult.exitCode !== 0) {
         throw new Error(errorCode);
@@ -333,7 +338,10 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact, {
             resolve(logRoot, `${operation}.log`),
           ],
           { cwd: scenarioRoot },
-          { observe, spawnProcess: spawnMsiProcess },
+          { observe(code) {
+            processObservation(operation)(code);
+            try { observe?.(code); } catch { /* Preserve the existing optional observer boundary. */ }
+          }, spawnProcess: spawnMsiProcess },
         )
       ).exitCode;
     } catch {
@@ -411,6 +419,7 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact, {
         executablePath,
       ],
       { cwd: scenarioRoot },
+      { observe: processObservation('gracefulClose') },
     );
     if (result.exitCode !== 0) {
       throw new Error('targetGracefulShutdownFailed');
@@ -437,6 +446,7 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact, {
         } : {}) }),
         windowsHide: false,
       },
+      { observe: processObservation(target ? 'targetApplication' : 'sourceApplication') },
     );
     const started = await waitForTargetDesktopStarted({
       baselineEventIds,
