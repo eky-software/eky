@@ -446,6 +446,15 @@ SQLite-snapshot-malliksi. Jos myöhempi ajuri- tai Electron-päivitys rikkoo
 todennetun yhteensopivuuden, release estetään ja fallbackina arvioidaan
 backendin ja SQLite-yhteyden hallittua sulkemista snapshotin ajaksi.
 
+Snapshotin kopiointi- ja readonly-validointirajalla ajurille välitetään
+Windowsissa pitkä polkumuoto Noden `toNamespacedPath`-funktiolla. Muunnos
+ei muuta jo validoitua staging-kohdetta, manifestin loogisia polkuja,
+varmuuskopioformaattia tai käyttöoikeuksia. Tiedosto-, realpath-, linkki-,
+eheys- ja migraatiotarkistukset säilyvät alkuperäisillä runtime-poluilla.
+Muilla alustoilla tämä muunnos ei muuta polkua. Composition-regressio
+kattaa pitkän staging-polun sekä ennen historiallista forward-migraatiota
+että sen jälkeen, mukaan lukien säilyneen PDF:n katalogi ja validointi.
+
 ## Maintenance-tila
 
 Backup, restore, migration ja update käyttävät yhtä nimettyä maintenance-

@@ -273,6 +273,39 @@ paketissa eikä muuta aiempaa sovelluksen käynnistyshylkäystä. Seuraava
 todennus jatkuu samasta jäädytetystä revisiosta palveluesteen poistuttua;
 hyväksyntäehtoja tai aikarajoja ei muuteta tämän vuoksi.
 
+[Saman revision seuraava kertatodennus](https://github.com/eky-software/eky/actions/runs/37643766654)
+valmistui hylättynä. Kaikki 12 valmisteluryhmää ja paketin valmistus
+läpäisivät. Molemmat legacy-toistot hylättiin `targetFirstStartup`-vaiheessa
+koodiin `targetBootstrapFailed` ennen myöhempää aikakatkaisua. Siivousvaiheet
+ja paketin jälkivarmennus valmistuivat; näistä ei seuraa sovelluksen
+käynnistys- tai migraatiohyväksyntää.
+
+Molempien salatut virhepaketit sekä alkuperäinen asennuspaketti on säilytetty
+ja niiden palvelutiivisteet sekä suoritus-/revisiosidonta varmennettu.
+Salatun sisällön purku ja tiedostokohtainen sidonta on tämän jälkeen
+varmennettu. Molempien alkuperäinen käynnistyshylkäys rajautuu
+pre-migration-tietokantasnapshotiin. Semanttinen siivous, täsmällisten
+asennustuotteiden poissaolo sekä omistetun fixturen poistuminen varmistuivat
+erikseen. Tämä ei vielä yksilöi snapshotin sisäistä alkuperäistä poikkeusta.
+
+**Rajattu snapshot-polun korjaus:** syntetisoitu pitkän staging-polun
+regressio toisti sovelluksen käynnistysportin hylkäyksen. SQLite-kopiointi
+ja sen kaksi readonly-validointia käyttävät nyt ajurirajalla Noden
+`toNamespacedPath`-muunnosta. Se tukee Windowsin pitkää tiedostopolkua;
+muilla alustoilla polku säilyy ennallaan. Runtime-juuria, tiedostonimiä,
+manifestien loogisia polkuja, katalogia, migraatiopolitiikkaa tai
+tiedostoturvallisuuden tarkistuksia ei muuteta. Kopiota ei siirretä
+lyhyempään julkiseen temp-kansioon.
+
+Regressio kattaa historiallisen ja nykyisen skeeman sekä säilyneen PDF:n
+samassa compositionissa ja tarkistaa myös snapshotin jälkivalidoinnin.
+Rajattu snapshot-/composition-sarja läpäisi 59 testiä; kaksi olemassa olevaa
+alustakohtaista ohitusta eivät ole läpäisyjä. Backendin tyypitys ja
+riippumaton rajattu katselmus läpäisivät. Jäädytetyn revision oikean paketin
+todennus on vielä tekemättä. Alkuperäisen CI-hylkäyksen juurisyytä ei nimetä varmaksi
+pelkän paikallisen toiston perusteella. B3-B5:n hyväksyntä ja merge ovat
+edelleen avoinna.
+
 ### B3-B5:n aikana havaittu riippuvuuspäivitys
 
 Mainin samaan lähtörevisioon kohdistunut [ajastettu auditointi 6.10.2026](https://github.com/eky-software/eky/actions/runs/37441556812/job/112196274405)

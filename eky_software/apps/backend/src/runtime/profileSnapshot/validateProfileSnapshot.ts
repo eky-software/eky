@@ -7,6 +7,7 @@ import {
   relative,
   resolve,
   sep,
+  toNamespacedPath,
 } from 'node:path';
 
 import Database from 'better-sqlite3';
@@ -153,7 +154,7 @@ export class StagedProfileSnapshotValidationService
         this.dependencies.migrationsDirectory,
         'restoreCompatible',
       );
-      const stagedDatabase = new Database(databasePath, {
+      const stagedDatabase = new Database(toNamespacedPath(databasePath), {
         fileMustExist: true,
         readonly: true,
       });

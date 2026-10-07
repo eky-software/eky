@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { isAbsolute } from 'node:path';
+import { isAbsolute, toNamespacedPath } from 'node:path';
 
 import Database from 'better-sqlite3';
 
@@ -32,7 +32,7 @@ export function inspectSqliteProfileDatabase(
     throw new Error('PROFILE_SNAPSHOT_DATABASE_INVALID');
   }
 
-  const database = new Database(databaseFilePath, {
+  const database = new Database(toNamespacedPath(databaseFilePath), {
     fileMustExist: true,
     readonly: true,
   });

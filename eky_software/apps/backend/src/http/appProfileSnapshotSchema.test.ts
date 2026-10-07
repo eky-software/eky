@@ -51,8 +51,8 @@ describe('profile snapshot catalog schema composition', () => {
     })).rejects.toThrow('Database migration startup gate could not be completed.');
   });
 
-  it('uses the checked historical schema before migration and the current schema afterwards', async () => {
-    const f = await fixture();
+  it.each(['short', 'long'] as const)('uses the checked historical schema before migration and the current schema afterwards (%s staging path)', async (stagingPath) => {
+    const f = await fixture(stagingPath === 'long');
     const historicalDirectory = join(f.root, 'historical');
     await mkdir(historicalDirectory);
     const manifest = readMigrationManifest(f.migrationsDirectory);
@@ -98,6 +98,13 @@ describe('profile snapshot catalog schema composition', () => {
           migrationChainIdentity: inspection.migrationChainIdentity,
         });
         const operationId = await snapshot(f, services, 'compatibleHistoricalPrefix', 1);
+        if (stagingPath === 'long') {
+          expect(join(f.stagingRoot, operationId, 'profile.sqlite').length).toBeGreaterThan(300);
+        }
+        await expect(services.validateProfileSnapshot(operationId)).resolves.toMatchObject({
+          artifactCount: 1, profileMatchesActive: true,
+          migrationChainIdentity: inspection.migrationChainIdentity,
+        });
         originalCatalog = await readFile(join(f.stagingRoot, operationId, 'snapshot-catalog-v1.json'), 'utf8');
         expect(inspectSqliteProfileDatabase(
           join(f.stagingRoot, operationId, 'profile.sqlite'), f.migrationsDirectory,
@@ -107,6 +114,10 @@ describe('profile snapshot catalog schema composition', () => {
     });
     if (services === undefined) throw new Error('missing registration');
     const operationId = await snapshot(f, services, 'exactCurrentManifest', 1);
+    await expect(services.validateProfileSnapshot(operationId)).resolves.toMatchObject({
+      artifactCount: 1, profileMatchesActive: true,
+      migrationChainIdentity: manifest.at(-1)?.chainSha256,
+    });
     expect(originalCatalog).toBeDefined();
     expect(await readFile(join(f.stagingRoot, operationId, 'snapshot-catalog-v1.json'), 'utf8'))
       .toBe(originalCatalog);
@@ -221,12 +232,14 @@ describe('profile snapshot catalog schema composition', () => {
   });
 });
 
-async function fixture() {
+async function fixture(longStagingPath = false) {
   const root = await mkdtemp(join(tmpdir(), 'eky-catalog-composition-'));
   roots.push(root);
-  const stagingRoot = join(root, 'staging');
+  const stagingRoot = longStagingPath
+    ? join(root, ...Array<string>(3).fill('snapshot-segment-'.repeat(6)), 'staging')
+    : join(root, 'staging');
   const storageRoot = join(root, 'storage');
-  await mkdir(stagingRoot, { mode: 0o700 });
+  await mkdir(stagingRoot, { mode: 0o700, recursive: true });
   await mkdir(storageRoot, { mode: 0o700 });
   const maintenance = new ProfileMaintenanceState();
   const migrationsDirectory = resolveMigrationsDirectory();
