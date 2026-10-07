@@ -6,10 +6,11 @@ import { runLegacyUpgradeWorker } from '../runLegacyUpgradeWorker.mjs';
 import { legacyUpgradeWorkerResultPathForRequest, readLegacyUpgradeWorkerRequest, writeJsonAtomicExclusive }
   from '../legacyUpgradeContracts.mjs';
 import { startLegacyOwnedProcess } from '../legacyUpgradeWindowsRuntime.mjs';
+import { executeLegacyUpgradeLifecycle } from '../legacyUpgradeLifecycle.mjs';
 
 // Synthetic proof only: no installed application, MSI operation or business profile.
 const input = JSON.parse(await readFile(process.argv[2], 'utf8'));
-assert(['heldBeforeLifecycle', 'childExitedBeforeTerminal', 'success'].includes(input.mode));
+assert(['heldBeforeLifecycle', 'childExitedBeforeTerminal', 'publishedProfileRejection', 'success'].includes(input.mode));
 const request = await readLegacyUpgradeWorkerRequest(input.requestPath);
 assert.equal(legacyUpgradeWorkerResultPathForRequest(input.requestPath), input.workerResultPath);
 await mkdir(input.runRoot);
@@ -50,7 +51,32 @@ const exitCode = await runLegacyUpgradeWorker(['--request', input.requestPath], 
     }
     return {};
   },
-  async executeLifecycle() {
+  async executeLifecycle(runtime) {
+    if (input.mode === 'publishedProfileRejection') {
+      const versions = { source: '0.2.6', target: '0.2.7' };
+      const installed = [null, 'source', 'target'];
+      return executeLegacyUpgradeLifecycle({
+        ...runtime, versions,
+        // This fixture proves the durable cause, not the separate lifecycle stdout protocol.
+        reportProgress() {},
+        async inspectState() {
+          const active = installed.shift();
+          function product(role) {
+            const present = role === active;
+            return { productState: present ? 5 : -1, productName: present ? 'Eky' : null,
+              productVersion: present ? versions[role] : null, localPackagePresent: present,
+              ownedRegistryExists: present };
+          }
+          return { source: product('source'), target: product('target'),
+            installRootExists: active !== null, executableExists: active !== null,
+            shortcutExists: active !== null, installerRegistryExists: active !== null, ekyProcessCount: 0 };
+        },
+        async verifyArtifact() {}, async runMsiOperation() { return 0; },
+        async runSourcePackagedSmoke() {}, async runSourceStartup() {},
+        async captureSourceEvidence() {}, async validateTargetPayload() {},
+        async runTargetStartup() { throw new Error('legacyAdoptedDataMismatch'); },
+      });
+    }
     return { schemaVersion: 1, status: 'completed', resultCode: 'historicalLegacyUpgradeCompleted', errorCode: null,
       sourceInstallExitCode: 0, upgradeExitCode: 0, sourceStateValidated: true, sourceNormalStartupValidated: true,
       sourcePackagedSmokeValidated: true, legacyBusinessFixtureValidated: true, majorUpgradeValidated: true,

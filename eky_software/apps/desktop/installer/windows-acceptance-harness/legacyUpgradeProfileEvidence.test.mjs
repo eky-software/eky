@@ -144,6 +144,24 @@ test('source and target evidence prove copy adoption and idempotent second start
   });
   assert.equal(second.workspaceId, WORKSPACE_ID);
   assert.notEqual(second.runtimeInstanceId, first.runtimeInstanceId);
+
+  for (const [path, original, changed, errorCode] of [
+    [resolve(legacyData, 'eky.sqlite'), 'sqlite-fixture', 'changed-sqlite-fixture', 'legacySourceDataChanged'],
+    [resolve(legacyStorage, 'approved-invoice.pdf'), '%PDF-fixture', '%PDF-changed-fixture', 'legacySourceStorageChanged'],
+    [resolve(workspaceRuntime, 'data', 'eky.sqlite'), 'sqlite-fixture', 'changed-sqlite-fixture', 'legacyAdoptedDataMismatch'],
+    [resolve(workspaceRuntime, 'storage', 'invoices', 'one', 'approved-invoice.pdf'), '%PDF-fixture', '%PDF-changed-fixture', 'legacyAdoptedStorageMismatch'],
+  ]) {
+    await t.test(`rejects ${errorCode} without accepting changed bytes`, async () => {
+      await writeFile(path, changed);
+      try {
+        await assert.rejects(captureLegacyTargetEvidence({
+          identities: IDENTITIES, runtimeInstanceId: RUNTIME_ONE, sourceEvidence, userDataRoot,
+        }), error => error.message === errorCode);
+      } finally {
+        await writeFile(path, original);
+      }
+    });
+  }
 });
 
 test('target evidence rejects changed adopted business bytes', async (t) => {

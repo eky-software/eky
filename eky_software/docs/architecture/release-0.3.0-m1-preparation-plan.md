@@ -333,9 +333,27 @@ katselmus ei löytänyt avointa korjauskohtaa. Nopea onnistuminen ei vaadi
 valinnaisen viestin toimitusta. Puuttuva terminal tai perutun ajon jälkikeräys
 ei anna siivouskuittausta.
 
-Seuraava vaihe on yksi nimetty legacy-caller-todennus jäädytetystä
-havaintokorjausrevisiosta samalla hyväksytyllä paketilla. Se on rajattu
-diagnostiikkakoe, ei normaali PR-hyväksyntä. PR #298:n vanhaa
+Nimetty [havaintokoe 37674889811](https://github.com/eky-software/eky/actions/runs/37674889811)
+käytti jäädytettyä harnessia ja samaa hyväksyttyä pakettia. Se päättyi
+`targetFirstStartup`-hylkäykseen, ei uuteen pitkään odotukseen: kohdesovelluksen
+sekä sulkupyynnön poistumiset ja tiukan hylkäystuloksen julkaisu havaittiin.
+Prosessipuun poissaolo, semanttinen asennussiivous ja tarkkojen tuotteiden
+poissaolo varmennettiin erikseen. Fixture jäi säilytettäväksi; sen poistoa
+ei merkitä onnistuneeksi. Artifactin jälkivarmennus sekä salatun aineiston
+toimitus ja sidottu purku läpäisivät. Tämä ei sulje perutun ajon vanhaa
+odotushavaintoa eikä todista nykyisen jälkitarkistuksen juurisyytä.
+
+Rajattu lähdetarkistus löysi nykyisestä luokittelusta puutteen:
+profiilin jälkitarkistuksen ennalta nimetyt hylkäykset katosivat yleisen
+käynnistysvaihekoodin taakse. Nykyinen syykoodiluettelo täydennetään ja
+neljä muuttumatonta sisältövertailua erotetaan. Tuntematon virhe säilyy
+yleisenä, eikä sisältö- tai siivousvaatimuksia muuteta. Ennen mahdollista
+uutta nimettyä todentamista vaaditaan regressio ja oikean prosessirajan
+näyttö sekä katselmus. Seuraava epäonnistuminen voi silloin erottaa
+hyväksytyn buildin, rekisterin, adoption jäämän tai tarkan sisältövertailun
+hylkäyksen; sama yleinen vaiherivi ei yksin perustele uutta pitkää ajoa.
+
+Rajattu diagnostiikkakoe ei ole normaali PR-hyväksyntä. PR #298:n vanhaa
 `394e09730426e7556f8b29ed380838bc4f90a10b`-headia ei mergetä. Kun rajattu
 näyttö täyttyy, sen lineaarinen jatko viedään PR:n täsmälliseksi headiksi
 ja kaikki nykyiset PR- sekä uuden mainin portit vaaditaan erikseen.

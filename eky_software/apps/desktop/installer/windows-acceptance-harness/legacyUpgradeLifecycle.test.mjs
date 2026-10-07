@@ -371,6 +371,30 @@ for (const [dependency, errorCode, forbiddenCall] of [
 }
 
 for (const failingGeneration of ['first', 'second']) {
+  test(`target ${failingGeneration} profile rejection retains its exact closed cause`, async () => {
+    for (const errorCode of [
+      'acceptedBuildInvalid', 'acceptedBuildIdentityInvalid', 'workspaceRegistryInvalid',
+      'workspaceAdoptionResidueInvalid', 'targetRuntimeIdentityInvalid',
+      'legacySourceDataChanged', 'legacySourceStorageChanged',
+      'legacyAdoptedDataMismatch', 'legacyAdoptedStorageMismatch',
+      'targetSecondStartupNotIdempotent', 'legacyTargetEvidenceInvalid',
+    ]) {
+      const entries = [];
+      const result = await executeLegacyUpgradeLifecycle(successfulDependencies({
+        runTargetStartup: async generation => {
+          if (generation === failingGeneration) throw new Error(errorCode);
+        },
+        reportProgress: entry => entries.push(entry),
+      }));
+      assert.equal(result.status, 'failed');
+      assert.equal(result.errorCode, errorCode);
+      assert.equal(result.targetFirstStartupValidated, failingGeneration === 'second');
+      assert.equal(result.targetSecondStartupValidated, false);
+      assert.equal(result.artifactBytesValidated, false);
+      assert.equal(entries.find(entry => entry.status === 'failed').errorCode, errorCode);
+    }
+  });
+
   test(`closed target ${failingGeneration} startup causes survive progress without accepting the upgrade`, async () => {
     for (const errorCode of Object.keys(LEGACY_STARTUP_ERROR_CODES)) {
       const entries = [];

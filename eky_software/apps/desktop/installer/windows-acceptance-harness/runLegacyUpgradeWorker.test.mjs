@@ -155,7 +155,7 @@ for (const fault of ['none', 'constructor', 'send', 'finish', 'artifact', 'runti
   });
 }
 
-for (const mode of ['heldBeforeLifecycle', 'childExitedBeforeTerminal', 'success']) {
+for (const mode of ['heldBeforeLifecycle', 'childExitedBeforeTerminal', 'publishedProfileRejection', 'success']) {
   test(`worker observation crosses the existing Job before terminal: ${mode}`, {
     skip: process.platform !== 'win32', timeout: 30_000,
   }, async (t) => {
@@ -191,7 +191,7 @@ for (const mode of ['heldBeforeLifecycle', 'childExitedBeforeTerminal', 'success
       supervisorExitCode: completed.exitCode });
     assert.equal(terminal.processTreeAbsent, true);
     const entries = completed.evidence.filter(value => value.operation === 'legacyUpgradeWorker');
-    if (mode !== 'success') {
+    if (['heldBeforeLifecycle', 'childExitedBeforeTerminal'].includes(mode)) {
       assert.equal(completed.evidence.some(value => value.phase === 'terminalWait' && value.resultCode === 'rootProcessPending'), true);
       assert.ok(entries.some(value => value.phase === 'artifactVerification' && value.status === 'started'));
     }
@@ -207,6 +207,40 @@ for (const mode of ['heldBeforeLifecycle', 'childExitedBeforeTerminal', 'success
       assert.ok(['notRequired', 'processTreeAbsent'].includes(terminal.cleanupResultCode));
       assert.equal(entries.some(value => value.phase === 'resultPublication'), false);
       await assert.rejects(readFile(context.workerResultPath), { code: 'ENOENT' });
+    } else if (mode === 'publishedProfileRejection') {
+      assert.equal(completed.exitCode, 1);
+      assert.equal(terminal.processResultCode, 'processExitFailed');
+      assert.ok(['notRequired', 'processTreeAbsent'].includes(terminal.cleanupResultCode));
+      const scenarioResult = await readLegacyUpgradeResult(legacyUpgradeResultPathForRequest(requestPath), request);
+      assert.equal(scenarioResult.status, 'failed');
+      assert.equal(scenarioResult.errorCode, 'legacyAdoptedDataMismatch');
+      assert.equal(scenarioResult.targetFirstStartupValidated, false);
+      const workerResult = JSON.parse(await readFile(context.workerResultPath, 'utf8'));
+      assert.equal(workerResult.status, 'failed');
+      assert.equal(workerResult.errorCode, 'legacyAdoptedDataMismatch');
+      let cleaned = false;
+      await assert.rejects(resolveLegacyUpgradeTerminalOutcome({
+        productPrecondition: { status: 'completed', resultCode: 'exactProductsAbsent',
+          sourcePresent: false, targetPresent: false, installerRegistryPresent: false },
+        supervisorResult: terminal,
+        readScenarioResult: async () => scenarioResult,
+        async verifyExactProductStates() {
+          return { status: 'completed', resultCode: cleaned ? 'exactProductsAbsent' : 'targetProductPresent',
+            sourcePresent: false, targetPresent: !cleaned, installerRegistryPresent: !cleaned };
+        },
+        verifySemanticPostcondition() { assert.fail('Rejected startup cannot run semantic acceptance'); },
+        async cleanupExactProducts() {
+          cleaned = true;
+          return { status: 'completed', resultCode: 'semanticCleanupCompleted' };
+        },
+      }), error => {
+        const details = legacyUpgradeFailureDetails(error);
+        assert.equal(details.errorCode, 'WINDOWS_ACCEPTANCE_LEGACY_ADOPTED_DATA_MISMATCH');
+        assert.equal(details.processTreeAbsent, true);
+        assert.equal(details.semanticCleanupResultCode, 'semanticCleanupCompleted');
+        assert.equal(details.postconditionResultCode, 'exactProductsAbsentAfterCleanup');
+        return true;
+      });
     } else {
       assert.equal(completed.exitCode, 0);
       assert.equal(terminal.workerResultCode, 'workerResultValidated');

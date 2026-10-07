@@ -424,13 +424,13 @@ export async function captureLegacyTargetEvidence({
   const storageInventory = await createClosedDirectoryInventory(
     resolve(workspaceRuntimeRoot, 'storage'),
   );
-  if (
-    !inventoriesMatch(legacyData, sourceEvidence.dataInventory) ||
-    !inventoriesMatch(legacyStorage, sourceEvidence.storageInventory) ||
-    !inventoriesMatch(dataInventory, sourceEvidence.dataInventory) ||
-    !inventoriesMatch(storageInventory, sourceEvidence.storageInventory)
-  ) {
-    throw new Error('legacyAdoptionContentInvalid');
+  for (const [actual, expected, errorCode] of [
+    [legacyData, sourceEvidence.dataInventory, 'legacySourceDataChanged'],
+    [legacyStorage, sourceEvidence.storageInventory, 'legacySourceStorageChanged'],
+    [dataInventory, sourceEvidence.dataInventory, 'legacyAdoptedDataMismatch'],
+    [storageInventory, sourceEvidence.storageInventory, 'legacyAdoptedStorageMismatch'],
+  ]) {
+    if (!inventoriesMatch(actual, expected)) throw new Error(errorCode);
   }
   await requirePdf(
     resolve(workspaceRuntimeRoot, 'storage'),

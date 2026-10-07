@@ -5156,6 +5156,16 @@ vaihetiedossa ja nykyisessä komentorajan virhekoodissa. Yksi keskitetty
 - `targetShutdownEvidenceInvalid`: vaadittu puhtaan sulun näyttö ei täsmää.
 - `targetStartupPreconditionFailed`: käynnistyspolun edellytys puuttuu.
 
+Sama luettelo säilyttää käynnistyksen jälkeisen profiilitarkistuksen
+ennalta nimetyt hyväksytyn buildin, rekisterin, adoption jäämien,
+runtime-identiteetin ja tulostodisteen hylkäykset. Neljän olemassa olevan
+tarkan sisältövertailun syyt erotetaan: `legacySourceDataChanged`,
+`legacySourceStorageChanged`, `legacyAdoptedDataMismatch` ja
+`legacyAdoptedStorageMismatch`. Vertailu ei muutu semanttiseksi eikä
+salli hash-, koko-, tiedostonimi- tai tiedostotyyppipoikkeamaa.
+Toisen käynnistyksen idempotenssihylkäys säilyy erillisenä. Näitä koodeja
+ei hyväksytä lähdekäynnistyksen vaihekoodin korvaajiksi.
+
 Koodit ovat havaintoja, eivät sovelluksen juurisyyn selitys. Ensimmäisen ja
 toisen käynnistyksen vaihe säilyy erikseen; lähdesovelluksen käynnistys
 säilyttää oman vaihekohtaisen luokkansa. Tuntematon tai lisätekstiä sisältävä
@@ -5202,6 +5212,11 @@ toimittamisesta. Pakotettu odotus ennen lifecycleä ja lapsen poistuminen
 ennen terminalia todistetaan synteettisellä prosessifixturellä. Nykyiset
 estetyn kanavan, ensivirheen säilymisen, onnistumisen ja prosessisiivouksen
 regressiot säilyvät. Aikarajoja ja tulosvaatimuksia ei muuteta.
+
+Synteettinen julkaistu profiilihylkäys todistaa nykyisen lifecycle- ja
+worker-tuloksen syyn myös juuriprosessin poistumisen jälkeen sekä callerin
+ensivirheen erillään semanttisesta siivouksesta. Tämä todiste ei riipu
+valinnaisen etenemisviestin toimituksesta eikä suorita MSI-asennusta.
 
 Perutun jobin puuttuva jälkikeräys tai supervisorin lopputulos ei todista
 siivousta. Kova keskeytys voi edelleen estää viimeiset havainnot; sitä ei
