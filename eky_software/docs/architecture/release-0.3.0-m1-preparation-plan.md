@@ -411,10 +411,31 @@ alkuperäiset pakettitavut. Production- ja full audit sekä 160
 rekisteriallekirjoitusta läpäisivät. Rajatut alemmat regressiot 222/222 ja
 desktopin tyypitys läpäisivät; mukaan kuuluu ASARin väärien jäsenmuotojen
 hylkäys, välimuistin vaihtuminen sekä worker/caller/postcondition-ketju.
-Riippumaton rajattu katselmus ei löytänyt korjattavaa. Seuraava näyttö on
-yksi nimetty jäädytetyn revision Windows-ajo samalla alkuperäisellä
-paketilla. Sen näyttö, normaalit PR-portit ja uuden mainin portit ovat yhä
-avoimia.
+Riippumaton rajattu katselmus ei löytänyt korjattavaa.
+
+ASAR-korjauksen nimetty Windows-ajo `37696523242` revisiosta `daa26068`
+läpäisi kohdepaketin sidonnan. Kohdesovellus käynnistyi ja sulkeutui
+hallitusti, mutta ensimmäisen käynnistyksen sisältötodiste hylättiin
+`legacyDatabaseCatalogInvalid`-syyllä. Tämä on uusi katalogihavainto,
+ei vanhan ASAR-virheen uusiutuminen tai timeout. Salattu ensivirheen aineisto
+säilytettiin ja sen sidonta sekä kaikki 42 talteenotettua otetta varmennettiin.
+Prosessipuun poissaolo ja exact-tuotesiivous todettiin erikseen; fixture
+säilyi varmentamattomana, eikä koko siivousta merkitä hyväksytyksi.
+
+Rajattu lähdetarkistus osoitti testin toisen polkuoletuksen: tietokannan
+PDF-viite on moduulijuureen suhteellinen, mutta lukija vertasi sitä koko
+`runtime/storage`-inventaarioon. Myös fixture kopioi aiemmin moduuliprefixin
+tietokantaviitteeseen ja peitti virheen. Oikea runtime-layout ja
+moduulisuhteellinen viite toistivat katalogihylkäyksen paikallisesti kolmessa
+tapauksessa. Lukija johtaa nyt prefixin nykyisestä polkuomistajasta; täysi
+tiedostojoukko, hash-, koko-, tyyppi- ja read-only-ehdot säilyvät.
+Polkukorjauksen sama yhdeksän tiedoston baseline-ketju läpäisi 231/231
+testiä. Mukana ovat sekä nykyiset kuluttajat että moduulijuuren ulkopuolisen,
+puuttuvan, muuttuneen ja ylimääräisen PDF:n sekä väärän katalogikoon
+hylkäykset. Riippumaton rajattu katselmus ei löytänyt korjattavaa.
+Seuraava näyttö on yksi nimetty jäädytetyn revision Windows-ajo samalla
+alkuperäisellä paketilla. Sen näyttö, normaalit PR-portit ja uuden mainin
+portit ovat yhä avoimia.
 
 **Todettu ristiriita.** Historiallisen lähteen ja kohteen migraatiot 001–038
 ovat samoja SQL-tavuja; kohde lisää 039:n. Myös historiallinen runner

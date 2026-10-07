@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto';
 import { lstat, readFile } from 'node:fs/promises';
-import { resolve, toNamespacedPath } from 'node:path';
+import { dirname, relative, resolve, sep, toNamespacedPath } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { extractFile, statFile, uncache } from '@electron/asar';
 
 import { readMigrationManifest } from '../../../backend/src/database/migration/migrationManifest.ts';
 import { parseDesktopBuildInfo } from '../../src/release/desktopBuildInfo.ts';
+import { createDesktopProfilePaths } from '../../src/runtime/desktopProfilePaths.ts';
 import { createClosedDirectoryInventory, inventoriesMatch } from './closedDirectoryInventory.mjs';
 import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
 
@@ -256,15 +257,19 @@ function validateRevisionBindings(source, target, contract) {
   }
 }
 
-function validateCatalog(database, inventory) {
+function validateCatalog(database, inventory, storageRoot) {
+  const { invoiceDocumentStorageRoot } = createDesktopProfilePaths(dirname(dirname(storageRoot)));
+  const modulePrefix = relative(storageRoot, invoiceDocumentStorageRoot).split(sep).join('/');
   const files = inventory.filter(entry => entry.kind === 'file');
   const used = new Set();
   for (const document of objectRows(database, 'invoice_documents')) {
-    const file = files.find(entry => entry.relativePath === document.storage_path);
-    if (!file || used.has(document.storage_path) || document.document_type !== 'approved_invoice_pdf' ||
+    // Database references are module-relative; inventory covers the whole storage.
+    const storagePath = `${modulePrefix}/${document.storage_path}`;
+    const file = files.find(entry => entry.relativePath === storagePath);
+    if (!file || used.has(storagePath) || document.document_type !== 'approved_invoice_pdf' ||
         document.mime_type !== 'application/pdf' || file.sha256 !== document.sha256 ||
         BigInt(file.size) !== document.size_bytes) fail('legacyDatabaseCatalogInvalid');
-    used.add(document.storage_path);
+    used.add(storagePath);
   }
   if (files.length !== used.size) fail('legacyDatabaseCatalogInvalid');
 }
@@ -315,8 +320,8 @@ export async function verifyLegacyUpgradeDatabaseEvidence({ sourceDataRoot, sour
     validateOriginalContent(source, target, contract, packageBinding);
     if (packageBinding.migrationCount === 39) validateRevisionBindings(source, target, contract);
     else if (!inventoriesMatch(before.inventories[0], before.inventories[2])) fail('legacyDatabaseOriginalContentChanged');
-    validateCatalog(source, before.inventories[1]);
-    validateCatalog(target, before.inventories[3]);
+    validateCatalog(source, before.inventories[1], sourceStorageRoot);
+    validateCatalog(target, before.inventories[3], targetStorageRoot);
     result = Object.freeze({ schemaVersion: 1, contractSha256, mode: packageBinding.migrationCount === 39 ? 'migration038To039' : 'sameChain',
       sourceChainSha256: contract.migrations[37].chainSha256, targetChainSha256: packageBinding.migrationChainSha256,
       appVersion: packageBinding.appVersion, buildRevision: packageBinding.buildRevision });

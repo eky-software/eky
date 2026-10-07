@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { appendFileSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve, toNamespacedPath } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -10,7 +10,7 @@ import { createPackageFromStreams } from '@electron/asar';
 
 import { createClosedDirectoryInventory, inventoriesMatch } from './closedDirectoryInventory.mjs';
 import { createLegacyDatabaseFixture, createLegacyDatabasePackageFixture, generateLegacyDatabaseContract,
-  TARGET_DATABASE_IDENTITY, writeLegacyDatabaseBuildInfoFixture } from './legacyUpgradeDatabaseEvidence.fixture.mjs';
+  LEGACY_FIXTURE_DOCUMENT_STORAGE_PATH, TARGET_DATABASE_IDENTITY, writeLegacyDatabaseBuildInfoFixture } from './legacyUpgradeDatabaseEvidence.fixture.mjs';
 import { readLegacyDatabaseContract, readLegacyDatabasePackageBinding, verifyLegacyUpgradeDatabaseEvidence } from './legacyUpgradeDatabaseEvidence.mjs';
 
 async function fixture(t, options) {
@@ -53,12 +53,16 @@ test('real 039 SQL fails the old byte condition but passes complete readonly con
   const value = await fixture(t);
   const beforeSource = await createClosedDirectoryInventory(value.paths.sourceDataRoot);
   const beforeTarget = await createClosedDirectoryInventory(value.paths.targetDataRoot);
+  const beforeStorage = await Promise.all([value.paths.sourceStorageRoot, value.paths.targetStorageRoot]
+    .map(root => createClosedDirectoryInventory(root)));
   assert.equal(inventoriesMatch(beforeSource, beforeTarget), false);
   const proof = await verifyLegacyUpgradeDatabaseEvidence(value.input);
   assert.equal(proof.mode, 'migration038To039');
   assert.equal(proof.buildRevision, TARGET_DATABASE_IDENTITY.buildRevision);
   assert.deepEqual(await createClosedDirectoryInventory(value.paths.sourceDataRoot), beforeSource);
   assert.deepEqual(await createClosedDirectoryInventory(value.paths.targetDataRoot), beforeTarget);
+  assert.deepEqual(await Promise.all([value.paths.sourceStorageRoot, value.paths.targetStorageRoot]
+    .map(root => createClosedDirectoryInventory(root))), beforeStorage);
 });
 
 test('same-chain proof preserves the whole database byte condition', async t => {
@@ -159,13 +163,76 @@ for (const suffix of ['-wal', '-shm', '-journal']) {
 
 test('PDF bytes, size and database catalog closure are required', async t => {
   const value = await fixture(t);
-  await writeFile(resolve(value.paths.targetStorageRoot, 'invoices/one/approved-invoice.pdf'), '%PDF-changed');
+  await writeFile(resolve(value.paths.targetStorageRoot, 'invoices', LEGACY_FIXTURE_DOCUMENT_STORAGE_PATH), '%PDF-changed');
   await assert.rejects(verifyLegacyUpgradeDatabaseEvidence(value.input), /legacyDatabaseCatalogInvalid/);
 });
 
 test('unregistered PDF is not silently ignored', async t => {
   const value = await fixture(t);
   await writeFile(resolve(value.paths.targetStorageRoot, 'unregistered.pdf'), '%PDF-extra');
+  await assert.rejects(verifyLegacyUpgradeDatabaseEvidence(value.input), /legacyDatabaseCatalogInvalid/);
+});
+
+test('catalog paths are relative to the module root, not the whole runtime storage', async t => {
+  const value = await fixture(t);
+  for (const dataRoot of [value.paths.sourceDataRoot, value.paths.targetDataRoot]) {
+    const database = new DatabaseSync(toNamespacedPath(resolve(dataRoot, 'eky.sqlite')), { readOnly: true });
+    try {
+      assert.equal(database.prepare('SELECT storage_path FROM invoice_documents').get().storage_path,
+        LEGACY_FIXTURE_DOCUMENT_STORAGE_PATH);
+    } finally { database.close(); }
+  }
+  const files = await createClosedDirectoryInventory(value.paths.targetStorageRoot);
+  assert.ok(files.some(entry => entry.relativePath === `invoices/${LEGACY_FIXTURE_DOCUMENT_STORAGE_PATH}`));
+  assert.equal((await verifyLegacyUpgradeDatabaseEvidence(value.input)).mode, 'migration038To039');
+});
+
+test('matching PDF outside the module root does not satisfy its catalog reference', async t => {
+  const value = await fixture(t);
+  const outside = resolve(value.paths.targetStorageRoot, LEGACY_FIXTURE_DOCUMENT_STORAGE_PATH);
+  await mkdir(resolve(outside, '..'), { recursive: true });
+  await rename(resolve(value.paths.targetStorageRoot, 'invoices', LEGACY_FIXTURE_DOCUMENT_STORAGE_PATH), outside);
+  await assert.rejects(verifyLegacyUpgradeDatabaseEvidence(value.input), /legacyDatabaseCatalogInvalid/);
+});
+
+test('unregistered PDF inside the module root is not silently ignored', async t => {
+  const value = await fixture(t);
+  await writeFile(resolve(value.paths.targetStorageRoot, 'invoices', 'unregistered.pdf'), '%PDF-extra');
+  await assert.rejects(verifyLegacyUpgradeDatabaseEvidence(value.input), /legacyDatabaseCatalogInvalid/);
+});
+
+for (const storagePath of [`invoices/${LEGACY_FIXTURE_DOCUMENT_STORAGE_PATH}`, '../approved-invoice.pdf', '/approved-invoice.pdf']) {
+  test(`catalog rejects a non-module-relative reference: ${storagePath}`, async t => {
+    const value = await fixture(t);
+    const sql = `UPDATE invoice_documents SET storage_path = '${storagePath}'`;
+    changeDatabase(resolve(value.paths.sourceDataRoot, 'eky.sqlite'), sql);
+    changeWithoutGuard(resolve(value.paths.targetDataRoot, 'eky.sqlite'), 'invoice_documents_no_update', sql);
+    await assert.rejects(verifyLegacyUpgradeDatabaseEvidence(value.input), /legacyDatabaseCatalogInvalid/);
+  });
+}
+
+test('missing referenced PDF is rejected without mutating the remaining storage', async t => {
+  const value = await fixture(t);
+  await rm(resolve(value.paths.targetStorageRoot, 'invoices', LEGACY_FIXTURE_DOCUMENT_STORAGE_PATH));
+  const before = await createClosedDirectoryInventory(value.paths.targetStorageRoot);
+  await assert.rejects(verifyLegacyUpgradeDatabaseEvidence(value.input), /legacyDatabaseCatalogInvalid/);
+  assert.deepEqual(await createClosedDirectoryInventory(value.paths.targetStorageRoot), before);
+});
+
+test('same-size PDF with different bytes still fails its checksum', async t => {
+  const value = await fixture(t);
+  const file = resolve(value.paths.targetStorageRoot, 'invoices', LEGACY_FIXTURE_DOCUMENT_STORAGE_PATH);
+  const bytes = await readFile(file);
+  bytes[bytes.length - 1] ^= 1;
+  await writeFile(file, bytes);
+  await assert.rejects(verifyLegacyUpgradeDatabaseEvidence(value.input), /legacyDatabaseCatalogInvalid/);
+});
+
+test('matching PDF checksum cannot hide an incorrect catalog size', async t => {
+  const value = await fixture(t);
+  const sql = 'UPDATE invoice_documents SET size_bytes = size_bytes + 1';
+  changeDatabase(resolve(value.paths.sourceDataRoot, 'eky.sqlite'), sql);
+  changeWithoutGuard(resolve(value.paths.targetDataRoot, 'eky.sqlite'), 'invoice_documents_no_update', sql);
   await assert.rejects(verifyLegacyUpgradeDatabaseEvidence(value.input), /legacyDatabaseCatalogInvalid/);
 });
 

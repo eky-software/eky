@@ -2,17 +2,19 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { resolve, toNamespacedPath } from 'node:path';
+import { dirname, resolve, toNamespacedPath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { createPackage } from '@electron/asar';
 
 import { readMigrationManifest } from '../../../backend/src/database/migration/migrationManifest.ts';
 import { prepareMigrationHistoryForRun, recordAppliedMigrationMetadata } from '../../../backend/src/database/migration/migrationMetadata.ts';
+import { createDesktopProfilePaths } from '../../src/runtime/desktopProfilePaths.ts';
 import { snapshotLegacyDatabaseSchema } from './legacyUpgradeDatabaseEvidence.mjs';
 
 export const SOURCE_DATABASE_IDENTITY = Object.freeze({ appVersion: '0.2.6', buildRevision: 'a'.repeat(12) });
 export const TARGET_DATABASE_IDENTITY = Object.freeze({ appVersion: '0.2.7', buildRevision: 'b'.repeat(12) });
+export const LEGACY_FIXTURE_DOCUMENT_STORAGE_PATH = 'id-synthetic-company/id-invoice-one/id-document-one/approved-invoice.pdf';
 const migrationRoot = fileURLToPath(new URL('../../../backend/src/database/migrations/', import.meta.url));
 const timestamp = '2026-09-04T08:00:00.000Z';
 
@@ -111,7 +113,7 @@ function seedLegacyFixture(database, pdf) {
   insertFixtureRow(database, 'invoice_lines', { ...line, id: 'line-one', invoice_id: 'invoice-one', source_invoice_line_id: null });
   insertFixtureRow(database, 'invoice_lines', { ...line, id: 'line-credit', invoice_id: 'invoice-credit', source_invoice_line_id: 'line-one' });
   insertFixtureRow(database, 'invoice_documents', { id: 'document-one', company_id: 'synthetic-company', invoice_id: 'invoice-one',
-    document_type: 'approved_invoice_pdf', file_name: 'approved-invoice.pdf', storage_path: 'invoices/one/approved-invoice.pdf',
+    document_type: 'approved_invoice_pdf', file_name: 'approved-invoice.pdf', storage_path: LEGACY_FIXTURE_DOCUMENT_STORAGE_PATH,
     mime_type: 'application/pdf', sha256: createHash('sha256').update(pdf).digest('hex'), size_bytes: pdf.length, created_at: timestamp });
   insertFixtureRow(database, 'invoice_delivery_events', { id: 'event-one', company_id: 'synthetic-company', invoice_id: 'invoice-one',
     document_id: 'document-one', delivery_method: 'email', provider: 'smtp', status: 'outcomeUnknown', created_at: timestamp });
@@ -120,14 +122,16 @@ function seedLegacyFixture(database, pdf) {
 export async function createLegacyDatabaseFixture(root, { longPath = false, targetCount = 39 } = {}) {
   const sourceRoot = resolve(root, 'source');
   const targetRoot = longPath ? resolve(root, ...Array.from({ length: 12 }, (_, index) => `long-synthetic-component-${index}`), 'target') : resolve(root, 'target');
-  const paths = { sourceDataRoot: resolve(sourceRoot, 'data'), sourceStorageRoot: resolve(sourceRoot, 'storage'),
-    targetDataRoot: resolve(targetRoot, 'data'), targetStorageRoot: resolve(targetRoot, 'storage') };
+  const sourceProfile = createDesktopProfilePaths(sourceRoot);
+  const targetProfile = createDesktopProfilePaths(targetRoot);
+  const paths = { sourceDataRoot: dirname(sourceProfile.databaseFilePath), sourceStorageRoot: resolve(sourceProfile.runtimeRoot, 'storage'),
+    targetDataRoot: dirname(targetProfile.databaseFilePath), targetStorageRoot: resolve(targetProfile.runtimeRoot, 'storage') };
   for (const directory of Object.values(paths)) await mkdir(directory, { recursive: true });
   const pdf = Buffer.from('%PDF-synthetic-approved-invoice');
-  const relativePdf = 'invoices/one/approved-invoice.pdf';
-  for (const storage of [paths.sourceStorageRoot, paths.targetStorageRoot]) {
-    await mkdir(resolve(storage, 'invoices', 'one'), { recursive: true });
-    await writeFile(resolve(storage, relativePdf), pdf);
+  for (const profile of [sourceProfile, targetProfile]) {
+    const file = resolve(profile.invoiceDocumentStorageRoot, LEGACY_FIXTURE_DOCUMENT_STORAGE_PATH);
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, pdf);
   }
   const manifest = readMigrationManifest(migrationRoot);
   let database = new DatabaseSync(toNamespacedPath(resolve(paths.sourceDataRoot, 'eky.sqlite')));

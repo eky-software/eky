@@ -2035,6 +2035,16 @@ jotta samaan polkuun vaihdettu arkisto ei peri aiempaa identiteettiä.
 Luku ei pura tai muuta payloadia. Testifixture käyttää samaa oikeaa
 ASAR-muotoa; myös hylkäyspolun byte-identtisyys tarkistetaan.
 
+PDF-katalogin `storage_path` on laskutusmoduulin juureen suhteellinen,
+ei koko `runtime/storage`-juureen suhteellinen. Testilukija johtaa
+moduulijuuren nykyisestä `createDesktopProfilePaths`-omistajasta ja lisää
+vain sen suhteellisen prefixin täyden inventaarion vertailuun. Tietokannan
+viitettä ei normalisoida, arvata tai korvata toisella tiedostolla. Myös
+fixture käyttää tuotannon runtime-layoutia ja moduuliin suhteellista
+viitettä. Katalogin tiedostojoukko pysyy suljettuna: puuttuva viitattu
+tiedosto, väärä koko tai tiiviste, väärä tiedostotyyppi sekä ylimääräinen
+tiedosto moduulijuuren sisällä tai sen ulkopuolella hylätään edelleen.
+
 Historiallinen lähde, muut datatiedostot ja kaikki PDF-tavut säilyvät täydessä
 inventaariovertailussa. Keskeneräinen WAL/SHM/journal hylätään ennen SQLiten
 avausta. Inventaario ja tiedostoidentiteetit eivät saa muuttua lukemisen aikana.
