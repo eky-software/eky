@@ -10,6 +10,7 @@ import { InvoiceCancellationConfirmationError } from '../application/invoiceCanc
 import { InvoiceCancellationConflictError } from '../application/invoiceCancellationConflictError.js';
 import type { ReopenApprovedInvoiceForEditingInput } from '../application/reopenApprovedInvoiceForEditing.js';
 import type { InvoiceDraft } from '../domain/invoiceDraft.js';
+import { InvoiceDeliveryConflictError } from '../domain/invoiceDeliveryConflictError.js';
 import type { CancelledApprovedInvoiceResult } from '../ports/invoiceCorrectionRepository.js';
 import { createApprovedInvoiceLifecycleRoutes } from './approvedInvoiceLifecycleRoutes.js';
 
@@ -190,6 +191,13 @@ describe('approved invoice lifecycle routes', () => {
       error: 'Request body is not allowed.',
     });
     expect(getInput(testContext)).toBeUndefined();
+  });
+
+  it('returns a safe conflict when persisted delivery prevents reopening', async () => {
+    const { app } = createTestApp({ reopenError: new InvoiceDeliveryConflictError() });
+    const response = await app.request('/invoices/invoice-1/reopen-for-edit', { method: 'POST' });
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error: new InvoiceDeliveryConflictError().message });
   });
 
   it('returns a safe 404 when reopening an invoice outside the company scope', async () => {

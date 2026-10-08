@@ -2004,6 +2004,69 @@ verifier tarkistaa ennen semanttista cleanupia:
   inventorya
 - source- ja target-artifactien tavut ovat edelleen muuttumattomat.
 
+#### Legacy 038–039 -sisältötodiste
+
+Ensimmäinen kohdekäynnistys ei voi vaatia koko SQLite-tiedoston samaa hashia,
+kun varmennettu paketti lisää 039-migraation. Tässä nimetyssä siirtymässä
+`legacyUpgradeDatabaseEvidence.mjs` tarkistaa suljetun profiilin readonly-
+yhteydellä versionhallittua `legacyUpgradeDatabase038To039.contract.json`-
+sopimusta vasten. Sopimus johdetaan erikseen hyväksytyistä SQL-tavuista tyhjään
+testikantaan, ei tarkasteltavasta profiilista. Manifestin jatkuvuus ja tiivistys
+käyttävät nykyistä backendin manifestinomistajaa.
+
+Asennetun payloadin täysi inventaario varmennetaan ennen paketoidun
+`backend/dist/database/migrations`-ketjun tai runtime-buildin käyttämistä
+sidonnan lähteenä. Kaikki vanhat taulut, sarakkeet, arvojen SQLite-tyypit ja
+rivien monikerrat säilyvät. Schemaobjektit, indeksit ja triggerit vastaavat
+riippumatonta odotusta; ledgeriin saa tulla vain nimetty 039-rivi ja saman
+paketin metadata. Uudet revisiot, laskurivit, hyvitysviitteet, nykyrevision
+osoittimet sekä dokumentti- ja tapahtumaprovenanssi tarkistetaan kokonaisina.
+Vanhoja summia tai lähetystarkoituksia ei lasketa tai päätellä uudelleen.
+
+Runtime-buildin tunnistetiedot luetaan todellisen paketoijan tuottaman
+`resources/app.asar`-arkiston kiinteästä `dist/build-info.json`-jäsenestä
+hyväksytyllä `@electron/asar@4.2.1`-testityökalulla. Tavallista
+`resources/app/dist`-hakemistoa ei oleteta eikä käytetä varavaihtoehtona.
+Vain arkiston sisäinen tavallinen tiedosto, enintään 64 KiB, kelpaa:
+hakemisto, linkki, unpacked-jäsen, väärä koko tai ristiriitainen JSON
+hylätään. Nykyinen tiukka JSON- ja build-info-parseri omistaa kenttien
+validoinnin. Header-välimuisti tyhjennetään ennen lukua ja sen jälkeen,
+jotta samaan polkuun vaihdettu arkisto ei peri aiempaa identiteettiä.
+Luku ei pura tai muuta payloadia. Testifixture käyttää samaa oikeaa
+ASAR-muotoa; myös hylkäyspolun byte-identtisyys tarkistetaan.
+Kirjasto ladataan vasta tämän vaaditun pakettisidonnan lukemisessa.
+Riippuvuudettomien supervisor-sopimusten import ei tarvitse paketointityökalua;
+puuttuva työkalu varsinaisessa luvussa hylkää sidonnan samalla suljetulla
+virhekoodilla. Eristetty resoluutioregressio todistaa molemmat rajat.
+
+PDF-katalogin `storage_path` on laskutusmoduulin juureen suhteellinen,
+ei koko `runtime/storage`-juureen suhteellinen. Testilukija johtaa
+moduulijuuren nykyisestä `createDesktopProfilePaths`-omistajasta ja lisää
+vain sen suhteellisen prefixin täyden inventaarion vertailuun. Tietokannan
+viitettä ei normalisoida, arvata tai korvata toisella tiedostolla. Myös
+fixture käyttää tuotannon runtime-layoutia ja moduuliin suhteellista
+viitettä. Katalogin tiedostojoukko pysyy suljettuna: puuttuva viitattu
+tiedosto, väärä koko tai tiiviste, väärä tiedostotyyppi sekä ylimääräinen
+tiedosto moduulijuuren sisällä tai sen ulkopuolella hylätään edelleen.
+
+Historiallinen lähde, muut datatiedostot ja kaikki PDF-tavut säilyvät täydessä
+inventaariovertailussa. Keskeneräinen WAL/SHM/journal hylätään ennen SQLiten
+avausta. Inventaario ja tiedostoidentiteetit eivät saa muuttua lukemisen aikana.
+Vasta hyväksytyn sisältötodisteen jälkeen tallennetaan ensimmäisen kohteen
+koko tavuinventaario. Toinen käynnistys ja erillinen postcondition vaativat
+sen saman inventaarion; myös semanttisesti saman tietokannan tavumuutos
+hylätään. Sama migraatioketju käyttää ensimmäiselläkin kerralla vanhaa
+täyttä tavuehtoa. Tuntematon siirtymä tai puuttuva pakettisidonta estää ajon.
+
+Target-evidencen versio 2 sisältää suljetun `databaseProof`-sidonnan.
+Kevyiden tiedostoturvatestien `null`-todiste ei kelpaa oikean workerin tai
+erillisen semanttisen postconditionin hyväksynnäksi. Uudet regressiot kuuluvat
+nykyiseen `installer:test:windows-supervisor-v2-legacy-core`-sarjaan.
+Toteutus ja tämän julkaisun vielä tarvittava paketoitu näyttö ovat
+[M1:n omistavassa suunnitelmassa](release-0.3.0-m1-preparation-plan.md#legacy-testin-038039-migraatiotodisteen-korjausehdotus).
+Tämä testikorjaus ei muuta sovelluksen migraatioita, prosessien omistajuutta,
+aikarajoja, artifact- tai siivousportteja eikä tutkimusaineiston julkaisurajaa.
+
 Scenario-result, supervisor-result, semanttinen proof, exact ProductCode
 -cleanup ja lopullinen postcondition pysyvät eri tuloksina. Ensisijainen virhe
 ei peity cleanup-virheeseen. Semanttinen cleanup käyttää jo olemassa olevaa
@@ -2386,6 +2449,13 @@ migraatio, B:n toisen käynnistyksen byte-idempotenssi, C:n muuttumattomuus,
 lineage-/registry-raja ja asennustasoisen päivitysidentiteetin säilyminen
 ovat erillisiä ehtoja. Rajatut lifecycle-eventit todistavat eri startup-
 identiteetit ja graceful shutdownin; session-salaisuutta ei tallenneta.
+Checkpointin tapahtumaprojektio omistaa vain kentät `appVersion`,
+`buildRevision`, `eventId`, `eventName` ja `runtimeInstanceId`. Yhteisen
+legacy-lukijan aikaleima- ja ensivirhetiedot eivät laajenna tätä sopimusta.
+Bootstrap-virhetapahtumaa ei suodateta pois: se hylkää onnistumisen
+jälkiehdon. Oikean main-loggerin regressio vie tapahtumat keräyksestä
+checkpoint-validaattoriin asti, ja legacy-lukijan oma laajempi virhetodiste
+säilyy ennallaan.
 Tämä ei yksin korvaa backendin session-rejection-portin packaged-todistusta;
 sen erillinen muistikanavasopimus kuvataan jäljempänä.
 
@@ -5141,6 +5211,86 @@ on rajattu muuttumattoman paketin CI-kokeessa kokonaiskoon eroksi.
 Alla kuvattu jatkokoe vahvisti kolmen nimetyn tiedoston vanhojen tavujen
 säilymisen ja MSI:n samaversion korvauspäätöksen. Kaikkia payload-eroja
 ei ole luetteloitu; diagnostiikkakoe ei korvaa normaalia hyväksyntäajoa.
+
+### Legacy-käynnistyksen hylkäyssyy
+
+Historiallisen kohdesovelluksen ensimmäinen ja toinen käynnistys säilyttävät
+olemassa olevan havaitsijan suljetut syykoodit lifecycle-tuloksessa,
+vaihetiedossa ja nykyisessä komentorajan virhekoodissa. Yksi keskitetty
+`LEGACY_STARTUP_ERROR_CODES`-luettelo sitoo seuraavat havainnot:
+
+- `targetBootstrapFailed`: vastaavan ajon bootstrap-virhe havaittiin.
+- `targetApplicationExitedEarly`: prosessi poistui ennen vaadittua valmiutta.
+- `targetOperationalLogInvalid`: vaadittua lokihavaintoa ei voitu validoida.
+- `targetGracefulShutdownFailed`: hallitun sulun pyyntö tai poistuminen epäonnistui.
+- `targetShutdownEvidenceInvalid`: vaadittu puhtaan sulun näyttö ei täsmää.
+- `targetStartupPreconditionFailed`: käynnistyspolun edellytys puuttuu.
+
+Sama luettelo säilyttää käynnistyksen jälkeisen profiilitarkistuksen
+ennalta nimetyt hyväksytyn buildin, rekisterin, adoption jäämien,
+runtime-identiteetin ja tulostodisteen hylkäykset. Neljän olemassa olevan
+tarkan sisältövertailun syyt erotetaan: `legacySourceDataChanged`,
+`legacySourceStorageChanged`, `legacyAdoptedDataMismatch` ja
+`legacyAdoptedStorageMismatch`. Vertailu ei muutu semanttiseksi eikä
+salli hash-, koko-, tiedostonimi- tai tiedostotyyppipoikkeamaa.
+Toisen käynnistyksen idempotenssihylkäys säilyy erillisenä. Näitä koodeja
+ei hyväksytä lähdekäynnistyksen vaihekoodin korvaajiksi.
+
+Koodit ovat havaintoja, eivät sovelluksen juurisyyn selitys. Ensimmäisen ja
+toisen käynnistyksen vaihe säilyy erikseen; lähdesovelluksen käynnistys
+säilyttää oman vaihekohtaisen luokkansa. Tuntematon tai lisätekstiä sisältävä
+virhe saa edelleen yleisen vaihekoodin. Onnistunut siivous ei korvaa
+alkuperäistä hylkäystä. Uutta loggeria, raportointiskeemaa, asennuskäytäntöä,
+aikarajaa tai uusintaa ei lisätä eikä raakapoikkeuksia julkaista.
+
+Sovelluksen jo tallentama bootstrap-syy ja vaihe säilytetään erillisenä
+[salattuna legacy-syyotteena](ci-encrypted-evidence.md#legacy-käynnistyksen-rajattu-syyote).
+Se ei korvaa yllä olevia suljettuja lifecycle-tuloskoodeja tai supervisorin
+ensivirhettä. Nykyinen `fixtureCleanup`-vaihe säilyttää tämän käynnistyksen
+rajatun otteen omassa terminal-kirjoituksessaan ennen fixturen poistoa,
+kun skenaarion prosessipuun poissaolo on jo todistettu. Puutteellinen
+syytieto säilyttää alkuperäisen aineiston. Skenaarion hyväksyntä, MSI:n
+lopputila ja siivouksen varmennus pysyvät erillisinä tuloksina.
+
+### Legacy-työntekijän eteneminen terminal-odotuksen aikana
+
+Nykyisen legacy-komennon skenaariovaihe käynnistää Node-työntekijän, joka
+suorittaa `runLegacyUpgradeWorker`-polun samassa omistetussa prosessissa.
+Supervisor hyväksyy terminalin vasta juuriprosessin poistumiskuittauksen
+ja koko Jobin tyhjenemisen jälkeen. Pelkkä lapsen poistuminen tai
+lopputulostiedoston olemassaolo ei täytä tätä ehtoa.
+
+Työntekijä käyttää olemassa olevaa rajattua `workspacePhaseWriter`-lehteä.
+`legacyUpgradeWorker`-havainto erottaa pyynnön validoinnin, artifactin
+tarkistuksen, runtimen valmistelun, lifecycle-vaiheen ja tuloksen julkaisun.
+Sallitut vaihe- ja prosessiroolit omistaa `legacyUpgradeContracts.mjs`;
+nykyinen tiukka parseri hylkää muut arvot ja ylimääräiset kentät. Omistetun
+lapsen spawn-, exit- ja close-kuittaus on erillinen havainto. Se ei tarkoita
+koko skenaarion valmistumista. Epäonnistuneen skenaarion tuloksen onnistunut
+julkaisu on `resultPublication=completed`, ei skenaarion läpäisy.
+
+Supervisorin nykyinen `terminalWait` ja heartbeat erottavat kolme suljettua
+odotusluokkaa: `rootProcessPending`, `descendantsPending` ja
+`rootExitReceiptPending`. Viimeinen tarkoittaa tyhjää Jobia ennen
+juuriprosessin poistumiskuittausta, ei uutta valmiusehtoa. Sama suljettu
+projektio säilyy nykyisen komentotestin turvallisessa jälkilukijassa.
+
+Vaihetoimitus on valinnainen ja voi jäädä osittaiseksi. Se ei odota
+kirjoituskuittausta eikä flushia; nykyinen rajattu lopetus ja ulompi Job
+omistavat lehden. Nopean onnistumisen hyväksyntä ei riipu viestin
+toimittamisesta. Pakotettu odotus ennen lifecycleä ja lapsen poistuminen
+ennen terminalia todistetaan synteettisellä prosessifixturellä. Nykyiset
+estetyn kanavan, ensivirheen säilymisen, onnistumisen ja prosessisiivouksen
+regressiot säilyvät. Aikarajoja ja tulosvaatimuksia ei muuteta.
+
+Synteettinen julkaistu profiilihylkäys todistaa nykyisen lifecycle- ja
+worker-tuloksen syyn myös juuriprosessin poistumisen jälkeen sekä callerin
+ensivirheen erillään semanttisesta siivouksesta. Tämä todiste ei riipu
+valinnaisen etenemisviestin toimituksesta eikä suorita MSI-asennusta.
+
+Perutun jobin puuttuva jälkikeräys tai supervisorin lopputulos ei todista
+siivousta. Kova keskeytys voi edelleen estää viimeiset havainnot; sitä ei
+muuteta oletetuksi onnistumiseksi tai nimetä sovelluksen juurisyyksi.
 
 ### Rajattu legacy-tiedostohavainto
 

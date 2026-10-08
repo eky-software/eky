@@ -36,7 +36,8 @@ auktoritatiivinen lähde esimerkiksi:
 - Company Settings -datalle ja sen auditeille
 - Customers-datalle ja sen auditeille
 - Invoicingin asetuksille, luonnoksille, laskuille, riveille, maksuille,
-  hyvityssuhteille, toimitustapahtumille ja auditeille
+  hyvityssuhteille, toimitustapahtumille ja auditeille sekä B3-B5:n
+  työpuutoteutuksessa muuttumattomalle revisiohistorialle
 - Activity-read modelin lähteenä käytettäville business-auditeille
 - laskudokumenttien metadatalle
 
@@ -77,17 +78,21 @@ Backup-catalog-portin pitää luetteloida jokaisesta rivistä vähintään:
 Backup-infrastruktuuri saa portilta vain tämän rajatun catalogin. Se ei saa
 suoraa SQL-pääsyä Invoicingin tauluihin eikä yleistä filesystem-listausta.
 
-### Current PDF -malli
+### Revisioiden ja legacy-PDF:ien malli
 
-**Suunniteltu 0.3.0-muutos, ei vielä toteutettu:**
-[B3/B4:n sisältöhistoria ja backup-sopimus](release-0.3.0-m1-preparation-plan.md#b3b4-tietomalli-portit-ja-migraatiojärjestys)
-laajentaa Invoicingin auktoritatiivisen catalogin myös saman laskun
-historiallisiin PDF:iin ja hyväksytyn legacy-polun säilytettyyn artifactiin.
-Nykyisen containerin ja katalogiesityksen säilyttäminen on suunnittelusuunta;
-schema-/palautustodistus kuuluu B5:een. Alla kuvataan vielä nykyinen toteutus.
+**B3-B5:n työpuutoteutus, puhtaan revision hyväksyntä ja integraatio avoinna:**
+[Nykyinen B5-checkpoint](release-0.3.0-m1-preparation-plan.md#b5-katalogin-ja-palautuksen-checkpoint)
+erottaa toteutuksen ja alemman tason näytön julkaisuhyväksynnästä.
+Katalogi sisältää nykyrevision PDF:n lisäksi säilytettävät historialliset
+revisio-PDF:t, alkuperäiset legacy-dokumentit ja erikseen säilytetyt
+legacy-kopiot. Se ei muodosta puuttuvaa historiallista PDF:ää uudelleen.
+Containerin ja catalog-v1:n esitys eivät muutu.
 
-Nykyinen tietomalli säilyttää enintään yhden `approved_invoice_pdf`-rivin
-yrityksen ja laskun yhdistelmälle. Sama malli kattaa:
+Katalogin skeema valitaan jo tarkistetusta sovelletusta migraatioprefixistä,
+ei puuttuvan sarakkeen tai SQL-virheen perusteella. Revisiohaara tarkistaa
+koko revision/current/source/document/event-sidonnan, myös PDF:tä vailla
+oleville revisioille. Snapshotin luettelointi tapahtuu maintenance-rajan
+sisällä. Kaikki viitatut PDF:t sisältyvät laskun tilasta riippumatta:
 
 - tavalliset hyväksytyt laskut
 - lähetetyt laskut
@@ -102,23 +107,25 @@ Credit invoice PDF ei ole eri storage-tyyppi. Se on hyvityslaskun oma
 
 ### Uudelleenavaus ja uudelleenhyväksyntä
 
-Nykyinen standard invoice reopen -polku poistaa current PDF:n metadatarivin
-samassa tietokantatransaktiossa, jossa lasku avataan takaisin muokkaukseen.
-`invoice_delivery_events.document_id` käyttää `ON DELETE SET NULL` -sääntöä,
-joten vanha delivery event säilyy mutta ei enää nimeä poistettua dokumenttia.
-Fyysinen tiedosto poistetaan transaktion jälkeen best effort -mallilla.
-
-Uudelleenhyväksynnän ja uuden PDF:n luonnin jälkeen syntyy uusi
-`invoice_documents`-rivi nykyiselle PDF:lle. Nykyinen malli ei säilytä
-superseded PDF -versiohistoriaa eikä aikaisempaa `documentId`:tä
-auktoritatiivisena artifactina.
+B3-B5:n uudelleenavaus säilyttää aiemman revision, PDF:n ja toimitussidoksen.
+Uudelleenhyväksyntä julkaisee uuden revision samalla laskuidentiteetillä ja
+numerolla. Uusi PDF kuuluu uuteen revisioon; se ei korvaa vanhan toimituksen
+tavuja. Dokumentin poistaminen ei saa katkaista sidottua toimitushistoriaa.
+Historiallisen varmuuskopion jo valmiiksi puuttuvaa viitettä ei kuitenkaan
+arvata tai väitetä jälkikäteen todennetuksi.
 
 Tästä seuraa:
 
 - backup sisältää kaikki snapshotissa olevat `invoice_documents`-rivit
 - backup ei etsi delivery eventin `null`-viitteen perusteella vanhaa PDF:ää
-- backup ei ota mukaan metadataltaan poistettua superseded-tiedostoa
-- tuleva PDF-versiohistoria vaatii oman tietomalli- ja catalog-päätöksen
+- backup ottaa mukaan myös vanhat revisiot ja säilytetyt legacy-kopiot,
+  joilla on auktoritatiivinen dokumenttirivi
+- backup ei ota mukaan metadataltaan poistettua orpotiedostoa
+
+Ennen B3:a julkaistu yhden current-PDF:n malli ei säilyttänyt kaikkia
+superseded-dokumentteja. Vanha katalogi validoidaan lähteen tarkistetulla
+skeemalla ennen migraatiota; migraation jälkeen vaaditaan sama alkuperäinen
+katalogi ja sen tavut ennen yhdenkään tiedoston materiaalistamista.
 
 ### Puuttuvat, ristiriitaiset ja orvot tiedostot
 
@@ -201,13 +208,16 @@ edellytä koko `userData`-hakemiston kopiointia eikä schema-muutosta.
 
 Invoicing-local backup catalog -portti, puuttuvan DB-viitatun artifactin
 fail-closed-validointi ja suljettu snapshot-tiedostojoukko on toteutettu.
-SQLite-adapteri lukee nykyisen `invoices`/`invoice_documents`-mallin eikä
+SQLite-adapteri omistaa skeemakohtaisen laskutusvalidoinnin eikä
 backup-infrastruktuuri arvaa artifacteja storage-hakemistosta.
 
 Hardened Windows packaged smoke muodostaa edustavan synteettisen profiilin,
 luo ja tarkastaa salatun backupin, palauttaa profiilin ja vertaa sekä
 tietokannan että katalogissa olevien PDF-tiedostojen SHA-256-tiivisteet
-uudessa prosessissa. Jos tuleva audit löytää muun
+uudessa prosessissa. Tämä aiempi smoke ei yksin hyväksy B3-B5:n uutta
+revisiohistoriaa. Uuden kehityspaketin moniversioinen/legacy-palautustodistus
+sekä puhtaan revision avoimet portit erotetaan yllä linkitetyssä
+checkpointissa. Jos tuleva audit löytää muun
 ei-uudelleenmuodostettavan business-artifactin, backupin release gate
 avautuu uudelleen, kunnes inventaario ja moduulin owner-portti on päivitetty.
 

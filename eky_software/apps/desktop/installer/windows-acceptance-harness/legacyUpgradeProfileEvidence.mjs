@@ -8,6 +8,7 @@ import {
 } from './closedDirectoryInventory.mjs';
 import { writeJsonAtomicExclusive } from './cleanInstallUninstallContracts.mjs';
 import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
+import { isLegacyDatabaseProof, verifyLegacyUpgradeDatabaseEvidence } from './legacyUpgradeDatabaseEvidence.mjs';
 
 export const LEGACY_SOURCE_EVIDENCE_FILENAME = 'legacy-source-evidence.json';
 export const LEGACY_FIRST_START_EVIDENCE_FILENAME = 'legacy-first-start-evidence.json';
@@ -386,6 +387,7 @@ export async function captureLegacySourceEvidence({
 
 export async function captureLegacyTargetEvidence({
   identities,
+  packageBinding,
   previousEvidence,
   runtimeInstanceId,
   sourceEvidence,
@@ -424,23 +426,33 @@ export async function captureLegacyTargetEvidence({
   const storageInventory = await createClosedDirectoryInventory(
     resolve(workspaceRuntimeRoot, 'storage'),
   );
-  if (
-    !inventoriesMatch(legacyData, sourceEvidence.dataInventory) ||
-    !inventoriesMatch(legacyStorage, sourceEvidence.storageInventory) ||
-    !inventoriesMatch(dataInventory, sourceEvidence.dataInventory) ||
-    !inventoriesMatch(storageInventory, sourceEvidence.storageInventory)
-  ) {
-    throw new Error('legacyAdoptionContentInvalid');
+  for (const [actual, expected, errorCode] of [
+    [legacyData, sourceEvidence.dataInventory, 'legacySourceDataChanged'],
+    [legacyStorage, sourceEvidence.storageInventory, 'legacySourceStorageChanged'],
+    [packageBinding?.migrationCount === 39 ? withoutDatabaseBytes(dataInventory) : dataInventory,
+      packageBinding?.migrationCount === 39 ? withoutDatabaseBytes(sourceEvidence.dataInventory) : sourceEvidence.dataInventory,
+      'legacyAdoptedDataMismatch'],
+    [storageInventory, sourceEvidence.storageInventory, 'legacyAdoptedStorageMismatch'],
+  ]) {
+    if (!inventoriesMatch(actual, expected)) throw new Error(errorCode);
   }
   await requirePdf(
     resolve(workspaceRuntimeRoot, 'storage'),
     sourceEvidence.pdfRelativePath,
   );
+  const databaseProof = packageBinding === undefined ? null : await verifyLegacyUpgradeDatabaseEvidence({
+    sourceDataRoot: resolve(userDataRoot, 'runtime', 'data'),
+    sourceStorageRoot: resolve(userDataRoot, 'runtime', 'storage'),
+    targetDataRoot: resolve(workspaceRuntimeRoot, 'data'),
+    targetStorageRoot: resolve(workspaceRuntimeRoot, 'storage'),
+    packageBinding,
+  });
   const evidence = Object.freeze({
-    schemaVersion: 1,
+    schemaVersion: 2,
     acceptedCurrentClass: accepted.currentClass,
     acceptedLegacyClass: accepted.legacyClass,
     dataInventory,
+    databaseProof,
     registrySha256: registry.registrySha256,
     registrySize: registry.registrySize,
     runtimeInstanceId,
@@ -453,6 +465,7 @@ export async function captureLegacyTargetEvidence({
       previousEvidence.workspaceId !== evidence.workspaceId ||
       previousEvidence.registrySha256 !== evidence.registrySha256 ||
       previousEvidence.registrySize !== evidence.registrySize ||
+      !valuesEqual(previousEvidence.databaseProof, evidence.databaseProof) ||
       !inventoriesMatch(previousEvidence.dataInventory, evidence.dataInventory) ||
       !inventoriesMatch(
         previousEvidence.storageInventory,
@@ -462,6 +475,11 @@ export async function captureLegacyTargetEvidence({
     throw new Error('targetSecondStartupNotIdempotent');
   }
   return evidence;
+}
+
+function withoutDatabaseBytes(inventory) {
+  return inventory.map(entry => entry.kind === 'file' && entry.relativePath === 'eky.sqlite'
+    ? { kind: entry.kind, relativePath: entry.relativePath } : entry);
 }
 
 function validInventory(value) {
@@ -523,6 +541,7 @@ export function validateLegacyTargetEvidence(value) {
       'acceptedCurrentClass',
       'acceptedLegacyClass',
       'dataInventory',
+      'databaseProof',
       'registrySha256',
       'registrySize',
       'runtimeInstanceId',
@@ -530,7 +549,8 @@ export function validateLegacyTargetEvidence(value) {
       'storageInventory',
       'workspaceId',
     ]) ||
-    value.schemaVersion !== 1 ||
+    value.schemaVersion !== 2 ||
+    (value.databaseProof !== null && !isLegacyDatabaseProof(value.databaseProof)) ||
     value.acceptedCurrentClass !== 'targetIdentity' ||
     !['missing', 'sourceIdentity'].includes(value.acceptedLegacyClass) ||
     !validInventory(value.dataInventory) ||

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApprovedInvoiceEmailDeliveryError } from './approvedInvoiceEmailDeliveryError.js';
 import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
 import { prepareApprovedInvoiceEmailSmtpTest } from './prepareApprovedInvoiceEmailSmtpTest.js';
+import { createEmailDocument } from './loadInvoiceEmailDeliveryDocument.fixture.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
 import type { InvoiceEmailSendAttemptStore } from '../ports/invoiceEmailSendAttemptStore.js';
@@ -42,7 +43,7 @@ describe('prepareApprovedInvoiceEmailSmtpTest', () => {
     await expect(
       prepareApprovedInvoiceEmailSmtpTest(createInput(), dependencies),
     ).resolves.toEqual({
-      attachment: { fileName: 'invoice.pdf', sizeBytes: 2048 },
+      attachment: { fileName: 'lasku-20260001.pdf', sizeBytes: createEmailDocument().content.byteLength },
       attemptId: 'attempt-1',
       authorizationToken: 'one-time-authorization',
       expiresAt: '2026-07-16T10:01:00.000Z',
@@ -94,7 +95,7 @@ describe('prepareApprovedInvoiceEmailSmtpTest', () => {
     ).rejects.toBeInstanceOf(ApprovedInvoiceNotFoundError);
 
     expect(dependencies.invoiceEmailSettingsReader.getEmailSettings).not.toHaveBeenCalled();
-    expect(dependencies.ensureApprovedInvoicePdfDocument).not.toHaveBeenCalled();
+    expect(dependencies.loadInvoiceEmailDeliveryDocument).not.toHaveBeenCalled();
     expect(dependencies.invoiceEmailSendAttemptStore.prepare).not.toHaveBeenCalled();
   });
 
@@ -115,7 +116,7 @@ describe('prepareApprovedInvoiceEmailSmtpTest', () => {
       ),
     ).rejects.toBeInstanceOf(AuthorizationError);
     expect(dependencies.invoiceEmailSettingsReader.getEmailSettings).not.toHaveBeenCalled();
-    expect(dependencies.ensureApprovedInvoicePdfDocument).not.toHaveBeenCalled();
+    expect(dependencies.loadInvoiceEmailDeliveryDocument).not.toHaveBeenCalled();
   });
 });
 
@@ -126,18 +127,11 @@ function createDependencies(options: {
 } = {}) {
   return {
     approvedInvoiceReader: new FakeApprovedInvoiceReader(options.invoice),
-    ensureApprovedInvoicePdfDocument: vi.fn(async () => ({
-      companyId: 'company-1',
-      createdAt: '2026-07-16T10:00:00.000Z',
-      documentType: 'approved_invoice_pdf' as const,
-      fileName: 'invoice.pdf',
-      id: 'document-1',
-      invoiceId: 'invoice-1',
-      mimeType: 'application/pdf' as const,
-      sha256: '0'.repeat(64),
-      sizeBytes: 2048,
-      storagePath: 'company-1/invoice-1/invoice.pdf',
-    })),
+    loadInvoiceEmailDeliveryDocument: vi.fn(async () => createEmailDocument()),
+    invoiceDeliveryEventReader: {
+      requiresLegacyDeliveryReview: vi.fn(async () => false),
+      hasUnresolvedDeliveryEvent: vi.fn(async () => false),
+    },
     invoiceEmailSettingsReader: {
       getEmailSettings: vi.fn(async () => ({
         emailDeliveryProvider: options.provider ?? 'dnaSmtp',

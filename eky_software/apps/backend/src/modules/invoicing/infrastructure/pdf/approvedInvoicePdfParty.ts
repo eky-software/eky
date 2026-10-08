@@ -1,4 +1,4 @@
-import type { ApprovedInvoiceView } from '../../domain/approvedInvoiceView.js';
+import type { ApprovedInvoicePdfContent } from '../../domain/approvedInvoicePdfContent.js';
 import { drawLabelValueLines } from './approvedInvoicePdfLayout.js';
 
 export interface PartySnapshot {
@@ -65,7 +65,7 @@ export function drawAddressLines(
 }
 
 export function getBillingRecipient(
-  invoice: ApprovedInvoiceView,
+  invoice: ApprovedInvoicePdfContent,
 ): PartySnapshot {
   if (invoice.billingRecipientCustomerId) {
     return {

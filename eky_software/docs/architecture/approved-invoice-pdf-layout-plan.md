@@ -1,21 +1,46 @@
 # Approved Invoice PDF Layout Plan
 
-Tämä dokumentti kuvaa hyväksytyn laskun PDF-rendererin nykyisen piirtojärjestyksen
-ja muuttumattomat layout-sopimukset ennen käyttäytymisen säilyttävää
-rakenteellista jakoa. Auditoinnin baseline on commit `25a0004`.
+Tämä dokumentti omistaa hyväksytyn laskun PDF-rendererin piirtojärjestyksen
+ja muuttumattomat layout-sopimukset. Rakenteellista jakoa edeltävän
+auditoinnin historiallinen baseline on commit `25a0004`.
 
 Dokumentti ei muuta laskun snapshot-dataa, summia, PDF:n ulkoasua,
 tiedostotallennusta tai generointipolkua.
 
 ## Renderöintipolku
 
-`renderApprovedInvoicePdf` saa ainoastaan `ApprovedInvoiceView`-snapshotin. Se
-luo A4-kokoisen `PDFDocument`-olion, kerää byte-chunkit muistiin, kutsuu
+`renderApprovedInvoicePdf` saa kapean `ApprovedInvoicePdfContent`-sisällön.
+Siinä ovat vain nykyisen piirron tarvitsemat snapshot-kentät, rivit sekä
+valmiit summat ja ALV-erittely, eivät elävä status, maksut tai peruutustiedot.
+Renderer luo A4-kokoisen `PDFDocument`-olion, kerää byte-chunkit muistiin, kutsuu
 piirto-orkestrointia ja palauttaa lopuksi yhden `Uint8Array`-arvon.
 
-Generointikäyttötapa hakee hyväksytyn laskun snapshotin yritysrajatulla
-reader-portilla, täydentää ALV-erittelyn auktoritatiivisista laskusummista ja
-antaa snapshotin rendererille. Renderer ei lue tietokantaa, Company Settingsiä,
+Keskeneräisessä [B3-sovituksessa](release-0.3.0-m1-preparation-plan.md#b3-b5-toteutusvalmistelu)
+`toInvoiceRevisionPdfContent` muuntaa validoidun täsmärevision tähän muotoon
+ilman summien uudelleenlaskentaa. `approval` ja `validatedLegacySnapshot`
+vaativat authoritative-erittelyn; kelvollinen legacy/unavailable-historia
+tuottaa erillisen turvallisen unavailable-virheen eikä lupaa regeneroida.
+Puuttuva hyvityksen viite esitetään tyhjänä, mutta pysyvä null ei muutu.
+
+Työpuun generointikäyttötapa lukee nyt täsmärevision eikä käytä elävää
+`ApprovedInvoiceView`-näkymää tai laske ALV-erittelyä uudelleen. Tavallisen
+laskun ja hyvityksen hyväksyntä välittävät juuri palautuneen revisioavaimen
+PDF-hookille. Manuaalinen generointi valitsee nykyavaimen ja käyttää samaa
+täsmällistä polkua. Tavut kirjoitetaan oman ehdokkaan polkuun ennen
+ehdollista metadatan julkaisua. Vanhan työn valmistuminen ei korvaa uudempaa
+revisiota; välimuisti varmennetaan tavutasolla ja sen nykykelpoisuus luetaan
+ilman kirjoitusta. Puuttuvaa tai rikkinäistä historiatiedostoa ei regeneroida.
+Generaattori, hyväksyntäkoukut ja nykyesikatselun GET-/metadataluku ovat
+kohdetodennettuja. Esikatselu valitsee täsmädokumentin, varmentaa tavut ja
+tarkistaa valinnan uudelleen. Muuttunut valinta hylätään eikä luku koskaan
+generoi tai korjaa PDF:ää. Peruutettu lasku säilyy luettavana, reopened-
+esikatselu irrotetaan ja eksplisiittinen legacy-alkuperäinen säilyttää oman
+provenanssinsa. Tapahtumaan sidotun historian backend-luku varmentaa tarkan
+dokumentin myös nykyrevision vaihtuessa; se ei käytä rendereriä tai
+nykyesikatselun valintaa. Historiallinen null on eri tulos kuin rikkinäinen
+ei-null-viite. Historian client/UI/native-ketju, toimitusketju ja B5:n
+palautusnäyttö ovat vielä kesken.
+Renderer ei lue tietokantaa, Company Settingsiä,
 Customers-moduulia tai laskuluonnosta eikä laske laskun summia uudelleen.
 
 ## Piirtojärjestys Ja Osiot
@@ -71,8 +96,9 @@ rakenteellisen siirron yhteydessä.
 - nykyiset `formatPdf*`-funktiot säilyvät ainoana PDF-formatointipolkuna
 - renderer käyttää valmiita snapshot-summia eikä tee rahalaskentaa
 - PDF-metadata, chunkien keräys ja bytejen palautustapa säilyvät
-- `renderApprovedInvoicePdf`-export ja sen allekirjoitus säilyvät
+- `renderApprovedInvoicePdf`-export ja byte-paluu säilyvät; B3:n kavennettu
+  sisältöparametri kuvataan yllä, eikä se tuo rendereriin julkaisuvaltuutta
 
-Auditoinnissa ei löytynyt aktiivista PDF:n snapshot-, laskenta- tai
-tallennusrajan virhettä. Jako voidaan tehdä mekaanisesti nimettyihin
-piirto-osioihin ilman yleistä PDF-frameworkia tai shared-pakettia.
+Historiallinen `25a0004`-auditointi koski piirto-osioiden rakenteellista
+jakoa ilman yleistä PDF-frameworkia tai shared-pakettia. Se ei ole B3:n
+revision, tallennusrajan tai toimitushistorian hyväksyntätodiste.

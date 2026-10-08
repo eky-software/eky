@@ -3,8 +3,9 @@ import {
   type ApprovedInvoiceEmailPreview,
   type EkyApiClient,
 } from '@eky/api-client';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
+import { getInvoiceLegacyDeliveryReviewErrorMessage } from './invoiceLegacyDeliveryReviewError.js';
 import { uiText } from '../../../i18n/fi.js';
 
 type ApprovedInvoiceEmailDryRunClient = Pick<
@@ -27,10 +28,22 @@ export function useApprovedInvoiceEmailDryRun(
   const [email, setEmail] = useState<ApprovedInvoiceEmailPreview | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isPreparing, setIsPreparing] = useState(false);
+  const generation = useRef(0);
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      ++generation.current;
+    };
+  }, []);
 
   function clearEmail(): void {
+    ++generation.current;
     setEmail(null);
     setErrorMessage(null);
+    setIsPreparing(false);
   }
 
   function clearError(): void {
@@ -40,6 +53,11 @@ export function useApprovedInvoiceEmailDryRun(
   async function prepareEmail(
     id: string,
   ): Promise<ApprovedInvoiceEmailPreview | null> {
+    if (!isMounted.current) return null;
+    const requestGeneration = ++generation.current;
+    const isCurrent = (): boolean =>
+      isMounted.current && requestGeneration === generation.current;
+    setEmail(null);
     setIsPreparing(true);
     setErrorMessage(null);
 
@@ -48,15 +66,18 @@ export function useApprovedInvoiceEmailDryRun(
         apiClient,
         id,
       );
+      if (!isCurrent()) return null;
       setEmail(preparedEmail);
 
       return preparedEmail;
     } catch (error) {
-      setErrorMessage(getApprovedInvoiceEmailDryRunErrorMessage(error));
+      if (isCurrent()) {
+        setErrorMessage(getApprovedInvoiceEmailDryRunErrorMessage(error));
+      }
 
       return null;
     } finally {
-      setIsPreparing(false);
+      if (isCurrent()) setIsPreparing(false);
     }
   }
 
@@ -80,6 +101,12 @@ export function prepareApprovedInvoiceEmailDryRunWithClient(
 export function getApprovedInvoiceEmailDryRunErrorMessage(
   error: unknown,
 ): string {
+  const legacyReviewMessage = getInvoiceLegacyDeliveryReviewErrorMessage(error);
+
+  if (legacyReviewMessage !== null) {
+    return legacyReviewMessage;
+  }
+
   if (error instanceof EkyApiError && error.status === 404) {
     return uiText.invoicing.approvedInvoiceNotFound;
   }

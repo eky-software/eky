@@ -4,9 +4,12 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import Database from 'better-sqlite3';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { runMigrations } from '../../database/migration/runMigrations.js';
+import { resolveMigrationsDirectory, runMigrations } from '../../database/migration/runMigrations.js';
+import { inspectMigrationStartupState } from '../../database/migration/inspectMigrationStartupState.js';
+import { readMigrationManifest } from '../../database/migration/migrationManifest.js';
+import { SqliteInvoiceBackupArtifactCatalog } from '../../modules/invoicing/infrastructure/sqliteInvoiceBackupArtifactCatalog.js';
 import { readLocalRuntimeIdentity } from '../../database/localRuntimeIdentityReader.js';
 import { createProfileBackupIdentity } from './inspectSqliteProfileDatabase.js';
 import { CurrentActiveProfileValidationService } from './validateActiveProfile.js';
@@ -15,6 +18,7 @@ const roots: string[] = [];
 const databases: Database.Database[] = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const database of databases.splice(0)) {
     database.close();
   }
@@ -34,20 +38,25 @@ describe('active profile validation', () => {
     database.pragma('foreign_keys = ON');
     await runMigrations(database);
     const runtimeIdentity = readLocalRuntimeIdentity(database);
+    const history = inspectMigrationStartupState(database, resolveMigrationsDirectory());
+    const readHistory = vi.fn(() => history);
+    const catalogRead = vi.spyOn(SqliteInvoiceBackupArtifactCatalog.prototype, 'listAuthoritativeArtifacts');
 
     const service = new CurrentActiveProfileValidationService(
       database,
       join(root, 'storage', 'invoices'),
-      () => 'c'.repeat(64),
+      readHistory,
     );
 
     await expect(service.validateActiveProfile()).resolves.toEqual({
       artifactCount: 0,
       artifactTotalByteSize: 0,
       databaseHealth: 'healthy',
-      migrationChainIdentity: 'c'.repeat(64),
+      migrationChainIdentity: history.migrationChainIdentity,
       profileId: createProfileBackupIdentity(runtimeIdentity.companyId),
     });
+    expect(readHistory).toHaveBeenCalledTimes(1);
+    expect(readHistory.mock.invocationCallOrder[0]).toBeLessThan(catalogRead.mock.invocationCallOrder[0]!);
   });
 
   it('validates every database-owned PDF from active storage', async () => {
@@ -91,6 +100,18 @@ describe('active profile validation', () => {
     await expect(
       fixture.service.validateActiveProfile(),
     ).rejects.toThrow('ACTIVE_PROFILE_VALIDATION_FAILED');
+  });
+
+  it('does not read the artifact catalog when migration history inspection fails', async () => {
+    const database = new Database(':memory:');
+    databases.push(database);
+    await runMigrations(database);
+    const readHistory = vi.fn(() => { throw new Error('synthetic history failure'); });
+    const catalogRead = vi.spyOn(SqliteInvoiceBackupArtifactCatalog.prototype, 'listAuthoritativeArtifacts');
+    const service = new CurrentActiveProfileValidationService(database, resolveMigrationsDirectory(), readHistory);
+    await expect(service.validateActiveProfile()).rejects.toThrow('ACTIVE_PROFILE_VALIDATION_FAILED');
+    expect(readHistory).toHaveBeenCalledTimes(1);
+    expect(catalogRead).not.toHaveBeenCalled();
   });
 });
 
@@ -197,7 +218,11 @@ async function createFixture(): Promise<Fixture> {
     service: new CurrentActiveProfileValidationService(
       database,
       storageRoot,
-      () => 'c'.repeat(64),
+      () => ({
+        appliedMigrationNames: readMigrationManifest(resolveMigrationsDirectory())
+          .slice(0, 38).map(entry => entry.fileName),
+        migrationChainIdentity: 'c'.repeat(64),
+      }),
     ),
   };
 }

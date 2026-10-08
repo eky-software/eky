@@ -12,7 +12,7 @@ import {
   type DatabaseConnection,
 } from '../database/connection/createDatabaseConnection.js';
 import { readLocalRuntimeIdentity } from '../database/localRuntimeIdentityReader.js';
-import { runMigrations } from '../database/migration/runMigrations.js';
+import { resolveMigrationsDirectory, runMigrations } from '../database/migration/runMigrations.js';
 import { MigrationRunError } from '../database/migration/migrationRunError.js';
 import {
   inspectMigrationStartupState,
@@ -57,6 +57,10 @@ import type { ProfileSnapshotServiceRegistration } from '../runtime/profileSnaps
 import { StagedProfileSnapshotValidationService } from '../runtime/profileSnapshot/validateProfileSnapshot.js';
 import { CurrentActiveProfileValidationService } from '../runtime/profileSnapshot/validateActiveProfile.js';
 import { SqliteInvoiceBackupArtifactCatalog } from '../modules/invoicing/infrastructure/sqliteInvoiceBackupArtifactCatalog.js';
+import {
+  selectInvoiceBackupArtifactCatalogSchema,
+  type InvoiceBackupArtifactCatalogSchema,
+} from '../modules/invoicing/infrastructure/selectInvoiceBackupArtifactCatalogSchema.js';
 
 const defaultAppVersion = '0.0.0';
 
@@ -90,6 +94,7 @@ export async function createApp(
   options: CreateAppOptions = {},
 ): Promise<Hono<BackendEnvironment>> {
   const appVersion = options.appVersion ?? defaultAppVersion;
+  const migrationsDirectory = resolveMigrationsDirectory(options.migrationsDirectory);
   const operationalIdentity = resolveOperationalRuntimeIdentity({
     appVersion,
     ...(options.operationalIdentity === undefined
@@ -173,10 +178,7 @@ export async function createApp(
     options.profileMaintenanceState ?? new ProfileMaintenanceState();
 
   if (options.profileSnapshotServiceRegistration !== undefined) {
-    if (
-      options.migrationsDirectory === undefined ||
-      options.invoiceDocumentStorageRoot === undefined
-    ) {
+    if (options.invoiceDocumentStorageRoot === undefined) {
       database.close();
       throw new Error(
         'Profile snapshot runtime paths must be configured.',
@@ -185,25 +187,25 @@ export async function createApp(
     registerProfileSnapshotServices({
       database,
       invoiceDocumentStorageRoot: options.invoiceDocumentStorageRoot,
-      migrationsDirectory: options.migrationsDirectory,
+      migrationsDirectory,
       profileMaintenanceState,
       registration: options.profileSnapshotServiceRegistration,
     });
   }
 
   if (options.beforeMigrations !== undefined) {
-    if (options.migrationsDirectory === undefined) {
-      database.close();
-      throw new Error('Migration startup paths must be configured.');
-    }
-
     try {
       const inspection = inspectMigrationStartupState(
         database,
-        options.migrationsDirectory,
+        migrationsDirectory,
         options.migrationStartupPolicy,
       );
-      await options.beforeMigrations(inspection);
+      await options.beforeMigrations(Object.freeze({
+        appliedMigrationCount: inspection.appliedMigrationCount,
+        migrationChainIdentity: inspection.migrationChainIdentity,
+        pendingMigrationCount: inspection.pendingMigrationCount,
+        profileState: inspection.profileState,
+      }));
     } catch {
       database.close();
       throw new Error(
@@ -213,6 +215,7 @@ export async function createApp(
   }
 
   const migrationStartedAt = Date.now();
+  let invoiceCatalogSchema: InvoiceBackupArtifactCatalogSchema;
   operationalLogger.write(
     createBackendOperationalEvent(
       { eventName: 'migration.started', stage: 'startup' },
@@ -223,15 +226,19 @@ export async function createApp(
     await runMigrations(
       database,
       {
-        ...(options.migrationsDirectory === undefined
-          ? {}
-          : { migrationsDirectory: options.migrationsDirectory }),
+        migrationsDirectory,
         releaseIdentity: {
           appVersion: operationalIdentity.appVersion,
           buildRevision: operationalIdentity.buildRevision,
         },
       },
     );
+    const current = inspectMigrationStartupState(database, migrationsDirectory);
+    if (current.pendingMigrationCount !== 0) {
+      throw new Error('MIGRATION_STARTUP_INSPECTION_FAILED');
+    }
+    readLocalRuntimeIdentity(database);
+    invoiceCatalogSchema = selectInvoiceBackupArtifactCatalogSchema(current);
     operationalLogger.write(
       createBackendOperationalEvent(
         {
@@ -396,6 +403,7 @@ export async function createApp(
   app.route('/', companySettingsComposition.routes);
 
   const invoicingComposition = createInvoicingComposition({
+    schema: invoiceCatalogSchema,
     companyEmailSecretReader,
     customerAccessReader: customersComposition.customerAccessReader,
     deliveredInvoiceArchiveTaskSink:
@@ -465,7 +473,17 @@ function registerProfileSnapshotServices(input: {
   registration: ProfileSnapshotServiceRegistration;
 }): void {
   const snapshotService = createConsistentProfileSnapshotService({
-    catalog: new SqliteInvoiceBackupArtifactCatalog(input.database),
+    catalog: {
+      listAuthoritativeArtifacts: () => {
+        const history = inspectMigrationStartupState(
+          input.database, input.migrationsDirectory,
+        );
+        readLocalRuntimeIdentity(input.database);
+        return new SqliteInvoiceBackupArtifactCatalog(
+          input.database, selectInvoiceBackupArtifactCatalogSchema(history),
+        ).listAuthoritativeArtifacts();
+      },
+    },
     database: input.database,
     invoiceDocumentStorageRoot: input.invoiceDocumentStorageRoot,
     maintenanceState: input.profileMaintenanceState,
@@ -480,11 +498,13 @@ function registerProfileSnapshotServices(input: {
   const activeValidationService = new CurrentActiveProfileValidationService(
     input.database,
     input.invoiceDocumentStorageRoot,
-    () =>
-      inspectMigrationStartupState(
+    () => {
+      const history = inspectMigrationStartupState(
         input.database,
         input.migrationsDirectory,
-      ).migrationChainIdentity,
+      );
+      return history;
+    },
   );
   input.registration.register({
     createProfileSnapshot: (request) =>

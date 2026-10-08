@@ -1,4 +1,5 @@
 import type { ApprovedInvoiceStatus } from '../domain/approvedInvoice.js';
+import type { InvoiceRevisionKey } from '../domain/invoiceContentRevision.js';
 import type { InvoiceNumberingMode } from '../domain/invoiceNumbering.js';
 import type { ReferenceNumberType } from '../domain/invoiceReferenceNumber.js';
 
@@ -13,6 +14,7 @@ export interface ApproveInvoiceDraftPersistenceInput {
 }
 
 export interface ApprovedInvoiceResult {
+  revisionKey: InvoiceRevisionKey;
   invoiceId: string;
   draftId: string;
   invoiceNumber: string;
@@ -35,7 +37,6 @@ export interface ReopenApprovedInvoicePersistenceInput {
 export interface ReopenedApprovedInvoiceResult {
   invoiceId: string;
   draftId: string;
-  removedDocumentStoragePaths: string[];
 }
 
 export interface MarkApprovedInvoiceSentPersistenceInput {

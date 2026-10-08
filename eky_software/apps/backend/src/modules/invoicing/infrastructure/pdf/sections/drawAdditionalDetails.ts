@@ -1,4 +1,4 @@
-import type { ApprovedInvoiceView } from '../../../domain/approvedInvoiceView.js';
+import type { ApprovedInvoicePdfContent } from '../../../domain/approvedInvoicePdfContent.js';
 import {
   formatPdfDate,
   formatPdfIban,
@@ -12,7 +12,7 @@ interface AdditionalDetailLine {
 
 export function drawAdditionalDetails(
   doc: PDFKit.PDFDocument,
-  invoice: ApprovedInvoiceView,
+  invoice: ApprovedInvoicePdfContent,
   y: number,
 ): number {
   const lines = [
@@ -68,7 +68,7 @@ export function drawAdditionalDetails(
 }
 
 function createPerformancePeriodLine(
-  invoice: ApprovedInvoiceView,
+  invoice: ApprovedInvoicePdfContent,
 ): AdditionalDetailLine | null {
   if (invoice.performancePeriod.type === 'singleDate') {
     return {

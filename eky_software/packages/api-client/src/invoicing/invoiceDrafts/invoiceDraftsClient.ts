@@ -1,4 +1,5 @@
 import { requestJson } from '../../http.js';
+import { readInvoiceDraftDeliveryHistoryResponse } from './invoiceDraftDeliveryHistoryResponse.js';
 import {
   readApproveInvoiceDraftResponse,
   readDeleteInvoiceDraftResponse,
@@ -74,6 +75,15 @@ export function createInvoiceDraftsApi(
       );
 
       return readInvoiceDraftResponse(responseBody);
+    },
+
+    async getInvoiceDraftDeliveryHistory(id) {
+      const responseBody = await requestJson(
+        fetchImplementation,
+        baseUrl,
+        `/invoice-drafts/${encodeURIComponent(id)}/delivery-history`,
+      );
+      return readInvoiceDraftDeliveryHistoryResponse(responseBody);
     },
 
     async getInvoiceIssuanceReadiness(

@@ -4,6 +4,7 @@ import { dirname, isAbsolute, resolve } from 'node:path';
 
 import { writeJsonAtomicExclusive } from './cleanInstallUninstallContracts.mjs';
 import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
+import { LEGACY_DATABASE_ERROR_CODES } from './legacyUpgradeDatabaseEvidence.mjs';
 
 export const LEGACY_UPGRADE_SCENARIO = 'historicalLegacyUpgrade';
 export const LEGACY_UPGRADE_WORKER_EXIT_CODES = Object.freeze({
@@ -19,6 +20,19 @@ export const LEGACY_PROCESS_OBSERVATIONS = Object.freeze([
   'processOperationFailed',
   'processExited',
   'processClosed',
+]);
+
+export const LEGACY_WORKER_OBSERVATION_OPERATION = 'legacyUpgradeWorker';
+export const LEGACY_RUNTIME_PROCESS_ROLES = Object.freeze([
+  'sourceProductInspection', 'targetProductInspection', 'sourceInstall', 'majorUpgrade',
+  'sourceApplication', 'targetApplication', 'gracefulClose',
+]);
+export const LEGACY_WORKER_OBSERVATION_PHASES = Object.freeze([
+  'requestValidated', 'artifactVerification', 'runtimePreparation', 'resultPublication',
+  'lifecycle', 'preflight', 'artifactBeforeInstall', 'sourcePostcondition',
+  'sourcePackagedSmoke', 'sourceNormalStartup', 'legacyBusinessEvidence',
+  'targetPostcondition', 'targetPayload', 'targetFirstStartup', 'targetSecondStartup',
+  'artifactAfterStartup', ...LEGACY_RUNTIME_PROCESS_ROLES,
 ]);
 
 export const LEGACY_FOOTPRINT_ERROR_CODES = Object.freeze({
@@ -47,11 +61,33 @@ export const LEGACY_FOOTPRINT_ERROR_CODES = Object.freeze({
 });
 
 export const LEGACY_PAYLOAD_ERROR_CODES = Object.freeze({
+  legacyDatabasePackageBindingInvalid: LEGACY_DATABASE_ERROR_CODES.legacyDatabasePackageBindingInvalid,
   targetPayloadInspectionFailed: 'WINDOWS_ACCEPTANCE_LEGACY_TARGET_PAYLOAD_INSPECTION_FAILED',
   targetPayloadFileCountMismatch: 'WINDOWS_ACCEPTANCE_LEGACY_TARGET_PAYLOAD_FILE_COUNT_MISMATCH',
   targetPayloadSizeMismatch: 'WINDOWS_ACCEPTANCE_LEGACY_TARGET_PAYLOAD_SIZE_MISMATCH',
   targetPayloadIdentityMismatch: 'WINDOWS_ACCEPTANCE_LEGACY_TARGET_PAYLOAD_IDENTITY_MISMATCH',
   targetPayloadSummaryMismatch: 'WINDOWS_ACCEPTANCE_LEGACY_TARGET_PAYLOAD_SUMMARY_MISMATCH',
+});
+
+export const LEGACY_STARTUP_ERROR_CODES = Object.freeze({
+  ...LEGACY_DATABASE_ERROR_CODES,
+  targetBootstrapFailed: 'WINDOWS_ACCEPTANCE_LEGACY_TARGET_BOOTSTRAP_FAILED',
+  targetApplicationExitedEarly: 'WINDOWS_ACCEPTANCE_LEGACY_TARGET_APPLICATION_EXITED_EARLY',
+  targetOperationalLogInvalid: 'WINDOWS_ACCEPTANCE_LEGACY_TARGET_OPERATIONAL_LOG_INVALID',
+  targetGracefulShutdownFailed: 'WINDOWS_ACCEPTANCE_LEGACY_TARGET_GRACEFUL_SHUTDOWN_FAILED',
+  targetShutdownEvidenceInvalid: 'WINDOWS_ACCEPTANCE_LEGACY_TARGET_SHUTDOWN_EVIDENCE_INVALID',
+  targetStartupPreconditionFailed: 'WINDOWS_ACCEPTANCE_LEGACY_TARGET_STARTUP_PRECONDITION_FAILED',
+  acceptedBuildInvalid: 'WINDOWS_ACCEPTANCE_LEGACY_TARGET_ACCEPTED_BUILD_INVALID',
+  acceptedBuildIdentityInvalid: 'WINDOWS_ACCEPTANCE_LEGACY_TARGET_ACCEPTED_BUILD_IDENTITY_INVALID',
+  workspaceRegistryInvalid: 'WINDOWS_ACCEPTANCE_LEGACY_TARGET_WORKSPACE_REGISTRY_INVALID',
+  workspaceAdoptionResidueInvalid: 'WINDOWS_ACCEPTANCE_LEGACY_TARGET_ADOPTION_RESIDUE_INVALID',
+  targetRuntimeIdentityInvalid: 'WINDOWS_ACCEPTANCE_LEGACY_TARGET_RUNTIME_IDENTITY_INVALID',
+  legacySourceDataChanged: 'WINDOWS_ACCEPTANCE_LEGACY_SOURCE_DATA_CHANGED',
+  legacySourceStorageChanged: 'WINDOWS_ACCEPTANCE_LEGACY_SOURCE_STORAGE_CHANGED',
+  legacyAdoptedDataMismatch: 'WINDOWS_ACCEPTANCE_LEGACY_ADOPTED_DATA_MISMATCH',
+  legacyAdoptedStorageMismatch: 'WINDOWS_ACCEPTANCE_LEGACY_ADOPTED_STORAGE_MISMATCH',
+  targetSecondStartupNotIdempotent: 'WINDOWS_ACCEPTANCE_LEGACY_TARGET_SECOND_START_NOT_IDEMPOTENT',
+  legacyTargetEvidenceInvalid: 'WINDOWS_ACCEPTANCE_LEGACY_TARGET_EVIDENCE_INVALID',
 });
 
 const SHA_256_PATTERN = /^[0-9a-f]{64}$/;

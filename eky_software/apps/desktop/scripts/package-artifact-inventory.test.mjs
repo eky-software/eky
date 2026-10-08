@@ -179,6 +179,7 @@ test('allows only the exact named packaged smoke helpers', async () => {
     'dist/main/packagedSmoke.js',
     'export {};',
   );
+  await writeFixture(root, 'dist/profileBackup/packagedLegacyProfileSmoke.js', 'export {};');
   await writeFixture(root, 'dist/main/unplannedSmoke.js', 'export {};');
 
   await assert.rejects(
@@ -424,12 +425,22 @@ test('enforces stage-specific path, depth, file and total byte boundaries', asyn
 
   const totalSizeRoot = await createStageFixture(
     'node_modules/vendor/first.bin',
-    Buffer.alloc(1_100_000),
+    Buffer.alloc(1_179_648),
   );
   await writeFixture(
     totalSizeRoot,
     'node_modules/vendor/second.bin',
-    Buffer.alloc(1_100_000),
+    Buffer.alloc(1_179_648),
+  );
+  const atTotalSizeLimit = await inspectPackageArtifactInventory({
+    root: totalSizeRoot,
+    stage: 'applicationStage',
+  });
+  assert.equal(atTotalSizeLimit.totalByteSize, 2_359_296);
+  await writeFixture(
+    totalSizeRoot,
+    'node_modules/vendor/second.bin',
+    Buffer.alloc(1_179_649),
   );
   await assert.rejects(
     inspectPackageArtifactInventory({

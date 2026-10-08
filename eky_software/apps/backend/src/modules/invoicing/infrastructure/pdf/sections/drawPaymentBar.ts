@@ -1,4 +1,4 @@
-import type { ApprovedInvoiceView } from '../../../domain/approvedInvoiceView.js';
+import type { ApprovedInvoicePdfContent } from '../../../domain/approvedInvoicePdfContent.js';
 import {
   formatPdfCents,
   formatPdfDate,
@@ -10,7 +10,7 @@ import {
 
 export function drawPaymentBar(
   doc: PDFKit.PDFDocument,
-  invoice: ApprovedInvoiceView,
+  invoice: ApprovedInvoicePdfContent,
   y: number,
 ): void {
   const x = invoicePdfLayout.margin;

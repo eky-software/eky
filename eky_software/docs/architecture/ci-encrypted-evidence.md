@@ -117,6 +117,7 @@ raakaa testiaineistoa eivätkä saa yleistä koko jobin tulostekaappausta.
 | Backend/web/Electron-fixture | Nykyisten redaktoitujen stdout/stderr-lukijoiden rajattu otos omassa suoritusyrityskohtaisessa tiedostossaan myös testin rungon tai siivouksen epäonnistuessa. | Otos säilyy ennen muistitiedon katoamista, tiedosto liitetään nykyisen fixturen jälkiraportoinnissa. Windows-Electronin lähde on natiivi omistajaprosessi; workloadin omaa putkea ei muuteta tällä työllä. Käynnistyksen tai siivouksen kriittiselle polulle ei lisätä tiedostokuittausta. |
 | Electronin lifecycle-todiste | Fixturen jo kirjoittama `test-results/run-<uuid>/<testin suoritusyritys>/electron-lifecycle.json` muuttamattomina tavuina. | Vain tämä täsmällinen nimi ja syvyys; ei yleistä JSON- tai liitekansion keräystä. `attempt`, käynnistyssukupolvet, `publicCloseFailure`, `ownership` ja `cleanup` säilyvät erillisinä havaintoina. Samat koko-, linkki- ja muuttumattomuusrajat kuin muilla lähteillä. |
 | Native-komennot ja supervisorin sopimustestit | Nimetyt vaihe-, worker- ja caller-tulokset sekä olemassa olevat yksityiset prosessitulosteet. | Ei request/config-tiedostoja, profiileja tai tietokantoja. Siivouksen raakatulos säilyy erillään alkuperäisestä hylkäyksestä. Tarkoituksella lukemattoman putken koe säilyttää oman sopimuksensa. |
+| Historical-legacy-käynnistyksen syyote | Legacy-komennon `fixtureCleanup/legacy-startup-terminal.json`-tiedostosta vain varmennettu ajosidonta ja `startupEvidence`-projektio. | Nykyinen terminal-kirjoitus säilyttää otteen ennen profiilin poistoa. Ei koko operational-lokia, profiilia, tietokantaa tai terminalin muuta sisältöä. Syykoodit ja vaiheet eivät tule julkiseen testitulosteeseen. |
 | Synteettinen MSI-versiopolitiikan koe | Oman supervisor-testijuuren `policy-result.json` sekä numeroidut `source`, `target` ja `uninstall` -MSI-lokit muuttamattomina tavuina. | Vain suoraan testijuuren alla olevat nimet; ei descriptor-, request-, profiili- tai tietokantatiedostoja. Keskeytyneen MSI-komennon osittainen loki voidaan säilyttää ilman workerin lopputulosta. Samat koko-, linkki- ja muuttumattomuusrajat kuin muilla lähteillä. |
 | Packaged smoke | Rajattu prosessituloste ja nykyinen smoke-tulos. | Epäonnistuneen testin juurta ei poisteta; keräin ei lue sen profiilia. Tyhjentynyt tuloste ei todista onnistunutta käynnistystä. |
 | Muut komennot ja valmistelu | Nykyinen turvallinen GitHub-komentoloki. | Salattu keräys ei palauta tulostetta, jota aliohjelma ei tuottanut tai säilyttänyt. Riippuvuustyökalun raakavirheet jäävät erikseen rajatuiksi pois. |
@@ -129,7 +130,14 @@ Vain tunnettujen testiraporttien nimialueet tutkitaan. Tiedostolinkit,
 uudelleenohjaukset ja muuttuneet tiedostot hylätään.
 Playwright-raportin projektio merkitään manifestiin: alkuperäisen lähteen
 tiiviste ja salattavan projektion tiiviste eivät ole sama todiste.
+Legacy-syyotteen manifesti erottaa samalla tavalla alkuperäisen
+terminal-tiedoston tiivisteen ja salattavan projektion tiivisteen.
 Muiden sallittujen tiedostojen tavut säilyvät muuttamattomina.
+Packaged-legacy-palautus käyttää samoja `eky-desktop-smoke/<token>`-juuren
+nimettyjä tulos- ja prosessitulostetiedostoja. Keräyksen regressio varmistaa
+niiden säilymisen myös OS-native-temp-juuresta; `legacy-input`-backup,
+identiteetti, vertailutila ja käyttäjäprofiili jäävät pois. Tämä ei lisää
+uutta kerättävää tiedostolajia tai laajenna julkaisurajaa.
 Electronin lifecycle-tiedosto kerätään omana lähteenään, koska raportin
 inline-liitteiden sisältö poistetaan edelleen. Keräin ei päättele julkisen
 sulkukutsun aikakatkaisusta prosessipuun tilaa eikä muuta cleanup-hylkäystä
@@ -140,6 +148,113 @@ Nykyinen fixture kirjoittaa lifecycle-tiedoston epäonnistuessaan tai
 ensikäynnistystodisteen yhteydessä. Tavallinen läpäissyt testi ei siis
 välttämättä tuota sitä. Keräys säilyttää vain tiedostossa olevat kentät;
 puuttuvaa käynnistyssukupolvea tai omistajan lopputilaa ei päätellä.
+
+### Legacy-käynnistyksen rajattu syyote
+
+Nykyinen legacy-komennon omistaja lukee vain oman eristetyn
+testikäynnistyksen desktop-lokin sen jälkeen, kun skenaarion olemassa oleva
+supervisor-tulos todistaa prosessipuun poissaolon. Enintään kaksi
+`desktop.bootstrapFailed`-tapahtumaa sidotaan skenaarion `runNonce`-arvoon,
+artifact-descriptorin tiivisteeseen ja odotettuun kohdeversion build-revisioon.
+Tapahtuman oma `runtimeInstanceId`, `eventId` ja UTC-aika säilyvät; ensimmäisen
+tai toisen käynnistyksen järjestystä ei arvata aikaleimasta.
+
+Ote sisältää vain nämä sidontakentät, syntaktisesti rajatun
+`[A-Z][A-Z0-9_]{0,127}`-syykoodin, nykyisen sovelluskirjoittajan vaiheen
+(`preWorkspaceBuildAdmission`, `workspaceFirstStartMigration` tai `startup`)
+ja syytiedon saatavuuden. Virheviesti, pino, mielivaltainen payload ja
+liiketoimintatunnisteet jäävät pois. Koodi on lokikirjoittajan tallentama
+havainto, ei keräimen todistama juurisyy eikä uusi julkinen virhekoodiluettelo.
+
+#### Hyväksytty alkuperäisen poikkeuksen rajaus
+
+Erillisellä omistajapäätöksellä synteettisen Electron-käynnistyksen ensimmäinen
+alkuperäinen poikkeus voidaan liittää samaan salattuun terminal-projektioon.
+Tämä ei muuta production operational -lokin, Diagnosticsin tai tukipaketin
+skeemaa. Opt-in vaatii nimetyn testikytkimen, skenaarion nonce-arvon,
+odotetun build-identiteetin kontrollin ja täsmälleen johdetun eristetyn
+testiprofiilin. Tavallinen käyttäjäprofiili ei voi aktivoida keräystä.
+
+`startupExceptionEvidence.ts` omistaa rajat ja skeeman: viesti 2 048 merkkiä,
+pino 8 192 merkkiä, enintään neljä syyketjun osaa ja 192 KiB tiedostoraja.
+Muut poikkeuksen kentät, mielivaltaiset getterit, ympäristö, profiili,
+tietokanta ja business-payload eivät kuulu otteeseen. Session-salaisuus ja
+tunnetut ympäristösalaisuudet redaktoidaan; redaktion käsittelyrajan ylitys
+peittää tekstin, ei päästä salaisuutta läpi. Native stack -accessor tunnistetaan
+erikseen Noden nykyisen toteutuksen perusteella.
+
+Poikkeus tarjotaan havaitsijalle ennen siivousta tai yleiseksi koodiksi
+muuntamista. Ensimmäistä otetta ei korvata myöhemmällä fallbackilla.
+Migraatiota edeltävän päätöksen kohdalla sekä ensimmäisen käynnistyksen
+koordinaattori että backend-prosessin callback-vastaanottaja käyttävät
+compositionin samaa opt-in-havaitsijaa. Se saa alkuperäisen hylkäyksen ennen
+recovery-journalin kirjoitusta tai `abortStartup`-viestiä, myös jos
+koordinaattori on jo pysäyttänyt käynnistysprosessin. Havaitsijaa ei odoteta
+tässä rajassa eikä sen virhe muuta päätöstä. Julkiset virheet, statusviestit
+ja operational-tapahtumat eivät saa raakaa `cause`-ketjua. Tämä kytkentä ei
+väitä, että alemman palvelun jo korvaama poikkeus voitaisiin palauttaa.
+Jokainen runtime saa oman exclusive-tiedoston. Prosessipuun poissaolon jälkeen
+nykyinen fixtureCleanup omistaa luvun ja terminal-kirjoituksen ennen poistoa.
+Kelvollinen ensimmäinen ote säilytetään, vaikka toinen olisi rikkinäinen.
+Puuttuva, osittainen tai varmentamaton ote ei anna fixturen poistamislupaa.
+Havainto ei ole sama asia kuin todistettu juurisyy.
+
+Omistaja hyväksyi vain tämän eristetyn synteettisen käynnistyksen
+virhepolulle enintään 500 ms:n asynkronisen tallennuksen valmistumisodotuksen
+ennen hallittua `app.exit()`-poistumista. Odotus päättyy heti kirjoituksen
+valmistuttua; ei kiinteää unta, synkronista kirjoitusta tai rajaamatonta
+kuittausta. Sama odotus ei käynnisty toistamiseen. Tavallinen käyttäjäkäynnistys
+ja onnistunut polku eivät odota. Kirjoituksen virhe tai aikakatkaisu ei muuta
+alkuperäistä käynnistysvirhettä eikä anna fixturen poistamislupaa ilman
+varmennettua otetta. Nykyiset testien hyväksyntäaikarajat säilyvät.
+
+**Rajattu toimitus on todennettu:** [nimetty Windows-koe](https://github.com/eky-software/eky/actions/runs/37616471588)
+läpäisi revisiolla `6c096474`. Nykyisen Windows-supervisorin omistama
+Electron-fixture todisti alkuperäisen poikkeuksen säilymisen oikean
+`app.exit()`-rajan yli ja prosessipuun poissaolon. Salattu julkaisu ja
+yksityinen purku varmistivat viestin, pinon, syyketjun, ajosidonnan ja
+tiivisteet. Onnistuneen fixturen native-tulosta ei sisällytetä liitteeseen:
+poistumistodiste perustuu saman jäädytetyn kokeen tiukkoihin assertioihin,
+liitteen sisältötodiste purkuun. Luonnollinen Node-poistuminen ei korvaa tätä
+näyttöä. Tämä ei ole paketoidun tuotantokäynnistyksen hyväksyntä:
+legacy-sovellusvika ja uuden paketin normaali hyväksyntä säilyvät avoimina.
+
+Nimetty `startup-exception-exit-proof` on nykyisen feasibility-workflowin
+manuaalinen kertakoe, ei normaali hyväksyntäportti. Se kääntää jäädytetyn
+revision nykyisen omistajakoodin, käynnistää yhden eristetyn Electron-fixturen
+nykyisen Job Object -supervisorin alla ja vaatii alkuperäisen poikkeuksen
+säilymisen todellisen `app.exit()`-rajan yli. Vasta tämän todisteen jälkeen
+nykyinen salattu keräin toimittaa täsmälleen nykyisen legacy-terminalin.
+Jobin vihreys edellyttää myös onnistunutta salattua julkaisua; paikallinen
+purku varmistaa sisällön, sidonnan ja tiivisteet. Ei MSI-asennusta, raakajäljen
+uploadia, uutta riippuvuutta tai testien automaattista uusintaa.
+Rajattu paikallinen komento on
+`pnpm --filter @eky/desktop installer:proof:startup-exception-exit`.
+
+Luku rajataan 16 nykyisen nimisäännön mukaiseen lokitiedostoon ja nykyiseen
+5 MiB:n tiedostorajaan. Linkit, muuttunut sisältö, keskeneräinen viimeinen
+rivi, virheellinen sidonta tai puuttuva aineisto eivät muutu onnistuneeksi
+havainnoksi. Puuttuva tai varmentamaton syytieto säilyttää alkuperäisen
+testifixturen; sille ei päätellä poistamislupaa onnistuneesta MSI-siivouksesta.
+Normaalin hyväksyntätuloksen ja siivouksen nykyiset ehdot säilyvät.
+
+Otetta ei toimiteta uudella kirjoittimella: nykyinen `fixtureCleanup`-vaiheen
+atominen terminal-kirjoitus sisältää sen ennen mahdollista profiilin poistoa.
+Keräin hyväksyy vain tämän legacy-terminalin täsmällisen nimen ja projektoi
+sen erikseen ennen salausta. Onnistuneeseen käynnistykseen ei lisätä lokikuittausta,
+valmiusehtoa tai odotusaikaa; edellä hyväksytty rajattu virhepolku on erillinen.
+Keräimen nykyiset kokonaisrajat ja salauksen
+fail-closed-käytäntö säilyvät. Tämä testikohtainen yksityinen ote ei kuulu
+Diagnosticsiin, Activityyn tai sovelluksen tukipakettiin.
+
+Erillinen olemassa olevia asennuspaketteja käyttävä
+`packaged-boundary-diagnostic` kutsuu samaa jälkikeräysactionia vain
+legacy-variantin hylkäyksen tai keskeytyksen jälkeen. Valmiiksi tarkistetun
+julkisen salausavaimen ja hosted-admission ehdot säilyvät. Asennuskomento,
+pakollinen tulosverifier ja paketin jälkivarmennus eivät saa
+`continue-on-error`-poikkeusta; vain nykyinen valinnainen salattu toimitus saa
+olemassa olevan kolmen minuutin rajauksensa. Diagnostiikka ei korvaa
+normaalia saman revision PR/main-hyväksyntää.
 
 MSI-politiikan erillisessä manuaalisessa `msi-file-version-policy`-kokeessa
 `--retain-evidence` säilyttää myös läpäisseen kokeen nimetyn tutkimusaineiston.

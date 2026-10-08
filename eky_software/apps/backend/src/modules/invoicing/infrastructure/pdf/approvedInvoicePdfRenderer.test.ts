@@ -46,7 +46,7 @@ describe('approved invoice PDF renderer', () => {
   it('renders a non-empty credit invoice PDF from snapshot data', async () => {
     const invoice = createApprovedInvoicePdfSample();
 
-    const pdf = await renderApprovedInvoicePdf({
+    const creditInvoice: ApprovedInvoiceView = {
       ...invoice,
       creditedInvoiceId: 'source-invoice-1',
       creditedInvoiceNumber: '20260001',
@@ -63,7 +63,8 @@ describe('approved invoice PDF renderer', () => {
         ...line,
         sourceInvoiceLineId: `source-${line.id}`,
       })),
-    });
+    };
+    const pdf = await renderApprovedInvoicePdf(creditInvoice);
 
     expect(pdf.length).toBeGreaterThan(1000);
     expect(Buffer.from(pdf.subarray(0, 4)).toString('ascii')).toBe('%PDF');
@@ -143,7 +144,7 @@ describe('approved invoice PDF renderer', () => {
     const textSpy = vi.spyOn(PDFDocument.prototype, 'text');
 
     try {
-      const pdf = await renderApprovedInvoicePdf({
+      const reverseChargeInvoice: ApprovedInvoiceView = {
         ...invoice,
         priceInputMode: 'net',
         taxTreatment: 'reverseChargeConstruction',
@@ -168,7 +169,8 @@ describe('approved invoice PDF renderer', () => {
           vatTotalCents: 0,
         },
         vatBreakdown: [],
-      });
+      };
+      const pdf = await renderApprovedInvoicePdf(reverseChargeInvoice);
       const renderedText = textSpy.mock.calls.map(([value]) => value);
 
       expect(pdf.length).toBeGreaterThan(1000);

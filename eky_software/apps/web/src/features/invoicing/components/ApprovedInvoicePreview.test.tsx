@@ -10,6 +10,15 @@ import { ApprovedInvoicePreview } from './ApprovedInvoicePreview.js';
 import { uiText } from '../../../i18n/fi.js';
 
 describe('ApprovedInvoicePreview', () => {
+  it('offers exact preserved attachment preview only for a matching invoice', () => {
+    const email = createApprovedInvoiceEmailPreview();
+    email.documentTarget = { kind: 'preservedLegacy', documentId: email.attachment.documentId };
+    expect(renderPreview({ email })).toContain(uiText.invoicing.invoiceEmailPreservedAttachmentOpen);
+    expect(renderPreview({ email: { ...email, invoiceId: 'another-invoice' } }))
+      .not.toContain(uiText.invoicing.invoiceEmailPreviewTitle);
+    expect(renderPreview({ email: createApprovedInvoiceEmailPreview() }))
+      .not.toContain(uiText.invoicing.invoiceEmailPreservedAttachmentOpen);
+  });
   it('renders invoice detail sections in a readable review order', () => {
     const html = renderPreview();
 
@@ -79,6 +88,8 @@ describe('ApprovedInvoicePreview', () => {
           deliveryMethod: 'print',
           id: 'event-1',
           provider: 'manual',
+          sendMode: 'manual',
+          documentSource: 'revision',
           recipientEmail: '',
           safeErrorMessage: null,
           status: 'succeeded',
@@ -133,6 +144,8 @@ describe('ApprovedInvoicePreview', () => {
           deliveryMethod: 'email',
           id: 'event-1',
           provider: 'smtp',
+          sendMode: 'smtpTest',
+          documentSource: 'revision',
           recipientEmail: 'recipient@example.fi',
           safeErrorMessage: 'Raw provider details must not be rendered',
           status: 'outcomeUnknown',
@@ -247,6 +260,8 @@ function renderPreview(
       onMarkSent={vi.fn()}
       onMarkInvoicePaid={vi.fn()}
       onOpenPdf={vi.fn()}
+      onOpenPreservedPdf={vi.fn(async () => true)}
+      onOpenDeliveryEventPdf={vi.fn(async () => true)}
       onOpenRelatedDraft={vi.fn()}
       onOpenRelatedInvoice={vi.fn()}
       onPrepareEmail={vi.fn()}
@@ -267,6 +282,7 @@ function createApprovedInvoiceEmailPreview(): ApprovedInvoiceEmailPreviewData {
       sizeBytes: 1234,
     },
     body: 'Hei,\n\nLiitteenä lasku 20260001.',
+    documentTarget: { kind: 'revision', documentId: 'document-1' },
     invoiceId: 'invoice-1',
     invoiceNumber: '20260001',
     provider: 'dryRun',

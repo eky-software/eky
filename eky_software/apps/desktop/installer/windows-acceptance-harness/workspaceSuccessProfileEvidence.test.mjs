@@ -7,6 +7,7 @@ import test from 'node:test';
 
 import { createClosedDirectoryInventory } from './closedDirectoryInventory.mjs';
 import { createWorkspaceSuccessEvidenceTestFixture } from './workspaceSuccessEvidenceTestFixture.mjs';
+import { validateWorkspaceSuccessCheckpoint } from './workspaceSuccessPostcondition.mjs';
 import { createWorkspaceFaultRequest } from './workspaceFaultContracts.mjs';
 import { captureWorkspaceFaultProfileEvidence, writeWorkspaceFaultCheckpoint,
   workspaceFaultCheckpointPath } from './workspaceFaultProfileEvidence.mjs';
@@ -76,18 +77,31 @@ test('capture reads main startup and shutdown events from the real logger stream
   const logger = new JsonLineDesktopOperationalLogger({ logsRoot: resolve(profile.runtimeRoot, 'logs'),
     failureSink: { recordFailure() { writeFailures += 1; } } });
   const identity = { appVersion: f.state.targetVersion, buildRevision: f.state.buildRevision, runtimeInstanceId: randomUUID() };
-  reportDesktopStarted({ identity, logger, startedAt: Date.now() });
+  const writtenEvents = [];
+  reportDesktopStarted({ identity, logger: { write(event) {
+    writtenEvents.push(event);
+    logger.write(event);
+  } }, startedAt: Date.now() });
   const shutdown = createDesktopOperationalEvent({ eventName: 'desktop.shutdownCompleted' }, identity);
+  writtenEvents.push(shutdown);
   logger.write(shutdown);
   assert.equal(writeFailures, 0);
   const before = await createClosedDirectoryInventory(f.root);
   const result = await captureWorkspaceSuccessProfileEvidence({ ...f.input, checkpoint: 'targetFirstStart' });
-  assert.deepEqual(result.events.map(({ eventId, ...event }) => event), [
-    { ...identity, eventName: 'desktop.started' }, { ...identity, eventName: 'desktop.shutdownCompleted' },
-  ]);
+  assert.deepEqual(result.events, writtenEvents.map(({ appVersion, buildRevision, eventId,
+    eventName, runtimeInstanceId }) => ({ appVersion, buildRevision, eventId,
+    eventName, runtimeInstanceId })));
   assert.equal(result.events[1].eventId, shutdown.eventId);
   assert.notEqual(result.events[0].eventId, shutdown.eventId);
+  assert.equal(validateWorkspaceSuccessCheckpoint(result, { request: f.request,
+    checkpoint: 'targetFirstStart', state: f.state, support: f.support }), result);
   assert.deepEqual(await createClosedDirectoryInventory(f.root), before);
+  logger.write(createDesktopOperationalEvent({ eventName: 'desktop.bootstrapFailed',
+    errorCode: 'DESKTOP_START_FAILED', stage: 'startup' }, identity));
+  const failure = await captureWorkspaceSuccessProfileEvidence({ ...f.input, checkpoint: 'targetFirstStart' });
+  assert.equal(failure.events.at(-1).eventName, 'desktop.bootstrapFailed');
+  assert.throws(() => validateWorkspaceSuccessCheckpoint(failure, { request: f.request,
+    checkpoint: 'targetFirstStart', state: f.state, support: f.support }), { message: 'profileEvidenceInvalid' });
   const logsRoot = resolve(profile.runtimeRoot, 'logs');
   const alias = resolve(f.root, 'aliased-logs');
   await rename(logsRoot, alias);

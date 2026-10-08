@@ -1,8 +1,10 @@
 import type { Customer, InvoiceDraft } from '@eky/api-client';
+import { Children, isValidElement, type ReactElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
 import { InvoiceDraftEditorView } from './InvoiceDraftEditorView.js';
+import { NewInvoiceForm } from './NewInvoiceForm.js';
 import { uiText } from '../../../i18n/fi.js';
 
 describe('InvoiceDraftEditorView', () => {
@@ -126,12 +128,21 @@ describe('InvoiceDraftEditorView', () => {
       sessionRevision: 2,
     }));
 
-    expect(created.key).toBe('1');
-    expect(saved.key).toBe(created.key);
-    expect(updated.key).toBe(saved.key);
-    expect(reopened.key).not.toBe(saved.key);
+    expect(formKey(created)).toBe('1');
+    expect(formKey(saved)).toBe(formKey(created));
+    expect(formKey(updated)).toBe(formKey(saved));
+    expect(formKey(reopened)).not.toBe(formKey(saved));
   });
 });
+
+function formKey(editor: ReactElement<{ children?: ReactNode }>): string | null {
+  let form: ReactElement | undefined;
+  Children.forEach(editor.props.children, child => {
+    if (isValidElement(child) && child.type === NewInvoiceForm) form = child;
+  });
+  if (!form) throw new Error('Expected the editor form.');
+  return form.key;
+}
 
 type InvoiceDraftEditorViewProps = React.ComponentProps<
   typeof InvoiceDraftEditorView
@@ -162,6 +173,7 @@ function createEditorProps(
     onDraftApproved: vi.fn(),
     onDraftSaved: vi.fn(),
     onOpenApprovedInvoice: vi.fn(),
+    onOpenDeliveryEventPdf: vi.fn(async () => true),
     ...overrides,
   };
 }
@@ -170,6 +182,7 @@ function createApiClient(): InvoiceDraftEditorViewProps['apiClient'] {
   return {
     approveInvoiceDraft: vi.fn(),
     createInvoiceDraft: vi.fn(),
+    getInvoiceDraftDeliveryHistory: vi.fn(async () => ({ invoiceId: null, events: [] })),
     getInvoiceIssuanceReadiness: vi.fn(async () => ({
       isReady: true,
       issues: [],

@@ -29,7 +29,7 @@ interface MigrationMetadataRow {
 }
 
 export interface MigrationHistoryInspection {
-  appliedMigrationNames: string[];
+  readonly appliedMigrationNames: readonly string[];
   migrationChainIdentity: string;
 }
 

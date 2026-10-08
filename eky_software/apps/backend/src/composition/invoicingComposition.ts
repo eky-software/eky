@@ -19,15 +19,22 @@ import { copyApprovedInvoiceToDraft } from '../modules/invoicing/application/cop
 import { deleteInvoiceDraft } from '../modules/invoicing/application/deleteInvoiceDraft.js';
 import {
   generateApprovedInvoicePdfDocument,
+  generateInvoiceRevisionPdfDocument,
   type GenerateApprovedInvoicePdfDocumentInput,
+  type GenerateInvoiceRevisionPdfDocumentInput,
 } from '../modules/invoicing/application/generateApprovedInvoicePdfDocument.js';
+import { InvoiceDocumentPublicationConflictError } from '../modules/invoicing/application/invoiceDocumentPublicationConflictError.js';
+import { InvoiceDocumentIntegrityError } from '../modules/invoicing/application/invoiceDocumentIntegrityError.js';
+import type { InvoiceScope } from '../modules/invoicing/domain/invoiceContentRevision.js';
 import { getApprovedInvoice } from '../modules/invoicing/application/getApprovedInvoice.js';
 import {
   getApprovedInvoicePdfDocument as readApprovedInvoicePdfDocument,
   type GetApprovedInvoicePdfDocumentInput,
 } from '../modules/invoicing/application/getApprovedInvoicePdfDocument.js';
 import { getApprovedInvoicePdfMetadata } from '../modules/invoicing/application/getApprovedInvoicePdfMetadata.js';
+import { readPreservedLegacyInvoiceDocument } from '../modules/invoicing/application/readPreservedLegacyInvoiceDocument.js';
 import { getInvoiceDraft } from '../modules/invoicing/application/getInvoiceDraft.js';
+import { getInvoiceDraftDeliveryHistory } from '../modules/invoicing/application/getInvoiceDraftDeliveryHistory.js';
 import { getInvoiceIssuanceReadiness } from '../modules/invoicing/application/getInvoiceIssuanceReadiness.js';
 import { getCreditInvoiceDraft } from '../modules/invoicing/application/getCreditInvoiceDraft.js';
 import { getInvoiceCreditContext } from '../modules/invoicing/application/getInvoiceCreditContext.js';
@@ -38,11 +45,19 @@ import { getInvoiceVatRates } from '../modules/invoicing/application/getInvoiceV
 import { listApprovedInvoices } from '../modules/invoicing/application/listApprovedInvoices.js';
 import { listSentInvoiceGroups } from '../modules/invoicing/application/listSentInvoiceGroups.js';
 import { listInvoiceDeliveryEvents } from '../modules/invoicing/application/listInvoiceDeliveryEvents.js';
+import { getInvoiceDeliveryEventPdf } from '../modules/invoicing/application/getInvoiceDeliveryEventPdf.js';
+import { createInvoiceDeliveryHistoryRoutes } from '../modules/invoicing/http/invoiceDeliveryHistoryRoutes.js';
 import { listInvoiceDrafts } from '../modules/invoicing/application/listInvoiceDrafts.js';
 import { markApprovedInvoiceSent } from '../modules/invoicing/application/markApprovedInvoiceSent.js';
 import { markInvoicePaid } from '../modules/invoicing/application/markInvoicePaid.js';
 import { prepareApprovedInvoiceEmailDryRun } from '../modules/invoicing/application/prepareApprovedInvoiceEmailDryRun.js';
+import { preparePreservedLegacyInvoiceDocument } from '../modules/invoicing/application/preparePreservedLegacyInvoiceDocument.js';
 import { prepareApprovedInvoiceEmailSmtp } from '../modules/invoicing/application/prepareApprovedInvoiceEmailSmtp.js';
+import { loadInvoiceEmailDeliveryDocument as loadEmailDocument } from '../modules/invoicing/application/loadInvoiceEmailDeliveryDocument.js';
+import { loadCustomerInvoiceEmailDocument as loadCustomerEmailDocument, type LoadCustomerInvoiceEmailDocumentInput } from '../modules/invoicing/application/loadCustomerInvoiceEmailDocument.js';
+import { readStoredInvoiceDocument } from '../modules/invoicing/application/readStoredInvoiceDocument.js';
+import { InvoiceEmailDeliveryCommittedError } from '../modules/invoicing/application/invoiceEmailDeliveryCommittedError.js';
+import { InvoiceLegacyDeliveryReviewRequiredError } from '../modules/invoicing/domain/invoiceLegacyDeliveryReviewRequiredError.js';
 import { prepareApprovedInvoiceEmailSmtpTest } from '../modules/invoicing/application/prepareApprovedInvoiceEmailSmtpTest.js';
 import { previewInvoiceNumberingSeriesActivation } from '../modules/invoicing/application/previewInvoiceNumberingSeriesActivation.js';
 import { reopenApprovedInvoiceForEditing } from '../modules/invoicing/application/reopenApprovedInvoiceForEditing.js';
@@ -57,7 +72,9 @@ import { updateInvoiceNumberingSettings } from '../modules/invoicing/application
 import { updateInvoicePaymentSettings } from '../modules/invoicing/application/updateInvoicePaymentSettings.js';
 import { updateInvoiceVatRates } from '../modules/invoicing/application/updateInvoiceVatRates.js';
 import { createApprovedInvoiceRoutes } from '../modules/invoicing/http/approvedInvoiceRoutes.js';
+import { createPreservedLegacyInvoiceDocumentRoutes } from '../modules/invoicing/http/preservedLegacyInvoiceDocumentRoutes.js';
 import { createInvoiceDraftRoutes } from '../modules/invoicing/http/invoiceDraftRoutes.js';
+import { createInvoiceDraftDeliveryHistoryRoutes } from '../modules/invoicing/http/invoiceDraftDeliveryHistoryRoutes.js';
 import { createCreditInvoiceDraftRoutes } from '../modules/invoicing/http/creditInvoiceDraftRoutes.js';
 import { createInvoiceNumberingSettingsRoutes } from '../modules/invoicing/http/invoiceNumberingSettingsRoutes.js';
 import { createInvoiceNumberingSeriesRoutes } from '../modules/invoicing/http/invoiceNumberingSeriesRoutes.js';
@@ -74,10 +91,16 @@ import { SqliteInvoiceCreditApprovalRepository } from '../modules/invoicing/infr
 import { SqliteInvoiceCreditDraftRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceCreditDraftRepository.js';
 import { SqliteInvoiceDeliveryEventRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDeliveryEventRepository.js';
 import { SqliteInvoiceDocumentRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDocumentRepository.js';
+import { SqliteInvoiceDocumentPreviewReader } from '../modules/invoicing/infrastructure/sqliteInvoiceDocumentPreviewReader.js';
+import { SqliteInvoiceContentRevisionReader } from '../modules/invoicing/infrastructure/sqliteInvoiceContentRevisionReader.js';
+import { SqliteInvoiceLegacyRevisionPromoter } from '../modules/invoicing/infrastructure/sqliteInvoiceLegacyRevisionPromoter.js';
+import { SqliteInvoiceLegacyResendReader } from '../modules/invoicing/infrastructure/sqliteInvoiceLegacyResendReader.js';
 import { SqliteInvoiceDraftRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceDraftRepository.js';
+import { SqliteInvoiceDraftDeliveryHistoryReader } from '../modules/invoicing/infrastructure/sqliteInvoiceDraftDeliveryHistoryReader.js';
 import { SqliteInvoiceIssuanceReadinessReader } from '../modules/invoicing/infrastructure/sqliteInvoiceIssuanceReadinessReader.js';
 import { SqliteInvoiceActivityReader } from '../modules/invoicing/infrastructure/sqliteInvoiceActivityReader.js';
 import { SqliteInvoiceBackupArtifactCatalog } from '../modules/invoicing/infrastructure/sqliteInvoiceBackupArtifactCatalog.js';
+import type { InvoiceBackupArtifactCatalogSchema } from '../modules/invoicing/infrastructure/selectInvoiceBackupArtifactCatalogSchema.js';
 import { SqliteInvoiceNumberingRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceNumberingRepository.js';
 import { SqliteInvoiceNumberingSeriesRepository } from '../modules/invoicing/infrastructure/sqliteInvoiceNumberingSeriesRepository.js';
 import { SqliteInvoicePaymentSettingsRepository } from '../modules/invoicing/infrastructure/sqliteInvoicePaymentSettingsRepository.js';
@@ -108,6 +131,7 @@ export interface InvoicingInfrastructureAdapters {
 }
 
 interface InvoicingCompositionOptions {
+  schema: InvoiceBackupArtifactCatalogSchema;
   companyEmailSecretReader: CompanyEmailSecretReader;
   customerAccessReader: CustomerAccessReader;
   deliveredInvoiceArchiveTaskSink: DeliveredInvoiceArchiveTaskSink;
@@ -134,6 +158,7 @@ export function createInvoicingComposition(
     options.database,
   );
   const invoiceDraftRepository = new SqliteInvoiceDraftRepository(options.database);
+  const invoiceDraftDeliveryHistoryReader = new SqliteInvoiceDraftDeliveryHistoryReader(options.database);
   const invoiceIssuanceReadinessReader =
     new SqliteInvoiceIssuanceReadinessReader(options.database);
   const invoiceApprovalRepository = new SqliteInvoiceApprovalRepository(
@@ -150,7 +175,7 @@ export function createInvoicingComposition(
     options.database,
   );
   const invoiceBackupArtifactCatalog =
-    new SqliteInvoiceBackupArtifactCatalog(options.database);
+    new SqliteInvoiceBackupArtifactCatalog(options.database, options.schema);
   const invoiceDeliveryEventRepository =
     new SqliteInvoiceDeliveryEventRepository(options.database);
   const invoiceDocumentStorage =
@@ -159,6 +184,9 @@ export function createInvoicingComposition(
       ? new LocalInvoiceDocumentStorage()
       : new LocalInvoiceDocumentStorage(options.invoiceDocumentStorageRoot));
   const approvedInvoiceReader = new SqliteApprovedInvoiceReader(options.database);
+  const invoiceContentRevisionReader = new SqliteInvoiceContentRevisionReader(options.database);
+  const invoiceLegacyRevisionPromoter = new SqliteInvoiceLegacyRevisionPromoter(options.database);
+  const invoiceLegacyResendReader = new SqliteInvoiceLegacyResendReader(options.database);
   const invoiceCreditContextReader = new SqliteInvoiceCreditContextReader(
     options.database,
   );
@@ -211,17 +239,19 @@ export function createInvoicingComposition(
   const invoiceSmtpDeliveryProvider =
     options.infrastructureAdapters?.invoiceSmtpDeliveryProvider ??
     new DnaInvoiceSmtpDeliveryProvider(dnaSmtpEmailDeliveryProvider);
-  const ensureApprovedInvoicePdfDocument = async (
-    input: GenerateApprovedInvoicePdfDocumentInput,
-  ) => {
-    try {
-      return await generateApprovedInvoicePdfDocument(input, {
-        approvedInvoiceReader,
-        invoiceDocumentRepository,
-        invoiceDocumentStorage,
-        renderApprovedInvoicePdf,
-      });
-    } catch (error) {
+  const pdfDependencies = {
+    invoiceContentRevisionReader, invoiceLegacyRevisionPromoter, invoiceDocumentRepository,
+    invoiceDocumentStorage, renderApprovedInvoicePdf,
+  };
+  const pdfReadDependencies = {
+    invoiceDocumentPreviewReader: new SqliteInvoiceDocumentPreviewReader(options.database),
+    invoiceDocumentRepository,
+    invoiceDocumentStorage,
+  };
+  const reportPdfGenerationFailure = (input: InvoiceScope, error: unknown): never => {
+    const stages = error instanceof InvoiceDocumentPublicationConflictError && error.candidateCleanupFailed
+      ? ['generate', 'cleanup'] : ['generate'];
+    for (const stage of stages) {
       options.operationalLogger.write(
         createBackendOperationalEvent(
           {
@@ -232,21 +262,100 @@ export function createInvoicingComposition(
             eventName: 'invoicePdf.generationFailed',
             retryable: true,
             sideEffectState: 'unknown',
-            stage: 'generate',
+            stage,
           },
           options.operationalIdentity,
         ),
       );
-      throw error;
     }
+    throw error;
   };
+  const ensureApprovedInvoicePdfDocument = (input: GenerateApprovedInvoicePdfDocumentInput) =>
+    generateApprovedInvoicePdfDocument(input, pdfDependencies)
+      .catch((error: unknown) => reportPdfGenerationFailure(input, error));
+  const ensureInvoiceRevisionPdfDocument = (input: GenerateInvoiceRevisionPdfDocumentInput) =>
+    generateInvoiceRevisionPdfDocument(input, pdfDependencies)
+      .catch((error: unknown) => reportPdfGenerationFailure(input.key, error));
   const getApprovedInvoicePdfDocument = (
     input: GetApprovedInvoicePdfDocumentInput,
   ) =>
-    readApprovedInvoicePdfDocument(input, {
-      invoiceDocumentRepository,
-      invoiceDocumentStorage,
-    });
+    readApprovedInvoicePdfDocument(input, pdfReadDependencies)
+      .catch((error: unknown) => reportPdfStorageFailure(input, error));
+  const loadInvoiceEmailDeliveryDocument = (input: GenerateApprovedInvoicePdfDocumentInput) =>
+    loadEmailDocument(input, {
+      ensureApprovedInvoicePdfDocument,
+      readStoredInvoiceDocument: (key) => readStoredInvoiceDocument(key, { invoiceDocumentRepository, invoiceDocumentStorage }),
+    }).catch((error: unknown) => reportPdfStorageFailure(input, error));
+  const loadCustomerInvoiceEmailDocument = (input: LoadCustomerInvoiceEmailDocumentInput) =>
+    loadCustomerEmailDocument(input, {
+      approvedInvoiceReader,
+      invoiceContentRevisionReader,
+      loadInvoiceEmailDeliveryDocument: (documentInput) => loadEmailDocument(documentInput, {
+        ensureApprovedInvoicePdfDocument,
+        readStoredInvoiceDocument: (key) => readStoredInvoiceDocument(key, { invoiceDocumentRepository, invoiceDocumentStorage }),
+      }),
+      readPreservedLegacyInvoiceDocument: (documentInput) => readPreservedLegacyInvoiceDocument(documentInput, {
+        invoiceLegacyResendReader, invoiceDocumentStorage,
+      }),
+    }).catch((error: unknown) => reportPdfStorageFailure({
+      companyId: input.actorContext.companyId, invoiceId: input.invoiceId,
+    }, error));
+  const reportPdfStorageFailure = (
+    input: InvoiceScope, error: unknown, sideEffectState: 'none' | 'unknown' = 'none',
+  ): never => {
+    const cleanupFailed = error instanceof InvoiceDocumentPublicationConflictError && error.candidateCleanupFailed;
+    if (error instanceof InvoiceDocumentIntegrityError || cleanupFailed) {
+      try {
+        options.operationalLogger.write(createBackendOperationalEvent({
+          companyId: input.companyId,
+          entityId: input.invoiceId,
+          entityType: 'approvedInvoice',
+          errorCode: cleanupFailed ? 'INVOICE_PDF_CLEANUP_FAILED' : 'INVOICE_PDF_INTEGRITY_FAILED',
+          eventName: 'invoicePdf.storageFailed',
+          retryable: false,
+          sideEffectState: cleanupFailed ? 'unknown' : sideEffectState,
+          stage: cleanupFailed ? 'cleanup' : 'read',
+        }, options.operationalIdentity));
+      } catch {
+        // Diagnostic failure must not replace the original storage failure.
+      }
+    }
+    throw error;
+  };
+
+  const reportLegacyDeliveryReview = (error: unknown): never => {
+    if (error instanceof InvoiceLegacyDeliveryReviewRequiredError) {
+      try {
+        options.operationalLogger.write(createBackendOperationalEvent({
+          eventName: 'invoiceDelivery.prepareBlocked',
+          errorCode: error.code,
+          retryable: false,
+          sideEffectState: 'none',
+          stage: 'prepare',
+        }, options.operationalIdentity));
+      } catch {
+        // Keep the review requirement even when diagnostic delivery fails.
+      }
+    }
+    throw error;
+  };
+
+  routes.route('/', createInvoiceDraftDeliveryHistoryRoutes({
+    getInvoiceDraftDeliveryHistory: (input) => getInvoiceDraftDeliveryHistory(input, {
+      invoiceDraftDeliveryHistoryReader,
+    }),
+    reportReadFailure: (errorCode, correlationId) => {
+      options.operationalLogger.write(createBackendOperationalEvent({
+        eventName: 'http.requestFailed',
+        operationId: 'invoiceDraft.deliveryHistory',
+        errorCode,
+        stage: 'read',
+        retryable: false,
+        sideEffectState: 'none',
+        ...(correlationId === undefined ? {} : { correlationId }),
+      }, options.operationalIdentity));
+    },
+  }));
 
   routes.route(
     '/',
@@ -254,10 +363,9 @@ export function createInvoicingComposition(
       approveInvoiceDraft: (input) =>
         approveInvoiceDraft(input, { invoiceApprovalRepository }).then(
           async (approvedInvoice) => {
-            await ensureApprovedInvoicePdfDocument({
-              companyId: input.companyId,
+            await ensureInvoiceRevisionPdfDocument({
+              key: approvedInvoice.revisionKey,
               createdAt: new Date().toISOString(),
-              invoiceId: approvedInvoice.invoiceId,
             }).catch(() => undefined);
 
             return approvedInvoice;
@@ -296,10 +404,9 @@ export function createInvoicingComposition(
         approveCreditInvoiceDraft(input, {
           invoiceCreditApprovalRepository,
         }).then(async (approvedInvoice) => {
-          await ensureApprovedInvoicePdfDocument({
-            companyId: input.actorContext.companyId,
+          await ensureInvoiceRevisionPdfDocument({
+            key: approvedInvoice.revisionKey,
             createdAt: new Date().toISOString(),
-            invoiceId: approvedInvoice.invoiceId,
           }).catch(() => undefined);
 
           return approvedInvoice;
@@ -325,6 +432,23 @@ export function createInvoicingComposition(
     }),
   );
 
+  routes.route('/', createPreservedLegacyInvoiceDocumentRoutes({
+    readPreservedLegacyInvoiceDocument: (input) => readPreservedLegacyInvoiceDocument(input, {
+      invoiceLegacyResendReader, invoiceDocumentStorage,
+    }).catch((error: unknown) => reportPdfStorageFailure({
+      companyId: input.actorContext.companyId, invoiceId: input.invoiceId,
+    }, error)),
+  }));
+
+  routes.route('/', createInvoiceDeliveryHistoryRoutes({
+    getInvoiceDeliveryEventPdf: (input) => getInvoiceDeliveryEventPdf(input, {
+      invoiceDeliveryEventReader: invoiceDeliveryEventRepository,
+      invoiceDocumentStorage,
+    }).catch((error: unknown) => reportPdfStorageFailure({
+      companyId: input.actorContext.companyId, invoiceId: input.invoiceId,
+    }, error)),
+  }));
+
   routes.route(
     '/',
     createApprovedInvoiceRoutes({
@@ -343,29 +467,28 @@ export function createInvoicingComposition(
         getInvoiceCreditContext(input, invoiceCreditContextReader),
       getApprovedInvoicePdfDocument,
       getApprovedInvoicePdfMetadata: (input) =>
-        getApprovedInvoicePdfMetadata(input, {
-          invoiceDocumentRepository,
-          invoiceDocumentStorage,
-        }),
+        getApprovedInvoicePdfMetadata(input, pdfReadDependencies)
+          .catch((error: unknown) => reportPdfStorageFailure(input, error)),
       listApprovedInvoices: (input) =>
         listApprovedInvoices(input, approvedInvoiceReader),
       listSentInvoiceGroups: (input) =>
         listSentInvoiceGroups(input, sentInvoiceGroupReader),
       listInvoiceDeliveryEvents: (input) =>
         listInvoiceDeliveryEvents(input, {
-          approvedInvoiceReader,
           invoiceDeliveryEventReader: invoiceDeliveryEventRepository,
         }),
       markApprovedInvoiceSent: (input) =>
         markApprovedInvoiceSent(input, {
           approvedInvoiceReader,
+          invoiceContentRevisionReader,
           deliveredInvoiceArchiveQueueFailureReporter,
           deliveredInvoiceArchiveTaskSink:
             options.deliveredInvoiceArchiveTaskSink,
-          ensureApprovedInvoicePdfDocument,
+          invoiceLegacyRevisionPromoter,
+          ensureInvoiceRevisionPdfDocument,
           invoiceDeliveryEventReader: invoiceDeliveryEventRepository,
           invoiceManualDeliveryFinalizer: invoiceDeliveryEventRepository,
-        }),
+        }).catch(reportLegacyDeliveryReview),
       markInvoicePaid: (input) =>
         markInvoicePaid(input, {
           clock: { now: () => new Date() },
@@ -373,28 +496,42 @@ export function createInvoicingComposition(
         }),
       prepareApprovedInvoiceEmailDryRun: (input) =>
         prepareApprovedInvoiceEmailDryRun(input, {
+          preparePreservedLegacyInvoiceDocument: (documentInput) =>
+            preparePreservedLegacyInvoiceDocument(documentInput, {
+              invoiceLegacyResendReader, invoiceDocumentRepository, invoiceDocumentStorage,
+            }).then(({ content, metadata }) => {
+              content.fill(0);
+              return metadata;
+            }).catch((error: unknown) => reportPdfStorageFailure({
+              companyId: documentInput.actorContext.companyId, invoiceId: documentInput.invoiceId,
+            }, error, 'unknown')),
+          invoiceDeliveryEventReader: invoiceDeliveryEventRepository,
           approvedInvoiceReader,
-          ensureApprovedInvoicePdfDocument,
+          invoiceContentRevisionReader,
+          invoiceLegacyRevisionPromoter,
+          ensureInvoiceRevisionPdfDocument,
           invoiceEmailDeliveryProvider,
-        }),
+        }).catch(reportLegacyDeliveryReview),
       prepareApprovedInvoiceEmailSmtpTest: (input) =>
         prepareApprovedInvoiceEmailSmtpTest(input, {
           approvedInvoiceReader,
-          ensureApprovedInvoicePdfDocument,
+          loadInvoiceEmailDeliveryDocument,
+          invoiceDeliveryEventReader: invoiceDeliveryEventRepository,
           invoiceEmailSettingsReader: options.invoiceEmailSettingsReader,
           invoiceEmailSendAttemptStore,
-        }),
+        }).catch(reportLegacyDeliveryReview),
       prepareApprovedInvoiceEmailSmtp: async (input) => {
         try {
           return await prepareApprovedInvoiceEmailSmtp(input, {
             approvedInvoiceReader,
-            ensureApprovedInvoicePdfDocument,
+            loadCustomerInvoiceEmailDocument,
             invoiceDeliveryEventReader: invoiceDeliveryEventRepository,
             invoiceEmailSendAttemptStore,
             invoiceEmailSettingsReader: options.invoiceEmailSettingsReader,
           });
         } catch (error) {
-          options.operationalLogger.write(
+          if (error instanceof InvoiceLegacyDeliveryReviewRequiredError) reportLegacyDeliveryReview(error);
+          try { options.operationalLogger.write(
             createBackendOperationalEvent(
               {
                 companyId: input.actorContext.companyId,
@@ -408,36 +545,39 @@ export function createInvoicingComposition(
               },
               options.operationalIdentity,
             ),
-          );
+          ); } catch { /* Diagnostics must not replace the preparation failure. */ }
           throw error;
         }
       },
       sendApprovedInvoiceEmailDryRun: (input) =>
         sendApprovedInvoiceEmailDryRun(input, {
+          invoiceDeliveryEventReader: invoiceDeliveryEventRepository,
           approvedInvoiceReader,
-          ensureApprovedInvoicePdfDocument,
+          invoiceContentRevisionReader,
+          invoiceLegacyRevisionPromoter,
+          ensureInvoiceRevisionPdfDocument,
           invoiceDeliveryEventRepository,
           invoiceEmailDeliveryProvider,
-        }),
+        }).catch(reportLegacyDeliveryReview),
       sendApprovedInvoiceEmailSmtpTest: (input) =>
         sendApprovedInvoiceEmailSmtpTest(input, {
+          invoiceDeliveryEventReader: invoiceDeliveryEventRepository,
           approvedInvoiceReader,
-          ensureApprovedInvoicePdfDocument,
-          getApprovedInvoicePdfDocument,
+          loadInvoiceEmailDeliveryDocument,
           invoiceDeliveryEventRepository,
           invoiceEmailSettingsReader: options.invoiceEmailSettingsReader,
           invoiceEmailSendAttemptStore,
           invoiceSmtpTestDeliveryProvider,
-        }),
+        }).catch(reportLegacyDeliveryReview),
       sendApprovedInvoiceEmailSmtp: async (input) => {
         try {
           return await sendApprovedInvoiceEmailSmtp(input, {
+            invoiceDeliveryEventReader: invoiceDeliveryEventRepository,
             approvedInvoiceReader,
             deliveredInvoiceArchiveQueueFailureReporter,
             deliveredInvoiceArchiveTaskSink:
               options.deliveredInvoiceArchiveTaskSink,
-            ensureApprovedInvoicePdfDocument,
-            getApprovedInvoicePdfDocument,
+            loadCustomerInvoiceEmailDocument,
             invoiceDeliveryEventRepository,
             invoiceEmailDeliveryFinalizer: invoiceDeliveryEventRepository,
             invoiceEmailSendAttemptStore,
@@ -445,36 +585,39 @@ export function createInvoicingComposition(
             invoiceSmtpDeliveryProvider,
           });
         } catch (error) {
+          if (error instanceof InvoiceLegacyDeliveryReviewRequiredError) reportLegacyDeliveryReview(error);
+          // Document failures precede the provider and retain their owning diagnosis.
+          if (error instanceof InvoiceDocumentPublicationConflictError || error instanceof InvoiceDocumentIntegrityError) throw error;
           const outcomeUnknown =
             error instanceof ApprovedInvoiceEmailDeliveryOutcomeUnknownError;
-          options.operationalLogger.write(
+          const committed = error instanceof InvoiceEmailDeliveryCommittedError;
+          try { options.operationalLogger.write(
             createBackendOperationalEvent(
               {
                 companyId: input.actorContext.companyId,
                 entityId: input.invoiceId,
                 entityType: 'approvedInvoice',
-                errorCode: outcomeUnknown
+                errorCode: committed ? 'INVOICE_DELIVERY_COMMITTED_READ_FAILED' : outcomeUnknown
                   ? 'INVOICE_DELIVERY_OUTCOME_UNKNOWN'
                   : 'INVOICE_DELIVERY_PROVIDER_FAILED',
-                eventName: outcomeUnknown
+                eventName: committed ? 'invoiceDelivery.finalizationFailed' : outcomeUnknown
                   ? 'invoiceDelivery.outcomeUnknown'
                   : 'invoiceDelivery.providerFailed',
                 operationId: input.attemptId,
-                retryable: !outcomeUnknown,
-                sideEffectState: outcomeUnknown ? 'unknown' : 'rolledBack',
-                stage: 'smtp',
+                retryable: !committed && !outcomeUnknown,
+                sideEffectState: committed ? 'committed' : outcomeUnknown ? 'unknown' : 'rolledBack',
+                stage: committed ? 'read' : 'smtp',
               },
               options.operationalIdentity,
             ),
-          );
+          ); } catch { /* Diagnostics must not replace the delivery outcome. */ }
           throw error;
         }
       },
       reopenApprovedInvoiceForEditing: (input) =>
         reopenApprovedInvoiceForEditing(input, {
           invoiceApprovalRepository,
-          invoiceDocumentStorage,
-        }),
+        }).catch(reportLegacyDeliveryReview),
       revertInvoicePaidMark: (input) =>
         revertInvoicePaidMark(input, {
           clock: { now: () => new Date() },

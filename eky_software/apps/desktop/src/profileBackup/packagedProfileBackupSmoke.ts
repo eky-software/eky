@@ -330,7 +330,7 @@ export function assertPackagedRestoreSecretContinuity(
   }
 }
 
-async function captureActiveProfileEntries(options: {
+export async function captureActiveProfileEntries(options: {
   profileSnapshotClient: Pick<
     ProfileSnapshotBrokerClient,
     | 'beginMaintenance'
@@ -376,7 +376,7 @@ async function captureActiveProfileEntries(options: {
   }
 }
 
-async function createRestoreMutation(
+export async function createRestoreMutation(
   backendPort: number,
   runtimeSessionSecret: string,
 ): Promise<void> {
@@ -404,7 +404,7 @@ async function createRestoreMutation(
   );
 }
 
-async function setSyntheticEmailSecret(
+export async function setSyntheticEmailSecret(
   backendPort: number,
   runtimeSessionSecret: string,
 ): Promise<void> {
@@ -420,7 +420,7 @@ async function setSyntheticEmailSecret(
   }
 }
 
-async function assertMutationState(
+export async function assertMutationState(
   backendPort: number,
   runtimeSessionSecret: string,
   expectedToExist: boolean,
@@ -574,7 +574,7 @@ function assertPrivateProfileEntries(
   }
 }
 
-async function writeSmokeState(
+export async function writeSmokeState(
   smokeRoot: string,
   state: PackagedProfileBackupSmokeState,
 ): Promise<void> {
@@ -591,7 +591,7 @@ async function writeSmokeState(
   await rename(temporaryPath, statePath);
 }
 
-async function readSmokeState(
+export async function readSmokeState(
   smokeRoot: string,
 ): Promise<PackagedProfileBackupSmokeState> {
   const statePath = join(

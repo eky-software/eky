@@ -34,6 +34,7 @@ import {
   type W6b2PackagedProofConfiguration,
 } from './w6b2PackagedProof.js';
 import { terminateW6b2PackagedProofRuntime } from './w6b2PackagedProofTermination.js';
+import { createStartupExceptionCapture, STARTUP_EXCEPTION_SWITCH, STARTUP_EXCEPTION_TOKEN_ENV } from './startupExceptionEvidence.js';
 
 type StartDesktopComposition =
   typeof import('./desktopComposition.js').startDesktopComposition;
@@ -79,6 +80,7 @@ if ('mode' in packageModeResult) {
 }
 
 const smokeConfiguration = createPackagedSmokeConfiguration({
+  hasLegacyInvoiceSwitch: app.commandLine.hasSwitch('desktop-smoke-legacy-invoice'),
   hasRestoredProfileSwitch: app.commandLine.hasSwitch(
     'desktop-smoke-restored',
   ),
@@ -135,6 +137,7 @@ if (!hasSingleInstanceLock && 'mode' in packageModeResult) {
 
 let desktopLifecycle: DesktopLifecycleHandle | undefined;
 const runtimeInstanceId = randomUUID();
+let observeStartupException: ReturnType<typeof createStartupExceptionCapture>;
 let w6b2ProofConfiguration:
   | Readonly<W6b2PackagedProofConfiguration>
   | undefined;
@@ -212,6 +215,7 @@ async function startDesktopRuntime(
     reportSmokeStage: (stage) => smokeProgress.reportStage(stage),
     smokeConfiguration,
     userDataPath: app.getPath('userData'),
+    ...(observeStartupException === undefined ? {} : { observeStartupException }),
     ...(currentProofConfiguration === undefined
       ? {}
       : {
@@ -296,8 +300,22 @@ app.on('window-all-closed', () => {
 if (hasSingleInstanceLock) {
   void runSafeDesktopStartup({
     exitApplication: (code) => app.exit(code),
-    loadRuntime: () => import('./desktopComposition.js'),
+    async loadRuntime() {
+      if (app.commandLine.hasSwitch(STARTUP_EXCEPTION_SWITCH)) {
+        try {
+          const identity = await readDesktopBuildInfo({ applicationPath: app.getAppPath(),
+            appVersion: app.getVersion(), isPackaged: app.isPackaged });
+          observeStartupException = createStartupExceptionCapture({ enabled: true,
+            tempPath: app.getPath('temp'), userDataPath: app.getPath('userData'),
+            token: process.env[STARTUP_EXCEPTION_TOKEN_ENV], runtimeInstanceId,
+            appVersion: app.getVersion(), buildRevision: identity.buildRevision });
+        } catch { /* Missing evidence must not change the existing startup decision. */ }
+      }
+      return import('./desktopComposition.js');
+    },
+    observeStartupException: (error) => observeStartupException?.(error, 'earlyStartup'),
     async onFailure(errorCode) {
+      if (observeStartupException !== undefined) await observeStartupException.waitForDelivery();
       if (smokeConfiguration.enabled) {
         await writePackagedSmokeResult(smokeConfiguration, {
           code: errorCode,

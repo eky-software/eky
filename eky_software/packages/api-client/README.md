@@ -93,10 +93,12 @@ Paketti tarjoaa tällä hetkellä hallitut kutsut:
 - `createEkyApiClient().createInvoiceDraft(...)`
 - `createEkyApiClient().deleteInvoiceDraft(...)`
 - `createEkyApiClient().getInvoiceDraft(...)`
+- `createEkyApiClient().getInvoiceDraftDeliveryHistory(...)`
 - `createEkyApiClient().listInvoiceDrafts(...)`
 - `createEkyApiClient().updateInvoiceDraft(...)`
 - `createEkyApiClient().listApprovedInvoices(query)`
 - `createEkyApiClient().listInvoiceDeliveryEvents(...)`
+- `createEkyApiClient().getInvoiceDeliveryEventPdfUrl(invoiceId, eventId)`
 - `createEkyApiClient().getApprovedInvoice(...)`
 - `createEkyApiClient().markApprovedInvoiceSent(...)`
 - `createEkyApiClient().reopenApprovedInvoiceForEditing(...)`
@@ -118,6 +120,12 @@ Paketti tarjoaa tällä hetkellä hallitut kutsut:
 
 Tämä paketti ei tunne Reactia, Honoa, SQLitea, backendin repository-rakennetta tai domainin sisäistä toteutusta.
 
+Muokattavan tavallisen luonnoksen toimitushistoria luetaan erillisestä
+GET-rajapinnasta. Vain backend palauttaa siihen liittyvän laskuidentiteetin;
+client ei päättele sitä luonnoksen tunnisteesta tai aiemmasta näkymästä.
+Null-identiteetin yhteydessä sallitaan vain tyhjä tapahtumalista. Projektiota
+ei lisätä luonnoksen kirjoitus-DTO:hon, eikä lukukutsu anna lähetysvaltuutta.
+
 Paketti käyttää selaimen tai ajonaikaisen ympäristön tarjoamaa `fetch`-rajapintaa. Testeissä `fetch` annetaan sisään fake-toteutuksena.
 
 Ensimmäisen web customer UI -palan rajaus on kuvattu dokumentissa `docs/architecture/web-customer-ui-plan.md`.
@@ -129,6 +137,14 @@ Laskunumerointiasetusten client välittää backendille vain käyttäjän muokat
 Laskutuksen PDF-client käyttää hyväksytyn laskun snapshot-dataan perustuvia
 backend-reittejä. API-client ei renderöi PDF:ää, ei hae master-dataa eikä
 päätä, onko lasku lähetetty.
+
+Toimitushistorian `sendMode` ja `documentSource` ovat backendin nimeämiä,
+clientin validoimia suljettuja luokkia. Niistä ei päätellä lähetyslupaa tai
+PDF:n tavujen eheyttä. `getInvoiceDeliveryEventPdfUrl` muodostaa vain tarkan
+tapahtuma-PDF:n GET-osoitteen; se ei generoi dokumenttia eikä käytä nykyistä
+PDF:ää varavaihtoehtona. Tietojen puuttuessa parseri hylkää vastauksen
+arvaamatta vanhan tapahtuman tarkoitusta. Omistava sopimus on
+[toimitustapahtumien suunnitelmassa](../../docs/architecture/invoice-delivery-events-plan.md).
 
 Laskutuksen maksuasetusten client välittää backendille vain käyttäjän
 muokattavat maksuasetuskentät. Se ei päätä viivästyskoron, huomautusajan tai

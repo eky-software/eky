@@ -172,11 +172,27 @@ Maksutietojen marssijärjestys:
 PDF:n muodostaminen on hyväksynnän jälkeinen dokumentointivaihe, ei
 lähetysmerkintä. Local-MVP:ssä PDF:n metadata tallennetaan
 `invoice_documents`-tauluun ja binääritiedosto paikalliseen storage-polkuun.
-PDF muodostetaan vain hyväksytyn laskun snapshotista. Jos hyväksytty mutta
-lähettämätön lasku palautetaan muokattavaksi, nykyinen
-`approved_invoice_pdf`-metadata poistetaan ja paikallinen tiedosto yritetään
-poistaa. Uudelleenhyväksynnässä laskunumero ja viitenumero säilyvät, mutta PDF
-muodostetaan uudelleen päivitetystä hyväksytyn laskun snapshotista.
+PDF muodostetaan vain hyväksytyn laskun snapshotista.
+
+[B3-B5:n revisiosopimus](release-0.3.0-m1-preparation-plan.md#b-p2-toimitusversioiden-historia)
+korvaa vanhan reopen-poistopolun. Työpuun kohdetodennettu reopen irrottaa
+nykyrevision osoittimen mutta säilyttää revision, PDF-metadatan, tiedoston
+ja toimitushistorian. Tila, luonnoksen vapautus, osoitin ja audit muuttuvat
+samassa kirjoitustransaktiossa. Keskeneräinen tai epävarma toimitus estää
+reopenin ja uudelleenhyväksynnän; jälkimmäinen tarkistus koskee myös
+migroitua aiemmin avattua laskua. Onnistunut uuden mallin itselle tehty
+SMTP-testi sallii muokkauksen, onnistunut asiakaslähetys säilyttää `sent`-eston.
+
+Uudelleenhyväksyntä säilyttää laskuidentiteetin, numeron ja viitteen mutta
+julkaisee uuden muuttumattoman revision. Sen PDF muodostetaan tästä
+uudesta snapshotista; vanhaa tiedostoa ei korvata tai käytetä uuden
+puuttuvan PDF:n tilalla. Koko lähetysketjun, UI:n ja palautuksen sovitus on
+vielä kesken. Omistajan 6.10.2026 hyväksymä rajattu selvitysesto koskee
+vanhaa `approved`-laskua, jolla on tarkoitukseltaan tuntematonta legacy-SMTP-
+historiaa. Reopen ja uusi lähetys estetään; laskun ja historian luku säilyy.
+Moodia ei päätellä vastaanottajasta tai ajasta. Uuden mallin onnistuneen
+itselle lähetyksen muokkauslupa ja ehjän vanhan `sent`-laskun erikseen
+vahvistettu uudelleenlähetyspolitiikka säilyvät.
 
 ## Tilat Ja Muokkaaminen
 

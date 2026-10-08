@@ -61,6 +61,7 @@ interface FirstStartUpdateCoordinatorDependencies {
   now?(): Date;
   operationIdFactory?(): string;
   observer?: UpdateOperationalObserver;
+  observeStartupException?(error: unknown): void;
   profileProtection: FirstStartProfileProtection;
   readSecretStorageIdentity(): Promise<string | null>;
   releaseInfo: Readonly<DesktopReleaseInfo>;
@@ -214,7 +215,8 @@ export class FirstStartUpdateCoordinator {
       }
 
       this.migrationGateCompleted = true;
-    } catch {
+    } catch (error) {
+      try { this.dependencies.observeStartupException?.(error); } catch { /* Optional private evidence. */ }
       await this.markRollbackRequired(coordinatedJournal);
       await this.markInstallerNotAppliedFailedSafe(
         installerNotAppliedJournal,

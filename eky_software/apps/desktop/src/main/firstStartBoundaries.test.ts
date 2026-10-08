@@ -7,6 +7,18 @@ import { describe, expect, it } from 'vitest';
 const sourceRoot = resolveSourceRoot();
 
 describe('desktop first-start boundaries', () => {
+  it('uses the same opt-in private observation binding for both migration decision owners', async () => {
+    const source = await readFile(join(sourceRoot, 'main', 'desktopComposition.ts'), 'utf8');
+    const firstStart = source.indexOf('new FirstStartUpdateCoordinator({');
+    const backend = source.indexOf('backendHandle = await dependencies.startBackend({');
+    expect(firstStart).toBeGreaterThan(-1);
+    expect(backend).toBeGreaterThan(firstStart);
+    expect(source.slice(firstStart, source.indexOf('profileProtection:', firstStart)))
+      .toContain('...startupExceptionObservation');
+    expect(source.slice(backend, source.indexOf('async beforeMigrations', backend)))
+      .toContain('...startupExceptionObservation');
+  });
+
   it('admits the packaged build before resolving or adopting a workspace', async () => {
     const source = await readFile(
       join(sourceRoot, 'main', 'desktopComposition.ts'),

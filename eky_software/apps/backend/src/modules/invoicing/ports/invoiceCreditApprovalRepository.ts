@@ -1,3 +1,4 @@
+import type { InvoiceRevisionKey } from '../domain/invoiceContentRevision.js';
 import type { InvoiceNumberingMode } from '../domain/invoiceNumbering.js';
 
 export interface ApproveCreditInvoiceDraftPersistenceInput {
@@ -10,6 +11,7 @@ export interface ApproveCreditInvoiceDraftPersistenceInput {
 }
 
 export interface ApprovedCreditInvoiceResult {
+  revisionKey: InvoiceRevisionKey;
   invoiceId: string;
   draftId: string;
   invoiceNumber: string;

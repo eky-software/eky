@@ -1,8 +1,11 @@
+import { createUnexpectedLegacyRevisionPromoter } from './prepareInvoiceDeliveryRevision.fixture.js';
 import { createActorContext } from '@eky/auth';
 import { AuthorizationError } from '@eky/permissions';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
+import type { PreservedLegacyInvoiceDocumentMetadata, RevisionInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
+import { InvoiceDocumentIntegrityError } from './invoiceDocumentIntegrityError.js';
+import { createInvoiceRevisionPdfContentFixture } from './toInvoiceRevisionPdfContent.fixture.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
 import type { InvoiceEmailDeliveryProvider } from '../ports/invoiceEmailDeliveryProvider.js';
@@ -14,7 +17,7 @@ describe('prepareApprovedInvoiceEmailDryRun', () => {
     const invoice = createApprovedInvoiceView();
     const document = createApprovedInvoiceDocumentMetadata();
     const approvedInvoiceReader = createApprovedInvoiceReader(invoice);
-    const ensureApprovedInvoicePdfDocument = vi.fn(async () => document);
+    const ensureInvoiceRevisionPdfDocument = vi.fn(async () => document);
     const invoiceEmailDeliveryProvider = createDryRunProvider();
 
     const result = await prepareApprovedInvoiceEmailDryRun(
@@ -25,7 +28,10 @@ describe('prepareApprovedInvoiceEmailDryRun', () => {
       },
       {
         approvedInvoiceReader,
-        ensureApprovedInvoicePdfDocument,
+        preparePreservedLegacyInvoiceDocument: unexpectedLegacyPreparation,
+        invoiceDeliveryEventReader: { requiresLegacyDeliveryReview: vi.fn(async () => false) },
+        invoiceContentRevisionReader: createRevisionReader(),
+        invoiceLegacyRevisionPromoter: createUnexpectedLegacyRevisionPromoter(),        ensureInvoiceRevisionPdfDocument,
         invoiceEmailDeliveryProvider,
       },
     );
@@ -34,10 +40,9 @@ describe('prepareApprovedInvoiceEmailDryRun', () => {
       'company-1',
       'invoice-1',
     );
-    expect(ensureApprovedInvoicePdfDocument).toHaveBeenCalledWith({
-      companyId: 'company-1',
+    expect(ensureInvoiceRevisionPdfDocument).toHaveBeenCalledWith({
+      key: { companyId: 'company-1', invoiceId: 'invoice-1', revisionId: 'revision-1' },
       createdAt: '2026-07-09T10:00:00.000Z',
-      invoiceId: 'invoice-1',
     });
     expect(invoiceEmailDeliveryProvider.prepareDryRunEmail).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -49,6 +54,7 @@ describe('prepareApprovedInvoiceEmailDryRun', () => {
         },
         invoiceId: 'invoice-1',
         invoiceNumber: '20260001',
+        documentTarget: { kind: 'revision', documentId: 'document-1' },
         provider: 'dryRun',
         subject: 'Lasku 20260001',
         to: 'recipient@example.fi',
@@ -80,7 +86,10 @@ describe('prepareApprovedInvoiceEmailDryRun', () => {
       },
       {
         approvedInvoiceReader: createApprovedInvoiceReader(invoice),
-        ensureApprovedInvoicePdfDocument: vi.fn(
+        preparePreservedLegacyInvoiceDocument: unexpectedLegacyPreparation,
+        invoiceDeliveryEventReader: { requiresLegacyDeliveryReview: vi.fn(async () => false) },
+        invoiceContentRevisionReader: createRevisionReader(),
+        invoiceLegacyRevisionPromoter: createUnexpectedLegacyRevisionPromoter(),        ensureInvoiceRevisionPdfDocument: vi.fn(
           async () => createApprovedInvoiceDocumentMetadata(),
         ),
         invoiceEmailDeliveryProvider,
@@ -114,7 +123,10 @@ describe('prepareApprovedInvoiceEmailDryRun', () => {
       },
       {
         approvedInvoiceReader: createApprovedInvoiceReader(invoice),
-        ensureApprovedInvoicePdfDocument: vi.fn(async () => ({
+        preparePreservedLegacyInvoiceDocument: unexpectedLegacyPreparation,
+        invoiceDeliveryEventReader: { requiresLegacyDeliveryReview: vi.fn(async () => false) },
+        invoiceContentRevisionReader: createRevisionReader(),
+        invoiceLegacyRevisionPromoter: createUnexpectedLegacyRevisionPromoter(),        ensureInvoiceRevisionPdfDocument: vi.fn(async () => ({
           ...createApprovedInvoiceDocumentMetadata(),
           fileName: 'hyvityslasku-20260002.pdf',
         })),
@@ -146,7 +158,10 @@ describe('prepareApprovedInvoiceEmailDryRun', () => {
         },
         {
           approvedInvoiceReader: createApprovedInvoiceReader(undefined),
-          ensureApprovedInvoicePdfDocument: vi.fn(
+          preparePreservedLegacyInvoiceDocument: unexpectedLegacyPreparation,
+          invoiceDeliveryEventReader: { requiresLegacyDeliveryReview: vi.fn(async () => false) },
+          invoiceContentRevisionReader: createRevisionReader(),
+          invoiceLegacyRevisionPromoter: createUnexpectedLegacyRevisionPromoter(),          ensureInvoiceRevisionPdfDocument: vi.fn(
             async () => createApprovedInvoiceDocumentMetadata(),
           ),
           invoiceEmailDeliveryProvider,
@@ -158,7 +173,7 @@ describe('prepareApprovedInvoiceEmailDryRun', () => {
   });
 
   it('does not prepare a cancelled invoice or ensure its PDF', async () => {
-    const ensureApprovedInvoicePdfDocument = vi.fn(
+    const ensureInvoiceRevisionPdfDocument = vi.fn(
       async () => createApprovedInvoiceDocumentMetadata(),
     );
     const invoiceEmailDeliveryProvider = createDryRunProvider();
@@ -174,13 +189,16 @@ describe('prepareApprovedInvoiceEmailDryRun', () => {
           approvedInvoiceReader: createApprovedInvoiceReader(
             createApprovedInvoiceView({ status: 'cancelled' }),
           ),
-          ensureApprovedInvoicePdfDocument,
+          preparePreservedLegacyInvoiceDocument: unexpectedLegacyPreparation,
+          invoiceDeliveryEventReader: { requiresLegacyDeliveryReview: vi.fn(async () => false) },
+          invoiceContentRevisionReader: createRevisionReader(),
+          invoiceLegacyRevisionPromoter: createUnexpectedLegacyRevisionPromoter(),          ensureInvoiceRevisionPdfDocument,
           invoiceEmailDeliveryProvider,
         },
       ),
     ).rejects.toBeInstanceOf(ApprovedInvoiceNotFoundError);
 
-    expect(ensureApprovedInvoicePdfDocument).not.toHaveBeenCalled();
+    expect(ensureInvoiceRevisionPdfDocument).not.toHaveBeenCalled();
     expect(invoiceEmailDeliveryProvider.prepareDryRunEmail).not.toHaveBeenCalled();
   });
 
@@ -203,7 +221,10 @@ describe('prepareApprovedInvoiceEmailDryRun', () => {
         },
         {
           approvedInvoiceReader,
-          ensureApprovedInvoicePdfDocument: vi.fn(
+          preparePreservedLegacyInvoiceDocument: unexpectedLegacyPreparation,
+          invoiceDeliveryEventReader: { requiresLegacyDeliveryReview: vi.fn(async () => false) },
+          invoiceContentRevisionReader: createRevisionReader(),
+          invoiceLegacyRevisionPromoter: createUnexpectedLegacyRevisionPromoter(),          ensureInvoiceRevisionPdfDocument: vi.fn(
             async () => createApprovedInvoiceDocumentMetadata(),
           ),
           invoiceEmailDeliveryProvider: createDryRunProvider(),
@@ -212,6 +233,32 @@ describe('prepareApprovedInvoiceEmailDryRun', () => {
     ).rejects.toBeInstanceOf(AuthorizationError);
     expect(approvedInvoiceReader.getApprovedInvoiceById).not.toHaveBeenCalled();
   });
+
+  it.each(['companyId', 'invoiceId', 'binding'] as const)(
+    'rejects a preserved document with an inconsistent %s before returning a target', async field => {
+      const invoiceEmailDeliveryProvider = createDryRunProvider();
+      const document = {
+        ...createApprovedInvoiceDocumentMetadata(),
+        binding: { kind: 'preservedLegacy', sourceDocumentId: 'legacy-document' },
+        [field]: field === 'binding' ? { kind: 'legacyOriginal' } : 'foreign-id',
+      } as unknown as PreservedLegacyInvoiceDocumentMetadata;
+      await expect(prepareApprovedInvoiceEmailDryRun({
+        actorContext: createSendInvoicesActorContext(), invoiceId: 'invoice-1',
+        preparedAt: '2026-07-09T10:00:00.000Z',
+      }, {
+        approvedInvoiceReader: createApprovedInvoiceReader(createApprovedInvoiceView({ status: 'sent' })),
+        invoiceContentRevisionReader: { getCurrentRevision: async () => ({
+          ...createInvoiceRevisionPdfContentFixture(), companyId: 'company-1', invoiceId: 'invoice-1',
+          origin: 'legacySnapshot', vatBreakdownState: 'unavailable', vatBreakdown: null,
+        }) },
+        invoiceDeliveryEventReader: { requiresLegacyDeliveryReview: async () => false },
+        invoiceLegacyRevisionPromoter: createUnexpectedLegacyRevisionPromoter(),        ensureInvoiceRevisionPdfDocument: unexpectedLegacyPreparation,
+        preparePreservedLegacyInvoiceDocument: async () => document,
+        invoiceEmailDeliveryProvider,
+      })).rejects.toBeInstanceOf(InvoiceDocumentIntegrityError);
+      expect(invoiceEmailDeliveryProvider.prepareDryRunEmail).not.toHaveBeenCalled();
+    },
+  );
 });
 
 function createSendInvoicesActorContext() {
@@ -221,6 +268,10 @@ function createSendInvoicesActorContext() {
     companyId: 'company-1',
     permissions: ['sendInvoices'],
   });
+}
+
+async function unexpectedLegacyPreparation(): Promise<never> {
+  throw new Error('Unexpected preserved legacy preparation.');
 }
 
 function createApprovedInvoiceReader(
@@ -245,8 +296,15 @@ function createDryRunProvider(): InvoiceEmailDeliveryProvider {
   };
 }
 
-function createApprovedInvoiceDocumentMetadata(): ApprovedInvoiceDocumentMetadata {
+function createRevisionReader() {
+  return { getCurrentRevision: vi.fn(async () => ({
+    ...createInvoiceRevisionPdfContentFixture(), companyId: 'company-1', invoiceId: 'invoice-1', revisionId: 'revision-1',
+  })) };
+}
+
+function createApprovedInvoiceDocumentMetadata(): RevisionInvoiceDocumentMetadata {
   return {
+    binding: { kind: 'revision', revisionId: 'revision-1' },
     id: 'document-1',
     companyId: 'company-1',
     invoiceId: 'invoice-1',

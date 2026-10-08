@@ -1,4 +1,5 @@
 import { calculateInvoiceLine } from './calculateInvoiceLine.js';
+import { validateCalculatedInvoiceLine } from './calculateInvoiceTotals.js';
 import {
   calculateCreditInvoice,
   type CreditSourceLine,
@@ -10,6 +11,7 @@ import type {
   PriceInputMode,
 } from './invoiceCalculation.js';
 import { InvoiceCreditError } from './invoiceCreditError.js';
+import { InvoiceCalculationError } from './invoiceCalculationError.js';
 import { roundHalfUp } from './roundHalfUp.js';
 
 const basisPointsScale = 10_000n;
@@ -493,11 +495,28 @@ function sumPreviousByRate(
   return result;
 }
 
-function sumCreditTotals(
-  lines: readonly CalculatedNormalCreditDraftLine[],
+export function sumCreditTotals(
+  lines: readonly Pick<CalculatedNormalCreditDraftLine,
+    | 'vatRateBasisPoints'
+    | 'priceInputMode'
+    | 'baseCents'
+    | 'discountCents'
+    | 'netCents'
+    | 'vatCents'
+    | 'grossCents'
+  >[],
 ): InvoiceTotals {
   const byRate = new Map<number, InvoiceVatBreakdown>();
+  const modesByRate = new Map<number, PriceInputMode>();
   for (const line of lines) {
+    validateCalculatedInvoiceLine(line);
+    const existingMode = modesByRate.get(line.vatRateBasisPoints);
+    if (existingMode !== undefined && existingMode !== line.priceInputMode) {
+      throw new InvoiceCalculationError(
+        'Invoice lines with the same VAT rate must use one price input mode.',
+      );
+    }
+    modesByRate.set(line.vatRateBasisPoints, line.priceInputMode);
     const current = byRate.get(line.vatRateBasisPoints);
     byRate.set(line.vatRateBasisPoints, {
       vatRateBasisPoints: line.vatRateBasisPoints,

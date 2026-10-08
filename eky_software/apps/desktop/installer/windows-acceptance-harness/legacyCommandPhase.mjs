@@ -18,6 +18,9 @@ import { prepareLegacyUpgradeTerminalOutcome, completeLegacyUpgradeTerminalOutco
 import { inventoriesMatch } from './closedDirectoryInventory.mjs';
 import { readAcceptanceCommandPhase, readCommandPhaseJson as readJson, hasExactPhaseKeys as exact } from './acceptanceCommandPhaseInput.mjs';
 import commandBudgets from '../windows-process-supervisor/supervisorCommandBudgets.json' with { type: 'json' };
+import { LEGACY_STARTUP_TERMINAL_FILENAME, readLegacyStartupFailureEvidence,
+  startupEvidenceAllowsFixtureRemoval } from './legacyStartupFailureEvidence.mjs';
+import { readLegacyOriginalExceptionEvidence, originalExceptionEvidenceAllowsRemoval } from './legacyOriginalExceptionEvidence.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const PHASES = commandBudgets.legacyCommand.phases.map(([name]) => name);
@@ -126,7 +129,11 @@ export async function executeLegacyCommandPhase(context, dependencies = {}) {
       artifactDescriptorSha256: binding.artifactDescriptorSha256, fixtureRoot: state.artifact.artifactRoot });
     const path = resolve(state.runRoot, 'scenario', 'worker-request.json');
     await writeJsonAtomicExclusive(path, request);
-    return (dependencies.runScenario ?? runLegacyUpgradeWorker)(['--request', path]);
+    const [, timeoutMilliseconds, terminationTimeoutMilliseconds] = commandBudgets.legacyCommand.phases
+      .find(([name]) => name === 'scenario');
+    return (dependencies.runScenario ?? runLegacyUpgradeWorker)(['--request', path], {
+      phaseObservation: { timeoutMilliseconds, terminationTimeoutMilliseconds },
+    });
   } else if (phase === 'semantic') {
     await terminalPlan(context, async () => {
       try {
@@ -145,11 +152,16 @@ export async function executeLegacyCommandPhase(context, dependencies = {}) {
     } catch { state.safetyErrorCode ??= 'WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED'; }
   } else if (phase === 'fixtureCleanup') {
     const { terminal, failure } = await terminalOutcome(context);
-    await writeJsonAtomicExclusive(resolve(context.phaseRoot, 'terminal.json'),
-      { binding: context.binding, outcome: commandOutcome(context, terminal, failure) });
+    const startupEvidence = await readLegacyStartupFailureEvidence({ runRoot: state.runRoot,
+      artifact: state.artifact, supervisorResult: reports.scenario });
+    const originalExceptionEvidence = await readLegacyOriginalExceptionEvidence({ runRoot: state.runRoot,
+      artifact: state.artifact, supervisorResult: reports.scenario }, startupEvidence);
+    await writeJsonAtomicExclusive(resolve(context.phaseRoot, LEGACY_STARTUP_TERMINAL_FILENAME),
+      { binding: context.binding, outcome: commandOutcome(context, terminal, failure), startupEvidence, originalExceptionEvidence });
     const cleanupVerified = terminal || (['notRequired', 'semanticCleanupCompleted'].includes(failure?.semanticCleanupResultCode) &&
       ['exactProductsAbsent', 'exactProductsAbsentAfterCleanup'].includes(failure?.postconditionResultCode));
-    if (state.safetyErrorCode === null && cleanupVerified) {
+    if (state.safetyErrorCode === null && cleanupVerified && startupEvidenceAllowsFixtureRemoval(startupEvidence) &&
+      originalExceptionEvidenceAllowsRemoval(originalExceptionEvidence)) {
       await filesystem('remove', { root: state.runRoot });
       state.fixtureRemoved = true;
       state.fixtureCleanupResultCode = 'fixtureRemoved';
@@ -214,9 +226,9 @@ async function publish(context) {
   } else {
     // Terminal facts are recorded before fixture removal, not reconstructed
     // from removed business files or guessed from a successful uninstall.
-    const saved = await readJson(resolve(context.commandRoot, 'fixtureCleanup', 'terminal.json'));
+    const saved = await readJson(resolve(context.commandRoot, 'fixtureCleanup', LEGACY_STARTUP_TERMINAL_FILENAME));
     const item = history.find((entry) => entry.phase === 'fixtureCleanup');
-    if (!exact(saved, ['binding', 'outcome']) || !exact(saved.binding, Object.keys(context.binding)) ||
+    if (!exact(saved, ['binding', 'outcome', 'startupEvidence', 'originalExceptionEvidence']) || !exact(saved.binding, Object.keys(context.binding)) ||
       saved.binding.schemaVersion !== 1 || saved.binding.runNonce !== item.runNonce ||
       saved.binding.scenario !== 'acceptanceCommandPhase' || saved.binding.artifactDescriptorSha256 !== caller.artifactDescriptorSha256) invalid();
     outcome = saved.outcome;

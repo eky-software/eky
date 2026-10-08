@@ -12,6 +12,7 @@ import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 
 import type { ApproveInvoiceDraftInput } from '../application/approveInvoiceDraft.js';
 import { ApproveInvoiceDraftError } from '../application/approveInvoiceDraftError.js';
+import { InvoiceDeliveryConflictError } from '../domain/invoiceDeliveryConflictError.js';
 import type { DeleteInvoiceDraftInput } from '../application/deleteInvoiceDraft.js';
 import type { GetInvoiceDraftInput } from '../application/getInvoiceDraft.js';
 import type { GetInvoiceIssuanceReadinessInput } from '../application/getInvoiceIssuanceReadiness.js';
@@ -28,6 +29,7 @@ import type { InvoiceDraftSummary } from '../domain/invoiceDraftSummary.js';
 import type { InvoiceIssuanceReadiness } from '../domain/invoiceIssuanceReadiness.js';
 import { InvoiceNumberingError } from '../domain/invoiceNumberingError.js';
 import type { ApprovedInvoiceResult } from '../ports/invoiceApprovalRepository.js';
+import { toInvoiceApprovalResponse } from './invoiceApprovalResponse.js';
 import {
   InvoiceDraftRequestValidationError,
   parseSaveInvoiceDraftRequest,
@@ -273,10 +275,16 @@ export function createInvoiceDraftRoutes(
           reverseChargeEligibilityConfirmed,
         });
 
-        return context.json({ approvedInvoice });
+        return context.json({
+          approvedInvoice: toInvoiceApprovalResponse(approvedInvoice),
+        });
       } catch (error) {
         if (error instanceof InvoiceDraftNotFoundError) {
           return context.json({ error: error.message }, 404);
+        }
+
+        if (error instanceof InvoiceDeliveryConflictError) {
+          return context.json({ error: error.message }, 409);
         }
 
         if (

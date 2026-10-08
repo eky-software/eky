@@ -10,13 +10,104 @@ import {
 } from './protocolPolicy.js';
 
 describe('desktop protocol policy', () => {
+  it('allows only the exact read-only draft history route', () => {
+    const path = '/invoice-drafts/draft-1/delivery-history';
+    expect(isAllowedBackendRequest('GET', path)).toBe(true);
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']) {
+      expect(isAllowedBackendRequest(method, path)).toBe(false);
+    }
+    for (const invalid of [
+      `${path}/`, `${path}/extra`, `${path}?companyId=other`, `${path}#page`,
+      `${path}\n`, `${path}\r`, `${path}\u2028`,
+      '/invoice-drafts/draft%2F1/delivery-history',
+      '/invoice-drafts//delivery-history',
+      `/invoice-drafts/${'x'.repeat(101)}/delivery-history`,
+    ]) expect(isAllowedBackendRequest('GET', invalid)).toBe(false);
+  });
+
   it('shares one strict resource id policy with privileged desktop actions', () => {
     expect(isValidResourceId('invoice_2026-1')).toBe(true);
+    expect(isValidResourceId('x'.repeat(100))).toBe(true);
     expect(isValidResourceId('../invoice-1')).toBe(false);
     expect(isValidResourceId('invoice/1')).toBe(false);
     expect(isValidResourceId('invoice%2f1')).toBe(false);
     expect(isValidResourceId('x'.repeat(101))).toBe(false);
     expect(isValidResourceId(123)).toBe(false);
+    for (const terminator of ['\n', '\r', '\u2028', '\u2029']) {
+      expect(isValidResourceId(`invoice-1${terminator}`)).toBe(false);
+    }
+  });
+
+  it('allows only GET for the exact preserved-document PDF path', () => {
+    const path = '/invoices/invoice-1/preserved-documents/document-1/pdf';
+
+    expect(isAllowedBackendRequest('GET', path)).toBe(true);
+    expect(isAllowedBackendRequest('GET',
+      `/invoices/${'i'.repeat(100)}/preserved-documents/${'d'.repeat(100)}/pdf`,
+    )).toBe(true);
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']) {
+      expect(isAllowedBackendRequest(method, path)).toBe(false);
+    }
+    for (const invalidPath of [
+      `${path}/`,
+      `${path}/extra`,
+      `${path}?companyId=other`,
+      `${path}#page=2`,
+      `${path}\n`,
+      `${path}\r`,
+      `${path}\u2028`,
+      `${path}\u2029`,
+      '/invoices/invoice-1/preserved-documents',
+      '/invoices/invoice-1/preserved-documents/document-1',
+      '/invoices/invoice-1/preserved-documents/document-1/pdf/metadata',
+      '/invoices/invoice-1/preserved-documents//pdf',
+      '/invoices//preserved-documents/document-1/pdf',
+      '/invoices/invoice-1/preserved-documents/../pdf',
+      '/invoices/invoice-1/preserved-documents/document%2f1/pdf',
+      '/invoices/invoice%2f1/preserved-documents/document-1/pdf',
+      `/invoices/${'i'.repeat(101)}/preserved-documents/document-1/pdf`,
+      `/invoices/invoice-1/preserved-documents/${'d'.repeat(101)}/pdf`,
+      `/invoices/${'i'.repeat(128)}/preserved-documents/${'d'.repeat(128)}/pdf`,
+    ]) {
+      expect(isAllowedBackendRequest('GET', invalidPath)).toBe(false);
+    }
+
+    expect(isAllowedBackendRequest('GET', '/invoices/invoice-1/pdf')).toBe(true);
+    expect(isAllowedBackendRequest('POST', '/invoices/invoice-1/pdf')).toBe(true);
+  });
+
+  it('allows only GET for the exact delivery-event PDF path', () => {
+    const path = '/invoices/invoice-1/delivery-events/event-1/pdf';
+
+    expect(isAllowedBackendRequest('GET', path)).toBe(true);
+    expect(isAllowedBackendRequest('GET',
+      `/invoices/${'i'.repeat(100)}/delivery-events/${'e'.repeat(100)}/pdf`,
+    )).toBe(true);
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']) {
+      expect(isAllowedBackendRequest(method, path)).toBe(false);
+    }
+    for (const invalidPath of [
+      `${path}/`, `${path}/extra`, `${path}?companyId=other`, `${path}#page=2`,
+      `${path}\n`, `${path}\r`, `${path}\u2028`, `${path}\u2029`,
+      '/invoices/invoice-1/delivery-events/event-1',
+      '/invoices/invoice-1/delivery-events/event-1/pdf/metadata',
+      '/invoices/invoice-1/delivery-events/event-1/send',
+      '/invoices/invoice-1/delivery-events//pdf',
+      '/invoices//delivery-events/event-1/pdf',
+      '/invoices/invoice-1/delivery-events/../pdf',
+      '/invoices/invoice-1/delivery-events/event%2f1/pdf',
+      '/invoices/invoice%2f1/delivery-events/event-1/pdf',
+      '/invoices/invoice-1/delivery-events/event\\1/pdf',
+      `/invoices/${'i'.repeat(101)}/delivery-events/event-1/pdf`,
+      `/invoices/invoice-1/delivery-events/${'e'.repeat(101)}/pdf`,
+    ]) {
+      expect(isAllowedBackendRequest('GET', invalidPath)).toBe(false);
+    }
+
+    expect(isAllowedBackendRequest('GET', '/invoices/invoice-1/pdf')).toBe(true);
+    expect(isAllowedBackendRequest('POST', '/invoices/invoice-1/pdf')).toBe(true);
+    expect(isAllowedBackendRequest('GET', '/invoices/invoice-1/delivery-events')).toBe(true);
+    expect(isAllowedBackendRequest('POST', '/invoices/invoice-1/delivery-events')).toBe(false);
   });
 
   it('allows only explicitly named backend routes and methods', () => {

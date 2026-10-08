@@ -19,6 +19,7 @@ import {
   parseUpdateCreditInvoiceDraftRequest,
 } from './creditInvoiceDraftRequest.js';
 import type { ApprovedCreditInvoiceResult } from '../ports/invoiceCreditApprovalRepository.js';
+import { toCreditInvoiceApprovalResponse } from './invoiceApprovalResponse.js';
 
 const maximumCreditDraftBodySizeBytes = 256 * 1024;
 const maximumForbiddenBodySizeBytes = 1024;
@@ -110,7 +111,9 @@ export function createCreditInvoiceDraftRoutes(
             draftId: context.req.param('id'),
           });
 
-        return context.json({ approvedInvoice });
+        return context.json({
+          approvedInvoice: toCreditInvoiceApprovalResponse(approvedInvoice),
+        });
       } catch (error) {
         return mapCreditDraftError(context, error);
       }

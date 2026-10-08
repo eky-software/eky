@@ -11,6 +11,7 @@ import {
   readLegacyTargetEvidence,
 } from './legacyUpgradeProfileEvidence.mjs';
 import { verifyLegacyUpgradeArtifact } from './legacyUpgradeArtifact.mjs';
+import { LEGACY_DATABASE_ERROR_CODES, isLegacyDatabaseProof, readLegacyDatabasePackageBinding } from './legacyUpgradeDatabaseEvidence.mjs';
 
 const POSTCONDITION_FAILURE_CODES = Object.freeze({
   artifact: 'legacyArtifactReverificationFailed',
@@ -27,6 +28,7 @@ const SEMANTIC_VALIDATION_FAILURE_CODES = new Set([
 ]);
 
 export const LEGACY_SEMANTIC_POSTCONDITION_FAILURE_CODES = Object.freeze([
+  ...Object.keys(LEGACY_DATABASE_ERROR_CODES),
   ...Object.values(POSTCONDITION_FAILURE_CODES),
   ...SEMANTIC_VALIDATION_FAILURE_CODES,
   'legacySemanticProofFailed',
@@ -37,8 +39,9 @@ function equal(left, right) {
 }
 
 export function classifyLegacySemanticPostconditionFailure(stage, error) {
+  if (stage === 'currentEvidence' && Object.hasOwn(LEGACY_DATABASE_ERROR_CODES, error?.message)) return error.message;
   if (
-    stage === 'semanticValidation' &&
+    ['semanticValidation', 'installedPayload'].includes(stage) &&
     typeof error?.message === 'string' &&
     SEMANTIC_VALIDATION_FAILURE_CODES.has(error.message)
   ) {
@@ -58,6 +61,8 @@ export function validateLegacyUpgradeSemanticEvidence({
     throw new Error('legacySemanticEvidenceChanged');
   }
   if (
+    !isLegacyDatabaseProof(firstEvidence.databaseProof) || !isLegacyDatabaseProof(secondEvidence.databaseProof) ||
+    !equal(firstEvidence.databaseProof, secondEvidence.databaseProof) ||
     firstEvidence.runtimeInstanceId === secondEvidence.runtimeInstanceId ||
     firstEvidence.workspaceId !== secondEvidence.workspaceId ||
     firstEvidence.registrySha256 !== secondEvidence.registrySha256 ||
@@ -108,18 +113,19 @@ export async function verifyLegacyUpgradeSemanticPostcondition({
         buildRevision: artifact.target.buildRevision,
       }),
     });
+    const installRoot = resolve(process.env.LOCALAPPDATA, 'Programs', 'Eky');
+    stage = 'installedPayload';
+    const installedPayload = await inspectPackageArtifactInventory({ root: installRoot, stage: 'packagedApp' });
+    if (!equal(installedPayload, artifact.target.payloadInventory)) throw new Error('legacyTargetPayloadChanged');
     stage = 'currentEvidence';
+    const packageBinding = await readLegacyDatabasePackageBinding(installRoot, identities.target);
     const current = await captureLegacyTargetEvidence({
       identities,
+      packageBinding,
       previousEvidence: firstEvidence,
       runtimeInstanceId: secondEvidence.runtimeInstanceId,
       sourceEvidence,
       userDataRoot: deriveLegacySourceUserDataRoot(runtimeRoot, runNonce),
-    });
-    stage = 'installedPayload';
-    const installedPayload = await inspectPackageArtifactInventory({
-      root: resolve(process.env.LOCALAPPDATA, 'Programs', 'Eky'),
-      stage: 'packagedApp',
     });
     stage = 'semanticValidation';
     const semanticResult = validateLegacyUpgradeSemanticEvidence({

@@ -1,6 +1,6 @@
 import PDFDocument from 'pdfkit';
 
-import type { ApprovedInvoiceView } from '../../domain/approvedInvoiceView.js';
+import type { ApprovedInvoicePdfContent } from '../../domain/approvedInvoicePdfContent.js';
 import { invoicePdfLayout } from './approvedInvoicePdfLayout.js';
 import { drawAdditionalDetails } from './sections/drawAdditionalDetails.js';
 import { drawFooter } from './sections/drawFooter.js';
@@ -12,7 +12,7 @@ import { drawRecipientAndMeta } from './sections/drawRecipientAndMeta.js';
 import { drawVatAndTotals } from './sections/drawVatAndTotals.js';
 
 export async function renderApprovedInvoicePdf(
-  invoice: ApprovedInvoiceView,
+  invoice: ApprovedInvoicePdfContent,
 ): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
@@ -38,7 +38,7 @@ export async function renderApprovedInvoicePdf(
 
 function drawInvoice(
   doc: PDFKit.PDFDocument,
-  invoice: ApprovedInvoiceView,
+  invoice: ApprovedInvoicePdfContent,
 ): void {
   doc.font('Helvetica').fontSize(9).fillColor('#000000');
 

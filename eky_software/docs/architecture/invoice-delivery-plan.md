@@ -254,8 +254,10 @@ Ensimmäinen toteutusaskel:
 - `approved`-lasku voidaan merkitä manuaalisesti lähetetyksi
 - backendin `mark sent` -application service varmistaa tai muodostaa hyväksytyn
   laskun PDF:n ennen manuaalista lähetetyksi merkintää
-- web voi tehdä saman PDF-varmistuksen käyttökokemuksen vuoksi, mutta se ei ole
-  varsinainen liiketoimintasäännön auktoriteetti
+- web ei tee erillistä PDF-pyyntöä ennen manuaalista merkintää tai
+  sähköpostin valmistelua: backendin kelpoisuus-/selvitysesto pitää saada
+  käyttäjälle ennen mahdollista generointivirhettä. Onnistumisen jälkeen
+  PDF-metadata päivitetään erikseen; esikatselun oma polku säilyy.
 - jos PDF:n muodostus epäonnistuu, laskua ei merkitä lähetetyksi
 - toiminto ei vielä lähetä sähköpostia eikä ohjaa tulostinta
 - toiminto ei vielä kirjoita erillistä `invoice_delivery_events`-lokitaulua

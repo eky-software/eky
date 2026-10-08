@@ -1,17 +1,28 @@
 import type { InvoiceDeliveryEvent } from '../domain/invoiceDeliveryEvent.js';
+import type { InvoiceDryRunDeliveryEvent } from '../domain/invoiceRecordedDeliveryEvent.js';
+import type { InvoiceDeliveryReservation, OtherEmailCompletionInput, EmailCompletionResult } from '../domain/invoiceDeliveryReservation.js';
 
-export interface CompleteInvoiceDeliveryEventInput {
-  companyId: string;
-  eventId: string;
-  providerMessageId: string | null;
-  safeErrorMessage: string | null;
-  status: 'succeeded' | 'failed' | 'outcomeUnknown';
-  technicalErrorCode: string | null;
-}
+export type ReservedEmailFields = Readonly<{
+  recipientEmail: string;
+  ccEmail: string;
+  subject: string;
+  bodyPreview: string;
+  createdAt: string;
+  createdBy: string;
+}>;
+export type ReserveEmailDeliveryInput = InvoiceDeliveryReservation & ReservedEmailFields;
+export type ReserveEmailDeliveryResult =
+  | Readonly<{
+      outcome: 'reserved';
+      reservation: InvoiceDeliveryReservation;
+      invoiceStatusAtReservation: 'approved' | 'sent';
+    }>
+  | Readonly<{ outcome: 'conflict' }>;
 
 export interface InvoiceDeliveryEventRepository {
-  completeDeliveryEvent(input: CompleteInvoiceDeliveryEventInput): Promise<void>;
+  reserveEmailDelivery(input: ReserveEmailDeliveryInput): Promise<ReserveEmailDeliveryResult>;
+  completeDeliveryEvent(input: OtherEmailCompletionInput): Promise<EmailCompletionResult>;
   saveDeliveryEvent(
-    event: InvoiceDeliveryEvent,
+    event: InvoiceDryRunDeliveryEvent,
   ): Promise<InvoiceDeliveryEvent>;
 }

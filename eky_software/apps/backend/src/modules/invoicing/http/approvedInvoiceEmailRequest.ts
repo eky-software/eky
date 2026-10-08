@@ -15,6 +15,7 @@ import type {
 } from '../application/sendApprovedInvoiceEmailSmtpTest.js';
 import type { PrepareApprovedInvoiceEmailSmtpInput } from '../application/prepareApprovedInvoiceEmailSmtp.js';
 import type { SendApprovedInvoiceEmailSmtpInput } from '../application/sendApprovedInvoiceEmailSmtp.js';
+import { requireApprovedInvoiceEmailDocumentTarget } from '../application/requireApprovedInvoiceEmailDocumentTarget.js';
 
 const maximumEmailLength = 320;
 const maximumSubjectLength = 200;
@@ -25,6 +26,8 @@ const allowedSmtpTestSendFields = new Set([
   'attemptId',
   'authorizationToken',
 ]);
+const allowedSmtpPrepareFields = new Set([...allowedDryRunSendFields, 'documentTarget']);
+const allowedSmtpSendFields = new Set([...allowedSmtpTestSendFields, 'documentTarget']);
 
 export class ApprovedInvoiceEmailRequestValidationError extends Error {
   constructor() {
@@ -83,10 +86,11 @@ export function parseApprovedInvoiceEmailSmtpSendBody(
     throw new ApprovedInvoiceEmailRequestValidationError();
   }
 
-  assertAllowedFields(body, allowedSmtpTestSendFields);
+  assertAllowedFields(body, allowedSmtpSendFields);
 
   return {
     ...parseApprovedInvoiceEmailFields(body, context),
+    documentTarget: requireApprovedInvoiceEmailDocumentTarget(body.documentTarget),
     attemptId: readString(body, 'attemptId', 100),
     authorizationToken: readString(body, 'authorizationToken', 100),
   };
@@ -131,9 +135,15 @@ export function parseApprovedInvoiceEmailSmtpPrepareBody(
     preparedAt: string;
   },
 ): PrepareApprovedInvoiceEmailSmtpInput {
-  const input = parseApprovedInvoiceEmailSmtpTestPrepareBody(body, context);
-
-  return input;
+  if (!isRecord(body)) throw new ApprovedInvoiceEmailRequestValidationError();
+  assertAllowedFields(body, allowedSmtpPrepareFields);
+  const { sentAt, ...fields } = parseApprovedInvoiceEmailFields(body, {
+    actorContext: context.actorContext, invoiceId: context.invoiceId, sentAt: context.preparedAt,
+  });
+  return {
+    ...fields, preparedAt: sentAt,
+    documentTarget: requireApprovedInvoiceEmailDocumentTarget(body.documentTarget),
+  };
 }
 
 function parseApprovedInvoiceEmailFields(

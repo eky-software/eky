@@ -125,7 +125,7 @@ test('DESK-RUNTIME-002 @critical identifies the approved Electron 43 runtime', a
   expect(diagnosticsResponse.status()).toBe(200);
   await expect(diagnosticsResponse.json()).resolves.toEqual(
     expect.objectContaining({
-      appliedMigrationCount: 38,
+      appliedMigrationCount: 39,
       databaseHealth: 'ok',
       electronVersion: null,
       nodeVersion: 'v24.21.0',

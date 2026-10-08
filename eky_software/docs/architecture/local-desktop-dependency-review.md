@@ -5,7 +5,7 @@ riippuvuuspäätöksen 14.7.2026, Electron 43 / better-sqlite3 13
 -yhteensopivuuden varmennuksen 3.8.2026, Electron 43.3.0 -patch-päivityksen
 17.8.2026, transitiivisen XML-kirjaston tietoturvakorjauksen 2.9.2026
 sekä `undici`-korjauspäivityksen ja Electron `43.7.6` -päivityksen
-hyväksynnän 29.9.2026.
+hyväksynnän 29.9.2026 sekä ASAR-testityökalun hyväksynnän 8.10.2026.
 Versiot tarkistetaan uudelleen ennen
 tuotantojulkaisua, allekirjoitusta tai automaattipäivityksen toteutusta.
 
@@ -39,6 +39,7 @@ Spikessä käytetään tarkasti lukittuja development-riippuvuuksia vain
 | `electron` | `43.7.6` | desktop-runtime ja Windows-binääri; päivityksen todennus kesken |
 | `@electron/packager` | `20.0.4` | rajattu paketoitu sovellushakemisto |
 | `@electron/fuses` | `2.1.3` | production-fusejen lukitseminen |
+| `@electron/asar` | `4.2.1` | asennetun ASAR-paketin rajattu testiluku ja aidon arkiston testiaineisto |
 
 `@electron/packager`-työkalun `plist`-riippuvuus toi transitiivisesti
 `@xmldom/xmldom`-version `0.9.10`. GitHub-advisory
@@ -49,6 +50,33 @@ uutta suoraa riippuvuutta eikä muuta Eky-sovelluksen runtime-payloadia;
 se rajaa nykyisen paketointityökaluketjun transitiivisen XML-kirjaston
 korjattuun versioon. Override voidaan poistaa, kun hyväksytty upstream-ketju
 ratkaisee saman tai uudemman tarkistetun version ilman sitä.
+
+### ASAR-testityökalun suora riippuvuus
+
+Omistaja hyväksyi 8.10.2026 `@electron/asar@4.2.1`:n nimenomaiseksi
+desktopin development-/testityökaluksi. Sama täsmäversio ja sen riippuvuudet
+ovat jo `@electron/packager`-ketjun lukitussa inventaariossa; muutos lisää
+vain desktopin suoran importer-sidonnan, ei uusia paketteja, versioita,
+runtime-importteja tai sovelluspayloadia. MIT-lisenssi ja Node-alaraja
+`>=22.12.0` sopivat nykyiseen Node 24 -testiruntimeen.
+
+Legacy-hyväksyntätesti lukee alkuperäisen paketin `resources/app.asar`-
+arkiston kiinteän `dist/build-info.json`-jäsenen vasta payload-inventaarion
+tarkistuksen jälkeen. Testifixture muodostaa aidon ASARin. Kirjaston
+nykyinen rajapinta korvaa väärän tavallisen tiedostopolun oletuksen;
+omaa ASAR-parseria tai erillistä Electron-prosessia ei lisätä.
+Lukija ei pura arkistoa levylle, hyväksy linkkiä tai unpacked-jäsentä eikä
+käytä erillistä tiedostoa varavaihtoehtona. Pituus, tiukka JSON-rakenne ja
+paketin build-sidonta tarkistetaan; arkiston header-välimuisti tyhjennetään
+ennen lukua ja sen jälkeen. Tarkka sopimus on
+[legacy-sisältötodisteessa](windows-installer-acceptance-harness-v2.md#legacy-038039--sisältötodiste).
+
+Hyväksyntä vaatii rajatun lockfile-diffin, production- ja full auditin,
+rekisteriallekirjoitukset, väärien jäsenmuotojen regressiot, muuttumattoman
+alkuperäisen paketin static-lukutodisteen sekä yhden nimetyn Windows-
+legacy-ajon. Staattinen luku tai alemmat testit eivät korvaa asennuksen,
+migraation, toisen käynnistyksen ja siivouksen hyväksyntää. Tämän työn
+ajantasainen näyttö on [M1:n checkpointissa](release-0.3.0-m1-preparation-plan.md#legacy-testin-038039-migraatiotodisteen-korjausehdotus).
 
 ### Electron 43.7.6 -turvallisuuspäivitys
 

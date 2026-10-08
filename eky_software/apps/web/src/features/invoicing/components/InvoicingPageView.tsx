@@ -14,6 +14,7 @@ import { CreditInvoiceDraftEditorView } from './CreditInvoiceDraftEditorView.js'
 import { InvoiceDraftEditorView } from './InvoiceDraftEditorView.js';
 import { InvoiceWorkspaceListView } from './InvoiceWorkspaceListView.js';
 import type { NewInvoiceFormClient } from './NewInvoiceForm.js';
+import type { InvoiceDraftDeliveryHistoryClient } from '../hooks/useInvoiceDraftDeliveryHistory.js';
 import styles from './InvoicingPage.module.css';
 import { getInvoiceEmailSmtpTestUnavailableMessage } from '../approved/invoiceEmailSmtpTestAvailability.js';
 import { getInvoiceEmailSmtpUnavailableMessage } from '../approved/invoiceEmailSmtpAvailability.js';
@@ -42,10 +43,12 @@ import type { SendApprovedInvoiceEmailSmtpState } from '../hooks/useSendApproved
 import type { SendApprovedInvoiceEmailSmtpTestState } from '../hooks/useSendApprovedInvoiceEmailSmtpTest.js';
 import { uiText } from '../../../i18n/fi.js';
 import { MessageBanner } from '../../../shared/ui/index.js';
+import type { OpenPreservedInvoicePdf } from '../approved/openPreservedInvoicePdf.js';
+import type { OpenInvoiceDeliveryEventPdf } from '../approved/openInvoiceDeliveryEventPdf.js';
 
 interface InvoicingPageViewProps {
   activeView: InvoicingPageMode;
-  apiClient: NewInvoiceFormClient;
+  apiClient: NewInvoiceFormClient & InvoiceDraftDeliveryHistoryClient;
   approveCreditInvoiceDraftState: ApproveCreditInvoiceDraftState;
   approvedInvoiceEmailState: ApprovedInvoiceEmailDryRunState;
   approvedInvoiceListState: ApprovedInvoiceListState;
@@ -95,6 +98,8 @@ interface InvoicingPageViewProps {
   onMarkApprovedInvoiceSent(id: string): void;
   onMarkInvoicePaid(id: string, paidOn: string): void;
   onOpenApprovedInvoicePdf(id: string): void;
+  onOpenPreservedPdf: OpenPreservedInvoicePdf;
+  onOpenDeliveryEventPdf: OpenInvoiceDeliveryEventPdf;
   onPrepareApprovedInvoiceEmail(id: string): void;
   onRevertInvoicePaidMark(id: string): void;
   onSendApprovedInvoiceEmailDryRun(
@@ -164,6 +169,8 @@ export function InvoicingPageView({
   onMarkApprovedInvoiceSent,
   onMarkInvoicePaid,
   onOpenApprovedInvoicePdf,
+  onOpenPreservedPdf,
+  onOpenDeliveryEventPdf,
   onPrepareApprovedInvoiceEmail,
   onRevertInvoicePaidMark,
   onSendApprovedInvoiceEmailDryRun,
@@ -228,6 +235,7 @@ export function InvoicingPageView({
           onDraftApproved={onDraftApproved}
           onDraftSaved={onDraftSaved}
           onOpenApprovedInvoice={onOpenApprovedInvoice}
+          onOpenDeliveryEventPdf={onOpenDeliveryEventPdf}
         />
       ) : activeView === 'creditInvoice' ? (
         <CreditInvoiceDraftEditorView
@@ -258,6 +266,7 @@ export function InvoicingPageView({
             isLoading: invoiceCreditContextState.isLoading,
           }}
           deliveryHistoryState={{
+            invoiceId: invoiceDeliveryEventListState.invoiceId,
             errorMessage: invoiceDeliveryEventListState.errorMessage,
             events: invoiceDeliveryEventListState.events,
             isLoading: invoiceDeliveryEventListState.isLoading,
@@ -331,6 +340,8 @@ export function InvoicingPageView({
           onMarkSent={onMarkApprovedInvoiceSent}
           onMarkInvoicePaid={onMarkInvoicePaid}
           onOpenPdf={onOpenApprovedInvoicePdf}
+          onOpenPreservedPdf={onOpenPreservedPdf}
+          onOpenDeliveryEventPdf={onOpenDeliveryEventPdf}
           onOpenRelatedDraft={onOpenDraft}
           onOpenRelatedInvoice={onOpenApprovedInvoice}
           onPrepareEmail={onPrepareApprovedInvoiceEmail}

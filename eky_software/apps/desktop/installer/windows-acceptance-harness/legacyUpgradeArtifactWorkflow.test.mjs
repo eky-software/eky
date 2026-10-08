@@ -13,6 +13,12 @@ const WORKFLOW_URL = new URL(
   import.meta.url,
 );
 
+function jobBlock(source, name) {
+  const start = source.indexOf(`\n  ${name}:\n`);
+  assert.notEqual(start, -1);
+  return source.slice(start + 1).split(/\n(?=  [\w-]+:\n)/u)[0];
+}
+
 
 test('optional evidence allowance cannot hide job or mandatory-step failure policy', async () => {
   const source = await readFile(WORKFLOW_URL, 'utf8');
@@ -87,7 +93,7 @@ test('shared feasibility binds the verified SDK before every process-contract mo
 
 test('packaged boundary diagnostic reuses exact artifacts without becoming a normal acceptance gate', async () => {
   const source = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
-  const diagnostic = source.slice(source.indexOf('  packaged-boundary-diagnostic:'));
+  const diagnostic = jobBlock(source, 'packaged-boundary-diagnostic');
   assert.match(diagnostic, /github\.event_name == 'workflow_dispatch' && inputs\.mode == 'packaged-boundary-diagnostic'/u);
   assert.match(source, /job-object-feasibility:\s+if: inputs\.mode != 'packaged-boundary-diagnostic'/u);
   assert.match(diagnostic, /diagnosticOnly = \$true/u);
@@ -121,7 +127,7 @@ test('fixed legacy payload observation is enabled only in the existing explicit 
 
 test('workspace caller markers are four closed optional observations inside the existing diagnostic step', async () => {
   const source = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
-  const diagnostic = source.split('  packaged-boundary-diagnostic:')[1];
+  const diagnostic = jobBlock(source, 'packaged-boundary-diagnostic');
   const step = diagnostic.split('      - name: Run existing caller and mandatory result verifier once\n')[1]
     .split('\n      - name:')[0];
   const markers = [...step.matchAll(/try \{ Write-Host '([^'\r\n]+)' \} catch \{ \}/gu)];
@@ -254,7 +260,7 @@ ${body}
 
 test('external inspector capture is opt-in and never replaces command or artifact outcomes', async () => {
   const source = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
-  const diagnostic = source.slice(source.indexOf('  packaged-boundary-diagnostic:'));
+  const diagnostic = jobBlock(source, 'packaged-boundary-diagnostic');
   assert.match(source, /inspector_capture:[\s\S]*?type: boolean\s+default: false/u);
   const selection = diagnostic.split('      - name: Start opt-in external inspector capture\n')[1]
     .match(/^        if: (.+)$/mu)?.[1];
@@ -271,13 +277,31 @@ test('external inspector capture is opt-in and never replaces command or artifac
   assert.match(diagnostic, /always\(\) && steps\.capture_stop\.outcome == 'success'/u);
   assert.ok(diagnostic.indexOf('Reverify immutable artifact') < diagnostic.indexOf('-Mode analyze'));
   assert.doesNotMatch(diagnostic, /upload-artifact|wpr.*-cancel|symbols/u);
-  const steps = diagnostic.split('\n      - name: ').slice(1);
-  for (const step of steps) {
-    const optional = ['Start opt-in external inspector capture', 'Stop only the diagnostic recording',
-      'Extract closed inspector observations without publishing raw trace'].includes(step.split('\n')[0]);
-    if (optional) assert.match(step, /continue-on-error: \$\{\{ inputs\.artifact_kind == 'workspace-fault' \}\}/u);
-    else assert.doesNotMatch(step, /continue-on-error/u);
-  }
+  const verifyPolicy = (job) => {
+    assert.doesNotMatch(job.split('\n    steps:')[0], /continue-on-error/u);
+    const steps = job.split('\n      - name: ').slice(1);
+    for (const step of steps) {
+      const optional = ['Start opt-in external inspector capture', 'Stop only the diagnostic recording',
+        'Extract closed inspector observations without publishing raw trace'].includes(step.split('\n')[0]);
+      if (step.startsWith('Preserve encrypted CI failure evidence\n')) {
+        const scope = "            && inputs.artifact_kind == 'legacy'\n";
+        assert.equal(step.split(scope).length, 2);
+        withoutOptionalEvidenceAllowance(`      - name: ${step}`.replace(scope, ''), 1);
+      }
+      else if (optional) assert.match(step, /continue-on-error: \$\{\{ inputs\.artifact_kind == 'workspace-fault' \}\}/u);
+      else assert.doesNotMatch(step, /continue-on-error/u);
+    }
+  };
+  verifyPolicy(diagnostic);
+  assert.doesNotMatch(diagnostic, /startup-exception-exit-proof/u);
+  const appended = `${source}\n  unrelated-proof:\n    steps:\n      - name: Expected synthetic failure\n        continue-on-error: true\n`;
+  assert.equal(jobBlock(appended, 'packaged-boundary-diagnostic'), diagnostic);
+  assert.throws(() => verifyPolicy(diagnostic.replace('  packaged-boundary-diagnostic:\n',
+    '  packaged-boundary-diagnostic:\n    continue-on-error: true\n')));
+  const mandatory = '      - name: Run existing caller and mandatory result verifier once\n';
+  assert.ok(diagnostic.includes(mandatory));
+  assert.throws(() => verifyPolicy(diagnostic.replace(mandatory,
+    `${mandatory}        continue-on-error: true\n`)));
 });
 
 test('diagnostic preflight admits only the selected capture families and verified identity', {
@@ -320,7 +344,8 @@ test('diagnostic analysis uses the selected existing reader and preserves its pr
   skip: process.platform !== 'win32', timeout: 60_000,
 }, async (t) => {
   const workflow = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
-  const step = workflow.split('      - name: Extract closed inspector observations without publishing raw trace\n')[1];
+  const step = workflow.split('      - name: Extract closed inspector observations without publishing raw trace\n')[1]
+    .split('\n      - name:')[0];
   assert.ok(step);
   const body = step.split('        run: |\n')[1].trimEnd().split('\n')
     .map((line) => { assert.ok(line.startsWith('          ')); return line.slice(10); }).join('\n');
@@ -491,7 +516,7 @@ test('inspector analysis diagnosis reuses one native hold without a packaged lif
   assert.ok(steps.indexOf('-Mode stop') > steps.indexOf('node --test'));
   assert.ok(steps.indexOf('-Mode analyze') > steps.indexOf('-Mode stop'));
   assert.match(steps, /-Mode analyze -LegacyCommand -ContractFixture\s*$/mu);
-  assert.doesNotMatch(source.slice(source.indexOf('  packaged-boundary-diagnostic:')), /-ContractFixture/u);
+  assert.doesNotMatch(jobBlock(source, 'packaged-boundary-diagnostic'), /-ContractFixture/u);
   assert.match(steps, /always\(\).*steps\.inspector_analysis_start\.outcome != 'skipped'/u);
   assert.match(steps, /always\(\).*steps\.inspector_analysis_stop\.outcome == 'success'/u);
   assert.match(steps, /\$exitCode = \$LASTEXITCODE/u);
@@ -605,7 +630,7 @@ test('legacy contract groups partition the complete existing inventory without o
       'legacyCallerResult', 'legacyCommandCompletion.process',
       'legacyCommandEntrypoint.process', 'workspaceSuccessCommandEntrypoint.process', 'workspaceFaultCommandEntrypoint.process',
       'legacyUpgradeBudget', 'legacyUpgradeFilesystem', 'legacyUpgradeContracts', 'legacyUpgradeFailureBoundary',
-      'legacyUpgradeLifecycle', 'legacyPayloadObservation', 'legacyUpgradePostcondition', 'legacyUpgradeProfileEvidence', 'legacyUpgradeSourceSmoke',
+      'legacyUpgradeLifecycle', 'legacyPayloadObservation', 'legacyUpgradeDatabaseEvidence', 'legacyUpgradePostcondition', 'legacyUpgradeProfileEvidence', 'legacyUpgradeSourceSmoke',
       'legacyUpgradeStartupObserver', 'legacyUpgradeWindowsRuntime', 'fixtures/windowsApplicationCloseFixtureIdentity',
       'requestWindowsApplicationClose', 'legacyUpgradeAdmission', 'runLegacyUpgradeWorker',
       'upgradeRollbackPostSupervisorWindowsRuntime'].map((name) => `installer/windows-acceptance-harness/${name}.test.mjs`),

@@ -1,113 +1,81 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
+import type { InvoiceDocumentPreviewReader } from '../ports/invoiceDocumentPreviewReader.js';
 import type { InvoiceDocumentRepository } from '../ports/invoiceDocumentRepository.js';
-import type { InvoiceDocumentStorage } from '../ports/invoiceDocumentStorage.js';
 import { ApprovedInvoiceDocumentNotFoundError } from './approvedInvoiceDocumentNotFoundError.js';
+import { createDocumentMetadata } from './generateApprovedInvoicePdfDocument.fixture.js';
 import { getApprovedInvoicePdfDocument } from './getApprovedInvoicePdfDocument.js';
+import { getApprovedInvoicePdfMetadata } from './getApprovedInvoicePdfMetadata.js';
+import { InvoiceDocumentIntegrityError } from './invoiceDocumentIntegrityError.js';
+import { InvoiceDocumentReadConflictError } from './invoiceDocumentReadConflictError.js';
 
-describe('getApprovedInvoicePdfDocument', () => {
-  it('returns metadata and file content for an existing PDF document', async () => {
-    const metadata = createDocumentMetadata();
-    const storage = new FakeInvoiceDocumentStorage(
-      new Uint8Array([37, 80, 68, 70]),
-    );
-
-    await expect(
-      getApprovedInvoicePdfDocument(
-        { companyId: 'dev-company', invoiceId: 'invoice-1' },
-        {
-          invoiceDocumentRepository: new FakeInvoiceDocumentRepository(metadata),
-          invoiceDocumentStorage: storage,
-        },
-      ),
-    ).resolves.toEqual({
-      content: new Uint8Array([37, 80, 68, 70]),
-      metadata,
-    });
-  });
-
-  it('throws a safe not-found error when metadata is missing', async () => {
-    await expect(
-      getApprovedInvoicePdfDocument(
-        { companyId: 'dev-company', invoiceId: 'missing' },
-        {
-          invoiceDocumentRepository: new FakeInvoiceDocumentRepository(undefined),
-          invoiceDocumentStorage: new FakeInvoiceDocumentStorage(
-            new Uint8Array(),
-          ),
-        },
-      ),
-    ).rejects.toEqual(new ApprovedInvoiceDocumentNotFoundError());
-  });
-
-  it('throws a safe not-found error when the file is missing from storage', async () => {
-    await expect(
-      getApprovedInvoicePdfDocument(
-        { companyId: 'dev-company', invoiceId: 'invoice-1' },
-        {
-          invoiceDocumentRepository: new FakeInvoiceDocumentRepository(
-            createDocumentMetadata(),
-          ),
-          invoiceDocumentStorage: new FakeInvoiceDocumentStorage(undefined),
-        },
-      ),
-    ).rejects.toEqual(new ApprovedInvoiceDocumentNotFoundError());
-  });
-});
-
-class FakeInvoiceDocumentRepository implements InvoiceDocumentRepository {
-  constructor(
-    private readonly metadata: ApprovedInvoiceDocumentMetadata | undefined,
-  ) {}
-
-  async deleteDocumentsForInvoice(): Promise<string[]> {
-    throw new Error('Not implemented in this get PDF document test.');
-  }
-
-  async findDocumentForInvoice(): Promise<
-    ApprovedInvoiceDocumentMetadata | undefined
-  > {
-    return this.metadata;
-  }
-
-  async saveDocument(): Promise<ApprovedInvoiceDocumentMetadata> {
-    throw new Error('Not implemented in this get PDF document test.');
-  }
-}
-
-class FakeInvoiceDocumentStorage implements InvoiceDocumentStorage {
-  constructor(private readonly content: Uint8Array | undefined) {}
-
-  async deleteFile(): Promise<void> {
-    throw new Error('Not implemented in this get PDF document test.');
-  }
-
-  async readFile(): Promise<Uint8Array> {
-    if (this.content === undefined) {
-      throw new Error('File missing.');
-    }
-
-    return this.content;
-  }
-
-  async writeFile(): Promise<void> {
-    throw new Error('Not implemented in this get PDF document test.');
-  }
-}
-
-function createDocumentMetadata(): ApprovedInvoiceDocumentMetadata {
+function fixture() {
+  const document = createDocumentMetadata();
+  const input = { companyId: document.companyId, invoiceId: document.invoiceId };
+  const content = new TextEncoder().encode('%PDF-synthetic');
+  const findPreviewDocumentId = vi.fn<InvoiceDocumentPreviewReader['findPreviewDocumentId']>().mockResolvedValue(document.id);
+  const findDocumentById = vi.fn<InvoiceDocumentRepository['findDocumentById']>().mockResolvedValue(document);
+  const readVerifiedDocument = vi.fn(async () => content);
   return {
-    id: 'document-1',
-    companyId: 'dev-company',
-    invoiceId: 'invoice-1',
-    documentType: 'approved_invoice_pdf',
-    fileName: 'lasku-20260001.pdf',
-    storagePath: 'dev-company/invoice-1/approved-invoice.pdf',
-    mimeType: 'application/pdf',
-    sha256:
-      '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-    sizeBytes: 4,
-    createdAt: '2026-07-05T10:00:00.000Z',
+    document, input, content, findPreviewDocumentId, findDocumentById, readVerifiedDocument,
+    dependencies: {
+      invoiceDocumentPreviewReader: { findPreviewDocumentId },
+      invoiceDocumentRepository: { findDocumentById },
+      invoiceDocumentStorage: { readVerifiedDocument },
+    },
   };
 }
+
+describe.each([
+  ['file', getApprovedInvoicePdfDocument],
+  ['metadata', getApprovedInvoicePdfMetadata],
+] as const)('approved invoice PDF %s', (kind, read) => {
+  it('reads exact metadata and verified bytes, then rechecks the preview selection', async () => {
+    const f = fixture();
+    const result = await read(f.input, f.dependencies);
+    expect(result).toEqual(kind === 'file' ? { metadata: f.document, content: f.content } : f.document);
+    expect(f.findDocumentById).toHaveBeenCalledExactlyOnceWith({ ...f.input, documentId: f.document.id });
+    expect(f.readVerifiedDocument).toHaveBeenCalledExactlyOnceWith(f.document);
+    expect(f.findPreviewDocumentId.mock.calls).toEqual([[f.input], [f.input]]);
+    expect(f.findPreviewDocumentId.mock.invocationCallOrder[1]).toBeGreaterThan(f.readVerifiedDocument.mock.invocationCallOrder[0]!);
+  });
+
+  it('keeps the not-found result for an absent scoped preview', async () => {
+    const f = fixture();
+    f.findPreviewDocumentId.mockResolvedValue(undefined);
+    await expect(read(f.input, f.dependencies)).rejects.toEqual(new ApprovedInvoiceDocumentNotFoundError());
+    expect(f.findDocumentById).not.toHaveBeenCalled();
+    expect(f.readVerifiedDocument).not.toHaveBeenCalled();
+  });
+
+  it('does not treat a broken selected reference as an absent PDF', async () => {
+    const f = fixture();
+    f.findDocumentById.mockResolvedValue(undefined);
+    await expect(read(f.input, f.dependencies)).rejects.toEqual(new InvoiceDocumentIntegrityError());
+    expect(f.readVerifiedDocument).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, 'newer-document'])('rejects a changed selection after the file read (%s)', async (next) => {
+    const f = fixture();
+    f.findPreviewDocumentId.mockResolvedValueOnce(f.document.id).mockResolvedValueOnce(next);
+    await expect(read(f.input, f.dependencies)).rejects.toEqual(new InvoiceDocumentReadConflictError());
+    expect(f.readVerifiedDocument).toHaveBeenCalledTimes(1);
+    expect(f.findDocumentById).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves a byte failure without fallback, removal or regeneration', async () => {
+    const f = fixture();
+    f.readVerifiedDocument.mockRejectedValue(new Error('private-synthetic-storage-error'));
+    await expect(read(f.input, f.dependencies)).rejects.toEqual(new InvoiceDocumentIntegrityError());
+    expect(f.findPreviewDocumentId).toHaveBeenCalledTimes(1);
+    expect(f.findDocumentById).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['companyId', 'invoiceId'] as const)('validates %s before selection', async (field) => {
+    const f = fixture();
+    await expect(read({ ...f.input, [field]: ' ' }, f.dependencies)).rejects.toThrow();
+    expect(f.findPreviewDocumentId).not.toHaveBeenCalled();
+    expect(f.findDocumentById).not.toHaveBeenCalled();
+    expect(f.readVerifiedDocument).not.toHaveBeenCalled();
+  });
+});

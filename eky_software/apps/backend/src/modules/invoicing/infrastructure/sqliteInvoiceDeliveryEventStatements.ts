@@ -1,8 +1,5 @@
 import type { DatabaseConnection } from '../../../database/connection/createDatabaseConnection.js';
-import type { InvoiceDeliveryEvent } from '../domain/invoiceDeliveryEvent.js';
-import type {
-  CompleteInvoiceDeliveryEventInput,
-} from '../ports/invoiceDeliveryEventRepository.js';
+import type { InvoiceRecordedDeliveryEvent } from '../domain/invoiceRecordedDeliveryEvent.js';
 import {
   type InvoiceDeliveryEventInsertParameters,
   toRow,
@@ -12,13 +9,6 @@ export interface MarkApprovedInvoiceSentPersistenceInput {
   companyId: string;
   invoiceId: string;
   sentAt: string;
-}
-
-export interface CompleteSuccessfulEmailDeliveryEventPersistenceInput {
-  companyId: string;
-  eventId: string;
-  invoiceId: string;
-  providerMessageId: string | null;
 }
 
 export interface InsertManualDeliveryAuditEventInput {
@@ -34,76 +24,6 @@ export interface InsertManualDeliveryAuditEventInput {
 
 export class SqliteInvoiceDeliveryEventStatements {
   constructor(private readonly database: DatabaseConnection) {}
-
-  completeSuccessfulEmailDeliveryEvent(
-    input: CompleteSuccessfulEmailDeliveryEventPersistenceInput,
-  ): void {
-    const result = this.database
-      .prepare<{
-        company_id: string;
-        id: string;
-        invoice_id: string;
-        provider_message_id: string | null;
-      }>(
-        `
-          UPDATE invoice_delivery_events
-          SET
-            status = 'succeeded',
-            provider_message_id = @provider_message_id,
-            safe_error_message = NULL,
-            technical_error_code = NULL
-          WHERE
-            id = @id
-            AND company_id = @company_id
-            AND invoice_id = @invoice_id
-            AND status = 'attempted'
-        `,
-      )
-      .run({
-        company_id: input.companyId,
-        id: input.eventId,
-        invoice_id: input.invoiceId,
-        provider_message_id: input.providerMessageId,
-      });
-
-    if (result.changes !== 1) {
-      throw new Error('Invoice delivery event could not be completed.');
-    }
-  }
-
-  completeDeliveryEvent(input: CompleteInvoiceDeliveryEventInput): void {
-    const result = this.database
-      .prepare<{
-        company_id: string;
-        id: string;
-        provider_message_id: string | null;
-        safe_error_message: string | null;
-        status: CompleteInvoiceDeliveryEventInput['status'];
-        technical_error_code: string | null;
-      }>(
-        `
-          UPDATE invoice_delivery_events
-          SET
-            status = @status,
-            provider_message_id = @provider_message_id,
-            safe_error_message = @safe_error_message,
-            technical_error_code = @technical_error_code
-          WHERE id = @id AND company_id = @company_id AND status = 'attempted'
-        `,
-      )
-      .run({
-        company_id: input.companyId,
-        id: input.eventId,
-        provider_message_id: input.providerMessageId,
-        safe_error_message: input.safeErrorMessage,
-        status: input.status,
-        technical_error_code: input.technicalErrorCode,
-      });
-
-    if (result.changes !== 1) {
-      throw new Error('Invoice delivery event could not be completed.');
-    }
-  }
 
   markApprovedInvoiceSent(
     input: MarkApprovedInvoiceSentPersistenceInput,
@@ -134,7 +54,7 @@ export class SqliteInvoiceDeliveryEventStatements {
     }
   }
 
-  insertDeliveryEvent(event: InvoiceDeliveryEvent): void {
+  insertDeliveryEvent(event: InvoiceRecordedDeliveryEvent): void {
     this.database
       .prepare<InvoiceDeliveryEventInsertParameters>(
         `
@@ -143,6 +63,7 @@ export class SqliteInvoiceDeliveryEventStatements {
             company_id,
             invoice_id,
             document_id,
+            binding_kind, revision_id, send_mode, document_sha256, document_size_bytes,
             delivery_method,
             provider,
             status,
@@ -161,6 +82,7 @@ export class SqliteInvoiceDeliveryEventStatements {
             @company_id,
             @invoice_id,
             @document_id,
+            @binding_kind, @revision_id, @send_mode, @document_sha256, @document_size_bytes,
             @delivery_method,
             @provider,
             @status,

@@ -19,6 +19,7 @@ import { cleanCallerResultIdentity, parseCleanCallerResult } from './cleanCaller
 import { cleanCallerResultFile } from './cleanCallerResultFile.mjs';
 import { upgradeCallerResultIdentity, parseUpgradeCallerResult } from './upgradeCallerResult.mjs';
 import { upgradeCallerResultFile } from './upgradeCallerResultFile.mjs';
+import { LEGACY_STARTUP_TERMINAL_FILENAME, projectLegacyStartupTerminalEvidence } from './legacyStartupFailureEvidence.mjs';
 
 const commandBudgets = JSON.parse(await readFile(new URL('../windows-process-supervisor/supervisorCommandBudgets.json', import.meta.url)));
 const contractAssembly = fileURLToPath(new URL('../bin/windows-process-supervisor-contract-fixture/Release/net10.0/Eky.WindowsProcessSupervisor.ContractFixture.dll', import.meta.url));
@@ -26,7 +27,7 @@ const commandBoundaryPhases = new Set([
   ...Object.values(commandBudgets).filter((plan) => Array.isArray(plan.phases))
     .flatMap((plan) => plan.phases.map(([phase]) => phase)),
   'publishFailure', 'requestValidated', 'jobCreated', 'hostStarted', 'hostAssigned',
-  'waitStarted', 'hostExited', 'deadlineExceeded', 'cleanupStarted', 'cleanupCompleted',
+  'waitStarted', 'terminalWait', 'hostExited', 'deadlineExceeded', 'cleanupStarted', 'cleanupCompleted',
   'processTreeAbsent', 'workerResultValidated', 'resultPublication', 'resultPublicationLastCompleted',
   'requestPreparation', 'requestPreparationLastCompleted', 'resultWritten', 'supervisor',
 ]);
@@ -144,6 +145,10 @@ export function recordCommandBoundaryEvidence(tail, value) {
       'phaseInputWrite', 'nodeExecutableResolution', 'requestWrite', 'requestFileCreate',
       'requestSerialize', 'requestFlush', 'requestClose', 'requestFileValidation', 'requestFileRead', 'requestSchemaValidation',
       'commandFileValidation', 'workingDirectoryValidation', 'resultDestinationValidation', 'completed']
+      .includes(value.resultCode) ? value.resultCode : 'other';
+  }
+  if (value.phase === 'terminalWait' && value.resultCode !== undefined) {
+    entry.resultCode = ['rootProcessPending', 'descendantsPending', 'rootExitReceiptPending']
       .includes(value.resultCode) ? value.resultCode : 'other';
   }
   tail.push(entry);
@@ -411,6 +416,14 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
           if (!succeeded) await assert.rejects(resultFile(
             'verify', resultPath, binding, completion.exitCode));
           if (succeeded) assert.equal(result.outcome.fixtureRemoved, true);
+          if (succeeded && kind === 'legacy') {
+            const saved = JSON.parse(await readFile(join(commandRoot, 'fixtureCleanup', LEGACY_STARTUP_TERMINAL_FILENAME), 'utf8'));
+            const evidence = projectLegacyStartupTerminalEvidence(saved).startupEvidence;
+            assert.equal(evidence.status, 'notObserved');
+            assert.deepEqual(evidence.events, []);
+            assert.equal(saved.outcome.status, 'completed');
+            assert.equal(evidence.targetIdentity.buildRevision, binding.buildRevision);
+          }
           if (testCase === 'msiProcessHold') {
             assert.equal(result.outcome.errorCode, 'WINDOWS_ACCEPTANCE_SUPERVISOR_DEADLINE_EXCEEDED');
             assert.equal(result.outcome.processTreeAbsent, true);

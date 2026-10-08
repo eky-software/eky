@@ -96,7 +96,7 @@ test('V2.4 consumers verify checkout and artifact before and after lifecycle', a
 
 test('existing diagnostic can consume the exact upgrade artifact without rebuilding or changing the normal matrix', async () => {
   const source = await readFile(resolve(dirname(WORKFLOW_PATH), 'windows-acceptance-supervisor-feasibility.yml'), 'utf8');
-  const diagnostic = source.split('  packaged-boundary-diagnostic:')[1];
+  const diagnostic = source.split('  packaged-boundary-diagnostic:')[1].split(/^  [\w-]+:\s*$/m)[0];
   assert.match(source, /options: \[legacy, workspace, workspace-fault, upgrade\]/u);
   assert.equal(diagnostic.match(/'upgrade' \{ 'verifyUpgradeRollbackArtifact\.mjs' \}/gu)?.length, 2);
   assert.equal(diagnostic.match(/Eky\.WindowsProcessSupervisor\.dll --upgrade-command --artifact-descriptor/gu)?.length, 1);
@@ -106,8 +106,11 @@ test('existing diagnostic can consume the exact upgrade artifact without rebuild
   assert.match(diagnostic, /if \(\$commandExit -ne 0 -or \$LASTEXITCODE -ne 0\) \{ throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED' \}/u);
   assert.doesNotMatch(diagnostic, /runUpgradeRollback\.mjs/u);
   assert.doesNotMatch(diagnostic, /installer:v2-upgrade-artifact:build|upload-artifact/u);
-  const optionalSteps = [...diagnostic.matchAll(/^        continue-on-error: \$\{\{ (.+) \}\}$/gmu)];
-  assert.equal(optionalSteps.length, diagnostic.match(/continue-on-error:/gu)?.length ?? 0);
+  const scope = "            && inputs.artifact_kind == 'legacy'\n";
+  assert.equal(diagnostic.split(scope).length, 2);
+  const required = withoutOptionalEvidenceAllowance(diagnostic.replace(scope, ''), 1);
+  const optionalSteps = [...required.matchAll(/^        continue-on-error: \$\{\{ (.+) \}\}$/gmu)];
+  assert.equal(optionalSteps.length, required.match(/continue-on-error:/gu)?.length ?? 0);
   for (const [, expression] of optionalSteps) {
     for (const inspector_capture of [false, true]) {
       assert.equal(runInNewContext(expression, {

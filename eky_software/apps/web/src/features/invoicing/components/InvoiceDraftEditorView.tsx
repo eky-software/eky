@@ -12,10 +12,13 @@ import type { InvoiceCompanySettingsState } from '../hooks/useInvoiceCompanySett
 import type { InvoiceCustomerListState } from '../hooks/useInvoiceCustomers.js';
 import type { InvoicePaymentDefaultsState } from '../hooks/useInvoicePaymentDefaults.js';
 import type { InvoiceVatRatesState } from '../hooks/useInvoiceVatRates.js';
+import type { InvoiceDraftDeliveryHistoryClient } from '../hooks/useInvoiceDraftDeliveryHistory.js';
+import type { OpenInvoiceDeliveryEventPdf } from '../approved/openInvoiceDeliveryEventPdf.js';
+import { InvoiceDraftDeliveryHistory } from './InvoiceDraftDeliveryHistory.js';
 import { uiText } from '../../../i18n/fi.js';
 
 interface InvoiceDraftEditorViewProps {
-  apiClient: NewInvoiceFormClient;
+  apiClient: NewInvoiceFormClient & InvoiceDraftDeliveryHistoryClient;
   companySettingsState: InvoiceCompanySettingsState;
   customerListState: InvoiceCustomerListState;
   draft: InvoiceDraft | null;
@@ -30,6 +33,7 @@ interface InvoiceDraftEditorViewProps {
   onDraftApproved(approvedInvoice: ApprovedInvoiceResult): void;
   onDraftSaved(savedDraft: InvoiceDraft): void;
   onOpenApprovedInvoice(id: string): void;
+  onOpenDeliveryEventPdf: OpenInvoiceDeliveryEventPdf;
 }
 
 export function InvoiceDraftEditorView({
@@ -48,6 +52,7 @@ export function InvoiceDraftEditorView({
   onDraftApproved,
   onDraftSaved,
   onOpenApprovedInvoice,
+  onOpenDeliveryEventPdf,
 }: InvoiceDraftEditorViewProps): React.JSX.Element {
   if (editorMode === 'edit' && isDraftLoading) {
     return (
@@ -82,23 +87,33 @@ export function InvoiceDraftEditorView({
   }
 
   return (
-    <NewInvoiceForm
-      key={sessionRevision}
-      apiClient={apiClient}
-      companySettingsState={companySettingsState}
-      customerListState={customerListState}
-      invoicePaymentDefaultsState={invoicePaymentDefaultsState}
-      invoiceVatRatesState={invoiceVatRatesState}
-      initialCustomerId={initialCustomerId}
-      mode={
-        editorMode === 'create'
-          ? { type: 'create' }
-          : { draft: draft as InvoiceDraft, type: 'edit' }
-      }
-      onBack={onBack}
-      onDraftApproved={onDraftApproved}
-      onDraftSaved={onDraftSaved}
-      onOpenApprovedInvoice={onOpenApprovedInvoice}
-    />
+    <>
+      <NewInvoiceForm
+        key={sessionRevision}
+        apiClient={apiClient}
+        companySettingsState={companySettingsState}
+        customerListState={customerListState}
+        invoicePaymentDefaultsState={invoicePaymentDefaultsState}
+        invoiceVatRatesState={invoiceVatRatesState}
+        initialCustomerId={initialCustomerId}
+        mode={
+          editorMode === 'create'
+            ? { type: 'create' }
+            : { draft: draft as InvoiceDraft, type: 'edit' }
+        }
+        onBack={onBack}
+        onDraftApproved={onDraftApproved}
+        onDraftSaved={onDraftSaved}
+        onOpenApprovedInvoice={onOpenApprovedInvoice}
+      />
+      {editorMode === 'edit' && draft !== null ? (
+        <InvoiceDraftDeliveryHistory
+          key={`${draft.id}:${sessionRevision}`}
+          apiClient={apiClient}
+          draftId={draft.id}
+          onOpenPdf={onOpenDeliveryEventPdf}
+        />
+      ) : null}
+    </>
   );
 }

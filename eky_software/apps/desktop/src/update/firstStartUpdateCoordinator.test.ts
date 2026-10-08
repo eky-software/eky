@@ -45,6 +45,43 @@ const currentReleaseInfo = {
 };
 
 describe('first-start update coordinator', () => {
+  it.each([false, true])('observes a pre-migration exception before translation without changing failure handling (observer throws: %s)', async (observerThrows) => {
+    const original = new Error('synthetic private recovery failure', { cause: new Error('synthetic root') });
+    const failureCountsAtObservation: number[] = [];
+    const observeStartupException = vi.fn((_error: unknown) => {
+      failureCountsAtObservation.push(fixture.operationFailed.mock.calls.length);
+      if (observerThrows) throw new Error('synthetic observer failure');
+    });
+    const fixture = createFixture({ acceptedBuild: acceptedCurrentBuild(), observeStartupException });
+    fixture.createValidatedPreMigrationPoint.mockRejectedValue(original);
+
+    const result = await fixture.coordinator.beforeMigrations(createInspection('existing', 1))
+      .then(() => undefined, (error: unknown) => error);
+    expect(result).toEqual(new FirstStartUpdateError());
+    expect(result).not.toHaveProperty('cause');
+
+    expect(observeStartupException).toHaveBeenCalledExactlyOnceWith(original);
+    expect(failureCountsAtObservation).toEqual([0]);
+    expect(fixture.operationFailed).toHaveBeenCalledOnce();
+    expect(fixture.acceptedWrites).toEqual([]);
+    expect(fixture.directRecoveryStates).toEqual([]);
+  });
+
+  it('observes a coordinated failure before the rollback journal transition', async () => {
+    const original = new Error('synthetic private pre-migration failure');
+    const journalAtObservation: string[][] = [];
+    const fixture = createFixture({
+      acceptedBuild: acceptedCurrentBuild(), journal: createJournal('awaitingFirstStart'),
+      observeStartupException: () => { journalAtObservation.push([...fixture.journalStates]); },
+    });
+    fixture.createValidatedPreMigrationPoint.mockRejectedValue(original);
+    await expect(fixture.coordinator.beforeMigrations(createInspection('existing', 1)))
+      .rejects.toThrow(FirstStartUpdateError);
+    expect(journalAtObservation).toEqual([['firstStartValidating']]);
+    expect(fixture.journalStates).toEqual(['firstStartValidating', 'rollbackRequired']);
+    expect(fixture.acceptedWrites).toEqual([]);
+  });
+
   it('accepts a clean initial install without creating a recovery point', async () => {
     const fixture = createFixture();
 
@@ -614,6 +651,7 @@ function createFixture(options: {
   directSetupRecovery?: Readonly<DirectSetupMigrationRecovery>;
   enforceSerialPackageValidation?: boolean;
   journal?: Readonly<UpdateJournal>;
+  observeStartupException?(error: unknown): void;
   releaseFails?: boolean;
   runningReleaseInfo?: typeof releaseInfo;
   secretChanges?: boolean;
@@ -743,6 +781,9 @@ function createFixture(options: {
     },
     operationIdFactory: () =>
       '44444444-4444-4444-8444-444444444444',
+    ...(options.observeStartupException === undefined ? {} : {
+      observeStartupException: options.observeStartupException,
+    }),
     profileProtection: {
       createValidatedPreMigrationPoint,
       releaseProtectedPoint,

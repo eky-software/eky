@@ -5,20 +5,21 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApprovedInvoiceEmailDeliveryError } from './approvedInvoiceEmailDeliveryError.js';
 import { ApprovedInvoiceEmailDeliveryOutcomeUnknownError } from './approvedInvoiceEmailDeliveryOutcomeUnknownError.js';
 import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
+import { InvoiceDeliveryConflictError } from './invoiceDeliveryConflictError.js';
 import { InvoiceEmailSendAttemptError } from './invoiceEmailSendAttemptError.js';
 import { createInvoiceEmailSendRequestFingerprint } from './invoiceEmailSendRequestFingerprint.js';
 import {
+  createInvoiceEmailDeliveryDocument,
+  FakeInvoiceDeliveryEventRepository,
+} from './invoiceSmtpApplication.fixture.js';
+import {
   sendApprovedInvoiceEmailSmtpTest,
+  type SendApprovedInvoiceEmailSmtpTestDependencies,
   type SendApprovedInvoiceEmailSmtpTestInput,
 } from './sendApprovedInvoiceEmailSmtpTest.js';
-import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
+import type { RevisionInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
-import type { InvoiceDeliveryEvent } from '../domain/invoiceDeliveryEvent.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
-import type {
-  CompleteInvoiceDeliveryEventInput,
-  InvoiceDeliveryEventRepository,
-} from '../ports/invoiceDeliveryEventRepository.js';
 import type { InvoiceEmailSettingsReader } from '../ports/invoiceEmailSettingsReader.js';
 import type { InvoiceEmailSendAttemptStore } from '../ports/invoiceEmailSendAttemptStore.js';
 import { InMemoryInvoiceEmailSendAttemptStore } from '../infrastructure/inMemoryInvoiceEmailSendAttemptStore.js';
@@ -46,38 +47,28 @@ class FakeApprovedInvoiceReader implements ApprovedInvoiceReader {
   }
 }
 
-class FakeInvoiceDeliveryEventRepository
-  implements InvoiceDeliveryEventRepository
-{
-  completions: CompleteInvoiceDeliveryEventInput[] = [];
-  events: InvoiceDeliveryEvent[] = [];
-
-  async completeDeliveryEvent(
-    input: CompleteInvoiceDeliveryEventInput,
-  ): Promise<void> {
-    this.completions.push(input);
-  }
-
-  async saveDeliveryEvent(
-    event: InvoiceDeliveryEvent,
-  ): Promise<InvoiceDeliveryEvent> {
-    this.events.push(event);
-
-    return event;
-  }
-}
-
 describe('sendApprovedInvoiceEmailSmtpTest', () => {
-  it('records attempted before delivery and sends only to the configured test recipient', async () => {
+  it('reserves before delivery and sends only to the configured test recipient', async () => {
     const repository = new FakeInvoiceDeliveryEventRepository();
     const pdfContent = Buffer.from('%PDF-1.7 synthetic');
+    const expectedPdfContent = Buffer.from(pdfContent);
+    const invoice = {
+      id: 'invoice-1',
+      invoiceNumber: '20260001',
+      status: 'approved',
+    } as ApprovedInvoiceView;
     const sendTestEmail = vi.fn(async (input: InvoiceSmtpTestEmailInput) => {
-      expect(repository.events[0]?.status).toBe('attempted');
-      expect(repository.completions).toEqual([]);
+      expect(repository.reserveEmailDelivery).toHaveBeenCalledOnce();
+      expect(repository.reservations).toHaveLength(1);
+      expect(repository.completeDeliveryEvent).not.toHaveBeenCalled();
       expect(input).not.toHaveProperty('requestedTo');
+      expect(input).not.toHaveProperty('to');
       expect(input).not.toHaveProperty('cc');
-      expect(input.attemptId).toBe(repository.events[0]?.id);
+      expect(input.attemptId).toBe(repository.reservations[0]?.eventId);
       expect(input.emailTestRecipientOverride).toBe('owner-test@example.fi');
+      expect(input.pdfContent).toBe(pdfContent);
+      expect(input.pdfContent).toEqual(expectedPdfContent);
+      expect(input.body).toBe(createInput().body);
 
       return {
         deliveredTo: 'owner-test@example.fi',
@@ -87,6 +78,7 @@ describe('sendApprovedInvoiceEmailSmtpTest', () => {
       };
     });
     const dependencies = createDependencies({
+      invoice,
       pdfContent,
       repository,
       sendTestEmail,
@@ -97,26 +89,48 @@ describe('sendApprovedInvoiceEmailSmtpTest', () => {
       dependencies,
     );
 
-    expect(repository.events).toEqual([
-      expect.objectContaining({
-        ccEmail: '',
-        provider: 'smtp',
-        recipientEmail: 'owner-test@example.fi',
-        status: 'attempted',
-      }),
-    ]);
-    expect(repository.completions).toEqual([
-      expect.objectContaining({
+    expect(repository.reserveEmailDelivery).toHaveBeenCalledExactlyOnceWith({
+      bodyPreview: createInput().body,
+      ccEmail: '',
+      createdAt: '2026-07-16T10:00:00.000Z',
+      createdBy: 'dev-user',
+      eventId: 'attempt-1',
+      mode: 'smtpTest',
+      recipientEmail: 'owner-test@example.fi',
+      subject: 'Lasku 20260001',
+      target: {
         companyId: 'dev-company',
-        eventId: repository.events[0]?.id,
-        providerMessageId: '<synthetic@example.test>',
+        documentId: 'document-1',
+        invoiceId: 'invoice-1',
+        kind: 'revision',
+        revisionId: 'revision-1',
+        sha256: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+        sizeBytes: 2048,
+      },
+    });
+    expect(repository.completeDeliveryEvent).toHaveBeenCalledExactlyOnceWith({
+      reservation: repository.reservations[0],
+      result: {
         status: 'succeeded',
-      }),
-    ]);
+        providerMessageId: '<synthetic@example.test>',
+      },
+    });
+    expect(repository.completeDeliveryEvent.mock.calls[0]?.[0].reservation).toBe(repository.reservations[0]);
+    expect(repository.saveDeliveryEvent).not.toHaveBeenCalled();
+    expect(dependencies.loadInvoiceEmailDeliveryDocument).toHaveBeenCalledExactlyOnceWith({
+      actorContext: createInput().actorContext,
+      companyId: 'dev-company',
+      createdAt: '2026-07-16T10:00:00.000Z',
+      invoiceId: 'invoice-1',
+    });
+    expect(dependencies.invoiceEmailSendAttemptStore.complete).toHaveBeenCalledExactlyOnceWith({
+      attemptId: 'attempt-1', outcome: 'succeeded',
+    });
+    expect(invoice.status).toBe('approved');
     expect(result).toEqual(
       expect.objectContaining({
         deliveredTo: 'owner-test@example.fi',
-        deliveryEventId: repository.events[0]?.id,
+        deliveryEventId: repository.reservations[0]?.eventId,
         provider: 'smtp',
         testMode: true,
       }),
@@ -143,13 +157,15 @@ describe('sendApprovedInvoiceEmailSmtpTest', () => {
     );
 
     expect(sendTestEmail).toHaveBeenCalledOnce();
-    expect(repository.completions).toEqual([
-      expect.objectContaining({
+    expect(repository.completeDeliveryEvent).toHaveBeenCalledExactlyOnceWith({
+      reservation: repository.reservations[0],
+      result: {
         safeErrorMessage: 'Invoice email delivery outcome is unknown.',
         status: 'outcomeUnknown',
         technicalErrorCode: 'SMTP_FINAL_RESPONSE_MISSING',
-      }),
-    ]);
+      },
+    });
+    expect(repository.completeDeliveryEvent.mock.calls[0]?.[0].reservation).toBe(repository.reservations[0]);
   });
 
   it('records a safe failed result without leaking the provider error', async () => {
@@ -161,24 +177,187 @@ describe('sendApprovedInvoiceEmailSmtpTest', () => {
       );
     });
 
+    const dependencies = createDependencies({ repository, sendTestEmail });
     await expect(
-      sendApprovedInvoiceEmailSmtpTest(
-        createInput(),
-        createDependencies({ repository, sendTestEmail }),
-      ),
+      sendApprovedInvoiceEmailSmtpTest(createInput(), dependencies),
     ).rejects.toEqual(
       new ApprovedInvoiceEmailDeliveryError(
         'Invoice SMTP test delivery failed.',
       ),
     );
 
-    expect(repository.completions[0]).toEqual(
-      expect.objectContaining({
+    expect(repository.completeDeliveryEvent).toHaveBeenCalledExactlyOnceWith({
+      reservation: repository.reservations[0],
+      result: {
         safeErrorMessage: 'Invoice SMTP test delivery failed.',
         status: 'failed',
         technicalErrorCode: 'DNA_SMTP_SECRET_NOT_CONFIGURED',
+      },
+    });
+    expect(repository.completeDeliveryEvent.mock.calls[0]?.[0].reservation).toBe(repository.reservations[0]);
+    expect(dependencies.invoiceEmailSendAttemptStore.complete).toHaveBeenCalledExactlyOnceWith({
+      attemptId: 'attempt-1', outcome: 'failed',
+    });
+  });
+
+  it('stops before the provider when reservation conflicts after document loading', async () => {
+    const repository = new FakeInvoiceDeliveryEventRepository();
+    repository.reserveEmailDelivery.mockResolvedValue({ outcome: 'conflict' });
+    const pdfContent = Buffer.from('%PDF-1.7 synthetic');
+    const dependencies = createDependencies({ pdfContent, repository });
+
+    await expect(
+      sendApprovedInvoiceEmailSmtpTest(createInput(), dependencies),
+    ).rejects.toBeInstanceOf(InvoiceDeliveryConflictError);
+
+    expect(dependencies.loadInvoiceEmailDeliveryDocument).toHaveBeenCalledOnce();
+    expect(dependencies.invoiceEmailSendAttemptStore.acquire).toHaveBeenCalledOnce();
+    expect(repository.reserveEmailDelivery).toHaveBeenCalledOnce();
+    expect(repository.saveDeliveryEvent).not.toHaveBeenCalled();
+    expect(repository.completeDeliveryEvent).not.toHaveBeenCalled();
+    expect(dependencies.invoiceSmtpTestDeliveryProvider.sendTestEmail).not.toHaveBeenCalled();
+    expect(dependencies.invoiceEmailSendAttemptStore.complete).toHaveBeenCalledExactlyOnceWith({
+      attemptId: 'attempt-1', outcome: 'failed',
+    });
+    expect(pdfContent.every((value) => value === 0)).toBe(true);
+  });
+
+  it('treats an untyped provider error as unknown without leaking its message', async () => {
+    const repository = new FakeInvoiceDeliveryEventRepository();
+    const pdfContent = Buffer.from('%PDF-1.7 synthetic');
+    const dependencies = createDependencies({
+      pdfContent,
+      repository,
+      sendTestEmail: vi.fn(async () => {
+        throw new Error('synthetic private provider details');
       }),
-    );
+    });
+
+    await expect(
+      sendApprovedInvoiceEmailSmtpTest(createInput(), dependencies),
+    ).rejects.toEqual(new ApprovedInvoiceEmailDeliveryOutcomeUnknownError());
+
+    expect(repository.completeDeliveryEvent).toHaveBeenCalledExactlyOnceWith({
+      reservation: repository.reservations[0],
+      result: {
+        safeErrorMessage: 'Invoice email delivery outcome is unknown.',
+        status: 'outcomeUnknown',
+        technicalErrorCode: null,
+      },
+    });
+    expect(repository.completeDeliveryEvent.mock.calls[0]?.[0].reservation).toBe(repository.reservations[0]);
+    expect(dependencies.invoiceSmtpTestDeliveryProvider.sendTestEmail).toHaveBeenCalledOnce();
+    expect(dependencies.invoiceEmailSendAttemptStore.complete).toHaveBeenCalledExactlyOnceWith({
+      attemptId: 'attempt-1', outcome: 'outcomeUnknown',
+    });
+    expect(pdfContent.every((value) => value === 0)).toBe(true);
+  });
+
+  it('keeps the attempt uncertain when persisting a definite provider failure fails', async () => {
+    const repository = new FakeInvoiceDeliveryEventRepository();
+    repository.completeDeliveryEvent.mockRejectedValue(new Error('synthetic completion failure'));
+    const pdfContent = Buffer.from('%PDF-1.7 synthetic');
+    const dependencies = createDependencies({
+      pdfContent,
+      repository,
+      sendTestEmail: vi.fn(async () => {
+        throw new InvoiceSmtpTestDeliveryError('failed', 'DNA_SMTP_SECRET_NOT_CONFIGURED');
+      }),
+    });
+
+    await expect(
+      sendApprovedInvoiceEmailSmtpTest(createInput(), dependencies),
+    ).rejects.toEqual(new ApprovedInvoiceEmailDeliveryOutcomeUnknownError());
+
+    expect(repository.completeDeliveryEvent).toHaveBeenCalledExactlyOnceWith({
+      reservation: repository.reservations[0],
+      result: {
+        safeErrorMessage: 'Invoice SMTP test delivery failed.',
+        status: 'failed',
+        technicalErrorCode: 'DNA_SMTP_SECRET_NOT_CONFIGURED',
+      },
+    });
+    expect(repository.completeDeliveryEvent.mock.calls[0]?.[0].reservation).toBe(repository.reservations[0]);
+    expect(dependencies.invoiceEmailSendAttemptStore.complete).toHaveBeenCalledExactlyOnceWith({
+      attemptId: 'attempt-1', outcome: 'outcomeUnknown',
+    });
+    expect(dependencies.invoiceSmtpTestDeliveryProvider.sendTestEmail).toHaveBeenCalledOnce();
+    expect(pdfContent.every((value) => value === 0)).toBe(true);
+  });
+
+  it.each([false, true])(
+    'records uncertainty after success persistence fails even if unknown recording also fails: %s',
+    async (unknownRecordingFails) => {
+      const repository = new FakeInvoiceDeliveryEventRepository();
+      if (unknownRecordingFails) {
+        repository.completeDeliveryEvent.mockRejectedValue(new Error('synthetic completion failure'));
+      } else {
+        repository.completeDeliveryEvent.mockRejectedValueOnce(new Error('synthetic success completion failure'));
+      }
+      const pdfContent = Buffer.from('%PDF-1.7 synthetic');
+      const dependencies = createDependencies({ pdfContent, repository });
+
+      await expect(
+        sendApprovedInvoiceEmailSmtpTest(createInput(), dependencies),
+      ).rejects.toEqual(new ApprovedInvoiceEmailDeliveryOutcomeUnknownError());
+
+      expect(repository.completeDeliveryEvent.mock.calls).toEqual([
+        [{
+          reservation: repository.reservations[0],
+          result: { status: 'succeeded', providerMessageId: null },
+        }],
+        [{
+          reservation: repository.reservations[0],
+          result: {
+            status: 'outcomeUnknown',
+            safeErrorMessage: 'Invoice email delivery outcome is unknown.',
+            technicalErrorCode: null,
+          },
+        }],
+      ]);
+      for (const [completion] of repository.completeDeliveryEvent.mock.calls) {
+        expect(completion.reservation).toBe(repository.reservations[0]);
+      }
+      expect(dependencies.invoiceEmailSendAttemptStore.complete).toHaveBeenCalledExactlyOnceWith({
+        attemptId: 'attempt-1', outcome: 'outcomeUnknown',
+      });
+      expect(dependencies.invoiceSmtpTestDeliveryProvider.sendTestEmail).toHaveBeenCalledOnce();
+      expect(pdfContent.every((value) => value === 0)).toBe(true);
+    },
+  );
+
+  it('treats a mismatching provider recipient as unknown', async () => {
+    const repository = new FakeInvoiceDeliveryEventRepository();
+    const pdfContent = Buffer.from('%PDF-1.7 synthetic');
+    const dependencies = createDependencies({
+      pdfContent,
+      repository,
+      sendTestEmail: vi.fn(async () => ({
+        deliveredTo: 'other-recipient@example.fi',
+        provider: 'smtp' as const,
+        providerMessageId: null,
+        testMode: true as const,
+      })),
+    });
+
+    await expect(
+      sendApprovedInvoiceEmailSmtpTest(createInput(), dependencies),
+    ).rejects.toEqual(new ApprovedInvoiceEmailDeliveryOutcomeUnknownError());
+
+    expect(repository.completeDeliveryEvent).toHaveBeenCalledExactlyOnceWith({
+      reservation: repository.reservations[0],
+      result: {
+        status: 'outcomeUnknown',
+        safeErrorMessage: 'Invoice email delivery outcome is unknown.',
+        technicalErrorCode: null,
+      },
+    });
+    expect(repository.completeDeliveryEvent.mock.calls[0]?.[0].reservation).toBe(repository.reservations[0]);
+    expect(dependencies.invoiceSmtpTestDeliveryProvider.sendTestEmail).toHaveBeenCalledOnce();
+    expect(dependencies.invoiceEmailSendAttemptStore.complete).toHaveBeenCalledExactlyOnceWith({
+      attemptId: 'attempt-1', outcome: 'outcomeUnknown',
+    });
+    expect(pdfContent.every((value) => value === 0)).toBe(true);
   });
 
   it('denies delivery before reading settings or PDF without permission', async () => {
@@ -199,7 +378,9 @@ describe('sendApprovedInvoiceEmailSmtpTest', () => {
     ).rejects.toBeInstanceOf(AuthorizationError);
 
     expect(dependencies.invoiceEmailSettingsReader.getEmailSettings).not.toHaveBeenCalled();
-    expect(dependencies.ensureApprovedInvoicePdfDocument).not.toHaveBeenCalled();
+    expect(dependencies.loadInvoiceEmailDeliveryDocument).not.toHaveBeenCalled();
+    expect(dependencies.invoiceDeliveryEventRepository.reserveEmailDelivery).not.toHaveBeenCalled();
+    expect(dependencies.invoiceEmailSendAttemptStore.acquire).not.toHaveBeenCalled();
     expect(dependencies.invoiceSmtpTestDeliveryProvider.sendTestEmail).not.toHaveBeenCalled();
   });
 
@@ -219,10 +400,10 @@ describe('sendApprovedInvoiceEmailSmtpTest', () => {
     ).rejects.toBeInstanceOf(ApprovedInvoiceNotFoundError);
 
     expect(dependencies.invoiceEmailSettingsReader.getEmailSettings).not.toHaveBeenCalled();
-    expect(dependencies.ensureApprovedInvoicePdfDocument).not.toHaveBeenCalled();
-    expect(dependencies.getApprovedInvoicePdfDocument).not.toHaveBeenCalled();
+    expect(dependencies.loadInvoiceEmailDeliveryDocument).not.toHaveBeenCalled();
     expect(dependencies.invoiceEmailSendAttemptStore.acquire).not.toHaveBeenCalled();
-    expect(repository.events).toEqual([]);
+    expect(repository.reserveEmailDelivery).not.toHaveBeenCalled();
+    expect(repository.saveDeliveryEvent).not.toHaveBeenCalled();
     expect(dependencies.invoiceSmtpTestDeliveryProvider.sendTestEmail).not.toHaveBeenCalled();
   });
 
@@ -253,6 +434,7 @@ describe('sendApprovedInvoiceEmailSmtpTest', () => {
       body: input.body,
       cc: input.cc ?? '',
       document: {
+        binding: document.binding,
         fileName: document.fileName,
         id: document.id,
         sha256: document.sha256,
@@ -280,8 +462,10 @@ describe('sendApprovedInvoiceEmailSmtpTest', () => {
       attemptId: preparation.attemptId,
       authorizationToken: preparation.authorizationToken,
     };
+    const repository = new FakeInvoiceDeliveryEventRepository();
     const dependencies = createDependencies({
       attemptStore,
+      repository,
       sendTestEmail,
     });
     const firstRequest = sendApprovedInvoiceEmailSmtpTest(
@@ -301,6 +485,8 @@ describe('sendApprovedInvoiceEmailSmtpTest', () => {
     await expect(firstRequest).resolves.toEqual(
       expect.objectContaining({ deliveryEventId: preparation.attemptId }),
     );
+    expect(repository.reserveEmailDelivery).toHaveBeenCalledOnce();
+    expect(repository.completeDeliveryEvent).toHaveBeenCalledOnce();
   });
 });
 
@@ -312,7 +498,6 @@ function createDependencies(options: {
   sendTestEmail?: InvoiceSmtpTestDeliveryProvider['sendTestEmail'];
 } = {}) {
   const repository = options.repository ?? new FakeInvoiceDeliveryEventRepository();
-  const pdfContent = options.pdfContent ?? Buffer.from('%PDF-1.7 synthetic');
   const sendTestEmail =
     options.sendTestEmail ??
     vi.fn(async () => ({
@@ -338,16 +523,18 @@ function createDependencies(options: {
 
   return {
     approvedInvoiceReader: new FakeApprovedInvoiceReader(options.invoice),
-    ensureApprovedInvoicePdfDocument: vi.fn(async () => createDocumentMetadata()),
-    getApprovedInvoicePdfDocument: vi.fn(async () => ({
-      content: pdfContent,
-      metadata: createDocumentMetadata(),
-    })),
+    loadInvoiceEmailDeliveryDocument: vi.fn<SendApprovedInvoiceEmailSmtpTestDependencies['loadInvoiceEmailDeliveryDocument']>(async () =>
+      createInvoiceEmailDeliveryDocument(
+        createDocumentMetadata(),
+        options.pdfContent ?? Buffer.from('%PDF-1.7 synthetic'),
+      ),
+    ),
+    invoiceDeliveryEventReader: { requiresLegacyDeliveryReview: vi.fn(async () => false) },
     invoiceDeliveryEventRepository: repository,
     invoiceEmailSettingsReader,
     invoiceEmailSendAttemptStore,
     invoiceSmtpTestDeliveryProvider,
-  };
+  } satisfies SendApprovedInvoiceEmailSmtpTestDependencies;
 }
 
 function createInput(
@@ -381,8 +568,9 @@ function createEmailSettings() {
   };
 }
 
-function createDocumentMetadata(): ApprovedInvoiceDocumentMetadata {
+function createDocumentMetadata(): RevisionInvoiceDocumentMetadata {
   return {
+    binding: { kind: 'revision', revisionId: 'revision-1' },
     companyId: 'dev-company',
     createdAt: '2026-07-16T10:00:00.000Z',
     documentType: 'approved_invoice_pdf',

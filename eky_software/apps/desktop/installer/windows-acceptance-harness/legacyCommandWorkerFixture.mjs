@@ -8,6 +8,7 @@ import { writeJsonAtomicExclusive } from './cleanInstallUninstallContracts.mjs';
 import { executeProductOperation, runInstallerProductCommand } from './installerProductOperationWorker.mjs';
 import { fileURLToPath } from 'node:url';
 import { startLegacyOwnedProcess } from './legacyUpgradeWindowsRuntime.mjs';
+import { deriveLegacySourceUserDataRoot } from './legacyUpgradeProfileEvidence.mjs';
 
 const mode = process.argv[2];
 assert(['hold', 'unread', 'consumeOwnedProduct', '--phase-request'].includes(mode));
@@ -42,7 +43,8 @@ if (mode === '--phase-request') {
         return { artifactRoot: payload.fixtureRoot, descriptorSha256: input.commandArguments[3],
           buildRevision: input.commandArguments[5], sourceArtifactRoot: fixtureRoot,
           source: { ...role, artifactClass: 'historical-source-rebuild', appVersion: '0.2.6', packageSha256: 'c'.repeat(64) },
-          target: { ...role, productCode: '00000000-0000-0000-0000-000000000002', appVersion: '0.2.7', packageSha256: 'd'.repeat(64) } };
+          target: { ...role, productCode: '00000000-0000-0000-0000-000000000002', appVersion: '0.2.7',
+            buildRevision: input.commandArguments[5], packageSha256: 'd'.repeat(64) } };
       }
       if (operation === 'semantic') {
         if (testCase === 'businessFailed') throw new Error('legacySemanticProofFailed');
@@ -85,6 +87,16 @@ if (mode === '--phase-request') {
         errorCode: failed ? 'commandFailed' : null, resultCleanup: 'completed' };
     },
     async runScenario([, requestPath]) {
+      const request = JSON.parse(await readFile(requestPath, 'utf8'));
+      const logDirectory = join(deriveLegacySourceUserDataRoot(dirname(dirname(requestPath)), request.runNonce),
+        'runtime', 'logs', 'desktop');
+      await mkdir(logDirectory, { recursive: true });
+      await writeFile(join(logDirectory, 'desktop-info-2026-09-001.jsonl'), `${JSON.stringify({
+        schemaVersion: 1, component: 'desktop', category: 'runtime', level: 'info', outcome: 'success',
+        eventName: 'desktop.started', appVersion: '0.2.7', buildRevision: input.commandArguments[5],
+        eventId: '12345678-1234-4abc-8abc-1234567890ab', runtimeInstanceId: '22345678-1234-4abc-8abc-1234567890ab',
+        timestamp: '2026-09-04T08:00:00.000Z',
+      })}\n`);
       if (testCase === 'scenarioHold') hold();
       if (testCase === 'msiProcessHold') {
         const events = [];
@@ -95,7 +107,6 @@ if (mode === '--phase-request') {
         throw new Error('heldProcessUnexpectedlyCompleted');
       }
       if (testCase === 'scenarioMissing') return 0;
-      const request = JSON.parse(await readFile(requestPath, 'utf8'));
       const failed = testCase === 'scenarioAndCleanupFailed';
       return writeLegacyUpgradeWorkerOutcome(requestPath, request, { schemaVersion: 1,
         status: failed ? 'failed' : 'completed', resultCode: failed ? 'historicalLegacyUpgradeFailed' : 'historicalLegacyUpgradeCompleted',

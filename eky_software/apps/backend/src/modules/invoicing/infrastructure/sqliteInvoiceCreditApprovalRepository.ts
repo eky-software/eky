@@ -1,9 +1,9 @@
 import type { DatabaseConnection } from '../../../database/connection/createDatabaseConnection.js';
 import type {
+  InvoiceContentRevisionRow,
   InvoiceDraftLineTable,
   InvoiceDraftTable,
-  InvoiceLineRow,
-  InvoiceRow,
+  InvoiceRevisionLineRow,
   NewInvoiceLineRow,
   NewInvoiceRow,
 } from '../../../database/schema.js';
@@ -33,6 +33,8 @@ import type { InvoiceCreditAllocation } from '../ports/invoiceCreditDraftReposit
 import { createAuditEventRow } from './invoiceApprovalPersistenceRows.js';
 import { SqliteInvoiceApprovalQueries } from './sqliteInvoiceApprovalQueries.js';
 import { SqliteInvoiceApprovalStatements } from './sqliteInvoiceApprovalStatements.js';
+import { publishInvoiceApprovalRevision } from './publishInvoiceApprovalRevision.js';
+import { readCreditInvoiceRevisionSource } from './readCreditInvoiceRevisionSource.js';
 
 interface PreviousCreditAllocationRow {
   source_invoice_line_id: string | null;
@@ -90,14 +92,16 @@ export class SqliteInvoiceCreditApprovalRepository
       return { outcome: 'notFound' };
     }
 
-    const sourceInvoice = this.getSourceInvoice(
+    const source = readCreditInvoiceRevisionSource(
+      this.database,
       input.companyId,
       draft.credited_invoice_id,
     );
 
-    if (sourceInvoice === undefined) {
+    if (source === undefined) {
       return { outcome: 'conflict' };
     }
+    const { header: sourceInvoice, lines: sourceLines } = source;
 
     if (!hasMatchingTaxTreatment(draft, sourceInvoice)) {
       return { outcome: 'conflict' };
@@ -112,10 +116,9 @@ export class SqliteInvoiceCreditApprovalRepository
       return { outcome: 'conflict' };
     }
 
-    const sourceLines = this.getSourceLines(sourceInvoice.id);
     const previousAllocations = this.getPreviousAllocations(
       input.companyId,
-      sourceInvoice.id,
+      sourceInvoice.invoice_id,
     );
     const calculated = calculateCreditDraftForApproval(
       sourceInvoice,
@@ -187,6 +190,19 @@ export class SqliteInvoiceCreditApprovalRepository
     });
     this.approvalStatements.insertInvoice(invoiceRow);
     this.approvalStatements.insertInvoiceLines(lineRows);
+    const revisionId = publishInvoiceApprovalRevision(
+      this.database,
+      invoiceRow,
+      lineRows,
+      calculated.totals,
+      {
+        companyId: input.companyId,
+        invoiceId: sourceInvoice.invoice_id,
+        revisionId: sourceInvoice.id,
+        invoiceNumber: sourceInvoice.invoice_number,
+        invoiceDate: sourceInvoice.invoice_date,
+      },
+    );
     this.approvalStatements.insertAuditEvent(
       createAuditEventRow(
         numberedInput,
@@ -200,6 +216,9 @@ export class SqliteInvoiceCreditApprovalRepository
     return {
       outcome: 'approved',
       invoice: {
+        revisionKey: {
+          companyId: input.companyId, invoiceId: input.invoiceId, revisionId,
+        },
         invoiceId: input.invoiceId,
         draftId: input.draftId,
         invoiceNumber,
@@ -209,38 +228,6 @@ export class SqliteInvoiceCreditApprovalRepository
         status: 'approved',
       },
     };
-  }
-
-  private getSourceInvoice(
-    companyId: string,
-    invoiceId: string,
-  ): InvoiceRow | undefined {
-    return this.database
-      .prepare<[string, string], InvoiceRow>(
-        `
-          SELECT *
-          FROM invoices
-          WHERE
-            company_id = ?
-            AND id = ?
-            AND invoice_kind = 'standard'
-            AND status = 'sent'
-        `,
-      )
-      .get(companyId, invoiceId);
-  }
-
-  private getSourceLines(invoiceId: string): InvoiceLineRow[] {
-    return this.database
-      .prepare<[string], InvoiceLineRow>(
-        `
-          SELECT *
-          FROM invoice_lines
-          WHERE invoice_id = ?
-          ORDER BY line_order
-        `,
-      )
-      .all(invoiceId);
   }
 
   private getPreviousAllocations(
@@ -290,8 +277,8 @@ export class SqliteInvoiceCreditApprovalRepository
 }
 
 function calculateCreditDraftForApproval(
-  sourceInvoice: InvoiceRow,
-  sourceLines: readonly InvoiceLineRow[],
+  sourceInvoice: InvoiceContentRevisionRow,
+  sourceLines: readonly InvoiceRevisionLineRow[],
   previousAllocations: readonly InvoiceCreditAllocation[],
   draftLines: readonly InvoiceDraftLineTable[],
 ) {
@@ -365,8 +352,8 @@ function calculateCreditDraftForApproval(
 }
 
 function toNormalVatSourceLines(
-  sourceInvoice: InvoiceRow,
-  sourceLines: readonly InvoiceLineRow[],
+  sourceInvoice: InvoiceContentRevisionRow,
+  sourceLines: readonly InvoiceRevisionLineRow[],
 ) {
   return sourceLines.map((line) => {
     if (line.vat_rate_basis_points === null) {
@@ -376,7 +363,7 @@ function toNormalVatSourceLines(
     }
 
     return {
-      id: line.id,
+      id: line.line_id,
       lineOrder: line.line_order,
       quantityHundredths: line.quantity_hundredths,
       priceInputMode: sourceInvoice.price_input_mode as 'gross' | 'net',
@@ -391,8 +378,8 @@ function toNormalVatSourceLines(
 }
 
 function toReverseChargeSourceLines(
-  sourceInvoice: InvoiceRow,
-  sourceLines: readonly InvoiceLineRow[],
+  sourceInvoice: InvoiceContentRevisionRow,
+  sourceLines: readonly InvoiceRevisionLineRow[],
 ): ReverseChargeCreditSourceLine[] {
   if (sourceInvoice.price_input_mode !== 'net') {
     throw new ApproveInvoiceDraftError(
@@ -412,7 +399,7 @@ function toReverseChargeSourceLines(
     }
 
     return {
-      id: line.id,
+      id: line.line_id,
       lineOrder: line.line_order,
       quantityHundredths: line.quantity_hundredths,
       priceInputMode: 'net',
@@ -469,7 +456,7 @@ function toReverseChargePreviousAllocations(
 
 function hasMatchingTaxTreatment(
   draft: InvoiceDraftTable,
-  sourceInvoice: InvoiceRow,
+  sourceInvoice: InvoiceContentRevisionRow,
 ): boolean {
   return (
     draft.tax_treatment === sourceInvoice.tax_treatment &&
@@ -484,7 +471,7 @@ function hasMatchingTaxTreatment(
 function createCreditInvoiceRow(
   input: NumberedApproveCreditInvoiceDraftPersistenceInput,
   draft: InvoiceDraftTable,
-  sourceInvoice: InvoiceRow,
+  sourceInvoice: InvoiceContentRevisionRow,
   invoiceNumber: string,
   sequenceNumber: number,
   sequenceScope: string,
@@ -496,11 +483,11 @@ function createCreditInvoiceRow(
   },
 ): NewInvoiceRow {
   return {
-    ...sourceInvoice,
     id: input.invoiceId,
+    company_id: input.companyId,
     source_draft_id: input.draftId,
     invoice_kind: 'credit',
-    credited_invoice_id: sourceInvoice.id,
+    credited_invoice_id: sourceInvoice.invoice_id,
     invoice_number: invoiceNumber,
     reference_number: null,
     reference_number_type: null,
@@ -509,16 +496,60 @@ function createCreditInvoiceRow(
     sequence_number: sequenceNumber,
     numbering_mode: numberingMode,
     status: 'approved',
+    customer_id: sourceInvoice.customer_id,
+    customer_number_snapshot: sourceInvoice.customer_number_snapshot,
+    customer_name_snapshot: sourceInvoice.customer_name_snapshot,
+    customer_business_id_snapshot: sourceInvoice.customer_business_id_snapshot,
+    customer_type_snapshot: sourceInvoice.customer_type_snapshot,
+    customer_email_snapshot: sourceInvoice.customer_email_snapshot,
+    customer_phone_snapshot: sourceInvoice.customer_phone_snapshot,
+    customer_street_address_snapshot: sourceInvoice.customer_street_address_snapshot,
+    customer_postal_code_snapshot: sourceInvoice.customer_postal_code_snapshot,
+    customer_city_snapshot: sourceInvoice.customer_city_snapshot,
+    company_name_snapshot: sourceInvoice.company_name_snapshot,
+    company_business_id_snapshot: sourceInvoice.company_business_id_snapshot,
+    company_vat_number_snapshot: sourceInvoice.company_vat_number_snapshot,
+    company_street_address_snapshot: sourceInvoice.company_street_address_snapshot,
+    company_postal_code_snapshot: sourceInvoice.company_postal_code_snapshot,
+    company_city_snapshot: sourceInvoice.company_city_snapshot,
+    company_email_snapshot: sourceInvoice.company_email_snapshot,
+    company_phone_snapshot: sourceInvoice.company_phone_snapshot,
+    company_website_snapshot: sourceInvoice.company_website_snapshot,
+    company_iban_snapshot: sourceInvoice.company_iban_snapshot,
+    company_bic_snapshot: sourceInvoice.company_bic_snapshot,
+    company_bank_name_snapshot: sourceInvoice.company_bank_name_snapshot,
+    billing_recipient_customer_id: sourceInvoice.billing_recipient_customer_id,
+    billing_recipient_customer_number_snapshot:
+      sourceInvoice.billing_recipient_customer_number_snapshot,
+    billing_recipient_name_snapshot: sourceInvoice.billing_recipient_name_snapshot,
+    billing_recipient_business_id_snapshot:
+      sourceInvoice.billing_recipient_business_id_snapshot,
+    billing_recipient_customer_type_snapshot:
+      sourceInvoice.billing_recipient_customer_type_snapshot,
+    billing_recipient_email_snapshot: sourceInvoice.billing_recipient_email_snapshot,
+    billing_recipient_phone_snapshot: sourceInvoice.billing_recipient_phone_snapshot,
+    billing_recipient_street_address_snapshot:
+      sourceInvoice.billing_recipient_street_address_snapshot,
+    billing_recipient_postal_code_snapshot:
+      sourceInvoice.billing_recipient_postal_code_snapshot,
+    billing_recipient_city_snapshot: sourceInvoice.billing_recipient_city_snapshot,
     invoice_date: draft.invoice_date,
     due_date: draft.invoice_date,
     payment_term_days: 0,
     reminder_period_days: 0,
     late_payment_interest_basis_points: 0,
+    price_input_mode: sourceInvoice.price_input_mode,
     subject: draft.subject,
     order_number: sourceInvoice.order_number,
     note: draft.note,
     delivery_address_text: sourceInvoice.delivery_address_text,
     refund_iban_snapshot: draft.refund_iban,
+    tax_treatment: sourceInvoice.tax_treatment,
+    tax_treatment_label_snapshot: sourceInvoice.tax_treatment_label_snapshot,
+    tax_legal_basis_snapshot: sourceInvoice.tax_legal_basis_snapshot,
+    performance_date: sourceInvoice.performance_date,
+    performance_period_start: sourceInvoice.performance_period_start,
+    performance_period_end: sourceInvoice.performance_period_end,
     total_net_cents: totals.netTotalCents,
     total_vat_cents: totals.vatTotalCents,
     total_gross_cents: totals.grossTotalCents,
@@ -534,10 +565,10 @@ function createCreditInvoiceRow(
 function createCreditInvoiceLineRows(
   input: NumberedApproveCreditInvoiceDraftPersistenceInput,
   draftLines: readonly InvoiceDraftLineTable[],
-  sourceLines: readonly InvoiceLineRow[],
+  sourceLines: readonly InvoiceRevisionLineRow[],
   calculatedLines: readonly CalculatedCreditDraftLine[],
 ): NewInvoiceLineRow[] {
-  const sourceById = new Map(sourceLines.map((line) => [line.id, line]));
+  const sourceById = new Map(sourceLines.map((line) => [line.line_id, line]));
   const calculatedBySourceId = new Map(
     calculatedLines.flatMap((line) =>
       line.sourceInvoiceLineId === null

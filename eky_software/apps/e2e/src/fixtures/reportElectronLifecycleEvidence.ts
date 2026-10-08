@@ -24,7 +24,7 @@ export interface ElectronCleanupResult {
 }
 
 export interface ElectronPreparationFailureEvidence {
-  readonly stage: 'workspaceBackup';
+  readonly stage: 'workspaceBackup' | 'legacyInvoiceProfile';
   readonly backend: E2eBackendStartupFailureEvidence | null;
 }
 

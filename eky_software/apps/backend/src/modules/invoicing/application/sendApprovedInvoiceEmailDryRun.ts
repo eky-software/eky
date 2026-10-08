@@ -12,13 +12,18 @@ import {
   normalizeApprovedInvoiceEmailSendFields,
 } from './approvedInvoiceEmailSendValidation.js';
 import type {
-  GenerateApprovedInvoicePdfDocumentInput,
+  GenerateInvoiceRevisionPdfDocumentInput,
 } from './generateApprovedInvoicePdfDocument.js';
 import { recordInvoiceDeliveryEvent } from './recordInvoiceDeliveryEvent.js';
 import { requireInvoiceDeliveryEligible } from './requireInvoiceDeliveryEligible.js';
-import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
+import { requireLegacyInvoiceDeliveryReviewed, type InvoiceLegacyDeliveryReviewReader } from './requireLegacyInvoiceDeliveryReviewed.js';
+import type { RevisionInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
+import { toRevisionInvoiceDeliveryTarget } from './toRevisionInvoiceDeliveryTarget.js';
 import { requireIdentifier } from '../domain/invoiceDraftRules.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
+import type { InvoiceContentRevisionReader } from '../ports/invoiceContentRevisionReader.js';
+import type { InvoiceLegacyRevisionPromoter } from '../ports/invoiceLegacyRevisionPromoter.js';
+import { prepareInvoiceDeliveryRevision } from './prepareInvoiceDeliveryRevision.js';
 import type { InvoiceDeliveryEventRepository } from '../ports/invoiceDeliveryEventRepository.js';
 import type { InvoiceEmailDeliveryProvider } from '../ports/invoiceEmailDeliveryProvider.js';
 
@@ -39,11 +44,14 @@ export interface SendApprovedInvoiceEmailDryRunResult {
 }
 
 export interface SendApprovedInvoiceEmailDryRunDependencies {
+  invoiceDeliveryEventReader: InvoiceLegacyDeliveryReviewReader;
   approvedInvoiceReader: ApprovedInvoiceReader;
-  ensureApprovedInvoicePdfDocument(
-    input: GenerateApprovedInvoicePdfDocumentInput,
-  ): Promise<ApprovedInvoiceDocumentMetadata>;
-  invoiceDeliveryEventRepository: InvoiceDeliveryEventRepository;
+  invoiceContentRevisionReader: Pick<InvoiceContentRevisionReader, 'getCurrentRevision'>;
+  invoiceLegacyRevisionPromoter: InvoiceLegacyRevisionPromoter;
+  ensureInvoiceRevisionPdfDocument(
+    input: GenerateInvoiceRevisionPdfDocumentInput,
+  ): Promise<RevisionInvoiceDocumentMetadata>;
+  invoiceDeliveryEventRepository: Pick<InvoiceDeliveryEventRepository, 'saveDeliveryEvent'>;
   invoiceEmailDeliveryProvider: InvoiceEmailDeliveryProvider;
 }
 
@@ -64,21 +72,23 @@ export async function sendApprovedInvoiceEmailDryRun(
   );
   const sentAt = requireIdentifier(input.sentAt, 'Email delivery timestamp');
   const emailFields = normalizeApprovedInvoiceEmailSendFields(input);
+  const revision = await dependencies.invoiceContentRevisionReader.getCurrentRevision({ companyId, invoiceId });
   const invoice = await dependencies.approvedInvoiceReader.getApprovedInvoiceById(
     companyId,
     invoiceId,
   );
 
-  if (invoice === undefined) {
+  if (invoice === undefined || revision === undefined) {
     throw new ApprovedInvoiceNotFoundError();
   }
 
   requireInvoiceDeliveryEligible(invoice);
+  await requireLegacyInvoiceDeliveryReviewed({ companyId, invoiceId }, dependencies.invoiceDeliveryEventReader);
 
-  const document = await dependencies.ensureApprovedInvoicePdfDocument({
-    companyId,
+  const key = await prepareInvoiceDeliveryRevision(revision, { companyId, invoiceId }, dependencies.invoiceLegacyRevisionPromoter);
+  const document = await dependencies.ensureInvoiceRevisionPdfDocument({
+    key,
     createdAt: sentAt,
-    invoiceId,
   });
   const email: ApprovedInvoiceEmailDryRunSend = {
     attachment: createApprovedInvoiceEmailAttachmentPreview(document),
@@ -90,6 +100,7 @@ export async function sendApprovedInvoiceEmailDryRun(
     subject: emailFields.subject,
     to: emailFields.to,
   };
+  const target = toRevisionInvoiceDeliveryTarget(key, document);
 
   let providerResult: ApprovedInvoiceEmailDryRunProviderResult;
 
@@ -105,12 +116,10 @@ export async function sendApprovedInvoiceEmailDryRun(
       {
         body: email.body,
         ccEmail: email.cc,
-        companyId,
+        target,
         createdAt: sentAt,
         createdBy: actorUserId,
         deliveryMethod: 'email',
-        documentId: document.id,
-        invoiceId,
         provider: 'dryRun',
         recipientEmail: email.to,
         safeErrorMessage: 'Invoice email dry-run failed.',
@@ -133,12 +142,10 @@ export async function sendApprovedInvoiceEmailDryRun(
     {
       body: email.body,
       ccEmail: email.cc,
-      companyId,
+      target,
       createdAt: sentAt,
       createdBy: actorUserId,
       deliveryMethod: 'email',
-      documentId: document.id,
-      invoiceId,
       provider: providerResult.provider,
       providerMessageId: providerResult.providerMessageId,
       recipientEmail: email.to,

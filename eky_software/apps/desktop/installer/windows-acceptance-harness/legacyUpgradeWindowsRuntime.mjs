@@ -26,6 +26,9 @@ import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
 import { verifyLegacyUpgradeArtifact } from './legacyUpgradeArtifact.mjs';
 import { createNativeProductInspectionCommand } from './nativeMsiAdapterCommand.mjs';
 import { createLegacyPayloadObservation } from './legacyPayloadObservation.mjs';
+import { STARTUP_EXCEPTION_SWITCH, STARTUP_EXCEPTION_TOKEN_ENV } from '../../src/main/startupExceptionEvidence.ts';
+import { prepareLegacyStartupExceptionControl } from './legacyOriginalExceptionEvidence.mjs';
+import { readLegacyDatabasePackageBinding } from './legacyUpgradeDatabaseEvidence.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const CLOSE_REQUEST_PATH = resolve(DIRECTORY, 'requestWindowsApplicationClose.ps1');
@@ -181,7 +184,11 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact, {
   spawnMsiProcess = spawn,
   observePayload = process.env.EKY_ACCEPTANCE_LEGACY_PAYLOAD_OBSERVATION === '1',
   createPayloadObservation = createLegacyPayloadObservation,
+  observeOwnedProcess,
 } = {}) {
+  const processObservation = (role) => (code) => {
+    try { observeOwnedProcess?.(role, code); } catch { /* Evidence only. */ }
+  };
   const appData = process.env.APPDATA;
   const localAppData = process.env.LOCALAPPDATA;
   const systemRoot = process.env.SystemRoot;
@@ -243,6 +250,7 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact, {
   let inspectionSequence = 0;
   let sourceEvidence = null;
   let firstTargetEvidence = null;
+  let packageBinding = null;
 
   async function inspectExactProduct(roleName) {
     const errorCode =
@@ -260,6 +268,7 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact, {
         invocation.command,
         invocation.arguments,
         { cwd: scenarioRoot },
+        { observe: processObservation(roleName === 'source' ? 'sourceProductInspection' : 'targetProductInspection') },
       );
       if (processResult.exitCode !== 0) {
         throw new Error(errorCode);
@@ -331,7 +340,10 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact, {
             resolve(logRoot, `${operation}.log`),
           ],
           { cwd: scenarioRoot },
-          { observe, spawnProcess: spawnMsiProcess },
+          { observe(code) {
+            processObservation(operation)(code);
+            try { observe?.(code); } catch { /* Preserve the existing optional observer boundary. */ }
+          }, spawnProcess: spawnMsiProcess },
         )
       ).exitCode;
     } catch {
@@ -353,6 +365,7 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact, {
 
   async function validateTargetPayload() {
     await validateLegacyTargetPayload(installRoot, artifact.target.payloadInventory);
+    packageBinding = await readLegacyDatabasePackageBinding(installRoot, identities.target);
   }
 
   async function observeTargetPayloadRejection(observe) {
@@ -409,6 +422,7 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact, {
         executablePath,
       ],
       { cwd: scenarioRoot },
+      { observe: processObservation('gracefulClose') },
     );
     if (result.exitCode !== 0) {
       throw new Error('targetGracefulShutdownFailed');
@@ -418,14 +432,24 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact, {
   async function runInstalledApplication(expectedIdentity) {
     const logDirectory = resolve(userDataRoot, 'runtime', 'logs', 'desktop');
     const baselineEventIds = await captureDesktopLifecycleBaseline(logDirectory);
+    const target = expectedIdentity.buildRevision === identities.target.buildRevision;
+    const resultRoot = resolve(userDataRoot, '..', 'result');
+    if (target) {
+      await mkdir(resultRoot, { recursive: true });
+      await prepareLegacyStartupExceptionControl(scenarioRoot, request.runNonce, expectedIdentity);
+    }
     const application = await startLegacyOwnedProcess(
       executablePath,
-      [`--user-data-dir=${userDataRoot}`],
+      [`--user-data-dir=${userDataRoot}`, ...(target ? [`--${STARTUP_EXCEPTION_SWITCH}`] : [])],
       {
         cwd: scenarioRoot,
-        env: withoutElectronNodeMode({ APPDATA: isolatedAppDataRoot }),
+        env: withoutElectronNodeMode({ APPDATA: isolatedAppDataRoot, ...(target ? {
+          TEMP: resolve(scenarioRoot, 'source-smoke-temp'), TMP: resolve(scenarioRoot, 'source-smoke-temp'),
+          [STARTUP_EXCEPTION_TOKEN_ENV]: request.runNonce,
+        } : {}) }),
         windowsHide: false,
       },
+      { observe: processObservation(target ? 'targetApplication' : 'sourceApplication') },
     );
     const started = await waitForTargetDesktopStarted({
       baselineEventIds,
@@ -454,6 +478,7 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact, {
   async function runTargetStartup(generation) {
     if (
       sourceEvidence === null ||
+      packageBinding === null ||
       !['first', 'second'].includes(generation) ||
       (generation === 'second' && firstTargetEvidence === null)
     ) {
@@ -462,6 +487,7 @@ export async function createLegacyUpgradeWindowsRuntime(request, artifact, {
     const started = await runInstalledApplication(identities.target);
     const evidence = await captureLegacyTargetEvidence({
       identities,
+      packageBinding,
       previousEvidence:
         generation === 'second' ? firstTargetEvidence : undefined,
       runtimeInstanceId: started.runtimeInstanceId,

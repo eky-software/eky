@@ -19,8 +19,9 @@ export function createInvoicePdfArchiveBackendLoader(input: {
 }): (task: InvoicePdfArchiveTask) => Promise<LoadedInvoicePdfArchiveDocument> {
   return async (task) => {
     try {
+      const documentUrl = `${input.backendOrigin}/invoices/${encodeURIComponent(task.invoiceId)}/delivery-events/${encodeURIComponent(task.deliveryEventId)}/pdf`;
       const metadataResponse = await input.fetchImplementation(
-        `${input.backendOrigin}/invoices/${encodeURIComponent(task.invoiceId)}/pdf/metadata`,
+        `${documentUrl}/metadata`,
         {
           headers: createBackendRequestHeaders(
             new Headers(),
@@ -45,7 +46,7 @@ export function createInvoicePdfArchiveBackendLoader(input: {
       }
 
       const pdfResponse = await input.fetchImplementation(
-        `${input.backendOrigin}/invoices/${encodeURIComponent(task.invoiceId)}/pdf`,
+        documentUrl,
         {
           headers: createBackendRequestHeaders(
             new Headers(),

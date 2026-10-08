@@ -285,6 +285,9 @@ test('WORKSPACE-IMPORT-002 @critical @recovery migrates an authenticated histori
       'compatibleHistoricalPrefix',
     ),
   ).toEqual({
+    appliedMigrationNames: currentManifest
+      .slice(0, -1)
+      .map((migration) => migration.fileName),
     migrationChainIdentity: historical.migrationChainIdentity,
     profileId: historical.profileId,
   });

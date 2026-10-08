@@ -166,5 +166,6 @@ test('canonical manifest contains the actual consumers and canonical Playwright 
   const normal = JSON.parse(readFileSync(new URL('../../tsconfig.json', import.meta.url)));
   assert.equal(normal.compilerOptions.noEmit, true);
   assert.equal(normal.compilerOptions.noCheck, undefined);
-  assert.deepEqual(normal.include, ['playwright.config.ts', 'playwright.first-start-diagnostic.config.ts', 'src', 'tests']);
+  assert.deepEqual(normal.include, ['playwright.config.ts', 'playwright.first-start-diagnostic.config.ts',
+    'playwright.packaged-legacy.config.ts', 'src', 'tests']);
 });

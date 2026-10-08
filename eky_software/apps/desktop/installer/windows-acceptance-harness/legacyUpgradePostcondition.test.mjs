@@ -12,7 +12,7 @@ function clone(value) {
 
 function evidence(overrides = {}) {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     acceptedCurrentClass: 'targetIdentity',
     acceptedLegacyClass: 'sourceIdentity',
     dataInventory: [
@@ -23,6 +23,10 @@ function evidence(overrides = {}) {
         size: 4096,
       },
     ],
+    databaseProof: {
+      schemaVersion: 1, mode: 'migration038To039', appVersion: '0.2.7', buildRevision: 'a'.repeat(12),
+      contractSha256: '7'.repeat(64), sourceChainSha256: '8'.repeat(64), targetChainSha256: '9'.repeat(64),
+    },
     registrySha256: '2'.repeat(64),
     registrySize: 512,
     runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
@@ -92,7 +96,28 @@ test('legacy semantic evidence rejects the same runtime generation twice', () =>
   );
 });
 
+for (const databaseProof of [null, undefined, {}, { schemaVersion: 1, mode: 'migration038To039' }]) {
+  test(`legacy postcondition rejects an absent or incomplete database proof: ${JSON.stringify(databaseProof)}`, () => {
+    const value = proof();
+    value.firstEvidence.databaseProof = databaseProof;
+    value.secondEvidence.databaseProof = databaseProof;
+    value.currentEvidence = clone(value.secondEvidence);
+    assert.throws(() => validateLegacyUpgradeSemanticEvidence(value), /legacySecondStartupNotIdempotent/);
+  });
+}
+
+test('legacy postcondition rejects changed database bytes and changed package bindings independently', () => {
+  for (const field of ['dataInventory', 'databaseProof']) {
+    const value = proof();
+    if (field === 'dataInventory') value.firstEvidence.dataInventory[0].sha256 = '5'.repeat(64);
+    else value.firstEvidence.databaseProof.buildRevision = 'c'.repeat(12);
+    assert.throws(() => validateLegacyUpgradeSemanticEvidence(value), /legacySecondStartupNotIdempotent/);
+  }
+});
+
 test('legacy semantic postcondition exposes only closed failure classes', () => {
+  assert.equal(classifyLegacySemanticPostconditionFailure('installedPayload', new Error('legacyTargetPayloadChanged')), 'legacyTargetPayloadChanged');
+  assert.equal(classifyLegacySemanticPostconditionFailure('currentEvidence', new Error('legacyDatabaseLedgerInvalid')), 'legacyDatabaseLedgerInvalid');
   assert.equal(
     classifyLegacySemanticPostconditionFailure(
       'semanticValidation',

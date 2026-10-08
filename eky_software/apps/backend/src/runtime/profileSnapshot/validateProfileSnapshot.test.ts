@@ -17,44 +17,19 @@ import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { runMigrations } from '../../database/migration/runMigrations.js';
+import { readMigrationManifest } from '../../database/migration/migrationManifest.js';
+import { createInvoiceReadModelTestDatabase } from '../../testFixtures/invoiceReadModelTestFixtures.js';
 import { ProfileMaintenanceState } from '../profileMaintenance/profileMaintenanceState.js';
 import { createProfileBackupIdentity } from './inspectSqliteProfileDatabase.js';
 import { ProfileBusinessArtifactStager } from './stageProfileBusinessArtifacts.js';
 import { StagedProfileSnapshotValidationService } from './validateProfileSnapshot.js';
 
-const migrationName = '001_create_profile_fixture.sql';
+const migrationName = '001_create_customers.sql';
 const approvedLegacyMigrationChainIdentity =
   '5e841ae5c530da82d7dee0c8e2ed8480b23aca944a0faa64a8fcd0b9011b6503';
 const publishedMigrationsDirectory = fileURLToPath(
   new URL('../../database/migrations/', import.meta.url),
 );
-const migrationSql = `
-  CREATE TABLE local_runtime_identity (
-    singleton_key TEXT PRIMARY KEY,
-    installation_id TEXT NOT NULL,
-    company_id TEXT NOT NULL,
-    actor_id TEXT NOT NULL,
-    created_at TEXT NOT NULL
-  );
-  CREATE TABLE invoices (
-    id TEXT NOT NULL,
-    company_id TEXT NOT NULL,
-    PRIMARY KEY (id)
-  );
-  CREATE TABLE invoice_documents (
-    id TEXT NOT NULL PRIMARY KEY,
-    company_id TEXT NOT NULL,
-    invoice_id TEXT NOT NULL,
-    document_type TEXT NOT NULL,
-    file_name TEXT NOT NULL,
-    storage_path TEXT NOT NULL,
-    mime_type TEXT NOT NULL,
-    sha256 TEXT NOT NULL,
-    size_bytes INTEGER NOT NULL,
-    created_at TEXT NOT NULL,
-    FOREIGN KEY (invoice_id) REFERENCES invoices (id)
-  );
-`;
 const openDatabases: Database.Database[] = [];
 const temporaryRoots: string[] = [];
 
@@ -240,7 +215,7 @@ describe('staged profile snapshot validation', () => {
   it('accepts an exact historical migration prefix for update rollback', async () => {
     const fixture = await createFixture();
     await writeFile(
-      join(fixture.migrationsDirectory, '002_unapplied.sql'),
+      join(fixture.migrationsDirectory, '039_unapplied.sql'),
       'CREATE TABLE unapplied (id TEXT PRIMARY KEY);',
     );
 
@@ -283,8 +258,10 @@ describe('staged profile snapshot validation', () => {
     openDatabases.push(activeDatabase);
 
     const stagedDatabase = new Database(databasePath);
+    const historicalMigrationsDirectory = join(root, 'historical-migrations');
+    await copyHistoricalMigrations(historicalMigrationsDirectory);
     await runMigrations(stagedDatabase, {
-      migrationsDirectory: publishedMigrationsDirectory,
+      migrationsDirectory: historicalMigrationsDirectory,
     });
     stagedDatabase
       .prepare(
@@ -357,8 +334,10 @@ describe('staged profile snapshot validation', () => {
 
   it('rejects staged data after historical migration SQL changes', async () => {
     const fixture = await createFixture();
+    const migrationPath = join(fixture.migrationsDirectory, migrationName);
+    const migrationSql = await readFile(migrationPath, 'utf8');
     await writeFile(
-      join(fixture.migrationsDirectory, migrationName),
+      migrationPath,
       `${migrationSql}\nCREATE TABLE changed_history (id TEXT PRIMARY KEY);`,
     );
 
@@ -437,8 +416,7 @@ async function createFixture(
   await mkdir(operationRoot, { mode: 0o700, recursive: true });
   await chmod(stagingRoot, 0o700);
   await chmod(operationRoot, 0o700);
-  await mkdir(migrationsDirectory, { mode: 0o700 });
-  await writeFile(join(migrationsDirectory, migrationName), migrationSql);
+  await copyHistoricalMigrations(migrationsDirectory);
 
   const activeDatabase = await createProfileDatabase(
     ':memory:',
@@ -534,60 +512,78 @@ async function createProfileDatabase(
   pdfBytes: Buffer,
   migrationsDirectory: string,
 ): Promise<Database.Database> {
-  const database = new Database(path);
-  await runMigrations(database, { migrationsDirectory });
-  database
-    .prepare(
-      `
-        INSERT INTO local_runtime_identity (
-          singleton_key,
-          installation_id,
-          company_id,
-          actor_id,
-          created_at
-        ) VALUES ('local-runtime', ?, ?, 'local-owner', ?)
-      `,
-    )
-    .run('a'.repeat(32), companyId, '2026-08-04T00:00:00.000Z');
-
-  if (includeArtifact) {
-    database
-      .prepare(
-        'INSERT INTO invoices (id, company_id) VALUES (?, ?)',
-      )
-      .run('invoice-1', companyId);
+  const database = includeArtifact
+    ? await createInvoiceReadModelTestDatabase(migrationsDirectory)
+    : new Database(':memory:');
+  try {
+    if (!includeArtifact) {
+      await runMigrations(database, { migrationsDirectory });
+    }
     database
       .prepare(
         `
-          INSERT INTO invoice_documents (
-            id,
-            company_id,
-            invoice_id,
-            document_type,
-            file_name,
-            storage_path,
-            mime_type,
-            sha256,
-            size_bytes,
-            created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          UPDATE local_runtime_identity
+          SET installation_id = ?, company_id = ?, actor_id = 'local-owner',
+            created_at = ?
+          WHERE singleton_key = 'local-runtime'
         `,
       )
-      .run(
-        'document-1',
-        companyId,
-        'invoice-1',
-        'approved_invoice_pdf',
-        'invoice.pdf',
-        'company-1/invoice-1/approved-invoice.pdf',
-        'application/pdf',
-        sha256(pdfBytes),
-        pdfBytes.byteLength,
-        '2026-08-04T00:00:00.000Z',
-      );
-  }
+      .run('a'.repeat(32), companyId, '2026-08-04T00:00:00.000Z');
 
-  return database;
+    if (includeArtifact) {
+      database
+        .prepare('UPDATE invoices SET company_id = ? WHERE id = ?')
+        .run(companyId, 'invoice-1');
+      database
+        .prepare('UPDATE invoice_drafts SET company_id = ? WHERE id = ?')
+        .run(companyId, 'draft-1');
+      database
+        .prepare(
+          `
+            INSERT INTO invoice_documents (
+              id,
+              company_id,
+              invoice_id,
+              document_type,
+              file_name,
+              storage_path,
+              mime_type,
+              sha256,
+              size_bytes,
+              created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+        )
+        .run(
+          'document-1',
+          companyId,
+          'invoice-1',
+          'approved_invoice_pdf',
+          'invoice.pdf',
+          'company-1/invoice-1/approved-invoice.pdf',
+          'application/pdf',
+          sha256(pdfBytes),
+          pdfBytes.byteLength,
+          '2026-08-04T00:00:00.000Z',
+        );
+    }
+
+    if (path === ':memory:') return database;
+    await database.backup(path);
+    database.close();
+    return new Database(path);
+  } catch (error) {
+    if (database.open) database.close();
+    throw error;
+  }
+}
+
+async function copyHistoricalMigrations(directory: string): Promise<void> {
+  await mkdir(directory, { mode: 0o700 });
+  const historicalManifest = readMigrationManifest(publishedMigrationsDirectory).slice(0, 38);
+  for (const migration of historicalManifest) {
+    await writeFile(join(directory, migration.fileName), migration.content);
+  }
 }
 
 function sha256(content: Uint8Array): string {

@@ -11,6 +11,7 @@ import {
 } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { pathToFileURL } from 'node:url';
 
 import { createDesktopProfilePaths } from '../src/runtime/desktopProfilePaths.js';
 import { createProfileSnapshotRuntimePaths } from '../src/profileBackup/profileSnapshotRuntimePaths.js';
@@ -48,6 +49,9 @@ export interface WorkspaceFirstStartProofFactories {
   readonly current: ElectronWorkspaceCandidateRuntimeFactory;
   readonly historical: ElectronWorkspaceCandidateRuntimeFactory;
   readonly runnerPath: string;
+  createCurrentFixture(
+    userDataRoot: string,
+  ): Promise<Readonly<WorkspaceFirstStartProofFixture>>;
   cleanup(): Promise<void>;
 }
 
@@ -81,16 +85,74 @@ export async function createWorkspaceFirstStartProofFactories(input: {
     buildRevision: input.buildRevision,
     runnerPath: runtimePaths.runnerPath,
   } as const;
+  const current = new ElectronWorkspaceCandidateRuntimeFactory({
+    ...common,
+    migrationsDirectory: runtimePaths.migrationsDirectory,
+  });
+  const historical = new ElectronWorkspaceCandidateRuntimeFactory({
+    ...common,
+    migrationsDirectory: historicalMigrationsDirectory,
+  });
   return Object.freeze({
-    current: new ElectronWorkspaceCandidateRuntimeFactory({
-      ...common,
-      migrationsDirectory: runtimePaths.migrationsDirectory,
-    }),
-    historical: new ElectronWorkspaceCandidateRuntimeFactory({
-      ...common,
-      migrationsDirectory: historicalMigrationsDirectory,
-    }),
+    current,
+    historical,
     runnerPath: runtimePaths.runnerPath,
+    async createCurrentFixture(userDataRoot: string) {
+      // Seed the historical schema, then let the staged backend own the migration.
+      const fixture = await createWorkspaceFirstStartProofFixture({
+        factory: historical,
+        userDataRoot,
+      });
+      const before = await snapshotWorkspaceFirstStartProofBusinessData(fixture);
+      const connectionModule = (await import(pathToFileURL(join(
+        runtimePaths.backendRoot,
+        'dist/database/connection/createDatabaseConnection.js',
+      )).href)) as {
+        createDatabaseConnection(input: { databaseFilePath: string }): {
+          close(): void;
+        };
+      };
+      const migrationModule = (await import(pathToFileURL(join(
+        runtimePaths.backendRoot,
+        'dist/database/migration/runMigrations.js',
+      )).href)) as {
+        runMigrations(
+          database: unknown,
+          options: {
+            migrationsDirectory: string;
+            releaseIdentity: { appVersion: string; buildRevision: string };
+          },
+        ): Promise<void>;
+      };
+      const database = connectionModule.createDatabaseConnection({
+        databaseFilePath: fixture.databaseFilePath,
+      });
+      try {
+        await migrationModule.runMigrations(database, {
+          migrationsDirectory: runtimePaths.migrationsDirectory,
+          releaseIdentity: {
+            appVersion: input.appVersion,
+            buildRevision: input.buildRevision,
+          },
+        });
+      } finally {
+        database.close();
+      }
+      const after = await snapshotWorkspaceFirstStartProofBusinessData(fixture);
+      if (!workspaceFirstStartProofSnapshotsEqual(before, after)) {
+        throw new Error('WORKSPACE_FIRST_START_PROOF_BUSINESS_CHANGED');
+      }
+      const candidate = new PrivateWorkspaceBackupCandidateAdapter(current);
+      await candidate.validatePublished({
+        artifactRoot: fixture.artifactRoot,
+        databaseFilePath: fixture.databaseFilePath,
+        expectedProfileId: fixture.profileId,
+        operationId: generateWorkspaceBackupImportOperationId(),
+        publishedRoot: fixture.workspaceRoot,
+        workspaceId: fixture.workspaceId,
+      });
+      return fixture;
+    },
     async cleanup() {
       await makeDirectoryRemovable(historicalMigrationsDirectory);
       await rm(historicalMigrationsDirectory, {

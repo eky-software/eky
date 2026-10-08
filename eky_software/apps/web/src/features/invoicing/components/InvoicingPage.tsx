@@ -24,6 +24,14 @@ import { useApprovedInvoices } from '../hooks/useApprovedInvoices.js';
 import { useApprovedInvoicePdf } from '../hooks/useApprovedInvoicePdf.js';
 import { useApprovedInvoiceEmailDryRun } from '../hooks/useApprovedInvoiceEmailDryRun.js';
 import { openApprovedInvoicePdf } from '../approved/openApprovedInvoicePdf.js';
+import {
+  openPreservedInvoicePdf,
+  type PreservedInvoicePdfTarget,
+} from '../approved/openPreservedInvoicePdf.js';
+import {
+  openInvoiceDeliveryEventPdf,
+  type DeliveryEventPdfTarget,
+} from '../approved/openInvoiceDeliveryEventPdf.js';
 import { useSendApprovedInvoiceEmailDryRun } from '../hooks/useSendApprovedInvoiceEmailDryRun.js';
 import { useSendApprovedInvoiceEmailSmtpTest } from '../hooks/useSendApprovedInvoiceEmailSmtpTest.js';
 import { useSendApprovedInvoiceEmailSmtp } from '../hooks/useSendApprovedInvoiceEmailSmtp.js';
@@ -49,7 +57,7 @@ import { uiText } from '../../../i18n/fi.js';
 interface InvoicingPageProps {
   apiClient: EkyApiClient;
   navigationRequest: InvoicingNavigationRequest;
-  openInvoicePdfPreview?(invoiceId: string): Promise<void>;
+  openInvoicePdfPreview?(invoiceId: string, target?: PreservedInvoicePdfTarget | DeliveryEventPdfTarget): Promise<void>;
 }
 
 export function InvoicingPage({
@@ -95,15 +103,31 @@ export function InvoicingPage({
     string | null
   >(null);
   const previousNavigationRevision = useRef(-1);
+  const approvedSelectionGeneration = useRef(0);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      ++approvedSelectionGeneration.current;
+      // StrictMode replays setup after cancelling the first navigation request.
+      previousNavigationRevision.current = -1;
+    };
+  }, []);
   const [activeView, dispatch] = useReducer(
     reduceInvoicingPageMode,
     'draftList',
   );
 
+  function clearApprovedSelection(): void {
+    ++approvedSelectionGeneration.current;
+    approvedInvoiceState.clearApprovedInvoice();
+  }
+
   function handleBackToDrafts(): void {
     setInitialCustomerId(null);
     setNavigationErrorMessage(null);
-    approvedInvoiceState.clearApprovedInvoice();
+    clearApprovedSelection();
     draftEditorState.clearDraft();
     deleteState.clearError();
     reopenApprovedInvoiceState.clearError();
@@ -141,7 +165,7 @@ export function InvoicingPage({
     const invoiceKind = requestedInvoiceKind ?? draft?.invoiceKind;
 
     if (invoiceKind === 'credit') {
-      approvedInvoiceState.clearApprovedInvoice();
+      clearApprovedSelection();
       draftEditorState.clearDraft();
       approveCreditInvoiceDraftState.clearError();
       setPendingDeleteDraftId(null);
@@ -152,7 +176,7 @@ export function InvoicingPage({
 
     creditInvoiceDraftState.clearDraft();
     approveCreditInvoiceDraftState.clearError();
-    approvedInvoiceState.clearApprovedInvoice();
+    clearApprovedSelection();
     reopenApprovedInvoiceState.clearError();
     markApprovedInvoiceSentState.clearError();
     copyApprovedInvoiceState.clearError();
@@ -169,6 +193,7 @@ export function InvoicingPage({
   }
 
   async function handleOpenApprovedInvoice(id: string): Promise<void> {
+    const selectionGeneration = ++approvedSelectionGeneration.current;
     creditInvoiceDraftState.clearDraft();
     draftEditorState.clearDraft();
     deleteState.clearError();
@@ -186,9 +211,10 @@ export function InvoicingPage({
     invoicePaymentState.clearStatus();
     setPendingDeleteDraftId(null);
     dispatch({ type: 'openApprovedInvoice' });
-    const invoice = await approvedInvoiceState.openApprovedInvoice(id);
-    void approvedInvoicePdfState.loadPdfMetadata(id);
     void invoiceDeliveryEventListState.loadEvents(id);
+    const invoice = await approvedInvoiceState.openApprovedInvoice(id);
+    if (invoice === null || selectionGeneration !== approvedSelectionGeneration.current) return;
+    void approvedInvoicePdfState.loadPdfMetadata(id);
 
     if (invoice?.invoiceKind === 'standard' && invoice.status === 'sent') {
       void invoiceCreditContextState.loadCreditContext(id);
@@ -233,40 +259,39 @@ export function InvoicingPage({
   }
 
   async function handleEditApprovedInvoice(id: string): Promise<void> {
+    const selectionGeneration = approvedSelectionGeneration.current;
     const reopenedInvoice =
       await reopenApprovedInvoiceState.reopenApprovedInvoice(id);
 
-    if (reopenedInvoice === null) {
+    if (reopenedInvoice === null || !mounted.current) {
       return;
     }
-
-    approvedInvoiceState.clearApprovedInvoice();
-    dispatch({ type: 'openEditInvoice' });
     void draftState.refreshDrafts();
     void approvedInvoiceListState.refreshApprovedInvoices();
+    if (selectionGeneration !== approvedSelectionGeneration.current) return;
+
+    clearApprovedSelection();
+    dispatch({ type: 'openEditInvoice' });
     void draftEditorState.openDraft(reopenedInvoice.invoiceDraftId);
   }
 
   async function handleMarkApprovedInvoiceSent(id: string): Promise<void> {
-    const pdfMetadata = await approvedInvoicePdfState.createPdf(id);
-
-    if (pdfMetadata === null) {
-      return;
-    }
-
+    const selectionGeneration = approvedSelectionGeneration.current;
     const sentInvoice =
       await markApprovedInvoiceSentState.markApprovedInvoiceSent(
         id,
         'manual',
       );
 
-    if (sentInvoice === null) {
+    if (sentInvoice === null || !mounted.current) {
       return;
     }
+    void approvedInvoiceListState.refreshApprovedInvoices();
+    if (selectionGeneration !== approvedSelectionGeneration.current) return;
 
     approvedInvoiceState.replaceApprovedInvoice(sentInvoice);
+    void approvedInvoicePdfState.loadPdfMetadata(id);
     void invoiceCreditContextState.loadCreditContext(id);
-    void approvedInvoiceListState.refreshApprovedInvoices();
     void invoiceDeliveryEventListState.loadEvents(id);
   }
 
@@ -310,14 +335,17 @@ export function InvoicingPage({
   }
 
   async function handleCopyApprovedInvoiceToDraft(id: string): Promise<void> {
+    const selectionGeneration = approvedSelectionGeneration.current;
     const copiedDraft =
       await copyApprovedInvoiceState.copyApprovedInvoiceToDraft(id);
 
-    if (copiedDraft === null) {
+    if (copiedDraft === null || !mounted.current) {
       return;
     }
+    void draftState.refreshDrafts();
+    if (selectionGeneration !== approvedSelectionGeneration.current) return;
 
-    approvedInvoiceState.clearApprovedInvoice();
+    clearApprovedSelection();
     invoiceCreditContextState.clearCreditContext();
     approvedInvoicePdfState.clearPdf();
     approvedInvoiceEmailState.clearEmail();
@@ -326,32 +354,34 @@ export function InvoicingPage({
     sendApprovedInvoiceEmailSmtpState.clearStatus();
     draftEditorState.openLoadedDraft(copiedDraft);
     dispatch({ type: 'openEditInvoice' });
-    void draftState.refreshDrafts();
   }
 
   async function handleCancelApprovedInvoice(
     id: string,
     input: CancelApprovedInvoiceInput,
   ): Promise<void> {
+    const selectionGeneration = approvedSelectionGeneration.current;
     const cancellation =
       await cancelApprovedInvoiceState.cancelApprovedInvoice(id, input);
 
-    if (cancellation === null) {
+    if (cancellation === null || !mounted.current) {
       return;
     }
+    void approvedInvoiceListState.refreshApprovedInvoices();
+    if (selectionGeneration !== approvedSelectionGeneration.current) return;
 
-    approvedInvoiceState.clearApprovedInvoice();
+    clearApprovedSelection();
     invoiceCreditContextState.clearCreditContext();
     approvedInvoicePdfState.clearPdf();
     approvedInvoiceEmailState.clearEmail();
     invoiceDeliveryEventListState.clearEvents();
     dispatch({ type: 'showDraftList' });
-    void approvedInvoiceListState.refreshApprovedInvoices();
   }
 
   async function handleCreateCreditInvoiceDraft(
     invoiceId: string,
   ): Promise<void> {
+    clearApprovedSelection();
     dispatch({ type: 'openCreditInvoice' });
     const creditDraft = await creditInvoiceDraftState.createDraft(invoiceId);
 
@@ -413,40 +443,51 @@ export function InvoicingPage({
   }
 
   async function handlePrepareApprovedInvoiceEmail(id: string): Promise<void> {
+    const selectionGeneration = approvedSelectionGeneration.current;
     sendApprovedInvoiceEmailState.clearStatus();
     sendApprovedInvoiceEmailSmtpTestState.clearStatus();
     sendApprovedInvoiceEmailSmtpState.clearStatus();
-    const metadata = await approvedInvoicePdfState.createPdf(id);
-
-    if (metadata === null) {
-      return;
+    const email = await approvedInvoiceEmailState.prepareEmail(id);
+    if (selectionGeneration !== approvedSelectionGeneration.current) return;
+    if (email !== null && email.documentTarget.kind === 'revision') {
+      void approvedInvoicePdfState.loadPdfMetadata(id);
     }
-
-    await approvedInvoiceEmailState.prepareEmail(id);
   }
 
   async function handleSendApprovedInvoiceEmailDryRun(
     id: string,
     input: ApprovedInvoiceEmailDryRunSendInput,
   ): Promise<void> {
+    const selectionGeneration = approvedSelectionGeneration.current;
     await sendApprovedInvoiceEmailState.sendEmailDryRun(id, input);
+    if (selectionGeneration === approvedSelectionGeneration.current) {
+      void invoiceDeliveryEventListState.loadEvents(id);
+    }
   }
 
   async function handleSendApprovedInvoiceEmailSmtpTest(
     id: string,
     input: ApprovedInvoiceEmailSmtpTestPrepareInput,
   ): Promise<void> {
+    const selectionGeneration = approvedSelectionGeneration.current;
     await sendApprovedInvoiceEmailSmtpTestState.sendEmailSmtpTest(id, input);
+    if (selectionGeneration === approvedSelectionGeneration.current) {
+      void invoiceDeliveryEventListState.loadEvents(id);
+    }
   }
 
   async function handleSendApprovedInvoiceEmailSmtp(
     id: string,
     input: ApprovedInvoiceEmailSmtpPrepareInput,
   ): Promise<void> {
+    const selectionGeneration = approvedSelectionGeneration.current;
     const result = await sendApprovedInvoiceEmailSmtpState.sendEmailSmtp(
       id,
       input,
     );
+    if (!mounted.current) return;
+    if (result !== null) void approvedInvoiceListState.refreshApprovedInvoices();
+    if (selectionGeneration !== approvedSelectionGeneration.current) return;
     void invoiceDeliveryEventListState.loadEvents(id);
 
     if (result === null) {
@@ -460,7 +501,6 @@ export function InvoicingPage({
     ) {
       void invoiceCreditContextState.loadCreditContext(id);
     }
-    void approvedInvoiceListState.refreshApprovedInvoices();
   }
 
   useEffect(() => {
@@ -589,6 +629,24 @@ export function InvoicingPage({
       onOpenApprovedInvoicePdf={(id) =>
         void handleOpenApprovedInvoicePdf(id)
       }
+      onOpenPreservedPdf={(invoiceId, documentId) => openPreservedInvoicePdf({
+        invoiceId,
+        documentId,
+        getPdfUrl: (id, document) => apiClient.getPreservedLegacyInvoicePdfUrl(id, document),
+        openBrowserWindow: window.open.bind(window),
+        ...(openInvoicePdfPreview === undefined
+          ? {}
+          : { openDesktopPreview: openInvoicePdfPreview }),
+      })}
+      onOpenDeliveryEventPdf={(invoiceId, eventId) => openInvoiceDeliveryEventPdf({
+        invoiceId,
+        eventId,
+        getPdfUrl: (id, event) => apiClient.getInvoiceDeliveryEventPdfUrl(id, event),
+        openBrowserWindow: window.open.bind(window),
+        ...(openInvoicePdfPreview === undefined
+          ? {}
+          : { openDesktopPreview: openInvoicePdfPreview }),
+      })}
       onPrepareApprovedInvoiceEmail={(id) =>
         void handlePrepareApprovedInvoiceEmail(id)
       }

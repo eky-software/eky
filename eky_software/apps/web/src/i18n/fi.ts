@@ -1070,6 +1070,10 @@ export const uiText = {
     invoiceAdditionalDetailsPreview: 'Laskulla näkyvät työn lisätiedot',
     invoiceDate: 'Laskun päiväys',
     invoiceEmailAttachment: 'Liite',
+    invoiceEmailPreservedAttachmentOpen: 'Avaa säilytetty PDF-liite',
+    invoiceEmailAttachmentOpening: 'Avataan PDF-liitettä…',
+    invoiceEmailAttachmentOpenError:
+      'PDF-liitettä ei voitu avata. Yritä uudelleen. Selaimessa salli myös tämän sovelluksen ponnahdusikkunat.',
     invoiceEmailBody: 'Viestin sisältö',
     invoiceEmailBodyRequired: 'Kirjoita viestin sisältö.',
     invoiceEmailBodyTooLong: 'Viestin sisältö on liian pitkä.',
@@ -1113,6 +1117,8 @@ export const uiText = {
         'Tallenna laskunumeroinnin asetukset Oma yritys -näkymässä.',
     },
     invoiceIssuanceReadinessTitle: 'Laskun tiedot ovat puutteelliset',
+    invoiceLegacyDeliveryReviewRequired:
+      'Vanhan laskun lähetyshistoria vaatii tarkistuksen ennen muokkausta tai uutta lähetystä. Lasku ja historia säilyvät. Älä lähetä laskua uudelleen ennen selvitystä.',
     invoiceEmailPrepare: 'Valmistele sähköposti',
     invoiceEmailPrepareError:
       'Sähköpostiluonnosta ei voitu valmistella. Yritä hetken kuluttua uudelleen.',
@@ -1158,6 +1164,8 @@ export const uiText = {
       'Laskulla on toimitusyritys, jonka lopputulosta ei ole varmistettu. Tarkista toimitushistoria ennen uutta lähetystä.',
     invoiceEmailSmtpError:
       'Laskun sähköpostia ei voitu lähettää. Laskua ei merkitty lähetetyksi.',
+    invoiceEmailSmtpCommittedReadFailed:
+      'Lasku lähetettiin, mutta päivitettyjen tietojen lukeminen epäonnistui. Älä lähetä laskua uudelleen tämän ilmoituksen vuoksi. Avaa lasku uudelleen ja tarkista toimitushistoria.',
     invoiceEmailSmtpOutcomeUnknown:
       'Lähetyksen lopputulosta ei voitu varmistaa. Älä lähetä heti uudelleen. Tarkista toimitushistoria ja varmista vastaanottajalta toimituksen tila.',
     invoiceEmailSmtpProfileMissing:
@@ -1181,6 +1189,23 @@ export const uiText = {
     invoiceEmailCcSameAsRecipient:
       'Vastaanottaja ja kopion saaja eivät voi olla sama osoite.',
     invoiceDeliveryHistory: 'Toimitushistoria',
+    invoiceDeliveryPdf: 'Tapahtuman PDF',
+    invoiceDeliveryPdfOpen: 'Avaa tapahtuman PDF',
+    invoiceDeliveryPdfOpenError:
+      'Tapahtuman PDF:ää ei voitu avata. Tarkista toimitushistoria ja yritä avaamista uudelleen.',
+    invoiceDeliveryModes: {
+      customer: 'Asiakaslähetys',
+      smtpTest: 'Testilähetys itselle',
+      dryRun: 'Kuivaharjoittelu',
+      manual: 'Manuaalinen toimitus',
+      legacyUnknown: 'Vanha tapahtuma, tarkoitus ei tiedossa',
+    },
+    invoiceDeliveryDocumentSources: {
+      revision: 'Toimitusversioon sidottu PDF',
+      preservedLegacy: 'Säilytetty vanhan laskun PDF',
+      legacyOriginal: 'Vanha PDF-viite; aiemman lähetyksen sisältöä ei ole todennettu.',
+      legacyMissingDocument: 'Vanhalla tapahtumalla ei ole PDF-viitettä.',
+    },
     invoiceDeliveryHistoryEmpty: 'Laskulle ei ole vielä toimitustapahtumia.',
     invoiceDeliveryHistoryError:
       'Laskun toimitushistoriaa ei voitu ladata turvallisesti.',

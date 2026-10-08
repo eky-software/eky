@@ -12,6 +12,19 @@ const RELEVANT_EVENTS = new Set([
   'desktop.shutdownCompleted',
   'desktop.started',
 ]);
+const BOOTSTRAP_STAGES = new Set([
+  'preWorkspaceBuildAdmission', 'workspaceFirstStartMigration', 'startup',
+]);
+
+export function projectBootstrapFailureFields(value) {
+  const errorCode = typeof value.errorCode === 'string' &&
+    /^[A-Z][A-Z0-9_]{0,127}$/.test(value.errorCode) ? value.errorCode : null;
+  const stage = BOOTSTRAP_STAGES.has(value.stage) ? value.stage : null;
+  return Object.freeze({ errorCode, stage,
+    causeStatus: errorCode !== null && stage !== null ? 'recorded'
+      : (value.errorCode !== undefined && errorCode === null) || (value.stage !== undefined && stage === null)
+        ? 'unverified' : 'missing' });
+}
 
 function canonicalTimestamp(value) {
   if (typeof value !== 'string') return false;
@@ -59,10 +72,12 @@ function validateRelevantEvent(value) {
     eventId: value.eventId,
     eventName: value.eventName,
     runtimeInstanceId: value.runtimeInstanceId,
+    timestamp: value.timestamp,
+    ...(value.eventName === 'desktop.bootstrapFailed' ? projectBootstrapFailureFields(value) : {}),
   });
 }
 
-export async function readDesktopLifecycleEvents(logDirectory) {
+export async function readDesktopLifecycleEvents(logDirectory, { stopped = false } = {}) {
   let directory;
   try {
     directory = await lstat(logDirectory);
@@ -81,6 +96,7 @@ export async function readDesktopLifecycleEvents(logDirectory) {
     throw new Error('targetOperationalLogInvalid');
   }
   names.sort();
+  if (stopped && (names.length === 0 || names.length > 16)) throw new Error('targetOperationalLogInvalid');
   const events = [];
   const eventIds = new Set();
   for (const name of names) {
@@ -95,6 +111,14 @@ export async function readDesktopLifecycleEvents(logDirectory) {
       throw new Error('targetOperationalLogInvalid');
     }
     const source = await readFile(path, 'utf8');
+    if (stopped) {
+      if (source !== '' && !source.endsWith('\n')) throw new Error('targetOperationalLogInvalid');
+      const after = await lstat(path, { bigint: true });
+      if (!after.isFile() || after.isSymbolicLink() || after.nlink !== 1n ||
+        ['dev', 'ino', 'size', 'mtimeNs', 'ctimeNs'].some(key => after[key] !== metadata[key])) {
+        throw new Error('targetOperationalLogInvalid');
+      }
+    }
     const completeSource = source.endsWith('\n')
       ? source
       : source.slice(0, Math.max(0, source.lastIndexOf('\n') + 1));

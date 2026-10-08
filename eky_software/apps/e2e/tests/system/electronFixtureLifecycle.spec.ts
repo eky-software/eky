@@ -8,7 +8,7 @@ import { createE2eRunRoot } from '../../src/environment/createE2eRunRoot.js';
 import { removeE2eRunRoot } from '../../src/environment/removeE2eRunRoot.js';
 import {
   finishIsolatedElectronTest,
-  prepareElectronWorkspaceBackup,
+  prepareElectronFixture,
   reportElectronLifecycleEvidence,
 } from '../../src/fixtures/isolatedElectronTest.js';
 import {
@@ -78,7 +78,8 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
     } as E2eBackendStartupFailureEvidence, { stdout: 'synthetic startup [REDACTED]', stderr: 'synthetic backup preparation error' });
     Object.assign(original, { privateDetail: 'private path and session' });
     try {
-      await expect(prepareElectronWorkspaceBackup({
+      await expect(prepareElectronFixture({
+        stage: 'workspaceBackup',
         async prepare() { throw original; },
         report: async (preparation, error) => {
           expect(error).toBe(original);
@@ -110,18 +111,51 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
     } finally { await removeE2eRunRootIfPresent(root); }
   });
 
-  test('preparation reporting cannot replace an unknown failure or turn it into success', async () => {
+  for (const stage of ['workspaceBackup', 'legacyInvoiceProfile'] as const) {
+  test(`${stage} reporting cannot replace an unknown failure or turn it into success`, async () => {
     const original = new Error('private unknown preparation failure');
     let reported: unknown;
-    await expect(prepareElectronWorkspaceBackup({
+    await expect(prepareElectronFixture({
+      stage,
       async prepare() { throw original; },
       async report(value) { reported = value; throw new Error('private report failure'); },
     })).rejects.toBe(original);
-    expect(reported).toEqual({ stage: 'workspaceBackup', backend: null });
-    await expect(prepareElectronWorkspaceBackup({
+    expect(reported).toEqual({ stage, backend: null });
+    await expect(prepareElectronFixture({
+      stage,
       async prepare() { return undefined; },
       async report() { throw new Error('must not report successful preparation'); },
     })).resolves.toBeUndefined();
+  });
+  }
+
+  test('legacy profile failure retains its root and attaches the bounded preparation stage', async ({}, testInfo) => {
+    const root = createE2eRunRoot();
+    const marker = join(root, 'partial-profile.json');
+    writeFileSync(marker, '{}', { flag: 'wx' });
+    const original = new Error('synthetic private database failure');
+    try {
+      await expect(prepareElectronFixture({
+        stage: 'legacyInvoiceProfile',
+        async prepare() { throw original; },
+        async report(preparation) {
+          await reportElectronLifecycleEvidence(testInfo, {
+            launch: [], observationsTruncated: false,
+            cleanup: { api: 'notStarted', runtime: 'notStarted', port: 'notStarted', runRoot: 'retained' },
+            preparation,
+          });
+        },
+      })).rejects.toBe(original);
+      const text = readFileSync(testInfo.outputPath('electron-lifecycle.json'), 'utf8');
+      expect(JSON.parse(text)).toMatchObject({
+        attempt: testInfo.retry, launch: [],
+        preparation: { stage: 'legacyInvoiceProfile', backend: null },
+        cleanup: { runtime: 'notStarted', runRoot: 'retained' },
+      });
+      expect(text).not.toContain(original.message);
+      expect(existsSync(marker)).toBe(true);
+      expect(testInfo.attachments.some(item => item.name === 'electron-lifecycle')).toBe(true);
+    } finally { await removeE2eRunRootIfPresent(root); }
   });
 
   test('connects, transfers ownership, gets a window and waits for DOM in order', async () => {

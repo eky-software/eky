@@ -7,6 +7,7 @@ import {
   relative,
   resolve,
   sep,
+  toNamespacedPath,
 } from 'node:path';
 
 import Database from 'better-sqlite3';
@@ -24,6 +25,7 @@ import type {
 } from './profileSnapshotTypes.js';
 import { isActiveProfileRestoreTargetEmpty } from './inspectActiveProfileRestoreTarget.js';
 import { validateProfileArtifactCatalog } from './validateProfileArtifactCatalog.js';
+import { selectInvoiceBackupArtifactCatalogSchema } from '../../modules/invoicing/infrastructure/selectInvoiceBackupArtifactCatalogSchema.js';
 import { materializeValidatedProfileArtifacts } from './materializeValidatedProfileArtifacts.js';
 
 const operationIdPattern =
@@ -152,7 +154,7 @@ export class StagedProfileSnapshotValidationService
         this.dependencies.migrationsDirectory,
         'restoreCompatible',
       );
-      const stagedDatabase = new Database(databasePath, {
+      const stagedDatabase = new Database(toNamespacedPath(databasePath), {
         fileMustExist: true,
         readonly: true,
       });
@@ -161,6 +163,7 @@ export class StagedProfileSnapshotValidationService
         const artifacts = await validateProfileArtifactCatalog({
           database: stagedDatabase,
           operationRoot,
+          schema: selectInvoiceBackupArtifactCatalogSchema(databaseInspection),
         });
 
         return {

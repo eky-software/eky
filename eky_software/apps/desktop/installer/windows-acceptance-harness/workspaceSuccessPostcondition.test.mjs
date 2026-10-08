@@ -60,6 +60,9 @@ const mutations = {
   'bootstrap failed': (f) => { f.checkpoints[4].events.at(-1).eventName = 'desktop.bootstrapFailed'; },
   'duplicate lifecycle event': (f) => { f.checkpoints[4].events.push(f.checkpoints[4].events[0]); },
   'session secret in evidence': (f) => { f.checkpoints[4].events[0].session = 'synthetic-secret'; },
+  'legacy reader timestamp outside checkpoint contract': (f) => {
+    f.checkpoints[1].events[0].timestamp = '2026-01-01T00:00:00.000Z';
+  },
 };
 const expectedErrors = {
   'changed lineage': 'profileRegistryMismatch',

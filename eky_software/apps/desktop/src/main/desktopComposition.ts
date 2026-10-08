@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { StartupExceptionStage } from './startupExceptionEvidence.js';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -133,6 +134,10 @@ import {
   verifyPackagedRestoredDatabaseBeforeBackend,
 } from '../profileBackup/packagedProfileBackupSmoke.js';
 import {
+  runPackagedLegacyProfileBeforeRestore,
+  verifyPackagedLegacyInvoice,
+} from '../profileBackup/packagedLegacyProfileSmoke.js';
+import {
   createLocalUpdateFoundationComposition,
   createLocalUpdatePackageCacheComposition,
 } from '../update/localUpdateFoundationComposition.js';
@@ -226,6 +231,7 @@ export interface StartDesktopCompositionOptions {
   reportSmokeStage(stage: PackagedSmokeStage): Promise<void>;
   smokeConfiguration: PackagedSmokeConfiguration;
   userDataPath: string;
+  observeStartupException?(error: unknown, stage: StartupExceptionStage, secrets?: readonly string[]): void;
   w6b2PackagedProof?: Readonly<{
     configuration: Readonly<W6b2PackagedProofConfiguration>;
     interruptProcess(
@@ -289,6 +295,8 @@ export async function startDesktopComposition(
     runtimeInstanceId: options.runtimeInstanceId,
   } as const;
 
+  let startupSessionSecret: string | undefined;
+
   try {
     desktopOperationalLogger.write(
       createDesktopOperationalEvent(
@@ -345,6 +353,7 @@ export async function startDesktopComposition(
     });
     if (workspaceStartup.status === 'relaunching') return undefined;
     const { activeWorkspace, runtimeSessionSecret } = workspaceStartup;
+    startupSessionSecret = runtimeSessionSecret;
     await workspaceFirstStartMigration.prepareBeforeBackend({
       activeWorkspaceId: activeWorkspace.workspaceId,
       workspaceState:
@@ -369,6 +378,7 @@ export async function startDesktopComposition(
       workspaceFirstStartMigration,
     });
   } catch (error) {
+    try { options.observeStartupException?.(error, 'compositionStartup', startupSessionSecret === undefined ? [] : [startupSessionSecret]); } catch { /* Optional private evidence. */ }
     const errorCode = readSafeStartupFailureCode(error);
     try {
       desktopOperationalLogger.write(
@@ -487,6 +497,10 @@ async function startDesktopCompositionRuntime({
 }: DesktopCompositionRuntimeOptions): Promise<
   DesktopLifecycleHandle | undefined
 > {
+  const startupExceptionObservation = options.observeStartupException === undefined ? {} : {
+    observeStartupException: (error: unknown) =>
+      options.observeStartupException?.(error, 'runtimeStartup', [runtimeSessionSecret]),
+  };
   const workspaceProfilePaths = createDesktopProfilePaths(
     activeWorkspace.workspaceRoot,
   );
@@ -684,6 +698,7 @@ async function startDesktopCompositionRuntime({
           directSetupRecoveryStore: directSetupMigrationRecoveryStore,
           journalStore: updateJournalStore,
           observer: updateObserver,
+          ...startupExceptionObservation,
           profileProtection: updateProfileProtection,
           readSecretStorageIdentity: () =>
             readEncryptedSecretStorageIdentity(encryptedSecretFile),
@@ -930,6 +945,10 @@ async function startDesktopCompositionRuntime({
     if (profileRestoreStartupMode !== 'validateRestoredProfile') {
       throw new Error('DESKTOP_SMOKE_RESTORE_STARTUP_MODE_FAILED');
     }
+    if (options.smokeConfiguration.scenario === 'legacyInvoice' &&
+        startupRecoveryAuthority !== 'workspaceReplacement') {
+      throw new Error('DESKTOP_SMOKE_LEGACY_REPLACEMENT_REQUIRED');
+    }
     await verifyPackagedRestoredDatabaseBeforeBackend({
       activeDatabasePath: databaseFilePath,
       smokeRoot: requireSmokeRoot(options.smokeConfiguration.root),
@@ -1054,6 +1073,7 @@ async function startDesktopCompositionRuntime({
         : 'backend',
     );
     backendHandle = await dependencies.startBackend({
+      ...startupExceptionObservation,
       async beforeMigrations(inspection, control) {
         backendStartupControl = control;
         await profileSnapshotBrokerClient.waitUntilReady();
@@ -1299,6 +1319,7 @@ async function startDesktopCompositionRuntime({
     await workspaceFirstStartMigration.completeAfterTargetAcceptance();
     await recoveryPointScheduler.start();
   } catch (error) {
+    try { options.observeStartupException?.(error, 'runtimeStartup', [runtimeSessionSecret]); } catch { /* Optional private evidence. */ }
     await recoveryPointScheduler.stopChecks().catch(() => undefined);
     const backendStopped = await Promise.resolve()
       .then(() => backendHandle?.stop())
@@ -2002,6 +2023,18 @@ async function startDesktopCompositionRuntime({
 
       if (options.smokeConfiguration.phase === 'initial') {
         await loadApplicationWindow(mainWindow);
+        if (options.smokeConfiguration.scenario === 'legacyInvoice') {
+          await runPackagedLegacyProfileBeforeRestore({
+            smokeRoot, backendPort: backendHandle.port, runtimeSessionSecret,
+            runtimeInstanceId: options.runtimeInstanceId,
+            backupService: portableProfileBackupService,
+            profileSnapshotClient: profileSnapshotBrokerClient,
+            stagingRoot: profileSnapshotPaths.stagingRoot,
+            management: workspaceManagementComposition.service,
+            reportStage: options.reportSmokeStage,
+          });
+          return undefined;
+        }
         await runPackagedEmptyArtifactSnapshotSmoke({
           profileSnapshotClient: profileSnapshotBrokerClient,
           reportStage: options.reportSmokeStage,
@@ -2069,6 +2102,10 @@ async function startDesktopCompositionRuntime({
         smokeRoot,
         stagingRoot: profileSnapshotPaths.stagingRoot,
       });
+      if (options.smokeConfiguration.scenario === 'legacyInvoice') {
+        await verifyPackagedLegacyInvoice({ smokeRoot,
+          backendPort: backendHandle.port, runtimeSessionSecret });
+      }
       desktopOperationalLogger.write(
         createDesktopOperationalEvent(
           {

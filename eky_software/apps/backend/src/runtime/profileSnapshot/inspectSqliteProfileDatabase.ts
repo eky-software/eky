@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { isAbsolute } from 'node:path';
+import { isAbsolute, toNamespacedPath } from 'node:path';
 
 import Database from 'better-sqlite3';
 
@@ -13,8 +13,7 @@ import {
 
 const profileIdentityDomain = 'Eky profile identity v1\0';
 
-export interface SqliteProfileDatabaseInspection {
-  migrationChainIdentity: string;
+export interface SqliteProfileDatabaseInspection extends MigrationHistoryInspection {
   profileId: string;
 }
 
@@ -33,7 +32,7 @@ export function inspectSqliteProfileDatabase(
     throw new Error('PROFILE_SNAPSHOT_DATABASE_INVALID');
   }
 
-  const database = new Database(databaseFilePath, {
+  const database = new Database(toNamespacedPath(databaseFilePath), {
     fileMustExist: true,
     readonly: true,
   });
@@ -66,6 +65,7 @@ export function inspectSqliteProfileDatabase(
     const identity = readLocalRuntimeIdentity(database);
 
     return {
+      appliedMigrationNames: Object.freeze([...migrationHistory.appliedMigrationNames]),
       migrationChainIdentity: migrationHistory.migrationChainIdentity,
       profileId: createProfileBackupIdentity(identity.companyId),
     };

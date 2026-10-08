@@ -9,7 +9,7 @@ import type {
   MarkApprovedInvoiceSentPersistenceInput,
   MarkApprovedInvoiceSentResult,
 } from '../ports/invoiceApprovalRepository.js';
-import type { InvoiceDocumentStorage } from '../ports/invoiceDocumentStorage.js';
+import { InvoiceDeliveryConflictError } from '../domain/invoiceDeliveryConflictError.js';
 import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
 import {
   reopenApprovedInvoiceForEditing,
@@ -61,7 +61,6 @@ describe('reopenApprovedInvoiceForEditing', () => {
     const repository = new FakeInvoiceApprovalRepository({
       draftId: 'draft-1',
       invoiceId: 'invoice-1',
-      removedDocumentStoragePaths: [],
     });
 
     await expect(
@@ -71,7 +70,6 @@ describe('reopenApprovedInvoiceForEditing', () => {
     ).resolves.toEqual({
       draftId: 'draft-1',
       invoiceId: 'invoice-1',
-      removedDocumentStoragePaths: [],
     });
 
     expect(repository.reopenInputs).toEqual([
@@ -97,25 +95,21 @@ describe('reopenApprovedInvoiceForEditing', () => {
     ).rejects.toEqual(new ApprovedInvoiceNotFoundError());
   });
 
-  it('does not delete PDF storage when a credit invoice is rejected by the standard reopen boundary', async () => {
+  it('rejects a credit invoice through the standard reopen boundary', async () => {
     const repository = new FakeInvoiceApprovalRepository(undefined);
-    const storage = new FakeInvoiceDocumentStorage();
 
     await expect(
       reopenApprovedInvoiceForEditing(createInput({ invoiceId: 'credit-1' }), {
         invoiceApprovalRepository: repository,
-        invoiceDocumentStorage: storage,
       }),
     ).rejects.toEqual(new ApprovedInvoiceNotFoundError());
 
-    expect(storage.deletedPaths).toEqual([]);
   });
 
   it('rejects invalid identifiers before calling the repository', async () => {
     const repository = new FakeInvoiceApprovalRepository({
       draftId: 'draft-1',
       invoiceId: 'invoice-1',
-      removedDocumentStoragePaths: [],
     });
 
     await expect(
@@ -127,37 +121,12 @@ describe('reopenApprovedInvoiceForEditing', () => {
     expect(repository.reopenInputs).toEqual([]);
   });
 
-  it('removes old PDF files from storage after the invoice is reopened', async () => {
-    const repository = new FakeInvoiceApprovalRepository({
-      draftId: 'draft-1',
-      invoiceId: 'invoice-1',
-      removedDocumentStoragePaths: ['dev-company/invoice-1/approved-invoice.pdf'],
-    });
-    const storage = new FakeInvoiceDocumentStorage();
-
-    await reopenApprovedInvoiceForEditing(createInput(), {
+  it('preserves the delivery conflict from the atomic reopen boundary', async () => {
+    const repository = new FakeInvoiceApprovalRepository(undefined);
+    const conflict = new InvoiceDeliveryConflictError();
+    repository.reopenApprovedInvoiceForEditing = async () => { throw conflict; };
+    await expect(reopenApprovedInvoiceForEditing(createInput(), {
       invoiceApprovalRepository: repository,
-      invoiceDocumentStorage: storage,
-    });
-
-    expect(storage.deletedPaths).toEqual([
-      'dev-company/invoice-1/approved-invoice.pdf',
-    ]);
+    })).rejects.toBe(conflict);
   });
 });
-
-class FakeInvoiceDocumentStorage implements InvoiceDocumentStorage {
-  deletedPaths: string[] = [];
-
-  async deleteFile(storagePath: string): Promise<void> {
-    this.deletedPaths.push(storagePath);
-  }
-
-  async readFile(_storagePath: string): Promise<Uint8Array> {
-    throw new Error('Not implemented in this reopen test.');
-  }
-
-  async writeFile(_storagePath: string, _content: Uint8Array): Promise<void> {
-    throw new Error('Not implemented in this reopen test.');
-  }
-}

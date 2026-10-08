@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { createReadStream, promises as fileSystem } from 'node:fs';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep, toNamespacedPath } from 'node:path';
 
 import type { DatabaseConnection } from '../../database/connection/createDatabaseConnection.js';
 import type { ProfileMaintenanceState } from '../profileMaintenance/profileMaintenanceState.js';
@@ -145,7 +145,7 @@ export function createSqliteProfileSnapshotService(input: {
 }): SqliteProfileSnapshotService {
   return new SqliteProfileSnapshotService({
     backupDatabase: (destinationFilePath, options) =>
-      input.database.backup(destinationFilePath, options),
+      input.database.backup(toNamespacedPath(destinationFilePath), options),
     maintenanceState: input.maintenanceState,
     migrationsDirectory: input.migrationsDirectory,
     stagingRoot: input.stagingRoot,

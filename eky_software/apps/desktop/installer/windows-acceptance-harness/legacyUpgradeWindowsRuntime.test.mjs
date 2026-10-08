@@ -9,6 +9,7 @@ import test from 'node:test';
 
 import { createLegacyUpgradeWindowsRuntime, inspectLegacyInstallerFootprint, startLegacyOwnedProcess, validateLegacyTargetPayload } from './legacyUpgradeWindowsRuntime.mjs';
 import { inspectPackageArtifactInventory } from '../../scripts/package-artifact-inventory.mjs';
+import { createLegacyDatabasePackageFixture } from './legacyUpgradeDatabaseEvidence.fixture.mjs';
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 
@@ -27,6 +28,7 @@ test('legacy runtime keeps payload observation opt-in, ordered and outside accep
   });
   const installRoot = resolve(root, 'Programs', 'Eky');
   await mkdir(installRoot, { recursive: true });
+  await createLegacyDatabasePackageFixture(installRoot);
   await writeFile(resolve(installRoot, 'synthetic.txt'), 'original');
   const expected = await inspectPackageArtifactInventory({ root: installRoot, stage: 'packagedApp' });
   for (const flag of [undefined, '0', 'true', '1']) {
@@ -82,6 +84,17 @@ test('legacy runtime keeps payload observation opt-in, ordered and outside accep
   }
 });
 
+test('the real runtime cannot start a target before a verified package binding exists', {
+  skip: process.platform !== 'win32',
+}, async t => {
+  const root = await mkdtemp(resolve(tmpdir(), 'eky-legacy-binding-required-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const artifact = { source: { appVersion: '0.2.6', runtimeBuildRevision: 'a'.repeat(12) },
+    target: { appVersion: '0.2.7', buildRevision: 'b'.repeat(40) } };
+  const runtime = await createLegacyUpgradeWindowsRuntime({ fixtureRoot: resolve(root, 'fixture'), runNonce: 'a'.repeat(64) }, artifact);
+  await assert.rejects(runtime.runTargetStartup('first'), /targetStartupPreconditionFailed/);
+});
+
 test('legacy target payload retains the exact inventory acceptance and closed rejection causes', async (context) => {
   const root = await mkdtemp(resolve(tmpdir(), 'eky-legacy-payload-contract-'));
   context.after(() => rm(root, { recursive: true, force: true }));
@@ -126,10 +139,15 @@ test('legacy runtime binds both MSI operations to the observed process with unch
     target: { appVersion: '0.2.7', buildRevision: 'b'.repeat(40), installerPath: resolve(root, 'target.msi') },
   };
   const invocations = [];
+  const workerObservations = [];
   let child;
   const runtime = await createLegacyUpgradeWindowsRuntime({
     fixtureRoot: resolve(root, 'fixture'), runNonce: 'a'.repeat(64),
   }, artifact, {
+    observeOwnedProcess(role, code) {
+      workerObservations.push([role, code]);
+      if (code === 'processExited') throw new Error('private worker observer');
+    },
     spawnMsiProcess(command, arguments_, options) {
       invocations.push({ command, arguments_, options });
       child = new EventEmitter();
@@ -157,6 +175,7 @@ test('legacy runtime binds both MSI operations to the observed process with unch
     child.emit('close', exitCode, null);
     assert.equal(await outcome, exitCode);
     assert.deepEqual(observations, ['processSpawnRequested', 'processSpawned', 'processExited', 'processClosed']);
+    assert.deepEqual(workerObservations.filter(([role]) => role === operation).map(([, code]) => code), observations);
   }
   assert.equal(invocations.length, 2);
 });

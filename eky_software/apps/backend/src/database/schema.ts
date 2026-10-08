@@ -309,6 +309,122 @@ export interface InvoiceAuditEventTable {
   created_at: string;
 }
 
+// Explicit content fields exclude the invoice's mutable delivery/payment state.
+export interface InvoiceContentRevisionTable {
+  id: string;
+  company_id: string;
+  invoice_id: string;
+  origin: 'approval' | 'legacySnapshot' | 'validatedLegacySnapshot';
+  vat_breakdown_state: 'authoritative' | 'unavailable';
+  source_draft_id: string;
+  invoice_kind: string;
+  credited_invoice_id: string | null;
+  credited_revision_id: string | null;
+  credited_invoice_number_snapshot: string | null;
+  credited_invoice_date_snapshot: string | null;
+  invoice_number: string;
+  reference_number: string | null;
+  reference_number_type: string | null;
+  series_key: string;
+  sequence_scope: string;
+  sequence_number: number;
+  numbering_mode: string;
+  customer_id: string;
+  customer_number_snapshot: string;
+  customer_name_snapshot: string;
+  customer_business_id_snapshot: string;
+  customer_type_snapshot: string;
+  customer_email_snapshot: string;
+  customer_phone_snapshot: string;
+  customer_street_address_snapshot: string;
+  customer_postal_code_snapshot: string;
+  customer_city_snapshot: string;
+  company_name_snapshot: string;
+  company_business_id_snapshot: string;
+  company_vat_number_snapshot: string;
+  company_street_address_snapshot: string;
+  company_postal_code_snapshot: string;
+  company_city_snapshot: string;
+  company_email_snapshot: string;
+  company_phone_snapshot: string;
+  company_website_snapshot: string;
+  company_iban_snapshot: string;
+  company_bic_snapshot: string;
+  company_bank_name_snapshot: string;
+  billing_recipient_customer_id: string | null;
+  billing_recipient_customer_number_snapshot: string;
+  billing_recipient_name_snapshot: string;
+  billing_recipient_business_id_snapshot: string;
+  billing_recipient_customer_type_snapshot: string;
+  billing_recipient_email_snapshot: string;
+  billing_recipient_phone_snapshot: string;
+  billing_recipient_street_address_snapshot: string;
+  billing_recipient_postal_code_snapshot: string;
+  billing_recipient_city_snapshot: string;
+  invoice_date: string;
+  due_date: string;
+  payment_term_days: number;
+  reminder_period_days: number;
+  late_payment_interest_basis_points: number;
+  price_input_mode: string;
+  subject: string;
+  order_number: string;
+  note: string;
+  delivery_address_text: string;
+  refund_iban_snapshot: string;
+  tax_treatment: string;
+  tax_treatment_label_snapshot: string;
+  tax_legal_basis_snapshot: string;
+  performance_date: string | null;
+  performance_period_start: string | null;
+  performance_period_end: string | null;
+  total_net_cents: number;
+  total_vat_cents: number;
+  total_gross_cents: number;
+  created_at: string;
+  approved_at: string;
+}
+
+export interface InvoiceRevisionLineTable {
+  company_id: string;
+  invoice_id: string;
+  revision_id: string;
+  line_id: string;
+  source_invoice_line_id: string | null;
+  source_revision_id: string | null;
+  line_order: number;
+  code: string;
+  description: string;
+  quantity_hundredths: number;
+  unit: string;
+  unit_price_cents: number;
+  vat_rate_basis_points: number | null;
+  discount_type: string;
+  discount_value: number;
+  base_cents: number;
+  discount_cents: number;
+  net_cents: number;
+  vat_cents: number;
+  gross_cents: number;
+  created_at: string;
+}
+
+export interface InvoiceRevisionVatBreakdownTable {
+  company_id: string;
+  invoice_id: string;
+  revision_id: string;
+  vat_rate_basis_points: number;
+  net_cents: number;
+  vat_cents: number;
+  gross_cents: number;
+}
+
+export interface InvoiceCurrentRevisionTable {
+  company_id: string;
+  invoice_id: string;
+  revision_id: string;
+}
+
 export interface InvoiceDocumentTable {
   id: string;
   company_id: string;
@@ -320,6 +436,9 @@ export interface InvoiceDocumentTable {
   sha256: string;
   size_bytes: number;
   created_at: string;
+  binding_kind: 'revision' | 'legacyOriginal' | 'preservedLegacy';
+  revision_id: string | null;
+  source_document_id: string | null;
 }
 
 export interface InvoiceDeliveryEventTable {
@@ -339,6 +458,11 @@ export interface InvoiceDeliveryEventTable {
   technical_error_code: string | null;
   created_at: string;
   created_by: string;
+  binding_kind: 'revision' | 'legacyOriginal' | 'preservedLegacy';
+  revision_id: string | null;
+  send_mode: 'customer' | 'smtpTest' | 'dryRun' | 'manual' | 'legacyUnknown';
+  document_sha256: string | null;
+  document_size_bytes: number | null;
 }
 
 export interface InvoiceSettingsAuditEventTable {
@@ -427,6 +551,14 @@ export type InvoiceLineRow = InvoiceLineTable;
 export type NewInvoiceLineRow = InvoiceLineTable;
 export type InvoiceAuditEventRow = InvoiceAuditEventTable;
 export type NewInvoiceAuditEventRow = InvoiceAuditEventTable;
+export type InvoiceContentRevisionRow = InvoiceContentRevisionTable;
+export type NewInvoiceContentRevisionRow = InvoiceContentRevisionTable;
+export type InvoiceRevisionLineRow = InvoiceRevisionLineTable;
+export type NewInvoiceRevisionLineRow = InvoiceRevisionLineTable;
+export type InvoiceRevisionVatBreakdownRow = InvoiceRevisionVatBreakdownTable;
+export type NewInvoiceRevisionVatBreakdownRow = InvoiceRevisionVatBreakdownTable;
+export type InvoiceCurrentRevisionRow = InvoiceCurrentRevisionTable;
+export type NewInvoiceCurrentRevisionRow = InvoiceCurrentRevisionTable;
 export type InvoiceDocumentRow = InvoiceDocumentTable;
 export type NewInvoiceDocumentRow = InvoiceDocumentTable;
 export type InvoiceDeliveryEventRow = InvoiceDeliveryEventTable;

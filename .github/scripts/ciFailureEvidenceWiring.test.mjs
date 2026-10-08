@@ -54,10 +54,13 @@ const exclusions = {
   'windows-acceptance-supervisor-feasibility.yml': {
     'encrypted-evidence-delivery-proof': 'Explicit diagnostic experiment with its own delivery contract',
     'linux-encrypted-evidence-delivery-proof': 'Explicit Linux experiment with its own delivery contract',
+    'startup-exception-exit-proof': 'Explicit synthetic Electron exit experiment with existing encrypted delivery',
     'inspector-cutoff-diagnostic': 'Explicit experiment, not normal required acceptance',
     'msi-file-version-policy': 'Explicit experiment, not normal required acceptance',
-    'packaged-boundary-diagnostic': 'Explicit experiment, not normal required acceptance',
   },
+};
+const diagnosticFamilies = {
+  'windows-acceptance-supervisor-feasibility.yml': ['packaged-boundary-diagnostic'],
 };
 
 function platformsFor(key) {
@@ -108,7 +111,7 @@ function evaluate(expression, mutate = () => {}, runnerOs = 'Windows') {
   mutate(values);
   // All compared values are fixed strings; this exercises the boolean gate,
   // not GitHub's general expression coercion rules.
-  const script = expression.replace(/inputs\.([a-z][a-z-]*)/gu, 'inputs["$1"]');
+  const script = expression.replace(/inputs\.([a-z][a-z_-]*)/gu, 'inputs["$1"]');
   return Boolean(runInNewContext(script, values, { timeout: 1000 }));
 }
 
@@ -229,14 +232,45 @@ test('every current CI job has an explicit failure-delivery or exclusion decisio
   for (const [file, jobMap] of workflows) {
     const covered = normalFamilies[file] ?? {};
     const excluded = exclusions[file] ?? {};
-    assert.deepEqual([...jobMap.keys()].sort(), [...Object.keys(covered), ...Object.keys(excluded)].sort(), file);
+    const diagnostic = diagnosticFamilies[file] ?? [];
+    assert.deepEqual([...jobMap.keys()].sort(), [...Object.keys(covered), ...Object.keys(excluded), ...diagnostic].sort(), file);
     for (const [id, reason] of Object.entries(excluded)) {
       assert.ok(reason.length > 20, `${file}/${id}: exclusion needs a rationale`);
-      if (!['encrypted-evidence-delivery-proof', 'linux-encrypted-evidence-delivery-proof'].includes(id)) {
+      if (!['encrypted-evidence-delivery-proof', 'linux-encrypted-evidence-delivery-proof', 'startup-exception-exit-proof'].includes(id)) {
         assert.ok(!jobMap.get(id).includes(actionUse), `${file}/${id}: excluded job cannot seal`);
       }
     }
   }
+});
+
+test('legacy packaged diagnostic uses the existing failure collector last without changing mandatory steps', () => {
+  const job = workflows.get('windows-acceptance-supervisor-feasibility.yml').get('packaged-boundary-diagnostic');
+  const allSteps = steps(job, 6);
+  const hook = allSteps.at(-1);
+  assert.equal(allSteps.filter(step => step.includes(`uses: ${actionUse}\n`)).length, 1);
+  assert.ok(hook.startsWith(`      - name: ${hookName}\n`));
+  assert.ok(hook.includes('          job-key: legacy-boundary-diagnostic-0\n'));
+  assert.ok(hook.includes('          job-outcome: ${{ job.status }}\n'));
+  assert.match(job.split('\n    steps:\n')[0], /github\.event_name == 'workflow_dispatch' && inputs\.mode == 'packaged-boundary-diagnostic'/u);
+  const scope = "            && inputs.artifact_kind == 'legacy'\n";
+  assert.equal(hook.split(scope).length, 2);
+  withoutOptionalEvidenceAllowance(hook.replace(scope, ''), 1);
+  const gate = condition(hook, 8);
+  const legacyContext = c => { c.github.event_name = 'workflow_dispatch'; c.inputs.artifact_kind = 'legacy'; };
+  assert.ok(evaluate(gate, legacyContext));
+  for (const mutate of [
+    c => { c.inputs.artifact_kind = 'workspace'; },
+    c => { c.inputs.artifact_kind = 'upgrade'; },
+    c => { c.job.status = 'success'; },
+    c => { c.runner.os = 'Linux'; },
+    c => { c.runner.environment = 'self-hosted'; },
+    c => { c.vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT = ''; },
+    c => { c.github.event_name = 'pull_request_target'; },
+  ]) assert.equal(evaluate(gate, c => { legacyContext(c); mutate(c); }), false);
+  const mandatory = allSteps.find(step => step.includes('- name: Run existing caller and mandatory result verifier once\n'));
+  assert.ok(mandatory);
+  assert.doesNotMatch(mandatory, /continue-on-error:/u);
+  assert.match(mandatory, /WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED/u);
 });
 
 test('all normal Linux and Windows families collect last, independently of which preparation or test failed', () => {
@@ -462,6 +496,40 @@ function assertFirstFailureProof(proof, mode, jobKey) {
 test('hosted Windows proof keeps the verified child and existing delivery contract', () => {
   const proof = workflows.get('windows-acceptance-supervisor-feasibility.yml').get('encrypted-evidence-delivery-proof');
   assertFirstFailureProof(proof, 'encrypted-evidence-delivery-proof', 'delivery-proof');
+});
+
+test('synthetic Electron exit proof requires real owner code, original terminal and encrypted publication', () => {
+  const proof = workflows.get('windows-acceptance-supervisor-feasibility.yml').get('startup-exception-exit-proof');
+  assert.match(proof, /^    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'startup-exception-exit-proof'$/mu);
+  assert.match(proof, /^    runs-on: windows-latest$/mu);
+  assert.match(proof, /^    timeout-minutes: 10$/mu);
+  assert.match(proof, /ref: \$\{\{ github.sha \}\}/u);
+  assert.match(proof, /node-version-file: eky_software\/\.node-version/u);
+  assert.match(proof, /dotnet-version: 10\.0\.302/u);
+  assert.match(proof, /run: pnpm install --frozen-lockfile/u);
+  const allSteps = steps(proof, 6);
+  const probe = allSteps.find(step => step.includes('        id: failure_probe\n'));
+  const delivery = allSteps.find(step => step.includes('        id: failure_evidence\n'));
+  const terminal = allSteps.at(-1);
+  assert.match(probe, /pnpm --filter @eky\/desktop installer:proof:startup-exception-exit/u);
+  const exitCheckIndex = probe.indexOf('$LASTEXITCODE -ne 0');
+  const verifiedIndex = probe.indexOf('probe_verified=true');
+  assert.ok(exitCheckIndex >= 0);
+  assert.ok(verifiedIndex >= 0);
+  assert.ok(exitCheckIndex < verifiedIndex);
+  assert.match(probe, /SYNTHETIC_STARTUP_EXCEPTION_RETAINED'\)\n\s+exit 1/u);
+  assert.ok(delivery.includes("if: ${{ always() && steps.failure_probe.outcome == 'failure' && steps.failure_probe.outputs.probe_verified == 'true' }}"));
+  assert.ok(delivery.includes(`uses: ${actionUse}\n`));
+  assert.match(delivery, /job-key: startup-exception-exit-proof-0/u);
+  assert.match(delivery, /job-outcome: failure/u);
+  for (const step of allSteps) if (step !== probe) assert.doesNotMatch(step, /continue-on-error:/u);
+  assert.match(terminal, /^        if: always\(\)$/mu);
+  for (const [variable, expected] of [['PROBE_OUTCOME', 'failure'], ['PROBE_VERIFIED', 'true'],
+    ['DELIVERY_OUTCOME', 'success'], ['SEALED', 'true'], ['UPLOAD_OUTCOME', 'success']]) {
+    assert.ok(terminal.includes(`$env:${variable} -cne '${expected}'`));
+  }
+  assert.ok(terminal.includes("$env:ARTIFACT_ID -cnotmatch '^[1-9][0-9]*$'"));
+  assert.doesNotMatch(proof, /msiexec|\.msi|upload-artifact|private-key/u);
 });
 
 function assertLinuxProof(proof) {

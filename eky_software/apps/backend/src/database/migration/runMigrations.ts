@@ -28,13 +28,15 @@ const developmentReleaseIdentity: MigrationReleaseIdentity = {
   buildRevision: 'development',
 };
 
+export function resolveMigrationsDirectory(directory?: string): string {
+  return resolve(directory ?? defaultMigrationsDirectory);
+}
+
 export async function runMigrations(
   database: DatabaseConnection,
   options: RunMigrationsOptions = {},
 ): Promise<void> {
-  const migrationsDirectory = resolve(
-    options.migrationsDirectory ?? defaultMigrationsDirectory,
-  );
+  const migrationsDirectory = resolveMigrationsDirectory(options.migrationsDirectory);
   let manifest: MigrationManifestEntry[];
   try {
     manifest = readMigrationManifest(migrationsDirectory);

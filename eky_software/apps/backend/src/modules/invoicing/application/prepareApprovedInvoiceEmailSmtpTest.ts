@@ -9,7 +9,10 @@ import type { GenerateApprovedInvoicePdfDocumentInput } from './generateApproved
 import { createInvoiceEmailSendRequestFingerprint } from './invoiceEmailSendRequestFingerprint.js';
 import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
 import { requireInvoiceDeliveryEligible } from './requireInvoiceDeliveryEligible.js';
-import type { ApprovedInvoiceDocumentMetadata } from '../domain/approvedInvoiceDocument.js';
+import { requireLegacyInvoiceDeliveryReviewed } from './requireLegacyInvoiceDeliveryReviewed.js';
+import type { InvoiceEmailDeliveryDocument } from './loadInvoiceEmailDeliveryDocument.js';
+import { InvoiceDeliveryConflictError } from './invoiceDeliveryConflictError.js';
+import type { InvoiceDeliveryEventReader } from '../ports/invoiceDeliveryEventReader.js';
 import { requireIdentifier } from '../domain/invoiceDraftRules.js';
 import type { ApprovedInvoiceReader } from '../ports/approvedInvoiceReader.js';
 import type { InvoiceEmailSettingsReader } from '../ports/invoiceEmailSettingsReader.js';
@@ -40,9 +43,10 @@ export interface ApprovedInvoiceEmailSmtpTestPreparation {
 
 export interface PrepareApprovedInvoiceEmailSmtpTestDependencies {
   approvedInvoiceReader: ApprovedInvoiceReader;
-  ensureApprovedInvoicePdfDocument(
+  loadInvoiceEmailDeliveryDocument(
     input: GenerateApprovedInvoicePdfDocumentInput,
-  ): Promise<ApprovedInvoiceDocumentMetadata>;
+  ): Promise<InvoiceEmailDeliveryDocument>;
+  invoiceDeliveryEventReader: Pick<InvoiceDeliveryEventReader, 'hasUnresolvedDeliveryEvent' | 'requiresLegacyDeliveryReview'>;
   invoiceEmailSettingsReader: InvoiceEmailSettingsReader;
   invoiceEmailSendAttemptStore: InvoiceEmailSendAttemptStore;
 }
@@ -71,6 +75,10 @@ export async function prepareApprovedInvoiceEmailSmtpTest(
   }
 
   requireInvoiceDeliveryEligible(invoice);
+  await requireLegacyInvoiceDeliveryReviewed({ companyId, invoiceId }, dependencies.invoiceDeliveryEventReader);
+  if (await dependencies.invoiceDeliveryEventReader.hasUnresolvedDeliveryEvent(companyId, invoiceId)) {
+    throw new InvoiceDeliveryConflictError();
+  }
 
   const settings = await dependencies.invoiceEmailSettingsReader.getEmailSettings(
     companyId,
@@ -87,45 +95,50 @@ export async function prepareApprovedInvoiceEmailSmtpTest(
     subject: emailFields.subject,
     to: settings.emailTestRecipientOverride,
   }).to;
-  const document = await dependencies.ensureApprovedInvoicePdfDocument({
+  const loaded = await dependencies.loadInvoiceEmailDeliveryDocument({
+    actorContext: input.actorContext,
     companyId,
     createdAt: preparedAt,
     invoiceId,
   });
-  const preparedAttempt = dependencies.invoiceEmailSendAttemptStore.prepare({
-    actorId,
-    companyId,
-    invoiceId,
-    mode: 'smtpTest',
-    provider: 'dnaSmtp',
-    recipient: testRecipient,
-    requestFingerprint: createInvoiceEmailSendRequestFingerprint({
-      body: emailFields.body,
-      cc: emailFields.cc,
-      document: {
+  const document = loaded.metadata;
+  try {
+    const preparedAttempt = dependencies.invoiceEmailSendAttemptStore.prepare({
+      actorId,
+      companyId,
+      invoiceId,
+      mode: 'smtpTest',
+      provider: 'dnaSmtp',
+      recipient: testRecipient,
+      requestFingerprint: createInvoiceEmailSendRequestFingerprint({
+        body: emailFields.body,
+        cc: emailFields.cc,
+        document: {
+          binding: document.binding,
+          fileName: document.fileName,
+          id: document.id,
+          sha256: document.sha256,
+          sizeBytes: document.sizeBytes,
+        },
+        recipient: testRecipient,
+        sender: {
+          address: settings.emailSenderAddress,
+          name: settings.emailSenderName,
+        },
+        subject: emailFields.subject,
+        to: emailFields.to,
+      }),
+    });
+
+    return {
+      attachment: {
         fileName: document.fileName,
-        id: document.id,
-        sha256: document.sha256,
         sizeBytes: document.sizeBytes,
       },
-      recipient: testRecipient,
-      sender: {
-        address: settings.emailSenderAddress,
-        name: settings.emailSenderName,
-      },
+      ...preparedAttempt,
+      invoiceId,
       subject: emailFields.subject,
-      to: emailFields.to,
-    }),
-  });
-
-  return {
-    attachment: {
-      fileName: document.fileName,
-      sizeBytes: document.sizeBytes,
-    },
-    ...preparedAttempt,
-    invoiceId,
-    subject: emailFields.subject,
-    testRecipient,
-  };
+      testRecipient,
+    };
+  } finally { loaded.content.fill(0); }
 }

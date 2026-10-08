@@ -9,6 +9,9 @@ import { gunzipSync } from 'node:zlib';
 import test from 'node:test';
 import { prepareEvidence, collectEvidence, encryptArchive } from './workspaceEncryptedEvidence.mjs';
 import { collectJobFailureEvidence } from './ciFailureEvidence.mjs';
+import { readLegacyOriginalExceptionEvidence } from './legacyOriginalExceptionEvidence.mjs';
+import { LEGACY_STARTUP_TERMINAL_FILENAME } from './legacyStartupFailureEvidence.mjs';
+import { startupExceptionDirectory, STARTUP_EXCEPTION_CONTROL } from '../../src/main/startupExceptionEvidence.ts';
 
 const SCRIPT = fileURLToPath(new URL('./encryptedEvidenceOpenPgp.ps1', import.meta.url));
 const ROOT = resolve(dirname(SCRIPT), '../../../..');
@@ -273,6 +276,62 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
       const results = JSON.parse(projected).suites[0].specs[0].tests[0].results;
       assert.equal(results[0].error.stack, 'synthetic stack');
       assert.deepEqual(results.map(result => result.retry), [0, 1]);
+    });
+    await check('first startup exception crosses process, terminal, encryption and decryption boundaries', async () => {
+      const temp = await realpath(await mkdir(join(root, 'exception-temp'), { recursive: true }).then(() => join(root, 'exception-temp')));
+      const checkout = join(root, 'exception-checkout');
+      await mkdir(checkout);
+      const runRoot = join(temp, 'synthetic-run');
+      const scenarioRunNonce = 'b'.repeat(64);
+      const identity = { appVersion: '0.2.81', buildRevision: 'a'.repeat(40) };
+      const exceptionRoot = startupExceptionDirectory(join(runRoot, 'source-smoke-temp'), scenarioRunNonce);
+      await mkdir(join(exceptionRoot, 'user-data'), { recursive: true });
+      await mkdir(join(exceptionRoot, 'result'));
+      await writeFile(join(exceptionRoot, 'result', STARTUP_EXCEPTION_CONTROL),
+        JSON.stringify({ schemaVersion: 1, scenarioRunNonce, ...identity }));
+      const moduleUrl = new URL('../../src/main/startupExceptionEvidence.ts', import.meta.url).href;
+      const input = { enabled: true, tempPath: join(runRoot, 'source-smoke-temp'),
+        userDataPath: join(exceptionRoot, 'user-data'), token: scenarioRunNonce, ...identity,
+        runtimeInstanceId: '12345678-1234-4abc-8abc-1234567890ab' };
+      const child = await run(process.execPath, ['--input-type=module', '-e',
+        `import {createStartupExceptionCapture} from ${JSON.stringify(moduleUrl)};
+         const capture=createStartupExceptionCapture(${JSON.stringify(input)});
+         if(!capture) process.exitCode=2;
+         else {capture(new Error('synthetic first startup exception',{cause:new Error('synthetic original cause')}),'compositionStartup');
+           capture(new Error('EXCLUDED fallback'),'earlyStartup');
+           if(await capture.waitForDelivery()!=='recorded') process.exit(2); process.exit(9);}`]);
+      assert.equal(child.status, 9, 'OPENPGP_STARTUP_CHILD_FAILED');
+      assert.equal(child.stdout.length + child.stderr.length, 0, 'OPENPGP_STARTUP_RAW_OUTPUT_EXPOSED');
+      const startupEvidence = { schemaVersion: 1, scenarioRunNonce, artifactDescriptorSha256: 'c'.repeat(64),
+        targetIdentity: identity, status: 'notObserved', events: [] };
+      const originalExceptionEvidence = await readLegacyOriginalExceptionEvidence({ runRoot,
+        artifact: { target: identity }, supervisorResult: { runNonce: scenarioRunNonce, processTreeAbsent: true } }, startupEvidence);
+      assert.equal(originalExceptionEvidence.status, 'recorded', 'OPENPGP_STARTUP_SOURCE_UNAVAILABLE');
+      const terminal = join(temp, `eky-acceptance-command-${'d'.repeat(32)}`, 'fixtureCleanup', LEGACY_STARTUP_TERMINAL_FILENAME);
+      await mkdir(dirname(terminal), { recursive: true });
+      await writeFile(terminal, JSON.stringify({ binding: { schemaVersion: 1, runNonce: 'e'.repeat(64),
+        scenario: 'acceptanceCommandPhase', artifactDescriptorSha256: startupEvidence.artifactDescriptorSha256 },
+        startupEvidence, originalExceptionEvidence, outcome: { private: 'EXCLUDED outcome' } }));
+      await rm(runRoot, { recursive: true });
+      const env = { GITHUB_RUN_ID: '98765', GITHUB_RUN_ATTEMPT: '1', GITHUB_JOB: 'legacy_contracts',
+        EKY_EVIDENCE_JOB_KEY: 'legacy-startup-original', GITHUB_SHA: 'a'.repeat(40),
+        EKY_EVIDENCE_JOB_OUTCOME: 'failure', RUNNER_TEMP: temp, GITHUB_WORKSPACE: checkout,
+        EKY_DIAGNOSTIC_KEY_FINGERPRINT: recipient.fingerprint, EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: recipient.fingerprint,
+        EKY_DIAGNOSTIC_PUBLIC_KEY: await readFile(publicPath, 'utf8') };
+      const collected = await collectJobFailureEvidence(env);
+      await encryptArchive(collected.root, collected);
+      const decrypted = await invokeGpg(recipient.home, ['--decrypt', join(collected.root, 'evidence.json.gz.gpg')]);
+      const value = JSON.parse(gunzipSync(decrypted.stdout));
+      const entry = value.manifest.files.find(file => file.kind === 'legacyStartupEvidence');
+      assert.equal(entry?.status, 'retained', 'OPENPGP_STARTUP_PROJECTION_UNAVAILABLE');
+      const bytes = Buffer.from(value.files[entry.name], 'base64');
+      assert.equal(entry.sha256 === createHash('sha256').update(bytes).digest('hex'), true);
+      assert.equal(bytes.includes(Buffer.from('EXCLUDED')), false);
+      const record = JSON.parse(bytes).originalExceptionEvidence.exceptions[0];
+      assert.equal(record.chain[0].message === 'synthetic first startup exception', true);
+      assert.equal(record.chain[1].message === 'synthetic original cause', true);
+      assert.equal(typeof record.chain[0].stack === 'string' && record.chain[0].stack.length > 0, true);
+      assert.equal(value.manifest.binding.attempt, '1');
     });
     await check('job CLI encrypts the actual first failure with matching native platform and checkout', async () => {
       const checkout = join(root, 'cli-checkout');

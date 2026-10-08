@@ -3,6 +3,7 @@ export type {
   ApprovedInvoiceDocumentMetadata,
   ApprovedInvoiceDocumentType,
   ApprovedInvoiceEmailAttachmentPreview,
+  ApprovedInvoiceEmailDocumentTarget,
   ApprovedInvoiceEmailDryRunProviderResult,
   ApprovedInvoiceEmailDryRunSend,
   ApprovedInvoiceEmailDryRunSendInput,

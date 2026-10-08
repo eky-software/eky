@@ -159,6 +159,7 @@ function renderDetail(
         isLoading: false,
       }}
       deliveryHistoryState={{
+        invoiceId: 'invoice-1',
         errorMessage: null,
         events: [],
         isLoading: false,
@@ -204,6 +205,8 @@ function renderDetail(
       onMarkSent={vi.fn()}
       onMarkInvoicePaid={vi.fn()}
       onOpenPdf={vi.fn()}
+      onOpenPreservedPdf={vi.fn(async () => true)}
+      onOpenDeliveryEventPdf={vi.fn(async () => true)}
       onOpenRelatedDraft={vi.fn()}
       onOpenRelatedInvoice={vi.fn()}
       onPrepareEmail={vi.fn()}

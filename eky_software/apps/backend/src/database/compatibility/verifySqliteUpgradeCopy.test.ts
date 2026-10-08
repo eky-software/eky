@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto';
-import { readFile, mkdtemp, rm } from 'node:fs/promises';
+import { readFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createDatabaseConnection } from '../connection/createDatabaseConnection.js';
-import { runMigrations } from '../migration/runMigrations.js';
+import { readMigrationManifest } from '../migration/migrationManifest.js';
+import { resolveMigrationsDirectory, runMigrations } from '../migration/runMigrations.js';
 import { verifySqliteUpgradeCopy } from './verifySqliteUpgradeCopy.js';
 
 const temporaryDirectories: string[] = [];
@@ -56,7 +57,7 @@ describe('verifySqliteUpgradeCopy', () => {
     expect(result).toEqual({
       foreignKeyCheckPassed: true,
       integrityCheckPassed: true,
-      migrationCount: 38,
+      migrationCount: 39,
       originalHashUnchanged: true,
       sqliteVersion: '3.53.4',
       tableCount: expect.any(Number),
@@ -64,7 +65,7 @@ describe('verifySqliteUpgradeCopy', () => {
       transactionRollbackPassed: true,
     });
     expect(result.tableCount).toBeGreaterThan(20);
-    expect(result.totalRowCount).toBeGreaterThan(38);
+    expect(result.totalRowCount).toBeGreaterThan(39);
     expect(await sha256(sourceDatabaseFilePath)).toBe(sourceHashBefore);
 
     const reopenedSource = createDatabaseConnection({
@@ -124,10 +125,16 @@ describe('verifySqliteUpgradeCopy', () => {
   it('anchors legacy metadata on the copy without changing the source', async () => {
     const directory = await createTemporaryDirectory();
     const sourceDatabaseFilePath = join(directory, 'legacy.sqlite');
+    const migrationsDirectory = join(directory, 'historical-migrations');
+    await mkdir(migrationsDirectory);
+    const historicalManifest = readMigrationManifest(resolveMigrationsDirectory()).slice(0, 38);
+    for (const migration of historicalManifest) {
+      await writeFile(join(migrationsDirectory, migration.fileName), migration.content);
+    }
     const database = createDatabaseConnection({
       databaseFilePath: sourceDatabaseFilePath,
     });
-    await runMigrations(database);
+    await runMigrations(database, { migrationsDirectory });
     database.exec('DROP TABLE schema_migration_metadata;');
     database.close();
     const sourceHashBefore = await sha256(sourceDatabaseFilePath);
@@ -135,7 +142,7 @@ describe('verifySqliteUpgradeCopy', () => {
     await expect(
       verifySqliteUpgradeCopy(sourceDatabaseFilePath),
     ).resolves.toMatchObject({
-      migrationCount: 38,
+      migrationCount: 39,
       originalHashUnchanged: true,
     });
 
@@ -143,6 +150,8 @@ describe('verifySqliteUpgradeCopy', () => {
     const reopenedSource = createDatabaseConnection({
       databaseFilePath: sourceDatabaseFilePath,
     });
+    expect(reopenedSource.prepare('SELECT COUNT(*) AS count FROM schema_migrations').get())
+      .toEqual({ count: 38 });
     expect(
       reopenedSource
         .prepare(

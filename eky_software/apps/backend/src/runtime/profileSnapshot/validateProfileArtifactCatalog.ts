@@ -7,6 +7,7 @@ import { join, relative, resolve, sep } from 'node:path';
 
 import type { DatabaseConnection } from '../../database/connection/createDatabaseConnection.js';
 import { SqliteInvoiceBackupArtifactCatalog } from '../../modules/invoicing/infrastructure/sqliteInvoiceBackupArtifactCatalog.js';
+import type { InvoiceBackupArtifactCatalogSchema } from '../../modules/invoicing/infrastructure/selectInvoiceBackupArtifactCatalogSchema.js';
 import type { InvoiceBackupArtifactCatalogItem } from '../../modules/invoicing/ports/invoiceBackupArtifactCatalog.js';
 
 const artifactCatalogLogicalPath = 'snapshot-catalog-v1.json';
@@ -55,6 +56,7 @@ export interface ProfileArtifactCatalogValidation {
 }
 
 export async function validateProfileArtifactCatalog(input: {
+  schema: InvoiceBackupArtifactCatalogSchema;
   database: DatabaseConnection;
   operationRoot: string;
 }): Promise<ProfileArtifactCatalogValidation> {
@@ -81,6 +83,7 @@ export async function validateProfileArtifactCatalog(input: {
   const expectedItems =
     await new SqliteInvoiceBackupArtifactCatalog(
       input.database,
+      input.schema,
     ).listAuthoritativeArtifacts();
 
   if (

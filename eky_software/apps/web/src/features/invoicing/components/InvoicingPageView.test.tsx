@@ -117,6 +117,8 @@ function renderPage(
     | 'onMarkInvoicePaid'
     | 'onOpenApprovedInvoice'
     | 'onOpenApprovedInvoicePdf'
+    | 'onOpenPreservedPdf'
+    | 'onOpenDeliveryEventPdf'
     | 'onPrepareApprovedInvoiceEmail'
     | 'onRevertInvoicePaidMark'
     | 'onSendApprovedInvoiceEmailDryRun'
@@ -165,6 +167,8 @@ function renderPage(
         | 'onMarkInvoicePaid'
         | 'onOpenApprovedInvoice'
         | 'onOpenApprovedInvoicePdf'
+        | 'onOpenPreservedPdf'
+        | 'onOpenDeliveryEventPdf'
         | 'onPrepareApprovedInvoiceEmail'
         | 'onRevertInvoicePaidMark'
         | 'onSendApprovedInvoiceEmailDryRun'
@@ -241,6 +245,8 @@ function renderPage(
       onMarkInvoicePaid={vi.fn()}
       onOpenApprovedInvoice={vi.fn()}
       onOpenApprovedInvoicePdf={vi.fn()}
+      onOpenPreservedPdf={vi.fn(async () => true)}
+      onOpenDeliveryEventPdf={vi.fn(async () => true)}
       onPrepareApprovedInvoiceEmail={vi.fn()}
       onRevertInvoicePaidMark={vi.fn()}
       onSendApprovedInvoiceEmailDryRun={vi.fn()}
@@ -258,6 +264,7 @@ function createApiClient(): InvoicingPageViewProps['apiClient'] {
   return {
     approveInvoiceDraft: vi.fn(),
     createInvoiceDraft: vi.fn(),
+    getInvoiceDraftDeliveryHistory: vi.fn(async () => ({ invoiceId: null, events: [] })),
     getInvoiceIssuanceReadiness: vi.fn(async () => ({
       isReady: true,
       issues: [],
@@ -391,6 +398,7 @@ function createInvoiceDeliveryEventListState(
   > = {},
 ): InvoicingPageViewProps['invoiceDeliveryEventListState'] {
   return {
+    invoiceId: 'invoice-1',
     clearEvents: vi.fn(),
     errorMessage: null,
     events: [],

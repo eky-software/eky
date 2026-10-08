@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { InvoiceDeliveryConflictError } from './invoiceDeliveryConflictError.js';
 import { ApprovedInvoiceNotFoundError } from './approvedInvoiceNotFoundError.js';
 import { prepareApprovedInvoiceEmailSmtp } from './prepareApprovedInvoiceEmailSmtp.js';
+import { createEmailDocument } from './loadInvoiceEmailDeliveryDocument.fixture.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
 import type { InvoiceEmailSendAttemptStore } from '../ports/invoiceEmailSendAttemptStore.js';
 
@@ -32,18 +33,7 @@ describe('prepareApprovedInvoiceEmailSmtp', () => {
             ),
             listApprovedInvoiceSummaries: vi.fn(),
           },
-          ensureApprovedInvoicePdfDocument: vi.fn(async () => ({
-            companyId: 'company-1',
-            createdAt: '2026-07-17T22:00:00.000Z',
-            documentType: 'approved_invoice_pdf' as const,
-            fileName: 'lasku-20260001.pdf',
-            id: 'document-1',
-            invoiceId: 'invoice-1',
-            mimeType: 'application/pdf' as const,
-            sha256: '0'.repeat(64),
-            sizeBytes: 2048,
-            storagePath: 'company-1/invoice-1/lasku.pdf',
-          })),
+          loadCustomerInvoiceEmailDocument: vi.fn(async () => createEmailDocument()),
           invoiceEmailSendAttemptStore: attemptStore,
           invoiceEmailSettingsReader: {
             getEmailSettings: vi.fn(async () => createEmailSettings()),
@@ -53,6 +43,8 @@ describe('prepareApprovedInvoiceEmailSmtp', () => {
       ).resolves.toEqual(
         expect.objectContaining({
           attemptId: 'attempt-1',
+          documentTarget: { kind: 'revision', documentId: 'document-1' },
+          attachment: expect.objectContaining({ documentId: 'document-1' }),
           body: 'Hei, liitteenä lasku.',
           cc: 'copy@example.fi',
           invoiceNumber: '20260001',
@@ -87,7 +79,7 @@ describe('prepareApprovedInvoiceEmailSmtp', () => {
             getApprovedInvoiceById: vi.fn(async () => createInvoice('approved')),
             listApprovedInvoiceSummaries: vi.fn(),
           },
-          ensureApprovedInvoicePdfDocument: vi.fn(),
+          loadCustomerInvoiceEmailDocument: vi.fn(),
           invoiceDeliveryEventReader: createDeliveryEventReader(true),
           invoiceEmailSendAttemptStore: attemptStore,
           invoiceEmailSettingsReader: {
@@ -101,7 +93,7 @@ describe('prepareApprovedInvoiceEmailSmtp', () => {
 
   it('rejects a cancelled invoice before delivery state, settings, PDF, or authorization', async () => {
     const invoiceDeliveryEventReader = createDeliveryEventReader(false);
-    const ensureApprovedInvoicePdfDocument = vi.fn();
+    const loadCustomerInvoiceEmailDocument = vi.fn();
     const invoiceEmailSendAttemptStore: InvoiceEmailSendAttemptStore = {
       acquire: vi.fn(),
       complete: vi.fn(),
@@ -119,7 +111,7 @@ describe('prepareApprovedInvoiceEmailSmtp', () => {
           ),
           listApprovedInvoiceSummaries: vi.fn(),
         },
-        ensureApprovedInvoicePdfDocument,
+        loadCustomerInvoiceEmailDocument,
         invoiceDeliveryEventReader,
         invoiceEmailSendAttemptStore,
         invoiceEmailSettingsReader,
@@ -130,13 +122,14 @@ describe('prepareApprovedInvoiceEmailSmtp', () => {
       invoiceDeliveryEventReader.hasUnresolvedDeliveryEvent,
     ).not.toHaveBeenCalled();
     expect(invoiceEmailSettingsReader.getEmailSettings).not.toHaveBeenCalled();
-    expect(ensureApprovedInvoicePdfDocument).not.toHaveBeenCalled();
+    expect(loadCustomerInvoiceEmailDocument).not.toHaveBeenCalled();
     expect(invoiceEmailSendAttemptStore.prepare).not.toHaveBeenCalled();
   });
 });
 
 function createDeliveryEventReader(hasUnresolvedEvent: boolean) {
   return {
+    requiresLegacyDeliveryReview: vi.fn(async () => false),
     hasUnresolvedDeliveryEvent: vi.fn(async () => hasUnresolvedEvent),
     listDeliveryEvents: vi.fn(async () => []),
   };
@@ -152,6 +145,7 @@ function createInput() {
     }),
     body: 'Hei, liitteenä lasku.',
     cc: 'copy@example.fi',
+    documentTarget: { kind: 'revision' as const, documentId: 'document-1' },
     invoiceId: 'invoice-1',
     preparedAt: '2026-07-17T22:00:00.000Z',
     subject: 'Lasku 20260001',

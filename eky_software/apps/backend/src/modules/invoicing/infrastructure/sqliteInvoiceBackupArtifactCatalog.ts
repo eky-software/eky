@@ -3,6 +3,9 @@ import type {
   InvoiceBackupArtifactCatalog,
   InvoiceBackupArtifactCatalogItem,
 } from '../ports/invoiceBackupArtifactCatalog.js';
+import type { InvoiceBackupArtifactCatalogSchema } from './selectInvoiceBackupArtifactCatalogSchema.js';
+import { validateInvoiceRevisionCatalog } from './validateInvoiceRevisionCatalog.js';
+import { validateInvoiceRevisionCatalogDocuments } from './validateInvoiceRevisionCatalogDocuments.js';
 
 interface InvoiceBackupArtifactCatalogRow {
   bound_invoice_id: string | null;
@@ -20,11 +23,34 @@ interface InvoiceBackupArtifactCatalogRow {
 export class SqliteInvoiceBackupArtifactCatalog
   implements InvoiceBackupArtifactCatalog
 {
-  constructor(private readonly database: DatabaseConnection) {}
+  constructor(
+    private readonly database: DatabaseConnection,
+    private readonly schema: InvoiceBackupArtifactCatalogSchema,
+  ) {}
 
   async listAuthoritativeArtifacts(): Promise<
     readonly InvoiceBackupArtifactCatalogItem[]
   > {
+    switch (this.schema) {
+      case 'legacyDocuments':
+        return this.listDocuments();
+      case 'revisionHistory':
+        try {
+          return this.database.transaction(() => {
+            validateInvoiceRevisionCatalog(this.database);
+            validateInvoiceRevisionCatalogDocuments(this.database);
+            return this.listDocuments();
+          }).deferred();
+        } catch {
+          // A malformed new schema is never evidence for selecting the old branch.
+          throw new Error('INVOICE_BACKUP_CATALOG_INVALID');
+        }
+      default:
+        throw new Error('INVOICE_BACKUP_CATALOG_INVALID');
+    }
+  }
+
+  private listDocuments(): readonly InvoiceBackupArtifactCatalogItem[] {
     const rows = this.database
       .prepare<[], InvoiceBackupArtifactCatalogRow>(
         `

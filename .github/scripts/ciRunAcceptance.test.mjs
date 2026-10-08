@@ -84,6 +84,21 @@ test('legacy coverage requires every responsibility group and selected repetitio
   }
 });
 
+test('packaged recovery cannot pass without the legacy preparation and restore steps', () => {
+  const plan = planFor([critical], 'push');
+  for (const name of ['Prepare packaged legacy recovery runtime', 'Run packaged legacy recovery']) {
+    for (const outcome of ['missing', 'skipped', 'failure', 'cancelled']) {
+      const { needs, jobs } = evidence(plan);
+      const job = jobs.find(value => value.name.endsWith('Windows Electron critical E2E'));
+      const step = job.steps.find(value => value.name === name);
+      assert.ok(step, 'coverage must explicitly require the legacy step');
+      if (outcome === 'missing') job.steps = job.steps.filter(value => value !== step);
+      else step.conclusion = outcome;
+      assert.equal(evaluateCiRun(plan, needs, jobs).resultCode, 'CI_REQUIRED_STEP_INCOMPLETE');
+    }
+  }
+});
+
 test('skipped manual MSI policy job does not replace mandatory normal policy steps', () => {
   const plan = planFor([critical], 'push');
   const { needs, jobs } = evidence(plan);
@@ -301,11 +316,11 @@ test('MSI file policy has a hosted-only manual path without replacing supervisor
 
 test('synthetic evidence proof selects exactly one manual job and preserves reusable supervisor acceptance', async () => {
   const source = await readFile(new URL('../workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
-  const modes = ['encrypted-evidence-delivery-proof', 'linux-encrypted-evidence-delivery-proof'];
+  const modes = ['encrypted-evidence-delivery-proof', 'linux-encrypted-evidence-delivery-proof', 'startup-exception-exit-proof'];
   const conditions = [...source.matchAll(/^  ([\w-]+):\n    if: ([^\n]+)/gm)];
   const selected = (eventName, mode) => conditions.filter(([, , expression]) => runInNewContext(expression,
     { github: { event_name: eventName }, inputs: { mode } }, { timeout: 1000 })).map(([, name]) => name);
-  assert.equal(conditions.length, 6);
+  assert.equal(conditions.length, 7);
   for (const mode of modes) {
     assert.deepEqual(selected('workflow_dispatch', mode), [mode]);
     for (const eventName of ['pull_request', 'pull_request_target', 'push', 'schedule', 'workflow_call', 'workflow_run']) {

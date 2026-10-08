@@ -131,6 +131,20 @@ test('public hooks emit a closed projection and leave the original failure untou
   assert.equal(result.errors[0].message, secret);
 });
 
+test('packaged legacy recovery exposes only the named project and test source location', t => {
+  let output = '';
+  t.mock.method(process.stdout, 'write', chunk => { output += chunk; return true; });
+  const reporter = new SafeCiReporter();
+  const fixture = caseFixture({ parent: { project: () => ({ name: 'packaged-legacy-recovery' }) },
+    location: { file: fileURLToPath(new URL('../tests/packaged/legacyInvoiceRecovery.spec.ts', import.meta.url)), line: 17, column: 1 } });
+  reporter.onBegin({}, { allTests: () => [fixture] });
+  reporter.onTestEnd(fixture, { retry: 0, status: 'failed', duration: 5, errors: [{ message: secret }] });
+  const row = events(output).at(-1);
+  assert.equal(row.project, 'packaged-legacy-recovery');
+  assert.equal(row.file, 'packaged/legacyInvoiceRecovery.spec.ts');
+  assert.equal(output.includes(secret), false);
+});
+
 test('unknown metadata is withheld; timeout, not-run and flaky remain distinct', t => {
   let output = '';
   t.mock.method(process.stdout, 'write', chunk => { output += chunk; return true; });

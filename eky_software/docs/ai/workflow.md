@@ -56,10 +56,15 @@ Tavoite on vähentää päällekkäistä työtä, ei turvallisuutta tai tarkistu
   vanhentuneesta tilasta tai käytä toteuttajaa riippumattomana arvioijanaan.
   Sulje tarpeeton agentti tehtävän valmistuttua tai vastuun siirryttyä.
 - Sovita aliagentin päättelyteho sen rajattuun tehtävään työkalujen
-  mahdollisuuksien ja omistajan valintojen puitteissa. Älä tilaa uutta
+  mahdollisuuksien ja omistajan vähimmäistason puitteissa. Älä tilaa uutta
   täysimittaista analyysia pelkkää odottamista tai muuttumatonta tilatietoa
   varten. Käytä CI:ssä [yhtä seurantavastuuta](#ci-ajon-seuranta-ja-virhetodisteet)
   ja olemassa olevia keräystyökaluja.
+- Kokoa toteutus ja katselmointi rajatuksi toiminnalliseksi checkpointiksi,
+  älä automaattisesti omaksi kierrokseksi jokaista apufunktiota varten.
+  Rajaa jatkokatselmus muuttuneeseen osaan ja sen vaikutuksiin; älä teetä
+  jo tarkistettua kokonaisuutta uudelleen ilman uutta syytä. Pakolliset
+  riippumattomat katselmukset, kohdetestit ja integraation loppuarvio säilyvät.
 
 Arvioi delegoinnin hyötyä valmistuneiden tulosten ja päällekkäisen työn
 perusteella. Älä lupaa tokenisäästön prosenttia ilman vertailukelpoista
@@ -79,7 +84,10 @@ niiden kustannuksella.
 Erota malli ja päättelytaso toisistaan ja suositus todellisesta asetuksesta.
 Suosittele vain käytettävissä olevia vaihtoehtoja, älä väitä nähneesi tai
 muuttaneesi asetusta ilman vahvistusta. Konekohtaiset mallitoiveet säilyvät
-paikallisissa ohjeissa, eivät tässä yhteisessä dokumentissa.
+paikallisissa ohjeissa, eivät tässä yhteisessä dokumentissa. Tarkista
+juuri-`AGENTS.md`:n osoittama paikallinen vähimmäistaso myös delegoinnissa.
+Omistaja säätää keskustelun mallin suosituksen perusteella; suositus tai
+ohjetiedoston muutos ei itsessään muuta ajonaikaista malliasetusta.
 
 Jos vaikeus tai riski muuttuu olennaisesti, anna uusi suositus ennen siihen
 liittyvää toteutusta. Jos työn turvallinen jatkaminen edellyttää suositeltua
@@ -228,6 +236,15 @@ arkkitehtuuridokumentista. Korjaa vaikutusalueen polut ja otsikkoankkurit.
 Pidä sääntö yhdessä omistavassa dokumentissa ja linkitä siihen kopioimisen
 sijaan. Erota voimassa oleva ohje historiallisesta checkpointista; yksityistä
 runbookia tai sen konekohtaisia havaintoja ei siirretä yhteisiin ohjeisiin.
+
+Kun työ valmistuu, korvaa sen vanhentunut nykytilaväite; älä vain lisää
+uutta onnistumisriviä ristiriitaisen väitteen rinnalle. Roadmap kertoo
+tilan, seuraavan työn ja hyväksyntäviitteen, omistava suunnitelma tarkan
+sopimuksen. Tutkimushistoria säilyy erikseen nimettynä ja sitä luetaan
+tarvittaessa, ei jokaisen tehtävän pakollisena lähtöaineistona.
+Tiivistämisessä säilytetään vaatimukset, päätökset, todisteviitteet ja
+toimivat lukureitit. Testien, diagnostiikan tai palautuksen kattavuutta ei
+vähennetä ohjeiden lyhentämisen tai tokenisäästön vuoksi.
 
 Seuraavan sovitun julkaisun sisältö ja jatkotoiveet pidetään yhteisessä
 [0.3.0-tehtävälistassa](../architecture/release-0.3.0-plan.md). Päivitä

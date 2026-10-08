@@ -1,10 +1,16 @@
 import { isValidResourceId } from './protocolPolicy.js';
 
+interface InvoiceEmailDocumentTarget {
+  kind: 'revision' | 'preservedLegacy';
+  documentId: string;
+}
+
 export interface InvoiceEmailPreparationConfirmation {
   attachmentFileName: string;
   attachmentSizeBytes: number;
   body: string;
   cc: string;
+  documentTarget: InvoiceEmailDocumentTarget;
   invoiceId: string;
   invoiceNumber: string;
   recipient: string;
@@ -24,6 +30,12 @@ export function createInvoiceEmailConfirmationDetail(
     `Otsikko: ${preparation.subject}`,
     `Liite: ${preparation.attachmentFileName} (${formatFileSize(preparation.attachmentSizeBytes)})`,
     ...(preparation.resend ? ['Tämä on laskun uudelleenlähetys.'] : []),
+    ...(preparation.documentTarget.kind === 'preservedLegacy'
+      ? [
+          'Liite on säilytetty vanha PDF. Sitä ei ole muodostettu uudelleen.',
+          'Vanhan lähetyksen sisältöä ei voida jälkikäteen varmasti todistaa. Tarkista säilytetty liite ennen lähettämistä.',
+        ]
+      : []),
     '',
     'Viestin sisältö:',
     preparation.body,
@@ -52,18 +64,23 @@ export function readInvoiceEmailPreparationConfirmation(
   const sender = readSafeText(preparation.sender, 600);
   const subject = readSafeText(preparation.subject, 200);
   const attachmentSizeBytes = preparation.attachment.sizeBytes;
+  const documentTarget = readDocumentTarget(preparation.documentTarget);
 
   if (
     attachmentFileName === undefined ||
     body === undefined ||
     cc === undefined ||
+    documentTarget === undefined ||
+    preparation.attachment.documentId !== documentTarget.documentId ||
     invoiceId === undefined ||
+    invoiceId !== preparation.invoiceId ||
     !isValidResourceId(invoiceId) ||
     invoiceNumber === undefined ||
     recipient === undefined ||
     sender === undefined ||
     subject === undefined ||
     typeof preparation.resend !== 'boolean' ||
+    (documentTarget.kind === 'preservedLegacy' && !preparation.resend) ||
     typeof attachmentSizeBytes !== 'number' ||
     !Number.isSafeInteger(attachmentSizeBytes) ||
     attachmentSizeBytes < 0
@@ -76,6 +93,7 @@ export function readInvoiceEmailPreparationConfirmation(
     attachmentSizeBytes,
     body,
     cc,
+    documentTarget,
     invoiceId,
     invoiceNumber,
     recipient,
@@ -83,6 +101,36 @@ export function readInvoiceEmailPreparationConfirmation(
     sender,
     subject,
   };
+}
+
+export function matchesInvoiceEmailPreparationRequest(
+  confirmation: InvoiceEmailPreparationConfirmation,
+  requestBody: unknown,
+  invoiceId: string | undefined,
+): boolean {
+  if (!isRecord(requestBody) || confirmation.invoiceId !== invoiceId) {
+    return false;
+  }
+  const target = readDocumentTarget(requestBody.documentTarget);
+  return (
+    target !== undefined &&
+    target.kind === confirmation.documentTarget.kind &&
+    target.documentId === confirmation.documentTarget.documentId
+  );
+}
+
+function readDocumentTarget(
+  value: unknown,
+): InvoiceEmailDocumentTarget | undefined {
+  if (
+    !isRecord(value) ||
+    Object.keys(value).length !== 2 ||
+    (value.kind !== 'revision' && value.kind !== 'preservedLegacy') ||
+    !isValidResourceId(value.documentId)
+  ) {
+    return undefined;
+  }
+  return { kind: value.kind, documentId: value.documentId };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -1,3 +1,5 @@
+import type { ApprovedInvoiceEmailPreview } from '@eky/api-client';
+
 export interface EkyDesktopApi {
   chooseInvoicePdfArchiveDirectory(): Promise<unknown>;
   createEncryptedProfileBackup(): Promise<unknown>;
@@ -17,7 +19,11 @@ export interface EkyDesktopApi {
     workspaceLabel: string;
   }): Promise<unknown>;
   replaceActiveWorkspaceFromBackup?(): Promise<unknown>;
-  openInvoicePdf(invoiceId: string): Promise<void>;
+  openInvoicePdf(
+    invoiceId: string,
+    target?: Extract<ApprovedInvoiceEmailPreview['documentTarget'], { kind: 'preservedLegacy' }>
+      | Readonly<{ kind: 'deliveryEvent'; eventId: string }>,
+  ): Promise<void>;
   openInvoicePdfArchiveDirectory(): Promise<void>;
   openOperationalLogFolder(): Promise<void>;
   retryPendingInvoicePdfArchiveTasks(): Promise<unknown>;
@@ -51,7 +57,7 @@ export type {
   WorkspaceManagementStatus,
 } from './desktopWorkspaceManagement.js';
 
-export type OpenInvoicePdfPreview = (invoiceId: string) => Promise<void>;
+export type OpenInvoicePdfPreview = EkyDesktopApi['openInvoicePdf'];
 
 export const invoicePdfArchiveSafeErrorCodes = Object.freeze([
   'ARCHIVE_CONFIG_INVALID',
@@ -152,7 +158,9 @@ export function getDesktopInvoicePdfPreview(
     return undefined;
   }
 
-  return (invoiceId) => openInvoicePdf(invoiceId);
+  return (invoiceId, target) => target === undefined
+    ? openInvoicePdf(invoiceId)
+    : openInvoicePdf(invoiceId, target);
 }
 
 export function getDesktopLocalUpdate(

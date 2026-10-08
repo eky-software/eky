@@ -1,7 +1,7 @@
 import type {
-  ApprovedInvoiceView,
-  ApprovedInvoiceViewLine,
-} from '../../../domain/approvedInvoiceView.js';
+  ApprovedInvoicePdfContent,
+  ApprovedInvoicePdfContentLine,
+} from '../../../domain/approvedInvoicePdfContent.js';
 import {
   formatPdfDiscount,
   formatPdfPercentBasisPoints,
@@ -32,7 +32,7 @@ interface InvoiceLineColumns {
 
 export function drawInvoiceLines(
   doc: PDFKit.PDFDocument,
-  invoice: ApprovedInvoiceView,
+  invoice: ApprovedInvoicePdfContent,
   y: number,
 ): number {
   const x = invoicePdfLayout.margin;
@@ -94,11 +94,11 @@ function drawInvoiceLinesHeader(
 
 function drawLineRow(
   doc: PDFKit.PDFDocument,
-  line: ApprovedInvoiceViewLine,
+  line: ApprovedInvoicePdfContentLine,
   columns: InvoiceLineColumns,
   y: number,
-  priceInputMode: ApprovedInvoiceView['priceInputMode'],
-  invoiceKind: ApprovedInvoiceView['invoiceKind'],
+  priceInputMode: ApprovedInvoicePdfContent['priceInputMode'],
+  invoiceKind: ApprovedInvoicePdfContent['invoiceKind'],
 ): void {
   const unitPrice =
     priceInputMode === 'gross'
@@ -158,7 +158,7 @@ function drawLineRow(
 
 function calculateLineHeight(
   doc: PDFKit.PDFDocument,
-  line: ApprovedInvoiceViewLine,
+  line: ApprovedInvoicePdfContentLine,
   descriptionWidth: number,
 ): number {
   const descriptionHeight = doc.heightOfString(line.description, {
@@ -171,8 +171,8 @@ function calculateLineHeight(
 
 function createInvoiceLineColumns(
   x: number,
-  priceInputMode: ApprovedInvoiceView['priceInputMode'],
-  taxTreatment: ApprovedInvoiceView['taxTreatment'],
+  priceInputMode: ApprovedInvoicePdfContent['priceInputMode'],
+  taxTreatment: ApprovedInvoicePdfContent['taxTreatment'],
 ): InvoiceLineColumns {
   const isReverseCharge = taxTreatment === 'reverseChargeConstruction';
 

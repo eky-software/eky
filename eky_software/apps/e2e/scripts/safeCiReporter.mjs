@@ -7,7 +7,7 @@ export const REPORT_PREFIX = 'EKY_E2E_REPORT ';
 const testsRoot = fileURLToPath(new URL('../tests/', import.meta.url));
 const projects = new Set([
   'system-api', 'web-chromium', 'electron-development', 'electron-endurance',
-  'endurance-baseline', 'first-start-load-diagnostic',
+  'endurance-baseline', 'first-start-load-diagnostic', 'packaged-legacy-recovery',
 ]);
 const statuses = new Set(['passed', 'failed', 'timedOut', 'skipped', 'interrupted']);
 const runStatuses = new Set(['passed', 'failed', 'timedout', 'interrupted']);
@@ -19,7 +19,7 @@ function sourceLocation(test) {
   const file = typeof test.location?.file === 'string'
     ? relative(testsRoot, test.location.file).split(sep).join('/') : '';
   // Only committed-style test source locations, never a runtime/attachment path.
-  const allowed = /^(?:system|web|electron|electron-stress|stress|diagnostics)\/[A-Za-z0-9_/-]+\.spec\.ts$/u;
+  const allowed = /^(?:system|web|electron|electron-stress|stress|diagnostics|packaged)\/[A-Za-z0-9_/-]+\.spec\.ts$/u;
   return allowed.test(file) && !file.split('/').includes('..')
     ? { file, line: integer(test.location.line), column: integer(test.location.column) }
     : { file: 'withheld', line: null, column: null };

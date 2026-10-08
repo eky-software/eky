@@ -5,14 +5,21 @@ import { runMigrations } from '../database/migration/runMigrations.js';
 import type { ApprovedInvoiceSummaryQuery } from '../modules/invoicing/domain/approvedInvoiceSummary.js';
 import type { SentInvoiceGroupQuery } from '../modules/invoicing/domain/sentInvoiceGroup.js';
 
-export async function createInvoiceReadModelTestDatabase(): Promise<DatabaseConnection> {
+export async function createInvoiceReadModelTestDatabase(
+  migrationsDirectory?: string,
+): Promise<DatabaseConnection> {
   const database = new Database(':memory:');
-  database.pragma('foreign_keys = ON');
-  await runMigrations(database);
-  insertSourceDraft(database);
-  insertApprovedInvoice(database);
-  insertInvoiceLines(database);
-  return database;
+  try {
+    database.pragma('foreign_keys = ON');
+    await runMigrations(database, migrationsDirectory ? { migrationsDirectory } : {});
+    insertSourceDraft(database);
+    insertApprovedInvoice(database);
+    insertInvoiceLines(database);
+    return database;
+  } catch (error) {
+    database.close();
+    throw error;
+  }
 }
 
 export function createApprovedInvoiceListQuery(

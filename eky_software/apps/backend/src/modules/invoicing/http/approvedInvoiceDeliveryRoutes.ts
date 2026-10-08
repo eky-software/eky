@@ -1,3 +1,4 @@
+import { InvoiceContentRevisionIntegrityError } from '../application/invoiceContentRevisionIntegrityError.js';
 import { AuthorizationError } from '@eky/permissions';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
@@ -9,6 +10,10 @@ import { ApprovedInvoiceEmailDeliveryOutcomeUnknownError } from '../application/
 import type { ApprovedInvoiceEmailPreview } from '../application/approvedInvoiceEmailPreview.js';
 import { ApprovedInvoiceNotFoundError } from '../application/approvedInvoiceNotFoundError.js';
 import { InvoiceDeliveryConflictError } from '../application/invoiceDeliveryConflictError.js';
+import { InvoiceLegacyDeliveryReviewRequiredError } from '../domain/invoiceLegacyDeliveryReviewRequiredError.js';
+import { InvoiceDocumentPublicationConflictError } from '../application/invoiceDocumentPublicationConflictError.js';
+import { InvoiceDocumentIntegrityError } from '../application/invoiceDocumentIntegrityError.js';
+import { InvoiceEmailDeliveryCommittedError } from '../application/invoiceEmailDeliveryCommittedError.js';
 import { InvoiceEmailSendAttemptError } from '../application/invoiceEmailSendAttemptError.js';
 import type { ListInvoiceDeliveryEventsInput } from '../application/listInvoiceDeliveryEvents.js';
 import type { MarkApprovedInvoiceSentInput } from '../application/markApprovedInvoiceSent.js';
@@ -129,8 +134,16 @@ export function createApprovedInvoiceDeliveryRoutes(
           return context.json({ error: error.message }, 400);
         }
 
-        if (error instanceof InvoiceDeliveryConflictError) {
+        if (error instanceof InvoiceLegacyDeliveryReviewRequiredError) {
+          return context.json({ error: error.message, code: error.code }, 409);
+        }
+
+        if (error instanceof InvoiceDeliveryConflictError || error instanceof InvoiceDocumentPublicationConflictError) {
           return context.json({ error: error.message }, 409);
+        }
+
+        if (error instanceof InvoiceContentRevisionIntegrityError) {
+          return context.json({ error: 'Stored invoice content could not be verified.' }, 500);
         }
 
         throw error;
@@ -158,6 +171,10 @@ export function createApprovedInvoiceDeliveryRoutes(
 
       if (error instanceof InvoiceDraftValidationError) {
         return context.json({ error: error.message }, 400);
+      }
+
+      if (error instanceof InvoiceContentRevisionIntegrityError) {
+        return context.json({ error: 'Stored invoice content could not be verified.' }, 500);
       }
 
       throw error;
@@ -201,6 +218,18 @@ export function createApprovedInvoiceDeliveryRoutes(
 
         if (error instanceof InvoiceDraftValidationError) {
           return context.json({ error: error.message }, 400);
+        }
+
+        if (error instanceof InvoiceLegacyDeliveryReviewRequiredError) {
+          return context.json({ error: error.message, code: error.code }, 409);
+        }
+
+        if (error instanceof InvoiceDeliveryConflictError || error instanceof InvoiceDocumentPublicationConflictError) {
+          return context.json({ error: error.message }, 409);
+        }
+
+        if (error instanceof InvoiceContentRevisionIntegrityError) {
+          return context.json({ error: 'Stored invoice content could not be verified.' }, 500);
         }
 
         throw error;
@@ -252,6 +281,18 @@ export function createApprovedInvoiceDeliveryRoutes(
           return context.json({ error: error.message }, 502);
         }
 
+        if (error instanceof InvoiceLegacyDeliveryReviewRequiredError) {
+          return context.json({ error: error.message, code: error.code }, 409);
+        }
+
+        if (error instanceof InvoiceDeliveryConflictError || error instanceof InvoiceDocumentPublicationConflictError) {
+          return context.json({ error: error.message }, 409);
+        }
+
+        if (error instanceof InvoiceContentRevisionIntegrityError) {
+          return context.json({ error: 'Stored invoice content could not be verified.' }, 500);
+        }
+
         throw error;
       }
     },
@@ -301,6 +342,14 @@ export function createApprovedInvoiceDeliveryRoutes(
           return context.json({ error: error.message }, 502);
         }
 
+        if (error instanceof InvoiceLegacyDeliveryReviewRequiredError) {
+          return context.json({ error: error.message, code: error.code }, 409);
+        }
+
+        if (error instanceof InvoiceDeliveryConflictError || error instanceof InvoiceDocumentPublicationConflictError) {
+          return context.json({ error: error.message }, 409);
+        }
+
         if (error instanceof InvoiceEmailSendAttemptError) {
           return context.json(
             { error: error.message },
@@ -310,6 +359,10 @@ export function createApprovedInvoiceDeliveryRoutes(
 
         if (error instanceof ApprovedInvoiceEmailDeliveryError) {
           return context.json({ error: error.message }, 502);
+        }
+
+        if (error instanceof InvoiceContentRevisionIntegrityError) {
+          return context.json({ error: 'Stored invoice content could not be verified.' }, 500);
         }
 
         throw error;
@@ -369,6 +422,18 @@ export function createApprovedInvoiceDeliveryRoutes(
           return context.json({ error: error.message }, 409);
         }
 
+        if (error instanceof InvoiceLegacyDeliveryReviewRequiredError) {
+          return context.json({ error: error.message, code: error.code }, 409);
+        }
+
+        if (error instanceof InvoiceDeliveryConflictError || error instanceof InvoiceDocumentPublicationConflictError) {
+          return context.json({ error: error.message }, 409);
+        }
+
+        if (error instanceof InvoiceContentRevisionIntegrityError) {
+          return context.json({ error: 'Stored invoice content could not be verified.' }, 500);
+        }
+
         throw error;
       }
     },
@@ -418,6 +483,16 @@ export function createApprovedInvoiceDeliveryRoutes(
           return context.json({ error: error.message }, 502);
         }
 
+        if (error instanceof InvoiceEmailDeliveryCommittedError) {
+          return context.json({ error: error.message, code: 'INVOICE_DELIVERY_COMMITTED_READ_FAILED' }, 409);
+        }
+        if (error instanceof InvoiceLegacyDeliveryReviewRequiredError) {
+          return context.json({ error: error.message, code: error.code }, 409);
+        }
+        if (error instanceof InvoiceDeliveryConflictError || error instanceof InvoiceDocumentPublicationConflictError) {
+          return context.json({ error: error.message }, 409);
+        }
+
         if (error instanceof InvoiceEmailSendAttemptError) {
           return context.json(
             { error: error.message },
@@ -429,7 +504,10 @@ export function createApprovedInvoiceDeliveryRoutes(
           return context.json({ error: error.message }, 502);
         }
 
-        throw error;
+        if (error instanceof InvoiceDocumentIntegrityError) {
+          return context.json({ error: error.message }, 500);
+        }
+        return context.json({ error: 'Internal server error.' }, 500);
       }
     },
   );
@@ -481,7 +559,11 @@ export function createApprovedInvoiceDeliveryRoutes(
           );
         }
 
-        if (error instanceof InvoiceDeliveryConflictError) {
+        if (error instanceof InvoiceLegacyDeliveryReviewRequiredError) {
+          return context.json({ error: error.message, code: error.code }, 409);
+        }
+
+        if (error instanceof InvoiceDeliveryConflictError || error instanceof InvoiceDocumentPublicationConflictError) {
           return context.json({ error: error.message }, 409);
         }
 
@@ -489,7 +571,10 @@ export function createApprovedInvoiceDeliveryRoutes(
           return context.json({ error: error.message }, 409);
         }
 
-        throw error;
+        if (error instanceof InvoiceDocumentIntegrityError) {
+          return context.json({ error: error.message }, 500);
+        }
+        return context.json({ error: 'Internal server error.' }, 500);
       }
     },
   );

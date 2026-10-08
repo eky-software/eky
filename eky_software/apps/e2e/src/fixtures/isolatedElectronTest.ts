@@ -59,6 +59,7 @@ import { captureFirstStartProof } from './captureFirstStartProof.js';
 import { reportFixtureProcessOutput, reportStartupProcessOutput } from './reportStartupProcessOutput.js';
 import type { FirstStartProofCapture } from '../../../desktop/e2e/workspaceFirstStartProofObservation.js';
 import { recordElectronEvidenceFailure } from '../../scripts/electronLifecycleProjection.mjs';
+import { createLegacyInvoiceProfile, type LegacyInvoiceProfile } from '../data/createLegacyInvoiceProfile.js';
 import {
   reportElectronLifecycleEvidence,
   type ElectronCleanupResult,
@@ -86,6 +87,7 @@ export interface IsolatedElectronHarness {
   runRoot: string;
   runtime: ElectronE2eRuntime;
   workspaceBackupFixture?: Readonly<ElectronWorkspaceBackupFixture>;
+  legacyInvoiceProfile?: Readonly<LegacyInvoiceProfile>;
 }
 
 interface IsolatedElectronFixtures {
@@ -102,6 +104,7 @@ interface IsolatedElectronOptions {
     | 'workspaceBackupImport'
     | 'workspaceBackupReplacement';
   e2eWorkspaceBackupFixture: 'activeReplacement' | 'none' | 'synthetic';
+  e2eLegacyInvoiceProfile: 'none' | 'sent';
 }
 
 const MAX_ELECTRON_LAUNCH_OBSERVATIONS = 64;
@@ -119,6 +122,7 @@ export const test = base.extend<
   e2eNativeOpenDialogMode: ['accept', { option: true }],
   e2eNativeOpenDialogPurpose: ['invoicePdfArchive', { option: true }],
   e2eWorkspaceBackupFixture: ['none', { option: true }],
+  e2eLegacyInvoiceProfile: ['none', { option: true }],
   e2eElectron: async (
     {
       e2eBackendStartupFault,
@@ -127,6 +131,7 @@ export const test = base.extend<
       e2eNativeOpenDialogMode,
       e2eNativeOpenDialogPurpose,
       e2eWorkspaceBackupFixture,
+      e2eLegacyInvoiceProfile,
     },
     use,
     testInfo,
@@ -138,6 +143,9 @@ export const test = base.extend<
     const scenarioId = readE2eScenarioId(testInfo.title);
     const runRoot = createE2eRunRoot();
     const paths = createE2eWorkerPaths(runRoot, scenarioId);
+    if (e2eLegacyInvoiceProfile !== 'none' && e2eWorkspaceBackupFixture !== 'none') {
+      throw new Error('Legacy invoice and backup fixtures cannot share a profile.');
+    }
     if (
       e2eWorkspaceBackupFixture === 'synthetic' &&
       e2eNativeOpenDialogPurpose !== 'workspaceBackupImport' &&
@@ -155,7 +163,8 @@ export const test = base.extend<
         'Active workspace backup requires the replacement dialog purpose.',
       );
     }
-    const workspaceBackupFixture = await prepareElectronWorkspaceBackup({
+    const workspaceBackupFixture = await prepareElectronFixture({
+      stage: 'workspaceBackup',
       prepare: async () =>
         e2eWorkspaceBackupFixture === 'synthetic'
           ? await createElectronWorkspaceBackupFixture({
@@ -212,6 +221,19 @@ export const test = base.extend<
         userDataPath: runtime.userDataPath,
       });
     }
+    const legacyInvoiceProfile = await prepareElectronFixture({
+      stage: 'legacyInvoiceProfile',
+      prepare: async () => e2eLegacyInvoiceProfile === 'sent'
+        ? await createLegacyInvoiceProfile({ runRoot, userDataPath: runtime.userDataPath })
+        : undefined,
+      report: async (preparation) => {
+        await reportElectronLifecycleEvidence(testInfo, {
+          launch: [], observationsTruncated: false,
+          cleanup: { api: 'notStarted', runtime: 'notStarted', port: 'notStarted', runRoot: 'retained' },
+          preparation,
+        });
+      },
+    });
     let api: APIRequestContext | undefined;
     let electronApp: ElectronApplication | undefined;
     let windowsBridge: OwnedWindowsElectronBridge | undefined;
@@ -428,6 +450,7 @@ export const test = base.extend<
         },
         runRoot,
         runtime,
+        ...(legacyInvoiceProfile === undefined ? {} : { legacyInvoiceProfile }),
         ...(workspaceBackupFixture === undefined
           ? {}
           : { workspaceBackupFixture }),
@@ -519,16 +542,17 @@ function seedLegacyWorkspaceForActiveReplacement(input: {
   cpSync(input.sourceDocumentsRoot, documentsRoot, { recursive: true });
 }
 
-export async function prepareElectronWorkspaceBackup(input: {
-  prepare(): Promise<Readonly<ElectronWorkspaceBackupFixture> | undefined>;
+export async function prepareElectronFixture<T>(input: {
+  stage: ElectronPreparationFailureEvidence['stage'];
+  prepare(): Promise<T>;
   report(evidence: ElectronPreparationFailureEvidence, error: unknown): Promise<void>;
-}): Promise<Readonly<ElectronWorkspaceBackupFixture> | undefined> {
+}): Promise<T> {
   try {
     return await input.prepare();
   } catch (error) {
     try {
       await input.report({
-        stage: 'workspaceBackup',
+        stage: input.stage,
         backend: error instanceof E2eBackendStartupFailure ? error.evidence : null,
       }, error);
     } catch {

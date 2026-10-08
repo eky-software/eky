@@ -127,7 +127,12 @@ export async function captureWorkspaceSuccessProfileEvidence(input,
     const profile = support.createDesktopProfilePaths(resolve(proofRoot, 'user-data'));
     const logDirectory = resolve(profile.runtimeRoot, 'logs', 'desktop');
     if (checkpoint !== 'sourceBaseline') await directory(logDirectory);
-    const events = checkpoint === 'sourceBaseline' ? [] : await readLifecycleEvents(logDirectory);
+    // The shared reader also owns legacy failure evidence; this checkpoint
+    // retains only its existing lifecycle identity contract, without filtering failures.
+    const events = checkpoint === 'sourceBaseline' ? [] : (await readLifecycleEvents(logDirectory))
+      .map(({ appVersion, buildRevision, eventId, eventName, runtimeInstanceId }) => ({
+        appVersion, buildRevision, eventId, eventName, runtimeInstanceId,
+      }));
     return {
       schemaVersion: 1, checkpoint, runNonce: request.runNonce,
       artifactDescriptorSha256: request.artifactDescriptorSha256,

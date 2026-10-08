@@ -1,13 +1,21 @@
 import Database from 'better-sqlite3';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { DatabaseConnection } from '../../../database/connection/createDatabaseConnection.js';
+import {
+  migrationDirectories,
+  removeDirectories,
+  temporaryDirectory,
+} from '../../../database/migration/invoiceContentRevisionMigration.fixture.js';
 import { runMigrations } from '../../../database/migration/runMigrations.js';
 import {
   createInitialCreditDraft,
   prepareUpdatedCreditDraft,
 } from '../application/creditInvoiceDraftModel.js';
+import { generateApprovedInvoicePdfDocument } from '../application/generateApprovedInvoicePdfDocument.js';
+import { getApprovedInvoice } from '../application/getApprovedInvoice.js';
 import type { ApprovedInvoiceView } from '../domain/approvedInvoiceView.js';
+import type { ApprovedInvoicePdfContent } from '../domain/approvedInvoicePdfContent.js';
 import { calculateInvoiceLine } from '../domain/calculateInvoiceLine.js';
 import { calculateInvoiceTotals } from '../domain/calculateInvoiceTotals.js';
 import type { PriceInputMode } from '../domain/invoiceCalculation.js';
@@ -18,6 +26,10 @@ import { SqliteInvoiceApprovalRepository } from './sqliteInvoiceApprovalReposito
 import { SqliteInvoiceCreditApprovalRepository } from './sqliteInvoiceCreditApprovalRepository.js';
 import { SqliteInvoiceCreditDraftRepository } from './sqliteInvoiceCreditDraftRepository.js';
 import { SqliteInvoiceDraftRepository } from './sqliteInvoiceDraftRepository.js';
+import { SqliteInvoiceContentRevisionReader } from './sqliteInvoiceContentRevisionReader.js';
+import { SqliteInvoiceLegacyRevisionPromoter } from './sqliteInvoiceLegacyRevisionPromoter.js';
+import { SqliteInvoiceDocumentRepository } from './sqliteInvoiceDocumentRepository.js';
+import { LocalInvoiceDocumentStorage } from './localInvoiceDocumentStorage.js';
 
 describe('SqliteInvoiceCreditApprovalRepository', () => {
   let database: DatabaseConnection;
@@ -25,13 +37,15 @@ describe('SqliteInvoiceCreditApprovalRepository', () => {
   beforeEach(async () => {
     database = new Database(':memory:');
     database.pragma('foreign_keys = ON');
-    await runMigrations(database);
+    await runMigrations(database, { migrationsDirectory: migrationDirectories().before });
     insertFixture(database);
   });
 
   afterEach(() => {
     database.close();
   });
+
+  afterAll(removeDirectories);
 
   const roundingCases = [
     { priceInputMode: 'net', unitPriceCents: 1, net: 2, vat: 1, gross: 3 },
@@ -56,7 +70,7 @@ describe('SqliteInvoiceCreditApprovalRepository', () => {
       expect(source.lines.reduce((sum, line) => sum + line.vatCents, 0)).not.toBe(vat);
       const draft = await persistRoundingCreditDraft(database, source, 'rounding-credit-draft-1');
       expect(draft.totals).toEqual(expectedTotals);
-      const repository = new SqliteInvoiceCreditApprovalRepository(database);
+      const repository = await createCreditApprovalRepository(database);
       const input = {
         ...createInput(), draftId: draft.id, invoiceId: 'rounding-credit-1',
       };
@@ -72,6 +86,10 @@ describe('SqliteInvoiceCreditApprovalRepository', () => {
       );
       expect(credit?.lines.reduce((sum, line) => sum + line.vatCents, 0)).toBe(vat);
       expect(credit?.referenceNumber).toBe('');
+      if (credit === undefined) {
+        throw new Error('Approved rounding credit is missing.');
+      }
+      await expectCreditReadAndPdfInput(database, credit);
       expect(await new SqliteInvoiceDraftRepository(database).getDraftById('company-1', draft.id)).toBeUndefined();
       expect(database.prepare('SELECT action FROM invoice_audit_events WHERE id = ?').get(input.auditEventId))
         .toEqual({ action: 'invoice.credit_approved' });
@@ -86,37 +104,46 @@ describe('SqliteInvoiceCreditApprovalRepository', () => {
     },
   );
 
-  it.each(roundingCases)(
-    'exhausts a real $priceInputMode snapshot through successive $unitPriceCents-cent source credits',
-    async ({ priceInputMode, unitPriceCents }) => {
-      const source = await createSentRoundingSnapshot(database, priceInputMode, unitPriceCents);
+  it.each([
+    ...roundingCases.map((testCase) => ({
+      ...testCase, vatRates: [2550, 2550], quantityHundredths: 100,
+    })),
+    ...(['net', 'gross'] as const).flatMap((priceInputMode) =>
+      [2, 33].map((unitPriceCents) => ({
+        priceInputMode, unitPriceCents, vatRates: [2550, 2550, 1400, 1400],
+        quantityHundredths: unitPriceCents === 33 ? 300 : 100,
+      })),
+    ),
+  ])(
+    'exhausts a real $priceInputMode snapshot through successive $unitPriceCents-cent credits at $vatRates',
+    async ({ priceInputMode, unitPriceCents, vatRates, quantityHundredths }) => {
+      const source = await createSentRoundingSnapshot(
+        database, priceInputMode, unitPriceCents, vatRates, quantityHundredths,
+      );
       const initial = await persistRoundingCreditDraft(database, source, 'rounding-credit-draft-1');
-      const firstLine = source.lines[0];
-      if (firstLine === undefined) {
-        throw new Error('Rounding source line is missing.');
-      }
       const firstDraft = prepareUpdatedCreditDraft(initial, source, [], {
         subject: initial.subject,
         note: initial.note,
         refundIban: '',
         updatedAt: initial.updatedAt,
-        lines: [{
-          lineType: 'source',
-          sourceInvoiceLineId: firstLine.id,
-          description: firstLine.description,
-          quantityHundredths: 100,
-        }],
+        lines: source.lines.filter((_, index) => index % 2 === 0).map((line) => ({
+          lineType: 'source' as const,
+          sourceInvoiceLineId: line.id,
+          description: line.description,
+          quantityHundredths,
+        })),
       });
       const draftRepository = new SqliteInvoiceDraftRepository(database);
       expect(await draftRepository.updateDraft(firstDraft)).toEqual(firstDraft);
-      const approval = new SqliteInvoiceCreditApprovalRepository(database);
+      const approval = await createCreditApprovalRepository(database);
       await expect(approval.approveCreditDraft({
         ...createInput(), draftId: firstDraft.id, invoiceId: 'rounding-credit-1',
       })).resolves.toMatchObject({ outcome: 'approved' });
 
       const lastDraft = await persistRoundingCreditDraft(database, source, 'rounding-credit-draft-2');
-      expect(lastDraft.lines).toHaveLength(1);
-      expect(lastDraft.lines[0]?.sourceInvoiceLineId).toBe(source.lines[1]?.id);
+      expect(lastDraft.lines.map((line) => line.sourceInvoiceLineId)).toEqual(
+        source.lines.filter((_, index) => index % 2 === 1).map((line) => line.id),
+      );
       await expect(approval.approveCreditDraft({
         ...createInput(),
         auditEventId: 'rounding-credit-approval-2',
@@ -134,11 +161,14 @@ describe('SqliteInvoiceCreditApprovalRepository', () => {
       expect(first.totals.netTotalCents + last.totals.netTotalCents).toBe(source.totals.netTotalCents);
       expect(first.totals.vatTotalCents + last.totals.vatTotalCents).toBe(source.totals.vatTotalCents);
       expect(first.totals.grossTotalCents + last.totals.grossTotalCents).toBe(source.totals.grossTotalCents);
+      await expectCreditReadAndPdfInput(database, first);
+      await expectCreditReadAndPdfInput(database, last);
       const creditDraftRepository = new SqliteInvoiceCreditDraftRepository(database);
       const previous = await creditDraftRepository.listPreviousCreditLineAllocations('company-1', source.id);
       expect(() => createInitialCreditDraft(source, previous, lastDraft.createdAt))
         .toThrow('Source invoice has no remaining creditable lines.');
       expect(await reader.getApprovedInvoiceById('company-1', source.id)).toEqual(source);
+      expect(database.pragma('foreign_key_check')).toEqual([]);
     },
   );
 
@@ -148,7 +178,7 @@ describe('SqliteInvoiceCreditApprovalRepository', () => {
       const source = await createSentRoundingSnapshot(database, priceInputMode, 2);
       const draft = await persistRoundingCreditDraft(database, source, 'rounding-credit-draft-1');
       const before = readRoundingApprovalState(database, draft.id);
-      const repository = new SqliteInvoiceCreditApprovalRepository(database);
+      const repository = await createCreditApprovalRepository(database);
 
       await expect(repository.approveCreditDraft({
         ...createInput(),
@@ -169,7 +199,7 @@ describe('SqliteInvoiceCreditApprovalRepository', () => {
       const source = await createSentRoundingSnapshot(database, priceInputMode, 2);
       const draft = await persistRoundingCreditDraft(database, source, 'rounding-credit-draft-1');
       const before = readRoundingApprovalState(database, draft.id);
-      const repository = new SqliteInvoiceCreditApprovalRepository(database);
+      const repository = await createCreditApprovalRepository(database);
 
       await expect(repository.approveCreditDraft({
         ...createInput(), companyId: 'other-company', draftId: draft.id,
@@ -188,11 +218,17 @@ describe('SqliteInvoiceCreditApprovalRepository', () => {
   );
 
   it('approves a credit draft with numbering, source links, and audit atomically', async () => {
-    const repository = new SqliteInvoiceCreditApprovalRepository(database);
+    const repository = await createCreditApprovalRepository(database);
 
-    await expect(repository.approveCreditDraft(createInput())).resolves.toEqual({
+    const result = await repository.approveCreditDraft(createInput());
+    const revision = database.prepare<[], { id: string }>(
+      "SELECT id FROM invoice_content_revisions WHERE company_id = 'company-1' AND invoice_id = 'credit-invoice-1'",
+    ).get();
+    expect(revision).toBeDefined();
+    expect(result).toEqual({
       outcome: 'approved',
       invoice: {
+        revisionKey: { companyId: 'company-1', invoiceId: 'credit-invoice-1', revisionId: revision?.id },
         invoiceId: 'credit-invoice-1',
         draftId: 'credit-draft-1',
         invoiceNumber: '20260002',
@@ -271,7 +307,7 @@ describe('SqliteInvoiceCreditApprovalRepository', () => {
         `,
       )
       .run();
-    const repository = new SqliteInvoiceCreditApprovalRepository(database);
+    const repository = await createCreditApprovalRepository(database);
 
     await expect(repository.approveCreditDraft(createInput())).resolves.toMatchObject({
       outcome: 'approved',
@@ -309,7 +345,7 @@ describe('SqliteInvoiceCreditApprovalRepository', () => {
 
   it('rechecks cumulative credit capacity inside the transaction', async () => {
     insertPreviousCredit(database, 60);
-    const repository = new SqliteInvoiceCreditApprovalRepository(database);
+    const repository = await createCreditApprovalRepository(database);
 
     await expect(repository.approveCreditDraft(createInput())).rejects.toBeInstanceOf(
       InvoiceCreditError,
@@ -331,7 +367,7 @@ describe('SqliteInvoiceCreditApprovalRepository', () => {
         `,
       )
       .run();
-    const repository = new SqliteInvoiceCreditApprovalRepository(database);
+    const repository = await createCreditApprovalRepository(database);
 
     await expect(repository.approveCreditDraft(createInput())).resolves.toMatchObject({
       outcome: 'approved',
@@ -354,11 +390,15 @@ describe('SqliteInvoiceCreditApprovalRepository', () => {
       vat_cents: 638,
       gross_cents: 3_138,
     });
+    const credit = await new SqliteApprovedInvoiceReader(database)
+      .getApprovedInvoiceById('company-1', 'credit-invoice-1');
+    if (credit === undefined) throw new Error('Manual credit is missing.');
+    await expectCreditReadAndPdfInput(database, credit);
   });
 
   it('approves a reverse charge credit with inherited tax snapshots and no VAT', async () => {
     convertFixtureToReverseCharge(database);
-    const repository = new SqliteInvoiceCreditApprovalRepository(database);
+    const repository = await createCreditApprovalRepository(database);
 
     await expect(
       repository.approveCreditDraft(createInput()),
@@ -385,6 +425,10 @@ describe('SqliteInvoiceCreditApprovalRepository', () => {
       vat_cents: 0,
       gross_cents: 5_000,
     });
+    const credit = await new SqliteApprovedInvoiceReader(database)
+      .getApprovedInvoiceById('company-1', 'credit-invoice-1');
+    if (credit === undefined) throw new Error('Reverse charge credit is missing.');
+    await expectCreditReadAndPdfInput(database, credit);
   });
 
   it('returns a conflict if the source invoice is no longer sent', async () => {
@@ -393,7 +437,7 @@ describe('SqliteInvoiceCreditApprovalRepository', () => {
         "UPDATE invoices SET status = 'approved' WHERE id = 'source-invoice-1'",
       )
       .run();
-    const repository = new SqliteInvoiceCreditApprovalRepository(database);
+    const repository = await createCreditApprovalRepository(database);
 
     await expect(repository.approveCreditDraft(createInput())).resolves.toEqual({
       outcome: 'conflict',
@@ -428,7 +472,7 @@ describe('SqliteInvoiceCreditApprovalRepository', () => {
         `,
       )
       .run();
-    const repository = new SqliteInvoiceCreditApprovalRepository(database);
+    const repository = await createCreditApprovalRepository(database);
 
     await expect(repository.approveCreditDraft(createInput())).rejects.toThrow();
 
@@ -442,18 +486,21 @@ async function createSentRoundingSnapshot(
   database: DatabaseConnection,
   priceInputMode: PriceInputMode,
   unitPriceCents: number,
+  vatRates: readonly number[] = [2550, 2550],
+  quantityHundredths = 100,
 ): Promise<ApprovedInvoiceView> {
-  const lines = [1, 2].map((position) => ({
+  await runMigrations(database, { migrationsDirectory: migrationDirectories().after });
+  const lines = vatRates.map((vatRateBasisPoints, index) => ({
     ...calculateInvoiceLine({
-      quantityHundredths: 100,
+      quantityHundredths,
       unitPriceCents,
-      vatRateBasisPoints: 2550,
+      vatRateBasisPoints,
       priceInputMode,
       discount: { type: 'none' },
     }),
-    id: `rounding-source-line-${position}`,
+    id: `rounding-source-line-${index + 1}`,
     sourceInvoiceLineId: null,
-    position,
+    position: index + 1,
     code: '',
     description: 'Rounding test work',
     unit: 'kpl',
@@ -580,8 +627,53 @@ async function persistRoundingCreditDraft(
   return storedDraft;
 }
 
+async function expectCreditReadAndPdfInput(
+  database: DatabaseConnection,
+  credit: ApprovedInvoiceView,
+): Promise<void> {
+  const reader = new SqliteApprovedInvoiceReader(database);
+  const input = { companyId: credit.companyId, invoiceId: credit.id };
+  await expect(getApprovedInvoice(input, reader)).resolves.toEqual(credit);
+  let pdfInput: ApprovedInvoicePdfContent | undefined;
+  await generateApprovedInvoicePdfDocument({
+    ...input, createdAt: '2026-07-23T12:00:00.000Z',
+  }, {
+    invoiceContentRevisionReader: new SqliteInvoiceContentRevisionReader(database),
+    invoiceLegacyRevisionPromoter: new SqliteInvoiceLegacyRevisionPromoter(database),
+    invoiceDocumentRepository: new SqliteInvoiceDocumentRepository(database),
+    invoiceDocumentStorage: new LocalInvoiceDocumentStorage(temporaryDirectory()),
+    async renderApprovedInvoicePdf(invoice) {
+      pdfInput = invoice;
+      return new TextEncoder().encode('%PDF-test');
+    },
+  });
+  expect(pdfInput).toMatchObject({
+    invoiceKind: 'credit', invoiceNumber: credit.invoiceNumber,
+    creditedInvoiceNumber: credit.creditedInvoiceNumber,
+    creditedInvoiceDate: credit.creditedInvoiceDate,
+    taxTreatment: credit.taxTreatment,
+    totals: {
+      netTotalCents: credit.totals.netTotalCents,
+      vatTotalCents: credit.totals.vatTotalCents,
+      grossTotalCents: credit.totals.grossTotalCents,
+    },
+    vatBreakdown: credit.totals.vatBreakdown,
+  });
+  expect(pdfInput?.lines).toEqual(credit.lines.map((line) => ({
+    code: line.code, description: line.description,
+    quantityHundredths: line.quantityHundredths, unit: line.unit,
+    unitPriceCents: line.unitPriceCents, vatRateBasisPoints: line.vatRateBasisPoints,
+    discount: line.discount, netCents: line.netCents, grossCents: line.grossCents,
+  })));
+  expect(await reader.getApprovedInvoiceById(credit.companyId, credit.id)).toEqual(credit);
+}
+
 function readRoundingApprovalState(database: DatabaseConnection, draftId: string) {
   return {
+    revisions: database.prepare('SELECT * FROM invoice_content_revisions ORDER BY id').all(),
+    revisionLines: database.prepare('SELECT * FROM invoice_revision_lines ORDER BY revision_id, line_id').all(),
+    revisionVat: database.prepare('SELECT * FROM invoice_revision_vat_breakdown ORDER BY revision_id, vat_rate_basis_points').all(),
+    currentRevisions: database.prepare('SELECT * FROM invoice_current_revisions ORDER BY company_id, invoice_id').all(),
     invoices: database.prepare('SELECT * FROM invoices ORDER BY id').all(),
     lines: database.prepare('SELECT * FROM invoice_lines ORDER BY id').all(),
     audits: database.prepare('SELECT * FROM invoice_audit_events ORDER BY id').all(),
@@ -589,6 +681,12 @@ function readRoundingApprovalState(database: DatabaseConnection, draftId: string
     draft: database.prepare('SELECT * FROM invoice_drafts WHERE id = ?').get(draftId),
     draftLines: database.prepare('SELECT * FROM invoice_draft_lines WHERE invoice_draft_id = ? ORDER BY position').all(draftId),
   };
+}
+
+async function createCreditApprovalRepository(database: DatabaseConnection) {
+  // Legacy customizations, including reverse charge, precede the real backfill.
+  await runMigrations(database, { migrationsDirectory: migrationDirectories().after });
+  return new SqliteInvoiceCreditApprovalRepository(database);
 }
 
 function createInput(): ApproveCreditInvoiceDraftPersistenceInput {

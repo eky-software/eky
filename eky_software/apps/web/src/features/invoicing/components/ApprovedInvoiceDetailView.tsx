@@ -21,6 +21,8 @@ import type { SendApprovedInvoiceEmailDryRunState } from '../hooks/useSendApprov
 import type { SendApprovedInvoiceEmailSmtpState } from '../hooks/useSendApprovedInvoiceEmailSmtp.js';
 import type { SendApprovedInvoiceEmailSmtpTestState } from '../hooks/useSendApprovedInvoiceEmailSmtpTest.js';
 import { uiText } from '../../../i18n/fi.js';
+import type { OpenPreservedInvoicePdf } from '../approved/openPreservedInvoicePdf.js';
+import type { OpenInvoiceDeliveryEventPdf } from '../approved/openInvoiceDeliveryEventPdf.js';
 
 type ApprovedInvoiceReadViewState = Pick<
   ApprovedInvoiceState,
@@ -36,7 +38,7 @@ type ApprovedInvoiceEmailViewState = Pick<
 >;
 type InvoiceDeliveryHistoryViewState = Pick<
   InvoiceDeliveryEventListState,
-  'errorMessage' | 'events' | 'isLoading'
+  'errorMessage' | 'events' | 'isLoading' | 'invoiceId'
 >;
 type InvoiceCreditContextViewState = Pick<
   InvoiceCreditContextState,
@@ -101,6 +103,8 @@ interface ApprovedInvoiceDetailViewProps {
   onMarkSent(id: string): void;
   onMarkInvoicePaid(id: string, paidOn: string): void;
   onOpenPdf(id: string): void;
+  onOpenPreservedPdf: OpenPreservedInvoicePdf;
+  onOpenDeliveryEventPdf: OpenInvoiceDeliveryEventPdf;
   onOpenRelatedDraft(id: string): void;
   onOpenRelatedInvoice(id: string): void;
   onPrepareEmail(id: string): void;
@@ -145,6 +149,8 @@ export function ApprovedInvoiceDetailView({
   onMarkSent,
   onMarkInvoicePaid,
   onOpenPdf,
+  onOpenPreservedPdf,
+  onOpenDeliveryEventPdf,
   onOpenRelatedDraft,
   onOpenRelatedInvoice,
   onPrepareEmail,
@@ -189,14 +195,16 @@ export function ApprovedInvoiceDetailView({
     );
   }
 
+  const invoice = invoiceState.approvedInvoice;
+  const isCurrentHistory = deliveryHistoryState.invoiceId === invoice.id;
   return (
     <ApprovedInvoicePreview
       cancellationErrorMessage={cancellationState.errorMessage}
       copyErrorMessage={copyState.errorMessage}
       creditContext={creditContextState.creditContext}
       creditContextErrorMessage={creditContextState.errorMessage}
-      deliveryEvents={deliveryHistoryState.events}
-      deliveryEventsErrorMessage={deliveryHistoryState.errorMessage}
+      deliveryEvents={isCurrentHistory ? deliveryHistoryState.events : []}
+      deliveryEventsErrorMessage={isCurrentHistory ? deliveryHistoryState.errorMessage : null}
       email={emailState.email}
       emailErrorMessage={emailState.errorMessage}
       emailSendErrorMessage={emailSendState.errorMessage}
@@ -213,7 +221,7 @@ export function ApprovedInvoiceDetailView({
       isCopyingInvoice={copyState.isCopying}
       isCreatingPdf={pdfState.isCreating}
       isLoadingCreditContext={creditContextState.isLoading}
-      isLoadingDeliveryEvents={deliveryHistoryState.isLoading}
+      isLoadingDeliveryEvents={!isCurrentHistory || deliveryHistoryState.isLoading}
       isMarkingSent={markSentState.isMarkingSent}
       isPdfAvailable={pdfState.document !== null}
       isPreparingEmail={emailState.isPreparing}
@@ -236,6 +244,8 @@ export function ApprovedInvoiceDetailView({
       onMarkSent={onMarkSent}
       onMarkInvoicePaid={onMarkInvoicePaid}
       onOpenPdf={onOpenPdf}
+      onOpenPreservedPdf={onOpenPreservedPdf}
+      onOpenDeliveryEventPdf={onOpenDeliveryEventPdf}
       onOpenRelatedDraft={onOpenRelatedDraft}
       onOpenRelatedInvoice={onOpenRelatedInvoice}
       onPrepareEmail={onPrepareEmail}

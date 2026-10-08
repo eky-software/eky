@@ -227,10 +227,7 @@ async function proveMixedScenario(input: {
     userDataRoot: input.proofRoot,
   });
   await input.progress.enter('mixedInvalidFixture');
-  const invalidPassive = await createWorkspaceFirstStartProofFixture({
-    factory: input.factories.current,
-    userDataRoot: input.proofRoot,
-  });
+  const invalidPassive = await input.factories.createCurrentFixture(input.proofRoot);
   await corruptWorkspaceFirstStartProofDatabase(invalidPassive);
   const fixtures = [active, compatiblePassive, invalidPassive] as const;
   await input.progress.enter('mixedStores');
@@ -394,10 +391,7 @@ async function proveAllCurrentScenario(input: {
   await input.progress.enter('allCurrentFixtures');
   const fixtures = await Promise.all(
     [0, 1, 2].map(() =>
-      createWorkspaceFirstStartProofFixture({
-        factory: input.factories.current,
-        userDataRoot: input.proofRoot,
-      }),
+      input.factories.createCurrentFixture(input.proofRoot),
     ),
   );
   const active = requireFixture(fixtures[0]);

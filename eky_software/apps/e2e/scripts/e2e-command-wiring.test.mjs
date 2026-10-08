@@ -35,6 +35,8 @@ function assertWiring(rootManifest, e2eManifest) {
   assert.deepEqual(e2eManifest.scripts['e2e:electron:prepare'].split(' && '), preparations);
   assert.equal(e2eManifest.scripts['e2e:prepare-owner'], 'node scripts/prepare-windows-backend-owner.mjs');
   assert.deepEqual(e2eManifest.scripts['e2e:prepare'].split(' && '), preparations.slice(1, 5));
+  assert.equal(e2eManifest.scripts['e2e:packaged:legacy'],
+    'pnpm e2e:prepare && pnpm --filter @eky/desktop package:windows && playwright test --config playwright.packaged-legacy.config.ts');
   for (const tag of ['security', 'fault']) {
     assert.equal(rootManifest.scripts[`test:e2e:${tag}`], `pnpm --filter @eky/e2e e2e:${tag}`);
     assert.equal(
@@ -43,6 +45,15 @@ function assertWiring(rootManifest, e2eManifest) {
     );
   }
 }
+
+test('packaged legacy recovery requires preparation and a fresh hardened package', () => {
+  for (const removed of ['pnpm e2e:prepare && ', 'pnpm --filter @eky/desktop package:windows && ']) {
+    const changed = structuredClone(e2e);
+    changed.scripts['e2e:packaged:legacy'] = changed.scripts['e2e:packaged:legacy'].replace(removed, '');
+    assert.throws(() => assertWiring(root, changed), assert.AssertionError);
+  }
+  assert.doesNotMatch(e2e.scripts['e2e:all'], /packaged/u);
+});
 
 const consumerContracts = ['linuxConsumerLossContract', 'linuxConsumerLossRecords', 'linuxConsumerLossOutcome',
   'linuxConsumerSessionProbe', 'linuxConsumerLossInit', 'linuxConsumerExchange', 'linuxConsumerCommandGate',
@@ -115,6 +126,34 @@ function assertWindowsOwnerCiPreparation(source) {
 }
 
 const ci = readFileSync(new URL('../../../../.github/workflows/ci.yml', import.meta.url), 'utf8');
+function assertPackagedLegacyCi(source) {
+  const job = source.split('  e2e-electron-windows-critical:\n')[1]?.split('\n  windows-contracts:')[0];
+  assert.ok(job);
+  const required = [
+    ['Package Windows desktop', 'pnpm --filter @eky/desktop package:windows'],
+    ['Run packaged Windows smoke', 'pnpm --filter @eky/desktop smoke:windows'],
+    ['Prepare packaged legacy recovery runtime', 'pnpm --filter @eky/e2e e2e:prepare'],
+    ['Run packaged legacy recovery', 'pnpm --filter @eky/e2e exec playwright test --config playwright.packaged-legacy.config.ts'],
+    ['Run critical Electron E2E journeys', 'pnpm test:e2e:electron:critical'],
+  ];
+  let previous = -1;
+  for (const [name, command] of required) {
+    const step = `      - name: ${name}\n        run: ${command}\n`;
+    const index = job.indexOf(step);
+    assert.ok(index > previous, name);
+    assert.equal(job.indexOf(step, index + 1), -1);
+    previous = index;
+  }
+}
+test('normal Windows CI binds legacy recovery to fresh packaging and required preparation', () => {
+  assertPackagedLegacyCi(ci);
+  for (const mutate of [
+    source => source.replace('        run: pnpm --filter @eky/e2e e2e:prepare\n', '        run: echo omitted\n'),
+    source => source.replace('Run packaged legacy recovery\n', 'Run packaged legacy recovery\n        continue-on-error: true\n'),
+    source => source.replace('Run packaged legacy recovery\n', 'Run packaged legacy recovery\n        if: inputs.electron_diagnostic\n'),
+    source => source.replace('Run packaged legacy recovery\n', 'Skipped legacy recovery\n'),
+  ]) assert.throws(() => assertPackagedLegacyCi(mutate(ci)), assert.AssertionError);
+});
 test('the normal Windows consumer prepares the existing SDK before its actual owner build', () => {
   assertWindowsOwnerCiPreparation(ci);
 });

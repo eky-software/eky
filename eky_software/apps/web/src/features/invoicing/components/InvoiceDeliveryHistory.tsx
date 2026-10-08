@@ -1,19 +1,25 @@
 import type { InvoiceDeliveryEventSummary } from '@eky/api-client';
 
+import { InvoiceDeliveryPdfAction } from './InvoiceDeliveryPdfAction.js';
+import type { OpenInvoiceDeliveryEventPdf } from '../approved/openInvoiceDeliveryEventPdf.js';
 import styles from './InvoiceDeliveryHistory.module.css';
 import { uiText } from '../../../i18n/fi.js';
 import { formatFinnishDateTime } from '../../../shared/date/formatFinnishDateTime.js';
 
 interface InvoiceDeliveryHistoryProps {
+  invoiceId: string | null;
   errorMessage: string | null;
   events: InvoiceDeliveryEventSummary[];
   isLoading: boolean;
+  onOpenPdf: OpenInvoiceDeliveryEventPdf;
 }
 
 export function InvoiceDeliveryHistory({
+  invoiceId,
   errorMessage,
   events,
   isLoading,
+  onOpenPdf,
 }: InvoiceDeliveryHistoryProps): React.JSX.Element {
   return (
     <section
@@ -42,15 +48,19 @@ export function InvoiceDeliveryHistory({
             <span role="columnheader">{uiText.invoicing.invoiceEmailTo}</span>
             <span role="columnheader">{uiText.invoicing.invoiceEmailCc}</span>
             <span role="columnheader">{uiText.invoicing.status}</span>
+            <span role="columnheader">{uiText.invoicing.invoiceDeliveryPdf}</span>
           </div>
           {events.map((event) => (
-            <div className={styles.row} key={event.id} role="row">
+            <div className={styles.row} key={`${invoiceId}:${event.id}`} role="row">
               <span role="cell">{formatDeliveryTime(event.createdAt)}</span>
               <span role="cell">
                 {deliveryMethodLabel(event.deliveryMethod)}
               </span>
               <span role="cell">
                 {deliveryProviderLabel(event.provider)}
+                <small className={styles.detail}>
+                  {uiText.invoicing.invoiceDeliveryModes[event.sendMode]}
+                </small>
               </span>
               <span role="cell">
                 {event.recipientEmail || uiText.invoicing.notApplicable}
@@ -64,6 +74,18 @@ export function InvoiceDeliveryHistory({
                   <small className={styles.error}>
                     {deliveryErrorLabel(event.status)}
                   </small>
+                )}
+              </span>
+              <span role="cell">
+                <small className={styles.detail}>
+                  {uiText.invoicing.invoiceDeliveryDocumentSources[event.documentSource]}
+                </small>
+                {invoiceId === null || event.documentSource === 'legacyMissingDocument' ? null : (
+                  <InvoiceDeliveryPdfAction
+                    invoiceId={invoiceId}
+                    eventId={event.id}
+                    onOpen={onOpenPdf}
+                  />
                 )}
               </span>
             </div>

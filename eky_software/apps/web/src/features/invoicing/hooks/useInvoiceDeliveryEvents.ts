@@ -3,7 +3,7 @@ import {
   type EkyApiClient,
   type InvoiceDeliveryEventSummary,
 } from '@eky/api-client';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { uiText } from '../../../i18n/fi.js';
 
@@ -13,6 +13,7 @@ type InvoiceDeliveryEventsClient = Pick<
 >;
 
 export interface InvoiceDeliveryEventListState {
+  invoiceId: string | null;
   errorMessage: string | null;
   events: InvoiceDeliveryEventSummary[];
   isLoading: boolean;
@@ -26,28 +27,46 @@ export function useInvoiceDeliveryEvents(
   const [events, setEvents] = useState<InvoiceDeliveryEventSummary[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [invoiceId, setInvoiceId] = useState<string | null>(null);
+  const generation = useRef(0);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; ++generation.current; };
+  }, []);
 
   function clearEvents(): void {
+    ++generation.current;
+    setInvoiceId(null);
     setEvents([]);
     setErrorMessage(null);
     setIsLoading(false);
   }
 
   async function loadEvents(invoiceId: string): Promise<void> {
+    if (!mounted.current) return;
+    const requestGeneration = ++generation.current;
+    const isCurrent = (): boolean =>
+      mounted.current && requestGeneration === generation.current;
+    setInvoiceId(invoiceId);
+    setEvents([]);
     setErrorMessage(null);
     setIsLoading(true);
 
     try {
-      setEvents(await listInvoiceDeliveryEventsWithClient(apiClient, invoiceId));
+      const result = await listInvoiceDeliveryEventsWithClient(apiClient, invoiceId);
+      if (isCurrent()) setEvents(result);
     } catch (error) {
-      setEvents([]);
-      setErrorMessage(getInvoiceDeliveryEventsErrorMessage(error));
+      if (isCurrent()) {
+        setEvents([]);
+        setErrorMessage(getInvoiceDeliveryEventsErrorMessage(error));
+      }
     } finally {
-      setIsLoading(false);
+      if (isCurrent()) setIsLoading(false);
     }
   }
 
-  return { clearEvents, errorMessage, events, isLoading, loadEvents };
+  return { clearEvents, errorMessage, events, invoiceId, isLoading, loadEvents };
 }
 
 export function listInvoiceDeliveryEventsWithClient(

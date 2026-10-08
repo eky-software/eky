@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { InvoiceDeliveryEvent } from '../domain/invoiceDeliveryEvent.js';
 import { InvoiceDeliveryEventValidationError } from '../domain/invoiceDeliveryEventRules.js';
+import type { InvoiceDryRunDeliveryEvent } from '../domain/invoiceRecordedDeliveryEvent.js';
 import type { InvoiceDeliveryEventRepository } from '../ports/invoiceDeliveryEventRepository.js';
 import {
   recordInvoiceDeliveryEvent,
@@ -9,15 +9,13 @@ import {
 } from './recordInvoiceDeliveryEvent.js';
 
 class FakeInvoiceDeliveryEventRepository
-  implements InvoiceDeliveryEventRepository
+  implements Pick<InvoiceDeliveryEventRepository, 'saveDeliveryEvent'>
 {
-  events: InvoiceDeliveryEvent[] = [];
-
-  async completeDeliveryEvent(): Promise<void> {}
+  events: InvoiceDryRunDeliveryEvent[] = [];
 
   async saveDeliveryEvent(
-    event: InvoiceDeliveryEvent,
-  ): Promise<InvoiceDeliveryEvent> {
+    event: InvoiceDryRunDeliveryEvent,
+  ): Promise<InvoiceDryRunDeliveryEvent> {
     this.events.push(event);
 
     return event;
@@ -25,11 +23,12 @@ class FakeInvoiceDeliveryEventRepository
 }
 
 describe('recordInvoiceDeliveryEvent', () => {
-  it('records a normalized delivery event through the repository', async () => {
+  it.each(['succeeded', 'failed'] as const)('records a normalized %s dry-run event through the repository', async (status) => {
     const repository = new FakeInvoiceDeliveryEventRepository();
+    const input = createInput({ status });
 
     await expect(
-      recordInvoiceDeliveryEvent(createInput(), {
+      recordInvoiceDeliveryEvent(input, {
         invoiceDeliveryEventRepository: repository,
       }),
     ).resolves.toEqual({
@@ -48,8 +47,9 @@ describe('recordInvoiceDeliveryEvent', () => {
       providerMessageId: null,
       recipientEmail: 'customer@example.fi',
       safeErrorMessage: null,
-      status: 'prepared',
+      status,
       subject: 'Lasku 20260001',
+      target: input.target,
       technicalErrorCode: null,
     });
 
@@ -68,14 +68,49 @@ describe('recordInvoiceDeliveryEvent', () => {
 
     expect(event.bodyPreview).toHaveLength(500);
     expect(event.bodyPreview).toBe(longBody.trim().slice(0, 500));
+    expect(repository.events[0]).not.toHaveProperty('body');
   });
 
-  it('rejects invalid delivery enums before writing', async () => {
+  it('normalizes the target and flat identity fields together', async () => {
+    const repository = new FakeInvoiceDeliveryEventRepository();
+    const input = createInput();
+
+    await expect(
+      recordInvoiceDeliveryEvent({
+        ...input,
+        target: {
+          ...input.target,
+          companyId: ' dev-company ',
+          invoiceId: ' invoice-1 ',
+          documentId: ' document-1 ',
+          revisionId: ' revision-1 ',
+        },
+      }, { invoiceDeliveryEventRepository: repository }),
+    ).resolves.toMatchObject({
+      companyId: 'dev-company',
+      invoiceId: 'invoice-1',
+      documentId: 'document-1',
+      target: input.target,
+    });
+  });
+
+  it.each([
+    ['unknown provider', { provider: 'webmailAutomation' }],
+    ['SMTP provider', { provider: 'smtp' }],
+    ['manual provider', { provider: 'manual' }],
+    ['prepared status', { status: 'prepared' }],
+    ['attempted status', { status: 'attempted' }],
+    ['uncertain outcome', { status: 'outcomeUnknown' }],
+    ['manual method', { deliveryMethod: 'manual' }],
+    ['print method', { deliveryMethod: 'print' }],
+    ['legacy target', { target: { kind: 'legacyOriginal' } }],
+    ['missing target', { target: undefined }],
+  ] as const)('rejects runtime %s before writing', async (_label, overrides) => {
     const repository = new FakeInvoiceDeliveryEventRepository();
 
     await expect(
       recordInvoiceDeliveryEvent(
-        createInput({ provider: 'webmailAutomation' }),
+        { ...createInput(), ...overrides } as unknown as RecordInvoiceDeliveryEventInput,
         { invoiceDeliveryEventRepository: repository },
       ),
     ).rejects.toBeInstanceOf(InvoiceDeliveryEventValidationError);
@@ -103,15 +138,21 @@ function createInput(
   return {
     bodyPreview: ' Liitteenä lasku. ',
     ccEmail: ' copy@example.fi ',
-    companyId: ' dev-company ',
+    target: {
+      kind: 'revision',
+      companyId: 'dev-company',
+      invoiceId: 'invoice-1',
+      revisionId: 'revision-1',
+      documentId: 'document-1',
+      sha256: '0'.repeat(64),
+      sizeBytes: 2048,
+    },
     createdAt: '2026-07-10T10:00:00.000Z',
     createdBy: ' user-1 ',
     deliveryMethod: 'email',
-    documentId: ' document-1 ',
-    invoiceId: ' invoice-1 ',
     provider: 'dryRun',
     recipientEmail: ' customer@example.fi ',
-    status: 'prepared',
+    status: 'succeeded',
     subject: ' Lasku 20260001 ',
     ...overrides,
   };

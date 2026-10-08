@@ -10,8 +10,9 @@ viimeistellyn toimituksen täsmällisen arkistointitehtävän
 asetuksen, retry-journalin, loopback-latauksen, validoinnin ja levykirjoituksen.
 Renderer saa vain viisi nimettyä capability-toimintoa eikä raakaa polkua.
 
-Julkiset HTTP-endpointit, API-responset, tietokantaskeema ja
-Company Settings -master data eivät muuttuneet.
+B3/B4:n revisiosidonta käyttää toimitushistorian PDF-lukua ja sen rajattua
+metadatavastausta. Tietokantaskeema ja Company Settings -master data eivät
+muutu tämän arkistolatauksen korjauksessa.
 
 ## Tavoite
 
@@ -255,6 +256,17 @@ Main hakee nykyisestä loopback-backendistä runtime-sessionilla:
 
 1. dokumentin metadatan
 2. PDF-bytes-datan
+
+Molemmat pyynnöt sidotaan journal-taskin `deliveryEventId`:hen:
+`GET /invoices/:id/delivery-events/:eventId/pdf/metadata` ja saman tapahtuman
+`/pdf`. Nykyisen lasku-PDF:n esikatseluun ei palata varavaihtoehtona.
+Näin myös säilytetyn legacy-kopion toimitus ja viivästynyt arkistointiyritys
+käyttävät juuri toimitettua dokumenttia, eivät sen jälkeen vaihtunutta PDF:ää.
+Backend käyttää samaa yritysrajattua, `sendInvoices`-oikeuden vaativaa
+tapahtuma-/dokumenttilukua ja tavujen eheystarkistusta molemmissa pyynnöissä.
+Metadatavastaus sisältää vain `id`, `invoiceId`, `mimeType`, `sha256` ja
+`sizeBytes`; ei tallennuspolkua tai arkistotehtävää. Sen väliaikainen
+PDF-puskuri nollataan. Rendererille ei lisätä uutta arkistointikyvykkyyttä.
 
 Se validoi ennen kirjoitusta:
 

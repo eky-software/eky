@@ -346,6 +346,12 @@ jobs:
       - name: Run packaged Windows smoke
         run: pnpm --filter @eky/desktop smoke:windows
 
+      - name: Prepare packaged legacy recovery runtime
+        run: pnpm --filter @eky/e2e e2e:prepare
+
+      - name: Run packaged legacy recovery
+        run: pnpm --filter @eky/e2e exec playwright test --config playwright.packaged-legacy.config.ts
+
       - name: Run critical Electron E2E journeys
         run: pnpm test:e2e:electron:critical
 

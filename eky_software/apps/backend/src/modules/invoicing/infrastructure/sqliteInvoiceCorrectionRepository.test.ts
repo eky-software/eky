@@ -1,8 +1,9 @@
 import Database from 'better-sqlite3';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { DatabaseConnection } from '../../../database/connection/createDatabaseConnection.js';
 import { runMigrations } from '../../../database/migration/runMigrations.js';
+import { migrationDirectories, removeDirectories } from '../../../database/migration/invoiceContentRevisionMigration.fixture.js';
 import type { CancelApprovedInvoicePersistenceInput } from '../ports/invoiceCorrectionRepository.js';
 import { SqliteInvoiceCorrectionRepository } from './sqliteInvoiceCorrectionRepository.js';
 
@@ -12,15 +13,17 @@ describe('SqliteInvoiceCorrectionRepository', () => {
   beforeEach(async () => {
     database = new Database(':memory:');
     database.pragma('foreign_keys = ON');
-    await runMigrations(database);
+    await runMigrations(database, { migrationsDirectory: migrationDirectories().before });
     insertApprovedInvoice(database);
   });
 
   afterEach(() => {
     database.close();
   });
+  afterAll(removeDirectories);
 
   it('cancels an approved invoice and records audit in one transaction', async () => {
+    await runMigrations(database);
     const repository = new SqliteInvoiceCorrectionRepository(database);
 
     await expect(
@@ -57,6 +60,7 @@ describe('SqliteInvoiceCorrectionRepository', () => {
   });
 
   it('returns generic not-found outside the company scope', async () => {
+    await runMigrations(database);
     const repository = new SqliteInvoiceCorrectionRepository(database);
 
     await expect(
@@ -70,6 +74,7 @@ describe('SqliteInvoiceCorrectionRepository', () => {
   });
 
   it('does not cancel when invoice-number confirmation differs', async () => {
+    await runMigrations(database);
     const repository = new SqliteInvoiceCorrectionRepository(database);
 
     await expect(
@@ -104,6 +109,7 @@ describe('SqliteInvoiceCorrectionRepository', () => {
           .prepare('UPDATE invoices SET status = ? WHERE id = ?')
           .run(status, 'invoice-1');
       }
+      await runMigrations(database);
       const repository = new SqliteInvoiceCorrectionRepository(database);
 
       await expect(
@@ -118,6 +124,7 @@ describe('SqliteInvoiceCorrectionRepository', () => {
     'blocks cancellation when a %s delivery event exists',
     async (status) => {
       insertDeliveryEvent(database, status);
+      await runMigrations(database);
       const repository = new SqliteInvoiceCorrectionRepository(database);
 
       await expect(
@@ -133,6 +140,7 @@ describe('SqliteInvoiceCorrectionRepository', () => {
     'allows cancellation when only a %s delivery event exists',
     async (status) => {
       insertDeliveryEvent(database, status);
+      await runMigrations(database);
       const repository = new SqliteInvoiceCorrectionRepository(database);
 
       await expect(
@@ -168,6 +176,7 @@ describe('SqliteInvoiceCorrectionRepository', () => {
         `,
       )
       .run();
+    await runMigrations(database);
     const repository = new SqliteInvoiceCorrectionRepository(database);
 
     await expect(

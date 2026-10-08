@@ -1,4 +1,4 @@
-import type { ApprovedInvoiceView } from '../../../domain/approvedInvoiceView.js';
+import type { ApprovedInvoicePdfContent } from '../../../domain/approvedInvoicePdfContent.js';
 import {
   formatPdfPercentBasisPoints,
   formatPdfPresentedCents,
@@ -7,7 +7,7 @@ import { invoicePdfLayout } from '../approvedInvoicePdfLayout.js';
 
 export function drawVatAndTotals(
   doc: PDFKit.PDFDocument,
-  invoice: ApprovedInvoiceView,
+  invoice: ApprovedInvoicePdfContent,
   y: number,
 ): number {
   const x = invoicePdfLayout.margin;
@@ -74,7 +74,7 @@ export function drawVatAndTotals(
 
 function drawReverseChargeTotals(
   doc: PDFKit.PDFDocument,
-  invoice: ApprovedInvoiceView,
+  invoice: ApprovedInvoicePdfContent,
   y: number,
   x: number,
   totalsX: number,
