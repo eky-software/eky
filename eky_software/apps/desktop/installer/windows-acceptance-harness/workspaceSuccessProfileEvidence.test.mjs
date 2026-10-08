@@ -7,6 +7,7 @@ import test from 'node:test';
 
 import { createClosedDirectoryInventory } from './closedDirectoryInventory.mjs';
 import { createWorkspaceSuccessEvidenceTestFixture } from './workspaceSuccessEvidenceTestFixture.mjs';
+import { validateWorkspaceSuccessCheckpoint } from './workspaceSuccessPostcondition.mjs';
 import { createWorkspaceFaultRequest } from './workspaceFaultContracts.mjs';
 import { captureWorkspaceFaultProfileEvidence, writeWorkspaceFaultCheckpoint,
   workspaceFaultCheckpointPath } from './workspaceFaultProfileEvidence.mjs';
@@ -88,11 +89,19 @@ test('capture reads main startup and shutdown events from the real logger stream
   const before = await createClosedDirectoryInventory(f.root);
   const result = await captureWorkspaceSuccessProfileEvidence({ ...f.input, checkpoint: 'targetFirstStart' });
   assert.deepEqual(result.events, writtenEvents.map(({ appVersion, buildRevision, eventId,
-    eventName, runtimeInstanceId, timestamp }) => ({ appVersion, buildRevision, eventId,
-    eventName, runtimeInstanceId, timestamp })));
+    eventName, runtimeInstanceId }) => ({ appVersion, buildRevision, eventId,
+    eventName, runtimeInstanceId })));
   assert.equal(result.events[1].eventId, shutdown.eventId);
   assert.notEqual(result.events[0].eventId, shutdown.eventId);
+  assert.equal(validateWorkspaceSuccessCheckpoint(result, { request: f.request,
+    checkpoint: 'targetFirstStart', state: f.state, support: f.support }), result);
   assert.deepEqual(await createClosedDirectoryInventory(f.root), before);
+  logger.write(createDesktopOperationalEvent({ eventName: 'desktop.bootstrapFailed',
+    errorCode: 'DESKTOP_START_FAILED', stage: 'startup' }, identity));
+  const failure = await captureWorkspaceSuccessProfileEvidence({ ...f.input, checkpoint: 'targetFirstStart' });
+  assert.equal(failure.events.at(-1).eventName, 'desktop.bootstrapFailed');
+  assert.throws(() => validateWorkspaceSuccessCheckpoint(failure, { request: f.request,
+    checkpoint: 'targetFirstStart', state: f.state, support: f.support }), { message: 'profileEvidenceInvalid' });
   const logsRoot = resolve(profile.runtimeRoot, 'logs');
   const alias = resolve(f.root, 'aliased-logs');
   await rename(logsRoot, alias);

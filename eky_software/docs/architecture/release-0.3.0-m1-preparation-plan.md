@@ -62,6 +62,21 @@ uuden täsmällisen revision PR/main-portit vaaditaan edelleen.
 Tässä palassa ei muuteta sovelluskoodia,
 tietomallia, riippuvuusversioita, aikarajoja tai prosessiomistajuutta.
 
+Tämän korjausrevision
+[V2-kierros 37703655890](https://github.com/eky-software/eky/actions/runs/37703655890)
+toisti workspace-success-jälkiehdon hylkäyksen molemmissa toistoissa.
+Varsinainen skenaario, business-sisällön säilyminen ja siivous valmistuivat;
+checkpointin kenttäsopimus hylkäsi yhteisestä legacy-lukijasta tulleen
+aikaleiman. Oikean loggerin kautta kulkeva rajattu regressio toisti saman
+keräys–validaattoriristiriidan. Korjaus rajaa workspace-projektion sen
+nykyisiin viiteen identiteettikenttään; virhetapahtumat säilyvät hylkäävinä
+ja legacy-ensivirheen laajempi aineisto säilyy. Kenttä-, sisältö-, eheys-,
+siivous- ja CI-vaatimuksia ei lievennetä. Uuden revision omat normaalit
+PR/main-portit tarvitaan edelleen ennen B3-B5:n hyväksyntää.
+Korjauksen kohdesarja läpäisi 77 tarkistusta ja kanoninen workspace-sarja
+333 tarkistusta ilman ohituksia; joukot ovat osin päällekkäisiä.
+Desktop-tyypitys ja omistavien ohjeiden linkit läpäisivät.
+
 ### B3-B5:n ensimmäisen PR-kierroksen rajatut korjaukset
 
 [PR #298](https://github.com/eky-software/eky/pull/298):n lähde

@@ -2449,6 +2449,13 @@ migraatio, B:n toisen käynnistyksen byte-idempotenssi, C:n muuttumattomuus,
 lineage-/registry-raja ja asennustasoisen päivitysidentiteetin säilyminen
 ovat erillisiä ehtoja. Rajatut lifecycle-eventit todistavat eri startup-
 identiteetit ja graceful shutdownin; session-salaisuutta ei tallenneta.
+Checkpointin tapahtumaprojektio omistaa vain kentät `appVersion`,
+`buildRevision`, `eventId`, `eventName` ja `runtimeInstanceId`. Yhteisen
+legacy-lukijan aikaleima- ja ensivirhetiedot eivät laajenna tätä sopimusta.
+Bootstrap-virhetapahtumaa ei suodateta pois: se hylkää onnistumisen
+jälkiehdon. Oikean main-loggerin regressio vie tapahtumat keräyksestä
+checkpoint-validaattoriin asti, ja legacy-lukijan oma laajempi virhetodiste
+säilyy ennallaan.
 Tämä ei yksin korvaa backendin session-rejection-portin packaged-todistusta;
 sen erillinen muistikanavasopimus kuvataan jäljempänä.
 
