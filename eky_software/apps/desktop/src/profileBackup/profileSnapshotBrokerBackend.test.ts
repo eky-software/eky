@@ -59,6 +59,9 @@ describe('profile snapshot broker boundary', () => {
     const backend = startProfileSnapshotBrokerBackend({
       maintenance: {
         begin: () => new Promise<void>(() => undefined),
+        beginUpdate: () => maintenance.beginUpdate(),
+        assertUpdate: () => maintenance.assertUpdate(),
+        endUpdate: () => maintenance.endUpdate(),
         end: (operationId) => maintenance.end(operationId),
         forceEnd: () => maintenance.forceEnd(),
         getStatus: () => maintenance.getStatus(),
@@ -618,6 +621,18 @@ function createFakeValidation() {
 class FakeProfileMaintenance {
   status: 'busy' | 'normal' = 'normal';
   private operationId: string | undefined;
+
+  async beginUpdate(): Promise<void> {
+    throw new Error('Update maintenance requires the real-state boundary fixture.');
+  }
+
+  assertUpdate(): void {
+    throw new Error('Update maintenance requires the real-state boundary fixture.');
+  }
+
+  endUpdate(): void {
+    throw new Error('Update maintenance requires the real-state boundary fixture.');
+  }
 
   async begin(operationId: string): Promise<void> {
     if (this.status === 'busy') {

@@ -12,6 +12,7 @@ import { WorkspaceRegistryStore } from '../src/workspaces/registry/workspaceRegi
 import type { WorkspaceId } from '../src/workspaces/registry/workspaceRegistryTypes.js';
 import { ElectronWorkspaceCandidateRuntimeFactory } from '../src/workspaces/runtime/electronWorkspaceCandidateRuntimeFactory.js';
 import { resolveWorkspaceCandidateRuntimePaths } from '../src/workspaces/runtime/workspaceCandidateRuntimePaths.js';
+import type { WorkspaceCandidateReservationOwner } from '../src/workspaces/runtime/electronWorkspaceCandidateRuntimeFactory.js';
 import type { WorkspaceManagementCompositionProofInput } from './workspaceManagementCompositionProofTypes.js';
 
 export const WORKSPACE_MANAGEMENT_PROOF_PASSWORD =
@@ -20,6 +21,7 @@ export const WORKSPACE_MANAGEMENT_PROOF_PASSWORD =
 export async function createProofWorkspaceBackup(
   input: WorkspaceManagementCompositionProofInput & {
     readonly backupPath: string;
+    readonly reservationOwner: WorkspaceCandidateReservationOwner;
     readonly workspaceId: WorkspaceId;
   },
 ) {
@@ -67,6 +69,7 @@ export async function createProofWorkspaceBackup(
 export async function validateProofPublishedWorkspace(
   input: WorkspaceManagementCompositionProofInput & {
     readonly expectedProfileId?: string;
+    readonly reservationOwner: WorkspaceCandidateReservationOwner;
     readonly workspaceId: WorkspaceId;
   },
 ) {
@@ -75,6 +78,7 @@ export async function validateProofPublishedWorkspace(
   );
   const candidate = new PrivateWorkspaceBackupCandidateAdapter(
     new ElectronWorkspaceCandidateRuntimeFactory({
+      reservationOwner: input.reservationOwner,
       appVersion: input.appVersion,
       backendRoot: runtimePaths.backendRoot,
       buildRevision: input.buildRevision,

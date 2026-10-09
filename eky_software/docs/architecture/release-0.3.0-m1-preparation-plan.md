@@ -12,8 +12,9 @@ Alla päivätyt tutkimusvaiheet ovat historiaa, eivät rinnakkaisia työjonoja.
 
 **T1/T2/T3, A1/R01, A2/R05, A3/R06 ja Oma yritys -tallennuskorjaukset
 integraatiojatkoineen ovat hyväksyttyjä. B1/B2 ja niiden hyväksytyt sulku-/
-keräysjatkot on hyväksytty PR #297:n mainissa. Nykyinen työ on
-[B3-B5:n integraatio ja rajatut PR-korjaukset](#b3-b5n-normaalin-integraatiokierroksen-testisopimukset).** PR #294:n oma main-kierros
+keräysjatkot on hyväksytty PR #297:n mainissa; B3-B5 ja niiden rajatut
+integraatiokorjaukset on hyväksytty PR #298:n mainissa 8.10.2026.
+Nykyinen työ on [C-paketin valmistelu ja rajattu toteutus](#c-paketin-valmistelu-ja-hyväksyntärajat).** PR #294:n oma main-kierros
 läpäisi; A2:n aiemman main-kierroksen tapauskohtainen etenemispäätös ja
 alkuperäinen flaky-havainto säilyvät historiassa eivätkä muutu korjatuiksi.
 Modulaarinen monoliitti ja
@@ -22,12 +23,23 @@ hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohd
 
 | Kohta | Nykyinen lähtötieto |
 | --- | --- |
-| Hyväksytty lähtörevisio | PR #297:n main `8a08a6ea4a6d58eaed26b9b0de563bbe7271abc2`. [Loppuhyväksyntä](https://github.com/eky-software/eky/pull/297#issuecomment-5992208049) sitoo lähteen, katselmoidun puun sekä PR:n ja mainin näytön. PR #295:n B1/B2, PR #296:n sulkukorjaus ja aiemmat hyväksynnät säilyvät; alkuperäisten timeoutien syytä ei tämän perusteella nimetä korjatuksi. |
-| Mainin omat portit | [CI 37288697199](https://github.com/eky-software/eky/actions/runs/37288697199) ja [ajastettu CI 37288771261](https://github.com/eky-software/eky/actions/runs/37288771261) läpäisivät samalla main-revisiolla ensimmäisellä yrityksellä: kaikki 11 porttia ja kaksi asennuskoetoistoa. System 815, web 65 ja Electron 39 läpäisivät ilman uusintoja tai flaky-tuloksia. Viittä valinnaista diagnostiikkaohitusta ei lasketa läpäisyiksi. PR:n erillinen riippuvuustarkistus ja [mainin ajastettu tarkistus 37290350442](https://github.com/eky-software/eky/actions/runs/37290350442) läpäisivät; main-push ei valinnut erillistä audit-workflowta nykyisellä polkusuodattimella. |
+| Hyväksytty lähtörevisio | PR #298:n main `bd67742f1df9cbf989ec3c1afd078e95af356b1b`. [Loppuhyväksyntä](https://github.com/eky-software/eky/pull/298#issuecomment-6050339146) sitoo hyväksytyn headin `681297217fc5812ab39994af15732f0de1bc4076`, katselmoidun puun sekä PR:n ja mainin näytön. PR #297:n ja aiempien integraatioiden hyväksynnät säilyvät; alkuperäisten timeoutien syytä ei tämän perusteella nimetä korjatuksi. |
+| Mainin omat portit | [V2 37709652104](https://github.com/eky-software/eky/actions/runs/37709652104) ja erillinen [riippuvuustarkistus 37709651896](https://github.com/eky-software/eky/actions/runs/37709651896) läpäisivät yllä olevalla main-revisiolla ensimmäisellä yrityksellä. V2:n hyväksyntäkoonti antoi `ciAccepted`; valinnaisia diagnostiikkaohituksia ei lasketa läpäisyiksi. Myös PR:n [V2 37706959837](https://github.com/eky-software/eky/actions/runs/37706959837) ja [riippuvuustarkistus 37706959497](https://github.com/eky-software/eky/actions/runs/37706959497) läpäisivät omalla tarkistetulla revisiollaan. |
 | Suljettu työ | T1/R27:n ajokytkentä, T2/R29:n puhtaan valmistelun suoja ja T3/R28:n todellisten kuluttajien koko prosessipuun omistajuus. Korvatut aktiiviset fallbackit on poistettu ja [pysyvä T3-matriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus) hyväksytty. PR #281 sulki tämän jälkeisen rollback-testiapurin integraatiojatkon. |
 | Avoimet havainnot | Aiemmat satunnaiset Electron-käynnistys- ja packaged/legacy-timeoutit säilyvät epäonnistuneina havaintoina omille revisioilleen. Myöhempi vihreä ajo ei todista niiden kaikkia syitä korjatuiksi. [Hylkäysten historia](e2e-test-environment-history.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko) ja [rajattu apurikorjaus](e2e-test-environment-history.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus) erotetaan toisistaan. |
-| Nykyinen työ | B3:n revisio-/PDF-pohja, B4:n toimitus/historia ja hyväksytty legacy-selvitysesto ovat työpuussa kohdetodennettuja. [Historian client/UI/native-polku](#b4-historian-käyttöpolun-checkpoint) toimii hyväksytyllä laskulla ja reopened-editorissa. [Legacy-uudelleenlähetys ja peruutus](#b4-legacy-uudelleenlähetyksen-checkpoint) on todennettu oikean startup-migraation ja restartin yli. [B5-katalogin sekä moniversioisen ja legacy-aineiston paketoitu palautus](#b5-katalogin-ja-palautuksen-checkpoint) on todennettu kehityspaketilla. Legacy-testin CI-ajokytkentä on kohdetodennettu. [Katselmuksen jatkokorjaukset](#b5-katselmuksen-jatkokorjaukset), mukaan lukien hyväksytyn legacy-laskun ensimmäisen toimituksen revisiosiirtymä ja sen oikeusrajat, ovat kohdetodennettuja. Omistaja hyväksyi etenemisen loppukatselmukseen, puhtaan revision paketointiin ja yhteen normaaliin PR/CI-kierrokseen erillisen workspace-adoption timeoutin jäädessä avoimeksi; nykyiset palautus-, eheys-, siivous- ja main-portit säilyvät. B3/B4/B5 eivät ole kokonaisuutena hyväksyttyjä; osittaista migraatio–caller-ketjua ei julkaista. Hyväksyttyjä B1/B2- ja sulku-/keräystöitä ei uusita. |
-| Ei vielä valmis | B:n toteutus ja hyväksyntä, W7, M1:n muu sovellustyö, D-paketin muut ehdot ja koko 0.3.0. Lähtörevision läpäisy ei hyväksy uuden revision puuttuvia portteja. |
+| Nykyinen työ | C/R03/R04/R17/R18/R19:n sopimusten valmistelu sekä rajatut R18 cold-terminal-/journal-admission-, R17 startup-omistajuus-, R19 oletusrevision ja R03 strict-sammutuksen korjaukset. [Alla oleva nykytila](#c-paketin-valmistelu-ja-hyväksyntärajat) erottaa alemman tason näytön tuotannon cold-start-kytkennästä ja vielä tekemättömistä packaged-/PR-/main-porteista. |
+| Seuraava työ | PR #299:n headin `b6416bcc7469ec3419e6cd266247171828cbf5c3` [V2-kierros](https://github.com/eky-software/eky/actions/runs/37922238477) läpäisi päivitys- ja workspace-palautuspolut, mutta hylättiin yhden prosessijärjestysfixturen ja siitä riippuvan hyväksyntäkoonnin vuoksi. Erillinen [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/37922238120) läpäisi. Todennetaan [rajattu fixture-korjaus](#cn-prosessijärjestysfixturen-täsmennys), uusi puhdas paketti ja normaalit PR/main-portit. Ensimmäisen kierroksen testiomistajuus- ja R04-korjaukset säilyvät; vanhoja timeout- tai prosessimäärähavaintoja ei nimetä korjatuiksi. |
+| Ei vielä valmis | C:n toteutus ja hyväksyntä, K, W7, M1:n muu sovellustyö, D-paketin muut ehdot ja koko 0.3.0. Lähtörevision läpäisy ei hyväksy uuden revision puuttuvia portteja. |
+
+**C:n viimeisin kokonainen normaali tarkistus main- ja testikutsujien kytkennän jälkeen:** desktopin
+testikomento läpäisi 9.10.2026 revisiolla `b6416bcc` yhteensä 2 595 Vitest-testiä ja 270 Node-sopimustestiä.
+Kolme ennestään alustakohtaista testiä ohitettiin, eikä niitä lasketa
+läpäisyiksi. Näyttö kattaa myös R04:n kirjoitussuojan ja R18-varauksen alemmat testikytkennät,
+mutta tämä testikomento ei yksin todista todellisia
+packaged-/installer-/PR-/main-portteja. Saman puhtaan revision hardened-
+palautus ja kolme packaged-palautustapausta läpäisivät erikseen. Muiden kohdeajojen määriä ei summata
+tähän yhteistarkistukseen, koska kattavuus on päällekkäinen. Myöhemmän
+muutoksen kohdenäyttö ei päivitä tätä kokonaisajon hyväksyntää.
 
 Hyväksyntä on sidottu yllä olevaan revisioon, ei automaattisesti myöhempään
 työpuuhun. Dokumenttimuutoksen toteutuneet tarkistukset ja mahdollisen
@@ -35,6 +47,1113 @@ integraation lopputulos kirjataan sen omaan hyväksyntächeckpointiin;
 pelkän tuloksen ilmoittamiseksi ei tehdä uutta tilakirjauscommittia.
 Jokainen uusi toteutuspala alkaa omalla preflightilla. Sivulla ei ylläpidetä Goal-työkalun
 ajonaikaista tilaa.
+
+### C:n ensimmäisen PR-kierroksen rajattu korjaus
+
+Ensimmäinen V2-kierros yllä olevalla PR-headilla
+`0c503d3ac07f5227e3190fc1d975f0d801b4ed36` päättyi 31 onnistuneeseen,
+seitsemään epäonnistuneeseen ja kuuteen valinnaiseen ohitettuun jobiin.
+Hylkäys sisältää kuusi varsinaista jobia ja hyväksyntäkoonnin; koonti ei
+ole seitsemäs riippumaton sovellusvika. Ensivirheet säilyvät epäonnistuneina.
+
+- **Testifixturen omistajuus:** rekisteri ja private journal kuuluvat nimettyyn
+  `apps/desktop/e2e/workspaceColdRecoveryPackagedFixture.ts`-porttiin;
+  E2E-kuluttaja omistaa vain synteettisen tietokannan ja artifactin valmistelun.
+  Tuotannon build ei sisällä tätä testifixtureä. Rajat ja kuusi järjestelmätestiä
+  läpäisivät korjauksen jälkeen.
+- **Tuonnin tarkka elinkaari:** system-testit vaativat kaikki kolme todellista
+  `runtime.absent`-tarkistusta oikeassa järjestyksessä: stop, migrate ja validate.
+  Vanha yhden tarkistuksen odotus oli testisopimuksen poikkeama, ei lupa
+  vähentää tuotannon poissaolotodistuksia.
+- **R04:n salattu itsevalidointi:** oikea palautuspistepalvelu, salattu store,
+  MessagePort-broker, maintenance-state ja HTTP-kirjoitusraja toistivat
+  `PROFILE_MAINTENANCE_OPERATION_MISMATCH`-hylkäyksen ennen korjausta.
+  Snapshotin sisältö-/health-portti on tässä synteettinen testisovitin.
+  Korjaus sitoo erillisen tarkistusstagingin eksplisiittiseen update-omistajaan
+  [nykyisen palautuspistesopimuksen](local-backup-and-restore-plan.md#päivityksen-kirjoitussuojan-erillinen-vapautussääntö)
+  mukaan. Yksityisen protokollan versio on 9; durable-formaatit ja aikarajat
+  eivät muutu. Tämä alempi näyttö ei vielä sulje neljän paketoidun handoff-
+  hylkäyksen syytä tai hyväksy installer-polkua.
+  Keskeneräisen tarkistuksen staging poistetaan vasta samalla brokerilla
+  saadun sarjallisen valmistumiskuittauksen jälkeen. Epäonnistunut kuittaus
+  säilyttää stagingin ja alkuperäisen virheen; yhteyskatko ei vapauta
+  päivityksen kirjoitussuojaa.
+
+Korjauksen normaali testisarja ja tyyppitarkistukset läpäisivät, myös
+broker-rajan 22 regressiota ja backendin E2E-testin erillinen tiukka
+tyyppitarkistus. Riippumaton rajattu katselmus ei jättänyt korjattavaa
+havaintoa. Todellinen paketoitu Windows-todennus on erillinen
+hyväksyntäportti, ei näiden alempien tulosten johtopäätös. Sen myöhempi
+`b6416bcc`-näyttö erotetaan seuraavassa checkpointissa.
+
+Korjausrevisio tarvitsee omat tarkistuksensa, riippumattoman katselmuksen,
+puhtaan paketin ja PR/main-portit. Aiemman puhtaan paketin hardened-palautus
+ja kolme packaged-tapausta läpäisivät ennen tätä korjausta; tuloksia ei
+siirretä automaattisesti myöhemmälle revisiolle. Mahdollisen salatun
+diagnostiikka-aineiston osittaisuus erotetaan sovelluksen ja siivouksen
+tuloksista; puuttuvaa aineistoa ei lasketa talteen otetuksi.
+
+### C:n prosessijärjestysfixturen täsmennys
+
+Headin `b6416bcc` normaali V2-kierros päättyi 33 onnistuneeseen, kahteen
+epäonnistuneeseen ja kahdeksaan ohitettuun jobiin. Varsinainen hylkäys oli
+`empty Job before exit observation preserves exitNonZero`; toinen hylkäys
+oli siitä riippuva hyväksyntäkoonti. Ohituksia ei lasketa läpäisyiksi.
+Päivityksen ja rollbackin sekä workspace-success- ja fault-recoveryn
+molemmat suoritukset läpäisivät. R04:n korjattu itsevalidointi on siten
+todennettu myös oikeassa paketoidussa päivitysketjussa. Koko C:n PR/main-
+hyväksyntä on silti avoin.
+
+Hylkäyksen säilynyt strict-tulos vahvistaa todellisen virhepoistumisen ja
+Jobin tyhjenemisen. Puuttui testifixturen oma järjestysmerkintä: havaitsija
+salli poistumiskuittauksen, jos prosessikahva oli signaloitu ennen kuin
+sen erillinen Job-kysely näki nollan. Tällöin tarkoitettu vastakkaisjärjestys
+ei koskaan pakottunut. Tämä on fixture-puute, ei näyttö sovelluksen tai
+tuotannon supervisorin virheestä.
+
+Nykyinen `ProcessBoundaryContract` pidättää testihavaitsijan kuittauksen
+Jobin tyhjenemiseen ja kahteen tyhjän Jobin havaintoon asti. Supervisor
+lukee laskurin ennen havaitsijaa, joten seuraava kierros ehtii varmasti
+todentaa `rootExitReceiptPending`-välitilan. Pakotettu aikaisen kuittauksen
+variantti toisti puuttuvan merkinnän ennen korjausta. Molemmat variantit
+vaativat edelleen todellisen nolla- tai virhepoistumisen, strict-tuloksen,
+koko prosessipuun poissaolon ja muuttumattoman siivoustuloksen.
+
+Muutos koskee vain nykyistä C#-testifixtureä ja sen Node-sopimustestejä.
+Tuotannon prosessiomistajuus, aikarajat, worker-vaatimukset, hyväksyntäehdot,
+riippuvuudet ja julkinen diagnostiikka säilyvät. Ei uutta odotusmekanismia
+tai yleistä loggeria. Neljä rajattua prosessikoetta läpäisivät korjauksen
+jälkeen; tämä ei yksin hyväksy koko installer-matriisia. Korjausrevision
+katselmus, puhtaan paketin portit ja normaali PR/main-todennus vaaditaan.
+Ensivirhe ja sen salattu aineisto säilyvät erillään uudesta korjausajosta.
+
+### C-paketin valmistelu ja hyväksyntärajat
+
+**Valmistelun lähdevertailu 8.10.2026:** tämän lähtötilanteen jälkeen tehdyt
+omistajan päätökset, toteutukset ja näyttö erotetaan alla.
+Vertailu koskee yllä olevaa hyväksyttyä mainia ja alkuperäisen katselmuksen
+R03/R04/R17/R18/R19-tunnuksia. Keskeytetty Deep Scan ei ole valmis scan.
+Alla olevat havainnot ovat nykyisen kutsuketjun staattista näyttöä, eivät
+uusia suoritettuja toisto- tai korjaustestejä. Myöhempien C-P2/R17-toteutusten
+sekä R19-toteutuksen rajattu näyttö on kirjattu tämän osion loppuun. B:stä siirretty updater-
+handoff-havainto kuuluu R03:een, ei uuteen rinnakkaiseen korjausjonoon.
+
+| Tunnus | Nykyinen lähde ja omistaja | Valmistelussa vahvistettu raja |
+| --- | --- | --- |
+| R03 | Desktop main: `desktopComposition.ts`, `mainOwnedActiveWorkspaceLifecycle.ts`, `backendProcess.ts` ja `localUpdateHandoffCoordinator.ts`. | Päivityksen `shutdownRuntime` kutsuu tavallista lifecycle-sammutusta. Backendin `stop()` voi palauttaa `forced`, jonka lifecycle-adapteri muuttaa onnistuneeksi `void`-tulokseksi. B:n sulkukorjaus estää jo väärän clean-shutdown-merkinnän; updaterin graceful-only-kytkentä jää silti puuttumaan. Nykyinen `stopForUpdate()` on tiukempi, mutta ei tässä tuotannon handoff-ketjussa käytössä. |
+| R04 | Update/profile protection: `localUpdateHandoffCoordinator.ts`, `profileProtectionComposition.ts` ja `recoveryPointService.ts`. | Palautuspisteen snapshot-suoja ja valmistelun `WorkspaceMaintenanceLease` vapautuvat ennen erillistä handoff-kutsua. Handoff tarkistaa paketin uudelleen ennen omaa business-maintenancea. Pelkkä lease tai muuttumaton migration chain ei todista, ettei palautuspisteen jälkeen hyväksytty business-kirjoitusta. |
+| R17 | Backend-prosessin ja startupin omistajuus: `backendProcess.ts` ja `desktopComposition.ts`. | Readiness-timeout ja backendin failed-status voivat hylätä käynnistyksen heti kill-pyynnön jälkeen. Start ei anna tällöin handlea kutsujalle; compositionin startup-catch voi tulkita puuttuvan handlen onnistuneeksi pysäytykseksi. Hylkäys tai kill-pyyntö ei todista todellista exitiä ennen rollbackia tai seuraavaa runtimea. |
+| R18 | Workspace creation/import ja main startup: `emptyWorkspaceCreationRecovery.ts`, `workspaceBackupImportRecovery.ts`, `resolveActiveWorkspaceStartup.ts`, `resolveDesktopWorkspaceStartup.ts` ja `desktopComposition.ts`. | Hyväksytyt recovery-luokat ja journalit ovat olemassa, mutta tuotannon startup ei kutsu create/import-recoveryjä. Managementin guard estää ratkaisemattoman journalin jälkeiset muutokset. Importin plaintext-karanteeni siivotaan nykyisen recoveryn sisällä, ei tuotannon startup-ketjussa. Cold-startin täsmällinen orkestrointi puuttuu. |
+| R19 | Build ja installer: `packageBuildInfo.ts` sekä `installerReleaseContext.mjs`. | Oletus-build lukee `git rev-parse --short=12 HEAD`; manifestin release context lukee täyden HEADin. Ympäristöstä annettu yhtenäinen revisio peittää eron. Eheyden porttiin ei lisätä lyhyen ja pitkän revision prefix-vastaavuutta. |
+
+Valmistelun lukureitti: [desktopin ADR](../decisions/ADR-0007-local-desktop-shell-and-session-bootstrap.md),
+[backup/recoveryn ADR](../decisions/ADR-0009-local-backup-encryption-and-recovery-points.md),
+[installer/updaten ADR](../decisions/ADR-0010-windows-installer-and-update-orchestration.md),
+[multi-workspacen ADR](../decisions/ADR-0011-local-multi-workspace-company-model.md),
+[desktopin toteutussopimus](local-desktop-implementation-plan.md),
+[update-suunnitelma](windows-installer-and-update-plan.md),
+[workspace-suunnitelma](local-company-workspace-plan.md),
+[palautuksen runbook](local-restore-recovery-runbook.md) ja
+[versiointisopimus](release-versioning-policy.md).
+Testit käyttävät nykyisiä [testipohjia](../ai/e2e-test-authoring-guide.md) ja
+[installer-harnessia](windows-installer-acceptance-harness-v2.md).
+
+#### C:n toteutuspalat ja todennus
+
+Tämä on vaiheistusehdotus, ei vielä lupa ratkaista alla avoimia rajoja
+itsenäisesti. Omistaja on hyväksynyt C-paketin tavoitteet; uusia
+riippuvuuksia, formaatteja, yleistä lifecycle-kehystä tai arvaavaa repair-
+kyvykkyyttä ei lisätä.
+
+1. **R19: oletuspaketoinnin build-identiteetti.** Käytä oletuksena täyttä
+   lähderevisiota ja säilytä vanhan build-metadatan hyväksytty lukuyhteensopivuus.
+   `packageBuildInfo.test.ts` todistaa myös oikean Git-komennon.
+   Paketin, manifestin ja nykyisen cache/trust-ketjun todiste käyttää
+   ympäristömuuttujan sijaan oletuspolkua; mismatch hylätään edelleen.
+2. **R17 ja R03: prosessin lopetuksen todiste.** Nykyinen backend-owner
+   säilyttää ensisyyn ja rajatun stop-/exit-tuloksen myös ennen handlen
+   palautumista. Update käyttää graceful-only-politiikkaa oikeassa main-
+   compositionissa; ordinary close ja sen todettu forced-fallback säilyvät.
+   `backendProcess.test.ts`, `mainOwnedActiveWorkspaceLifecycle.test.ts`
+   ja `localUpdateHandoffCoordinator.test.ts` täydentyvät oikean compositionin
+   testillä. Update vaatii graceful-exitin: forced estää installer-handoffin
+   eikä tuota clean-merkintää. Ordinary forced todetulla exitillä kelpaa
+   runtime-poissaolon todisteeksi, mutta seuraava runtime tai rollback vaatii
+   lisäksi omat hyväksyntäporttinsa. Puuttuva tai tuntematon exit estää
+   molemmat. Myöhäinen exit, failed-status, readiness-timeout, reentry ja
+   normaali graceful testataan erillisinä tiloina; aikarajat eivät muutu.
+3. **R04: palautuspisteen ja handoffin yhteinen kirjoitussuoja.** Käytä
+   nykyistä lease-/maintenance-mekanismia yhdellä eksplisiittisellä
+   omistajuudella. Snapshotin sisäinen maintenance ei saa vapauttaa
+   handoffin pidempää suojaa. `profileProtectionComposition.test.ts` ja
+   `localUpdateHandoffCoordinator.test.ts` täydentyvät todellisella HTTP-
+   kirjoitusyrityksellä palautuspisteen jälkeisen revalidation-barrierin
+   aikana. Oikean sessionin business-kirjoitus estyy, väärä session ei saa
+   oikeuksia ja palautuspiste vastaa suojattua sisältöä. Virheen,
+   peruutuksen, sammutuksen ja restartin vapautusehdot todistetaan.
+4. **R18: nykyisten recoveryjen tuotantokytkentä.** Kytke hyväksytyt
+   creation/import-luokat startupiin ennen business-sessionia ja aktiivisen
+   business-backendin käynnistystä, kun journalijärjestys ja runtime-
+   poissaolo on ratkaistu. Backendin rajattu validaattori säilyy SQLite-
+   auktoriteettina. `resolveDesktopWorkspaceStartup.test.ts` ja
+   `resolveActiveWorkspaceStartup.test.ts` sekä nykyiset recovery-testit
+   täydentyvät oikean compositionin keskeytys/restart-matriisilla:
+   julkaisematon candidate, julkaistu root, julkaistu registry, ristiriita,
+   unknown runtime, slot-recovery ja journaliton plaintext-karanteeni.
+   Jokaisen journalivaiheen keskeytys ja julkaisu-journalipäivityksen väli,
+   toisen startupin idempotenssi, `previousActiveWorkspaceId=null`, no-ready
+   ja samanaikaiset recovery-journalit ovat erikseen nimettyjä tapauksia.
+   Create/importin startup-kytkennälle vaaditaan myös paketoitu
+   keskeytys/restart-todistus; tavallinen backup/restore ei korvaa sitä.
+   Entryä, lineagea tai active pointeria ei päätellä tai vaihdeta arvaamalla.
+5. **C:n yhteinen integraatio.** Jäädytetty puhdas revisio todistaa
+   hardened Windows packaged backup -> inspect -> restore -> restart ->
+   compare -polun synteettisellä profiililla. Installer/update, binary- ja
+   business-rollback, monityötila ja oletuspaketointi ovat erillisiä
+   hyväksyntäehtoja. Nykyiset T3-fixturet, virhetodisteiden salattu toimitus,
+   PR-portit ja uuden mainin omat portit säilyvät.
+
+Jokaisen palan mukana tarkistetaan turvallinen käyttäjäpalaute, ensisyyn
+ja cleanupin erottelu sekä tapahtuman tarkoitettu operational/diagnostics/
+tukiketju [valmistumisportin](../ai/workflow.md#toiminnon-valmistumisportti)
+mukaan. Tämä ei toteuta G/H-pakettien koko diagnostiikkaremonttia.
+
+#### C:n avoimet sopimusrajat ennen toteutusta
+
+**C-P1, omistajan päätös 8.10.2026:** päivityksen kirjoitussuojan nykyisen
+kymmenen minuutin enimmäiskeston täyttyminen tai snapshot-brokerin yhteyden
+katkeaminen keskeyttää päivityksen ja jättää business-kirjoitukset estetyiksi
+hallittuun uudelleenkäynnistykseen asti. Asentajaa ei käynnistetä tästä
+virhetilasta. Tavallisen varmuuskopioinnin nykyinen vapautus säilyy; rajaa
+ei nosteta. Päätös ei itsessään valtuuta automaattista tietojen palautusta.
+Käynnistys ratkaisee olemassa olevan update-journalin nykyisten ehtojen
+mukaan ennen business-runtimen avaamista.
+
+**C-P2 / R18, omistajan päätös 8.10.2026:** create/import-operaation
+kylmäkäynnistyspalautuksen terminal on tiedostojen, rekisterin ja täsmällisen
+jatkettavan ready-työtilan varmistus. Journal poistetaan vasta tämän jälkeen.
+Business-runtime avataan erikseen normaalien käynnistys-, lineage- ja
+terveystarkistusten läpäistyä; recoveryn valmistuminen ei väitä runtimea
+terveeksi. Ristiriita tai puuttuva jatkettava työtila säilyttää journalin ja
+estää avaamisen. Tavallisen, jo käynnissä olevan sovelluksen recovery säilyttää
+nykyisen aiemman runtimen terveystarkistuksensa. Kaksivaiheista journalia tai
+uutta journaliformaattia ei lisätä.
+
+Nykyinen `profileSnapshotBrokerBackend.ts` vapauttaa ordinary-maintenancea
+sekä aikarajalla että brokerin sulussa. Siksi pelkkä mainin leasen pito tai
+kahden metodikutsun yhdistäminen ei riitä R04:n korjaukseksi. Päivityksen
+omistettu suoja ja sen virhetilan säilyminen todistetaan myös backendissä.
+
+- **Shutdown/exit:** miten olemassa oleva start-/shutdown-portti palauttaa
+  tai säilyttää auktoritatiivisen exit-todisteen ilman handlea; graceful-
+  update ja ordinary forced-close eivät saa sekoittua. Puuttuva handle
+  tai valmis Promise ei ole itsessään todiste runtime-poissaolosta.
+- **Maintenance:** mistä hetkestä suoja otetaan ja kuka omistaa sen
+  prepare/handoff-rajalla; miten sisäinen snapshot-operaatio käyttää samaa
+  suojaa ja miten epäonnistuminen, peruutus sekä keskeytyksen jälkeinen
+  journal estävät liian aikaisen vapautuksen tai rinnakkaisen kirjoittajan.
+- **Cold-start:** create/import-recoveryn prioriteetti suhteessa update-,
+  registry-migration-, adoption- ja switch-recoveryyn; aiemman workspacen
+  `ensurePreviousWorkspaceRunning`-semantiikka ja journalin terminal/poisto
+  ennen business-runtimen olemassaoloa, myös kun
+  `previousActiveWorkspaceId=null`. Registry luetaan uudelleen recoveryn
+  jälkeen ennen aktiivisen työtilan valintaa. Recoveryn jälkeinen no-ready-
+  tila rajataan fail closed; backenditon hallintatila tai hiljainen uusi
+  adoptio eivät tule hyväksytyiksi sivuvaikutuksena. Aktiivinen tai
+  tuntematon runtime sekä ristiriitaiset journalit pysäyttävät toiminnon.
+  Valmiin active-lifecyclen `active`-alkutilaa ei käytetä cold-start-
+  poissaolon oletuksena.
+
+Nämä rajat ratkaistaan nykyisten porttien ja hyväksyttyjen ADR:ien mukaan,
+ja toteutusvalmis ehdotus katselmoidaan riippumattomasti. Uusi
+arkkitehtuuri-/turvallisuus-/palautuspäätös kysytään ennen kyseisen alueen
+koodausta. V1 valmistuu vasta tämän sopimuksen lukituksesta; yllä oleva
+lähdeinventaario ei vielä sulje V1:tä, C:tä tai 0.3.0:aa.
+
+#### C:n rajattu toteutusehdotus
+
+Alla oleva ehdotus tarkentaa nykyisiä omistajia. R18:n terminal-päätös on
+hyväksytty C-P2:ssa; toteutuspalojen riippumaton katselmus ja testinäyttö
+vaaditaan edelleen eikä kohtia merkitä tämän perusteella toteutetuiksi.
+Erillisen palan toteutus voi alkaa sen oman sopimuksen katselmuksen jälkeen,
+kun toisen palan avoin päätös ei vaikuta siihen. Koko V1 suljetaan vasta
+kaikkien C-sopimusten valmistuttua.
+
+- **R19 / build identity:** `packageBuildInfo.ts` käyttää oletuksena
+  `git rev-parse HEAD` -komentoa. Vanhan build-metadatan 7-40 merkin luku
+  ja eksplisiittinen build-syöte säilyvät; installer vaatii edelleen täyden
+  revision ja exact-match-trustin. Testi tarkistaa Git-argumentit sekä
+  oletus-buildin, manifestin ja current-cache-rekisteröinnin ketjun ilman
+  `EKY_BUILD_REVISION`-ohitusta. Lyhyt saman prefixin revisio ei vastaa
+  pitkää. Kohdetesti ei korvaa puhtaan revision oikeaa oletuspaketointia.
+- **R17 / start ownership:** `backendProcess.ts` omistaa exit-havainnon
+  myös ennen handlen palauttamista. Ensimmäinen startup-syy lukitaan ennen
+  kill-pyyntöä; poissaolo todistetaan exit-tapahtumasta tai todetusta
+  forkia edeltävästä epäonnistumisesta, ei puuttuvasta handlesta. Nykyisen
+  shutdown-omistajan rajattu odotus asennetaan ennen lopetuspyyntöä, jotta
+  välitön exit ei katoa. Tuntematon exit jää epävarmaksi eikä muuttunut
+  kill-paluuarvo todista poistumista. Sisäinen tyypitetty startup-virhe
+  säilyttää turvallisen ensikoodin ja omistajuustuloksen ilman raakaa
+  syyketjua. `desktopComposition.ts` erottaa aloittamattoman startin,
+  todetun poistumisen ja epävarman startin ennen recoveryä. Keskeneräinen
+  migration-gate-callback ei anna lupaa rinnakkaiseen recoveryyn.
+  Myöhäinen ready/exit ei avaa jo hylättyä startupia uudelleen.
+  Hallittu startup-stop odottaa vain prosessia, ei omaa kutsuvaa callbackiaan.
+  Callbackin alkuperäinen viiden minuutin takaraja säilyy myös prosessin
+  poistumisen jälkeen; sitä ei käynnistetä uudelleen. Tavallisen
+  käynnistysvirheen rajattu exit-odotus palauttaa muuttumattoman
+  omistajuustilanteen ilman keskeneräisen callbackin odottamista.
+  Epävarma fork-poikkeus ei todista, ettei prosessia syntynyt. Tämä
+  R17-toteutussopimus on katselmoitu erikseen. Alla oleva rajattu näyttö
+  ei vielä korvaa packaged- tai integraatioportteja.
+- **R03 / strict update stop:** `MainOwnedActiveWorkspaceLifecycle`
+  säilyttää backendin todellisen sulkutuloksen. Sen main-only update-polku
+  käyttää `stopForUpdate()`-sopimusta, ordinary close edelleen omaa
+  forced-fallbackiaan. Molemmat käyttävät samaa omistajaa ja yhteistä
+  shutdown-tehtävää: jo käynnissä olevaa ordinary-sulkua ei nimetä
+  jälkikäteen gracefulksi. Update saa jatkaa vain todistetun graceful-
+  tuloksen jälkeen. Strict-polun virhesiivous ei kutsu ordinary stopia
+  pakkopysäytyksen kiertotienä. Brokereiden ja capabilityjen muut sulut
+  yritetään edelleen; ensivirhe ja cleanup-tulos eivät sekoitu.
+  Strict-quiescence-/scheduler-virhe sulkee mainin admissionin; ordinary
+  workspace-quiescen palautumissääntö säilyy. Myös sulkuryhmien sisäiset
+  operaatiot eristetään, ja clean-merkki kirjoitetaan vasta kaikkien
+  sulkujen onnistuttua sekä graceful-exitin jälkeen. Management-guardin
+  dispose ei peru käynnissä olevan operaation journal-/relaunch-viimeistelyä.
+- **R04 / one preparation owner:** `LocalUpdateHandoffCoordinator`
+  pitää saman installation-leasen ja backendin operation-sidotun
+  kirjoitussuojan pre-update-snapshotin alusta handoffiin. Prepare ja
+  handoff jakavat saman muistissa olevan omistuksen; pelkkä levyltä luettu
+  `recoveryPointValidated`-journal ei luo uutta live-handoff-valtuutta.
+  `RecoveryPointService` saa rajatun caller-owned pre-update-polun, joka
+  käyttää jo hankittua samaa suojaa eikä vapauta sitä sisäisessä finallyssä.
+  Backend tarkistaa snapshotin operation-sidonnan nykyiseen tapaan.
+  Ennen runtime-stopin alkua turvallisesti keskeytynyt valmistelu voidaan
+  vapauttaa vasta terminal-journalin ja voimassa olevan omistuksen jälkeen.
+  Epävarma stop, suojan menetys tai epävarma terminal-kirjoitus jää suljetuksi.
+  Käyttäjän normaali peruutus on edelleen ennen valmistelun alkua.
+- **R04 / backend fence:** nykyinen snapshot-broker saa täsmällisen
+  update-kohtaisen begin-/validointisopimuksen. C-P1:n aikakatkaisu ja
+  yhteyden katkeaminen mitätöivät tämän operaation mutta eivät vapauta
+  business-kirjoituksia. Tavallinen backup ei muutu. Päivityksen graceful-
+  shutdown on sidottu samaan operationiin myös `backendMessages.ts` /
+  `backendRunner.ts` -ketjussa: suoja tarkistetaan ennen sulkua ja viimeisen
+  asynkronisen palvelusulun jälkeen ennen onnistunutta exitiä. Näin suojan
+  vanheneminen mainin tarkistuksen ja backendin exitin välissä ei voi antaa
+  väärää onnistumista. Sisäisen broker-protokollan lähettäjä, parseri,
+  vastaanottaja ja versio päivitetään yhtenä sopimuksena; durable backup-,
+  workspace- ja update-journaliformaatit säilyvät.
+
+R04 toteutetaan ensin rajattuna backend/broker-palana. Nykyinen
+`ProfileMaintenanceState` omistaa tavallisesta huollosta erotetun
+update-operaation ja sen mitätöitymisen. Nimetyt `beginUpdateMaintenance`,
+`assertUpdateMaintenance` ja `endUpdateMaintenance` kulkevat nykyisessä
+yksityisessä snapshot-brokerissa. Tavallinen end ei vapauta update-suojaa;
+force-end, drain-virhe tai yhteyskatko mitätöi sen mutta säilyttää busy-tilan.
+Vain edelleen voimassa olevan, drainin läpäisseen update-operaation
+nimenomainen end voi palauttaa normal-tilan. Nykyinen 30 sekunnin drain ja
+sen jälkeen alkava 10 minuutin enimmäiskesto säilyvät. Backend tarkistaa
+monotonisen takarajan myös synkronisesti: viivästynyt ajastin ei jatka
+valtuutta. Myös synkroninen assert vaatii päättyneen drainin. Snapshotin ja
+validoinnin myöhäinen tulos tarkistetaan ennen onnistumisvastausta käyttäen
+ennen odotusta talteen otettua update-sidontaa; brokerin siivouksessa
+poistunut paikallinen tunniste ei ohita tarkistusta. Restore-aktivointia
+ei sallita update-suojan alla. Begin, snapshot ja end pysyvät samassa
+sarjallisessa jonossa; end ei ohita keskeneräistä snapshotia.
+
+Ensimmäisen palan näyttö yhdistää oikean state-omistajan, brokerin,
+asiakkaan ja HTTP-kirjoitusmiddlewaren hallitulla viestikuljetuksella.
+Se kattaa katkoksen myös kesken drainin, myöhäisen snapshotin, väärän
+operaation, vanhentuneen suojan ja tavallisen backupin vapautuskontrollit.
+Caller-owned palautuspisteen rajattu palvelupolku käyttää tämän jälkeen
+samaa operationia ilman begin/end-kutsua. Se tarkistaa suojan ennen
+onnistumista myös tallennuksen ja siivouksen jälkeen. Epävarman snapshotin
+tai validoinnin siivous vaatii nykyisen broker-jonon kuittauksen; ilman
+sitä staging ja ensivirhe säilyvät. Tavallinen backup ei muutu.
+Operation-sidotun graceful-exitin backend-vastaanottaja on tämän jälkeen
+toteutettu. Mainin lähettäjä/lifecycle ja prepare/handoff-ownerin
+tuotantokytkentä käyttävät nyt samaa operationia. Osatodistukset eivät korvaa
+oikean prosessin ja packaged-ketjun todistusta.
+
+R17:n rajatut regressiot kattavat timeoutin, failed-statusin, synkronisen
+ja viivästyneen exitin, puuttuvan exitin, fork-virheen, myöhäisen ready-
+viestin sekä keskeneräisen migration-gaten. `desktopRestoreStartup.test.ts`
+käyttää oikeaa compositionia ja todistaa, ettei epävarma omistajuus muuta
+profiilitiedostoja, aktiivista osoitinta tai käynnistä toista runtimea.
+R03:n testit erottavat ordinary graceful/forced/unknown-tulokset ja strict-
+sulun sekä samanaikaiset sulkupyynnöt.
+
+R04:n regressiot kattavat snapshotin jälkeisen todellisen HTTP-kirjoituksen,
+revalidationin viiveen, kilpailevan maintenancen, väärän operationin,
+terminal-kirjoituksen epäonnistumisen, aikarajan ennen sulkua ja sulun aikana,
+broker-katkoksen ja restartin. Normaali backupin auto-release säilyy omana
+kontrollinaan. `w6b2PackagedProofController` ja sen fault-controller
+käyttävät samaa suojattua preparationia: niiden keskeytykset säilyttävät
+nykyisen recovery-näytön, eivät ohita uuden suojan tarkistusta.
+
+**R18:n cold-start-ehdotus:** read-only admission tarkistaa create/import-
+sekä kilpailevien journalien current/next/backup-slotit ennen mutatoivia
+recovery-lukuja, myös ennen legacy-update-tilan korjaavaa siirtoa.
+Nykyinen build-admission säilyy workspace-muutosten edellä. Sen jälkeen
+valittu create/import-recovery toistaa admissionin oman installation-leasensa
+alla ennen mutaatioita; vasta sen jälkeen nykyinen first-start-registry-
+recovery ja uusi registry-luku edeltävät adoption/switch-valintaa sekä
+business-sessionia. Kilpailevaa first-start-journalia ei siis ensin korjata
+huomaamatta pois. `none` säilyttää muiden startup-recoveryjen oman polun
+eikä valtuuta plaintext-siivousta. Sama installation-lease jatkuu business-
+runtimen käyttöön, eikä composition ota sitä toistamiseen recoveryn ympärille.
+Cold absence ei käytä active-lifecyclen alkutilaa:
+mainin yksittäisinstanssiraja, vielä aloittamaton runtime ja suljettujen
+validaattorien todisteet vaaditaan. Yksittäisinstanssilukon saaminen ei
+yksin ole edellisen mainin lasten poistumisen todiste. Tämän prosessirajan
+ratkaisu suunnitellaan ennen tuotantokytkentää; muistissa oleva
+`notStarted`-tila, puuttuva nykyinen kahva tai pid-arvon tallentaminen ei
+korvaa poistumisen tai keskinäisen poissulun varmistusta. Edellisen kaatuneen
+mainin utility-prosessien elinkaari todistetaan erikseen paketoidulla
+keskeytys/restartilla.
+Tuntematon poissaolo estää myös candidate- ja plaintext-siivouksen.
+
+Nykyisten recovery-luokkien nimenomainen `beforeRuntimeStart`-completion
+käyttää samaa reconciliation-logiikkaa ordinary-polun kanssa eikä vastaanota
+lifecycle-käynnistysporttia. Se ei esitä no-op-callbackia terveenä
+aiempana runtimena. Ennen journalin poistoa fresh registry todistaa juuri
+aiemman aktiivisen ready-workspacen tai ensimmäisen julkaistun workspacen,
+kun previous ID oli null. Julkaisematon ensimmäinen yritys ilman jatkettavaa
+ready-workspacea säilyttää journalin; seuraava startup ei aloita hiljaista
+adoptiota. Cold-terminal noudattaa yllä hyväksyttyä C-P2-päätöstä.
+
+**R18:n ensimmäinen toteutuspala:** cold-terminal on lisätty nykyisiin
+create/import-recoveryihin. Yhteinen rajattu continuation-tarkistus vertaa
+tuoreen strict registryn kanonisia tavuja odotettuun tilaan ja tarkistaa
+johdetun työtilajuuren. Julkaistun rootin polku vertaa rekisteriä myös ennen
+omaa julkaisuaan alkuperäiseen snapshotiin: validoinnin aikana muuttunutta
+rekisteriä ei ylikirjoiteta, ja puuttuva sekä tyhjä rekisteri erotetaan.
+Tämä on operaation loppuehto, ei business-runtimen
+terveystodiste. Ordinary-polun käynnistyssemantiikka säilyy. Tämä ensimmäinen
+pala ei sisältänyt tuotannon startup-kytkentää, journal-admissionia tai
+paketoitua keskeytys/restart-todennusta. Admissionin myöhempi osatodiste
+on alla; R18 ja C pysyvät avoimina.
+
+Kohdistetut 128 testiä ja laajemman workspace-/startup-sarjan 811 testiä
+läpäisivät; kaksi ennestään alustakohtaista testiä oli ohitettu.
+Joukot ovat päällekkäisiä, eivät yhteen laskettava testimäärä. Desktopin
+tyypitys läpäisi testin lukukohdan korjauksen jälkeen. Testit kattavat
+publication-välit, first-workspacen, tuntemattoman runtimen, muuttuvan
+rekisterin, puuttuvan juuren ja epäonnistuvan journalin poiston. Oikean
+compositionin rajatesti todistaa molemmille recoveryille, että journalin
+poiston jälkeenkin virheellinen synteettinen tietokanta hylätään normaalissa
+käynnistystarkistuksessa eikä business-ikkunaa avata. Prosessi- ja broker-
+rajat ovat tässä testissä korvattuja; tämä ei ole packaged-käynnistystodiste.
+Uusia virhekoodeja tai diagnostiikkakanavia ei lisätty: nykyiset turvalliset
+recovery-virheet säilyvät. Niiden tuotannon lukuketju varmennetaan R18:n
+startup-kytkennän mukana. Näyttö ei vielä hyväksy C:n julkaisuintegraatiota.
+Riippumaton tämän rajatun muutoksen katselmus hyväksyi korjatun toteutuksen;
+270 ohjeiden suhteellista linkkiä/ankkuria sekä `git diff --check` läpäisivät.
+
+**R18:n toinen rajattu toteutuspala:** journal-admissionin matriisi on
+toteutettu erillään tuotannon polkukoosteesta ja käynnistyskytkennästä.
+Molemmat create/import-omistajat ja kilpailevat keskeneräiset journalit
+estetään ennen korjaavaa lukua. Terminal-poikkeukset käyttävät nykyisiä
+update-/Setup-parsereita. Yhteinen täysin lukeva apu korvaa management-
+guardin aiemman paikallisen toteutuksen; se tarkistaa hakemistopolut ja
+lukee sisällön nykyisellä rajatulla tiedostolukijalla. Väärän hakemistotyypin
+ja katkenneen linkin tulkitseminen puuttuvaksi tilaksi toistettiin uusilla
+regressioilla ja korjattiin. Ensimmäisten hylkäysten näyttö säilyy.
+[Workspace-ohje](local-company-workspace-plan.md) erottaa omistajan valinnan
+recoveryn mutaatio-, poissaolo- ja terveystodisteista. Rekisterin
+auktoritatiivinen slot-prioriteetti ja journaliformaatit eivät muutu.
+Tämä toinen pala ei vielä sisältänyt polkukoostetta. Sen myöhempi toteutus
+on kuvattu alla; tuotantokytkentä ja paketoitu todennus ovat edelleen
+avoimia, eikä tätä merkitä koko R18:n hyväksynnäksi.
+
+Katselmuksen korjausten jälkeinen workspace-/runtime-/composition-kohdesarja
+läpäisi 1 023 testiä; kaksi ennestään alustakohtaista testiä oli ohitettu.
+Desktopin tyypitys, 283 ohjeiden suhteellista linkkiä/ankkuria ja
+`git diff --check` läpäisivät. Riippumattomassa rajatussa
+loppukatselmuksessa ei jäänyt korjattavaa koodilöydöstä. Nämä ovat
+alemman tason todisteita, eivät tuotannon cold-start- tai packaged-portteja.
+
+**R18:n kolmas rajattu toteutuspala:** mainin juuresta johdettu polkukooste
+tarkistaa nykyisen admissionin oikeilla omistavilla polkurakentajilla.
+Legacy-profiili, valitun create/import-journalin kohde ja aiempi työtila sekä
+auktoritatiivisen rekisterin kaikki työtilat kuuluvat tarkistukseen.
+Jaetun slottivaraston uusi vain lukeva `inspect` käyttää samaa laiskaa
+current/backup/next-valintaa kuin korjaava luku. Virheellinen valittu tieto
+estää käsittelyn ilman fallbackia; syrjäytettyä tyhjää nextiä ei lueta.
+Rekisterin jäsenjoukon nykyiset muutokset ja journalin kattavuus on
+katselmoitu. W7 tai muu jäsenjoukon muuttaminen vaatii uuden kattavuusarvion.
+Polkukooste ei vielä ole tuotannon startupissa eikä todista runtime-poissaoloa.
+Sen tarkistus toistetaan leasen alla ennen omistajan mutatoivaa recoveryä.
+Tuotantokoodin laajempi workspace-/runtime-/composition-sarja läpäisi
+1 104 testiä; kaksi ennestään alustakohtaista testiä oli ohitettu.
+Katselmuksen jälkeen täydennetty 97 testin kohdesarja ja desktopin tyypitys
+läpäisivät. Joukot ovat päällekkäisiä. Täydennykset todistavat omistajan
+poistumisen tai vaihtumisen ennen lopullista tarkistusta sekä nykyisen
+palautuksen tarkan poisto-/siirto-/sync-järjestyksen. Riippumaton rajattu
+katselmus ei jättänyt korjattavaa löydöstä. Ohjeiden 284 suhteellista
+linkkiä/ankkuria ja `git diff --check` läpäisivät. Tätä ei lasketa
+packaged- tai integraationäytöksi.
+
+Cold-recoveryjen leasen sisäinen admission-portti on nyt pakollinen, ja
+sen oikea juuresta johdettu tarkistus vaatii odotetun omistajan. Tyyppinen
+admission-hylkäys ei muutu omistajakohtaiseksi yleisvirheeksi, ja ulompi
+startup säilyttää nimetyt nykyiset recovery-koodit suljetun allowlistin
+kautta. Raaka poikkeus tai koodiin liitetty lisätieto ei vuoda palautteeseen.
+Rajatut 244 testiä ja desktopin tyypitys läpäisivät, mukaan lukien ordinary-recoveryjen kontrollit,
+omistajan vaihtuminen/katoaminen, muuttumaton aineisto ja ulompi virheraja.
+Laajempi workspace-/runtime-/startup-sarja läpäisi 1 127 testiä; kaksi
+ennestään alustakohtaista testiä ohitettiin. Joukot ovat päällekkäisiä.
+Ohjeiden 284 suhteellista linkkiä/ankkuria ja `git diff --check` läpäisivät.
+Tämä täydentää edellistä palaa, ei todista tuotannon cold-start-kytkentää tai
+edellisen pääprosessin lasten poistumista. Rajatun toteutuksen riippumaton
+katselmus ei jättänyt korjattavaa löydöstä. Prosessirajan ratkaisu ja
+tuotantokytkentä sekä packaged-portti pysyvät avoimina.
+
+**R18:n avoin prosessirajapäätös:** edellisen mainin utility-prosessien
+poistumisen tai keskinäisen poissulun pitää kattaa myös uuden mainin
+tiedostomutaatiot ja validaattorin työskentely. Nykyinen main-lukko ja
+muistinsisäinen lease eivät yksin ole tämä sopimus. Rajattu prosessien
+välinen varaus nykyisen Node/Electron-runtimen avulla on suunnitteluvaihtoehto.
+Omistaja hyväksyi ensin sen rajatun suunnittelun ja synteettisen kokeen, ei
+tuotantokytkentää tai journal-formaatin muutosta. Vanhojen keskeytysten
+yhteensopivuusrajaus on myöhemmin hyväksytty alla erillisenä päätöksenä.
+Koe erottaa suojatun työn pääprosessin kuoleman jälkeen, myöhässä varausta
+hakevan lapsen sekä vanhan varaamattoman prosessin. Nykyinen testien
+prosessiomistaja vastaa kokeen eristyksestä ja siivouksesta. Ennen tuotantokytkentää
+ratkaistaan valtuutuksen siirtyminen mainin ja utilityn välillä sekä
+hyväksytyn yhteensopivuusrajauksen täsmällinen toteutus. Varauksen puuttuminen
+ei saa muuttua vanhan prosessin poissaolon oletukseksi. Tämä erillinen
+päätös ei avaa T3:a tai yleistä prosessikehystä uudelleen.
+
+Rajattu kolmen synteettisen tapauksen toteutettavuuskoe läpäisi.
+Hyväksyntä vaati testityöntekijän sidotun lopputulosviestin, valvojan
+onnistumisen ja koko omistetun prosessipuun poistumisen. Koe kattoi
+suojatun lapsen työn pääprosessin poistumisen jälkeen, uuden omistajan
+varauksen vuoksi estetyn myöhäisen lapsen sekä suojaamattoman vanhan
+toimintamallin vastatapauksen. Viimeinen ei ole turvallisuuden läpäisy:
+se vahvistaa, ettei vapaa varaus todista vanhan suojaamattoman työn loppua.
+Kokeen hyväksyntäketju katselmoitiin riippumattomasti ennen ajoa.
+Tämä ei hyväksy tuotantokytkentää. Työluvan kaikki siirtymäjärjestykset,
+pysyvä varauksen identiteetti ja vanhan käynnistyksen yhteensopivuusrajan
+todentaminen ovat vielä ratkaistavia; kokeen ajokohtainen tunniste ei todista niitä.
+
+**R18:n hyväksytty vanhojen keskeytysten käsittely:** jos vanhan kirjoittavan
+prosessin pysähtymistä ei voida varmistaa, kesken jääneen yrityksen luonnin
+tai tuonnin automaattinen palautus estetään. Tiedostot ja palautusjournal
+säilytetään selvitystä varten; epävarmuus ei valtuuta siivousta tai journalin
+poistoa. Päätös ei aseta estoja tavallisesti valmistuneille yrityksille eikä
+vanhoille laskuille pelkän iän vuoksi. Vapaan uuden varauksen saaminen ei
+ole vanhan suojaamattoman prosessin pysähtymistodiste. Tämä ratkaisee
+käyttäytymisrajauksen, ei hyväksy vielä uutta journal-formaattia tai yksilöi
+prosessien välisen suojan teknistä toteutusta. Sen tarkka sopimus ja
+todennus valmistellaan ennen tuotantokytkentää.
+
+**R18:n työluvan lähdekartoitus, ei toteutuspäätös:** kandidaattiruntime
+odottaa jo `workspaceCandidateRunner`-luokassa `start`-viestiä ennen
+`loadOperation`-kutsua. `electronWorkspaceCandidateRuntimeFactory` lähettää
+sen nykyisen `ready`-viestin jälkeen; tämä ready ei vielä todista prosessien
+välistä varausta. Tavallisen backendin `backendProcess` lähettää `start`-
+viestin heti `spawn`-tapahtumasta. `backendRunner`-luokan nykyinen `ready`
+lähetetään vasta `startServer`- ja migration-gate-ketjun jälkeen, joten sitä
+ei voi käyttää ensimmäisen kirjoittavan työn ennakkovaltuutuksena.
+Molempien polkujen mahdollinen suojattu työluvan siirto pitää siksi nimetä
+erikseen nykyisissä viestisopimuksissa ennen tuotantokytkentää. Nykyinen
+migration gate ja R17:n poistumis-/callback-todisteet säilyvät erillisinä.
+
+Lisätodisteen pitää erottaa lapsen ennen työluvan saamista voittama varaus,
+mainin kuolema suojatun valmiuden jälkeen ennen lupaa sekä jo jonossa olevan
+luvan käsittely mainin kuoleman jälkeen. Näitä ei hyväksytä kolmen aiemman
+kokeen perusteella. Parentin poistumisilmoituksen käsittely ei yksin suojaa
+synkronisen työn aikana; kilpailevan mainin mutaatioiden poissulku ja uuden
+luvan kelpoisuus ovat erillisiä ehtoja. Cold-admissionin paikka säilyy ennen
+korjaavia journal-lukuja ja workspace-valintaa, ei vasta backendin forkissa.
+Tämä lähdekartoitus ei muuta journal-formaattia, protokollaa tai vanhojen
+keskeytyneiden operaatioiden yhteensopivuussääntöä.
+
+##### R18: prosessivarauksen ja journal V2:n sopimusehdotus
+
+**Rajattu tekninen toteutus ja testaus hyväksytty 8.10.2026.** Omistaja
+hyväksyi alla kuvatun prosessivarauksen, työluvan ja journal V2:n sekä
+niiden vaiheistetun todennuksen. Aiempi hyväksytty legacy-estopolitiikka
+ja cold-terminal säilyvät. Tavoite on kytkeä nykyiset
+create/import-recoveryt tuotantoon, ei lisätä yleistä lifecycle-kehystä.
+Uusia riippuvuuksia, business-tietokannan migraatiota tai siirrettävän
+varmuuskopion formaatin muutosta ei tehdä. Hyväksyntä ei vielä ole
+toteutus- tai julkaisutodiste. Täsmällinen tekninen päätös kattaa:
+
+1. **Varaus ja sen identiteetti.** Nykyisen Node `net` -rajapinnan paikallinen
+   IPC-varaus kuuluu koko mainin validoimalle `userData`-juurelle, ei yksittäiselle
+   profiilille, operaatiolle tai buildille. Windows käyttää nimettyä putkea;
+   nykyisen Linux-kehityspolun vastaava vaihtoehto on abstrakti Unix-socket.
+   Endpoint ei tarjoa komentoja tai TCP-palvelua; yhteydenotto ei anna työoikeutta.
+   Nimi johdetaan yhden vakionimiavaruuden ja juurihakemiston todellisen
+   tiedostoidentiteetin (`dev`/`ino`, bigint) tiivisteestä. Identiteetti luetaan
+   mainin luotetusta juuresta ja varmennetaan uudelleen ennen siirtoa; lapsi
+   varmentaa saman juuren yksityisesti saadusta kuvauksesta. Puuttuva, muuttunut
+   tai epäluotettava identiteetti (myös nolla-inode), linkkijuuri tai tueton alusta estää suojatun
+   työn; satunnaisnimeen, PID:hen tai pelkkään merkkijonopolkuun ei pudota.
+   Saman hakemiston hyväksytyt polkualiaset sekä eri juurten erillisyys pitää
+   todistaa nykyisillä runtimeilla ennen tuotantokytkentää. Juurta ei siirretä
+   tai korvata käynnissä olevien runtimejen aikana. Varaus on yhteistyötä
+   noudattavien Eky-prosessien poissulku, ei suoja saman käyttäjätilin hyökkääjää
+   vastaan eikä vanhan suojaamattoman prosessin poissaolotodiste.
+2. **Nykyisten käynnistyskanavien kaksivaiheinen työlupa.** Main omistaa ensin
+   single-instance-lukon ja varauksen. Se valmistelee yhden nimetyn lapsen
+   nykyiseen yksityiseen kanavaan sidotulla käynnistyssukupolvella. Varaus
+   vapautetaan lapsen hankittavaksi vasta kun main ei tee ristiriitaista työtä.
+   Lapsi saa ladata kirjoittavan backendin/validaattorin vasta hankittuaan
+   varauksen, ilmoitettuaan sidotun varausvalmiuden ja saatuaan mainilta erillisen
+   saman sukupolven työluvan. Main tarkistaa yhä oman omistajuutensa ja operaation
+   ennen lupaa. Pelkkä fork, spawn, generic-ready tai jonossa oleva valmistelu
+   ei käynnistä työtä. Backendin nykyinen application-ready ja migration gate
+   säilyvät tämän jälkeisinä erillisinä ehtoina. Viestit validoidaan exact-key-
+   sopimuksella; väärä, vanha tai ristiriitainen siirtymä estää työn. Nykyiset
+   startup-/operation-/shutdown-aikarajat säilyvät koko ketjulle, eivät nollaudu
+   joka vaiheessa. Työluvaton orpo ei aloita työtä ja poistuu rajatusti.
+3. **Omistajuuden jatkuvuus.** Sekä business-backend että nykyisen candidate-
+   factoryn bootstrap-, validointi-, migraatio- ja inventaariotyöt osallistuvat.
+   Työtä tekevä utility pitää varauksen itse koko työn ja omistettujen kahvojen
+   sulun ajan. Main ei tee kilpailevaa cold-recoveryä, profiilin vaihtoa,
+   julkaisua tai poistoa lapsen työluvan aikana. Nykyiset samaa aktiivista
+   runtimea palvelevat brokerit ja snapshot-suojat säilyvät omissa sopimuksissaan;
+   varaus ei kiellä kaikkea mainin loki-/broker-työtä eikä korvaa R04:n fenceä.
+   Mainin seuraava ristiriitainen mutaatio vaatii todetun lapsen exitin ja
+   varauksen uudelleenhankinnan. Ulomman recoveryn aloittaminen vaatii lisäksi
+   R17:n mukaisen keskeneräisen startup-callbackin valmistumisen. Saman
+   `beforeMigrations`-callbackin jo omistama sulun jälkeinen migraatio- tai
+   rollback-jatko ei odota omaa valmistumistaan: se säilyttää nykyisen
+   operaatiovaltuutuksen ja vaatii exitin sekä varauksen takaisinoton.
+   Näin ulompi recovery ei ohita keskeneräistä jatkoa eikä sisäinen jatko
+   jää odottamaan itseään.
+   Terminal-viesti, kill-paluu tai vapaa varaus yksin ei riitä. Varausvirhe tai
+   epäselvä handoff sulkee mutation-admissionin ja säilyttää aineiston;
+   varauksen vapautus ei saa edeltää yhä käynnissä olevaa kirjoitusta.
+   Todetun exitin jälkeinen takaisinotto saa odottaa yhä varatun OS-resurssin
+   vapautumista vain kutsujan nykyisen sulkumääräajan sisällä. Vain puhtaasti
+   päättynyt `busy`-hankintayritys tarkistetaan uudelleen keskeytettävällä
+   10 ms:n tahdistuksella; epävarmaa siivousta tai muuta virhettä ei uusita.
+   Omistajuus ja täsmällinen siirtosukupolvi tarkistetaan joka yrityksellä,
+   sama juuri-identiteetti vaaditaan ja myöhäinen hankinta vapautetaan.
+   Odotus ei anna kirjoitusoikeutta. Aikaraja tai omistajuuden menetys jää
+   suljetuksi virheeksi. Ensimmäinen ja kylmäkäynnistyksen hankinta eivät
+   käytä tätä odotusta. Windowsin `busy`-luokka ei yksin todista toista
+   omistajaa; myös siihen mapattu natiivi käyttöoikeusvirhe voi kuluttaa tämän
+   saman rajatun odotuksen, mutta ei koskaan antaa omistajuutta.
+4. **Uusien keskeytysten journal V2.** Create/import saavat eksplisiittisen
+   `formatVersion: 2` -tyypin. Muut nykyiset kentät, slottipolut (myös niiden
+   `-v1`-nimet), kokorajat ja current/backup/next-auktoriteetti säilyvät.
+   Version merkitys on suojatun sopimuksen alaisena aloitettu operaatio, ei
+   reaaliaikainen poissaolo tai recovery-lupa. V2 julkaistaan vasta nykyisen
+   runtimen todetun sulun ja mainin varauksen jälkeen ennen candidate-kirjoitusta.
+   V1 luetaan omana legacy-tyyppinään; sitä ei muuteta V2:ksi tai oleteta
+   suojatuksi. Saman operaation versiota ei saa vaihtaa myöhemmässä kirjoituksessa.
+   Erillistä sidecaria tai valinnaista `guarded`-kenttää ei lisätä. Vanhan
+   lukijan pitää hylätä V2 muuttamatta slottisisältöä; tätä ei oleteta ilman testiä.
+5. **Cold-admission ja uudelleenkäynnistys.** Vain lukeva journal-admission
+   tapahtuu ennen korjaavia store-lukuja, plaintext-siivoamista tai workspace-
+   valintaa. V1 ja tuntematon vanha kirjoittaja estävät automaattisen palautuksen
+   aineistoa muuttamatta; yleistä ohitus- tai pakotetun siivouksen kyvykkyyttä
+   ei lisätä. V2 vaatii tuoreen varauksen lisäksi nykyisen journalien keskinäisen
+   admissionin, installation-leasen, build-portin ja omistajakohtaiset tarkistukset.
+   Validaattori käyttää yllä olevaa siirtoketjua, minkä jälkeen main hankkii
+   varauksen takaisin ennen loppumutaatiota. Production-lifecycle pyytää tällä
+   hetkellä lykättyä relaunchia, ei välitöntä backend-starttia: tavallinen
+   onnistuminen poistaa journalin ennen varsinaista relaunchia. Virheessä säilynyt
+   journal käsitellään seuraavan startupin admissionissa ennen business-backendiä.
+   Ordinary-recoveryn omat terveystarkistukset säilyvät; cold-terminal poistaa
+   journalin vasta hyväksytyn tiedosto-/rekisteri-/jatkettavuustodisteen jälkeen.
+   Journalin puuttuminen ei muutu yleiseksi vanhojen prosessien poissaolotodisteeksi.
+
+**Rajattu tiedostokartta:** uusi runtime-adapteri
+`workspaceProcessReservation.ts` ja sen kohdetestit omistavat varauksen sekä
+identiteetin; nykyiset `backendMessages.ts` / `backendProcess.ts` /
+`backendRunner.ts` ja `workspaceCandidateMessages.ts` /
+`electronWorkspaceCandidateRuntimeFactory.ts` / `workspaceCandidateRunner.ts`
+omistavat omat käynnistyssiirtymänsä. Mahdollinen yhteinen descriptor-/parser-
+tiedosto sisältää vain saman varausarvon sopimuksen, ei uutta koordinaattoria.
+Creation/importin nykyiset `Types`, `JournalValidation`, `JournalBytes`,
+`JournalSerializer` ja `JournalStore` erottavat V1/V2:n. Nykyiset koordinaattorit,
+recoveryt, `workspaceColdRecoveryAdmissionComposition` ja `desktopComposition`
+kytkevät päätetyn järjestyksen; moduulien business-vastuut eivät siirry mainiin.
+
+**Toteutusjärjestys ja hyväksyntä:** ensin nykyisen synteettisen kokeen puuttuvat
+työlupajärjestykset sekä vakaan identiteetin ja Linux-vastineen näyttö. Orvon
+voittama varaus ilman lupaa, parentin kuolema ennen lupaa sekä jonossa oleva lupa
+parentin kuoleman jälkeen testataan tapahtumaohjatusti. Vasta sitten adapteri ja
+molemmat nykyiset käynnistyskanavat, V1/V2-codecit ja transition-testit sekä
+tuotannon startup/recovery-kytkentä. Fail-closed-hylkäyksen pitää säilyttää myös
+plaintext ja kaikki auktoritatiiviset slotit; crash-before-grant, terminal-before-
+exit, failed-exit, pending-callback, restart journalin poiston ympärillä ja
+retained-journal-relaunch kuuluvat matriisiin. Onnistunut tavallinen käynnistys,
+ordinary-recovery, backup ja update eivät saa muuttua virhepoluiksi.
+
+**Rajattu varausnäyttö 8.10.2026:** kolme puuttunutta Windows-Electronin
+työlupajärjestystä on todennettu nykyisen prosessivalvojan alaisina. Ilman
+työlupaa varauksen saanut lapsi ei kirjoita; jo myönnetyn jonossa olevan luvan
+käsittely mainin poistuttua ei päästä seuraajaa ristiriitaiseen työhön.
+Hyväksytyt tapaustulokset vaativat sidotun worker-terminalin sekä koko omistetun
+prosessipuun poissaolon. Ensimmäisen ajon kaksi hylkäystä säilyvät: koe ei
+pitänyt työluvatonta lasta elossa seuraajan varausyritykseen asti. Vain niiden
+koejärjestelyyn lisättiin nykyisen rajan sisäinen tapahtumaohjattu pito, ja
+molemmat kohdetapaukset läpäisivät. Tämä ei ole tuotantovirheen korjaustodiste
+eikä uusi aikaraja tai hyväksyntäpoikkeus.
+
+Linuxin erillinen pieni prosessikoe todensi abstraktin paikallisen socketin
+päällekkäisen varauksen eston sekä uudelleenhankinnan hallitun ja pakotetun
+poistumisen jälkeen. Kokeet todensivat synteettisen juuren identiteetin
+valituilla hyväksytyillä polkualiasilla ja eri juurten erillisyyden. Linux-koe
+ei ole koko Electron-käynnistysketjun testi. Koekytkennän rajattu katselmus
+sulki sulkemisen toteamista ja ensivirheen säilymistä koskeneet puutteet ennen
+Windows-ajoa. Työluvattoman orvon tuotannon poistumismalli, journal V2 ja
+tuotannon startup/recovery-kytkentä ovat edelleen toteutettavia ja
+todennettavia; yllä olevat packaged- ja integraatioportit säilyvät.
+
+**Adapteripala 8.-9.10.2026 (ei tuotantokytkentää):**
+`workspaceProcessReservation.ts` toteuttaa hyväksytyn juuri-identiteetin,
+paikallisen IPC-varauksen, omistajuuden uudelleentarkistuksen ja eksplisiittisen
+vapautuksen ilman uusia riippuvuuksia. Sen
+[käyttösopimus](local-desktop-implementation-plan.md#prosessivarauksen-adapteri-r18)
+erottaa varauksen varsinaisesta työluvasta. Kohdetestit (28 yksikkötestiä ja
+3 oikean IPC:n testiä) sekä desktopin tyyppitarkistus läpäisivät. Erillinen
+Linux-prosessikoe todensi saman adapterin päällekkäisen omistajan eston ja
+uudelleenhankinnan hallitun sekä pakotetun poistumisen jälkeen. Riippumaton
+rajattu katselmus ei löytänyt korjattavaa; sen nimeämät kaksi testiaukkoa
+(viivästynyt sulkukuittaus ja keskeytys bindin jälkeisessä identiteetin
+tarkistuksessa) katettiin kohdetesteissä.
+
+Ensimmäisen testivalmistelun hylkäykset erotetaan toteutuksen hyväksynnästä:
+testinimessä ollut bigint-tulostus ja testiapurin valinnaisen kentän tyyppi
+korjattiin muuttamatta adapterin ehtoja. Erilliskäännöksen valmistelussa
+korjattiin kääntäjän työskentelykansio ja yksittäistiedoston asetuskutsu;
+projektin normaali tyyppitarkistus on erillinen läpäissyt portti. R18 ei ole
+valmis: tuotannon loki-/palautekytkentä, kahden käynnistyskanavan todennus,
+journal V2 sekä hardened packaged-, update- ja PR/main-portit ovat avoinna.
+
+**Viestikerroksen valmistelupala 9.10.2026:** yhteinen yksityinen varausarvo
+sitoo kanonisen käynnistyssukupolven, juuri-identiteetin ja validoitavan
+juuripolun. Se ei myönnä työlupaa tai väitä omistajuutta. Nykyisen backend-
+kanavan käynnistys- ja statuslukijat hylkäävät ylimääräiset kentät.
+170 kohdetestiä ja desktopin tyyppitarkistus läpäisivät; mukana ovat
+myös nykyiset backendin käynnistys-/sulku- ja candidate-viestiregressiot.
+Tämän jälkeinen koko desktopin testikierros läpäisi yllä ilmoitetuin määrin;
+kohdeajon testejä ei summata siihen uudelleen.
+Viestikerroksen riippumaton rajattu katselmus ei löytänyt korjattavaa.
+Tämä on arvon ja lukijan näyttö, ei vielä kaksivaiheisen käynnistyksen,
+työluvattoman orvon poistumisen tai palautuksen tuotantokytkennän todiste.
+
+**Candidate-lapsen käynnistyspala 9.10.2026 (kytkentä kesken):** lapsi vaatii
+erillisen, samaan pyyntöön sidotun työluvan hankitun varauksen jälkeen ennen
+kirjoittavan moduulin lataamista. Kohdenäyttö kattaa väärän järjestyksen,
+väärät sidonnat, varauksen menetyksen, keskeytyksen viivästyneen latauksen
+aikana sekä alkuperäiseen käynnistysbudjettiin rajatun työluvattoman orvon.
+133 kohdetestiä ja desktopin tyyppitarkistus läpäisivät. Ensimmäinen
+tyyppitarkistus havaitsi parentin terminal-lukijassa uuden ei-terminal-viestin;
+lukija hylkää sen turvallisesti eikä tulkitse sitä valmistuneeksi tulokseksi.
+Rajattu katselmus löysi pre-import-polun kaksi puutetta: keskeytyksen jälkeen
+valmistuva polkutarkistus saattoi vielä ladata moduulin, ja keskeneräinen
+omistajuustarkistus esti määräaikaisen poistumisen. Molemmille lisättiin
+rajattu korjaus ja regressio; todellinen lataaja ei arvioi synteettistä
+moduulia peruutuksen jälkeen, eikä keskeneräistä tarkistusta odoteta ennen
+pre-import-poistumista. Aloitetun kirjoittavan työn sulkuraja säilyy erillisenä.
+Korjausdeltaan kohdistunut riippumaton jälkikatselmus ei löytänyt uutta
+korjattavaa; katselmus ei kattanut vielä puuttuvaa parent-integraatiota.
+
+**Candidate-parentin kytkentäpala 9.10.2026 (edelleen kesken):** nykyinen
+factory odottaa mainin valmistelua, sidottua `reservationReady`-viestiä ja
+tuoretta operaatiovaltuutusta ennen `start`-työlupaa. Asynkronisen tarkistuksen
+jälkeen tehdään vielä synkroninen saman valtuutuksen tarkistus juuri ennen
+lähettämistä. Tulosta ei anneta käyttöön ennen todettua exitiä, valmistelu-
+ja lupacallbackien valmistumista sekä mainin varauksen takaisinottoa.
+Keskeytys ei saa päästää myöhäistä callbackia lähettämään työlupaa.
+Puuttuva exit, epäselvä protokolla tai epäonnistunut takaisinotto mitätöi
+siirron pysyvästi; myös siivouksen kutsujan on kunnioitettava tätä tilaa.
+Odotettua sidottua peruutuksen `failed`-terminalia ei sekoiteta
+protokollavirheeseen. Nykyiset käynnistys- ja sulkubudjetit käyttävät
+monotonista kelloa eivätkä pitene järjestelmäkellon muutoksesta.
+
+Rajattu katselmus havaitsi nämä kolme tuoreen kytkentäkoodin puutetta:
+asynkronisen lupatarkistuksen jälkeinen vanhentuminen, peruutuksen kuittauksen
+virheellinen hylkäys ja seinäkelloon perustuvan sulkubudjetin venyminen.
+Korjauksille lisättiin kohdetestit. Ensimmäisen kohdeajon testiaineiston väärä
+tilanimi korjattiin nykyiseen `current`-sopimukseen, ei lukijaa lieventämällä.
+Korjattu kohdekokonaisuus läpäisi 152 testiä ilman ohituksia. Mukana ovat
+myös oikean parent- ja child-tilakoneen kytketyt peruutukset synteettisessä
+viestikanavassa; ne eivät vielä todenna Electron-prosessirajaa tai mainin
+oikeaa varausomistajaa. Dokumenttilinkkien tarkistus läpäisi.
+Korjauksiin kohdistuneessa riippumattomassa jälkikatselmuksessa ei löytynyt
+jäljellä olevaa korjattavaa tästä parent-kättelyn muutoksesta; tuotannon
+main-omistajan kytkentä ei kuulunut tähän katselmukseen.
+
+Varausomistaja on factoryn pakollinen riippuvuus, ei valinnainen ohitus.
+Tämän parent-vaiheen tyyppitarkistus osoitti kolme kytkemätöntä tuotannon kohtaa:
+`workspaceFirstStartMigrationComposition`, `workspaceActivationMigrationComposition`
+ja `workspaceManagementComposition`. Alla oleva jatko korvaa tämän välitilan.
+Tavallisen candidate-ketjun
+toimintaa, packaged-hyväksyntää tai merge-valmiutta ei väitetä kohdetestien
+perusteella. Virhesiivouksen on odotettava samaa poistumis- ja
+takaisinottotodistetta; terminal tai start-Promisen hylkäys ei riitä.
+
+**R18:n main-kytkennän rajattu jatko:** sama main-omistaja on nyt välitetty
+edellä mainittuihin kolmeen compositioniin ja business-backendiin. Tuore
+single-instance-tarkistus ja täsmällinen startup-/huoltolupa tarkistetaan myös
+odotusten jälkeen. Create/import-virhesiivous ei aloita korjaavaa journalin
+lukua tai aineiston poistoa, jos takaisinotto jää epävarmaksi. Yksi nykyinen
+lifecycle ja huoltovaraus säilyvät. Kohdeajot läpäisivät: omistajuus ja
+composition 53 testiä, laajennettu siivouskokonaisuus 108 testiä sekä
+startupin turvalliset virhekoodit ja operational-kytkentä 78 testiä.
+Ajot ovat päällekkäisiä, eivät yhteenlaskettava hyväksyntä. Desktopin
+tyyppitarkistus läpäisi; E2E:n erilliset todennuskutsujat ovat vielä avoinna.
+Omistaja-apurin katselmuksessa löytynyt varauksen hankinnan ja peruutuksen
+välinen kilpailu korjattiin regressiolla. Tämän välitilan journal- ja
+cold-recovery-jatko on alla. Koko tuotantokytkennän katselmus, diagnostiikan
+koko lukuketju sekä paketoidut ja integraatioportit ovat edelleen tekemättä.
+
+**R18:n journal- ja cold-recovery-kytkentä 9.10.2026:** uusien operaatioiden
+V2, erillinen legacy-V1 sekä saman operaation versionvaihdon esto on toteutettu
+nykyisissä codeceissa ja kirjoittajissa. Valittu V1 estää kylmäpalautuksen
+ennen korjaavaa lukua tai siivousta. Journal-kokonaisuuden 378 kohdetestiä
+läpäisi; erillinen historiallisella lukijalla ajettu 12 tapauksen koe todensi
+V1:n lukemisen ja V2:n hylkäyksen muuttamatta current/backup/next-tavuja.
+Se ei ole vanhan paketoidun sovelluksen hyväksyntätesti.
+
+Startup lukee admissionin ennen korjaavia työtilatoimia, varmentaa buildin
+ja käyttää nykyisiä recovery-luokkia saman varauksen sekä huoltoleasen alla.
+V2-tuonti voi siivota oman plaintext-karanteeninsa; journaliton tai luontiin
+liittyvä epäselvä plaintext estää avaamisen ja säilyy. Normaali business-
+käynnistys ja terveystarkistus tapahtuvat vasta cold-terminalin jälkeen.
+Omistajuus tarkistetaan uudelleen julkaistun kohteen validoinnin jälkeen
+ennen siivousta ja jatkotyötilan lukujen jälkeen ennen journalin poistamista.
+
+Rajattu käynnistys-/recovery-kokonaisuus läpäisi 200 testiä sekä desktopin
+tyyppitarkistuksen. Mukana ovat oikea composition-kutsuketju synteettisellä
+Electron-rajalla, kaikkien kolmen journal-slotin V1-esto ja V2-palautus,
+ristiriitainen palautus, puuttuva jatkotyötila, uusi käynnistys sekä virheellinen
+tietokanta journalin poiston jälkeen. Ajot ovat päällekkäisiä muiden
+kohdeajojen kanssa. Ensihylkäykset säilyvät: kytkentämäärän ja uuden
+omistajuustarkistuksen testiodotukset sekä testioperaation tyypitetty
+polkurakentaja korjattiin ilman sopimusten lieventämistä.
+
+Rajattu riippumaton katselmus löysi vielä startup-callbackin sulkuriskin:
+exitin jälkeen takaisin saatu varaus saattoi vapautua, vaikka callback oli
+yhä kesken. Sticky-invalidation estää nyt ulomman sulun. Oikean backend-
+parentin ja compositionin hallittu regressio sekä jälkikatselmus hyväksyivät
+korjauksen. Tämä ei korvaa julkaistun kohteen Electron-validointia, paketoitua
+keskeytys/restart-todistusta tai C:n muita hyväksyntäportteja.
+
+**R18:n testikutsujat ja julkaistun juuren rajattu todennus:** erilliset
+ensikäynnistys-, aktivointi-, inventaario-, management- ja W6B-valmistelut
+käyttävät nyt samaa nimenomaista prosessivarausta. Valmistelun ja tarkistuksen
+varaus suljetaan ennen tuotannon compositionin avaamista, ja saman juuren
+ehdokasvalmistelut suoritetaan peräkkäin. Vanhentunut testiapuri torjutaan
+ennen tiedostomuutoksia. Ensivirhe ja siivouksen epäonnistuminen säilyvät
+erillisinä; epäonnistuneen kokeen juurta tai migraatioprefiksiä ei poisteta.
+Rajatut 15 apuritestiä ja erillinen E2E-tyypitys läpäisivät. Kahden
+apurilöydöksen riippumaton jälkikatselmus ei jättänyt korjattavaa.
+
+Julkaistun luonti- ja tuontikohteen kylmäpalautus testataan nyt oikealla
+compositionilla ja kandidaattilapsen parentilla, mutta hallitulla Electron-
+prosessirajalla. Neljä uutta tapausta odottaa todellista exit-havaintoa myös
+terminal-viestin jälkeen, eikä journalia tai rekisteriä muuteta odotuksen
+aikana. Epäonnistunut validointi säilyttää julkaistun aineiston ja journalin.
+Tämän composition-tiedoston 62 testiä läpäisivät. Mukana on myös brokerin
+sulkuvirhe kesken jääneen callbackin rinnalla: omistajuus lukitaan ennen
+virhealttiita sulkuja, kaikki sulut yritetään ja ensivirhe säilyy.
+Rajattu riippumaton jälkikatselmus hyväksyi tämän korjauksen. Kyseessä ei vielä ole
+todellisen Electron-lapsen tai hardened-paketin hyväksyntä.
+
+Todellisen Electron-kokeen viisi työtilatestiä hylkääntyivät ensimmäisen
+ikkunan valmistelussa. Lähde ja talteen jäänyt vaihehavainto yksilöivät
+testibackendin vanhan start-viestin: se ei sisältänyt parserin nyt vaatimaa
+sukupolvea eikä toteuttanut varauksen siirtoa. Nykyinen testiadapteri on
+sovitettu samaan prepare/reservationReady/grant-sopimukseen ja todelliseen
+OS-varaukseen; main saa varauksen takaisin vasta lapsen poistuttua.
+Rajatut 18 parent/child-regressiota, E2E-build ja riippumaton jälkikatselmus
+läpäisivät. Aikarajat ja testin update-shutdownin hylkäys säilyvät.
+Korjatulla kytkennällä kaikki viisi alkuperäistä Electron-testiä saavuttivat
+ensimmäisen ikkunan. Startup/adoption läpäisi, mutta neljä muuta hylkääntyi
+sulussa tai lähdetyötilan luonnissa. Rajattu erottelu osoitti takaisinoton
+voivan epäonnistua heti lapsen exitin jälkeen ja onnistua myöhemmin samassa
+mainissa. Yllä kuvattu nykyisen määräajan sisäinen takaisinotto ja sen
+regressiot on toteutettu. Kaikki viisi todellista Electron-työtilatestiä
+läpäisivät korjatulla kytkennällä; omistajan 26 regressiota sekä rajattu
+riippumaton jälkikatselmus hyväksyivät takaisinoton rajat.
+Ensihylkäyksiä ei merkitä onnistuneiksi eikä GitHubin ajoitusongelmaksi.
+
+`DESK-WORKSPACE-STARTUP-001` kattaa lisäksi V2:n julkaistun tyhjän
+luontikohteen ja tuontikohteen kylmäpalautuksen todellisella Electron-
+kandidaatilla. Oikea composition varmentaa jatkotyötilan, poistaa journalin
+ja pysähtyy tarkoitukselliseen testirajaan ennen business-backendin avaamista.
+Koe vertaa täsmällistä rekisteriä sekä tietokanta- ja dokumenttitavuja ja
+toistaa palautuksen samalla aineistolla. Molemmat polut läpäisivät.
+Luontifixturen ensihylkäys korjattiin tyhjän yrityksen nykyiseen sopimukseen;
+tuotannon validointia ei muutettu. Tämä ei vielä ole täysi business-restart
+tai hardened-paketin näyttö. Myöhempi pelkän virhehaaran tarkennus säilyttää
+ensivirheen ja varauksen siivousvirheen erillisinä sekä epäonnistuneen kokeen
+aineiston; apurin ja omistajan 43 regressiota sekä katselmus läpäisivät.
+
+Koko työtilan normaali testisarja läpäisi. E2E-järjestelmätestien kaksi
+vanhaa kutsurajaa sovitettiin nykyiseen sopimukseen: testibackendin
+prepare/grant-kättely ja Node-fixturen omistamien työkuormien todellinen
+poistuminen ennen yrityksen luontikoordinaattorin jatkoa. Näiden 23
+kohdetestiä läpäisivät. Node-fixture ei väitä todistavansa Electronin
+OS-varauksen siirtoa. Kriittisen Electron-sarjan, puhtaan revision
+paketoinnin, installer/update- ja PR/main-porttien hyväksyntä on erillinen.
+
+Laaja kriittinen Electron-kierros läpäisi 44 tapausta ja hylkäsi yhden:
+startup-palautustestin sisältöehdot täyttyivät, mutta sovelluksen kaikkien
+prosessien määrä poikkesi alku- ja loppumittauksessa. Kohdennettu yksityinen
+prosessilajit erottava koe läpäisi muuttamatta ehtoa. Se ei yksilöi
+alkuperäisen poikkeaman syytä eikä muuta hylättyä kierrosta hyväksytyksi.
+Yksi tämän jälkeen ajettu normaali kriittinen Electron-kierros läpäisi
+kaikki 45 testiä samoilla ehdoilla. Ensihylkäys säilyy avoimena havaintona;
+uutta lähdettä koskevat paketti-, PR- ja main-portit vaaditaan edelleen.
+
+Paketoidun C-palautusnäytön valmistelu käyttää nykyistä smoke-kutsujaa:
+erilliset V2 `rootPublished` -luonti- ja tuontisyötteet palautetaan oikean
+paketoidun startupin kautta. Alkuperäinen aktiivinen työtila käy normaalin
+backup/inspect/restore/restart-polun; palautettu toinen työtila säilyy
+passiivisena. Molempien suljettujen vaiheiden jälkeen verrataan tarkka
+rekisteri, kaikkien journal-slottien puuttuminen ja säilytettävät tietokanta-/PDF-tavut
+todellisen varauksen alla. Valmistelun kolme regressiota, smoke-kutsujan
+onnistumis-/virhepolut ja tyypitys läpäisivät. Varsinainen paketoitu ajo on
+vielä tekemättä. Uusia sovelluksen testiohjaimia tai aikarajoja ei lisätty.
+
+Diagnostiikan, tukipaketin tapahtumien ja incident-yhteenvetojen 31 lukutestiä
+läpäisivät; varaus- ja kylmäpalautusvirheiden turvalliset koodit säilyvät
+nykyisessä `desktop.bootstrapFailed`-projektiossa ilman yksityisiä polkuja
+tai business-tunnisteita. Tämä on lukijasopimusten kohdenäyttö erillään
+compositionin todellisesta operational-kirjoitustestistä ja paketoidun
+sovelluksen koko HTTP-/UI-/tukipakettiketjun todennuksesta.
+
+Käyttäjälle käytetään nykyistä turvallista recoveryRequired-palautetta ja
+startupin nimettyjä virhekoodeja, ei raw-polkuja, putkinimiä tai identiteettejä.
+Todellinen operational-tapahtuman ja diagnostiikan lukuketju varmennetaan;
+uusi syykoodi lisätään vain omistavan nykyisen sopimuksen kautta tarvittaessa.
+Tekninen käynnistyksen esto ei luo business-audit-tapahtumaa. Hyväksynnän jälkeen
+ADR-0007/0011, workspace-/desktop-ohjeet, palautuksen runbook ja nykyinen
+testimatriisi päivitetään toteutuksen mukana. Synteettinen näyttö ei korvaa
+C:n packaged-keskeytys/restart-, backup/restore-, update- tai PR/main-portteja.
+
+Rajattu riippumaton suunnitelmakatselmus vahvisti deferred-relaunch-järjestyksen
+sekä journal-provenancen ja live-poissaolon eron. Sen pyytämä callbackin
+itseodotuksen esto on täsmennetty yllä. Nykyisen tiedostolukijan sallima
+nolla-inode ei ole varauksen hyväksytty identiteetti. Katselmus koski
+päätösehdotusta, ei toteutuksen tai puuttuvien runtime-kokeiden hyväksyntää.
+
+**R19:n rajattu toteutuspala:** oletus-build käyttää nyt täyttä
+`git rev-parse HEAD` -tunnistetta. Ympäristösyötteen, vanhan 7-40 merkin
+metadatan lukijan, manifestin ja trust-politiikan sopimuksia ei muutettu.
+Tarkat Git-argumentit ja oikea tiedostopohjainen cache/trust-ketju on
+testattu ilman `EKY_BUILD_REVISION`-ohitusta; Git-tuloste ja MSI-identiteetin
+tarkastaja ovat tässä synteettisiä. Täysi identiteetti rekisteröityy ja
+uudelleenvalidoituu; molemmat lyhyt/pitkä-suunnat sekä saman alkuosan
+eri loppu hylätään ennen cache-slottia. Lukutestit säilyttävät 7, 12 ja
+40 merkin tunnisteet muuttumattomina.
+
+Integraatiokatselmus löysi RC-smoken ja W6B:n nykyrevision kuluttajista
+vielä vanhan lyhennysodotuksen. Ne käyttävät nyt täyttä current-revisiota
+valmistelusta descriptorin ja profiilitodisteen kautta jälkiehtoihin.
+Lyhyt nykyrevisio ja saman alkuosan eri loppu hylätään; historiallinen
+legacy-lähde ja RC:n aiempien julkaisujen identiteetit säilyvät muuttumattomina.
+Rajatut kuluttajatarkistukset läpäisivät 218 ja 61 testiä (osittain päällekkäiset).
+Lähdekatselmus ei jättänyt tämän rajauksen avoimia löydöksiä.
+
+Rajattu release-/cache-/manifest-/trust-sarja läpäisi 62 testiä,
+olemassa olevat installer-/paketointisopimukset 12 testiä ja desktopin
+tyypitys läpäisi. Katselmuksen pyytämä vastakkaisen prefix-suunnan
+regressio on mukana. Tuotantokorjaus koskee vain oletusrevision lukukomentoa;
+riippuvuuksia, formaatteja tai tietokantoja ei muutettu.
+[Versiointiohje](release-versioning-policy.md#paketoidun-buildin-identiteetti)
+erottaa oletuskirjoittajan ja vanhan metadatan lukuyhteensopivuuden.
+Puhtaan revision todellinen oletuspaketointi, installer-manifestin sidonta
+ja nykyiset PR-/main-portit ovat edelleen avoimia; tätä alempaa näyttöä
+ei lasketa R19:n tai C-kokonaisuuden loppuhyväksynnäksi.
+
+**R03:n rajattu toteutuspala:** mainin update-handoff käyttää nyt nykyisen
+lifecycle-ownerin strict-sulkua. Ordinary- ja update-kutsut jakavat
+ensimmäisen tehtävän tuloksen; forced/unknown-tulos ei muutu gracefulksi,
+eikä epäonnistunut strict-sulku käynnistä ordinary-fallbackia. Yksittäinen
+capability-/broker-virhe ei estä muita sulkuja eikä mahdollista clean-merkkiä.
+Lifecycle-/workspace-/main- ja operational-validoinnin sarja läpäisi
+1 361 testiä; kaksi ennestään alustakohtaista testiä ohitettiin. Desktopin
+tyypitys läpäisi. Aiempi lähdekooditesti vaati vanhan helperin täsmällistä
+kirjoitusasua; se päivitettiin nykyiseen owner-kytkentään. Sulkujärjestyksen
+toiminnallinen todennus säilyy lifecycle- ja composition-regressioissa.
+Riippumaton koodikatselmus valmistui. Sen kaksi havaintoa korjattiin:
+turvallinen ensisyy säilyy erillään siivousvirheistä, ja compositionin
+kilpailutesti todentaa liittymisen vielä keskeneräiseen sulkuun. Näiden
+korjausten kohdetestit, laajempi yllä nimetty sarja, tyypitys ja rajattu
+jatkokatselmus läpäisivät. Julkinen lokisopimus ei muuttunut.
+[Nykyohje](local-desktop-implementation-plan.md#päivityksen-hallittu-sulku)
+ja desktopin AGENTS kuvaavat muuttuneen kytkennän. R04:n backend-fence,
+hardened packaged backup/restore, installer-todennus ja PR/main-portit
+pysyvät erillisinä avoimina ehtoina. R03:a tai C:tä ei vielä merkitä
+kokonaisuutena hyväksytyksi.
+
+**R04:n backend/broker-osatoteutus:** update-kohtainen begin/assert/end,
+mitätöitymisen säilyttävä state ja version 8 tiukka sisäinen protokolla
+ovat työpuussa. Backendin monotoninen deadline estää myöhäisen valtuuden
+myös ennen ajastimen callbackia. Sulku omistaa keskeneräisen beginin;
+jonossa odottava pyyntö ei hanki suojaa sulun jälkeen. Snapshotin ja
+validoinnin tulos tarkistaa talteen otetun omistuksen odotuksen jälkeen.
+Tavallisen backupin vapautus säilyy omana kontrollinaan.
+
+Backendin maintenance-/snapshot-/HTTP-sarja läpäisi 77 testiä ja kaksi
+ennestään alustakohtaista testiä ohitettiin. Desktopin backup-/runtime-/
+update-sarja läpäisi 569 testiä ja yksi ennestään alustakohtainen testi
+ohitettiin. Molempien pakettien tyypitys läpäisi. Rajattu riippumaton
+lähdekatselmus ja sen jatkotarkistus valmistuivat ilman avointa löydöstä.
+Jonojärjestyksen testit täsmennettiin katselmuksen perusteella: ne odottavat
+pyynnön saapumista brokerin tilaajalle ennen snapshotin vapautusta tai sulkua.
+Tämän 12 testin rajattu jatkoajo läpäisi; sarjoja ei lasketa yhteen.
+Pakettirajat ylittävän testin erillinen tiukka tyypitys löysi lisäksi
+fixturen kehämäisen tyyppipäätelmän. Siivouslistan rajattu eksplisiittinen
+tyyppi korjasi sen; kohdetiedoston tyypitys ja lopulliset 24 kohdetestiä
+läpäisivät. Sovelluskoodia tai testien vaatimuksia ei muutettu tämän vuoksi.
+
+Rajapintatesti käyttää oikeaa statea, brokeria, clientia, HTTP-middlewarea
+ja saman prosessin MessagePort-kanavaa; snapshotin sisältö on testisovitin.
+Se ei ole todistus erillisen utility-prosessin exitistä, aidosta
+palautuspisteestä tai paketoidusta päivityksestä. Uutta julkista tapahtumaa
+tai virhekoodia ei lisätty; nykyiset turvalliset broker-koodit säilyvät.
+Prepare/handoffin yhteinen omistus, caller-owned palautuspisteen
+tuotantokytkentä ja saman operaation välitys graceful-exitin lähettäjässä
+ovat seuraava R04-työ. Backendin vastaanottajan näyttö on eritelty alla. Näiden
+todellinen palautteen/diagnostiikan kytkentä sekä packaged-/PR-/main-portit
+ovat yhä avoinna. Sisäinen protokollaversio ei muuta pysyviä formaatteja.
+
+**R04:n operation-sidottu sulkuvastaanottaja:** `backendMessages` hyväksyy
+vain täsmällisen update-sulkuviestin ja saman operation-tunnistesäännön kuin
+snapshot-broker. `backendRunner` vaatii valmistuneen startupin, tarkistaa
+suojan ennen palvelimen sulkua ja odotuksen jälkeen sekä sulkee brokerit
+vasta sen jälkeen. Ristiriitainen toinen update-pyyntö ja jokainen
+sulkuvirhe säilyttävät epäonnistumisen; muut omistetut sulut yritetään.
+Raakavirhettä, uutta julkista tapahtumaa tai pysyvää formaattia ei lisätty.
+Runtime-/broker-sarjan 125 testiä ja desktopin tyypitys läpäisivät.
+Riippumaton katselmus valmistui; sen nimeämä keskeneräisen startupin
+regressio lisättiin ja läpäisi. Testit käyttävät oikeaa runner-listeneriä ja
+parseria, mutta palvelin, broker-sulut, suojan tarkistus ja prosessin exit
+ovat testisovittimia. Ensimmäinen testiajo pysähtyi synteettisen moduulin
+lataukseen; testiaineisto korjattiin oikeaksi väliaikaiseksi ES-moduuliksi
+ilman tuotannon loaderin, riippuvuuksien tai aikarajojen muuttamista.
+Vastaanottajan osatestit eivät yksin todista mainin operation-välitystä,
+oikeaa prosessipoistumista tai päivityksen valmistelu-/luovutusketjua.
+
+**R04:n yhteinen owner ja lähetysketju:** preparation säilyttää saman
+installation-leasen sekä update-suojan snapshotista handoffiin. Journalin
+live-luku on muuttamaton ja recovery-slotit estävät live-valtuutuksen.
+Ensimmäinen omistajuusristiriita tai lukuvirhe lukitsee epävarmuuden; sitä
+ei tulkita uudelleen onnistuneella abort-lukukerralla. Kirjoitusyrityksen
+epävarmuus alkaa ennen awaitia. Turvallinen pre-stop-abort vaatii tarkan
+terminal-kirjoituksen/takaisinluvun sekä validin saman suojan; epävarma
+kirjoitus, menetetty suoja tai aloitettu stop säilyttää omistuksen.
+Main/lifecycle/process-sender ja packaged-koevälittäjät säilyttävät
+operationin. Ordinary-first ei kelpaa updateksi edes exit-zero-tuloksella.
+
+Desktopin laaja regressioajo läpäisi 2 170 testiä; kolme ennestään
+alustakohtaista testiä ohitettiin. Erilliset 16 broker/HTTP-regressiota
+läpäisivät, mukaan lukien coordinatorin viivästetty handoff, suojan
+vanheneminen/katkos sekä turvallisen pre-stop-abortin vapautus.
+HTTP-ketju käyttää oikeaa brokeria ja maintenance-middlewarea, mutta
+snapshot-palvelu, journal ja runtime-stop ovat tässä testisovittimia.
+Todellisen main-compositionin testissä on oikea journal-store mutta
+kontrolloitu backend. Ensimmäinen laajempi ajo hylkäsi vanhan ordinary-
+sulun hyväksyvän testiodotuksen; odotus muutettiin uuden operation-
+sopimuksen mukaiseksi. Ensivirhe säilyy, testirajoja ei lievennetty.
+Riippumaton katselmus löysi kertaluonteisen journal-epävarmuuden
+vapautusriskin; korjaus ja kaksi once-only-regressiota on tarkistettu.
+Oikeaprosessi-, packaged-, PR- ja main-portit ovat edelleen avoimia.
+
+R04:n oikeaprosessinäyttö kohdistetaan nykyisen W6B.2-ketjun
+`sourceHandoff`-vaiheeseen: `desktopComposition` antaa testiohjaimelle saman
+tuotannon handoff-coordinatorin, joka käyttää update-suojaa ja strict-sulkua.
+`buildW6b2PackagedSuccessInstallers` vaatii lähde- ja kohdepaketille saman
+puhtaan revision. Synteettiset versionumerot eivät tarkoita vanhaa runtimea;
+lähteen historiallinen valmistelu rajaa migraatiojoukkoa, ei vaihda
+desktopin tai backendin ajokoodia. Normaali success-polku ja nykyinen
+`preUpdateRecoveryPointFailure` säilyvät eri todisteina. Tavallinen packaged
+backup/restore-smoke käyttää ordinary-sulkua eikä yksin todista R04:ää;
+myöskään historiallisen legacy-lähdepaketin ajo ei korvaa korjatun lähteen
+handoffia. Rajatut 59 builder-/lifecycle-sopimustestiä ja 50 proof-controller-
+tarkistusta läpäisivät. Ne käyttävät testisovittimia eivätkä ole MSI-asennus-
+tai oikean utility-prosessin hyväksyntä. Seuraava packaged-ajo tehdään vasta
+puhtaasta katselmoidusta revisiosta nykyisillä eristys- ja hyväksyntärajoilla.
+
+SourceHandoffin success-koetta on täydennetty työpuussa aidon
+HTTP-kirjoitusrajan tarkistuksella. Main käyttää samaa muistissa pidettyä
+runtime-sessionia ja loopback-backendia: kiinteä virheellinen JSON-pyyntö
+asiakasreitille antaa ennen valmistelua 400:n ja palautuspisteen jälkeen,
+ennen handoffia, 503:n sekä `PROFILE_MAINTENANCE_ACTIVE`-koodin.
+Virheellinen JSON ei voi luoda asiakasta myöskään suojan puuttuessa.
+Väärä vastaus estää koehandoffin nykyisellä turvallisella concurrency-
+virhekoodilla. Tämä ei muuta sovelluksen julkista HTTP-pintaa, normaalia
+päivityskulkua, fault-skenaarioita tai supervisorin määräaikoja. Alemmat
+koeohjaimen ja vastausluennan regressiot eivät korvaa paketoitua todistusta.
+Rajatut 71 probe-/success-/fault-controller-testiä ja desktopin tyypitys
+läpäisivät. Mukana ovat vaiheiden valmistumisen odotus, osissa saapuvan
+vastauksen kokoraja sekä luku- ja peruutusvirheet. Olemassa oleva backendin
+virheellisen JSON-pyynnön testi läpäisi ja todensi, ettei create-palvelua
+kutsuta. Rajattu riippumaton toteutus- ja täydennyskatselmus valmistui ilman
+avoimia löydöksiä. Todellinen paketoitu HTTP-/utility-/handoff-ketju on
+edelleen erillinen tekemätön hyväksyntäportti.
+
+**R04:n caller-owned palautuspistepalvelu:** nimetty
+`createPreUpdateWithMaintenance(operationId)` on työpuussa. Suoja
+varmennetaan ennen snapshotia ja tallennusta sekä siivouksen jälkeen ennen
+onnistumista. Snapshot-/validointivastauksen epävarmuus sallii stagingin
+poiston vain nykyisen broker-jonon rajatun kuittauksen jälkeen. Säilytetty
+ensivirhe ei vaihdu kuittauksen virheeksi eikä myöhäinen vastaus käynnistä
+siivousta. Uusi polku ei kutsu begin/end-metodeja. Tavallinen backup ja
+pre-migration säilyvät ennallaan.
+
+Palvelun 19 kohdetestiä sekä backup-/profileProtection-sarjan 269 testiä
+läpäisivät; yksi ennestään alustakohtainen testi ohitettiin. Uuden testin
+Promise-apu ei aluksi sopinut nykyiseen TypeScript-kohteeseen. Testiapuri
+sovitettiin nykyiseen kohteeseen ilman kielitason tai riippuvuuksien
+muutosta; tyypitys ja 19 kohdetestiä läpäisivät tämän jälkeen.
+Todellinen broker-client todentaa kahden aikakatkaisun jälkeen myöhäisten
+vastausten hylkäyksen; remote-snapshot ja palautuspistetallennus ovat tässä
+palvelutestissä testisovittimia. Tämä ei vielä todista oikeaa utility-
+prosessia, salattua palautuspistettä tai koko päivitysketjua. Vanha
+`createPreUpdate()` on poistettu yhteisen omistuksen kytkennässä;
+handoff käyttää vain caller-owned palautuspistepolkua.
+Rajattu riippumaton kahden lähdetiedoston katselmus valmistui ilman
+korjattavaa löydöstä. Päivitettyjen omistavien ohjeiden ja desktopin
+lukureitin 267 suhteellista linkkiä ja otsikkoankkuria läpäisivät tarkistuksen.
+
+**R17:n rajattu toteutuspala:** startup-omistaja lukitsee ensikoodin ennen
+lopetuspyyntöä, odottaa poistumista nykyisellä rajalla ja palauttaa
+muuttumattoman absent/unknown- ja callback-settled-havainnon. Composition
+ei tulkitse puuttuvaa backend-kahvaa pysähtyneeksi runtimeksi. Hallitun
+startup-stopin alkuperäinen migraatiotakaraja säilyy; epäonnistunut,
+myöhäinen tai kesken oleva valmistelu ei avaa recoveryä. Shutdownin
+exit-kuuntelija asennetaan ennen viestiä myös tavallisessa sulussa.
+Ennen pyyntöä tapahtunut odottamaton exit ei muutu graceful-todisteeksi.
+
+Nykyisen runtime-/workspace-/composition-kohteen 916 testiä läpäisivät;
+kaksi ennestään alustakohtaista testiä ohitettiin. Desktop-tyypitys läpäisi
+vakaan kahvareferenssin korjauksen jälkeen. Näyttö kattaa synkronisen,
+myöhäisen ja puuttuvan exitin, kill-/viestipoikkeamat, callback-kilpailut,
+alkuperäisen takarajan sekä normaalin polun. Oikea startup-toteutus
+on lisäksi ajettu compositionin kautta kontrolloidulla Electron-prosessilla:
+todettu poissaolo sallii nykyisen lähdetyötilan recoveryn, epävarma fork
+säilyttää journalit/tavut ja turvallinen ensikoodi löytyy oikeasta
+operational-lokitiedostosta. Prosessi on tässä kontrolloitu, ei packaged-
+hyväksyntä. R17:n riippumattomassa koodikatselmuksessa ei jäänyt
+korjattavaa löydöstä; lisäregressiot täydentävät havaintorajoja.
+[Omistava käyttöohje](local-desktop-implementation-plan.md#käynnistyksen-omistajuus-ennen-backend-kahvaa)
+ja desktopin AGENTS on päivitetty. Seuraavaksi ratkaistaan R18:n
+admissionin cold-start-kytkentä sekä muut
+vielä avoimet C-sopimukset. Yhteinen packaged- ja integraationäyttö
+vaaditaan edelleen ennen C:n hyväksymistä.
+R17:n ohjepäivityksen 282 suhteellista linkkiä/ankkuria sekä
+`git diff --check` läpäisivät.
+
+### B3-B5:n integraatiohistoria
+
+Alla olevat checkpointit kuvaavat hyväksyntää edeltäneitä revisioita.
+Nykyinen hyväksyntä on [PR #298:n loppuyhteenvedossa](https://github.com/eky-software/eky/pull/298#issuecomment-6050339146);
+vanhojen hylkäysten tuloksia tai syyepävarmuutta ei kirjoiteta uudelleen.
 
 ### B3-B5:n normaalin integraatiokierroksen testisopimukset
 

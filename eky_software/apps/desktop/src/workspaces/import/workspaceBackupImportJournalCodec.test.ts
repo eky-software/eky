@@ -30,12 +30,15 @@ const workspaceId = '11111111-1111-4111-8111-111111111111';
 const previousWorkspaceId = '22222222-2222-4222-8222-222222222222';
 const profileId = 'a'.repeat(64);
 
-describe('workspace backup import journal codec', () => {
+describe.each([1, 2] as const)('workspace backup import journal V%i codec', (formatVersion) => {
+  const createJournal = (state: WorkspaceBackupImportJournalState) => ({
+    ...createLegacyJournal(state), formatVersion,
+  });
   it('serializes canonically, parses strictly and freezes validated data', () => {
     const journal = createJournal('candidateValidated');
     const bytes = serializeWorkspaceBackupImportJournal(journal);
     const expected =
-      `{"formatVersion":1,"operationId":"${operationId}",` +
+      `{"formatVersion":${formatVersion},"operationId":"${operationId}",` +
       `"workspaceId":"${workspaceId}","workspaceLabel":"Tuotu yritys",` +
       `"previousActiveWorkspaceId":"${previousWorkspaceId}",` +
       '"state":"candidateValidated",' +
@@ -162,7 +165,27 @@ describe('workspace backup import journal codec', () => {
   });
 });
 
-describe('workspace backup import journal transitions', () => {
+describe.each([1, 2] as const)('workspace backup import journal V%i transitions', (formatVersion) => {
+  const createJournal = (state: WorkspaceBackupImportJournalState) => ({
+    ...createLegacyJournal(state), formatVersion,
+  });
+
+  it('rejects a version change for the same operation even at the same state', () => {
+    const current = validateWorkspaceBackupImportJournal(createJournal('prepared'));
+    for (const state of ['prepared', 'candidateRootCreated'] as const) {
+      expectInvalid(() => assertWorkspaceBackupImportJournalTransition(current,
+        validateWorkspaceBackupImportJournal({
+          ...createJournal(state), formatVersion: formatVersion === 1 ? 2 : 1,
+        }),
+      ));
+    }
+  });
+
+  it.each([0, 3, '2', null, undefined])('rejects unsupported version %s', (version) => {
+    expectInvalid(() => validateWorkspaceBackupImportJournal({
+      ...createJournal('prepared'), formatVersion: version,
+    }));
+  });
   it('accepts only prepared as the first state', () => {
     expect(() =>
       assertWorkspaceBackupImportJournalTransition(
@@ -270,7 +293,7 @@ const states: readonly WorkspaceBackupImportJournalState[] = [
   'registryPublished',
 ];
 
-function createJournal(
+function createLegacyJournal(
   state: WorkspaceBackupImportJournalState,
 ): Readonly<WorkspaceBackupImportJournalV1> {
   const hasLineage = [

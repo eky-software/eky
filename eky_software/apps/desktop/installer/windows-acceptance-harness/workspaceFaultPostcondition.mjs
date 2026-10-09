@@ -35,7 +35,7 @@ export function verifyWorkspaceFaultCheckpoints({ request: expected, artifact, s
   try {
     const request = validateWorkspaceFaultRequest(expected);
     const plan = workspaceFaultPlan(request.faultScenario);
-    if (state.buildRevision !== request.buildRevision.slice(0, 12) ||
+    if (state.buildRevision !== request.buildRevision ||
       state.sourceVersion !== artifact.source.appVersion || state.targetVersion !== artifact.target.appVersion ||
       ['source', 'target'].some((role) => artifact[role].buildRevision !== state.buildRevision) ||
       !Array.isArray(checkpoints) || checkpoints.length !== WORKSPACE_FAULT_CHECKPOINTS.length) invalid();

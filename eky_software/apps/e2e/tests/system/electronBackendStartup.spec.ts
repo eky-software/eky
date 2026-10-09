@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { resolve } from 'node:path';
 
 import type { UtilityProcess } from 'electron';
 import { expect, test } from '@playwright/test';
@@ -36,14 +37,21 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
       'backendForkRequested', 'backendForkReturned', 'backendReadinessWaitStarted',
     ]);
     expect(fixture.messages).toHaveLength(0);
-    fixture.child.emit('spawn');
+    await fixture.spawn();
     expect(fixture.checkpoints()).toEqual([
       'backendForkRequested', 'backendForkReturned',
       'backendReadinessWaitStarted',
       'backendProcessSpawned', 'backendStartMessageSent',
     ]);
     expect(fixture.messages[0]).toEqual({
-      message: { config: fixture.options.config, configPath: 'synthetic-config', type: 'start' },
+      message: { type: 'prepare', reservation: fixture.options.reservationTransfer.descriptor },
+      ports: undefined,
+    });
+    expect(fixture.messages[1]).toEqual({
+      message: {
+        config: fixture.options.config, configPath: 'synthetic-config', type: 'start',
+        generationId: fixture.options.reservationTransfer.descriptor.generationId,
+      },
       ports: [fixture.options.secretBrokerPort, fixture.options.invoicePdfArchiveBrokerPort,
         fixture.options.profileSnapshotBrokerPort],
     });
@@ -57,7 +65,7 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
     expect(parseElectronE2eStartupObservation(fixture.observation.snapshot()))
       .toEqual(fixture.observation.snapshot());
     expect(JSON.stringify(fixture.observation.snapshot())).not.toMatch(/synthetic|private|43127/);
-    await expect(handle.stopForUpdate()).resolves.toBeUndefined();
+    await expect(handle.stop()).resolves.toBe('exited');
     expect(fixture.kills()).toBe(0);
     expect(fixture.controller.isRunning()).toBe(false);
   });
@@ -65,7 +73,7 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
   test('ordinary shutdown preserves the confirmed exit outcome', async () => {
     const fixture = backendFixture();
     const started = fixture.start();
-    fixture.child.emit('spawn');
+    await fixture.spawn();
     fixture.child.emit('message', { type: 'ready', port: 43127 });
     const handle = await started;
 
@@ -79,15 +87,14 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
     expect(fixture.controller.getStartupFailure()).toBeUndefined();
   });
 
-  for (const method of ['stop', 'stopForUpdate'] as const) {
-    test(`${method} preserves a nonzero shutdown exit failure`, async () => {
+    test('ordinary shutdown preserves a nonzero shutdown exit failure', async () => {
       const fixture = backendFixture({ shutdownExitCode: 1 });
       const started = fixture.start();
-      fixture.child.emit('spawn');
+      await fixture.spawn();
       fixture.child.emit('message', { type: 'ready', port: 43127 });
       const handle = await started;
 
-      await expect(handle[method]()).rejects.toMatchObject({
+      await expect(handle.stop()).rejects.toMatchObject({
         name: 'BackendShutdownExitError',
       });
 
@@ -96,7 +103,20 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
       expect(fixture.controller.isRunning()).toBe(false);
       expect(fixture.controller.getStartupFailure()).toBeUndefined();
     });
-  }
+
+  test('the development runner cannot stand in for operation-bound update shutdown', async () => {
+    const fixture = backendFixture();
+    const started = fixture.start();
+    await fixture.spawn();
+    fixture.child.emit('message', { type: 'ready', port: 43127 });
+    const handle = await started;
+    const messagesBefore = fixture.messages.length;
+    await expect(handle.stopForUpdate('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'))
+      .rejects.toThrow('ELECTRON_E2E_BACKEND_UPDATE_SHUTDOWN_UNSUPPORTED');
+    expect(fixture.messages).toHaveLength(messagesBefore);
+    expect(fixture.controller.isRunning()).toBe(true);
+    await expect(handle.stop()).resolves.toBe('exited');
+  });
 
   test('a returned handle without spawn is not readiness and early exit stays a failure', async () => {
     const fixture = backendFixture();
@@ -125,13 +145,13 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
     for (const succeeds of [true, false]) {
       const fixture = backendFixture({ observerFails: true });
       const started = fixture.start();
-      fixture.child.emit('spawn');
+      await fixture.spawn();
       fixture.child.emit('message', { type: 'progress', stage: 'moduleImport' });
       expect(fixture.observation.snapshot().backendStartup).toEqual({ status: 'unobserved' });
       if (succeeds) {
         fixture.child.emit('message', { type: 'ready', port: 43127 });
         const handle = await started;
-        await handle.stopForUpdate();
+        await handle.stop();
         expect(fixture.kills()).toBe(0);
       } else {
         const rejected = expect(started).rejects.toThrow('E2E_BACKEND_MODULE_IMPORT_FAILED');
@@ -147,7 +167,7 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
     const fixture = backendFixture();
     const started = fixture.start();
     const rejected = expect(started).rejects.toThrow('E2E_BACKEND_PORT_MISMATCH_FAILED');
-    fixture.child.emit('spawn');
+    await fixture.spawn();
     fixture.child.emit('message', { type: 'ready', port: 43128 });
     await rejected;
     expect(fixture.kills()).toBe(1);
@@ -212,7 +232,7 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
     const started = fixture.start();
     let settled = false;
     void started.then(() => { settled = true; }, () => { settled = true; });
-    fixture.child.emit('spawn');
+    await fixture.spawn();
     for (const stage of electronE2eBackendLogStages) {
       fixture.child.emit('message', { type: 'progress', stage });
       fixture.child.emit('message', {
@@ -238,7 +258,7 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
     const started = fixture.start();
     let resolved = false;
     void started.then(() => { resolved = true; }, () => undefined);
-    fixture.child.emit('spawn');
+    await fixture.spawn();
     const checkpoints = fixture.checkpoints();
     fixture.setClock(125);
     fixture.child.emit('message', { type: 'progress', stage: 'moduleImport' });
@@ -261,7 +281,7 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
     const completed = fixture.observation.snapshot();
     fixture.child.emit('message', { type: 'progress', stage: 'backendStart' });
     expect(fixture.observation.snapshot()).toEqual(completed);
-    await handle.stopForUpdate();
+    await handle.stop();
   });
 
   test('the reporter sends only immutable progress and a send failure cannot replace startup work', () => {
@@ -285,7 +305,7 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
         : terminal === 'exit' ? 'E2E_BACKEND_EXITED_BEFORE_READY_FAILED'
           : 'E2E_BACKEND_PORT_MISMATCH_FAILED';
       const rejected = expect(started).rejects.toThrow(failure);
-      fixture.child.emit('spawn');
+      await fixture.spawn();
       fixture.child.emit('message', { type: 'progress', stage: 'moduleImport' });
       if (terminal === 'exit') fixture.child.emit('exit', 1);
       else fixture.child.emit('message', terminal === 'failed'
@@ -352,7 +372,7 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
       const fixture = backendFixture({ synchronousKillExit });
       const started = fixture.start();
       const rejected = expect(started).rejects.toThrow('E2E_BACKEND_MODULE_IMPORT_FAILED');
-      fixture.child.emit('spawn');
+      await fixture.spawn();
       const status = {
         ...failureStatus('moduleImport', 'ERR_MODULE_NOT_FOUND'),
         brokerCleanupFailures: ['secretBroker'],
@@ -384,7 +404,7 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
     const started = fixture.start();
     let settled = false;
     void started.then(() => { settled = true; }, () => { settled = true; });
-    fixture.child.emit('spawn');
+    await fixture.spawn();
     for (const value of [
       { type: 'failed', stage: 'moduleImport' },
       { ...failureStatus('moduleImport'), reason: 'PRIVATE_CODE' },
@@ -408,7 +428,7 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
     const firstStart = fixture.start();
     const firstRejected = expect(firstStart).rejects.toThrow('E2E_BACKEND_MODULE_IMPORT_FAILED');
     const firstChild = fixture.child;
-    firstChild.emit('spawn');
+    await fixture.spawn();
     firstChild.emit('message', failureStatus('moduleImport', 'MODULE_NOT_FOUND'));
     await firstRejected;
     const firstFailure = fixture.controller.getStartupFailure();
@@ -420,7 +440,7 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
     firstChild.emit('message', failureStatus('moduleImport', 'ENOENT'));
     firstChild.emit('message', { type: 'ready', port: 43127 });
     expect(fixture.controller.getStartupFailure()).toBeUndefined();
-    fixture.child.emit('spawn');
+    await fixture.spawn();
     fixture.child.emit('message', failureStatus('backendStart', 'SQLITE_BUSY'));
     await secondRejected;
     expect(fixture.controller.getStartupFailure()).toEqual({
@@ -431,21 +451,21 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
     });
     const thirdStart = fixture.start();
     expect(fixture.controller.getStartupFailure()).toBeUndefined();
-    fixture.child.emit('spawn');
+    await fixture.spawn();
     fixture.child.emit('message', { type: 'ready', port: 43127 });
     const handle = await thirdStart;
     fixture.child.emit('message', failureStatus('backendStart', 'SQLITE_CORRUPT'));
     expect(fixture.controller.getStartCount()).toBe(3);
     expect(fixture.controller.getStartupFailure()).toBeUndefined();
     expect(fixture.kills()).toBe(2);
-    await handle.stopForUpdate();
+    await handle.stop();
   });
 
   test('exit before failure leaves its cause unknown instead of inventing a backend reason', async () => {
     const fixture = backendFixture();
     const started = fixture.start();
     const rejected = expect(started).rejects.toThrow('E2E_BACKEND_EXITED_BEFORE_READY_FAILED');
-    fixture.child.emit('spawn');
+    await fixture.spawn();
     fixture.child.emit('exit', 1);
     fixture.child.emit('message', failureStatus('backendStart', 'SQLITE_CORRUPT'));
     fixture.child.emit('message', { type: 'ready', port: 43127 });
@@ -473,6 +493,7 @@ function backendFixture(fault: {
   fixtureProcesses.add(child);
   let forkCount = 0;
   let killCount = 0;
+  let startDelivered: (() => void) | undefined;
   const messages: { message: unknown; ports: unknown }[] = [];
   let elapsed = 0;
   const observation = createElectronE2eStartupObservation(() => elapsed);
@@ -484,7 +505,15 @@ function backendFixture(fault: {
   const options = {
     config: { runtimeSessionSecret: config.backend.sessionSecret },
     secretBrokerPort: {}, invoicePdfArchiveBrokerPort: {}, profileSnapshotBrokerPort: {},
-  } as StartDesktopBackendOptions;
+    reservationTransfer: {
+      descriptor: {
+        generationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        identity: 'a'.repeat(64), userDataRoot: resolve('synthetic-test-root'),
+      },
+      prepare: async () => {}, assertGrant: async () => {},
+      assertCurrent: () => {}, reclaimAfterExit: async () => {}, invalidate: () => {},
+    },
+  } as unknown as StartDesktopBackendOptions;
   const controller = createElectronE2eBackendController(config, 'synthetic-runner', {
     fork() {
       duringFork = checkpoints();
@@ -498,6 +527,12 @@ function backendFixture(fault: {
       return Object.assign(forkedChild, {
         postMessage(message: { type: string }, ports: unknown) {
           messages.push({ message, ports });
+          if (message.type === 'prepare') {
+            queueMicrotask(() => forkedChild.emit('message', {
+              type: 'reservationReady', reservation: options.reservationTransfer.descriptor,
+            }));
+          }
+          if (message.type === 'start') startDelivered?.();
           if (message.type === 'shutdown') {
             queueMicrotask(() => forkedChild.emit('exit', fault.shutdownExitCode ?? 0));
           }
@@ -526,5 +561,10 @@ function backendFixture(fault: {
     setClock: (value: number) => { elapsed = value; },
     kills: () => killCount,
     start: () => controller.startBackend(options),
+    async spawn() {
+      const delivered = new Promise<void>(resolveStart => { startDelivered = resolveStart; });
+      child.emit('spawn');
+      await delivered;
+    },
   };
 }

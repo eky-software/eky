@@ -13,7 +13,7 @@ import {
 import { validateWorkspaceCreationOperationId } from './workspaceCreationOperationId.js';
 import type {
   WorkspaceCreationJournalState,
-  WorkspaceCreationJournalV1,
+  WorkspaceCreationJournal,
 } from './workspaceCreationTypes.js';
 
 const journalKeys = [
@@ -38,7 +38,7 @@ export const WORKSPACE_CREATION_JOURNAL_STATES = Object.freeze([
 
 export function validateWorkspaceCreationJournal(
   value: unknown,
-): Readonly<WorkspaceCreationJournalV1> {
+): Readonly<WorkspaceCreationJournal> {
   try {
     return validateWorkspaceCreationJournalValue(value);
   } catch (error) {
@@ -49,11 +49,11 @@ export function validateWorkspaceCreationJournal(
 
 function validateWorkspaceCreationJournalValue(
   value: unknown,
-): Readonly<WorkspaceCreationJournalV1> {
+): Readonly<WorkspaceCreationJournal> {
   if (
     !isPlainDataRecord(value) ||
     !hasExactDataKeys(value, journalKeys) ||
-    value.formatVersion !== 1 ||
+    (value.formatVersion !== 1 && value.formatVersion !== 2) ||
     !isWorkspaceCreationJournalState(value.state)
   ) {
     return workspaceCreationJournalInvalid();
@@ -74,7 +74,7 @@ function validateWorkspaceCreationJournalValue(
   }
 
   return Object.freeze({
-    formatVersion: 1,
+    formatVersion: value.formatVersion,
     operationId: validateWorkspaceCreationOperationId(value.operationId),
     workspaceId: validateWorkspaceId(value.workspaceId),
     workspaceLabel: validateWorkspaceLabel(value.workspaceLabel),
@@ -88,8 +88,8 @@ function validateWorkspaceCreationJournalValue(
 }
 
 export function assertWorkspaceCreationJournalTransition(
-  current: Readonly<WorkspaceCreationJournalV1> | undefined,
-  next: Readonly<WorkspaceCreationJournalV1>,
+  current: Readonly<WorkspaceCreationJournal> | undefined,
+  next: Readonly<WorkspaceCreationJournal>,
 ): void {
   if (current === undefined) {
     if (next.state !== 'prepared') {
@@ -99,6 +99,7 @@ export function assertWorkspaceCreationJournalTransition(
   }
 
   if (
+    current.formatVersion !== next.formatVersion ||
     current.operationId !== next.operationId ||
     current.workspaceId !== next.workspaceId ||
     current.workspaceLabel !== next.workspaceLabel ||

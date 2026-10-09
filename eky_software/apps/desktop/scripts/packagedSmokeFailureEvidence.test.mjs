@@ -281,24 +281,26 @@ test('an error observed before exit survives later result validation', async t =
   assert.equal(fixture.removed.length, 0);
 });
 
-test('legacy preparation brackets the same two phases and verifies source before cleanup', async t => {
+for (const preparationKey of ['legacyPreparation', 'workspaceRecoveryPreparation']) {
+test(`${preparationKey} brackets the same two phases and verifies source before cleanup`, async t => {
   let smokeResult = { stage: 'restoreRestart', status: 'started' };
   const calls = [];
-  const fixture = startSmokeDriver(t, async () => smokeResult, { legacyPreparation: {
+  const fixture = startSmokeDriver(t, async () => smokeResult, { [preparationKey]: {
     async prepare(context) { assert.match(context.smokeToken, /^[a-f0-9]{32}$/); calls.push('prepare'); },
     async afterRestoreExit() { calls.push('closedRestore'); },
     async verifySourcePreserved() { calls.push('sourceVerified'); assert.equal(fixture.removed.length, 0); },
   } });
   const first = await fixture.nextChild();
   assert.deepEqual(calls, ['prepare']);
-  assert.deepEqual(first.argumentsList, ['--desktop-smoke', '--desktop-smoke-legacy-invoice']);
+  const switches = preparationKey === 'legacyPreparation' ? ['--desktop-smoke-legacy-invoice'] : [];
+  assert.deepEqual(first.argumentsList, ['--desktop-smoke', ...switches]);
   first.emit('exit', 0);
   await nextTurn();
   assert.deepEqual(calls, ['prepare']);
   closeChild(first, 0);
   const second = await fixture.nextChild();
   assert.deepEqual(calls, ['prepare', 'closedRestore']);
-  assert.deepEqual(second.argumentsList, ['--desktop-smoke', '--desktop-smoke-restored', '--desktop-smoke-legacy-invoice']);
+  assert.deepEqual(second.argumentsList, ['--desktop-smoke', '--desktop-smoke-restored', ...switches]);
   smokeResult = { stage: 'shutdown', status: 'ok', electronVersion: 'synthetic-version' };
   second.emit('exit', 0);
   closeChild(second, 0);
@@ -307,9 +309,9 @@ test('legacy preparation brackets the same two phases and verifies source before
   assert.equal(fixture.removed.length, 1);
 });
 
-test('failed closed-candidate inspection retains evidence and prevents the second launch', async t => {
+test(`${preparationKey} failed closed-candidate inspection retains evidence and prevents the second launch`, async t => {
   const fixture = startSmokeDriver(t, async () => ({ stage: 'restoreRestart', status: 'started' }), {
-    legacyPreparation: { async prepare() {},
+    [preparationKey]: { async prepare() {},
       async afterRestoreExit() { throw new Error('CANDIDATE_INVALID'); },
       async verifySourcePreserved() { assert.fail('must not continue'); },
     },
@@ -320,4 +322,15 @@ test('failed closed-candidate inspection retains evidence and prevents the secon
   assert.equal((await fixture.outcome).error.message, 'CANDIDATE_INVALID');
   assert.equal(fixture.writes[0].value.phases.length, 1);
   assert.equal(fixture.removed.length, 0);
+});
+}
+
+test('conflicting preparations are rejected without starting a phase or removing evidence', async t => {
+  const prepare = { async prepare() { assert.fail('must reject before preparation'); } };
+  const fixture = startSmokeDriver(t, async () => undefined, {
+    legacyPreparation: prepare, workspaceRecoveryPreparation: prepare,
+  });
+  assert.equal((await fixture.outcome).error.message, 'PACKAGED_SMOKE_PREPARATION_CONFLICT');
+  assert.equal(fixture.removed.length, 0);
+  assert.equal(fixture.writes.length, 0);
 });

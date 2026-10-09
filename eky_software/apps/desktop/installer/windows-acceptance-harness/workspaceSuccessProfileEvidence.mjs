@@ -77,7 +77,7 @@ export async function captureWorkspaceProfileSnapshot({ request, proofRoot, supp
     const userDataRoot = resolve(proofRoot, 'user-data');
     await directory(userDataRoot);
     const state = await readWorkspaceSuccessProfileState(proofRoot, support);
-    if (state.buildRevision !== request.buildRevision.slice(0, 12)) invalid();
+    if (state.buildRevision !== request.buildRevision) invalid();
     const registry = await readWorkspaceSuccessSettledSlot(
       resolve(userDataRoot, support.WORKSPACE_REGISTRY_FILE_NAME), support.validateWorkspaceRegistry);
     if (registry.workspaces.length !== 3 || state.fixtures.some((fixture) =>

@@ -19,7 +19,7 @@ import { createWorkspaceBackupImportJournalPaths } from './workspaceBackupImport
 import { serializeWorkspaceBackupImportJournal } from './workspaceBackupImportJournalSerializer.js';
 import type {
   WorkspaceBackupImportJournalStore as WorkspaceBackupImportJournalStorePort,
-  WorkspaceBackupImportJournalV1,
+  WorkspaceBackupImportJournal,
   WorkspaceBackupImportOperationId,
 } from './workspaceBackupImportTypes.js';
 import {
@@ -48,7 +48,7 @@ export class WorkspaceBackupImportJournalStore
     this.byteStore = new CrashSafeByteSlotStore(fileSystem);
   }
 
-  read(): Promise<Readonly<WorkspaceBackupImportJournalV1> | undefined> {
+  read(): Promise<Readonly<WorkspaceBackupImportJournal> | undefined> {
     return this.runExclusive(() => this.recoverAndRead());
   }
 
@@ -98,7 +98,7 @@ export class WorkspaceBackupImportJournalStore
   }
 
   private async recoverAndRead(): Promise<
-    Readonly<WorkspaceBackupImportJournalV1> | undefined
+    Readonly<WorkspaceBackupImportJournal> | undefined
   > {
     try {
       return await this.byteStore.recoverAndRead(

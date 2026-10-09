@@ -15,6 +15,10 @@ test('six bound checkpoints prove business continuity and distinct idempotent B 
 });
 
 const mutations = {
+  'short current profile revision': (f) => { f.checkpoints[0].profileState.buildRevision = f.request.buildRevision.slice(0, 12); },
+  'same-prefix current profile revision': (f) => { f.checkpoints[0].profileState.buildRevision = `${f.request.buildRevision.slice(0, 12)}${'f'.repeat(28)}`; },
+  'same-prefix current harness revision': (f) => { f.request = { ...f.request, buildRevision: `${f.request.buildRevision.slice(0, 12)}${'f'.repeat(28)}` }; },
+  'short current harness revision': (f) => { f.request = { ...f.request, buildRevision: f.request.buildRevision.slice(0, 12) }; },
   'missing checkpoint': (f) => f.checkpoints.pop(),
   'wrong order': (f) => f.checkpoints.reverse(),
   'foreign run': (f) => { f.checkpoints[3].runNonce = 'f'.repeat(64); },

@@ -187,6 +187,11 @@ async function startDesktopRuntime(
     });
   const currentProofConfiguration = w6b2ProofConfiguration;
   desktopLifecycle = await startDesktopComposition({
+    assertSingleInstanceOwnership() {
+      if (!app.hasSingleInstanceLock()) {
+        throw new Error('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      }
+    },
     appVersion: app.getVersion(),
     applicationPath: app.getAppPath(),
     buildInfo,

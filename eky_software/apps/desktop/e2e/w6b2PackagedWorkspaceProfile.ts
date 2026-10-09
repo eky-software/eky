@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 
 import { createDesktopProfilePaths } from '../src/runtime/desktopProfilePaths.js';
+import { acquireDesktopWorkspaceReservation } from '../src/main/desktopComposition.js';
 import { AcceptedBuildMetadataStore } from '../src/update/acceptedBuildMetadataStore.js';
 import { createLocalUpdateRuntimePaths } from '../src/update/localUpdateRuntimePaths.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../src/workspaces/registry/workspaceRegistryPaths.js';
@@ -62,6 +63,7 @@ const fixturePreparationStages = Object.freeze({
 >);
 
 export async function prepareW6b2PackagedWorkspaceProfile(input: {
+  readonly assertSingleInstanceOwnership: () => void;
   readonly onStage?: (stage: W6b2PackagedWorkspacePreparationStage) => void;
   readonly proofRoot: string;
   readonly resourcesPath: string;
@@ -75,58 +77,80 @@ export async function prepareW6b2PackagedWorkspaceProfile(input: {
   const runtimePaths = await resolveWorkspaceCandidateRuntimePaths(
     input.resourcesPath,
   );
-  const factory = new ElectronWorkspaceCandidateRuntimeFactory({
-    appVersion: '0.2.7',
-    backendRoot: runtimePaths.backendRoot,
-    buildRevision: profileInput.sourceBuildRevision,
-    migrationsDirectory: runtimePaths.migrationsDirectory,
-    runnerPath: runtimePaths.runnerPath,
+  const reservation = await acquireDesktopWorkspaceReservation({
+    assertSingleInstanceOwnership: input.assertSingleInstanceOwnership,
+    signal: new AbortController().signal,
+    userDataRoot: input.userDataRoot,
   });
-  const fixtures: Readonly<W6b2PackagedWorkspaceFixture>[] = [];
-  for (const fixtureKey of w6b2PackagedWorkspaceFixtureKeys) {
-    input.onStage?.(fixturePreparationStages[fixtureKey]);
-    fixtures.push(
-      await createW6b2PackagedWorkspaceFixture({
-        factory,
-        fixtureKey,
-        userDataRoot: input.userDataRoot,
-      }),
+  let failed = false;
+  try {
+    const factory = new ElectronWorkspaceCandidateRuntimeFactory({
+      reservationOwner: {
+        bindCandidate: ({ generationId }) =>
+          reservation.bind(generationId, input.assertSingleInstanceOwnership),
+      },
+      appVersion: '0.2.7',
+      backendRoot: runtimePaths.backendRoot,
+      buildRevision: profileInput.sourceBuildRevision,
+      migrationsDirectory: runtimePaths.migrationsDirectory,
+      runnerPath: runtimePaths.runnerPath,
+    });
+    const fixtures: Readonly<W6b2PackagedWorkspaceFixture>[] = [];
+    for (const fixtureKey of w6b2PackagedWorkspaceFixtureKeys) {
+      input.onStage?.(fixturePreparationStages[fixtureKey]);
+      fixtures.push(
+        await createW6b2PackagedWorkspaceFixture({
+          factory,
+          fixtureKey,
+          userDataRoot: input.userDataRoot,
+        }),
+      );
+    }
+    input.onStage?.('migrationHistory');
+    await invalidateW6b2PackagedWorkspaceMigrationHistory({
+      fixture: requireFixture(fixtures, 'C'),
+      targetFactory: factory,
+    });
+    input.onStage?.('registry');
+    await writeInitialRegistry(input.userDataRoot, fixtures);
+    input.onStage?.('acceptedBuild');
+    await writeAcceptedSourceBuild(
+      input.userDataRoot,
+      profileInput.sourceBuildRevision,
     );
-  }
-  input.onStage?.('migrationHistory');
-  await invalidateW6b2PackagedWorkspaceMigrationHistory({
-    fixture: requireFixture(fixtures, 'C'),
-    targetFactory: factory,
-  });
-  input.onStage?.('registry');
-  await writeInitialRegistry(input.userDataRoot, fixtures);
-  input.onStage?.('acceptedBuild');
-  await writeAcceptedSourceBuild(
-    input.userDataRoot,
-    profileInput.sourceBuildRevision,
-  );
 
-  input.onStage?.('evidence');
-  const persistedFixtures: W6b2PersistedWorkspaceFixture[] = [];
-  for (const fixture of fixtures) {
-    persistedFixtures.push(
-      Object.freeze({
-        baseline: await snapshotW6b2PackagedWorkspaceEvidence(fixture),
-        business: fixture.business,
-        fixtureKey: fixture.fixtureKey,
-        profileId: fixture.profileId,
-        workspaceId: fixture.workspaceId,
-      }),
-    );
+    input.onStage?.('evidence');
+    const persistedFixtures: W6b2PersistedWorkspaceFixture[] = [];
+    for (const fixture of fixtures) {
+      persistedFixtures.push(
+        Object.freeze({
+          baseline: await snapshotW6b2PackagedWorkspaceEvidence(fixture),
+          business: fixture.business,
+          fixtureKey: fixture.fixtureKey,
+          profileId: fixture.profileId,
+          workspaceId: fixture.workspaceId,
+        }),
+      );
+    }
+    input.onStage?.('profileState');
+    await writeW6b2PackagedWorkspaceProfileState(input.proofRoot, {
+      buildRevision: profileInput.sourceBuildRevision,
+      fixtures: Object.freeze(persistedFixtures),
+      formatVersion: 1,
+      sourceVersion: '0.2.7',
+      targetVersion: '0.2.8',
+    });
+  } catch (error) {
+    failed = true;
+    throw error;
+  } finally {
+    try {
+      await reservation.assertMainOwned();
+      await reservation.close();
+    } catch (error) {
+      if (!failed) throw error;
+    }
   }
-  input.onStage?.('profileState');
-  await writeW6b2PackagedWorkspaceProfileState(input.proofRoot, {
-    buildRevision: profileInput.sourceBuildRevision,
-    fixtures: Object.freeze(persistedFixtures),
-    formatVersion: 1,
-    sourceVersion: '0.2.7',
-    targetVersion: '0.2.8',
-  });
 }
 
 export async function verifyW6b2PackagedWorkspaceProfile(input: {

@@ -123,7 +123,10 @@ describe('empty workspace creation recovery', () => {
         'completedPublication',
       );
       expect(fixture.validation.inputs).toHaveLength(1);
-      expect(fixture.runtimeAbsence.assertionCalls).toBe(1);
+      expect(fixture.runtimeAbsence.assertionCalls).toBe(2);
+      expect(fixture.events.lastIndexOf('runtimeAbsence.assert')).toBeGreaterThan(
+        fixture.events.indexOf('publishedValidation.run'),
+      );
       expect(fixture.events.indexOf('runtimeAbsence.assert')).toBeLessThan(
         fixture.events.indexOf('publishedValidation.run'),
       );

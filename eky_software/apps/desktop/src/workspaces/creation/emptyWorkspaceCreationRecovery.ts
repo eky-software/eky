@@ -4,8 +4,14 @@ import type {
 } from '../registry/workspaceRegistryTypes.js';
 import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
 import type { ActiveWorkspaceLifecyclePort } from '../runtime/activeWorkspaceLifecyclePort.js';
+import {
+  assertColdWorkspaceRecoveryContinuation,
+  assertColdWorkspaceRecoveryRegistryUnchanged,
+} from '../runtime/assertColdWorkspaceRecoveryContinuation.js';
 import type { WorkspaceRuntimeAbsencePort } from '../runtime/workspaceRuntimeAbsencePort.js';
+import { validateWorkspaceRegistry } from '../registry/workspaceRegistryValidation.js';
 import type { WorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
+import { WorkspaceManagementRecoveryRequiredError } from '../management/workspaceManagementOperationGuard.js';
 import {
   EmptyWorkspaceCreationError,
   mapEmptyWorkspaceCreationError,
@@ -27,11 +33,10 @@ import {
 import type { WorkspaceCreationRootStore } from './workspaceCreationRootStore.js';
 import type {
   WorkspaceCreationJournalStore,
-  WorkspaceCreationJournalV1,
+  WorkspaceCreationJournal,
 } from './workspaceCreationTypes.js';
 
-export interface EmptyWorkspaceCreationRecoveryOptions {
-  readonly activeWorkspaceLifecycle: ActiveWorkspaceLifecyclePort;
+interface SharedEmptyWorkspaceCreationRecoveryOptions {
   readonly creationJournal: WorkspaceCreationJournalStore;
   readonly maintenanceLease: WorkspaceMaintenanceLease;
   readonly publishedWorkspaceValidation: PublishedWorkspaceValidationPort;
@@ -40,6 +45,19 @@ export interface EmptyWorkspaceCreationRecoveryOptions {
   readonly userDataRoot: string;
   readonly workspaceRuntimeAbsence: WorkspaceRuntimeAbsencePort;
 }
+
+export type EmptyWorkspaceCreationRecoveryOptions =
+  SharedEmptyWorkspaceCreationRecoveryOptions & (
+    | Readonly<{
+        completionMode?: 'running';
+        activeWorkspaceLifecycle: ActiveWorkspaceLifecyclePort;
+      }>
+    | Readonly<{
+        completionMode: 'beforeRuntimeStart';
+        assertRecoveryAdmission(): Promise<void>;
+        activeWorkspaceLifecycle?: never;
+      }>
+  );
 
 export type EmptyWorkspaceCreationRecoveryResult =
   | 'nothingToRecover'
@@ -54,14 +72,25 @@ export class EmptyWorkspaceCreationRecovery {
   async recover(): Promise<EmptyWorkspaceCreationRecoveryResult> {
     const lease = await this.acquireLease();
     try {
+      if (this.options.completionMode === 'beforeRuntimeStart') {
+        await this.assertRuntimeAbsent();
+        await this.options.assertRecoveryAdmission();
+      }
       const journal = await this.readJournal();
       if (journal === undefined) return 'nothingToRecover';
+      if (this.options.completionMode === 'beforeRuntimeStart' && journal.formatVersion !== 2) {
+        throw new WorkspaceManagementRecoveryRequiredError();
+      }
       const paths = deriveWorkspaceCreationPaths(
         this.options.userDataRoot,
         journal.operationId,
         journal.workspaceId,
       );
-      const registry = readCreationRegistry(await this.readRegistry());
+      const registrySnapshot = await this.readRegistry();
+      const registryValue = readCreationRegistry(registrySnapshot);
+      const registry = this.options.completionMode === 'beforeRuntimeStart'
+        ? validateWorkspaceRegistry(registryValue)
+        : registryValue;
       const entry = findWorkspaceEntry(registry, journal.workspaceId);
       const presence = await this.options.rootStore.readPresence(paths);
 
@@ -71,7 +100,7 @@ export class EmptyWorkspaceCreationRecovery {
       if (entry !== undefined) {
         await this.completeFromPublishedRegistry(
           journal,
-          registry.activeWorkspaceId,
+          registry,
           entry,
           presence.candidateExists,
           presence.finalExists,
@@ -80,22 +109,27 @@ export class EmptyWorkspaceCreationRecovery {
         return 'completedPublication';
       }
       if (presence.finalExists) {
-        await this.completeFromPublishedRoot(journal, registry, paths);
+        await this.completeFromPublishedRoot(journal, registry, paths, registrySnapshot);
         return 'completedPublication';
       }
       if (isAtOrAfter(journal, 'rootPublished')) {
         return recoveryRequired();
       }
 
+      if (this.options.completionMode === 'beforeRuntimeStart') {
+        await this.assertColdContinuation(journal.previousActiveWorkspaceId, registry);
+      }
       await this.options.rootStore.discardCandidate(paths);
-      await this.ensurePreviousWorkspaceRunning(
-        journal.previousActiveWorkspaceId,
-      );
+      await this.completeRecovery(journal, registry, false);
       await this.options.creationJournal.discardBeforePublication(
         journal.operationId,
       );
       return 'discardedBeforePublication';
     } catch (error) {
+      if (this.options.completionMode === 'beforeRuntimeStart' &&
+          error instanceof WorkspaceManagementRecoveryRequiredError) {
+        throw error;
+      }
       throw mapEmptyWorkspaceCreationError(
         error,
         'WORKSPACE_CREATION_RECOVERY_REQUIRED',
@@ -113,9 +147,10 @@ export class EmptyWorkspaceCreationRecovery {
   }
 
   private async completeFromPublishedRoot(
-    journal: Readonly<WorkspaceCreationJournalV1>,
+    journal: Readonly<WorkspaceCreationJournal>,
     registry: ReturnType<typeof readCreationRegistry>,
     paths: ReturnType<typeof deriveWorkspaceCreationPaths>,
+    registrySnapshot: ReturnType<typeof readCreationRegistry> | undefined,
   ): Promise<void> {
     if (
       journal.lineageIdentity === null ||
@@ -131,33 +166,37 @@ export class EmptyWorkspaceCreationRecovery {
     assertLineageAvailable(registry, journal.lineageIdentity);
     await this.options.rootStore.inspectPublished(paths);
     await this.validatePublishedWorkspace(journal, paths);
+    await this.assertRuntimeAbsent();
     await this.options.rootStore.cleanupPublishedOperation(paths);
 
     let current = journal;
     if (current.state === 'candidateValidated') {
       current = await this.advance(current, 'rootPublished');
     }
-    await this.writeRegistry(
-      publishWorkspaceEntry(
-        registry,
-        createReadyWorkspaceEntry({
-          workspaceId: current.workspaceId,
-          workspaceLabel: current.workspaceLabel,
-          lineageIdentity: current.lineageIdentity!,
-          createdAt: current.createdAt,
-        }),
-      ),
+    const expectedRegistry = publishWorkspaceEntry(
+      registry,
+      createReadyWorkspaceEntry({
+        workspaceId: current.workspaceId,
+        workspaceLabel: current.workspaceLabel,
+        lineageIdentity: current.lineageIdentity!,
+        createdAt: current.createdAt,
+      }),
     );
+    if (this.options.completionMode === 'beforeRuntimeStart') {
+      await assertColdWorkspaceRecoveryRegistryUnchanged({
+        expectedRegistry: registrySnapshot,
+        registry: this.options.registry,
+      });
+    }
+    await this.writeRegistry(expectedRegistry);
     current = await this.advance(current, 'registryPublished');
-    await this.ensurePreviousWorkspaceRunning(
-      current.previousActiveWorkspaceId,
-    );
+    await this.completeRecovery(current, expectedRegistry, true);
     await this.options.creationJournal.remove(current.operationId);
   }
 
   private async completeFromPublishedRegistry(
-    journal: Readonly<WorkspaceCreationJournalV1>,
-    activeWorkspaceId: WorkspaceId | null,
+    journal: Readonly<WorkspaceCreationJournal>,
+    registry: ReturnType<typeof readCreationRegistry>,
     entry: Readonly<LocalWorkspaceRegistryEntryV1>,
     candidateExists: boolean,
     finalExists: boolean,
@@ -173,21 +212,20 @@ export class EmptyWorkspaceCreationRecovery {
       entry.layoutVersion !== 1 ||
       entry.lifecycleState !== 'ready' ||
       entry.lineageIdentity.profileId !== journal.lineageIdentity.profileId ||
-      activeWorkspaceId !==
+      registry.activeWorkspaceId !==
         (journal.previousActiveWorkspaceId ?? journal.workspaceId)
     ) {
       return recoveryRequired();
     }
     await this.options.rootStore.inspectPublished(paths);
     await this.validatePublishedWorkspace(journal, paths);
+    await this.assertRuntimeAbsent();
     await this.options.rootStore.cleanupPublishedOperation(paths);
     let current = journal;
     if (current.state === 'rootPublished') {
       current = await this.advance(current, 'registryPublished');
     }
-    await this.ensurePreviousWorkspaceRunning(
-      current.previousActiveWorkspaceId,
-    );
+    await this.completeRecovery(current, registry, true);
     await this.options.creationJournal.remove(current.operationId);
   }
 
@@ -202,16 +240,11 @@ export class EmptyWorkspaceCreationRecovery {
   }
 
   private async validatePublishedWorkspace(
-    journal: Readonly<WorkspaceCreationJournalV1>,
+    journal: Readonly<WorkspaceCreationJournal>,
     paths: ReturnType<typeof deriveWorkspaceCreationPaths>,
   ): Promise<void> {
     if (journal.lineageIdentity === null) return recoveryRequired();
-    try {
-      await this.options.workspaceRuntimeAbsence
-        .assertNoActiveWorkspaceRuntime();
-    } catch {
-      return recoveryRequired();
-    }
+    await this.assertRuntimeAbsent();
     let validation;
     try {
       validation = await this.options.publishedWorkspaceValidation
@@ -239,9 +272,9 @@ export class EmptyWorkspaceCreationRecovery {
   }
 
   private async advance(
-    journal: Readonly<WorkspaceCreationJournalV1>,
+    journal: Readonly<WorkspaceCreationJournal>,
     state: 'rootPublished' | 'registryPublished',
-  ): Promise<Readonly<WorkspaceCreationJournalV1>> {
+  ): Promise<Readonly<WorkspaceCreationJournal>> {
     const next = Object.freeze({ ...journal, state });
     await this.options.creationJournal.write(next);
     return next;
@@ -279,11 +312,42 @@ export class EmptyWorkspaceCreationRecovery {
     }
   }
 
-  private ensurePreviousWorkspaceRunning(
-    previousActiveWorkspaceId: WorkspaceId | null,
-  ) {
+  private async assertRuntimeAbsent(): Promise<void> {
+    try {
+      await this.options.workspaceRuntimeAbsence.assertNoActiveWorkspaceRuntime();
+    } catch {
+      return recoveryRequired();
+    }
+  }
+
+  private async assertColdContinuation(
+    expectedWorkspaceId: WorkspaceId | null,
+    expectedRegistry: ReturnType<typeof readCreationRegistry>,
+  ): Promise<void> {
+    await this.assertRuntimeAbsent();
+    await assertColdWorkspaceRecoveryContinuation({
+      expectedRegistry,
+      expectedWorkspaceId,
+      registry: this.options.registry,
+      userDataRoot: this.options.userDataRoot,
+    });
+    await this.assertRuntimeAbsent();
+  }
+
+  private async completeRecovery(
+    journal: Readonly<WorkspaceCreationJournal>,
+    expectedRegistry: ReturnType<typeof readCreationRegistry>,
+    published: boolean,
+  ): Promise<void> {
+    if (this.options.completionMode === 'beforeRuntimeStart') {
+      await this.assertColdContinuation(
+        journal.previousActiveWorkspaceId ?? (published ? journal.workspaceId : null),
+        expectedRegistry,
+      );
+      return;
+    }
     return this.options.activeWorkspaceLifecycle
-      .ensurePreviousWorkspaceRunning(previousActiveWorkspaceId)
+      .ensurePreviousWorkspaceRunning(journal.previousActiveWorkspaceId)
       .catch(() => {
         throw new EmptyWorkspaceCreationError(
           'WORKSPACE_CREATION_RECOVERY_REQUIRED',
@@ -294,8 +358,8 @@ export class EmptyWorkspaceCreationRecovery {
 }
 
 function isAtOrAfter(
-  journal: Readonly<WorkspaceCreationJournalV1>,
-  state: WorkspaceCreationJournalV1['state'],
+  journal: Readonly<WorkspaceCreationJournal>,
+  state: WorkspaceCreationJournal['state'],
 ): boolean {
   return (
     getWorkspaceCreationStateIndex(journal.state) >=

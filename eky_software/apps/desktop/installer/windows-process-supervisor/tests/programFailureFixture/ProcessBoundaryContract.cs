@@ -6,17 +6,22 @@ using Microsoft.Win32.SafeHandles;
 
 internal static class ProcessBoundaryContract
 {
+    private const int RequiredEmptyJobObservations = 2;
+
     internal static readonly HashSet<string> Modes =
     [
         "atomicMembership", "creationCancelled", "creationLate", "creationPending",
         "creationFailure", "creationUnexpectedFailure", "exitObservationLate",
+        "exitObservationEarlyReceipt",
     ];
 
     internal static SupervisorOutcome Run(
         string mode, SupervisorRequest request, Stopwatch stopwatch, SafeEvidenceWriter evidence)
     {
         WindowsJob? observedJob = null;
-        var exitDeferred = false;
+        var emptyJobObservations = 0;
+        var earlyReceiptInjected = false;
+        var delayExitObservation = mode is "exitObservationLate" or "exitObservationEarlyReceipt";
         var supervisor = new WindowsJobProcessSupervisor(
             stopwatch, evidence,
             (input, job, cancellation) =>
@@ -32,7 +37,7 @@ internal static class ProcessBoundaryContract
                     throw new SupervisorFailure("processStartFailed", 2);
 
                 var child = SuspendedWindowsProcess.Start(input, job, cancellation);
-                if (mode == "exitObservationLate") return child;
+                if (delayExitObservation) return child;
                 var activeProcessCount = job.GetActiveProcessCount();
                 var processId = GetProcessId(child.Process);
                 WriteBoundary(input, new { boundary = "createdSuspended", activeProcessCount, processId });
@@ -53,16 +58,30 @@ internal static class ProcessBoundaryContract
             child =>
             {
                 var exited = child.Wait(0);
-                if (mode == "exitObservationLate" && !exitDeferred && exited &&
-                    observedJob!.GetActiveProcessCount() == 0)
+                if (!delayExitObservation || !exited) return exited;
+                var activeProcessCount = observedJob!.GetActiveProcessCount();
+                if (mode == "exitObservationEarlyReceipt" && exited && !earlyReceiptInjected)
                 {
-                    exitDeferred = true;
-                    WriteBoundary(request, new { boundary = "jobEmptyBeforeExitObserved", exitObservedLater = false });
+                    earlyReceiptInjected = true;
+                    activeProcessCount = 1;
+                }
+                if (activeProcessCount != 0) return false;
+                // The supervisor reads Job accounting before invoking this observer.
+                // A second empty observation guarantees its next loop sees the same boundary.
+                if (emptyJobObservations < RequiredEmptyJobObservations)
+                {
+                    emptyJobObservations++;
+                    WriteBoundary(request, new {
+                        boundary = "jobEmptyBeforeExitObserved", exitObservedLater = false,
+                        earlyReceiptDeferred = earlyReceiptInjected,
+                    });
                     return false;
                 }
-                if (mode == "exitObservationLate" && exitDeferred && exited)
-                    WriteBoundary(request, new { boundary = "jobEmptyBeforeExitObserved", exitObservedLater = true });
-                return exited;
+                WriteBoundary(request, new {
+                    boundary = "jobEmptyBeforeExitObserved", exitObservedLater = true,
+                    earlyReceiptDeferred = earlyReceiptInjected,
+                });
+                return true;
             }
         );
         return supervisor.Run(request);

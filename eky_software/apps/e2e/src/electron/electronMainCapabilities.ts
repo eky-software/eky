@@ -45,6 +45,8 @@ export interface WorkspaceStartupRecoveryProofSnapshot {
   admissionRejectedBeforeWorkspaceResolution: boolean;
   admissionSideEffectsAbsent: boolean;
   historicalCopyDiscarded: boolean;
+  publishedCreationRecovered: boolean;
+  publishedImportRecovered: boolean;
   historicalJournalCleared: boolean;
   legacyArtifactsPreserved: boolean;
   readoptionArtifactsMatch: boolean;

@@ -1,5 +1,6 @@
 export type WorkspaceStartupRecoveryProofStage =
   | 'buildAdmission'
+  | 'publishedColdRecovery'
   | 'historicalFixture'
   | 'historicalRecovery'
   | 'historicalReadoption'
@@ -12,6 +13,8 @@ export interface WorkspaceStartupRecoveryProofInput {
 }
 
 export interface WorkspaceStartupRecoveryProofResult {
+  readonly publishedCreationRecovered: boolean;
+  readonly publishedImportRecovered: boolean;
   readonly admissionRejectedBeforeWorkspaceResolution: boolean;
   readonly admissionSideEffectsAbsent: boolean;
   readonly historicalCopyDiscarded: boolean;

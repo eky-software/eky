@@ -3,25 +3,36 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { parseDesktopBackendCommand } from './backendMessages.js';
-import type { DesktopBackendFailureCode } from './backendMessages.js';
+import {
+  desktopBackendReadinessTimeoutMilliseconds,
+  parseDesktopBackendCommand,
+} from './backendMessages.js';
+import type {
+  DesktopBackendFailureCode,
+  DesktopBackendShutdownMessage,
+  DesktopBackendUpdateShutdownMessage,
+} from './backendMessages.js';
+import {
+  acquireWorkspaceProcessReservation,
+  type WorkspaceProcessReservation,
+} from './workspaceProcessReservation.js';
+import type { WorkspaceProcessReservationDescriptor } from './workspaceProcessReservationDescriptor.js';
 import { CompanyEmailSecretBrokerClient } from '../secrets/secretBrokerClient.js';
 import { createUtilitySecretBrokerTransport } from '../secrets/electronSecretBrokerTransport.js';
 import { InvoicePdfArchiveBrokerClient } from '../invoicePdfArchive/invoicePdfArchiveBrokerClient.js';
 import { createInvoicePdfArchiveBrokerTransport } from '../invoicePdfArchive/electronInvoicePdfArchiveBrokerTransport.js';
 import { createProfileSnapshotBrokerTransport } from '../profileBackup/electronProfileSnapshotBrokerTransport.js';
-import { startProfileSnapshotBrokerBackend } from '../profileBackup/profileSnapshotBrokerBackend.js';
+import {
+  startProfileSnapshotBrokerBackend,
+  type ProfileMaintenanceService,
+} from '../profileBackup/profileSnapshotBrokerBackend.js';
 
 interface StartedBackendServer {
   close(): Promise<void>;
   port: number;
 }
 
-interface BackendProfileMaintenanceState {
-  begin(operationId: string, timeoutMilliseconds: number): Promise<void>;
-  end(operationId: string): void;
-  forceEnd(): void;
-  getStatus(): 'busy' | 'normal';
+interface BackendProfileMaintenanceState extends ProfileMaintenanceService {
   tryBeginBusinessWrite(): (() => void) | undefined;
 }
 
@@ -135,9 +146,24 @@ type StartServer = (options: {
 let backendServer: StartedBackendServer | undefined;
 let secretBrokerClient: CompanyEmailSecretBrokerClient | undefined;
 let invoicePdfArchiveBrokerClient: InvoicePdfArchiveBrokerClient | undefined;
-let profileSnapshotBrokerHandle: { close(): void } | undefined;
+let profileSnapshotBrokerHandle:
+  | ReturnType<typeof startProfileSnapshotBrokerBackend>
+  | undefined;
 let profileSnapshotService: BackendProfileSnapshotService | undefined;
 let startAttempted = false;
+let preparedReservation: WorkspaceProcessReservationDescriptor | undefined;
+let processReservation: WorkspaceProcessReservation | undefined;
+let reservationReady = false;
+let writingImportStarted = false;
+let startupTask: Promise<void> | undefined;
+let reportedFailure: DesktopBackendFailureCode | undefined;
+const startupCancellation = new AbortController();
+let backendReady = false;
+let shutdownCommand:
+  | DesktopBackendShutdownMessage
+  | DesktopBackendUpdateShutdownMessage
+  | undefined;
+let shutdownFailed = false;
 let migrationGateDecision:
   | {
       reject(error: Error): void;
@@ -147,6 +173,89 @@ let migrationGateDecision:
   | undefined;
 const utilityParentPort = process.parentPort;
 const migrationGateDecisionTimeoutMilliseconds = 5 * 60_000;
+const readinessDeadline = performance.now() + desktopBackendReadinessTimeoutMilliseconds;
+const readinessTimer = setTimeout(() => {
+  failBackend('BACKEND_PROCESS_RESERVATION_FAILED');
+}, desktopBackendReadinessTimeoutMilliseconds);
+
+function rejectMigrationGate(): void {
+  const decision = migrationGateDecision;
+  migrationGateDecision = undefined;
+  if (decision !== undefined) {
+    clearTimeout(decision.timer);
+    decision.reject(new Error('MIGRATION_GATE_ABORTED'));
+  }
+}
+
+function requestShutdown(
+  command: DesktopBackendShutdownMessage | DesktopBackendUpdateShutdownMessage,
+): void {
+  if (shutdownCommand !== undefined) {
+    if (command.type === 'shutdownForUpdate' && (
+      shutdownCommand.type !== 'shutdownForUpdate' ||
+      command.operationId !== shutdownCommand.operationId
+    )) shutdownFailed = true;
+    return;
+  }
+  shutdownCommand = command;
+  startupCancellation.abort();
+  clearTimeout(readinessTimer);
+  // A beforeMigrations owner may stop this runtime from inside its callback.
+  rejectMigrationGate();
+  void shutdownBackend(command);
+}
+
+function failBackend(code: DesktopBackendFailureCode): void {
+  shutdownFailed = true;
+  if (reportedFailure === undefined) {
+    reportedFailure = code;
+    try { utilityParentPort.postMessage({ code, type: 'failed' }); } catch { /* Parent lost. */ }
+  }
+  requestShutdown({ type: 'shutdown' });
+}
+
+function assertStartupCurrent(): void {
+  if (startupCancellation.signal.aborted) throw new Error('BACKEND_STARTUP_ABORTED');
+  if (processReservation === undefined || processReservation.invalidated.aborted ||
+      (!writingImportStarted && performance.now() >= readinessDeadline)) {
+    throw new Error('BACKEND_PROCESS_RESERVATION_FAILED');
+  }
+}
+
+async function assertReservationOwned(): Promise<void> {
+  try {
+    assertStartupCurrent();
+    await processReservation!.assertOwned();
+    assertStartupCurrent();
+  } catch (error) {
+    if (!startupCancellation.signal.aborted) {
+      failBackend('BACKEND_PROCESS_RESERVATION_FAILED');
+    }
+    throw error;
+  }
+}
+
+async function prepareBackend(reservation: WorkspaceProcessReservationDescriptor): Promise<void> {
+  try {
+    processReservation = await acquireWorkspaceProcessReservation({
+      expectedIdentity: reservation.identity,
+      signal: startupCancellation.signal,
+      userDataRoot: reservation.userDataRoot,
+    });
+    assertStartupCurrent();
+    processReservation.invalidated.addEventListener('abort', () => {
+      failBackend('BACKEND_PROCESS_RESERVATION_FAILED');
+    }, { once: true });
+    await assertReservationOwned();
+    assertStartupCurrent();
+    reservationReady = true;
+    utilityParentPort.postMessage({ reservation, type: 'reservationReady' });
+  } catch {
+    if (!startupCancellation.signal.aborted) {
+      failBackend('BACKEND_PROCESS_RESERVATION_FAILED');
+    }
+  }
+}
 
 function waitForMigrationGateDecision(inspection: {
   appliedMigrationCount: number;
@@ -154,14 +263,9 @@ function waitForMigrationGateDecision(inspection: {
   pendingMigrationCount: number;
   profileState: 'empty' | 'existing';
 }): Promise<void> {
-  if (migrationGateDecision !== undefined) {
+  if (startupCancellation.signal.aborted || migrationGateDecision !== undefined) {
     return Promise.reject(new Error('MIGRATION_GATE_ALREADY_PENDING'));
   }
-
-  utilityParentPort.postMessage({
-    inspection,
-    type: 'migrationGateReady',
-  });
 
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -169,6 +273,7 @@ function waitForMigrationGateDecision(inspection: {
       reject(new Error('MIGRATION_GATE_DECISION_TIMEOUT'));
     }, migrationGateDecisionTimeoutMilliseconds);
     migrationGateDecision = { reject, resolve, timer };
+    utilityParentPort.postMessage({ inspection, type: 'migrationGateReady' });
   });
 }
 
@@ -239,8 +344,62 @@ async function createSmokePdf(
   return true;
 }
 
+async function shutdownBackend(
+  command: DesktopBackendShutdownMessage | DesktopBackendUpdateShutdownMessage,
+): Promise<void> {
+  // Pre-import cancellation must not wait for stuck acquisition/assertion.
+  // Once import can write, only settled startup and owned closes permit exit.
+  if (writingImportStarted && !backendReady) await startupTask;
+  try {
+    if (command.type === 'shutdownForUpdate') {
+      if (!backendReady || backendServer === undefined ||
+          profileSnapshotBrokerHandle === undefined) {
+        throw new Error('BACKEND_UPDATE_SHUTDOWN_UNAVAILABLE');
+      }
+      profileSnapshotBrokerHandle.assertUpdateMaintenance(command.operationId);
+    }
+    await backendServer?.close();
+    if (command.type === 'shutdownForUpdate') {
+      profileSnapshotBrokerHandle!.assertUpdateMaintenance(command.operationId);
+    }
+  } catch {
+    shutdownFailed = true;
+  }
+
+  // Closing the snapshot broker invalidates its fence, so it follows the
+  // final assertion. Every owned close is attempted, even after a failure.
+  for (const close of [
+    () => secretBrokerClient?.close(),
+    () => invoicePdfArchiveBrokerClient?.close(),
+    () => profileSnapshotBrokerHandle?.close(),
+  ]) {
+    try { close(); } catch { shutdownFailed = true; }
+  }
+  // The OS releases the reservation at actual exit, never at a terminal message.
+  process.exit(shutdownFailed ? 1 : 0);
+}
+
 utilityParentPort.on('message', (event) => {
   const command = parseDesktopBackendCommand(event.data);
+
+  if (command?.type === 'shutdown' || command?.type === 'shutdownForUpdate') {
+    requestShutdown(command);
+    return;
+  }
+
+  if (shutdownCommand !== undefined) {
+    return;
+  }
+
+  if (command?.type === 'prepare') {
+    if (preparedReservation !== undefined || startAttempted || event.ports.length !== 0) {
+      failBackend('BACKEND_PROCESS_RESERVATION_FAILED');
+      return;
+    }
+    preparedReservation = command.reservation;
+    void prepareBackend(command.reservation);
+    return;
+  }
 
   if (
     command?.type === 'continueStartup' ||
@@ -248,6 +407,7 @@ utilityParentPort.on('message', (event) => {
   ) {
     const decision = migrationGateDecision;
     if (decision === undefined) {
+      failBackend('BACKEND_PROCESS_RESERVATION_FAILED');
       return;
     }
     migrationGateDecision = undefined;
@@ -256,31 +416,34 @@ utilityParentPort.on('message', (event) => {
       decision.resolve();
     } else {
       decision.reject(new Error('MIGRATION_GATE_ABORTED'));
+      failBackend('BACKEND_MIGRATION_STARTUP_GATE_FAILED');
     }
     return;
   }
 
-  if (command?.type === 'shutdown') {
-    void (async () => {
-      await backendServer?.close();
-      secretBrokerClient?.close();
-      invoicePdfArchiveBrokerClient?.close();
-      profileSnapshotBrokerHandle?.close();
-      process.exit(0);
-    })();
+  if (command?.type !== 'start' || startAttempted) {
+    if (command !== undefined || !writingImportStarted ||
+        (typeof event.data === 'object' && event.data !== null &&
+          ('type' in event.data) &&
+          (event.data.type === 'prepare' || event.data.type === 'start'))) {
+      failBackend('BACKEND_PROCESS_RESERVATION_FAILED');
+    }
     return;
   }
 
-  if (command?.type !== 'start' || startAttempted) {
+  if (!reservationReady || command.generationId !== preparedReservation?.generationId) {
+    failBackend('BACKEND_PROCESS_RESERVATION_FAILED');
     return;
   }
 
   startAttempted = true;
 
-  void (async () => {
+  startupTask = (async () => {
     let failureCode: DesktopBackendFailureCode = 'BACKEND_MODULE_IMPORT_FAILED';
 
     try {
+      await assertReservationOwned();
+      assertStartupCurrent();
       const brokerPort = event.ports[0];
       const archiveBrokerPort = event.ports[1];
       const profileSnapshotBrokerPort = event.ports[2];
@@ -307,9 +470,14 @@ utilityParentPort.on('message', (event) => {
       );
 
       failureCode = 'BACKEND_MODULE_IMPORT_FAILED';
+      assertStartupCurrent();
+      writingImportStarted = true;
+      clearTimeout(readinessTimer);
       const serverModule = (await import(
         pathToFileURL(join(command.config.backendRoot, 'dist/http/server.js')).href
       )) as { startServer?: StartServer };
+      await assertReservationOwned();
+      assertStartupCurrent();
 
       if (typeof serverModule.startServer !== 'function') {
         throw new Error('Backend start function is unavailable.');
@@ -326,6 +494,8 @@ utilityParentPort.on('message', (event) => {
       )) as {
         ProfileMaintenanceState?: new () => BackendProfileMaintenanceState;
       };
+      await assertReservationOwned();
+      assertStartupCurrent();
 
       if (maintenanceModule.ProfileMaintenanceState === undefined) {
         throw new Error('Profile maintenance state is unavailable.');
@@ -376,6 +546,8 @@ utilityParentPort.on('message', (event) => {
       if (command.config.verifySmokeSecretBroker) {
         failureCode = 'BACKEND_SECRET_BROKER_FAILED';
         smokeSecretBrokerVerified = await verifySecretBroker(secretBrokerClient);
+        await assertReservationOwned();
+        assertStartupCurrent();
 
         if (!smokeSecretBrokerVerified) {
           throw new Error('Secret broker smoke check failed.');
@@ -393,6 +565,8 @@ utilityParentPort.on('message', (event) => {
           async beforeMigrations(inspection) {
             failureCode = 'BACKEND_MIGRATION_STARTUP_GATE_FAILED';
             await waitForMigrationGateDecision(inspection);
+            await assertReservationOwned();
+            assertStartupCurrent();
             migrationGateCompleted = true;
             failureCode = 'BACKEND_SERVER_START_FAILED';
           },
@@ -438,6 +612,8 @@ utilityParentPort.on('message', (event) => {
           sessionSecret: command.config.runtimeSessionSecret,
         },
       });
+      await assertReservationOwned();
+      assertStartupCurrent();
       if (!migrationGateCompleted) {
         failureCode = 'BACKEND_MIGRATION_STARTUP_GATE_FAILED';
         throw new Error('Migration startup gate was not completed.');
@@ -450,12 +626,15 @@ utilityParentPort.on('message', (event) => {
           command.config.backendRoot,
           command.config.smokePdfPath,
         );
+        await assertReservationOwned();
+        assertStartupCurrent();
 
         if (!smokePdfCreated) {
           throw new Error('Smoke PDF was not created.');
         }
       }
 
+      backendReady = true;
       utilityParentPort.postMessage({
         port: backendServer.port,
         smokePdfCreated,
@@ -463,13 +642,9 @@ utilityParentPort.on('message', (event) => {
         type: 'ready',
       });
     } catch {
-      if (migrationGateDecision !== undefined) {
-        clearTimeout(migrationGateDecision.timer);
-        migrationGateDecision = undefined;
+      if (!startupCancellation.signal.aborted) {
+        failBackend(failureCode);
       }
-      secretBrokerClient?.close();
-      profileSnapshotBrokerHandle?.close();
-      utilityParentPort.postMessage({ code: failureCode, type: 'failed' });
     }
   })();
 });

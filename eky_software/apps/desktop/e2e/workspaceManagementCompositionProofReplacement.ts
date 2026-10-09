@@ -7,6 +7,7 @@ import { ProfileRestoreActivationTransaction } from '../src/profileBackup/restor
 import { deriveWorkspaceRoot } from '../src/workspaces/registry/deriveWorkspaceRoot.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../src/workspaces/registry/workspaceRegistryPaths.js';
 import type { WorkspaceId } from '../src/workspaces/registry/workspaceRegistryTypes.js';
+import type { WorkspaceCandidateReservationOwner } from '../src/workspaces/runtime/electronWorkspaceCandidateRuntimeFactory.js';
 import { createWorkspaceBackupReplacementStartupRecovery } from '../src/workspaces/replacement/workspaceBackupReplacementStartupRecovery.js';
 import { generateWorkspaceBackupReplacementOperationId } from '../src/workspaces/replacement/workspaceBackupReplacementOperationId.js';
 import {
@@ -131,6 +132,7 @@ export async function snapshotReplacementIsolation(input: {
 export async function completeReplacementStartupRecovery(
   input: WorkspaceManagementCompositionProofInput & {
     readonly expectedProfileId: string;
+    readonly reservationOwner: WorkspaceCandidateReservationOwner;
     readonly workspaceId: WorkspaceId;
   },
 ): Promise<boolean> {

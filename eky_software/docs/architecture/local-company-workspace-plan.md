@@ -304,6 +304,85 @@ Restart-recovery sovittaa journalin, filesystemin ja rekisterin toisiinsa:
 - aiemmalle aktiiviselle työtilalle varmistetaan täsmälleen yksi terve runtime
   vasta candidate-kahvojen sulkeutumisen jälkeen.
 
+Kylmäkäynnistyksessä viimeinen ehto korvataan erikseen hyväksytyllä
+[C-P2-terminalilla](../decisions/ADR-0011-local-multi-workspace-company-model.md#createimport-recoveryn-kylmäkäynnistyksen-terminal):
+tarkka ready-jatkotyötila ja sen juuri varmennetaan ennen journalin poistoa,
+mutta business-runtime käynnistyy ja validoituu vasta normaalissa startupissa.
+`beforeRuntimeStart`-tila ei saa lifecycle-käynnistysporttia. Ristiriita tai
+puuttuva jatkotyötila säilyttää journalin. C-paketin tuotantokytkentä ja
+paketoitu keskeytys/restart-todennus ovat erillisiä hyväksyntäehtoja.
+
+**Kylmäpalautuksen journal-admission:** `workspaceColdRecoveryAdmission.ts`
+valitsee vain mahdollisen create/import-recoveryn omistajan. Se ei anna
+kirjoitus-, siivous- tai runtime-käynnistysvaltuutta. Puuttuvat create/import-
+slotit palauttavat `none`, jolloin muiden startup-recoveryjen oma menettely
+säilyy; tämä tulos ei myöskään oikeuta plaintext-karanteenin siivoamiseen.
+Molempien operaatioiden löytyminen pysäyttää käsittelyn. Yhden operaation
+löytyessä tarkistus torjuu adoption, switchin, first-start-registry-siirtymän,
+replacementin ja mainin toimittamien profiilipalautusten keskeneräiset slotit.
+Current-, next- ja backup-slotit tarkistetaan ilman korjaavaa store-lukua.
+
+Update-journalilta sallitaan vain nykyisen omistavan politiikan terminal-tila
+(`accepted`, `installerNotApplied` tai `rolledBack`), direct-Setup-tilalta
+vain `accepted`. Tämä koskee myös legacy-update-juuren current-slottia;
+kelvollinen terminal ei yksin todista build-identiteettien yhteensopivuutta.
+Next/backup estää tämän poikkeuksen. Sisältö luetaan nykyisellä rajatulla
+`readSlot`-metodilla, ei slottien korjaavalla `recoverAndRead`-metodilla.
+Väärä tiedostotyyppi, linkki, katkennut linkki, lukupoikkeama tai virheellinen
+terminal-tietue hylätään. Sama lukija palvelee nykyistä management-guardia.
+
+Mainin polkukooste `workspaceColdRecoveryAdmissionComposition.ts` johtaa
+polut vain mainin juuresta ja nykyisistä omistavista polkurakentajista.
+Se kattaa legacy-profiilin, valitun operaation kohteen ja aiemman työtilan
+sekä kaikki auktoritatiivisen rekisterin työtilat, myös passiiviset ja
+`recoveryRequired`-tilaiset. Replacement-journal on installation-kohtainen.
+Puuttuva create/import-operaatio ei käynnistä rekisterin lukua tai korjausta.
+
+`CrashSafeByteSlotStore.inspect` valitsee ensimmäisen olemassa olevan slotin
+järjestyksessä current, backup, next ja validoi sen ilman tiedostomuutoksia.
+Sama valinta palvelee nykyistä korjaavaa `recoverAndRead`-metodia; sen
+siirto- ja poistoehdot eivät muutu. Virheellinen valittu slotti estää
+käsittelyn, eikä alemman prioriteetin kelvolliseen tietueeseen pudota.
+Syrjäytettyjä slotteja ei lueta lisätunnisteiden lähteenä: kesken jäänyt
+tyhjä next ei hylkää kelvollista currentia tai backupia. Nykyiset create/import
+lisäävät vain journalissa nimetyn kohteen; muut sallitut rekisterimuutokset
+säilyttävät jäsenjoukon. Siksi tämä joukko kattaa nykyiset profiilit.
+Työtilojen poiston tai muun jäsenjoukkoa muuttavan toiminnon yhteydessä
+kattavuus tarkistetaan uudelleen.
+
+Polkukooste ei ota leasea tai valtuuta siivousta. Cold-recoveryn pakollinen
+`assertRecoveryAdmission`-portti kutsutaan recoveryn itsensä hankkiman
+installation-leasen alla, runtime-poissaolon tarkistuksen jälkeen ja ennen
+mutatoivia journal-lukuja tai importin plaintext-karanteenia. Mainin
+`assertColdWorkspaceRecoveryAdmissionFromRoot` lukee nykyisen tilanteen
+uudelleen ja vaatii valitun create/import-omistajan; aikaisempi valinta ei
+riitä. Omistajan katoaminen tai vaihtuminen ja uusi kilpaileva journal
+estävät käsittelyn. Hylkäys vapauttaa leasen muuttamatta recovery-aineistoa.
+Admissionin turvallinen management-koodi ja recoveryn nykyiset nimetyt
+virhekoodit säilyvät ulommalle startup-virherajalle; raakaa viestiä tai
+virhekoodin lisätekstiä ei hyväksytä. Ordinary-recoveryn sopimus säilyy.
+Tämä ei korvaa erillistä runtime-poissaolon todistetta. C:n startup-kytkentä
+on toteutettu rajatuin composition-testein; paketoitu keskeytys/restart-näyttö
+ja koko kytkennän hyväksyntä ovat edelleen avoimia. Pelkkä polkukoosteen,
+admissionin tai synteettisen compositionin testi ei sulje niitä.
+
+**C/R18:n journal-versio ja tuotannon järjestys:** uudet create/import-
+operaatiot kirjoittavat `formatVersion: 2` vasta todetun sulun ja takaisin
+saadun main-varauksen jälkeen. V1 säilyy luettavana legacy-tyyppinä, mutta
+automaattinen cold-recovery hylkää sen ennen korjaavaa lukua. Saman operaation
+versiota ei vaihdeta. Nykyiset `-v1`-slottinimet, muut kentät, kokorajat ja
+slottien etusija säilyvät; versionvaihto ei muuta siirrettävää backup-formaattia.
+
+Main tekee ensin readonly-admissionin, sitten nykyisen build-tarkistuksen ja
+`recoverWorkspaceManagementBeforeRuntime`-kutsun samalla varauksella ja
+huoltoleasella. Vasta tämän jälkeen tulevat first-start-palautus, työtilan
+valinta ja normaali backend. V2-tuonnin hyväksytty omistaja saa siivota oman
+plaintext-karanteeninsa. Ilman tuontijournalia löytyvä plaintext säilytetään
+ja avaus estetään; vapaa varaus ei todista vanhaa suojaamatonta kirjoittajaa
+poistuneeksi. Julkaistun kohteen validaattorin poistuminen ja mainin varauksen
+takaisinotto vaaditaan ennen siivousta. Tarkka jatkotyötila varmennetaan ennen
+journalin poistoa, mutta business-terveystarkistus on edelleen erillinen ehto.
+
 **Luottamusraja:** label on käyttäjän syöte; polku ja identiteetit ovat mainin
 luomia. Renderer ei saa päättää initial companyId:tä.
 

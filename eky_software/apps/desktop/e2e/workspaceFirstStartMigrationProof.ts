@@ -49,6 +49,7 @@ import type {
   WorkspaceFirstStartMigrationProofResult,
 } from './workspaceFirstStartMigrationProofTypes.js';
 import {
+  assertProofSingleInstanceOwnership,
   captureUtilityProcessBaseline,
   waitForProofUtilityProcessesReleased,
 } from './workspaceManagementCompositionProofRuntime.js';
@@ -129,6 +130,7 @@ export async function runWorkspaceFirstStartMigrationProof(
   };
   let factories: Readonly<WorkspaceFirstStartProofFactories> | undefined;
   const progress = createProofProgress(join(proofRoot, 'progress.jsonl'), input.observe);
+  let succeeded = false;
 
   try {
     await progress.enter('setup');
@@ -190,6 +192,7 @@ export async function runWorkspaceFirstStartMigrationProof(
         mixed.targetAcceptedAfterRegistryTransition,
     });
     requireProofResult(result);
+    succeeded = true;
     return result;
   } catch (error) {
     throw new Error(
@@ -197,13 +200,27 @@ export async function runWorkspaceFirstStartMigrationProof(
     );
   } finally {
     observeProof(input.observe, 'proofFinallyStarted');
-    unregisterApplicationProtocol();
-    await stopTrackedBackends(tracker);
-    await factories?.cleanup().catch(() => undefined);
-    await rm(proofRoot, { force: true, recursive: true }).catch(
-      () => undefined,
-    );
+    let cleanupFailed = factories?.reservationCleanupFailed === true;
+    try { unregisterApplicationProtocol(); } catch { cleanupFailed = true; }
+    try {
+      if (!await stopTrackedBackends(tracker)) cleanupFailed = true;
+    } catch { cleanupFailed = true; }
+    try {
+      if (!await waitForProofUtilityProcessesReleased(utilityProcessBaseline)) cleanupFailed = true;
+    } catch { cleanupFailed = true; }
+    if (succeeded && !cleanupFailed) {
+      try {
+        await factories?.cleanup();
+        await rm(proofRoot, { force: true, recursive: true });
+      } catch {
+        cleanupFailed = true;
+      }
+    }
+    if (cleanupFailed) {
+      await progress.checkpoint('shutdownCleanupFailed').catch(() => undefined);
+    }
     observeProof(input.observe, 'proofFinallyReturned');
+    if (succeeded && cleanupFailed) throw new Error('WORKSPACE_FIRST_START_PROOF_CLEANUP_FAILED');
   }
 }
 
@@ -216,27 +233,31 @@ async function proveMixedScenario(input: {
   readonly tracker: BackendProofTracker;
 }): Promise<Readonly<MixedScenarioResult>> {
   await mkdir(input.proofRoot, { mode: 0o700, recursive: true });
-  await input.progress.enter('mixedActiveFixture');
-  const active = await createWorkspaceFirstStartProofFixture({
-    factory: input.factories.historical,
-    userDataRoot: input.proofRoot,
-  });
-  await input.progress.enter('mixedCompatibleFixture');
-  const compatiblePassive = await createWorkspaceFirstStartProofFixture({
-    factory: input.factories.historical,
-    userDataRoot: input.proofRoot,
-  });
-  await input.progress.enter('mixedInvalidFixture');
-  const invalidPassive = await input.factories.createCurrentFixture(input.proofRoot);
-  await corruptWorkspaceFirstStartProofDatabase(invalidPassive);
-  const fixtures = [active, compatiblePassive, invalidPassive] as const;
-  await input.progress.enter('mixedStores');
-  const stores = await createProofStores({
-    activeWorkspaceId: active.workspaceId,
-    fixtures,
-    proofRoot: input.proofRoot,
-    sourceVersion: input.build.sourceVersion,
-  });
+  const { active, compatiblePassive, invalidPassive, fixtures, stores } =
+    await input.factories.withWorkspaceReservation(input.proofRoot, async (scope) => {
+      await input.progress.enter('mixedActiveFixture');
+      const active = await createWorkspaceFirstStartProofFixture({
+        factory: scope.historical,
+        userDataRoot: input.proofRoot,
+      });
+      await input.progress.enter('mixedCompatibleFixture');
+      const compatiblePassive = await createWorkspaceFirstStartProofFixture({
+        factory: scope.historical,
+        userDataRoot: input.proofRoot,
+      });
+      await input.progress.enter('mixedInvalidFixture');
+      const invalidPassive = await scope.createCurrentFixture();
+      await corruptWorkspaceFirstStartProofDatabase(invalidPassive);
+      const fixtures = [active, compatiblePassive, invalidPassive] as const;
+      await input.progress.enter('mixedStores');
+      const stores = await createProofStores({
+        activeWorkspaceId: active.workspaceId,
+        fixtures,
+        proofRoot: input.proofRoot,
+        sourceVersion: input.build.sourceVersion,
+      });
+      return { active, compatiblePassive, invalidPassive, fixtures, stores };
+    });
   await input.progress.enter('mixedSnapshotsBefore');
   const activeBefore = await snapshotWorkspaceFirstStartProofFile(
     active.databaseFilePath,
@@ -299,20 +320,24 @@ async function proveMixedScenario(input: {
   );
 
   await input.progress.enter('mixedActiveInspection');
-  const activeInspection = await inspectWorkspaceFirstStartProofFixture(
-    input.factories.current,
-    active,
-  );
-  await input.progress.enter('mixedCompatibleInspection');
-  const compatibleInspection = await inspectWorkspaceFirstStartProofFixture(
-    input.factories.current,
-    compatiblePassive,
-  );
-  await input.progress.enter('mixedInvalidInspection');
-  const invalidInspection = await inspectWorkspaceFirstStartProofFixture(
-    input.factories.current,
-    invalidPassive,
-  );
+  const [activeInspection, compatibleInspection, invalidInspection] =
+    await input.factories.withWorkspaceReservation(input.proofRoot, async ({ current }) => {
+      const activeInspection = await inspectWorkspaceFirstStartProofFixture(
+        current,
+        active,
+      );
+      await input.progress.enter('mixedCompatibleInspection');
+      const compatibleInspection = await inspectWorkspaceFirstStartProofFixture(
+        current,
+        compatiblePassive,
+      );
+      await input.progress.enter('mixedInvalidInspection');
+      const invalidInspection = await inspectWorkspaceFirstStartProofFixture(
+        current,
+        invalidPassive,
+      );
+      return [activeInspection, compatibleInspection, invalidInspection] as const;
+    });
   await input.progress.enter('mixedSnapshotsAfter');
   const activeAfter = await snapshotWorkspaceFirstStartProofFile(
     active.databaseFilePath,
@@ -389,19 +414,22 @@ async function proveAllCurrentScenario(input: {
 }): Promise<Readonly<AllCurrentScenarioResult>> {
   await mkdir(input.proofRoot, { mode: 0o700, recursive: true });
   await input.progress.enter('allCurrentFixtures');
-  const fixtures = await Promise.all(
-    [0, 1, 2].map(() =>
-      input.factories.createCurrentFixture(input.proofRoot),
-    ),
-  );
-  const active = requireFixture(fixtures[0]);
-  await input.progress.enter('allCurrentStores');
-  const stores = await createProofStores({
-    activeWorkspaceId: active.workspaceId,
-    fixtures,
-    proofRoot: input.proofRoot,
-    sourceVersion: input.build.sourceVersion,
-  });
+  const { fixtures, active, stores } =
+    await input.factories.withWorkspaceReservation(input.proofRoot, async (scope) => {
+      const fixtures = [];
+      for (let index = 0; index < 3; index += 1) {
+        fixtures.push(await scope.createCurrentFixture());
+      }
+      const active = requireFixture(fixtures[0]);
+      await input.progress.enter('allCurrentStores');
+      const stores = await createProofStores({
+        activeWorkspaceId: active.workspaceId,
+        fixtures,
+        proofRoot: input.proofRoot,
+        sourceVersion: input.build.sourceVersion,
+      });
+      return { fixtures, active, stores };
+    });
   await input.progress.enter('allCurrentSnapshotsBefore');
   const artifactRootsBefore = await snapshotArtifactRoots(fixtures);
   let acceptedSourceBuildBeforeBackend = false;
@@ -589,6 +617,7 @@ async function startProofComposition(input: {
   const capture = input.input.loadExperiment?.startComposition(input.loadSlot);
   try {
     const lifecycle = await startDesktopComposition({
+      assertSingleInstanceOwnership: assertProofSingleInstanceOwnership,
       appVersion: input.build.targetRelease.appVersion,
       applicationPath: input.input.applicationPath,
       buildInfo: {
@@ -714,18 +743,13 @@ function createTrackedBackendStarter(input: {
       },
       port: delegateHandle.port,
       async stop() {
-        try {
-          return await delegateHandle.stop();
-        } finally {
-          release();
-        }
+        const result = await delegateHandle.stop();
+        release();
+        return result;
       },
-      async stopForUpdate() {
-        try {
-          await delegateHandle.stopForUpdate();
-        } finally {
-          release();
-        }
+      async stopForUpdate(operationId) {
+        await delegateHandle.stopForUpdate(operationId);
+        release();
       },
     };
     input.tracker.activeHandles.add(handle);
@@ -765,10 +789,11 @@ async function stopProofComposition(
 
 async function stopTrackedBackends(
   tracker: BackendProofTracker,
-): Promise<void> {
+): Promise<boolean> {
   for (const handle of [...tracker.activeHandles]) {
     await handle.stop().catch(() => undefined);
   }
+  return tracker.activeHandles.size === 0;
 }
 
 async function disableCandidateRunner(

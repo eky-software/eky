@@ -110,7 +110,7 @@ export function parseWorkspaceSuccessArtifactBuildArguments(args) {
 async function materializeRole(roleName, staged, artifactRoot, buildRevision) {
   if (
     staged?.appVersion !== WORKSPACE_SUCCESS_VERSIONS[roleName] ||
-    staged.buildRevision !== buildRevision.slice(0, 12) ||
+    staged.buildRevision !== buildRevision ||
     typeof staged.packagedApplicationPath !== 'string' ||
     typeof staged.manifestPath !== 'string'
   ) {
@@ -172,7 +172,7 @@ export async function buildWorkspaceSuccessArtifact({
   await mkdir(artifactRoot, { recursive: false });
   try {
     const pair = await createInstallerPair();
-    if (pair?.buildRevision !== buildRevision.slice(0, 12)) {
+    if (pair?.buildRevision !== buildRevision) {
       throw new Error('WINDOWS_ACCEPTANCE_WORKSPACE_ARTIFACT_STAGED_IDENTITY_INVALID');
     }
     const source = await materializeRole('source', pair.source, artifactRoot, buildRevision);

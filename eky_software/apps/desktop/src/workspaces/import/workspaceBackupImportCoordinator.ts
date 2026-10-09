@@ -37,7 +37,7 @@ import {
 import type {
   WorkspaceBackupImportJournalState,
   WorkspaceBackupImportJournalStore,
-  WorkspaceBackupImportJournalV1,
+  WorkspaceBackupImportJournal,
   WorkspaceBackupImportOperationId,
 } from './workspaceBackupImportTypes.js';
 
@@ -86,7 +86,7 @@ export class WorkspaceBackupImportCoordinator {
   ): Promise<Readonly<WorkspaceBackupImportResult>> {
     const workspaceLabel = validateImportLabel(input.workspaceLabel);
     const lease = await this.acquireLease();
-    let journal: Readonly<WorkspaceBackupImportJournalV1> | undefined;
+    let journal: Readonly<WorkspaceBackupImportJournal> | undefined;
     let previousActiveWorkspaceId: WorkspaceId | null = null;
     let writesQuiesced = false;
     let previousRuntimeEnsureAttempted = false;
@@ -137,7 +137,7 @@ export class WorkspaceBackupImportCoordinator {
       );
       const createdAt = validateImportTime(this.now);
       journal = Object.freeze({
-        formatVersion: 1,
+        formatVersion: 2,
         operationId,
         workspaceId,
         workspaceLabel,
@@ -174,6 +174,7 @@ export class WorkspaceBackupImportCoordinator {
         expectedSourceMigrationChainIdentity: preflight.migrationChainIdentity,
       });
       validateWorkspaceBackupMigrationResult(migrationResult);
+      await this.assertRuntimeAbsent();
       if (migrationResult.profileId !== preflight.profileId) {
         throw new WorkspaceBackupImportError(
           'WORKSPACE_IMPORT_VALIDATION_FAILED',
@@ -191,6 +192,7 @@ export class WorkspaceBackupImportCoordinator {
         artifactRoot: paths.artifactRoot,
         expectedProfileId: preflight.profileId,
       });
+      await this.assertRuntimeAbsent();
       if (
         readiness.lineageIdentity.profileId !== preflight.profileId ||
         readiness.migrationChainIdentity !==
@@ -270,6 +272,7 @@ export class WorkspaceBackupImportCoordinator {
       if (writesQuiesced && !previousRuntimeEnsureAttempted) {
         previousRuntimeEnsureAttempted = true;
         try {
+          if (journal !== undefined) await this.assertRuntimeAbsent();
           await this.ensurePreviousWorkspaceRunning(previousActiveWorkspaceId);
         } catch (caught) {
           recoveryFailed = true;
@@ -300,11 +303,12 @@ export class WorkspaceBackupImportCoordinator {
   }
 
   private async handleFailure(
-    journal: Readonly<WorkspaceBackupImportJournalV1> | undefined,
+    journal: Readonly<WorkspaceBackupImportJournal> | undefined,
   ): Promise<void> {
     if (journal === undefined) return;
+    await this.assertRuntimeAbsent();
 
-    let persistedJournal: Readonly<WorkspaceBackupImportJournalV1> | undefined;
+    let persistedJournal: Readonly<WorkspaceBackupImportJournal> | undefined;
     try {
       persistedJournal = await this.options.importJournal.read();
     } catch {
@@ -457,18 +461,18 @@ export class WorkspaceBackupImportCoordinator {
   }
 
   private async advanceJournal(
-    current: Readonly<WorkspaceBackupImportJournalV1>,
+    current: Readonly<WorkspaceBackupImportJournal>,
     state: WorkspaceBackupImportJournalState,
     lineageIdentity: Readonly<WorkspaceLineageIdentityV1> | null =
       current.lineageIdentity,
-  ): Promise<Readonly<WorkspaceBackupImportJournalV1>> {
+  ): Promise<Readonly<WorkspaceBackupImportJournal>> {
     const next = Object.freeze({ ...current, state, lineageIdentity });
     await this.writeJournal(next);
     return next;
   }
 
   private async writeJournal(
-    journal: Readonly<WorkspaceBackupImportJournalV1>,
+    journal: Readonly<WorkspaceBackupImportJournal>,
   ): Promise<void> {
     try {
       await this.options.importJournal.write(journal);

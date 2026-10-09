@@ -46,9 +46,10 @@ describe('package build identity', () => {
     expect(readGitOutput).toHaveBeenCalledTimes(1);
   });
 
-  it('uses the git revision fallback and reports a clean tree', async () => {
+  it('requests the full git HEAD by default and reports a clean tree', async () => {
+    const revision = '0123456789'.repeat(4);
     const readGitOutput = vi.fn(async (args: readonly string[]) =>
-      args[0] === 'rev-parse' ? '123456789abc\n' : '',
+      args[0] === 'rev-parse' ? `${revision}\n` : '',
     );
 
     await expect(
@@ -61,8 +62,12 @@ describe('package build identity', () => {
       }),
     ).resolves.toMatchObject({
       buildDirty: false,
-      buildRevision: '123456789abc',
+      buildRevision: revision,
     });
+    expect(readGitOutput.mock.calls).toEqual([
+      [['rev-parse', 'HEAD']],
+      [['status', '--porcelain']],
+    ]);
   });
 
   it('fails closed when no valid revision can be formed', async () => {

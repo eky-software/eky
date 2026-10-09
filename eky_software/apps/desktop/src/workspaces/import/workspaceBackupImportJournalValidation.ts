@@ -13,7 +13,7 @@ import {
 import { validateWorkspaceBackupImportOperationId } from './workspaceBackupImportOperationId.js';
 import type {
   WorkspaceBackupImportJournalState,
-  WorkspaceBackupImportJournalV1,
+  WorkspaceBackupImportJournal,
 } from './workspaceBackupImportTypes.js';
 
 const journalKeys = [
@@ -39,7 +39,7 @@ export const WORKSPACE_BACKUP_IMPORT_JOURNAL_STATES = Object.freeze([
 
 export function validateWorkspaceBackupImportJournal(
   value: unknown,
-): Readonly<WorkspaceBackupImportJournalV1> {
+): Readonly<WorkspaceBackupImportJournal> {
   try {
     return validateWorkspaceBackupImportJournalValue(value);
   } catch (error) {
@@ -52,11 +52,11 @@ export function validateWorkspaceBackupImportJournal(
 
 function validateWorkspaceBackupImportJournalValue(
   value: unknown,
-): Readonly<WorkspaceBackupImportJournalV1> {
+): Readonly<WorkspaceBackupImportJournal> {
   if (
     !isPlainDataRecord(value) ||
     !hasExactDataKeys(value, journalKeys) ||
-    value.formatVersion !== 1 ||
+    (value.formatVersion !== 1 && value.formatVersion !== 2) ||
     !isWorkspaceBackupImportJournalState(value.state)
   ) {
     return workspaceBackupImportJournalInvalid();
@@ -77,7 +77,7 @@ function validateWorkspaceBackupImportJournalValue(
   }
 
   return Object.freeze({
-    formatVersion: 1,
+    formatVersion: value.formatVersion,
     operationId: validateWorkspaceBackupImportOperationId(value.operationId),
     workspaceId: validateWorkspaceId(value.workspaceId),
     workspaceLabel: validateWorkspaceLabel(value.workspaceLabel),
@@ -91,8 +91,8 @@ function validateWorkspaceBackupImportJournalValue(
 }
 
 export function assertWorkspaceBackupImportJournalTransition(
-  current: Readonly<WorkspaceBackupImportJournalV1> | undefined,
-  next: Readonly<WorkspaceBackupImportJournalV1>,
+  current: Readonly<WorkspaceBackupImportJournal> | undefined,
+  next: Readonly<WorkspaceBackupImportJournal>,
 ): void {
   if (current === undefined) {
     if (next.state !== 'prepared') {
@@ -102,6 +102,7 @@ export function assertWorkspaceBackupImportJournalTransition(
   }
 
   if (
+    current.formatVersion !== next.formatVersion ||
     current.operationId !== next.operationId ||
     current.workspaceId !== next.workspaceId ||
     current.workspaceLabel !== next.workspaceLabel ||

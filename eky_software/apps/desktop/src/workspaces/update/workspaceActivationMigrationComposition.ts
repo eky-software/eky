@@ -9,7 +9,7 @@ import { WORKSPACE_REGISTRY_FILE_NAME } from '../registry/workspaceRegistryPaths
 import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
 import { ProfileRestoreWorkspaceReplacementActivationFactory } from '../replacement/workspaceBackupReplacementActivationFactory.js';
 import { NodeWorkspaceBackupReplacementRootStore } from '../replacement/workspaceBackupReplacementRootStore.js';
-import { ElectronWorkspaceCandidateRuntimeFactory } from '../runtime/electronWorkspaceCandidateRuntimeFactory.js';
+import { ElectronWorkspaceCandidateRuntimeFactory, type WorkspaceCandidateReservationOwner } from '../runtime/electronWorkspaceCandidateRuntimeFactory.js';
 import type { ActiveWorkspaceStartupSelection } from '../runtime/resolveActiveWorkspaceStartup.js';
 import { resolveWorkspaceCandidateRuntimePaths } from '../runtime/workspaceCandidateRuntimePaths.js';
 import type { WorkspaceRuntimeAbsencePort } from '../runtime/workspaceRuntimeAbsencePort.js';
@@ -37,6 +37,8 @@ export interface WorkspaceActivationMigrationCompositionOptions {
   readonly recoveryPointStagingRoot: string;
   readonly requestRelaunch: () => void;
   readonly resourcesPath: string;
+  readonly reservationOwner: WorkspaceCandidateReservationOwner;
+  readonly assertMainReservationOwned: () => Promise<void>;
   readonly userDataRoot: string;
 }
 
@@ -63,6 +65,7 @@ export async function createWorkspaceActivationMigrationComposition(
     buildRevision: options.buildRevision,
     migrationsDirectory: runtimePaths.migrationsDirectory,
     runnerPath: runtimePaths.runnerPath,
+    reservationOwner: options.reservationOwner,
   });
   const backupCandidate = new PrivateWorkspaceBackupCandidateAdapter(
     runtimeFactory,
@@ -84,7 +87,7 @@ export async function createWorkspaceActivationMigrationComposition(
     registry,
     switchJournal,
   );
-  const runtimeAbsence = new StartupWorkspaceRuntimeAbsence();
+  const runtimeAbsence = new StartupWorkspaceRuntimeAbsence(options.assertMainReservationOwned);
   const recoveryPoint = new WorkspaceActivationMigrationRecoveryPoint(
     options.recoveryPointService,
     options.recoveryPointStore,
@@ -134,12 +137,15 @@ export async function createWorkspaceActivationMigrationComposition(
 class StartupWorkspaceRuntimeAbsence implements WorkspaceRuntimeAbsencePort {
   private stopped = false;
 
+  constructor(private readonly assertMainReservationOwned: () => Promise<void>) {}
+
   async assertNoActiveWorkspaceRuntime(): Promise<void> {
     if (!this.stopped) {
       throw new WorkspaceActivationMigrationError(
         'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
       );
     }
+    await this.assertMainReservationOwned();
   }
 
   markStopped(): void {

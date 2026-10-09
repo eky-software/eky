@@ -8,7 +8,7 @@ export default defineConfig({
   retries: 0,
   projects: [{
     name: 'packaged-legacy-recovery',
-    testMatch: /packaged\/legacyInvoiceRecovery\.spec\.ts/,
+    testMatch: /packaged\/(legacyInvoiceRecovery|workspaceColdRecovery)\.spec\.ts/,
     timeout: 300_000,
   }],
 });

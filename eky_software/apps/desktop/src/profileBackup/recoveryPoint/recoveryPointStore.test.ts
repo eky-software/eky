@@ -36,6 +36,46 @@ afterEach(async () => {
 });
 
 describe('recovery point store', () => {
+  it('forwards the update owner only to the independent self-inspection', async () => {
+    const fixture = await createFixture();
+    await fixture.store.create({
+      entries: fixture.entries, kind: 'preUpdate',
+      manifest: { appVersion: '0.2.81', createdAtEpochMilliseconds: BigInt(Date.parse(snapshotCreatedAt)),
+        migrationChainIdentity, profileId },
+      validatedAt: snapshotCreatedAt, updateMaintenanceOperationId: restoreOperationId,
+    });
+    expect(fixture.validate).toHaveBeenCalledExactlyOnceWith(inspectionOperationId, restoreOperationId);
+  });
+
+  it('requires a bounded settlement port before creating an update-owned inspection', async () => {
+    const fixture = await createFixture({ omitUpdateAssertion: true });
+    await expect(fixture.store.create({
+      entries: fixture.entries, kind: 'preUpdate',
+      manifest: { appVersion: '0.2.81', createdAtEpochMilliseconds: BigInt(Date.parse(snapshotCreatedAt)),
+        migrationChainIdentity, profileId },
+      validatedAt: snapshotCreatedAt, updateMaintenanceOperationId: restoreOperationId,
+    })).rejects.toThrow('RECOVERY_POINT_INSPECTION_UNAVAILABLE');
+    expect(fixture.encrypt).not.toHaveBeenCalled();
+    expect(fixture.validate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { kind: 'preUpdate', owner: '../other', inspection: inspectionOperationId },
+    { kind: 'manual', owner: restoreOperationId, inspection: inspectionOperationId },
+    { kind: 'preUpdate', owner: restoreOperationId, inspection: restoreOperationId },
+  ] as const)('rejects invalid update inspection context before publishing or validation (%j)', async ({ kind, owner, inspection }) => {
+    const fixture = await createFixture({ inspectionOperationId: inspection });
+    await expect(fixture.store.create({
+      entries: fixture.entries, kind,
+      manifest: { appVersion: '0.2.81', createdAtEpochMilliseconds: BigInt(Date.parse(snapshotCreatedAt)),
+        migrationChainIdentity, profileId },
+      validatedAt: snapshotCreatedAt, updateMaintenanceOperationId: owner,
+    })).rejects.toThrow('RECOVERY_POINT_INPUT_INVALID');
+    expect(fixture.validate).not.toHaveBeenCalled();
+    expect(fixture.encrypt).not.toHaveBeenCalled();
+    await expect(fixture.store.list(profileId)).resolves.toEqual([]);
+  });
+
   it('creates, self-validates, indexes and removes an encrypted point', async () => {
     const fixture = await createFixture();
     const point = await fixture.store.create({
@@ -167,6 +207,8 @@ describe('recovery point store', () => {
 
 async function createFixture(options: {
   failKeyProtection?: boolean;
+  inspectionOperationId?: string;
+  omitUpdateAssertion?: boolean;
 } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'eky-recovery-store-'));
   roots.push(root);
@@ -204,24 +246,26 @@ async function createFixture(options: {
     decrypt,
     encrypt,
   });
+  const validate = vi.fn(async () => ({
+    activeProfileIsEmpty: false,
+    artifactCount: 0,
+    artifactTotalByteSize: 0,
+    databaseHealth: 'healthy' as const,
+    migrationChainIdentity,
+    profileId,
+    profileMatchesActive: true,
+    type: 'profileSnapshotValidation' as const,
+  }));
   const store = new RecoveryPointStore({
     artifactIdFactory: () => artifactId,
-    inspectionOperationIdFactory: () => inspectionOperationId,
+    inspectionOperationIdFactory: () => options.inspectionOperationId ?? inspectionOperationId,
     keyProtector,
     quarantineRoot,
     recoveryRoot,
     stagingRoot,
     validator: {
-      validateProfileSnapshot: vi.fn(async () => ({
-        activeProfileIsEmpty: false,
-        artifactCount: 0,
-        artifactTotalByteSize: 0,
-        databaseHealth: 'healthy' as const,
-        migrationChainIdentity,
-        profileId,
-        profileMatchesActive: true,
-        type: 'profileSnapshotValidation' as const,
-      })),
+      validateProfileSnapshot: validate,
+      ...(options.omitUpdateAssertion ? {} : { assertUpdateMaintenance: async () => 'busy' as const }),
     },
   });
 
@@ -231,5 +275,6 @@ async function createFixture(options: {
     entries,
     recoveryRoot,
     store,
+    validate,
   };
 }

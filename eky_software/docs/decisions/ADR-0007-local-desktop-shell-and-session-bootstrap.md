@@ -261,6 +261,12 @@ Electron main process vastaa backend-prosessin:
 - odottamattoman kaatumisen turvallisesta käsittelystä
 - siitä, ettei vanha session jää voimaan uudelleenkäynnistyksessä
 
+Omistajuus alkaa ennen valmiin backend-kahvan palauttamista. Epäonnistunut
+käynnistys ei anna lupaa profiilin tai työtilavalinnan palautukseen ennen
+todettua prosessin poissaoloa ja migraatiovalmistelun valmistumista.
+Nykyinen rajattu toteutus- ja testisopimus on
+[desktopin käynnistysohjeessa](../architecture/local-desktop-implementation-plan.md#käynnistyksen-omistajuus-ennen-backend-kahvaa).
+
 Ensisijaisesti arvioidaan Electronin `utilityProcess`-mallia, koska se tarjoaa
 Node-prosessin ja hallitun viestikanavan. Ennen valintaa tehdään kuitenkin
 paketointispike, jolla varmistetaan `better-sqlite3`-native addonin, PDFKitin,

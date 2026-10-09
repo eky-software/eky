@@ -30,12 +30,15 @@ const workspaceId = '11111111-1111-4111-8111-111111111111';
 const previousWorkspaceId = '22222222-2222-4222-8222-222222222222';
 const profileId = 'a'.repeat(64);
 
-describe('workspace creation journal codec', () => {
+describe.each([1, 2] as const)('workspace creation journal V%i codec', (formatVersion) => {
+  const createJournal = (state: WorkspaceCreationJournalState) => ({
+    ...createLegacyJournal(state), formatVersion,
+  });
   it('serializes canonically, parses strictly and freezes validated data', () => {
     const journal = createJournal('bootstrapCompleted');
     const bytes = serializeWorkspaceCreationJournal(journal);
     const expected =
-      `{"formatVersion":1,"operationId":"${operationId}",` +
+      `{"formatVersion":${formatVersion},"operationId":"${operationId}",` +
       `"workspaceId":"${workspaceId}","workspaceLabel":"Oma yritys",` +
       `"previousActiveWorkspaceId":"${previousWorkspaceId}",` +
       '"state":"bootstrapCompleted",' +
@@ -156,9 +159,29 @@ describe('workspace creation journal codec', () => {
       encode(JSON.stringify(createJournal('prepared'), null, 2)),
     ));
   });
+
+  it.each([0, 3, '2', null, undefined])('rejects unsupported version %s', (version) => {
+    expectInvalid(() => validateWorkspaceCreationJournal({
+      ...createJournal('prepared'), formatVersion: version,
+    }));
+  });
 });
 
-describe('workspace creation journal transitions', () => {
+describe.each([1, 2] as const)('workspace creation journal V%i transitions', (formatVersion) => {
+  const createJournal = (state: WorkspaceCreationJournalState) => ({
+    ...createLegacyJournal(state), formatVersion,
+  });
+
+  it('rejects a version change for the same operation even at the same state', () => {
+    const current = validateWorkspaceCreationJournal(createJournal('prepared'));
+    for (const state of ['prepared', 'candidateRootCreated'] as const) {
+      expectInvalid(() => assertWorkspaceCreationJournalTransition(current,
+        validateWorkspaceCreationJournal({
+          ...createJournal(state), formatVersion: formatVersion === 1 ? 2 : 1,
+        }),
+      ));
+    }
+  });
   it('accepts only prepared as the first state', () => {
     expect(() => assertWorkspaceCreationJournalTransition(
       undefined,
@@ -235,7 +258,7 @@ describe('workspace creation journal transitions', () => {
   });
 });
 
-function createJournal(
+function createLegacyJournal(
   state: WorkspaceCreationJournalState,
 ): Readonly<WorkspaceCreationJournalV1> {
   const hasLineage = [

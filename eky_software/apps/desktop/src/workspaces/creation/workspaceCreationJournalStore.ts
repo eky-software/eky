@@ -21,7 +21,7 @@ import { parseWorkspaceCreationJournalBytes } from './workspaceCreationJournalBy
 import { serializeWorkspaceCreationJournal } from './workspaceCreationJournalSerializer.js';
 import type {
   WorkspaceCreationJournalStore as WorkspaceCreationJournalStorePort,
-  WorkspaceCreationJournalV1,
+  WorkspaceCreationJournal,
   WorkspaceCreationOperationId,
 } from './workspaceCreationTypes.js';
 import {
@@ -50,7 +50,7 @@ export class WorkspaceCreationJournalStore
     this.byteStore = new CrashSafeByteSlotStore(fileSystem);
   }
 
-  read(): Promise<Readonly<WorkspaceCreationJournalV1> | undefined> {
+  read(): Promise<Readonly<WorkspaceCreationJournal> | undefined> {
     return this.runExclusive(() => this.recoverAndRead());
   }
 
@@ -100,7 +100,7 @@ export class WorkspaceCreationJournalStore
   }
 
   private async recoverAndRead(): Promise<
-    Readonly<WorkspaceCreationJournalV1> | undefined
+    Readonly<WorkspaceCreationJournal> | undefined
   > {
     try {
       return await this.byteStore.recoverAndRead(

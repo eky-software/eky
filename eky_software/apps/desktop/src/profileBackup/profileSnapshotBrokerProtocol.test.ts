@@ -12,6 +12,49 @@ import {
 } from './profileSnapshotBrokerProtocol.js';
 
 describe('profile snapshot broker protocol', () => {
+  it('binds only snapshot validation to an explicit update owner with exact identifiers and fields', () => {
+    const request = createProfileSnapshotBrokerRequest({
+      operation: 'validateProfileSnapshot', operationId: randomUUID(),
+      updateMaintenanceOperationId: randomUUID(), requestId: randomUUID(),
+    });
+    expect(parseProfileSnapshotBrokerRequest(request)).toEqual(request);
+    for (const change of [
+      { updateMaintenanceOperationId: undefined },
+      { updateMaintenanceOperationId: null },
+      { updateMaintenanceOperationId: '../other' },
+      { operationId: '../other' },
+      { requestId: 'invalid' },
+      { protocolVersion: profileSnapshotBrokerProtocolVersion - 1 },
+      { companyId: 'untrusted' },
+      { path: 'untrusted' },
+      { extra: 'x'.repeat(1024) },
+    ]) {
+      expect(parseProfileSnapshotBrokerRequest({ ...request, ...change })).toBeUndefined();
+    }
+    for (const operation of ['beginUpdateMaintenance', 'createProfileSnapshot', 'prepareProfileRestoreActivation'] as const) {
+      expect(parseProfileSnapshotBrokerRequest({ ...request, operation })).toBeUndefined();
+      expect(() => createProfileSnapshotBrokerRequest({
+        operation, operationId: randomUUID(), migrationPolicy: 'exactCurrentManifest',
+        updateMaintenanceOperationId: randomUUID(), requestId: randomUUID(),
+      })).toThrow('PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID');
+    }
+  });
+
+  it.each(['beginUpdateMaintenance', 'assertUpdateMaintenance', 'endUpdateMaintenance'] as const)(
+    'accepts only an exact operation-bound %s request', (operation) => {
+      const request = createProfileSnapshotBrokerRequest({
+        operation, operationId: randomUUID(), requestId: randomUUID(),
+      });
+      expect(parseProfileSnapshotBrokerRequest(request)).toEqual(request);
+      for (const changes of [
+        { operationId: undefined }, { operationId: '../other' },
+        { protocolVersion: profileSnapshotBrokerProtocolVersion - 1 },
+        { companyId: 'untrusted' }, { maximumDurationMilliseconds: 60_000_000 },
+      ]) {
+        expect(parseProfileSnapshotBrokerRequest({ ...request, ...changes })).toBeUndefined();
+      }
+    },
+  );
   it('accepts only the exact versioned ready handshake', () => {
     expect(
       parseProfileSnapshotBrokerReady(

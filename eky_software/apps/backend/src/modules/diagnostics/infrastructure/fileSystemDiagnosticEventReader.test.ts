@@ -11,6 +11,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { createBackendOperationalEvent } from '../../../observability/createOperationalEvent.js';
 import { FileSystemDiagnosticEventReader } from './fileSystemDiagnosticEventReader.js';
+import { FileSystemSupportBundleDiagnosticEventReader } from './fileSystemSupportBundleDiagnosticEventReader.js';
+import { FileSystemSupportBundleIncidentSummaryReader } from './fileSystemSupportBundleIncidentSummaryReader.js';
 
 const roots: string[] = [];
 
@@ -19,6 +21,49 @@ describe('FileSystemDiagnosticEventReader', () => {
     for (const root of roots.splice(0)) {
       rmSync(root, { force: true, recursive: true });
     }
+  });
+
+  it.each([
+    'WORKSPACE_PROCESS_RESERVATION_FAILED',
+    'BACKEND_PROCESS_RESERVATION_FAILED',
+    'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED',
+    'WORKSPACE_CREATION_RECOVERY_REQUIRED',
+    'WORKSPACE_IMPORT_RECOVERY_REQUIRED',
+  ])('preserves %s in diagnostics and the minimized support projections', async errorCode => {
+    const logsRoot = createLogsRoot();
+    const timestamp = '2026-07-27T10:04:00.000Z';
+    const event = {
+      ...createDesktopOperationalEventFixture({
+        category: 'runtime', errorCode, eventId: 'workspace-startup-failed',
+        eventName: 'desktop.bootstrapFailed', level: 'error', outcome: 'failure', timestamp,
+      }),
+      stage: 'startup', sideEffectState: 'unknown', retryable: false,
+    };
+    writeLines(logsRoot, 'desktop', 'desktop-warning-error-2026-07-001.jsonl', [event]);
+    mkdirSync(join(logsRoot, 'incident-index'), { recursive: true });
+    writeFileSync(join(logsRoot, 'incident-index', 'desktop-incident-index-2026.jsonl'), `${JSON.stringify({
+      schemaVersion: 1, component: 'desktop', appVersion: '1.0.0', buildRevision: '123456789abc',
+      timestamp, errorCode, eventName: 'desktop.bootstrapFailed', outcome: 'failure',
+      fingerprint: `desktop.bootstrapFailed:${errorCode}`,
+    })}\n`);
+    const range = { earliestTimestamp: '2026-07-01T00:00:00.000Z', latestTimestamp: '2026-07-28T00:00:00.000Z' };
+    const diagnostic = await new FileSystemDiagnosticEventReader(logsRoot).listRecentDiagnosticEvents(10);
+    const support = await new FileSystemSupportBundleDiagnosticEventReader(logsRoot).readSupportBundleDiagnosticEvents(range);
+    for (const events of [diagnostic, support.diagnosticEvents]) {
+      expect(events).toEqual([expect.objectContaining({
+        eventName: 'desktop.bootstrapFailed', errorCode, stage: 'startup',
+        sideEffectState: 'unknown', retryable: false,
+      })]);
+      expect(JSON.stringify(events)).not.toContain(logsRoot);
+      expect(JSON.stringify(events)).not.toMatch(/companyId|actorId|runtimeSession|stack/u);
+    }
+    expect(support.sourceTruncated).toBe(false);
+    const incidents = await new FileSystemSupportBundleIncidentSummaryReader(logsRoot).readSupportBundleIncidentSummaries(range);
+    expect(incidents.sourceTruncated).toBe(false);
+    expect(incidents.incidentSummaries).toEqual([expect.objectContaining({
+      eventName: 'desktop.bootstrapFailed', errorCode, count: 1,
+    })]);
+    expect(JSON.stringify(incidents)).not.toMatch(/runtimeInstanceId|correlationId|operationId/u);
   });
 
   it('combines revalidated backend and desktop events as a safe projection', async () => {

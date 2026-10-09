@@ -1,4 +1,4 @@
-export const profileSnapshotBrokerProtocolVersion = 7;
+export const profileSnapshotBrokerProtocolVersion = 9;
 
 const requestIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -8,6 +8,9 @@ const maximumMessageBytes = 1_024;
 
 export type ProfileMaintenanceBrokerOperation =
   | 'beginProfileMaintenance'
+  | 'beginUpdateMaintenance'
+  | 'assertUpdateMaintenance'
+  | 'endUpdateMaintenance'
   | 'createProfileSnapshot'
   | 'endProfileMaintenance'
   | 'getProfileMaintenanceStatus'
@@ -30,12 +33,21 @@ export type ProfileSnapshotBrokerRequest =
   | {
       operation:
         | 'beginProfileMaintenance'
+        | 'beginUpdateMaintenance'
+        | 'assertUpdateMaintenance'
+        | 'endUpdateMaintenance'
         | 'endProfileMaintenance'
-        | 'prepareProfileRestoreActivation'
-        | 'validateProfileSnapshot';
+        | 'prepareProfileRestoreActivation';
       operationId: string;
       protocolVersion: typeof profileSnapshotBrokerProtocolVersion;
       requestId: string;
+    }
+  | {
+      operation: 'validateProfileSnapshot';
+      operationId: string;
+      protocolVersion: typeof profileSnapshotBrokerProtocolVersion;
+      requestId: string;
+      updateMaintenanceOperationId?: string;
     }
   | {
       operation: 'getProfileMaintenanceStatus' | 'validateActiveProfile';
@@ -118,7 +130,14 @@ export function createProfileSnapshotBrokerRequest(input: {
   operation: ProfileMaintenanceBrokerOperation;
   operationId?: string;
   requestId: string;
+  updateMaintenanceOperationId?: string;
 }): ProfileSnapshotBrokerRequest {
+  if (
+    input.updateMaintenanceOperationId !== undefined &&
+    input.operation !== 'validateProfileSnapshot'
+  ) {
+    throw new Error('PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID');
+  }
   const value =
     input.operation === 'getProfileMaintenanceStatus' ||
     input.operation === 'validateActiveProfile'
@@ -140,6 +159,8 @@ export function createProfileSnapshotBrokerRequest(input: {
             operationId: input.operationId,
             protocolVersion: profileSnapshotBrokerProtocolVersion,
             requestId: input.requestId,
+            ...(input.updateMaintenanceOperationId === undefined
+              ? {} : { updateMaintenanceOperationId: input.updateMaintenanceOperationId }),
           };
   const request = parseProfileSnapshotBrokerRequest(value);
 
@@ -191,6 +212,31 @@ export function parseProfileSnapshotBrokerRequest(
     return undefined;
   }
 
+  if (value.operation === 'validateProfileSnapshot') {
+    const hasUpdateOwner = Object.hasOwn(value, 'updateMaintenanceOperationId');
+    if (
+      !hasExactKeys(value, [
+        'operation', 'operationId', 'protocolVersion', 'requestId',
+        ...(hasUpdateOwner ? ['updateMaintenanceOperationId'] : []),
+      ]) || !isOperationId(value.operationId)
+    ) {
+      return undefined;
+    }
+    const request: ProfileSnapshotBrokerRequest = {
+      operation: value.operation,
+      operationId: value.operationId,
+      protocolVersion: profileSnapshotBrokerProtocolVersion,
+      requestId: value.requestId,
+    };
+    if (hasUpdateOwner) {
+      if (!isOperationId(value.updateMaintenanceOperationId)) {
+        return undefined;
+      }
+      return { ...request, updateMaintenanceOperationId: value.updateMaintenanceOperationId };
+    }
+    return request;
+  }
+
   if (
     value.operation === 'getProfileMaintenanceStatus' ||
     value.operation === 'validateActiveProfile'
@@ -230,9 +276,11 @@ export function parseProfileSnapshotBrokerRequest(
 
   if (
     (value.operation !== 'beginProfileMaintenance' &&
+      value.operation !== 'beginUpdateMaintenance' &&
+      value.operation !== 'assertUpdateMaintenance' &&
+      value.operation !== 'endUpdateMaintenance' &&
       value.operation !== 'endProfileMaintenance' &&
-      value.operation !== 'prepareProfileRestoreActivation' &&
-      value.operation !== 'validateProfileSnapshot') ||
+      value.operation !== 'prepareProfileRestoreActivation') ||
     !hasExactKeys(value, [
       'operation',
       'operationId',
@@ -551,7 +599,7 @@ function isRequestId(value: unknown): value is string {
   return typeof value === 'string' && requestIdPattern.test(value);
 }
 
-function isOperationId(value: unknown): value is string {
+export function isOperationId(value: unknown): value is string {
   return typeof value === 'string' && operationIdPattern.test(value);
 }
 

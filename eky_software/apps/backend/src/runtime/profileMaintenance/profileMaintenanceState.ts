@@ -29,20 +29,84 @@ interface DrainWaiter {
   timer: ReturnType<typeof setTimeout>;
 }
 
+interface MaintenanceOperation {
+  operationId: string;
+  kind: 'ordinary' | 'update';
+  invalidated: boolean;
+  updateValidUntil: number | undefined;
+}
+
 export class ProfileMaintenanceState {
   private activeBusinessWriteCount = 0;
-  private activeOperationId: string | undefined;
+  private activeOperation: MaintenanceOperation | undefined;
   private readonly drainWaiters = new Set<DrainWaiter>();
 
   async begin(operationId: string, timeoutMilliseconds: number): Promise<void> {
-    if (this.activeOperationId !== undefined) {
+    await this.beginOperation(operationId, timeoutMilliseconds, 'ordinary');
+  }
+
+  async beginUpdate(
+    operationId: string,
+    timeoutMilliseconds: number,
+    maximumDurationMilliseconds: number,
+  ): Promise<void> {
+    if (
+      !Number.isFinite(maximumDurationMilliseconds) ||
+      maximumDurationMilliseconds <= 0
+    ) {
+      throw new ProfileMaintenanceOperationMismatchError();
+    }
+    const operation = await this.beginOperation(
+      operationId, timeoutMilliseconds, 'update',
+    );
+    if (this.activeOperation !== operation || operation.invalidated) {
+      throw new ProfileMaintenanceOperationMismatchError();
+    }
+    operation.updateValidUntil = performance.now() + maximumDurationMilliseconds;
+  }
+
+  assertUpdate(operationId: string): void {
+    const operation = this.activeOperation;
+    if (
+      operation?.kind === 'update' &&
+      operation.updateValidUntil !== undefined &&
+      performance.now() >= operation.updateValidUntil
+    ) {
+      this.forceEnd();
+    }
+    if (
+      operation?.kind !== 'update' || operation.operationId !== operationId ||
+      operation.invalidated || operation.updateValidUntil === undefined ||
+      this.activeBusinessWriteCount !== 0
+    ) {
+      throw new ProfileMaintenanceOperationMismatchError();
+    }
+  }
+
+  endUpdate(operationId: string): void {
+    this.assertUpdate(operationId);
+    this.activeOperation = undefined;
+  }
+
+  private async beginOperation(
+    operationId: string,
+    timeoutMilliseconds: number,
+    kind: MaintenanceOperation['kind'],
+  ): Promise<MaintenanceOperation> {
+    if (this.activeOperation !== undefined) {
       throw new ProfileMaintenanceBusyError();
     }
 
-    this.activeOperationId = operationId;
+    const operation: MaintenanceOperation = {
+      operationId,
+      kind,
+      invalidated: false,
+      updateValidUntil: undefined,
+    };
+    this.activeOperation = operation;
 
     if (this.activeBusinessWriteCount === 0) {
-      return;
+      return operation;
     }
 
     try {
@@ -57,37 +121,60 @@ export class ProfileMaintenanceState {
         };
         this.drainWaiters.add(waiter);
       });
+      if (this.activeOperation !== operation || operation.invalidated) {
+        throw new ProfileMaintenanceOperationMismatchError();
+      }
+      return operation;
     } catch (error) {
-      if (this.activeOperationId === operationId) {
-        this.activeOperationId = undefined;
+      if (this.activeOperation === operation) {
+        if (kind === 'update') {
+          operation.invalidated = true;
+        } else {
+          this.activeOperation = undefined;
+        }
       }
       throw error;
     }
   }
 
   end(operationId: string): void {
-    if (this.activeOperationId !== operationId) {
+    if (
+      this.activeOperation?.operationId !== operationId ||
+      this.activeOperation.kind !== 'ordinary'
+    ) {
       throw new ProfileMaintenanceOperationMismatchError();
     }
 
-    this.activeOperationId = undefined;
+    this.activeOperation = undefined;
   }
 
   forceEnd(): void {
-    this.activeOperationId = undefined;
+    if (this.activeOperation?.kind === 'update') {
+      // Losing update ownership must never reopen the snapshot's write window.
+      this.activeOperation.invalidated = true;
+    } else {
+      this.activeOperation = undefined;
+    }
     this.rejectDrainWaiters();
   }
 
   getStatus(): ProfileMaintenanceStatus {
-    return this.activeOperationId === undefined ? 'normal' : 'busy';
+    return this.activeOperation === undefined ? 'normal' : 'busy';
   }
 
   isActiveOperation(operationId: string): boolean {
-    return this.activeOperationId === operationId;
+    if (this.activeOperation?.kind === 'update') {
+      try {
+        this.assertUpdate(operationId);
+      } catch {
+        return false;
+      }
+    }
+    return this.activeOperation?.operationId === operationId;
   }
 
   tryBeginBusinessWrite(): ReleaseBusinessWrite | undefined {
-    if (this.activeOperationId !== undefined) {
+    if (this.activeOperation !== undefined) {
       return undefined;
     }
 

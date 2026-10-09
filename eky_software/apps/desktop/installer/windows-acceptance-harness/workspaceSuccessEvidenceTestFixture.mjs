@@ -12,10 +12,10 @@ export async function createWorkspaceSuccessEvidenceTestFixture() {
     artifactDescriptorSha256: 'b'.repeat(64), runNonce: 'c'.repeat(64) });
   const artifact = Object.fromEntries(['source', 'target'].map((role, index) => [role, {
     appVersion: `0.2.${7 + index}`, msiProductVersion: `0.2.${7 + index}`,
-    buildRevision: revision.slice(0, 12), packageSha256: String(index + 1).repeat(64), packageSize: 100 + index,
+    buildRevision: revision, packageSha256: String(index + 1).repeat(64), packageSize: 100 + index,
   }]));
   const state = {
-    formatVersion: 1, buildRevision: revision.slice(0, 12), sourceVersion: '0.2.7', targetVersion: '0.2.8',
+    formatVersion: 1, buildRevision: revision, sourceVersion: '0.2.7', targetVersion: '0.2.8',
     fixtures: ['A', 'B', 'C'].map((fixtureKey, index) => {
       const file = { sha256: String(index + 1).repeat(64), size: 100 + index };
       return {

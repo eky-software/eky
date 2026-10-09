@@ -5275,6 +5275,15 @@ odotusluokkaa: `rootProcessPending`, `descendantsPending` ja
 juuriprosessin poistumiskuittausta, ei uutta valmiusehtoa. Sama suljettu
 projektio säilyy nykyisen komentotestin turvallisessa jälkilukijassa.
 
+Tämän järjestyksen sopimustesti käyttää nykyisen `ProcessBoundaryContract`-
+fixturen omaa poistumishavaitsijaa. Se pidättää kuittauksen myös silloin,
+kun prosessikahva signaloituu ennen fixturen Job-laskurin nollaa. Kahden
+tyhjän Jobin havainnon jälkeen supervisorin aiemmin samassa kierroksessa
+lukema laskuri on ehtinyt samaan tilaan ennen kuittausta. Erillinen pakotetun
+aikaisen kuittauksen variantti varmistaa tämän ilman ajoitusarvausta.
+Molemmat variantit vaativat oikean prosessin poistumiskoodin, strict-tuloksen
+ja koko Jobin poissaolon; tuotannon havaitsijaa tai aikabudjettia ei muuteta.
+
 Vaihetoimitus on valinnainen ja voi jäädä osittaiseksi. Se ei odota
 kirjoituskuittausta eikä flushia; nykyinen rajattu lopetus ja ulompi Job
 omistavat lehden. Nopean onnistumisen hyväksyntä ei riipu viestin

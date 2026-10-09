@@ -1,13 +1,6 @@
 import { promises as fileSystem } from 'node:fs';
-import type { ProfileSnapshotBrokerClient } from '../profileSnapshotBrokerClient.js';
-import { materializeRecoveryPoint } from './materializeRecoveryPoint.js';
+import { materializeRecoveryPoint, type ProfileSnapshotValidator } from './materializeRecoveryPoint.js';
 import type { RecoveryPointKeyProtector } from './recoveryPointKeyProtector.js';
-
-interface ProfileSnapshotValidator {
-  validateProfileSnapshot(operationId: string): ReturnType<
-    ProfileSnapshotBrokerClient['validateProfileSnapshot']
-  >;
-}
 
 export interface RecoveryPointInspection {
   appVersion: string;

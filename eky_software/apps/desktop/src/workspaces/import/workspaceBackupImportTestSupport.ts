@@ -39,7 +39,7 @@ import type {
 } from './workspaceBackupImportRootStore.js';
 import type {
   WorkspaceBackupImportJournalStore,
-  WorkspaceBackupImportJournalV1,
+  WorkspaceBackupImportJournal,
   WorkspaceBackupImportOperationId,
 } from './workspaceBackupImportTypes.js';
 
@@ -190,11 +190,11 @@ export function createTestImportRegistry(
 }
 
 export function createTestImportJournal(input: {
-  readonly state: WorkspaceBackupImportJournalV1['state'];
+  readonly state: WorkspaceBackupImportJournal['state'];
   readonly previousActiveWorkspaceId?: WorkspaceId | null;
   readonly workspaceId?: WorkspaceId;
   readonly profileId?: string;
-}): Readonly<WorkspaceBackupImportJournalV1> {
+}): Readonly<WorkspaceBackupImportJournal> {
   const lineageRequired = [
     'candidateValidated',
     'rootPublished',
@@ -246,22 +246,22 @@ export class RecordingImportMaintenanceLease
 
 export class MemoryWorkspaceBackupImportJournal
   implements WorkspaceBackupImportJournalStore {
-  current: Readonly<WorkspaceBackupImportJournalV1> | undefined;
-  readonly states: WorkspaceBackupImportJournalV1['state'][] = [];
-  readonly writes: Readonly<WorkspaceBackupImportJournalV1>[] = [];
-  failBeforeState: WorkspaceBackupImportJournalV1['state'] | undefined;
-  failAfterState: WorkspaceBackupImportJournalV1['state'] | undefined;
+  current: Readonly<WorkspaceBackupImportJournal> | undefined;
+  readonly states: WorkspaceBackupImportJournal['state'][] = [];
+  readonly writes: Readonly<WorkspaceBackupImportJournal>[] = [];
+  failBeforeState: WorkspaceBackupImportJournal['state'] | undefined;
+  failAfterState: WorkspaceBackupImportJournal['state'] | undefined;
   failDiscard = false;
   failRemove = false;
 
   constructor(
     private readonly events: string[],
-    initial?: Readonly<WorkspaceBackupImportJournalV1>,
+    initial?: Readonly<WorkspaceBackupImportJournal>,
   ) {
     this.current = initial;
   }
 
-  async read(): Promise<Readonly<WorkspaceBackupImportJournalV1> | undefined> {
+  async read(): Promise<Readonly<WorkspaceBackupImportJournal> | undefined> {
     this.events.push('journal.read');
     return this.current;
   }

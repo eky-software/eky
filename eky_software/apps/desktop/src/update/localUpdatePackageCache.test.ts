@@ -16,6 +16,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { DesktopReleaseInfo } from '../release/desktopReleaseInfo.js';
+import { createPackageBuildInfo } from '../release/packageBuildInfo.js';
 import { LocalUnsignedPilotUpdatePackageTrustPolicy } from './localUnsignedPilotUpdatePackageTrustPolicy.js';
 import { copyLocalUpdatePackageWithHash } from './localUpdateFileOperations.js';
 import {
@@ -106,6 +107,60 @@ describe('local update package cache', () => {
     ).resolves.toMatchObject({ role: 'current' });
     expect(await readdir(fixture.cacheRoot)).toEqual(['current']);
   });
+
+  it.each(['exact', 'shortPrefix', 'differentSuffix', 'legacyRuntimePrefix'] as const)(
+    'keeps current registration exact for the %s build/manifest pair',
+    async (variant) => {
+      const head = '0123456789'.repeat(4);
+      const buildInfo = await createPackageBuildInfo({
+        appVersion: '0.1.0',
+        environment: {},
+        repositoryRoot: '/synthetic-repository',
+        readGitOutput: async (args) => {
+          if (args[0] === 'status') return '';
+          expect(args).toEqual(['rev-parse', 'HEAD']);
+          return `${head}\n`;
+        },
+      });
+      const fixture = await createFixture({
+        appVersion: buildInfo.appVersion,
+        buildRevision: variant === 'shortPrefix' ? head.slice(0, 12)
+          : variant === 'differentSuffix' ? `${head.slice(0, -1)}b`
+          : head,
+        msiProductVersion: '0.1.0',
+      });
+      const cache = createCache(fixture.cacheRoot, {
+        releaseInfo: {
+          ...releaseInfo,
+          appVersion: buildInfo.appVersion,
+          buildRevision: variant === 'legacyRuntimePrefix'
+            ? head.slice(0, 12) : buildInfo.buildRevision,
+          msiProductVersion: '0.1.0',
+        },
+      });
+      const registration = cache.stageSelectedPackage({
+        manifestPath: fixture.manifestPath,
+        role: 'current',
+      });
+      if (variant !== 'exact') {
+        await expect(registration).rejects.toThrow(LocalUpdatePackageCacheError);
+        await expect(readdir(fixture.cacheRoot)).rejects.toMatchObject({
+          code: 'ENOENT',
+        });
+        await expect(cache.getCurrentRegistrationState()).resolves.toBe('missing');
+        await expect(readdir(fixture.cacheRoot)).resolves.toEqual([]);
+        return;
+      }
+      await expect(registration).resolves.toMatchObject({ buildRevision: head });
+      await expect(cache.getCurrentRegistrationState()).resolves.toBe('ready');
+      await expect(
+        cache.stageSelectedPackage({
+          manifestPath: fixture.manifestPath,
+          role: 'current',
+        }),
+      ).resolves.toMatchObject({ buildRevision: head });
+    },
+  );
 
   it('stages a strictly newer candidate without exposing source paths', async () => {
     const fixture = await createFixture({

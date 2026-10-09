@@ -43,6 +43,7 @@ interface RecoveryPointServiceDependencies {
   observer?: ProfileRecoveryOperationalObserver;
   profileSnapshotClient: Pick<
     ProfileSnapshotBrokerClient,
+    | 'assertUpdateMaintenance'
     | 'beginMaintenance'
     | 'createProfileSnapshot'
     | 'endMaintenance'
@@ -123,8 +124,15 @@ export class RecoveryPointService {
     return this.createNamedPoint('preRestore', 'exactCurrentManifest');
   }
 
-  createPreUpdate(): Promise<RecoveryPointIndexEntry> {
-    return this.createNamedPoint('preUpdate', 'exactCurrentManifest');
+  async createPreUpdateWithMaintenance(
+    operationId: string,
+  ): Promise<RecoveryPointIndexEntry> {
+    if (!operationIdPattern.test(operationId)) {
+      throw new Error('RECOVERY_POINT_OPERATION_INVALID');
+    }
+    return this.createNamedPoint(
+      'preUpdate', 'exactCurrentManifest', operationId,
+    );
   }
 
   getStatus(): RecoveryPointStatus {
@@ -148,8 +156,9 @@ export class RecoveryPointService {
   private createNamedPoint(
     kind: 'manual' | 'preRestore' | 'preUpdate',
     migrationPolicy: ProfileSnapshotMigrationPolicy,
+    updateOperationId?: string,
   ): Promise<RecoveryPointIndexEntry> {
-    const correlationId = this.createOperationId();
+    const correlationId = updateOperationId ?? this.createOperationId();
     const startedAt = Date.now();
     this.observe({
       correlationId,
@@ -158,11 +167,16 @@ export class RecoveryPointService {
       stage: 'creation',
     });
     return this.runExclusive('creating', () =>
-      this.withHealthySnapshot(
-        correlationId,
-        migrationPolicy,
-        (snapshot) => this.persistSnapshot(snapshot, kind),
-      ),
+      updateOperationId === undefined
+        ? this.withHealthySnapshot(
+            correlationId,
+            migrationPolicy,
+            (snapshot) => this.persistSnapshot(snapshot, kind),
+          )
+        : this.withUpdateSnapshot(
+            updateOperationId,
+            (snapshot) => this.persistSnapshot(snapshot, kind, updateOperationId),
+          ),
     ).then(
       (point) => {
         this.observe({
@@ -181,7 +195,7 @@ export class RecoveryPointService {
           errorCode: readSafeErrorCode(error),
           eventName: 'recoveryPoint.failed',
           recoveryPointKind: kind,
-          retryable: true,
+          retryable: updateOperationId === undefined,
           sideEffectState: 'unknown',
           stage: 'creation',
         });
@@ -190,9 +204,50 @@ export class RecoveryPointService {
     );
   }
 
+  private async withUpdateSnapshot<T>(
+    operationId: string,
+    useSnapshot: (snapshot: HealthySnapshot) => Promise<T>,
+  ): Promise<T> {
+    const client = this.dependencies.profileSnapshotClient;
+    await client.assertUpdateMaintenance(operationId);
+    const operationRoot = join(this.dependencies.stagingRoot, operationId);
+    let remoteOperationSettled = false;
+    let result: T;
+    try {
+      await client.createProfileSnapshot(operationId, 'exactCurrentManifest');
+      const validation = await client.validateProfileSnapshot(operationId);
+      remoteOperationSettled = true;
+      if (
+        validation.databaseHealth !== 'healthy' ||
+        !validation.profileMatchesActive
+      ) {
+        throw new Error('RECOVERY_POINT_SOURCE_UNHEALTHY');
+      }
+      await client.assertUpdateMaintenance(operationId);
+      result = await useSnapshot({ operationRoot, validation });
+    } finally {
+      if (!remoteOperationSettled) {
+        // A request timeout does not stop the worker. The existing serial
+        // broker's acknowledgement is the barrier before removing its files.
+        remoteOperationSettled = await client
+          .assertUpdateMaintenance(operationId)
+          .then(() => true, () => false);
+      }
+      if (remoteOperationSettled) {
+        await rm(operationRoot, { force: true, recursive: true }).catch(
+          () => undefined,
+        );
+      }
+    }
+    // Neither persistence nor cleanup may outlive the caller's update fence.
+    await client.assertUpdateMaintenance(operationId);
+    return result;
+  }
+
   private async persistSnapshot(
     snapshot: HealthySnapshot,
     kind: RecoveryPointKind,
+    updateMaintenanceOperationId?: string,
   ): Promise<RecoveryPointIndexEntry> {
     const timestamp = this.now();
     const point = await this.dependencies.store.create({
@@ -208,6 +263,7 @@ export class RecoveryPointService {
         profileId: snapshot.validation.profileId,
       },
       validatedAt: timestamp.toISOString(),
+      ...(updateMaintenanceOperationId === undefined ? {} : { updateMaintenanceOperationId }),
     });
     const rotation = await this.dependencies.rotation.maintain(
       snapshot.validation.profileId,

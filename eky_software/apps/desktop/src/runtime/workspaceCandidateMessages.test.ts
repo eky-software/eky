@@ -5,7 +5,9 @@ import { describe, expect, it } from 'vitest';
 import {
   createWorkspaceCandidateCompletedStatus,
   createWorkspaceCandidateFailedStatus,
+  createWorkspaceCandidatePrepareCommand,
   createWorkspaceCandidateReadyStatus,
+  createWorkspaceCandidateReservationReadyStatus,
   createWorkspaceCandidateShutdownCommand,
   createWorkspaceCandidateStartCommand,
   parseWorkspaceCandidateProcessCommand,
@@ -76,6 +78,53 @@ function startCommand() {
 }
 
 describe('workspace candidate process messages', () => {
+  it('binds preparation and reservation readiness to the same request generation', () => {
+    const input = {
+      operationId, requestId, runtimeSession,
+      reservation: {
+        generationId: requestId,
+        identity: 'e'.repeat(64),
+        userDataRoot: resolve('private-installation'),
+      },
+    };
+    const prepare = createWorkspaceCandidatePrepareCommand(input);
+    const ready = createWorkspaceCandidateReservationReadyStatus(input);
+    expect(parseWorkspaceCandidateProcessCommand(prepare)).toEqual(prepare);
+    expect(parseWorkspaceCandidateProcessStatus(ready)).toEqual(ready);
+    expect(prepare.reservation).not.toBe(input.reservation);
+    expect(Object.isFrozen(prepare.reservation)).toBe(true);
+    for (const change of [
+      { reservation: { ...input.reservation, generationId: operationId } },
+      { reservation: { ...input.reservation, identity: '' } },
+      { reservation: { ...input.reservation, userDataRoot: 'relative' } },
+      { reservation: { ...input.reservation, guarded: true } },
+      { operation: commonOperation() },
+      { result: 'ready' },
+      { requestId: operationId },
+      { protocolVersion: 0 },
+    ]) {
+      expect(parseWorkspaceCandidateProcessCommand({ ...prepare, ...change })).toBeUndefined();
+      expect(parseWorkspaceCandidateProcessStatus({ ...ready, ...change })).toBeUndefined();
+    }
+    const { reservation: _missing, ...missing } = prepare;
+    expect(parseWorkspaceCandidateProcessCommand(missing)).toBeUndefined();
+    expect(parseWorkspaceCandidateProcessStatus({ ...missing, type: 'reservationReady' })).toBeUndefined();
+    for (const key of ['hidden', Symbol('hidden')]) {
+      expect(parseWorkspaceCandidateProcessCommand(
+        Object.defineProperty({ ...prepare }, key, { value: true }),
+      )).toBeUndefined();
+      expect(parseWorkspaceCandidateProcessStatus(
+        Object.defineProperty({ ...ready }, key, { value: true }),
+      )).toBeUndefined();
+    }
+    expect(() => createWorkspaceCandidatePrepareCommand({
+      ...input, requestId: operationId,
+    })).toThrow('WORKSPACE_CANDIDATE_PROCESS_REQUEST_INVALID');
+    expect(() => createWorkspaceCandidateReservationReadyStatus({
+      ...input, requestId: operationId,
+    })).toThrow('WORKSPACE_CANDIDATE_PROCESS_STATUS_INVALID');
+  });
+
   it('creates a versioned exact private start and shutdown contract', () => {
     const start = startCommand();
     const shutdown = createWorkspaceCandidateShutdownCommand({

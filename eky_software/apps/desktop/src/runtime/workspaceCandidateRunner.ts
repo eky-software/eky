@@ -6,11 +6,17 @@ import {
   createWorkspaceCandidateCompletedStatus,
   createWorkspaceCandidateFailedStatus,
   createWorkspaceCandidateReadyStatus,
+  createWorkspaceCandidateReservationReadyStatus,
   parseWorkspaceCandidateProcessCommand,
+  workspaceCandidateStartupTimeoutMilliseconds,
   type WorkspaceCandidateProcessCommand,
   type WorkspaceCandidateProcessOperation,
   type WorkspaceCandidateProcessResult,
 } from './workspaceCandidateMessages.js';
+import {
+  acquireWorkspaceProcessReservation,
+  type WorkspaceProcessReservation,
+} from './workspaceProcessReservation.js';
 
 type BackendWorkspaceCandidateOperation = Omit<
   WorkspaceCandidateProcessOperation,
@@ -35,9 +41,11 @@ export interface WorkspaceCandidateRunnerPort {
 }
 
 export interface WorkspaceCandidateRunnerOptions {
+  readonly acquireReservation: typeof acquireWorkspaceProcessReservation;
   readonly exit: (code: number) => void;
   readonly loadOperation: (
     operation: WorkspaceCandidateProcessOperation,
+    control: { readonly beginLoad: () => void },
   ) => Promise<RunWorkspaceCandidateOperation>;
   readonly parentPort: WorkspaceCandidateRunnerPort;
 }
@@ -51,26 +59,36 @@ interface BoundRequest {
 export function startWorkspaceCandidateRunner(
   options: Readonly<WorkspaceCandidateRunnerOptions>,
 ): void {
-  let phase: 'awaitingStart' | 'running' | 'terminal' | 'exiting' =
-    'awaitingStart';
+  let phase: 'awaitingPreparation' | 'acquiringReservation' | 'awaitingGrant'
+    | 'verifyingGrant' | 'loading'
+    | 'running' | 'terminal' | 'exiting' = 'awaitingPreparation';
   let boundRequest: BoundRequest | undefined;
-  let abortController: AbortController | undefined;
+  const abortController = new AbortController();
+  let reservation: WorkspaceProcessReservation | undefined;
   let operationTask: Promise<void> | undefined;
   let shutdownRequested = false;
   let protocolInvalid = false;
   let terminalSent = false;
   let terminalOutcome: 'completed' | 'failed' | undefined;
   let exited = false;
+  // One startup budget includes preparation, acquisition and the work grant.
+  const startupTimer = setTimeout(
+    () => failProtocol(), workspaceCandidateStartupTimeoutMilliseconds,
+  );
 
   const exitOnce = (code: number): void => {
     if (exited) return;
     exited = true;
     phase = 'exiting';
+    clearTimeout(startupTimer);
+    abortController.abort();
+    reservation?.invalidated.removeEventListener('abort', failProtocol);
+    // The process exit releases the reservation, never an earlier terminal message.
     options.exit(code);
   };
 
   const postFailedOnce = (request: BoundRequest): void => {
-    if (terminalSent) return;
+    if (terminalSent || exited) return;
     terminalSent = true;
     terminalOutcome = 'failed';
     try {
@@ -86,15 +104,12 @@ export function startWorkspaceCandidateRunner(
     if (phase === 'exiting') return;
     protocolInvalid = true;
     shutdownRequested = true;
-    if (phase === 'awaitingStart' || boundRequest === undefined) {
+    abortController.abort();
+    if (phase !== 'running') {
+      if (boundRequest !== undefined) postFailedOnce(boundRequest);
       exitOnce(1);
       return;
     }
-    if (phase === 'terminal') {
-      exitOnce(1);
-      return;
-    }
-    abortController?.abort();
     void operationTask?.finally(() => exitOnce(1));
   };
 
@@ -106,23 +121,67 @@ export function startWorkspaceCandidateRunner(
     command.requestId === boundRequest.requestId &&
     command.runtimeSession === boundRequest.runtimeSession;
 
+  const prepare = async (
+    command: Extract<WorkspaceCandidateProcessCommand, { type: 'prepare' }>,
+  ): Promise<void> => {
+    try {
+      const acquired = await options.acquireReservation({
+        expectedIdentity: command.reservation.identity,
+        signal: abortController.signal,
+        userDataRoot: command.reservation.userDataRoot,
+      });
+      if (phase !== 'acquiringReservation' || abortController.signal.aborted) return;
+      reservation = acquired;
+      if (acquired.identity !== command.reservation.identity || acquired.invalidated.aborted) {
+        failProtocol();
+        return;
+      }
+      acquired.invalidated.addEventListener('abort', failProtocol, { once: true });
+      phase = 'awaitingGrant';
+      options.parentPort.postMessage(createWorkspaceCandidateReservationReadyStatus(command));
+    } catch {
+      failProtocol();
+    }
+  };
+
+  const assertGrantValid = (): void => {
+    if (exited || protocolInvalid || abortController.signal.aborted
+      || reservation === undefined || reservation.invalidated.aborted) {
+      throw new Error('WORKSPACE_CANDIDATE_OPERATION_CANCELLED');
+    }
+  };
+
+  const assertWorkAllowed = (): void => {
+    assertGrantValid();
+    if (phase !== 'running') throw new Error('WORKSPACE_CANDIDATE_OPERATION_CANCELLED');
+  };
+
   const runOperation = async (
     command: Extract<WorkspaceCandidateProcessCommand, { type: 'start' }>,
   ): Promise<void> => {
     try {
-      const operation = await options.loadOperation(command.operation);
+      assertGrantValid();
+      await reservation!.assertOwned();
+      assertGrantValid();
+      phase = 'loading';
+      const operation = await options.loadOperation(command.operation, {
+        beginLoad: () => {
+          assertGrantValid();
+          if (phase !== 'loading') throw new Error('WORKSPACE_CANDIDATE_OPERATION_CANCELLED');
+          // Before this synchronous boundary the loader may only validate paths.
+          phase = 'running';
+          clearTimeout(startupTimer);
+        },
+      });
+      assertWorkAllowed();
+      await reservation!.assertOwned();
+      assertWorkAllowed();
       const { backendRoot: _backendRoot, ...backendOperation } =
         command.operation;
       const result = await operation(backendOperation, {
-        signal: abortController!.signal,
+        signal: abortController.signal,
       });
-      if (
-        phase !== 'running' ||
-        protocolInvalid ||
-        abortController!.signal.aborted
-      ) {
-        throw new Error('WORKSPACE_CANDIDATE_OPERATION_CANCELLED');
-      }
+      assertWorkAllowed();
       terminalSent = true;
       terminalOutcome = 'completed';
       try {
@@ -139,9 +198,11 @@ export function startWorkspaceCandidateRunner(
       }
       phase = 'terminal';
     } catch {
+      if (exited) return;
       postFailedOnce(boundRequest!);
       phase = 'terminal';
     } finally {
+      clearTimeout(startupTimer);
       if (shutdownRequested || protocolInvalid) {
         exitOnce(terminalOutcome === 'completed' && !protocolInvalid ? 0 : 1);
       }
@@ -149,14 +210,15 @@ export function startWorkspaceCandidateRunner(
   };
 
   options.parentPort.on('message', (event) => {
+    if (exited) return;
     const command = parseWorkspaceCandidateProcessCommand(event.data);
     if (command === undefined) {
       failProtocol();
       return;
     }
 
-    if (command.type === 'start') {
-      if (phase !== 'awaitingStart') {
+    if (command.type === 'prepare') {
+      if (phase !== 'awaitingPreparation') {
         failProtocol();
         return;
       }
@@ -165,13 +227,22 @@ export function startWorkspaceCandidateRunner(
         requestId: command.requestId,
         runtimeSession: command.runtimeSession,
       };
-      abortController = new AbortController();
-      phase = 'running';
+      phase = 'acquiringReservation';
+      void prepare(command);
+      return;
+    }
+
+    if (command.type === 'start') {
+      if (phase !== 'awaitingGrant' || !identitiesMatch(command)) {
+        failProtocol();
+        return;
+      }
+      phase = 'verifyingGrant';
       operationTask = runOperation(command);
       return;
     }
 
-    if (phase === 'awaitingStart') {
+    if (phase === 'awaitingPreparation') {
       boundRequest = {
         operationId: command.operationId,
         requestId: command.requestId,
@@ -185,9 +256,14 @@ export function startWorkspaceCandidateRunner(
       failProtocol();
       return;
     }
+    if (phase === 'acquiringReservation' || phase === 'awaitingGrant'
+      || phase === 'verifyingGrant' || phase === 'loading') {
+      failProtocol();
+      return;
+    }
     if (phase === 'running') {
       shutdownRequested = true;
-      abortController?.abort();
+      abortController.abort();
       void operationTask?.finally(() =>
         exitOnce(terminalOutcome === 'completed' ? 0 : 1),
       );
@@ -207,8 +283,9 @@ export function startWorkspaceCandidateRunner(
   }
 }
 
-async function loadBackendWorkspaceCandidateOperation(
+export async function loadBackendWorkspaceCandidateOperation(
   operation: WorkspaceCandidateProcessOperation,
+  control: { readonly beginLoad: () => void },
 ): Promise<RunWorkspaceCandidateOperation> {
   const backendRoot = resolve(operation.backendRoot);
   const migrationsDirectory = resolve(operation.migrationsDirectory);
@@ -232,6 +309,7 @@ async function loadBackendWorkspaceCandidateOperation(
   ) {
     throw new Error('WORKSPACE_CANDIDATE_MODULE_INVALID');
   }
+  control.beginLoad();
   const module = (await import(
     pathToFileURL(modulePath).href
   )) as WorkspaceCandidateBackendModule;
@@ -262,6 +340,7 @@ function pathsAreEqual(first: string, second: string): boolean {
 const utilityParentPort = process.parentPort;
 if (utilityParentPort !== undefined) {
   startWorkspaceCandidateRunner({
+    acquireReservation: acquireWorkspaceProcessReservation,
     exit: (code) => process.exit(code),
     loadOperation: loadBackendWorkspaceCandidateOperation,
     parentPort: utilityParentPort,

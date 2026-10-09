@@ -60,12 +60,14 @@ import {
   workspaceFirstStartProofSnapshotsEqual,
   type WorkspaceFirstStartProofFactories,
   type WorkspaceFirstStartProofFixture,
+  type WorkspaceFirstStartProofReservationScope,
 } from './workspaceFirstStartMigrationProofFixtures.js';
 import type {
   WorkspaceActivationMigrationProofInput,
   WorkspaceActivationMigrationProofResult,
 } from './workspaceActivationMigrationProofTypes.js';
 import {
+  assertProofSingleInstanceOwnership,
   captureUtilityProcessBaseline,
   waitForProofUtilityProcessesReleased,
 } from './workspaceManagementCompositionProofRuntime.js';
@@ -88,6 +90,7 @@ type ProofStage =
   | 'faultSwitch'
   | 'faultRecovery'
   | 'assertions'
+  | 'cleanupFailed'
   | 'cleanup';
 
 interface ProofProgress {
@@ -142,6 +145,7 @@ export async function runWorkspaceActivationMigrationProof(
     successfulStartCount: 0,
   };
   let factories: Readonly<WorkspaceFirstStartProofFactories> | undefined;
+  let succeeded = false;
 
   try {
     await progress.enter('setup');
@@ -153,14 +157,17 @@ export async function runWorkspaceActivationMigrationProof(
     });
 
     await progress.enter('fixtures');
-    const fixtures = await createProofFixtures({
-      factories,
-      proofRoot,
-    });
-    const stores = await createProofStores({
-      fixtures,
-      proofRoot,
-      release,
+    const { fixtures, stores } = await factories.withWorkspaceReservation(proofRoot, async (scope) => {
+      const fixtures = await createProofFixtures({
+        scope,
+        proofRoot,
+      });
+      const stores = await createProofStores({
+        fixtures,
+        proofRoot,
+        release,
+      });
+      return { fixtures, stores };
     });
     const databaseBefore = await snapshotDatabases(fixtures.all);
     const artifactsBefore = await snapshotArtifactRoots(fixtures.all);
@@ -187,10 +194,10 @@ export async function runWorkspaceActivationMigrationProof(
 
     await progress.enter('compatibleInspection');
     const compatibleBeforeActivation =
-      await inspectWorkspaceFirstStartProofFixture(
-        factories.current,
+      await factories.withWorkspaceReservation(proofRoot, ({ current }) => inspectWorkspaceFirstStartProofFixture(
+        current,
         fixtures.compatibleTarget,
-      );
+      ));
     if (compatibleBeforeActivation.status !== 'compatiblePending') {
       throw new Error(
         'WORKSPACE_ACTIVATION_PROOF_COMPATIBLE_INSPECTION_INVALID',
@@ -199,15 +206,15 @@ export async function runWorkspaceActivationMigrationProof(
 
     await progress.enter('compatibleHistoricalValidation');
     const historicalReadiness =
-      await validateWorkspaceFirstStartProofHistoricalFixture(
-        factories.current,
+      await factories.withWorkspaceReservation(proofRoot, ({ current }) => validateWorkspaceFirstStartProofHistoricalFixture(
+        current,
         fixtures.compatibleTarget,
-      );
+      ));
     if (
       historicalReadiness.handlesClosed !== true ||
       historicalReadiness.migrationState !== 'compatiblePending' ||
       historicalReadiness.lineageIdentity.profileId !==
-        fixtures.compatibleTarget.profileId
+      fixtures.compatibleTarget.profileId
     ) {
       throw new Error(
         'WORKSPACE_ACTIVATION_PROOF_HISTORICAL_VALIDATION_INVALID',
@@ -244,10 +251,10 @@ export async function runWorkspaceActivationMigrationProof(
         fixtures.compatibleTarget.databaseFilePath,
       );
     const compatibleInspection =
-      await inspectWorkspaceFirstStartProofFixture(
-        factories.current,
+      await factories.withWorkspaceReservation(proofRoot, ({ current }) => inspectWorkspaceFirstStartProofFixture(
+        current,
         fixtures.compatibleTarget,
-      );
+      ));
     const recoveryPointCountAfterAcceptance = await readRecoveryPointCount(
       fixtures.compatibleTarget,
     );
@@ -432,7 +439,7 @@ export async function runWorkspaceActivationMigrationProof(
         ).read()) === undefined,
       invalidTargetQuarantined:
         invalidRegistry.activeWorkspaceId ===
-          fixtures.currentSource.workspaceId &&
+        fixtures.currentSource.workspaceId &&
         requireWorkspace(
           invalidRegistry,
           fixtures.invalidTarget.workspaceId,
@@ -446,14 +453,14 @@ export async function runWorkspaceActivationMigrationProof(
         recoveryPointCountAfterAcceptance === 1,
       registryRecoveredAfterFault:
         faultRegistry.activeWorkspaceId ===
-          fixtures.currentSource.workspaceId &&
+        fixtures.currentSource.workspaceId &&
         requireWorkspace(
           faultRegistry,
           fixtures.faultTarget.workspaceId,
         ).lifecycleState === 'ready' &&
         faultJournal?.state === 'rollbackSelected' &&
         finalRegistry.activeWorkspaceId ===
-          fixtures.currentSource.workspaceId,
+        fixtures.currentSource.workspaceId,
       relaunchCount: tracker.relaunchCount,
       secondTargetStartupIdempotent:
         tracker.startCount >= compatibleStartCountBeforeRestart + 1 &&
@@ -462,14 +469,14 @@ export async function runWorkspaceActivationMigrationProof(
           compatibleAfterRestart,
         ) &&
         recoveryPointCountAfterAcceptance ===
-          recoveryPointCountAfterRestart,
+        recoveryPointCountAfterRestart,
       switchJournalsCleared:
         (await stores.switchJournal.read()) === undefined,
       targetAcceptedAfterValidation:
         compatibleJournalAfterMigration !== undefined &&
         switchJournalAfterMigration?.state === 'targetSelected' &&
         registryAfterAcceptance.activeWorkspaceId ===
-          fixtures.compatibleTarget.workspaceId &&
+        fixtures.compatibleTarget.workspaceId &&
         (await requireActivationJournal(
           stores,
           fixtures.compatibleTarget.workspaceId,
@@ -478,6 +485,7 @@ export async function runWorkspaceActivationMigrationProof(
         migrationLifecycle === undefined,
     });
     requireProofResult(result);
+    succeeded = true;
     return result;
   } catch (error) {
     throw new Error(
@@ -485,26 +493,40 @@ export async function runWorkspaceActivationMigrationProof(
     );
   } finally {
     await progress.enter('cleanup').catch(() => undefined);
-    unregisterApplicationProtocol();
-    await stopTrackedBackends(tracker);
-    await factories?.cleanup().catch(() => undefined);
-    await rm(proofRoot, { force: true, recursive: true }).catch(() => undefined);
+    let cleanupFailed = factories?.reservationCleanupFailed === true;
+    try { unregisterApplicationProtocol(); } catch { cleanupFailed = true; }
+    try {
+      if (!await stopTrackedBackends(tracker)) cleanupFailed = true;
+    } catch { cleanupFailed = true; }
+    try {
+      if (!await waitForProofUtilityProcessesReleased(utilityProcessBaseline)) cleanupFailed = true;
+    } catch { cleanupFailed = true; }
+    if (succeeded && !cleanupFailed) {
+      try {
+        await factories?.cleanup();
+        await rm(proofRoot, { force: true, recursive: true });
+      } catch {
+        cleanupFailed = true;
+      }
+    }
+    if (cleanupFailed) await progress.enter('cleanupFailed').catch(() => undefined);
+    if (succeeded && cleanupFailed) throw new Error('WORKSPACE_ACTIVATION_PROOF_CLEANUP_FAILED');
   }
 }
 
 async function createProofFixtures(input: {
-  readonly factories: Readonly<WorkspaceFirstStartProofFactories>;
+  readonly scope: Readonly<WorkspaceFirstStartProofReservationScope>;
   readonly proofRoot: string;
 }): Promise<Readonly<ProofFixtures>> {
-  const currentSource = await input.factories.createCurrentFixture(input.proofRoot);
+  const currentSource = await input.scope.createCurrentFixture();
   const compatibleTarget = await createWorkspaceFirstStartProofFixture({
-    factory: input.factories.historical,
+    factory: input.scope.historical,
     userDataRoot: input.proofRoot,
   });
-  const invalidTarget = await input.factories.createCurrentFixture(input.proofRoot);
+  const invalidTarget = await input.scope.createCurrentFixture();
   await corruptWorkspaceFirstStartProofDatabase(invalidTarget);
   const faultTarget = await createWorkspaceFirstStartProofFixture({
-    factory: input.factories.historical,
+    factory: input.scope.historical,
     userDataRoot: input.proofRoot,
   });
   return Object.freeze({
@@ -607,6 +629,7 @@ async function startProofComposition(input: {
 }): Promise<DesktopLifecycleHandle | undefined> {
   unregisterApplicationProtocol();
   return startDesktopComposition({
+    assertSingleInstanceOwnership: assertProofSingleInstanceOwnership,
     appVersion: input.release.appVersion,
     applicationPath: input.input.applicationPath,
     buildInfo: {
@@ -681,18 +704,13 @@ function createTrackedBackendStarter(input: {
       },
       port: delegateHandle.port,
       async stop() {
-        try {
-          return await delegateHandle.stop();
-        } finally {
-          release();
-        }
+        const result = await delegateHandle.stop();
+        release();
+        return result;
       },
-      async stopForUpdate() {
-        try {
-          await delegateHandle.stopForUpdate();
-        } finally {
-          release();
-        }
+      async stopForUpdate(operationId) {
+        await delegateHandle.stopForUpdate(operationId);
+        release();
       },
     };
     input.tracker.activeHandles.add(handle);
@@ -713,10 +731,11 @@ async function stopProofComposition(
 
 async function stopTrackedBackends(
   tracker: BackendProofTracker,
-): Promise<void> {
+): Promise<boolean> {
   for (const handle of [...tracker.activeHandles]) {
     await handle.stop().catch(() => undefined);
   }
+  return tracker.activeHandles.size === 0;
 }
 
 async function snapshotDatabases(
@@ -951,8 +970,8 @@ function requireProofResult(
 function readSafeErrorCode(error: unknown): string {
   const code =
     error instanceof Error &&
-    'code' in error &&
-    typeof error.code === 'string'
+      'code' in error &&
+      typeof error.code === 'string'
       ? error.code
       : error instanceof Error
         ? error.message

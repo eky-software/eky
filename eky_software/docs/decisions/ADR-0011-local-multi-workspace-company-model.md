@@ -473,6 +473,38 @@ julkaisua. `registryPublished`-tilassa entryn, rootin ja lineagen vastaavuus
 todistetaan ja journal poistetaan. Ristiriita johtaa `recoveryRequired`-
 tilaan; tilaa ei päätellä tai korjata arvaamalla.
 
+### Create/import-recoveryn kylmäkäynnistyksen terminal
+
+Omistajan C-P2-päätös 8.10.2026 erottaa keskeytyneen create/import-operaation
+palautumisen business-runtimen avaamisesta. Kylmäkäynnistyksen recovery
+ei kutsu aiemman runtimen käynnistystä eikä korvaa sitä onnistuvalla no-opilla.
+Se käyttää nimenomaista `beforeRuntimeStart`-loppuehtoa:
+
+- installation-lease ja todistettu runtime-poissaolo edeltävät journalin
+  korjaavaa lukua, candidate-siivoamista ja plaintext-karanteenin siivoamista
+- julkaistun uuden työtilan tiedostot ja sisältö validoidaan edelleen nykyisellä
+  backendin yksityisellä validaattorilla ja suljettujen kahvojen todisteella
+- ennen journalin poistoa uusi strict registry -luku vastaa lähtötilaa sekä
+  korkeintaan kyseisen operaation omaa hyväksyttyä julkaisua
+- jatkettava aktiivinen `ready`-työtila on täsmälleen journalin aiempi työtila;
+  jos aiempi tunniste on null, vain juuri julkaistu operaation työtila kelpaa
+- jatkettavan työtilan johdetun juuren rakenne varmennetaan; tämä ei ole sen
+  tietokannan sisältö- tai terveystarkistus
+- julkaisematon ensimmäinen operaatio ilman jatkettavaa työtilaa säilyttää
+  journalin eikä oikeuta hiljaista adoptiota tai toisen työtilan arvaamista.
+
+Tämän terminalin jälkeen journal voidaan poistaa. Normaali startup omistaa
+edelleen sessionin, backendin käynnistyksen, health-tarkistuksen ja aktiivisen
+profiilin lineage-/sisältövalidoinnin ennen business-käyttöliittymää. Niiden
+epäonnistuminen ei peru jo varmennettua create/import-julkaisua eikä anna
+lupaa avata rikkinäistä runtimea. Ordinary-recovery säilyttää nykyisen aiemman
+runtimen terveystarkistuksensa. Journaliformaatit eivät muutu.
+
+Tuotantokytkennän journalien keskinäinen admission, single-instance-/absence-
+todistus ja paketoitu keskeytys/restart-näyttö kuuluvat edelleen
+[C-paketin hyväksyntään](../architecture/release-0.3.0-m1-preparation-plan.md#c-paketin-valmistelu-ja-hyväksyntärajat).
+Pelkkä tämän terminal-sopimuksen toteutus ei todista tuotantokytkentää.
+
 ### B. Korvaa olemassa oleva työtila
 
 Ensimmäisessä multi-workspace-versiossa korvaus sallitaan vain aktiiviselle

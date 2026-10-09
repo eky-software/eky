@@ -9,7 +9,10 @@ const recoveryPointReferencePattern =
 
 export interface UpdateProfileProtection {
   createValidatedPreMigrationPoint(): Promise<string>;
-  createValidatedPreUpdatePoint(): Promise<string>;
+  createValidatedPreUpdatePoint(operationId: string): Promise<string>;
+  beginUpdateMaintenance(operationId: string): Promise<void>;
+  assertUpdateMaintenance(operationId: string): Promise<void>;
+  endUpdateMaintenance(operationId: string): Promise<void>;
   enterMaintenance(operationId: string): Promise<void>;
   leaveMaintenance(operationId: string): Promise<void>;
   releaseProtectedPoint(recoveryPointReference: string): Promise<void>;
@@ -29,11 +32,12 @@ export interface UpdateProfileProtection {
 interface ProfileProtectionCompositionDependencies {
   profileSnapshotClient: Pick<
     ProfileSnapshotBrokerClient,
-    'beginMaintenance' | 'endMaintenance' | 'validateActiveProfile'
+    'beginMaintenance' | 'endMaintenance' | 'validateActiveProfile' |
+    'beginUpdateMaintenance' | 'assertUpdateMaintenance' | 'endUpdateMaintenance'
   >;
   recoveryPointService: Pick<
     RecoveryPointService,
-    'createPreMigration' | 'createPreUpdate'
+    'createPreMigration' | 'createPreUpdateWithMaintenance'
   >;
   restoreRecoveryPoint?(input: {
     expectedMigrationChainIdentity: string;
@@ -52,9 +56,18 @@ export function createProfileProtectionComposition(
       return (await dependencies.recoveryPointService.createPreMigration())
         .artifactId;
     },
-    async createValidatedPreUpdatePoint() {
-      return (await dependencies.recoveryPointService.createPreUpdate())
+    async createValidatedPreUpdatePoint(operationId: string) {
+      return (await dependencies.recoveryPointService.createPreUpdateWithMaintenance(operationId))
         .artifactId;
+    },
+    async beginUpdateMaintenance(operationId: string) {
+      await dependencies.profileSnapshotClient.beginUpdateMaintenance(operationId);
+    },
+    async assertUpdateMaintenance(operationId: string) {
+      await dependencies.profileSnapshotClient.assertUpdateMaintenance(operationId);
+    },
+    async endUpdateMaintenance(operationId: string) {
+      await dependencies.profileSnapshotClient.endUpdateMaintenance(operationId);
     },
     async enterMaintenance(operationId: string) {
       await dependencies.profileSnapshotClient.beginMaintenance(operationId);

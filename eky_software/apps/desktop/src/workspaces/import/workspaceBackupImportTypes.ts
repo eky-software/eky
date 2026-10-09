@@ -19,8 +19,7 @@ export type WorkspaceBackupImportJournalState =
   | 'rootPublished'
   | 'registryPublished';
 
-export interface WorkspaceBackupImportJournalV1 {
-  readonly formatVersion: 1;
+interface WorkspaceBackupImportJournalFields {
   readonly operationId: WorkspaceBackupImportOperationId;
   readonly workspaceId: WorkspaceId;
   readonly workspaceLabel: string;
@@ -30,8 +29,20 @@ export interface WorkspaceBackupImportJournalV1 {
   readonly lineageIdentity: Readonly<WorkspaceLineageIdentityV1> | null;
 }
 
+export interface WorkspaceBackupImportJournalV1 extends WorkspaceBackupImportJournalFields {
+  readonly formatVersion: 1;
+}
+
+export interface WorkspaceBackupImportJournalV2 extends WorkspaceBackupImportJournalFields {
+  readonly formatVersion: 2;
+}
+
+export type WorkspaceBackupImportJournal =
+  | WorkspaceBackupImportJournalV1
+  | WorkspaceBackupImportJournalV2;
+
 export interface WorkspaceBackupImportJournalStore {
-  read(): Promise<Readonly<WorkspaceBackupImportJournalV1> | undefined>;
+  read(): Promise<Readonly<WorkspaceBackupImportJournal> | undefined>;
   write(value: unknown): Promise<void>;
   discardBeforePublication(
     operationId: WorkspaceBackupImportOperationId,

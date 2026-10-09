@@ -9,9 +9,12 @@ import { createInvoicePdfArchiveBrokerTransport } from '../src/invoicePdfArchive
 import { startProfileSnapshotBrokerBackend } from '../src/profileBackup/profileSnapshotBrokerBackend.js';
 import { createProfileSnapshotBrokerTransport } from '../src/profileBackup/electronProfileSnapshotBrokerTransport.js';
 import {
+  desktopBackendReadinessTimeoutMilliseconds,
   parseDesktopBackendCommand,
+  type DesktopBackendPrepareMessage,
   type DesktopBackendStartMessage,
 } from '../src/runtime/backendMessages.js';
+import { acquireWorkspaceProcessReservation, type WorkspaceProcessReservation } from '../src/runtime/workspaceProcessReservation.js';
 import {
   reportElectronE2eBackendProgress,
   type ElectronE2eBackendFailureStage,
@@ -62,6 +65,33 @@ let secretBrokerClient: CompanyEmailSecretBrokerClient | undefined;
 let invoicePdfArchiveBrokerClient: InvoicePdfArchiveBrokerClient | undefined;
 let profileSnapshotBrokerHandle: { close(): void } | undefined;
 let startAttempted = false;
+let writingImportStarted = false;
+let prepared: DesktopBackendPrepareMessage['reservation'] | undefined;
+let reservation: WorkspaceProcessReservation | undefined;
+let reservationReady = false;
+let startupTask: Promise<void> | undefined;
+let shutdownTask: Promise<void> | undefined;
+let failed = false;
+const cancellation = new AbortController();
+const readinessTimer = setTimeout(() => {
+  reportBoundaryFailure();
+}, desktopBackendReadinessTimeoutMilliseconds);
+
+function assertCurrent(): void {
+  if (cancellation.signal.aborted || reservation === undefined || reservation.invalidated.aborted) {
+    throw new Error('ELECTRON_E2E_BACKEND_BOUNDARY_INVALID');
+  }
+}
+
+function reportBoundaryFailure(): void {
+  if (failed) return;
+  failed = true;
+  reportElectronE2eBackendFailure({
+    error: new Error('ELECTRON_E2E_BACKEND_BOUNDARY_INVALID'), stage: 'boundaryValidation',
+    brokers: {}, send: status => parentPort.postMessage(status),
+  });
+  void shutdown();
+}
 
 parentPort.on('message', (event) => {
   const command = parseCommand(event.data);
@@ -69,18 +99,45 @@ parentPort.on('message', (event) => {
     void shutdown();
     return;
   }
-  if (command?.type !== 'start' || startAttempted) {
+  if (command?.type === 'prepare') {
+    if (prepared !== undefined || startAttempted || cancellation.signal.aborted || process.env.EKY_E2E !== '1') {
+      reportBoundaryFailure();
+      return;
+    }
+    prepared = command.reservation;
+    startupTask = (async () => {
+      reservation = await acquireWorkspaceProcessReservation({
+        userDataRoot: command.reservation.userDataRoot, expectedIdentity: command.reservation.identity,
+        signal: cancellation.signal,
+      });
+      assertCurrent();
+      reservation.invalidated.addEventListener('abort', reportBoundaryFailure, { once: true });
+      await reservation.assertOwned();
+      assertCurrent();
+      reservationReady = true;
+      parentPort.postMessage({ type: 'reservationReady', reservation: command.reservation });
+    })().catch(() => {
+      if (!cancellation.signal.aborted) reportBoundaryFailure();
+    });
+    return;
+  }
+  if (command?.type !== 'start' || startAttempted || !reservationReady ||
+      command.generationId !== prepared?.generationId || cancellation.signal.aborted) {
+    reportBoundaryFailure();
     return;
   }
   startAttempted = true;
 
-  void (async () => {
+  startupTask = (async () => {
     let startupStage: ElectronE2eBackendFailureStage = 'boundaryValidation';
     try {
       reportStartupStage(startupStage);
       if (process.env.EKY_E2E !== '1' || event.ports.length !== 3) {
         throw new Error('ELECTRON_E2E_BACKEND_BOUNDARY_INVALID');
       }
+      assertCurrent();
+      await reservation!.assertOwned();
+      assertCurrent();
       const brokerPort = event.ports[0];
       const archiveBrokerPort = event.ports[1];
       const profileSnapshotBrokerPort = event.ports[2];
@@ -106,12 +163,16 @@ parentPort.on('message', (event) => {
       );
       startupStage = 'moduleImport';
       reportStartupStage(startupStage);
+      writingImportStarted = true;
       const module = (await import(pathToFileURL(modulePath).href)) as {
         startE2eBackend?: StartE2eBackend;
       };
       if (typeof module.startE2eBackend !== 'function') {
         throw new Error('ELECTRON_E2E_BACKEND_MODULE_INVALID');
       }
+      assertCurrent();
+      await reservation!.assertOwned();
+      assertCurrent();
 
       startupStage = 'backendStart';
       reportStartupStage(startupStage);
@@ -130,6 +191,8 @@ parentPort.on('message', (event) => {
         },
         runtimeSessionSecret: command.config.runtimeSessionSecret,
       });
+      server = started.server;
+      assertCurrent();
       if (started.profileSnapshotRuntime === undefined) {
         throw new Error('ELECTRON_E2E_PROFILE_SNAPSHOT_RUNTIME_MISSING');
       }
@@ -142,11 +205,14 @@ parentPort.on('message', (event) => {
           profileSnapshotBrokerPort,
         ),
       });
-      server = started.server;
       startupStage = 'readyNotification';
       reportStartupStage(startupStage);
+      await reservation!.assertOwned();
+      assertCurrent();
+      clearTimeout(readinessTimer);
       parentPort.postMessage({ port: server.port, type: 'ready' });
     } catch (error) {
+      failed = true;
       reportElectronE2eBackendFailure({
         error,
         stage: startupStage,
@@ -157,23 +223,33 @@ parentPort.on('message', (event) => {
         },
         send: (status) => parentPort.postMessage(status),
       });
+      void shutdown();
     }
   })();
 });
 
-async function shutdown(): Promise<void> {
-  await server?.close().catch(() => undefined);
-  secretBrokerClient?.close();
-  invoicePdfArchiveBrokerClient?.close();
-  profileSnapshotBrokerHandle?.close();
-  process.exit(0);
+function shutdown(): Promise<void> {
+  cancellation.abort();
+  clearTimeout(readinessTimer);
+  shutdownTask ??= Promise.resolve().then(async () => {
+    if (writingImportStarted) await startupTask?.catch(() => { failed = true; });
+    try { await server?.close(); } catch { failed = true; }
+    for (const broker of [secretBrokerClient, invoicePdfArchiveBrokerClient, profileSnapshotBrokerHandle]) {
+      try { broker?.close(); } catch { failed = true; }
+    }
+    // Keep exclusion until the utility process actually exits.
+    process.exit(failed ? 1 : 0);
+  });
+  return shutdownTask;
 }
 
 type RunnerCommand =
+  | DesktopBackendPrepareMessage
   | { type: 'shutdown' }
   | {
       config: DesktopBackendStartMessage['config'];
       configPath: string;
+      generationId: string;
       type: 'start';
     };
 
@@ -182,16 +258,18 @@ function parseCommand(value: unknown): RunnerCommand | undefined {
     return undefined;
   }
   const command = value as Record<string, unknown>;
-  if (command.type === 'shutdown') {
-    return { type: 'shutdown' };
+  if (command.type === 'shutdown' || command.type === 'prepare') {
+    const parsed = parseDesktopBackendCommand(command);
+    return parsed?.type === 'shutdown' || parsed?.type === 'prepare' ? parsed : undefined;
   }
   if (
     command.type === 'start' &&
-    Object.keys(command).length === 3 &&
+    Object.keys(command).length === 4 &&
     typeof command.configPath === 'string'
   ) {
     const parsed = parseDesktopBackendCommand({
       config: command.config,
+      generationId: command.generationId,
       type: 'start',
     });
     if (parsed?.type !== 'start') {
@@ -200,6 +278,7 @@ function parseCommand(value: unknown): RunnerCommand | undefined {
     return {
       config: parsed.config,
       configPath: command.configPath,
+      generationId: parsed.generationId,
       type: 'start',
     };
   }

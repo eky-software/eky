@@ -182,6 +182,9 @@ test('WORKSPACE-IMPORT-001 @critical @security imports a real encrypted backup w
   expect(lifecycleEvents).toEqual([
     'active.quiesce.empty',
     'active.stop.empty',
+    // Prove absence after stop, candidate migration and candidate validation.
+    'runtime.absent',
+    'runtime.absent',
     'runtime.absent',
     'active.ensure.empty',
   ]);
@@ -298,6 +301,8 @@ test('WORKSPACE-IMPORT-002 @critical @recovery migrates an authenticated histori
   expect(lifecycleEvents).toEqual([
     'active.quiesce.empty',
     'active.stop.empty',
+    'runtime.absent',
+    'runtime.absent',
     'runtime.absent',
     'active.ensure.empty',
   ]);

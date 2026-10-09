@@ -13,6 +13,8 @@ import { dirname, join, relative } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { pathToFileURL } from 'node:url';
 
+import { acquireDesktopWorkspaceReservation } from '../src/main/desktopComposition.js';
+import { assertProofSingleInstanceOwnership } from './workspaceManagementCompositionProofRuntime.js';
 import { createDesktopProfilePaths } from '../src/runtime/desktopProfilePaths.js';
 import { createProfileSnapshotRuntimePaths } from '../src/profileBackup/profileSnapshotRuntimePaths.js';
 import { validateWorkspaceCreationOperationId } from '../src/workspaces/creation/workspaceCreationOperationId.js';
@@ -45,13 +47,19 @@ export interface WorkspaceFirstStartProofBusinessSnapshot {
   readonly businessRowsSha256: string;
 }
 
-export interface WorkspaceFirstStartProofFactories {
+export interface WorkspaceFirstStartProofReservationScope {
   readonly current: ElectronWorkspaceCandidateRuntimeFactory;
   readonly historical: ElectronWorkspaceCandidateRuntimeFactory;
+  createCurrentFixture(): Promise<Readonly<WorkspaceFirstStartProofFixture>>;
+}
+
+export interface WorkspaceFirstStartProofFactories {
   readonly runnerPath: string;
-  createCurrentFixture(
+  readonly reservationCleanupFailed: boolean;
+  withWorkspaceReservation<T>(
     userDataRoot: string,
-  ): Promise<Readonly<WorkspaceFirstStartProofFixture>>;
+    use: (scope: Readonly<WorkspaceFirstStartProofReservationScope>) => Promise<T>,
+  ): Promise<T>;
   cleanup(): Promise<void>;
 }
 
@@ -85,75 +93,136 @@ export async function createWorkspaceFirstStartProofFactories(input: {
     buildRevision: input.buildRevision,
     runnerPath: runtimePaths.runnerPath,
   } as const;
-  const current = new ElectronWorkspaceCandidateRuntimeFactory({
-    ...common,
-    migrationsDirectory: runtimePaths.migrationsDirectory,
-  });
-  const historical = new ElectronWorkspaceCandidateRuntimeFactory({
-    ...common,
-    migrationsDirectory: historicalMigrationsDirectory,
-  });
+  let activeScope: string | undefined;
+  let retainEvidence = false;
+  let reservationCleanupFailed = false;
+  let closed = false;
   return Object.freeze({
-    current,
-    historical,
     runnerPath: runtimePaths.runnerPath,
-    async createCurrentFixture(userDataRoot: string) {
-      // Seed the historical schema, then let the staged backend own the migration.
-      const fixture = await createWorkspaceFirstStartProofFixture({
-        factory: historical,
-        userDataRoot,
-      });
-      const before = await snapshotWorkspaceFirstStartProofBusinessData(fixture);
-      const connectionModule = (await import(pathToFileURL(join(
-        runtimePaths.backendRoot,
-        'dist/database/connection/createDatabaseConnection.js',
-      )).href)) as {
-        createDatabaseConnection(input: { databaseFilePath: string }): {
-          close(): void;
-        };
-      };
-      const migrationModule = (await import(pathToFileURL(join(
-        runtimePaths.backendRoot,
-        'dist/database/migration/runMigrations.js',
-      )).href)) as {
-        runMigrations(
-          database: unknown,
-          options: {
-            migrationsDirectory: string;
-            releaseIdentity: { appVersion: string; buildRevision: string };
-          },
-        ): Promise<void>;
-      };
-      const database = connectionModule.createDatabaseConnection({
-        databaseFilePath: fixture.databaseFilePath,
-      });
+    get reservationCleanupFailed() { return reservationCleanupFailed; },
+    async withWorkspaceReservation<T>(
+      userDataRoot: string,
+      use: (scope: Readonly<WorkspaceFirstStartProofReservationScope>) => Promise<T>,
+    ): Promise<T> {
+      if (activeScope !== undefined || retainEvidence || closed) {
+        throw new Error('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      }
+      const scopeId = randomUUID();
+      activeScope = scopeId;
+      let reservation: Awaited<ReturnType<typeof acquireDesktopWorkspaceReservation>> | undefined;
+      let failed = false;
       try {
-        await migrationModule.runMigrations(database, {
-          migrationsDirectory: runtimePaths.migrationsDirectory,
-          releaseIdentity: {
-            appVersion: input.appVersion,
-            buildRevision: input.buildRevision,
-          },
+        const assertScope = () => {
+          assertProofSingleInstanceOwnership();
+          if (activeScope !== scopeId) {
+            throw new Error('WORKSPACE_PROCESS_RESERVATION_FAILED');
+          }
+        };
+        const owner = await acquireDesktopWorkspaceReservation({
+          userDataRoot, assertSingleInstanceOwnership: assertScope,
+          signal: new AbortController().signal,
         });
+        reservation = owner;
+        const reservationOwner = {
+          bindCandidate: ({ generationId }: { readonly generationId: string }) =>
+            owner.bind(generationId, assertScope),
+        };
+        const current = new ElectronWorkspaceCandidateRuntimeFactory({
+          ...common,
+          reservationOwner,
+          migrationsDirectory: runtimePaths.migrationsDirectory,
+        });
+        const historical = new ElectronWorkspaceCandidateRuntimeFactory({
+          ...common,
+          reservationOwner,
+          migrationsDirectory: historicalMigrationsDirectory,
+        });
+        return await use(Object.freeze({
+          current,
+          historical,
+          async createCurrentFixture() {
+            assertScope();
+            await owner.assertMainOwned();
+            assertScope();
+            // Seed the historical schema, then let the staged backend own the migration.
+            const fixture = await createWorkspaceFirstStartProofFixture({
+              factory: historical,
+              userDataRoot,
+            });
+            const before = await snapshotWorkspaceFirstStartProofBusinessData(fixture);
+            const connectionModule = (await import(pathToFileURL(join(
+              runtimePaths.backendRoot,
+              'dist/database/connection/createDatabaseConnection.js',
+            )).href)) as {
+              createDatabaseConnection(input: { databaseFilePath: string }): {
+                close(): void;
+              };
+            };
+            const migrationModule = (await import(pathToFileURL(join(
+              runtimePaths.backendRoot,
+              'dist/database/migration/runMigrations.js',
+            )).href)) as {
+              runMigrations(
+                database: unknown,
+                options: {
+                  migrationsDirectory: string;
+                  releaseIdentity: { appVersion: string; buildRevision: string };
+                },
+              ): Promise<void>;
+            };
+            const database = connectionModule.createDatabaseConnection({
+              databaseFilePath: fixture.databaseFilePath,
+            });
+            try {
+              await migrationModule.runMigrations(database, {
+                migrationsDirectory: runtimePaths.migrationsDirectory,
+                releaseIdentity: {
+                  appVersion: input.appVersion,
+                  buildRevision: input.buildRevision,
+                },
+              });
+            } finally {
+              database.close();
+            }
+            const after = await snapshotWorkspaceFirstStartProofBusinessData(fixture);
+            if (!workspaceFirstStartProofSnapshotsEqual(before, after)) {
+              throw new Error('WORKSPACE_FIRST_START_PROOF_BUSINESS_CHANGED');
+            }
+            const candidate = new PrivateWorkspaceBackupCandidateAdapter(current);
+            await candidate.validatePublished({
+              artifactRoot: fixture.artifactRoot,
+              databaseFilePath: fixture.databaseFilePath,
+              expectedProfileId: fixture.profileId,
+              operationId: generateWorkspaceBackupImportOperationId(),
+              publishedRoot: fixture.workspaceRoot,
+              workspaceId: fixture.workspaceId,
+            });
+            return fixture;
+          },
+        }));
+      } catch (error) {
+        failed = true;
+        retainEvidence = true;
+        throw error;
       } finally {
-        database.close();
+        try {
+          // Scope authority remains live until all candidate callbacks have settled.
+          await reservation?.assertMainOwned();
+          await reservation?.close();
+        } catch (error) {
+          retainEvidence = true;
+          reservationCleanupFailed = true;
+          if (!failed) throw error;
+        } finally {
+          activeScope = undefined;
+        }
       }
-      const after = await snapshotWorkspaceFirstStartProofBusinessData(fixture);
-      if (!workspaceFirstStartProofSnapshotsEqual(before, after)) {
-        throw new Error('WORKSPACE_FIRST_START_PROOF_BUSINESS_CHANGED');
-      }
-      const candidate = new PrivateWorkspaceBackupCandidateAdapter(current);
-      await candidate.validatePublished({
-        artifactRoot: fixture.artifactRoot,
-        databaseFilePath: fixture.databaseFilePath,
-        expectedProfileId: fixture.profileId,
-        operationId: generateWorkspaceBackupImportOperationId(),
-        publishedRoot: fixture.workspaceRoot,
-        workspaceId: fixture.workspaceId,
-      });
-      return fixture;
     },
     async cleanup() {
+      if (activeScope !== undefined || retainEvidence) {
+        throw new Error('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      }
+      closed = true;
       await makeDirectoryRemovable(historicalMigrationsDirectory);
       await rm(historicalMigrationsDirectory, {
         force: true,

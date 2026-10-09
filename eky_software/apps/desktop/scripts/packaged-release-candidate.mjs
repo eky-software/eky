@@ -9,6 +9,7 @@ import { readPilotArtifactManifest } from './pilot-build-gate.mjs';
 const execFileAsync = promisify(execFile);
 const numericVersionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const revisionPattern = /^[0-9a-f]{7,40}$/;
+const currentRevisionPattern = /^[0-9a-f]{40}$/;
 
 export function assertReleaseVersionIntroducedAtCurrentHead(
   currentVersion,
@@ -18,7 +19,7 @@ export function assertReleaseVersionIntroducedAtCurrentHead(
   parseNumericVersion(currentVersion);
   if (
     typeof currentBuildRevision !== 'string' ||
-    !revisionPattern.test(currentBuildRevision) ||
+    !currentRevisionPattern.test(currentBuildRevision) ||
     !Array.isArray(history) ||
     history.length === 0 ||
     history.some((entry) => !isReleaseHistoryEntry(entry))
@@ -105,7 +106,7 @@ export async function readFirstParentReleaseHistory(
     const appVersion = readPackageVersion(historicalPackage);
     history.push({
       appVersion,
-      buildRevision: revision.slice(0, 12),
+      buildRevision: history.length === 0 ? revision : revision.slice(0, 12),
     });
     if (
       compareNumericVersions(
@@ -120,9 +121,10 @@ export async function readFirstParentReleaseHistory(
   return history;
 }
 
-export async function preparePackagedReleaseCandidateSmoke(input) {
+export async function preparePackagedReleaseCandidateSmoke(input, {
+  readGitOutput = (args) => readGit(resolve(input.repositoryRoot), args),
+} = {}) {
   const desktopDirectory = resolve(input.desktopDirectory);
-  const repositoryRoot = resolve(input.repositoryRoot);
   const packageRoot = resolve(desktopDirectory, 'out/Eky-win32-x64');
   const manifestPath = resolve(
     desktopDirectory,
@@ -133,9 +135,9 @@ export async function preparePackagedReleaseCandidateSmoke(input) {
   );
   const currentVersion = readPackageVersion(packageMetadata);
   const currentHead = (
-    await readGit(repositoryRoot, ['rev-parse', 'HEAD'])
+    await readGitOutput(['rev-parse', 'HEAD'])
   ).trim();
-  const status = await readGit(repositoryRoot, ['status', '--porcelain']);
+  const status = await readGitOutput(['status', '--porcelain']);
 
   if (status !== '') {
     throw new Error('RELEASE_CANDIDATE_WORKTREE_DIRTY');
@@ -145,7 +147,7 @@ export async function preparePackagedReleaseCandidateSmoke(input) {
     root: packageRoot,
     stage: 'packagedApp',
   });
-  const buildRevision = currentHead.slice(0, 12);
+  const buildRevision = currentHead;
   await readPilotArtifactManifest(manifestPath, {
     buildInfo: {
       appVersion: currentVersion,
@@ -156,13 +158,13 @@ export async function preparePackagedReleaseCandidateSmoke(input) {
   });
 
   const packagePathPrefix = (
-    await readGit(repositoryRoot, ['rev-parse', '--show-prefix'])
+    await readGitOutput(['rev-parse', '--show-prefix'])
   ).trim();
   const packagePath = `${packagePathPrefix}apps/desktop/package.json`;
   const history = await readFirstParentReleaseHistory(
     packagePath,
     currentVersion,
-    (args) => readGit(repositoryRoot, args),
+    readGitOutput,
   );
   assertReleaseVersionIntroducedAtCurrentHead(
     currentVersion,

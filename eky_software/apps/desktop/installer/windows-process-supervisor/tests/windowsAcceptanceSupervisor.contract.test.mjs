@@ -966,20 +966,26 @@ for (const mode of ['exitZero', 'spawnGrandchildAndHold']) {
   });
 }
 
-for (const mode of ['exitZero', 'exitNonZero']) {
-  test(`empty Job before exit observation preserves ${mode}`, WINDOWS_ONLY, async (testContext) => {
-    const context = await contextFor(testContext, 'exit-observation-' + mode);
-    await writeRequest(context, createRequest(context, mode));
-    const { result, completion } = await readCompletedExecution(
-      context, startProgramFailureFixture(context, 'exitObservationLate'));
-    assert.deepEqual(JSON.parse(await readFile(join(context.testRoot, 'process-boundary.json'), 'utf8')),
-      { boundary: 'jobEmptyBeforeExitObserved', exitObservedLater: true });
-    assert.equal(result.processResultCode, mode === 'exitZero' ? 'processCompleted' : 'processExitFailed');
-    assert.equal(result.processTreeAbsent, true);
-    assert.equal(completion.exitCode, mode === 'exitZero' ? 0 : 1);
-    assert.ok(completion.evidence.some(entry => entry.phase === 'terminalWait' &&
-      entry.resultCode === 'rootExitReceiptPending'));
-  });
+for (const observationMode of ['exitObservationLate', 'exitObservationEarlyReceipt']) {
+  for (const mode of ['exitZero', 'exitNonZero']) {
+    const earlyReceipt = observationMode === 'exitObservationEarlyReceipt';
+    const boundary = earlyReceipt ? 'early root exit receipt before empty Job' : 'empty Job before exit observation';
+    test(`${boundary} preserves ${mode}`, WINDOWS_ONLY, async (testContext) => {
+      const context = await contextFor(testContext, observationMode + '-' + mode);
+      await writeRequest(context, createRequest(context, mode));
+      const { result, completion } = await readCompletedExecution(
+        context, startProgramFailureFixture(context, observationMode));
+      assert.deepEqual(JSON.parse(await readFile(join(context.testRoot, 'process-boundary.json'), 'utf8')),
+        { boundary: 'jobEmptyBeforeExitObserved', exitObservedLater: true, earlyReceiptDeferred: earlyReceipt });
+      assert.equal(result.processResultCode, mode === 'exitZero' ? 'processCompleted' : 'processExitFailed');
+      assert.equal(result.childExitCode, mode === 'exitZero' ? 0 : 23);
+      assert.equal(result.processTreeAbsent, true);
+      assert.equal(result.cleanupResultCode, 'notRequired');
+      assert.equal(completion.exitCode, mode === 'exitZero' ? 0 : 1);
+      assert.ok(completion.evidence.some(entry => entry.phase === 'terminalWait' &&
+        entry.resultCode === 'rootExitReceiptPending'));
+    });
+  }
 }
 
 test(

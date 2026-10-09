@@ -111,6 +111,24 @@ export class WorkspaceBackupPlaintextQuarantine
     }
   }
 
+  async assertNoStalePayloads(): Promise<void> {
+    try {
+      await assertRealDirectory(this.userDataRoot, false);
+      for (const directory of [this.operationsRoot, this.quarantineRoot]) {
+        try {
+          await lstat(directory);
+        } catch (error) {
+          if (isNodeError(error) && error.code === 'ENOENT') return;
+          throw error;
+        }
+        await assertRealDirectory(directory, true);
+      }
+      if ((await this.inspectEntries()).length !== 0) throw recoveryRequired();
+    } catch (error) {
+      throw asRecoveryRequired(error);
+    }
+  }
+
   private async ensurePrivateRoot(): Promise<void> {
     await assertRealDirectory(this.userDataRoot, false);
     await ensurePrivateDirectory(

@@ -13,6 +13,7 @@ import {
   type W6b2PackagedWorkspacePreparationStage,
 } from './w6b2PackagedWorkspaceProfile.js';
 import { verifyW6b2PackagedFaultWorkspaceProfile } from './w6b2PackagedFaultWorkspaceProfile.js';
+import { assertProofSingleInstanceOwnership } from './workspaceManagementCompositionProofRuntime.js';
 import {
   createW6b2PackagedProfileCommandResult,
   expectedW6b2PackagedProfilePackage,
@@ -67,6 +68,9 @@ async function run(): Promise<void> {
   proofRoot = bootstrap.root;
   failureStage = 'electronReady';
   app.setPath('userData', bootstrap.userDataPath);
+  if (!app.requestSingleInstanceLock()) {
+    throw new Error('WORKSPACE_PROCESS_RESERVATION_FAILED');
+  }
   await app.whenReady();
 
   const expected = expectedW6b2PackagedProfilePackage(operation);
@@ -117,6 +121,7 @@ async function run(): Promise<void> {
   failureStage = 'profileOperation';
   if (operation === 'prepare') {
     await prepareW6b2PackagedWorkspaceProfile({
+      assertSingleInstanceOwnership: assertProofSingleInstanceOwnership,
       onStage: reportPreparationStage,
       proofRoot: proof.root,
       resourcesPath: installed.resourcesPath,

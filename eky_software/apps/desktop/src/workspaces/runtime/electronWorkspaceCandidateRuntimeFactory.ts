@@ -4,14 +4,22 @@ import { utilityProcess } from 'electron';
 
 import { createDesktopBackendEnvironment } from '../../runtime/backendEnvironment.js';
 import {
+  createWorkspaceCandidatePrepareCommand,
   createWorkspaceCandidateShutdownCommand,
   createWorkspaceCandidateStartCommand,
   parseWorkspaceCandidateProcessStatus,
+  workspaceCandidateStartupTimeoutMilliseconds,
   type WorkspaceCandidateProcessCommand,
   type WorkspaceCandidateProcessOperation,
   type WorkspaceCandidateProcessResult,
 } from '../../runtime/workspaceCandidateMessages.js';
+import {
+  matchesWorkspaceProcessReservationDescriptor,
+  parseWorkspaceProcessReservationDescriptor,
+  type WorkspaceProcessReservationDescriptor,
+} from '../../runtime/workspaceProcessReservationDescriptor.js';
 import { createDesktopRuntimeSession } from '../../runtime/runtimeSession.js';
+import type { WorkspaceProcessReservationTransfer } from '../../runtime/workspaceProcessReservation.js';
 import type {
   EmptyWorkspaceBootstrapInput,
   EmptyWorkspaceBootstrapResult,
@@ -41,7 +49,6 @@ import type {
   WorkspaceMigrationInspectionResult,
 } from '../update/workspaceMigrationInventoryTypes.js';
 
-const startupTimeoutMilliseconds = 10_000;
 const operationTimeoutMilliseconds = 5 * 60_000;
 const shutdownTimeoutMilliseconds = 3_000;
 const operationFailedCode = 'WORKSPACE_CANDIDATE_OPERATION_FAILED';
@@ -61,6 +68,16 @@ export interface WorkspaceCandidateProcessSpawner {
   }): WorkspaceCandidateProcessHandle;
 }
 
+/** Bound by main to its current operation before spawning this one child. */
+export type WorkspaceCandidateReservationTransfer = WorkspaceProcessReservationTransfer;
+
+export interface WorkspaceCandidateReservationOwner {
+  bindCandidate(input: {
+    readonly generationId: string;
+    readonly operationId: string;
+  }): WorkspaceCandidateReservationTransfer;
+}
+
 export interface ElectronWorkspaceCandidateRuntimeFactoryOptions {
   readonly appVersion: string;
   readonly backendRoot: string;
@@ -68,6 +85,7 @@ export interface ElectronWorkspaceCandidateRuntimeFactoryOptions {
   readonly migrationsDirectory: string;
   readonly operationTimeoutMilliseconds?: number;
   readonly processSpawner?: WorkspaceCandidateProcessSpawner;
+  readonly reservationOwner: WorkspaceCandidateReservationOwner;
   readonly runnerPath: string;
   readonly shutdownTimeoutMilliseconds?: number;
   readonly startupTimeoutMilliseconds?: number;
@@ -270,6 +288,18 @@ export class ElectronWorkspaceCandidateRuntimeFactory
       requestId,
       runtimeSession,
     });
+    const reservationTransfer = this.options.reservationOwner.bindCandidate({
+      generationId: requestId,
+      operationId,
+    });
+    const descriptor = parseWorkspaceProcessReservationDescriptor(reservationTransfer.descriptor);
+    if (descriptor === undefined || descriptor.generationId !== requestId) {
+      reservationTransfer.invalidate();
+      throw new Error(operationFailedCode);
+    }
+    const prepareCommand = createWorkspaceCandidatePrepareCommand({
+      operationId, requestId, runtimeSession, reservation: descriptor,
+    });
     let processHandle: WorkspaceCandidateProcessHandle;
     try {
       processHandle = this.processSpawner.spawn({
@@ -277,6 +307,7 @@ export class ElectronWorkspaceCandidateRuntimeFactory
         runnerPath: this.options.runnerPath,
       });
     } catch {
+      reservationTransfer.invalidate();
       throw new Error(operationFailedCode);
     }
     const runtime = new ManagedWorkspaceCandidateRuntime({
@@ -284,13 +315,15 @@ export class ElectronWorkspaceCandidateRuntimeFactory
         this.options.operationTimeoutMilliseconds ??
         operationTimeoutMilliseconds,
       processHandle,
+      prepareCommand,
+      reservationTransfer,
       shutdownCommand,
       shutdownTimeoutMilliseconds:
         this.options.shutdownTimeoutMilliseconds ??
         shutdownTimeoutMilliseconds,
       startCommand,
       startupTimeoutMilliseconds:
-        this.options.startupTimeoutMilliseconds ?? startupTimeoutMilliseconds,
+        this.options.startupTimeoutMilliseconds ?? workspaceCandidateStartupTimeoutMilliseconds,
     });
     const abortRuntime = (): void => {
       void runtime.stopAfterStartFailure();
@@ -318,6 +351,9 @@ function isAbortRequested(signal: AbortSignal | undefined): boolean {
 type RuntimePhase =
   | 'created'
   | 'waitingReady'
+  | 'preparing'
+  | 'waitingReservation'
+  | 'authorizing'
   | 'waitingTerminal'
   | 'completed'
   | 'failed'
@@ -339,11 +375,19 @@ class ManagedWorkspaceCandidateRuntime {
   private startSettled = false;
   private stopPromise: Promise<boolean> | undefined;
   private terminalSeen = false;
+  private readonly startupCancellation = new AbortController();
+  private preparationTask: Promise<void> | undefined;
+  private grantTask: Promise<void> | undefined;
+  private reservationReclaimed = false;
+  private transferInvalidated = false;
+  private startupDeadline = 0;
 
   constructor(
     private readonly options: {
       readonly operationTimeoutMilliseconds: number;
       readonly processHandle: WorkspaceCandidateProcessHandle;
+      readonly prepareCommand: Extract<WorkspaceCandidateProcessCommand, { type: 'prepare' }>;
+      readonly reservationTransfer: WorkspaceCandidateReservationTransfer;
       readonly shutdownCommand: Extract<
         WorkspaceCandidateProcessCommand,
         { type: 'shutdown' }
@@ -369,6 +413,7 @@ class ManagedWorkspaceCandidateRuntime {
       return Promise.reject(new Error(operationFailedCode));
     }
     this.phase = 'waitingReady';
+    this.startupDeadline = performance.now() + this.options.startupTimeoutMilliseconds;
     this.setTimer(
       this.options.startupTimeoutMilliseconds,
       () => this.failClosed(),
@@ -380,18 +425,22 @@ class ManagedWorkspaceCandidateRuntime {
   }
 
   stopAfterStartFailure(): Promise<boolean> {
-    this.stopPromise ??= this.stop();
-    return this.stopPromise;
+    if (!this.startSettled) {
+      this.phase = 'failed';
+      this.settleStartFailure();
+    }
+    this.startupCancellation.abort();
+    return this.beginStop();
   }
 
   stopAndProveHandlesClosed(): Promise<boolean> {
-    this.stopPromise ??= this.stop();
-    return this.stopPromise;
+    return this.beginStop();
   }
 
   inspectStoppedResult(): WorkspaceCandidateProcessResult {
     if (
       !this.exited ||
+      !this.reservationReclaimed ||
       this.exitCode !== 0 ||
       !this.protocolValid ||
       !this.completedTerminalReceived ||
@@ -415,23 +464,45 @@ class ManagedWorkspaceCandidateRuntime {
         this.failClosed();
         return;
       }
-      this.clearTimer();
-      this.phase = 'waitingTerminal';
-      try {
-        this.options.processHandle.postMessage(this.options.startCommand);
-      } catch {
+      this.phase = 'preparing';
+      this.preparationTask = Promise.resolve().then(async () => {
+        if (!this.canContinueStartup('preparing')) return;
+        await this.options.reservationTransfer.prepare(this.startupCancellation.signal);
+        if (!this.canContinueStartup('preparing')) return;
+        this.phase = 'waitingReservation';
+        this.options.processHandle.postMessage(this.options.prepareCommand);
+      }).catch(() => this.failClosed());
+      return;
+    }
+
+    if (status.type === 'reservationReady') {
+      if (this.phase !== 'waitingReservation' || !this.statusMatchesRequest(status)
+        || !matchesWorkspaceProcessReservationDescriptor(this.options.prepareCommand.reservation, status.reservation)) {
         this.failClosed();
         return;
       }
-      this.setTimer(
-        this.options.operationTimeoutMilliseconds,
-        () => this.failClosed(),
-      );
+      this.phase = 'authorizing';
+      this.grantTask = Promise.resolve().then(async () => {
+        if (!this.canContinueStartup('authorizing')) return;
+        await this.options.reservationTransfer.assertGrant(this.startupCancellation.signal);
+        if (!this.canContinueStartup('authorizing')) return;
+        // Commit the bound authority synchronously after the async checks.
+        this.options.reservationTransfer.assertCurrent();
+        if (!this.canContinueStartup('authorizing')) return;
+        this.phase = 'waitingTerminal';
+        // The existing startup budget spans every preceding handshake phase.
+        this.setTimer(this.options.operationTimeoutMilliseconds, () => this.failClosed());
+        this.options.processHandle.postMessage(this.options.startCommand);
+      }).catch(() => this.failClosed());
       return;
     }
 
     if (
-      this.phase !== 'waitingTerminal' ||
+      (this.phase !== 'waitingTerminal'
+        && !(status.type === 'failed' && (
+          this.phase === 'waitingReservation'
+          || (this.phase === 'failed' && this.shutdownSent)
+        ))) ||
       this.terminalSeen ||
       !this.statusMatchesRequest(status)
     ) {
@@ -444,6 +515,10 @@ class ManagedWorkspaceCandidateRuntime {
       this.failOperation();
       return;
     }
+    if (status.type !== 'completed') {
+      this.failClosed();
+      return;
+    }
 
     this.completedTerminalReceived = true;
     this.completedResult = status.result;
@@ -454,6 +529,7 @@ class ManagedWorkspaceCandidateRuntime {
   private handleExit(exitCode: number): void {
     if (this.exited) return;
     this.exited = true;
+    this.startupCancellation.abort();
     this.exitCode = exitCode;
     this.clearTimer();
     if (
@@ -484,18 +560,30 @@ class ManagedWorkspaceCandidateRuntime {
   private failOperation(): void {
     this.completedResult = undefined;
     this.phase = 'failed';
+    this.clearTimer();
+    this.startupCancellation.abort();
     this.settleStartFailure();
     void this.stopAfterStartFailure();
   }
 
   private failClosed(): void {
-    if (this.exited) return;
     this.protocolValid = false;
+    this.invalidateTransfer();
     this.completedResult = undefined;
     this.phase = 'failed';
     this.clearTimer();
+    this.startupCancellation.abort();
     this.settleStartFailure();
     void this.stopAfterStartFailure();
+  }
+
+  private canContinueStartup(expectedPhase: RuntimePhase): boolean {
+    if (this.phase !== expectedPhase || this.startupCancellation.signal.aborted) return false;
+    if (performance.now() >= this.startupDeadline) {
+      this.failClosed();
+      return false;
+    }
+    return true;
   }
 
   private settleStartSuccess(): void {
@@ -534,28 +622,68 @@ class ManagedWorkspaceCandidateRuntime {
 
   private async stop(): Promise<boolean> {
     this.clearTimer();
-    if (!this.exited) {
-      this.sendShutdown();
-      if (
-        !(await waitForExit(
-          this.exitPromise,
-          this.options.shutdownTimeoutMilliseconds,
-        ))
-      ) {
-        this.options.processHandle.kill();
-        await waitForExit(
-          this.exitPromise,
-          this.options.shutdownTimeoutMilliseconds,
-        );
+    this.startupCancellation.abort();
+    let deadline = performance.now() + this.options.shutdownTimeoutMilliseconds;
+    try {
+      if (!this.exited) {
+        this.sendShutdown();
+        if (!(await waitWithinDeadline(this.exitPromise, deadline))) {
+          this.options.processHandle.kill();
+          deadline = performance.now() + this.options.shutdownTimeoutMilliseconds;
+          await waitWithinDeadline(this.exitPromise, deadline);
+        }
       }
+      // A late prepare/grant must not release or authorize after main reacquires.
+      const callbacksSettled = await waitWithinDeadline(
+        Promise.all([this.preparationTask, this.grantTask]).then(() => {}), deadline,
+      );
+      if (!this.exited || !callbacksSettled || this.transferInvalidated) {
+        this.invalidateTransfer();
+        return false;
+      }
+      const reclaimCancellation = new AbortController();
+      try {
+        if (performance.now() >= deadline || !(await waitWithinDeadline(
+          this.options.reservationTransfer.reclaimAfterExit(reclaimCancellation.signal), deadline,
+        ))) {
+          this.invalidateTransfer();
+          return false;
+        }
+        this.reservationReclaimed = true;
+      } finally {
+        reclaimCancellation.abort();
+      }
+    } catch {
+      this.invalidateTransfer();
+      return false;
     }
     return (
       this.exited &&
+      this.reservationReclaimed &&
       this.exitCode === 0 &&
       this.protocolValid &&
       this.completedTerminalReceived &&
       this.completedResult !== undefined
     );
+  }
+
+  private beginStop(): Promise<boolean> {
+    if (this.stopPromise === undefined) {
+      let complete!: (result: boolean) => void;
+      this.stopPromise = new Promise((resolve) => { complete = resolve; });
+      // Publish the shared task before shutdown can synchronously report exit.
+      void this.stop().then(complete, () => {
+        this.invalidateTransfer();
+        complete(false);
+      });
+    }
+    return this.stopPromise;
+  }
+
+  private invalidateTransfer(): void {
+    if (this.transferInvalidated) return;
+    this.transferInvalidated = true;
+    try { this.options.reservationTransfer.invalidate(); } catch { /* Remain failed closed. */ }
   }
 }
 
@@ -631,15 +759,18 @@ function mapHistoricalReadinessResult(
   });
 }
 
-function waitForExit(
-  exitPromise: Promise<void>,
-  timeoutMilliseconds: number,
+function waitWithinDeadline(
+  task: Promise<void>,
+  deadline: number,
 ): Promise<boolean> {
   return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(false), timeoutMilliseconds);
-    void exitPromise.then(() => {
+    const timer = setTimeout(() => resolve(false), Math.max(0, deadline - performance.now()));
+    void task.then(() => {
       clearTimeout(timer);
-      resolve(true);
+      resolve(performance.now() < deadline);
+    }, () => {
+      clearTimeout(timer);
+      resolve(false);
     });
   });
 }

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { StartupExceptionStage } from './startupExceptionEvidence.js';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { setTimeout as waitForReservationRelease } from 'node:timers/promises';
 
 import {
   BrowserWindow,
@@ -40,6 +41,15 @@ import {
   type DesktopBackendStartupControl,
   type StartDesktopBackendOptions,
 } from '../runtime/backendProcess.js';
+import { DesktopBackendStartupError } from '../runtime/backendStartupFailure.js';
+import {
+  acquireWorkspaceProcessReservation,
+  readWorkspaceProcessReservationIdentity,
+  WorkspaceProcessReservationError,
+  type WorkspaceProcessReservation,
+  type WorkspaceProcessReservationTransfer,
+} from '../runtime/workspaceProcessReservation.js';
+import { parseWorkspaceProcessReservationDescriptor } from '../runtime/workspaceProcessReservationDescriptor.js';
 import { createDesktopRuntimeSession } from '../runtime/runtimeSession.js';
 import { createDesktopProfilePaths } from '../runtime/desktopProfilePaths.js';
 import { createDesktopOperationalEvent } from '../observability/createDesktopOperationalEvent.js';
@@ -74,6 +84,7 @@ import { registerApplicationProtocol } from './applicationProtocol.js';
 import { BackendRequestQuiescence } from './backendRequestQuiescence.js';
 import { readSafeStartupFailureCode } from './earlyStartup.js';
 import { createBackendRequestHeaders } from './protocolPolicy.js';
+import { assertW6b2PackagedUpdateWriteState } from './w6b2PackagedUpdateWriteProbe.js';
 import { assertDifferentRuntimeSessionRejected } from './runtimeSessionAcceptanceValidation.js';
 import {
   createInvoiceDeliveryConfirmation,
@@ -175,18 +186,24 @@ import { WorkspaceSwitchError } from '../workspaces/switch/workspaceSwitchError.
 import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 import { deriveWorkspaceBackupReplacementRuntimePaths } from '../workspaces/replacement/workspaceBackupReplacementPaths.js';
 import { createWorkspaceBackupReplacementStartupRecovery } from '../workspaces/replacement/workspaceBackupReplacementStartupRecovery.js';
-import { createWorkspaceManagementComposition } from '../workspaces/management/workspaceManagementComposition.js';
+import { createWorkspaceManagementComposition, recoverWorkspaceManagementBeforeRuntime } from '../workspaces/management/workspaceManagementComposition.js';
+import { WorkspaceManagementRecoveryRequiredError } from '../workspaces/management/workspaceManagementOperationGuard.js';
+import { readColdWorkspaceRecoveryAdmissionFromRoot } from '../workspaces/runtime/workspaceColdRecoveryAdmissionComposition.js';
 import {
   createWorkspaceManagementCapability,
   type WorkspaceManagementCapability,
 } from '../workspaces/management/workspaceManagementCapability.js';
 import { confirmActiveWorkspaceReplacement } from '../workspaces/management/workspaceReplacementConfirmation.js';
 import { DeferredWorkspaceRuntimeRelaunch } from '../workspaces/runtime/deferredWorkspaceRuntimeRelaunch.js';
-import { MainOwnedActiveWorkspaceLifecycle } from '../workspaces/runtime/mainOwnedActiveWorkspaceLifecycle.js';
+import {
+  MainOwnedActiveWorkspaceLifecycle,
+  WorkspaceRuntimeStopError,
+} from '../workspaces/runtime/mainOwnedActiveWorkspaceLifecycle.js';
 import { createWorkspaceFirstStartMigrationComposition } from '../workspaces/update/workspaceFirstStartMigrationComposition.js';
 import { WorkspaceFirstStartMigrationOrchestratorError } from '../workspaces/update/workspaceFirstStartMigrationOrchestratorError.js';
 import type { WorkspaceFirstStartMigrationOrchestration } from '../workspaces/update/workspaceFirstStartMigrationOrchestratorTypes.js';
 import { createWorkspaceActivationMigrationComposition } from '../workspaces/update/workspaceActivationMigrationComposition.js';
+import type { WorkspaceCandidateReservationOwner } from '../workspaces/runtime/electronWorkspaceCandidateRuntimeFactory.js';
 
 export interface DesktopLifecycleHandle {
   applicationWindow: BrowserWindow;
@@ -219,6 +236,7 @@ export interface DesktopCompositionDependencies {
 }
 
 export interface StartDesktopCompositionOptions {
+  assertSingleInstanceOwnership(): void;
   appVersion: string;
   applicationPath: string;
   buildInfo: Readonly<DesktopBuildInfo>;
@@ -263,6 +281,191 @@ const defaultDesktopCompositionDependencies: DesktopCompositionDependencies = {
   resolveActiveWorkspace: resolveActiveWorkspaceStartup,
 };
 
+const reservationReclaimPollMilliseconds = 10;
+
+/** One installation owner; process senders retain their existing exit/deadline duties. */
+export async function acquireDesktopWorkspaceReservation(options: {
+  readonly userDataRoot: string;
+  readonly assertSingleInstanceOwnership: () => void;
+  readonly signal: AbortSignal;
+}) {
+  options.assertSingleInstanceOwnership();
+  let held: WorkspaceProcessReservation | undefined =
+    await acquireWorkspaceProcessReservation(options);
+  const identity = held.identity;
+  type TransferPhase = 'bound' | 'preparing' | 'released' | 'authorizing' | 'authorized' | 'granted' | 'reclaiming';
+  let active: { phase: TransferPhase; pending: boolean } | undefined;
+  let invalid = false;
+  let closing = false;
+  let closeTask: Promise<void> | undefined;
+  const fail = () => new WorkspaceProcessReservationError('lost');
+  const invalidate = () => { invalid = true; };
+  const assertMainInstance = () => {
+    if (invalid || closing) throw fail();
+    try { options.assertSingleInstanceOwnership(); }
+    catch { invalidate(); throw fail(); }
+  };
+  let removeLossListener = () => {};
+  const observeHeld = (reservation: WorkspaceProcessReservation) => {
+    const lost = () => { if (held === reservation) invalidate(); };
+    reservation.invalidated.addEventListener('abort', lost, { once: true });
+    removeLossListener = () => reservation.invalidated.removeEventListener('abort', lost);
+    if (reservation.invalidated.aborted) lost();
+  };
+  observeHeld(held);
+  try {
+    if (options.signal.aborted) throw new WorkspaceProcessReservationError('aborted');
+    assertMainInstance();
+  }
+  catch (error) {
+    removeLossListener();
+    await held.release();
+    throw error;
+  }
+
+  const assertMainOwned = async () => {
+    assertMainInstance();
+    const reservation = held;
+    if (active !== undefined || reservation === undefined) throw fail();
+    try { await reservation.assertOwned(); }
+    catch { invalidate(); throw fail(); }
+    assertMainInstance();
+    if (active !== undefined || held !== reservation) throw fail();
+  };
+
+  return Object.freeze({
+    assertMainOwned,
+    invalidate,
+    bind(generationId: string, assertAuthority: () => void): WorkspaceProcessReservationTransfer {
+      assertMainInstance();
+      if (active !== undefined || held === undefined) throw fail();
+      const descriptor = parseWorkspaceProcessReservationDescriptor({
+        generationId, identity, userDataRoot: options.userDataRoot,
+      });
+      if (descriptor === undefined) throw fail();
+      assertAuthority();
+      const transfer = { phase: 'bound' as TransferPhase, pending: false };
+      active = transfer;
+      let grantSignal: AbortSignal | undefined;
+      const assertTransfer = () => {
+        assertMainInstance();
+        if (active !== transfer) throw fail();
+      };
+      const assertSignal = (signal: AbortSignal) => {
+        assertTransfer();
+        if (signal.aborted) throw new WorkspaceProcessReservationError('aborted');
+      };
+      const assertAuthorityCurrent = () => {
+        assertTransfer();
+        try { assertAuthority(); }
+        catch { invalidate(); throw fail(); }
+      };
+      const assertIdentity = async () => {
+        try {
+          if (await readWorkspaceProcessReservationIdentity(options.userDataRoot) !== identity) throw fail();
+        } catch { invalidate(); throw fail(); }
+        assertTransfer();
+      };
+      return Object.freeze({
+        descriptor,
+        async prepare(signal: AbortSignal) {
+          assertSignal(signal);
+          if (transfer.phase !== 'bound' || held === undefined) { invalidate(); throw fail(); }
+          const reservation = held;
+          transfer.phase = 'preparing';
+          transfer.pending = true;
+          try {
+            assertAuthorityCurrent();
+            try { await reservation.assertOwned(); }
+            catch { invalidate(); throw fail(); }
+            assertSignal(signal);
+            assertAuthorityCurrent();
+            removeLossListener();
+            try { await reservation.release(); }
+            catch { invalidate(); throw fail(); }
+            held = undefined;
+            assertTransfer();
+            transfer.phase = 'released';
+            assertSignal(signal);
+            assertAuthorityCurrent();
+          } finally { transfer.pending = false; }
+        },
+        async assertGrant(signal: AbortSignal) {
+          assertSignal(signal);
+          if (transfer.phase !== 'released') { invalidate(); throw fail(); }
+          transfer.phase = 'authorizing';
+          transfer.pending = true;
+          try {
+            assertAuthorityCurrent();
+            await assertIdentity();
+            assertSignal(signal);
+            assertAuthorityCurrent();
+            grantSignal = signal;
+            transfer.phase = 'authorized';
+          } finally { transfer.pending = false; }
+        },
+        assertCurrent() {
+          assertTransfer();
+          if (transfer.phase !== 'authorized' || grantSignal === undefined) { invalidate(); throw fail(); }
+          assertSignal(grantSignal);
+          assertAuthorityCurrent();
+          transfer.phase = 'granted';
+        },
+        async reclaimAfterExit(signal: AbortSignal) {
+          assertSignal(signal);
+          if (transfer.pending || transfer.phase === 'reclaiming') { invalidate(); throw fail(); }
+          transfer.phase = 'reclaiming';
+          try {
+            if (held === undefined) {
+              let reclaimed: WorkspaceProcessReservation;
+              // Native pipe release can lag the child's exit notification. Ownership
+              // is still absent until a real acquisition within the caller's deadline.
+              for (;;) {
+                assertSignal(signal);
+                try {
+                  reclaimed = await acquireWorkspaceProcessReservation({
+                    userDataRoot: options.userDataRoot, expectedIdentity: identity, signal,
+                  });
+                  break;
+                } catch (error) {
+                  if (!(error instanceof WorkspaceProcessReservationError)
+                    || error.reason !== 'busy' || error.cleanupFailed) throw error;
+                  await waitForReservationRelease(reservationReclaimPollMilliseconds, undefined, { signal });
+                }
+              }
+              // A cancelled acquisition cannot publish ownership or touch a later owner.
+              try { assertSignal(signal); }
+              catch {
+                await reclaimed.release();
+                throw fail();
+              }
+              held = reclaimed;
+              observeHeld(reclaimed);
+            }
+            await held.assertOwned();
+            assertSignal(signal);
+            active = undefined;
+          } catch { invalidate(); throw fail(); }
+        },
+        invalidate() {
+          if (active === transfer) invalidate();
+        },
+      });
+    },
+    close(): Promise<void> {
+      if (closeTask !== undefined) return closeTask;
+      if (active !== undefined || invalid || held === undefined) return Promise.reject(fail());
+      closing = true;
+      const reservation = held;
+      removeLossListener();
+      closeTask = Promise.resolve().then(() => reservation.release()).then(() => { held = undefined; });
+      return closeTask;
+    },
+  });
+}
+
+type DesktopWorkspaceReservation = Awaited<ReturnType<typeof acquireDesktopWorkspaceReservation>>;
+
 export async function startDesktopComposition(
   options: StartDesktopCompositionOptions,
 ): Promise<DesktopLifecycleHandle | undefined> {
@@ -296,8 +499,26 @@ export async function startDesktopComposition(
   } as const;
 
   let startupSessionSecret: string | undefined;
+  let reservation: DesktopWorkspaceReservation | undefined;
+  let startupActive = true;
+  const assertStartupAuthority = () => {
+    if (!startupActive) throw new WorkspaceProcessReservationError('lost');
+    options.assertSingleInstanceOwnership();
+  };
+  const workspaceMaintenanceLease = new InMemoryWorkspaceMaintenanceLease();
 
   try {
+    await mkdir(options.userDataPath, { recursive: true });
+    reservation = await acquireDesktopWorkspaceReservation({
+      userDataRoot: options.userDataPath,
+      assertSingleInstanceOwnership: options.assertSingleInstanceOwnership,
+      signal: new AbortController().signal,
+    });
+    const workspaceReservation = reservation;
+    const startupReservationOwner: WorkspaceCandidateReservationOwner = {
+      bindCandidate: ({ generationId }) => workspaceReservation.bind(generationId, assertStartupAuthority),
+    };
+    await workspaceReservation.assertMainOwned();
     desktopOperationalLogger.write(
       createDesktopOperationalEvent(
         { eventName: 'desktop.starting' },
@@ -317,6 +538,7 @@ export async function startDesktopComposition(
         desktopOperationalIdentity,
       ),
     );
+    const coldRecoveryAdmission = await readColdWorkspaceRecoveryAdmissionFromRoot(options.userDataPath);
     const installationUpdateState = await createInstallationUpdateState({
       installationRuntimeRoot,
       userDataPath: options.userDataPath,
@@ -331,6 +553,37 @@ export async function startDesktopComposition(
         journal: installationUpdateState.updateJournalStore,
       },
     });
+    await recoverWorkspaceManagementBeforeRuntime({
+      admission: coldRecoveryAdmission,
+      async assertRecoveryAdmission() {
+        assertStartupAuthority();
+        await workspaceReservation.assertMainOwned();
+        if (await readColdWorkspaceRecoveryAdmissionFromRoot(options.userDataPath) !== coldRecoveryAdmission) {
+          throw new WorkspaceManagementRecoveryRequiredError();
+        }
+        assertStartupAuthority();
+      },
+      appVersion: desktopAppVersion,
+      buildRevision: options.buildInfo.buildRevision,
+      maintenanceLease: workspaceMaintenanceLease,
+      reservationOwner: {
+        bindCandidate: ({ generationId }) => {
+          const assertLease = workspaceMaintenanceLease.captureCurrentOwner(['create', 'import']);
+          return workspaceReservation.bind(generationId, () => {
+            assertStartupAuthority();
+            assertLease();
+          });
+        },
+      },
+      resourcesPath: options.resourcesPath,
+      userDataRoot: options.userDataPath,
+      workspaceRuntimeAbsence: {
+        async assertNoActiveWorkspaceRuntime() {
+          assertStartupAuthority();
+          await workspaceReservation.assertMainOwned();
+        },
+      },
+    });
     const workspaceFirstStartMigration =
       createWorkspaceFirstStartMigrationComposition({
         acceptedBuildStore:
@@ -341,6 +594,7 @@ export async function startDesktopComposition(
           installationUpdateState.directSetupMigrationRecoveryStore,
         releaseInfo: options.releaseInfo,
         resourcesPath: options.resourcesPath,
+        reservationOwner: startupReservationOwner,
         updateJournalStore: installationUpdateState.updateJournalStore,
         userDataRoot: options.userDataPath,
       });
@@ -351,7 +605,10 @@ export async function startDesktopComposition(
       resolveActiveWorkspace: dependencies.resolveActiveWorkspace,
       userDataRoot: options.userDataPath,
     });
-    if (workspaceStartup.status === 'relaunching') return undefined;
+    if (workspaceStartup.status === 'relaunching') {
+      await workspaceReservation.close();
+      return undefined;
+    }
     const { activeWorkspace, runtimeSessionSecret } = workspaceStartup;
     startupSessionSecret = runtimeSessionSecret;
     await workspaceFirstStartMigration.prepareBeforeBackend({
@@ -361,7 +618,7 @@ export async function startDesktopComposition(
           ? 'legacyAdoptionPendingAcceptance'
           : 'publishedRegistry',
     });
-    return await startDesktopCompositionRuntime({
+    const lifecycle = await startDesktopCompositionRuntime({
       activeWorkspace,
       backendRoot,
       desktopAppVersion,
@@ -376,8 +633,30 @@ export async function startDesktopComposition(
       runtimeSessionSecret,
       smokeMode,
       workspaceFirstStartMigration,
+      workspaceMaintenanceLease,
+      workspaceReservation,
+      startupReservationOwner,
+      assertStartupAuthority,
     });
+    if (lifecycle === undefined) {
+      await workspaceReservation.close();
+      return undefined;
+    }
+    let shutdown: Promise<void> | undefined;
+    return {
+      applicationWindow: lifecycle.applicationWindow,
+      focusApplicationWindow: () => lifecycle.focusApplicationWindow(),
+      shutdown() {
+        shutdown ??= Promise.resolve().then(async () => {
+          await lifecycle.shutdown();
+          await workspaceReservation.close();
+        });
+        return shutdown;
+      },
+    };
   } catch (error) {
+    // Closing refuses unresolved transfers; their reservation stays held until exit.
+    await reservation?.close().catch(() => undefined);
     try { options.observeStartupException?.(error, 'compositionStartup', startupSessionSecret === undefined ? [] : [startupSessionSecret]); } catch { /* Optional private evidence. */ }
     const errorCode = readSafeStartupFailureCode(error);
     try {
@@ -412,6 +691,8 @@ export async function startDesktopComposition(
       return undefined;
     }
     throw new Error(errorCode);
+  } finally {
+    startupActive = false;
   }
 }
 
@@ -430,6 +711,10 @@ interface DesktopCompositionRuntimeOptions {
   runtimeSessionSecret: string;
   smokeMode: boolean;
   workspaceFirstStartMigration: WorkspaceFirstStartMigrationOrchestration;
+  workspaceMaintenanceLease: InMemoryWorkspaceMaintenanceLease;
+  workspaceReservation: DesktopWorkspaceReservation;
+  startupReservationOwner: WorkspaceCandidateReservationOwner;
+  assertStartupAuthority(): void;
 }
 
 interface InstallationUpdateState {
@@ -494,6 +779,10 @@ async function startDesktopCompositionRuntime({
   runtimeSessionSecret,
   smokeMode,
   workspaceFirstStartMigration,
+  workspaceMaintenanceLease,
+  workspaceReservation,
+  startupReservationOwner,
+  assertStartupAuthority,
 }: DesktopCompositionRuntimeOptions): Promise<
   DesktopLifecycleHandle | undefined
 > {
@@ -512,8 +801,6 @@ async function startDesktopCompositionRuntime({
   const profileSnapshotPaths = createProfileSnapshotRuntimePaths(
     workspaceRuntimeRoot,
   );
-  const workspaceMaintenanceLease =
-    new InMemoryWorkspaceMaintenanceLease();
   const backendRequestQuiescence = new BackendRequestQuiescence();
   const workspaceRuntimeRelaunch = new DeferredWorkspaceRuntimeRelaunch(
     options.relaunchApplication,
@@ -914,6 +1201,8 @@ async function startDesktopCompositionRuntime({
             options.relaunchApplication();
           },
           resourcesPath: options.resourcesPath,
+          reservationOwner: startupReservationOwner,
+          assertMainReservationOwned: workspaceReservation.assertMainOwned,
           userDataRoot: options.userDataPath,
           ...(w6b2PackagedFaultInjection === undefined
             ? {}
@@ -994,6 +1283,7 @@ async function startDesktopCompositionRuntime({
   const invoicePdfArchivePaths =
     createInvoicePdfArchiveRuntimePaths(workspaceRuntimeRoot);
   let backendHandle: DesktopBackendHandle | undefined;
+  let backendStartAttempted = false;
   let activeProfileValidation:
     | Awaited<
         ReturnType<ProfileSnapshotBrokerClient['validateActiveProfile']>
@@ -1072,8 +1362,10 @@ async function startDesktopCompositionRuntime({
         ? 'restoredBackend'
         : 'backend',
     );
+    backendStartAttempted = true;
     backendHandle = await dependencies.startBackend({
       ...startupExceptionObservation,
+      reservationTransfer: workspaceReservation.bind(randomUUID(), assertStartupAuthority),
       async beforeMigrations(inspection, control) {
         backendStartupControl = control;
         await profileSnapshotBrokerClient.waitUntilReady();
@@ -1321,16 +1613,35 @@ async function startDesktopCompositionRuntime({
   } catch (error) {
     try { options.observeStartupException?.(error, 'runtimeStartup', [runtimeSessionSecret]); } catch { /* Optional private evidence. */ }
     await recoveryPointScheduler.stopChecks().catch(() => undefined);
-    const backendStopped = await Promise.resolve()
-      .then(() => backendHandle?.stop())
-      .then(() => true, () => false);
-    profileSnapshotBrokerClient.close();
-    invoicePdfArchiveBrokerHandle.close();
-    secretBrokerHandle.close();
+    const startedBackend = backendHandle;
+    const backendStopped = startedBackend === undefined
+      ? !backendStartAttempted || (error instanceof DesktopBackendStartupError &&
+          error.ownership.processState === 'absent' && error.ownership.migrationGateSettled &&
+          error.ownership.reservationReclaimed)
+      : await Promise.resolve().then(() => startedBackend.stop()).then(() => true, () => false);
+    // Unsettled startup work must retain ownership even if broker cleanup fails.
+    if (!backendStopped) workspaceReservation.invalidate();
+    let brokerCleanupFailed = false;
+    for (const broker of [
+      profileSnapshotBrokerClient,
+      invoicePdfArchiveBrokerHandle,
+      secretBrokerHandle,
+    ]) {
+      try {
+        broker.close();
+      } catch {
+        brokerCleanupFailed = true;
+      }
+    }
+    if (brokerCleanupFailed) {
+      workspaceReservation.invalidate();
+      throw error;
+    }
     if (!backendStopped) {
       // No recovery may change profile files or select another live runtime.
       throw error;
     }
+    await workspaceReservation.assertMainOwned();
     if (
       error instanceof DesktopBackendStartupStoppedError &&
       (updateRecoveryRelaunchRequested ||
@@ -1705,39 +2016,74 @@ async function startDesktopCompositionRuntime({
     deliveryConfirmation.showApplicationError,
   );
 
-  const disposeWorkspaceRuntimeCapabilities = async (): Promise<void> => {
-    workspaceManagementCapability?.dispose();
-    pdfPreviewController?.dispose();
-    pdfPreviewController = undefined;
-    operationalLogFolderCapability?.dispose();
-    operationalLogFolderCapability = undefined;
-    invoicePdfArchiveCapability?.dispose();
-    invoicePdfArchiveCapability = undefined;
-    supportBundleCapability?.dispose();
-    supportBundleCapability = undefined;
-    localUpdateSelectionCapability?.dispose();
-    localUpdateSelectionCapability = undefined;
-    profileBackupCapability?.dispose();
-    profileBackupCapability = undefined;
-    backupPasswordWindowController?.dispose();
-    backupPasswordWindowController = undefined;
+  let disposeCapabilitiesTask: Promise<void> | undefined;
+  const disposeWorkspaceRuntimeCapabilities = (): Promise<void> => {
+    disposeCapabilitiesTask ??= Promise.resolve().then(() => {
+      const capabilities = [
+        workspaceManagementCapability,
+        pdfPreviewController,
+        operationalLogFolderCapability,
+        invoicePdfArchiveCapability,
+        supportBundleCapability,
+        localUpdateSelectionCapability,
+        profileBackupCapability,
+        backupPasswordWindowController,
+        workspaceManagementComposition,
+      ];
+      workspaceManagementCapability = undefined;
+      pdfPreviewController = undefined;
+      operationalLogFolderCapability = undefined;
+      invoicePdfArchiveCapability = undefined;
+      supportBundleCapability = undefined;
+      localUpdateSelectionCapability = undefined;
+      profileBackupCapability = undefined;
+      backupPasswordWindowController = undefined;
+      let failed = false;
+      for (const capability of capabilities) {
+        try {
+          capability?.dispose();
+        } catch {
+          failed = true;
+        }
+      }
+      if (failed) throw new Error('WORKSPACE_RUNTIME_STOP_FAILED');
+    });
+    return disposeCapabilitiesTask;
   };
-  const closeWorkspaceRuntimeBrokers = async (): Promise<void> => {
-    profileSnapshotBrokerClient.close();
-    invoicePdfArchiveBrokerHandle.close();
-    secretBrokerHandle.close();
+  let closeBrokersTask: Promise<void> | undefined;
+  const closeWorkspaceRuntimeBrokers = (): Promise<void> => {
+    closeBrokersTask ??= Promise.resolve().then(() => {
+      let failed = false;
+      for (const broker of [
+        profileSnapshotBrokerClient,
+        invoicePdfArchiveBrokerHandle,
+        secretBrokerHandle,
+      ]) {
+        try {
+          broker.close();
+        } catch {
+          failed = true;
+        }
+      }
+      if (failed) throw new Error('WORKSPACE_RUNTIME_STOP_FAILED');
+    });
+    return closeBrokersTask;
   };
+  let backendStopAttempted = false;
   const activeWorkspaceLifecycle = new MainOwnedActiveWorkspaceLifecycle(
     activeWorkspace.workspaceId,
     backendRequestQuiescence,
     {
       closeBrokers: closeWorkspaceRuntimeBrokers,
       disposeCapabilities: disposeWorkspaceRuntimeCapabilities,
+      markCleanShutdown: () => recoveryPointScheduler.markCleanShutdown(),
       async stopBackend() {
-        const outcome = await backendHandle.stop();
-        if (outcome === 'exited') {
-          await recoveryPointScheduler.markCleanShutdown();
-        }
+        backendStopAttempted = true;
+        return backendHandle.stop();
+      },
+      async stopBackendForUpdate(operationId) {
+        backendStopAttempted = true;
+        await backendHandle.stopForUpdate(operationId);
       },
       stopRecoveryPointScheduler: () => recoveryPointScheduler.stopChecks(),
     },
@@ -1746,7 +2092,24 @@ async function startDesktopCompositionRuntime({
   const workspaceManagementComposition =
     await createWorkspaceManagementComposition({
       activeWorkspaceId: activeWorkspace.workspaceId,
-      activeWorkspaceLifecycle,
+      activeWorkspaceLifecycle: {
+        quiesceWrites: (workspaceId) => activeWorkspaceLifecycle.quiesceWrites(workspaceId),
+        async stopAndProveHandlesClosed(workspaceId) {
+          const stopped = await activeWorkspaceLifecycle.stopAndProveHandlesClosed(workspaceId);
+          await workspaceReservation.assertMainOwned();
+          return stopped;
+        },
+        async ensurePreviousWorkspaceRunning(workspaceId) {
+          if (activeWorkspaceLifecycle.readState() === 'stopped') {
+            await workspaceReservation.assertMainOwned();
+          }
+          await activeWorkspaceLifecycle.ensurePreviousWorkspaceRunning(workspaceId);
+        },
+        async assertNoActiveWorkspaceRuntime() {
+          await activeWorkspaceLifecycle.assertNoActiveWorkspaceRuntime();
+          await workspaceReservation.assertMainOwned();
+        },
+      },
       appVersion: desktopAppVersion,
       buildRevision: options.buildInfo.buildRevision,
       localUpdateRuntimePaths,
@@ -1755,6 +2118,12 @@ async function startDesktopCompositionRuntime({
         profileSnapshotPaths.restoreActivationJournalPath,
       recoveryPointService,
       resourcesPath: options.resourcesPath,
+      reservationOwner: {
+        bindCandidate: ({ generationId }) => workspaceReservation.bind(
+          generationId,
+          workspaceMaintenanceLease.captureCurrentOwner(['create', 'import', 'replace']),
+        ),
+      },
       runtimeRelaunch: workspaceRuntimeRelaunch,
       userDataRoot: options.userDataPath,
     });
@@ -1811,76 +2180,105 @@ async function startDesktopCompositionRuntime({
     },
   });
 
+  const shutdownRuntime = (request: { mode: 'ordinary' } | { mode: 'update'; operationId: string }): Promise<void> => {
+    if (shutdownTask !== undefined) {
+      return request.mode === 'ordinary'
+        ? shutdownTask
+        : shutdownTask.then(async () => {
+            try {
+              await activeWorkspaceLifecycle.stopForUpdate(activeWorkspace.workspaceId, request.operationId);
+            } catch (error) {
+              throw new Error('DESKTOP_SHUTDOWN_FAILED', {
+                cause: error instanceof WorkspaceRuntimeStopError ? error : undefined,
+              });
+            }
+          });
+    }
+
+    shutdownStarted = true;
+    // Publish the shared task before any shutdown callback can re-enter.
+    shutdownTask = Promise.resolve().then(async () => {
+      const shutdownStartedAt = Date.now();
+      desktopOperationalLogger.write(
+        createDesktopOperationalEvent(
+          { eventName: 'desktop.shutdownStarted' },
+          desktopOperationalIdentity,
+        ),
+      );
+      try {
+        if (request.mode === 'update') {
+          await activeWorkspaceLifecycle.stopForUpdate(
+            activeWorkspace.workspaceId,
+            request.operationId,
+          );
+        } else {
+          if (activeWorkspaceLifecycle.readState() === 'active') {
+            await activeWorkspaceLifecycle.quiesceWrites(
+              activeWorkspace.workspaceId,
+            );
+          }
+          await activeWorkspaceLifecycle.stopAndProveHandlesClosed(
+            activeWorkspace.workspaceId,
+          );
+        }
+        desktopOperationalLogger.write(
+          createDesktopOperationalEvent(
+            {
+              durationMs: Date.now() - shutdownStartedAt,
+              eventName: 'desktop.shutdownCompleted',
+            },
+            desktopOperationalIdentity,
+          ),
+        );
+      } catch (error) {
+        backendRequestQuiescence.stop();
+        const cleanupFailures: string[] = [];
+        for (const [phase, close] of [
+          ['scheduler', () => recoveryPointScheduler.stopChecks()],
+          ['capabilities', disposeWorkspaceRuntimeCapabilities],
+          ['backend', async () => {
+            if (request.mode === 'ordinary' && !backendStopAttempted) {
+              backendStopAttempted = true;
+              await backendHandle.stop();
+            }
+          }],
+          ['brokers', closeWorkspaceRuntimeBrokers],
+        ] as const) {
+          try {
+            await close();
+          } catch {
+            cleanupFailures.push(phase);
+          }
+        }
+        desktopOperationalLogger.write(
+          createDesktopOperationalEvent(
+            {
+              durationMs: Date.now() - shutdownStartedAt,
+              errorCode: 'DESKTOP_SHUTDOWN_FAILED',
+              eventName: 'desktop.shutdownFailed',
+              retryable: false,
+              sideEffectState: 'unknown',
+              stage: 'shutdown',
+            },
+            desktopOperationalIdentity,
+          ),
+        );
+        throw new Error('DESKTOP_SHUTDOWN_FAILED', {
+          cause: Object.freeze({
+            runtimeFailure: error instanceof WorkspaceRuntimeStopError ? error : undefined,
+            cleanupFailures: Object.freeze(cleanupFailures),
+          }),
+        });
+      }
+    });
+    return shutdownTask;
+  };
   const lifecycleHandle: DesktopLifecycleHandle = {
     applicationWindow: mainWindow,
     focusApplicationWindow() {
       restoreWindowInputFocus(mainWindow);
     },
-    shutdown() {
-      if (shutdownTask !== undefined) {
-        return shutdownTask;
-      }
-
-      shutdownStarted = true;
-      // Publish the shared task before any shutdown callback can re-enter.
-      shutdownTask = Promise.resolve().then(async () => {
-        const shutdownStartedAt = Date.now();
-        desktopOperationalLogger.write(
-          createDesktopOperationalEvent(
-            { eventName: 'desktop.shutdownStarted' },
-            desktopOperationalIdentity,
-          ),
-        );
-        try {
-          const runtimeState = activeWorkspaceLifecycle.readState();
-          if (runtimeState === 'active') {
-            await activeWorkspaceLifecycle.quiesceWrites(
-              activeWorkspace.workspaceId,
-            );
-          }
-          if (activeWorkspaceLifecycle.readState() === 'quiesced') {
-            await activeWorkspaceLifecycle.stopAndProveHandlesClosed(
-              activeWorkspace.workspaceId,
-            );
-          } else if (activeWorkspaceLifecycle.readState() !== 'stopped') {
-            throw new Error('WORKSPACE_RUNTIME_RECOVERY_REQUIRED');
-          }
-          desktopOperationalLogger.write(
-            createDesktopOperationalEvent(
-              {
-                durationMs: Date.now() - shutdownStartedAt,
-                eventName: 'desktop.shutdownCompleted',
-              },
-              desktopOperationalIdentity,
-            ),
-          );
-        } catch {
-          await recoveryPointScheduler.stopChecks().catch(() => undefined);
-          await disposeWorkspaceRuntimeCapabilities().catch(() => undefined);
-          await backendHandle.stop().catch(() => undefined);
-          await closeWorkspaceRuntimeBrokers().catch(() => undefined);
-          desktopOperationalLogger.write(
-            createDesktopOperationalEvent(
-              {
-                durationMs: Date.now() - shutdownStartedAt,
-                errorCode: 'DESKTOP_SHUTDOWN_FAILED',
-                eventName: 'desktop.shutdownFailed',
-                retryable: false,
-                sideEffectState: 'unknown',
-                stage: 'shutdown',
-              },
-              desktopOperationalIdentity,
-            ),
-          );
-          throw new Error('DESKTOP_SHUTDOWN_FAILED');
-        } finally {
-          workspaceManagementCapability?.dispose();
-          workspaceManagementCapability = undefined;
-          workspaceManagementComposition.dispose();
-        }
-      });
-      return shutdownTask;
-    },
+    shutdown: () => shutdownRuntime({ mode: 'ordinary' }),
   };
 
   let handoffCoordinator: LocalUpdateHandoffCoordinator | undefined;
@@ -1901,7 +2299,7 @@ async function startDesktopCompositionRuntime({
       },
       observer: updateObserver,
       profileProtection: handoffProfileProtection,
-      shutdownRuntime: () => lifecycleHandle.shutdown(),
+      shutdownRuntime: (operationId) => shutdownRuntime({ mode: 'update', operationId }),
     });
     if (options.w6b2PackagedProof === undefined) {
       localUpdateSelectionCapability =
@@ -1983,6 +2381,12 @@ async function startDesktopCompositionRuntime({
               }
           : proof.configuration.controlFormatVersion === 1
             ? await runW6b2PackagedProofController({
+                assertUpdateWriteState: (state) => assertW6b2PackagedUpdateWriteState({
+                  backendPort: backendHandle.port,
+                  runtimeSessionSecret,
+                  state,
+                  fetchImplementation: (url, init) => net.fetch(url, init),
+                }),
                 cache: localUpdatePackageCache,
                 configuration: proof.configuration,
                 handoff: handoffCoordinator,

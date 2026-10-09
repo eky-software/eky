@@ -17,8 +17,7 @@ export type WorkspaceCreationJournalState =
   | 'rootPublished'
   | 'registryPublished';
 
-export interface WorkspaceCreationJournalV1 {
-  readonly formatVersion: 1;
+interface WorkspaceCreationJournalFields {
   readonly operationId: WorkspaceCreationOperationId;
   readonly workspaceId: WorkspaceId;
   readonly workspaceLabel: string;
@@ -28,8 +27,20 @@ export interface WorkspaceCreationJournalV1 {
   readonly lineageIdentity: Readonly<WorkspaceLineageIdentityV1> | null;
 }
 
+export interface WorkspaceCreationJournalV1 extends WorkspaceCreationJournalFields {
+  readonly formatVersion: 1;
+}
+
+export interface WorkspaceCreationJournalV2 extends WorkspaceCreationJournalFields {
+  readonly formatVersion: 2;
+}
+
+export type WorkspaceCreationJournal =
+  | WorkspaceCreationJournalV1
+  | WorkspaceCreationJournalV2;
+
 export interface WorkspaceCreationJournalStore {
-  read(): Promise<Readonly<WorkspaceCreationJournalV1> | undefined>;
+  read(): Promise<Readonly<WorkspaceCreationJournal> | undefined>;
   write(value: unknown): Promise<void>;
   discardBeforePublication(
     operationId: WorkspaceCreationOperationId,

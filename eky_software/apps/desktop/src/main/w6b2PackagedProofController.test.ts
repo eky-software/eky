@@ -29,6 +29,62 @@ describe('W6B.2 packaged proof controller', () => {
     ]);
     expect(fixture.handoff.prepareConfirmedUpdate).toHaveBeenCalledOnce();
     expect(fixture.handoff.handoffPreparedUpdate).toHaveBeenCalledOnce();
+    expect(fixture.assertUpdateWriteState.mock.calls).toEqual([['writable'], ['blocked']]);
+    const order = [
+      fixture.assertUpdateWriteState.mock.invocationCallOrder[0]!,
+      fixture.handoff.prepareConfirmedUpdate.mock.invocationCallOrder[0]!,
+      fixture.assertUpdateWriteState.mock.invocationCallOrder[1]!,
+      fixture.handoff.handoffPreparedUpdate.mock.invocationCallOrder[0]!,
+    ];
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
+  it.each(['writable', 'preparation', 'blocked'] as const)('waits for %s to settle before advancing', async heldStep => {
+    const fixture = createControllerFixture('sourceHandoff', 'source');
+    fixture.state.quitRequested = true;
+    let release!: () => void;
+    let entered!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const reached = new Promise<void>(resolve => { entered = resolve; });
+    const wait = async () => { entered(); await held; };
+    fixture.assertUpdateWriteState.mockImplementation(async state => {
+      if (state === heldStep) await wait();
+    });
+    fixture.handoff.prepareConfirmedUpdate.mockImplementation(async () => {
+      if (heldStep === 'preparation') await wait();
+      return {};
+    });
+    const running = runW6b2PackagedProofController(fixture.options);
+    try {
+      await reached;
+      // Drain queued continuations without releasing the held operation.
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(fixture.handoff.handoffPreparedUpdate).not.toHaveBeenCalled();
+      if (heldStep === 'writable') {
+        expect(fixture.handoff.prepareConfirmedUpdate).not.toHaveBeenCalled();
+      }
+      if (heldStep !== 'blocked') {
+        expect(fixture.assertUpdateWriteState).not.toHaveBeenCalledWith('blocked');
+      }
+    } finally {
+      release();
+      await running;
+    }
+    expect(await running).toMatchObject({ status: 'completed' });
+    expect(fixture.handoff.handoffPreparedUpdate).toHaveBeenCalledOnce();
+  });
+
+  it.each(['writable', 'blocked'] as const)('rejects an invalid %s write boundary before installer handoff', async state => {
+    const fixture = createControllerFixture('sourceHandoff', 'source');
+    fixture.assertUpdateWriteState.mockImplementation(async current => {
+      if (current === state) throw new Error('private response');
+    });
+    await expect(runW6b2PackagedProofController(fixture.options)).resolves.toEqual({
+      errorCode: 'W6B2_PROOF_PREPARATION_CONCURRENCY_FAILED',
+      formatVersion: 1, phase: 'sourceHandoff', status: 'failed',
+    });
+    expect(fixture.handoff.handoffPreparedUpdate).not.toHaveBeenCalled();
+    expect(fixture.handoff.prepareConfirmedUpdate).toHaveBeenCalledTimes(state === 'writable' ? 0 : 1);
   });
 
   it.each([
@@ -201,6 +257,7 @@ describe('W6B.2 packaged proof controller', () => {
       status: 'completed',
     });
     expect(fixture.lifecycle.shutdown).toHaveBeenCalledOnce();
+    expect(fixture.assertUpdateWriteState).not.toHaveBeenCalled();
   });
 
   it('requests the real workspace switch and reports a bounded relaunch', async () => {
@@ -277,6 +334,7 @@ function createControllerFixture(
   role: W6b2PackagedSuccessProofConfiguration['role'],
 ) {
   const state = { quitRequested: false, relaunchRequested: false };
+  const assertUpdateWriteState = vi.fn<(state: 'writable' | 'blocked') => Promise<void>>().mockResolvedValue(undefined);
   const cache = { stageSelectedPackage: vi.fn().mockResolvedValue({}) };
   const handoff = {
     handoffPreparedUpdate: vi.fn().mockResolvedValue(undefined),
@@ -291,10 +349,12 @@ function createControllerFixture(
     switchTo: vi.fn().mockResolvedValue(undefined),
   };
   return {
+    assertUpdateWriteState,
     cache,
     handoff,
     lifecycle,
     options: {
+      assertUpdateWriteState,
       cache,
       configuration: {
         controlFormatVersion: 1,

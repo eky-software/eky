@@ -9,7 +9,7 @@ import type { PreWorkspaceBuildAdmission } from '../../update/preWorkspaceBuildA
 import type { UpdateJournalStore } from '../../update/updateJournalStore.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../registry/workspaceRegistryPaths.js';
 import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
-import { ElectronWorkspaceCandidateRuntimeFactory } from '../runtime/electronWorkspaceCandidateRuntimeFactory.js';
+import { ElectronWorkspaceCandidateRuntimeFactory, type WorkspaceCandidateReservationOwner } from '../runtime/electronWorkspaceCandidateRuntimeFactory.js';
 import { resolveWorkspaceCandidateRuntimePaths } from '../runtime/workspaceCandidateRuntimePaths.js';
 import { WorkspaceFirstStartMigrationJournalStore } from './workspaceFirstStartMigrationJournalStore.js';
 import { WorkspaceFirstStartMigrationOrchestrator } from './workspaceFirstStartMigrationOrchestrator.js';
@@ -24,6 +24,7 @@ export interface WorkspaceFirstStartMigrationCompositionOptions {
   readonly directSetupRecoveryStore: DirectSetupMigrationRecoveryStore;
   readonly releaseInfo: Readonly<DesktopReleaseInfo> | undefined;
   readonly resourcesPath: string;
+  readonly reservationOwner: WorkspaceCandidateReservationOwner;
   readonly updateJournalStore: UpdateJournalStore;
   readonly userDataRoot: string;
 }
@@ -85,6 +86,7 @@ async function createInventoryCoordinator(
     buildRevision: options.buildInfo.buildRevision,
     migrationsDirectory: runtimePaths.migrationsDirectory,
     runnerPath: runtimePaths.runnerPath,
+    reservationOwner: options.reservationOwner,
   });
   return new WorkspaceMigrationInventoryCoordinator({
     registry,

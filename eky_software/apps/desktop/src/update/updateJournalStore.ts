@@ -53,6 +53,22 @@ export class UpdateJournalStore {
     });
   }
 
+  readForLiveOwner(): Promise<Readonly<UpdateJournal> | undefined> {
+    return this.runExclusive(async () => {
+      // Recovery slots require startup recovery, not live handoff authorization.
+      for (const path of [this.backupPath, this.nextPath]) {
+        try {
+          await lstat(path);
+        } catch (error) {
+          if (isNodeError(error) && error.code === 'ENOENT') continue;
+          throw new Error('UPDATE_JOURNAL_UNAVAILABLE');
+        }
+        throw new Error('UPDATE_JOURNAL_CONFLICT');
+      }
+      return readJournal(this.filePath);
+    });
+  }
+
   write(journal: Readonly<UpdateJournal>): Promise<void> {
     return this.runExclusive(async () => {
       const validated = parseUpdateJournal(journal);

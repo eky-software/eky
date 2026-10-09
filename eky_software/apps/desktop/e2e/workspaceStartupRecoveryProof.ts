@@ -10,6 +10,7 @@ import {
 import { dirname, join } from 'node:path';
 
 import { startDesktopComposition } from '../src/main/desktopComposition.js';
+import { assertProofSingleInstanceOwnership } from './workspaceManagementCompositionProofRuntime.js';
 import { resolveDesktopWorkspaceStartup } from '../src/main/resolveDesktopWorkspaceStartup.js';
 import { AcceptedBuildMetadataStore } from '../src/update/acceptedBuildMetadataStore.js';
 import { createLocalUpdateRuntimePaths } from '../src/update/localUpdateRuntimePaths.js';
@@ -17,6 +18,7 @@ import { WorkspaceLegacyAdoptionJournalStore } from '../src/workspaces/adoption/
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../src/workspaces/registry/workspaceRegistryPaths.js';
 import { WorkspaceRegistryStore } from '../src/workspaces/registry/workspaceRegistryStore.js';
 import { resolveActiveWorkspaceStartup } from '../src/workspaces/runtime/resolveActiveWorkspaceStartup.js';
+import { provePublishedWorkspaceColdRecovery } from './workspacePublishedColdRecoveryProof.js';
 import type {
   WorkspaceStartupRecoveryProofInput,
   WorkspaceStartupRecoveryProofResult,
@@ -32,14 +34,19 @@ export async function runWorkspaceStartupRecoveryProof(
   input: Readonly<WorkspaceStartupRecoveryProofInput>,
 ): Promise<Readonly<WorkspaceStartupRecoveryProofResult>> {
   const proofRoot = await mkdtemp(
-    join(input.userDataRoot, 'workspace-startup-proof-'),
+    join(input.userDataRoot, 'ws-'),
   );
   let stage: WorkspaceStartupRecoveryProofStage = 'buildAdmission';
+  let succeeded = false;
 
   try {
     const admission = await proveBuildAdmission({
       ...input,
       userDataRoot: join(proofRoot, 'admission'),
+    });
+    stage = 'publishedColdRecovery';
+    const published = await provePublishedWorkspaceColdRecovery({
+      ...input, userDataRoot: join(proofRoot, 'p'),
     });
     stage = 'historicalFixture';
     const historicalRoot = join(proofRoot, 'historical');
@@ -149,6 +156,7 @@ export async function runWorkspaceStartupRecoveryProof(
     stage = 'result';
     const result = {
       ...admission,
+      ...published,
       historicalCopyDiscarded,
       historicalJournalCleared,
       legacyArtifactsPreserved:
@@ -160,14 +168,18 @@ export async function runWorkspaceStartupRecoveryProof(
       relaunchCount,
     } as const;
     requireProofResult(result, sessionCreationCount);
+    succeeded = true;
     return Object.freeze(result);
   } catch (error) {
-    const errorCode = readSafeErrorCode(error);
+    const cleanupFailed = error instanceof Error
+      && error.message === 'WORKSPACE_PUBLISHED_COLD_RECOVERY_CLEANUP_FAILED';
+    const errorCode = readSafeErrorCode(cleanupFailed ? error.cause : error);
     throw new Error(
-      `WORKSPACE_STARTUP_RECOVERY_PROOF_FAILED_${stage.toUpperCase()}_${errorCode}`,
+      `WORKSPACE_STARTUP_RECOVERY_PROOF_FAILED_${stage.toUpperCase()}_${errorCode}${cleanupFailed ? '_RESERVATION_CLEANUP_FAILED' : ''}`,
+      { cause: error },
     );
   } finally {
-    await rm(proofRoot, { force: true, recursive: true });
+    if (succeeded) await rm(proofRoot, { force: true, recursive: true });
   }
 }
 
@@ -200,6 +212,7 @@ async function proveBuildAdmission(
   let caught: unknown;
   try {
     await startDesktopComposition({
+      assertSingleInstanceOwnership: assertProofSingleInstanceOwnership,
       appVersion: input.appVersion,
       applicationPath: process.execPath,
       buildInfo: {
@@ -324,6 +337,7 @@ function requireProofResult(
   if (
     !result.admissionRejectedBeforeWorkspaceResolution ||
     !result.admissionSideEffectsAbsent ||
+    !result.publishedCreationRecovered || !result.publishedImportRecovered ||
     !result.historicalCopyDiscarded ||
     !result.historicalJournalCleared ||
     !result.legacyArtifactsPreserved ||

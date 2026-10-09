@@ -50,7 +50,7 @@ export async function prepareWorkspaceSuccessRunFixture(context) {
   await mkdir(context.temporaryRoot, { recursive: false });
   const actual = await createW6b2PackagedSuccessRunFixture({
     temporaryRoot: context.temporaryRoot, token: context.request.runNonce,
-    installerPair: { buildRevision: context.request.buildRevision.slice(0, 12),
+    installerPair: { buildRevision: context.request.buildRevision,
       source: context.artifact.source, target: context.artifact.target },
   });
   if (actual.proofRoot !== context.proofRoot) throw new Error('artifactInvalid');

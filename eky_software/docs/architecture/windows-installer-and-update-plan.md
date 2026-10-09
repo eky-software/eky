@@ -339,6 +339,19 @@ muutoksen baseline. Uusi puhtaaseen revisioon sidottu sisältöinventaario
 ja baseline vaaditaan ennen tämän paketointimuutoksen loppuhyväksyntää;
 keskeneräisen työpuun kehityspaketointi ei korvaa niitä.
 
+#### C-paketin tiedostomääräraja
+
+C-paketin omistajan hyväksymä rajattu muutos nostaa vain
+`applicationStage.maximumFileCount`-rajan 336:sta 352:een. Desktopin
+elinkaari-, palautus- ja kirjoitussuojakorjaukset lisäävät pieniä,
+yhden vastuun tuotantotiedostoja. Muutos ei salli uusia tiedostolajeja
+tai hakemistoja eikä muuta kokonaiskokoa, yksittäisen tiedoston kokoa,
+polku- tai syvyysrajoja, inventory-hashia tai muiden stagejen rajoja.
+Rajatesti hyväksyy täsmälleen 352 tiedostoa ja hylkää 353 tiedostoa.
+Uusi puhtaan revision sisältöinventaario ja baseline vaaditaan ennen
+paketointimuutoksen loppuhyväksyntää. Yllä oleva historiallinen mittaus
+ei ole tämän muutoksen baseline.
+
 Normaali `package:windows` jää kehityskäyttöön. Erillinen
 `package:windows:pilot` vaatii puhtaan ja HEADiin sidotun buildin, `pilot`-
 kanavan, suljetun inventaarion ja validoidun pilot-sidecar-manifestin.
@@ -730,6 +743,36 @@ Pakotettu kill on viimeinen fallback ja jättää journalin
 C2:n installer-handoff ei saa jatkua, jos graceful shutdown ei valmistu
 määräajassa. Pakotettu kill voi olla tavallisen sovellussulun viimeinen
 suojakeino, mutta se ei ole onnistunut päivityksen shutdown-kuittaus.
+
+Tuotannon main-kytkentä, samanaikaisten sulkupyyntöjen tulossidonta ja
+virhesiivouksen rajat ovat desktopin
+[hallittu update-sulku -sopimuksessa](local-desktop-implementation-plan.md#päivityksen-hallittu-sulku).
+Backendin mahdollinen forced-exit ei saa kadota onnistuneeksi `void`-tulokseksi
+ordinary-adapterin kautta. R03:n sulkutodiste ja R04:n katkeamaton
+pre-update-kirjoitussuoja ovat erillisiä vaatimuksia; toisen testi ei hyväksy
+toista.
+
+R04:n [update-suojan vapautussääntö](local-backup-and-restore-plan.md#päivityksen-kirjoitussuojan-erillinen-vapautussääntö)
+poikkeaa tavallisesta backupista. Sama suoja tarvitaan jo ennen pre-update-
+snapshotia; sen mitätöityminen ei saa avata kirjoitusikkunaa eikä valtuuttaa
+handoffia. Backend/broker-palan toteutus ei yksin todista koko mainin
+prepare/handoff- ja graceful-exit-ketjua. Näiden kytkentä ja hyväksyntänäyttö
+pidetään [C:n nykytilassa](release-0.3.0-m1-preparation-plan.md#cn-rajattu-toteutusehdotus).
+
+Prepare/handoff säilyttää yhden mainin muistissa olevan omistajan ja
+installation-leasen. Pelkkä levyn `recoveryPointValidated` ei valtuuta
+uutta live-handoffia. `readForLiveOwner()` ei korjaa tai poista journalin
+slotteja; recovery-slotit vaativat erillisen käynnistyspalautuksen.
+Ensimmäinen omistajuusluvun virhe tai ristiriita jää lukituksi, vaikka
+myöhempi luku voisi onnistua. Kirjoitus merkitään epävarmaksi ennen awaitia,
+koska tiedosto voi julkaistua ennen kirjoituksen virhettä.
+
+Ennen runtime-stopin aloittamista valmistelun turvallinen keskeytys vaatii
+täsmällisen omistetun journalin, `failed`-kirjoituksen ja muuttamattoman
+takaisinluvun sekä edelleen voimassa olevan saman update-suojan.
+Vasta tämän jälkeen named end ja leasen vapautus ovat sallittuja.
+Epävarma journal, menetetty suoja tai aloitettu runtime-stop säilyttää
+omistuksen uudelleenkäynnistykseen asti. Ordinary backupin vapautus ei muutu.
 
 ## 13. Handoff ulkoiselle asentajalle
 
