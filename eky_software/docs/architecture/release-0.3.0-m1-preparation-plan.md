@@ -28,15 +28,16 @@ hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohd
 | Suljettu työ | T1/R27:n ajokytkentä, T2/R29:n puhtaan valmistelun suoja ja T3/R28:n todellisten kuluttajien koko prosessipuun omistajuus. Korvatut aktiiviset fallbackit on poistettu ja [pysyvä T3-matriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus) hyväksytty. PR #281 sulki tämän jälkeisen rollback-testiapurin integraatiojatkon. |
 | Avoimet havainnot | Aiemmat satunnaiset Electron-käynnistys- ja packaged/legacy-timeoutit säilyvät epäonnistuneina havaintoina omille revisioilleen. Myöhempi vihreä ajo ei todista niiden kaikkia syitä korjatuiksi. [Hylkäysten historia](e2e-test-environment-history.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko) ja [rajattu apurikorjaus](e2e-test-environment-history.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus) erotetaan toisistaan. |
 | Nykyinen työ | C/R03/R04/R17/R18/R19:n sopimusten valmistelu sekä rajatut R18 cold-terminal-/journal-admission-, R17 startup-omistajuus-, R19 oletusrevision ja R03 strict-sammutuksen korjaukset. [Alla oleva nykytila](#c-paketin-valmistelu-ja-hyväksyntärajat) erottaa alemman tason näytön tuotannon cold-start-kytkennästä ja vielä tekemättömistä packaged-/PR-/main-porteista. |
-| Seuraava työ | PR #299:n ensimmäinen [V2-kierros](https://github.com/eky-software/eky/actions/runs/37914582669) hylättiin; erillinen [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/37914582228) läpäisi. Korjaa ja todenna testifixturen yksityinen desktop-tuontiraja, tuontitestin kolme todellista runtime-poissaolotarkistusta sekä R04:n salatun itsevalidoinnin omistajasidonta. Uusi puhdas paketti, packaged-palautus ja normaalit PR/main-portit vaaditaan korjausrevisiolle. Aiempi 45 tapauksen Electron-uusinta ei sulje alkuperäistä prosessimäärähavaintoa. |
+| Seuraava työ | PR #299:n headin `b6416bcc7469ec3419e6cd266247171828cbf5c3` [V2-kierros](https://github.com/eky-software/eky/actions/runs/37922238477) läpäisi päivitys- ja workspace-palautuspolut, mutta hylättiin yhden prosessijärjestysfixturen ja siitä riippuvan hyväksyntäkoonnin vuoksi. Erillinen [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/37922238120) läpäisi. Todennetaan [rajattu fixture-korjaus](#cn-prosessijärjestysfixturen-täsmennys), uusi puhdas paketti ja normaalit PR/main-portit. Ensimmäisen kierroksen testiomistajuus- ja R04-korjaukset säilyvät; vanhoja timeout- tai prosessimäärähavaintoja ei nimetä korjatuiksi. |
 | Ei vielä valmis | C:n toteutus ja hyväksyntä, K, W7, M1:n muu sovellustyö, D-paketin muut ehdot ja koko 0.3.0. Lähtörevision läpäisy ei hyväksy uuden revision puuttuvia portteja. |
 
 **C:n viimeisin kokonainen normaali tarkistus main- ja testikutsujien kytkennän jälkeen:** desktopin
-testikomento läpäisi 9.10.2026 yhteensä 2 589 Vitest-testiä ja 263 Node-sopimustestiä.
+testikomento läpäisi 9.10.2026 revisiolla `b6416bcc` yhteensä 2 595 Vitest-testiä ja 270 Node-sopimustestiä.
 Kolme ennestään alustakohtaista testiä ohitettiin, eikä niitä lasketa
 läpäisyiksi. Näyttö kattaa myös R04:n kirjoitussuojan ja R18-varauksen alemmat testikytkennät,
-mutta ei vielä todellisia
-packaged-/installer-/PR-/main-portteja. Muiden kohdeajojen määriä ei summata
+mutta tämä testikomento ei yksin todista todellisia
+packaged-/installer-/PR-/main-portteja. Saman puhtaan revision hardened-
+palautus ja kolme packaged-palautustapausta läpäisivät erikseen. Muiden kohdeajojen määriä ei summata
 tähän yhteistarkistukseen, koska kattavuus on päällekkäinen. Myöhemmän
 muutoksen kohdenäyttö ei päivitä tätä kokonaisajon hyväksyntää.
 
@@ -81,8 +82,9 @@ ole seitsemäs riippumaton sovellusvika. Ensivirheet säilyvät epäonnistuneina
 Korjauksen normaali testisarja ja tyyppitarkistukset läpäisivät, myös
 broker-rajan 22 regressiota ja backendin E2E-testin erillinen tiukka
 tyyppitarkistus. Riippumaton rajattu katselmus ei jättänyt korjattavaa
-havaintoa. Todellinen paketoitu Windows-todennus on edelleen erillinen
-hyväksyntäportti, ei näiden alempien tulosten johtopäätös.
+havaintoa. Todellinen paketoitu Windows-todennus on erillinen
+hyväksyntäportti, ei näiden alempien tulosten johtopäätös. Sen myöhempi
+`b6416bcc`-näyttö erotetaan seuraavassa checkpointissa.
 
 Korjausrevisio tarvitsee omat tarkistuksensa, riippumattoman katselmuksen,
 puhtaan paketin ja PR/main-portit. Aiemman puhtaan paketin hardened-palautus
@@ -90,6 +92,40 @@ ja kolme packaged-tapausta läpäisivät ennen tätä korjausta; tuloksia ei
 siirretä automaattisesti myöhemmälle revisiolle. Mahdollisen salatun
 diagnostiikka-aineiston osittaisuus erotetaan sovelluksen ja siivouksen
 tuloksista; puuttuvaa aineistoa ei lasketa talteen otetuksi.
+
+### C:n prosessijärjestysfixturen täsmennys
+
+Headin `b6416bcc` normaali V2-kierros päättyi 33 onnistuneeseen, kahteen
+epäonnistuneeseen ja kahdeksaan ohitettuun jobiin. Varsinainen hylkäys oli
+`empty Job before exit observation preserves exitNonZero`; toinen hylkäys
+oli siitä riippuva hyväksyntäkoonti. Ohituksia ei lasketa läpäisyiksi.
+Päivityksen ja rollbackin sekä workspace-success- ja fault-recoveryn
+molemmat suoritukset läpäisivät. R04:n korjattu itsevalidointi on siten
+todennettu myös oikeassa paketoidussa päivitysketjussa. Koko C:n PR/main-
+hyväksyntä on silti avoin.
+
+Hylkäyksen säilynyt strict-tulos vahvistaa todellisen virhepoistumisen ja
+Jobin tyhjenemisen. Puuttui testifixturen oma järjestysmerkintä: havaitsija
+salli poistumiskuittauksen, jos prosessikahva oli signaloitu ennen kuin
+sen erillinen Job-kysely näki nollan. Tällöin tarkoitettu vastakkaisjärjestys
+ei koskaan pakottunut. Tämä on fixture-puute, ei näyttö sovelluksen tai
+tuotannon supervisorin virheestä.
+
+Nykyinen `ProcessBoundaryContract` pidättää testihavaitsijan kuittauksen
+Jobin tyhjenemiseen ja kahteen tyhjän Jobin havaintoon asti. Supervisor
+lukee laskurin ennen havaitsijaa, joten seuraava kierros ehtii varmasti
+todentaa `rootExitReceiptPending`-välitilan. Pakotettu aikaisen kuittauksen
+variantti toisti puuttuvan merkinnän ennen korjausta. Molemmat variantit
+vaativat edelleen todellisen nolla- tai virhepoistumisen, strict-tuloksen,
+koko prosessipuun poissaolon ja muuttumattoman siivoustuloksen.
+
+Muutos koskee vain nykyistä C#-testifixtureä ja sen Node-sopimustestejä.
+Tuotannon prosessiomistajuus, aikarajat, worker-vaatimukset, hyväksyntäehdot,
+riippuvuudet ja julkinen diagnostiikka säilyvät. Ei uutta odotusmekanismia
+tai yleistä loggeria. Neljä rajattua prosessikoetta läpäisivät korjauksen
+jälkeen; tämä ei yksin hyväksy koko installer-matriisia. Korjausrevision
+katselmus, puhtaan paketin portit ja normaali PR/main-todennus vaaditaan.
+Ensivirhe ja sen salattu aineisto säilyvät erillään uudesta korjausajosta.
 
 ### C-paketin valmistelu ja hyväksyntärajat
 

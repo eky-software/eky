@@ -30,8 +30,12 @@ laajan kriittisen Electron-sarjan yksi prosessimäärähavainto on yhä avoin.
 R19:n nykyrevision kuluttajat ja puhtaan paketin kolme palautustapausta
 läpäisivät ensimmäistä PR-kierrosta varten. PR #299:n ensimmäinen V2-kierros
 hylättiin; riippuvuustarkistus läpäisi erikseen. M1 omistaa seuraavaksi
-[rajatun testiomistajuus- ja R04-itsevalidointikorjauksen](release-0.3.0-m1-preparation-plan.md#cn-ensimmäisen-pr-kierroksen-rajattu-korjaus),
-korjausrevision puhtaan paketin sekä erilliset update-/PR-/main-portit.
+[rajatun testiomistajuus- ja R04-itsevalidointikorjauksen](release-0.3.0-m1-preparation-plan.md#cn-ensimmäisen-pr-kierroksen-rajattu-korjaus).
+Korjattu paketoitu päivitys- ja workspace-palautusketju läpäisi molemmat
+normaalit suoritukset, mutta koko kierros hylättiin yhden prosessijärjestys-
+fixturen vuoksi. Seuraava työ on [sen rajattu täsmennys](release-0.3.0-m1-preparation-plan.md#cn-prosessijärjestysfixturen-täsmennys),
+korjausrevision puhdas paketti ja normaalit PR/main-portit. Tuotannon
+supervisoria tai aikarajoja ei muuteta tämän fixture-puutteen perusteella.
 C:tä ei vielä ole hyväksytty kokonaisuutena. Aiemmat timeout- ja sulkuhavainnot
 säilyvät avoimina omille revisioilleen, eivät uuden työn juurisyyväitteinä.
 K, D:n muut ehdot, E/F/G/H/I, W7, sovittu käyttäjäkokemus ja M5 ovat
