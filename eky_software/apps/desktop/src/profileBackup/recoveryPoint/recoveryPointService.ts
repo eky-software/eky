@@ -175,7 +175,7 @@ export class RecoveryPointService {
           )
         : this.withUpdateSnapshot(
             updateOperationId,
-            (snapshot) => this.persistSnapshot(snapshot, kind),
+            (snapshot) => this.persistSnapshot(snapshot, kind, updateOperationId),
           ),
     ).then(
       (point) => {
@@ -247,6 +247,7 @@ export class RecoveryPointService {
   private async persistSnapshot(
     snapshot: HealthySnapshot,
     kind: RecoveryPointKind,
+    updateMaintenanceOperationId?: string,
   ): Promise<RecoveryPointIndexEntry> {
     const timestamp = this.now();
     const point = await this.dependencies.store.create({
@@ -262,6 +263,7 @@ export class RecoveryPointService {
         profileId: snapshot.validation.profileId,
       },
       validatedAt: timestamp.toISOString(),
+      ...(updateMaintenanceOperationId === undefined ? {} : { updateMaintenanceOperationId }),
     });
     const rotation = await this.dependencies.rotation.maintain(
       snapshot.validation.profileId,

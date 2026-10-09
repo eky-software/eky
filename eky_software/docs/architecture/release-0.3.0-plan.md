@@ -27,8 +27,11 @@ on tämän jälkeen kytketty tuotantoon ja nykyisiin testikutsujiin. Viisi
 todellista Electron-työtilapolkua sekä julkaistun luonti-/tuontikohteen
 composition-todistus läpäisivät. Normaali testisarja ja tyypitys läpäisivät;
 laajan kriittisen Electron-sarjan yksi prosessimäärähavainto on yhä avoin.
-M1 omistaa seuraavaksi R19:n nykyrevision kuluttajat, paketoidun
-luonti-/tuontipalautuksen, loppukatselmuksen ja erilliset update-/PR-/main-portit.
+R19:n nykyrevision kuluttajat ja puhtaan paketin kolme palautustapausta
+läpäisivät ensimmäistä PR-kierrosta varten. PR #299:n ensimmäinen V2-kierros
+hylättiin; riippuvuustarkistus läpäisi erikseen. M1 omistaa seuraavaksi
+[rajatun testiomistajuus- ja R04-itsevalidointikorjauksen](release-0.3.0-m1-preparation-plan.md#cn-ensimmäisen-pr-kierroksen-rajattu-korjaus),
+korjausrevision puhtaan paketin sekä erilliset update-/PR-/main-portit.
 C:tä ei vielä ole hyväksytty kokonaisuutena. Aiemmat timeout- ja sulkuhavainnot
 säilyvät avoimina omille revisioilleen, eivät uuden työn juurisyyväitteinä.
 K, D:n muut ehdot, E/F/G/H/I, W7, sovittu käyttäjäkokemus ja M5 ovat

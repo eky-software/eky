@@ -1,4 +1,7 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { MessageChannel, type MessagePort } from 'node:worker_threads';
 
 import { Hono } from 'hono';
@@ -13,6 +16,10 @@ import type { ProfileSnapshotBrokerTransport } from '../../desktop/src/profileBa
 import { LocalUpdateHandoffCoordinator } from '../../desktop/src/update/localUpdateHandoffCoordinator.js';
 import type { UpdateJournal } from '../../desktop/src/update/updateJournal.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../../desktop/src/workspaces/maintenance/workspaceMaintenanceLease.js';
+import { RecoveryPointKeyProtector } from '../../desktop/src/profileBackup/recoveryPoint/recoveryPointKeyProtector.js';
+import { RecoveryPointService } from '../../desktop/src/profileBackup/recoveryPoint/recoveryPointService.js';
+import { RecoveryPointStore } from '../../desktop/src/profileBackup/recoveryPoint/recoveryPointStore.js';
+import { RecoveryPointRotationService } from '../../desktop/src/profileBackup/recoveryPoint/recoveryPointRotationService.js';
 
 const fixtures: {
   client: ProfileSnapshotBrokerClient;
@@ -20,6 +27,7 @@ const fixtures: {
   closed: Promise<void>;
 }[] = [];
 const maximumMaintenanceDurationMilliseconds = 10 * 60_000;
+const temporaryRoots: string[] = [];
 
 afterEach(async () => {
   for (const fixture of fixtures.splice(0)) {
@@ -27,11 +35,69 @@ afterEach(async () => {
     fixture.backend.close();
     await fixture.closed;
   }
+  for (const root of temporaryRoots.splice(0)) {
+    await rm(root, { force: true, recursive: true });
+  }
   vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
 describe('update maintenance state, private broker and HTTP write boundary', () => {
+  it('self-validates a real encrypted pre-update point in independent staging under the same update owner', async () => {
+    const { fixture, inspectionOperationId, service, stagingRoot, store } = await createEncryptedPointFixture();
+    await fixture.client.beginUpdateMaintenance(fixture.operationId);
+    const point = await service.createPreUpdateWithMaintenance(fixture.operationId);
+    expect(point).toMatchObject({ kind: 'preUpdate', state: 'validatedGood' });
+    expect(inspectionOperationId).not.toBe(fixture.operationId);
+    expect(fixture.snapshot.validateProfileSnapshot.mock.calls.map(([operationId]) => operationId))
+      .toEqual([fixture.operationId, inspectionOperationId]);
+    await expect(store.list(activeValidation.profileId)).resolves.toEqual([point]);
+    await expect(readFile(join(stagingRoot, fixture.operationId, 'profile.sqlite'))).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(join(stagingRoot, inspectionOperationId, 'profile.sqlite'))).rejects.toMatchObject({ code: 'ENOENT' });
+    await fixture.client.assertUpdateMaintenance(fixture.operationId);
+    await assertWritesBlocked(fixture);
+    await fixture.client.endUpdateMaintenance(fixture.operationId);
+  });
+
+  it.each(['settled', 'disconnected'] as const)('gates failed inspection cleanup on the serial owner acknowledgement (%s)', async (outcome) => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const { fixture, inspectionOperationId, database, service, stagingRoot, store } = await createEncryptedPointFixture(50);
+    const entered = deferred<void>();
+    const finish = deferred<void>();
+    const completed = deferred<void>();
+    fixture.snapshot.validateProfileSnapshot.mockImplementation(async (operationId) => {
+      if (operationId === inspectionOperationId) {
+        entered.resolve();
+        await finish.promise;
+      }
+      await expect(readFile(join(stagingRoot, operationId, 'profile.sqlite'), 'utf8')).resolves.toBe(database);
+      if (operationId === inspectionOperationId) completed.resolve();
+      return snapshotValidation;
+    });
+    await fixture.client.beginUpdateMaintenance(fixture.operationId);
+    const creating = service.createPreUpdateWithMaintenance(fixture.operationId);
+    const expectation = expect(creating).rejects.toMatchObject({ code: 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE' });
+    await entered.promise;
+    const barrierQueued = observeRequest(fixture.backendTransport, 'assertUpdateMaintenance');
+    await vi.advanceTimersByTimeAsync(50);
+    await barrierQueued;
+    const inspectionPath = join(stagingRoot, inspectionOperationId, 'profile.sqlite');
+    await expect(readFile(inspectionPath, 'utf8')).resolves.toBe(database);
+    if (outcome === 'disconnected') fixture.backend.close();
+    finish.resolve();
+    await completed.promise;
+    await expectation;
+    expect(service.getStatus().lastSafeErrorCode).toBe('PROFILE_SNAPSHOT_BROKER_UNAVAILABLE');
+    await expect(store.list(activeValidation.profileId)).resolves.toEqual([]);
+    if (outcome === 'settled') {
+      await expect(readFile(inspectionPath)).rejects.toMatchObject({ code: 'ENOENT' });
+      await fixture.client.assertUpdateMaintenance(fixture.operationId);
+    } else {
+      await expect(readFile(inspectionPath, 'utf8')).resolves.toBe(database);
+    }
+    await assertWritesBlocked(fixture);
+  });
+
   it('keeps HTTP writes blocked across coordinator preparation and delayed handoff', async () => {
     const fixture = createFixture();
     const entered = deferred<void>();
@@ -103,6 +169,53 @@ describe('update maintenance state, private broker and HTTP write boundary', () 
     state.assertUpdate(operationId);
     await expect(client.endUpdateMaintenance(operationId)).resolves.toBe('normal');
     expect((await fixture.app.request('/business', { method: 'POST' })).status).toBe(200);
+  });
+
+  it('requires a live explicit update owner for independent validation without loosening snapshot creation', async () => {
+    const fixture = createFixture();
+    const inspectionOperationId = randomUUID();
+    const validate = () => fixture.client.validateProfileSnapshot(inspectionOperationId, fixture.operationId);
+    await expect(validate()).rejects.toMatchObject({ code: 'PROFILE_MAINTENANCE_OPERATION_MISMATCH' });
+    await fixture.client.beginMaintenance(fixture.operationId);
+    await expect(validate()).rejects.toMatchObject({ code: 'PROFILE_MAINTENANCE_OPERATION_MISMATCH' });
+    await fixture.client.endMaintenance(fixture.operationId);
+    await fixture.client.beginUpdateMaintenance(fixture.operationId);
+    await expect(fixture.client.validateProfileSnapshot(inspectionOperationId)).rejects.toMatchObject({ code: 'PROFILE_MAINTENANCE_OPERATION_MISMATCH' });
+    await expect(fixture.client.validateProfileSnapshot(inspectionOperationId, randomUUID())).rejects.toMatchObject({ code: 'PROFILE_MAINTENANCE_OPERATION_MISMATCH' });
+    expect(fixture.snapshot.validateProfileSnapshot).not.toHaveBeenCalled();
+    await expect(validate()).resolves.toMatchObject({ type: 'profileSnapshotValidation' });
+    expect(fixture.snapshot.validateProfileSnapshot).toHaveBeenCalledExactlyOnceWith(inspectionOperationId);
+    await expect(fixture.client.createProfileSnapshot(inspectionOperationId, 'exactCurrentManifest')).rejects.toMatchObject({ code: 'PROFILE_MAINTENANCE_OPERATION_MISMATCH' });
+    await fixture.client.endUpdateMaintenance(fixture.operationId);
+    await expect(validate()).rejects.toMatchObject({ code: 'PROFILE_MAINTENANCE_OPERATION_MISMATCH' });
+    await expect(fixture.client.validateProfileSnapshot(inspectionOperationId)).resolves.toMatchObject({ type: 'profileSnapshotValidation' });
+  });
+
+  it.each(['expiry', 'disconnect'] as const)('does not acknowledge a late independent validation after %s', async (failure) => {
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(100);
+    const fixture = createFixture();
+    const entered = deferred<void>();
+    const finish = deferred<void>();
+    const completed = deferred<void>();
+    const send = vi.spyOn(fixture.backendTransport, 'send');
+    fixture.snapshot.validateProfileSnapshot.mockImplementationOnce(async () => {
+      entered.resolve();
+      await finish.promise;
+      completed.resolve();
+      return snapshotValidation;
+    });
+    await fixture.client.beginUpdateMaintenance(fixture.operationId);
+    const work = fixture.client.validateProfileSnapshot(randomUUID(), fixture.operationId);
+    const expectation = expect(work).rejects.toMatchObject({ code: failure === 'expiry'
+      ? 'PROFILE_MAINTENANCE_OPERATION_MISMATCH' : 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE' });
+    await entered.promise;
+    if (failure === 'expiry') clock.mockReturnValue(100 + maximumMaintenanceDurationMilliseconds);
+    else fixture.backend.close();
+    finish.resolve();
+    await completed.promise;
+    await expectation;
+    expect(send.mock.calls.some(([value]) => (value as { result?: { type?: string } }).result?.type === 'profileSnapshotValidation')).toBe(false);
+    await assertWritesBlocked(fixture);
   });
 
   it('does not release the fence while a queued snapshot is still running', async () => {
@@ -313,21 +426,25 @@ function createUpdateOwner(fixture: ReturnType<typeof createFixture>, revalidate
   return { coordinator, journal: () => journal, launch, lease, shutdown };
 }
 
-function createFixture() {
+function createFixture(requestTimeoutMilliseconds?: number) {
   const channel = new MessageChannel();
   const closed = Promise.all([channel.port1, channel.port2].map(
     (port) => new Promise<void>((resolve) => port.once('close', resolve)),
   )).then(() => undefined);
   const state = new ProfileMaintenanceState();
   const snapshot = {
-    createProfileSnapshot: vi.fn(async () => snapshotMetadata),
+    createProfileSnapshot: vi.fn(async (_input: {
+      migrationPolicy: 'exactCurrentManifest' | 'compatibleHistoricalPrefix';
+      operationId: string;
+      signal: AbortSignal;
+    }) => snapshotMetadata),
     validateActiveProfile: vi.fn(async () => activeValidation),
-    validateProfileSnapshot: vi.fn(async () => snapshotValidation),
+    validateProfileSnapshot: vi.fn(async (_operationId: string) => snapshotValidation),
     prepareProfileRestoreActivation: vi.fn(async () => ({ artifactCount: 0, artifactTotalByteSize: 0 })),
   };
   const backendTransport = transport(channel.port2);
   const backend = startProfileSnapshotBrokerBackend({ maintenance: state, snapshot, transport: backendTransport });
-  const client = new ProfileSnapshotBrokerClient(transport(channel.port1));
+  const client = new ProfileSnapshotBrokerClient(transport(channel.port1), requestTimeoutMilliseconds);
   const app = new Hono<BackendEnvironment>();
   app.use('*', createProfileMaintenanceMiddleware(state));
   app.get('/health', (context) => context.json({ status: 'ok' }));
@@ -335,6 +452,48 @@ function createFixture() {
   const fixture = { app, backend, backendTransport, client, closed, operationId: randomUUID(), snapshot, state };
   fixtures.push(fixture);
   return fixture;
+}
+
+async function createEncryptedPointFixture(requestTimeoutMilliseconds?: number) {
+  const root = await mkdtemp(join(tmpdir(), 'eky-update-recovery-boundary-'));
+  temporaryRoots.push(root);
+  const stagingRoot = join(root, 'staging');
+  const quarantineRoot = join(root, 'quarantine');
+  await mkdir(quarantineRoot, { mode: 0o700 });
+  const fixture = createFixture(requestTimeoutMilliseconds);
+  const inspectionOperationId = randomUUID();
+  const database = 'synthetic-update-snapshot';
+  const catalog = '{"artifacts":[]}';
+  fixture.snapshot.createProfileSnapshot.mockImplementationOnce(async ({ operationId }) => {
+    const operationRoot = join(stagingRoot, operationId);
+    await mkdir(operationRoot, { recursive: true });
+    await writeFile(join(operationRoot, 'profile.sqlite'), database);
+    await writeFile(join(operationRoot, 'snapshot-catalog-v1.json'), catalog);
+    return {
+      artifactCatalog: { ...snapshotMetadata.artifactCatalog, catalogByteSize: Buffer.byteLength(catalog),
+        sha256: createHash('sha256').update(catalog).digest('hex') },
+      database: { ...snapshotMetadata.database, databaseByteSize: Buffer.byteLength(database),
+        sha256: createHash('sha256').update(database).digest('hex') },
+    };
+  });
+  fixture.snapshot.validateProfileSnapshot.mockImplementation(async (operationId) => {
+    await expect(readFile(join(stagingRoot, operationId, 'profile.sqlite'), 'utf8')).resolves.toBe(database);
+    return snapshotValidation;
+  });
+  const recoveryRoot = join(root, 'recovery-points');
+  const store = new RecoveryPointStore({
+    inspectionOperationIdFactory: () => inspectionOperationId,
+    keyProtector: new RecoveryPointKeyProtector({
+      encrypt: async (value) => Buffer.from(value),
+      decrypt: async (value) => ({ shouldReEncrypt: false, value: Buffer.from(value).toString() }),
+    }),
+    quarantineRoot, recoveryRoot, stagingRoot, validator: fixture.client,
+  });
+  const service = new RecoveryPointService({
+    appVersion: '0.2.81', profileSnapshotClient: fixture.client,
+    rotation: new RecoveryPointRotationService({ recoveryRoot, store }), stagingRoot, store,
+  });
+  return { fixture, inspectionOperationId, database, service, stagingRoot, store };
 }
 
 function transport(port: MessagePort): ProfileSnapshotBrokerTransport {

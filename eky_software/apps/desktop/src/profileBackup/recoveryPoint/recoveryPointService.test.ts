@@ -192,6 +192,7 @@ describe('caller-owned pre-update recovery point', () => {
     ]);
     expect(fixture.create).toHaveBeenCalledWith(expect.objectContaining({
       kind: 'preUpdate',
+      updateMaintenanceOperationId: operationId,
     }));
     expect(fixture.events.map((event) => [event.eventName, event.correlationId]))
       .toEqual([

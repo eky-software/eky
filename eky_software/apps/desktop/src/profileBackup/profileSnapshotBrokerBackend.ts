@@ -248,7 +248,12 @@ export function startProfileSnapshotBrokerBackend(input: {
             });
             return;
           } else if (request.operation === 'validateProfileSnapshot') {
-            const assertContinuation = captureSnapshotFence(request.operationId);
+            if (request.updateMaintenanceOperationId !== undefined) {
+              assertUpdateMaintenance(request.updateMaintenanceOperationId);
+            }
+            const assertContinuation = captureSnapshotFence(
+              request.updateMaintenanceOperationId ?? request.operationId,
+            );
             const validation =
               await input.snapshot.validateProfileSnapshot(
                 request.operationId,

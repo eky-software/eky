@@ -497,6 +497,19 @@ ennen snapshotia, ennen tallennusta ja tallennuksen sekä staging-siivouksen
 jälkeen ennen onnistumistapahtumaa. Myöhäinen mitätöityminen säilyttää jo
 tallennetun palautuspisteen, mutta ei anna päivitykselle onnistumiskuittausta.
 
+Salatun palautuspisteen itsevalidointi purkaa juuri tallennetun containerin
+itsenäiseen stagingiin. Sen `operationId` ei ole update-suojan omistaja:
+vain tämän validointipyynnön erillinen `updateMaintenanceOperationId`
+sitoo tarkistuksen voimassa olevaan suojaan. Tiukka yksityinen broker
+tarkistaa omistajan ennen validointia ja sen odotuksen jälkeen. Puuttuva tai
+väärä omistaja ei salli vieraan stagingin validointia update-suojan aikana;
+eksplisiittinen update-omistaja hylätään myös tavallisen maintenance-tilan
+tai suojan päättymisen jälkeen. Alkuperäisen snapshotin muodostaminen
+vaatii edelleen update-operaation oman tunnisteen. Tarkistusstaging ei saa
+olla sama kuin alkuperäinen snapshot-staging. Containerin, profiilin,
+migraatioketjun ja tiedostotavujen nykyiset tarkistukset säilyvät. Tämä ei
+muuta durable-backup-formaattia eikä anna restore- tai lähetysvaltuutta.
+
 Broker-pyynnön aikakatkaisu ei todista taustatyön päättymistä. Jos snapshotin
 tai validoinnin vastaus puuttuu, palvelu käyttää nykyisen sarjallisen brokerin
 yhtä rajattua assertion-kuittausta ennen stagingin poistoa. Jos myös tämä
@@ -504,6 +517,13 @@ epäonnistuu, staging säilyy nykyisen käynnistys-/recovery-siivouksen varalle;
 ensimmäinen virhe ei vaihdu siivouksen virheeksi. Myöhäinen vastaus ei enää
 käynnistä poistoa tai muuta epäonnistumista onnistumiseksi. Tämä ei muuta
 tavallisen backupin vapautussääntöä eikä lisää uutta siivousjärjestelmää.
+
+Sama rajattu kuittaus koskee update-palautuspisteen itsenäisen
+tarkistusstagingin backend-validointia. Sen aikakatkaisu ei poista
+tarkistusstagingia ennen sarjallista omistajakuittausta. Katkennut yhteys tai
+epäonnistunut kuittaus säilyttää stagingin ja alkuperäisen virheen;
+myöhemmin valmistuva validointi ei käynnistä erillistä siivousta.
+Onnistunut validointi siivoaa tarkistusstagingin nykyisellä polulla.
 
 Toteutuksen nykytila ja vielä avoimet kytkennät löytyvät
 [C:n omistavasta valmistelusuunnitelmasta](release-0.3.0-m1-preparation-plan.md#cn-rajattu-toteutusehdotus).

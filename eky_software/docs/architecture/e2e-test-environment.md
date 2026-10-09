@@ -50,6 +50,15 @@ Tämä offline-valmistelu on vain E2E-buildissa; se ei anna tuotannon Electron
 mainille tietokantakäyttöoikeutta eikä lisää uutta testipohjaa tai julkista
 rajapintaa.
 
+Paketoidun kylmäpalautuksen [desktop-valmistelija](../../apps/desktop/e2e/workspaceColdRecoveryPackagedFixture.ts)
+omistaa synteettisen yritysrekisterin, `rootPublished`-journalin ja niiden
+täsmällisen loppuvertailun. `apps/e2e` muodostaa tietokanta- ja PDF-syötteen
+sen rajatun `prepareProfile`-kutsun sisällä. Valmistelu ja loppuvertailu
+vaativat saman asennusjuuren todellisen prosessivarauksen. Sovellus itse
+suorittaa palautuksen; valmistelija ei kutsu recoverya. Desktopin yksityisiä
+registry- tai import-toteutuksia ei tuoda `apps/e2e/src`-alueelle eikä
+valmistelijaa käännetä tuotantobuildiin.
+
 Laskutuksen vanhan aineiston native-kokeessa sama Electron-fixture tarjoaa
 `e2eLegacyInvoiceProfile: 'sent'` -valinnan. Se luo vain testijuureen
 synteettisen 038-profiilin; tuotannon startup suorittaa migraation.

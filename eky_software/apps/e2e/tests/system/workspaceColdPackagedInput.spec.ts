@@ -6,6 +6,7 @@ import { join } from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
+import { prepareWorkspaceColdRecoveryRegistry } from '../../../desktop/e2e/workspaceColdRecoveryPackagedFixture.js';
 import { acquireWorkspaceProcessReservation } from '../../../desktop/src/runtime/workspaceProcessReservation.js';
 import { deriveWorkspaceRoot } from '../../../desktop/src/workspaces/registry/deriveWorkspaceRoot.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../../../desktop/src/workspaces/registry/workspaceRegistryPaths.js';
@@ -75,6 +76,28 @@ test('SYS-WORKSPACE-COLD-PACKAGED-ADMISSION-001 @critical @security rejects an i
     }
     await expect(prepareWorkspaceColdRecoveryPackagedSmoke({ ...input, runRoot: tmpdir() })).rejects.toThrow('WORKSPACE_COLD_PACKAGED_ROOT_INVALID');
     expect(existsSync(join(realpathSync(tmpdir()), 'eky-desktop-smoke', smokeToken))).toBe(false);
+    expect(readdirSync(runRoot)).toEqual([]);
+    passed = true;
+  } finally {
+    if (previous === undefined) delete process.env.EKY_E2E;
+    else process.env.EKY_E2E = previous;
+    if (passed) await removeE2eRunRoot(runRoot);
+  }
+});
+
+test('SYS-WORKSPACE-COLD-PACKAGED-OWNER-001 @critical @security rejects direct preparation outside the smoke root', async () => {
+  const runRoot = createE2eRunRoot();
+  const previous = process.env.EKY_E2E;
+  let passed = false;
+  let profileCalls = 0;
+  try {
+    const input = { kind: 'creation' as const, userDataRoot: runRoot,
+      async prepareProfile() { profileCalls++; throw new Error('PROFILE_PREPARATION_UNEXPECTED'); } };
+    delete process.env.EKY_E2E;
+    await expect(prepareWorkspaceColdRecoveryRegistry(input)).rejects.toThrow('WORKSPACE_COLD_PACKAGED_ADMISSION_FAILED');
+    process.env.EKY_E2E = '1';
+    await expect(prepareWorkspaceColdRecoveryRegistry(input)).rejects.toThrow('WORKSPACE_COLD_PACKAGED_ROOT_INVALID');
+    expect(profileCalls).toBe(0);
     expect(readdirSync(runRoot)).toEqual([]);
     passed = true;
   } finally {

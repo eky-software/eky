@@ -45,7 +45,7 @@ interface RecoveryPointStoreDependencies {
   validator: Pick<
     ProfileSnapshotBrokerClient,
     'validateProfileSnapshot'
-  >;
+  > & Partial<Pick<ProfileSnapshotBrokerClient, 'assertUpdateMaintenance'>>;
 }
 
 export interface StagedRecoveryPointRestore {
@@ -76,13 +76,22 @@ export class RecoveryPointStore {
     kind: RecoveryPointKind;
     manifest: Omit<BackupManifest, 'entries'>;
     validatedAt: string;
+    updateMaintenanceOperationId?: string;
   }): Promise<RecoveryPointIndexEntry> {
     const profileId = input.manifest.profileId;
+    const updateMaintenanceOperationId = input.updateMaintenanceOperationId;
+    const assertUpdateMaintenance = this.dependencies.validator.assertUpdateMaintenance
+      ?.bind(this.dependencies.validator);
     if (
       !profileIdPattern.test(profileId) ||
-      !isIsoDate(input.validatedAt)
+      !isIsoDate(input.validatedAt) ||
+      (updateMaintenanceOperationId !== undefined &&
+        (input.kind !== 'preUpdate' || !artifactIdPattern.test(updateMaintenanceOperationId)))
     ) {
       throw new Error('RECOVERY_POINT_INPUT_INVALID');
+    }
+    if (updateMaintenanceOperationId !== undefined && assertUpdateMaintenance === undefined) {
+      throw new Error('RECOVERY_POINT_INSPECTION_UNAVAILABLE');
     }
 
     const artifactId =
@@ -92,7 +101,8 @@ export class RecoveryPointStore {
       randomUUID();
     if (
       !artifactIdPattern.test(artifactId) ||
-      !artifactIdPattern.test(inspectionOperationId)
+      !artifactIdPattern.test(inspectionOperationId) ||
+      inspectionOperationId === updateMaintenanceOperationId
     ) {
       throw new Error('RECOVERY_POINT_INPUT_INVALID');
     }
@@ -161,7 +171,20 @@ export class RecoveryPointStore {
         operationId: inspectionOperationId,
         quarantineRoot: this.dependencies.quarantineRoot,
         stagingRoot: this.dependencies.stagingRoot,
-        validator: this.dependencies.validator,
+        validator: updateMaintenanceOperationId === undefined
+          ? this.dependencies.validator
+          : {
+              validateProfileSnapshot: (operationId) =>
+                this.dependencies.validator.validateProfileSnapshot(
+                  operationId, updateMaintenanceOperationId,
+                ),
+              async assertValidationSettled() {
+                if (assertUpdateMaintenance === undefined) {
+                  throw new Error('RECOVERY_POINT_INSPECTION_UNAVAILABLE');
+                }
+                await assertUpdateMaintenance(updateMaintenanceOperationId);
+              },
+            },
       });
       if (
         inspection.createdAt !==

@@ -28,7 +28,7 @@ hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohd
 | Suljettu työ | T1/R27:n ajokytkentä, T2/R29:n puhtaan valmistelun suoja ja T3/R28:n todellisten kuluttajien koko prosessipuun omistajuus. Korvatut aktiiviset fallbackit on poistettu ja [pysyvä T3-matriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus) hyväksytty. PR #281 sulki tämän jälkeisen rollback-testiapurin integraatiojatkon. |
 | Avoimet havainnot | Aiemmat satunnaiset Electron-käynnistys- ja packaged/legacy-timeoutit säilyvät epäonnistuneina havaintoina omille revisioilleen. Myöhempi vihreä ajo ei todista niiden kaikkia syitä korjatuiksi. [Hylkäysten historia](e2e-test-environment-history.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko) ja [rajattu apurikorjaus](e2e-test-environment-history.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus) erotetaan toisistaan. |
 | Nykyinen työ | C/R03/R04/R17/R18/R19:n sopimusten valmistelu sekä rajatut R18 cold-terminal-/journal-admission-, R17 startup-omistajuus-, R19 oletusrevision ja R03 strict-sammutuksen korjaukset. [Alla oleva nykytila](#c-paketin-valmistelu-ja-hyväksyntärajat) erottaa alemman tason näytön tuotannon cold-start-kytkennästä ja vielä tekemättömistä packaged-/PR-/main-porteista. |
-| Seuraava työ | R18:n [prosessivarauksen, työluvan ja journal V2:n sopimus](#r18-prosessivarauksen-ja-journal-v2n-sopimusehdotus) on hyväksytty. Todellinen Electron-kylmäpalautus, viisi työtilapolkua, normaali testisarja ja tyypitys läpäisivät. R19:n nykyrevision testikuluttajat on päivitetty ja katselmoitu. Laajan kriittisen Electron-sarjan yksi prosessimäärähavainto jää erilliseksi avoimeksi havainnoksi; sen yksi sallittu uusinta läpäisi kaikki 45 tapausta muuttamatta ehtoja. Todista omistajan hyväksymä [sovellusosan tiedostomääräraja](windows-installer-and-update-plan.md#c-paketin-tiedostomääräraja), puhtaan oletuspaketin inventaario ja paketoidun luonti-/tuontipalautuksen kaksi uutta tapausta. Packaged-/update-/PR-/main-portit ovat vielä tekemättä; alempi näyttö ei hyväksy niitä. |
+| Seuraava työ | PR #299:n ensimmäinen [V2-kierros](https://github.com/eky-software/eky/actions/runs/37914582669) hylättiin; erillinen [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/37914582228) läpäisi. Korjaa ja todenna testifixturen yksityinen desktop-tuontiraja, tuontitestin kolme todellista runtime-poissaolotarkistusta sekä R04:n salatun itsevalidoinnin omistajasidonta. Uusi puhdas paketti, packaged-palautus ja normaalit PR/main-portit vaaditaan korjausrevisiolle. Aiempi 45 tapauksen Electron-uusinta ei sulje alkuperäistä prosessimäärähavaintoa. |
 | Ei vielä valmis | C:n toteutus ja hyväksyntä, K, W7, M1:n muu sovellustyö, D-paketin muut ehdot ja koko 0.3.0. Lähtörevision läpäisy ei hyväksy uuden revision puuttuvia portteja. |
 
 **C:n viimeisin kokonainen normaali tarkistus main- ja testikutsujien kytkennän jälkeen:** desktopin
@@ -46,6 +46,50 @@ integraation lopputulos kirjataan sen omaan hyväksyntächeckpointiin;
 pelkän tuloksen ilmoittamiseksi ei tehdä uutta tilakirjauscommittia.
 Jokainen uusi toteutuspala alkaa omalla preflightilla. Sivulla ei ylläpidetä Goal-työkalun
 ajonaikaista tilaa.
+
+### C:n ensimmäisen PR-kierroksen rajattu korjaus
+
+Ensimmäinen V2-kierros yllä olevalla PR-headilla
+`0c503d3ac07f5227e3190fc1d975f0d801b4ed36` päättyi 31 onnistuneeseen,
+seitsemään epäonnistuneeseen ja kuuteen valinnaiseen ohitettuun jobiin.
+Hylkäys sisältää kuusi varsinaista jobia ja hyväksyntäkoonnin; koonti ei
+ole seitsemäs riippumaton sovellusvika. Ensivirheet säilyvät epäonnistuneina.
+
+- **Testifixturen omistajuus:** rekisteri ja private journal kuuluvat nimettyyn
+  `apps/desktop/e2e/workspaceColdRecoveryPackagedFixture.ts`-porttiin;
+  E2E-kuluttaja omistaa vain synteettisen tietokannan ja artifactin valmistelun.
+  Tuotannon build ei sisällä tätä testifixtureä. Rajat ja kuusi järjestelmätestiä
+  läpäisivät korjauksen jälkeen.
+- **Tuonnin tarkka elinkaari:** system-testit vaativat kaikki kolme todellista
+  `runtime.absent`-tarkistusta oikeassa järjestyksessä: stop, migrate ja validate.
+  Vanha yhden tarkistuksen odotus oli testisopimuksen poikkeama, ei lupa
+  vähentää tuotannon poissaolotodistuksia.
+- **R04:n salattu itsevalidointi:** oikea palautuspistepalvelu, salattu store,
+  MessagePort-broker, maintenance-state ja HTTP-kirjoitusraja toistivat
+  `PROFILE_MAINTENANCE_OPERATION_MISMATCH`-hylkäyksen ennen korjausta.
+  Snapshotin sisältö-/health-portti on tässä synteettinen testisovitin.
+  Korjaus sitoo erillisen tarkistusstagingin eksplisiittiseen update-omistajaan
+  [nykyisen palautuspistesopimuksen](local-backup-and-restore-plan.md#päivityksen-kirjoitussuojan-erillinen-vapautussääntö)
+  mukaan. Yksityisen protokollan versio on 9; durable-formaatit ja aikarajat
+  eivät muutu. Tämä alempi näyttö ei vielä sulje neljän paketoidun handoff-
+  hylkäyksen syytä tai hyväksy installer-polkua.
+  Keskeneräisen tarkistuksen staging poistetaan vasta samalla brokerilla
+  saadun sarjallisen valmistumiskuittauksen jälkeen. Epäonnistunut kuittaus
+  säilyttää stagingin ja alkuperäisen virheen; yhteyskatko ei vapauta
+  päivityksen kirjoitussuojaa.
+
+Korjauksen normaali testisarja ja tyyppitarkistukset läpäisivät, myös
+broker-rajan 22 regressiota ja backendin E2E-testin erillinen tiukka
+tyyppitarkistus. Riippumaton rajattu katselmus ei jättänyt korjattavaa
+havaintoa. Todellinen paketoitu Windows-todennus on edelleen erillinen
+hyväksyntäportti, ei näiden alempien tulosten johtopäätös.
+
+Korjausrevisio tarvitsee omat tarkistuksensa, riippumattoman katselmuksen,
+puhtaan paketin ja PR/main-portit. Aiemman puhtaan paketin hardened-palautus
+ja kolme packaged-tapausta läpäisivät ennen tätä korjausta; tuloksia ei
+siirretä automaattisesti myöhemmälle revisiolle. Mahdollisen salatun
+diagnostiikka-aineiston osittaisuus erotetaan sovelluksen ja siivouksen
+tuloksista; puuttuvaa aineistoa ei lasketa talteen otetuksi.
 
 ### C-paketin valmistelu ja hyväksyntärajat
 

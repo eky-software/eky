@@ -12,7 +12,8 @@ const operationIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const profileIdPattern = /^[a-f0-9]{64}$/;
 
-interface ProfileSnapshotValidator {
+export interface ProfileSnapshotValidator {
+  assertValidationSettled?(): Promise<void>;
   validateProfileSnapshot(operationId: string): ReturnType<
     ProfileSnapshotBrokerClient['validateProfileSnapshot']
   >;
@@ -63,6 +64,8 @@ export async function materializeRecoveryPoint(input: {
   let dataKey: Buffer | undefined;
   let decrypted = false;
   let extracted = false;
+  let validationStarted = false;
+  let validationCompleted = false;
 
   try {
     const protectedKey = await envelopeStore.read();
@@ -82,9 +85,11 @@ export async function materializeRecoveryPoint(input: {
     });
     extracted = true;
 
+    validationStarted = true;
     const validation = await input.validator.validateProfileSnapshot(
       input.operationId,
     );
+    validationCompleted = true;
     if (
       parsed.manifest.profileId !== input.expectedProfileId ||
       validation.profileId !== parsed.manifest.profileId ||
@@ -112,7 +117,11 @@ export async function materializeRecoveryPoint(input: {
       profileMatchesActive: validation.profileMatchesActive,
     };
   } catch (error) {
-    if (extracted) {
+    // A client timeout does not settle the backend's read of independent staging.
+    const canRemoveStaging = !validationStarted || validationCompleted ||
+      input.validator.assertValidationSettled === undefined ||
+      await input.validator.assertValidationSettled().then(() => true, () => false);
+    if (extracted && canRemoveStaging) {
       await fileSystem
         .rm(operationRoot, { force: true, recursive: true })
         .catch(() => undefined);
