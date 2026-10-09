@@ -351,7 +351,7 @@ test('rejects Eky-owned source maps but includes vendor maps in the inventory', 
 test('enforces the application-stage file count boundary', async () => {
   const root = await createStageFixture('dist/file-000.js', 'safe');
   await Promise.all(
-    Array.from({ length: 336 }, (_, index) =>
+    Array.from({ length: 351 }, (_, index) =>
       writeFixture(
         root,
         `dist/file-${String(index + 1).padStart(3, '0')}.js`,
@@ -360,6 +360,13 @@ test('enforces the application-stage file count boundary', async () => {
     ),
   );
 
+  const inventory = await inspectPackageArtifactInventory({
+    root,
+    stage: 'applicationStage',
+  });
+  assert.equal(inventory.fileCount, 352);
+
+  await writeFixture(root, 'dist/file-352.js', 'safe');
   await assert.rejects(
     inspectPackageArtifactInventory({ root, stage: 'applicationStage' }),
     /FILE_COUNT/,

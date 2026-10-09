@@ -339,6 +339,19 @@ muutoksen baseline. Uusi puhtaaseen revisioon sidottu sisältöinventaario
 ja baseline vaaditaan ennen tämän paketointimuutoksen loppuhyväksyntää;
 keskeneräisen työpuun kehityspaketointi ei korvaa niitä.
 
+#### C-paketin tiedostomääräraja
+
+C-paketin omistajan hyväksymä rajattu muutos nostaa vain
+`applicationStage.maximumFileCount`-rajan 336:sta 352:een. Desktopin
+elinkaari-, palautus- ja kirjoitussuojakorjaukset lisäävät pieniä,
+yhden vastuun tuotantotiedostoja. Muutos ei salli uusia tiedostolajeja
+tai hakemistoja eikä muuta kokonaiskokoa, yksittäisen tiedoston kokoa,
+polku- tai syvyysrajoja, inventory-hashia tai muiden stagejen rajoja.
+Rajatesti hyväksyy täsmälleen 352 tiedostoa ja hylkää 353 tiedostoa.
+Uusi puhtaan revision sisältöinventaario ja baseline vaaditaan ennen
+paketointimuutoksen loppuhyväksyntää. Yllä oleva historiallinen mittaus
+ei ole tämän muutoksen baseline.
+
 Normaali `package:windows` jää kehityskäyttöön. Erillinen
 `package:windows:pilot` vaatii puhtaan ja HEADiin sidotun buildin, `pilot`-
 kanavan, suljetun inventaarion ja validoidun pilot-sidecar-manifestin.
