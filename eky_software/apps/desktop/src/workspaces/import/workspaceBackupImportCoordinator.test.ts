@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createReadyWorkspaceEntry } from '../registry/workspaceRegistryMutations.js';
 import type {
@@ -20,6 +20,25 @@ import {
 } from './workspaceBackupImportTestSupport.js';
 
 describe('WorkspaceBackupImportCoordinator', () => {
+  it.each(['active', 'unknown'] as const)('retains staged data and refuses restart when migration leaves ownership %s', async state => {
+    const fixture = createFixture();
+    vi.spyOn(fixture.candidate, 'migrate').mockImplementationOnce(async () => {
+      fixture.runtimeAbsence.state = state;
+      throw new Error('synthetic candidate close failure');
+    });
+    const originalRegistry = fixture.registry.value;
+    await expect(fixture.coordinator.import(importInput)).rejects.toMatchObject({
+      code: 'WORKSPACE_IMPORT_LIFECYCLE_FAILED', stage: 'runtimeAbsence',
+    });
+    expect(fixture.root.candidateExists).toBe(true);
+    expect(fixture.root.stagingExists).toBe(true);
+    expect(fixture.journal.current?.state).toBe('backupStaged');
+    expect(fixture.registry.value).toEqual(originalRegistry);
+    expect(fixture.events).not.toContain('root.discardCandidate');
+    expect(fixture.events).not.toContain('root.removeImportStaging');
+    expect(fixture.lifecycle.ensureCalls).toBe(0);
+  });
+
   it('imports a distinct lineage through the closed publication lifecycle', async () => {
     const fixture = createFixture();
 
@@ -43,8 +62,10 @@ describe('WorkspaceBackupImportCoordinator', () => {
       'backup.stage',
       'journal.write.backupStaged',
       'candidate.migrate',
+      'runtimeAbsence.assert',
       'journal.write.candidateMigrated',
       'candidate.validate',
+      'runtimeAbsence.assert',
       'journal.write.candidateValidated',
       'root.removeImportStaging',
       'root.inspectCandidate',
@@ -97,6 +118,10 @@ describe('WorkspaceBackupImportCoordinator', () => {
       WorkspaceBackupImportError,
     );
 
+    expect(fixture.journal.writes.length).toBeGreaterThan(0);
+    for (const journal of fixture.journal.writes) {
+      expect(journal.formatVersion).toBe(2);
+    }
     const serialized = JSON.stringify(fixture.journal.writes);
     expect(serialized).not.toContain(TEST_IMPORT_PASSWORD);
     expect(serialized).not.toContain(TEST_IMPORT_CONTAINER_PATH);

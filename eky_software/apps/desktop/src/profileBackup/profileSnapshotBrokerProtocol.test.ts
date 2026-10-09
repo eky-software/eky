@@ -12,6 +12,21 @@ import {
 } from './profileSnapshotBrokerProtocol.js';
 
 describe('profile snapshot broker protocol', () => {
+  it.each(['beginUpdateMaintenance', 'assertUpdateMaintenance', 'endUpdateMaintenance'] as const)(
+    'accepts only an exact operation-bound %s request', (operation) => {
+      const request = createProfileSnapshotBrokerRequest({
+        operation, operationId: randomUUID(), requestId: randomUUID(),
+      });
+      expect(parseProfileSnapshotBrokerRequest(request)).toEqual(request);
+      for (const changes of [
+        { operationId: undefined }, { operationId: '../other' },
+        { protocolVersion: profileSnapshotBrokerProtocolVersion - 1 },
+        { companyId: 'untrusted' }, { maximumDurationMilliseconds: 60_000_000 },
+      ]) {
+        expect(parseProfileSnapshotBrokerRequest({ ...request, ...changes })).toBeUndefined();
+      }
+    },
+  );
   it('accepts only the exact versioned ready handshake', () => {
     expect(
       parseProfileSnapshotBrokerReady(

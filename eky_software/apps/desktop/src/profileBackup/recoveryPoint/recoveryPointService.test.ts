@@ -1,6 +1,7 @@
 import {
   mkdir,
   mkdtemp,
+  readFile,
   rm,
   writeFile,
 } from 'node:fs/promises';
@@ -11,6 +12,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { RecoveryPointIndexEntry } from './recoveryPointIndexStore.js';
 import type { ProfileRecoveryOperationalEvent } from '../profileRecoveryOperationalObserver.js';
+import { ProfileSnapshotBrokerClient } from '../profileSnapshotBrokerClient.js';
+import {
+  parseProfileSnapshotBrokerRequest,
+  profileSnapshotBrokerProtocolVersion,
+} from '../profileSnapshotBrokerProtocol.js';
 import {
   chooseAutomaticPointKind,
   isAutomaticPointDue,
@@ -163,8 +169,272 @@ describe('recovery point service', () => {
     expect(preRestore.snapshotPolicies).toEqual(['exactCurrentManifest']);
 
     const preUpdate = await createFixture();
-    await preUpdate.service.createPreUpdate();
+    await preUpdate.service.createPreUpdateWithMaintenance('11111111-1111-4111-8111-111111111111');
     expect(preUpdate.snapshotPolicies).toEqual(['exactCurrentManifest']);
+  });
+});
+
+describe('caller-owned pre-update recovery point', () => {
+  it('borrows the exact operation without acquiring or releasing maintenance', async () => {
+    const fixture = await createFixture();
+    const client = fixture.dependencies.profileSnapshotClient;
+    const snapshot = vi.spyOn(client, 'createProfileSnapshot');
+    const validate = vi.spyOn(client, 'validateProfileSnapshot');
+
+    await expect(fixture.service.createPreUpdateWithMaintenance(operationId))
+      .resolves.toEqual(fixture.createdPoint);
+
+    expect(snapshot).toHaveBeenCalledWith(operationId, 'exactCurrentManifest');
+    expect(validate).toHaveBeenCalledWith(operationId);
+    expect(fixture.calls).toEqual([
+      'assertUpdate', 'snapshot', 'validate', 'assertUpdate',
+      'create', 'rotate', 'list', 'assertUpdate',
+    ]);
+    expect(fixture.create).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'preUpdate',
+    }));
+    expect(fixture.events.map((event) => [event.eventName, event.correlationId]))
+      .toEqual([
+        ['recoveryPoint.started', operationId],
+        ['recoveryPoint.completed', operationId],
+      ]);
+    await expect(readFile(join(fixture.operationRoot, 'profile.sqlite')))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(client.assertUpdateMaintenance(operationId)).resolves.toBe('busy');
+  });
+
+  it('rejects invalid IDs before paths or events and foreign owners before snapshot or cleanup', async () => {
+    const fixture = await createFixture();
+    await expect(fixture.service.createPreUpdateWithMaintenance('../foreign'))
+      .rejects.toThrow('RECOVERY_POINT_OPERATION_INVALID');
+    expect(fixture.events).toEqual([]);
+    expect(fixture.calls).toEqual([]);
+
+    await mkdir(fixture.operationRoot);
+    await writeFile(join(fixture.operationRoot, 'profile.sqlite'), 'preserve');
+    fixture.invalidateUpdate();
+    await expect(fixture.service.createPreUpdateWithMaintenance(operationId))
+      .rejects.toThrow('PROFILE_MAINTENANCE_OPERATION_MISMATCH');
+    await expect(fixture.service.createPreUpdateWithMaintenance(artifactId))
+      .rejects.toThrow('PROFILE_MAINTENANCE_OPERATION_MISMATCH');
+    expect(fixture.calls).toEqual(['assertUpdate', 'assertUpdate']);
+    expect(fixture.create).not.toHaveBeenCalled();
+    expect(await readFile(join(fixture.operationRoot, 'profile.sqlite'), 'utf8'))
+      .toBe('preserve');
+  });
+
+  it('rejects foreign snapshot contents without persistence or release', async () => {
+    const fixture = await createFixture({ profileMatchesActive: false });
+    await expect(fixture.service.createPreUpdateWithMaintenance(operationId))
+      .rejects.toThrow('RECOVERY_POINT_SOURCE_UNHEALTHY');
+    expect(fixture.create).not.toHaveBeenCalled();
+    expect(fixture.calls).toEqual(['assertUpdate', 'snapshot', 'validate']);
+    expect(fixture.events.at(-1)).toMatchObject({
+      eventName: 'recoveryPoint.failed', retryable: false,
+    });
+  });
+
+  it.each(['create', 'rotation', 'list'] as const)(
+    'rejects late invalidation during %s without losing the durable point or releasing writes',
+    async (stage) => {
+      const fixture = await createFixture();
+      const entered = createDeferred<void>();
+      const continueStage = createDeferred<void>();
+      const pause = async () => {
+        entered.resolve();
+        await continueStage.promise;
+      };
+      if (stage === 'create') {
+        const original = fixture.create.getMockImplementation()!;
+        fixture.create.mockImplementationOnce(async () => {
+          const result = await original();
+          await pause();
+          return result;
+        });
+      } else if (stage === 'rotation') {
+        const original = fixture.dependencies.rotation.maintain;
+        vi.spyOn(fixture.dependencies.rotation, 'maintain')
+          .mockImplementationOnce(async (...args) => {
+            const result = await original(...args);
+            await pause();
+            return result;
+          });
+      } else {
+        const original = fixture.dependencies.store.list;
+        vi.spyOn(fixture.dependencies.store, 'list')
+          .mockImplementationOnce(async (...args) => {
+            const result = await original(...args);
+            await pause();
+            return result;
+          });
+      }
+      const result = expect(fixture.service.createPreUpdateWithMaintenance(operationId))
+        .rejects.toThrow('PROFILE_MAINTENANCE_OPERATION_MISMATCH');
+      await entered.promise;
+      await expect(fixture.service.createPreUpdateWithMaintenance(operationId))
+        .rejects.toThrow('RECOVERY_POINT_BUSY');
+      fixture.invalidateUpdate();
+      continueStage.resolve();
+      await result;
+
+      expect(await fixture.dependencies.store.list(profileId)).toContain(fixture.createdPoint);
+      expect(fixture.calls).not.toContain('end');
+      expect(fixture.events.some((event) => event.eventName === 'recoveryPoint.completed'))
+        .toBe(false);
+      expect(fixture.service.getStatus().operationState).toBe('idle');
+    },
+  );
+
+  it.each(['createProfileSnapshot', 'validateProfileSnapshot'] as const)(
+    'waits for the queued barrier after %s fails before cleanup, preserving the first error',
+    async (method) => {
+      const fixture = await createFixture();
+      const client = fixture.dependencies.profileSnapshotClient;
+      const barrierEntered = createDeferred<void>();
+      const barrier = createDeferred<'busy'>();
+      const firstError = new Error('SYNTHETIC_SNAPSHOT_REQUEST_FAILED');
+      vi.spyOn(client, method).mockImplementationOnce(async () => {
+        await mkdir(fixture.operationRoot, { recursive: true });
+        await writeFile(join(fixture.operationRoot, 'profile.sqlite'), 'in progress');
+        throw firstError;
+      });
+      vi.spyOn(client, 'assertUpdateMaintenance')
+        .mockResolvedValueOnce('busy')
+        .mockImplementationOnce(() => {
+          barrierEntered.resolve();
+          return barrier.promise;
+        });
+      const result = expect(fixture.service.createPreUpdateWithMaintenance(operationId))
+        .rejects.toBe(firstError);
+      await barrierEntered.promise;
+      expect(await readFile(join(fixture.operationRoot, 'profile.sqlite'), 'utf8'))
+        .toBe('in progress');
+      barrier.resolve('busy');
+      await result;
+      await expect(readFile(join(fixture.operationRoot, 'profile.sqlite')))
+        .rejects.toMatchObject({ code: 'ENOENT' });
+      expect(fixture.calls).not.toContain('end');
+      expect(fixture.events.at(-1)).toMatchObject({
+        eventName: 'recoveryPoint.failed',
+        errorCode: 'SYNTHETIC_SNAPSHOT_REQUEST_FAILED',
+      });
+    },
+  );
+
+  it('keeps staging and the first error when the completion barrier also fails', async () => {
+    const fixture = await createFixture();
+    const client = fixture.dependencies.profileSnapshotClient;
+    const firstError = new Error('SYNTHETIC_FIRST_FAILURE');
+    vi.spyOn(client, 'createProfileSnapshot').mockImplementationOnce(async () => {
+      await mkdir(fixture.operationRoot);
+      await writeFile(join(fixture.operationRoot, 'profile.sqlite'), 'preserve');
+      throw firstError;
+    });
+    vi.spyOn(client, 'assertUpdateMaintenance')
+      .mockResolvedValueOnce('busy')
+      .mockRejectedValueOnce(new Error('PROFILE_SNAPSHOT_BROKER_UNAVAILABLE'));
+
+    await expect(fixture.service.createPreUpdateWithMaintenance(operationId))
+      .rejects.toBe(firstError);
+    expect(await readFile(join(fixture.operationRoot, 'profile.sqlite'), 'utf8'))
+      .toBe('preserve');
+    expect(fixture.create).not.toHaveBeenCalled();
+    expect(fixture.events.at(-1)).toMatchObject({
+      eventName: 'recoveryPoint.failed', errorCode: 'SYNTHETIC_FIRST_FAILURE',
+    });
+  });
+
+  it('checks the fence after staging cleanup, before publishing success', async () => {
+    const fixture = await createFixture();
+    vi.spyOn(fixture.dependencies.profileSnapshotClient, 'assertUpdateMaintenance')
+      .mockResolvedValueOnce('busy')
+      .mockResolvedValueOnce('busy')
+      .mockImplementationOnce(async () => {
+        await expect(readFile(join(fixture.operationRoot, 'profile.sqlite')))
+          .rejects.toMatchObject({ code: 'ENOENT' });
+        throw new Error('PROFILE_MAINTENANCE_OPERATION_MISMATCH');
+      });
+
+    await expect(fixture.service.createPreUpdateWithMaintenance(operationId))
+      .rejects.toThrow('PROFILE_MAINTENANCE_OPERATION_MISMATCH');
+    expect(fixture.create).toHaveBeenCalledTimes(1);
+    expect(fixture.events.at(-1)).toMatchObject({
+      eventName: 'recoveryPoint.failed', retryable: false, sideEffectState: 'unknown',
+    });
+  });
+
+  it('ignores late snapshot and barrier responses after both real client requests time out', async () => {
+    const fixture = await createFixture();
+    await mkdir(fixture.operationRoot);
+    await writeFile(join(fixture.operationRoot, 'profile.sqlite'), 'remote still owns this');
+    const snapshotRequested = createDeferred<string>();
+    const barrierRequested = createDeferred<string>();
+    let receive: (value: unknown) => void = () => undefined;
+    let assertionCount = 0;
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const acknowledge = (requestId: string) => receive({
+      ok: true,
+      protocolVersion: profileSnapshotBrokerProtocolVersion,
+      requestId,
+      result: { type: 'maintenanceStatus', status: 'busy' },
+    });
+    const client = new ProfileSnapshotBrokerClient({
+      close() {},
+      send(value) {
+        const request = parseProfileSnapshotBrokerRequest(value);
+        if (request === undefined) throw new Error('INVALID_TEST_REQUEST');
+        if (request.operation === 'createProfileSnapshot') {
+          snapshotRequested.resolve(request.requestId);
+        } else if (request.operation === 'assertUpdateMaintenance') {
+          assertionCount += 1;
+          if (assertionCount === 1) acknowledge(request.requestId);
+          else barrierRequested.resolve(request.requestId);
+        } else {
+          throw new Error('UNEXPECTED_TEST_REQUEST');
+        }
+      },
+      subscribe(listener) {
+        receive = listener;
+        return () => { receive = () => undefined; };
+      },
+      subscribeClose() { return () => undefined; },
+    });
+    try {
+      fixture.dependencies.profileSnapshotClient = client;
+      receive({
+        protocolVersion: profileSnapshotBrokerProtocolVersion,
+        type: 'profileSnapshotBrokerReady',
+      });
+      const result = expect(fixture.service.createPreUpdateWithMaintenance(operationId))
+        .rejects.toMatchObject({ code: 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE' });
+      const snapshotRequestId = await snapshotRequested.promise;
+      await vi.advanceTimersByTimeAsync(35_000);
+      const barrierRequestId = await barrierRequested.promise;
+      await vi.advanceTimersByTimeAsync(35_000);
+      await result;
+
+      // The remote operation eventually finishes, but its dropped reply must
+      // not resurrect the failed caller or authorize deferred cleanup.
+      receive({
+        ok: false,
+        protocolVersion: profileSnapshotBrokerProtocolVersion,
+        requestId: snapshotRequestId,
+        errorCode: 'PROFILE_SNAPSHOT_DATABASE_FAILED',
+      });
+      acknowledge(barrierRequestId);
+      expect(await readFile(join(fixture.operationRoot, 'profile.sqlite'), 'utf8'))
+        .toBe('remote still owns this');
+      expect(fixture.create).not.toHaveBeenCalled();
+      expect(fixture.events.map((event) => event.eventName))
+        .toEqual(['recoveryPoint.started', 'recoveryPoint.failed']);
+      expect(fixture.events.at(-1)).toMatchObject({
+        errorCode: 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+      });
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      client.close();
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -228,7 +498,8 @@ async function createFixture(options: {
     persisted = true;
     return createdPoint;
   });
-  const service = new RecoveryPointService({
+  let updateValid = true;
+  const dependencies: ConstructorParameters<typeof RecoveryPointService>[0] = {
     appVersion: '0.1.0-alpha.1',
     now: () => new Date(now),
     operationIdFactory: () => operationId,
@@ -241,6 +512,13 @@ async function createFixture(options: {
       },
     },
     profileSnapshotClient: {
+      async assertUpdateMaintenance(requestedOperationId) {
+        calls.push('assertUpdate');
+        if (!updateValid || requestedOperationId !== operationId) {
+          throw new Error('PROFILE_MAINTENANCE_OPERATION_MISMATCH');
+        }
+        return 'busy';
+      },
       async beginMaintenance() {
         calls.push('begin');
         return 'busy';
@@ -315,16 +593,28 @@ async function createFixture(options: {
           : existingPoints;
       },
     },
-  });
+  };
+  const service = new RecoveryPointService(dependencies);
 
   return {
     calls,
     create,
     createdPoint,
+    dependencies,
     events,
+    invalidateUpdate() { updateValid = false; },
+    operationRoot,
     service,
     snapshotPolicies,
   };
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
 }
 
 function createPoint(

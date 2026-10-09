@@ -34,26 +34,37 @@ export class WorkspaceMaintenanceLeaseBusyError extends Error {
 
 export class InMemoryWorkspaceMaintenanceLease
   implements WorkspaceMaintenanceLease, WorkspaceMaintenanceStateReader {
-  private held = false;
+  private held: Readonly<{
+    purpose: WorkspaceMaintenancePurpose;
+    handle: WorkspaceMaintenanceLeaseHandle;
+  }> | undefined;
 
   readState(): WorkspaceMaintenanceState {
     return this.held ? 'busy' : 'idle';
   }
 
+  captureCurrentOwner(allowedPurposes: readonly WorkspaceMaintenancePurpose[]): () => void {
+    const owner = this.held;
+    if (owner === undefined || !allowedPurposes.includes(owner.purpose)) {
+      throw new WorkspaceMaintenanceLeaseBusyError();
+    }
+    return () => {
+      if (this.held !== owner) throw new WorkspaceMaintenanceLeaseBusyError();
+    };
+  }
+
   async acquire(
-    _purpose: WorkspaceMaintenancePurpose,
+    purpose: WorkspaceMaintenancePurpose,
   ): Promise<WorkspaceMaintenanceLeaseHandle> {
     if (this.held) {
       throw new WorkspaceMaintenanceLeaseBusyError();
     }
-    this.held = true;
-    let released = false;
-    return {
+    const owner = Object.freeze({ purpose, handle: Object.freeze({
       release: async () => {
-        if (released) return;
-        released = true;
-        this.held = false;
+        if (this.held === owner) this.held = undefined;
       },
-    };
+    }) });
+    this.held = owner;
+    return owner.handle;
   }
 }

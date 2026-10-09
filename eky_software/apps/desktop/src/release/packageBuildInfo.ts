@@ -42,9 +42,7 @@ export async function createPackageBuildInfo(
     buildRevision = configuredRevision;
   } else {
     try {
-      buildRevision = (
-        await readGitOutput(['rev-parse', '--short=12', 'HEAD'])
-      ).trim();
+      buildRevision = (await readGitOutput(['rev-parse', 'HEAD'])).trim();
     } catch {
       throw new Error('DESKTOP_BUILD_REVISION_UNAVAILABLE');
     }

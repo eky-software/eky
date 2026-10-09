@@ -3,14 +3,14 @@ import {
   WorkspaceBackupImportJournalValidationError,
   workspaceBackupImportJournalInvalid,
 } from './workspaceBackupImportJournalError.js';
-import type { WorkspaceBackupImportJournalV1 } from './workspaceBackupImportTypes.js';
+import type { WorkspaceBackupImportJournal } from './workspaceBackupImportTypes.js';
 import { validateWorkspaceBackupImportJournal } from './workspaceBackupImportJournalValidation.js';
 
 export const WORKSPACE_BACKUP_IMPORT_JOURNAL_MAX_BYTES = 16 * 1024;
 
 export function parseWorkspaceBackupImportJournalBytes(
   bytes: Uint8Array,
-): Readonly<WorkspaceBackupImportJournalV1> {
+): Readonly<WorkspaceBackupImportJournal> {
   try {
     if (
       !(bytes instanceof Uint8Array) ||

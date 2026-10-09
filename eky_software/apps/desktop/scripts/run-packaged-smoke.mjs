@@ -22,7 +22,11 @@ const executablePath = resolve(
   '../out/Eky-win32-x64/Eky.exe',
 );
 const smokeTimeoutMilliseconds = 120_000;
-export async function runPackagedSmoke({ releaseCandidateSmoke = false, legacyPreparation } = {}) {
+export async function runPackagedSmoke({ releaseCandidateSmoke = false, legacyPreparation, workspaceRecoveryPreparation } = {}) {
+  if (legacyPreparation !== undefined && workspaceRecoveryPreparation !== undefined) {
+    throw new Error('PACKAGED_SMOKE_PREPARATION_CONFLICT');
+  }
+  const preparation = legacyPreparation ?? workspaceRecoveryPreparation;
   const childEnvironment = { ...process.env };
   const smokeToken = randomBytes(16).toString('hex');
   const smokeRootDirectory = resolve(
@@ -53,7 +57,7 @@ export async function runPackagedSmoke({ releaseCandidateSmoke = false, legacyPr
   }
 
   try {
-    await legacyPreparation?.prepare({ smokeToken, smokeRootDirectory });
+    await preparation?.prepare({ smokeToken, smokeRootDirectory });
     if (releaseCandidateSmoke) {
       await preparePackagedReleaseCandidateSmoke({
         desktopDirectory: resolve(scriptDirectory, '..'),
@@ -72,12 +76,12 @@ export async function runPackagedSmoke({ releaseCandidateSmoke = false, legacyPr
     );
     const scenarioSwitches = legacyPreparation === undefined ? [] : ['--desktop-smoke-legacy-invoice'];
     await runSmokePhase(['--desktop-smoke', ...scenarioSwitches], 'restoreRestart');
-    await legacyPreparation?.afterRestoreExit({ smokeToken, smokeRootDirectory });
+    await preparation?.afterRestoreExit({ smokeToken, smokeRootDirectory });
     await runSmokePhase(
       ['--desktop-smoke', '--desktop-smoke-restored', ...scenarioSwitches],
       'shutdown',
     );
-    await legacyPreparation?.verifySourcePreserved();
+    await preparation?.verifySourcePreserved();
     console.log('Packaged Windows smoke check passed.');
     smokeSucceeded = true;
   } catch (error) {

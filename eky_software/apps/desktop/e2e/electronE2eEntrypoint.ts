@@ -23,6 +23,7 @@ import { createElectronE2eStartupObservation } from './electronE2eStartupObserva
 import { isElectronPdfPreviewUrl } from './electronPdfPreviewProbe.js';
 import { createFirstStartProofAdmission, createFirstStartProofObserver } from './workspaceFirstStartProofObservation.js';
 import { WorkspaceFirstStartLoadExperiment, type FirstStartLoadExperimentMode } from './workspaceFirstStartLoadExperiment.js';
+import { assertProofSingleInstanceOwnership } from './workspaceManagementCompositionProofRuntime.js';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -145,6 +146,7 @@ if (hasSingleInstanceLock) {
     async startRuntime() {
       startupObservation.record('compositionStarted');
       lifecycle = await startDesktopComposition({
+        assertSingleInstanceOwnership: assertProofSingleInstanceOwnership,
         appVersion: e2eAppVersion,
         applicationPath: config.paths.applicationPath,
         buildInfo: {

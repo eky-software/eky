@@ -35,6 +35,32 @@ afterEach(async () => {
 });
 
 describe('workspace backup import journal store', () => {
+  it.each([1, 2] as const)('preserves V%i across writes and rejects promotion or downgrade', async (formatVersion) => {
+    const fixture = await createFixture();
+    const prepared = { ...createJournal('prepared'), formatVersion };
+    await fixture.store.write(prepared);
+    const bytes = await readFile(fixture.currentPath);
+    await expect(fixture.store.write({
+      ...prepared, formatVersion: formatVersion === 1 ? 2 : 1,
+    })).rejects.toThrow(WORKSPACE_BACKUP_IMPORT_JOURNAL_INVALID);
+    expect(await readFile(fixture.currentPath)).toEqual(bytes);
+    for (const state of states) {
+      const journal = { ...createJournal(state), formatVersion };
+      await fixture.store.write(journal);
+      expect(await fixture.store.read()).toEqual(journal);
+    }
+    await fixture.store.remove(prepared.operationId);
+    expect(await fixture.store.read()).toBeUndefined();
+  });
+
+  it.each(['currentPath', 'backupPath', 'nextPath'] as const)('recovers V2 from %s without changing its format', async (slot) => {
+    const fixture = await createFixture();
+    const journal = { ...createJournal('prepared'), formatVersion: 2 };
+    await writeSlot(fixture[slot], journal);
+    expect(await fixture.store.read()).toEqual(journal);
+    expect(await readFile(fixture.currentPath)).toEqual(Buffer.from(serializeWorkspaceBackupImportJournal(journal)));
+  });
+
   it('writes, advances and reads a canonical journal', async () => {
     const fixture = await createFixture();
     const prepared = createJournal('prepared');

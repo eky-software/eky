@@ -18,6 +18,14 @@ describe('parseDesktopBuildInfo', () => {
     expect(parseDesktopBuildInfo(validBuildInfo)).toEqual(validBuildInfo);
   });
 
+  it.each([7, 12, 40])(
+    'preserves the exact %i-character legacy or full revision',
+    (length) => {
+      const metadata = { ...validBuildInfo, buildRevision: 'a'.repeat(length) };
+      expect(parseDesktopBuildInfo(metadata)).toEqual(metadata);
+    },
+  );
+
   it('rejects unknown fields and development revisions in packaged data', () => {
     expect(() =>
       parseDesktopBuildInfo({ ...validBuildInfo, localPath: 'C:/Users/example' }),

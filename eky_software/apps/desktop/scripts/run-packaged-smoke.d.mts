@@ -3,11 +3,14 @@ interface SmokePreparationContext {
   smokeRootDirectory: string;
 }
 
-export function runPackagedSmoke(options?: {
-  releaseCandidateSmoke?: boolean;
-  legacyPreparation?: {
+interface SmokePreparation {
     prepare(context: SmokePreparationContext): Promise<void>;
     afterRestoreExit(context: SmokePreparationContext): Promise<void>;
     verifySourcePreserved(): Promise<void>;
-  };
+}
+
+export function runPackagedSmoke(options?: {
+  releaseCandidateSmoke?: boolean;
+  legacyPreparation?: SmokePreparation;
+  workspaceRecoveryPreparation?: SmokePreparation;
 }): Promise<void>;

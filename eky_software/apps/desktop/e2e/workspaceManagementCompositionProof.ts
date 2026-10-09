@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
+import { acquireDesktopWorkspaceReservation } from '../src/main/desktopComposition.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../src/workspaces/maintenance/workspaceMaintenanceLease.js';
 import type { WorkspaceId } from '../src/workspaces/registry/workspaceRegistryTypes.js';
 import { deriveWorkspaceBackupReplacementRuntimePaths } from '../src/workspaces/replacement/workspaceBackupReplacementPaths.js';
@@ -27,6 +28,7 @@ import {
   snapshotReplacementIsolation,
 } from './workspaceManagementCompositionProofReplacement.js';
 import {
+  assertProofSingleInstanceOwnership,
   arraysEqual,
   captureUtilityProcessBaseline,
   createWorkspaceId,
@@ -51,15 +53,37 @@ export async function runWorkspaceManagementCompositionProof(
   let stage: WorkspaceManagementCompositionProofStage = 'sourceComposition';
   let primaryComposition: WorkspaceManagementComposition | undefined;
   let sourceComposition: WorkspaceManagementComposition | undefined;
+  let primaryReservation: Awaited<ReturnType<typeof acquireDesktopWorkspaceReservation>> | undefined;
+  let sourceReservation: Awaited<ReturnType<typeof acquireDesktopWorkspaceReservation>> | undefined;
+  let failed = false;
 
-  await rm(proofRoot, { force: true, recursive: true });
+  // A retained failed fixture is evidence, not permission to delete a former owner.
+  await mkdir(proofRoot, { mode: 0o700 });
   await Promise.all(
-    [proofRoot, primaryRoot, sourceRoot].map((root) =>
+    [primaryRoot, sourceRoot].map((root) =>
       mkdir(root, { mode: 0o700, recursive: true }),
     ),
   );
 
   try {
+    sourceReservation = await acquireDesktopWorkspaceReservation({
+      assertSingleInstanceOwnership: assertProofSingleInstanceOwnership,
+      signal: new AbortController().signal,
+      userDataRoot: sourceRoot,
+    });
+    primaryReservation = await acquireDesktopWorkspaceReservation({
+      assertSingleInstanceOwnership: assertProofSingleInstanceOwnership,
+      signal: new AbortController().signal,
+      userDataRoot: primaryRoot,
+    });
+    const sourceOwner = {
+      bindCandidate: ({ generationId }: { readonly generationId: string }) =>
+        sourceReservation!.bind(generationId, assertProofSingleInstanceOwnership),
+    };
+    const primaryOwner = {
+      bindCandidate: ({ generationId }: { readonly generationId: string }) =>
+        primaryReservation!.bind(generationId, assertProofSingleInstanceOwnership),
+    };
     const sourceLifecycle = new ProofActiveWorkspaceLifecycle(null);
     const sourceLease = new InMemoryWorkspaceMaintenanceLease();
     const sourceRelaunch = new ProofRuntimeRelaunch();
@@ -68,6 +92,7 @@ export async function runWorkspaceManagementCompositionProof(
       activeWorkspaceId: createWorkspaceId(),
       activeWorkspaceLifecycle: sourceLifecycle,
       maintenanceLease: sourceLease,
+      reservation: sourceReservation,
       runtimeRelaunch: sourceRelaunch,
       userDataRoot: sourceRoot,
     });
@@ -81,6 +106,7 @@ export async function runWorkspaceManagementCompositionProof(
     const sourceReadiness = await createProofWorkspaceBackup({
       ...input,
       backupPath: sourceBackupPath,
+      reservationOwner: sourceOwner,
       userDataRoot: sourceRoot,
       workspaceId: sourceWorkspace.workspaceId,
     });
@@ -97,6 +123,7 @@ export async function runWorkspaceManagementCompositionProof(
       activeWorkspaceId: createWorkspaceId(),
       activeWorkspaceLifecycle: primaryLifecycle,
       maintenanceLease: primaryLease,
+      reservation: primaryReservation,
       runtimeRelaunch: primaryRelaunch,
       userDataRoot: primaryRoot,
     });
@@ -111,6 +138,7 @@ export async function runWorkspaceManagementCompositionProof(
       activeWorkspaceId: firstWorkspace.workspaceId,
       activeWorkspaceLifecycle: primaryLifecycle,
       maintenanceLease: primaryLease,
+      reservation: primaryReservation,
       runtimeRelaunch: primaryRelaunch,
       userDataRoot: primaryRoot,
     });
@@ -168,6 +196,7 @@ export async function runWorkspaceManagementCompositionProof(
     const importedReadiness = await validateProofPublishedWorkspace({
       ...input,
       expectedProfileId: importedEntry.lineageIdentity.profileId,
+      reservationOwner: primaryOwner,
       userDataRoot: primaryRoot,
       workspaceId: importedWorkspace.workspaceId,
     });
@@ -283,6 +312,7 @@ export async function runWorkspaceManagementCompositionProof(
     await createProofWorkspaceBackup({
       ...input,
       backupPath: replacementBackupPath,
+      reservationOwner: primaryOwner,
       userDataRoot: primaryRoot,
       workspaceId: firstWorkspace.workspaceId,
     });
@@ -320,6 +350,7 @@ export async function runWorkspaceManagementCompositionProof(
     }
     const replacementAcceptedAfterRestart =
       await completeReplacementStartupRecovery({
+        reservationOwner: primaryOwner,
         ...input,
         expectedProfileId: replacementEntry.lineageIdentity.profileId,
         userDataRoot: primaryRoot,
@@ -390,6 +421,7 @@ export async function runWorkspaceManagementCompositionProof(
     assertProofResult(result, input.appVersion);
     return Object.freeze(result);
   } catch (error) {
+    failed = true;
     const errorCode = readSafeErrorCode(error);
     const safeErrorCode =
       errorCode !== undefined && /^[A-Z][A-Z0-9_]{1,100}$/u.test(errorCode)
@@ -401,7 +433,19 @@ export async function runWorkspaceManagementCompositionProof(
   } finally {
     primaryComposition?.dispose();
     sourceComposition?.dispose();
-    await rm(proofRoot, { force: true, recursive: true });
+    const cleanup = await Promise.allSettled(
+      [primaryReservation, sourceReservation].map(async (reservation) => {
+        if (reservation === undefined) return;
+        await reservation.assertMainOwned();
+        await reservation.close();
+      }),
+    );
+    const failure = cleanup.find((result) => result.status === 'rejected');
+    if (failure?.status === 'rejected') {
+      if (!failed) throw failure.reason;
+    } else if (!failed) {
+      await rm(proofRoot, { force: true, recursive: true });
+    }
   }
 }
 
@@ -412,12 +456,28 @@ async function createProofComposition(input: {
   readonly buildRevision: string;
   readonly maintenanceLease: InMemoryWorkspaceMaintenanceLease;
   readonly resourcesPath: string;
+  readonly reservation: Awaited<ReturnType<typeof acquireDesktopWorkspaceReservation>>;
   readonly runtimeRelaunch: ProofRuntimeRelaunch;
   readonly userDataRoot: string;
 }) {
   return createWorkspaceManagementComposition({
     activeWorkspaceId: input.activeWorkspaceId,
-    activeWorkspaceLifecycle: input.activeWorkspaceLifecycle,
+    activeWorkspaceLifecycle: {
+      quiesceWrites: (id) => input.activeWorkspaceLifecycle.quiesceWrites(id),
+      async stopAndProveHandlesClosed(id) {
+        const result = await input.activeWorkspaceLifecycle.stopAndProveHandlesClosed(id);
+        await input.reservation.assertMainOwned();
+        return result;
+      },
+      async ensurePreviousWorkspaceRunning(id) {
+        await input.reservation.assertMainOwned();
+        await input.activeWorkspaceLifecycle.ensurePreviousWorkspaceRunning(id);
+      },
+      async assertNoActiveWorkspaceRuntime() {
+        await input.activeWorkspaceLifecycle.assertNoActiveWorkspaceRuntime();
+        await input.reservation.assertMainOwned();
+      },
+    },
     appVersion: input.appVersion,
     buildRevision: input.buildRevision,
     localUpdateRuntimePaths: {
@@ -452,6 +512,12 @@ async function createProofComposition(input: {
       },
     },
     resourcesPath: input.resourcesPath,
+    reservationOwner: {
+      bindCandidate: ({ generationId }) => input.reservation.bind(
+        generationId,
+        input.maintenanceLease.captureCurrentOwner(['create', 'import', 'replace']),
+      ),
+    },
     runtimeRelaunch: input.runtimeRelaunch,
     userDataRoot: input.userDataRoot,
   });

@@ -4,6 +4,11 @@ import type {
   DesktopBackendHandle,
   StartDesktopBackendOptions,
 } from '../src/runtime/backendProcess.js';
+import { desktopBackendReadinessTimeoutMilliseconds, parseDesktopBackendStatus } from '../src/runtime/backendMessages.js';
+import {
+  matchesWorkspaceProcessReservationDescriptor,
+  parseWorkspaceProcessReservationDescriptor,
+} from '../src/runtime/workspaceProcessReservationDescriptor.js';
 import {
   waitForBackendShutdown,
   type BackendShutdownOutcome,
@@ -29,7 +34,6 @@ export interface ElectronE2eBackendController {
   ): Promise<DesktopBackendHandle>;
 }
 
-const readinessTimeoutMilliseconds = 30_000;
 const shutdownTimeoutMilliseconds = 3_000;
 
 export function createElectronE2eBackendController(
@@ -61,9 +65,10 @@ export function createElectronE2eBackendController(
       processHandle?.kill();
     },
     startBackend(options) {
+      const reservation = parseWorkspaceProcessReservationDescriptor(options.reservationTransfer.descriptor);
       if (
         processHandle !== undefined ||
-        options.config.runtimeSessionSecret !== config.backend.sessionSecret
+        options.config.runtimeSessionSecret !== config.backend.sessionSecret || reservation === undefined
       ) {
         throw new Error(
           'DESKTOP_SMOKE_E2E_BACKEND_CONTROLLER_BOUNDARY_FAILED',
@@ -80,44 +85,76 @@ export function createElectronE2eBackendController(
           ),
         );
         observe('backendForkRequested');
-        const child = runtime.fork(runnerPath, [], {
-          env: createE2eUtilityEnvironment(),
-          serviceName: 'Eky E2E Fake Backend',
-          stdio: 'ignore',
-        });
+        let child: UtilityProcess;
+        try {
+          child = runtime.fork(runnerPath, [], {
+            env: createE2eUtilityEnvironment(),
+            serviceName: 'Eky E2E Fake Backend',
+            stdio: 'ignore',
+          });
+        } catch (error) {
+          options.reservationTransfer.invalidate();
+          throw error;
+        }
         processHandle = child;
         observe('backendForkReturned');
         let ready = false;
         let startupSettled = false;
         let stopping = false;
+        const startupCancellation = new AbortController();
+        let handoff: 'spawn' | 'preparing' | 'reserved' | 'authorizing' | 'granted' = 'spawn';
         let unexpectedExitCallback: (() => void) | undefined;
-        const timer = setTimeout(() => {
+        function failStartup(error: Error): void {
+          if (startupSettled) return;
           startupSettled = true;
+          clearTimeout(timer);
+          startupCancellation.abort();
+          options.reservationTransfer.invalidate();
+          rejectStart(error);
+          try { child.kill(); } catch { /* The fixture still owns the process tree. */ }
+        }
+        const timer = setTimeout(() => {
           observe('backendReadinessTimedOut');
-          child.kill();
-          rejectStart(
+          failStartup(
             new Error('DESKTOP_SMOKE_E2E_BACKEND_READY_TIMEOUT_FAILED'),
           );
-        }, readinessTimeoutMilliseconds);
+        }, desktopBackendReadinessTimeoutMilliseconds);
         observe('backendReadinessWaitStarted');
 
         child.once('spawn', () => {
           observe('backendProcessSpawned');
-          child.postMessage(
-            {
-              config: options.config,
-              configPath: config.backend.configPath,
-              type: 'start',
-            },
-            [
-              options.secretBrokerPort,
-              options.invoicePdfArchiveBrokerPort,
-              options.profileSnapshotBrokerPort,
-            ],
-          );
-          observe('backendStartMessageSent');
+          if (startupSettled) return;
+          handoff = 'preparing';
+          void Promise.resolve().then(async () => {
+            if (startupSettled) return;
+            await options.reservationTransfer.prepare(startupCancellation.signal);
+            if (startupSettled) return;
+            handoff = 'reserved';
+            child.postMessage({ type: 'prepare', reservation });
+          }).catch(() => failStartup(new Error('BACKEND_PROCESS_RESERVATION_FAILED')));
         });
         child.on('message', (value) => {
+          const reservationStatus = parseDesktopBackendStatus(value);
+          if (reservationStatus?.type === 'reservationReady' && !startupSettled) {
+            if (handoff !== 'reserved' || !matchesWorkspaceProcessReservationDescriptor(reservation, reservationStatus.reservation)) {
+              failStartup(new Error('BACKEND_PROCESS_RESERVATION_FAILED'));
+              return;
+            }
+            handoff = 'authorizing';
+            void Promise.resolve().then(async () => {
+              if (startupSettled) return;
+              await options.reservationTransfer.assertGrant(startupCancellation.signal);
+              if (startupSettled) return;
+              options.reservationTransfer.assertCurrent();
+              handoff = 'granted';
+              child.postMessage({
+                config: options.config, configPath: config.backend.configPath,
+                generationId: reservation.generationId, type: 'start',
+              }, [options.secretBrokerPort, options.invoicePdfArchiveBrokerPort, options.profileSnapshotBrokerPort]);
+              observe('backendStartMessageSent');
+            }).catch(() => failStartup(new Error('BACKEND_PROCESS_RESERVATION_FAILED')));
+            return;
+          }
           const progress = parseElectronE2eBackendProgress(value);
           if (progress !== undefined) {
             if (!startupSettled) {
@@ -134,20 +171,18 @@ export function createElectronE2eBackendController(
             return;
           }
           if (status.type === 'failed') {
-            startupSettled = true;
-            clearTimeout(timer);
             startupFailure = Object.freeze({ backendAttempt: startCount, status });
-            rejectStart(
+            failStartup(
               new Error(readElectronE2eBackendFailureCode(status.stage)),
             );
-            child.kill();
+            return;
+          }
+          if (handoff !== 'granted') {
+            failStartup(new Error('BACKEND_PROCESS_RESERVATION_FAILED'));
             return;
           }
           if (status.port !== config.backend.port) {
-            startupSettled = true;
-            clearTimeout(timer);
-            child.kill();
-            rejectStart(
+            failStartup(
               new Error('DESKTOP_SMOKE_E2E_BACKEND_PORT_MISMATCH_FAILED'),
             );
             return;
@@ -173,8 +208,10 @@ export function createElectronE2eBackendController(
             stop() {
               return stopBackend(true);
             },
-            async stopForUpdate() {
-              await stopBackend(false);
+            async stopForUpdate(_operationId: string) {
+              // This fake runner has no operation-bound update shutdown contract.
+              // Installer acceptance must use the real packaged backend.
+              throw new Error('ELECTRON_E2E_BACKEND_UPDATE_SHUTDOWN_UNSUPPORTED');
             },
           });
 
@@ -185,11 +222,47 @@ export function createElectronE2eBackendController(
               throw new Error('ELECTRON_E2E_BACKEND_STOP_ALREADY_STARTED');
             }
             stopping = true;
-            child.postMessage({ type: 'shutdown' });
-            return await waitForBackendShutdown(child, {
+            const deadline = performance.now() + shutdownTimeoutMilliseconds;
+            const stopped = waitForBackendShutdown(child, {
               forceAfterTimeout,
               timeoutMilliseconds: shutdownTimeoutMilliseconds,
             });
+            try {
+              child.postMessage({ type: 'shutdown' });
+            } catch (error) {
+              options.reservationTransfer.invalidate();
+              await stopped.catch(() => undefined);
+              throw error;
+            }
+            try {
+              const outcome = await stopped;
+              await reclaimBeforeDeadline(outcome === 'forced'
+                ? deadline + shutdownTimeoutMilliseconds : deadline);
+              return outcome;
+            } catch (error) {
+              options.reservationTransfer.invalidate();
+              throw error;
+            }
+          }
+          async function reclaimBeforeDeadline(deadline: number): Promise<void> {
+            const cancellation = new AbortController();
+            let timeout: ReturnType<typeof setTimeout> | undefined;
+            try {
+              const remaining = deadline - performance.now();
+              if (remaining <= 0) throw new Error('BACKEND_PROCESS_RESERVATION_FAILED');
+              await Promise.race([
+                options.reservationTransfer.reclaimAfterExit(cancellation.signal),
+                new Promise<never>((_, reject) => {
+                  timeout = setTimeout(() => {
+                    cancellation.abort();
+                    reject(new Error('BACKEND_PROCESS_RESERVATION_FAILED'));
+                  }, remaining);
+                }),
+              ]);
+            } finally {
+              clearTimeout(timeout);
+              cancellation.abort();
+            }
           }
         });
         child.once('exit', () => {
@@ -197,6 +270,8 @@ export function createElectronE2eBackendController(
           clearTimeout(timer);
           processHandle = undefined;
           if (!ready) {
+            startupCancellation.abort();
+            options.reservationTransfer.invalidate();
             rejectStart(
               new Error(
                 'DESKTOP_SMOKE_E2E_BACKEND_EXITED_BEFORE_READY_FAILED',
@@ -205,6 +280,7 @@ export function createElectronE2eBackendController(
             return;
           }
           if (!stopping) {
+            options.reservationTransfer.invalidate();
             options.operationalLogger?.write(
               createDesktopOperationalEvent(
                 {

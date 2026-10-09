@@ -201,7 +201,7 @@ test('DESK-WORKSPACE-ACTIVATION-001 @critical @recovery @security migrates a pas
   });
 });
 
-test('DESK-WORKSPACE-STARTUP-001 @critical @recovery rejects an unaccepted build and recovers an unpublished adoption', async ({
+test('DESK-WORKSPACE-STARTUP-001 @critical @recovery rejects an unaccepted build and recovers interrupted workspaces', async ({
   e2eElectron,
 }) => {
   const processMetricsBefore = await readElectronProcessMetrics(
@@ -218,6 +218,8 @@ test('DESK-WORKSPACE-STARTUP-001 @critical @recovery rejects an unaccepted build
     admissionRejectedBeforeWorkspaceResolution: true,
     admissionSideEffectsAbsent: true,
     historicalCopyDiscarded: true,
+    publishedCreationRecovered: true,
+    publishedImportRecovered: true,
     historicalJournalCleared: true,
     legacyArtifactsPreserved: true,
     readoptionArtifactsMatch: true,

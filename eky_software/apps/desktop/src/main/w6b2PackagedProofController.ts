@@ -13,6 +13,7 @@ import type {
   WorkspaceManagementStatusV1,
 } from '../workspaces/management/workspaceManagementTypes.js';
 import type { DesktopLifecycleHandle } from './desktopComposition.js';
+import type { PackagedUpdateWriteState } from './w6b2PackagedUpdateWriteProbe.js';
 import type {
   W6b2PackagedProofErrorCode,
   W6b2PackagedSuccessProofConfiguration,
@@ -83,6 +84,7 @@ const recoveryPointStorageFailureCodes = new Set([
 ]);
 
 interface W6b2PackagedProofControllerOptions {
+  assertUpdateWriteState(state: PackagedUpdateWriteState): Promise<void>;
   readonly cache: Pick<LocalUpdatePackageCache, 'stageSelectedPackage'>;
   readonly configuration: Readonly<W6b2PackagedSuccessProofConfiguration>;
   readonly handoff: Pick<
@@ -163,11 +165,21 @@ async function runSourceHandoff(
     );
   }
   try {
+    await options.assertUpdateWriteState('writable');
+  } catch {
+    throw new W6b2PackagedProofControllerError('W6B2_PROOF_PREPARATION_CONCURRENCY_FAILED');
+  }
+  try {
     await options.handoff.prepareConfirmedUpdate();
   } catch (error) {
     throw new W6b2PackagedProofControllerError(
       classifyPreparationFailure(error, options.readRecoveryPointFailureCode),
     );
+  }
+  try {
+    await options.assertUpdateWriteState('blocked');
+  } catch {
+    throw new W6b2PackagedProofControllerError('W6B2_PROOF_PREPARATION_CONCURRENCY_FAILED');
   }
   try {
     await options.handoff.handoffPreparedUpdate();

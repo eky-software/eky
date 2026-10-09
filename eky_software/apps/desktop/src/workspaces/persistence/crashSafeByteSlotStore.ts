@@ -1,4 +1,5 @@
 import type {
+  CrashSafeFileSlot,
   CrashSafeFileSlotFileSystem,
   CrashSafeFileSlotNextWriter,
 } from './crashSafeFileSlot.js';
@@ -18,30 +19,33 @@ export class CrashSafeByteSlotStore {
   async recoverAndRead<T>(
     validateBytes: (bytes: Uint8Array) => T,
   ): Promise<T | undefined> {
-    const currentBytes = await this.fileSystem.readSlot('current');
-    if (currentBytes !== undefined) {
-      const current = validateBytes(currentBytes);
+    const selected = await this.inspect(validateBytes);
+    if (selected === undefined) return undefined;
+
+    if (selected.slot === 'current') {
       const removedNext = await this.fileSystem.removeSlot('next');
       const removedBackup = await this.fileSystem.removeSlot('backup');
       if (removedNext || removedBackup) await this.fileSystem.syncDirectory();
-      return current;
-    }
-
-    const backupBytes = await this.fileSystem.readSlot('backup');
-    if (backupBytes !== undefined) {
-      const backup = validateBytes(backupBytes);
+    } else if (selected.slot === 'backup') {
       await this.fileSystem.removeSlot('next');
       await this.fileSystem.moveSlot('backup', 'current');
       await this.fileSystem.syncDirectory();
-      return backup;
-    }
-
-    const nextBytes = await this.fileSystem.readSlot('next');
-    if (nextBytes !== undefined) {
-      const next = validateBytes(nextBytes);
+    } else {
       await this.fileSystem.moveSlot('next', 'current');
       await this.fileSystem.syncDirectory();
-      return next;
+    }
+    return selected.value;
+  }
+
+  // Inspect uses the same authority as recovery, but never repairs its slots.
+  async inspect<T>(
+    validateBytes: (bytes: Uint8Array) => T,
+  ): Promise<Readonly<{ slot: CrashSafeFileSlot; value: T }> | undefined> {
+    for (const slot of ['current', 'backup', 'next'] as const) {
+      const bytes = await this.fileSystem.readSlot(slot);
+      if (bytes !== undefined) {
+        return Object.freeze({ slot, value: validateBytes(bytes) });
+      }
     }
     return undefined;
   }

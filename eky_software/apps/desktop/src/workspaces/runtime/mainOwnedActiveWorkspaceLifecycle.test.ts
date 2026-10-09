@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { BackendRequestQuiescence } from '../../main/backendRequestQuiescence.js';
+import { BackendGracefulShutdownTimeoutError } from '../../runtime/backendShutdown.js';
 import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
 import { DeferredWorkspaceRuntimeRelaunch } from './deferredWorkspaceRuntimeRelaunch.js';
 import { MainOwnedActiveWorkspaceLifecycle } from './mainOwnedActiveWorkspaceLifecycle.js';
@@ -8,6 +9,8 @@ import { MainOwnedActiveWorkspaceLifecycle } from './mainOwnedActiveWorkspaceLif
 const workspaceId = validateWorkspaceId(
   '11111111-1111-4111-8111-111111111111',
 );
+
+afterEach(() => vi.useRealTimers());
 
 describe('MainOwnedActiveWorkspaceLifecycle', () => {
   it('quiesces writes and closes every workspace-owned resource in order', async () => {
@@ -17,6 +20,7 @@ describe('MainOwnedActiveWorkspaceLifecycle', () => {
       workspaceId,
       requestQuiescence,
       {
+        ...createResources(events),
         async closeBrokers() {
           events.push('brokers');
         },
@@ -25,6 +29,7 @@ describe('MainOwnedActiveWorkspaceLifecycle', () => {
         },
         async stopBackend() {
           events.push('backend');
+          return 'exited';
         },
         async stopRecoveryPointScheduler() {
           events.push('scheduler');
@@ -50,6 +55,7 @@ describe('MainOwnedActiveWorkspaceLifecycle', () => {
       'capabilities',
       'backend',
       'brokers',
+      'clean',
     ]);
     expect(requestQuiescence.readState()).toBe('stopped');
   });
@@ -152,9 +158,10 @@ describe('MainOwnedActiveWorkspaceLifecycle', () => {
 
   it('is idempotent after resources have been proved closed', async () => {
     const resources = {
+      ...createResources([]),
       closeBrokers: vi.fn(async () => undefined),
       disposeCapabilities: vi.fn(async () => undefined),
-      stopBackend: vi.fn(async () => undefined),
+      stopBackend: vi.fn(async () => 'exited' as const),
       stopRecoveryPointScheduler: vi.fn(async () => undefined),
     };
     const lifecycle = new MainOwnedActiveWorkspaceLifecycle(
@@ -191,6 +198,138 @@ describe('MainOwnedActiveWorkspaceLifecycle', () => {
     ).rejects.toThrow('WORKSPACE_RUNTIME_IDENTITY_MISMATCH');
   });
 
+  it.each(['exited', 'forced', 'unknown'] as const)(
+    'joins an ordinary stop without changing its outcome (%s)', async (outcome) => {
+      const fixture = createStopFixture();
+      const entered = deferred();
+      const gate = deferred();
+      fixture.resources.stopBackend.mockImplementation(async () => {
+        entered.resolve();
+        await gate.promise;
+        if (outcome === 'unknown') throw new Error('synthetic private stop');
+        return outcome;
+      });
+      await fixture.lifecycle.quiesceWrites(workspaceId);
+      const ordinary = fixture.lifecycle.stopAndProveHandlesClosed(workspaceId);
+      await entered.promise;
+      const update = fixture.lifecycle.stopForUpdate(workspaceId, '11111111-1111-4111-8111-111111111111');
+      const results = Promise.allSettled([ordinary, update]);
+      gate.resolve();
+      expect((await results).map(result => result.status)).toEqual(
+        outcome === 'unknown' ? ['rejected', 'rejected'] : ['fulfilled', 'rejected'],
+      );
+      await expect(fixture.lifecycle.stopForUpdate(workspaceId, '11111111-1111-4111-8111-111111111111'))
+        .rejects.toThrow('WORKSPACE_RUNTIME_STOP_FAILED');
+      expect(fixture.resources.stopBackend).toHaveBeenCalledOnce();
+      expect(fixture.resources.stopBackendForUpdate).not.toHaveBeenCalled();
+      expect(fixture.resources.markCleanShutdown).toHaveBeenCalledTimes(outcome === 'exited' ? 1 : 0);
+      if (outcome === 'unknown') {
+        await expect(fixture.lifecycle.assertNoActiveWorkspaceRuntime()).rejects.toThrow();
+      } else {
+        await fixture.lifecycle.assertNoActiveWorkspaceRuntime();
+      }
+    },
+  );
+
+  it.each([false, true])('shares a strict stop with ordinary/reentrant callers (failure: %s)', async failure => {
+    const fixture = createStopFixture();
+    const entered = deferred();
+    const gate = deferred();
+    let reentrant: Promise<void> | undefined;
+    fixture.resources.stopBackendForUpdate.mockImplementation(async () => {
+      reentrant = fixture.lifecycle.stopForUpdate(workspaceId, '11111111-1111-4111-8111-111111111111');
+      void reentrant.catch(() => undefined);
+      entered.resolve();
+      await gate.promise;
+      if (failure) throw new Error('synthetic private timeout');
+    });
+    const update = fixture.lifecycle.stopForUpdate(workspaceId, '11111111-1111-4111-8111-111111111111');
+    await entered.promise;
+    const ordinary = fixture.lifecycle.stopAndProveHandlesClosed(workspaceId);
+    const results = Promise.allSettled([update, ordinary, reentrant]);
+    gate.resolve();
+    expect((await results).map(result => result.status)).toEqual(
+      Array(3).fill(failure ? 'rejected' : 'fulfilled'),
+    );
+    expect(fixture.resources.stopBackendForUpdate).toHaveBeenCalledOnce();
+    expect(fixture.resources.stopBackend).not.toHaveBeenCalled();
+    expect(fixture.resources.closeBrokers).toHaveBeenCalledOnce();
+    expect(fixture.resources.markCleanShutdown).toHaveBeenCalledTimes(failure ? 0 : 1);
+    expect(fixture.admission.begin('POST')).toBeUndefined();
+  });
+
+  it('does not reuse another update operation even after a graceful stop', async () => {
+    const fixture = createStopFixture();
+    const first = '11111111-1111-4111-8111-111111111111';
+    const second = '22222222-2222-4222-8222-222222222222';
+    const started = fixture.lifecycle.stopForUpdate(workspaceId, first);
+    await expect(fixture.lifecycle.stopForUpdate(workspaceId, second)).rejects.toMatchObject({
+      firstFailure: { phase: 'backend', reason: 'notGraceful' },
+    });
+    await started;
+    await expect(fixture.lifecycle.stopForUpdate(workspaceId, second)).rejects.toThrow();
+    await fixture.lifecycle.stopForUpdate(workspaceId, first);
+    expect(fixture.resources.stopBackendForUpdate).toHaveBeenCalledExactlyOnceWith(first);
+    expect(fixture.resources.stopBackend).not.toHaveBeenCalled();
+  });
+
+  it.each(['quiescence', 'scheduler'] as const)(
+    'keeps update admission closed after a preparation failure (%s)', async mode => {
+      vi.useFakeTimers();
+      const fixture = createStopFixture();
+      const mutation = mode === 'quiescence' ? fixture.admission.begin('POST') : undefined;
+      if (mode === 'scheduler') fixture.resources.stopRecoveryPointScheduler
+        .mockRejectedValue(new Error('synthetic private scheduler'));
+      const result = expect(fixture.lifecycle.stopForUpdate(workspaceId, '11111111-1111-4111-8111-111111111111'))
+        .rejects.toThrow('WORKSPACE_RUNTIME_QUIESCE_FAILED');
+      await vi.runAllTimersAsync();
+      await result;
+      mutation?.release();
+      expect(fixture.admission.begin('POST')).toBeUndefined();
+      expect(fixture.admission.begin('GET')).toBeUndefined();
+      expect(fixture.resources.stopBackend).not.toHaveBeenCalled();
+      expect(fixture.resources.stopBackendForUpdate).not.toHaveBeenCalled();
+      expect(fixture.resources.markCleanShutdown).not.toHaveBeenCalled();
+      await expect(fixture.lifecycle.assertNoActiveWorkspaceRuntime()).rejects.toThrow();
+      await expect(fixture.lifecycle.stopForUpdate(workspaceId, '11111111-1111-4111-8111-111111111111')).rejects.toThrow();
+    },
+  );
+
+  it('preserves the first safe shutdown cause separately from a later broker failure', async () => {
+    const fixture = createStopFixture();
+    fixture.resources.stopBackendForUpdate.mockRejectedValue(new BackendGracefulShutdownTimeoutError());
+    fixture.resources.closeBrokers.mockRejectedValue(new Error('synthetic-private-broker-detail'));
+    const result = fixture.lifecycle.stopForUpdate(workspaceId, '11111111-1111-4111-8111-111111111111');
+    await expect(result).rejects.toMatchObject({
+      message: 'WORKSPACE_RUNTIME_STOP_FAILED',
+      firstFailure: { phase: 'backend', reason: 'gracefulTimeout' },
+      cleanupFailures: [{ phase: 'brokers', reason: 'operationFailed' }],
+    });
+    const failure = await result.catch(error => error);
+    expect(JSON.stringify(failure)).not.toContain('synthetic-private-broker-detail');
+    expect(Object.isFrozen(failure.firstFailure)).toBe(true);
+    expect(Object.isFrozen(failure.cleanupFailures)).toBe(true);
+    await expect(fixture.lifecycle.stopForUpdate(workspaceId, '11111111-1111-4111-8111-111111111111')).rejects.toBe(failure);
+    expect(fixture.resources.stopBackendForUpdate).toHaveBeenCalledOnce();
+    expect(fixture.resources.stopBackend).not.toHaveBeenCalled();
+  });
+
+  it.each(['disposeCapabilities', 'closeBrokers', 'markCleanShutdown'] as const)(
+    'retains a strict cleanup failure without a second backend stop (%s)', async resource => {
+      const fixture = createStopFixture();
+      fixture.resources[resource].mockRejectedValue(new Error('synthetic private cleanup'));
+      await expect(fixture.lifecycle.stopForUpdate(workspaceId, '11111111-1111-4111-8111-111111111111'))
+        .rejects.toThrow('WORKSPACE_RUNTIME_STOP_FAILED');
+      await expect(fixture.lifecycle.stopAndProveHandlesClosed(workspaceId))
+        .rejects.toThrow('WORKSPACE_RUNTIME_STOP_FAILED');
+      expect(fixture.resources.stopBackendForUpdate).toHaveBeenCalledOnce();
+      expect(fixture.resources.closeBrokers).toHaveBeenCalledOnce();
+      expect(fixture.resources.markCleanShutdown).toHaveBeenCalledTimes(resource === 'markCleanShutdown' ? 1 : 0);
+      expect(fixture.resources.stopBackend).not.toHaveBeenCalled();
+      await expect(fixture.lifecycle.assertNoActiveWorkspaceRuntime()).rejects.toThrow();
+    },
+  );
+
   it('attempts every close step and fails closed when one resource fails', async () => {
     const events: string[] = [];
     const relaunch = vi.fn();
@@ -198,6 +337,7 @@ describe('MainOwnedActiveWorkspaceLifecycle', () => {
       workspaceId,
       new BackendRequestQuiescence(),
       {
+        ...createResources(events),
         async closeBrokers() {
           events.push('brokers');
         },
@@ -207,6 +347,7 @@ describe('MainOwnedActiveWorkspaceLifecycle', () => {
         },
         async stopBackend() {
           events.push('backend');
+          return 'exited';
         },
         async stopRecoveryPointScheduler() {
           events.push('scheduler');
@@ -233,6 +374,28 @@ describe('MainOwnedActiveWorkspaceLifecycle', () => {
   });
 });
 
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>(complete => { resolve = complete; });
+  return { promise, resolve };
+}
+
+function createStopFixture() {
+  const resources = {
+    closeBrokers: vi.fn(async () => undefined),
+    disposeCapabilities: vi.fn(async () => undefined),
+    markCleanShutdown: vi.fn(async () => undefined),
+    stopBackend: vi.fn(async (): Promise<'exited' | 'forced'> => 'exited'),
+    stopBackendForUpdate: vi.fn(async () => undefined),
+    stopRecoveryPointScheduler: vi.fn(async () => undefined),
+  };
+  const admission = new BackendRequestQuiescence();
+  const lifecycle = new MainOwnedActiveWorkspaceLifecycle(
+    workspaceId, admission, resources, new DeferredWorkspaceRuntimeRelaunch(() => undefined),
+  );
+  return { admission, lifecycle, resources };
+}
+
 function createResources(events: string[]) {
   return {
     async closeBrokers() {
@@ -243,6 +406,13 @@ function createResources(events: string[]) {
     },
     async stopBackend() {
       events.push('backend');
+      return 'exited' as const;
+    },
+    async stopBackendForUpdate() {
+      events.push('strictBackend');
+    },
+    async markCleanShutdown() {
+      events.push('clean');
     },
     async stopRecoveryPointScheduler() {
       events.push('scheduler');

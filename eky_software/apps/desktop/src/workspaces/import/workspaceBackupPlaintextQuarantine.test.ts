@@ -29,6 +29,16 @@ afterEach(async () => {
 });
 
 describe('WorkspaceBackupPlaintextQuarantine', () => {
+  it('checks absence without creating directories and rejects retained plaintext without deleting it', async () => {
+    const fixture = await createFixture();
+    await expect(fixture.quarantine.assertNoStalePayloads()).resolves.toBeUndefined();
+    expect(await readdir(fixture.root)).toEqual([]);
+    const path = await fixture.quarantine.createPayloadPath();
+    await expect(fixture.quarantine.assertNoStalePayloads()).resolves.toBeUndefined();
+    await writePrivateFile(path, 'synthetic retained plaintext');
+    await expectRecoveryRequired(fixture.quarantine.assertNoStalePayloads(), [path]);
+    expect(await readFile(path, 'utf8')).toBe('synthetic retained plaintext');
+  });
   it('removes partial and complete stale payloads without a journal and is idempotent', async () => {
     const fixture = await createFixture();
     const partialPath = await fixture.quarantine.createPayloadPath();
@@ -121,6 +131,7 @@ describe('WorkspaceBackupPlaintextQuarantine', () => {
       userDataRoot: root,
     });
 
+    await expectRecoveryRequired(quarantine.assertNoStalePayloads(), [outsideRoot]);
     await expectRecoveryRequired(quarantine.recoverStalePayloads(), [
       outsideRoot,
       outsideFile,

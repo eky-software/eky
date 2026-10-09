@@ -7,12 +7,15 @@ const recoveryPointReference =
   '22222222-2222-4222-8222-222222222222';
 
 describe('update profile protection composition', () => {
-  it('exposes only the seven narrow update protection operations', () => {
+  it('exposes only the named update protection operations', () => {
     const fixture = createFixture();
 
     expect(Object.keys(fixture.protection).sort()).toEqual([
+      'assertUpdateMaintenance',
+      'beginUpdateMaintenance',
       'createValidatedPreMigrationPoint',
       'createValidatedPreUpdatePoint',
+      'endUpdateMaintenance',
       'enterMaintenance',
       'leaveMaintenance',
       'releaseProtectedPoint',
@@ -25,11 +28,24 @@ describe('update profile protection composition', () => {
     const fixture = createFixture();
 
     await expect(
-      fixture.protection.createValidatedPreUpdatePoint(),
+      fixture.protection.createValidatedPreUpdatePoint(operationId),
     ).resolves.toBe(recoveryPointReference);
+    expect(fixture.createPreUpdateWithMaintenance).toHaveBeenCalledWith(operationId);
     await expect(
       fixture.protection.createValidatedPreMigrationPoint(),
     ).resolves.toBe(recoveryPointReference);
+  });
+
+  it('keeps the exact update fence separate from ordinary backup release', async () => {
+    const fixture = createFixture();
+    await fixture.protection.beginUpdateMaintenance(operationId);
+    await fixture.protection.assertUpdateMaintenance(operationId);
+    await fixture.protection.endUpdateMaintenance(operationId);
+    expect(fixture.beginUpdateMaintenance).toHaveBeenCalledWith(operationId);
+    expect(fixture.assertUpdateMaintenance).toHaveBeenCalledWith(operationId);
+    expect(fixture.endUpdateMaintenance).toHaveBeenCalledWith(operationId);
+    expect(fixture.beginMaintenance).not.toHaveBeenCalled();
+    expect(fixture.endMaintenance).not.toHaveBeenCalled();
   });
 
   it('delegates maintenance and returns only bounded active-profile health', async () => {
@@ -94,6 +110,10 @@ function createFixture(
 ) {
   const beginMaintenance = vi.fn(async () => 'busy' as const);
   const endMaintenance = vi.fn(async () => 'normal' as const);
+  const beginUpdateMaintenance = vi.fn(async () => 'busy' as const);
+  const assertUpdateMaintenance = vi.fn(async () => 'busy' as const);
+  const endUpdateMaintenance = vi.fn(async () => 'normal' as const);
+  const createPreUpdateWithMaintenance = vi.fn(async () => createPoint());
   const restoreRecoveryPoint = vi.fn(async () => 'relaunching' as const);
   const protection = createProfileProtectionComposition({
     directSetupRecoveryStore: {
@@ -102,6 +122,9 @@ function createFixture(
     profileSnapshotClient: {
       beginMaintenance,
       endMaintenance,
+      beginUpdateMaintenance,
+      assertUpdateMaintenance,
+      endUpdateMaintenance,
       validateActiveProfile: vi.fn(async () => ({
         artifactCount: 3,
         artifactTotalByteSize: 4_096,
@@ -113,7 +136,7 @@ function createFixture(
     },
     recoveryPointService: {
       createPreMigration: vi.fn(async () => createPoint()),
-      createPreUpdate: vi.fn(async () => createPoint()),
+      createPreUpdateWithMaintenance,
     },
     restoreRecoveryPoint,
     updateJournalStore: {
@@ -148,6 +171,10 @@ function createFixture(
   return {
     beginMaintenance,
     endMaintenance,
+    beginUpdateMaintenance,
+    assertUpdateMaintenance,
+    endUpdateMaintenance,
+    createPreUpdateWithMaintenance,
     protection,
     restoreRecoveryPoint,
   };

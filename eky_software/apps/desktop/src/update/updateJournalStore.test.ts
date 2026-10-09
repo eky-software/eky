@@ -104,6 +104,37 @@ describe('update journal store', () => {
     await store.clear();
     await expect(store.read()).resolves.toBeUndefined();
   });
+
+  it('reads the live current journal without creating missing slots', async () => {
+    const fixture = await createFixture();
+    const store = new UpdateJournalStore(fixture.filePath);
+    await expect(store.readForLiveOwner()).resolves.toBeUndefined();
+    const journal = createJournal();
+    await store.write(journal);
+    const before = await readFile(fixture.filePath);
+    await expect(store.readForLiveOwner()).resolves.toEqual(journal);
+    expect(await readFile(fixture.filePath)).toEqual(before);
+  });
+
+  it.each([true, false])(
+    'preserves every recovery slot instead of authorizing a live owner (current=%s)',
+    async (hasCurrent) => {
+      const fixture = await createFixture();
+      if (hasCurrent) await writeSlot(fixture.filePath, createJournal({ revision: 3 }));
+      await writeSlot(`${fixture.filePath}.backup`, createJournal());
+      await writeSlot(`${fixture.filePath}.next`, createJournal({ revision: 2 }));
+      const paths = [
+        ...(hasCurrent ? [fixture.filePath] : []),
+        `${fixture.filePath}.backup`, `${fixture.filePath}.next`,
+      ];
+      const before = await Promise.all(paths.map((path) => readFile(path)));
+      await expect(new UpdateJournalStore(fixture.filePath).readForLiveOwner())
+        .rejects.toThrow('UPDATE_JOURNAL_CONFLICT');
+      expect(await Promise.all(paths.map((path) => readFile(path)))).toEqual(before);
+      if (!hasCurrent) await expect(readFile(fixture.filePath))
+        .rejects.toMatchObject({ code: 'ENOENT' });
+    },
+  );
 });
 
 async function createFixture() {

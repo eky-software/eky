@@ -58,6 +58,11 @@ Mandatory boundaries:
 - keep backup, restore, recovery-point and update orchestration in Electron
   main infrastructure; business modules expose only narrowly named snapshot or
   validation ports
+- keep update maintenance distinct from ordinary backup release in the private
+  snapshot broker: expiry, drain failure or disconnect invalidates the update
+  but must not reopen business writes; assertions require a drained, valid
+  operation, and awaited results must recheck their captured owner before
+  acknowledgement (see the [update fence contract](../../docs/architecture/local-backup-and-restore-plan.md#päivityksen-kirjoitussuojan-erillinen-vapautussääntö))
 - when changing local workspace registry, creation, import, replacement,
   switching or adoption, read ADR-0011 and the local company workspace plan;
   Electron main may coordinate lifecycle and filesystem roots but must not
@@ -112,7 +117,21 @@ Mandatory boundaries:
 - workspace backup import must authenticate the container through the backup
   owner's private port, stop the active runtime before full SQLite validation,
   publish the root before the registry entry, and restore the previous runtime
-  on every terminal success or failure path
+  on every ordinary in-session terminal success or failure path; the explicit
+  before-runtime-start recovery mode instead proves runtime absence, exact
+  registry/root consistency and the ready continuation before journal removal,
+  leaving startup and health validation to their normal owners
+  ([ADR-0011 cold terminal](../../docs/decisions/ADR-0011-local-multi-workspace-company-model.md#createimport-recoveryn-kylmäkäynnistyksen-terminal))
+- cold create/import admission must derive competing journal paths from main's
+  root, the authoritative registry and the selected operation before any
+  repairing store read; include passive and recovery-required profiles, preserve
+  lazy slot precedence, and repeat admission under the installation lease;
+  read-only admission is not runtime-absence or recovery authorization (see the
+  [workspace recovery contract](../../docs/architecture/local-company-workspace-plan.md))
+- the cold recovery's required admission callback must freshly assert the
+  selected owner after acquiring its lease and proving absence, before any
+  repairing read or plaintext cleanup; preserve its existing safe recovery
+  code through startup without allowing raw error suffixes
 - expose no generic active-profile restore capability to the renderer in the
   multi-workspace product; a different lineage is imported as a new workspace,
   and active data replacement is allowed only through the exact-lineage
@@ -126,6 +145,11 @@ Mandatory boundaries:
   before any later health/session check; rollback may replace profile files
   only after backend shutdown succeeds, otherwise retain recovery evidence
   and keep business UI closed
+- failed backend startup before a returned handle still owns its process;
+  recovery requires observed absence and a settled migration callback, or
+  proof that startup was never attempted; missing handles and kill return
+  values do not authorize profile mutation or another runtime (see the
+  [startup ownership contract](../../docs/architecture/local-desktop-implementation-plan.md#käynnistyksen-omistajuus-ennen-backend-kahvaa))
 - never expose a backup password, derived key, recovery-point key, raw
   manifest or local backup/update path to the renderer
 - never accept encryption parameters, an executable, process arguments, a
@@ -167,6 +191,25 @@ Mandatory boundaries:
 - update shutdown must complete gracefully before installer handoff; a forced
   backend kill is an ordinary shutdown fallback only and never a successful
   update-shutdown acknowledgement
+- the private update shutdown command must bind the same snapshot-broker
+  operation: require completed startup and assert the fence before server
+  close and after its awaited completion, before closing the broker; preserve
+  the first shutdown intent, reject conflicting update operations and attempt
+  every owned close without converting a failure into exit-zero
+- ordinary and update shutdown share the first stop task and its actual outcome;
+  update callers may join only the same operation-bound update stop, never an
+  ordinary stop even when its exit is zero; preserve that operation through
+  composition, lifecycle, process sender and packaged proof adapters;
+  strict failure must not fall back to ordinary kill or reopen admission, all
+  owned closes are attempted, and clean-shutdown marking follows successful
+  cleanup plus graceful exit (see the
+  [update shutdown contract](../../docs/architecture/local-desktop-implementation-plan.md#päivityksen-hallittu-sulku))
+- retain one live update lease and operation fence from pre-update snapshot
+  through handoff; a journal alone cannot recreate that live authority;
+  use non-mutating journal admission, latch the first ownership ambiguity and
+  mark write uncertainty before awaiting publication; only a verified terminal
+  write/readback plus valid fence may release before shutdown starts, while
+  uncertain writes or any started shutdown keep ownership until restart
 - commit accepted-build and accepted-journal state before best-effort recovery
   protection cleanup; cleanup failure may leave an extra protected point but
   must not turn a committed acceptance into rollback-required state

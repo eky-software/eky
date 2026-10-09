@@ -121,6 +121,18 @@ test('WORKSPACE-CREATE-001 @critical @security creates an isolated ready workspa
       registry,
       rootStore,
       userDataRoot,
+      workspaceRuntimeAbsence: {
+        async assertNoActiveWorkspaceRuntime() {
+          // This isolated system fixture owns its Node backends, not Electron utilities.
+          if (priorCleanupUnverified) throw new Error('WORKSPACE_RUNTIME_ABSENCE_UNVERIFIED');
+          for (const backend of startedBackends) {
+            if (await backend.workload.readState() !== 'exited') {
+              throw new Error('WORKSPACE_RUNTIME_STILL_ACTIVE');
+            }
+          }
+          for (const port of usedPorts) await waitForLoopbackPortRelease(port);
+        },
+      },
     });
 
     await expect(coordinator.create('Tyhja testiyritys')).resolves.toEqual({

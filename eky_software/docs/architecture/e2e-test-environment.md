@@ -241,6 +241,12 @@ Erillinen koetulos ei yksin hyväksy fixturen todellista kytkentää.
 Tuotantolifecycle, packaged-artifact ja profiilin sopimus ovat erillisiä
 hyväksyntärajoja; niitä ei muuteta testiharness-työn sivuvaikutuksena.
 
+Electron developmentin fake-backend ei todista päivityksen operation-
+sidottua graceful-exitiä: sen update-stop hylätään erikseen eikä ordinary-
+sulkua muuteta päivityksen onnistumiseksi. Tavallinen development-sulku
+säilyy. Paketoidut päivitys-/migraatiokokeet käyttävät oikeaa backend-kahvaa
+ja välittävät update-operaation tunnisteen muuttumattomana.
+
 ## Testikohtainen runtime
 
 Nykyinen konfiguraatio käyttää yhtä workeria. Testikohtainen runtime saa
@@ -321,6 +327,24 @@ turvaraja. Electron-testin oma enimmäisaika koostetaan mahdollisen synteettisen
 backend-fixturen, Electron-yhteyden, ensimmäisen ikkunan, sulkemisen ja
 skenaarion turvabudjeteista; mikään näistä ajoista ei ole onnistumisen
 valmis-signaali.
+
+Desktopin workspace-valmistelutodistukset käyttävät samaa main-omistajan
+prosessivarausta kuin tuotanto. `workspaceFirstStartMigrationProofFixtures`
+rajaa current/historical-candidatet yhteen `withWorkspaceReservation`-
+jaksoon täsmällisen testiasennusjuuren alla. Saman juuren valmistelu on
+peräkkäinen; varaus palautuu mainille todellisen exitin ja callbackien
+valmistumisen jälkeen ja suljetaan ennen varsinaisen compositionin käynnistystä.
+Myöhempi tarkistus hankkii oman uuden jakson, eikä vanha callback saa käyttää
+sen valtuutta. `app.hasSingleInstanceLock()` tarkistetaan tuoreena myös
+testikutsujissa. Tämä ei korvaa fixturen ulompaa prosessipuun todistusta.
+
+Valmistelutodistuksen epäonnistunut backend-sulku ei poista kahvaa seurannasta.
+Epäonnistunut first-start-/activation-koe säilyttää juurensa ja historialliset
+migraatiot; onnistunut koe poistaa ne vasta valmiiden varausjaksojen ja
+nykyisen utility-process-poistumistodisteen jälkeen. Uudet
+`workspaceProofReservation.test.ts`-regressiot kuuluvat tavalliseen desktop-
+testikomentoon. Ne todistavat orkestroinnin sopimuksen mockatulla OS-rajalla,
+eivät yksin oikean Electron-prosessin tai paketoidun sovelluksen hyväksyntää.
 
 Electronin julkisen sulun jälkeen suoritetaan aina omistajan stop ja
 koko puun poistumisen varmennus, myös sovelluksen jo sulkeuduttua tai
@@ -555,12 +579,49 @@ start-viestin lähetyksen ja validoidun ready-viestin vastaanoton.
 Kahva tai lähetetty viesti ei todista backendin valmiutta. Nämä havainnot
 käyttävät samaa 16 merkinnän rajaa ja nykyistä yksityistä lukukanavaa;
 ne eivät lisää lokitusta, prosessivalvojaa, kuittausta tai aikarajaa.
+Controller ja testibackend käyttävät tuotannon varaussidonnan parseria:
+prepare vapauttaa main-varauksen, reservationReady todistaa lapsen
+OS-varauksen ja saman sukupolven start myöntää luvan ennen backend-importia.
+Testi ei ohita varausporttia. Lopetus palauttaa main-varauksen vasta
+todellisen exitin jälkeen; epäselvä tila lukitsee jatkon. Ennen kirjoittavaa
+importia kesken jäänyt varauskysely ei estä määräaikaista poistumista.
+Tämä sovittaa olemassa olevan synteettisen backendin nykyiseen sopimukseen,
+ei korvaa oikean backendin, migraatioportin tai paketoidun päivityksen testejä.
+Testibackend ei edelleenkään hyväksy päivitysoperaatioon sidottua sammutusta.
+`SYS-ELECTRON-BACKEND-STARTUP-001` käyttää saman kättelyn synteettistä
+prosessikahvaa; se ei käsittele testibackendin tavallista sulkua
+päivityssammutuksen hyväksyntänä. `WORKSPACE-CREATE-001` käyttää erillistä
+Node-järjestelmäfixturen prosessipuu- ja porttipoissaolon todistusta.
+Todellinen Electron-omistajuus todennetaan desktop-käyttäjäpoluissa.
 Havaintokutsun poikkeus ei muuta controllerin onnistumista, alkuperäistä
 käynnistysvirhettä tai sulkemista. Tuotannon käynnistyspolku ei muutu.
 Erillinen `DESK-STARTUP-OBSERVATION-001` todistaa havaintojen todellisen
 kytkennän nykyiseen main-prosessiin. Se ei lisää diagnostiikan saatavuutta
 PDF-käyttäjäpolun onnistumisehdoksi. `DESK-RESTART-001` todistaa nykyisellä
 yhteydellä keskeneräisen lukupyynnön päättymisen restartin siivouksessa.
+
+`DESK-WORKSPACE-STARTUP-001` tarkistaa V2:n julkaistun luonti- ja
+tuontikohteen cold-recoveryn oikealla compositionilla ja Electron-kandidaatilla.
+Valmistelun varaus suljetaan ennen compositionia ja hankitaan uudelleen
+ennen jälkitarkistusta. Rekisteri, journalin poisto ja business-tavut
+verrataan myös idempotentissa toisessa käynnistyksessä. Testin pysäytysraja
+on ennen business-backendin avaamista: tämä todistus ei korvaa paketoidun
+sovelluksen backup/restore/restart- tai päivitysportteja. Virheessä aineisto
+ja migraatioprefiksi säilyvät; siivousvirhe ei korvaa ensivirhettä.
+
+Paketoidut `DESK-WORKSPACE-COLD-PACKAGED-CREATION-001` ja
+`DESK-WORKSPACE-COLD-PACKAGED-IMPORT-001` täydentävät tätä nykyisessä
+`playwright.packaged-legacy.config.ts`-portissa. Ne valmistelevat yksilölliseen
+smoke-juureen suljetun synteettisen V2 `rootPublished` -tilan, eivät
+sovelluksen ajonaikaista testiohjainta. Normaali paketoitu startup palauttaa
+passiivisen kohteen, ja aktiivinen alkuperäinen työtila suorittaa nykyisen
+backup/inspect/restore/restart-smoken. Tarkistus kummankin poistumisen jälkeen
+vaatii OS-varauksen, täsmällisen rekisterin, journalin kaikkien slottien
+puuttumisen sekä kohteen ja tuonnin lähteen itsenäisten tavujen säilymisen.
+Virhe säilyttää molemmat tutkimusjuuret. Molemmat nykyiset 120 sekunnin
+vaiherajat, testikohtainen 300 sekunnin raja ja uusintojen kielto säilyvät.
+Käynnistin hyväksyy vain yhden valmistelulajin kerrallaan; tämä polku ei
+aktivoi legacy-laskun smoke-valintaa. Valmisteluregressio ei ole pakettitodiste.
 
 Käynnistysvirheessä fixture pyytää muistihavainnon kerran nykyisen
 Playwright-main-yhteyden kautta ja jatkaa nykyistä siivousta odottamatta

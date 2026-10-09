@@ -5,7 +5,7 @@ import {
 import {
   workspaceCreationJournalInvalid,
 } from './workspaceCreationJournalError.js';
-import type { WorkspaceCreationJournalV1 } from './workspaceCreationTypes.js';
+import type { WorkspaceCreationJournal } from './workspaceCreationTypes.js';
 import { validateWorkspaceCreationJournal } from './workspaceCreationJournalValidation.js';
 
 export function serializeWorkspaceCreationJournal(
@@ -13,7 +13,7 @@ export function serializeWorkspaceCreationJournal(
 ): Uint8Array {
   const journal = validateWorkspaceCreationJournal(value);
   const canonical = {
-    formatVersion: 1,
+    formatVersion: journal.formatVersion,
     operationId: journal.operationId,
     workspaceId: journal.workspaceId,
     workspaceLabel: journal.workspaceLabel,
@@ -36,7 +36,7 @@ export function serializeWorkspaceCreationJournal(
 
 export function assertCanonicalWorkspaceCreationJournalRoundTrip(
   bytes: Uint8Array,
-): Readonly<WorkspaceCreationJournalV1> {
+): Readonly<WorkspaceCreationJournal> {
   const parsed = parseWorkspaceCreationJournalBytes(bytes);
   const serialized = serializeWorkspaceCreationJournal(parsed);
   if (

@@ -164,6 +164,19 @@ test('foreign revision and missing required metadata fail before SQLite', async 
   assert.equal(f.sqlReads(), 0);
 });
 
+for (const mode of ['short', 'samePrefix']) {
+  test(`capture rejects non-exact current profile revision before SQLite: ${mode}`, async (t) => {
+    const f = await createProfile(t);
+    const state = { ...f.state, buildRevision: mode === 'short' ? f.state.buildRevision.slice(0, 12)
+      : `${f.state.buildRevision.slice(0, 12)}${'f'.repeat(28)}` };
+    await writeFile(f.statePath, JSON.stringify(state));
+    const before = await createClosedDirectoryInventory(f.root);
+    await assert.rejects(captureWorkspaceSuccessProfileEvidence(f.input), { message: 'profileEvidenceInvalid' });
+    assert.equal(f.sqlReads(), 0);
+    assert.deepEqual(await createClosedDirectoryInventory(f.root), before);
+  });
+}
+
 test('database mutation during inspection fails instead of recording a new baseline', async (t) => {
   const f = await createProfile(t);
   const originalSnapshot = f.support.snapshotW6b2PackagedWorkspaceEvidence;

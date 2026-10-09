@@ -450,6 +450,174 @@ Spikessä käytetään vain synteettistä dataa ja erillistä testitietokantaa.
 
 ## Testit
 
+### Prosessivarauksen adapteri (R18)
+
+`apps/desktop/src/runtime/workspaceProcessReservation.ts` omistaa vain
+juurihakemiston tiedostoidentiteetin ja prosessin paikallisen IPC-varauksen.
+Se on osa vielä keskeneräistä tuotannon käynnistysketjua ja
+[hyväksyttyä R18-sopimusta](release-0.3.0-m1-preparation-plan.md#r18-prosessivarauksen-ja-journal-v2n-sopimusehdotus),
+ei yleinen lukituspalvelu tai todiste vanhan suojaamattoman kirjoittajan
+poistumisesta.
+
+- `readWorkspaceProcessReservationIdentity(root)` lukee jo olemassa olevan
+  validoitavan juuren identiteetin; se ei luo hakemistoa. Identiteetti ei ole
+  salaisuus, käyttöoikeustunniste eikä julkiseen diagnostiikkaan kuuluva arvo.
+- `acquireWorkspaceProcessReservation({ userDataRoot, expectedIdentity, signal })`
+  hankkii paikallisen varauksen ja tarkistaa juuren myös bindin jälkeen.
+  Kutsuja omistaa nykyisen käynnistyksen määräajan; adapteri ei lisää ajastinta,
+  uusintaa tai uutta määräaikaa. `signal` peruuttaa hankinnan, ei jo palautetun
+  omistajan varausta.
+- Kahvan `assertOwned()` tarkistaa yhä voimassa olevan varauksen sekä juuren.
+  `invalidated` keskeytyy pysyvästi virheessä ja myös tarkoituksellisessa
+  vapautuksessa. Kumpikaan ei anna business-kirjoituslupaa: mainin ja lapsen
+  erillinen työlupaketju on kytkettävä kokonaan ennen käyttöönottoa.
+- `release()` on idempotentti ja odottaa nykyisen palvelinkahvan sulkukuittausta.
+  Omistajuus mitätöityy heti; uusi kutsu saa saman Promisen myös sulkuvirheessä.
+  Virhehavainto ei vapauta varausta automaattisesti kesken suojatun työn.
+  Kutsujan pitää ensin todeta omistetun työn ja kahvojen sulku.
+- `WorkspaceProcessReservationError` säilyttää suljetun `reason`-luokan ja
+  hankinnan epäonnistumiseen liittyvän erillisen `cleanupFailed`-havainnon.
+  Se ei säilytä käyttöjärjestelmän raakavirhettä tai polkua. Tuotannon
+  operational-/käyttäjäpalautekytkentä kuuluu seuraavaan toteutuspalaan;
+  luokan olemassaolo ei todista tapahtuman diagnostiikkaketjua.
+
+`workspaceProcessReservationDescriptor.ts` omistaa yksityisen kanavan
+varausarvon: `generationId`, `identity` ja `userDataRoot`. Lukija hyväksyy
+vain nämä kolme omaa datakenttää, kanonisen sukupolvitunnisteen, täsmällisen
+juuritiivisteen ja rajatun absoluuttisen juuripolun. Se palauttaa uuden
+muuttumattoman arvon, ei viittausta lähettäjän muokattavaan olioon.
+Vertailu vaatii kaikkien kolmen kentän yhtäsuuruuden. Arvon jäsentäminen tai
+vertailu ei tarkista tiedostojärjestelmää, hanki varausta tai myönnä työlupaa;
+nykyiset prosessiomistajat vastaavat näistä erillisistä tilasiirtymistä.
+Arvoa ei julkaista operational-lokiin tai rendererille. Adapteri käyttää
+saman omistajan identiteettivalidointia.
+
+Backendin yksityisen viestin lukija tarkistaa `prepare`-, `reservationReady`-,
+`start`-, `ready`- ja `failed`-viestien täsmälliset kenttäjoukot sekä
+käynnistyksen `config`-arvon. Tuntemattomia kenttiä ei siirretä eteenpäin.
+Backendin parent ja lapsi toteuttavat nyt valmistelun, sidotun varausvalmiuden
+ja erillisen työluvan; kirjoittavaa backend-moduulia ei ladata ennen lupaa.
+Parent odottaa valmistelun sekä asynkronisen lupatarkistuksen ja tekee
+synkronisen valtuutustarkistuksen juuri ennen `start`-viestin ja porttien
+lähettämistä. Nykyinen käynnistysbudjetti ei nollaudu. Prosessin poistuminen,
+valmistelu-/lupacallbackien valmistuminen ja varauksen takaisinotto vaaditaan
+ennen seuraavan omistajan työtä. Tuotantokutsujat käyttävät samaa main-omistajaa;
+kohdetesti ei silti todista koko sovelluksen varausketjua.
+
+Candidate-lapsen nykyinen `workspaceCandidateRunner` vaatii jo järjestyksen
+`prepare` -> varauksen hankinta -> `reservationReady` -> `start` (työlupa).
+Valmistelu ja varausvalmius sisältävät yksityisen varausarvon, jonka
+`generationId` on tämän yhden prosessin `requestId`. Työlupa ja sulku sidotaan
+valmistelun samoihin `operationId`-, `requestId`- ja `runtimeSession`-arvoihin.
+Generic-ready ei anna työoikeutta. Lapsi tarkistaa omistajuuden ennen
+kirjoittavan moduulin latausta ja uudelleen ennen ladatun operaation kutsua;
+keskeytys tai omistajuuden menetys estää viivästyneen jatkon.
+Moduulin lataajan polkutarkistukset eivät vielä ole kirjoittavaa työtä.
+Lataaja ylittää synkronisen `beginLoad`-portin vasta juuri ennen importia;
+keskeytetty tai aikarajan ylittänyt polkutarkistus ei saa arvioida moduulia
+myöhemminkään. Jumittunut alkuperäinen omistajuustarkistus tai polkutarkistus
+ei estä työluvattoman/pre-import-lapsen määräaikaista poistumista.
+
+Yksi nykyinen kymmenen sekunnin käynnistysbudjetti kattaa valmistelun,
+varauksen ja työluvan tarkistuksen; valmisteluviesti ei aloita uutta määräaikaa.
+Työluvaton orpo poistuu sen puitteissa. Jo käynnissä olevan työn keskeytys
+odottaa nykyisen operaation kahvojen sulkua, eikä terminal-viesti vapauta
+varausta: varaava utility pitää sen prosessin poistumiseen asti.
+
+Candidate-parentin nykyinen factory vaatii mainin operaatiokohtaisen
+varausportin. Sen `prepare` sulkee ristiriitaisen mutation-admissionin ja
+luovuttaa varauksen; lapsen vastaus sidotaan koko yksityiseen pyyntöön ja
+varausarvoon. `assertGrant` tekee asynkroniset tarkistukset, minkä jälkeen
+`assertCurrent` varmentaa saman valtuutuksen synkronisesti ennen työluvan
+lähettämistä. Valmistelun tai tarkistuksen myöhäinen jatko ei lähetä työtä
+keskeytyksen jälkeen. Käynnistysbudjetti ei nollaudu näiden vaiheiden välissä.
+
+`reclaimAfterExit` saa käynnistyä vasta todetun lapsen exitin ja keskeneräisten
+valmistelu-/lupacallbackien valmistumisen jälkeen nykyisen sulkubudjetin
+puitteissa. Myöhäinen takaisinotto ei saa avata admissionia peruutuksen jälkeen.
+Tuloksen luku vaatii sekä onnistuneen tavallisen sulun että takaisinoton.
+`invalidate` on pysyvä epävarmuusmerkintä uudelleenkäynnistykseen asti,
+ei lupa poistaa candidatea tai palautusjournalia. Määräajat perustuvat
+monotoniseen kelloon, eivät Windowsin säädettävään seinäkelloon.
+
+**Main-kytkentä on toteutettu rajatuin kohdetestein:** kolme candidate-
+compositionia ja business-backend käyttävät samaa main-varausomistajaa.
+Omistaja hankitaan ennen ensimmäisiä ristiriitaisia työtilan käsittelyjä.
+Startup-valtuus päättyy käynnistyksen valmistuessa; management-operaatio
+kaappaa nykyisen huoltovarauksen täsmällisen kahvan ja tarkoituksen, ei
+pelkkää busy-tilaa. Tuore single-instance-omistajuus tarkistetaan odotusten
+jälkeen ja ennen työluvan lähetystä. Epävarma takaisinotto estää myös
+create/import-virhesiivouksen korjaavan luvun ja poiston.
+
+Desktopin tyyppitarkistus ja rajatut composition-/siivoustestit läpäisivät.
+Journal V2:n cold-admission ja recovery on kytketty ennen workspace-valintaa:
+readonly admission, nykyinen build-portti, tuore varaus sekä sama huoltolease
+edeltävät korjaavaa lukua ja siivousta. V1 tai epäselvä journaliton plaintext
+estää avaamisen aineistoa muuttamatta. Cold-terminal ei ohita normaalia
+business-käynnistystä tai terveystarkistusta. Keskeneräinen startup-callback
+mitätöi ulomman sulun, vaikka lapsi olisi jo poistunut ja varaus saatu takaisin;
+varaus säilyy mainin poistumiseen asti. E2E-todennuskutsujat ja koko kytkennän
+katselmus ovat vielä kesken. Tämän välitilan perusteella ei tehdä mergeä
+tai väitetä packaged-ketjua hyväksytyksi. Suojaamatonta oletusta ei lisätä.
+
+`workspaceProcessReservation.test.ts` testaa identiteetin, virheiden pysyvyyden,
+keskeytykset, sulun ja kilpailut hallitulla rajapinnalla.
+`workspaceProcessReservation.integration.test.ts` käyttää oikeaa paikallista
+IPC:tä vain synteettisissä hakemistoissa: saman juuren poissulku, vapautus,
+eri juuret ja puuttuvan juuren esto. Linuxin erillinen prosessikoe täydentää
+adapterinäyttöä, mutta ei ole Electronin käynnistysketjun hyväksyntä.
+`workspaceProcessReservationDescriptor.test.ts` kattaa arvon kenttä- ja
+kokorajat, muuttumattoman kopion sekä väärän sukupolven ja juuren erottamisen.
+`workspaceCandidateRunnerLoader.test.ts` todentaa tuotannon lataajalla
+keskeytyksen ennen importia ja tavallisen moduulin arvioinnin erillisellä
+synteettisellä sivuvaikutusmerkillä; se ei ole kokonaisen prosessiketjun testi.
+Nykyisten backend-viestien ja prosessiomistajan regressiot tarkistetaan
+yhdessä; parserin testi ei yksin todista runtime-omistajuutta.
+Adapteri ei tuota pysyvää artifactia eikä muuta backup-formaattia. Tuotantoon
+kytkeminen vaatii edelleen R18:n koko matriisin ja hardened Windows packaged
+backup -> inspect -> restore -> restart -> compare -todistuksen.
+
+### Käynnistyksen omistajuus ennen backend-kahvaa
+
+`backendProcess.ts` omistaa prosessin myös silloin, kun käynnistys ei ole
+vielä palauttanut `DesktopBackendHandle`-kahvaa. Ensimmäinen turvallinen
+virhekoodi lukitaan ennen lopetuspyyntöä. Nykyinen rajattu exit-odotus ja
+pysyvä exit-havainto asennetaan ennen pyyntöä; pelkkä `kill()`-paluuarvo,
+puuttuva kahva tai hylätty Promise eivät todista prosessin poistumista.
+Fork-kutsua edeltävä todettu virhe erotetaan itse fork-kutsun epävarmasta
+poikkeuksesta. Myöhäinen spawn, ready tai callbackin valmistuminen ei
+avaa epäonnistunutta käynnistystä uudelleen.
+
+Sisäinen `DesktopBackendStartupError` säilyttää turvallisen ensikoodin
+ja muuttumattoman omistajuushavainnon: `processState`,
+`migrationGateSettled` sekä `reservationReclaimed`. Näitä ei muodosteta raakavirhetekstistä. Composition
+saa aloittaa profiilin tai yritysvalinnan recoveryn vain, kun backendin
+käynnistystä ei vielä yritetty tai poistuminen, mahdollisen
+migraatiovalmistelun valmistuminen ja varauksen takaisinotto on todettu.
+Virhehaara tarkistaa lisäksi saman main-omistajan takaisin saadun varauksen.
+Tuntematon tulos säilyttää
+aineiston eikä avaa business-ikkunaa. Poistuminen virhekoodilla todistaa
+poissaolon, mutta ei hallittua sammutusta.
+
+Migraatioportin `stopStartupRuntime()` odottaa nykyistä strict-
+sammutusta ja varauksen takaisinottoa, ei sitä kutsuvaa callbackia. `DesktopBackendStartupStoppedError`
+tarkoittaa sekä onnistunutta graceful-sulkua että callbackin valmistumista.
+Callbackin alkuperäinen viiden minuutin takaraja säilyy prosessin
+poistumisen jälkeenkin, eikä sitä käynnistetä uudelleen. Tavallinen
+käynnistysvirhe ei odota keskeneräistä callbackia rajattoman pitkään:
+exit-odotuksen jälkeen palautetaan senhetkinen muuttumaton havainto ja
+keskeneräinen callback estää rinnakkaisen recoveryn. Aikarajan päättyminen
+ei peruuta callbackin jo aloittamaa työtä.
+
+Käyttäjäpalaute ja operational-loki käyttävät nykyisiä turvallisia
+startup-/backend-koodeja. Sisäinen omistajuushavainto ei tuo uutta loki-
+tai renderer-rajapintaa; alkuperäinen poikkeus kuuluu vain jo hyväksyttyyn
+valinnaiseen yksityiseen testihavaintoon. `backendProcess.test.ts` todentaa
+kilpailut kontrolloidulla prosessilla ja ajalla; `desktopRestoreStartup.test.ts`
+todentaa recovery-rajauksen oikean compositionin, synteettisten tiedostojen
+ja journalien kautta. Nämä eivät korvaa hardened Windows packaged
+backup -> inspect -> restore -> restart -> compare -porttia.
+
 ### Sovelluksen sulkemisen nykyinen sopimus
 
 Electron mainin `before-quit`-käsittelijä estää jokaisen uuden
@@ -468,6 +636,76 @@ Pakkopysäytys ei tuota
 [palautuspisteiden puhtaan sammutuksen merkkiä](local-backup-and-restore-plan.md#machine-local-recovery-point).
 Tavallisen sulun nykyinen rajattu pakkopysäytys ja `stopForUpdate()`-
 polun tiukempi vaatimus säilyvät; aikarajoja ei muuteta.
+
+### Päivityksen hallittu sulku
+
+Mainin update-handoff käyttää `MainOwnedActiveWorkspaceLifecycle.stopForUpdate()`-
+polkua, joka kutsuu backendin olemassa olevaa strict-sammutusta. Tavallinen
+workspace-/sovellussulku säilyttää nykyisen forced-fallbackin. Molemmat
+jakavat saman ensimmäisen sulkupyynnön tehtävän ja todellisen tuloksen:
+update voi liittyä vain saman operationin update-sulkuun. Ordinary-sulun
+`exited` ei todista update-suojaa eikä kelpaa handoffiin. Eri operation
+hylätään, eikä jo aloitettua tai epäonnistunutta pysäytystä käynnistetä uudelleen.
+Strict-polkuun liittyvä tavallinen sulku odottaa samaa onnistumista tai
+virhettä; se ei avaa pakkopysäytyksen kiertotietä.
+
+R04:n backend-vastaanottaja tukee erillistä täsmällistä
+`shutdownForUpdate`-viestiä ja snapshot-brokerin validoimaa operationia.
+Backend vaatii valmistuneen käynnistyksen sekä tarkistaa saman update-suojan
+ennen palvelimen sulkua ja sen viimeisen odotuksen jälkeen. Snapshot-broker
+suljetaan vasta viimeisen tarkistuksen jälkeen. Jokainen broker-sulku
+yritetään myös virheessä; epäonnistuminen antaa ei-nollan exitin ilman
+raakavirheen julkaisemista. Vastaanottaja säilyttää ensimmäisen sulkupyynnön:
+sama update voidaan toistaa ja ordinary-pyyntö voi liittyä siihen, mutta
+ordinary-pyynnön jälkeinen update tai eri operation mitätöi onnistumisen.
+Tavallinen `shutdown` hyväksyy vain oman täsmällisen viestimuotonsa.
+
+Mainin prepare/handoff-owner, lifecycle ja backend-lähettäjä välittävät
+saman operationin tähän vastaanottajaan. Paketoitujen kokeiden välittäjät
+säilyttävät tunnisteen; kehitystestien fake-backend hylkää update-sulun,
+jota sen ordinary-protokolla ei kykene todistamaan. Kytkentä on katettu
+composition- ja broker/HTTP-regressioilla. Runnerin synteettinen testi tai
+ohjattu sulkuadapteri ei korvaa oikean utility-prosessin ja
+packaged-päivityksen todistusta.
+
+Päivityksen quiescence- tai scheduler-virhe sulkee request-admissionin
+hallittuun uudelleenkäynnistykseen asti. Tavallisen workspace-quiescen
+palautumissääntö säilyy. Kyse on mainin request-rajasta; backendin koko
+pre-update-jakson kirjoitussuoja kuuluu erilliseen R04-sopimukseen.
+
+Jokainen capability- ja broker-sulku yritetään yhden ryhmän virheestä
+huolimatta. Sulkuryhmän tulos säilytetään, joten virheenkäsittely ei toista
+jo tehtyjä sulkuja eikä peitä ensimmäistä hylkäystä uudella onnistumisella.
+Workspace-managementin guard suljetaan muiden capabilityjen yhteydessä;
+käynnissä olevan operaation journal-, rollback- ja relaunch-viimeistelyä
+ei peruta. Puhtaan sammutuksen merkki kirjoitetaan vasta kaikkien vaadittujen
+sulkujen onnistuttua ja backendin graceful-tuloksen jälkeen. `forced`
+voi todistaa ordinary-polun prosessipoissaolon, mutta ei puhdasta sulkua
+eikä update-handoffin lupaa.
+
+Virhepalaute käyttää nykyisiä `desktop.shutdownFailed` /
+`DESKTOP_SHUTDOWN_FAILED`- ja updaterin `runtimeShutdown` /
+`UPDATE_SHUTDOWN_TIMEOUT`-luokituksia. Viimeinen koodi on nykyinen
+handoff-sulkuvirheen yleiskoodi, ei todiste aikakatkaisun juurisyystä.
+Raakapoikkeuksia ei lisätä operational-lokiin. Olemassa olevat Diagnostics-
+ja tukipaketin lukuketjut säilyvät; tekninen sulku ei ole business Activity.
+Omistajan sisäinen `WorkspaceRuntimeStopError` säilyttää ensimmäisen
+turvallisen vaihe-/syyluokan erillään myöhemmistä sulkuvirheistä. Composition
+säilyttää tämän syyn ja omat siivousvirheidensä suljetut vaihenimet erikseen;
+raakaviestiä tai kutsupinoa ei kopioida mukaan. Sisäinen syyrakenne ei ole
+uusi julkinen virhe- tai lokisopimus.
+
+`mainOwnedActiveWorkspaceLifecycle.test.ts` todentaa molemmat kutsujärjestykset,
+reentrant-kutsun, forced/unknown-tulokset sekä fail-closed-quiescencen.
+`desktopRestoreStartup.test.ts` käyttää oikeaa main-compositionia ja
+handoff-koordinaattoria: vain backend-, Electron- ja installer-rajat sekä
+synteettisen paketin/palautuspisteen valmistelu ovat kontrolloituja.
+Journalin ja clean-merkin readback sekä turvallisen operational-lokin
+readback täydentävät installer-kutsun tarkistusta. Kilpailutesti odottaa
+handoffin todellista `runtimeShutdown`-vaihetta ennen tavallisen sulun
+vapauttamista. Yhdistelmävirhe todentaa backendin ensisyyn säilymisen
+broker-siivouksen virheen yli. Tämä ei ole oikean
+MSI:n, backupin tai paketoidun runtimen hyväksyntänäyttö.
 
 Kohderegressiot omistavat `desktopBeforeQuit.test.ts`,
 `desktopRestoreStartup.test.ts`, `backendProcess.test.ts` ja

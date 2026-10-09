@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
+
+import { isOperationId } from '../profileBackup/profileSnapshotBrokerProtocol.js';
 
 import type {
   LocalUpdateExpectedPackageIdentity,
@@ -13,7 +16,7 @@ import {
   type UpdateJournalPackageIdentity,
 } from './updateJournal.js';
 import type { UpdateJournalStore } from './updateJournalStore.js';
-import type { WorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
+import type { WorkspaceMaintenanceLease, WorkspaceMaintenanceLeaseHandle } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 import {
   noOpUpdateOperationalObserver,
   type UpdateOperationalObserver,
@@ -24,7 +27,7 @@ interface LocalUpdateHandoffCoordinatorDependencies {
     LocalUpdatePackageCache,
     'readExpectedPackageIdentity' | 'revalidateJournalPackage'
   >;
-  journalStore: Pick<UpdateJournalStore, 'clear' | 'read' | 'write'>;
+  journalStore: Pick<UpdateJournalStore, 'clear' | 'read' | 'readForLiveOwner' | 'write'>;
   launchInstaller(
     candidate: Readonly<RevalidatedLocalUpdatePackageHandle>,
   ): Promise<void>;
@@ -35,11 +38,22 @@ interface LocalUpdateHandoffCoordinatorDependencies {
   profileProtection: Pick<
     UpdateProfileProtection,
     | 'createValidatedPreUpdatePoint'
-    | 'enterMaintenance'
-    | 'leaveMaintenance'
+    | 'beginUpdateMaintenance'
+    | 'assertUpdateMaintenance'
+    | 'endUpdateMaintenance'
     | 'validateActiveProfile'
   >;
-  shutdownRuntime(): Promise<void>;
+  shutdownRuntime(operationId: string): Promise<void>;
+}
+
+interface PreparedUpdateOwner {
+  operationId: string;
+  lease: WorkspaceMaintenanceLeaseHandle;
+  phase: 'preparing' | 'ready' | 'handoff' | 'failed';
+  journal?: Readonly<UpdateJournal>;
+  journalUncertain: boolean;
+  fenceRequested: boolean;
+  stopStarted: boolean;
 }
 
 export class LocalUpdateHandoffError extends Error {
@@ -61,6 +75,7 @@ export type LocalUpdateHandoffErrorCode =
 
 export class LocalUpdateHandoffCoordinator {
   private activeOperation = false;
+  private owner: PreparedUpdateOwner | undefined;
 
   constructor(
     private readonly dependencies: LocalUpdateHandoffCoordinatorDependencies,
@@ -70,14 +85,28 @@ export class LocalUpdateHandoffCoordinator {
     return this.runExclusive(
       'UPDATE_PREPARATION_MAINTENANCE_FAILED',
       async () => {
-        let journal: Readonly<UpdateJournal> | undefined;
+        if (this.owner !== undefined) {
+          throw new LocalUpdateHandoffError('UPDATE_PREPARATION_MAINTENANCE_FAILED');
+        }
+        const correlationId = this.createOperationId();
+        if (!isOperationId(correlationId)) {
+          throw new LocalUpdateHandoffError('UPDATE_PREPARATION_MAINTENANCE_FAILED');
+        }
+        const lease = await this.dependencies.maintenanceLease.acquire('update')
+          .catch(() => {
+            throw new LocalUpdateHandoffError('UPDATE_PREPARATION_MAINTENANCE_FAILED');
+          });
+        const owner: PreparedUpdateOwner = {
+          operationId: correlationId, lease, phase: 'preparing',
+          journalUncertain: false, fenceRequested: false, stopStarted: false,
+        };
+        this.owner = owner;
         let failureCode: LocalUpdateHandoffErrorCode =
           'UPDATE_PREPARATION_JOURNAL_FAILED';
-        const correlationId = this.createOperationId();
         const startedAt = Date.now();
         this.notifyStarted(correlationId, 'recoveryPoint');
         try {
-          await this.assertJournalCanBeReplaced();
+          await this.assertJournalCanBeReplaced(owner);
           failureCode = 'UPDATE_PREPARATION_PACKAGE_FAILED';
           const currentIdentity =
             await this.dependencies.cache.readExpectedPackageIdentity(
@@ -90,7 +119,7 @@ export class LocalUpdateHandoffCoordinator {
           failureCode = 'UPDATE_PREPARATION_PROFILE_FAILED';
           const profileValidation =
             await this.dependencies.profileProtection.validateActiveProfile();
-          journal = createPreparedJournal({
+          let journal = createPreparedJournal({
             candidateIdentity,
             correlationId,
             currentIdentity,
@@ -99,22 +128,28 @@ export class LocalUpdateHandoffCoordinator {
               profileValidation.migrationChainIdentity,
           });
           failureCode = 'UPDATE_PREPARATION_JOURNAL_FAILED';
-          await this.dependencies.journalStore.write(journal);
+          await this.writeOwnedJournal(owner, journal);
+          failureCode = 'UPDATE_PREPARATION_MAINTENANCE_FAILED';
+          owner.fenceRequested = true;
+          await this.dependencies.profileProtection.beginUpdateMaintenance(correlationId);
           failureCode = 'UPDATE_PREPARATION_RECOVERY_POINT_FAILED';
           const recoveryPointReference =
             await this.dependencies.profileProtection
-              .createValidatedPreUpdatePoint();
+              .createValidatedPreUpdatePoint(correlationId);
           journal = transitionUpdateJournal(journal, {
             at: this.now(),
             recoveryPointReference,
             state: 'recoveryPointValidated',
           });
           failureCode = 'UPDATE_PREPARATION_JOURNAL_FAILED';
-          await this.dependencies.journalStore.write(journal);
+          await this.writeOwnedJournal(owner, journal);
+          failureCode = 'UPDATE_PREPARATION_MAINTENANCE_FAILED';
+          await this.dependencies.profileProtection.assertUpdateMaintenance(correlationId);
+          owner.phase = 'ready';
           this.notifyCompleted(correlationId, startedAt, 'recoveryPoint');
           return journal;
         } catch {
-          await this.writeFailedJournal(journal);
+          await this.abortOwnedPreparation(owner);
           this.notifyFailed({
             correlationId,
             errorCode: 'UPDATE_RECOVERY_POINT_FAILED',
@@ -130,14 +165,18 @@ export class LocalUpdateHandoffCoordinator {
 
   handoffPreparedUpdate(): Promise<void> {
     return this.runExclusive('UPDATE_HANDOFF_FAILED', async () => {
+      const owner = this.owner;
+      if (owner === undefined || owner.phase !== 'ready') {
+        throw new LocalUpdateHandoffError();
+      }
+      owner.phase = 'handoff';
       let journal: Readonly<UpdateJournal> | undefined;
-      let maintenanceStarted = false;
-      let runtimeStopped = false;
       let activeStage: 'installerHandoff' | 'runtimeShutdown' =
         'installerHandoff';
       let stageStartedAt = Date.now();
       try {
-        journal = await this.dependencies.journalStore.read();
+        await this.assertOwnedJournal(owner);
+        journal = owner.journal;
         if (
           journal === undefined ||
           journal.state !== 'recoveryPointValidated' ||
@@ -146,6 +185,7 @@ export class LocalUpdateHandoffCoordinator {
           throw new LocalUpdateHandoffError();
         }
         this.notifyStarted(journal.correlationId, 'installerHandoff');
+        await this.dependencies.profileProtection.assertUpdateMaintenance(owner.operationId);
         const candidate =
           await this.dependencies.cache.revalidateJournalPackage({
             expectedIdentity: {
@@ -154,12 +194,10 @@ export class LocalUpdateHandoffCoordinator {
             },
             role: 'candidate',
           });
-        await this.dependencies.profileProtection.enterMaintenance(
-          journal.correlationId,
-        );
-        maintenanceStarted = true;
+        await this.dependencies.profileProtection.assertUpdateMaintenance(owner.operationId);
         const profileValidation =
           await this.dependencies.profileProtection.validateActiveProfile();
+        await this.dependencies.profileProtection.assertUpdateMaintenance(owner.operationId);
         if (
           profileValidation.migrationChainIdentity !==
             journal.preUpdateMigrationChainIdentity
@@ -170,17 +208,18 @@ export class LocalUpdateHandoffCoordinator {
           at: this.now(),
           state: 'runtimeStopping',
         });
-        await this.dependencies.journalStore.write(journal);
+        await this.writeOwnedJournal(owner, journal);
+        await this.dependencies.profileProtection.assertUpdateMaintenance(owner.operationId);
         activeStage = 'runtimeShutdown';
         stageStartedAt = Date.now();
         this.notifyStarted(journal.correlationId, activeStage);
-        await this.dependencies.shutdownRuntime();
+        owner.stopStarted = true;
+        await this.dependencies.shutdownRuntime(owner.operationId);
         this.notifyCompleted(
           journal.correlationId,
           stageStartedAt,
           activeStage,
         );
-        runtimeStopped = true;
         activeStage = 'installerHandoff';
         stageStartedAt = Date.now();
         journal = transitionUpdateJournal(journal, {
@@ -188,7 +227,7 @@ export class LocalUpdateHandoffCoordinator {
           handoffAttemptCount: 1,
           state: 'awaitingFirstStart',
         });
-        await this.dependencies.journalStore.write(journal);
+        await this.writeOwnedJournal(owner, journal);
         await this.dependencies.launchInstaller(candidate);
         this.notifyCompleted(
           journal.correlationId,
@@ -196,12 +235,7 @@ export class LocalUpdateHandoffCoordinator {
           activeStage,
         );
       } catch {
-        if (maintenanceStarted && !runtimeStopped && journal !== undefined) {
-          await this.dependencies.profileProtection
-            .leaveMaintenance(journal.correlationId)
-            .catch(() => undefined);
-        }
-        await this.writeFailedJournal(journal);
+        await this.abortOwnedPreparation(owner);
         if (journal !== undefined) {
           this.notifyFailed({
             correlationId: journal.correlationId,
@@ -209,7 +243,7 @@ export class LocalUpdateHandoffCoordinator {
               activeStage === 'runtimeShutdown'
                 ? 'UPDATE_SHUTDOWN_TIMEOUT'
                 : 'UPDATE_INSTALLER_START_FAILED',
-            sideEffectState: runtimeStopped ? 'unknown' : 'none',
+            sideEffectState: owner.stopStarted ? 'unknown' : 'none',
             stage: activeStage,
             startedAt: stageStartedAt,
           });
@@ -219,7 +253,7 @@ export class LocalUpdateHandoffCoordinator {
     });
   }
 
-  private async assertJournalCanBeReplaced(): Promise<void> {
+  private async assertJournalCanBeReplaced(owner: PreparedUpdateOwner): Promise<void> {
     const current = await this.dependencies.journalStore.read();
     if (current === undefined) {
       return;
@@ -232,7 +266,9 @@ export class LocalUpdateHandoffCoordinator {
     ) {
       throw new LocalUpdateHandoffError();
     }
+    owner.journalUncertain = true;
     await this.dependencies.journalStore.clear();
+    owner.journalUncertain = false;
   }
 
   private createOperationId(): string {
@@ -251,44 +287,57 @@ export class LocalUpdateHandoffCoordinator {
       throw new LocalUpdateHandoffError(unavailableCode);
     }
     this.activeOperation = true;
-    let maintenanceLease:
-      | Awaited<ReturnType<WorkspaceMaintenanceLease['acquire']>>
-      | undefined;
     try {
-      maintenanceLease = await this.dependencies.maintenanceLease
-        .acquire('update')
-        .catch(() => {
-          throw new LocalUpdateHandoffError(unavailableCode);
-      });
       return await operation();
     } finally {
-      try {
-        await maintenanceLease?.release();
-      } finally {
-        this.activeOperation = false;
-      }
+      this.activeOperation = false;
     }
   }
 
-  private async writeFailedJournal(
-    journal: Readonly<UpdateJournal> | undefined,
-  ): Promise<void> {
-    if (
-      journal === undefined ||
-      journal.state === 'accepted' ||
-      journal.state === 'failed' ||
-      journal.state === 'rolledBack'
-    ) {
-      return;
+  private async assertOwnedJournal(owner: PreparedUpdateOwner): Promise<void> {
+    if (owner.journalUncertain) throw new LocalUpdateHandoffError();
+    try {
+      const current = await this.dependencies.journalStore.readForLiveOwner();
+      if (!isDeepStrictEqual(current, owner.journal)) throw new LocalUpdateHandoffError();
+    } catch {
+      // A later matching read must not erase an earlier ownership ambiguity.
+      owner.journalUncertain = true;
+      throw new LocalUpdateHandoffError();
     }
-    await this.dependencies.journalStore
-      .write(
-        transitionUpdateJournal(journal, {
-          at: this.now(),
-          state: 'failed',
-        }),
-      )
-      .catch(() => undefined);
+  }
+
+  private async writeOwnedJournal(
+    owner: PreparedUpdateOwner,
+    journal: Readonly<UpdateJournal>,
+  ): Promise<void> {
+    await this.assertOwnedJournal(owner);
+    // A write can publish current and then reject. Never treat that as no write.
+    owner.journalUncertain = true;
+    await this.dependencies.journalStore.write(journal);
+    owner.journal = journal;
+    owner.journalUncertain = false;
+  }
+
+  private async abortOwnedPreparation(owner: PreparedUpdateOwner): Promise<void> {
+    owner.phase = 'failed';
+    try {
+      if (owner.journalUncertain) return;
+      if (owner.journal !== undefined) {
+        await this.writeOwnedJournal(owner, transitionUpdateJournal(owner.journal, {
+          at: this.now(), state: 'failed',
+        }));
+        await this.assertOwnedJournal(owner);
+      }
+      if (owner.stopStarted) return;
+      if (owner.fenceRequested) {
+        await this.dependencies.profileProtection.assertUpdateMaintenance(owner.operationId);
+        await this.dependencies.profileProtection.endUpdateMaintenance(owner.operationId);
+      }
+      await owner.lease.release();
+      this.owner = undefined;
+    } catch {
+      // Uncertain journal, fence or shutdown retains ownership until restart.
+    }
   }
 
   private notifyStarted(

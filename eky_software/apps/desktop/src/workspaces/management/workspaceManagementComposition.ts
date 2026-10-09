@@ -4,7 +4,8 @@ import type { RecoveryPointService } from '../../profileBackup/recoveryPoint/rec
 import type { LocalUpdateRuntimePaths } from '../../update/localUpdateRuntimePaths.js';
 import { createWorkspaceLegacyAdoptionJournalPaths } from '../adoption/workspaceLegacyAdoptionJournal.js';
 import { EmptyWorkspaceCreationCoordinator } from '../creation/emptyWorkspaceCreationCoordinator.js';
-import { PrivateEmptyWorkspaceBootstrapAdapter } from '../creation/privateEmptyWorkspaceBootstrapAdapter.js';
+import { EmptyWorkspaceCreationRecovery } from '../creation/emptyWorkspaceCreationRecovery.js';
+import { PrivateEmptyWorkspaceBootstrapAdapter, PrivatePublishedWorkspaceValidationAdapter } from '../creation/privateEmptyWorkspaceBootstrapAdapter.js';
 import {
   WORKSPACE_CREATION_JOURNAL_FILE_NAME,
   createWorkspaceCreationJournalPaths,
@@ -14,6 +15,7 @@ import { NodeWorkspaceCreationRootStore } from '../creation/workspaceCreationRoo
 import { PrivateWorkspaceBackupCandidateAdapter } from '../import/privateWorkspaceBackupCandidateAdapter.js';
 import { WorkspaceBackupContainerAdapter } from '../import/workspaceBackupContainerAdapter.js';
 import { WorkspaceBackupImportCoordinator } from '../import/workspaceBackupImportCoordinator.js';
+import { WorkspaceBackupImportRecovery } from '../import/workspaceBackupImportRecovery.js';
 import {
   WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME,
   createWorkspaceBackupImportJournalPaths,
@@ -35,9 +37,10 @@ import type { WorkspaceReplacementRuntimeReadinessPort } from '../replacement/wo
 import { NodeWorkspaceBackupReplacementRootStore } from '../replacement/workspaceBackupReplacementRootStore.js';
 import type { ActiveWorkspaceLifecyclePort } from '../runtime/activeWorkspaceLifecyclePort.js';
 import type { WorkspaceRuntimeRelaunchCompletion } from '../runtime/deferredWorkspaceRuntimeRelaunch.js';
-import { ElectronWorkspaceCandidateRuntimeFactory } from '../runtime/electronWorkspaceCandidateRuntimeFactory.js';
+import { ElectronWorkspaceCandidateRuntimeFactory, type WorkspaceCandidateReservationOwner } from '../runtime/electronWorkspaceCandidateRuntimeFactory.js';
 import { resolveWorkspaceCandidateRuntimePaths } from '../runtime/workspaceCandidateRuntimePaths.js';
 import type { WorkspaceRuntimeAbsencePort } from '../runtime/workspaceRuntimeAbsencePort.js';
+import type { WorkspaceColdRecoveryAdmission } from '../runtime/workspaceColdRecoveryAdmission.js';
 import { WorkspaceSwitchCoordinator } from '../switch/workspaceSwitchCoordinator.js';
 import {
   createWorkspaceSwitchJournalPaths,
@@ -76,6 +79,7 @@ export interface WorkspaceManagementCompositionOptions {
   readonly profileRestoreActivationJournalPath: string;
   readonly recoveryPointService: Pick<RecoveryPointService, 'createPreRestore'>;
   readonly resourcesPath: string;
+  readonly reservationOwner: WorkspaceCandidateReservationOwner;
   readonly runtimeRelaunch: SharedWorkspaceRuntimeRelaunch;
   readonly userDataRoot: string;
 }
@@ -85,19 +89,69 @@ export interface WorkspaceManagementComposition {
   dispose(): void;
 }
 
+type WorkspaceCandidateCompositionOptions = Pick<WorkspaceManagementCompositionOptions,
+  'appVersion' | 'buildRevision' | 'resourcesPath' | 'reservationOwner'>;
+
+export async function recoverWorkspaceManagementBeforeRuntime(
+  options: Readonly<WorkspaceCandidateCompositionOptions & {
+    admission: WorkspaceColdRecoveryAdmission;
+    assertRecoveryAdmission(): Promise<void>;
+    maintenanceLease: WorkspaceMaintenanceLease;
+    userDataRoot: string;
+    workspaceRuntimeAbsence: WorkspaceRuntimeAbsencePort;
+  }>,
+): Promise<void> {
+  await options.workspaceRuntimeAbsence.assertNoActiveWorkspaceRuntime();
+  await options.assertRecoveryAdmission();
+  const plaintextQuarantine = new WorkspaceBackupPlaintextQuarantine({ userDataRoot: options.userDataRoot });
+  if (options.admission !== 'import') {
+    // Without a guarded import journal, an old writer cannot be ruled out.
+    await plaintextQuarantine.assertNoStalePayloads();
+  }
+  if (options.admission === 'none') return;
+
+  const runtime = await createCandidateRuntimeFactory(options);
+  const registry = new WorkspaceRegistryStore({
+    filePath: join(options.userDataRoot, WORKSPACE_REGISTRY_FILE_NAME),
+    installationRoot: options.userDataRoot,
+  });
+  const shared = {
+    completionMode: 'beforeRuntimeStart' as const,
+    assertRecoveryAdmission: options.assertRecoveryAdmission,
+    maintenanceLease: options.maintenanceLease,
+    registry,
+    userDataRoot: options.userDataRoot,
+    workspaceRuntimeAbsence: options.workspaceRuntimeAbsence,
+  };
+  if (options.admission === 'creation') {
+    await new EmptyWorkspaceCreationRecovery({
+      ...shared,
+      creationJournal: new WorkspaceCreationJournalStore({
+        installationRoot: options.userDataRoot,
+        filePath: join(options.userDataRoot, WORKSPACE_CREATION_JOURNAL_FILE_NAME),
+      }),
+      rootStore: new NodeWorkspaceCreationRootStore(),
+      publishedWorkspaceValidation: new PrivatePublishedWorkspaceValidationAdapter(runtime),
+    }).recover();
+  } else {
+    await new WorkspaceBackupImportRecovery({
+      ...shared,
+      importJournal: new WorkspaceBackupImportJournalStore({
+        installationRoot: options.userDataRoot,
+        filePath: join(options.userDataRoot, WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME),
+      }),
+      rootStore: new NodeWorkspaceBackupImportRootStore(),
+      backupCandidate: new PrivateWorkspaceBackupCandidateAdapter(runtime),
+      plaintextQuarantine,
+    }).recover();
+  }
+  await options.workspaceRuntimeAbsence.assertNoActiveWorkspaceRuntime();
+}
+
 export async function createWorkspaceManagementComposition(
   options: Readonly<WorkspaceManagementCompositionOptions>,
 ): Promise<Readonly<WorkspaceManagementComposition>> {
-  const candidateRuntimePaths = await resolveWorkspaceCandidateRuntimePaths(
-    options.resourcesPath,
-  );
-  const candidateRuntimeFactory = new ElectronWorkspaceCandidateRuntimeFactory({
-    appVersion: options.appVersion,
-    backendRoot: candidateRuntimePaths.backendRoot,
-    buildRevision: options.buildRevision,
-    migrationsDirectory: candidateRuntimePaths.migrationsDirectory,
-    runnerPath: candidateRuntimePaths.runnerPath,
-  });
+  const candidateRuntimeFactory = await createCandidateRuntimeFactory(options);
   const backupCandidate = new PrivateWorkspaceBackupCandidateAdapter(
     candidateRuntimeFactory,
   );
@@ -152,6 +206,7 @@ export async function createWorkspaceManagementComposition(
   });
   const createEmpty = new EmptyWorkspaceCreationCoordinator({
     activeWorkspaceLifecycle: options.activeWorkspaceLifecycle,
+    workspaceRuntimeAbsence: options.activeWorkspaceLifecycle,
     bootstrap: new PrivateEmptyWorkspaceBootstrapAdapter(
       candidateRuntimeFactory,
     ),
@@ -230,6 +285,18 @@ export async function createWorkspaceManagementComposition(
     dispose() {
       operationGuard.dispose();
     },
+  });
+}
+
+async function createCandidateRuntimeFactory(options: Readonly<WorkspaceCandidateCompositionOptions>) {
+  const paths = await resolveWorkspaceCandidateRuntimePaths(options.resourcesPath);
+  return new ElectronWorkspaceCandidateRuntimeFactory({
+    appVersion: options.appVersion,
+    backendRoot: paths.backendRoot,
+    buildRevision: options.buildRevision,
+    migrationsDirectory: paths.migrationsDirectory,
+    runnerPath: paths.runnerPath,
+    reservationOwner: options.reservationOwner,
   });
 }
 

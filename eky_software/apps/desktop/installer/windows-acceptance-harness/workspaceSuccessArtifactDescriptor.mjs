@@ -46,8 +46,7 @@ function validateRole(roleName, role, buildRevision) {
     !hasExactKeys(role, ROLE_KEYS) ||
     role.appVersion !== WORKSPACE_SUCCESS_VERSIONS[roleName] ||
     role.msiProductVersion !== role.appVersion ||
-    // The package runtime uses the canonical 12-character build-info revision.
-    role.buildRevision !== buildRevision.slice(0, 12) ||
+    role.buildRevision !== buildRevision ||
     role.manifestPath !== `${roleName}/installer.manifest.json` ||
     !isSha256(role.manifestSha256) || !isSha256(role.packageSha256) ||
     !Number.isSafeInteger(role.packageSize) || role.packageSize < 1 ||

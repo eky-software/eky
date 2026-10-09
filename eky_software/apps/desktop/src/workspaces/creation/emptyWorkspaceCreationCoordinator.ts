@@ -4,6 +4,7 @@ import type { WorkspaceId, WorkspaceLineageIdentityV1 } from '../registry/worksp
 import { validateWorkspaceLabel } from '../registry/workspaceLabelValidation.js';
 import { validateWorkspaceTimestamp } from '../registry/workspaceTimestampValidation.js';
 import type { ActiveWorkspaceLifecyclePort } from '../runtime/activeWorkspaceLifecyclePort.js';
+import type { WorkspaceRuntimeAbsencePort } from '../runtime/workspaceRuntimeAbsencePort.js';
 import type { WorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
 import {
   EmptyWorkspaceCreationError,
@@ -27,7 +28,7 @@ import type { WorkspaceCreationRootStore } from './workspaceCreationRootStore.js
 import type {
   WorkspaceCreationJournalState,
   WorkspaceCreationJournalStore,
-  WorkspaceCreationJournalV1,
+  WorkspaceCreationJournal,
   WorkspaceCreationOperationId,
 } from './workspaceCreationTypes.js';
 
@@ -42,6 +43,7 @@ export interface EmptyWorkspaceCreationCoordinatorOptions {
   readonly registry: WorkspaceRegistryPort;
   readonly rootStore: WorkspaceCreationRootStore;
   readonly userDataRoot: string;
+  readonly workspaceRuntimeAbsence: WorkspaceRuntimeAbsencePort;
 }
 
 export interface EmptyWorkspaceCreationResult {
@@ -77,7 +79,7 @@ export class EmptyWorkspaceCreationCoordinator {
     }
 
     const lease = await this.acquireLease();
-    let journal: Readonly<WorkspaceCreationJournalV1> | undefined;
+    let journal: Readonly<WorkspaceCreationJournal> | undefined;
     let previousActiveWorkspaceId: WorkspaceId | null = null;
     let writesQuiesced = false;
     let previousRuntimeEnsureAttempted = false;
@@ -113,6 +115,7 @@ export class EmptyWorkspaceCreationCoordinator {
         );
       }
 
+      await this.assertRuntimeAbsent();
       let operationId: WorkspaceCreationOperationId;
       let workspaceId: WorkspaceId;
       try {
@@ -132,7 +135,7 @@ export class EmptyWorkspaceCreationCoordinator {
       );
       const createdAt = validateCreationTime(this.now);
       journal = Object.freeze({
-        formatVersion: 1,
+        formatVersion: 2,
         operationId,
         workspaceId,
         workspaceLabel,
@@ -165,6 +168,7 @@ export class EmptyWorkspaceCreationCoordinator {
         );
       }
       assertLineageAvailable(registry, bootstrap.lineageIdentity);
+      await this.assertRuntimeAbsent();
       journal = await this.advanceJournal(
         journal,
         'bootstrapCompleted',
@@ -219,6 +223,7 @@ export class EmptyWorkspaceCreationCoordinator {
         recoveryFailure = caught;
       }
       if (writesQuiesced && !previousRuntimeEnsureAttempted) {
+        if (journal !== undefined) await this.assertRuntimeAbsent();
         previousRuntimeEnsureAttempted = true;
         await this.ensurePreviousWorkspaceRunning(previousActiveWorkspaceId);
       }
@@ -246,11 +251,12 @@ export class EmptyWorkspaceCreationCoordinator {
   }
 
   private async handleFailure(
-    journal: Readonly<WorkspaceCreationJournalV1> | undefined,
+    journal: Readonly<WorkspaceCreationJournal> | undefined,
   ): Promise<void> {
     if (journal === undefined) return;
+    await this.assertRuntimeAbsent();
 
-    let persistedJournal: Readonly<WorkspaceCreationJournalV1> | undefined;
+    let persistedJournal: Readonly<WorkspaceCreationJournal> | undefined;
     try {
       persistedJournal = await this.options.creationJournal.read();
     } catch {
@@ -313,6 +319,14 @@ export class EmptyWorkspaceCreationCoordinator {
     }
   }
 
+  private async assertRuntimeAbsent(): Promise<void> {
+    try {
+      await this.options.workspaceRuntimeAbsence.assertNoActiveWorkspaceRuntime();
+    } catch (error) {
+      throw mapEmptyWorkspaceCreationError(error, 'WORKSPACE_CREATION_RECOVERY_REQUIRED', 'recovery');
+    }
+  }
+
   private acquireLease() {
     return this.options.maintenanceLease.acquire('create').catch((error) => {
       throw mapEmptyWorkspaceCreationError(
@@ -344,18 +358,18 @@ export class EmptyWorkspaceCreationCoordinator {
   }
 
   private async advanceJournal(
-    current: Readonly<WorkspaceCreationJournalV1>,
+    current: Readonly<WorkspaceCreationJournal>,
     state: WorkspaceCreationJournalState,
     lineageIdentity: Readonly<WorkspaceLineageIdentityV1> | null =
       current.lineageIdentity,
-  ): Promise<Readonly<WorkspaceCreationJournalV1>> {
+  ): Promise<Readonly<WorkspaceCreationJournal>> {
     const next = Object.freeze({ ...current, state, lineageIdentity });
     await this.writeJournal(next);
     return next;
   }
 
   private async writeJournal(
-    journal: Readonly<WorkspaceCreationJournalV1>,
+    journal: Readonly<WorkspaceCreationJournal>,
   ): Promise<void> {
     try {
       await this.options.creationJournal.write(journal);

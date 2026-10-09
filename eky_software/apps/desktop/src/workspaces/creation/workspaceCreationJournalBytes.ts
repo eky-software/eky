@@ -3,14 +3,14 @@ import {
   workspaceCreationJournalInvalid,
 } from './workspaceCreationJournalError.js';
 import { assertNoDuplicateWorkspaceCreationJournalKeys } from './workspaceCreationJournalDuplicateKeys.js';
-import type { WorkspaceCreationJournalV1 } from './workspaceCreationTypes.js';
+import type { WorkspaceCreationJournal } from './workspaceCreationTypes.js';
 import { validateWorkspaceCreationJournal } from './workspaceCreationJournalValidation.js';
 
 export const WORKSPACE_CREATION_JOURNAL_MAX_BYTES = 16 * 1024;
 
 export function parseWorkspaceCreationJournalBytes(
   bytes: Uint8Array,
-): Readonly<WorkspaceCreationJournalV1> {
+): Readonly<WorkspaceCreationJournal> {
   try {
     if (
       !(bytes instanceof Uint8Array) ||

@@ -13,6 +13,13 @@ const maximumMaintenanceDurationMilliseconds = 10 * 60_000;
 
 export interface ProfileMaintenanceService {
   begin(operationId: string, timeoutMilliseconds: number): Promise<void>;
+  beginUpdate(
+    operationId: string,
+    timeoutMilliseconds: number,
+    maximumDurationMilliseconds: number,
+  ): Promise<void>;
+  assertUpdate(operationId: string): void;
+  endUpdate(operationId: string): void;
   end(operationId: string): void;
   forceEnd(): void;
   getStatus(): 'busy' | 'normal';
@@ -46,7 +53,7 @@ export function startProfileSnapshotBrokerBackend(input: {
         databaseByteSize: number;
         logicalPath: 'profile.sqlite';
         sha256: string;
-      totalPages: number;
+        totalPages: number;
       };
     }>;
     prepareProfileRestoreActivation(operationId: string): Promise<{
@@ -64,8 +71,9 @@ export function startProfileSnapshotBrokerBackend(input: {
     }>;
   };
   transport: ProfileSnapshotBrokerTransport;
-}): { close(): void } {
+}): { assertUpdateMaintenance(operationId: string): void; close(): void } {
   let activeOperationId: string | undefined;
+  let activeOperationKind: 'ordinary' | 'update' | undefined;
   let activeSnapshotAbortController: AbortController | undefined;
   let autoReleaseTimer: ReturnType<typeof setTimeout> | undefined;
   let closed = false;
@@ -77,6 +85,52 @@ export function startProfileSnapshotBrokerBackend(input: {
       autoReleaseTimer = undefined;
     }
     activeOperationId = undefined;
+    activeOperationKind = undefined;
+  };
+
+  const assertUpdateMaintenance = (operationId: string) => {
+    if (closed) {
+      throw new Error('PROFILE_SNAPSHOT_BROKER_UNAVAILABLE');
+    }
+    if (
+      activeOperationKind !== 'update' || activeOperationId !== operationId
+    ) {
+      throw new Error('PROFILE_MAINTENANCE_OPERATION_MISMATCH');
+    }
+    input.maintenance.assertUpdate(operationId);
+  };
+  const captureSnapshotFence = (operationId?: string) => {
+    // Timer/close cleanup can erase broker metadata while work is awaiting.
+    const updateOperationId =
+      activeOperationKind === 'update' ? activeOperationId : undefined;
+    const assertContinuation = () => {
+      if (closed) {
+        throw new Error('PROFILE_SNAPSHOT_BROKER_UNAVAILABLE');
+      }
+      if (updateOperationId !== undefined) {
+        if (operationId !== undefined && operationId !== updateOperationId) {
+          throw new Error('PROFILE_MAINTENANCE_OPERATION_MISMATCH');
+        }
+        assertUpdateMaintenance(updateOperationId);
+      }
+    };
+    assertContinuation();
+    return assertContinuation;
+  };
+  const close = () => {
+    if (closed) {
+      return;
+    }
+    closed = true;
+    unsubscribe();
+    unsubscribeClose();
+    activeSnapshotAbortController?.abort();
+    activeSnapshotAbortController = undefined;
+    if (activeOperationId !== undefined) {
+      input.maintenance.forceEnd();
+      clearActiveOperation();
+    }
+    input.transport.close();
   };
   const unsubscribe = input.transport.subscribe((value) => {
     operationQueue = operationQueue
@@ -101,19 +155,65 @@ export function startProfileSnapshotBrokerBackend(input: {
         }
 
         try {
-          if (request.operation === 'beginProfileMaintenance') {
-            await input.maintenance.begin(
-              request.operationId,
-              maintenanceDrainTimeoutMilliseconds,
-            );
+          if (
+            request.operation === 'beginProfileMaintenance' ||
+            request.operation === 'beginUpdateMaintenance'
+          ) {
+            if (
+              activeOperationId !== undefined ||
+              input.maintenance.getStatus() !== 'normal'
+            ) {
+              throw new Error('PROFILE_MAINTENANCE_BUSY');
+            }
+            const kind = request.operation === 'beginUpdateMaintenance'
+              ? 'update' : 'ordinary';
+            // Own cancellation before begin can wait for an in-flight write.
             activeOperationId = request.operationId;
-            autoReleaseTimer = setTimeout(() => {
-              if (activeOperationId === request.operationId) {
-                input.maintenance.forceEnd();
+            activeOperationKind = kind;
+            try {
+              if (kind === 'update') {
+                await input.maintenance.beginUpdate(
+                  request.operationId, maintenanceDrainTimeoutMilliseconds,
+                  maximumMaintenanceDurationMilliseconds,
+                );
+              } else {
+                await input.maintenance.begin(
+                  request.operationId, maintenanceDrainTimeoutMilliseconds,
+                );
+              }
+            } catch (error) {
+              if (kind === 'ordinary') {
                 clearActiveOperation();
               }
+              throw error;
+            }
+            if (closed) {
+              throw new Error('PROFILE_SNAPSHOT_BROKER_UNAVAILABLE');
+            }
+            if (kind === 'update') {
+              assertUpdateMaintenance(request.operationId);
+            }
+            autoReleaseTimer = setTimeout(() => {
+              if (activeOperationId === request.operationId) {
+                if (kind === 'update') {
+                  activeSnapshotAbortController?.abort();
+                }
+                input.maintenance.forceEnd();
+                if (kind === 'ordinary') {
+                  clearActiveOperation();
+                } else {
+                  autoReleaseTimer = undefined;
+                }
+              }
             }, maximumMaintenanceDurationMilliseconds);
+          } else if (request.operation === 'assertUpdateMaintenance') {
+            assertUpdateMaintenance(request.operationId);
+          } else if (request.operation === 'endUpdateMaintenance') {
+            assertUpdateMaintenance(request.operationId);
+            input.maintenance.endUpdate(request.operationId);
+            clearActiveOperation();
           } else if (request.operation === 'createProfileSnapshot') {
+            const assertContinuation = captureSnapshotFence(request.operationId);
             activeSnapshotAbortController = new AbortController();
             const snapshot = await input.snapshot.createProfileSnapshot({
               migrationPolicy: request.migrationPolicy,
@@ -121,6 +221,7 @@ export function startProfileSnapshotBrokerBackend(input: {
               signal: activeSnapshotAbortController.signal,
             });
             activeSnapshotAbortController = undefined;
+            assertContinuation();
             input.transport.send({
               ok: true,
               protocolVersion: profileSnapshotBrokerProtocolVersion,
@@ -132,8 +233,10 @@ export function startProfileSnapshotBrokerBackend(input: {
             });
             return;
           } else if (request.operation === 'validateActiveProfile') {
+            const assertContinuation = captureSnapshotFence();
             const validation =
               await input.snapshot.validateActiveProfile();
+            assertContinuation();
             input.transport.send({
               ok: true,
               protocolVersion: profileSnapshotBrokerProtocolVersion,
@@ -145,10 +248,12 @@ export function startProfileSnapshotBrokerBackend(input: {
             });
             return;
           } else if (request.operation === 'validateProfileSnapshot') {
+            const assertContinuation = captureSnapshotFence(request.operationId);
             const validation =
               await input.snapshot.validateProfileSnapshot(
                 request.operationId,
               );
+            assertContinuation();
             input.transport.send({
               ok: true,
               protocolVersion: profileSnapshotBrokerProtocolVersion,
@@ -162,6 +267,9 @@ export function startProfileSnapshotBrokerBackend(input: {
           } else if (
             request.operation === 'prepareProfileRestoreActivation'
           ) {
+            if (activeOperationKind === 'update') {
+              throw new Error('PROFILE_MAINTENANCE_OPERATION_MISMATCH');
+            }
             const prepared =
               await input.snapshot.prepareProfileRestoreActivation(
                 request.operationId,
@@ -192,40 +300,21 @@ export function startProfileSnapshotBrokerBackend(input: {
           });
         } catch (error) {
           activeSnapshotAbortController = undefined;
-          input.transport.send(
-            createErrorResponse(request.requestId, mapError(error)),
-          );
+          if (!closed) {
+            input.transport.send(
+              createErrorResponse(request.requestId, mapError(error)),
+            );
+          }
         }
       })
-      .catch(() => undefined);
+      .catch(close);
   });
-  const unsubscribeClose = input.transport.subscribeClose(() => {
-    activeSnapshotAbortController?.abort();
-    activeSnapshotAbortController = undefined;
-    if (activeOperationId !== undefined) {
-      input.maintenance.forceEnd();
-      clearActiveOperation();
-    }
-  });
+  const unsubscribeClose = input.transport.subscribeClose(close);
   input.transport.send(createProfileSnapshotBrokerReady());
 
   return {
-    close() {
-      if (closed) {
-        return;
-      }
-
-      closed = true;
-      unsubscribe();
-      unsubscribeClose();
-      activeSnapshotAbortController?.abort();
-      activeSnapshotAbortController = undefined;
-      if (activeOperationId !== undefined) {
-        input.maintenance.forceEnd();
-        clearActiveOperation();
-      }
-      input.transport.close();
-    },
+    assertUpdateMaintenance,
+    close,
   };
 }
 
@@ -233,7 +322,9 @@ function mapError(error: unknown): ProfileSnapshotBrokerErrorCode {
   const name = readErrorProperty(error, 'name');
   const message = readErrorProperty(error, 'message');
 
-  if (name === 'ProfileMaintenanceBusyError') {
+  if (
+    name === 'ProfileMaintenanceBusyError' || message === 'PROFILE_MAINTENANCE_BUSY'
+  ) {
     return 'PROFILE_MAINTENANCE_BUSY';
   }
   if (name === 'ProfileMaintenanceTimeoutError') {
@@ -244,6 +335,9 @@ function mapError(error: unknown): ProfileSnapshotBrokerErrorCode {
     message === 'PROFILE_MAINTENANCE_OPERATION_MISMATCH'
   ) {
     return 'PROFILE_MAINTENANCE_OPERATION_MISMATCH';
+  }
+  if (message === 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE') {
+    return 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE';
   }
   if (message === 'PROFILE_SNAPSHOT_DATABASE_FAILED') {
     return 'PROFILE_SNAPSHOT_DATABASE_FAILED';

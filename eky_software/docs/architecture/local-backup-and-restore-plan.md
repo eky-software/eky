@@ -412,6 +412,9 @@ recovery hankkii maintenance-leasen sekä validoi ja poistaa kaikki tunnetut
 stale-payloadit ennen journalin ratkaisua tai uuden backupin käsittelyä. Sama
 cleanup tehdään, vaikka import-journalia ei ole. Tuntematon entry tai epäselvä
 filesystem-raja pysäyttää recoveryn; sisältöä ei poisteta arvaamalla.
+Caller-owned pre-update-snapshotin epävarma backend-omistajuus estää sen
+stagingin välittömän poiston; tarkka raja on
+[päivityksen kirjoitussuojan sopimuksessa](#päivityksen-kirjoitussuojan-erillinen-vapautussääntö).
 
 Desktopin production-käynnistys tunnistaa ja siivoaa keskeytyksestä jääneet
 nykyisen yhden työtilan tunnetut temp- ja staging-slotit ennen normaalin
@@ -437,7 +440,8 @@ Ensisijainen tutkittava malli on:
 4. snapshot tehdään `better-sqlite3 13.0.2`:n dokumentoidun SQLite backup
    -API:n avulla
 5. snapshotin integrity ja foreign keys tarkistetaan erillisestä tiedostosta
-6. runtime palaa käyttöön vasta kun snapshot-vaihe on valmis
+6. tavallinen backup vapauttaa suojan snapshot-vaiheen valmistuttua;
+   pre-update-snapshot kuuluu päivityksen pidempään kirjoitussuojaan
 
 `better-sqlite3 13.0.2` backup API:n WAL-käyttäytyminen, progress/cancellation,
 snapshotin erillinen integrity- ja foreign-key-tarkistus sekä Windows-
@@ -467,6 +471,43 @@ lukkoa:
   lukkotunnistetta
 - timeout tai kaatuminen jättää tunnistettavan journalitilan
 - käynnistys ratkaisee keskeneräisen tilan ennen business-runtimen avaamista
+
+### Päivityksen kirjoitussuojan erillinen vapautussääntö
+
+C/R04:n hyväksytty sopimus erottaa tavallisen backupin ja päivityksen
+suojan. Tavallinen backup säilyttää nykyisen vapautuksen timeoutissa tai
+brokerin sulussa. Update-operaation drain-virhe, kymmenen minuutin
+voimassaolon päättyminen tai yksityisen broker-yhteyden katkeaminen sen
+sijaan mitätöi päivitysvaltuuden ja pitää business-kirjoitukset estettyinä
+hallittuun uudelleenkäynnistykseen asti. Tavallinen end/force-end ei saa
+muuttaa tätä tilaa normaaliksi. Epäselvä suoja ei käynnistä automaattista
+palautusta.
+
+Ennen runtime-stopin aloittamista turvallinen valmistelun keskeyttäminen
+voi vapauttaa edelleen voimassa olevan update-suojan vasta varmennetun
+terminal-journalin jälkeen. Saman operaation suoja jatkuu pre-update-
+snapshotista päivityksen hallittuun sulkuun; palautuspisteen sisäinen
+finally ei vapauta caller-owned suojaa. Backend tarkistaa voimassaolon
+myös odotusten jälkeen, ei vain ajastimen callbackissa.
+
+Palautuspistepalvelun `createPreUpdateWithMaintenance(operationId)` käyttää
+jo drainin läpäissyttä update-suojaa ja samaa tunnistetta snapshotissa sekä
+validoinnissa. Se ei hanki tai vapauta maintenancea. Palvelu tarkistaa suojan
+ennen snapshotia, ennen tallennusta ja tallennuksen sekä staging-siivouksen
+jälkeen ennen onnistumistapahtumaa. Myöhäinen mitätöityminen säilyttää jo
+tallennetun palautuspisteen, mutta ei anna päivitykselle onnistumiskuittausta.
+
+Broker-pyynnön aikakatkaisu ei todista taustatyön päättymistä. Jos snapshotin
+tai validoinnin vastaus puuttuu, palvelu käyttää nykyisen sarjallisen brokerin
+yhtä rajattua assertion-kuittausta ennen stagingin poistoa. Jos myös tämä
+epäonnistuu, staging säilyy nykyisen käynnistys-/recovery-siivouksen varalle;
+ensimmäinen virhe ei vaihdu siivouksen virheeksi. Myöhäinen vastaus ei enää
+käynnistä poistoa tai muuta epäonnistumista onnistumiseksi. Tämä ei muuta
+tavallisen backupin vapautussääntöä eikä lisää uutta siivousjärjestelmää.
+
+Toteutuksen nykytila ja vielä avoimet kytkennät löytyvät
+[C:n omistavasta valmistelusuunnitelmasta](release-0.3.0-m1-preparation-plan.md#cn-rajattu-toteutusehdotus).
+Tämä sopimus ei yksin tarkoita koko R04:n tai packaged-porttien hyväksyntää.
 
 Maintenance-lukko ei ole käyttäjäpermissionin korvike. Backendin permission-,
 session- ja `ActorContext`-rajat säilyvät.
@@ -716,6 +757,12 @@ rollback-tavut ja tutkittava profiili säilytetään, eikä business-ikkunaa
 avata, aktiivista yritysosoitinta palauteta tai uutta runtimea käynnistetä.
 Sama sulkemisvaatimus koskee jo ensimmäisessä profiilivalidoinnissa
 tapahtuvaa virhettä, myös yrityksen vaihtoon liittyvässä palautuksessa.
+
+Vaatimus koskee myös epäonnistunutta käynnistystä ennen backend-kahvan
+palauttamista. Puuttuva kahva ei osoita, ettei prosessia syntynyt.
+Recovery edellyttää [startup-omistajan todistusta](local-desktop-implementation-plan.md#käynnistyksen-omistajuus-ennen-backend-kahvaa)
+sekä prosessin poissaolosta että migraatiovalmistelun päättymisestä;
+tuntematon tai keskeneräinen tila ei valtuuta tiedostomuutoksia.
 
 `desktopRestoreStartup.test.ts` todentaa tämän oikean compositionin,
 rekisterin, journalin ja tiedostotransaktion kautta synteettisillä tavuilla.

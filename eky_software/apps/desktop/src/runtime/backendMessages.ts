@@ -1,8 +1,26 @@
 import { isAbsolute } from 'node:path';
 
 import { isDesktopRuntimeSession } from './runtimeSession.js';
+import { isOperationId } from '../profileBackup/profileSnapshotBrokerProtocol.js';
+import {
+  parseWorkspaceProcessReservationDescriptor,
+  type WorkspaceProcessReservationDescriptor,
+} from './workspaceProcessReservationDescriptor.js';
+
+export const desktopBackendReadinessTimeoutMilliseconds = 30_000;
+
+export interface DesktopBackendPrepareMessage {
+  reservation: WorkspaceProcessReservationDescriptor;
+  type: 'prepare';
+}
+
+export interface DesktopBackendReservationReadyMessage {
+  reservation: WorkspaceProcessReservationDescriptor;
+  type: 'reservationReady';
+}
 
 export interface DesktopBackendStartMessage {
+  generationId: string;
   config: {
     appVersion: string;
     architecture: string;
@@ -33,6 +51,11 @@ export interface DesktopBackendShutdownMessage {
   type: 'shutdown';
 }
 
+export interface DesktopBackendUpdateShutdownMessage {
+  operationId: string;
+  type: 'shutdownForUpdate';
+}
+
 export interface DesktopBackendContinueStartupMessage {
   type: 'continueStartup';
 }
@@ -42,9 +65,11 @@ export interface DesktopBackendAbortStartupMessage {
 }
 
 export type DesktopBackendCommand =
+  | DesktopBackendPrepareMessage
   | DesktopBackendAbortStartupMessage
   | DesktopBackendContinueStartupMessage
   | DesktopBackendShutdownMessage
+  | DesktopBackendUpdateShutdownMessage
   | DesktopBackendStartMessage;
 
 export interface DesktopBackendMigrationGateReadyMessage {
@@ -73,12 +98,14 @@ export type DesktopBackendFailureCode =
   | 'BACKEND_INVOICE_PDF_ARCHIVE_BROKER_FAILED'
   | 'BACKEND_MODULE_IMPORT_FAILED'
   | 'BACKEND_MIGRATION_STARTUP_GATE_FAILED'
+  | 'BACKEND_PROCESS_RESERVATION_FAILED'
   | 'BACKEND_PROFILE_SNAPSHOT_BROKER_FAILED'
   | 'BACKEND_SECRET_BROKER_FAILED'
   | 'BACKEND_SERVER_START_FAILED'
   | 'BACKEND_SMOKE_PDF_FAILED';
 
 export type DesktopBackendStatusMessage =
+  | DesktopBackendReservationReadyMessage
   | DesktopBackendFailedMessage
   | DesktopBackendMigrationGateReadyMessage
   | DesktopBackendReadyMessage;
@@ -87,6 +114,7 @@ const backendFailureCodes = new Set<DesktopBackendFailureCode>([
   'BACKEND_INVOICE_PDF_ARCHIVE_BROKER_FAILED',
   'BACKEND_MODULE_IMPORT_FAILED',
   'BACKEND_MIGRATION_STARTUP_GATE_FAILED',
+  'BACKEND_PROCESS_RESERVATION_FAILED',
   'BACKEND_PROFILE_SNAPSHOT_BROKER_FAILED',
   'BACKEND_SECRET_BROKER_FAILED',
   'BACKEND_SERVER_START_FAILED',
@@ -94,7 +122,11 @@ const backendFailureCodes = new Set<DesktopBackendFailureCode>([
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const prototype: unknown = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 function isSafeAbsolutePath(value: unknown): value is string {
@@ -120,8 +152,22 @@ export function parseDesktopBackendCommand(
     return undefined;
   }
 
+  if (value.type === 'prepare') {
+    const reservation = hasExactKeys(value, ['reservation', 'type'])
+      ? parseWorkspaceProcessReservationDescriptor(value.reservation)
+      : undefined;
+    return reservation === undefined ? undefined : { reservation, type: 'prepare' };
+  }
+
   if (value.type === 'shutdown') {
-    return { type: 'shutdown' };
+    return hasExactKeys(value, ['type']) ? { type: 'shutdown' } : undefined;
+  }
+
+  if (value.type === 'shutdownForUpdate') {
+    return hasExactKeys(value, ['operationId', 'type']) &&
+      isOperationId(value.operationId)
+      ? { operationId: value.operationId, type: 'shutdownForUpdate' }
+      : undefined;
   }
 
   if (value.type === 'continueStartup') {
@@ -136,7 +182,11 @@ export function parseDesktopBackendCommand(
       : undefined;
   }
 
-  if (value.type !== 'start' || !isRecord(value.config)) {
+  if (value.type !== 'start' || !hasExactKeys(value, ['config', 'generationId', 'type'])
+    || typeof value.generationId !== 'string'
+    || !runtimeInstanceIdPattern.test(value.generationId)
+    || value.generationId !== value.generationId.toLowerCase()
+    || !isRecord(value.config)) {
     return undefined;
   }
 
@@ -152,6 +202,14 @@ export function parseDesktopBackendCommand(
   ] as const;
 
   if (
+    !hasExactKeys(config, [
+      'appVersion', 'architecture', 'backendRoot', 'buildCreatedAt',
+      'buildDirty', 'buildRevision', 'createSmokePdf', 'databaseFilePath',
+      'electronVersion', 'invoiceDocumentStorageRoot', 'migrationsDirectory',
+      'migrationStartupPolicy', 'operationalLogsRoot', 'platform',
+      'profileSnapshotStagingRoot', 'runtimeInstanceId', 'runtimeSessionSecret',
+      'smokePdfPath', 'verifySmokeSecretBroker',
+    ]) ||
     typeof config.appVersion !== 'string' ||
     !/^[A-Za-z0-9.+_-]{1,80}$/.test(config.appVersion) ||
     typeof config.architecture !== 'string' ||
@@ -177,6 +235,7 @@ export function parseDesktopBackendCommand(
   }
 
   return {
+    generationId: value.generationId,
     config: {
       appVersion: config.appVersion,
       architecture: config.architecture,
@@ -221,6 +280,14 @@ export function parseDesktopBackendStatus(
     return undefined;
   }
 
+  if (value.type === 'reservationReady') {
+    const reservation = hasExactKeys(value, ['reservation', 'type'])
+      ? parseWorkspaceProcessReservationDescriptor(value.reservation)
+      : undefined;
+    return reservation === undefined
+      ? undefined : { reservation, type: 'reservationReady' };
+  }
+
   if (
     value.type === 'migrationGateReady' &&
     hasExactKeys(value, ['inspection', 'type']) &&
@@ -239,6 +306,7 @@ export function parseDesktopBackendStatus(
 
   if (
     value.type === 'failed' &&
+    hasExactKeys(value, ['code', 'type']) &&
     typeof value.code === 'string' &&
     backendFailureCodes.has(value.code as DesktopBackendFailureCode)
   ) {
@@ -247,6 +315,9 @@ export function parseDesktopBackendStatus(
 
   if (
     value.type === 'ready' &&
+    hasExactKeys(value, [
+      'port', 'smokePdfCreated', 'smokeSecretBrokerVerified', 'type',
+    ]) &&
     Number.isInteger(value.port) &&
     typeof value.port === 'number' &&
     value.port >= 1 &&
@@ -307,7 +378,7 @@ function hasExactKeys(
   value: Record<string, unknown>,
   expectedKeys: readonly string[],
 ): boolean {
-  const actualKeys = Object.keys(value);
+  const actualKeys = Reflect.ownKeys(value);
   return (
     actualKeys.length === expectedKeys.length &&
     expectedKeys.every((key) => actualKeys.includes(key))

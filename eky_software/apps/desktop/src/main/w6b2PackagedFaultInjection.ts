@@ -77,10 +77,16 @@ export function createW6b2PackagedHandoffProfileProtection(
   return Object.freeze({
     createValidatedPreMigrationPoint: () =>
       profileProtection.createValidatedPreMigrationPoint(),
-    async createValidatedPreUpdatePoint() {
+    async createValidatedPreUpdatePoint(operationId: string) {
       faultInjection.failPreUpdateRecoveryPointIfRequested();
-      return profileProtection.createValidatedPreUpdatePoint();
+      return profileProtection.createValidatedPreUpdatePoint(operationId);
     },
+    beginUpdateMaintenance: (operationId: string) =>
+      profileProtection.beginUpdateMaintenance(operationId),
+    assertUpdateMaintenance: (operationId: string) =>
+      profileProtection.assertUpdateMaintenance(operationId),
+    endUpdateMaintenance: (operationId: string) =>
+      profileProtection.endUpdateMaintenance(operationId),
     enterMaintenance: (
       operationId: Parameters<UpdateProfileProtection['enterMaintenance']>[0],
     ) =>

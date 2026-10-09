@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type {
   LocalWorkspaceRegistryEntryV1,
@@ -15,6 +15,7 @@ import {
   RecordingActiveWorkspaceLifecycle,
   RecordingEmptyWorkspaceBootstrap,
   RecordingWorkspaceMaintenanceLease,
+  RecordingWorkspaceRuntimeAbsence,
   TEST_CREATED_AT,
   TEST_OPERATION_ID,
   TEST_SECOND_WORKSPACE_ID,
@@ -31,6 +32,7 @@ interface CoordinatorFixture {
   readonly lifecycle: RecordingActiveWorkspaceLifecycle;
   readonly registry: MemoryWorkspaceRegistry;
   readonly rootStore: MemoryWorkspaceCreationRootStore;
+  readonly runtimeAbsence: RecordingWorkspaceRuntimeAbsence;
 }
 
 function createFixture(input: {
@@ -48,6 +50,7 @@ function createFixture(input: {
   const lifecycle = new RecordingActiveWorkspaceLifecycle(events);
   const bootstrap = new RecordingEmptyWorkspaceBootstrap(events);
   const lease = new RecordingWorkspaceMaintenanceLease(events);
+  const runtimeAbsence = new RecordingWorkspaceRuntimeAbsence(events);
   return {
     events,
     journal,
@@ -56,6 +59,7 @@ function createFixture(input: {
     lifecycle,
     bootstrap,
     lease,
+    runtimeAbsence,
     coordinator: new EmptyWorkspaceCreationCoordinator({
       activeWorkspaceLifecycle: lifecycle,
       bootstrap,
@@ -69,18 +73,41 @@ function createFixture(input: {
       registry,
       rootStore,
       userDataRoot: TEST_USER_DATA_ROOT,
+      workspaceRuntimeAbsence: runtimeAbsence,
     }),
   };
 }
 
 describe('empty workspace creation coordinator', () => {
+  it.each(['active', 'unknown'] as const)('retains candidate evidence and refuses restart when bootstrap leaves ownership %s', async state => {
+    const fixture = createFixture();
+    vi.spyOn(fixture.bootstrap, 'bootstrap').mockImplementationOnce(async () => {
+      fixture.runtimeAbsence.state = state;
+      throw new Error('synthetic bootstrap close failure');
+    });
+    await expect(fixture.coordinator.create('Synthetic workspace')).rejects.toMatchObject({
+      code: 'WORKSPACE_CREATION_RECOVERY_REQUIRED',
+    });
+    expect(fixture.rootStore.candidateExists).toBe(true);
+    expect(fixture.journal.current?.state).toBe('candidateRootCreated');
+    expect(fixture.registry.value).toEqual(createTestRegistry());
+    expect(fixture.events).not.toContain('root.discardCandidate');
+    expect(fixture.events).not.toContain('journal.discard');
+    expect(fixture.lifecycle.ensureCalls).toBe(0);
+  });
+
   it('creates the first workspace through the exact durable publication order', async () => {
     const fixture = createFixture();
+    const write = vi.spyOn(fixture.journal, 'write');
 
     await expect(fixture.coordinator.create('Oma yritys')).resolves.toEqual({
       workspaceId: TEST_WORKSPACE_ID,
       workspaceLabel: 'Oma yritys',
     });
+    expect(write).toHaveBeenCalledTimes(6);
+    for (const [journal] of write.mock.calls) {
+      expect(journal).toMatchObject({ formatVersion: 2 });
+    }
 
     expect(fixture.events).toEqual([
       'lease.acquire.create',
@@ -88,10 +115,12 @@ describe('empty workspace creation coordinator', () => {
       'registry.read',
       'lifecycle.quiesce',
       'lifecycle.stop',
+      'runtimeAbsence.assert',
       'journal.write.prepared',
       'root.createCandidate',
       'journal.write.candidateRootCreated',
       'bootstrap.run',
+      'runtimeAbsence.assert',
       'journal.write.bootstrapCompleted',
       'root.inspectCandidate',
       'journal.write.candidateValidated',

@@ -106,7 +106,7 @@ describe('W6B.2 packaged fault injection', () => {
     );
 
     await expect(
-      protectedPort.createValidatedPreUpdatePoint(),
+      protectedPort.createValidatedPreUpdatePoint('11111111-1111-4111-8111-111111111111'),
     ).rejects.toBeInstanceOf(W6b2PackagedFaultInjectedError);
     expect(calls).toEqual([]);
     await expect(protectedPort.validateActiveProfile()).resolves.toMatchObject({
@@ -124,6 +124,23 @@ describe('W6B.2 packaged fault injection', () => {
       ),
     ).toBe(profileProtection);
   });
+
+  it('forwards the same update owner through the packaged fault wrapper', async () => {
+    const profileProtection = createProfileProtection([]);
+    const operationId = '11111111-1111-4111-8111-111111111111';
+    const methods = [
+      'beginUpdateMaintenance', 'assertUpdateMaintenance',
+      'createValidatedPreUpdatePoint', 'endUpdateMaintenance',
+    ] as const;
+    const spies = methods.map(method => vi.spyOn(profileProtection, method));
+    const injection = createW6b2PackagedFaultInjection({
+      configuration: faultConfiguration('activeWorkspaceFirstStartFailure', 'targetFirstStartFailure'),
+      interruptProcess: vi.fn(),
+    });
+    const protectedPort = createW6b2PackagedHandoffProfileProtection(profileProtection, injection);
+    for (const method of methods) await protectedPort[method](operationId);
+    for (const spy of spies) expect(spy).toHaveBeenCalledExactlyOnceWith(operationId);
+  });
 });
 
 function createProfileProtection(calls: string[]): UpdateProfileProtection {
@@ -135,6 +152,15 @@ function createProfileProtection(calls: string[]): UpdateProfileProtection {
     async createValidatedPreUpdatePoint() {
       calls.push('createValidatedPreUpdatePoint');
       return 'point';
+    },
+    async beginUpdateMaintenance() {
+      calls.push('beginUpdateMaintenance');
+    },
+    async assertUpdateMaintenance() {
+      calls.push('assertUpdateMaintenance');
+    },
+    async endUpdateMaintenance() {
+      calls.push('endUpdateMaintenance');
     },
     async enterMaintenance() {
       calls.push('enterMaintenance');

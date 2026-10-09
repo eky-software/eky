@@ -65,7 +65,25 @@ export class ProfileSnapshotBrokerClient {
   }
 
   beginMaintenance(operationId: string): Promise<'busy'> {
-    return this.request('beginProfileMaintenance', operationId).then(
+    return this.requestBusyMaintenance('beginProfileMaintenance', operationId);
+  }
+
+  beginUpdateMaintenance(operationId: string): Promise<'busy'> {
+    return this.requestBusyMaintenance('beginUpdateMaintenance', operationId);
+  }
+
+  assertUpdateMaintenance(operationId: string): Promise<'busy'> {
+    return this.requestBusyMaintenance('assertUpdateMaintenance', operationId);
+  }
+
+  private requestBusyMaintenance(
+    operation:
+      | 'beginProfileMaintenance'
+      | 'beginUpdateMaintenance'
+      | 'assertUpdateMaintenance',
+    operationId: string,
+  ): Promise<'busy'> {
+    return this.request(operation, operationId).then(
       (result) => {
         if (
           result.type !== 'maintenanceStatus' ||
@@ -115,7 +133,18 @@ export class ProfileSnapshotBrokerClient {
   }
 
   endMaintenance(operationId: string): Promise<'normal'> {
-    return this.request('endProfileMaintenance', operationId).then(
+    return this.requestEndMaintenance('endProfileMaintenance', operationId);
+  }
+
+  endUpdateMaintenance(operationId: string): Promise<'normal'> {
+    return this.requestEndMaintenance('endUpdateMaintenance', operationId);
+  }
+
+  private requestEndMaintenance(
+    operation: 'endProfileMaintenance' | 'endUpdateMaintenance',
+    operationId: string,
+  ): Promise<'normal'> {
+    return this.request(operation, operationId).then(
       (result) => {
         if (
           result.type !== 'maintenanceStatus' ||

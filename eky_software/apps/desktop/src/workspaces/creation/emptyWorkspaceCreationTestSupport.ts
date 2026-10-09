@@ -28,7 +28,7 @@ import type {
 } from './workspaceCreationRootStore.js';
 import type {
   WorkspaceCreationJournalStore,
-  WorkspaceCreationJournalV1,
+  WorkspaceCreationJournal,
   WorkspaceCreationOperationId,
 } from './workspaceCreationTypes.js';
 import {
@@ -104,21 +104,21 @@ export class RecordingWorkspaceMaintenanceLease
 
 export class MemoryWorkspaceCreationJournal
   implements WorkspaceCreationJournalStore {
-  current: Readonly<WorkspaceCreationJournalV1> | undefined;
-  readonly states: WorkspaceCreationJournalV1['state'][] = [];
-  failBeforeState: WorkspaceCreationJournalV1['state'] | undefined;
-  failAfterState: WorkspaceCreationJournalV1['state'] | undefined;
+  current: Readonly<WorkspaceCreationJournal> | undefined;
+  readonly states: WorkspaceCreationJournal['state'][] = [];
+  failBeforeState: WorkspaceCreationJournal['state'] | undefined;
+  failAfterState: WorkspaceCreationJournal['state'] | undefined;
   failDiscard = false;
   failRemove = false;
 
   constructor(
     private readonly events: string[],
-    initial?: Readonly<WorkspaceCreationJournalV1>,
+    initial?: Readonly<WorkspaceCreationJournal>,
   ) {
     this.current = initial;
   }
 
-  async read(): Promise<Readonly<WorkspaceCreationJournalV1> | undefined> {
+  async read(): Promise<Readonly<WorkspaceCreationJournal> | undefined> {
     this.events.push('journal.read');
     return this.current;
   }
@@ -399,11 +399,11 @@ export class RecordingPublishedWorkspaceValidation
 }
 
 export function createTestJournal(input: {
-  readonly state: WorkspaceCreationJournalV1['state'];
+  readonly state: WorkspaceCreationJournal['state'];
   readonly previousActiveWorkspaceId?: WorkspaceId | null;
   readonly workspaceId?: WorkspaceId;
   readonly profileCharacter?: string;
-}): Readonly<WorkspaceCreationJournalV1> {
+}): Readonly<WorkspaceCreationJournal> {
   const lineageRequired = [
     'bootstrapCompleted',
     'candidateValidated',

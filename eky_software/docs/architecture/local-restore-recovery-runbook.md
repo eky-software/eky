@@ -67,7 +67,9 @@ ADR-0011:n W3-import ei käytä aktiivisen profiilin restore-journalia. Sen
 oma `WorkspaceBackupImportJournalV1` ratkaistaan startupissa ennen uuden
 workspace-rootin tai registry-entryn käyttämistä.
 
-Recovery hankkii ensin installation-scoped `import`-maintenance-leasen. Sen
+Recovery hankkii ensin installation-scoped `import`-maintenance-leasen.
+Nimenomainen kylmäkäynnistyksen `beforeRuntimeStart`-tila todistaa lisäksi
+runtime-poissaolon ennen journalin tai karanteenin käsittelyä. Sen
 jälkeen se validoi W3:n yksityisen plaintext-karanteenin ja poistaa vain
 canonical UUID v4 -nimiset, rajatut tavalliset stale-payloadit. Tämä tehdään
 ennen import-journalin lukemista ja myös silloin, kun journalia ei ole. Cleanup
@@ -93,8 +95,14 @@ muokkaa registryä, yhdistä SQLite-rivejä eikä korvaa työtilaa käsin. W3-
 recovery ei tarvitse eikä saa säilyttää backupin lähdepolkua, salasanaa tai
 avainta.
 
-W3 ja tämä quarantine-recovery ovat vielä inertti foundation. Ne eivät ole
-production-startupissa, package-payloadissa, preloadissa, IPC:ssä tai UI:ssa.
+Kylmäkäynnistyksen reconciliation-pala noudattaa
+[ADR-0011:n hyväksyttyä terminal-rajaa](../decisions/ADR-0011-local-multi-workspace-company-model.md#createimport-recoveryn-kylmäkäynnistyksen-terminal):
+täsmällinen jatkettava ready-workspace ja muuttumaton registry varmennetaan
+ennen journalin poistoa, mutta business-runtime käynnistetään ja validoidaan
+erikseen. Julkaisematon ensimmäinen tuonti ilman jatkettavaa työtilaa jää
+suljetuksi journalin kanssa. Tämän recoveryn production-startup-kytkentä
+ja packaged-keskeytystodennus ovat vielä avoinna
+[C-paketissa](release-0.3.0-m1-preparation-plan.md#c-paketin-valmistelu-ja-hyväksyntärajat).
 
 ## Keskeytynyt same-lineage workspace -korvaus
 

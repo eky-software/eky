@@ -7,6 +7,12 @@ import type { WorkspaceRuntimeAbsencePort } from '../src/workspaces/runtime/work
 import type { WorkspaceId } from '../src/workspaces/registry/workspaceRegistryTypes.js';
 import { validateWorkspaceId } from '../src/workspaces/registry/workspaceIdValidation.js';
 
+export function assertProofSingleInstanceOwnership(): void {
+  if (!app.hasSingleInstanceLock()) {
+    throw new Error('WORKSPACE_PROCESS_RESERVATION_FAILED');
+  }
+}
+
 export class ProofActiveWorkspaceLifecycle
   implements ActiveWorkspaceLifecyclePort, WorkspaceRuntimeAbsencePort
 {

@@ -1,6 +1,12 @@
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 
+import {
+  parseWorkspaceProcessReservationDescriptor,
+  type WorkspaceProcessReservationDescriptor,
+} from './workspaceProcessReservationDescriptor.js';
+
 export const workspaceCandidateProtocolVersion = 1;
+export const workspaceCandidateStartupTimeoutMilliseconds = 10_000;
 
 const maximumMessageBytes = 32 * 1024;
 const maximumPathCharacters = 4_096;
@@ -65,6 +71,10 @@ interface WorkspaceCandidateProcessRequestIdentity {
 
 export type WorkspaceCandidateProcessCommand =
   | (WorkspaceCandidateProcessRequestIdentity & {
+      readonly reservation: WorkspaceProcessReservationDescriptor;
+      readonly type: 'prepare';
+    })
+  | (WorkspaceCandidateProcessRequestIdentity & {
       readonly operation: WorkspaceCandidateProcessOperation;
       readonly type: 'start';
     })
@@ -114,6 +124,10 @@ export type WorkspaceCandidateProcessStatus =
       readonly type: 'ready';
     }
   | (WorkspaceCandidateProcessRequestIdentity & {
+      readonly reservation: WorkspaceProcessReservationDescriptor;
+      readonly type: 'reservationReady';
+    })
+  | (WorkspaceCandidateProcessRequestIdentity & {
       readonly result: WorkspaceCandidateProcessResult;
       readonly type: 'completed';
     })
@@ -121,6 +135,23 @@ export type WorkspaceCandidateProcessStatus =
       readonly code: 'WORKSPACE_CANDIDATE_OPERATION_FAILED';
       readonly type: 'failed';
     });
+
+export function createWorkspaceCandidatePrepareCommand(input: {
+  readonly operationId: string;
+  readonly requestId: string;
+  readonly reservation: WorkspaceProcessReservationDescriptor;
+  readonly runtimeSession: string;
+}): Extract<WorkspaceCandidateProcessCommand, { type: 'prepare' }> {
+  const command = parseWorkspaceCandidateProcessCommand({
+    ...requestIdentity(input),
+    reservation: input.reservation,
+    type: 'prepare',
+  });
+  if (command?.type !== 'prepare') {
+    throw new Error('WORKSPACE_CANDIDATE_PROCESS_REQUEST_INVALID');
+  }
+  return command;
+}
 
 export function createWorkspaceCandidateStartCommand(input: {
   readonly operation: WorkspaceCandidateProcessOperation;
@@ -181,6 +212,23 @@ export function createWorkspaceCandidateCompletedStatus(input: {
   return status;
 }
 
+export function createWorkspaceCandidateReservationReadyStatus(input: {
+  readonly operationId: string;
+  readonly requestId: string;
+  readonly reservation: WorkspaceProcessReservationDescriptor;
+  readonly runtimeSession: string;
+}): Extract<WorkspaceCandidateProcessStatus, { type: 'reservationReady' }> {
+  const status = parseWorkspaceCandidateProcessStatus({
+    ...requestIdentity(input),
+    reservation: input.reservation,
+    type: 'reservationReady',
+  });
+  if (status?.type !== 'reservationReady') {
+    throw new Error('WORKSPACE_CANDIDATE_PROCESS_STATUS_INVALID');
+  }
+  return status;
+}
+
 export function createWorkspaceCandidateFailedStatus(input: {
   readonly operationId: string;
   readonly requestId: string;
@@ -206,6 +254,14 @@ export function parseWorkspaceCandidateProcessCommand(
     !isRequestIdentity(value)
   ) {
     return undefined;
+  }
+  if (value.type === 'prepare') {
+    const reservation = readBoundReservation(value);
+    return reservation === undefined ? undefined : {
+      ...requestIdentity(value),
+      reservation,
+      type: 'prepare',
+    };
   }
   if (
     value.type === 'shutdown' &&
@@ -262,6 +318,14 @@ export function parseWorkspaceCandidateProcessStatus(
     return createWorkspaceCandidateReadyStatus();
   }
   if (!isRequestIdentity(value)) return undefined;
+  if (value.type === 'reservationReady') {
+    const reservation = readBoundReservation(value);
+    return reservation === undefined ? undefined : {
+      ...requestIdentity(value),
+      reservation,
+      type: 'reservationReady',
+    };
+  }
   if (
     value.type === 'failed' &&
     value.code === 'WORKSPACE_CANDIDATE_OPERATION_FAILED' &&
@@ -301,6 +365,17 @@ export function parseWorkspaceCandidateProcessStatus(
         result,
         type: 'completed',
       };
+}
+
+function readBoundReservation(
+  value: Record<string, unknown> & WorkspaceCandidateProcessRequestIdentity,
+): WorkspaceProcessReservationDescriptor | undefined {
+  if (!hasExactKeys(value, [
+    'operationId', 'protocolVersion', 'requestId', 'reservation',
+    'runtimeSession', 'type',
+  ])) return undefined;
+  const reservation = parseWorkspaceProcessReservationDescriptor(value.reservation);
+  return reservation?.generationId === value.requestId ? reservation : undefined;
 }
 
 function parseOperation(
@@ -706,10 +781,7 @@ function hasExactKeys(
   value: Record<string, unknown>,
   keys: readonly string[],
 ): boolean {
-  const actual = Object.keys(value).sort();
-  const expected = [...keys].sort();
-  return (
-    actual.length === expected.length &&
-    actual.every((key, index) => key === expected[index])
-  );
+  const actual = Reflect.ownKeys(value);
+  return actual.length === keys.length
+    && keys.every((key) => Object.hasOwn(value, key));
 }

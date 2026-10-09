@@ -19,7 +19,7 @@ export async function createWorkspaceSuccessArtifactTestFixture(t, { build = tru
   t.after(() => rm(root, { recursive: true, force: true }));
   const canonical = JSON.parse(await readFile(resolve(ROOT, '../installer-release.json'), 'utf8'));
   const releases = createW6b2SyntheticReleasePair(canonical);
-  const pair = { buildRevision: REVISION.slice(0, 12), upgradeCode: INSTALLER_UPGRADE_CODE };
+  const pair = { buildRevision: REVISION, upgradeCode: INSTALLER_UPGRADE_CODE };
   for (const roleName of ['source', 'target']) {
     const roleRoot = resolve(root, `staged-${roleName}`);
     await mkdir(roleRoot);

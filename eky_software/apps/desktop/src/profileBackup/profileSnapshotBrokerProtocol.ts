@@ -1,4 +1,4 @@
-export const profileSnapshotBrokerProtocolVersion = 7;
+export const profileSnapshotBrokerProtocolVersion = 8;
 
 const requestIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -8,6 +8,9 @@ const maximumMessageBytes = 1_024;
 
 export type ProfileMaintenanceBrokerOperation =
   | 'beginProfileMaintenance'
+  | 'beginUpdateMaintenance'
+  | 'assertUpdateMaintenance'
+  | 'endUpdateMaintenance'
   | 'createProfileSnapshot'
   | 'endProfileMaintenance'
   | 'getProfileMaintenanceStatus'
@@ -30,6 +33,9 @@ export type ProfileSnapshotBrokerRequest =
   | {
       operation:
         | 'beginProfileMaintenance'
+        | 'beginUpdateMaintenance'
+        | 'assertUpdateMaintenance'
+        | 'endUpdateMaintenance'
         | 'endProfileMaintenance'
         | 'prepareProfileRestoreActivation'
         | 'validateProfileSnapshot';
@@ -230,6 +236,9 @@ export function parseProfileSnapshotBrokerRequest(
 
   if (
     (value.operation !== 'beginProfileMaintenance' &&
+      value.operation !== 'beginUpdateMaintenance' &&
+      value.operation !== 'assertUpdateMaintenance' &&
+      value.operation !== 'endUpdateMaintenance' &&
       value.operation !== 'endProfileMaintenance' &&
       value.operation !== 'prepareProfileRestoreActivation' &&
       value.operation !== 'validateProfileSnapshot') ||
@@ -551,7 +560,7 @@ function isRequestId(value: unknown): value is string {
   return typeof value === 'string' && requestIdPattern.test(value);
 }
 
-function isOperationId(value: unknown): value is string {
+export function isOperationId(value: unknown): value is string {
   return typeof value === 'string' && operationIdPattern.test(value);
 }
 

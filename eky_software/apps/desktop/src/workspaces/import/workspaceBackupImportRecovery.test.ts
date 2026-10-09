@@ -20,7 +20,7 @@ import {
   TEST_IMPORT_USER_DATA_ROOT,
   TEST_IMPORT_WORKSPACE_ID,
 } from './workspaceBackupImportTestSupport.js';
-import type { WorkspaceBackupImportJournalV1 } from './workspaceBackupImportTypes.js';
+import type { WorkspaceBackupImportJournal, WorkspaceBackupImportJournalV1 } from './workspaceBackupImportTypes.js';
 
 describe('WorkspaceBackupImportRecovery', () => {
   it('does nothing when no import journal exists', async () => {
@@ -272,7 +272,7 @@ describe('WorkspaceBackupImportRecovery', () => {
 });
 
 function createRecoveryFixture(
-  journalValue?: Readonly<WorkspaceBackupImportJournalV1>,
+  journalValue?: Readonly<WorkspaceBackupImportJournal>,
   registryValue = createTestImportRegistry({
     activeWorkspaceId: TEST_IMPORT_PREVIOUS_WORKSPACE_ID,
   }),

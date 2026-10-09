@@ -23,6 +23,10 @@ for (const scenario of Object.keys(WORKSPACE_FAULT_PLANS)) {
 }
 
 const mutations = [
+  ['short current profile revision', (f) => { f.state.buildRevision = f.request.buildRevision.slice(0, 12); }, 'profileEvidenceInvalid'],
+  ['same-prefix current profile revision', (f) => { f.state.buildRevision = `${f.request.buildRevision.slice(0, 12)}${'f'.repeat(28)}`; }, 'profileEvidenceInvalid'],
+  ['short current harness revision', (f) => { f.request = { ...f.request, buildRevision: f.request.buildRevision.slice(0, 12) }; }, 'profileEvidenceInvalid'],
+  ['same-prefix current harness revision', (f) => { f.request = { ...f.request, buildRevision: `${f.request.buildRevision.slice(0, 12)}${'f'.repeat(28)}` }; }, 'profileEvidenceInvalid'],
   ['missing checkpoint', (f) => f.checkpoints.pop(), 'profileEvidenceInvalid'],
   ['wrong phase order', (f) => f.checkpoints.reverse(), 'profileEvidenceInvalid'],
   ['different scenario', (f) => { f.checkpoints[1].faultScenario = 'binaryRollbackFailure'; }, 'profileEvidenceInvalid'],

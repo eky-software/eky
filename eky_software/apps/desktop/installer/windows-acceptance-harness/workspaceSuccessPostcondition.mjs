@@ -19,7 +19,7 @@ export function validateWorkspaceSuccessCheckpoint(value, { request, checkpoint,
       value.schemaVersion !== 1 || value.checkpoint !== checkpoint ||
       value.runNonce !== request.runNonce || value.artifactDescriptorSha256 !== request.artifactDescriptorSha256) invalid();
     const profile = support.parseW6b2PackagedWorkspaceProfileState(value.profileState);
-    if (profile.buildRevision !== request.buildRevision.slice(0, 12) || !isDeepStrictEqual(
+    if (profile.buildRevision !== request.buildRevision || !isDeepStrictEqual(
       { ...profile, fixtures: profile.fixtures.map(({ baseline, ...fixture }) => fixture) },
       { ...state, fixtures: state.fixtures.map(({ baseline, ...fixture }) => fixture) })) invalid();
     support.validateWorkspaceRegistry(value.registry);

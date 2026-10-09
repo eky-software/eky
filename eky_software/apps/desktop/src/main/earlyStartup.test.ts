@@ -6,6 +6,33 @@ import {
 } from './earlyStartup.js';
 
 describe('safe desktop early startup', () => {
+  it.each([
+    'BACKEND_PROCESS_RESERVATION_FAILED',
+    'WORKSPACE_PROCESS_RESERVATION_FAILED',
+    'WORKSPACE_CREATION_BUSY',
+    'WORKSPACE_CREATION_LIFECYCLE_FAILED',
+    'WORKSPACE_CREATION_JOURNAL_FAILED',
+    'WORKSPACE_CREATION_STORAGE_FAILED',
+    'WORKSPACE_CREATION_REGISTRY_FAILED',
+    'WORKSPACE_CREATION_RECOVERY_REQUIRED',
+    'WORKSPACE_IMPORT_BUSY',
+    'WORKSPACE_IMPORT_LIFECYCLE_FAILED',
+    'WORKSPACE_IMPORT_JOURNAL_FAILED',
+    'WORKSPACE_IMPORT_STORAGE_FAILED',
+    'WORKSPACE_IMPORT_REGISTRY_FAILED',
+    'WORKSPACE_IMPORT_RECOVERY_REQUIRED',
+    'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED',
+  ])('preserves the exact cold-recovery code %s without admitting raw suffixes', async (code) => {
+    const fixture = createFixture({ startRuntime: async () => { throw new Error(code); } });
+    await runSafeDesktopStartup(fixture.options);
+    expect(fixture.onFailure).toHaveBeenCalledWith(code);
+    expect(fixture.exitApplication).toHaveBeenCalledWith(1);
+    expect(readSafeStartupFailureCode(new Error(`${code}: synthetic private detail`)))
+      .toBe('DESKTOP_START_FAILED');
+    expect(readSafeStartupFailureCode(new Error(`${code}\n at synthetic private frame`)))
+      .toBe('DESKTOP_START_FAILED');
+  });
+
   it('offers the original exception privately before classification without changing the public code', async () => {
     const original = new Error('synthetic original exception', { cause: new Error('synthetic cause') });
     const fixture = createFixture({ startRuntime: async () => { throw original; } });

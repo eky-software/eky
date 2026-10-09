@@ -29,6 +29,9 @@ describe('W6B.2 packaged workspace fixtures', () => {
     'rejects an overlong snapshot path before starting the candidate runtime',
     async () => {
       const factory = new ElectronWorkspaceCandidateRuntimeFactory({
+        reservationOwner: {
+          bindCandidate() { throw new Error('reservation-bind-must-not-run'); },
+        },
         appVersion: '0.2.7',
         buildRevision: 'a'.repeat(12),
         backendRoot: 'unused',

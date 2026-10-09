@@ -3,6 +3,7 @@ import {
   chmod,
   cp,
   mkdir,
+  mkdtemp,
   readFile,
   readdir,
   rm,
@@ -12,6 +13,7 @@ import {
 import { dirname, join, relative } from 'node:path';
 
 import { createDesktopProfilePaths } from '../src/runtime/desktopProfilePaths.js';
+import { acquireDesktopWorkspaceReservation } from '../src/main/desktopComposition.js';
 import { validateWorkspaceCreationOperationId } from '../src/workspaces/creation/workspaceCreationOperationId.js';
 import { deriveWorkspaceRoot } from '../src/workspaces/registry/deriveWorkspaceRoot.js';
 import { validateWorkspaceId } from '../src/workspaces/registry/workspaceIdValidation.js';
@@ -31,6 +33,7 @@ import type {
   WorkspaceMigrationInventoryEvent,
 } from '../src/workspaces/update/workspaceMigrationInventoryTypes.js';
 import {
+  assertProofSingleInstanceOwnership,
   captureUtilityProcessBaseline,
   waitForProofUtilityProcessesReleased,
 } from './workspaceManagementCompositionProofRuntime.js';
@@ -108,13 +111,22 @@ class CountingMigrationRuntimeFactory
 export async function runWorkspaceMigrationInventoryProof(
   input: Readonly<WorkspaceMigrationInventoryProofInput>,
 ): Promise<Readonly<WorkspaceMigrationInventoryProofResult>> {
-  const proofRoot = join(input.userDataRoot, 'migration-inventory-proof');
+  const proofRoot = await mkdtemp(join(input.userDataRoot, 'migration-inventory-proof-'));
   const utilityProcessBaseline = captureUtilityProcessBaseline();
   let historicalMigrationsDirectory: string | undefined;
   let stage: ProofStage = 'paths';
 
-  await rm(proofRoot, { force: true, recursive: true });
   await createPrivateDirectory(proofRoot);
+  const reservation = await acquireDesktopWorkspaceReservation({
+    assertSingleInstanceOwnership: assertProofSingleInstanceOwnership,
+    signal: new AbortController().signal,
+    userDataRoot: proofRoot,
+  });
+  const reservationOwner = {
+    bindCandidate: ({ generationId }: { readonly generationId: string }) =>
+      reservation.bind(generationId, assertProofSingleInstanceOwnership),
+  };
+  let failed = false;
 
   try {
     const runtimePaths = await resolveWorkspaceCandidateRuntimePaths(
@@ -132,6 +144,7 @@ export async function runWorkspaceMigrationInventoryProof(
     });
 
     const currentFactory = new ElectronWorkspaceCandidateRuntimeFactory({
+      reservationOwner,
       appVersion: input.appVersion,
       backendRoot: runtimePaths.backendRoot,
       buildRevision: input.buildRevision,
@@ -139,6 +152,7 @@ export async function runWorkspaceMigrationInventoryProof(
       runnerPath: runtimePaths.runnerPath,
     });
     const historicalFactory = new ElectronWorkspaceCandidateRuntimeFactory({
+      reservationOwner,
       appVersion: input.appVersion,
       backendRoot: runtimePaths.backendRoot,
       buildRevision: input.buildRevision,
@@ -248,19 +262,24 @@ export async function runWorkspaceMigrationInventoryProof(
     assertProofResult(result);
     return Object.freeze(result);
   } catch (error) {
+    failed = true;
     throw new Error(
       `WORKSPACE_MIGRATION_INVENTORY_PROOF_FAILED_${stage.toUpperCase()}_${readSafeErrorCode(error)}`,
     );
   } finally {
     stage = 'cleanup';
-    await makeDirectoryRemovable(historicalMigrationsDirectory);
-    if (historicalMigrationsDirectory !== undefined) {
-      await rm(historicalMigrationsDirectory, {
-        force: true,
-        recursive: true,
-      }).catch(() => undefined);
+    try {
+      await reservation.assertMainOwned();
+      if (!failed && historicalMigrationsDirectory !== undefined) {
+        await makeDirectoryRemovable(historicalMigrationsDirectory);
+        await rm(historicalMigrationsDirectory, { force: true, recursive: true });
+      }
+      await reservation.close();
+      if (!failed) await rm(proofRoot, { force: true, recursive: true });
+    } catch (error) {
+      // Unproven absence retains the fixture and never replaces the first failure.
+      if (!failed) throw error;
     }
-    await rm(proofRoot, { force: true, recursive: true });
   }
 }
 

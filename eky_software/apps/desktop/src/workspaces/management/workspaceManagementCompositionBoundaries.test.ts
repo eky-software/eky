@@ -38,8 +38,13 @@ describe('workspace management composition boundaries', () => {
     ).toBe(1);
 
     expect(desktopComposition).toContain(
-      'activeWorkspaceLifecycle,\n      appVersion: desktopAppVersion,',
+      'activeWorkspaceLifecycle: {',
     );
+    expect(desktopComposition).toContain('activeWorkspaceLifecycle.quiesceWrites(workspaceId)');
+    expect(desktopComposition).toContain('activeWorkspaceLifecycle.stopAndProveHandlesClosed(workspaceId)');
+    expect(desktopComposition).toContain('activeWorkspaceLifecycle.ensurePreviousWorkspaceRunning(workspaceId)');
+    expect(desktopComposition).toContain('await activeWorkspaceLifecycle.assertNoActiveWorkspaceRuntime();\n          await workspaceReservation.assertMainOwned();');
+    expect(desktopComposition).toContain("workspaceMaintenanceLease.captureCurrentOwner(['create', 'import', 'replace'])");
     expect(desktopComposition).toContain(
       'maintenanceLease: workspaceMaintenanceLease,',
     );
@@ -61,7 +66,10 @@ describe('workspace management composition boundaries', () => {
         workspaceComposition,
         'maintenanceLease: options.maintenanceLease,',
       ),
-    ).toBe(5);
+    ).toBe(6);
+    expect(workspaceComposition).toContain("completionMode: 'beforeRuntimeStart' as const");
+    expect(workspaceComposition).toContain('assertRecoveryAdmission: options.assertRecoveryAdmission,');
+    expect(workspaceComposition).toContain('workspaceRuntimeAbsence: options.workspaceRuntimeAbsence,');
     expect(workspaceComposition).toContain(
       'maintenanceState: options.maintenanceLease,',
     );
@@ -69,13 +77,13 @@ describe('workspace management composition boundaries', () => {
       'runtimeRelaunchCompletion: options.runtimeRelaunch,',
     );
     expect(desktopComposition).toContain(
-      'const disposeWorkspaceRuntimeCapabilities = async (): Promise<void> => {\n    workspaceManagementCapability?.dispose();',
+      'disposeCapabilities: disposeWorkspaceRuntimeCapabilities,',
     );
-    expect(
-      desktopComposition.indexOf('workspaceManagementCapability?.dispose();'),
-    ).toBeLessThan(
-      desktopComposition.indexOf('await backendHandle.stop();'),
+    expect(desktopComposition).toContain(
+      'const capabilities = [\n        workspaceManagementCapability,',
     );
+    expect(desktopComposition).toContain('capability?.dispose();');
+    // Runtime ordering is covered by lifecycle and real composition shutdown tests.
   });
 });
 

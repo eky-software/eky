@@ -36,7 +36,7 @@ test('build-once pair is independently copied and verified twice without buildin
     assert.equal(result.buildRevision, REVISION);
     for (const role of ['source', 'target']) {
       assert.equal(result[role].appVersion, WORKSPACE_SUCCESS_VERSIONS[role]);
-      assert.equal(result[role].buildRevision, REVISION.slice(0, 12));
+      assert.equal(result[role].buildRevision, REVISION);
       const original = await lstat(f.pair[role].installerPath, { bigint: true });
       const copy = await lstat(result[role].installerPath, { bigint: true });
       assert.equal(copy.nlink, 1n);
@@ -96,6 +96,11 @@ for (const [name, change] of [
   ['unknown schema', (d) => { d.schemaVersion = 2; }],
   ['foreign artifact kind', (d) => { d.artifactKind = 'windowsAcceptanceLegacyUpgrade'; }],
   ['short harness revision', (d) => { d.buildRevision = d.buildRevision.slice(0, 12); }],
+  ['short current source revision', (d) => { d.source.buildRevision = REVISION.slice(0, 12); }],
+  ['short current target revision', (d) => { d.target.buildRevision = REVISION.slice(0, 12); }],
+  ['same-prefix source revision', (d) => { d.source.buildRevision = `${REVISION.slice(0, 12)}${'f'.repeat(28)}`; }],
+  ['same-prefix target revision', (d) => { d.target.buildRevision = `${REVISION.slice(0, 12)}${'f'.repeat(28)}`; }],
+  ['same-prefix harness revision', (d) => { d.buildRevision = `${REVISION.slice(0, 12)}${'f'.repeat(28)}`; }],
   ['uppercase revision', (d) => { d.buildRevision = d.buildRevision.toUpperCase(); }],
   ['different source revision', (d) => { d.source.buildRevision = 'f'.repeat(12); }],
   ['different target revision', (d) => { d.target.buildRevision = 'f'.repeat(12); }],
@@ -195,6 +200,39 @@ test('staged revision mismatch removes only the incomplete artifact', async (t) 
   await assert.rejects(lstat(f.artifactRoot), { code: 'ENOENT' });
   assert.equal((await lstat(f.pair.source.installerPath)).isFile(), true);
 });
+
+for (const owner of ['pair', 'source', 'target']) {
+  for (const mode of ['short', 'samePrefix']) {
+    test(`builder rejects ${owner} current revision: ${mode}`, async (t) => {
+      const f = await fixture(t, { build: false });
+      const value = owner === 'pair' ? f.pair : f.pair[owner];
+      value.buildRevision = mode === 'short' ? REVISION.slice(0, 12)
+        : `${REVISION.slice(0, 12)}${'f'.repeat(28)}`;
+      await assert.rejects(buildWorkspaceSuccessArtifact(f.options), {
+        message: 'WINDOWS_ACCEPTANCE_WORKSPACE_ARTIFACT_STAGED_IDENTITY_INVALID',
+      });
+      await assert.rejects(lstat(f.artifactRoot), { code: 'ENOENT' });
+      assert.equal((await lstat(f.pair.source.installerPath)).isFile(), true);
+    });
+  }
+}
+
+for (const mode of ['short', 'samePrefix']) {
+  test(`run fixture rejects non-exact current request before profile publication: ${mode}`, async (t) => {
+    const f = await fixture(t);
+    const artifact = await verifyWorkspaceSuccessArtifact(f.verification);
+    const scenarioRoot = resolve(f.root, 'scenario');
+    await mkdir(scenarioRoot);
+    const request = createWorkspaceSuccessRequest({ fixtureRoot: resolve(f.root, 'fixture'),
+      buildRevision: REVISION, artifactDescriptorSha256: artifact.descriptorSha256 });
+    const context = workspaceSuccessRunContext(resolve(scenarioRoot, 'request.json'), request, artifact);
+    context.request = { ...request, buildRevision: mode === 'short' ? REVISION.slice(0, 12)
+      : `${REVISION.slice(0, 12)}${'f'.repeat(28)}` };
+    await assert.rejects(prepareWorkspaceSuccessRunFixture(context));
+    await assert.rejects(lstat(resolve(context.proofRoot, 'user-data')), { code: 'ENOENT' });
+    await verifyWorkspaceSuccessArtifact(f.verification);
+  });
+}
 
 test('build failure preserves its original error and does not remove sibling data', async (t) => {
   const f = await fixture(t, { build: false });

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   CrashSafeByteSlotStore,
@@ -14,6 +14,105 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 describe('CrashSafeByteSlotStore', () => {
+  describe('read-only inspection', () => {
+    it.each([
+      { current: 'current', backup: 'backup', next: 'next', expected: 'current' },
+      { backup: 'backup', next: 'next', expected: 'backup' },
+      { next: 'next', expected: 'next' },
+      { expected: undefined },
+    ] as const)('keeps all slots unchanged for $expected', async (input) => {
+      const initial = Object.fromEntries(
+        Object.entries(input).filter(([key]) => key !== 'expected')
+          .map(([key, value]) => [key, bytes(value!)]),
+      );
+      const fileSystem = createFileSystem(initial);
+      const mutations = ['prepareDirectory', 'createNextWriter', 'moveSlot',
+        'removeSlot', 'syncDirectory'] as const;
+      const spies = mutations.map((method) => vi.spyOn(fileSystem, method));
+      const store = new CrashSafeByteSlotStore(fileSystem);
+
+      await expect(store.inspect(readText)).resolves.toEqual(
+        input.expected === undefined ? undefined
+          : { slot: input.expected, value: input.expected },
+      );
+      expect(fileSystem.values()).toEqual(initial);
+      for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+    });
+
+    it.each(['current', 'backup', 'next'] as const)(
+      'does not fall back from invalid authoritative %s', async (slot) => {
+        const initial = {
+          ...(slot === 'current' ? { backup: bytes('fallback') } : {}),
+          next: bytes('fallback'), [slot]: bytes('invalid'),
+        };
+        const fileSystem = createFileSystem(initial);
+        const read = vi.spyOn(fileSystem, 'readSlot');
+        const store = new CrashSafeByteSlotStore(fileSystem);
+        await expect(store.inspect((value) => {
+          if (readText(value) === 'invalid') throw new Error('SCHEMA_INVALID');
+          return readText(value);
+        })).rejects.toThrow('SCHEMA_INVALID');
+        expect(read.mock.calls.at(-1)).toEqual([slot]);
+        expect(fileSystem.values()).toEqual(initial);
+        expect(fileSystem.syncCount).toBe(0);
+      },
+    );
+
+    it('never reads a superseded slot after valid current', async () => {
+      const fileSystem = createFileSystem({ current: bytes('current') });
+      vi.spyOn(fileSystem, 'readSlot').mockImplementation(async (slot) => {
+        if (slot !== 'current') throw new Error('STALE_SLOT_UNREADABLE');
+        return bytes('current');
+      });
+      await expect(new CrashSafeByteSlotStore(fileSystem).inspect(readText))
+        .resolves.toEqual({ slot: 'current', value: 'current' });
+    });
+
+    it('propagates an authoritative read failure without fallback or mutation', async () => {
+      const fileSystem = createFileSystem({ backup: bytes('backup') });
+      vi.spyOn(fileSystem, 'readSlot').mockRejectedValue(new Error('READ_FAILED'));
+      await expect(new CrashSafeByteSlotStore(fileSystem).inspect(readText))
+        .rejects.toThrow('READ_FAILED');
+      expect(fileSystem.values()).toEqual({ backup: bytes('backup') });
+    });
+  });
+
+  it.each([
+    { slot: 'current', operations: ['remove:next', 'remove:backup', 'sync'] },
+    { slot: 'backup', operations: ['remove:next', 'move:backup:current', 'sync'] },
+    { slot: 'next', operations: ['move:next:current', 'sync'] },
+  ] as const)('preserves the exact recovery mutation order for $slot', async ({ slot, operations }) => {
+    const fileSystem = createFileSystem({
+      ...(slot === 'current' ? { backup: bytes('backup') } : {}),
+      next: bytes('next'), [slot]: bytes(slot),
+    });
+    const observed: string[] = [];
+    const remove = fileSystem.removeSlot.bind(fileSystem);
+    const move = fileSystem.moveSlot.bind(fileSystem);
+    const sync = fileSystem.syncDirectory.bind(fileSystem);
+    vi.spyOn(fileSystem, 'removeSlot').mockImplementation(async (name) => {
+      observed.push(`remove:${name}`);
+      return remove(name);
+    });
+    vi.spyOn(fileSystem, 'moveSlot').mockImplementation(async (source, destination) => {
+      observed.push(`move:${source}:${destination}`);
+      return move(source, destination);
+    });
+    vi.spyOn(fileSystem, 'syncDirectory').mockImplementation(async () => {
+      observed.push('sync');
+      await sync();
+    });
+    await expect(new CrashSafeByteSlotStore(fileSystem).recoverAndRead(readText)).resolves.toBe(slot);
+    expect(observed).toEqual(operations);
+    expect(fileSystem.values()).toEqual({ current: bytes(slot) });
+  });
+
+  it('does not sync when current has no obsolete companions to remove', async () => {
+    const fileSystem = createFileSystem({ current: bytes('current') });
+    await new CrashSafeByteSlotStore(fileSystem).recoverAndRead(readText);
+    expect(fileSystem.syncCount).toBe(0);
+  });
+
   it('prefers a valid current slot and removes stale recovery slots', async () => {
     const fileSystem = createFileSystem({
       current: bytes('current'),
