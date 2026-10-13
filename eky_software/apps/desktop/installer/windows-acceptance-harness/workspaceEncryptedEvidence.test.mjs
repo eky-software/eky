@@ -7,7 +7,8 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 import test from 'node:test';
-import { collectEvidence, deliveryProofBinding, encryptionFailureCode, evidenceBinding, prepareDeliveryProof, prepareEvidence, retain, retentionFailureCode } from './workspaceEncryptedEvidence.mjs';
+import { collectEvidence, deliveryProofBinding, encryptionFailureCode, evidenceBinding, prepareDeliveryProof, prepareEvidence, retain, retentionFailureCode,
+  EVIDENCE_FILE_MAX_BYTES, EVIDENCE_TOTAL_MAX_BYTES } from './workspaceEncryptedEvidence.mjs';
 import encryptionFailureCodes from './encryptedEvidenceFailureCodes.json' with { type: 'json' };
 import { validateWorkspaceCallerResult } from './workspaceCallerResult.mjs';
 import { retainWorkspaceInstallerLog } from './workspaceInstallerLogEvidence.mjs';
@@ -94,6 +95,38 @@ async function envelope(collected) {
   return JSON.parse(gunzipSync(await readFile(collected.archivePath)));
 }
 
+test('shared retention budgets are 64 MiB per ordinary file and 512 MiB in total', () => {
+  assert.equal(EVIDENCE_FILE_MAX_BYTES, 64 * 1024 * 1024);
+  assert.equal(EVIDENCE_TOTAL_MAX_BYTES, 512 * 1024 * 1024);
+});
+
+for (const [name, limit] of [['start.private.log', 64], ['command-export.private.log', 128]]) {
+  for (const extra of [0, 1]) {
+    test(`workspace ${name} keeps its ${limit} MiB boundary: ${extra} extra bytes`, async t => {
+      const f = await fixture(t);
+      const bytes = limit * 1024 * 1024 + extra;
+      const source = join(f.capture, name);
+      const handle = await open(source, 'wx');
+      try { await handle.truncate(bytes); } finally { await handle.close(); }
+      const collected = await collectEvidence(f.env, f.root);
+      const entry = collected.manifest.files.find(value => value.name === name);
+      if (extra === 0) {
+        assert.equal(entry.status, 'retained');
+        assert.equal(entry.bytes, bytes);
+        const retained = await readFile(join(f.root, 'retained', name));
+        assert.equal(retained.length, bytes);
+        assert.equal(createHash('sha256').update(retained).digest('hex'), entry.sha256);
+      } else {
+        assert.equal(entry.status, 'unverified');
+        assert.equal(entry.failureCode, 'sizeLimitExceeded');
+        assert.equal(Object.hasOwn((await envelope(collected)).files, name), false);
+      }
+      const check = await open(source, 'r');
+      try { assert.equal((await check.stat()).size, bytes); } finally { await check.close(); }
+    });
+  }
+}
+
 async function installerLogFixture(t) {
   const f = await fixture(t, { EKY_WORKSPACE_FAULT_SCENARIO: 'passiveWorkspaceMigrationFailure', EKY_TEST_OUTCOME: 'cancelled' });
   const context = JSON.parse(await readFile(join(f.root, 'context.private.json'), 'utf8'));
@@ -151,15 +184,15 @@ test('bound target MSI log cannot exceed the remaining aggregate budget after wo
   try { await file.truncate(64 * 1024 * 1024); } finally { await file.close(); }
   assert.equal(await retainWorkspaceInstallerLog(f), true);
   await writeFile(join(f.capture, 'stopped'), '');
-  for (const [name, bytes] of [['capture.etl', 256], ['event-statistics.private.log', 32],
-    ['command-export.private.log', 64]]) {
+  for (const [name, bytes] of [['capture.etl', 256], ['event-statistics.private.log', 64],
+    ['command-export.private.log', 128]]) {
     const handle = await open(join(f.capture, name), 'wx');
     try { await handle.truncate(bytes * 1024 * 1024); } finally { await handle.close(); }
   }
   const collected = await collectEvidence(f.env, f.root);
   assert.equal(collected.manifest.files.find(value => value.name === 'capture.etl').status, 'retained');
   const retained = collected.manifest.files.filter(value => value.status === 'retained');
-  assert.ok(retained.reduce((sum, value) => sum + value.bytes, 0) <= 400 * 1024 * 1024);
+  assert.ok(retained.reduce((sum, value) => sum + value.bytes, 0) <= 512 * 1024 * 1024);
   const rejected = collected.manifest.files.find(value => value.name === W6B2_INSTALLER_LOG_FILE);
   assert.equal(rejected.status, 'unverified');
   assert.equal(rejected.failureCode, 'sizeLimitExceeded');

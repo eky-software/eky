@@ -114,7 +114,7 @@ test('workspace target installer collection requires exact caller binding and ma
 });
 
 for (const bytes of [64 * 1024 * 1024, 64 * 1024 * 1024 + 1]) {
-  test(`job collection applies the 64 MiB cap only to a bound target MSI log: ${bytes}`, async t => {
+  test(`job collection keeps the 64 MiB cap and receipt binding for a target MSI log: ${bytes}`, async t => {
     const { temp, env, put } = await fixture(t);
     const prefix = `eky-workspace-caller-${nativeId}`;
     const binding = { schemaVersion: 1, invocationId: nativeId, scenario: 'packagedWorkspaceFaultRollback',
@@ -156,21 +156,20 @@ test('bound target MSI log cannot exceed the remaining aggregate budget after ot
   const hash = createHash('sha256').update(await readFile(source)).digest('hex');
   await put(temp, `${prefix}/${W6B2_INSTALLER_LOG_RECEIPT}`, JSON.stringify({ binding, status: 'retained',
     bytes: 64 * 1024 * 1024, sha256: hash }));
-  for (let index = 1; index <= 9; index++) {
+  for (let index = 1; index <= 8; index++) {
     const path = await put(temp, `eky supervisor prior/supervisor-${index}.stdout.private`, 'synthetic output');
     const handle = await open(path, 'r+');
-    try { await handle.truncate(8 * 1024 * 1024); } finally { await handle.close(); }
+    try { await handle.truncate(64 * 1024 * 1024); } finally { await handle.close(); }
   }
   const newest = new Date(Date.now() + 60_000);
   await utimes(join(temp, 'eky supervisor prior'), newest, newest);
   const collected = await collectJobFailureEvidence(env);
-  const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
-  const retained = archive.manifest.files.filter(value => value.status === 'retained');
-  assert.equal(retained.filter(value => value.source.startsWith('temporary/eky supervisor prior/')).length, 9);
-  assert.ok(retained.reduce((sum, value) => sum + value.bytes, 0) <= 128 * 1024 * 1024);
-  const rejected = archive.manifest.files.find(value => value.source.endsWith('/' + W6B2_INSTALLER_LOG_FILE));
+  const retained = collected.manifest.files.filter(value => value.status === 'retained');
+  assert.equal(retained.filter(value => value.source.startsWith('temporary/eky supervisor prior/')).length, 8);
+  assert.equal(retained.reduce((sum, value) => sum + value.bytes, 0), 512 * 1024 * 1024);
+  const rejected = collected.manifest.files.find(value => value.source.endsWith('/' + W6B2_INSTALLER_LOG_FILE));
   assert.equal(rejected.status, 'totalLimit');
-  assert.equal(Object.hasOwn(archive.files, rejected.name), false);
+  await assert.rejects(readFile(join(collected.root, 'retained', rejected.name)), { code: 'ENOENT' });
   assert.equal(createHash('sha256').update(await readFile(source)).digest('hex'), hash);
 });
 
@@ -322,7 +321,7 @@ test('Electron lifecycle collection preserves first failure, retry and ownership
 test('Electron lifecycle collection retains existing size and hardlink rejection', async t => {
   const { checkout, env, put } = await fixture(t);
   const root = `eky_software/apps/e2e/test-results/${run}`;
-  await put(checkout, `${root}/large/electron-lifecycle.json`, Buffer.alloc(8 * 1024 * 1024 + 1));
+  await put(checkout, `${root}/large/electron-lifecycle.json`, Buffer.alloc(64 * 1024 * 1024 + 1));
   const original = await put(checkout, `${root}/linked/electron-lifecycle.json`, 'EXCLUDED-LINK');
   await link(original, join(checkout, 'alias.json'));
   const collected = await collectJobFailureEvidence(env);
@@ -386,9 +385,42 @@ test('MSI failure evidence preserves log bytes and separate cleanup even without
   assert.ok(archive.manifest.files.some(file => file.source.endsWith('interrupted/1-source.log')));
 });
 
-test('MSI logs retain the existing size and hardlink rejection instead of expanding collection', async t => {
+test('ordinary MSI logs retain all bytes at the shared 64 MiB boundary', async t => {
   const { temp, env, put } = await fixture(t);
-  await put(temp, 'eky supervisor sample/1-source.log', Buffer.alloc(8 * 1024 * 1024 + 1));
+  const source = await put(temp, 'eky supervisor sample/1-source.log', 'synthetic MSI first action');
+  const handle = await open(source, 'r+');
+  try { await handle.truncate(64 * 1024 * 1024); } finally { await handle.close(); }
+  const collected = await collectJobFailureEvidence(env);
+  const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+  const entry = archive.manifest.files.find(file => file.source.endsWith('1-source.log'));
+  assert.equal(entry.status, 'retained');
+  const retained = Buffer.from(archive.files[entry.name], 'base64');
+  assert.equal(retained.length, 64 * 1024 * 1024);
+  assert.equal(createHash('sha256').update(retained).digest('hex'), entry.sha256);
+  assert.equal(createHash('sha256').update(await readFile(source)).digest('hex'), entry.sha256);
+});
+
+test('a report above the previous 8 MiB cap retains failure fields but not config or inline content', async t => {
+  const { checkout, env, put } = await fixture(t);
+  const message = 'synthetic failure\n' + 'x'.repeat(9 * 1024 * 1024);
+  await put(checkout, `eky_software/apps/e2e/playwright-report/${run}/results.private.json`,
+    JSON.stringify({ config: { secret: 'EXCLUDED' }, errors: [{ message }],
+      suites: [{ specs: [{ tests: [{ results: [{ retry: 0,
+        attachments: [{ name: 'inline', body: 'EXCLUDED' }] }] }] }] }] }));
+  const collected = await collectJobFailureEvidence(env);
+  const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+  const entry = archive.manifest.files.find(file => file.kind === 'playwrightReport');
+  assert.equal(entry.status, 'retained');
+  assert.ok(entry.bytes > 8 * 1024 * 1024);
+  const retained = Buffer.from(archive.files[entry.name], 'base64');
+  assert.equal(createHash('sha256').update(retained).digest('hex'), entry.sha256);
+  assert.equal(JSON.parse(retained).errors[0].message, message);
+  assert.equal(retained.includes(Buffer.from('EXCLUDED')), false);
+});
+
+test('MSI logs keep size and hardlink rejection at the approved 64 MiB boundary', async t => {
+  const { temp, env, put } = await fixture(t);
+  await put(temp, 'eky supervisor sample/1-source.log', Buffer.alloc(64 * 1024 * 1024 + 1));
   const linked = await put(temp, 'eky supervisor sample/2-target.log', 'not safe to copy');
   await link(linked, join(temp, 'eky supervisor sample/3-uninstall.log'));
   const { manifest } = await collectJobFailureEvidence(env);
@@ -500,12 +532,12 @@ test('unrelated temporary names do not consume the eligible evidence search budg
 
 test('oversized and hardlinked evidence is rejected without copying unrelated files', async t => {
   const { env, temp, put } = await fixture(t);
-  const large = await put(temp, 'eky supervisor abc/result.json', Buffer.alloc(8 * 1024 * 1024 + 1));
+  const large = await put(temp, 'eky supervisor abc/result.json', Buffer.alloc(64 * 1024 * 1024 + 1));
   await link(large, join(temp, 'eky supervisor abc/worker-result.json'));
   const { manifest } = await collectJobFailureEvidence(env);
   assert.equal(manifest.files.length, 2);
   assert.ok(manifest.files.every(entry => entry.status === 'unverified'));
-  await put(temp, 'eky supervisor def/result.json', Buffer.alloc(8 * 1024 * 1024 + 1));
+  await put(temp, 'eky supervisor def/result.json', Buffer.alloc(64 * 1024 * 1024 + 1));
   const another = await collectJobFailureEvidence(env);
   assert.ok(another.manifest.files.some(entry => entry.status === 'tooLarge'));
 });

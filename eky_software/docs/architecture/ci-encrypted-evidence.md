@@ -144,8 +144,9 @@ hyväksymä tutkimusaineiston budjetti, ei Windowsin tai GitHubin kokovaatimus.
 Alkuperäinen yleisestä keräysrajasta lainattu 8 MiB ei riittänyt todellisessa
 kokeessa; tarkkaa hylätyn lokin kokoa ei säilynyt. Suurempi budjetti ei takaa
 kaikkien mahdollisten lokien mahtumista. Ylitys säilyttää alkuperäisen
-testiaineiston ja ilmoitetaan hylkäyksenä. Muiden tiedostojen omat rajat sekä
-keräinten 128 MiB:n ja 400 MiB:n kokonaisbudjetit säilyvät.
+testiaineiston ja ilmoitetaan hylkäyksenä. Omistajan myöhempi päätös nosti
+myös muiden säilytettävien lokien ja raporttien budjettia alla kuvatusti.
+Pienten sidonta- ja ohjaustiedostojen rajoja ei muuteta lokibudjetin perusteella.
 
 Nykyisen workspace-työnkulun manuaalinen `artifact_only=true` valmistaa
 synteettisen paketin ja ajaa sen valmistelusopimukset ilman MSI-kuluttajia.
@@ -308,10 +309,13 @@ keräyksen käynnistämiseksi. Julkaisu sallii vain varmennetun salatekstin
 yhdeksi vuorokaudeksi. Normaali CI säilyttää nykyisen virheen jälkeisen
 keräyksen; manuaalisen kokeen onnistunut toimitus ei hyväksy normaaleja portteja.
 
-Rajana on 256 tiedostoa, 8 MiB yksittäiselle tiedostolle ja 128 MiB yhteensä.
-Ainoa tiedostokohtainen poikkeus on yllä nimetty ja säilytyskuitilla
-varmennettu workspace-kohdeasentimen loki: enintään 64 MiB. Sen kuitti ja
-muut MSI-lokit kuuluvat edelleen tavalliseen 8 MiB:n rajaan.
+Yleisen virhekeräimen rajana on 256 tiedostoa, 64 MiB yksittäiselle
+sallitulle lokille tai raportille ja 512 MiB yhteensä. Sama 64 MiB:n
+tiedostobudjetti koskee myös muita MSI-lokeja; workspace-kohdeasentimen
+lokilta vaaditaan edelleen täsmällinen säilytyskuitti. Kerättävien lähteiden
+nimet, projektiot, ajosidonta ja linkkien sekä muuttuneen sisällön hylkäys
+eivät laajene budjetin mukana. Tämä on säilytyksen raja, ei lupa kerätä
+uutta aineistoa tai kasvattaa alkuperäisten kirjoittajien protokollaviestejä.
 Hakemistoluvulla on oma määrä-, syvyys- ja aikaraja. Raportit kerätään
 ennen natiiveja tuloksia lähdekohtaisin tilavarauksin; saman lähteen uusimmat
 testijuuret käsitellään ensin. Aiemmin säilyneet natiivitulokset eivät siten
@@ -342,6 +346,30 @@ väitteellä infrastruktuuriviasta.
 testin käynnistystä. Sidonta sisältää CI-ajon, suoritusyrityksen, matriisin
 toiston, lähderevision, paketin descriptorin ja callerin käynnistystunnisteen.
 Uusi yritys ei kirjoita vanhan päälle eikä build tyhjennä tätä hakemistoa.
+
+Workspace-keräimen nykyiset säilytysbudjetit ovat:
+
+| Sisältö | Yksittäisen tiedoston raja |
+| --- | --- |
+| Nimetyt tallennus-, tilasto-, stderr- ja virhelokit | 64 MiB |
+| `command-export.private.log` | 128 MiB |
+| `capture.etl` | 256 MiB, ennallaan |
+| Varmennettu workspace-kohdeasentimen loki | 64 MiB |
+| `export-metadata.private.json` | 1 MiB, ennallaan |
+| Caller-tulos ja MSI-lokin säilytyskuitti | 8 KiB kumpikin, ennallaan |
+| Keräyksen konteksti | 4 KiB, ennallaan |
+
+Workspace- ja yleinen keräin käyttävät samaa 512 MiB:n säilytettyjen
+tiedostotavujen kokonaisbudjettia: summataan manifestin säilyneiden
+merkintöjen `bytes`, ei `sourceProof.bytes`. Yleisen keräimen projektoidun
+raportin budjetti lasketaan projektion jälkeen; alkuperäinen lähdekoko
+säilyy erillisessä `sourceProof`-todisteessa. JSON/base64-kuori ja salattu siirtotiedosto
+ovat erillisiä esityksiä; purkajan on huomioitava base64:n kokolisä
+varmentaessaan saman revision budjettia. Paketti kirjoitetaan nykyisellä
+virtaavalla kirjoittimella. Koko aineistoa ei lueta kerralla muistiin
+salauksen vuoksi. Salaustyökalun nykyinen määräaika, paketin sidonta,
+tiivisteiden uudelleentarkistus ja yhden vuorokauden salattu säilytys
+eivät muutu. Rajan ylitys ilmoitetaan; sitä ei tulkita testin onnistumiseksi.
 
 Manuaalisen `packaged-boundary-diagnostic`-kokeen opt-in-workspace-fault-keräys
 käyttää samaa keräintä ja kolmea sallittua valintaa:

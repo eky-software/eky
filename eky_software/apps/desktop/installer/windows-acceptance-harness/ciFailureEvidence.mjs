@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import {
   assertWorkspaceInstallerLogReceipt, encryptArchive, evidenceRecipient, ordinaryPath, retain, writeEvidenceArchive,
+  EVIDENCE_FILE_MAX_BYTES, EVIDENCE_TOTAL_MAX_BYTES,
 } from './workspaceEncryptedEvidence.mjs';
 import commandBudgets from '../windows-process-supervisor/supervisorCommandBudgets.json' with { type: 'json' };
 import { projectPlaywrightFailureReport } from './playwrightFailureReport.mjs';
@@ -16,8 +17,8 @@ import { W6B2_INSTALLER_LOG_FILE, W6B2_INSTALLER_LOG_RECEIPT,
   W6B2_INSTALLER_LOG_MAX_BYTES } from '../../src/main/w6b2PackagedInstallerLog.ts';
 
 const MiB = 1024 * 1024;
-const MAX_FILE = 8 * MiB;
-const MAX_TOTAL = 128 * MiB;
+const MAX_FILE = EVIDENCE_FILE_MAX_BYTES;
+const MAX_TOTAL = EVIDENCE_TOTAL_MAX_BYTES;
 const MAX_FILES = 256;
 const MAX_ENTRIES = 4096;
 const MAX_DEPTH = 9;

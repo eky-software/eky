@@ -202,6 +202,10 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
       const trace = Buffer.alloc(131_077, 0x89);
       await writeFile(join(capture, 'stopped'), '');
       await writeFile(join(capture, 'capture.etl'), trace);
+      const expandedLog = Buffer.alloc(9 * 1024 * 1024, 0x4c);
+      if (faultScenario === 'passiveWorkspaceMigrationFailure') {
+        await writeFile(join(capture, 'start.private.log'), expandedLog);
+      }
       const oversized = await open(join(capture, 'export-metadata.private.json'), 'wx');
       try { await oversized.truncate(1024 * 1024 + 1); } finally { await oversized.close(); }
       const collected = await collectEvidence(env, prepared.root);
@@ -209,6 +213,9 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
       const decrypted = await invokeGpg(recipient.home, ['--decrypt', join(prepared.root, 'evidence.json.gz.gpg')]);
       const value = JSON.parse(gunzipSync(decrypted.stdout));
       assert.deepEqual(Buffer.from(value.files[W6B2_INSTALLER_LOG_FILE], 'base64'), nativeLog);
+      if (faultScenario === 'passiveWorkspaceMigrationFailure') {
+        assert.deepEqual(Buffer.from(value.files['start.private.log'], 'base64'), expandedLog);
+      }
       assert.equal(Buffer.from(value.files['capture.etl'], 'base64').equals(trace), true);
       const entry = value.manifest.files.find((file) => file.name === 'capture.etl');
       assert.equal(entry.sha256, createHash('sha256').update(trace).digest('hex'));
@@ -249,9 +256,11 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
         for (const [name, value] of Object.entries(${JSON.stringify(policyFiles)})) {
           writeFileSync(join(${JSON.stringify(native)}, name), value, name === '1-source.log' ? 'utf16le' : 'utf8');
         }
+        writeFileSync(join(${JSON.stringify(native)}, '2-target.log'), 'x'.repeat(9 * 1024 * 1024), { flag: 'a' });
         console.error('SYNTHETIC-FIRST-FAILURE'); process.exit(9);
       `]);
       assert.equal(failed.status, 9);
+      policyFiles['2-target.log'] += 'x'.repeat(9 * 1024 * 1024);
       await writeFile(join(native, 'ci-step.stderr.private'), failed.stderr);
       await writeFile(join(native, 'result.json'), JSON.stringify({ cleanupWin32ErrorCode: 5, processTreeAbsent: false }));
       const reportRoot = join(checkout, 'eky_software/apps/e2e/playwright-report/run-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee');

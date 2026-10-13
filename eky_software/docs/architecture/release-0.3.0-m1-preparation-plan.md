@@ -31,8 +31,13 @@ Omistajan hyväksymä 64 MiB:n korjaus sekä saman paketin uusi nimetty koe
 läpäisivät. Koko MSI-loki, ajosidonta ja kylmä purku on varmennettu.
 Korjausketju vietiin lineaarisesti PR-haaraan. Sen normaalista kierroksesta
 löytyi vanhentunut upgrade-workflow-testin upload-kielto; rajattu korjaus on
-kohdetodennettu. Nykyisen kierroksen muut tulokset säilytetään ennen uuden
-korjausrevision normaaleja portteja. PR:ää tai K:ta ei ole vielä hyväksytty.
+kohdetodennettu. Kierros päättyi: workspace- ja legacy-kuluttajat läpäisivät,
+mutta upgrade-valmistelu ja siitä riippuva kokonaisportti hylättiin.
+Omistaja hyväksyi myös muiden salattujen lokien ja raporttien 64/128 MiB:n
+budjetin noston; keräinten kokonaisbudjetti on 512 MiB. Korjausrevision
+rajatestit, salaus/purku, CI-kytkennän kohdetestit ja katselmus läpäisivät.
+Seuraava työ on korjausrevision normaali PR-todennus. PR:ää tai K:ta ei ole
+vielä hyväksytty.
 
 | Kohta | Nykyinen lähtötieto |
 | --- | --- |
@@ -306,8 +311,28 @@ Uusi rajattu katselmus hyväksyi korjauksen.
 Ensivirheen komentoloki sekä salattu manifesti säilytettiin ja varmennettiin.
 Manifestissa ei ollut tämän yksikkötestin raakatiedostoja; tarkka hylkäys
 tuli alkuperäisestä komentolokista. Tämä ei ole testin läpäisy tai valmis K.
-Nykyisen normaalin kierroksen muut tulokset luetaan ennen korjausrevision
-julkaisua, jotta keskeneräinen ajo ei peruunnu haarapäivityksen vuoksi.
+Kierros päättyi 34 läpäisseeseen, kahteen hylättyyn ja seitsemään ohitettuun
+jobiin. Toinen hylkäys on valmistelusta riippuva kokonaisportti; molemmat
+workspace-success-, workspace-fault- ja legacy-kuluttajat läpäisivät.
+Ohituksia ei lasketa läpäisyiksi, eikä tämä hyväksy puuttuvia upgrade-portteja.
+Kierrosta ei peruttu haarapäivityksellä. Korjattu revisio tarvitsee omat
+normaalit PR- ja riippuvuusporttinsa.
+
+**Salattujen lokien laajempi budjetti:** omistaja hyväksyi 64 MiB:n
+tiedostorajan yleisen keräimen jo sallituille lokeille ja raporteille sekä
+workspace-keräimen nimetyille teksti- ja virhelokeille. Suurin komentovienti
+saa 128 MiB:n rajan, ja molempien keräinten säilytettyjen tiedostotavujen yhteisbudjetti on
+512 MiB. ETL:n nykyinen 256 MiB ja pienet sidonta-/ohjausrajat säilyvät.
+Muutos ei laajenna lähdeluetteloa, raaka-aineiston julkaisua tai testien
+aikarajoja. [Omistava keräyssopimus](ci-encrypted-evidence.md#workspace-keräys-ja-tulokset)
+erottaa säilytysbudjetin testin hyväksynnästä ja projektion alkuperäislähteestä.
+Keräinten 69 kohdetestiä, 26 salaus-/purkutarkistusta ja 34 CI-kytkennän sekä
+artifact-sopimuksen testiä läpäisivät, samoin desktopin tyyppitarkistus.
+Rajattu riippumaton katselmus tarkensi kokonaisbudjetin dokumentointia;
+koodista ei löytynyt uutta korjauskohtaa. Kokeet todistavat rajat ja suuremman
+lokin säilymisen, eivät koko budjetin suorituskykyä kaikilla mahdollisilla
+tavuilla. Normaali korjausrevision PR-todennus on vielä tekemättä; aiemman
+kokeen näyttö pysyy sidottuna sen alkuperäiseen revisioon.
 
 **Edellinen checkpoint:**
 

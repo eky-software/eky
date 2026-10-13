@@ -15,7 +15,9 @@ import { W6B2_INSTALLER_LOG_FILE, W6B2_INSTALLER_LOG_RECEIPT,
 import { readCommandPhaseJson } from './acceptanceCommandPhaseInput.mjs';
 
 const MiB = 1024 * 1024;
-const MAX_TOTAL = 400 * MiB;
+export const EVIDENCE_FILE_MAX_BYTES = 64 * MiB;
+export const EVIDENCE_TOTAL_MAX_BYTES = 512 * MiB;
+const MAX_TOTAL = EVIDENCE_TOTAL_MAX_BYTES;
 const OUTCOMES = new Set(['success', 'failure', 'cancelled', 'skipped', 'unknown']);
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DELIVERY_PROOF_MODE = 'encrypted-evidence-delivery-proof';
@@ -29,27 +31,27 @@ const FAULT_SCENARIOS = new Set([
 ]);
 const CAPTURE_FILES = Object.freeze({
   'capture.etl': 256 * MiB,
-  'event-statistics.private.log': 32 * MiB,
-  'event-statistics.stderr.private.log': 8 * MiB,
-  'command-export.private.log': 64 * MiB,
-  'command-export.stderr.private.log': 8 * MiB,
+  'event-statistics.private.log': EVIDENCE_FILE_MAX_BYTES,
+  'event-statistics.stderr.private.log': EVIDENCE_FILE_MAX_BYTES,
+  'command-export.private.log': 128 * MiB,
+  'command-export.stderr.private.log': EVIDENCE_FILE_MAX_BYTES,
   'export-metadata.private.json': MiB,
-  'event-statistics.failure.private.txt': MiB,
-  'analyze.failure.private.txt': MiB,
-  'start.failure.private.txt': MiB,
-  'stop.failure.private.txt': MiB,
-  'start.private.log': MiB,
-  'start.stderr.private.log': MiB,
-  'stop.private.log': MiB,
-  'stop.stderr.private.log': MiB,
-  'before.private.log': MiB,
-  'before.stderr.private.log': MiB,
-  'after.private.log': MiB,
-  'after.stderr.private.log': MiB,
-  'after-cancel.private.log': MiB,
-  'after-cancel.stderr.private.log': MiB,
-  'collectors-before-stop.private.log': MiB,
-  'collectors-before-stop.stderr.private.log': MiB,
+  'event-statistics.failure.private.txt': EVIDENCE_FILE_MAX_BYTES,
+  'analyze.failure.private.txt': EVIDENCE_FILE_MAX_BYTES,
+  'start.failure.private.txt': EVIDENCE_FILE_MAX_BYTES,
+  'stop.failure.private.txt': EVIDENCE_FILE_MAX_BYTES,
+  'start.private.log': EVIDENCE_FILE_MAX_BYTES,
+  'start.stderr.private.log': EVIDENCE_FILE_MAX_BYTES,
+  'stop.private.log': EVIDENCE_FILE_MAX_BYTES,
+  'stop.stderr.private.log': EVIDENCE_FILE_MAX_BYTES,
+  'before.private.log': EVIDENCE_FILE_MAX_BYTES,
+  'before.stderr.private.log': EVIDENCE_FILE_MAX_BYTES,
+  'after.private.log': EVIDENCE_FILE_MAX_BYTES,
+  'after.stderr.private.log': EVIDENCE_FILE_MAX_BYTES,
+  'after-cancel.private.log': EVIDENCE_FILE_MAX_BYTES,
+  'after-cancel.stderr.private.log': EVIDENCE_FILE_MAX_BYTES,
+  'collectors-before-stop.private.log': EVIDENCE_FILE_MAX_BYTES,
+  'collectors-before-stop.stderr.private.log': EVIDENCE_FILE_MAX_BYTES,
 });
 function fail() { throw new Error('WORKSPACE_ENCRYPTED_EVIDENCE_UNVERIFIED'); }
 function outcome(value) { return OUTCOMES.has(value) ? value : 'unknown'; }
