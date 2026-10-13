@@ -11,7 +11,13 @@ import type {
 
 export function createProfileRestoreWorkspaceReplacementActivationAuthority(
   paths: Readonly<WorkspaceBackupReplacementRuntimePaths>,
-): Readonly<WorkspaceReplacementActivationAuthority> {
+): Readonly<WorkspaceReplacementActivationAuthority & {
+  readonly journalStore: Pick<ProfileRestoreActivationJournalStore, 'peek' | 'read'>;
+  readonly transaction: WorkspaceReplacementActivationAuthority['transaction'] & Pick<
+    ProfileRestoreActivationTransaction, 'readRollbackRecoverySources' | 'prepareColdRollbackAnchor' |
+    'readTerminalCleanupCensus' | 'assertTerminalCleanupCensus'
+  >;
+}> {
   const journalStore = new ProfileRestoreActivationJournalStore(
     paths.activationJournalPath,
   );

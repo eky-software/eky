@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   mkdir,
   mkdtemp,
@@ -12,7 +13,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { RecoveryPointIndexEntry } from './recoveryPointIndexStore.js';
 import type { ProfileRecoveryOperationalEvent } from '../profileRecoveryOperationalObserver.js';
+import type { ProfileInspectionReceipt } from '../../runtime/profileInspectionMessages.js';
+import { createProfileSnapshotArtifactIdentity } from '../../runtime/profileInspectionArtifactIdentity.js';
+import { profileInspectionFailureCauses } from '../../runtime/profileInspectionFailure.js';
 import { ProfileSnapshotBrokerClient } from '../profileSnapshotBrokerClient.js';
+import { ProfileSnapshotInspectionClient } from '../profileSnapshotInspectionClient.js';
 import {
   parseProfileSnapshotBrokerRequest,
   profileSnapshotBrokerProtocolVersion,
@@ -22,6 +27,8 @@ import {
   isAutomaticPointDue,
   RecoveryPointService,
 } from './recoveryPointService.js';
+
+vi.mock('electron', () => ({ utilityProcess: { fork: vi.fn() } }));
 
 const roots: string[] = [];
 const operationId = '11111111-1111-4111-8111-111111111111';
@@ -39,6 +46,109 @@ afterEach(async () => {
 });
 
 describe('recovery point service', () => {
+  it('owned recovery source stays reserved through persistence and rotation, then is removed once', async () => {
+    const fixture = await createFixture();
+    const create = fixture.create.getMockImplementation()!;
+    fixture.create.mockImplementationOnce(async () => {
+      expect(fixture.sourceInUse()).toBe(true);
+      return create();
+    });
+    vi.spyOn(fixture.dependencies.rotation, 'maintain').mockImplementationOnce(async () => {
+      expect(fixture.sourceInUse()).toBe(true);
+      return { budgetExceededAfterRotation: false, deletedCount: 0, retainedByteSize: 1 };
+    });
+    await expect(fixture.service.createManual()).resolves.toEqual(fixture.createdPoint);
+    expect(fixture.ownershipCalls).toEqual(['operationEntered', 'sourceEntered', 'sourceExited', 'removed', 'operationExited']);
+    expect(fixture.remove).toHaveBeenCalledExactlyOnceWith(operationId);
+  });
+
+  it('owned recovery source rejects receipt drift before persistence', async () => {
+    const fixture = await createFixture();
+    const validate = fixture.dependencies.profileSnapshotClient.validateProfileSnapshot;
+    vi.spyOn(fixture.dependencies.profileSnapshotClient, 'validateProfileSnapshot').mockImplementationOnce(async (...args) => {
+      const result = await validate(...args);
+      await writeFile(join(fixture.operationRoot, 'profile.sqlite'), 'changed bytes');
+      return result;
+    });
+    await expect(fixture.service.createManual()).rejects.toThrow('PROFILE_BACKUP_SOURCE_INVALID');
+    expect(fixture.create).not.toHaveBeenCalled();
+    expect(fixture.remove).toHaveBeenCalledExactlyOnceWith(operationId);
+  });
+
+  it('owned recovery source preserves the first error and uncertain cleanup without retry or success', async () => {
+    const original = new Error('PROFILE_SCHEMA_UNSUPPORTED');
+    const fixture = await createFixture({ createFailure: original });
+    fixture.remove.mockRejectedValueOnce(new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED'));
+    const error = await fixture.service.createManual().catch((failure: unknown) => failure);
+    expect(error).toMatchObject({ cleanupStatus: 'unverified' });
+    expect((error as Error).cause).toBe(original);
+    expect(fixture.remove).toHaveBeenCalledExactlyOnceWith(operationId);
+    expect(await readFile(join(fixture.operationRoot, 'profile.sqlite'), 'utf8')).toBe('database');
+    expect(fixture.calls).toContain('end');
+    expect(fixture.events.at(-1)).toMatchObject({ eventName: 'recoveryPoint.failed', retryable: false, errorCode: 'PROFILE_SCHEMA_UNSUPPORTED' });
+    expect(fixture.events.some(event => event.eventName === 'recoveryPoint.completed')).toBe(false);
+  });
+
+  it('owned recovery source does not report automatic completion before uncertain cleanup', async () => {
+    const fixture = await createFixture();
+    fixture.remove.mockRejectedValueOnce(new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED'));
+    await expect(fixture.service.checkAutomatic()).rejects.toMatchObject({ cleanupStatus: 'unverified' });
+    expect(fixture.events.some(event => event.eventName === 'recoveryPoint.completed')).toBe(false);
+    expect(fixture.remove).toHaveBeenCalledExactlyOnceWith(operationId);
+  });
+
+  it('keeps a closed or uncertain inspection generation unavailable without starting new work', async () => {
+    const fixture = await createFixture();
+    vi.spyOn(fixture.dependencies.profileSnapshotClient, 'withInspectionOperation')
+      .mockRejectedValueOnce(new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED'));
+    await expect(fixture.service.createManual()).rejects.toThrow('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+    expect(fixture.calls).toEqual([]);
+    expect(fixture.remove).not.toHaveBeenCalled();
+    expect(fixture.service.getStatus().availability).toBe('unavailable');
+    expect(fixture.events.at(-1)).toMatchObject({ eventName: 'recoveryPoint.failed', retryable: false });
+  });
+
+  it('preserves the first failure when ordinary maintenance release also fails', async () => {
+    const original = new Error('PROFILE_SCHEMA_UNSUPPORTED');
+    const fixture = await createFixture({ createFailure: original });
+    vi.spyOn(fixture.dependencies.profileSnapshotClient, 'endMaintenance')
+      .mockRejectedValueOnce(new Error('PROFILE_SNAPSHOT_BROKER_UNAVAILABLE'));
+    await expect(fixture.service.createManual()).rejects.toBe(original);
+    expect(fixture.remove).toHaveBeenCalledExactlyOnceWith(operationId);
+  });
+
+  it('rejects an unacknowledged ordinary release after preserving the durable good point', async () => {
+    const fixture = await createFixture();
+    vi.spyOn(fixture.dependencies.profileSnapshotClient, 'endMaintenance')
+      .mockRejectedValueOnce(new Error('PROFILE_SNAPSHOT_BROKER_UNAVAILABLE'));
+    await expect(fixture.service.createManual()).rejects.toThrow('PROFILE_SNAPSHOT_BROKER_UNAVAILABLE');
+    expect(await fixture.dependencies.store.list(profileId)).toContain(fixture.createdPoint);
+    expect(fixture.remove).toHaveBeenCalledExactlyOnceWith(operationId);
+    expect(fixture.events.some(event => event.eventName === 'recoveryPoint.completed')).toBe(false);
+  });
+
+  for (const update of [false, true]) {
+    it.each(profileInspectionFailureCauses)(`keeps wrapped %s in creation diagnostics, update=${update}`, async (cause) => {
+      const fixture = await createFixture();
+      const original = new Error('RECOVERY_POINT_OPERATION_FAILED', { cause: new Error(cause) });
+      fixture.dependencies.profileSnapshotClient.validateProfileSnapshot = async () => { throw original; };
+      const result = update
+        ? fixture.service.createPreUpdateWithMaintenance(operationId)
+        : fixture.service.createManual();
+      await expect(result).rejects.toBe(original);
+      expect(fixture.create).not.toHaveBeenCalled();
+      expect(fixture.service.getStatus()).toMatchObject({
+        availability: cause === 'PROFILE_INSPECTION_CLEANUP_UNVERIFIED' ? 'unavailable' : 'available', lastSafeErrorCode: 'RECOVERY_POINT_OPERATION_FAILED',
+        operationState: 'idle', pointCount: 0,
+      });
+      expect(fixture.events.at(-1)).toMatchObject({
+        errorCode: cause, eventName: 'recoveryPoint.failed',
+        recoveryPointKind: update ? 'preUpdate' : 'manual',
+        retryable: !update && cause !== 'PROFILE_INSPECTION_CLEANUP_UNVERIFIED', sideEffectState: 'unknown', stage: 'creation',
+      });
+    });
+  }
+
   it('RECOVERY-POINT-001 @critical creates a validated automatic point only after the healthy snapshot check', async () => {
     const fixture = await createFixture();
 
@@ -185,7 +295,7 @@ describe('caller-owned pre-update recovery point', () => {
       .resolves.toEqual(fixture.createdPoint);
 
     expect(snapshot).toHaveBeenCalledWith(operationId, 'exactCurrentManifest');
-    expect(validate).toHaveBeenCalledWith(operationId);
+    expect(validate).toHaveBeenCalledWith(operationId, operationId);
     expect(fixture.calls).toEqual([
       'assertUpdate', 'snapshot', 'validate', 'assertUpdate',
       'create', 'rotate', 'list', 'assertUpdate',
@@ -287,34 +397,36 @@ describe('caller-owned pre-update recovery point', () => {
   );
 
   it.each(['createProfileSnapshot', 'validateProfileSnapshot'] as const)(
-    'waits for the queued barrier after %s fails before cleanup, preserving the first error',
+    'waits for owned removal after %s fails, preserving the first error',
     async (method) => {
       const fixture = await createFixture();
       const client = fixture.dependencies.profileSnapshotClient;
       const barrierEntered = createDeferred<void>();
-      const barrier = createDeferred<'busy'>();
+      const barrier = createDeferred<void>();
       const firstError = new Error('SYNTHETIC_SNAPSHOT_REQUEST_FAILED');
       vi.spyOn(client, method).mockImplementationOnce(async () => {
         await mkdir(fixture.operationRoot, { recursive: true });
         await writeFile(join(fixture.operationRoot, 'profile.sqlite'), 'in progress');
         throw firstError;
       });
-      vi.spyOn(client, 'assertUpdateMaintenance')
-        .mockResolvedValueOnce('busy')
-        .mockImplementationOnce(() => {
+      const remove = fixture.remove.getMockImplementation()!;
+      fixture.remove.mockImplementationOnce(async requestedOperationId => {
           barrierEntered.resolve();
-          return barrier.promise;
-        });
+          await barrier.promise;
+          await remove(requestedOperationId);
+      });
       const result = expect(fixture.service.createPreUpdateWithMaintenance(operationId))
         .rejects.toBe(firstError);
       await barrierEntered.promise;
       expect(await readFile(join(fixture.operationRoot, 'profile.sqlite'), 'utf8'))
         .toBe('in progress');
-      barrier.resolve('busy');
+      barrier.resolve();
       await result;
       await expect(readFile(join(fixture.operationRoot, 'profile.sqlite')))
         .rejects.toMatchObject({ code: 'ENOENT' });
       expect(fixture.calls).not.toContain('end');
+      expect(fixture.calls.filter(call => call === 'assertUpdate')).toHaveLength(1);
+      expect(fixture.remove).toHaveBeenCalledExactlyOnceWith(operationId);
       expect(fixture.events.at(-1)).toMatchObject({
         eventName: 'recoveryPoint.failed',
         errorCode: 'SYNTHETIC_SNAPSHOT_REQUEST_FAILED',
@@ -322,7 +434,7 @@ describe('caller-owned pre-update recovery point', () => {
     },
   );
 
-  it('keeps staging and the first error when the completion barrier also fails', async () => {
+  it('keeps staging and the first error when native removal cannot be certified', async () => {
     const fixture = await createFixture();
     const client = fixture.dependencies.profileSnapshotClient;
     const firstError = new Error('SYNTHETIC_FIRST_FAILURE');
@@ -331,12 +443,13 @@ describe('caller-owned pre-update recovery point', () => {
       await writeFile(join(fixture.operationRoot, 'profile.sqlite'), 'preserve');
       throw firstError;
     });
-    vi.spyOn(client, 'assertUpdateMaintenance')
-      .mockResolvedValueOnce('busy')
-      .mockRejectedValueOnce(new Error('PROFILE_SNAPSHOT_BROKER_UNAVAILABLE'));
+    fixture.remove.mockRejectedValueOnce(new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED'));
 
-    await expect(fixture.service.createPreUpdateWithMaintenance(operationId))
-      .rejects.toBe(firstError);
+    const error = await fixture.service.createPreUpdateWithMaintenance(operationId)
+      .catch((failure: unknown) => failure);
+    expect(error).toMatchObject({ cleanupStatus: 'unverified' });
+    expect((error as Error).cause).toBe(firstError);
+    expect(fixture.remove).toHaveBeenCalledExactlyOnceWith(operationId);
     expect(await readFile(join(fixture.operationRoot, 'profile.sqlite'), 'utf8'))
       .toBe('preserve');
     expect(fixture.create).not.toHaveBeenCalled();
@@ -364,12 +477,11 @@ describe('caller-owned pre-update recovery point', () => {
     });
   });
 
-  it('ignores late snapshot and barrier responses after both real client requests time out', async () => {
+  it('ignores a late writer response after the real client timeout and does not replace native ownership with another assertion', async () => {
     const fixture = await createFixture();
     await mkdir(fixture.operationRoot);
     await writeFile(join(fixture.operationRoot, 'profile.sqlite'), 'remote still owns this');
     const snapshotRequested = createDeferred<string>();
-    const barrierRequested = createDeferred<string>();
     let receive: (value: unknown) => void = () => undefined;
     let assertionCount = 0;
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
@@ -389,7 +501,7 @@ describe('caller-owned pre-update recovery point', () => {
         } else if (request.operation === 'assertUpdateMaintenance') {
           assertionCount += 1;
           if (assertionCount === 1) acknowledge(request.requestId);
-          else barrierRequested.resolve(request.requestId);
+          else throw new Error('UNEXPECTED_ACK_CLEANUP');
         } else {
           throw new Error('UNEXPECTED_TEST_REQUEST');
         }
@@ -401,16 +513,21 @@ describe('caller-owned pre-update recovery point', () => {
       subscribeClose() { return () => undefined; },
     });
     try {
-      fixture.dependencies.profileSnapshotClient = client;
+      const acquireReservation = vi.fn(async () => { throw new Error('UNEXPECTED_RESERVATION'); });
+      fixture.dependencies.profileSnapshotClient = new ProfileSnapshotInspectionClient({
+        broker: client, stagingRoot: fixture.stagingRoot,
+        runnerPath: join(fixture.stagingRoot, 'runner.js'),
+        deployment: { backendRoot: fixture.stagingRoot, migrationsDirectory: fixture.stagingRoot, nativeResourceRoot: fixture.stagingRoot },
+        assertMainInstance() {}, acquireReservation,
+      });
       receive({
         protocolVersion: profileSnapshotBrokerProtocolVersion,
         type: 'profileSnapshotBrokerReady',
       });
       const result = expect(fixture.service.createPreUpdateWithMaintenance(operationId))
-        .rejects.toMatchObject({ code: 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE' });
+        .rejects.toMatchObject({ code: 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE', cleanupStatus: 'unverified',
+          cause: expect.objectContaining({ code: 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE' }) });
       const snapshotRequestId = await snapshotRequested.promise;
-      await vi.advanceTimersByTimeAsync(35_000);
-      const barrierRequestId = await barrierRequested.promise;
       await vi.advanceTimersByTimeAsync(35_000);
       await result;
 
@@ -422,7 +539,8 @@ describe('caller-owned pre-update recovery point', () => {
         requestId: snapshotRequestId,
         errorCode: 'PROFILE_SNAPSHOT_DATABASE_FAILED',
       });
-      acknowledge(barrierRequestId);
+      expect(assertionCount).toBe(1);
+      expect(acquireReservation).not.toHaveBeenCalled();
       expect(await readFile(join(fixture.operationRoot, 'profile.sqlite'), 'utf8'))
         .toBe('remote still owns this');
       expect(fixture.create).not.toHaveBeenCalled();
@@ -500,6 +618,20 @@ async function createFixture(options: {
     return createdPoint;
   });
   let updateValid = true;
+  let sourceInUse = false;
+  const ownershipCalls: string[] = [];
+  const receipt: ProfileInspectionReceipt = {
+    artifactIdentity: createProfileSnapshotArtifactIdentity([]),
+    artifactCount: 0, artifactTotalByteSize: 0, databaseHealth: 'healthy',
+    migrationChainIdentity, profileId, migrationPolicy: 'restoreCompatible',
+    database: { byteSize: 8, sha256: createHash('sha256').update('database').digest('hex') },
+    artifactCatalog: { byteSize: 16, sha256: createHash('sha256').update('{"artifacts":[]}').digest('hex') },
+  };
+  const remove = vi.fn(async (requestedOperationId: string) => {
+    if (sourceInUse) throw new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+    await rm(join(stagingRoot, requestedOperationId), { force: true, recursive: true });
+    ownershipCalls.push('removed');
+  });
   const dependencies: ConstructorParameters<typeof RecoveryPointService>[0] = {
     appVersion: '0.1.0-alpha.1',
     now: () => new Date(now),
@@ -513,6 +645,18 @@ async function createFixture(options: {
       },
     },
     profileSnapshotClient: {
+      async withInspectionOperation<T>(operation: () => Promise<T>) {
+        ownershipCalls.push('operationEntered');
+        try { return await operation(); }
+        finally { ownershipCalls.push('operationExited'); }
+      },
+      async withProfileSnapshot<T>(_operationId: string, use: (receipt: ProfileInspectionReceipt) => Promise<T>) {
+        sourceInUse = true;
+        ownershipCalls.push('sourceEntered');
+        try { return await use(receipt); }
+        finally { sourceInUse = false; ownershipCalls.push('sourceExited'); }
+      },
+      removeProfileSnapshot: remove,
       async assertUpdateMaintenance(requestedOperationId) {
         calls.push('assertUpdate');
         if (!updateValid || requestedOperationId !== operationId) {
@@ -605,8 +749,12 @@ async function createFixture(options: {
     events,
     invalidateUpdate() { updateValid = false; },
     operationRoot,
+    ownershipCalls,
+    remove,
     service,
+    sourceInUse: () => sourceInUse,
     snapshotPolicies,
+    stagingRoot,
   };
 }
 

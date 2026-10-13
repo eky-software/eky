@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 
 import { isOperationId } from '../profileBackup/profileSnapshotBrokerProtocol.js';
+import { isRecoveryPointCleanupUnverified } from '../profileBackup/recoveryPoint/recoveryPointService.js';
 
 import type {
   LocalUpdateExpectedPackageIdentity,
@@ -9,6 +10,7 @@ import type {
   RevalidatedLocalUpdatePackageHandle,
 } from './localUpdatePackageCache.js';
 import type { UpdateProfileProtection } from './profileProtectionComposition.js';
+import type { UpdateActiveProfileValidationContext } from './updateActiveProfileValidation.js';
 import {
   parseUpdateJournal,
   transitionUpdateJournal,
@@ -41,7 +43,7 @@ interface LocalUpdateHandoffCoordinatorDependencies {
     | 'beginUpdateMaintenance'
     | 'assertUpdateMaintenance'
     | 'endUpdateMaintenance'
-    | 'validateActiveProfile'
+    | 'validateActiveProfileForUpdate'
   >;
   shutdownRuntime(operationId: string): Promise<void>;
 }
@@ -52,6 +54,7 @@ interface PreparedUpdateOwner {
   phase: 'preparing' | 'ready' | 'handoff' | 'failed';
   journal?: Readonly<UpdateJournal>;
   journalUncertain: boolean;
+  validationUncertain: boolean;
   fenceRequested: boolean;
   stopStarted: boolean;
 }
@@ -59,8 +62,9 @@ interface PreparedUpdateOwner {
 export class LocalUpdateHandoffError extends Error {
   constructor(
     readonly code: LocalUpdateHandoffErrorCode = 'UPDATE_HANDOFF_FAILED',
+    options?: ErrorOptions,
   ) {
-    super('The local update could not be handed off safely.');
+    super('The local update could not be handed off safely.', options);
     this.name = 'LocalUpdateHandoffError';
   }
 }
@@ -98,7 +102,7 @@ export class LocalUpdateHandoffCoordinator {
           });
         const owner: PreparedUpdateOwner = {
           operationId: correlationId, lease, phase: 'preparing',
-          journalUncertain: false, fenceRequested: false, stopStarted: false,
+          journalUncertain: false, validationUncertain: false, fenceRequested: false, stopStarted: false,
         };
         this.owner = owner;
         let failureCode: LocalUpdateHandoffErrorCode =
@@ -118,7 +122,7 @@ export class LocalUpdateHandoffCoordinator {
             );
           failureCode = 'UPDATE_PREPARATION_PROFILE_FAILED';
           const profileValidation =
-            await this.dependencies.profileProtection.validateActiveProfile();
+            await this.validateOwnedProfile(owner, 'preparation');
           let journal = createPreparedJournal({
             candidateIdentity,
             correlationId,
@@ -135,7 +139,10 @@ export class LocalUpdateHandoffCoordinator {
           failureCode = 'UPDATE_PREPARATION_RECOVERY_POINT_FAILED';
           const recoveryPointReference =
             await this.dependencies.profileProtection
-              .createValidatedPreUpdatePoint(correlationId);
+              .createValidatedPreUpdatePoint(correlationId).catch((error: unknown) => {
+                if (isRecoveryPointCleanupUnverified(error)) owner.validationUncertain = true;
+                throw error;
+              });
           journal = transitionUpdateJournal(journal, {
             at: this.now(),
             recoveryPointReference,
@@ -148,16 +155,16 @@ export class LocalUpdateHandoffCoordinator {
           owner.phase = 'ready';
           this.notifyCompleted(correlationId, startedAt, 'recoveryPoint');
           return journal;
-        } catch {
+        } catch (error) {
           await this.abortOwnedPreparation(owner);
           this.notifyFailed({
             correlationId,
             errorCode: 'UPDATE_RECOVERY_POINT_FAILED',
-            sideEffectState: 'none',
+            sideEffectState: owner.validationUncertain ? 'unknown' : 'none',
             stage: 'recoveryPoint',
             startedAt,
           });
-          throw new LocalUpdateHandoffError(failureCode);
+          throw new LocalUpdateHandoffError(failureCode, { cause: error });
         }
       },
     );
@@ -196,7 +203,7 @@ export class LocalUpdateHandoffCoordinator {
           });
         await this.dependencies.profileProtection.assertUpdateMaintenance(owner.operationId);
         const profileValidation =
-          await this.dependencies.profileProtection.validateActiveProfile();
+          await this.validateOwnedProfile(owner, 'handoff');
         await this.dependencies.profileProtection.assertUpdateMaintenance(owner.operationId);
         if (
           profileValidation.migrationChainIdentity !==
@@ -234,7 +241,7 @@ export class LocalUpdateHandoffCoordinator {
           stageStartedAt,
           activeStage,
         );
-      } catch {
+      } catch (error) {
         await this.abortOwnedPreparation(owner);
         if (journal !== undefined) {
           this.notifyFailed({
@@ -243,12 +250,12 @@ export class LocalUpdateHandoffCoordinator {
               activeStage === 'runtimeShutdown'
                 ? 'UPDATE_SHUTDOWN_TIMEOUT'
                 : 'UPDATE_INSTALLER_START_FAILED',
-            sideEffectState: owner.stopStarted ? 'unknown' : 'none',
+            sideEffectState: owner.stopStarted || owner.validationUncertain ? 'unknown' : 'none',
             stage: activeStage,
             startedAt: stageStartedAt,
           });
         }
-        throw new LocalUpdateHandoffError();
+        throw new LocalUpdateHandoffError('UPDATE_HANDOFF_FAILED', { cause: error });
       }
     });
   }
@@ -318,10 +325,36 @@ export class LocalUpdateHandoffCoordinator {
     owner.journalUncertain = false;
   }
 
+  private async validateOwnedProfile(owner: PreparedUpdateOwner,
+    stage: UpdateActiveProfileValidationContext['stage']) {
+    let active = true;
+    let cleanupConfirmed = false;
+    owner.validationUncertain = true;
+    const assertCurrent = () => {
+      if (!active || this.owner !== owner || owner.journalUncertain || owner.stopStarted ||
+          owner.phase !== (stage === 'preparation' ? 'preparing' : 'handoff')) {
+        throw new LocalUpdateHandoffError();
+      }
+    };
+    const context: UpdateActiveProfileValidationContext = Object.freeze({
+      operationId: owner.operationId, stage, assertCurrent,
+      confirmCleanup() { assertCurrent(); cleanupConfirmed = true; },
+    });
+    try {
+      const result = await this.dependencies.profileProtection.validateActiveProfileForUpdate(context);
+      assertCurrent();
+      if (!cleanupConfirmed) throw new LocalUpdateHandoffError();
+      return result;
+    } finally {
+      active = false;
+      owner.validationUncertain = !cleanupConfirmed;
+    }
+  }
+
   private async abortOwnedPreparation(owner: PreparedUpdateOwner): Promise<void> {
     owner.phase = 'failed';
     try {
-      if (owner.journalUncertain) return;
+      if (owner.journalUncertain || owner.validationUncertain) return;
       if (owner.journal !== undefined) {
         await this.writeOwnedJournal(owner, transitionUpdateJournal(owner.journal, {
           at: this.now(), state: 'failed',

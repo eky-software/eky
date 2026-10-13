@@ -3,6 +3,21 @@ import { describe, expect, it, vi } from 'vitest';
 import { renameProfilePathWithRetry } from './profileRestoreFileMove.js';
 
 describe('profile restore file move', () => {
+  it('does not retry a rename after losing authority during the Windows retry wait', async () => {
+    let current = true;
+    const primary = new Error('PROFILE_RESTORE_RECOVERY_REQUIRED');
+    const renamePath = vi.fn<() => Promise<void>>()
+      .mockRejectedValueOnce(createNodeError('EPERM')).mockResolvedValueOnce();
+    const assertAuthority = vi.fn(async () => { if (!current) throw primary; });
+    const wait = vi.fn(async () => { current = false; });
+    await expect(renameProfilePathWithRetry({ sourcePath: 'source', destinationPath: 'destination',
+      platform: 'win32', renamePath, wait, assertAuthority,
+    })).rejects.toBe(primary);
+    expect(renamePath).toHaveBeenCalledOnce();
+    expect(wait).toHaveBeenCalledExactlyOnceWith(25);
+    expect(assertAuthority).toHaveBeenCalledTimes(2);
+  });
+
   it('retries bounded Windows sharing failures before succeeding', async () => {
     const renamePath = vi
       .fn<() => Promise<void>>()

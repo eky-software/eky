@@ -39,8 +39,9 @@ export class WorkspaceBackupImportError extends Error {
   constructor(
     readonly code: WorkspaceBackupImportErrorCode,
     readonly stage: WorkspaceBackupImportStage,
+    options?: ErrorOptions,
   ) {
-    super(code);
+    super(code, options);
     this.name = 'WorkspaceBackupImportError';
   }
 }
@@ -52,5 +53,5 @@ export function mapWorkspaceBackupImportError(
 ): WorkspaceBackupImportError {
   return error instanceof WorkspaceBackupImportError
     ? error
-    : new WorkspaceBackupImportError(code, stage);
+    : new WorkspaceBackupImportError(code, stage, { cause: error });
 }

@@ -1,10 +1,15 @@
-import { join, resolve } from 'node:path';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ProfileRestoreActivationJournal } from '../../profileBackup/restore/profileRestoreActivationJournal.js';
 import { validateWorkspaceBackupImportOperationId } from '../import/workspaceBackupImportOperationId.js';
 import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
+import { validateWorkspaceBackupReplacementOperationId } from '../replacement/workspaceBackupReplacementOperationId.js';
+import { deriveWorkspaceBackupReplacementPaths } from '../replacement/workspaceBackupReplacementPaths.js';
+import { NodeWorkspaceBackupReplacementRootStore } from '../replacement/workspaceBackupReplacementRootStore.js';
 import { WorkspaceActivationMigrationCoordinator } from './workspaceActivationMigrationCoordinator.js';
 import type { WorkspaceActivationMigrationProof } from './workspaceActivationMigrationGuard.js';
 
@@ -24,6 +29,13 @@ const testUserDataRoot = resolve(
   'test-data',
   'workspace-activation-migration',
 );
+const cleanupRoots: string[] = [];
+
+afterEach(async () => {
+  for (const root of cleanupRoots.splice(0)) {
+    await rm(root, { force: true, recursive: true });
+  }
+});
 
 describe('WorkspaceActivationMigrationCoordinator', () => {
   it('migrates only the private candidate before the activation swap', async () => {
@@ -84,6 +96,72 @@ describe('WorkspaceActivationMigrationCoordinator', () => {
     );
     expect(fixture.events.indexOf('source.recover')).toBeGreaterThan(
       fixture.events.indexOf('candidate.discard'),
+    );
+  });
+
+  it('retains recovery staging and requires recovery when inspection cleanup is unresolved', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'eky-activation-preservation-'));
+    cleanupRoots.push(root);
+    const paths = deriveWorkspaceBackupReplacementPaths(
+      root,
+      validateWorkspaceBackupReplacementOperationId(operationId),
+      targetWorkspaceId,
+    );
+    await mkdir(dirname(paths.activeDatabasePath), {
+      recursive: true,
+      mode: 0o700,
+    });
+    await mkdir(paths.activeArtifactRoot, { recursive: true, mode: 0o700 });
+    await writeFile(paths.activeDatabasePath, 'unchanged target database');
+    const stagedRoot = join(root, 'recovery', 'staged');
+    const sourcePath = join(stagedRoot, 'profile.sqlite');
+    await mkdir(stagedRoot, { recursive: true, mode: 0o700 });
+    await writeFile(sourcePath, 'original recovery snapshot');
+    const inspectionRoot = join(
+      paths.activationStagingOperationRoot,
+      'inspection-unresolved',
+    );
+    const inspectionPath = join(inspectionRoot, 'inspection.sqlite');
+    const fixture = createFixture({
+      failCandidateMigration: true,
+      userDataRoot: root,
+    });
+    const store = new NodeWorkspaceBackupReplacementRootStore();
+    fixture.rootStore.prepareCandidate.mockImplementation(async () => {
+      fixture.events.push('candidate.prepareRoot');
+      await store.prepareCandidate(paths);
+      await writeFile(paths.candidateDatabasePath, 'unpublished candidate');
+      await mkdir(inspectionRoot, { mode: 0o700 });
+      await writeFile(inspectionPath, 'unresolved inspection copy');
+    });
+    fixture.rootStore.discardBeforeActivation.mockImplementation(async () => {
+      fixture.events.push('candidate.discard');
+      await store.discardBeforeActivation(paths);
+    });
+
+    await expect(
+      fixture.coordinator.migrateAndActivate(fixture.input),
+    ).rejects.toMatchObject({
+      code: 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
+    });
+
+    expect(fixture.rootStore.discardBeforeActivation).toHaveBeenCalledOnce();
+    expect(fixture.sourceRecovery.requireRecovery).toHaveBeenCalledOnce();
+    expect(fixture.sourceRecovery.recoverFromFailure).not.toHaveBeenCalled();
+    expect(fixture.requestRelaunch).not.toHaveBeenCalled();
+    expect(fixture.activation.transaction.prepare).not.toHaveBeenCalled();
+    expect(fixture.events).not.toContain('recovery.removeStaging');
+    await expect(readFile(sourcePath, 'utf8')).resolves.toBe(
+      'original recovery snapshot',
+    );
+    await expect(readFile(paths.candidateDatabasePath, 'utf8')).resolves.toBe(
+      'unpublished candidate',
+    );
+    await expect(readFile(inspectionPath, 'utf8')).resolves.toBe(
+      'unresolved inspection copy',
+    );
+    await expect(readFile(paths.activeDatabasePath, 'utf8')).resolves.toBe(
+      'unchanged target database',
     );
   });
 
@@ -152,9 +230,11 @@ interface FixtureOptions {
   readonly failRecoveryPoint?: boolean;
   readonly failRuntimeStop?: boolean;
   readonly foreignActivationJournal?: boolean;
+  readonly userDataRoot?: string;
 }
 
 function createFixture(options: FixtureOptions = {}) {
+  const userDataRoot = options.userDataRoot ?? testUserDataRoot;
   const events: string[] = [];
   let activationJournal: ProfileRestoreActivationJournal | undefined =
     options.foreignActivationJournal
@@ -194,6 +274,12 @@ function createFixture(options: FixtureOptions = {}) {
       }),
     },
     transaction: {
+      assertForwardRecoveryState: vi.fn(async () => {
+        throw new Error('SYNTHETIC_MIGRATION_HAS_NO_COLD_AUTHORITY');
+      }),
+      readForwardRecoverySources: vi.fn(async () => {
+        throw new Error('SYNTHETIC_MIGRATION_HAS_NO_COLD_AUTHORITY');
+      }),
       accept: vi.fn(async () => undefined),
       advanceToValidation: vi.fn(async () => {
         events.push('activation.advance');
@@ -214,6 +300,8 @@ function createFixture(options: FixtureOptions = {}) {
           'prepared',
         );
       }),
+      commitAcceptance: vi.fn(async () => { throw new Error('UNEXPECTED_ACCEPTANCE_PUBLICATION'); }),
+      clearAccepted: vi.fn(async () => { throw new Error('UNEXPECTED_ACCEPTED_CLEANUP'); }),
       rollback: vi.fn(async () => {
         events.push('activation.rollback');
         activationJournal = createActivationJournal(
@@ -288,7 +376,7 @@ function createFixture(options: FixtureOptions = {}) {
           createdAt: '2026-08-22T00:00:00.000Z',
           documentCount: 1,
           migrationChainIdentity: sourceMigrationChainIdentity,
-          operationRoot: join(testUserDataRoot, 'recovery', 'staged'),
+          operationRoot: join(userDataRoot, 'recovery', 'staged'),
           profileId,
         };
       }),
@@ -299,7 +387,7 @@ function createFixture(options: FixtureOptions = {}) {
     requestRelaunch,
     rootStore,
     sourceRecovery,
-    userDataRoot: testUserDataRoot,
+    userDataRoot,
     workspaceRuntimeAbsence: {
       assertNoActiveWorkspaceRuntime: vi.fn(async () => {
         events.push('runtime.absent');

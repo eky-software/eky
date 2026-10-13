@@ -1,4 +1,5 @@
 import { EkyApiError, isRecord } from '../http.js';
+import { isProfileRecoveryProjection } from './diagnosticRecoveryProjection.js';
 import {
   diagnosticEventNames,
   type DiagnosticEventComponent,
@@ -27,6 +28,23 @@ const sideEffectStates = new Set<DiagnosticEventSideEffectState>([
 ]);
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const workspaceBackupFailureCauses = new Set([
+  'unknown',
+  'PROFILE_SCHEMA_UNSUPPORTED',
+  'MIGRATION_HISTORY_INVALID',
+  'PROFILE_SNAPSHOT_DATABASE_INVALID',
+  'PROFILE_SNAPSHOT_MIGRATIONS_INVALID',
+  'PROFILE_SNAPSHOT_ARTIFACTS_INVALID',
+  'PROFILE_INSPECTION_LIMIT_EXCEEDED',
+  'PROFILE_INSPECTION_TIMEOUT',
+  'PROFILE_INSPECTION_PROTOCOL_INVALID',
+  'PROFILE_INSPECTION_CLEANUP_UNVERIFIED',
+  'WORKSPACE_CANDIDATE_SOURCE_MISMATCH',
+  'WORKSPACE_CANDIDATE_DATABASE_CHANGED',
+  'WORKSPACE_CANDIDATE_DATABASE_INVALID',
+  'WORKSPACE_CANDIDATE_DATABASE_CLOSE_FAILED',
+  'WORKSPACE_CANDIDATE_OPERATION_CANCELLED',
+]);
 
 export function readDiagnosticsResponse(value: unknown): DiagnosticEventItem[] {
   if (
@@ -152,7 +170,9 @@ function readDiagnosticEvent(value: unknown): DiagnosticEventItem {
     !isOptionalSafeIdentifier(value.stage, 300) ||
     !isOptionalExactValue(value.smtpProfile, 'dnaSmtp') ||
     !isOptionalTlsVersion(value.tlsVersion) ||
-    !isNullableSafeIdentifier(value.errorCode, 120)
+    !isNullableSafeIdentifier(value.errorCode, 120) ||
+    !isWorkspaceBackupFailureProjection(value) ||
+    !isProfileRecoveryProjection(value)
   ) {
     throw invalidResponse(value);
   }
@@ -213,6 +233,37 @@ function readDiagnosticEvent(value: unknown): DiagnosticEventItem {
       ? {}
       : { tlsVersion: value.tlsVersion }),
   };
+}
+
+function isWorkspaceBackupFailureProjection(
+  value: Record<string, unknown>,
+): boolean {
+  if (
+    value.eventName !== 'workspaceBackup.operationFailed' &&
+    value.eventName !== 'workspaceBackup.cleanupFailed'
+  ) {
+    return true;
+  }
+
+  return (
+    hasOnlyKeys(value, [
+      'appVersion', 'buildRevision', 'category', 'component', 'correlationId',
+      'durationMs', 'errorCode', 'eventName', 'id', 'level', 'occurredAt',
+      'outcome', 'retryable', 'runtimeInstanceId', 'sideEffectState', 'stage',
+    ]) &&
+    value.category === 'backup' &&
+    value.component === 'desktop' &&
+    value.level === 'error' &&
+    value.outcome === 'failure' &&
+    typeof value.correlationId === 'string' &&
+    isOptionalUuid(value.correlationId) &&
+    isNonNegativeInteger(value.durationMs) &&
+    typeof value.errorCode === 'string' &&
+    workspaceBackupFailureCauses.has(value.errorCode) &&
+    value.retryable === false &&
+    (value.sideEffectState === 'none' || value.sideEffectState === 'unknown') &&
+    (value.stage === 'import' || value.stage === 'replace')
+  );
 }
 
 function isOptionalRecoveryPointKind(

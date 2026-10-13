@@ -8,6 +8,11 @@ export const linuxServiceLimits = Object.freeze({
   cleanupMilliseconds: 3000,
 });
 export const linuxChromiumServerEntry = 'apps/e2e/src/environment/linuxOwnedChromiumServer.mjs';
+export const linuxProfileInspectionEntry = 'apps/desktop/scripts/profileInspection/linuxProfileInspectionHost.mjs';
+export function linuxProfileInspectionPaths(runRoot) {
+  const root = posix.join(servicePath(runRoot), 'profile-inspection');
+  return Object.freeze({ root, temp: posix.join(root, 'temp'), config: posix.join(root, 'inspection.json') });
+}
 export function linuxChromiumPaths(config) {
   requireService(typeof config.browserGeneration === 'string' && config.browserGeneration.length === 64 &&
     /^[a-f0-9]{64}$/u.test(config.browserGeneration));
@@ -50,7 +55,8 @@ export function validateServiceConfig(value) {
     'runRoot', 'node', 'startUntil', 'workUntil', 'redactedValues'];
   const fields = value?.profile === 'backend' ? ['runtimeConfigPath']
     : value?.profile === 'vite' ? ['webPort', 'environmentRoot', 'backendOrigin', 'sessionSecret']
-      : value?.profile === 'chromium' ? ['browserExecutable', 'browserGeneration'] : null;
+      : value?.profile === 'chromium' ? ['browserExecutable', 'browserGeneration']
+        : value?.profile === 'profileInspection' ? ['inspectionConfigPath'] : null;
   requireService(fields !== null && exactKeys(value, [...common, ...fields]));
   requireService(value.version === 1 && isNonce(value.generation));
   validateIdentity({ uid: value.uid, euid: value.uid, gid: value.gid, egid: value.gid }, value);
@@ -65,6 +71,9 @@ export function validateServiceConfig(value) {
     value.redactedValues.every(item => typeof item === 'string' && item.length > 0 && item.length <= 2048 &&
       !/[\0\r\n]/u.test(item)));
   if (value.profile === 'backend') below(value.runtimeConfigPath, value.runRoot);
+  else if (value.profile === 'profileInspection') {
+    requireService(value.inspectionConfigPath === linuxProfileInspectionPaths(value.runRoot).config);
+  }
   else if (value.profile === 'chromium') {
     servicePath(value.browserExecutable);
     requireService(posix.basename(value.browserExecutable) === 'chrome' &&

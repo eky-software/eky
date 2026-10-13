@@ -7,13 +7,15 @@ import {
   type RuntimeTrust,
 } from './runtimeTrust.js';
 
-import {
-  createDatabaseConnection,
-  type DatabaseConnection,
-} from '../database/connection/createDatabaseConnection.js';
+import type { DatabaseConnection } from '../database/connection/createDatabaseConnection.js';
 import { readLocalRuntimeIdentity } from '../database/localRuntimeIdentityReader.js';
 import { resolveMigrationsDirectory, runMigrations } from '../database/migration/runMigrations.js';
 import { MigrationRunError } from '../database/migration/migrationRunError.js';
+import { openAttestedMigrationDatabase } from '../database/migration/openAttestedMigrationDatabase.js';
+import {
+  recoverOwnedLocalDatabase,
+  type OwnedLocalDatabaseRecovery,
+} from '../database/connection/recoverOwnedLocalDatabase.js';
 import {
   inspectMigrationStartupState,
   type MigrationStartupInspection,
@@ -55,6 +57,7 @@ import { ProfileMaintenanceState } from '../runtime/profileMaintenance/profileMa
 import { createConsistentProfileSnapshotService } from '../runtime/profileSnapshot/createConsistentProfileSnapshot.js';
 import type { ProfileSnapshotServiceRegistration } from '../runtime/profileSnapshot/profileSnapshotTypes.js';
 import { StagedProfileSnapshotValidationService } from '../runtime/profileSnapshot/validateProfileSnapshot.js';
+import { createActiveProfileInspectionContextReader } from '../runtime/profileSnapshot/activeProfileInspectionContext.js';
 import { CurrentActiveProfileValidationService } from '../runtime/profileSnapshot/validateActiveProfile.js';
 import { SqliteInvoiceBackupArtifactCatalog } from '../modules/invoicing/infrastructure/sqliteInvoiceBackupArtifactCatalog.js';
 import {
@@ -78,6 +81,7 @@ export interface CreateAppOptions {
   invoicingInfrastructureAdapters?: InvoicingInfrastructureAdapters;
   migrationsDirectory?: string;
   migrationStartupPolicy?: MigrationStartupPolicy;
+  ownedLocalDatabaseRecovery?: OwnedLocalDatabaseRecovery;
   operationalLogger?: OperationalLogger;
   operationalIdentity?: Readonly<OperationalRuntimeIdentity>;
   operationalLogsRoot?: string;
@@ -144,11 +148,19 @@ export async function createApp(
   const databaseStartedAt = Date.now();
   let database: DatabaseConnection;
   try {
-    database = createDatabaseConnection(
-      options.databaseFilePath === undefined
-        ? {}
-        : { databaseFilePath: options.databaseFilePath },
-    );
+    if (options.ownedLocalDatabaseRecovery !== undefined) {
+      if (options.databaseFilePath === undefined) throw new Error('LOCAL_DATABASE_RECOVERY_FAILED');
+      await recoverOwnedLocalDatabase(options.databaseFilePath, options.ownedLocalDatabaseRecovery);
+    }
+    database = openAttestedMigrationDatabase({
+      allowCreate: true,
+      allowEmpty: true,
+      ...(options.databaseFilePath === undefined ? {} : { databaseFilePath: options.databaseFilePath }),
+      migrationsDirectory,
+      policy: options.beforeMigrations === undefined
+        ? 'runnerBaseline'
+        : options.migrationStartupPolicy ?? 'exactCurrentManifest',
+    });
     operationalLogger.write(
       createBackendOperationalEvent(
         {
@@ -158,24 +170,30 @@ export async function createApp(
         operationalIdentity,
       ),
     );
-  } catch {
+  } catch (error) {
+    if (error instanceof MigrationRunError) {
+      writeMigrationFailure(operationalLogger, operationalIdentity, error, Date.now() - databaseStartedAt);
+      throw new Error('Database migrations could not be completed.', { cause: error });
+    }
     operationalLogger.write(
       createBackendOperationalEvent(
         {
           durationMs: Date.now() - databaseStartedAt,
           errorCode: 'DATABASE_OPEN_FAILED',
           eventName: 'database.openFailed',
-          sideEffectState: 'none',
+          sideEffectState: options.ownedLocalDatabaseRecovery === undefined ? 'none' : 'unknown',
           stage: 'open',
         },
         operationalIdentity,
       ),
     );
-    throw new Error('Database could not be opened.');
+    throw new Error('Database could not be opened.', { cause: error });
   }
 
   const profileMaintenanceState =
     options.profileMaintenanceState ?? new ProfileMaintenanceState();
+  let catalogMigrationPolicy: MigrationStartupPolicy = options.beforeMigrations === undefined
+    ? 'exactCurrentManifest' : options.migrationStartupPolicy ?? 'exactCurrentManifest';
 
   if (options.profileSnapshotServiceRegistration !== undefined) {
     if (options.invoiceDocumentStorageRoot === undefined) {
@@ -189,6 +207,7 @@ export async function createApp(
       invoiceDocumentStorageRoot: options.invoiceDocumentStorageRoot,
       migrationsDirectory,
       profileMaintenanceState,
+      readCatalogMigrationPolicy: () => catalogMigrationPolicy,
       registration: options.profileSnapshotServiceRegistration,
     });
   }
@@ -211,6 +230,9 @@ export async function createApp(
       throw new Error(
         'Database migration startup gate could not be completed.',
       );
+    } finally {
+      // Restore compatibility belongs to the admitted gate, not the running business backend.
+      catalogMigrationPolicy = 'exactCurrentManifest';
     }
   }
 
@@ -250,29 +272,7 @@ export async function createApp(
       ),
     );
   } catch (error) {
-    const migrationFailure =
-      error instanceof MigrationRunError
-        ? error
-        : {
-            completedMigrationCount: 0,
-            errorCode: 'MIGRATION_RUN_FAILED',
-            failureStage: 'unknown' as const,
-            sideEffectState: 'unknown' as const,
-          };
-    operationalLogger.write(
-      createBackendOperationalEvent(
-        {
-          completedMigrationCount:
-            migrationFailure.completedMigrationCount,
-          durationMs: Date.now() - migrationStartedAt,
-          errorCode: migrationFailure.errorCode,
-          eventName: 'migration.failed',
-          failureStage: migrationFailure.failureStage,
-          sideEffectState: migrationFailure.sideEffectState,
-        },
-        operationalIdentity,
-      ),
-    );
+    writeMigrationFailure(operationalLogger, operationalIdentity, error, Date.now() - migrationStartedAt);
     database.close();
     throw new Error('Database migrations could not be completed.');
   }
@@ -465,18 +465,41 @@ export async function createApp(
   return app;
 }
 
+function writeMigrationFailure(
+  logger: OperationalLogger,
+  identity: Readonly<OperationalRuntimeIdentity>,
+  error: unknown,
+  durationMs: number,
+): void {
+  const failure = error instanceof MigrationRunError ? error : {
+    completedMigrationCount: 0,
+    errorCode: 'MIGRATION_RUN_FAILED',
+    failureStage: 'unknown' as const,
+    sideEffectState: 'unknown' as const,
+  };
+  logger.write(createBackendOperationalEvent({
+    completedMigrationCount: failure.completedMigrationCount,
+    durationMs,
+    errorCode: failure.errorCode,
+    eventName: 'migration.failed',
+    failureStage: failure.failureStage,
+    sideEffectState: failure.sideEffectState,
+  }, identity));
+}
+
 function registerProfileSnapshotServices(input: {
   database: DatabaseConnection;
   invoiceDocumentStorageRoot: string;
   migrationsDirectory: string;
   profileMaintenanceState: ProfileMaintenanceState;
+  readCatalogMigrationPolicy(): MigrationStartupPolicy;
   registration: ProfileSnapshotServiceRegistration;
 }): void {
   const snapshotService = createConsistentProfileSnapshotService({
     catalog: {
       listAuthoritativeArtifacts: () => {
         const history = inspectMigrationStartupState(
-          input.database, input.migrationsDirectory,
+          input.database, input.migrationsDirectory, input.readCatalogMigrationPolicy(),
         );
         readLocalRuntimeIdentity(input.database);
         return new SqliteInvoiceBackupArtifactCatalog(
@@ -487,11 +510,11 @@ function registerProfileSnapshotServices(input: {
     database: input.database,
     invoiceDocumentStorageRoot: input.invoiceDocumentStorageRoot,
     maintenanceState: input.profileMaintenanceState,
-    migrationsDirectory: input.migrationsDirectory,
     stagingRoot: input.registration.stagingRoot,
   });
+  const activeContextReader = createActiveProfileInspectionContextReader(input.database);
   const validationService = new StagedProfileSnapshotValidationService({
-    activeDatabase: input.database,
+    activeContextReader,
     migrationsDirectory: input.migrationsDirectory,
     stagingRoot: input.registration.stagingRoot,
   });
@@ -502,11 +525,13 @@ function registerProfileSnapshotServices(input: {
       const history = inspectMigrationStartupState(
         input.database,
         input.migrationsDirectory,
+        input.readCatalogMigrationPolicy(),
       );
       return history;
     },
   );
   input.registration.register({
+    readProfileInspectionContext: () => activeContextReader.readProfileInspectionContext(),
     createProfileSnapshot: (request) =>
       snapshotService.createProfileSnapshot(request),
     prepareProfileRestoreActivation: (operationId) =>

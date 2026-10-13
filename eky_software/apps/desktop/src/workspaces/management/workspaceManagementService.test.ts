@@ -9,6 +9,31 @@ import { WorkspaceManagementService } from './workspaceManagementService.js';
 const activeId = '00000000-0000-4000-8000-000000000001' as WorkspaceId;
 
 describe('workspace management service', () => {
+  it.each(['import', 'replace'] as const)(
+    'records the %s first cause separately from recovery without changing its public code', async operation => {
+      const events: unknown[] = [];
+      const failure = new AggregateError([
+        new Error('synthetic private detail'),
+        new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED'),
+      ]);
+      const fail = async () => { throw failure; };
+      const service = createService({ events, importBackup: fail, replace: fail });
+      const result = operation === 'import'
+        ? service.importBackupAsNew({ containerPath: 'private-path', password: 'private-password', workspaceLabel: 'Synthetic' })
+        : service.replaceActiveFromBackup({ containerPath: 'private-path', password: 'private-password', targetWorkspaceId: activeId });
+      await expect(result).rejects.toMatchObject({
+        code: operation === 'import' ? 'WORKSPACE_MANAGEMENT_IMPORT_FAILED' : 'WORKSPACE_MANAGEMENT_REPLACE_FAILED',
+      });
+      expect(events).toContainEqual(expect.objectContaining({
+        inspectionCauseCode: 'unknown',
+        cleanupCauseCode: 'PROFILE_INSPECTION_CLEANUP_UNVERIFIED',
+        operationKind: operation,
+        outcome: 'failed',
+      }));
+      expect(JSON.stringify(events)).not.toMatch(/private|password|AggregateError|stack/);
+    },
+  );
+
   it('returns the safe registry status and delegates each command', async () => {
     const create = vi.fn(async () => ({
       workspaceId: activeId,

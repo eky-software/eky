@@ -1,9 +1,11 @@
 import type { IpcMainInvokeEvent } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 
+import type { DesktopOperationalEvent } from '../observability/desktopOperationalEvent.js';
 import {
   createProfileBackupCapability,
 } from './profileBackupCapability.js';
+import { PortableProfileBackupCleanupError } from './portableProfileBackup.js';
 import {
   createManualRecoveryPointIpcChannel,
   createProfileBackupIpcChannel,
@@ -11,6 +13,11 @@ import {
   inspectProfileBackupIpcChannel,
   legacyProfileRestoreIpcChannels,
 } from './portableProfileBackupTypes.js';
+
+const backupFailureCases = [
+  [createProfileBackupIpcChannel, 'create', 'PROFILE_BACKUP_CREATE_FAILED'],
+  [inspectProfileBackupIpcChannel, 'inspect', 'PROFILE_BACKUP_INSPECTION_FAILED'],
+] as const;
 
 describe('profile backup capability', () => {
   it('lets main own paths and passwords without renderer arguments', async () => {
@@ -163,6 +170,100 @@ describe('profile backup capability', () => {
     expect(fixture.showSafeError).toHaveBeenCalledWith('inspect');
   });
 
+  it('reports uncertain create cleanup as non-retryable without replacing or exposing its first cause', async () => {
+    const fixture = createFixture();
+    const original = new Error('PROFILE_SCHEMA_UNSUPPORTED', { cause: new Error('synthetic private detail') });
+    fixture.create.mockRejectedValueOnce(new PortableProfileBackupCleanupError(original));
+    const failure = await Promise.resolve(fixture.invoke(createProfileBackupIpcChannel, fixture.trustedEvent))
+      .catch((error: unknown) => error);
+    expect(failure).toMatchObject({ message: 'PROFILE_BACKUP_CREATE_FAILED' });
+    expect((failure as Error).cause).toBeUndefined();
+    const events = fixture.operationalWrite.mock.calls.map(([event]) => event)
+      .filter(event => event.outcome === 'failure');
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      errorCode: 'PROFILE_SCHEMA_UNSUPPORTED', eventName: 'backup.failed',
+      retryable: false, sideEffectState: 'unknown',
+    });
+    expect(JSON.stringify(events)).not.toContain('synthetic private detail');
+    expect(fixture.maintenanceReleaseCount).toBe(1);
+  });
+
+  it.each(backupFailureCases)('does not expose internal causes or private details over %s', async (channel, method, code) => {
+    const fixture = createFixture();
+    const privateDetail = 'synthetic private native detail';
+    fixture[method].mockRejectedValueOnce(new Error(code, {
+      cause: new AggregateError([
+        new Error('PROFILE_SCHEMA_UNSUPPORTED'),
+        new Error(privateDetail),
+      ], privateDetail),
+    }));
+
+    const failure: unknown = await Promise.resolve(
+      fixture.invoke(channel, fixture.trustedEvent),
+    ).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe(code);
+    expect((failure as Error).cause).toBeUndefined();
+    expect(String(failure)).not.toContain(privateDetail);
+    expect(JSON.stringify(failure)).not.toContain(privateDetail);
+  });
+
+  describe.each(backupFailureCases)('safe failure observation for %s', (channel, method, code) => {
+    it.each([
+      'PROFILE_SCHEMA_UNSUPPORTED',
+      'PROFILE_INSPECTION_LIMIT_EXCEEDED',
+      'PROFILE_INSPECTION_TIMEOUT',
+      'PROFILE_INSPECTION_PROTOCOL_INVALID',
+      'PROFILE_INSPECTION_CLEANUP_UNVERIFIED',
+    ])('logs the primary %s without exposing its error chain', async cause => {
+      const fixture = createFixture();
+      const privateDetail = 'synthetic private native detail';
+      fixture[method].mockRejectedValueOnce(new Error(code, {
+        cause: new AggregateError([
+          new Error('synthetic wrapper', { cause: new Error(cause) }),
+          new Error('PROFILE_INSPECTION_TIMEOUT'),
+        ], privateDetail),
+      }));
+
+      await expect(fixture.invoke(channel, fixture.trustedEvent))
+        .rejects.toThrow(code);
+
+      const failures = fixture.operationalWrite.mock.calls
+        .map(([event]) => event)
+        .filter(event => event.outcome === 'failure');
+      expect(failures).toHaveLength(1);
+      expect(failures[0]).toMatchObject({
+        errorCode: cause,
+        eventName: method === 'create' ? 'backup.failed' : 'backup.inspectionFailed',
+        retryable: method === 'create',
+        sideEffectState: method === 'create' ? 'unknown' : 'none',
+        stage: 'portable',
+      });
+      expect(fixture.showSafeError).toHaveBeenCalledWith(method);
+      const serialized = JSON.stringify(fixture.operationalWrite.mock.calls);
+      expect(serialized).not.toContain(privateDetail);
+      expect(serialized).not.toContain('Synthetic backup password');
+      expect(serialized).not.toContain('Backups');
+      expect(serialized).not.toContain('stack');
+    });
+
+    it.each(createUnprojectableFailures())('keeps %s generic instead of guessing a primary', async (_name, failure) => {
+      const fixture = createFixture();
+      fixture[method].mockRejectedValueOnce(failure);
+
+      await expect(fixture.invoke(channel, fixture.trustedEvent))
+        .rejects.toThrow(code);
+
+      const failures = fixture.operationalWrite.mock.calls
+        .map(([event]) => event)
+        .filter(event => event.outcome === 'failure');
+      expect(failures).toHaveLength(1);
+      expect(failures[0]).toMatchObject({ errorCode: code });
+    });
+  });
+
   it('creates a recovery point without returning its internal artifact identity', async () => {
     const fixture = createFixture();
 
@@ -180,7 +281,7 @@ describe('profile backup capability', () => {
     expect(fixture.createManualRecoveryPoint).toHaveBeenCalledWith();
   });
 
-  it('uses the shared maintenance authority only for mutating backup operations', async () => {
+  it('uses the shared maintenance authority for each backup filesystem operation', async () => {
     const fixture = createFixture();
 
     await fixture.invoke(
@@ -196,8 +297,8 @@ describe('profile backup capability', () => {
       fixture.trustedEvent,
     );
 
-    expect(fixture.maintenancePurposes).toEqual(['backup', 'backup']);
-    expect(fixture.maintenanceReleaseCount).toBe(2);
+    expect(fixture.maintenancePurposes).toEqual(['backup', 'backup', 'backup']);
+    expect(fixture.maintenanceReleaseCount).toBe(3);
   });
 
   it('fails closed before opening a dialog when shared maintenance is busy', async () => {
@@ -212,6 +313,20 @@ describe('profile backup capability', () => {
 
     expect(fixture.selectBackupTarget).not.toHaveBeenCalled();
     expect(fixture.create).not.toHaveBeenCalled();
+  });
+
+  it('does not reopen a password prompt or backup work after disposal during native selection', async () => {
+    const fixture = createFixture();
+    let resolveSource!: (path: string) => void;
+    fixture.selectBackupSource.mockReturnValueOnce(new Promise(resolve => { resolveSource = resolve; }));
+    const task = fixture.invoke(inspectProfileBackupIpcChannel, fixture.trustedEvent) as Promise<unknown>;
+    await Promise.resolve(); await Promise.resolve();
+    fixture.capability.dispose();
+    resolveSource('C:\\Backups\\Eky.ekybackup');
+    await expect(task).rejects.toThrow('PROFILE_PROTECTION_OPERATION_BUSY');
+    expect(fixture.requestPassword).not.toHaveBeenCalled();
+    expect(fixture.inspect).not.toHaveBeenCalled();
+    expect(fixture.maintenanceReleaseCount).toBe(1);
   });
 
   it('rejects another renderer and removes every handler on dispose', async () => {
@@ -248,6 +363,35 @@ describe('profile backup capability', () => {
     );
   });
 });
+
+function createUnprojectableFailures(): readonly (readonly [string, unknown])[] {
+  const cyclic = new Error('PROFILE_SCHEMA_UNSUPPORTED');
+  cyclic.cause = cyclic;
+  let deep = new Error('PROFILE_SCHEMA_UNSUPPORTED');
+  for (let index = 0; index < 10; index++) {
+    deep = new Error('wrapper', { cause: deep });
+  }
+  const getter = new Error('PROFILE_SCHEMA_UNSUPPORTED');
+  Object.defineProperty(getter, 'cause', {
+    get() { throw new Error('synthetic private cause getter'); },
+  });
+  return [
+    ['unknown native detail', new Error('synthetic private native detail')],
+    ['known cleanup after an unknown primary', new Error('PROFILE_SCHEMA_UNSUPPORTED', {
+      cause: new AggregateError([
+        new Error('synthetic private primary'),
+        new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED'),
+      ], 'PROFILE_INSPECTION_TIMEOUT'),
+    })],
+    ['a different operation code', new Error('MIGRATION_HISTORY_INVALID')],
+    ['a private suffix', new Error('PROFILE_SCHEMA_UNSUPPORTED: synthetic private detail')],
+    ['a non-Error value', { message: 'PROFILE_SCHEMA_UNSUPPORTED' }],
+    ['a cycle', cyclic],
+    ['an overlong chain', deep],
+    ['a throwing getter', getter],
+    ['an empty aggregate', new AggregateError([], 'PROFILE_SCHEMA_UNSUPPORTED')],
+  ];
+}
 
 const inspectionSummary = {
   appVersion: '0.1.0-alpha.1',
@@ -307,7 +451,7 @@ function createFixture(options: {
   const createManualRecoveryPoint = vi.fn(async () => ({
     artifactId: 'not-exposed',
   }));
-  const operationalWrite = vi.fn(() => {
+  const operationalWrite = vi.fn<(event: DesktopOperationalEvent) => void>(() => {
     if (options.operationalLoggerThrows === true) {
       throw new Error('SYNTHETIC_LOG_WRITE_FAILURE');
     }
@@ -391,6 +535,7 @@ function createFixture(options: {
     get maintenanceReleaseCount() {
       return maintenanceReleaseCount;
     },
+    operationalWrite,
     removeHandler,
     requestPassword,
     selectBackupSource,

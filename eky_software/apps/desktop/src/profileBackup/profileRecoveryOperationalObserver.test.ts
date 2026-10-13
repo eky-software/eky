@@ -53,7 +53,8 @@ describe('profile recovery operational observer', () => {
     ).not.toThrow();
   });
 
-  it('writes only the closed recovery-required fields', () => {
+  it.each(['activation', 'startupRollback'] as const)(
+    'writes only the closed recovery-required fields at %s', (stage) => {
     const write = vi.fn();
     const observer = createProfileRecoveryOperationalObserver({
       operationalIdentity: identity,
@@ -66,7 +67,7 @@ describe('profile recovery operational observer', () => {
       eventName: 'restore.recoveryRequired',
       retryable: false,
       sideEffectState: 'unknown',
-      stage: 'startupRollback',
+      stage,
     });
 
     const serialized = JSON.stringify(write.mock.calls);

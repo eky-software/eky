@@ -1,4 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createReadyWorkspaceEntry } from '../registry/workspaceRegistryMutations.js';
 import type {
@@ -6,8 +10,11 @@ import type {
   WorkspaceId,
 } from '../registry/workspaceRegistryTypes.js';
 import { WorkspaceBackupImportError } from './workspaceBackupImportError.js';
+import { deriveWorkspaceBackupImportPaths } from './workspaceBackupImportPaths.js';
+import { NodeWorkspaceBackupImportRootStore } from './workspaceBackupImportRootStore.js';
 import {
   TEST_IMPORT_CONTAINER_PATH,
+  TEST_IMPORT_OPERATION_ID,
   TEST_IMPORT_PASSWORD,
   TEST_IMPORT_PREVIOUS_WORKSPACE_ID,
   TEST_IMPORT_PROFILE_ID,
@@ -18,6 +25,14 @@ import {
   createTestImportReadiness,
   createTestImportRegistry,
 } from './workspaceBackupImportTestSupport.js';
+
+const cleanupRoots: string[] = [];
+
+afterEach(async () => {
+  for (const root of cleanupRoots.splice(0)) {
+    await rm(root, { force: true, recursive: true });
+  }
+});
 
 describe('WorkspaceBackupImportCoordinator', () => {
   it.each(['active', 'unknown'] as const)('retains staged data and refuses restart when migration leaves ownership %s', async state => {
@@ -37,6 +52,66 @@ describe('WorkspaceBackupImportCoordinator', () => {
     expect(fixture.events).not.toContain('root.discardCandidate');
     expect(fixture.events).not.toContain('root.removeImportStaging');
     expect(fixture.lifecycle.ensureCalls).toBe(0);
+  });
+
+  it('preserves the source and journal when an unresolved inspection root blocks cleanup', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'eky-import-preservation-'));
+    cleanupRoots.push(root);
+    const paths = deriveWorkspaceBackupImportPaths(
+      root,
+      TEST_IMPORT_OPERATION_ID,
+      TEST_IMPORT_WORKSPACE_ID,
+    );
+    const sourcePath = join(paths.importStagingRoot, 'profile.sqlite');
+    const inspectionRoot = join(paths.candidateRoot, 'inspection-unresolved');
+    const inspectionPath = join(inspectionRoot, 'inspection.sqlite');
+    const fixture = createFixture({ userDataRoot: root });
+    const originalRegistry = fixture.registry.value;
+    const store = new NodeWorkspaceBackupImportRootStore();
+    fixture.root.createCandidate = async () => {
+      fixture.events.push('root.createCandidate');
+      await store.createCandidate(paths);
+      await mkdir(paths.importStagingRoot, { mode: 0o700 });
+      await writeFile(sourcePath, 'original staged snapshot');
+      await writeFile(paths.databaseFilePath, 'unpublished candidate');
+      await mkdir(inspectionRoot, { mode: 0o700 });
+      await writeFile(inspectionPath, 'unresolved inspection copy');
+    };
+    fixture.root.readPresence = async () => {
+      fixture.events.push('root.readPresence');
+      return store.readPresence(paths);
+    };
+    fixture.root.discardCandidate = async () => {
+      fixture.events.push('root.discardCandidate');
+      await store.discardCandidate(paths);
+    };
+    fixture.candidate.failure = 'migrate';
+
+    await expectImportError(
+      fixture.coordinator.import(importInput),
+      'WORKSPACE_IMPORT_STORAGE_FAILED',
+      'cleanup',
+    );
+
+    expect(fixture.registry.value).toBe(originalRegistry);
+    expect(fixture.registry.writes).toHaveLength(0);
+    expect(fixture.journal.current?.state).toBe('backupStaged');
+    expect(fixture.events).not.toContain('root.removeImportStaging');
+    expect(fixture.events).not.toContain('root.publishCandidate');
+    expect(fixture.events).not.toContain('journal.discard');
+    // Known runtime absence still permits the existing source-runtime recovery.
+    expect(fixture.lifecycle.ensureCalls).toBe(1);
+    const restartIndex = fixture.events.indexOf('lifecycle.ensure');
+    expect(fixture.events[restartIndex - 1]).toBe('runtimeAbsence.assert');
+    await expect(readFile(sourcePath, 'utf8')).resolves.toBe(
+      'original staged snapshot',
+    );
+    await expect(readFile(paths.databaseFilePath, 'utf8')).resolves.toBe(
+      'unpublished candidate',
+    );
+    await expect(readFile(inspectionPath, 'utf8')).resolves.toBe(
+      'unresolved inspection copy',
+    );
   });
 
   it('imports a distinct lineage through the closed publication lifecycle', async () => {
@@ -352,6 +427,7 @@ const importInput = Object.freeze({
 function createFixture(options: {
   readonly duplicateLineage?: boolean;
   readonly emptyRegistry?: boolean;
+  readonly userDataRoot?: string;
 } = {}) {
   return createWorkspaceBackupImportCoordinatorFixture(options);
 }

@@ -3,21 +3,18 @@ import { isAbsolute, join } from 'node:path';
 
 import { readDecryptedBackupPayload } from '../container/backupContainerReader.js';
 import { extractBackupPayload } from '../container/extractBackupPayload.js';
-import type { ProfileSnapshotBrokerClient } from '../profileSnapshotBrokerClient.js';
+import type { OwnedProfileSnapshotValidator } from '../profileSnapshotInspectionPort.js';
 import { decryptRecoveryPointPayload } from './decryptRecoveryPointPayload.js';
 import { RecoveryPointKeyEnvelopeStore } from './recoveryPointKeyEnvelopeStore.js';
 import type { RecoveryPointKeyProtector } from './recoveryPointKeyProtector.js';
+import { RecoveryPointCleanupError } from './recoveryPointOperationError.js';
 
 const operationIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const profileIdPattern = /^[a-f0-9]{64}$/;
 
-export interface ProfileSnapshotValidator {
-  assertValidationSettled?(): Promise<void>;
-  validateProfileSnapshot(operationId: string): ReturnType<
-    ProfileSnapshotBrokerClient['validateProfileSnapshot']
-  >;
-}
+export type ProfileSnapshotValidator = Pick<OwnedProfileSnapshotValidator,
+  'withInspectionOperation' | 'withProfileSnapshot' | 'removeProfileSnapshot' | 'validateProfileSnapshot'>;
 
 export interface MaterializedRecoveryPoint {
   appVersion: string;
@@ -30,7 +27,7 @@ export interface MaterializedRecoveryPoint {
   profileMatchesActive: boolean;
 }
 
-export async function materializeRecoveryPoint(input: {
+interface MaterializeRecoveryPointInput {
   artifactId: string;
   containerPath: string;
   expectedProfileId: string;
@@ -40,7 +37,14 @@ export async function materializeRecoveryPoint(input: {
   quarantineRoot: string;
   stagingRoot: string;
   validator: ProfileSnapshotValidator;
-}): Promise<MaterializedRecoveryPoint> {
+  updateMaintenanceOperationId?: string;
+}
+
+export function materializeRecoveryPoint(input: MaterializeRecoveryPointInput): Promise<MaterializedRecoveryPoint> {
+  return input.validator.withInspectionOperation(() => materializeOwnedRecoveryPoint(input));
+}
+
+async function materializeOwnedRecoveryPoint(input: MaterializeRecoveryPointInput): Promise<MaterializedRecoveryPoint> {
   if (
     !operationIdPattern.test(input.operationId) ||
     !profileIdPattern.test(input.expectedProfileId) ||
@@ -64,8 +68,6 @@ export async function materializeRecoveryPoint(input: {
   let dataKey: Buffer | undefined;
   let decrypted = false;
   let extracted = false;
-  let validationStarted = false;
-  let validationCompleted = false;
 
   try {
     const protectedKey = await envelopeStore.read();
@@ -85,46 +87,42 @@ export async function materializeRecoveryPoint(input: {
     });
     extracted = true;
 
-    validationStarted = true;
     const validation = await input.validator.validateProfileSnapshot(
       input.operationId,
+      input.updateMaintenanceOperationId,
     );
-    validationCompleted = true;
-    if (
-      parsed.manifest.profileId !== input.expectedProfileId ||
-      validation.profileId !== parsed.manifest.profileId ||
-      validation.migrationChainIdentity !==
-        parsed.manifest.migrationChainIdentity ||
-      validation.databaseHealth !== 'healthy'
-    ) {
-      throw new Error('RECOVERY_POINT_CONTENT_INVALID');
-    }
+    return await input.validator.withProfileSnapshot(input.operationId, async () => {
+      if (
+        parsed.manifest.profileId !== input.expectedProfileId ||
+        validation.profileId !== parsed.manifest.profileId ||
+        validation.migrationChainIdentity !== parsed.manifest.migrationChainIdentity ||
+        validation.databaseHealth !== 'healthy'
+      ) {
+        throw new Error('RECOVERY_POINT_CONTENT_INVALID');
+      }
 
-    if (unprotected.shouldReEncrypt) {
-      await envelopeStore.write(await input.keyProtector.protect(dataKey));
-    }
+      if (unprotected.shouldReEncrypt) {
+        await envelopeStore.write(await input.keyProtector.protect(unprotected.dataKey));
+      }
 
-    return {
-      appVersion: parsed.manifest.appVersion,
-      artifactTotalByteSize: validation.artifactTotalByteSize,
-      createdAt: new Date(
-        Number(parsed.manifest.createdAtEpochMilliseconds),
-      ).toISOString(),
-      documentCount: validation.artifactCount,
-      migrationChainIdentity: parsed.manifest.migrationChainIdentity,
-      operationRoot,
-      profileId: parsed.manifest.profileId,
-      profileMatchesActive: validation.profileMatchesActive,
-    };
+      return {
+        appVersion: parsed.manifest.appVersion,
+        artifactTotalByteSize: validation.artifactTotalByteSize,
+        createdAt: new Date(Number(parsed.manifest.createdAtEpochMilliseconds)).toISOString(),
+        documentCount: validation.artifactCount,
+        migrationChainIdentity: parsed.manifest.migrationChainIdentity,
+        operationRoot,
+        profileId: parsed.manifest.profileId,
+        profileMatchesActive: validation.profileMatchesActive,
+      };
+    });
   } catch (error) {
-    // A client timeout does not settle the backend's read of independent staging.
-    const canRemoveStaging = !validationStarted || validationCompleted ||
-      input.validator.assertValidationSettled === undefined ||
-      await input.validator.assertValidationSettled().then(() => true, () => false);
-    if (extracted && canRemoveStaging) {
-      await fileSystem
-        .rm(operationRoot, { force: true, recursive: true })
-        .catch(() => undefined);
+    if (extracted) {
+      try {
+        await input.validator.removeProfileSnapshot(input.operationId);
+      } catch {
+        throw new RecoveryPointCleanupError(error);
+      }
     }
     throw error;
   } finally {

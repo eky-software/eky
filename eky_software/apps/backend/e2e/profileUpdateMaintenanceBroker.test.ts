@@ -12,6 +12,11 @@ import { createProfileMaintenanceMiddleware } from '../src/http/profileMaintenan
 import type { BackendEnvironment } from '../src/http/runtimeTrust.js';
 import { startProfileSnapshotBrokerBackend } from '../../desktop/src/profileBackup/profileSnapshotBrokerBackend.js';
 import { ProfileSnapshotBrokerClient } from '../../desktop/src/profileBackup/profileSnapshotBrokerClient.js';
+import { ProfileSnapshotInspectionClient } from '../../desktop/src/profileBackup/profileSnapshotInspectionClient.js';
+import type { runProfileSnapshotInspection } from '../../desktop/src/profileBackup/runProfileSnapshotInspection.js';
+import type { OwnedProfileBackupInspectionReservation } from '../../desktop/src/profileBackup/inspectOwnedEncryptedProfileBackup.js';
+import { createProfileSnapshotArtifactIdentity } from '../../desktop/src/runtime/profileInspectionArtifactIdentity.js';
+import { ProfileInspectionProcessError } from '../../desktop/src/runtime/profileInspectionProcess.js';
 import type { ProfileSnapshotBrokerTransport } from '../../desktop/src/profileBackup/profileSnapshotBrokerTransport.js';
 import { LocalUpdateHandoffCoordinator } from '../../desktop/src/update/localUpdateHandoffCoordinator.js';
 import type { UpdateJournal } from '../../desktop/src/update/updateJournal.js';
@@ -21,6 +26,12 @@ import { RecoveryPointService } from '../../desktop/src/profileBackup/recoveryPo
 import { RecoveryPointStore } from '../../desktop/src/profileBackup/recoveryPoint/recoveryPointStore.js';
 import { RecoveryPointRotationService } from '../../desktop/src/profileBackup/recoveryPoint/recoveryPointRotationService.js';
 
+const inspectionBoundary = vi.hoisted(() => ({ run: vi.fn<typeof runProfileSnapshotInspection>() }));
+vi.mock('electron', () => ({ utilityProcess: { fork: vi.fn() } }));
+vi.mock('../../desktop/src/profileBackup/runProfileSnapshotInspection.js', () => ({
+  runProfileSnapshotInspection: inspectionBoundary.run,
+}));
+
 const fixtures: {
   client: ProfileSnapshotBrokerClient;
   backend: { close(): void };
@@ -29,73 +40,104 @@ const fixtures: {
 const maximumMaintenanceDurationMilliseconds = 10 * 60_000;
 const temporaryRoots: string[] = [];
 
-afterEach(async () => {
+afterEach(async (context) => {
+  const roots = temporaryRoots.splice(0);
+  context.onTestFinished(async ({ task }) => {
+    if (task.result?.state !== 'pass' || context.signal.aborted) return;
+    for (const root of roots) await rm(root, { force: true, recursive: true });
+  });
   for (const fixture of fixtures.splice(0)) {
     fixture.client.close();
     fixture.backend.close();
     await fixture.closed;
   }
-  for (const root of temporaryRoots.splice(0)) {
-    await rm(root, { force: true, recursive: true });
-  }
   vi.restoreAllMocks();
+  inspectionBoundary.run.mockReset();
   vi.useRealTimers();
 });
 
 describe('update maintenance state, private broker and HTTP write boundary', () => {
   it('self-validates a real encrypted pre-update point in independent staging under the same update owner', async () => {
-    const { fixture, inspectionOperationId, service, stagingRoot, store } = await createEncryptedPointFixture();
+    const { fixture, inspectionOperationId, inspector, service, stagingRoot, store } = await createEncryptedPointFixture();
     await fixture.client.beginUpdateMaintenance(fixture.operationId);
     const point = await service.createPreUpdateWithMaintenance(fixture.operationId);
     expect(point).toMatchObject({ kind: 'preUpdate', state: 'validatedGood' });
     expect(inspectionOperationId).not.toBe(fixture.operationId);
-    expect(fixture.snapshot.validateProfileSnapshot.mock.calls.map(([operationId]) => operationId))
+    expect(inspectionBoundary.run.mock.calls.map(([input]) => input.operationId))
       .toEqual([fixture.operationId, inspectionOperationId]);
+    expect(inspectionBoundary.run.mock.calls.map(([input]) => input.updateMaintenanceOperationId))
+      .toEqual([fixture.operationId, fixture.operationId]);
+    expect(inspectionBoundary.run.mock.calls.map(([input]) => input.migrationPolicy))
+      .toEqual(['exactCurrentManifest', 'restoreCompatible']);
+    expect(fixture.snapshot.validateProfileSnapshot).not.toHaveBeenCalled();
+    expect(fixture.snapshot.readProfileInspectionContext).toHaveBeenCalledTimes(4);
     await expect(store.list(activeValidation.profileId)).resolves.toEqual([point]);
     await expect(readFile(join(stagingRoot, fixture.operationId, 'profile.sqlite'))).rejects.toMatchObject({ code: 'ENOENT' });
     await expect(readFile(join(stagingRoot, inspectionOperationId, 'profile.sqlite'))).rejects.toMatchObject({ code: 'ENOENT' });
     await fixture.client.assertUpdateMaintenance(fixture.operationId);
     await assertWritesBlocked(fixture);
     await fixture.client.endUpdateMaintenance(fixture.operationId);
+    await inspector.shutdown();
   });
 
-  it.each(['settled', 'disconnected'] as const)('gates failed inspection cleanup on the serial owner acknowledgement (%s)', async (outcome) => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    const { fixture, inspectionOperationId, database, service, stagingRoot, store } = await createEncryptedPointFixture(50);
+  it.each(['settled', 'unreclaimed', 'disconnected', 'observerFailure'] as const)('gates failed inspection cleanup on process exit and native ownership (%s)', async (outcome) => {
+    const { fixture, inspectionOperationId, inspector, owners, database, service, stagingRoot, store } = await createEncryptedPointFixture();
     const entered = deferred<void>();
     const finish = deferred<void>();
-    const completed = deferred<void>();
-    fixture.snapshot.validateProfileSnapshot.mockImplementation(async (operationId) => {
-      if (operationId === inspectionOperationId) {
-        entered.resolve();
-        await finish.promise;
-      }
-      await expect(readFile(join(stagingRoot, operationId, 'profile.sqlite'), 'utf8')).resolves.toBe(database);
-      if (operationId === inspectionOperationId) completed.resolve();
-      return snapshotValidation;
+    const inspect = inspectionBoundary.run.getMockImplementation()!;
+    const firstFailure = new ProfileInspectionProcessError('PROFILE_SCHEMA_UNSUPPORTED', {
+      processAbsent: true, reservationReclaimed: outcome !== 'unreclaimed', forced: false,
+    });
+    inspectionBoundary.run.mockImplementation(async input => {
+      if (input.operationId !== inspectionOperationId) return inspect(input);
+      entered.resolve();
+      await finish.promise;
+      throw firstFailure;
     });
     await fixture.client.beginUpdateMaintenance(fixture.operationId);
     const creating = service.createPreUpdateWithMaintenance(fixture.operationId);
-    const expectation = expect(creating).rejects.toMatchObject({ code: 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE' });
+    const result = creating.then(() => { throw new Error('EXPECTED_INSPECTION_FAILURE'); }, error => error);
     await entered.promise;
-    const barrierQueued = observeRequest(fixture.backendTransport, 'assertUpdateMaintenance');
-    await vi.advanceTimersByTimeAsync(50);
-    await barrierQueued;
     const inspectionPath = join(stagingRoot, inspectionOperationId, 'profile.sqlite');
-    await expect(readFile(inspectionPath, 'utf8')).resolves.toBe(database);
-    if (outcome === 'disconnected') fixture.backend.close();
-    finish.resolve();
-    await completed.promise;
-    await expectation;
-    expect(service.getStatus().lastSafeErrorCode).toBe('PROFILE_SNAPSHOT_BROKER_UNAVAILABLE');
-    await expect(store.list(activeValidation.profileId)).resolves.toEqual([]);
-    if (outcome === 'settled') {
-      await expect(readFile(inspectionPath)).rejects.toMatchObject({ code: 'ENOENT' });
-      await fixture.client.assertUpdateMaintenance(fixture.operationId);
-    } else {
+    const injectedObservationFailure = new Error('SYNTHETIC_OBSERVATION_FAILURE');
+    let observationFailure: unknown;
+    const cleanupFailures: unknown[] = [];
+    try {
       await expect(readFile(inspectionPath, 'utf8')).resolves.toBe(database);
+      await expect(inspector.removeProfileSnapshot(inspectionOperationId))
+        .rejects.toThrow('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+      expect(owners.get(inspectionOperationId)!.close).not.toHaveBeenCalled();
+      if (outcome === 'disconnected') { fixture.backend.close(); await fixture.closed; }
+      if (outcome === 'observerFailure') throw injectedObservationFailure;
+    } catch (error) { observationFailure = error; }
+    finally {
+      finish.resolve();
+      try {
+        const failure = await result;
+        await expect(store.list(activeValidation.profileId)).resolves.toEqual([]);
+        if (outcome !== 'unreclaimed') {
+          expect(failure).toBe(firstFailure);
+          await expect(readFile(inspectionPath)).rejects.toMatchObject({ code: 'ENOENT' });
+          expect(owners.get(inspectionOperationId)!.close).toHaveBeenCalledOnce();
+        } else {
+          expect(failure).toMatchObject({ cleanupStatus: 'unverified',
+            cause: { cleanupStatus: 'unverified', cause: firstFailure } });
+          await expect(readFile(inspectionPath, 'utf8')).resolves.toBe(database);
+          expect(owners.get(inspectionOperationId)!.close).not.toHaveBeenCalled();
+          expect(owners.get(inspectionOperationId)!.invalidate).toHaveBeenCalled();
+        }
+        if (outcome === 'settled') await fixture.client.assertUpdateMaintenance(fixture.operationId);
+        await assertWritesBlocked(fixture);
+      } catch (error) { cleanupFailures.push(error); }
+      try {
+        if (outcome === 'unreclaimed') {
+          await expect(inspector.shutdown()).rejects.toThrow('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+        } else await inspector.shutdown();
+      } catch (error) { cleanupFailures.push(error); }
     }
-    await assertWritesBlocked(fixture);
+    if (outcome === 'observerFailure') expect(observationFailure).toBe(injectedObservationFailure);
+    else if (observationFailure !== undefined) throw observationFailure;
+    if (cleanupFailures.length > 0) throw new AggregateError(cleanupFailures, 'Inspection cleanup verification failed');
   });
 
   it('keeps HTTP writes blocked across coordinator preparation and delayed handoff', async () => {
@@ -418,7 +460,13 @@ function createUpdateOwner(fixture: ReturnType<typeof createFixture>, revalidate
       async beginUpdateMaintenance(operationId) { await fixture.client.beginUpdateMaintenance(operationId); },
       async assertUpdateMaintenance(operationId) { await fixture.client.assertUpdateMaintenance(operationId); },
       async endUpdateMaintenance(operationId) { await fixture.client.endUpdateMaintenance(operationId); },
-      validateActiveProfile: () => fixture.client.validateActiveProfile(),
+      async validateActiveProfileForUpdate(context) {
+        context.assertCurrent();
+        const validation = await fixture.client.validateActiveProfile();
+        context.assertCurrent();
+        context.confirmCleanup();
+        return validation;
+      },
     },
     shutdownRuntime: shutdown,
     launchInstaller: launch,
@@ -439,6 +487,9 @@ function createFixture(requestTimeoutMilliseconds?: number) {
       signal: AbortSignal;
     }) => snapshotMetadata),
     validateActiveProfile: vi.fn(async () => activeValidation),
+    readProfileInspectionContext: vi.fn(async () => ({
+      activeProfileId: activeValidation.profileId, activeProfileIsEmpty: false,
+    })),
     validateProfileSnapshot: vi.fn(async (_operationId: string) => snapshotValidation),
     prepareProfileRestoreActivation: vi.fn(async () => ({ artifactCount: 0, artifactTotalByteSize: 0 })),
   };
@@ -454,13 +505,13 @@ function createFixture(requestTimeoutMilliseconds?: number) {
   return fixture;
 }
 
-async function createEncryptedPointFixture(requestTimeoutMilliseconds?: number) {
+async function createEncryptedPointFixture() {
   const root = await mkdtemp(join(tmpdir(), 'eky-update-recovery-boundary-'));
   temporaryRoots.push(root);
   const stagingRoot = join(root, 'staging');
   const quarantineRoot = join(root, 'quarantine');
   await mkdir(quarantineRoot, { mode: 0o700 });
-  const fixture = createFixture(requestTimeoutMilliseconds);
+  const fixture = createFixture();
   const inspectionOperationId = randomUUID();
   const database = 'synthetic-update-snapshot';
   const catalog = '{"artifacts":[]}';
@@ -476,9 +527,42 @@ async function createEncryptedPointFixture(requestTimeoutMilliseconds?: number) 
         sha256: createHash('sha256').update(database).digest('hex') },
     };
   });
-  fixture.snapshot.validateProfileSnapshot.mockImplementation(async (operationId) => {
-    await expect(readFile(join(stagingRoot, operationId, 'profile.sqlite'), 'utf8')).resolves.toBe(database);
-    return snapshotValidation;
+  const owners = new Map<string, OwnedProfileBackupInspectionReservation>();
+  const inspector = new ProfileSnapshotInspectionClient({
+    broker: fixture.client, stagingRoot, runnerPath: join(root, 'synthetic-unused-runner.js'),
+    deployment: { backendRoot: join(root, 'backend'), migrationsDirectory: join(root, 'migrations'),
+      nativeResourceRoot: join(root, 'native') },
+    assertMainInstance() {},
+    async acquireReservation({ operationRoot }) {
+      const owner = { assertMainOwned: vi.fn(async () => undefined),
+        bind: vi.fn<OwnedProfileBackupInspectionReservation['bind']>(),
+        invalidate: vi.fn(), close: vi.fn(async () => undefined) };
+      owners.set(operationRoot === join(stagingRoot, fixture.operationId) ? fixture.operationId : inspectionOperationId, owner);
+      return owner;
+    },
+  });
+  // Native process/reservation boundaries are synthetic; the client lifecycle,
+  // broker, encrypted container and independent staging use the production chain.
+  inspectionBoundary.run.mockImplementation(async input => {
+    const context = () => input.readActiveContext({
+      operationId: input.operationId, kind: input.kind, signal: input.signal, deadline: input.deadline!,
+      ...(input.updateMaintenanceOperationId === undefined ? {} : { updateMaintenanceOperationId: input.updateMaintenanceOperationId }),
+    });
+    input.assertAuthority();
+    await input.reservation.assertMainOwned();
+    await context();
+    const actualDatabase = await readFile(join(stagingRoot, input.operationId, 'profile.sqlite'));
+    const actualCatalog = await readFile(join(stagingRoot, input.operationId, 'snapshot-catalog-v1.json'));
+    expect(actualDatabase.toString()).toBe(database);
+    expect(actualCatalog.toString()).toBe(catalog);
+    await context();
+    input.assertAuthority();
+    return { validation: { ...snapshotValidation, type: 'profileSnapshotValidation' }, receipt: {
+      ...activeValidation, migrationPolicy: input.migrationPolicy,
+      artifactIdentity: createProfileSnapshotArtifactIdentity([]),
+      database: { byteSize: actualDatabase.length, sha256: createHash('sha256').update(actualDatabase).digest('hex') },
+      artifactCatalog: { byteSize: actualCatalog.length, sha256: createHash('sha256').update(actualCatalog).digest('hex') },
+    } };
   });
   const recoveryRoot = join(root, 'recovery-points');
   const store = new RecoveryPointStore({
@@ -487,13 +571,13 @@ async function createEncryptedPointFixture(requestTimeoutMilliseconds?: number) 
       encrypt: async (value) => Buffer.from(value),
       decrypt: async (value) => ({ shouldReEncrypt: false, value: Buffer.from(value).toString() }),
     }),
-    quarantineRoot, recoveryRoot, stagingRoot, validator: fixture.client,
+    quarantineRoot, recoveryRoot, stagingRoot, validator: inspector,
   });
   const service = new RecoveryPointService({
-    appVersion: '0.2.81', profileSnapshotClient: fixture.client,
+    appVersion: '0.2.81', profileSnapshotClient: inspector,
     rotation: new RecoveryPointRotationService({ recoveryRoot, store }), stagingRoot, store,
   });
-  return { fixture, inspectionOperationId, database, service, stagingRoot, store };
+  return { fixture, inspectionOperationId, inspector, owners, database, service, stagingRoot, store };
 }
 
 function transport(port: MessagePort): ProfileSnapshotBrokerTransport {

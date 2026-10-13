@@ -1,5 +1,7 @@
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 
+import { profileInspectionFailureCauses } from './profileInspectionFailure.js';
+import { parseOwnedLocalDatabaseRecoverySelection, type OwnedLocalDatabaseRecoverySelection } from './ownedLocalDatabaseRecovery.js';
 import {
   parseWorkspaceProcessReservationDescriptor,
   type WorkspaceProcessReservationDescriptor,
@@ -15,6 +17,21 @@ const canonicalIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const sha256Pattern = /^[0-9a-f]{64}$/;
 const boundedReleaseValuePattern = /^[0-9A-Za-z.+_-]{1,100}$/;
+export const workspaceCandidateFailureCauses = [
+  'unknown',
+  ...profileInspectionFailureCauses,
+  'MIGRATION_HISTORY_INVALID',
+  'PROFILE_SNAPSHOT_DATABASE_INVALID',
+  'PROFILE_SNAPSHOT_MIGRATIONS_INVALID',
+  'PROFILE_SNAPSHOT_ARTIFACTS_INVALID',
+  'WORKSPACE_CANDIDATE_SOURCE_MISMATCH',
+  'WORKSPACE_CANDIDATE_DATABASE_CHANGED',
+  'WORKSPACE_CANDIDATE_DATABASE_INVALID',
+  'WORKSPACE_CANDIDATE_DATABASE_CLOSE_FAILED',
+  'WORKSPACE_CANDIDATE_OPERATION_CANCELLED',
+] as const;
+export type WorkspaceCandidateFailureCause =
+  typeof workspaceCandidateFailureCauses[number];
 
 interface WorkspaceCandidateCommonConfig {
   readonly appVersion: string;
@@ -27,6 +44,7 @@ interface WorkspaceCandidateCommonConfig {
 }
 
 interface WorkspaceMigrationInspectionConfig {
+  readonly ownedLocalDatabaseRecovery?: Readonly<OwnedLocalDatabaseRecoverySelection>;
   readonly appVersion: string;
   readonly backendRoot: string;
   readonly buildRevision: string;
@@ -46,6 +64,7 @@ export type WorkspaceCandidateProcessOperation =
       readonly expectedProfileId: string;
       readonly expectedSourceMigrationChainIdentity: string;
       readonly importStagingRoot: string;
+      readonly inspectionRoot: string;
       readonly operation: 'migrateBackup';
     })
   | (WorkspaceCandidateCommonConfig & {
@@ -128,10 +147,13 @@ export type WorkspaceCandidateProcessStatus =
       readonly type: 'reservationReady';
     })
   | (WorkspaceCandidateProcessRequestIdentity & {
+      readonly inspectionClosed?: true;
       readonly result: WorkspaceCandidateProcessResult;
       readonly type: 'completed';
     })
   | (WorkspaceCandidateProcessRequestIdentity & {
+      readonly causeCode?: WorkspaceCandidateFailureCause;
+      readonly inspectionClosed?: true;
       readonly code: 'WORKSPACE_CANDIDATE_OPERATION_FAILED';
       readonly type: 'failed';
     });
@@ -196,6 +218,7 @@ export function createWorkspaceCandidateReadyStatus(): Extract<
 }
 
 export function createWorkspaceCandidateCompletedStatus(input: {
+  readonly inspectionClosed?: true;
   readonly operationId: string;
   readonly requestId: string;
   readonly result: WorkspaceCandidateProcessResult;
@@ -203,6 +226,7 @@ export function createWorkspaceCandidateCompletedStatus(input: {
 }): Extract<WorkspaceCandidateProcessStatus, { type: 'completed' }> {
   const status = parseWorkspaceCandidateProcessStatus({
     ...requestIdentity(input),
+    ...(input.inspectionClosed === true ? { inspectionClosed: true } : {}),
     result: input.result,
     type: 'completed',
   });
@@ -230,12 +254,16 @@ export function createWorkspaceCandidateReservationReadyStatus(input: {
 }
 
 export function createWorkspaceCandidateFailedStatus(input: {
+  readonly causeCode?: WorkspaceCandidateFailureCause;
+  readonly inspectionClosed?: true;
   readonly operationId: string;
   readonly requestId: string;
   readonly runtimeSession: string;
 }): Extract<WorkspaceCandidateProcessStatus, { type: 'failed' }> {
   const status = parseWorkspaceCandidateProcessStatus({
     ...requestIdentity(input),
+    ...(input.causeCode === undefined ? {} : { causeCode: input.causeCode }),
+    ...(input.inspectionClosed === true ? { inspectionClosed: true } : {}),
     code: 'WORKSPACE_CANDIDATE_OPERATION_FAILED',
     type: 'failed',
   });
@@ -318,6 +346,8 @@ export function parseWorkspaceCandidateProcessStatus(
     return createWorkspaceCandidateReadyStatus();
   }
   if (!isRequestIdentity(value)) return undefined;
+  if ('inspectionClosed' in value && value.inspectionClosed !== true) return undefined;
+  if ('causeCode' in value && !workspaceCandidateFailureCauses.some(code => code === value.causeCode)) return undefined;
   if (value.type === 'reservationReady') {
     const reservation = readBoundReservation(value);
     return reservation === undefined ? undefined : {
@@ -336,11 +366,15 @@ export function parseWorkspaceCandidateProcessStatus(
       'requestId',
       'runtimeSession',
       'type',
+      ...('inspectionClosed' in value ? ['inspectionClosed'] : []),
+      ...('causeCode' in value ? ['causeCode'] : []),
     ])
   ) {
     return {
       ...requestIdentity(value),
       code: 'WORKSPACE_CANDIDATE_OPERATION_FAILED',
+      ...(value.inspectionClosed === true ? { inspectionClosed: true as const } : {}),
+      ...('causeCode' in value ? { causeCode: value.causeCode as WorkspaceCandidateFailureCause } : {}),
       type: 'failed',
     };
   }
@@ -353,6 +387,7 @@ export function parseWorkspaceCandidateProcessStatus(
       'result',
       'runtimeSession',
       'type',
+      ...('inspectionClosed' in value ? ['inspectionClosed'] : []),
     ])
   ) {
     return undefined;
@@ -363,6 +398,7 @@ export function parseWorkspaceCandidateProcessStatus(
     : {
         ...requestIdentity(value),
         result,
+        ...(value.inspectionClosed === true ? { inspectionClosed: true as const } : {}),
         type: 'completed',
       };
 }
@@ -382,6 +418,13 @@ function parseOperation(
   value: unknown,
 ): WorkspaceCandidateProcessOperation | undefined {
   if (!isPlainRecord(value)) return undefined;
+  const hasLocalRecovery = Object.hasOwn(value, 'ownedLocalDatabaseRecovery');
+  const ownedLocalDatabaseRecovery = hasLocalRecovery
+    ? parseOwnedLocalDatabaseRecoverySelection(value.ownedLocalDatabaseRecovery) : undefined;
+  if (hasLocalRecovery && (value.operation !== 'inspectPublishedMigration'
+    || ownedLocalDatabaseRecovery === undefined
+    || typeof value.publishedRoot !== 'string'
+    || resolve(ownedLocalDatabaseRecovery.workspaceRoot) !== resolve(value.publishedRoot))) return undefined;
   if (
     value.operation === 'inspectPublishedMigration' &&
     isWorkspaceMigrationInspectionConfig(value) &&
@@ -394,6 +437,7 @@ function parseOperation(
       'migrationsDirectory',
       'operation',
       'publishedRoot',
+      ...(hasLocalRecovery ? ['ownedLocalDatabaseRecovery'] : []),
     ])
   ) {
     return {
@@ -405,6 +449,7 @@ function parseOperation(
       migrationsDirectory: value.migrationsDirectory,
       operation: 'inspectPublishedMigration',
       publishedRoot: value.publishedRoot,
+      ...(ownedLocalDatabaseRecovery === undefined ? {} : { ownedLocalDatabaseRecovery }),
     };
   }
   if (!isCommonConfig(value)) return undefined;
@@ -419,12 +464,17 @@ function parseOperation(
     isSha256(value.expectedProfileId) &&
     isSha256(value.expectedSourceMigrationChainIdentity) &&
     isSafeAbsolutePath(value.importStagingRoot) &&
+    isSafeAbsolutePath(value.inspectionRoot) &&
+    isStrictlyContainedPath(value.candidateRoot, value.inspectionRoot) &&
+    !relative(value.candidateRoot, value.inspectionRoot).includes(sep) &&
+    relative(value.inspectionRoot, value.artifactRoot) !== '' &&
     hasExactKeys(
       value,
       commonKeys([
         'expectedProfileId',
         'expectedSourceMigrationChainIdentity',
         'importStagingRoot',
+        'inspectionRoot',
         'operation',
       ]),
     )
@@ -435,6 +485,7 @@ function parseOperation(
       expectedSourceMigrationChainIdentity:
         value.expectedSourceMigrationChainIdentity,
       importStagingRoot: value.importStagingRoot,
+      inspectionRoot: value.inspectionRoot,
     };
   }
   if (
@@ -595,7 +646,9 @@ function parseResult(
   return undefined;
 }
 
-function isCommonConfig(value: Record<string, unknown>): boolean {
+function isCommonConfig(
+  value: Record<string, unknown>,
+): value is Record<string, unknown> & WorkspaceCandidateCommonConfig {
   return (
     typeof value.appVersion === 'string' &&
     boundedReleaseValuePattern.test(value.appVersion) &&

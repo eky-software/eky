@@ -1,3 +1,5 @@
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -16,6 +18,8 @@ import {
   type WorkspaceCandidateRunnerPort,
 } from './workspaceCandidateRunner.js';
 import type { WorkspaceProcessReservation } from './workspaceProcessReservation.js';
+import { captureOwnedLocalDatabaseRecoverySelection } from './ownedLocalDatabaseRecovery.js';
+import { createDesktopProfilePaths } from './desktopProfilePaths.js';
 
 const runtimeSession = 'a'.repeat(43);
 const operationId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -24,9 +28,145 @@ const profileId = 'c'.repeat(64);
 const migrationChainIdentity = 'd'.repeat(64);
 const reservationIdentity = 'e'.repeat(64);
 
-afterEach(() => vi.useRealTimers());
+const recoveryRoots: string[] = [];
+afterEach(async () => {
+  vi.useRealTimers();
+  for (const root of recoveryRoots.splice(0)) await rm(root, { recursive: true, force: true });
+});
 
 describe('workspace candidate runner', () => {
+  it('delivers local recovery only as live invocation control and strips its private selection from backend data', async () => {
+    const root = await mkdtemp(resolve(tmpdir(), 'eky-candidate-recovery-'));
+    recoveryRoots.push(root);
+    const workspaceRoot = resolve(root, 'workspaces', '11111111-1111-4111-8111-111111111111');
+    await mkdir(workspaceRoot, { recursive: true });
+    const selection = await captureOwnedLocalDatabaseRecoverySelection(workspaceRoot);
+    const databaseFilePath = createDesktopProfilePaths(workspaceRoot).databaseFilePath;
+    const port = new FakeRunnerPort();
+    const exits: number[] = [];
+    const invoked = vi.fn();
+    startWorkspaceCandidateRunner({
+      acquireReservation: async () => fakeReservation(),
+      exit: code => exits.push(code),
+      loadOperation: async () => async (input, control) => {
+        expect(input).not.toHaveProperty('ownedLocalDatabaseRecovery');
+        expect(control.ownedLocalDatabaseRecovery).toBeDefined();
+        await control.ownedLocalDatabaseRecovery!.assertOwnedDatabase(databaseFilePath);
+        await expect(control.ownedLocalDatabaseRecovery!.assertOwnedDatabase(resolve(workspaceRoot, 'imported.sqlite')))
+          .rejects.toThrow();
+        invoked();
+        return { kind: 'migrationInspection', status: 'current', appliedMigrationCount: 39, pendingMigrationCount: 0 };
+      },
+      parentPort: port,
+    });
+    try {
+      const prepare = prepareCommand();
+      port.send({ ...prepare, reservation: { ...prepare.reservation, userDataRoot: root } });
+      await vi.waitFor(() => expect(port.statuses().at(-1)?.type).toBe('reservationReady'));
+      const common = operation();
+      port.send(createWorkspaceCandidateStartCommand({
+        operationId, requestId, runtimeSession,
+        operation: { appVersion: common.appVersion, backendRoot: common.backendRoot,
+          buildRevision: common.buildRevision, databaseFilePath, expectedProfileId: profileId,
+          migrationsDirectory: common.migrationsDirectory, operation: 'inspectPublishedMigration',
+          publishedRoot: workspaceRoot, ownedLocalDatabaseRecovery: selection },
+      }));
+      await vi.waitFor(() => expect(invoked).toHaveBeenCalledOnce());
+      expect(port.statuses().at(-1)).toMatchObject({ type: 'completed' });
+      expect(JSON.stringify(port.statuses())).not.toContain(workspaceRoot);
+      expect(JSON.stringify(port.statuses())).not.toContain(selection.workspaceIdentity);
+    } finally {
+      port.send(shutdownCommand());
+      await vi.waitFor(() => expect(exits).toHaveLength(1));
+    }
+  });
+
+  it.each(['PROFILE_SCHEMA_UNSUPPORTED', 'MIGRATION_HISTORY_INVALID'] as const)(
+    'preserves only the safe %s cause for published migration inspection', async causeCode => {
+      const port = new FakeRunnerPort();
+      const exits: number[] = [];
+      startWorkspaceCandidateRunner({
+        acquireReservation: async () => fakeReservation(),
+        exit: code => exits.push(code),
+        loadOperation: async () => async () => {
+          throw new Error('private inspection detail', { cause: new Error(causeCode) });
+        },
+        parentPort: port,
+      });
+      await prepareRunner(port);
+      const common = operation();
+      const publishedRoot = resolve('private-published');
+      port.send(createWorkspaceCandidateStartCommand({
+        operationId, requestId, runtimeSession,
+        operation: {
+          appVersion: common.appVersion,
+          backendRoot: common.backendRoot,
+          buildRevision: common.buildRevision,
+          databaseFilePath: resolve(publishedRoot, 'profile.sqlite'),
+          expectedProfileId: profileId,
+          migrationsDirectory: common.migrationsDirectory,
+          operation: 'inspectPublishedMigration',
+          publishedRoot,
+        },
+      }));
+      await flushTasks();
+
+      const failed = port.statuses().filter(status => status.type === 'failed');
+      expect(failed).toHaveLength(1);
+      expect(failed[0]).toMatchObject({ type: 'failed', causeCode });
+      expect(JSON.stringify(failed)).not.toContain('private inspection detail');
+      expect(failed[0]).not.toHaveProperty('inspectionClosed');
+      port.send(shutdownCommand());
+      expect(exits).toEqual([1]);
+    },
+  );
+
+  it.each(['success', 'schemaFailure', 'closeFailure', 'unknownCloseFailure'] as const)(
+    'delivers only proven inspection closure for %s through the existing terminal', async outcome => {
+      const port = new FakeRunnerPort();
+      const exits: number[] = [];
+      startWorkspaceCandidateRunner({
+        acquireReservation: async () => fakeReservation(),
+        exit: code => exits.push(code),
+        loadOperation: async () => async (_operation, control) => {
+          if (outcome === 'success' || outcome === 'schemaFailure') control.reportInspectionClosed?.();
+          if (outcome !== 'success') throw new Error('WORKSPACE_CANDIDATE_OPERATION_FAILED', {
+            cause: new AggregateError([
+              new Error(outcome === 'unknownCloseFailure' ? 'private inspection detail' : 'PROFILE_SCHEMA_UNSUPPORTED'),
+              new Error('private close detail'),
+            ], 'WORKSPACE_CANDIDATE_DATABASE_CLOSE_FAILED'),
+          });
+          return migrationResult();
+        },
+        parentPort: port,
+      });
+      await prepareRunner(port);
+      const common = operation();
+      if (common.operation !== 'bootstrapEmpty') throw new Error('invalid fixture');
+      port.send(createWorkspaceCandidateStartCommand({
+        operationId, requestId, runtimeSession,
+        operation: {
+          ...common, operation: 'migrateBackup', expectedProfileId: profileId,
+          expectedSourceMigrationChainIdentity: migrationChainIdentity,
+          importStagingRoot: resolve('private-import'),
+          inspectionRoot: resolve(common.candidateRoot, 'inspection'),
+        },
+      }));
+      await flushTasks();
+      const terminal = port.statuses().at(-1);
+      expect(terminal).toMatchObject({ operationId, requestId, runtimeSession,
+        type: outcome === 'success' ? 'completed' : 'failed' });
+      if (outcome === 'closeFailure' || outcome === 'unknownCloseFailure') expect(terminal).not.toHaveProperty('inspectionClosed');
+      else expect(terminal).toHaveProperty('inspectionClosed', true);
+      if (outcome !== 'success') expect(terminal).toHaveProperty('causeCode',
+        outcome === 'unknownCloseFailure' ? 'unknown' : 'PROFILE_SCHEMA_UNSUPPORTED');
+      expect(JSON.stringify(terminal)).not.toContain('private close detail');
+      expect(JSON.stringify(terminal)).not.toContain('private inspection detail');
+      port.send(shutdownCommand());
+      expect(exits).toEqual([outcome === 'success' ? 0 : 1]);
+    },
+  );
+
   it('handshakes, runs one request and exits only after shutdown', async () => {
     const port = new FakeRunnerPort();
     const exits: number[] = [];

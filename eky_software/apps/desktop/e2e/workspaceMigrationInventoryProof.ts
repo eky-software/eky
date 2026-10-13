@@ -11,13 +11,20 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
 import { createDesktopProfilePaths } from '../src/runtime/desktopProfilePaths.js';
+import { readWorkspaceCandidateFailureCause } from '../src/runtime/workspaceCandidateFailure.js';
 import { acquireDesktopWorkspaceReservation } from '../src/main/desktopComposition.js';
 import { validateWorkspaceCreationOperationId } from '../src/workspaces/creation/workspaceCreationOperationId.js';
 import { deriveWorkspaceRoot } from '../src/workspaces/registry/deriveWorkspaceRoot.js';
 import { validateWorkspaceId } from '../src/workspaces/registry/workspaceIdValidation.js';
-import { WORKSPACE_REGISTRY_FILE_NAME } from '../src/workspaces/registry/workspaceRegistryPaths.js';
+import {
+  WORKSPACE_REGISTRY_BACKUP_FILE_NAME,
+  WORKSPACE_REGISTRY_FILE_NAME,
+  WORKSPACE_REGISTRY_NEXT_FILE_NAME,
+} from '../src/workspaces/registry/workspaceRegistryPaths.js';
+import { serializeWorkspaceRegistry } from '../src/workspaces/registry/workspaceRegistrySerializer.js';
 import { WorkspaceRegistryStore } from '../src/workspaces/registry/workspaceRegistryStore.js';
 import type {
   LocalWorkspaceRegistryV1,
@@ -26,6 +33,7 @@ import type {
 import { ElectronWorkspaceCandidateRuntimeFactory } from '../src/workspaces/runtime/electronWorkspaceCandidateRuntimeFactory.js';
 import { resolveWorkspaceCandidateRuntimePaths } from '../src/workspaces/runtime/workspaceCandidateRuntimePaths.js';
 import { WorkspaceMigrationInventoryCoordinator } from '../src/workspaces/update/workspaceMigrationInventoryCoordinator.js';
+import { workspaceMigrationInventoryFailedCode } from '../src/workspaces/update/workspaceMigrationInventoryError.js';
 import type {
   PrivateWorkspaceMigrationInspectionRuntime,
   PrivateWorkspaceMigrationInspectionRuntimeFactory,
@@ -41,6 +49,11 @@ import type {
   WorkspaceMigrationInventoryProofInput,
   WorkspaceMigrationInventoryProofResult,
 } from './workspaceMigrationInventoryProofTypes.js';
+import { invalidateWorkspaceFirstStartProofContent } from './workspaceFirstStartMigrationProofFixtures.js';
+import {
+  interruptWorkspaceProofTransaction,
+  verifyWorkspaceProofTransactionRecovered,
+} from './workspaceHotJournalProof.js';
 
 type ProofStage =
   | 'paths'
@@ -73,6 +86,7 @@ class CountingMigrationRuntimeFactory
 {
   activeRuntimeCount = 0;
   maximumActiveRuntimeCount = 0;
+  readonly startedDatabasePaths: string[] = [];
 
   constructor(
     private readonly delegate: PrivateWorkspaceMigrationInspectionRuntimeFactory,
@@ -81,6 +95,7 @@ class CountingMigrationRuntimeFactory
   async startMigrationInspection(
     input: Readonly<WorkspaceMigrationInspectionInput>,
   ): Promise<PrivateWorkspaceMigrationInspectionRuntime> {
+    this.startedDatabasePaths.push(input.databaseFilePath);
     this.activeRuntimeCount += 1;
     this.maximumActiveRuntimeCount = Math.max(
       this.maximumActiveRuntimeCount,
@@ -173,11 +188,7 @@ export async function runWorkspaceMigrationInventoryProof(
       factory: currentFactory,
       userDataRoot: proofRoot,
     });
-    await writeFile(
-      invalidHistory.databaseFilePath,
-      'not a sqlite database',
-      { encoding: 'utf8', mode: 0o600 },
-    );
+    await invalidateWorkspaceFirstStartProofContent(invalidHistory);
     const fixtures = [current, compatiblePending, invalidHistory] as const;
 
     stage = 'registry';
@@ -228,7 +239,7 @@ export async function runWorkspaceMigrationInventoryProof(
       activeRuntimeCount: countingFactory.activeRuntimeCount,
       activeWorkspacePreserved:
         inventory.activeWorkspaceId === current.workspaceId &&
-        (await registryStore.read())?.activeWorkspaceId === current.workspaceId,
+        (await registryStore.inspect())?.activeWorkspaceId === current.workspaceId,
       artifactRootsPreserved: snapshotsEqual(
         artifactsBefore,
         artifactsAfter,
@@ -258,6 +269,23 @@ export async function runWorkspaceMigrationInventoryProof(
         observerEvent.compatiblePendingCount === 1 &&
         observerEvent.invalidHistoryCount === 1,
       registryPreserved: snapshotsEqual(registryBefore, registryAfter),
+      ...(await proveUntrustedInventoryRejections({
+        assertMainOwned: () => reservation.assertMainOwned(),
+        factory: currentFactory,
+        fixtures,
+        registryStore,
+        runtimeFactory: countingFactory,
+        userDataRoot: proofRoot,
+        utilityProcessBaseline,
+      })),
+      ...(await proveOwnedHotJournalRecovery({
+        assertMainOwned: () => reservation.assertMainOwned(),
+        factory: currentFactory,
+        registryStore,
+        runtimeFactory: countingFactory,
+        userDataRoot: proofRoot,
+        utilityProcessBaseline,
+      })),
     } as const;
     assertProofResult(result);
     return Object.freeze(result);
@@ -281,6 +309,153 @@ export async function runWorkspaceMigrationInventoryProof(
       if (!failed) throw error;
     }
   }
+}
+
+async function proveOwnedHotJournalRecovery(input: {
+  readonly assertMainOwned: () => Promise<void>;
+  readonly factory: ElectronWorkspaceCandidateRuntimeFactory;
+  readonly registryStore: WorkspaceRegistryStore;
+  readonly runtimeFactory: CountingMigrationRuntimeFactory;
+  readonly userDataRoot: string;
+  readonly utilityProcessBaseline: ReadonlySet<number>;
+}): Promise<Readonly<{ ownedHotJournalRecovered: true; recoveredInventoryReadOnly: true }>> {
+  const fixture = await createWorkspaceFixture({
+    factory: input.factory, userDataRoot: input.userDataRoot,
+  });
+  await input.assertMainOwned();
+  await input.registryStore.write(createRegistry([fixture], fixture.workspaceId));
+  const registryPaths = [
+    WORKSPACE_REGISTRY_FILE_NAME, WORKSPACE_REGISTRY_BACKUP_FILE_NAME,
+    WORKSPACE_REGISTRY_NEXT_FILE_NAME,
+  ].map((name) => join(input.userDataRoot, name));
+  const registryBefore = await Promise.all(registryPaths.map(snapshotOptionalFile));
+  const artifactsBefore = await snapshotDirectory(fixture.artifactRoot);
+  const committedHash = await interruptWorkspaceProofTransaction({
+    assertMainOwned: input.assertMainOwned,
+    databaseFilePath: fixture.databaseFilePath,
+    utilityProcessBaseline: input.utilityProcessBaseline,
+  });
+  const coordinator = new WorkspaceMigrationInventoryCoordinator({
+    registry: input.registryStore, runtimeFactory: input.runtimeFactory,
+    userDataRoot: input.userDataRoot,
+  });
+  const inventory = await coordinator.inspect();
+  await input.assertMainOwned();
+  if (inventory.entries.length !== 1 || inventory.entries[0]?.status !== 'current'
+    || inventory.activeWorkspaceId !== fixture.workspaceId
+    || input.runtimeFactory.activeRuntimeCount !== 0
+    || !(await waitForProofUtilityProcessesReleased(input.utilityProcessBaseline))) {
+    throw new Error('WORKSPACE_HOT_JOURNAL_PROOF_INVALID');
+  }
+  await verifyWorkspaceProofTransactionRecovered(fixture.databaseFilePath, committedHash);
+  const recovered = await snapshotDatabase(fixture.databaseFilePath);
+  await coordinator.inspect();
+  await input.assertMainOwned();
+  if (!snapshotsEqual(recovered, await snapshotDatabase(fixture.databaseFilePath))
+    || !snapshotsEqual(registryBefore, await Promise.all(registryPaths.map(snapshotOptionalFile)))
+    || !snapshotsEqual(artifactsBefore, await snapshotDirectory(fixture.artifactRoot))
+    || input.runtimeFactory.activeRuntimeCount !== 0
+    || !(await waitForProofUtilityProcessesReleased(input.utilityProcessBaseline))) {
+    throw new Error('WORKSPACE_HOT_JOURNAL_PROOF_INVALID');
+  }
+  return Object.freeze({ ownedHotJournalRecovered: true, recoveredInventoryReadOnly: true });
+}
+
+async function snapshotOptionalFile(path: string): Promise<FileSnapshot | undefined> {
+  try { return await snapshotFile(path); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw error;
+  }
+}
+
+async function proveUntrustedInventoryRejections(input: {
+  readonly assertMainOwned: () => Promise<void>;
+  readonly factory: ElectronWorkspaceCandidateRuntimeFactory;
+  readonly fixtures: readonly Readonly<WorkspaceFixture>[];
+  readonly registryStore: WorkspaceRegistryStore;
+  readonly runtimeFactory: CountingMigrationRuntimeFactory;
+  readonly userDataRoot: string;
+  readonly utilityProcessBaseline: ReturnType<typeof captureUtilityProcessBaseline>;
+}): Promise<Readonly<{
+  untrustedInventoryInputsPreserved: boolean;
+  untrustedInventoryProcessesReleased: boolean;
+  untrustedInventoryRegistrySlotsPreserved: boolean;
+  untrustedInventoryRejected: boolean;
+  untrustedInventoryStoppedBeforeLaterWorkspaces: boolean;
+}>> {
+  const [current, compatiblePending, invalidHistory] = input.fixtures;
+  if (current === undefined || compatiblePending === undefined || invalidHistory === undefined) {
+    throw new Error('WORKSPACE_MIGRATION_INVENTORY_PROOF_INVALID');
+  }
+  const untrusted = await createWorkspaceFixture({
+    factory: input.factory,
+    userDataRoot: input.userDataRoot,
+  });
+  await input.assertMainOwned();
+  const fixtures = [current, untrusted, compatiblePending, invalidHistory] as const;
+  const registryPaths = [
+    WORKSPACE_REGISTRY_FILE_NAME,
+    WORKSPACE_REGISTRY_BACKUP_FILE_NAME,
+    WORKSPACE_REGISTRY_NEXT_FILE_NAME,
+  ].map((name) => join(input.userDataRoot, name));
+  const activeIds = [current.workspaceId, compatiblePending.workspaceId, invalidHistory.workspaceId];
+  for (const [index, path] of registryPaths.entries()) {
+    await writeFile(path, serializeWorkspaceRegistry(createRegistry(fixtures, activeIds[index]!)), {
+      mode: 0o600,
+    });
+  }
+  for (const causeCode of ['PROFILE_SCHEMA_UNSUPPORTED', 'MIGRATION_HISTORY_INVALID'] as const) {
+    await input.assertMainOwned();
+    const database = new DatabaseSync(untrusted.databaseFilePath);
+    try {
+      if (causeCode === 'PROFILE_SCHEMA_UNSUPPORTED') {
+        database.exec('CREATE VIEW unexpected_workspace_view AS SELECT 1;');
+      } else {
+        database.exec('DROP VIEW unexpected_workspace_view;');
+        database.prepare(
+          'UPDATE schema_migration_metadata SET source_sha256 = ? WHERE migration_name = (SELECT min(name) FROM schema_migrations)',
+        ).run('b'.repeat(64));
+      }
+    } finally {
+      database.close();
+    }
+    const registryBefore = await Promise.all(registryPaths.map(snapshotFile));
+    const databasesBefore = await Promise.all(fixtures.map((fixture) => snapshotDatabase(fixture.databaseFilePath)));
+    const artifactsBefore = await Promise.all(fixtures.map((fixture) => snapshotDirectory(fixture.artifactRoot)));
+    const startedBefore = input.runtimeFactory.startedDatabasePaths.length;
+    const coordinator = new WorkspaceMigrationInventoryCoordinator({
+      registry: input.registryStore,
+      runtimeFactory: input.runtimeFactory,
+      userDataRoot: input.userDataRoot,
+    });
+    const failure = await coordinator.inspect().then(() => undefined, (error: unknown) => error);
+    const registryAfter = await Promise.all(registryPaths.map(snapshotFile));
+    const databasesAfter = await Promise.all(fixtures.map((fixture) => snapshotDatabase(fixture.databaseFilePath)));
+    const artifactsAfter = await Promise.all(fixtures.map((fixture) => snapshotDirectory(fixture.artifactRoot)));
+    await input.assertMainOwned();
+    if (
+      !(failure instanceof Error) || failure.message !== workspaceMigrationInventoryFailedCode ||
+      readWorkspaceCandidateFailureCause(failure) !== causeCode ||
+      input.runtimeFactory.activeRuntimeCount !== 0 ||
+      !snapshotsEqual(input.runtimeFactory.startedDatabasePaths.slice(startedBefore), [
+        current.databaseFilePath, untrusted.databaseFilePath,
+      ]) ||
+      !snapshotsEqual(registryBefore, registryAfter) ||
+      !snapshotsEqual(databasesBefore, databasesAfter) ||
+      !snapshotsEqual(artifactsBefore, artifactsAfter) ||
+      !(await waitForProofUtilityProcessesReleased(input.utilityProcessBaseline))
+    ) {
+      throw new Error('WORKSPACE_MIGRATION_INVENTORY_REJECTION_PROOF_INVALID');
+    }
+  }
+  return Object.freeze({
+    untrustedInventoryInputsPreserved: true,
+    untrustedInventoryProcessesReleased: true,
+    untrustedInventoryRegistrySlotsPreserved: true,
+    untrustedInventoryRejected: true,
+    untrustedInventoryStoppedBeforeLaterWorkspaces: true,
+  });
 }
 
 async function createWorkspaceFixture(input: {
@@ -459,7 +634,14 @@ function assertProofResult(
     result.maximumActiveRuntimeCount !== 1 ||
     !result.migrationSidecarsAbsent ||
     !result.observerSucceeded ||
-    !result.registryPreserved
+    !result.registryPreserved ||
+    !result.untrustedInventoryInputsPreserved ||
+    !result.untrustedInventoryProcessesReleased ||
+    !result.untrustedInventoryRegistrySlotsPreserved ||
+    !result.untrustedInventoryRejected ||
+    !result.untrustedInventoryStoppedBeforeLaterWorkspaces ||
+    !result.ownedHotJournalRecovered ||
+    !result.recoveredInventoryReadOnly
   ) {
     throw new Error('WORKSPACE_MIGRATION_INVENTORY_PROOF_INVALID');
   }

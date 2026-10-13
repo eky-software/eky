@@ -4,3 +4,7 @@ export interface WorkspaceRegistryPort {
   read(): Promise<Readonly<LocalWorkspaceRegistryV1> | undefined>;
   write(value: unknown): Promise<void>;
 }
+
+export interface WorkspaceRegistryInspectionPort {
+  inspect(): Promise<Readonly<LocalWorkspaceRegistryV1> | undefined>;
+}

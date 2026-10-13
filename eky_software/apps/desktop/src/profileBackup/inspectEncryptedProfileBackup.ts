@@ -1,6 +1,6 @@
-import { promises as fileSystem } from 'node:fs';
-
-import type { ProfileSnapshotBrokerClient } from './profileSnapshotBrokerClient.js';
+import { OwnedProfileBackupInspectionError } from './inspectOwnedEncryptedProfileBackup.js';
+import { ProfileBackupInspectionError } from './profileBackupInspectionTypes.js';
+import type { OwnedProfileSnapshotValidator } from './profileSnapshotInspectionPort.js';
 import type { ProfileBackupInspectionSummary } from './profileBackupInspectionTypes.js';
 import { stageValidatedProfileBackup } from './stageValidatedProfileBackup.js';
 
@@ -10,11 +10,8 @@ export {
   type ProfileBackupInspectionSummary,
 } from './profileBackupInspectionTypes.js';
 
-interface ProfileSnapshotValidator {
-  validateProfileSnapshot(operationId: string): ReturnType<
-    ProfileSnapshotBrokerClient['validateProfileSnapshot']
-  >;
-}
+type ProfileSnapshotValidator = Pick<OwnedProfileSnapshotValidator,
+  'validateProfileSnapshot' | 'removeProfileSnapshot'>;
 
 export interface InspectedProfileBackup {
   containerSha256: string;
@@ -29,19 +26,29 @@ export async function inspectEncryptedProfileBackupWithIdentity(input: {
   stagingRoot: string;
   validator: ProfileSnapshotValidator;
 }): Promise<InspectedProfileBackup> {
-  const staged = await stageValidatedProfileBackup(input);
-
+  let firstFailure: unknown;
+  let result: InspectedProfileBackup | undefined;
   try {
-    return {
+    const staged = await stageValidatedProfileBackup(input);
+    result = {
       containerSha256: staged.containerSha256,
       summary: staged.summary,
     };
-  } finally {
-    await fileSystem.rm(staged.operationRoot, {
-      force: true,
-      recursive: true,
-    });
+  } catch (error) {
+    firstFailure = error;
   }
+  try {
+    await input.validator.removeProfileSnapshot(input.operationId);
+  } catch (cleanupError) {
+    const primary = firstFailure instanceof ProfileBackupInspectionError
+      ? firstFailure : new ProfileBackupInspectionError('BACKUP_INSPECTION_UNAVAILABLE', {
+          cause: firstFailure ?? cleanupError,
+        });
+    throw new OwnedProfileBackupInspectionError(primary, 'unverified');
+  }
+  if (firstFailure !== undefined) throw firstFailure;
+  if (result === undefined) throw new ProfileBackupInspectionError('BACKUP_INSPECTION_UNAVAILABLE');
+  return result;
 }
 
 export async function inspectEncryptedProfileBackup(input: {

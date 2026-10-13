@@ -9,6 +9,7 @@ import {
 } from './backendMessages.js';
 import type {
   DesktopBackendFailureCode,
+  DesktopBackendRestoreShutdownMessage,
   DesktopBackendShutdownMessage,
   DesktopBackendUpdateShutdownMessage,
 } from './backendMessages.js';
@@ -17,6 +18,7 @@ import {
   type WorkspaceProcessReservation,
 } from './workspaceProcessReservation.js';
 import type { WorkspaceProcessReservationDescriptor } from './workspaceProcessReservationDescriptor.js';
+import { createOwnedLocalDatabaseRecovery, type OwnedLocalDatabaseRecovery } from './ownedLocalDatabaseRecovery.js';
 import { CompanyEmailSecretBrokerClient } from '../secrets/secretBrokerClient.js';
 import { createUtilitySecretBrokerTransport } from '../secrets/electronSecretBrokerTransport.js';
 import { InvoicePdfArchiveBrokerClient } from '../invoicePdfArchive/invoicePdfArchiveBrokerClient.js';
@@ -53,6 +55,7 @@ interface BackendProfileSnapshotMetadata {
 }
 
 interface BackendProfileSnapshotService {
+  readProfileInspectionContext(): { readonly activeProfileId: string; readonly activeProfileIsEmpty: boolean };
   validateActiveProfile(): Promise<{
     artifactCount: number;
     artifactTotalByteSize: number;
@@ -116,6 +119,7 @@ type StartServer = (options: {
       }): Promise<void>;
     };
     databaseFilePath: string;
+    ownedLocalDatabaseRecovery?: Readonly<OwnedLocalDatabaseRecovery>;
     electronVersion: string;
     invoiceDocumentStorageRoot: string;
     migrationsDirectory: string;
@@ -162,6 +166,7 @@ let backendReady = false;
 let shutdownCommand:
   | DesktopBackendShutdownMessage
   | DesktopBackendUpdateShutdownMessage
+  | DesktopBackendRestoreShutdownMessage
   | undefined;
 let shutdownFailed = false;
 let migrationGateDecision:
@@ -188,11 +193,11 @@ function rejectMigrationGate(): void {
 }
 
 function requestShutdown(
-  command: DesktopBackendShutdownMessage | DesktopBackendUpdateShutdownMessage,
+  command: DesktopBackendShutdownMessage | DesktopBackendUpdateShutdownMessage | DesktopBackendRestoreShutdownMessage,
 ): void {
   if (shutdownCommand !== undefined) {
-    if (command.type === 'shutdownForUpdate' && (
-      shutdownCommand.type !== 'shutdownForUpdate' ||
+    if (command.type !== 'shutdown' && (
+      shutdownCommand.type !== command.type ||
       command.operationId !== shutdownCommand.operationId
     )) shutdownFailed = true;
     return;
@@ -345,22 +350,28 @@ async function createSmokePdf(
 }
 
 async function shutdownBackend(
-  command: DesktopBackendShutdownMessage | DesktopBackendUpdateShutdownMessage,
+  command: DesktopBackendShutdownMessage | DesktopBackendUpdateShutdownMessage | DesktopBackendRestoreShutdownMessage,
 ): Promise<void> {
   // Pre-import cancellation must not wait for stuck acquisition/assertion.
   // Once import can write, only settled startup and owned closes permit exit.
   if (writingImportStarted && !backendReady) await startupTask;
   try {
-    if (command.type === 'shutdownForUpdate') {
+    if (command.type !== 'shutdown') {
       if (!backendReady || backendServer === undefined ||
           profileSnapshotBrokerHandle === undefined) {
-        throw new Error('BACKEND_UPDATE_SHUTDOWN_UNAVAILABLE');
+        throw new Error('BACKEND_PROTECTED_SHUTDOWN_UNAVAILABLE');
       }
-      profileSnapshotBrokerHandle.assertUpdateMaintenance(command.operationId);
+      if (command.type === 'shutdownForUpdate') {
+        profileSnapshotBrokerHandle.assertUpdateMaintenance(command.operationId);
+      } else {
+        profileSnapshotBrokerHandle.assertRestoreMaintenance(command.operationId);
+      }
     }
     await backendServer?.close();
     if (command.type === 'shutdownForUpdate') {
       profileSnapshotBrokerHandle!.assertUpdateMaintenance(command.operationId);
+    } else if (command.type === 'shutdownForRestore') {
+      profileSnapshotBrokerHandle!.assertRestoreMaintenance(command.operationId);
     }
   } catch {
     shutdownFailed = true;
@@ -382,7 +393,8 @@ async function shutdownBackend(
 utilityParentPort.on('message', (event) => {
   const command = parseDesktopBackendCommand(event.data);
 
-  if (command?.type === 'shutdown' || command?.type === 'shutdownForUpdate') {
+  if (command?.type === 'shutdown' || command?.type === 'shutdownForUpdate' ||
+      command?.type === 'shutdownForRestore') {
     requestShutdown(command);
     return;
   }
@@ -443,6 +455,16 @@ utilityParentPort.on('message', (event) => {
 
     try {
       await assertReservationOwned();
+      assertStartupCurrent();
+      const ownedLocalDatabaseRecovery = command.config.ownedLocalDatabaseRecovery === undefined
+        ? undefined : createOwnedLocalDatabaseRecovery({
+          assertOwned: assertReservationOwned,
+          databaseFilePath: command.config.databaseFilePath,
+          reservationRoot: preparedReservation!.userDataRoot,
+          selection: command.config.ownedLocalDatabaseRecovery,
+          signal: startupCancellation.signal,
+        });
+      await ownedLocalDatabaseRecovery?.assertOwnedDatabase(command.config.databaseFilePath);
       assertStartupCurrent();
       const brokerPort = event.ports[0];
       const archiveBrokerPort = event.ports[1];
@@ -505,6 +527,12 @@ utilityParentPort.on('message', (event) => {
       profileSnapshotBrokerHandle = startProfileSnapshotBrokerBackend({
         maintenance: profileMaintenanceState,
         snapshot: {
+          readProfileInspectionContext: () => {
+            if (profileSnapshotService === undefined) {
+              throw new Error('PROFILE_SNAPSHOT_BROKER_UNAVAILABLE');
+            }
+            return profileSnapshotService.readProfileInspectionContext();
+          },
           createProfileSnapshot: (input) => {
             if (profileSnapshotService === undefined) {
               throw new Error('PROFILE_SNAPSHOT_DATABASE_FAILED');
@@ -558,6 +586,7 @@ utilityParentPort.on('message', (event) => {
       let migrationGateCompleted = false;
       backendServer = await serverModule.startServer({
         appOptions: {
+          ...(ownedLocalDatabaseRecovery === undefined ? {} : { ownedLocalDatabaseRecovery }),
           appVersion: command.config.appVersion,
           architecture: command.config.architecture,
           buildCreatedAt: command.config.buildCreatedAt,

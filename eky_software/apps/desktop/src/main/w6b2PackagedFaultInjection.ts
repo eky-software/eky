@@ -106,6 +106,10 @@ export function createW6b2PackagedHandoffProfileProtection(
     ) =>
       profileProtection.restoreRecoveryPoint(input),
     validateActiveProfile: () => profileProtection.validateActiveProfile(),
+    validateActiveProfileForRollback: (context: Parameters<UpdateProfileProtection['validateActiveProfileForRollback']>[0]) =>
+      profileProtection.validateActiveProfileForRollback(context),
+    validateActiveProfileForUpdate: (context: Parameters<UpdateProfileProtection['validateActiveProfileForUpdate']>[0]) =>
+      profileProtection.validateActiveProfileForUpdate(context),
   });
 }
 

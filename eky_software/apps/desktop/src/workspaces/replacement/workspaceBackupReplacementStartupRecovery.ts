@@ -1,11 +1,13 @@
 import type { ProfileRecoveryOperationalObserver } from '../../profileBackup/profileRecoveryOperationalObserver.js';
-import { ProfileRestoreStartupRecovery } from '../../profileBackup/restore/profileRestoreStartupRecovery.js';
+import { ProfileRestoreStartupRecovery, type ProfileRestoreTerminalAcceptance, type ProfileRestoreRollbackAcceptance } from '../../profileBackup/restore/profileRestoreStartupRecovery.js';
 import { createProfileRestoreWorkspaceReplacementActivationAuthority } from './workspaceBackupReplacementActivationFactory.js';
 import type { WorkspaceBackupReplacementRuntimePaths } from './workspaceBackupReplacementPaths.js';
 
 export function createWorkspaceBackupReplacementStartupRecovery(input: {
   readonly observer?: ProfileRecoveryOperationalObserver;
   readonly paths: Readonly<WorkspaceBackupReplacementRuntimePaths>;
+  readonly withTerminalAuthority?: ProfileRestoreTerminalAcceptance;
+  readonly withRollbackAuthority?: ProfileRestoreRollbackAcceptance;
 }) {
   const activation =
     createProfileRestoreWorkspaceReplacementActivationAuthority(input.paths);
@@ -18,6 +20,8 @@ export function createWorkspaceBackupReplacementStartupRecovery(input: {
         ? {}
         : { observer: input.observer }),
       transaction: activation.transaction,
+      ...(input.withTerminalAuthority === undefined ? {} : { withTerminalAuthority: input.withTerminalAuthority }),
+      ...(input.withRollbackAuthority === undefined ? {} : { withRollbackAuthority: input.withRollbackAuthority }),
     }),
   });
 }

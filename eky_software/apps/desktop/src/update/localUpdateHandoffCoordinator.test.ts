@@ -5,6 +5,8 @@ import {
   LocalUpdateHandoffError,
 } from './localUpdateHandoffCoordinator.js';
 import type { UpdateJournal } from './updateJournal.js';
+import type { UpdateActiveProfileValidationContext } from './updateActiveProfileValidation.js';
+import { RecoveryPointCleanupError } from '../profileBackup/recoveryPoint/recoveryPointOperationError.js';
 import {
   InMemoryWorkspaceMaintenanceLease,
   type WorkspaceMaintenanceLease,
@@ -28,6 +30,74 @@ const recoveryPointReference = '11111111-1111-4111-8111-111111111111';
 const operationId = '22222222-2222-4222-8222-222222222222';
 
 describe('local update handoff coordinator', () => {
+  it('retains the prepared journal and update fence when pre-update snapshot cleanup is unverified', async () => {
+    const f = createFixture();
+    const first = new RecoveryPointCleanupError(new Error('synthetic private cleanup failure'));
+    f.createValidatedPreUpdatePoint.mockRejectedValue(first);
+    await expect(f.coordinator.prepareConfirmedUpdate()).rejects.toMatchObject({ cause: first });
+    expect(f.states).toEqual(['prepared']);
+    expect(f.currentJournal?.state).toBe('prepared');
+    expect(f.fenceHeld).toBe(true);
+    expect(f.endUpdateMaintenance).not.toHaveBeenCalled();
+    expect(f.shutdownRuntime).not.toHaveBeenCalled();
+    expect(f.launchInstaller).not.toHaveBeenCalled();
+    await expect(f.maintenanceLease.acquire('backup')).rejects.toThrow();
+    await expect(f.coordinator.prepareConfirmedUpdate()).rejects.toThrow();
+    expect(f.operationFailed).toHaveBeenCalledWith(expect.objectContaining({ sideEffectState: 'unknown' }));
+  });
+
+  it.each(['preparation', 'handoff'] as const)('retains ownership after unconfirmed %s inspection', async stage => {
+    const f = createFixture();
+    if (stage === 'handoff') await f.coordinator.prepareConfirmedUpdate();
+    let context!: UpdateActiveProfileValidationContext;
+    f.validateActiveProfile.mockImplementation(async input => {
+      context = input;
+      return { artifactCount: 0, artifactTotalByteSize: 0, databaseHealth: 'healthy', migrationChainIdentity: 'c'.repeat(64) };
+    });
+    const before = f.currentJournal;
+    await expect(stage === 'preparation' ? f.coordinator.prepareConfirmedUpdate() : f.coordinator.handoffPreparedUpdate()).rejects.toThrow();
+    expect(context.stage).toBe(stage);
+    expect(context.operationId).toBe(operationId);
+    expect(Object.isFrozen(context)).toBe(true);
+    expect(context.assertCurrent).toThrow();
+    expect(context.confirmCleanup).toThrow();
+    expect(f.currentJournal).toEqual(before);
+    expect(f.endUpdateMaintenance).not.toHaveBeenCalled();
+    expect(f.shutdownRuntime).not.toHaveBeenCalled();
+    expect(f.launchInstaller).not.toHaveBeenCalled();
+    await expect(f.maintenanceLease.acquire('restore')).rejects.toThrow();
+    await expect(f.coordinator.prepareConfirmedUpdate()).rejects.toThrow();
+  });
+
+  it('does not reuse a prior invocation cleanup confirmation', async () => {
+    const f = createFixture();
+    await f.coordinator.prepareConfirmedUpdate();
+    const old = f.validateActiveProfile.mock.calls[0]![0];
+    f.validateActiveProfile.mockImplementation(async () => { old.confirmCleanup(); throw new Error('unreachable'); });
+    await expect(f.coordinator.handoffPreparedUpdate()).rejects.toThrow();
+    expect(f.endUpdateMaintenance).not.toHaveBeenCalled();
+    await expect(f.maintenanceLease.acquire('backup')).rejects.toThrow();
+  });
+
+  it('can release a confirmed clean validation rejection before the update fence', async () => {
+    const f = createFixture({ profileValidationFails: true });
+    await expect(f.coordinator.prepareConfirmedUpdate()).rejects.toThrow();
+    expect(f.beginUpdateMaintenance).not.toHaveBeenCalled();
+    const owner = await f.maintenanceLease.acquire('backup');
+    await owner.release();
+  });
+
+  it('retains a throwing inspection with no cleanup acknowledgement', async () => {
+    const f = createFixture();
+    const first = new Error('synthetic unproven exit');
+    f.validateActiveProfile.mockRejectedValue(first);
+    await expect(f.coordinator.prepareConfirmedUpdate()).rejects.toMatchObject({ cause: first });
+    await expect(f.maintenanceLease.acquire('backup')).rejects.toThrow();
+    expect(f.currentJournal).toBeUndefined();
+    expect(f.operationFailed).toHaveBeenCalledWith(expect.objectContaining({ sideEffectState: 'unknown' }));
+    expect(JSON.stringify(f.operationFailed.mock.calls)).not.toContain(first.message);
+  });
+
   it('persists a validated recovery point before allowing handoff', async () => {
     const fixture = createFixture();
     const journal = await fixture.coordinator.prepareConfirmedUpdate();
@@ -340,8 +410,10 @@ function createFixture(options: {
   const maintenanceLease = options.maintenanceLease ?? new InMemoryWorkspaceMaintenanceLease();
   const identityReadRoles: Array<'candidate' | 'current'> = [];
   const states: string[] = [];
-  const validateActiveProfile = vi.fn(async () => {
+  const validateActiveProfile = vi.fn(async (context: UpdateActiveProfileValidationContext) => {
     profileValidationCount += 1;
+    context.assertCurrent();
+    context.confirmCleanup();
     if (options.profileValidationFails) {
       throw new Error('unhealthy');
     }
@@ -454,7 +526,7 @@ function createFixture(options: {
       beginUpdateMaintenance,
       assertUpdateMaintenance,
       endUpdateMaintenance,
-      validateActiveProfile,
+      validateActiveProfileForUpdate: validateActiveProfile,
     },
     shutdownRuntime,
   });

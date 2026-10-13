@@ -1,4 +1,6 @@
 export const diagnosticEventNames = Object.freeze([
+  'workspaceBackup.operationFailed',
+  'workspaceBackup.cleanupFailed',
   'applicationWindow.loadFailed',
   'applicationWindow.navigationBlocked',
   'applicationWindow.newWindowBlocked',
@@ -60,6 +62,7 @@ export const diagnosticEventNames = Object.freeze([
   'recoveryPoint.failed',
   'recoveryPoint.started',
   'restore.activationFailed',
+  'restore.acceptanceFailed',
   'restore.activationStarted',
   'restore.inspectionCompleted',
   'restore.inspectionFailed',

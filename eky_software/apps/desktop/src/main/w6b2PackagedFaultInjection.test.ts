@@ -140,11 +140,25 @@ describe('W6B.2 packaged fault injection', () => {
     const protectedPort = createW6b2PackagedHandoffProfileProtection(profileProtection, injection);
     for (const method of methods) await protectedPort[method](operationId);
     for (const spy of spies) expect(spy).toHaveBeenCalledExactlyOnceWith(operationId);
+    const validation = vi.spyOn(profileProtection, 'validateActiveProfileForUpdate');
+    const context = Object.freeze({ operationId, stage: 'handoff' as const,
+      assertCurrent: vi.fn(), confirmCleanup: vi.fn() });
+    await protectedPort.validateActiveProfileForUpdate(context);
+    expect(validation).toHaveBeenCalledExactlyOnceWith(context);
+    expect(validation.mock.calls[0]![0]).toBe(context);
   });
 });
 
 function createProfileProtection(calls: string[]): UpdateProfileProtection {
   return {
+    async validateActiveProfileForRollback() {
+      calls.push('validateActiveProfileForRollback');
+      return { artifactCount: 0, artifactTotalByteSize: 0, databaseHealth: 'healthy', migrationChainIdentity: 'c'.repeat(64) };
+    },
+    async validateActiveProfileForUpdate() {
+      calls.push('validateActiveProfileForUpdate');
+      return { artifactCount: 1, artifactTotalByteSize: 1, databaseHealth: 'healthy', migrationChainIdentity: 'a'.repeat(64) };
+    },
     async createValidatedPreMigrationPoint() {
       calls.push('createValidatedPreMigrationPoint');
       return 'point';

@@ -713,6 +713,30 @@ Kohderegressiot omistavat `desktopBeforeQuit.test.ts`,
 synteettisen hardened Windows packaged backup -> inspect -> restore ->
 restart -> compare -todennuksen ja muuttuneen revision muut nykyiset portit.
 
+### Palautuksen nimetty backend-sulku
+
+K:n `shutdownForRestore` / `stopForRestore()` käyttää samaa backendin
+strict-exit- ja reservation-todistusta kuin update, mutta vaatii saman
+restore-operaation suojan. Valmistunut business-käynnistys sekä suojan
+voimassaolo ennen ja jälkeen odottavan palvelinsulun ovat pakollisia.
+Update-suoja tai tavallinen onnistunut sulku ei korvaa restore-suojaa.
+Ensimmäisen pyynnön tarkoitus säilyy; update/restore-ristiriita tai eri
+operation mitätöi onnistumisen. Saman restore-pyynnön toisto ja tavallinen
+seuraaja odottavat alkuperäistä tulosta. Jokainen omistettu broker-sulku
+yritetään virheessäkin. Nykyinen strict-aikaraja ei muutu.
+
+[V2aj:n kohdenäyttö](release-0.3.0-m1-preparation-plan.md#v2aj-palautuksen-nimetty-backend-pysäytys)
+kattaa nimetyn commandin, runnerin ja lähettäjän sekä oikean development-
+utilityn, business-palvelimen, brokerin ja main-varauksen. Tämä rajapinta
+ei korvaa migraatioportin startup-sulkua tai hyväksy paketoitua palautusta.
+[V2ak:n kuluttajakytkentä](release-0.3.0-m1-preparation-plan.md#v2ak-native-stagingin-durable-handoff)
+asettaa native-slotin säilytysesteen ennen journal-kirjoitusta, vaatii exact-
+readbackin ja vapauttaa todistetun varauksen tiedostoja poistamatta ennen
+globaalia sulkua. Sekä ready- että pending-startup-kuluttaja on
+development-prosessiketjussa todennettu. Kuluttaja ei saa odottaa omaa
+aktivointiaan tarkistajan drainissa. Offline/cold-valtuus, lopullinen
+startup-hyväksyntä ja hardened-palautus ovat K:n avoimia portteja.
+
 Toteutusvaiheessa lisätään riskin mukaan vähintään:
 
 - main/preload IPC allowlist -yksikkötestit

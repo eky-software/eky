@@ -8,7 +8,10 @@ import type {
   Page,
 } from '@playwright/test';
 
-import { readElectronProcessMetrics } from '../../src/electron/electronMainCapabilities.js';
+import {
+  readElectronNativeAdapterSnapshot,
+  readElectronProcessMetrics,
+} from '../../src/electron/electronMainCapabilities.js';
 import { readElectronE2eActiveWorkspace } from '../../src/environment/readElectronE2eActiveWorkspace.js';
 import { createSyntheticCustomerInput } from '../../src/data/syntheticBusinessInputs.js';
 import {
@@ -507,6 +510,9 @@ test.describe('active workspace replacement confirmation cancellation', () => {
     e2eElectron,
   }) => {
     const fixture = requireWorkspaceBackupFixture(e2eElectron);
+    const nativeBefore = await readElectronNativeAdapterSnapshot(
+      e2eElectron.electronApp,
+    );
     const registryBefore = readWorkspaceRegistry(e2eElectron);
     const runtimeIdBefore = e2eElectron.runtime.runtimeInstanceId;
     const backupSha256Before = await sha256File(fixture.backupPath);
@@ -528,6 +534,12 @@ test.describe('active workspace replacement confirmation cancellation', () => {
         name: 'Korvaa tiedot varmuuskopiosta',
       }),
     ).toBeVisible();
+    expect(await readElectronNativeAdapterSnapshot(e2eElectron.electronApp))
+      .toMatchObject({
+        errorBoxCount: nativeBefore.errorBoxCount,
+        messageBoxCount: nativeBefore.messageBoxCount + 1,
+        openDialogCount: nativeBefore.openDialogCount + 1,
+      });
     expect(e2eElectron.runtime.runtimeInstanceId).toBe(runtimeIdBefore);
     expect(readWorkspaceRegistry(e2eElectron)).toBe(registryBefore);
     expect(await sha256File(fixture.backupPath)).toBe(backupSha256Before);

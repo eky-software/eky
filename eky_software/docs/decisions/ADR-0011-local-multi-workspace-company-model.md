@@ -618,18 +618,21 @@ Version N+1 first start toimii seuraavasti:
 2. työtilojen migraatiohistoriat tarkastetaan yksi kerrallaan read-only-tilassa
 3. vain aktiivinen työtila saa preMigration-palautuspisteen, migraation ja
    normaalin backend-readinessin first-startissa
-4. passiiviseen työtilaan ei kirjoiteta eikä sitä migroida hiljaisesti
+4. passiiviseen työtilaan ei tehdä business-kirjoituksia eikä sitä migroida
+   hiljaisesti; alla rajattu oman keskeytyneen SQLite-transaktion palautus
+   on tästä erillinen hyväksytty poikkeus
 5. passiivinen työtila migroidaan vasta ensimmäisellä aktivointiyrityksellä
    installation-scoped maintenance-leasen ja workspace-scoped
    preMigration-palautuspisteen takana
-6. tuntematon, future-, changed- tai missing-middle-historia estää kyseisen
-   passiivisen työtilan avaamisen ja asettaa sen `recoveryRequired`-tilaan;
-   muita työtiloja ei muuteta eikä virheellistä historiaa arvata
+6. epäluotettava schema tai migraatiohistoria keskeyttää koko inventaarion
+   ennen registry-siirtymiä; vain luotetun scheman ja historian jälkeen
+   todettu sisältövirhe saa passiivisen työtilan `recoveryRequired`-siirtymän;
+   yritysidentiteettiä tai historian puuttuvaa osaa ei arvata
 7. release hyväksytään aktiiviselle runtimelle vasta sen nykyisten
    first-start-porttien jälkeen; passiivisen `recoveryRequired`-työtilan tila
    näytetään turvallisesti ennen switchiä.
 
-W6A.1 toteuttaa tästä ketjusta vain read-only migration inventoryn. Se
+W6A.1 toteuttaa tästä ketjusta migration inventoryn. Se
 validoi strictin registry v1:n ja tarkastaa kaikki `ready`-työtilat
 sarjallisesti yksityisellä backend utility -prosessilla. Tarkastuksen suljetut
 tilat ovat:
@@ -638,10 +641,32 @@ tilat ovat:
   eikä puuttuvia migraatioita ole
 - `compatiblePending`: historia on katkeamaton immutable historiallinen
   prefix ja vähintään yksi nykyisen manifestin migraatio puuttuu
-- `invalidHistory`: historia on tuleva, muuttunut, aukollinen, duplikaatti,
-  tuntematon tai ristiriitainen taikka turvallisesti avatun SQLite-tiedoston
-  sisältö osoittautuu integrity- tai foreign key -tarkastuksessa
-  vioittuneeksi.
+- `invalidHistory`: ensin todennetun scheman ja immutable-migraatiohistorian
+  tietosisältö osoittautuu integrity- tai foreign key -tarkastuksessa
+  vioittuneeksi. Nimi säilyy nykyisessä tulossopimuksessa; se ei anna lupaa
+  käsitellä epäluotettavaa schemaa tai historiaa luotettuna työtilana.
+
+**K:n hyväksytty tarkennus 10.10.2026:** koko schema ja migraatiohistoria
+todennetaan ennen yritysidentiteetin tai business-taulujen lukua. Ylimääräinen
+tai muuttunut DDL, tuleva, muuttunut, aukollinen, duplikaatti tai tuntematon
+historia sekä rakenteen todentamisen epäonnistuminen keskeyttävät koko
+inventaarion. Historiallista schema-prefixiä ei päätellä epäluotettavan
+ledgerin tai identityn perusteella. Metadataless-backupin erillinen tuontituki
+ei ole julkaistun työtilan inventaarion poikkeus.
+
+**Paikallisen kaatumispalautuksen poikkeus, hyväksytty 10.10.2026:**
+mainin strictistä `ready`-entrystä johtama työtila, sama juuren identiteetti
+ja nykyinen elävä prosessivaraus voivat antaa vain tämän oman tietokannan
+SQLitelle luvan palauttaa kesken jäänyt rollback journal ennen schemaa.
+Vanha hallittu kirjoittaja on poistunut ennen varauksen luovutusta. Child
+tarkistaa täsmällisen profiililayoutin, varauksen ja peruutuksen uudelleen;
+pelkkä inventaario-operaation nimi tai path ei anna lupaa. Vain SQLite
+palauttaa journalin, ei sovelluksen oma tulkinta tai poistokoodi.
+Business-/identity-luku ja migraatiot jäävät täyden schema/history-portin
+taakse. Terve inventaario on edelleen vain lukuun; registry, accepted build
+ja artifactit eivät muutu. Tämä poikkeus ei koske tuontia, varmuuskopiota,
+palautuskohdetta tai epävarmaa omistajuutta. Toteutus ja hyväksyntänäytön
+rajat omistaa [M1:n V2u](../architecture/release-0.3.0-m1-preparation-plan.md#v2u-omistetun-paikallisen-työtilan-kaatumispalautus).
 
 Puuttuva tai turvaton workspace-juuri, puuttuva tai ei-kanoninen tietokanta,
 avaamaton storage, väärä `profileId` sekä utility-, protokolla- tai shutdown-
@@ -656,6 +681,14 @@ tilasiirtymä kuuluu W6A.2:n first-start-orchestraatioon. Myöhemmässä W6-
 ketjussa vain aktiivinen `compatiblePending` saa migraatio-oikeuden.
 Passiivinen `compatiblePending` säilyy `ready`-tilassa ja muuttumattomana
 ensimmäiseen hallittuun aktivointiinsa asti. `current` säilyy muuttumattomana.
+
+Inventaario ja sitä edeltävät tavalliset rekisterin luvut käyttävät
+sivuvaikutuksetonta slot-tarkastusta: nykyinen rekisteri on ensisijainen,
+sitten backup ja sitten next. Tarkastus ei julkaise valittua palautusslottia
+eikä poista muita slotteja. Epäkelpo ensisijainen slot estää tarkastuksen ilman
+fallback-arvausta. Aiemmin hyväksytty journalin omistama adoption-, switch-
+tai first-start-palautus on tästä erillinen auktoriteetti; sen nykyinen
+todennettu palautusjärjestys säilyy.
 
 W6A.2 jaetaan kahteen erilliseen hyväksyntärajaan:
 
@@ -707,6 +740,22 @@ eivät muodosta registry-siirtymää. Inventaarion pitää vastata täsmälleen
 strictin registry v1:n kaikkia ja vain `ready`-entryjä. Puuttuva, ylimääräinen,
 duplikaatti tai väärään active pointeriin sidottu entry estää koko
 suunnitelman.
+
+Omistaja hyväksyi 11.10.2026 rajatun poikkeuksen epäonnistuneen päivityksen
+täsmällisesti valitulle C-palautukselle. Käynnissä oleva target saa jättää
+vain uuden forward-inventaarion ja -valmistelun tekemättä, kun C-journalin
+`rollbackRequired`, `businessRollbackStarting` tai `businessRollbackCompleted`,
+target-identiteetti, hyväksytty source, palautuspisteviite ja alkuperäinen
+migraatioketju on sidottu tuoreeseen valintaan. Olemassa oleva W6-journal
+käsitellään ensin yllä olevan recovery-sopimuksen mukaan. Jatkettavaksi jäävä
+`prepared`-journal vaatii edelleen täsmälliset source/target-buildit,
+active-valinnan ja registry-tiivisteet. `rollbackOnly` ei anna migraatio-,
+registry-siirtymä-, target-hyväksyntä- tai UI-valtuutta. C tarkistaa sisällön
+ja alkuperäisketjun sekä varmistaa backendin pysähtymisen ennen binaaripalautusta.
+Muuttunut valinta tai ristiriitainen omistajuus estää jatkon; palautushaara
+ei saa pudota tavalliseen forward-käynnistykseen. Tavallinen seuraava
+forward-startup käyttää edelleen normaalia W6-inventaariota. Toteutusnäyttö
+ja avoimet loppuportit ovat [M1:n V2bh-kohdassa](../architecture/release-0.3.0-m1-preparation-plan.md#v2bh-journalittoman-cn-historiallinen-käynnistysadmissio).
 
 W6A.2A:n journalissa on vain operation-, source/target build-, active
 workspace-, passiivisten recovery-kohteiden, registry-tiivisteiden ja

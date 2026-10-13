@@ -235,6 +235,12 @@ GitHub Actions -CI:hin: `EKY_E2E=1`, `CI=true`, `GITHUB_ACTIONS=true`, nonroot-
 identiteetti sekä nykyisen systemd-/cgroup-eristyksen edellytykset tarkistetaan.
 Tämä ei ole paikallisen Linuxin tai WSL:n ajoreitti; älä jäljittele CI:tä
 ympäristömuuttujilla. Electron-fixture hyväksyy vain Windowsin.
+
+K:n [Linux-varmuuskopiotarkistus](../architecture/e2e-test-environment.md#linuxin-rajattu-varmuuskopiotarkistus)
+on tästä erillinen, nimetty tarkistusprosessin hyväksyntäpolku. Se ei ole
+moduulitestien uusi fixture eikä lupa ajaa Electron-käyttäjäpolkuja Linuxissa.
+Sen nykyinen CI-komento on `pnpm --filter @eky/desktop inspection:proof:linux`;
+todellinen Linux-Electron-todennus on vielä avoin.
 Web-worker hyväksyy vain headless-Chromiumin ilman channel- tai omia
 launchOptions-asetuksia; `DEBUG`, `PWDEBUG` ja `PW_TEST_REUSE_CONTEXT` torjutaan.
 

@@ -1,12 +1,37 @@
 import assert from 'node:assert/strict';
 import { lstat, readFile } from 'node:fs/promises';
+import { availableParallelism } from 'node:os';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+import desktopVitestConfig, { desktopTestWorkers } from '../vitest.config.mjs';
 
 const DESKTOP_ROOT = new URL('../', import.meta.url);
 const CI_ROOT = new URL('../../../../.github/', import.meta.url);
 const { classifyCiRisk } = await import(new URL('scripts/ciRiskPolicy.mjs', CI_ROOT));
 const { requiredCiJobs } = await import(new URL('scripts/ciJobCoverage.mjs', CI_ROOT));
 const { CI_WORKFLOWS, evaluateCiRun } = await import(new URL('scripts/ciRunAcceptance.mjs', CI_ROOT));
+
+for (const [parallelism, expected] of [[1, 1], [2, 1], [3, 2], [4, 3], [5, 4], [6, 4], [64, 4]]) {
+  test(`desktop run workers preserve the smaller default or cap at four for ${parallelism} available CPUs`, () => {
+    assert.equal(desktopTestWorkers(parallelism), expected);
+    assert.ok(desktopTestWorkers(parallelism) <= Math.max(parallelism - 1, 1));
+  });
+}
+
+test('ordinary desktop Vitest resolution applies only the approved worker limit', async () => {
+  const { resolveConfig } = await import('vitest/node');
+  const root = fileURLToPath(DESKTOP_ROOT);
+  const current = await resolveConfig({ root, run: true });
+  const baseline = await resolveConfig({ root, run: true, config: false });
+  const expected = desktopTestWorkers(availableParallelism());
+  assert.deepEqual(desktopVitestConfig, { test: { maxWorkers: expected } });
+  assert.equal(current.viteConfig.configFile, fileURLToPath(new URL('vitest.config.mjs', DESKTOP_ROOT)).replaceAll('\\', '/'));
+  assert.equal(current.vitestConfig.maxWorkers, expected);
+  for (const key of ['include', 'exclude', 'testTimeout', 'hookTimeout', 'retry', 'isolate', 'pool', 'fileParallelism']) {
+    assert.deepEqual(current.vitestConfig[key], baseline.vitestConfig[key], `Unrelated test setting changed: ${key}`);
+  }
+});
 
 const COMMANDS = {
   vitest: ['test', 0],
@@ -19,9 +44,14 @@ const REQUIRED_FILES = [
   ['e2e/electronE2eBackendRunner.test.ts', 'vitest'],
   ['e2e/electronE2eStartupHold.test.ts', 'vitest'],
   ['e2e/electronE2eWorkspaceStartupFailure.test.ts', 'vitest'],
+  ['scripts/electronE2eInspectionResource.test.ts', 'vitest'],
+  ['scripts/profileBackupSourceReceiptCompatibility.test.ts', 'vitest'],
+  ['e2e/w6b2PackagedWorkspaceMigrationHistory.test.ts', 'vitest'],
   ['e2e/workspaceProofReservation.test.ts', 'vitest'],
   ['scripts/test-command-wiring.test.mjs', 'node'],
+  ['scripts/profileInspection/linuxProfileInspection.test.mjs', 'node'],
   ['scripts/backendBuildMetadata.test.mjs', 'node'],
+  ['scripts/prepare-electron-e2e-backend.test.mjs', 'node'],
   ...[
     'cleanInstallUninstallContracts', 'cleanInstallUninstallLifecycle',
     'cleanInstallUninstallPayload', 'localImmutableInstallerFixture',
@@ -32,11 +62,24 @@ const REQUIRED_FILES = [
 const CI_EDGES = [
   { job: 'verify', name: 'Test, typecheck and build', gate: 'verify',
     step: 'Run tests', run: 'pnpm test' },
+  { job: 'verify', name: 'Test, typecheck and build', gate: 'verify',
+    step: 'Prepare Linux inspection Electron runtime', run: 'pnpm --filter @eky/desktop e2e:prepare-electron-runtime' },
+  { job: 'verify', name: 'Test, typecheck and build', gate: 'verify',
+    step: 'Verify Linux isolated profile inspection', environment: "        env:\n          EKY_E2E: '1'\n",
+    run: 'pnpm --filter @eky/desktop inspection:proof:linux' },
   { job: 'windows-contracts', name: 'Windows installer contract tests', gate: 'windowsContracts',
     step: 'Run deterministic installer tests', run: 'pnpm --filter @eky/desktop installer:test:unit' },
   { job: 'windows-contracts', name: 'Windows installer contract tests', gate: 'windowsContracts',
     step: 'Run Windows process-contract tests serially', run: 'pnpm --filter @eky/desktop installer:test:windows-process' },
 ];
+
+test('approved inspection source controls remain in the ordinary recursive test command', async () => {
+  const backend = JSON.parse(await readFile(new URL('../../backend/package.json', import.meta.url), 'utf8'));
+  const root = JSON.parse(await readFile(new URL('../../../package.json', import.meta.url), 'utf8'));
+  assert.equal(root.scripts.test, 'pnpm --recursive test');
+  assert.equal(backend.scripts.test, 'node --test scripts/build-profile-inspection-native.test.mjs && vitest run src e2e');
+  assert.equal((await lstat(new URL('../../backend/scripts/build-profile-inspection-native.test.mjs', import.meta.url))).isFile(), true);
+});
 
 test('startup exception exit proof uses the existing compiled owner and explicit opt-in failure wait', async () => {
   const desktop = JSON.parse(await readFile(new URL('package.json', DESKTOP_ROOT), 'utf8'));
@@ -91,6 +134,7 @@ function testFiles(command, prefix, extension) {
 function assertPackageWiring({ root, desktop, files }) {
   assert.equal(root.scripts.test, 'pnpm --recursive test');
   assert.equal(desktop.name, '@eky/desktop');
+  assert.equal(desktop.scripts['inspection:proof:linux'], 'node scripts/profileInspection/runLinuxProfileInspectionProof.mjs');
   const ordinary = commandChain(desktop.scripts.test, 2);
   const unit = commandChain(desktop.scripts['installer:test:unit'], 1);
   const process = commandChain(desktop.scripts['installer:test:windows-process'], 2);
@@ -153,7 +197,7 @@ function assertCiWiring({ core, caller, plan, coverage }) {
     property(header, 4, 'runs-on', edge.job === 'verify' ? 'ubuntu-latest' : 'windows-latest');
     property(header, 8, 'working-directory', 'eky_software');
     assert.doesNotMatch(header, /^    continue-on-error:/mu);
-    assert.equal(stepBlock(job, edge.step), `      - name: ${edge.step}\n        run: ${edge.run}`);
+    assert.equal(stepBlock(job, edge.step), `      - name: ${edge.step}\n${edge.environment ?? ''}        run: ${edge.run}`);
     const required = coverage[edge.gate].filter((entry) => entry.name === edge.name);
     assert.equal(required.length, 1, 'Required CI job coverage missing or duplicated');
     assert.equal(required[0].steps.filter((step) => step === edge.step).length, 1,

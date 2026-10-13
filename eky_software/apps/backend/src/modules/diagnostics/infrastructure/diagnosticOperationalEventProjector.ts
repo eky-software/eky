@@ -14,6 +14,8 @@ interface DesktopDiagnosticSpec {
 }
 
 const desktopDiagnosticSpecs = Object.freeze({
+  'workspaceBackup.operationFailed': spec('backup', 'error', 'failure'),
+  'workspaceBackup.cleanupFailed': spec('backup', 'error', 'failure'),
   'applicationWindow.loadFailed': spec(
     'applicationWindow',
     'error',
@@ -106,6 +108,7 @@ const desktopDiagnosticSpecs = Object.freeze({
   'recoveryPoint.failed': spec('recoveryPoint', 'warn', 'failure'),
   'recoveryPoint.started': spec('recoveryPoint', 'info', 'success'),
   'restore.activationFailed': spec('restore', 'error', 'failure'),
+  'restore.acceptanceFailed': spec('restore', 'error', 'failure'),
   'restore.activationStarted': spec('restore', 'info', 'success'),
   'restore.inspectionCompleted': spec('restore', 'info', 'success'),
   'restore.inspectionFailed': spec('restore', 'warn', 'failure'),
@@ -190,6 +193,8 @@ const recoveryPointKinds = new Set([
   'weekly',
 ]);
 const recoveryEventStages = Object.freeze({
+  'workspaceBackup.operationFailed': ['import', 'replace'],
+  'workspaceBackup.cleanupFailed': ['import', 'replace'],
   'backup.completed': ['portable'],
   'backup.failed': ['portable'],
   'backup.inspectionCompleted': ['portable'],
@@ -199,6 +204,7 @@ const recoveryEventStages = Object.freeze({
   'recoveryPoint.failed': ['automaticCheck', 'creation'],
   'recoveryPoint.started': ['creation'],
   'restore.activationFailed': ['activation'],
+  'restore.acceptanceFailed': ['acceptancePreparation', 'acceptanceCommit', 'acceptedCleanup'],
   'restore.activationStarted': ['activation'],
   'restore.inspectionCompleted': ['inspection'],
   'restore.inspectionFailed': ['inspection'],
@@ -206,6 +212,7 @@ const recoveryEventStages = Object.freeze({
   'restore.rollbackFailed': ['activationRollback', 'startupRollback'],
   'restore.rollbackStarted': ['activationRollback', 'startupRollback'],
   'restore.recoveryRequired': [
+    'activation',
     'activationRollback',
     'failedSafeJournal',
     'rolledBackProfile',
@@ -216,6 +223,10 @@ const recoveryEventStages = Object.freeze({
   'restore.validationCompleted': ['restoredProfile', 'rolledBackProfile'],
   'restore.validationFailed': ['restoredProfile', 'rolledBackProfile'],
 } as const);
+const recoveryStartEvents = new Set([
+  'backup.started', 'recoveryPoint.started',
+  'restore.activationStarted', 'restore.rollbackStarted',
+]);
 const timestampPattern =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 const monthPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -223,6 +234,15 @@ const buildRevisionPattern = /^(?:[0-9a-f]{7,40}|development)$/;
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const maximumEventBytes = 16 * 1024;
+const workspaceBackupFailureCodes = new Set([
+  'unknown', 'PROFILE_SCHEMA_UNSUPPORTED', 'MIGRATION_HISTORY_INVALID',
+  'PROFILE_INSPECTION_LIMIT_EXCEEDED', 'PROFILE_INSPECTION_TIMEOUT',
+  'PROFILE_INSPECTION_PROTOCOL_INVALID', 'PROFILE_INSPECTION_CLEANUP_UNVERIFIED',
+  'PROFILE_SNAPSHOT_DATABASE_INVALID', 'PROFILE_SNAPSHOT_MIGRATIONS_INVALID',
+  'PROFILE_SNAPSHOT_ARTIFACTS_INVALID', 'WORKSPACE_CANDIDATE_SOURCE_MISMATCH',
+  'WORKSPACE_CANDIDATE_DATABASE_CHANGED', 'WORKSPACE_CANDIDATE_DATABASE_INVALID',
+  'WORKSPACE_CANDIDATE_DATABASE_CLOSE_FAILED', 'WORKSPACE_CANDIDATE_OPERATION_CANCELLED',
+]);
 
 export function projectDiagnosticOperationalEvent(
   value: unknown,
@@ -404,7 +424,34 @@ function validateDesktopEvent(
   return value;
 }
 
+const restoreAcceptanceFailureCodes = new Set([
+  'PROFILE_SCHEMA_UNSUPPORTED', 'PROFILE_INSPECTION_LIMIT_EXCEEDED',
+  'PROFILE_INSPECTION_TIMEOUT', 'PROFILE_INSPECTION_PROTOCOL_INVALID',
+  'PROFILE_INSPECTION_CLEANUP_UNVERIFIED', 'PROFILE_RESTORE_RECOVERY_REQUIRED',
+]);
+
 function validateRecoveryEvent(value: Record<string, unknown>): void {
+  if (value.eventName === 'restore.acceptanceFailed' && (
+    !isNonNegativeInteger(value.durationMs) || typeof value.errorCode !== 'string' ||
+    !restoreAcceptanceFailureCodes.has(value.errorCode) ||
+    value.retryable !== false || value.sideEffectState !== 'unknown'
+  )) {
+    throw new Error('Diagnostic restore acceptance failure is invalid.');
+  }
+  if (typeof value.eventName === 'string' && value.eventName.startsWith('workspaceBackup.')) {
+    const fields = new Set([
+      'appVersion', 'buildRevision', 'category', 'component', 'correlationId',
+      'durationMs', 'errorCode', 'eventId', 'eventName', 'level', 'outcome',
+      'retryable', 'runtimeInstanceId', 'schemaVersion', 'sideEffectState',
+      'stage', 'timestamp',
+    ]);
+    if (Object.keys(value).some(key => !fields.has(key)) ||
+      typeof value.errorCode !== 'string' || !workspaceBackupFailureCodes.has(value.errorCode) ||
+      !isNonNegativeInteger(value.durationMs) || value.retryable !== false ||
+      (value.sideEffectState !== 'none' && value.sideEffectState !== 'unknown')) {
+      throw new Error('Diagnostic workspace backup failure is invalid.');
+    }
+  }
   if (
     typeof value.eventName !== 'string' ||
     !(value.eventName in recoveryEventStages)
@@ -421,6 +468,24 @@ function validateRecoveryEvent(value: Record<string, unknown>): void {
     !stages.includes(value.stage)
   ) {
     throw new Error('Diagnostic recovery event is invalid.');
+  }
+
+  if (!value.eventName.startsWith('workspaceBackup.')) {
+    const allowedFields = new Set([
+      'appVersion', 'buildRevision', 'category', 'component', 'correlationId',
+      'eventId', 'eventName', 'level', 'outcome', 'runtimeInstanceId',
+      'schemaVersion', 'stage', 'timestamp',
+      ...(value.outcome === 'failure'
+        ? ['durationMs', 'errorCode', 'fingerprint', 'retryable', 'sideEffectState']
+        : recoveryStartEvents.has(value.eventName) ? [] : ['durationMs']),
+      ...(value.category === 'recoveryPoint' ? ['recoveryPointKind'] : []),
+    ]);
+    if (Object.keys(value).some(key => !allowedFields.has(key)) ||
+      (value.outcome === 'failure'
+        ? !isSafeIdentifier(value.errorCode, 120)
+        : value.errorCode !== undefined)) {
+      throw new Error('Diagnostic recovery event fields are invalid.');
+    }
   }
 
   if (

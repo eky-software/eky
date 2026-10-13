@@ -63,6 +63,10 @@ Mandatory boundaries:
   but must not reopen business writes; assertions require a drained, valid
   operation, and awaited results must recheck their captured owner before
   acknowledgement (see the [update fence contract](../../docs/architecture/local-backup-and-restore-plan.md#päivityksen-kirjoitussuojan-erillinen-vapautussääntö))
+- keep restore maintenance distinct from update and ordinary backup ownership:
+  expiry, disconnect or confirmed journal uncertainty invalidates continuation,
+  not the business-write fence; exact-owner invalidation must not queue behind
+  awaited work (see the [restore fence contract](../../docs/architecture/local-backup-and-restore-plan.md#palautuksen-kirjoitussuojan-erillinen-vapautussääntö))
 - when changing local workspace registry, creation, import, replacement,
   switching or adoption, read ADR-0011 and the local company workspace plan;
   Electron main may coordinate lifecycle and filesystem roots but must not
@@ -88,7 +92,11 @@ Mandatory boundaries:
 - active exact-lineage replacement remains outside the renderer contract
   until W5B.2, and workspace deletion remains deferred to W7
 - W6A.1 may inventory only strict-registry `ready` workspaces, serially and
-  read-only through a private backend utility; Electron main must not open
+  read-only through a private backend utility, except for the explicitly
+  approved [owned-local hot-journal recovery](../../docs/architecture/release-0.3.0-m1-preparation-plan.md#v2u-omistetun-paikallisen-työtilan-kaatumispalautus)
+  before schema attestation: only a live, reserved, canonical registered local
+  root may use SQLite's native rollback; imported backups, staging and
+  restore/rollback validation receive no exception. Electron main must not open
   SQLite, and preload, renderer, web and public HTTP must not receive the
   inventory capability or private paths
 - W6A.1 must not write the registry, migrate a workspace, create a recovery
@@ -111,6 +119,12 @@ Mandatory boundaries:
   while the existing `FirstStartUpdateCoordinator` alone authorizes the active
   workspace preMigration point, pending migrations, backend readiness and
   target-build acceptance
+- only the explicitly selected C rollback-only startup may defer new W6 forward
+  inventory/preparation under the [approved exception](../../docs/decisions/ADR-0011-local-multi-workspace-company-model.md);
+  existing W6 recovery, exact prepared-journal hashes and fresh C/source-build
+  checks remain mandatory. This branch cannot transition the registry, accept
+  the target, migrate forward or open business UI; it must prove content and
+  backend exit before binary rollback. See [current K evidence](../../docs/architecture/release-0.3.0-m1-preparation-plan.md#v2bi-cn-palautuksen-rajattu-w6-valmistelu)
 - use one main-owned installation-scoped `WorkspaceMaintenanceLease` for
   backup, restore, update and workspace ownership changes; keep each module's
   narrower local guard and preserve the documented lock order
@@ -145,6 +159,26 @@ Mandatory boundaries:
   before any later health/session check; rollback may replace profile files
   only after backend shutdown succeeds, otherwise retain recovery evidence
   and keep business UI closed
+- bind restore acceptance, rollback and terminal cleanup to the frozen selected
+  journal; a fresh repairing read is not permission to select a different
+  operation. Ordinary interrupted-forward recovery must verify exact phase and
+  revision progression plus the current slot census before rollback; cold
+  forward admission never grants this fallback. Remove lower journal slots
+  before the authoritative current slot (see
+  [terminal journal binding](../../docs/architecture/release-0.3.0-m1-preparation-plan.md#v2at-loppuvaiheen-journal-sidonta)).
+- live restore acceptance uses the existing exact-owner write fence, a fresh
+  isolated snapshot receipt, the installation lease and separately claimed
+  cleanup roots; never infer deletion authority from census or an expired cold
+  receipt. Recheck authority after awaited journal/census reads. Accepted cold
+  selection preserves journal side slots until fresh live validation; cleanup
+  failure is not rollback permission (see
+  [live terminal contract](../../docs/architecture/release-0.3.0-m1-preparation-plan.md#v2bb-live-terminalin-tuore-valtuus)).
+- interrupted rollback must distinguish the retained target from the original
+  active/rollback slot or journal-proven original absence before every move and
+  terminal cleanup; final staging-root relocation requires restored originals.
+  Missing, duplicate or linked slots retain the journal and evidence. This
+  census is not schema, content, lineage or native recovery authority (see
+  [rollback slot selection](../../docs/architecture/release-0.3.0-m1-preparation-plan.md#v2au-keskeytyneen-rollbackin-slot-valinta)).
 - failed backend startup before a returned handle still owns its process;
   recovery requires observed absence and a settled migration callback, or
   proof that startup was never attempted; missing handles and kill return

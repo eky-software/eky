@@ -28,6 +28,7 @@ export function createWorkspaceBackupReplacementFixture(options?: {
   readonly lifecycleState?: 'ready' | 'recoveryRequired';
   readonly profileId?: string;
   readonly useRuntimeHandoff?: boolean;
+  readonly userDataRoot?: string;
 }) {
   const events: string[] = [];
   const targetProfileId = options?.profileId ?? TEST_REPLACEMENT_PROFILE_ID;
@@ -233,9 +234,24 @@ export function createWorkspaceBackupReplacementFixture(options?: {
       };
       return this.journal;
     },
+    async assertForwardRecoveryState() {
+      throw new Error('SYNTHETIC_LIVE_ACTIVATION_HAS_NO_COLD_AUTHORITY');
+    },
+    async readForwardRecoverySources() {
+      throw new Error('SYNTHETIC_LIVE_ACTIVATION_HAS_NO_COLD_AUTHORITY');
+    },
     async accept() {
       events.push('activation.accept');
       if (this.fail === 'accept') throw new Error('private activation');
+      this.journal = undefined;
+    },
+    async commitAcceptance() {
+      if (this.journal?.phase !== 'validationStarting') throw new Error('missing');
+      this.journal = { ...this.journal, phase: 'accepted', revision: this.journal.revision + 1 };
+      return this.journal;
+    },
+    async clearAccepted() {
+      if (this.journal?.phase !== 'accepted') throw new Error('missing');
       this.journal = undefined;
     },
     async rollback() {
@@ -311,7 +327,7 @@ export function createWorkspaceBackupReplacementFixture(options?: {
     rootStore,
     ...(options?.useRuntimeHandoff === true ? { runtimeHandoff } : {}),
     runtimeReadiness,
-    userDataRoot: TEST_REPLACEMENT_USER_DATA_ROOT,
+    userDataRoot: options?.userDataRoot ?? TEST_REPLACEMENT_USER_DATA_ROOT,
     workspaceRuntimeAbsence: runtimeAbsence,
   });
 

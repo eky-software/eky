@@ -78,8 +78,8 @@ type FirstStartMode =
   | { kind: 'initialInstall' | 'normal' };
 
 export class FirstStartUpdateError extends Error {
-  constructor() {
-    super('The installed Eky build could not be accepted safely.');
+  constructor(options?: ErrorOptions) {
+    super('The installed Eky build could not be accepted safely.', options);
     this.name = 'FirstStartUpdateError';
   }
 }
@@ -224,7 +224,7 @@ export class FirstStartUpdateCoordinator {
       await this.markRollbackRecoveryRequired(rollbackJournal);
       await this.markDirectSetupRecoveryRequired(directSetupRecovery);
       this.notifyOperationFailed();
-      throw new FirstStartUpdateError();
+      throw new FirstStartUpdateError({ cause: error });
     }
   }
 
@@ -328,7 +328,8 @@ export class FirstStartUpdateCoordinator {
       if (acceptedDirectSetupRecovery !== undefined) {
         await this.dependencies.directSetupRecoveryStore.clear();
       }
-    } catch {
+    } catch (error) {
+      try { this.dependencies.observeStartupException?.(error); } catch { /* Optional private evidence. */ }
       await this.markRollbackRequired(coordinatedJournal);
       await this.markInstallerNotAppliedFailedSafe(
         mode.kind === 'installerNotApplied' ? mode.journal : undefined,
@@ -340,7 +341,7 @@ export class FirstStartUpdateCoordinator {
         mode.kind === 'directSetup' ? mode.recovery : undefined,
       );
       this.notifyOperationFailed();
-      throw new FirstStartUpdateError();
+      throw new FirstStartUpdateError({ cause: error });
     }
 
     await this.releaseRecoveryPointProtectionAfterAcceptance(mode);

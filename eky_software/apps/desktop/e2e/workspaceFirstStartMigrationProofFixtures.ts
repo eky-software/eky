@@ -438,13 +438,25 @@ export async function validateWorkspaceFirstStartProofHistoricalFixture(
   });
 }
 
-export async function corruptWorkspaceFirstStartProofDatabase(
-  fixture: Readonly<WorkspaceFirstStartProofFixture>,
+export async function invalidateWorkspaceFirstStartProofContent(
+  fixture: Readonly<Pick<WorkspaceFirstStartProofFixture, 'databaseFilePath'>>,
 ): Promise<void> {
-  await writeFile(fixture.databaseFilePath, 'not a sqlite database', {
-    encoding: 'utf8',
-    mode: 0o600,
-  });
+  const database = new DatabaseSync(fixture.databaseFilePath);
+  try {
+    database.exec(`
+      PRAGMA foreign_keys = OFF;
+      INSERT INTO invoice_payment_events (
+        id, company_id, invoice_id, actor_user_id, action, payment_source,
+        paid_on, amount_cents, occurred_at
+      ) VALUES (
+        'synthetic-orphan-payment', 'synthetic-company', 'missing-invoice',
+        'synthetic-actor', 'paymentMarkedPaid', 'manual',
+        '2026-01-01', 1, '2026-01-01T00:00:00.000Z'
+      );
+    `);
+  } finally {
+    database.close();
+  }
 }
 
 export async function snapshotWorkspaceFirstStartProofFile(

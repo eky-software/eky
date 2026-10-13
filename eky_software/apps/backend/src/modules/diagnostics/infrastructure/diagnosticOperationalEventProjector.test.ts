@@ -15,6 +15,97 @@ const smtpEventNames = [
 ] as const satisfies readonly BackendOperationalEventName[];
 
 describe('projectDiagnosticOperationalEvent', () => {
+  it.each(['acceptancePreparation', 'acceptanceCommit', 'acceptedCleanup'])(
+    'projects only closed acceptance failure data at %s', stage => {
+      const event = { ...createDesktopRestoreFailureEvent({ durationMs: 1,
+        errorCode: 'PROFILE_RESTORE_RECOVERY_REQUIRED', eventName: 'restore.recoveryRequired', stage: 'activation' }),
+        eventName: 'restore.acceptanceFailed', stage, errorCode: 'PROFILE_INSPECTION_TIMEOUT' };
+      expect(projectDiagnosticOperationalEvent(event)).toMatchObject({
+        eventName: 'restore.acceptanceFailed', stage, errorCode: 'PROFILE_INSPECTION_TIMEOUT',
+        retryable: false, sideEffectState: 'unknown',
+      });
+      for (const change of [
+        { stage: 'restoredProfile' }, { correlationId: undefined }, { durationMs: undefined },
+        { errorCode: 'PRIVATE_CODE' }, { retryable: undefined }, { retryable: true },
+        { sideEffectState: undefined }, { sideEffectState: 'committed' },
+        { companyId: 'synthetic-company' }, { rawError: 'synthetic raw error' },
+      ]) expect(projectDiagnosticOperationalEvent({ ...event, ...change })).toBeNull();
+    },
+  );
+
+  it.each([
+    { entityId: 'synthetic-entity' }, { entityType: 'invoice' },
+    { frameClass: 'main' }, { originClass: 'internal' },
+    { permissionType: 'media' }, { deletedByteCount: 1 }, { deletedFileCount: 1 },
+    { oldestRemainingMonth: '2026-10' }, { recoveryPointKind: 'daily' },
+    { errorCode: undefined }, { errorCode: 'A'.repeat(121) },
+  ])('rejects cross-family or missing failure metadata %j', change => {
+    const event = createDesktopBackupEvent({
+      errorCode: 'PROFILE_SCHEMA_UNSUPPORTED', eventName: 'backup.failed',
+      level: 'error', outcome: 'failure', retryable: false, sideEffectState: 'unknown',
+    });
+    expect(projectDiagnosticOperationalEvent(JSON.parse(JSON.stringify({ ...event, ...change })))).toBeNull();
+  });
+
+  it.each([
+    { errorCode: 'PROFILE_SCHEMA_UNSUPPORTED' },
+    { fingerprint: 'profile.failure:PROFILE_SCHEMA_UNSUPPORTED' },
+    { retryable: false }, { sideEffectState: 'unknown' },
+  ])('rejects failure fields on successful recovery events %j', change => {
+    const event = createDesktopRecoveryEvent();
+    expect(projectDiagnosticOperationalEvent({ ...event, ...change })).toBeNull();
+  });
+
+  it('keeps legacy optional fields and the allowed failure fingerprint', () => {
+    const event = createDesktopBackupEvent({
+      errorCode: 'unknown', eventName: 'backup.failed', level: 'error',
+      outcome: 'failure', retryable: false, sideEffectState: 'unknown',
+    });
+    const legacy = JSON.parse(JSON.stringify({
+      ...event, durationMs: undefined, retryable: undefined, sideEffectState: undefined,
+      fingerprint: 'backup.failed:unknown',
+    }));
+    expect(projectDiagnosticOperationalEvent(legacy)).toMatchObject({
+      errorCode: 'unknown', fingerprint: 'backup.failed:unknown', stage: 'portable',
+    });
+  });
+
+  it('rejects elapsed duration on started recovery events', () => {
+    const event = {
+      ...createDesktopRecoveryEvent(), eventName: 'recoveryPoint.started',
+    };
+    expect(projectDiagnosticOperationalEvent(event)).toBeNull();
+    const valid = JSON.parse(JSON.stringify({ ...event, durationMs: undefined }));
+    expect(projectDiagnosticOperationalEvent(valid)).toMatchObject({
+      eventName: 'recoveryPoint.started', recoveryPointKind: 'preRestore',
+    });
+  });
+
+  it.each(['workspaceBackup.operationFailed', 'workspaceBackup.cleanupFailed'])(
+    'retains %s with only its closed technical context', eventName => {
+      const event = {
+        appVersion: '0.2.81', buildRevision: 'development', category: 'backup',
+        component: 'desktop', correlationId: '22222222-2222-4222-8222-222222222222',
+        durationMs: 1, errorCode: 'PROFILE_SCHEMA_UNSUPPORTED', eventId: 'safe-failure',
+        eventName, level: 'error', outcome: 'failure', retryable: false,
+        runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+        schemaVersion: 1, sideEffectState: 'unknown', stage: 'import',
+        timestamp: '2026-10-09T10:00:00.000Z',
+      };
+      expect(projectDiagnosticOperationalEvent(event)).toMatchObject({ eventName, errorCode: 'PROFILE_SCHEMA_UNSUPPORTED', stage: 'import' });
+      expect(projectDiagnosticOperationalEvent({ ...event, errorCode: 'unknown' }))
+        .toMatchObject({ errorCode: 'unknown' });
+      for (const invalid of [
+        { errorCode: 'syntheticPrivateIdentifier' }, { stage: 'privatePhase' },
+        { correlationId: undefined }, { durationMs: undefined },
+        { retryable: true }, { sideEffectState: 'rolledBack' },
+        { entityId: 'synthetic-private' }, { rawError: 'private' },
+      ]) {
+        expect(projectDiagnosticOperationalEvent({ ...event, ...invalid })).toBeNull();
+      }
+    },
+  );
+
   it.each(smtpEventNames)(
     'projects safe SMTP metadata without transport routing fields for %s',
     (eventName) => {
@@ -170,6 +261,12 @@ describe('projectDiagnosticOperationalEvent', () => {
       errorCode: 'PROFILE_RESTORE_RECOVERY_REQUIRED',
       eventName: 'restore.recoveryRequired',
       stage: 'failedSafeJournal',
+    },
+    {
+      durationMs: undefined,
+      errorCode: 'PROFILE_RESTORE_RECOVERY_REQUIRED',
+      eventName: 'restore.recoveryRequired',
+      stage: 'activation',
     },
   ] as const)('projects closed restore metadata for $eventName', (fields) => {
     expect(

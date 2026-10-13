@@ -7,6 +7,7 @@ import {
   type MigrationManifestEntry,
 } from './migrationManifest.js';
 import { MigrationRunError } from './migrationRunError.js';
+import { inspectAttestedMigrationHistory } from './inspectAttestedMigrationHistory.js';
 import {
   prepareMigrationHistoryForRun,
   recordAppliedMigrationMetadata,
@@ -53,6 +54,10 @@ export async function runMigrations(
   let appliedMigrationNames: Set<string>;
   try {
     const initialRecordedAt = readRecordedAt(now);
+    inspectAttestedMigrationHistory(database, manifest, {
+      allowEmpty: true,
+      legacyPolicy: 'runnerBaseline',
+    });
     appliedMigrationNames = prepareMigrationHistoryForRun(
       database,
       manifest,
@@ -99,6 +104,17 @@ export async function runMigrations(
         failureStage: 'migrationExecution',
       });
     }
+  }
+
+  try {
+    inspectAttestedMigrationHistory(database, manifest);
+  } catch {
+    // Earlier migrations are already committed; never report a zero-count failure here.
+    throw new MigrationRunError({
+      completedMigrationCount,
+      errorCode: 'MIGRATION_EXECUTION_FAILED',
+      failureStage: 'migrationExecution',
+    });
   }
 }
 

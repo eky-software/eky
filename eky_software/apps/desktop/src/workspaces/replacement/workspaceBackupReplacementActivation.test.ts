@@ -151,6 +151,13 @@ describe('workspace backup replacement activation', () => {
       const recovery = new ProfileRestoreStartupRecovery({
         journalStore: fixture.journalStore,
         transaction: resumed,
+        async withRollbackAuthority(journal, use) {
+          await resumed.prepareColdRollbackAnchor(journal, async () => {}, async () => {});
+          await use({ kind: 'rollback', journal, async assertCurrent() {},
+            async assertContent(current) { await resumed.readRollbackRecoverySources(current); },
+            async beforeStagingMove() {},
+          });
+        },
       });
       const mode = await recovery.prepareBeforeBackend();
       await expect(

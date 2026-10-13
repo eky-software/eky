@@ -8,9 +8,10 @@ export type DatabaseConnection = Database.Database;
 
 export interface CreateDatabaseConnectionOptions {
   databaseFilePath?: string;
+  fileMustExist?: boolean;
 }
 
-function getDatabaseFilePath(
+export function resolveDatabaseFilePath(
   configuredPath = process.env.DATABASE_FILE_PATH,
 ): string {
   const trimmedPath = configuredPath?.trim();
@@ -25,10 +26,14 @@ function getDatabaseFilePath(
 export function createDatabaseConnection(
   options: CreateDatabaseConnectionOptions = {},
 ): DatabaseConnection {
-  const databaseFilePath = getDatabaseFilePath(options.databaseFilePath);
-  mkdirSync(dirname(databaseFilePath), { recursive: true });
+  const databaseFilePath = resolveDatabaseFilePath(options.databaseFilePath);
+  if (options.fileMustExist !== true) {
+    mkdirSync(dirname(databaseFilePath), { recursive: true });
+  }
 
-  const sqliteDatabase = new Database(databaseFilePath);
+  const sqliteDatabase = new Database(databaseFilePath, {
+    fileMustExist: options.fileMustExist === true,
+  });
   sqliteDatabase.pragma('foreign_keys = ON');
 
   return sqliteDatabase;

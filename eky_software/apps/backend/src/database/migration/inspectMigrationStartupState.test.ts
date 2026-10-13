@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createDatabaseConnection } from '../connection/createDatabaseConnection.js';
 import { inspectMigrationStartupState } from './inspectMigrationStartupState.js';
@@ -19,6 +19,7 @@ const temporaryRoots: string[] = [];
 
 describe('inspectMigrationStartupState', () => {
   afterEach(async () => {
+    vi.restoreAllMocks();
     const { rm } = await import('node:fs/promises');
     await Promise.all(
       temporaryRoots.splice(0).map((root) =>
@@ -88,6 +89,56 @@ describe('inspectMigrationStartupState', () => {
       inspectMigrationStartupState(database, fixture.migrationsDirectory),
     ).toThrow('MIGRATION_STARTUP_INSPECTION_FAILED');
     database.close();
+  });
+
+  it('does not classify a view-only database as an empty new profile', async () => {
+    const fixture = await createFixture(1);
+    const database = createDatabaseConnection({ databaseFilePath: fixture.databaseFilePath });
+    try {
+      database.exec('CREATE VIEW unexpected_view AS SELECT 1 AS id;');
+      const writes = vi.spyOn(database, 'exec');
+
+      expect(() => inspectMigrationStartupState(database, fixture.migrationsDirectory))
+        .toThrow('MIGRATION_STARTUP_INSPECTION_FAILED');
+      expect(writes).not.toHaveBeenCalled();
+      expect(database.pragma('query_only', { simple: true })).toBe(0);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('rejects an extra trigger despite valid migration history without executing it', async () => {
+    const fixture = await createFixture(1);
+    const database = createDatabaseConnection({ databaseFilePath: fixture.databaseFilePath });
+    try {
+      await runMigrations(database, { migrationsDirectory: fixture.migrationsDirectory });
+      database.exec(`CREATE TRIGGER unexpected_trigger BEFORE INSERT ON probe_1
+        BEGIN SELECT RAISE(ABORT, 'untrusted trigger'); END;`);
+      const writes = vi.spyOn(database, 'exec');
+
+      expect(() => inspectMigrationStartupState(database, fixture.migrationsDirectory))
+        .toThrow('MIGRATION_STARTUP_INSPECTION_FAILED');
+      expect(writes).not.toHaveBeenCalled();
+      expect(database.pragma('query_only', { simple: true })).toBe(0);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('rejects a replaced history relation before querying its rows', async () => {
+    const fixture = await createFixture(1);
+    const database = createDatabaseConnection({ databaseFilePath: fixture.databaseFilePath });
+    try {
+      database.exec('CREATE VIEW schema_migrations AS SELECT 1 AS name, 1 AS run_at;');
+      const statements = vi.spyOn(database, 'prepare');
+
+      expect(() => inspectMigrationStartupState(database, fixture.migrationsDirectory))
+        .toThrow('MIGRATION_STARTUP_INSPECTION_FAILED');
+      expect(statements.mock.calls.map(([sql]) => sql).join('\n'))
+        .not.toMatch(/FROM\s+(?:main\.)?schema_migrations\b/i);
+    } finally {
+      database.close();
+    }
   });
 
   it('fails closed when stored migration metadata no longer matches the source', async () => {

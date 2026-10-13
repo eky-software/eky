@@ -3,11 +3,13 @@ import {
   desktopOperationalEventSpecs,
   desktopRequiredPayloadFields,
   recoveryPointKinds,
+  restoreAcceptanceFailureCodes,
   updateOperationalStages,
   type DesktopPermissionType,
   type DesktopOperationalEvent,
   type DesktopOperationalEventName,
 } from './desktopOperationalEvent.js';
+import { workspaceCandidateFailureCauses } from '../runtime/workspaceCandidateMessages.js';
 
 const coreFields = new Set([
   'appVersion',
@@ -42,7 +44,9 @@ const buildRevisionPattern = /^(?:[0-9a-f]{7,40}|development)$/;
 const permissionTypes = new Set(desktopPermissionTypes);
 const recoveryPointKindSet = new Set<string>(recoveryPointKinds);
 const updateOperationalStageSet = new Set<string>(updateOperationalStages);
-const recoveryEventStages = Object.freeze({
+export const desktopRecoveryEventStages = Object.freeze({
+  'workspaceBackup.operationFailed': ['import', 'replace'],
+  'workspaceBackup.cleanupFailed': ['import', 'replace'],
   'backup.started': ['portable'],
   'backup.completed': ['portable'],
   'backup.failed': ['portable'],
@@ -65,6 +69,7 @@ const recoveryEventStages = Object.freeze({
     'restoredProfile',
     'rolledBackProfile',
   ],
+  'restore.acceptanceFailed': ['acceptancePreparation', 'acceptanceCommit', 'acceptedCleanup'],
   'restore.rollbackStarted': [
     'activationRollback',
     'startupRollback',
@@ -78,6 +83,7 @@ const recoveryEventStages = Object.freeze({
     'startupRollback',
   ],
   'restore.recoveryRequired': [
+    'activation',
     'activationRollback',
     'failedSafeJournal',
     'rolledBackProfile',
@@ -178,6 +184,19 @@ function validateRecoveryEventSemantics(
   eventName: DesktopOperationalEventName,
   event: Record<string, unknown>,
 ): void {
+  if (eventName === 'restore.acceptanceFailed' && (
+    typeof event.errorCode !== 'string' || !restoreAcceptanceFailureCodes.includes(event.errorCode) ||
+    event.retryable !== false || event.sideEffectState !== 'unknown'
+  )) {
+    throw new DesktopOperationalEventValidationError('Desktop operational acceptance failure is invalid.');
+  }
+  if (eventName.startsWith('workspaceBackup.') && (
+    !workspaceCandidateFailureCauses.some(code => code === event.errorCode) ||
+    event.retryable !== false ||
+    (event.sideEffectState !== 'none' && event.sideEffectState !== 'unknown')
+  )) {
+    throw new DesktopOperationalEventValidationError('Workspace backup failure is invalid.');
+  }
   if (
     eventName === 'restore.recoveryRequired' &&
     (event.errorCode !== 'PROFILE_RESTORE_RECOVERY_REQUIRED' ||
@@ -247,9 +266,9 @@ function validatePayloadValue(
     return;
   }
 
-  if (field === 'stage' && eventName in recoveryEventStages) {
-    const allowedStages = recoveryEventStages[
-      eventName as keyof typeof recoveryEventStages
+  if (field === 'stage' && eventName in desktopRecoveryEventStages) {
+    const allowedStages = desktopRecoveryEventStages[
+      eventName as keyof typeof desktopRecoveryEventStages
     ] as readonly string[];
     if (typeof value !== 'string' || !allowedStages.includes(value)) {
       throw new DesktopOperationalEventValidationError(

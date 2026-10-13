@@ -7,14 +7,16 @@ import { readLocalRuntimeIdentity } from '../../database/localRuntimeIdentityRea
 import type { MigrationHistoryInspection } from '../../database/migration/migrationMetadata.js';
 import { selectInvoiceBackupArtifactCatalogSchema } from '../../modules/invoicing/infrastructure/selectInvoiceBackupArtifactCatalogSchema.js';
 import { SqliteInvoiceBackupArtifactCatalog } from '../../modules/invoicing/infrastructure/sqliteInvoiceBackupArtifactCatalog.js';
-import type { InvoiceBackupArtifactCatalogItem } from '../../modules/invoicing/ports/invoiceBackupArtifactCatalog.js';
+import {
+  invoiceBackupArtifactMaximumCount as maximumArtifactCount,
+  type InvoiceBackupArtifactCatalogItem,
+} from '../../modules/invoicing/ports/invoiceBackupArtifactCatalog.js';
 import type {
   ActiveProfileValidationMetadata,
   ActiveProfileValidationService,
 } from './profileSnapshotTypes.js';
 import { createProfileBackupIdentity } from './inspectSqliteProfileDatabase.js';
 
-const maximumArtifactCount = 100_000;
 const maximumInvoicePdfBytes = 10 * 1024 * 1024;
 const maximumProfileArtifactBytes = 20 * 1024 * 1024 * 1024;
 const maximumStoragePathBytes = 1_024;
@@ -42,10 +44,8 @@ export class CurrentActiveProfileValidationService
         'integrity_check',
         { simple: true },
       );
-      const foreignKeyRows = this.database.pragma(
-        'foreign_key_check',
-      ) as unknown[];
-      if (integrityResult !== 'ok' || foreignKeyRows.length !== 0) {
+      const foreignKeyFailure = this.database.prepare('PRAGMA foreign_key_check').get();
+      if (integrityResult !== 'ok' || foreignKeyFailure !== undefined) {
         throw new Error('ACTIVE_PROFILE_VALIDATION_FAILED');
       }
 

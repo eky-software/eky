@@ -68,6 +68,7 @@ export function createWorkspaceBackupImportCoordinatorFixture(
   options: {
     readonly duplicateLineage?: boolean;
     readonly emptyRegistry?: boolean;
+    readonly userDataRoot?: string;
   } = {},
 ) {
   const events: string[] = [];
@@ -112,7 +113,7 @@ export function createWorkspaceBackupImportCoordinatorFixture(
     plaintextQuarantine,
     registry,
     rootStore: root,
-    userDataRoot: TEST_IMPORT_USER_DATA_ROOT,
+    userDataRoot: options.userDataRoot ?? TEST_IMPORT_USER_DATA_ROOT,
     workspaceRuntimeAbsence: runtimeAbsence,
   });
 

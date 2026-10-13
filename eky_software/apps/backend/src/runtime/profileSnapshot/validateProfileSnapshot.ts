@@ -1,247 +1,72 @@
-import {
-  promises as fileSystem,
-} from 'node:fs';
-import {
-  isAbsolute,
-  join,
-  relative,
-  resolve,
-  sep,
-  toNamespacedPath,
-} from 'node:path';
+import { toNamespacedPath } from 'node:path';
 
 import Database from 'better-sqlite3';
 
-import type { DatabaseConnection } from '../../database/connection/createDatabaseConnection.js';
-import { readLocalRuntimeIdentity } from '../../database/localRuntimeIdentityReader.js';
-import {
-  createProfileBackupIdentity,
-  inspectSqliteProfileDatabase,
-} from './inspectSqliteProfileDatabase.js';
+import { createMigrationSchemaReferences } from '../../database/migration/migrationSchemaReference.js';
+import { StagedProfileSnapshotInspector } from './inspectStagedProfileSnapshot.js';
 import type {
+  ProfileInspectionContextReader,
   ProfileSnapshotValidationMetadata,
   ProfileRestoreActivationPreparationMetadata,
   ProfileSnapshotValidationService,
 } from './profileSnapshotTypes.js';
-import { isActiveProfileRestoreTargetEmpty } from './inspectActiveProfileRestoreTarget.js';
-import { validateProfileArtifactCatalog } from './validateProfileArtifactCatalog.js';
-import { selectInvoiceBackupArtifactCatalogSchema } from '../../modules/invoicing/infrastructure/selectInvoiceBackupArtifactCatalogSchema.js';
-import { materializeValidatedProfileArtifacts } from './materializeValidatedProfileArtifacts.js';
 
-const operationIdPattern =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const databaseLogicalPath = 'profile.sqlite';
-const activationDocumentsLogicalPath = join(
-  'activation',
-  'storage',
-  'invoices',
-);
-
+// The existing broker keeps its contract until its isolated inspection caller
+// replaces this adapter. The inspector itself never receives the active DB.
 export class StagedProfileSnapshotValidationService
   implements ProfileSnapshotValidationService
 {
-  private readonly stagingRoot: string;
+  private readonly inspector: StagedProfileSnapshotInspector;
 
   constructor(
     private readonly dependencies: {
-      activeDatabase: DatabaseConnection;
+      activeContextReader: ProfileInspectionContextReader;
       migrationsDirectory: string;
       stagingRoot: string;
     },
   ) {
-    if (
-      !isAbsolute(dependencies.migrationsDirectory) ||
-      !isAbsolute(dependencies.stagingRoot)
-    ) {
-      throw new Error('PROFILE_SNAPSHOT_VALIDATION_FAILED');
-    }
-    this.stagingRoot = resolve(dependencies.stagingRoot);
+    this.inspector = new StagedProfileSnapshotInspector({
+      databaseSource: { kind: 'stagedSnapshot' },
+      migrationPolicy: 'restoreCompatible',
+      migrationsDirectory: dependencies.migrationsDirectory,
+      stagingRoot: dependencies.stagingRoot,
+      // This is the existing business-broker adapter, not a utility fallback.
+      // K2 removes it when the isolated caller and broker v10 are connected.
+      databaseFactory: {
+        openReadonly: path => new Database(toNamespacedPath(path), { readonly: true, fileMustExist: true }),
+        openReference: () => new Database(':memory:'),
+        schemaReferences: createMigrationSchemaReferences(() => new Database(':memory:')),
+      },
+    });
   }
 
   async validateProfileSnapshot(
     operationId: string,
   ): Promise<ProfileSnapshotValidationMetadata> {
-    const inspection = await this.inspect(operationId);
-    return inspection.validation;
+    const { activeProfileId } = this.dependencies.activeContextReader
+      .readProfileInspectionContext();
+    try {
+      const inspection = await this.inspector.inspectProfileSnapshot(operationId);
+      return {
+        ...inspection,
+        activeProfileIsEmpty: this.dependencies.activeContextReader
+          .readProfileInspectionContext().activeProfileIsEmpty,
+        profileMatchesActive: inspection.profileId === activeProfileId,
+      };
+    } catch {
+      throw new Error('PROFILE_SNAPSHOT_VALIDATION_FAILED');
+    }
   }
 
   async prepareProfileRestoreActivation(
     operationId: string,
   ): Promise<ProfileRestoreActivationPreparationMetadata> {
-    let operationRoot: string | undefined;
     try {
-      const inspection = await this.inspect(operationId);
-      operationRoot = inspection.operationRoot;
-      const activationDocumentsRoot = join(
-        inspection.operationRoot,
-        activationDocumentsLogicalPath,
-      );
-      assertContainedPath(
-        inspection.operationRoot,
-        activationDocumentsRoot,
-      );
-      await assertPathMissing(activationDocumentsRoot);
-      await fileSystem.mkdir(activationDocumentsRoot, {
-        mode: 0o700,
-        recursive: true,
-      });
-      await assertPrivateOperationRoot(activationDocumentsRoot);
-
-      await materializeValidatedProfileArtifacts({
-        artifacts: inspection.artifacts,
-        destinationRoot: activationDocumentsRoot,
-        sourceRoot: inspection.operationRoot,
-      });
-
-      await fileSystem.chmod(inspection.databasePath, 0o600);
-      return {
-        artifactCount: inspection.validation.artifactCount,
-        artifactTotalByteSize:
-          inspection.validation.artifactTotalByteSize,
-      };
+      // Preserve active-profile admission until broker v10 owns the context.
+      this.dependencies.activeContextReader.readProfileInspectionContext();
+      return await this.inspector.prepareProfileRestoreActivation(operationId);
     } catch {
-      if (operationRoot !== undefined) {
-        await fileSystem
-          .rm(join(operationRoot, 'activation'), {
-            force: true,
-            recursive: true,
-          })
-          .catch(() => undefined);
-      }
       throw new Error('PROFILE_RESTORE_ACTIVATION_PREPARATION_FAILED');
     }
   }
-
-  private async inspect(operationId: string): Promise<{
-    artifacts: Awaited<
-      ReturnType<typeof validateProfileArtifactCatalog>
-    >['artifacts'];
-    databasePath: string;
-    operationRoot: string;
-    validation: ProfileSnapshotValidationMetadata;
-  }> {
-    if (!operationIdPattern.test(operationId)) {
-      throw new Error('PROFILE_SNAPSHOT_VALIDATION_FAILED');
-    }
-
-    const activeProfileId = createProfileBackupIdentity(
-      readLocalRuntimeIdentity(this.dependencies.activeDatabase).companyId,
-    );
-
-    const operationRoot = join(this.stagingRoot, operationId);
-    const databasePath = join(operationRoot, databaseLogicalPath);
-    assertContainedPath(this.stagingRoot, operationRoot);
-    assertContainedPath(operationRoot, databasePath);
-
-    try {
-      await assertPrivateOperationRoot(operationRoot);
-      const databaseMetadata = await fileSystem.lstat(databasePath);
-      if (
-        !databaseMetadata.isFile() ||
-        databaseMetadata.isSymbolicLink() ||
-        databaseMetadata.nlink !== 1 ||
-        databaseMetadata.size < 1
-      ) {
-        throw new Error('PROFILE_SNAPSHOT_DATABASE_INVALID');
-      }
-      const realDatabasePath = await fileSystem.realpath(databasePath);
-      if (!pathsAreEqual(realDatabasePath, databasePath)) {
-        throw new Error('PROFILE_SNAPSHOT_DATABASE_INVALID');
-      }
-
-      const databaseInspection = inspectSqliteProfileDatabase(
-        databasePath,
-        this.dependencies.migrationsDirectory,
-        'restoreCompatible',
-      );
-      const stagedDatabase = new Database(toNamespacedPath(databasePath), {
-        fileMustExist: true,
-        readonly: true,
-      });
-
-      try {
-        const artifacts = await validateProfileArtifactCatalog({
-          database: stagedDatabase,
-          operationRoot,
-          schema: selectInvoiceBackupArtifactCatalogSchema(databaseInspection),
-        });
-
-        return {
-          artifacts: artifacts.artifacts,
-          databasePath,
-          operationRoot,
-          validation: {
-            activeProfileIsEmpty: isActiveProfileRestoreTargetEmpty(
-              this.dependencies.activeDatabase,
-            ),
-            artifactCount: artifacts.artifactCount,
-            artifactTotalByteSize: artifacts.artifactTotalByteSize,
-            databaseHealth: 'healthy',
-            migrationChainIdentity:
-              databaseInspection.migrationChainIdentity,
-            profileId: databaseInspection.profileId,
-            profileMatchesActive:
-              databaseInspection.profileId === activeProfileId,
-          },
-        };
-      } finally {
-        stagedDatabase.close();
-      }
-    } catch {
-      throw new Error('PROFILE_SNAPSHOT_VALIDATION_FAILED');
-    }
-  }
-}
-
-async function assertPathMissing(path: string): Promise<void> {
-  try {
-    await fileSystem.lstat(path);
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      (error as NodeJS.ErrnoException).code === 'ENOENT'
-    ) {
-      return;
-    }
-    throw error;
-  }
-  throw new Error('PROFILE_RESTORE_ACTIVATION_PREPARATION_FAILED');
-}
-
-async function assertPrivateOperationRoot(
-  operationRoot: string,
-): Promise<void> {
-  const metadata = await fileSystem.lstat(operationRoot);
-  if (
-    !metadata.isDirectory() ||
-    metadata.isSymbolicLink() ||
-    (process.platform !== 'win32' && (metadata.mode & 0o077) !== 0)
-  ) {
-    throw new Error('PROFILE_SNAPSHOT_VALIDATION_FAILED');
-  }
-
-  const realPath = await fileSystem.realpath(operationRoot);
-  if (!pathsAreEqual(realPath, operationRoot)) {
-    throw new Error('PROFILE_SNAPSHOT_VALIDATION_FAILED');
-  }
-}
-
-function assertContainedPath(root: string, candidate: string): void {
-  const relativePath = relative(root, candidate);
-  if (
-    relativePath === '' ||
-    relativePath === '..' ||
-    relativePath.startsWith(`..${sep}`) ||
-    isAbsolute(relativePath)
-  ) {
-    throw new Error('PROFILE_SNAPSHOT_VALIDATION_FAILED');
-  }
-}
-
-function pathsAreEqual(first: string, second: string): boolean {
-  const firstResolved = resolve(first);
-  const secondResolved = resolve(second);
-  return process.platform === 'win32'
-    ? firstResolved.toLowerCase() === secondResolved.toLowerCase()
-    : firstResolved === secondResolved;
 }

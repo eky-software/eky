@@ -17,7 +17,7 @@ import type { ProfileBackupCapability } from './profileBackupCapability.js';
 import { createProfileBackupCapability } from './profileBackupCapability.js';
 import type { ProfileRecoveryOperationalObserver } from './profileRecoveryOperationalObserver.js';
 import { PortableProfileBackupStatusStore } from './portableProfileBackupStatusStore.js';
-import type { ProfileSnapshotBrokerClient } from './profileSnapshotBrokerClient.js';
+import type { ProfileRestoreSnapshotInspectionPort, ProfileSnapshotInspectionPort } from './profileSnapshotInspectionPort.js';
 import type { ProfileSnapshotRuntimePaths } from './profileSnapshotRuntimePaths.js';
 import type { RecoveryPointService } from './recoveryPoint/recoveryPointService.js';
 import { ProfileRestoreActivationService } from './restore/profileRestoreActivationService.js';
@@ -25,6 +25,7 @@ import type { ProfileRestoreActivationTransaction } from './restore/profileResto
 import { ProfileRestoreStagingService } from './restore/profileRestoreStagingService.js';
 
 interface ProfileBackupCompositionOptions {
+  assertRestoreRuntimeAuthority?(runtimeStopped: boolean): Promise<void>;
   appVersion: string;
   createWindow: Parameters<
     typeof createBackupPasswordWindowController
@@ -38,7 +39,7 @@ interface ProfileBackupCompositionOptions {
   passwordPreloadPath: string;
   paths: ProfileSnapshotRuntimePaths;
   profileRecoveryOperationalObserver: ProfileRecoveryOperationalObserver;
-  profileSnapshotClient: ProfileSnapshotBrokerClient;
+  portableSnapshotClient: ProfileSnapshotInspectionPort & ProfileRestoreSnapshotInspectionPort;
   recoveryPointService: RecoveryPointService;
   relaunchApplication(): void;
   showOpenDialog(
@@ -52,7 +53,7 @@ interface ProfileBackupCompositionOptions {
     owner: BrowserWindow,
     options: SaveDialogOptions,
   ): Promise<SaveDialogReturnValue>;
-  stopBusinessRuntime(): Promise<void>;
+  stopBusinessRuntime(operationId: string): Promise<void>;
   restoreActivationTransaction: ProfileRestoreActivationTransaction;
 }
 
@@ -86,21 +87,24 @@ export async function createProfileBackupComposition(
           initialLatestSuccessfulPortableBackupAt:
             persistedStatus.completedAt,
         }),
-    profileSnapshotClient: options.profileSnapshotClient,
+    profileSnapshotClient: options.portableSnapshotClient,
     quarantineRoot: options.paths.quarantineRoot,
     recordSuccessfulBackup: (record) => statusStore.write(record),
     stagingRoot: options.paths.stagingRoot,
   });
   const restoreStagingService = new ProfileRestoreStagingService({
     observer: options.profileRecoveryOperationalObserver,
-    profileSnapshotClient: options.profileSnapshotClient,
+    profileSnapshotClient: options.portableSnapshotClient,
     quarantineRoot: options.paths.quarantineRoot,
     recoveryPointService: options.recoveryPointService,
     stagingRoot: options.paths.stagingRoot,
   });
   const restoreActivationService = new ProfileRestoreActivationService({
+    ...(options.assertRestoreRuntimeAuthority === undefined ? {} : {
+      assertRuntimeAuthority: options.assertRestoreRuntimeAuthority,
+    }),
     observer: options.profileRecoveryOperationalObserver,
-    profileSnapshotClient: options.profileSnapshotClient,
+    profileSnapshotClient: options.portableSnapshotClient,
     relaunchApplication: options.relaunchApplication,
     stagingService: restoreStagingService,
     stopBusinessRuntime: options.stopBusinessRuntime,

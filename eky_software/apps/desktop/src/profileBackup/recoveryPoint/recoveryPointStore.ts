@@ -16,7 +16,7 @@ import {
   prepareBackupPayload,
   type BackupPayloadSourceEntry,
 } from '../container/prepareBackupPayload.js';
-import type { ProfileSnapshotBrokerClient } from '../profileSnapshotBrokerClient.js';
+import type { ProfileSnapshotInspectionPort } from '../profileSnapshotInspectionPort.js';
 import { encryptRecoveryPointPayload } from './encryptRecoveryPointPayload.js';
 import { inspectRecoveryPoint } from './inspectRecoveryPoint.js';
 import { materializeRecoveryPoint } from './materializeRecoveryPoint.js';
@@ -29,6 +29,7 @@ import {
 import { RecoveryPointKeyEnvelopeStore } from './recoveryPointKeyEnvelopeStore.js';
 import type { RecoveryPointKeyProtector } from './recoveryPointKeyProtector.js';
 import { recoveryPointDataKeyLength } from './recoveryPointContainerHeader.js';
+import { RecoveryPointCleanupError } from './recoveryPointOperationError.js';
 
 const profileIdPattern = /^[a-f0-9]{64}$/;
 const artifactIdPattern =
@@ -43,9 +44,9 @@ interface RecoveryPointStoreDependencies {
   recoveryRoot: string;
   stagingRoot: string;
   validator: Pick<
-    ProfileSnapshotBrokerClient,
-    'validateProfileSnapshot'
-  > & Partial<Pick<ProfileSnapshotBrokerClient, 'assertUpdateMaintenance'>>;
+    ProfileSnapshotInspectionPort,
+    'validateProfileSnapshot' | 'withInspectionOperation' | 'withProfileSnapshot' | 'removeProfileSnapshot'
+  > & Partial<Pick<ProfileSnapshotInspectionPort, 'assertUpdateMaintenance'>>;
 }
 
 export interface StagedRecoveryPointRestore {
@@ -142,6 +143,7 @@ export class RecoveryPointStore {
     let finalCreated = false;
     let keyCreated = false;
     let indexed = false;
+    let retainEvidence = false;
 
     try {
       const payload = await prepareBackupPayload({
@@ -171,20 +173,8 @@ export class RecoveryPointStore {
         operationId: inspectionOperationId,
         quarantineRoot: this.dependencies.quarantineRoot,
         stagingRoot: this.dependencies.stagingRoot,
-        validator: updateMaintenanceOperationId === undefined
-          ? this.dependencies.validator
-          : {
-              validateProfileSnapshot: (operationId) =>
-                this.dependencies.validator.validateProfileSnapshot(
-                  operationId, updateMaintenanceOperationId,
-                ),
-              async assertValidationSettled() {
-                if (assertUpdateMaintenance === undefined) {
-                  throw new Error('RECOVERY_POINT_INSPECTION_UNAVAILABLE');
-                }
-                await assertUpdateMaintenance(updateMaintenanceOperationId);
-              },
-            },
+        validator: this.dependencies.validator,
+        ...(updateMaintenanceOperationId === undefined ? {} : { updateMaintenanceOperationId }),
       });
       if (
         inspection.createdAt !==
@@ -220,12 +210,15 @@ export class RecoveryPointStore {
       });
       indexed = true;
       return point;
+    } catch (error) {
+      retainEvidence = error instanceof RecoveryPointCleanupError;
+      throw error;
     } finally {
       dataKey.fill(0);
       await rm(temporaryContainerPath, { force: true }).catch(
         () => undefined,
       );
-      if (!indexed) {
+      if (!indexed && !retainEvidence) {
         if (finalCreated) {
           await rm(containerPath, { force: true }).catch(
             () => undefined,
@@ -290,11 +283,10 @@ export class RecoveryPointStore {
         input.expectedMigrationChainIdentity ||
       !materialized.profileMatchesActive
     ) {
-      await rm(materialized.operationRoot, {
-        force: true,
-        recursive: true,
-      }).catch(() => undefined);
-      throw new Error('RECOVERY_POINT_RESTORE_CONTENT_INVALID');
+      const error = new Error('RECOVERY_POINT_RESTORE_CONTENT_INVALID');
+      try { await this.dependencies.validator.removeProfileSnapshot(input.operationId); }
+      catch { throw new RecoveryPointCleanupError(error); }
+      throw error;
     }
 
     return materialized;

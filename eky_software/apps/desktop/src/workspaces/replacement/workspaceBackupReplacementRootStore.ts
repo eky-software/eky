@@ -133,12 +133,21 @@ export class NodeWorkspaceBackupReplacementRootStore
     paths: Readonly<WorkspaceBackupReplacementPaths>,
   ): Promise<void> {
     try {
-      if (await safePathExists(paths.importStagingRoot)) {
+      const importStagingExists = await safePathExists(paths.importStagingRoot);
+      const candidateExists = await safePathExists(
+        paths.activationStagingOperationRoot,
+      );
+      // Reject uncertainty in either tree before deleting evidence from the other.
+      if (importStagingExists) {
         await assertSafeTree(paths.importStagingRoot);
+      }
+      if (candidateExists) {
+        await assertPartialCandidate(paths);
+      }
+      if (importStagingExists) {
         await rm(paths.importStagingRoot, { recursive: true });
       }
-      if (await safePathExists(paths.activationStagingOperationRoot)) {
-        await assertPartialCandidate(paths);
+      if (candidateExists) {
         await rm(paths.activationStagingOperationRoot, {
           recursive: true,
         });

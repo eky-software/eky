@@ -46,6 +46,7 @@ export class WorkspaceActivationMigrationInspector {
       if (error instanceof WorkspaceActivationMigrationError) throw error;
       throw new WorkspaceActivationMigrationError(
         'WORKSPACE_ACTIVATION_MIGRATION_FAILED',
+        { cause: error },
       );
     } finally {
       if (runtime !== undefined) {

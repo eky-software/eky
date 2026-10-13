@@ -7,7 +7,7 @@ import { childEnvironment, exactKeys } from './pidNamespaceContract.mjs';
 import { inspectManagedRoot, managedControlPath } from './managedNamespaceRoot.mjs';
 import { below, guardLinuxService, linuxServiceLimits, requireService, servicePath,
   validateServiceConfig, linuxChromiumPaths, linuxChromiumBrowserConfig, linuxChromiumServerEntry,
-  serviceFailure } from './linuxServiceContract.mjs';
+  linuxProfileInspectionPaths, linuxProfileInspectionEntry, serviceFailure } from './linuxServiceContract.mjs';
 import { chromiumControlMaximumBytes, chromiumWorkerProtocol } from '../../src/environment/chromiumWorkerContract.mjs';
 
 export const linuxServiceInitPath = fileURLToPath(new URL('./linuxServiceInit.mjs', import.meta.url));
@@ -65,6 +65,26 @@ export function resolveLinuxViteEntrypoint(repositoryRoot, fs = filesystem) {
   return inspectServicePath(posix.join(target, 'bin/vite.js'), false, fs);
 }
 
+export function resolveLinuxInspectionElectron(repositoryRoot, fs = filesystem) {
+  const desktop = inspectServicePath(posix.join(repositoryRoot, 'apps/desktop'), true, fs);
+  const readManifest = root => JSON.parse(readBoundedFile(
+    inspectServicePath(posix.join(root, 'package.json'), false, fs), linuxServiceLimits.config, fs));
+  const version = readManifest(desktop).devDependencies?.electron;
+  requireService(typeof version === 'string' && /^[0-9]+\.[0-9]+\.[0-9]+$/u.test(version));
+  const selector = posix.join(inspectServicePath(posix.join(desktop, 'node_modules'), true, fs), 'electron');
+  requireService(fs.lstatSync(selector).isSymbolicLink());
+  const target = inspectServicePath(posix.resolve(posix.dirname(selector), fs.readlinkSync(selector)), true, fs);
+  requireService(target === fs.realpathSync(selector));
+  const store = inspectServicePath(posix.join(repositoryRoot, 'node_modules/.pnpm'), true, fs);
+  requireService(target === posix.join(store, `electron@${version}`, 'node_modules/electron'));
+  const manifest = readManifest(target);
+  requireService(manifest.name === 'electron' && manifest.version === version);
+  const executable = inspectServicePath(posix.join(target, 'dist/electron'), false, fs);
+  const stat = fs.lstatSync(executable);
+  requireService(stat.nlink === 1 && (stat.mode & 0o111) !== 0);
+  return executable;
+}
+
 // No command, argument vector or inherited environment is accepted from callers.
 export function linuxServiceWorkload(config, { fs = filesystem, tempDirectory = tmpdir, preparing = false } = {}) {
   validateServiceConfig(config);
@@ -75,6 +95,28 @@ export function linuxServiceWorkload(config, { fs = filesystem, tempDirectory = 
     run !== repository && !run.startsWith(repository + '/') && !repository.startsWith(run + '/'));
   const node = inspectServicePath(config.node, false, fs);
   requireService((fs.lstatSync(node).mode & 0o111) !== 0);
+  if (config.profile === 'profileInspection') {
+    const paths = linuxProfileInspectionPaths(run);
+    for (const directory of [paths.root, paths.temp]) {
+      const stat = fs.lstatSync(inspectServicePath(directory, true, fs));
+      requireService(stat.uid === config.uid && stat.gid === config.gid && (stat.mode & 0o7777) === 0o700);
+    }
+    readBoundedFile(inspectServicePath(paths.config, false, fs), linuxServiceLimits.config, fs, config);
+    const entry = inspectServicePath(posix.join(repository, linuxProfileInspectionEntry), false, fs);
+    const electron = resolveLinuxInspectionElectron(repository, fs);
+    // The virtual display and Electron remain descendants of the same owner.
+    // Missing prerequisites fail closed; no installation or sandbox fallback.
+    for (const tool of ['/usr/bin/xvfb-run', '/usr/bin/Xvfb', '/usr/bin/xauth']) {
+      const stat = fs.lstatSync(inspectServicePath(tool, false, fs));
+      requireService((stat.mode & 0o111) !== 0);
+    }
+    return Object.freeze({ file: '/usr/bin/xvfb-run', requireNormalExit: true, args: Object.freeze([
+      '--auto-servernum', '--server-args=-screen 0 1280x720x24 -nolisten tcp',
+      electron, entry, paths.config,
+    ]), cwd: repository, env: Object.freeze({ ...childEnvironment(), NODE_ENV: 'test',
+      HOME: paths.temp, TMPDIR: paths.temp, TEMP: paths.temp, TMP: paths.temp,
+      EKY_E2E_OS_TEMP_ROOT: hostTempRoot }) });
+  }
   if (config.profile === 'chromium') {
     const browser = inspectServicePath(config.browserExecutable, false, fs);
     requireService((fs.lstatSync(browser).mode & 0o111) !== 0);
@@ -131,7 +173,8 @@ export function prepareLinuxService(profile, input, {
     workUntil: String(anchor + BigInt(remaining) * 1_000_000n),
     redactedValues: [...input.redactedValues],
     ...(profile === 'backend' ? { runtimeConfigPath: input.runtimeConfigPath }
-      : profile === 'chromium' ? { browserExecutable: input.browserExecutable, browserGeneration: browserNonce() } : {
+      : profile === 'chromium' ? { browserExecutable: input.browserExecutable, browserGeneration: browserNonce() }
+        : profile === 'profileInspection' ? { inspectionConfigPath: input.inspectionConfigPath } : {
       webPort: input.webPort, environmentRoot: input.environmentRoot,
       backendOrigin: input.backendOrigin, sessionSecret: input.sessionSecret }),
   };
@@ -207,6 +250,17 @@ export function readLinuxChromiumConfig(path, { fs = filesystem, identity = guar
   requireService(posix.basename(value.browserExecutable) === 'chrome' &&
     posix.basename(posix.dirname(value.browserExecutable)) === 'chrome-linux64');
   return value;
+}
+
+export function readLinuxInspectionControl(path, { fs = filesystem, identity = guardLinuxService() } = {}) {
+  inspectServicePath(path, false, fs);
+  const paths = linuxProfileInspectionPaths(posix.dirname(posix.dirname(path)));
+  requireService(path === paths.config);
+  for (const directory of [paths.root, paths.temp]) {
+    const stat = fs.lstatSync(inspectServicePath(directory, true, fs));
+    requireService(stat.uid === identity.uid && stat.gid === identity.gid && (stat.mode & 0o7777) === 0o700);
+  }
+  return readBoundedFile(path, linuxServiceLimits.config, fs, identity);
 }
 
 export function readLinuxServiceConfig(root, { runtime = process, fs = filesystem, tempDirectory = tmpdir } = {}) {

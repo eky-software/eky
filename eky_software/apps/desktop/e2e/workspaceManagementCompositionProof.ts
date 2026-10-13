@@ -3,7 +3,9 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import { acquireDesktopWorkspaceReservation } from '../src/main/desktopComposition.js';
+import { noOpDesktopOperationalLogger } from '../src/observability/desktopOperationalLogger.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../src/workspaces/maintenance/workspaceMaintenanceLease.js';
+import type { WorkspaceCandidateReservationOwner } from '../src/workspaces/runtime/electronWorkspaceCandidateRuntimeFactory.js';
 import type { WorkspaceId } from '../src/workspaces/registry/workspaceRegistryTypes.js';
 import { deriveWorkspaceBackupReplacementRuntimePaths } from '../src/workspaces/replacement/workspaceBackupReplacementPaths.js';
 import { WorkspaceSwitchJournalStore } from '../src/workspaces/switch/workspaceSwitchJournal.js';
@@ -76,13 +78,15 @@ export async function runWorkspaceManagementCompositionProof(
       signal: new AbortController().signal,
       userDataRoot: primaryRoot,
     });
-    const sourceOwner = {
-      bindCandidate: ({ generationId }: { readonly generationId: string }) =>
-        sourceReservation!.bind(generationId, assertProofSingleInstanceOwnership),
+    const sourceOwner: WorkspaceCandidateReservationOwner = {
+      assertMainOwned: sourceReservation.assertMainOwned,
+      bindCandidate: ({ generationId, prepareMainOwned }) =>
+        sourceReservation!.bind(generationId, assertProofSingleInstanceOwnership, prepareMainOwned),
     };
-    const primaryOwner = {
-      bindCandidate: ({ generationId }: { readonly generationId: string }) =>
-        primaryReservation!.bind(generationId, assertProofSingleInstanceOwnership),
+    const primaryOwner: WorkspaceCandidateReservationOwner = {
+      assertMainOwned: primaryReservation.assertMainOwned,
+      bindCandidate: ({ generationId, prepareMainOwned }) =>
+        primaryReservation!.bind(generationId, assertProofSingleInstanceOwnership, prepareMainOwned),
     };
     const sourceLifecycle = new ProofActiveWorkspaceLifecycle(null);
     const sourceLease = new InMemoryWorkspaceMaintenanceLease();
@@ -461,6 +465,13 @@ async function createProofComposition(input: {
   readonly userDataRoot: string;
 }) {
   return createWorkspaceManagementComposition({
+    operationalIdentity: {
+      appVersion: input.appVersion,
+      buildRevision: input.buildRevision,
+      runtimeInstanceId: randomUUID(),
+    },
+    // This modeled lifecycle proof does not attest operational persistence.
+    operationalLogger: noOpDesktopOperationalLogger,
     activeWorkspaceId: input.activeWorkspaceId,
     activeWorkspaceLifecycle: {
       quiesceWrites: (id) => input.activeWorkspaceLifecycle.quiesceWrites(id),
@@ -513,9 +524,11 @@ async function createProofComposition(input: {
     },
     resourcesPath: input.resourcesPath,
     reservationOwner: {
-      bindCandidate: ({ generationId }) => input.reservation.bind(
+      assertMainOwned: input.reservation.assertMainOwned,
+      bindCandidate: ({ generationId, prepareMainOwned }) => input.reservation.bind(
         generationId,
         input.maintenanceLease.captureCurrentOwner(['create', 'import', 'replace']),
+        prepareMainOwned,
       ),
     },
     runtimeRelaunch: input.runtimeRelaunch,

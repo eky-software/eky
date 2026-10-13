@@ -117,6 +117,7 @@ export class WorkspaceBackupReplacementCoordinator {
 
     const lease = await this.acquireLease();
     let writesQuiesced = false;
+    let operationFailure: WorkspaceBackupReplacementError | undefined;
     try {
       await this.assertNoUnresolvedOperations();
       await this.assertActivationIdle(authority);
@@ -236,6 +237,12 @@ export class WorkspaceBackupReplacementCoordinator {
         workspaceId: targetWorkspaceId,
       });
     } catch (error) {
+      const primaryFailure = mapWorkspaceBackupReplacementError(
+        error,
+        'WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED',
+        'rollback',
+      );
+      operationFailure = primaryFailure;
       try {
         await this.recoverFailure({
           authority,
@@ -245,25 +252,45 @@ export class WorkspaceBackupReplacementCoordinator {
           writesQuiesced,
         });
       } catch (recoveryError) {
-        throw mapWorkspaceBackupReplacementError(
+        const recoveryFailure = mapWorkspaceBackupReplacementError(
           recoveryError,
           'WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED',
           'rollback',
         );
+        // Recovery remains authoritative without erasing the original cause.
+        operationFailure = new WorkspaceBackupReplacementError(
+          recoveryFailure.code,
+          recoveryFailure.stage,
+          {
+            cause: new AggregateError(
+              [primaryFailure, recoveryFailure],
+              recoveryFailure.code,
+            ),
+          },
+        );
       }
-      throw mapWorkspaceBackupReplacementError(
-        error,
-        'WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED',
-        'rollback',
-      );
+      throw operationFailure;
     } finally {
-      await lease.release().catch((error) => {
-        throw mapWorkspaceBackupReplacementError(
+      try {
+        await lease.release();
+      } catch (error) {
+        const releaseFailure = mapWorkspaceBackupReplacementError(
           error,
           'WORKSPACE_REPLACEMENT_LIFECYCLE_FAILED',
           'lease',
         );
-      });
+        if (operationFailure === undefined) throw releaseFailure;
+        throw new WorkspaceBackupReplacementError(
+          releaseFailure.code,
+          releaseFailure.stage,
+          {
+            cause: new AggregateError(
+              [operationFailure, releaseFailure],
+              releaseFailure.code,
+            ),
+          },
+        );
+      }
     }
   }
 
@@ -282,6 +309,9 @@ export class WorkspaceBackupReplacementCoordinator {
     }
 
     if (journal !== undefined) {
+      if (journal.phase === 'accepted' || journal.phase === 'failedSafe' || !journal.hadActiveDatabase) {
+        throw new WorkspaceBackupReplacementError('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED', 'rollback');
+      }
       await this.quiesceRuntime(context.target.entry.workspaceId);
       await this.stopRuntime(context.target.entry.workspaceId);
       await this.assertRuntimeAbsent();

@@ -12,6 +12,68 @@ import {
 } from './profileSnapshotBrokerProtocol.js';
 
 describe('profile snapshot broker protocol', () => {
+  it.each(['inspect', 'prepareRestoreActivation'] as const)(
+    'accepts only the current-version bounded %s context request', kind => {
+      const request = createProfileSnapshotBrokerRequest({
+        operation: 'readProfileInspectionContext', kind, operationId: randomUUID(), requestId: randomUUID(),
+      });
+      expect(profileSnapshotBrokerProtocolVersion).toBe(11);
+      expect(parseProfileSnapshotBrokerRequest(request)).toEqual(request);
+      for (const changed of [
+        { kind: 'unknown' }, { kind: undefined }, { operationId: '../other' },
+        { requestId: null }, { protocolVersion: 9 },
+        { protocolVersion: profileSnapshotBrokerProtocolVersion - 1 },
+        { activeProfileId: 'a'.repeat(64) },
+        { migrationPolicy: 'compatibleHistoricalPrefix' }, { path: 'untrusted' },
+        { extra: 'x'.repeat(1024) },
+      ]) expect(parseProfileSnapshotBrokerRequest({ ...request, ...changed })).toBeUndefined();
+    },
+  );
+
+  it('allows an explicit update owner only on inspect context', () => {
+    const request = createProfileSnapshotBrokerRequest({
+      operation: 'readProfileInspectionContext', kind: 'inspect',
+      operationId: randomUUID(), requestId: randomUUID(), updateMaintenanceOperationId: randomUUID(),
+    });
+    expect(parseProfileSnapshotBrokerRequest(request)).toEqual(request);
+    for (const changed of [
+      { updateMaintenanceOperationId: undefined }, { updateMaintenanceOperationId: '../other' },
+      { kind: 'prepareRestoreActivation' },
+    ]) expect(parseProfileSnapshotBrokerRequest({ ...request, ...changed })).toBeUndefined();
+    expect(() => createProfileSnapshotBrokerRequest({
+      ...request, kind: 'prepareRestoreActivation',
+    })).toThrow('PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID');
+  });
+
+  it('rejects a context kind on every other broker operation', () => {
+    for (const operation of [
+      'beginProfileMaintenance', 'beginUpdateMaintenance', 'assertUpdateMaintenance',
+      'beginRestoreMaintenance', 'assertRestoreMaintenance', 'endRestoreMaintenance',
+      'invalidateRestoreMaintenance',
+      'endUpdateMaintenance', 'createProfileSnapshot', 'endProfileMaintenance',
+      'getProfileMaintenanceStatus', 'prepareProfileRestoreActivation',
+      'validateActiveProfile', 'validateProfileSnapshot',
+    ] as const) {
+      expect(() => createProfileSnapshotBrokerRequest({
+        operation, kind: 'inspect', operationId: randomUUID(), requestId: randomUUID(),
+        migrationPolicy: 'exactCurrentManifest',
+      })).toThrow('PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID');
+    }
+  });
+
+  it('returns only the two exact active-context fields', () => {
+    const response = {
+      ok: true, protocolVersion: profileSnapshotBrokerProtocolVersion, requestId: randomUUID(),
+      result: { type: 'profileInspectionContext', activeProfileId: 'a'.repeat(64), activeProfileIsEmpty: false },
+    };
+    expect(parseProfileSnapshotBrokerResponse(response)).toEqual(response);
+    for (const changed of [
+      { activeProfileId: 'invalid' }, { activeProfileIsEmpty: 0 }, { activeProfileIsEmpty: null },
+      { companyId: 'untrusted' }, { path: 'untrusted' }, { catalog: [] }, { session: 'untrusted' },
+    ]) expect(parseProfileSnapshotBrokerResponse({ ...response, result: { ...response.result, ...changed } })).toBeUndefined();
+    expect(parseProfileSnapshotBrokerResponse({ ...response, protocolVersion: 9 })).toBeUndefined();
+  });
+
   it('binds only snapshot validation to an explicit update owner with exact identifiers and fields', () => {
     const request = createProfileSnapshotBrokerRequest({
       operation: 'validateProfileSnapshot', operationId: randomUUID(),
@@ -40,7 +102,11 @@ describe('profile snapshot broker protocol', () => {
     }
   });
 
-  it.each(['beginUpdateMaintenance', 'assertUpdateMaintenance', 'endUpdateMaintenance'] as const)(
+  it.each([
+    'beginUpdateMaintenance', 'assertUpdateMaintenance', 'endUpdateMaintenance',
+    'beginRestoreMaintenance', 'assertRestoreMaintenance', 'endRestoreMaintenance',
+    'invalidateRestoreMaintenance',
+  ] as const)(
     'accepts only an exact operation-bound %s request', (operation) => {
       const request = createProfileSnapshotBrokerRequest({
         operation, operationId: randomUUID(), requestId: randomUUID(),

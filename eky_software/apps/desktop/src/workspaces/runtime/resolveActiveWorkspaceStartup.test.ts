@@ -16,7 +16,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { WorkspaceLegacyAdoptionJournalStore } from '../adoption/workspaceLegacyAdoptionJournal.js';
 import { deriveWorkspaceRoot } from '../registry/deriveWorkspaceRoot.js';
-import { WORKSPACE_REGISTRY_FILE_NAME } from '../registry/workspaceRegistryPaths.js';
+import {
+  WORKSPACE_REGISTRY_BACKUP_FILE_NAME,
+  WORKSPACE_REGISTRY_FILE_NAME,
+  WORKSPACE_REGISTRY_NEXT_FILE_NAME,
+} from '../registry/workspaceRegistryPaths.js';
 import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
 import { WorkspaceSwitchJournalStore } from '../switch/workspaceSwitchJournal.js';
 import {
@@ -39,6 +43,26 @@ afterEach(async () => {
 });
 
 describe('active workspace startup resolution', () => {
+  it('does not repair registry slots while resolving an ordinary workspace before schema inventory', async () => {
+    const userDataRoot = await createPrivateTemporaryRoot();
+    const first = await resolveActiveWorkspaceStartup(userDataRoot);
+    await first.accept(profileId);
+    const paths = [
+      join(userDataRoot, WORKSPACE_REGISTRY_FILE_NAME),
+      join(userDataRoot, WORKSPACE_REGISTRY_BACKUP_FILE_NAME),
+      join(userDataRoot, WORKSPACE_REGISTRY_NEXT_FILE_NAME),
+    ];
+    await writePrivateFile(paths[1]!, 'unselected-backup-evidence');
+    await writePrivateFile(paths[2]!, 'unselected-next-evidence');
+    const before = await Promise.all(paths.map(path => readFile(path)));
+
+    const selected = await resolveActiveWorkspaceStartup(userDataRoot);
+
+    expect(selected.mode).toBe('normal');
+    expect(selected.workspaceId).toBe(first.workspaceId);
+    expect(await Promise.all(paths.map(path => readFile(path)))).toEqual(before);
+  });
+
   it('reports closed progress without allowing the observer to change behavior', async () => {
     const userDataRoot = await createPrivateTemporaryRoot();
     const progress: string[] = [];

@@ -8,11 +8,13 @@ import type {
 
 import type { DesktopOperationalIdentity } from '../observability/desktopOperationalEvent.js';
 import type { DesktopOperationalLogger } from '../observability/desktopOperationalLogger.js';
+import { readProfileInspectionFailureCause } from '../runtime/profileInspectionFailure.js';
 import type { WorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 import type { BackupPasswordWindowController } from './passwordWindow/backupPasswordWindow.js';
 import type { RecoveryPointService } from './recoveryPoint/recoveryPointService.js';
 import {
   createPortableProfileBackupFileName,
+  PortableProfileBackupCleanupError,
   type PortableProfileBackupService,
 } from './portableProfileBackup.js';
 import {
@@ -59,6 +61,7 @@ export function createProfileBackupCapability(
   options: ProfileBackupCapabilityOptions,
 ): ProfileBackupCapability {
   let activeOperation = false;
+  let disposed = false;
   const operationalObserver = createProfileBackupOperationalObserver({
     operationalIdentity: options.operationalIdentity,
     operationalLogger: options.operationalLogger,
@@ -84,12 +87,14 @@ export function createProfileBackupCapability(
             options.now?.() ?? new Date(),
           ),
         );
+        assertAvailable();
         if (targetPath === null) {
           return 'cancelled';
         }
         const password = await options.passwordWindow.requestPassword(
           'create',
         );
+        assertAvailable();
         if (password === null) {
           return 'cancelled';
         }
@@ -113,13 +118,14 @@ export function createProfileBackupCapability(
             stage: 'portable',
           });
           return 'created';
-        } catch {
+        } catch (error: unknown) {
           operationalObserver.observe({
             correlationId,
             durationMs: Date.now() - startedAt,
-            errorCode: 'PROFILE_BACKUP_CREATE_FAILED',
+            errorCode: readProfileInspectionFailureCause(error)
+              ?? 'PROFILE_BACKUP_CREATE_FAILED',
             eventName: 'backup.failed',
-            retryable: true,
+            retryable: !(error instanceof PortableProfileBackupCleanupError),
             sideEffectState: 'unknown',
             stage: 'portable',
           });
@@ -132,14 +138,16 @@ export function createProfileBackupCapability(
     options,
     inspectProfileBackupIpcChannel,
     () =>
-      runExclusive(undefined, async (): Promise<InspectProfileBackupResult> => {
+      runExclusive('backup', async (): Promise<InspectProfileBackupResult> => {
         const sourcePath = await options.selectBackupSource();
+        assertAvailable();
         if (sourcePath === null) {
           return { status: 'cancelled' };
         }
         const password = await options.passwordWindow.requestPassword(
           'enter',
         );
+        assertAvailable();
         if (password === null) {
           return { status: 'cancelled' };
         }
@@ -158,11 +166,12 @@ export function createProfileBackupCapability(
             stage: 'portable',
           });
           return { status: 'inspected', summary };
-        } catch {
+        } catch (error: unknown) {
           operationalObserver.observe({
             correlationId,
             durationMs: Date.now() - startedAt,
-            errorCode: 'PROFILE_BACKUP_INSPECTION_FAILED',
+            errorCode: readProfileInspectionFailureCause(error)
+              ?? 'PROFILE_BACKUP_INSPECTION_FAILED',
             eventName: 'backup.inspectionFailed',
             retryable: false,
             sideEffectState: 'none',
@@ -193,6 +202,7 @@ export function createProfileBackupCapability(
 
   return {
     dispose() {
+      disposed = true;
       options.ipcMain.removeHandler(getProfileBackupStatusIpcChannel);
       options.ipcMain.removeHandler(createProfileBackupIpcChannel);
       options.ipcMain.removeHandler(inspectProfileBackupIpcChannel);
@@ -204,9 +214,10 @@ export function createProfileBackupCapability(
   };
 
   async function runExclusive<T>(
-    purpose: 'backup' | undefined,
+    purpose: 'backup',
     operation: () => Promise<T>,
   ): Promise<T> {
+    assertAvailable();
     if (activeOperation) {
       throw new Error('PROFILE_PROTECTION_OPERATION_BUSY');
     }
@@ -215,13 +226,12 @@ export function createProfileBackupCapability(
       | Awaited<ReturnType<WorkspaceMaintenanceLease['acquire']>>
       | undefined;
     try {
-      if (purpose !== undefined) {
-        maintenanceLease = await options.maintenanceLease
-          .acquire(purpose)
-          .catch(() => {
-            throw new Error('PROFILE_PROTECTION_OPERATION_BUSY');
-          });
-      }
+      maintenanceLease = await options.maintenanceLease
+        .acquire(purpose)
+        .catch(() => {
+          throw new Error('PROFILE_PROTECTION_OPERATION_BUSY');
+        });
+      assertAvailable();
       return await operation();
     } finally {
       try {
@@ -230,6 +240,10 @@ export function createProfileBackupCapability(
         activeOperation = false;
       }
     }
+  }
+
+  function assertAvailable() {
+    if (disposed) throw new Error('PROFILE_PROTECTION_OPERATION_BUSY');
   }
 }
 

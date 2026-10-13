@@ -10,8 +10,51 @@ import {
   PackageArtifactInventoryError,
 } from './package-artifact-inventory.mjs';
 import { BACKEND_BUILD_METADATA_PATHS } from './backendBuildMetadata.mjs';
+import { profileInspectionNativeContract as inspectionNative } from '../../backend/src/database/connection/profileInspectionNativeContract.ts';
 
 const temporaryDirectories = [];
+
+for (const [stage, prefix] of [
+  ['profileInspectionNativeStage', ''],
+  ['packagedApp', `resources/${inspectionNative.directoryName}/`],
+]) {
+  test(`inspection native has its own reviewed file budget in ${stage}`, async () => {
+    const root = await createStageFixture(`${prefix}${inspectionNative.fileName}`, Buffer.alloc(3 * 1024 * 1024, 1));
+    await writeFixture(root, `${prefix}${inspectionNative.metadataFileName}`, '{}');
+    const inventory = await inspectPackageArtifactInventory({ root, stage });
+    assert.equal(inventory.fileCount, 2);
+    assert.equal(inventory.totalByteSize, 3 * 1024 * 1024 + 2);
+  });
+
+  for (const [name, bytes] of [
+    [inspectionNative.fileName, inspectionNative.minimumNativeBytes - 1],
+    [inspectionNative.fileName, inspectionNative.maximumNativeBytes + 1],
+    [inspectionNative.metadataFileName, inspectionNative.maximumMetadataBytes + 1],
+  ]) {
+    test(`inspection native rejects out-of-bound ${name} (${bytes}) in ${stage}`, async () => {
+      const root = await createStageFixture(`${prefix}${inspectionNative.fileName}`, Buffer.alloc(inspectionNative.minimumNativeBytes));
+      await writeFixture(root, `${prefix}${inspectionNative.metadataFileName}`, '{}');
+      await writeFixture(root, `${prefix}${name}`, Buffer.alloc(bytes));
+      await assert.rejects(inspectPackageArtifactInventory({ root, stage }), /INSPECTION_NATIVE_SIZE_OR_LINK/);
+    });
+  }
+
+  test(`inspection native rejects a substituted extra file in ${stage}`, async () => {
+    const root = await createStageFixture(`${prefix}${inspectionNative.fileName}`, Buffer.alloc(inspectionNative.minimumNativeBytes));
+    await writeFixture(root, `${prefix}unapproved.bin`, 'not delivered');
+    await assert.rejects(inspectPackageArtifactInventory({ root, stage }), /UNAPPROVED_INSPECTION_NATIVE_ARTIFACT/);
+  });
+}
+
+test('inspection native stage requires both resource files', async () => {
+  const root = await createStageFixture(inspectionNative.fileName, Buffer.alloc(inspectionNative.minimumNativeBytes));
+  await assert.rejects(inspectPackageArtifactInventory({ root, stage: 'profileInspectionNativeStage' }), /INSPECTION_NATIVE_FILES/);
+});
+
+test('inspection-only size exception does not increase the packaged backend budget', async () => {
+  const root = await createStageFixture('resources/backend/dist/unreviewed.js', Buffer.alloc(3 * 1024 * 1024));
+  await assert.rejects(inspectPackageArtifactInventory({ root, stage: 'packagedApp' }), /PROJECT_FILE_SIZE/);
+});
 
 for (const [stage, prefix] of [
   ['backendStage', ''],
@@ -351,7 +394,7 @@ test('rejects Eky-owned source maps but includes vendor maps in the inventory', 
 test('enforces the application-stage file count boundary', async () => {
   const root = await createStageFixture('dist/file-000.js', 'safe');
   await Promise.all(
-    Array.from({ length: 351 }, (_, index) =>
+    Array.from({ length: 399 }, (_, index) =>
       writeFixture(
         root,
         `dist/file-${String(index + 1).padStart(3, '0')}.js`,
@@ -364,9 +407,9 @@ test('enforces the application-stage file count boundary', async () => {
     root,
     stage: 'applicationStage',
   });
-  assert.equal(inventory.fileCount, 352);
+  assert.equal(inventory.fileCount, 400);
 
-  await writeFixture(root, 'dist/file-352.js', 'safe');
+  await writeFixture(root, 'dist/file-400.js', 'safe');
   await assert.rejects(
     inspectPackageArtifactInventory({ root, stage: 'applicationStage' }),
     /FILE_COUNT/,
@@ -432,34 +475,34 @@ test('enforces stage-specific path, depth, file and total byte boundaries', asyn
 
   const totalSizeRoot = await createStageFixture(
     'node_modules/vendor/first.bin',
-    Buffer.alloc(1_179_648),
+    Buffer.alloc(1_441_792),
   );
   await writeFixture(
     totalSizeRoot,
     'node_modules/vendor/second.bin',
-    Buffer.alloc(1_179_648),
+    Buffer.alloc(1_441_792),
   );
   const atTotalSizeLimit = await inspectPackageArtifactInventory({
     root: totalSizeRoot,
     stage: 'applicationStage',
   });
-  assert.equal(atTotalSizeLimit.totalByteSize, 2_359_296);
+  assert.equal(atTotalSizeLimit.totalByteSize, 2_883_584);
   await writeFixture(
     totalSizeRoot,
     'node_modules/vendor/second.bin',
-    Buffer.alloc(1_179_649),
+    Buffer.alloc(1_441_793),
   );
   await assert.rejects(
     inspectPackageArtifactInventory({
       root: totalSizeRoot,
       stage: 'applicationStage',
     }),
-    /SIZE/,
+    /PACKAGE_ARTIFACT_INVENTORY_INVALID:SIZE$/,
   );
 
   const packagedAppRoot = await createStageFixture(
     'resources/app.asar',
-    Buffer.alloc(2_359_296),
+    Buffer.alloc(2_883_584),
   );
   await assert.doesNotReject(
     inspectPackageArtifactInventory({
@@ -470,7 +513,7 @@ test('enforces stage-specific path, depth, file and total byte boundaries', asyn
   await writeFixture(
     packagedAppRoot,
     'resources/app.asar',
-    Buffer.alloc(2_359_297),
+    Buffer.alloc(2_883_585),
   );
   await assert.rejects(
     inspectPackageArtifactInventory({
@@ -480,6 +523,47 @@ test('enforces stage-specific path, depth, file and total byte boundaries', asyn
     /PROJECT_FILE_SIZE/,
   );
 });
+
+for (const name of [
+  'resources/App.asar',
+  'Resources/app.asar',
+  'resources/backend/app.asar',
+  'resources/backend/dist/index.js',
+  'resources/backend/node_modules/@eky/auth/dist/index.js',
+  'resources/desktop-runtime/index.js',
+  'resources/update-runtime/inspectWindowsRegularFile.ps1',
+]) {
+  test(`keeps the packaged project-file limit unchanged for ${name}`, async () => {
+    const root = await createStageFixture(name, Buffer.alloc(2_359_296));
+    const inventory = await inspectPackageArtifactInventory({ root, stage: 'packagedApp' });
+    assert.equal(inventory.totalByteSize, 2_359_296);
+
+    await writeFixture(root, name, Buffer.alloc(2_359_297));
+    await assert.rejects(
+      inspectPackageArtifactInventory({ root, stage: 'packagedApp' }),
+      /PACKAGE_ARTIFACT_INVENTORY_INVALID:PROJECT_FILE_SIZE$/,
+    );
+  });
+}
+
+for (const [stage, name, maximumBytes] of [
+  ['applicationStage', 'resources/app.asar', 1_048_576],
+  ['backendStage', 'resources/app.asar', 262_144],
+  ['desktopRuntimeStage', 'resources/app.asar', 262_144],
+  ['updateRuntimeStage', 'inspectWindowsRegularFile.ps1', 32_768],
+]) {
+  test(`keeps the project-file limit unchanged in ${stage}`, async () => {
+    const root = await createStageFixture(name, Buffer.alloc(maximumBytes));
+    const inventory = await inspectPackageArtifactInventory({ root, stage });
+    assert.equal(inventory.totalByteSize, maximumBytes);
+
+    await writeFixture(root, name, Buffer.alloc(maximumBytes + 1));
+    await assert.rejects(
+      inspectPackageArtifactInventory({ root, stage }),
+      /PACKAGE_ARTIFACT_INVENTORY_INVALID:PROJECT_FILE_SIZE$/,
+    );
+  });
+}
 
 async function createStageFixture(name, content) {
   const root = await mkdtemp(join(tmpdir(), 'eky-package-inventory-'));

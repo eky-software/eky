@@ -8,7 +8,9 @@ import {
 } from 'vitest';
 
 import { RecoveryPointScheduler } from './recoveryPointScheduler.js';
+import { RecoveryPointCleanupError } from './recoveryPointService.js';
 import type { ProfileRecoveryOperationalEvent } from '../profileRecoveryOperationalObserver.js';
+import { profileInspectionFailureCauses } from '../../runtime/profileInspectionFailure.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../../workspaces/maintenance/workspaceMaintenanceLease.js';
 
 beforeEach(() => {
@@ -20,6 +22,42 @@ afterEach(() => {
 });
 
 describe('recovery point scheduler', () => {
+  it('does not suggest retry after uncertain owned-source cleanup', async () => {
+    const events: ProfileRecoveryOperationalEvent[] = [];
+    const failure = new RecoveryPointCleanupError(new Error('PROFILE_SCHEMA_UNSUPPORTED'));
+    const scheduler = new RecoveryPointScheduler({
+      cleanShutdownMarker: { consume: async () => 'clean', markClean: vi.fn() },
+      maintenanceLease: new InMemoryWorkspaceMaintenanceLease(),
+      observer: { observe: event => events.push(event) },
+      recoveryPointService: { checkAutomatic: async () => { throw failure; } },
+    });
+    await scheduler.start();
+    await scheduler.stopChecks();
+    expect(events).toEqual([expect.objectContaining({ errorCode: 'PROFILE_SCHEMA_UNSUPPORTED',
+      eventName: 'recoveryPoint.failed', retryable: false, sideEffectState: 'unknown', stage: 'automaticCheck' })]);
+  });
+
+  it.each(profileInspectionFailureCauses)('keeps wrapped %s in a best-effort automatic check', async (cause) => {
+    const events: ProfileRecoveryOperationalEvent[] = [];
+    const maintenanceLease = new InMemoryWorkspaceMaintenanceLease();
+    const original = new Error('synthetic private automatic detail', { cause: new Error(cause) });
+    const scheduler = new RecoveryPointScheduler({
+      cleanShutdownMarker: { consume: async () => 'clean', markClean: vi.fn() },
+      maintenanceLease,
+      observer: { observe: (event) => events.push(event) },
+      recoveryPointService: { checkAutomatic: async () => { throw original; } },
+    });
+    await expect(scheduler.start()).resolves.toBe('clean');
+    await scheduler.stopChecks();
+    expect(events).toEqual([expect.objectContaining({
+      errorCode: cause, eventName: 'recoveryPoint.failed',
+      retryable: cause !== 'PROFILE_INSPECTION_CLEANUP_UNVERIFIED', sideEffectState: 'unknown', stage: 'automaticCheck',
+    })]);
+    expect(JSON.stringify(events)).not.toContain(original.message);
+    const lease = await maintenanceLease.acquire('switch');
+    await lease.release();
+  });
+
   it('detects the previous shutdown and runs bounded periodic checks', async () => {
     const checkAutomatic = vi.fn(async () => undefined);
     const scheduler = new RecoveryPointScheduler({

@@ -179,8 +179,134 @@ versionoitu `Eky migration chain v1` -algoritmi, jota backup-manifesti käyttä�
 Ensimmäinen oikean business-profiilin N -> N+1 -päivitys vaatii tämän lisäksi
 validoidun pre-migration recovery pointin ja hyväksytyn first-start-polun.
 
-Tämä checkpoint lisää vain teknisen migration metadata -taulun. Se ei muuta
+Edellä kuvattu metadata-checkpoint lisää vain teknisen migration metadata -taulun. Se ei muuta
 liiketoimintatauluja eikä vanhoja SQL-migraatiotiedostoja.
+
+### Varmuuskopion schema-tarkistin
+
+K-paketin yhteisen tarkistimen omistaa `database/migration`.
+`inspectAttestedMigrationHistory` ottaa ennen relaatiolukua käyttöön
+`trusted_schema=OFF`- ja `query_only=ON`-suojat. Se tarkistaa ensin rajatusta
+`main.sqlite_schema`-luettelosta teknisten historiataulujen määrittelyt,
+sitten rajatut historiarivit ja lopuksi koko hyväksytyn prefixin rakenteen.
+Tarkistuksen lukutransaktio sitoo nämä havainnot samaan tilaan. Kirjoittavan
+kutsujan aiempi `query_only`-tila palautetaan; itse tarkistus ei kirjoita
+kantaan. Tämä ei vielä yksin sido myöhempää kopiointia tai avausta samaan
+tiedostosisältöön.
+
+`inspectMigrationStartupState` käyttää samaa tarkistinta ja säilyttää
+käynnistyksen nykyisen tulos- ja virhesopimuksen. Tyhjää kantaa ei päätellä
+pelkästä taulujen puuttumisesta: myös ylimääräinen view hylätään. Metadatallinen
+prefix voi edelleen sisältää pending-migraatioita; metadatatonta
+restore-poikkeusta käytetään vain hyväksyttyyn 038-ankkuriin.
+
+`runMigrations` tarkistaa saman kirjoittavan yhteyden scheman ennen teknisten
+historiataulujen valmistelua tai migraation ensimmäistä kirjoitusta ja
+uudelleen ennen onnistunutta paluuta. Sen sisäinen `runnerBaseline` säilyttää
+aiemman täsmällisen metadataless-prefixin ankkuroinnin. Se ei kuulu
+`MigrationStartupPolicy`-rajapintaan eikä anna backupille uutta palautuslupaa.
+Vertailu ennen kirjoituksia käyttää vain jo ajettua prefixiä: rikkinäistä
+pending-SQL:ää ei ajeta etukäteen referenssin muodostamiseksi.
+
+Legacy-baseline ja kukin business-migraatio säilyttävät nykyiset erilliset
+transaktionsa. Loppuattestoinnin virhe on `MIGRATION_EXECUTION_FAILED`, jonka
+`completedMigrationCount` kertoo todella valmistuneet migraatiot ja
+`sideEffectState` pysyy `unknown`-tilassa. Virhe ei kumoa jo commitoitua
+historiaa eikä muutu nollan migraation virheeksi. Testien kirjoitusvirheet
+injektoidaan rajatusti statementin suoritukseen muuttamatta hyväksyttyä
+schemaa; niiden pitää todistaa myös migraation SQL:n ehtineen suoritukseen.
+
+`openAttestedMigrationDatabase` on backendin käynnistyksen avausportti
+K-työpuussa. Aiempi readonly-esitarkistuksen hot-journal-regressio käsitellään
+alla kuvatulla erikseen hyväksytyllä oman paikallisen työtilan
+kaatumispalautuksella. Tuotu backup ei saa tätä poikkeusta.
+K:n koko integraatiohyväksyntä on edelleen avoin
+[M1:n K-osiossa](release-0.3.0-m1-preparation-plan.md#kn-kokonaiskytkennän-tarkistus);
+avausportin kohdenäyttö ei yksin anna julkaisuhyväksyntää.
+Polku ratkaistaan kerran nykyisellä config-/ympäristö-/oletuspolitiikalla.
+Olemassa oleva tavallinen kanoninen yhden linkin tiedosto tarkistetaan
+readonly-yhteydellä ennen kirjoittavaa avausta. Readonly-yhteys suljetaan
+ensin; kirjoittava avaus ei saa luoda uudelleen sillä välillä kadonnutta
+tiedostoa. Uusi puuttuva kanta sekä tyhjä schema vaativat erilliset kutsujan
+luvat. Tarkistin ei päättele lupia epäonnistuneesta avaamisesta.
+
+Myös palautettava kirjoittava yhteys attestoidaan ennen palvelurekisteröintiä
+ja käynnistyscallbackia. Virhe sulkee yhteyden; sulkemisen lisävirhe ei
+korvaa alkuperäistä poikkeusta. Portti ei aja pending-migraatioita eikä luo
+legacy-metadataa. Suora backend ilman `beforeMigrations`-porttia säilyttää
+runnerin sisäisen baseline-politiikan. Portillinen käynnistys käyttää
+entistä `MigrationStartupPolicy`-valintaa, eikä `runnerBaseline` kuulu siihen.
+Callbackin jälkeinen runner-tarkistus ja nykyiset transaktiorajat säilyvät.
+Palautusgaten aikana rekisteröity aktiiviprofiilin tai snapshot-katalogin
+schema-reader käyttää samaa hyväksyttyä käynnistyspolicya. Sen
+`restoreCompatible`-poikkeus palautetaan tiukaksi gaten `finally`-rajassa;
+sitä ei säilytetä tavalliseen business-ajoon. Sama kelvollinen metadatatonta
+038-ankkuria vastaava schema hyväksytään tämän valtuuden aikana ja hylätään
+sen päätyttyä, ellei normaali runner ole jo ankkuroinut historiaa.
+Tämä ei hyväksy eteenpäin vieviä migraatioita C:n binaaripalautuksen gaten
+sisällä. [C:n kohdenäyttö ja avoimet rajat](release-0.3.0-m1-preparation-plan.md#v2bc-cn-alkuperäisketjun-terminal)
+ovat erillisiä koko palautusketjun hyväksynnästä.
+Manifesti-/historiahylkäys säilyy nykyisenä migraatiovirheenä, ei muutu
+pelkäksi käyttöjärjestelmän avausvirheeksi. K3:n tarkempi syyketju on avoin.
+
+Tämä backendin käynnistysportti ei yksin toteuta candidate-kopioinnin
+esitarkistusta tai kopiointi-/käyttösidontaa. Candidate-kuluttajan erillinen,
+hyväksytty työpuukytkentä on nyt kuvattu
+[M1:n V2i-kohdassa](release-0.3.0-m1-preparation-plan.md#v2i-tarkistuskopion-tuotantokuluttaja):
+SQLite tarkistaa vain operaation omistaman kertakopion, ja migraatiokopio
+sidotaan tarkistettuihin alkuperäisiin tavuihin ennen kirjoittavaa avausta.
+K3:n koko turvallisen syyn raportointiketju ja paketoitu hyväksyntä ovat
+edelleen kesken. Kytkennät eivät lupaa suojaa samalla
+käyttöjärjestelmätunnuksella toimivalta samanaikaiselta haittaohjelmalta.
+
+**Oman paikallisen työtilan kaatumispalautus:** erikseen hyväksytty
+`recoverOwnedLocalDatabase` antaa vain mainin valitseman, identiteetiltään
+saman työtilan ja nykyisen elävän prosessivarauksen tietokannalle SQLiten
+natiivin rollback-journal-palautuksen ennen readonly-esitarkistusta.
+SQLite itse käsittelee journalin; omaa parseria, sivutiedostojen poistoa,
+business-SQL:ää tai migraatioita ei tehdä tässä vaiheessa. Palautuksen
+jälkeen sama schema/history-portti vaaditaan ennen sisältölukua.
+Epävarma omistajuus pysäyttää, eikä tuotu varmuuskopio tai restore-staging
+saa tätä poikkeusta. Palautus voi muuttaa journalia ja kantaa myös myöhemmin
+hylättävässä käynnistyksessä, joten vaikutusta ei kuvata olemattomaksi.
+[Omistava V2u-sopimus](release-0.3.0-m1-preparation-plan.md#v2u-omistetun-paikallisen-työtilan-kaatumispalautus)
+erottaa kohdenäytön vielä avoimista packaged-/Linux-/integraatioporteista.
+Jäljellä olevat portit omistaa
+[M1:n K-osio](release-0.3.0-m1-preparation-plan.md#k-paketin-valmistelu-ja-hyväksyntärajat).
+
+Odotusrakenne muodostetaan sovelluksen luotetuista migraatiotavuista ja
+samasta teknisten taulujen DDL:stä muistissa. Tuodun kannan SQL ei muodosta
+odotusta. Vertailu kattaa `type`, `name`, `tbl_name` ja SQLiten tallentaman
+`sql`-arvon täsmälleen; myös autoindeksit kuuluvat joukkoon. Fyysistä
+`rootpage`-arvoa ei verrata. Muuttunut tai ylimääräinen objekti hylätään
+turvallisella `PROFILE_SCHEMA_UNSUPPORTED`-syyllä. Historiarivit rajataan
+ennen JavaScriptiin materialisointia, eikä historiataulun nimen olemassaolo
+yksin anna oikeutta kysellä sen sisältöä.
+
+`inspectSqliteProfileDatabase` käyttää tarkistinta ennen eheys-, FK- ja
+identity-lukua. Nykyisen täydellisen snapshotin sekä metadatallisen prefixin
+ja erikseen hyväksytyn metadatattoman 038-palautuksen ehdot säilyvät.
+Historiatestien tekninen DDL on jäädytetty aiempien julkaisujen lähteestä,
+ei muodostettu uudella odotusrakenteen helperillä.
+
+Tarkistuksen natiivi `SQLITE_NOMEM` säilytetään schema- ja historiakyselyjen
+catch-rajojen yli ja luokitellaan tarkistusoperaatiossa nykyiseksi
+`PROFILE_INSPECTION_LIMIT_EXCEEDED`-syyksi. Sama sääntö koskee tarkistimen
+eheys-, FK- ja identiteettilukua sekä eristetyn ajurin rajattuja avausvirheitä.
+Luokitus vaatii poikkeuksen täsmällisen koodin; virheviesti ei riitä.
+Tämä kertoo allokaation hylkäyksestä, ei yksin muistikatosta tai sen
+taustalla olevan resurssin loppumisen syystä. Alkuperäinen poikkeus säilyy
+vain sisäisenä syynä; statuskanava julkaisee sallitun turvallisen koodin.
+Myöhempi sulkemisvirhe ei korvaa tarkistuksen ensisyytä. Tarkistuksen ja
+sulkemisen epäonnistuminen eivät tuota onnistunutta sisältökuittia.
+[Luokittelun kohdenäyttö ja rajat](release-0.3.0-m1-preparation-plan.md#natiivin-muistivirheen-luokittelukorjaus)
+ovat erillisiä oikean prosessin resurssi- ja palautustodistuksista.
+
+**Integraatio kesken:** kaikkien kirjoittavien avausten, käynnistyksen ja
+candidate-/palautuspolkujen kytkentä sekä eristetty resurssiraja tehdään
+[K:n omistavan toteutussopimuksen](release-0.3.0-m1-preparation-plan.md#kn-toteutussopimus-rakenne-ennen-sisältöä)
+mukaan. Yhden tarkistimen kohdenäyttö ei sulje K1/K2:ta eikä korvaa
+paketoidun palautuksen hyväksyntää.
 
 Ensimmäinen mahdollinen migraatiotiedosto:
 

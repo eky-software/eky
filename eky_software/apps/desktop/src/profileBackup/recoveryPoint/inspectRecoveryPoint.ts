@@ -1,6 +1,6 @@
-import { promises as fileSystem } from 'node:fs';
 import { materializeRecoveryPoint, type ProfileSnapshotValidator } from './materializeRecoveryPoint.js';
 import type { RecoveryPointKeyProtector } from './recoveryPointKeyProtector.js';
+import { RecoveryPointCleanupError } from './recoveryPointOperationError.js';
 
 export interface RecoveryPointInspection {
   appVersion: string;
@@ -20,6 +20,7 @@ export async function inspectRecoveryPoint(input: {
   quarantineRoot: string;
   stagingRoot: string;
   validator: ProfileSnapshotValidator;
+  updateMaintenanceOperationId?: string;
 }): Promise<RecoveryPointInspection> {
   const materialized = await materializeRecoveryPoint(input);
   try {
@@ -31,9 +32,7 @@ export async function inspectRecoveryPoint(input: {
       profileId: materialized.profileId,
     };
   } finally {
-    await fileSystem.rm(materialized.operationRoot, {
-      force: true,
-      recursive: true,
-    });
+    try { await input.validator.removeProfileSnapshot(input.operationId); }
+    catch (error) { throw new RecoveryPointCleanupError(error); }
   }
 }

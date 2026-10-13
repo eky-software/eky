@@ -85,6 +85,22 @@ pitää kuulua samaan täsmälliseen creation identity -ketjuun ja sen syntymäa
 pitää olla sama tai myöhempi kuin todistetun vanhemman. Ennen omistettua juurta
 syntynyt prosessi ja sen jälkeläiset torjutaan siivouksesta fail closed.
 
+## Desktopin Vitest-rinnakkaisuus
+
+Desktopin tavallisen `vitest run` -ajon enimmäistyöntekijämäärä on neljä.
+Pienempi nykyinen run-tilan oletus säilyy: raja on
+`min(4, max(availableParallelism() - 1, 1))`. Asetus sijaitsee
+[`apps/desktop/vitest.config.mjs`](../../apps/desktop/vitest.config.mjs):ssä,
+joten normaali työtilan `pnpm test` ja sama CI-komento käyttävät sitä.
+Muiden pakettien rinnakkaisuutta, testivalintaa, eristystä, testiaikarajoja,
+uusintoja tai CI:n kokonaisaikarajaa ei muuteta.
+
+[Ajokytkennän regressiot](../../apps/desktop/scripts/test-command-wiring.test.mjs)
+tarkistavat vähäydinrajat ja Vitestin todellisen asetuksen lataamisen.
+Rinnakkaisuusraja hallitsee samanaikaista testityötä; sen kanssa onnistunut
+ajo ei yksin todista aiemman aikakatkaisun juurisyytä tai sovellusvirheen
+korjautumista. Aikaisemmat hylkäykset säilytetään erillisinä havaintoina.
+
 ## Ensivirhe, uusinta ja rajattu poikkeus
 
 Tämä on yhteinen käytäntö paikallisille testeille ja CI:lle. Se ei korvaa

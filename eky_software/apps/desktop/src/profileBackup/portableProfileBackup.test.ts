@@ -1,3 +1,4 @@
+import { promises as fileSystem } from 'node:fs';
 import {
   access,
   mkdir,
@@ -17,6 +18,9 @@ import {
   PortableProfileBackupError,
   PortableProfileBackupService,
 } from './portableProfileBackup.js';
+import { createProfileBackupSourceEntries } from './createProfileBackupSourceEntries.js';
+import type { ProfileInspectionReceipt } from '../runtime/profileInspectionMessages.js';
+import { createProfileSnapshotArtifactIdentity } from '../runtime/profileInspectionArtifactIdentity.js';
 
 const password = 'Synthetic backup password 2026!';
 const migrationChainIdentity = 'a'.repeat(64);
@@ -114,6 +118,99 @@ describe('portable profile backup', () => {
     });
   });
 
+  it.each([
+    'PROFILE_SCHEMA_UNSUPPORTED',
+    'synthetic private snapshot detail',
+  ])('preserves the internal snapshot failure through the create error: %s', async (causeCode) => {
+    const fixture = await createFixture();
+    const original = new Error(causeCode);
+    fixture.validateProfileSnapshot.mockRejectedValueOnce(original);
+
+    const failure: unknown = await fixture.service.create({
+      destinationPath: fixture.destinationPath,
+      password,
+    }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: 'PROFILE_BACKUP_CREATE_FAILED',
+      message: 'PROFILE_BACKUP_CREATE_FAILED',
+    });
+    expect((failure as Error).cause).toBe(original);
+    expect(JSON.stringify(failure)).not.toContain(causeCode);
+    expect(fixture.service.getStatus()).toEqual({
+      lastSafeErrorCode: 'PROFILE_BACKUP_CREATE_FAILED',
+      operationState: 'idle',
+    });
+    expect(fixture.endMaintenance).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps create-source failure and cleanup uncertainty separate without losing the first cause', async () => {
+    const fixture = await createFixture();
+    const original = new Error('PROFILE_SCHEMA_UNSUPPORTED');
+    fixture.validateProfileSnapshot.mockRejectedValueOnce(original);
+    fixture.removeProfileSnapshot.mockRejectedValueOnce(new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED'));
+    const error = await fixture.service.create({ destinationPath: fixture.destinationPath, password })
+      .catch((failure: unknown) => failure);
+    expect(error).toMatchObject({ code: 'PROFILE_BACKUP_CREATE_FAILED', cleanupStatus: 'unverified' });
+    expect((error as Error).cause).toBe(original);
+    expect(JSON.stringify(error)).not.toContain(original.message);
+    expect(fixture.removeProfileSnapshot).toHaveBeenCalledOnce();
+    await expect(access(join(fixture.stagingRoot, firstOperationId))).resolves.toBeUndefined();
+  });
+
+  it('does not repeat uncertain source removal or mark a completed container successful', async () => {
+    const fixture = await createFixture();
+    const original = new Error('synthetic private source cleanup detail');
+    const remove = fixture.removeProfileSnapshot.getMockImplementation()!;
+    fixture.removeProfileSnapshot.mockImplementation(async operationId => {
+      if (operationId === firstOperationId) throw original;
+      await remove(operationId);
+    });
+    const error = await fixture.service.create({ destinationPath: fixture.destinationPath, password })
+      .catch((failure: unknown) => failure);
+    expect(error).toMatchObject({ code: 'PROFILE_BACKUP_CREATE_FAILED', cleanupStatus: 'unverified' });
+    expect((error as Error).cause).toBe(original);
+    expect(fixture.removeProfileSnapshot.mock.calls.filter(([id]) => id === firstOperationId)).toHaveLength(1);
+    expect(fixture.recordSuccessfulBackup).not.toHaveBeenCalled();
+    expect(fixture.service.getStatus()).not.toHaveProperty('latestSuccessfulPortableBackupAt');
+    await expect(access(fixture.destinationPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(access(join(fixture.stagingRoot, firstOperationId))).resolves.toBeUndefined();
+    expect(JSON.stringify(error)).not.toContain(original.message);
+  });
+
+  it('preserves the inspection cleanup exception through the safe inspection error', async () => {
+    const fixture = await createFixture();
+    await fixture.service.create({ destinationPath: fixture.destinationPath, password });
+    const original = new Error('synthetic private cleanup detail');
+    const remove = fileSystem.rm;
+    const cleanup = vi.spyOn(fileSystem, 'rm').mockImplementation(async (path, options) => {
+      if (path === join(fixture.stagingRoot, repeatedInspectionOperationId)) {
+        throw original;
+      }
+      await remove(path, options);
+    });
+    try {
+      const failure: unknown = await fixture.service.inspect({
+        containerPath: fixture.destinationPath,
+        password,
+      }).catch((error: unknown) => error);
+
+      expect(failure).toMatchObject({
+        code: 'BACKUP_INSPECTION_UNAVAILABLE',
+        message: 'BACKUP_INSPECTION_UNAVAILABLE',
+        cleanupStatus: 'unverified',
+      });
+      expect(((failure as Error).cause as Error).cause).toBe(original);
+      expect(fixture.service.getStatus()).toMatchObject({
+        lastSafeErrorCode: 'BACKUP_INSPECTION_UNAVAILABLE',
+        operationState: 'idle',
+      });
+      expect(JSON.stringify(failure)).not.toContain(original.message);
+    } finally {
+      cleanup.mockRestore();
+    }
+  });
+
   it('rejects forbidden destinations and concurrent operations', async () => {
     const fixture = await createFixture({
       forbiddenRoots: [],
@@ -197,6 +294,7 @@ describe('portable profile backup', () => {
 const firstOperationId = '11111111-1111-4111-8111-111111111111';
 const inspectionOperationId = '22222222-2222-4222-8222-222222222222';
 const temporaryOperationId = '33333333-3333-4333-8333-333333333333';
+const repeatedInspectionOperationId = '44444444-4444-4444-8444-444444444444';
 
 async function createFixture(options: {
   forbiddenRoots?: readonly string[];
@@ -265,9 +363,13 @@ async function createFixture(options: {
     firstOperationId,
     inspectionOperationId,
     temporaryOperationId,
+    repeatedInspectionOperationId,
   ];
   const recordSuccessfulBackup: RecordSuccessfulBackup =
     options.recordSuccessfulBackup ?? vi.fn(async () => undefined);
+  const removeProfileSnapshot = vi.fn(async (operationId: string) => {
+    await fileSystem.rm(join(stagingRoot, operationId), { force: true, recursive: true });
+  });
   const service = new PortableProfileBackupService({
     appVersion: '0.1.0-alpha.1',
     forbiddenRoots: options.forbiddenRoots ?? [stagingRoot],
@@ -284,6 +386,23 @@ async function createFixture(options: {
       createProfileSnapshot,
       endMaintenance,
       validateProfileSnapshot,
+      withInspectionOperation: operation => operation(),
+      async withProfileSnapshot<T>(operationId: string, use: (receipt: ProfileInspectionReceipt) => Promise<T>) {
+        const entries = await createProfileBackupSourceEntries(join(stagingRoot, operationId));
+        const database = entries.find(entry => entry.type === 'database')!;
+        const artifactCatalog = entries.find(entry => entry.type === 'artifactCatalog')!;
+        const artifacts = entries.filter(entry => entry.type === 'businessArtifact');
+        return use({ artifactCount: artifacts.length,
+          artifactIdentity: createProfileSnapshotArtifactIdentity(artifacts.map(entry => ({
+            logicalPath: entry.logicalPath, byteSize: Number(entry.contentLength), sha256: entry.sha256,
+          }))),
+          artifactTotalByteSize: Number(artifacts.reduce((sum, entry) => sum + entry.contentLength, 0n)),
+          databaseHealth: 'healthy', migrationChainIdentity, profileId,
+          migrationPolicy: 'restoreCompatible',
+          database: { byteSize: Number(database.contentLength), sha256: database.sha256 },
+          artifactCatalog: { byteSize: Number(artifactCatalog.contentLength), sha256: artifactCatalog.sha256 } });
+      },
+      removeProfileSnapshot,
     },
     quarantineRoot,
     recordSuccessfulBackup,
@@ -297,9 +416,11 @@ async function createFixture(options: {
     quarantineRoot,
     recordSuccessfulBackup,
     releaseSnapshot,
+    removeProfileSnapshot,
     service,
     snapshotStarted,
     stagingRoot,
+    validateProfileSnapshot,
   };
 }
 

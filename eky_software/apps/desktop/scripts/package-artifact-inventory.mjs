@@ -7,6 +7,7 @@ import {
   assertBackendManifestHasNoBuildPaths,
   BACKEND_BUILD_METADATA_PATHS,
 } from './backendBuildMetadata.mjs';
+import { profileInspectionNativeContract as inspectionNative } from '../../backend/src/database/connection/profileInspectionNativeContract.ts';
 
 const smokeAllowlist = new Set([
   'dist/main/applicationProtocolSmoke.js',
@@ -27,17 +28,19 @@ const validStages = new Set([
   'backendStage',
   'desktopRuntimeStage',
   'updateRuntimeStage',
+  'profileInspectionNativeStage',
   'packagedApp',
 ]);
 const reviewedVendorSensitiveArtifactAllowlist = new Set([]);
 const maximumCredentialJsonInspectionBytes = 1_048_576;
+const maximumApplicationBytes = 2_883_584;
 const stageLimits = Object.freeze({
   applicationStage: Object.freeze({
     maximumDirectoryDepth: 5,
-    maximumFileCount: 352,
+    maximumFileCount: 400,
     maximumLogicalPathBytes: 96,
     maximumProjectOwnedFileBytes: 1_048_576,
-    maximumTotalBytes: 2_359_296,
+    maximumTotalBytes: maximumApplicationBytes,
   }),
   backendStage: Object.freeze({
     maximumDirectoryDepth: 9,
@@ -59,6 +62,13 @@ const stageLimits = Object.freeze({
     maximumLogicalPathBytes: 64,
     maximumProjectOwnedFileBytes: 32_768,
     maximumTotalBytes: 64_000,
+  }),
+  profileInspectionNativeStage: Object.freeze({
+    maximumDirectoryDepth: 0,
+    maximumFileCount: 2,
+    maximumLogicalPathBytes: 64,
+    maximumProjectOwnedFileBytes: inspectionNative.maximumNativeBytes,
+    maximumTotalBytes: inspectionNative.maximumNativeBytes + inspectionNative.maximumMetadataBytes,
   }),
   packagedApp: Object.freeze({
     maximumDirectoryDepth: 11,
@@ -85,6 +95,9 @@ export async function inspectPackageArtifactInventory({ root, stage }) {
   if (files.length > limits.maximumFileCount) {
     throw new PackageArtifactInventoryError('FILE_COUNT');
   }
+  if (stage === 'profileInspectionNativeStage' && files.length !== 2) {
+    throw new PackageArtifactInventoryError('INSPECTION_NATIVE_FILES');
+  }
   const hash = createHash('sha256').update('Eky package inventory v1\0');
   let totalByteSize = 0;
 
@@ -98,6 +111,12 @@ export async function inspectPackageArtifactInventory({ root, stage }) {
       throw new PackageArtifactInventoryError('DIRECTORY_DEPTH');
     }
     const metadata = await lstat(file);
+    const nativePath = inspectionNativeLogicalPath(logicalPath, stage);
+    if (nativePath !== undefined &&
+        (metadata.nlink !== 1 || metadata.size < (nativePath === inspectionNative.fileName ? inspectionNative.minimumNativeBytes : 1) ||
+        metadata.size > (nativePath === inspectionNative.fileName ? inspectionNative.maximumNativeBytes : inspectionNative.maximumMetadataBytes))) {
+      throw new PackageArtifactInventoryError('INSPECTION_NATIVE_SIZE_OR_LINK');
+    }
     const contentReason = await classifyForbiddenArtifactContents({
       file,
       logicalPath,
@@ -111,9 +130,15 @@ export async function inspectPackageArtifactInventory({ root, stage }) {
     if (reason !== undefined) {
       throw new PackageArtifactInventoryError(reason);
     }
+    let maximumProjectOwnedFileBytes = limits.maximumProjectOwnedFileBytes;
+    if (nativePath === inspectionNative.fileName) {
+      maximumProjectOwnedFileBytes = inspectionNative.maximumNativeBytes;
+    } else if (stage === 'packagedApp' && logicalPath === 'resources/app.asar') {
+      maximumProjectOwnedFileBytes = maximumApplicationBytes;
+    }
     if (
       isProjectOwnedArtifact(logicalPath, stage) &&
-      metadata.size > limits.maximumProjectOwnedFileBytes
+      metadata.size > maximumProjectOwnedFileBytes
     ) {
       throw new PackageArtifactInventoryError('PROJECT_FILE_SIZE');
     }
@@ -124,7 +149,7 @@ export async function inspectPackageArtifactInventory({ root, stage }) {
     ) {
       throw new PackageArtifactInventoryError('SIZE');
     }
-    const fileHash = await hashFile(file);
+    const fileHash = await hashFile(file, nativePath === undefined ? undefined : metadata);
     const lengths = Buffer.alloc(12);
     lengths.writeUInt32BE(pathBytes.byteLength, 0);
     lengths.writeBigUInt64BE(BigInt(metadata.size), 4);
@@ -145,6 +170,10 @@ export function classifyForbiddenArtifact(logicalPath, stage) {
   const segments = lowerPath.split('/');
   const fileName = segments.at(-1) ?? '';
   const isProjectOwned = isProjectOwnedArtifact(normalized, stage);
+  const nativePath = inspectionNativeLogicalPath(normalized, stage);
+  if (nativePath !== undefined && ![inspectionNative.fileName, inspectionNative.metadataFileName].includes(nativePath)) {
+    return 'UNAPPROVED_INSPECTION_NATIVE_ARTIFACT';
+  }
 
   if (BACKEND_BUILD_METADATA_PATHS.includes(backendLogicalPath(lowerPath, stage))) {
     return 'BACKEND_BUILD_METADATA';
@@ -280,6 +309,13 @@ function backendLogicalPath(lowerPath, stage) {
   return undefined;
 }
 
+function inspectionNativeLogicalPath(logicalPath, stage) {
+  if (stage === 'profileInspectionNativeStage') return logicalPath;
+  const prefix = `resources/${inspectionNative.directoryName}/`;
+  if (stage === 'packagedApp' && logicalPath.toLowerCase().startsWith(prefix)) return logicalPath.slice(prefix.length);
+  return undefined;
+}
+
 function isServiceAccountJson(value) {
   return (
     value !== null &&
@@ -305,6 +341,7 @@ function isProjectOwnedArtifact(logicalPath, stage) {
     normalized === 'resources/app.asar' ||
     normalized.startsWith('resources/backend/') ||
     normalized.startsWith('resources/desktop-runtime/') ||
+    normalized.startsWith(`resources/${inspectionNative.directoryName}/`) ||
     normalized.startsWith('resources/update-runtime/')
   );
 }
@@ -335,10 +372,24 @@ async function listRegularFiles(root) {
   });
 }
 
-async function hashFile(path) {
+async function hashFile(path, nativeMetadata) {
   const hash = createHash('sha256');
-  for await (const chunk of createReadStream(path)) {
+  const options = nativeMetadata === undefined ? undefined : { start: 0, end: nativeMetadata.size - 1 };
+  let length = 0;
+  for await (const chunk of createReadStream(path, options)) {
+    length += chunk.length;
+    if (nativeMetadata !== undefined && length > nativeMetadata.size) {
+      throw new PackageArtifactInventoryError('INSPECTION_NATIVE_CHANGED');
+    }
     hash.update(chunk);
+  }
+  if (nativeMetadata !== undefined) {
+    const after = await lstat(path);
+    if (!after.isFile() || after.isSymbolicLink() || after.nlink !== 1 ||
+        length !== nativeMetadata.size ||
+        ['dev', 'ino', 'size', 'mtimeMs', 'ctimeMs'].some(key => after[key] !== nativeMetadata[key])) {
+      throw new PackageArtifactInventoryError('INSPECTION_NATIVE_CHANGED');
+    }
   }
   return hash.digest('hex');
 }

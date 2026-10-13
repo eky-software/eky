@@ -10,7 +10,8 @@ import { encodeLinuxServiceDiagnostic, projectLinuxServiceCause } from './linuxS
 export class OwnedLinuxServiceStartupFailure extends Error {
   constructor(profile, evidence, output) {
     super(profile === 'backend' ? 'E2E_BACKEND_OWNER_START_FAILED' : profile === 'chromium'
-      ? 'E2E_CHROMIUM_OWNER_START_FAILED' : 'E2E_VITE_OWNER_START_FAILED');
+      ? 'E2E_CHROMIUM_OWNER_START_FAILED' : profile === 'profileInspection'
+        ? 'E2E_PROFILE_INSPECTION_OWNER_START_FAILED' : 'E2E_VITE_OWNER_START_FAILED');
     this.evidence = Object.freeze({ spawnObserved: evidence.spawnObserved,
       exitedBeforeCleanup: evidence.exitedBeforeCleanup, processTree: evidence.processTree,
       startupFailure: evidence.startupFailure });
@@ -227,7 +228,8 @@ export async function startLinuxService(profile, input, {
             Number.isSafeInteger(reply.rssBytes) && reply.rssBytes > 0, 'observationLost');
           return reply.rssBytes;
         } catch { throw new Error(profile === 'backend' ? 'E2E_BACKEND_RSS_UNAVAILABLE'
-          : profile === 'vite' ? 'E2E_VITE_RSS_UNAVAILABLE' : 'E2E_CHROMIUM_RSS_UNAVAILABLE'); }
+          : profile === 'vite' ? 'E2E_VITE_RSS_UNAVAILABLE' : profile === 'profileInspection'
+            ? 'E2E_PROFILE_INSPECTION_RSS_UNAVAILABLE' : 'E2E_CHROMIUM_RSS_UNAVAILABLE'); }
       },
     }), stop,
   });

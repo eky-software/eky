@@ -3,7 +3,7 @@ import { promises as fileSystem } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   backupContainerHeaderLength,
@@ -154,6 +154,54 @@ describe('encrypted profile backup inspector', () => {
       code: 'BACKUP_CONTENT_INVALID',
     });
   });
+
+  it('preserves the first content cause when owned cleanup independently fails', async () => {
+    const fixture = await createFixture();
+    await writeFixture(fixture);
+    const original = new Error('PROFILE_SCHEMA_UNSUPPORTED');
+    vi.spyOn(fixture.validator, 'validateProfileSnapshot').mockRejectedValueOnce(original);
+    vi.spyOn(fixture.validator, 'removeProfileSnapshot').mockRejectedValueOnce(new Error('cleanup unavailable'));
+    const error = await inspectEncryptedProfileBackup({
+      containerPath: fixture.containerPath, operationId: fixture.operationId, password,
+      quarantineRoot: fixture.quarantineRoot, stagingRoot: fixture.stagingRoot, validator: fixture.validator,
+    }).catch((failure: unknown) => failure);
+    expect(error).toMatchObject({ code: 'BACKUP_CONTENT_INVALID', cleanupStatus: 'unverified' });
+    expect(((error as Error).cause as Error).cause).toBe(original);
+    expect(JSON.stringify(error)).not.toContain(original.message);
+    await expect(fileSystem.stat(join(fixture.stagingRoot, fixture.operationId))).resolves.toBeDefined();
+  });
+
+  it.each([
+    'PROFILE_SCHEMA_UNSUPPORTED',
+    'PROFILE_INSPECTION_LIMIT_EXCEEDED',
+    'PROFILE_INSPECTION_TIMEOUT',
+    'PROFILE_INSPECTION_PROTOCOL_INVALID',
+    'PROFILE_INSPECTION_CLEANUP_UNVERIFIED',
+    'synthetic private inspection detail',
+  ])('preserves the internal inspection cause without changing the content error: %s', async (causeCode) => {
+    const fixture = await createFixture();
+    await writeFixture(fixture);
+    const original = new Error(causeCode);
+    vi.spyOn(fixture.validator, 'validateProfileSnapshot')
+      .mockRejectedValueOnce(original);
+
+    const failure: unknown = await inspectEncryptedProfileBackup({
+      containerPath: fixture.containerPath,
+      operationId: fixture.operationId,
+      password,
+      quarantineRoot: fixture.quarantineRoot,
+      stagingRoot: fixture.stagingRoot,
+      validator: fixture.validator,
+    }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: 'BACKUP_CONTENT_INVALID',
+      message: 'BACKUP_CONTENT_INVALID',
+    });
+    expect((failure as Error).cause).toBe(original);
+    expect(Object.keys(failure as Error)).not.toContain('cause');
+    expect(JSON.stringify(failure)).not.toContain(causeCode);
+  });
 });
 
 interface Fixture {
@@ -212,7 +260,7 @@ async function createFixture(): Promise<Fixture> {
     password,
     quarantineRoot,
     stagingRoot,
-    validator: new FakeValidator(),
+    validator: new FakeValidator(stagingRoot),
   };
 }
 
@@ -253,8 +301,13 @@ async function mutateByte(path: string, offset: number): Promise<void> {
 }
 
 class FakeValidator {
+  constructor(private readonly stagingRoot: string) {}
   operationIds: string[] = [];
   profileId = 'd'.repeat(64);
+
+  async removeProfileSnapshot(operationId: string) {
+    await fileSystem.rm(join(this.stagingRoot, operationId), { force: true, recursive: true });
+  }
 
   async validateProfileSnapshot(operationId: string) {
     this.operationIds.push(operationId);

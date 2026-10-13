@@ -3,13 +3,18 @@ import { isAbsolute, toNamespacedPath } from 'node:path';
 
 import Database from 'better-sqlite3';
 
+import type { DatabaseConnection } from '../../database/connection/createDatabaseConnection.js';
 import { readLocalRuntimeIdentity } from '../../database/localRuntimeIdentityReader.js';
 import { readMigrationManifest } from '../../database/migration/migrationManifest.js';
+import type { MigrationHistoryInspection } from '../../database/migration/migrationMetadata.js';
+import { inspectAttestedMigrationHistoryWithReferences } from '../../database/migration/inspectAttestedMigrationHistory.js';
 import {
-  inspectApprovedLegacyMigrationHistory,
-  inspectMigrationHistory,
-  type MigrationHistoryInspection,
-} from '../../database/migration/migrationMetadata.js';
+  getMigrationSchemaReference,
+  getMigrationTechnicalSchema,
+  type MigrationSchemaReferences,
+} from '../../database/migration/migrationSchemaReference.js';
+import { configureProfileInspectionConnection } from './profileInspectionSqlite.js';
+import { profileInspectionSqliteError } from './profileInspectionSqliteError.js';
 
 const profileIdentityDomain = 'Eky profile identity v1\0';
 
@@ -21,6 +26,10 @@ export type ProfileMigrationInspectionPolicy =
   | 'exactCurrentManifest'
   | 'compatibleHistoricalPrefix'
   | 'restoreCompatible';
+
+export function isProfileMigrationInspectionPolicy(value: unknown): value is ProfileMigrationInspectionPolicy {
+  return value === 'exactCurrentManifest' || value === 'compatibleHistoricalPrefix' || value === 'restoreCompatible';
+}
 
 export function inspectSqliteProfileDatabase(
   databaseFilePath: string,
@@ -38,26 +47,52 @@ export function inspectSqliteProfileDatabase(
   });
 
   try {
+    return inspectSqliteProfileConnection(database, migrationsDirectory, migrationPolicy);
+  } finally {
+    database.close();
+  }
+}
+
+// The caller owns this readonly connection through both schema and content
+// validation, avoiding a second unvalidated open between those steps.
+export function inspectSqliteProfileConnection(
+  database: DatabaseConnection,
+  migrationsDirectory: string,
+  migrationPolicy: ProfileMigrationInspectionPolicy = 'exactCurrentManifest',
+): SqliteProfileDatabaseInspection {
+  return inspectSqliteProfileConnectionWithReferences(database, migrationsDirectory, migrationPolicy, {
+    getTechnicalSchema: getMigrationTechnicalSchema,
+    getSchemaReference: getMigrationSchemaReference,
+  });
+}
+
+export function inspectSqliteProfileConnectionWithReferences(
+  database: DatabaseConnection,
+  migrationsDirectory: string,
+  migrationPolicy: ProfileMigrationInspectionPolicy,
+  references: MigrationSchemaReferences,
+): SqliteProfileDatabaseInspection {
+  if (!database.readonly || !isAbsolute(migrationsDirectory) || !isProfileMigrationInspectionPolicy(migrationPolicy)) {
+    throw new Error('PROFILE_SNAPSHOT_DATABASE_INVALID');
+  }
+  try {
+    configureProfileInspectionConnection(database);
+    const expectedMigrations = readMigrationManifest(migrationsDirectory);
+    const migrationHistory = inspectAttestedMigrationHistoryWithReferences(database, expectedMigrations, references, {
+      ...(migrationPolicy === 'restoreCompatible' ? { legacyPolicy: 'approvedRestore' } as const : {}),
+    });
     const integrityResult: unknown = database.pragma('integrity_check', {
       simple: true,
     });
-    const foreignKeyRows = database.pragma('foreign_key_check') as unknown[];
+    const foreignKeyFailure = database.prepare('PRAGMA foreign_key_check').get();
 
-    if (integrityResult !== 'ok' || foreignKeyRows.length !== 0) {
+    if (integrityResult !== 'ok' || foreignKeyFailure !== undefined) {
       throw new Error('PROFILE_SNAPSHOT_DATABASE_INVALID');
     }
 
-    const expectedMigrations = readMigrationManifest(migrationsDirectory);
-    const migrationHistory = inspectMigrationHistoryForPolicy(
-      database,
-      expectedMigrations,
-      migrationPolicy,
-    );
-
     if (
       migrationPolicy === 'exactCurrentManifest' &&
-      migrationHistory.appliedMigrationNames.length !==
-        expectedMigrations.length
+      migrationHistory.appliedMigrationNames.length !== expectedMigrations.length
     ) {
       throw new Error('PROFILE_SNAPSHOT_MIGRATIONS_INVALID');
     }
@@ -69,27 +104,8 @@ export function inspectSqliteProfileDatabase(
       migrationChainIdentity: migrationHistory.migrationChainIdentity,
       profileId: createProfileBackupIdentity(identity.companyId),
     };
-  } finally {
-    database.close();
-  }
-}
-
-function inspectMigrationHistoryForPolicy(
-  database: Database.Database,
-  expectedMigrations: ReturnType<typeof readMigrationManifest>,
-  migrationPolicy: ProfileMigrationInspectionPolicy,
-): MigrationHistoryInspection {
-  try {
-    return inspectMigrationHistory(database, expectedMigrations);
-  } catch {
-    if (migrationPolicy !== 'restoreCompatible') {
-      throw new Error('MIGRATION_HISTORY_INVALID');
-    }
-
-    return inspectApprovedLegacyMigrationHistory(
-      database,
-      expectedMigrations,
-    );
+  } catch (error) {
+    throw profileInspectionSqliteError(error);
   }
 }
 

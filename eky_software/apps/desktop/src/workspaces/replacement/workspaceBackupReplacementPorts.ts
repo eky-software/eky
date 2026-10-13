@@ -47,7 +47,11 @@ export interface WorkspaceReplacementActivationAuthority {
   readonly transaction: Pick<
     ProfileRestoreActivationTransaction,
     | 'accept'
+    | 'commitAcceptance'
+    | 'clearAccepted'
     | 'advanceToValidation'
+    | 'assertForwardRecoveryState'
+    | 'readForwardRecoverySources'
     | 'clearRolledBack'
     | 'prepare'
     | 'rollback'

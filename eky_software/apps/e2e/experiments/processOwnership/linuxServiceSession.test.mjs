@@ -82,8 +82,8 @@ function fixture(options = {}) {
   };
 }
 
-test('live backend and Vite preserve workload API and require ownership before GO', async () => {
-  for (const profile of ['backend', 'vite']) {
+test('live backend, Vite and inspection preserve workload API and require ownership before GO', async () => {
+  for (const profile of ['backend', 'vite', 'profileInspection']) {
     const f = fixture({ profile }); const service = await f.start();
     assert.match(service.workload.instanceId, /^[a-f0-9-]{36}$/u);
     assert.notEqual(service.workload.instanceId, generation);
@@ -100,6 +100,33 @@ test('live backend and Vite preserve workload API and require ownership before G
     assert.deepEqual(f.events.slice(-3), ['observe', 'commandsClosed', 'removeControl']);
     assert.equal(f.timers.size, 0);
   }
+});
+
+test('inspection host exit remains separate from owner cleanup and its own result', async () => {
+  for (const wrapperFailure of [false, true]) {
+    const f = fixture({ profile: 'profileInspection', rootFirst: true, wrapperFailure });
+    const service = await f.start();
+    assert.equal(await service.workload.readState(), 'exited');
+    assert.equal(service.connectionOwner, undefined);
+    if (wrapperFailure) {
+      await assert.rejects(service.stop(), error => error.message === 'E2E_PROFILE_INSPECTION_OWNER_START_FAILED' &&
+        error.evidence.processTree === 'unverified' && error.evidence.exitedBeforeCleanup);
+      assert.ok(!f.events.includes('removeControl'));
+    } else {
+      await service.stop(); assert.ok(f.events.includes('removeControl'));
+    }
+    assert.equal(f.timers.size, 0);
+    await assert.rejects(service.workload.readRssBytes(), { message: 'E2E_PROFILE_INSPECTION_RSS_UNAVAILABLE' });
+  }
+});
+
+test('inspection early exit preserves the safe profile and original failure after cleanup', async () => {
+  const f = fixture({ profile: 'profileInspection', earlyExit: true });
+  await assert.rejects(f.start(), error => error.evidence.startupFailure === 'workloadExited' &&
+    error.evidence.processTree === 'stopped');
+  assert.equal(f.diagnostics[0].profile, 'profileInspection');
+  assert.equal(f.diagnostics[0].phase, 'workloadStart');
+  assert.ok(f.events.includes('removeControl'));
 });
 
 test('repeated stop shares one promise and waits actual control close before manager proof', async () => {

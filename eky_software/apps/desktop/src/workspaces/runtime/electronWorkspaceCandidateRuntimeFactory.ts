@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
 
 import { utilityProcess } from 'electron';
 
@@ -12,6 +13,7 @@ import {
   type WorkspaceCandidateProcessCommand,
   type WorkspaceCandidateProcessOperation,
   type WorkspaceCandidateProcessResult,
+  type WorkspaceCandidateFailureCause,
 } from '../../runtime/workspaceCandidateMessages.js';
 import {
   matchesWorkspaceProcessReservationDescriptor,
@@ -20,6 +22,7 @@ import {
 } from '../../runtime/workspaceProcessReservationDescriptor.js';
 import { createDesktopRuntimeSession } from '../../runtime/runtimeSession.js';
 import type { WorkspaceProcessReservationTransfer } from '../../runtime/workspaceProcessReservation.js';
+import { WorkspaceCandidateInspectionCopy } from './workspaceCandidateInspectionCopy.js';
 import type {
   EmptyWorkspaceBootstrapInput,
   EmptyWorkspaceBootstrapResult,
@@ -52,6 +55,9 @@ import type {
 const operationTimeoutMilliseconds = 5 * 60_000;
 const shutdownTimeoutMilliseconds = 3_000;
 const operationFailedCode = 'WORKSPACE_CANDIDATE_OPERATION_FAILED';
+type WorkspaceCandidateStartupOperation =
+  | Exclude<WorkspaceCandidateProcessOperation, { operation: 'migrateBackup' }>
+  | Omit<Extract<WorkspaceCandidateProcessOperation, { operation: 'migrateBackup' }>, 'inspectionRoot'>;
 
 interface WorkspaceCandidateProcessHandle {
   kill(): boolean;
@@ -72,9 +78,11 @@ export interface WorkspaceCandidateProcessSpawner {
 export type WorkspaceCandidateReservationTransfer = WorkspaceProcessReservationTransfer;
 
 export interface WorkspaceCandidateReservationOwner {
+  assertMainOwned?(): Promise<void>;
   bindCandidate(input: {
     readonly generationId: string;
     readonly operationId: string;
+    readonly prepareMainOwned?: (signal: AbortSignal) => Promise<void>;
   }): WorkspaceCandidateReservationTransfer;
 }
 
@@ -194,6 +202,9 @@ export class ElectronWorkspaceCandidateRuntimeFactory
         migrationsDirectory: this.options.migrationsDirectory,
         operation: 'inspectPublishedMigration',
         publishedRoot: input.publishedRoot,
+        ...(input.ownedLocalDatabaseRecovery === undefined ? {} : {
+          ownedLocalDatabaseRecovery: input.ownedLocalDatabaseRecovery,
+        }),
       },
       input.signal,
     );
@@ -217,7 +228,7 @@ export class ElectronWorkspaceCandidateRuntimeFactory
 
   private async startMigrationRuntime(
     operationId: string,
-    operation: WorkspaceCandidateProcessOperation,
+    operation: WorkspaceCandidateStartupOperation,
   ): Promise<PrivateWorkspaceBackupCandidateRuntime> {
     const runtime = await this.startOperation(operationId, operation);
     return {
@@ -269,7 +280,7 @@ export class ElectronWorkspaceCandidateRuntimeFactory
 
   private async startOperation(
     operationId: string,
-    operation: WorkspaceCandidateProcessOperation,
+    operation: WorkspaceCandidateStartupOperation,
     signal?: AbortSignal,
   ): Promise<ManagedWorkspaceCandidateRuntime> {
     if (isAbortRequested(signal)) {
@@ -277,8 +288,17 @@ export class ElectronWorkspaceCandidateRuntimeFactory
     }
     const runtimeSession = createDesktopRuntimeSession();
     const requestId = randomUUID();
+    const inspectionCopy = operation.operation === 'migrateBackup'
+      ? new WorkspaceCandidateInspectionCopy(join(operation.candidateRoot, `inspection-${requestId}`))
+      : undefined;
+    if (inspectionCopy !== undefined && this.options.reservationOwner.assertMainOwned === undefined) {
+      throw new Error(operationFailedCode);
+    }
+    const boundOperation = operation.operation === 'migrateBackup'
+      ? { ...operation, inspectionRoot: inspectionCopy!.root }
+      : operation;
     const startCommand = createWorkspaceCandidateStartCommand({
-      operation,
+      operation: boundOperation,
       operationId,
       requestId,
       runtimeSession,
@@ -291,6 +311,9 @@ export class ElectronWorkspaceCandidateRuntimeFactory
     const reservationTransfer = this.options.reservationOwner.bindCandidate({
       generationId: requestId,
       operationId,
+      ...(inspectionCopy === undefined ? {} : {
+        prepareMainOwned: (signal: AbortSignal) => inspectionCopy.prepare(signal),
+      }),
     });
     const descriptor = parseWorkspaceProcessReservationDescriptor(reservationTransfer.descriptor);
     if (descriptor === undefined || descriptor.generationId !== requestId) {
@@ -322,6 +345,11 @@ export class ElectronWorkspaceCandidateRuntimeFactory
         this.options.shutdownTimeoutMilliseconds ??
         shutdownTimeoutMilliseconds,
       startCommand,
+      ...(inspectionCopy === undefined ? {} : {
+        discardInspectionCopy: (signal: AbortSignal) => inspectionCopy.discard(
+          () => this.options.reservationOwner.assertMainOwned!(), signal,
+        ),
+      }),
       startupTimeoutMilliseconds:
         this.options.startupTimeoutMilliseconds ?? workspaceCandidateStartupTimeoutMilliseconds,
     });
@@ -337,7 +365,7 @@ export class ElectronWorkspaceCandidateRuntimeFactory
       return runtime;
     } catch {
       await runtime.stopAfterStartFailure();
-      throw new Error(operationFailedCode);
+      throw runtime.createOperationFailure();
     } finally {
       signal?.removeEventListener('abort', abortRuntime);
     }
@@ -381,10 +409,14 @@ class ManagedWorkspaceCandidateRuntime {
   private reservationReclaimed = false;
   private transferInvalidated = false;
   private startupDeadline = 0;
+  private inspectionClosed = false;
+  private inspectionDiscarded = false;
+  private failureCause: WorkspaceCandidateFailureCause | undefined;
 
   constructor(
     private readonly options: {
       readonly operationTimeoutMilliseconds: number;
+      readonly discardInspectionCopy?: (signal: AbortSignal) => Promise<void>;
       readonly processHandle: WorkspaceCandidateProcessHandle;
       readonly prepareCommand: Extract<WorkspaceCandidateProcessCommand, { type: 'prepare' }>;
       readonly reservationTransfer: WorkspaceCandidateReservationTransfer;
@@ -437,6 +469,11 @@ class ManagedWorkspaceCandidateRuntime {
     return this.beginStop();
   }
 
+  createOperationFailure(): Error {
+    return new Error(operationFailedCode, this.failureCause === undefined
+      ? undefined : { cause: new Error(this.failureCause) });
+  }
+
   inspectStoppedResult(): WorkspaceCandidateProcessResult {
     if (
       !this.exited ||
@@ -444,6 +481,7 @@ class ManagedWorkspaceCandidateRuntime {
       this.exitCode !== 0 ||
       !this.protocolValid ||
       !this.completedTerminalReceived ||
+      (this.options.discardInspectionCopy !== undefined && !this.inspectionDiscarded) ||
       this.completedResult === undefined
     ) {
       throw new Error('WORKSPACE_CANDIDATE_RESULT_UNAVAILABLE');
@@ -510,12 +548,18 @@ class ManagedWorkspaceCandidateRuntime {
       return;
     }
     this.terminalSeen = true;
+    this.inspectionClosed = status.inspectionClosed === true;
     this.clearTimer();
     if (status.type === 'failed') {
+      this.failureCause ??= status.causeCode;
       this.failOperation();
       return;
     }
     if (status.type !== 'completed') {
+      this.failClosed();
+      return;
+    }
+    if (this.options.discardInspectionCopy !== undefined && !this.inspectionClosed) {
       this.failClosed();
       return;
     }
@@ -533,9 +577,9 @@ class ManagedWorkspaceCandidateRuntime {
     this.exitCode = exitCode;
     this.clearTimer();
     if (
-      !this.completedTerminalReceived ||
+      !this.terminalSeen ||
       !this.shutdownSent ||
-      exitCode !== 0
+      (this.completedTerminalReceived ? exitCode !== 0 : exitCode !== 1)
     ) {
       this.protocolValid = false;
       this.completedResult = undefined;
@@ -567,6 +611,7 @@ class ManagedWorkspaceCandidateRuntime {
   }
 
   private failClosed(): void {
+    this.inspectionClosed = false;
     this.protocolValid = false;
     this.invalidateTransfer();
     this.completedResult = undefined;
@@ -595,7 +640,7 @@ class ManagedWorkspaceCandidateRuntime {
   private settleStartFailure(): void {
     if (this.startSettled) return;
     this.startSettled = true;
-    this.rejectStart?.(new Error(operationFailedCode));
+    this.rejectStart?.(this.createOperationFailure());
   }
 
   private setTimer(timeoutMilliseconds: number, action: () => void): void {
@@ -653,6 +698,20 @@ class ManagedWorkspaceCandidateRuntime {
       } finally {
         reclaimCancellation.abort();
       }
+      if (this.options.discardInspectionCopy !== undefined && this.inspectionClosed && this.protocolValid) {
+        const cleanupCancellation = new AbortController();
+        try {
+          if (performance.now() >= deadline || !(await waitWithinDeadline(
+            this.options.discardInspectionCopy(cleanupCancellation.signal), deadline,
+          ))) {
+            this.invalidateTransfer();
+            return false;
+          }
+          this.inspectionDiscarded = true;
+        } finally {
+          cleanupCancellation.abort();
+        }
+      }
     } catch {
       this.invalidateTransfer();
       return false;
@@ -663,6 +722,7 @@ class ManagedWorkspaceCandidateRuntime {
       this.exitCode === 0 &&
       this.protocolValid &&
       this.completedTerminalReceived &&
+      (this.options.discardInspectionCopy === undefined || this.inspectionDiscarded) &&
       this.completedResult !== undefined
     );
   }

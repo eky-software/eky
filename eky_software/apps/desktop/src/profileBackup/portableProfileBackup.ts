@@ -3,7 +3,7 @@ import { promises as fileSystem } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import { writeBackupContainer } from './container/backupContainerWriter.js';
-import { createProfileBackupSourceEntries } from './createProfileBackupSourceEntries.js';
+import { assertProfileBackupSourceReceipt, createProfileBackupSourceEntries } from './createProfileBackupSourceEntries.js';
 import {
   finalizePortableProfileBackup,
   PortableBackupFinalizationError,
@@ -13,7 +13,7 @@ import {
   ProfileBackupInspectionError,
   type ProfileBackupInspectionSummary,
 } from './inspectEncryptedProfileBackup.js';
-import type { ProfileSnapshotBrokerClient } from './profileSnapshotBrokerClient.js';
+import type { ProfileSnapshotInspectionPort } from './profileSnapshotInspectionPort.js';
 import type {
   ProfileBackupOperationState,
   ProfileBackupStatus,
@@ -29,9 +29,21 @@ export type PortableProfileBackupErrorCode =
   | 'PROFILE_BACKUP_INSPECTION_FAILED';
 
 export class PortableProfileBackupError extends Error {
-  constructor(readonly code: PortableProfileBackupErrorCode) {
-    super(code);
+  constructor(
+    readonly code: PortableProfileBackupErrorCode,
+    options?: ErrorOptions,
+  ) {
+    super(code, options);
     this.name = 'PortableProfileBackupError';
+  }
+}
+
+export class PortableProfileBackupCleanupError extends PortableProfileBackupError {
+  readonly cleanupStatus = 'unverified';
+
+  constructor(primary: unknown) {
+    super('PROFILE_BACKUP_CREATE_FAILED', { cause: primary });
+    this.name = 'PortableProfileBackupCleanupError';
   }
 }
 
@@ -48,11 +60,14 @@ interface PortableProfileBackupDependencies {
     validationStatus: 'validated';
   }): Promise<void>;
   profileSnapshotClient: Pick<
-    ProfileSnapshotBrokerClient,
+    ProfileSnapshotInspectionPort,
     | 'beginMaintenance'
     | 'createProfileSnapshot'
     | 'endMaintenance'
     | 'validateProfileSnapshot'
+    | 'withInspectionOperation'
+    | 'withProfileSnapshot'
+    | 'removeProfileSnapshot'
   >;
   quarantineRoot: string;
   stagingRoot: string;
@@ -92,6 +107,9 @@ export class PortableProfileBackupService {
       let maintenanceStarted = false;
       let finalized = false;
       let completed = false;
+      let sourceCleanup: 'notAttempted' | 'completed' | 'unverified' = 'notAttempted';
+      let firstFailure: unknown;
+      let cleanupFailure: unknown;
 
       try {
         await this.dependencies.profileSnapshotClient.beginMaintenance(
@@ -110,42 +128,48 @@ export class PortableProfileBackupService {
           throw new Error('PROFILE_BACKUP_SOURCE_PROFILE_INVALID');
         }
 
-        const entries =
-          await createProfileBackupSourceEntries(operationRoot);
-        await writeBackupContainer({
-          destinationPath: temporaryPath,
-          entries,
-          manifest: {
-            appVersion: this.dependencies.appVersion,
-            createdAtEpochMilliseconds: BigInt(this.now().getTime()),
-            migrationChainIdentity:
-              validation.migrationChainIdentity,
-            profileId: validation.profileId,
-          },
-          password: input.password,
-        });
-        await finalizePortableProfileBackup(
-          temporaryPath,
-          destinationPath,
-        );
-        finalized = true;
-        await fileSystem.rm(temporaryPath, { force: true });
+        const summary = await this.dependencies.profileSnapshotClient.withProfileSnapshot(
+          operationId,
+          async receipt => {
+            const entries = await createProfileBackupSourceEntries(operationRoot);
+            assertProfileBackupSourceReceipt(entries, receipt);
+            await writeBackupContainer({
+              destinationPath: temporaryPath,
+              entries,
+              manifest: {
+                appVersion: this.dependencies.appVersion,
+                createdAtEpochMilliseconds: BigInt(this.now().getTime()),
+                migrationChainIdentity: validation.migrationChainIdentity,
+                profileId: validation.profileId,
+              },
+              password: input.password,
+            });
+            await finalizePortableProfileBackup(temporaryPath, destinationPath);
+            finalized = true;
+            await fileSystem.rm(temporaryPath, { force: true });
 
-        const summary = await inspectEncryptedProfileBackup({
-          containerPath: destinationPath,
-          operationId: inspectionOperationId,
-          password: input.password,
-          quarantineRoot: this.dependencies.quarantineRoot,
-          stagingRoot: this.dependencies.stagingRoot,
-          validator: this.dependencies.profileSnapshotClient,
-        });
-        if (
-          summary.profileMatchStatus !== 'same' ||
-          summary.databaseHealth !== 'healthy' ||
-          summary.documentCount !== validation.artifactCount
-        ) {
-          throw new Error('PROFILE_BACKUP_SELF_INSPECTION_FAILED');
-        }
+            const inspected = await inspectEncryptedProfileBackup({
+              containerPath: destinationPath,
+              operationId: inspectionOperationId,
+              password: input.password,
+              quarantineRoot: this.dependencies.quarantineRoot,
+              stagingRoot: this.dependencies.stagingRoot,
+              validator: this.dependencies.profileSnapshotClient,
+            });
+            if (
+              inspected.profileMatchStatus !== 'same' ||
+              inspected.databaseHealth !== 'healthy' ||
+              inspected.documentCount !== validation.artifactCount
+            ) {
+              throw new Error('PROFILE_BACKUP_SELF_INSPECTION_FAILED');
+            }
+            return inspected;
+          },
+        );
+
+        sourceCleanup = 'unverified';
+        await this.dependencies.profileSnapshotClient.removeProfileSnapshot(operationId);
+        sourceCleanup = 'completed';
 
         await this.dependencies.profileSnapshotClient.endMaintenance(
           operationId,
@@ -164,12 +188,14 @@ export class PortableProfileBackupService {
           .catch(() => undefined);
         return summary;
       } catch (error) {
+        firstFailure = error;
         if (
           error instanceof PortableBackupFinalizationError &&
           error.code === 'destinationExists'
         ) {
           throw new PortableProfileBackupError(
             'PROFILE_BACKUP_DESTINATION_INVALID',
+            { cause: error },
           );
         }
         if (
@@ -180,25 +206,34 @@ export class PortableProfileBackupService {
         }
         throw new PortableProfileBackupError(
           'PROFILE_BACKUP_CREATE_FAILED',
+          { cause: error },
         );
       } finally {
+        // Preserve uncertain source ownership; do not retry a failed removal.
+        if (sourceCleanup === 'notAttempted') {
+          sourceCleanup = 'unverified';
+          try {
+            await this.dependencies.profileSnapshotClient.removeProfileSnapshot(operationId);
+            sourceCleanup = 'completed';
+          } catch (error) {
+            cleanupFailure = error;
+          }
+        }
         if (maintenanceStarted) {
           await this.dependencies.profileSnapshotClient
             .endMaintenance(operationId)
             .catch(() => undefined);
         }
-        await Promise.all([
-          fileSystem
-            .rm(operationRoot, { force: true, recursive: true })
-            .catch(() => undefined),
-          fileSystem
-            .rm(temporaryPath, { force: true })
-            .catch(() => undefined),
-        ]);
+        await fileSystem
+          .rm(temporaryPath, { force: true })
+          .catch(() => undefined);
         if (finalized && !completed) {
           await fileSystem
             .rm(destinationPath, { force: true })
             .catch(() => undefined);
+        }
+        if (sourceCleanup === 'unverified') {
+          throw new PortableProfileBackupCleanupError(firstFailure ?? cleanupFailure);
         }
       }
     });
@@ -239,6 +274,7 @@ export class PortableProfileBackupService {
         }
         throw new PortableProfileBackupError(
           'PROFILE_BACKUP_INSPECTION_FAILED',
+          { cause: error },
         );
       }
     });
@@ -263,7 +299,7 @@ export class PortableProfileBackupService {
     this.lastSafeErrorCode = undefined;
 
     try {
-      return await operation();
+      return await this.dependencies.profileSnapshotClient.withInspectionOperation(operation);
     } catch (error) {
       this.lastSafeErrorCode = readSafeErrorCode(error);
       throw error;

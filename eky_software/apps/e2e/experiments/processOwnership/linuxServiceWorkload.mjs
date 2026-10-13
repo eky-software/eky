@@ -103,7 +103,10 @@ export function spawnLinuxServiceWorkload(command, redactedValues, onTerminal, {
       state = 'running'; resolveStarted(snapshot());
     });
     child.on('error', () => finish('unavailable'));
-    child.once('exit', () => finish('exited'));
+    // Only the finite inspection profile requires a successful host exit.
+    // Long-lived service consumers keep their existing terminal contract.
+    child.once('exit', (code, signal) => finish(command.requireNormalExit === true &&
+      (code !== 0 || signal !== null) ? 'unavailable' : 'exited'));
     child.once('close', () => { if (!terminal) finish('unavailable'); });
     for (const [name, capture] of [['stdout', stdout], ['stderr', stderr]]) {
       if (!child[name]) { finish('unavailable'); continue; }

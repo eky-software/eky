@@ -44,7 +44,6 @@ export async function stageValidatedProfileBackup(input: {
   const operationRoot = join(input.stagingRoot, input.operationId);
   let authenticated = false;
   let decrypted = false;
-  let extracted = false;
 
   try {
     await Promise.all([
@@ -67,8 +66,8 @@ export async function stageValidatedProfileBackup(input: {
       parsedPayload: parsed,
       payloadPath: quarantinePath,
     });
-    extracted = true;
-
+    // Extraction owns its pre-validation failures. From here, only the
+    // inspection owner may remove staging after proving reader exit/reclaim.
     const validation = await input.validator.validateProfileSnapshot(
       input.operationId,
     );
@@ -100,11 +99,6 @@ export async function stageValidatedProfileBackup(input: {
       validation,
     };
   } catch (error) {
-    if (extracted) {
-      await fileSystem
-        .rm(operationRoot, { force: true, recursive: true })
-        .catch(() => undefined);
-    }
     if (error instanceof ProfileBackupInspectionError) {
       throw error;
     }
@@ -115,7 +109,9 @@ export async function stageValidatedProfileBackup(input: {
           : 'BACKUP_AUTHENTICATION_FAILED',
       );
     }
-    throw new ProfileBackupInspectionError('BACKUP_CONTENT_INVALID');
+    throw new ProfileBackupInspectionError('BACKUP_CONTENT_INVALID', {
+      cause: error,
+    });
   } finally {
     if (decrypted) {
       await fileSystem

@@ -302,6 +302,34 @@ describe('workspace management capability', () => {
     });
   });
 
+  it('strips the internal first-cause and cleanup chain at the IPC boundary', async () => {
+    const fixture = createFixture();
+    const internal = new WorkspaceManagementError(
+      'WORKSPACE_MANAGEMENT_IMPORT_FAILED',
+      'import',
+      {
+        cause: new AggregateError([
+          new Error('synthetic private path/password detail'),
+          new Error('synthetic cleanup detail'),
+        ], 'synthetic internal failure'),
+      },
+    );
+    fixture.importBackupAsNew.mockRejectedValueOnce(internal);
+
+    const result = await fixture.invoke(
+      importWorkspaceBackupAsNewIpcChannel,
+      fixture.trustedEvent,
+      { workspaceLabel: 'Synthetic import' },
+    ).catch((error: unknown) => error);
+    expect(result).toBeInstanceOf(Error);
+    if (!(result instanceof Error)) throw new Error('Expected an IPC error');
+    expect(result).not.toBe(internal);
+    expect(result.message).toBe('WORKSPACE_MANAGEMENT_IMPORT_FAILED');
+    expect(result.cause).toBeUndefined();
+    expect(JSON.stringify(result)).not.toMatch(/path|password|detail|cause/);
+    expect(fixture.showSafeError).not.toHaveBeenCalled();
+  });
+
   it('releases the mutation guard after a service failure', async () => {
     let callCount = 0;
     const fixture = createFixture({

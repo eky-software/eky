@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { promises as fileSystem } from 'node:fs';
-import { join } from 'node:path';
-
-import type { ProfileSnapshotBrokerClient } from '../profileSnapshotBrokerClient.js';
+import { readProfileInspectionFailureCause } from '../../runtime/profileInspectionFailure.js';
+import { inspectEncryptedProfileBackupWithIdentity } from '../inspectEncryptedProfileBackup.js';
+import { OwnedProfileBackupInspectionError } from '../inspectOwnedEncryptedProfileBackup.js';
+import type { OwnedProfileSnapshotValidator } from '../profileSnapshotInspectionPort.js';
 import {
   noOpProfileRecoveryOperationalObserver,
   observeProfileRecoverySafely,
@@ -11,6 +11,11 @@ import {
 import type { RecoveryPointService } from '../recoveryPoint/recoveryPointService.js';
 import type { ProfileBackupInspectionSummary } from '../profileBackupInspectionTypes.js';
 import { stageValidatedProfileBackup } from '../stageValidatedProfileBackup.js';
+import {
+  PreparedProfileRestoreOwner,
+  PreparedProfileRestoreBusyError,
+  type PreparedProfileRestoreClaim,
+} from './preparedProfileRestoreOwner.js';
 
 const inspectionLifetimeMilliseconds = 10 * 60_000;
 const operationIdPattern =
@@ -24,8 +29,11 @@ export type ProfileRestoreStagingErrorCode =
   | 'PROFILE_RESTORE_TARGET_NOT_EMPTY';
 
 export class ProfileRestoreStagingError extends Error {
-  constructor(readonly code: ProfileRestoreStagingErrorCode) {
-    super(code);
+  constructor(
+    readonly code: ProfileRestoreStagingErrorCode,
+    options?: ErrorOptions,
+  ) {
+    super(code, options);
     this.name = 'ProfileRestoreStagingError';
   }
 }
@@ -53,8 +61,9 @@ interface ProfileRestoreStagingDependencies {
   operationIdFactory?(): string;
   observer?: ProfileRecoveryOperationalObserver;
   profileSnapshotClient: Pick<
-    ProfileSnapshotBrokerClient,
-    'validateProfileSnapshot'
+    OwnedProfileSnapshotValidator,
+    'withInspectionOperation' | 'withProfileSnapshot' |
+    'removeProfileSnapshot' | 'validateProfileSnapshot'
   >;
   quarantineRoot: string;
   recoveryPointService: Pick<
@@ -66,10 +75,11 @@ interface ProfileRestoreStagingDependencies {
 
 export class ProfileRestoreStagingService {
   private busy = false;
+  private cleanupUnverified = false;
   private pendingInspection:
     | (PendingInspection & { inspectionId: string })
     | undefined;
-  private preparedRestore: PreparedProfileRestore | undefined;
+  private readonly preparedOwner = new PreparedProfileRestoreOwner();
 
   constructor(
     private readonly dependencies: ProfileRestoreStagingDependencies,
@@ -82,8 +92,8 @@ export class ProfileRestoreStagingService {
     const correlationId = this.createOperationId();
     const startedAt = Date.now();
     try {
-      const result = await this.runExclusive(async () => {
-        const staged = await stageValidatedProfileBackup({
+      const result = await this.dependencies.profileSnapshotClient.withInspectionOperation(() => this.runExclusive(async () => {
+        const inspected = await inspectEncryptedProfileBackupWithIdentity({
           containerPath: input.containerPath,
           operationId: correlationId,
           password: input.password,
@@ -92,27 +102,16 @@ export class ProfileRestoreStagingService {
           validator: this.dependencies.profileSnapshotClient,
         });
 
-        try {
-          const inspectionId = this.createOperationId();
-          this.pendingInspection = {
-            containerPath: input.containerPath,
-            containerSha256: staged.containerSha256,
-            expiresAt:
-              this.now().getTime() + inspectionLifetimeMilliseconds,
-            inspectionId,
-            summary: staged.summary,
-          };
-          return {
-            inspectionId,
-            summary: staged.summary,
-          };
-        } finally {
-          await fileSystem.rm(staged.operationRoot, {
-            force: true,
-            recursive: true,
-          });
-        }
-      });
+        const inspectionId = this.createOperationId();
+        this.pendingInspection = {
+          containerPath: input.containerPath,
+          containerSha256: inspected.containerSha256,
+          expiresAt: this.now().getTime() + inspectionLifetimeMilliseconds,
+          inspectionId,
+          summary: inspected.summary,
+        };
+        return { inspectionId, summary: inspected.summary };
+      }));
       this.observe({
         correlationId,
         durationMs: Date.now() - startedAt,
@@ -121,13 +120,17 @@ export class ProfileRestoreStagingService {
       });
       return result;
     } catch (error) {
+      if (error instanceof OwnedProfileBackupInspectionError && error.cleanupStatus === 'unverified') {
+        this.cleanupUnverified = true;
+      }
       this.observe({
         correlationId,
         durationMs: Date.now() - startedAt,
-        errorCode: readSafeStagingErrorCode(error),
+        errorCode: readProfileInspectionFailureCause(error) ??
+          readSafeStagingErrorCode(error),
         eventName: 'restore.inspectionFailed',
         retryable: false,
-        sideEffectState: 'none',
+        sideEffectState: this.cleanupUnverified ? 'unknown' : 'none',
         stage: 'inspection',
       });
       throw error;
@@ -141,15 +144,11 @@ export class ProfileRestoreStagingService {
     const correlationId = this.createOperationId();
     const startedAt = Date.now();
     try {
-      const result = await this.runExclusive(async () => {
-        if (this.preparedRestore !== undefined) {
-          throw new ProfileRestoreStagingError('PROFILE_RESTORE_BUSY');
-        }
+      const result = await this.dependencies.profileSnapshotClient.withInspectionOperation(() => this.runExclusive(async () => {
+        this.withPreparedOwner(() => this.preparedOwner.assertCanStage());
         const inspection = this.takeInspection(input.inspectionId);
 
         await this.dependencies.recoveryPointService.createPreRestore();
-
-        let stagedOperationRoot: string | undefined;
 
         try {
           const staged = await stageValidatedProfileBackup({
@@ -160,48 +159,41 @@ export class ProfileRestoreStagingService {
             stagingRoot: this.dependencies.stagingRoot,
             validator: this.dependencies.profileSnapshotClient,
           });
-          stagedOperationRoot = staged.operationRoot;
+          const prepared = await this.dependencies.profileSnapshotClient.withProfileSnapshot(correlationId, async () => {
+            if (staged.containerSha256 !== inspection.containerSha256) {
+              throw new ProfileRestoreStagingError('PROFILE_RESTORE_SOURCE_CHANGED');
+            }
+            if (!staged.validation.profileMatchesActive && !staged.validation.activeProfileIsEmpty) {
+              throw new ProfileRestoreStagingError('PROFILE_RESTORE_TARGET_NOT_EMPTY');
+            }
 
-          if (staged.containerSha256 !== inspection.containerSha256) {
-            throw new ProfileRestoreStagingError(
-              'PROFILE_RESTORE_SOURCE_CHANGED',
-            );
-          }
-          if (
-            !staged.validation.profileMatchesActive &&
-            !staged.validation.activeProfileIsEmpty
-          ) {
-            throw new ProfileRestoreStagingError(
-              'PROFILE_RESTORE_TARGET_NOT_EMPTY',
-            );
-          }
-
-          const prepared: PreparedProfileRestore = {
-            operationId: correlationId,
-            summary: staged.summary,
-            targetDisposition: staged.validation.profileMatchesActive
-              ? 'replaceActiveProfile'
-              : 'replaceEmptyProfile',
-          };
-          this.preparedRestore = prepared;
-          return prepared;
+            const result: PreparedProfileRestore = {
+              operationId: correlationId,
+              summary: staged.summary,
+              targetDisposition: staged.validation.profileMatchesActive
+                ? 'replaceActiveProfile' : 'replaceEmptyProfile',
+            };
+            return result;
+          });
+          return this.preparedOwner.set(prepared);
         } catch (error) {
-          if (stagedOperationRoot !== undefined) {
-            await fileSystem
-              .rm(stagedOperationRoot, {
-                force: true,
-                recursive: true,
-              })
-              .catch(() => undefined);
+          try {
+            await this.dependencies.profileSnapshotClient.removeProfileSnapshot(correlationId);
+          } catch (cleanupError) {
+            this.cleanupUnverified = true;
+            throw new ProfileRestoreStagingError('PROFILE_RESTORE_STAGING_FAILED', {
+              cause: new AggregateError([error, cleanupError], 'PROFILE_INSPECTION_CLEANUP_UNVERIFIED'),
+            });
           }
           if (error instanceof ProfileRestoreStagingError) {
             throw error;
           }
           throw new ProfileRestoreStagingError(
             'PROFILE_RESTORE_STAGING_FAILED',
+            { cause: error },
           );
         }
-      });
+      }));
       this.observe({
         correlationId,
         durationMs: Date.now() - startedAt,
@@ -213,10 +205,11 @@ export class ProfileRestoreStagingService {
       this.observe({
         correlationId,
         durationMs: Date.now() - startedAt,
-        errorCode: readSafeStagingErrorCode(error),
+        errorCode: readProfileInspectionFailureCause(error) ??
+          readSafeStagingErrorCode(error),
         eventName: 'restore.stagingFailed',
         retryable: false,
-        sideEffectState: 'none',
+        sideEffectState: this.cleanupUnverified ? 'unknown' : 'none',
         stage: 'staging',
       });
       throw error;
@@ -226,25 +219,45 @@ export class ProfileRestoreStagingService {
   getPreparedRestore(
     operationId: string,
   ): PreparedProfileRestore | undefined {
-    return this.preparedRestore?.operationId === operationId
-      ? this.preparedRestore
-      : undefined;
+    if (this.cleanupUnverified) return undefined;
+    return this.preparedOwner.get(operationId);
+  }
+
+  claimPreparedRestore(
+    operationId: string,
+  ): PreparedProfileRestoreClaim | undefined {
+    if (this.busy || this.cleanupUnverified) throw new ProfileRestoreStagingError('PROFILE_RESTORE_BUSY');
+    return this.withPreparedOwner(() => this.preparedOwner.claim(operationId));
   }
 
   async discardPreparedRestore(operationId: string): Promise<void> {
-    await this.runExclusive(async () => {
-      if (this.preparedRestore?.operationId !== operationId) {
-        return;
-      }
-      this.preparedRestore = undefined;
-      await fileSystem.rm(
-        join(this.dependencies.stagingRoot, operationId),
-        {
-          force: true,
-          recursive: true,
-        },
-      );
-    });
+    const startedAt = Date.now();
+    try {
+      await this.dependencies.profileSnapshotClient.withInspectionOperation(() => this.runExclusive(async () => {
+        if (this.preparedOwner.get(operationId) === undefined) {
+          return;
+        }
+        try {
+          await this.dependencies.profileSnapshotClient.removeProfileSnapshot(operationId);
+        } catch (error) {
+          this.cleanupUnverified = true;
+          throw new ProfileRestoreStagingError('PROFILE_RESTORE_STAGING_FAILED', { cause: error });
+        }
+        this.preparedOwner.clear(operationId);
+      }));
+    } catch (error) {
+      this.observe({
+        correlationId: operationId,
+        durationMs: Date.now() - startedAt,
+        errorCode: readProfileInspectionFailureCause(error) ??
+          readSafeStagingErrorCode(error),
+        eventName: 'restore.stagingFailed',
+        retryable: false,
+        sideEffectState: this.cleanupUnverified ? 'unknown' : 'none',
+        stage: 'staging',
+      });
+      throw error;
+    }
   }
 
   private createOperationId(): string {
@@ -291,14 +304,26 @@ export class ProfileRestoreStagingService {
   private async runExclusive<T>(
     operation: () => Promise<T>,
   ): Promise<T> {
-    if (this.busy) {
+    if (this.busy || this.cleanupUnverified) {
       throw new ProfileRestoreStagingError('PROFILE_RESTORE_BUSY');
     }
+    this.withPreparedOwner(() => this.preparedOwner.assertIdle());
     this.busy = true;
     try {
       return await operation();
     } finally {
       this.busy = false;
+    }
+  }
+
+  private withPreparedOwner<T>(operation: () => T): T {
+    try {
+      return operation();
+    } catch (error) {
+      if (error instanceof PreparedProfileRestoreBusyError) {
+        throw new ProfileRestoreStagingError('PROFILE_RESTORE_BUSY', { cause: error });
+      }
+      throw error;
     }
   }
 }

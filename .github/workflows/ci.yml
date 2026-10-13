@@ -83,6 +83,14 @@ jobs:
       - name: Build desktop
         run: pnpm --filter @eky/desktop build
 
+      - name: Prepare Linux inspection Electron runtime
+        run: pnpm --filter @eky/desktop e2e:prepare-electron-runtime
+
+      - name: Verify Linux isolated profile inspection
+        env:
+          EKY_E2E: '1'
+        run: pnpm --filter @eky/desktop inspection:proof:linux
+
       - name: Preserve encrypted CI failure evidence
         if: >-
           ${{ always() && runner.os == 'Linux' && runner.environment == 'github-hosted'

@@ -1,3 +1,9 @@
+import { profileInspectionFailureCauses } from '../runtime/profileInspectionFailure.js';
+
+export const restoreAcceptanceFailureCodes: readonly string[] = Object.freeze([
+  ...profileInspectionFailureCauses, 'PROFILE_RESTORE_RECOVERY_REQUIRED',
+]);
+
 export type DesktopEventLevel = 'error' | 'info' | 'warn';
 export type DesktopEventOutcome =
   | 'blocked'
@@ -133,6 +139,8 @@ export interface DesktopOperationalEventPayloadMap {
     correlationId: string;
     stage: 'portable';
   };
+  'workspaceBackup.operationFailed': WorkspaceBackupFailureFields;
+  'workspaceBackup.cleanupFailed': WorkspaceBackupFailureFields;
   'backup.completed': {
     correlationId: string;
     durationMs?: number;
@@ -202,6 +210,13 @@ export interface DesktopOperationalEventPayloadMap {
     correlationId: string;
     stage: 'restoredProfile' | 'rolledBackProfile';
   };
+  'restore.acceptanceFailed': FailureFields & {
+    correlationId: string;
+    durationMs: number;
+    retryable: false;
+    sideEffectState: 'unknown';
+    stage: 'acceptancePreparation' | 'acceptanceCommit' | 'acceptedCleanup';
+  };
   'restore.rollbackStarted': {
     correlationId: string;
     stage: 'activationRollback' | 'startupRollback';
@@ -218,6 +233,7 @@ export interface DesktopOperationalEventPayloadMap {
   'restore.recoveryRequired': FailureFields & {
     correlationId: string;
     stage:
+      | 'activation'
       | 'activationRollback'
       | 'failedSafeJournal'
       | 'rolledBackProfile'
@@ -415,6 +431,15 @@ interface FailureFields {
   stage?: string;
 }
 
+interface WorkspaceBackupFailureFields {
+  correlationId: string;
+  durationMs: number;
+  errorCode: string;
+  retryable: false;
+  sideEffectState: 'none' | 'unknown';
+  stage: 'import' | 'replace';
+}
+
 export type DesktopOperationalEventName =
   keyof DesktopOperationalEventPayloadMap;
 
@@ -462,6 +487,9 @@ const failureFields = [
   'sideEffectState',
   'stage',
 ] as const;
+const workspaceBackupFailureFields = Object.freeze([
+  'correlationId', 'durationMs', 'errorCode', 'retryable', 'sideEffectState', 'stage',
+]);
 
 const updateStartedFields = Object.freeze(['correlationId', 'stage']);
 const updateSucceededFields = Object.freeze([
@@ -479,6 +507,8 @@ const updateFailedFields = Object.freeze([
 ]);
 
 export const desktopOperationalEventSpecs = Object.freeze({
+  'workspaceBackup.operationFailed': spec('backup', 'error', 'failure', workspaceBackupFailureFields),
+  'workspaceBackup.cleanupFailed': spec('backup', 'error', 'failure', workspaceBackupFailureFields),
   'desktop.starting': spec('runtime', 'info', 'success'),
   'desktop.started': spec('runtime', 'info', 'success', ['durationMs']),
   'desktop.bootstrapFailed': spec(
@@ -720,6 +750,9 @@ export const desktopOperationalEventSpecs = Object.freeze({
     'correlationId',
     ...failureFields,
   ]),
+  'restore.acceptanceFailed': spec('restore', 'error', 'failure', [
+    'correlationId', ...failureFields,
+  ]),
   'restore.rollbackStarted': spec('restore', 'warn', 'success', [
     'correlationId',
     'stage',
@@ -795,6 +828,8 @@ export const desktopOperationalEventSpecs = Object.freeze({
 } satisfies Record<DesktopOperationalEventName, DesktopOperationalEventSpec>);
 
 export const desktopRequiredPayloadFields = Object.freeze({
+  'workspaceBackup.operationFailed': workspaceBackupFailureFields,
+  'workspaceBackup.cleanupFailed': workspaceBackupFailureFields,
   'desktop.starting': [],
   'desktop.started': [],
   'desktop.bootstrapFailed': ['errorCode'],
@@ -870,6 +905,9 @@ export const desktopRequiredPayloadFields = Object.freeze({
   ],
   'restore.validationCompleted': ['correlationId', 'stage'],
   'restore.validationFailed': ['correlationId', 'errorCode', 'stage'],
+  'restore.acceptanceFailed': [
+    'correlationId', 'durationMs', 'errorCode', 'retryable', 'sideEffectState', 'stage',
+  ],
   'restore.rollbackStarted': ['correlationId', 'stage'],
   'restore.rollbackCompleted': ['correlationId', 'stage'],
   'restore.rollbackFailed': ['correlationId', 'errorCode', 'stage'],

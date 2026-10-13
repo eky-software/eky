@@ -22,7 +22,7 @@ export function projectLinuxServiceCause(error) {
 export function encodeLinuxServiceDiagnostic(value) {
   if (!value || Object.keys(value).sort().join(',') !==
     'causeReason,causeStage,phase,processTree,profile,schemaVersion,spawnObserved,startupFailure' ||
-    value.schemaVersion !== 1 || !['backend', 'vite', 'chromium'].includes(value.profile) ||
+    value.schemaVersion !== 1 || !['backend', 'vite', 'chromium', 'profileInspection'].includes(value.profile) ||
     !phases.has(value.phase) || !reasons.has(value.startupFailure) ||
     !causeReasons.has(value.causeReason) || !causeStages.has(value.causeStage) ||
     typeof value.spawnObserved !== 'boolean' || !['stopped', 'unverified'].includes(value.processTree)) {

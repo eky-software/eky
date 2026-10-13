@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { afterAll, afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 
 import { migrate, removeDirectories } from '../../../database/migration/invoiceContentRevisionMigration.fixture.js';
 import { bindingState, createBindingDatabase } from '../../../database/migration/invoiceContentRevisionMigrationBinding.fixture.js';
@@ -21,6 +21,7 @@ import { SqliteInvoiceBackupArtifactCatalog } from './sqliteInvoiceBackupArtifac
 const databases: Database.Database[] = [];
 
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const database of databases.splice(0)) {
     database.close();
   }
@@ -29,6 +30,113 @@ afterEach(() => {
 afterAll(removeDirectories);
 
 describe('SqliteInvoiceBackupArtifactCatalog', () => {
+  it.each(['prepare', 'count', 'historyCursor', 'documents'] as const)
+    ('preserves a native memory failure from %s and ends the catalog transaction', async phase => {
+      const database = openPublicationDatabase();
+      await runMigrations(database);
+      const failure = new Database.SqliteError('synthetic private allocation detail', 'SQLITE_NOMEM');
+      const injected = vi.fn(() => { throw failure; });
+      const prepare = database.prepare.bind(database);
+      let cursorReturn: ReturnType<typeof vi.spyOn> | undefined;
+      vi.spyOn(database, 'prepare').mockImplementation(sql => {
+        if (phase === 'prepare') return injected();
+        const statement = prepare(sql);
+        if (phase === 'count' && sql.includes('AS artifact_count')) vi.spyOn(statement, 'get').mockImplementation(injected);
+        if (phase === 'documents' && /SELECT\s+document.id AS document_id/.test(sql)) {
+          vi.spyOn(statement, 'all').mockImplementation(injected);
+        }
+        if (phase === 'historyCursor') {
+          const iterate = statement.iterate.bind(statement);
+          vi.spyOn(statement, 'iterate').mockImplementation((...args) => {
+            const cursor = iterate(...args);
+            vi.spyOn(cursor, 'next').mockImplementation(injected);
+            cursorReturn = vi.spyOn(cursor, 'return');
+            return cursor;
+          });
+        }
+        return statement;
+      });
+      await expect(new SqliteInvoiceBackupArtifactCatalog(database, 'revisionHistory').listAuthoritativeArtifacts())
+        .rejects.toBe(failure);
+      expect(injected).toHaveBeenCalledOnce();
+      if (phase === 'historyCursor') expect(cursorReturn).toHaveBeenCalledOnce();
+      expect(database.inTransaction).toBe(false);
+    });
+
+  it.each([
+    new Database.SqliteError('synthetic corrupt catalog', 'SQLITE_CORRUPT'),
+    new Error('SQLITE_NOMEM'),
+    new Error('synthetic wrapped detail', { cause: new Database.SqliteError('private', 'SQLITE_NOMEM') }),
+  ])('keeps non-native-memory failures on the ordinary invalid-catalog path (%#)', async failure => {
+    const database = openPublicationDatabase();
+    await runMigrations(database);
+    vi.spyOn(database, 'prepare').mockImplementation(() => { throw failure; });
+    await expect(new SqliteInvoiceBackupArtifactCatalog(database, 'revisionHistory').listAuthoritativeArtifacts())
+      .rejects.toMatchObject({ message: 'INVOICE_BACKUP_CATALOG_INVALID' });
+    expect(database.inTransaction).toBe(false);
+  });
+
+  it('accepts the unchanged document-count boundary with a bounded query', async () => {
+    const database = createDatabase();
+    insertInvoice(database, 'company-1', 'invoice-1');
+    const insert = database.prepare(`INSERT INTO invoice_documents VALUES
+      (?, 'company-1', 'invoice-1', 'approved_invoice_pdf', 'invoice.pdf', 'old.pdf', 'application/pdf', ?, 16, '2026-08-04')`);
+    database.transaction(() => {
+      for (let index = 0; index < 100_000; index += 1) insert.run(`document-${index}`, 'a'.repeat(64));
+    })();
+    const prepare = vi.spyOn(database, 'prepare');
+    await expect(new SqliteInvoiceBackupArtifactCatalog(database, 'legacyDocuments').listAuthoritativeArtifacts())
+      .resolves.toHaveLength(100_000);
+    expect(prepare.mock.calls.filter(([sql]) => /SELECT\s+document.id/i.test(sql))
+      .every(([sql]) => /ORDER BY document.id\s+LIMIT \?/i.test(sql))).toBe(true);
+  });
+
+  it.each(['legacyDocuments', 'revisionHistory'] as const)('rejects excessive %s document rows before materialization or revision queries', async schema => {
+    const database = createDatabase();
+    insertInvoice(database, 'company-1', 'invoice-1');
+    const insert = database.prepare(`INSERT INTO invoice_documents VALUES
+      (?, 'company-1', 'invoice-1', 'approved_invoice_pdf', 'invoice.pdf', 'old.pdf', 'application/pdf', ?, 16, '2026-08-04')`);
+    database.transaction(() => {
+      for (let index = 0; index <= 100_000; index += 1) insert.run(`document-${index}`, 'a'.repeat(64));
+    })();
+    const prepare = vi.spyOn(database, 'prepare');
+    await expect(new SqliteInvoiceBackupArtifactCatalog(database, schema).listAuthoritativeArtifacts())
+      .rejects.toThrow('INVOICE_BACKUP_CATALOG_INVALID');
+    expect(prepare.mock.calls.every(([sql]) => !/SELECT\s+(?:document\.|revision\.|\* FROM invoices)/i.test(sql))).toBe(true);
+  });
+
+  it.each(['id', 'company_id', 'invoice_id', 'file_name', 'storage_path', 'created_at', 'document_type', 'mime_type', 'sha256'])('rejects oversized %s before catalog fields are materialized', async field => {
+    const database = createDatabase();
+    insertInvoice(database, 'company-1', 'invoice-1');
+    insertDocument(database, { companyId: 'company-1', invoiceId: 'invoice-1', documentId: 'document-1', storagePath: 'old.pdf' });
+    database.prepare(`UPDATE invoice_documents SET ${field} = ?`).run('x'.repeat(1_025));
+    const prepare = vi.spyOn(database, 'prepare');
+    await expect(new SqliteInvoiceBackupArtifactCatalog(database, 'legacyDocuments').listAuthoritativeArtifacts())
+      .rejects.toThrow('INVOICE_BACKUP_CATALOG_INVALID');
+    expect(prepare.mock.calls.some(([sql]) => /SELECT\s+document.id/i.test(sql))).toBe(false);
+  });
+
+  it('rejects a blob in the numeric field before it can become an unbounded buffer', async () => {
+    const database = createDatabase();
+    insertInvoice(database, 'company-1', 'invoice-1');
+    insertDocument(database, { companyId: 'company-1', invoiceId: 'invoice-1', documentId: 'document-1', storagePath: 'old.pdf' });
+    database.exec('UPDATE invoice_documents SET size_bytes = zeroblob(2048)');
+    const prepare = vi.spyOn(database, 'prepare');
+    await expect(new SqliteInvoiceBackupArtifactCatalog(database, 'legacyDocuments').listAuthoritativeArtifacts())
+      .rejects.toThrow('INVOICE_BACKUP_CATALOG_INVALID');
+    expect(prepare.mock.calls.some(([sql]) => /SELECT\s+document.id/i.test(sql))).toBe(false);
+  });
+
+  it.each([1_024, 1_025])('applies the catalog text bound to UTF-8 bytes: %s', async bytes => {
+    const database = createDatabase();
+    insertInvoice(database, 'company-1', 'invoice-1');
+    insertDocument(database, { companyId: 'company-1', invoiceId: 'invoice-1', documentId: 'document-1', storagePath: 'old.pdf' });
+    database.prepare('UPDATE invoice_documents SET file_name = ?').run('\u00e4'.repeat(512) + (bytes === 1_025 ? 'a' : ''));
+    const result = new SqliteInvoiceBackupArtifactCatalog(database, 'legacyDocuments').listAuthoritativeArtifacts();
+    if (bytes === 1_024) await expect(result).resolves.toHaveLength(1);
+    else await expect(result).rejects.toThrow('INVOICE_BACKUP_CATALOG_INVALID');
+  });
+
   it('lists every authoritative invoice document in stable order', async () => {
     const database = createDatabase();
     insertInvoice(database, 'company-1', 'invoice-1');

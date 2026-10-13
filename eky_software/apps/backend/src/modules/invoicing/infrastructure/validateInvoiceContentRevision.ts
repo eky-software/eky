@@ -1,91 +1,82 @@
-import { InvoiceContentRevisionIntegrityError } from '../application/invoiceContentRevisionIntegrityError.js';
 import type { InvoiceContentRevision } from '../domain/invoiceContentRevision.js';
 import { fromInvoicePerformancePeriodColumns } from '../domain/invoicePerformancePeriod.js';
 import { getInvoiceTaxTreatmentSnapshot } from '../domain/invoiceTaxTreatment.js';
+import {
+  addInvoiceRevisionVatGroup,
+  validateInvoiceRevisionHeaderFacts,
+  validateInvoiceRevisionLineFacts,
+  validateInvoiceRevisionTotals,
+} from './invoiceRevisionConsistency.js';
 
 // Validate stored consistency, without recalculating or repairing historical data.
 export function validateInvoiceContentRevision(revision: InvoiceContentRevision): void {
-  const source = [
-    revision.creditedInvoiceId, revision.creditedRevisionId,
-    revision.creditedInvoiceNumberSnapshot, revision.creditedInvoiceDateSnapshot,
-  ];
-  if (revision.invoiceKind === 'standard') {
-    if (source.some((value) => value !== null)) fail();
-  } else if (source.some((value) => value === null) || revision.creditedInvoiceId === revision.invoiceId) {
-    fail();
-  }
-  if ((revision.referenceNumber === null) !== (revision.referenceNumberType === null)) fail();
+  let performancePeriodValid = true;
   try {
     fromInvoicePerformancePeriodColumns(revision);
   } catch {
-    fail();
+    performancePeriodValid = false;
   }
   const tax = getInvoiceTaxTreatmentSnapshot(revision.taxTreatment);
-  if (revision.taxTreatmentLabelSnapshot !== tax.label || revision.taxLegalBasisSnapshot !== tax.legalBasis) {
-    fail();
-  }
-  if (revision.taxTreatment === 'reverseChargeConstruction' && (
-    revision.priceInputMode !== 'net' || revision.totalVatCents !== 0 ||
-    revision.totalNetCents !== revision.totalGrossCents
-  )) fail();
+  validateInvoiceRevisionHeaderFacts({
+    invoiceKind: revision.invoiceKind,
+    taxTreatment: revision.taxTreatment,
+    priceInputMode: revision.priceInputMode,
+    totalNetCents: revision.totalNetCents,
+    totalVatCents: revision.totalVatCents,
+    totalGrossCents: revision.totalGrossCents,
+    creditSourcePresent: [
+      revision.creditedInvoiceId !== null, revision.creditedRevisionId !== null,
+      revision.creditedInvoiceNumberSnapshot !== null, revision.creditedInvoiceDateSnapshot !== null,
+    ],
+    creditedInvoiceIsSelf: revision.creditedInvoiceId === revision.invoiceId,
+    referenceNumberPresent: revision.referenceNumber !== null,
+    referenceNumberTypePresent: revision.referenceNumberType !== null,
+    performancePeriodValid,
+    taxSnapshotMatches: revision.taxTreatmentLabelSnapshot === tax.label && revision.taxLegalBasisSnapshot === tax.legalBasis,
+  });
 
   const ids = new Set<string>();
   const orders = new Set<number>();
   for (const line of revision.lines) {
-    if (line.invoiceId !== revision.invoiceId || ids.has(line.lineId) || orders.has(line.lineOrder)) {
-      fail();
-    }
+    validateInvoiceRevisionLineFacts(revision, {
+      vatRateBasisPoints: line.vatRateBasisPoints,
+      netCents: line.netCents,
+      vatCents: line.vatCents,
+      grossCents: line.grossCents,
+      invoiceMatches: line.invoiceId === revision.invoiceId,
+      duplicateLineId: ids.has(line.lineId),
+      duplicateLineOrder: orders.has(line.lineOrder),
+      trimmedUnitLength: line.unit.trim().length,
+      sourceLinePresent: line.sourceInvoiceLineId !== null,
+      sourceRevisionPresent: line.sourceRevisionId !== null,
+      sourceRevisionMatchesCredit: line.sourceRevisionId === revision.creditedRevisionId,
+    });
     ids.add(line.lineId);
     orders.add(line.lineOrder);
-    if (line.unit.trim().length > 8) fail();
-    if ((line.sourceInvoiceLineId === null) !== (line.sourceRevisionId === null)) fail();
-    if (line.sourceRevisionId !== null && (
-      revision.invoiceKind !== 'credit' || line.sourceRevisionId !== revision.creditedRevisionId
-    )) fail();
-    if (revision.taxTreatment === 'normalVat') {
-      if (line.vatRateBasisPoints === null) fail();
-    } else if (line.vatRateBasisPoints !== null || line.vatCents !== 0 || line.netCents !== line.grossCents) {
-      fail();
-    }
-    if (revision.origin !== 'legacySnapshot' &&
-      BigInt(line.netCents) + BigInt(line.vatCents) !== BigInt(line.grossCents)) {
-      fail();
-    }
   }
 
-  // Legacy totals may reflect an old calculation; availability is not a zero VAT value.
+  // Do not visit legacy VAT data or allocate its unused rate sets.
   if (revision.vatBreakdownState === 'unavailable') return;
-  if (revision.lines.length === 0 ||
-    BigInt(revision.totalNetCents) + BigInt(revision.totalVatCents) !== BigInt(revision.totalGrossCents)) {
-    fail();
-  }
+  const vatTotals = { netCents: 0n, vatCents: 0n, grossCents: 0n };
   if (revision.taxTreatment === 'reverseChargeConstruction') {
-    if (revision.vatBreakdown.length !== 0) fail();
+    validateInvoiceRevisionTotals(revision, {
+      hasLines: revision.lines.length > 0,
+      hasVatGroups: revision.vatBreakdown.length > 0,
+      vatRatesMatch: false,
+      vatTotals,
+    });
     return;
   }
   const rates = new Set<number>();
-  let net = 0n;
-  let vat = 0n;
-  let gross = 0n;
   for (const group of revision.vatBreakdown) {
-    if (rates.has(group.vatRateBasisPoints) ||
-      BigInt(group.netCents) + BigInt(group.vatCents) !== BigInt(group.grossCents)) {
-      fail();
-    }
+    addInvoiceRevisionVatGroup(vatTotals, group, rates.has(group.vatRateBasisPoints));
     rates.add(group.vatRateBasisPoints);
-    net += BigInt(group.netCents);
-    vat += BigInt(group.vatCents);
-    gross += BigInt(group.grossCents);
   }
   const lineRates = new Set(revision.lines.map((line) => line.vatRateBasisPoints));
-  if (rates.size === 0 || rates.size !== lineRates.size ||
-    [...rates].some((rate) => !lineRates.has(rate)) ||
-    net !== BigInt(revision.totalNetCents) || vat !== BigInt(revision.totalVatCents) ||
-    gross !== BigInt(revision.totalGrossCents)) {
-    fail();
-  }
-}
-
-function fail(): never {
-  throw new InvoiceContentRevisionIntegrityError();
+  validateInvoiceRevisionTotals(revision, {
+    hasLines: revision.lines.length > 0,
+    hasVatGroups: rates.size > 0,
+    vatRatesMatch: rates.size === lineRates.size && [...rates].every((rate) => lineRates.has(rate)),
+    vatTotals,
+  });
 }

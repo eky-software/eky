@@ -213,6 +213,10 @@ export function createElectronE2eBackendController(
               // Installer acceptance must use the real packaged backend.
               throw new Error('ELECTRON_E2E_BACKEND_UPDATE_SHUTDOWN_UNSUPPORTED');
             },
+            async stopForRestore(_operationId: string) {
+              // The controlled runner cannot attest the production restore fence.
+              throw new Error('ELECTRON_E2E_BACKEND_RESTORE_SHUTDOWN_UNSUPPORTED');
+            },
           });
 
           async function stopBackend(

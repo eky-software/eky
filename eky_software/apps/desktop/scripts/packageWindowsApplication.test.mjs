@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { setImmediate } from 'node:timers/promises';
 import test from 'node:test';
+import { profileInspectionNativeContract } from '../../backend/src/database/connection/profileInspectionNativeContract.ts';
 
 import {
   createPackageBuildPhaseObserver,
@@ -65,6 +66,20 @@ test('package phase observation is ordered, closed and never awaited', async () 
     throw new Error('private asynchronous observer failure');
   })('electronPackaging');
   await setImmediate();
+});
+
+test('inspection native preparation and exact packaged verification do not replace the business driver gate', () => {
+  const source = packageWindowsApplication.toString();
+  const defaultRuntime = source.indexOf('await inspectStagedBetterSqliteRuntime({ backendStage })');
+  const defaultDatabase = source.indexOf('await verifyStagedBetterSqliteDatabase({ backendStage })');
+  const nativePreparation = source.indexOf('await prepareProfileInspectionNativeStage({');
+  assert.ok(defaultRuntime > 0 && defaultDatabase > defaultRuntime && nativePreparation > defaultDatabase);
+  assert.ok(source.includes("stage: 'profileInspectionNativeStage'"));
+  assert.ok(source.includes('extraResource: [backendStage, desktopRuntimeStage, updateRuntimeStage, profileInspectionNativeStage]'));
+  assert.ok(source.indexOf('await verifyPackagedProfileInspectionNative({') > source.indexOf("stage: 'packagedApp'"));
+  assert.ok(source.includes('expectedMetadata: inspectionNativeMetadata'));
+  const layout = createPackageLayout({ outputDirectory: resolve('out'), stagingRoot: resolve('stage') });
+  assert.equal(layout.profileInspectionNativeStage, resolve('stage', profileInspectionNativeContract.directoryName));
 });
 
 test('real package preparation keeps its filesystem failure when observation fails', async (context) => {

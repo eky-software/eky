@@ -6,9 +6,11 @@ import {
 import { relative, resolve, sep } from 'node:path';
 
 import type { BackupContainerSourceEntry } from './container/backupContainerWriter.js';
+import type { ProfileInspectionReceipt } from '../runtime/profileInspectionMessages.js';
+import { createProfileSnapshotArtifactIdentity } from '../runtime/profileInspectionArtifactIdentity.js';
 
 const databaseLogicalPath = 'profile.sqlite';
-const artifactCatalogLogicalPath = 'snapshot-catalog-v1.json';
+export const profileSnapshotArtifactCatalogLogicalPath = 'snapshot-catalog-v1.json';
 const businessArtifactPrefix =
   'artifacts/invoicing/invoice-documents/';
 
@@ -34,7 +36,7 @@ export async function createProfileBackupSourceEntries(
     ).length !== 1 ||
     entries.filter(
       ({ logicalPath, type }) =>
-        logicalPath === artifactCatalogLogicalPath &&
+        logicalPath === profileSnapshotArtifactCatalogLogicalPath &&
         type === 'artifactCatalog',
     ).length !== 1
   ) {
@@ -44,6 +46,27 @@ export async function createProfileBackupSourceEntries(
   return entries.sort((first, second) =>
     first.logicalPath.localeCompare(second.logicalPath, 'en'),
   );
+}
+
+export function assertProfileBackupSourceReceipt(
+  entries: readonly BackupContainerSourceEntry[], receipt: ProfileInspectionReceipt,
+): void {
+  for (const [logicalPath, identity] of [
+    [databaseLogicalPath, receipt.database],
+    [profileSnapshotArtifactCatalogLogicalPath, receipt.artifactCatalog],
+  ] as const) {
+    const entry = entries.find(value => value.logicalPath === logicalPath);
+    if (entry === undefined || entry.contentLength !== BigInt(identity.byteSize) ||
+        entry.sha256 !== identity.sha256) throw new Error('PROFILE_BACKUP_SOURCE_INVALID');
+  }
+  const artifacts = entries.filter(entry => entry.type === 'businessArtifact');
+  if (artifacts.length !== receipt.artifactCount ||
+      artifacts.reduce((sum, entry) => sum + entry.contentLength, 0n) !== BigInt(receipt.artifactTotalByteSize) ||
+      createProfileSnapshotArtifactIdentity(artifacts.map(entry => ({
+        logicalPath: entry.logicalPath, byteSize: Number(entry.contentLength), sha256: entry.sha256,
+      }))) !== receipt.artifactIdentity) {
+    throw new Error('PROFILE_BACKUP_SOURCE_INVALID');
+  }
 }
 
 async function visitDirectory(
@@ -104,7 +127,7 @@ function readEntryType(
   if (logicalPath === databaseLogicalPath) {
     return 'database';
   }
-  if (logicalPath === artifactCatalogLogicalPath) {
+  if (logicalPath === profileSnapshotArtifactCatalogLogicalPath) {
     return 'artifactCatalog';
   }
   if (

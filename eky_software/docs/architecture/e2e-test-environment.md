@@ -146,12 +146,36 @@ Historialliset [T1](e2e-test-environment-history.md#t1-testien-ajokytkentä)- ja
 [T2](e2e-test-environment-history.md#t2n-regressiosuoja)-todisteet eivät hyväksy
 myöhempää muuttunutta komentoa automaattisesti.
 
+Windowsin kanoninen Electron-valmistelu rakentaa nykyisen backendin ja
+erillisen varmuuskopion tarkistusajurin tuoreisiin toimituskansioihin.
+`prepare-electron-e2e-backend.mjs` käyttää paketoinnin samaa
+`prepareProfileInspectionNativeStage.mjs`-toimitusporttia; tavallisen
+ajurin runtime- ja tietokantakontrollit säilyvät. Natiivikäännös vaatii
+hyväksytyn C++-käännösympäristön. Puuttuva työkalu tai epäonnistunut
+käännös hylkää valmistelun; vanhaa ajuria ei käytetä fallbackina.
+Käännöksen tutkimusaineisto säilyy erillään uudelleen muodostettavista
+toimituskansioista.
+
+`createElectronE2eRuntime` kopioi ajurin ja sen metadata-tiedoston
+`profile-inspection-native`-resurssiin jokaisen testin omaan juureen.
+Tavut ovat itsenäiset, eivät hardlinkkejä. Puuttuva valmisteltu resurssi
+estää konfiguraation julkaisun ennen prosessin käynnistämistä.
+Mainin kiinteä tarkistusrunneri ja sen runtime-riippuvuudet kopioidaan myös
+testisovelluksen `dist/runtime`-hakemistoon, josta todellinen composition
+käynnistää utilityn. Backend-resurssin runtime-kopio ei korvaa tätä toimitusta.
+Molempien toimituspaikkojen regressio tarkistaa itsenäiset tavut ja puuttuvan
+lähteen hylkäyksen ennen konfiguraatiota; inertti resurssitesti ei yksin ole
+oikean utilityn käyttöpolkutodiste.
+[K:n kohdenäyttö](release-0.3.0-m1-preparation-plan.md#v2ah-electron-testiruntimen-tarkistusajuritoimitus)
+erottaa toimituksen, peruutuksen ja oikean schema-hylkäyspolun toisistaan.
+Tämä ei muuta alla olevaa Windows-only-Electron-rajausta tai T3-omistajuutta.
+
 ## Tuetut suoritusympäristöt
 
 | Ympäristö | Nykyinen tuki |
 | --- | --- |
 | Windows | Paikalliset system-, web- ja Electron development -ajot sekä nykyiset Windows-CI-portit. |
-| Hyväksytty Linux-CI | System, Vite ja Chromium hyväksytyn CI-testisession sisällä. Todelliset mekanismiesiehdot varmennetaan ennen työkuormaa. |
+| Hyväksytty Linux-CI | System, Vite ja Chromium hyväksytyn CI-testisession sisällä. K:n erillinen `profileInspection`-hosti on kytketty samaan omistajaan; oikea Electron-/CI-näyttö on vielä avoin. Todelliset mekanismiesiehdot varmennetaan ennen työkuormaa. |
 | Paikallinen Linux tai WSL | Ei hyväksyttyä paikallista E2E-prosessinomistajaa. Tämä ei estä muuta kehitystyötä WSL:ssä eikä tarkoita, että Windows-ajo olisi Linux-näyttöä. |
 | Muut Electron-alustat | Electron-E2E hylätään ennen resurssien varausta; tuki on nyt Windows-only. |
 
@@ -160,6 +184,46 @@ validoidun nonroot-identiteetin sekä varsinaiset käyttöjärjestelmäesiehdot.
 Lippujen asettaminen ei tee paikallisesta ympäristöstä hyväksyttyä CI:tä.
 Puuttuva esiehto on hylkäys, ei onnistunut skip tai lupa vaihtaa fallbackiin.
 Uusi alustatuki tai oikeusmuutos käsitellään erillisenä päätöksenä.
+
+### Linuxin rajattu varmuuskopiotarkistus
+
+`apps/desktop/scripts/profileInspection/` sisältää vain K:n hyväksymän
+tarkistusprosessin testihostin ja valmistelun, ei Linux-työpöytätuotetta tai
+neljättä yleistä moduulitestipohjaa. Komento
+`pnpm --filter @eky/desktop inspection:proof:linux` kuuluu nykyisen Linux-verifioinnin
+backend-/web-/desktop-buildien ja täsmäversion Electron-valmistelun jälkeen.
+Komento- ja vaihepeittotestit vaativat tämän kytkennän; pelkkä komennon
+olemassaolo tai paikallinen sopimustesti ei ole Linux-hyväksyntä.
+
+Kiinteä `profileInspection`-profiili sallii vain nimetyn hostin ja nykyisestä
+desktop-manifestista tarkistetun Electronin. Nykyisen omistajan sisällä
+käynnistyvä Xvfb tarjoaa näytön; puuttuva `xvfb-run`, `Xvfb` tai `xauth`
+hylkää valmistelun. Työkaluja ei asenneta automaattisesti eikä Electronin
+sandboxia poisteta. Valmistelu käyttää nykyistä erillisen tarkistusajurin
+kääntäjää ja resurssien toimitusporttia. SQLite-fixture muodostetaan
+Node-valmistelussa, ei Electron mainissa.
+
+Host käyttää oikeaa `runProfileSnapshotInspection`-porttia,
+`restoreCompatible`-politiikkaa ja nykyistä prepare-grant-exit-ketjua.
+Ehjä kopio, muutettu rakenne ja puuttuva tarkistusajuri ovat erillisiä tapauksia.
+Utilityn tulos ja poistuminen, testihostin normaali poistuminen, lähdetavujen
+säilyminen, varauksen palautuminen sekä ulomman prosessipuun siivous ovat
+eri tarkistuksia. Vain tämä rajattu, päättyvä profiili vaatii ulommalta
+työprosessilta nollapoistumisen ilman signaalia; epänormaali poistuminen ei
+kelpaa vaikka host olisi ehtinyt kirjoittaa onnistuneen tuloksen. Muiden
+palveluprofiilien poistumissopimus säilyy. Ajuri- tai
+schema-hylkäys on testin onnistuminen vain täsmällisellä odotetulla syyllä ja
+todennetulla siivouksella. Aikarajat tulevat nykyisistä käynnistys- sekä
+tarkistus-/sammutusrajoista; niitä ei uusita odotuksessa.
+
+Epäonnistuneen tai siivoukseltaan epävarman tapauksen juuri säilyy.
+`test-results/run-<uuid>/<case>/process-output.private.json` käyttää nykyistä
+salattua virhekeräystä. Julkiseen lokiin ei kirjoiteta raakavirhettä,
+tietokantaa tai profiilia. Valmistelun ensivirhe säilyttää vain täsmällisesti
+sallitun syykoodin tai arvon `unknown`, erillään raportin kirjoittamisesta.
+Native-käännöksen koko raakaloki ei kuulu tämän hostin prosessitulostepakettiin.
+Prosessitulosteen saatavuus ei takaa täydellistä
+aineistoa koneen tai koko CI-jobin äkillisessä keskeytyksessä.
 
 ## Koko prosessipuun omistajuus
 
@@ -596,10 +660,15 @@ todellisen exitin jälkeen; epäselvä tila lukitsee jatkon. Ennen kirjoittavaa
 importia kesken jäänyt varauskysely ei estä määräaikaista poistumista.
 Tämä sovittaa olemassa olevan synteettisen backendin nykyiseen sopimukseen,
 ei korvaa oikean backendin, migraatioportin tai paketoidun päivityksen testejä.
-Testibackend ei edelleenkään hyväksy päivitysoperaatioon sidottua sammutusta.
+Testibackend ei hyväksy päivitys- eikä palautusoperaatioon sidottua sammutusta:
+se ei voi todistaa tuotannon maintenance-suojaa. Molemmat kutsut hylätään
+ennen sammutusviestin lähetystä; tavallinen sulku säilyy. Oikean backendin
+palautussulun erillinen sopimus on
+[RESTORE-BACKEND-STOP-001](r0-e2e-test-matrix.md), jonka kohdenäyttö on
+[V2aj:ssa](release-0.3.0-m1-preparation-plan.md#v2aj-palautuksen-nimetty-backend-pysäytys).
 `SYS-ELECTRON-BACKEND-STARTUP-001` käyttää saman kättelyn synteettistä
 prosessikahvaa; se ei käsittele testibackendin tavallista sulkua
-päivityssammutuksen hyväksyntänä. `WORKSPACE-CREATE-001` käyttää erillistä
+suojatun päivitys- tai palautussammutuksen hyväksyntänä. `WORKSPACE-CREATE-001` käyttää erillistä
 Node-järjestelmäfixturen prosessipuu- ja porttipoissaolon todistusta.
 Todellinen Electron-omistajuus todennetaan desktop-käyttäjäpoluissa.
 Havaintokutsun poikkeus ei muuta controllerin onnistumista, alkuperäistä

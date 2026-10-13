@@ -36,6 +36,11 @@ import {
 } from './staged-better-sqlite-runtime.mjs';
 import { preparePackageBackendStage } from './preparePackageBackendStage.mjs';
 import {
+  prepareProfileInspectionNativeStage,
+  verifyPackagedProfileInspectionNative,
+} from './prepareProfileInspectionNativeStage.mjs';
+import { profileInspectionNativeContract } from '../../backend/src/database/connection/profileInspectionNativeContract.ts';
+import {
   captureBackendBuildMetadataSource,
   normalizeBackendBuildMetadata,
 } from './backendBuildMetadata.mjs';
@@ -131,6 +136,7 @@ export function createPackageLayout({ outputDirectory, stagingRoot }) {
     backendStage: resolve(stagingRoot, 'backend'),
     desktopRuntimeStage: resolve(stagingRoot, 'desktop-runtime'),
     outputDirectory: resolve(outputDirectory),
+    profileInspectionNativeStage: resolve(stagingRoot, profileInspectionNativeContract.directoryName),
     stagingRoot: resolve(stagingRoot),
     updateRuntimeStage: resolve(stagingRoot, 'update-runtime'),
   });
@@ -388,6 +394,7 @@ export async function packageWindowsApplication({
     backendStage,
     desktopRuntimeStage,
     outputDirectory,
+    profileInspectionNativeStage,
     stagingRoot,
     updateRuntimeStage,
   } = layout;
@@ -474,6 +481,15 @@ export async function packageWindowsApplication({
   console.log(
     `Validated staged better-sqlite3 ${runtime.version} (SQLite ${sqliteVersion}).`,
   );
+  const inspectionNativeMetadata = await prepareProfileInspectionNativeStage({
+    backendStage,
+    buildRoot: resolve(repositoryRoot, '.eky-local/profile-inspection-native-builds'),
+    nativeStage: profileInspectionNativeStage,
+  });
+  await inspectPackageArtifactInventory({
+    root: profileInspectionNativeStage,
+    stage: 'profileInspectionNativeStage',
+  });
 
   observePhase('applicationPreparation');
   await prepareApplicationStage(layout, buildInfo, packageMode, releaseInfo);
@@ -505,7 +521,7 @@ export async function packageWindowsApplication({
     dir: applicationStage,
     electronVersion,
     executableName: 'Eky',
-    extraResource: [backendStage, desktopRuntimeStage, updateRuntimeStage],
+    extraResource: [backendStage, desktopRuntimeStage, updateRuntimeStage, profileInspectionNativeStage],
     name: 'Eky',
     out: outputDirectory,
     overwrite: true,
@@ -533,6 +549,10 @@ export async function packageWindowsApplication({
   const packagedInventory = await inspectPackageArtifactInventory({
     root: packagedPath,
     stage: 'packagedApp',
+  });
+  await verifyPackagedProfileInspectionNative({
+    packagedPath,
+    expectedMetadata: inspectionNativeMetadata,
   });
   let manifestPath;
   if (pilotBuild) {
