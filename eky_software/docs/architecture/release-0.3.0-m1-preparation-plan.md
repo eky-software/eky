@@ -225,6 +225,15 @@ pakettisidonnoilla. Normaaleja PR-portteja tai mergeä ei ole vielä tehty.
 Koetta ei hyväksytä vanhan timeoutin korjaukseksi pelkän läpäisyn perusteella.
 Tietoturva-, sisältö-, aika- ja hyväksyntärajat säilyvät.
 
+**Paketin valmistelun ensivirhe:**
+[valmistelu 38423233041](https://github.com/eky-software/eky/actions/runs/38423233041)
+pysähtyi uuden lokin salausregressioon ennen paketin rakentamista ja MSI:n
+käynnistystä. Testin tilapäisjuuren vaihtoehtoinen polkuesitys toisti saman
+hylkäyksen hallitussa kokeessa. Testiaineisto luodaan nyt kanonisoidun juuren
+alle; samalla ympäristöerolla salaus/purku läpäisi. Keräimen polku- ja
+linkkisuojia ei muutettu. Ensivirhe ja salattu liite säilytettiin; tämä ei
+selitä alkuperäistä MSI-odotusta eikä kuluta sen vielä aloittamatonta koetta.
+
 **Edellinen checkpoint:**
 
 Headin `75e728ff4e8078f1013574c349c953c76169cf93`
