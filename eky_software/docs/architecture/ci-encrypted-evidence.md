@@ -113,6 +113,8 @@ raakaa testiaineistoa eivätkä saa yleistä koko jobin tulostekaappausta.
 
 | Lähde | Kerättävä sisältö | Rajaus |
 | --- | --- | --- |
+| Node- ja Vitest-testit | Yhteisen reporter-liitännän rajattu alkuperäinen poikkeus, kutsupino, syyketju ja testin sijainti sekä toimituksen yhteenveto. | Ei ohitettujen tai odotetusti hylättyjen testien poikkeuksia. Kytkentä on omistavissa testikomennoissa; riippuvuuksien valmisteluvirhe ei ole testitapaus. |
+| Playwrightin välitön virheote | Nykyinen turvallinen reporter tallentaa odottamattoman testituloksen ja runner-virheen niiden saapuessa, ennen koko ajon JSON-raportin valmistumista. | Sama yhteinen projektio kuin Node/Vitestissä. Jokaisen retry-yrityksen virhe säilyy erikseen; onnistunut uusinta ei korvaa ensivirhettä. |
 | Playwright system/web/Electron | Ajokohtaisen `results.private.json`-raportin virheet, testitulokset, stdout/stderr ja retry-yritykset. | Ennen salausta poistetaan konfiguraatio, metadata ja inline-liitteiden sisältö; alkuperäiset virhekentät säilyvät. Ei koko HTML-/attachment-hakemistoa tai siinä olevia SQLite-tiedostoja. Ennen runnerin raportin valmistumista katkennut ajo voi jäädä ilman tätä tiedostoa. |
 | Backend/web/Electron-fixture | Nykyisten redaktoitujen stdout/stderr-lukijoiden rajattu otos omassa suoritusyrityskohtaisessa tiedostossaan myös testin rungon tai siivouksen epäonnistuessa. | Otos säilyy ennen muistitiedon katoamista, tiedosto liitetään nykyisen fixturen jälkiraportoinnissa. Windows-Electronin lähde on natiivi omistajaprosessi; workloadin omaa putkea ei muuteta tällä työllä. Käynnistyksen tai siivouksen kriittiselle polulle ei lisätä tiedostokuittausta. |
 | Electronin lifecycle-todiste | Fixturen jo kirjoittama `test-results/run-<uuid>/<testin suoritusyritys>/electron-lifecycle.json` muuttamattomina tavuina. | Vain tämä täsmällinen nimi ja syvyys; ei yleistä JSON- tai liitekansion keräystä. `attempt`, käynnistyssukupolvet, `publicCloseFailure`, `ownership` ja `cleanup` säilyvät erillisinä havaintoina. Samat koko-, linkki- ja muuttumattomuusrajat kuin muilla lähteillä. |
@@ -120,8 +122,64 @@ raakaa testiaineistoa eivätkä saa yleistä koko jobin tulostekaappausta.
 | Historical-legacy-käynnistyksen syyote | Legacy-komennon `fixtureCleanup/legacy-startup-terminal.json`-tiedostosta vain varmennettu ajosidonta ja `startupEvidence`-projektio. | Nykyinen terminal-kirjoitus säilyttää otteen ennen profiilin poistoa. Ei koko operational-lokia, profiilia, tietokantaa tai terminalin muuta sisältöä. Syykoodit ja vaiheet eivät tule julkiseen testitulosteeseen. |
 | Synteettinen MSI-versiopolitiikan koe | Oman supervisor-testijuuren `policy-result.json` sekä numeroidut `source`, `target` ja `uninstall` -MSI-lokit muuttamattomina tavuina. | Vain suoraan testijuuren alla olevat nimet; ei descriptor-, request-, profiili- tai tietokantatiedostoja. Keskeytyneen MSI-komennon osittainen loki voidaan säilyttää ilman workerin lopputulosta. Samat koko-, linkki- ja muuttumattomuusrajat kuin muilla lähteillä. |
 | Synteettisen workspace-päivityksen kohdeasennin | Täsmällinen `target-installer.private.log` ja sen ajosidonnan, koon ja tiivisteen sisältävä säilytyskuitti. | Vain markerilla ja nykyisellä proof-konfiguraatiolla hyväksytty source-handoff; Microsoftin `/L*v`, ei globaalia lokitusta tai käyttöliittymätilan muutosta. Enintään 64 MiB salattuun pakettiin; rajaa suurempaa tiedostoa ei julkaista osittaisena. |
-| Packaged smoke | Rajattu prosessituloste ja nykyinen smoke-tulos. | Epäonnistuneen testin juurta ei poisteta; keräin ei lue sen profiilia. Tyhjentynyt tuloste ei todista onnistunutta käynnistystä. |
+| Packaged smoke | Rajattu prosessituloste, nykyinen smoke-tulos ja erikseen aktivoidun synteettisen käynnistyksen ensimmäinen alkuperäinen poikkeus ennen yleiseksi koodiksi muuntamista. | Poikkeus sidotaan ASAR-paketin build-identiteettiin, nonceen ja runtimeen. Epäonnistuneen testin juurta ei poisteta; keräin ei lue sen profiilia. Tyhjentynyt tuloste ei todista onnistunutta käynnistystä. |
 | Muut komennot ja valmistelu | Nykyinen turvallinen GitHub-komentoloki. | Salattu keräys ei palauta tulostetta, jota aliohjelma ei tuottanut tai säilyttänyt. Riippuvuustyökalun raakavirheet jäävät erikseen rajatuiksi pois. |
+
+### Yhteinen alkuperäisen testivirheen liitäntä
+
+`test-reporters/` käyttää nykyisen `startupExceptionEvidence.ts`:n rajattua
+poikkeusprojektiota. Se ei ole uusi testiruntime tai yleinen lokipalvelu.
+Node- ja Vitest-komennot sekä nykyinen Playwright-reporter ottavat sen
+käyttöön oletuksena. Native-harnessin clean-, upgrade-, legacy-, workspace-
+ja MSI-policy-workerit sekä niiden command-phase-virherajat tarjoavat
+poikkeuksen samalle liitännälle ennen suljettua virhekoodimuunnosta.
+Sisäisen palvelun aiemmin korvaamaa
+poikkeusta ei voi palauttaa reporterissa: kyseisen rajan omistaja säilyttää
+alkuperäisen syyn ennen muunnosta. Rajattu sovelluskytkentä toimii vain
+nykyisellä synteettisen käynnistyksen opt-in-valtuudella.
+
+Yksityiset otteet ovat käyttöjärjestelmän temp-juuren
+`eky-test-errors-<invocation UUID>/`-kansiossa. Yksi invokaatio tallentaa
+enintään 128 otetta, kukin enintään 192 KiB ja nykyisten viesti-/pino-/syyketju-
+rajojen sisällä. Otteen tiedostonimessä oleva järjestysnumero varmennetaan
+sen sisällöstä. Keräys ottaa saman invokaation toimitusyhteenvedon ensin ja
+sitten otteet syntyjärjestyksessä, jotta myöhemmät virheet eivät syrjäytä
+ensivirhettä lähdekohtaisen tiedostorajan täyttyessä. Toimitusyhteenveto
+ilmoittaa hylätyt ja pois rajatut otteet.
+Keräimen nykyiset tiedostomäärä-, kokonaiskoko- ja lähdekohtaiset rajat
+säilyvät; niiden täyttyminen näkyy osittaisena aineistona. Kattavuutta ei
+päätellä pelkästä salatun tiedoston syntymisestä.
+
+CI-ote sidotaan nykyiseen run/attempt/job/SHA-arvoon ja yksilölliseen
+invokaatioon. Erikseen annettu matrix-jobKey tarkistetaan; ennen sen
+asettamista syntynyt ote käyttää saman jobin tunnistetta. Paikallisella
+ajolla on erillinen `local`-sidonta, jota CI-keräin ei hyväksy. Tunnetut
+salaisuudet peitetään eikä poikkeuksen muita kenttiä kopioida. Julkiset
+reporterit eivät saa uusia raakavirhekenttiä. Node/Vitestin aikaisempi
+normaali konsoliraportti säilyy; salattu ote ei anna lupaa lisätä sinne
+salaisuuksia tai oikeaa käyttäjädataa.
+
+Kirjoitus käynnistyy virheen havaitsemisesta. Raportoinnin lopussa käytetään
+nykyistä enintään 500 ms:n rajattua toimitusodotusta, ei kiinteää viivettä.
+Tallennusvirhe ei muuta testitulosta tai korvaa siivousta; julkinen varoitus
+sisältää vain toimituksen tilan ja lukumäärät. Puuttuva loppuyhteenveto voi
+tarkoittaa keskeytystä. Prosessin pakkopysäytys tai runnerin menetys voi
+estää otteen tai salatun liitteen valmistumisen kokonaan.
+
+Uusi testi käyttää nykyistä omistavaa testikomentoa ja fixtureä, ei omaa
+keräintä. Kytkentäregressio tarkistaa Node/Vitest-komennot ja nykyiset
+workflow-kutsut. Salausregressio käynnistää oikean epäonnistuvan Node-,
+Vitest- ja Playwright-testin sekä native-lifecycle-kokeen ilman MSI-asennusta,
+kerää otteen ja tarkistaa alkuperäisen syyn oikeasti puretusta OpenPGP-
+paketista. Native-koe kulkee todellisen command-phase/worker-liitännän
+kautta. Packaged-ketjun koe käyttää oikeaa ASAR-build-identiteettiä ja
+erillistä prosessia; se ei korvaa oikean Electron-paketin hyväksyntäajoa.
+Nämä asennettuja testityökaluja tarvitsevat kokeet ovat tiedostossa
+`originalFailureEvidenceOpenPgp.test.mjs` ja nykyisessä
+`installer:test:encrypted-evidence`-komennossa riippuvuuksien valmistelun
+jälkeen. Aiempi `encryptedEvidenceOpenPgp.test.mjs` säilyy ilman projektin
+kolmannen osapuolen paketteja ajettavana Linuxin toimituskokeena; samaa
+testiavainapuria käytetään molemmissa sarjoissa.
 
 Workspace-kohdeasentimen lokipaikka varataan yksinomaan testin oman
 proof-juuren `result`-kansiosta. Tavallinen sovellus ei valitse lokipaikkaa.

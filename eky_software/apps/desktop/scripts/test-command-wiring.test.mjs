@@ -78,7 +78,7 @@ test('approved inspection source controls remain in the ordinary recursive test 
   const backend = JSON.parse(await readFile(new URL('../../backend/package.json', import.meta.url), 'utf8'));
   const root = JSON.parse(await readFile(new URL('../../../package.json', import.meta.url), 'utf8'));
   assert.equal(root.scripts.test, 'pnpm --recursive test');
-  assert.equal(backend.scripts.test, 'node --test scripts/build-profile-inspection-native.test.mjs && vitest run src e2e');
+  assert.equal(backend.scripts.test, 'node --test --test-reporter=../../test-reporters/nodeFailureReporter.mjs scripts/build-profile-inspection-native.test.mjs && vitest run --reporter=default --reporter=../../test-reporters/vitestFailureReporter.mjs src e2e');
   assert.equal((await lstat(new URL('../../backend/scripts/build-profile-inspection-native.test.mjs', import.meta.url))).isFile(), true);
 });
 
@@ -93,7 +93,7 @@ test('ordinary Linux inspection uses one scoped sandbox proof around the existin
 test('startup exception exit proof uses the existing compiled owner and explicit opt-in failure wait', async () => {
   const desktop = JSON.parse(await readFile(new URL('package.json', DESKTOP_ROOT), 'utf8'));
   assert.equal(desktop.scripts['installer:proof:startup-exception-exit'],
-    'pnpm build && pnpm e2e:prepare-electron-runtime && pnpm installer:supervisor:build && node --test --test-concurrency=1 installer/windows-acceptance-harness/startupExceptionElectronExit.test.mjs');
+    'pnpm build && pnpm e2e:prepare-electron-runtime && pnpm installer:supervisor:build && node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs installer/windows-acceptance-harness/startupExceptionElectronExit.test.mjs');
   const index = await readFile(new URL('src/main/index.ts', DESKTOP_ROOT), 'utf8');
   assert.match(index, /if \(app.commandLine.hasSwitch\(STARTUP_EXCEPTION_SWITCH\)\)/u);
   const failure = index.slice(index.indexOf('async onFailure(errorCode)'));
@@ -151,10 +151,12 @@ function assertPackageWiring({ root, desktop, files }) {
   assert.equal(desktop.scripts['installer:supervisor:build'],
     'node installer/windows-process-supervisor/buildWindowsAcceptanceSupervisor.mjs');
   const selected = {
-    vitest: testFiles(ordinary[0], ['vitest', 'run'], 'ts'),
-    node: testFiles(ordinary[1], ['node', '--test'], 'mjs'),
-    unit: testFiles(unit[0], ['node', '--test'], 'mjs'),
-    process: testFiles(process[1], ['node', '--test', '--test-concurrency=1'], 'mjs'),
+    vitest: testFiles(ordinary[0], ['vitest', 'run', '--reporter=default',
+      '--reporter=../../test-reporters/vitestFailureReporter.mjs'], 'ts'),
+    node: testFiles(ordinary[1], ['node', '--test', '--test-reporter=../../test-reporters/nodeFailureReporter.mjs'], 'mjs'),
+    unit: testFiles(unit[0], ['node', '--test', '--test-reporter=../../test-reporters/nodeFailureReporter.mjs'], 'mjs'),
+    process: testFiles(process[1], ['node', '--test', '--test-concurrency=1',
+      '--test-reporter=../../test-reporters/nodeFailureReporter.mjs'], 'mjs'),
   };
   assert.ok(selected.vitest.includes('src'), 'Existing desktop source tests must remain selected');
   assert.ok(selected.process.includes('installer/scripts/launchRollbackWindowsInstaller.test.mjs'));

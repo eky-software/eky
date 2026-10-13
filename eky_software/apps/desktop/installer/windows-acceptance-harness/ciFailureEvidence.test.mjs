@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { link, mkdir, mkdtemp, open, readFile, rm, symlink, utimes, writeFile } from 'node:fs/promises';
+import { link, mkdir, mkdtemp, open, readFile, readdir, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
@@ -10,10 +10,37 @@ import { collectJobFailureEvidence, evidenceSourceKind, jobEvidenceBinding, jobE
 import { projectPlaywrightFailureReport } from './playwrightFailureReport.mjs';
 import { LEGACY_STARTUP_TERMINAL_FILENAME } from './legacyStartupFailureEvidence.mjs';
 import { W6B2_INSTALLER_LOG_FILE, W6B2_INSTALLER_LOG_RECEIPT } from '../../src/main/w6b2PackagedInstallerLog.ts';
+import { projectStartupException, STARTUP_EXCEPTION_CONTROL, STARTUP_EXCEPTION_SUFFIX } from '../../src/main/startupExceptionEvidence.ts';
+import { executeCleanInstallUninstallLifecycle } from './cleanInstallUninstallLifecycle.mjs';
+import { executeUpgradeRollbackLifecycle } from './upgradeRollbackLifecycle.mjs';
+import { executeLegacyUpgradeLifecycle } from './legacyUpgradeLifecycle.mjs';
+import { executeWorkspaceSuccessLifecycle } from './workspaceSuccessLifecycle.mjs';
+import { executeWorkspaceFaultLifecycle } from './workspaceFaultLifecycle.mjs';
+import { createRunnerFailureSink } from '../../../../test-reporters/runnerFailureEvidence.mjs';
 
 const run = 'run-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const fingerprint = 'A'.repeat(40);
 const nativeId = 'a'.repeat(32);
+
+for (const [family, execute] of [
+  ['clean', executeCleanInstallUninstallLifecycle], ['upgrade', executeUpgradeRollbackLifecycle],
+  ['legacy', executeLegacyUpgradeLifecycle], ['workspace', executeWorkspaceSuccessLifecycle],
+  ['workspaceFault', runtime => executeWorkspaceFaultLifecycle('preUpdateRecoveryPointFailure', runtime)],
+]) {
+  test(`${family} preserves the original before safe-code mapping without making evidence mandatory`, async () => {
+    const original = new Error('synthetic native original', { cause: new Error('synthetic native cause') });
+    const observations = [];
+    const input = { inspectState: async () => { throw original; },
+      observeFailure(error, phase) { observations.push({ error, phase }); throw new Error('synthetic observer failure'); } };
+    const observed = await execute(input);
+    const baseline = await execute({ ...input, observeFailure: undefined });
+    assert.deepEqual(observed, baseline);
+    assert.equal(observed.status, 'failed');
+    assert.equal(observations[0].error, original);
+    assert.equal(observations[0].phase, 'preflight');
+    assert.equal(JSON.stringify(observed).includes('synthetic native'), false);
+  });
+}
 
 test('only matching hosted Windows or Linux contexts select their native Git', () => {
   for (const [platform, runner, git] of [['win32', 'Windows', 'git.exe'], ['linux', 'Linux', 'git']]) {
@@ -48,6 +75,87 @@ async function fixture(t) {
   };
   return { root, temp, checkout, env, put };
 }
+
+test('runner originals and delivery summaries require the current job, revision and invocation', async t => {
+  const { temp, env } = await fixture(t);
+  const sink = createRunnerFailureSink({ tempRoot: temp, env: { ...env, GITHUB_ACTIONS: 'true' } });
+  sink.record({ runner: 'vitest', phase: 'testFailure', testName: 'synthetic', attempt: 0,
+    error: new Error('synthetic runner original', { cause: new Error('synthetic runner cause') }) });
+  assert.equal((await sink.flush()).status, 'recorded');
+  const directory = join(temp, (await readdir(temp)).find(name => name.startsWith('eky-test-errors-')));
+  const path = join(directory, (await readdir(directory)).find(name => !name.endsWith('.summary.private.json')));
+  const record = JSON.parse(await readFile(path, 'utf8'));
+  for (const patch of [null, { binding: { ...record.binding, jobKeySource: 'githubJob', jobKey: env.GITHUB_JOB } },
+    { binding: { kind: 'local' } }, { binding: { ...record.binding, runId: '456' } },
+    { binding: { ...record.binding, attempt: '2' } }, { binding: { ...record.binding, job: 'other' } },
+    { binding: { ...record.binding, jobKey: 'other' } }, { binding: { ...record.binding, sourceRevision: 'b'.repeat(40) } },
+    { invocationId: '12345678-1234-4abc-8abc-1234567890ab' }, { extra: 'EXCLUDED' }]) {
+    await writeFile(path, JSON.stringify({ ...record, ...patch }));
+    const collected = await collectJobFailureEvidence(env);
+    const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+    const entries = archive.manifest.files.filter(file => file.kind === 'runnerFailure');
+    assert.equal(entries.length, 2);
+    const summary = entries.find(file => file.source.endsWith('.summary.private.json'));
+    assert.equal(summary.status, 'retained');
+    assert.equal(summary.deliveryStatus, 'recorded');
+    const entry = entries.find(file => file !== summary);
+    const expected = patch === null || patch.binding?.jobKeySource === 'githubJob';
+    assert.equal(entry.status, expected ? 'retained' : 'unverified');
+    assert.equal(Object.hasOwn(archive.files, entry.name), expected);
+  }
+});
+
+test('runner collection retains its first error and summary before the per-source file quota', async t => {
+  const { temp, env } = await fixture(t);
+  const sink = createRunnerFailureSink({ tempRoot: temp, env: { ...env, GITHUB_ACTIONS: 'true' } });
+  for (let index = 0; index < 128; index++) {
+    sink.record({ runner: 'node', phase: 'testFailure', testName: `synthetic-${index}`, attempt: 0,
+      error: new Error(index === 0 ? 'synthetic first original' : 'synthetic later original') });
+  }
+  assert.equal((await sink.flush()).status, 'recorded');
+  const collected = await collectJobFailureEvidence(env);
+  const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+  const entries = archive.manifest.files.filter(file => file.kind === 'runnerFailure');
+  const source = archive.manifest.sources.find(value => value.area === 'temporary');
+  assert.equal(source.status, 'limited');
+  assert.equal(entries.length, source.fileLimit);
+  assert.ok(entries.every(entry => entry.status === 'retained'));
+  const records = entries.map(entry => JSON.parse(Buffer.from(archive.files[entry.name], 'base64')));
+  assert.equal(records[0].kind, 'runnerFailureSummary');
+  assert.equal(records[0].observed, 128);
+  assert.equal(records[1].sequence, 1);
+  assert.equal(records[1].exception.chain[0].message, 'synthetic first original');
+  assert.equal(records.some(record => record.sequence === 128), false);
+  const originalDirectory = join(temp, (await readdir(temp)).find(name => name.startsWith('eky-test-errors-')));
+  assert.equal((await readdir(originalDirectory)).length, 129);
+});
+
+test('packaged originals require their exact control, runtime and current source binding', async t => {
+  const { temp, env, put } = await fixture(t);
+  const runtimeInstanceId = '12345678-1234-4abc-8abc-1234567890ab';
+  const binding = { scenarioRunNonce: 'b'.repeat(64), appVersion: '0.2.81',
+    buildRevision: env.GITHUB_SHA, runtimeInstanceId };
+  const prefix = `eky-desktop-smoke/${binding.scenarioRunNonce.slice(0, 32)}/result`;
+  const control = { schemaVersion: 1, scenarioRunNonce: binding.scenarioRunNonce,
+    appVersion: binding.appVersion, buildRevision: binding.buildRevision };
+  const record = projectStartupException(new Error('synthetic original', { cause: new Error('synthetic cause') }),
+    binding, 'packagedSmoke');
+  const controlPath = await put(temp, `${prefix}/${STARTUP_EXCEPTION_CONTROL}`, JSON.stringify(control));
+  const source = await put(temp, `${prefix}/${runtimeInstanceId}${STARTUP_EXCEPTION_SUFFIX}`, JSON.stringify(record));
+  for (const patch of [null, { scenarioRunNonce: 'c'.repeat(64) }, { buildRevision: 'd'.repeat(40) },
+    { appVersion: '0.2.80' }, { extra: 'not allowed' }]) {
+    await writeFile(controlPath, JSON.stringify({ ...control, ...patch }));
+    const collected = await collectJobFailureEvidence(env);
+    const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+    assert.equal(archive.manifest.files.length, 1);
+    const entry = archive.manifest.files[0];
+    assert.equal(entry.kind, 'startupException');
+    assert.equal(entry.status, patch === null ? 'retained' : 'unverified');
+    assert.equal(Object.hasOwn(archive.files, entry.name), patch === null);
+    if (patch === null) assert.deepEqual(JSON.parse(Buffer.from(archive.files[entry.name], 'base64')), record);
+  }
+  assert.deepEqual(JSON.parse(await readFile(source, 'utf8')), record);
+});
 
 test('source allowlist excludes databases, requests, config, environment, traces and profiles', () => {
   for (const path of ['eky supervisor abc/result.json', `eky supervisor abc/temporary/eky-acceptance-command-${nativeId}/prepare/result.json`,

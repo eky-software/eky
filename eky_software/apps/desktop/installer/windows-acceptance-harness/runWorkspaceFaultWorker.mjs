@@ -7,12 +7,14 @@ import { WORKSPACE_FAULT_EXIT_CODES, readWorkspaceFaultRequest, validateWorkspac
   workspaceFaultErrorCode, workspaceFaultPlan, workspaceFaultResultPath, workspaceFaultWorkerResult } from './workspaceFaultContracts.mjs';
 import { executeWorkspaceFaultLifecycle } from './workspaceFaultLifecycle.mjs';
 import { createWorkspaceFaultWorkerRuntime } from './workspaceWorkerRuntime.mjs';
+import { createNativeFailureEvidence } from './nativeFailureEvidence.mjs';
 
 export async function runWorkspaceFaultWorker(arguments_, {
   platform = process.platform, readRequest = readWorkspaceFaultRequest,
   verifyArtifact = verifyWorkspaceSuccessArtifact, createRuntime = createWorkspaceFaultWorkerRuntime,
   execute = executeWorkspaceFaultLifecycle, writeResult = writeJsonAtomicExclusive,
   reportProgress = (value) => console.log(JSON.stringify(value)),
+  createFailureEvidence = request => createNativeFailureEvidence(import.meta.url, request),
 } = {}) {
   if (platform !== 'win32' || arguments_.length !== 2 || arguments_[0] !== '--request' ||
     typeof arguments_[1] !== 'string' || arguments_[1].includes('\0')) return WORKSPACE_FAULT_EXIT_CODES.invalidRequest;
@@ -20,15 +22,17 @@ export async function runWorkspaceFaultWorker(arguments_, {
   let requestPath;
   try { requestPath = resolve(arguments_[1]); request = await readRequest(requestPath); }
   catch { return WORKSPACE_FAULT_EXIT_CODES.invalidRequest; }
+  const observeFailure = createFailureEvidence(request);
   let result;
   try {
     const artifact = await verifyArtifact({ artifactRoot: request.fixtureRoot,
       expectedDescriptorSha256: request.artifactDescriptorSha256, expectedBuildRevision: request.buildRevision });
     const runtime = await createRuntime(requestPath, request, artifact);
     try { result = await execute(request.faultScenario, { ...runtime, reportProgress,
-      reportInstallationProgress: reportProgress }); }
+      reportInstallationProgress: reportProgress, observeFailure }); }
     finally { runtime.disposeSessionEvidence(); }
   } catch (error) {
+    observeFailure(error, 'workerPreparation');
     result = { schemaVersion: 1, status: 'failed', resultCode: 'workspaceFaultFailed',
       errorCode: workspaceFaultErrorCode(error), failedPhase: workspaceFaultPlan(request.faultScenario).phases[0], completedPhases: [] };
   }
@@ -39,7 +43,8 @@ export async function runWorkspaceFaultWorker(arguments_, {
     await writeResult(workspaceFaultResultPath(requestPath), bound);
     await writeResult(resolve(dirname(requestPath), 'worker-result.json'), workspaceFaultWorkerResult(request, bound));
     return WORKSPACE_FAULT_EXIT_CODES[bound.status];
-  } catch { return WORKSPACE_FAULT_EXIT_CODES.failed; }
+  } catch (error) { observeFailure(error, 'resultPublication'); return WORKSPACE_FAULT_EXIT_CODES.failed; }
+  finally { await observeFailure.finish(); }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

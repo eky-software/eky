@@ -83,7 +83,7 @@ jobs:
           node-version-file: eky_software/.node-version
           package-manager-cache: false
       - name: Verify real OpenPGP and failure collector regressions
-        run: node --test --test-concurrency=1 installer/windows-acceptance-harness/ciFailureEvidence.test.mjs installer/windows-acceptance-harness/encryptedEvidenceOpenPgp.test.mjs
+        run: node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs installer/windows-acceptance-harness/ciFailureEvidence.test.mjs installer/windows-acceptance-harness/encryptedEvidenceOpenPgp.test.mjs
 
       - name: Produce one verified synthetic first failure
         id: failure_probe
@@ -364,7 +364,7 @@ jobs:
           "EKY_DOTNET_EXE=$dotnet" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Run deterministic MSI file-policy contracts
         run: >-
-          node --test
+          node --test --test-reporter=../../test-reporters/nodeFailureReporter.mjs
           installer/windows-acceptance-harness/fixtures/buildMsiFileVersionPolicyFixture.test.mjs
           installer/windows-acceptance-harness/fixtures/msiFileVersionPolicyLifecycle.test.mjs
           installer/windows-acceptance-harness/fixtures/msiFileVersionPolicyRuntime.test.mjs
@@ -447,14 +447,14 @@ jobs:
       - name: Run supervisor unit and process contracts
         if: inputs.mode != 'product-command-diagnostic' && inputs.mode != 'clean-upgrade-command-diagnostic' && inputs.mode != 'inspection-command-contracts' && inputs.mode != 'window-startup-diagnostic' && inputs.mode != 'legacy-contracts-diagnostic' && inputs.mode != 'legacy-worker-diagnostic' && inputs.mode != 'inspector-analysis-diagnostic' && inputs.mode != 'inspector-external-diagnostic'
         run: >-
-          node --test --test-concurrency=1
+          node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs
           installer/windows-process-supervisor/tests/windowsAcceptanceSupervisorResult.test.mjs
           installer/windows-process-supervisor/tests/windowsAcceptanceSupervisor.contract.test.mjs
 
       - name: Diagnose one native window startup without MSI or acceptance matrix
         if: inputs.mode == 'window-startup-diagnostic'
         run: >-
-          node --test --test-concurrency=1
+          node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs
           --test-name-pattern="^native close observation: visible$"
           installer/windows-acceptance-harness/requestWindowsApplicationClose.test.mjs
 
@@ -476,7 +476,7 @@ jobs:
       - name: Verify inspection failure through both existing CI command chains
         if: inputs.mode == 'inspection-command-contracts'
         run: >-
-          node --test --test-concurrency=1
+          node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs
           --test-name-pattern="^(legacy|workspace-fault) CI launch chain completes the real phase chain: productInspectionHold$"
           installer/windows-acceptance-harness/legacyCommandEntrypoint.process.test.mjs
           installer/windows-acceptance-harness/workspaceFaultCommandEntrypoint.process.test.mjs
@@ -525,7 +525,7 @@ jobs:
       - name: Diagnose legacy worker live-child contract without MSI or acceptance matrix
         if: inputs.mode == 'legacy-worker-diagnostic'
         run: >-
-          node --test --test-concurrency=1
+          node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs
           installer/windows-acceptance-harness/runLegacyUpgradeWorker.test.mjs
 
       - name: Start bounded inspector analysis fixture capture
@@ -539,7 +539,7 @@ jobs:
         if: inputs.mode == 'inspector-analysis-diagnostic'
         timeout-minutes: 2
         run: >-
-          node --test --test-concurrency=1
+          node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs
           --test-name-pattern="^legacy fixed command entrypoint completes the real phase chain: productInspectionNativeHold$"
           installer/windows-acceptance-harness/legacyCommandEntrypoint.process.test.mjs
 
@@ -547,7 +547,7 @@ jobs:
         if: inputs.mode == 'inspector-external-diagnostic'
         timeout-minutes: 2
         run: >-
-          node --test --test-concurrency=1
+          node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs
           --test-name-pattern="^legacy fixed command entrypoint completes the real phase chain: productInspectionReadOnly$"
           installer/windows-acceptance-harness/legacyCommandEntrypoint.process.test.mjs
 

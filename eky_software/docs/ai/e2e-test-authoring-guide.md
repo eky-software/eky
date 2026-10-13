@@ -313,11 +313,11 @@ on näyttöaukko, ei jälkikäteen arvattava syy.
 | Electron development | `electron-lifecycle` ja turvallinen suoritusyrityskohtainen raportti kertovat myös ennen ikkunaa tapahtuvista virheistä. Pelkkä trace-asetuksen vaihto ei kytke nykyisen erikseen käynnistetyn Electron-contextin täyttä tapahtuma-/verkkotallennusta. Runnerin API-jälki ei todista rendererin jäljen olemassaoloa. |
 | Windows packaged / installer | Käytä nykyisen supervisorin vaihehavaintoja, workerin tulosta ja siivouksen näyttöä. MSI:n tai paketin käynnistysjumi ei ole Playwright-selaintesti; sen tutkimiseen tarvitaan sen oman prosessin aineisto. |
 
-Windowsin testiperheiden valinnainen [salattu tutkimuspaketti](../architecture/ci-encrypted-evidence.md#testiperheiden-virheaineisto)
+Windowsin ja Linuxin testiperheiden valinnainen [salattu tutkimuspaketti](../architecture/ci-encrypted-evidence.md#testiperheiden-virheaineisto)
 säilyttää nimetyn virheaineiston ennen yksityistä analyysiä yhteisellä
 jälkikeräysaskeleella. Kytkentä ei riipu yksittäisestä testinimestä.
-Aktivointi vaatii purkuavaimen varmennuksen; Linux-toimitus ja tarkistamaton
-trace eivät kuulu tähän Windows-kytkentään. JSON-raportista jätetään
+Aktivointi vaatii purkuavaimen varmennuksen; tarkistamaton trace ei kuulu
+tähän kytkentään. JSON-raportista jätetään
 salattavassakin paketissa pois asetukset ja inline-liitteiden sisällöt.
 Electronin `electron-lifecycle.json` kerätään erikseen täsmällisellä
 tiedostonimellä ja suoritusyrityskohtaisella polulla. Siten `ownership`
@@ -325,6 +325,15 @@ säilyy julkisen sulkuvirheen rinnalla, vaikka inline-liitteen sisältö ei
 kuulu JSON-raportin projektioon. Keräys ei muuta testin tai cleanupin tulosta.
 Tiedosto syntyy nykyisessä fixturessa epäonnistumisesta tai
 ensikäynnistystodisteesta, ei jokaisesta läpäisseestä testistä.
+
+Nykyinen Playwright-reporter kirjoittaa myös yhteisen rajatun
+[alkuperäisen virheotteen](../architecture/ci-encrypted-evidence.md#yhteinen-alkuperäisen-testivirheen-liitäntä)
+heti odottamattoman testituloksen tai runner-virheen saapuessa. Siksi
+koko ajon JSON-raportin puuttuminen ei enää yksin tarkoita kaikkien
+virheotteiden puuttumista. Uusi testi ei tarvitse omaa lokitusta; käytä
+nykyisiä komentoja ja fixturejä. Jos muutat poikkeuksen turvalliseksi
+koodiksi fixture-/sovellusrajalla, säilytä alkuperäinen syy nykyisellä
+rajatulla havaitsijalla ennen muunnosta ja todista sen salattu lukuketju.
 Testinkirjoittaja käyttää yllä olevia yhteisiä fixtureitä, ei omaa salainta.
 
 Ensiyrityksen tracea ei ole kytketty yleiseksi oletukseksi. Rajattu

@@ -2889,6 +2889,7 @@ async function startDesktopCompositionRuntime({
       options.quitApplication();
       return undefined;
     } catch (error) {
+      try { options.observeStartupException?.(error, 'packagedSmoke', [runtimeSessionSecret]); } catch { /* Optional private evidence. */ }
       const errorCode =
         error instanceof ProfileSnapshotBrokerError
           ? error.code

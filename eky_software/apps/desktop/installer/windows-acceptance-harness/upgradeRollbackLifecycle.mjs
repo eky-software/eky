@@ -130,7 +130,7 @@ function errorCodeOf(error) {
     : 'unexpectedFailure';
 }
 
-function createProgressObserver(reportProgress) {
+function createProgressObserver(reportProgress, observeFailure) {
   const lifecycleStartedAt = performance.now();
 
   function emit(phase, status, phaseStartedAt, details) {
@@ -167,6 +167,7 @@ function createProgressObserver(reportProgress) {
       });
       return value;
     } catch (error) {
+      try { observeFailure?.(error, phase); } catch { /* Evidence cannot change the test result. */ }
       const known = errorCodeOf(error);
       const errorCode = known === 'unexpectedFailure' ? dependencyFailureCode : known;
       emit(phase, 'failed', startedAt, { errorCode });
@@ -285,6 +286,7 @@ export async function executeUpgradeRollbackLifecycle({
   inspectState,
   invokeBinaryRollback,
   reportProgress,
+  observeFailure,
   removeRollbackBlocker,
   runMsiOperation,
   runRunningUpgrade,
@@ -294,7 +296,7 @@ export async function executeUpgradeRollbackLifecycle({
   versions,
 }) {
   const result = initialUpgradeRollbackResult();
-  const progress = createProgressObserver(reportProgress);
+  const progress = createProgressObserver(reportProgress, observeFailure);
   progress.emit('lifecycle', 'started', progress.lifecycleStartedAt, {
     resultCode: 'started',
   });

@@ -67,6 +67,7 @@ import { createRestoreStartupTestLifetime, releaseRestoreStartupTestResources } 
 const electronBoundary = vi.hoisted(() => ({
   fetch: vi.fn(),
   createWindow: vi.fn(),
+  loadWindow: vi.fn(async () => undefined),
   fork: vi.fn(),
   removeHandler: vi.fn(),
   portClosed: vi.fn(),
@@ -107,7 +108,7 @@ vi.mock('../security/electronPermissionPolicy.js', () => ({
 }));
 vi.mock('./applicationWindow.js', () => ({
   createApplicationWindow: electronBoundary.createWindow,
-  loadApplicationWindow: vi.fn(async () => undefined),
+  loadApplicationWindow: electronBoundary.loadWindow,
 }));
 vi.mock('../update/windowsInstallerHandoff.js', () => ({
   launchWindowsInstallerForUpdate: vi.fn(async () => undefined),
@@ -151,6 +152,7 @@ beforeEach(() => {
   electronBoundary.portClosed.mockReset();
   vi.mocked(launchWindowsInstallerForUpdate).mockClear();
   electronBoundary.fork.mockReset();
+  electronBoundary.loadWindow.mockReset().mockResolvedValue(undefined);
   electronBoundary.fetch.mockReset().mockImplementation(async () =>
     new Response(JSON.stringify({ status: 'ok' })),
   );
@@ -1388,6 +1390,15 @@ describe('desktop restore startup composition', () => {
     expect(RecoveryPointScheduler.prototype.stopChecks).toHaveBeenCalled();
   });
 
+  it.each([false, true])('retains the original packaged exception before its safe code (observer throws: %s)', async throws => {
+    const fixture = await createFixture(originalProfileId, { skipRestore: true, completeStartup: true, smoke: true });
+    const original = new Error('synthetic packaged original', { cause: new Error('synthetic packaged cause') });
+    electronBoundary.loadWindow.mockRejectedValueOnce(original);
+    const observe = vi.fn(() => { if (throws) throw new Error('synthetic evidence failure'); });
+    await expect(fixture.start(observe)).rejects.toThrow('PACKAGED_SMOKE_FAILED');
+    expect(observe.mock.calls).toContainEqual([original, 'packagedSmoke', ['d'.repeat(64)]]);
+  });
+
   it('observes the first runtime startup exception before recovery cleanup', async () => {
     const fixture = await createFixture(originalProfileId);
     const original = new Error('synthetic-original-before-backend', { cause: new Error('synthetic cause') });
@@ -2038,6 +2049,7 @@ async function createFixture(
   options: {
     replacementTarget?: boolean;
     completeStartup?: boolean;
+    smoke?: boolean;
     skipRestore?: boolean;
     inspectBackendStartup?(input: StartDesktopBackendOptions): Promise<void>;
     realBackend?: boolean;
@@ -2405,10 +2417,10 @@ async function createFixture(
       runtimeInstanceId: '33333333-3333-4333-8333-333333333333',
       reportSmokeStage,
       smokeConfiguration: {
-        enabled: false,
+        enabled: options.smoke === true,
         phase: 'initial',
-        root: undefined,
-        userDataPath: undefined,
+        root: options.smoke ? root : undefined,
+        userDataPath: options.smoke ? root : undefined,
       },
       userDataPath: root,
     }),

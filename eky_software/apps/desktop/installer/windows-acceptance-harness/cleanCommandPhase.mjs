@@ -12,6 +12,7 @@ import { readInstallerManifest } from '../installerManifest.mjs';
 import { createCleanInstallUninstallWorkerRequest, createWorkerTerminalResult, readCleanInstallUninstallWorkerRequest,
     readCleanInstallUninstallResult, cleanResultPathForRequest, writeJsonAtomicExclusive } from './cleanInstallUninstallContracts.mjs';
 import { runCleanInstallUninstallWorker } from './runCleanInstallUninstallWorker.mjs';
+import { createNativeFailureEvidence } from './nativeFailureEvidence.mjs';
 import { prepareCleanInstallUninstallTerminalOutcome, completeCleanInstallUninstallTerminalOutcome,
   cleanInstallUninstallFailureDetails, CLEAN_COMMAND_ERROR_CODES } from './cleanInstallUninstallFailureBoundary.mjs';
 import { executeProductOperation } from './installerProductOperationWorker.mjs';
@@ -80,6 +81,9 @@ async function runProduct(context, dependencies) {
 }
 
 export async function executeCleanCommandPhase(context, dependencies = {}) {
+  const observeFailure = error => {
+    try { dependencies.observeFailure?.(error, context.phase); } catch { /* Preserve the phase result. */ }
+  };
   const { phase, state, binding, resultPath, descriptorPath } = context;
   const inventory = dependencies.inventoryProfile ?? createClosedDirectoryInventory;
   if (phase === 'prepare') {
@@ -89,7 +93,7 @@ export async function executeCleanCommandPhase(context, dependencies = {}) {
     try { temporary = await realpath(tmpdir());
       const info = await lstat(temporary);
       if (!info.isDirectory() || info.isSymbolicLink()) throw new Error();
-    } catch { throw new Error('WINDOWS_ACCEPTANCE_CLEAN_TEMP_ROOT_INVALID'); }
+    } catch (error) { observeFailure(error); throw new Error('WINDOWS_ACCEPTANCE_CLEAN_TEMP_ROOT_INVALID'); }
     state.runRoot = await mkdtemp(resolve(temporary, 'eky-windows-acceptance-v2-clean-'));
   } else if (phase === 'inventoryBefore') state.profileBefore = await inventory(resolve(process.env.APPDATA, 'Eky'));
   else if (phase === 'materialize') {
@@ -112,16 +116,18 @@ export async function executeCleanCommandPhase(context, dependencies = {}) {
       artifactDescriptorSha256: binding.artifactDescriptorSha256, fixtureRoot: state.artifact.fixtureRoot });
     const path = resolve(state.runRoot, 'scenario', 'worker-request.json');
     await writeJsonAtomicExclusive(path, request);
-    return (dependencies.runScenario ?? runCleanInstallUninstallWorker)(['--request', path]);
+    return (dependencies.runScenario ?? runCleanInstallUninstallWorker)(['--request', path], {
+      createFailureEvidence: request => createNativeFailureEvidence(import.meta.url, request),
+    });
   } else if (phase === 'semantic') await terminalPlan(context);
   else if (phase === 'artifact') {
     try { await (dependencies.verifyArtifact ?? verifyLocalImmutableSourceFixture)(state.artifact); }
-    catch { state.safetyErrorCode ??= 'WINDOWS_ACCEPTANCE_LOCAL_FIXTURE_CHANGED'; }
+    catch (error) { observeFailure(error); state.safetyErrorCode ??= 'WINDOWS_ACCEPTANCE_LOCAL_FIXTURE_CHANGED'; }
   } else if (phase === 'inventoryAfter') {
     try {
       state.profileAfter = await inventory(resolve(process.env.APPDATA, 'Eky'));
       if (!inventoriesMatch(state.profileBefore, state.profileAfter)) throw new Error();
-    } catch { state.safetyErrorCode ??= 'WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED'; }
+    } catch (error) { observeFailure(error); state.safetyErrorCode ??= 'WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED'; }
   } else if (phase === 'fixtureCleanup') {
     const outcome = await commandOutcome(context);
     await writeJsonAtomicExclusive(resolve(context.phaseRoot, 'terminal.json'), { binding, outcome });
@@ -199,10 +205,12 @@ async function publish(context) {
 
 export async function runCleanCommandPhase(args, dependencies = {}) {
   let context;
+  let observeFailure;
   try {
     if (args.length !== 2 || args[0] !== '--phase-request') invalid();
     context = await readCleanCommandPhase(args[1]);
-    const code = await executeCleanCommandPhase(context, dependencies);
+    observeFailure = createNativeFailureEvidence(import.meta.url, context.binding);
+    const code = await executeCleanCommandPhase(context, { ...dependencies, observeFailure });
     if (context.phase !== 'scenario') await writeJsonAtomicExclusive(resolve(context.phaseRoot, 'phase-state.json'),
       { binding: context.binding, state: context.state });
     if (context.phase === 'scenario' && code === 0) {
@@ -214,12 +222,14 @@ export async function runCleanCommandPhase(args, dependencies = {}) {
       status: code === 0 ? 'completed' : 'failed', resultCode: code === 0 ? 'phaseCompleted' : 'phaseFailed', errorCode: code === 0 ? null : 'phaseFailed' });
     return code;
   } catch (error) {
+    observeFailure ??= createNativeFailureEvidence(import.meta.url, { scenario: 'cleanCommandPhase' });
+    observeFailure(error, context?.phase ?? 'phaseRequest');
     if (context) {
       try { await writeJsonAtomicExclusive(resolve(context.phaseRoot, 'phase-error.json'), { binding: context.binding, errorCode: safeCode(error) }); }
       catch { /* Keep required result failure; no synchronous diagnostic fallback. */ }
     }
     return 1;
-  }
+  } finally { await observeFailure?.finish(); }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href)
   process.exitCode = await runCleanCommandPhase(process.argv.slice(2));

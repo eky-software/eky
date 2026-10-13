@@ -135,6 +135,40 @@ Erota alkuperäinen virhe, viimeinen havaittu vaihe, siivoustulos sekä
 aineiston puuttuminen toisistaan. Uusi yritys ei saa korvata ensivirheen
 hakemistoa, eikä aineisto kuulu buildin tyhjentämään hakemistoon.
 
+### Alkuperäinen testivirhe oletuksena
+
+Synteettisen testin odottamaton epäonnistuminen kuuluu oletuksena nykyiseen
+yksityiseen virhetiedon keräykseen. Käytä testirunnerin raportointikytkentää
+sekä nykyistä salattua toimitusta, älä rakenna testikohtaista loggeria.
+Säilytä rajattu alkuperäinen viesti, kutsupino ja syyketju sekä testin ja
+suoritusyrityksen sidonta. Tunnetut salaisuudet peitetään. Onnistuneen testin
+odotettu poikkeus ei ole uusi raportoitu testivirhe.
+
+Jos omistava sovellus- tai harness-raja muuttaa poikkeuksen turvalliseksi
+koodiksi, testirunner ei enää pysty palauttamaan alkuperäistä poikkeusta.
+Tällainen raja tarjoaa sen nykyiselle yksityiselle havaitsijalle **ennen**
+muunnosta. Yhteinen raportointi hoitaa testiperheen muut testit; jokaiseen
+testitapaukseen ei lisätä omaa keräyskutsua. Uuden muunnosrajan mukana
+todennetaan myös havaitsijan kytkentä, ei vain virhekoodi.
+
+Julkisen testiraportoinnin hyväksyttyä sisältöä ei laajenneta.
+Käyttöliittymä ja tuotannon diagnostiikka käyttävät edelleen turvallisia
+koodeja. Tämä oletus ei hyväksy kokonaisten
+ympäristömuuttujien, profiilien, tietokantojen, pyyntösisältöjen tai
+muistivedosten keräystä. Keräyksen rajat ja toimitusketju määritellään
+[salatun aineiston sopimuksessa](../architecture/ci-encrypted-evidence.md).
+Sopimuksen mukainen uuden testin kytkentä ei vaadi erillistä lupaa;
+sisällön, säilytyksen tai julkaisurajan laajentaminen vaatii päätöksen.
+
+Todista ketju pakotetulla virheellä: alkuperäinen poikkeus löytyy oikeasti
+puretusta salatusta paketista, julkinen tuloste pysyy turvallisena ja testi
+pysyy epäonnistuneena. Varmenna myös virhe raportoinnissa, puuttuva aineisto
+ja onnistuneen polun säilyminen. Prosessin pakkokatkaisu, levyn virhe tai
+runnerin katoaminen voi estää tallennuksen tai toimituksen; puuttuvaa
+alkuperäistä syytä ei päätellä yleisestä koodista eikä väitetä tallennetuksi.
+
+### Keräyksen ja toimituksen rajat
+
 Kerää ongelman vaiheeseen sopiva rajattu aineisto nykyisillä välineillä:
 testiraportti, prosessin tulosteet, trace tai erikseen perusteltu vedos.
 Kaikkea raakadataa ei kerätä oletuksena. [Testinkirjoittajan vianetsintäreitti](e2e-test-authoring-guide.md#kun-testi-epäonnistuu)

@@ -14,7 +14,7 @@ import {
 } from '../dist/main/packagedSmoke.js';
 import { readDesktopElectronVersion } from './read-desktop-electron-version.mjs';
 import { preparePackagedReleaseCandidateSmoke } from './packaged-release-candidate.mjs';
-import { observeSmokeOutput } from './packagedSmokeFailureEvidence.mjs';
+import { observeSmokeOutput, prepareSmokeExceptionEvidence } from './packagedSmokeFailureEvidence.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const executablePath = resolve(
@@ -41,6 +41,8 @@ export async function runPackagedSmoke({ releaseCandidateSmoke = false, legacyPr
   const expectedElectronVersion = await readDesktopElectronVersion();
   const phaseOutputs = [];
   let smokeSucceeded = false;
+  let exceptionEvidence;
+  let exceptionDelivery = 'notPrepared';
 
   delete childEnvironment.ELECTRON_RUN_AS_NODE;
   childEnvironment.ELECTRON_ENABLE_SECURITY_WARNINGS = 'true';
@@ -74,6 +76,17 @@ export async function runPackagedSmoke({ releaseCandidateSmoke = false, legacyPr
       },
       { stage: 'startup', status: 'started' },
     );
+    try {
+      exceptionEvidence = await prepareSmokeExceptionEvidence({
+        tempPath: resolvePackagedSmokeTempPath(tmpdir()), smokeRootDirectory, smokeToken,
+        installRoot: dirname(executablePath),
+      });
+      Object.assign(childEnvironment, exceptionEvidence.environment);
+      exceptionDelivery = 'prepared';
+    } catch {
+      exceptionDelivery = 'unavailable';
+      console.error('PACKAGED_SMOKE_PRIVATE_EVIDENCE_UNAVAILABLE');
+    }
     const scenarioSwitches = legacyPreparation === undefined ? [] : ['--desktop-smoke-legacy-invoice'];
     await runSmokePhase(['--desktop-smoke', ...scenarioSwitches], 'restoreRestart');
     await preparation?.afterRestoreExit({ smokeToken, smokeRootDirectory });
@@ -86,8 +99,12 @@ export async function runPackagedSmoke({ releaseCandidateSmoke = false, legacyPr
     smokeSucceeded = true;
   } catch (error) {
     try {
+      exceptionEvidence?.capture(error, 'packagedRunner');
+      if (exceptionEvidence) exceptionDelivery = await exceptionEvidence.capture.waitForDelivery();
+    } catch { exceptionDelivery = 'failed'; }
+    try {
       await writeFile(resolve(smokeRootDirectory, 'smoke-output.private.json'), JSON.stringify({
-        schemaVersion: 1, cleanup: 'notVerified', phases: phaseOutputs.map(read => read()),
+        schemaVersion: 1, cleanup: 'notVerified', exceptionDelivery, phases: phaseOutputs.map(read => read()),
       }), { flag: 'wx', mode: 0o600 });
     } catch { console.error('PACKAGED_SMOKE_PRIVATE_EVIDENCE_UNAVAILABLE'); }
     throw error;
@@ -104,7 +121,7 @@ export async function runPackagedSmoke({ releaseCandidateSmoke = false, legacyPr
     await new Promise((resolveSmoke, rejectSmoke) => {
       const processHandle = spawn(
         executablePath,
-        argumentsList,
+        [...argumentsList, ...(exceptionEvidence?.arguments ?? [])],
         {
           env: childEnvironment,
           shell: false,
@@ -140,8 +157,9 @@ export async function runPackagedSmoke({ releaseCandidateSmoke = false, legacyPr
         finish();
       }, smokeTimeoutMilliseconds);
 
-      processHandle.once('error', () => {
+      processHandle.once('error', error => {
         if (settled) return;
+        try { exceptionEvidence?.capture(error, 'packagedRunner'); } catch { /* Optional private evidence. */ }
         firstError ??= new Error('Packaged desktop smoke process could not be started.');
         resultChecked = true;
         finishAfterClose();

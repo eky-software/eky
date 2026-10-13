@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { createNativeFailureEvidence } from './nativeFailureEvidence.mjs';
 import { pathToFileURL } from 'node:url';
 
 import {
@@ -29,7 +30,9 @@ function failedResult(errorCode) {
   });
 }
 
-export async function runUpgradeRollbackWorker(arguments_) {
+export async function runUpgradeRollbackWorker(arguments_, {
+  createFailureEvidence = request => createNativeFailureEvidence(import.meta.url, request),
+} = {}) {
   if (
     process.platform !== 'win32' ||
     arguments_.length !== 2 ||
@@ -52,6 +55,7 @@ export async function runUpgradeRollbackWorker(arguments_) {
     return 64;
   }
 
+  const observeFailure = createFailureEvidence(request);
   let result;
   try {
     const artifact = await verifyUpgradeRollbackArtifact({
@@ -64,6 +68,7 @@ export async function runUpgradeRollbackWorker(arguments_) {
     );
     result = await executeUpgradeRollbackLifecycle({
       ...runtime,
+      observeFailure,
       versions: Object.freeze({
         source: artifact.roles.source.msiProductVersion,
         target: artifact.roles.target.msiProductVersion,
@@ -77,6 +82,7 @@ export async function runUpgradeRollbackWorker(arguments_) {
       },
     });
   } catch (error) {
+    observeFailure(error, 'workerPreparation');
     result = failedResult(safeCode(error, 'unexpectedFailure'));
   }
 
@@ -99,8 +105,11 @@ export async function runUpgradeRollbackWorker(arguments_) {
       createUpgradeRollbackWorkerTerminalResult(request, boundResult),
     );
     return 0;
-  } catch {
+  } catch (error) {
+    observeFailure(error, 'resultPublication');
     return 1;
+  } finally {
+    await observeFailure.finish();
   }
 }
 

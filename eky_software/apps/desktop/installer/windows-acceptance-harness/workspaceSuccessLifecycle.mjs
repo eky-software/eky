@@ -32,6 +32,7 @@ export async function executeWorkspaceSuccessLifecycle(runtime) {
       completedPhases.push(phase);
       emit(phase, 'completed', start, 'validated');
     } catch (error) {
+      try { runtime.observeFailure?.(error, phase); } catch { /* Evidence cannot change the test result. */ }
       const code = workspaceSuccessErrorCode(error, failureCode);
       emit(phase, 'failed', start, code);
       fail(code);

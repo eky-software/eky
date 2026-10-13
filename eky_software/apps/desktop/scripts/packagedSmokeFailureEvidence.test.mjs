@@ -72,7 +72,15 @@ function startSmokeDriver(t, readResult = async () => ({ stage: 'startup', statu
   const waiting = [];
   const writes = [];
   const removed = [];
+  const exceptions = [];
+  const capture = Object.assign((error, stage) => { exceptions.push({ error, stage }); },
+    { waitForDelivery: async () => 'recorded' });
   const mocks = {
+    './packagedSmokeFailureEvidence.mjs': {
+      observeSmokeOutput,
+      prepareSmokeExceptionEvidence: async () => ({ capture,
+        arguments: ['--startup-exception-evidence'], environment: { EKY_STARTUP_EXCEPTION_TOKEN: 'synthetic' } }),
+    },
     'node:child_process': {
       spawn: (_executable, argumentsList) => {
         const child = new EventEmitter();
@@ -115,7 +123,7 @@ function startSmokeDriver(t, readResult = async () => ({ stage: 'startup', statu
   t.after(() => { hooks.deregister(); delete globalThis[key]; });
   const outcome = import(target.href).then(module => module.runPackagedSmoke(options))
     .then(() => ({ status: 'passed' }), error => ({ status: 'failed', error }));
-  return { outcome, writes, removed,
+  return { outcome, writes, removed, exceptions,
     nextChild: () => children.length ? Promise.resolve(children.shift()) : new Promise(accept => waiting.push(accept)) };
 }
 
@@ -128,6 +136,7 @@ function closeChild(child, code) {
 test('driver snapshots exit -> last stderr -> close and retains the failed root', async t => {
   const fixture = startSmokeDriver(t, async () => ({ stage: 'startup', status: 'failed', code: 'FIRST_ERROR' }));
   const child = await fixture.nextChild();
+  assert.ok(child.argumentsList.includes('--startup-exception-evidence'));
   child.emit('exit', 9);
   await nextTurn();
   assert.equal(fixture.writes.length, 0);
@@ -139,6 +148,7 @@ test('driver snapshots exit -> last stderr -> close and retains the failed root'
   const evidence = fixture.writes[0];
   assert.equal(evidence.options.flag, 'wx');
   assert.equal(evidence.value.cleanup, 'notVerified');
+  assert.equal(evidence.value.exceptionDelivery, 'recorded');
   assert.equal(evidence.value.phases[0].stderr.text, 'late original error detail');
   assert.equal(evidence.value.phases[0].stderr.partial, false);
   assert.equal(fixture.removed.length, 0);
@@ -187,6 +197,8 @@ test('a pre-exit process error is not replaced by termination failure or timeout
   t.mock.timers.tick(120_000);
   const result = await fixture.outcome;
   assert.equal(result.error.message, 'Packaged desktop smoke process could not be started.');
+  assert.equal(fixture.exceptions[0].error.message, 'synthetic process error');
+  assert.equal(fixture.exceptions[0].stage, 'packagedRunner');
   assert.equal(child.killCalls, 1);
   assert.equal(fixture.writes[0].value.phases[0].stdout.partial, true);
   assert.equal(fixture.removed.length, 0);
@@ -293,14 +305,14 @@ test(`${preparationKey} brackets the same two phases and verifies source before 
   const first = await fixture.nextChild();
   assert.deepEqual(calls, ['prepare']);
   const switches = preparationKey === 'legacyPreparation' ? ['--desktop-smoke-legacy-invoice'] : [];
-  assert.deepEqual(first.argumentsList, ['--desktop-smoke', ...switches]);
+  assert.deepEqual(first.argumentsList, ['--desktop-smoke', ...switches, '--startup-exception-evidence']);
   first.emit('exit', 0);
   await nextTurn();
   assert.deepEqual(calls, ['prepare']);
   closeChild(first, 0);
   const second = await fixture.nextChild();
   assert.deepEqual(calls, ['prepare', 'closedRestore']);
-  assert.deepEqual(second.argumentsList, ['--desktop-smoke', '--desktop-smoke-restored', ...switches]);
+  assert.deepEqual(second.argumentsList, ['--desktop-smoke', '--desktop-smoke-restored', ...switches, '--startup-exception-evidence']);
   smokeResult = { stage: 'shutdown', status: 'ok', electronVersion: 'synthetic-version' };
   second.emit('exit', 0);
   closeChild(second, 0);

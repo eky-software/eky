@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { appendFile, lstat, mkdir, opendir, readFile, realpath, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import {
@@ -15,6 +15,9 @@ import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
 import { inspectionSandboxProbeBinding } from '../../scripts/profileInspection/linuxProfileInspectionContract.mjs';
 import { W6B2_INSTALLER_LOG_FILE, W6B2_INSTALLER_LOG_RECEIPT,
   W6B2_INSTALLER_LOG_MAX_BYTES } from '../../src/main/w6b2PackagedInstallerLog.ts';
+import { STARTUP_EXCEPTION_CONTROL, STARTUP_EXCEPTION_SUFFIX, STARTUP_EXCEPTION_LIMITS,
+  validateStartupExceptionEvidence } from '../../src/main/startupExceptionEvidence.ts';
+import { validateRunnerFailureEvidence } from '../../../../test-reporters/runnerFailureEvidence.mjs';
 
 const MiB = 1024 * 1024;
 const MAX_FILE = EVIDENCE_FILE_MAX_BYTES;
@@ -37,7 +40,9 @@ export function evidenceSourceKind(area, path) {
   if (area !== 'temporary') return null;
   if (/^eky supervisor [a-zA-Z0-9]+\/(?:policy-result\.json|[1-9][0-9]*-(?:source|target|uninstall)\.log)$/u.test(path)) return 'msiPolicyEvidence';
   if (/^eky-desktop-smoke\/[a-f0-9]{32}\/(?:result\/desktop-smoke-result\.json|smoke-output\.private\.json)$/u.test(path)) return 'packagedSmoke';
+  if (/^eky-desktop-smoke\/[a-f0-9]{32}\/result\/[a-f0-9-]{36}\.startup-exception\.private\.json$/u.test(path)) return 'startupException';
   const fixturePrefix = '(?:(?:eky supervisor [a-zA-Z0-9]+/temporary|eky-t-[a-zA-Z0-9]+)/)?';
+  if (new RegExp(`^${fixturePrefix}eky-test-errors-[a-f0-9-]{36}/(?:[0-9]{3}-[a-f0-9-]{36}|[a-f0-9-]{36}\\.summary)\\.private\\.json$`, 'u').test(path)) return 'runnerFailure';
   const workspaceLog = new RegExp(`^${fixturePrefix}eky-workspace-caller-[a-f0-9]{32}/([^/]+)$`, 'u').exec(path);
   if (workspaceLog && [W6B2_INSTALLER_LOG_FILE, W6B2_INSTALLER_LOG_RECEIPT].includes(workspaceLog[1])) return 'workspaceInstallerEvidence';
   if (new RegExp(`^${fixturePrefix}eky-acceptance-command-[a-f0-9]{32}/fixtureCleanup/${LEGACY_STARTUP_TERMINAL_FILENAME.replace('.', '\\.')}$`, 'u').test(path)) return 'legacyStartupEvidence';
@@ -90,12 +95,44 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
     try {
       const info = await ordinaryPath(base, path);
       const installerLog = kind === 'workspaceInstallerEvidence' && relativePath.endsWith('/' + W6B2_INSTALLER_LOG_FILE);
-      const fileLimit = installerLog ? W6B2_INSTALLER_LOG_MAX_BYTES : MAX_FILE;
+      const fileLimit = installerLog ? W6B2_INSTALLER_LOG_MAX_BYTES :
+        ['startupException', 'runnerFailure'].includes(kind) ? STARTUP_EXCEPTION_LIMITS.fileBytes : MAX_FILE;
       if (info.size > fileLimit) { entry.status = 'tooLarge'; return; }
       if (info.size > MAX_TOTAL - total) { entry.status = 'totalLimit'; return; }
       let proof = await retain(base, path, join(stage, name), Math.min(fileLimit, MAX_TOTAL - total));
       if (installerLog) {
         await assertWorkspaceInstallerLogReceipt(dirname(path), proof);
+      }
+      if (kind === 'runnerFailure') {
+        const record = validateRunnerFailureEvidence(parseStrictJsonObjectBytes(await readFile(join(stage, name)),
+          { errorCode: 'runnerFailureEvidenceInvalid', maximumBytes: STARTUP_EXCEPTION_LIMITS.fileBytes }));
+        const source = record.binding;
+        if (source.kind !== 'github' || ['runId', 'attempt', 'job', 'sourceRevision'].some(key => source[key] !== binding[key]) ||
+            (source.jobKeySource === 'explicit' ? source.jobKey !== binding.jobKey : source.jobKey !== binding.job) ||
+            basename(dirname(path)) !== `eky-test-errors-${record.invocationId}` ||
+            basename(path).endsWith('.summary.private.json') !== (record.kind === 'runnerFailureSummary') ||
+            (record.kind === 'runnerFailure' && !basename(path).startsWith(`${String(record.sequence).padStart(3, '0')}-`)) ||
+            (record.kind === 'runnerFailureSummary' && basename(path) !== `${record.invocationId}.summary.private.json`)) throw failure();
+        if (record.kind === 'runnerFailureSummary') entry.deliveryStatus = record.status;
+      }
+      if (kind === 'startupException') {
+        const record = validateStartupExceptionEvidence(parseStrictJsonObjectBytes(await readFile(join(stage, name)),
+          { errorCode: 'startupExceptionEvidenceInvalid', maximumBytes: STARTUP_EXCEPTION_LIMITS.fileBytes }));
+        const controlPath = join(dirname(path), STARTUP_EXCEPTION_CONTROL);
+        const before = await ordinaryPath(base, controlPath);
+        if (before.size > 4096) throw failure();
+        const controlBytes = await readFile(controlPath);
+        const after = await ordinaryPath(base, controlPath);
+        if (controlBytes.length !== before.size || ['ino', 'dev', 'size', 'mtimeMs', 'ctimeMs'].some(key => before[key] !== after[key])) throw failure();
+        const control = parseStrictJsonObjectBytes(controlBytes, { errorCode: 'startupExceptionEvidenceInvalid', maximumBytes: 4096 });
+        if (Object.keys(control).sort().join(',') !== 'appVersion,buildRevision,scenarioRunNonce,schemaVersion' ||
+            control.schemaVersion !== 1 || control.scenarioRunNonce !== record.scenarioRunNonce ||
+            control.appVersion !== record.appVersion || typeof control.buildRevision !== 'string' ||
+            !/^[a-f0-9]{7,40}$/u.test(control.buildRevision) ||
+            !control.buildRevision.startsWith(record.buildRevision) ||
+            !binding.sourceRevision.startsWith(control.buildRevision) ||
+            basename(dirname(dirname(path))) !== record.scenarioRunNonce.slice(0, 32) ||
+            basename(path) !== `${record.runtimeInstanceId}${STARTUP_EXCEPTION_SUFFIX}`) throw failure();
       }
       if (kind === 'playwrightReport' || kind === 'legacyStartupEvidence') {
         const project = kind === 'playwrightReport' ? projectPlaywrightFailureReport : projectLegacyStartupTerminalEvidence;
@@ -138,7 +175,7 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
       const entries = [];
       for await (const item of await opendir(directory)) {
         if (performance.now() >= deadline) { source.status = 'limited'; break; }
-        if (depth === 0 && area === 'temporary' && !/^(?:eky supervisor |eky-(?:t-|acceptance-command-|desktop-smoke$|(?:clean|upgrade|legacy|workspace)-caller-))/u.test(item.name)) continue;
+        if (depth === 0 && area === 'temporary' && !/^(?:eky supervisor |eky-(?:test-errors-|t-|acceptance-command-|desktop-smoke$|(?:clean|upgrade|legacy|workspace)-caller-))/u.test(item.name)) continue;
         if (depth === 0 && area !== 'temporary' && !new RegExp(`^${runPattern}$`, 'u').test(item.name)) continue;
         if (++source.examinedEntries > MAX_ENTRIES) { source.status = 'limited'; break; }
         const path = join(directory, item.name);
@@ -148,7 +185,11 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
         entries.push({ item, path, rel, modified });
       }
       // Current reports get their own quota; newest native roots precede retained earlier tests.
-      entries.sort((left, right) => right.modified - left.modified || left.rel.localeCompare(right.rel));
+      const runnerDirectory = /^eky-test-errors-[a-f0-9-]{36}$/u.test(basename(directory));
+      entries.sort((left, right) => runnerDirectory
+        ? Number(right.item.name.endsWith('.summary.private.json')) - Number(left.item.name.endsWith('.summary.private.json')) ||
+          left.item.name.localeCompare(right.item.name)
+        : right.modified - left.modified || left.rel.localeCompare(right.rel));
       for (const { item, path, rel } of entries) {
         if (exhausted() || manifest.files.length >= MAX_FILES) { source.status = 'limited'; break; }
         if (item.isDirectory()) {

@@ -17,6 +17,7 @@ import { executeLegacyUpgradeLifecycle } from './legacyUpgradeLifecycle.mjs';
 import { verifyLegacyUpgradeArtifact } from './legacyUpgradeArtifact.mjs';
 import { createLegacyUpgradeWindowsRuntime } from './legacyUpgradeWindowsRuntime.mjs';
 import { createWorkspacePhaseWriter } from './workspacePhaseWriter.mjs';
+import { createNativeFailureEvidence } from './nativeFailureEvidence.mjs';
 
 function safeCode(error, fallback) {
   return (
@@ -49,6 +50,7 @@ function failedResult(errorCode) {
 export async function runLegacyUpgradeWorker(arguments_, {
   phaseObservation,
   createPhaseWriter = createWorkspacePhaseWriter,
+  createFailureEvidence = request => createNativeFailureEvidence(import.meta.url, request),
   verifyArtifact = verifyLegacyUpgradeArtifact,
   createRuntime = createLegacyUpgradeWindowsRuntime,
   executeLifecycle = executeLegacyUpgradeLifecycle,
@@ -80,6 +82,7 @@ export async function runLegacyUpgradeWorker(arguments_, {
   let writer;
   try { if (phaseObservation) writer = createPhaseWriter(phaseObservation); } catch {}
   const startedAt = performance.now();
+  const observeFailure = createFailureEvidence(request);
   function observe(phase, status, resultCode) {
     try {
       writer?.send({ schemaVersion: 1, operation: LEGACY_WORKER_OBSERVATION_OPERATION,
@@ -110,6 +113,7 @@ export async function runLegacyUpgradeWorker(arguments_, {
     activePhase = 'lifecycle';
     result = await executeLifecycle({
       ...runtime,
+      observeFailure,
       versions: Object.freeze({
         source: artifact.source.msiProductVersion,
         target: artifact.target.msiProductVersion,
@@ -124,6 +128,7 @@ export async function runLegacyUpgradeWorker(arguments_, {
       },
     });
   } catch (error) {
+    observeFailure(error, activePhase);
     observe(activePhase, 'failed');
     result = failedResult(safeCode(error, 'unexpectedFailure'));
   }
@@ -132,6 +137,7 @@ export async function runLegacyUpgradeWorker(arguments_, {
       observePublication(status) { observe('resultPublication', status); },
     });
   } finally {
+    await observeFailure.finish();
     // Stop the current writer without flushing or waiting for output receipts.
     // The unchanged outer Job boundary, not this diagnostic result, proves absence.
     try { await writer?.finish(); } catch {}

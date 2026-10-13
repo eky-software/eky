@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -101,7 +101,27 @@ function caseFixture(overrides = {}) {
   };
 }
 
-test('public hooks emit a closed projection and leave the original failure untouched', t => {
+test('private observer failures cannot override results and expected failures are not recorded', async () => {
+  for (const failure of ['record', 'flush', 'asyncFlush']) {
+    const recorded = [];
+    const reporter = new SafeCiReporter({ silent: true, failureSink: {
+      record(value) { recorded.push(value); if (failure === 'record') throw new Error('observer unavailable'); },
+      flush() { if (failure === 'flush') throw new Error('observer unavailable');
+        return failure === 'asyncFlush' ? Promise.reject(new Error('observer unavailable')) : Promise.resolve(); },
+    } });
+    const original = Object.freeze({ message: 'original', stack: 'original stack' });
+    const result = Object.freeze({ status: 'failed', retry: 0, duration: 1, errors: Object.freeze([original]) });
+    reporter.onTestEnd(caseFixture({ expectedStatus: 'failed' }), result);
+    assert.equal(recorded.length, 0);
+    reporter.onTestEnd(caseFixture(), result);
+    assert.equal(recorded[0].error, original);
+    assert.equal(recorded[0].attempt, 0);
+    assert.equal(await reporter.onEnd({ status: 'failed' }), undefined);
+    assert.equal(result.status, 'failed');
+  }
+});
+
+test('public hooks emit a closed projection and leave the original failure untouched', async t => {
   let output = '';
   t.mock.method(process.stdout, 'write', chunk => { output += chunk; return true; });
   const reporter = new SafeCiReporter();
@@ -118,7 +138,7 @@ test('public hooks emit a closed projection and leave the original failure untou
   reporter.onStdErr(secret, fixture, result);
   reporter.onTestEnd(fixture, result);
   reporter.onError({ message: secret });
-  assert.equal(reporter.onEnd({ status: 'failed', extra: secret }), undefined);
+  assert.equal(await reporter.onEnd({ status: 'failed', extra: secret }), undefined);
   assert.equal(output.includes(secret), false);
   const rows = events(output);
   assert.deepEqual(rows.map(row => row.event), ['begin', 'testBegin', 'testEnd', 'runError', 'testOutcome', 'end']);
@@ -145,7 +165,7 @@ test('packaged legacy recovery exposes only the named project and test source lo
   assert.equal(output.includes(secret), false);
 });
 
-test('unknown metadata is withheld; timeout, not-run and flaky remain distinct', t => {
+test('unknown metadata is withheld; timeout, not-run and flaky remain distinct', async t => {
   let output = '';
   t.mock.method(process.stdout, 'write', chunk => { output += chunk; return true; });
   const reporter = new SafeCiReporter();
@@ -157,7 +177,7 @@ test('unknown metadata is withheld; timeout, not-run and flaky remain distinct',
   const unknown = caseFixture({ results: [{}], outcome: () => secret });
   reporter.onBegin({}, { allTests: () => [fixture, notRun, unknown] });
   reporter.onTestEnd(fixture, result);
-  reporter.onEnd({ status: 'timedout' });
+  await reporter.onEnd({ status: 'timedout' });
   assert.equal(output.includes(secret), false);
   const rows = events(output);
   assert.equal(rows[1].project, 'withheld');
@@ -170,7 +190,7 @@ test('unknown metadata is withheld; timeout, not-run and flaky remain distinct',
 test('CI selects safe console plus private HTML and JSON; local list remains', () => {
   const privateReporters = [['html', { open: 'never', outputFolder: 'playwright-report' }],
     ['json', { outputFile: join('playwright-report', 'results.private.json') }]];
-  assert.deepEqual(createE2eReporters({}, []), [['list'], ...privateReporters]);
+  assert.deepEqual(createE2eReporters({}, []), [['list'], [reporterPath, { silent: true }], ...privateReporters]);
   assert.deepEqual(createE2eReporters({ CI: 'true' }, []), [[reporterPath], ...privateReporters]);
   const config = readFileSync(new URL('../playwright.config.ts', import.meta.url), 'utf8');
   assert.match(config, /reporter: createE2eReporters\(undefined, undefined, artifacts\),/u);
@@ -232,7 +252,7 @@ function runnerFixture(t, body, { grep, setup, extraArgs = [], typescript = fals
     setup ? 'globalSetup: "./setup.cjs",' : '',
     '};',
   ].join('\n'));
-  const env = { ...process.env, CI: '1', FORCE_COLOR: '0' };
+  const env = { ...process.env, CI: '1', FORCE_COLOR: '0', TEMP: root, TMP: root, TMPDIR: root };
   for (const name of Object.keys(env)) {
     if (/^(?:DEBUG|PWDEBUG|PWTEST_|PW_|PLAYWRIGHT_)/iu.test(name)) delete env[name];
   }
@@ -271,6 +291,12 @@ test('real runner preserves failures, expected failures, retries, skips and raw 
   assert.equal(attemptRows.filter(row => row.retry === 1).length, 4);
   assert.equal(attemptRows.filter(row => row.errorClass === 'testTimeout').length, 2);
   assert.ok(readFileSync(run.rawReport, 'utf8').includes(secret), 'original private failure remains available');
+  const failures = readdirSync(run.root).filter(name => name.startsWith('eky-test-errors-'))
+    .flatMap(name => readdirSync(join(run.root, name)).filter(file => !file.endsWith('.summary.private.json'))
+      .map(file => JSON.parse(readFileSync(join(run.root, name, file), 'utf8'))));
+  assert.ok(failures.some(record => record.runner === 'playwright' && record.test.attempt === 0));
+  assert.ok(failures.some(record => record.runner === 'playwright' && record.test.attempt === 1));
+  assert.ok(failures.some(record => JSON.stringify(record.exception).includes(secret)));
   assert.ok(readFileSync(join(run.root, 'playwright-report', 'index.html')).length > 0);
   run.accept();
 });

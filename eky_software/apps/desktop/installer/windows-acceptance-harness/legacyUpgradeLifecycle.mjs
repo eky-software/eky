@@ -125,7 +125,7 @@ function initialResult() {
   };
 }
 
-function createProgress(reportProgress) {
+function createProgress(reportProgress, observeOriginalFailure) {
   const startedAt = performance.now();
   function emit(phase, status, phaseStartedAt, details = {}) {
     try {
@@ -156,6 +156,7 @@ function createProgress(reportProgress) {
       emit(phase, 'completed', phaseStartedAt, { resultCode: completedCode });
       return value;
     } catch (error) {
+      try { observeOriginalFailure?.(error, phase); } catch { /* Evidence cannot change the test result. */ }
       const known = errorCodeOf(error);
       const targetCauseInOtherPhase = Object.hasOwn(LEGACY_STARTUP_ERROR_CODES, known) &&
         phase !== 'targetFirstStartup' && phase !== 'targetSecondStartup' &&
@@ -177,6 +178,7 @@ export async function executeLegacyUpgradeLifecycle({
   inspectState,
   observeTargetPayloadRejection,
   reportProgress,
+  observeFailure,
   runMsiOperation,
   runSourceStartup,
   runSourcePackagedSmoke,
@@ -186,7 +188,7 @@ export async function executeLegacyUpgradeLifecycle({
   versions,
 }) {
   const result = initialResult();
-  const progress = createProgress(reportProgress);
+  const progress = createProgress(reportProgress, observeFailure);
   function observedMsiOperation(operation) {
     const startedAt = performance.now();
     return runMsiOperation(operation, (code) => {

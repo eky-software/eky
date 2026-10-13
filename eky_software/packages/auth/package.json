@@ -11,7 +11,7 @@
   "scripts": {
     "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.build.json",
     "pretest": "pnpm --filter @eky/permissions build && pnpm build",
-    "test": "vitest run src",
+    "test": "vitest run --reporter=default --reporter=../../test-reporters/vitestFailureReporter.mjs src",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {

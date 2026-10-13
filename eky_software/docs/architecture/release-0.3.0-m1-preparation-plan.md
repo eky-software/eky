@@ -79,6 +79,60 @@ virheen odotettu lisätieto on viimeinen migraation sisäinen aloitus tai paluu;
 puuttuva havainto jää epävarmaksi. Täysi K-hyväksyntä ja PR/main-portit ovat
 avoimia, eikä vanhaa `507c095b`-hylkäystä merkitä läpäisyksi.
 
+**Havaintokorjauksen nimetty CI-todennus päättyi eri hylkäykseen:**
+revision `99944c86` [Windows Electron -ajo](https://github.com/eky-software/eky/actions/runs/38459454266)
+läpäisi paketoinnin, tavallisen packaged-smoken, alkuperäisen 038-kopion
+palautuksen ja cold-create-palautuksen. `DESK-WORKSPACE-COLD-PACKAGED-IMPORT-001`
+hylättiin ensimmäisen savutestiprosessin `invoicePdfArchive`-vaiheessa
+koodilla `PACKAGED_SMOKE_FAILED` ja prosessin poistumiskoodilla 1. Tämä ei
+ollut testin aikakatkaisu; varsinaiset Electron-käyttäjäpolut ja erillinen
+käynnistyshavainnon CI-tarkistus eivät käynnistyneet. Salattu ensivirhepaketti,
+ajosidonta ja kolmen tiedoston tiivisteet on varmennettu. Siivousraportti
+on `notVerified`, eikä sitä tulkita onnistuneeksi. Alkuperäinen poikkeus
+ei yksilöidy säilyneestä yleisestä koodista; viimeinen vaihe ei todista
+arkistointivirheen juurisyytä. Uusintaa tai mergeä ei tehty, PR-head pysyy
+edellisessä revisiossa. Seuraavaksi rajataan tämä hyväksynnän este nykyisestä
+savutestistä ja sen kutsumasta koodista, erillään alkuperäisestä
+`firstWindow`-viiveestä. Havaintokorjauksen hosted-todennus on yhä avoin.
+
+**Alkuperäisten testivirheiden yhteinen kytkentä on hyväksytty toteutettavaksi:**
+rajattu lähdekatselmus paikansi yleiseksi koodiksi muuntamisen
+`desktopComposition.ts`:n savutestin catch-haaraan. Nykyinen salattu toimitus
+säilytti sille annetut tiedostot; keräysbudjetti ei palauta jo korvattua
+poikkeusta. Arkistopalvelun, hakemistojen tarkistuksen, laskun
+monirevisiofixturen, savutestisopimuksen ja turvallisen startupin nykyiset
+54 kohdetestiä läpäisivät. Tämä ei toista tai selitä CI-hylkäystä.
+Omistajan uudempi päätös hyväksyi nykyisen salatun järjestelmän täydentämisen
+testiperheiden oletuskytkennäksi. Yhteinen rajattu virheprojektio palvelee
+Node-, Vitest-, Playwright- ja native-testejä; paketoidun savutestin catch
+tarjoaa alkuperäisen poikkeuksen nykyiselle opt-in-havaitsijalle ennen
+virhemuunnosta. Julkiset virheet sekä profiilien, tietokantojen ja
+riippuvuustyökalujen yleisen raakatulosteen poissulku säilyvät. Ei uutta
+testiruntimea, supervisoria, riippuvuutta tai hyväksyntäaikarajojen muutosta.
+Nykyisen enintään 500 ms:n rajatun toimitusodotuksen tulos ei korvaa
+testitulosta tai siivoustodistetta. Omistava käyttöohje on
+[salatun virheaineiston yhteinen liitäntä](ci-encrypted-evidence.md#yhteinen-alkuperäisen-testivirheen-liitäntä).
+Valmistuminen vaatii pakotetut virheet, alkuperäisen syyn todellisen
+salaus/purku-todisteen, tuloksen säilymisen regressiot ja katselmuksen.
+Näiden jälkeen seuraa yksi nimetty Windows-todennus. Tämä ei nimeä
+arkistointivirhettä korjatuksi eikä sulje K:n PR/main-portteja.
+
+**Yhteisen virhekeräyksen paikallinen checkpoint:** Node-, Vitest- ja
+Playwright-runnerin sekä native command-phase/worker -ketjun pakotettu
+alkuperäinen poikkeus, kutsupino ja syyketju on todennettu oikeasti puretusta
+OpenPGP-paketista. Sama koe kattaa sisäisesti käsitellyn semantic-virheen,
+ensivirheen säilymisen tiedostokiintiössä sekä synteettisen ASAR-sidonnaisen
+packaged-poikkeuksen. Tunnetun testisalaisuuden peitto ja turvallisen
+virhetuloksen säilyminen on todennettu. Native-kytkennän omistajapolku,
+kiintiön keräysjärjestys ja paikallisesti käsitellyt poikkeukset korjattiin
+katselmuksen perusteella; niille lisättiin regressiot. Aiempi Linuxin
+riippuvuuksista vapaa salauskoe säilyy erillään asennettuja testityökaluja
+käyttävistä kokeista. Desktopin palautus-/käynnistyskohdesarja ja
+tyyppitarkistus läpäisivät. Tämä on rajattua paikallista näyttöä, ei uusi
+PR/main-hyväksyntä. Seuraava työ on yksi jäädytetyn korjausrevision
+Windows Electron -todennus nykyisessä työnkulussa; ensivirhe ja mahdollisen
+salatun paketin alkuperäinen syy tarkistetaan ennen jatkopäätöstä.
+
 | Kohta | Nykyinen lähtötieto |
 | --- | --- |
 | Hyväksytty lähtörevisio | PR #299:n main `250cd9c32914d1e6f35cea76f2b45055891534e2`. [Loppuhyväksyntä](https://github.com/eky-software/eky/pull/299#issuecomment-6081351779) sitoo hyväksytyn headin `447035fe2d0740d454ac79b32cf0e64c1c2906f9`, katselmoidun puun sekä PR:n ja mainin näytön. PR #298:n ja aiempien integraatioiden hyväksynnät säilyvät; alkuperäisten timeoutien syytä ei tämän perusteella nimetä korjatuksi. |

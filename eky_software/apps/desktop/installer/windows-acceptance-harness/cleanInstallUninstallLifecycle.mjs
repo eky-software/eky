@@ -69,7 +69,7 @@ function errorCodeOf(error) {
     : 'unexpectedFailure';
 }
 
-function createProgressObserver(reportProgress) {
+function createProgressObserver(reportProgress, observeFailure) {
   const lifecycleStartedAt = performance.now();
 
   function emit(phase, status, phaseStartedAt, details) {
@@ -106,6 +106,7 @@ function createProgressObserver(reportProgress) {
       });
       return value;
     } catch (error) {
+      try { observeFailure?.(error, phase); } catch { /* Evidence cannot change the test result. */ }
       const knownCode = errorCodeOf(error);
       const errorCode =
         knownCode === 'unexpectedFailure' ? dependencyFailureCode : knownCode;
@@ -147,6 +148,7 @@ export async function executeCleanInstallUninstallLifecycle({
   expectedVersion,
   inspectState,
   reportProgress,
+  observeFailure,
   runMsiOperation,
   verifyFixture,
   verifyPayload,
@@ -160,7 +162,7 @@ export async function executeCleanInstallUninstallLifecycle({
   let installedStateValidated = false;
   let uninstallExitCode = null;
   let uninstalledStateValidated = false;
-  const progress = createProgressObserver(reportProgress);
+  const progress = createProgressObserver(reportProgress, observeFailure);
   progress.started();
 
   try {
