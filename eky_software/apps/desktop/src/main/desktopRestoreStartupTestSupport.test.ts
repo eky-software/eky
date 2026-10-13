@@ -21,13 +21,17 @@ beforeEach(context => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('restore startup test evidence ownership', () => {
-  it('cleans only a settled successful test after shared resources have been released', async context => {
+  it.for([false, true])('cleans only settled successful work (separate preparation: %s)', async (separatePreparation, context) => {
     const completion = captureCompletion(context);
     const release = vi.fn();
     const lifetime = createRestoreStartupTestLifetime(completion.context, release);
     const root = await createRoot();
+    if (separatePreparation) {
+      await expect(lifetime.prepare(async () => { lifetime.roots.push(root); return 'prepared'; })).resolves.toBe('prepared');
+      expect(release).not.toHaveBeenCalled();
+    }
     await lifetime.run(async () => {
-      await lifetime.step('fixturePreparation', async () => { lifetime.roots.push(root); });
+      if (!separatePreparation) await lifetime.step('fixturePreparation', async () => { lifetime.roots.push(root); });
       await lifetime.step('startupRollback', async () => {});
       await lifetime.step('restoredContentCheck', async () => {});
     });
@@ -61,7 +65,10 @@ describe('restore startup test evidence ownership', () => {
     });
   });
 
-  it.for([false, true])('retains a timed-out body and late roots without resetting shared state (rejection: %s)', async (reject, context) => {
+  it.for([
+    { reject: false, separatePreparation: false }, { reject: true, separatePreparation: false },
+    { reject: false, separatePreparation: true }, { reject: true, separatePreparation: true },
+  ])('retains timed-out work and late roots without resetting shared state (%j)', async ({ reject, separatePreparation }, context) => {
     const completion = captureCompletion(context);
     const shared = { value: 'owned' };
     const release = vi.fn(() => { shared.value = 'released'; });
@@ -72,22 +79,24 @@ describe('restore startup test evidence ownership', () => {
     const gate = createGate();
     const original = new Error('synthetic late failure');
     const nextStep = vi.fn(async () => {});
-    const pending = lifetime.run(async () => {
-      await lifetime.step('fixturePreparation', async () => {
-        lifetime.roots.push(root);
-        entered.resolve();
-        await gate.promise;
-        expect(shared.value).toBe('owned');
-        lifetime.roots.push(lateRoot);
-        await mkdir(lateRoot);
-        await writeFile(join(lateRoot, 'late-evidence'), 'retained');
-        if (reject) throw original;
-      });
+    const prepare = async () => {
+      lifetime.roots.push(root);
+      entered.resolve();
+      await gate.promise;
+      expect(shared.value).toBe('owned');
+      lifetime.roots.push(lateRoot);
+      await mkdir(lateRoot);
+      await writeFile(join(lateRoot, 'late-evidence'), 'retained');
+      if (reject) throw original;
+    };
+    const pending = separatePreparation ? lifetime.prepare(prepare).then(() => lifetime.run(nextStep)) : lifetime.run(async () => {
+      await lifetime.step('fixturePreparation', prepare);
       await lifetime.step('startupRollback', nextStep);
     });
     const outcome = pending.then(() => undefined, (error: unknown) => error);
     try {
       await entered.promise;
+      await expect(lifetime.run(nextStep)).rejects.toThrow('DESKTOP_RESTORE_TEST_INVALID_WORK_ORDER');
       lifetime.releaseWhenSettled();
       completion.abort();
       await completion.finish('fail');
@@ -116,6 +125,64 @@ describe('restore startup test evidence ownership', () => {
       gate.resolve();
       await outcome;
     }
+  });
+
+  it('holds shared resources through a timed-out body after preparation has settled', async context => {
+    const completion = captureCompletion(context);
+    const release = vi.fn();
+    const lifetime = createRestoreStartupTestLifetime(completion.context, release);
+    const root = await createRoot();
+    await lifetime.prepare(async () => { lifetime.roots.push(root); });
+    const gate = createGate();
+    const pending = lifetime.run(async () => { await lifetime.step('startupRollback', () => gate.promise); });
+    const outcome = pending.then(() => undefined, (error: unknown) => error);
+    try {
+      lifetime.releaseWhenSettled();
+      completion.abort();
+      await completion.finish('fail');
+      expect(release).not.toHaveBeenCalled();
+      expect(() => lifetime.assertSharedStateReleased()).toThrow('DESKTOP_RESTORE_TEST_PREVIOUS_WORK_UNSETTLED');
+      gate.resolve();
+      expect(await outcome).toBe(completion.context.signal.reason);
+      expect(release).toHaveBeenCalledTimes(1);
+      lifetime.assertSharedStateReleased();
+      await expect(readFile(join(root, 'evidence'), 'utf8')).resolves.toBe('original');
+      expect(JSON.parse(vi.mocked(console.error).mock.calls[0]![0] as string)).toMatchObject({
+        phase: 'startupRollback', lastCompletedPhase: 'fixturePreparation', bodySettled: false,
+      });
+    } finally {
+      gate.resolve();
+      await outcome;
+    }
+  });
+
+  it('keeps a failed preparation as the first failure and does not permit a body', async context => {
+    const completion = captureCompletion(context);
+    const release = vi.fn();
+    const lifetime = createRestoreStartupTestLifetime(completion.context, release);
+    const root = await createRoot();
+    const original = new Error('synthetic preparation failure');
+    await expect(lifetime.prepare(async () => { lifetime.roots.push(root); throw original; })).rejects.toBe(original);
+    const body = vi.fn(async () => {});
+    await expect(lifetime.run(body)).rejects.toThrow('DESKTOP_RESTORE_TEST_INVALID_WORK_ORDER');
+    expect(body).not.toHaveBeenCalled();
+    lifetime.releaseWhenSettled();
+    lifetime.assertSharedStateReleased();
+    await completion.finish('fail');
+    await completion.finish('pass');
+    expect(release).toHaveBeenCalledTimes(1);
+    await expect(readFile(join(root, 'evidence'), 'utf8')).resolves.toBe('original');
+  });
+
+  it('does not treat successful preparation alone as a completed test', async context => {
+    const completion = captureCompletion(context);
+    const lifetime = createRestoreStartupTestLifetime(completion.context, vi.fn());
+    const root = await createRoot();
+    await lifetime.prepare(async () => { lifetime.roots.push(root); });
+    lifetime.releaseWhenSettled();
+    await expect(lifetime.run(async () => {})).rejects.toThrow('DESKTOP_RESTORE_TEST_INVALID_WORK_ORDER');
+    await completion.finish('pass');
+    await expect(readFile(join(root, 'evidence'), 'utf8')).resolves.toBe('original');
   });
 
   it('retains an aborted body that had already succeeded', async context => {

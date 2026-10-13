@@ -528,48 +528,57 @@ describe('desktop restore startup composition', () => {
     });
   });
 
-  it('uses fresh original authority after C pre-migration validation fails', async context => {
-    const lifetime = beginTrackedStartupTest(context);
-    await lifetime.run(async () => {
-      const fixture = await lifetime.step('fixturePreparation', async () => {
+  describe('C pre-migration rollback preparation', () => {
+    const phaseTimeoutMs = 5_000;
+    let lifetime: ReturnType<typeof createRestoreStartupTestLifetime>;
+    let fixture: Awaited<ReturnType<typeof createFixture>>;
+
+    beforeEach(async context => {
+      lifetime = beginTrackedStartupTest(context);
+      fixture = await lifetime.prepare(async () => {
         const prepared = await createFixture(originalProfileId, {
           update: true, stoppedStartupRuntime: true, ownedRoots: lifetime.roots,
         });
         await prepareUpdateBusinessRollback(prepared);
         return prepared;
       });
-      const acquired: (() => void)[] = [];
-      const acquire = InMemoryWorkspaceMaintenanceLease.prototype.acquire;
-      vi.spyOn(InMemoryWorkspaceMaintenanceLease.prototype, 'acquire').mockImplementation(async function (
-        this: InMemoryWorkspaceMaintenanceLease, purpose,
-      ) {
-        const handle = await acquire.call(this, purpose);
-        if (fixture.events.includes('backendStarted') && purpose === 'restore') {
-          acquired.push(this.captureCurrentOwner(['restore']));
-        }
-        return handle;
+    }, phaseTimeoutMs);
+
+    it('uses fresh original authority after C pre-migration validation fails', async () => {
+      await lifetime.run(async () => {
+        const acquired: (() => void)[] = [];
+        const acquire = InMemoryWorkspaceMaintenanceLease.prototype.acquire;
+        vi.spyOn(InMemoryWorkspaceMaintenanceLease.prototype, 'acquire').mockImplementation(async function (
+          this: InMemoryWorkspaceMaintenanceLease, purpose,
+        ) {
+          const handle = await acquire.call(this, purpose);
+          if (fixture.events.includes('backendStarted') && purpose === 'restore') {
+            acquired.push(this.captureCurrentOwner(['restore']));
+          }
+          return handle;
+        });
+        const inspectOriginal = vi.mocked(originalInspection.runProfileRestoreOriginalInspection).getMockImplementation()!;
+        vi.mocked(originalInspection.runProfileRestoreOriginalInspection).mockImplementation(async input => {
+          expect(acquired).toHaveLength(1); acquired[0]!();
+          return inspectOriginal(input);
+        });
+        vi.mocked(snapshotInspection.runProfileSnapshotInspection).mockRejectedValueOnce(new ProfileInspectionProcessError(
+          'PROFILE_SCHEMA_UNSUPPORTED', { processAbsent: true, reservationReclaimed: true, forced: false },
+        ));
+        const binaryRollback = vi.spyOn(UpdateBinaryRollbackCoordinator.prototype, 'startIfRequired');
+        await lifetime.step('startupRollback', async () => { await expect(fixture.start()).resolves.toBeUndefined(); });
+        await lifetime.step('restoredContentCheck', async () => {
+          const original = vi.mocked(originalInspection.runProfileRestoreOriginalInspection);
+          expect(fixture.stopForUpdate).toHaveBeenCalledOnce(); expect(original).toHaveBeenCalled();
+          expect(fixture.stopForUpdate.mock.invocationCallOrder[0]).toBeLessThan(original.mock.invocationCallOrder[0]!);
+          expect(vi.mocked(ProfileRestoreActivationTransaction.prototype.rollback).mock.calls[0]![2]?.assertContent).toBeTypeOf('function');
+          expect(binaryRollback).not.toHaveBeenCalled(); expect(fixture.relaunch).toHaveBeenCalledOnce();
+          expect(acquired).toHaveLength(1); expect(acquired[0]!).toThrow();
+          await fixture.assertOriginalRestored();
+          await expect(fixture.updateJournal.read()).resolves.toMatchObject({ state: 'businessRollbackStarting' });
+        });
       });
-      const inspectOriginal = vi.mocked(originalInspection.runProfileRestoreOriginalInspection).getMockImplementation()!;
-      vi.mocked(originalInspection.runProfileRestoreOriginalInspection).mockImplementation(async input => {
-        expect(acquired).toHaveLength(1); acquired[0]!();
-        return inspectOriginal(input);
-      });
-      vi.mocked(snapshotInspection.runProfileSnapshotInspection).mockRejectedValueOnce(new ProfileInspectionProcessError(
-        'PROFILE_SCHEMA_UNSUPPORTED', { processAbsent: true, reservationReclaimed: true, forced: false },
-      ));
-      const binaryRollback = vi.spyOn(UpdateBinaryRollbackCoordinator.prototype, 'startIfRequired');
-      await lifetime.step('startupRollback', async () => { await expect(fixture.start()).resolves.toBeUndefined(); });
-      await lifetime.step('restoredContentCheck', async () => {
-        const original = vi.mocked(originalInspection.runProfileRestoreOriginalInspection);
-        expect(fixture.stopForUpdate).toHaveBeenCalledOnce(); expect(original).toHaveBeenCalled();
-        expect(fixture.stopForUpdate.mock.invocationCallOrder[0]).toBeLessThan(original.mock.invocationCallOrder[0]!);
-        expect(vi.mocked(ProfileRestoreActivationTransaction.prototype.rollback).mock.calls[0]![2]?.assertContent).toBeTypeOf('function');
-        expect(binaryRollback).not.toHaveBeenCalled(); expect(fixture.relaunch).toHaveBeenCalledOnce();
-        expect(acquired).toHaveLength(1); expect(acquired[0]!).toThrow();
-        await fixture.assertOriginalRestored();
-        await expect(fixture.updateJournal.read()).resolves.toMatchObject({ state: 'businessRollbackStarting' });
-      });
-    });
+    }, phaseTimeoutMs);
   });
 
   it.each(['inspectorExit', 'backendStop'] as const)('retains C recovery evidence when %s is unverified', async stage => {

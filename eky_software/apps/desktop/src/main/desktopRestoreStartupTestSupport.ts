@@ -28,6 +28,7 @@ export function createRestoreStartupTestLifetime(
   let resourceFailure: unknown;
   let finished = false;
   let evidenceRetained = false;
+  let workState: 'idle' | 'preparing' | 'prepared' | 'running' | 'settled' = 'idle';
 
   const report = () => console.error(JSON.stringify({
     diagnostic: 'desktopRestoreStartupTest', phase, lastCompletedPhase,
@@ -45,6 +46,20 @@ export function createRestoreStartupTestLifetime(
       resourceFailure = error;
       resourceCleanup = 'failed';
     }
+  };
+  const finishWork = () => {
+    bodySettled = true;
+    // A timed-out hook or body can still own shared mocks and late files.
+    releaseIfSettled();
+    if (finished) report();
+  };
+  const step = async <T>(nextPhase: RestoreStartupTestPhase, work: () => Promise<T>): Promise<T> => {
+    context.signal.throwIfAborted();
+    phase = nextPhase;
+    const result = await work();
+    lastCompletedPhase = nextPhase;
+    context.signal.throwIfAborted();
+    return result;
   };
 
   context.onTestFinished(async ({ task }) => {
@@ -66,28 +81,37 @@ export function createRestoreStartupTestLifetime(
 
   return {
     roots,
+    async prepare<T>(work: () => Promise<T>): Promise<T> {
+      if (workState !== 'idle' || finished || releaseRequested) {
+        throw new Error('DESKTOP_RESTORE_TEST_INVALID_WORK_ORDER');
+      }
+      workState = 'preparing';
+      try {
+        const result = await step('fixturePreparation', work);
+        workState = 'prepared';
+        return result;
+      } finally {
+        if (workState === 'preparing') workState = 'settled';
+        finishWork();
+      }
+    },
     async run(body: () => Promise<void>): Promise<void> {
+      if ((workState !== 'idle' && workState !== 'prepared') || finished || releaseRequested) {
+        throw new Error('DESKTOP_RESTORE_TEST_INVALID_WORK_ORDER');
+      }
+      workState = 'running';
+      bodySettled = false;
       try {
         context.signal.throwIfAborted();
         await body();
         context.signal.throwIfAborted();
         bodySucceeded = true;
       } finally {
-        bodySettled = true;
-        // Timeout may already have finished the test. Only now may its shared
-        // mocks/clients be released; never delete its retained files here.
-        releaseIfSettled();
-        if (finished) report();
+        workState = 'settled';
+        finishWork();
       }
     },
-    async step<T>(nextPhase: RestoreStartupTestPhase, work: () => Promise<T>): Promise<T> {
-      context.signal.throwIfAborted();
-      phase = nextPhase;
-      const result = await work();
-      lastCompletedPhase = nextPhase;
-      context.signal.throwIfAborted();
-      return result;
-    },
+    step,
     releaseWhenSettled(): void {
       releaseRequested = true;
       releaseIfSettled();

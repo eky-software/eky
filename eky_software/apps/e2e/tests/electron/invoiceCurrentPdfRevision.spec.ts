@@ -21,6 +21,8 @@ test('DESK-PDF-REVISION-001 @critical replaces an open current PDF after reappro
   await openApprovedInvoiceFromList(page, invoice.invoiceNumber);
   await page.getByRole('button', { name: 'Avaa PDF', exact: true }).click();
   await expect.poll(() => readElectronPdfPreviewUrls(electronApp)).toEqual([expectedUrl]);
+  // Native URL readiness can precede Playwright's Page creation or navigation update.
+  await expect.poll(() => electronApp.windows().find(window => window.url() === expectedUrl)?.url()).toBe(expectedUrl);
   const firstPreview = electronApp.windows().find(window => window.url() === expectedUrl);
   expect(firstPreview).toBeDefined();
 
@@ -46,6 +48,7 @@ test('DESK-PDF-REVISION-001 @critical replaces an open current PDF after reappro
   await expect.poll(() => firstPreview!.isClosed()).toBe(true);
   await expect.poll(() => readElectronPdfPreviewUrls(electronApp)).toEqual([expectedUrl]);
   await expect.poll(() => electronApp.windows().length).toBe(2);
+  await expect.poll(() => electronApp.windows().find(window => window.url() === expectedUrl)?.url()).toBe(expectedUrl);
   const currentPreview = electronApp.windows().find(window => window.url() === expectedUrl);
   expect(currentPreview).toBeDefined();
   expect(currentPreview).not.toBe(firstPreview);

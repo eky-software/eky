@@ -22,6 +22,10 @@ Modulaarinen monoliitti ja
 hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohdan;
 [julkaisusuunnitelma](release-0.3.0-plan.md) omistaa koko 0.3.0:n sisällön.
 
+**Uusin K-jatkamiskohta:** [PR-headin kaksi testihylkäystä ja hyväksytty
+rajattu valmistelujako](#kn-nykyinen-pr-checkpoint-ja-valmistelukoe).
+Paikallinen näyttö ja testijaon hyväksyntä eivät vielä hyväksy PR:ää tai K:ta.
+
 | Kohta | Nykyinen lähtötieto |
 | --- | --- |
 | Hyväksytty lähtörevisio | PR #299:n main `250cd9c32914d1e6f35cea76f2b45055891534e2`. [Loppuhyväksyntä](https://github.com/eky-software/eky/pull/299#issuecomment-6081351779) sitoo hyväksytyn headin `447035fe2d0740d454ac79b32cf0e64c1c2906f9`, katselmoidun puun sekä PR:n ja mainin näytön. PR #298:n ja aiempien integraatioiden hyväksynnät säilyvät; alkuperäisten timeoutien syytä ei tämän perusteella nimetä korjatuksi. |
@@ -69,9 +73,54 @@ läpäisi erikseen. Ensivirheen salattu aineisto on säilytetty ja varmennettu;
 historiallinen integraatiohyväksyntä, uusi seurantahylkäys ja K:n puuttuva
 hyväksyntä eivät ole sama asia. Uutta ajoa ei käynnistetty tämän havainnon vuoksi.
 
+### K:n nykyinen PR-checkpoint ja valmistelukoe
+
+Headin `75e728ff4e8078f1013574c349c953c76169cf93`
+[V2-kierros](https://github.com/eky-software/eky/actions/runs/38378109975)
+hylättiin: 35 jobia läpäisi, kolme hylättiin ja kuusi valitsematta jätettyä
+diagnostiikkajobia ohitettiin. Kaksi itsenäistä hylkäystä ovat core-testin
+palautusaikakatkaisu ja Electronin PDF-esikatselutesti; kolmas on
+kokonaisportin hylkäys. Erillinen
+[riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/38378109934)
+läpäisi. Ensivirheet säilyvät, eikä saman lähteen uusintaa aloitettu.
+
+Saman PR-ajon Windows-paketti läpäisi `smoke:windows`-portin ja kaikki kolme
+packaged-legacy-palautustestiä ilman uusintaa ennen Electron-käyttäjäpolkujen
+hylkäystä. Linuxin eristetty tarkistusprosessi jäi core-testien hylkäyksen
+vuoksi ajamatta; ohitus ei ole sen hyväksyntä. Seuraavan revision normaali
+kierros tarvitsee edelleen nämä portit, koko valitun Electron-sarjan sekä
+muut riskisuunnitelman valitsemat tarkistukset. Main varmennetaan erikseen.
+
+PDF-testin native-URL-havainto ei vielä todista Playwrightin sivun valmiutta.
+Rajattu korjaus odottaa myös täsmällistä sivun URL:ää ennen kummankin
+esikatseluikkunan valintaa. Nykyiset sisältö-, revisionvaihto- ja sulkuväitteet
+säilyvät. Yksi oikea Electron-kohdeajo ja tyyppitarkistus läpäisivät.
+
+Palautustestin keskeneräisen työn suoja esti seuraavat saman tiedoston
+testit; niitä ei tulkita itsenäisiksi sovellusvioiksi. Omistajan hyväksymässä
+kokeessa vain `uses fresh original authority after C pre-migration validation
+fails` saa erillisen enintään viiden sekunnin valmistelun ja nykyisen viiden
+sekunnin palautusosuuden. Oikeat journal-luennat, sisältö- ja omistajuusväitteet
+säilyvät. Yksi kohdekoe, 13 elinkaariregressiota ja tyyppitarkistus läpäisivät.
+Todellinen tarkoituksellinen valmisteluaikakatkaisu esti testirungon,
+vapautti yhteiset resurssit vasta työn päätyttyä ja säilytti myös myöhäiset
+tiedostot. Kokeen odotettu hylkäys ei ole tavallisen testin läpäisy.
+
+Omistaja hyväksyi 13.10.2026 jaon pysyväksi vain tähän testiin: valmistelu
+enintään viisi sekuntia ja palautus tarkistuksineen edelleen enintään viisi
+sekuntia. Näiden vaiheiden yhteisbudjetti kasvaa enintään kymmeneen sekuntiin.
+[Rajattu testauskäytäntö](../ai/testing-rules.md#palautustestin-erillinen-valmistelu)
+säilyttää keskeneräisen työn suojan ja aineiston. Tuotantokoodia, muiden
+testien aikarajoja tai CI:n kokonaisrajaa ei muuteta. Koe ei todista aiemman
+CI-aikakatkaisun juurisyytä korjatuksi. Koko palautuskäynnistyksen
+testitiedosto ja sen elinkaarituen regressiot läpäisivät normaalilla
+testiasetuksella: 154 testiä, ei uusintaa. Rajattu riippumaton katselmus ei
+löytänyt lisäpuutteita. Korjausrevisio tarvitsee edelleen nykyiset PR- ja
+main-porttinsa.
+
 ### K:n ensimmäisen PR-kierroksen jatko
 
-**Uusin normaali PR-checkpoint:** korjausrevision
+**Aikaisempi normaali PR-checkpoint:** korjausrevision
 `b0daaaf662785f7ce20f7f86d47e6b2cd2b1fe77`
 [V2-kierros](https://github.com/eky-software/eky/actions/runs/38332004647)
 valmistui hylättynä: 31 jobia läpäisi, seitsemän hylättiin ja kuusi
