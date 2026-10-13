@@ -22,8 +22,13 @@ Modulaarinen monoliitti ja
 hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohdan;
 [julkaisusuunnitelma](release-0.3.0-plan.md) omistaa koko 0.3.0:n sisällön.
 
-**Uusin K-jatkamiskohta:** [Hyväksytyn testijaon PR-todennus ja avoin
-MSI-asennusodotus](#kn-nykyinen-pr-checkpoint-ja-valmistelukoe).
+**Uusin K-jatkamiskohta:** [Yhteisen virhekeräyksen Windows-kohdetodennus](#yhteisen-virhekeräyksen-windows-kohdetodennus)
+läpäisi. Seuraavaksi korjausketju viedään lineaarisesti PR #303:n haaraan ja
+uuden headin normaalit PR-portit tarkistetaan. K ja main-integraatio ovat
+edelleen hyväksymättä. Alla olevat aiemmat kierrokset säilyvät historiana.
+
+**Aiempi PR-todennus ja avoin MSI-asennusodotus:**
+[Hyväksytyn testijaon checkpoint](#kn-nykyinen-pr-checkpoint-ja-valmistelukoe).
 Rajatut testikorjaukset läpäisivät normaalin CI:n, mutta asennusodotus
 hylättiin myös yhdessä rajatussa uusinnassa. Myöhempi lokikoe läpäisi
 varsinaisen palautusskenaarion; lokin 8 MiB:n ylitys esti fixture-poiston.
@@ -132,6 +137,26 @@ tyyppitarkistus läpäisivät. Tämä on rajattua paikallista näyttöä, ei uus
 PR/main-hyväksyntä. Seuraava työ on yksi jäädytetyn korjausrevision
 Windows Electron -todennus nykyisessä työnkulussa; ensivirhe ja mahdollisen
 salatun paketin alkuperäinen syy tarkistetaan ennen jatkopäätöstä.
+
+### Yhteisen virhekeräyksen Windows-kohdetodennus
+
+Korjausrevision `10459c8319fd7b7e4221629c97d94bc564d38f21`
+[nimetty Windows-ajo 38475500390](https://github.com/eky-software/eky/actions/runs/38475500390)
+läpäisi paketoinnin, tavallisen packaged-smoken, kaikki kolme paketoitua
+legacy-/cold-palautustapausta, 47 kriittistä Electron-testiä ja yhden
+erillisen käynnistyshavaintojen sopimustestin. Kaikki testit läpäisivät
+ensimmäisellä yrityksellä. Neljä tähän kohdeajoon valitsematonta jobia
+ohitettiin; niitä ei lasketa läpäisyiksi.
+
+Onnistunut kohdeajo ei lähettänyt salattua virhepakettia. Alkuperäisen
+poikkeuksen salaus ja todellinen purku on todennettu yllä kuvatuilla
+pakotetuilla paikallisilla virheillä. Aiemmat `firstWindow`- ja
+`invoicePdfArchive`-hylkäykset säilyvät omien revisioidensa havaintoina;
+niiden juurisyytä ei nimetä tämän läpäisyn perusteella korjatuksi.
+Kohdeajo mahdollistaa korjausketjun lineaarisen viennin PR #303:n haaraan.
+Seuraava hyväksyntä on uuden PR-headin normaali kierros ja erillinen
+riippuvuustarkistus, sitten valtuutettu merge ja uuden mainin omat portit.
+Tämä kohdenäyttö ei sulje K:ta tai koko 0.3.0-julkaisua.
 
 | Kohta | Nykyinen lähtötieto |
 | --- | --- |
