@@ -1,5 +1,23 @@
 import assert from 'node:assert/strict';
 
+export function withoutFaultEvidenceUpload(job) {
+  const marker = '      - name: Upload exact encrypted workspace fault evidence only\n';
+  assert.equal(job.split(marker).length, 2);
+  const step = job.split(marker)[1].split(/\n(?=      - )/u)[0];
+  assert.deepEqual(step.match(/^        uses: .+$/gmu),
+    ['        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a']);
+  assert.deepEqual(step.match(/^        if: .+$/gmu),
+    ["        if: always() && steps.fault_evidence_seal.outcome == 'success' && steps.fault_evidence_seal.outputs.sealed == 'true'"]);
+  assert.deepEqual(step.match(/^          path: .+$/gmu),
+    ['          path: ${{ steps.fault_evidence_seal.outputs.ciphertext }}']);
+  assert.match(step, /retention-days: 1\s/u);
+  assert.match(step, /if-no-files-found: error/u);
+  assert.match(step, /overwrite: false/u);
+  assert.match(step, /include-hidden-files: false/u);
+  assert.doesNotMatch(step, /continue-on-error|\*|\.etl|private\./u);
+  return job.replace(step, '');
+}
+
 // Test-only projection: remove exactly the approved optional allowance, leaving
 // job headers and every mandatory-step policy visible to the caller's assertions.
 export function withoutOptionalEvidenceAllowance(source, expectedCount, contractModesOnly = false, platforms = 'Windows') {

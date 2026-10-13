@@ -29,8 +29,10 @@ hylättiin myös yhdessä rajatussa uusinnassa. Myöhempi lokikoe läpäisi
 varsinaisen palautusskenaarion; lokin 8 MiB:n ylitys esti fixture-poiston.
 Omistajan hyväksymä 64 MiB:n korjaus sekä saman paketin uusi nimetty koe
 läpäisivät. Koko MSI-loki, ajosidonta ja kylmä purku on varmennettu.
-Seuraavaksi korjausketju viedään lineaarisesti PR-haaraan ja sen täsmälliselle
-headille ajetaan normaalit portit. PR:ää tai K:ta ei ole vielä hyväksytty.
+Korjausketju vietiin lineaarisesti PR-haaraan. Sen normaalista kierroksesta
+löytyi vanhentunut upgrade-workflow-testin upload-kielto; rajattu korjaus on
+kohdetodennettu. Nykyisen kierroksen muut tulokset säilytetään ennen uuden
+korjausrevision normaaleja portteja. PR:ää tai K:ta ei ole vielä hyväksytty.
 
 | Kohta | Nykyinen lähtötieto |
 | --- | --- |
@@ -283,6 +285,29 @@ Seuraavaksi nykyinen lineaarinen korjausketju ja tämä checkpoint viedään
 PR-haaraan. Normaalit portit sekä riippuvuustarkistus vaaditaan sen
 täsmälliselle headille, ja mergen jälkeen uuden mainin omat tarkistukset.
 Tämä checkpoint ei vielä hyväksy K:ta tai mergeä.
+
+**Normaalin PR-kierroksen sopimushylkäys:** head
+`28bd1fa902c36a7466d868d98ea568819379efc6` ja sen
+[V2-kierros 38439943123](https://github.com/eky-software/eky/actions/runs/38439943123)
+käynnistettiin; [riippuvuustarkistus 38439942927](https://github.com/eky-software/eky/actions/runs/38439942927)
+läpäisi. Upgrade-artifactin valmistelu pysähtyi ennen rakentamista:
+vanha testin yleinen `upload-artifact`-kielto hylkäsi yhteisen diagnostiikkajobin
+jo hyväksytyn salatun workspace-virhepaketin. Sama hylkäys toistettiin
+paikallisesti. Testi käyttää nyt legacy-testien kanssa samaa täsmällisesti
+varmennettua upload-projektiota; muiden uploadien ja paketin uudelleenrakennuksen
+kielto säilyy. Workflown tai sovelluksen toimintaa ei muutettu.
+
+Upgrade-sarjan 23 testiä ja legacy-diagnostiikan erilliset 27 kohdetestiä
+läpäisivät. Katselmus löysi projektion liian laajan YAML-askeleen rajauksen;
+nimettömän ylimääräisen uploadin kontrolli toisti sen, ja korjattu rajaus
+sekä regressio läpäisivät. Lopullisen rajauksen kaikki viisi nykyistä
+legacy-kuluttajaa läpäisivät vielä erillisen kohdetarkistuksen.
+Uusi rajattu katselmus hyväksyi korjauksen.
+Ensivirheen komentoloki sekä salattu manifesti säilytettiin ja varmennettiin.
+Manifestissa ei ollut tämän yksikkötestin raakatiedostoja; tarkka hylkäys
+tuli alkuperäisestä komentolokista. Tämä ei ole testin läpäisy tai valmis K.
+Nykyisen normaalin kierroksen muut tulokset luetaan ennen korjausrevision
+julkaisua, jotta keskeneräinen ajo ei peruunnu haarapäivityksen vuoksi.
 
 **Edellinen checkpoint:**
 

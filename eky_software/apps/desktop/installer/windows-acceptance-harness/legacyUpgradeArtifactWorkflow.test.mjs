@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { withoutOptionalEvidenceAllowance } from '../../../../../.github/scripts/ciFailureEvidenceTestContract.mjs';
+import { withoutFaultEvidenceUpload, withoutOptionalEvidenceAllowance } from '../../../../../.github/scripts/ciFailureEvidenceTestContract.mjs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { join, resolve } from 'node:path';
@@ -17,19 +17,6 @@ function jobBlock(source, name) {
   const start = source.indexOf(`\n  ${name}:\n`);
   assert.notEqual(start, -1);
   return source.slice(start + 1).split(/\n(?=  [\w-]+:\n)/u)[0];
-}
-
-function withoutFaultEvidenceUpload(job) {
-  const step = job.split('      - name: Upload exact encrypted workspace fault evidence only\n')[1]?.split('\n      - name:')[0];
-  assert.ok(step);
-  assert.match(step, /if: always\(\) && steps\.fault_evidence_seal\.outcome == 'success' && steps\.fault_evidence_seal\.outputs\.sealed == 'true'/u);
-  assert.match(step, /path: \$\{\{ steps\.fault_evidence_seal\.outputs\.ciphertext \}\}/u);
-  assert.match(step, /retention-days: 1\s/u);
-  assert.match(step, /if-no-files-found: error/u);
-  assert.match(step, /overwrite: false/u);
-  assert.match(step, /include-hidden-files: false/u);
-  assert.doesNotMatch(step, /continue-on-error|\*|\.etl|private\./u);
-  return job.replace(step, '');
 }
 
 test('optional evidence allowance cannot hide job or mandatory-step failure policy', async () => {
