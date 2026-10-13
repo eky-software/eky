@@ -12,7 +12,8 @@ import { projectPlaywrightFailureReport } from './playwrightFailureReport.mjs';
 import { LEGACY_STARTUP_TERMINAL_FILENAME, projectLegacyStartupTerminalEvidence } from './legacyStartupFailureEvidence.mjs';
 import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
 import { inspectionSandboxProbeBinding } from '../../scripts/profileInspection/linuxProfileInspectionContract.mjs';
-import { W6B2_INSTALLER_LOG_FILE, W6B2_INSTALLER_LOG_RECEIPT } from '../../src/main/w6b2PackagedInstallerLog.ts';
+import { W6B2_INSTALLER_LOG_FILE, W6B2_INSTALLER_LOG_RECEIPT,
+  W6B2_INSTALLER_LOG_MAX_BYTES } from '../../src/main/w6b2PackagedInstallerLog.ts';
 
 const MiB = 1024 * 1024;
 const MAX_FILE = 8 * MiB;
@@ -87,10 +88,12 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
     manifest.files.push(entry);
     try {
       const info = await ordinaryPath(base, path);
-      if (info.size > MAX_FILE) { entry.status = 'tooLarge'; return; }
+      const installerLog = kind === 'workspaceInstallerEvidence' && relativePath.endsWith('/' + W6B2_INSTALLER_LOG_FILE);
+      const fileLimit = installerLog ? W6B2_INSTALLER_LOG_MAX_BYTES : MAX_FILE;
+      if (info.size > fileLimit) { entry.status = 'tooLarge'; return; }
       if (info.size > MAX_TOTAL - total) { entry.status = 'totalLimit'; return; }
-      let proof = await retain(base, path, join(stage, name), MAX_FILE);
-      if (kind === 'workspaceInstallerEvidence' && relativePath.endsWith('/' + W6B2_INSTALLER_LOG_FILE)) {
+      let proof = await retain(base, path, join(stage, name), Math.min(fileLimit, MAX_TOTAL - total));
+      if (installerLog) {
         await assertWorkspaceInstallerLogReceipt(dirname(path), proof);
       }
       if (kind === 'playwrightReport' || kind === 'legacyStartupEvidence') {

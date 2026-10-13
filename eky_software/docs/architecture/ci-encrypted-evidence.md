@@ -119,7 +119,7 @@ raakaa testiaineistoa eivätkä saa yleistä koko jobin tulostekaappausta.
 | Native-komennot ja supervisorin sopimustestit | Nimetyt vaihe-, worker- ja caller-tulokset sekä olemassa olevat yksityiset prosessitulosteet. | Ei request/config-tiedostoja, profiileja tai tietokantoja. Siivouksen raakatulos säilyy erillään alkuperäisestä hylkäyksestä. Tarkoituksella lukemattoman putken koe säilyttää oman sopimuksensa. |
 | Historical-legacy-käynnistyksen syyote | Legacy-komennon `fixtureCleanup/legacy-startup-terminal.json`-tiedostosta vain varmennettu ajosidonta ja `startupEvidence`-projektio. | Nykyinen terminal-kirjoitus säilyttää otteen ennen profiilin poistoa. Ei koko operational-lokia, profiilia, tietokantaa tai terminalin muuta sisältöä. Syykoodit ja vaiheet eivät tule julkiseen testitulosteeseen. |
 | Synteettinen MSI-versiopolitiikan koe | Oman supervisor-testijuuren `policy-result.json` sekä numeroidut `source`, `target` ja `uninstall` -MSI-lokit muuttamattomina tavuina. | Vain suoraan testijuuren alla olevat nimet; ei descriptor-, request-, profiili- tai tietokantatiedostoja. Keskeytyneen MSI-komennon osittainen loki voidaan säilyttää ilman workerin lopputulosta. Samat koko-, linkki- ja muuttumattomuusrajat kuin muilla lähteillä. |
-| Synteettisen workspace-päivityksen kohdeasennin | Täsmällinen `target-installer.private.log` ja sen ajosidonnan, koon ja tiivisteen sisältävä säilytyskuitti. | Vain markerilla ja nykyisellä proof-konfiguraatiolla hyväksytty source-handoff; Microsoftin `/L*v`, ei globaalia lokitusta tai käyttöliittymätilan muutosta. Enintään 8 MiB salattuun pakettiin; rajaa suurempaa tiedostoa ei julkaista osittaisena. |
+| Synteettisen workspace-päivityksen kohdeasennin | Täsmällinen `target-installer.private.log` ja sen ajosidonnan, koon ja tiivisteen sisältävä säilytyskuitti. | Vain markerilla ja nykyisellä proof-konfiguraatiolla hyväksytty source-handoff; Microsoftin `/L*v`, ei globaalia lokitusta tai käyttöliittymätilan muutosta. Enintään 64 MiB salattuun pakettiin; rajaa suurempaa tiedostoa ei julkaista osittaisena. |
 | Packaged smoke | Rajattu prosessituloste ja nykyinen smoke-tulos. | Epäonnistuneen testin juurta ei poisteta; keräin ei lue sen profiilia. Tyhjentynyt tuloste ei todista onnistunutta käynnistystä. |
 | Muut komennot ja valmistelu | Nykyinen turvallinen GitHub-komentoloki. | Salattu keräys ei palauta tulostetta, jota aliohjelma ei tuottanut tai säilyttänyt. Riippuvuustyökalun raakavirheet jäävät erikseen rajatuiksi pois. |
 
@@ -137,6 +137,15 @@ loki ei takaa salatun liitteen toimitusta. Raakalokia ei tulosteta eikä
 lähetetä salaamattomana edes toimitusvirheessä. MSI:n oma lokikirjoitus
 voi muuttaa ajoitusta, joten kokeen läpäisy ei yksin todista vanhaa timeoutia
 korjatuksi.
+
+Kohdeasentimen yhteinen 64 MiB:n raja koskee ennen fixture-poistoa tehtävää
+säilytyskopiota sekä workspace- ja yleistä virhekeräystä. Se on omistajan
+hyväksymä tutkimusaineiston budjetti, ei Windowsin tai GitHubin kokovaatimus.
+Alkuperäinen yleisestä keräysrajasta lainattu 8 MiB ei riittänyt todellisessa
+kokeessa; tarkkaa hylätyn lokin kokoa ei säilynyt. Suurempi budjetti ei takaa
+kaikkien mahdollisten lokien mahtumista. Ylitys säilyttää alkuperäisen
+testiaineiston ja ilmoitetaan hylkäyksenä. Muiden tiedostojen omat rajat sekä
+keräinten 128 MiB:n ja 400 MiB:n kokonaisbudjetit säilyvät.
 
 Nykyisen workspace-työnkulun manuaalinen `artifact_only=true` valmistaa
 synteettisen paketin ja ajaa sen valmistelusopimukset ilman MSI-kuluttajia.
@@ -299,8 +308,11 @@ keräyksen käynnistämiseksi. Julkaisu sallii vain varmennetun salatekstin
 yhdeksi vuorokaudeksi. Normaali CI säilyttää nykyisen virheen jälkeisen
 keräyksen; manuaalisen kokeen onnistunut toimitus ei hyväksy normaaleja portteja.
 
-Rajana on 256 tiedostoa, 8 MiB yksittäiselle tiedostolle ja 128 MiB yhteensä;
-hakemistoluvulla on oma määrä-, syvyys- ja aikaraja. Raportit kerätään
+Rajana on 256 tiedostoa, 8 MiB yksittäiselle tiedostolle ja 128 MiB yhteensä.
+Ainoa tiedostokohtainen poikkeus on yllä nimetty ja säilytyskuitilla
+varmennettu workspace-kohdeasentimen loki: enintään 64 MiB. Sen kuitti ja
+muut MSI-lokit kuuluvat edelleen tavalliseen 8 MiB:n rajaan.
+Hakemistoluvulla on oma määrä-, syvyys- ja aikaraja. Raportit kerätään
 ennen natiiveja tuloksia lähdekohtaisin tilavarauksin; saman lähteen uusimmat
 testijuuret käsitellään ensin. Aiemmin säilyneet natiivitulokset eivät siten
 voi käyttää raporttien koko tiedostokiintiötä. Asiaankuulumattomat temp-nimet

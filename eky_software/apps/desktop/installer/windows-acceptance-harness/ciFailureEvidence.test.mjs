@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { link, mkdir, mkdtemp, readFile, rm, symlink, utimes, writeFile } from 'node:fs/promises';
+import { link, mkdir, mkdtemp, open, readFile, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
@@ -111,6 +111,67 @@ test('workspace target installer collection requires exact caller binding and ma
   assert.equal(failed.status, 'unverified');
   assert.equal(Object.hasOwn(rejected.files, failed.name), false);
   assert.equal((await readFile(source, 'utf8')), 'CHANGED');
+});
+
+for (const bytes of [64 * 1024 * 1024, 64 * 1024 * 1024 + 1]) {
+  test(`job collection applies the 64 MiB cap only to a bound target MSI log: ${bytes}`, async t => {
+    const { temp, env, put } = await fixture(t);
+    const prefix = `eky-workspace-caller-${nativeId}`;
+    const binding = { schemaVersion: 1, invocationId: nativeId, scenario: 'packagedWorkspaceFaultRollback',
+      faultScenario: 'passiveWorkspaceMigrationFailure', buildRevision: 'a'.repeat(40),
+      artifactDescriptorSha256: 'b'.repeat(64) };
+    await put(temp, `${prefix}/binding.json`, JSON.stringify(binding));
+    const source = await put(temp, `${prefix}/${W6B2_INSTALLER_LOG_FILE}`, 'synthetic first MSI action');
+    const file = await open(source, 'r+');
+    try { await file.truncate(bytes); } finally { await file.close(); }
+    const expectedHash = createHash('sha256').update(await readFile(source)).digest('hex');
+    await put(temp, `${prefix}/${W6B2_INSTALLER_LOG_RECEIPT}`, JSON.stringify({ binding, status: 'retained',
+      bytes, sha256: expectedHash }));
+    const collected = await collectJobFailureEvidence(env);
+    const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+    const entry = archive.manifest.files.find(value => value.source.endsWith('/' + W6B2_INSTALLER_LOG_FILE));
+    if (bytes === 64 * 1024 * 1024) {
+      assert.equal(entry.status, 'retained');
+      const retained = Buffer.from(archive.files[entry.name], 'base64');
+      assert.equal(retained.length, bytes);
+      assert.equal(createHash('sha256').update(retained).digest('hex'), expectedHash);
+    } else {
+      assert.equal(entry.status, 'tooLarge');
+      assert.equal(Object.hasOwn(archive.files, entry.name), false);
+    }
+    assert.equal(createHash('sha256').update(await readFile(source)).digest('hex'), expectedHash);
+  });
+}
+
+test('bound target MSI log cannot exceed the remaining aggregate budget after other evidence', async t => {
+  const { temp, env, put } = await fixture(t);
+  const prefix = `eky-workspace-caller-${nativeId}`;
+  const binding = { schemaVersion: 1, invocationId: nativeId, scenario: 'packagedWorkspaceFaultRollback',
+    faultScenario: 'passiveWorkspaceMigrationFailure', buildRevision: 'a'.repeat(40),
+    artifactDescriptorSha256: 'b'.repeat(64) };
+  await put(temp, `${prefix}/binding.json`, JSON.stringify(binding));
+  const source = await put(temp, `${prefix}/${W6B2_INSTALLER_LOG_FILE}`, 'synthetic native MSI log');
+  const file = await open(source, 'r+');
+  try { await file.truncate(64 * 1024 * 1024); } finally { await file.close(); }
+  const hash = createHash('sha256').update(await readFile(source)).digest('hex');
+  await put(temp, `${prefix}/${W6B2_INSTALLER_LOG_RECEIPT}`, JSON.stringify({ binding, status: 'retained',
+    bytes: 64 * 1024 * 1024, sha256: hash }));
+  for (let index = 1; index <= 9; index++) {
+    const path = await put(temp, `eky supervisor prior/supervisor-${index}.stdout.private`, 'synthetic output');
+    const handle = await open(path, 'r+');
+    try { await handle.truncate(8 * 1024 * 1024); } finally { await handle.close(); }
+  }
+  const newest = new Date(Date.now() + 60_000);
+  await utimes(join(temp, 'eky supervisor prior'), newest, newest);
+  const collected = await collectJobFailureEvidence(env);
+  const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+  const retained = archive.manifest.files.filter(value => value.status === 'retained');
+  assert.equal(retained.filter(value => value.source.startsWith('temporary/eky supervisor prior/')).length, 9);
+  assert.ok(retained.reduce((sum, value) => sum + value.bytes, 0) <= 128 * 1024 * 1024);
+  const rejected = archive.manifest.files.find(value => value.source.endsWith('/' + W6B2_INSTALLER_LOG_FILE));
+  assert.equal(rejected.status, 'totalLimit');
+  assert.equal(Object.hasOwn(archive.files, rejected.name), false);
+  assert.equal(createHash('sha256').update(await readFile(source)).digest('hex'), hash);
 });
 
 test('legacy collection admits only the bound cause projection from the existing cleanup terminal file', async t => {

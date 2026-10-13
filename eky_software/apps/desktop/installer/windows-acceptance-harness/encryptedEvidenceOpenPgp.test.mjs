@@ -190,7 +190,9 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
       await writeFile(join(dirname(prepared.callerResultPath), 'binding.json'), JSON.stringify(callerBinding));
       const proofRoot = await mkdtemp(join(await realpath(tmpdir()), 'eky-msi-log-'));
       await mkdir(join(proofRoot, 'result'), { recursive: true });
-      const nativeLog = Buffer.from('synthetic original MSI action before termination\n');
+      const nativeLog = faultScenario === 'passiveWorkspaceMigrationFailure'
+        ? Buffer.alloc(9 * 1024 * 1024, 0x53)
+        : Buffer.from('synthetic original MSI action before termination\n');
       await writeFile(join(proofRoot, 'result', W6B2_INSTALLER_LOG_FILE), nativeLog);
       assert.equal(await retainWorkspaceInstallerLog({ proofRoot, resultPath: prepared.callerResultPath,
         binding: callerBinding, processTreeAbsent: true }), true);

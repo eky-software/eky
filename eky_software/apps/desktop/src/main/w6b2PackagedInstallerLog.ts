@@ -5,7 +5,7 @@ import type { W6b2PackagedProofConfiguration } from './w6b2PackagedProof.js';
 
 export const W6B2_INSTALLER_LOG_FILE = 'target-installer.private.log';
 export const W6B2_INSTALLER_LOG_RECEIPT = 'target-installer-retention.private.json';
-export const W6B2_INSTALLER_LOG_MAX_BYTES = 8 * 1024 * 1024;
+export const W6B2_INSTALLER_LOG_MAX_BYTES = 64 * 1024 * 1024;
 
 // Only the marker-validated synthetic source handoff enables native MSI logging.
 export async function prepareW6b2PackagedInstallerLog(

@@ -122,6 +122,54 @@ test('cancelled workspace preserves the native log before fixture removal and wi
   assert.equal(value.manifest.files.find(entry => entry.name === 'caller-result.json').status, 'missing');
 });
 
+test('workspace retention and archive preserve a full native MSI log at the 64 MiB boundary', async t => {
+  const f = await installerLogFixture(t);
+  const bytes = 64 * 1024 * 1024;
+  const source = join(f.proofRoot, 'result', W6B2_INSTALLER_LOG_FILE);
+  const file = await open(source, 'wx');
+  try {
+    await file.truncate(bytes);
+    await file.write(Buffer.from('synthetic MSI first action'), 0, 26, 0);
+    await file.write(Buffer.from('synthetic MSI last action'), 0, 25, bytes - 25);
+  } finally { await file.close(); }
+  const expectedHash = createHash('sha256').update(await readFile(source)).digest('hex');
+  assert.equal(await retainWorkspaceInstallerLog(f), true);
+  await rm(f.proofRoot, { recursive: true });
+  const value = await envelope(await collectEvidence(f.env, f.root));
+  const retained = Buffer.from(value.files[W6B2_INSTALLER_LOG_FILE], 'base64');
+  assert.equal(retained.length, bytes);
+  assert.equal(createHash('sha256').update(retained).digest('hex'), expectedHash);
+  const receipt = JSON.parse(Buffer.from(value.files[W6B2_INSTALLER_LOG_RECEIPT], 'base64'));
+  assert.equal(receipt.bytes, bytes);
+  assert.equal(receipt.sha256, expectedHash);
+});
+
+test('bound target MSI log cannot exceed the remaining aggregate budget after workspace capture', async t => {
+  const f = await installerLogFixture(t);
+  const source = join(f.proofRoot, 'result', W6B2_INSTALLER_LOG_FILE);
+  const file = await open(source, 'wx');
+  try { await file.truncate(64 * 1024 * 1024); } finally { await file.close(); }
+  assert.equal(await retainWorkspaceInstallerLog(f), true);
+  await writeFile(join(f.capture, 'stopped'), '');
+  for (const [name, bytes] of [['capture.etl', 256], ['event-statistics.private.log', 32],
+    ['command-export.private.log', 64]]) {
+    const handle = await open(join(f.capture, name), 'wx');
+    try { await handle.truncate(bytes * 1024 * 1024); } finally { await handle.close(); }
+  }
+  const collected = await collectEvidence(f.env, f.root);
+  assert.equal(collected.manifest.files.find(value => value.name === 'capture.etl').status, 'retained');
+  const retained = collected.manifest.files.filter(value => value.status === 'retained');
+  assert.ok(retained.reduce((sum, value) => sum + value.bytes, 0) <= 400 * 1024 * 1024);
+  const rejected = collected.manifest.files.find(value => value.name === W6B2_INSTALLER_LOG_FILE);
+  assert.equal(rejected.status, 'unverified');
+  assert.equal(rejected.failureCode, 'sizeLimitExceeded');
+  assert.equal(Object.hasOwn(rejected, 'bytes'), false);
+  await assert.rejects(readFile(join(f.root, 'retained', W6B2_INSTALLER_LOG_FILE)), { code: 'ENOENT' });
+  assert.equal((await open(source, 'r').then(async handle => {
+    try { return await handle.stat(); } finally { await handle.close(); }
+  })).size, 64 * 1024 * 1024);
+});
+
 test('unverified process exit, foreign binding and oversized logs never authorize fixture removal', async t => {
   const f = await installerLogFixture(t);
   const source = join(f.proofRoot, 'result', W6B2_INSTALLER_LOG_FILE);

@@ -25,7 +25,10 @@ hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohd
 **Uusin K-jatkamiskohta:** [Hyväksytyn testijaon PR-todennus ja avoin
 MSI-asennusodotus](#kn-nykyinen-pr-checkpoint-ja-valmistelukoe).
 Rajatut testikorjaukset läpäisivät normaalin CI:n, mutta asennusodotus
-hylättiin myös yhdessä rajatussa uusinnassa. PR:ää tai K:ta ei ole hyväksytty.
+hylättiin myös yhdessä rajatussa uusinnassa. Myöhempi lokikoe läpäisi
+varsinaisen palautusskenaarion; lokin 8 MiB:n ylitys esti fixture-poiston.
+Omistaja hyväksyi tämän lokin rajan noston 64 MiB:iin. PR:ää tai K:ta ei
+ole hyväksytty.
 
 | Kohta | Nykyinen lähtötieto |
 | --- | --- |
@@ -207,7 +210,7 @@ virhe- tai tiedostonkäyttöikkunaa. Source-handoff käynnistää kohdeasentimen
 mutta sen käynnistyskuittaus ei ole asennuksen valmistumisen todiste.
 Alkuperäinen asennusodotuksen syy on yhä avoin.
 
-Omistaja hyväksyi vain synteettisen source-handoffin kohdeasentimen
+Omistaja hyväksyi aluksi vain synteettisen source-handoffin kohdeasentimen
 Microsoft MSI -lokin, enintään 8 MiB:n salatun säilytyksen sekä yhden uuden
 nimetyn kokeen uudesta testipaketista. Nykyiseen keräimeen lisättiin myös
 suljetut säilytyksen hylkäysluokat; ne eivät paljasta raakavirhettä tai
@@ -219,9 +222,8 @@ synteettinen käynnistys, oikea salaus/purku ja prosessiketjun hallittu
 katkaisu on todennettu erillisinä kohdesarjoina. Katselmuksessa löydetty
 kopioinnin aikaisen katoamisen käsittely korjattiin ja sen regressio läpäisi:
 epävarma kopio ei anna lupaa alkuperäisen fixturen poistoon.
-Seuraava portti on katselmoitu puhdas revisio, pelkkä synteettisen paketin
-valmistelu ja yksi `passiveWorkspaceMigrationFailure`-koe sen samoilla
-pakettisidonnoilla. Normaaleja PR-portteja tai mergeä ei ole vielä tehty.
+Nämä valmistelu- ja kokeiluportit tehtiin alla nimetylle revisiolle.
+Normaaleja uuden revision PR-portteja tai mergeä ei ole vielä tehty.
 Koetta ei hyväksytä vanhan timeoutin korjaukseksi pelkän läpäisyn perusteella.
 Tietoturva-, sisältö-, aika- ja hyväksyntärajat säilyvät.
 
@@ -232,7 +234,38 @@ käynnistystä. Testin tilapäisjuuren vaihtoehtoinen polkuesitys toisti saman
 hylkäyksen hallitussa kokeessa. Testiaineisto luodaan nyt kanonisoidun juuren
 alle; samalla ympäristöerolla salaus/purku läpäisi. Keräimen polku- ja
 linkkisuojia ei muutettu. Ensivirhe ja salattu liite säilytettiin; tämä ei
-selitä alkuperäistä MSI-odotusta eikä kuluta sen vielä aloittamatonta koetta.
+selitä alkuperäistä MSI-odotusta eikä kuluttanut silloin vielä aloittamatonta koetta.
+
+**Lokin säilytysrajan korjaus:** puhtaan `7df999b435515664f347e83bf977576247ad59be`-
+revision [paketin valmistelu 38424662411](https://github.com/eky-software/eky/actions/runs/38424662411)
+läpäisi. Se valmisti synteettiset paketit ilman asennuskuluttajia.
+Saman paketin [nimetty lokikoe 38427436693](https://github.com/eky-software/eky/actions/runs/38427436693)
+hylättiin fixture-siivoamisessa. Sen `workspaceFaultCompleted`,
+`workspaceFaultSemanticProofValidated`, tuotteiden poissaolo ja
+business-aineiston säilyminen varmennettiin. Lokin säilytyskuitti osoitti
+`sizeLimitExceeded`-hylkäyksen, joten alkuperäisen testikansion poisto
+estettiin. Asennusodotuksen vanha timeout ei toistunut tässä kokeessa;
+sen juurisyytä ei nimetä korjatuksi.
+
+Salattu toimitus ja kylmä purku läpäisivät; kaikkien 12 säilyneen tiedoston
+tiivisteet ja ajosidonta varmennettiin. MSI-lokin tavut ja tarkka koko eivät
+mahtuneet aineistoon. Myös ETL:n poisjäänti luokiteltiin tässä uudessa
+manifestissa kokoylitykseksi. Jälkianalyysin `commandExport` hylättiin.
+Tämä ei jälkikäteen todista aikaisemman manifestin ETL-poisjäännin syytä.
+
+Omistaja hyväksyi kohdeasentimen lokin rajan noston 8 MiB:stä 64 MiB:iin.
+Raja keskitetään samaan vakioon sekä säilytyskopiolle että kummallekin
+salatulle keräyspolulle. Muiden tiedostojen ja ETL:n rajat, kokonaisbudjetit,
+prosessisiivous ja hyväksyntäehdot säilyvät. Keräyksen 60 kohdetestiä ja
+salauksen/purun 26 testiä läpäisivät erillisinä sarjoina; täysi 64 MiB:n loki
+säilyi molemmissa keräimissä ja 9 MiB:n loki todellisessa salauksessa/purussa.
+Ylitys ja tavallisten lähteiden 8 MiB:n raja säilyivät. Myös desktopin
+tyypitys ja ohjeiden linkkitarkistus läpäisivät. Kaksi erillistä lisäkoetta
+todistivat, ettei suurempi loki ylitä kummankaan keräimen jäljellä olevaa
+kokonaisbudjettia. Rajattu riippumaton katselmus läpäisi. Seuraavaksi
+korjausrevision jäädytys ja säilytyksen todennus nykyisen paketin nimetystä kokeesta.
+Sen jälkeen tarvitaan hyväksytyn PR-headin normaalit portit ja uuden
+mainin omat tarkistukset. Tämä checkpoint ei hyväksy K:ta tai mergeä.
 
 **Edellinen checkpoint:**
 
