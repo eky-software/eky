@@ -13,6 +13,11 @@ on:
         required: true
         type: boolean
         default: false
+      linux_sandbox_probe:
+        description: One bounded K inspection sandbox prerequisite experiment
+        required: true
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       risk_plan:
@@ -39,6 +44,62 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  linux-inspection-sandbox-probe:
+    name: K Linux inspection sandbox experiment
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' && inputs.linux_sandbox_probe == true
+        && inputs.risk_plan == '' && inputs.electron_diagnostic == false
+        && inputs.linux_consumer_diagnostic == false }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: eky_software
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: eky_software/.node-version
+          package-manager-cache: false
+      - name: Prepare locked package manager
+        working-directory: .
+        run: node .github/scripts/prepareLockedPnpm.mjs
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check bounded experiment contracts
+        run: node --test apps/desktop/scripts/profileInspection/linuxSandboxProbe.test.mjs
+      - name: Build permissions
+        run: pnpm --filter @eky/permissions build
+      - name: Build auth
+        run: pnpm --filter @eky/auth build
+      - name: Build backend
+        run: pnpm --filter @eky/backend build
+      - name: Build web
+        run: pnpm --filter @eky/web build
+      - name: Build desktop
+        run: pnpm --filter @eky/desktop build
+      - name: Prepare Linux inspection Electron runtime
+        run: pnpm --filter @eky/desktop e2e:prepare-electron-runtime
+      - name: Run one bounded sandbox experiment
+        env:
+          EKY_E2E: '1'
+        run: node apps/desktop/scripts/profileInspection/linuxSandboxProbe.mjs
+      - name: Preserve encrypted experiment failure
+        if: ${{ always() && (job.status == 'failure' || job.status == 'cancelled') }}
+        continue-on-error: true
+        timeout-minutes: 3
+        uses: ./.github/actions/collect-ci-failure-evidence
+        with:
+          job-key: k-linux-sandbox-probe
+          job-outcome: ${{ job.status }}
+          public-key: ${{ vars.EKY_DIAGNOSTIC_PUBLIC_KEY }}
+          fingerprint: ${{ vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT }}
+          verified-fingerprint: ${{ vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT }}
+
   verify:
     name: Test, typecheck and build
     if: inputs.risk_plan != ''
