@@ -69,6 +69,45 @@ läpäisi erikseen. Ensivirheen salattu aineisto on säilytetty ja varmennettu;
 historiallinen integraatiohyväksyntä, uusi seurantahylkäys ja K:n puuttuva
 hyväksyntä eivät ole sama asia. Uutta ajoa ei käynnistetty tämän havainnon vuoksi.
 
+### K:n ensimmäisen PR-kierroksen jatko
+
+[PR #303:n](https://github.com/eky-software/eky/pull/303) ensimmäinen
+[V2-kierros](https://github.com/eky-software/eky/actions/runs/38329010187)
+hylättiin headilla `2a7e239bbf487e52ded02090ccf475f01b4ddb2c`.
+[Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/38329010178)
+läpäisi erikseen. V2:n 22 onnistunutta jobia eivät hyväksy kahdeksaa hylättyä
+jobia tai niiden vuoksi käynnistymättä jääneitä kuluttajia. Kuusi erikseen
+valitsematta jätettyä diagnostiikkajobia ovat ohituksia, eivät läpäisyjä.
+CI:n PR-merge-checkoutin puu varmennettiin samaksi kuin kyseisen headin puu.
+Ensivirheet ja salatut liitteet säilytetään; yhden liitteen tiedostomääräraja
+jätti osan käynnistysaineistosta ulkopuolelle. Puuttuvaa havaintoa ei tulkita
+onnistumiseksi.
+
+Korjaus rajautuu nykyisen testikytkennän osoitettuihin puutteisiin:
+
+- Kahden desktop-E2E-todistuksen backend-kahva välittää myös uuden
+  `stopForRestore`-operaation ja vapauttaa omistajuuden vasta onnistuneen
+  sulun jälkeen. Puute esti käännöksen ennen käyttäjäpolkujen ajoa.
+- Synteettinen Windows-startup-fixture määrittää oman käyttöjärjestelmärajansa;
+  katalogifixture luo Linuxissa vaaditut yksityiset hakemistot. Tuotannon
+  polku- tai omistajuustarkistuksia ei kevennetä.
+- E2E:n tarkoitukselliset tietokantavirheet asennetaan vasta oikean
+  schema-attestoinnin jälkeen synkronisesti ennen seuraavaa I/O-kierrosta ja
+  käyttökahvan palautusta. Testitriggerit eivät kuulu tuotannon sallittuun
+  rakenteeseen. Epäkelpoista lähtörakennetta ei korjata testivalmistelussa.
+- Legacy-fixturen lähdemoduulin täsmällinen tuonti sovitetaan Noden suoraan
+  TypeScript-lukuun. Sovitus poistetaan heti latauksen jälkeen; tuotannon
+  käännös- ja riippuvuussopimus säilyy.
+
+Rajatut käännös-, tyyppi-, tietokanta-, palautus- ja legacy-tarkistukset sekä
+aiemmin hylätyt numerointi- ja web-virhepolut läpäisivät ilman uusintaa.
+Legacy-lähdelataus todennettiin myös Linuxissa. Riippumaton rajattu katselmus
+ei löytänyt uutta korjattavaa; Linuxin alustakohtaiset palautus- ja oikean
+Electron-prosessin tarkistukset vaaditaan edelleen CI:ssä.
+Kohdetodennukset ja riippumaton rajattu katselmus eivät korvaa korjausrevision
+normaaleja PR-portteja. K, merge ja uuden mainin tarkistukset ovat edelleen
+avoimia. Uusintaa ei käytetä alkuperäisen kierroksen hylkäysten hyväksymiseen.
+
 ### K:n kokonaiskytkennän tarkistus
 
 **Katselmuksen päivitetty checkpoint 13.10.2026: ei vielä julkaisuvalmis K.**

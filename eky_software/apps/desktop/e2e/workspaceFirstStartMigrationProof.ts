@@ -751,6 +751,10 @@ function createTrackedBackendStarter(input: {
         await delegateHandle.stopForUpdate(operationId);
         release();
       },
+      async stopForRestore(operationId) {
+        await delegateHandle.stopForRestore(operationId);
+        release();
+      },
     };
     input.tracker.activeHandles.add(handle);
     return handle;

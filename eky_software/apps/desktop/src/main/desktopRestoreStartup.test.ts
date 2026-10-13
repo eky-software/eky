@@ -141,6 +141,8 @@ beforeEach(() => {
   // Do not reset shared spies while a timed-out tracked body can still use them.
   trackedStartupTest?.assertSharedStateReleased();
   trackedStartupTest = undefined;
+  // Update fixtures must provide their own Windows boundary on every host.
+  vi.stubEnv('SystemRoot', undefined);
   const ownedClients: ProfileSnapshotBrokerClient[] = [];
   clients = ownedClients;
   electronBoundary.reservationAcquired.mockReset();
@@ -2068,6 +2070,8 @@ async function createFixture(
     userDataPath: root, legacyRuntimeRoot: createDesktopProfilePaths(root).runtimeRoot,
   });
   if (releaseInfo !== undefined) {
+    // Only path validation runs; installer execution is mocked in this fixture.
+    vi.stubEnv('SystemRoot', 'C:\\Windows');
     await new AcceptedBuildMetadataStore(updatePaths.acceptedBuildMetadataPath).write({
       acceptedAt: '2026-08-18T10:00:00.000Z',
       appVersion: options.firstStartUpgrade ? '0.2.7' : releaseInfo.appVersion,

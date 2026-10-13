@@ -1,26 +1,19 @@
-import { fileURLToPath } from 'node:url';
-
 import { createDatabaseConnection } from '../src/database/connection/createDatabaseConnection.js';
-import { runMigrations } from '../src/database/migration/runMigrations.js';
 import type { E2eFaultPlan } from './e2eBackendConfig.js';
 
-const migrationsDirectory = fileURLToPath(
-  new URL('../src/database/migrations/', import.meta.url),
-);
-
-export async function installE2eDatabaseFault(input: {
+export function installE2eDatabaseFault(input: {
   databaseFilePath: string;
   faultPlan: E2eFaultPlan;
-}): Promise<void> {
+}): void {
   if (input.faultPlan.kind !== 'databaseWriteFailed') {
     return;
   }
 
   const database = createDatabaseConnection({
     databaseFilePath: input.databaseFilePath,
+    fileMustExist: true,
   });
   try {
-    await runMigrations(database, { migrationsDirectory });
     database.exec(`
       CREATE TABLE _e2e_fault_state (
         operation TEXT PRIMARY KEY,

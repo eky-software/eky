@@ -50,6 +50,37 @@ test('038/039 contract is independently regenerated from the unchanged SQL in an
   assert.ok(contract.targetSchema.some(object => object.name === 'invoice_revision_update_guard'));
 });
 
+test('source fixture loading leaves no JavaScript-to-TypeScript resolver behind', async () => {
+  const fixtureUrl = new URL('./legacyUpgradeDatabaseEvidence.fixture.mjs', import.meta.url);
+  const metadataUrl = new URL('../../../backend/src/database/migration/migrationMetadata.ts', import.meta.url);
+  const probe = `
+    import assert from 'node:assert/strict';
+    const fixture = await import(${JSON.stringify(fixtureUrl.href)});
+    assert.equal(fixture.generateLegacyDatabaseContract().migrations.length, 39);
+    const { registerHooks } = await import('node:module');
+    let resolutions = 0;
+    const hooks = registerHooks({ resolve(specifier, context, nextResolve) {
+      if (specifier === 'synthetic-metadata-import') {
+        resolutions += 1;
+        return nextResolve('../connection/isSqliteMemoryError.js', {
+          ...context, parentURL: ${JSON.stringify(metadataUrl.href)},
+        });
+      }
+      return nextResolve(specifier, context);
+    } });
+    try {
+      await assert.rejects(import('synthetic-metadata-import'), { code: 'ERR_MODULE_NOT_FOUND' });
+      assert.equal(resolutions, 1);
+    } finally { hooks.deregister(); }
+  `;
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', probe], {
+    encoding: 'utf8', timeout: 10_000, maxBuffer: 4096, windowsHide: true,
+  });
+  assert.equal(child.error?.code ?? null, null);
+  assert.equal(child.signal, null);
+  assert.equal(child.status, 0, 'isolated source fixture resolution failed');
+});
+
 test('real 039 SQL fails the old byte condition but passes complete readonly content proof', async t => {
   const value = await fixture(t);
   const beforeSource = await createClosedDirectoryInventory(value.paths.sourceDataRoot);

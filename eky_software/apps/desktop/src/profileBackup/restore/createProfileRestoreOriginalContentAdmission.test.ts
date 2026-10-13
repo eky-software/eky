@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -16,6 +16,19 @@ const roots: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
 
 describe('cold original rollback content admission', () => {
+  it.skipIf(process.platform === 'win32').each(['workspace', 'database', 'documents'] as const)(
+    'rejects a non-private %s root without changing the original bytes', async kind => {
+      const f = await fixture();
+      const path = kind === 'workspace' ? f.workspaceRoot : kind === 'database' ? dirname(f.databasePath) : f.documentsRoot;
+      const pdfPath = join(f.documentsRoot, 'invoice.pdf');
+      const pdf = await readFile(pdfPath);
+      await chmod(path, 0o755);
+      await expect(f.admit(f.context)).rejects.toThrow('PROFILE_INSPECTION_PROTOCOL_INVALID');
+      expect(await readFile(f.databasePath)).toEqual(f.database);
+      expect(await readFile(pdfPath)).toEqual(pdf);
+    },
+  );
+
   it('checks original bytes before rollback intent at validationStarting', async () => {
     const f = await fixture(); f.journal.phase = 'validationStarting';
     await f.admit(f.context);
@@ -31,10 +44,10 @@ describe('cold original rollback content admission', () => {
     await f.admit(f.context);
     await f.admit(f.context);
     expect(f.inspect).toHaveBeenCalledOnce();
-    await mkdir(dirname(f.activeDatabase), { recursive: true });
+    await mkdir(dirname(f.activeDatabase), { recursive: true, mode: 0o700 });
     await rename(f.databasePath, f.activeDatabase); f.setSlots('active', 'rollback');
     await f.admit(f.context);
-    await mkdir(dirname(f.activeDocuments), { recursive: true });
+    await mkdir(dirname(f.activeDocuments), { recursive: true, mode: 0o700 });
     await rename(f.documentsRoot, f.activeDocuments); f.setSlots('active', 'active');
     await f.admit(f.context);
     expect(f.inspect).toHaveBeenCalledTimes(3);
@@ -93,7 +106,7 @@ describe('cold original rollback content admission', () => {
 
   it('does not replace the immutable first content with a new valid-looking source receipt', async () => {
     const f = await fixture(); await f.admit(f.context);
-    await mkdir(dirname(f.activeDatabase), { recursive: true }); await rename(f.databasePath, f.activeDatabase);
+    await mkdir(dirname(f.activeDatabase), { recursive: true, mode: 0o700 }); await rename(f.databasePath, f.activeDatabase);
     f.setSlots('active', 'rollback');
     f.inspect.mockImplementation(async () => {
       const next = f.result(f.sources());
@@ -123,7 +136,7 @@ async function fixture(layout: ProfileInspectionOriginalSources['layout'] = 'pro
     : join(root, 'workspace-replacement-operations', 'activation', 'rollback', operationId);
   const databasePath = join(rollbackRoot, 'data', 'eky.sqlite'); const documentsRoot = join(rollbackRoot, 'storage', 'invoices');
   const activeDatabase = join(workspaceRoot, 'runtime', 'data', 'eky.sqlite'); const activeDocuments = join(workspaceRoot, 'runtime', 'storage', 'invoices');
-  for (const path of [workspaceRoot, join(failedRoot, operationId), dirname(databasePath), documentsRoot]) await mkdir(path, { recursive: true });
+  for (const path of [workspaceRoot, join(failedRoot, operationId), dirname(databasePath), documentsRoot]) await mkdir(path, { recursive: true, mode: 0o700 });
   const database = Buffer.from('synthetic opaque original database'); const pdf = Buffer.from('%PDF-1.7 synthetic');
   await writeFile(databasePath, database); await writeFile(join(documentsRoot, 'invoice.pdf'), pdf);
   const documents = Object.freeze([Object.freeze({ logicalPath: `artifacts/invoicing/invoice-documents/${'a'.repeat(64)}.pdf`,

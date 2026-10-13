@@ -2014,6 +2014,14 @@ sopimusta vasten. Sopimus johdetaan erikseen hyväksytyistä SQL-tavuista tyhjä
 testikantaan, ei tarkasteltavasta profiilista. Manifestin jatkuvuus ja tiivistys
 käyttävät nykyistä backendin manifestinomistajaa.
 
+Sopimuksen testifixture käyttää myös nykyistä migration-metadatan omistajaa
+suoraan lähteestä. Noden suora TypeScript-luku ei muuta sen `.js`-tuontia
+`.ts`-lähteeksi: fixture sovittaa vain tämän omistajan täsmällisen
+`isSqliteMemoryError`-tuonnin ja poistaa lataussovituksen heti `finally`-haarassa.
+Muut moduulit käyttävät tavallista latausta. Sopimuksen generointi ei riipu
+vanhasta `dist`-hakemistosta eikä kopioi metadatan sääntöjä testiin;
+erillisprosessin regressio varmistaa myös sovituksen poistumisen.
+
 Asennetun payloadin täysi inventaario varmennetaan ennen paketoidun
 `backend/dist/database/migrations`-ketjun tai runtime-buildin käyttämistä
 sidonnan lähteenä. Kaikki vanhat taulut, sarakkeet, arvojen SQLite-tyypit ja

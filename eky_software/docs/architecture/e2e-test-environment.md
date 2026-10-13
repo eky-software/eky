@@ -802,6 +802,14 @@ Fault plan ei sisällä callbackia, eval-koodia, SQL:ää, tiedostopolkua tai
 arbitrary-merkkijonoa. Faultia ei voi vaihtaa HTTP:n, preloadin tai rendererin
 kautta.
 
+Tietokannan testitriggerit asennetaan vasta tavallisen schema-attestoinnin ja
+migraatioiden jälkeen. `startE2eBackend` asentaa ne synkronisesti ennen
+seuraavaa I/O-kierrosta ja testiruntimen palauttamista kutsujalle. Asennus ei
+luo kantaa tai aja migraatioita; epäkelpoista lähtörakennetta ei hyväksytä
+testisuunnitelman perusteella. Valmisteluvirhe sulkee avatun palvelimen ja
+säilyttää alkuperäisen syyn erillään mahdollisesta sulkemisvirheestä.
+Tuotannon schema-allowlistiin ei lisätä testitauluja tai -triggereitä.
+
 ## Artefaktit
 
 Paikallista, yksityistä vianhakua varten epäonnistumisesta voidaan säilyttää:
