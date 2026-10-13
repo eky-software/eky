@@ -27,8 +27,10 @@ MSI-asennusodotus](#kn-nykyinen-pr-checkpoint-ja-valmistelukoe).
 Rajatut testikorjaukset läpäisivät normaalin CI:n, mutta asennusodotus
 hylättiin myös yhdessä rajatussa uusinnassa. Myöhempi lokikoe läpäisi
 varsinaisen palautusskenaarion; lokin 8 MiB:n ylitys esti fixture-poiston.
-Omistaja hyväksyi tämän lokin rajan noston 64 MiB:iin. PR:ää tai K:ta ei
-ole hyväksytty.
+Omistajan hyväksymä 64 MiB:n korjaus sekä saman paketin uusi nimetty koe
+läpäisivät. Koko MSI-loki, ajosidonta ja kylmä purku on varmennettu.
+Seuraavaksi korjausketju viedään lineaarisesti PR-haaraan ja sen täsmälliselle
+headille ajetaan normaalit portit. PR:ää tai K:ta ei ole vielä hyväksytty.
 
 | Kohta | Nykyinen lähtötieto |
 | --- | --- |
@@ -79,7 +81,7 @@ hyväksyntä eivät ole sama asia. Uutta ajoa ei käynnistetty tämän havainnon
 
 ### K:n nykyinen PR-checkpoint ja valmistelukoe
 
-**Nykyinen checkpoint 13.10.2026:** PR #303:n head
+**Edellisen normaalin kierroksen checkpoint 13.10.2026:** PR #303:n head
 `3e3420df107d55c89917409012e877089e64ac26` sisältää alla hyväksytyn yhden
 palautustestin valmistelujaon sekä täsmällistä Playwright-sivua odottavan
 PDF-testikorjauksen. [Normaali V2-kierros](https://github.com/eky-software/eky/actions/runs/38389745059)
@@ -262,10 +264,25 @@ säilyi molemmissa keräimissä ja 9 MiB:n loki todellisessa salauksessa/purussa
 Ylitys ja tavallisten lähteiden 8 MiB:n raja säilyivät. Myös desktopin
 tyypitys ja ohjeiden linkkitarkistus läpäisivät. Kaksi erillistä lisäkoetta
 todistivat, ettei suurempi loki ylitä kummankaan keräimen jäljellä olevaa
-kokonaisbudjettia. Rajattu riippumaton katselmus läpäisi. Seuraavaksi
-korjausrevision jäädytys ja säilytyksen todennus nykyisen paketin nimetystä kokeesta.
-Sen jälkeen tarvitaan hyväksytyn PR-headin normaalit portit ja uuden
-mainin omat tarkistukset. Tämä checkpoint ei hyväksy K:ta tai mergeä.
+kokonaisbudjettia. Rajattu riippumaton katselmus läpäisi.
+
+**Korjaus todennettu:** jäädytetty harness
+`35f55db1fbf5bdd54b92b08198d8ee3959316f5d` käytti samoja aiemmin
+varmennettuja `7df999b435515664f347e83bf977576247ad59be`-pakettitavuja
+[kokeessa 38438225924](https://github.com/eky-software/eky/actions/runs/38438225924).
+Pakollinen caller/verifier, palautusskenaario, business-aineiston säilyminen,
+prosessien ja tuotteiden poissaolo sekä fixture-poisto läpäisivät.
+Alkuperäisen 8 MiB:n rajan ylittävä koko MSI-loki säilyi ja vastasi
+säilytyskuittia. Salattu toimitus, kylmä purku, ajosidonta ja kaikkien 13
+säilyneen tiedoston tiivisteet varmennettiin.
+
+ETL ylitti edelleen oman rajansa ja jälkianalyysin `commandExport` hylättiin;
+niitä ei lasketa läpäisyiksi. Tämä korjaa todennetun MSI-lokin säilytysrajan,
+mutta ei nimeä alkuperäistä asennusodotuksen timeoutia korjatuksi.
+Seuraavaksi nykyinen lineaarinen korjausketju ja tämä checkpoint viedään
+PR-haaraan. Normaalit portit sekä riippuvuustarkistus vaaditaan sen
+täsmälliselle headille, ja mergen jälkeen uuden mainin omat tarkistukset.
+Tämä checkpoint ei vielä hyväksy K:ta tai mergeä.
 
 **Edellinen checkpoint:**
 
