@@ -119,8 +119,30 @@ raakaa testiaineistoa eivätkä saa yleistä koko jobin tulostekaappausta.
 | Native-komennot ja supervisorin sopimustestit | Nimetyt vaihe-, worker- ja caller-tulokset sekä olemassa olevat yksityiset prosessitulosteet. | Ei request/config-tiedostoja, profiileja tai tietokantoja. Siivouksen raakatulos säilyy erillään alkuperäisestä hylkäyksestä. Tarkoituksella lukemattoman putken koe säilyttää oman sopimuksensa. |
 | Historical-legacy-käynnistyksen syyote | Legacy-komennon `fixtureCleanup/legacy-startup-terminal.json`-tiedostosta vain varmennettu ajosidonta ja `startupEvidence`-projektio. | Nykyinen terminal-kirjoitus säilyttää otteen ennen profiilin poistoa. Ei koko operational-lokia, profiilia, tietokantaa tai terminalin muuta sisältöä. Syykoodit ja vaiheet eivät tule julkiseen testitulosteeseen. |
 | Synteettinen MSI-versiopolitiikan koe | Oman supervisor-testijuuren `policy-result.json` sekä numeroidut `source`, `target` ja `uninstall` -MSI-lokit muuttamattomina tavuina. | Vain suoraan testijuuren alla olevat nimet; ei descriptor-, request-, profiili- tai tietokantatiedostoja. Keskeytyneen MSI-komennon osittainen loki voidaan säilyttää ilman workerin lopputulosta. Samat koko-, linkki- ja muuttumattomuusrajat kuin muilla lähteillä. |
+| Synteettisen workspace-päivityksen kohdeasennin | Täsmällinen `target-installer.private.log` ja sen ajosidonnan, koon ja tiivisteen sisältävä säilytyskuitti. | Vain markerilla ja nykyisellä proof-konfiguraatiolla hyväksytty source-handoff; Microsoftin `/L*v`, ei globaalia lokitusta tai käyttöliittymätilan muutosta. Enintään 8 MiB salattuun pakettiin; rajaa suurempaa tiedostoa ei julkaista osittaisena. |
 | Packaged smoke | Rajattu prosessituloste ja nykyinen smoke-tulos. | Epäonnistuneen testin juurta ei poisteta; keräin ei lue sen profiilia. Tyhjentynyt tuloste ei todista onnistunutta käynnistystä. |
 | Muut komennot ja valmistelu | Nykyinen turvallinen GitHub-komentoloki. | Salattu keräys ei palauta tulostetta, jota aliohjelma ei tuottanut tai säilyttänyt. Riippuvuustyökalun raakavirheet jäävät erikseen rajatuiksi pois. |
+
+Workspace-kohdeasentimen lokipaikka varataan yksinomaan testin oman
+proof-juuren `result`-kansiosta. Tavallinen sovellus ei valitse lokipaikkaa.
+Nykyinen rajattu `fixtureCleanup` kopioi lokin caller-kansioon vasta
+omistetun prosessipuun poistumisen jälkeen, ennen testikansion poistamista.
+Caller-sidonta, invokaatio, alkuperäiset tavut ja säilytyskuitti varmennetaan
+uudelleen keräyksessä. Epävarma kopiointi säilyttää alkuperäisen testiaineiston;
+loki ei todista asennuksen tai siivouksen onnistumista. Historiallisessa
+testipaketissa lokin puuttuminen sallitaan erillisenä havaintona.
+Hallittu skenaarion katkaisu katetaan oikean prosessiketjun regressiolla.
+Jos koko runner lakkaa toimimasta ennen jälkivaiheita, paikallisesti säilynyt
+loki ei takaa salatun liitteen toimitusta. Raakalokia ei tulosteta eikä
+lähetetä salaamattomana edes toimitusvirheessä. MSI:n oma lokikirjoitus
+voi muuttaa ajoitusta, joten kokeen läpäisy ei yksin todista vanhaa timeoutia
+korjatuksi.
+
+Nykyisen workspace-työnkulun manuaalinen `artifact_only=true` valmistaa
+synteettisen paketin ja ajaa sen valmistelusopimukset ilman MSI-kuluttajia.
+Oletus on `false`, eikä reusable-työnkulku tarjoa tätä valintaa normaalille
+PR/main-hyväksynnälle. Pelkkä valmistelu ei ole palautuksen hyväksyntä;
+erikseen nimetty koe käyttää saman jäädytetyn revision pakettia ja sidontoja.
 
 K:n nimetyn `linux-inspection-sandbox-probe`-kertakokeen omistaja hyväksyi
 erikseen tarkistusajurin käännösvirheen rajatun poikkeuksen. Vain kyseisen
@@ -341,8 +363,13 @@ Git-tunnuksia tai tietokantoja. Symboliset linkit, uudelleenohjaukset ja
 hardlinkit hylätään. Tiedostojen määrä, yksittäiset koot ja yhteiskoko on
 rajattu. Puuttuva tiedosto merkitään `missing`-tilaan; muuttunut, liian suuri
 tai muuten varmentamatta jäänyt tiedosto saa yhteisen `unverified`-tilan.
-Nykyinen manifesti ei erota näitä hylkäyssyitä eikä säilytä hylätyn
-tiedoston kokoa. Tilaa ei saa tulkita todisteeksi juuri kokoylityksestä.
+Salauksen sisällä oleva `failureCode` erottaa nyt `sizeLimitExceeded`-,
+`pathRejected`-, `identityChanged`-, `sourceChanged`-, `writeIncomplete`-,
+`sourceMissing`-, `accessDenied`-, `storageFull`- ja `ioFailure`-havainnot.
+Tuntematon virhe on `unclassified`; natiivivirheen viestiä, pinoa, polkua tai
+muita ominaisuuksia ei kopioida. Hylätyn tiedoston tavuja tai kokoa ei lisätä
+pakettiin. Vanha manifesti ilman syykoodia ei osoita juuri kokoylitystä.
+Syytieto ei muuta tiedoston hyväksymisehtoa tai julkista yhteenvetoa.
 ETL otetaan mukaan vain varmennetun tallennuksen pysäytyksen jälkeen.
 Rajattu järjestelmäjälki voi silti sisältää arkaluonteisia komentorivejä
 tai istuntotietoja. Pelkkä tiedostorajaus ei puhdista niiden sisältöä;

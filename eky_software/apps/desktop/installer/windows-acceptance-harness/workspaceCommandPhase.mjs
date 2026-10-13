@@ -27,6 +27,7 @@ import { inspectLegacyInstallerFootprint } from './legacyUpgradeWindowsRuntime.m
 import { executeProductOperation } from './installerProductOperationWorker.mjs';
 import { acceptanceProductPair, acceptanceProductCleanup, validateAcceptanceProductFacts } from './acceptanceProductFacts.mjs';
 import { readAcceptanceCommandPhase, readCommandPhaseJson, hasExactPhaseKeys } from './acceptanceCommandPhaseInput.mjs';
+import { retainWorkspaceInstallerLog } from './workspaceInstallerLogEvidence.mjs';
 import commandBudgets from '../windows-process-supervisor/supervisorCommandBudgets.json' with { type: 'json' };
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
@@ -196,6 +197,10 @@ export async function executeWorkspaceCommandPhase(context, dependencies = {}) {
     const terminal = await terminalOutcome(context);
     await writeJsonAtomicExclusive(resolve(context.phaseRoot, 'terminal.json'), { binding: context.binding, terminal });
     if (state.safetyErrorCode === null && workspaceSuccessRunRootRemovable({ supervisorAttempted: true, terminal, productProcessAbsent: true })) {
+      const retained = await retainWorkspaceInstallerLog({ proofRoot: runContext(context).proofRoot,
+        resultPath: context.resultPath, binding: context.callerBinding,
+        processTreeAbsent: context.reports.scenario?.processTreeAbsent === true });
+      if (!retained) return 0;
       const info = await lstat(state.runRoot);
       if (!info.isDirectory() || info.isSymbolicLink() || await realpath(state.runRoot) !== state.runRoot) invalid();
       await (dependencies.removeFixture ?? ((root) => rm(root, { recursive: true })))(state.runRoot);

@@ -9,6 +9,7 @@ import { gunzipSync } from 'node:zlib';
 import { collectJobFailureEvidence, evidenceSourceKind, jobEvidenceBinding, jobEvidenceGit } from './ciFailureEvidence.mjs';
 import { projectPlaywrightFailureReport } from './playwrightFailureReport.mjs';
 import { LEGACY_STARTUP_TERMINAL_FILENAME } from './legacyStartupFailureEvidence.mjs';
+import { W6B2_INSTALLER_LOG_FILE, W6B2_INSTALLER_LOG_RECEIPT } from '../../src/main/w6b2PackagedInstallerLog.ts';
 
 const run = 'run-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const fingerprint = 'A'.repeat(40);
@@ -75,6 +76,41 @@ test('binding rejects missing attempts, invalid job names and unknown revisions'
     ['EKY_EVIDENCE_JOB_KEY', '../job'], ['GITHUB_JOB', 'job\nunsafe']]) {
     assert.throws(() => jobEvidenceBinding({ ...env, [field]: value }), /CI_FAILURE_EVIDENCE_UNVERIFIED/u);
   }
+});
+
+test('workspace target installer collection requires exact caller binding and matching retained bytes', async t => {
+  const { temp, env, put } = await fixture(t);
+  const prefix = `eky-workspace-caller-${nativeId}`;
+  const binding = { schemaVersion: 1, invocationId: nativeId, scenario: 'packagedWorkspaceFaultRollback',
+    faultScenario: 'passiveWorkspaceMigrationFailure', buildRevision: 'a'.repeat(40),
+    artifactDescriptorSha256: 'b'.repeat(64) };
+  const bytes = Buffer.from('synthetic MSI action before cancellation\n');
+  const receipt = { binding, status: 'retained', bytes: bytes.length,
+    sha256: createHash('sha256').update(bytes).digest('hex') };
+  await put(temp, `${prefix}/binding.json`, JSON.stringify(binding));
+  await put(temp, `${prefix}/${W6B2_INSTALLER_LOG_RECEIPT}`, JSON.stringify(receipt));
+  const source = await put(temp, `${prefix}/${W6B2_INSTALLER_LOG_FILE}`, bytes);
+  for (const path of [`${prefix}/profile/${W6B2_INSTALLER_LOG_FILE}`,
+    `${prefix}/other.private.log`, `${prefix}/${W6B2_INSTALLER_LOG_FILE}.bak`,
+    `eky-workspace-caller-invalid/${W6B2_INSTALLER_LOG_FILE}`]) {
+    assert.equal(evidenceSourceKind('temporary', path), null);
+    await put(temp, path, 'EXCLUDED');
+  }
+  const collected = await collectJobFailureEvidence({ ...env, EKY_EVIDENCE_JOB_OUTCOME: 'cancelled' });
+  const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+  assert.equal(archive.manifest.jobOutcome, 'cancelled');
+  assert.equal(archive.manifest.cleanup, 'notInferred');
+  assert.equal(archive.manifest.files.length, 2);
+  const entry = archive.manifest.files.find(file => file.source.endsWith('/' + W6B2_INSTALLER_LOG_FILE));
+  assert.equal(entry.status, 'retained');
+  assert.deepEqual(Buffer.from(archive.files[entry.name], 'base64'), bytes);
+  await writeFile(source, 'CHANGED');
+  const changed = await collectJobFailureEvidence(env);
+  const rejected = JSON.parse(gunzipSync(await readFile(changed.archivePath)));
+  const failed = rejected.manifest.files.find(file => file.source.endsWith('/' + W6B2_INSTALLER_LOG_FILE));
+  assert.equal(failed.status, 'unverified');
+  assert.equal(Object.hasOwn(rejected.files, failed.name), false);
+  assert.equal((await readFile(source, 'utf8')), 'CHANGED');
 });
 
 test('legacy collection admits only the bound cause projection from the existing cleanup terminal file', async t => {

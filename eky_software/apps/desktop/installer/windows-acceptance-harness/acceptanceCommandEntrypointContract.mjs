@@ -416,6 +416,16 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
           if (!succeeded) await assert.rejects(resultFile(
             'verify', resultPath, binding, completion.exitCode));
           if (succeeded) assert.equal(result.outcome.fixtureRemoved, true);
+          if (workspace && (succeeded || testCase === 'scenarioHold')) {
+            const { W6B2_INSTALLER_LOG_FILE, W6B2_INSTALLER_LOG_RECEIPT } =
+              await import('../../src/main/w6b2PackagedInstallerLog.ts');
+            const saved = JSON.parse(await readFile(join(dirname(resultPath), W6B2_INSTALLER_LOG_RECEIPT), 'utf8'));
+            assert.equal(saved.status, 'retained');
+            assert.deepEqual(saved.binding, binding);
+            assert.equal(await readFile(join(dirname(resultPath), W6B2_INSTALLER_LOG_FILE), 'utf8'),
+              'synthetic target MSI action before terminal\n');
+            assert.equal(result.outcome.fixtureRemoved, true);
+          }
           if (succeeded && kind === 'legacy') {
             const saved = JSON.parse(await readFile(join(commandRoot, 'fixtureCleanup', LEGACY_STARTUP_TERMINAL_FILENAME), 'utf8'));
             const evidence = projectLegacyStartupTerminalEvidence(saved).startupEvidence;

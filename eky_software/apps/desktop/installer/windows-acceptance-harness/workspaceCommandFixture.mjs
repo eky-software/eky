@@ -2,6 +2,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { WORKSPACE_SUCCESS_PHASES, workspaceSuccessResultPath, writeJsonAtomicExclusive } from './workspaceSuccessContracts.mjs';
 import { workspaceFaultPlan, workspaceFaultResultPath } from './workspaceFaultContracts.mjs';
+import { W6B2_INSTALLER_LOG_FILE } from '../../src/main/w6b2PackagedInstallerLog.ts';
 
 // Synthetic business/product facts injected into the real fixed command.
 // Process ownership, phase publication and command exit are never replaced.
@@ -50,9 +51,12 @@ export function workspaceCommandFixture(input, testCase, hold) {
         errorCode: failed ? 'commandFailed' : null, resultCleanup: 'completed' };
     },
     async runScenario([, requestPath]) {
+      const request = JSON.parse(await readFile(requestPath, 'utf8'));
+      const logRoot = resolve(dirname(requestPath), 'p', 'eky-w6b2', request.runNonce.slice(0, 32), 'result');
+      await mkdir(logRoot, { recursive: true });
+      await writeFile(resolve(logRoot, W6B2_INSTALLER_LOG_FILE), 'synthetic target MSI action before terminal\n');
       if (testCase === 'scenarioHold') hold();
       if (testCase === 'scenarioMissing') return 0;
-      const request = JSON.parse(await readFile(requestPath, 'utf8'));
       const failed = testCase === 'scenarioAndCleanupFailed';
       const phases = fault ? workspaceFaultPlan(request.faultScenario).phases : WORKSPACE_SUCCESS_PHASES;
       const result = { schemaVersion: 1, scenario: request.scenario, runNonce: request.runNonce,

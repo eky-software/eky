@@ -1,17 +1,62 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { link, mkdir, mkdtemp, open, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { link, mkdir, mkdtemp, open, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 import test from 'node:test';
-import { collectEvidence, deliveryProofBinding, encryptionFailureCode, evidenceBinding, prepareDeliveryProof, prepareEvidence } from './workspaceEncryptedEvidence.mjs';
+import { collectEvidence, deliveryProofBinding, encryptionFailureCode, evidenceBinding, prepareDeliveryProof, prepareEvidence, retain, retentionFailureCode } from './workspaceEncryptedEvidence.mjs';
 import encryptionFailureCodes from './encryptedEvidenceFailureCodes.json' with { type: 'json' };
 import { validateWorkspaceCallerResult } from './workspaceCallerResult.mjs';
+import { retainWorkspaceInstallerLog } from './workspaceInstallerLogEvidence.mjs';
+import { W6B2_INSTALLER_LOG_FILE, W6B2_INSTALLER_LOG_RECEIPT,
+  W6B2_INSTALLER_LOG_MAX_BYTES } from '../../src/main/w6b2PackagedInstallerLog.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+
+test('retention failure codes never copy native messages, paths or arbitrary properties', () => {
+  for (const [code, expected] of [['ENOENT', 'sourceMissing'], ['EACCES', 'accessDenied'],
+    ['EPERM', 'accessDenied'], ['ENOSPC', 'storageFull'], ['EIO', 'ioFailure'],
+    ['UNKNOWN PRIVATE CONTENT', 'unclassified'], [undefined, 'unclassified']]) {
+    const error = Object.assign(new Error('PRIVATE native message and path'), {
+      code, reason: 'PRIVATE injected reason', retentionCode: 'PRIVATE injected code',
+    });
+    assert.equal(retentionFailureCode(error), expected);
+  }
+  assert.equal(retentionFailureCode(null), 'unclassified');
+});
+
+test('retention distinguishes oversized input from a source changed during copying', async t => {
+  const f = await fixture(t);
+  const source = join(f.capture, 'capture.etl');
+  const bytes = Buffer.from('synthetic trace bytes');
+  await writeFile(source, bytes);
+  await assert.rejects(retain(f.env.RUNNER_TEMP, source, join(f.root, 'too-large'), bytes.length - 1), error => {
+    assert.equal(retentionFailureCode(error), 'sizeLimitExceeded');
+    return true;
+  });
+  const probe = await open(source, 'r');
+  const prototype = Object.getPrototypeOf(probe);
+  const read = prototype.read;
+  await probe.close();
+  let changed = false;
+  t.mock.method(prototype, 'read', async function (...args) {
+    const result = await read.apply(this, args);
+    if (!changed && result.bytesRead > 0) {
+      changed = true;
+      await writeFile(source, 'shorter');
+    }
+    return result;
+  });
+  await assert.rejects(retain(f.env.RUNNER_TEMP, source, join(f.root, 'changed'), 1024), error => {
+    assert.equal(retentionFailureCode(error), 'sourceChanged');
+    return true;
+  });
+  assert.equal(changed, true);
+  assert.equal(await readFile(source, 'utf8'), 'shorter');
+});
 
 test('encryption failure parsing accepts only a complete known line and separates helper startup', () => {
   for (const code of encryptionFailureCodes) {
@@ -47,6 +92,110 @@ async function fixture(t, overrides = {}) {
 }
 async function envelope(collected) {
   return JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+}
+
+async function installerLogFixture(t) {
+  const f = await fixture(t, { EKY_WORKSPACE_FAULT_SCENARIO: 'passiveWorkspaceMigrationFailure', EKY_TEST_OUTCOME: 'cancelled' });
+  const context = JSON.parse(await readFile(join(f.root, 'context.private.json'), 'utf8'));
+  const binding = { schemaVersion: 1, invocationId: context.invocationId,
+    scenario: context.binding.scenario, faultScenario: context.binding.faultScenario,
+    buildRevision: context.binding.buildRevision, artifactDescriptorSha256: context.binding.artifactDescriptorSha256 };
+  const proofRoot = join(f.env.RUNNER_TEMP, 'synthetic-proof');
+  await mkdir(join(proofRoot, 'result'), { recursive: true });
+  await writeFile(join(dirname(f.callerResultPath), 'binding.json'), JSON.stringify(binding));
+  return { ...f, proofRoot, binding, resultPath: f.callerResultPath, processTreeAbsent: true };
+}
+
+test('cancelled workspace preserves the native log before fixture removal and without a caller terminal', async t => {
+  const f = await installerLogFixture(t);
+  const bytes = Buffer.from('Action start: synthetic interrupted target installation\n');
+  await writeFile(join(f.proofRoot, 'result', W6B2_INSTALLER_LOG_FILE), bytes);
+  assert.equal(await retainWorkspaceInstallerLog(f), true);
+  await rm(f.proofRoot, { recursive: true });
+  const value = await envelope(await collectEvidence(f.env, f.root));
+  assert.deepEqual(Buffer.from(value.files[W6B2_INSTALLER_LOG_FILE], 'base64'), bytes);
+  const receipt = JSON.parse(Buffer.from(value.files[W6B2_INSTALLER_LOG_RECEIPT], 'base64'));
+  assert.deepEqual(receipt.binding, f.binding);
+  assert.equal(receipt.status, 'retained');
+  assert.equal(value.manifest.cleanup, 'unverified');
+  assert.equal(value.manifest.outcomes.test, 'cancelled');
+  assert.equal(value.manifest.files.find(entry => entry.name === 'caller-result.json').status, 'missing');
+});
+
+test('unverified process exit, foreign binding and oversized logs never authorize fixture removal', async t => {
+  const f = await installerLogFixture(t);
+  const source = join(f.proofRoot, 'result', W6B2_INSTALLER_LOG_FILE);
+  await writeFile(source, 'synthetic retained source');
+  assert.equal(await retainWorkspaceInstallerLog({ ...f, processTreeAbsent: false }), false);
+  await assert.rejects(readFile(join(dirname(f.resultPath), W6B2_INSTALLER_LOG_RECEIPT)), { code: 'ENOENT' });
+  await assert.rejects(retainWorkspaceInstallerLog({ ...f, binding: { ...f.binding, buildRevision: 'c'.repeat(40) } }));
+  const file = await open(source, 'r+');
+  try { await file.truncate(W6B2_INSTALLER_LOG_MAX_BYTES + 1); } finally { await file.close(); }
+  assert.equal(await retainWorkspaceInstallerLog(f), false);
+  const value = await envelope(await collectEvidence(f.env, f.root));
+  const receipt = JSON.parse(Buffer.from(value.files[W6B2_INSTALLER_LOG_RECEIPT], 'base64'));
+  assert.equal(receipt.failureCode, 'sizeLimitExceeded');
+  assert.equal(Object.hasOwn(value.files, W6B2_INSTALLER_LOG_FILE), false);
+  assert.equal((await open(source, 'r').then(async handle => { try { return await handle.stat(); } finally { await handle.close(); } })).size,
+    W6B2_INSTALLER_LOG_MAX_BYTES + 1);
+});
+
+test('a log disappearing during copying preserves its fixture instead of becoming historical missing', async t => {
+  const f = await installerLogFixture(t);
+  const source = join(f.proofRoot, 'result', W6B2_INSTALLER_LOG_FILE);
+  const moved = join(f.proofRoot, 'result', 'moved.private.log');
+  await writeFile(source, 'original synthetic native log');
+  const handle = await open(source, 'r');
+  const sourceIdentity = await handle.stat();
+  const prototype = Object.getPrototypeOf(handle);
+  const read = prototype.read;
+  await handle.close();
+  let changed = false;
+  t.mock.method(prototype, 'read', async function (...args) {
+    const result = await read.apply(this, args);
+    const identity = await this.stat();
+    if (!changed && result.bytesRead > 0 && identity.ino === sourceIdentity.ino && identity.dev === sourceIdentity.dev) {
+      changed = true;
+      await rename(source, moved);
+    }
+    return result;
+  });
+  assert.equal(await retainWorkspaceInstallerLog(f), false);
+  assert.equal(changed, true);
+  const receipt = JSON.parse(await readFile(join(dirname(f.resultPath), W6B2_INSTALLER_LOG_RECEIPT), 'utf8'));
+  assert.equal(receipt.status, 'unverified');
+  assert.equal(receipt.failureCode, 'sourceMissing');
+  assert.equal(await readFile(moved, 'utf8'), 'original synthetic native log');
+  const value = await envelope(await collectEvidence(f.env, f.root));
+  assert.equal(Object.hasOwn(value.files, W6B2_INSTALLER_LOG_FILE), false);
+});
+
+test('a historical package with no native log retains an explicit missing receipt', async t => {
+  const f = await installerLogFixture(t);
+  assert.equal(await retainWorkspaceInstallerLog(f), true);
+  const receipt = JSON.parse(await readFile(join(dirname(f.resultPath), W6B2_INSTALLER_LOG_RECEIPT), 'utf8'));
+  assert.equal(receipt.status, 'missing');
+  assert.equal(receipt.failureCode, 'sourceMissing');
+});
+
+for (const changed of ['bytes', 'binding', 'status']) {
+  test(`workspace collection rejects an untrusted saved installer log: ${changed}`, async t => {
+    const f = await installerLogFixture(t);
+    await writeFile(join(f.proofRoot, 'result', W6B2_INSTALLER_LOG_FILE), 'synthetic native log');
+    assert.equal(await retainWorkspaceInstallerLog(f), true);
+    const callerRoot = dirname(f.resultPath);
+    const receiptPath = join(callerRoot, W6B2_INSTALLER_LOG_RECEIPT);
+    const receipt = JSON.parse(await readFile(receiptPath, 'utf8'));
+    if (changed === 'bytes') await writeFile(join(callerRoot, W6B2_INSTALLER_LOG_FILE), 'changed native log');
+    else {
+      if (changed === 'binding') receipt.binding.invocationId = 'e'.repeat(32);
+      else receipt.status = 'unverified';
+      await writeFile(receiptPath, JSON.stringify(receipt));
+    }
+    const value = await envelope(await collectEvidence(f.env, f.root));
+    assert.equal(Object.hasOwn(value.files, W6B2_INSTALLER_LOG_FILE), false);
+    assert.equal(value.manifest.files.find(entry => entry.name === W6B2_INSTALLER_LOG_FILE).status, 'unverified');
+  });
 }
 
 function proofEnvironment(env) {
@@ -224,7 +373,9 @@ test('missing and oversized files are explicit and do not become complete eviden
   assert.equal(value.manifest.outcomes.analysis, 'unknown');
   assert.equal(value.manifest.cleanup, 'unverified');
   assert.equal(value.manifest.files.find(x => x.name === 'export-metadata.private.json').status, 'unverified');
+  assert.equal(value.manifest.files.find(x => x.name === 'export-metadata.private.json').failureCode, 'sizeLimitExceeded');
   assert.equal(value.manifest.files.find(x => x.name === 'caller-result.json').status, 'missing');
+  assert.equal(value.manifest.files.find(x => x.name === 'caller-result.json').failureCode, 'sourceMissing');
   assert.equal(Object.keys(value.files).length, 0);
 });
 
@@ -236,12 +387,14 @@ test('hardlinks and redirected directories cannot pull unrelated content into th
   await link(join(foreign, 'original'), join(f.capture, 'command-export.private.log'));
   let value = await envelope(await collectEvidence(f.env, f.root));
   assert.equal(value.manifest.files.find(x => x.name === 'command-export.private.log').status, 'unverified');
+  assert.equal(value.manifest.files.find(x => x.name === 'command-export.private.log').failureCode, 'pathRejected');
   const next = await prepareEvidence({ ...f.env, GITHUB_RUN_ATTEMPT: '2' });
   await rm(f.capture, { recursive: true });
   await writeFile(join(foreign, 'command-export.private.log'), 'excluded directory');
   await symlink(foreign, f.capture, 'junction');
   value = await envelope(await collectEvidence({ ...f.env, GITHUB_RUN_ATTEMPT: '2' }, next.root));
   assert.equal(value.manifest.files.find(x => x.name === 'command-export.private.log').status, 'unverified');
+  assert.equal(value.manifest.files.find(x => x.name === 'command-export.private.log').failureCode, 'pathRejected');
 });
 
 test('invalid bindings and unverified or secret key input are denied before enabling capture', async t => {

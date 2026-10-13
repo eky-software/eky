@@ -8,6 +8,19 @@ import test from 'node:test';
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const WORKFLOW = resolve(ROOT, '../../../../../.github/workflows/windows-acceptance-v2-workspace.yml');
 
+test('artifact-only preparation is explicit manual scope and cannot replace ordinary acceptance', async () => {
+  const source = await readFile(WORKFLOW, 'utf8');
+  const call = source.split('  workflow_call:')[1].split('  workflow_dispatch:')[0];
+  assert.doesNotMatch(call, /artifact_only/);
+  assert.match(source, /workflow_dispatch:\s+inputs:\s+artifact_only:\s+description: [^\n]+\s+type: boolean\s+default: false/);
+  const success = source.split('  workspace_consumer:')[1].split('  workspace_fault_consumer:')[0];
+  const fault = source.split('  workspace_fault_consumer:')[1];
+  assert.match(success, /if: github\.event_name != 'workflow_dispatch' \|\| inputs\.artifact_only != true/);
+  assert.ok(fault.includes("if: (github.event_name != 'workflow_dispatch' || inputs.artifact_only != true) && (inputs.risk_plan == '' || fromJSON(inputs.risk_plan).gates.workspaceFault)"));
+  const preparation = source.split('jobs:')[1].split('  workspace_consumer:')[0];
+  assert.doesNotMatch(preparation, /inputs\.artifact_only/);
+});
+
 test('V2.6 contract checkpoint is a bounded read-only-permission Windows job with pinned actions', async () => {
   const source = await readFile(WORKFLOW, 'utf8');
   assert.match(source, /contents: read/);

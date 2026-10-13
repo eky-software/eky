@@ -184,6 +184,47 @@ Uusi näyttö olisi Job-jäsenyyden suljettu havainto sekä juuri tämän
 skenaarion pysäytetty ja salattu ETL, ei vain samat odotusmerkinnät.
 Kokeen ja integraation tuloksia ei päätellä etukäteen tästä valtuudesta.
 
+**Nimetyn koerevision tulos:**
+`31026f0727566772afeec5171240c39d7cf008e6` valmisteltiin erilliselle
+koehaaralle. [Kertakoe 38409576802](https://github.com/eky-software/eky/actions/runs/38409576802)
+hylättiin valitun `passiveWorkspaceMigrationFailure`-tapauksen kohdeasennuksen
+odotuksessa nykyisellä aikarajalla. Odotuksen aikana uusi havainto luokitteli
+MSI-asiakkaan omistettuun Jobiin kuuluvaksi; se ei selitä, mitä asiakas odotti.
+Omistetun puun ja asennuksen siivous varmennettiin erikseen.
+
+Tallennus pysäytettiin, salattu liite toimitettiin ja sen palvelusidos,
+kylmä purku sekä kaikkien 11 säilyneen tiedoston tiivisteet varmennettiin.
+`capture.etl` jäi manifestissa `unverified`-tilaan eikä sen tavuja säilynyt
+liitteessä. Tämän tilan perusteella ei tiedetä, johtuiko poisjäänti koosta,
+tiedostoidentiteetistä, muutoksesta tai lukuvirheestä. Myös jälkianalyysin
+`commandExport`-vaihe hylättiin. Tallenteen pysäytys, toimitetun liitteen
+eheys, ETL:n puuttuminen ja asennusodotuksen hylkäys ovat erillisiä tuloksia.
+
+PR #303 säilyy vanhassa headissa ja hylättynä. Tarkka säilynyt MSI tarkistettiin
+avaamatta asennusta: paketissa ei ole omaa dialogitaulua tai sovellusta
+käynnistävää custom actionia. Tämä ei sulje pois Windows Installerin omaa
+virhe- tai tiedostonkäyttöikkunaa. Source-handoff käynnistää kohdeasentimen,
+mutta sen käynnistyskuittaus ei ole asennuksen valmistumisen todiste.
+Alkuperäinen asennusodotuksen syy on yhä avoin.
+
+Omistaja hyväksyi vain synteettisen source-handoffin kohdeasentimen
+Microsoft MSI -lokin, enintään 8 MiB:n salatun säilytyksen sekä yhden uuden
+nimetyn kokeen uudesta testipaketista. Nykyiseen keräimeen lisättiin myös
+suljetut säilytyksen hylkäysluokat; ne eivät paljasta raakavirhettä tai
+ratkaise aiemman puuttuvan ETL:n syytä. [Omistava sopimus](ci-encrypted-evidence.md#testiperheiden-virheaineisto)
+erottaa lokin, prosessipuun ja siivouksen todisteet.
+
+Tavallisen handoffin argumentit ja käyttöliittymätila säilyvät. Rajattu
+synteettinen käynnistys, oikea salaus/purku ja prosessiketjun hallittu
+katkaisu on todennettu erillisinä kohdesarjoina. Katselmuksessa löydetty
+kopioinnin aikaisen katoamisen käsittely korjattiin ja sen regressio läpäisi:
+epävarma kopio ei anna lupaa alkuperäisen fixturen poistoon.
+Seuraava portti on katselmoitu puhdas revisio, pelkkä synteettisen paketin
+valmistelu ja yksi `passiveWorkspaceMigrationFailure`-koe sen samoilla
+pakettisidonnoilla. Normaaleja PR-portteja tai mergeä ei ole vielä tehty.
+Koetta ei hyväksytä vanhan timeoutin korjaukseksi pelkän läpäisyn perusteella.
+Tietoturva-, sisältö-, aika- ja hyväksyntärajat säilyvät.
+
 **Edellinen checkpoint:**
 
 Headin `75e728ff4e8078f1013574c349c953c76169cf93`

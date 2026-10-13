@@ -189,6 +189,7 @@ import {
   StartupRecoveryAuthorityConflictError,
 } from '../update/startupRecoveryAuthority.js';
 import { launchWindowsInstallerForUpdate } from '../update/windowsInstallerHandoff.js';
+import { prepareW6b2PackagedInstallerLog } from './w6b2PackagedInstallerLog.js';
 import { launchWindowsInstallerRollback } from '../update/windowsInstallerRollbackHandoff.js';
 import { createUpdateRecoveryComposition } from '../update/recoveryWindow/updateRecoveryComposition.js';
 import {
@@ -2645,9 +2646,13 @@ async function startDesktopCompositionRuntime({
       journalStore: updateJournalStore,
       maintenanceLease: workspaceMaintenanceLease,
       async launchInstaller(candidate) {
+        const testLogPath = await prepareW6b2PackagedInstallerLog(
+          options.w6b2PackagedProof?.configuration,
+        );
         await launchWindowsInstallerForUpdate({
           packagePath: candidate.packagePath,
           systemRoot: process.env.SystemRoot,
+          ...(testLogPath === undefined ? {} : { testLogPath }),
         });
         options.quitApplication();
       },

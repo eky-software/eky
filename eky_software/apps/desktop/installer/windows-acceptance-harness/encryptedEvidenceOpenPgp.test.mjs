@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { appendFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +12,8 @@ import { collectJobFailureEvidence } from './ciFailureEvidence.mjs';
 import { readLegacyOriginalExceptionEvidence } from './legacyOriginalExceptionEvidence.mjs';
 import { LEGACY_STARTUP_TERMINAL_FILENAME } from './legacyStartupFailureEvidence.mjs';
 import { startupExceptionDirectory, STARTUP_EXCEPTION_CONTROL } from '../../src/main/startupExceptionEvidence.ts';
+import { retainWorkspaceInstallerLog } from './workspaceInstallerLogEvidence.mjs';
+import { W6B2_INSTALLER_LOG_FILE } from '../../src/main/w6b2PackagedInstallerLog.ts';
 
 const SCRIPT = fileURLToPath(new URL('./encryptedEvidenceOpenPgp.ps1', import.meta.url));
 const ROOT = resolve(dirname(SCRIPT), '../../../..');
@@ -180,19 +182,40 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
         EKY_ARTIFACT_OUTCOME: faultScenario ? 'skipped' : 'success', EKY_CAPTURE_START_OUTCOME: 'success',
         EKY_CAPTURE_STOP_OUTCOME: 'success', EKY_ANALYSIS_OUTCOME: faultScenario ? 'skipped' : 'failure' };
       const prepared = await prepareEvidence(env);
+      const context = JSON.parse(await readFile(join(prepared.root, 'context.private.json'), 'utf8'));
+      const callerBinding = { schemaVersion: 1, invocationId: context.invocationId,
+        scenario: context.binding.scenario, faultScenario: faultScenario || null,
+        buildRevision: env.EXPECTED_BUILD_REVISION, artifactDescriptorSha256: env.EXPECTED_DESCRIPTOR_SHA256 };
+      await mkdir(dirname(prepared.callerResultPath));
+      await writeFile(join(dirname(prepared.callerResultPath), 'binding.json'), JSON.stringify(callerBinding));
+      const proofRoot = await mkdtemp(join(tmpdir(), 'eky-msi-log-'));
+      await mkdir(join(proofRoot, 'result'), { recursive: true });
+      const nativeLog = Buffer.from('synthetic original MSI action before termination\n');
+      await writeFile(join(proofRoot, 'result', W6B2_INSTALLER_LOG_FILE), nativeLog);
+      assert.equal(await retainWorkspaceInstallerLog({ proofRoot, resultPath: prepared.callerResultPath,
+        binding: callerBinding, processTreeAbsent: true }), true);
+      await rm(proofRoot, { recursive: true });
       const capture = join(temp, 'eky-inspector-capture');
       await mkdir(capture);
       const trace = Buffer.alloc(131_077, 0x89);
       await writeFile(join(capture, 'stopped'), '');
       await writeFile(join(capture, 'capture.etl'), trace);
+      const oversized = await open(join(capture, 'export-metadata.private.json'), 'wx');
+      try { await oversized.truncate(1024 * 1024 + 1); } finally { await oversized.close(); }
       const collected = await collectEvidence(env, prepared.root);
       await encryptArchive(prepared.root, collected);
       const decrypted = await invokeGpg(recipient.home, ['--decrypt', join(prepared.root, 'evidence.json.gz.gpg')]);
       const value = JSON.parse(gunzipSync(decrypted.stdout));
+      assert.deepEqual(Buffer.from(value.files[W6B2_INSTALLER_LOG_FILE], 'base64'), nativeLog);
       assert.equal(Buffer.from(value.files['capture.etl'], 'base64').equals(trace), true);
       const entry = value.manifest.files.find((file) => file.name === 'capture.etl');
       assert.equal(entry.sha256, createHash('sha256').update(trace).digest('hex'));
       assert.equal(entry.bytes, trace.length);
+      assert.deepEqual(value.manifest.files.find(file => file.name === 'export-metadata.private.json'), {
+        name: 'export-metadata.private.json', status: 'unverified', failureCode: 'sizeLimitExceeded',
+      });
+      assert.equal(Object.hasOwn(value.files, 'export-metadata.private.json'), false);
+      assert.equal(value.manifest.files.find(file => file.name === 'caller-result.json').failureCode, 'sourceMissing');
       assert.equal(value.manifest.captureClosed, true);
       assert.equal(value.manifest.outcomes.test, env.EKY_TEST_OUTCOME);
       assert.equal(value.manifest.outcomes.artifact, env.EKY_ARTIFACT_OUTCOME);

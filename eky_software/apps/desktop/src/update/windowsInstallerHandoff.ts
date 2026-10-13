@@ -8,6 +8,8 @@ type SpawnProcess = typeof spawn;
 export interface WindowsInstallerHandoffInput {
   packagePath: string;
   systemRoot: string | undefined;
+  /** Only the private, marker-validated packaged test supplies this path. */
+  testLogPath?: string;
 }
 
 export class WindowsInstallerHandoffError extends Error {
@@ -26,9 +28,15 @@ export function launchWindowsInstallerForUpdate(
       input.systemRoot,
     );
     assertSafePackagePath(input.packagePath);
+    if (input.testLogPath !== undefined && (
+      input.testLogPath.includes('\0') || !win32.isAbsolute(input.testLogPath) ||
+      win32.resolve(input.testLogPath) !== input.testLogPath ||
+      !input.testLogPath.endsWith('.private.log')
+    )) throw new WindowsInstallerHandoffError();
     const processHandle = spawnProcess(
       executablePath,
-      ['/i', input.packagePath, '/norestart'],
+      ['/i', input.packagePath, '/norestart',
+        ...(input.testLogPath === undefined ? [] : ['/L*v', input.testLogPath])],
       {
         detached: true,
         shell: false,
