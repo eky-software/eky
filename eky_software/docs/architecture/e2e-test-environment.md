@@ -195,6 +195,19 @@ backend-/web-/desktop-buildien ja täsmäversion Electron-valmistelun jälkeen.
 Komento- ja vaihepeittotestit vaativat tämän kytkennän; pelkkä komennon
 olemassaolo tai paikallinen sopimustesti ei ole Linux-hyväksyntä.
 
+Komento käyttää `linuxSandboxProbe.mjs`-koordinaattoria, joka kutsuu nykyistä
+`runLinuxProfileInspectionProof.mjs`-tarkistusketjua täsmälleen kerran.
+Koordinaattori varmentaa käyttöjärjestelmän sandbox-esiehdon, lataa vain
+manifestista ratkaistuun täsmälliseen Electron-tiedostoon sidotun
+operaatiokohtaisen AppArmor-profiilin ja poistaa sen identiteettiin sidotusti
+myös virheessä tai hallitussa keskeytyksessä. Erillinen kontrolli sekä
+globaalin asetuksen ja binääritavujen vertailu varmentavat poikkeuksen rajauksen.
+Sandboxia, setuid-oikeuksia, `NoNewPrivs`-suojaa tai capability-rajoja ei
+lievennetä. Puuttuva esiehto tai varmentamaton siivous hylkää ajon.
+Valmistelun PATH sisältää vain nykyisen Node-ajurin hakemiston sekä kiinteät
+järjestelmähakemistot; omistetun työkuorman ympäristö ei muutu.
+Kertakokeen erillinen CI-käynnistin ei jää rinnakkaiseksi normaaliksi portiksi.
+
 Kiinteä `profileInspection`-profiili sallii vain nimetyn hostin ja nykyisestä
 desktop-manifestista tarkistetun Electronin. Nykyisen omistajan sisällä
 käynnistyvä Xvfb tarjoaa näytön; puuttuva `xvfb-run`, `Xvfb` tai `xauth`

@@ -10,6 +10,7 @@ import { promisify } from 'node:util';
 import { childEnvironment, exactKeys } from '../../../e2e/experiments/processOwnership/pidNamespaceContract.mjs';
 import { guardLinuxService } from '../../../e2e/experiments/processOwnership/linuxServiceContract.mjs';
 import { resolveLinuxInspectionElectron } from '../../../e2e/experiments/processOwnership/linuxServiceConfiguration.mjs';
+import { inspectionSandboxProbeBinding } from './linuxProfileInspectionContract.mjs';
 
 const repository = fileURLToPath(new URL('../../../../', import.meta.url)).replace(/\/$/u, '');
 const script = fileURLToPath(import.meta.url);
@@ -24,13 +25,15 @@ const fileCauses = new Set(['ENOENT', 'EACCES', 'EPERM', 'EEXIST', 'ELOOP']);
 const profileTokenPattern = /^[a-f0-9]{32}$/u;
 const profileCommandMilliseconds = 2000;
 
-export function sandboxInspectionEnvironment(node) {
+export function sandboxInspectionEnvironment(node, nativeEvidence = false) {
   assert.ok(typeof node === 'string' && node.length < 2048 &&
     /^\/[A-Za-z0-9_./@+()-]+$/u.test(node) && posix.normalize(node) === node &&
-    posix.basename(node) === 'node');
+    posix.basename(node) === 'node' && typeof nativeEvidence === 'boolean');
   return { ...childEnvironment(), PATH: `${posix.dirname(node)}:/usr/bin:/bin`,
-    EKY_INSPECTION_BUILD_FAILURE_EVIDENCE: 'sandboxProbe' };
+    ...(nativeEvidence ? { EKY_INSPECTION_BUILD_FAILURE_EVIDENCE: 'sandboxProbe' } : {}) };
 }
+
+export function sandboxNativeEvidenceForJob(job) { return job === inspectionSandboxProbeBinding.job; }
 
 export function sandboxProfileCommand(node, entry, mode, token, receipt) {
   assert.ok(['--install-profile', '--remove-profile'].includes(mode));
@@ -239,7 +242,7 @@ export async function runSandboxProbe() {
     phase = 'inspection';
     const proof = await command(process.execPath,
       [join(repository, 'apps/desktop/scripts/profileInspection/runLinuxProfileInspectionProof.mjs')], 600_000,
-      cancellation.signal, sandboxInspectionEnvironment(process.execPath));
+      cancellation.signal, sandboxInspectionEnvironment(process.execPath, sandboxNativeEvidenceForJob(process.env.GITHUB_JOB)));
     const rows = proof.stdout.trim().split('\n').map(line => JSON.parse(line));
     assert.equal(rows.length, 3);
     for (const [index, variant] of ['current', 'schemaChanged', 'missingNative'].entries()) {

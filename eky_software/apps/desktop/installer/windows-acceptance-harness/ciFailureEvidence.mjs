@@ -11,6 +11,7 @@ import commandBudgets from '../windows-process-supervisor/supervisorCommandBudge
 import { projectPlaywrightFailureReport } from './playwrightFailureReport.mjs';
 import { LEGACY_STARTUP_TERMINAL_FILENAME, projectLegacyStartupTerminalEvidence } from './legacyStartupFailureEvidence.mjs';
 import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
+import { inspectionSandboxProbeBinding } from '../../scripts/profileInspection/linuxProfileInspectionContract.mjs';
 
 const MiB = 1024 * 1024;
 const MAX_FILE = 8 * MiB;
@@ -68,7 +69,7 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
     cleanup: 'notInferred', unresolvedEvidenceHold: true,
     publicCommandLog: 'githubWorkflowLog', files: [], sources: [],
     exclusions: ['databases', 'profiles', 'environment', 'configuration', 'unreviewedTraces', 'memoryDumps', 'dependencyToolRawOutput'] };
-  if (binding.job === 'linux-inspection-sandbox-probe' && binding.jobKey === 'k-linux-sandbox-probe') {
+  if (binding.job === inspectionSandboxProbeBinding.job && binding.jobKey === inspectionSandboxProbeBinding.jobKey) {
     manifest.approvedExceptions = ['boundedNativeBuildFailure'];
     manifest.exclusions = manifest.exclusions.map(value => value === 'dependencyToolRawOutput'
       ? 'unapprovedDependencyToolRawOutput' : value);

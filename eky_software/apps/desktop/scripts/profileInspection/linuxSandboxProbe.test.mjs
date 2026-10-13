@@ -5,7 +5,7 @@ import { EventEmitter } from 'node:events';
 import { execFileSync } from 'node:child_process';
 import { sandboxProbeProfile, parseNamespaceProbe, confirmsAppArmorRestriction, safeProfileFailure,
   parseProfileCreated, readProfileFailure, sandboxProfileCommand, probeCancellation,
-  finishSandboxProbe, sandboxInspectionEnvironment } from './linuxSandboxProbe.mjs';
+  finishSandboxProbe, sandboxInspectionEnvironment, sandboxNativeEvidenceForJob } from './linuxSandboxProbe.mjs';
 
 const token = 'a'.repeat(32);
 const executable = '/home/runner/work/project/project/eky_software/node_modules/.pnpm/electron@43.7.6/node_modules/electron/dist/electron';
@@ -58,7 +58,7 @@ test('experiment leaves the normal Linux service launch unchanged', async () => 
   assert.ok(source.includes("--skip-cache"));
   assert.ok(source.includes("--remove"));
   assert.ok(source.includes("runLinuxProfileInspectionProof.mjs"));
-  assert.ok(source.includes('cancellation.signal, sandboxInspectionEnvironment(process.execPath)'));
+  assert.ok(source.includes('sandboxInspectionEnvironment(process.execPath, sandboxNativeEvidenceForJob(process.env.GITHUB_JOB))'));
   assert.doesNotMatch(source, /--no-sandbox|4755|sysctl.*(?:-w|write)/u);
 });
 
@@ -109,13 +109,25 @@ test('root helper receives only fixed CI guards across sudo env_reset', () => {
 
 test('inspection preparation resolves the selected Node without inherited environment hooks', () => {
   const node = '/opt/hostedtoolcache/node/24.19.0/x64/bin/node';
-  assert.deepEqual(sandboxInspectionEnvironment(node), { EKY_E2E: '1', CI: 'true',
+  assert.deepEqual(sandboxInspectionEnvironment(node, true), { EKY_E2E: '1', CI: 'true',
     GITHUB_ACTIONS: 'true', PATH: '/opt/hostedtoolcache/node/24.19.0/x64/bin:/usr/bin:/bin',
     LANG: 'C', LC_ALL: 'C', EKY_INSPECTION_BUILD_FAILURE_EVIDENCE: 'sandboxProbe' });
   for (const invalid of ['node', '/approved/../node', '/approved//node', '/approved/node\n',
     '/approved:other/node', '/approved/node.exe', '/approved/node\0', '/approved path/node']) {
     assert.throws(() => sandboxInspectionEnvironment(invalid));
   }
+});
+
+test('ordinary CI never enables the native raw-evidence experiment exception', () => {
+  const node = '/opt/hostedtoolcache/node/24.19.0/x64/bin/node';
+  for (const job of ['verify', 'other', undefined, '', 'linux-inspection-sandbox-probe\n']) {
+    assert.equal(sandboxNativeEvidenceForJob(job), false);
+    assert.equal(Object.hasOwn(sandboxInspectionEnvironment(node, sandboxNativeEvidenceForJob(job)),
+      'EKY_INSPECTION_BUILD_FAILURE_EVIDENCE'), false);
+  }
+  assert.equal(sandboxNativeEvidenceForJob('linux-inspection-sandbox-probe'), true);
+  assert.equal(Object.hasOwn(sandboxInspectionEnvironment(node), 'EKY_INSPECTION_BUILD_FAILURE_EVIDENCE'), false);
+  for (const invalid of ['true', 1, null, {}]) assert.throws(() => sandboxInspectionEnvironment(node, invalid));
 });
 
 test('Linux preparation launches the same actual Node through its restricted PATH', {

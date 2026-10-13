@@ -71,7 +71,7 @@ hyväksyntä eivät ole sama asia. Uutta ajoa ei käynnistetty tämän havainnon
 
 ### K:n ensimmäisen PR-kierroksen jatko
 
-**Uusin checkpoint:** korjausrevision
+**Uusin normaali PR-checkpoint:** korjausrevision
 `b0daaaf662785f7ce20f7f86d47e6b2cd2b1fe77`
 [V2-kierros](https://github.com/eky-software/eky/actions/runs/38332004647)
 valmistui hylättynä: 31 jobia läpäisi, seitsemän hylättiin ja kuusi
@@ -129,10 +129,42 @@ kylmäpalautus. Paketin lähdeidentiteetti, sisältörajat, natiivikirjasto ja
 kaikkien pakettitavujen säilyminen tarkistettiin. Työtilan tyyppitarkistus
 ja omistavien dokumenttien linkkitarkistus läpäisivät.
 
-Linuxin alustaoikeuksien päätös on edelleen avoin. Korjausrevisiota ei
-vielä pushattu eikä uutta CI-kierrosta aloitettu. Kohde- ja pakettinäyttö
+Linuxin rajattu kertakoe hyväksyttiin ja ajettiin erillisellä diagnostisella
+revisiolla `820d33e42ab4c3c4943edf7ede46770d3402a1a8`.
+[Kertakoe](https://github.com/eky-software/eky/actions/runs/38358946711)
+todensi nimetyn sandbox-edellytyksen sekä rajatun profiilin latauksen ja
+poiston. Se hylättiin kuitenkin tarkistusajurin käännösvalmistelussa koodilla
+`PROFILE_INSPECTION_NATIVE_BUILD_FAILED`, ennen varsinaisia Electronin
+tarkistustapauksia. Salatun virhepaketin sidonta ja molempien säilytettyjen
+tiedostojen eheys varmennettiin; käännöksen tarkempi alkuperäinen loki ei
+kuulunut nykyiseen keräysrajaukseen. Käännösvian syytä tai alkuperäisen
+sandbox-hylkäyksen korjausta ei vielä väitetä todistetuksi.
+
+Seuraava rajaus kohdistuu tähän valmistelupuutteeseen. Kertakoe ei anna lupaa
+uuteen ajoon tai tavallisen CI:n suojausasetusten muuttamiseen. K:n
+korjausrevisiota ei vielä pushattu eikä uutta normaalia PR-kierrosta aloitettu.
+Kohde- ja pakettinäyttö
 eivät korvaa Linuxia, paketoituja installer-workspace-kuluttajia, uuden
 revision PR-portteja tai mergen jälkeisiä main-portteja. K pysyy avoimena.
+
+**Linuxin korjattu kohdenäyttö ja hyväksytty CI-kytkentä:**
+[Kertakoe 38363380159](https://github.com/eky-software/eky/actions/runs/38363380159)
+läpäisi revisiolla `a7895d177be81dd9e741baa267438262e6cbc60d` ilman uusintaa.
+Valmistelun nykyisen Noden polku säilyy myös GYP:n sisäisissä kutsuissa.
+Kolme oikeaa tarkistustapausta, prosessipuun poistuminen, erillinen
+sandbox-kontrolli, globaalin suojan ja binääritavujen säilyminen sekä rajatun
+profiilin siivous läpäisivät. Viisi valitsematta jätettyä tavallista jobia
+eivät ole läpäisyjä. Käännösvirheen tarkempi salattu keräys on kohdetodennettu,
+mutta onnistunut ajo ei tuota virhepakettia eikä todista vanhan käännösvirheen
+kaikkia syitä jälkikäteen.
+
+Omistaja hyväksyi saman rajatun esivaatimusketjun kytkemisen nykyiseen
+Linux-komentoon sekä yhden normaalin PR-kierroksen. Tarkistusketju ajetaan
+vain kerran; testien aikarajat ja T3:n prosessiomistajuus säilyvät.
+Kertakokeen raakalokipoikkeus ei kytkeydy tavallisiin CI-jobeihin, ja
+väliaikainen kokeen CI-käynnistin poistetaan. K:n Windows-korjausketju ja
+kokeen korjaukset säilyvät lineaarisessa historiassa. Täsmällisen uuden
+PR-revision ja mergen jälkeisen mainin normaali hyväksyntä on edelleen avoin.
 
 [PR #303:n](https://github.com/eky-software/eky/pull/303) ensimmäinen
 [V2-kierros](https://github.com/eky-software/eky/actions/runs/38329010187)
@@ -1201,7 +1233,8 @@ on lisätty vain varmuuskopion tarkistukseen rajattu `profileInspection`-hosti
 backend-, Vite- ja Chromium-profiilien rinnalle. Omistaja hyväksyi rajatun
 kytkennän ja testit 12.10.2026. Käynnistys-, tulos-, siivous- ja
 ajokytkentäsopimusten kohdetestit läpäisivät; varsinainen Linux-Electron- ja
-CI-todennus on edelleen avoin. Electron-käyttäjäpolut ovat Windows-only.
+normaalien PR/main-porttien hyväksyntä on edelleen avoin; yllä nimetty
+erillinen Linux-Electron-kertakoe läpäisi. Electron-käyttäjäpolut ovat Windows-only.
 Linux-käyttäjäpolkuja
 ei laajenneta, uutta supervisoria ei rakenneta eikä sandboxia tai prosessipuun
 poistumisen vaatimusta ohiteta. Puuttuvat järjestelmätyökalut eivät saa johtaa
@@ -1226,7 +1259,8 @@ työprosessilta erikseen; onnistunut tulostiedosto ei ohita myöhempää
 epänormaalia poistumista. Katselmuksessa korjattiin puuttuvan ajurin
 fixturen hakemistoraja, tämä poistumistodiste sekä valmistelun turvallisen
 ensisyyn säilyminen. Rajatut sopimus-, kytkentä- ja tyyppitarkistukset
-läpäisivät, mutta oikean Linux-Electron-ajon hyväksyntä on yhä avoin.
+läpäisivät. Yllä nimetty oikean Linux-Electron-ajon kohdenäyttö läpäisi,
+mutta normaalin PR/main-integraation hyväksyntä on yhä avoin.
 Kohdetestien mockit eivät korvaa tätä oikeaa prosessinäyttöä. Kolme tapausta
 eivät myöskään yksin kata historiallisia formaatteja, muistirajaa tai hardened
 Windows -palautusporttia.

@@ -50,6 +50,7 @@ const REQUIRED_FILES = [
   ['e2e/workspaceProofReservation.test.ts', 'vitest'],
   ['scripts/test-command-wiring.test.mjs', 'node'],
   ['scripts/profileInspection/linuxProfileInspection.test.mjs', 'node'],
+  ['scripts/profileInspection/linuxSandboxProbe.test.mjs', 'node'],
   ['scripts/backendBuildMetadata.test.mjs', 'node'],
   ['scripts/prepare-electron-e2e-backend.test.mjs', 'node'],
   ...[
@@ -79,6 +80,14 @@ test('approved inspection source controls remain in the ordinary recursive test 
   assert.equal(root.scripts.test, 'pnpm --recursive test');
   assert.equal(backend.scripts.test, 'node --test scripts/build-profile-inspection-native.test.mjs && vitest run src e2e');
   assert.equal((await lstat(new URL('../../backend/scripts/build-profile-inspection-native.test.mjs', import.meta.url))).isFile(), true);
+});
+
+test('ordinary Linux inspection uses one scoped sandbox proof around the existing inspection caller', async () => {
+  const desktop = JSON.parse(await readFile(new URL('package.json', DESKTOP_ROOT), 'utf8'));
+  assert.equal(desktop.scripts['inspection:proof:linux'], 'node scripts/profileInspection/linuxSandboxProbe.mjs');
+  const source = await readFile(new URL('scripts/profileInspection/linuxSandboxProbe.mjs', DESKTOP_ROOT), 'utf8');
+  assert.equal(source.split("[join(repository, 'apps/desktop/scripts/profileInspection/runLinuxProfileInspectionProof.mjs')]").length, 2);
+  assert.match(source, /sandboxNativeEvidenceForJob\(process\.env\.GITHUB_JOB\)/u);
 });
 
 test('startup exception exit proof uses the existing compiled owner and explicit opt-in failure wait', async () => {
@@ -134,7 +143,7 @@ function testFiles(command, prefix, extension) {
 function assertPackageWiring({ root, desktop, files }) {
   assert.equal(root.scripts.test, 'pnpm --recursive test');
   assert.equal(desktop.name, '@eky/desktop');
-  assert.equal(desktop.scripts['inspection:proof:linux'], 'node scripts/profileInspection/runLinuxProfileInspectionProof.mjs');
+  assert.equal(desktop.scripts['inspection:proof:linux'], 'node scripts/profileInspection/linuxSandboxProbe.mjs');
   const ordinary = commandChain(desktop.scripts.test, 2);
   const unit = commandChain(desktop.scripts['installer:test:unit'], 1);
   const process = commandChain(desktop.scripts['installer:test:windows-process'], 2);
@@ -280,6 +289,12 @@ for (const group of Object.keys(COMMANDS)) {
 for (const [name, change] of [
   ['root recursive call missing', (f) => { delete f.root.scripts.test; }],
   ['root recursion removed', (f) => { f.root.scripts.test = 'pnpm test'; }],
+  ['inspection sandbox coordinator bypassed', (f) => {
+    f.desktop.scripts['inspection:proof:linux'] = 'node scripts/profileInspection/runLinuxProfileInspectionProof.mjs';
+  }],
+  ['inspection proof duplicated', (f) => {
+    f.desktop.scripts['inspection:proof:linux'] += ' && node scripts/profileInspection/runLinuxProfileInspectionProof.mjs';
+  }],
   ...['test', 'installer:test:unit', 'installer:test:windows-process', 'installer:supervisor:build']
     .map((name) => [`script missing: ${name}`, (f) => { delete f.desktop.scripts[name]; }]),
   ['serial flag missing', (f) => editCommand(f, 'process', (s) => s.replace(' --test-concurrency=1', ''))],

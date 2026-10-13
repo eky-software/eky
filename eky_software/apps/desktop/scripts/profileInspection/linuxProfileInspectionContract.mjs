@@ -4,6 +4,9 @@ import { linuxProfileInspectionPaths, servicePath } from '../../../e2e/experimen
 
 export const inspectionProofVariants = Object.freeze(['current', 'schemaChanged', 'missingNative']);
 export const inspectionProofMaximumBytes = 65_536;
+export const inspectionSandboxProbeBinding = Object.freeze({
+  job: 'linux-inspection-sandbox-probe', jobKey: 'k-linux-sandbox-probe',
+});
 const preparationCauses = new Set(['PROFILE_INSPECTION_NATIVE_TOOLCHAIN_INVALID',
   'PROFILE_INSPECTION_NATIVE_SOURCE_INVALID', 'PROFILE_INSPECTION_NATIVE_BUILD_FAILED',
   'PROFILE_INSPECTION_PROTOCOL_INVALID', 'LINUX_PROFILE_INSPECTION_PROOF_INVALID']);
