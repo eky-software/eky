@@ -71,7 +71,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Check bounded experiment contracts
-        run: node --test apps/desktop/scripts/profileInspection/linuxSandboxProbe.test.mjs
+        run: node --test apps/desktop/scripts/profileInspection/linuxSandboxProbe.test.mjs apps/desktop/scripts/profileInspection/linuxProfileInspection.test.mjs apps/desktop/installer/windows-acceptance-harness/ciFailureEvidence.test.mjs
       - name: Build permissions
         run: pnpm --filter @eky/permissions build
       - name: Build auth

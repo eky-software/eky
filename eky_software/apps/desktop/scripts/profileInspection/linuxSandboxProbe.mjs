@@ -24,6 +24,14 @@ const fileCauses = new Set(['ENOENT', 'EACCES', 'EPERM', 'EEXIST', 'ELOOP']);
 const profileTokenPattern = /^[a-f0-9]{32}$/u;
 const profileCommandMilliseconds = 2000;
 
+export function sandboxInspectionEnvironment(node) {
+  assert.ok(typeof node === 'string' && node.length < 2048 &&
+    /^\/[A-Za-z0-9_./@+()-]+$/u.test(node) && posix.normalize(node) === node &&
+    posix.basename(node) === 'node');
+  return { ...childEnvironment(), PATH: `${posix.dirname(node)}:/usr/bin:/bin`,
+    EKY_INSPECTION_BUILD_FAILURE_EVIDENCE: 'sandboxProbe' };
+}
+
 export function sandboxProfileCommand(node, entry, mode, token, receipt) {
   assert.ok(['--install-profile', '--remove-profile'].includes(mode));
   assert.match(token, profileTokenPattern);
@@ -104,8 +112,8 @@ export function confirmsAppArmorRestriction(text, pid) {
       (line.includes('apparmor="AUDIT"') && line.includes('target="unprivileged_userns"'))));
 }
 
-async function command(file, args, timeout = 10_000, signal) {
-  return execute(file, args, { cwd: repository, env: childEnvironment(),
+async function command(file, args, timeout = 10_000, signal, environment = childEnvironment()) {
+  return execute(file, args, { cwd: repository, env: environment,
     timeout, maxBuffer: maximumOutput, encoding: 'utf8', windowsHide: true, ...(signal ? { signal } : {}) });
 }
 
@@ -230,7 +238,8 @@ export async function runSandboxProbe() {
     }
     phase = 'inspection';
     const proof = await command(process.execPath,
-      [join(repository, 'apps/desktop/scripts/profileInspection/runLinuxProfileInspectionProof.mjs')], 600_000, cancellation.signal);
+      [join(repository, 'apps/desktop/scripts/profileInspection/runLinuxProfileInspectionProof.mjs')], 600_000,
+      cancellation.signal, sandboxInspectionEnvironment(process.execPath));
     const rows = proof.stdout.trim().split('\n').map(line => JSON.parse(line));
     assert.equal(rows.length, 3);
     for (const [index, variant] of ['current', 'schemaChanged', 'missingNative'].entries()) {

@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { EventEmitter } from 'node:events';
+import { execFileSync } from 'node:child_process';
 import { sandboxProbeProfile, parseNamespaceProbe, confirmsAppArmorRestriction, safeProfileFailure,
   parseProfileCreated, readProfileFailure, sandboxProfileCommand, probeCancellation,
-  finishSandboxProbe } from './linuxSandboxProbe.mjs';
+  finishSandboxProbe, sandboxInspectionEnvironment } from './linuxSandboxProbe.mjs';
 
 const token = 'a'.repeat(32);
 const executable = '/home/runner/work/project/project/eky_software/node_modules/.pnpm/electron@43.7.6/node_modules/electron/dist/electron';
@@ -57,6 +58,7 @@ test('experiment leaves the normal Linux service launch unchanged', async () => 
   assert.ok(source.includes("--skip-cache"));
   assert.ok(source.includes("--remove"));
   assert.ok(source.includes("runLinuxProfileInspectionProof.mjs"));
+  assert.ok(source.includes('cancellation.signal, sandboxInspectionEnvironment(process.execPath)'));
   assert.doesNotMatch(source, /--no-sandbox|4755|sysctl.*(?:-w|write)/u);
 });
 
@@ -103,6 +105,25 @@ test('root helper receives only fixed CI guards across sudo env_reset', () => {
     assert.deepEqual(args.slice(14), mode === '--remove-profile' ? ['1', '2'] : []);
     assert.doesNotMatch(args.join(' '), /--preserve-env|sudoers/u);
   }
+});
+
+test('inspection preparation resolves the selected Node without inherited environment hooks', () => {
+  const node = '/opt/hostedtoolcache/node/24.19.0/x64/bin/node';
+  assert.deepEqual(sandboxInspectionEnvironment(node), { EKY_E2E: '1', CI: 'true',
+    GITHUB_ACTIONS: 'true', PATH: '/opt/hostedtoolcache/node/24.19.0/x64/bin:/usr/bin:/bin',
+    LANG: 'C', LC_ALL: 'C', EKY_INSPECTION_BUILD_FAILURE_EVIDENCE: 'sandboxProbe' });
+  for (const invalid of ['node', '/approved/../node', '/approved//node', '/approved/node\n',
+    '/approved:other/node', '/approved/node.exe', '/approved/node\0', '/approved path/node']) {
+    assert.throws(() => sandboxInspectionEnvironment(invalid));
+  }
+});
+
+test('Linux preparation launches the same actual Node through its restricted PATH', {
+  skip: process.platform !== 'linux',
+}, () => {
+  const version = execFileSync('node', ['--version'], { env: sandboxInspectionEnvironment(process.execPath),
+    timeout: 2000, maxBuffer: 512, encoding: 'utf8', shell: false });
+  assert.equal(version.trim(), process.version);
 });
 
 test('handled cancellation aborts workload but can drain receipt-bound profile cleanup', () => {

@@ -129,6 +129,12 @@ Salaisuudet redaktoidaan eikä tavallisen käyttäjäprofiilin keräystä sallit
 Tuotannon lokit, tukipaketti, julkiset virhekoodit ja koko profiilin
 kopiointikielto säilyvät ennallaan. Poikkeus ei salli raakakonsolijulkaisua.
 
+K:n nimetylle Linux-sandbox-kertakokeelle hyväksytty
+[rajattu native-käännösvirheen ote](ci-encrypted-evidence.md#testiperheiden-virheaineisto)
+on erillinen poikkeus riippuvuustyökalujen raakalokikieltoon: vain operaation
+oma enintään 64 KiB:n ote salattuun pakettiin. Normaali CI, julkinen tuloste,
+profiilien ja tietokantojen poissulku sekä muut keräysrajat säilyvät.
+
 ## Backup-, restore- ja päivitysturvallisuus
 
 - siirrettävä business-datan varmuuskopio on aina autentikoidusti salattu

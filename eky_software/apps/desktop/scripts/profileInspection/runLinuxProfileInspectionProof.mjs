@@ -11,7 +11,7 @@ import { createE2eFixtureLifetime } from '../../../e2e/src/environment/e2eFixtur
 import { E2E_BACKEND_STARTUP_SAFETY_TIMEOUT_MILLISECONDS } from '../../../e2e/src/environment/e2eServiceStartupBudgets.ts';
 import { removeE2eRunRoot } from '../../../e2e/src/environment/removeE2eRunRoot.ts';
 import { inspectionPreparationFailure, inspectionProofMaximumBytes, requireInspectionProof } from './linuxProfileInspectionContract.mjs';
-import { prepareLinuxInspectionProof } from './prepareLinuxInspectionProof.mjs';
+import { inspectionPreparationEvidence, prepareLinuxInspectionProof } from './prepareLinuxInspectionProof.mjs';
 import { runLinuxInspectionOwner } from './runLinuxInspectionOwner.mjs';
 
 const repository = fileURLToPath(new URL('../../../../', import.meta.url));
@@ -40,6 +40,8 @@ async function readResult(path) {
 export async function runLinuxProfileInspectionProof() {
   let phase = 'preflight';
   let evidenceRoot;
+  let nativeRoot;
+  let nativeIdentity;
   try {
     guardLinuxService();
     requireInspectionProof(process.argv.length === 2);
@@ -54,7 +56,8 @@ export async function runLinuxProfileInspectionProof() {
     evidenceRoot = join(repository, 'apps/e2e/test-results', run);
     await mkdir(join(evidenceRoot, 'preparation'), { recursive: true, mode: 0o700 });
     phase = 'preparation';
-    const nativeRoot = await mkdtemp(join(temp, 'eky-inspection-native-'));
+    nativeRoot = await mkdtemp(join(temp, 'eky-inspection-native-'));
+    nativeIdentity = await lstat(nativeRoot);
     const fixtures = await prepareLinuxInspectionProof(repository, temp, nativeRoot);
     const { profileInspectionWorkMilliseconds, profileInspectionShutdownMilliseconds } = await import(
       pathToFileURL(join(repository, 'apps/desktop/dist/runtime/profileInspectionMessages.js')));
@@ -82,9 +85,12 @@ export async function runLinuxProfileInspectionProof() {
   } catch (error) {
     const failure = inspectionPreparationFailure(phase, error);
     if (evidenceRoot) {
-      try { await writeFile(join(evidenceRoot, 'preparation/process-output.private.json'),
-        JSON.stringify(failure),
-        { flag: 'wx', mode: 0o600 }); } catch { /* Keep original failure. */ }
+      try {
+        const evidence = await inspectionPreparationEvidence(failure, { root: nativeRoot, identity: nativeIdentity,
+          mode: process.env.EKY_INSPECTION_BUILD_FAILURE_EVIDENCE });
+        await writeFile(join(evidenceRoot, 'preparation/process-output.private.json'), JSON.stringify(evidence),
+          { flag: 'wx', mode: 0o600 });
+      } catch { /* Keep original failure. */ }
     }
     process.stderr.write(JSON.stringify(failure) + '\n');
     process.stderr.write('LINUX_PROFILE_INSPECTION_PROOF_FAILED\n');

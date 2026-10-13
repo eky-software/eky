@@ -222,6 +222,10 @@ salattua virhekeräystä. Julkiseen lokiin ei kirjoiteta raakavirhettä,
 tietokantaa tai profiilia. Valmistelun ensivirhe säilyttää vain täsmällisesti
 sallitun syykoodin tai arvon `unknown`, erillään raportin kirjoittamisesta.
 Native-käännöksen koko raakaloki ei kuulu tämän hostin prosessitulostepakettiin.
+Vain K:n erikseen hyväksytty sandbox-kertakoe saa
+[nimetyn 64 KiB:n käännösvirheotteen](ci-encrypted-evidence.md#testiperheiden-virheaineisto)
+nykyiseen salattuun valmistelutiedostoon. Tavallinen Linux-tarkistus ei ota
+keräystä käyttöön, eikä ote päädy julkiseen tulosteeseen.
 Prosessitulosteen saatavuus ei takaa täydellistä
 aineistoa koneen tai koko CI-jobin äkillisessä keskeytyksessä.
 

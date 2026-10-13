@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm } from 'node:fs/promises';
+import { chmod, link, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { join, posix } from 'node:path';
 import { tmpdir } from 'node:os';
 import { assertInspectionProofResult, inspectionProofPaths, inspectionProofVariants,
   inspectionPreparationFailure, parseInspectionProofConfig } from './linuxProfileInspectionContract.mjs';
 import { runLinuxInspectionCase } from './linuxProfileInspectionCase.mjs';
 import { runLinuxInspectionOwner } from './runLinuxInspectionOwner.mjs';
-import { prepareMissingInspectionResource } from './prepareLinuxInspectionProof.mjs';
+import { inspectionNativeFailureMaximumBytes, inspectionPreparationEvidence,
+  prepareMissingInspectionResource, readInspectionNativeBuildFailure } from './prepareLinuxInspectionProof.mjs';
 import { profileInspectionNativeContract } from '../../../backend/src/database/connection/profileInspectionNativeContract.ts';
 
 const controlPath = '/tmp/eky-e2e/run-synthetic/profile-inspection/inspection.json';
@@ -41,6 +42,90 @@ test('preparation preserves only exact known first causes without raw error fiel
     assert.equal(result.causeCode, 'unknown');
     assert.doesNotMatch(JSON.stringify(result), /private\/path|stack|message/u);
   }
+});
+
+async function nativeEvidenceFixture(t, bytes) {
+  const root = await mkdtemp(join(await realpath(tmpdir()), 'eky-inspection-native-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const identity = await lstat(root);
+  const work = join(root, 'inspection-native-ABC123');
+  await mkdir(work, { mode: 0o700 });
+  const path = join(work, 'build.private.log');
+  if (bytes) await writeFile(path, bytes, { flag: 'wx', mode: 0o600 });
+  return { root, identity, work, path };
+}
+
+for (const size of [120, inspectionNativeFailureMaximumBytes, inspectionNativeFailureMaximumBytes + 41]) {
+  test(`approved preparation evidence preserves at most 64 KiB from its own ${size}-byte log`, {
+    skip: process.platform !== 'linux',
+  }, async t => {
+    const bytes = Buffer.alloc(size, 65);
+    bytes.fill(90, size - 50);
+    const fixture = await nativeEvidenceFixture(t, bytes);
+    const value = await readInspectionNativeBuildFailure(fixture.root, fixture.identity);
+    const prefix = Buffer.from(value.prefixBase64, 'base64');
+    const suffix = Buffer.from(value.suffixBase64, 'base64');
+    assert.equal(value.status, 'retained');
+    assert.equal(value.sourceBytes, size);
+    assert.equal(value.complete, size <= inspectionNativeFailureMaximumBytes);
+    assert.equal(value.retainedBytes, Math.min(size, inspectionNativeFailureMaximumBytes));
+    assert.deepEqual(prefix, bytes.subarray(0, prefix.length));
+    assert.deepEqual(suffix, suffix.length ? bytes.subarray(size - suffix.length) : Buffer.alloc(0));
+    assert.equal((await lstat(fixture.path)).size, size);
+  });
+}
+
+for (const variant of ['symlink', 'hardlink', 'mode', 'rootIdentity', 'extraRoot', 'workSymlink', 'missing']) {
+  test(`native failure evidence rejects ${variant} without reading another attempt`, {
+    skip: process.platform !== 'linux',
+  }, async t => {
+    const fixture = await nativeEvidenceFixture(t, variant === 'missing' ? null : Buffer.from('synthetic private output'));
+    let identity = fixture.identity;
+    if (variant === 'symlink') {
+      await rm(fixture.path);
+      const other = join(fixture.work, 'other.private');
+      await writeFile(other, 'excluded content', { mode: 0o600 });
+      await symlink(other, fixture.path);
+    } else if (variant === 'hardlink') await link(fixture.path, join(fixture.work, 'alias.private'));
+    else if (variant === 'mode') await chmod(fixture.path, 0o644);
+    else if (variant === 'rootIdentity') identity = { dev: fixture.identity.dev, ino: fixture.identity.ino + 1 };
+    else if (variant === 'extraRoot') await mkdir(join(fixture.root, 'inspection-native-DEF456'), { mode: 0o700 });
+    else if (variant === 'workSymlink') {
+      await rm(fixture.work, { recursive: true });
+      const other = await mkdtemp(join(await realpath(tmpdir()), 'eky-unrelated-log-'));
+      t.after(() => rm(other, { recursive: true, force: true }));
+      await symlink(other, fixture.work);
+    }
+    assert.deepEqual(await readInspectionNativeBuildFailure(fixture.root, identity), {
+      status: variant === 'missing' ? 'missing' : 'unverified' });
+  });
+}
+
+test('raw native evidence is private and opt-in for only the approved preparation failure', {
+  skip: process.platform !== 'linux',
+}, async t => {
+  const fixture = await nativeEvidenceFixture(t, Buffer.from('synthetic-private-build-output'));
+  const failure = inspectionPreparationFailure('preparation', Error('PROFILE_INSPECTION_NATIVE_BUILD_FAILED'));
+  const evidence = await inspectionPreparationEvidence(failure, { ...fixture, mode: 'sandboxProbe' });
+  assert.equal(evidence.nativeCompilationEvidence.status, 'retained');
+  assert.equal(Buffer.from(evidence.nativeCompilationEvidence.prefixBase64, 'base64').toString(), 'synthetic-private-build-output');
+  assert.deepEqual(Object.keys(failure), ['operation', 'status', 'phase', 'causeCode']);
+  assert.doesNotMatch(JSON.stringify(failure), /private|Base64|nativeCompilationEvidence/u);
+  for (const change of [{ mode: undefined }, { mode: 'other' }, { phase: 'current' },
+    { causeCode: 'unknown' }, { root: undefined }, { identity: undefined }]) {
+    const publicValue = { ...failure, ...('phase' in change ? { phase: change.phase } : {}),
+      ...('causeCode' in change ? { causeCode: change.causeCode } : {}) };
+    assert.equal(await inspectionPreparationEvidence(publicValue, { ...fixture, mode: 'sandboxProbe', ...change }), publicValue);
+  }
+});
+
+test('actual runner writes approved evidence privately and emits only the unchanged safe failure', async () => {
+  const source = await readFile(new URL('./runLinuxProfileInspectionProof.mjs', import.meta.url), 'utf8');
+  assert.ok(source.includes('nativeIdentity = await lstat(nativeRoot)'));
+  assert.ok(source.includes('mode: process.env.EKY_INSPECTION_BUILD_FAILURE_EVIDENCE'));
+  assert.ok(source.includes("JSON.stringify(evidence),\n          { flag: 'wx', mode: 0o600 }"));
+  assert.ok(source.includes("process.stderr.write(JSON.stringify(failure) + '\\n')"));
+  assert.doesNotMatch(source, /process\.(?:stdout|stderr)\.write\(JSON\.stringify\(evidence\)/u);
 });
 
 function scenario(variant = 'current', change = {}) {

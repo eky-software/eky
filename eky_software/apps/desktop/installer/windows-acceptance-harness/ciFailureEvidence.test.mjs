@@ -142,6 +142,33 @@ test('legacy packaged failure retains existing smoke output but excludes the pro
   }
 });
 
+test('named sandbox probe preserves only its prepared bounded native failure evidence', async t => {
+  const { checkout, temp, env, put } = await fixture(t);
+  const evidence = { operation: 'linuxProfileInspection', status: 'failed', phase: 'preparation',
+    causeCode: 'PROFILE_INSPECTION_NATIVE_BUILD_FAILED', nativeCompilationEvidence: {
+      status: 'retained', complete: true, sourceBytes: 28, retainedBytes: 28,
+      prefixBase64: Buffer.from('synthetic native build error!').toString('base64'), suffixBase64: '' } };
+  const bytes = Buffer.from(JSON.stringify(evidence));
+  await put(checkout, `eky_software/apps/e2e/test-results/${run}/preparation/process-output.private.json`, bytes);
+  for (const name of ['build.private.log', 'source/data.sqlite', 'runtime/config.json']) {
+    await put(temp, `eky-inspection-native-ABC123/inspection-native-DEF456/${name}`, 'EXCLUDED');
+  }
+  const selected = { ...env, GITHUB_JOB: 'linux-inspection-sandbox-probe', EKY_EVIDENCE_JOB_KEY: 'k-linux-sandbox-probe' };
+  const collected = await collectJobFailureEvidence(selected);
+  const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+  assert.deepEqual(archive.manifest.approvedExceptions, ['boundedNativeBuildFailure']);
+  assert.ok(archive.manifest.exclusions.includes('unapprovedDependencyToolRawOutput'));
+  assert.equal(archive.manifest.files.length, 1);
+  const retained = archive.manifest.files[0];
+  assert.equal(retained.kind, 'processOutput');
+  assert.equal(retained.status, 'retained');
+  assert.deepEqual(Buffer.from(archive.files[retained.name], 'base64'), bytes);
+  assert.equal(Buffer.from(archive.files[retained.name], 'base64').includes(Buffer.from('EXCLUDED')), false);
+  const normal = await collectJobFailureEvidence(env);
+  assert.equal(Object.hasOwn(normal.manifest, 'approvedExceptions'), false);
+  assert.ok(normal.manifest.exclusions.includes('dependencyToolRawOutput'));
+});
+
 test('Electron lifecycle collection admits only the named attempt file', () => {
   assert.equal(evidenceSourceKind('results', `${run}/test-attempt0/electron-lifecycle.json`), 'electronLifecycle');
   for (const area of ['reports', 'temporary']) {

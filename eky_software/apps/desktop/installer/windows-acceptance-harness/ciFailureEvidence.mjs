@@ -68,6 +68,11 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
     cleanup: 'notInferred', unresolvedEvidenceHold: true,
     publicCommandLog: 'githubWorkflowLog', files: [], sources: [],
     exclusions: ['databases', 'profiles', 'environment', 'configuration', 'unreviewedTraces', 'memoryDumps', 'dependencyToolRawOutput'] };
+  if (binding.job === 'linux-inspection-sandbox-probe' && binding.jobKey === 'k-linux-sandbox-probe') {
+    manifest.approvedExceptions = ['boundedNativeBuildFailure'];
+    manifest.exclusions = manifest.exclusions.map(value => value === 'dependencyToolRawOutput'
+      ? 'unapprovedDependencyToolRawOutput' : value);
+  }
   let total = 0;
   const select = async (base, path, area, location, relativePath) => {
     const kind = evidenceSourceKind(area, relativePath);

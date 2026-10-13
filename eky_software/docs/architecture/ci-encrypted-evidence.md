@@ -122,6 +122,18 @@ raakaa testiaineistoa eivätkä saa yleistä koko jobin tulostekaappausta.
 | Packaged smoke | Rajattu prosessituloste ja nykyinen smoke-tulos. | Epäonnistuneen testin juurta ei poisteta; keräin ei lue sen profiilia. Tyhjentynyt tuloste ei todista onnistunutta käynnistystä. |
 | Muut komennot ja valmistelu | Nykyinen turvallinen GitHub-komentoloki. | Salattu keräys ei palauta tulostetta, jota aliohjelma ei tuottanut tai säilyttänyt. Riippuvuustyökalun raakavirheet jäävät erikseen rajatuiksi pois. |
 
+K:n nimetyn `linux-inspection-sandbox-probe`-kertakokeen omistaja hyväksyi
+erikseen tarkistusajurin käännösvirheen rajatun poikkeuksen. Vain kyseisen
+operaation omasta, identiteetillä sidotusta `build.private.log`-tiedostosta
+luetaan enintään 64 KiB. Suuresta lokista säilyvät alku- ja loppuosat sekä
+osittaisuuden tieto; puuttuvaa tai varmentamatonta lokia ei tulkita ehjäksi.
+Ote kirjoitetaan vain nykyiseen valmistelun `process-output.private.json`-
+tiedostoon ja salataan. Julkinen syykoodi ja stderr säilyvät ennallaan.
+`boundedNativeBuildFailure`-manifestimerkintä koskee vain tätä nimettyä
+job/job-key-paria. Muissa jobeissa riippuvuustyökalujen raakalokikielto säilyy.
+Poikkeus ei avaa native-temp-juuren, lähteiden, konfiguraation, profiilien tai
+tietokantojen yleistä keräystä eikä muuta yhden vuorokauden säilytystä.
+
 Jokainen paketti sidotaan run/attempt/job/matrix-revisioon. Testitapaus ja
 sen retry sekä käynnistyssukupolvi säilyvät lähderaporteissa. Uusi paketti
 ei kirjoita aiemman päälle. Keräys käsittelee sekä runnerin että natiivin
