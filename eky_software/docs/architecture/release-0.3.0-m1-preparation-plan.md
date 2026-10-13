@@ -166,6 +166,37 @@ väliaikainen kokeen CI-käynnistin poistetaan. K:n Windows-korjausketju ja
 kokeen korjaukset säilyvät lineaarisessa historiassa. Täsmällisen uuden
 PR-revision ja mergen jälkeisen mainin normaali hyväksyntä on edelleen avoin.
 
+### K:n normaalin kierroksen resurssitestit
+
+Revision `58960d85de1e9b05f3ffff3135469f8c11b6be0a`
+[V2-kierros](https://github.com/eky-software/eky/actions/runs/38367077414)
+hylättiin core-testivaiheessa. Ensimmäinen yritys aikakatkaisi palautuksen
+käynnistystestin; saman tiedoston keskeneräisen työn suoja esti seuraavat
+testit. Työn myöhempi valmistuminen ei hyväksy aikakatkaissutta testiä.
+Muut 36 valittua jobia ja erillinen
+[riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/38367077261)
+läpäisivät; kuusi valitsematta jätettyä diagnostiikkajobia eivät ole läpäisyjä.
+
+Omistaja hyväksyi yhden core-jobin ja sen koonnin uusinnan samalla lähteellä
+sekä rajatun etenemisen vain kaikkien muuttumattomien porttien läpäistyä.
+Toinen yritys läpäisi koko desktop-testisarjan, mutta hylkäsi backendin
+tapahtumahistorian resurssitestin viiden sekunnin aikakatkaisuun.
+Kyseessä on eri hylkäys, ei alkuperäisen palautustestin toistuminen.
+Linuxin varsinainen tarkistus ei ehtinyt käynnistyä kummassakaan yrityksessä.
+Ensivirheet ja yritysten salatut liitteet säilytetään erillisinä; kolmatta
+saman revision uusintaa ei tehdä.
+
+Rajattu testimuutos tarkistaa edelleen jokaisen 1 001 rivin kaikki 13 arvoa,
+mutta muodostaa yhden testiväitteen rivin arvojen yhteisestä ehdosta.
+Kenttämäärän, suurten tunniste-/tekstiarvojen, katalogituloksen ja kannan
+muuttumattomuuden tarkistukset sekä alkuperäinen aikaraja säilyvät.
+Tuotannon SQL, validointi, riippuvuudet ja testiaineisto eivät muutu.
+Kohdetiedoston 42 testiä ja backendin tyyppitarkistus läpäisivät.
+Rajattu riippumaton katselmus varmisti testin hyväksyntäehtojen säilymisen.
+Tämä ei todista CI-viiveen juurisyytä
+korjatuksi eikä hyväksy uutta CI-kierrosta tai mergeä. Korjausrevision
+normaalit PR-portit ja uuden mainin omat portit vaaditaan edelleen.
+
 [PR #303:n](https://github.com/eky-software/eky/pull/303) ensimmäinen
 [V2-kierros](https://github.com/eky-software/eky/actions/runs/38329010187)
 hylättiin headilla `2a7e239bbf487e52ded02090ccf475f01b4ddb2c`.

@@ -187,9 +187,9 @@ describe('bounded event-history acceptance parity', () => {
     for (const row of f.database.prepare<[], Record<string, unknown>>(invoiceHistoryEventScanSql).iterate()) {
       count++;
       expect(Object.keys(row)).toHaveLength(13);
-      for (const value of Object.values(row)) {
-        expect(value === 0 || value === 1 || value === null || value === 'revision').toBe(true);
-      }
+      expect(Object.values(row).every(value =>
+        value === 0 || value === 1 || value === null || value === 'revision',
+      )).toBe(true);
     }
     expect(count).toBe(1001);
     await expect(new SqliteInvoiceBackupArtifactCatalog(f.database, 'revisionHistory').listAuthoritativeArtifacts()).resolves.toHaveLength(1);
