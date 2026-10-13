@@ -29,16 +29,16 @@ test('encryption failure parsing accepts only a complete known line and separate
   }
   assert.equal(encryptionFailureCode({ code: 'ETIMEDOUT' }, ''), 'EVIDENCE_ENCRYPTION_FAILED');
 });
-async function fixture(t) {
+async function fixture(t, overrides = {}) {
   const temp = await mkdtemp(join(await realpath(tmpdir()), 'eky-encrypted-test-'));
-  t.after(() => rm(temp, { recursive: true, force: true }));
+  t.after(async () => { if (t.passed === true && !t.signal.aborted) await rm(temp, { recursive: true, force: true }); });
   const env = { RUNNER_TEMP: temp, GITHUB_RUN_ID: '12345', GITHUB_RUN_ATTEMPT: '1',
     EKY_WORKSPACE_REPETITION: '1', EXPECTED_BUILD_REVISION: 'a'.repeat(40),
     EXPECTED_DESCRIPTOR_SHA256: 'b'.repeat(64), EKY_DIAGNOSTIC_KEY_FINGERPRINT: 'A'.repeat(40),
     EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: 'A'.repeat(40),
     EKY_DIAGNOSTIC_PUBLIC_KEY: '-----BEGIN PGP PUBLIC KEY BLOCK-----\nsynthetic-not-a-real-key\n-----END PGP PUBLIC KEY BLOCK-----',
     EKY_TEST_OUTCOME: 'failure', EKY_ARTIFACT_OUTCOME: 'success', EKY_CAPTURE_START_OUTCOME: 'success',
-    EKY_CAPTURE_STOP_OUTCOME: 'success', EKY_ANALYSIS_OUTCOME: 'failure' };
+    EKY_CAPTURE_STOP_OUTCOME: 'success', EKY_ANALYSIS_OUTCOME: 'failure', ...overrides };
   const prepared = await prepareEvidence(env);
   const capture = join(temp, 'eky-inspector-capture');
   await mkdir(capture);
@@ -54,6 +54,91 @@ function proofEnvironment(env) {
     GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_JOB: 'encrypted-evidence-delivery-proof',
     EKY_EVIDENCE_DELIVERY_PROOF: '1', GITHUB_SHA: 'c'.repeat(40) };
 }
+
+const FAULT_SCENARIOS = ['acceptanceInterruption', 'activeWorkspaceFirstStartFailure', 'passiveWorkspaceMigrationFailure'];
+
+test('workspace evidence keeps the success default and admits only the exact diagnostic fault selection', async t => {
+  const f = await fixture(t);
+  const expected = { runId: '12345', attempt: '1', repetition: '1', scenario: 'packagedWorkspaceSuccess',
+    buildRevision: 'a'.repeat(40), artifactDescriptorSha256: 'b'.repeat(64) };
+  assert.deepEqual(evidenceBinding(f.env), expected);
+  assert.deepEqual(evidenceBinding({ ...f.env, EKY_WORKSPACE_FAULT_SCENARIO: '' }), expected);
+  for (const faultScenario of FAULT_SCENARIOS) {
+    assert.deepEqual(evidenceBinding({ ...f.env, EKY_WORKSPACE_FAULT_SCENARIO: faultScenario }), {
+      ...expected, scenario: 'packagedWorkspaceFaultRollback', faultScenario,
+    });
+  }
+  for (const value of ['unknown', 'preUpdateRecoveryPointFailure', 'AcceptanceInterruption',
+    'acceptanceInterruption ', 'activeWorkspaceFirstStartFailure\n', false, 0, {}]) {
+    assert.throws(() => evidenceBinding({ ...f.env, EKY_WORKSPACE_FAULT_SCENARIO: value }),
+      /WORKSPACE_ENCRYPTED_EVIDENCE_UNVERIFIED/u);
+  }
+});
+
+for (const faultScenario of FAULT_SCENARIOS) for (const testOutcome of ['failure', 'cancelled']) {
+  test(`fault evidence preserves stopped capture and exact binding without a caller: ${faultScenario}/${testOutcome}`, async t => {
+    const f = await fixture(t, { EKY_WORKSPACE_FAULT_SCENARIO: faultScenario, EKY_TEST_OUTCOME: testOutcome });
+    const context = JSON.parse(await readFile(join(f.root, 'context.private.json'), 'utf8'));
+    assert.equal(context.binding.scenario, 'packagedWorkspaceFaultRollback');
+    assert.equal(context.binding.faultScenario, faultScenario);
+    assert.ok(f.callerResultPath.includes(`eky-workspace-caller-${context.invocationId}`));
+    await writeFile(join(f.capture, 'stopped'), '');
+    await writeFile(join(f.capture, 'capture.etl'), 'synthetic stopped capture');
+    const value = await envelope(await collectEvidence(f.env, f.root));
+    assert.deepEqual(value.manifest.binding, { ...context.binding, invocationId: context.invocationId });
+    assert.equal(value.manifest.outcomes.test, testOutcome);
+    assert.equal(value.manifest.captureClosed, true);
+    assert.equal(value.manifest.cleanup, 'unverified');
+    assert.equal(value.manifest.unresolvedEvidenceHold, true);
+    assert.equal(value.manifest.files.find(x => x.name === 'caller-result.json').status, 'missing');
+    assert.equal(Buffer.from(value.files['capture.etl'], 'base64').toString(), 'synthetic stopped capture');
+  });
+}
+
+test('fault evidence rejects changed selection, context and attempt before collection', async t => {
+  const f = await fixture(t, { EKY_WORKSPACE_FAULT_SCENARIO: 'activeWorkspaceFirstStartFailure' });
+  for (const changed of [{ EKY_WORKSPACE_FAULT_SCENARIO: 'passiveWorkspaceMigrationFailure' },
+    { EKY_WORKSPACE_FAULT_SCENARIO: '' }, { GITHUB_RUN_ATTEMPT: '2' },
+    { EKY_WORKSPACE_REPETITION: '2' }, { EXPECTED_BUILD_REVISION: 'c'.repeat(40) },
+    { EXPECTED_DESCRIPTOR_SHA256: 'd'.repeat(64) }]) {
+    await assert.rejects(collectEvidence({ ...f.env, ...changed }, f.root), /WORKSPACE_ENCRYPTED_EVIDENCE_UNVERIFIED/u);
+  }
+  const path = join(f.root, 'context.private.json');
+  const context = JSON.parse(await readFile(path, 'utf8'));
+  context.binding.faultScenario = 'passiveWorkspaceMigrationFailure';
+  await writeFile(path, JSON.stringify(context));
+  await assert.rejects(collectEvidence(f.env, f.root), /WORKSPACE_ENCRYPTED_EVIDENCE_UNVERIFIED/u);
+});
+
+test('only an exactly bound fault caller can attest cleanup; conflicting bytes remain private evidence', async t => {
+  for (const mismatch of ['none', 'faultScenario', 'scenario', 'invocationId', 'buildRevision', 'outcome']) {
+    const f = await fixture(t, { EKY_WORKSPACE_FAULT_SCENARIO: 'activeWorkspaceFirstStartFailure' });
+    const context = JSON.parse(await readFile(join(f.root, 'context.private.json'), 'utf8'));
+    const binding = { schemaVersion: 1, invocationId: context.invocationId,
+      scenario: context.binding.scenario, faultScenario: context.binding.faultScenario,
+      buildRevision: f.env.EXPECTED_BUILD_REVISION, artifactDescriptorSha256: f.env.EXPECTED_DESCRIPTOR_SHA256 };
+    const caller = { binding: { ...binding }, outcome: {
+      schemaVersion: 1, scenario: binding.scenario, faultScenario: binding.faultScenario,
+      status: 'failed', errorCode: 'commandCancelled', processTreeAbsent: true, productProcessAbsent: true,
+      fixtureRemoved: true, fixtureCleanupResultCode: 'fixtureRemoved', phaseWriterResultCode: 'writerAbsent',
+      supervisorCleanupResultCode: 'processTreeAbsent', semanticCleanupResultCode: 'semanticCleanupCompleted',
+      postconditionResultCode: 'exactProductsAbsent', removalPostconditionResultCode: 'installerFootprintAbsent',
+    } };
+    if (mismatch === 'faultScenario') caller.binding.faultScenario = 'passiveWorkspaceMigrationFailure';
+    if (mismatch === 'scenario') caller.binding.scenario = 'packagedWorkspaceSuccess';
+    if (mismatch === 'invocationId') caller.binding.invocationId = '0'.repeat(32);
+    if (mismatch === 'buildRevision') caller.binding.buildRevision = 'c'.repeat(40);
+    if (mismatch === 'outcome') caller.outcome.faultScenario = 'passiveWorkspaceMigrationFailure';
+    if (mismatch === 'none') assert.doesNotThrow(() => validateWorkspaceCallerResult(caller, binding));
+    else assert.throws(() => validateWorkspaceCallerResult(caller, binding));
+    await writeFile(f.callerResultPath, JSON.stringify(caller));
+    const value = await envelope(await collectEvidence(f.env, f.root));
+    assert.equal(value.manifest.cleanup, mismatch === 'none' ? 'verified' : 'unverified', mismatch);
+    assert.equal(value.manifest.outcomes.test, 'failure');
+    assert.equal(value.manifest.binding.faultScenario, binding.faultScenario);
+    assert.equal(value.manifest.files.find(x => x.name === 'caller-result.json').status, 'retained');
+  }
+});
 
 test('first failure retains allowed bytes and independent outcomes without collecting other files', async t => {
   const f = await fixture(t);

@@ -19,6 +19,18 @@ function jobBlock(source, name) {
   return source.slice(start + 1).split(/\n(?=  [\w-]+:\n)/u)[0];
 }
 
+function withoutFaultEvidenceUpload(job) {
+  const step = job.split('      - name: Upload exact encrypted workspace fault evidence only\n')[1]?.split('\n      - name:')[0];
+  assert.ok(step);
+  assert.match(step, /if: always\(\) && steps\.fault_evidence_seal\.outcome == 'success' && steps\.fault_evidence_seal\.outputs\.sealed == 'true'/u);
+  assert.match(step, /path: \$\{\{ steps\.fault_evidence_seal\.outputs\.ciphertext \}\}/u);
+  assert.match(step, /retention-days: 1\s/u);
+  assert.match(step, /if-no-files-found: error/u);
+  assert.match(step, /overwrite: false/u);
+  assert.match(step, /include-hidden-files: false/u);
+  assert.doesNotMatch(step, /continue-on-error|\*|\.etl|private\./u);
+  return job.replace(step, '');
+}
 
 test('optional evidence allowance cannot hide job or mandatory-step failure policy', async () => {
   const source = await readFile(WORKFLOW_URL, 'utf8');
@@ -102,7 +114,7 @@ test('packaged boundary diagnostic reuses exact artifacts without becoming a nor
   assert.match(diagnostic, /run-id: \$\{\{ inputs\.artifact_run_id \}\}/u);
   assert.match(diagnostic, /repository: \$\{\{ github\.repository \}\}/u);
   assert.match(diagnostic, /actions\/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c/u);
-  assert.doesNotMatch(diagnostic, /artifact:build|package:windows|upload-artifact|retry|permissions:\s+contents: write/u);
+  assert.doesNotMatch(withoutFaultEvidenceUpload(diagnostic), /artifact:build|package:windows|upload-artifact|retry|permissions:\s+contents: write/u);
   assert.ok(diagnostic.indexOf('Validate closed diagnostic identity') < diagnostic.indexOf('uses: actions/download-artifact'));
   assert.match(diagnostic, /\$commandExit = \$LASTEXITCODE/u);
   assert.match(diagnostic, /--command-exit \$commandExit/u);
@@ -141,7 +153,7 @@ test('workspace caller markers are four closed optional observations inside the 
   assert.deepEqual([...diagnostic.matchAll(/^      ([\w-]+): (read|write)$/gmu)].map(([, key, value]) => [key, value]),
     [['contents', 'read'], ['actions', 'read']]);
   assert.doesNotMatch(step, /Start-Process|Start-Job|Start-ThreadJob|Wait-Process|Stop-Process|Start-Sleep|Tee-Object|Out-File|Add-Content|Set-Content|Start-Transcript|\[IO\.File\]|runWorkspaceSuccess\.mjs/u);
-  assert.doesNotMatch(diagnostic, /upload-artifact|artifact:build|package:windows|retry/u);
+  assert.doesNotMatch(withoutFaultEvidenceUpload(diagnostic), /upload-artifact|artifact:build|package:windows|retry/u);
   const caller = step.slice(step.indexOf("$legacy = $env:ARTIFACT_KIND -ceq 'legacy'"));
   assert.match(caller, /\} else \{\s*try \{ Write-Host '[^'\r\n]*"phase":"commandInvoked"[^'\r\n]*' \} catch \{ \}/u);
   const guarded = [...caller.matchAll(/if \(-not \$legacy\) \{([\s\S]*?)\n {10}\}/gu)];
@@ -276,7 +288,7 @@ test('external inspector capture is opt-in and never replaces command or artifac
   assert.match(diagnostic, /always\(\) && \(steps\.capture\.outcome == 'success' \|\| steps\.capture\.outcome == 'failure' \|\| steps\.capture\.outcome == 'cancelled'\)/u);
   assert.match(diagnostic, /always\(\) && steps\.capture_stop\.outcome == 'success'/u);
   assert.ok(diagnostic.indexOf('Reverify immutable artifact') < diagnostic.indexOf('-Mode analyze'));
-  assert.doesNotMatch(diagnostic, /upload-artifact|wpr.*-cancel|symbols/u);
+  assert.doesNotMatch(withoutFaultEvidenceUpload(diagnostic), /upload-artifact|wpr.*-cancel|symbols/u);
   const verifyPolicy = (job) => {
     assert.doesNotMatch(job.split('\n    steps:')[0], /continue-on-error/u);
     const steps = job.split('\n      - name: ').slice(1);
@@ -311,31 +323,59 @@ test('diagnostic preflight admits only the selected capture families and verifie
   const step = workflow.split('      - name: Validate closed diagnostic identity before download\n')[1].split('\n      - name:')[0];
   const body = step.split('        run: |\n')[1].trimEnd().split('\n')
     .map((line) => { assert.ok(line.startsWith('          ')); return line.slice(10); }).join('\n');
-  for (const [kind, capture, invalidIdentity, expectedCode] of [
+  for (const [kind, capture, invalidIdentity, expectedCode, selection = 'acceptanceInterruption', gitState = 'valid'] of [
     ['legacy', 'true', false, 0], ['upgrade', 'true', false, 0],
     ['workspace', 'true', false, 0], ['workspace-fault', 'true', false, 0],
     ['workspace', 'false', false, 0], ['unknown', 'false', false, 1],
     ['workspace', 'true', true, 1], ['unknown', 'true', false, 1],
     ['upgrade', 'true', true, 1],
+    ['workspace-fault', 'true', false, 0, 'activeWorkspaceFirstStartFailure'],
+    ['workspace-fault', 'true', false, 0, 'passiveWorkspaceMigrationFailure'],
+    ['workspace-fault', 'false', false, 1, 'activeWorkspaceFirstStartFailure'],
+    ['workspace', 'true', false, 1, 'passiveWorkspaceMigrationFailure'],
+    ['legacy', 'true', false, 1, 'activeWorkspaceFirstStartFailure'],
+    ['workspace-fault', 'true', false, 1, 'unknown'],
+    ['workspace-fault', 'true', false, 1, 'ActiveWorkspaceFirstStartFailure'],
+    ['workspace-fault', 'true', false, 1, 'acceptanceInterruption '],
+    ['workspace-fault', 'true', false, 1, ''],
+    ['workspace-fault', 'true', false, 1, 'activeWorkspaceFirstStartFailure', 'wrongRevision'],
+    ['workspace-fault', 'true', false, 1, 'passiveWorkspaceMigrationFailure', 'failed'],
   ]) {
     const context = await createRunContext('diagnostic-preflight-routing');
     let passed = false;
     t.after(() => cleanupRunContext(context, { preserveEvidence: !passed || t.signal.aborted }));
     const script = join(context.testRoot, 'step.ps1');
-    await writeFile(script, `$ErrorActionPreference = 'Stop'\n$env:GITHUB_SHA = (git rev-parse HEAD).Trim()\n${body}\nexit $LASTEXITCODE\n`);
+    await writeFile(script, `
+$ErrorActionPreference = 'Stop'
+function git {
+  if (($args -join ' ') -cne 'rev-parse HEAD') { throw 'UNEXPECTED_GIT_COMMAND' }
+  $global:LASTEXITCODE = if ($env:TEST_GIT_STATE -ceq 'failed') { 1 } else { 0 }
+  if ($env:TEST_GIT_STATE -ceq 'wrongRevision') { 'b' * 40 } else { 'a' * 40 }
+}
+${body}
+exit $LASTEXITCODE
+`);
     const child = spawn(resolve(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script], {
-        stdio: 'ignore', windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
         env: { ...process.env, ARTIFACT_KIND: kind, INSPECTOR_CAPTURE: capture,
+          WORKSPACE_FAULT_CAPTURE_SCENARIO: selection,
+          GITHUB_SHA: 'a'.repeat(40), TEST_GIT_STATE: gitState,
           ARTIFACT_RUN_ID: '1', ARTIFACT_ID: '2', EXPECTED_BUILD_REVISION: 'a'.repeat(40),
           EXPECTED_DESCRIPTOR_SHA256: invalidIdentity ? 'invalid' : 'b'.repeat(64) },
       });
     context.fixtureProcesses.add(child);
+    const stdout = [];
+    const stderr = [];
+    child.stdout.on('data', chunk => stdout.push(chunk));
+    child.stderr.on('data', chunk => stderr.push(chunk));
     const completion = await new Promise((resolvePromise, rejectPromise) => {
       child.once('error', rejectPromise);
       child.once('close', (code, signal) => resolvePromise({ code, signal }));
     });
-    assert.deepEqual(completion, { code: expectedCode, signal: null }, `${kind}/${capture}/${invalidIdentity}`);
+    await writeFile(join(context.testRoot, 'stdout.private.log'), Buffer.concat(stdout));
+    await writeFile(join(context.testRoot, 'stderr.private.log'), Buffer.concat(stderr));
+    assert.deepEqual(completion, { code: expectedCode, signal: null }, `${kind}/${capture}/${selection}/${gitState}`);
     passed = true;
   }
 });
@@ -401,11 +441,16 @@ test('bounded rollback diagnostic executes the existing ordered commands and sto
     assert.match(sourceStep, /timeout-minutes: 25/u);
     return sourceStep.split('        run: |\n')[1].trimEnd().split('\n').map((line) => line.slice(10)).join('\n');
   }).join('\n');
-  for (const capture of [false, true]) for (const [commandExit, verifierExit, failAt] of [
+  for (const [capture, selection] of [[false, 'acceptanceInterruption'], [true, 'acceptanceInterruption'],
+    [true, 'activeWorkspaceFirstStartFailure'], [true, 'passiveWorkspaceMigrationFailure']]) {
+    const historical = selection === 'acceptanceInterruption';
+    const scenarios = capture && !historical ? [selection]
+      : ['preUpdateRecoveryPointFailure', 'activeWorkspaceFirstStartFailure', ...(capture ? [selection] : [])];
+    for (const [commandExit, verifierExit, failAt] of [
     [0, 0, 0], [1, 0, 1], [0, 1, 1], [1, 1, 1],
-    ...(capture ? [[1, 0, 2], [0, 1, 2], [1, 0, 3], [0, 1, 3]] : []),
+    ...(capture && historical ? [[1, 0, 2], [0, 1, 2], [1, 0, 3], [0, 1, 3]] : []),
   ]) {
-    const expectedCount = failAt ? failAt * 2 : capture ? 6 : 4;
+    const expectedCount = (failAt || scenarios.length) * 2;
     const context = await createRunContext('rollback-diagnostic-workflow');
     let passed = false;
     t.after(() => cleanupRunContext(context, { preserveEvidence: !passed || t.signal.aborted }));
@@ -422,13 +467,15 @@ function node {
   [IO.File]::AppendAllText($env:TEST_CALLS, (ConvertTo-Json -InputObject (@('node') + $args) -Compress) + [Environment]::NewLine)
   $global:LASTEXITCODE = if ($script:commandCount -eq [int]$env:TEST_FAIL_AT) { [int]$env:TEST_VERIFIER_EXIT } else { 0 }
 }
-${capture ? prefix : ''}
+${capture && historical ? prefix : ''}
 ${body}
 `);
     const child = spawn(resolve(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script], {
         cwd: context.testRoot, stdio: 'ignore', windowsHide: true,
         env: { ...process.env, ARTIFACT_KIND: 'workspace-fault', INSPECTOR_CAPTURE: String(capture), RUNNER_TEMP: context.testRoot,
+          WORKSPACE_FAULT_CAPTURE_SCENARIO: selection,
+          EVIDENCE_CALLER_RESULT_PATH: join(context.testRoot, 'eky-workspace-caller-' + 'c'.repeat(32), 'result.json'),
           EXPECTED_BUILD_REVISION: 'a'.repeat(40), EXPECTED_DESCRIPTOR_SHA256: 'b'.repeat(64),
           TEST_CALLS: context.resultPath, TEST_FAIL_AT: String(failAt), TEST_COMMAND_EXIT: String(commandExit), TEST_VERIFIER_EXIT: String(verifierExit) },
       });
@@ -449,15 +496,19 @@ ${body}
       assert.ok(verifier[1].endsWith('/verifyWorkspaceCallerResult.mjs'));
       for (const call of [command, verifier]) {
         assert.equal(argument(call, '--fault-scenario'),
-          ['preUpdateRecoveryPointFailure', 'activeWorkspaceFirstStartFailure', 'acceptanceInterruption'][index / 2]);
+          scenarios[index / 2]);
         assert.equal(argument(call, '--expected-build-revision'), 'a'.repeat(40));
         assert.equal(argument(call, '--expected-descriptor-sha256'), 'b'.repeat(64));
       }
       assert.equal(argument(command, '--result-path'), argument(verifier, '--result-path'));
+      if (capture && scenarios[index / 2] === selection) {
+        assert.equal(argument(command, '--result-path'), join(context.testRoot, 'eky-workspace-caller-' + 'c'.repeat(32), 'result.json'));
+      }
       assert.equal(String(argument(verifier, '--command-exit')), String(index / 2 + 1 === failAt ? commandExit : 0));
     }
     assert.equal(new Set(calls.filter((_, index) => index % 2 === 0).map((call) => argument(call, '--result-path'))).size, calls.length / 2);
     passed = true;
+  }
   }
 });
 
@@ -477,6 +528,80 @@ test('workspace capture preserves ordered prefix and separates the approved job 
     'Extract closed inspector observations without publishing raw trace'];
   for (let index = 1; index < order.length; index++) {
     assert.ok(diagnostic.indexOf(`- name: ${order[index - 1]}`) < diagnostic.indexOf(`- name: ${order[index]}`));
+  }
+});
+
+test('workspace fault capture selects before execution and seals before required artifact reverify', async () => {
+  const source = await readFile(new URL('../../../../../.github/workflows/windows-acceptance-supervisor-feasibility.yml', import.meta.url), 'utf8');
+  const job = jobBlock(source, 'packaged-boundary-diagnostic');
+  const steps = job.split('\n      - name: ').slice(1);
+  const step = name => { const value = steps.find(value => value.startsWith(name + '\n')); assert.ok(value, name); return value; };
+  const selected = (name, context) => runInNewContext(step(name).match(/^        if: (.+)$/mu)[1],
+    { always: () => true, ...context }, { timeout: 1000 });
+  const prepare = 'Prepare exact encrypted workspace fault evidence';
+  const capture = 'Start opt-in external inspector capture';
+  const stop = 'Stop only the diagnostic recording';
+  const seal = 'Seal exact workspace fault evidence before analysis';
+  const upload = 'Upload exact encrypted workspace fault evidence only';
+  const reverify = 'Reverify immutable artifact after diagnostic';
+  const order = ['Validate closed diagnostic identity before download', prepare, capture,
+    'Run existing caller and mandatory result verifier once', stop, seal, upload, reverify,
+    'Extract closed inspector observations without publishing raw trace'];
+  for (let index = 1; index < order.length; index++) assert.ok(steps.indexOf(step(order[index - 1])) < steps.indexOf(step(order[index])));
+  assert.equal(steps.indexOf(step(seal)), steps.indexOf(step(stop)) + 1);
+  assert.equal(steps.indexOf(step(upload)), steps.indexOf(step(seal)) + 1);
+  assert.match(source, /workspace_fault_capture_scenario:\s+description: [^\n]+\s+type: choice\s+default: acceptanceInterruption\s+options: \[acceptanceInterruption, activeWorkspaceFirstStartFailure, passiveWorkspaceMigrationFailure\]/u);
+  for (const artifact_kind of ['legacy', 'upgrade', 'workspace', 'workspace-fault']) {
+    for (const inspector_capture of [false, true]) for (const selection of ['', 'acceptanceInterruption', 'activeWorkspaceFirstStartFailure', 'passiveWorkspaceMigrationFailure']) {
+      const inputs = { artifact_kind, inspector_capture, workspace_fault_capture_scenario: selection };
+      const enabled = inspector_capture && artifact_kind === 'workspace-fault';
+      assert.equal(selected(prepare, { inputs }), enabled);
+      for (const name of ['Preserve workspace pre-update failure prefix', 'Preserve workspace active rollback prefix']) {
+        assert.equal(selected(name, { inputs }), enabled && ['', 'acceptanceInterruption'].includes(selection));
+      }
+    }
+  }
+  for (const name of [prepare, seal]) {
+    assert.match(step(name), /EKY_WORKSPACE_FAULT_SCENARIO: \$\{\{ env\.WORKSPACE_FAULT_CAPTURE_SCENARIO \}\}/u);
+    assert.match(step(name), /EKY_WORKSPACE_REPETITION: '1'/u);
+    assert.doesNotMatch(step(name), /continue-on-error|Out-File|Write-Host|Get-Content/u);
+  }
+  assert.match(step(prepare), /workspaceEncryptedEvidence\.mjs prepare/u);
+  for (const key of ['PUBLIC_KEY', 'KEY_FINGERPRINT', 'VERIFIED_FINGERPRINT']) {
+    assert.ok(step(prepare).includes(`EKY_DIAGNOSTIC_${key}: \$\{\{ vars.EKY_DIAGNOSTIC_${key} \}\}`));
+  }
+  assert.match(step(seal), /workspaceEncryptedEvidence\.mjs seal/u);
+  assert.match(step(seal), /EKY_EVIDENCE_ROOT: \$\{\{ steps\.fault_evidence_prepare\.outputs\.root \}\}/u);
+  assert.match(step(seal), /EKY_TEST_OUTCOME: \$\{\{ steps\.boundary_caller\.outcome \}\}/u);
+  assert.match(step(seal), /EKY_ARTIFACT_OUTCOME: skipped/u);
+  assert.match(step(seal), /EKY_ANALYSIS_OUTCOME: skipped/u);
+  assert.doesNotMatch(step(seal), /artifact_reverify|job\.status/u);
+  const caller = step('Run existing caller and mandatory result verifier once');
+  assert.match(caller, /EVIDENCE_CALLER_RESULT_PATH: \$\{\{ steps\.fault_evidence_prepare\.outputs\.caller_result_path \}\}/u);
+  assert.match(caller, /\$resultPath = \$env:EVIDENCE_CALLER_RESULT_PATH/u);
+  assert.match(caller, /IsNullOrEmpty\(\$env:EVIDENCE_CALLER_RESULT_PATH\)/u);
+  assert.doesNotMatch(caller + step(reverify), /continue-on-error/u);
+  assert.match(job, /EXPECTED_BUILD_REVISION: \$\{\{ inputs\.artifact_build_revision \}\}/u);
+  assert.match(job, /EXPECTED_DESCRIPTOR_SHA256: \$\{\{ inputs\.artifact_descriptor_sha256 \}\}/u);
+  withoutFaultEvidenceUpload(job);
+  // These are workflow-condition proofs, not a claim that a destroyed runner can deliver.
+  for (const commandOutcome of ['success', 'failure', 'cancelled']) {
+    for (const captureOutcome of ['success', 'failure', 'cancelled', 'skipped']) {
+      const state = { boundary_caller: { outcome: commandOutcome }, capture: { outcome: captureOutcome },
+        fault_evidence_prepare: { outcome: 'success' },
+        fault_evidence_seal: { outcome: 'success', outputs: { sealed: 'true' } }, download: { outcome: 'success' } };
+      assert.equal(selected(stop, { steps: state }), captureOutcome !== 'skipped');
+      assert.equal(selected(seal, { steps: state }), true);
+      assert.equal(selected(upload, { steps: state }), true);
+      assert.equal(selected(reverify, { steps: state }), true);
+      for (const outcome of ['failure', 'cancelled', 'skipped']) {
+        assert.equal(selected(seal, { steps: { ...state, fault_evidence_prepare: { outcome } } }), false);
+        assert.equal(selected(upload, { steps: { ...state, fault_evidence_seal: { outcome, outputs: { sealed: 'true' } } } }), false);
+      }
+      for (const sealed of ['', 'false']) assert.equal(selected(upload, {
+        steps: { ...state, fault_evidence_seal: { outcome: 'success', outputs: { sealed } } },
+      }), false);
+    }
   }
 });
 
@@ -502,7 +627,7 @@ test('workspace-success observation keeps the command budget and bounds post-cut
   assert.match(analysis, /timeout-minutes: 3/u);
   assert.match(analysis, /-Mode analyze -WorkspaceSuccessCommand/u);
   assert.doesNotMatch(analysis, /\$output\s*=|Out-String|Out-File/u);
-  assert.doesNotMatch(diagnostic, /upload-artifact|artifact:build|package:windows|Remove-Item/u);
+  assert.doesNotMatch(withoutFaultEvidenceUpload(diagnostic), /upload-artifact|artifact:build|package:windows|Remove-Item/u);
 });
 
 test('inspector analysis diagnosis reuses one native hold without a packaged lifecycle', async () => {

@@ -166,16 +166,19 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
       const decrypted = await invokeGpg(recipient.home, ['--decrypt', result.output]);
       assert.equal(decrypted.stdout.equals(plaintext), true, 'OPENPGP_TEST_MULTIPLE_GIT_ROUNDTRIP_FAILED');
     }, windowsOnly);
-    await check('collector -> PowerShell entry -> OpenPGP -> decrypt preserves the trace and manifest', async () => {
-      const temp = join(root, 'runner-temp');
+    for (const faultScenario of ['', 'activeWorkspaceFirstStartFailure', 'passiveWorkspaceMigrationFailure']) {
+    await check(`collector -> PowerShell entry -> OpenPGP -> decrypt preserves the trace and manifest: ${faultScenario || 'success-scenario'}`, async () => {
+      const temp = join(root, 'runner-temp-' + (faultScenario || 'success'));
       await mkdir(temp);
       const env = { RUNNER_TEMP: temp, GITHUB_RUN_ID: '12345', GITHUB_RUN_ATTEMPT: '1',
         EKY_WORKSPACE_REPETITION: '1', EXPECTED_BUILD_REVISION: 'a'.repeat(40),
         EXPECTED_DESCRIPTOR_SHA256: 'b'.repeat(64), EKY_DIAGNOSTIC_KEY_FINGERPRINT: recipient.fingerprint,
         EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: recipient.fingerprint,
         EKY_DIAGNOSTIC_PUBLIC_KEY: await readFile(publicPath, 'utf8'),
-        EKY_TEST_OUTCOME: 'failure', EKY_ARTIFACT_OUTCOME: 'success', EKY_CAPTURE_START_OUTCOME: 'success',
-        EKY_CAPTURE_STOP_OUTCOME: 'success', EKY_ANALYSIS_OUTCOME: 'failure' };
+        EKY_WORKSPACE_FAULT_SCENARIO: faultScenario,
+        EKY_TEST_OUTCOME: faultScenario ? 'cancelled' : 'failure',
+        EKY_ARTIFACT_OUTCOME: faultScenario ? 'skipped' : 'success', EKY_CAPTURE_START_OUTCOME: 'success',
+        EKY_CAPTURE_STOP_OUTCOME: 'success', EKY_ANALYSIS_OUTCOME: faultScenario ? 'skipped' : 'failure' };
       const prepared = await prepareEvidence(env);
       const capture = join(temp, 'eky-inspector-capture');
       await mkdir(capture);
@@ -191,10 +194,19 @@ test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', 
       assert.equal(entry.sha256, createHash('sha256').update(trace).digest('hex'));
       assert.equal(entry.bytes, trace.length);
       assert.equal(value.manifest.captureClosed, true);
-      assert.equal(value.manifest.outcomes.test, 'failure');
+      assert.equal(value.manifest.outcomes.test, env.EKY_TEST_OUTCOME);
+      assert.equal(value.manifest.outcomes.artifact, env.EKY_ARTIFACT_OUTCOME);
+      assert.equal(value.manifest.outcomes.analysis, env.EKY_ANALYSIS_OUTCOME);
+      assert.equal(value.manifest.binding.scenario,
+        faultScenario ? 'packagedWorkspaceFaultRollback' : 'packagedWorkspaceSuccess');
+      assert.equal(value.manifest.binding.faultScenario, faultScenario || undefined);
+      assert.equal(value.manifest.binding.attempt, '1');
+      assert.equal(value.manifest.binding.buildRevision, env.EXPECTED_BUILD_REVISION);
+      assert.equal(value.manifest.binding.artifactDescriptorSha256, env.EXPECTED_DESCRIPTOR_SHA256);
       assert.equal(value.manifest.cleanup, 'unverified');
       assert.equal(value.manifest.unresolvedEvidenceHold, true);
     });
+    }
     await check('failed child output and native cleanup result survive job collection, encryption and real decryption', async () => {
       const temp = join(root, 'job-runner-temp');
       const checkout = join(root, 'job-checkout');

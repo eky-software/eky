@@ -20,6 +20,9 @@ const DELIVERY_PROOF_FILE = 'command-export.stderr.private.log';
 const DELIVERY_PROOF_BYTES = Buffer.from('EKY synthetic encrypted delivery proof v1\n', 'utf8');
 const ENCRYPTION_FAILURE_CODES = new Set(encryptionFailureCodes);
 const HELPER_START_FAILED = 'EVIDENCE_HELPER_START_FAILED';
+const FAULT_SCENARIOS = new Set([
+  'acceptanceInterruption', 'activeWorkspaceFirstStartFailure', 'passiveWorkspaceMigrationFailure',
+]);
 const CAPTURE_FILES = Object.freeze({
   'capture.etl': 256 * MiB,
   'event-statistics.private.log': 32 * MiB,
@@ -101,13 +104,17 @@ export async function retain(root, source, destination, limit) {
 }
 
 export function evidenceBinding(env) {
+  const faultScenario = env.EKY_WORKSPACE_FAULT_SCENARIO ?? '';
+  if (faultScenario !== '' && !FAULT_SCENARIOS.has(faultScenario)) fail();
   if (!/^[1-9][0-9]*$/.test(env.GITHUB_RUN_ID ?? '') ||
       !/^[1-9][0-9]*$/.test(env.GITHUB_RUN_ATTEMPT ?? '') ||
       !/^[12]$/.test(env.EKY_WORKSPACE_REPETITION ?? '') ||
       !/^[0-9a-f]{40}$/.test(env.EXPECTED_BUILD_REVISION ?? '') ||
       !/^[0-9a-f]{64}$/.test(env.EXPECTED_DESCRIPTOR_SHA256 ?? '')) fail();
   return { runId: env.GITHUB_RUN_ID, attempt: env.GITHUB_RUN_ATTEMPT,
-    repetition: env.EKY_WORKSPACE_REPETITION, scenario: 'packagedWorkspaceSuccess',
+    repetition: env.EKY_WORKSPACE_REPETITION,
+    scenario: faultScenario ? 'packagedWorkspaceFaultRollback' : 'packagedWorkspaceSuccess',
+    ...(faultScenario ? { faultScenario } : {}),
     buildRevision: env.EXPECTED_BUILD_REVISION, artifactDescriptorSha256: env.EXPECTED_DESCRIPTOR_SHA256 };
 }
 
@@ -208,7 +215,8 @@ async function collectBoundEvidence(env, root, binding) {
   if (!synthetic && manifest.files.at(-1).status === 'retained') {
     try {
       const caller = validateWorkspaceCallerResult(JSON.parse(await readFile(join(stage, 'caller-result.json'), 'utf8')),
-        { schemaVersion: 1, invocationId: context.invocationId, scenario: binding.scenario, faultScenario: null,
+        { schemaVersion: 1, invocationId: context.invocationId, scenario: binding.scenario,
+          faultScenario: binding.faultScenario ?? null,
           buildRevision: binding.buildRevision, artifactDescriptorSha256: binding.artifactDescriptorSha256 });
       const result = caller.outcome;
       manifest.cleanup = result.processTreeAbsent === true && result.productProcessAbsent === true &&

@@ -14,6 +14,8 @@ if (
 }
 
 var mode = args[1];
+if (mode is "msiObservationContracts" or "msiObservationThrows" or "msiObservationBlocked")
+    return MsiObservationContract.Run(mode, args[3]);
 if (mode == "deadlineClockContracts") return DeadlineReadinessContract.RunClockContracts(args[3]);
 if (DeadlineReadinessContract.Modes.Contains(mode))
     return DeadlineReadinessContract.Run(mode, args[3]);

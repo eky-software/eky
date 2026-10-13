@@ -309,6 +309,27 @@ testin käynnistystä. Sidonta sisältää CI-ajon, suoritusyrityksen, matriisin
 toiston, lähderevision, paketin descriptorin ja callerin käynnistystunnisteen.
 Uusi yritys ei kirjoita vanhan päälle eikä build tyhjennä tätä hakemistoa.
 
+Manuaalisen `packaged-boundary-diagnostic`-kokeen opt-in-workspace-fault-keräys
+käyttää samaa keräintä ja kolmea sallittua valintaa:
+`acceptanceInterruption`, `activeWorkspaceFirstStartFailure` tai
+`passiveWorkspaceMigrationFailure`. Konteksti, manifesti ja caller-tuloksen
+varmennus sidotaan samaan `packagedWorkspaceFaultRollback`-skenaarioon ja
+täsmälliseen `faultScenario`-arvoon. Väärää skenaariota ei tulkita
+onnistuneeksi siivoukseksi. Tavallisen success-keräyksen sidonta säilyy.
+
+Kahdella jälkimmäisellä valinnalla tallennus alkaa ennen valitun skenaarion
+komentoa, ei vasta aikaisempien pitkien prefix-kokeiden jälkeen. Vanha
+`acceptanceInterruption`-oletus säilyttää prefixinsä. Pysäytys, salaus ja
+vain salatun tiedoston toimitus käyttävät nykyisiä virheen-/keskeytyksen
+jälkiaskeleita. Fault-aineisto suljetaan talteen ennen mahdollista hidasta
+paketin jälkivarmennusta ja vientianalyysiä; manifestin niiden tulokset ovat
+silloin `skipped`. Niiden myöhemmät erilliset tulokset ovat edelleen
+pakollisia, eikä varhainen talteenotto hyväksy testiä tai pakettia.
+Puuttuva caller-tulos säilyttää saatavilla olevan sallitun aineiston,
+mutta siivous jää `unverified`-tilaan. Tiedostonimi-, koko-, avain-, salaus-
+ja säilytysrajat eivät laajene. Tämä kytkentä ei käynnistä koetta eikä muuta
+normaalin CI-matriisin valintaa.
+
 Nykyinen rajattu WPR-keräin käynnistetään ennen varsinaista komentoa ja
 pysäytetään sen jälkeen myös testin epäonnistuessa, jos runner on vielä
 käytettävissä. Normaali caller, sen verifier ja paketin jälkivarmennus

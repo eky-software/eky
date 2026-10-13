@@ -49,6 +49,59 @@ if (!Number.isInteger(repetitions) || repetitions < 1 || repetitions > 50) {
 
 test.afterEach(async () => cleanupActiveSupervisors());
 
+test('MSI observation: held handles, bounded samples and late completion preserve the optional contract', WINDOWS_ONLY, async t => {
+  const context = await contextFor(t, 'msi-observation-contracts');
+  context.scenario = 'packagedWorkspaceFaultRollback';
+  await writeRequest(context, createRequest(context, 'exitZero'));
+  const execution = startProgramFailureFixture(context, 'msiObservationContracts');
+  assert.equal((await execution.completion).exitCode, 0);
+  const proof = JSON.parse(await readFile(join(context.testRoot, 'msi-observation-contract.json'), 'utf8'));
+  assert.ok(Object.keys(proof).length >= 30);
+  assert.ok(Object.values(proof).every(value => value === true));
+});
+
+for (const mode of ['msiObservationBlocked', 'msiObservationThrows']) {
+  for (const terminal of ['success', 'deadline']) {
+    test(`MSI observation: ${mode} cannot replace ${terminal} or delay owned cleanup`, WINDOWS_ONLY, async t => {
+      const context = await contextFor(t, `${mode}-${terminal}`);
+      context.scenario = 'packagedWorkspaceFaultRollback';
+      await writeRequest(context, createRequest(context, 'hold'));
+      const execution = startProgramFailureFixture(context, mode);
+      const root = await waitForMarker(context, 'root');
+      await waitForMarker(context, 'observation');
+      if (terminal === 'success') await releaseFixture(context, 'root');
+      const { completion, result } = await readCompletedExecution(context, execution);
+      assert.equal(completion.exitCode, terminal === 'success' ? 0 : 1);
+      assert.equal(result.processResultCode, terminal === 'success' ? 'processCompleted' : 'deadlineExceeded');
+      assert.equal(result.processTreeAbsent, true);
+      assert.ok(['notRequired', 'processTreeAbsent'].includes(result.cleanupResultCode));
+      const observations = completion.evidence.filter(value => value.phase === 'msiClientMembership');
+      assert.deepEqual(observations.map(value => value.resultCode),
+        [mode === 'msiObservationBlocked' ? 'observationPending' : 'observationUnknown']);
+      assert.ok(completion.evidence.findIndex(value => value.phase === 'msiClientMembership') <
+        completion.evidence.findIndex(value => value.phase === 'processTreeAbsent'));
+      assert.equal(completion.standardOutput.includes('synthetic private failure'), false);
+      await waitForProcessAbsent(root.processId);
+    });
+  }
+}
+
+test('MSI observation: interrupted command retains first output while its owned tree exits', WINDOWS_ONLY, async t => {
+  const context = await contextFor(t, 'msi-observation-interrupted');
+  context.scenario = 'packagedWorkspaceFaultRollback';
+  await writeRequest(context, createRequest(context, 'hold'));
+  const execution = startProgramFailureFixture(context, 'msiObservationBlocked');
+  const root = await waitForMarker(context, 'root');
+  await waitForMarker(context, 'observation');
+  assert.equal(execution.child.kill(), true);
+  await execution.completion;
+  await waitForProcessAbsent(root.processId);
+  await cleanupRunContext(context, { preserveEvidence: true });
+  const preserved = await readFile(join(context.testRoot, 'supervisor-1.stdout.private'), 'utf8');
+  assert.match(preserved, /"phase":"waitStarted"/);
+  assert.doesNotMatch(preserved, /"phase":"resultWritten"/);
+});
+
 async function readCompletedExecution(context, execution) {
   const completion = await execution.completion;
   const result = await readWindowsAcceptanceSupervisorResult(

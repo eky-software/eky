@@ -49,6 +49,11 @@ on:
         description: Opt-in legacy, upgrade or workspace diagnostic; raw WPR data stays in runner temp
         type: boolean
         default: false
+      workspace_fault_capture_scenario:
+        description: Selected workspace-fault capture; the default retains the historical prefixes
+        type: choice
+        default: acceptanceInterruption
+        options: [acceptanceInterruption, activeWorkspaceFirstStartFailure, passiveWorkspaceMigrationFailure]
 
 permissions:
   contents: read
@@ -617,6 +622,7 @@ jobs:
       EXPECTED_BUILD_REVISION: ${{ inputs.artifact_build_revision }}
       EXPECTED_DESCRIPTOR_SHA256: ${{ inputs.artifact_descriptor_sha256 }}
       INSPECTOR_CAPTURE: ${{ inputs.inspector_capture }}
+      WORKSPACE_FAULT_CAPTURE_SCENARIO: ${{ inputs.workspace_fault_capture_scenario || 'acceptanceInterruption' }}
     steps:
       - name: Check out exact diagnostic harness revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -626,6 +632,11 @@ jobs:
 
       - name: Validate closed diagnostic identity before download
         run: |
+          if ($env:WORKSPACE_FAULT_CAPTURE_SCENARIO -cnotin @('acceptanceInterruption', 'activeWorkspaceFirstStartFailure', 'passiveWorkspaceMigrationFailure') -or
+              ($env:WORKSPACE_FAULT_CAPTURE_SCENARIO -cne 'acceptanceInterruption' -and
+               ($env:INSPECTOR_CAPTURE -cne 'true' -or $env:ARTIFACT_KIND -cne 'workspace-fault'))) {
+            throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CAPTURE_SCENARIO_INVALID'
+          }
           if ($env:INSPECTOR_CAPTURE -ceq 'true' -and $env:ARTIFACT_KIND -cnotin @('legacy', 'upgrade', 'workspace', 'workspace-fault')) {
             throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CAPTURE_SCOPE_INVALID'
           }
@@ -706,7 +717,7 @@ jobs:
           }
 
       - name: Preserve workspace pre-update failure prefix
-        if: inputs.inspector_capture && inputs.artifact_kind == 'workspace-fault'
+        if: inputs.inspector_capture && inputs.artifact_kind == 'workspace-fault' && (inputs.workspace_fault_capture_scenario == '' || inputs.workspace_fault_capture_scenario == 'acceptanceInterruption')
         timeout-minutes: 25
         run: |
           $descriptorPath = Join-Path $env:RUNNER_TEMP 'eky-existing-boundary-artifact/workspace-success-artifact.json'
@@ -718,7 +729,7 @@ jobs:
           if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED' }
 
       - name: Preserve workspace active rollback prefix
-        if: inputs.inspector_capture && inputs.artifact_kind == 'workspace-fault'
+        if: inputs.inspector_capture && inputs.artifact_kind == 'workspace-fault' && (inputs.workspace_fault_capture_scenario == '' || inputs.workspace_fault_capture_scenario == 'acceptanceInterruption')
         timeout-minutes: 25
         run: |
           $descriptorPath = Join-Path $env:RUNNER_TEMP 'eky-existing-boundary-artifact/workspace-success-artifact.json'
@@ -729,6 +740,18 @@ jobs:
           node apps/desktop/installer/windows-acceptance-harness/verifyWorkspaceCallerResult.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario activeWorkspaceFirstStartFailure --result-path $resultPath --command-exit $commandExit
           if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED' }
 
+      - name: Prepare exact encrypted workspace fault evidence
+        id: fault_evidence_prepare
+        if: inputs.inspector_capture && inputs.artifact_kind == 'workspace-fault'
+        timeout-minutes: 1
+        env:
+          EKY_WORKSPACE_REPETITION: '1'
+          EKY_WORKSPACE_FAULT_SCENARIO: ${{ env.WORKSPACE_FAULT_CAPTURE_SCENARIO }}
+          EKY_DIAGNOSTIC_PUBLIC_KEY: ${{ vars.EKY_DIAGNOSTIC_PUBLIC_KEY }}
+          EKY_DIAGNOSTIC_KEY_FINGERPRINT: ${{ vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT }}
+          EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: ${{ vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT }}
+        run: node apps/desktop/installer/windows-acceptance-harness/workspaceEncryptedEvidence.mjs prepare
+
       - name: Start opt-in external inspector capture
         id: capture
         if: inputs.inspector_capture && (inputs.artifact_kind == 'legacy' || inputs.artifact_kind == 'upgrade' || inputs.artifact_kind == 'workspace' || inputs.artifact_kind == 'workspace-fault')
@@ -737,9 +760,11 @@ jobs:
         run: ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode start
 
       - name: Run existing caller and mandatory result verifier once
+        id: boundary_caller
         timeout-minutes: ${{ (inputs.artifact_kind == 'legacy' || inputs.artifact_kind == 'upgrade') && 27 || 25 }}
         env:
           EKY_ACCEPTANCE_LEGACY_PAYLOAD_OBSERVATION: ${{ inputs.artifact_kind == 'legacy' && '1' || '0' }}
+          EVIDENCE_CALLER_RESULT_PATH: ${{ steps.fault_evidence_prepare.outputs.caller_result_path }}
         run: |
           if ($env:ARTIFACT_KIND -ceq 'upgrade') {
             $descriptorPath = Join-Path (Join-Path $env:RUNNER_TEMP 'eky-existing-boundary-artifact') 'upgrade-rollback-artifact.json'
@@ -754,10 +779,18 @@ jobs:
           if ($env:ARTIFACT_KIND -ceq 'workspace-fault') {
             $descriptorPath = Join-Path (Join-Path $env:RUNNER_TEMP 'eky-existing-boundary-artifact') 'workspace-success-artifact.json'
             $PSNativeCommandUseErrorActionPreference = $false
-            $scenarios = if ($env:INSPECTOR_CAPTURE -ceq 'true') { @('acceptanceInterruption') }
+            $scenarios = if ($env:INSPECTOR_CAPTURE -ceq 'true') { @($env:WORKSPACE_FAULT_CAPTURE_SCENARIO) }
               else { @('preUpdateRecoveryPointFailure', 'activeWorkspaceFirstStartFailure') }
             foreach ($faultScenario in $scenarios) {
-              $resultPath = Join-Path (Join-Path $env:RUNNER_TEMP ('eky-workspace-caller-' + [Guid]::NewGuid().ToString('N'))) 'result.json'
+              if ($env:INSPECTOR_CAPTURE -ceq 'true') {
+                if ($faultScenario -cnotin @('acceptanceInterruption', 'activeWorkspaceFirstStartFailure', 'passiveWorkspaceMigrationFailure') -or
+                    [string]::IsNullOrEmpty($env:EVIDENCE_CALLER_RESULT_PATH)) {
+                  throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_EVIDENCE_BINDING_INVALID'
+                }
+                $resultPath = $env:EVIDENCE_CALLER_RESULT_PATH
+              } else {
+                $resultPath = Join-Path (Join-Path $env:RUNNER_TEMP ('eky-workspace-caller-' + [Guid]::NewGuid().ToString('N'))) 'result.json'
+              }
               dotnet apps/desktop/installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --workspace-fault-command --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario $faultScenario --result-path $resultPath
               $commandExit = $LASTEXITCODE
               node apps/desktop/installer/windows-acceptance-harness/verifyWorkspaceCallerResult.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario $faultScenario --result-path $resultPath --command-exit $commandExit
@@ -796,6 +829,34 @@ jobs:
         timeout-minutes: 2
         continue-on-error: ${{ inputs.artifact_kind == 'workspace-fault' }}
         run: ./apps/desktop/installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode stop
+
+      - name: Seal exact workspace fault evidence before analysis
+        id: fault_evidence_seal
+        if: always() && steps.fault_evidence_prepare.outcome == 'success'
+        timeout-minutes: 3
+        env:
+          EKY_WORKSPACE_REPETITION: '1'
+          EKY_WORKSPACE_FAULT_SCENARIO: ${{ env.WORKSPACE_FAULT_CAPTURE_SCENARIO }}
+          EKY_EVIDENCE_ROOT: ${{ steps.fault_evidence_prepare.outputs.root }}
+          EKY_TEST_OUTCOME: ${{ steps.boundary_caller.outcome }}
+          # Reverification remains required below; it has not run at sealing time.
+          EKY_ARTIFACT_OUTCOME: skipped
+          EKY_CAPTURE_START_OUTCOME: ${{ steps.capture.outcome }}
+          EKY_CAPTURE_STOP_OUTCOME: ${{ steps.capture_stop.outcome }}
+          EKY_ANALYSIS_OUTCOME: skipped
+        run: node apps/desktop/installer/windows-acceptance-harness/workspaceEncryptedEvidence.mjs seal
+
+      - name: Upload exact encrypted workspace fault evidence only
+        if: always() && steps.fault_evidence_seal.outcome == 'success' && steps.fault_evidence_seal.outputs.sealed == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: eky-encrypted-workspace-fault-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.fault_evidence_seal.outputs.ciphertext }}
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
 
       - name: Reverify immutable artifact after diagnostic
         if: always() && steps.download.outcome == 'success'

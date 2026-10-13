@@ -22,9 +22,10 @@ Modulaarinen monoliitti ja
 hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohdan;
 [julkaisusuunnitelma](release-0.3.0-plan.md) omistaa koko 0.3.0:n sisällön.
 
-**Uusin K-jatkamiskohta:** [PR-headin kaksi testihylkäystä ja hyväksytty
-rajattu valmistelujako](#kn-nykyinen-pr-checkpoint-ja-valmistelukoe).
-Paikallinen näyttö ja testijaon hyväksyntä eivät vielä hyväksy PR:ää tai K:ta.
+**Uusin K-jatkamiskohta:** [Hyväksytyn testijaon PR-todennus ja avoin
+MSI-asennusodotus](#kn-nykyinen-pr-checkpoint-ja-valmistelukoe).
+Rajatut testikorjaukset läpäisivät normaalin CI:n, mutta asennusodotus
+hylättiin myös yhdessä rajatussa uusinnassa. PR:ää tai K:ta ei ole hyväksytty.
 
 | Kohta | Nykyinen lähtötieto |
 | --- | --- |
@@ -74,6 +75,116 @@ historiallinen integraatiohyväksyntä, uusi seurantahylkäys ja K:n puuttuva
 hyväksyntä eivät ole sama asia. Uutta ajoa ei käynnistetty tämän havainnon vuoksi.
 
 ### K:n nykyinen PR-checkpoint ja valmistelukoe
+
+**Nykyinen checkpoint 13.10.2026:** PR #303:n head
+`3e3420df107d55c89917409012e877089e64ac26` sisältää alla hyväksytyn yhden
+palautustestin valmistelujaon sekä täsmällistä Playwright-sivua odottavan
+PDF-testikorjauksen. [Normaali V2-kierros](https://github.com/eky-software/eky/actions/runs/38389745059)
+ja sen yksi rajattu uusinta hylättiin. PR-merge-checkoutin
+`eec0ff9a3bc730eb37b6705837722bdb04e16536` puu varmennettiin headin puuksi.
+[Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/38389745075)
+läpäisi erikseen.
+
+Normaalissa kierroksessa koko työtilan testit, tyyppitarkistukset ja käännökset,
+Linuxin oikea eristetty tarkistusprosessi siivouksineen sekä Windowsin
+packaged-smoke ja kolme legacy-testiä läpäisivät. Electronin 47 ja webin 77
+valittua käyttäjäpolkutestiä läpäisivät ilman uusintaa. System-sarjassa
+831 testiä läpäisi ja yksi Windowsiin rajattu tapaus ohitettiin tarkoituksella;
+ohitusta ei lasketa läpäisyksi. Näyttö korvaa alla olevan vanhemman headin
+puuttuvat Linux- ja PDF-portit, mutta ei koko K:n integraatiohyväksyntää.
+
+Ensimmäinen hylkäys koski workspace-fault-kuluttajan ensimmäistä toistoa,
+`activeWorkspaceFirstStartFailure`-skenaarion `targetInstall`-odotusta.
+Saman lähteen ja täsmälleen saman valmiin paketin yksi rajattu job-uusinta
+läpäisi tämän skenaarion ja keskeytyspalautuksen, mutta hylättiin
+`passiveWorkspaceMigrationFailure`-skenaarion samassa `targetInstall`-odotuksessa.
+Kummassakin nykyinen MSI-havaitsija näki saman Windows-istunnon
+asenninprosessin, eikä varsinaiseen skenaarion palautusvikaan asti päästy.
+Prosessin olemassaolo ei todista sen etenemistä, odotuksen juurisyytä tai
+GitHub-infrastruktuurin vikaa. Saman paketin toinen ennalta määrätty
+workspace-fault-toisto läpäisi kaikki viisi skenaariota; se ei kumoa hylkäyksiä.
+
+Molempien yritysten lokit ja salatut liitteet säilytettiin erillisinä,
+sidonnat ja tiivisteet varmennettiin. Omistetun prosessipuun, asennuksen ja
+testiaineiston siivous varmennettiin, mutta hylättyjen skenaarioiden
+varsinainen palautustodistus jäi saavuttamatta. Nykyinen salattu keräys
+säilytti vaiheiden tuloksia, ei kohdeasentimen alkuperäistä syylokia;
+myös väliaikaistiedostojen keräysraja täyttyi. Rajan täyttyminen ei yksin
+selitä puuttuvaa syylokia, eikä sen kasvattamista ole hyväksytty.
+
+V2:n molempiin yrityksiin jäi 36 onnistunutta job-merkintää, yksi varsinainen
+hylkäys, sen koontiportin hylkäys ja kuusi valitsematonta diagnostiikkajobia.
+Uusinnan muiden jobien aiemmin valmistuneet tulokset eivät ole uusia ajoja.
+Saman hylkäyksen uusintakiintiö on käytetty. Ei mergeä, kolmatta uusintaa,
+aikarajamuutosta tai oletettua sovelluskorjausta. Seuraava rajaus on
+MSI-asennusodotuksen puuttuvan syyn selvittäminen nykyisten tutkimusvälineiden
+avulla; uusi keräys tai koe tarvitsee täsmällisen rajauksen ennen toteutusta.
+
+**Hyväksytty rajaus:** omistaja hyväksyi rajatun suunnittelun ja synteettisen
+kokeen, ei uutta pitkää CI-ajoa tai tuotantokytkentää. Tarkoitus on erottaa
+testin täsmälliseen prosessiryhmään kuuluva MSI-asiakas, ryhmän ulkopuolella
+havaittu asiakas ja epävarma havainto. Ulkopuolinen ei tarkoita testiin
+liittymätöntä tai turvallisesti ohitettavaa: asennuspalvelun työ voi liittyä
+samaan asennukseen. Nykyinen kaikkien saman istunnon MSI-asiakkaiden
+nollavaatimus sekä tuotteen ja siivouksen hyväksyntäehdot säilyvät.
+
+Synteettinen omistajuuskoe käyttää nykyistä Job- ja prosessikahvarajaa;
+se ei asenna MSI:tä eikä muuta sovellusta. Tarkistus kattaa myös kesken
+havainnon poistuvan prosessin ja havaintovirheen jättämisen epävarmaksi.
+Mahdollinen seuraava kytkentä tarvitsee lisäksi rajatun havainnon toimituksen,
+siivouksesta erillisen alkuperäisen virheen säilymisen ja salatun ketjun
+todistuksen. Nykyisen kohdeasentimen alkuperäistä syytä ei väitetä löytyneeksi.
+Olemassa olevan jälkikeräyksen pitäisi alkaa ennen valitun skenaarion
+asentimen käynnistystä; eri skenaariota vasta myöhemmin tallentava koe ei
+vastaa tähän näyttöaukkoon. Ei uutta loggeria, supervisoria, yleistä
+testialustaa, aikarajamuutosta tai asennuksen käyttöliittymätilan muutosta.
+
+Rajattu prosessijäsenyyden koe ja nykyisen havaitsijan, runtime-odotuksen sekä
+fault-elinkaaren kohdetestit läpäisivät. Koemenetelmän riippumaton katselmus
+ei löytänyt estävää puutetta; yhtä kattavuusväitettä täsmennettiin.
+Tämä ei todista varsinaisen MSI-luetteloinnin, hitaan havaintokyselyn tai
+uuden havainnon salatun toimituksen kytkentää. Molempien hylättyjen ajojen
+säilyneissä liitteissä ei ole ETL-jälkeä, jota voisi käyttää tämän aukon
+jälkikäteiseen tutkimiseen. Seuraava päätös koskee vain rajattua
+testiharnessikytkentää ja sen synteettistä toimitus-/keskeytystodennusta.
+
+Omistaja hyväksyi tämän rajatun kytkennän ja synteettiset regressiot.
+Nykyiseen supervisoriin lisätään vain valinnainen suljettu jäsenyyshavainto;
+hyväksyntä edelleen odottaa nykyistä MSI-nollatilaa ja tuotetarkistuksia.
+Nykyisen manuaalisen jälkikeräyksen valitsin ja salattu sidonta kohdistetaan
+oikeaan fault-vaiheeseen. [Havaintosopimus](windows-installer-acceptance-harness-v2.md#workspace-asennusodotuksen-havaintoraja)
+ja [salatun keräyksen sopimus](ci-encrypted-evidence.md#workspace-keräys-ja-tulokset)
+omistavat rajat. Rajattu kytkentä ja synteettiset regressiot on todennettu:
+supervisorin tulos-/prosessisopimukset 157/157, keräys-/workflow-sopimukset
+69/69 sekä oikean salaus-/purkukokeen ja CI-kytkentöjen sarja 60/60.
+Luvut ovat eri sarjojen tuloksia, eivät koko K:n hyväksyntäluku.
+Kyselyvirhe, pysyvästi keskeneräinen havainto, myöhäinen valmistuminen ja
+hallittu keskeytys eivät muuttaneet vaadittua tulosta tai siivousvastuuta.
+Molemmat valitut fault-sidonnat ja synteettiset jälkitavut säilyivät oikean
+salauksen ja purun läpi. Puuttuva caller ei todistanut siivousta.
+
+Kytkennän rajattu riippumaton katselmus ei löytänyt estävää puutetta.
+Natiivin MSI-luetteloinnin 32/33-asiakasrajaa, istunnon ja exe-nimen suodatusta sekä
+käyttöoikeushylkäystä ei tällä kohdenäytöllä todistettu; luokittelun
+injektoitu testi ei korvaa niitä. Havainto on valinnainen, eikä tämä aukko
+muuta asennuksen hyväksymisehtoja. Ohjeiden linkki- ja julkaisutarkistus
+läpäisi. Asennusodotuksen alkuperäinen syy ja K:n PR-hylkäys ovat edelleen
+avoimia. Rajatun kytkennän kohdetodennus ei vielä hyväksy PR:ää.
+
+Omistaja hyväksyi 13.10.2026 jatkon normaaliin mergeen ja mainin omiin
+portteihin asti. Seuraava nimetty koe jäädyttää yhden harness-revision ja
+tallentaa `passiveWorkspaceMigrationFailure`-skenaarion ennen asenninhandoffia.
+Koe käyttää säilynyttä pakettia, jonka build-revisio on
+`eec0ff9a3bc730eb37b6705837722bdb04e16536`. Koerevisio valmistellaan
+erillisellä haaralla; hyväksytty sama revisio viedään PR #303:n haaraan
+lineaarisesti ennen normaaleja PR-portteja. Ensivirheet ja puuttuva syy
+säilyvät avoimina havaintoina; normaali merge vaatii uuden headin
+nykyiset pakolliset tarkistukset ja main tarvitsee omat porttinsa.
+Uusi näyttö olisi Job-jäsenyyden suljettu havainto sekä juuri tämän
+skenaarion pysäytetty ja salattu ETL, ei vain samat odotusmerkinnät.
+Kokeen ja integraation tuloksia ei päätellä etukäteen tästä valtuudesta.
+
+**Edellinen checkpoint:**
 
 Headin `75e728ff4e8078f1013574c349c953c76169cf93`
 [V2-kierros](https://github.com/eky-software/eky/actions/runs/38378109975)
