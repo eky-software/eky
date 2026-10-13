@@ -29,7 +29,7 @@ hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohd
 | Suljettu työ | T1/R27:n ajokytkentä, T2/R29:n puhtaan valmistelun suoja ja T3/R28:n todellisten kuluttajien koko prosessipuun omistajuus. Korvatut aktiiviset fallbackit on poistettu ja [pysyvä T3-matriisi](r0-e2e-test-matrix.md#t3-prosessipuun-omistajuus) hyväksytty. PR #281 sulki tämän jälkeisen rollback-testiapurin integraatiojatkon. |
 | Avoimet havainnot | Aiemmat satunnaiset Electron-käynnistys- ja packaged/legacy-timeoutit säilyvät epäonnistuneina havaintoina omille revisioilleen. Myöhempi vihreä ajo ei todista niiden kaikkia syitä korjatuiksi. [Hylkäysten historia](e2e-test-environment-history.md#dokumentti-mainin-hylkäys-ja-rajattu-diagnostiikkajatko) ja [rajattu apurikorjaus](e2e-test-environment-history.md#rollback-testiapurin-ennenaikaisen-poistumisen-korjaus) erotetaan toisistaan. |
 | Nykyinen työ | [V2ax:n hyväksytyt päätökset](#v2ax-backendin-jälkeisen-terminal-valtuuden-päätösrajat), [V2bb:n live-terminal](#v2bb-live-terminalin-tuore-valtuus) ja [V2bc:n C-alkuperäisketju](#v2bc-cn-alkuperäisketjun-terminal) säilyvät. [V2bd](#v2bd-tarkistusvirheen-jälkeinen-rollback-valtuus) kytkee tuoreen rollback-valtuuden pysäytetyn backendin jälkeiseen virhehaaraan. [V2be](#v2be-cn-business-valmistumisen-journal-sidonta) säilyttää täsmällisen update-valinnan valmistumis- ja virhekirjoitukseen asti. Puuttuva tai vanhentunut valtuus ei oikeuta tiedostomuutoksia. Alkuperäiskannan poissaolo ei oikeuta uuden business-runtimen valintaa, vaikka tiedostorollback palauttaisi poissaolon oikein. Rajattu kohdenäyttö ei ole koko K:n hyväksyntä. |
-| Seuraava työ | [Historian osissa luennan tuotantokytkentä](#historian-luennan-toteutussopimus) ja [katalogin muistivirheen syyketju](#katalogin-muistivirheen-syyketju) on kohdetodennettu; korvatut historian kokonaistaulukot ja kasvavat kartat/joukot on poistettu. [Historian eristetyn ajon kohdenäyttö](#historian-eristetyn-ajon-kohdenäyttö) erottaa todellisen utility-ketjun ja ajurin muistirajakokeen koko K:n hyväksynnästä. Kytkennän jälkeinen normaali työtilatesti ja yhteinen tyyppitarkistus läpäisivät; seuraavaksi K:n loppukatselmus ja puhtaan revision paketointi. Hyväksytyt PDF-/journal-kytkennät säilyvät. [Linux-ajopolun](#linux-tarkistuksen-ajopolun-päätös) sopimus- ja kytkentätestit on toteutettu; oikea Linux-Electron-/CI-todennus on avoin. [Pakettibudjetin](#paketoinnin-budjettipäätös) rajatestit ja työpuun sisältömittaus läpäisivät, puhtaan revision mittaus on avoin. Hardened-palautus, oikea binaarihandoff sekä PR/main-portit vaaditaan edelleen. Alkuperäisiä aikakatkaisuja ei merkitä korjatuiksi eikä [hylättyä hyväksyntäjournalin sijoitteluehdokasta](#hyväksyntäjournalin-viimeiset-lukuvälit) oteta käyttöön. |
+| Seuraava työ | [Historian osissa luennan tuotantokytkentä](#historian-luennan-toteutussopimus) ja [katalogin muistivirheen syyketju](#katalogin-muistivirheen-syyketju) on kohdetodennettu; korvatut historian kokonaistaulukot ja kasvavat kartat/joukot on poistettu. [Historian eristetyn ajon kohdenäyttö](#historian-eristetyn-ajon-kohdenäyttö) erottaa todellisen utility-ketjun ja ajurin muistirajakokeen koko K:n hyväksynnästä. K:n rajattu loppukatselmus, puhtaan revision paketointi sekä saman paketin nyky-/038- ja cold-palautukset läpäisivät alla nimetylle revisiolle. Seuraavaksi jäädytetyn PR-headin normaalit portit, mukaan lukien [Linux-ajopolun](#linux-tarkistuksen-ajopolun-päätös) oikea Electron-todennus ja binaarihandoff. [Pakettibudjetin](#paketoinnin-budjettipäätös) puhdas paketti läpäisi tarkistukset; uusi PR- tai main-revisio tarvitsee omat porttinsa. Hyväksytyt PDF-/journal-kytkennät säilyvät. Alkuperäisiä aikakatkaisuja ei merkitä korjatuiksi eikä [hylättyä hyväksyntäjournalin sijoitteluehdokasta](#hyväksyntäjournalin-viimeiset-lukuvälit) oteta käyttöön. |
 | Ei vielä valmis | K, W7, M1:n muu sovellustyö, D-paketin muut ehdot ja koko 0.3.0. Lähtörevision läpäisy ei hyväksy uuden revision puuttuvia portteja. |
 | Uusin käyttäjäpolkunäyttö | [V2ah:n toimitus- ja sulkujärjestyskorjaus](#v2ah-electron-testiruntimen-tarkistusajuritoimitus) läpäisi yhden nimetyn Windows-Electron-kohdeajon: tuonnin schema-hylkäys, korvauksen schema-hylkäys ja native-vahvistuksen peruutus. Ensihylkäykset säilyvät erillisinä. Tämä on kohdenäyttö, ei durable-aktivoinnin, hardened-paketin tai PR/main-porttien hyväksyntä. |
 
@@ -99,8 +99,17 @@ ajokytkennän 115 tarkistusta ja CI-sopimusten 392 tarkistusta läpäisivät.
 Nykyinen kytkentäsuoja hylkää myös tämän tiedoston puuttumisen tai väärän
 ajoryhmän. Aiempi koko työtilan läpäisy koski silloista testiluetteloa,
 ei jälkikäteen palautettua tiedostoa. Aikarajat ja hyväksyntäehdot säilyvät.
-Puhtaan revision paketti, hardened-palautus, Linux-Electron sekä PR/main
-ovat edelleen erillisiä avoimia portteja.
+
+**Puhtaan paketin kohdenäyttö 13.10.2026:** lähderevision
+`2ed5d0c13de0644e3a18548a9aa34f8d99130167` Windows-paketti läpäisi
+nykyiset sisältö-, koko-, native-ajuri- ja Electron-suojaustarkistukset.
+Samoilla pakettitavuilla läpäisivät normaali synteettinen backup -> inspect ->
+restore -> restart -> compare sekä kolme paketoitua yhteensopivuustestiä:
+alkuperäinen 038-varmuuskopio ja keskeytyneen yrityksen luonnin sekä tuonnin
+cold-palautus. Paketin inventaario ja sisältöidentiteetti säilyivät muuttumattomina
+testien yli. Tämä ei ole käyttäjäaineiston, Linux-Electronin, binaarihandoffin
+tai PR/main-porttien hyväksyntä. Niiden normaalit tarkistukset vaaditaan
+integroitavalle revisiolle erikseen; pakettia ei julkaista uutena sovellusversiona.
 
 | Kohta | Näyttö ja sulkemisehto |
 | --- | --- |
