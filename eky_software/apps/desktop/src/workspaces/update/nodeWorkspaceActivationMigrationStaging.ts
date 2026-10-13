@@ -1,17 +1,21 @@
-import { lstat, readdir, realpath, rm } from 'node:fs/promises';
+import { lstat, readdir, realpath } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 
 import { validateWorkspaceBackupImportOperationId } from '../import/workspaceBackupImportOperationId.js';
 import type { WorkspaceBackupImportOperationId } from '../import/workspaceBackupImportTypes.js';
 import type { WorkspaceActivationMigrationStagingPort } from './workspaceActivationMigrationRecoveryPoint.js';
 import { WorkspaceActivationMigrationError } from './workspaceActivationMigrationError.js';
+import type { ProfileSnapshotInspectionPort } from '../../profileBackup/profileSnapshotInspectionPort.js';
 
 export class NodeWorkspaceActivationMigrationStaging
   implements WorkspaceActivationMigrationStagingPort
 {
   private readonly stagingRoot: string;
 
-  constructor(stagingRoot: string) {
+  constructor(
+    stagingRoot: string,
+    private readonly snapshotOwner: Pick<ProfileSnapshotInspectionPort, 'removeProfileSnapshot'>,
+  ) {
     if (!isAbsolute(stagingRoot) || stagingRoot.includes('\0')) {
       throw new WorkspaceActivationMigrationError(
         'WORKSPACE_ACTIVATION_MIGRATION_FAILED',
@@ -46,9 +50,9 @@ export class NodeWorkspaceActivationMigrationStaging
         if (isNodeError(error) && error.code === 'ENOENT') return undefined;
         throw error;
       });
-      if (metadata === undefined) return;
-      await assertSafeTree(operationRoot);
-      await rm(operationRoot, { recursive: true });
+      if (metadata !== undefined) await assertSafeTree(operationRoot);
+      // The inspector still owns this root after materialization, even after backend exit.
+      await this.snapshotOwner.removeProfileSnapshot(operationId);
     } catch {
       throw new WorkspaceActivationMigrationError(
         'WORKSPACE_ACTIVATION_MIGRATION_FAILED',

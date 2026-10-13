@@ -71,6 +71,59 @@ hyväksyntä eivät ole sama asia. Uutta ajoa ei käynnistetty tämän havainnon
 
 ### K:n ensimmäisen PR-kierroksen jatko
 
+**Uusin checkpoint:** korjausrevision
+`b0daaaf662785f7ce20f7f86d47e6b2cd2b1fe77`
+[V2-kierros](https://github.com/eky-software/eky/actions/runs/38332004647)
+valmistui hylättynä: 31 jobia läpäisi, seitsemän hylättiin ja kuusi
+valitsematta jätettyä diagnostiikkajobia ohitettiin.
+[Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/38332004601)
+läpäisi erikseen. Korjattu testivalmistelu, työtilan testit ja käännökset,
+system-/web-käyttäjäpolut sekä molemmat paketoidut legacy-ajot läpäisivät.
+PR-merge-checkoutin puu varmennettiin headin puuksi. Hylkäykset erotetaan:
+
+- Linuxin oikea Electron-tarkistus keskeytyi hiekkalaatikon valmistelussa
+  ennen varsinaista tarkistustulosta. Prosessipuun siivoustodiste jäi
+  erikseen varmentamatta. Alustaoikeuksien muutos vaatii päätöksen;
+  sandboxia tai nykyistä oikeuksien korottamisen estoa ei poisteta.
+- Neljä Windows-workspace-kuluttajaa hylättiin profiilivalmistelun
+  `profileMigrationHistoryFailed`-vaiheessa. Fixture muuttaa migraation
+  tiivisteen ja odottaa edelleen tavallista `invalidHistory`-tulosta,
+  vaikka hyväksytty K-sopimus pysäyttää todentamattoman historian jo ennen
+  sisältölukua. Suljetun virhepolun ja luotetun rakenteen tavallisen
+  sisältövirheen kattavuus on säilytettävä erillisinä korjauksessa.
+- Windows-Electronin aktivointitodistus hylättiin molemmilla testiyrityksillä
+  `compatibleMigration`-vaiheessa koodilla `DESKTOP_START_FAILED`.
+  Siivous läpäisi. Tätä ei yhdistetä yllä olevaan fixture-havaintoon ilman
+  erillistä näyttöä. Muut 46 valittua kriittistä Electron-testiä läpäisivät.
+- Seitsemäs hylkäys on kokonaisportti, ei uusi itsenäinen sovellusvika.
+
+Ensivirheiden lokit ja salatut liitteet on säilytetty. K:ta ei hyväksytä,
+PR:ää ei mergetä eikä samaa lähdettä uusita vihreyden vuoksi.
+Seuraava työ rajautuu näihin kolmeen havaintoon; aiempia hyväksyttyjä
+T/A/B/C-kokonaisuuksia ei avata uudelleen ilman omaa regressiota.
+
+**Rajatut Windows-korjaukset:**
+
+- W6B.2-fixturen C käyttää nykyisen first-start-todisteen yksilöityä
+  sisältövirhettä muuttamatta schemaa tai migraatiohistoriaa. Evidence-lukija
+  vaatii ehjän SQLite-rakenteen, täsmälleen nimetyn tapahtumarivin ja yhden
+  siihen kuuluvan viitevirheen. Muu korruptio hylätään; A/B sekä C ennen
+  injektiota vaativat virheettömät viitteet. Väärän migraatiometadatan
+  hylkäyskattavuus säilyy erillisenä. Fixturen 40 regressiota sekä backendin
+  kolme valittua rakenne-/sisältörajatestiä läpäisivät. Ne eivät korvaa
+  oikeiden paketoitujen workspace-kuluttajien vielä puuttuvaa todennusta.
+- Aktivointimigraation staging poisti materialisoidun juuren suoraan, vaikka
+  tarkistusasiakas omisti edelleen sen varauksen. Korjaus käyttää samaa
+  `removeProfileSnapshot`-omistajaporttia, ei uutta poistomekanismia.
+  [Aktivoinnin sopimus](local-company-workspace-plan.md#w6a3-passiivisen-työtilan-migraatio-aktivoinnissa)
+  säilyttää polku-, omistajuus- ja epävarman aineiston säilytysrajat.
+  Kaksi regressiota toisti vanhan poiston puutteet; korjauksen 142 kohdetestiä
+  ja `DESK-WORKSPACE-ACTIVATION-001`-käynnistysketju läpäisivät ilman uusintaa.
+  Riippumaton rajattu katselmus ei löytänyt lisäpuutteita.
+
+Linuxin alustaoikeuksien päätös on edelleen avoin. Korjausten kohdenäyttö
+ei hyväksy K:ta, uutta pakettia, PR-portteja tai mergeä.
+
 [PR #303:n](https://github.com/eky-software/eky/pull/303) ensimmäinen
 [V2-kierros](https://github.com/eky-software/eky/actions/runs/38329010187)
 hylättiin headilla `2a7e239bbf487e52ded02090ccf475f01b4ddb2c`.

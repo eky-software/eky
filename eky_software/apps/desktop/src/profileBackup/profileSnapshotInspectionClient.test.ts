@@ -19,6 +19,8 @@ import { ProfileRestoreActivationService } from './restore/profileRestoreActivat
 import { PreparedProfileRestoreOwner } from './restore/preparedProfileRestoreOwner.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 import { validateOwnedActiveProfile } from './validateOwnedActiveProfile.js';
+import { NodeWorkspaceActivationMigrationStaging } from '../workspaces/update/nodeWorkspaceActivationMigrationStaging.js';
+import { validateWorkspaceBackupImportOperationId } from '../workspaces/import/workspaceBackupImportOperationId.js';
 
 const boundary = vi.hoisted(() => ({ run: vi.fn() }));
 vi.mock('electron', () => ({ utilityProcess: { fork: vi.fn() } }));
@@ -38,6 +40,40 @@ afterEach(async () => {
 });
 
 describe('main-owned snapshot inspection client', () => {
+  it('releases activation staging through its inspection owner before client shutdown', async () => {
+    const f = await fixture();
+    f.owner.assertMainOwned.mockImplementation(async () => { await fileSystem.lstat(f.operationRoot); });
+    await f.client.validateProfileSnapshot(operationId);
+    const remove = vi.spyOn(f.client, 'removeProfileSnapshot');
+    const staging = new NodeWorkspaceActivationMigrationStaging(f.stagingRoot, f.client);
+
+    await staging.removeOperationRoot(validateWorkspaceBackupImportOperationId(operationId));
+
+    expect(remove).toHaveBeenCalledExactlyOnceWith(operationId);
+    expect(f.owner.close).toHaveBeenCalledOnce();
+    await expect(fileSystem.lstat(f.operationRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+    await f.client.shutdown();
+    expect(f.owner.close).toHaveBeenCalledOnce();
+    expect(f.owner.invalidate).not.toHaveBeenCalled();
+    expect(await fileSystem.readFile(join(f.stagingRoot, otherOperationId, 'profile.sqlite'), 'utf8'))
+      .toBe('synthetic source');
+  });
+
+  it('retains activation staging when its inspection owner cannot authorize removal', async () => {
+    const f = await fixture();
+    await f.client.validateProfileSnapshot(operationId);
+    f.owner.assertMainOwned.mockRejectedValue(new Error('synthetic ownership lost'));
+    const staging = new NodeWorkspaceActivationMigrationStaging(f.stagingRoot, f.client);
+
+    await expect(staging.removeOperationRoot(validateWorkspaceBackupImportOperationId(operationId)))
+      .rejects.toMatchObject({ code: 'WORKSPACE_ACTIVATION_MIGRATION_FAILED' });
+
+    expect(await fileSystem.readFile(f.source, 'utf8')).toBe('synthetic source');
+    expect(f.owner.close).not.toHaveBeenCalled();
+    await expect(f.client.shutdown()).rejects.toThrow();
+    expect(await fileSystem.readFile(f.source, 'utf8')).toBe('synthetic source');
+  });
+
   it('keeps a failed startup snapshot tracked until its owned shutdown cleanup', async () => {
     const f = await fixture();
     const snapshot = await f.createSnapshot();

@@ -1483,6 +1483,7 @@ async function startDesktopCompositionRuntime({
           maintenanceLease: workspaceMaintenanceLease,
           recoveryPointService,
           recoveryPointStagingRoot: profileSnapshotPaths.stagingRoot,
+          recoveryPointStagingOwner: profileSnapshotInspectionClient,
           recoveryPointStore,
           requestRelaunch() {
             workspaceActivationMigrationRelaunchRequested = true;

@@ -1137,6 +1137,15 @@ yksityiseen candidate-juureen. Candidate todistetaan migration chainin,
 workspace-identiteetin ja authoritative artifact/PDF -sulkeuman osalta ennen
 atomista aktivointia. Julkaistua kohdetietokantaa ei migroida paikallaan.
 
+Palautuspisteen materialisoidun lähdestagingin omistajuus säilyy
+`ProfileSnapshotInspectionClient`illä tarkistuksen jälkeen. Aktivointimigraation
+staging-adapteri pyytää poiston saman omistajan `removeProfileSnapshot`-portilta;
+se ei poista kansiota suoraan. Omistaja varmentaa tarkistusprosessin päättymisen
+ja varauksen palautumisen sekä vapauttaa oman seurantansa ennen seuraavaa
+sammutusta. Puuttuva kansio ei yksin todista seurannassa olevan operaation
+onnistunutta siivousta. Menetetty omistajuus estää poiston ja säilyttää
+palautusaineiston; erillistä korjaavaa poistopolkua ei käytetä.
+
 W6A.3 ei lisää erillistä activation-migration-journalia. Jo hyväksytyt,
 toisiaan täydentävät durable vastuut ovat:
 

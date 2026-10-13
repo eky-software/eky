@@ -2,6 +2,7 @@ import { join } from 'node:path';
 
 import type { RecoveryPointService } from '../../profileBackup/recoveryPoint/recoveryPointService.js';
 import type { RecoveryPointStore } from '../../profileBackup/recoveryPoint/recoveryPointStore.js';
+import type { ProfileSnapshotInspectionPort } from '../../profileBackup/profileSnapshotInspectionPort.js';
 import { createDesktopProfilePaths } from '../../runtime/desktopProfilePaths.js';
 import { PrivateWorkspaceBackupCandidateAdapter } from '../import/privateWorkspaceBackupCandidateAdapter.js';
 import type { WorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
@@ -35,6 +36,7 @@ export interface WorkspaceActivationMigrationCompositionOptions {
   >;
   readonly recoveryPointStore: Pick<RecoveryPointStore, 'stageForRestore'>;
   readonly recoveryPointStagingRoot: string;
+  readonly recoveryPointStagingOwner: Pick<ProfileSnapshotInspectionPort, 'removeProfileSnapshot'>;
   readonly requestRelaunch: () => void;
   readonly resourcesPath: string;
   readonly reservationOwner: WorkspaceCandidateReservationOwner;
@@ -93,6 +95,7 @@ export async function createWorkspaceActivationMigrationComposition(
     options.recoveryPointStore,
     new NodeWorkspaceActivationMigrationStaging(
       options.recoveryPointStagingRoot,
+      options.recoveryPointStagingOwner,
     ),
   );
   const coordinator = new WorkspaceActivationMigrationCoordinator({
