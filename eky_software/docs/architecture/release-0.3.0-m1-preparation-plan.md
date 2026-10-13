@@ -121,8 +121,18 @@ T/A/B/C-kokonaisuuksia ei avata uudelleen ilman omaa regressiota.
   ja `DESK-WORKSPACE-ACTIVATION-001`-käynnistysketju läpäisivät ilman uusintaa.
   Riippumaton rajattu katselmus ei löytänyt lisäpuutteita.
 
-Linuxin alustaoikeuksien päätös on edelleen avoin. Korjausten kohdenäyttö
-ei hyväksy K:ta, uutta pakettia, PR-portteja tai mergeä.
+Korjausrevisio `bb10a02c0bdbe4e430cccd437f2701bd0d2d6b24` tallennettiin
+puhtaaksi ja siitä rakennettu paketti läpäisi nykyisen Windowsin
+backup/inspect/restore/restart-portin. Sama paketti läpäisi myös kolme
+uusinnatonta testiä: alkuperäinen 038-varmuuskopio sekä create-/import-
+kylmäpalautus. Paketin lähdeidentiteetti, sisältörajat, natiivikirjasto ja
+kaikkien pakettitavujen säilyminen tarkistettiin. Työtilan tyyppitarkistus
+ja omistavien dokumenttien linkkitarkistus läpäisivät.
+
+Linuxin alustaoikeuksien päätös on edelleen avoin. Korjausrevisiota ei
+vielä pushattu eikä uutta CI-kierrosta aloitettu. Kohde- ja pakettinäyttö
+eivät korvaa Linuxia, paketoituja installer-workspace-kuluttajia, uuden
+revision PR-portteja tai mergen jälkeisiä main-portteja. K pysyy avoimena.
 
 [PR #303:n](https://github.com/eky-software/eky/pull/303) ensimmäinen
 [V2-kierros](https://github.com/eky-software/eky/actions/runs/38329010187)
