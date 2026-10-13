@@ -613,7 +613,7 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
     const root = createE2eRunRoot();
     const startup = createElectronE2eStartupObservation();
     startup.record('backendReady');
-    startup.recordBackendStartupStage('readyNotification');
+    startup.recordBackendStartupStage('migration.initialAttestation.entered');
     const finishCapture = captureElectronStartupObservation(async () => startup.snapshot());
     let failure: { error: unknown } | undefined;
     try {
@@ -642,7 +642,7 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
       expect(readFileSync(testInfo.outputPath('electron-lifecycle.json'))).toEqual(bytes);
       expect(Object.keys(evidence).sort()).toEqual(['attempt', 'cleanup', 'launch', 'observationsTruncated', 'schemaVersion', 'startupCapture']);
       expect(evidence.startupCapture).toEqual({ status: 'captured', observation: startup.snapshot() });
-      expect(evidence.startupCapture.observation.backendStartup.stage).toBe('readyNotification');
+      expect(evidence.startupCapture.observation.backendStartup.stage).toBe('migration.initialAttestation.entered');
       expect(evidence.attempt).toBe(0);
       expect(evidence.launch.at(-1)).toEqual({ phase: 'domContentLoaded', status: 'failed', reason: 'timeout' });
       expect(evidence.cleanup).toEqual({ api: 'completed', runtime: 'completed', port: 'released', runRoot: 'retained' });

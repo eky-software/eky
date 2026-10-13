@@ -19,6 +19,7 @@ import {
 } from './e2eStartupLogObserver.js';
 import { installE2eDatabaseFault } from './installE2eDatabaseFault.js';
 import { ProfileMaintenanceState } from '../src/runtime/profileMaintenance/profileMaintenanceState.js';
+import type { MigrationStartupObserver } from '../src/database/migration/migrationStartupObservation.js';
 import type { ProfileSnapshotRuntimeService } from '../src/runtime/profileSnapshot/profileSnapshotTypes.js';
 
 interface E2eBackendSecretReader {
@@ -49,6 +50,7 @@ export interface StartE2eBackendOptions {
   companyEmailSecretStore?: E2eBackendSecretStore;
   deliveredInvoiceArchiveTaskSink?: E2eDeliveredInvoiceArchiveTaskSink;
   observeStartupLog?: E2eStartupLogObserver;
+  observeMigrationStartup?: MigrationStartupObserver;
   profileSnapshotStagingRoot?: string;
   runtimePaths?: E2eBackendRuntimePathOverrides;
   runtimeSessionSecret?: string;
@@ -153,6 +155,8 @@ export async function startE2eBackend(
       },
       operationalIdentity,
       operationalLogger,
+      ...(options.observeMigrationStartup === undefined
+        ? {} : { migrationStartupObserver: options.observeMigrationStartup }),
       operationalLogsRoot: config.paths.logsRoot,
       ...profileSnapshotAppOptions,
       runtimeTrust: {

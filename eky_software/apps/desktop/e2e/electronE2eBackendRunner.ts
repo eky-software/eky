@@ -17,6 +17,7 @@ import {
 import { acquireWorkspaceProcessReservation, type WorkspaceProcessReservation } from '../src/runtime/workspaceProcessReservation.js';
 import {
   reportElectronE2eBackendProgress,
+  reportElectronE2eMigrationProgress,
   type ElectronE2eBackendFailureStage,
   type ElectronE2eBackendLogStage,
   type ElectronE2eBackendObservationStage,
@@ -35,6 +36,7 @@ interface StartE2eBackend {
       companyEmailSecretStore: CompanyEmailSecretBrokerClient;
       deliveredInvoiceArchiveTaskSink: InvoicePdfArchiveBrokerClient;
       observeStartupLog?: (stage: ElectronE2eBackendLogStage) => void;
+      observeMigrationStartup?: (stage: string, phase: string) => void;
       profileSnapshotStagingRoot: string;
       runtimePaths: {
         databaseFilePath: string;
@@ -181,6 +183,9 @@ parentPort.on('message', (event) => {
         companyEmailSecretStore: secretBrokerClient,
         deliveredInvoiceArchiveTaskSink: invoicePdfArchiveBrokerClient,
         observeStartupLog: reportStartupStage,
+        observeMigrationStartup: (stage, phase) => reportElectronE2eMigrationProgress(
+          stage, phase, progress => parentPort.postMessage(progress),
+        ),
         profileSnapshotStagingRoot:
           command.config.profileSnapshotStagingRoot,
         runtimeInstanceId: command.config.runtimeInstanceId,

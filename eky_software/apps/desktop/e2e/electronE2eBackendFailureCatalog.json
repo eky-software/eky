@@ -30,6 +30,15 @@
     "invoicePdfArchiveBroker": true,
     "profileSnapshotBroker": true
   },
+  "migrationObservations": {
+    "manifestRead": { "entered": "migration.manifestRead.entered", "returned": "migration.manifestRead.returned" },
+    "initialAttestation": { "entered": "migration.initialAttestation.entered", "returned": "migration.initialAttestation.returned" },
+    "historyPreparation": { "entered": "migration.historyPreparation.entered", "returned": "migration.historyPreparation.returned" },
+    "migrationExecution": { "entered": "migration.migrationExecution.entered", "returned": "migration.migrationExecution.returned" },
+    "finalAttestation": { "entered": "migration.finalAttestation.entered", "returned": "migration.finalAttestation.returned" },
+    "postRunInspection": { "entered": "migration.postRunInspection.entered", "returned": "migration.postRunInspection.returned" },
+    "identityRead": { "entered": "migration.identityRead.entered", "returned": "migration.identityRead.returned" }
+  },
   "stageCodes": {
     "boundaryValidation": "DESKTOP_SMOKE_E2E_BACKEND_BOUNDARY_VALIDATION_FAILED",
     "brokerClientCreation": "DESKTOP_SMOKE_E2E_BACKEND_BROKER_CLIENT_CREATION_FAILED",

@@ -41,11 +41,15 @@ describe('E2E backend startup logger wiring', () => {
       const observer = vi.fn((_stage: string) => {
         if (mode === 'throws') throw new Error('synthetic observer failure');
       });
+      const migrationObserver = vi.fn();
       vi.mocked(startServer).mockImplementation(async (options) => {
         const logger = options?.appOptions?.operationalLogger;
         const identity = options?.appOptions?.operationalIdentity;
         expect(logger).toBeDefined();
         expect(identity).toBeDefined();
+        expect(options?.appOptions?.migrationStartupObserver).toBe(
+          mode === 'absent' ? undefined : migrationObserver,
+        );
         logger!.write(createBackendOperationalEvent({ eventName: 'migration.started' }, identity!));
         logger!.write(createBackendOperationalEvent({ eventName: 'migration.completed' }, identity!));
         logger!.write(createBackendOperationalEvent({
@@ -56,7 +60,7 @@ describe('E2E backend startup logger wiring', () => {
       });
 
       const result = await startE2eBackend(join(root, 'config.json'),
-        mode === 'absent' ? {} : { observeStartupLog: observer });
+        mode === 'absent' ? {} : { observeStartupLog: observer, observeMigrationStartup: migrationObserver });
       expect(result.server).toBe(server);
       expect(startServer).toHaveBeenCalledTimes(1);
       expect(installE2eDatabaseFault).toHaveBeenCalledAfter(startServer);

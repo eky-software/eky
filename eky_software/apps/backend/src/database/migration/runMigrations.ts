@@ -9,6 +9,10 @@ import {
 import { MigrationRunError } from './migrationRunError.js';
 import { inspectAttestedMigrationHistory } from './inspectAttestedMigrationHistory.js';
 import {
+  observeMigrationStartupStep,
+  type MigrationStartupObserver,
+} from './migrationStartupObservation.js';
+import {
   prepareMigrationHistoryForRun,
   recordAppliedMigrationMetadata,
   type MigrationReleaseIdentity,
@@ -22,6 +26,7 @@ export interface RunMigrationsOptions {
   migrationsDirectory?: string;
   now?: () => Date;
   releaseIdentity?: MigrationReleaseIdentity;
+  observeStartup?: MigrationStartupObserver;
 }
 
 const developmentReleaseIdentity: MigrationReleaseIdentity = {
@@ -40,7 +45,9 @@ export async function runMigrations(
   const migrationsDirectory = resolveMigrationsDirectory(options.migrationsDirectory);
   let manifest: MigrationManifestEntry[];
   try {
-    manifest = readMigrationManifest(migrationsDirectory);
+    manifest = observeMigrationStartupStep(options.observeStartup, 'manifestRead', () =>
+      readMigrationManifest(migrationsDirectory),
+    );
   } catch {
     throw new MigrationRunError({
       completedMigrationCount: 0,
@@ -54,15 +61,14 @@ export async function runMigrations(
   let appliedMigrationNames: Set<string>;
   try {
     const initialRecordedAt = readRecordedAt(now);
-    inspectAttestedMigrationHistory(database, manifest, {
-      allowEmpty: true,
-      legacyPolicy: 'runnerBaseline',
-    });
-    appliedMigrationNames = prepareMigrationHistoryForRun(
-      database,
-      manifest,
-      releaseIdentity,
-      initialRecordedAt,
+    observeMigrationStartupStep(options.observeStartup, 'initialAttestation', () =>
+      inspectAttestedMigrationHistory(database, manifest, {
+        allowEmpty: true,
+        legacyPolicy: 'runnerBaseline',
+      }),
+    );
+    appliedMigrationNames = observeMigrationStartupStep(options.observeStartup, 'historyPreparation', () =>
+      prepareMigrationHistoryForRun(database, manifest, releaseIdentity, initialRecordedAt),
     );
   } catch {
     throw new MigrationRunError({
@@ -73,41 +79,45 @@ export async function runMigrations(
   }
   let completedMigrationCount = 0;
 
-  for (const migration of manifest) {
-    if (appliedMigrationNames.has(migration.fileName)) {
-      continue;
-    }
+  observeMigrationStartupStep(options.observeStartup, 'migrationExecution', () => {
+    for (const migration of manifest) {
+      if (appliedMigrationNames.has(migration.fileName)) {
+        continue;
+      }
 
-    try {
-      const recordedAt = readRecordedAt(now);
+      try {
+        const recordedAt = readRecordedAt(now);
 
-      const runMigration = database.transaction(() => {
-        database.exec(migration.content.toString('utf8'));
-        database
-          .prepare<[string, string]>(
-            'INSERT INTO schema_migrations (name, run_at) VALUES (?, ?)',
-          )
-          .run(migration.fileName, recordedAt);
-        recordAppliedMigrationMetadata(database, {
-          entry: migration,
-          recordedAt,
-          releaseIdentity,
+        const runMigration = database.transaction(() => {
+          database.exec(migration.content.toString('utf8'));
+          database
+            .prepare<[string, string]>(
+              'INSERT INTO schema_migrations (name, run_at) VALUES (?, ?)',
+            )
+            .run(migration.fileName, recordedAt);
+          recordAppliedMigrationMetadata(database, {
+            entry: migration,
+            recordedAt,
+            releaseIdentity,
+          });
         });
-      });
 
-      runMigration();
-      completedMigrationCount += 1;
-    } catch {
-      throw new MigrationRunError({
-        completedMigrationCount,
-        errorCode: 'MIGRATION_EXECUTION_FAILED',
-        failureStage: 'migrationExecution',
-      });
+        runMigration();
+        completedMigrationCount += 1;
+      } catch {
+        throw new MigrationRunError({
+          completedMigrationCount,
+          errorCode: 'MIGRATION_EXECUTION_FAILED',
+          failureStage: 'migrationExecution',
+        });
+      }
     }
-  }
+  });
 
   try {
-    inspectAttestedMigrationHistory(database, manifest);
+    observeMigrationStartupStep(options.observeStartup, 'finalAttestation', () =>
+      inspectAttestedMigrationHistory(database, manifest),
+    );
   } catch {
     // Earlier migrations are already committed; never report a zero-count failure here.
     throw new MigrationRunError({

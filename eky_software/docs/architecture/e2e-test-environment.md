@@ -695,6 +695,26 @@ kytkennän nykyiseen main-prosessiin. Se ei lisää diagnostiikan saatavuutta
 PDF-käyttäjäpolun onnistumisehdoksi. `DESK-RESTART-001` todistaa nykyisellä
 yhteydellä keskeneräisen lukupyynnön päättymisen restartin siivouksessa.
 
+Migraation testihavainto käyttää backendin valinnaista
+[`MigrationStartupObserver`-sopimusta](../../apps/backend/src/database/migration/migrationStartupObservation.ts).
+Seitsemän nimettyä vaihetta erottavat manifestin luvun, alku- ja
+loppurakennetarkistukset, historian valmistelun, kaikkien migraatioiden
+suorituksen, jälkitarkistuksen ja runtime-identiteetin luvun. Jokaisesta
+välitetään vain `entered` ja `returned`, enintään 14 uutta havaintoa per
+käynnistys. Vaiheen keskeytyminen ei tuota keinotekoista paluumerkintää.
+[`migrationObservations`](../../apps/desktop/e2e/electronE2eBackendFailureCatalog.json)
+on E2E:n erillinen suljettu wire-määrittely; sitä ei hyväksytä failure- tai
+ready-viestiksi. Backendin omistamat nimet ja wire-määrittely vastaavat
+toisiaan sopimustestissä. Vain E2E-adapteri kytkee callbackin nykyiseen
+IPC-kanavaan. Tuotannon käyttö ei kytke havaitsijaa eikä lisää operatiivisia
+tapahtumia, käyttäjän diagnostiikkaa, Activityä tai tukipakettisisältöä.
+Havaitsija ei odota kirjoitusta tai kuittausta eikä tee tiedosto-I/O:ta.
+Sen synkroninen poikkeus ei muuta varsinaisen työn tulosta. Parent säilyttää
+edelleen vain viimeisen vastaanotetun vaiheen, ei uutta aikajanaa. Vaihe
+voi rajata selvitystä, mutta viestin puuttuminen tai viimeiseksi jääminen
+ei todista kyseistä kutsua aikakatkaisun syyksi. Testi- ja prosessitulos
+sekä havaintojen saatavuus pidetään erillään.
+
 `DESK-WORKSPACE-STARTUP-001` tarkistaa V2:n julkaistun luonti- ja
 tuontikohteen cold-recoveryn oikealla compositionilla ja Electron-kandidaatilla.
 Valmistelun varaus suljetaan ennen compositionia ja hankitaan uudelleen

@@ -36,8 +36,48 @@ mutta upgrade-valmistelu ja siitä riippuva kokonaisportti hylättiin.
 Omistaja hyväksyi myös muiden salattujen lokien ja raporttien 64/128 MiB:n
 budjetin noston; keräinten kokonaisbudjetti on 512 MiB. Korjausrevision
 rajatestit, salaus/purku, CI-kytkennän kohdetestit ja katselmus läpäisivät.
-Seuraava työ on korjausrevision normaali PR-todennus. PR:ää tai K:ta ei ole
-vielä hyväksytty.
+Korjausrevision `507c095b` normaali [V2-kierros](https://github.com/eky-software/eky/actions/runs/38446355937)
+päättyi: 36 jobia läpäisi, Electronin kriittinen jobi ja siitä riippuva
+kokonaisportti hylättiin, kuusi valinnaista jobia ohitettiin.
+Erillinen [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/38446355963)
+läpäisi. `DESK-WORKSPACE-MIGRATION-INVENTORY-001`:n ensimmäinen yritys
+aikakatkaisi fixturen `firstWindow`-vaiheessa ennen testirunkoa; automaattinen
+uusinta läpäisi. Ensivirheen salatun aineiston sidonta, purku ja tiedostojen
+tiivisteet on varmennettu, ja prosessisiivous onnistui. Läpäissyt uusinta ei
+muuta ensimmäistä hylkäystä onnistumiseksi tai osoita sen syytä korjatuksi.
+
+Rajattu lähdekatselmus ja erillinen synteettinen migraation luonnehdintakoe
+eivät vahvistaneet korjattavaa juurisyytä. Koe ei ollut hylätyn Electron-testin
+uusinta eikä korvaa paketoidun runtimen tai CI:n näyttöä. Nykyinen yhden
+uusinnan kiintiö on käytetty. PR:ää tai K:ta ei ole hyväksytty eikä mergeä tehty.
+
+**Rajattu jatko työn alla:** migraation sisäisen vaiheen havainto nykyiseen
+käynnistyshavaintoketjuun. Kytkentä erottaa manifestin luvun, alkutilan
+rakennetarkistuksen, historian valmistelun, migraatioiden suorituksen,
+loppurakennetarkistuksen, käynnistystä edeltävän jälkitarkistuksen ja
+runtime-identiteetin luvun. Jokaisella on vain aloitus ja paluu; yksi
+käynnistys tuottaa enintään 14 uutta havaintoa, ei riviä per migraatio.
+Vaihe on viimeinen havaittu työ, ei virheen syy. Toteutuksessa pitää olla
+yksi omistava vaiheiden määrittely ja täsmällinen lähettäjä/lukija-sopimus;
+ei SQL:n, tiedostonimien, tunnisteiden tai raakatulosteiden keräystä.
+Callback on valinnainen eikä odota kirjoitusta tai kuittausta.
+Havaitsijan virhe ei saa korvata migraation tulosta, muuttaa valmiusehtoa
+tai estää siivousta. Backendin callback on kytketty vain E2E-adapteriin;
+tuotannon operatiiviseen lokiin, diagnostiikkaan, Activityyn tai tukipakettiin
+ei lisätä tapahtumia. Rajatut migraatio-/app-/adapteritestit, suljetun
+havaintoketjun regressiot ja riippumaton katselmus läpäisivät. Erillinen
+synteettinen Electron utility -koe todensi uuden aloitushavainnon kulun IPC:n
+yli sekä sen säilymisen lapsen päättymisen ja varmennetun prosessisiivouksen
+jälkeen nykyisessä lifecycle-tiedostossa ja liitteessä. Koekäynnistimen oma
+ensihylkäys säilyy erillisenä; korjattu koe ei ole alkuperäisen CI-testin uusinta.
+Koe ei aja koko sovelluksen käynnistystä eikä todista viiveen syytä korjatuksi.
+Seuraava CI-todennus käyttää yhtä jäädytettyä havaintokorjausrevisiota ja
+nykyisen CI-työnkulun erillistä Windows Electron -jobia nykyisine
+packaged-smoke-, legacy- ja käynnistyshavaintotarkistuksineen. Se ei korvaa
+normaaleja PR-portteja eikä käynnistä koko asennusmatriisia. Uuden
+virheen odotettu lisätieto on viimeinen migraation sisäinen aloitus tai paluu;
+puuttuva havainto jää epävarmaksi. Täysi K-hyväksyntä ja PR/main-portit ovat
+avoimia, eikä vanhaa `507c095b`-hylkäystä merkitä läpäisyksi.
 
 | Kohta | Nykyinen lähtötieto |
 | --- | --- |

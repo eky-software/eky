@@ -11,6 +11,10 @@ import type { DatabaseConnection } from '../database/connection/createDatabaseCo
 import { readLocalRuntimeIdentity } from '../database/localRuntimeIdentityReader.js';
 import { resolveMigrationsDirectory, runMigrations } from '../database/migration/runMigrations.js';
 import { MigrationRunError } from '../database/migration/migrationRunError.js';
+import {
+  observeMigrationStartupStep,
+  type MigrationStartupObserver,
+} from '../database/migration/migrationStartupObservation.js';
 import { openAttestedMigrationDatabase } from '../database/migration/openAttestedMigrationDatabase.js';
 import {
   recoverOwnedLocalDatabase,
@@ -81,6 +85,7 @@ export interface CreateAppOptions {
   invoicingInfrastructureAdapters?: InvoicingInfrastructureAdapters;
   migrationsDirectory?: string;
   migrationStartupPolicy?: MigrationStartupPolicy;
+  migrationStartupObserver?: MigrationStartupObserver;
   ownedLocalDatabaseRecovery?: OwnedLocalDatabaseRecovery;
   operationalLogger?: OperationalLogger;
   operationalIdentity?: Readonly<OperationalRuntimeIdentity>;
@@ -249,17 +254,23 @@ export async function createApp(
       database,
       {
         migrationsDirectory,
+        ...(options.migrationStartupObserver === undefined
+          ? {} : { observeStartup: options.migrationStartupObserver }),
         releaseIdentity: {
           appVersion: operationalIdentity.appVersion,
           buildRevision: operationalIdentity.buildRevision,
         },
       },
     );
-    const current = inspectMigrationStartupState(database, migrationsDirectory);
+    const current = observeMigrationStartupStep(options.migrationStartupObserver, 'postRunInspection', () =>
+      inspectMigrationStartupState(database, migrationsDirectory),
+    );
     if (current.pendingMigrationCount !== 0) {
       throw new Error('MIGRATION_STARTUP_INSPECTION_FAILED');
     }
-    readLocalRuntimeIdentity(database);
+    observeMigrationStartupStep(options.migrationStartupObserver, 'identityRead', () =>
+      readLocalRuntimeIdentity(database),
+    );
     invoiceCatalogSchema = selectInvoiceBackupArtifactCatalogSchema(current);
     operationalLogger.write(
       createBackendOperationalEvent(
