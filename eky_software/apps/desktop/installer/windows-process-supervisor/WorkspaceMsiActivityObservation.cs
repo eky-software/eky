@@ -13,8 +13,8 @@ internal enum WorkspaceMsiMembership
 // Optional evidence only. The existing MSI count and product checks still decide readiness.
 internal sealed class WorkspaceMsiActivityObservation : IDisposable
 {
-    internal const int MaximumClients = 32;
-    internal const int MaximumSamples = 128;
+    internal static readonly int MaximumClients = MsiWindowObservation.Contract.MaximumClients;
+    internal static readonly int MaximumSamples = MsiWindowObservation.Contract.MaximumSamples;
     private const long SampleIntervalMilliseconds = 60_000;
     private readonly WindowsJob job;
     private readonly SafeEvidenceWriter evidence;
@@ -24,15 +24,20 @@ internal sealed class WorkspaceMsiActivityObservation : IDisposable
     private long nextSample;
     private int samples;
     private volatile bool stopped;
+    private readonly MsiWindowEvidence? windows;
+    private long observedElapsed;
+    private string? windowDelivery;
     internal Task? PendingRead => pending;
 
     internal WorkspaceMsiActivityObservation(string scenario, WindowsJob job, SafeEvidenceWriter evidence,
-        Func<WindowsJob, WorkspaceMsiMembership>? capture = null)
+        Func<WindowsJob, WorkspaceMsiMembership>? capture = null, SupervisorRequest? request = null,
+        Action? beforeWindowWrite = null)
     {
         this.job = job;
         this.evidence = evidence;
         this.capture = capture ?? Capture;
         enabled = scenario is "packagedWorkspaceSuccess" or "packagedWorkspaceFaultRollback";
+        windows = enabled && request is not null ? new MsiWindowEvidence(request, beforeWindowWrite) : null;
     }
 
     internal void Poll(long elapsedMilliseconds)
@@ -41,6 +46,8 @@ internal sealed class WorkspaceMsiActivityObservation : IDisposable
         if (pending?.IsCompleted == true) PublishCompleted();
         if (pending is not null || samples >= MaximumSamples || elapsedMilliseconds < nextSample) return;
         samples++;
+        observedElapsed = elapsedMilliseconds;
+        windowDelivery = null;
         nextSample = elapsedMilliseconds + SampleIntervalMilliseconds;
         // Never await optional OS enumeration on the terminal/cleanup path. At most one read exists.
         try { pending = Task.Run(() => stopped ? WorkspaceMsiMembership.Unknown : capture(job)); }
@@ -63,12 +70,19 @@ internal sealed class WorkspaceMsiActivityObservation : IDisposable
             _ => "observationUnknown",
         };
         Publish("observed", code);
+        if (windowDelivery is not null) PublishWindowDelivery(windowDelivery);
     }
 
     private void Publish(string status, string code)
     {
         try { evidence.Write("msiClientMembership", status, code); }
         catch { /* Optional observation must not alter the strict result or cleanup. */ }
+    }
+
+    private void PublishWindowDelivery(string status)
+    {
+        try { evidence.Write("msiWindowEvidence", status); }
+        catch { /* Delivery evidence is optional, including during cleanup. */ }
     }
 
     public void Dispose()
@@ -80,6 +94,7 @@ internal sealed class WorkspaceMsiActivityObservation : IDisposable
         else
         {
             Publish("unavailable", "observationPending");
+            if (windows is not null) PublishWindowDelivery("pending");
             // Host exit is owned by the existing outer process boundary, not by this diagnostic.
             _ = pending.ContinueWith(completed => { _ = completed.Exception; },
                 CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted |
@@ -100,6 +115,10 @@ internal sealed class WorkspaceMsiActivityObservation : IDisposable
             var owned = false;
             var outside = false;
             var unknown = false;
+            var windowSamples = new List<MsiWindowSample>();
+            var windowBudget = Stopwatch.StartNew();
+            var remainingCharacters = MsiWindowObservation.Contract.MaximumTotalCharacters;
+            var remainingWindows = MsiWindowObservation.Contract.MaximumWindows;
             foreach (var client in clients)
             {
                 if (stopped) return WorkspaceMsiMembership.Unknown;
@@ -116,11 +135,20 @@ internal sealed class WorkspaceMsiActivityObservation : IDisposable
                 if (actualSession != session) continue;
                 switch (ObserveHandle(owner, handle))
                 {
-                    case WorkspaceMsiMembership.Owned: owned = true; break;
+                    case WorkspaceMsiMembership.Owned:
+                        owned = true;
+                        if (windows is not null && MsiWindowObservation.IsSystemInstaller(name.ToString()))
+                        {
+                            try { windowSamples.Add(MsiWindowObservation.Capture(owner, handle, () => stopped,
+                                windowBudget, ref remainingCharacters, ref remainingWindows)); }
+                            catch { windowSamples.Add(new((uint)client.Id, "unavailable", [])); }
+                        }
+                        break;
                     case WorkspaceMsiMembership.Outside: outside = true; break;
                     default: unknown = true; break;
                 }
             }
+            if (windows is not null) windowDelivery = windows.Publish(windowSamples, observedElapsed, () => stopped);
             return Combine(owned, outside, unknown);
         }
         catch { return WorkspaceMsiMembership.Unknown; }

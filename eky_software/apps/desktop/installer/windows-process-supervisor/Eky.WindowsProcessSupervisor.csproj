@@ -10,6 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="supervisorCommandBudgets.json" LogicalName="supervisorCommandBudgets.json" />
+    <EmbeddedResource Include="msiWindowObservationContract.json" LogicalName="msiWindowObservationContract.json" />
     <Compile Remove="tests\programFailureFixture\**\*.cs" />
     <InternalsVisibleTo Include="Eky.WindowsProcessSupervisor.ContractFixture" />
   </ItemGroup>

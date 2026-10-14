@@ -5413,6 +5413,14 @@ uninstall-, downgrade- ja rollback-portteja. Ajantasainen hyväksyntätila on
 
 ### Workspace-asennusodotuksen havaintoraja
 
+**Rajattu lisäys 14.10.2026:** sama valinnainen MSI-kysely voi tallentaa
+testin omistaman asentajaikkunan otsikon, ilmoitustekstin ja vastaustilan
+nykyiseen salattuun virheaineistoon. [Aineistosopimus](ci-encrypted-evidence.md#asentimen-rajattu-ikkunahavainto)
+omistaa sallittujen kontrollien, kokorajojen, omistajuuden, keskeytyksen ja
+keräyksen sidonnat. Julkinen loki kertoo vain toimituksen suljetun tilan.
+Tämä ei muuta alla kuvattua omistajuushavaintoa, asennuksen hyväksymisehtoa,
+siivousta tai aikarajoja eikä takaa aiemman odotuksen syyn löytymistä.
+
 **Rajattu jatko 13.10.2026:** nykyinen supervisor voi antaa workspace success-
 ja fault-skenaarioissa valinnaisen `msiClientMembership`-havainnon.
 Omistajuus tarkistetaan täsmällisestä nykyisestä Job-kahvasta, ei prosessin

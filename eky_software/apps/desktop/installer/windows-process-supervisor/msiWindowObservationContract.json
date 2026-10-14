@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "operation": "msiWindowObservation",
+  "filenamePrefix": "msi-window-",
+  "maximumBytes": 65536,
+  "maximumClients": 32,
+  "maximumSamples": 128,
+  "maximumWindows": 32,
+  "maximumTextCharacters": 1024,
+  "maximumTotalCharacters": 4096,
+  "messageTimeoutMilliseconds": 100,
+  "sampleTimeoutMilliseconds": 1000
+}

@@ -187,6 +187,14 @@ ja onnistuneen polun säilyminen. Prosessin pakkokatkaisu, levyn virhe tai
 runnerin katoaminen voi estää tallennuksen tai toimituksen; puuttuvaa
 alkuperäistä syytä ei päätellä yleisestä koodista eikä väitetä tallennetuksi.
 
+Hiljainen odotus ei välttämättä tuota poikkeusta. Käytä ensin omistavan
+testiruntimen olemassa olevia vaihe-, prosessi- ja toimitushavaintoja;
+pelkkä timeout ei nimeä syytä. Workspace-asentimen hyväksytty
+[ikkunahavainto](../architecture/ci-encrypted-evidence.md#asentimen-rajattu-ikkunahavainto)
+täydentää tätä aukkoa nykyisessä MSI-seurannassa, ilman testikohtaisia
+lokittajia. Myös tällainen havainto todennetaan omistajuuden, keskeytyksen
+ja oikean salaus/purku-ketjun kautta ennen varsinaista Windows-koetta.
+
 ### Keräyksen ja toimituksen rajat
 
 Kerää ongelman vaiheeseen sopiva rajattu aineisto nykyisillä välineillä:

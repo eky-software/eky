@@ -57,10 +57,29 @@ lifecycle-liitteen alkuperä ja siivous tarkistettiin. Neljä valitsematta
 jätettyä jobia eivät ole läpäisyjä. Tämä ei ole normaali V2-kierros eikä
 vanhan käännösvirheen juurisyyn hyväksyntä.
 
-**Seuraava työ:** vie sama koodikorjaus ja ajantasainen dokumentointi
-normaaleihin PR-portteihin ja erilliseen auditointiin. Merge vaatii niiden
-täsmäheadin hyväksynnän; koko K sulkeutuu vasta uuden mainin omien porttien
-jälkeen. Alkuperäisen virheen havainto ja aikaisemmat kierrokset säilyvät.
+**PR #305:n normaali kierros:** headin `3d703c07`
+[V2-ajo 38596095316](https://github.com/eky-software/eky/actions/runs/38596095316)
+hylättiin kahden workspace-kuluttajan kohdeasentimen odotukseen. Kierroksella
+oli 35 onnistunutta jobia, kaksi varsinaista hylkäystä, niiden aggregaatin
+hylkäys ja kuusi tarkoituksellista diagnostiikkaohitusta.
+[Erillinen auditointi](https://github.com/eky-software/eky/actions/runs/38596095204)
+läpäisi. Tämä ei ole sama hylkäys kuin aiempi ajurin käännösvirhe.
+Asennuksen hyväksyntä, prosessi-/tuotesiivous ja havaintojen saatavuus
+säilyvät erillisinä tuloksina; onnistunut siivous ei hyväksy asennusta.
+
+Omistaja hyväksyi [testin omistaman asentajaikkunan rajatun havainnon](ci-encrypted-evidence.md#asentimen-rajattu-ikkunahavainto)
+nykyiseen salattuun virhepakettiin. Ei uusia UI-toimia, lomakekenttiä,
+testialustaa tai aikarajoja. Ensin vaaditaan omistajuus-, keskeytys-,
+keräys- ja todellinen salaus/purku-näyttö sekä rajattu katselmus, sitten yksi
+nimetty Windows-koe samalla säilyneellä asennuspaketilla. Se ei ole normaali
+hyväksyntäkierros eikä lupa merkitä vanhaa odotusta korjatuksi.
+
+**Seuraava työ:** viimeistele tämä havaintokytkentä ja nimetty koe, ratkaise
+sen mahdollinen yksilöivä löydös ja palaa täsmäheadin normaaleihin PR-portteihin.
+K:n aiemmin sovittu vanhojen raskaiden broker-polkujen poistoehto on myös
+varmennettava; diagnostiikkakorjaus ei sulje sitä. Merge ja uuden mainin
+omat portit säilyvät erillisinä hyväksyntöinä. Alkuperäiset virheet ja
+aikaisemmat kierrokset säilyvät, eikä PR #305:tä ole hyväksytty mergeen.
 
 **Aiempi integraatiohistoria:** PR #303 yhdistettiin 14.10.2026 normaalisti
 mainiin revision `3fb7ad05` hyväksyttyjen PR-porttien jälkeen.

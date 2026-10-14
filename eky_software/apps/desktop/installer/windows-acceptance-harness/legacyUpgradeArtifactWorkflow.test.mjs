@@ -283,8 +283,14 @@ test('external inspector capture is opt-in and never replaces command or artifac
       const optional = ['Start opt-in external inspector capture', 'Stop only the diagnostic recording',
         'Extract closed inspector observations without publishing raw trace'].includes(step.split('\n')[0]);
       if (step.startsWith('Preserve encrypted CI failure evidence\n')) {
-        const scope = "            && inputs.artifact_kind == 'legacy'\n";
+        const scope = "            && (inputs.artifact_kind == 'legacy' || inputs.artifact_kind == 'workspace')\n";
         assert.equal(step.split(scope).length, 2);
+        const expression = scope.trim().slice(3);
+        for (const artifact_kind of ['legacy', 'workspace', 'workspace-fault', 'upgrade', 'unknown']) {
+          assert.equal(runInNewContext(expression, { inputs: { artifact_kind } }, { timeout: 1000 }),
+            ['legacy', 'workspace'].includes(artifact_kind));
+        }
+        assert.match(step, /job-key: \$\{\{ inputs\.artifact_kind \}\}-boundary-diagnostic-0/u);
         withoutOptionalEvidenceAllowance(`      - name: ${step}`.replace(scope, ''), 1);
       }
       else if (optional) assert.match(step, /continue-on-error: \$\{\{ inputs\.artifact_kind == 'workspace-fault' \}\}/u);
