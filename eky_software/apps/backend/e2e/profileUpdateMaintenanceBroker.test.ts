@@ -69,7 +69,9 @@ describe('update maintenance state, private broker and HTTP write boundary', () 
       .toEqual([fixture.operationId, fixture.operationId]);
     expect(inspectionBoundary.run.mock.calls.map(([input]) => input.migrationPolicy))
       .toEqual(['exactCurrentManifest', 'restoreCompatible']);
-    expect(fixture.snapshot.validateProfileSnapshot).not.toHaveBeenCalled();
+    expect(Object.keys(fixture.snapshot).sort()).toEqual([
+      'createProfileSnapshot', 'readProfileInspectionContext',
+    ]);
     expect(fixture.snapshot.readProfileInspectionContext).toHaveBeenCalledTimes(4);
     await expect(store.list(activeValidation.profileId)).resolves.toEqual([point]);
     await expect(readFile(join(stagingRoot, fixture.operationId, 'profile.sqlite'))).rejects.toMatchObject({ code: 'ENOENT' });
@@ -206,48 +208,61 @@ describe('update maintenance state, private broker and HTTP write boundary', () 
       await expect(release).rejects.toMatchObject({ code: 'PROFILE_MAINTENANCE_OPERATION_MISMATCH' });
     }
     await expect(client.createProfileSnapshot(randomUUID(), 'exactCurrentManifest')).rejects.toMatchObject({ code: 'PROFILE_MAINTENANCE_OPERATION_MISMATCH' });
-    await expect(client.prepareProfileRestoreActivation(operationId)).rejects.toMatchObject({ code: 'PROFILE_MAINTENANCE_OPERATION_MISMATCH' });
-    expect(fixture.snapshot.prepareProfileRestoreActivation).not.toHaveBeenCalled();
+    await expect(client.readProfileInspectionContext({
+      kind: 'prepareRestoreActivation', operationId,
+      deadline: performance.now() + 1_000, signal: new AbortController().signal,
+    })).rejects.toMatchObject({ code: 'PROFILE_MAINTENANCE_OPERATION_MISMATCH' });
+    expect(fixture.snapshot.readProfileInspectionContext).not.toHaveBeenCalled();
     state.assertUpdate(operationId);
     await expect(client.endUpdateMaintenance(operationId)).resolves.toBe('normal');
     expect((await fixture.app.request('/business', { method: 'POST' })).status).toBe(200);
   });
 
-  it('requires a live explicit update owner for independent validation without loosening snapshot creation', async () => {
+  it('requires a live explicit update owner for inspection context without loosening snapshot creation', async () => {
     const fixture = createFixture();
     const inspectionOperationId = randomUUID();
-    const validate = () => fixture.client.validateProfileSnapshot(inspectionOperationId, fixture.operationId);
+    const inspectionInput = { kind: 'inspect' as const, operationId: inspectionOperationId,
+      deadline: performance.now() + 1_000, signal: new AbortController().signal };
+    const validate = () => fixture.client.readProfileInspectionContext({
+      ...inspectionInput, updateMaintenanceOperationId: fixture.operationId,
+    });
     await expect(validate()).rejects.toMatchObject({ code: 'PROFILE_MAINTENANCE_OPERATION_MISMATCH' });
     await fixture.client.beginMaintenance(fixture.operationId);
     await expect(validate()).rejects.toMatchObject({ code: 'PROFILE_MAINTENANCE_OPERATION_MISMATCH' });
     await fixture.client.endMaintenance(fixture.operationId);
     await fixture.client.beginUpdateMaintenance(fixture.operationId);
-    await expect(fixture.client.validateProfileSnapshot(inspectionOperationId)).rejects.toMatchObject({ code: 'PROFILE_MAINTENANCE_OPERATION_MISMATCH' });
-    await expect(fixture.client.validateProfileSnapshot(inspectionOperationId, randomUUID())).rejects.toMatchObject({ code: 'PROFILE_MAINTENANCE_OPERATION_MISMATCH' });
-    expect(fixture.snapshot.validateProfileSnapshot).not.toHaveBeenCalled();
-    await expect(validate()).resolves.toMatchObject({ type: 'profileSnapshotValidation' });
-    expect(fixture.snapshot.validateProfileSnapshot).toHaveBeenCalledExactlyOnceWith(inspectionOperationId);
+    await expect(fixture.client.readProfileInspectionContext(inspectionInput))
+      .rejects.toMatchObject({ code: 'PROFILE_MAINTENANCE_OPERATION_MISMATCH' });
+    await expect(fixture.client.readProfileInspectionContext({ ...inspectionInput, updateMaintenanceOperationId: randomUUID() }))
+      .rejects.toMatchObject({ code: 'PROFILE_MAINTENANCE_OPERATION_MISMATCH' });
+    expect(fixture.snapshot.readProfileInspectionContext).not.toHaveBeenCalled();
+    await expect(validate()).resolves.toEqual(inspectionContext);
+    expect(fixture.snapshot.readProfileInspectionContext).toHaveBeenCalledExactlyOnceWith();
     await expect(fixture.client.createProfileSnapshot(inspectionOperationId, 'exactCurrentManifest')).rejects.toMatchObject({ code: 'PROFILE_MAINTENANCE_OPERATION_MISMATCH' });
     await fixture.client.endUpdateMaintenance(fixture.operationId);
     await expect(validate()).rejects.toMatchObject({ code: 'PROFILE_MAINTENANCE_OPERATION_MISMATCH' });
-    await expect(fixture.client.validateProfileSnapshot(inspectionOperationId)).resolves.toMatchObject({ type: 'profileSnapshotValidation' });
+    await expect(fixture.client.readProfileInspectionContext(inspectionInput)).resolves.toEqual(inspectionContext);
   });
 
-  it.each(['expiry', 'disconnect'] as const)('does not acknowledge a late independent validation after %s', async (failure) => {
+  it.each(['expiry', 'disconnect'] as const)('does not acknowledge a late independent inspection context after %s', async (failure) => {
     const clock = vi.spyOn(performance, 'now').mockReturnValue(100);
     const fixture = createFixture();
     const entered = deferred<void>();
     const finish = deferred<void>();
     const completed = deferred<void>();
     const send = vi.spyOn(fixture.backendTransport, 'send');
-    fixture.snapshot.validateProfileSnapshot.mockImplementationOnce(async () => {
+    fixture.snapshot.readProfileInspectionContext.mockImplementationOnce(async () => {
       entered.resolve();
       await finish.promise;
       completed.resolve();
-      return snapshotValidation;
+      return inspectionContext;
     });
     await fixture.client.beginUpdateMaintenance(fixture.operationId);
-    const work = fixture.client.validateProfileSnapshot(randomUUID(), fixture.operationId);
+    const work = fixture.client.readProfileInspectionContext({
+      kind: 'inspect', operationId: randomUUID(), updateMaintenanceOperationId: fixture.operationId,
+      deadline: performance.now() + 1_000,
+      signal: new AbortController().signal,
+    });
     const expectation = expect(work).rejects.toMatchObject({ code: failure === 'expiry'
       ? 'PROFILE_MAINTENANCE_OPERATION_MISMATCH' : 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE' });
     await entered.promise;
@@ -256,7 +271,7 @@ describe('update maintenance state, private broker and HTTP write boundary', () 
     finish.resolve();
     await completed.promise;
     await expectation;
-    expect(send.mock.calls.some(([value]) => (value as { result?: { type?: string } }).result?.type === 'profileSnapshotValidation')).toBe(false);
+    expect(send.mock.calls.some(([value]) => (value as { result?: { type?: string } }).result?.type === 'profileInspectionContext')).toBe(false);
     await assertWritesBlocked(fixture);
   });
 
@@ -302,12 +317,15 @@ describe('update maintenance state, private broker and HTTP write boundary', () 
     const fixture = createFixture();
     const started = deferred<void>();
     const finish = deferred<void>();
-    fixture.snapshot.validateActiveProfile.mockImplementationOnce(async () => {
+    fixture.snapshot.readProfileInspectionContext.mockImplementationOnce(async () => {
       started.resolve();
       await finish.promise;
-      return activeValidation;
+      return inspectionContext;
     });
-    const validation = fixture.client.validateActiveProfile();
+    const validation = fixture.client.readProfileInspectionContext({
+      kind: 'inspect', operationId: randomUUID(),
+      deadline: performance.now() + 1_000, signal: new AbortController().signal,
+    });
     const validationError = expect(validation).rejects.toMatchObject({ code: 'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE' });
     await started.promise;
     const queued = observeRequest(fixture.backendTransport, 'beginUpdateMaintenance');
@@ -322,7 +340,7 @@ describe('update maintenance state, private broker and HTTP write boundary', () 
     expect(fixture.state.getStatus()).toBe('normal');
   });
 
-  it.each(['snapshot', 'activeValidation', 'snapshotValidation'] as const)(
+  it.each(['snapshot', 'inspectionContext'] as const)(
     'rejects a late %s result when the monotonic deadline passes without a timer callback', async (operation) => {
       const clock = vi.spyOn(performance, 'now').mockReturnValue(100);
       const fixture = createFixture();
@@ -334,13 +352,15 @@ describe('update maintenance state, private broker and HTTP write boundary', () 
         return result;
       };
       fixture.snapshot.createProfileSnapshot.mockImplementationOnce(() => delayed(snapshotMetadata));
-      fixture.snapshot.validateActiveProfile.mockImplementationOnce(() => delayed(activeValidation));
-      fixture.snapshot.validateProfileSnapshot.mockImplementationOnce(() => delayed(snapshotValidation));
+      fixture.snapshot.readProfileInspectionContext.mockImplementationOnce(() => delayed(inspectionContext));
       await fixture.client.beginUpdateMaintenance(fixture.operationId);
       const work = operation === 'snapshot'
         ? fixture.client.createProfileSnapshot(fixture.operationId, 'exactCurrentManifest')
-        : operation === 'activeValidation' ? fixture.client.validateActiveProfile()
-          : fixture.client.validateProfileSnapshot(fixture.operationId);
+        : fixture.client.readProfileInspectionContext({
+          kind: 'inspect', operationId: fixture.operationId, updateMaintenanceOperationId: fixture.operationId,
+          deadline: performance.now() + 1_000,
+          signal: new AbortController().signal,
+        });
       const expectation = expect(work).rejects.toMatchObject({ code: 'PROFILE_MAINTENANCE_OPERATION_MISMATCH' });
       await started.promise;
       clock.mockReturnValue(100 + maximumMaintenanceDurationMilliseconds);
@@ -462,10 +482,9 @@ function createUpdateOwner(fixture: ReturnType<typeof createFixture>, revalidate
       async endUpdateMaintenance(operationId) { await fixture.client.endUpdateMaintenance(operationId); },
       async validateActiveProfileForUpdate(context) {
         context.assertCurrent();
-        const validation = await fixture.client.validateActiveProfile();
-        context.assertCurrent();
+        // This coordinator fixture supplies validation; broker context is not a content proof.
         context.confirmCleanup();
-        return validation;
+        return activeValidation;
       },
     },
     shutdownRuntime: shutdown,
@@ -486,12 +505,7 @@ function createFixture(requestTimeoutMilliseconds?: number) {
       operationId: string;
       signal: AbortSignal;
     }) => snapshotMetadata),
-    validateActiveProfile: vi.fn(async () => activeValidation),
-    readProfileInspectionContext: vi.fn(async () => ({
-      activeProfileId: activeValidation.profileId, activeProfileIsEmpty: false,
-    })),
-    validateProfileSnapshot: vi.fn(async (_operationId: string) => snapshotValidation),
-    prepareProfileRestoreActivation: vi.fn(async () => ({ artifactCount: 0, artifactTotalByteSize: 0 })),
+    readProfileInspectionContext: vi.fn(async () => inspectionContext),
   };
   const backendTransport = transport(channel.port2);
   const backend = startProfileSnapshotBrokerBackend({ maintenance: state, snapshot, transport: backendTransport });
@@ -641,6 +655,7 @@ const activeValidation = {
   migrationChainIdentity: 'c'.repeat(64), profileId: 'd'.repeat(64),
 };
 const snapshotValidation = { ...activeValidation, activeProfileIsEmpty: false, profileMatchesActive: true };
+const inspectionContext = { activeProfileId: activeValidation.profileId, activeProfileIsEmpty: false };
 const snapshotMetadata = {
   artifactCatalog: {
     artifactCount: 0, artifactTotalByteSize: 0, catalogByteSize: 32,

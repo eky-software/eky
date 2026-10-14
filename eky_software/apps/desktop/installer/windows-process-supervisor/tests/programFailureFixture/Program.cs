@@ -14,6 +14,9 @@ if (
 }
 
 var mode = args[1];
+if (mode == "msiWindowChild") return MsiWindowObservationContract.Child(args[3]);
+if (mode == "msiWindowContracts") return MsiWindowObservationContract.Run(args[3]);
+if (mode == "msiWindowFailureReceipt") return MsiWindowObservationContract.RunFailureReceipt(args[3]);
 if (mode is "msiObservationContracts" or "msiObservationThrows" or "msiObservationBlocked")
     return MsiObservationContract.Run(mode, args[3]);
 if (mode == "deadlineClockContracts") return DeadlineReadinessContract.RunClockContracts(args[3]);

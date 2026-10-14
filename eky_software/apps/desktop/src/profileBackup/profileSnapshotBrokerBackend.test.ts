@@ -68,13 +68,12 @@ describe('profile snapshot broker boundary', () => {
     const fixture = createContextFixture(new FakeRestoreProfileMaintenance());
     const operationId = randomUUID();
     const read = vi.spyOn(fixture.snapshot, 'readProfileInspectionContext');
-    const prepare = vi.spyOn(fixture.snapshot, 'prepareProfileRestoreActivation');
     try {
       await fixture.client.beginRestoreMaintenance(operationId);
       await expect(fixture.client.readProfileInspectionContext(contextInput({ operationId })))
         .resolves.toEqual(readFakeInspectionContext());
       expect(read).toHaveBeenCalledOnce();
-      expect(prepare).not.toHaveBeenCalled();
+      expect(fixture.snapshot.operationIds).toEqual([]);
       await expect(fixture.client.assertRestoreMaintenance(operationId)).resolves.toBe('busy');
       await fixture.client.endRestoreMaintenance(operationId);
     } finally { fixture.close(); }
@@ -146,28 +145,19 @@ describe('profile snapshot broker boundary', () => {
     } finally { reader.resolve(readFakeInspectionContext()); fixture.close(); }
   });
 
-  it.each(['validation', 'preparation'] as const)(
-    'rejects late restore %s without timer dispatch when monotonic validity expires', async phase => {
+  it.each(['inspect', 'prepareRestoreActivation'] as const)(
+    'rejects late restore %s context without timer dispatch when monotonic validity expires', async kind => {
       const clock = vi.spyOn(performance, 'now').mockReturnValue(100);
       const fixture = createContextFixture(new FakeRestoreProfileMaintenance());
       const operationId = randomUUID();
       const entered = deferred<void>();
       const continuation = deferred<void>();
-      if (phase === 'validation') {
-        vi.spyOn(fixture.snapshot, 'validateProfileSnapshot').mockImplementation(async () => {
-          entered.resolve(); await continuation.promise; return createFakeValidation();
-        });
-      } else {
-        vi.spyOn(fixture.snapshot, 'prepareProfileRestoreActivation').mockImplementation(async () => {
-          entered.resolve(); await continuation.promise;
-          return { artifactCount: 1, artifactTotalByteSize: 2_048 };
-        });
-      }
+      vi.spyOn(fixture.snapshot, 'readProfileInspectionContext').mockImplementation(async () => {
+        entered.resolve(); await continuation.promise; return readFakeInspectionContext();
+      });
       try {
         await fixture.client.beginRestoreMaintenance(operationId);
-        const pending = phase === 'validation'
-          ? fixture.client.validateProfileSnapshot(operationId)
-          : fixture.client.prepareProfileRestoreActivation(operationId);
+        const pending = fixture.client.readProfileInspectionContext(contextInput({ kind, operationId }));
         const outcome = pending.then(value => ({ value }), error => ({ error }));
         await entered.promise;
         clock.mockReturnValue(100 + 10 * 60_000);
@@ -181,17 +171,17 @@ describe('profile snapshot broker boundary', () => {
     },
   );
 
-  it('keeps a restore closed when its transport disappears during validation', async () => {
+  it('keeps a restore closed when its transport disappears during a context read', async () => {
     const fixture = createContextFixture(new FakeRestoreProfileMaintenance());
     const operationId = randomUUID();
     const entered = deferred<void>();
     const continuation = deferred<void>();
-    vi.spyOn(fixture.snapshot, 'validateProfileSnapshot').mockImplementation(async () => {
-      entered.resolve(); await continuation.promise; return createFakeValidation();
+    vi.spyOn(fixture.snapshot, 'readProfileInspectionContext').mockImplementation(async () => {
+      entered.resolve(); await continuation.promise; return readFakeInspectionContext();
     });
     try {
       await fixture.client.beginRestoreMaintenance(operationId);
-      const outcome = fixture.client.validateProfileSnapshot(operationId)
+      const outcome = fixture.client.readProfileInspectionContext(contextInput({ operationId }))
         .then(value => ({ value }), error => ({ error }));
       await entered.promise;
       fixture.transports.backend.close();
@@ -665,18 +655,6 @@ describe('profile snapshot broker boundary', () => {
         async createProfileSnapshot() {
           throw new Error('PROFILE_SNAPSHOT_DATABASE_FAILED');
         },
-        async prepareProfileRestoreActivation() {
-          return {
-            artifactCount: 0,
-            artifactTotalByteSize: 0,
-          };
-        },
-        async validateActiveProfile() {
-          return createFakeActiveValidation();
-        },
-        async validateProfileSnapshot() {
-          return createFakeValidation();
-        },
       },
       transport: transports.backend,
     });
@@ -708,18 +686,6 @@ describe('profile snapshot broker boundary', () => {
             name: 'Error',
           });
         },
-        async prepareProfileRestoreActivation() {
-          return {
-            artifactCount: 0,
-            artifactTotalByteSize: 0,
-          };
-        },
-        async validateActiveProfile() {
-          return createFakeActiveValidation();
-        },
-        async validateProfileSnapshot() {
-          return createFakeValidation();
-        },
       },
       transport: transports.backend,
     });
@@ -747,18 +713,6 @@ describe('profile snapshot broker boundary', () => {
         readProfileInspectionContext: readFakeInspectionContext,
         async createProfileSnapshot() {
           throw new Error('D:\\private\\unexpected-backend-detail');
-        },
-        async prepareProfileRestoreActivation() {
-          return {
-            artifactCount: 0,
-            artifactTotalByteSize: 0,
-          };
-        },
-        async validateActiveProfile() {
-          return createFakeActiveValidation();
-        },
-        async validateProfileSnapshot() {
-          return createFakeValidation();
         },
       },
       transport: transports.backend,
@@ -789,18 +743,6 @@ describe('profile snapshot broker boundary', () => {
         async createProfileSnapshot() {
           throw new Error('PROFILE_SNAPSHOT_STAGING_INVALID');
         },
-        async prepareProfileRestoreActivation() {
-          return {
-            artifactCount: 0,
-            artifactTotalByteSize: 0,
-          };
-        },
-        async validateActiveProfile() {
-          return createFakeActiveValidation();
-        },
-        async validateProfileSnapshot() {
-          return createFakeValidation();
-        },
       },
       transport: transports.backend,
     });
@@ -830,18 +772,6 @@ describe('profile snapshot broker boundary', () => {
         async createProfileSnapshot() {
           throw new Error('PROFILE_SNAPSHOT_ARTIFACTS_FAILED');
         },
-        async prepareProfileRestoreActivation() {
-          return {
-            artifactCount: 0,
-            artifactTotalByteSize: 0,
-          };
-        },
-        async validateActiveProfile() {
-          return createFakeActiveValidation();
-        },
-        async validateProfileSnapshot() {
-          return createFakeValidation();
-        },
       },
       transport: transports.backend,
     });
@@ -860,70 +790,40 @@ describe('profile snapshot broker boundary', () => {
     backend.close();
   });
 
-  it('returns bounded validation metadata without profile identifiers leaking to the renderer boundary', async () => {
-    const transports = createTransportPair();
-    const maintenance = new FakeProfileMaintenance();
-    const backend = startProfileSnapshotBrokerBackend({
-      maintenance,
-      snapshot: createFakeSnapshotService(),
-      transport: transports.backend,
+  it.each([
+    'validateActiveProfile',
+    'validateProfileSnapshot',
+    'prepareProfileRestoreActivation',
+  ])('rejects retired %s requests without snapshot work or maintenance changes', async operation => {
+    const fixture = createContextFixture();
+    const requestId = randomUUID();
+    const response = deferred<unknown>();
+    const read = vi.spyOn(fixture.snapshot, 'readProfileInspectionContext');
+    const snapshot = vi.spyOn(fixture.snapshot, 'createProfileSnapshot');
+    const unsubscribe = fixture.transports.main.subscribe(value => {
+      if (typeof value === 'object' && value !== null &&
+        'requestId' in value && value.requestId === requestId) {
+        response.resolve(value);
+      }
     });
-    const client = new ProfileSnapshotBrokerClient(transports.main, 1_000);
-    const operationId = randomUUID();
-
-    await expect(
-      client.validateProfileSnapshot(operationId),
-    ).resolves.toEqual({
-      ...createFakeValidation(),
-      type: 'profileSnapshotValidation',
-    });
-
-    client.close();
-    backend.close();
-  });
-
-  it('validates the active profile without exposing document identities or paths', async () => {
-    const transports = createTransportPair();
-    const maintenance = new FakeProfileMaintenance();
-    const backend = startProfileSnapshotBrokerBackend({
-      maintenance,
-      snapshot: createFakeSnapshotService(),
-      transport: transports.backend,
-    });
-    const client = new ProfileSnapshotBrokerClient(transports.main, 1_000);
-
-    await expect(client.validateActiveProfile()).resolves.toEqual({
-      ...createFakeActiveValidation(),
-      type: 'activeProfileValidation',
-    });
-
-    client.close();
-    backend.close();
-  });
-
-  it('prepares restore artifacts without exposing backend paths', async () => {
-    const transports = createTransportPair();
-    const maintenance = new FakeProfileMaintenance();
-    const snapshot = createFakeSnapshotService();
-    const backend = startProfileSnapshotBrokerBackend({
-      maintenance,
-      snapshot,
-      transport: transports.backend,
-    });
-    const client = new ProfileSnapshotBrokerClient(transports.main, 1_000);
-    const operationId = randomUUID();
-
-    await expect(
-      client.prepareProfileRestoreActivation(operationId),
-    ).resolves.toEqual({
-      artifactCount: 1,
-      artifactTotalByteSize: 2_048,
-      type: 'profileRestoreActivationPrepared',
-    });
-    expect(JSON.stringify(snapshot)).not.toContain('storage');
-
-    client.close();
-    backend.close();
+    try {
+      fixture.transports.main.send({
+        operation,
+        ...(operation === 'validateActiveProfile' ? {} : { operationId: randomUUID() }),
+        protocolVersion: profileSnapshotBrokerProtocolVersion,
+        requestId,
+      });
+      expect(await response.promise).toEqual({
+        errorCode: 'PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID',
+        ok: false,
+        protocolVersion: profileSnapshotBrokerProtocolVersion,
+        requestId,
+      });
+      expect(read).not.toHaveBeenCalled();
+      expect(snapshot).not.toHaveBeenCalled();
+      expect(fixture.maintenance.getStatus()).toBe('normal');
+      await expect(fixture.client.getStatus()).resolves.toBe('normal');
+    } finally { unsubscribe(); fixture.close(); }
   });
 });
 
@@ -946,26 +846,6 @@ function createFakeSnapshotService(): {
       sha256: string;
       totalPages: number;
     };
-  }>;
-  prepareProfileRestoreActivation(operationId: string): Promise<{
-    artifactCount: number;
-    artifactTotalByteSize: number;
-  }>;
-  validateActiveProfile(): Promise<{
-    artifactCount: number;
-    artifactTotalByteSize: number;
-    databaseHealth: 'healthy';
-    migrationChainIdentity: string;
-    profileId: string;
-  }>;
-  validateProfileSnapshot(operationId: string): Promise<{
-    activeProfileIsEmpty: boolean;
-    artifactCount: number;
-    artifactTotalByteSize: number;
-    databaseHealth: 'healthy';
-    migrationChainIdentity: string;
-    profileId: string;
-    profileMatchesActive: boolean;
   }>;
   operationIds: string[];
 } {
@@ -990,20 +870,6 @@ function createFakeSnapshotService(): {
           sha256: 'a'.repeat(64),
           totalPages: 2,
         },
-      };
-    },
-    async validateProfileSnapshot(operationId) {
-      operationIds.push(operationId);
-      return createFakeValidation();
-    },
-    async validateActiveProfile() {
-      return createFakeActiveValidation();
-    },
-    async prepareProfileRestoreActivation(operationId) {
-      operationIds.push(operationId);
-      return {
-        artifactCount: 1,
-        artifactTotalByteSize: 2_048,
       };
     },
     operationIds,
@@ -1031,28 +897,6 @@ function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   const promise = new Promise<T>(resolveTask => { resolve = resolveTask; });
   return { promise, resolve };
-}
-
-function createFakeActiveValidation() {
-  return {
-    artifactCount: 1,
-    artifactTotalByteSize: 2_048,
-    databaseHealth: 'healthy' as const,
-    migrationChainIdentity: 'c'.repeat(64),
-    profileId: 'd'.repeat(64),
-  };
-}
-
-function createFakeValidation() {
-  return {
-    activeProfileIsEmpty: false,
-    artifactCount: 1,
-    artifactTotalByteSize: 2_048,
-    databaseHealth: 'healthy' as const,
-    migrationChainIdentity: 'c'.repeat(64),
-    profileId: 'd'.repeat(64),
-    profileMatchesActive: true,
-  };
 }
 
 class FakeProfileMaintenance {

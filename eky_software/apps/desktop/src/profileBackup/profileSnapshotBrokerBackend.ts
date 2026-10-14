@@ -38,13 +38,6 @@ export function startProfileSnapshotBrokerBackend(input: {
   maintenance: ProfileMaintenanceService;
   snapshot: {
     readProfileInspectionContext(): ProfileInspectionBrokerContext | Promise<ProfileInspectionBrokerContext>;
-    validateActiveProfile(): Promise<{
-      artifactCount: number;
-      artifactTotalByteSize: number;
-      databaseHealth: 'healthy';
-      migrationChainIdentity: string;
-      profileId: string;
-    }>;
     createProfileSnapshot(input: {
       migrationPolicy:
         | 'exactCurrentManifest'
@@ -65,19 +58,6 @@ export function startProfileSnapshotBrokerBackend(input: {
         sha256: string;
         totalPages: number;
       };
-    }>;
-    prepareProfileRestoreActivation(operationId: string): Promise<{
-      artifactCount: number;
-      artifactTotalByteSize: number;
-    }>;
-    validateProfileSnapshot(operationId: string): Promise<{
-      activeProfileIsEmpty: boolean;
-      artifactCount: number;
-      artifactTotalByteSize: number;
-      databaseHealth: 'healthy';
-      migrationChainIdentity: string;
-      profileId: string;
-      profileMatchesActive: boolean;
     }>;
   };
   transport: ProfileSnapshotBrokerTransport;
@@ -301,21 +281,6 @@ export function startProfileSnapshotBrokerBackend(input: {
               },
             });
             return;
-          } else if (request.operation === 'validateActiveProfile') {
-            const assertContinuation = captureSnapshotFence();
-            const validation =
-              await input.snapshot.validateActiveProfile();
-            assertContinuation();
-            input.transport.send({
-              ok: true,
-              protocolVersion: profileSnapshotBrokerProtocolVersion,
-              requestId: request.requestId,
-              result: {
-                ...validation,
-                type: 'activeProfileValidation',
-              },
-            });
-            return;
           } else if (request.operation === 'readProfileInspectionContext') {
             const ownerId = activeOperationId;
             const ownerKind = activeOperationKind;
@@ -351,50 +316,6 @@ export function startProfileSnapshotBrokerBackend(input: {
               requestId: request.requestId,
               result: { type: 'profileInspectionContext',
                 activeProfileId: context.activeProfileId, activeProfileIsEmpty: context.activeProfileIsEmpty },
-            });
-            return;
-          } else if (request.operation === 'validateProfileSnapshot') {
-            if (request.updateMaintenanceOperationId !== undefined) {
-              assertUpdateMaintenance(request.updateMaintenanceOperationId);
-            }
-            const assertContinuation = captureSnapshotFence(
-              request.updateMaintenanceOperationId ?? request.operationId,
-            );
-            const validation =
-              await input.snapshot.validateProfileSnapshot(
-                request.operationId,
-              );
-            assertContinuation();
-            input.transport.send({
-              ok: true,
-              protocolVersion: profileSnapshotBrokerProtocolVersion,
-              requestId: request.requestId,
-              result: {
-                ...validation,
-                type: 'profileSnapshotValidation',
-              },
-            });
-            return;
-          } else if (
-            request.operation === 'prepareProfileRestoreActivation'
-          ) {
-            if (activeOperationKind === 'update') {
-              throw new Error('PROFILE_MAINTENANCE_OPERATION_MISMATCH');
-            }
-            const assertContinuation = captureSnapshotFence(request.operationId);
-            const prepared =
-              await input.snapshot.prepareProfileRestoreActivation(
-                request.operationId,
-              );
-            assertContinuation();
-            input.transport.send({
-              ok: true,
-              protocolVersion: profileSnapshotBrokerProtocolVersion,
-              requestId: request.requestId,
-              result: {
-                ...prepared,
-                type: 'profileRestoreActivationPrepared',
-              },
             });
             return;
           } else if (request.operation === 'endProfileMaintenance') {

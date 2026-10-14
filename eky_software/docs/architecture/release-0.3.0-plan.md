@@ -2,7 +2,19 @@
 
 ## Päätös ja nykyinen tila
 
-**Ajantasainen jatko 12.10.2026:** hyväksytty lähtö on edelleen PR #299:n main.
+**Ajantasainen jatko 14.10.2026:** T/A/B/C säilyvät hyväksyttyinä.
+K:n toteutus ja rajatut integraatiokorjaukset on yhdistetty PR #303:ssa ja
+PR #304:ssä, mutta K:n main-hyväksyntä on edelleen avoin: viimeisin mainin
+kierros hylättiin Electron-testien tarkistusajurin käännösvalmistelussa.
+[M1:n nykyinen jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+omistaa täsmärevisiot, näytön ja seuraavat hyväksyntäportit. Katselmoitu
+rajattu virheaineiston talteenotto läpäisi paikalliset kontrollit ja yhden
+nimetyn Windows-todennuksen. Seuraavaksi vaaditaan uuden revision normaalit
+PR- ja main-portit, ei K:n toteuttamista uudelleen tai uuden ominaisuuden
+aloittamista. Vanhan käännösvirheen syytä ei ole jälkikäteen todistettu.
+
+**Aiempi checkpoint 12.10.2026:** alla on silloisen valmistelun historia,
+ei nykyinen toteutus- tai päätösjono. Sen lähtö oli PR #299:n main.
 [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
 omistaa täsmärevision, nykyisen K-työn ja sen hyväksyntärajat.
 Uusin [kokonaiskytkennän tarkistus](release-0.3.0-m1-preparation-plan.md#kn-kokonaiskytkennän-tarkistus)

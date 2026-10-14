@@ -122,8 +122,96 @@ raakaa testiaineistoa eivätkä saa yleistä koko jobin tulostekaappausta.
 | Historical-legacy-käynnistyksen syyote | Legacy-komennon `fixtureCleanup/legacy-startup-terminal.json`-tiedostosta vain varmennettu ajosidonta ja `startupEvidence`-projektio. | Nykyinen terminal-kirjoitus säilyttää otteen ennen profiilin poistoa. Ei koko operational-lokia, profiilia, tietokantaa tai terminalin muuta sisältöä. Syykoodit ja vaiheet eivät tule julkiseen testitulosteeseen. |
 | Synteettinen MSI-versiopolitiikan koe | Oman supervisor-testijuuren `policy-result.json` sekä numeroidut `source`, `target` ja `uninstall` -MSI-lokit muuttamattomina tavuina. | Vain suoraan testijuuren alla olevat nimet; ei descriptor-, request-, profiili- tai tietokantatiedostoja. Keskeytyneen MSI-komennon osittainen loki voidaan säilyttää ilman workerin lopputulosta. Samat koko-, linkki- ja muuttumattomuusrajat kuin muilla lähteillä. |
 | Synteettisen workspace-päivityksen kohdeasennin | Täsmällinen `target-installer.private.log` ja sen ajosidonnan, koon ja tiivisteen sisältävä säilytyskuitti. | Vain markerilla ja nykyisellä proof-konfiguraatiolla hyväksytty source-handoff; Microsoftin `/L*v`, ei globaalia lokitusta tai käyttöliittymätilan muutosta. Enintään 64 MiB salattuun pakettiin; rajaa suurempaa tiedostoa ei julkaista osittaisena. |
+| Testin omistaman MSI-asiakkaan odotusikkuna | Otsikko, tavallinen ilmoitusteksti, painikkeen teksti ja enabled-tila sekä havainnon saatavuus. | Vain nykyisen skenaarion Jobin elävä järjestelmän `msiexec.exe` samassa istunnossa. Ei muiden sovellusten ikkunoita, lomakekenttiä, kuvakaappauksia tai automaattisia käyttöliittymätoimia. Tarkka rajaus alla. |
 | Packaged smoke | Rajattu prosessituloste, nykyinen smoke-tulos ja erikseen aktivoidun synteettisen käynnistyksen ensimmäinen alkuperäinen poikkeus ennen yleiseksi koodiksi muuntamista. | Poikkeus sidotaan ASAR-paketin build-identiteettiin, nonceen ja runtimeen. Epäonnistuneen testin juurta ei poisteta; keräin ei lue sen profiilia. Tyhjentynyt tuloste ei todista onnistunutta käynnistystä. |
 | Muut komennot ja valmistelu | Nykyinen turvallinen GitHub-komentoloki. | Salattu keräys ei palauta tulostetta, jota aliohjelma ei tuottanut tai säilyttänyt. Riippuvuustyökalun raakavirheet jäävät erikseen rajatuiksi pois. |
+
+### Asentimen rajattu ikkunahavainto
+
+Omistajan hyväksymä lisäys käyttää nykyistä `WorkspaceMsiActivityObservation`-
+kyselyä, ei uutta havaitsijaprosessia. Vain täsmälliseen järjestelmäasentimeen
+kuuluva, elävä ja nykyisen Jobin omistama prosessi kelpaa. Kahva pidetään
+auki, ja ikkunan PID, säie, näkyvyys ja sallittu luokka tarkistetaan tekstin
+lukemisen molemmin puolin. Epävarma tai poistunut omistaja ei anna tekstiä.
+Luetaan sallittu otsikko sekä Static- ja Button-kontrollien teksti.
+Omistajan hyväksymä jatko sallii lisäksi vain tunnistetun, vastausta odottavan
+sovellusten sulkemisilmoituksen suoran ListBox-lapsen sovellusnimet.
+Ilmoituksen nykyiset suomen- ja englanninkieliset tekstit ovat täsmällinen
+sallintalista; tuntematon ilmoitus ei laajenna keräystä. Muut listat sekä
+Edit-, RichEdit-, salasana- ja mukautetut syötekontrollit jäävät pois.
+Mitään ei paineta, valita, suljeta tai vahvisteta.
+
+Listan teksti luetaan Windowsin omalla UI Automation 2 -rajapinnalla
+samassa valinnaisessa kyselyssä, ilman uutta prosessia tai riippuvuutta.
+Suoraa `LB_GETTEXT`-puskurilukua ei käytetä: sen tulospuskurilla ei ole
+kapasiteettiparametria. Luku alkaa vain jo varmennetusta ListBox-kahvasta;
+työpöydän automaatiopuuta ei haeta. Listan ja suorien listamerkintöjen
+prosessitunnus ja kontrollityyppi varmennetaan. Tallennettu sovellusnimi ei
+yksin todista tiedostoja käyttävän prosessin identiteettiä.
+
+Yhteinen `msiWindowObservationContract.json` omistaa C#-tuottajan ja
+JavaScript-lukijan rajat. Nykyiseen 60 sekunnin näyteväliin ja 128 näytteen
+rajaan kuuluvat enintään 32 asiakasta, 32 ikkunatekstiä, 1 024 merkkiä
+tekstille ja yhteensä 4 096 merkkiä näytteelle. Yksi viestikysely saa enintään
+100 ms ja koko tekstinäytteen työbudjetti on 1 000 ms. Listan providerin
+yhteys- ja vastausodotukselle asetetaan samat 100 ms:n rajat, ja omistajuus
+sekä työbudjetti tarkistetaan lukujen välissä. Nämä eivät ole lupaus kaikkien
+Windows-/COM-kutsujen tai tiedostokirjoituksen pakkokatkaisusta: nykyinen
+terminal/cleanup ei odota valinnaista kyselyä. Nämä ovat havainnon rajoja,
+eivät testin tai asennuksen uusia aikarajoja. Osittainen havainto säilyttää
+osittaisuutensa; tyhjä lista ei todista odotuksen syytä tai kaikkien
+mahdollisten ikkunoiden poissaoloa.
+
+Serialisointi ja tiedostokirjoitus kuuluvat samaan olemassa olevaan yhteen
+taustakyselyyn. Terminal- tai cleanup-polku ei odota niiden valmistumista.
+Jokainen enintään 64 KiB:n valmis näyte julkaistaan yksinomaisesti omana
+`scenario/msi-window-NNN.private.json`-tiedostonaan. Keskeneräinen `.pending`
+ei kelpaa keräykseen, eikä aiempaa näytettä korvata. Hakemistokahvat estävät
+vanhempien vaihdon ja reparse-muutoksen kirjoituksen aikana. Lopullinen
+tiedosto luodaan yksinomaisesti ilman lukijoiden jako-oikeutta; sitä ei
+nimetä uudelleen lukittujen vanhempien alta. Pakkokatkaisun jättämä vajaa
+JSON hylätään keräimen tiukassa rakennevalidoinnissa. Julkinen
+`msiWindowEvidence` kertoo vain toimituksen tilan, ei tekstejä tai PID:itä.
+
+Keräin varmentaa run/attempt/job/SHA-sidonnan, järjestysnumeron ja vieressä
+olevan requestin noncen, skenaarion, descriptor-tiivisteen sekä omistetun
+hakemiston. Temp-juuren konfiguroitu nimiesitys hyväksytään vain saman
+kanonisen lähdejuuren vaihtoehtona; lapsikansioiden, tiedostojen ja vieraan
+juuren aliaksia ei hyväksytä tällä perusteella. Requestia, komentoa tai
+argumentteja ei sisällytetä pakettiin.
+Alkuperäiset virheet ja uudet odotushavainnot käsitellään ennen toistuvia
+supervisor-kuittauksia myös kilpailevien testikansioiden välillä. Luettelo
+etsitään nykyisen lähteen syvyys- ja merkintärajan sisällä. Lähteen nykyisestä
+viiden sekunnin ajasta etsintä käyttää enintään puolet, jotta jo löytyneen
+aineiston talteenotolle jää aikaa. Keskeneräinen tiedostojärjestelmäkutsu voi
+silti ylittää havainnointirajan; kyse ei ole käyttöjärjestelmäkutsun katkaisusta.
+Lähdekohtaiset ja kokonaisbudjetit säilyvät ja
+rajoittuminen ilmoitetaan edelleen. Tavallisten asenninlokien etusijaa ei
+muuteta. Vain salattu nykyinen toimitus sallitaan yhden vuorokauden
+säilytyksellä. Katkennut runner voi yhä estää toimituksen.
+
+Nykyinen Windows-supervisorin sopimussarja todentaa oikeilla omistetuilla
+testiprosesseilla myös ulkopuolisen Jobin, piilotetun ikkunan, vastaamattoman
+ikkunan ja listaproviderin, väärän ilmoituksen/listan ja syötekentän
+poissulkemisen, listan kokorajat sekä keskeytyneen julkaisun. Sama sarja
+todentaa ilmoituksen sovellusnimen keräimestä oikean OpenPGP-salauksen
+ja testiavainpurun läpi prosessien poistuttua. Se ei asenna MSI:tä tai
+korvaa varsinaista Windows-asennuskokeen näyttöä.
+Ensimmäisen näytteen hylkäys säilyttää nykyisessä yksityisessä stderrissä
+suljetun tulosluokan, odotettujen tekstiroolien löytymisen, keruun keston
+sekä erilliset keruun jälkeiset prosessin poistumis- ja omistajuushavainnot.
+Epäonnistuva lisäkysely ei peitä alkuperäistä hylkäystä. Hallittu native-virhe
+todentaa saman merkinnän ja kutsupinon nykyisen tulostekeräyksen sekä oikean
+OpenPGP-salauksen ja purun läpi; nämä havainnot eivät yksin nimeä Windowsin
+sisäistä juurisyytä.
+Skeema 2 nimeää listamerkinnän `application`-rooliksi; vanhan skeeman 1
+rajattu luku säilyy, mutta se ei hyväksy tätä uutta roolia.
+
+Nykyinen `packaged-boundary-diagnostic` käyttää samaa valinnaista salattua
+jälkikeräystä epäonnistuneessa tai perutussa `legacy`- ja `workspace`-kokeessa.
+Tämä ei käynnistä ulkoista jälkitallennusta, muuta hyväksyntää tai laajenna
+muiden koeperheiden keräystä. Onnistunut koe ei tämän perusteella lähetä
+raakahavaintoja.
 
 ### Yhteinen alkuperäisen testivirheen liitäntä
 
@@ -220,9 +308,29 @@ osittaisuuden tieto; puuttuvaa tai varmentamatonta lokia ei tulkita ehjäksi.
 Ote kirjoitetaan vain nykyiseen valmistelun `process-output.private.json`-
 tiedostoon ja salataan. Julkinen syykoodi ja stderr säilyvät ennallaan.
 `boundedNativeBuildFailure`-manifestimerkintä koskee vain tätä nimettyä
-job/job-key-paria. Muissa jobeissa riippuvuustyökalujen raakalokikielto säilyy.
+job/job-key-paria sekä alla erikseen hyväksyttyä Windows-valmistelua.
+Muissa jobeissa riippuvuustyökalujen raakalokikielto säilyy.
 Poikkeus ei avaa native-temp-juuren, lähteiden, konfiguraation, profiilien tai
 tietokantojen yleistä keräystä eikä muuta yhden vuorokauden säilytystä.
+
+Omistajan erillinen Windows-rajaus koskee vain inspector-native-ajurin
+epäonnistunutta käännöstä Electron E2E:n valmistelussa, job/job-key-parissa
+`e2e-electron-windows-critical` / `core-electron-0`. Nykyinen valmistelija
+varaa oman build-juuren ennen kutsua; loki luetaan vasta kääntäjäkutsun
+päättymisen jälkeen. Jaettu lukija säilyttää enintään 64 KiB alku-/loppuosina
+ja varmentaa tavalliset tiedostot sekä tarkat tiedostoidentiteetit ennen
+lukua ja sen jälkeen. Linuxin käyttäjä-/oikeustarkistukset säilyvät;
+Windowsin tarkistus ei oleta Linuxin UID- tai oikeusbittien olemassaoloa.
+Ote säilyy vain nykyisessä `test-results/run-<invocation UUID>/preparation/`
+`process-output.private.json`-tiedostossa. Tiukka receipt sitoo sen nykyiseen
+run/attempt/job/job-key/SHA-arvoon ja kansion invokaatioon. Keräin hylkää
+vieraan sidonnan, lisäkentät ja virheellisen koko-/base64-sopimuksen.
+`missing` ja `unverified` eivät ole täydellistä aineistoa. Onnistuminen tai
+muu valmisteluvirhe ei kerää käännöstulostetta. Valinnainen tallennus ei
+korvaa alkuperäistä valmisteluvirhettä tai muuta julkista syykoodia.
+Tämä ei ole koko riippuvuustyökalun, ympäristön tai build-juuren keräyslupa.
+Valmistelija -> keräin -> OpenPGP -> erillisen testiavainkodin purku
+todennetaan nykyisessä `encryptedEvidenceOpenPgp.test.mjs`-sarjassa ilman MSI:tä.
 
 Jokainen paketti sidotaan run/attempt/job/matrix-revisioon. Testitapaus ja
 sen retry sekä käynnistyssukupolvi säilyvät lähderaporteissa. Uusi paketti

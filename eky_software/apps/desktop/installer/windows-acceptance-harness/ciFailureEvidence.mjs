@@ -13,11 +13,15 @@ import { projectPlaywrightFailureReport } from './playwrightFailureReport.mjs';
 import { LEGACY_STARTUP_TERMINAL_FILENAME, projectLegacyStartupTerminalEvidence } from './legacyStartupFailureEvidence.mjs';
 import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
 import { inspectionSandboxProbeBinding } from '../../scripts/profileInspection/linuxProfileInspectionContract.mjs';
+import { nativePreparationRecordMaximumBytes, validateNativePreparationEvidence,
+  windowsNativePreparationBinding } from '../../scripts/profileInspection/nativeBuildFailureEvidence.mjs';
 import { W6B2_INSTALLER_LOG_FILE, W6B2_INSTALLER_LOG_RECEIPT,
   W6B2_INSTALLER_LOG_MAX_BYTES } from '../../src/main/w6b2PackagedInstallerLog.ts';
 import { STARTUP_EXCEPTION_CONTROL, STARTUP_EXCEPTION_SUFFIX, STARTUP_EXCEPTION_LIMITS,
   validateStartupExceptionEvidence } from '../../src/main/startupExceptionEvidence.ts';
 import { validateRunnerFailureEvidence } from '../../../../test-reporters/runnerFailureEvidence.mjs';
+import { msiWindowEvidenceContract, validateMsiWindowEvidence } from './msiWindowEvidence.mjs';
+import { readCommandPhaseJson } from './acceptanceCommandPhaseInput.mjs';
 
 const MiB = 1024 * 1024;
 const MAX_FILE = EVIDENCE_FILE_MAX_BYTES;
@@ -26,6 +30,7 @@ const MAX_FILES = 256;
 const MAX_ENTRIES = 4096;
 const MAX_DEPTH = 9;
 const MAX_SOURCE_MILLISECONDS = 5000;
+const MAX_DISCOVERY_MILLISECONDS = MAX_SOURCE_MILLISECONDS / 2;
 const outcomes = new Set(['success', 'failure', 'cancelled', 'skipped']);
 const runPattern = 'run-[a-f0-9-]{36}';
 const failure = () => new Error('CI_FAILURE_EVIDENCE_UNVERIFIED');
@@ -42,6 +47,7 @@ export function evidenceSourceKind(area, path) {
   if (/^eky-desktop-smoke\/[a-f0-9]{32}\/(?:result\/desktop-smoke-result\.json|smoke-output\.private\.json)$/u.test(path)) return 'packagedSmoke';
   if (/^eky-desktop-smoke\/[a-f0-9]{32}\/result\/[a-f0-9-]{36}\.startup-exception\.private\.json$/u.test(path)) return 'startupException';
   const fixturePrefix = '(?:(?:eky supervisor [a-zA-Z0-9]+/temporary|eky-t-[a-zA-Z0-9]+)/)?';
+  if (new RegExp(`^${fixturePrefix}eky-acceptance-command-[a-f0-9]{32}/scenario/${msiWindowEvidenceContract.filenamePrefix}[0-9]{3}\\.private\\.json$`, 'u').test(path)) return 'msiWindowObservation';
   if (new RegExp(`^${fixturePrefix}eky-test-errors-[a-f0-9-]{36}/(?:[0-9]{3}-[a-f0-9-]{36}|[a-f0-9-]{36}\\.summary)\\.private\\.json$`, 'u').test(path)) return 'runnerFailure';
   const workspaceLog = new RegExp(`^${fixturePrefix}eky-workspace-caller-[a-f0-9]{32}/([^/]+)$`, 'u').exec(path);
   if (workspaceLog && [W6B2_INSTALLER_LOG_FILE, W6B2_INSTALLER_LOG_RECEIPT].includes(workspaceLog[1])) return 'workspaceInstallerEvidence';
@@ -63,7 +69,7 @@ export function jobEvidenceBinding(env) {
     job: env.GITHUB_JOB, jobKey: env.EKY_EVIDENCE_JOB_KEY, sourceRevision: env.GITHUB_SHA };
 }
 
-export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_TEMP } = {}) {
+export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_TEMP, now = () => performance.now() } = {}) {
   const binding = jobEvidenceBinding(env);
   const { fingerprint, key } = evidenceRecipient(env);
   const temp = await realpath(env.RUNNER_TEMP);
@@ -79,7 +85,9 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
     cleanup: 'notInferred', unresolvedEvidenceHold: true,
     publicCommandLog: 'githubWorkflowLog', files: [], sources: [],
     exclusions: ['databases', 'profiles', 'environment', 'configuration', 'unreviewedTraces', 'memoryDumps', 'dependencyToolRawOutput'] };
-  if (binding.job === inspectionSandboxProbeBinding.job && binding.jobKey === inspectionSandboxProbeBinding.jobKey) {
+  const linuxCompilation = binding.job === inspectionSandboxProbeBinding.job && binding.jobKey === inspectionSandboxProbeBinding.jobKey;
+  const windowsCompilation = binding.job === windowsNativePreparationBinding.job && binding.jobKey === windowsNativePreparationBinding.jobKey;
+  if (linuxCompilation || windowsCompilation) {
     manifest.approvedExceptions = ['boundedNativeBuildFailure'];
     manifest.exclusions = manifest.exclusions.map(value => value === 'dependencyToolRawOutput'
       ? 'unapprovedDependencyToolRawOutput' : value);
@@ -95,13 +103,46 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
     try {
       const info = await ordinaryPath(base, path);
       const installerLog = kind === 'workspaceInstallerEvidence' && relativePath.endsWith('/' + W6B2_INSTALLER_LOG_FILE);
+      const nativePreparation = kind === 'processOutput' && windowsCompilation &&
+        relativePath.endsWith('/preparation/process-output.private.json');
       const fileLimit = installerLog ? W6B2_INSTALLER_LOG_MAX_BYTES :
-        ['startupException', 'runnerFailure'].includes(kind) ? STARTUP_EXCEPTION_LIMITS.fileBytes : MAX_FILE;
+        kind === 'msiWindowObservation' ? msiWindowEvidenceContract.maximumBytes :
+        nativePreparation ? nativePreparationRecordMaximumBytes :
+          ['startupException', 'runnerFailure'].includes(kind) ? STARTUP_EXCEPTION_LIMITS.fileBytes : MAX_FILE;
       if (info.size > fileLimit) { entry.status = 'tooLarge'; return; }
       if (info.size > MAX_TOTAL - total) { entry.status = 'totalLimit'; return; }
       let proof = await retain(base, path, join(stage, name), Math.min(fileLimit, MAX_TOTAL - total));
+      if (kind === 'processOutput') {
+        const bytes = await readFile(join(stage, name));
+        const record = parseStrictJsonObjectBytes(bytes, { errorCode: 'nativePreparationEvidenceInvalid', maximumBytes: MAX_FILE });
+        if (record.operation === 'electronE2ePreparation') {
+          if (!nativePreparation || bytes.length > nativePreparationRecordMaximumBytes) throw failure();
+          validateNativePreparationEvidence(record, binding, relativePath.split('/')[0].slice(4));
+        } else if (Object.hasOwn(record, 'nativeCompilationEvidence') &&
+          (!linuxCompilation || !relativePath.endsWith('/preparation/process-output.private.json') ||
+            record.operation !== 'linuxProfileInspection' || record.phase !== 'preparation' ||
+            record.causeCode !== 'PROFILE_INSPECTION_NATIVE_BUILD_FAILED')) throw failure();
+      }
       if (installerLog) {
         await assertWorkspaceInstallerLogReceipt(dirname(path), proof);
+      }
+      if (kind === 'msiWindowObservation') {
+        const observation = validateMsiWindowEvidence(parseStrictJsonObjectBytes(await readFile(join(stage, name)),
+          { errorCode: 'msiWindowEvidenceInvalid', maximumBytes: msiWindowEvidenceContract.maximumBytes }), binding, relativePath);
+        const requestPath = join(dirname(path), 'request.json');
+        const requestInfo = await ordinaryPath(base, requestPath);
+        if (requestInfo.size > MiB) throw failure();
+        // Read only for binding; never copy the request, command or arguments into evidence.
+        const request = await readCommandPhaseJson(requestPath);
+        // Only the configured temporary parent may be an alias. ordinaryPath
+        // above still requires every child directory and file to be canonical and link-free.
+        const workingDirectories = [dirname(path)];
+        for (const [configuredRoot, canonicalRoot] of [[env.RUNNER_TEMP, temp], [nativeTemp, native]]) {
+          if (canonicalRoot === base) workingDirectories.push(resolve(configuredRoot, dirname(relativePath)));
+        }
+        if (request.schemaVersion !== 1 ||
+            ['runNonce', 'scenario', 'artifactDescriptorSha256'].some(key => request[key] !== observation[key]) ||
+            !workingDirectories.includes(request.workingDirectory)) throw failure();
       }
       if (kind === 'runnerFailure') {
         const record = validateRunnerFailureEvidence(parseStrictJsonObjectBytes(await readFile(join(stage, name)),
@@ -164,17 +205,20 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
     const source = { area, location, status: 'complete', examinedEntries: 0, fileLimit };
     manifest.sources.push(source);
     const firstFile = manifest.files.length;
-    const deadline = performance.now() + MAX_SOURCE_MILLISECONDS;
+    const candidates = [];
+    const startedAt = now();
+    const deadline = startedAt + MAX_SOURCE_MILLISECONDS;
+    const discoveryDeadline = startedAt + MAX_DISCOVERY_MILLISECONDS;
     const exhausted = () => manifest.files.length - firstFile >= fileLimit
-      || performance.now() >= deadline;
+      || now() >= deadline;
     const walk = async (directory, prefix, depth) => {
-      if (depth > MAX_DEPTH || source.examinedEntries >= MAX_ENTRIES || exhausted() || manifest.files.length >= MAX_FILES) {
+      if (depth > MAX_DEPTH || source.examinedEntries >= MAX_ENTRIES || now() >= discoveryDeadline || manifest.files.length >= MAX_FILES) {
         source.status = 'limited'; return;
       }
       if (directory !== base) await ordinaryPath(base, directory, true);
       const entries = [];
       for await (const item of await opendir(directory)) {
-        if (performance.now() >= deadline) { source.status = 'limited'; break; }
+        if (now() >= discoveryDeadline) { source.status = 'limited'; break; }
         if (depth === 0 && area === 'temporary' && !/^(?:eky supervisor |eky-(?:test-errors-|t-|acceptance-command-|desktop-smoke$|(?:clean|upgrade|legacy|workspace)-caller-))/u.test(item.name)) continue;
         if (depth === 0 && area !== 'temporary' && !new RegExp(`^${runPattern}$`, 'u').test(item.name)) continue;
         if (++source.examinedEntries > MAX_ENTRIES) { source.status = 'limited'; break; }
@@ -191,18 +235,29 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
           left.item.name.localeCompare(right.item.name)
         : right.modified - left.modified || left.rel.localeCompare(right.rel));
       for (const { item, path, rel } of entries) {
-        if (exhausted() || manifest.files.length >= MAX_FILES) { source.status = 'limited'; break; }
+        if (now() >= discoveryDeadline || manifest.files.length >= MAX_FILES) { source.status = 'limited'; break; }
         if (item.isDirectory()) {
           if (['node_modules', '.npm-cache', 'cache', 'user-data', 'profiles', 'database', 'storage'].includes(item.name)) continue;
           try { await walk(path, rel, depth + 1); } catch { source.status = 'partial'; }
         } else if (item.isSymbolicLink()) {
           source.status = 'partial';
-          await select(base, path, area, location, rel);
-        } else if (item.isFile()) await select(base, path, area, location, rel);
+          if (evidenceSourceKind(area, rel)) candidates.push({ path, rel });
+        } else if (item.isFile() && evidenceSourceKind(area, rel)) candidates.push({ path, rel });
       }
     };
     try { await walk(start, '', 0); }
     catch (error) { source.status = error.code === 'ENOENT' ? 'missing' : 'unverified'; }
+    // Reserve half the unchanged source budget for retaining already found evidence.
+    // Stable sorting retains first-error order within each invocation.
+    const priority = item => {
+      const kind = evidenceSourceKind(area, item.rel);
+      return kind === 'runnerFailure' ? 0 : kind === 'msiWindowObservation' ? 1 : 2;
+    };
+    candidates.sort((left, right) => priority(left) - priority(right));
+    for (const { path, rel } of candidates) {
+      if (exhausted() || manifest.files.length >= MAX_FILES) { source.status = 'limited'; break; }
+      await select(base, path, area, location, rel);
+    }
   }
   const archivePath = join(root, 'evidence.private.json.gz');
   await writeEvidenceArchive({ temp, stage, archivePath, manifest });

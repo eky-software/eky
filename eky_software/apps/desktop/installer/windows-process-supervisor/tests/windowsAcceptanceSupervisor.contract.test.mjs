@@ -5,6 +5,10 @@ import { access, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:
 import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { gunzipSync } from 'node:zlib';
+import { createOpenPgpTestFixture } from '../../windows-acceptance-harness/openPgpTestFixture.mjs';
+import { collectJobFailureEvidence } from '../../windows-acceptance-harness/ciFailureEvidence.mjs';
+import { encryptArchive } from '../../windows-acceptance-harness/workspaceEncryptedEvidence.mjs';
 import { captureContractOutput, CONTRACT_OUTPUT_LIMIT } from './supervisorContractPrivateEvidence.mjs';
 import {
   cleanupRunContext,
@@ -48,6 +52,91 @@ if (!Number.isInteger(repetitions) || repetitions < 1 || repetitions > 50) {
 }
 
 test.afterEach(async () => cleanupActiveSupervisors());
+
+test('MSI windows: owned visible captions, bounded reads and interrupted immutable publication', WINDOWS_ONLY, async t => {
+  const context = await contextFor(t, 'msi-window-contracts');
+  context.scenario = 'packagedWorkspaceSuccess';
+  await writeRequest(context, createRequest(context, 'exitZero'));
+  const execution = startProgramFailureFixture(context, 'msiWindowContracts');
+  const result = await execution.completion;
+  assert.equal(result.exitCode, 0);
+  assert.doesNotMatch(result.standardOutput + result.standardError, /SYNTHETIC MSI|EXCLUDED INPUT/);
+  const proof = JSON.parse(await readFile(join(context.testRoot, 'msi-window-contract.json'), 'utf8'));
+  assert.ok(Object.keys(proof).length >= 25);
+  assert.ok(Object.values(proof).every(value => value === true));
+});
+
+test('MSI windows: native observation survives exit and interrupted publication through real OpenPGP delivery', WINDOWS_ONLY, async t => {
+  const context = await contextFor(t, 'msi-window-encrypted');
+  const temporary = join(context.testRoot, 'temporary');
+  const checkout = join(context.testRoot, 'checkout');
+  const scenarioRoot = join(temporary, 'eky-acceptance-command-' + 'a'.repeat(32), 'scenario');
+  await mkdir(scenarioRoot, { recursive: true });
+  await mkdir(checkout);
+  context.scenario = 'packagedWorkspaceSuccess';
+  context.requestPath = join(scenarioRoot, 'request.json');
+  context.resultPath = join(scenarioRoot, 'result.json');
+  await writeRequest(context, { ...createRequest(context, 'exitZero'), workingDirectory: scenarioRoot });
+  const crypto = await createOpenPgpTestFixture(fileURLToPath(new URL('../../../../../', import.meta.url)));
+  let completed = false;
+  try {
+    const recipient = await crypto.generate('recipient');
+    await crypto.invokeGpg(recipient.home, ['--pinentry-mode', 'loopback', '--passphrase', '',
+      '--quick-add-key', recipient.fingerprint, 'cv25519', 'encr', '1d']);
+    const publicPath = await crypto.exportKey(recipient, 'public.asc');
+    const env = { ...process.env, GITHUB_ACTIONS: 'true', GITHUB_RUN_ID: '98765', GITHUB_RUN_ATTEMPT: '1',
+      GITHUB_JOB: 'tests', EKY_EVIDENCE_JOB_KEY: 'tests-0', GITHUB_SHA: 'a'.repeat(40),
+      EKY_EVIDENCE_JOB_OUTCOME: 'failure', RUNNER_TEMP: temporary, GITHUB_WORKSPACE: checkout,
+      EKY_DIAGNOSTIC_KEY_FINGERPRINT: recipient.fingerprint,
+      EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: recipient.fingerprint,
+      EKY_DIAGNOSTIC_PUBLIC_KEY: await readFile(publicPath, 'utf8') };
+    const execution = startProgramFailureFixture(context, 'msiWindowContracts', { environment: env });
+    const result = await execution.completion;
+    assert.equal(result.exitCode, 0);
+    assert.doesNotMatch(result.standardOutput + result.standardError, /SYNTHETIC MSI|EXCLUDED INPUT/);
+    const proof = JSON.parse(await readFile(join(scenarioRoot, 'msi-window-contract.json'), 'utf8'));
+    assert.equal(proof.cleanupVerified, true);
+    assert.equal(proof.cancelBeforePublicationRetainsPending, true);
+    const failedContext = { ...context, testRoot: join(temporary, 'eky supervisor receipt'),
+      privateOutputCaptures: [], privateOutputRetention: undefined };
+    await mkdir(failedContext.testRoot);
+    try {
+      const failed = startProgramFailureFixture(failedContext, 'msiWindowFailureReceipt', { environment: env });
+      await assert.rejects(failed.completion, { message: 'WINDOWS_ACCEPTANCE_SUPERVISOR_STDERR_NOT_EMPTY' });
+      assert.equal(Number.isInteger(failed.child.exitCode), true);
+      assert.notEqual(failed.child.exitCode, 0);
+    } finally { await cleanupRunContext(failedContext, { preserveEvidence: true }); }
+    const collected = await collectJobFailureEvidence(env, { nativeTemp: temporary });
+    await encryptArchive(collected.root, collected);
+    const decrypted = await crypto.invokeGpg(recipient.home, ['--decrypt', join(collected.root, 'evidence.json.gz.gpg')]);
+    const archive = JSON.parse(gunzipSync(decrypted.stdout));
+    const entries = archive.manifest.files.filter(value => value.kind === 'msiWindowObservation' && value.status === 'retained');
+    assert.equal(entries.length, 1);
+    const record = JSON.parse(Buffer.from(archive.files[entries[0].name], 'base64'));
+    assert.equal(record.runNonce, context.runNonce);
+    assert.equal(record.artifactDescriptorSha256, context.artifactDescriptorSha256);
+    assert.equal(record.sequence, 1);
+    assert.equal(record.clients.some(client => client.windows.some(row => row.role === 'application' &&
+      row.text === 'SYNTHETIC OWNED APPLICATION')), true);
+    assert.equal(record.clients.some(client => client.status === 'partial'), true);
+    const failureReceipts = archive.manifest.files
+      .filter(value => value.kind === 'nativeResult' && value.status === 'retained')
+      .map(value => Buffer.from(archive.files[value.name], 'base64').toString('utf8'))
+      .filter(value => value.includes('msiWindowContractFailed:titleCaptured:'));
+    assert.equal(failureReceipts.length, 1);
+    const receipt = failureReceipts[0].match(/msiWindowContractFailed:titleCaptured:(\{[^\r\n]+\})/);
+    assert.ok(receipt);
+    assert.deepEqual(JSON.parse(receipt[1]), { status: 'partial', titleCaptured: false,
+      messageCaptured: false, buttonCaptured: false, applicationCaptured: false,
+      elapsedMilliseconds: 0, childExitedAfterCapture: null, membershipAfterCapture: 'Unknown' });
+    assert.ok(/MsiWindowObservationContract\.RunFailureReceipt/.test(failureReceipts[0]),
+      'MSI_WINDOW_FAILURE_NATIVE_FRAME_MISSING');
+    assert.doesNotMatch(JSON.stringify(archive), /EXCLUDED INPUT|window-child-|\.pending/);
+    assert.equal(archive.manifest.jobOutcome, 'failure');
+    assert.equal(archive.manifest.cleanup, 'notInferred');
+    completed = true;
+  } finally { await crypto.finish({ completed, failed: !completed }); }
+});
 
 test('MSI observation: held handles, bounded samples and late completion preserve the optional contract', WINDOWS_ONLY, async t => {
   const context = await contextFor(t, 'msi-observation-contracts');

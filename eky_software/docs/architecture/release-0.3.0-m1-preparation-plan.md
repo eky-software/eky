@@ -2,6 +2,82 @@
 
 ## Jatka tästä
 
+**Aktiivinen työ 15.10.2026: nykyisen K-integraation loppuunvienti.**
+Tämä jatkamiskohta korvaa aiemman pitkän integraatiojatkon työjonona; se ei
+aloita uutta Goalia eikä lisää vanhoja tutkimuksia pakollisiksi tehtäviksi.
+T/A/B/C ovat hyväksyttyjä. K:n [hyväksytyt sopimukset](#k-paketin-valmistelu-ja-hyväksyntärajat)
+ja [toteutuksen hyväksyntärajat](#kn-toteutusjärjestys-ja-hyväksyntä) säilyvät;
+[julkaisusuunnitelma](release-0.3.0-plan.md) omistaa muun 0.3.0:n sisällön.
+
+| Kohde | Varmennettu tila ja avoin asia |
+| --- | --- |
+| Main | `012fed60`: PR #304 yhdistetty, mutta mainin oma V2 hylättiin tarkistusajurin käännösvalmisteluun. Erillinen auditointi läpäisi; K ei ole hyväksytty. |
+| PR #305 | Base `012fed60`, head `0a1d210b`. [Normaalin V2:n](https://github.com/eky-software/eky/actions/runs/38642369313) ensimmäinen yritys ja yksi erikseen hyväksytty web-uusinta hylättiin eri web-testien epävakauteen; muut valitut perheet läpäisivät. [Erillinen auditointi](https://github.com/eky-software/eky/actions/runs/38642369108) läpäisi. Uusi testikorjaus tarvitsee oman katselmuksen ja revision portit. |
+| MSI-odotus | Revision `39ef904a` [koe](https://github.com/eky-software/eky/actions/runs/38613163463) osoitti vastausta odottavan sulkemispyynnön. Revision `50d6c31d` [nimetty jatkokoe](https://github.com/eky-software/eky/actions/runs/38630393550) läpäisi samoilla asennuspaketeilla myös pakollisen tulosverifioinnin. Estäjän identiteetti jää avoimeksi; ei juurisyykorjauksen tai normaalin PR-hyväksynnän väitettä. |
+| Kääntäjähavainto | Alkuperäinen syy jäi puuttumaan. Rajattu keräyskorjaus ja [nimetty Windows-todennus](https://github.com/eky-software/eky/actions/runs/38591390653) läpäisivät; vanhaa syytä ei ole todistettu eikä yhdistetty MSI-odotukseen. |
+| K:n korvatut polut | Revision `04fc68d2` poisto, kohderegressiot, tyypit, katselmus ja saman puhtaan paketin backup -> inspect -> restore -> restart -> compare läpäisivät. Vertailusnapshot käyttää eristettyä tarkistusta, receipt-sidontaa ja omistajan siivousta. Private broker v12 ei tarjoa kolmea korvattua raskasta komentoa. Normaalit PR/main-portit ovat avoinna. |
+| Aiemmat kierroksen hylkäykset | Workflow-, keräin- ja Node-tuontikorjaukset läpäisivät revision `0a1d210b` porttinsa; myös natiivin ilmoitusfixturen sarjat läpäisivät. Alkuperäisen natiivihylkäyksen ja vanhan MSI-odotuksen syyt säilyvät avoimina. |
+| Web-integraation este | `INV-LIFECYCLE-001`:n ensimmäinen API-katkos ei toistunut uusinnassa; syy on avoin. Uusinnan `INV-REVERSE-CREDIT-001` aikakatkaisi PDF-toiminnon tilanvaihdossa. Hallittu regressio toisti hyvitysapurista puuttuvan metadata-/painikevalmiuden odotuksen. Rajattu testiapurikorjaus, valmius- ja peruutuskontrollit, nykyiset kutsujat, kriittinen web-sarja, tyypit ja katselmus läpäisivät. Sovelluskoodi ja aikarajat säilyvät. Uusi revisio tarvitsee omat normaalit portit. Molempien ensivirheiden salattu aineisto säilyi ja varmennettiin. |
+
+Rajatut workflow-, keräin- ja Node-tuontikorjaukset on kohdennetusti todennettu.
+Tuontirajan regressio hylkäsi vanhan toteutuksen; korjattu Playwright-luenta
+löytää jälleen kaikki kolme paketoitua palautustestiä. Revision `0a1d210b`
+normaali kierros suoritti myös paketoidut palautustestit hyväksytysti;
+web-hylkäys esti silti kokonaiskoonnin. Natiivin ilmoitustestin epäonnistuva ensimmäinen näyte säilyttää
+nyt suljetut tulosluokat nykyisessä yksityisessä virhetulosteessa. Yksi nimetty
+asennukseton [Windows-sopimuskoe](https://github.com/eky-software/eky/actions/runs/38639450894)
+läpäisi revision `895d6048` molemmissa erillisissä ympäristöissä (159 testiä
+kummassakin). Alkuperäisen hylkäyksen syy säilyy avoimena. Hallittu native-virhe
+todensi tarkennetun merkinnän ja kutsupinon oikeasti puretusta OpenPGP-paketista;
+epäonnistuva prosessi ja testiapurin hylkäys säilyivät. Saman puhtaan revision
+Windows-paketti läpäisi backup -> inspect -> restore -> restart -> compare
+-ketjun, ja paketin tavut säilyivät ennallaan. Nämä ovat rajattuja todisteita;
+uuden PR-headin normaalit portit ja mainin omat tarkistukset tarvitaan edelleen.
+
+**Seuraava työ järjestyksessä:**
+
+1. Säilyneet täydelliset MSI-lokit tarkistettiin: estäjän identiteetti ei
+   selvinnyt niistä. Hyväksytyn ilmoitusluettelon keräys, synteettiset
+   rajatapaukset, todellinen salaus/purku ja 159 valvojan regressiota läpäisivät;
+   katselmus valmistui. Nimetty jatkokoe läpäisi ilman uutta virhepakettia.
+   Aiempi odotus ja puuttuva estäjäidentiteetti säilyvät avoimina.
+   Mahdollinen myöhempi estäjä sidotaan testin prosessi-identiteettiin. Pelkkä nimi ei
+   todista prosessin omistajuutta. Ikkunan sulkeutuminen, backendin päättyminen,
+   main-prosessin poistuminen ja asentimen valmistuminen ovat eri todisteita.
+2. Omistaja hyväksyi rajatun etenemisen: vanha MSI-odotus jää avoimeksi
+   seurantahavainnoksi, ei korjatuksi viaksi. Korvattujen polkujen poisto on
+   todennettu; hyvitysapurista puuttuvan PDF-valmiusrajan regressiot,
+   nykyiset kutsujat ja katselmus läpäisivät. Vie korjaus nyt jäädytetyn
+   revision normaaleihin PR/main-portteihin. Vanhaa API-katkoa ei nimetä tämän korjauksen syyksi.
+   Uutta hylkäystä ei ohiteta eikä sisältö-,
+   palautus- tai siivousehtoja muuteta. Korjaa vain
+   osoitettu virhe nykyiseen omistajaan. Ei automaattista UI-vastausta,
+   hiljaiseen asennukseen vaihtoa, yleistä prosessiskannausta tai uusia valvojia.
+3. Testivalintojen tarkistus valmistui: workspace-success valitsee 11 ja fault
+   12 tiedostoa, joista viisi on yhteisiä (yhteensä 18 eri tiedostoa).
+   Molemmat valmistelevat runtimen samassa `workspace_artifact_contracts`-jobissa.
+   Mahdollinen rajattu jatko on yksi valmistelu ja yhteiset viisi, successin
+   kuusi sekä faultin seitsemän omaa tiedostoa tässä samassa jobissa.
+   Ajokytkennän testi todistaisi täsmällisen kattavuuden ja valmistelujärjestyksen;
+   varsinainen asennusmatriisi säilyisi. CI:tä ei muutettu tässä korjauksessa,
+   eikä päällekkäisyyttä osoitettu MSI-odotuksen syyksi.
+4. Kokoa mahdollinen vielä tarvittava tietosuojapäätös yhdeksi rajaukseksi
+   ennen seuraavaa pitkää ajoa. Nykyiset keräysrajat säilyvät. Puuttuvaa
+   aineistoa tai tuntematonta syytä ei korvata oletuksella.
+5. Varmenna korjaus, korvattujen polkujen poistoehto ja jäädytetyn revision
+   nykyiset PR-portit. Normaalia suojattua mergeä seuraavat uuden mainin omat
+   portit. Ellei näyttö riitä ratkaisuun, esitä yksi täsmällinen
+   vaihtoehtopäätös; älä jatka rajattomaan tutkimus- tai ohjekasvuun.
+
+Päivitä tätä nykytilaa toteuman muuttuessa. Päivätty näyttö alla säilyttää
+ensivirheet ja hyväksynnät; sen vanhat jatkoehdotukset eivät ole rinnakkainen
+työjono. Sopimusosiot säilyvät voimassa myöhempine hyväksyttyine päätöksineen.
+
+## Päivätty näyttö ja sopimukset
+
+Seuraavat checkpointit ovat syntyhetkensä näyttöä. Lue niistä nykyisen työn
+tarvitsemat viitteet, älä aloita jo valmistuneita vaiheita uudelleen.
+
 **PR #283 ja sen main-integraatio on hyväksytty 2.10.2026.**
 [Lopullinen checkpoint](https://github.com/eky-software/eky/pull/283#issuecomment-5959719891)
 sulkee ennen A1:tä hyväksytyn [pnpm-tietoturvahuollon](#pnpm-bootstrapin-tietoturvahuolto)
@@ -22,7 +98,77 @@ Modulaarinen monoliitti ja
 hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohdan;
 [julkaisusuunnitelma](release-0.3.0-plan.md) omistaa koko 0.3.0:n sisällön.
 
-**Uusin K-jatkamiskohta:** PR #303 yhdistettiin 14.10.2026 normaalisti
+**K-integraation checkpoint 14.10.2026:**
+[PR #304:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/304#issuecomment-6170624775)
+varmentaa revision `36477039` puhtaan paketoidun palautusketjun,
+263 kohderegressiota, tyypit, katselmuksen sekä PR:n V2- ja audit-portit.
+Normaali merge tuotti mainin `012fed60`.
+Sen [oma V2-kierros](https://github.com/eky-software/eky/actions/runs/38580185629)
+päättyi hylätyksi: inspector-native-ajurin käännös epäonnistui kriittisen
+Electron E2E:n valmistelussa ennen Playwright-käyttäjäpolkujen käynnistymistä.
+Saman jobin aiemmat paketointi-, packaged restore- ja legacy-kokeet
+läpäisivät; myös muut valitut hyväksyntäjobit läpäisivät. Kierroksella oli
+36 onnistunutta jobia, yksi varsinainen hylkäys ja siitä seuraava aggregaatin
+hylkäys sekä kuusi tarkoituksellista diagnostiikkaohitusta.
+Mainin [erillinen auditointi](https://github.com/eky-software/eky/actions/runs/38580335654)
+läpäisi. K:n main-hyväksyntä on edelleen avoin.
+
+Salattu aineisto ei säilyttänyt kääntäjän alkuperäistä tulostetta.
+Omistaja hyväksyi [nimettyyn Windows-valmisteluun rajatun 64 KiB:n otteen](ci-encrypted-evidence.md#testiperheiden-virheaineisto),
+omistajuus-/kokorajaregressiot, paikallisen salaus/purku-todennuksen ja
+yhden nimetyn Windows-kokeen. Ensin todennetaan nykyinen keräysketju;
+sen jälkeen korjataan vain näytön osoittama syy ja vaaditaan uuden revision
+omat normaalit PR/main-portit. Tämä ei ole uusi testialusta, käännösvirheen
+korjatuksi merkintä tai hyväksyntäehtojen muutos.
+
+**Talteenoton kohdenäyttö:** revision `0f621f46` rajatut Windows- ja Linux-
+kontrollit, nykyinen salatun aineiston sarja, desktopin tyypit ja riippumaton
+katselmus läpäisivät. Valmistelija -> keräin -> OpenPGP -> erillinen testiavain-
+purku todensi alkuperäiset tavut; se ei toistanut vanhaa kääntäjävirhettä.
+[Nimetty Windows-ajo 38591390653](https://github.com/eky-software/eky/actions/runs/38591390653)
+läpäisi ensimmäisellä yrityksellä: paketointi ja hardened-palautus, kolme
+paketoitua legacy/cold-tapausta, 47 kriittistä Electron-testiä ja erillinen
+käynnistyshavainnon kontrolli. Checkout, säilyneiden lokien tiivisteet sekä
+lifecycle-liitteen alkuperä ja siivous tarkistettiin. Neljä valitsematta
+jätettyä jobia eivät ole läpäisyjä. Tämä ei ole normaali V2-kierros eikä
+vanhan käännösvirheen juurisyyn hyväksyntä.
+
+**PR #305:n normaali kierros:** headin `3d703c07`
+[V2-ajo 38596095316](https://github.com/eky-software/eky/actions/runs/38596095316)
+hylättiin kahden workspace-kuluttajan kohdeasentimen odotukseen. Kierroksella
+oli 35 onnistunutta jobia, kaksi varsinaista hylkäystä, niiden aggregaatin
+hylkäys ja kuusi tarkoituksellista diagnostiikkaohitusta.
+[Erillinen auditointi](https://github.com/eky-software/eky/actions/runs/38596095204)
+läpäisi. Tämä ei ole sama hylkäys kuin aiempi ajurin käännösvirhe.
+Asennuksen hyväksyntä, prosessi-/tuotesiivous ja havaintojen saatavuus
+säilyvät erillisinä tuloksina; onnistunut siivous ei hyväksy asennusta.
+
+Omistaja hyväksyi [testin omistaman asentajaikkunan rajatun havainnon](ci-encrypted-evidence.md#asentimen-rajattu-ikkunahavainto)
+nykyiseen salattuun virhepakettiin. Ei uusia UI-toimia, lomakekenttiä,
+testialustaa tai aikarajoja. Ensin vaaditaan omistajuus-, keskeytys-,
+keräys- ja todellinen salaus/purku-näyttö sekä rajattu katselmus, sitten yksi
+nimetty Windows-koe samalla säilyneellä asennuspaketilla. Se ei ole normaali
+hyväksyntäkierros eikä lupa merkitä vanhaa odotusta korjatuksi.
+
+**Havaintokytkennän tulos:** revision `39ef904a` omistajuus-, keskeytys-,
+keräys- ja salaus/purku-regressiot sekä rajattu riippumaton katselmus läpäisivät.
+[Nimetty Windows-koe 38613163463](https://github.com/eky-software/eky/actions/runs/38613163463)
+hylättiin asennusodotuksen nykyiseen aikarajaan; salattu toimitus ja paikallinen
+purku sekä säilyneiden tiedostojen eheys varmennettiin. Havainto osoittaa tämän
+ajon odottaneen asentimen käyttäjävastausta sovellusten sulkemispyyntöön.
+Tiedostoja käyttävää prosessia ei vielä yksilöity. Onnistunut siivous ja
+asennuspaketin jälkivarmennus eivät korvaa asennuksen hyväksyntää.
+
+**Kokeen jälkeinen ehdotus (historia):** yksilöi tämän odotuksen aiheuttava tiedostojen käyttäjä ennen
+sovellus- tai testikorjausta. Uusi aineistolaji tai nimetty koe tarvitsee oman
+rajauksen; tässä ei hyväksytä automaattista UI-vastausta, aikarajan nostoa tai
+uutta uusintaa. Korjauksen jälkeen palataan täsmäheadin normaaleihin PR-portteihin.
+K:n aiemmin sovittu vanhojen raskaiden broker-polkujen poistoehto on myös
+varmennettava; diagnostiikkakorjaus ei sulje sitä. Merge ja uuden mainin
+omat portit säilyvät erillisinä hyväksyntöinä. Alkuperäiset virheet ja
+aikaisemmat kierrokset säilyvät, eikä PR #305:tä ole hyväksytty mergeen.
+
+**Aiempi integraatiohistoria:** PR #303 yhdistettiin 14.10.2026 normaalisti
 mainiin revision `3fb7ad05` hyväksyttyjen PR-porttien jälkeen.
 [PR-checkpoint](https://github.com/eky-software/eky/pull/303#issuecomment-6165741060)
 varmentaa kaikki valitut jobit ja pakolliset vaiheet sekä erillisen
@@ -5476,9 +5622,11 @@ mitätöi tuloksen. Restore-aktivointi tarkistaa kontekstin uudelleen nykyisen
 maintenance-suojan alla. C:n `updateMaintenanceOperationId` tarkistetaan
 edelleen omistavassa backendissä ennen työn luovutusta ja onnistumisen
 hyväksymistä; yhteyskatko ei vapauta update-kirjoitussuojaa.
-Private brokerin versio 9 muutetaan eksplisiittisesti versioon 10, koska
-kontekstipyyntö ja vanhojen raskaiden operaatioiden poisto muuttavat sopimusta;
-lähettäjä, parseri, vastaanottaja ja testit päivitetään yhdessä.
+Alkuperäinen private brokerin kontekstilaajennus nosti version 9:stä 10:een,
+ja palautuksen maintenance-sopimus version 11:een. Korvattujen raskaiden
+operaatioiden lopullinen poisto käyttää versiota 12; lähettäjä, parseri,
+vastaanottaja ja testit päivittyvät yhdessä. Vanhaa versiota tai raskaita
+komentoja ei hyväksytä yhteensopivuusfallbackina.
 Rendererin backup-capability ja durable-formaatit eivät vaihdu.
 
 | Raja | Suunniteltu ensimmäinen toteutus ja todennus |

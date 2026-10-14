@@ -42,11 +42,6 @@ export interface InspectedProfileSnapshotMetadata {
   profileId: string;
 }
 
-export interface ProfileSnapshotValidationMetadata extends InspectedProfileSnapshotMetadata {
-  activeProfileIsEmpty: boolean;
-  profileMatchesActive: boolean;
-}
-
 export interface ProfileInspectionContextMetadata {
   readonly activeProfileId: string;
   readonly activeProfileIsEmpty: boolean;
@@ -56,21 +51,9 @@ export interface ProfileInspectionContextReader {
   readProfileInspectionContext(): ProfileInspectionContextMetadata;
 }
 
-export interface ProfileSnapshotValidationService {
-  validateProfileSnapshot(
-    operationId: string,
-  ): Promise<ProfileSnapshotValidationMetadata>;
-}
-
 export interface ProfileRestoreActivationPreparationMetadata {
   artifactCount: number;
   artifactTotalByteSize: number;
-}
-
-export interface ProfileRestoreActivationPreparationService {
-  prepareProfileRestoreActivation(
-    operationId: string,
-  ): Promise<ProfileRestoreActivationPreparationMetadata>;
 }
 
 export interface ActiveProfileValidationMetadata {
@@ -86,11 +69,7 @@ export interface ActiveProfileValidationService {
 }
 
 export interface ProfileSnapshotRuntimeService
-  extends ActiveProfileValidationService,
-    ProfileInspectionContextReader,
-    ProfileSnapshotService,
-    ProfileSnapshotValidationService,
-    ProfileRestoreActivationPreparationService {}
+  extends ProfileInspectionContextReader, ProfileSnapshotService {}
 
 export interface SqliteProfileSnapshotService {
   createSqliteSnapshot(

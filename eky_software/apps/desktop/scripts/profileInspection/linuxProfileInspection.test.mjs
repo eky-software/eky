@@ -47,7 +47,7 @@ test('preparation preserves only exact known first causes without raw error fiel
 async function nativeEvidenceFixture(t, bytes) {
   const root = await mkdtemp(join(await realpath(tmpdir()), 'eky-inspection-native-'));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const identity = await lstat(root);
+  const identity = await lstat(root, { bigint: true });
   const work = join(root, 'inspection-native-ABC123');
   await mkdir(work, { mode: 0o700 });
   const path = join(work, 'build.private.log');
@@ -88,7 +88,7 @@ for (const variant of ['symlink', 'hardlink', 'mode', 'rootIdentity', 'extraRoot
       await symlink(other, fixture.path);
     } else if (variant === 'hardlink') await link(fixture.path, join(fixture.work, 'alias.private'));
     else if (variant === 'mode') await chmod(fixture.path, 0o644);
-    else if (variant === 'rootIdentity') identity = { dev: fixture.identity.dev, ino: fixture.identity.ino + 1 };
+    else if (variant === 'rootIdentity') identity = { dev: fixture.identity.dev, ino: fixture.identity.ino + 1n };
     else if (variant === 'extraRoot') await mkdir(join(fixture.root, 'inspection-native-DEF456'), { mode: 0o700 });
     else if (variant === 'workSymlink') {
       await rm(fixture.work, { recursive: true });
@@ -121,7 +121,7 @@ test('raw native evidence is private and opt-in for only the approved preparatio
 
 test('actual runner writes approved evidence privately and emits only the unchanged safe failure', async () => {
   const source = await readFile(new URL('./runLinuxProfileInspectionProof.mjs', import.meta.url), 'utf8');
-  assert.ok(source.includes('nativeIdentity = await lstat(nativeRoot)'));
+  assert.ok(source.includes('nativeIdentity = await lstat(nativeRoot, { bigint: true })'));
   assert.ok(source.includes('mode: process.env.EKY_INSPECTION_BUILD_FAILURE_EVIDENCE'));
   assert.ok(source.includes("JSON.stringify(evidence),\n          { flag: 'wx', mode: 0o600 }"));
   assert.ok(source.includes("process.stderr.write(JSON.stringify(failure) + '\\n')"));

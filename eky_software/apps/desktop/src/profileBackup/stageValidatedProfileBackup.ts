@@ -1,7 +1,7 @@
 import { promises as fileSystem } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 
-import type { ProfileSnapshotBrokerClient } from './profileSnapshotBrokerClient.js';
+import type { ProfileSnapshotInspectionPort } from './profileSnapshotInspectionPort.js';
 import {
   ProfileBackupInspectionError,
   type ProfileBackupInspectionSummary,
@@ -15,7 +15,7 @@ const operationIdPattern =
 
 interface ProfileSnapshotValidator {
   validateProfileSnapshot(operationId: string): ReturnType<
-    ProfileSnapshotBrokerClient['validateProfileSnapshot']
+    ProfileSnapshotInspectionPort['validateProfileSnapshot']
   >;
 }
 

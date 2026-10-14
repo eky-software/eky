@@ -309,10 +309,11 @@ export function startSupervisor(
   return { child, completion, evidence, waitForEvidence };
 }
 
-export function startProgramFailureFixture(context, mode) {
+export function startProgramFailureFixture(context, mode, { environment = process.env } = {}) {
   return startSupervisor(context, {
     dotnetArguments: ['--mode', mode, '--request', context.requestPath],
     dotnetAssembly: PROGRAM_FAILURE_FIXTURE_DLL,
+    environment,
   });
 }
 

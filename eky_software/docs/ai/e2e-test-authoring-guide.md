@@ -314,6 +314,11 @@ on näyttöaukko, ei jälkikäteen arvattava syy.
 | Windows packaged / installer | Käytä nykyisen supervisorin vaihehavaintoja, workerin tulosta ja siivouksen näyttöä. MSI:n tai paketin käynnistysjumi ei ole Playwright-selaintesti; sen tutkimiseen tarvitaan sen oman prosessin aineisto. |
 
 Windowsin ja Linuxin testiperheiden valinnainen [salattu tutkimuspaketti](../architecture/ci-encrypted-evidence.md#testiperheiden-virheaineisto)
+kattaa myös erikseen hyväksytyn Windows-Electron-valmistelun rajatun
+käännösvirheotteen. Se syntyy ennen Playwright-runneria nykyiseen
+`test-results/run-<uuid>/preparation/process-output.private.json`-tiedostoon;
+se ei ole testitapauksen epäonnistuminen tai lupa kerätä koko build-juurta.
+Sama salattu tutkimuspaketti
 säilyttää nimetyn virheaineiston ennen yksityistä analyysiä yhteisellä
 jälkikeräysaskeleella. Kytkentä ei riipu yksittäisestä testinimestä.
 Aktivointi vaatii purkuavaimen varmennuksen; tarkistamaton trace ei kuulu

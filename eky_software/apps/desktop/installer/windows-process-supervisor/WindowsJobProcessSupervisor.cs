@@ -153,7 +153,7 @@ internal sealed class WindowsJobProcessSupervisor(
         int? childExitCode = null;
         string? lastTerminalWaitState = null;
         using var msiObservation = new WorkspaceMsiActivityObservation(
-            request.Scenario, job, evidence, observeMsiActivity);
+            request.Scenario, job, evidence, observeMsiActivity, request);
 
         while (supervisorDeadline.ElapsedMilliseconds < workDeadline)
         {

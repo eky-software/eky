@@ -1,4 +1,4 @@
-export const profileSnapshotBrokerProtocolVersion = 11;
+export const profileSnapshotBrokerProtocolVersion = 12;
 
 const requestIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -18,10 +18,7 @@ export type ProfileMaintenanceBrokerOperation =
   | 'createProfileSnapshot'
   | 'endProfileMaintenance'
   | 'getProfileMaintenanceStatus'
-  | 'readProfileInspectionContext'
-  | 'prepareProfileRestoreActivation'
-  | 'validateActiveProfile'
-  | 'validateProfileSnapshot';
+  | 'readProfileInspectionContext';
 
 export type ProfileSnapshotMigrationPolicy =
   | 'exactCurrentManifest'
@@ -60,21 +57,13 @@ export type ProfileSnapshotBrokerRequest =
         | 'assertRestoreMaintenance'
         | 'endRestoreMaintenance'
         | 'invalidateRestoreMaintenance'
-        | 'endProfileMaintenance'
-        | 'prepareProfileRestoreActivation';
+        | 'endProfileMaintenance';
       operationId: string;
       protocolVersion: typeof profileSnapshotBrokerProtocolVersion;
       requestId: string;
     }
   | {
-      operation: 'validateProfileSnapshot';
-      operationId: string;
-      protocolVersion: typeof profileSnapshotBrokerProtocolVersion;
-      requestId: string;
-      updateMaintenanceOperationId?: string;
-    }
-  | {
-      operation: 'getProfileMaintenanceStatus' | 'validateActiveProfile';
+      operation: 'getProfileMaintenanceStatus';
       protocolVersion: typeof profileSnapshotBrokerProtocolVersion;
       requestId: string;
     };
@@ -116,13 +105,6 @@ export type ProfileSnapshotBrokerResponse =
         status: 'busy' | 'normal';
         type: 'maintenanceStatus';
       } | {
-        artifactCount: number;
-        artifactTotalByteSize: number;
-        databaseHealth: 'healthy';
-        migrationChainIdentity: string;
-        profileId: string;
-        type: 'activeProfileValidation';
-      } | {
         artifactCatalog: {
           artifactCount: number;
           artifactTotalByteSize: number;
@@ -137,19 +119,6 @@ export type ProfileSnapshotBrokerResponse =
           totalPages: number;
         };
         type: 'profileSnapshot';
-      } | {
-        activeProfileIsEmpty: boolean;
-        artifactCount: number;
-        artifactTotalByteSize: number;
-        databaseHealth: 'healthy';
-        migrationChainIdentity: string;
-        profileId: string;
-        profileMatchesActive: boolean;
-        type: 'profileSnapshotValidation';
-      } | {
-        artifactCount: number;
-        artifactTotalByteSize: number;
-        type: 'profileRestoreActivationPrepared';
       };
     };
 
@@ -166,14 +135,12 @@ export function createProfileSnapshotBrokerRequest(input: {
   }
   if (
     input.updateMaintenanceOperationId !== undefined &&
-    input.operation !== 'validateProfileSnapshot' &&
     input.operation !== 'readProfileInspectionContext'
   ) {
     throw new Error('PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID');
   }
   const value =
-    input.operation === 'getProfileMaintenanceStatus' ||
-    input.operation === 'validateActiveProfile'
+    input.operation === 'getProfileMaintenanceStatus'
       ? {
           operation: input.operation,
           protocolVersion: profileSnapshotBrokerProtocolVersion,
@@ -263,35 +230,7 @@ export function parseProfileSnapshotBrokerRequest(
     };
   }
 
-  if (value.operation === 'validateProfileSnapshot') {
-    const hasUpdateOwner = Object.hasOwn(value, 'updateMaintenanceOperationId');
-    if (
-      !hasExactKeys(value, [
-        'operation', 'operationId', 'protocolVersion', 'requestId',
-        ...(hasUpdateOwner ? ['updateMaintenanceOperationId'] : []),
-      ]) || !isOperationId(value.operationId)
-    ) {
-      return undefined;
-    }
-    const request: ProfileSnapshotBrokerRequest = {
-      operation: value.operation,
-      operationId: value.operationId,
-      protocolVersion: profileSnapshotBrokerProtocolVersion,
-      requestId: value.requestId,
-    };
-    if (hasUpdateOwner) {
-      if (!isOperationId(value.updateMaintenanceOperationId)) {
-        return undefined;
-      }
-      return { ...request, updateMaintenanceOperationId: value.updateMaintenanceOperationId };
-    }
-    return request;
-  }
-
-  if (
-    value.operation === 'getProfileMaintenanceStatus' ||
-    value.operation === 'validateActiveProfile'
-  ) {
+  if (value.operation === 'getProfileMaintenanceStatus') {
     return hasExactKeys(value, [
       'operation',
       'protocolVersion',
@@ -334,8 +273,7 @@ export function parseProfileSnapshotBrokerRequest(
       value.operation !== 'assertRestoreMaintenance' &&
       value.operation !== 'endRestoreMaintenance' &&
       value.operation !== 'invalidateRestoreMaintenance' &&
-      value.operation !== 'endProfileMaintenance' &&
-      value.operation !== 'prepareProfileRestoreActivation') ||
+      value.operation !== 'endProfileMaintenance') ||
     !hasExactKeys(value, [
       'operation',
       'operationId',
@@ -434,40 +372,6 @@ export function parseProfileSnapshotBrokerResponse(
   }
 
   if (
-    value.result.type === 'activeProfileValidation' &&
-    hasExactKeys(value.result, [
-      'artifactCount',
-      'artifactTotalByteSize',
-      'databaseHealth',
-      'migrationChainIdentity',
-      'profileId',
-      'type',
-    ]) &&
-    isBoundedNonNegativeSafeInteger(value.result.artifactCount, 100_000) &&
-    isBoundedNonNegativeSafeInteger(
-      value.result.artifactTotalByteSize,
-      20 * 1024 * 1024 * 1024,
-    ) &&
-    value.result.databaseHealth === 'healthy' &&
-    isSha256(value.result.migrationChainIdentity) &&
-    isSha256(value.result.profileId)
-  ) {
-    return {
-      ok: true,
-      protocolVersion: profileSnapshotBrokerProtocolVersion,
-      requestId: value.requestId,
-      result: {
-        artifactCount: value.result.artifactCount,
-        artifactTotalByteSize: value.result.artifactTotalByteSize,
-        databaseHealth: 'healthy',
-        migrationChainIdentity: value.result.migrationChainIdentity,
-        profileId: value.result.profileId,
-        type: 'activeProfileValidation',
-      },
-    };
-  }
-
-  if (
     value.result.type === 'profileSnapshot' &&
     hasExactKeys(value.result, [
       'artifactCatalog',
@@ -485,71 +389,6 @@ export function parseProfileSnapshotBrokerResponse(
         artifactCatalog: value.result.artifactCatalog,
         database: value.result.database,
         type: 'profileSnapshot',
-      },
-    };
-  }
-
-  if (
-    value.result.type === 'profileRestoreActivationPrepared' &&
-    hasExactKeys(value.result, [
-      'artifactCount',
-      'artifactTotalByteSize',
-      'type',
-    ]) &&
-    isBoundedNonNegativeSafeInteger(value.result.artifactCount, 100_000) &&
-    isBoundedNonNegativeSafeInteger(
-      value.result.artifactTotalByteSize,
-      20 * 1024 * 1024 * 1024,
-    )
-  ) {
-    return {
-      ok: true,
-      protocolVersion: profileSnapshotBrokerProtocolVersion,
-      requestId: value.requestId,
-      result: {
-        artifactCount: value.result.artifactCount,
-        artifactTotalByteSize: value.result.artifactTotalByteSize,
-        type: 'profileRestoreActivationPrepared',
-      },
-    };
-  }
-
-  if (
-    value.result.type === 'profileSnapshotValidation' &&
-    hasExactKeys(value.result, [
-      'activeProfileIsEmpty',
-      'artifactCount',
-      'artifactTotalByteSize',
-      'databaseHealth',
-      'migrationChainIdentity',
-      'profileId',
-      'profileMatchesActive',
-      'type',
-    ]) &&
-    typeof value.result.activeProfileIsEmpty === 'boolean' &&
-    isBoundedNonNegativeSafeInteger(value.result.artifactCount, 100_000) &&
-    isBoundedNonNegativeSafeInteger(
-      value.result.artifactTotalByteSize,
-      20 * 1024 * 1024 * 1024,
-    ) &&
-    value.result.databaseHealth === 'healthy' &&
-    isSha256(value.result.migrationChainIdentity) &&
-    isSha256(value.result.profileId) &&
-    typeof value.result.profileMatchesActive === 'boolean'
-  ) {
-    return {
-      ok: true,
-      protocolVersion: profileSnapshotBrokerProtocolVersion,
-      requestId: value.requestId,
-      result: {
-        activeProfileIsEmpty: value.result.activeProfileIsEmpty,
-        artifactCount: value.result.artifactCount,
-        artifactTotalByteSize: value.result.artifactTotalByteSize,
-        databaseHealth: 'healthy',
-        migrationChainIdentity: value.result.migrationChainIdentity,
-        profileId: value.result.profileId,
-        profileMatchesActive: value.result.profileMatchesActive,
-        type: 'profileSnapshotValidation',
       },
     };
   }

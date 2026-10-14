@@ -12,12 +12,25 @@ import {
 } from './profileSnapshotBrokerProtocol.js';
 
 describe('profile snapshot broker protocol', () => {
+  it.each(['validateProfileSnapshot', 'validateActiveProfile', 'prepareProfileRestoreActivation'])(
+    'rejects the retired heavy %s operation in both old and current protocols', operation => {
+      for (const protocolVersion of [11, profileSnapshotBrokerProtocolVersion]) {
+        for (const fields of [{}, { operationId: randomUUID() },
+          { operationId: randomUUID(), updateMaintenanceOperationId: randomUUID() }]) {
+          expect(parseProfileSnapshotBrokerRequest({
+            operation, protocolVersion, requestId: randomUUID(), ...fields,
+          })).toBeUndefined();
+        }
+      }
+    },
+  );
+
   it.each(['inspect', 'prepareRestoreActivation'] as const)(
     'accepts only the current-version bounded %s context request', kind => {
       const request = createProfileSnapshotBrokerRequest({
         operation: 'readProfileInspectionContext', kind, operationId: randomUUID(), requestId: randomUUID(),
       });
-      expect(profileSnapshotBrokerProtocolVersion).toBe(11);
+      expect(profileSnapshotBrokerProtocolVersion).toBe(12);
       expect(parseProfileSnapshotBrokerRequest(request)).toEqual(request);
       for (const changed of [
         { kind: 'unknown' }, { kind: undefined }, { operationId: '../other' },
@@ -51,8 +64,7 @@ describe('profile snapshot broker protocol', () => {
       'beginRestoreMaintenance', 'assertRestoreMaintenance', 'endRestoreMaintenance',
       'invalidateRestoreMaintenance',
       'endUpdateMaintenance', 'createProfileSnapshot', 'endProfileMaintenance',
-      'getProfileMaintenanceStatus', 'prepareProfileRestoreActivation',
-      'validateActiveProfile', 'validateProfileSnapshot',
+      'getProfileMaintenanceStatus',
     ] as const) {
       expect(() => createProfileSnapshotBrokerRequest({
         operation, kind: 'inspect', operationId: randomUUID(), requestId: randomUUID(),
@@ -74,27 +86,8 @@ describe('profile snapshot broker protocol', () => {
     expect(parseProfileSnapshotBrokerResponse({ ...response, protocolVersion: 9 })).toBeUndefined();
   });
 
-  it('binds only snapshot validation to an explicit update owner with exact identifiers and fields', () => {
-    const request = createProfileSnapshotBrokerRequest({
-      operation: 'validateProfileSnapshot', operationId: randomUUID(),
-      updateMaintenanceOperationId: randomUUID(), requestId: randomUUID(),
-    });
-    expect(parseProfileSnapshotBrokerRequest(request)).toEqual(request);
-    for (const change of [
-      { updateMaintenanceOperationId: undefined },
-      { updateMaintenanceOperationId: null },
-      { updateMaintenanceOperationId: '../other' },
-      { operationId: '../other' },
-      { requestId: 'invalid' },
-      { protocolVersion: profileSnapshotBrokerProtocolVersion - 1 },
-      { companyId: 'untrusted' },
-      { path: 'untrusted' },
-      { extra: 'x'.repeat(1024) },
-    ]) {
-      expect(parseProfileSnapshotBrokerRequest({ ...request, ...change })).toBeUndefined();
-    }
-    for (const operation of ['beginUpdateMaintenance', 'createProfileSnapshot', 'prepareProfileRestoreActivation'] as const) {
-      expect(parseProfileSnapshotBrokerRequest({ ...request, operation })).toBeUndefined();
+  it('rejects an update owner outside inspection context', () => {
+    for (const operation of ['beginUpdateMaintenance', 'createProfileSnapshot', 'endProfileMaintenance'] as const) {
       expect(() => createProfileSnapshotBrokerRequest({
         operation, operationId: randomUUID(), migrationPolicy: 'exactCurrentManifest',
         updateMaintenanceOperationId: randomUUID(), requestId: randomUUID(),
@@ -172,36 +165,6 @@ describe('profile snapshot broker protocol', () => {
       migrationPolicy: 'exactCurrentManifest',
       operation: 'createProfileSnapshot',
       operationId,
-    });
-    expect(
-      createProfileSnapshotBrokerRequest({
-        operation: 'prepareProfileRestoreActivation',
-        operationId,
-        requestId,
-      }),
-    ).toMatchObject({
-      operation: 'prepareProfileRestoreActivation',
-      operationId,
-    });
-    expect(
-      createProfileSnapshotBrokerRequest({
-        operation: 'validateProfileSnapshot',
-        operationId,
-        requestId,
-      }),
-    ).toMatchObject({
-      operation: 'validateProfileSnapshot',
-      operationId,
-    });
-    expect(
-      createProfileSnapshotBrokerRequest({
-        operation: 'validateActiveProfile',
-        requestId,
-      }),
-    ).toEqual({
-      operation: 'validateActiveProfile',
-      protocolVersion: profileSnapshotBrokerProtocolVersion,
-      requestId,
     });
     expect(
       parseProfileSnapshotBrokerRequest({
@@ -309,16 +272,7 @@ describe('profile snapshot broker protocol', () => {
           type: 'profileRestoreActivationPrepared',
         },
       }),
-    ).toEqual({
-      ok: true,
-      protocolVersion: profileSnapshotBrokerProtocolVersion,
-      requestId,
-      result: {
-        artifactCount: 2,
-        artifactTotalByteSize: 4_096,
-        type: 'profileRestoreActivationPrepared',
-      },
-    });
+    ).toBeUndefined();
     expect(
       parseProfileSnapshotBrokerResponse({
         ok: true,
@@ -333,19 +287,7 @@ describe('profile snapshot broker protocol', () => {
           type: 'activeProfileValidation',
         },
       }),
-    ).toEqual({
-      ok: true,
-      protocolVersion: profileSnapshotBrokerProtocolVersion,
-      requestId,
-      result: {
-        artifactCount: 2,
-        artifactTotalByteSize: 4_096,
-        databaseHealth: 'healthy',
-        migrationChainIdentity: 'c'.repeat(64),
-        profileId: 'd'.repeat(64),
-        type: 'activeProfileValidation',
-      },
-    });
+    ).toBeUndefined();
     expect(
       parseProfileSnapshotBrokerResponse({
         ok: true,
@@ -386,21 +328,7 @@ describe('profile snapshot broker protocol', () => {
           type: 'profileSnapshotValidation',
         },
       }),
-    ).toEqual({
-      ok: true,
-      protocolVersion: profileSnapshotBrokerProtocolVersion,
-      requestId,
-      result: {
-        activeProfileIsEmpty: false,
-        artifactCount: 2,
-        artifactTotalByteSize: 4_096,
-        databaseHealth: 'healthy',
-        migrationChainIdentity: 'c'.repeat(64),
-        profileId: 'd'.repeat(64),
-        profileMatchesActive: false,
-        type: 'profileSnapshotValidation',
-      },
-    });
+    ).toBeUndefined();
     expect(
       parseProfileSnapshotBrokerResponse({
         ok: true,

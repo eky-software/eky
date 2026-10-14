@@ -101,6 +101,9 @@ describe('backend runner shutdown command boundary', () => {
       const broker = runtime.snapshotRegistration.mock.calls[0]![0] as {
         snapshot: { readProfileInspectionContext(): unknown };
       };
+      expect(Object.keys(broker.snapshot).sort()).toEqual([
+        'createProfileSnapshot', 'readProfileInspectionContext',
+      ]);
       expect(() => broker.snapshot.readProfileInspectionContext()).toThrow('PROFILE_SNAPSHOT_BROKER_UNAVAILABLE');
       options.appOptions.profileSnapshotServiceRegistration.register({ readProfileInspectionContext: read });
       expect(broker.snapshot.readProfileInspectionContext()).toBe(context);

@@ -23,8 +23,6 @@ import { createInvoiceReadModelTestDatabase } from '../../testFixtures/invoiceRe
 import { ProfileMaintenanceState } from '../profileMaintenance/profileMaintenanceState.js';
 import { createProfileBackupIdentity } from './inspectSqliteProfileDatabase.js';
 import { ProfileBusinessArtifactStager } from './stageProfileBusinessArtifacts.js';
-import { StagedProfileSnapshotValidationService } from './validateProfileSnapshot.js';
-import { createActiveProfileInspectionContextReader } from './activeProfileInspectionContext.js';
 import { StagedProfileSnapshotInspector } from './inspectStagedProfileSnapshot.js';
 
 const migrationName = '001_create_customers.sql';
@@ -48,7 +46,7 @@ afterEach(async () => {
   );
 });
 
-describe('staged profile snapshot validation', () => {
+describe('staged profile snapshot inspection', () => {
   it('requires an explicit database factory without a default-driver fallback', () => {
     expect(() => new StagedProfileSnapshotInspector({
       databaseSource: { kind: 'stagedSnapshot' },
@@ -84,7 +82,7 @@ describe('staged profile snapshot validation', () => {
   it('uses one readonly connection for schema and catalog, then closes it', async () => {
     const fixture = await createFixture();
     const prepare = vi.spyOn(Database.prototype, 'prepare');
-    await fixture.service.validateProfileSnapshot(fixture.operationId);
+    await fixture.inspector.inspectProfileSnapshot(fixture.operationId);
     const connections = new Set(prepare.mock.contexts.filter(isReadonlyProfileConnection));
     expect(connections.size).toBe(1);
     for (const connection of connections) expect(connection.open).toBe(false);
@@ -108,44 +106,21 @@ describe('staged profile snapshot validation', () => {
     const connections = new Set(prepare.mock.contexts.filter(isReadonlyProfileConnection));
     expect(connections.size).toBe(1);
     for (const connection of connections) expect(connection.open).toBe(false);
-    // The unchanged broker must not accidentally expose a new public contract.
-    await expect(fixture.service.validateProfileSnapshot(fixture.operationId))
-      .rejects.toThrow(/^PROFILE_SNAPSHOT_VALIDATION_FAILED$/);
     await expect(inspector.prepareProfileRestoreActivation(fixture.operationId))
       .rejects.toThrow(/^PROFILE_SCHEMA_UNSUPPORTED$/);
-  });
-
-  it('can be composed before the first profile migrations run', async () => {
-    const root = await mkdtemp(
-      join(tmpdir(), 'eky-profile-validation-empty-'),
-    );
-    temporaryRoots.push(root);
-    const activeDatabase = new Database(':memory:');
-    openDatabases.push(activeDatabase);
-
-    expect(
-      () =>
-        new StagedProfileSnapshotValidationService({
-          activeContextReader: createActiveProfileInspectionContextReader(activeDatabase),
-          migrationsDirectory: join(root, 'migrations'),
-          stagingRoot: join(root, 'staging'),
-        }),
-    ).not.toThrow();
   });
 
   it('validates SQLite identity, migrations and every invoice PDF', async () => {
     const fixture = await createFixture();
 
     await expect(
-      fixture.service.validateProfileSnapshot(fixture.operationId),
+      fixture.inspector.inspectProfileSnapshot(fixture.operationId),
     ).resolves.toEqual({
-      activeProfileIsEmpty: true,
       artifactCount: 1,
       artifactTotalByteSize: fixture.pdfBytes.byteLength,
       databaseHealth: 'healthy',
       migrationChainIdentity: expect.stringMatching(/^[a-f0-9]{64}$/),
       profileId: createProfileBackupIdentity('company-1'),
-      profileMatchesActive: true,
     });
   });
 
@@ -153,15 +128,13 @@ describe('staged profile snapshot validation', () => {
     const fixture = await createFixture({ stagedHasArtifact: false });
 
     await expect(
-      fixture.service.validateProfileSnapshot(fixture.operationId),
+      fixture.inspector.inspectProfileSnapshot(fixture.operationId),
     ).resolves.toEqual({
-      activeProfileIsEmpty: true,
       artifactCount: 0,
       artifactTotalByteSize: 0,
       databaseHealth: 'healthy',
       migrationChainIdentity: expect.stringMatching(/^[a-f0-9]{64}$/),
       profileId: createProfileBackupIdentity('company-1'),
-      profileMatchesActive: true,
     });
     await expect(
       lstat(join(fixture.operationRoot, 'artifacts')),
@@ -172,7 +145,7 @@ describe('staged profile snapshot validation', () => {
     const fixture = await createFixture();
 
     await expect(
-      fixture.service.prepareProfileRestoreActivation(
+      fixture.inspector.prepareProfileRestoreActivation(
         fixture.operationId,
       ),
     ).resolves.toEqual({
@@ -210,7 +183,7 @@ describe('staged profile snapshot validation', () => {
     await mkdir(activationRoot, { recursive: true });
 
     await expect(
-      fixture.service.prepareProfileRestoreActivation(
+      fixture.inspector.prepareProfileRestoreActivation(
         fixture.operationId,
       ),
     ).rejects.toThrow(
@@ -218,28 +191,17 @@ describe('staged profile snapshot validation', () => {
     );
   });
 
-  it('reports a foreign profile without exposing the source company id', async () => {
+  it('reports the inspected profile identity without exposing the source company id', async () => {
     const fixture = await createFixture({
       stagedCompanyId: 'other-company',
     });
 
-    const result = await fixture.service.validateProfileSnapshot(
+    const result = await fixture.inspector.inspectProfileSnapshot(
       fixture.operationId,
     );
 
-    expect(result.profileMatchesActive).toBe(false);
+    expect(result.profileId).toBe(createProfileBackupIdentity('other-company'));
     expect(JSON.stringify(result)).not.toContain('other-company');
-  });
-
-  it('reports a non-empty active profile without exposing table details', async () => {
-    const fixture = await createFixture({ activeHasInvoice: true });
-
-    const result = await fixture.service.validateProfileSnapshot(
-      fixture.operationId,
-    );
-
-    expect(result.activeProfileIsEmpty).toBe(false);
-    expect(JSON.stringify(result)).not.toContain('invoices');
   });
 
   it.each([
@@ -264,7 +226,7 @@ describe('staged profile snapshot validation', () => {
     await mutate(fixture);
 
     await expect(
-      fixture.service.validateProfileSnapshot(fixture.operationId),
+      fixture.inspector.inspectProfileSnapshot(fixture.operationId),
     ).rejects.toThrow('PROFILE_SNAPSHOT_VALIDATION_FAILED');
   });
 
@@ -278,7 +240,7 @@ describe('staged profile snapshot validation', () => {
     database.close();
 
     await expect(
-      fixture.service.validateProfileSnapshot(fixture.operationId),
+      fixture.inspector.inspectProfileSnapshot(fixture.operationId),
     ).rejects.toThrow('PROFILE_SNAPSHOT_VALIDATION_FAILED');
   });
 
@@ -290,7 +252,7 @@ describe('staged profile snapshot validation', () => {
     );
 
     await expect(
-      fixture.service.validateProfileSnapshot(fixture.operationId),
+      fixture.inspector.inspectProfileSnapshot(fixture.operationId),
     ).resolves.toEqual(
       expect.objectContaining({
         databaseHealth: 'healthy',
@@ -311,21 +273,6 @@ describe('staged profile snapshot validation', () => {
     await mkdir(operationRoot, { mode: 0o700, recursive: true });
     await chmod(stagingRoot, 0o700);
     await chmod(operationRoot, 0o700);
-
-    const activeDatabase = new Database(':memory:');
-    await runMigrations(activeDatabase, {
-      migrationsDirectory: publishedMigrationsDirectory,
-    });
-    activeDatabase
-      .prepare(
-        `
-          UPDATE local_runtime_identity
-          SET company_id = 'company-1'
-          WHERE singleton_key = 'local-runtime'
-        `,
-      )
-      .run();
-    openDatabases.push(activeDatabase);
 
     const stagedDatabase = new Database(databasePath);
     const historicalMigrationsDirectory = join(root, 'historical-migrations');
@@ -350,25 +297,25 @@ describe('staged profile snapshot validation', () => {
       'utf8',
     );
 
-    const service = new StagedProfileSnapshotValidationService({
-      activeContextReader: createActiveProfileInspectionContextReader(activeDatabase),
+    const inspector = new StagedProfileSnapshotInspector({
+      databaseSource: { kind: 'stagedSnapshot' },
+      migrationPolicy: 'restoreCompatible',
+      databaseFactory: testDatabaseFactory(),
       migrationsDirectory: publishedMigrationsDirectory,
       stagingRoot,
     });
 
     await expect(
-      service.validateProfileSnapshot(operationId),
+      inspector.inspectProfileSnapshot(operationId),
     ).resolves.toEqual({
-      activeProfileIsEmpty: true,
       artifactCount: 0,
       artifactTotalByteSize: 0,
       databaseHealth: 'healthy',
       migrationChainIdentity: approvedLegacyMigrationChainIdentity,
       profileId: createProfileBackupIdentity('company-1'),
-      profileMatchesActive: true,
     });
     await expect(
-      service.prepareProfileRestoreActivation(operationId),
+      inspector.prepareProfileRestoreActivation(operationId),
     ).resolves.toEqual({
       artifactCount: 0,
       artifactTotalByteSize: 0,
@@ -387,7 +334,7 @@ describe('staged profile snapshot validation', () => {
     database.close();
 
     await expect(
-      fixture.service.validateProfileSnapshot(fixture.operationId),
+      fixture.inspector.inspectProfileSnapshot(fixture.operationId),
     ).rejects.toThrow('PROFILE_SNAPSHOT_VALIDATION_FAILED');
   });
 
@@ -398,7 +345,7 @@ describe('staged profile snapshot validation', () => {
     database.close();
 
     await expect(
-      fixture.service.validateProfileSnapshot(fixture.operationId),
+      fixture.inspector.inspectProfileSnapshot(fixture.operationId),
     ).rejects.toThrow('PROFILE_SNAPSHOT_VALIDATION_FAILED');
   });
 
@@ -412,7 +359,7 @@ describe('staged profile snapshot validation', () => {
     );
 
     await expect(
-      fixture.service.validateProfileSnapshot(fixture.operationId),
+      fixture.inspector.inspectProfileSnapshot(fixture.operationId),
     ).rejects.toThrow('PROFILE_SNAPSHOT_VALIDATION_FAILED');
   });
 
@@ -421,7 +368,7 @@ describe('staged profile snapshot validation', () => {
     await writeFile(fixture.databasePath, 'not a sqlite database');
 
     await expect(
-      fixture.service.validateProfileSnapshot(fixture.operationId),
+      fixture.inspector.inspectProfileSnapshot(fixture.operationId),
     ).rejects.toThrow('PROFILE_SNAPSHOT_VALIDATION_FAILED');
   });
 
@@ -435,7 +382,7 @@ describe('staged profile snapshot validation', () => {
       await symlink(targetPath, fixture.pdfPath);
 
       await expect(
-        fixture.service.validateProfileSnapshot(fixture.operationId),
+        fixture.inspector.inspectProfileSnapshot(fixture.operationId),
       ).rejects.toThrow('PROFILE_SNAPSHOT_VALIDATION_FAILED');
     },
   );
@@ -444,7 +391,7 @@ describe('staged profile snapshot validation', () => {
     const fixture = await createFixture();
 
     await expect(
-      fixture.service.validateProfileSnapshot('../profile'),
+      fixture.inspector.inspectProfileSnapshot('../profile'),
     ).rejects.toThrow('PROFILE_SNAPSHOT_VALIDATION_FAILED');
   });
 });
@@ -457,7 +404,7 @@ interface Fixture {
   operationRoot: string;
   pdfBytes: Buffer;
   pdfPath: string;
-  service: StagedProfileSnapshotValidationService;
+  inspector: StagedProfileSnapshotInspector;
 }
 
 function isReadonlyProfileConnection(value: unknown): value is Database.Database {
@@ -466,7 +413,6 @@ function isReadonlyProfileConnection(value: unknown): value is Database.Database
 
 async function createFixture(
   options: {
-    activeHasInvoice?: boolean;
     stagedHasArtifact?: boolean;
     stagedCompanyId?: string;
   } = {},
@@ -495,7 +441,7 @@ async function createFixture(
   const activeDatabase = await createProfileDatabase(
     ':memory:',
     'company-1',
-    options.activeHasInvoice ?? false,
+    false,
     pdfBytes,
     migrationsDirectory,
   );
@@ -571,8 +517,10 @@ async function createFixture(
     operationRoot,
     pdfBytes,
     pdfPath,
-    service: new StagedProfileSnapshotValidationService({
-      activeContextReader: createActiveProfileInspectionContextReader(activeDatabase),
+    inspector: new StagedProfileSnapshotInspector({
+      databaseSource: { kind: 'stagedSnapshot' },
+      migrationPolicy: 'restoreCompatible',
+      databaseFactory: testDatabaseFactory(),
       migrationsDirectory,
       stagingRoot,
     }),

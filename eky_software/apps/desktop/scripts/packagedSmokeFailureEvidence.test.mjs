@@ -2,10 +2,36 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { readFile } from 'node:fs/promises';
-import { registerHooks } from 'node:module';
+import { registerHooks, stripTypeScriptTypes } from 'node:module';
 import { setImmediate as nextTurn } from 'node:timers/promises';
 import test from 'node:test';
 import { observeSmokeOutput } from './packagedSmokeFailureEvidence.mjs';
+
+test('packaged comparison helpers load in the Node runner without Electron', async () => {
+  const sourceRoot = new URL('../src/', import.meta.url).href;
+  const hooks = registerHooks({
+    resolve(specifier, context, nextResolve) {
+      assert.notEqual(specifier, 'electron', 'comparison helpers must not load the Electron runtime');
+      if (context.parentURL?.startsWith(sourceRoot) && specifier.endsWith('.js') && specifier.startsWith('.')) {
+        return nextResolve(new URL(specifier.replace(/\.js$/u, '.ts'), context.parentURL).href, context);
+      }
+      return nextResolve(specifier, context);
+    },
+    load(url, context, nextLoad) {
+      const loaded = nextLoad(url, context);
+      if (url.startsWith(sourceRoot) && new URL(url).pathname.endsWith('.ts')) {
+        return { ...loaded, format: 'module', source: stripTypeScriptTypes(String(loaded.source), { mode: 'transform' }) };
+      }
+      return loaded;
+    },
+  });
+  try {
+    const helpers = await import('../src/profileBackup/packagedProfileBackupSmoke.ts');
+    for (const name of ['readSmokeState', 'writeSmokeState', 'captureActiveProfileEntries']) {
+      assert.equal(typeof helpers[name], 'function');
+    }
+  } finally { hooks.deregister(); }
+});
 
 test('smoke retains bounded independent streams without changing the child exit', async () => {
   const child = spawn(process.execPath, ['-e', 'console.log("synthetic start"); console.error("synthetic failure"); process.exitCode=7'],

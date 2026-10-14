@@ -6,10 +6,10 @@ import type { PackagedSmokeStage } from '../main/packagedSmoke.js';
 import { localRuntimeSessionHeaderName } from '../main/protocolPolicy.js';
 import type { WorkspaceManagementService } from '../workspaces/management/workspaceManagementService.js';
 import type { PortableProfileBackupService } from './portableProfileBackup.js';
-import type { ProfileSnapshotBrokerClient } from './profileSnapshotBrokerClient.js';
 import {
   assertMutationState, captureActiveProfileEntries, createRestoreMutation,
   setSyntheticEmailSecret, writeSmokeState,
+  type PackagedProfileSnapshotClient,
 } from './packagedProfileBackupSmoke.js';
 
 export const legacyPackagedSmokePassword = 'Synthetic legacy packaged fixture password, not a real secret';
@@ -25,8 +25,7 @@ export async function runPackagedLegacyProfileBeforeRestore(options: LegacyProfi
   stagingRoot: string;
   backupService: Pick<PortableProfileBackupService, 'inspect'>;
   management: Pick<WorkspaceManagementService, 'getStatus' | 'replaceActiveFromBackup'>;
-  profileSnapshotClient: Pick<ProfileSnapshotBrokerClient,
-    'beginMaintenance' | 'createProfileSnapshot' | 'endMaintenance' | 'validateProfileSnapshot'>;
+  profileSnapshotClient: PackagedProfileSnapshotClient;
   reportStage(stage: PackagedSmokeStage): Promise<void>;
 }): Promise<void> {
   await verifyPackagedLegacyInvoice(options);

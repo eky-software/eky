@@ -134,6 +134,13 @@ Hyväksyntänäyttöä ylläpidetään [M1-suunnitelman nykyisessä checkpointis
 
 ## Ensivirhe, uusinta ja rajattu poikkeus
 
+Testirunneria edeltävä native-käännös ei tuota Playwright-testin virhettä.
+Windows-Electronin nimetyn valmistelujobin erikseen hyväksytty käännösote
+käyttää [nykyistä salattua toimitusta](../architecture/ci-encrypted-evidence.md#testiperheiden-virheaineisto).
+Sen puuttuminen erotetaan testin tuloksesta; yleinen valmistelukoodi ei
+todista kääntäjän alkuperäistä syytä. Muiden työkalujen raakakeräystä ei
+avata tällä rajauksella eikä onnistuneesta valmistelusta kerätä otetta.
+
 Tämä on yhteinen käytäntö paikallisille testeille ja CI:lle. Se ei korvaa
 testiperheen omia hyväksyntäehtoja tai muuta required check -asetuksia.
 Tavoite on rajata tutkimus ja mahdollistaa turvallinen eteneminen, ei
@@ -179,6 +186,14 @@ pysyy epäonnistuneena. Varmenna myös virhe raportoinnissa, puuttuva aineisto
 ja onnistuneen polun säilyminen. Prosessin pakkokatkaisu, levyn virhe tai
 runnerin katoaminen voi estää tallennuksen tai toimituksen; puuttuvaa
 alkuperäistä syytä ei päätellä yleisestä koodista eikä väitetä tallennetuksi.
+
+Hiljainen odotus ei välttämättä tuota poikkeusta. Käytä ensin omistavan
+testiruntimen olemassa olevia vaihe-, prosessi- ja toimitushavaintoja;
+pelkkä timeout ei nimeä syytä. Workspace-asentimen hyväksytty
+[ikkunahavainto](../architecture/ci-encrypted-evidence.md#asentimen-rajattu-ikkunahavainto)
+täydentää tätä aukkoa nykyisessä MSI-seurannassa, ilman testikohtaisia
+lokittajia. Myös tällainen havainto todennetaan omistajuuden, keskeytyksen
+ja oikean salaus/purku-ketjun kautta ennen varsinaista Windows-koetta.
 
 ### Keräyksen ja toimituksen rajat
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { link, mkdir, mkdtemp, open, readFile, readdir, rm, symlink, utimes, writeFile } from 'node:fs/promises';
+import { link, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
@@ -17,6 +17,7 @@ import { executeLegacyUpgradeLifecycle } from './legacyUpgradeLifecycle.mjs';
 import { executeWorkspaceSuccessLifecycle } from './workspaceSuccessLifecycle.mjs';
 import { executeWorkspaceFaultLifecycle } from './workspaceFaultLifecycle.mjs';
 import { createRunnerFailureSink } from '../../../../test-reporters/runnerFailureEvidence.mjs';
+import { msiWindowEvidenceContract, validateMsiWindowEvidence } from './msiWindowEvidence.mjs';
 
 const run = 'run-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const fingerprint = 'A'.repeat(40);
@@ -75,6 +76,199 @@ async function fixture(t) {
   };
   return { root, temp, checkout, env, put };
 }
+
+test('MSI window records require the exact job and adjacent request without collecting the request', async t => {
+  const { temp, env, put } = await fixture(t);
+  const prefix = `eky-acceptance-command-${nativeId}/scenario`;
+  const path = `${prefix}/msi-window-001.private.json`;
+  const binding = { kind: 'github', runId: env.GITHUB_RUN_ID, attempt: env.GITHUB_RUN_ATTEMPT,
+    job: env.GITHUB_JOB, sourceRevision: env.GITHUB_SHA };
+  const record = { schemaVersion: 1, operation: 'msiWindowObservation', binding,
+    runNonce: 'b'.repeat(64), scenario: 'packagedWorkspaceSuccess', artifactDescriptorSha256: 'c'.repeat(64),
+    sequence: 1, elapsedMs: 123, clients: [{ processId: 1234, status: 'observed',
+      windows: [{ role: 'message', text: 'SYNTHETIC WAIT', enabled: true }] }] };
+  const request = { schemaVersion: 1, runNonce: record.runNonce, scenario: record.scenario,
+    artifactDescriptorSha256: record.artifactDescriptorSha256, workingDirectory: join(temp, ...prefix.split('/')),
+    command: 'EXCLUDED COMMAND', arguments: ['EXCLUDED ARGUMENT'] };
+  const requestPath = await put(temp, `${prefix}/request.json`, JSON.stringify(request));
+  const recordPath = await put(temp, path, JSON.stringify(record));
+  await put(temp, path + '.pending', 'EXCLUDED INCOMPLETE');
+  for (const patch of [null, { runNonce: 'd'.repeat(64) }, { scenario: 'historicalLegacyUpgrade' },
+    { artifactDescriptorSha256: 'd'.repeat(64) }, { workingDirectory: temp }]) {
+    await writeFile(requestPath, JSON.stringify({ ...request, ...patch }));
+    const result = await collectJobFailureEvidence(env);
+    const archived = JSON.parse(gunzipSync(await readFile(result.archivePath)));
+    assert.equal(archived.manifest.files.length, 1);
+    const entry = archived.manifest.files[0];
+    assert.equal(entry.kind, 'msiWindowObservation');
+    assert.equal(entry.status, patch ? 'unverified' : 'retained');
+    assert.equal(Object.hasOwn(archived.files, entry.name), patch === null);
+    assert.equal(JSON.stringify(archived).includes('EXCLUDED'), false);
+  }
+  for (const patch of [
+    { binding: { ...binding, kind: 'local' } }, { binding: { ...binding, attempt: '2' } },
+    { binding: { ...binding, sourceRevision: 'd'.repeat(40) } }, { sequence: 2 }, { extra: 'unknown' },
+    { clients: [{ ...record.clients[0], windows: [{ role: 'edit', text: 'unknown', enabled: true }] }] },
+    { clients: [{ ...record.clients[0], windows: [{ role: 'message', text: 'x'.repeat(msiWindowEvidenceContract.maximumTextCharacters + 1), enabled: true }] }] },
+    { clients: [{ ...record.clients[0], status: 'unavailable' }] },
+  ]) assert.throws(() => validateMsiWindowEvidence({ ...record, ...patch }, jobEvidenceBinding(env), path), /MSI_WINDOW_EVIDENCE_INVALID/);
+  const withApplication = { ...record, schemaVersion: 2, clients: [{ ...record.clients[0],
+    windows: [{ role: 'application', text: 'SYNTHETIC HOLDER', enabled: true }] }] };
+  assert.equal(validateMsiWindowEvidence(withApplication, jobEvidenceBinding(env), path), withApplication);
+  for (const schemaVersion of [1, 3]) assert.throws(() => validateMsiWindowEvidence(
+    { ...withApplication, schemaVersion }, jobEvidenceBinding(env), path), /MSI_WINDOW_EVIDENCE_INVALID/);
+  await writeFile(requestPath, JSON.stringify(request));
+  await writeFile(recordPath, JSON.stringify(record).slice(0, -1));
+  const interrupted = await collectJobFailureEvidence(env);
+  assert.equal(interrupted.manifest.files[0].status, 'unverified');
+  const partialArchive = JSON.parse(gunzipSync(await readFile(interrupted.archivePath)));
+  assert.equal(Object.keys(partialArchive.files).length, 0);
+  await writeFile(recordPath, Buffer.alloc(msiWindowEvidenceContract.maximumBytes + 1, 0x20));
+  const oversized = await collectJobFailureEvidence(env);
+  assert.equal(oversized.manifest.files[0].status, 'tooLarge');
+  for (const forbidden of [path + '.pending', path.replace('/scenario/', '/prepare/'),
+    path.replace('msi-window-001', 'msi-window-0001'), path.replace('msi-window-001', 'other')])
+    assert.equal(evidenceSourceKind('temporary', forbidden), null);
+});
+
+for (const location of ['runnerTemp', 'nativeTemp', 'sharedTemp']) {
+  test(`MSI window binding accepts only the configured temporary parent alias: ${location}`, async t => {
+    const { root, temp, env, put } = await fixture(t);
+    const base = await realpath(temp);
+    const alias = join(root, 'configured-alias');
+    const foreignAlias = join(root, 'unconfigured-alias');
+    const linkType = process.platform === 'win32' ? 'junction' : 'dir';
+    await symlink(base, alias, linkType);
+    await symlink(base, foreignAlias, linkType);
+    const runner = join(root, 'runner');
+    await mkdir(runner);
+    const collectionEnv = { ...env, RUNNER_TEMP: location === 'runnerTemp' ? alias : location === 'nativeTemp' ? runner : base };
+    const options = location === 'runnerTemp' ? {} : { nativeTemp: alias };
+    const prefix = `eky-acceptance-command-${nativeId}/scenario`;
+    const phaseRoot = join(base, ...prefix.split('/'));
+    const foreignPhaseRoot = join(runner, ...prefix.split('/'));
+    await mkdir(foreignPhaseRoot, { recursive: true });
+    const record = { schemaVersion: 1, operation: 'msiWindowObservation',
+      binding: { kind: 'github', runId: env.GITHUB_RUN_ID, attempt: env.GITHUB_RUN_ATTEMPT,
+        job: env.GITHUB_JOB, sourceRevision: env.GITHUB_SHA },
+      runNonce: 'b'.repeat(64), scenario: 'packagedWorkspaceSuccess', artifactDescriptorSha256: 'c'.repeat(64),
+      sequence: 1, elapsedMs: 123, clients: [] };
+    const request = { schemaVersion: 1, runNonce: record.runNonce, scenario: record.scenario,
+      artifactDescriptorSha256: record.artifactDescriptorSha256,
+      workingDirectory: join(alias, ...prefix.split('/')), command: 'EXCLUDED COMMAND', arguments: ['EXCLUDED ARGUMENT'] };
+    const requestPath = await put(base, `${prefix}/request.json`, JSON.stringify(request));
+    await put(base, `${prefix}/msi-window-001.private.json`, JSON.stringify(record));
+    await symlink(phaseRoot, join(base, `eky-acceptance-command-${nativeId}`, 'phase-alias'), linkType);
+    await symlink(join(base, `eky-acceptance-command-${nativeId}`),
+      join(base, `eky-acceptance-command-${'d'.repeat(32)}`), linkType);
+    const sibling = join(base, `eky-acceptance-command-${'e'.repeat(32)}`, 'scenario');
+    await mkdir(sibling, { recursive: true });
+    assert.notEqual(request.workingDirectory, phaseRoot);
+    assert.equal(await realpath(request.workingDirectory), phaseRoot);
+    for (const [label, patch, accepted] of [
+      ['configured alias', {}, true],
+      ['canonical parent', { workingDirectory: phaseRoot }, true],
+      ['unconfigured parent alias', { workingDirectory: join(foreignAlias, ...prefix.split('/')) }, false],
+      ['linked phase', { workingDirectory: join(alias, `eky-acceptance-command-${nativeId}`, 'phase-alias') }, false],
+      ['linked command', { workingDirectory: join(alias, `eky-acceptance-command-${'d'.repeat(32)}`, 'scenario') }, false],
+      ['sibling command', { workingDirectory: sibling }, false],
+      ['foreign source with matching suffix', { workingDirectory: foreignPhaseRoot }, false],
+      ['changed nonce', { runNonce: 'd'.repeat(64) }, false],
+      ['changed scenario', { scenario: 'historicalLegacyUpgrade' }, false],
+      ['changed descriptor', { artifactDescriptorSha256: 'd'.repeat(64) }, false],
+    ]) {
+      await writeFile(requestPath, JSON.stringify({ ...request, ...patch }));
+      const collected = await collectJobFailureEvidence(collectionEnv, options);
+      const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+      assert.equal(archive.manifest.files.length, 1, label);
+      const entry = archive.manifest.files[0];
+      assert.equal(entry.status, accepted ? 'retained' : 'unverified', label);
+      assert.equal(entry.location, location === 'nativeTemp' ? 'nativeTemp' : 'runnerTemp', label);
+      assert.equal(Object.keys(archive.files).length, accepted ? 1 : 0, label);
+      if (accepted) assert.deepEqual(JSON.parse(Buffer.from(archive.files[entry.name], 'base64')), record);
+      assert.equal(JSON.stringify(archive).includes('EXCLUDED'), false, label);
+    }
+    await writeFile(requestPath, JSON.stringify(request));
+    await link(requestPath, join(root, 'linked-request.json'));
+    const linked = await collectJobFailureEvidence(collectionEnv, options);
+    const archive = JSON.parse(gunzipSync(await readFile(linked.archivePath)));
+    assert.equal(archive.manifest.files[0].status, 'unverified');
+    assert.deepEqual(archive.files, {});
+  });
+}
+
+test('MSI wait evidence precedes newer repetitive supervisor receipts at source quota', async t => {
+  const { temp, env, put } = await fixture(t);
+  const prefix = `eky-acceptance-command-${nativeId}/scenario`;
+  const record = { schemaVersion: 1, operation: 'msiWindowObservation',
+    binding: { kind: 'github', runId: env.GITHUB_RUN_ID, attempt: env.GITHUB_RUN_ATTEMPT,
+      job: env.GITHUB_JOB, sourceRevision: env.GITHUB_SHA },
+    runNonce: 'b'.repeat(64), scenario: 'packagedWorkspaceSuccess', artifactDescriptorSha256: 'c'.repeat(64),
+    sequence: 1, elapsedMs: 123, clients: [] };
+  await put(temp, `${prefix}/request.json`, JSON.stringify({ schemaVersion: 1,
+    runNonce: record.runNonce, scenario: record.scenario, artifactDescriptorSha256: record.artifactDescriptorSha256,
+    workingDirectory: join(temp, ...prefix.split('/')) }));
+  await put(temp, `${prefix}/msi-window-001.private.json`, JSON.stringify(record));
+  for (let index = 0; index < 140; index++) await put(temp, `eky supervisor q${index}/result.json`, '{}');
+  const result = await collectJobFailureEvidence(env);
+  assert.equal(result.manifest.sources.find(item => item.area === 'temporary').status, 'limited');
+  assert.equal(result.manifest.files[0].kind, 'msiWindowObservation');
+  assert.equal(result.manifest.files[0].status, 'retained');
+});
+
+test('MSI and nested original evidence precede receipts across competing command roots', async t => {
+  const { temp, env, put } = await fixture(t);
+  const prefix = `eky-acceptance-command-${nativeId}/scenario`;
+  const record = { schemaVersion: 1, operation: 'msiWindowObservation',
+    binding: { kind: 'github', runId: env.GITHUB_RUN_ID, attempt: env.GITHUB_RUN_ATTEMPT,
+      job: env.GITHUB_JOB, sourceRevision: env.GITHUB_SHA },
+    runNonce: 'b'.repeat(64), scenario: 'packagedWorkspaceSuccess', artifactDescriptorSha256: 'c'.repeat(64),
+    sequence: 1, elapsedMs: 123, clients: [] };
+  await put(temp, `${prefix}/request.json`, JSON.stringify({ schemaVersion: 1,
+    runNonce: record.runNonce, scenario: record.scenario, artifactDescriptorSha256: record.artifactDescriptorSha256,
+    workingDirectory: join(temp, ...prefix.split('/')) }));
+  await put(temp, `${prefix}/msi-window-001.private.json`, JSON.stringify(record));
+  const nested = join(temp, 'eky supervisor nested', 'temporary');
+  await mkdir(nested, { recursive: true });
+  const sink = createRunnerFailureSink({ tempRoot: nested, env: { ...env, GITHUB_ACTIONS: 'true' } });
+  sink.record({ runner: 'node', phase: 'testFailure', testName: 'nested', attempt: 0, error: new Error('SYNTHETIC NESTED FIRST') });
+  await sink.flush();
+  for (let index = 1; index <= 140; index++) {
+    const command = `eky-acceptance-command-${index.toString(16).padStart(32, '0')}`;
+    await put(temp, `${command}/scenario/result.json`, '{}');
+    const newest = new Date(Date.now() + 60_000);
+    await utimes(join(temp, command), newest, newest);
+  }
+  const result = await collectJobFailureEvidence(env);
+  assert.equal(result.manifest.sources.find(item => item.area === 'temporary').status, 'limited');
+  assert.deepEqual(result.manifest.files.slice(0, 3).map(item => [item.kind, item.status]),
+    [['runnerFailure', 'retained'], ['runnerFailure', 'retained'], ['msiWindowObservation', 'retained']]);
+  const archive = JSON.parse(gunzipSync(await readFile(result.archivePath)));
+  const original = JSON.parse(Buffer.from(archive.files[result.manifest.files[1].name], 'base64'));
+  assert.equal(original.exception.chain[0].message, 'SYNTHETIC NESTED FIRST');
+});
+
+test('slow discovery leaves time to retain the already discovered first error', async t => {
+  const { temp, env, put } = await fixture(t);
+  const sink = createRunnerFailureSink({ tempRoot: temp, env: { ...env, GITHUB_ACTIONS: 'true' } });
+  sink.record({ runner: 'node', phase: 'testFailure', testName: 'discovery', attempt: 0,
+    error: new Error('SYNTHETIC FIRST BEFORE SLOW DISCOVERY') });
+  await sink.flush();
+  const first = (await readdir(temp)).find(name => name.startsWith('eky-test-errors-'));
+  const newest = new Date(Date.now() + 60_000);
+  await utimes(join(temp, first), newest, newest);
+  for (let index = 1; index <= 100; index++) await put(temp, `eky supervisor slow/${index}-target.log`, 'synthetic later data');
+  let time = 0;
+  const result = await collectJobFailureEvidence(env, { now: () => (time += 50) });
+  const source = result.manifest.sources.find(item => item.area === 'temporary');
+  assert.equal(source.status, 'limited');
+  assert.ok(source.examinedEntries < 100);
+  assert.deepEqual(result.manifest.files.map(item => [item.kind, item.status]),
+    [['runnerFailure', 'retained'], ['runnerFailure', 'retained']]);
+  const archive = JSON.parse(gunzipSync(await readFile(result.archivePath)));
+  const original = JSON.parse(Buffer.from(archive.files[result.manifest.files[1].name], 'base64'));
+  assert.equal(original.exception.chain[0].message, 'SYNTHETIC FIRST BEFORE SLOW DISCOVERY');
+});
 
 test('runner originals and delivery summaries require the current job, revision and invocation', async t => {
   const { temp, env } = await fixture(t);
@@ -371,6 +565,41 @@ test('named sandbox probe preserves only its prepared bounded native failure evi
   const normal = await collectJobFailureEvidence(env);
   assert.equal(Object.hasOwn(normal.manifest, 'approvedExceptions'), false);
   assert.ok(normal.manifest.exclusions.includes('dependencyToolRawOutput'));
+  assert.equal(normal.manifest.files[0].status, 'unverified');
+});
+
+test('Windows preparation compiler evidence requires the current named job and generation', async t => {
+  const { checkout, env, put } = await fixture(t);
+  const selected = { ...env, GITHUB_JOB: 'e2e-electron-windows-critical' };
+  const record = { schemaVersion: 1, operation: 'electronE2ePreparation', status: 'failed', phase: 'nativeCompilation',
+    causeCode: 'PROFILE_INSPECTION_NATIVE_BUILD_FAILED', invocationId: run.slice(4), binding: jobEvidenceBinding(selected),
+    nativeCompilationEvidence: { status: 'retained', complete: true, sourceBytes: 29, retainedBytes: 29,
+      prefixBase64: Buffer.from('synthetic native build error!').toString('base64'), suffixBase64: '' } };
+  const path = await put(checkout, `eky_software/apps/e2e/test-results/${run}/preparation/process-output.private.json`,
+    JSON.stringify(record));
+  for (const patch of [null, { invocationId: 'b'.repeat(36) }, { binding: { ...record.binding, attempt: '2' } },
+    { binding: { ...record.binding, sourceRevision: 'b'.repeat(40) } }, { extra: 'EXCLUDED' },
+    { nativeCompilationEvidence: { ...record.nativeCompilationEvidence, retainedBytes: 65537 } }]) {
+    await writeFile(path, JSON.stringify({ ...record, ...patch }));
+    const collected = await collectJobFailureEvidence(selected);
+    const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+    const [entry] = archive.manifest.files;
+    assert.deepEqual(archive.manifest.approvedExceptions, ['boundedNativeBuildFailure']);
+    assert.equal(entry.status, patch === null ? 'retained' : 'unverified');
+    assert.equal(Object.hasOwn(archive.files, entry.name), patch === null);
+    if (patch === null) assert.deepEqual(JSON.parse(Buffer.from(archive.files[entry.name], 'base64')), record);
+  }
+  await writeFile(path, JSON.stringify(record));
+  for (const patch of [{ GITHUB_JOB: 'other' }, { EKY_EVIDENCE_JOB_KEY: 'other' }]) {
+    const rejected = await collectJobFailureEvidence({ ...selected, ...patch });
+    assert.equal(rejected.manifest.files[0].status, 'unverified');
+  }
+  await put(checkout, `eky_software/apps/e2e/test-results/${run}/unreviewed-case/process-output.private.json`, JSON.stringify(record));
+  const misplaced = await collectJobFailureEvidence(selected);
+  assert.equal(misplaced.manifest.files.find(entry => entry.source.includes('/unreviewed-case/')).status, 'unverified');
+  await writeFile(path, JSON.stringify(record).padEnd(96 * 1024 + 1, ' '));
+  const oversized = await collectJobFailureEvidence(selected);
+  assert.equal(oversized.manifest.files.find(entry => entry.source.includes('/preparation/')).status, 'tooLarge');
 });
 
 test('Electron lifecycle collection admits only the named attempt file', () => {
