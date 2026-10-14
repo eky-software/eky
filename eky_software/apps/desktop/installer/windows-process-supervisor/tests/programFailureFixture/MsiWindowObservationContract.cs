@@ -6,6 +6,13 @@ using Eky.WindowsProcessSupervisor;
 
 internal static class MsiWindowObservationContract
 {
+    internal static int RunFailureReceipt(string requestPath)
+    {
+        SupervisorRequestReader.Read(["--request", requestPath]);
+        throw FirstSampleFailure(new(0, "partial", []), 0,
+            () => throw new SupervisorFailure("processWaitFailed", 0), () => WorkspaceMsiMembership.Unknown);
+    }
+
     internal static int Run(string requestPath)
     {
         if (!OperatingSystem.IsWindows()) return 63;

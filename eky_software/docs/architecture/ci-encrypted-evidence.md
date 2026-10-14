@@ -197,6 +197,13 @@ poissulkemisen, listan kokorajat sekä keskeytyneen julkaisun. Sama sarja
 todentaa ilmoituksen sovellusnimen keräimestä oikean OpenPGP-salauksen
 ja testiavainpurun läpi prosessien poistuttua. Se ei asenna MSI:tä tai
 korvaa varsinaista Windows-asennuskokeen näyttöä.
+Ensimmäisen näytteen hylkäys säilyttää nykyisessä yksityisessä stderrissä
+suljetun tulosluokan, odotettujen tekstiroolien löytymisen, keruun keston
+sekä erilliset keruun jälkeiset prosessin poistumis- ja omistajuushavainnot.
+Epäonnistuva lisäkysely ei peitä alkuperäistä hylkäystä. Hallittu native-virhe
+todentaa saman merkinnän ja kutsupinon nykyisen tulostekeräyksen sekä oikean
+OpenPGP-salauksen ja purun läpi; nämä havainnot eivät yksin nimeä Windowsin
+sisäistä juurisyytä.
 Skeema 2 nimeää listamerkinnän `application`-rooliksi; vanhan skeeman 1
 rajattu luku säilyy, mutta se ei hyväksy tätä uutta roolia.
 

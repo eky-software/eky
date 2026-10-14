@@ -97,6 +97,15 @@ test('MSI windows: native observation survives exit and interrupted publication 
     const proof = JSON.parse(await readFile(join(scenarioRoot, 'msi-window-contract.json'), 'utf8'));
     assert.equal(proof.cleanupVerified, true);
     assert.equal(proof.cancelBeforePublicationRetainsPending, true);
+    const failedContext = { ...context, testRoot: join(temporary, 'eky supervisor receipt'),
+      privateOutputCaptures: [], privateOutputRetention: undefined };
+    await mkdir(failedContext.testRoot);
+    try {
+      const failed = startProgramFailureFixture(failedContext, 'msiWindowFailureReceipt', { environment: env });
+      await assert.rejects(failed.completion, { message: 'WINDOWS_ACCEPTANCE_SUPERVISOR_STDERR_NOT_EMPTY' });
+      assert.equal(Number.isInteger(failed.child.exitCode), true);
+      assert.notEqual(failed.child.exitCode, 0);
+    } finally { await cleanupRunContext(failedContext, { preserveEvidence: true }); }
     const collected = await collectJobFailureEvidence(env, { nativeTemp: temporary });
     await encryptArchive(collected.root, collected);
     const decrypted = await crypto.invokeGpg(recipient.home, ['--decrypt', join(collected.root, 'evidence.json.gz.gpg')]);
@@ -110,6 +119,18 @@ test('MSI windows: native observation survives exit and interrupted publication 
     assert.equal(record.clients.some(client => client.windows.some(row => row.role === 'application' &&
       row.text === 'SYNTHETIC OWNED APPLICATION')), true);
     assert.equal(record.clients.some(client => client.status === 'partial'), true);
+    const failureReceipts = archive.manifest.files
+      .filter(value => value.kind === 'nativeResult' && value.status === 'retained')
+      .map(value => Buffer.from(archive.files[value.name], 'base64').toString('utf8'))
+      .filter(value => value.includes('msiWindowContractFailed:titleCaptured:'));
+    assert.equal(failureReceipts.length, 1);
+    const receipt = failureReceipts[0].match(/msiWindowContractFailed:titleCaptured:(\{[^\r\n]+\})/);
+    assert.ok(receipt);
+    assert.deepEqual(JSON.parse(receipt[1]), { status: 'partial', titleCaptured: false,
+      messageCaptured: false, buttonCaptured: false, applicationCaptured: false,
+      elapsedMilliseconds: 0, childExitedAfterCapture: null, membershipAfterCapture: 'Unknown' });
+    assert.ok(/MsiWindowObservationContract\.RunFailureReceipt/.test(failureReceipts[0]),
+      'MSI_WINDOW_FAILURE_NATIVE_FRAME_MISSING');
     assert.doesNotMatch(JSON.stringify(archive), /EXCLUDED INPUT|window-child-|\.pending/);
     assert.equal(archive.manifest.jobOutcome, 'failure');
     assert.equal(archive.manifest.cleanup, 'notInferred');

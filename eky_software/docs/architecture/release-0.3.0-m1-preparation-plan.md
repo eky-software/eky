@@ -23,8 +23,14 @@ Tuontirajan regressio hylkäsi vanhan toteutuksen; korjattu Playwright-luenta
 löytää jälleen kaikki kolme paketoitua palautustestiä. Tämä ei vielä ole niiden
 suoritusnäyttö. Natiivin ilmoitustestin epäonnistuva ensimmäinen näyte säilyttää
 nyt suljetut tulosluokat nykyisessä yksityisessä virhetulosteessa. Yksi nimetty
-asennukseton Windows-sopimuskoe tarkentaa tätä hylkäystä ennen uutta PR-kierrosta;
-onnistuminen ei yksin selitä aiempaa virhettä.
+asennukseton [Windows-sopimuskoe](https://github.com/eky-software/eky/actions/runs/38639450894)
+läpäisi revision `895d6048` molemmissa erillisissä ympäristöissä (159 testiä
+kummassakin). Alkuperäisen hylkäyksen syy säilyy avoimena. Hallittu native-virhe
+todensi tarkennetun merkinnän ja kutsupinon oikeasti puretusta OpenPGP-paketista;
+epäonnistuva prosessi ja testiapurin hylkäys säilyivät. Saman puhtaan revision
+Windows-paketti läpäisi backup -> inspect -> restore -> restart -> compare
+-ketjun, ja paketin tavut säilyivät ennallaan. Nämä ovat rajattuja todisteita;
+uuden PR-headin normaalit portit ja mainin omat tarkistukset tarvitaan edelleen.
 
 **Seuraava työ järjestyksessä:**
 
