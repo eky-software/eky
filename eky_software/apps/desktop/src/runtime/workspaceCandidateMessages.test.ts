@@ -78,6 +78,64 @@ function startCommand() {
 }
 
 describe('workspace candidate process messages', () => {
+  it('binds local recovery only to the selected inventory root, not imported operations or status', () => {
+    const operation = migrationInspectionOperation();
+    const selection = { workspaceRoot: operation.publishedRoot, workspaceIdentity: 'a'.repeat(64) };
+    const command = createWorkspaceCandidateStartCommand({
+      operationId, requestId, runtimeSession,
+      operation: { ...operation, ownedLocalDatabaseRecovery: selection },
+    });
+    expect(parseWorkspaceCandidateProcessCommand(command)).toEqual(command);
+    for (const value of [undefined, null, true, {}, { ...selection, granted: true },
+      { ...selection, workspaceRoot: resolve('another-workspace') }]) {
+      expect(parseWorkspaceCandidateProcessCommand({ ...command,
+        operation: { ...command.operation, ownedLocalDatabaseRecovery: value },
+      })).toBeUndefined();
+    }
+    expect(parseWorkspaceCandidateProcessCommand({ ...startCommand(),
+      operation: { ...commonOperation(), operation: 'bootstrapEmpty', ownedLocalDatabaseRecovery: selection },
+    })).toBeUndefined();
+    expect(parseWorkspaceCandidateProcessCommand({ ...command,
+      operation: { ...command.operation, operation: 'validatePublished' },
+    })).toBeUndefined();
+  });
+
+  it('requires one contained disposable inspection root for backup migration', () => {
+    const common = commonOperation();
+    const start = createWorkspaceCandidateStartCommand({
+      operationId, requestId, runtimeSession,
+      operation: {
+        ...common, operation: 'migrateBackup', expectedProfileId: profileId,
+        expectedSourceMigrationChainIdentity: migrationChainIdentity,
+        importStagingRoot: resolve('private-import'),
+        inspectionRoot: resolve(common.candidateRoot, 'inspection'),
+      },
+    });
+    expect(parseWorkspaceCandidateProcessCommand(start)).toEqual(start);
+    for (const inspectionRoot of [undefined, common.candidateRoot, common.artifactRoot, resolve('foreign'),
+      resolve(common.candidateRoot, 'runtime', 'inspection')]) {
+      expect(parseWorkspaceCandidateProcessCommand({ ...start, operation: { ...start.operation, inspectionRoot } }))
+        .toBeUndefined();
+    }
+  });
+
+  it('keeps closure evidence and first causes bounded in the existing terminal channel', () => {
+    const failed = createWorkspaceCandidateFailedStatus({
+      operationId, requestId, runtimeSession, inspectionClosed: true, causeCode: 'PROFILE_SCHEMA_UNSUPPORTED',
+    });
+    expect(parseWorkspaceCandidateProcessStatus(failed)).toEqual(failed);
+    for (const change of [{ inspectionClosed: false }, { inspectionClosed: 'true' },
+      { causeCode: 'raw private error' }, { path: resolve('private-copy') }]) {
+      expect(parseWorkspaceCandidateProcessStatus({ ...failed, ...change })).toBeUndefined();
+    }
+    const completed = createWorkspaceCandidateCompletedStatus({
+      operationId, requestId, runtimeSession, inspectionClosed: true,
+      result: { kind: 'migration', migrationChainIdentity, profileId },
+    });
+    expect(parseWorkspaceCandidateProcessStatus(completed)).toEqual(completed);
+    expect(parseWorkspaceCandidateProcessStatus({ ...completed, causeCode: 'unknown' })).toBeUndefined();
+  });
+
   it('binds preparation and reservation readiness to the same request generation', () => {
     const input = {
       operationId, requestId, runtimeSession,

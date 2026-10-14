@@ -10,6 +10,7 @@ import { verifyUpgradeRollbackArtifact } from './upgradeRollbackArtifact.mjs';
 import { createUpgradeRollbackWorkerRequest, createUpgradeRollbackWorkerTerminalResult, readUpgradeRollbackWorkerRequest,
   readUpgradeRollbackResult, upgradeRollbackResultPathForRequest, writeJsonAtomicExclusive } from './upgradeRollbackContracts.mjs';
 import { runUpgradeRollbackWorker } from './runUpgradeRollbackWorker.mjs';
+import { createNativeFailureEvidence } from './nativeFailureEvidence.mjs';
 import { prepareUpgradeRollbackTerminalOutcome, completeUpgradeRollbackTerminalOutcome,
   upgradeRollbackFailureDetails, UPGRADE_COMMAND_ERROR_CODES } from './upgradeRollbackFailureBoundary.mjs';
 import { executeProductOperation } from './installerProductOperationWorker.mjs';
@@ -80,6 +81,9 @@ async function runProduct(context, dependencies) {
 }
 
 export async function executeUpgradeCommandPhase(context, dependencies = {}) {
+  const observeFailure = error => {
+    try { dependencies.observeFailure?.(error, context.phase); } catch { /* Preserve the phase result. */ }
+  };
   const { phase, state, binding, resultPath, descriptorPath } = context;
   const inventory = dependencies.inventoryProfile ?? createClosedDirectoryInventory;
   if (phase === 'prepare') {
@@ -89,7 +93,7 @@ export async function executeUpgradeCommandPhase(context, dependencies = {}) {
     try { temporary = await realpath(tmpdir());
       const info = await lstat(temporary);
       if (!info.isDirectory() || info.isSymbolicLink()) throw new Error();
-    } catch { throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_TEMP_ROOT_INVALID'); }
+    } catch (error) { observeFailure(error); throw new Error('WINDOWS_ACCEPTANCE_UPGRADE_TEMP_ROOT_INVALID'); }
     state.runRoot = await mkdtemp(resolve(temporary, 'eky-windows-acceptance-v2-upgrade-'));
   } else if (phase === 'inventoryBefore') state.profileBefore = await inventory(resolve(process.env.APPDATA, 'Eky'));
   else if (phase === 'materialize') {
@@ -112,16 +116,18 @@ export async function executeUpgradeCommandPhase(context, dependencies = {}) {
       artifactDescriptorSha256: binding.artifactDescriptorSha256, fixtureRoot: state.artifact.artifactRoot });
     const path = resolve(state.runRoot, 'scenario', 'worker-request.json');
     await writeJsonAtomicExclusive(path, request);
-    return (dependencies.runScenario ?? runUpgradeRollbackWorker)(['--request', path]);
+    return (dependencies.runScenario ?? runUpgradeRollbackWorker)(['--request', path], {
+      createFailureEvidence: request => createNativeFailureEvidence(import.meta.url, request),
+    });
   } else if (phase === 'semantic') await terminalPlan(context);
   else if (phase === 'artifact') {
     try { await (dependencies.verifyArtifact ?? verifyUpgradeRollbackArtifactSourceFixture)(state.artifact); }
-    catch { state.safetyErrorCode ??= 'WINDOWS_ACCEPTANCE_UPGRADE_LOCAL_FIXTURE_CHANGED'; }
+    catch (error) { observeFailure(error); state.safetyErrorCode ??= 'WINDOWS_ACCEPTANCE_UPGRADE_LOCAL_FIXTURE_CHANGED'; }
   } else if (phase === 'inventoryAfter') {
     try {
       state.profileAfter = await inventory(resolve(process.env.APPDATA, 'Eky'));
       if (!inventoriesMatch(state.profileBefore, state.profileAfter)) throw new Error();
-    } catch { state.safetyErrorCode ??= 'WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED'; }
+    } catch (error) { observeFailure(error); state.safetyErrorCode ??= 'WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED'; }
   } else if (phase === 'fixtureCleanup') {
     const outcome = await commandOutcome(context);
     await writeJsonAtomicExclusive(resolve(context.phaseRoot, 'terminal.json'), { binding, outcome });
@@ -200,10 +206,12 @@ async function publish(context) {
 
 export async function runUpgradeCommandPhase(args, dependencies = {}) {
   let context;
+  let observeFailure;
   try {
     if (args.length !== 2 || args[0] !== '--phase-request') invalid();
     context = await readUpgradeCommandPhase(args[1]);
-    const code = await executeUpgradeCommandPhase(context, dependencies);
+    observeFailure = createNativeFailureEvidence(import.meta.url, context.binding);
+    const code = await executeUpgradeCommandPhase(context, { ...dependencies, observeFailure });
     if (context.phase !== 'scenario') await writeJsonAtomicExclusive(resolve(context.phaseRoot, 'phase-state.json'),
       { binding: context.binding, state: context.state });
     if (context.phase === 'scenario' && code === 0) {
@@ -215,12 +223,14 @@ export async function runUpgradeCommandPhase(args, dependencies = {}) {
       status: code === 0 ? 'completed' : 'failed', resultCode: code === 0 ? 'phaseCompleted' : 'phaseFailed', errorCode: code === 0 ? null : 'phaseFailed' });
     return code;
   } catch (error) {
+    observeFailure ??= createNativeFailureEvidence(import.meta.url, { scenario: 'upgradeCommandPhase' });
+    observeFailure(error, context?.phase ?? 'phaseRequest');
     if (context) {
       try { await writeJsonAtomicExclusive(resolve(context.phaseRoot, 'phase-error.json'), { binding: context.binding, errorCode: safeCode(error) }); }
       catch { /* Keep required result failure; no synchronous diagnostic fallback. */ }
     }
     return 1;
-  }
+  } finally { await observeFailure?.finish(); }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href)
   process.exitCode = await runUpgradeCommandPhase(process.argv.slice(2));

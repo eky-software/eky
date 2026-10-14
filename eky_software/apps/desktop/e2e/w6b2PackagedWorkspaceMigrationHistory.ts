@@ -4,6 +4,7 @@ import type { ElectronWorkspaceCandidateRuntimeFactory } from '../src/workspaces
 import type { W6b2PackagedWorkspaceFixture } from './w6b2PackagedWorkspaceFixtures.js';
 import {
   inspectWorkspaceFirstStartProofFixture,
+  invalidateWorkspaceFirstStartProofContent,
 } from './workspaceFirstStartMigrationProofFixtures.js';
 import {
   snapshotW6b2PackagedWorkspaceEvidence,
@@ -14,10 +15,15 @@ export async function invalidateW6b2PackagedWorkspaceMigrationHistory(input: {
   readonly fixture: Readonly<W6b2PackagedWorkspaceFixture>;
   readonly targetFactory: ElectronWorkspaceCandidateRuntimeFactory;
 }): Promise<void> {
+  if (input.fixture.fixtureKey !== 'C') {
+    throw new Error('W6B2_INVALID_HISTORY_FIXTURE_INVALID');
+  }
   const businessBefore = await snapshotW6b2PackagedWorkspaceEvidence(
     input.fixture,
+    'beforeContentFault',
   );
-  invalidateW6b2MigrationHistoryDatabase(input.fixture.databaseFilePath);
+  // invalidHistory requires attested schema/history and an ordinary content fault.
+  await invalidateWorkspaceFirstStartProofContent(input.fixture);
   const businessAfter = await snapshotW6b2PackagedWorkspaceEvidence(
     input.fixture,
   );
@@ -36,6 +42,7 @@ export async function invalidateW6b2PackagedWorkspaceMigrationHistory(input: {
 export function invalidateW6b2MigrationHistoryDatabase(
   databaseFilePath: string,
 ): void {
+  // Negative rejection fixture only: wrong metadata must never be quarantined.
   const database = new DatabaseSync(databaseFilePath);
   let transactionStarted = false;
   try {

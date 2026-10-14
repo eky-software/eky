@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { link, mkdir, mkdtemp, readFile, rm, symlink, utimes, writeFile } from 'node:fs/promises';
+import { link, mkdir, mkdtemp, open, readFile, readdir, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
@@ -9,10 +9,38 @@ import { gunzipSync } from 'node:zlib';
 import { collectJobFailureEvidence, evidenceSourceKind, jobEvidenceBinding, jobEvidenceGit } from './ciFailureEvidence.mjs';
 import { projectPlaywrightFailureReport } from './playwrightFailureReport.mjs';
 import { LEGACY_STARTUP_TERMINAL_FILENAME } from './legacyStartupFailureEvidence.mjs';
+import { W6B2_INSTALLER_LOG_FILE, W6B2_INSTALLER_LOG_RECEIPT } from '../../src/main/w6b2PackagedInstallerLog.ts';
+import { projectStartupException, STARTUP_EXCEPTION_CONTROL, STARTUP_EXCEPTION_SUFFIX } from '../../src/main/startupExceptionEvidence.ts';
+import { executeCleanInstallUninstallLifecycle } from './cleanInstallUninstallLifecycle.mjs';
+import { executeUpgradeRollbackLifecycle } from './upgradeRollbackLifecycle.mjs';
+import { executeLegacyUpgradeLifecycle } from './legacyUpgradeLifecycle.mjs';
+import { executeWorkspaceSuccessLifecycle } from './workspaceSuccessLifecycle.mjs';
+import { executeWorkspaceFaultLifecycle } from './workspaceFaultLifecycle.mjs';
+import { createRunnerFailureSink } from '../../../../test-reporters/runnerFailureEvidence.mjs';
 
 const run = 'run-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const fingerprint = 'A'.repeat(40);
 const nativeId = 'a'.repeat(32);
+
+for (const [family, execute] of [
+  ['clean', executeCleanInstallUninstallLifecycle], ['upgrade', executeUpgradeRollbackLifecycle],
+  ['legacy', executeLegacyUpgradeLifecycle], ['workspace', executeWorkspaceSuccessLifecycle],
+  ['workspaceFault', runtime => executeWorkspaceFaultLifecycle('preUpdateRecoveryPointFailure', runtime)],
+]) {
+  test(`${family} preserves the original before safe-code mapping without making evidence mandatory`, async () => {
+    const original = new Error('synthetic native original', { cause: new Error('synthetic native cause') });
+    const observations = [];
+    const input = { inspectState: async () => { throw original; },
+      observeFailure(error, phase) { observations.push({ error, phase }); throw new Error('synthetic observer failure'); } };
+    const observed = await execute(input);
+    const baseline = await execute({ ...input, observeFailure: undefined });
+    assert.deepEqual(observed, baseline);
+    assert.equal(observed.status, 'failed');
+    assert.equal(observations[0].error, original);
+    assert.equal(observations[0].phase, 'preflight');
+    assert.equal(JSON.stringify(observed).includes('synthetic native'), false);
+  });
+}
 
 test('only matching hosted Windows or Linux contexts select their native Git', () => {
   for (const [platform, runner, git] of [['win32', 'Windows', 'git.exe'], ['linux', 'Linux', 'git']]) {
@@ -48,6 +76,87 @@ async function fixture(t) {
   return { root, temp, checkout, env, put };
 }
 
+test('runner originals and delivery summaries require the current job, revision and invocation', async t => {
+  const { temp, env } = await fixture(t);
+  const sink = createRunnerFailureSink({ tempRoot: temp, env: { ...env, GITHUB_ACTIONS: 'true' } });
+  sink.record({ runner: 'vitest', phase: 'testFailure', testName: 'synthetic', attempt: 0,
+    error: new Error('synthetic runner original', { cause: new Error('synthetic runner cause') }) });
+  assert.equal((await sink.flush()).status, 'recorded');
+  const directory = join(temp, (await readdir(temp)).find(name => name.startsWith('eky-test-errors-')));
+  const path = join(directory, (await readdir(directory)).find(name => !name.endsWith('.summary.private.json')));
+  const record = JSON.parse(await readFile(path, 'utf8'));
+  for (const patch of [null, { binding: { ...record.binding, jobKeySource: 'githubJob', jobKey: env.GITHUB_JOB } },
+    { binding: { kind: 'local' } }, { binding: { ...record.binding, runId: '456' } },
+    { binding: { ...record.binding, attempt: '2' } }, { binding: { ...record.binding, job: 'other' } },
+    { binding: { ...record.binding, jobKey: 'other' } }, { binding: { ...record.binding, sourceRevision: 'b'.repeat(40) } },
+    { invocationId: '12345678-1234-4abc-8abc-1234567890ab' }, { extra: 'EXCLUDED' }]) {
+    await writeFile(path, JSON.stringify({ ...record, ...patch }));
+    const collected = await collectJobFailureEvidence(env);
+    const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+    const entries = archive.manifest.files.filter(file => file.kind === 'runnerFailure');
+    assert.equal(entries.length, 2);
+    const summary = entries.find(file => file.source.endsWith('.summary.private.json'));
+    assert.equal(summary.status, 'retained');
+    assert.equal(summary.deliveryStatus, 'recorded');
+    const entry = entries.find(file => file !== summary);
+    const expected = patch === null || patch.binding?.jobKeySource === 'githubJob';
+    assert.equal(entry.status, expected ? 'retained' : 'unverified');
+    assert.equal(Object.hasOwn(archive.files, entry.name), expected);
+  }
+});
+
+test('runner collection retains its first error and summary before the per-source file quota', async t => {
+  const { temp, env } = await fixture(t);
+  const sink = createRunnerFailureSink({ tempRoot: temp, env: { ...env, GITHUB_ACTIONS: 'true' } });
+  for (let index = 0; index < 128; index++) {
+    sink.record({ runner: 'node', phase: 'testFailure', testName: `synthetic-${index}`, attempt: 0,
+      error: new Error(index === 0 ? 'synthetic first original' : 'synthetic later original') });
+  }
+  assert.equal((await sink.flush()).status, 'recorded');
+  const collected = await collectJobFailureEvidence(env);
+  const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+  const entries = archive.manifest.files.filter(file => file.kind === 'runnerFailure');
+  const source = archive.manifest.sources.find(value => value.area === 'temporary');
+  assert.equal(source.status, 'limited');
+  assert.equal(entries.length, source.fileLimit);
+  assert.ok(entries.every(entry => entry.status === 'retained'));
+  const records = entries.map(entry => JSON.parse(Buffer.from(archive.files[entry.name], 'base64')));
+  assert.equal(records[0].kind, 'runnerFailureSummary');
+  assert.equal(records[0].observed, 128);
+  assert.equal(records[1].sequence, 1);
+  assert.equal(records[1].exception.chain[0].message, 'synthetic first original');
+  assert.equal(records.some(record => record.sequence === 128), false);
+  const originalDirectory = join(temp, (await readdir(temp)).find(name => name.startsWith('eky-test-errors-')));
+  assert.equal((await readdir(originalDirectory)).length, 129);
+});
+
+test('packaged originals require their exact control, runtime and current source binding', async t => {
+  const { temp, env, put } = await fixture(t);
+  const runtimeInstanceId = '12345678-1234-4abc-8abc-1234567890ab';
+  const binding = { scenarioRunNonce: 'b'.repeat(64), appVersion: '0.2.81',
+    buildRevision: env.GITHUB_SHA, runtimeInstanceId };
+  const prefix = `eky-desktop-smoke/${binding.scenarioRunNonce.slice(0, 32)}/result`;
+  const control = { schemaVersion: 1, scenarioRunNonce: binding.scenarioRunNonce,
+    appVersion: binding.appVersion, buildRevision: binding.buildRevision };
+  const record = projectStartupException(new Error('synthetic original', { cause: new Error('synthetic cause') }),
+    binding, 'packagedSmoke');
+  const controlPath = await put(temp, `${prefix}/${STARTUP_EXCEPTION_CONTROL}`, JSON.stringify(control));
+  const source = await put(temp, `${prefix}/${runtimeInstanceId}${STARTUP_EXCEPTION_SUFFIX}`, JSON.stringify(record));
+  for (const patch of [null, { scenarioRunNonce: 'c'.repeat(64) }, { buildRevision: 'd'.repeat(40) },
+    { appVersion: '0.2.80' }, { extra: 'not allowed' }]) {
+    await writeFile(controlPath, JSON.stringify({ ...control, ...patch }));
+    const collected = await collectJobFailureEvidence(env);
+    const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+    assert.equal(archive.manifest.files.length, 1);
+    const entry = archive.manifest.files[0];
+    assert.equal(entry.kind, 'startupException');
+    assert.equal(entry.status, patch === null ? 'retained' : 'unverified');
+    assert.equal(Object.hasOwn(archive.files, entry.name), patch === null);
+    if (patch === null) assert.deepEqual(JSON.parse(Buffer.from(archive.files[entry.name], 'base64')), record);
+  }
+  assert.deepEqual(JSON.parse(await readFile(source, 'utf8')), record);
+});
+
 test('source allowlist excludes databases, requests, config, environment, traces and profiles', () => {
   for (const path of ['eky supervisor abc/result.json', `eky supervisor abc/temporary/eky-acceptance-command-${nativeId}/prepare/result.json`,
     `eky-workspace-caller-${nativeId}/result.json`, `eky-acceptance-command-${nativeId}/prepare/worker-result.json`,
@@ -75,6 +184,101 @@ test('binding rejects missing attempts, invalid job names and unknown revisions'
     ['EKY_EVIDENCE_JOB_KEY', '../job'], ['GITHUB_JOB', 'job\nunsafe']]) {
     assert.throws(() => jobEvidenceBinding({ ...env, [field]: value }), /CI_FAILURE_EVIDENCE_UNVERIFIED/u);
   }
+});
+
+test('workspace target installer collection requires exact caller binding and matching retained bytes', async t => {
+  const { temp, env, put } = await fixture(t);
+  const prefix = `eky-workspace-caller-${nativeId}`;
+  const binding = { schemaVersion: 1, invocationId: nativeId, scenario: 'packagedWorkspaceFaultRollback',
+    faultScenario: 'passiveWorkspaceMigrationFailure', buildRevision: 'a'.repeat(40),
+    artifactDescriptorSha256: 'b'.repeat(64) };
+  const bytes = Buffer.from('synthetic MSI action before cancellation\n');
+  const receipt = { binding, status: 'retained', bytes: bytes.length,
+    sha256: createHash('sha256').update(bytes).digest('hex') };
+  await put(temp, `${prefix}/binding.json`, JSON.stringify(binding));
+  await put(temp, `${prefix}/${W6B2_INSTALLER_LOG_RECEIPT}`, JSON.stringify(receipt));
+  const source = await put(temp, `${prefix}/${W6B2_INSTALLER_LOG_FILE}`, bytes);
+  for (const path of [`${prefix}/profile/${W6B2_INSTALLER_LOG_FILE}`,
+    `${prefix}/other.private.log`, `${prefix}/${W6B2_INSTALLER_LOG_FILE}.bak`,
+    `eky-workspace-caller-invalid/${W6B2_INSTALLER_LOG_FILE}`]) {
+    assert.equal(evidenceSourceKind('temporary', path), null);
+    await put(temp, path, 'EXCLUDED');
+  }
+  const collected = await collectJobFailureEvidence({ ...env, EKY_EVIDENCE_JOB_OUTCOME: 'cancelled' });
+  const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+  assert.equal(archive.manifest.jobOutcome, 'cancelled');
+  assert.equal(archive.manifest.cleanup, 'notInferred');
+  assert.equal(archive.manifest.files.length, 2);
+  const entry = archive.manifest.files.find(file => file.source.endsWith('/' + W6B2_INSTALLER_LOG_FILE));
+  assert.equal(entry.status, 'retained');
+  assert.deepEqual(Buffer.from(archive.files[entry.name], 'base64'), bytes);
+  await writeFile(source, 'CHANGED');
+  const changed = await collectJobFailureEvidence(env);
+  const rejected = JSON.parse(gunzipSync(await readFile(changed.archivePath)));
+  const failed = rejected.manifest.files.find(file => file.source.endsWith('/' + W6B2_INSTALLER_LOG_FILE));
+  assert.equal(failed.status, 'unverified');
+  assert.equal(Object.hasOwn(rejected.files, failed.name), false);
+  assert.equal((await readFile(source, 'utf8')), 'CHANGED');
+});
+
+for (const bytes of [64 * 1024 * 1024, 64 * 1024 * 1024 + 1]) {
+  test(`job collection keeps the 64 MiB cap and receipt binding for a target MSI log: ${bytes}`, async t => {
+    const { temp, env, put } = await fixture(t);
+    const prefix = `eky-workspace-caller-${nativeId}`;
+    const binding = { schemaVersion: 1, invocationId: nativeId, scenario: 'packagedWorkspaceFaultRollback',
+      faultScenario: 'passiveWorkspaceMigrationFailure', buildRevision: 'a'.repeat(40),
+      artifactDescriptorSha256: 'b'.repeat(64) };
+    await put(temp, `${prefix}/binding.json`, JSON.stringify(binding));
+    const source = await put(temp, `${prefix}/${W6B2_INSTALLER_LOG_FILE}`, 'synthetic first MSI action');
+    const file = await open(source, 'r+');
+    try { await file.truncate(bytes); } finally { await file.close(); }
+    const expectedHash = createHash('sha256').update(await readFile(source)).digest('hex');
+    await put(temp, `${prefix}/${W6B2_INSTALLER_LOG_RECEIPT}`, JSON.stringify({ binding, status: 'retained',
+      bytes, sha256: expectedHash }));
+    const collected = await collectJobFailureEvidence(env);
+    const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+    const entry = archive.manifest.files.find(value => value.source.endsWith('/' + W6B2_INSTALLER_LOG_FILE));
+    if (bytes === 64 * 1024 * 1024) {
+      assert.equal(entry.status, 'retained');
+      const retained = Buffer.from(archive.files[entry.name], 'base64');
+      assert.equal(retained.length, bytes);
+      assert.equal(createHash('sha256').update(retained).digest('hex'), expectedHash);
+    } else {
+      assert.equal(entry.status, 'tooLarge');
+      assert.equal(Object.hasOwn(archive.files, entry.name), false);
+    }
+    assert.equal(createHash('sha256').update(await readFile(source)).digest('hex'), expectedHash);
+  });
+}
+
+test('bound target MSI log cannot exceed the remaining aggregate budget after other evidence', async t => {
+  const { temp, env, put } = await fixture(t);
+  const prefix = `eky-workspace-caller-${nativeId}`;
+  const binding = { schemaVersion: 1, invocationId: nativeId, scenario: 'packagedWorkspaceFaultRollback',
+    faultScenario: 'passiveWorkspaceMigrationFailure', buildRevision: 'a'.repeat(40),
+    artifactDescriptorSha256: 'b'.repeat(64) };
+  await put(temp, `${prefix}/binding.json`, JSON.stringify(binding));
+  const source = await put(temp, `${prefix}/${W6B2_INSTALLER_LOG_FILE}`, 'synthetic native MSI log');
+  const file = await open(source, 'r+');
+  try { await file.truncate(64 * 1024 * 1024); } finally { await file.close(); }
+  const hash = createHash('sha256').update(await readFile(source)).digest('hex');
+  await put(temp, `${prefix}/${W6B2_INSTALLER_LOG_RECEIPT}`, JSON.stringify({ binding, status: 'retained',
+    bytes: 64 * 1024 * 1024, sha256: hash }));
+  for (let index = 1; index <= 8; index++) {
+    const path = await put(temp, `eky supervisor prior/supervisor-${index}.stdout.private`, 'synthetic output');
+    const handle = await open(path, 'r+');
+    try { await handle.truncate(64 * 1024 * 1024); } finally { await handle.close(); }
+  }
+  const newest = new Date(Date.now() + 60_000);
+  await utimes(join(temp, 'eky supervisor prior'), newest, newest);
+  const collected = await collectJobFailureEvidence(env);
+  const retained = collected.manifest.files.filter(value => value.status === 'retained');
+  assert.equal(retained.filter(value => value.source.startsWith('temporary/eky supervisor prior/')).length, 8);
+  assert.equal(retained.reduce((sum, value) => sum + value.bytes, 0), 512 * 1024 * 1024);
+  const rejected = collected.manifest.files.find(value => value.source.endsWith('/' + W6B2_INSTALLER_LOG_FILE));
+  assert.equal(rejected.status, 'totalLimit');
+  await assert.rejects(readFile(join(collected.root, 'retained', rejected.name)), { code: 'ENOENT' });
+  assert.equal(createHash('sha256').update(await readFile(source)).digest('hex'), hash);
 });
 
 test('legacy collection admits only the bound cause projection from the existing cleanup terminal file', async t => {
@@ -142,6 +346,33 @@ test('legacy packaged failure retains existing smoke output but excludes the pro
   }
 });
 
+test('named sandbox probe preserves only its prepared bounded native failure evidence', async t => {
+  const { checkout, temp, env, put } = await fixture(t);
+  const evidence = { operation: 'linuxProfileInspection', status: 'failed', phase: 'preparation',
+    causeCode: 'PROFILE_INSPECTION_NATIVE_BUILD_FAILED', nativeCompilationEvidence: {
+      status: 'retained', complete: true, sourceBytes: 28, retainedBytes: 28,
+      prefixBase64: Buffer.from('synthetic native build error!').toString('base64'), suffixBase64: '' } };
+  const bytes = Buffer.from(JSON.stringify(evidence));
+  await put(checkout, `eky_software/apps/e2e/test-results/${run}/preparation/process-output.private.json`, bytes);
+  for (const name of ['build.private.log', 'source/data.sqlite', 'runtime/config.json']) {
+    await put(temp, `eky-inspection-native-ABC123/inspection-native-DEF456/${name}`, 'EXCLUDED');
+  }
+  const selected = { ...env, GITHUB_JOB: 'linux-inspection-sandbox-probe', EKY_EVIDENCE_JOB_KEY: 'k-linux-sandbox-probe' };
+  const collected = await collectJobFailureEvidence(selected);
+  const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+  assert.deepEqual(archive.manifest.approvedExceptions, ['boundedNativeBuildFailure']);
+  assert.ok(archive.manifest.exclusions.includes('unapprovedDependencyToolRawOutput'));
+  assert.equal(archive.manifest.files.length, 1);
+  const retained = archive.manifest.files[0];
+  assert.equal(retained.kind, 'processOutput');
+  assert.equal(retained.status, 'retained');
+  assert.deepEqual(Buffer.from(archive.files[retained.name], 'base64'), bytes);
+  assert.equal(Buffer.from(archive.files[retained.name], 'base64').includes(Buffer.from('EXCLUDED')), false);
+  const normal = await collectJobFailureEvidence(env);
+  assert.equal(Object.hasOwn(normal.manifest, 'approvedExceptions'), false);
+  assert.ok(normal.manifest.exclusions.includes('dependencyToolRawOutput'));
+});
+
 test('Electron lifecycle collection admits only the named attempt file', () => {
   assert.equal(evidenceSourceKind('results', `${run}/test-attempt0/electron-lifecycle.json`), 'electronLifecycle');
   for (const area of ['reports', 'temporary']) {
@@ -198,7 +429,7 @@ test('Electron lifecycle collection preserves first failure, retry and ownership
 test('Electron lifecycle collection retains existing size and hardlink rejection', async t => {
   const { checkout, env, put } = await fixture(t);
   const root = `eky_software/apps/e2e/test-results/${run}`;
-  await put(checkout, `${root}/large/electron-lifecycle.json`, Buffer.alloc(8 * 1024 * 1024 + 1));
+  await put(checkout, `${root}/large/electron-lifecycle.json`, Buffer.alloc(64 * 1024 * 1024 + 1));
   const original = await put(checkout, `${root}/linked/electron-lifecycle.json`, 'EXCLUDED-LINK');
   await link(original, join(checkout, 'alias.json'));
   const collected = await collectJobFailureEvidence(env);
@@ -262,9 +493,42 @@ test('MSI failure evidence preserves log bytes and separate cleanup even without
   assert.ok(archive.manifest.files.some(file => file.source.endsWith('interrupted/1-source.log')));
 });
 
-test('MSI logs retain the existing size and hardlink rejection instead of expanding collection', async t => {
+test('ordinary MSI logs retain all bytes at the shared 64 MiB boundary', async t => {
   const { temp, env, put } = await fixture(t);
-  await put(temp, 'eky supervisor sample/1-source.log', Buffer.alloc(8 * 1024 * 1024 + 1));
+  const source = await put(temp, 'eky supervisor sample/1-source.log', 'synthetic MSI first action');
+  const handle = await open(source, 'r+');
+  try { await handle.truncate(64 * 1024 * 1024); } finally { await handle.close(); }
+  const collected = await collectJobFailureEvidence(env);
+  const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+  const entry = archive.manifest.files.find(file => file.source.endsWith('1-source.log'));
+  assert.equal(entry.status, 'retained');
+  const retained = Buffer.from(archive.files[entry.name], 'base64');
+  assert.equal(retained.length, 64 * 1024 * 1024);
+  assert.equal(createHash('sha256').update(retained).digest('hex'), entry.sha256);
+  assert.equal(createHash('sha256').update(await readFile(source)).digest('hex'), entry.sha256);
+});
+
+test('a report above the previous 8 MiB cap retains failure fields but not config or inline content', async t => {
+  const { checkout, env, put } = await fixture(t);
+  const message = 'synthetic failure\n' + 'x'.repeat(9 * 1024 * 1024);
+  await put(checkout, `eky_software/apps/e2e/playwright-report/${run}/results.private.json`,
+    JSON.stringify({ config: { secret: 'EXCLUDED' }, errors: [{ message }],
+      suites: [{ specs: [{ tests: [{ results: [{ retry: 0,
+        attachments: [{ name: 'inline', body: 'EXCLUDED' }] }] }] }] }] }));
+  const collected = await collectJobFailureEvidence(env);
+  const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+  const entry = archive.manifest.files.find(file => file.kind === 'playwrightReport');
+  assert.equal(entry.status, 'retained');
+  assert.ok(entry.bytes > 8 * 1024 * 1024);
+  const retained = Buffer.from(archive.files[entry.name], 'base64');
+  assert.equal(createHash('sha256').update(retained).digest('hex'), entry.sha256);
+  assert.equal(JSON.parse(retained).errors[0].message, message);
+  assert.equal(retained.includes(Buffer.from('EXCLUDED')), false);
+});
+
+test('MSI logs keep size and hardlink rejection at the approved 64 MiB boundary', async t => {
+  const { temp, env, put } = await fixture(t);
+  await put(temp, 'eky supervisor sample/1-source.log', Buffer.alloc(64 * 1024 * 1024 + 1));
   const linked = await put(temp, 'eky supervisor sample/2-target.log', 'not safe to copy');
   await link(linked, join(temp, 'eky supervisor sample/3-uninstall.log'));
   const { manifest } = await collectJobFailureEvidence(env);
@@ -376,12 +640,12 @@ test('unrelated temporary names do not consume the eligible evidence search budg
 
 test('oversized and hardlinked evidence is rejected without copying unrelated files', async t => {
   const { env, temp, put } = await fixture(t);
-  const large = await put(temp, 'eky supervisor abc/result.json', Buffer.alloc(8 * 1024 * 1024 + 1));
+  const large = await put(temp, 'eky supervisor abc/result.json', Buffer.alloc(64 * 1024 * 1024 + 1));
   await link(large, join(temp, 'eky supervisor abc/worker-result.json'));
   const { manifest } = await collectJobFailureEvidence(env);
   assert.equal(manifest.files.length, 2);
   assert.ok(manifest.files.every(entry => entry.status === 'unverified'));
-  await put(temp, 'eky supervisor def/result.json', Buffer.alloc(8 * 1024 * 1024 + 1));
+  await put(temp, 'eky supervisor def/result.json', Buffer.alloc(64 * 1024 * 1024 + 1));
   const another = await collectJobFailureEvidence(env);
   assert.ok(another.manifest.files.some(entry => entry.status === 'tooLarge'));
 });

@@ -44,8 +44,9 @@ export class WorkspaceBackupReplacementError extends Error {
   constructor(
     readonly code: WorkspaceBackupReplacementErrorCode,
     readonly stage: WorkspaceBackupReplacementStage,
+    options?: ErrorOptions,
   ) {
-    super(code);
+    super(code, options);
     this.name = 'WorkspaceBackupReplacementError';
   }
 }
@@ -57,5 +58,5 @@ export function mapWorkspaceBackupReplacementError(
 ): WorkspaceBackupReplacementError {
   return error instanceof WorkspaceBackupReplacementError
     ? error
-    : new WorkspaceBackupReplacementError(code, stage);
+    : new WorkspaceBackupReplacementError(code, stage, { cause: error });
 }

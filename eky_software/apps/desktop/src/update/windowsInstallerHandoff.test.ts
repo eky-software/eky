@@ -10,6 +10,28 @@ import {
 } from './windowsInstallerHandoff.js';
 
 describe('Windows installer update handoff', () => {
+  it('adds only native logging for the private test without changing UI or process ownership', async () => {
+    const processHandle = createProcessHandle();
+    const spawnProcess = vi.fn(() => processHandle);
+    const testLogPath = 'C:\\Temp\\proof\\target-installer.private.log';
+    const promise = launchWindowsInstallerForUpdate({
+      packagePath: 'C:\\Temp\\candidate.msi', systemRoot: 'C:\\Windows', testLogPath,
+    }, spawnProcess as never);
+    processHandle.emit('spawn');
+    await promise;
+    expect(spawnProcess).toHaveBeenCalledWith('C:\\Windows\\System32\\msiexec.exe',
+      ['/i', 'C:\\Temp\\candidate.msi', '/norestart', '/L*v', testLogPath],
+      { detached: true, shell: false, stdio: 'ignore', windowsHide: false });
+    expect(processHandle.unref).toHaveBeenCalledOnce();
+    for (const path of ['relative.private.log', 'C:\\Temp\\..\\target.private.log',
+      'C:\\Temp\\target.txt', 'C:\\Temp\\target.private.log\0']) {
+      spawnProcess.mockClear();
+      await expect(launchWindowsInstallerForUpdate({ packagePath: 'C:\\Temp\\candidate.msi',
+        systemRoot: 'C:\\Windows', testLogPath: path }, spawnProcess as never)).rejects.toThrow(WindowsInstallerHandoffError);
+      expect(spawnProcess).not.toHaveBeenCalled();
+    }
+  });
+
   it('uses only the fixed Windows executable and fixed MSI arguments', async () => {
     const processHandle = createProcessHandle();
     const spawnProcess = vi.fn(() => processHandle);

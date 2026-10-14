@@ -41,12 +41,13 @@ const defaultFileSystem: Readonly<W6b2EvidenceFileSystem> = Object.freeze({
 
 export async function snapshotW6b2PackagedWorkspaceEvidence(
   fixture: Readonly<W6b2PackagedWorkspaceFixture>,
+  phase: 'beforeContentFault' | 'prepared' = 'prepared',
 ): Promise<Readonly<W6b2PackagedWorkspaceEvidence>> {
   const canonicalRoot = await requireCanonicalEvidenceRoot(
     fixture.workspaceRoot,
     defaultFileSystem,
   );
-  const businessRowsSha256 = snapshotBusinessRows(fixture);
+  const businessRowsSha256 = snapshotBusinessRows(fixture, phase);
   const [
     archiveConfig,
     archiveJournal,
@@ -101,13 +102,17 @@ export function w6b2PackagedWorkspaceContentPreserved(
 
 function snapshotBusinessRows(
   fixture: Readonly<W6b2PackagedWorkspaceFixture>,
+  phase: 'beforeContentFault' | 'prepared',
 ): string {
   const database = new DatabaseSync(fixture.databaseFilePath, {
     open: true,
     readOnly: true,
   });
   try {
-    requireHealthyDatabase(database);
+    requireExpectedDatabaseHealth(
+      database,
+      fixture.fixtureKey === 'C' && phase === 'prepared',
+    );
     const rows = [
       requireRow(
         database,
@@ -243,7 +248,10 @@ function requireRow(
   return row;
 }
 
-function requireHealthyDatabase(database: DatabaseSync): void {
+function requireExpectedDatabaseHealth(
+  database: DatabaseSync,
+  expectSyntheticOrphanPayment: boolean,
+): void {
   const integrityRows = database
     .prepare('PRAGMA integrity_check;')
     .all() as readonly Record<string, unknown>[];
@@ -252,8 +260,42 @@ function requireHealthyDatabase(database: DatabaseSync): void {
     : undefined;
   if (
     integrityRows.length !== 1 ||
-    integrityResult !== 'ok' ||
-    database.prepare('PRAGMA foreign_key_check;').all().length !== 0
+    integrityResult !== 'ok'
+  ) {
+    throw new Error('W6B2_EVIDENCE_SQLITE_INVALID');
+  }
+  const foreignKeyRows = database.prepare('PRAGMA foreign_key_check;').all();
+  if (!expectSyntheticOrphanPayment) {
+    if (foreignKeyRows.length !== 0) {
+      throw new Error('W6B2_EVIDENCE_SQLITE_INVALID');
+    }
+    return;
+  }
+
+  // C contains exactly the ordinary-content fault used by the first-start proof.
+  // This is not a schema/history attestation or a general invalid-data allowance.
+  const orphan = database.prepare(`
+    SELECT rowid, id, company_id, invoice_id, actor_user_id, action,
+           payment_source, paid_on, amount_cents, occurred_at
+    FROM invoice_payment_events WHERE id = ?
+  `).get('synthetic-orphan-payment');
+  const foreignKey = foreignKeyRows[0];
+  if (
+    orphan === undefined ||
+    orphan.id !== 'synthetic-orphan-payment' ||
+    orphan.company_id !== 'synthetic-company' ||
+    orphan.invoice_id !== 'missing-invoice' ||
+    orphan.actor_user_id !== 'synthetic-actor' ||
+    orphan.action !== 'paymentMarkedPaid' ||
+    orphan.payment_source !== 'manual' ||
+    orphan.paid_on !== '2026-01-01' ||
+    orphan.amount_cents !== 1 ||
+    orphan.occurred_at !== '2026-01-01T00:00:00.000Z' ||
+    foreignKeyRows.length !== 1 ||
+    foreignKey?.table !== 'invoice_payment_events' ||
+    foreignKey.rowid !== orphan.rowid ||
+    foreignKey.parent !== 'invoices' ||
+    foreignKey.fkid !== 0
   ) {
     throw new Error('W6B2_EVIDENCE_SQLITE_INVALID');
   }

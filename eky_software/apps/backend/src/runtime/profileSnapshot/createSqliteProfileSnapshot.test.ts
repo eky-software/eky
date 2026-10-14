@@ -16,7 +16,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import Database from 'better-sqlite3';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { runMigrations } from '../../database/migration/runMigrations.js';
 import { ProfileMaintenanceState } from '../profileMaintenance/profileMaintenanceState.js';
@@ -25,10 +25,12 @@ import {
   SqliteProfileSnapshotService,
 } from './createSqliteProfileSnapshot.js';
 import { inspectSqliteProfileDatabase } from './inspectSqliteProfileDatabase.js';
+import * as snapshotInspector from './inspectSqliteProfileDatabase.js';
 
 const temporaryRoots: string[] = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(
     temporaryRoots.splice(0).map((path) =>
       rm(path, { force: true, recursive: true }),
@@ -37,7 +39,31 @@ afterEach(async () => {
 });
 
 describe('SQLite profile snapshot', () => {
-  it('BACKUP-SNAPSHOT-001 @critical backs up WAL data and verifies integrity, migrations and metadata', async () => {
+  it('creates closed WAL snapshot bytes without opening the snapshot for inspection', async () => {
+    const fixture = await createFixture();
+    const operationId = randomUUID();
+    const inspector = vi.spyOn(snapshotInspector, 'inspectSqliteProfileDatabase')
+      .mockImplementation(() => {
+        throw new Error('TEST_SNAPSHOT_INSPECTION_MUST_BE_ISOLATED');
+      });
+    await fixture.maintenanceState.begin(operationId, 1_000);
+    try {
+      const metadata = await fixture.service.createSqliteSnapshot({
+        migrationPolicy: 'exactCurrentManifest',
+        operationId,
+        signal: new AbortController().signal,
+      });
+      const operationRoot = join(fixture.stagingRoot, operationId);
+      expect(inspector).not.toHaveBeenCalled();
+      expect(await readdir(operationRoot)).toEqual(['profile.sqlite']);
+      expect(metadata.sha256).toBe(await sha256(join(operationRoot, 'profile.sqlite')));
+    } finally {
+      fixture.maintenanceState.end(operationId);
+      fixture.database.close();
+    }
+  });
+
+  it('BACKUP-SNAPSHOT-001 @critical backs up WAL data as independently inspectable bytes and metadata', async () => {
     const fixture = await createFixture();
     const operationId = randomUUID();
 
@@ -59,6 +85,8 @@ describe('SQLite profile snapshot', () => {
       operationId,
       'profile.sqlite',
     );
+    expect(await readdir(join(fixture.stagingRoot, operationId)))
+      .toEqual(['profile.sqlite']);
     const snapshot = new Database(snapshotPath, {
       fileMustExist: true,
       readonly: true,
@@ -134,7 +162,7 @@ describe('SQLite profile snapshot', () => {
     fixture.database.close();
   });
 
-  it('rejects migration mismatch and removes an incomplete snapshot', async () => {
+  it('leaves migration mismatch rejection to the isolated snapshot inspector', async () => {
     const fixture = await createFixture();
     const operationId = randomUUID();
     await writeFile(
@@ -144,22 +172,27 @@ describe('SQLite profile snapshot', () => {
     );
     await fixture.maintenanceState.begin(operationId, 1_000);
 
-    await expect(
-      fixture.service.createSqliteSnapshot({
+    try {
+      const metadata = await fixture.service.createSqliteSnapshot({
         migrationPolicy: 'exactCurrentManifest',
         operationId,
         signal: new AbortController().signal,
-      }),
-    ).rejects.toThrow('PROFILE_SNAPSHOT_DATABASE_FAILED');
-    await expect(
-      lstat(join(fixture.stagingRoot, operationId)),
-    ).rejects.toMatchObject({ code: 'ENOENT' });
-
-    fixture.maintenanceState.end(operationId);
-    fixture.database.close();
+      });
+      const operationRoot = join(fixture.stagingRoot, operationId);
+      const snapshotPath = join(operationRoot, metadata.logicalPath);
+      expect(await readdir(operationRoot)).toEqual(['profile.sqlite']);
+      expect(metadata.sha256).toBe(await sha256(snapshotPath));
+      expect(() => inspectSqliteProfileDatabase(
+        snapshotPath, fixture.migrationsDirectory, 'exactCurrentManifest',
+      )).toThrow('PROFILE_SNAPSHOT_MIGRATIONS_INVALID');
+      expect(await sha256(snapshotPath)).toBe(metadata.sha256);
+    } finally {
+      fixture.maintenanceState.end(operationId);
+      fixture.database.close();
+    }
   });
 
-  it('accepts an immutable historical migration prefix only when explicitly requested', async () => {
+  it('preserves an immutable historical prefix for its explicit inspection policy', async () => {
     const fixture = await createFixture();
     const operationId = randomUUID();
     await writeFile(
@@ -231,7 +264,6 @@ describe('SQLite profile snapshot', () => {
     const service = createSqliteProfileSnapshotService({
       database,
       maintenanceState,
-      migrationsDirectory: currentMigrationsDirectory,
       stagingRoot,
     });
     const operationId = randomUUID();
@@ -283,9 +315,6 @@ describe('SQLite profile snapshot', () => {
 
   it('cleans staging after a backup adapter failure', async () => {
     const stagingRoot = await createTemporaryRoot('eky-snapshot-staging-');
-    const migrationsDirectory = await createTemporaryRoot(
-      'eky-snapshot-migrations-',
-    );
     const maintenanceState = new ProfileMaintenanceState();
     const operationId = randomUUID();
     await maintenanceState.begin(operationId, 1_000);
@@ -294,7 +323,6 @@ describe('SQLite profile snapshot', () => {
         throw new Error('private database path and details');
       },
       maintenanceState,
-      migrationsDirectory,
       stagingRoot,
     });
 
@@ -372,7 +400,6 @@ async function createFixture(): Promise<{
     service: createSqliteProfileSnapshotService({
       database,
       maintenanceState,
-      migrationsDirectory,
       stagingRoot,
     }),
     stagingRoot,

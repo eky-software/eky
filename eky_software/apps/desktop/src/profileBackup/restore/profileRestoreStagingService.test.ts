@@ -10,13 +10,137 @@ import {
   type BackupContainerSourceEntry,
 } from '../container/backupContainerWriter.js';
 import type { ProfileRecoveryOperationalEvent } from '../profileRecoveryOperationalObserver.js';
-import { ProfileRestoreStagingService } from './profileRestoreStagingService.js';
+import { profileInspectionFailureCauses } from '../../runtime/profileInspectionFailure.js';
+import type { ProfileInspectionReceipt } from '../../runtime/profileInspectionMessages.js';
+import { ProfileRestoreStagingError, ProfileRestoreStagingService } from './profileRestoreStagingService.js';
 
 const password = 'Eky restore staging password 2026!';
 const migrationChainIdentity = 'b'.repeat(64);
 const profileId = 'a'.repeat(64);
 
 describe('profile restore staging service', () => {
+  it('tracks inspect, waiting staging and explicit discard with the same required owner port', withOwnedRoots(async roots => {
+    const fixture = await createFixture(roots);
+    const inspection = await fixture.service.inspect({ containerPath: fixture.containerPath, password });
+    expect(fixture.ownershipCalls).toEqual(['entered', 'remove', 'left']);
+    fixture.ownershipCalls.length = 0;
+    const prepared = await fixture.service.stage({ inspectionId: inspection.inspectionId, password });
+    expect(fixture.ownershipCalls).toEqual(['entered', 'use', 'left']);
+    await expect(fileSystem.readFile(join(fixture.stagingRoot, prepared.operationId, 'profile.sqlite'), 'utf8'))
+      .resolves.toBe('synthetic sqlite');
+    fixture.ownershipCalls.length = 0;
+    await fixture.service.discardPreparedRestore(prepared.operationId);
+    expect(fixture.ownershipCalls).toEqual(['entered', 'remove', 'left']);
+    expect(fixture.service.getPreparedRestore(prepared.operationId)).toBeUndefined();
+  }));
+
+  it('does not decrypt or validate after the main inspection owner closes admission', withOwnedRoots(async roots => {
+    const fixture = await createFixture(roots, { admissionError: new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED') });
+    await expect(fixture.service.inspect({ containerPath: fixture.containerPath, password }))
+      .rejects.toThrow('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+    expect(fixture.events).toEqual([]);
+    expect(fixture.ownershipCalls).toEqual(['entered']);
+    await expect(fileSystem.readdir(fixture.stagingRoot)).resolves.toEqual([]);
+  }));
+
+  it('keeps inspected staging and refuses another operation when its owned cleanup cannot be verified', withOwnedRoots(async roots => {
+    const fixture = await createFixture(roots, { removalErrorAtCall: 1 });
+    await expect(fixture.service.inspect({ containerPath: fixture.containerPath, password }))
+      .rejects.toMatchObject({ code: 'BACKUP_INSPECTION_UNAVAILABLE', cleanupStatus: 'unverified' });
+    await expect(fileSystem.readFile(join(fixture.stagingRoot, fixture.operationIds[0]!, 'profile.sqlite'), 'utf8'))
+      .resolves.toBe('synthetic sqlite');
+    await expect(fixture.service.inspect({ containerPath: fixture.containerPath, password }))
+      .rejects.toMatchObject({ code: 'PROFILE_RESTORE_BUSY' });
+    expect(fixture.ownershipCalls.filter(call => call === 'remove')).toHaveLength(1);
+    expect(fixture.operationalEvents[0]).toMatchObject({
+      eventName: 'restore.inspectionFailed', errorCode: 'PROFILE_INSPECTION_CLEANUP_UNVERIFIED', sideEffectState: 'unknown',
+    });
+  }));
+
+  it('retains the first schema failure separately from unverified staging cleanup and keeps the bytes', withOwnedRoots(async roots => {
+    const original = new Error('PROFILE_SCHEMA_UNSUPPORTED');
+    const fixture = await createFixture(roots, {
+      validationError: original, validationErrorAtCall: 2, removalErrorAtCall: 2,
+    });
+    const inspection = await fixture.service.inspect({ containerPath: fixture.containerPath, password });
+    const failure = await fixture.service.stage({ inspectionId: inspection.inspectionId, password }).catch(error => error as Error);
+    expect(failure).toMatchObject({ code: 'PROFILE_RESTORE_STAGING_FAILED' });
+    const combined = (failure as Error).cause as AggregateError;
+    expect(combined.errors[0]).toMatchObject({ code: 'BACKUP_CONTENT_INVALID', cause: original });
+    expect(combined.errors[1]).toMatchObject({ message: 'PROFILE_INSPECTION_CLEANUP_UNVERIFIED' });
+    expect(fixture.operationalEvents.at(-1)).toMatchObject({
+      eventName: 'restore.stagingFailed', errorCode: 'PROFILE_SCHEMA_UNSUPPORTED', sideEffectState: 'unknown',
+    });
+    await expect(fileSystem.readFile(join(fixture.stagingRoot, fixture.operationIds[2]!, 'profile.sqlite'), 'utf8'))
+      .resolves.toBe('synthetic sqlite');
+    expect(fixture.service.getPreparedRestore(fixture.operationIds[2]!)).toBeUndefined();
+    await expect(fixture.service.stage({ inspectionId: inspection.inspectionId, password }))
+      .rejects.toMatchObject({ code: 'PROFILE_RESTORE_BUSY' });
+  }));
+
+  it('does not publish a prepared slot when the final ownership check rejects its receipt', withOwnedRoots(async roots => {
+    const fixture = await createFixture(roots, { postUseError: new Error('PROFILE_INSPECTION_PROTOCOL_INVALID') });
+    const inspection = await fixture.service.inspect({ containerPath: fixture.containerPath, password });
+    await expect(fixture.service.stage({ inspectionId: inspection.inspectionId, password }))
+      .rejects.toMatchObject({ code: 'PROFILE_RESTORE_STAGING_FAILED' });
+    expect(fixture.service.getPreparedRestore(fixture.operationIds[2]!)).toBeUndefined();
+    expect(fixture.operationalEvents.at(-1)).toMatchObject({ errorCode: 'PROFILE_INSPECTION_PROTOCOL_INVALID', sideEffectState: 'none' });
+    await expect(fileSystem.readdir(fixture.stagingRoot)).resolves.toEqual([]);
+  }));
+
+  it('keeps a failed discard non-activatable and never retries destructive cleanup implicitly', withOwnedRoots(async roots => {
+    const fixture = await createFixture(roots, { removalErrorAtCall: 2 });
+    const inspection = await fixture.service.inspect({ containerPath: fixture.containerPath, password });
+    const prepared = await fixture.service.stage({ inspectionId: inspection.inspectionId, password });
+    await expect(fixture.service.discardPreparedRestore(prepared.operationId))
+      .rejects.toMatchObject({ code: 'PROFILE_RESTORE_STAGING_FAILED' });
+    expect(fixture.service.getPreparedRestore(prepared.operationId)).toBeUndefined();
+    expect(fixture.operationalEvents.at(-1)).toMatchObject({
+      correlationId: prepared.operationId,
+      eventName: 'restore.stagingFailed',
+      errorCode: 'PROFILE_INSPECTION_CLEANUP_UNVERIFIED',
+      retryable: false,
+      sideEffectState: 'unknown',
+      stage: 'staging',
+    });
+    expect(() => fixture.service.claimPreparedRestore(prepared.operationId)).toThrow('PROFILE_RESTORE_BUSY');
+    await expect(fixture.service.discardPreparedRestore(prepared.operationId)).rejects.toThrow('PROFILE_RESTORE_BUSY');
+    expect(fixture.ownershipCalls.filter(call => call === 'remove')).toHaveLength(2);
+    await expect(fileSystem.readFile(join(fixture.stagingRoot, prepared.operationId, 'profile.sqlite'), 'utf8'))
+      .resolves.toBe('synthetic sqlite');
+  }));
+
+  it('keeps staged bytes non-discardable during activation and after durable handoff', withOwnedRoots(async (roots) => {
+    const fixture = await createFixture(roots);
+    const inspection = await fixture.service.inspect({ containerPath: fixture.containerPath, password });
+    const prepared = await fixture.service.stage({ inspectionId: inspection.inspectionId, password });
+    const claim = fixture.service.claimPreparedRestore(prepared.operationId)!;
+    const databasePath = join(fixture.stagingRoot, prepared.operationId, 'profile.sqlite');
+
+    await expect(fixture.service.discardPreparedRestore(prepared.operationId)).rejects.toBeInstanceOf(ProfileRestoreStagingError);
+    expect(() => fixture.service.claimPreparedRestore(prepared.operationId)).toThrow(ProfileRestoreStagingError);
+    claim.preserveForRecovery();
+    claim.release();
+    expect(fixture.service.getPreparedRestore(prepared.operationId)).toBeUndefined();
+    await expect(fixture.service.discardPreparedRestore(prepared.operationId)).rejects.toThrow('PROFILE_RESTORE_BUSY');
+    await expect(fixture.service.inspect({ containerPath: fixture.containerPath, password }))
+      .rejects.toMatchObject({ code: 'PROFILE_RESTORE_BUSY' });
+    await expect(fileSystem.readFile(databasePath, 'utf8')).resolves.toBe('synthetic sqlite');
+    await expect(fileSystem.readFile(fixture.activeSentinelPath, 'utf8')).resolves.toBe('active profile remains untouched');
+  }));
+
+  it('allows explicit discard again after a failed pre-journal activation releases its claim', withOwnedRoots(async (roots) => {
+    const fixture = await createFixture(roots);
+    const inspection = await fixture.service.inspect({ containerPath: fixture.containerPath, password });
+    const prepared = await fixture.service.stage({ inspectionId: inspection.inspectionId, password });
+    const claim = fixture.service.claimPreparedRestore(prepared.operationId)!;
+    claim.release();
+    await fixture.service.discardPreparedRestore(prepared.operationId);
+    expect(fixture.service.getPreparedRestore(prepared.operationId)).toBeUndefined();
+    await expect(fileSystem.lstat(join(fixture.stagingRoot, prepared.operationId))).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(fileSystem.readFile(fixture.activeSentinelPath, 'utf8')).resolves.toBe('active profile remains untouched');
+  }));
+
   it('RESTORE-STAGE-001 @critical creates a pre-restore point and retains a validated same-profile staging tree', withOwnedRoots(async (roots) => {
     const fixture = await createFixture(roots);
     const inspection = await fixture.service.inspect({
@@ -159,6 +283,112 @@ describe('profile restore staging service', () => {
     await expect(
       fileSystem.readdir(fixture.stagingRoot),
     ).resolves.toEqual([]);
+  }));
+
+  it('preserves both internal wrapping levels when reinspection rejects staging', withOwnedRoots(async (roots) => {
+    const original = new Error('PROFILE_SCHEMA_UNSUPPORTED');
+    const fixture = await createFixture(roots, {
+      validationError: original,
+      validationErrorAtCall: 2,
+    });
+    const inspection = await fixture.service.inspect({
+      containerPath: fixture.containerPath,
+      password,
+    });
+
+    const failure: unknown = await fixture.service.stage({
+      inspectionId: inspection.inspectionId,
+      password,
+    }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: 'PROFILE_RESTORE_STAGING_FAILED',
+      message: 'PROFILE_RESTORE_STAGING_FAILED',
+    });
+    const contentFailure = (failure as Error).cause as Error;
+    expect(contentFailure).toMatchObject({ code: 'BACKUP_CONTENT_INVALID' });
+    expect(contentFailure.cause).toBe(original);
+    expect(JSON.stringify(failure)).not.toContain(original.message);
+    expect(fixture.operationalEvents.at(-1)).toMatchObject({
+      errorCode: 'PROFILE_SCHEMA_UNSUPPORTED',
+      eventName: 'restore.stagingFailed',
+    });
+    await expect(fileSystem.readFile(fixture.activeSentinelPath, 'utf8'))
+      .resolves.toBe('active profile remains untouched');
+  }));
+
+  for (const cause of profileInspectionFailureCauses) {
+    it(`preserves ${cause} in inspection diagnostics without exposing the cause`, withOwnedRoots(async (roots) => {
+      const original = new Error('synthetic private inspection detail', {
+        cause: new Error(cause),
+      });
+      const fixture = await createFixture(roots, {
+        validationError: original,
+        validationErrorAtCall: 1,
+      });
+      await expect(fixture.service.inspect({
+        containerPath: fixture.containerPath,
+        password,
+      })).rejects.toMatchObject({ code: 'BACKUP_CONTENT_INVALID', cause: original });
+      expect(fixture.operationalEvents.at(-1)).toMatchObject({
+        errorCode: cause,
+        eventName: 'restore.inspectionFailed',
+        retryable: false,
+        sideEffectState: 'none',
+        stage: 'inspection',
+      });
+      expect(JSON.stringify(fixture.operationalEvents)).not.toContain(original.message);
+      await expect(fileSystem.readFile(fixture.activeSentinelPath, 'utf8'))
+        .resolves.toBe('active profile remains untouched');
+    }));
+
+    it(`preserves ${cause} through staging wrappers`, withOwnedRoots(async (roots) => {
+      const original = new Error('synthetic private staging detail', {
+        cause: new Error(cause),
+      });
+      const fixture = await createFixture(roots, {
+        validationError: original,
+        validationErrorAtCall: 2,
+      });
+      const inspection = await fixture.service.inspect({
+        containerPath: fixture.containerPath,
+        password,
+      });
+      const failure: unknown = await fixture.service.stage({
+        inspectionId: inspection.inspectionId,
+        password,
+      }).catch((error: unknown) => error);
+      expect(failure).toMatchObject({ code: 'PROFILE_RESTORE_STAGING_FAILED' });
+      expect(((failure as Error).cause as Error).cause).toBe(original);
+      expect(fixture.operationalEvents.at(-1)).toMatchObject({
+        errorCode: cause,
+        eventName: 'restore.stagingFailed',
+        retryable: false,
+        sideEffectState: 'none',
+        stage: 'staging',
+      });
+      expect(JSON.stringify(fixture.operationalEvents)).not.toContain(original.message);
+      await expect(fileSystem.readFile(fixture.activeSentinelPath, 'utf8'))
+        .resolves.toBe('active profile remains untouched');
+    }));
+  }
+
+  it('does not promote an aggregate cleanup cause over unknown staging failure', withOwnedRoots(async (roots) => {
+    const original = new AggregateError([
+      new Error('synthetic unknown primary'),
+      new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED'),
+    ], 'synthetic aggregate');
+    const fixture = await createFixture(roots, {
+      validationError: original,
+      validationErrorAtCall: 2,
+    });
+    const inspection = await fixture.service.inspect({ containerPath: fixture.containerPath, password });
+    await expect(fixture.service.stage({ inspectionId: inspection.inspectionId, password }))
+      .rejects.toMatchObject({ code: 'PROFILE_RESTORE_STAGING_FAILED' });
+    expect(fixture.operationalEvents.at(-1)).toMatchObject({
+      errorCode: 'PROFILE_RESTORE_STAGING_FAILED',
+      eventName: 'restore.stagingFailed',
+    });
   }));
 
   it('expires and consumes inspection identifiers', withOwnedRoots(async (roots) => {
@@ -392,6 +622,7 @@ interface Fixture {
   now: Date;
   operationIds: string[];
   operationalEvents: ProfileRecoveryOperationalEvent[];
+  ownershipCalls: string[];
   service: ProfileRestoreStagingService;
   sourceEntries: BackupContainerSourceEntry[];
   stagingRoot: string;
@@ -403,6 +634,11 @@ async function createFixture(
     activeProfileIsEmpty?: boolean;
     preRestoreError?: Error;
     profileMatchesActive?: boolean;
+    validationError?: Error;
+    validationErrorAtCall?: number;
+    admissionError?: Error;
+    removalErrorAtCall?: number;
+    postUseError?: Error;
   } = {},
 ): Promise<Fixture> {
   const root = await fileSystem.mkdtemp(
@@ -451,6 +687,7 @@ async function createFixture(
   const operationIds = [randomUUID(), randomUUID(), randomUUID()];
   const events: string[] = [];
   const operationalEvents: ProfileRecoveryOperationalEvent[] = [];
+  const ownershipCalls: string[] = [];
   const now = new Date('2026-08-04T12:00:00.000Z');
   const containerPath = join(root, 'backup.ekybackup');
   const fixtureBase = {
@@ -460,13 +697,20 @@ async function createFixture(
     now,
     operationIds,
     operationalEvents,
+    ownershipCalls,
     sourceEntries,
     stagingRoot,
   };
   await writeFixture(fixtureBase);
   let operationIndex = 0;
+  let validationCallCount = 0;
+  let removalCallCount = 0;
   const validateProfileSnapshot = vi.fn(async () => {
     events.push('validate');
+    validationCallCount += 1;
+    if (validationCallCount === options.validationErrorAtCall) {
+      throw options.validationError;
+    }
     return {
       activeProfileIsEmpty: options.activeProfileIsEmpty ?? false,
       artifactCount: 1,
@@ -484,8 +728,32 @@ async function createFixture(
     service: new ProfileRestoreStagingService({
       now: () => now,
       observer: { observe: (event) => operationalEvents.push(event) },
-      operationIdFactory: () => operationIds[operationIndex++]!,
-      profileSnapshotClient: { validateProfileSnapshot },
+      operationIdFactory: () => operationIds[operationIndex++] ?? randomUUID(),
+      profileSnapshotClient: {
+        validateProfileSnapshot,
+        async withInspectionOperation<T>(operation: () => Promise<T>): Promise<T> {
+          ownershipCalls.push('entered');
+          if (options.admissionError !== undefined) throw options.admissionError;
+          try { return await operation(); }
+          finally { ownershipCalls.push('left'); }
+        },
+        async withProfileSnapshot<T>(_operationId: string, use: (receipt: ProfileInspectionReceipt) => Promise<T>): Promise<T> {
+          ownershipCalls.push('use');
+          const value = await use({
+            artifactCount: 1, artifactIdentity: 'e'.repeat(64), artifactTotalByteSize: 30, databaseHealth: 'healthy',
+            migrationChainIdentity, profileId, migrationPolicy: 'restoreCompatible',
+            database: { byteSize: 1, sha256: 'c'.repeat(64) }, artifactCatalog: { byteSize: 1, sha256: 'd'.repeat(64) },
+          });
+          if (options.postUseError !== undefined) throw options.postUseError;
+          return value;
+        },
+        async removeProfileSnapshot(operationId: string): Promise<void> {
+          ownershipCalls.push('remove');
+          removalCallCount += 1;
+          if (removalCallCount === options.removalErrorAtCall) throw new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+          await fileSystem.rm(join(stagingRoot, operationId), { force: true, recursive: true });
+        },
+      },
       quarantineRoot,
       recoveryPointService: {
         async createPreRestore() {

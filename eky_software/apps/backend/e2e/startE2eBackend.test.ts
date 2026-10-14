@@ -8,6 +8,7 @@ import { startServer } from '../src/http/server.js';
 import { createBackendOperationalEvent } from '../src/observability/createOperationalEvent.js';
 import { readE2eBackendConfig, type E2eBackendConfig } from './e2eBackendConfig.js';
 import { startE2eBackend } from './startE2eBackend.js';
+import { installE2eDatabaseFault } from './installE2eDatabaseFault.js';
 
 vi.mock('../src/http/server.js', () => ({ startServer: vi.fn() }));
 vi.mock('./e2eBackendConfig.js', () => ({ readE2eBackendConfig: vi.fn() }));
@@ -40,11 +41,15 @@ describe('E2E backend startup logger wiring', () => {
       const observer = vi.fn((_stage: string) => {
         if (mode === 'throws') throw new Error('synthetic observer failure');
       });
+      const migrationObserver = vi.fn();
       vi.mocked(startServer).mockImplementation(async (options) => {
         const logger = options?.appOptions?.operationalLogger;
         const identity = options?.appOptions?.operationalIdentity;
         expect(logger).toBeDefined();
         expect(identity).toBeDefined();
+        expect(options?.appOptions?.migrationStartupObserver).toBe(
+          mode === 'absent' ? undefined : migrationObserver,
+        );
         logger!.write(createBackendOperationalEvent({ eventName: 'migration.started' }, identity!));
         logger!.write(createBackendOperationalEvent({ eventName: 'migration.completed' }, identity!));
         logger!.write(createBackendOperationalEvent({
@@ -55,9 +60,10 @@ describe('E2E backend startup logger wiring', () => {
       });
 
       const result = await startE2eBackend(join(root, 'config.json'),
-        mode === 'absent' ? {} : { observeStartupLog: observer });
+        mode === 'absent' ? {} : { observeStartupLog: observer, observeMigrationStartup: migrationObserver });
       expect(result.server).toBe(server);
       expect(startServer).toHaveBeenCalledTimes(1);
+      expect(installE2eDatabaseFault).toHaveBeenCalledAfter(startServer);
       expect(observer.mock.calls).toEqual(mode === 'absent' ? [] : [
         ['migration.started.log.entered'], ['migration.started.log.returned'],
         ['migration.completed.log.entered'], ['migration.completed.log.returned'],
@@ -71,6 +77,37 @@ describe('E2E backend startup logger wiring', () => {
       expect(recordedNames.sort()).toEqual([
         'migration.completed', 'migration.failed', 'migration.started',
       ]);
+    });
+  }
+
+  for (const closeFails of [false, true]) {
+    it(`closes the admitted server after fault installation fails (close fails: ${closeFails})`, async () => {
+      const root = mkdtempSync(join(tmpdir(), 'eky-fault-close-'));
+      roots.push(root);
+      vi.mocked(readE2eBackendConfig).mockReturnValue({
+        formatVersion: 1, marker: 'EKY_E2E', scenarioId: 'SYS-FAULT-CLOSE-001',
+        runtimeRoot: root, smtpAdapter: 'fake', faultPlan: { kind: 'none' },
+        backend: { host: '127.0.0.1', port: 0, sessionSecret: 's'.repeat(43) },
+        paths: {
+          artifactsRoot: join(root, 'artifacts'), databaseFilePath: join(root, 'database.sqlite'),
+          documentsRoot: join(root, 'documents'), incidentsRoot: join(root, 'incidents'),
+          logsRoot: join(root, 'logs'), supportBundlesRoot: join(root, 'support'), tempRoot: join(root, 'temp'),
+        },
+      });
+      const original = new Error('synthetic fault installation failure');
+      const cleanup = new Error('synthetic server close failure');
+      const close = vi.fn(async () => { if (closeFails) throw cleanup; });
+      vi.mocked(startServer).mockResolvedValue({ close, hostname: '127.0.0.1', port: 0 });
+      vi.mocked(installE2eDatabaseFault).mockImplementation(() => { throw original; });
+      const outcome = startE2eBackend(join(root, 'config.json'));
+      if (closeFails) {
+        await expect(outcome).rejects.toMatchObject({ cause: original, errors: [original, cleanup] });
+      } else {
+        await expect(outcome).rejects.toBe(original);
+      }
+      expect(close).toHaveBeenCalledOnce();
+      expect(installE2eDatabaseFault).toHaveBeenCalledAfter(startServer);
+      expect(close).toHaveBeenCalledAfter(installE2eDatabaseFault);
     });
   }
 });

@@ -7,7 +7,9 @@ import {
 import {
   desktopBackendReadinessTimeoutMilliseconds,
   parseDesktopBackendStatus,
+  type DesktopBackendRestoreShutdownMessage,
   type DesktopBackendStartMessage,
+  type DesktopBackendUpdateShutdownMessage,
 } from './backendMessages.js';
 import { createDesktopBackendEnvironment } from './backendEnvironment.js';
 import { isOperationId } from '../profileBackup/profileSnapshotBrokerProtocol.js';
@@ -65,6 +67,7 @@ export interface DesktopBackendHandle {
   port: number;
   stop(): Promise<BackendShutdownOutcome>;
   stopForUpdate(operationId: string): Promise<void>;
+  stopForRestore(operationId: string): Promise<void>;
 }
 
 export function startDesktopBackend(
@@ -256,7 +259,7 @@ export function startDesktopBackend(
 
     async function stopBackend(
       forceAfterTimeout: boolean,
-      operationId?: string,
+      protectedCommand?: DesktopBackendUpdateShutdownMessage | DesktopBackendRestoreShutdownMessage,
     ): Promise<BackendShutdownOutcome> {
       if (stopping) {
         throw new Error('BACKEND_STOP_ALREADY_STARTED');
@@ -277,9 +280,7 @@ export function startDesktopBackend(
       });
       let requestFailed = false;
       try {
-        processHandle.postMessage(operationId === undefined
-          ? { type: 'shutdown' }
-          : { type: 'shutdownForUpdate', operationId });
+        processHandle.postMessage(protectedCommand ?? { type: 'shutdown' });
       }
       catch (error) {
         requestFailed = true;
@@ -451,7 +452,11 @@ export function startDesktopBackend(
         },
         async stopForUpdate(operationId) {
           if (!isOperationId(operationId)) throw new Error('BACKEND_STOP_OPERATION_INVALID');
-          await stopBackend(false, operationId);
+          await stopBackend(false, { type: 'shutdownForUpdate', operationId });
+        },
+        async stopForRestore(operationId) {
+          if (!isOperationId(operationId)) throw new Error('BACKEND_STOP_OPERATION_INVALID');
+          await stopBackend(false, { type: 'shutdownForRestore', operationId });
         },
       });
     });

@@ -20,7 +20,8 @@ test('complete light-run workflow and API evidence returns success, missing secu
   const jobs = [
     ['V2 cadence contracts (ubuntu-latest)', ['Verify risk and result contracts']],
     ['V2 cadence contracts (windows-latest)', ['Verify risk and result contracts']],
-    ['core / Test, typecheck and build', ['Run tests', 'Run typecheck', 'Build backend', 'Build web', 'Build desktop']],
+    ['core / Test, typecheck and build', ['Run tests', 'Run typecheck', 'Build backend', 'Build web', 'Build desktop',
+      'Prepare Linux inspection Electron runtime', 'Verify Linux isolated profile inspection']],
     ['core / System security E2E', ['Run isolated system security E2E tests']],
     ['core / Web critical E2E', ['Run critical web E2E journeys']],
   ].map(([name, steps], index) => ({ ...job(index + 1), name, status: 'completed', conclusion: 'success',

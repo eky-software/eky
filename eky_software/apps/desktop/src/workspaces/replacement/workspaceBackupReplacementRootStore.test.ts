@@ -125,6 +125,102 @@ describe('workspace backup replacement root store', () => {
     });
   });
 
+  it.each(['inspectionRoot', 'wal', 'hardlinkedDatabase'] as const)(
+    'preserves source staging before rejecting ambiguous candidate %s',
+    async (ambiguity) => {
+      const fixture = await createFixture();
+      await fixture.store.prepareCandidate(fixture.paths);
+      await mkdir(fixture.paths.importStagingRoot, {
+        mode: 0o700,
+        recursive: true,
+      });
+      const sourcePath = join(fixture.paths.importStagingRoot, 'profile.sqlite');
+      await writeFile(sourcePath, 'original staged snapshot');
+      await writeFile(fixture.paths.candidateDatabasePath, 'candidate database');
+      if (ambiguity === 'inspectionRoot') {
+        const inspectionRoot = join(
+          fixture.paths.activationStagingOperationRoot,
+          'inspection-unresolved',
+        );
+        await mkdir(inspectionRoot, { mode: 0o700 });
+        await writeFile(
+          join(inspectionRoot, 'inspection.sqlite'),
+          'retained inspection copy',
+        );
+      } else if (ambiguity === 'wal') {
+        await writeFile(
+          fixture.paths.candidateDatabasePath + '-wal',
+          'retained wal',
+        );
+      } else {
+        await link(
+          fixture.paths.candidateDatabasePath,
+          join(fixture.root, 'linked-candidate.sqlite'),
+        );
+      }
+
+      await expect(
+        fixture.store.discardBeforeActivation(fixture.paths),
+      ).rejects.toMatchObject({
+        code: 'WORKSPACE_REPLACEMENT_STORAGE_FAILED',
+        stage: 'cleanup',
+      });
+
+      await expect(readFile(sourcePath, 'utf8')).resolves.toBe(
+        'original staged snapshot',
+      );
+      await expect(
+        readFile(fixture.paths.candidateDatabasePath, 'utf8'),
+      ).resolves.toBe('candidate database');
+      await expect(
+        readFile(fixture.paths.activeDatabasePath, 'utf8'),
+      ).resolves.toBe('old database');
+      if (ambiguity === 'inspectionRoot') {
+        const inspectionPath = join(
+          fixture.paths.activationStagingOperationRoot,
+          'inspection-unresolved',
+          'inspection.sqlite',
+        );
+        await expect(readFile(inspectionPath, 'utf8')).resolves.toBe(
+          'retained inspection copy',
+        );
+      } else if (ambiguity === 'wal') {
+        await expect(
+          readFile(fixture.paths.candidateDatabasePath + '-wal', 'utf8'),
+        ).resolves.toBe('retained wal');
+      } else {
+        expect((await lstat(fixture.paths.candidateDatabasePath)).nlink).toBe(2);
+      }
+    },
+  );
+
+  it('preserves the candidate when source staging has an unowned hard link', async () => {
+    const fixture = await createFixture();
+    await fixture.store.prepareCandidate(fixture.paths);
+    await mkdir(fixture.paths.importStagingRoot, {
+      mode: 0o700,
+      recursive: true,
+    });
+    const sourcePath = join(fixture.paths.importStagingRoot, 'profile.sqlite');
+    await writeFile(sourcePath, 'original staged snapshot');
+    await link(sourcePath, join(fixture.root, 'linked-source.sqlite'));
+    await writeFile(fixture.paths.candidateDatabasePath, 'candidate database');
+
+    await expect(
+      fixture.store.discardBeforeActivation(fixture.paths),
+    ).rejects.toMatchObject({
+      code: 'WORKSPACE_REPLACEMENT_STORAGE_FAILED',
+      stage: 'cleanup',
+    });
+
+    await expect(readFile(sourcePath, 'utf8')).resolves.toBe(
+      'original staged snapshot',
+    );
+    await expect(
+      readFile(fixture.paths.candidateDatabasePath, 'utf8'),
+    ).resolves.toBe('candidate database');
+  });
+
   it('fails closed when the target workspace layout is incomplete', async () => {
     const fixture = await createFixture();
     await rm(fixture.paths.activeDatabasePath);

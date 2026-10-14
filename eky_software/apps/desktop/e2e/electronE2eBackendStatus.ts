@@ -24,9 +24,28 @@ export const electronE2eBackendLogStages = [
 ] as const;
 
 export type ElectronE2eBackendLogStage = (typeof electronE2eBackendLogStages)[number];
+const migrationObservationStages = Object.values(catalog.migrationObservations)
+  .flatMap(phases => Object.values(phases));
+type ElectronE2eMigrationObservationStage =
+  `migration.${keyof typeof catalog.migrationObservations}.${'entered' | 'returned'}`;
 export type ElectronE2eBackendObservationStage =
   | ElectronE2eBackendFailureStage
-  | ElectronE2eBackendLogStage;
+  | ElectronE2eBackendLogStage
+  | ElectronE2eMigrationObservationStage;
+
+export function reportElectronE2eMigrationProgress(
+  stage: unknown,
+  phase: unknown,
+  send: (progress: ElectronE2eBackendProgress) => void,
+): void {
+  if (typeof stage !== 'string' || !Object.hasOwn(catalog.migrationObservations, stage) ||
+      (phase !== 'entered' && phase !== 'returned')) return;
+  const phases = catalog.migrationObservations[stage as keyof typeof catalog.migrationObservations];
+  const observation = phases[phase];
+  if (isElectronE2eBackendObservationStage(observation)) {
+    reportElectronE2eBackendProgress(observation, send);
+  }
+}
 
 // The controller's existing startup callback carries observation-only stages too.
 export type ElectronE2eBackendStartupStage = ElectronE2eBackendObservationStage;
@@ -180,6 +199,7 @@ export function isElectronE2eBackendObservationStage(
 ): value is ElectronE2eBackendObservationStage {
   return isElectronE2eBackendFailureStage(value) || (
     typeof value === 'string' &&
-    electronE2eBackendLogStages.some((stage) => stage === value)
+    (electronE2eBackendLogStages.some((stage) => stage === value) ||
+      migrationObservationStages.some((stage) => stage === value))
   );
 }

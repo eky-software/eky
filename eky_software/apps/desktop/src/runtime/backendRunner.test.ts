@@ -6,21 +6,26 @@ import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { desktopBackendReadinessTimeoutMilliseconds } from './backendMessages.js';
+import { captureOwnedLocalDatabaseRecoverySelection, type OwnedLocalDatabaseRecovery } from './ownedLocalDatabaseRecovery.js';
+import { createDesktopProfilePaths } from './desktopProfilePaths.js';
 
 const runtime = vi.hoisted(() => ({
   acquireReservation: vi.fn(),
   assertReservation: vi.fn(),
   archiveClose: vi.fn(),
+  assertRestore: vi.fn(),
   assertUpdate: vi.fn(),
   secretClose: vi.fn(),
   serverClose: vi.fn(),
   snapshotClose: vi.fn(),
+  snapshotRegistration: vi.fn(),
   releaseReservation: vi.fn(),
   serverImport: vi.fn(),
   startServer: vi.fn(),
 }));
 
-vi.mock('./workspaceProcessReservation.js', () => ({
+vi.mock('./workspaceProcessReservation.js', async importOriginal => ({
+  ...await importOriginal<typeof import('./workspaceProcessReservation.js')>(),
   acquireWorkspaceProcessReservation: runtime.acquireReservation,
 }));
 
@@ -40,10 +45,14 @@ vi.mock('../profileBackup/electronProfileSnapshotBrokerTransport.js', () => ({
   createProfileSnapshotBrokerTransport: () => ({}),
 }));
 vi.mock('../profileBackup/profileSnapshotBrokerBackend.js', () => ({
-  startProfileSnapshotBrokerBackend: () => ({
-    assertUpdateMaintenance: runtime.assertUpdate,
-    close: runtime.snapshotClose,
-  }),
+  startProfileSnapshotBrokerBackend: (input: unknown) => {
+    runtime.snapshotRegistration(input);
+    return {
+      assertRestoreMaintenance: runtime.assertRestore,
+      assertUpdateMaintenance: runtime.assertUpdate,
+      close: runtime.snapshotClose,
+    };
+  },
 }));
 
 const operationId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -79,6 +88,68 @@ afterEach(async () => {
 });
 
 describe('backend runner shutdown command boundary', () => {
+  it('connects the lightweight context reader only to the registered backend service', async () => {
+    const fixture = await startFixture(false);
+    const context = { activeProfileId: 'd'.repeat(64), activeProfileIsEmpty: true };
+    const read = vi.fn(() => context);
+    runtime.startServer.mockImplementationOnce(async (options: {
+      appOptions: {
+        profileSnapshotServiceRegistration: { register(service: unknown): void };
+        beforeMigrations(inspection: unknown): Promise<void>;
+      };
+    }) => {
+      const broker = runtime.snapshotRegistration.mock.calls[0]![0] as {
+        snapshot: { readProfileInspectionContext(): unknown };
+      };
+      expect(() => broker.snapshot.readProfileInspectionContext()).toThrow('PROFILE_SNAPSHOT_BROKER_UNAVAILABLE');
+      options.appOptions.profileSnapshotServiceRegistration.register({ readProfileInspectionContext: read });
+      expect(broker.snapshot.readProfileInspectionContext()).toBe(context);
+      await options.appOptions.beforeMigrations({
+        appliedMigrationCount: 1, migrationChainIdentity: 'a'.repeat(64),
+        pendingMigrationCount: 0, profileState: 'existing',
+      });
+      return { close: runtime.serverClose, port: 32100 };
+    });
+    await fixture.start();
+    await fixture.expectReady();
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+
+  it('delivers a non-serializable local recovery capability bound to this generation and revokes it on reservation loss', async () => {
+    const fixture = await startFixture(false);
+    const workspaceRoot = resolve(fixture.backendRoot, 'workspaces', '11111111-1111-4111-8111-111111111111');
+    await mkdir(workspaceRoot, { recursive: true });
+    const selection = await captureOwnedLocalDatabaseRecoverySelection(workspaceRoot);
+    const databaseFilePath = createDesktopProfilePaths(workspaceRoot).databaseFilePath;
+    await fixture.start({ databaseFilePath, ownedLocalDatabaseRecovery: selection });
+    await fixture.expectReady();
+    const options = runtime.startServer.mock.calls[0]![0] as {
+      appOptions: { ownedLocalDatabaseRecovery: OwnedLocalDatabaseRecovery };
+    };
+    const authority = options.appOptions.ownedLocalDatabaseRecovery;
+    expect(authority.assertOwnedDatabase).toBeTypeOf('function');
+    expect(authority).not.toHaveProperty('workspaceRoot');
+    expect(authority).not.toHaveProperty('workspaceIdentity');
+    await authority.assertOwnedDatabase(databaseFilePath);
+    await expect(authority.assertOwnedDatabase(resolve(workspaceRoot, 'imported.sqlite'))).rejects.toThrow();
+    fixture.loseReservation();
+    await fixture.expectExit(1);
+    await expect(authority.assertOwnedDatabase(databaseFilePath)).rejects.toThrow();
+  });
+
+  it('rejects a selected-root/database mismatch before importing or invoking the backend', async () => {
+    const fixture = await startFixture(false);
+    const workspaceRoot = resolve(fixture.backendRoot, 'workspaces', '11111111-1111-4111-8111-111111111111');
+    await mkdir(workspaceRoot, { recursive: true });
+    await fixture.start({
+      databaseFilePath: resolve(workspaceRoot, 'imported.sqlite'),
+      ownedLocalDatabaseRecovery: await captureOwnedLocalDatabaseRecoverySelection(workspaceRoot),
+    });
+    await fixture.expectExit(1);
+    expect(runtime.serverImport).not.toHaveBeenCalled();
+    expect(runtime.startServer).not.toHaveBeenCalled();
+  });
+
   it('checks the same update fence on both sides of server close before exit', async () => {
     const fixture = await startFixture();
     fixture.send({ type: 'shutdownForUpdate', operationId });
@@ -240,6 +311,105 @@ describe('backend runner shutdown command boundary', () => {
     expect(fixture.exit).not.toHaveBeenCalled();
     fixture.send({ type: 'shutdownForUpdate', operationId });
     await fixture.expectExit(0);
+  });
+});
+
+describe('backend runner protected restore shutdown', () => {
+  it('checks the restore owner before and after server close without accepting an update fence', async () => {
+    const fixture = await startFixture();
+    fixture.send({ type: 'shutdownForRestore', operationId });
+    await fixture.expectExit(0);
+    expect(fixture.steps).toEqual([
+      'assertRestore', 'server', 'assertRestore', 'secret', 'archive', 'snapshot', 'exit:0',
+    ]);
+    expect(runtime.assertRestore.mock.calls).toEqual([[operationId], [operationId]]);
+    expect(runtime.assertUpdate).not.toHaveBeenCalled();
+  });
+
+  it.each(['wrong owner', 'invalid fence'] as const)(
+    'rejects a %s before server close while closing all brokers', async (failure) => {
+      const fixture = await startFixture();
+      if (failure === 'invalid fence') fixture.invalidateRestore();
+      fixture.send({ type: 'shutdownForRestore',
+        operationId: failure === 'wrong owner' ? otherOperationId : operationId });
+      await fixture.expectExit(1);
+      expect(runtime.serverClose).not.toHaveBeenCalled();
+      fixture.expectBrokerCleanup();
+    },
+  );
+
+  it('cannot acknowledge lost restore protection during the awaited close', async () => {
+    const fixture = await startFixture();
+    const closing = deferred();
+    runtime.serverClose.mockImplementationOnce(() => closing.promise);
+    fixture.send({ type: 'shutdownForRestore', operationId });
+    fixture.send({ type: 'shutdown' });
+    fixture.send({ type: 'shutdownForRestore', operationId });
+    expect(runtime.assertRestore).toHaveBeenCalledTimes(1);
+    expect(fixture.exit).not.toHaveBeenCalled();
+    fixture.invalidateRestore();
+    closing.resolve();
+    await fixture.expectExit(1);
+    expect(runtime.serverClose).toHaveBeenCalledTimes(1);
+    expect(runtime.assertRestore).toHaveBeenCalledTimes(2);
+    fixture.expectBrokerCleanup();
+  });
+
+  it('accepts identical restore and ordinary followers while the original fence stays valid', async () => {
+    const fixture = await startFixture();
+    const closing = deferred();
+    runtime.serverClose.mockImplementationOnce(() => closing.promise);
+    fixture.send({ type: 'shutdownForRestore', operationId });
+    fixture.send({ type: 'shutdown' });
+    fixture.send({ type: 'shutdownForRestore', operationId });
+    expect(fixture.exit).not.toHaveBeenCalled();
+    closing.resolve();
+    await fixture.expectExit(0);
+    expect(runtime.serverClose).toHaveBeenCalledTimes(1);
+    expect(runtime.assertRestore.mock.calls).toEqual([[operationId], [operationId]]);
+    fixture.expectBrokerCleanup();
+  });
+
+  it.each([
+    ['shutdown', 'shutdownForRestore', operationId],
+    ['shutdownForUpdate', 'shutdownForRestore', operationId],
+    ['shutdownForRestore', 'shutdownForUpdate', operationId],
+    ['shutdownForRestore', 'shutdownForRestore', otherOperationId],
+  ] as const)('keeps first intent %s when a conflicting %s arrives', async (first, follower, owner) => {
+    const fixture = await startFixture();
+    const closing = deferred();
+    runtime.serverClose.mockImplementationOnce(() => closing.promise);
+    fixture.send(first === 'shutdown' ? { type: first } : { type: first, operationId });
+    fixture.send({ type: follower, operationId: owner });
+    fixture.send(first === 'shutdown' ? { type: first } : { type: first, operationId });
+    fixture.send({ type: 'shutdown' });
+    expect(fixture.exit).not.toHaveBeenCalled();
+    closing.resolve();
+    await fixture.expectExit(1);
+    expect(runtime.serverClose).toHaveBeenCalledTimes(1);
+    fixture.expectBrokerCleanup();
+  });
+
+  it.each(['serverClose', 'secretClose', 'archiveClose', 'snapshotClose'] as const)(
+    'retains %s failure while attempting every owned broker close', async (name) => {
+      const fixture = await startFixture();
+      runtime[name].mockImplementationOnce(() => {
+        throw new Error('synthetic private restore close failure');
+      });
+      fixture.send({ type: 'shutdownForRestore', operationId });
+      await fixture.expectExit(1);
+      fixture.expectBrokerCleanup();
+      expect(fixture.postMessage.mock.calls).toHaveLength(3);
+    },
+  );
+
+  it('rejects restore shutdown before business startup completes', async () => {
+    const fixture = await startFixture(false);
+    fixture.send({ type: 'shutdownForRestore', operationId });
+    await fixture.expectExit(1);
+    fixture.grant();
+    expect(runtime.startServer).not.toHaveBeenCalled();
+    expect(runtime.assertRestore).not.toHaveBeenCalled();
   });
 });
 
@@ -490,12 +660,18 @@ async function startFixture(startBackend = true) {
     steps.push('assert');
     if (!validFence || id !== operationId) throw new Error('synthetic private fence failure');
   });
+  let validRestoreFence = true;
+  runtime.assertRestore.mockImplementation((id: string) => {
+    steps.push('assertRestore');
+    if (!validRestoreFence || id !== operationId) throw new Error('synthetic private restore fence failure');
+  });
   runtime.serverClose.mockImplementation(async () => { steps.push('server'); });
   runtime.secretClose.mockImplementation(() => { steps.push('secret'); });
   runtime.archiveClose.mockImplementation(() => { steps.push('archive'); });
   runtime.snapshotClose.mockImplementation(() => {
     steps.push('snapshot');
     validFence = false;
+    validRestoreFence = false;
   });
   runtime.startServer.mockImplementation(async (options: {
     appOptions: { beforeMigrations(inspection: unknown): Promise<void> };
@@ -542,6 +718,7 @@ async function startFixture(startBackend = true) {
     holdMigrationGate: () => { continueMigrations = false; },
     loseReservation: () => reservationLost.abort(),
     invalidate: () => { validFence = false; },
+    invalidateRestore: () => { validRestoreFence = false; },
     expectReservationFailure: () => {
       expect(postMessage.mock.calls.filter(([message]) => message.type === 'failed')).toEqual([
         [{ code: 'BACKEND_PROCESS_RESERVATION_FAILED', type: 'failed' }],

@@ -1,16 +1,31 @@
-import { describe, expect, it } from 'vitest';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { WorkspaceBackupReplacementError } from './workspaceBackupReplacementError.js';
+import { deriveWorkspaceBackupReplacementPaths } from './workspaceBackupReplacementPaths.js';
+import { NodeWorkspaceBackupReplacementRootStore } from './workspaceBackupReplacementRootStore.js';
 import {
   TEST_REPLACEMENT_CONTAINER_HASH,
   TEST_REPLACEMENT_CONTAINER_PATH,
   TEST_REPLACEMENT_MIGRATION_ID,
   TEST_REPLACEMENT_OTHER_WORKSPACE_ID,
+  TEST_REPLACEMENT_OPERATION_ID,
   TEST_REPLACEMENT_PASSWORD,
   TEST_REPLACEMENT_PROFILE_ID,
   TEST_REPLACEMENT_WORKSPACE_ID,
   createWorkspaceBackupReplacementFixture,
 } from './workspaceBackupReplacementTestSupport.js';
+
+const cleanupRoots: string[] = [];
+
+afterEach(async () => {
+  for (const root of cleanupRoots.splice(0)) {
+    await rm(root, { force: true, recursive: true });
+  }
+});
 
 const replacementInput = Object.freeze({
   containerPath: TEST_REPLACEMENT_CONTAINER_PATH,
@@ -124,6 +139,79 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
     ]);
     expect(fixture.activation.journal).toBeUndefined();
   });
+
+  it.each([false, true])(
+    'preserves unresolved inspection evidence without restarting the source (handoff=%s)',
+    async (useRuntimeHandoff) => {
+      const root = await mkdtemp(join(tmpdir(), 'eky-replacement-preservation-'));
+      cleanupRoots.push(root);
+      const paths = deriveWorkspaceBackupReplacementPaths(
+        root,
+        TEST_REPLACEMENT_OPERATION_ID,
+        TEST_REPLACEMENT_WORKSPACE_ID,
+      );
+      await mkdir(dirname(paths.activeDatabasePath), {
+        recursive: true,
+        mode: 0o700,
+      });
+      await mkdir(paths.activeArtifactRoot, { recursive: true, mode: 0o700 });
+      await writeFile(paths.activeDatabasePath, 'unchanged active database');
+      const sourcePath = join(paths.importStagingRoot, 'profile.sqlite');
+      const inspectionRoot = join(
+        paths.activationStagingOperationRoot,
+        'inspection-unresolved',
+      );
+      const inspectionPath = join(inspectionRoot, 'inspection.sqlite');
+      const fixture = createWorkspaceBackupReplacementFixture({
+        useRuntimeHandoff,
+        userDataRoot: root,
+      });
+      const registryBefore = fixture.registry.value;
+      const store = new NodeWorkspaceBackupReplacementRootStore();
+      fixture.rootStore.prepareCandidate = async () => {
+        fixture.events.push('root.prepare');
+        await store.prepareCandidate(paths);
+        await mkdir(paths.importStagingRoot, { mode: 0o700 });
+        await writeFile(sourcePath, 'original staged snapshot');
+        await writeFile(paths.candidateDatabasePath, 'unpublished candidate');
+        await mkdir(inspectionRoot, { mode: 0o700 });
+        await writeFile(inspectionPath, 'unresolved inspection copy');
+      };
+      fixture.rootStore.discardBeforeActivation = async () => {
+        fixture.events.push('root.discard');
+        await store.discardBeforeActivation(paths);
+      };
+      fixture.candidate.failure = 'migration';
+
+      await expectReplacementError(
+        fixture.coordinator.replace(replacementInput),
+        'WORKSPACE_REPLACEMENT_STORAGE_FAILED',
+        'cleanup',
+      );
+
+      expect(fixture.events).toContain('candidate.migrate');
+      expect(fixture.events).toContain('root.discard');
+      expect(fixture.events).not.toContain('root.removeImportStaging');
+      expect(fixture.events).not.toContain('activation.prepare');
+      expect(fixture.events).not.toContain('lifecycle.ensure');
+      expect(fixture.runtimeHandoff.requests).toBe(0);
+      expect(fixture.lifecycle.runningOwners).toBe(0);
+      expect(fixture.registry.value).toBe(registryBefore);
+      expect(fixture.activation.journal).toBeUndefined();
+      await expect(readFile(sourcePath, 'utf8')).resolves.toBe(
+        'original staged snapshot',
+      );
+      await expect(readFile(paths.candidateDatabasePath, 'utf8')).resolves.toBe(
+        'unpublished candidate',
+      );
+      await expect(readFile(inspectionPath, 'utf8')).resolves.toBe(
+        'unresolved inspection copy',
+      );
+      await expect(readFile(paths.activeDatabasePath, 'utf8')).resolves.toBe(
+        'unchanged active database',
+      );
+    },
+  );
 
   it('rejects a wrong lineage before the lease, quiesce or workspace writes', async () => {
     const fixture = createWorkspaceBackupReplacementFixture({
@@ -313,6 +401,21 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
     expect(fixture.events).toContain('activation.rollback');
     expect(fixture.runtimeReadiness.calls).toBe(2);
     expect(fixture.lifecycle.runningOwners).toBe(1);
+  });
+
+  it('retains committed replacement content when accepted cleanup fails', async () => {
+    const fixture = createWorkspaceBackupReplacementFixture();
+    fixture.activation.accept = async () => {
+      fixture.events.push('activation.accept');
+      await fixture.activation.commitAcceptance();
+      throw new Error('synthetic terminal cleanup failed');
+    };
+    await expect(fixture.coordinator.replace(replacementInput))
+      .rejects.toBeInstanceOf(WorkspaceBackupReplacementError);
+    expect(fixture.activation.journal?.phase).toBe('accepted');
+    expect(fixture.events).not.toContain('activation.rollback');
+    expect(fixture.events).not.toContain('activation.clearRolledBack');
+    expect(fixture.rootStore.discarded).toBe(false);
   });
 
   it('fails closed when registry bytes change while the lease is held', async () => {

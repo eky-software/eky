@@ -335,7 +335,6 @@ export async function createRealPortableWorkspaceBackup(input: {
       database,
       invoiceDocumentStorageRoot: input.invoiceDocumentStorageRoot,
       maintenanceState,
-      migrationsDirectory: workspaceBackupMigrationsDirectory,
       stagingRoot: input.stagingRoot,
     });
     await snapshotService.createProfileSnapshot({

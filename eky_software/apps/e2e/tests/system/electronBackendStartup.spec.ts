@@ -5,12 +5,15 @@ import type { UtilityProcess } from 'electron';
 import { expect, test } from '@playwright/test';
 
 import { createElectronE2eBackendController } from '../../../desktop/e2e/electronE2eBackendProcess.js';
+import { migrationStartupStages } from '../../../backend/src/database/migration/migrationStartupObservation.js';
+import catalog from '../../../desktop/e2e/electronE2eBackendFailureCatalog.json' with { type: 'json' };
 import {
   electronE2eBackendLogStages,
   electronE2eBackendStartupStages,
   parseElectronE2eBackendProgress,
   parseElectronE2eBackendStatus,
   reportElectronE2eBackendProgress,
+  reportElectronE2eMigrationProgress,
   type ElectronE2eBackendFailureStatus,
 } from '../../../desktop/e2e/electronE2eBackendStatus.js';
 import type { ElectronE2eConfig } from '../../../desktop/e2e/electronE2eConfig.js';
@@ -27,6 +30,39 @@ test.afterEach(() => {
 });
 
 test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
+  test('maps the backend-owned migration phases to observation-only IPC with exact catalog agreement', () => {
+    expect(Object.keys(catalog.migrationObservations)).toEqual([...migrationStartupStages]);
+    const observation = createElectronE2eStartupObservation(() => 0);
+    const sent: unknown[] = [];
+    for (const stage of migrationStartupStages) for (const phase of ['entered', 'returned'] as const) {
+      const code = `migration.${stage}.${phase}`;
+      expect(catalog.migrationObservations[stage][phase]).toBe(code);
+      reportElectronE2eMigrationProgress(stage, phase, value => {
+        sent.push(value);
+        expect(Object.isFrozen(value)).toBe(true);
+        expect(parseElectronE2eBackendProgress(value)).toEqual({ type: 'progress', stage: code });
+        expect(parseElectronE2eBackendStatus(value)).toBeUndefined();
+        expect(parseElectronE2eBackendStatus({
+          type: 'failed', stage: code, reason: 'unknown', brokerCleanupFailures: [],
+        })).toBeUndefined();
+        expect(parseElectronE2eBackendProgress({ ...value, data: 'private' })).toBeUndefined();
+        observation.recordBackendStartupStage(value.stage);
+      });
+      expect(parseElectronE2eStartupObservation(observation.snapshot())?.backendStartup)
+        .toEqual({ status: 'observed', stage: code, elapsedMs: 0 });
+      expect(() => reportElectronE2eMigrationProgress(stage, phase, () => { throw new Error('private'); }))
+        .not.toThrow();
+    }
+    expect(sent).toHaveLength(14);
+    for (const stage of [undefined, null, {}, 'constructor', '__proto__', 'unknown']) {
+      reportElectronE2eMigrationProgress(stage, 'entered', value => { sent.push(value); });
+    }
+    for (const phase of [undefined, null, {}, 'constructor', 'threw', 'unknown']) {
+      reportElectronE2eMigrationProgress('manifestRead', phase, value => { sent.push(value); });
+    }
+    expect(sent).toHaveLength(14);
+  });
+
   test('distinguishes fork, spawn, start delivery and validated ready before resolving', async () => {
     const fixture = backendFixture();
     const started = fixture.start();

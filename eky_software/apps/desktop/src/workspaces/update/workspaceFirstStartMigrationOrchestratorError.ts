@@ -16,8 +16,9 @@ export class WorkspaceFirstStartMigrationOrchestratorError extends Error {
 
   constructor(
     readonly failure: WorkspaceFirstStartMigrationOrchestratorFailure,
+    options?: ErrorOptions,
   ) {
-    super(errorCodes[failure]);
+    super(errorCodes[failure], options);
     this.name = 'WorkspaceFirstStartMigrationOrchestratorError';
     this.relaunchRequired = failure === 'rollbackRequired';
   }

@@ -5,6 +5,17 @@ import type {
 } from '../../../database/schema.js';
 import { InvoiceContentRevisionIntegrityError } from '../application/invoiceContentRevisionIntegrityError.js';
 import type { InvoiceContentRevision, InvoiceContentRevisionLine } from '../domain/invoiceContentRevision.js';
+import { invoiceKinds } from '../domain/invoiceKind.js';
+import { invoiceTaxTreatments } from '../domain/invoiceTaxTreatment.js';
+import {
+  revisionDiscountTypes, revisionNumberingModes, revisionPriceInputModes, revisionProvenance, revisionReferenceTypes,
+  revisionIdentifier as identifier,
+  revisionInteger as integer,
+  revisionMember as member,
+  revisionNullableIdentifier as nullableIdentifier,
+  revisionNullableText as nullableText,
+  revisionText as text,
+} from './invoiceRevisionStoredValues.js';
 import { validateInvoiceContentRevision } from './validateInvoiceContentRevision.js';
 
 export function toInvoiceContentRevision(
@@ -17,7 +28,7 @@ export function toInvoiceContentRevision(
     invoiceId: identifier(row.invoice_id),
     revisionId: identifier(row.id),
     sourceDraftId: identifier(row.source_draft_id),
-    invoiceKind: member(row.invoice_kind, ['standard', 'credit']),
+    invoiceKind: member(row.invoice_kind, invoiceKinds),
     creditedInvoiceId: nullableIdentifier(row.credited_invoice_id),
     creditedRevisionId: nullableIdentifier(row.credited_revision_id),
     creditedInvoiceNumberSnapshot: nullableText(row.credited_invoice_number_snapshot),
@@ -25,11 +36,11 @@ export function toInvoiceContentRevision(
     invoiceNumber: text(row.invoice_number),
     referenceNumber: nullableText(row.reference_number),
     referenceNumberType: row.reference_number_type === null
-      ? null : member(row.reference_number_type, ['finnishDomestic']),
+      ? null : member(row.reference_number_type, revisionReferenceTypes),
     seriesKey: identifier(row.series_key),
     sequenceScope: identifier(row.sequence_scope),
     sequenceNumber: integer(row.sequence_number, 1),
-    numberingMode: member(row.numbering_mode, ['fiscalYearSequence', 'calendarYearSequence', 'plainSequence']),
+    numberingMode: member(row.numbering_mode, revisionNumberingModes),
     customerId: identifier(row.customer_id),
     customerNumberSnapshot: text(row.customer_number_snapshot),
     customerNameSnapshot: text(row.customer_name_snapshot),
@@ -67,13 +78,13 @@ export function toInvoiceContentRevision(
     paymentTermDays: integer(row.payment_term_days),
     reminderPeriodDays: integer(row.reminder_period_days, 0, 365),
     latePaymentInterestBasisPoints: integer(row.late_payment_interest_basis_points, 0, 100000),
-    priceInputMode: member(row.price_input_mode, ['net', 'gross']),
+    priceInputMode: member(row.price_input_mode, revisionPriceInputModes),
     subject: text(row.subject),
     orderNumber: text(row.order_number),
     note: text(row.note),
     deliveryAddressText: text(row.delivery_address_text),
     refundIbanSnapshot: text(row.refund_iban_snapshot),
-    taxTreatment: member(row.tax_treatment, ['normalVat', 'reverseChargeConstruction']),
+    taxTreatment: member(row.tax_treatment, invoiceTaxTreatments),
     taxTreatmentLabelSnapshot: text(row.tax_treatment_label_snapshot),
     taxLegalBasisSnapshot: text(row.tax_legal_basis_snapshot),
     performanceDate: nullableText(row.performance_date),
@@ -98,15 +109,10 @@ export function toInvoiceContentRevision(
       grossCents: integer(group.gross_cents),
     };
   });
-  let revision: InvoiceContentRevision;
-  if (row.origin === 'legacySnapshot') {
-    if (row.vat_breakdown_state !== 'unavailable' || groups.length !== 0) fail();
-    revision = { ...content, origin: 'legacySnapshot', vatBreakdownState: 'unavailable', vatBreakdown: null };
-  } else {
-    const origin = member(row.origin, ['approval', 'validatedLegacySnapshot']);
-    if (row.vat_breakdown_state !== 'authoritative') fail();
-    revision = { ...content, origin, vatBreakdownState: 'authoritative', vatBreakdown: groups };
-  }
+  const provenance = revisionProvenance(row.origin, row.vat_breakdown_state, groups.length > 0);
+  const revision: InvoiceContentRevision = provenance.vatBreakdownState === 'unavailable'
+    ? { ...content, ...provenance, vatBreakdown: null }
+    : { ...content, ...provenance, vatBreakdown: groups };
   validateInvoiceContentRevision(revision);
   return revision;
 }
@@ -124,7 +130,7 @@ function toRevisionLine(row: InvoiceRevisionLineRow): InvoiceContentRevisionLine
     unit: identifier(row.unit),
     unitPriceCents: integer(row.unit_price_cents),
     vatRateBasisPoints: row.vat_rate_basis_points === null ? null : integer(row.vat_rate_basis_points),
-    discountType: member(row.discount_type, ['none', 'percentage', 'fixed']),
+    discountType: member(row.discount_type, revisionDiscountTypes),
     discountValue: integer(row.discount_value),
     baseCents: integer(row.base_cents),
     discountCents: integer(row.discount_cents),
@@ -140,35 +146,6 @@ function requireScope(
   child: InvoiceRevisionLineRow | InvoiceRevisionVatBreakdownRow,
 ): void {
   if (child.company_id !== header.company_id || child.invoice_id !== header.invoice_id || child.revision_id !== header.id) fail();
-}
-
-function text(value: unknown): string {
-  if (typeof value !== 'string') fail();
-  return value;
-}
-
-function identifier(value: unknown): string {
-  const result = text(value);
-  if (result.trim().length === 0) fail();
-  return result;
-}
-
-function nullableText(value: unknown): string | null {
-  return value === null ? null : text(value);
-}
-
-function nullableIdentifier(value: unknown): string | null {
-  return value === null ? null : identifier(value);
-}
-
-function integer(value: unknown, minimum = 0, maximum = Number.MAX_SAFE_INTEGER): number {
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < minimum || value > maximum) fail();
-  return value;
-}
-
-function member<T extends string>(value: unknown, allowed: readonly T[]): T {
-  if (typeof value !== 'string' || !allowed.includes(value as T)) fail();
-  return value as T;
 }
 
 function fail(): never {

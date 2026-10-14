@@ -2,10 +2,12 @@ import Database from 'better-sqlite3';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { runMigrations } from './runMigrations.js';
 import { MigrationRunError } from './migrationRunError.js';
+import { failMigrationWrite } from './migrationWriteFailure.fixture.js';
+import { createMigrationMetadataTable, createMigrationTable } from './migrationMetadata.js';
 
 const temporaryDirectories: string[] = [];
 const releaseIdentity = {
@@ -15,6 +17,7 @@ const releaseIdentity = {
 const recordedAt = new Date('2026-08-10T12:00:00.000Z');
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(
     temporaryDirectories.splice(0).map((directory) =>
       rm(directory, { force: true, recursive: true }),
@@ -23,6 +26,33 @@ afterEach(async () => {
 });
 
 describe('runMigrations', () => {
+  it.each([false, true])('bounds observation to five phase pairs for fresh and current history (observer throws: %s)', async throws => {
+    const directory = await createMigrationDirectory({
+      '001_create_observation.sql': 'CREATE TABLE observation_probe (id TEXT PRIMARY KEY);',
+      '002_alter_observation.sql': 'ALTER TABLE observation_probe ADD COLUMN value TEXT;',
+    });
+    const database = new Database(':memory:');
+    const observer = vi.fn(() => { if (throws) throw new Error('synthetic observer'); });
+    try {
+      for (const current of [false, true]) {
+        observer.mockClear();
+        await runMigrations(database, { migrationsDirectory: directory, observeStartup: observer });
+        expect(observer.mock.calls).toEqual([
+          ['manifestRead', 'entered'], ['manifestRead', 'returned'],
+          ['initialAttestation', 'entered'], ['initialAttestation', 'returned'],
+          ['historyPreparation', 'entered'], ['historyPreparation', 'returned'],
+          ['migrationExecution', 'entered'], ['migrationExecution', 'returned'],
+          ['finalAttestation', 'entered'], ['finalAttestation', 'returned'],
+        ]);
+        expect(readAppliedMigrationNames(database)).toHaveLength(2);
+        expect(readMetadataRows(database)).toHaveLength(2);
+        expect(tableExists(database, 'observation_probe')).toBe(true);
+        if (!current) database.prepare('INSERT INTO observation_probe (id, value) VALUES (?, ?)').run('one', 'preserved');
+        else expect(database.prepare('SELECT value FROM observation_probe').get()).toEqual({ value: 'preserved' });
+      }
+    } finally { database.close(); }
+  });
+
   it('stores source and chain metadata with the applying release identity', async () => {
     const directory = await createMigrationDirectory({
       '001_create_spike_table.sql':
@@ -65,13 +95,8 @@ describe('runMigrations', () => {
       '001_create_spike_table.sql': migrationSql,
     });
     const database = new Database(':memory:');
-    database.exec(`
-      CREATE TABLE schema_migrations (
-        name TEXT PRIMARY KEY,
-        run_at TEXT NOT NULL
-      );
-      ${migrationSql}
-    `);
+    createMigrationTable(database);
+    database.exec(migrationSql);
     database
       .prepare(
         'INSERT INTO schema_migrations (name, run_at) VALUES (?, ?)',
@@ -194,12 +219,7 @@ describe('runMigrations', () => {
         'CREATE TABLE second_table (id TEXT PRIMARY KEY);',
     });
     const database = new Database(':memory:');
-    database.exec(`
-      CREATE TABLE schema_migrations (
-        name TEXT PRIMARY KEY,
-        run_at TEXT NOT NULL
-      );
-    `);
+    createMigrationTable(database);
     database
       .prepare(
         'INSERT INTO schema_migrations (name, run_at) VALUES (?, ?)',
@@ -297,14 +317,10 @@ describe('runMigrations', () => {
       'CREATE TABLE pending_table (id TEXT PRIMARY KEY);',
       'utf8',
     );
-    database.exec(`
-      CREATE TRIGGER reject_pending_migration_metadata
-      BEFORE INSERT ON schema_migration_metadata
-      WHEN NEW.migration_name = '002_create_pending_table.sql'
-      BEGIN
-        SELECT RAISE(ABORT, 'synthetic metadata failure');
-      END;
-    `);
+    const failure = failMigrationWrite(
+      database, 'schema_migration_metadata', '002_create_pending_table.sql',
+      () => tableExists(database, 'pending_table'),
+    );
 
     await expect(
       runMigrations(database, {
@@ -312,14 +328,91 @@ describe('runMigrations', () => {
         now: () => recordedAt,
         releaseIdentity,
       }),
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ errorCode: 'MIGRATION_EXECUTION_FAILED' });
 
+    expect(failure).toHaveBeenCalledOnce();
+    expect(failure).toHaveReturnedWith(true);
     expect(tableExists(database, 'pending_table')).toBe(false);
     expect(readAppliedMigrationNames(database)).toEqual([
       '001_create_spike_table.sql',
     ]);
     expect(readMetadataRows(database)).toHaveLength(1);
     database.close();
+  });
+
+  it.each([false, true])('initializes an empty history with metadata=%s', async (withMetadata) => {
+    const directory = await createMigrationDirectory({
+      '001_create_probe.sql': 'CREATE TABLE probe (id TEXT PRIMARY KEY);',
+    });
+    const database = new Database(':memory:');
+    try {
+      createMigrationTable(database);
+      if (withMetadata) createMigrationMetadataTable(database);
+      await runMigrations(database, { migrationsDirectory: directory });
+      expect(tableExists(database, 'probe')).toBe(true);
+      expect(readMetadataRows(database)).toHaveLength(1);
+      expect(database.pragma('query_only', { simple: true })).toBe(0);
+    } finally { database.close(); }
+  });
+
+  it.each(['view', 'trigger', 'legacyExtraTable'] as const)(
+    'rejects %s before preparing or executing any migration write', async (mutation) => {
+      const directory = await createMigrationDirectory({
+        '001_create_probe.sql': 'CREATE TABLE probe (id TEXT PRIMARY KEY);',
+      });
+      const database = new Database(':memory:');
+      try {
+        if (mutation === 'view') {
+          database.exec('CREATE VIEW unexpected_view AS SELECT 1 AS id;');
+        } else {
+          await runMigrations(database, { migrationsDirectory: directory });
+          if (mutation === 'trigger') {
+            database.exec(`CREATE TRIGGER unexpected_trigger BEFORE INSERT ON probe
+              BEGIN SELECT RAISE(ABORT, 'untrusted trigger'); END;`);
+          } else {
+            database.exec('DROP TABLE schema_migration_metadata; CREATE TABLE unexpected (id TEXT);');
+          }
+        }
+        await writeFile(join(directory, '002_create_pending.sql'), 'CREATE TABLE pending (id TEXT);');
+        const writes = vi.spyOn(database, 'exec');
+        const statements = vi.spyOn(database, 'prepare');
+        const observer = vi.fn(() => { throw new Error('synthetic observer failure'); });
+
+        await expect(runMigrations(database, { migrationsDirectory: directory, observeStartup: observer }))
+          .rejects.toMatchObject({ completedMigrationCount: 0, errorCode: 'MIGRATION_HISTORY_PREPARATION_FAILED' });
+        expect(observer.mock.calls).toEqual([
+          ['manifestRead', 'entered'], ['manifestRead', 'returned'], ['initialAttestation', 'entered'],
+        ]);
+        expect(writes).not.toHaveBeenCalled();
+        expect(statements.mock.calls.map(([sql]) => sql).join('\n'))
+          .not.toMatch(/\b(?:INSERT|UPDATE|DELETE|CREATE|ALTER|DROP)\b/i);
+        expect(tableExists(database, 'pending')).toBe(false);
+        if (mutation !== 'trigger') expect(tableExists(database, 'schema_migration_metadata')).toBe(false);
+        expect(database.pragma('query_only', { simple: true })).toBe(0);
+      } finally { database.close(); }
+    },
+  );
+
+  it('reports committed migrations when final schema attestation fails', async () => {
+    const sql = 'CREATE TABLE probe (id TEXT PRIMARY KEY);';
+    const directory = await createMigrationDirectory({ '001_create_probe.sql': sql });
+    const database = new Database(':memory:');
+    try {
+      const exec = database.exec.bind(database);
+      vi.spyOn(database, 'exec').mockImplementation((statement) => {
+        const result = exec(statement);
+        if (statement === sql) exec('CREATE TABLE unexpected_after_migration (id TEXT);');
+        return result;
+      });
+
+      await expect(runMigrations(database, { migrationsDirectory: directory }))
+        .rejects.toMatchObject({
+          completedMigrationCount: 1, errorCode: 'MIGRATION_EXECUTION_FAILED',
+          failureStage: 'migrationExecution', sideEffectState: 'unknown',
+        });
+      expect(readAppliedMigrationNames(database)).toEqual(['001_create_probe.sql']);
+      expect(tableExists(database, 'probe')).toBe(true);
+    } finally { database.close(); }
   });
 
   it('reports completed migrations conservatively when a later migration fails', async () => {
@@ -330,12 +423,16 @@ describe('runMigrations', () => {
     });
     const database = new Database(':memory:');
 
+    const observer = vi.fn(() => { throw new Error('synthetic observer failure'); });
     const failure = await runMigrations(database, {
       migrationsDirectory: directory,
       now: () => recordedAt,
       releaseIdentity,
+      observeStartup: observer,
     }).catch((error: unknown) => error);
 
+    expect(observer.mock.calls.at(-1)).toEqual(['migrationExecution', 'entered']);
+    expect(observer).toHaveBeenCalledTimes(7);
     expect(failure).toBeInstanceOf(MigrationRunError);
     expect(failure).toMatchObject({
       completedMigrationCount: 1,

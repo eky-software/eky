@@ -113,14 +113,116 @@ raakaa testiaineistoa eivätkä saa yleistä koko jobin tulostekaappausta.
 
 | Lähde | Kerättävä sisältö | Rajaus |
 | --- | --- | --- |
+| Node- ja Vitest-testit | Yhteisen reporter-liitännän rajattu alkuperäinen poikkeus, kutsupino, syyketju ja testin sijainti sekä toimituksen yhteenveto. | Ei ohitettujen tai odotetusti hylättyjen testien poikkeuksia. Kytkentä on omistavissa testikomennoissa; riippuvuuksien valmisteluvirhe ei ole testitapaus. |
+| Playwrightin välitön virheote | Nykyinen turvallinen reporter tallentaa odottamattoman testituloksen ja runner-virheen niiden saapuessa, ennen koko ajon JSON-raportin valmistumista. | Sama yhteinen projektio kuin Node/Vitestissä. Jokaisen retry-yrityksen virhe säilyy erikseen; onnistunut uusinta ei korvaa ensivirhettä. |
 | Playwright system/web/Electron | Ajokohtaisen `results.private.json`-raportin virheet, testitulokset, stdout/stderr ja retry-yritykset. | Ennen salausta poistetaan konfiguraatio, metadata ja inline-liitteiden sisältö; alkuperäiset virhekentät säilyvät. Ei koko HTML-/attachment-hakemistoa tai siinä olevia SQLite-tiedostoja. Ennen runnerin raportin valmistumista katkennut ajo voi jäädä ilman tätä tiedostoa. |
 | Backend/web/Electron-fixture | Nykyisten redaktoitujen stdout/stderr-lukijoiden rajattu otos omassa suoritusyrityskohtaisessa tiedostossaan myös testin rungon tai siivouksen epäonnistuessa. | Otos säilyy ennen muistitiedon katoamista, tiedosto liitetään nykyisen fixturen jälkiraportoinnissa. Windows-Electronin lähde on natiivi omistajaprosessi; workloadin omaa putkea ei muuteta tällä työllä. Käynnistyksen tai siivouksen kriittiselle polulle ei lisätä tiedostokuittausta. |
 | Electronin lifecycle-todiste | Fixturen jo kirjoittama `test-results/run-<uuid>/<testin suoritusyritys>/electron-lifecycle.json` muuttamattomina tavuina. | Vain tämä täsmällinen nimi ja syvyys; ei yleistä JSON- tai liitekansion keräystä. `attempt`, käynnistyssukupolvet, `publicCloseFailure`, `ownership` ja `cleanup` säilyvät erillisinä havaintoina. Samat koko-, linkki- ja muuttumattomuusrajat kuin muilla lähteillä. |
 | Native-komennot ja supervisorin sopimustestit | Nimetyt vaihe-, worker- ja caller-tulokset sekä olemassa olevat yksityiset prosessitulosteet. | Ei request/config-tiedostoja, profiileja tai tietokantoja. Siivouksen raakatulos säilyy erillään alkuperäisestä hylkäyksestä. Tarkoituksella lukemattoman putken koe säilyttää oman sopimuksensa. |
 | Historical-legacy-käynnistyksen syyote | Legacy-komennon `fixtureCleanup/legacy-startup-terminal.json`-tiedostosta vain varmennettu ajosidonta ja `startupEvidence`-projektio. | Nykyinen terminal-kirjoitus säilyttää otteen ennen profiilin poistoa. Ei koko operational-lokia, profiilia, tietokantaa tai terminalin muuta sisältöä. Syykoodit ja vaiheet eivät tule julkiseen testitulosteeseen. |
 | Synteettinen MSI-versiopolitiikan koe | Oman supervisor-testijuuren `policy-result.json` sekä numeroidut `source`, `target` ja `uninstall` -MSI-lokit muuttamattomina tavuina. | Vain suoraan testijuuren alla olevat nimet; ei descriptor-, request-, profiili- tai tietokantatiedostoja. Keskeytyneen MSI-komennon osittainen loki voidaan säilyttää ilman workerin lopputulosta. Samat koko-, linkki- ja muuttumattomuusrajat kuin muilla lähteillä. |
-| Packaged smoke | Rajattu prosessituloste ja nykyinen smoke-tulos. | Epäonnistuneen testin juurta ei poisteta; keräin ei lue sen profiilia. Tyhjentynyt tuloste ei todista onnistunutta käynnistystä. |
+| Synteettisen workspace-päivityksen kohdeasennin | Täsmällinen `target-installer.private.log` ja sen ajosidonnan, koon ja tiivisteen sisältävä säilytyskuitti. | Vain markerilla ja nykyisellä proof-konfiguraatiolla hyväksytty source-handoff; Microsoftin `/L*v`, ei globaalia lokitusta tai käyttöliittymätilan muutosta. Enintään 64 MiB salattuun pakettiin; rajaa suurempaa tiedostoa ei julkaista osittaisena. |
+| Packaged smoke | Rajattu prosessituloste, nykyinen smoke-tulos ja erikseen aktivoidun synteettisen käynnistyksen ensimmäinen alkuperäinen poikkeus ennen yleiseksi koodiksi muuntamista. | Poikkeus sidotaan ASAR-paketin build-identiteettiin, nonceen ja runtimeen. Epäonnistuneen testin juurta ei poisteta; keräin ei lue sen profiilia. Tyhjentynyt tuloste ei todista onnistunutta käynnistystä. |
 | Muut komennot ja valmistelu | Nykyinen turvallinen GitHub-komentoloki. | Salattu keräys ei palauta tulostetta, jota aliohjelma ei tuottanut tai säilyttänyt. Riippuvuustyökalun raakavirheet jäävät erikseen rajatuiksi pois. |
+
+### Yhteinen alkuperäisen testivirheen liitäntä
+
+`test-reporters/` käyttää nykyisen `startupExceptionEvidence.ts`:n rajattua
+poikkeusprojektiota. Se ei ole uusi testiruntime tai yleinen lokipalvelu.
+Node- ja Vitest-komennot sekä nykyinen Playwright-reporter ottavat sen
+käyttöön oletuksena. Native-harnessin clean-, upgrade-, legacy-, workspace-
+ja MSI-policy-workerit sekä niiden command-phase-virherajat tarjoavat
+poikkeuksen samalle liitännälle ennen suljettua virhekoodimuunnosta.
+Sisäisen palvelun aiemmin korvaamaa
+poikkeusta ei voi palauttaa reporterissa: kyseisen rajan omistaja säilyttää
+alkuperäisen syyn ennen muunnosta. Rajattu sovelluskytkentä toimii vain
+nykyisellä synteettisen käynnistyksen opt-in-valtuudella.
+
+Yksityiset otteet ovat käyttöjärjestelmän temp-juuren
+`eky-test-errors-<invocation UUID>/`-kansiossa. Yksi invokaatio tallentaa
+enintään 128 otetta, kukin enintään 192 KiB ja nykyisten viesti-/pino-/syyketju-
+rajojen sisällä. Otteen tiedostonimessä oleva järjestysnumero varmennetaan
+sen sisällöstä. Keräys ottaa saman invokaation toimitusyhteenvedon ensin ja
+sitten otteet syntyjärjestyksessä, jotta myöhemmät virheet eivät syrjäytä
+ensivirhettä lähdekohtaisen tiedostorajan täyttyessä. Toimitusyhteenveto
+ilmoittaa hylätyt ja pois rajatut otteet.
+Keräimen nykyiset tiedostomäärä-, kokonaiskoko- ja lähdekohtaiset rajat
+säilyvät; niiden täyttyminen näkyy osittaisena aineistona. Kattavuutta ei
+päätellä pelkästä salatun tiedoston syntymisestä.
+
+CI-ote sidotaan nykyiseen run/attempt/job/SHA-arvoon ja yksilölliseen
+invokaatioon. Erikseen annettu matrix-jobKey tarkistetaan; ennen sen
+asettamista syntynyt ote käyttää saman jobin tunnistetta. Paikallisella
+ajolla on erillinen `local`-sidonta, jota CI-keräin ei hyväksy. Tunnetut
+salaisuudet peitetään eikä poikkeuksen muita kenttiä kopioida. Julkiset
+reporterit eivät saa uusia raakavirhekenttiä. Node/Vitestin aikaisempi
+normaali konsoliraportti säilyy; salattu ote ei anna lupaa lisätä sinne
+salaisuuksia tai oikeaa käyttäjädataa.
+
+Kirjoitus käynnistyy virheen havaitsemisesta. Raportoinnin lopussa käytetään
+nykyistä enintään 500 ms:n rajattua toimitusodotusta, ei kiinteää viivettä.
+Tallennusvirhe ei muuta testitulosta tai korvaa siivousta; julkinen varoitus
+sisältää vain toimituksen tilan ja lukumäärät. Puuttuva loppuyhteenveto voi
+tarkoittaa keskeytystä. Prosessin pakkopysäytys tai runnerin menetys voi
+estää otteen tai salatun liitteen valmistumisen kokonaan.
+
+Uusi testi käyttää nykyistä omistavaa testikomentoa ja fixtureä, ei omaa
+keräintä. Kytkentäregressio tarkistaa Node/Vitest-komennot ja nykyiset
+workflow-kutsut. Salausregressio käynnistää oikean epäonnistuvan Node-,
+Vitest- ja Playwright-testin sekä native-lifecycle-kokeen ilman MSI-asennusta,
+kerää otteen ja tarkistaa alkuperäisen syyn oikeasti puretusta OpenPGP-
+paketista. Native-koe kulkee todellisen command-phase/worker-liitännän
+kautta. Packaged-ketjun koe käyttää oikeaa ASAR-build-identiteettiä ja
+erillistä prosessia; se ei korvaa oikean Electron-paketin hyväksyntäajoa.
+Nämä asennettuja testityökaluja tarvitsevat kokeet ovat tiedostossa
+`originalFailureEvidenceOpenPgp.test.mjs` ja nykyisessä
+`installer:test:encrypted-evidence`-komennossa riippuvuuksien valmistelun
+jälkeen. Aiempi `encryptedEvidenceOpenPgp.test.mjs` säilyy ilman projektin
+kolmannen osapuolen paketteja ajettavana Linuxin toimituskokeena; samaa
+testiavainapuria käytetään molemmissa sarjoissa.
+
+Workspace-kohdeasentimen lokipaikka varataan yksinomaan testin oman
+proof-juuren `result`-kansiosta. Tavallinen sovellus ei valitse lokipaikkaa.
+Nykyinen rajattu `fixtureCleanup` kopioi lokin caller-kansioon vasta
+omistetun prosessipuun poistumisen jälkeen, ennen testikansion poistamista.
+Caller-sidonta, invokaatio, alkuperäiset tavut ja säilytyskuitti varmennetaan
+uudelleen keräyksessä. Epävarma kopiointi säilyttää alkuperäisen testiaineiston;
+loki ei todista asennuksen tai siivouksen onnistumista. Historiallisessa
+testipaketissa lokin puuttuminen sallitaan erillisenä havaintona.
+Hallittu skenaarion katkaisu katetaan oikean prosessiketjun regressiolla.
+Jos koko runner lakkaa toimimasta ennen jälkivaiheita, paikallisesti säilynyt
+loki ei takaa salatun liitteen toimitusta. Raakalokia ei tulosteta eikä
+lähetetä salaamattomana edes toimitusvirheessä. MSI:n oma lokikirjoitus
+voi muuttaa ajoitusta, joten kokeen läpäisy ei yksin todista vanhaa timeoutia
+korjatuksi.
+
+Kohdeasentimen yhteinen 64 MiB:n raja koskee ennen fixture-poistoa tehtävää
+säilytyskopiota sekä workspace- ja yleistä virhekeräystä. Se on omistajan
+hyväksymä tutkimusaineiston budjetti, ei Windowsin tai GitHubin kokovaatimus.
+Alkuperäinen yleisestä keräysrajasta lainattu 8 MiB ei riittänyt todellisessa
+kokeessa; tarkkaa hylätyn lokin kokoa ei säilynyt. Suurempi budjetti ei takaa
+kaikkien mahdollisten lokien mahtumista. Ylitys säilyttää alkuperäisen
+testiaineiston ja ilmoitetaan hylkäyksenä. Omistajan myöhempi päätös nosti
+myös muiden säilytettävien lokien ja raporttien budjettia alla kuvatusti.
+Pienten sidonta- ja ohjaustiedostojen rajoja ei muuteta lokibudjetin perusteella.
+
+Nykyisen workspace-työnkulun manuaalinen `artifact_only=true` valmistaa
+synteettisen paketin ja ajaa sen valmistelusopimukset ilman MSI-kuluttajia.
+Oletus on `false`, eikä reusable-työnkulku tarjoa tätä valintaa normaalille
+PR/main-hyväksynnälle. Pelkkä valmistelu ei ole palautuksen hyväksyntä;
+erikseen nimetty koe käyttää saman jäädytetyn revision pakettia ja sidontoja.
+
+K:n nimetyn `linux-inspection-sandbox-probe`-kertakokeen omistaja hyväksyi
+erikseen tarkistusajurin käännösvirheen rajatun poikkeuksen. Vain kyseisen
+operaation omasta, identiteetillä sidotusta `build.private.log`-tiedostosta
+luetaan enintään 64 KiB. Suuresta lokista säilyvät alku- ja loppuosat sekä
+osittaisuuden tieto; puuttuvaa tai varmentamatonta lokia ei tulkita ehjäksi.
+Ote kirjoitetaan vain nykyiseen valmistelun `process-output.private.json`-
+tiedostoon ja salataan. Julkinen syykoodi ja stderr säilyvät ennallaan.
+`boundedNativeBuildFailure`-manifestimerkintä koskee vain tätä nimettyä
+job/job-key-paria. Muissa jobeissa riippuvuustyökalujen raakalokikielto säilyy.
+Poikkeus ei avaa native-temp-juuren, lähteiden, konfiguraation, profiilien tai
+tietokantojen yleistä keräystä eikä muuta yhden vuorokauden säilytystä.
 
 Jokainen paketti sidotaan run/attempt/job/matrix-revisioon. Testitapaus ja
 sen retry sekä käynnistyssukupolvi säilyvät lähderaporteissa. Uusi paketti
@@ -265,8 +367,14 @@ keräyksen käynnistämiseksi. Julkaisu sallii vain varmennetun salatekstin
 yhdeksi vuorokaudeksi. Normaali CI säilyttää nykyisen virheen jälkeisen
 keräyksen; manuaalisen kokeen onnistunut toimitus ei hyväksy normaaleja portteja.
 
-Rajana on 256 tiedostoa, 8 MiB yksittäiselle tiedostolle ja 128 MiB yhteensä;
-hakemistoluvulla on oma määrä-, syvyys- ja aikaraja. Raportit kerätään
+Yleisen virhekeräimen rajana on 256 tiedostoa, 64 MiB yksittäiselle
+sallitulle lokille tai raportille ja 512 MiB yhteensä. Sama 64 MiB:n
+tiedostobudjetti koskee myös muita MSI-lokeja; workspace-kohdeasentimen
+lokilta vaaditaan edelleen täsmällinen säilytyskuitti. Kerättävien lähteiden
+nimet, projektiot, ajosidonta ja linkkien sekä muuttuneen sisällön hylkäys
+eivät laajene budjetin mukana. Tämä on säilytyksen raja, ei lupa kerätä
+uutta aineistoa tai kasvattaa alkuperäisten kirjoittajien protokollaviestejä.
+Hakemistoluvulla on oma määrä-, syvyys- ja aikaraja. Raportit kerätään
 ennen natiiveja tuloksia lähdekohtaisin tilavarauksin; saman lähteen uusimmat
 testijuuret käsitellään ensin. Aiemmin säilyneet natiivitulokset eivät siten
 voi käyttää raporttien koko tiedostokiintiötä. Asiaankuulumattomat temp-nimet
@@ -297,6 +405,51 @@ testin käynnistystä. Sidonta sisältää CI-ajon, suoritusyrityksen, matriisin
 toiston, lähderevision, paketin descriptorin ja callerin käynnistystunnisteen.
 Uusi yritys ei kirjoita vanhan päälle eikä build tyhjennä tätä hakemistoa.
 
+Workspace-keräimen nykyiset säilytysbudjetit ovat:
+
+| Sisältö | Yksittäisen tiedoston raja |
+| --- | --- |
+| Nimetyt tallennus-, tilasto-, stderr- ja virhelokit | 64 MiB |
+| `command-export.private.log` | 128 MiB |
+| `capture.etl` | 256 MiB, ennallaan |
+| Varmennettu workspace-kohdeasentimen loki | 64 MiB |
+| `export-metadata.private.json` | 1 MiB, ennallaan |
+| Caller-tulos ja MSI-lokin säilytyskuitti | 8 KiB kumpikin, ennallaan |
+| Keräyksen konteksti | 4 KiB, ennallaan |
+
+Workspace- ja yleinen keräin käyttävät samaa 512 MiB:n säilytettyjen
+tiedostotavujen kokonaisbudjettia: summataan manifestin säilyneiden
+merkintöjen `bytes`, ei `sourceProof.bytes`. Yleisen keräimen projektoidun
+raportin budjetti lasketaan projektion jälkeen; alkuperäinen lähdekoko
+säilyy erillisessä `sourceProof`-todisteessa. JSON/base64-kuori ja salattu siirtotiedosto
+ovat erillisiä esityksiä; purkajan on huomioitava base64:n kokolisä
+varmentaessaan saman revision budjettia. Paketti kirjoitetaan nykyisellä
+virtaavalla kirjoittimella. Koko aineistoa ei lueta kerralla muistiin
+salauksen vuoksi. Salaustyökalun nykyinen määräaika, paketin sidonta,
+tiivisteiden uudelleentarkistus ja yhden vuorokauden salattu säilytys
+eivät muutu. Rajan ylitys ilmoitetaan; sitä ei tulkita testin onnistumiseksi.
+
+Manuaalisen `packaged-boundary-diagnostic`-kokeen opt-in-workspace-fault-keräys
+käyttää samaa keräintä ja kolmea sallittua valintaa:
+`acceptanceInterruption`, `activeWorkspaceFirstStartFailure` tai
+`passiveWorkspaceMigrationFailure`. Konteksti, manifesti ja caller-tuloksen
+varmennus sidotaan samaan `packagedWorkspaceFaultRollback`-skenaarioon ja
+täsmälliseen `faultScenario`-arvoon. Väärää skenaariota ei tulkita
+onnistuneeksi siivoukseksi. Tavallisen success-keräyksen sidonta säilyy.
+
+Kahdella jälkimmäisellä valinnalla tallennus alkaa ennen valitun skenaarion
+komentoa, ei vasta aikaisempien pitkien prefix-kokeiden jälkeen. Vanha
+`acceptanceInterruption`-oletus säilyttää prefixinsä. Pysäytys, salaus ja
+vain salatun tiedoston toimitus käyttävät nykyisiä virheen-/keskeytyksen
+jälkiaskeleita. Fault-aineisto suljetaan talteen ennen mahdollista hidasta
+paketin jälkivarmennusta ja vientianalyysiä; manifestin niiden tulokset ovat
+silloin `skipped`. Niiden myöhemmät erilliset tulokset ovat edelleen
+pakollisia, eikä varhainen talteenotto hyväksy testiä tai pakettia.
+Puuttuva caller-tulos säilyttää saatavilla olevan sallitun aineiston,
+mutta siivous jää `unverified`-tilaan. Tiedostonimi-, koko-, avain-, salaus-
+ja säilytysrajat eivät laajene. Tämä kytkentä ei käynnistä koetta eikä muuta
+normaalin CI-matriisin valintaa.
+
 Nykyinen rajattu WPR-keräin käynnistetään ennen varsinaista komentoa ja
 pysäytetään sen jälkeen myös testin epäonnistuessa, jos runner on vielä
 käytettävissä. Normaali caller, sen verifier ja paketin jälkivarmennus
@@ -308,8 +461,13 @@ Git-tunnuksia tai tietokantoja. Symboliset linkit, uudelleenohjaukset ja
 hardlinkit hylätään. Tiedostojen määrä, yksittäiset koot ja yhteiskoko on
 rajattu. Puuttuva tiedosto merkitään `missing`-tilaan; muuttunut, liian suuri
 tai muuten varmentamatta jäänyt tiedosto saa yhteisen `unverified`-tilan.
-Nykyinen manifesti ei erota näitä hylkäyssyitä eikä säilytä hylätyn
-tiedoston kokoa. Tilaa ei saa tulkita todisteeksi juuri kokoylityksestä.
+Salauksen sisällä oleva `failureCode` erottaa nyt `sizeLimitExceeded`-,
+`pathRejected`-, `identityChanged`-, `sourceChanged`-, `writeIncomplete`-,
+`sourceMissing`-, `accessDenied`-, `storageFull`- ja `ioFailure`-havainnot.
+Tuntematon virhe on `unclassified`; natiivivirheen viestiä, pinoa, polkua tai
+muita ominaisuuksia ei kopioida. Hylätyn tiedoston tavuja tai kokoa ei lisätä
+pakettiin. Vanha manifesti ilman syykoodia ei osoita juuri kokoylitystä.
+Syytieto ei muuta tiedoston hyväksymisehtoa tai julkista yhteenvetoa.
 ETL otetaan mukaan vain varmennetun tallennuksen pysäytyksen jälkeen.
 Rajattu järjestelmäjälki voi silti sisältää arkaluonteisia komentorivejä
 tai istuntotietoja. Pelkkä tiedostorajaus ei puhdista niiden sisältöä;

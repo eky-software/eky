@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -37,7 +37,10 @@ afterEach(async () => {
 });
 
 describe('workspace candidate invoice history', () => {
-  it.each([true, false])('preserves a nonempty 038 catalog through migration and reopen (metadata: %s)', async metadata => {
+  it.each([
+    { metadata: true, wal: false }, { metadata: false, wal: false },
+    { metadata: true, wal: true }, { metadata: false, wal: true },
+  ])('preserves a nonempty 038 catalog through migration and reopen (metadata: $metadata, WAL: $wal)', async ({ metadata, wal }) => {
     const f = await fixture(metadata);
     const sourceHash = await fileHash(f.sourceDatabase);
     const originalCatalog = await readFile(f.catalogPath);
@@ -46,6 +49,11 @@ describe('workspace candidate invoice history', () => {
       kind: 'migration', profileId: f.migrate.expectedProfileId,
       migrationChainIdentity: readMigrationManifest(migrationsDirectory).at(-1)?.chainSha256,
     });
+    if (wal) {
+      const database = new Database(f.target.databaseFilePath, { fileMustExist: true });
+      try { database.pragma('journal_mode = WAL'); } finally { database.close(); }
+    }
+    const closedEntries = await readdir(dirname(f.target.databaseFilePath));
     await expect(runWorkspaceCandidateOperation(f.materialize)).resolves.toMatchObject({ kind: 'readiness' });
     expect(await readFile(join(f.target.artifactRoot, storagePath))).toEqual(originalPdf);
     expect(await readFile(f.catalogPath)).toEqual(originalCatalog);
@@ -62,6 +70,7 @@ describe('workspace candidate invoice history', () => {
       ...releaseIdentity, ...f.target, migrationsDirectory,
       expectedProfileId: f.migrate.expectedProfileId, operation: 'validatePublished',
     })).resolves.toMatchObject({ kind: 'readiness', artifactRootHealth: 'ready' });
+    expect(await readdir(dirname(f.target.databaseFilePath))).toEqual(closedEntries);
   });
 
   it.each(catalogFaults)(
@@ -71,9 +80,8 @@ describe('workspace candidate invoice history', () => {
       await corrupt(f, fault);
       await expect(runWorkspaceCandidateOperation(f.migrate))
         .rejects.toThrow('WORKSPACE_CANDIDATE_OPERATION_FAILED');
-      expect(readRows(f.target.databaseFilePath, 'SELECT name FROM schema_migrations ORDER BY name'))
-        .toEqual(readRows(f.sourceDatabase, 'SELECT name FROM schema_migrations ORDER BY name'));
-      expect(readRows(f.target.databaseFilePath,
+      await expect(lstat(f.target.databaseFilePath)).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(readRows(join(f.migrate.inspectionRoot, 'profile.sqlite'),
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'invoice_content_revisions'"))
         .toEqual([]);
       expect(await fileHash(f.sourceDatabase)).toBe(sourceHash);
@@ -168,7 +176,7 @@ async function fixture(metadata = true, secondDocument = false) {
     await createConsistentProfileSnapshotService({
       catalog: new SqliteInvoiceBackupArtifactCatalog(database, 'legacyDocuments'),
       database, invoiceDocumentStorageRoot: documentRoot,
-      maintenanceState: maintenance, migrationsDirectory, stagingRoot,
+      maintenanceState: maintenance, stagingRoot,
     }).createProfileSnapshot({
       operationId, migrationPolicy: 'compatibleHistoricalPrefix',
       signal: new AbortController().signal,
@@ -194,6 +202,8 @@ async function fixture(metadata = true, secondDocument = false) {
   };
   await mkdir(dirname(target.databaseFilePath), { recursive: true, mode: 0o700 });
   await mkdir(target.artifactRoot, { recursive: true, mode: 0o700 });
+  const inspectionRoot = join(target.candidateRoot, 'inspection');
+  await mkdir(inspectionRoot, { mode: 0o700 });
   const common = {
     ...releaseIdentity, ...target, migrationsDirectory, importStagingRoot,
     expectedProfileId: inspection.profileId,
@@ -208,6 +218,7 @@ async function fixture(metadata = true, secondDocument = false) {
     originalLines: readRows(sourceDatabase, 'SELECT * FROM invoice_lines ORDER BY id'),
     migrate: {
       ...common, operation: 'migrateBackup' as const,
+      inspectionRoot,
       expectedSourceMigrationChainIdentity: inspection.migrationChainIdentity,
     },
     materialize: { ...common, operation: 'validateAndMaterialize' as const },

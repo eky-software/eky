@@ -2,6 +2,7 @@ import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createSafeCiOutputRelay } from './safeCiOutputRelay.mjs';
 import { projectElectronLifecycle, projectElectronEvidenceFailures } from './electronLifecycleProjection.mjs';
+import { createRunnerFailureSink, RUNNER_FAILURE_LIMIT } from '../../../test-reporters/runnerFailureEvidence.mjs';
 
 export const REPORT_PREFIX = 'EKY_E2E_REPORT ';
 const testsRoot = fileURLToPath(new URL('../tests/', import.meta.url));
@@ -39,7 +40,7 @@ export function createE2eReporters(env = process.env, argv = process.argv, artif
     }
   }
   return [
-    [ci ? fileURLToPath(import.meta.url) : 'list'],
+    ...(ci ? [[fileURLToPath(import.meta.url)]] : [['list'], [fileURLToPath(import.meta.url), { silent: true }]]),
     ['html', { open: 'never', outputFolder: artifacts?.htmlOutputFolder ?? 'playwright-report' }],
     ['json', { outputFile: join(artifacts?.htmlOutputFolder ?? 'playwright-report', 'results.private.json') }],
   ];
@@ -50,10 +51,18 @@ export default class SafeCiReporter {
   #cases = new Map();
   #globalErrors = 0;
   #safeOutput = createSafeCiOutputRelay(line => process.stdout.write(line));
+  #privateFailures;
+  #silent;
 
-  printsToStdio() { return true; }
+  constructor({ failureSink, silent = false } = {}) {
+    this.#privateFailures = failureSink ?? createRunnerFailureSink();
+    this.#silent = silent;
+  }
+
+  printsToStdio() { return !this.#silent; }
 
   #emit(event, fields) {
+    if (this.#silent) return;
     process.stdout.write(REPORT_PREFIX + JSON.stringify({ schemaVersion: 1, event, ...fields }) + '\n');
   }
 
@@ -81,6 +90,14 @@ export default class SafeCiReporter {
 
   onTestEnd(test, result) {
     const errorCount = Array.isArray(result.errors) ? result.errors.length : 0;
+    if (result.status !== test.expectedStatus && result.status !== 'skipped') {
+      for (const error of (result.errors ?? []).slice(0, RUNNER_FAILURE_LIMIT + 1)) {
+        try { this.#privateFailures.record({ runner: 'playwright', phase: 'testFailure',
+          testName: test.title, testId: test.id, file: test.location?.file,
+          line: test.location?.line, column: test.location?.column,
+          attempt: result.retry, repeatCount: test.repeatEachIndex, error }); } catch { /* Optional private evidence. */ }
+      }
+    }
     this.#emit('testEnd', {
       ...this.#case(test), retry: integer(result.retry), status: status(result.status),
       expectedStatus: status(test.expectedStatus), durationMs: integer(result.duration),
@@ -92,12 +109,13 @@ export default class SafeCiReporter {
     });
   }
 
-  onError() {
+  onError(error) {
+    try { this.#privateFailures.record({ runner: 'playwright', phase: 'runFailure', error }); } catch { /* Optional private evidence. */ }
     this.#globalErrors++;
     this.#emit('runError', { errorIndex: this.#globalErrors, errorClass: 'runError' });
   }
 
-  onStdOut(chunk) { this.#safeOutput(chunk); }
+  onStdOut(chunk) { if (!this.#silent) this.#safeOutput(chunk); }
   onStdErr() {}
 
   onEnd(result) {
@@ -113,5 +131,7 @@ export default class SafeCiReporter {
       globalErrors: this.#globalErrors, ...counts,
     });
     // Do not return a status override or mutate tests/results/errors.
+    try { return this.#privateFailures.flush().then(() => undefined, () => undefined); }
+    catch { /* Reporting never overrides the test result. */ }
   }
 }

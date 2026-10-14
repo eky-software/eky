@@ -1,4 +1,4 @@
-export const profileSnapshotBrokerProtocolVersion = 9;
+export const profileSnapshotBrokerProtocolVersion = 11;
 
 const requestIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -11,9 +11,14 @@ export type ProfileMaintenanceBrokerOperation =
   | 'beginUpdateMaintenance'
   | 'assertUpdateMaintenance'
   | 'endUpdateMaintenance'
+  | 'beginRestoreMaintenance'
+  | 'assertRestoreMaintenance'
+  | 'endRestoreMaintenance'
+  | 'invalidateRestoreMaintenance'
   | 'createProfileSnapshot'
   | 'endProfileMaintenance'
   | 'getProfileMaintenanceStatus'
+  | 'readProfileInspectionContext'
   | 'prepareProfileRestoreActivation'
   | 'validateActiveProfile'
   | 'validateProfileSnapshot';
@@ -22,7 +27,22 @@ export type ProfileSnapshotMigrationPolicy =
   | 'exactCurrentManifest'
   | 'compatibleHistoricalPrefix';
 
+export type ProfileInspectionContextKind = 'inspect' | 'prepareRestoreActivation';
+
+export interface ProfileInspectionBrokerContext {
+  readonly activeProfileId: string;
+  readonly activeProfileIsEmpty: boolean;
+}
+
 export type ProfileSnapshotBrokerRequest =
+  | {
+      operation: 'readProfileInspectionContext';
+      kind: ProfileInspectionContextKind;
+      operationId: string;
+      protocolVersion: typeof profileSnapshotBrokerProtocolVersion;
+      requestId: string;
+      updateMaintenanceOperationId?: string;
+    }
   | {
       migrationPolicy: ProfileSnapshotMigrationPolicy;
       operation: 'createProfileSnapshot';
@@ -36,6 +56,10 @@ export type ProfileSnapshotBrokerRequest =
         | 'beginUpdateMaintenance'
         | 'assertUpdateMaintenance'
         | 'endUpdateMaintenance'
+        | 'beginRestoreMaintenance'
+        | 'assertRestoreMaintenance'
+        | 'endRestoreMaintenance'
+        | 'invalidateRestoreMaintenance'
         | 'endProfileMaintenance'
         | 'prepareProfileRestoreActivation';
       operationId: string;
@@ -85,6 +109,10 @@ export type ProfileSnapshotBrokerResponse =
       protocolVersion: typeof profileSnapshotBrokerProtocolVersion;
       requestId: string;
       result: {
+        activeProfileId: string;
+        activeProfileIsEmpty: boolean;
+        type: 'profileInspectionContext';
+      } | {
         status: 'busy' | 'normal';
         type: 'maintenanceStatus';
       } | {
@@ -126,15 +154,20 @@ export type ProfileSnapshotBrokerResponse =
     };
 
 export function createProfileSnapshotBrokerRequest(input: {
+  kind?: ProfileInspectionContextKind;
   migrationPolicy?: ProfileSnapshotMigrationPolicy;
   operation: ProfileMaintenanceBrokerOperation;
   operationId?: string;
   requestId: string;
   updateMaintenanceOperationId?: string;
 }): ProfileSnapshotBrokerRequest {
+  if (input.kind !== undefined && input.operation !== 'readProfileInspectionContext') {
+    throw new Error('PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID');
+  }
   if (
     input.updateMaintenanceOperationId !== undefined &&
-    input.operation !== 'validateProfileSnapshot'
+    input.operation !== 'validateProfileSnapshot' &&
+    input.operation !== 'readProfileInspectionContext'
   ) {
     throw new Error('PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID');
   }
@@ -159,6 +192,7 @@ export function createProfileSnapshotBrokerRequest(input: {
             operationId: input.operationId,
             protocolVersion: profileSnapshotBrokerProtocolVersion,
             requestId: input.requestId,
+            ...(input.operation === 'readProfileInspectionContext' ? { kind: input.kind } : {}),
             ...(input.updateMaintenanceOperationId === undefined
               ? {} : { updateMaintenanceOperationId: input.updateMaintenanceOperationId }),
           };
@@ -210,6 +244,23 @@ export function parseProfileSnapshotBrokerRequest(
     typeof value.operation !== 'string'
   ) {
     return undefined;
+  }
+
+  if (value.operation === 'readProfileInspectionContext') {
+    const hasUpdateOwner = Object.hasOwn(value, 'updateMaintenanceOperationId');
+    if (!hasExactKeys(value, [
+      'operation', 'kind', 'operationId', 'protocolVersion', 'requestId',
+      ...(hasUpdateOwner ? ['updateMaintenanceOperationId'] : []),
+    ]) || !isOperationId(value.operationId) ||
+      (value.kind !== 'inspect' && value.kind !== 'prepareRestoreActivation') ||
+      (hasUpdateOwner && (value.kind !== 'inspect' || !isOperationId(value.updateMaintenanceOperationId)))) {
+      return undefined;
+    }
+    return {
+      operation: value.operation, kind: value.kind, operationId: value.operationId,
+      protocolVersion: profileSnapshotBrokerProtocolVersion, requestId: value.requestId,
+      ...(hasUpdateOwner ? { updateMaintenanceOperationId: value.updateMaintenanceOperationId as string } : {}),
+    };
   }
 
   if (value.operation === 'validateProfileSnapshot') {
@@ -279,6 +330,10 @@ export function parseProfileSnapshotBrokerRequest(
       value.operation !== 'beginUpdateMaintenance' &&
       value.operation !== 'assertUpdateMaintenance' &&
       value.operation !== 'endUpdateMaintenance' &&
+      value.operation !== 'beginRestoreMaintenance' &&
+      value.operation !== 'assertRestoreMaintenance' &&
+      value.operation !== 'endRestoreMaintenance' &&
+      value.operation !== 'invalidateRestoreMaintenance' &&
       value.operation !== 'endProfileMaintenance' &&
       value.operation !== 'prepareProfileRestoreActivation') ||
     !hasExactKeys(value, [
@@ -348,6 +403,18 @@ export function parseProfileSnapshotBrokerResponse(
     typeof value.result.type !== 'string'
   ) {
     return undefined;
+  }
+
+  if (value.result.type === 'profileInspectionContext') {
+    if (!hasExactKeys(value.result, ['type', 'activeProfileId', 'activeProfileIsEmpty']) ||
+      !isSha256(value.result.activeProfileId) || typeof value.result.activeProfileIsEmpty !== 'boolean') {
+      return undefined;
+    }
+    return {
+      ok: true, protocolVersion: profileSnapshotBrokerProtocolVersion, requestId: value.requestId,
+      result: { type: 'profileInspectionContext', activeProfileId: value.result.activeProfileId,
+        activeProfileIsEmpty: value.result.activeProfileIsEmpty },
+    };
   }
 
   if (

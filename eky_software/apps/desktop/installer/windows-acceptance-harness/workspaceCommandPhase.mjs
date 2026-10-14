@@ -22,11 +22,13 @@ import { verifyWorkspaceFaultSemanticPostcondition } from './workspaceFaultPostc
 import { verifyWorkspaceFaultSessionEvidence } from './workspaceFaultSessionEvidence.mjs';
 import { runWorkspaceSuccessWorker } from './runWorkspaceSuccessWorker.mjs';
 import { runWorkspaceFaultWorker } from './runWorkspaceFaultWorker.mjs';
+import { createNativeFailureEvidence } from './nativeFailureEvidence.mjs';
 import { createClosedDirectoryInventory, inventoriesMatch } from './closedDirectoryInventory.mjs';
 import { inspectLegacyInstallerFootprint } from './legacyUpgradeWindowsRuntime.mjs';
 import { executeProductOperation } from './installerProductOperationWorker.mjs';
 import { acceptanceProductPair, acceptanceProductCleanup, validateAcceptanceProductFacts } from './acceptanceProductFacts.mjs';
 import { readAcceptanceCommandPhase, readCommandPhaseJson, hasExactPhaseKeys } from './acceptanceCommandPhaseInput.mjs';
+import { retainWorkspaceInstallerLog } from './workspaceInstallerLogEvidence.mjs';
 import commandBudgets from '../windows-process-supervisor/supervisorCommandBudgets.json' with { type: 'json' };
 
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
@@ -141,6 +143,9 @@ async function runProduct(context, dependencies) {
 
 export async function executeWorkspaceCommandPhase(context, dependencies = {}) {
   const { phase, state } = context;
+  const observeFailure = error => {
+    try { dependencies.observeFailure?.(error, phase); } catch { /* Preserve the phase result. */ }
+  };
   const fault = isFault(context);
   if (phase === 'prepare') {
     if (!process.env.APPDATA || !process.env.LOCALAPPDATA) invalid();
@@ -166,36 +171,42 @@ export async function executeWorkspaceCommandPhase(context, dependencies = {}) {
     await (dependencies.prepareFixture ?? prepareWorkspaceSuccessRunFixture)(runtime);
     await writeJsonAtomicExclusive(runtime.requestPath, runtime.request);
   } else if (phase === 'scenario') {
-    return (dependencies.runScenario ?? (fault ? runWorkspaceFaultWorker : runWorkspaceSuccessWorker))(['--request', runContext(context).requestPath]);
+    return (dependencies.runScenario ?? (fault ? runWorkspaceFaultWorker : runWorkspaceSuccessWorker))(['--request', runContext(context).requestPath], {
+      createFailureEvidence: request => createNativeFailureEvidence(import.meta.url, request),
+    });
   } else if (phase === 'semantic') {
     await terminalPlan(context, async (runtime) => {
       try { state.semanticProof = await (dependencies.verifySemantic ?? verifySemantic)(runtime, fault); }
-      catch (error) { state.semanticProof = { status: 'failed', errorCode: errorCode(error, fault) }; }
+      catch (error) { observeFailure(error); state.semanticProof = { status: 'failed', errorCode: errorCode(error, fault) }; }
       return state.semanticProof;
     }, async (runtime) => {
       try { state.sessionProof = await (dependencies.verifySessions ?? verifyWorkspaceFaultSessionEvidence)(runtime); }
-      catch { state.sessionProof = { status: 'failed', errorCode: 'sessionProofInvalid' }; }
+      catch (error) { observeFailure(error); state.sessionProof = { status: 'failed', errorCode: 'sessionProofInvalid' }; }
       return state.sessionProof;
     });
   } else if (phase === 'removal') {
     if (productPair(context, 'Final').resultCode === 'exactProductsAbsent') {
       try { state.removalProof = await (dependencies.verifyRemoval ?? verifyRemoval)(); }
-      catch { state.removalProof = { status: 'failed', resultCode: 'installerFootprintUnverified' }; }
+      catch (error) { observeFailure(error); state.removalProof = { status: 'failed', resultCode: 'installerFootprintUnverified' }; }
     }
   } else if (phase === 'artifact') {
     try {
       await (dependencies.verifyArtifact ?? verifyWorkspaceSuccessArtifact)(artifactInput(context));
       await (dependencies.verifyArtifact ?? verifyWorkspaceSuccessArtifact)(artifactInput(context, state.artifact.artifactRoot));
-    } catch { state.safetyErrorCode ??= 'artifactChanged'; }
+    } catch (error) { observeFailure(error); state.safetyErrorCode ??= 'artifactChanged'; }
   } else if (phase === 'inventoryAfter') {
     try {
       state.profileAfter = await (dependencies.inventoryProfile ?? readNormalProfile)();
       if (!profilesMatch(state)) throw new Error();
-    } catch { state.safetyErrorCode ??= 'normalProfileChanged'; }
+    } catch (error) { observeFailure(error); state.safetyErrorCode ??= 'normalProfileChanged'; }
   } else if (phase === 'fixtureCleanup') {
     const terminal = await terminalOutcome(context);
     await writeJsonAtomicExclusive(resolve(context.phaseRoot, 'terminal.json'), { binding: context.binding, terminal });
     if (state.safetyErrorCode === null && workspaceSuccessRunRootRemovable({ supervisorAttempted: true, terminal, productProcessAbsent: true })) {
+      const retained = await retainWorkspaceInstallerLog({ proofRoot: runContext(context).proofRoot,
+        resultPath: context.resultPath, binding: context.callerBinding,
+        processTreeAbsent: context.reports.scenario?.processTreeAbsent === true });
+      if (!retained) return 0;
       const info = await lstat(state.runRoot);
       if (!info.isDirectory() || info.isSymbolicLink() || await realpath(state.runRoot) !== state.runRoot) invalid();
       await (dependencies.removeFixture ?? ((root) => rm(root, { recursive: true })))(state.runRoot);
@@ -266,22 +277,26 @@ async function publish(context) {
 
 export async function runWorkspaceCommandPhase(args, dependencies = {}) {
   let context;
+  let observeFailure;
   try {
     if (args.length !== 2 || args[0] !== '--phase-request') invalid();
     context = await readWorkspaceCommandPhase(args[1]);
-    const code = await executeWorkspaceCommandPhase(context, dependencies);
+    observeFailure = createNativeFailureEvidence(import.meta.url, context.binding);
+    const code = await executeWorkspaceCommandPhase(context, { ...dependencies, observeFailure });
     if (context.phase !== 'scenario') await writeJsonAtomicExclusive(resolve(context.phaseRoot, 'phase-state.json'),
       { binding: context.binding, state: context.state });
     await writeJsonAtomicExclusive(resolve(context.phaseRoot, 'worker-result.json'), { ...context.binding,
       status: code === 0 ? 'completed' : 'failed', resultCode: code === 0 ? 'phaseCompleted' : 'phaseFailed', errorCode: code === 0 ? null : 'phaseFailed' });
     return code;
   } catch (error) {
+    observeFailure ??= createNativeFailureEvidence(import.meta.url, { scenario: 'workspaceCommandPhase' });
+    observeFailure(error, context?.phase ?? 'phaseRequest');
     if (context) {
       try { await writeJsonAtomicExclusive(resolve(context.phaseRoot, 'phase-error.json'),
         { binding: context.binding, errorCode: errorCode(error, isFault(context)) }); } catch { /* Missing required evidence remains failure. */ }
     }
     return 1;
-  }
+  } finally { await observeFailure?.finish(); }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

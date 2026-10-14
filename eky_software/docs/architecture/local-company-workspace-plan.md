@@ -687,6 +687,13 @@ health/identity/artifact-validointi, transactionin hyväksyntä ja cleanup.
 Virheessä sama activation transaction palauttaa vanhan tietokannan ja PDF-
 artifact-juuren ennen vanhan runtimen terveeksi todistamista.
 
+Kirjoitusquiescen ajastinpysäytys ei sulje varmuuskopion tarkistusporttia:
+preRestore tarvitsee sitä vielä ennen runtimen sulkua. Mainin lopullinen
+capability-disposal sulkee portin synkronisesti ja odottaa omistetun työn
+siivouksen ennen backendin sulkua. Tavallisen shutdownin välitön uuden työn
+esto säilyy. [K:n sulkujärjestysregressio](release-0.3.0-m1-preparation-plan.md#v2ah-electron-testiruntimen-tarkistusajuritoimitus)
+todentaa tämän eron kirjoitussuojaa tai maintenance-leasea keventämättä.
+
 Korvaus käsittelee vain portable business snapshotia. SMTP-salaisuus,
 safeStorage/DPAPI-envelope, ulkoisen PDF-arkiston root ja retry-journal,
 update/cache-tila, operational-lokit, diagnostiikka sekä muiden workspacejen
@@ -938,12 +945,23 @@ erillinen lopullinen versionostocommit.
 
 ### W6A.1: Read-only migration inventory
 
-W6A.1 on first-start-orchestraatiota edeltävä sivuvaikutukseton checkpoint.
+W6A.1 on first-start-orchestraatiota edeltävä tarkastuscheckpoint.
 Electron main lukee strictin registry v1:n, valitsee vain `ready`-entryt ja
 johtaa niiden workspace-polut nykyisen main-owned path policyn kautta.
 Yksityinen backend utility tarkastaa työtilat yksi kerrallaan aidosti read-only-
 yhteydellä. Main ei avaa SQLitea, eikä samanaikaisia utility- tai SQLite-
 ownereita sallita.
+
+K:n erikseen hyväksytty paikallinen hot-journal-palautus tarkentaa
+sivuvaikutuksettomuutta: strictistä `ready`-entrystä valitun, samana
+säilyneen juuren ja elävän prosessivarauksen omistama SQLite saa palauttaa
+oman keskeneräisen transaktionsa ennen schema-lukua. Vanha hallittu
+kirjoittaja on poissa ja palautusvalta sidotaan nykyiseen childiin sekä
+täsmälliseen profiilitiedostoon. Business-kyselyitä, identity-lukua tai
+migraatioita ei tehdä ennen koko scheman/historyn todistusta. Terveen
+tiedoston tarkastus on edelleen vain lukuun; registry ja artifactit eivät
+muutu. Tuonti, snapshot tai palautuskohde ei saa tätä poikkeusta.
+Yksityiskohtainen sopimus ja näyttö ovat [M1:n V2u:ssa](release-0.3.0-m1-preparation-plan.md#v2u-omistetun-paikallisen-työtilan-kaatumispalautus).
 
 Jokainen tarkastettu työtila luokitellaan vain tilaan `current`,
 `compatiblePending` tai `invalidHistory` ADR-0011:n määritelmien mukaan.
@@ -952,15 +970,29 @@ luokituksen sekä applied/pending-lukumäärät. Polkuja, migration-nimiä tai
 -tiivisteitä, `companyId`:tä, `profileId`:tä, lineagea, sessionia tai raakaa
 SQLite-virhettä ei palauteta eikä lokiteta.
 
-`invalidHistory` on tietosisällön luokitus: kanoninen, tavallinen ja yhden
-linkin tietokantatiedosto on voitu avata read-only-tilassa, mutta integrity-,
-foreign key- tai migration history -tarkastus osoittaa sisällön vioittuneeksi
-tai ristiriitaiseksi. Puuttuva tai turvaton workspace-juuri, puuttuva tai
-ei-kanoninen tietokanta, avaamaton storage, väärä `profileId` taikka utility-,
-protokolla- tai shutdown-virhe ei tuota entryä, vaan keskeyttää koko
-inventaarion fail-closed.
+`invalidHistory` on luotetun rakenteen tietosisällön luokitus: kanoninen,
+tavallinen ja yhden linkin tietokantatiedosto on voitu avata read-only-tilassa,
+koko schema ja immutable-migraatiohistoria on todennettu, mutta integrity-
+tai foreign key -tarkastus osoittaa sisällön vioittuneeksi. K:n hyväksytty
+tarkennus 10.10.2026 vaatii rakenteen ja historian todistuksen ennen identity-
+tai business-lukua. Schema- tai historiavirhe ei tuota `invalidHistory`-entryä,
+vaan keskeyttää koko inventaarion ennen registry-siirtymiä. Historiallista
+prefixiä tai yritysidentiteettiä ei arvata, eikä metadataless-backupin
+tuontitukea käytetä julkaistun työtilan poikkeuksena. Puuttuva tai turvaton
+workspace-juuri, puuttuva tai ei-kanoninen tietokanta, avaamaton storage,
+väärä `profileId` taikka utility-, protokolla- tai shutdown-virhe keskeyttää
+inventaarion samoin fail-closed.
 
-Checkpoint ei kirjoita registryä tai tietokantaa, käynnistä workspace-
+Inventaario ja sitä edeltävät tavalliset registry-luvut tarkastavat
+current/backup/next-slotit nykyisessä auktoriteettijärjestyksessä ilman
+palautusslotin julkaisemista tai muiden slottien poistamista. Epäkelpo
+ensisijainen slot ei salli fallbackia. Journalin omistama aiemmin hyväksytty
+palautus pysyy erillisenä; se ei anna tavalliselle tarkastusluvulle
+korjausoikeutta. Ensimmäinen turvallinen schema-/historiasyy säilytetään
+nykyisessä suljetussa utility-tulossopimuksessa ja sisäisessä syyketjussa.
+Raakavirheitä, SQL:ää, polkuja tai yritystunnisteita ei julkaista.
+
+Checkpoint ei kirjoita registryä tai business-sisältöä, käynnistä workspace-
 runtimea, aja migraatioita, luo recovery pointia, muuta aktiivista osoitinta
 tai accepted build -metadataa eikä vielä kytkeydy production-startupiin.
 `invalidHistory`-entryn mahdollinen `recoveryRequired`-siirtymä ja aktiivisen
@@ -1104,6 +1136,15 @@ business-sisällön. Migraatiot ajetaan palautuspisteestä muodostettuun
 yksityiseen candidate-juureen. Candidate todistetaan migration chainin,
 workspace-identiteetin ja authoritative artifact/PDF -sulkeuman osalta ennen
 atomista aktivointia. Julkaistua kohdetietokantaa ei migroida paikallaan.
+
+Palautuspisteen materialisoidun lähdestagingin omistajuus säilyy
+`ProfileSnapshotInspectionClient`illä tarkistuksen jälkeen. Aktivointimigraation
+staging-adapteri pyytää poiston saman omistajan `removeProfileSnapshot`-portilta;
+se ei poista kansiota suoraan. Omistaja varmentaa tarkistusprosessin päättymisen
+ja varauksen palautumisen sekä vapauttaa oman seurantansa ennen seuraavaa
+sammutusta. Puuttuva kansio ei yksin todista seurannassa olevan operaation
+onnistunutta siivousta. Menetetty omistajuus estää poiston ja säilyttää
+palautusaineiston; erillistä korjaavaa poistopolkua ei käytetä.
 
 W6A.3 ei lisää erillistä activation-migration-journalia. Jo hyväksytyt,
 toisiaan täydentävät durable vastuut ovat:

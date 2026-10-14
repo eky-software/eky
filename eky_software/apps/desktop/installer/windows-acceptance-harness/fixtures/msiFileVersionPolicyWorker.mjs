@@ -7,6 +7,7 @@ import { parseStrictJsonObjectBytes } from '../strictJsonObject.mjs';
 import { prepareMsiFileVersionPolicyFixture } from './buildMsiFileVersionPolicyFixture.mjs';
 import { exerciseMsiFileVersionPolicy, MSI_POLICY_VARIANTS, msiPolicyErrorCode } from './msiFileVersionPolicyLifecycle.mjs';
 import { createMsiPolicyRuntime, hashBytes, readMsiPolicyDescriptor, readPolicyBytes } from './msiFileVersionPolicyRuntime.mjs';
+import { createNativeFailureEvidence } from '../nativeFailureEvidence.mjs';
 
 export function requireHostedMsiPolicyEnvironment(env, platform = process.platform) {
   if (platform !== 'win32' || env.GITHUB_ACTIONS !== 'true' || env.RUNNER_ENVIRONMENT !== 'github-hosted' ||
@@ -25,6 +26,7 @@ export async function runMsiPolicyWorker(mode, requestPath, descriptorPath) {
       !/^[0-9a-f]{64}$/.test(request.artifactDescriptorSha256)) throw new Error('msiPolicyRequestInvalid');
   const binding = { schemaVersion: 1, runNonce: request.runNonce, scenario: request.scenario,
     artifactDescriptorSha256: request.artifactDescriptorSha256 };
+  const observeFailure = createNativeFailureEvidence(import.meta.url, request);
   let result = { variant: mode, status: 'failed', phase: 'preparation', errorCode: 'preparationFailed', causeCode: null,
     sourceVerified: false, policyVerified: false, cleanupStatus: 'notAttempted', cleanupErrorCode: null, cleanupCauseCode: null };
   try {
@@ -52,9 +54,10 @@ export async function runMsiPolicyWorker(mode, requestPath, descriptorPath) {
       result.phase = 'metadata';
       result.errorCode = 'metadataFailed';
       await runtime.metadata();
-      result = await exerciseMsiFileVersionPolicy(mode, runtime);
+      result = await exerciseMsiFileVersionPolicy(mode, { ...runtime, observeFailure });
     }
-  } catch (error) { result.causeCode = msiPolicyErrorCode(error); }
+  } catch (error) { observeFailure(error, result.phase); result.causeCode = msiPolicyErrorCode(error); }
+  await observeFailure.finish();
   await writeJsonAtomicExclusive(resolve(root, 'policy-result.json'), { binding, result });
   await writeJsonAtomicExclusive(resolve(root, 'worker-result.json'), {
     ...binding, status: result.status,

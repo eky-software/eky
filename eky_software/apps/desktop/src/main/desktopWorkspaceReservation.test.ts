@@ -53,7 +53,7 @@ function reservation() {
   return { loss, handle };
 }
 
-async function fixture() {
+async function fixture(prepareMainOwned?: (signal: AbortSignal) => Promise<void>) {
   const initial = reservation();
   const reclaimed = reservation();
   acquire.mockResolvedValueOnce(initial.handle).mockResolvedValueOnce(reclaimed.handle);
@@ -65,7 +65,7 @@ async function fixture() {
   const lease = new InMemoryWorkspaceMaintenanceLease();
   const handle = await lease.acquire('create');
   const assertAuthority = vi.fn(lease.captureCurrentOwner(['create']));
-  const transfer = owner.bind(randomUUID(), assertAuthority);
+  const transfer = owner.bind(randomUUID(), assertAuthority, prepareMainOwned);
   return { owner, transfer, initial, reclaimed, assertSingleInstanceOwnership, signal, lease, handle, assertAuthority };
 }
 
@@ -77,6 +77,35 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('desktop composition workspace reservation owner', () => {
+  it('prepares owned inspection work before releasing the existing reservation', async () => {
+    let f!: Awaited<ReturnType<typeof fixture>>;
+    const prepare = vi.fn(async (signal: AbortSignal) => {
+      expect(signal.aborted).toBe(false);
+      expect(f.initial.handle.assertOwned).toHaveBeenCalled();
+      expect(f.initial.handle.release).not.toHaveBeenCalled();
+    });
+    f = await fixture(prepare);
+    await f.transfer.prepare(f.signal.signal);
+    expect(prepare).toHaveBeenCalledOnce();
+    expect(f.initial.handle.assertOwned).toHaveBeenCalledTimes(2);
+    expect(f.initial.handle.release).toHaveBeenCalledOnce();
+  });
+
+  it('does not release ownership after losing the lease during inspection preparation', async () => {
+    const pending = deferred();
+    const entered = deferred();
+    const f = await fixture(async () => { entered.resolve(); await pending.promise; });
+    const preparation = f.transfer.prepare(f.signal.signal);
+    const rejected = expect(preparation).rejects.toThrow();
+    await entered.promise;
+    await f.handle.release();
+    await f.lease.acquire('create');
+    pending.resolve();
+    await rejected;
+    expect(f.initial.handle.release).not.toHaveBeenCalled();
+    await expect(f.owner.assertMainOwned()).rejects.toThrow();
+  });
+
   it('releases initial ownership cancelled between acquisition and its continuation', async () => {
     const initial = reservation();
     const signal = new AbortController();

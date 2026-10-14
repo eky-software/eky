@@ -44,7 +44,7 @@ function fixture() {
 }
 
 describe('Electron development backend ownership boundary', () => {
-  it('requires prepare and exact grant, keeps update shutdown unsupported, and reclaims only after exit', async () => {
+  it('requires prepare and exact grant, rejects unsupported protected shutdown, and reclaims only after exit', async () => {
     const f = fixture();
     await f.prepare();
     expect(f.child.postMessage).toHaveBeenCalledExactlyOnceWith({ type: 'prepare', reservation: f.transfer.descriptor });
@@ -59,6 +59,9 @@ describe('Electron development backend ownership boundary', () => {
     const handle = await f.started;
     await expect(handle.stopForUpdate('11111111-1111-4111-8111-111111111111'))
       .rejects.toThrow('ELECTRON_E2E_BACKEND_UPDATE_SHUTDOWN_UNSUPPORTED');
+    await expect(handle.stopForRestore('11111111-1111-4111-8111-111111111111'))
+      .rejects.toThrow('ELECTRON_E2E_BACKEND_RESTORE_SHUTDOWN_UNSUPPORTED');
+    expect(f.child.postMessage).toHaveBeenCalledTimes(2);
     expect(f.child.kill).not.toHaveBeenCalled();
     const stopping = handle.stop();
     expect(f.child.postMessage).toHaveBeenLastCalledWith({ type: 'shutdown' });

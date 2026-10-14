@@ -1,8 +1,10 @@
 import { promises as fileSystem } from 'node:fs';
 
 import { withReadOnlyDatabaseConnection } from '../../database/connection/openReadOnlyDatabaseConnection.js';
+import { recoverOwnedLocalDatabase, type OwnedLocalDatabaseRecovery } from '../../database/connection/recoverOwnedLocalDatabase.js';
 import { readLocalRuntimeIdentity } from '../../database/localRuntimeIdentityReader.js';
-import { inspectMigrationStartupState } from '../../database/migration/inspectMigrationStartupState.js';
+import { inspectAttestedMigrationHistory } from '../../database/migration/inspectAttestedMigrationHistory.js';
+import { readMigrationManifest } from '../../database/migration/migrationManifest.js';
 import { createProfileBackupIdentity } from '../profileSnapshot/inspectSqliteProfileDatabase.js';
 import {
   assertWorkspaceCandidateContainedPath,
@@ -39,6 +41,7 @@ export interface PublishedWorkspaceMigrationInspectionInput {
 export async function inspectPublishedWorkspaceMigration(
   input: Readonly<PublishedWorkspaceMigrationInspectionInput>,
   signal?: AbortSignal,
+  ownedLocalDatabaseRecovery?: OwnedLocalDatabaseRecovery,
 ): Promise<Readonly<PublishedWorkspaceMigrationInspection>> {
   validateReleaseAndProfileIdentity(input);
   throwIfCancelled(signal);
@@ -54,8 +57,17 @@ export async function inspectPublishedWorkspaceMigration(
   assertWorkspaceCandidateContainedPath(publishedRoot, databaseFilePath);
   await validatePublishedDatabaseFile(databaseFilePath);
   throwIfCancelled(signal);
+  const manifest = readMigrationManifest(migrationsDirectory);
+
+  if (ownedLocalDatabaseRecovery !== undefined) {
+    await recoverOwnedLocalDatabase(databaseFilePath, ownedLocalDatabaseRecovery);
+    throwIfCancelled(signal);
+  }
 
   return withReadOnlyDatabaseConnection(databaseFilePath, (database) => {
+    throwIfCancelled(signal);
+    // Unproven schema/history must abort inventory, not authorize a registry transition.
+    const migration = inspectAttestedMigrationHistory(database, manifest);
     throwIfCancelled(signal);
     let integrityResult: unknown;
     try {
@@ -83,25 +95,21 @@ export async function inspectPublishedWorkspaceMigration(
 
     if (integrityResult !== 'ok') return invalidHistory();
 
-    let migration: ReturnType<typeof inspectMigrationStartupState>;
     try {
-      const foreignKeyRows = database.pragma('foreign_key_check') as unknown[];
-      if (foreignKeyRows.length !== 0) return invalidHistory();
-      migration = inspectMigrationStartupState(
-        database,
-        migrationsDirectory,
-      );
+      if (database.prepare('PRAGMA main.foreign_key_check').get() !== undefined) {
+        return invalidHistory();
+      }
     } catch {
       return invalidHistory();
     }
     throwIfCancelled(signal);
 
     return Object.freeze({
-      appliedMigrationCount: migration.appliedMigrationCount,
+      appliedMigrationCount: migration.appliedMigrationNames.length,
       kind: 'migrationInspection',
-      pendingMigrationCount: migration.pendingMigrationCount,
+      pendingMigrationCount: manifest.length - migration.appliedMigrationNames.length,
       status:
-        migration.pendingMigrationCount === 0
+        migration.appliedMigrationNames.length === manifest.length
           ? ('current' as const)
           : ('compatiblePending' as const),
     });

@@ -11,6 +11,7 @@ import { verifyLegacyUpgradeArtifact } from './legacyUpgradeArtifact.mjs';
 import { createLegacyUpgradeWorkerRequest, readLegacyUpgradeWorkerRequest, readLegacyUpgradeResult,
   legacyUpgradeResultPathForRequest, writeJsonAtomicExclusive } from './legacyUpgradeContracts.mjs';
 import { runLegacyUpgradeWorker } from './runLegacyUpgradeWorker.mjs';
+import { createNativeFailureEvidence } from './nativeFailureEvidence.mjs';
 import { executeProductOperation } from './installerProductOperationWorker.mjs';
 import { acceptanceProductPair, validateAcceptanceProductFacts } from './acceptanceProductFacts.mjs';
 import { prepareLegacyUpgradeTerminalOutcome, completeLegacyUpgradeTerminalOutcome,
@@ -102,6 +103,9 @@ async function runProduct(context, { executeProduct = executeProductOperation, v
 }
 
 export async function executeLegacyCommandPhase(context, dependencies = {}) {
+  const observeFailure = error => {
+    try { dependencies.observeFailure?.(error, context.phase); } catch { /* Preserve the phase result. */ }
+  };
   const { phase, state, binding, resultPath, commandArguments, reports } = context;
   const filesystem = (operation, payload) => (dependencies.filesystem ?? executeLegacyFilesystem)({ schemaVersion: 1, operation, payload });
   if (phase === 'prepare') {
@@ -133,23 +137,24 @@ export async function executeLegacyCommandPhase(context, dependencies = {}) {
       .find(([name]) => name === 'scenario');
     return (dependencies.runScenario ?? runLegacyUpgradeWorker)(['--request', path], {
       phaseObservation: { timeoutMilliseconds, terminationTimeoutMilliseconds },
+      createFailureEvidence: request => createNativeFailureEvidence(import.meta.url, request),
     });
   } else if (phase === 'semantic') {
     await terminalPlan(context, async () => {
       try {
         state.semanticProof = await filesystem('semantic', { artifact: state.artifact,
           runNonce: reports.scenario.runNonce, runtimeRoot: state.runRoot });
-      } catch { state.semanticProof = { status: 'failed', errorCode: 'legacySemanticProofFailed' }; }
+      } catch (error) { observeFailure(error); state.semanticProof = { status: 'failed', errorCode: 'legacySemanticProofFailed' }; }
       return state.semanticProof;
     });
   } else if (phase === 'artifact') {
     try { await filesystem('artifact', { artifact: state.artifact }); }
-    catch { state.safetyErrorCode ??= 'WINDOWS_ACCEPTANCE_LEGACY_LOCAL_FIXTURE_CHANGED'; }
+    catch (error) { observeFailure(error); state.safetyErrorCode ??= 'WINDOWS_ACCEPTANCE_LEGACY_LOCAL_FIXTURE_CHANGED'; }
   } else if (phase === 'inventoryAfter') {
     try {
       state.profileAfter = await filesystem('inventory', { root: resolve(process.env.APPDATA, 'Eky') });
       if (!inventoriesMatch(state.profileBefore, state.profileAfter)) throw new Error();
-    } catch { state.safetyErrorCode ??= 'WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED'; }
+    } catch (error) { observeFailure(error); state.safetyErrorCode ??= 'WINDOWS_ACCEPTANCE_NORMAL_PROFILE_CHANGED'; }
   } else if (phase === 'fixtureCleanup') {
     const { terminal, failure } = await terminalOutcome(context);
     const startupEvidence = await readLegacyStartupFailureEvidence({ runRoot: state.runRoot,
@@ -243,10 +248,12 @@ async function publish(context) {
 
 export async function runLegacyCommandPhase(args, dependencies = {}) {
   let context;
+  let observeFailure;
   try {
     if (args.length !== 2 || args[0] !== '--phase-request') invalid();
     context = await readLegacyCommandPhase(args[1]);
-    const code = await executeLegacyCommandPhase(context, dependencies);
+    observeFailure = createNativeFailureEvidence(import.meta.url, context.binding);
+    const code = await executeLegacyCommandPhase(context, { ...dependencies, observeFailure });
     if (context.phase !== 'scenario') await writeJsonAtomicExclusive(resolve(context.phaseRoot, 'phase-state.json'),
       { binding: context.binding, state: context.state });
     await writeJsonAtomicExclusive(resolve(context.phaseRoot, 'worker-result.json'), { ...context.binding,
@@ -254,12 +261,14 @@ export async function runLegacyCommandPhase(args, dependencies = {}) {
       errorCode: code === 0 ? null : 'phaseFailed' });
     return code;
   } catch (error) {
+    observeFailure ??= createNativeFailureEvidence(import.meta.url, { scenario: 'legacyCommandPhase' });
+    observeFailure(error, context?.phase ?? 'phaseRequest');
     if (context) {
       try { await writeJsonAtomicExclusive(resolve(context.phaseRoot, 'phase-error.json'), { binding: context.binding, errorCode: safeCode(error) }); }
       catch { /* Required result absence remains a failure; never print a raw error. */ }
     }
     return 1;
-  }
+  } finally { await observeFailure?.finish(); }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

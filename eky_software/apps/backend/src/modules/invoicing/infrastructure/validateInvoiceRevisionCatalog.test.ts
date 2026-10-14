@@ -211,6 +211,46 @@ describe('invoice revision catalog credit sources', () => {
     await expect(catalog(database).listAuthoritativeArtifacts()).resolves.toHaveLength(1);
   });
 
+  it('keeps the exact historical credit source when another source revision becomes current', async () => {
+    const { database, credit } = await createCredit();
+    nextPublicationRevision(database, { companyId: credit.header.company_id,
+      invoiceId: credit.header.credited_invoice_id!, revisionId: credit.header.credited_revision_id! });
+    await expect(catalog(database).listAuthoritativeArtifacts()).resolves.toEqual([]);
+  });
+
+  it.each(['no source line', 'repeated source line'] as const)('preserves credit lines with %s', async variant => {
+    const { database, credit } = await createCredit();
+    const sourceLine = credit.lines.find(line => line.source_invoice_line_id !== null)!.source_invoice_line_id;
+    for (const table of ['invoice_lines', 'invoice_revision_lines'] as const) {
+      bypassReaderFixtureConstraints(database, table, () => {
+        const assignments = table === 'invoice_revision_lines' ? ', source_revision_id = ?' : '';
+        const args = [variant === 'no source line' ? null : sourceLine,
+          ...(table === 'invoice_revision_lines' ? [variant === 'no source line' ? null : credit.header.credited_revision_id] : []),
+          credit.header.invoice_id];
+        database.prepare(`UPDATE ${table} SET source_invoice_line_id = ? ${assignments} WHERE invoice_id = ?`).run(...args);
+      });
+    }
+    await expect(catalog(database).listAuthoritativeArtifacts()).resolves.toEqual([]);
+  });
+
+  it('compares arbitrary credit source number/date text without adding format rules', async () => {
+    const { database, credit } = await createCredit();
+    const value = 'historical\0\u{1f600}'.repeat(3000);
+    for (const field of ['invoice_number', 'invoice_date'] as const) {
+      for (const table of ['invoices', 'invoice_content_revisions'] as const) {
+        bypassReaderFixtureConstraints(database, table, () => database.prepare(`UPDATE ${table} SET ${field} = ? WHERE id = ?`)
+          .run(value, table === 'invoices' ? credit.header.credited_invoice_id : credit.header.credited_revision_id));
+      }
+      const snapshotField = field === 'invoice_number' ? 'credited_invoice_number_snapshot' : 'credited_invoice_date_snapshot';
+      corruptStoredReaderRow(database, 'invoice_content_revisions', { id: credit.header.id }, { [snapshotField]: value });
+    }
+    await expect(catalog(database).listAuthoritativeArtifacts()).resolves.toEqual([]);
+    corruptStoredReaderRow(database, 'invoice_content_revisions', { id: credit.header.id }, {
+      credited_invoice_date_snapshot: value + 'late change',
+    });
+    await expectInvalid(database);
+  });
+
   it.each<[string, StoredValues]>([
     ['missing source', { credited_revision_id: 'missing' }],
     ['wrong invoice', { credited_invoice_id: 'missing' }],

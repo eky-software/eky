@@ -8,8 +8,9 @@ export class WorkspaceMigrationInventoryError extends Error {
     readonly code:
       | typeof workspaceMigrationInventoryCancelledCode
       | typeof workspaceMigrationInventoryFailedCode,
+    options?: ErrorOptions,
   ) {
-    super(code);
+    super(code, options);
     this.name = 'WorkspaceMigrationInventoryError';
   }
 }

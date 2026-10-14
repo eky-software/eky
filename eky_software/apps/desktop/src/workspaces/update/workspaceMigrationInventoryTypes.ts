@@ -1,4 +1,5 @@
 import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
+import type { OwnedLocalDatabaseRecoverySelection } from '../../runtime/ownedLocalDatabaseRecovery.js';
 
 export type WorkspaceMigrationInventoryStatus =
   | 'compatiblePending'
@@ -23,6 +24,7 @@ export interface WorkspaceMigrationInspectionInput {
   readonly expectedProfileId: string;
   readonly operationId: string;
   readonly publishedRoot: string;
+  readonly ownedLocalDatabaseRecovery?: Readonly<OwnedLocalDatabaseRecoverySelection>;
   readonly signal?: AbortSignal;
 }
 

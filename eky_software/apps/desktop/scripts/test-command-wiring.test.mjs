@@ -1,12 +1,37 @@
 import assert from 'node:assert/strict';
 import { lstat, readFile } from 'node:fs/promises';
+import { availableParallelism } from 'node:os';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+import desktopVitestConfig, { desktopTestWorkers } from '../vitest.config.mjs';
 
 const DESKTOP_ROOT = new URL('../', import.meta.url);
 const CI_ROOT = new URL('../../../../.github/', import.meta.url);
 const { classifyCiRisk } = await import(new URL('scripts/ciRiskPolicy.mjs', CI_ROOT));
 const { requiredCiJobs } = await import(new URL('scripts/ciJobCoverage.mjs', CI_ROOT));
 const { CI_WORKFLOWS, evaluateCiRun } = await import(new URL('scripts/ciRunAcceptance.mjs', CI_ROOT));
+
+for (const [parallelism, expected] of [[1, 1], [2, 1], [3, 2], [4, 3], [5, 4], [6, 4], [64, 4]]) {
+  test(`desktop run workers preserve the smaller default or cap at four for ${parallelism} available CPUs`, () => {
+    assert.equal(desktopTestWorkers(parallelism), expected);
+    assert.ok(desktopTestWorkers(parallelism) <= Math.max(parallelism - 1, 1));
+  });
+}
+
+test('ordinary desktop Vitest resolution applies only the approved worker limit', async () => {
+  const { resolveConfig } = await import('vitest/node');
+  const root = fileURLToPath(DESKTOP_ROOT);
+  const current = await resolveConfig({ root, run: true });
+  const baseline = await resolveConfig({ root, run: true, config: false });
+  const expected = desktopTestWorkers(availableParallelism());
+  assert.deepEqual(desktopVitestConfig, { test: { maxWorkers: expected } });
+  assert.equal(current.viteConfig.configFile, fileURLToPath(new URL('vitest.config.mjs', DESKTOP_ROOT)).replaceAll('\\', '/'));
+  assert.equal(current.vitestConfig.maxWorkers, expected);
+  for (const key of ['include', 'exclude', 'testTimeout', 'hookTimeout', 'retry', 'isolate', 'pool', 'fileParallelism']) {
+    assert.deepEqual(current.vitestConfig[key], baseline.vitestConfig[key], `Unrelated test setting changed: ${key}`);
+  }
+});
 
 const COMMANDS = {
   vitest: ['test', 0],
@@ -19,9 +44,15 @@ const REQUIRED_FILES = [
   ['e2e/electronE2eBackendRunner.test.ts', 'vitest'],
   ['e2e/electronE2eStartupHold.test.ts', 'vitest'],
   ['e2e/electronE2eWorkspaceStartupFailure.test.ts', 'vitest'],
+  ['scripts/electronE2eInspectionResource.test.ts', 'vitest'],
+  ['scripts/profileBackupSourceReceiptCompatibility.test.ts', 'vitest'],
+  ['e2e/w6b2PackagedWorkspaceMigrationHistory.test.ts', 'vitest'],
   ['e2e/workspaceProofReservation.test.ts', 'vitest'],
   ['scripts/test-command-wiring.test.mjs', 'node'],
+  ['scripts/profileInspection/linuxProfileInspection.test.mjs', 'node'],
+  ['scripts/profileInspection/linuxSandboxProbe.test.mjs', 'node'],
   ['scripts/backendBuildMetadata.test.mjs', 'node'],
+  ['scripts/prepare-electron-e2e-backend.test.mjs', 'node'],
   ...[
     'cleanInstallUninstallContracts', 'cleanInstallUninstallLifecycle',
     'cleanInstallUninstallPayload', 'localImmutableInstallerFixture',
@@ -31,17 +62,38 @@ const REQUIRED_FILES = [
 ];
 const CI_EDGES = [
   { job: 'verify', name: 'Test, typecheck and build', gate: 'verify',
-    step: 'Run tests', run: 'pnpm test' },
+    step: 'Run tests', run: "pnpm --recursive --workspace-concurrency=1 --filter '!eky-software' --stream run test" },
+  { job: 'verify', name: 'Test, typecheck and build', gate: 'verify',
+    step: 'Prepare Linux inspection Electron runtime', run: 'pnpm --filter @eky/desktop e2e:prepare-electron-runtime' },
+  { job: 'verify', name: 'Test, typecheck and build', gate: 'verify',
+    step: 'Verify Linux isolated profile inspection', environment: "        env:\n          EKY_E2E: '1'\n",
+    run: 'pnpm --filter @eky/desktop inspection:proof:linux' },
   { job: 'windows-contracts', name: 'Windows installer contract tests', gate: 'windowsContracts',
     step: 'Run deterministic installer tests', run: 'pnpm --filter @eky/desktop installer:test:unit' },
   { job: 'windows-contracts', name: 'Windows installer contract tests', gate: 'windowsContracts',
     step: 'Run Windows process-contract tests serially', run: 'pnpm --filter @eky/desktop installer:test:windows-process' },
 ];
 
+test('approved inspection source controls remain in the ordinary recursive test command', async () => {
+  const backend = JSON.parse(await readFile(new URL('../../backend/package.json', import.meta.url), 'utf8'));
+  const root = JSON.parse(await readFile(new URL('../../../package.json', import.meta.url), 'utf8'));
+  assert.equal(root.scripts.test, 'pnpm --recursive test');
+  assert.equal(backend.scripts.test, 'node --test --test-reporter=../../test-reporters/nodeFailureReporter.mjs scripts/build-profile-inspection-native.test.mjs && vitest run --reporter=default --reporter=../../test-reporters/vitestFailureReporter.mjs src e2e');
+  assert.equal((await lstat(new URL('../../backend/scripts/build-profile-inspection-native.test.mjs', import.meta.url))).isFile(), true);
+});
+
+test('ordinary Linux inspection uses one scoped sandbox proof around the existing inspection caller', async () => {
+  const desktop = JSON.parse(await readFile(new URL('package.json', DESKTOP_ROOT), 'utf8'));
+  assert.equal(desktop.scripts['inspection:proof:linux'], 'node scripts/profileInspection/linuxSandboxProbe.mjs');
+  const source = await readFile(new URL('scripts/profileInspection/linuxSandboxProbe.mjs', DESKTOP_ROOT), 'utf8');
+  assert.equal(source.split("[join(repository, 'apps/desktop/scripts/profileInspection/runLinuxProfileInspectionProof.mjs')]").length, 2);
+  assert.match(source, /sandboxNativeEvidenceForJob\(process\.env\.GITHUB_JOB\)/u);
+});
+
 test('startup exception exit proof uses the existing compiled owner and explicit opt-in failure wait', async () => {
   const desktop = JSON.parse(await readFile(new URL('package.json', DESKTOP_ROOT), 'utf8'));
   assert.equal(desktop.scripts['installer:proof:startup-exception-exit'],
-    'pnpm build && pnpm e2e:prepare-electron-runtime && pnpm installer:supervisor:build && node --test --test-concurrency=1 installer/windows-acceptance-harness/startupExceptionElectronExit.test.mjs');
+    'pnpm build && pnpm e2e:prepare-electron-runtime && pnpm installer:supervisor:build && node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs installer/windows-acceptance-harness/startupExceptionElectronExit.test.mjs');
   const index = await readFile(new URL('src/main/index.ts', DESKTOP_ROOT), 'utf8');
   assert.match(index, /if \(app.commandLine.hasSwitch\(STARTUP_EXCEPTION_SWITCH\)\)/u);
   const failure = index.slice(index.indexOf('async onFailure(errorCode)'));
@@ -91,6 +143,7 @@ function testFiles(command, prefix, extension) {
 function assertPackageWiring({ root, desktop, files }) {
   assert.equal(root.scripts.test, 'pnpm --recursive test');
   assert.equal(desktop.name, '@eky/desktop');
+  assert.equal(desktop.scripts['inspection:proof:linux'], 'node scripts/profileInspection/linuxSandboxProbe.mjs');
   const ordinary = commandChain(desktop.scripts.test, 2);
   const unit = commandChain(desktop.scripts['installer:test:unit'], 1);
   const process = commandChain(desktop.scripts['installer:test:windows-process'], 2);
@@ -98,10 +151,12 @@ function assertPackageWiring({ root, desktop, files }) {
   assert.equal(desktop.scripts['installer:supervisor:build'],
     'node installer/windows-process-supervisor/buildWindowsAcceptanceSupervisor.mjs');
   const selected = {
-    vitest: testFiles(ordinary[0], ['vitest', 'run'], 'ts'),
-    node: testFiles(ordinary[1], ['node', '--test'], 'mjs'),
-    unit: testFiles(unit[0], ['node', '--test'], 'mjs'),
-    process: testFiles(process[1], ['node', '--test', '--test-concurrency=1'], 'mjs'),
+    vitest: testFiles(ordinary[0], ['vitest', 'run', '--reporter=default',
+      '--reporter=../../test-reporters/vitestFailureReporter.mjs'], 'ts'),
+    node: testFiles(ordinary[1], ['node', '--test', '--test-reporter=../../test-reporters/nodeFailureReporter.mjs'], 'mjs'),
+    unit: testFiles(unit[0], ['node', '--test', '--test-reporter=../../test-reporters/nodeFailureReporter.mjs'], 'mjs'),
+    process: testFiles(process[1], ['node', '--test', '--test-concurrency=1',
+      '--test-reporter=../../test-reporters/nodeFailureReporter.mjs'], 'mjs'),
   };
   assert.ok(selected.vitest.includes('src'), 'Existing desktop source tests must remain selected');
   assert.ok(selected.process.includes('installer/scripts/launchRollbackWindowsInstaller.test.mjs'));
@@ -153,7 +208,7 @@ function assertCiWiring({ core, caller, plan, coverage }) {
     property(header, 4, 'runs-on', edge.job === 'verify' ? 'ubuntu-latest' : 'windows-latest');
     property(header, 8, 'working-directory', 'eky_software');
     assert.doesNotMatch(header, /^    continue-on-error:/mu);
-    assert.equal(stepBlock(job, edge.step), `      - name: ${edge.step}\n        run: ${edge.run}`);
+    assert.equal(stepBlock(job, edge.step), `      - name: ${edge.step}\n${edge.environment ?? ''}        run: ${edge.run}`);
     const required = coverage[edge.gate].filter((entry) => entry.name === edge.name);
     assert.equal(required.length, 1, 'Required CI job coverage missing or duplicated');
     assert.equal(required[0].steps.filter((step) => step === edge.step).length, 1,
@@ -236,6 +291,12 @@ for (const group of Object.keys(COMMANDS)) {
 for (const [name, change] of [
   ['root recursive call missing', (f) => { delete f.root.scripts.test; }],
   ['root recursion removed', (f) => { f.root.scripts.test = 'pnpm test'; }],
+  ['inspection sandbox coordinator bypassed', (f) => {
+    f.desktop.scripts['inspection:proof:linux'] = 'node scripts/profileInspection/runLinuxProfileInspectionProof.mjs';
+  }],
+  ['inspection proof duplicated', (f) => {
+    f.desktop.scripts['inspection:proof:linux'] += ' && node scripts/profileInspection/runLinuxProfileInspectionProof.mjs';
+  }],
   ...['test', 'installer:test:unit', 'installer:test:windows-process', 'installer:supervisor:build']
     .map((name) => [`script missing: ${name}`, (f) => { delete f.desktop.scripts[name]; }]),
   ['serial flag missing', (f) => editCommand(f, 'process', (s) => s.replace(' --test-concurrency=1', ''))],
@@ -245,6 +306,18 @@ for (const [name, change] of [
   ['supervisor build replaced', (f) => { f.desktop.scripts['installer:supervisor:build'] = 'node --version'; }],
 ]) {
   test(`rejects ${name}`, () => rejectsMutation(change));
+}
+
+for (const [name, change] of [
+  ['root scheduler substituted for serial CI', () => 'pnpm test'],
+  ['parallel package suites in core CI', command => command.replace('--workspace-concurrency=1', '--workspace-concurrency=4')],
+  ['root package exclusion missing in core CI', command => command.replace(" --filter '!eky-software'", '')],
+  ['first package failure ignored in core CI', command => command.replace(' run test', ' --no-bail run test')],
+]) {
+  test(`rejects ${name}`, () => rejectsMutation(fixture => {
+    const command = CI_EDGES.find(edge => edge.job === 'verify' && edge.step === 'Run tests').run;
+    fixture.core = fixture.core.replace(`        run: ${command}\n`, `        run: ${change(command)}\n`);
+  }));
 }
 
 for (const edge of CI_EDGES) {

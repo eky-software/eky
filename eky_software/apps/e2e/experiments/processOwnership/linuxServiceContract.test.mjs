@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { EventEmitter } from 'node:events';
 import { guardLinuxService, serviceDeadlines, serviceFrames, serviceMessage, encodeServiceMessage,
-  validateServiceConfig, validateServiceMessage, linuxChromiumPaths, linuxChromiumBrowserConfig } from './linuxServiceContract.mjs';
+  validateServiceConfig, validateServiceMessage, linuxChromiumPaths, linuxChromiumBrowserConfig,
+  linuxProfileInspectionPaths, linuxProfileInspectionEntry } from './linuxServiceContract.mjs';
 import { linuxServiceLaunchCommand, createLinuxServiceManager } from './linuxServiceManager.mjs';
 import { linuxServiceWorkload, prepareLinuxService, readLinuxServiceConfig, removeLinuxServiceControl,
-  readLinuxChromiumConfig } from './linuxServiceConfiguration.mjs';
+  readLinuxChromiumConfig, readLinuxInspectionControl } from './linuxServiceConfiguration.mjs';
 import { runLinuxOwnedChromiumServer } from '../../src/environment/linuxOwnedChromiumServer.mjs';
 import { requireChromiumReady } from '../../src/environment/chromiumWorkerContract.mjs';
 import { readLinuxWorkloadIdentity, readLinuxWorkloadRss, spawnLinuxServiceWorkload } from './linuxServiceWorkload.mjs';
@@ -22,6 +23,7 @@ const config = (profile = 'backend') => ({ version: 1, profile, generation, uid:
   node: '/opt/node/bin/node', startUntil: '45001000000', workUntil: '90001000000', redactedValues: ['PRIVATE'],
   ...(profile === 'backend' ? { runtimeConfigPath: '/tmp/eky-e2e/run-abcdef/CASE/runtime-config.json' }
     : profile === 'chromium' ? { browserExecutable: '/cache/chromium-1234/chrome-linux64/chrome', browserGeneration: 'b'.repeat(64) }
+      : profile === 'profileInspection' ? { inspectionConfigPath: linuxProfileInspectionPaths('/tmp/eky-e2e/run-abcdef').config }
     : { webPort: 3456, environmentRoot: '/tmp/eky-e2e/run-abcdef/CASE/temp', backendOrigin: 'http://127.0.0.1:3455',
       sessionSecret: 's'.repeat(43) }) });
 
@@ -40,10 +42,19 @@ function fakeFs(value = config()) {
     ['/source/node_modules/.pnpm/vite@7.0.0/node_modules/vite/package.json',
       JSON.stringify({ name: 'vite', version: '7.0.0', bin: { vite: 'bin/vite.js' } })],
     ['/source/node_modules/.pnpm/vite@7.0.0/node_modules/vite/bin/vite.js', 'synthetic vite'],
+    ['/source/apps/desktop/package.json', JSON.stringify({ devDependencies: { electron: '43.7.6' } })],
+    ['/source/node_modules/.pnpm/electron@43.7.6/node_modules/electron/package.json',
+      JSON.stringify({ name: 'electron', version: '43.7.6' })],
+    ['/source/node_modules/.pnpm/electron@43.7.6/node_modules/electron/dist/electron', 'synthetic electron'],
+    ['/source/' + linuxProfileInspectionEntry, 'synthetic inspection host'],
+    [linuxProfileInspectionPaths(value.runRoot).config, '{}'],
+    ...['/usr/bin/xvfb-run', '/usr/bin/Xvfb', '/usr/bin/xauth'].map(path => [path, 'synthetic display tool']),
     [value.root + '/service.json', JSON.stringify(value)],
   ]);
   const selector = '/source/apps/web/node_modules/vite';
   const target = '/source/node_modules/.pnpm/vite@7.0.0/node_modules/vite';
+  const electronSelector = '/source/apps/desktop/node_modules/electron';
+  const electronTarget = '/source/node_modules/.pnpm/electron@43.7.6/node_modules/electron';
   let fd = 0;
   const opened = new Map();
   const fs = {
@@ -55,10 +66,13 @@ function fakeFs(value = config()) {
       }
       return { uid: 1001, gid: 1002, mode: file ? 0o100700 : 0o40700, dev: 1, ino: 1, nlink: 1,
         size: file ? Buffer.byteLength(files.get(path)) : 0, mtimeMs: 0, ctimeMs: 0,
-        isFile: () => file, isDirectory: () => !file && path !== selector, isSymbolicLink: () => path === selector };
+        isFile: () => file, isDirectory: () => !file && path !== selector && path !== electronSelector,
+        isSymbolicLink: () => path === selector || path === electronSelector };
     },
-    realpathSync: path => path === selector ? target : path,
-    readlinkSync: () => '../../../node_modules/.pnpm/vite@7.0.0/node_modules/vite',
+    realpathSync: path => path === selector ? target : path === electronSelector ? electronTarget : path,
+    readlinkSync: path => path === electronSelector
+      ? '../../../node_modules/.pnpm/electron@43.7.6/node_modules/electron'
+      : '../../../node_modules/.pnpm/vite@7.0.0/node_modules/vite',
     openSync(path) { opened.set(++fd, path); return fd; },
     fstatSync: handle => fs.lstatSync(opened.get(handle)),
     readSync(handle, buffer) { const bytes = Buffer.from(files.get(opened.get(handle))); bytes.copy(buffer); return bytes.length; },
@@ -75,6 +89,8 @@ function fakeFs(value = config()) {
     renameSync(from, to) { files.set(to, files.get(from)); files.delete(from);
       entries.set(to, entries.get(from)); entries.delete(from); },
   };
+  const inspectionConfig = linuxProfileInspectionPaths(value.runRoot).config;
+  entries.set(inspectionConfig, { ...fs.lstatSync(inspectionConfig), mode: 0o100600 });
   return { fs, files, entries, writes, removed, options: { fs, tempDirectory: () => '/tmp', initPath: linuxServiceInitPath } };
 }
 
@@ -237,6 +253,24 @@ test('actual child events supply startup and root exit; output is bounded and sp
   child.emit('exit', 1, null); child.emit('close', 1, null);
   assert.equal(terminals.length, 1); assert.equal(terminals[0].state, 'exited');
   assert.throws(() => workload.rss());
+});
+
+test('finite inspection host accepts only zero exit without a signal; other service contracts stay unchanged', async () => {
+  for (const requireNormalExit of [true, undefined]) {
+    for (const [code, signal] of [[0, null], [1, null], [null, 'SIGKILL'], [null, null]]) {
+      const child = new EventEmitter(); Object.assign(child, { pid: 23, exitCode: null, signalCode: null,
+        stdout: new EventEmitter(), stderr: new EventEmitter() });
+      const terminals = [];
+      const workload = spawnLinuxServiceWorkload({ file: '/fixed', args: [], cwd: '/source', env: {}, requireNormalExit },
+        [], value => terminals.push(value), { fs: procFs(), spawnChild: () => child });
+      child.emit('spawn'); await workload.started;
+      child.emit('exit', code, signal); child.emit('close', code, signal);
+      const expected = requireNormalExit && (code !== 0 || signal !== null) ? 'unavailable' : 'exited';
+      assert.equal(workload.snapshot().state, expected);
+      assert.equal(terminals.length, 1);
+      assert.equal(terminals[0].state, expected);
+    }
+  }
 });
 
 test('manager uses exact invocation receipt and never treats stop command acceptance as absence', async () => {
@@ -442,4 +476,99 @@ test('server rejects late launch, invalid endpoint and publication error without
       !String(error.stack).includes('private-capability'));
     assert.equal(f.f.files.has(f.paths.ready), false);
   }
+});
+
+function prepareInspection(f = fakeFs(config('profileInspection')), changes = {}) {
+  const input = { ...config('profileInspection'), startupDeadline: 45001,
+    lifetime: { readRemainingWorkMilliseconds: () => 90000 }, ...changes };
+  return prepareLinuxService('profileInspection', input, { ...f.options, runtime: runtime(),
+    now: () => 1_000_000n, performanceNow: () => 1, nonce: () => generation });
+}
+
+test('inspection-only profile fixes the host, display, sandbox policy and private temp environment', () => {
+  const f = fakeFs(config('profileInspection')); const prepared = prepareInspection(f);
+  const paths = linuxProfileInspectionPaths(prepared.config.runRoot);
+  const command = linuxServiceWorkload(prepared.config, f.options);
+  assert.equal(command.file, '/usr/bin/xvfb-run');
+  assert.equal(command.requireNormalExit, true);
+  assert.deepEqual(command.args, ['--auto-servernum', '--server-args=-screen 0 1280x720x24 -nolisten tcp',
+    '/source/node_modules/.pnpm/electron@43.7.6/node_modules/electron/dist/electron',
+    '/source/' + linuxProfileInspectionEntry, paths.config]);
+  assert.deepEqual(command.env, { EKY_E2E: '1', CI: 'true', GITHUB_ACTIONS: 'true', PATH: '/usr/bin:/bin',
+    LANG: 'C', LC_ALL: 'C', NODE_ENV: 'test', HOME: paths.temp, TMPDIR: paths.temp,
+    TEMP: paths.temp, TMP: paths.temp, EKY_E2E_OS_TEMP_ROOT: '/tmp' });
+  assert.equal(prepared.config.startUntil, '45001000000');
+  assert.equal(prepared.config.workUntil, '90001000000');
+  assert.deepEqual(f.fs.readdirSync(prepared.config.root), ['service.json']);
+  removeLinuxServiceControl(prepared, { ...f.options, runtime: runtime() });
+  assert.ok(f.files.has(paths.config), 'result/data ownership remains with the test caller');
+  assert.ok(!f.removed.includes(paths.root));
+});
+
+test('inspection host re-reads only a stable private control file within its fixed directory', () => {
+  const value = config('profileInspection');
+  const path = value.inspectionConfigPath;
+  const original = fakeFs(value);
+  assert.equal(readLinuxInspectionControl(path, { fs: original.fs, identity: value }), '{}');
+  for (const mutate of [
+    f => { f.entries.set(path, { ...f.fs.lstatSync(path), nlink: 2 }); },
+    f => { f.entries.set(path, { ...f.fs.lstatSync(path), mode: 0o100644 }); },
+    f => { f.entries.set(path, { ...f.fs.lstatSync(path), uid: 0 }); },
+    f => { f.entries.set(linuxProfileInspectionPaths(value.runRoot).root,
+      { ...f.fs.lstatSync(linuxProfileInspectionPaths(value.runRoot).root), mode: 0o40755 }); },
+    f => { const old = f.fs.fstatSync; f.fs.fstatSync = fd => ({ ...old(fd), ino: 99 }); },
+  ]) {
+    const f = fakeFs(value); mutate(f);
+    assert.throws(() => readLinuxInspectionControl(path, { fs: f.fs, identity: value }));
+    assert.deepEqual(f.writes, []);
+  }
+});
+
+test('inspection profile rejects caller-selected executable, args, environment and other profile fields', () => {
+  for (const extra of [{ args: ['--no-sandbox'] }, { electronExecutable: '/other/electron' },
+    { env: { DISPLAY: ':0' } }, { runtimeConfigPath: config().runtimeConfigPath },
+    { inspectionConfigPath: '/tmp/eky-e2e/run-other/profile-inspection/inspection.json' },
+    { inspectionConfigPath: linuxProfileInspectionPaths(config().runRoot).root + '/other.json' },
+    { browserExecutable: config('chromium').browserExecutable }]) {
+    assert.throws(() => validateServiceConfig({ ...config('profileInspection'), ...extra }));
+  }
+});
+
+test('inspection preparation rejects unsafe configuration and roots before owner creation', () => {
+  const paths = linuxProfileInspectionPaths(config().runRoot);
+  for (const [path, change] of [[paths.config, { nlink: 2 }], [paths.config, { uid: 1003 }],
+    [paths.config, { mode: 0o100644 }], [paths.config, { size: 65537 }],
+    [paths.root, { mode: 0o40755 }], [paths.temp, { gid: 1003 }],
+    [paths.root, { isSymbolicLink: () => true }]]) {
+    const f = fakeFs(config('profileInspection'));
+    f.entries.set(path, { ...f.fs.lstatSync(path), ...change });
+    assert.throws(() => prepareInspection(f)); assert.deepEqual(f.writes, []);
+  }
+  const f = fakeFs(config('profileInspection'));
+  const opened = f.fs.fstatSync; f.fs.fstatSync = fd => ({ ...opened(fd), ino: 2 });
+  assert.throws(() => prepareInspection(f)); assert.deepEqual(f.writes, []);
+});
+
+test('inspection preparation binds the installed Electron to the exact desktop version', () => {
+  const packageRoot = '/source/node_modules/.pnpm/electron@43.7.6/node_modules/electron';
+  for (const mutate of [f => { f.fs.readlinkSync = () => '/outside/electron'; },
+    f => { f.files.set('/source/apps/desktop/package.json', JSON.stringify({ devDependencies: { electron: '^43.7.6' } })); },
+    f => { f.files.set(packageRoot + '/package.json', JSON.stringify({ name: 'electron', version: '43.3.0' })); },
+    f => { f.files.set(packageRoot + '/package.json', JSON.stringify({ name: 'other', version: '43.7.6' })); },
+    f => { f.entries.set(packageRoot + '/dist/electron', { ...f.fs.lstatSync(packageRoot + '/dist/electron'), nlink: 2 }); },
+    f => { f.entries.set(packageRoot + '/dist', { isSymbolicLink: () => true }); }]) {
+    const f = fakeFs(config('profileInspection')); mutate(f);
+    assert.throws(() => prepareInspection(f)); assert.deepEqual(f.writes, []);
+  }
+});
+
+test('inspection preparation cannot install or bypass absent display/host prerequisites', () => {
+  for (const path of ['/usr/bin/xvfb-run', '/usr/bin/Xvfb', '/usr/bin/xauth',
+    '/source/' + linuxProfileInspectionEntry]) {
+    const f = fakeFs(config('profileInspection')); f.files.delete(path);
+    assert.throws(() => prepareInspection(f)); assert.deepEqual(f.writes, []);
+  }
+  const f = fakeFs(config('profileInspection'));
+  f.entries.set('/usr/bin/xvfb-run', { ...f.fs.lstatSync('/usr/bin/xvfb-run'), mode: 0o100644 });
+  assert.throws(() => prepareInspection(f)); assert.deepEqual(f.writes, []);
 });

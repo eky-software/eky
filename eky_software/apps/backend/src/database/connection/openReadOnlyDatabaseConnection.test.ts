@@ -11,7 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { DatabaseConnection } from './createDatabaseConnection.js';
 import { withReadOnlyDatabaseConnection } from './openReadOnlyDatabaseConnection.js';
@@ -19,6 +19,7 @@ import { withReadOnlyDatabaseConnection } from './openReadOnlyDatabaseConnection
 const temporaryRoots: string[] = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(
     temporaryRoots.splice(0).map((root) =>
       rm(root, { force: true, recursive: true }),
@@ -27,6 +28,30 @@ afterEach(async () => {
 });
 
 describe('withReadOnlyDatabaseConnection', () => {
+  it.each([false, true])('retains the first inspection error when close fails (inspection fails: %s)', async fails => {
+    const { databaseFilePath } = await createDatabase();
+    const first = new Error('synthetic inspection failure');
+    const cleanup = new Error('synthetic close failure');
+    let captured: DatabaseConnection | undefined;
+    const close = Database.prototype.close;
+    vi.spyOn(Database.prototype, 'close').mockImplementation(function (this: Database.Database) {
+      close.call(this);
+      throw cleanup;
+    });
+    let failure: unknown;
+    try {
+      withReadOnlyDatabaseConnection(databaseFilePath, database => {
+        captured = database;
+        if (fails) throw first;
+        return 'inspected';
+      });
+    } catch (error) { failure = error; }
+    expect(captured?.open).toBe(false);
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect((failure as AggregateError).errors).toEqual(fails ? [first, cleanup] : [cleanup]);
+    expect((failure as AggregateError).cause).toBe(fails ? first : cleanup);
+  });
+
   it('opens an existing database read-only without sidecar files', async () => {
     const { databaseFilePath, root } = await createDatabase();
     const before = await snapshotDatabase(databaseFilePath, root);

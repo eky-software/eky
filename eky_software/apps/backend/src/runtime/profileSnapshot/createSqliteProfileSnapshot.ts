@@ -4,7 +4,6 @@ import { isAbsolute, join, relative, resolve, sep, toNamespacedPath } from 'node
 
 import type { DatabaseConnection } from '../../database/connection/createDatabaseConnection.js';
 import type { ProfileMaintenanceState } from '../profileMaintenance/profileMaintenanceState.js';
-import { inspectSqliteProfileDatabase } from './inspectSqliteProfileDatabase.js';
 import type {
   CreateProfileSnapshotInput,
   SqliteProfileSnapshotService as SqliteProfileSnapshotServiceContract,
@@ -28,7 +27,6 @@ interface SqliteProfileSnapshotDependencies {
     },
   ): Promise<{ remainingPages: number; totalPages: number }>;
   maintenanceState: ProfileMaintenanceState;
-  migrationsDirectory: string;
   now?: () => number;
   stagingRoot: string;
 }
@@ -103,11 +101,8 @@ export class SqliteProfileSnapshotService
         throw new Error('PROFILE_SNAPSHOT_DATABASE_INVALID');
       }
 
-      inspectSqliteProfileDatabase(
-        destinationFilePath,
-        this.dependencies.migrationsDirectory,
-        input.migrationPolicy,
-      );
+      // The main-owned utility validates these bytes before any backup is published.
+      // Reopening a WAL snapshot here would also leave reader sidecars in its root.
       await syncFile(destinationFilePath);
       const sha256 = await calculateSha256(destinationFilePath);
       await fileSystem.chmod(destinationFilePath, 0o400);
@@ -140,14 +135,12 @@ export class SqliteProfileSnapshotService
 export function createSqliteProfileSnapshotService(input: {
   database: DatabaseConnection;
   maintenanceState: ProfileMaintenanceState;
-  migrationsDirectory: string;
   stagingRoot: string;
 }): SqliteProfileSnapshotService {
   return new SqliteProfileSnapshotService({
     backupDatabase: (destinationFilePath, options) =>
       input.database.backup(toNamespacedPath(destinationFilePath), options),
     maintenanceState: input.maintenanceState,
-    migrationsDirectory: input.migrationsDirectory,
     stagingRoot: input.stagingRoot,
   });
 }

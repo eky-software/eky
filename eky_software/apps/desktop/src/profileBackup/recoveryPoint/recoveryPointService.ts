@@ -1,9 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { createProfileBackupSourceEntries } from '../createProfileBackupSourceEntries.js';
-import type { ProfileSnapshotBrokerClient } from '../profileSnapshotBrokerClient.js';
+import { readProfileInspectionFailureCause } from '../../runtime/profileInspectionFailure.js';
+import type { ProfileInspectionReceipt } from '../../runtime/profileInspectionMessages.js';
+import {
+  assertProfileBackupSourceReceipt,
+  createProfileBackupSourceEntries,
+} from '../createProfileBackupSourceEntries.js';
+import type { ProfileSnapshotInspectionPort } from '../profileSnapshotInspectionPort.js';
 import type { ProfileSnapshotMigrationPolicy } from '../profileSnapshotBrokerProtocol.js';
 import type {
   RecoveryPointIndexEntry,
@@ -16,6 +20,12 @@ import {
 } from '../profileRecoveryOperationalObserver.js';
 import type { RecoveryPointRotationService } from './recoveryPointRotationService.js';
 import type { RecoveryPointStore } from './recoveryPointStore.js';
+import {
+  RecoveryPointCleanupError,
+  readSafeRecoveryPointErrorCode as readSafeErrorCode,
+} from './recoveryPointOperationError.js';
+
+export { RecoveryPointCleanupError } from './recoveryPointOperationError.js';
 
 const automaticIntervalMilliseconds = 24 * 60 * 60 * 1_000;
 const operationIdPattern =
@@ -42,12 +52,15 @@ interface RecoveryPointServiceDependencies {
   operationIdFactory?(): string;
   observer?: ProfileRecoveryOperationalObserver;
   profileSnapshotClient: Pick<
-    ProfileSnapshotBrokerClient,
+    ProfileSnapshotInspectionPort,
     | 'assertUpdateMaintenance'
     | 'beginMaintenance'
     | 'createProfileSnapshot'
     | 'endMaintenance'
     | 'validateProfileSnapshot'
+    | 'withInspectionOperation'
+    | 'withProfileSnapshot'
+    | 'removeProfileSnapshot'
   >;
   rotation: Pick<
     RecoveryPointRotationService,
@@ -55,6 +68,14 @@ interface RecoveryPointServiceDependencies {
   >;
   stagingRoot: string;
   store: Pick<RecoveryPointStore, 'create' | 'list'>;
+}
+
+export function isRecoveryPointCleanupUnverified(error: unknown): boolean {
+  return (
+    error instanceof RecoveryPointCleanupError ||
+    readProfileInspectionFailureCause(error) ===
+      'PROFILE_INSPECTION_CLEANUP_UNVERIFIED'
+  );
 }
 
 export class RecoveryPointService {
@@ -75,8 +96,9 @@ export class RecoveryPointService {
   checkAutomatic(
     correlationId = this.createOperationId(),
   ): Promise<RecoveryPointIndexEntry | undefined> {
-    return this.runExclusive('checking', async () =>
-      this.withHealthySnapshot(
+    return this.runExclusive('checking', async () => {
+      let creation: { kind: RecoveryPointKind; startedAt: number } | undefined;
+      const point = await this.withHealthySnapshot(
         correlationId,
         'exactCurrentManifest',
         async (snapshot) => {
@@ -92,24 +114,27 @@ export class RecoveryPointService {
           }
           const kind = chooseAutomaticPointKind(points, this.now());
           const startedAt = Date.now();
+          creation = { kind, startedAt };
           this.observe({
             correlationId,
             eventName: 'recoveryPoint.started',
             recoveryPointKind: kind,
             stage: 'creation',
           });
-          const point = await this.persistSnapshot(snapshot, kind);
-          this.observe({
-            correlationId,
-            durationMs: Date.now() - startedAt,
-            eventName: 'recoveryPoint.completed',
-            recoveryPointKind: kind,
-            stage: 'creation',
-          });
-          return point;
+          return this.persistSnapshot(snapshot, kind);
         },
-      ),
-    );
+      );
+      if (creation !== undefined) {
+        this.observe({
+          correlationId,
+          durationMs: Date.now() - creation.startedAt,
+          eventName: 'recoveryPoint.completed',
+          recoveryPointKind: creation.kind,
+          stage: 'creation',
+        });
+      }
+      return point;
+    });
   }
 
   createManual(): Promise<RecoveryPointIndexEntry> {
@@ -131,7 +156,9 @@ export class RecoveryPointService {
       throw new Error('RECOVERY_POINT_OPERATION_INVALID');
     }
     return this.createNamedPoint(
-      'preUpdate', 'exactCurrentManifest', operationId,
+      'preUpdate',
+      'exactCurrentManifest',
+      operationId,
     );
   }
 
@@ -175,7 +202,8 @@ export class RecoveryPointService {
           )
         : this.withUpdateSnapshot(
             updateOperationId,
-            (snapshot) => this.persistSnapshot(snapshot, kind, updateOperationId),
+            (snapshot) =>
+              this.persistSnapshot(snapshot, kind, updateOperationId),
           ),
     ).then(
       (point) => {
@@ -192,10 +220,13 @@ export class RecoveryPointService {
         this.observe({
           correlationId,
           durationMs: Date.now() - startedAt,
-          errorCode: readSafeErrorCode(error),
+          errorCode: readProfileInspectionFailureCause(error) ??
+            readSafeErrorCode(error),
           eventName: 'recoveryPoint.failed',
           recoveryPointKind: kind,
-          retryable: updateOperationId === undefined,
+          retryable:
+            updateOperationId === undefined &&
+            !isRecoveryPointCleanupUnverified(error),
           sideEffectState: 'unknown',
           stage: 'creation',
         });
@@ -204,44 +235,16 @@ export class RecoveryPointService {
     );
   }
 
-  private async withUpdateSnapshot<T>(
+  private withUpdateSnapshot<T>(
     operationId: string,
     useSnapshot: (snapshot: HealthySnapshot) => Promise<T>,
   ): Promise<T> {
-    const client = this.dependencies.profileSnapshotClient;
-    await client.assertUpdateMaintenance(operationId);
-    const operationRoot = join(this.dependencies.stagingRoot, operationId);
-    let remoteOperationSettled = false;
-    let result: T;
-    try {
-      await client.createProfileSnapshot(operationId, 'exactCurrentManifest');
-      const validation = await client.validateProfileSnapshot(operationId);
-      remoteOperationSettled = true;
-      if (
-        validation.databaseHealth !== 'healthy' ||
-        !validation.profileMatchesActive
-      ) {
-        throw new Error('RECOVERY_POINT_SOURCE_UNHEALTHY');
-      }
-      await client.assertUpdateMaintenance(operationId);
-      result = await useSnapshot({ operationRoot, validation });
-    } finally {
-      if (!remoteOperationSettled) {
-        // A request timeout does not stop the worker. The existing serial
-        // broker's acknowledgement is the barrier before removing its files.
-        remoteOperationSettled = await client
-          .assertUpdateMaintenance(operationId)
-          .then(() => true, () => false);
-      }
-      if (remoteOperationSettled) {
-        await rm(operationRoot, { force: true, recursive: true }).catch(
-          () => undefined,
-        );
-      }
-    }
-    // Neither persistence nor cleanup may outlive the caller's update fence.
-    await client.assertUpdateMaintenance(operationId);
-    return result;
+    return this.withSnapshot(
+      operationId,
+      'exactCurrentManifest',
+      useSnapshot,
+      operationId,
+    );
   }
 
   private async persistSnapshot(
@@ -250,10 +253,12 @@ export class RecoveryPointService {
     updateMaintenanceOperationId?: string,
   ): Promise<RecoveryPointIndexEntry> {
     const timestamp = this.now();
+    const entries = await createProfileBackupSourceEntries(
+      snapshot.operationRoot,
+    );
+    assertProfileBackupSourceReceipt(entries, snapshot.receipt);
     const point = await this.dependencies.store.create({
-      entries: await createProfileBackupSourceEntries(
-        snapshot.operationRoot,
-      ),
+      entries,
       kind,
       manifest: {
         appVersion: this.dependencies.appVersion,
@@ -263,7 +268,9 @@ export class RecoveryPointService {
         profileId: snapshot.validation.profileId,
       },
       validatedAt: timestamp.toISOString(),
-      ...(updateMaintenanceOperationId === undefined ? {} : { updateMaintenanceOperationId }),
+      ...(updateMaintenanceOperationId === undefined
+        ? {}
+        : { updateMaintenanceOperationId }),
     });
     const rotation = await this.dependencies.rotation.maintain(
       snapshot.validation.profileId,
@@ -282,53 +289,104 @@ export class RecoveryPointService {
     return point;
   }
 
-  private async withHealthySnapshot<T>(
+  private withHealthySnapshot<T>(
     operationId: string,
     migrationPolicy: ProfileSnapshotMigrationPolicy,
     useSnapshot: (snapshot: HealthySnapshot) => Promise<T>,
   ): Promise<T> {
+    return this.withSnapshot(operationId, migrationPolicy, useSnapshot);
+  }
+
+  private withSnapshot<T>(
+    operationId: string,
+    migrationPolicy: ProfileSnapshotMigrationPolicy,
+    useSnapshot: (snapshot: HealthySnapshot) => Promise<T>,
+    updateOperationId?: string,
+  ): Promise<T> {
     if (!operationIdPattern.test(operationId)) {
       throw new Error('RECOVERY_POINT_OPERATION_INVALID');
     }
-    const operationRoot = join(
-      this.dependencies.stagingRoot,
-      operationId,
-    );
-    let maintenanceStarted = false;
-
-    try {
-      await this.dependencies.profileSnapshotClient.beginMaintenance(
-        operationId,
-      );
-      maintenanceStarted = true;
-      await this.dependencies.profileSnapshotClient.createProfileSnapshot(
-        operationId,
-        migrationPolicy,
-      );
-      const validation =
-        await this.dependencies.profileSnapshotClient.validateProfileSnapshot(
+    const client = this.dependencies.profileSnapshotClient;
+    return client.withInspectionOperation(async () => {
+      let maintenanceStarted = false;
+      let snapshotAttempted = false;
+      let failed = false;
+      let firstFailure: unknown;
+      let cleanupFailure: unknown;
+      let cleanupUnverified = false;
+      let result!: T;
+      try {
+        if (updateOperationId === undefined) {
+          await client.beginMaintenance(operationId);
+          maintenanceStarted = true;
+        } else {
+          await client.assertUpdateMaintenance(updateOperationId);
+        }
+        snapshotAttempted = true;
+        await client.createProfileSnapshot(operationId, migrationPolicy);
+        const validation =
+          updateOperationId === undefined
+            ? await client.validateProfileSnapshot(operationId)
+            : await client.validateProfileSnapshot(
+                operationId,
+                updateOperationId,
+              );
+        if (
+          validation.databaseHealth !== 'healthy' ||
+          !validation.profileMatchesActive
+        ) {
+          throw new Error('RECOVERY_POINT_SOURCE_UNHEALTHY');
+        }
+        result = await client.withProfileSnapshot(
           operationId,
+          async (receipt) => {
+            if (updateOperationId !== undefined) {
+              await client.assertUpdateMaintenance(updateOperationId);
+            }
+            return useSnapshot({
+              operationRoot: join(this.dependencies.stagingRoot, operationId),
+              validation,
+              receipt,
+            });
+          },
         );
-      if (
-        validation.databaseHealth !== 'healthy' ||
-        !validation.profileMatchesActive
-      ) {
-        throw new Error('RECOVERY_POINT_SOURCE_UNHEALTHY');
+      } catch (error) {
+        failed = true;
+        firstFailure = error;
       }
-      return await useSnapshot({
-        operationRoot,
-        validation,
-      });
-    } finally {
+      // The current native owner, never a broker acknowledgement, authorizes removal.
+      if (snapshotAttempted) {
+        try {
+          await client.removeProfileSnapshot(operationId);
+        } catch (error) {
+          cleanupUnverified = true;
+          cleanupFailure = error;
+        }
+      }
       if (maintenanceStarted) {
-        await this.dependencies.profileSnapshotClient
-          .endMaintenance(operationId)
-          .catch(() => undefined);
+        try {
+          await client.endMaintenance(operationId);
+        } catch (error) {
+          if (!failed) {
+            failed = true;
+            firstFailure = error;
+          }
+        }
       }
-      await rm(operationRoot, { force: true, recursive: true }).catch(
-        () => undefined,
-      );
-    }
+      if (cleanupUnverified) {
+        throw new RecoveryPointCleanupError(
+          failed ? firstFailure : cleanupFailure,
+        );
+      }
+      if (failed) {
+        throw firstFailure;
+      }
+      // A late fence loss keeps a durable good point, but rejects update acknowledgement.
+      if (updateOperationId !== undefined) {
+        await client.assertUpdateMaintenance(updateOperationId);
+      }
+      return result;
+    });
   }
 
   private updatePointStatus(
@@ -392,7 +450,8 @@ export class RecoveryPointService {
       if (
         this.lastSafeErrorCode ===
           'RECOVERY_POINT_KEY_PROTECTION_UNAVAILABLE' ||
-        this.lastSafeErrorCode === 'SECRET_STORAGE_UNAVAILABLE'
+        this.lastSafeErrorCode === 'SECRET_STORAGE_UNAVAILABLE' ||
+        isRecoveryPointCleanupUnverified(error)
       ) {
         this.availability = 'unavailable';
       }
@@ -405,8 +464,9 @@ export class RecoveryPointService {
 
 interface HealthySnapshot {
   operationRoot: string;
+  receipt: ProfileInspectionReceipt;
   validation: Awaited<
-    ReturnType<ProfileSnapshotBrokerClient['validateProfileSnapshot']>
+    ReturnType<ProfileSnapshotInspectionPort['validateProfileSnapshot']>
   >;
 }
 
@@ -477,24 +537,6 @@ function readIsoWeek(date: Date): string {
   return `${normalized.getUTCFullYear()}-${week
     .toString()
     .padStart(2, '0')}`;
-}
-
-function readSafeErrorCode(error: unknown): string {
-  if (
-    error instanceof Error &&
-    'code' in error &&
-    typeof error.code === 'string' &&
-    /^[A-Z][A-Z0-9_]{2,100}$/.test(error.code)
-  ) {
-    return error.code;
-  }
-  if (
-    error instanceof Error &&
-    /^[A-Z][A-Z0-9_]{2,100}$/.test(error.message)
-  ) {
-    return error.message;
-  }
-  return 'RECOVERY_POINT_OPERATION_FAILED';
 }
 
 export const recoveryPointAutomaticIntervalMilliseconds =

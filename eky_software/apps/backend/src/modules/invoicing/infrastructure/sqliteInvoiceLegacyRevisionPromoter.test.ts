@@ -16,7 +16,7 @@ import { syntheticPdf } from './invoicePdfRead.fixture.js';
 import { corruptStoredReaderRow } from './sqliteInvoiceContentRevisionReader.fixture.js';
 import { SqliteInvoiceContentRevisionReader } from './sqliteInvoiceContentRevisionReader.js';
 import { SqliteInvoiceLegacyRevisionPromoter } from './sqliteInvoiceLegacyRevisionPromoter.js';
-import { validateInvoiceRevisionCatalog } from './validateInvoiceRevisionCatalog.js';
+import { SqliteInvoiceBackupArtifactCatalog } from './sqliteInvoiceBackupArtifactCatalog.js';
 
 afterEach(closeDatabases);
 afterAll(removeDirectories);
@@ -51,7 +51,8 @@ describe('SqliteInvoiceLegacyRevisionPromoter', () => {
       ...f.scope, documentId: 'legacy-document',
     });
     expect(new Uint8Array(await f.storage.readVerifiedDocument(originalDocument!))).toEqual(new Uint8Array(syntheticPdf));
-    expect(() => validateInvoiceRevisionCatalog(f.database)).not.toThrow();
+    await expect(new SqliteInvoiceBackupArtifactCatalog(f.database, 'revisionHistory')
+      .listAuthoritativeArtifacts()).resolves.toEqual(expect.any(Array));
     await expect(f.promoter.promoteLegacyRevisionIfCurrent(f.key)).rejects.toBeInstanceOf(InvoiceDeliveryConflictError);
     await expect(f.promoter.promoteLegacyRevisionIfCurrent(promoted)).rejects.toBeInstanceOf(InvoiceDeliveryConflictError);
     expect(snapshots(f.database)).toEqual(after);
@@ -77,7 +78,8 @@ describe('SqliteInvoiceLegacyRevisionPromoter', () => {
     expect(await f.promoter.promoteLegacyRevisionIfCurrent(f.key)).toMatchObject({
       origin: 'validatedLegacySnapshot', vatBreakdown: [], totalNetCents: 30000, totalVatCents: 0, totalGrossCents: 30000,
     });
-    expect(() => validateInvoiceRevisionCatalog(f.database)).not.toThrow();
+    await expect(new SqliteInvoiceBackupArtifactCatalog(f.database, 'revisionHistory')
+      .listAuthoritativeArtifacts()).resolves.toEqual(expect.any(Array));
   });
 
   it.each(['companyId', 'invoiceId', 'revisionId'] as const)('rejects the wrong exact %s without writes', async field => {
@@ -175,6 +177,7 @@ describe('SqliteInvoiceLegacyRevisionPromoter', () => {
     expect(await reader.getCurrentRevision(f.scope)).toEqual(winner.value);
     expect(await reader.getRevision(f.key)).toEqual(f.original);
     expect(promotionPreservedState(restarted)).toEqual(promotionPreservedState(f.database));
-    expect(() => validateInvoiceRevisionCatalog(restarted)).not.toThrow();
+    await expect(new SqliteInvoiceBackupArtifactCatalog(restarted, 'revisionHistory')
+      .listAuthoritativeArtifacts()).resolves.toEqual(expect.any(Array));
   });
 });

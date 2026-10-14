@@ -31,9 +31,9 @@ interface DrainWaiter {
 
 interface MaintenanceOperation {
   operationId: string;
-  kind: 'ordinary' | 'update';
+  kind: 'ordinary' | 'update' | 'restore';
   invalidated: boolean;
-  updateValidUntil: number | undefined;
+  validUntil: number | undefined;
 }
 
 export class ProfileMaintenanceState {
@@ -50,6 +50,27 @@ export class ProfileMaintenanceState {
     timeoutMilliseconds: number,
     maximumDurationMilliseconds: number,
   ): Promise<void> {
+    await this.beginProtectedOperation(
+      operationId, timeoutMilliseconds, maximumDurationMilliseconds, 'update',
+    );
+  }
+
+  async beginRestore(
+    operationId: string,
+    timeoutMilliseconds: number,
+    maximumDurationMilliseconds: number,
+  ): Promise<void> {
+    await this.beginProtectedOperation(
+      operationId, timeoutMilliseconds, maximumDurationMilliseconds, 'restore',
+    );
+  }
+
+  private async beginProtectedOperation(
+    operationId: string,
+    timeoutMilliseconds: number,
+    maximumDurationMilliseconds: number,
+    kind: 'update' | 'restore',
+  ): Promise<void> {
     if (
       !Number.isFinite(maximumDurationMilliseconds) ||
       maximumDurationMilliseconds <= 0
@@ -57,26 +78,37 @@ export class ProfileMaintenanceState {
       throw new ProfileMaintenanceOperationMismatchError();
     }
     const operation = await this.beginOperation(
-      operationId, timeoutMilliseconds, 'update',
+      operationId, timeoutMilliseconds, kind,
     );
     if (this.activeOperation !== operation || operation.invalidated) {
       throw new ProfileMaintenanceOperationMismatchError();
     }
-    operation.updateValidUntil = performance.now() + maximumDurationMilliseconds;
+    operation.validUntil = performance.now() + maximumDurationMilliseconds;
   }
 
   assertUpdate(operationId: string): void {
+    this.assertProtectedOperation(operationId, 'update');
+  }
+
+  assertRestore(operationId: string): void {
+    this.assertProtectedOperation(operationId, 'restore');
+  }
+
+  private assertProtectedOperation(
+    operationId: string,
+    kind: 'update' | 'restore',
+  ): void {
     const operation = this.activeOperation;
     if (
-      operation?.kind === 'update' &&
-      operation.updateValidUntil !== undefined &&
-      performance.now() >= operation.updateValidUntil
+      operation?.kind !== 'ordinary' &&
+      operation?.validUntil !== undefined &&
+      performance.now() >= operation.validUntil
     ) {
       this.forceEnd();
     }
     if (
-      operation?.kind !== 'update' || operation.operationId !== operationId ||
-      operation.invalidated || operation.updateValidUntil === undefined ||
+      operation?.kind !== kind || operation.operationId !== operationId ||
+      operation.invalidated || operation.validUntil === undefined ||
       this.activeBusinessWriteCount !== 0
     ) {
       throw new ProfileMaintenanceOperationMismatchError();
@@ -86,6 +118,20 @@ export class ProfileMaintenanceState {
   endUpdate(operationId: string): void {
     this.assertUpdate(operationId);
     this.activeOperation = undefined;
+  }
+
+  endRestore(operationId: string): void {
+    this.assertRestore(operationId);
+    this.activeOperation = undefined;
+  }
+
+  invalidateRestore(operationId: string): void {
+    const operation = this.activeOperation;
+    if (operation?.kind !== 'restore' || operation.operationId !== operationId) {
+      throw new ProfileMaintenanceOperationMismatchError();
+    }
+    operation.invalidated = true;
+    this.rejectDrainWaiters();
   }
 
   private async beginOperation(
@@ -101,7 +147,7 @@ export class ProfileMaintenanceState {
       operationId,
       kind,
       invalidated: false,
-      updateValidUntil: undefined,
+      validUntil: undefined,
     };
     this.activeOperation = operation;
 
@@ -127,7 +173,7 @@ export class ProfileMaintenanceState {
       return operation;
     } catch (error) {
       if (this.activeOperation === operation) {
-        if (kind === 'update') {
+        if (kind !== 'ordinary') {
           operation.invalidated = true;
         } else {
           this.activeOperation = undefined;
@@ -149,8 +195,8 @@ export class ProfileMaintenanceState {
   }
 
   forceEnd(): void {
-    if (this.activeOperation?.kind === 'update') {
-      // Losing update ownership must never reopen the snapshot's write window.
+    if (this.activeOperation !== undefined && this.activeOperation.kind !== 'ordinary') {
+      // Losing protected ownership must never reopen the snapshot's write window.
       this.activeOperation.invalidated = true;
     } else {
       this.activeOperation = undefined;
@@ -163,9 +209,9 @@ export class ProfileMaintenanceState {
   }
 
   isActiveOperation(operationId: string): boolean {
-    if (this.activeOperation?.kind === 'update') {
+    if (this.activeOperation !== undefined && this.activeOperation.kind !== 'ordinary') {
       try {
-        this.assertUpdate(operationId);
+        this.assertProtectedOperation(operationId, this.activeOperation.kind);
       } catch {
         return false;
       }

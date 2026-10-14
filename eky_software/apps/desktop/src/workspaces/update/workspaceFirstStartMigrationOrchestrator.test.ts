@@ -19,6 +19,8 @@ import { WorkspaceFirstStartMigrationOrchestrator } from './workspaceFirstStartM
 import { WorkspaceFirstStartMigrationOrchestratorError } from './workspaceFirstStartMigrationOrchestratorError.js';
 import type { WorkspaceFirstStartBuildIdentity } from './workspaceFirstStartMigrationPlanTypes.js';
 import { WorkspaceFirstStartMigrationTransitionCoordinator } from './workspaceFirstStartMigrationTransitionCoordinator.js';
+import { WorkspaceMigrationInventoryError, workspaceMigrationInventoryFailedCode } from './workspaceMigrationInventoryError.js';
+import { readWorkspaceCandidateFailureCause } from '../../runtime/workspaceCandidateFailure.js';
 import type {
   WorkspaceMigrationInventory,
   WorkspaceMigrationInventoryStatus,
@@ -44,6 +46,59 @@ const legacyAdoptionContext = Object.freeze({
 });
 
 describe('WorkspaceFirstStartMigrationOrchestrator', () => {
+  it.each([false, true])('defers only new forward preparation for selected C rollback (prepared journal: %s)', async resumed => {
+    const fixture = createFixture({ admission: 'coordinatedUpdateTarget' });
+    if (resumed) await fixture.seedPrepared(inventory('compatiblePending', 'invalidHistory'));
+    await fixture.subject.recoverBeforeWorkspaceResolution();
+    const journal = fixture.journal.value;
+    const registry = fixture.registry.value;
+    const assertCurrent = vi.fn(async () => undefined);
+    await expect(fixture.subject.prepareBeforeBackend({
+      ...publishedRegistryContext, rollbackOnly: { assertCurrent, sourceBuild },
+    })).resolves.toBe('rollbackOnly');
+    expect(assertCurrent).toHaveBeenCalled();
+    expect(fixture.inspect).not.toHaveBeenCalled();
+    expect(fixture.journal.value).toEqual(journal);
+    expect(fixture.registry.value).toEqual(registry);
+    expect(fixture.registry.writes).toHaveLength(0);
+    await expect(fixture.subject.transitionRegistryAfterActiveWorkspaceAcceptance()).rejects.toThrow();
+    await expect(fixture.subject.completeAfterTargetAcceptance()).rejects.toThrow();
+  });
+
+  it.each(['admission', 'source', 'active', 'journal', 'registry', 'authority'] as const)(
+    'rejects an inconsistent rollback-only preparation (%s)', async fault => {
+      const fixture = createFixture({ admission: fault === 'admission' ? 'authorizedNewerBuild' : 'coordinatedUpdateTarget' });
+      await fixture.seedPrepared(inventory('compatiblePending', 'invalidHistory'));
+      await fixture.subject.recoverBeforeWorkspaceResolution();
+      if (fault === 'journal') fixture.journal.value = undefined;
+      if (fault === 'registry') fixture.inspectRegistry.mockResolvedValueOnce(validateWorkspaceRegistry(singleWorkspaceRegistry()));
+      const assertCurrent = vi.fn(async () => {
+        if (fault === 'authority') throw new Error('UPDATE_JOURNAL_CONFLICT');
+      });
+      await expect(fixture.subject.prepareBeforeBackend({
+        ...publishedRegistryContext,
+        activeWorkspaceId: fault === 'active' ? passiveWorkspaceId : activeWorkspaceId,
+        rollbackOnly: { assertCurrent, sourceBuild: fault === 'source' ? targetBuild : sourceBuild },
+      })).rejects.toThrow();
+      expect(fixture.inspect).not.toHaveBeenCalled();
+      expect(fixture.registry.writes).toHaveLength(0);
+      expect(fixture.recordFailure).not.toHaveBeenCalled();
+    },
+  );
+
+  it('recovers a transitioned W6 registry before deferring C forward preparation', async () => {
+    const fixture = createFixture({ admission: 'coordinatedUpdateTarget' });
+    await fixture.seedPrepared(inventory('compatiblePending', 'invalidHistory'));
+    await fixture.transitions.transitionRegistry({ operationId, sourceBuild, targetBuild, updatedAt: '2026-08-21T01:00:00.000Z' });
+    await expect(fixture.subject.recoverBeforeWorkspaceResolution()).resolves.toBe('recoveredSource');
+    await expect(fixture.subject.prepareBeforeBackend({
+      ...publishedRegistryContext, rollbackOnly: { assertCurrent: async () => undefined, sourceBuild },
+    })).resolves.toBe('rollbackOnly');
+    expect(fixture.journal.value).toBeUndefined();
+    expect(fixture.registry.value).toEqual(validateWorkspaceRegistry(workspaceRegistry()));
+    expect(fixture.inspect).not.toHaveBeenCalled();
+  });
+
   it.each([
     {
       admission: 'development' as const,
@@ -78,7 +133,7 @@ describe('WorkspaceFirstStartMigrationOrchestrator', () => {
       ).resolves.toBe('notRequired');
 
       expect(fixture.inspect).not.toHaveBeenCalled();
-      expect(fixture.readRegistry).not.toHaveBeenCalled();
+      expect(fixture.inspectRegistry).not.toHaveBeenCalled();
       expect(fixture.journal.value).toBeUndefined();
     },
   );
@@ -93,7 +148,7 @@ describe('WorkspaceFirstStartMigrationOrchestrator', () => {
     await fixture.subject.transitionRegistryAfterActiveWorkspaceAcceptance();
     await fixture.subject.completeAfterTargetAcceptance();
 
-    expect(fixture.readRegistry).toHaveBeenCalledOnce();
+    expect(fixture.inspectRegistry).toHaveBeenCalledOnce();
     expect(fixture.inspect).not.toHaveBeenCalled();
     expect(fixture.recordFailure).not.toHaveBeenCalled();
     expect(fixture.journal.value).toBeUndefined();
@@ -175,6 +230,26 @@ describe('WorkspaceFirstStartMigrationOrchestrator', () => {
     expect(fixture.inspect).toHaveBeenCalledOnce();
     expect(fixture.journal.value).toBeUndefined();
     expect(fixture.registry.writes).toHaveLength(0);
+  });
+
+  it('retains the schema rejection and performs no repairing read or registry transition before backend preparation', async () => {
+    const fixture = createFixture();
+    fixture.inspect.mockRejectedValueOnce(new WorkspaceMigrationInventoryError(
+      workspaceMigrationInventoryFailedCode,
+      { cause: new Error('PROFILE_SCHEMA_UNSUPPORTED') },
+    ));
+    await fixture.subject.recoverBeforeWorkspaceResolution();
+
+    const failure = await fixture.subject.prepareBeforeBackend(publishedRegistryContext)
+      .catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(WorkspaceFirstStartMigrationOrchestratorError);
+    expect(readWorkspaceCandidateFailureCause(failure)).toBe('PROFILE_SCHEMA_UNSUPPORTED');
+    expect(fixture.inspectRegistry).toHaveBeenCalledOnce();
+    expect(fixture.readRegistry).not.toHaveBeenCalled();
+    expect(fixture.registry.writes).toHaveLength(0);
+    expect(fixture.journal.value).toBeUndefined();
+    expect(fixture.events).toEqual([]);
   });
 
   it('keeps a passive compatible prefix byte-neutral and journal-free', async () => {
@@ -365,12 +440,16 @@ function createFixture(
   const readRegistry = vi.fn(async () =>
     options.registryMissing === true ? undefined : registryValue,
   );
+  const inspectRegistry = vi.fn(async () =>
+    options.registryMissing === true ? undefined : registryValue,
+  );
   const registry = {
     get value() {
       return registryValue;
     },
     writes: [] as Readonly<LocalWorkspaceRegistryV1>[],
     read: readRegistry,
+    inspect: inspectRegistry,
     async write(value: unknown) {
       registryValue = validateWorkspaceRegistry(value);
       this.writes.push(registryValue);
@@ -439,6 +518,7 @@ function createFixture(
     acceptedBuild,
     events,
     inspect,
+    inspectRegistry,
     journal,
     readRegistry,
     recordFailure,

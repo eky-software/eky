@@ -1,3 +1,4 @@
+import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import {
   mkdir,
   mkdtemp,
@@ -25,6 +26,201 @@ afterEach(async () => {
 });
 
 describe('update journal store', () => {
+  it('publishes from one exact selection while preserving ordinary equal-revision writes', async () => {
+    const fixture = await createFixture();
+    const store = new UpdateJournalStore(fixture.filePath);
+    const selected = createJournal();
+    await store.write(selected);
+    const next = { ...selected, revision: 2 };
+    await store.write(next, { expectedJournal: selected });
+    expect(await store.readForLiveOwner()).toEqual(next);
+    const timestampOnly = { ...next, updatedAt: '2026-08-11T18:01:00.000Z' };
+    await store.write(timestampOnly);
+    expect(await store.readForLiveOwner()).toEqual(timestampOnly);
+  });
+
+  it.each(['revision', 'package', 'missing'] as const)('retains a stale guarded selection (%s)', async change => {
+    const fixture = await createFixture();
+    const store = new UpdateJournalStore(fixture.filePath);
+    const selected = createJournal();
+    const changed = change === 'revision' ? createJournal({ revision: 2 })
+      : createJournal({ currentPackageIdentity: { ...selected.currentPackageIdentity, packageSha256: 'f'.repeat(64) } });
+    if (change !== 'missing') await store.write(changed);
+    await expect(store.write({ ...selected, revision: 2 }, { expectedJournal: selected }))
+      .rejects.toThrow('UPDATE_JOURNAL_CONFLICT');
+    expect(await store.readForLiveOwner()).toEqual(change === 'missing' ? undefined : changed);
+  });
+
+  it.each(['backup', 'next'] as const)('does not delete an unexpected %s slot on guarded rejection', async slot => {
+    const fixture = await createFixture();
+    const store = new UpdateJournalStore(fixture.filePath);
+    const selected = createJournal();
+    await store.write(selected);
+    await writeSlot(`${fixture.filePath}.${slot}`, { ...selected, revision: 2 });
+    const currentBytes = await readFile(fixture.filePath);
+    const sideBytes = await readFile(`${fixture.filePath}.${slot}`);
+    await expect(store.write({ ...selected, revision: 2 }, { expectedJournal: selected }))
+      .rejects.toThrow('UPDATE_JOURNAL_CONFLICT');
+    expect(await readFile(fixture.filePath)).toEqual(currentBytes);
+    expect(await readFile(`${fixture.filePath}.${slot}`)).toEqual(sideBytes);
+  });
+
+  it('rechecks authority after the last selected-current read before publication', async () => {
+    const fixture = await createFixture();
+    const store = new UpdateJournalStore(fixture.filePath);
+    const selected = createJournal();
+    await store.write(selected);
+    let calls = 0;
+    await expect(store.write({ ...selected, revision: 2 }, {
+      expectedJournal: selected,
+      assertAuthority() { if (++calls === 4) throw new Error('synthetic expired authority'); },
+    })).rejects.toThrow('UPDATE_JOURNAL_UNAVAILABLE');
+    expect(calls).toBe(4);
+    expect(await store.readForLiveOwner()).toEqual(selected);
+  });
+
+  it.each(['async', 'reentrant'] as const)('rejects an ignored %s authority promise', async mode => {
+    const fixture = await createFixture();
+    const store = new UpdateJournalStore(fixture.filePath);
+    const selected = createJournal();
+    await store.write(selected);
+    const assertAuthority = mode === 'async'
+      ? async () => { throw new Error('synthetic async authority failure'); }
+      : () => store.readForLiveOwner();
+    await expect(store.write({ ...selected, revision: 2 }, { expectedJournal: selected, assertAuthority }))
+      .rejects.toThrow('UPDATE_JOURNAL_CONFLICT');
+    expect(await store.readForLiveOwner()).toEqual(selected);
+  });
+
+  it('restores the selected current journal when authority expires after moving it', async () => {
+    const fixture = await createFixture();
+    const store = new UpdateJournalStore(fixture.filePath);
+    const selected = createJournal();
+    await store.write(selected);
+    let moved = false;
+    const expired = new Error('synthetic expired publication authority');
+    const failure = await store.write({ ...selected, revision: 2 }, {
+      expectedJournal: selected,
+      assertAuthority() {
+        if (existsSync(`${fixture.filePath}.backup`) && !existsSync(fixture.filePath)) {
+          moved = true;
+          throw expired;
+        }
+      },
+    }).catch(error => error);
+    expect(moved).toBe(true);
+    expect(failure).toMatchObject({ message: 'UPDATE_JOURNAL_UNAVAILABLE', cause: expired });
+    expect(await store.readForLiveOwner()).toEqual(selected);
+    await expect(readFile(`${fixture.filePath}.backup`)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(`${fixture.filePath}.next`)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('retains the published journal and backup when authority expires before backup cleanup', async () => {
+    const fixture = await createFixture();
+    const store = new UpdateJournalStore(fixture.filePath);
+    const selected = createJournal();
+    const next = { ...selected, revision: 2 };
+    await store.write(selected);
+    let published = false;
+    const expired = new Error('synthetic expired cleanup authority');
+    const failure = await store.write(next, {
+      expectedJournal: selected,
+      assertAuthority() {
+        if (existsSync(`${fixture.filePath}.backup`) && existsSync(fixture.filePath)) {
+          published = true;
+          throw expired;
+        }
+      },
+    }).catch(error => error);
+    expect(failure).toMatchObject({ message: 'UPDATE_JOURNAL_UNAVAILABLE', cause: expired });
+    expect(published).toBe(true);
+    expect(JSON.parse(await readFile(fixture.filePath, 'utf8'))).toEqual(next);
+    expect(JSON.parse(await readFile(`${fixture.filePath}.backup`, 'utf8'))).toEqual(selected);
+    await expect(store.readForLiveOwner()).rejects.toThrow('UPDATE_JOURNAL_CONFLICT');
+  });
+
+  it('does not publish when the selected current disappears before its move', async () => {
+    const fixture = await createFixture();
+    const store = new UpdateJournalStore(fixture.filePath);
+    const selected = createJournal();
+    await store.write(selected);
+    let calls = 0;
+    const failure = await store.write({ ...selected, revision: 2 }, {
+      expectedJournal: selected,
+      assertAuthority() { if (++calls === 4) unlinkSync(fixture.filePath); },
+    }).catch(error => error);
+    expect(failure).toMatchObject({ message: 'UPDATE_JOURNAL_CONFLICT', cause: { code: 'ENOENT' } });
+    expect(await store.readForLiveOwner()).toBeUndefined();
+    await expect(readFile(`${fixture.filePath}.next`)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('rejects queued authority loss at the publication boundary before the first move', async () => {
+    const fixture = await createFixture();
+    const store = new UpdateJournalStore(fixture.filePath);
+    const selected = createJournal();
+    await store.write(selected);
+    let calls = 0;
+    let valid = true;
+    let observedMoved = false;
+    const expired = new Error('synthetic queued authority loss');
+    const failure = await store.write({ ...selected, revision: 2 }, {
+      expectedJournal: selected,
+      assertAuthority() {
+        if (++calls === 4) queueMicrotask(() => { valid = false; });
+        if (!valid) {
+          observedMoved = existsSync(`${fixture.filePath}.backup`);
+          throw expired;
+        }
+      },
+    }).catch(error => error);
+    expect(failure).toMatchObject({ message: 'UPDATE_JOURNAL_UNAVAILABLE', cause: expired });
+    expect(observedMoved).toBe(false);
+    expect(await store.readForLiveOwner()).toEqual(selected);
+  });
+
+  it('preserves failed compensation at the publication boundary after its original error', async () => {
+    const fixture = await createFixture();
+    const store = new UpdateJournalStore(fixture.filePath);
+    const selected = createJournal();
+    await store.write(selected);
+    const expired = new Error('synthetic expired moved authority');
+    const failure = await store.write({ ...selected, revision: 2 }, {
+      expectedJournal: selected,
+      assertAuthority() {
+        if (existsSync(`${fixture.filePath}.backup`) && !existsSync(fixture.filePath)) {
+          mkdirSync(fixture.filePath);
+          throw expired;
+        }
+      },
+    }).catch(error => error);
+    expect(failure.message).toBe('UPDATE_JOURNAL_UNAVAILABLE');
+    expect(failure.cause).toBeInstanceOf(AggregateError);
+    expect(failure.cause.errors).toHaveLength(2);
+    expect(failure.cause.errors[0]).toBe(expired);
+    expect(failure.cause.errors[1]).toMatchObject({ code: expect.any(String) });
+    expect(JSON.parse(await readFile(`${fixture.filePath}.backup`, 'utf8'))).toEqual(selected);
+    await expect(store.readForLiveOwner()).rejects.toThrow('UPDATE_JOURNAL_CONFLICT');
+  });
+
+  it('rejects another same-instance writer throughout guarded publication', async () => {
+    const fixture = await createFixture();
+    const store = new UpdateJournalStore(fixture.filePath);
+    const selected = createJournal();
+    await store.write(selected);
+    let competing: Promise<void> | undefined;
+    let calls = 0;
+    await store.write({ ...selected, revision: 2 }, {
+      expectedJournal: selected,
+      assertAuthority() {
+        if (++calls === 4) competing = expect(store.write({ ...selected, revision: 3 }))
+          .rejects.toThrow('UPDATE_JOURNAL_BUSY');
+      },
+    });
+    expect(competing).toBeDefined();
+    await competing;
+    expect(await store.readForLiveOwner()).toEqual({ ...selected, revision: 2 });
+  });
+
   it('writes and reads the exact validated journal', async () => {
     const fixture = await createFixture();
     const store = new UpdateJournalStore(fixture.filePath);

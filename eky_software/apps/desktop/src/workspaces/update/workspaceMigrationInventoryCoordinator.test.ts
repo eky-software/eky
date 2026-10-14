@@ -5,9 +5,15 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { readWorkspaceCandidateFailureCause } from '../../runtime/workspaceCandidateFailure.js';
 import { createDesktopProfilePaths } from '../../runtime/desktopProfilePaths.js';
 import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
-import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
+import {
+  WORKSPACE_REGISTRY_BACKUP_FILE_NAME,
+  WORKSPACE_REGISTRY_NEXT_FILE_NAME,
+} from '../registry/workspaceRegistryPaths.js';
+import { serializeWorkspaceRegistry } from '../registry/workspaceRegistrySerializer.js';
+import type { WorkspaceRegistryInspectionPort } from '../registry/workspaceRegistryPort.js';
 import type {
   LocalWorkspaceRegistryEntryV1,
   LocalWorkspaceRegistryV1,
@@ -47,15 +53,42 @@ afterEach(async () => {
 });
 
 describe('WorkspaceMigrationInventoryCoordinator', () => {
+  it('preserves every registry slot when schema attestation stops the inventory', async () => {
+    const registry = createRegistry({ includeSecond: false });
+    const userDataRoot = await createWorkspaceRoots(registry);
+    const paths = [
+      join(userDataRoot, 'workspace-registry-v1.json'),
+      join(userDataRoot, WORKSPACE_REGISTRY_BACKUP_FILE_NAME),
+      join(userDataRoot, WORKSPACE_REGISTRY_NEXT_FILE_NAME),
+    ];
+    for (const path of paths) {
+      await fileSystem.writeFile(path, serializeWorkspaceRegistry(registry), { mode: 0o600 });
+    }
+    const before = await Promise.all(paths.map(snapshotFile));
+    const coordinator = new WorkspaceMigrationInventoryCoordinator({
+      registry: new WorkspaceRegistryStore({
+        filePath: paths[0]!,
+        installationRoot: userDataRoot,
+      }),
+      runtimeFactory: {
+        async startMigrationInspection() {
+          throw new Error('PROFILE_SCHEMA_UNSUPPORTED');
+        },
+      },
+      userDataRoot,
+    });
+
+    await expect(coordinator.inspect()).rejects.toMatchObject({
+      code: workspaceMigrationInventoryFailedCode,
+    });
+    expect(await Promise.all(paths.map(snapshotFile))).toEqual(before);
+  });
+
   it('inspects only ready workspaces serially and returns a closed safe inventory', async () => {
     const registry = createRegistry();
     const userDataRoot = await createWorkspaceRoots(registry);
-    let writeCount = 0;
-    const registryPort: WorkspaceRegistryPort = {
-      read: async () => registry,
-      write: async () => {
-        writeCount += 1;
-      },
+    const registryPort: WorkspaceRegistryInspectionPort = {
+      inspect: async () => registry,
     };
     const runtimeFactory = new RecordingInspectionRuntimeFactory([
       result('current', 40, 0),
@@ -105,10 +138,15 @@ describe('WorkspaceMigrationInventoryCoordinator', () => {
     expect(runtimeFactory.inputs).toHaveLength(2);
     expect(runtimeFactory.inputs[0]?.expectedProfileId).toBe('a'.repeat(64));
     expect(runtimeFactory.inputs[1]?.expectedProfileId).toBe('b'.repeat(64));
+    for (const input of runtimeFactory.inputs) {
+      expect(input.ownedLocalDatabaseRecovery).toEqual({
+        workspaceIdentity: expect.stringMatching(/^[0-9a-f]{64}$/),
+        workspaceRoot: input.publishedRoot,
+      });
+    }
     expect(runtimeFactory.inputs.some((input) =>
       input.publishedRoot.includes(recoveryWorkspaceId),
     )).toBe(false);
-    expect(writeCount).toBe(0);
     expect(events).toEqual([
       {
         compatiblePendingCount: 1,
@@ -137,7 +175,7 @@ describe('WorkspaceMigrationInventoryCoordinator', () => {
           throw new Error('observer unavailable');
         },
       },
-      registry: { read: async () => registry },
+      registry: { inspect: async () => registry },
       runtimeFactory: new RecordingInspectionRuntimeFactory([
         result('invalidHistory', 0, 0),
       ]),
@@ -155,7 +193,11 @@ describe('WorkspaceMigrationInventoryCoordinator', () => {
     });
   });
 
-  it('fails the whole inventory on profile mismatch without opening later workspaces or changing persisted bytes', async () => {
+  it.each([
+    'WORKSPACE_MIGRATION_PROFILE_MISMATCH',
+    'PROFILE_SCHEMA_UNSUPPORTED',
+    'MIGRATION_HISTORY_INVALID',
+  ])('fails the whole inventory on %s without opening later workspaces or changing persisted bytes', async (causeCode) => {
     const registry = createRegistry({ thirdReady: true });
     const userDataRoot = await createWorkspaceRoots(registry);
     await createSyntheticDatabaseFiles(userDataRoot, registry);
@@ -180,7 +222,7 @@ describe('WorkspaceMigrationInventoryCoordinator', () => {
         const workspaceId = workspaceIdFromPublishedRoot(input.publishedRoot);
         startedWorkspaces.push(workspaceId);
         if (workspaceId === secondWorkspaceId) {
-          throw new Error('WORKSPACE_MIGRATION_PROFILE_MISMATCH');
+          throw new Error(causeCode);
         }
         if (workspaceId !== firstWorkspaceId) {
           throw new Error('UNEXPECTED_WORKSPACE_INSPECTION');
@@ -241,7 +283,7 @@ describe('WorkspaceMigrationInventoryCoordinator', () => {
   it('fails closed on a malformed or missing registry before starting a utility', async () => {
     const runtimeFactory = new RecordingInspectionRuntimeFactory([]);
     const missing = new WorkspaceMigrationInventoryCoordinator({
-      registry: { read: async () => undefined },
+      registry: { inspect: async () => undefined },
       runtimeFactory,
       userDataRoot: join(tmpdir(), 'missing-eky-workspaces'),
     });
@@ -254,7 +296,7 @@ describe('WorkspaceMigrationInventoryCoordinator', () => {
       unexpected: true,
     } as unknown as LocalWorkspaceRegistryV1;
     const invalid = new WorkspaceMigrationInventoryCoordinator({
-      registry: { read: async () => malformed },
+      registry: { inspect: async () => malformed },
       runtimeFactory,
       userDataRoot: join(tmpdir(), 'invalid-eky-workspaces'),
     });
@@ -290,7 +332,7 @@ describe('WorkspaceMigrationInventoryCoordinator', () => {
       },
     };
     const coordinator = new WorkspaceMigrationInventoryCoordinator({
-      registry: { read: async () => registry },
+      registry: { inspect: async () => registry },
       runtimeFactory,
       userDataRoot,
     });
@@ -307,6 +349,48 @@ describe('WorkspaceMigrationInventoryCoordinator', () => {
     expect(activeRuntimeCount).toBe(0);
   });
 
+  it.each(['PROFILE_SCHEMA_UNSUPPORTED', 'MIGRATION_HISTORY_INVALID'] as const)(
+    'preserves the first %s rejection when cancellation arrives during shutdown', async causeCode => {
+      const registry = createRegistry({ includeSecond: false });
+      const userDataRoot = await createWorkspaceRoots(registry);
+      const controller = new AbortController();
+      const original = new Error('private inspection detail', { cause: new Error(causeCode) });
+      let notifyCleanup!: () => void;
+      let finishCleanup!: () => void;
+      const cleanupStarted = new Promise<void>(resolve => { notifyCleanup = resolve; });
+      const cleanupSettled = new Promise<void>(resolve => { finishCleanup = resolve; });
+      let stopCount = 0;
+      const coordinator = new WorkspaceMigrationInventoryCoordinator({
+        registry: { inspect: async () => registry },
+        runtimeFactory: {
+          async startMigrationInspection() {
+            return {
+              inspectStoppedMigrationInspection: async () => { throw original; },
+              async stopAndProveHandlesClosed() {
+                if (++stopCount === 2) {
+                  notifyCleanup();
+                  await cleanupSettled;
+                }
+                return true;
+              },
+            };
+          },
+        },
+        userDataRoot,
+      });
+      const inspection = coordinator.inspect(controller.signal).catch(error => error);
+      await cleanupStarted;
+      controller.abort();
+      finishCleanup();
+      const failure: unknown = await inspection;
+
+      expect(failure).toMatchObject({ code: workspaceMigrationInventoryCancelledCode });
+      expect(readWorkspaceCandidateFailureCause(failure)).toBe(causeCode);
+      expect((failure as Error).message).not.toContain('private inspection detail');
+      expect(stopCount).toBe(2);
+    },
+  );
+
   it('fails closed when utility shutdown cannot prove all handles closed', async () => {
     const registry = createRegistry({ includeSecond: false });
     const userDataRoot = await createWorkspaceRoots(registry);
@@ -318,7 +402,7 @@ describe('WorkspaceMigrationInventoryCoordinator', () => {
       }),
     };
     const coordinator = new WorkspaceMigrationInventoryCoordinator({
-      registry: { read: async () => registry },
+      registry: { inspect: async () => registry },
       runtimeFactory,
       userDataRoot,
     });

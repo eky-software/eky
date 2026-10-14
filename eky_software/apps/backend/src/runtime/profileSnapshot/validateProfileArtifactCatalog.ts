@@ -7,16 +7,19 @@ import { join, relative, resolve, sep } from 'node:path';
 
 import type { DatabaseConnection } from '../../database/connection/createDatabaseConnection.js';
 import { SqliteInvoiceBackupArtifactCatalog } from '../../modules/invoicing/infrastructure/sqliteInvoiceBackupArtifactCatalog.js';
+import { profileInspectionSqliteError } from './profileInspectionSqliteError.js';
 import type { InvoiceBackupArtifactCatalogSchema } from '../../modules/invoicing/infrastructure/selectInvoiceBackupArtifactCatalogSchema.js';
-import type { InvoiceBackupArtifactCatalogItem } from '../../modules/invoicing/ports/invoiceBackupArtifactCatalog.js';
+import {
+  invoiceBackupArtifactMaximumCount as maximumArtifactCount,
+  invoiceBackupArtifactMaximumTextBytes as maximumTextBytes,
+  type InvoiceBackupArtifactCatalogItem,
+} from '../../modules/invoicing/ports/invoiceBackupArtifactCatalog.js';
 
 const artifactCatalogLogicalPath = 'snapshot-catalog-v1.json';
 const artifactOwner = 'invoicing';
-const maximumArtifactCatalogBytes = 64 * 1024 * 1024;
-const maximumArtifactCount = 100_000;
-const maximumInvoicePdfBytes = 10 * 1024 * 1024;
-const maximumProfileArtifactBytes = 20 * 1024 * 1024 * 1024;
-const maximumTextBytes = 1_024;
+export const maximumProfileArtifactCatalogBytes = 64 * 1024 * 1024;
+export const maximumInvoicePdfBytes = 10 * 1024 * 1024;
+export const maximumProfileArtifactBytes = 20 * 1024 * 1024 * 1024;
 const pdfSignature = Buffer.from('%PDF-', 'ascii');
 const sha256Pattern = /^[a-f0-9]{64}$/;
 
@@ -72,7 +75,7 @@ export async function validateProfileArtifactCatalog(input: {
     catalogMetadata.isSymbolicLink() ||
     catalogMetadata.nlink !== 1 ||
     catalogMetadata.size < 1 ||
-    catalogMetadata.size > maximumArtifactCatalogBytes
+    catalogMetadata.size > maximumProfileArtifactCatalogBytes
   ) {
     throw new Error('PROFILE_SNAPSHOT_ARTIFACTS_INVALID');
   }
@@ -84,7 +87,7 @@ export async function validateProfileArtifactCatalog(input: {
     await new SqliteInvoiceBackupArtifactCatalog(
       input.database,
       input.schema,
-    ).listAuthoritativeArtifacts();
+    ).listAuthoritativeArtifacts().catch(error => { throw profileInspectionSqliteError(error); });
 
   if (
     catalog.length !== expectedItems.length ||
@@ -379,7 +382,7 @@ function isBoundedText(value: unknown): value is string {
   );
 }
 
-function isSafeLogicalPath(value: unknown): value is string {
+export function isSafeLogicalPath(value: unknown): value is string {
   if (!isBoundedText(value) || value.includes('\\')) {
     return false;
   }

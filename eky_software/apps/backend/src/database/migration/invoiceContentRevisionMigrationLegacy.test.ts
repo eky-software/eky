@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterAll, afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { SqliteInvoiceBackupArtifactCatalog } from '../../modules/invoicing/infrastructure/sqliteInvoiceBackupArtifactCatalog.js';
 import {
   closeDatabases,
@@ -30,8 +30,9 @@ import {
   vat,
 } from './invoiceContentRevisionMigrationSnapshot.fixture.js';
 import { runMigrations } from './runMigrations.js';
+import { failMigrationWrite } from './migrationWriteFailure.fixture.js';
 
-afterEach(closeDatabases);
+afterEach(() => { vi.restoreAllMocks(); closeDatabases(); });
 afterAll(removeDirectories);
 
 describe('invoice content revision migration: historical data and atomic migration 039', () => {
@@ -96,11 +97,13 @@ describe('invoice content revision migration: historical data and atomic migrati
 
   it('rolls back snapshot, bindings and migration metadata together when publication fails', async () => {
     const db = await createSnapshotDatabase(false);
-    failMigrationHistoryWrite(db);
+    const failure = failMigrationHistoryWrite(db);
     const before = oldState(db);
 
     await expect(runMigrations(db, { migrationsDirectory: migrationDirectories().after }))
       .rejects.toMatchObject({ errorCode: 'MIGRATION_EXECUTION_FAILED' });
+    expect(failure).toHaveBeenCalledOnce();
+    expect(failure).toHaveReturnedWith(true);
     expect(oldState(db)).toEqual(before);
     expect(
       db.prepare("SELECT name FROM sqlite_master WHERE name LIKE 'invoice_revision%' OR name = 'invoice_content_revisions'")
@@ -111,14 +114,16 @@ describe('invoice content revision migration: historical data and atomic migrati
 
   it('rolls back the entire 039 migration on metadata failure after all business writes', async () => {
     const db = await createSnapshotDatabase(false);
-    db.exec(
-      `CREATE TRIGGER fail_snapshot_metadata BEFORE INSERT ON schema_migration_metadata
-      WHEN NEW.migration_name = '${migrationName}' BEGIN SELECT RAISE(ABORT,'SYNTHETIC_METADATA_FAILURE'); END;`,
+    const failure = failMigrationWrite(
+      db, 'schema_migration_metadata', migrationName,
+      () => db.prepare("SELECT name FROM sqlite_schema WHERE name = 'invoice_content_revisions'").get() !== undefined,
     );
     const before = oldState(db);
     const oldSchema = db.prepare('SELECT type,name,sql FROM sqlite_master ORDER BY type,name').all();
 
     await expect(runMigrations(db, { migrationsDirectory: migrationDirectories().after })).rejects.toMatchObject({ errorCode: 'MIGRATION_EXECUTION_FAILED' });
+    expect(failure).toHaveBeenCalledOnce();
+    expect(failure).toHaveReturnedWith(true);
     expect(oldState(db)).toEqual(before);
     expect(db.prepare('SELECT type,name,sql FROM sqlite_master ORDER BY type,name').all()).toEqual(oldSchema);
   });
@@ -189,25 +194,29 @@ describe('invoice content revision migration: historical data and atomic migrati
 
   it('rolls back the full 039 migration when migration metadata cannot be written', async () => {
     const db = await createBindingDatabase();
-    db.exec(
-      `CREATE TRIGGER fail_probe_metadata BEFORE INSERT ON schema_migration_metadata
-      WHEN NEW.migration_name = '${migrationName}' BEGIN SELECT RAISE(ABORT, 'PROBE_METADATA_FAILURE'); END;`,
+    const failure = failMigrationWrite(
+      db, 'schema_migration_metadata', migrationName,
+      () => db.prepare("SELECT name FROM sqlite_schema WHERE name = 'invoice_content_revisions'").get() !== undefined,
     );
     const before = bindingState(db);
 
     await expect(runMigrations(db, { migrationsDirectory: migrationDirectories().after })).rejects.toMatchObject({ errorCode: 'MIGRATION_EXECUTION_FAILED' });
+    expect(failure).toHaveBeenCalledOnce();
+    expect(failure).toHaveReturnedWith(true);
     expect(bindingState(db)).toEqual(before);
     expect(db.pragma('foreign_key_check')).toEqual([]);
   });
 
   it('keeps the separately committed legacy anchor but rolls back every 039 migration business change', async () => {
     const db = await createBindingDatabase();
-    failMigrationHistoryWrite(db);
+    const failure = failMigrationHistoryWrite(db);
     const before = bindingState(db);
     db.exec('DROP TABLE schema_migration_metadata');
 
     await expect(runMigrations(db, { migrationsDirectory: migrationDirectories().after }))
       .rejects.toMatchObject({ errorCode: 'MIGRATION_EXECUTION_FAILED' });
+    expect(failure).toHaveBeenCalledOnce();
+    expect(failure).toHaveReturnedWith(true);
     const after = bindingState(db);
     for (const key of ['docs', 'events', 'invoices', 'lines', 'migrations', 'schema'] as const) {
       expect(after[key]).toEqual(before[key]);

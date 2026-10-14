@@ -2,42 +2,266 @@
 
 ## Päätös ja nykyinen tila
 
-**Ajantasainen jatko 9.10.2026:** T1/T2/T3, A1/A2/A3, Oma yritys -korjaukset
-sekä koko B1-B5 hyväksyttyine integraatiojatkoineen ovat hyväksyttyjä.
-Lähtö on [PR #298:n main ja loppuhyväksyntä](https://github.com/eky-software/eky/pull/298#issuecomment-6050339146).
+**Ajantasainen jatko 12.10.2026:** hyväksytty lähtö on edelleen PR #299:n main.
+[M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+omistaa täsmärevision, nykyisen K-työn ja sen hyväksyntärajat.
+Uusin [kokonaiskytkennän tarkistus](release-0.3.0-m1-preparation-plan.md#kn-kokonaiskytkennän-tarkistus)
+erottaa toteutetut osat vielä avoimista porteista. Aktiivivalidoinnin
+kutsujakohtainen omistajuus, myös ensimmäinen käynnistys ja C, sekä natiivin
+muistirajavirheen säilyminen on kytketty ja saanut rajatun kohdenäytön.
+[Candidate-avausportti](release-0.3.0-m1-preparation-plan.md#candidate-tarkistuksen-avausportti)
+on korjattu yhteisellä readonly-esitarkistuksella ennen kirjoitusavausta;
+kohderegressiot ja oikean utility-ketjun todennus läpäisivät.
+[FirstStartin ja restore-journalillisen C:n native-kohdenäyttö](release-0.3.0-m1-preparation-plan.md#ensimmäisen-käynnistyksen-ja-c-kutsun-kytkentä)
+läpäisi kehitysruntimessa. Se ei korvaa oikeaa binaarihandoffia, hardened-
+palautusta tai muita paketointi- ja K:n loppuportteja. Journalin guard-/sisältöerottelun
+[suunnittelu ja synteettinen koe](release-0.3.0-m1-preparation-plan.md#journalin-valinta--ja-sisältötarkistuksen-rajattu-koe)
+sekä sen jälkeinen rajattu cold-forward-/rollback-kytkentä on hyväksytty ja
+kohdetodennettu; koko K:n portit ja aiempien aikakatkaisujen seuranta säilyvät.
+K ei ole vielä hyväksytty PR-/main-revisiona.
+[Paketoinnin budjettipäätös](release-0.3.0-m1-preparation-plan.md#paketoinnin-budjettipäätös)
+on hyväksytty ja rajatestit läpäisivät; puhtaan paketin mittaus ja
+sisältökatselmus ovat avoimia. Kohdenäyttö ei hyväksy koko pakettia.
+[Linuxin tarkistusajopolun rajaus](release-0.3.0-m1-preparation-plan.md#linux-tarkistuksen-ajopolun-päätös)
+on hyväksytty ja kytkennän sopimustestit läpäisivät; oikean Linux-Electron-
+utilityn ja CI:n todennus on edelleen avoin.
+[Suuremman katalogin koe](release-0.3.0-m1-preparation-plan.md#suuren-katalogin-palautusraja)
+ja hyväksytyt PDF-/journal-muutokset saivat rajatun onnistuvan ketjun näytön;
+se ei korvaa puhtaan paketin palautusportteja. Normaali paikallinen
+työtilakierros on läpäissyt [M1:n checkpointin](release-0.3.0-m1-preparation-plan.md#kn-integraatiotestien-checkpoint)
+mukaisesti. Seuraava suunnittelusuunta on
+[laskuhistorian tarkistus pienissä osissa](release-0.3.0-m1-preparation-plan.md#laskuhistorian-ennakkorajan-päätös),
+ei uusi koko historian määräraja. Tuotantokytkentä on vielä päätettävä.
+Katalogin erillinen muistivirheen syyhäviö ja K:n loppuportit ovat avoimia.
+
+**Alla oleva 11.10.2026 vaihehistoria ei korvaa yllä linkitettyä nykytilaa.**
+[V2av:n P1 ja P2:n startup-rollback](release-0.3.0-m1-preparation-plan.md#v2av-alkuperäissisällön-tarkistussopimus)
+on toteutettu ja rajatusti todennettu ennen business-backendin käynnistystä:
+molempien palautuskuluttajien tuore sisältövaltuus, paikallaan pysyvä
+tarkistusankkuri ja staging-siirron juuri-identiteetti säilyvät. Oikean
+utility-/native-ketjun kohdenäyttö ei ole koko K:n tai hardened-paketin
+hyväksyntä. [V2aw:n loppusiivouskorjaus](release-0.3.0-m1-preparation-plan.md#v2aw-rollbackin-loppusiivouksen-säilytys)
+säilyttää tuntemattoman rollback-aineiston ja journalin; sen erilliset
+hylkäys- ja onnistumiskontrollit läpäisivät.
+[V2ay:n C-palautuskutsujan korjaus](release-0.3.0-m1-preparation-plan.md#v2ay-cn-palautuskutsujan-sisäinen-ensisyy)
+säilyttää sisäisen ensisyyn erillään journalin lisävirheestä nykyisellä
+julkisella tapahtumasopimuksella. Kohdenäyttö ja rajattu katselmus eivät
+hyväksy offline-palautusta; seuraavat valtuus-/palautusportit ovat avoinna.
+[Live-terminalin V2bb-kytkentä](release-0.3.0-m1-preparation-plan.md#v2bb-live-terminalin-tuore-valtuus)
+todensi tuoreen snapshot-sisältövaltuuden, täsmälliset cleanup-varaukset,
+normaalin hyväksynnän ja accepted-cold-jatkon oikealla business-backendillä
+nyky-/038-aineistolla.
+[C-terminalin V2bc-kytkentä](release-0.3.0-m1-preparation-plan.md#v2bc-cn-alkuperäisketjun-terminal)
+todensi erikseen alkuperäisketjun tarkistuksen ennen migraatioita ja jo
+hyväksytyn C-palautuksen jatkon oikealla backendillä ja native-varauksilla.
+[Tarkistusvirheen jälkeinen V2bd-valtuus](release-0.3.0-m1-preparation-plan.md#v2bd-tarkistusvirheen-jälkeinen-rollback-valtuus)
+käyttää samaa alkuperäisinspektoria ja native-varauksia myös pysäytetyn
+backendin jälkeisessä rollbackissa. Hylkäys ei käynnistä vaihtoehtoista
+työtilapalautusta. Rajattu kohdenäyttö ei hyväksy koko K:n palautusketjua.
+[V2be:n valmistumiskirjoitus](release-0.3.0-m1-preparation-plan.md#v2be-cn-business-valmistumisen-journal-sidonta)
+sitoo nykyisen C-palautuksen alkuperäiseen update-valintaan myös valmistumis-
+ja virhehaaroissa. Vanhentunut valinta ei ylikirjoita uudempaa journalia;
+epävarma julkaisun jälkeinen siivous säilyttää edellisen journalin.
+[V2bf:n journaliton C-valinta](release-0.3.0-m1-preparation-plan.md#v2bf-journalittoman-cn-valinnan-jatkuminen)
+ja [V2bg:n aktivointikuitti](release-0.3.0-m1-preparation-plan.md#v2bg-aktivoinnin-täsmällinen-journal-ja-valtuus)
+säilyttävät alkuperäisen valinnan journalin valmistelusta tiedostosiirtoihin
+ja oman keskeytyksen rollbackiin. Julkaisusuoja koskee myös alkuperäisiä
+kutsumuotoja ilman erillistä valtuusfunktiota. Rajattu kohdekierros ja neljän
+tapauksen oikea prosessiketju läpäisivät; nämä eivät hyväksy koko K:ta.
+[V2bh:n historiallinen journaliton käynnistysadmissio](release-0.3.0-m1-preparation-plan.md#v2bh-journalittoman-cn-historiallinen-käynnistysadmissio)
+kytkee nykyisen schema-poikkeuksen ennen backendin avausta saman valitun
+C-operaation prepare-/grant-sidonnalla. Kuuden tapauksen oikea prosessikoe
+ja kohderegressiot läpäisivät; katselmuksessa löytynyt aikaisempi W6-
+inventaarioraja estää kuitenkin rekisteröidyn metadataa vailla olevan
+038-työtilan koko startup-polun. Rajattu C-palautuksen valmistelujärjestys
+hyväksyttiin 11.10.2026. [V2bi:n rajattu kytkentä](release-0.3.0-m1-preparation-plan.md#v2bi-cn-palautuksen-rajattu-w6-valmistelu)
+on sittemmin toteutettu ja saanut käynnistysketjun kohdenäytön; palautussarjan
+aikakatkaisut ja koko K:n hyväksyntä ovat yhä avoinna.
+Inventaarion schema-suojaa ei löysennetä.
+Tämän jälkeen seuraavat jäljellä olevien raskaiden aktiivisten tarkistusten
+korvaaminen, koko mainin palautusketju ja M1:n muut loppuportit.
+K:n työpuuta ei ole vielä hyväksytty PR- tai main-revisiona.
+
+**Aiempi K-eteneminen 10.10.2026:** alla olevat toteutusvaiheiden checkpointit
+ovat historiaa; niiden silloiset avoimet kohdat eivät korvaa yllä olevaa
+nykyistä jatkamiskohtaa. T1/T2/T3, A1/A2/A3, Oma yritys -korjaukset
+sekä koko B1-B5 ja C hyväksyttyine integraatiojatkoineen ovat hyväksyttyjä.
+Lähtö on [PR #299:n main ja loppuhyväksyntä](https://github.com/eky-software/eky/pull/299#issuecomment-6081351779).
 [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
 omistaa täsmärevision sekä sen PR- ja main-portit. Nykyinen työ on
-[C-paketin valmistelu ja rajattu toteutus](release-0.3.0-m1-preparation-plan.md#c-paketin-valmistelu-ja-hyväksyntärajat):
-desktopin graceful-only update, katkeamaton kirjoitussuoja, startup-exit,
-create/import-recovery ja oletuspaketoinnin build-identiteetti.
-Lähdevertailu on tehty. R18:n hyväksytty cold-terminal, vain lukeva journal-
-admission polkukoosteineen, R17:n startup-omistajuus, R19:n oletus-buildin
-täysi revisio ja R03:n strict-sammutuskytkentä on toteutettu rajatusti;
-alemman tason testit läpäisevät. R03:n rajattu koodikatselmus ja sen
-korjausten jatkokatselmus valmistuivat; julkinen lokisopimus säilyy.
-R04:n backend/broker-osuus on tämän jälkeen kohdetodennettu: update-suojan
-menetys ei vapauta business-kirjoituksia. Myös caller-owned palautuspisteen
-palvelurajapinta ja operation-sidotun sulun backend-vastaanottaja ovat
-kohdetodennettuja. Mainin operation-välitys ja prepare/handoffin yhteinen
-omistus on kytketty ja rajatusti todennettu. Journalin epävarmuus ei vapauta
-omistusta eikä ordinary-sulku valtuuta update-handoffia. Oikean prosessin ja
-paketoidun päivitysketjun yhteinen todistus on vielä avoin.
-R18:n hyväksytty prosessivaraus, työluvan siirto ja V2-journalin kylmäpalautus
-on tämän jälkeen kytketty tuotantoon ja nykyisiin testikutsujiin. Viisi
-todellista Electron-työtilapolkua sekä julkaistun luonti-/tuontikohteen
-composition-todistus läpäisivät. Normaali testisarja ja tyypitys läpäisivät;
-laajan kriittisen Electron-sarjan yksi prosessimäärähavainto on yhä avoin.
-R19:n nykyrevision kuluttajat ja puhtaan paketin kolme palautustapausta
-läpäisivät ensimmäistä PR-kierrosta varten. PR #299:n ensimmäinen V2-kierros
-hylättiin; riippuvuustarkistus läpäisi erikseen. M1 omistaa seuraavaksi
-[rajatun testiomistajuus- ja R04-itsevalidointikorjauksen](release-0.3.0-m1-preparation-plan.md#cn-ensimmäisen-pr-kierroksen-rajattu-korjaus).
-Korjattu paketoitu päivitys- ja workspace-palautusketju läpäisi molemmat
-normaalit suoritukset, mutta koko kierros hylättiin yhden prosessijärjestys-
-fixturen vuoksi. Seuraava työ on [sen rajattu täsmennys](release-0.3.0-m1-preparation-plan.md#cn-prosessijärjestysfixturen-täsmennys),
-korjausrevision puhdas paketti ja normaalit PR/main-portit. Tuotannon
-supervisoria tai aikarajoja ei muuteta tämän fixture-puutteen perusteella.
-C:tä ei vielä ole hyväksytty kokonaisuutena. Aiemmat timeout- ja sulkuhavainnot
-säilyvät avoimina omille revisioilleen, eivät uuden työn juurisyyväitteinä.
+[K-paketin hyväksytty suunnitelma](release-0.3.0-m1-preparation-plan.md#k-paketin-valmistelu-ja-hyväksyntärajat):
+varmuuskopion todellisen SQLite-rakenteen luottamustodistus sekä epäluotetun
+tarkistuksen eristäminen aktiivisesta business-runtimesta. Alkuperäiset
+S030-01/S030-02-havainnot on luettu uudelleen ja nykyinen kutsuketju on
+tarkistettu rajatusti. Konkreettinen schema-, prosessi-, resurssi- ja
+hyväksyntäsopimus on kirjattu M1:n K-osioon ja rajattu riippumaton
+suunnitelmakatselmus ei löytänyt estettä. Omistaja hyväksyi K-P1/K-P2/K-P3-
+päätökset 9.10.2026, joten V1-valmistelu on valmis. V2a:n yhteinen
+schema-portti ja snapshot-tarkistimen ensimmäinen kytkentä on toteutettu
+työpuuhun kohdetesteineen, ja rajattu katselmus on tehty. V2b:n tarkistuspalvelu
+on erotettu aktiivisen yrityksen kontekstista, mutta utility-kytkentä on
+avoin. Muistirajakoe osoitti nykyisen native-ajurin valvontapuutteen;
+[M1:n K-osio](release-0.3.0-m1-preparation-plan.md#k-paketin-valmistelu-ja-hyväksyntärajat)
+omistaa tarvittavan runtime-päätöksen ja todennuksen ennen kytkentää.
+V2c:n yhteinen käynnistys- ja migraatiotarkistus käyttää nyt schema-porttia
+ennen kirjoituksia ja migraation jälkeen. Kohdetodennus säilyttää nykyisen
+baseline-/restore-erottelun ja rollbackin. Backendin readonly-avausportin
+ehdokas vaatii hyväksytyn kaatumispalautuspoikkeuksen kytkennän:
+katselmuksen hot-journal-regressio toistettiin, joten vihreät muut testit
+eivät hyväksy ehdokasta. Omistaja hyväksyi 10.10.2026 vain todistetusti
+oman paikallisen työtilan natiivipalautuksen ennen schema-tarkistusta;
+tuodulle varmuuskopiolle ei anneta poikkeusta.
+Candidate-kopioinnin avausportin ja tavusidonnan ehdokkaassa toistui myös
+ehjän WAL-varmuuskopion hylkäys. Omistajan hyväksymä
+[erillisen tarkistuskopion koe](release-0.3.0-m1-preparation-plan.md#v2e-erillisen-tarkistuskopion-koe)
+läpäisi. Sen [kutsujatason säilytysjatko](release-0.3.0-m1-preparation-plan.md#v2f-kutsujien-aineiston-säilytys)
+korjasi korvauksen siivousjärjestyksen ja todensi kolme kutsupolkua;
+[nykyisen C-omistajan utility-koe](release-0.3.0-m1-preparation-plan.md#v2g-tarkistuskopio-todellisessa-utility-prosessissa)
+todensi rajatun koekopion sulkemisen, todellisen poistumisen, varauksen
+palautuksen ja epävarman aineiston säilytyksen viidessä tapauksessa.
+[Varsinaisen kuluttajan WAL-regressiot](release-0.3.0-m1-preparation-plan.md#v2h-wal-kuluttajaregressio-ja-kytkentäpäätös)
+toistivat ehjän nykyisen ja historiallisen backupin hylkäyksen sekä
+tarkistuksen lähdekansioon luomat sivutiedostot. Omistaja hyväksyi tämän
+jälkeen rajatun tuotantokytkennän. [V2i:n nykyinen kuluttaja](release-0.3.0-m1-preparation-plan.md#v2i-tarkistuskopion-tuotantokuluttaja)
+on toteutettu työpuussa; nykyinen ja hyväksytty vanha 038-WAL-backup sekä
+schema-hylkäys on kohdetodennettu oikeassa utility-ketjussa alkuperäistä
+muuttamatta. Rajattu katselmus ja sen korjausten regressiot läpäisivät;
+K:n koko loppukatselmus ja paketoidun palautuksen hyväksyntä ovat kesken.
+[V2j:n sisäinen syyn säilytys](release-0.3.0-m1-preparation-plan.md#v2j-ylemmän-virheketjun-ensisyyn-säilyminen)
+on toteutettu kohderegressioineen: ensisyy säilyy palautuksen ja vapautuksen
+virheiden yli, eikä raaka ketju siirry IPC-rajan läpi. Nykyinen käyttäjäkoodi
+ja palautuksen järjestys säilyvät. Työtilojen regressiot, tyypintarkistus,
+build ja rajattu staattinen katselmus läpäisivät.
+[V2k:n workspace-lukuketju](release-0.3.0-m1-preparation-plan.md#v2k-workspace-varmuuskopion-turvallinen-lukuketju)
+on kohdetodennettu: tuonnin ja korvauksen ensisyy ja lisävirhe säilyvät
+oikeasta operational-tiedostosta strict-Diagnostics- ja tukipakettilukijoihin.
+Mainin observer-kytkentä on mukana lähteessä; todellinen Electron-mainin,
+K3:n muiden kuluttajien ja hardened-paketin hyväksyntä on vielä avoin.
+[V2l:n backup-/palautuskuluttajien sisäinen ensisyy](release-0.3.0-m1-preparation-plan.md#v2l-backup--ja-palautuskuluttajien-sisäinen-ensisyy)
+on kohdetodennettu ulompaa virhesopimusta muuttamatta. Se ei vielä hyväksy
+näiden kaikkien kuluttajien turvallista diagnostiikan lukuketjua tai K2:ta.
+[V2m:n portable-backupin lukuketju](release-0.3.0-m1-preparation-plan.md#v2m-portable-backupin-turvallinen-lukuketju)
+välittää luonnin ja tarkistuksen hyväksytyt ensisyyt nykyisestä capabilitysta
+lokitiedostoon, Diagnostics-malliin ja sanitoituun tukipakettiin. Käyttäjän
+yleinen palaute säilyy. [V2n:n palautuskuluttajien kohdenäyttö](release-0.3.0-m1-preparation-plan.md#v2n-palautuskuluttajien-turvallinen-ensisyy)
+täydentää palautuksen ja palautuspisteiden ensisyyraportoinnin samoilla
+kirjoittajilla ja tiedostolukijoilla; rollbackin lisävirhe ei peitä ensisyytä.
+[Hyväksynnän loppuvaiheen rajattu korjaus](release-0.3.0-m1-preparation-plan.md#hyväksynnän-loppuvaiheen-syytieto)
+säilyttää myös validoinnin jälkeisen valmistelu-, hyväksyntä- tai
+siivousvirheen turvallisen syyn. Composition-regressiot ja koko lukuketju
+gzip-tukipakettiin läpäisivät; palautuskäyttäytyminen ja K:n loppuportit säilyvät.
+[V2o:n lukijapariteetti](release-0.3.0-m1-preparation-plan.md#v2o-palautustapahtumien-lukijoiden-sopimustarkistus)
+on kohdetodennettu: API-client ja tukipaketti tarkistavat tapahtumakohtaiset
+vaiheet ja kentät, ja nykyisten kuluttajien tiedostoketjut säilyvät.
+[V2p:n todellinen tuontiketju](release-0.3.0-m1-preparation-plan.md#v2p-tuonnin-todellinen-mainipc-lukuketju)
+todentaa yhden schema-hylkäyksen ketjun candidate-utilitysta oikean main/IPC:n
+kautta hallittuun uudelleenkäynnistykseen ja Diagnostics/API-/tukipakettilukijoihin.
+Tavallinen tuonti ja nykyinen workspace-koostetodistus läpäisivät erillisinä
+kontrolleina. [V2q:n korvausketju](release-0.3.0-m1-preparation-plan.md#v2q-korvauksen-todellinen-mainipc-lukuketju)
+todentaa saman yrityksen varmuuskopion schema-hylkäyksen, native-vahvistuksen,
+varmuuskopion jälkeisten tietojen säilymisen ja saman syyn todellisen
+diagnostiikka-/tukipakettiketjun. Tavallinen korvaus ja väärän yrityksen
+esto läpäisivät muuttumattomina kontrolleina. Näitä erilliskokeita täydentävät
+nyt [V2r:n kaksi pysyvää Electron-regressiota](release-0.3.0-m1-preparation-plan.md#v2r-pysyvät-workspace-schema-hylkäystestit).
+Tuonti ja korvaus läpäisivät kohdeajon nykyisellä testipohjalla;
+PR/CI- ja packaged-todistus sekä K3:n muut todelliset runtime-polut
+säilyvät avoimina.
+Kohdetulos ei hyväksy K2:n prosessiomistajuutta tai paketoitua palautusta.
+[Rajattu native-muistikoe](release-0.3.0-m1-preparation-plan.md#muut-avoimet-k-päätökset)
+läpäisi. Kokeen lupa ei yksin hyväksynyt tuotantoajurin toimitusta.
+Omistaja hyväksyi 10.10.2026 erillisen tarkistusajurin tuotantotoimituksen,
+inventaarion schema-fail-closed-polun ja rajatun paikallisen hot-journal-
+palautuksen. [V2s:n toimituskytkentä](release-0.3.0-m1-preparation-plan.md#v2s-tarkistusajurin-erillinen-toimitus)
+ja Windowsin rajatut ajuri-/kopio-/runtime-kontrollit ovat työpuussa
+kohdetodennettuja. Koko paketti on vielä hylätty pakkaustiedoston kokorajaan,
+eikä rajoja ole muutettu. [V2t:n inventaarion kytkentä](release-0.3.0-m1-preparation-plan.md#v2t-inventaarion-suljettu-virhepolku)
+todistaa scheman ja historian ennen identityä, pysähtyy suljetusti eikä
+muuta registry-slotien aineistoa lukemisen sivuvaikutuksena. Kohdetestit
+ja kolme nimettyä Electron-development-koetta läpäisivät. Koko käynnistyskoosteen
+hylkäys, hardened-paketti ja kokonaisuuden hyväksyntä ovat erillisiä.
+[V2u:n omistetun local-työtilan palautus](release-0.3.0-m1-preparation-plan.md#v2u-omistetun-paikallisen-työtilan-kaatumispalautus),
+[V2v:n tarkistusperusta](release-0.3.0-m1-preparation-plan.md#v2v-eristetyn-tarkistuksen-prosessiraja),
+[V2w:n kontekstikooste](release-0.3.0-m1-preparation-plan.md#v2w-luotettu-konteksti-ja-tarkistuksen-koostaminen)
+ja [V2x:n kevyt broker-v10-konteksti](release-0.3.0-m1-preparation-plan.md#v2x-kevyt-broker-v10-konteksti)
+ovat kohdetodennettuja työpuussa. V2x:n rajattu lähdekatselmus ei löytänyt
+uutta ohitusta tai regressiota; se ei hyväksy koko kuluttajakytkentää.
+[V2y:n omistettu Inspect-kuluttaja](release-0.3.0-m1-preparation-plan.md#v2y-omistettu-inspect-kuluttaja)
+liittää salatun varmuuskopion purun ja tarkistuksen todettuun utility-exitiin
+sekä varattuun siivoukseen. [V2z:n portable-main-kytkentä](release-0.3.0-m1-preparation-plan.md#v2z-portablen-main-kuluttajaportti)
+siirtää luonti-/Inspect-kuluttajan pakolliseen omistajuusporttiin, säilyttää
+lähdevarauksen kirjoituksen ja itsevalidoinnin yli ja liittää nykyisen
+installation-leasen sekä hallitun sulun. Kohderegressiot ja todellinen
+Electron-kuluttajakoe läpäisivät. [V2aa:n palautuspisteen lähdevaraus](release-0.3.0-m1-preparation-plan.md#v2aa-palautuspisteen-lähdevaraus)
+kattaa myös tallennuksen ja rotationin sekä erottaa ensisyyn epävarmasta
+siivouksesta. Kohdetestit ja rajattu todellinen prosessikoe läpäisivät.
+[V2ab:n valmistellun palautuksen slot](release-0.3.0-m1-preparation-plan.md#v2ab-valmistellun-palautuksen-omistajuuden-siirto)
+estää kilpailevan aktivoinnin/discardin sekä säilyttää journalin epävarman
+valmistelun. Kohderegressiot ja aidon journalin/diagnostiikan rajatut kokeet
+läpäisivät. Native-varauksen pitkäikäinen handoff ja maintenance-kanavan
+ajastettu vapautus eivät vielä ole tämän esitason näyttöä.
+[V2ac:n käytäntö- ja tarkistuskopiosidonta](release-0.3.0-m1-preparation-plan.md#v2ac-snapshotin-hyväksyntäkäytännön-sidonta)
+säilyttää nykyisen, historiallisen ja tuodun aineiston hyväksyntärajat sekä
+siirtää eristetyn tarkistimen readonly-luvut vain mainin omistamaan kopioon.
+Kohderegressiot ja seitsemän todellisen prosessirajan synteettistä tapausta
+läpäisivät. Hallittu loogisten tiedostojen siirto kokeessa ei vielä todista
+vanhan muodostajan eristystä tai kaikkien sen kutsujien vaihtoa.
+[V2ad:n Store-kytkentä](release-0.3.0-m1-preparation-plan.md#v2ad-palautuspisteen-tallennuksen-native-kytkentä)
+käyttää samaa pakollista native-omistajuutta salatun palautuspisteen
+itsevalidointiin ja purkuun. Kohderegressiot ja neljä todellisen prosessirajan
+synteettistä tapausta läpäisivät. Purku jättää stagingin varauksen seuraavalle
+omistajalle; sitä kuluttava durable-/offline-aktivointi ei vielä ole valmis.
+[V2ae:n odottava staging](release-0.3.0-m1-preparation-plan.md#v2ae-odottavan-palautusstagingin-native-omistajuus)
+käyttää native-porttia molempien palautusvalmistelujen koko odotusajalle ja
+portable-peruutukselle. Kohderegressiot ja oikean prosessirajan koe
+läpäisivät; epävarma siivous säilyttää aineiston ja estää aktivoinnin.
+[V2af:n alustakohtainen ajuritodennus](release-0.3.0-m1-preparation-plan.md#v2af-tarkistusajurin-alustakohtainen-todennus)
+täydentää Linuxin Node-/resurssitoimituksen ja Windowsin Node-/Electron-
+kontrollit. Käännöksen välituotteesta tehdään varmennettu itsenäinen kopio;
+toimituksen yksilinkkisyys-, koko- ja sisältörajat säilyvät.
+[V2ag:n muodostajakytkentä](release-0.3.0-m1-preparation-plan.md#v2ag-snapshot-muodostajan-eristetty-tarkistusketju)
+poistaa business-backendin eristämättömän kopiotarkistuksen. Oikean
+muodostajan snapshot-tavut läpäisivät eristetyn utilityn hyväksytyillä
+käytännöillä; schema- ja sivutiedostohylkäykset säilyttivät aineiston.
+Kohderegressiot, tyyppitarkistukset ja kahdeksan prosessirajakontrollia
+läpäisivät. V2ac:n hallittu tiedostosiirto on aiempaa koehistoriaa,
+ei tämän muodostajakytkennän todiste.
+[V2ah:n Electron-testiruntimen toimitus](release-0.3.0-m1-preparation-plan.md#v2ah-electron-testiruntimen-tarkistusajuritoimitus)
+varmentaa ajurin ja mainin todellisen runnerin tuoreen toimituksen.
+PDF-kuitti sitoo todelliset polku-/koko-/sisältötavut nykyisistä tallennusnimistä
+riippumatta. Kirjoitusquiesce säilyttää tarkistusportin preRestoreen asti;
+lopullisen pysäytyksen sulkuportit säilyvät. Kohderegressiot sekä tuonnin,
+korvauksen schema-hylkäyksen ja native-peruutuksen yksi nimetty Electron-ajo
+läpäisivät. Tämä ei korvaa durable-palautuksen tai paketoidun palautuksen
+hyväksyntää eikä kevennä muita K:n portteja.
+[V2ai:n palautuksen kirjoitussuoja](release-0.3.0-m1-preparation-plan.md#v2ai-palautuksen-suljettu-kirjoitussuoja)
+on hyväksytty ja sen tilakone-/broker-pohja kohdetodennettu. Epävarmuuden
+mitätöinti ei odota muun työn valmistumista; myöhäinen kuittaus ei avaa
+kirjoituksia. Tilakone-, sopimus- ja oikean viestikanavan kontrollit sekä
+rajattu uusintakatselmus läpäisivät.
+[V2aj:n nimetty palautussulku](release-0.3.0-m1-preparation-plan.md#v2aj-palautuksen-nimetty-backend-pysäytys)
+on kohdetodennettu oikean backend-utilityn, brokerin ja varauksen ketjussa.
+[V2ak:n native-journal-handoff](release-0.3.0-m1-preparation-plan.md#v2ak-native-stagingin-durable-handoff)
+on kytketty molempiin live-aktivointikuluttajiin ja kohdetodennettu oikeilla
+utility-/native-prosesseilla sekä durable-journalilla. Epävarma journal
+estää tarkistajan tiedostopoiston; varauksen luovutus edeltää globaalia
+sulkua. Tämä ei hyväksy cold-polun valtuutta, koko käynnistysketjua tai
+paketoitua palautusta. Offline/cold-journal-sidonta ja lopulliset K-portit
+ovat edelleen avoinna.
+Vanha raskas tarkistus ei ole uuden kuluttajan fallback.
+Linuxin koko runtime-/CI-toimitus, K2:n muiden kuluttajien varauselinkaari,
+muiden kuluttajien todellinen
+syyraportointi sekä hardened- ja PR/main-portit ovat edelleen avoimia
+omistavassa M1-suunnitelmassa. Päätösportti ja toteutuksen hyväksyntänäyttö
+eivät ole sama asia.
+K:n kokonaisuuden
+korjaustodennus on vielä avoinna; uutta Deep
+Scania ei aloiteta tässä.
+C:n hyväksyntä kattaa desktopin graceful-only updaten, katkeamattoman
+kirjoitussuojan, startup-exitin, create/import-recoveryn sekä oletus-buildin
+täyden revision. C:n aiemmat valmistelu- ja hylkäyscheckpointit ovat
+[toteutushistoriaa](release-0.3.0-m1-preparation-plan.md#c-paketin-valmistelu-ja-hyväksyntärajat),
+eivät nykyinen työjono. Aiemmat timeout- ja sulkuhavainnot säilyvät omille
+revisioilleen, eivät uuden työn juurisyyväitteinä.
 K, D:n muut ehdot, E/F/G/H/I, W7, sovittu käyttäjäkokemus ja M5 ovat
 edelleen avoinna; koko 0.3.0 ei ole valmis.
 
@@ -853,6 +1077,12 @@ hakusuodattimia. Tarkat turvallisuus- ja testiehdot ovat
   lukureitti-, rakenne- ja tietoturvatarkistuksia ei siirretä tämän vuoksi.
   Muuttuvan alueen ohjeet pidetään kunnossa jo jokaisen toteutuspalan mukana;
   vaatimukset ja hyväksyntänäyttö säilyvät tiivistettäessä.
+- Omistajan 12.10.2026 täsmennys: laaja ylläpidettävyyden siivous ja
+  käyttäytymisen säilyttävä refaktorointi tehdään erillisenä työnä
+  `0.3.0`:n jälkeen, ei keskeneräisen K:n rinnalla. Tämä ei siirrä
+  [M5:n ennen toimitusta tehtävää rakennekatselmusta](#m5-uusi-katselmus-deep-scan-ja-julkaisuportti),
+  sen julkaisun estäviä korjauksia tai muuttuvan alueen korvattujen
+  toteutusten ja ohjeiden viimeistelyä myöhemmäksi.
 - Ei piilotettuja varmuuskopioita, yleistä tietokannan salausuudistusta,
   uusia sähköpostiprovidereita, laajaa refaktorointia tai uutta
   riippuvuutta tämän suunnitelman sivutyönä.
@@ -1073,11 +1303,11 @@ T-paketin T1a/T1b, T2 ja T3/R28 on hyväksytty niiden omien
 integraatioiden näytöllä; [T3:n integraatiohyväksyntä](e2e-test-environment-history.md#t3n-integraatiohyväksyntä) ei perustu
 pelkkään historialliseen T3c-W:n 4/4-koetulokseen. A-paketin A1/R01, A2/R05
 ja A3/R06 ovat hyväksyttyjä; viimeisin hyväksyntä on PR #294:n mainissa.
-C/K/D/E/F/G/H/I:n kokonaishyväksyntä on edelleen avoin.
+K/D/E/F/G/H/I:n kokonaishyväksyntä on edelleen avoin.
 D-paketin Oma yritys -tallennuksen rajatut korjaukset on hyväksytty
 PR #293:n mainissa, mutta D:n muut ehdot ovat avoinna.
 B1/B2, niiden sulku-/keräysjatkot ja B3-B5 integraatiojatkoineen ovat
-hyväksyttyjä. Nykyisen C-valmistelun tilan ja näytön omistaa
+hyväksyttyjä. C on hyväksytty PR #299:n mainissa. Nykyisen K-valmistelun tilan ja näytön omistaa
 [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
 Muiden pakettien avoimet päätökset ratkaistaan ennen niiden vaikutusalueen
 toteutusta. B:n hyväksyntä ei sulje muita paketteja tai koko M1:tä.

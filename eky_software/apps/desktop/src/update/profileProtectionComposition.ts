@@ -3,11 +3,19 @@ import type { RecoveryPointService } from '../profileBackup/recoveryPoint/recove
 import type { DirectSetupMigrationRecoveryStore } from './directSetupMigrationRecoveryStore.js';
 import type { UpdateJournalStore } from './updateJournalStore.js';
 import { readUpdateProtectedRecoveryPointReferences } from './updateRecoveryPointProtection.js';
+import type { UpdateActiveProfileValidation, UpdateActiveProfileValidationContext } from './updateActiveProfileValidation.js';
 
 const recoveryPointReferencePattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+export interface UpdateRollbackProfileValidationContext {
+  readonly expectedMigrationChainIdentity: string;
+  assertCurrent(): Promise<void>;
+}
+
 export interface UpdateProfileProtection {
+  validateActiveProfileForUpdate(context: UpdateActiveProfileValidationContext): Promise<UpdateActiveProfileValidation>;
+  validateActiveProfileForRollback(context: UpdateRollbackProfileValidationContext): Promise<UpdateActiveProfileValidation>;
   createValidatedPreMigrationPoint(): Promise<string>;
   createValidatedPreUpdatePoint(operationId: string): Promise<string>;
   beginUpdateMaintenance(operationId: string): Promise<void>;
@@ -20,6 +28,7 @@ export interface UpdateProfileProtection {
     expectedMigrationChainIdentity: string;
     operationId: string;
     recoveryPointReference: string;
+    assertAuthority?(): Promise<void>;
   }): Promise<'relaunching'>;
   validateActiveProfile(): Promise<{
     artifactCount: number;
@@ -30,9 +39,12 @@ export interface UpdateProfileProtection {
 }
 
 interface ProfileProtectionCompositionDependencies {
+  validateActiveProfileForUpdate(context: UpdateActiveProfileValidationContext): Promise<UpdateActiveProfileValidation>;
+  validateActiveProfile(): Promise<UpdateActiveProfileValidation>;
+  validateActiveProfileForRollback(context: UpdateRollbackProfileValidationContext): Promise<UpdateActiveProfileValidation>;
   profileSnapshotClient: Pick<
     ProfileSnapshotBrokerClient,
-    'beginMaintenance' | 'endMaintenance' | 'validateActiveProfile' |
+    'beginMaintenance' | 'endMaintenance' |
     'beginUpdateMaintenance' | 'assertUpdateMaintenance' | 'endUpdateMaintenance'
   >;
   recoveryPointService: Pick<
@@ -43,6 +55,7 @@ interface ProfileProtectionCompositionDependencies {
     expectedMigrationChainIdentity: string;
     operationId: string;
     recoveryPointReference: string;
+    assertAuthority?(): Promise<void>;
   }): Promise<'relaunching'>;
   directSetupRecoveryStore: Pick<DirectSetupMigrationRecoveryStore, 'read'>;
   updateJournalStore: Pick<UpdateJournalStore, 'read'>;
@@ -52,6 +65,11 @@ export function createProfileProtectionComposition(
   dependencies: ProfileProtectionCompositionDependencies,
 ): UpdateProfileProtection {
   return Object.freeze({
+    validateActiveProfileForUpdate: (context: UpdateActiveProfileValidationContext) =>
+      dependencies.validateActiveProfileForUpdate(context),
+    async validateActiveProfileForRollback(context: UpdateRollbackProfileValidationContext) {
+      return boundedValidation(await dependencies.validateActiveProfileForRollback(context));
+    },
     async createValidatedPreMigrationPoint() {
       return (await dependencies.recoveryPointService.createPreMigration())
         .artifactId;
@@ -90,6 +108,7 @@ export function createProfileProtectionComposition(
       expectedMigrationChainIdentity: string;
       operationId: string;
       recoveryPointReference: string;
+      assertAuthority?(): Promise<void>;
     }) {
       assertRecoveryPointReference(input.recoveryPointReference);
       assertRestoreIdentity(input);
@@ -99,15 +118,17 @@ export function createProfileProtectionComposition(
       return dependencies.restoreRecoveryPoint(input);
     },
     async validateActiveProfile() {
-      const validation =
-        await dependencies.profileSnapshotClient.validateActiveProfile();
-      return Object.freeze({
-        artifactCount: validation.artifactCount,
-        artifactTotalByteSize: validation.artifactTotalByteSize,
-        databaseHealth: validation.databaseHealth,
-        migrationChainIdentity: validation.migrationChainIdentity,
-      });
+      return boundedValidation(await dependencies.validateActiveProfile());
     },
+  });
+}
+
+function boundedValidation(validation: UpdateActiveProfileValidation): UpdateActiveProfileValidation {
+  return Object.freeze({
+    artifactCount: validation.artifactCount,
+    artifactTotalByteSize: validation.artifactTotalByteSize,
+    databaseHealth: validation.databaseHealth,
+    migrationChainIdentity: validation.migrationChainIdentity,
   });
 }
 

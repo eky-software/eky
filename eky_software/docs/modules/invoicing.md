@@ -842,13 +842,85 @@ Portti luetteloi kaikki snapshotin `invoice_documents`-rivit riippumatta
 siitä, onko lasku hyväksytty, lähetetty, hyvitetty, peruttu tai
 uudelleenhyväksytty. Backup-infrastruktuuri ei selaa storagea arvaamalla.
 
-B3-B5:n työpuutoteutuksessa mukaan kuuluvat myös aikaisempien revisioiden
+B3-B5:n revisiohistoriassa mukaan kuuluvat myös aikaisempien revisioiden
 PDF:t, alkuperäiset legacy-dokumentit ja erikseen säilytetyt legacy-kopiot.
 Invoicingin adapteri valitsee legacy- tai revisioskeeman backendin jo
 tarkistaman migraatioprefixin perusteella; SQL-virhe ei valitse fallbackia.
+Adapteri säilyttää täsmällisen natiivin `SQLITE_NOMEM`-poikkeuksen
+omistavalle runtimelle; se ei tulkitse resurssivirhettä sisällön vioittumiseksi.
+Tarkistusruntime omistaa turvallisen syykoodin muunnoksen, ei Invoicing.
+Muu revisiokatalogin hylkäys säilyy ennallaan. Katso
+[rajattu syyketjun sopimus](../architecture/release-0.3.0-m1-preparation-plan.md#katalogin-muistivirheen-syyketju).
 Revisiohaara tarkistaa historian, nykyrevision sekä lähde-, dokumentti- ja
 toimitussidokset, myös silloin kun revisiolla ei vielä ole PDF:ää.
 Palautus vaatii saman alkuperäisen katalogin ennen ja jälkeen migraation.
+Tallennetun revision yksittäisten arvojen säännöt omistaa
+`invoiceRevisionStoredValues`; otsikon, rivien ja ALV-koosteen
+johdonmukaisuussäännöt omistaa `invoiceRevisionConsistency`.
+`invoiceContentRevisionMapping` ja `validateInvoiceContentRevision` käyttävät
+niitä tavallisessa lukupolussa. Säännöt tarkistavat tallennetun sisällön,
+eivät laske historiaa uudelleen. Luennan on lisäksi todistettava yritys- ja
+revisiosidokset, uniikkius ja verokantojen vastaavuus samasta lukukuvasta.
+`validateInvoiceHistoryRelationEncoding` tarkistaa vain hyväksytyn
+relaatiokenttäjoukon tekstikoodauksen ennen historian relaatiolukuja.
+`invoiceHistoryRelationScan` omistaa tämän kiinteän kenttäjoukon,
+varmennetun skeeman etenemisavaimet ja rajatut tavuprojektiot. Avaimet
+pysyvät SQLiten sisällä; vanhojen rivitunnisteellisten taulujen nullable-ID
+ei saa jättää riviä tarkistamatta. Muut tyyppi-, null- ja sisältösäännöt
+säilyvät nykyisillä omistajillaan. Lukija ei normalisoi tunnisteita, muuta
+vapaata tekstiä eikä aseta uutta tunnisteen tai historian kokorajaa.
+`validateInvoiceRevisionIdentifiers` toimii rajatun revisiolukijan
+nonblank- ja yksikköarvojen tarkistimena. Sen kiinteä kenttävalinta käyttää
+samaa tavukuljetusta, mutta ei laajenna yllä olevaa koodauspolitiikkaa.
+Yhteiset säännöt säilyttävät null-erot, JavaScriptin trimmauksen ja yksikön
+UTF-16-pituuden. `createInvoiceHistoryTextDecoder` säilyttää tavallisen ajurin
+tekstimuunnoksen rajatuissa osissa, myös UTF-16-tallennuksessa, ilman
+vapaan tekstin uutta koodausestoa.
+`invoiceRevisionScalarScanSql` ja `validateInvoiceRevisionScalars` omistavat
+rajatut otsikko-/rivi-/ALV-projektiot. Ne jakavat normaalin mapperin
+tyyppi-, provenienssi-, viite- ja summasäännöt eivätkä kokoa revision rivejä
+tai verokantoja JavaScript-joukoiksi. ALV-kertymä koskee vain yhtä revisiota;
+legacy-summia ei korjata tai lasketa uudelleen. Lukija edellyttää saman
+lukukuvan skeema-, relaatiokoodaus- ja tunniste-/yksikkötarkistuksia.
+`validateInvoiceRevisionCatalog` kokoaa nämä tarkistukset sekä
+`validateInvoiceRevisionRelations`- ja `validateInvoiceRevisionPairs`-tarkistukset
+samassa katalogin omistamassa lukutransaktiossa. Korvatut koko historian
+taulukot, kartat ja joukot eivät jää rinnakkaiseksi tuotantopoluksi.
+Nykyrevision kenttävertailu käyttää `invoiceContentRevisionPersistenceRows`-
+kirjoittajan kanssa yhteisiä täsmällisiä kopiointikenttiä ja lähdesääntöä.
+`invoiceRevisionPairScanSql` pitää avaimet SQLitessä ja palauttaa vain pienet
+lukuosat. Parivertailu säilyttää dekoodatun tekstin, null-arvojen ja numeroiden
+erot myös silloin, kun yhtäläisten tekstien tavumäärät eroavat.
+Nykyiset rivit yhdistetään kummankin taulun yksilöllisellä järjestysavaimella;
+molempien suuntien kattavuus ja kaikki rivikentät tarkistetaan. Järjestyksen
+ei tarvitse olla aukoton. Hyvitys voi viitata ei-nykyiseen lähderevisioon,
+ja lähderiviviite säilyy valinnaisena. Nykyisen laskun `credited_invoice_id`
+vertaillaan dekoodattuna: se ei kuulu uuden koodauseston kenttäjoukkoon.
+Sisäisten tarkistimien testit tarvitsevat saman lukukuvan. Varsinaisen katalogin
+kutsujat käyttävät `SqliteInvoiceBackupArtifactCatalog`-porttitoteutusta,
+eivät sen yksittäistä sisäistä tarkistinta ilman transaktiota.
+`invoiceEventDocumentBinding` omistaa toimitustapahtuman dokumenttiviitteen
+ja dokumenttisidoksen yhteiset säännöt. Tavallinen `readInvoiceEventDocument`
+ja katalogin `invoiceHistoryEventScan` käyttävät niitä molemmat; tapahtuman
+luenta ei anna lähetysvaltuutta. Katalogin tapahtumaluenta palauttaa vain
+kiinteänkokoiset tarkistushavainnot, ei kokonaisia tapahtumia tai tunnisteita.
+Ratkaisemattomien toimitusten päällekkäisyys tarkistetaan saman yrityksen ja
+laskun sisällä ilman historian mukana kasvavaa JavaScript-joukkoa.
+Tämä luenta edellyttää samaa lukutransaktiota sekä sitä edeltäviä skeeman,
+relaatiokoodauksen, revisioiden ja rajatun dokumenttiluettelon tarkistuksia.
+Legacy-tapahtuman alkuperäinen puuttuva dokumentti ja aikainen paluu säilyvät.
+Lukijan sulku yritetään myös virheessä; sulkuvirhe ei peitä ensimmäistä syytä
+eikä yksinään salli onnistumista. Pieni tulosprojektio ei korvaa eristetyn
+prosessin natiivimuisti- tai aikarajaa.
+K:n historian osissa luenta on kytketty katalogiin, mutta
+[hyväksytty toteutusrajaus](../architecture/release-0.3.0-m1-preparation-plan.md#historian-luennan-toteutussopimus)
+ei tarkoita koko katalogin muistinkäytön tai palautusketjun hyväksyntää.
+K:n tarkistusrajaus käyttää portin omistamia nykyisiä katalogi- ja
+tekstirajoja. Adapteri tarkistaa dokumenttimäärän rajatulla SQL-laskennalla
+sekä tekstien tavupituudet ja numerokentän tyypin ennen dokumenttirivien
+materialisointia tai revisiohistorian tarkistusta. Myös lopullinen
+luettelokysely on rajattu. Backup-infrastruktuuri käyttää samoja nimettyjä
+rajoja; formaatti, PDF-tavut ja revisio-/toimitussidosten tarkistukset säilyvät.
 [B5:n näyttö ja avoin paketoitu hyväksyntä](../architecture/release-0.3.0-m1-preparation-plan.md#b5-katalogin-ja-palautuksen-checkpoint)
 eivät muuta catalog-v1-formaattia tai moduulien omistajuutta.
 

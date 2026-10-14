@@ -7,6 +7,7 @@ import {
 } from 'node:fs';
 import { join, resolve } from 'node:path';
 
+import { profileInspectionNativeContract } from '../../../backend/src/database/connection/profileInspectionNativeContract.js';
 import type { E2eWorkerPaths } from './e2eEnvironmentTypes.js';
 import {
   createElectronE2eProfile,
@@ -73,6 +74,11 @@ export function createElectronE2eRuntime(input: {
     { recursive: true },
   );
   cpSync(
+    resolve(repositoryRoot, 'apps/desktop/dist/runtime'),
+    join(applicationDistPath, 'runtime'),
+    { recursive: true },
+  );
+  cpSync(
     resolve(
       repositoryRoot,
       'apps/desktop/dist/profileBackup/passwordWindow/backupPasswordPreload.cjs',
@@ -85,6 +91,11 @@ export function createElectronE2eRuntime(input: {
   cpSync(
     resolve(repositoryRoot, 'apps/desktop/e2e-backend-stage'),
     join(resourcesPath, 'backend'),
+    { recursive: true },
+  );
+  cpSync(
+    resolve(repositoryRoot, 'apps/desktop/e2e-inspection-native-stage'),
+    join(resourcesPath, profileInspectionNativeContract.directoryName),
     { recursive: true },
   );
   const desktopRuntimePath = createPrivateDirectory(

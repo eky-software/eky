@@ -90,6 +90,7 @@ export class WorkspaceBackupImportCoordinator {
     let previousActiveWorkspaceId: WorkspaceId | null = null;
     let writesQuiesced = false;
     let previousRuntimeEnsureAttempted = false;
+    let operationFailure: WorkspaceBackupImportError | undefined;
     try {
       if ((await this.readJournal()) !== undefined) {
         throw new WorkspaceBackupImportError(
@@ -261,13 +262,16 @@ export class WorkspaceBackupImportCoordinator {
       await this.removeJournal(operationId);
       return Object.freeze({ workspaceId, workspaceLabel });
     } catch (error) {
-      let recoveryFailure: unknown;
-      let recoveryFailed = false;
+      const primaryFailure = mapWorkspaceBackupImportError(
+        error,
+        'WORKSPACE_IMPORT_RECOVERY_REQUIRED',
+        'recovery',
+      );
+      const recoveryFailures: unknown[] = [];
       try {
         await this.handleFailure(journal);
       } catch (caught) {
-        recoveryFailed = true;
-        recoveryFailure = caught;
+        recoveryFailures.push(caught);
       }
       if (writesQuiesced && !previousRuntimeEnsureAttempted) {
         previousRuntimeEnsureAttempted = true;
@@ -275,30 +279,51 @@ export class WorkspaceBackupImportCoordinator {
           if (journal !== undefined) await this.assertRuntimeAbsent();
           await this.ensurePreviousWorkspaceRunning(previousActiveWorkspaceId);
         } catch (caught) {
-          recoveryFailed = true;
-          recoveryFailure = caught;
+          recoveryFailures.push(caught);
         }
       }
-      if (recoveryFailed) {
-        throw mapWorkspaceBackupImportError(
-          recoveryFailure,
+      if (recoveryFailures.length > 0) {
+        const recoveryFailure = mapWorkspaceBackupImportError(
+          recoveryFailures.at(-1),
           'WORKSPACE_IMPORT_RECOVERY_REQUIRED',
           'recovery',
         );
+        // Preserve the outward recovery result, with the primary cause first.
+        operationFailure = new WorkspaceBackupImportError(
+          recoveryFailure.code,
+          recoveryFailure.stage,
+          {
+            cause: new AggregateError(
+              [primaryFailure, ...recoveryFailures],
+              recoveryFailure.code,
+            ),
+          },
+        );
+      } else {
+        operationFailure = primaryFailure;
       }
-      throw mapWorkspaceBackupImportError(
-        error,
-        'WORKSPACE_IMPORT_RECOVERY_REQUIRED',
-        'recovery',
-      );
+      throw operationFailure;
     } finally {
-      await lease.release().catch((error) => {
-        throw mapWorkspaceBackupImportError(
+      try {
+        await lease.release();
+      } catch (error) {
+        const releaseFailure = mapWorkspaceBackupImportError(
           error,
           'WORKSPACE_IMPORT_LIFECYCLE_FAILED',
           'lease',
         );
-      });
+        if (operationFailure === undefined) throw releaseFailure;
+        throw new WorkspaceBackupImportError(
+          releaseFailure.code,
+          releaseFailure.stage,
+          {
+            cause: new AggregateError(
+              [operationFailure, releaseFailure],
+              releaseFailure.code,
+            ),
+          },
+        );
+      }
     }
   }
 
@@ -311,10 +336,11 @@ export class WorkspaceBackupImportCoordinator {
     let persistedJournal: Readonly<WorkspaceBackupImportJournal> | undefined;
     try {
       persistedJournal = await this.options.importJournal.read();
-    } catch {
+    } catch (error) {
       throw new WorkspaceBackupImportError(
         'WORKSPACE_IMPORT_RECOVERY_REQUIRED',
         'recovery',
+        { cause: error },
       );
     }
     if (
@@ -546,10 +572,11 @@ export class WorkspaceBackupImportCoordinator {
   ) {
     return this.options.activeWorkspaceLifecycle
       .ensurePreviousWorkspaceRunning(previousActiveWorkspaceId)
-      .catch(() => {
+      .catch((error) => {
         throw new WorkspaceBackupImportError(
           'WORKSPACE_IMPORT_RECOVERY_REQUIRED',
           'activeRuntimeRestart',
+          { cause: error },
         );
       });
   }

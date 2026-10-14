@@ -52,6 +52,9 @@ import {
 } from './mainOwnedWorkspaceManagementOperationGuard.js';
 import { WorkspaceLabelRename } from './workspaceLabelRename.js';
 import { WorkspaceManagementService } from './workspaceManagementService.js';
+import { createWorkspaceBackupOperationalObserver } from './workspaceBackupOperationalObserver.js';
+import type { DesktopOperationalIdentity } from '../../observability/desktopOperationalEvent.js';
+import type { DesktopOperationalLogger } from '../../observability/desktopOperationalLogger.js';
 
 interface SharedWorkspaceRuntimeRelaunch
   extends WorkspaceRuntimeRelaunchCompletion {
@@ -67,6 +70,8 @@ interface SharedActiveWorkspaceLifecycle
     WorkspaceRuntimeAbsencePort {}
 
 export interface WorkspaceManagementCompositionOptions {
+  readonly operationalIdentity: DesktopOperationalIdentity;
+  readonly operationalLogger: DesktopOperationalLogger;
   readonly activeWorkspaceId: WorkspaceId;
   readonly activeWorkspaceLifecycle: SharedActiveWorkspaceLifecycle;
   readonly appVersion: string;
@@ -269,6 +274,10 @@ export async function createWorkspaceManagementComposition(
     registry,
   });
   const service = new WorkspaceManagementService({
+    observer: createWorkspaceBackupOperationalObserver({
+      operationalIdentity: options.operationalIdentity,
+      operationalLogger: options.operationalLogger,
+    }),
     createEmpty,
     importBackup,
     maintenanceState: options.maintenanceLease,

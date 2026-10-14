@@ -1,12 +1,16 @@
 import { randomUUID } from 'node:crypto';
 
+import { readProfileInspectionFailureCause } from '../../runtime/profileInspectionFailure.js';
 import {
   noOpProfileRecoveryOperationalObserver,
   observeProfileRecoverySafely,
   type ProfileRecoveryOperationalObserver,
 } from '../profileRecoveryOperationalObserver.js';
 import type { RecoveryPointCleanShutdownMarker } from './recoveryPointCleanShutdownMarker.js';
-import type { RecoveryPointService } from './recoveryPointService.js';
+import {
+  isRecoveryPointCleanupUnverified,
+  type RecoveryPointService,
+} from './recoveryPointService.js';
 import type { WorkspaceMaintenanceLease } from '../../workspaces/maintenance/workspaceMaintenanceLease.js';
 
 const defaultCheckIntervalMilliseconds = 60 * 60 * 1_000;
@@ -90,9 +94,10 @@ export class RecoveryPointScheduler {
           {
             correlationId,
             durationMs: Date.now() - startedAt,
-            errorCode: readSafeErrorCode(error),
+            errorCode: readProfileInspectionFailureCause(error) ??
+              readSafeErrorCode(error),
             eventName: 'recoveryPoint.failed',
-            retryable: true,
+            retryable: !isRecoveryPointCleanupUnverified(error),
             sideEffectState: 'unknown',
             stage: 'automaticCheck',
           },

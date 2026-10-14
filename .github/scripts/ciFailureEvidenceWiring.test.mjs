@@ -441,7 +441,8 @@ test('workflow coverage regression runs in the ordinary cadence job on both plat
   assert.match(cadence, /os: \[ubuntu-latest, windows-latest\]/u);
   const check = steps(cadence, 6).find(step => step.includes('- name: Verify failure evidence workflow coverage\n'));
   assert.ok(check);
-  assert.match(check, /run: node --test \.github\/scripts\/ciFailureEvidenceWiring\.test\.mjs/u);
+  assert.match(check, /run: node --test --test-reporter=\.\/eky_software\/test-reporters\/nodeFailureReporter\.mjs \.github\/scripts\/ciFailureEvidenceWiring\.test\.mjs eky_software\/test-reporters\/runnerFailureWiring\.test\.mjs/u);
+  assert.doesNotMatch(check, /runnerFailureReporters\.test\.mjs/u);
   assert.doesNotMatch(check, /continue-on-error:|if:|retries|timeout-minutes:/u);
 });
 
@@ -552,7 +553,7 @@ function assertLinuxProof(proof) {
   assert.match(allSteps[1], /node-version-file: eky_software\/\.node-version\n/u);
   assert.match(allSteps[1], /package-manager-cache: false\n/u);
   assert.deepEqual(allSteps[2].match(/^        run: .+$/gmu), [
-    '        run: node --test --test-concurrency=1 installer/windows-acceptance-harness/ciFailureEvidence.test.mjs installer/windows-acceptance-harness/encryptedEvidenceOpenPgp.test.mjs',
+    '        run: node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs installer/windows-acceptance-harness/ciFailureEvidence.test.mjs installer/windows-acceptance-harness/encryptedEvidenceOpenPgp.test.mjs',
   ]);
   assert.doesNotMatch(allSteps[2], /if:|continue-on-error:|--test-name-pattern|--test-skip-pattern/u);
   assert.doesNotMatch(proof, /needs:|matrix:|secrets\.|\b(?:pnpm|npm|apt|apt-get|sudo|msiexec|dotnet|wpr)\b|setup-dotnet|buildWindows|captureInstaller|download-artifact/u);

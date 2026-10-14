@@ -11,6 +11,7 @@ type ProfileRecoveryEventName =
   | 'recoveryPoint.failed'
   | 'recoveryPoint.started'
   | 'restore.activationFailed'
+  | 'restore.acceptanceFailed'
   | 'restore.activationStarted'
   | 'restore.inspectionCompleted'
   | 'restore.inspectionFailed'
@@ -68,6 +69,8 @@ function createProfileRecoveryEvent(
     case 'restore.activationStarted':
       return createDesktopOperationalEvent(event, identity);
     case 'restore.activationFailed':
+      return createDesktopOperationalEvent(event, identity);
+    case 'restore.acceptanceFailed':
       return createDesktopOperationalEvent(event, identity);
     case 'restore.inspectionCompleted':
       return createDesktopOperationalEvent(event, identity);

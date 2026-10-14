@@ -20,6 +20,7 @@ import {
   createCleanInstallUninstallWindowsRuntime,
 } from './cleanInstallUninstallWindowsRuntime.mjs';
 import { readWindowsAcceptanceArtifactDescriptor, CLEAN_ARTIFACT_DESCRIPTOR_FILENAME } from './windowsAcceptanceArtifactDescriptor.mjs';
+import { createNativeFailureEvidence } from './nativeFailureEvidence.mjs';
 
 function safeCode(error, fallback) {
   return (
@@ -38,7 +39,9 @@ async function hashFile(path) {
   return hash.digest('hex');
 }
 
-export async function runCleanInstallUninstallWorker(arguments_) {
+export async function runCleanInstallUninstallWorker(arguments_, {
+  createFailureEvidence = request => createNativeFailureEvidence(import.meta.url, request),
+} = {}) {
   if (
     process.platform !== 'win32' ||
     arguments_.length !== 2 ||
@@ -63,6 +66,7 @@ export async function runCleanInstallUninstallWorker(arguments_) {
   }
 
   const scenarioResultPath = cleanResultPathForRequest(requestPath);
+  const observeFailure = createFailureEvidence(request);
   const workerResultPath = workerResultPathForRequest(requestPath);
   let result;
   try {
@@ -88,8 +92,10 @@ export async function runCleanInstallUninstallWorker(arguments_) {
         }
       },
       ...runtime,
+      observeFailure,
     });
   } catch (error) {
+    observeFailure(error, 'workerPreparation');
     result = Object.freeze({
       ...initialCleanLifecycleResult(),
       errorCode: safeCode(error, 'unexpectedFailure'),
@@ -112,8 +118,11 @@ export async function runCleanInstallUninstallWorker(arguments_) {
       createWorkerTerminalResult(request, boundResult),
     );
     return 0;
-  } catch {
+  } catch (error) {
+    observeFailure(error, 'resultPublication');
     return 1;
+  } finally {
+    await observeFailure.finish();
   }
 }
 

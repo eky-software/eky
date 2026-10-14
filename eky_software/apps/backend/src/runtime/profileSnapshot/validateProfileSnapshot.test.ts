@@ -10,19 +10,22 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, toNamespacedPath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import Database from 'better-sqlite3';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { runMigrations } from '../../database/migration/runMigrations.js';
 import { readMigrationManifest } from '../../database/migration/migrationManifest.js';
+import { createMigrationSchemaReferences } from '../../database/migration/migrationSchemaReference.js';
 import { createInvoiceReadModelTestDatabase } from '../../testFixtures/invoiceReadModelTestFixtures.js';
 import { ProfileMaintenanceState } from '../profileMaintenance/profileMaintenanceState.js';
 import { createProfileBackupIdentity } from './inspectSqliteProfileDatabase.js';
 import { ProfileBusinessArtifactStager } from './stageProfileBusinessArtifacts.js';
 import { StagedProfileSnapshotValidationService } from './validateProfileSnapshot.js';
+import { createActiveProfileInspectionContextReader } from './activeProfileInspectionContext.js';
+import { StagedProfileSnapshotInspector } from './inspectStagedProfileSnapshot.js';
 
 const migrationName = '001_create_customers.sql';
 const approvedLegacyMigrationChainIdentity =
@@ -34,6 +37,7 @@ const openDatabases: Database.Database[] = [];
 const temporaryRoots: string[] = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const database of openDatabases.splice(0)) {
     database.close();
   }
@@ -45,6 +49,72 @@ afterEach(async () => {
 });
 
 describe('staged profile snapshot validation', () => {
+  it('requires an explicit database factory without a default-driver fallback', () => {
+    expect(() => new StagedProfileSnapshotInspector({
+      databaseSource: { kind: 'stagedSnapshot' },
+      migrationPolicy: 'restoreCompatible',
+      stagingRoot: process.cwd(), migrationsDirectory: publishedMigrationsDirectory,
+      databaseFactory: undefined as unknown as ReturnType<typeof testDatabaseFactory>,
+    })).toThrow(/^PROFILE_INSPECTION_PROTOCOL_INVALID$/);
+  });
+
+  it('inspects and prepares staging without access to an active database', async () => {
+    const fixture = await createFixture();
+    const inspector = new StagedProfileSnapshotInspector({
+      databaseSource: { kind: 'stagedSnapshot' },
+      migrationPolicy: 'restoreCompatible',
+      migrationsDirectory: fixture.migrationsDirectory,
+      stagingRoot: dirname(fixture.operationRoot),
+      databaseFactory: testDatabaseFactory(),
+    });
+    // No active connection remains available to the independent inspector.
+    for (const database of openDatabases.splice(0)) database.close();
+    const inspection = await inspector.inspectProfileSnapshot(fixture.operationId);
+    expect(inspection).toEqual({
+      artifactCount: 1,
+      artifactTotalByteSize: fixture.pdfBytes.byteLength,
+      databaseHealth: 'healthy',
+      migrationChainIdentity: expect.stringMatching(/^[a-f0-9]{64}$/),
+      profileId: createProfileBackupIdentity('company-1'),
+    });
+    await expect(inspector.prepareProfileRestoreActivation(fixture.operationId))
+      .resolves.toEqual({ artifactCount: 1, artifactTotalByteSize: fixture.pdfBytes.byteLength });
+  });
+
+  it('uses one readonly connection for schema and catalog, then closes it', async () => {
+    const fixture = await createFixture();
+    const prepare = vi.spyOn(Database.prototype, 'prepare');
+    await fixture.service.validateProfileSnapshot(fixture.operationId);
+    const connections = new Set(prepare.mock.contexts.filter(isReadonlyProfileConnection));
+    expect(connections.size).toBe(1);
+    for (const connection of connections) expect(connection.open).toBe(false);
+  });
+
+  it('retains only the safe schema cause in the isolated inspector and closes on rejection', async () => {
+    const fixture = await createFixture();
+    const tampered = new Database(fixture.databasePath);
+    tampered.exec('CREATE TABLE untrusted_extra_object (id TEXT);');
+    tampered.close();
+    const inspector = new StagedProfileSnapshotInspector({
+      databaseSource: { kind: 'stagedSnapshot' },
+      migrationPolicy: 'restoreCompatible',
+      migrationsDirectory: fixture.migrationsDirectory,
+      stagingRoot: dirname(fixture.operationRoot),
+      databaseFactory: testDatabaseFactory(),
+    });
+    const prepare = vi.spyOn(Database.prototype, 'prepare');
+    await expect(inspector.inspectProfileSnapshot(fixture.operationId))
+      .rejects.toThrow(/^PROFILE_SCHEMA_UNSUPPORTED$/);
+    const connections = new Set(prepare.mock.contexts.filter(isReadonlyProfileConnection));
+    expect(connections.size).toBe(1);
+    for (const connection of connections) expect(connection.open).toBe(false);
+    // The unchanged broker must not accidentally expose a new public contract.
+    await expect(fixture.service.validateProfileSnapshot(fixture.operationId))
+      .rejects.toThrow(/^PROFILE_SNAPSHOT_VALIDATION_FAILED$/);
+    await expect(inspector.prepareProfileRestoreActivation(fixture.operationId))
+      .rejects.toThrow(/^PROFILE_SCHEMA_UNSUPPORTED$/);
+  });
+
   it('can be composed before the first profile migrations run', async () => {
     const root = await mkdtemp(
       join(tmpdir(), 'eky-profile-validation-empty-'),
@@ -56,7 +126,7 @@ describe('staged profile snapshot validation', () => {
     expect(
       () =>
         new StagedProfileSnapshotValidationService({
-          activeDatabase,
+          activeContextReader: createActiveProfileInspectionContextReader(activeDatabase),
           migrationsDirectory: join(root, 'migrations'),
           stagingRoot: join(root, 'staging'),
         }),
@@ -281,7 +351,7 @@ describe('staged profile snapshot validation', () => {
     );
 
     const service = new StagedProfileSnapshotValidationService({
-      activeDatabase,
+      activeContextReader: createActiveProfileInspectionContextReader(activeDatabase),
       migrationsDirectory: publishedMigrationsDirectory,
       stagingRoot,
     });
@@ -388,6 +458,10 @@ interface Fixture {
   pdfBytes: Buffer;
   pdfPath: string;
   service: StagedProfileSnapshotValidationService;
+}
+
+function isReadonlyProfileConnection(value: unknown): value is Database.Database {
+  return value instanceof Database && value.readonly && value.name.endsWith('profile.sqlite');
 }
 
 async function createFixture(
@@ -498,7 +572,7 @@ async function createFixture(
     pdfBytes,
     pdfPath,
     service: new StagedProfileSnapshotValidationService({
-      activeDatabase,
+      activeContextReader: createActiveProfileInspectionContextReader(activeDatabase),
       migrationsDirectory,
       stagingRoot,
     }),
@@ -588,4 +662,12 @@ async function copyHistoricalMigrations(directory: string): Promise<void> {
 
 function sha256(content: Uint8Array): string {
   return createHash('sha256').update(content).digest('hex');
+}
+
+function testDatabaseFactory() {
+  return {
+    openReadonly: (path: string) => new Database(toNamespacedPath(path), { readonly: true, fileMustExist: true }),
+    openReference: () => new Database(':memory:'),
+    schemaReferences: createMigrationSchemaReferences(() => new Database(':memory:')),
+  };
 }

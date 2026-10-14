@@ -13,6 +13,7 @@ export interface LinuxServiceInput {
 }
 export interface LinuxBackendServiceInput extends LinuxServiceInput { readonly runtimeConfigPath: string; }
 export interface LinuxChromiumServiceInput extends LinuxServiceInput { readonly browserExecutable: string; }
+export interface LinuxProfileInspectionServiceInput extends LinuxServiceInput { readonly inspectionConfigPath: string; }
 export interface LinuxViteServiceInput extends LinuxServiceInput {
   readonly webPort: number;
   readonly environmentRoot: string;
@@ -23,6 +24,7 @@ export interface LinuxServiceInputs {
   readonly backend: LinuxBackendServiceInput;
   readonly vite: LinuxViteServiceInput;
   readonly chromium: LinuxChromiumServiceInput;
+  readonly profileInspection: LinuxProfileInspectionServiceInput;
 }
 export type LinuxServiceProfile = keyof LinuxServiceInputs;
 interface LinuxServiceConfigurationFields {
@@ -34,6 +36,7 @@ interface LinuxServiceConfigurationFields {
     readonly sessionSecret: string;
   };
   readonly chromium: { readonly browserExecutable: string; readonly browserGeneration: string };
+  readonly profileInspection: { readonly inspectionConfigPath: string };
 }
 export type LinuxServiceConfiguration<P extends LinuxServiceProfile = LinuxServiceProfile> = {
   [K in P]: Readonly<{
@@ -122,7 +125,7 @@ export interface LinuxServiceStartupFailureEvidence {
   readonly startupFailure: 'preparationFailed' | 'startupDeadlineExceeded' | 'launchFailed' | 'workloadExited' | 'observationLost';
 }
 export class OwnedLinuxServiceStartupFailure extends Error implements ProcessOutput {
-  constructor(profile: 'backend' | 'vite' | 'chromium', evidence: LinuxServiceStartupFailureEvidence, output: ProcessOutput);
+  constructor(profile: LinuxServiceProfile, evidence: LinuxServiceStartupFailureEvidence, output: ProcessOutput);
   readonly evidence: Readonly<LinuxServiceStartupFailureEvidence>;
   readonly readStdout: () => string;
   readonly readStderr: () => string;
@@ -133,3 +136,5 @@ export function startLinuxService(profile: 'vite', input: LinuxViteServiceInput,
   dependencies?: LinuxServiceDependencies<'vite'>): Promise<OwnedLinuxService>;
 export function startLinuxService(profile: 'chromium', input: LinuxChromiumServiceInput,
   dependencies?: LinuxServiceDependencies<'chromium'>): Promise<OwnedLinuxChromiumService>;
+export function startLinuxService(profile: 'profileInspection', input: LinuxProfileInspectionServiceInput,
+  dependencies?: LinuxServiceDependencies<'profileInspection'>): Promise<OwnedLinuxService>;

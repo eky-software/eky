@@ -48,6 +48,17 @@ export class WorkspaceRegistryStore {
     return this.runExclusive(() => this.recoverAndRead());
   }
 
+  inspect(): Promise<Readonly<LocalWorkspaceRegistryV1> | undefined> {
+    return this.runExclusive(async () => {
+      try {
+        const selected = await this.byteStore.inspect(parseWorkspaceRegistryBytes);
+        return selected?.value;
+      } catch (error) {
+        throw this.mapStoreError(error);
+      }
+    });
+  }
+
   write(value: unknown): Promise<void> {
     return this.runExclusive(async () => {
       const bytes = serializeWorkspaceRegistry(value);

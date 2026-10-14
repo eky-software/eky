@@ -1,8 +1,9 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { prepareW6b2PackagedInstallerLog, W6B2_INSTALLER_LOG_FILE } from './w6b2PackagedInstallerLog.js';
 
 import {
   createW6b2PackagedProofFallbackResult,
@@ -31,6 +32,26 @@ afterEach(async () => {
 });
 
 describe('W6B.2 packaged proof configuration', () => {
+  it('reserves a unique native installer log only for the validated synthetic source handoff', async () => {
+    await expect(prepareW6b2PackagedInstallerLog(undefined)).resolves.toBeUndefined();
+    const proof = await createProofFiles({ phase: 'sourceHandoff', role: 'source' });
+    const configuration = await readW6b2PackagedProofConfiguration({
+      appVersion: '0.2.7', bootstrap: proof.bootstrap, resourcesPath: proof.resourcesPath,
+    });
+    const path = await prepareW6b2PackagedInstallerLog(configuration);
+    expect(path).toBe(join(proof.root, 'result', W6B2_INSTALLER_LOG_FILE));
+    expect(await readFile(path!, 'utf8')).toBe('');
+    await expect(prepareW6b2PackagedInstallerLog(configuration)).rejects.toThrow();
+    await expect(prepareW6b2PackagedInstallerLog({ ...configuration!, role: 'target' })).rejects.toThrow();
+    await expect(prepareW6b2PackagedInstallerLog({ ...configuration!, phase: 'switchToB' })).rejects.toThrow();
+    await rm(join(proof.root, 'result'), { recursive: true });
+    const foreign = join(proof.root, 'foreign');
+    await mkdir(foreign);
+    await symlink(foreign, join(proof.root, 'result'), process.platform === 'win32' ? 'junction' : 'dir');
+    await expect(prepareW6b2PackagedInstallerLog(configuration)).rejects.toThrow('W6B2_PROOF_CONFIGURATION_INVALID');
+    await expect(readFile(join(foreign, W6B2_INSTALLER_LOG_FILE))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('writes only the closed package-stage failure codes in the existing fault result', async () => {
     const proof = await createFaultProofFiles({
       faultScenario: 'preUpdateRecoveryPointFailure', phase: 'sourceHandoff', role: 'source',

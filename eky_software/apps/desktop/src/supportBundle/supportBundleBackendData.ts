@@ -1,3 +1,11 @@
+import { workspaceCandidateFailureCauses } from '../runtime/workspaceCandidateMessages.js';
+import {
+  desktopOperationalEventSpecs,
+  desktopRequiredPayloadFields,
+  restoreAcceptanceFailureCodes,
+} from '../observability/desktopOperationalEvent.js';
+import { desktopRecoveryEventStages } from '../observability/desktopOperationalEventValidator.js';
+
 export interface SupportBundleDiagnosticEvent {
   appVersion?: string;
   buildRevision?: string;
@@ -276,7 +284,9 @@ function readDiagnosticEvent(value: unknown): SupportBundleDiagnosticEvent {
     !isOptionalSideEffectState(value.sideEffectState) ||
     !isOptionalSafeIdentifier(value.stage, 300) ||
     !isOptionalExactValue(value.smtpProfile, 'dnaSmtp') ||
-    !isOptionalTlsVersion(value.tlsVersion)
+    !isOptionalTlsVersion(value.tlsVersion) ||
+    !isWorkspaceBackupFailureProjection(value) ||
+    !isProfileRecoveryProjection(value)
   ) {
     throw new Error('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
   }
@@ -347,6 +357,80 @@ function readDiagnosticEvent(value: unknown): SupportBundleDiagnosticEvent {
       ? {}
       : { tlsVersion: value.tlsVersion }),
   };
+}
+
+function isProfileRecoveryProjection(value: Record<string, unknown>): boolean {
+  if (
+    typeof value.eventName !== 'string' ||
+    !Object.hasOwn(desktopRecoveryEventStages, value.eventName)
+  ) {
+    return true;
+  }
+  const eventName = value.eventName as keyof typeof desktopRecoveryEventStages;
+  const eventSpec = desktopOperationalEventSpecs[eventName];
+  const allowedFields = [
+    'appVersion', 'buildRevision', 'category', 'component', 'errorCode',
+    'eventName', 'id', 'level', 'occurredAt', 'outcome', 'runtimeInstanceId',
+    ...eventSpec.payloadFields,
+  ];
+  if (
+    !hasOnlyKeys(value, allowedFields) ||
+    value.component !== 'desktop' ||
+    value.category !== eventSpec.category ||
+    value.level !== eventSpec.level ||
+    value.outcome !== eventSpec.outcome ||
+    desktopRequiredPayloadFields[eventName].some(
+      field => value[field] === undefined,
+    ) ||
+    typeof value.stage !== 'string' ||
+    !(desktopRecoveryEventStages[eventName] as readonly string[]).includes(value.stage) ||
+    (eventSpec.outcome === 'failure'
+      ? typeof value.errorCode !== 'string'
+      : value.errorCode !== null)
+  ) {
+    return false;
+  }
+  if (eventName === 'restore.acceptanceFailed' && (
+    typeof value.errorCode !== 'string' || !restoreAcceptanceFailureCodes.includes(value.errorCode) ||
+    value.retryable !== false || value.sideEffectState !== 'unknown'
+  )) {
+    return false;
+  }
+  return eventName !== 'restore.recoveryRequired' || (
+    value.errorCode === 'PROFILE_RESTORE_RECOVERY_REQUIRED' &&
+    value.retryable === false &&
+    value.sideEffectState === 'unknown'
+  );
+}
+
+function isWorkspaceBackupFailureProjection(
+  value: Record<string, unknown>,
+): boolean {
+  if (
+    value.eventName !== 'workspaceBackup.operationFailed' &&
+    value.eventName !== 'workspaceBackup.cleanupFailed'
+  ) {
+    return true;
+  }
+
+  return (
+    hasOnlyKeys(value, [
+      'appVersion', 'buildRevision', 'category', 'component', 'correlationId',
+      'durationMs', 'errorCode', 'eventName', 'id', 'level', 'occurredAt',
+      'outcome', 'retryable', 'runtimeInstanceId', 'sideEffectState', 'stage',
+    ]) &&
+    value.category === 'backup' &&
+    value.component === 'desktop' &&
+    value.level === 'error' &&
+    value.outcome === 'failure' &&
+    typeof value.correlationId === 'string' &&
+    isOptionalUuid(value.correlationId) &&
+    isNonNegativeInteger(value.durationMs) &&
+    workspaceCandidateFailureCauses.some(cause => cause === value.errorCode) &&
+    value.retryable === false &&
+    (value.sideEffectState === 'none' || value.sideEffectState === 'unknown') &&
+    (value.stage === 'import' || value.stage === 'replace')
+  );
 }
 
 function isOptionalRecoveryPointKind(

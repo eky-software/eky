@@ -19,5 +19,12 @@ export interface WorkspaceMigrationInventoryProofResult {
   readonly maximumActiveRuntimeCount: number;
   readonly migrationSidecarsAbsent: boolean;
   readonly observerSucceeded: boolean;
+  readonly ownedHotJournalRecovered: boolean;
+  readonly recoveredInventoryReadOnly: boolean;
   readonly registryPreserved: boolean;
+  readonly untrustedInventoryInputsPreserved: boolean;
+  readonly untrustedInventoryProcessesReleased: boolean;
+  readonly untrustedInventoryRegistrySlotsPreserved: boolean;
+  readonly untrustedInventoryRejected: boolean;
+  readonly untrustedInventoryStoppedBeforeLaterWorkspaces: boolean;
 }

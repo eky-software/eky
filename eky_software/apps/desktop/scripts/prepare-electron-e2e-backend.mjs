@@ -4,9 +4,10 @@ import {
   mkdir,
   rm,
 } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { prepareProfileInspectionNativeStage } from './prepareProfileInspectionNativeStage.mjs';
 import {
   inspectStagedBetterSqliteRuntime,
   verifyStagedBetterSqliteDatabase,
@@ -15,7 +16,6 @@ import {
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const desktopDirectory = resolve(scriptDirectory, '..');
 const repositoryRoot = resolve(desktopDirectory, '../..');
-const backendStage = resolve(desktopDirectory, 'e2e-backend-stage');
 const pnpmCliPath = process.env.npm_execpath;
 
 function run(command, args, options = {}) {
@@ -46,13 +46,23 @@ function runPnpm(args) {
   return run(process.execPath, [pnpmCliPath, ...args]);
 }
 
-async function prepareElectronE2eBackend() {
+export async function prepareElectronE2eBackend({
+  root = repositoryRoot,
+  runPnpmCommand = runPnpm,
+  inspectRuntime = inspectStagedBetterSqliteRuntime,
+  verifyDatabase = verifyStagedBetterSqliteDatabase,
+  prepareNative = prepareProfileInspectionNativeStage,
+} = {}) {
+  if (!isAbsolute(root)) throw new Error('ELECTRON_E2E_PREPARATION_ROOT_INVALID');
+  const backendStage = resolve(root, 'apps/desktop/e2e-backend-stage');
+  const nativeStage = resolve(root, 'apps/desktop/e2e-inspection-native-stage');
   await rm(backendStage, { force: true, recursive: true });
+  await rm(nativeStage, { force: true, recursive: true });
   await mkdir(backendStage, { recursive: true });
   // The desktop candidate runner imports the packaged backend runtime from
   // backend/dist, so the stage must never reuse an earlier local build.
-  await runPnpm(['--filter', '@eky/backend', 'build']);
-  await runPnpm([
+  await runPnpmCommand(['--filter', '@eky/backend', 'build']);
+  await runPnpmCommand([
     '--filter',
     '@eky/backend',
     'deploy',
@@ -60,16 +70,23 @@ async function prepareElectronE2eBackend() {
     backendStage,
   ]);
   await cp(
-    resolve(repositoryRoot, 'apps/backend/e2e-dist'),
+    resolve(root, 'apps/backend/e2e-dist'),
     resolve(backendStage, 'e2e-dist'),
     { recursive: true },
   );
 
-  const runtime = await inspectStagedBetterSqliteRuntime({ backendStage });
-  const sqliteVersion = await verifyStagedBetterSqliteDatabase({ backendStage });
+  const runtime = await inspectRuntime({ backendStage });
+  const sqliteVersion = await verifyDatabase({ backendStage });
+  await prepareNative({
+    backendStage,
+    buildRoot: resolve(root, '.eky-local/profile-inspection-native-builds/e2e'),
+    nativeStage,
+  });
   console.log(
     `Validated staged better-sqlite3 ${runtime.version} (SQLite ${sqliteVersion}).`,
   );
 }
 
-await prepareElectronE2eBackend();
+if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await prepareElectronE2eBackend();
+}

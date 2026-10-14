@@ -22,7 +22,8 @@ export function requiredCiJobs(plan) {
   return {
     verify: [job('V2 cadence contracts (ubuntu-latest)', ['Verify risk and result contracts']),
       job('V2 cadence contracts (windows-latest)', ['Verify risk and result contracts']),
-      job('Test, typecheck and build', ['Run tests', 'Run typecheck', 'Build backend', 'Build web', 'Build desktop'])],
+      job('Test, typecheck and build', ['Run tests', 'Run typecheck', 'Build backend', 'Build web', 'Build desktop',
+        'Prepare Linux inspection Electron runtime', 'Verify Linux isolated profile inspection'])],
     systemSecurity: [job('System security E2E', ['Run isolated system security E2E tests'])],
     webCritical: [job('Web critical E2E', ['Run critical web E2E journeys'])],
     electronCritical: [job('Windows Electron critical E2E', ['Run critical Electron E2E journeys'])],

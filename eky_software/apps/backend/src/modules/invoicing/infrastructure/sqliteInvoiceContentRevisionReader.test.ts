@@ -30,6 +30,7 @@ import {
   readCreditRevision,
   type ApprovalFixture,
 } from './invoiceCreditRevision.fixture.js';
+import { toInvoiceContentRevision } from './invoiceContentRevisionMapping.js';
 import {
   bypassReaderFixtureConstraints,
   corruptStoredReaderRow,
@@ -138,6 +139,51 @@ describe('SqliteInvoiceContentRevisionReader', () => {
     for (const field of ['status', 'updatedAt', 'paymentState', 'paidOn', 'paidAmountCents', 'cancelledAt', 'totals']) {
       expect(current).not.toHaveProperty(field);
     }
+  });
+
+  it.each([
+    ['four supplementary characters', '\uD83D\uDE00'.repeat(4), true],
+    ['five supplementary characters', '\uD83D\uDE00'.repeat(5), false],
+    ['surrounding Unicode whitespace', '\uFEFF\u00A0' + '\uD83D\uDE00'.repeat(4) + '\u00A0\uFEFF', true],
+    ['embedded NUL', 'a\u0000b', true],
+    ['whitespace only', '\uFEFF\u00A0', false],
+  ] as const)('preserves the decoded unit rule: %s', async (_name, unit, accepted) => {
+    const key = await approve();
+    corruptStoredReaderRow(database, 'invoice_revision_lines', {
+      revision_id: key.revisionId, line_id: 'revision-line-1',
+    }, { unit });
+    if (accepted) {
+      const before = totalChanges(database);
+      const revision = await reader.getRevision(key);
+      expect(revision?.lines[0]?.unit).toBe(unit);
+      expect(totalChanges(database)).toBe(before);
+    } else {
+      await expectIntegrityFailure(key);
+    }
+  });
+
+  it('keeps canonically equivalent but unequal company identifiers distinct in shared mapping', async () => {
+    const key = await approve();
+    const stored = readCreditRevision(database, key.invoiceId);
+    const companyId = 'caf\u00E9';
+    const equivalent = 'cafe\u0301';
+    expect(companyId.normalize('NFD')).toBe(equivalent);
+    const header = { ...stored.header, company_id: companyId };
+    const lines = stored.lines.map((line) => ({ ...line, company_id: companyId }));
+    const vat = stored.vat.map((group) => ({ ...group, company_id: companyId }));
+    expect(toInvoiceContentRevision(header, lines, vat).companyId).toBe(companyId);
+    expect(() => toInvoiceContentRevision(header, lines.map((line) => ({ ...line, company_id: equivalent })), vat))
+      .toThrow(InvoiceContentRevisionIntegrityError);
+    expect(() => toInvoiceContentRevision(header, lines, vat.map((group) => ({ ...group, company_id: equivalent }))))
+      .toThrow(InvoiceContentRevisionIntegrityError);
+  });
+
+  it('retains the safe integrity error when source, period and tax snapshot are all invalid', async () => {
+    const key = await approve();
+    corruptStoredReaderRow(database, 'invoice_content_revisions', { id: key.revisionId }, {
+      invoice_kind: 'credit', performance_date: 'invalid-date', tax_treatment_label_snapshot: 'invalid-tax-label',
+    });
+    await expectIntegrityFailure(key);
   });
 
   it.each(['net', 'gross'] as const)('reads stored %s grouped rounding, never the sum of line VAT', async (priceInputMode) => {

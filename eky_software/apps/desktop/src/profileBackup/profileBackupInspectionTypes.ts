@@ -16,8 +16,11 @@ export interface ProfileBackupInspectionSummary {
 }
 
 export class ProfileBackupInspectionError extends Error {
-  constructor(readonly code: ProfileBackupInspectionErrorCode) {
-    super(code);
+  constructor(
+    readonly code: ProfileBackupInspectionErrorCode,
+    options?: ErrorOptions,
+  ) {
+    super(code, options);
     this.name = 'ProfileBackupInspectionError';
   }
 }

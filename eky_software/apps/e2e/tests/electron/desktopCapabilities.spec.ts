@@ -86,7 +86,7 @@ test('DESK-WORKSPACE-MANAGEMENT-001 @critical @recovery proves the production co
   expect(proof.candidateAppVersion).not.toBe('0.1.0-alpha.1');
 });
 
-test('DESK-WORKSPACE-MIGRATION-INVENTORY-001 @critical @recovery @security inventories packaged workspaces read only', async ({
+test('DESK-WORKSPACE-MIGRATION-INVENTORY-001 @critical @recovery @security inventories workspaces and recovers only an owned local journal', async ({
   e2eElectron,
 }) => {
   const exposedBridgeKeys = await e2eElectron.page.evaluate(() =>
@@ -119,7 +119,14 @@ test('DESK-WORKSPACE-MIGRATION-INVENTORY-001 @critical @recovery @security inven
     maximumActiveRuntimeCount: 1,
     migrationSidecarsAbsent: true,
     observerSucceeded: true,
+    ownedHotJournalRecovered: true,
+    recoveredInventoryReadOnly: true,
     registryPreserved: true,
+    untrustedInventoryInputsPreserved: true,
+    untrustedInventoryProcessesReleased: true,
+    untrustedInventoryRegistrySlotsPreserved: true,
+    untrustedInventoryRejected: true,
+    untrustedInventoryStoppedBeforeLaterWorkspaces: true,
   });
 });
 

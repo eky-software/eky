@@ -33,7 +33,7 @@ import type {
 } from '../src/workspaces/registry/workspaceRegistryTypes.js';
 import { WorkspaceFirstStartMigrationJournalStore } from '../src/workspaces/update/workspaceFirstStartMigrationJournalStore.js';
 import {
-  corruptWorkspaceFirstStartProofDatabase,
+  invalidateWorkspaceFirstStartProofContent,
   createWorkspaceFirstStartProofFactories,
   createWorkspaceFirstStartProofFixture,
   createWorkspaceFirstStartProofRegistry,
@@ -247,7 +247,7 @@ async function proveMixedScenario(input: {
       });
       await input.progress.enter('mixedInvalidFixture');
       const invalidPassive = await scope.createCurrentFixture();
-      await corruptWorkspaceFirstStartProofDatabase(invalidPassive);
+      await invalidateWorkspaceFirstStartProofContent(invalidPassive);
       const fixtures = [active, compatiblePassive, invalidPassive] as const;
       await input.progress.enter('mixedStores');
       const stores = await createProofStores({
@@ -749,6 +749,10 @@ function createTrackedBackendStarter(input: {
       },
       async stopForUpdate(operationId) {
         await delegateHandle.stopForUpdate(operationId);
+        release();
+      },
+      async stopForRestore(operationId) {
+        await delegateHandle.stopForRestore(operationId);
         release();
       },
     };

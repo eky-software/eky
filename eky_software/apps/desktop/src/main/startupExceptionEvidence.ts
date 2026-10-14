@@ -13,7 +13,7 @@ export const STARTUP_EXCEPTION_LIMITS = Object.freeze({
 });
 const tokenPattern = /^[a-f0-9]{64}$/;
 const runtimePattern = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
-const stages = ['earlyStartup', 'compositionStartup', 'runtimeStartup'] as const;
+const stages = ['earlyStartup', 'compositionStartup', 'runtimeStartup', 'packagedSmoke', 'packagedRunner'] as const;
 export type StartupExceptionStage = typeof stages[number];
 export interface StartupExceptionBinding {
   scenarioRunNonce: string;
@@ -106,6 +106,13 @@ function redact(text: string, secrets: readonly string[]): string {
 
 export function projectStartupException(error: unknown, binding: StartupExceptionBinding,
   stage: StartupExceptionStage, secrets: readonly string[] = []): StartupExceptionEvidence {
+  return validateStartupExceptionEvidence({ schemaVersion: 1, ...binding, stage,
+    ...projectExceptionChain(error, secrets) });
+}
+
+export function projectExceptionChain(error: unknown, secrets: readonly string[] = []): {
+  chain: ExceptionPart[]; incomplete: boolean;
+} {
   const chain: ExceptionPart[] = [];
   const seen = new Set<unknown>();
   let current = error;
@@ -128,7 +135,7 @@ export function projectStartupException(error: unknown, binding: StartupExceptio
     current = cause;
     if (chain.length === STARTUP_EXCEPTION_LIMITS.depth) incomplete = true;
   }
-  return validateStartupExceptionEvidence({ schemaVersion: 1, ...binding, stage, chain, incomplete });
+  return { chain, incomplete };
 }
 
 export function startupExceptionDirectory(tempPath: string, token: string): string {

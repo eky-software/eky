@@ -1,6 +1,6 @@
 export const profileRestoreActivationJournalFormatVersion = 1;
 
-export const profileRestoreActivationPhases = [
+export const profileRestoreForwardActivationPhases = [
   'prepared',
   'movingCurrentDatabase',
   'currentDatabaseMoved',
@@ -11,6 +11,10 @@ export const profileRestoreActivationPhases = [
   'activatingStagedDocuments',
   'stagedDocumentsActivated',
   'validationStarting',
+] as const;
+
+export const profileRestoreActivationPhases = [
+  ...profileRestoreForwardActivationPhases,
   'accepted',
   'rollbackStarting',
   'rolledBack',
@@ -61,6 +65,53 @@ export function parseProfileRestoreActivationJournal(
   }
 
   return value as unknown as ProfileRestoreActivationJournal;
+}
+
+export function captureProfileRestoreActivationJournal(
+  value: unknown,
+): Readonly<ProfileRestoreActivationJournal> {
+  const parsed = parseProfileRestoreActivationJournal(value);
+  if (parsed === undefined) {
+    throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+  }
+  return Object.freeze({ ...parsed });
+}
+
+export function assertProfileRestoreActivationJournalMatches(
+  expected: Readonly<ProfileRestoreActivationJournal>,
+  value: unknown,
+): void {
+  const current = parseProfileRestoreActivationJournal(value);
+  if (
+    current === undefined ||
+    current.formatVersion !== expected.formatVersion ||
+    current.operationId !== expected.operationId ||
+    current.phase !== expected.phase ||
+    current.revision !== expected.revision ||
+    current.hadActiveDatabase !== expected.hadActiveDatabase ||
+    current.hadActiveDocuments !== expected.hadActiveDocuments
+  ) {
+    throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+  }
+}
+
+export function captureProfileRestoreForwardProgress(
+  previous: Readonly<ProfileRestoreActivationJournal>,
+  value: unknown,
+): Readonly<ProfileRestoreActivationJournal> {
+  const advanced = captureProfileRestoreActivationJournal(value);
+  const phases: readonly string[] = profileRestoreForwardActivationPhases;
+  const previousIndex = phases.indexOf(previous.phase);
+  const currentIndex = phases.indexOf(advanced.phase);
+  if (previousIndex < 0 || currentIndex < previousIndex) {
+    throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+  }
+  assertProfileRestoreActivationJournalMatches({
+    ...previous,
+    phase: advanced.phase,
+    revision: previous.revision + currentIndex - previousIndex,
+  }, advanced);
+  return advanced;
 }
 
 function hasExactKeys(

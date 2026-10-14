@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
+import { profileInspectionWorkMilliseconds } from '../runtime/profileInspectionMessages.js';
+
 import {
   createProfileSnapshotBrokerRequest,
   isProfileSnapshotBrokerReadyCandidate,
@@ -10,10 +12,18 @@ import {
   type ProfileSnapshotBrokerErrorCode,
   type ProfileSnapshotMigrationPolicy,
   type ProfileSnapshotBrokerResponse,
+  type ProfileInspectionBrokerContext,
+  type ProfileInspectionContextKind,
 } from './profileSnapshotBrokerProtocol.js';
 import type { ProfileSnapshotBrokerTransport } from './profileSnapshotBrokerTransport.js';
 
-const defaultRequestTimeoutMilliseconds = 35_000;
+const defaultRequestTimeoutMilliseconds = profileInspectionWorkMilliseconds;
+
+interface ContextRequestBoundary {
+  readonly deadline: number;
+  readonly kind: ProfileInspectionContextKind;
+  readonly signal: AbortSignal;
+}
 
 type ProfileSnapshotBrokerSuccessResult = Extract<
   ProfileSnapshotBrokerResponse,
@@ -34,7 +44,7 @@ export class ProfileSnapshotBrokerClient {
     {
       reject(error: Error): void;
       resolve(result: ProfileSnapshotBrokerSuccessResult): void;
-      timer: ReturnType<typeof setTimeout>;
+      dispose(): void;
     }
   >();
   private unsubscribe: () => void = () => undefined;
@@ -76,11 +86,26 @@ export class ProfileSnapshotBrokerClient {
     return this.requestBusyMaintenance('assertUpdateMaintenance', operationId);
   }
 
+  beginRestoreMaintenance(operationId: string): Promise<'busy'> {
+    return this.requestBusyMaintenance('beginRestoreMaintenance', operationId);
+  }
+
+  assertRestoreMaintenance(operationId: string): Promise<'busy'> {
+    return this.requestBusyMaintenance('assertRestoreMaintenance', operationId);
+  }
+
+  invalidateRestoreMaintenance(operationId: string): Promise<'busy'> {
+    return this.requestBusyMaintenance('invalidateRestoreMaintenance', operationId);
+  }
+
   private requestBusyMaintenance(
     operation:
       | 'beginProfileMaintenance'
       | 'beginUpdateMaintenance'
-      | 'assertUpdateMaintenance',
+      | 'assertUpdateMaintenance'
+      | 'beginRestoreMaintenance'
+      | 'assertRestoreMaintenance'
+      | 'invalidateRestoreMaintenance',
     operationId: string,
   ): Promise<'busy'> {
     return this.request(operation, operationId).then(
@@ -140,8 +165,12 @@ export class ProfileSnapshotBrokerClient {
     return this.requestEndMaintenance('endUpdateMaintenance', operationId);
   }
 
+  endRestoreMaintenance(operationId: string): Promise<'normal'> {
+    return this.requestEndMaintenance('endRestoreMaintenance', operationId);
+  }
+
   private requestEndMaintenance(
-    operation: 'endProfileMaintenance' | 'endUpdateMaintenance',
+    operation: 'endProfileMaintenance' | 'endUpdateMaintenance' | 'endRestoreMaintenance',
     operationId: string,
   ): Promise<'normal'> {
     return this.request(operation, operationId).then(
@@ -172,6 +201,34 @@ export class ProfileSnapshotBrokerClient {
 
   waitUntilReady(): Promise<void> {
     return this.readyPromise;
+  }
+
+  /** Captures this exact private channel, not merely the current profile identity. */
+  captureInspectionAuthority(): () => void {
+    const assertCurrent = () => {
+      if (this.closed) throw new ProfileSnapshotBrokerError('PROFILE_SNAPSHOT_BROKER_UNAVAILABLE');
+    };
+    assertCurrent();
+    return assertCurrent;
+  }
+
+  async readProfileInspectionContext(input: ContextRequestBoundary & {
+    readonly operationId: string;
+    readonly updateMaintenanceOperationId?: string;
+  }): Promise<ProfileInspectionBrokerContext> {
+    const assertCurrent = this.captureInspectionAuthority();
+    assertContextRequestCurrent(input);
+    if (input.deadline > performance.now() + defaultRequestTimeoutMilliseconds) {
+      throw new Error('PROFILE_INSPECTION_PROTOCOL_INVALID');
+    }
+    const result = await this.request('readProfileInspectionContext', input.operationId,
+      undefined, input.updateMaintenanceOperationId, input);
+    assertContextRequestCurrent(input);
+    assertCurrent();
+    if (result.type !== 'profileInspectionContext') {
+      throw new ProfileSnapshotBrokerError('PROFILE_SNAPSHOT_BROKER_UNAVAILABLE');
+    }
+    return Object.freeze({ activeProfileId: result.activeProfileId, activeProfileIsEmpty: result.activeProfileIsEmpty });
   }
 
   validateActiveProfile(): Promise<
@@ -232,8 +289,14 @@ export class ProfileSnapshotBrokerClient {
     operationId?: string,
     migrationPolicy?: ProfileSnapshotMigrationPolicy,
     updateMaintenanceOperationId?: string,
+    contextBoundary?: ContextRequestBoundary,
   ): Promise<ProfileSnapshotBrokerSuccessResult> {
-    await this.waitUntilReady();
+    if (contextBoundary === undefined) {
+      await this.waitUntilReady();
+    } else {
+      await waitForContextReadiness(this.waitUntilReady(), contextBoundary);
+      assertContextRequestCurrent(contextBoundary);
+    }
 
     if (this.closed) {
       return Promise.reject(
@@ -246,6 +309,7 @@ export class ProfileSnapshotBrokerClient {
     const requestId = randomUUID();
     const request = createProfileSnapshotBrokerRequest({
       operation,
+      ...(contextBoundary === undefined ? {} : { kind: contextBoundary.kind }),
       ...(migrationPolicy === undefined ? {} : { migrationPolicy }),
       ...(operationId === undefined ? {} : { operationId }),
       ...(updateMaintenanceOperationId === undefined ? {} : { updateMaintenanceOperationId }),
@@ -253,23 +317,38 @@ export class ProfileSnapshotBrokerClient {
     });
 
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(requestId);
-        reject(
-          new ProfileSnapshotBrokerError(
-            'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
-          ),
-        );
-      }, this.requestTimeoutMilliseconds);
-      this.pending.set(requestId, { reject, resolve, timer });
-
-      try {
-        this.transport.send(request);
-      } catch {
+      const aborted = () => {
+        dispose();
+        reject(new Error('PROFILE_INSPECTION_TIMEOUT'));
+      };
+      const dispose = () => {
         clearTimeout(timer);
         this.pending.delete(requestId);
-        reject(
+        contextBoundary?.signal.removeEventListener('abort', aborted);
+      };
+      const timer = setTimeout(() => {
+        dispose();
+        reject(contextBoundary === undefined ?
           new ProfileSnapshotBrokerError(
+            'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
+          ) : new Error('PROFILE_INSPECTION_TIMEOUT'),
+        );
+      }, contextBoundary === undefined ? this.requestTimeoutMilliseconds
+        : Math.max(0, contextBoundary.deadline - performance.now()));
+      this.pending.set(requestId, { reject, resolve, dispose });
+      contextBoundary?.signal.addEventListener('abort', aborted, { once: true });
+      if (contextBoundary?.signal.aborted) {
+        aborted();
+        return;
+      }
+
+      try {
+        if (contextBoundary !== undefined) assertContextRequestCurrent(contextBoundary);
+        this.transport.send(request);
+      } catch (error) {
+        dispose();
+        reject(
+          error instanceof Error && error.message === 'PROFILE_INSPECTION_TIMEOUT' ? error : new ProfileSnapshotBrokerError(
             'PROFILE_SNAPSHOT_BROKER_UNAVAILABLE',
           ),
         );
@@ -304,8 +383,7 @@ export class ProfileSnapshotBrokerClient {
     }
 
     const response = parseProfileSnapshotBrokerResponse(value);
-    clearTimeout(pending.timer);
-    this.pending.delete(requestId);
+    pending.dispose();
 
     if (response === undefined) {
       pending.reject(
@@ -345,9 +423,31 @@ export class ProfileSnapshotBrokerClient {
       this.rejectReady(error);
     }
     for (const pending of this.pending.values()) {
-      clearTimeout(pending.timer);
+      pending.dispose();
       pending.reject(error);
     }
     this.pending.clear();
   }
+}
+
+function assertContextRequestCurrent(input: ContextRequestBoundary): void {
+  if (!Number.isFinite(input.deadline)) throw new Error('PROFILE_INSPECTION_PROTOCOL_INVALID');
+  if (input.signal.aborted || performance.now() >= input.deadline) {
+    throw new Error('PROFILE_INSPECTION_TIMEOUT');
+  }
+}
+
+function waitForContextReadiness(task: Promise<void>, boundary: ContextRequestBoundary): Promise<void> {
+  assertContextRequestCurrent(boundary);
+  return new Promise((resolve, reject) => {
+    const dispose = () => {
+      clearTimeout(timer);
+      boundary.signal.removeEventListener('abort', aborted);
+    };
+    const aborted = () => { dispose(); reject(new Error('PROFILE_INSPECTION_TIMEOUT')); };
+    const timer = setTimeout(aborted, Math.max(0, boundary.deadline - performance.now()));
+    boundary.signal.addEventListener('abort', aborted, { once: true });
+    void task.then(() => { dispose(); resolve(); }, error => { dispose(); reject(error); });
+    if (boundary.signal.aborted) aborted();
+  });
 }

@@ -11,6 +11,24 @@ import {
 const generationId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 describe('desktop backend process messages', () => {
+  it('admits only a closed local recovery selection on normal startup, never restore startup', () => {
+    const selection = { workspaceIdentity: 'a'.repeat(64), workspaceRoot: resolve('synthetic-workspace') };
+    const config = { ...createCompleteConfig(), ownedLocalDatabaseRecovery: selection };
+    const command = { config, generationId, type: 'start' };
+    expect(parseDesktopBackendCommand(command)).toEqual(command);
+    expect(parseDesktopBackendCommand({ ...command,
+      config: { ...config, migrationStartupPolicy: 'restoreCompatible' },
+    })).toBeUndefined();
+    for (const value of [undefined, null, true, {}, { ...selection, granted: true }]) {
+      expect(parseDesktopBackendCommand({ ...command,
+        config: { ...config, ownedLocalDatabaseRecovery: value },
+      })).toBeUndefined();
+    }
+    expect(parseDesktopBackendStatus({ type: 'failed', code: 'BACKEND_SERVER_START_FAILED',
+      ownedLocalDatabaseRecovery: selection,
+    })).toBeUndefined();
+  });
+
   it('shares the existing readiness budget without adding a stage timeout', () => {
     expect(desktopBackendReadinessTimeoutMilliseconds).toBe(30_000);
   });
@@ -125,23 +143,24 @@ describe('desktop backend process messages', () => {
     }
   });
 
-  it('keeps ordinary shutdown exact and update shutdown operation-bound', () => {
+  it.each(['shutdownForUpdate', 'shutdownForRestore'] as const)(
+    'keeps ordinary shutdown exact and %s operation-bound', (type) => {
     const operationId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     expect(parseDesktopBackendCommand({ type: 'shutdown' })).toEqual({
       type: 'shutdown',
     });
     expect(parseDesktopBackendCommand({ type: 'shutdown', operationId }))
       .toBeUndefined();
-    expect(parseDesktopBackendCommand({ type: 'shutdownForUpdate', operationId }))
-      .toEqual({ type: 'shutdownForUpdate', operationId });
+    expect(parseDesktopBackendCommand({ type, operationId }))
+      .toEqual({ type, operationId });
     for (const invalid of [undefined, null, 1, '', '../private', 'a'.repeat(4096),
       'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa']) {
       expect(parseDesktopBackendCommand({
-        type: 'shutdownForUpdate', operationId: invalid,
+        type, operationId: invalid,
       })).toBeUndefined();
     }
     expect(parseDesktopBackendCommand({
-      type: 'shutdownForUpdate', operationId, extra: true,
+      type, operationId, extra: true,
     })).toBeUndefined();
   });
 

@@ -2,6 +2,7 @@ import { isAbsolute } from 'node:path';
 
 import { isDesktopRuntimeSession } from './runtimeSession.js';
 import { isOperationId } from '../profileBackup/profileSnapshotBrokerProtocol.js';
+import { parseOwnedLocalDatabaseRecoverySelection, type OwnedLocalDatabaseRecoverySelection } from './ownedLocalDatabaseRecovery.js';
 import {
   parseWorkspaceProcessReservationDescriptor,
   type WorkspaceProcessReservationDescriptor,
@@ -37,6 +38,7 @@ export interface DesktopBackendStartMessage {
       | 'exactCurrentManifest'
       | 'restoreCompatible';
     operationalLogsRoot: string;
+    ownedLocalDatabaseRecovery?: Readonly<OwnedLocalDatabaseRecoverySelection>;
     platform: string;
     profileSnapshotStagingRoot: string;
     runtimeInstanceId: string;
@@ -56,6 +58,11 @@ export interface DesktopBackendUpdateShutdownMessage {
   type: 'shutdownForUpdate';
 }
 
+export interface DesktopBackendRestoreShutdownMessage {
+  operationId: string;
+  type: 'shutdownForRestore';
+}
+
 export interface DesktopBackendContinueStartupMessage {
   type: 'continueStartup';
 }
@@ -70,6 +77,7 @@ export type DesktopBackendCommand =
   | DesktopBackendContinueStartupMessage
   | DesktopBackendShutdownMessage
   | DesktopBackendUpdateShutdownMessage
+  | DesktopBackendRestoreShutdownMessage
   | DesktopBackendStartMessage;
 
 export interface DesktopBackendMigrationGateReadyMessage {
@@ -163,10 +171,10 @@ export function parseDesktopBackendCommand(
     return hasExactKeys(value, ['type']) ? { type: 'shutdown' } : undefined;
   }
 
-  if (value.type === 'shutdownForUpdate') {
+  if (value.type === 'shutdownForUpdate' || value.type === 'shutdownForRestore') {
     return hasExactKeys(value, ['operationId', 'type']) &&
       isOperationId(value.operationId)
-      ? { operationId: value.operationId, type: 'shutdownForUpdate' }
+      ? { operationId: value.operationId, type: value.type }
       : undefined;
   }
 
@@ -191,6 +199,9 @@ export function parseDesktopBackendCommand(
   }
 
   const config = value.config;
+  const hasLocalRecovery = Object.hasOwn(config, 'ownedLocalDatabaseRecovery');
+  const ownedLocalDatabaseRecovery = hasLocalRecovery
+    ? parseOwnedLocalDatabaseRecoverySelection(config.ownedLocalDatabaseRecovery) : undefined;
   const pathKeys = [
     'backendRoot',
     'databaseFilePath',
@@ -209,7 +220,10 @@ export function parseDesktopBackendCommand(
       'migrationStartupPolicy', 'operationalLogsRoot', 'platform',
       'profileSnapshotStagingRoot', 'runtimeInstanceId', 'runtimeSessionSecret',
       'smokePdfPath', 'verifySmokeSecretBroker',
+      ...(hasLocalRecovery ? ['ownedLocalDatabaseRecovery'] : []),
     ]) ||
+    (hasLocalRecovery && (ownedLocalDatabaseRecovery === undefined
+      || config.migrationStartupPolicy !== 'exactCurrentManifest')) ||
     typeof config.appVersion !== 'string' ||
     !/^[A-Za-z0-9.+_-]{1,80}$/.test(config.appVersion) ||
     typeof config.architecture !== 'string' ||
@@ -250,6 +264,7 @@ export function parseDesktopBackendCommand(
       migrationsDirectory: config.migrationsDirectory as string,
       migrationStartupPolicy: config.migrationStartupPolicy,
       operationalLogsRoot: config.operationalLogsRoot as string,
+      ...(ownedLocalDatabaseRecovery === undefined ? {} : { ownedLocalDatabaseRecovery }),
       platform: config.platform,
       profileSnapshotStagingRoot:
         config.profileSnapshotStagingRoot as string,

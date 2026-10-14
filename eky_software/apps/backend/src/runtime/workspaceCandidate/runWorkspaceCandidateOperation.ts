@@ -1,17 +1,18 @@
-import {
-  constants as fileSystemConstants,
-  promises as fileSystem,
-} from 'node:fs';
-import { dirname, join } from 'node:path';
+import { promises as fileSystem } from 'node:fs';
+import { dirname, join, toNamespacedPath } from 'node:path';
+
+import Database from 'better-sqlite3';
 
 import { createDatabaseConnection } from '../../database/connection/createDatabaseConnection.js';
 import type { DatabaseConnection } from '../../database/connection/createDatabaseConnection.js';
+import type { OwnedLocalDatabaseRecovery } from '../../database/connection/recoverOwnedLocalDatabase.js';
 import { readLocalRuntimeIdentity } from '../../database/localRuntimeIdentityReader.js';
 import { inspectMigrationStartupState } from '../../database/migration/inspectMigrationStartupState.js';
+import { openAttestedMigrationDatabase } from '../../database/migration/openAttestedMigrationDatabase.js';
 import type { MigrationStartupPolicy } from '../../database/migration/inspectMigrationStartupState.js';
 import { runMigrations } from '../../database/migration/runMigrations.js';
 import { materializeValidatedProfileArtifacts } from '../profileSnapshot/materializeValidatedProfileArtifacts.js';
-import { createProfileBackupIdentity } from '../profileSnapshot/inspectSqliteProfileDatabase.js';
+import { createProfileBackupIdentity, inspectSqliteProfileConnection } from '../profileSnapshot/inspectSqliteProfileDatabase.js';
 import { CurrentActiveProfileValidationService } from '../profileSnapshot/validateActiveProfile.js';
 import { validateProfileArtifactCatalog } from '../profileSnapshot/validateProfileArtifactCatalog.js';
 import { selectInvoiceBackupArtifactCatalogSchema } from '../../modules/invoicing/infrastructure/selectInvoiceBackupArtifactCatalogSchema.js';
@@ -26,6 +27,7 @@ import {
   validateTrustedReadOnlyCodeDirectory,
   workspaceCandidatePathsAreEqual,
 } from './workspaceCandidatePathPolicy.js';
+import { assertCopiedWorkspaceDatabaseUnchanged, copyAttestedWorkspaceDatabase } from './copyAttestedWorkspaceDatabase.js';
 
 const profileDatabaseFileName = 'profile.sqlite';
 const sha256Pattern = /^[0-9a-f]{64}$/;
@@ -59,6 +61,7 @@ export type WorkspaceCandidateOperation =
       readonly expectedProfileId: string;
       readonly expectedSourceMigrationChainIdentity: string;
       readonly importStagingRoot: string;
+      readonly inspectionRoot: string;
       readonly operation: 'migrateBackup';
     })
   | (WorkspaceCandidateCommonInput & {
@@ -110,6 +113,8 @@ export type WorkspaceCandidateOperationResult =
   | WorkspaceCandidateReadinessResult;
 
 export interface WorkspaceCandidateOperationControl {
+  readonly ownedLocalDatabaseRecovery?: Readonly<OwnedLocalDatabaseRecovery>;
+  readonly reportInspectionClosed?: () => void;
   readonly signal?: AbortSignal;
 }
 
@@ -133,7 +138,11 @@ export async function runWorkspaceCandidateOperation(
       return await inspectPublishedWorkspaceMigration(
         operation,
         control.signal,
+        control.ownedLocalDatabaseRecovery,
       );
+    }
+    if (control.ownedLocalDatabaseRecovery !== undefined) {
+      throw new Error('WORKSPACE_CANDIDATE_OPERATION_INVALID');
     }
     const paths = await validateCommonInput(operation);
     throwIfCancelled(control.signal);
@@ -168,13 +177,60 @@ export async function runWorkspaceCandidateOperation(
       );
       throwIfCancelled(control.signal);
       await assertPathMissing(paths.databaseFilePath);
-      await copyPrivateDatabase({
+      const inspectionRoot = await validatePrivateWorkspaceDirectory(operation.inspectionRoot);
+      if (!workspaceCandidatePathsAreEqual(dirname(inspectionRoot), paths.candidateRoot) ||
+          workspaceCandidatePathsAreEqual(inspectionRoot, paths.artifactRoot) ||
+          workspaceCandidatePathsAreEqual(inspectionRoot, importStagingRoot)) {
+        throw new Error('WORKSPACE_CANDIDATE_INPUT_INVALID');
+      }
+      await assertEmptyPrivateDirectory(inspectionRoot);
+      const inspectionPath = join(inspectionRoot, profileDatabaseFileName);
+      const inspectedBytes = await copyAttestedWorkspaceDatabase({
+        destinationPath: inspectionPath,
+        sourcePath: join(importStagingRoot, profileDatabaseFileName),
+        ...(control.signal === undefined ? {} : { signal: control.signal }),
+      });
+      await assertCopiedWorkspaceDatabaseUnchanged(inspectionPath, inspectedBytes, control.signal);
+      const readOnlyDatabase = new Database(toNamespacedPath(inspectionPath), {
+        fileMustExist: true, readonly: true,
+      });
+      let inspectionFailure: unknown;
+      try {
+        const source = inspectSqliteProfileConnection(readOnlyDatabase, paths.migrationsDirectory, 'restoreCompatible');
+        if (source.profileId !== operation.expectedProfileId ||
+            source.migrationChainIdentity !== operation.expectedSourceMigrationChainIdentity) {
+          throw new Error('WORKSPACE_CANDIDATE_SOURCE_MISMATCH');
+        }
+        await validateProfileArtifactCatalog({
+          database: readOnlyDatabase,
+          operationRoot: importStagingRoot,
+          schema: selectInvoiceBackupArtifactCatalogSchema(source),
+        });
+      } catch (error) {
+        inspectionFailure = error;
+        throw error;
+      } finally {
+        try { readOnlyDatabase.close(); }
+        catch (error) {
+          throw new AggregateError(
+            [...(inspectionFailure === undefined ? [] : [inspectionFailure]), error],
+            'WORKSPACE_CANDIDATE_DATABASE_CLOSE_FAILED',
+          );
+        }
+        control.reportInspectionClosed?.();
+      }
+      // Never reopen the source or migration target read-only: a WAL snapshot
+      // can create sidecars even on a read-only connection.
+      const copied = await copyAttestedWorkspaceDatabase({
         destinationPath: paths.databaseFilePath,
         sourcePath: join(importStagingRoot, profileDatabaseFileName),
+        expectedBytes: inspectedBytes,
+        ...(control.signal === undefined ? {} : { signal: control.signal }),
       });
-      throwIfCancelled(control.signal);
+      await assertCopiedWorkspaceDatabaseUnchanged(paths.databaseFilePath, copied, control.signal);
       const database = createDatabaseConnection({
         databaseFilePath: paths.databaseFilePath,
+        fileMustExist: true,
       });
       try {
         const source = inspectMigrationStartupState(
@@ -192,12 +248,6 @@ export async function runWorkspaceCandidateOperation(
         ) {
           throw new Error('WORKSPACE_CANDIDATE_SOURCE_MISMATCH');
         }
-        throwIfCancelled(control.signal);
-        await validateProfileArtifactCatalog({
-          database,
-          operationRoot: importStagingRoot,
-          schema: selectInvoiceBackupArtifactCatalogSchema(source),
-        });
         throwIfCancelled(control.signal);
         await runMigrations(database, {
           migrationsDirectory: paths.migrationsDirectory,
@@ -230,9 +280,17 @@ export async function runWorkspaceCandidateOperation(
     const expectedProfileId = operation.expectedProfileId;
     if (expectedProfileId !== undefined) validateSha256(expectedProfileId);
     throwIfCancelled(control.signal);
-    const database = createDatabaseConnection({
+    // Attest before writable admission; the normal close still owns WAL cleanup.
+    const database = openAttestedMigrationDatabase({
+      allowCreate: false,
+      allowEmpty: false,
       databaseFilePath: paths.databaseFilePath,
+      migrationsDirectory: paths.migrationsDirectory,
+      policy: operation.operation === 'validateHistoricalPublished'
+        ? 'restoreCompatible' : 'exactCurrentManifest',
     });
+    let validationFailed = false;
+    let validationFailure: unknown;
     try {
       if (operation.operation === 'validateHistoricalPublished') {
         const readiness = await readReadiness(database, paths, {
@@ -291,11 +349,22 @@ export async function runWorkspaceCandidateOperation(
         throw new Error('WORKSPACE_CANDIDATE_PROFILE_MISMATCH');
       }
       return readiness;
+    } catch (error) {
+      validationFailed = true;
+      validationFailure = error;
+      throw error;
     } finally {
-      database.close();
+      try { database.close(); }
+      catch (error) {
+        throw new AggregateError(
+          validationFailed ? [validationFailure, error] : [error],
+          'WORKSPACE_CANDIDATE_DATABASE_CLOSE_FAILED',
+          { cause: validationFailed ? validationFailure : error },
+        );
+      }
     }
-  } catch {
-    throw new Error('WORKSPACE_CANDIDATE_OPERATION_FAILED');
+  } catch (error) {
+    throw new Error('WORKSPACE_CANDIDATE_OPERATION_FAILED', { cause: error });
   }
 }
 
@@ -316,6 +385,7 @@ function validateOperationInput(
           'expectedProfileId',
           'expectedSourceMigrationChainIdentity',
           'importStagingRoot',
+          'inspectionRoot',
           'operation',
         ];
       case 'validateAndMaterialize':
@@ -463,99 +533,6 @@ async function assertEmptyPrivateDirectory(path: string): Promise<void> {
   if ((await fileSystem.readdir(directory)).length !== 0) {
     throw new Error('WORKSPACE_CANDIDATE_ARTIFACT_ROOT_NOT_EMPTY');
   }
-}
-
-async function copyPrivateDatabase(input: {
-  readonly destinationPath: string;
-  readonly sourcePath: string;
-}): Promise<void> {
-  const sourcePath = resolveAbsoluteWorkspaceCandidatePath(input.sourcePath);
-  const sourceMetadata = await fileSystem.lstat(sourcePath);
-  if (
-    !sourceMetadata.isFile() ||
-    sourceMetadata.isSymbolicLink() ||
-    sourceMetadata.nlink !== 1 ||
-    sourceMetadata.size < 1 ||
-    !workspaceCandidatePathsAreEqual(
-      await fileSystem.realpath(sourcePath),
-      sourcePath,
-    )
-  ) {
-    throw new Error('WORKSPACE_CANDIDATE_DATABASE_INVALID');
-  }
-
-  await createPrivateDirectoryTree(dirname(input.destinationPath));
-  let completed = false;
-  try {
-    const source = await fileSystem.open(
-      sourcePath,
-      fileSystemConstants.O_RDONLY | fileSystemConstants.O_NOFOLLOW,
-    );
-    try {
-      const destination = await fileSystem.open(
-        input.destinationPath,
-        fileSystemConstants.O_CREAT |
-          fileSystemConstants.O_EXCL |
-          fileSystemConstants.O_WRONLY,
-        0o600,
-      );
-      try {
-        for await (const chunk of source.createReadStream({
-          autoClose: false,
-        })) {
-          await writeCompleteBuffer(destination, chunk as Buffer);
-        }
-        await destination.sync();
-      } finally {
-        await destination.close();
-      }
-    } finally {
-      await source.close();
-    }
-
-    const destinationMetadata = await fileSystem.lstat(
-      input.destinationPath,
-    );
-    if (
-      !destinationMetadata.isFile() ||
-      destinationMetadata.isSymbolicLink() ||
-      destinationMetadata.nlink !== 1 ||
-      destinationMetadata.size !== sourceMetadata.size
-    ) {
-      throw new Error('WORKSPACE_CANDIDATE_DATABASE_INVALID');
-    }
-    completed = true;
-  } finally {
-    if (!completed) {
-      await fileSystem
-        .rm(input.destinationPath, { force: true })
-        .catch(() => undefined);
-    }
-  }
-}
-
-async function writeCompleteBuffer(
-  destination: Awaited<ReturnType<typeof fileSystem.open>>,
-  content: Buffer,
-): Promise<void> {
-  let offset = 0;
-  while (offset < content.byteLength) {
-    const { bytesWritten } = await destination.write(
-      content,
-      offset,
-      content.byteLength - offset,
-    );
-    if (bytesWritten < 1) {
-      throw new Error('WORKSPACE_CANDIDATE_DATABASE_INVALID');
-    }
-    offset += bytesWritten;
-  }
-}
-
-async function createPrivateDirectoryTree(path: string): Promise<void> {
-  await fileSystem.mkdir(path, { mode: 0o700, recursive: true });
-  if (process.platform !== 'win32') await fileSystem.chmod(path, 0o700);
-  await validatePrivateWorkspaceDirectory(path);
 }
 
 async function assertPathMissing(path: string): Promise<void> {

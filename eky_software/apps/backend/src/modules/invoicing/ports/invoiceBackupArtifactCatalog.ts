@@ -2,6 +2,9 @@ import type {
   ApprovedInvoiceDocumentType,
 } from '../domain/approvedInvoiceDocument.js';
 
+export const invoiceBackupArtifactMaximumCount = 100_000;
+export const invoiceBackupArtifactMaximumTextBytes = 1_024;
+
 export interface InvoiceBackupArtifactCatalogItem {
   companyId: string;
   documentId: string;

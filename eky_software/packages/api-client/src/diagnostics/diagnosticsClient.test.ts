@@ -3,6 +3,63 @@ import { describe, expect, it } from 'vitest';
 import { createEkyApiClient, EkyApiError } from '../index.js';
 
 describe('diagnostics API client', () => {
+  it.each(['workspaceBackup.operationFailed', 'workspaceBackup.cleanupFailed'])(
+    'retains the safe %s projection', async eventName => {
+      const event = {
+        category: 'backup', component: 'desktop',
+        correlationId: '22222222-2222-4222-8222-222222222222', durationMs: 1,
+        errorCode: 'PROFILE_SCHEMA_UNSUPPORTED', eventName, id: 'desktop:safe-failure',
+        level: 'error', occurredAt: '2026-10-09T10:00:00.000Z', outcome: 'failure',
+        retryable: false, sideEffectState: 'unknown', stage: 'import',
+      };
+      const client = createEkyApiClient({ baseUrl: '', fetch: async () => jsonResponse({ diagnosticEvents: [event] }) });
+      await expect(client.listDiagnosticEvents()).resolves.toEqual([event]);
+      for (const errorCode of [
+        'unknown', 'PROFILE_SCHEMA_UNSUPPORTED', 'MIGRATION_HISTORY_INVALID',
+        'PROFILE_INSPECTION_LIMIT_EXCEEDED', 'PROFILE_INSPECTION_TIMEOUT',
+        'PROFILE_INSPECTION_PROTOCOL_INVALID', 'PROFILE_INSPECTION_CLEANUP_UNVERIFIED',
+        'PROFILE_SNAPSHOT_DATABASE_INVALID', 'PROFILE_SNAPSHOT_MIGRATIONS_INVALID',
+        'PROFILE_SNAPSHOT_ARTIFACTS_INVALID', 'WORKSPACE_CANDIDATE_SOURCE_MISMATCH',
+        'WORKSPACE_CANDIDATE_DATABASE_CHANGED', 'WORKSPACE_CANDIDATE_DATABASE_INVALID',
+        'WORKSPACE_CANDIDATE_DATABASE_CLOSE_FAILED', 'WORKSPACE_CANDIDATE_OPERATION_CANCELLED',
+      ]) {
+        const knownCause = createEkyApiClient({ baseUrl: '', fetch: async () => jsonResponse({
+          diagnosticEvents: [{ ...event, errorCode }],
+        }) });
+        await expect(knownCause.listDiagnosticEvents()).resolves.toEqual([{ ...event, errorCode }]);
+      }
+      for (const change of [
+        { rawError: 'synthetic private message' },
+        { errorCode: 'syntheticPrivateMessage' },
+        { errorCode: null },
+        { stage: 'syntheticPrivateStage' },
+        { stage: undefined },
+        { correlationId: undefined },
+        { durationMs: undefined },
+        { retryable: true },
+        { sideEffectState: 'rolledBack' },
+        { category: 'smtp' },
+        { component: 'backend' },
+        { level: 'info' },
+        { outcome: 'success' },
+        { fingerprint: 'syntheticPrivateFingerprint' },
+        { operationId: 'syntheticPrivateOperation' },
+        { cipherName: 'syntheticPrivateCipher' },
+      ]) {
+        const invalid = createEkyApiClient({ baseUrl: '', fetch: async () => jsonResponse({
+          diagnosticEvents: [{ ...event, ...change }],
+        }) });
+        await expect(invalid.listDiagnosticEvents()).rejects.toBeInstanceOf(EkyApiError);
+      }
+      const unknown = createEkyApiClient({ baseUrl: '', fetch: async () => jsonResponse({
+        diagnosticEvents: [{ ...event, errorCode: 'unknown', stage: 'replace' }],
+      }) });
+      await expect(unknown.listDiagnosticEvents()).resolves.toEqual([
+        { ...event, errorCode: 'unknown', stage: 'replace' },
+      ]);
+    },
+  );
+
   it('reads the strict safe runtime summary contract', async () => {
     const requests: string[] = [];
     const client = createEkyApiClient({
@@ -153,12 +210,16 @@ describe('diagnostics API client', () => {
               category: eventName.startsWith('backup.') ? 'backup' : 'restore',
               component: 'desktop',
               correlationId: '33333333-3333-4333-8333-333333333333',
-              errorCode: failed ? 'PROFILE_RECOVERY_FAILED' : null,
+              errorCode: eventName === 'restore.recoveryRequired'
+                ? 'PROFILE_RESTORE_RECOVERY_REQUIRED'
+                : failed ? 'PROFILE_RECOVERY_FAILED' : null,
               eventName,
               id: `desktop:profile-event-${String(index + 1)}`,
-              level: failed ? 'error' : 'info',
+              level: eventName === 'backup.inspectionFailed'
+                ? 'warn' : failed ? 'error' : 'info',
               occurredAt: `2026-08-09T10:00:0${String(index)}.000Z`,
               outcome: failed ? 'failure' : 'success',
+              ...(eventName === 'restore.activationFailed' ? { durationMs: 1 } : {}),
               ...(failed
                 ? {
                     retryable: false,
@@ -167,7 +228,7 @@ describe('diagnostics API client', () => {
                 : {}),
               stage: eventName.startsWith('backup.')
                 ? 'portable'
-                : 'activation',
+                : eventName === 'restore.recoveryRequired' ? 'activationRollback' : 'activation',
             };
           }),
         }),

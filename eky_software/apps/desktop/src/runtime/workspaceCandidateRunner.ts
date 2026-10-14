@@ -9,10 +9,13 @@ import {
   createWorkspaceCandidateReservationReadyStatus,
   parseWorkspaceCandidateProcessCommand,
   workspaceCandidateStartupTimeoutMilliseconds,
+  type WorkspaceCandidateFailureCause,
   type WorkspaceCandidateProcessCommand,
   type WorkspaceCandidateProcessOperation,
   type WorkspaceCandidateProcessResult,
 } from './workspaceCandidateMessages.js';
+import { readWorkspaceCandidateFailureCause } from './workspaceCandidateFailure.js';
+import { createOwnedLocalDatabaseRecovery, type OwnedLocalDatabaseRecovery } from './ownedLocalDatabaseRecovery.js';
 import {
   acquireWorkspaceProcessReservation,
   type WorkspaceProcessReservation,
@@ -25,7 +28,11 @@ type BackendWorkspaceCandidateOperation = Omit<
 
 type RunWorkspaceCandidateOperation = (
   operation: BackendWorkspaceCandidateOperation,
-  control: { readonly signal: AbortSignal },
+  control: {
+    readonly ownedLocalDatabaseRecovery?: Readonly<OwnedLocalDatabaseRecovery>;
+    readonly reportInspectionClosed?: () => void;
+    readonly signal: AbortSignal;
+  },
 ) => Promise<WorkspaceCandidateProcessResult>;
 
 interface WorkspaceCandidateBackendModule {
@@ -65,11 +72,13 @@ export function startWorkspaceCandidateRunner(
   let boundRequest: BoundRequest | undefined;
   const abortController = new AbortController();
   let reservation: WorkspaceProcessReservation | undefined;
+  let reservationRoot: string | undefined;
   let operationTask: Promise<void> | undefined;
   let shutdownRequested = false;
   let protocolInvalid = false;
   let terminalSent = false;
   let terminalOutcome: 'completed' | 'failed' | undefined;
+  let inspectionClosed = false;
   let exited = false;
   // One startup budget includes preparation, acquisition and the work grant.
   const startupTimer = setTimeout(
@@ -87,13 +96,17 @@ export function startWorkspaceCandidateRunner(
     options.exit(code);
   };
 
-  const postFailedOnce = (request: BoundRequest): void => {
+  const postFailedOnce = (request: BoundRequest, causeCode?: WorkspaceCandidateFailureCause): void => {
     if (terminalSent || exited) return;
     terminalSent = true;
     terminalOutcome = 'failed';
     try {
       options.parentPort.postMessage(
-        createWorkspaceCandidateFailedStatus(request),
+        createWorkspaceCandidateFailedStatus({
+          ...request,
+          ...(inspectionClosed ? { inspectionClosed: true as const } : {}),
+          ...(causeCode === undefined ? {} : { causeCode }),
+        }),
       );
     } catch {
       protocolInvalid = true;
@@ -125,6 +138,7 @@ export function startWorkspaceCandidateRunner(
     command: Extract<WorkspaceCandidateProcessCommand, { type: 'prepare' }>,
   ): Promise<void> => {
     try {
+      reservationRoot = command.reservation.userDataRoot;
       const acquired = await options.acquireReservation({
         expectedIdentity: command.reservation.identity,
         signal: abortController.signal,
@@ -163,6 +177,22 @@ export function startWorkspaceCandidateRunner(
       assertGrantValid();
       await reservation!.assertOwned();
       assertGrantValid();
+      const selection = command.operation.operation === 'inspectPublishedMigration'
+        ? command.operation.ownedLocalDatabaseRecovery : undefined;
+      const ownedLocalDatabaseRecovery = selection === undefined ? undefined
+        : createOwnedLocalDatabaseRecovery({
+          assertOwned: async () => {
+            assertGrantValid();
+            await reservation!.assertOwned();
+            assertGrantValid();
+          },
+          databaseFilePath: command.operation.databaseFilePath,
+          reservationRoot: reservationRoot!,
+          selection,
+          signal: abortController.signal,
+        });
+      await ownedLocalDatabaseRecovery?.assertOwnedDatabase(command.operation.databaseFilePath);
+      assertGrantValid();
       phase = 'loading';
       const operation = await options.loadOperation(command.operation, {
         beginLoad: () => {
@@ -178,7 +208,12 @@ export function startWorkspaceCandidateRunner(
       assertWorkAllowed();
       const { backendRoot: _backendRoot, ...backendOperation } =
         command.operation;
+      if ('ownedLocalDatabaseRecovery' in backendOperation) delete backendOperation.ownedLocalDatabaseRecovery;
       const result = await operation(backendOperation, {
+        ...(ownedLocalDatabaseRecovery === undefined ? {} : { ownedLocalDatabaseRecovery }),
+        ...(command.operation.operation === 'migrateBackup' ? {
+          reportInspectionClosed: () => { inspectionClosed = true; },
+        } : {}),
         signal: abortController.signal,
       });
       assertWorkAllowed();
@@ -188,6 +223,7 @@ export function startWorkspaceCandidateRunner(
         options.parentPort.postMessage(
           createWorkspaceCandidateCompletedStatus({
             ...boundRequest!,
+            ...(inspectionClosed ? { inspectionClosed: true as const } : {}),
             result,
           }),
         );
@@ -197,9 +233,11 @@ export function startWorkspaceCandidateRunner(
         terminalOutcome = 'failed';
       }
       phase = 'terminal';
-    } catch {
+    } catch (error) {
       if (exited) return;
-      postFailedOnce(boundRequest!);
+      postFailedOnce(boundRequest!, command.operation.operation === 'migrateBackup' ||
+        command.operation.operation === 'inspectPublishedMigration'
+        ? readWorkspaceCandidateFailureCause(error) : undefined);
       phase = 'terminal';
     } finally {
       clearTimeout(startupTimer);

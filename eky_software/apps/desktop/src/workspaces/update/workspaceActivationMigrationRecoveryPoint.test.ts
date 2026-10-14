@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -37,7 +37,7 @@ describe('WorkspaceActivationMigrationRecoveryPoint', () => {
     const recoveryPoint = new WorkspaceActivationMigrationRecoveryPoint(
       { createPreMigration },
       { stageForRestore },
-      new NodeWorkspaceActivationMigrationStaging(root),
+      createStaging(root),
     );
 
     const staged = await recoveryPoint.createAndStage({
@@ -110,7 +110,7 @@ describe('WorkspaceActivationMigrationRecoveryPoint', () => {
           profileId: '3'.repeat(64),
         })),
       },
-      new NodeWorkspaceActivationMigrationStaging(root),
+      createStaging(root),
     );
 
     await expect(
@@ -142,8 +142,14 @@ function createService(root: string, operationRoot: string) {
     {
       stageForRestore: vi.fn(async () => createStaged(operationRoot)),
     },
-    new NodeWorkspaceActivationMigrationStaging(root),
+    createStaging(root),
   );
+}
+
+function createStaging(root: string) {
+  return new NodeWorkspaceActivationMigrationStaging(root, {
+    removeProfileSnapshot: async (id) => { await rm(join(root, id), { recursive: true, force: true }); },
+  });
 }
 
 function createStaged(operationRoot: string) {

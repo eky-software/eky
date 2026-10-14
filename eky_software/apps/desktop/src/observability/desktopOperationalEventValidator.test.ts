@@ -15,6 +15,24 @@ const options = {
 };
 
 describe('desktop operational event contracts', () => {
+  it.each(['acceptancePreparation', 'acceptanceCommit', 'acceptedCleanup'] as const)(
+    'validates the closed acceptance failure at %s', stage => {
+      const event = createDesktopOperationalEvent({
+        eventName: 'restore.acceptanceFailed', stage, correlationId: options.runtimeInstanceId,
+        durationMs: 1, errorCode: 'PROFILE_INSPECTION_TIMEOUT', retryable: false, sideEffectState: 'unknown',
+      }, options);
+      expect(validateDesktopOperationalEvent(event)).toEqual(event);
+      for (const change of [
+        { stage: 'restoredProfile' }, { correlationId: undefined }, { durationMs: undefined },
+        { errorCode: 'PRIVATE_CODE' }, { retryable: undefined }, { retryable: true },
+        { sideEffectState: undefined }, { sideEffectState: 'committed' },
+        { companyId: 'synthetic-company' }, { rawError: 'synthetic raw error' },
+      ]) expect(() => validateDesktopOperationalEvent({ ...event, ...change })).toThrow();
+      expect(validateDesktopOperationalEvent({ ...event, errorCode: 'PROFILE_RESTORE_RECOVERY_REQUIRED' }))
+        .toMatchObject({ errorCode: 'PROFILE_RESTORE_RECOVERY_REQUIRED' });
+    },
+  );
+
   it('creates a catalog-owned desktop security event', () => {
     expect(
       createDesktopOperationalEvent(
@@ -299,7 +317,8 @@ describe('desktop operational event contracts', () => {
     ).toThrow(DesktopOperationalEventValidationError);
   });
 
-  it('allows recovery-required only with minimized failed-safe metadata', () => {
+  it.each(['activation', 'failedSafeJournal'] as const)(
+    'allows recovery-required only with minimized metadata at %s', (stage) => {
     const event = createDesktopOperationalEvent(
       {
         correlationId: '22222222-2222-4222-8222-222222222222',
@@ -307,14 +326,14 @@ describe('desktop operational event contracts', () => {
         eventName: 'restore.recoveryRequired',
         retryable: false,
         sideEffectState: 'unknown',
-        stage: 'failedSafeJournal',
+        stage,
       },
       options,
     );
 
     expect(event).toMatchObject({
       eventName: 'restore.recoveryRequired',
-      stage: 'failedSafeJournal',
+      stage,
     });
     expect(() =>
       validateDesktopOperationalEvent({

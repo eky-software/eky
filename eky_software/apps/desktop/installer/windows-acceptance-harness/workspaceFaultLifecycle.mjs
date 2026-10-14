@@ -32,6 +32,7 @@ export async function executeWorkspaceFaultLifecycle(faultScenario, runtime) {
       completedPhases.push(phase);
       report(phase, 'completed', start, 'validated');
     } catch (error) {
+      try { runtime.observeFailure?.(error, phase); } catch { /* Evidence cannot change the test result. */ }
       const code = workspaceFaultErrorCode(error, fallback);
       report(phase, 'failed', start, code);
       throw new Error(code);

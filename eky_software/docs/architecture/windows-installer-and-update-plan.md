@@ -725,6 +725,25 @@ saa sisältää polkua, `companyId`- tai `profileId`-arvoa, business-dataa,
 palautuspisteen sisältöä, salaisuutta, sessionia, komentoriviä tai asentajan
 outputia.
 
+### C:n palautusvalinnan ehdollinen kirjoitus
+
+[K:n rajattu C-jatko](release-0.3.0-m1-preparation-plan.md#v2be-cn-business-valmistumisen-journal-sidonta)
+välittää saman update-journalin business-palautuksen tarkistuksesta sen
+valmistumis- tai virhekirjoitukseen. Nykyisen store-instanssin exclusive-
+kirjoitus vertaa koko odotettua edeltävää journalia ja tarkistaa synkronisen
+main-valtuuden heti ennen ensimmäistä tiedostosiirtoa, ennen julkaisua ja
+vanhan version poistoa. Vieraita
+keskeytysslotteja ei korjata tai poisteta live-valtuuden muodostamiseksi.
+Muut journal-kirjoittajat eivät tämän rajauksen perusteella vaihda sopimusta.
+
+Muuttunut valinta estää kirjoituksen. Julkaistu current ja epävarma backup
+säilyvät, jos valtuus katoaa loppusiivouksessa. Kirjoituksen virhe ei todista,
+ettei julkaisu ehtinyt tapahtua; virhehaara ei saa kirjoittaa vanhan valinnan
+pohjalta uutta recovery-tilaa. Ensisyy ja journalin lisävirhe säilyvät erillään.
+Epäonnistunut takaisin siirto säilyttää myös palautusvirheen alkuperäisen
+syyn jälkeen ja jättää backupin selvitystä varten.
+Journaliton palautus ja varsinainen binary-handoff vaativat oman näyttönsä.
+
 ## 12. Hallittu shutdown
 
 Ennen asentajan käynnistystä:
@@ -771,7 +790,17 @@ Ennen runtime-stopin aloittamista valmistelun turvallinen keskeytys vaatii
 täsmällisen omistetun journalin, `failed`-kirjoituksen ja muuttamattoman
 takaisinluvun sekä edelleen voimassa olevan saman update-suojan.
 Vasta tämän jälkeen named end ja leasen vapautus ovat sallittuja.
-Epävarma journal, menetetty suoja tai aloitettu runtime-stop säilyttää
+K:n eristetty aktiivivalidointi lainaa koordinaattorin täsmällistä
+update-varausta sisäisellä kutsukontekstilla. Valmistelussa snapshotin
+tavallinen suoja päättyy ennen update-fenceä; handoffissa sama update-fence
+jatkuu myös tarkistuksen jälkeen. Tarkistin ei hanki kilpailevaa varausta
+eikä vapauta update-fenceä. Kuittaamaton tarkistussiivous ja pre-update-
+palautuspisteen todettu cleanup-epävarmuus estävät abort-vapautuksen.
+Myöhäinen siivouskuittaus ei valtuuta päättynyttä kutsua. Jo alkanut
+ordinary-sulku estää uuden handoff-tarkistuksen ja installer-käynnistyksen.
+Kutsujamatriisi ja rajattu näyttö ovat
+[M1:n aktiivivalidoinnin ohjeessa](release-0.3.0-m1-preparation-plan.md#aktiivivalidoinnin-kutsujakohtainen-omistajuus).
+Epävarma journal tai tarkistussiivous, menetetty suoja tai aloitettu runtime-stop säilyttää
 omistuksen uudelleenkäynnistykseen asti. Ordinary backupin vapautus ei muutu.
 
 ## 13. Handoff ulkoiselle asentajalle
@@ -815,6 +844,15 @@ Renderer ei avaudu normaaliin business-tilaan ennen hyväksyntää.
 First-start-preflight on Electron mainin ja yksityisen backend utilityn
 välinen suljettu käynnistyspolku. Se ei ole julkinen HTTP-endpoint,
 renderer-capability tai yleinen `skipMigrations`-kytkin.
+
+Backendin jälkeinen FirstStart-hyväksyntä tekee tuoreen aktiiviprofiilin
+eristetyn tarkistuksen mainin omalla restore-varauksella. Tavallisen startupin
+aikaisempi onnistuminen ei korvaa tätä tulosta. Tarkistin lainaa täsmällistä
+omistajaa; vapautus vaatii prosessin poistumisen ja omistetun aineiston
+siivouksen. Hylkäyksessä omistaja säilyy nykyiseen varmennettuun sammutus- ja
+rollback-ketjuun. Migraatioketjun, salaisuusidentiteetin, cachen ja hyväksynnän
+nykyinen järjestys säilyy. Sisäinen ensisyy voidaan säilyttää syyketjussa ja
+nykyisessä yksityisessä havaitsijassa muuttamatta julkista virhesopimusta.
 
 Update Coordinatorin journalin sisältävä in-app-päivitys vaatii ennen normaalia
 backendia, että käynnissä oleva build vastaa journalin kohdebuildia,
@@ -925,6 +963,18 @@ jatkettavaksi ennen adoption/switch-recoverya ja uutta inventaarioa. Vasta
 vakaa aktiivinen registry inventoidaan. `authorizedNewerBuild` ja
 `coordinatedUpdateTarget` inventoivat kaikki `ready`-työtilat sarjallisesti;
 development-, initial install- ja exact accepted build -polut eivät inventoi.
+
+Omistajan 11.10.2026 hyväksymä [C-palautuksen poikkeus](../decisions/ADR-0011-local-multi-workspace-company-model.md)
+koskee vain täsmällisesti valittua `rollbackOnly`-käynnistystä. Olemassa oleva
+W6-recovery tehdään normaalisti ja sen jatkettava journal sidotaan edelleen
+build-identiteetteihin, active-valintaan ja registry-tiivisteisiin. Uutta
+forward-inventaariota tai valmistelua ei aloiteta ennen C:n business- ja
+binaaripalautusta. Poikkeus ei anna forward-migraatio-, registry-siirtymä-,
+target-hyväksyntä- tai UI-valtuutta. C:n tuore schema-, sisältö-,
+alkuperäisketju-, omistajuus- ja pysäytysportti säilyy; muuttunut C-valinta
+tai ristiriitainen palautus pysäyttää ketjun. Tavallinen forward-startup
+inventoi edelleen yllä kuvatusti. [M1:n V2bh](release-0.3.0-m1-preparation-plan.md#v2bh-journalittoman-cn-historiallinen-käynnistysadmissio)
+erottaa toteutusnäytön avoimista hyväksyntäporteista.
 
 Main-owned W6-orchestraattori saa muodostaa deterministisen suunnitelman ja
 kirjoittaa tarvittaessa `prepared` W6-journalin. Se ei aja migraatioita eikä
@@ -1139,6 +1189,31 @@ C3B:n journalijärjestys on `businessRollbackStarting` ->
 binary rollbackin yrityslaskuri tallennetaan ennen MSI:n käynnistämistä.
 Keskeytys jatkuu vain nykyisestä turvallisesti vahvistetusta vaiheesta;
 epäselvä business-profiili estää binaaripalautuksen kokonaan.
+
+C:n aktiiviprofiilin tarkistus käyttää erillistä sisäistä
+`validateActiveProfileForRollback`-porttia. Kutsuja välittää odotetun
+alkuperäisen migraatioketjun ja koko valitun update-journalin tuoreen
+valtuustarkistuksen. Kontekstia ei päätellä varauksen kiireisyydestä tai
+globaalista päivitystilasta. Mainin sama restore-omistaja säilyy
+sisältöhylkäyksestä varmennetun pysäytyksen ja alkuperäisaineiston rollbackin
+yli; epävarma tarkistajan tai backendin sulku estää mutaatiot. Journalin
+valinta tarkistetaan myös odotettujen operaatioiden jälkeen ennen
+valmistumis- tai virhekirjoitusta. Muuttunut valinta ei anna lupaa
+hyväksyä vanhaa tulosta tai korvata uuden operaation journalia.
+
+Myös ilman profile-restore-journalia jatkuva business-palautus säilyttää
+mainin alussa valitseman koko update-journalin. Käynnistys palauttaa vain
+saman valinnan tai oman täsmällisen `businessRollbackStarting`-seuraajansa
+lopputarkistukselle; uusi repairing-luku ei valitse toista operaatiota.
+Alkuperäinen poissaolo ei anna lupaa hyväksyä myöhemmin ilmestyvää journalia.
+Starting- ja failed-safe-kirjoitukset käyttävät nykyistä ehdollista
+journal-julkaisua ja mainin omistajuutta. Sama valinta tarkistetaan
+stagingin jälkeen ennen activation-kutsua. Muuttunut valinta ei tämän
+handoffin kautta käynnistä activationia eikä korvaa uutta journalia
+vanhan valinnan failed-safe-kirjoituksella. Activation-transaktion oman
+palautusjournalin ja sisäisen julkaisun valtuussidonta on vielä avoin K-portti.
+[Kohdetodennus](release-0.3.0-m1-preparation-plan.md#v2bf-journalittoman-cn-valinnan-jatkuminen)
+ei korvaa erillistä koko mainin ja binaariasentimen hyväksyntää.
 
 Binaaripalautus käyttää vain journalin `currentVersion`-, build-, MSI-, SHA-256-
 ja kokotietoihin täsmälleen sidottua pakettia. Jos täsmällinen paketti ei ole

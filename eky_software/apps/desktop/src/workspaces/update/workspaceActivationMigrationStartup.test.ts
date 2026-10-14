@@ -1,8 +1,14 @@
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { describe, expect, it, vi } from 'vitest';
 
+import { readWorkspaceCandidateFailureCause } from '../../runtime/workspaceCandidateFailure.js';
 import { validateWorkspaceBackupImportOperationId } from '../import/workspaceBackupImportOperationId.js';
 import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
 import { WorkspaceActivationMigrationError } from './workspaceActivationMigrationError.js';
+import { WorkspaceActivationMigrationInspector } from './workspaceActivationMigrationInspector.js';
 import { WorkspaceActivationMigrationStartup } from './workspaceActivationMigrationStartup.js';
 
 const operationId = validateWorkspaceBackupImportOperationId(
@@ -18,6 +24,45 @@ const profileId = 'b'.repeat(64);
 const migrationChainIdentity = 'c'.repeat(64);
 
 describe('workspace activation migration startup', () => {
+  it.each(['PROFILE_SCHEMA_UNSUPPORTED', 'MIGRATION_HISTORY_INVALID'] as const)(
+    'preserves %s through the real inspector without target activation or registry writes', async causeCode => {
+      const userDataRoot = await mkdtemp(join(tmpdir(), 'eky-activation-schema-'));
+      try {
+        await mkdir(join(userDataRoot, 'workspaces', targetWorkspaceId, 'runtime', 'data'), {
+          recursive: true, mode: 0o700,
+        });
+        const registryPath = join(userDataRoot, 'workspace-registry-v1.json');
+        const registryBytes = Buffer.from('synthetic registry sentinel');
+        await writeFile(registryPath, registryBytes);
+        const original = new Error('private inspection detail', { cause: new Error(causeCode) });
+        const stop = vi.fn(async () => true);
+        const inspector = new WorkspaceActivationMigrationInspector({
+          async startMigrationInspection() {
+            return {
+              inspectStoppedMigrationInspection: async () => { throw original; },
+              stopAndProveHandlesClosed: stop,
+            };
+          },
+        });
+        const fixture = createFixture({ userDataRoot, inspector });
+        const failure: unknown = await fixture.startup.prepareBeforeBackend().catch(error => error);
+
+        expect(failure).toMatchObject({ code: 'WORKSPACE_ACTIVATION_MIGRATION_FAILED' });
+        expect(readWorkspaceCandidateFailureCause(failure)).toBe(causeCode);
+        expect((failure as Error).message).not.toContain('private inspection detail');
+        expect(stop).toHaveBeenCalled();
+        expect(fixture.rejectInvalidTarget).not.toHaveBeenCalled();
+        expect(fixture.requestRelaunch).not.toHaveBeenCalled();
+        expect(fixture.validateHistorical).not.toHaveBeenCalled();
+        expect(fixture.migrateAndActivate).not.toHaveBeenCalled();
+        expect(fixture.prove).not.toHaveBeenCalled();
+        expect(await readFile(registryPath)).toEqual(registryBytes);
+      } finally {
+        await rm(userDataRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
   it('does not inspect a normal workspace activation', async () => {
     const fixture = createFixture({ mode: 'normal' });
 
@@ -145,9 +190,11 @@ describe('workspace activation migration startup', () => {
 });
 
 function createFixture(options: {
+  inspector?: Pick<WorkspaceActivationMigrationInspector, 'inspect'>;
   inspectionStatus?: 'compatiblePending' | 'current' | 'invalidHistory';
   mode?: 'normal' | 'targetValidation';
   rejectOutcome?: 'recoveryRequired' | 'relaunchRequired';
+  userDataRoot?: string;
 } = {}) {
   const inspectionStatus = options.inspectionStatus ?? 'compatiblePending';
   const inspect = vi.fn(async () => ({
@@ -207,7 +254,7 @@ function createFixture(options: {
     historicalValidation: {
       validateHistoricalPublished: validateHistorical,
     },
-    inspector: { inspect },
+    inspector: options.inspector ?? { inspect },
     markTargetRuntimeStopped,
     publishedValidationInput: {
       artifactRoot: 'C:\\private\\workspace\\documents',
@@ -216,7 +263,7 @@ function createFixture(options: {
       publishedRoot: 'C:\\private\\workspace',
     },
     requestRelaunch,
-    userDataRoot: 'C:\\private',
+    userDataRoot: options.userDataRoot ?? 'C:\\private',
   });
 
   return {

@@ -1,9 +1,13 @@
 import type { DatabaseConnection } from '../../../database/connection/createDatabaseConnection.js';
-import type {
-  InvoiceBackupArtifactCatalog,
-  InvoiceBackupArtifactCatalogItem,
+import { isSqliteMemoryError } from '../../../database/connection/isSqliteMemoryError.js';
+import {
+  invoiceBackupArtifactMaximumCount,
+  invoiceBackupArtifactMaximumTextBytes,
+  type InvoiceBackupArtifactCatalog,
+  type InvoiceBackupArtifactCatalogItem,
 } from '../ports/invoiceBackupArtifactCatalog.js';
 import type { InvoiceBackupArtifactCatalogSchema } from './selectInvoiceBackupArtifactCatalogSchema.js';
+import { validateInvoiceHistoryRelationEncoding } from './validateInvoiceHistoryRelationEncoding.js';
 import { validateInvoiceRevisionCatalog } from './validateInvoiceRevisionCatalog.js';
 import { validateInvoiceRevisionCatalogDocuments } from './validateInvoiceRevisionCatalogDocuments.js';
 
@@ -33,15 +37,19 @@ export class SqliteInvoiceBackupArtifactCatalog
   > {
     switch (this.schema) {
       case 'legacyDocuments':
+        this.assertDocumentReadLimits();
         return this.listDocuments();
       case 'revisionHistory':
         try {
           return this.database.transaction(() => {
+            this.assertDocumentReadLimits();
+            validateInvoiceHistoryRelationEncoding(this.database);
             validateInvoiceRevisionCatalog(this.database);
             validateInvoiceRevisionCatalogDocuments(this.database);
             return this.listDocuments();
           }).deferred();
-        } catch {
+        } catch (error) {
+          if (isSqliteMemoryError(error)) throw error;
           // A malformed new schema is never evidence for selecting the old branch.
           throw new Error('INVOICE_BACKUP_CATALOG_INVALID');
         }
@@ -50,9 +58,31 @@ export class SqliteInvoiceBackupArtifactCatalog
     }
   }
 
+  private assertDocumentReadLimits(): void {
+    const count = this.database.prepare<[number], { artifact_count: number }>(`
+      SELECT COUNT(*) AS artifact_count FROM (
+        SELECT 1 FROM invoice_documents LIMIT ?
+      )
+    `).get(invoiceBackupArtifactMaximumCount + 1);
+    if (count === undefined || count.artifact_count > invoiceBackupArtifactMaximumCount) {
+      throw new Error('INVOICE_BACKUP_CATALOG_INVALID');
+    }
+    // Only module-owned column names form this SQL; large values never reach JS.
+    const textColumns = ['id', 'company_id', 'invoice_id', 'document_type', 'file_name',
+      'storage_path', 'mime_type', 'sha256', 'created_at',
+      ...(this.schema === 'revisionHistory' ? ['binding_kind', 'revision_id', 'source_document_id'] : [])];
+    const invalidText = textColumns.map(column =>
+      `(typeof(${column}) NOT IN ('text', 'null') OR length(CAST(${column} AS BLOB)) > ?)`);
+    const invalid = this.database.prepare<number[], { invalid: number }>(`
+      SELECT 1 AS invalid FROM invoice_documents
+      WHERE typeof(size_bytes) <> 'integer' OR ${invalidText.join(' OR ')} LIMIT 1
+    `).get(...textColumns.map(() => invoiceBackupArtifactMaximumTextBytes));
+    if (invalid !== undefined) throw new Error('INVOICE_BACKUP_CATALOG_INVALID');
+  }
+
   private listDocuments(): readonly InvoiceBackupArtifactCatalogItem[] {
     const rows = this.database
-      .prepare<[], InvoiceBackupArtifactCatalogRow>(
+      .prepare<[number], InvoiceBackupArtifactCatalogRow>(
         `
           SELECT
             document.id AS document_id,
@@ -70,9 +100,14 @@ export class SqliteInvoiceBackupArtifactCatalog
             ON invoice.id = document.invoice_id
             AND invoice.company_id = document.company_id
           ORDER BY document.id
+          LIMIT ?
         `,
       )
-      .all();
+      .all(invoiceBackupArtifactMaximumCount + 1);
+
+    if (rows.length > invoiceBackupArtifactMaximumCount) {
+      throw new Error('INVOICE_BACKUP_CATALOG_INVALID');
+    }
 
     return rows.map(toCatalogItem);
   }

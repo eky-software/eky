@@ -108,6 +108,27 @@ describe('workspace backup import root store', () => {
     });
   });
 
+  it('preserves source staging and inspection evidence when the candidate contains an unresolved inspection root', async () => {
+    const { paths, store } = await createFixture();
+    await store.createCandidate(paths);
+    await mkdir(paths.importStagingRoot, { mode: 0o700 });
+    const sourcePath = join(paths.importStagingRoot, 'profile.sqlite');
+    await writeFile(sourcePath, 'original staged snapshot');
+    await writeFile(paths.databaseFilePath, 'candidate database');
+    const inspectionRoot = join(paths.candidateRoot, 'inspection-unresolved');
+    await mkdir(inspectionRoot, { mode: 0o700 });
+    const inspectionPath = join(inspectionRoot, 'inspection.sqlite');
+    await writeFile(inspectionPath, 'retained inspection copy');
+
+    await expect(store.discardCandidate(paths)).rejects.toMatchObject({
+      code: 'WORKSPACE_IMPORT_STORAGE_FAILED', stage: 'cleanup',
+    });
+
+    await expect(readFile(sourcePath, 'utf8')).resolves.toBe('original staged snapshot');
+    await expect(readFile(inspectionPath, 'utf8')).resolves.toBe('retained inspection copy');
+    await expect(readFile(paths.databaseFilePath, 'utf8')).resolves.toBe('candidate database');
+  });
+
   it('rejects a pre-existing reparse or symlink operation root', async () => {
     const { paths, root, store } = await createFixture();
     await mkdir(paths.operationsRoot, { mode: 0o700 });

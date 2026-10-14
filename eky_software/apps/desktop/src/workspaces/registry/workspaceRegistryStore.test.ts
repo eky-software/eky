@@ -31,6 +31,45 @@ afterEach(async () => {
 });
 
 describe('workspace registry store', () => {
+  it.each(['current', 'backup', 'next'] as const)(
+    'inspects authoritative %s without promoting or deleting any slot',
+    async (selected) => {
+      const fixture = await createFixture();
+      const registry = createRegistry('Tarkistettava yritys');
+      const slots = [
+        ['current', fixture.currentPath],
+        ['backup', fixture.backupPath],
+        ['next', fixture.nextPath],
+      ] as const;
+      const selectedIndex = slots.findIndex(([name]) => name === selected);
+      for (const [, path] of slots.slice(selectedIndex)) {
+        await writeSlot(path, registry);
+      }
+      const before = await Promise.all(slots.slice(selectedIndex).map(([, path]) => readFile(path)));
+
+      await expect(fixture.store.inspect()).resolves.toEqual(registry);
+
+      expect(await Promise.all(slots.slice(selectedIndex).map(([, path]) => readFile(path))))
+        .toEqual(before);
+      for (const [, path] of slots.slice(0, selectedIndex)) {
+        expect(await pathExists(path)).toBe(false);
+      }
+    },
+  );
+
+  it('rejects an invalid authoritative inspection slot without reading a fallback', async () => {
+    const fixture = await createFixture();
+    await mkdir(fixture.installationRoot, { mode: 0o700 });
+    await writeFile(fixture.currentPath, '{}\n');
+    await writeSlot(fixture.backupPath, createRegistry('Säilytettävä kopio'));
+    const before = await readFile(fixture.backupPath);
+
+    await expect(fixture.store.inspect()).rejects.toThrow(WORKSPACE_REGISTRY_INVALID);
+
+    expect(await readFile(fixture.currentPath, 'utf8')).toBe('{}\n');
+    expect(await readFile(fixture.backupPath)).toEqual(before);
+  });
+
   it('writes and reads the first canonical registry', async () => {
     const fixture = await createFixture();
     const registry = createRegistry('Ensimmäinen yritys');

@@ -85,6 +85,53 @@ pitää kuulua samaan täsmälliseen creation identity -ketjuun ja sen syntymäa
 pitää olla sama tai myöhempi kuin todistetun vanhemman. Ennen omistettua juurta
 syntynyt prosessi ja sen jälkeläiset torjutaan siivouksesta fail closed.
 
+## Desktopin Vitest-rinnakkaisuus
+
+Desktopin tavallisen `vitest run` -ajon enimmäistyöntekijämäärä on neljä.
+Pienempi nykyinen run-tilan oletus säilyy: raja on
+`min(4, max(availableParallelism() - 1, 1))`. Asetus sijaitsee
+[`apps/desktop/vitest.config.mjs`](../../apps/desktop/vitest.config.mjs):ssä,
+joten normaali työtilan `pnpm test` sekä core-CI käyttävät sitä.
+Tämä pakettikohtainen raja ei muuta muiden pakettien sisäistä rinnakkaisuutta,
+testivalintaa, eristystä, testiaikarajoja, uusintoja tai CI:n kokonaisaikarajaa.
+
+[Ajokytkennän regressiot](../../apps/desktop/scripts/test-command-wiring.test.mjs)
+tarkistavat vähäydinrajat ja Vitestin todellisen asetuksen lataamisen.
+Rinnakkaisuusraja hallitsee samanaikaista testityötä; sen kanssa onnistunut
+ajo ei yksin todista aiemman aikakatkaisun juurisyytä tai sovellusvirheen
+korjautumista. Aikaisemmat hylkäykset säilytetään erillisinä havaintoina.
+
+## Core-CI:n pakettisarjojen ajo
+
+Core-jobin testivaihe ajaa pakettien nykyiset testiskriptit yksi paketti
+kerrallaan. Pakettien sisäiset työntekijämäärät, testikohtaiset aikarajat,
+pretest-vaiheet, eristys, reporterit ja testivalikoima säilyvät. Juuren
+orkestroiva `eky-software`-skripti suljetaan nimenomaisesti pois, joten
+samoja sarjoja ei käynnistetä sen kautta uudelleen. Riippuvuusjärjestys ja
+ensimmäiseen epäonnistuneeseen pakettiin pysähtyminen säilyvät.
+
+Core-jobin kokonaisaikaraja ja myöhemmät typecheck-, build- ja Linux-
+tarkistukset säilyvät. Ajotavan läpäisy ei yksin todista vanhan timeoutin
+juurisyytä tai muuta ensimmäistä hylkäystä onnistumiseksi.
+
+## Palautustestin erillinen valmistelu
+
+Omistajan hyväksymä rajaus koskee vain
+[`desktopRestoreStartup.test.ts`](../../apps/desktop/src/main/desktopRestoreStartup.test.ts)-tapausta
+`uses fresh original authority after C pre-migration validation fails`:
+aineiston valmistelu saa enintään viisi sekuntia ja palautus tarkistuksineen
+edelleen enintään viisi sekuntia. Näiden vaiheiden yhteisbudjetti on siten
+enintään kymmenen sekuntia. Muiden testien tai CI:n kokonaisaikarajat eivät
+muutu; tämä ei ole yleinen lupa siirtää valmistelua testin aikarajan ulkopuolelle.
+
+Molempia vaiheita seuraa sama nykyinen testikohtainen elinkaarituki. Pelkkä
+valmistelun onnistuminen ei oikeuta aineiston poistamista. Valmistelun tai
+testirungon aikakatkaisun jälkeen yhteiset resurssit vapautetaan vasta työn
+todella päätyttyä, ja epäonnistumisen sekä myöhäisen työn tiedostot säilytetään.
+Oikeat journal-luennat, sisältö- ja omistajuustarkistukset säilyvät. Jaon
+läpäisy ei yksin osoita aiemman aikakatkaisun juurisyytä korjatuksi.
+Hyväksyntänäyttöä ylläpidetään [M1-suunnitelman nykyisessä checkpointissa](../architecture/release-0.3.0-m1-preparation-plan.md#kn-nykyinen-pr-checkpoint-ja-valmistelukoe).
+
 ## Ensivirhe, uusinta ja rajattu poikkeus
 
 Tämä on yhteinen käytäntö paikallisille testeille ja CI:lle. Se ei korvaa
@@ -100,6 +147,40 @@ käynnistyssukupolvi ja paketin identiteetti siltä osin kuin ne koskevat ajoa.
 Erota alkuperäinen virhe, viimeinen havaittu vaihe, siivoustulos sekä
 aineiston puuttuminen toisistaan. Uusi yritys ei saa korvata ensivirheen
 hakemistoa, eikä aineisto kuulu buildin tyhjentämään hakemistoon.
+
+### Alkuperäinen testivirhe oletuksena
+
+Synteettisen testin odottamaton epäonnistuminen kuuluu oletuksena nykyiseen
+yksityiseen virhetiedon keräykseen. Käytä testirunnerin raportointikytkentää
+sekä nykyistä salattua toimitusta, älä rakenna testikohtaista loggeria.
+Säilytä rajattu alkuperäinen viesti, kutsupino ja syyketju sekä testin ja
+suoritusyrityksen sidonta. Tunnetut salaisuudet peitetään. Onnistuneen testin
+odotettu poikkeus ei ole uusi raportoitu testivirhe.
+
+Jos omistava sovellus- tai harness-raja muuttaa poikkeuksen turvalliseksi
+koodiksi, testirunner ei enää pysty palauttamaan alkuperäistä poikkeusta.
+Tällainen raja tarjoaa sen nykyiselle yksityiselle havaitsijalle **ennen**
+muunnosta. Yhteinen raportointi hoitaa testiperheen muut testit; jokaiseen
+testitapaukseen ei lisätä omaa keräyskutsua. Uuden muunnosrajan mukana
+todennetaan myös havaitsijan kytkentä, ei vain virhekoodi.
+
+Julkisen testiraportoinnin hyväksyttyä sisältöä ei laajenneta.
+Käyttöliittymä ja tuotannon diagnostiikka käyttävät edelleen turvallisia
+koodeja. Tämä oletus ei hyväksy kokonaisten
+ympäristömuuttujien, profiilien, tietokantojen, pyyntösisältöjen tai
+muistivedosten keräystä. Keräyksen rajat ja toimitusketju määritellään
+[salatun aineiston sopimuksessa](../architecture/ci-encrypted-evidence.md).
+Sopimuksen mukainen uuden testin kytkentä ei vaadi erillistä lupaa;
+sisällön, säilytyksen tai julkaisurajan laajentaminen vaatii päätöksen.
+
+Todista ketju pakotetulla virheellä: alkuperäinen poikkeus löytyy oikeasti
+puretusta salatusta paketista, julkinen tuloste pysyy turvallisena ja testi
+pysyy epäonnistuneena. Varmenna myös virhe raportoinnissa, puuttuva aineisto
+ja onnistuneen polun säilyminen. Prosessin pakkokatkaisu, levyn virhe tai
+runnerin katoaminen voi estää tallennuksen tai toimituksen; puuttuvaa
+alkuperäistä syytä ei päätellä yleisestä koodista eikä väitetä tallennetuksi.
+
+### Keräyksen ja toimituksen rajat
 
 Kerää ongelman vaiheeseen sopiva rajattu aineisto nykyisillä välineillä:
 testiraportti, prosessin tulosteet, trace tai erikseen perusteltu vedos.

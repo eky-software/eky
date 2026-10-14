@@ -2014,6 +2014,14 @@ sopimusta vasten. Sopimus johdetaan erikseen hyväksytyistä SQL-tavuista tyhjä
 testikantaan, ei tarkasteltavasta profiilista. Manifestin jatkuvuus ja tiivistys
 käyttävät nykyistä backendin manifestinomistajaa.
 
+Sopimuksen testifixture käyttää myös nykyistä migration-metadatan omistajaa
+suoraan lähteestä. Noden suora TypeScript-luku ei muuta sen `.js`-tuontia
+`.ts`-lähteeksi: fixture sovittaa vain tämän omistajan täsmällisen
+`isSqliteMemoryError`-tuonnin ja poistaa lataussovituksen heti `finally`-haarassa.
+Muut moduulit käyttävät tavallista latausta. Sopimuksen generointi ei riipu
+vanhasta `dist`-hakemistosta eikä kopioi metadatan sääntöjä testiin;
+erillisprosessin regressio varmistaa myös sovituksen poistumisen.
+
 Asennetun payloadin täysi inventaario varmennetaan ennen paketoidun
 `backend/dist/database/migrations`-ketjun tai runtime-buildin käyttämistä
 sidonnan lähteenä. Kaikki vanhat taulut, sarakkeet, arvojen SQLite-tyypit ja
@@ -5398,6 +5406,36 @@ uninstall-, downgrade- ja rollback-portteja. Ajantasainen hyväksyntätila on
 [M1:n asennuskorjauksen päätöksessä](release-0.3.0-m1-preparation-plan.md#asennuskorjauksen-päätös).
 
 ### Workspace-asennusodotuksen havaintoraja
+
+**Rajattu jatko 13.10.2026:** nykyinen supervisor voi antaa workspace success-
+ja fault-skenaarioissa valinnaisen `msiClientMembership`-havainnon.
+Omistajuus tarkistetaan täsmällisestä nykyisestä Job-kahvasta, ei prosessin
+nimestä, vanhemmasta tai kuulumisesta mihin tahansa Jobiin. Prosessikahva
+pidetään auki ja elossaolo tarkistetaan jäsenyyskyselyn molemmin puolin.
+Saman istunnon MSI-asiakkaiden havainto on `noneObserved`, `ownedObserved`,
+`outsideObserved`, `mixedObserved`, `observationUnknown` tai
+`observationLimited`. Ryhmän ulkopuolinen asiakas ei tarkoita asennukseen
+liittymätöntä prosessia. Puuttuva tai epävarma havainto ei todista poissaoloa.
+
+Havainto ei muuta workerin kaikkien saman istunnon MSI-asiakkaiden
+nollavaatimusta, tuotteiden tarkistuksia, terminal-tulosta tai siivousta.
+Yhdellä odottavalla supervisorilla on enintään yksi valinnainen kysely
+keskeneräisenä, enintään 32 luokiteltavaa asiakasta sekä 128 näytteen raja.
+Näytteiden väli on 60 sekuntia. Liian suuri luettelo jää rajatuksi havainnoksi.
+Kysely ajetaan taustalla; vain omistava säie välittää valmistuneen suljetun
+tulosluokan nykyiselle ei-estävälle lokikirjoittimelle. Lopetus ei odota
+kyselyä: keskeneräinen saa `observationPending`-merkinnän, eikä myöhäinen
+valmistuminen julkaise enää uutta havaintoa. Havainto ei koskaan lopeta
+prosesseja tai käytä tiedostokuittausta. Komennon nykyinen prosessiraja
+päättää myös keskeneräisen taustatyön komennon poistuessa.
+
+Synteettiset sopimustestit kattavat täsmällisen Job-jäsenyyden,
+poistumiskilpailun, kyselyvirheen, pysyvästi keskeneräisen kyselyn,
+myöhäisen valmistumisen, rajoituksen, normaalin onnistumisen sekä
+aikakatkaisun ja hallitun keskeytyksen siivouksen. Ne eivät asenna MSI:tä
+eivätkä selitä alkuperäisen pitkän asennusodotuksen juurisyytä.
+[M1:n nykyinen checkpoint](release-0.3.0-m1-preparation-plan.md#kn-nykyinen-pr-checkpoint-ja-valmistelukoe)
+erottaa tämän rajatun kytkennän K:n puuttuvasta integraatiohyväksynnästä.
 
 Tila 2026-09-28: rajattu testiharnessin diagnostiikkalisäys ja sen oma
 `5bbfd483` [normaali CI](https://github.com/eky-software/eky/actions/runs/36443256758)

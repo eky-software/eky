@@ -1,4 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import {
+  readWorkspaceCandidateCleanupCause,
+  readWorkspaceCandidateFailureCause,
+} from '../../runtime/workspaceCandidateFailure.js';
 
 import type { EmptyWorkspaceCreationResult } from '../creation/emptyWorkspaceCreationCoordinator.js';
 import type {
@@ -178,7 +182,14 @@ export class WorkspaceManagementService {
       return result;
     } catch (error) {
       const mapped = mapWorkspaceManagementError(error, operationKind);
+      const cleanupCauseCode = readWorkspaceCandidateCleanupCause(error);
       this.record({
+        ...((operationKind === 'import' || operationKind === 'replace')
+          ? {
+              inspectionCauseCode: readWorkspaceCandidateFailureCause(error),
+              ...(cleanupCauseCode === undefined ? {} : { cleanupCauseCode }),
+            }
+          : {}),
         correlationId,
         durationMs: Math.max(0, this.now() - startedAt),
         errorCode: mapped.code,

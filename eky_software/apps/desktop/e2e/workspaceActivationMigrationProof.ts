@@ -49,7 +49,7 @@ import {
 } from '../src/workspaces/replacement/workspaceBackupReplacementOperationId.js';
 import { WorkspaceSwitchJournalStore } from '../src/workspaces/switch/workspaceSwitchJournal.js';
 import {
-  corruptWorkspaceFirstStartProofDatabase,
+  invalidateWorkspaceFirstStartProofContent,
   createWorkspaceFirstStartProofFactories,
   createWorkspaceFirstStartProofFixture,
   createWorkspaceFirstStartProofRegistry,
@@ -524,7 +524,7 @@ async function createProofFixtures(input: {
     userDataRoot: input.proofRoot,
   });
   const invalidTarget = await input.scope.createCurrentFixture();
-  await corruptWorkspaceFirstStartProofDatabase(invalidTarget);
+  await invalidateWorkspaceFirstStartProofContent(invalidTarget);
   const faultTarget = await createWorkspaceFirstStartProofFixture({
     factory: input.scope.historical,
     userDataRoot: input.proofRoot,
@@ -710,6 +710,10 @@ function createTrackedBackendStarter(input: {
       },
       async stopForUpdate(operationId) {
         await delegateHandle.stopForUpdate(operationId);
+        release();
+      },
+      async stopForRestore(operationId) {
+        await delegateHandle.stopForRestore(operationId);
         release();
       },
     };

@@ -67,7 +67,6 @@ export function createConsistentProfileSnapshotService(input: {
   database: DatabaseConnection;
   invoiceDocumentStorageRoot: string;
   maintenanceState: ProfileMaintenanceState;
-  migrationsDirectory: string;
   stagingRoot: string;
 }): ConsistentProfileSnapshotService {
   return new ConsistentProfileSnapshotService({
@@ -80,7 +79,6 @@ export function createConsistentProfileSnapshotService(input: {
     sqliteSnapshotService: createSqliteProfileSnapshotService({
       database: input.database,
       maintenanceState: input.maintenanceState,
-      migrationsDirectory: input.migrationsDirectory,
       stagingRoot: input.stagingRoot,
     }),
     stagingRoot: input.stagingRoot,

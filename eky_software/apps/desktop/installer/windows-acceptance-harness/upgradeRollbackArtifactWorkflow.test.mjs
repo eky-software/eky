@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { withoutOptionalEvidenceAllowance } from '../../../../../.github/scripts/ciFailureEvidenceTestContract.mjs';
+import { withoutFaultEvidenceUpload, withoutOptionalEvidenceAllowance } from '../../../../../.github/scripts/ciFailureEvidenceTestContract.mjs';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -105,7 +105,7 @@ test('existing diagnostic can consume the exact upgrade artifact without rebuild
   assert.match(diagnostic, /run-id: \$\{\{ inputs\.artifact_run_id \}\}/u);
   assert.match(diagnostic, /if \(\$commandExit -ne 0 -or \$LASTEXITCODE -ne 0\) \{ throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED' \}/u);
   assert.doesNotMatch(diagnostic, /runUpgradeRollback\.mjs/u);
-  assert.doesNotMatch(diagnostic, /installer:v2-upgrade-artifact:build|upload-artifact/u);
+  assert.doesNotMatch(withoutFaultEvidenceUpload(diagnostic), /installer:v2-upgrade-artifact:build|upload-artifact/u);
   const scope = "            && inputs.artifact_kind == 'legacy'\n";
   assert.equal(diagnostic.split(scope).length, 2);
   const required = withoutOptionalEvidenceAllowance(diagnostic.replace(scope, ''), 1);
@@ -118,4 +118,25 @@ test('existing diagnostic can consume the exact upgrade artifact without rebuild
       }, { timeout: 1000 }), false);
     }
   }
+});
+
+test('diagnostic upload exception rejects unsafe changes and leaves other uploads visible', async () => {
+  const source = await readFile(resolve(dirname(WORKFLOW_PATH), 'windows-acceptance-supervisor-feasibility.yml'), 'utf8');
+  const diagnostic = source.split('  packaged-boundary-diagnostic:')[1].split(/^  [\w-]+:\s*$/m)[0];
+  for (const changed of [
+    diagnostic.replace('steps.fault_evidence_seal.outputs.ciphertext', "runner.temp }}/*.gpg"),
+    diagnostic.replace("steps.fault_evidence_seal.outputs.sealed == 'true'", "steps.fault_evidence_seal.outputs.sealed == 'true' || true"),
+    diagnostic.replace('uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
+      'uses: actions/upload-artifact@main'),
+    diagnostic.replace('retention-days: 1\n', 'retention-days: 2\n'),
+    diagnostic.replace('include-hidden-files: false', 'include-hidden-files: true'),
+  ]) assert.throws(() => withoutFaultEvidenceUpload(changed));
+  const additional = diagnostic + '\n      - name: Unapproved upload\n        uses: actions/upload-artifact@main\n';
+  assert.match(withoutFaultEvidenceUpload(additional), /upload-artifact@main/u);
+  assert.throws(() => assert.doesNotMatch(withoutFaultEvidenceUpload(additional), /upload-artifact/u));
+  const unnamed = diagnostic.replace('      - name: Reverify immutable artifact after diagnostic',
+    '      - uses: actions/upload-artifact@main\n        with: {name: extra, path: README.md}\n\n' +
+    '      - name: Reverify immutable artifact after diagnostic');
+  assert.match(withoutFaultEvidenceUpload(unnamed), /upload-artifact@main/u);
+  assert.throws(() => assert.doesNotMatch(withoutFaultEvidenceUpload(unnamed), /upload-artifact/u));
 });

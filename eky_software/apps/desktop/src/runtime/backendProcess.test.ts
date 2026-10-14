@@ -47,10 +47,11 @@ describe('backend process shutdown result', () => {
     expect(fixture.kill).toHaveBeenCalledOnce();
   });
 
-  it('keeps update shutdown strict without invoking the forced fallback', async () => {
+  it.each(['stopForUpdate', 'stopForRestore'] as const)(
+    'keeps %s strict without invoking the forced fallback', async (method) => {
     vi.useFakeTimers();
     const fixture = await createFixture();
-    const rejection = expect(fixture.backend.stopForUpdate(operationId)).rejects.toThrow(
+    const rejection = expect(fixture.backend[method](operationId)).rejects.toThrow(
       'The backend did not stop gracefully within the allowed time.',
     );
     await vi.advanceTimersByTimeAsync(3_000);
@@ -58,21 +59,24 @@ describe('backend process shutdown result', () => {
     expect(fixture.kill).not.toHaveBeenCalled();
   });
 
-  it('keeps successful update shutdown compatible', async () => {
+  it.each([
+    ['stopForUpdate', 'shutdownForUpdate'], ['stopForRestore', 'shutdownForRestore'],
+  ] as const)('preserves successful %s and its named command', async (method, type) => {
     vi.useFakeTimers();
     const fixture = await createFixture();
-    const stopped = fixture.backend.stopForUpdate(operationId);
-    expect(fixture.postMessage).toHaveBeenCalledWith({ type: 'shutdownForUpdate', operationId });
+    const stopped = fixture.backend[method](operationId);
+    expect(fixture.postMessage).toHaveBeenCalledWith({ type, operationId });
     fixture.process.emit('exit', 0);
     await expect(stopped).resolves.toBeUndefined();
     expect(fixture.kill).not.toHaveBeenCalled();
   });
 
-  it('rejects an invalid update operation before consuming the ordinary stop', async () => {
+  it.each(['stopForUpdate', 'stopForRestore'] as const)(
+    'rejects an invalid %s operation before consuming the ordinary stop', async (method) => {
     vi.useFakeTimers();
     const fixture = await createFixture();
     fixture.postMessage.mockClear();
-    await expect(fixture.backend.stopForUpdate('invalid')).rejects.toThrow('BACKEND_STOP_OPERATION_INVALID');
+    await expect(fixture.backend[method]('invalid')).rejects.toThrow('BACKEND_STOP_OPERATION_INVALID');
     expect(fixture.postMessage).not.toHaveBeenCalled();
     const stopped = fixture.backend.stop();
     expect(fixture.postMessage).toHaveBeenCalledWith({ type: 'shutdown' });
@@ -80,12 +84,12 @@ describe('backend process shutdown result', () => {
     await expect(stopped).resolves.toBe('exited');
   });
 
-  it.each(['stop', 'stopForUpdate'] as const)(
+  it.each(['stop', 'stopForUpdate', 'stopForRestore'] as const)(
     'rejects an unsuccessful process exit during %s',
     async (method) => {
       vi.useFakeTimers();
       const fixture = await createFixture();
-      const rejection = expect((method === 'stop' ? fixture.backend.stop() : fixture.backend.stopForUpdate(operationId))).rejects.toThrow(
+      const rejection = expect((method === 'stop' ? fixture.backend.stop() : fixture.backend[method](operationId))).rejects.toThrow(
         'The backend exited unsuccessfully during shutdown.',
       );
       fixture.process.emit('exit', 1);
@@ -621,12 +625,13 @@ describe('backend parent reservation transfer', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('does not add a new stop budget for a stuck reclaim after a delayed zero exit', async () => {
+  it.each(['stopForUpdate', 'stopForRestore'] as const)(
+    'does not add a new %s budget for a stuck reclaim after a delayed zero exit', async (method) => {
     vi.useFakeTimers();
     const fixture = await createFixture();
     const reclaimed = createGate();
     fixture.transfer.reclaimAfterExit.mockImplementationOnce(() => reclaimed.promise);
-    const rejected = expect(fixture.backend.stopForUpdate(operationId))
+    const rejected = expect(fixture.backend[method](operationId))
       .rejects.toThrow('BACKEND_PROCESS_RESERVATION_FAILED');
     await vi.advanceTimersByTimeAsync(2_999);
     fixture.process.emit('exit', 0);
@@ -643,19 +648,20 @@ describe('backend parent reservation transfer', () => {
 describe('backend shutdown event ordering', () => {
   it.each([
     ['stop', 0], ['stop', 1], ['stopForUpdate', 0], ['stopForUpdate', 1],
+    ['stopForRestore', 0], ['stopForRestore', 1],
   ] as const)('does not let %s claim an unsolicited exit %s as graceful', async (method, exitCode) => {
     vi.useFakeTimers();
     const fixture = await createFixture();
     const unexpectedExit = vi.fn();
     fixture.backend.onUnexpectedExit(unexpectedExit);
     fixture.process.emit('exit', exitCode);
-    await expect((method === 'stop' ? fixture.backend.stop() : fixture.backend.stopForUpdate(operationId))).rejects.toThrow('The backend exited unsuccessfully during shutdown.');
+    await expect((method === 'stop' ? fixture.backend.stop() : fixture.backend[method](operationId))).rejects.toThrow('The backend exited unsuccessfully during shutdown.');
     expect(unexpectedExit).toHaveBeenCalledOnce();
     expect(fixture.postMessage).not.toHaveBeenCalledWith({ type: 'shutdown' });
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it.each(['stop', 'stopForUpdate'] as const)(
+  it.each(['stop', 'stopForUpdate', 'stopForRestore'] as const)(
     'rejects %s when the request emits zero exit and then throws', async (method) => {
       vi.useFakeTimers();
       const fixture = await createFixture();
@@ -663,27 +669,27 @@ describe('backend shutdown event ordering', () => {
         fixture.process.emit('exit', 0);
         throw new Error('synthetic private request failure');
       });
-      await expect((method === 'stop' ? fixture.backend.stop() : fixture.backend.stopForUpdate(operationId))).rejects.toThrow('BACKEND_STOP_FAILED');
+      await expect((method === 'stop' ? fixture.backend.stop() : fixture.backend[method](operationId))).rejects.toThrow('BACKEND_STOP_FAILED');
       expect(fixture.kill).not.toHaveBeenCalled();
       expect(vi.getTimerCount()).toBe(0);
     },
   );
 
-  it.each(['stop', 'stopForUpdate'] as const)('observes synchronous exit from %s', async (method) => {
+  it.each(['stop', 'stopForUpdate', 'stopForRestore'] as const)('observes synchronous exit from %s', async (method) => {
     vi.useFakeTimers();
     const fixture = await createFixture();
     fixture.postMessage.mockImplementation(() => { fixture.process.emit('exit', 0); });
-    await expect((method === 'stop' ? fixture.backend.stop() : fixture.backend.stopForUpdate(operationId))).resolves.toBe(method === 'stop' ? 'exited' : undefined);
+    await expect((method === 'stop' ? fixture.backend.stop() : fixture.backend[method](operationId))).resolves.toBe(method === 'stop' ? 'exited' : undefined);
     expect(fixture.kill).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it.each(['stop', 'stopForUpdate'] as const)('keeps a throwing %s request bounded and unclean', async (method) => {
+  it.each(['stop', 'stopForUpdate', 'stopForRestore'] as const)('keeps a throwing %s request bounded and unclean', async (method) => {
     vi.useFakeTimers();
     const fixture = await createFixture();
     fixture.postMessage.mockImplementation(() => { throw new Error('synthetic private post failure'); });
     fixture.kill.mockImplementation(() => { fixture.process.emit('exit', 0); return true; });
-    const rejection = expect((method === 'stop' ? fixture.backend.stop() : fixture.backend.stopForUpdate(operationId))).rejects.toThrow();
+    const rejection = expect((method === 'stop' ? fixture.backend.stop() : fixture.backend[method](operationId))).rejects.toThrow();
     await vi.advanceTimersByTimeAsync(3_000);
     await rejection;
     expect(fixture.kill).toHaveBeenCalledTimes(method === 'stop' ? 1 : 0);

@@ -439,7 +439,9 @@ Ensisijainen tutkittava malli on:
 3. keskeneräiset transaktiot valmistuvat tai keskeytyvät
 4. snapshot tehdään `better-sqlite3 13.0.2`:n dokumentoidun SQLite backup
    -API:n avulla
-5. snapshotin integrity ja foreign keys tarkistetaan erillisestä tiedostosta
+5. mainin omistama eristetty utility tarkistaa snapshotin schema/history-,
+   integrity-, foreign-key- ja katalogitiedot sidotusta kertakopiosta
+   ennen varmuuskopion hyväksyntää ja julkaisua
 6. tavallinen backup vapauttaa suojan snapshot-vaiheen valmistuttua;
    pre-update-snapshot kuuluu päivityksen pidempään kirjoitussuojaan
 
@@ -449,6 +451,15 @@ yhteensopivuus on varmennettu automaattisilla testeillä. Tämä on valittu R0:n
 SQLite-snapshot-malliksi. Jos myöhempi ajuri- tai Electron-päivitys rikkoo
 todennetun yhteensopivuuden, release estetään ja fallbackina arvioidaan
 backendin ja SQLite-yhteyden hallittua sulkemista snapshotin ajaksi.
+
+Muodostaja sulkee snapshot-tavut ja sitoo tiedostojen koon sekä hashin,
+mutta ei avaa kopiota uudelleen SQLite-tarkistukseen business-backendissä.
+Muodostuksen tulos ei itsessään hyväksy varmuuskopiota: portable- ja
+palautuspistekuluttajat vaativat eristetyn tarkistimen samoihin tavuihin
+sidotun kuittauksen ennen salausta. Tuntemattomia sivutiedostoja ei poisteta
+hyväksynnän saavuttamiseksi. [V2ag:n kohdenäyttö](release-0.3.0-m1-preparation-plan.md#v2ag-snapshot-muodostajan-eristetty-tarkistusketju)
+kattaa oikean muodostajan WAL-tavut ja hylkäykset; koko paketoidun palautuksen
+portti sekä durable-aktivoinnin vaihto säilyvät avoimina.
 
 Snapshotin kopiointi- ja readonly-validointirajalla ajurille välitetään
 Windowsissa pitkä polkumuoto Noden `toNamespacedPath`-funktiolla. Muunnos
@@ -510,20 +521,56 @@ olla sama kuin alkuperäinen snapshot-staging. Containerin, profiilin,
 migraatioketjun ja tiedostotavujen nykyiset tarkistukset säilyvät. Tämä ei
 muuta durable-backup-formaattia eikä anna restore- tai lähetysvaltuutta.
 
-Broker-pyynnön aikakatkaisu ei todista taustatyön päättymistä. Jos snapshotin
-tai validoinnin vastaus puuttuu, palvelu käyttää nykyisen sarjallisen brokerin
-yhtä rajattua assertion-kuittausta ennen stagingin poistoa. Jos myös tämä
-epäonnistuu, staging säilyy nykyisen käynnistys-/recovery-siivouksen varalle;
-ensimmäinen virhe ei vaihdu siivouksen virheeksi. Myöhäinen vastaus ei enää
-käynnistä poistoa tai muuta epäonnistumista onnistumiseksi. Tämä ei muuta
-tavallisen backupin vapautussääntöä eikä lisää uutta siivousjärjestelmää.
+Broker-pyynnön aikakatkaisu ei todista taustatyön päättymistä.
+[K:n lähdekuluttaja](release-0.3.0-m1-preparation-plan.md#v2aa-palautuspisteen-lähdevaraus)
+käyttää inspection-portin nykyistä natiiviomistajaa: lähdekansio pysyy varattuna
+tarkistuksen, receipt-sidonnan, tallennuksen ja rotationin yli. Poisto vaatii
+omistajan tuoreen todistuksen sekä päättyneen käytön; assertion-kuittaus ei
+ole poistovaltuus. Epävarma kirjoittaja tai siivous säilyttää aineiston ja
+ensisyyksi jää alkuperäinen virhe. Myöhäinen vastaus ei käynnistä uutta
+poistoa tai muuta epäonnistumista onnistumiseksi. Tavallisen maintenance-
+suojan vapautussääntö säilyy, caller-owned update-suojaa ei vapauteta.
 
-Sama rajattu kuittaus koskee update-palautuspisteen itsenäisen
-tarkistusstagingin backend-validointia. Sen aikakatkaisu ei poista
-tarkistusstagingia ennen sarjallista omistajakuittausta. Katkennut yhteys tai
-epäonnistunut kuittaus säilyttää stagingin ja alkuperäisen virheen;
-myöhemmin valmistuva validointi ei käynnistä erillistä siivousta.
-Onnistunut validointi siivoaa tarkistusstagingin nykyisellä polulla.
+**Nykyinen K-kytkentä:** [Store-containerin itsevalidointi ja materialisointi](release-0.3.0-m1-preparation-plan.md#v2ad-palautuspisteen-tallennuksen-native-kytkentä)
+sekä [odottavan palautusstagingin valmistelu](release-0.3.0-m1-preparation-plan.md#v2ae-odottavan-palautusstagingin-native-omistajuus)
+käyttävät pakollista native-omistajuutta.
+[V2ak:n durable-handoff](release-0.3.0-m1-preparation-plan.md#v2ak-native-stagingin-durable-handoff)
+todentaa live-aktivoinnin säilytysesteen, journal-readbackin ja varauksen
+luovutuksen ennen globaalia sulkua kummassakin kuluttajassa. Tavallisen
+backupin vapautussääntö säilyy. [V2ag](release-0.3.0-m1-preparation-plan.md#v2ag-snapshot-muodostajan-eristetty-tarkistusketju)
+poisti muodostajan eristämättömän kopiotarkistuksen; vanha raskas broker
+poistetaan vasta kaikkien korvattavien kuluttajien kattavuuden jälkeen.
+[V2al:n vaihekohtainen tiedostotarkistus](release-0.3.0-m1-preparation-plan.md#v2al-kylmäpalautuksen-vaihekohtainen-tiedostotarkistus)
+sitoo forward-jatkon samaan journaliin ja strict-slottiläsnäoloon.
+[V2am:n muuttamaton journal-valinta](release-0.3.0-m1-preparation-plan.md#v2am-kylmäpalautuksen-muuttamaton-journal-valinta)
+säilyttää alkuvalinnassa journalin sivutiedostot kummallakin restore-polulla.
+[V2an:n tuore forward-omistajuus](release-0.3.0-m1-preparation-plan.md#v2an-kylmäpalautuksen-tuore-forward-omistajuus)
+varaa täsmällisen olemassa olevan operaatiokansion ennen korjaavaa lukua ja
+tarkistaa saman journalin sekä valtuuden journal-korjausten ja forward-
+mutaation yli. Forward-valtuus ei anna rollback- tai terminal-valtuutta;
+epävarma jatko säilyttää aineiston selvitykseen. Valinta, tiedostocensus ja
+varaus eivät korvaa sisältö- tai lineage-todistetta eivätkä osoita kaikkien
+vieraiden prosessien poissaoloa.
+[V2ao:n vaihekohtainen sisältöydin](release-0.3.0-m1-preparation-plan.md#v2ao-kylmäpalautuksen-vaihekohtainen-sisältöydin)
+lukee tietokannan ja PDF:t itsenäisesti valituista lähdesloteista ja antaa
+erillisen cold-receiptin ilman kuviteltua portable-katalogitiedostoa.
+[V2ap:n nimetty prosessiraja](release-0.3.0-m1-preparation-plan.md#v2ap-kylmäsisällön-nimetty-prosessiraja)
+erottaa cold- ja portable-tulokset, sitoo valitun lähdeparin ja vaatii saman
+nykyisen exit-/reclaim-todisteen ennen hyväksyntää. Startup-kuluttaja on
+vielä avoin; receipt ei yksin anna siirtovaltuutta.
+[V2aq:n omistettu tarkistuskopio](release-0.3.0-m1-preparation-plan.md#v2aq-kylmäsisältöportin-omistettu-tarkistuskopio)
+käyttää samaa portable/cold-kopio- ja exit-ketjua sekä tuoretta lähdepari- ja
+lineage-tarkistusta. Tämä on sisältöportti, ei journalin tai tavujen tuore
+siirtovaltuus. [V2ar:n hyväksytty PDF-tiedostosidonta](release-0.3.0-m1-preparation-plan.md#v2ar-valittujen-pdf-tiedostojen-sidonta)
+välittää omistetun kopion kiinteän, kokoon ja hashiin sidotun luettelon
+mainille vasta exit/reclaim-todistuksen jälkeen, ennen kopiosiivoamista.
+Main ei lue SQLitea eikä päättele viitteitä koko hakemistosta. Epävarmasti
+päättynyt mainin luku säilyttää kopion; myöhäinen vastaus ei vapauta sitä
+poistettavaksi. Nimetty lähdetavujen tarkistin ei itsessään anna siirtovaltuutta.
+Tavujen
+todellinen kytkentä ennen jokaista siirtoa sekä
+offline-/terminal-valtuus ja koko palautusketju todennetaan ennen K:n
+hyväksyntää; välitilaa ei julkaista.
 
 Toteutuksen nykytila ja vielä avoimet kytkennät löytyvät
 [C:n omistavasta valmistelusuunnitelmasta](release-0.3.0-m1-preparation-plan.md#cn-rajattu-toteutusehdotus).
@@ -531,6 +578,33 @@ Tämä sopimus ei yksin tarkoita koko R04:n tai packaged-porttien hyväksyntää
 
 Maintenance-lukko ei ole käyttäjäpermissionin korvike. Backendin permission-,
 session- ja `ActorContext`-rajat säilyvät.
+
+### Palautuksen kirjoitussuojan erillinen vapautussääntö
+
+K:n [V2ai-päätös](release-0.3.0-m1-preparation-plan.md#v2ai-palautuksen-suljettu-kirjoitussuoja)
+erottaa palautuksen suojan tavallisesta backupista. Palautuksen sama
+kymmenen minuutin voimassaoloraja, drain-virhe tai yksityisen brokerin
+katkeaminen mitätöi palautusvaltuuden mutta ei vapauta business-kirjoituksia.
+Mainin toteama journaliepävarmuus mitätöi vain täsmälleen saman palautuksen
+omistajuuden. Tiukasti validoitu mitätöinti käsitellään odottavasta työjonosta
+riippumatta; myöhäinen onnistumiskuittaus ei saa ohittaa jo vastaanotettua
+mitätöintiä. Muut operaatiot säilyvät nykyisessä sarjajonossa.
+Tavallinen end, force-end tai vieraan operaation vapautus
+ei ohita estoa. Kulunut monotonic-aika tarkistetaan myös ennen myöhäisen
+vastauksen kuittaamista; viivästynyt ajastin ei pidennä valtuutta.
+
+Vain onnistunut palautus tai ennen pysyviä muutoksia todennettu turvallinen
+peruutus saa vapauttaa edelleen voimassa olevan suojan sen nimetyn portin
+kautta. Epävarmat tiedostot ja journal säilytetään. Uusi hallittu runtime
+ei avaa business-käyttöä ennen nykyisen startup/recoveryn journal-,
+omistajuus- ja terveystarkistuksia; restart ei itsessään ole korjaustodiste.
+Poikkeama ei käynnistä automaattista palautusta, poista aineistoa tai nosta
+aikarajaa. Tavallisen backupin ja päivityksen sopimukset säilyvät.
+
+Tilakoneen ja yksityisen brokerin kohdetodennus on kirjattu V2ai:hin ja
+live-aktivoinnin journal-/sulkukytkentä V2ak:hin. Offline/cold-palautuksen
+sekä paketoidun ketjun lopullinen hyväksyntä kuuluu K:n nykyisiin portteihin;
+pelkkä uuden viestioperaation olemassaolo ei todista niiden kytkentää.
 
 ## Backupin muodostaminen
 
@@ -626,6 +700,11 @@ toteutetaan hallituilla forward-migraatioilla; profiilin tyhjentäminen tai
 uuden yrityksen luomisen vaatiminen ei ole migraation korvaava ratkaisu.
 Tuettujen aiempien versioiden varmuuskopiot validoidaan ja päivitetään
 nykyiseen rakenteeseen restore-stagingissa ennen aktivointia.
+Tämä säilyttämisvaatimus koskee myös tulevia tietomallimuutoksia:
+tuetun vanhan varmuuskopion palautus ja business-sisällön säilyminen
+kuuluvat kyseisen muutoksen hyväksyntänäyttöön. Pieni nykyinen testiaineisto
+ei anna lupaa ohittaa yhteensopivuusporttia. Tuntematonta tai virheellistä
+rakennetta ei hyväksytä yhteensopivuuden nimissä.
 
 B5:n työpuutoteutuksessa katalogin skeema valitaan tarkistetusta
 migraatiohistoriasta. Lähteen katalogi ja PDF-tavut validoidaan ennen
@@ -659,6 +738,10 @@ Inspector ei luota tiedostopäätteeseen. Se:
 - torjuu duplicate-, unknown-, absolute- ja traversal-polut
 - tarkistaa jokaisen koon ja SHA-256-checksumin
 - vertaa backup-, app- ja migration-yhteensopivuudet erillisinä päätöksinä
+- varmentaa SQLite-historiataulujen todelliset määrittelyt ennen niiden
+  rajattua lukua ja koko valitun migration-prefixin objektijoukon ennen
+  eheys-, FK- ja profiili-identiteetin tarkistamista; yhteisen tarkistimen
+  omistaa [database/migration](local-database-implementation-plan.md#varmuuskopion-schema-tarkistin)
 - vaatii SQLiteen tallennetun migration metadatan vastaamaan packaged
   SQL-manifestia; pelkkä backup-manifestin chain-arvo ei riitä
 - hyväksyy restore-stagingissa yhden erikseen nimetyn, ennen migration-
@@ -670,12 +753,151 @@ Inspector ei luota tiedostopäätteeseen. Se:
 - ei pura business-sisältöä aktiiviseen profiiliin
 - palauttaa käyttäjälle turvallisen yhteenvetotilan ilman yritysdataa
 
+K-paketin ensimmäinen schema-kytkentä ei vielä todista kaikkien kirjoittavien
+käyttöpolkujen suojausta tai raskaan tarkistuksen eristämistä aktiivisesta
+backendistä. Näiden keskeneräisen integraation ja hyväksynnän omistaa
+[M1:n K-osio](release-0.3.0-m1-preparation-plan.md#k-paketin-valmistelu-ja-hyväksyntärajat).
+
+Portable-luonti ja Inspect käyttävät nyt mainin pakollista omistajuusporttia,
+nykyistä installation-leasen busy-rajaa ja receiptin yksityistä runtime-generationia.
+Tarkistusreceipt ei yksin anna käyttö- tai poisto-oikeutta: omistettu varaus
+säilyy lähdetavujen käytön ja riippumattoman itsevalidoinnin yli.
+Kirjoitettavat tavut sidotaan saman tarkistuksen validoimaan artifact-joukkoon:
+receiptin yksityinen sisältöidentiteetti muodostetaan täsmällisistä loogisista
+poluista, koista ja todellisista SHA-256:ista. Main vertaa sitä kirjoitettaviin
+lähdetavuihin. PDF:n nykyinen dokumentti-identiteetistä johdettu tallennusnimi
+ei ole PDF-sisällön tiiviste; nimiä tai backup-formaatteja ei muuteta.
+Tämä receipt ei kuulu rendererille, julkiseen HTTP:hen tai diagnostiikkaan.
+Uusi työ
+estetään synkronisesti sulkemisen alkaessa; koko kuluttajan rajattu tyhjennys
+ja omistettu siivous vaaditaan ennen puhtaan sammutuksen merkintää. Ensivirhe
+ja varmentamaton siivous säilyvät erillisinä, eikä epävarma poisto toistu.
+[V2z:n kohdetodennus](release-0.3.0-m1-preparation-plan.md#v2z-portablen-main-kuluttajaportti)
+ei vielä hyväksy recovery-/restore-kuluttajien pitkäikäistä staging-varausaikaa,
+durable-handoffia, cold-recoveryä tai paketoitua palautusketjua. Vanha raskas
+tarkistus ei ole portablen fallback; se poistetaan vaihtamattomilta kuluttajilta
+vasta niiden vastaavan kattavuuden jälkeen.
+
+[V2ab:n valmistellun slotin omistajuus](release-0.3.0-m1-preparation-plan.md#v2ab-valmistellun-palautuksen-omistajuuden-siirto)
+estää kilpailevan stagingin, aktivoinnin ja discardin saman valmistellun
+palautuksen aikana. Pysyvä tai epävarma journal-valmistelu kuluttaa slotin
+ennen runtimen sulkua; se ei palaudu discardattavaksi kutsun hylkäyksessä.
+Puhdas ennen journalia epäonnistunut yritys voidaan vapauttaa vasta journalin
+sekä kyseisen operaation rollback- ja failed-kansioiden puuttumisen jälkeen.
+Palvelu ei itse vapauta maintenancea epävarmassa handoffissa. Vanhan brokerin
+ajastetun vapautuksen ja katkeamisen sovittaminen tähän pysyvään
+omistajuuteen sekä tarkistusutilityn pitkäikäinen varaus ovat vielä avoimia
+kuluttajakytkennän ehtoja, eivät tällä slot-korjauksella todistettuja.
+
+Yhteinen käynnistystarkistus ja migration runner käyttävät samaa schema-porttia.
+Runnerin sisäinen legacy-baseline ei laajenna backupin tai restore-startupin
+038-poikkeusta. Backendin `openAttestedMigrationDatabase`
+tarkistaa olemassa olevan kannan readonly-yhteydellä ennen kirjoittavaa
+avausta ja uudelleen palautettavalla kirjoittavalla yhteydellä. Tämä ei
+korvaa candidate-kopioinnin omaa esitarkistusta tai lähteen ja kopion
+sisältösidontaa. Kolmen candidate-tarkistuksen
+[avausportti](release-0.3.0-m1-preparation-plan.md#candidate-tarkistuksen-avausportti)
+käyttää nyt samaa apua ilman luonti- tai tyhjän kannan valtuutta; alkuperäisen
+snapshotin kopiosopimus säilyy erillisenä. Normaali käynnistys ei tee uutta
+kaikkien PDF-tavujen tarkistusta tämän avausportin perusteella. Aiemman
+hot-journal-regression ratkaisee [V2u:n rajattu omistetun työtilan palautus](release-0.3.0-m1-preparation-plan.md#v2u-omistetun-paikallisen-työtilan-kaatumispalautus).
+Sen kohdenäyttö ei yksin hyväksy kaikkia candidate-kutsujia tai koko K:ta;
+[nykyinen kutsujatarkistus](release-0.3.0-m1-preparation-plan.md#kn-kokonaiskytkennän-tarkistus)
+omistaa korjausten näytön ja jäljellä olevat loppuportit. Tuotu backup ei saa omistetun paikallisen
+työtilan kaatumispalautuspoikkeusta.
+
+Nykyisen ja historiallisen julkaistun candidate-työtilan aktiiviprofiilin
+viiteavaintarkistus lukee vain ensimmäisen `foreign_key_check`-virherivin.
+Tarkistus ei kerää vioittuneen kannan kaikkia virheitä muistiin: jo yksi
+riittää nykyiseen hylkäykseen, eikä ehjälle kannalle aseteta uutta kokorajaa.
+Schema-avausportti, tuettujen historiallisten kopioiden ehdot ja sulkemisen
+velvoitteet säilyvät. [K:n loppukatselmus](release-0.3.0-m1-preparation-plan.md#kn-kokonaiskytkennän-tarkistus)
+erottaa kohdetodennuksen paketoidusta palautushyväksynnästä.
+
+Candidate-kopioinnin esitarkistusehdokkaassa toistui ehjän WAL-snapshotin
+hylkäys: myös readonly-avaus voi luoda sivutiedostoja. Korjaus rajattiin
+alkuperäisen sijasta operaation oman kertakopion tarkistukseen.
+[Omistetun kertakäyttöisen tarkistuskopion koe](release-0.3.0-m1-preparation-plan.md#v2e-erillisen-tarkistuskopion-koe)
+läpäisi ennen tuotantokytkentälupaa. Alkuperäiseen
+snapshotiin tai tuntemattomiin sivutiedostoihin ei kohdisteta poistoja.
+Kytkentä edellyttää koko omistus-, sulkemis- ja siivousketjun todennusta,
+mukaan lukien ylemmän kutsujan lähdeaineiston säilytys virheessä.
+[Caller-säilytyksen V2f](release-0.3.0-m1-preparation-plan.md#v2f-kutsujien-aineiston-säilytys)
+todentaa import-, replacement- ja activation-migration-kutsujien
+säilytysrajat. Korvauksen lähdestaging ja ehdokaspuu tarkistetaan molemmat
+ennen ensimmäistä poistoa; epäselvä koekansio ei kuulu rekursiiviseen
+poistolupaan. Tämä ei vielä todista tarkistusutilityn poistumista eikä
+tee erillisiä tiedostopoistoja atomiseksi transaktioksi.
+
+[V2g:n synteettinen utility-koe](release-0.3.0-m1-preparation-plan.md#v2g-tarkistuskopio-todellisessa-utility-prosessissa)
+todensi nykyisellä C-omistajalla erillisen koekopion natiivin sulkemisen,
+lapsen todellisen poistumisen ja varauksen palautuksen sekä säilytyksen
+puuttuvassa kuittauksessa, pakkopysäytyksessä ja vieraassa sisällössä.
+[V2h:n varsinaiset WAL-kuluttajaregressiot](release-0.3.0-m1-preparation-plan.md#v2h-wal-kuluttajaregressio-ja-kytkentäpäätös)
+vahvistivat ehjän backupin hylkäyksen ja lähdekansion sivutiedostot.
+Omistaja hyväksyi rajatun kytkennän tämän jälkeen.
+[V2i:n tuotantokuluttaja](release-0.3.0-m1-preparation-plan.md#v2i-tarkistuskopion-tuotantokuluttaja)
+tarkistaa schema/historyn, identiteetin, eheyden ja katalogin samalla
+omistetulla readonly-kopiolla. Migraatiokohteen kopiointi vaatii tämän
+kopion tarkistetut tavut, koon ja SHA-256:n; lähteen readonly-avaus ei
+kuulu enää tähän polkuun. Main luo ja sitoo tarkistuskansion identiteetin
+ennen nykyisen C-varauksen luovutusta. Poisto vaatii native-sulkemisen,
+lapsen poistumisen, callbackien valmistumisen ja main-varauksen palautuksen;
+onnistunut siivous ei muuta epäonnistunutta operaatiota onnistuneeksi.
+Kytkennän lopullinen katselmus ja packaged-palautustodennus ovat avoinna.
+Tämä ei anna alkuperäisille tai tuntemattomille
+sivutiedostoille poistolupaa eikä korvaa muistibudjetin tai paketoidun
+palautuksen hyväksyntää.
+
+`StagedProfileSnapshotInspector` omistaa staging-kannan ja artifactien
+tarkistuksen ilman aktiivista tietokantaa. Schema ja sisältö luetaan samalla
+readonly-yhteydellä; yhteys suljetaan myös hylkäyksessä. Nykyinen
+`StagedProfileSnapshotValidationService` koostaa edelleen aktiivisen yrityksen
+vertailutiedot vanhalle brokerille. Tämä välivaihe ei vielä siirrä raskasta
+työtä pois aktiivisesta backendistä. Yhteyskohtaiset query-only-,
+trusted-schema-, mmap-, cache- ja temp-asetukset eivät ole prosessin
+muistikatto; K:n eristys ja toimiva muistibudjetti todennetaan erikseen.
+
+[V2ac:n eristetty kuluttaja](release-0.3.0-m1-preparation-plan.md#v2ac-snapshotin-hyväksyntäkäytännön-sidonta)
+käyttää pakollista, kuittaukseen sidottua hyväksyntäkäytäntöä ja avaa vain
+mainin prosessisukupolveen sitoman kertakopion. Alkuperäisen kannan ja katalogin
+sekä tarkistuskopion tavut sidotaan ennen lukua ja tarkistetaan sulkemisen
+jälkeen. Main siivoaa vain oman kansion todellisen native-exitin ja varauksen
+palautuksen jälkeen; epävarmuus säilyttää aineiston. Tiukka snapshot-sisältöjoukko
+ei muutu. V2ac:n kohdenäyttö ei hyväksynyt vanhan muodostajan eristämätöntä
+kopiotarkistusta; myöhempi V2ag poistaa sen ja todentaa oikeat muodostajatavut.
+Kumpikaan ei korvaa kaikkien durable-/restore-kutsujien ja paketoidun
+palautuksen todennusta. Vanha broker ei ole uuden portin fallback.
+
+[V2ad:n palautuspiste-Store](release-0.3.0-m1-preparation-plan.md#v2ad-palautuspisteen-tallennuksen-native-kytkentä)
+käyttää eristettyä porttia myös salatun containerin riippumattomaan
+itsevalidointiin ja materialisointiin. Omistettu staging-poisto vaatii native-
+omistajan kuittauksen; valinnaisen settlement-metodin puuttuminen ei anna
+poistolupaa. Epävarma siivous säilyttää containerin, avainkuoren ja stagingin
+eikä julkaise hyvää indeksimerkintää. Onnistunut palautusmaterialisointi
+jättää stagingin varauksen jatkavalle omistajalle. Sen durable-/offline-
+handoff on K:n erillinen avoin portti, ei tämän kohdenäytön hyväksymä polku.
+
+[V2ae:n valmistelukuluttajat](release-0.3.0-m1-preparation-plan.md#v2ae-odottavan-palautusstagingin-native-omistajuus)
+säilyttävät tämän varauksen käyttäjän odottaessa. Prepared-metadata julkaistaan
+vasta tuoreen omistajuuskuittauksen jälkeen. Portable-peruutus poistaa vain
+omistajan portin kautta; epävarma siivous säilyttää aineiston, estää uuden
+valmistelun sekä aktivointiclaimin ja tuottaa nykyisen turvallisen
+`restore.stagingFailed`-tapahtuman. Tämä ei vielä valtuuta journal-handoffia
+tai offline/cold-palautusta eikä muuta backup-formaatteja.
+
 Legacy-poikkeus ei koske normaalia snapshotia, recovery pointia tai tavallista
 startup-tarkistusta. Restore-aktivointijournalin `validateRestoredProfile`-tila
 valtuuttaa täsmälleen kyseisen käynnistyksen käyttämään restore-yhteensopivaa
 migration-tarkistusta ja profile restore -migraatiovaltuutta. Valtuus ei tule
-rendereriltä eikä sitä käytetä rollback-profiilin, normaalin käynnistyksen tai
-update-polun yhteydessä. Muu metadataa vailla oleva, lyhyempi, future-, missing-
+rendereriltä eikä tätä restore-migraatiovaltuutta käytetä rollback-profiilin,
+normaalin käynnistyksen tai update-polun yhteydessä. Siitä erillinen
+[C:n alkuperäisketjun terminal-tarkistus](release-0.3.0-m1-preparation-plan.md#v2bc-cn-alkuperäisketjun-terminal)
+ja [journaliton palautuskäynnistys](release-0.3.0-m1-preparation-plan.md#v2bh-journalittoman-cn-historiallinen-käynnistysadmissio)
+käyttävät hyväksyttyä restoreCompatible-tarkistusta vain täsmällisesti
+sidotulle alkuperäisketjulle ennen binaaripalautusta, ilman forward-migraatiota
+tai UI:n avaamista. Se ei ole yleinen legacy-startup-poikkeus eikä koko K:n
+valmistumisen todiste. Muu metadataa vailla oleva, lyhyempi, future-, missing-
 middle- tai muuttuneeseen historialliseen SQL:ään perustuva kanta torjutaan.
 Hyväksytyn legacy-backupin aktivoinnin jälkeen migration runner luo metadata-
 taulun ja ankkuroi kaikki 38 riviä `legacy_baseline`-alkuperällä ennen
@@ -741,6 +963,151 @@ Kun staging-profiili on täysin validoitu:
 Epäonnistumisessa uusi runtime suljetaan ja pre-restore-piste palautetaan.
 Rollback hyväksytään vasta, kun vanha profiili käynnistyy terveenä.
 
+Startupin loppuvaihe käyttää [valitun journalin tuoretta sidontaa](release-0.3.0-m1-preparation-plan.md#v2at-loppuvaiheen-journal-sidonta).
+Hyväksyntä, rollback ja siivous eivät vaihda operaatiota uudella korjaavalla
+luvulla. Oman tavallisen forward-keskeytyksen etenemä varmennetaan ilman
+journal-mutaatiota ennen rollbackia; cold-forward ei saa tätä valtuutta.
+Pääjournal poistetaan vasta sen sivuslottien jälkeen. Journal-guard ei
+korvaa sisältö-, lineage- tai nykyistä prosessipoissaolon todistetta.
+Sisältöä tarkistava cold-forward ja cold-rollback käyttävät journalin
+edeltäjäkirjoituksessa [erillistä sisältövaltuutta](release-0.3.0-m1-preparation-plan.md#journalin-valinta--ja-sisältötarkistuksen-rajattu-koe).
+Kevyt omistajuus-/valintatarkistus ei lue koko sisältöä uudelleen, mutta
+tuore sisältötarkistus säilyy ennen nextin julkaisua sekä edeltäjän poistoa.
+[Hyväksytty tarkistuskohtien rajaus](release-0.3.0-m1-preparation-plan.md#pdf-luvun-ja-cold-journalin-tuotantokytkentä)
+sallii nextin luonnin/kirjoituksen ja edeltäjän siirron backupiksi tuoreella
+omistajuus-, valinta- ja slottitarkistuksella. Valtuus ja valitut slotit
+varmennetaan sisältötyön jälkeen uudelleen. Muut kutsujat säilyttävät
+yhdistetyn tarkistuksen. Avatun nextin muuttuneet tavut tai polku sekä
+ennen backupin poistoa ilmestynyt next estävät jatkon ja säilyttävät
+aineiston. `read` voi korjata slotteja: läsnä olevan sivuslotin poisto vaatii
+nykyisen valtuuden. Todetusti puuttuvalle sivuslotille ei tehdä poistokutsua;
+myöhemmin ilmestyneen tiedoston poistamiseen ei synny lupaa. `clear`-metodin,
+alkujulkaisun ja business-tiedostosiirtojen suojat säilyvät.
+Cold-forwardin kohdekansion valmistelu tarkistaa omistajuuden, täsmällisen
+journalin sekä tuoreen slot- ja polkurakenteen. Varsinaiset sisältösiirrot ja
+aktivoidun sisällön oikeusmuutokset vaativat edelleen tuoreen sisältötarkistuksen.
+Hylkäys saa jättää keskeneräisen nextin, edeltäjän backup-slotin tai tyhjän
+kohdekansion, mutta ei tarkistamattoman sisällön julkaisua. Uusi käynnistys
+hankkii sisältövaltuuden uudelleen; journalin valinta ei korvaa sitä.
+Live-activationin [täsmällinen valmistelukuitti ja julkaisun valtuus](release-0.3.0-m1-preparation-plan.md#v2bg-aktivoinnin-täsmällinen-journal-ja-valtuus)
+sitovat saman operaation `prepared@0`-journalin readbackiin, forward-siirtoihin
+ja oman forward-virheen jälkeiseen rollbackiin. Pelkkä operation-ID tai
+kirjoituksen kuittaus ei anna tätä lupaa. Valtuuden menetys säilyttää
+aineiston; tavallisen runtimen valtuus säilyy startupin päätyttyä mutta
+lakkaa runtime-shutdownin alkaessa.
+Transaktion luonti- ja forward-julkaisut tarkistavat journalisidonnan myös
+alkuperäisillä kutsumuodoilla ilman erillistä valtuusfunktiota. Kutsujan
+lisävaltuus ei korvaa eikä aktivoi tätä yhteistä julkaisusuojaa.
+Journalittoman C-palautuksen [historiallinen käynnistysadmissio](release-0.3.0-m1-preparation-plan.md#v2bh-journalittoman-cn-historiallinen-käynnistysadmissio)
+sitoo ennen backendin avausta valitun update-operaation nykyiseen
+schema-yhteensopivuuspoikkeukseen. Prepare ja grant varmentavat saman
+valinnan uudelleen. Tämä ei hyväksy palautuksen sisältöä, ohita
+alkuperäisketjun porttia tai anna tiedostomutaatio- tai siivousvaltuutta.
+Ennen forward-vaiheen hyväksyntää tai rollback-intentiä nykyinen strict-census
+varmentaa alkuperäisten, tuotavien ja aktiivisten slottien vaihekohtaisen
+tilan. Puuttuva alkuperäinen tai ylimääräinen slot säilytetään selvitykseen;
+paikallaan olevaa uutta tiedostoa ei arvata jo palautetuksi alkuperäiseksi.
+Jo keskeytyneen rollbackin oma sisältövaltuus pysyy erillisenä vaatimuksena.
+
+[Keskeytyneen rollbackin slot-valinta](release-0.3.0-m1-preparation-plan.md#v2au-keskeytyneen-rollbackin-slot-valinta)
+varmentaa lisäksi alkuperäisen aktiivisen/rollback-sijainnin tai journalin
+todistaman alkuperäisen poissaolon sekä säilyneen tuotavan sisällön. Stagingin
+koko juuren viimeinen siirto failed-aineistoksi saa tapahtua vasta molempien
+alkuperäisten slottien palautumisen jälkeen. Puuttuva, päällekkäinen tai
+linkitetty slot estää siirrot ja terminal-journalin siivouksen. Tämä
+tiedostotilan tarkistus ei korvaa sisältö-, lineage- tai native-valtuutta.
+
+Palautuneen `rolledBack`-operaation tyhjien rakennekansioiden siivous ei ole
+rekursiivinen. Vain nimetty tyhjä `data`, tyhjä `storage` ja niiden tyhjä
+operation-juuri poistetaan. Tuntematon tai myöhäinen sisältö, epäkanoninen
+hakemisto tai poiston jälkeen palannut juuri säilyttää aineiston ja
+journalin. Osittain valmistunut tyhjien kansioiden poisto saa jatkua
+tarkistettuna; sivuslottien ja pääjournalin poisto vaatii lopuksi juuren
+puuttumisen. [Rajattu siivousnäyttö](release-0.3.0-m1-preparation-plan.md#v2aw-rollbackin-loppusiivouksen-säilytys)
+ei korvaa backendin jälkeisen terminalin sisältö- ja omistajuusvaltuutta.
+
+[Alkuperäissisällön erillinen tarkistussopimus](release-0.3.0-m1-preparation-plan.md#v2av-alkuperäissisällön-tarkistussopimus)
+pitää alkuperäisen kannan ja dokumenttien sijainnit erillään tuotavasta
+sisällöstä. Journalin valitsema alkuperäiskannan poissaolo ei tuota
+terveys-, schema- tai identity-kuittia, vaikka aktiivisessa paikassa on
+uusi kohdekanta. Utility-tulos palautuu vasta lapsen exitin ja varauksen
+palautumisen jälkeen. Nimetty main-kuluttaja lukee sidonnat tämän jälkeen
+ja tarkistaa lähdevalinnan uudelleen. Poissaolotulos vaatii tyhjän
+tarkistuskopion; ristiriita säilyttää kopion selvitykseen.
+Nimetty tarkistus sekä paikallaan pysyvän ankkurin ja molempien startup-
+kuluttajien rollback-kytkentä on kohdetodennettu. Valittu journal, tuore
+census, sisältö ja identiteettisidotut native-varaukset portittavat siirrot.
+Luovutuksen aikana tarkistetaan installation- ja lähdevaltuus; ankkurin
+main-omistajuus tarkistetaan ennen luovutusta ja exit/reclaimin jälkeen.
+Staging-varauksen vapautus ei kadota juuren identiteettisidontaa: sama juuri
+tarkistetaan rename-uusinnassa ja siirron kohteessa. Vanhentunut tai
+ristiriitainen havainto säilyttää aineiston ja estää jatkon.
+Kuitti ei yksin anna siirto- tai siivouslupaa. Business-backendin jälkeinen
+loppusiivous ja C offline vaativat edelleen omat tuoreet valtuutensa;
+startupin kohdenäyttö ei sulje koko K:n palautus- ja integraatioportteja.
+
+Valitun kohde- ja alkuperäissisällön yhteinen tavutarkistin lukee PDF:t
+enintään neljän tiedoston erissä. Kaikki aloitetut luvut ja sulut päättyvät
+ennen seuraavaa erää, erillistä sarjallista DB-lukua tai jatkopäätöstä.
+Ensimmäinen havaittu virhe lukitaan ennen odotettavaa sulkua; myöhempi
+sulkuvirhe ei korvaa sitä. Jokaisen tiedoston todelliset tavut, koko,
+tiiviste, PDF-alkutunniste ja kahva-/polkuidentiteetti tarkistetaan edelleen.
+Viimeinen tiedostosidonta tehdään vasta kutsujan odotetun loppuvaltuuden
+jälkeen. Aiemman onnistumisen tiivistettä ei käytetä uusien tavujen lukemisen
+korvikkeena, eikä eräluku muuta aika- tai muistirajoja.
+
+[Hyväksynnän ja siivouksen tilasopimus](release-0.3.0-m1-preparation-plan.md#v2az-hyväksynnän-pysyvyys-ja-alkuperäiskannan-poissaolo)
+erottaa pysyvän `accepted`-julkaisun sen jälkeisestä siivouksesta.
+Keskeytynyt accepted-siivous odottaa tuoreen backendin sisältövalidointia;
+siivousvirhe tai puuttuva commit-kuittaus ei anna vanhaa rollback-valtuutta.
+Journalin osoittama alkuperäiskannan poissaolo pysäyttää rollbackin
+business-käynnistyksen selvitykseen ennen tyhjän kannan luontia.
+Normaali forward-palautus alun perin puuttuvaan kantaan pysyy erillisenä.
+Tuore live-snapshot- ja terminal/native-poistovaltuus vaaditaan koko
+palautusketjun todentamiseen ennen K:n hyväksyntää.
+
+[Terminal-inventaarion rajattu toteutus](release-0.3.0-m1-preparation-plan.md#v2ba-terminal-inventaario-ja-nimetty-siivous)
+siivoaa hyväksytyn operaation vain jäädytetyn tiedostolistan nimetyillä
+poistoilla. Sallitun rakenteen ulkopuolinen tai myöhäinen sisältö säilytetään;
+keskeytynyt siivous säilyttää hyväksytyn journalin eikä aloita rollbackia.
+Identiteetti-/lapsilistainventaario ei ole sisältökuitti tai native-poistolupa.
+Kaapatun tiedostoluettelon [merkintöjen uudelleentarkistus](release-0.3.0-m1-preparation-plan.md#tiedostoluettelon-rajatun-lukuerän-ehdotus)
+käyttää enintään neljän tiedosto- tai kansiomerkinnän erää. Jokainen
+aloitettu tarkistus päättyy ennen jatkoa; hylätystä erästä säilytetään
+luettelon järjestyksen ensimmäinen alkuperäinen virhe. Puuttuvan tai jo
+poistetun merkinnän tarkistus sekä juurten vaihto odottavat edeltävän erän.
+Alkuperäinen luettelon keräys, merkinnän sisäiset tarkistukset, journalin
+tarkistuskohdat ja nimettyjen poistojen sarjallinen suoja eivät muutu.
+[Live-terminalin rajattu kytkentä](release-0.3.0-m1-preparation-plan.md#v2bb-live-terminalin-tuore-valtuus)
+sitoo nämä nykyiseen snapshot-/tarkistusketjuun restore-kirjoitussuojan ja
+installation-leasen alla. Snapshotin paikallaan pysyvä native-varaus ja
+operation-juurten täsmälliset varaukset säilyvät journalin julkaisuun ja
+jokaiseen mutaatioon asti. Async-journal-luku vaatii tämän jälkeen uuden
+valtuustarkistuksen. Accepted-cold-valinta ei siivoa sivuslotteja ennen
+tuoretta validointia. Epävarmuus säilyttää hyväksytyn journalin ja
+kirjoitussuojan; siivousvirhe ei ole rollback-lupa. Koko mainin palautus,
+C-offline-kuluttajan virhehaarat ja muut K:n loppuportit ovat vielä avoimia.
+
+Tavallisen ja palautuksen jälkeisen käynnistyksen aktiivivalidointi lainaa
+mainin omistamaa täsmällistä restore-varausta. Main säilyttää varauksen
+hylkäyksestä tarkistajien ja backendin varmennettuun pysähtymiseen sekä
+alkuperäisaineiston rollbackiin asti; rollback ei hanki toista varausta.
+Tarkistin tarkistaa sekä lainatun identiteetin että nykyisen restore-omistajan
+ja palauttaa vain metadataa, ei myöhempää mutaatiovaltuutta. Epävarma sulku
+tai kadonnut omistaja säilyttää aineiston ja estää jatkon. Onnistuminen
+vapauttaa varauksen vasta tarkistus-/siivousketjun jälkeen; terminal-vaihe
+hankkii oman tuoreen sisältötodisteensa. Päivityksen erillinen update-varaus
+ja C-konteksti kytketään erikseen
+[omistavan suunnitelman mukaan](release-0.3.0-m1-preparation-plan.md#aktiivivalidoinnin-kutsujakohtainen-omistajuus).
+
+[C:n ennen migraatioita toimiva terminal](release-0.3.0-m1-preparation-plan.md#v2bc-cn-alkuperäisketjun-terminal)
+vaatii journalin täsmällisen alkuperäisketjun ja update/restore-operaatioparin
+ennen siivousta. Sen eristetty tarkistin käyttää vain nimenomaisen restore-
+kirjoitussuojan kautta valittua olemassa olevaa `restoreCompatible`-policya;
+tavallisen live-terminalin current-manifest-sääntö ei muutu. Backendin
+schema-readerin restore-poikkeus päättyy käynnistysgaten mukana. Rajattu
+onnistumis- ja accepted-jatkonäyttö ei hyväksy koko mainia tai binaarihandoffia.
+
 Aktivointijournalissa ei ole yritysdataa, salaisuutta tai rendererille
 palautettavaa polkua. Vaiheen pitää olla idempotentti restartin jälkeen.
 
@@ -777,6 +1144,19 @@ rollback-tavut ja tutkittava profiili säilytetään, eikä business-ikkunaa
 avata, aktiivista yritysosoitinta palauteta tai uutta runtimea käynnistetä.
 Sama sulkemisvaatimus koskee jo ensimmäisessä profiilivalidoinnissa
 tapahtuvaa virhettä, myös yrityksen vaihtoon liittyvässä palautuksessa.
+
+[Tarkistusvirheen jälkeinen rollback-valtuus](release-0.3.0-m1-preparation-plan.md#v2bd-tarkistusvirheen-jälkeinen-rollback-valtuus)
+ei synny pelkästä backendin pysäytyksestä: main varmentaa myös inspectorien
+sulkemisen ja native-omistajuuden sekä tarkistaa alkuperäisen sisällön
+tuoreesti ennen korjaavaa journal-lukua ja rollback-intentiä. Sama valtuus
+säilyy tiedostosiirtoihin asti ja sallii vain valitun journalin täsmälliset
+revisiovaiheet. Lykätty päätös ei nollaa recovery-instanssia. Epävarmaa
+hyväksyntää ei palauteta, eikä hylätty rollback-valtuus anna lupaa
+valita uutta runtimea yleisen työtilapalautuksen kautta.
+Puuttuva valtuuskytkentä hylätään myös suorassa startup-kuluttajassa.
+Voimassaolo tarkistetaan uudelleen viimeisen journal-odotuksen jälkeen.
+Alkuperäiskannan poissaolon palauttava onnistunut tiedostorollback säilyttää
+journalin eikä anna lupaa vaihtaa yritysosoitinta tai käynnistää toista runtimea.
 
 Vaatimus koskee myös epäonnistunutta käynnistystä ennen backend-kahvan
 palauttamista. Puuttuva kahva ei osoita, ettei prosessia syntynyt.
@@ -955,6 +1335,41 @@ Backupin, restoren ja recovery pointin tekniset vaihe- ja failure-tiedot
 kuuluvat Diagnosticsiin. Niistä ei kirjoiteta Activity-tapahtumaa tai
 business auditia palautettavaan SQLite-kantaan. Operational-lokituksen virhe
 ei saa muuttaa varsinaisen operaation tulosta.
+
+Sisäinen virhemuunnos säilyttää alkuperäisen poikkeuksen `Error.cause`-
+sidonnassa. Aktivoinnin ja rollbackin yhteisvirheessä ensisyy ja lisävirhe
+ovat erillisiä, järjestettyjä haaroja. Sidonta ei muuta ulompaa virhekoodia
+eikä anna lupaa serialisoida raakaa poikkeusta. Julkiseen projektioon
+välitetään vain omistavan tapahtumasopimuksen sallima tieto. Nykyisen
+[rajatun syyketjun näyttö](release-0.3.0-m1-preparation-plan.md#v2l-backup--ja-palautuskuluttajien-sisäinen-ensisyy)
+ei korvaa tarkistusprosessin poistumisen todistusta tai paketoitua palautusta.
+
+Tarkistusruntime luokittelee myös laskuhistorian katalogissa syntyvän
+täsmällisen natiivin muistivirheen ennen sulkuvirheiden yhdistämistä.
+Se käyttää nykyistä turvallista resurssisyytä eikä julkaise natiivipoikkeusta.
+[Katalogin syyketjun kohdenäyttö](release-0.3.0-m1-preparation-plan.md#katalogin-muistivirheen-syyketju)
+ei muuta backup-formaatteja, sisältörajoja tai muun brokerin virheprojektiota.
+
+[C:n business rollback -kutsujan sisäinen syysidonta](release-0.3.0-m1-preparation-plan.md#v2ay-cn-palautuskutsujan-sisäinen-ensisyy)
+noudattaa samaa järjestystä: aktivoinnin tai tarkistuksen ensivirhe ennen
+recovery-journalin lisävirhettä. Journalin kirjoitusvirhe ei saa peittää
+ensisyyttä tai todistaa kirjoitusta onnistuneeksi. Update-tapahtuman
+nykyinen turvallinen yleiskoodi säilyy; sisäinen syyketju ei laajenna julkisen
+diagnostiikan tietosisältöä eikä anna offline-palautusvaltuutta.
+
+[Portable-backupin rajattu tapahtumaketju](release-0.3.0-m1-preparation-plan.md#v2m-portable-backupin-turvallinen-lukuketju)
+välittää luonnin ja tarkistuksen hyväksytyn teknisen ensisyyn nykyiseen
+operational-tapahtumaan ennen yleistä IPC-muunnosta. Tuntematon ketju
+säilyttää yleiskoodin eikä siivousvirhe peitä ensivirhettä. Raakaa `cause`-
+oliota ei kirjoiteta lokiin tai tukipakettiin.
+[Palautuskuluttajien erillinen kohdenäyttö](release-0.3.0-m1-preparation-plan.md#v2n-palautuskuluttajien-turvallinen-ensisyy)
+kattaa tarkistuksen, stagingin, aktivoinnin, käynnistysvalidoinnin sekä
+palautuspisteiden luonnin ja automaattisen tarkistuksen samalla
+ensisyyhaulla. Rollbackin lisävirhe ja selvitystila pysyvät erillisinä.
+[Lukijoiden erillinen tapahtumapariteetti](release-0.3.0-m1-preparation-plan.md#v2o-palautustapahtumien-lukijoiden-sopimustarkistus)
+on kohdetodennettu API-clientin ja tukipaketin rajoilla nykyisen
+tapahtumakatalogin mukaan. Todellinen Electron-main, tarkistusprosessin
+omistajuus ja paketoitu palautus ovat edelleen avoinna.
 
 ## Testausportti
 

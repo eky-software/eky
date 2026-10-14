@@ -330,6 +330,34 @@ lukituille runtimeversioille.
 Eky ei ylläpidä omaa `better-sqlite3`-C++-forkkia yhteensopivuusrajojen
 kiertämiseksi.
 
+#### Rajattu varmuuskopion tarkistusajuri
+
+Omistaja hyväksyi 10.10.2026 saman `better-sqlite3@13.0.2`-lähteen
+erillisen tuotantokäännöksen vain eristetylle varmuuskopion tarkistusprosessille.
+Ainoa tarkoitettu lähdepoikkeama on `SQLITE_DEFAULT_MEMSTATUS=1`;
+muistiseuranta tarvitaan hyväksytyn SQLite-muistirajan todelliseen valvontaan.
+Business-runtimen paketin mukana toimitettu oletusprebuild säilyy ennallaan.
+
+[K-P2:n toimitussopimus](release-0.3.0-m1-preparation-plan.md#k-p2n-tarkistusajurin-toimitusehdotus)
+omistaa lähteen eheyden, eristetyn käännöksen, erillisen resurssin,
+pakollisen ajurivalinnan kaikissa tarkistusyhteyksissä sekä Windows/Linux-
+ja paketoidun palautuksen todisteet. Ei lifecycle-asennusta, prebuild-
+fallbackia, käyttäjän koneella tehtävää käännöstä tai uusia järjestelmätyökaluja.
+Versioiden, tietomallin, backup-formaattien ja muiden resurssirajojen muutos
+ei sisälly tähän poikkeukseen. Toteutuksen keskeneräisyys ei ole toimitushyväksyntä.
+
+[V2s:n työpuun kohdenäyttö](release-0.3.0-m1-preparation-plan.md#v2s-tarkistusajurin-erillinen-toimitus)
+kattaa erillisen käännöksen, pakollisen native-valinnan, rajatun tavukopion
+ja resurssin pakkauskytkennän. Business-prebuildin portit säilyvät;
+Linuxin koko runtime-/CI-toimitus ja koko paketin/palautuksen hyväksyntä
+ovat vielä avoinna. [V2af:n alustakohtainen näyttö](release-0.3.0-m1-preparation-plan.md#v2af-tarkistusajurin-alustakohtainen-todennus)
+kattaa Linuxin Node-/resurssikontrollit ja Windowsin Node-/Electron-kontrollit,
+ei koko Linuxin utility-toimitusta. Kääntäjän välituotteesta tehdään
+varmennettu itsenäinen kopio; toimitettu native-tiedosto säilyy
+yksilinkkisenä eikä tuntemattomalle linkille sallita poikkeusta.
+Native-resurssi sisältää vain nimenomaiset ajuri- ja metatiedostot,
+ei käännöstyökaluja tai epäluotettua testiaineistoa.
+
 ## Miksi Ei Electron Forgea Tässä Spikessä
 
 Electronin dokumentaatio suosittelee Forgea yleiseksi paketointi- ja

@@ -76,6 +76,7 @@ export async function exerciseMsiFileVersionPolicy(variant, runtime) {
     await runtime.verifyPolicy(variant);
     result.policyVerified = true;
   } catch (error) {
+    try { runtime.observeFailure?.(error, result.phase); } catch { /* Preserve the policy result. */ }
     result.errorCode = `${result.phase}Failed`;
     result.causeCode = msiPolicyErrorCode(error);
   } finally {
@@ -84,12 +85,14 @@ export async function exerciseMsiFileVersionPolicy(variant, runtime) {
       for (const role of ['target', 'source']) {
         try { await runtime.removeIfOwned(role); }
         catch (error) {
+          try { runtime.observeFailure?.(error, 'cleanupRemoval'); } catch { /* Preserve cleanup. */ }
           result.cleanupErrorCode ??= 'productRemovalFailed';
           result.cleanupCauseCode ??= msiPolicyErrorCode(error);
         }
       }
       try { await runtime.verifyAbsent(); }
       catch (error) {
+        try { runtime.observeFailure?.(error, 'cleanupVerification'); } catch { /* Preserve cleanup. */ }
         result.cleanupErrorCode ??= 'absenceVerificationFailed';
         result.cleanupCauseCode ??= msiPolicyErrorCode(error);
       }

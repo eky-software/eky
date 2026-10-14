@@ -1,4 +1,5 @@
 import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
+import type { WorkspaceCandidateFailureCause } from '../../runtime/workspaceCandidateMessages.js';
 
 export type WorkspaceManagementAvailability =
   | 'ready'
@@ -35,6 +36,8 @@ export interface WorkspaceManagementOperationEvent {
   readonly correlationId: string;
   readonly durationMs: number;
   readonly errorCode?: string;
+  readonly inspectionCauseCode?: WorkspaceCandidateFailureCause;
+  readonly cleanupCauseCode?: WorkspaceCandidateFailureCause;
   readonly operationKind: WorkspaceManagementOperationKind;
   readonly outcome: 'succeeded' | 'failed';
   readonly retryable?: boolean;

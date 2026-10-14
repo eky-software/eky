@@ -58,7 +58,7 @@ describe('first-start update coordinator', () => {
     const result = await fixture.coordinator.beforeMigrations(createInspection('existing', 1))
       .then(() => undefined, (error: unknown) => error);
     expect(result).toEqual(new FirstStartUpdateError());
-    expect(result).not.toHaveProperty('cause');
+    expect(result).toHaveProperty('cause', original);
 
     expect(observeStartupException).toHaveBeenCalledExactlyOnceWith(original);
     expect(failureCountsAtObservation).toEqual([0]);
@@ -80,6 +80,29 @@ describe('first-start update coordinator', () => {
     expect(journalAtObservation).toEqual([['firstStartValidating']]);
     expect(fixture.journalStates).toEqual(['firstStartValidating', 'rollbackRequired']);
     expect(fixture.acceptedWrites).toEqual([]);
+  });
+
+  it.each([false, true])('retains the first post-start validation cause before recovery (observer throws: %s)', async observerThrows => {
+    const original = new Error('synthetic private validation failure', { cause: new Error('synthetic root') });
+    const observedStates: string[][] = [];
+    const observer = vi.fn(() => {
+      observedStates.push([...fixture.journalStates]);
+      if (observerThrows) throw new Error('synthetic observer failure');
+    });
+    const fixture = createFixture({ acceptedBuild: acceptedCurrentBuild(),
+      journal: createJournal('awaitingFirstStart'), observeStartupException: observer });
+    await fixture.coordinator.beforeMigrations(createInspection('existing', 0));
+    fixture.validateActiveProfile.mockRejectedValueOnce(original);
+    const failure = await fixture.coordinator.acceptAfterBackendReady().then(() => undefined, error => error);
+    expect(failure).toBeInstanceOf(FirstStartUpdateError);
+    expect(failure.message).toBe('The installed Eky build could not be accepted safely.');
+    expect(failure.cause).toBe(original);
+    expect(observer).toHaveBeenCalledExactlyOnceWith(original);
+    expect(observedStates).toEqual([['firstStartValidating']]);
+    expect(fixture.journalStates).toEqual(['firstStartValidating', 'rollbackRequired']);
+    expect(fixture.acceptedWrites).toEqual([]);
+    expect(fixture.promoteAcceptedCandidate).not.toHaveBeenCalled();
+    expect(fixture.releaseProtectedPoint).not.toHaveBeenCalled();
   });
 
   it('accepts a clean initial install without creating a recovery point', async () => {

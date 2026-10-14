@@ -222,10 +222,13 @@ liiketoimintasisältöä.
 - `restore.activationFailed`
 - `restore.validationCompleted`
 - `restore.validationFailed`
+- `restore.acceptanceFailed`
 - `restore.rollbackStarted`
 - `restore.rollbackCompleted`
 - `restore.rollbackFailed`
 - `restore.recoveryRequired`
+- `workspaceBackup.operationFailed`
+- `workspaceBackup.cleanupFailed`
 
 `electron.permissionDenied` säilyy vain olemassa olevien lokien
 yhteensopivuuden vuoksi. Tavallinen Chromiumin permission check estetään
@@ -241,15 +244,80 @@ korrelaatiotunnisteen, rajatun vaiheen, keston ja turvallisen virhekoodin.
 Niihin ei kirjoiteta kohde- tai lähdepolkua, yritystunnistetta, manifestia,
 salasanaa eikä salt-, nonce- tai authentication tag -arvoja.
 
+`backup.failed` ja `backup.inspectionFailed` käyttävät K-P3:n hyväksyttyä
+teknistä tarkistussyytä vain bounded ensivirhehaarasta: schema-hylkäys,
+resurssiraja, tarkistuksen aikakatkaisu, private-protokollan hylkäys tai
+varmentamaton tarkistusprosessin siivous. Tuntematon syy säilyttää vastaavasti
+`PROFILE_BACKUP_CREATE_FAILED`- tai `PROFILE_BACKUP_INSPECTION_FAILED`-koodin.
+Siivoushaaraa ei nosteta ensisyyksi eikä IPC-virhe sisällä sisäistä syyoliota.
+Syyjoukon tarkat koodit ja rajatun lukuketjun näyttö ovat
+[K-P3:n sopimuksessa](release-0.3.0-m1-preparation-plan.md#kn-tiedostovastuut-ja-turvallinen-palaute)
+ja [V2m:ssä](release-0.3.0-m1-preparation-plan.md#v2m-portable-backupin-turvallinen-lukuketju).
+Tämä ei muuta tapahtumien `portable`-vaihetta, tasoa, retryable- tai
+side-effect-kenttää. Incident-indeksiin kuuluu error-tason `backup.failed`,
+ei warn-tason `backup.inspectionFailed` tai info-tapahtumia.
+
+Palautuksen `restore.inspectionFailed`, `restore.stagingFailed`,
+`restore.activationFailed` ja `restore.validationFailed` sekä
+`recoveryPoint.failed` käyttävät samaa K-P3:n rajattua ensisyyvalintaa.
+Tuntematon tarkistussyy säilyttää kuluttajan nykyisen turvallisen
+fallbackin; ordered aggregaten lisävirhettä ei nosteta ensisyyksi.
+Ulompi virhe, palautuspisteiden saatavuus ja rollbackin ohjaus eivät muutu.
+`restore.rollbackFailed` ja `restore.recoveryRequired` säilyttävät
+`PROFILE_RESTORE_RECOVERY_REQUIRED`-koodin erillään alkuperäisestä syystä.
+Palvelujen ja todellisen tiedostoketjun rajattu näyttö on
+[V2n:ssä](release-0.3.0-m1-preparation-plan.md#v2n-palautuskuluttajien-turvallinen-ensisyy).
+
+`restore.acceptanceFailed` kuuluu onnistuneen sisältövalidoinnin jälkeiseen
+hyväksyntään. Omistava palautuspalvelu kirjaa sen kerran ennen virheen
+välittämistä myös lykätyssä hyväksynnässä ja aiemmin hyväksytyn journalin
+loppusiivouksessa. `restore.validationCompleted` pysyy totuudenmukaisena;
+hyväksyntävirheestä ei tehdä `restore.validationFailed`-tapahtumaa.
+Taso on `error`, kategoria `restore` ja lopputulos `failure`.
+Pakolliset nykyiset payload-kentät ovat tekninen `correlationId`,
+`durationMs`, `stage`, `errorCode`, `retryable: false` ja
+`sideEffectState: unknown`. Sallitut vaiheet ovat:
+
+- `acceptancePreparation`: hyväksynnän valtuuden valmistelu ennen transaktion kutsua
+- `acceptanceCommit`: hyväksynnän julkaisu ja sen tuloksen tarkistus
+- `acceptedCleanup`: hyväksytyn aineiston loppusiivous, myös valtuuden vapautus sen jälkeen
+
+Vaihe on viimeksi aloitettu työ, ei juurisyy tai varma journalin lopputila.
+`errorCode` on yksi K-P3:n viidestä ensisyystä (`PROFILE_SCHEMA_UNSUPPORTED`,
+`PROFILE_INSPECTION_LIMIT_EXCEEDED`, `PROFILE_INSPECTION_TIMEOUT`,
+`PROFILE_INSPECTION_PROTOCOL_INVALID`, `PROFILE_INSPECTION_CLEANUP_UNVERIFIED`)
+tai tuntemattoman syyn `PROFILE_RESTORE_RECOVERY_REQUIRED`.
+Lisävirhettä ei nosteta tuntemattoman ensisyyn tilalle. Korrelaatio säilyy
+myös journalin onnistuneen poiston jälkeisessä valtuuden vapautusvirheessä.
+Writer, Diagnostics, API-client ja tukipaketin lukija vaativat tämän saman
+suljetun sopimuksen; uusi tapahtuma ei peri vanhojen tapahtumien valinnaisia
+payload-kenttiä. Raakavirhettä, syyoliota tai uutta metadataa ei lisätä.
+Mahdollinen `restore.recoveryRequired` säilyy erillisenä tilatapahtumana.
+Operational-kirjoituksen epäonnistuminen ei korvaa alkuperäistä virhettä.
+
+Backup-, recoveryPoint- ja restore-tapahtumien projektion kentät ja
+semantiikka tarkistetaan uudelleen myös API-clientin ja tukipaketin
+lukurajoilla. Pelkkä tunnistemuotoinen vaihe ei riitä. Turvallinen
+virhesormenjälki on sallittu nykyisen failure-payloadin mukaan;
+onnistumistapahtuma ei saa virheen tai toisen perheen metadataa.
+Jo valinnaiset duration/retryable/side-effect- ja app/build/runtime-kentät
+säilyvät valinnaisina, mutta activationFailed- ja recoveryRequired-ehtoja
+ei löysennetä. Lukijapariteetin erillinen tiedostonäyttö ja avoimet
+runtime-portit ovat [V2o:ssa](release-0.3.0-m1-preparation-plan.md#v2o-palautustapahtumien-lukijoiden-sopimustarkistus).
+
 Recovery point -tapahtumien sallitut vaiheet ovat `automaticCheck` ja
 `creation`. Luodun pisteen allowlistattu kind on `daily`, `weekly`, `monthly`,
 `manual`, `preRestore` tai `preUpdate`. Restore-tapahtumien sallitut vaiheet
 ovat `inspection`, `staging`, `activation`, `restoredProfile`,
-`rolledBackProfile`, `activationRollback`, `startupRollback` ja
-`failedSafeJournal`. `restore.activationFailed` käyttää aina vaihetta
-`activation`. `restore.recoveryRequired` sallitaan vain failed-safe-journalin,
-rollbackatun profiilin epäonnistuneen validoinnin tai epäonnistuneen
-activation/startup-rollbackin yhteydessä.
+`rolledBackProfile`, `activationRollback`, `startupRollback`,
+`failedSafeJournal` sekä yllä kuvatut kolme hyväksyntävirheen vaihetta.
+`restore.activationFailed` käyttää aina vaihetta
+`activation`. `restore.recoveryRequired` sallitaan lisäksi aktivoinnin
+vaiheessa `activation`, jos valmistelujournalin pysyvä tila tai runtimen
+pysähtyminen jää epävarmaksi. Muut sallitut yhteydet ovat failed-safe-journal,
+rollbackatun profiilin epäonnistunut validointi ja epäonnistunut
+activation/startup-rollback. Vaihe ei väitä, että aktiiviset tiedostot olisi
+jo korvattu tai rollback aloitettu.
 
 `restore.activationFailed` kirjoitetaan täsmälleen kerran aktivoinnin
 epäonnistuessa ennen mahdollista rollbackia. Se sisältää vain teknisen
@@ -264,6 +332,12 @@ turvallisesti ilman manuaalista palautusta. Sen virhekoodi on aina
 `PROFILE_RESTORE_RECOVERY_REQUIRED`, `retryable` on `false` ja
 `sideEffectState` on `unknown`. Tapahtumaan ei kopioida journal phasea vapaana
 tekstinä eikä journalin sisältöä.
+
+Aktivoinnin valmisteluhylkäyksessä alkuperäinen `restore.activationFailed`
+kirjataan ennen erillistä `restore.recoveryRequired`-tilaa. Ensimmäinen
+säilyttää turvallisen ensisyyn; jälkimmäinen kertoo estyneestä jatkosta, ei
+korvaa syytä. Desktop-writer, Diagnostics, API-client ja tukipaketin lukija
+validoivat saman suljetun `activation`-vaiheen ja samat pakolliset kentät.
 
 Restoren stagingissa luotu journalin `operationId` on satunnainen tekninen
 UUID. Samaa arvoa saa käyttää prosessien yli vain operational-eventin
@@ -285,6 +359,35 @@ Recovery point- ja restore-eventit ovat teknistä Diagnostics-dataa. Niistä
 ei muodosteta Activity-tapahtumaa eikä palautettavaan SQLite-kantaan
 kirjoiteta business auditia. Operational-writerin virhe ei saa muuttaa
 backupin, restoren, validoinnin tai rollbackin lopputulosta.
+
+Workspace-tuonnin ja same-lineage-korvauksen hallintapalvelu toimittaa
+`workspaceBackup.operationFailed`-tapahtuman nykyiseen operational-ketjuun.
+Sen `errorCode` on ensimmäisen virhehaaran syvin tunnettu suljettu syy tai
+`unknown`; raakaa poikkeusta tai kutsupinoa ei serialisoida. Virheketjun
+luku on rajattu, ja rikkoutunut ketju jää tuntemattomaksi. Erillinen
+`workspaceBackup.cleanupFailed` syntyy vain, jos järjestetty virheketju
+sisältää myös palautuksen, siivouksen tai varauksen vapautuksen hylkäyksen.
+Aikaisempi tuntematon lisävirhe ei vaihdu myöhemmäksi tunnetuksi syyksi.
+Lisävirhe ei korvaa operaation ensisyytä.
+
+Molemmissa tapahtumissa category on `backup`, level `error` ja outcome
+`failure`. Sallittu payload on vain satunnainen `correlationId`, kesto,
+suljettu `errorCode`, `retryable: false`, `sideEffectState: none|unknown`
+sekä `stage: import|replace` ja yhteinen validoitu app/build/runtime-
+identiteetti. Syyjoukon omistaa
+`apps/desktop/src/runtime/workspaceCandidateMessages.ts`; Diagnostics-,
+API-client- ja tukipakettilukijat tarkistavat oman rajansa saman suljetun
+sopimuksen mukaan. Vapaa turvallisen näköinen merkkijono ei ole sallittu
+syy tai vaihe. `stage` nimeää käyttötapauksen, ei todista sisäistä vaihetta
+tai juurisyytä. Tapahtuma ei itsessään todista onnistunutta rollbackia.
+
+Tapahtumat luetaan nykyiseen Diagnostics- ja sanitoituun tukipakettiin.
+Error-tason incident-indeksi säilyttää nykyisen minimoidun tapahtuma-/
+virhekoodiyhteenvedon, ei correlation-, runtime- tai business-tunnisteita.
+Activityä, business auditia, retentionia tai tukipaketin formaattia ei muuteta.
+Tuotannon composition välittää nykyisen loggerin ja runtime-identiteetin
+havaitsijalle; kummankin tapahtuman best-effort-kirjoitus on erillinen eikä
+saa muuttaa hallintatoiminnon palautusta tai peittää ensivirhettä.
 
 ### Local update
 

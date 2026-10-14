@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 
 import type { AcceptedBuildMetadata } from '../../update/acceptedBuildMetadata.js';
 import type {
@@ -6,7 +7,7 @@ import type {
   PreBackendFirstStartFailureResult,
 } from '../../update/preBackendFirstStartFailureAuthority.js';
 import type { PreWorkspaceBuildAdmission } from '../../update/preWorkspaceBuildAdmission.js';
-import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
+import type { WorkspaceRegistryInspectionPort } from '../registry/workspaceRegistryPort.js';
 import type {
   LocalWorkspaceRegistryV1,
   WorkspaceId,
@@ -52,7 +53,7 @@ interface WorkspaceFirstStartMigrationOrchestratorOptions {
   readonly journal: Pick<WorkspaceFirstStartMigrationJournalPort, 'read'>;
   readonly now?: () => Date;
   readonly operationIdFactory?: () => string;
-  readonly registry: Pick<WorkspaceRegistryPort, 'read'>;
+  readonly registry: WorkspaceRegistryInspectionPort;
   readonly runningBuild: Readonly<WorkspaceFirstStartBuildIdentity>;
   readonly transitions: Pick<
     WorkspaceFirstStartMigrationTransitionCoordinator,
@@ -78,6 +79,7 @@ export class WorkspaceFirstStartMigrationOrchestrator
     | undefined;
   private preparation:
     | Readonly<{ kind: 'notRequired' }>
+    | Readonly<{ kind: 'rollbackOnly' }>
     | Readonly<{ kind: 'required'; operation: PreparedOperation }>
     | undefined;
   private completed = false;
@@ -156,6 +158,30 @@ export class WorkspaceFirstStartMigrationOrchestrator
       return invalidOrchestration();
     }
 
+    if (context.rollbackOnly !== undefined) {
+      await context.rollbackOnly.assertCurrent();
+      if (this.options.admission !== 'coordinatedUpdateTarget') return invalidOrchestration();
+      const registry = await this.readRequiredRegistry();
+      const sourceBuild = await this.resolveSourceBuild();
+      const journal = await this.options.journal.read();
+      await context.rollbackOnly.assertCurrent();
+      if (sourceBuild === null || !buildsAreEqual(sourceBuild, context.rollbackOnly.sourceBuild) ||
+          registry.activeWorkspaceId !== context.activeWorkspaceId ||
+          registry.workspaces.find(entry => entry.workspaceId === context.activeWorkspaceId)?.lifecycleState !== 'ready' ||
+          !isDeepStrictEqual(journal, this.resumedJournal)) return invalidOrchestration();
+      if (journal !== undefined && (journal.state !== 'prepared' ||
+          !buildsAreEqual(journal.sourceBuild, sourceBuild) ||
+          !buildsAreEqual(journal.targetBuild, this.options.runningBuild) ||
+          journal.activeWorkspaceId !== context.activeWorkspaceId ||
+          calculateWorkspaceRegistrySha256(registry) !== journal.sourceRegistrySha256 ||
+          calculateWorkspaceRegistrySha256(markPassiveWorkspacesRecoveryRequired(registry,
+            journal.activeWorkspaceId, journal.passiveRecoveryWorkspaceIds)) !== journal.transitionedRegistrySha256)) {
+        return recoveryRequired();
+      }
+      this.preparation = Object.freeze({ kind: 'rollbackOnly' });
+      return 'rollbackOnly';
+    }
+
     if (!updateAdmissions.has(this.options.admission)) {
       this.preparation = Object.freeze({ kind: 'notRequired' });
       return 'notRequired';
@@ -217,13 +243,14 @@ export class WorkspaceFirstStartMigrationOrchestrator
         }),
       });
       return 'prepared';
-    } catch {
-      return this.failBeforeBackend();
+    } catch (error) {
+      return this.failBeforeBackend(error);
     }
   }
 
   async transitionRegistryAfterActiveWorkspaceAcceptance(): Promise<void> {
     const preparation = this.requirePreparation();
+    if (preparation.kind === 'rollbackOnly') return invalidOrchestration();
     if (preparation.kind === 'notRequired') return;
     if (preparation.operation.registryTransitioned) {
       return invalidOrchestration();
@@ -246,6 +273,7 @@ export class WorkspaceFirstStartMigrationOrchestrator
 
   async completeAfterTargetAcceptance(): Promise<void> {
     const preparation = this.requirePreparation();
+    if (preparation.kind === 'rollbackOnly') return invalidOrchestration();
     if (this.completed) return invalidOrchestration();
     if (preparation.kind === 'notRequired') {
       this.completed = true;
@@ -280,7 +308,7 @@ export class WorkspaceFirstStartMigrationOrchestrator
   private async readRequiredRegistry(): Promise<
     Readonly<LocalWorkspaceRegistryV1>
   > {
-    const registry = await this.options.registry.read();
+    const registry = await this.options.registry.inspect();
     if (registry === undefined) return invalidOrchestration();
     return validateWorkspaceRegistry(registry);
   }
@@ -289,7 +317,7 @@ export class WorkspaceFirstStartMigrationOrchestrator
     activeWorkspaceId: WorkspaceId,
   ): Promise<void> {
     if (this.resumedJournal !== undefined) return invalidOrchestration();
-    const registryValue = await this.options.registry.read();
+    const registryValue = await this.options.registry.inspect();
     if (registryValue === undefined) return;
     const registry = validateWorkspaceRegistry(registryValue);
     if (
@@ -343,26 +371,28 @@ export class WorkspaceFirstStartMigrationOrchestrator
     return this.preparation;
   }
 
-  private async failBeforeBackend(): Promise<never> {
+  private async failBeforeBackend(error: unknown): Promise<never> {
     let result: PreBackendFirstStartFailureResult;
     try {
       result = await this.options.failureAuthority.recordFailure(
         this.options.admission,
       );
     } catch {
-      throw new WorkspaceFirstStartMigrationOrchestratorError('failed');
+      throw new WorkspaceFirstStartMigrationOrchestratorError('failed', { cause: error });
     }
     if (result.kind === 'rollbackRequired') {
       throw new WorkspaceFirstStartMigrationOrchestratorError(
         'rollbackRequired',
+        { cause: error },
       );
     }
     if (result.kind === 'directSetupRecoveryRequired') {
       throw new WorkspaceFirstStartMigrationOrchestratorError(
         'recoveryRequired',
+        { cause: error },
       );
     }
-    throw new WorkspaceFirstStartMigrationOrchestratorError('failed');
+    throw new WorkspaceFirstStartMigrationOrchestratorError('failed', { cause: error });
   }
 
   private now(): string {

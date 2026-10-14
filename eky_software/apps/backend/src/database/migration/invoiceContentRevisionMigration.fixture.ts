@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { createInvoiceReadModelTestDatabase } from '../../testFixtures/invoiceReadModelTestFixtures.js';
 import type { DatabaseConnection } from '../connection/createDatabaseConnection.js';
 import { runMigrations } from './runMigrations.js';
+import { failMigrationWrite } from './migrationWriteFailure.fixture.js';
 
 export const migrationName = '039_add_invoice_content_revisions.sql';
 export type Row = Record<string, string | number | null>;
@@ -102,14 +103,11 @@ export function insert(
     .run(values);
 }
 
-export function failMigrationHistoryWrite(database: DatabaseConnection): void {
+export function failMigrationHistoryWrite(database: DatabaseConnection) {
   // Fail after the production SQL, without substituting a test migration.
-  database.exec(
-    `
-    CREATE TRIGGER fail_revision_history BEFORE INSERT ON schema_migrations
-    WHEN NEW.name = '${migrationName}'
-    BEGIN SELECT RAISE(ABORT, 'SYNTHETIC_HISTORY_FAILURE'); END;
-  `,
+  return failMigrationWrite(
+    database, 'schema_migrations', migrationName,
+    () => database.prepare("SELECT name FROM sqlite_schema WHERE name = 'invoice_content_revisions'").get() !== undefined,
   );
 }
 

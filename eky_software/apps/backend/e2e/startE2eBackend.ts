@@ -19,6 +19,7 @@ import {
 } from './e2eStartupLogObserver.js';
 import { installE2eDatabaseFault } from './installE2eDatabaseFault.js';
 import { ProfileMaintenanceState } from '../src/runtime/profileMaintenance/profileMaintenanceState.js';
+import type { MigrationStartupObserver } from '../src/database/migration/migrationStartupObservation.js';
 import type { ProfileSnapshotRuntimeService } from '../src/runtime/profileSnapshot/profileSnapshotTypes.js';
 
 interface E2eBackendSecretReader {
@@ -49,6 +50,7 @@ export interface StartE2eBackendOptions {
   companyEmailSecretStore?: E2eBackendSecretStore;
   deliveredInvoiceArchiveTaskSink?: E2eDeliveredInvoiceArchiveTaskSink;
   observeStartupLog?: E2eStartupLogObserver;
+  observeMigrationStartup?: MigrationStartupObserver;
   profileSnapshotStagingRoot?: string;
   runtimePaths?: E2eBackendRuntimePathOverrides;
   runtimeSessionSecret?: string;
@@ -83,11 +85,6 @@ export async function startE2eBackend(
           configPath,
           options.runtimePaths,
         );
-  await installE2eDatabaseFault({
-    databaseFilePath: config.paths.databaseFilePath,
-    faultPlan: config.faultPlan,
-  });
-
   const operationalIdentity = resolveOperationalRuntimeIdentity({
     appVersion: '0.0.0-e2e',
     operationalIdentity: {
@@ -158,6 +155,8 @@ export async function startE2eBackend(
       },
       operationalIdentity,
       operationalLogger,
+      ...(options.observeMigrationStartup === undefined
+        ? {} : { migrationStartupObserver: options.observeMigrationStartup }),
       operationalLogsRoot: config.paths.logsRoot,
       ...profileSnapshotAppOptions,
       runtimeTrust: {
@@ -169,12 +168,23 @@ export async function startE2eBackend(
     port: config.backend.port,
   });
 
-  if (
-    profileMaintenanceState !== undefined &&
-    profileSnapshotService === undefined
-  ) {
-    await server.close();
-    throw new Error('E2E profile snapshot runtime was not registered.');
+  try {
+    // Startup attests the real schema first. Install synchronously before the
+    // next I/O turn can serve health or business requests from this test.
+    installE2eDatabaseFault({
+      databaseFilePath: config.paths.databaseFilePath,
+      faultPlan: config.faultPlan,
+    });
+    if (profileMaintenanceState !== undefined && profileSnapshotService === undefined) {
+      throw new Error('E2E profile snapshot runtime was not registered.');
+    }
+  } catch (error) {
+    try {
+      await server.close();
+    } catch (closeError) {
+      throw new AggregateError([error, closeError], 'E2E backend preparation and cleanup failed.', { cause: error });
+    }
+    throw error;
   }
 
   return {

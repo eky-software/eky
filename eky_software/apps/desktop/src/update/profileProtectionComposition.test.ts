@@ -21,6 +21,8 @@ describe('update profile protection composition', () => {
       'releaseProtectedPoint',
       'restoreRecoveryPoint',
       'validateActiveProfile',
+      'validateActiveProfileForRollback',
+      'validateActiveProfileForUpdate',
     ]);
   });
 
@@ -73,6 +75,16 @@ describe('update profile protection composition', () => {
     ).rejects.toThrow('UPDATE_RECOVERY_POINT_STILL_PROTECTED');
   });
 
+  it('forwards the exact rollback selection and exposes only bounded validation metadata', async () => {
+    const fixture = createFixture();
+    const context = Object.freeze({ expectedMigrationChainIdentity: 'c'.repeat(64), assertCurrent: vi.fn(async () => {}) });
+    const validation = await fixture.protection.validateActiveProfileForRollback(context);
+    expect(fixture.validateActiveProfileForRollback).toHaveBeenCalledExactlyOnceWith(context);
+    expect(validation).toEqual({ artifactCount: 3, artifactTotalByteSize: 4_096,
+      databaseHealth: 'healthy', migrationChainIdentity: 'c'.repeat(64) });
+    expect(fixture.validateActiveProfile).not.toHaveBeenCalled();
+  });
+
   it('allows release verification only after journal protection ended', async () => {
     const fixture = createFixture({ journalState: 'accepted' });
 
@@ -97,6 +109,7 @@ describe('update profile protection composition', () => {
       expectedMigrationChainIdentity: 'a'.repeat(64),
       operationId: '22222222-2222-4222-8222-222222222222',
       recoveryPointReference,
+      assertAuthority: vi.fn(async () => undefined),
     };
     await fixture.protection.restoreRecoveryPoint(input);
     expect(fixture.restoreRecoveryPoint).toHaveBeenCalledWith(input);
@@ -115,7 +128,15 @@ function createFixture(
   const endUpdateMaintenance = vi.fn(async () => 'normal' as const);
   const createPreUpdateWithMaintenance = vi.fn(async () => createPoint());
   const restoreRecoveryPoint = vi.fn(async () => 'relaunching' as const);
+  const validation = () => ({ artifactCount: 3, artifactTotalByteSize: 4_096,
+    databaseHealth: 'healthy' as const, migrationChainIdentity: 'c'.repeat(64),
+    profileId: '44444444-4444-4444-8444-444444444444' });
+  const validateActiveProfile = vi.fn(async () => validation());
+  const validateActiveProfileForRollback = vi.fn(async () => validation());
   const protection = createProfileProtectionComposition({
+    validateActiveProfile,
+    validateActiveProfileForRollback,
+    validateActiveProfileForUpdate: vi.fn(async () => { throw new Error('not configured in this fixture'); }),
     directSetupRecoveryStore: {
       read: vi.fn(async () => undefined),
     },
@@ -125,14 +146,6 @@ function createFixture(
       beginUpdateMaintenance,
       assertUpdateMaintenance,
       endUpdateMaintenance,
-      validateActiveProfile: vi.fn(async () => ({
-        artifactCount: 3,
-        artifactTotalByteSize: 4_096,
-        databaseHealth: 'healthy' as const,
-        migrationChainIdentity: 'c'.repeat(64),
-        profileId: '44444444-4444-4444-8444-444444444444',
-        type: 'activeProfileValidation' as const,
-      })),
     },
     recoveryPointService: {
       createPreMigration: vi.fn(async () => createPoint()),
@@ -176,6 +189,8 @@ function createFixture(
     endUpdateMaintenance,
     createPreUpdateWithMaintenance,
     protection,
+    validateActiveProfile,
+    validateActiveProfileForRollback,
     restoreRecoveryPoint,
   };
 }

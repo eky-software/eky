@@ -22,7 +22,7 @@ const preparations = [
   'pnpm --filter @eky/desktop e2e:prepare-backend',
 ];
 const projects = '--project=system-api --project=web-chromium --project=electron-development';
-const contractCommand = 'node --test scripts/e2e-command-wiring.test.mjs scripts/windowsBackendOwnerBuild.test.mjs scripts/safeCiReporter.test.mjs scripts/electronLifecycleProjection.test.mjs scripts/e2eRunArtifacts.test.mjs experiments/processOwnership/playwrightElectronLaunch.test.mjs experiments/processOwnership/playwrightElectronProcessKill.test.mjs experiments/processOwnership/adapterContract.test.mjs experiments/processOwnership/adapterControl.test.mjs experiments/processOwnership/adapterRootExitOrdering.test.mjs experiments/processOwnership/boundedChildOutput.test.mjs experiments/processOwnership/pidNamespaceContract.test.mjs experiments/processOwnership/runPidNamespaceExperiment.test.mjs experiments/processOwnership/managedNamespaceContract.test.mjs experiments/processOwnership/managedNamespaceControl.test.mjs experiments/processOwnership/managedNamespaceObservation.test.mjs experiments/processOwnership/managedNamespacePreflight.test.mjs experiments/processOwnership/managedNamespaceCommand.test.mjs experiments/processOwnership/managedNamespaceSession.test.mjs experiments/processOwnership/managedNamespaceResult.test.mjs experiments/processOwnership/runManagedNamespaceExperiment.test.mjs experiments/processOwnership/managedChromiumFailure.test.mjs experiments/processOwnership/managedChromiumActor.test.mjs experiments/processOwnership/linuxServiceContract.test.mjs experiments/processOwnership/linuxServiceControl.test.mjs experiments/processOwnership/linuxServiceSession.test.mjs';
+const contractCommand = 'node --test --test-reporter=../../test-reporters/nodeFailureReporter.mjs scripts/e2e-command-wiring.test.mjs scripts/windowsBackendOwnerBuild.test.mjs scripts/safeCiReporter.test.mjs scripts/electronLifecycleProjection.test.mjs scripts/e2eRunArtifacts.test.mjs experiments/processOwnership/playwrightElectronLaunch.test.mjs experiments/processOwnership/playwrightElectronProcessKill.test.mjs experiments/processOwnership/adapterContract.test.mjs experiments/processOwnership/adapterControl.test.mjs experiments/processOwnership/adapterRootExitOrdering.test.mjs experiments/processOwnership/boundedChildOutput.test.mjs experiments/processOwnership/pidNamespaceContract.test.mjs experiments/processOwnership/runPidNamespaceExperiment.test.mjs experiments/processOwnership/managedNamespaceContract.test.mjs experiments/processOwnership/managedNamespaceControl.test.mjs experiments/processOwnership/managedNamespaceObservation.test.mjs experiments/processOwnership/managedNamespacePreflight.test.mjs experiments/processOwnership/managedNamespaceCommand.test.mjs experiments/processOwnership/managedNamespaceSession.test.mjs experiments/processOwnership/managedNamespaceResult.test.mjs experiments/processOwnership/runManagedNamespaceExperiment.test.mjs experiments/processOwnership/managedChromiumFailure.test.mjs experiments/processOwnership/managedChromiumActor.test.mjs experiments/processOwnership/linuxServiceContract.test.mjs experiments/processOwnership/linuxServiceControl.test.mjs experiments/processOwnership/linuxServiceSession.test.mjs';
 
 function assertWiring(rootManifest, e2eManifest) {
   assert.equal(rootManifest.scripts.test, 'pnpm --recursive test');
@@ -59,7 +59,7 @@ const consumerContracts = ['linuxConsumerLossContract', 'linuxConsumerLossRecord
   'linuxConsumerSessionProbe', 'linuxConsumerLossInit', 'linuxConsumerExchange', 'linuxConsumerCommandGate',
   'linuxConsumerAttachments', 'linuxConsumerObserver', 'linuxConsumerSentinel', 'linuxConsumerLossBuild',
   'linuxConsumerLossBuildCli', 'runLinuxConsumerLossCase', 'runLinuxConsumerLoss'];
-const consumerContractCommand = 'node --test ' + consumerContracts
+const consumerContractCommand = 'node --test --test-reporter=../../test-reporters/nodeFailureReporter.mjs ' + consumerContracts
   .map(name => `experiments/processOwnership/${name}.test.mjs`).join(' ');
 
 for (const name of consumerContracts) {
@@ -173,6 +173,8 @@ for (const [name, mutate] of [
 }
 
 const mutations = [
+  ['missing original failure reporter', (r, e) => { e.scripts.test = e.scripts.test.replace(' --test-reporter=../../test-reporters/nodeFailureReporter.mjs', ''); }],
+  ['missing consumer failure reporter', (r, e) => { e.scripts['test:consumer-loss'] = e.scripts['test:consumer-loss'].replace(' --test-reporter=../../test-reporters/nodeFailureReporter.mjs', ''); }],
   ['missing Linux service contract', (r, e) => { e.scripts.test = e.scripts.test.replace(' experiments/processOwnership/linuxServiceContract.test.mjs', ''); }],
   ['missing Linux service control', (r, e) => { e.scripts.test = e.scripts.test.replace(' experiments/processOwnership/linuxServiceControl.test.mjs', ''); }],
   ['missing Linux service lifecycle', (r, e) => { e.scripts.test = e.scripts.test.replace(' experiments/processOwnership/linuxServiceSession.test.mjs', ''); }],

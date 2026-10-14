@@ -1,4 +1,6 @@
-import { resolve } from 'node:path';
+import { lstat, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -21,9 +23,14 @@ import {
 } from '../creation/emptyWorkspaceCreationTestSupport.js';
 import { TEST_IMPORT_OPERATION_ID } from '../import/workspaceBackupImportTestSupport.js';
 import { startWorkspaceCandidateRunner } from '../../runtime/workspaceCandidateRunner.js';
+import { readWorkspaceCandidateFailureCause } from '../../runtime/workspaceCandidateFailure.js';
 
 const profileId = 'b'.repeat(64);
 const migrationChainIdentity = 'c'.repeat(64);
+const inspectionRoots: string[] = [];
+afterEach(async () => {
+  for (const root of inspectionRoots.splice(0)) await rm(root, { force: true, recursive: true });
+});
 
 describe('ElectronWorkspaceCandidateRuntimeFactory', () => {
   it('waits for a private handshake and exposes readiness only after exit', async () => {
@@ -68,19 +75,24 @@ describe('ElectronWorkspaceCandidateRuntimeFactory', () => {
 
   it('keeps migration results private until the candidate exits', async () => {
     const process = new FakeCandidateProcess();
-    const factory = createFactory(new RecordingCandidateSpawner(process));
+    const paths = await migrationPaths();
+    const factory = createFactory(new RecordingCandidateSpawner(process), { shutdownTimeoutMilliseconds: 3_000 });
     const runtimePromise = factory.startMigration({
       operationId: TEST_IMPORT_OPERATION_ID,
       workspaceId: TEST_WORKSPACE_ID,
-      ...candidatePaths(),
+      ...paths,
       expectedProfileId: profileId,
       expectedSourceMigrationChainIdentity: 'd'.repeat(64),
       importStagingRoot: resolve('private-import-staging'),
     });
 
     const start = await process.handshake();
+    if (start.operation.operation !== 'migrateBackup') throw new Error('invalid fixture');
+    expect((await lstat(start.operation.inspectionRoot)).isDirectory()).toBe(true);
+    await writeFile(join(start.operation.inspectionRoot, 'profile.sqlite'), 'synthetic copy');
     process.message(
       createWorkspaceCandidateCompletedStatus({
+        inspectionClosed: true,
         operationId: start.operationId,
         requestId: start.requestId,
         result: {
@@ -96,11 +108,95 @@ describe('ElectronWorkspaceCandidateRuntimeFactory', () => {
     process.exit(0);
 
     await expect(stopped).resolves.toBe(true);
+    await expect(lstat(start.operation.inspectionRoot)).rejects.toMatchObject({ code: 'ENOENT' });
     await expect(runtime.inspectStoppedMigrationResult?.()).resolves.toEqual({
       handlesClosed: true,
       migrationChainIdentity,
       profileId,
     });
+  });
+
+  it.each(['missingClose', 'foreignEntry', 'forcedExit'] as const)(
+    'retains inspection evidence when %s prevents cleanup proof', async fault => {
+      const process = new FakeCandidateProcess(true);
+      const paths = await migrationPaths();
+      const factory = createFactory(new RecordingCandidateSpawner(process), { shutdownTimeoutMilliseconds: 3_000 });
+      const runtimePromise = factory.startMigration({
+        ...paths, operationId: TEST_IMPORT_OPERATION_ID, workspaceId: TEST_WORKSPACE_ID,
+        expectedProfileId: profileId, expectedSourceMigrationChainIdentity: migrationChainIdentity,
+        importStagingRoot: resolve('private-import-staging'),
+      });
+      const start = await process.handshake();
+      if (start.operation.operation !== 'migrateBackup') throw new Error('invalid fixture');
+      await writeFile(join(start.operation.inspectionRoot, 'profile.sqlite'), 'synthetic copy');
+      if (fault === 'foreignEntry') await writeFile(join(start.operation.inspectionRoot, 'foreign.txt'), 'retain');
+      const failure = fault === 'missingClose' ? expect(runtimePromise).rejects.toThrow() : undefined;
+      process.message(createWorkspaceCandidateCompletedStatus({
+        ...start, result: { kind: 'migration', migrationChainIdentity, profileId },
+        ...(fault === 'missingClose' ? {} : { inspectionClosed: true as const }),
+      }));
+      if (failure !== undefined) await failure;
+      else {
+        const runtime = await runtimePromise;
+        const stopped = runtime.stopAndProveHandlesClosed();
+        process.exit(fault === 'forcedExit' ? 1 : 0);
+        await expect(stopped).resolves.toBe(false);
+        await expect(runtime.inspectStoppedMigrationResult?.()).rejects.toThrow();
+      }
+      expect(await readdir(start.operation.inspectionRoot)).toContain('profile.sqlite');
+    },
+  );
+
+  it('cleans a safely failed inspection after exit and preserves its first safe cause', async () => {
+    const process = new FakeCandidateProcess();
+    process.onCommand = value => {
+      if ((value as WorkspaceCandidateProcessCommand).type === 'shutdown') process.exit(1);
+    };
+    const paths = await migrationPaths();
+    const factory = createFactory(new RecordingCandidateSpawner(process), { shutdownTimeoutMilliseconds: 3_000 });
+    const runtimePromise = factory.startMigration({
+      ...paths, operationId: TEST_IMPORT_OPERATION_ID, workspaceId: TEST_WORKSPACE_ID,
+      expectedProfileId: profileId, expectedSourceMigrationChainIdentity: migrationChainIdentity,
+      importStagingRoot: resolve('private-import-staging'),
+    });
+    const failure = expect(runtimePromise).rejects.toMatchObject({
+      message: 'WORKSPACE_CANDIDATE_OPERATION_FAILED', cause: { message: 'PROFILE_SCHEMA_UNSUPPORTED' },
+    });
+    const start = await process.handshake();
+    if (start.operation.operation !== 'migrateBackup') throw new Error('invalid fixture');
+    await writeFile(join(start.operation.inspectionRoot, 'profile.sqlite'), 'synthetic copy');
+    process.message(createWorkspaceCandidateFailedStatus({
+      ...start, causeCode: 'PROFILE_SCHEMA_UNSUPPORTED', inspectionClosed: true,
+    }));
+    await failure;
+    await expect(lstat(start.operation.inspectionRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('retains schema rejection after published inspection exits and returns its reservation', async () => {
+    const process = new FakeCandidateProcess();
+    const reclaimAfterExit = vi.fn(async () => {});
+    const factory = createFactory(new RecordingCandidateSpawner(process), {
+      reservationOwner: createReservationOwner({ reclaimAfterExit }),
+    });
+    const paths = candidatePaths();
+    const runtimePromise = factory.startMigrationInspection({
+      databaseFilePath: paths.databaseFilePath,
+      expectedProfileId: profileId,
+      operationId: TEST_OPERATION_ID,
+      publishedRoot: paths.candidateRoot,
+    });
+    const failurePromise = runtimePromise.catch((error: unknown) => error);
+    const start = await process.handshake();
+    process.message(createWorkspaceCandidateFailedStatus({
+      ...start,
+      causeCode: 'PROFILE_SCHEMA_UNSUPPORTED',
+    }));
+    process.exit(1);
+
+    const failure = await failurePromise;
+    expect(failure).toBeInstanceOf(Error);
+    expect(readWorkspaceCandidateFailureCause(failure)).toBe('PROFILE_SCHEMA_UNSUPPORTED');
+    expect(reclaimAfterExit).toHaveBeenCalledOnce();
   });
 
   it('keeps read-only migration inspection private and returns only safe counts', async () => {
@@ -742,10 +838,11 @@ function createReservationOwner(
   overrides: Partial<Omit<WorkspaceCandidateReservationTransfer, 'descriptor'>> = {},
 ): WorkspaceCandidateReservationOwner {
   return {
-    bindCandidate({ generationId }) {
+    assertMainOwned: async () => {},
+    bindCandidate({ generationId, prepareMainOwned }) {
       return {
         descriptor: { generationId, identity: 'a'.repeat(64), userDataRoot: resolve('private-installation') },
-        prepare: async () => {},
+        prepare: async signal => { await prepareMainOwned?.(signal); },
         assertGrant: async () => {},
         assertCurrent: () => {},
         reclaimAfterExit: async () => {},
@@ -753,6 +850,15 @@ function createReservationOwner(
         ...overrides,
       };
     },
+  };
+}
+
+async function migrationPaths() {
+  const candidateRoot = await mkdtemp(join(tmpdir(), 'eky-candidate-factory-inspection-'));
+  inspectionRoots.push(candidateRoot);
+  return {
+    candidateRoot, artifactRoot: join(candidateRoot, 'artifacts'),
+    databaseFilePath: join(candidateRoot, 'profile.sqlite'),
   };
 }
 

@@ -1,4 +1,5 @@
 import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
+import type { WorkspaceFirstStartBuildIdentity } from './workspaceFirstStartMigrationPlanTypes.js';
 
 export type WorkspaceFirstStartRecoveryOutcome =
   | 'acceptedTarget'
@@ -9,12 +10,17 @@ export type WorkspaceFirstStartRecoveryOutcome =
 
 export type WorkspaceFirstStartPreparationOutcome =
   | 'notRequired'
+  | 'rollbackOnly'
   | 'prepared'
   | 'resumed';
 
 export type WorkspaceFirstStartPreparationContext = Readonly<{
   activeWorkspaceId: WorkspaceId;
   workspaceState: 'legacyAdoptionPendingAcceptance' | 'publishedRegistry';
+  rollbackOnly?: Readonly<{
+    sourceBuild: Readonly<WorkspaceFirstStartBuildIdentity>;
+    assertCurrent(): Promise<void>;
+  }>;
 }>;
 
 export interface WorkspaceFirstStartMigrationOrchestration {

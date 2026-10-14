@@ -14,9 +14,10 @@ import {
   sep,
 } from 'node:path';
 
-import type {
-  InvoiceBackupArtifactCatalog,
-  InvoiceBackupArtifactCatalogItem,
+import {
+  invoiceBackupArtifactMaximumCount as maximumArtifactCount,
+  type InvoiceBackupArtifactCatalog,
+  type InvoiceBackupArtifactCatalogItem,
 } from '../../modules/invoicing/ports/invoiceBackupArtifactCatalog.js';
 import type { ProfileMaintenanceState } from '../profileMaintenance/profileMaintenanceState.js';
 import type {
@@ -33,7 +34,6 @@ const invoiceArtifactDirectory = join(
   'invoice-documents',
 );
 const maximumArtifactCatalogBytes = 64 * 1024 * 1024;
-const maximumArtifactCount = 100_000;
 const maximumInvoicePdfBytes = 10 * 1024 * 1024;
 const maximumProfileArtifactBytes = 20 * 1024 * 1024 * 1024;
 const maximumStoragePathBytes = 1_024;

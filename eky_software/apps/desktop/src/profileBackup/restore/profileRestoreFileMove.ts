@@ -4,6 +4,7 @@ const windowsRetryDelaysMilliseconds = [25, 50, 100, 200, 400, 800] as const;
 const retryableWindowsErrorCodes = new Set(['EACCES', 'EBUSY', 'EPERM']);
 
 interface RenameProfilePathOptions {
+  assertAuthority?(): Promise<void>;
   destinationPath: string;
   platform?: NodeJS.Platform;
   renamePath?(sourcePath: string, destinationPath: string): Promise<void>;
@@ -23,6 +24,7 @@ export async function renameProfilePathWithRetry(
     attempt <= windowsRetryDelaysMilliseconds.length;
     attempt += 1
   ) {
+    await options.assertAuthority?.();
     try {
       await renamePath(options.sourcePath, options.destinationPath);
       return;

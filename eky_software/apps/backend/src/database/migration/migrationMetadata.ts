@@ -1,4 +1,5 @@
 import type { DatabaseConnection } from '../connection/createDatabaseConnection.js';
+import { isSqliteMemoryError } from '../connection/isSqliteMemoryError.js';
 import type { MigrationManifestEntry } from './migrationManifest.js';
 
 const migrationMetadataVersion = 1;
@@ -61,7 +62,7 @@ export function prepareMigrationHistoryForRun(
     return new Set<string>();
   }
 
-  const appliedMigrationNames = readAppliedMigrationNames(database);
+  const appliedMigrationNames = readAppliedMigrationNames(database, manifest);
   assertAppliedMigrationsAreManifestPrefix(appliedMigrationNames, manifest);
 
   if (
@@ -131,7 +132,7 @@ export function inspectMigrationHistory(
     throw new Error('MIGRATION_HISTORY_INVALID');
   }
 
-  const appliedMigrationNames = readAppliedMigrationNames(database);
+  const appliedMigrationNames = readAppliedMigrationNames(database, manifest);
   assertAppliedMigrationsAreManifestPrefix(appliedMigrationNames, manifest);
   assertMetadataMatchesManifest(database, appliedMigrationNames, manifest);
 
@@ -147,19 +148,11 @@ export function inspectApprovedLegacyMigrationHistory(
   database: DatabaseConnection,
   manifest: readonly MigrationManifestEntry[],
 ): MigrationHistoryInspection {
-  if (
-    !tableExists(database, 'schema_migrations') ||
-    tableExists(database, 'schema_migration_metadata')
-  ) {
-    throw new Error('MIGRATION_HISTORY_INVALID');
-  }
-
-  const appliedMigrationNames = readAppliedMigrationNames(database);
-  assertAppliedMigrationsAreManifestPrefix(appliedMigrationNames, manifest);
-  const finalEntry = manifest[appliedMigrationNames.length - 1];
+  const history = inspectLegacyMigrationPrefix(database, manifest);
+  const finalEntry = manifest[history.appliedMigrationNames.length - 1];
 
   if (
-    appliedMigrationNames.length !==
+    history.appliedMigrationNames.length !==
       approvedLegacyMigrationAnchor.migrationCount ||
     finalEntry?.fileName !== approvedLegacyMigrationAnchor.migrationName ||
     finalEntry.chainSha256 !==
@@ -168,13 +161,32 @@ export function inspectApprovedLegacyMigrationHistory(
     throw new Error('MIGRATION_HISTORY_INVALID');
   }
 
+  return history;
+}
+
+// Runner baselining is not authorization to restore an arbitrary old backup.
+export function inspectLegacyMigrationPrefix(
+  database: DatabaseConnection,
+  manifest: readonly MigrationManifestEntry[],
+): MigrationHistoryInspection {
+  if (
+    !tableExists(database, 'schema_migrations') ||
+    tableExists(database, 'schema_migration_metadata')
+  ) {
+    throw new Error('MIGRATION_HISTORY_INVALID');
+  }
+
+  const appliedMigrationNames = readAppliedMigrationNames(database, manifest);
+  assertAppliedMigrationsAreManifestPrefix(appliedMigrationNames, manifest);
+  const finalEntry = manifest[appliedMigrationNames.length - 1];
+
   return {
     appliedMigrationNames,
-    migrationChainIdentity: finalEntry.chainSha256,
+    migrationChainIdentity: finalEntry?.chainSha256 ?? '',
   };
 }
 
-function createMigrationTable(database: DatabaseConnection): void {
+export function createMigrationTable(database: DatabaseConnection): void {
   database.exec(`
     CREATE TABLE schema_migrations (
       name TEXT PRIMARY KEY,
@@ -183,7 +195,7 @@ function createMigrationTable(database: DatabaseConnection): void {
   `);
 }
 
-function createMigrationMetadataTable(database: DatabaseConnection): void {
+export function createMigrationMetadataTable(database: DatabaseConnection): void {
   database.exec(`
     CREATE TABLE schema_migration_metadata (
       migration_name TEXT PRIMARY KEY,
@@ -260,23 +272,33 @@ function assertMetadataMatchesManifest(
 
   try {
     rows = database
-      .prepare<[], MigrationMetadataRow>(
+      .prepare<[number, number], MigrationMetadataRow>(
         `
           SELECT
-            migration_name,
-            metadata_version,
-            source_sha256,
-            chain_sha256,
-            metadata_origin,
-            recorded_app_version,
-            recorded_build_revision,
-            recorded_at
-          FROM schema_migration_metadata
-          ORDER BY migration_name
+            CASE WHEN length(CAST(migration_name AS BLOB)) <= ?
+              THEN migration_name END AS migration_name,
+            CASE WHEN typeof(metadata_version) = 'integer'
+              THEN metadata_version END AS metadata_version,
+            CASE WHEN length(CAST(source_sha256 AS BLOB)) <= 64
+              THEN source_sha256 END AS source_sha256,
+            CASE WHEN length(CAST(chain_sha256 AS BLOB)) <= 64
+              THEN chain_sha256 END AS chain_sha256,
+            CASE WHEN length(CAST(metadata_origin AS BLOB)) <= 15
+              THEN metadata_origin END AS metadata_origin,
+            CASE WHEN length(CAST(recorded_app_version AS BLOB)) <= 80
+              THEN recorded_app_version END AS recorded_app_version,
+            CASE WHEN length(CAST(recorded_build_revision AS BLOB)) <= 40
+              THEN recorded_build_revision END AS recorded_build_revision,
+            CASE WHEN length(CAST(recorded_at AS BLOB)) <= 27
+              THEN recorded_at END AS recorded_at
+          FROM main.schema_migration_metadata
+          ORDER BY schema_migration_metadata.migration_name
+          LIMIT ?
         `,
       )
-      .all();
-  } catch {
+      .all(maximumMigrationNameBytes(manifest), manifest.length + 1);
+  } catch (error) {
+    if (isSqliteMemoryError(error)) throw error;
     throw new Error('MIGRATION_HISTORY_INVALID');
   }
 
@@ -297,8 +319,11 @@ function assertMetadataMatchesManifest(
       row.chain_sha256 !== expectedEntry.chainSha256 ||
       (row.metadata_origin !== 'legacy_baseline' &&
         row.metadata_origin !== 'applied') ||
+      typeof row.recorded_app_version !== 'string' ||
       !safeAppVersionPattern.test(row.recorded_app_version) ||
+      typeof row.recorded_build_revision !== 'string' ||
       !safeBuildRevisionPattern.test(row.recorded_build_revision) ||
+      typeof row.recorded_at !== 'string' ||
       !isIsoTimestamp(row.recorded_at)
     ) {
       throw new Error('MIGRATION_HISTORY_INVALID');
@@ -306,17 +331,26 @@ function assertMetadataMatchesManifest(
   });
 }
 
-function readAppliedMigrationNames(database: DatabaseConnection): string[] {
+function readAppliedMigrationNames(
+  database: DatabaseConnection,
+  manifest: readonly MigrationManifestEntry[],
+): string[] {
   try {
     return database
-      .prepare<[], { name: string }>(
-        'SELECT name FROM schema_migrations ORDER BY name',
+      .prepare<[number, number], { name: string }>(
+        `SELECT CASE WHEN length(CAST(name AS BLOB)) <= ? THEN name END AS name
+         FROM main.schema_migrations ORDER BY schema_migrations.name LIMIT ?`,
       )
-      .all()
+      .all(maximumMigrationNameBytes(manifest), manifest.length + 1)
       .map(({ name }) => name);
-  } catch {
+  } catch (error) {
+    if (isSqliteMemoryError(error)) throw error;
     throw new Error('MIGRATION_HISTORY_INVALID');
   }
+}
+
+function maximumMigrationNameBytes(manifest: readonly MigrationManifestEntry[]): number {
+  return Math.max(0, ...manifest.map(entry => Buffer.byteLength(entry.fileName, 'utf8')));
 }
 
 function assertAppliedMigrationsAreManifestPrefix(

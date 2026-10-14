@@ -8,7 +8,8 @@ internal sealed class WindowsJobProcessSupervisor(
     Func<SupervisorRequest, WindowsJob, CancellationToken, SuspendedWindowsProcess>? createProcess = null,
     Func<SuspendedWindowsProcess, bool>? observeRootExit = null,
     Func<SupervisorRequest, WorkerTerminalResultValidation>? validateWorkerResult = null,
-    ISupervisorDeadline? deadline = null
+    ISupervisorDeadline? deadline = null,
+    Func<WindowsJob, WorkspaceMsiMembership>? observeMsiActivity = null
 )
 {
     private const int WaitSliceMilliseconds = 100;
@@ -151,6 +152,8 @@ internal sealed class WindowsJobProcessSupervisor(
         var rootExited = false;
         int? childExitCode = null;
         string? lastTerminalWaitState = null;
+        using var msiObservation = new WorkspaceMsiActivityObservation(
+            request.Scenario, job, evidence, observeMsiActivity);
 
         while (supervisorDeadline.ElapsedMilliseconds < workDeadline)
         {
@@ -176,6 +179,7 @@ internal sealed class WindowsJobProcessSupervisor(
             // Job accounting and the process handle are separate observations during termination.
             if (activeProcessCount == 0 && rootExited)
             {
+                msiObservation.Dispose();
                 evidence.Write("waitStarted", "completed");
                 evidence.Write("processTreeAbsent", "completed");
                 if (childExitCode != 0)
@@ -221,6 +225,7 @@ internal sealed class WindowsJobProcessSupervisor(
 
             if (rootExited && childExitCode != 0)
             {
+                msiObservation.Dispose();
                 return FailAfterCleanup(
                     job,
                     request,
@@ -244,6 +249,8 @@ internal sealed class WindowsJobProcessSupervisor(
                 nextHeartbeat += HeartbeatMilliseconds;
             }
 
+            msiObservation.Poll(supervisorDeadline.ElapsedMilliseconds);
+
             var remaining = workDeadline - supervisorDeadline.ElapsedMilliseconds;
             if (remaining <= 0)
             {
@@ -261,6 +268,7 @@ internal sealed class WindowsJobProcessSupervisor(
         }
 
         evidence.Write("deadlineExceeded", "failed", errorCode: "deadlineExceeded");
+        msiObservation.Dispose();
         return FailAfterCleanup(job, request, "deadlineExceeded", childExitCode, child);
     }
 

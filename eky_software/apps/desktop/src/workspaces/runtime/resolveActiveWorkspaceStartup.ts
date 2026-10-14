@@ -8,6 +8,7 @@ import { deriveWorkspaceRoot } from '../registry/deriveWorkspaceRoot.js';
 import { inspectWorkspaceRoot } from '../registry/inspectWorkspaceRoot.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../registry/workspaceRegistryPaths.js';
 import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
+import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
 import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
 import { WorkspaceSwitchJournalStore } from '../switch/workspaceSwitchJournal.js';
 import { WorkspaceSwitchError } from '../switch/workspaceSwitchError.js';
@@ -79,7 +80,7 @@ export async function resolveActiveWorkspaceStartup(
   });
   const adoptionJournal = new WorkspaceLegacyAdoptionJournalStore(userDataRoot);
   const [registryValue, adoptionJournalValue] = await Promise.all([
-    registry.read(),
+    registry.inspect(),
     adoptionJournal.read(),
   ]);
   reportProgress(options, 'registryStateRead', 'completed');
@@ -112,8 +113,12 @@ export async function resolveActiveWorkspaceStartup(
   }
 
   reportProgress(options, 'switchRecovery', 'started');
+  const inspectedRegistry: WorkspaceRegistryPort = {
+    read: () => registry.inspect(),
+    write: (value) => registry.write(value),
+  };
   const switchSelection = await resolveWorkspaceSwitchStartup(
-    registry,
+    inspectedRegistry,
     new WorkspaceSwitchJournalStore(userDataRoot),
   );
   reportProgress(options, 'switchRecovery', 'completed');

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { registerHooks } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, resolve, toNamespacedPath } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,9 +9,23 @@ import { DatabaseSync } from 'node:sqlite';
 import { createPackage } from '@electron/asar';
 
 import { readMigrationManifest } from '../../../backend/src/database/migration/migrationManifest.ts';
-import { prepareMigrationHistoryForRun, recordAppliedMigrationMetadata } from '../../../backend/src/database/migration/migrationMetadata.ts';
 import { createDesktopProfilePaths } from '../../src/runtime/desktopProfilePaths.ts';
 import { snapshotLegacyDatabaseSchema } from './legacyUpgradeDatabaseEvidence.mjs';
+
+// Native TypeScript stripping does not remap emitted .js imports to source .ts.
+const metadataUrl = new URL('../../../backend/src/database/migration/migrationMetadata.ts', import.meta.url);
+const sourceHooks = registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (context.parentURL === metadataUrl.href && specifier === '../connection/isSqliteMemoryError.js') {
+      return nextResolve(new URL('../connection/isSqliteMemoryError.ts', metadataUrl).href, context);
+    }
+    return nextResolve(specifier, context);
+  },
+});
+let metadata;
+try { metadata = await import(metadataUrl.href); }
+finally { sourceHooks.deregister(); }
+const { prepareMigrationHistoryForRun, recordAppliedMigrationMetadata } = metadata;
 
 export const SOURCE_DATABASE_IDENTITY = Object.freeze({ appVersion: '0.2.6', buildRevision: 'a'.repeat(12) });
 export const TARGET_DATABASE_IDENTITY = Object.freeze({ appVersion: '0.2.7', buildRevision: 'b'.repeat(12) });

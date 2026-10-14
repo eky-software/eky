@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 
 import { createDesktopProfilePaths } from '../../runtime/desktopProfilePaths.js';
+import { captureOwnedLocalDatabaseRecoverySelection } from '../../runtime/ownedLocalDatabaseRecovery.js';
 import { deriveWorkspaceRoot } from '../registry/deriveWorkspaceRoot.js';
 import { inspectWorkspaceRoot } from '../registry/inspectWorkspaceRoot.js';
-import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
+import type { WorkspaceRegistryInspectionPort } from '../registry/workspaceRegistryPort.js';
 import { validateWorkspaceRegistry } from '../registry/workspaceRegistryValidation.js';
 import {
   WorkspaceMigrationInventoryError,
@@ -24,7 +25,7 @@ export interface WorkspaceMigrationInventoryCoordinatorOptions {
   readonly createOperationId?: () => string;
   readonly now?: () => number;
   readonly observer?: WorkspaceMigrationInventoryObserver;
-  readonly registry: Pick<WorkspaceRegistryPort, 'read'>;
+  readonly registry: WorkspaceRegistryInspectionPort;
   readonly runtimeFactory: PrivateWorkspaceMigrationInspectionRuntimeFactory;
   readonly userDataRoot: string;
 }
@@ -50,7 +51,7 @@ export class WorkspaceMigrationInventoryCoordinator {
     let outcome: WorkspaceMigrationInventoryEvent['outcome'] = 'failed';
     try {
       throwIfCancelled(signal);
-      const storedRegistry = await this.options.registry.read();
+      const storedRegistry = await this.options.registry.inspect();
       if (storedRegistry === undefined) {
         throw new Error(workspaceMigrationInventoryFailedCode);
       }
@@ -64,6 +65,9 @@ export class WorkspaceMigrationInventoryCoordinator {
           workspace.layoutVersion,
         );
         await inspectWorkspaceRoot(roots);
+        throwIfCancelled(signal);
+        const ownedLocalDatabaseRecovery = await captureOwnedLocalDatabaseRecoverySelection(roots.workspaceRoot);
+        throwIfCancelled(signal);
         const profile = createDesktopProfilePaths(roots.workspaceRoot);
         const result = await inspectOneWorkspace(
           this.options.runtimeFactory,
@@ -72,6 +76,7 @@ export class WorkspaceMigrationInventoryCoordinator {
             expectedProfileId: workspace.lineageIdentity.profileId,
             operationId: this.createOperationId(),
             publishedRoot: roots.workspaceRoot,
+            ownedLocalDatabaseRecovery,
             ...(signal === undefined ? {} : { signal }),
           },
         );
@@ -95,11 +100,13 @@ export class WorkspaceMigrationInventoryCoordinator {
       if (signal?.aborted === true) {
         throw new WorkspaceMigrationInventoryError(
           workspaceMigrationInventoryCancelledCode,
+          { cause: error },
         );
       }
       if (error instanceof WorkspaceMigrationInventoryError) throw error;
       throw new WorkspaceMigrationInventoryError(
         workspaceMigrationInventoryFailedCode,
+        { cause: error },
       );
     } finally {
       this.record(createEvent(entries, outcome, this.now() - startedAt));

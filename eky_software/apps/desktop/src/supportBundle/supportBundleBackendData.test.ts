@@ -1,8 +1,83 @@
 import { describe, expect, it } from 'vitest';
 
+import { workspaceCandidateFailureCauses } from '../runtime/workspaceCandidateMessages.js';
+import { desktopOperationalEventSpecs } from '../observability/desktopOperationalEvent.js';
+import { desktopRecoveryEventStages } from '../observability/desktopOperationalEventValidator.js';
 import { readSupportBundleBackendData } from './supportBundleBackendData.js';
 
 describe('readSupportBundleBackendData', () => {
+  const profileRecoveryCases = Object.entries(desktopRecoveryEventStages)
+    .filter(([eventName]) => !eventName.startsWith('workspaceBackup.'))
+    .flatMap(([eventName, stages]) => stages.map(stage => ({
+      eventName: eventName as keyof typeof desktopRecoveryEventStages, stage,
+    })));
+
+  it.each(profileRecoveryCases)('revalidates $eventName at $stage', ({ eventName, stage }) => {
+    const spec = desktopOperationalEventSpecs[eventName];
+    const event = {
+      category: spec.category, component: 'desktop',
+      correlationId: '33333333-3333-4333-8333-333333333333',
+      errorCode: spec.outcome === 'failure'
+        ? eventName === 'restore.recoveryRequired' ? 'PROFILE_RESTORE_RECOVERY_REQUIRED' : 'PROFILE_SCHEMA_UNSUPPORTED'
+        : null,
+      eventName, id: 'desktop:synthetic-profile-event', level: spec.level,
+      occurredAt: '2026-10-10T12:00:00.000Z', outcome: spec.outcome, stage,
+      ...(spec.category === 'recoveryPoint' ? { recoveryPointKind: 'daily' } : {}),
+      ...(spec.payloadFields.includes('durationMs') ? { durationMs: 1 } : {}),
+      ...(spec.outcome === 'failure' ? { retryable: false, sideEffectState: 'unknown' } : {}),
+    };
+    const read = (value: unknown) => readSupportBundleBackendData({
+      ...createValidData(), diagnosticEvents: [value],
+    }).diagnosticEvents;
+    expect(read(event)).toEqual([event]);
+    const withIdentity = {
+      ...event, appVersion: '0.2.81', buildRevision: 'abcdef1234',
+      runtimeInstanceId: '44444444-4444-4444-8444-444444444444',
+    };
+    expect(read(withIdentity)).toEqual([withIdentity]);
+    for (const change of [
+      { stage: 'syntheticPrivateStage' }, { stage: undefined },
+      { stage: stage === 'portable' ? 'activation' : 'portable' },
+      { correlationId: undefined }, { category: 'smtp' }, { component: 'backend' },
+      { level: spec.level === 'info' ? 'error' : 'info' },
+      { outcome: spec.outcome === 'failure' ? 'success' : 'failure' },
+      { operationId: 'syntheticPrivateOperation' }, { cipherName: 'syntheticPrivateCipher' },
+      { smtpProfile: 'dnaSmtp' }, { tlsVersion: 'TLSv1.3' },
+      { peerCertificateFingerprint256: Array(32).fill('AA').join(':') },
+      { companyId: 'synthetic-company' }, { rawError: 'synthetic private detail' },
+      ...(spec.category !== 'recoveryPoint' ? [{ recoveryPointKind: 'daily' }] : []),
+      ...(spec.outcome === 'success'
+        ? [{ errorCode: 'PROFILE_SCHEMA_UNSUPPORTED' }, { fingerprint: 'syntheticFingerprint' }, { retryable: false }, { sideEffectState: 'unknown' }]
+        : [{ errorCode: null }]),
+      ...(!spec.payloadFields.includes('durationMs') ? [{ durationMs: 1 }] : []),
+      ...(eventName === 'restore.recoveryRequired'
+        ? [{ errorCode: 'PROFILE_SCHEMA_UNSUPPORTED' }, { retryable: true }, { retryable: undefined }, { sideEffectState: 'none' }, { sideEffectState: undefined }]
+        : []),
+      ...(eventName === 'restore.activationFailed'
+        ? [{ durationMs: undefined }, { retryable: undefined }, { sideEffectState: undefined }]
+        : []),
+      ...(eventName === 'restore.acceptanceFailed'
+        ? [{ durationMs: undefined }, { retryable: undefined }, { retryable: true },
+          { sideEffectState: undefined }, { sideEffectState: 'committed' }, { errorCode: 'PRIVATE_CODE' }]
+        : []),
+      ...(eventName === 'recoveryPoint.started' || eventName === 'recoveryPoint.completed'
+        ? [{ recoveryPointKind: undefined }] : []),
+    ]) {
+      expect(() => read({ ...event, ...change })).toThrow('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
+    }
+    if (spec.outcome === 'failure') {
+      const fingerprintEvent = { ...event, fingerprint: 'profile.failure:PROFILE_SCHEMA_UNSUPPORTED' };
+      expect(read(fingerprintEvent)).toEqual([fingerprintEvent]);
+    }
+    if (eventName !== 'restore.activationFailed' && eventName !== 'restore.recoveryRequired' && eventName !== 'restore.acceptanceFailed') {
+      const legacy = JSON.parse(JSON.stringify({
+        ...event, durationMs: undefined, retryable: undefined, sideEffectState: undefined,
+        recoveryPointKind: eventName === 'recoveryPoint.failed' ? undefined : event.recoveryPointKind,
+      }));
+      expect(read(legacy)).toEqual([legacy]);
+    }
+  });
+
   it('accepts the exact safe backend contract', () => {
     expect(readSupportBundleBackendData(createValidData())).toEqual(
       createValidData(),
@@ -33,6 +108,53 @@ describe('readSupportBundleBackendData', () => {
       }),
     ).toThrow('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
   });
+
+  it.each(['workspaceBackup.operationFailed', 'workspaceBackup.cleanupFailed'])(
+    'accepts only the closed %s failure contract', eventName => {
+      const event = {
+        category: 'backup', component: 'desktop' as const,
+        correlationId: '22222222-2222-4222-8222-222222222222', durationMs: 1,
+        errorCode: 'PROFILE_SCHEMA_UNSUPPORTED', eventName, id: 'desktop:safe-failure',
+        level: 'error' as const, occurredAt: '2026-10-09T10:00:00.000Z',
+        outcome: 'failure' as const, retryable: false, sideEffectState: 'unknown' as const,
+        stage: 'import',
+      };
+      expect(readSupportBundleBackendData({
+        ...createValidData(), diagnosticEvents: [event],
+      }).diagnosticEvents).toEqual([event]);
+      for (const errorCode of workspaceCandidateFailureCauses) {
+        expect(readSupportBundleBackendData({
+          ...createValidData(), diagnosticEvents: [{ ...event, errorCode }],
+        }).diagnosticEvents).toEqual([{ ...event, errorCode }]);
+      }
+      const unknown = { ...event, errorCode: 'unknown', stage: 'replace' };
+      expect(readSupportBundleBackendData({
+        ...createValidData(), diagnosticEvents: [unknown],
+      }).diagnosticEvents).toEqual([unknown]);
+      for (const change of [
+        { rawError: 'synthetic private message' },
+        { errorCode: 'syntheticPrivateMessage' },
+        { errorCode: null },
+        { stage: 'syntheticPrivateStage' },
+        { stage: undefined },
+        { correlationId: undefined },
+        { durationMs: undefined },
+        { retryable: true },
+        { sideEffectState: 'rolledBack' },
+        { category: 'smtp' },
+        { component: 'backend' },
+        { level: 'info' },
+        { outcome: 'success' },
+        { fingerprint: 'syntheticPrivateFingerprint' },
+        { operationId: 'syntheticPrivateOperation' },
+        { cipherName: 'syntheticPrivateCipher' },
+      ]) {
+        expect(() => readSupportBundleBackendData({
+          ...createValidData(), diagnosticEvents: [{ ...event, ...change }],
+        })).toThrow('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
+      }
+    },
+  );
 
   it('accepts safe TLS metadata and rejects the SMTP peer address', () => {
     const peerCertificateFingerprint256 = Array.from(

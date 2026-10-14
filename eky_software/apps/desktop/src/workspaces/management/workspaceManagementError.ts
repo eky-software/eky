@@ -22,8 +22,9 @@ export class WorkspaceManagementError extends Error {
   constructor(
     readonly code: WorkspaceManagementErrorCode,
     readonly operationKind: WorkspaceManagementOperationKind,
+    options?: ErrorOptions,
   ) {
-    super(code);
+    super(code, options);
     this.name = 'WorkspaceManagementError';
   }
 }
@@ -40,23 +41,27 @@ export function mapWorkspaceManagementError(
     return new WorkspaceManagementError(
       'WORKSPACE_MANAGEMENT_BUSY',
       operationKind,
+      { cause: error },
     );
   }
   if (isInvalidError(error)) {
     return new WorkspaceManagementError(
       'WORKSPACE_MANAGEMENT_INVALID',
       operationKind,
+      { cause: error },
     );
   }
   if (isRecoveryRequiredError(error)) {
     return new WorkspaceManagementError(
       'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED',
       operationKind,
+      { cause: error },
     );
   }
   return new WorkspaceManagementError(
     failureCodeByOperation[operationKind],
     operationKind,
+    { cause: error },
   );
 }
 

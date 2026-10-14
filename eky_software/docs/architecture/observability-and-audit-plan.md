@@ -320,6 +320,16 @@ epäonnistunut validointi tai epäonnistunut rollback tuottaa lisäksi
 `restore.recoveryRequired`-tapahtuman, koska business-UI:ta ei silloin saa
 avata turvallisesti.
 
+Hyväksynnän valmistelun, julkaisun tai loppusiivouksen virhe kirjataan
+omistavassa palautuspalvelussa `restore.acceptanceFailed`-tapahtumana.
+Se säilyttää turvallisen ensisyyn myös silloin, kun composition tekee
+rollbackin ja hallitun uudelleenkäynnistyksen ilman ulompaa käynnistysvirhettä.
+Sisältövalidoinnin aiempaa onnistumista ei muuteta virheeksi.
+Vaiheiden ja pakollisten kenttien suljettu sopimus on
+[tapahtumakatalogissa](r0-observability-event-catalog.md#desktop-operational-ja-security).
+Tapahtuma käyttää nykyisiä lukijoita ja alla olevaa error-tason
+vastuumatriisia; uusi lokikanava tai kuittausodotus ei kuulu muutokseen.
+
 Cross-restart-korrelaatio käyttää aktivointijournalin jo omistamaa
 satunnaista teknistä UUID:ta vain eventin `correlationId`-kenttänä. Journalin
 formaattia tai raakasisältöä ei projisoida. Korrelaatiotunniste ei siirry

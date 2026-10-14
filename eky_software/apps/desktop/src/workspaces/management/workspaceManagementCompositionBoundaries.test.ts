@@ -8,6 +8,33 @@ const currentDirectory = dirname(fileURLToPath(import.meta.url));
 const desktopSourceRoot = join(currentDirectory, '..', '..');
 
 describe('workspace management composition boundaries', () => {
+  it('keeps inspection admission open for the preRestore point after write quiescence', async () => {
+    const composition = await readFile(join(desktopSourceRoot, 'main', 'desktopComposition.ts'), 'utf8');
+    const lifecycleResources = composition.split('const activeWorkspaceLifecycle = new MainOwnedActiveWorkspaceLifecycle(')[1]
+      ?.split('const workspaceManagementComposition =')[0];
+    expect(lifecycleResources).toBeDefined();
+    expect(lifecycleResources).toMatch(/stopRecoveryPointScheduler\(\)\s*\{\s*return recoveryPointScheduler\.stopChecks\(\);\s*\}/u);
+    const disposal = composition.split('const disposeWorkspaceRuntimeCapabilities =')[1]
+      ?.split('let closeBrokersTask:')[0];
+    expect(disposal).toContain('profileSnapshotInspectionClient.closeAdmission();');
+    expect(disposal).toContain('await profileSnapshotInspectionClient.shutdown();');
+  });
+
+  it('keeps the composition proof on the real candidate ownership and preparation port', async () => {
+    const proof = await readFile(
+      join(desktopSourceRoot, '..', 'e2e', 'workspaceManagementCompositionProof.ts'),
+      'utf8',
+    );
+
+    expect(proof).toContain('assertMainOwned: sourceReservation.assertMainOwned,');
+    expect(proof).toContain('assertMainOwned: primaryReservation.assertMainOwned,');
+    expect(proof).toContain('assertMainOwned: input.reservation.assertMainOwned,');
+    expect(countOccurrences(proof, 'bindCandidate: ({ generationId, prepareMainOwned })')).toBe(3);
+    expect(proof).toContain('sourceReservation!.bind(generationId, assertProofSingleInstanceOwnership, prepareMainOwned)');
+    expect(proof).toContain('primaryReservation!.bind(generationId, assertProofSingleInstanceOwnership, prepareMainOwned)');
+    expect(proof).toContain("input.maintenanceLease.captureCurrentOwner(['create', 'import', 'replace']),\n        prepareMainOwned,");
+  });
+
   it('reuses the single main-owned lease, lifecycle and relaunch instances', async () => {
     const desktopComposition = await readFile(
       join(desktopSourceRoot, 'main', 'desktopComposition.ts'),
