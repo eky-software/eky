@@ -45,6 +45,23 @@ sen jälkeen korjataan vain näytön osoittama syy ja vaaditaan uuden revision
 omat normaalit PR/main-portit. Tämä ei ole uusi testialusta, käännösvirheen
 korjatuksi merkintä tai hyväksyntäehtojen muutos.
 
+**Talteenoton kohdenäyttö:** revision `0f621f46` rajatut Windows- ja Linux-
+kontrollit, nykyinen salatun aineiston sarja, desktopin tyypit ja riippumaton
+katselmus läpäisivät. Valmistelija -> keräin -> OpenPGP -> erillinen testiavain-
+purku todensi alkuperäiset tavut; se ei toistanut vanhaa kääntäjävirhettä.
+[Nimetty Windows-ajo 38591390653](https://github.com/eky-software/eky/actions/runs/38591390653)
+läpäisi ensimmäisellä yrityksellä: paketointi ja hardened-palautus, kolme
+paketoitua legacy/cold-tapausta, 47 kriittistä Electron-testiä ja erillinen
+käynnistyshavainnon kontrolli. Checkout, säilyneiden lokien tiivisteet sekä
+lifecycle-liitteen alkuperä ja siivous tarkistettiin. Neljä valitsematta
+jätettyä jobia eivät ole läpäisyjä. Tämä ei ole normaali V2-kierros eikä
+vanhan käännösvirheen juurisyyn hyväksyntä.
+
+**Seuraava työ:** vie sama koodikorjaus ja ajantasainen dokumentointi
+normaaleihin PR-portteihin ja erilliseen auditointiin. Merge vaatii niiden
+täsmäheadin hyväksynnän; koko K sulkeutuu vasta uuden mainin omien porttien
+jälkeen. Alkuperäisen virheen havainto ja aikaisemmat kierrokset säilyvät.
+
 **Aiempi integraatiohistoria:** PR #303 yhdistettiin 14.10.2026 normaalisti
 mainiin revision `3fb7ad05` hyväksyttyjen PR-porttien jälkeen.
 [PR-checkpoint](https://github.com/eky-software/eky/pull/303#issuecomment-6165741060)
