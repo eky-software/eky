@@ -2,7 +2,7 @@
 
 ## Jatka tästä
 
-**Aktiivinen työ 14.10.2026: nykyisen K-integraation loppuunvienti.**
+**Aktiivinen työ 15.10.2026: nykyisen K-integraation loppuunvienti.**
 Tämä jatkamiskohta korvaa aiemman pitkän integraatiojatkon työjonona; se ei
 aloita uutta Goalia eikä lisää vanhoja tutkimuksia pakollisiksi tehtäviksi.
 T/A/B/C ovat hyväksyttyjä. K:n [hyväksytyt sopimukset](#k-paketin-valmistelu-ja-hyväksyntärajat)
@@ -12,10 +12,19 @@ ja [toteutuksen hyväksyntärajat](#kn-toteutusjärjestys-ja-hyväksyntä) säil
 | Kohde | Varmennettu tila ja avoin asia |
 | --- | --- |
 | Main | `012fed60`: PR #304 yhdistetty, mutta mainin oma V2 hylättiin tarkistusajurin käännösvalmisteluun. Erillinen auditointi läpäisi; K ei ole hyväksytty. |
-| PR #305 | Avoin head `3d703c07`, base `012fed60`. Normaali V2 hylättiin kahteen workspace-asennusodotukseen; auditointi läpäisi. Ei mergevalmiutta. |
+| PR #305 | Avoin head `04fc68d2`, base `012fed60`. [Normaali V2](https://github.com/eky-software/eky/actions/runs/38635399690) sisältää uusia hylkäyksiä; [erillinen auditointi](https://github.com/eky-software/eky/actions/runs/38635399726) läpäisi. Ei mergevalmiutta. |
 | MSI-odotus | Revision `39ef904a` [koe](https://github.com/eky-software/eky/actions/runs/38613163463) osoitti vastausta odottavan sulkemispyynnön. Revision `50d6c31d` [nimetty jatkokoe](https://github.com/eky-software/eky/actions/runs/38630393550) läpäisi samoilla asennuspaketeilla myös pakollisen tulosverifioinnin. Estäjän identiteetti jää avoimeksi; ei juurisyykorjauksen tai normaalin PR-hyväksynnän väitettä. |
 | Kääntäjähavainto | Alkuperäinen syy jäi puuttumaan. Rajattu keräyskorjaus ja [nimetty Windows-todennus](https://github.com/eky-software/eky/actions/runs/38591390653) läpäisivät; vanhaa syytä ei ole todistettu eikä yhdistetty MSI-odotukseen. |
-| K:n korvatut polut | Poisto toteutettu: paketoidun testin vertailusnapshot käyttää nykyistä eristettyä tarkistusta, receipt-sidontaa ja omistajan siivousta. Private broker v12 ei tarjoa kolmea korvattua raskasta komentoa. Kohderegressiot, tyypit ja riippumaton katselmus läpäisivät; saman puhtaan paketin palautustodennus ja normaalit PR/main-portit ovat vielä avoinna. |
+| K:n korvatut polut | Revision `04fc68d2` poisto, kohderegressiot, tyypit, katselmus ja saman puhtaan paketin backup -> inspect -> restore -> restart -> compare läpäisivät. Vertailusnapshot käyttää eristettyä tarkistusta, receipt-sidontaa ja omistajan siivousta. Private broker v12 ei tarjoa kolmea korvattua raskasta komentoa. Normaalit PR/main-portit ovat avoinna. |
+| Uuden kierroksen hylkäykset | Vanhentunut workflow-testin odotus, virheaineiston väliaikaisjuuren nimiesityksen vertailu, natiivin ilmoitusfixturen `titleCaptured`-ehto ja paketoidun legacy-testin Node/Electron-tuontiraja käsitellään erillisinä. Ensivirheet ja salattu aineisto säilyvät; mikään niistä ei todista vanhan MSI-odotuksen syytä. |
+
+Rajatut workflow-, keräin- ja Node-tuontikorjaukset on kohdennetusti todennettu.
+Tuontirajan regressio hylkäsi vanhan toteutuksen; korjattu Playwright-luenta
+löytää jälleen kaikki kolme paketoitua palautustestiä. Tämä ei vielä ole niiden
+suoritusnäyttö. Natiivin ilmoitustestin epäonnistuva ensimmäinen näyte säilyttää
+nyt suljetut tulosluokat nykyisessä yksityisessä virhetulosteessa. Yksi nimetty
+asennukseton Windows-sopimuskoe tarkentaa tätä hylkäystä ennen uutta PR-kierrosta;
+onnistuminen ei yksin selitä aiempaa virhettä.
 
 **Seuraava työ järjestyksessä:**
 
@@ -28,9 +37,10 @@ ja [toteutuksen hyväksyntärajat](#kn-toteutusjärjestys-ja-hyväksyntä) säil
    todista prosessin omistajuutta. Ikkunan sulkeutuminen, backendin päättyminen,
    main-prosessin poistuminen ja asentimen valmistuminen ovat eri todisteita.
 2. Omistaja hyväksyi rajatun etenemisen: vanha MSI-odotus jää avoimeksi
-   seurantahavainnoksi, ei korjatuksi viaksi. Jatka K:n korvattujen polkujen
-   poistoon ja nykyisiin normaaleihin PR/main-portteihin; uutta hylkäystä ei
-   ohiteta eikä sisältö-, palautus- tai siivousehtoja muuteta. Korjaa vain
+   seurantahavainnoksi, ei korjatuksi viaksi. Korvattujen polkujen poisto on
+   todennettu; korjaa nyt uuden PR-kierroksen yllä nimetyt hylkäykset ennen
+   normaaleja PR/main-portteja. Uutta hylkäystä ei ohiteta eikä sisältö-,
+   palautus- tai siivousehtoja muuteta. Korjaa vain
    osoitettu virhe nykyiseen omistajaan. Ei automaattista UI-vastausta,
    hiljaiseen asennukseen vaihtoa, yleistä prosessiskannausta tai uusia valvojia.
 3. Testivalintojen tarkistus valmistui: workspace-success valitsee 11 ja fault

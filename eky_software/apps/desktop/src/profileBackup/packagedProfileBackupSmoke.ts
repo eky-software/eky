@@ -17,7 +17,8 @@ import type {
 } from '../main/packagedSmoke.js';
 import type { BackupContainerEntryType } from './container/backupContainerEntry.js';
 import { assertProfileBackupSourceReceipt, createProfileBackupSourceEntries } from './createProfileBackupSourceEntries.js';
-import { PortableProfileBackupCleanupError, type PortableProfileBackupService } from './portableProfileBackup.js';
+import type { PortableProfileBackupService } from './portableProfileBackup.js';
+import { PortableProfileBackupCleanupError } from './portableProfileBackupError.js';
 import type { ProfileSnapshotInspectionPort } from './profileSnapshotInspectionPort.js';
 import type { ProfileRestoreActivationService } from './restore/profileRestoreActivationService.js';
 import type { ProfileRestoreStagingService } from './restore/profileRestoreStagingService.js';

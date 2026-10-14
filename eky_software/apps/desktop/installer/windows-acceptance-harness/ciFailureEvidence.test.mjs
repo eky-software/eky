@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { link, mkdir, mkdtemp, open, readFile, readdir, rm, symlink, utimes, writeFile } from 'node:fs/promises';
+import { link, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
@@ -130,6 +130,72 @@ test('MSI window records require the exact job and adjacent request without coll
     path.replace('msi-window-001', 'msi-window-0001'), path.replace('msi-window-001', 'other')])
     assert.equal(evidenceSourceKind('temporary', forbidden), null);
 });
+
+for (const location of ['runnerTemp', 'nativeTemp', 'sharedTemp']) {
+  test(`MSI window binding accepts only the configured temporary parent alias: ${location}`, async t => {
+    const { root, temp, env, put } = await fixture(t);
+    const base = await realpath(temp);
+    const alias = join(root, 'configured-alias');
+    const foreignAlias = join(root, 'unconfigured-alias');
+    const linkType = process.platform === 'win32' ? 'junction' : 'dir';
+    await symlink(base, alias, linkType);
+    await symlink(base, foreignAlias, linkType);
+    const runner = join(root, 'runner');
+    await mkdir(runner);
+    const collectionEnv = { ...env, RUNNER_TEMP: location === 'runnerTemp' ? alias : location === 'nativeTemp' ? runner : base };
+    const options = location === 'runnerTemp' ? {} : { nativeTemp: alias };
+    const prefix = `eky-acceptance-command-${nativeId}/scenario`;
+    const phaseRoot = join(base, ...prefix.split('/'));
+    const foreignPhaseRoot = join(runner, ...prefix.split('/'));
+    await mkdir(foreignPhaseRoot, { recursive: true });
+    const record = { schemaVersion: 1, operation: 'msiWindowObservation',
+      binding: { kind: 'github', runId: env.GITHUB_RUN_ID, attempt: env.GITHUB_RUN_ATTEMPT,
+        job: env.GITHUB_JOB, sourceRevision: env.GITHUB_SHA },
+      runNonce: 'b'.repeat(64), scenario: 'packagedWorkspaceSuccess', artifactDescriptorSha256: 'c'.repeat(64),
+      sequence: 1, elapsedMs: 123, clients: [] };
+    const request = { schemaVersion: 1, runNonce: record.runNonce, scenario: record.scenario,
+      artifactDescriptorSha256: record.artifactDescriptorSha256,
+      workingDirectory: join(alias, ...prefix.split('/')), command: 'EXCLUDED COMMAND', arguments: ['EXCLUDED ARGUMENT'] };
+    const requestPath = await put(base, `${prefix}/request.json`, JSON.stringify(request));
+    await put(base, `${prefix}/msi-window-001.private.json`, JSON.stringify(record));
+    await symlink(phaseRoot, join(base, `eky-acceptance-command-${nativeId}`, 'phase-alias'), linkType);
+    await symlink(join(base, `eky-acceptance-command-${nativeId}`),
+      join(base, `eky-acceptance-command-${'d'.repeat(32)}`), linkType);
+    const sibling = join(base, `eky-acceptance-command-${'e'.repeat(32)}`, 'scenario');
+    await mkdir(sibling, { recursive: true });
+    assert.notEqual(request.workingDirectory, phaseRoot);
+    assert.equal(await realpath(request.workingDirectory), phaseRoot);
+    for (const [label, patch, accepted] of [
+      ['configured alias', {}, true],
+      ['canonical parent', { workingDirectory: phaseRoot }, true],
+      ['unconfigured parent alias', { workingDirectory: join(foreignAlias, ...prefix.split('/')) }, false],
+      ['linked phase', { workingDirectory: join(alias, `eky-acceptance-command-${nativeId}`, 'phase-alias') }, false],
+      ['linked command', { workingDirectory: join(alias, `eky-acceptance-command-${'d'.repeat(32)}`, 'scenario') }, false],
+      ['sibling command', { workingDirectory: sibling }, false],
+      ['foreign source with matching suffix', { workingDirectory: foreignPhaseRoot }, false],
+      ['changed nonce', { runNonce: 'd'.repeat(64) }, false],
+      ['changed scenario', { scenario: 'historicalLegacyUpgrade' }, false],
+      ['changed descriptor', { artifactDescriptorSha256: 'd'.repeat(64) }, false],
+    ]) {
+      await writeFile(requestPath, JSON.stringify({ ...request, ...patch }));
+      const collected = await collectJobFailureEvidence(collectionEnv, options);
+      const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+      assert.equal(archive.manifest.files.length, 1, label);
+      const entry = archive.manifest.files[0];
+      assert.equal(entry.status, accepted ? 'retained' : 'unverified', label);
+      assert.equal(entry.location, location === 'nativeTemp' ? 'nativeTemp' : 'runnerTemp', label);
+      assert.equal(Object.keys(archive.files).length, accepted ? 1 : 0, label);
+      if (accepted) assert.deepEqual(JSON.parse(Buffer.from(archive.files[entry.name], 'base64')), record);
+      assert.equal(JSON.stringify(archive).includes('EXCLUDED'), false, label);
+    }
+    await writeFile(requestPath, JSON.stringify(request));
+    await link(requestPath, join(root, 'linked-request.json'));
+    const linked = await collectJobFailureEvidence(collectionEnv, options);
+    const archive = JSON.parse(gunzipSync(await readFile(linked.archivePath)));
+    assert.equal(archive.manifest.files[0].status, 'unverified');
+    assert.deepEqual(archive.files, {});
+  });
+}
 
 test('MSI wait evidence precedes newer repetitive supervisor receipts at source quota', async t => {
   const { temp, env, put } = await fixture(t);

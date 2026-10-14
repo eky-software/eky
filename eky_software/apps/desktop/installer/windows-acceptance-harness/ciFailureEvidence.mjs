@@ -134,9 +134,15 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
         if (requestInfo.size > MiB) throw failure();
         // Read only for binding; never copy the request, command or arguments into evidence.
         const request = await readCommandPhaseJson(requestPath);
+        // Only the configured temporary parent may be an alias. ordinaryPath
+        // above still requires every child directory and file to be canonical and link-free.
+        const workingDirectories = [dirname(path)];
+        for (const [configuredRoot, canonicalRoot] of [[env.RUNNER_TEMP, temp], [nativeTemp, native]]) {
+          if (canonicalRoot === base) workingDirectories.push(resolve(configuredRoot, dirname(relativePath)));
+        }
         if (request.schemaVersion !== 1 ||
             ['runNonce', 'scenario', 'artifactDescriptorSha256'].some(key => request[key] !== observation[key]) ||
-            resolve(request.workingDirectory) !== resolve(dirname(path))) throw failure();
+            !workingDirectories.includes(request.workingDirectory)) throw failure();
       }
       if (kind === 'runnerFailure') {
         const record = validateRunnerFailureEvidence(parseStrictJsonObjectBytes(await readFile(join(stage, name)),

@@ -11,6 +11,11 @@ internal static class MsiWindowObservationContract
         if (!OperatingSystem.IsWindows()) return 63;
         var request = SupervisorRequestReader.Read(["--request", requestPath]);
         var checks = new Dictionary<string, bool>();
+        var failedReceipt = FirstSampleFailure(new(0, "partial", []), 0,
+            () => throw new SupervisorFailure("processWaitFailed", 0), () => WorkspaceMsiMembership.Unknown);
+        Check("sampleFailurePreservedWhenExitQueryFails", failedReceipt.Message.StartsWith(
+            "msiWindowContractFailed:titleCaptured:", StringComparison.Ordinal) &&
+            failedReceipt.Message.Contains("\"childExitedAfterCapture\":null", StringComparison.Ordinal));
         using var own = WindowsJob.Create();
         using var other = WindowsJob.Create();
         var children = new List<(SuspendedWindowsProcess Process, EventWaitHandle Stop)>();
@@ -36,8 +41,19 @@ internal static class MsiWindowObservationContract
             }
             Check("systemImageAdmitted", MsiWindowObservation.IsSystemInstaller(Path.Combine(Environment.SystemDirectory, "msiexec.exe")));
             Check("otherImageRejected", !MsiWindowObservation.IsSystemInstaller(Path.Combine(request.WorkingDirectory, "msiexec.exe")));
+            var firstCapture = Stopwatch.StartNew();
             var observed = Observe(own, normal.Process);
-            Check("titleCaptured", observed.Status == "observed" && observed.Windows.Any(row => row.Role == "title" && row.Text == "SYNTHETIC MSI WINDOW"));
+            firstCapture.Stop();
+            var titleCaptured = observed.Windows.Any(row => row.Role == "title" && row.Text == "SYNTHETIC MSI WINDOW");
+            if (observed.Status != "observed" || !titleCaptured)
+            {
+                // Preserve the failed sample's closed classifications in the existing
+                // private fixture stderr. Do not probe again or print window text.
+                throw FirstSampleFailure(observed, firstCapture.ElapsedMilliseconds,
+                    () => normal.Process.Wait(0),
+                    () => WorkspaceMsiActivityObservation.ObserveHandle(own, normal.Process.Process));
+            }
+            Check("titleCaptured", true);
             Check("messageCaptured", observed.Windows.Any(row => row.Role == "message" && MsiWindowObservation.IsApplicationsInUseMessage(row.Text)));
             Check("buttonCaptured", observed.Windows.Any(row => row.Role == "button" && row.Text == "Synthetic cancel"));
             Check("applicationCaptured", observed.Windows.Any(row => row.Role == "application" && row.Text == "SYNTHETIC OWNED APPLICATION"));
@@ -173,6 +189,24 @@ internal static class MsiWindowObservationContract
             Check("childReady" + children.Count, ready.WaitOne(5000));
             return (process, stop);
         }
+    }
+
+    private static InvalidOperationException FirstSampleFailure(MsiWindowSample observed, long elapsedMilliseconds,
+        Func<bool> hasExited, Func<WorkspaceMsiMembership> membership)
+    {
+        bool? childExitedAfterCapture = null;
+        try { childExitedAfterCapture = hasExited(); } catch { }
+        return new InvalidOperationException("msiWindowContractFailed:titleCaptured:" + JsonSerializer.Serialize(new
+        {
+            status = observed.Status,
+            titleCaptured = observed.Windows.Any(row => row.Role == "title" && row.Text == "SYNTHETIC MSI WINDOW"),
+            messageCaptured = observed.Windows.Any(row => row.Role == "message" && MsiWindowObservation.IsApplicationsInUseMessage(row.Text)),
+            buttonCaptured = observed.Windows.Any(row => row.Role == "button" && row.Text == "Synthetic cancel"),
+            applicationCaptured = observed.Windows.Any(row => row.Role == "application" && row.Text == "SYNTHETIC OWNED APPLICATION"),
+            elapsedMilliseconds,
+            childExitedAfterCapture,
+            membershipAfterCapture = membership().ToString(),
+        }));
     }
 
     internal static int Child(string inputPath)

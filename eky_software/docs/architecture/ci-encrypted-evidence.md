@@ -175,7 +175,10 @@ JSON hylätään keräimen tiukassa rakennevalidoinnissa. Julkinen
 
 Keräin varmentaa run/attempt/job/SHA-sidonnan, järjestysnumeron ja vieressä
 olevan requestin noncen, skenaarion, descriptor-tiivisteen sekä omistetun
-hakemiston. Requestia, komentoa tai argumentteja ei sisällytetä pakettiin.
+hakemiston. Temp-juuren konfiguroitu nimiesitys hyväksytään vain saman
+kanonisen lähdejuuren vaihtoehtona; lapsikansioiden, tiedostojen ja vieraan
+juuren aliaksia ei hyväksytä tällä perusteella. Requestia, komentoa tai
+argumentteja ei sisällytetä pakettiin.
 Alkuperäiset virheet ja uudet odotushavainnot käsitellään ennen toistuvia
 supervisor-kuittauksia myös kilpailevien testikansioiden välillä. Luettelo
 etsitään nykyisen lähteen syvyys- ja merkintärajan sisällä. Lähteen nykyisestä

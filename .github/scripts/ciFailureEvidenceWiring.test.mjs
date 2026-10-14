@@ -243,30 +243,37 @@ test('every current CI job has an explicit failure-delivery or exclusion decisio
   }
 });
 
-test('legacy packaged diagnostic uses the existing failure collector last without changing mandatory steps', () => {
+test('legacy and workspace packaged diagnostics use the existing failure collector last without changing mandatory steps', () => {
   const job = workflows.get('windows-acceptance-supervisor-feasibility.yml').get('packaged-boundary-diagnostic');
   const allSteps = steps(job, 6);
   const hook = allSteps.at(-1);
   assert.equal(allSteps.filter(step => step.includes(`uses: ${actionUse}\n`)).length, 1);
   assert.ok(hook.startsWith(`      - name: ${hookName}\n`));
-  assert.ok(hook.includes('          job-key: legacy-boundary-diagnostic-0\n'));
+  assert.ok(hook.includes('          job-key: ${{ inputs.artifact_kind }}-boundary-diagnostic-0\n'));
   assert.ok(hook.includes('          job-outcome: ${{ job.status }}\n'));
   assert.match(job.split('\n    steps:\n')[0], /github\.event_name == 'workflow_dispatch' && inputs\.mode == 'packaged-boundary-diagnostic'/u);
-  const scope = "            && inputs.artifact_kind == 'legacy'\n";
+  const scope = "            && (inputs.artifact_kind == 'legacy' || inputs.artifact_kind == 'workspace')\n";
   assert.equal(hook.split(scope).length, 2);
   withoutOptionalEvidenceAllowance(hook.replace(scope, ''), 1);
   const gate = condition(hook, 8);
-  const legacyContext = c => { c.github.event_name = 'workflow_dispatch'; c.inputs.artifact_kind = 'legacy'; };
-  assert.ok(evaluate(gate, legacyContext));
-  for (const mutate of [
-    c => { c.inputs.artifact_kind = 'workspace'; },
-    c => { c.inputs.artifact_kind = 'upgrade'; },
-    c => { c.job.status = 'success'; },
-    c => { c.runner.os = 'Linux'; },
-    c => { c.runner.environment = 'self-hosted'; },
-    c => { c.vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT = ''; },
-    c => { c.github.event_name = 'pull_request_target'; },
-  ]) assert.equal(evaluate(gate, c => { legacyContext(c); mutate(c); }), false);
+  for (const artifactKind of ['legacy', 'workspace']) {
+    const diagnosticContext = c => {
+      c.github.event_name = 'workflow_dispatch'; c.inputs.artifact_kind = artifactKind;
+    };
+    for (const outcome of ['failure', 'cancelled']) {
+      assert.ok(evaluate(gate, c => { diagnosticContext(c); c.job.status = outcome; }));
+    }
+    for (const mutate of [
+      c => { c.inputs.artifact_kind = 'upgrade'; },
+      c => { c.inputs.artifact_kind = 'workspace-fault'; },
+      c => { delete c.inputs.artifact_kind; },
+      c => { c.job.status = 'success'; },
+      c => { c.runner.os = 'Linux'; },
+      c => { c.runner.environment = 'self-hosted'; },
+      c => { c.vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT = ''; },
+      c => { c.github.event_name = 'pull_request_target'; },
+    ]) assert.equal(evaluate(gate, c => { diagnosticContext(c); mutate(c); }), false);
+  }
   const mandatory = allSteps.find(step => step.includes('- name: Run existing caller and mandatory result verifier once\n'));
   assert.ok(mandatory);
   assert.doesNotMatch(mandatory, /continue-on-error:/u);
