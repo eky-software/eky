@@ -1,4 +1,5 @@
 interface DesktopQuitLifecycle {
+  deferQuitForInstallerHandoff?(): boolean;
   shutdown(): Promise<void>;
 }
 
@@ -17,6 +18,10 @@ export function createDesktopBeforeQuitHandler(
   let shutdownState: 'idle' | 'pending' | 'settled' = 'idle';
 
   return async (event) => {
+    if (options.readLifecycle()?.deferQuitForInstallerHandoff?.()) {
+      event.preventDefault();
+      return;
+    }
     if (shutdownState === 'settled') return;
     if (shutdownState === 'pending') {
       event.preventDefault();
@@ -34,6 +39,8 @@ export function createDesktopBeforeQuitHandler(
       // The lifecycle owns failure reporting; quit still follows settlement.
     }
     shutdownState = 'settled';
-    options.quitApplication();
+    if (!options.readLifecycle()?.deferQuitForInstallerHandoff?.()) {
+      options.quitApplication();
+    }
   };
 }

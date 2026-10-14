@@ -33,6 +33,7 @@ interface LocalUpdateHandoffCoordinatorDependencies {
   launchInstaller(
     candidate: Readonly<RevalidatedLocalUpdatePackageHandle>,
   ): Promise<void>;
+  onHandoffSettled?(outcome: 'started' | 'failed'): void;
   maintenanceLease: WorkspaceMaintenanceLease;
   now?(): Date;
   operationIdFactory?(): string;
@@ -177,6 +178,7 @@ export class LocalUpdateHandoffCoordinator {
         throw new LocalUpdateHandoffError();
       }
       owner.phase = 'handoff';
+      let outcome: 'started' | 'failed' = 'failed';
       let journal: Readonly<UpdateJournal> | undefined;
       let activeStage: 'installerHandoff' | 'runtimeShutdown' =
         'installerHandoff';
@@ -241,6 +243,7 @@ export class LocalUpdateHandoffCoordinator {
           stageStartedAt,
           activeStage,
         );
+        outcome = 'started';
       } catch (error) {
         await this.abortOwnedPreparation(owner);
         if (journal !== undefined) {
@@ -256,6 +259,12 @@ export class LocalUpdateHandoffCoordinator {
           });
         }
         throw new LocalUpdateHandoffError('UPDATE_HANDOFF_FAILED', { cause: error });
+      } finally {
+        try {
+          this.dependencies.onHandoffSettled?.(outcome);
+        } catch {
+          // Presentation/quit cannot change the recorded installer outcome.
+        }
       }
     });
   }

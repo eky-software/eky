@@ -664,6 +664,29 @@ hylätään, eikä jo aloitettua tai epäonnistunutta pysäytystä käynnistetä
 Strict-polkuun liittyvä tavallinen sulku odottaa samaa onnistumista tai
 virhettä; se ei avaa pakkopysäytyksen kiertotietä.
 
+Main varaa päivityksen quit-suojan ennen strict-sulun aloittamista. Suoja
+estää sekä `before-quit`-poistumisen että `window-all-closed`-automaattipoistumisen
+sulun, journalin viimeistelyn ja asentajan käynnistyskuittauksen aikana.
+Erillinen käyttäjän lopetuspyyntö muistetaan ja jatketaan terminalin jälkeen
+myös silloin, kun strict-sulku epäonnistuu ikkunan ollessa vielä auki.
+Strict-sulun jälkeen pääikkuna tuhotaan ja sen sulkeutuminen tarkistetaan
+ennen MSI:n käynnistyskutsua. Epäonnistunut ikkunan sulku estää asentajan.
+Ikkunan sulkeutuminen ei ole koko Electron-prosessipuun poistumistodiste.
+
+Handoff-koordinaattorin rajattu terminal-ilmoitus tulee vasta nykyisen
+journal- ja operational-virhekäsittelyn jälkeen. Sen `started` tarkoittaa
+asentajaprosessin käynnistyskuittausta, ei asennuksen onnistumista.
+Jos ikkuna on jo suljettu ja handoff epäonnistuu, main näyttää kerran
+vanhan turvallisen virheilmoituksen ilman ikkunaomistajaa ja pyytää
+poistumista. Esityksen virhe ei muuta journalin lopputulosta tai peitä
+alkuperäistä handoff-virhettä. Quit-suojan vapauttaminen ei vapauta
+päivityksen maintenance-omistajuutta eikä kirjoitussuojaa.
+Ennen ikkunan sulkua hylätty operaatio säilyttää nykyisen käyttöliittymän
+virhepolun. Käyttäjän jo sulkema ikkuna käsitellään samana terminalina.
+W6-pakettitodennus käyttää samaa sulkujärjestystä, mutta sen nykyinen
+quit-pyynnön sieppaus säilyttää tuloksen kirjoituksen ennen varsinaista
+prosessin lopetusta. Uutta odotusta, aikarajaa tai prosessivalvojaa ei lisätä.
+
 R04:n backend-vastaanottaja tukee erillistä täsmällistä
 `shutdownForUpdate`-viestiä ja snapshot-brokerin validoimaa operationia.
 Backend vaatii valmistuneen käynnistyksen sekä tarkistaa saman update-suojan

@@ -60,9 +60,25 @@ tavujen vertailu säilyttää kaikki 1 001 tapahtumaa, suuret kentät,
 allokointiehdot ja viiden sekunnin rajan. Muuttunut viimeinen tavu ja eri
 pituus hylätään erillisillä kontrolleilla. Kohderegressiot ja backendin
 tyyppitarkistus läpäisivät; tuotantokoodi ja riippuvuudet ovat ennallaan.
-Seuraavat portit ovat korjauskokonaisuuden katselmus, jäädytetyn revision
-normaali PR-kierros ja uuden mainin omat tarkistukset. Ensimmäiset hylkäykset
-säilyvät eikä paikallinen nopeutuminen yksin todista CI-timeoutin syytä.
+Revision `55d8d19f` normaali [PR #304:n kierros](https://github.com/eky-software/eky/actions/runs/38560213746)
+läpäisi nämä kaksi korjauskohdetta ja erillisen riippuvuustarkistuksen,
+mutta koko portti jäi hylätyksi. Legacy-core-sarjan toinen toisto keskeytyi
+jobin aikarajaan ja workspace-successin toinen toisto kohdeasentajan
+odotukseen. Sisarajojen onnistumiset eivät korvaa näitä tuloksia.
+Kumpaakaan hylkäystä ei ole uusittu tai hyväksytty, eikä PR:ää ole yhdistetty.
+
+Rajattu lähdekatselmus löysi erillisen korjattavan sulkujärjestyksen puutteen:
+pääikkuna jäi auki MSI:n käynnistyskutsuun asti vastoin nykyistä
+[asennussuunnitelmaa](windows-installer-and-update-plan.md#12-hallittu-shutdown).
+Korjausehdokas sulkee ikkunan ennen kutsua ja suojaa prosessin poistumisen
+handoffin journal-/virheviimeistelyyn asti. Käyttäjän sulkupyyntö ja
+asentajan käynnistysvirhe kuuluvat samaan rajattuun todennukseen.
+Tämä ei vielä osoita alkuperäisen CI-odotuksen aiheuttajaa.
+Korjausehdokkaan 263 kohdetestiä, desktopin tyyppitarkistus ja rajattu
+riippumaton katselmus läpäisivät. Seuraavat portit ovat puhtaan revision
+hardened Windows packaged backup -> inspect -> restore ->
+restart -> compare sekä nimetyn päivitysketjun ja uuden jäädytetyn revision
+normaalien PR/main-porttien todennus. Ensimmäiset hylkäykset säilyvät.
 
 **Aiempi PR-todennus ja avoin MSI-asennusodotus:**
 [Hyväksytyn testijaon checkpoint](#kn-nykyinen-pr-checkpoint-ja-valmistelukoe).
