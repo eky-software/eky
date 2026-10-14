@@ -32,8 +32,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/permissions
       '@hono/node-server':
-        specifier: 2.1.0
-        version: 2.1.0(hono@4.13.7)
+        specifier: 2.1.4
+        version: 2.1.4(hono@4.13.7)
       better-sqlite3:
         specifier: 13.0.2
         version: 13.0.2
@@ -168,11 +168,11 @@ packages:
     engines: {node: '>=22.12.0'}
     hasBin: true
 
-  '@hono/node-server@2.1.0':
-    resolution: {integrity: sha512-XovyyCCnBzW+zKu+z/zq8hwNs4KOR5rEMAOxo2f40Q5xoOI37IMm6MIg2COOUtUApo0i6850MTBKH2u4QLGIqg==}
+  '@hono/node-server@2.1.4':
+    resolution: {integrity: sha512-2g1qeHl4BduwDn6L8nkAvDrPUWPMlkQ//a5NhP/zIyaXKMjZNRV+cG9Csu+BiJFf6+68pqzjf4Hi5sJGKHuS1g==}
     engines: {node: '>=20'}
     peerDependencies:
-      hono: ^4
+      hono: ^4 || ^5.0.0-0
 
   '@jridgewell/sourcemap-codec@1.5.5':
     resolution: {integrity: sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og==}
@@ -975,7 +975,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@hono/node-server@2.1.0(hono@4.13.7)':
+  '@hono/node-server@2.1.4(hono@4.13.7)':
     dependencies:
       hono: 4.13.7
 
