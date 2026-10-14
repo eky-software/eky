@@ -57,7 +57,7 @@ export async function runLinuxProfileInspectionProof() {
     await mkdir(join(evidenceRoot, 'preparation'), { recursive: true, mode: 0o700 });
     phase = 'preparation';
     nativeRoot = await mkdtemp(join(temp, 'eky-inspection-native-'));
-    nativeIdentity = await lstat(nativeRoot);
+    nativeIdentity = await lstat(nativeRoot, { bigint: true });
     const fixtures = await prepareLinuxInspectionProof(repository, temp, nativeRoot);
     const { profileInspectionWorkMilliseconds, profileInspectionShutdownMilliseconds } = await import(
       pathToFileURL(join(repository, 'apps/desktop/dist/runtime/profileInspectionMessages.js')));

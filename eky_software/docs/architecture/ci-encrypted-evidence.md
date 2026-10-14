@@ -220,9 +220,29 @@ osittaisuuden tieto; puuttuvaa tai varmentamatonta lokia ei tulkita ehjäksi.
 Ote kirjoitetaan vain nykyiseen valmistelun `process-output.private.json`-
 tiedostoon ja salataan. Julkinen syykoodi ja stderr säilyvät ennallaan.
 `boundedNativeBuildFailure`-manifestimerkintä koskee vain tätä nimettyä
-job/job-key-paria. Muissa jobeissa riippuvuustyökalujen raakalokikielto säilyy.
+job/job-key-paria sekä alla erikseen hyväksyttyä Windows-valmistelua.
+Muissa jobeissa riippuvuustyökalujen raakalokikielto säilyy.
 Poikkeus ei avaa native-temp-juuren, lähteiden, konfiguraation, profiilien tai
 tietokantojen yleistä keräystä eikä muuta yhden vuorokauden säilytystä.
+
+Omistajan erillinen Windows-rajaus koskee vain inspector-native-ajurin
+epäonnistunutta käännöstä Electron E2E:n valmistelussa, job/job-key-parissa
+`e2e-electron-windows-critical` / `core-electron-0`. Nykyinen valmistelija
+varaa oman build-juuren ennen kutsua; loki luetaan vasta kääntäjäkutsun
+päättymisen jälkeen. Jaettu lukija säilyttää enintään 64 KiB alku-/loppuosina
+ja varmentaa tavalliset tiedostot sekä tarkat tiedostoidentiteetit ennen
+lukua ja sen jälkeen. Linuxin käyttäjä-/oikeustarkistukset säilyvät;
+Windowsin tarkistus ei oleta Linuxin UID- tai oikeusbittien olemassaoloa.
+Ote säilyy vain nykyisessä `test-results/run-<invocation UUID>/preparation/`
+`process-output.private.json`-tiedostossa. Tiukka receipt sitoo sen nykyiseen
+run/attempt/job/job-key/SHA-arvoon ja kansion invokaatioon. Keräin hylkää
+vieraan sidonnan, lisäkentät ja virheellisen koko-/base64-sopimuksen.
+`missing` ja `unverified` eivät ole täydellistä aineistoa. Onnistuminen tai
+muu valmisteluvirhe ei kerää käännöstulostetta. Valinnainen tallennus ei
+korvaa alkuperäistä valmisteluvirhettä tai muuta julkista syykoodia.
+Tämä ei ole koko riippuvuustyökalun, ympäristön tai build-juuren keräyslupa.
+Valmistelija -> keräin -> OpenPGP -> erillisen testiavainkodin purku
+todennetaan nykyisessä `encryptedEvidenceOpenPgp.test.mjs`-sarjassa ilman MSI:tä.
 
 Jokainen paketti sidotaan run/attempt/job/matrix-revisioon. Testitapaus ja
 sen retry sekä käynnistyssukupolvi säilyvät lähderaporteissa. Uusi paketti

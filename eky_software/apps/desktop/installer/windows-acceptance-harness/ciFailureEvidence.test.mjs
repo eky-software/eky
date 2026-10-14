@@ -371,6 +371,41 @@ test('named sandbox probe preserves only its prepared bounded native failure evi
   const normal = await collectJobFailureEvidence(env);
   assert.equal(Object.hasOwn(normal.manifest, 'approvedExceptions'), false);
   assert.ok(normal.manifest.exclusions.includes('dependencyToolRawOutput'));
+  assert.equal(normal.manifest.files[0].status, 'unverified');
+});
+
+test('Windows preparation compiler evidence requires the current named job and generation', async t => {
+  const { checkout, env, put } = await fixture(t);
+  const selected = { ...env, GITHUB_JOB: 'e2e-electron-windows-critical' };
+  const record = { schemaVersion: 1, operation: 'electronE2ePreparation', status: 'failed', phase: 'nativeCompilation',
+    causeCode: 'PROFILE_INSPECTION_NATIVE_BUILD_FAILED', invocationId: run.slice(4), binding: jobEvidenceBinding(selected),
+    nativeCompilationEvidence: { status: 'retained', complete: true, sourceBytes: 29, retainedBytes: 29,
+      prefixBase64: Buffer.from('synthetic native build error!').toString('base64'), suffixBase64: '' } };
+  const path = await put(checkout, `eky_software/apps/e2e/test-results/${run}/preparation/process-output.private.json`,
+    JSON.stringify(record));
+  for (const patch of [null, { invocationId: 'b'.repeat(36) }, { binding: { ...record.binding, attempt: '2' } },
+    { binding: { ...record.binding, sourceRevision: 'b'.repeat(40) } }, { extra: 'EXCLUDED' },
+    { nativeCompilationEvidence: { ...record.nativeCompilationEvidence, retainedBytes: 65537 } }]) {
+    await writeFile(path, JSON.stringify({ ...record, ...patch }));
+    const collected = await collectJobFailureEvidence(selected);
+    const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+    const [entry] = archive.manifest.files;
+    assert.deepEqual(archive.manifest.approvedExceptions, ['boundedNativeBuildFailure']);
+    assert.equal(entry.status, patch === null ? 'retained' : 'unverified');
+    assert.equal(Object.hasOwn(archive.files, entry.name), patch === null);
+    if (patch === null) assert.deepEqual(JSON.parse(Buffer.from(archive.files[entry.name], 'base64')), record);
+  }
+  await writeFile(path, JSON.stringify(record));
+  for (const patch of [{ GITHUB_JOB: 'other' }, { EKY_EVIDENCE_JOB_KEY: 'other' }]) {
+    const rejected = await collectJobFailureEvidence({ ...selected, ...patch });
+    assert.equal(rejected.manifest.files[0].status, 'unverified');
+  }
+  await put(checkout, `eky_software/apps/e2e/test-results/${run}/unreviewed-case/process-output.private.json`, JSON.stringify(record));
+  const misplaced = await collectJobFailureEvidence(selected);
+  assert.equal(misplaced.manifest.files.find(entry => entry.source.includes('/unreviewed-case/')).status, 'unverified');
+  await writeFile(path, JSON.stringify(record).padEnd(96 * 1024 + 1, ' '));
+  const oversized = await collectJobFailureEvidence(selected);
+  assert.equal(oversized.manifest.files.find(entry => entry.source.includes('/preparation/')).status, 'tooLarge');
 });
 
 test('Electron lifecycle collection admits only the named attempt file', () => {

@@ -22,7 +22,30 @@ Modulaarinen monoliitti ja
 hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohdan;
 [julkaisusuunnitelma](release-0.3.0-plan.md) omistaa koko 0.3.0:n sisällön.
 
-**Uusin K-jatkamiskohta:** PR #303 yhdistettiin 14.10.2026 normaalisti
+**Uusin K-jatkamiskohta 14.10.2026:**
+[PR #304:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/304#issuecomment-6170624775)
+varmentaa revision `36477039` puhtaan paketoidun palautusketjun,
+263 kohderegressiota, tyypit, katselmuksen sekä PR:n V2- ja audit-portit.
+Normaali merge tuotti mainin `012fed60`.
+Sen [oma V2-kierros](https://github.com/eky-software/eky/actions/runs/38580185629)
+päättyi hylätyksi: inspector-native-ajurin käännös epäonnistui kriittisen
+Electron E2E:n valmistelussa ennen Playwright-käyttäjäpolkujen käynnistymistä.
+Saman jobin aiemmat paketointi-, packaged restore- ja legacy-kokeet
+läpäisivät; myös muut valitut hyväksyntäjobit läpäisivät. Kierroksella oli
+36 onnistunutta jobia, yksi varsinainen hylkäys ja siitä seuraava aggregaatin
+hylkäys sekä kuusi tarkoituksellista diagnostiikkaohitusta.
+Mainin [erillinen auditointi](https://github.com/eky-software/eky/actions/runs/38580335654)
+läpäisi. K:n main-hyväksyntä on edelleen avoin.
+
+Salattu aineisto ei säilyttänyt kääntäjän alkuperäistä tulostetta.
+Omistaja hyväksyi [nimettyyn Windows-valmisteluun rajatun 64 KiB:n otteen](ci-encrypted-evidence.md#testiperheiden-virheaineisto),
+omistajuus-/kokorajaregressiot, paikallisen salaus/purku-todennuksen ja
+yhden nimetyn Windows-kokeen. Ensin todennetaan nykyinen keräysketju;
+sen jälkeen korjataan vain näytön osoittama syy ja vaaditaan uuden revision
+omat normaalit PR/main-portit. Tämä ei ole uusi testialusta, käännösvirheen
+korjatuksi merkintä tai hyväksyntäehtojen muutos.
+
+**Aiempi integraatiohistoria:** PR #303 yhdistettiin 14.10.2026 normaalisti
 mainiin revision `3fb7ad05` hyväksyttyjen PR-porttien jälkeen.
 [PR-checkpoint](https://github.com/eky-software/eky/pull/303#issuecomment-6165741060)
 varmentaa kaikki valitut jobit ja pakolliset vaiheet sekä erillisen

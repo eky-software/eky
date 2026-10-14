@@ -15,6 +15,8 @@ import { startupExceptionDirectory, STARTUP_EXCEPTION_CONTROL } from '../../src/
 import { retainWorkspaceInstallerLog } from './workspaceInstallerLogEvidence.mjs';
 import { W6B2_INSTALLER_LOG_FILE } from '../../src/main/w6b2PackagedInstallerLog.ts';
 import { createOpenPgpTestFixture, gpgPath } from './openPgpTestFixture.mjs';
+import { prepareElectronE2eBackend } from '../../scripts/prepare-electron-e2e-backend.mjs';
+import { InspectionNativeCompilationFailure } from '../../../backend/scripts/build-profile-inspection-native.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./encryptedEvidenceOpenPgp.ps1', import.meta.url));
 const ROOT = resolve(dirname(SCRIPT), '../../../..');
@@ -23,6 +25,66 @@ const SUCCESS = { Status: 'encrypted', Format: 'OpenPGP', Cipher: 'AES256' };
 const windows = process.platform === 'win32';
 const git = windows ? 'git.exe' : 'git';
 const windowsOnly = { skip: !windows ? 'Windows workspace delivery contract, not the shared Linux collector.' : false };
+
+test('Windows native preparation original survives collection, encryption and cold TEST-key decryption', {
+  ...windowsOnly, timeout: 120_000,
+}, async () => {
+  const fixture = await createOpenPgpTestFixture(ROOT);
+  let completed = false;
+  try {
+    const recipient = await fixture.generate('native-recipient');
+    await fixture.invokeGpg(recipient.home, ['--pinentry-mode', 'loopback', '--passphrase', '',
+      '--quick-add-key', recipient.fingerprint, 'cv25519', 'encr', '1d']);
+    const publicPath = await fixture.exportKey(recipient, 'native-public.asc');
+    const secretPath = await fixture.exportKey(recipient, 'native-secret.private.asc', true);
+    const temp = join(fixture.root, 'temporary');
+    const checkout = join(fixture.root, 'checkout');
+    const repository = join(checkout, 'eky_software');
+    await mkdir(temp);
+    await mkdir(join(repository, 'apps/backend/e2e-dist'), { recursive: true });
+    await writeFile(join(repository, 'apps/backend/e2e-dist/entry.js'), 'export {};\n');
+    const env = { RUNNER_TEMP: temp, GITHUB_WORKSPACE: checkout, GITHUB_ACTIONS: 'true',
+      RUNNER_OS: 'Windows', RUNNER_ENVIRONMENT: 'github-hosted', GITHUB_EVENT_NAME: 'workflow_dispatch',
+      GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1', GITHUB_JOB: 'e2e-electron-windows-critical',
+      EKY_EVIDENCE_JOB_KEY: 'core-electron-0', GITHUB_SHA: 'a'.repeat(40), EKY_EVIDENCE_JOB_OUTCOME: 'failure',
+      EKY_DIAGNOSTIC_KEY_FINGERPRINT: recipient.fingerprint, EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: recipient.fingerprint,
+      EKY_DIAGNOSTIC_PUBLIC_KEY: await readFile(publicPath, 'utf8') };
+    const originalBytes = Buffer.from('synthetic compiler first cause\nsynthetic compiler final cause\n');
+    const original = new InspectionNativeCompilationFailure(true);
+    await assert.rejects(prepareElectronE2eBackend({ root: repository, environment: env,
+      runPnpmCommand: async () => {}, inspectRuntime: async () => ({ version: 'synthetic' }),
+      verifyDatabase: async () => 'synthetic', prepareNative: async ({ buildRoot }) => {
+        const work = join(buildRoot, 'inspection-native-ABC123');
+        await mkdir(work, { mode: 0o700 });
+        await writeFile(join(work, 'build.private.log'), originalBytes, { flag: 'wx', mode: 0o600 });
+        await writeFile(join(work, 'excluded-source.private.json'), 'EXCLUDED');
+        throw original;
+      } }), error => error === original);
+    const collected = await collectJobFailureEvidence(env);
+    await encryptArchive(collected.root, collected, true);
+    // Import into a separate isolated home, without the encryption key's cached agent.
+    const decryptor = await fixture.generate('native-decryptor');
+    await fixture.invokeGpg(decryptor.home, ['--import', secretPath]);
+    const ciphertextPath = join(collected.root, 'evidence.json.gz.gpg');
+    const ciphertext = await readFile(ciphertextPath);
+    assert.equal(ciphertext.includes(originalBytes), false);
+    const decrypted = await fixture.invokeGpg(decryptor.home, ['--decrypt', ciphertextPath]);
+    const archive = JSON.parse(gunzipSync(decrypted.stdout));
+    assert.deepEqual(archive.manifest.binding, { runId: '123', attempt: '1', job: env.GITHUB_JOB,
+      jobKey: env.EKY_EVIDENCE_JOB_KEY, sourceRevision: env.GITHUB_SHA });
+    assert.deepEqual(archive.manifest.approvedExceptions, ['boundedNativeBuildFailure']);
+    const [entry] = archive.manifest.files;
+    assert.equal(archive.manifest.files.length, 1);
+    assert.equal(entry.status, 'retained');
+    const bytes = Buffer.from(archive.files[entry.name], 'base64');
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), entry.sha256);
+    const record = JSON.parse(bytes);
+    assert.deepEqual(Buffer.from(record.nativeCompilationEvidence.prefixBase64, 'base64'), originalBytes);
+    assert.equal(record.nativeCompilationEvidence.complete, true);
+    assert.equal(bytes.includes(Buffer.from('EXCLUDED')), false);
+    completed = true;
+  } finally { await fixture.finish({ completed, failed: !completed }); }
+});
 
 test('OpenPGP evidence: real isolated TEST keys and closed failure boundaries', {
   skip: !['win32', 'linux'].includes(process.platform) ? 'Requires Windows or Linux with provisioned PowerShell/GnuPG; no installation.' : false,

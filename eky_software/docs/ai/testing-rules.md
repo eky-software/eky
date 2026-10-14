@@ -134,6 +134,13 @@ Hyväksyntänäyttöä ylläpidetään [M1-suunnitelman nykyisessä checkpointis
 
 ## Ensivirhe, uusinta ja rajattu poikkeus
 
+Testirunneria edeltävä native-käännös ei tuota Playwright-testin virhettä.
+Windows-Electronin nimetyn valmistelujobin erikseen hyväksytty käännösote
+käyttää [nykyistä salattua toimitusta](../architecture/ci-encrypted-evidence.md#testiperheiden-virheaineisto).
+Sen puuttuminen erotetaan testin tuloksesta; yleinen valmistelukoodi ei
+todista kääntäjän alkuperäistä syytä. Muiden työkalujen raakakeräystä ei
+avata tällä rajauksella eikä onnistuneesta valmistelusta kerätä otetta.
+
 Tämä on yhteinen käytäntö paikallisille testeille ja CI:lle. Se ei korvaa
 testiperheen omia hyväksyntäehtoja tai muuta required check -asetuksia.
 Tavoite on rajata tutkimus ja mahdollistaa turvallinen eteneminen, ei

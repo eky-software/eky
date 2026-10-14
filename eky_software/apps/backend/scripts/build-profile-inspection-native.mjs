@@ -14,6 +14,20 @@ import {
 const backendRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const maximumArchiveBytes = 32 * 1024 * 1024;
 const buildTimeoutMs = 300_000;
+export class InspectionNativeCompilationFailure extends Error {
+  #logSettled;
+  constructor(logSettled = false) {
+    super('PROFILE_INSPECTION_NATIVE_BUILD_FAILED');
+    this.#logSettled = logSettled;
+  }
+  get logSettled() { return this.#logSettled; }
+}
+
+export function inspectionNativeCompilationFailure(result) {
+  // Only an observed normal nonzero compiler exit authorizes its settled log.
+  return new InspectionNativeCompilationFailure(!result.error && result.signal === null &&
+    Number.isInteger(result.status) && result.status > 0);
+}
 const buildEnvironmentNames = new Set([
   'path', 'systemroot', 'windir', 'comspec', 'os', 'temp', 'tmp', 'tmpdir',
   'home', 'userprofile', 'appdata', 'localappdata',
@@ -229,7 +243,7 @@ export async function buildProfileInspectionNative({
     `--devdir=${join(work, 'node-headers')}`], source, env);
   await writeFile(join(work, 'build.private.log'),
     `${compilation.result.stdout ?? ''}\n${compilation.result.stderr ?? ''}`, { flag: 'wx', mode: 0o600 });
-  if (!compilation.ok) throw new Error('PROFILE_INSPECTION_NATIVE_BUILD_FAILED');
+  if (!compilation.ok) throw inspectionNativeCompilationFailure(compilation.result);
   if (await sourceIdentity(source, sourcePaths) !== patchedIdentity ||
       await sourceIdentity(addon, addonPaths) !== addonIdentity) {
     throw new Error('PROFILE_INSPECTION_NATIVE_SOURCE_INVALID');

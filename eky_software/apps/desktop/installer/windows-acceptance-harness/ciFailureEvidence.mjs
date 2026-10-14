@@ -13,6 +13,8 @@ import { projectPlaywrightFailureReport } from './playwrightFailureReport.mjs';
 import { LEGACY_STARTUP_TERMINAL_FILENAME, projectLegacyStartupTerminalEvidence } from './legacyStartupFailureEvidence.mjs';
 import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
 import { inspectionSandboxProbeBinding } from '../../scripts/profileInspection/linuxProfileInspectionContract.mjs';
+import { nativePreparationRecordMaximumBytes, validateNativePreparationEvidence,
+  windowsNativePreparationBinding } from '../../scripts/profileInspection/nativeBuildFailureEvidence.mjs';
 import { W6B2_INSTALLER_LOG_FILE, W6B2_INSTALLER_LOG_RECEIPT,
   W6B2_INSTALLER_LOG_MAX_BYTES } from '../../src/main/w6b2PackagedInstallerLog.ts';
 import { STARTUP_EXCEPTION_CONTROL, STARTUP_EXCEPTION_SUFFIX, STARTUP_EXCEPTION_LIMITS,
@@ -79,7 +81,9 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
     cleanup: 'notInferred', unresolvedEvidenceHold: true,
     publicCommandLog: 'githubWorkflowLog', files: [], sources: [],
     exclusions: ['databases', 'profiles', 'environment', 'configuration', 'unreviewedTraces', 'memoryDumps', 'dependencyToolRawOutput'] };
-  if (binding.job === inspectionSandboxProbeBinding.job && binding.jobKey === inspectionSandboxProbeBinding.jobKey) {
+  const linuxCompilation = binding.job === inspectionSandboxProbeBinding.job && binding.jobKey === inspectionSandboxProbeBinding.jobKey;
+  const windowsCompilation = binding.job === windowsNativePreparationBinding.job && binding.jobKey === windowsNativePreparationBinding.jobKey;
+  if (linuxCompilation || windowsCompilation) {
     manifest.approvedExceptions = ['boundedNativeBuildFailure'];
     manifest.exclusions = manifest.exclusions.map(value => value === 'dependencyToolRawOutput'
       ? 'unapprovedDependencyToolRawOutput' : value);
@@ -95,11 +99,25 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
     try {
       const info = await ordinaryPath(base, path);
       const installerLog = kind === 'workspaceInstallerEvidence' && relativePath.endsWith('/' + W6B2_INSTALLER_LOG_FILE);
+      const nativePreparation = kind === 'processOutput' && windowsCompilation &&
+        relativePath.endsWith('/preparation/process-output.private.json');
       const fileLimit = installerLog ? W6B2_INSTALLER_LOG_MAX_BYTES :
-        ['startupException', 'runnerFailure'].includes(kind) ? STARTUP_EXCEPTION_LIMITS.fileBytes : MAX_FILE;
+        nativePreparation ? nativePreparationRecordMaximumBytes :
+          ['startupException', 'runnerFailure'].includes(kind) ? STARTUP_EXCEPTION_LIMITS.fileBytes : MAX_FILE;
       if (info.size > fileLimit) { entry.status = 'tooLarge'; return; }
       if (info.size > MAX_TOTAL - total) { entry.status = 'totalLimit'; return; }
       let proof = await retain(base, path, join(stage, name), Math.min(fileLimit, MAX_TOTAL - total));
+      if (kind === 'processOutput') {
+        const bytes = await readFile(join(stage, name));
+        const record = parseStrictJsonObjectBytes(bytes, { errorCode: 'nativePreparationEvidenceInvalid', maximumBytes: MAX_FILE });
+        if (record.operation === 'electronE2ePreparation') {
+          if (!nativePreparation || bytes.length > nativePreparationRecordMaximumBytes) throw failure();
+          validateNativePreparationEvidence(record, binding, relativePath.split('/')[0].slice(4));
+        } else if (Object.hasOwn(record, 'nativeCompilationEvidence') &&
+          (!linuxCompilation || !relativePath.endsWith('/preparation/process-output.private.json') ||
+            record.operation !== 'linuxProfileInspection' || record.phase !== 'preparation' ||
+            record.causeCode !== 'PROFILE_INSPECTION_NATIVE_BUILD_FAILED')) throw failure();
+      }
       if (installerLog) {
         await assertWorkspaceInstallerLogReceipt(dirname(path), proof);
       }
