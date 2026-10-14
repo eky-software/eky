@@ -38,6 +38,15 @@ kohde- tai tuntikirjaustesti ei rakenna omaa prosessienhallintaa tai tunne
 Job Objectia, Linuxin eristysmekanismia tai diagnostiikan tulosskeemoja.
 Hardened packaged -todistus säilyy erillisenä desktopin hyväksyntäporttina.
 
+Hyvityslaskun hyväksyntäapuri rekisteröi PDF-metadatan vastauksen havainnon
+ennen hyväksyntää ja sitoo sen hyväksyntätuloksen täsmälliseen lasku-ID:hen.
+Pelkkä hyvityslaskun otsikko ei tarkoita, että PDF-toiminnon tila olisi valmis.
+Apuri odottaa 200- tai 404-vastauksen mukaista Avaa PDF- tai Luo PDF -painiketta;
+muu vastaus hylkää testin. Hallitut viive-, vieraan laskun vastaus- ja
+virhekontrollit käyttävät nykyistä selainfixtureä, eivät kiinteää odotusta tai
+tuotannon testiohjausta. Hyväksynnän aiempi virhe säilyy myös silloin, kun
+odottava metadatahavainto peruuntuu sivun sulkemisessa.
+
 Desktopin first-start-/activation-kokeiden
 [profiilivalmistelija](../../apps/desktop/e2e/workspaceFirstStartMigrationProofFixtures.ts)
 erottaa historiallisen pending-syötteen ja jo nykyiseen skeemaan siirretyn

@@ -1,5 +1,7 @@
 import type { Page, Response } from '@playwright/test';
 
+import { assertApprovedInvoicePdfMetadataResponse } from './invoicingWebJourney.js';
+
 export interface ApprovedCreditInvoiceIdentity {
   draftId: string;
   invoiceId: string;
@@ -82,6 +84,19 @@ export async function approveCurrentCreditDraft(
         new URL(response.url()).pathname,
       ),
   );
+  const pdfMetadataResponsePromise = page.waitForResponse(async (response) => {
+    const pathname = new URL(response.url()).pathname;
+    if (response.request().method() !== 'GET' ||
+      !/\/invoices\/[^/]+\/pdf\/metadata$/.test(pathname)) return false;
+    const approvalResponse = await approvalResponsePromise;
+    if (approvalResponse.status() !== 200) return false;
+    const body = (await approvalResponse.json()) as {
+      approvedInvoice: ApprovedCreditInvoiceIdentity;
+    };
+    return pathname === `/invoices/${encodeURIComponent(body.approvedInvoice.invoiceId)}/pdf/metadata`;
+  });
+  // A cancelled pending observation must not mask an earlier approval failure.
+  void pdfMetadataResponsePromise.catch(() => undefined);
   await confirmation
     .getByRole('button', { name: 'Hyväksy hyvityslasku' })
     .click();
@@ -100,6 +115,12 @@ export async function approveCurrentCreditDraft(
       name: `Hyvityslasku ${body.approvedInvoice.invoiceNumber}`,
     })
     .waitFor();
+  await assertApprovedInvoicePdfMetadataResponse(pdfMetadataResponsePromise);
+  const pdfMetadataResponse = await pdfMetadataResponsePromise;
+  await page.getByRole('button', {
+    name: pdfMetadataResponse.status() === 200 ? 'Avaa PDF' : 'Luo PDF',
+    exact: true,
+  }).waitFor();
 
   return body.approvedInvoice;
 }

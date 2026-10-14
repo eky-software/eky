@@ -295,7 +295,7 @@ function waitForApprovedInvoicePdfMetadata(
   });
 }
 
-async function assertApprovedInvoicePdfMetadataResponse(
+export async function assertApprovedInvoicePdfMetadataResponse(
   responsePromise: Promise<Response>,
 ): Promise<void> {
   const response = await responsePromise;

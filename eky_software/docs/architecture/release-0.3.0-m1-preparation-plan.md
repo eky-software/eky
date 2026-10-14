@@ -12,16 +12,18 @@ ja [toteutuksen hyväksyntärajat](#kn-toteutusjärjestys-ja-hyväksyntä) säil
 | Kohde | Varmennettu tila ja avoin asia |
 | --- | --- |
 | Main | `012fed60`: PR #304 yhdistetty, mutta mainin oma V2 hylättiin tarkistusajurin käännösvalmisteluun. Erillinen auditointi läpäisi; K ei ole hyväksytty. |
-| PR #305 | Base `012fed60`. Edellisen headin `04fc68d2` [normaali V2](https://github.com/eky-software/eky/actions/runs/38635399690) hylättiin; [erillinen auditointi](https://github.com/eky-software/eky/actions/runs/38635399726) läpäisi. Katselmoitu korjausketju etenee uutena headina normaaleihin portteihin; vanha tulos ei hyväksy sitä. |
+| PR #305 | Base `012fed60`, head `0a1d210b`. [Normaalin V2:n](https://github.com/eky-software/eky/actions/runs/38642369313) ensimmäinen yritys ja yksi erikseen hyväksytty web-uusinta hylättiin eri web-testien epävakauteen; muut valitut perheet läpäisivät. [Erillinen auditointi](https://github.com/eky-software/eky/actions/runs/38642369108) läpäisi. Uusi testikorjaus tarvitsee oman katselmuksen ja revision portit. |
 | MSI-odotus | Revision `39ef904a` [koe](https://github.com/eky-software/eky/actions/runs/38613163463) osoitti vastausta odottavan sulkemispyynnön. Revision `50d6c31d` [nimetty jatkokoe](https://github.com/eky-software/eky/actions/runs/38630393550) läpäisi samoilla asennuspaketeilla myös pakollisen tulosverifioinnin. Estäjän identiteetti jää avoimeksi; ei juurisyykorjauksen tai normaalin PR-hyväksynnän väitettä. |
 | Kääntäjähavainto | Alkuperäinen syy jäi puuttumaan. Rajattu keräyskorjaus ja [nimetty Windows-todennus](https://github.com/eky-software/eky/actions/runs/38591390653) läpäisivät; vanhaa syytä ei ole todistettu eikä yhdistetty MSI-odotukseen. |
 | K:n korvatut polut | Revision `04fc68d2` poisto, kohderegressiot, tyypit, katselmus ja saman puhtaan paketin backup -> inspect -> restore -> restart -> compare läpäisivät. Vertailusnapshot käyttää eristettyä tarkistusta, receipt-sidontaa ja omistajan siivousta. Private broker v12 ei tarjoa kolmea korvattua raskasta komentoa. Normaalit PR/main-portit ovat avoinna. |
-| Uuden kierroksen hylkäykset | Vanhentunut workflow-testin odotus, virheaineiston väliaikaisjuuren nimiesityksen vertailu, natiivin ilmoitusfixturen `titleCaptured`-ehto ja paketoidun legacy-testin Node/Electron-tuontiraja käsitellään erillisinä. Ensivirheet ja salattu aineisto säilyvät; mikään niistä ei todista vanhan MSI-odotuksen syytä. |
+| Aiemmat kierroksen hylkäykset | Workflow-, keräin- ja Node-tuontikorjaukset läpäisivät revision `0a1d210b` porttinsa; myös natiivin ilmoitusfixturen sarjat läpäisivät. Alkuperäisen natiivihylkäyksen ja vanhan MSI-odotuksen syyt säilyvät avoimina. |
+| Web-integraation este | `INV-LIFECYCLE-001`:n ensimmäinen API-katkos ei toistunut uusinnassa; syy on avoin. Uusinnan `INV-REVERSE-CREDIT-001` aikakatkaisi PDF-toiminnon tilanvaihdossa. Hallittu regressio toisti hyvitysapurista puuttuvan metadata-/painikevalmiuden odotuksen. Rajattu testiapurikorjaus, valmius- ja peruutuskontrollit, nykyiset kutsujat, kriittinen web-sarja, tyypit ja katselmus läpäisivät. Sovelluskoodi ja aikarajat säilyvät. Uusi revisio tarvitsee omat normaalit portit. Molempien ensivirheiden salattu aineisto säilyi ja varmennettiin. |
 
 Rajatut workflow-, keräin- ja Node-tuontikorjaukset on kohdennetusti todennettu.
 Tuontirajan regressio hylkäsi vanhan toteutuksen; korjattu Playwright-luenta
-löytää jälleen kaikki kolme paketoitua palautustestiä. Tämä ei vielä ole niiden
-suoritusnäyttö. Natiivin ilmoitustestin epäonnistuva ensimmäinen näyte säilyttää
+löytää jälleen kaikki kolme paketoitua palautustestiä. Revision `0a1d210b`
+normaali kierros suoritti myös paketoidut palautustestit hyväksytysti;
+web-hylkäys esti silti kokonaiskoonnin. Natiivin ilmoitustestin epäonnistuva ensimmäinen näyte säilyttää
 nyt suljetut tulosluokat nykyisessä yksityisessä virhetulosteessa. Yksi nimetty
 asennukseton [Windows-sopimuskoe](https://github.com/eky-software/eky/actions/runs/38639450894)
 läpäisi revision `895d6048` molemmissa erillisissä ympäristöissä (159 testiä
@@ -44,8 +46,10 @@ uuden PR-headin normaalit portit ja mainin omat tarkistukset tarvitaan edelleen.
    main-prosessin poistuminen ja asentimen valmistuminen ovat eri todisteita.
 2. Omistaja hyväksyi rajatun etenemisen: vanha MSI-odotus jää avoimeksi
    seurantahavainnoksi, ei korjatuksi viaksi. Korvattujen polkujen poisto on
-   todennettu; korjaa nyt uuden PR-kierroksen yllä nimetyt hylkäykset ennen
-   normaaleja PR/main-portteja. Uutta hylkäystä ei ohiteta eikä sisältö-,
+   todennettu; hyvitysapurista puuttuvan PDF-valmiusrajan regressiot,
+   nykyiset kutsujat ja katselmus läpäisivät. Vie korjaus nyt jäädytetyn
+   revision normaaleihin PR/main-portteihin. Vanhaa API-katkoa ei nimetä tämän korjauksen syyksi.
+   Uutta hylkäystä ei ohiteta eikä sisältö-,
    palautus- tai siivousehtoja muuteta. Korjaa vain
    osoitettu virhe nykyiseen omistajaan. Ei automaattista UI-vastausta,
    hiljaiseen asennukseen vaihtoa, yleistä prosessiskannausta tai uusia valvojia.
