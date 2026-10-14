@@ -28,6 +28,10 @@ internal static class MsiWindowObservation
     internal static bool IsSystemInstaller(string image) =>
         string.Equals(image, Path.Combine(Environment.SystemDirectory, "msiexec.exe"), StringComparison.OrdinalIgnoreCase);
 
+    internal static bool IsApplicationsInUseMessage(string text) => text is
+        "The following applications should be closed before continuing the installation:" or
+        "Seuraavat sovellukset tulee sulkea ennen asennuksen jatkamista:";
+
     internal static MsiWindowSample Capture(WindowsJob job, SafeProcessHandle process, Func<bool> stopped,
         Stopwatch budget, ref int remainingCharacters, ref int remainingWindows)
     {
@@ -80,9 +84,11 @@ internal static class MsiWindowObservation
         var enumerated = EnumWindows((window, _) =>
         {
             if (!WithinBudget()) { partial = true; return false; }
-            GetWindowThreadProcessId(window, out var owner);
-            if (owner != pid || !IsWindowVisible(window)) return true;
+            var parentThread = GetWindowThreadProcessId(window, out var owner);
+            if (owner != pid || !IsWindowVisible(window) || !AllowedClass(window, "title")) return true;
             if (!Read(window, "title")) return false;
+            var lists = new List<IntPtr>();
+            var messages = new List<(IntPtr Window, uint Thread, string Text)>();
             EnumChildWindows(window, (child, _) =>
             {
                 if (!WithinBudget()) { partial = true; return false; }
@@ -90,14 +96,67 @@ internal static class MsiWindowObservation
                 if (childOwner != pid || !IsWindowVisible(child)) return true;
                 var className = new StringBuilder(64);
                 if (GetClassName(child, className, className.Capacity) == 0) { partial = true; return true; }
+                if (className.ToString().Equals("ListBox", StringComparison.OrdinalIgnoreCase) &&
+                    GetParent(child) == window && lists.Count <= Contract.MaximumWindows)
+                    lists.Add(child);
                 // Never request text from Edit/RichEdit, password or custom input controls.
-                return className.ToString().ToUpperInvariant() switch
+                var firstRow = text.Count;
+                var keepReading = className.ToString().ToUpperInvariant() switch
                 {
                     "STATIC" => Read(child, "message"),
                     "BUTTON" => Read(child, "button"),
                     _ => true,
                 };
+                if (text.Count > firstRow && text[^1].Role == "message" &&
+                    IsApplicationsInUseMessage(text[^1].Text) && GetParent(child) == window)
+                    messages.Add((child, GetWindowThreadProcessId(child, out var ignoredOwner), text[^1].Text));
+                return keepReading;
             }, IntPtr.Zero);
+            if (OperatingSystem.IsWindows() && IsWindowEnabled(window) && messages.Count == 1 && lists.Count == 1)
+            {
+                foreach (var list in lists)
+                {
+                    var thread = GetWindowThreadProcessId(list, out var listOwner);
+                    bool Admitted()
+                    {
+                        var name = new StringBuilder(64);
+                        return WithinBudget() && listOwner == pid && thread != 0 &&
+                            GetWindowThreadProcessId(window, out var parentOwner) == parentThread && parentOwner == pid &&
+                            AllowedClass(window, "title") &&
+                            GetWindowThreadProcessId(list, out var currentOwner) == thread && currentOwner == pid &&
+                            GetParent(list) == window && IsWindowVisible(list) && IsWindowVisible(window) &&
+                            IsWindowEnabled(window) && GetClassName(list, name, name.Capacity) > 0 &&
+                            name.ToString().Equals("ListBox", StringComparison.OrdinalIgnoreCase) &&
+                            WorkspaceMsiActivityObservation.ObserveHandle(job, process) == WorkspaceMsiMembership.Owned;
+                    }
+                    bool SameMessage()
+                    {
+                        var message = messages[0];
+                        bool SameControl() => Admitted() && message.Thread != 0 &&
+                            GetWindowThreadProcessId(message.Window, out var messageOwner) == message.Thread && messageOwner == pid &&
+                            GetParent(message.Window) == window && IsWindowVisible(message.Window) && AllowedClass(message.Window, "message");
+                        if (!SameControl()) return false;
+                        var value = new StringBuilder(Contract.MaximumTextCharacters + 1);
+                        var timeout = (uint)Math.Min(Contract.MessageTimeoutMilliseconds,
+                            Math.Max(1, Contract.SampleTimeoutMilliseconds - budget.ElapsedMilliseconds));
+                        return SendMessageTimeout(message.Window, 0x000D, (UIntPtr)value.Capacity, value, 0x0002,
+                            timeout, out var ignoredLength) != IntPtr.Zero && SameControl() && value.ToString() == message.Text;
+                    }
+                    if (!SameMessage()) { partial = true; break; }
+                    var applications = MsiApplicationListObservation.Read(list, pid, Admitted,
+                        () => (int)Math.Max(0, Contract.SampleTimeoutMilliseconds - budget.ElapsedMilliseconds),
+                        slots, characters, out var limited);
+                    partial |= limited;
+                    if (!SameMessage()) { partial = true; break; }
+                    foreach (var application in applications)
+                    {
+                        text.Add(new("application", application, IsWindowEnabled(list)));
+                        characters -= application.Length;
+                        slots--;
+                    }
+                }
+            }
+            else if (messages.Count > 0 && lists.Count != 1) partial = true;
             return WithinBudget() && slots > 0 && characters > 0;
         }, IntPtr.Zero);
         remainingCharacters = characters;
@@ -112,6 +171,7 @@ internal static class MsiWindowObservation
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] private static extern bool IsWindowEnabled(IntPtr window);
+    [DllImport("user32.dll")] private static extern IntPtr GetParent(IntPtr window);
     [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindow callback, IntPtr parameter);
     [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr parent, EnumWindow callback, IntPtr parameter);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr window, StringBuilder name, int capacity);

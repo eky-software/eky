@@ -8,6 +8,7 @@ internal static class MsiWindowObservationContract
 {
     internal static int Run(string requestPath)
     {
+        if (!OperatingSystem.IsWindows()) return 63;
         var request = SupervisorRequestReader.Read(["--request", requestPath]);
         var checks = new Dictionary<string, bool>();
         using var own = WindowsJob.Create();
@@ -19,6 +20,12 @@ internal static class MsiWindowObservationContract
             var outsider = Start(other, "normal");
             var hung = Start(own, "hung");
             var hidden = Start(own, "hidden");
+            var unrelated = Start(own, "unrelated");
+            var listHung = Start(own, "listHung");
+            var largeList = Start(own, "largeList");
+            var ambiguous = Start(own, "ambiguous");
+            var wrongParent = Start(own, "wrongParent");
+            var changedMessage = Start(own, "changedMessage");
             MsiWindowSample Observe(WindowsJob job, SuspendedWindowsProcess process, Func<bool>? stopped = null,
                 int? characters = null, int? windows = null)
             {
@@ -31,8 +38,26 @@ internal static class MsiWindowObservationContract
             Check("otherImageRejected", !MsiWindowObservation.IsSystemInstaller(Path.Combine(request.WorkingDirectory, "msiexec.exe")));
             var observed = Observe(own, normal.Process);
             Check("titleCaptured", observed.Status == "observed" && observed.Windows.Any(row => row.Role == "title" && row.Text == "SYNTHETIC MSI WINDOW"));
-            Check("messageCaptured", observed.Windows.Any(row => row.Role == "message" && row.Text == "SYNTHETIC MSI WAIT MESSAGE"));
+            Check("messageCaptured", observed.Windows.Any(row => row.Role == "message" && MsiWindowObservation.IsApplicationsInUseMessage(row.Text)));
             Check("buttonCaptured", observed.Windows.Any(row => row.Role == "button" && row.Text == "Synthetic cancel"));
+            Check("applicationCaptured", observed.Windows.Any(row => row.Role == "application" && row.Text == "SYNTHETIC OWNED APPLICATION"));
+            Check("unrelatedListExcluded", Observe(own, unrelated.Process).Windows.All(row => row.Role != "application"));
+            Check("ambiguousListsExcluded", Observe(own, ambiguous.Process).Windows.All(row => row.Role != "application"));
+            Check("wrongParentExcluded", Observe(own, wrongParent.Process).Windows.Count == 0);
+            var changed = Observe(own, changedMessage.Process);
+            Check("changedMessageExcluded", changed.Status == "partial" && changed.Windows.All(row => row.Role != "application"));
+            var listTimer = Stopwatch.StartNew();
+            Check("unresponsiveListPartial", Observe(own, listHung.Process).Status == "partial");
+            Check("unresponsiveListBounded", listTimer.ElapsedMilliseconds < 2000);
+            var large = Observe(own, largeList.Process);
+            Check("largeListBounded", large.Status == "partial" &&
+                large.Windows.Any(row => row.Role == "application" && row.Text.Length == MsiWindowObservation.Contract.MaximumTextCharacters) &&
+                large.Windows.Count <= MsiWindowObservation.Contract.MaximumWindows &&
+                large.Windows.Sum(row => row.Text.Length) <= MsiWindowObservation.Contract.MaximumTotalCharacters);
+            var admissionCalls = 0;
+            var empty = MsiApplicationListObservation.Read(IntPtr.Zero, 0, () => { admissionCalls++; return true; },
+                () => 1000, 0, 100, out var emptyPartial);
+            Check("emptyBudgetSkipsProvider", emptyPartial && empty.Count == 0 && admissionCalls == 0);
             Check("editNotRead", observed.Windows.All(row => !row.Text.Contains("EXCLUDED INPUT", StringComparison.Ordinal)));
             Check("foreignJobRejected", Observe(own, outsider.Process) is { Status: "unavailable", Windows.Count: 0 });
             Check("otherJobPositiveControl", Observe(other, outsider.Process).Windows.Count > 0);
@@ -158,15 +183,45 @@ internal static class MsiWindowObservationContract
         using var stop = EventWaitHandle.OpenExisting(input.RootElement.GetProperty("stopName").GetString()!);
         var behavior = input.RootElement.GetProperty("behavior").GetString();
         var visible = behavior == "hidden" ? 0u : 0x10000000u;
-        var window = CreateWindowEx(0x08000000, "STATIC", "SYNTHETIC MSI WINDOW", visible,
+        var window = CreateWindowEx(0x08000000, behavior == "wrongParent" ? "BUTTON" : "STATIC", "SYNTHETIC MSI WINDOW", visible,
             -32000, -32000, 100, 100, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
         if (window == IntPtr.Zero) return 65;
+        WindowProcedure? listProcedure = null;
         try
         {
-            foreach (var (type, text) in new[] { ("STATIC", "SYNTHETIC MSI WAIT MESSAGE"),
+            var messageWindow = IntPtr.Zero;
+            foreach (var (type, text) in new[] { ("STATIC", behavior == "unrelated" ? "SYNTHETIC OTHER DIALOG" :
+                "The following applications should be closed before continuing the installation:"),
                 ("BUTTON", "Synthetic cancel"), ("EDIT", "EXCLUDED INPUT") })
-                if (CreateWindowEx(0, type, text, visible | 0x40000000u, 0, 0, 80, 20,
-                    window, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero) == IntPtr.Zero) return 66;
+            {
+                var child = CreateWindowEx(0, type, text, visible | 0x40000000u, 0, 0, 80, 20,
+                    window, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+                if (child == IntPtr.Zero) return 66;
+                if (type == "STATIC") messageWindow = child;
+            }
+            var list = CreateWindowEx(0, "LISTBOX", "", visible | 0x40000000u, 0, 30, 80, 40,
+                window, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+            if (list == IntPtr.Zero) return 66;
+            SendMessage(list, 0x0180, UIntPtr.Zero, "SYNTHETIC OWNED APPLICATION");
+            if (behavior == "largeList")
+                for (var index = 0; index < 40; index++) SendMessage(list, 0x0180, UIntPtr.Zero, new string('X', 1500));
+            if (behavior == "ambiguous" && CreateWindowEx(0, "LISTBOX", "", visible | 0x40000000u, 0, 70, 80, 20,
+                window, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero) == IntPtr.Zero) return 66;
+            if (behavior is "listHung" or "changedMessage")
+            {
+                var original = IntPtr.Zero;
+                listProcedure = (handle, message, wParam, lParam) =>
+                {
+                    if (message is 0x003D or 0x018B)
+                    {
+                        if (behavior == "listHung") stop.WaitOne(10000);
+                        else SetWindowText(messageWindow, "SYNTHETIC CHANGED MESSAGE");
+                    }
+                    return CallWindowProc(original, handle, message, wParam, lParam);
+                };
+                original = SetWindowLongPtr(list, -4, Marshal.GetFunctionPointerForDelegate(listProcedure));
+                if (original == IntPtr.Zero) return 68;
+            }
             ready.Set();
             var lifetime = Stopwatch.StartNew();
             while (lifetime.ElapsedMilliseconds < 15000 && !stop.WaitOne(1))
@@ -177,8 +232,9 @@ internal static class MsiWindowObservationContract
             }
             return stop.WaitOne(0) ? 0 : 67;
         }
-        finally { DestroyWindow(window); }
+        finally { DestroyWindow(window); GC.KeepAlive(listProcedure); }
     }
+    private delegate IntPtr WindowProcedure(IntPtr window, uint message, UIntPtr wParam, IntPtr lParam);
     [StructLayout(LayoutKind.Sequential)] private struct Message
     { public IntPtr Window; public uint Id; public UIntPtr WParam; public IntPtr LParam; public uint Time; public int X; public int Y; public uint Private; }
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr CreateWindowEx(uint extendedStyle,
@@ -187,4 +243,11 @@ internal static class MsiWindowObservationContract
     [DllImport("user32.dll")] private static extern bool PeekMessage(out Message message, IntPtr window, uint min, uint max, uint remove);
     [DllImport("user32.dll")] private static extern bool TranslateMessage(ref Message message);
     [DllImport("user32.dll")] private static extern IntPtr DispatchMessage(ref Message message);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr SendMessage(IntPtr window,
+        uint message, UIntPtr wParam, string text);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr CallWindowProc(IntPtr procedure,
+        IntPtr window, uint message, UIntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr SetWindowLongPtr(IntPtr window,
+        int index, IntPtr value);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool SetWindowText(IntPtr window, string value);
 }

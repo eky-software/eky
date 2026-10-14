@@ -112,6 +112,11 @@ test('MSI window records require the exact job and adjacent request without coll
     { clients: [{ ...record.clients[0], windows: [{ role: 'message', text: 'x'.repeat(msiWindowEvidenceContract.maximumTextCharacters + 1), enabled: true }] }] },
     { clients: [{ ...record.clients[0], status: 'unavailable' }] },
   ]) assert.throws(() => validateMsiWindowEvidence({ ...record, ...patch }, jobEvidenceBinding(env), path), /MSI_WINDOW_EVIDENCE_INVALID/);
+  const withApplication = { ...record, schemaVersion: 2, clients: [{ ...record.clients[0],
+    windows: [{ role: 'application', text: 'SYNTHETIC HOLDER', enabled: true }] }] };
+  assert.equal(validateMsiWindowEvidence(withApplication, jobEvidenceBinding(env), path), withApplication);
+  for (const schemaVersion of [1, 3]) assert.throws(() => validateMsiWindowEvidence(
+    { ...withApplication, schemaVersion }, jobEvidenceBinding(env), path), /MSI_WINDOW_EVIDENCE_INVALID/);
   await writeFile(requestPath, JSON.stringify(request));
   await writeFile(recordPath, JSON.stringify(record).slice(0, -1));
   const interrupted = await collectJobFailureEvidence(env);

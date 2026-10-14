@@ -2,6 +2,54 @@
 
 ## Jatka tästä
 
+**Aktiivinen työ 14.10.2026: nykyisen K-integraation loppuunvienti.**
+Tämä jatkamiskohta korvaa aiemman pitkän integraatiojatkon työjonona; se ei
+aloita uutta Goalia eikä lisää vanhoja tutkimuksia pakollisiksi tehtäviksi.
+T/A/B/C ovat hyväksyttyjä. K:n [hyväksytyt sopimukset](#k-paketin-valmistelu-ja-hyväksyntärajat)
+ja [toteutuksen hyväksyntärajat](#kn-toteutusjärjestys-ja-hyväksyntä) säilyvät;
+[julkaisusuunnitelma](release-0.3.0-plan.md) omistaa muun 0.3.0:n sisällön.
+
+| Kohde | Varmennettu tila ja avoin asia |
+| --- | --- |
+| Main | `012fed60`: PR #304 yhdistetty, mutta mainin oma V2 hylättiin tarkistusajurin käännösvalmisteluun. Erillinen auditointi läpäisi; K ei ole hyväksytty. |
+| PR #305 | Avoin head `3d703c07`, base `012fed60`. Normaali V2 hylättiin kahteen workspace-asennusodotukseen; auditointi läpäisi. Ei mergevalmiutta. |
+| MSI-odotus | Jatkohaaran `39ef904a` [nimetty koe](https://github.com/eky-software/eky/actions/runs/38613163463) osoitti asentimen odottavan vastausta sovellusten sulkemispyyntöön. Salattu aineisto on varmennettu, mutta tiedostoja käyttävän sovelluksen identiteetti on avoin. |
+| Kääntäjähavainto | Alkuperäinen syy jäi puuttumaan. Rajattu keräyskorjaus ja [nimetty Windows-todennus](https://github.com/eky-software/eky/actions/runs/38591390653) läpäisivät; vanhaa syytä ei ole todistettu eikä yhdistetty MSI-odotukseen. |
+| K:n korvatut polut | Vanhojen raskaiden broker-polkujen poisto ja jäljellä olevan packaged-smoke-kutsujan siirto nykyiseen eristettyyn tarkistukseen ovat vielä varmennettavia hyväksyntäehtoja. Ei uutta tarkistusarkkitehtuuria. |
+
+**Seuraava työ järjestyksessä:**
+
+1. Säilyneet täydelliset MSI-lokit tarkistettiin: estäjän identiteetti ei
+   selvinnyt niistä. Hyväksytyn ilmoitusluettelon rajattu keräys, synteettiset
+   rajatapaukset ja todellinen salaus/purku läpäisivät; katselmus valmistui.
+   Seuraava nimetty koe käyttää samoja asennuspaketteja. Sido
+   mahdollinen estäjä nykyiseen testin prosessi-identiteettiin. Pelkkä nimi ei
+   todista prosessin omistajuutta. Ikkunan sulkeutuminen, backendin päättyminen,
+   main-prosessin poistuminen ja asentimen valmistuminen ovat eri todisteita.
+2. Todista havainnon riittävyys nykyisellä pienellä synteettisellä fixturellä
+   sekä salaus/purku-ketjulla. Korjaa vain osoitettu elinkaari- tai
+   testiohjausvirhe nykyiseen omistajaan. Ei automaattista UI-vastausta,
+   hiljaiseen asennukseen vaihtoa, yleistä prosessiskannausta tai uusia valvojia.
+3. Tarkista erikseen workspace-success- ja fault-komentojen päällekkäiset
+   testivalinnat ja valmistelu. Esitä yhteinen ajopaikka ja säilyvä kattavuus
+   ennen CI-muutosta; ei kaikkien testien uudelleenkirjoitusta tai kansiosiirtoa.
+4. Kokoa mahdollinen vielä tarvittava tietosuojapäätös yhdeksi rajaukseksi
+   ennen seuraavaa pitkää ajoa. Nykyiset keräysrajat säilyvät. Puuttuvaa
+   aineistoa tai tuntematonta syytä ei korvata oletuksella.
+5. Varmenna korjaus, korvattujen polkujen poistoehto ja jäädytetyn revision
+   nykyiset PR-portit. Normaalia suojattua mergeä seuraavat uuden mainin omat
+   portit. Ellei näyttö riitä ratkaisuun, esitä yksi täsmällinen
+   vaihtoehtopäätös; älä jatka rajattomaan tutkimus- tai ohjekasvuun.
+
+Päivitä tätä nykytilaa toteuman muuttuessa. Päivätty näyttö alla säilyttää
+ensivirheet ja hyväksynnät; sen vanhat jatkoehdotukset eivät ole rinnakkainen
+työjono. Sopimusosiot säilyvät voimassa myöhempine hyväksyttyine päätöksineen.
+
+## Päivätty näyttö ja sopimukset
+
+Seuraavat checkpointit ovat syntyhetkensä näyttöä. Lue niistä nykyisen työn
+tarvitsemat viitteet, älä aloita jo valmistuneita vaiheita uudelleen.
+
 **PR #283 ja sen main-integraatio on hyväksytty 2.10.2026.**
 [Lopullinen checkpoint](https://github.com/eky-software/eky/pull/283#issuecomment-5959719891)
 sulkee ennen A1:tä hyväksytyn [pnpm-tietoturvahuollon](#pnpm-bootstrapin-tietoturvahuolto)
@@ -22,7 +70,7 @@ Modulaarinen monoliitti ja
 hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohdan;
 [julkaisusuunnitelma](release-0.3.0-plan.md) omistaa koko 0.3.0:n sisällön.
 
-**Uusin K-jatkamiskohta 14.10.2026:**
+**K-integraation checkpoint 14.10.2026:**
 [PR #304:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/304#issuecomment-6170624775)
 varmentaa revision `36477039` puhtaan paketoidun palautusketjun,
 263 kohderegressiota, tyypit, katselmuksen sekä PR:n V2- ja audit-portit.
@@ -74,8 +122,19 @@ keräys- ja todellinen salaus/purku-näyttö sekä rajattu katselmus, sitten yks
 nimetty Windows-koe samalla säilyneellä asennuspaketilla. Se ei ole normaali
 hyväksyntäkierros eikä lupa merkitä vanhaa odotusta korjatuksi.
 
-**Seuraava työ:** viimeistele tämä havaintokytkentä ja nimetty koe, ratkaise
-sen mahdollinen yksilöivä löydös ja palaa täsmäheadin normaaleihin PR-portteihin.
+**Havaintokytkennän tulos:** revision `39ef904a` omistajuus-, keskeytys-,
+keräys- ja salaus/purku-regressiot sekä rajattu riippumaton katselmus läpäisivät.
+[Nimetty Windows-koe 38613163463](https://github.com/eky-software/eky/actions/runs/38613163463)
+hylättiin asennusodotuksen nykyiseen aikarajaan; salattu toimitus ja paikallinen
+purku sekä säilyneiden tiedostojen eheys varmennettiin. Havainto osoittaa tämän
+ajon odottaneen asentimen käyttäjävastausta sovellusten sulkemispyyntöön.
+Tiedostoja käyttävää prosessia ei vielä yksilöity. Onnistunut siivous ja
+asennuspaketin jälkivarmennus eivät korvaa asennuksen hyväksyntää.
+
+**Kokeen jälkeinen ehdotus (historia):** yksilöi tämän odotuksen aiheuttava tiedostojen käyttäjä ennen
+sovellus- tai testikorjausta. Uusi aineistolaji tai nimetty koe tarvitsee oman
+rajauksen; tässä ei hyväksytä automaattista UI-vastausta, aikarajan nostoa tai
+uutta uusintaa. Korjauksen jälkeen palataan täsmäheadin normaaleihin PR-portteihin.
 K:n aiemmin sovittu vanhojen raskaiden broker-polkujen poistoehto on myös
 varmennettava; diagnostiikkakorjaus ei sulje sitä. Merge ja uuden mainin
 omat portit säilyvät erillisinä hyväksyntöinä. Alkuperäiset virheet ja

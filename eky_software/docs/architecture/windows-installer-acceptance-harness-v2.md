@@ -5415,7 +5415,8 @@ uninstall-, downgrade- ja rollback-portteja. Ajantasainen hyväksyntätila on
 
 **Rajattu lisäys 14.10.2026:** sama valinnainen MSI-kysely voi tallentaa
 testin omistaman asentajaikkunan otsikon, ilmoitustekstin ja vastaustilan
-nykyiseen salattuun virheaineistoon. [Aineistosopimus](ci-encrypted-evidence.md#asentimen-rajattu-ikkunahavainto)
+sekä erikseen hyväksytyn sulkemisilmoituksen sovellusluettelon nykyiseen
+salattuun virheaineistoon. [Aineistosopimus](ci-encrypted-evidence.md#asentimen-rajattu-ikkunahavainto)
 omistaa sallittujen kontrollien, kokorajojen, omistajuuden, keskeytyksen ja
 keräyksen sidonnat. Julkinen loki kertoo vain toimituksen suljetun tilan.
 Tämä ei muuta alla kuvattua omistajuushavaintoa, asennuksen hyväksymisehtoa,

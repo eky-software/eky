@@ -9,7 +9,7 @@ const integer = (value, minimum, maximum) => Number.isSafeInteger(value) && valu
 
 export function validateMsiWindowEvidence(value, binding, sourcePath) {
   if (!exact(value, ['schemaVersion', 'operation', 'binding', 'runNonce', 'scenario', 'artifactDescriptorSha256',
-    'sequence', 'elapsedMs', 'clients']) || value.schemaVersion !== contract.schemaVersion || value.operation !== contract.operation ||
+    'sequence', 'elapsedMs', 'clients']) || ![1, contract.schemaVersion].includes(value.schemaVersion) || value.operation !== contract.operation ||
     !exact(value.binding, ['kind', 'runId', 'attempt', 'job', 'sourceRevision']) || value.binding.kind !== 'github' ||
     ['runId', 'attempt', 'job', 'sourceRevision'].some(key => value.binding[key] !== binding[key]) ||
     !/^[a-f0-9]{64}$/.test(value.runNonce) || !/^[a-f0-9]{64}$/.test(value.artifactDescriptorSha256) ||
@@ -24,7 +24,8 @@ export function validateMsiWindowEvidence(value, binding, sourcePath) {
       !['observed', 'partial', 'unavailable'].includes(client.status) || !Array.isArray(client.windows) ||
       (client.status === 'unavailable' && client.windows.length > 0)) throw failure();
     for (const window of client.windows) {
-      if (!exact(window, ['role', 'text', 'enabled']) || !['title', 'message', 'button'].includes(window.role) ||
+      const roles = value.schemaVersion === 1 ? ['title', 'message', 'button'] : ['title', 'message', 'button', 'application'];
+      if (!exact(window, ['role', 'text', 'enabled']) || !roles.includes(window.role) ||
         typeof window.text !== 'string' || window.text.length > contract.maximumTextCharacters ||
         typeof window.enabled !== 'boolean') throw failure();
       characters += window.text.length;

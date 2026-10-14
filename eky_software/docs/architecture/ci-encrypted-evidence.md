@@ -133,15 +133,31 @@ kyselyä, ei uutta havaitsijaprosessia. Vain täsmälliseen järjestelmäasentim
 kuuluva, elävä ja nykyisen Jobin omistama prosessi kelpaa. Kahva pidetään
 auki, ja ikkunan PID, säie, näkyvyys ja sallittu luokka tarkistetaan tekstin
 lukemisen molemmin puolin. Epävarma tai poistunut omistaja ei anna tekstiä.
-Luetaan vain sallittu otsikko sekä Static- ja Button-kontrollien teksti;
-Edit-, RichEdit-, salasana-, lista- ja mukautettujen syötekontrollien sisältö
-on rajattu pois. Mitään ei paineta, suljeta tai vahvisteta.
+Luetaan sallittu otsikko sekä Static- ja Button-kontrollien teksti.
+Omistajan hyväksymä jatko sallii lisäksi vain tunnistetun, vastausta odottavan
+sovellusten sulkemisilmoituksen suoran ListBox-lapsen sovellusnimet.
+Ilmoituksen nykyiset suomen- ja englanninkieliset tekstit ovat täsmällinen
+sallintalista; tuntematon ilmoitus ei laajenna keräystä. Muut listat sekä
+Edit-, RichEdit-, salasana- ja mukautetut syötekontrollit jäävät pois.
+Mitään ei paineta, valita, suljeta tai vahvisteta.
+
+Listan teksti luetaan Windowsin omalla UI Automation 2 -rajapinnalla
+samassa valinnaisessa kyselyssä, ilman uutta prosessia tai riippuvuutta.
+Suoraa `LB_GETTEXT`-puskurilukua ei käytetä: sen tulospuskurilla ei ole
+kapasiteettiparametria. Luku alkaa vain jo varmennetusta ListBox-kahvasta;
+työpöydän automaatiopuuta ei haeta. Listan ja suorien listamerkintöjen
+prosessitunnus ja kontrollityyppi varmennetaan. Tallennettu sovellusnimi ei
+yksin todista tiedostoja käyttävän prosessin identiteettiä.
 
 Yhteinen `msiWindowObservationContract.json` omistaa C#-tuottajan ja
 JavaScript-lukijan rajat. Nykyiseen 60 sekunnin näyteväliin ja 128 näytteen
 rajaan kuuluvat enintään 32 asiakasta, 32 ikkunatekstiä, 1 024 merkkiä
 tekstille ja yhteensä 4 096 merkkiä näytteelle. Yksi viestikysely saa enintään
-100 ms ja koko tekstinäyte 1 000 ms. Nämä ovat valinnaisen havainnon rajoja,
+100 ms ja koko tekstinäytteen työbudjetti on 1 000 ms. Listan providerin
+yhteys- ja vastausodotukselle asetetaan samat 100 ms:n rajat, ja omistajuus
+sekä työbudjetti tarkistetaan lukujen välissä. Nämä eivät ole lupaus kaikkien
+Windows-/COM-kutsujen tai tiedostokirjoituksen pakkokatkaisusta: nykyinen
+terminal/cleanup ei odota valinnaista kyselyä. Nämä ovat havainnon rajoja,
 eivät testin tai asennuksen uusia aikarajoja. Osittainen havainto säilyttää
 osittaisuutensa; tyhjä lista ei todista odotuksen syytä tai kaikkien
 mahdollisten ikkunoiden poissaoloa.
@@ -173,10 +189,13 @@ säilytyksellä. Katkennut runner voi yhä estää toimituksen.
 
 Nykyinen Windows-supervisorin sopimussarja todentaa oikeilla omistetuilla
 testiprosesseilla myös ulkopuolisen Jobin, piilotetun ikkunan, vastaamattoman
-ikkunan, syötekentän poissulkemisen ja keskeytyneen julkaisun. Sama sarja
-todentaa alkuperäisen ilmoitustekstin keräimestä oikean OpenPGP-salauksen
+ikkunan ja listaproviderin, väärän ilmoituksen/listan ja syötekentän
+poissulkemisen, listan kokorajat sekä keskeytyneen julkaisun. Sama sarja
+todentaa ilmoituksen sovellusnimen keräimestä oikean OpenPGP-salauksen
 ja testiavainpurun läpi prosessien poistuttua. Se ei asenna MSI:tä tai
 korvaa varsinaista Windows-asennuskokeen näyttöä.
+Skeema 2 nimeää listamerkinnän `application`-rooliksi; vanhan skeeman 1
+rajattu luku säilyy, mutta se ei hyväksy tätä uutta roolia.
 
 Nykyinen `packaged-boundary-diagnostic` käyttää samaa valinnaista salattua
 jälkikeräystä epäonnistuneessa tai perutussa `legacy`- ja `workspace`-kokeessa.

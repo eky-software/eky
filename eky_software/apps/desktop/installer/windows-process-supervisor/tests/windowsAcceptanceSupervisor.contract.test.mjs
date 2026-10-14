@@ -107,7 +107,8 @@ test('MSI windows: native observation survives exit and interrupted publication 
     assert.equal(record.runNonce, context.runNonce);
     assert.equal(record.artifactDescriptorSha256, context.artifactDescriptorSha256);
     assert.equal(record.sequence, 1);
-    assert.equal(record.clients.some(client => client.windows.some(row => row.text === 'SYNTHETIC MSI WAIT MESSAGE')), true);
+    assert.equal(record.clients.some(client => client.windows.some(row => row.role === 'application' &&
+      row.text === 'SYNTHETIC OWNED APPLICATION')), true);
     assert.equal(record.clients.some(client => client.status === 'partial'), true);
     assert.doesNotMatch(JSON.stringify(archive), /EXCLUDED INPUT|window-child-|\.pending/);
     assert.equal(archive.manifest.jobOutcome, 'failure');
