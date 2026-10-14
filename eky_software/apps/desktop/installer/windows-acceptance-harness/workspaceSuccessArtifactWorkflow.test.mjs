@@ -45,7 +45,7 @@ test('V2.6 fast checkpoint runs its executable contracts, not a packaged accepta
   const desktop = JSON.parse(await readFile(resolve(ROOT, '../../package.json'), 'utf8'));
   assert.match(source, /pnpm --filter @eky\/desktop installer:test:windows-acceptance-workspace-artifact/);
   const script = desktop.scripts['installer:test:windows-acceptance-workspace-artifact'];
-  assert.equal(script, 'node --test --test-concurrency=1 installer/windows-acceptance-harness/workspaceSuccessArtifact.test.mjs installer/windows-acceptance-harness/workspaceSuccessArtifactWorkflow.test.mjs');
+  assert.equal(script, 'node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs installer/windows-acceptance-harness/workspaceSuccessArtifact.test.mjs installer/windows-acceptance-harness/workspaceSuccessArtifactWorkflow.test.mjs');
   const contracts = source.split('  workspace_artifact_producer:')[0];
   assert.doesNotMatch(contracts, /installer:v2-workspace-artifact:build|msiexec|upload-artifact|installer:w6b2/);
 });
@@ -55,7 +55,7 @@ test('V2.6 runtime checkpoint executes lifecycle, failure and read-only Windows 
   const desktop = JSON.parse(await readFile(resolve(ROOT, '../../package.json'), 'utf8'));
   assert.match(source, /pnpm --filter @eky\/desktop installer:test:windows-acceptance-workspace\s/);
   const script = desktop.scripts['installer:test:windows-acceptance-workspace'];
-  assert.equal(script, 'pnpm e2e:prepare-electron-runtime && pnpm e2e:build && node --test --test-concurrency=1 ' + [
+  assert.equal(script, 'pnpm e2e:prepare-electron-runtime && pnpm e2e:build && node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs ' + [
     'workspaceInstallationObservation',
     'workspaceSuccessContracts', 'workspaceSuccessLifecycle', 'workspaceSuccessWindowsRuntime',
     'workspaceSuccessFailureBoundary', 'inspectWorkspaceSuccessMsiActivity',
@@ -138,7 +138,7 @@ test('V2.7 canonical commands retain the same worker, terminal, session and read
   assert.equal(desktop.scripts['installer:v2-workspace-fault'],
     'pnpm installer:supervisor:build && pnpm e2e:prepare-electron-runtime && pnpm e2e:build && dotnet installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --workspace-fault-command');
   assert.equal(desktop.scripts['installer:test:windows-acceptance-workspace-fault'],
-    'pnpm e2e:prepare-electron-runtime && pnpm e2e:build && node --test --test-concurrency=1 ' + [
+    'pnpm e2e:prepare-electron-runtime && pnpm e2e:build && node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs ' + [
       'workspaceInstallationObservation',
       'workspaceFaultContracts', 'workspaceFaultLifecycle', 'workspaceFaultSessionProof', 'workspaceFaultSessionEvidence',
       'workspaceFaultPostcondition', 'workspaceFaultFailureBoundary', 'runWorkspaceFaultWorker', 'workspaceCommandAdmission',

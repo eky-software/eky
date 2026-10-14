@@ -728,7 +728,8 @@ test('legacy contract groups partition the complete existing inventory without o
   assert.equal(scripts[command], ['pnpm installer:supervisor:build', ...names.map((name) => `pnpm ${command}-${name}`)].join(' && '));
   const groups = names.map((name) => {
     const parts = scripts[`${command}-${name}`].split(' ');
-    assert.deepEqual(parts.splice(0, 3), ['node', '--test', '--test-concurrency=1']);
+    assert.deepEqual(parts.splice(0, 4), ['node', '--test', '--test-concurrency=1',
+      '--test-reporter=../../test-reporters/nodeFailureReporter.mjs']);
     return parts;
   });
   const expected = [
@@ -864,6 +865,7 @@ for (const [mode, selectedName, commandName, files] of [
     const command = selected.match(/run: pnpm (\S+)/u)[1];
     assert.equal(command, commandName);
     assert.deepEqual(scripts[command].split(' '), ['node', '--test', '--test-concurrency=1',
+      '--test-reporter=../../test-reporters/nodeFailureReporter.mjs',
       ...files.map((file) => `installer/windows-acceptance-harness/${file}`)]);
     if (mode === 'clean-upgrade-command-diagnostic') {
       const normal = await readFile(WORKFLOW_URL, 'utf8');

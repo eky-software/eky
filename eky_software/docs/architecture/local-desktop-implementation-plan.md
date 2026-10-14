@@ -79,6 +79,21 @@ kokonaisuutena vielä hyväksymätöntä Electron `43.7.6` -päivitystä. Instal
 tavallisen Windows-käyttäjän manuaalinen hyväksymistesti ja päivityskanava
 ovat edelleen avoimia toimitusvaiheita.
 
+## HTTP-palvelimen hallittu sulku
+
+Backendin HTTP-adapteri lopettaa kuuntelun ja sulkee yhteydet, joilta ei ole
+vielä hyväksytty ensimmäistä HTTP-pyyntöä. Pelkkä TCP-yhteys tai keskeneräiset
+otsakkeet eivät saa pitää sammutusta odottamassa. Pyynnön vastaanotto
+merkitään ennen sovelluskäsittelijää: aloitettu vastaus ja keskeneräinen
+POST-runko saavat valmistua normaalisti. Yhteyksiä ei katkaista yleisesti
+kesken käsittelyn. Desktopin hyväksymä hallittu sammutus edellyttää edelleen
+backend-prosessin onnistunutta poistumista nykyisessä aikarajassa;
+HTTP-yhteyden sulku ei yksin ole prosessin poissaolon todiste.
+
+Oikeaa HTTP-palvelinta käyttävät regressiot ovat
+`apps/backend/src/http/serverShutdown.integration.test.ts`-tiedostossa.
+Ne täydentävät nykyisiä backend-prosessin ja paketoidun palautuksen testejä.
+
 ## Tavoite
 
 Ensimmäinen spike todistaa synteettisellä datalla, että nykyiset Eky-osat

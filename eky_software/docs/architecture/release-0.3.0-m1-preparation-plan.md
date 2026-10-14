@@ -22,10 +22,13 @@ Modulaarinen monoliitti ja
 hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohdan;
 [julkaisusuunnitelma](release-0.3.0-plan.md) omistaa koko 0.3.0:n sisällön.
 
-**Uusin K-jatkamiskohta:** [Yhteisen virhekeräyksen Windows-kohdetodennus](#yhteisen-virhekeräyksen-windows-kohdetodennus)
-läpäisi. Seuraavaksi korjausketju viedään lineaarisesti PR #303:n haaraan ja
-uuden headin normaalit PR-portit tarkistetaan. K ja main-integraatio ovat
-edelleen hyväksymättä. Alla olevat aiemmat kierrokset säilyvät historiana.
+**Uusin K-jatkamiskohta:** [Virhekeräyksen normaalin PR-kierroksen jatko](#virhekeräyksen-normaalin-pr-kierroksen-jatko)
+erottaa vanhentuneet testikomento-odotukset, palautustestin aikakatkaisun ja
+paketoidun backendin sulkuvirheen. Alkuperäiset virheet on varmennettu
+puretusta salatusta aineistosta. Rajatut korjaukset ja niiden kohdetestit
+läpäisivät; seuraava jäädytetty revisio tarvitsee normaalit PR-portit.
+K ja main-integraatio ovat edelleen hyväksymättä. Alla olevat aiemmat
+kierrokset säilyvät historiana.
 
 **Aiempi PR-todennus ja avoin MSI-asennusodotus:**
 [Hyväksytyn testijaon checkpoint](#kn-nykyinen-pr-checkpoint-ja-valmistelukoe).
@@ -157,6 +160,56 @@ Kohdeajo mahdollistaa korjausketjun lineaarisen viennin PR #303:n haaraan.
 Seuraava hyväksyntä on uuden PR-headin normaali kierros ja erillinen
 riippuvuustarkistus, sitten valtuutettu merge ja uuden mainin omat portit.
 Tämä kohdenäyttö ei sulje K:ta tai koko 0.3.0-julkaisua.
+
+### Virhekeräyksen normaalin PR-kierroksen jatko
+
+PR #303:n revision `b024b4e65573bce92ef5599da866e76253557625`
+[normaali V2-kierros](https://github.com/eky-software/eky/actions/runs/38478269003)
+päättyi hylkäykseen: 26 jobia läpäisi, neljä varsinaista jobia sekä niistä
+riippuva kokonaisportti hylättiin ja kymmenen jobia ohitettiin. Molemmat
+upgrade-/rollback-ajot läpäisivät. Erillinen
+[riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/38478268993)
+läpäisi samalla headilla.
+
+Neljän ensivirhepaketin ajosidonta, salauksen purku ja säilyneiden tiedostojen
+tiivisteet on varmennettu. Workspace- ja legacy-sopimustestien alkuperäiset
+assertion-virheet johtuvat uuden reporter-valinnan puuttumisesta testien
+tarkoista komentojono-odotuksista. Odotukset on korjattu säilyttäen testien
+täsmällinen tiedostoluettelo ja ryhmäjako. Laajempi ajokytkennän tarkistus
+löysi saman poikkeaman myös E2E:n kahden testiryhmän odotuksista. Näiden
+korjaus ja reporter-valinnan puuttumisen regressiot läpäisivät 71 tarkistusta.
+
+Core-testisarjan ensimmäinen hylkäys oli C-palautuksen valtuustestin
+aikakatkaisu. Keskeneräinen testirunko piti jaetun tilan suojan voimassa;
+myöhemmät saman tiedoston suojahylkäykset eivät ole erillisiä sovellusvikoja.
+Yksi rajattu erillisajo läpäisi, mutta alkuperäisen viiveen syy jää avoimeksi.
+Keräimen tiedostokiintiö rajasi myöhempiä virheitä; ensimmäisen testin
+alkuperäinen timeout ja kutsupino säilyivät. Kiintiötä ei muutettu.
+
+Windows Electron -jobin tavallinen packaged-smoke pysähtyi `restoreRestart`-
+vaiheeseen ennen E2E-testien aloitusta. Alkuperäinen syyketju osoittaa
+backendin hallitun sulun aikakatkaisun. Siivouksen tila oli `notVerified`.
+Lähdekatselmuksen erillinen HTTP-koe toisti käyttämättömän TCP-yhteyden
+estämän sulun; tämän yhteys juuri CI-hylkäykseen on vielä todentamatta.
+Rajattu korjaus sulkee yhteydet, joilta ei ole hyväksytty ensimmäistäkään
+HTTP-pyyntöä. Aloitetut pyynnöt ja keskeneräiset POST-rungot valmistuvat
+normaalin hallitun sulun kautta. Prosessin poistumisen, palautusjournalin,
+kirjoitussuojan ja aikarajojen ehdot säilyvät. Kohdetestit eivät yksin
+hyväksy paketoitua palautusta tai K:n PR/main-integraatiota.
+
+HTTP-korjauksen seitsemän oikean yhteyden regressiota, 72 HTTP-alueen
+tarkistusta ja 176 desktopin sulku-/palautusrajan tarkistusta läpäisivät.
+Regressiot kattavat myös uuden yhteyden torjunnan keskeneräisen vastauksen
+hallittuun sulkuun jäämisen aikana. Rajattu riippumaton lähdekatselmus ei
+löytänyt estävää puutetta. Koko työtilan tyyppitarkistus läpäisi.
+
+Korjatun lähteen laajassa työtilatestissä desktopin, webin ja molempien
+E2E-infrastruktuuriryhmien testit läpäisivät. Backendin historian
+muistiallokointia tarkistava testi ylitti nykyisen viiden sekunnin rajan;
+sen yksi sallittu erillisajo läpäisi. Ensihylkäys ja avoin syy säilyvät,
+eikä laajaa ajoa kirjata kokonaisläpäisyksi. Testiä, sen aineistoa tai
+aikarajaa ei muutettu. Uuden revision normaalit PR-portit, samaan pakettiin
+sidottu Windows-palautus ja Linux-todennus vaaditaan edelleen ennen mergeä.
 
 | Kohta | Nykyinen lähtötieto |
 | --- | --- |

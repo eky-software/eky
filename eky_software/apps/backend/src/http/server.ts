@@ -1,4 +1,5 @@
 import { serve, type ServerType } from '@hono/node-server';
+import type { Socket } from 'node:net';
 
 import { createApp, type CreateAppOptions } from './app.js';
 import type { RuntimeTrust } from './runtimeTrust.js';
@@ -94,6 +95,8 @@ export async function startServer(
   const app = await createApp(appOptions);
 
   return new Promise((resolveStart, rejectStart) => {
+    const unusedConnections = new Set<Socket>();
+    let closing = false;
     const server = serve(
       {
         fetch: app.fetch,
@@ -119,7 +122,12 @@ export async function startServer(
                 operationalIdentity,
               ),
             );
-            await closeServer(server);
+            closing = true;
+            const closed = closeServer(server);
+            // HTTP close does not release connections that have sent no request.
+            // Accepted requests keep the normal graceful-drain behavior.
+            for (const socket of unusedConnections) socket.destroy();
+            await closed;
             operationalLogger.write(
               createBackendOperationalEvent(
                 {
@@ -136,6 +144,17 @@ export async function startServer(
       },
     );
 
+    server.on('connection', socket => {
+      if (closing) {
+        socket.destroy();
+        return;
+      }
+      unusedConnections.add(socket);
+      socket.once('close', () => unusedConnections.delete(socket));
+    });
+    server.prependListener('request', request => {
+      unusedConnections.delete(request.socket);
+    });
     server.once('error', rejectStart);
   });
 }
