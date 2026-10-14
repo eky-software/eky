@@ -47,6 +47,23 @@ erikseen nykyisestä testistä ja sen kutsumasta koodista. Näiden perusteella
 ei muuteta tuotannon asennuksia, liiketoimintasääntöjä, aineistomäärää,
 aikarajoja tai hyväksyntäehtoja eikä nimetä aiempia timeout-syitä korjatuiksi.
 
+Revision `5ff4c7d9` [nimetty MSI-koe](https://github.com/eky-software/eky/actions/runs/38557586442)
+läpäisi ensimmäisellä yrityksellä. Molempien vaihtoehtojen UI-/execute-
+lokitodiste, tiedostopolitiikka ja siivous läpäisivät. Salatun aineiston
+ajosidonta, kylmä purku ja kaikki säilyneiden tiedostojen tiivisteet on
+varmennettu; neljä asennuslokia tarkistettiin uudelleen samalla tiukalla
+lukijalla. Yksi koe ei todista aiemman lokihäiriön mekanismia tai sulje K:ta.
+
+Laskuhistorian testistä poistetaan koko SQLite-kuvan yleisen oliovertailun
+ylimääräinen työ, ei katalogin sisältövalidointia. Täsmällinen natiivi
+tavujen vertailu säilyttää kaikki 1 001 tapahtumaa, suuret kentät,
+allokointiehdot ja viiden sekunnin rajan. Muuttunut viimeinen tavu ja eri
+pituus hylätään erillisillä kontrolleilla. Kohderegressiot ja backendin
+tyyppitarkistus läpäisivät; tuotantokoodi ja riippuvuudet ovat ennallaan.
+Seuraavat portit ovat korjauskokonaisuuden katselmus, jäädytetyn revision
+normaali PR-kierros ja uuden mainin omat tarkistukset. Ensimmäiset hylkäykset
+säilyvät eikä paikallinen nopeutuminen yksin todista CI-timeoutin syytä.
+
 **Aiempi PR-todennus ja avoin MSI-asennusodotus:**
 [Hyväksytyn testijaon checkpoint](#kn-nykyinen-pr-checkpoint-ja-valmistelukoe).
 Rajatut testikorjaukset läpäisivät normaalin CI:n, mutta asennusodotus
