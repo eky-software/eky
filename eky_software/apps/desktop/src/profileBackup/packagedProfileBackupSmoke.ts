@@ -16,9 +16,9 @@ import type {
   PackagedSmokeStage,
 } from '../main/packagedSmoke.js';
 import type { BackupContainerEntryType } from './container/backupContainerEntry.js';
-import { createProfileBackupSourceEntries } from './createProfileBackupSourceEntries.js';
-import type { PortableProfileBackupService } from './portableProfileBackup.js';
-import type { ProfileSnapshotBrokerClient } from './profileSnapshotBrokerClient.js';
+import { assertProfileBackupSourceReceipt, createProfileBackupSourceEntries } from './createProfileBackupSourceEntries.js';
+import { PortableProfileBackupCleanupError, type PortableProfileBackupService } from './portableProfileBackup.js';
+import type { ProfileSnapshotInspectionPort } from './profileSnapshotInspectionPort.js';
 import type { ProfileRestoreActivationService } from './restore/profileRestoreActivationService.js';
 import type { ProfileRestoreStagingService } from './restore/profileRestoreStagingService.js';
 
@@ -27,16 +27,14 @@ const smokePassword =
   'Synthetic packaged backup password 2026 - not a production secret';
 const mutationCustomerNumber = 'SMOKE-RESTORE-MUTATION';
 
+export type PackagedProfileSnapshotClient = Pick<ProfileSnapshotInspectionPort,
+  'beginMaintenance' | 'createProfileSnapshot' | 'endMaintenance' | 'validateProfileSnapshot' |
+  'withInspectionOperation' | 'withProfileSnapshot' | 'removeProfileSnapshot'>;
+
 interface PackagedProfileBackupSmokeOptions {
   backupService: Pick<PortableProfileBackupService, 'create' | 'inspect'>;
   backendPort: number;
-  profileSnapshotClient: Pick<
-    ProfileSnapshotBrokerClient,
-    | 'beginMaintenance'
-    | 'createProfileSnapshot'
-    | 'endMaintenance'
-    | 'validateProfileSnapshot'
-  >;
+  profileSnapshotClient: PackagedProfileSnapshotClient;
   reportStage(stage: PackagedSmokeStage): Promise<void>;
   restoreActivationService: Pick<
     ProfileRestoreActivationService,
@@ -55,13 +53,7 @@ interface PackagedProfileBackupSmokeOptions {
 interface PackagedProfileRestoreVerificationOptions {
   backupService: Pick<PortableProfileBackupService, 'create' | 'inspect'>;
   backendPort: number;
-  profileSnapshotClient: Pick<
-    ProfileSnapshotBrokerClient,
-    | 'beginMaintenance'
-    | 'createProfileSnapshot'
-    | 'endMaintenance'
-    | 'validateProfileSnapshot'
-  >;
+  profileSnapshotClient: PackagedProfileSnapshotClient;
   reportStage(stage: PackagedSmokeStage): Promise<void>;
   runtimeInstanceId: string;
   runtimeSessionSecret: string;
@@ -70,13 +62,7 @@ interface PackagedProfileRestoreVerificationOptions {
 }
 
 interface PackagedEmptyArtifactSnapshotSmokeOptions {
-  profileSnapshotClient: Pick<
-    ProfileSnapshotBrokerClient,
-    | 'beginMaintenance'
-    | 'createProfileSnapshot'
-    | 'endMaintenance'
-    | 'validateProfileSnapshot'
-  >;
+  profileSnapshotClient: PackagedProfileSnapshotClient;
   reportStage(stage: PackagedSmokeStage): Promise<void>;
   stagingRoot: string;
 }
@@ -331,49 +317,48 @@ export function assertPackagedRestoreSecretContinuity(
 }
 
 export async function captureActiveProfileEntries(options: {
-  profileSnapshotClient: Pick<
-    ProfileSnapshotBrokerClient,
-    | 'beginMaintenance'
-    | 'createProfileSnapshot'
-    | 'endMaintenance'
-    | 'validateProfileSnapshot'
-  >;
+  profileSnapshotClient: PackagedProfileSnapshotClient;
   reportSnapshotStage?(stage: PackagedSmokeStage): Promise<void>;
   stagingRoot: string;
 }): Promise<readonly SmokeEntry[]> {
-  const operationId = randomUUID();
-  const operationRoot = join(options.stagingRoot, operationId);
-  let maintenanceStarted = false;
-
-  try {
-    await options.profileSnapshotClient.beginMaintenance(operationId);
-    maintenanceStarted = true;
-    await options.reportSnapshotStage?.('profileSnapshotMaintenance');
-    await options.profileSnapshotClient.createProfileSnapshot(
-      operationId,
-      'exactCurrentManifest',
-    );
-    await options.reportSnapshotStage?.('profileSnapshotCreated');
-    const validation =
-      await options.profileSnapshotClient.validateProfileSnapshot(
-        operationId,
-      );
-    if (!validation.profileMatchesActive) {
-      throw new Error('DESKTOP_SMOKE_PROFILE_SNAPSHOT_FAILED');
+  const client = options.profileSnapshotClient;
+  return client.withInspectionOperation(async () => {
+    const operationId = randomUUID();
+    const operationRoot = join(options.stagingRoot, operationId);
+    let maintenanceStarted = false;
+    let firstFailure: unknown;
+    try {
+      await client.beginMaintenance(operationId);
+      maintenanceStarted = true;
+      await options.reportSnapshotStage?.('profileSnapshotMaintenance');
+      await client.createProfileSnapshot(operationId, 'exactCurrentManifest');
+      await options.reportSnapshotStage?.('profileSnapshotCreated');
+      const validation = await client.validateProfileSnapshot(operationId);
+      if (!validation.profileMatchesActive) {
+        throw new Error('DESKTOP_SMOKE_PROFILE_SNAPSHOT_FAILED');
+      }
+      return await client.withProfileSnapshot(operationId, async receipt => {
+        const entries = await createProfileBackupSourceEntries(operationRoot);
+        assertProfileBackupSourceReceipt(entries, receipt);
+        return normalizeEntries(entries);
+      });
+    } catch (error) {
+      firstFailure = error;
+      throw error;
+    } finally {
+      // The inspection owner proves exit/reclaim; a failed removal is not retried.
+      let cleanupFailure: unknown;
+      try { await client.removeProfileSnapshot(operationId); }
+      catch (error) { cleanupFailure = error; }
+      if (maintenanceStarted) {
+        try { await client.endMaintenance(operationId); }
+        catch (error) { cleanupFailure ??= error; }
+      }
+      if (cleanupFailure !== undefined) {
+        throw new PortableProfileBackupCleanupError(firstFailure ?? cleanupFailure);
+      }
     }
-    return normalizeEntries(
-      await createProfileBackupSourceEntries(operationRoot),
-    );
-  } finally {
-    if (maintenanceStarted) {
-      await options.profileSnapshotClient
-        .endMaintenance(operationId)
-        .catch(() => undefined);
-    }
-    await rm(operationRoot, { force: true, recursive: true }).catch(
-      () => undefined,
-    );
-  }
+  });
 }
 
 export async function createRestoreMutation(

@@ -107,13 +107,6 @@ export class ProfileSnapshotInspectionClient implements ProfileSnapshotInspectio
     return this.inspect(operationId, 'inspect', updateMaintenanceOperationId).then(result => result.validation);
   }
 
-  async prepareProfileRestoreActivation(operationId: string) {
-    const validation = await this.prepareProfileRestoreSnapshot(operationId);
-    return { type: 'profileRestoreActivationPrepared' as const,
-      artifactCount: validation.artifactCount,
-      artifactTotalByteSize: validation.artifactTotalByteSize };
-  }
-
   prepareProfileRestoreSnapshot(operationId: string) {
     return this.inspect(operationId, 'prepareRestoreActivation').then(result => result.validation);
   }

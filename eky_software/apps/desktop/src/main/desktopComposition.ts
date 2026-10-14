@@ -2827,7 +2827,7 @@ async function startDesktopCompositionRuntime({
             smokeRoot, backendPort: backendHandle.port, runtimeSessionSecret,
             runtimeInstanceId: options.runtimeInstanceId,
             backupService: portableProfileBackupService,
-            profileSnapshotClient: profileSnapshotBrokerClient,
+            profileSnapshotClient: profileSnapshotInspectionClient,
             stagingRoot: profileSnapshotPaths.stagingRoot,
             management: workspaceManagementComposition.service,
             reportStage: options.reportSmokeStage,
@@ -2835,7 +2835,7 @@ async function startDesktopCompositionRuntime({
           return undefined;
         }
         await runPackagedEmptyArtifactSnapshotSmoke({
-          profileSnapshotClient: profileSnapshotBrokerClient,
+          profileSnapshotClient: profileSnapshotInspectionClient,
           reportStage: options.reportSmokeStage,
           stagingRoot: profileSnapshotPaths.stagingRoot,
         });
@@ -2879,7 +2879,7 @@ async function startDesktopCompositionRuntime({
         await runPackagedProfileBackupBeforeRestore({
           backupService: portableProfileBackupService,
           backendPort: backendHandle.port,
-          profileSnapshotClient: profileSnapshotBrokerClient,
+          profileSnapshotClient: profileSnapshotInspectionClient,
           reportStage: options.reportSmokeStage,
           restoreActivationService: profileRestoreActivationService,
           restoreStagingService: profileRestoreStagingService,
@@ -2894,7 +2894,7 @@ async function startDesktopCompositionRuntime({
       await runPackagedProfileBackupAfterRestore({
         backupService: portableProfileBackupService,
         backendPort: backendHandle.port,
-        profileSnapshotClient: profileSnapshotBrokerClient,
+        profileSnapshotClient: profileSnapshotInspectionClient,
         reportStage: options.reportSmokeStage,
         runtimeInstanceId: options.runtimeInstanceId,
         runtimeSessionSecret,

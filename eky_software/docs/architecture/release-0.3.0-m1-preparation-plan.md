@@ -13,26 +13,34 @@ ja [toteutuksen hyväksyntärajat](#kn-toteutusjärjestys-ja-hyväksyntä) säil
 | --- | --- |
 | Main | `012fed60`: PR #304 yhdistetty, mutta mainin oma V2 hylättiin tarkistusajurin käännösvalmisteluun. Erillinen auditointi läpäisi; K ei ole hyväksytty. |
 | PR #305 | Avoin head `3d703c07`, base `012fed60`. Normaali V2 hylättiin kahteen workspace-asennusodotukseen; auditointi läpäisi. Ei mergevalmiutta. |
-| MSI-odotus | Jatkohaaran `39ef904a` [nimetty koe](https://github.com/eky-software/eky/actions/runs/38613163463) osoitti asentimen odottavan vastausta sovellusten sulkemispyyntöön. Salattu aineisto on varmennettu, mutta tiedostoja käyttävän sovelluksen identiteetti on avoin. |
+| MSI-odotus | Revision `39ef904a` [koe](https://github.com/eky-software/eky/actions/runs/38613163463) osoitti vastausta odottavan sulkemispyynnön. Revision `50d6c31d` [nimetty jatkokoe](https://github.com/eky-software/eky/actions/runs/38630393550) läpäisi samoilla asennuspaketeilla myös pakollisen tulosverifioinnin. Estäjän identiteetti jää avoimeksi; ei juurisyykorjauksen tai normaalin PR-hyväksynnän väitettä. |
 | Kääntäjähavainto | Alkuperäinen syy jäi puuttumaan. Rajattu keräyskorjaus ja [nimetty Windows-todennus](https://github.com/eky-software/eky/actions/runs/38591390653) läpäisivät; vanhaa syytä ei ole todistettu eikä yhdistetty MSI-odotukseen. |
-| K:n korvatut polut | Vanhojen raskaiden broker-polkujen poisto ja jäljellä olevan packaged-smoke-kutsujan siirto nykyiseen eristettyyn tarkistukseen ovat vielä varmennettavia hyväksyntäehtoja. Ei uutta tarkistusarkkitehtuuria. |
+| K:n korvatut polut | Poisto toteutettu: paketoidun testin vertailusnapshot käyttää nykyistä eristettyä tarkistusta, receipt-sidontaa ja omistajan siivousta. Private broker v12 ei tarjoa kolmea korvattua raskasta komentoa. Kohderegressiot, tyypit ja riippumaton katselmus läpäisivät; saman puhtaan paketin palautustodennus ja normaalit PR/main-portit ovat vielä avoinna. |
 
 **Seuraava työ järjestyksessä:**
 
 1. Säilyneet täydelliset MSI-lokit tarkistettiin: estäjän identiteetti ei
-   selvinnyt niistä. Hyväksytyn ilmoitusluettelon rajattu keräys, synteettiset
-   rajatapaukset ja todellinen salaus/purku läpäisivät; katselmus valmistui.
-   Seuraava nimetty koe käyttää samoja asennuspaketteja. Sido
-   mahdollinen estäjä nykyiseen testin prosessi-identiteettiin. Pelkkä nimi ei
+   selvinnyt niistä. Hyväksytyn ilmoitusluettelon keräys, synteettiset
+   rajatapaukset, todellinen salaus/purku ja 159 valvojan regressiota läpäisivät;
+   katselmus valmistui. Nimetty jatkokoe läpäisi ilman uutta virhepakettia.
+   Aiempi odotus ja puuttuva estäjäidentiteetti säilyvät avoimina.
+   Mahdollinen myöhempi estäjä sidotaan testin prosessi-identiteettiin. Pelkkä nimi ei
    todista prosessin omistajuutta. Ikkunan sulkeutuminen, backendin päättyminen,
    main-prosessin poistuminen ja asentimen valmistuminen ovat eri todisteita.
-2. Todista havainnon riittävyys nykyisellä pienellä synteettisellä fixturellä
-   sekä salaus/purku-ketjulla. Korjaa vain osoitettu elinkaari- tai
-   testiohjausvirhe nykyiseen omistajaan. Ei automaattista UI-vastausta,
+2. Omistaja hyväksyi rajatun etenemisen: vanha MSI-odotus jää avoimeksi
+   seurantahavainnoksi, ei korjatuksi viaksi. Jatka K:n korvattujen polkujen
+   poistoon ja nykyisiin normaaleihin PR/main-portteihin; uutta hylkäystä ei
+   ohiteta eikä sisältö-, palautus- tai siivousehtoja muuteta. Korjaa vain
+   osoitettu virhe nykyiseen omistajaan. Ei automaattista UI-vastausta,
    hiljaiseen asennukseen vaihtoa, yleistä prosessiskannausta tai uusia valvojia.
-3. Tarkista erikseen workspace-success- ja fault-komentojen päällekkäiset
-   testivalinnat ja valmistelu. Esitä yhteinen ajopaikka ja säilyvä kattavuus
-   ennen CI-muutosta; ei kaikkien testien uudelleenkirjoitusta tai kansiosiirtoa.
+3. Testivalintojen tarkistus valmistui: workspace-success valitsee 11 ja fault
+   12 tiedostoa, joista viisi on yhteisiä (yhteensä 18 eri tiedostoa).
+   Molemmat valmistelevat runtimen samassa `workspace_artifact_contracts`-jobissa.
+   Mahdollinen rajattu jatko on yksi valmistelu ja yhteiset viisi, successin
+   kuusi sekä faultin seitsemän omaa tiedostoa tässä samassa jobissa.
+   Ajokytkennän testi todistaisi täsmällisen kattavuuden ja valmistelujärjestyksen;
+   varsinainen asennusmatriisi säilyisi. CI:tä ei muutettu tässä korjauksessa,
+   eikä päällekkäisyyttä osoitettu MSI-odotuksen syyksi.
 4. Kokoa mahdollinen vielä tarvittava tietosuojapäätös yhdeksi rajaukseksi
    ennen seuraavaa pitkää ajoa. Nykyiset keräysrajat säilyvät. Puuttuvaa
    aineistoa tai tuntematonta syytä ei korvata oletuksella.
@@ -5594,9 +5602,11 @@ mitätöi tuloksen. Restore-aktivointi tarkistaa kontekstin uudelleen nykyisen
 maintenance-suojan alla. C:n `updateMaintenanceOperationId` tarkistetaan
 edelleen omistavassa backendissä ennen työn luovutusta ja onnistumisen
 hyväksymistä; yhteyskatko ei vapauta update-kirjoitussuojaa.
-Private brokerin versio 9 muutetaan eksplisiittisesti versioon 10, koska
-kontekstipyyntö ja vanhojen raskaiden operaatioiden poisto muuttavat sopimusta;
-lähettäjä, parseri, vastaanottaja ja testit päivitetään yhdessä.
+Alkuperäinen private brokerin kontekstilaajennus nosti version 9:stä 10:een,
+ja palautuksen maintenance-sopimus version 11:een. Korvattujen raskaiden
+operaatioiden lopullinen poisto käyttää versiota 12; lähettäjä, parseri,
+vastaanottaja ja testit päivittyvät yhdessä. Vanhaa versiota tai raskaita
+komentoja ei hyväksytä yhteensopivuusfallbackina.
 Rendererin backup-capability ja durable-formaatit eivät vaihdu.
 
 | Raja | Suunniteltu ensimmäinen toteutus ja todennus |

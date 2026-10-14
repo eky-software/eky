@@ -56,13 +56,6 @@ interface BackendProfileSnapshotMetadata {
 
 interface BackendProfileSnapshotService {
   readProfileInspectionContext(): { readonly activeProfileId: string; readonly activeProfileIsEmpty: boolean };
-  validateActiveProfile(): Promise<{
-    artifactCount: number;
-    artifactTotalByteSize: number;
-    databaseHealth: 'healthy';
-    migrationChainIdentity: string;
-    profileId: string;
-  }>;
   createProfileSnapshot(input: {
     migrationPolicy:
       | 'exactCurrentManifest'
@@ -70,19 +63,6 @@ interface BackendProfileSnapshotService {
     operationId: string;
     signal: AbortSignal;
   }): Promise<BackendProfileSnapshotMetadata>;
-  prepareProfileRestoreActivation(operationId: string): Promise<{
-    artifactCount: number;
-    artifactTotalByteSize: number;
-  }>;
-  validateProfileSnapshot(operationId: string): Promise<{
-    activeProfileIsEmpty: boolean;
-    artifactCount: number;
-    artifactTotalByteSize: number;
-    databaseHealth: 'healthy';
-    migrationChainIdentity: string;
-    profileId: string;
-    profileMatchesActive: boolean;
-  }>;
 }
 
 type StartServer = (options: {
@@ -538,30 +518,6 @@ utilityParentPort.on('message', (event) => {
               throw new Error('PROFILE_SNAPSHOT_DATABASE_FAILED');
             }
             return profileSnapshotService.createProfileSnapshot(input);
-          },
-          prepareProfileRestoreActivation: (operationId) => {
-            if (profileSnapshotService === undefined) {
-              throw new Error(
-                'PROFILE_RESTORE_ACTIVATION_PREPARATION_FAILED',
-              );
-            }
-            return profileSnapshotService.prepareProfileRestoreActivation(
-              operationId,
-            );
-          },
-          validateActiveProfile: () => {
-            if (profileSnapshotService === undefined) {
-              throw new Error('ACTIVE_PROFILE_VALIDATION_FAILED');
-            }
-            return profileSnapshotService.validateActiveProfile();
-          },
-          validateProfileSnapshot: (operationId) => {
-            if (profileSnapshotService === undefined) {
-              throw new Error('PROFILE_SNAPSHOT_VALIDATION_FAILED');
-            }
-            return profileSnapshotService.validateProfileSnapshot(
-              operationId,
-            );
           },
         },
         transport: createProfileSnapshotBrokerTransport(

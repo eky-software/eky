@@ -1,5 +1,6 @@
 import type { ProfileSnapshotBrokerClient } from './profileSnapshotBrokerClient.js';
 import type { ProfileInspectionReceipt } from '../runtime/profileInspectionMessages.js';
+import type { ProfileSnapshotInspectionValidation } from './runProfileSnapshotInspection.js';
 
 /** Main-owned staging remains reserved through its consumer and cleanup. */
 export interface ProfileSnapshotOwnershipPort {
@@ -9,11 +10,13 @@ export interface ProfileSnapshotOwnershipPort {
   releaseProfileSnapshot(operationId: string): Promise<void>;
 }
 
-export type ProfileSnapshotInspectionPort = ProfileSnapshotOwnershipPort & Pick<
+export interface ProfileSnapshotInspectionPort extends ProfileSnapshotOwnershipPort, Pick<
   ProfileSnapshotBrokerClient,
   'assertUpdateMaintenance' | 'beginMaintenance' | 'createProfileSnapshot' |
-  'endMaintenance' | 'prepareProfileRestoreActivation' | 'validateProfileSnapshot'
->;
+  'endMaintenance'
+> {
+  validateProfileSnapshot(operationId: string, updateMaintenanceOperationId?: string): Promise<ProfileSnapshotInspectionValidation>;
+}
 
 export type OwnedProfileSnapshotValidator = ProfileSnapshotOwnershipPort & Pick<
   ProfileSnapshotInspectionPort, 'validateProfileSnapshot'
@@ -23,7 +26,7 @@ export type OwnedProfileSnapshotValidator = ProfileSnapshotOwnershipPort & Pick<
 export interface ProfileRestoreSnapshotInspectionPort extends Pick<ProfileSnapshotBrokerClient,
   'beginRestoreMaintenance' | 'assertRestoreMaintenance' | 'endRestoreMaintenance' |
   'invalidateRestoreMaintenance'> {
-  prepareProfileRestoreSnapshot(operationId: string): ReturnType<ProfileSnapshotBrokerClient['validateProfileSnapshot']>;
+  prepareProfileRestoreSnapshot(operationId: string): Promise<ProfileSnapshotInspectionValidation>;
   retainProfileSnapshotForRecovery(operationId: string): void;
   /** Completes exact restore-fence release before removing the deletion barrier. */
   cancelProfileRestoreRetention(operationId: string): Promise<void>;

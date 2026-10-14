@@ -1,18 +1,21 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, toNamespacedPath } from 'node:path';
 
+import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import * as connections from '../database/connection/createDatabaseConnection.js';
 import { readMigrationManifest } from '../database/migration/migrationManifest.js';
+import { createMigrationSchemaReferences } from '../database/migration/migrationSchemaReference.js';
 import { createHistorical038Schema } from '../database/migration/migrationSchemaHistory.fixture.js';
 import { resolveMigrationsDirectory } from '../database/migration/runMigrations.js';
 import { createInvoiceReadModelTestDatabase } from '../testFixtures/invoiceReadModelTestFixtures.js';
 import { ProfileMaintenanceState } from '../runtime/profileMaintenance/profileMaintenanceState.js';
 import { createProfileBackupIdentity, inspectSqliteProfileDatabase } from '../runtime/profileSnapshot/inspectSqliteProfileDatabase.js';
 import type { ProfileSnapshotRuntimeService } from '../runtime/profileSnapshot/profileSnapshotTypes.js';
+import { StagedProfileSnapshotInspector } from '../runtime/profileSnapshot/inspectStagedProfileSnapshot.js';
 import { createApp } from './app.js';
 import { insertBoundHistoryEvent } from '../modules/invoicing/infrastructure/invoiceEventPdfRead.fixture.js';
 import {
@@ -61,7 +64,12 @@ describe('profile snapshot catalog schema composition', () => {
       ...f.options,
       profileSnapshotServiceRegistration: {
         stagingRoot: f.stagingRoot,
-        register: () => { registered = true; },
+        register: service => {
+          expect(Object.keys(service).sort()).toEqual([
+            'createProfileSnapshot', 'readProfileInspectionContext',
+          ]);
+          registered = true;
+        },
       },
       beforeMigrations: async (inspection) => {
         expect(registered).toBe(true);
@@ -91,12 +99,9 @@ describe('profile snapshot catalog schema composition', () => {
       beforeMigrations: async inspection => {
         if (services === undefined) throw new Error('missing registration');
         expect(inspection.pendingMigrationCount).toBe(1);
-        await expect(services.validateActiveProfile()).resolves.toMatchObject({
-          artifactCount: 0, migrationChainIdentity: manifest[37]!.chainSha256,
-        });
         const operationId = await snapshot(f, services, 'compatibleHistoricalPrefix');
-        await expect(services.validateProfileSnapshot(operationId)).resolves.toMatchObject({
-          databaseHealth: 'healthy', profileMatchesActive: true,
+        await expect(f.inspector.inspectProfileSnapshot(operationId)).resolves.toMatchObject({
+          databaseHealth: 'healthy',
           migrationChainIdentity: manifest[37]!.chainSha256,
         });
         const current = connections.createDatabaseConnection({ databaseFilePath: f.options.databaseFilePath });
@@ -108,7 +113,8 @@ describe('profile snapshot catalog schema composition', () => {
       },
     });
     if (services === undefined) throw new Error('missing registration');
-    await expect(services.validateActiveProfile()).resolves.toMatchObject({
+    const migratedOperationId = await snapshot(f, services, 'exactCurrentManifest');
+    await expect(f.inspector.inspectProfileSnapshot(migratedOperationId)).resolves.toMatchObject({
       migrationChainIdentity: manifest.at(-1)!.chainSha256,
     });
     const current = databases.find(database => database.open);
@@ -121,7 +127,6 @@ describe('profile snapshot catalog schema composition', () => {
     createHistorical038Schema(current, manifest, false);
     expect(inspectSqliteProfileDatabase(f.options.databaseFilePath, f.migrationsDirectory, 'restoreCompatible')
       .migrationChainIdentity).toBe(manifest[37]!.chainSha256);
-    await expect(services.validateActiveProfile()).rejects.toThrow('ACTIVE_PROFILE_VALIDATION_FAILED');
     await expect(snapshot(f, services, 'compatibleHistoricalPrefix')).rejects.toThrow();
   });
 
@@ -171,16 +176,12 @@ describe('profile snapshot catalog schema composition', () => {
           activeProfileId: createProfileBackupIdentity('dev-company'),
           activeProfileIsEmpty: false,
         });
-        await expect(services.validateActiveProfile()).resolves.toMatchObject({
-          artifactCount: 1,
-          migrationChainIdentity: inspection.migrationChainIdentity,
-        });
         const operationId = await snapshot(f, services, 'compatibleHistoricalPrefix', 1);
         if (stagingPath === 'long') {
           expect(join(f.stagingRoot, operationId, 'profile.sqlite').length).toBeGreaterThan(300);
         }
-        await expect(services.validateProfileSnapshot(operationId)).resolves.toMatchObject({
-          artifactCount: 1, profileMatchesActive: true,
+        await expect(f.inspector.inspectProfileSnapshot(operationId)).resolves.toMatchObject({
+          artifactCount: 1,
           migrationChainIdentity: inspection.migrationChainIdentity,
         });
         originalCatalog = await readFile(join(f.stagingRoot, operationId, 'snapshot-catalog-v1.json'), 'utf8');
@@ -196,8 +197,8 @@ describe('profile snapshot catalog schema composition', () => {
       activeProfileIsEmpty: false,
     });
     const operationId = await snapshot(f, services, 'exactCurrentManifest', 1);
-    await expect(services.validateProfileSnapshot(operationId)).resolves.toMatchObject({
-      artifactCount: 1, profileMatchesActive: true,
+    await expect(f.inspector.inspectProfileSnapshot(operationId)).resolves.toMatchObject({
+      artifactCount: 1,
       migrationChainIdentity: manifest.at(-1)?.chainSha256,
     });
     expect(originalCatalog).toBeDefined();
@@ -206,9 +207,6 @@ describe('profile snapshot catalog schema composition', () => {
     expect(inspectSqliteProfileDatabase(
       join(f.stagingRoot, operationId, 'profile.sqlite'), f.migrationsDirectory,
     ).appliedMigrationNames).toEqual(manifest.map(entry => entry.fileName));
-    await expect(services.validateActiveProfile()).resolves.toMatchObject({
-      artifactCount: 1, migrationChainIdentity: manifest.at(-1)?.chainSha256,
-    });
   });
 
   it('uses the runner default migration directory when no directory option is provided', async () => {
@@ -235,8 +233,8 @@ describe('profile snapshot catalog schema composition', () => {
     expect(inspectSqliteProfileDatabase(f.options.databaseFilePath, resolveMigrationsDirectory())
       .appliedMigrationNames).toEqual(readMigrationManifest(resolveMigrationsDirectory()).map(entry => entry.fileName));
     if (services === undefined) throw new Error('Missing registration');
-    await snapshot(f, services, 'exactCurrentManifest');
-    await expect(services.validateActiveProfile()).resolves.toMatchObject({ artifactCount: 0 });
+    const operationId = await snapshot(f, services, 'exactCurrentManifest');
+    await expect(f.inspector.inspectProfileSnapshot(operationId)).resolves.toMatchObject({ artifactCount: 0 });
   });
 
   it('still requires an explicit document storage root for snapshot registration', async () => {
@@ -284,10 +282,10 @@ describe('profile snapshot catalog schema composition', () => {
     });
     if (services === undefined) throw new Error('Missing registration');
     const operationId = await snapshot(f, services, 'exactCurrentManifest', 2);
-    await expect(services.validateProfileSnapshot(operationId)).resolves.toMatchObject({
-      artifactCount: 2, profileMatchesActive: true,
+    await expect(f.inspector.inspectProfileSnapshot(operationId)).resolves.toMatchObject({
+      artifactCount: 2,
     });
-    await expect(services.prepareProfileRestoreActivation(operationId)).resolves.toMatchObject({
+    await expect(f.inspector.prepareProfileRestoreActivation(operationId)).resolves.toMatchObject({
       artifactCount: 2,
     });
     for (const database of databases.splice(0)) if (database.open) database.close();
@@ -304,13 +302,15 @@ describe('profile snapshot catalog schema composition', () => {
         stagingRoot: f.stagingRoot, register: value => { services = value; },
       },
     });
-    await expect(services.validateActiveProfile()).resolves.toMatchObject({ artifactCount: 2 });
+    const restoredOperationId = await snapshot(f, services, 'exactCurrentManifest', 2);
+    await expect(f.inspector.inspectProfileSnapshot(restoredOperationId)).resolves.toMatchObject({ artifactCount: 2 });
     for (const { document, bytes } of documents) {
       expect(await readFile(join(restoredStorageRoot, document.storagePath))).toEqual(bytes);
     }
     const first = documents[0]!;
     await writeFile(join(restoredStorageRoot, first.document.storagePath), 'damaged historical PDF');
-    await expect(services.validateActiveProfile()).rejects.toThrow('ACTIVE_PROFILE_VALIDATION_FAILED');
+    await expect(snapshot(f, services, 'exactCurrentManifest', 2))
+      .rejects.toThrow('PROFILE_SNAPSHOT_ARTIFACTS_FAILED');
   });
 });
 
@@ -333,6 +333,15 @@ async function fixture(longStagingPath = false) {
   });
   return {
     root, stagingRoot, maintenance, migrationsDirectory,
+    inspector: new StagedProfileSnapshotInspector({
+      databaseSource: { kind: 'stagedSnapshot' }, migrationPolicy: 'restoreCompatible',
+      migrationsDirectory, stagingRoot,
+      databaseFactory: {
+        openReadonly: path => new Database(toNamespacedPath(path), { readonly: true, fileMustExist: true }),
+        openReference: () => new Database(':memory:'),
+        schemaReferences: createMigrationSchemaReferences(() => new Database(':memory:')),
+      },
+    }),
     options: {
       databaseFilePath: join(root, 'profile.sqlite'), migrationsDirectory,
       invoiceDocumentStorageRoot: storageRoot, profileMaintenanceState: maintenance,

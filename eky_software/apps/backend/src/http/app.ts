@@ -60,9 +60,7 @@ import { createProfileMaintenanceMiddleware } from './profileMaintenance.js';
 import { ProfileMaintenanceState } from '../runtime/profileMaintenance/profileMaintenanceState.js';
 import { createConsistentProfileSnapshotService } from '../runtime/profileSnapshot/createConsistentProfileSnapshot.js';
 import type { ProfileSnapshotServiceRegistration } from '../runtime/profileSnapshot/profileSnapshotTypes.js';
-import { StagedProfileSnapshotValidationService } from '../runtime/profileSnapshot/validateProfileSnapshot.js';
 import { createActiveProfileInspectionContextReader } from '../runtime/profileSnapshot/activeProfileInspectionContext.js';
-import { CurrentActiveProfileValidationService } from '../runtime/profileSnapshot/validateActiveProfile.js';
 import { SqliteInvoiceBackupArtifactCatalog } from '../modules/invoicing/infrastructure/sqliteInvoiceBackupArtifactCatalog.js';
 import {
   selectInvoiceBackupArtifactCatalogSchema,
@@ -524,32 +522,9 @@ function registerProfileSnapshotServices(input: {
     stagingRoot: input.registration.stagingRoot,
   });
   const activeContextReader = createActiveProfileInspectionContextReader(input.database);
-  const validationService = new StagedProfileSnapshotValidationService({
-    activeContextReader,
-    migrationsDirectory: input.migrationsDirectory,
-    stagingRoot: input.registration.stagingRoot,
-  });
-  const activeValidationService = new CurrentActiveProfileValidationService(
-    input.database,
-    input.invoiceDocumentStorageRoot,
-    () => {
-      const history = inspectMigrationStartupState(
-        input.database,
-        input.migrationsDirectory,
-        input.readCatalogMigrationPolicy(),
-      );
-      return history;
-    },
-  );
   input.registration.register({
     readProfileInspectionContext: () => activeContextReader.readProfileInspectionContext(),
     createProfileSnapshot: (request) =>
       snapshotService.createProfileSnapshot(request),
-    prepareProfileRestoreActivation: (operationId) =>
-      validationService.prepareProfileRestoreActivation(operationId),
-    validateActiveProfile: () =>
-      activeValidationService.validateActiveProfile(),
-    validateProfileSnapshot: (operationId) =>
-      validationService.validateProfileSnapshot(operationId),
   });
 }

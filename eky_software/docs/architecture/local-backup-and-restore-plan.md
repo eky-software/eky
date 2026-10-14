@@ -725,6 +725,17 @@ yhteensopivuutta eikä muuta normaalin päivityksen säilyttämisvaatimusta.
 
 ## Inspector
 
+Nykyinen eristetty tarkistus omistaa myös paketoitujen palautustestien
+vertailusnapshotit. Mainin `ProfileSnapshotInspectionPort` palauttaa
+sisältöön sidotun tuloksen; `withProfileSnapshot` pitää varauksen käytön yli
+ja `removeProfileSnapshot` todistaa siivouksen. Testikuluttaja vertaa luetut
+tavut receiptiin eikä poista stagingia suoraan. Siivousvirhe hylkää myös
+muuten onnistuneen havainnon ja säilyttää ensisyyn erillään siivoustilasta.
+Private broker v12 sallii vain snapshotin muodostamisen, maintenance-
+toiminnot ja rajatun aktiivikontekstin luvun. Korvatut raskaat tarkistus- ja
+aktivointivalmistelukomennot sekä niiden vastaukset hylätään; fallbackia ei
+ole. Tämä ei muuta backup-formaatteja tai historiallisten kopioiden tukea.
+
 Inspector ei luota tiedostopäätteeseen. Se:
 
 - vaatii regular file -syötteen
@@ -775,8 +786,9 @@ ja varmentamaton siivous säilyvät erillisinä, eikä epävarma poisto toistu.
 [V2z:n kohdetodennus](release-0.3.0-m1-preparation-plan.md#v2z-portablen-main-kuluttajaportti)
 ei vielä hyväksy recovery-/restore-kuluttajien pitkäikäistä staging-varausaikaa,
 durable-handoffia, cold-recoveryä tai paketoitua palautusketjua. Vanha raskas
-tarkistus ei ole portablen fallback; se poistetaan vaihtamattomilta kuluttajilta
-vasta niiden vastaavan kattavuuden jälkeen.
+tarkistus ei ole portablen fallback. Kuluttajien siirron nykytila ja
+paketoidun näytön hyväksyntä ovat [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä);
+alla päivätyt vaiheet kuvaavat toteutushistoriaa.
 
 [V2ab:n valmistellun slotin omistajuus](release-0.3.0-m1-preparation-plan.md#v2ab-valmistellun-palautuksen-omistajuuden-siirto)
 estää kilpailevan stagingin, aktivoinnin ja discardin saman valmistellun
@@ -851,10 +863,9 @@ palautuksen hyväksyntää.
 
 `StagedProfileSnapshotInspector` omistaa staging-kannan ja artifactien
 tarkistuksen ilman aktiivista tietokantaa. Schema ja sisältö luetaan samalla
-readonly-yhteydellä; yhteys suljetaan myös hylkäyksessä. Nykyinen
-`StagedProfileSnapshotValidationService` koostaa edelleen aktiivisen yrityksen
-vertailutiedot vanhalle brokerille. Tämä välivaihe ei vielä siirrä raskasta
-työtä pois aktiivisesta backendistä. Yhteyskohtaiset query-only-,
+readonly-yhteydellä; yhteys suljetaan myös hylkäyksessä. Korvattua
+`StagedProfileSnapshotValidationService`-palvelua ei rekisteröidä aktiiviseen
+backendiin. Yhteyskohtaiset query-only-,
 trusted-schema-, mmap-, cache- ja temp-asetukset eivät ole prosessin
 muistikatto; K:n eristys ja toimiva muistibudjetti todennetaan erikseen.
 

@@ -230,7 +230,7 @@ describe('desktop restore startup composition', () => {
       await runtime!.shutdown();
     }
     expect(calls).toBe(2);
-    expect(ProfileSnapshotBrokerClient.prototype.validateActiveProfile).not.toHaveBeenCalled();
+    expect('validateActiveProfile' in ProfileSnapshotBrokerClient.prototype).toBe(false);
     const begin = vi.mocked(ProfileSnapshotBrokerClient.prototype.beginRestoreMaintenance);
     expect(begin).toHaveBeenCalledTimes(2);
     expect(begin.mock.calls[0]![0]).not.toBe(begin.mock.calls[1]![0]);
@@ -645,7 +645,7 @@ describe('desktop restore startup composition', () => {
       });
     await expect(fixture.start()).resolves.toBeUndefined();
     expect(binaryRollback).toHaveBeenCalledTimes(1);
-    expect(ProfileSnapshotBrokerClient.prototype.validateActiveProfile).not.toHaveBeenCalled();
+    expect('validateActiveProfile' in ProfileSnapshotBrokerClient.prototype).toBe(false);
     expect(snapshotInspection.runProfileSnapshotInspection).toHaveBeenCalledWith(expect.objectContaining({ migrationPolicy: 'restoreCompatible' }));
     expect(fixture.events).toEqual(acceptedRestore
       ? ['backendStarted', 'binaryRollback'] : ['backendStarted', 'accept', 'binaryRollback']);
@@ -1198,7 +1198,7 @@ describe('desktop restore startup composition', () => {
       await writeFile(fixture.databasePath, 'invalid synthetic database');
       await expect(fixture.start()).rejects.toThrow();
       expect(snapshotInspection.runProfileSnapshotInspection).toHaveBeenCalledOnce();
-      expect(ProfileSnapshotBrokerClient.prototype.validateActiveProfile).not.toHaveBeenCalled();
+      expect('validateActiveProfile' in ProfileSnapshotBrokerClient.prototype).toBe(false);
       expect(electronBoundary.createWindow).not.toHaveBeenCalled();
       expect(fixture.relaunch).not.toHaveBeenCalled();
       await expect(journal.read()).resolves.toBeUndefined();
@@ -1323,7 +1323,7 @@ describe('desktop restore startup composition', () => {
         expect(lifecycle).toBeDefined();
         expect(electronBoundary.createWindow).toHaveBeenCalledOnce();
         expect(snapshotInspection.runProfileSnapshotInspection).toHaveBeenCalledOnce();
-        expect(ProfileSnapshotBrokerClient.prototype.validateActiveProfile).not.toHaveBeenCalled();
+        expect('validateActiveProfile' in ProfileSnapshotBrokerClient.prototype).toBe(false);
         expect(electronBoundary.fork).not.toHaveBeenCalled();
         if (payload !== undefined) await expect(readFile(payload)).rejects.toMatchObject({ code: 'ENOENT' });
         await fixture.assertRegistryUnchanged();
@@ -1576,7 +1576,6 @@ describe('desktop restore startup composition', () => {
     const acquire = vi.spyOn(InMemoryWorkspaceMaintenanceLease.prototype, 'acquire');
     const inspector = vi.mocked(snapshotInspection.runProfileSnapshotInspection);
     inspector.mockClear();
-    vi.mocked(ProfileSnapshotBrokerClient.prototype.validateActiveProfile).mockClear();
     await readHandoff().prepareConfirmedUpdate();
     const prepared = await fixture.updateJournal.readForLiveOwner();
     expect(acquire.mock.calls.map(call => call[0])).toEqual(['update']);
@@ -1589,7 +1588,7 @@ describe('desktop restore startup composition', () => {
       migrationPolicy: 'exactCurrentManifest',
     });
     expect(acquire.mock.calls.map(call => call[0])).toEqual(['update']);
-    expect(ProfileSnapshotBrokerClient.prototype.validateActiveProfile).not.toHaveBeenCalled();
+    expect('validateActiveProfile' in ProfileSnapshotBrokerClient.prototype).toBe(false);
     expect(ProfileSnapshotBrokerClient.prototype.endUpdateMaintenance).not.toHaveBeenCalled();
     expect(launchWindowsInstallerForUpdate).toHaveBeenCalledOnce();
     await lifecycle.shutdown();
@@ -1913,7 +1912,7 @@ describe('desktop restore startup composition', () => {
     expect(fixture.events).toEqual(['backendStarted', 'backendStopped', 'rollback']);
     expect(fixture.relaunch).toHaveBeenCalledOnce(); expect(acquired).toHaveLength(1);
     expect(assertOwner).toBeTypeOf('function'); expect(assertOwner!).toThrow();
-    expect(ProfileSnapshotBrokerClient.prototype.validateActiveProfile).not.toHaveBeenCalled();
+    expect('validateActiveProfile' in ProfileSnapshotBrokerClient.prototype).toBe(false);
     expect(await readFile(fixture.databasePath, 'utf8')).toBe(fixture.originalBytes);
     expect(await fixture.journal.peek()).toMatchObject({ phase: 'rolledBack' });
   });
@@ -2390,16 +2389,6 @@ async function createFixture(
       events.push('accept');
       return realAccept.apply(this, args);
     });
-  vi.spyOn(ProfileSnapshotBrokerClient.prototype, 'validateActiveProfile')
-    .mockImplementation(async () => ({
-      type: 'activeProfileValidation',
-      artifactCount: 1,
-      artifactTotalByteSize: 12,
-      databaseHealth: 'healthy',
-      migrationChainIdentity: 'c'.repeat(64),
-      profileId: options.validationProfileId !== undefined && (await journal.peek())?.phase === 'validationStarting'
-        ? options.validationProfileId : (JSON.parse(await readFile(paths.databaseFilePath, 'utf8')) as { profileId: string }).profileId,
-    }));
   const liveStagingRoot = createProfileSnapshotRuntimePaths(paths.runtimeRoot).stagingRoot;
   vi.spyOn(ProfileSnapshotBrokerClient.prototype, 'beginRestoreMaintenance').mockResolvedValue('busy');
   vi.spyOn(ProfileSnapshotBrokerClient.prototype, 'assertRestoreMaintenance').mockResolvedValue('busy');
