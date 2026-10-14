@@ -390,6 +390,12 @@ onnistumiseksi. Diagnostiikan lupa ei anna lupaa tulosten julkaisemiseen.
 
 ## Tiedostoidentiteetti Testeissä
 
+Kun testin sopimus on binääristen `Buffer`-tavujen täsmällinen yhtäsuuruus,
+käytä koko puskurin `equals`-vertailua ja tarkista sen totuusarvo. Yleistä
+olioiden syvävertailua ei tarvita jokaiselle tavulle erikseen. Eri pituuden
+ja muuttuneen loppupään pitää edelleen hylätä vertailu; kyse ei ole
+näytteestä, toleranssista tai sisältötarkistuksen vähentämisestä.
+
 Packaged-, installer-, rollback- ja release-fixturet muodostavat itsenäiset
 tiedostotavut. Lähdepuun `out`-hakemistoa, hyväksyttyä MSI:tä tai muuta
 release-artifactia ei hardlinkata fixtureen, koska linkitys muuttaa myös

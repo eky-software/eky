@@ -171,10 +171,10 @@ export function createMsiPolicyRuntime(value, descriptorPath, evidenceRoot, {
     async install(role, variant) {
       await verifyMsiPolicyFixture(value);
       const log = unique(`${role}.log`);
-      // Append within this invocation, never to evidence from an earlier one.
+      // Append and flush within this invocation, never to earlier evidence.
       await lstat(log).then(() => { throw new Error('msiPolicyFileInvalid'); },
         error => { if (error?.code !== 'ENOENT') throw error; });
-      const args = ['/i', value[role].installerPath, '/qr', '/norestart', '/l*v+', log];
+      const args = ['/i', value[role].installerPath, '/qr', '/norestart', '/l*v+!', log];
       if (role === 'target') {
         targetLog = log;
         if (variant === 'uiOverride') args.push('REINSTALLMODE=omus');

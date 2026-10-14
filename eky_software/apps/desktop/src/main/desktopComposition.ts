@@ -223,6 +223,8 @@ import type { WorkspaceCandidateReservationOwner } from '../workspaces/runtime/e
 export interface DesktopLifecycleHandle {
   applicationWindow: BrowserWindow;
   focusApplicationWindow(): void;
+  isInstallerHandoffPending(): boolean;
+  deferQuitForInstallerHandoff(): boolean;
   shutdown(): Promise<void>;
 }
 
@@ -720,6 +722,8 @@ export async function startDesktopComposition(
     return {
       applicationWindow: lifecycle.applicationWindow,
       focusApplicationWindow: () => lifecycle.focusApplicationWindow(),
+      isInstallerHandoffPending: () => lifecycle.isInstallerHandoffPending(),
+      deferQuitForInstallerHandoff: () => lifecycle.deferQuitForInstallerHandoff(),
       shutdown() {
         shutdown ??= Promise.resolve().then(async () => {
           await lifecycle.shutdown();
@@ -2628,10 +2632,19 @@ async function startDesktopCompositionRuntime({
     });
     return shutdownTask;
   };
+  let installerHandoffPending = false;
+  let installerHandoffQuitRequested = false;
+  let updateWindowClosureStarted = false;
   const lifecycleHandle: DesktopLifecycleHandle = {
     applicationWindow: mainWindow,
     focusApplicationWindow() {
       restoreWindowInputFocus(mainWindow);
+    },
+    isInstallerHandoffPending: () => installerHandoffPending,
+    deferQuitForInstallerHandoff() {
+      if (!installerHandoffPending) return false;
+      installerHandoffQuitRequested = true;
+      return true;
     },
     shutdown: () => shutdownRuntime({ mode: 'ordinary' }),
   };
@@ -2649,16 +2662,38 @@ async function startDesktopCompositionRuntime({
         const testLogPath = await prepareW6b2PackagedInstallerLog(
           options.w6b2PackagedProof?.configuration,
         );
+        updateWindowClosureStarted = true;
+        if (!mainWindow.isDestroyed()) mainWindow.destroy();
+        if (!mainWindow.isDestroyed()) throw new Error('UPDATE_HANDOFF_FAILED');
         await launchWindowsInstallerForUpdate({
           packagePath: candidate.packagePath,
           systemRoot: process.env.SystemRoot,
           ...(testLogPath === undefined ? {} : { testLogPath }),
         });
-        options.quitApplication();
+      },
+      onHandoffSettled(outcome) {
+        if (!installerHandoffPending) return;
+        const shouldQuit = installerHandoffQuitRequested || updateWindowClosureStarted || mainWindow.isDestroyed();
+        try {
+          if (shouldQuit && outcome === 'failed' && options.w6b2PackagedProof === undefined) {
+            updateWindowClosureStarted = true;
+            dependencies.showErrorBox(
+              'Päivitystä ei voitu käsitellä',
+              'Paikallista Eky-päivitystä ei voitu käsitellä turvallisesti.',
+            );
+          }
+        } finally {
+          installerHandoffPending = false;
+          if (shouldQuit) options.quitApplication();
+        }
       },
       observer: updateObserver,
       profileProtection: handoffProfileProtection,
-      shutdownRuntime: (operationId) => shutdownRuntime({ mode: 'update', operationId }),
+      shutdownRuntime(operationId) {
+        // Window closure must not quit between strict stop, journal and spawn.
+        installerHandoffPending = true;
+        return shutdownRuntime({ mode: 'update', operationId });
+      },
     });
     if (options.w6b2PackagedProof === undefined) {
       localUpdateSelectionCapability =
@@ -2694,6 +2729,7 @@ async function startDesktopCompositionRuntime({
               : result.filePaths[0] ?? null;
           },
           showSafeError() {
+            if (updateWindowClosureStarted) return;
             deliveryConfirmation.showApplicationError(
               'Päivitystä ei voitu käsitellä',
               'Paikallista Eky-päivitystä ei voitu käsitellä turvallisesti.',

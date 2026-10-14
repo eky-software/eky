@@ -135,6 +135,8 @@ export function createUpdateRecoveryComposition(
     focusApplicationWindow() {
       controller.focus();
     },
+    isInstallerHandoffPending: () => false,
+    deferQuitForInstallerHandoff: () => false,
     async shutdown() {
       if (shutdownStarted) {
         return;

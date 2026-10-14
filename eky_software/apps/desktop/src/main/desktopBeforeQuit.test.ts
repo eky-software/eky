@@ -6,6 +6,41 @@ import { createDesktopBeforeQuitHandler } from './desktopBeforeQuit.js';
 import { terminateW6b2PackagedProofRuntime } from './w6b2PackagedProofTermination.js';
 
 describe('desktop before-quit handler', () => {
+  it('defers every quit while installer handoff is pending without latching shutdown', async () => {
+    const fixture = createFixture(async () => undefined);
+    fixture.isInstallerHandoffPending.mockReturnValue(true);
+    const events = [createEvent(), createEvent()];
+    for (const event of events) await fixture.handleBeforeQuit(event);
+    for (const event of events) expect(event.preventDefault).toHaveBeenCalledOnce();
+    expect(fixture.shutdown).not.toHaveBeenCalled();
+    expect(fixture.quitApplication).not.toHaveBeenCalled();
+
+    fixture.isInstallerHandoffPending.mockReturnValue(false);
+    await fixture.handleBeforeQuit(createEvent());
+    expect(fixture.shutdown).toHaveBeenCalledOnce();
+    expect(fixture.quitApplication).toHaveBeenCalledOnce();
+    expect(fixture.finalQuitEvent.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('rechecks handoff after awaited shutdown and guards an already settled quit handler', async () => {
+    const shutdown = createDeferredShutdown();
+    const fixture = createFixture(() => shutdown.promise);
+    const first = fixture.handleBeforeQuit(createEvent());
+    fixture.isInstallerHandoffPending.mockReturnValue(true);
+    shutdown.resolve();
+    await first;
+    const pending = createEvent();
+    await fixture.handleBeforeQuit(pending);
+    expect(pending.preventDefault).toHaveBeenCalledOnce();
+    expect(fixture.quitApplication).not.toHaveBeenCalled();
+
+    fixture.isInstallerHandoffPending.mockReturnValue(false);
+    const terminal = createEvent();
+    await fixture.handleBeforeQuit(terminal);
+    expect(terminal.preventDefault).not.toHaveBeenCalled();
+    expect(fixture.shutdown).toHaveBeenCalledOnce();
+  });
+
   it.each(['success', 'rejection'] as const)(
     'prevents every pending quit and quits once after shutdown %s',
     async (outcome) => {
@@ -178,6 +213,9 @@ describe('desktop before-quit handler', () => {
     expect(source).toMatch(
       /app\.on\('before-quit', \(event\) => \{\s*if \(w6b2ProofShutdownCompleted\) return;\s*void handleBeforeQuit\(event\);\s*\}\);/,
     );
+    expect(source).toMatch(
+      /app\.on\('window-all-closed', \(\) => \{\s*if \(\s*!smokeConfiguration\.enabled &&\s*w6b2ProofConfiguration === undefined &&\s*!desktopLifecycle\?\.isInstallerHandoffPending\(\)/,
+    );
   });
 });
 
@@ -198,8 +236,9 @@ function createDeferredShutdown() {
 
 function createFixture(shutdown: () => Promise<void>) {
   const stop = vi.fn(shutdown);
-  const readLifecycle = vi.fn<() => { shutdown(): Promise<void> } | undefined>(
-    () => ({ shutdown: stop }),
+  const isInstallerHandoffPending = vi.fn(() => false);
+  const readLifecycle = vi.fn<() => { shutdown(): Promise<void>; deferQuitForInstallerHandoff?(): boolean } | undefined>(
+    () => ({ shutdown: stop, deferQuitForInstallerHandoff: isInstallerHandoffPending }),
   );
   const finalQuitEvent = createEvent();
   let handleBeforeQuit: ReturnType<typeof createDesktopBeforeQuitHandler>;
@@ -213,6 +252,7 @@ function createFixture(shutdown: () => Promise<void>) {
 
   return {
     handleBeforeQuit,
+    isInstallerHandoffPending,
     shutdown: stop,
     readLifecycle,
     quitApplication,

@@ -193,7 +193,13 @@ describe('bounded event-history acceptance parity', () => {
     }
     expect(count).toBe(1001);
     await expect(new SqliteInvoiceBackupArtifactCatalog(f.database, 'revisionHistory').listAuthoritativeArtifacts()).resolves.toHaveLength(1);
-    expect(f.database.serialize()).toEqual(before);
+    const after = f.database.serialize();
+    expect(after.equals(before)).toBe(true);
+    const changed = Buffer.from(after);
+    const lastByte = changed.length - 1;
+    changed.writeUInt8(changed.readUInt8(lastByte) ^ 1, lastByte);
+    expect(changed.equals(before)).toBe(false);
+    expect(after.subarray(0, after.length - 1).equals(before)).toBe(false);
   });
 
   it('uses existing reference indexes without a sorting or grouping table', async () => {

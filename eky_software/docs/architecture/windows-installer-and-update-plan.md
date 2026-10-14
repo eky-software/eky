@@ -756,6 +756,17 @@ Ennen asentajan käynnistystä:
 6. runtime-session mitätöidään
 7. pääikkuna suljetaan
 
+Mainin quit-suoja pitää prosessin elossa, kunnes handoffin journal- ja
+virhekäsittely sekä asentajan käynnistyskuittaus ovat valmistuneet. Tämä
+koskee myös käyttäjän sulkemaa viimeistä ikkunaa strict-sammutuksen aikana.
+Pääikkuna suljetaan ennen MSI-kutsua, ei vasta sen jälkeen. Ikkunan
+sulkeutumista ei tulkita kaikkien Electron-lapsiprosessien poistumiseksi.
+Käynnistyskuittaus ei todista MSI-asennuksen lopputulosta; first-start- ja
+palautusportit säilyvät. Electronin
+[ikkunan sulun](https://www.electronjs.org/docs/latest/api/browser-window#windestroy)
+ja [sovelluksen poistumisen](https://www.electronjs.org/docs/latest/api/app#event-before-quit)
+rajat käsitellään erikseen.
+
 Pakotettu kill on viimeinen fallback ja jättää journalin
 `rollbackRequired`- tai `failed`-tilaan.
 

@@ -180,6 +180,57 @@ describe('local update handoff coordinator', () => {
     expect(fixture.currentJournal?.state).toBe('failed');
   });
 
+  it.each(['success', 'launchFailure', 'journalFailure'] as const)(
+    'settles handoff only after the terminal journal and observer (%s)', async outcome => {
+      const fixture = createFixture();
+      await fixture.coordinator.prepareConfirmedUpdate();
+      const error = new Error('synthetic installer failure');
+      if (outcome !== 'success') fixture.launchInstaller.mockRejectedValueOnce(error);
+      if (outcome === 'journalFailure') {
+        fixture.writeJournal.mockImplementationOnce(async journal => {
+          fixture.replaceJournal(journal);
+        }).mockImplementationOnce(async journal => {
+          fixture.replaceJournal(journal);
+        }).mockRejectedValueOnce(new Error('synthetic failed journal write'));
+      }
+      const terminal: unknown[] = [];
+      fixture.onHandoffSettled.mockImplementation(result => {
+        terminal.push({ result, state: fixture.currentJournal?.state,
+          notified: (outcome === 'success' ? fixture.operationCompleted : fixture.operationFailed)
+            .mock.calls.some(([event]) => event.stage === 'installerHandoff') });
+      });
+
+      const result = fixture.coordinator.handoffPreparedUpdate();
+      if (outcome === 'success') await expect(result).resolves.toBeUndefined();
+      else await expect(result).rejects.toThrow(LocalUpdateHandoffError);
+
+      expect(fixture.onHandoffSettled).toHaveBeenCalledExactlyOnceWith(
+        outcome === 'success' ? 'started' : 'failed',
+      );
+      expect(terminal).toEqual([{ result: outcome === 'success' ? 'started' : 'failed',
+        state: outcome === 'launchFailure' ? 'failed' : 'awaitingFirstStart', notified: true }]);
+      expect(fixture.endUpdateMaintenance).not.toHaveBeenCalled();
+      await expect(fixture.maintenanceLease.acquire('backup')).rejects.toThrow();
+      await expect(fixture.coordinator.handoffPreparedUpdate()).rejects.toThrow();
+      expect(fixture.onHandoffSettled).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each([false, true])('terminal callback errors preserve the installer outcome (failure: %s)', async failure => {
+    const fixture = createFixture();
+    await fixture.coordinator.prepareConfirmedUpdate();
+    const error = new Error('synthetic installer failure');
+    if (failure) fixture.launchInstaller.mockRejectedValueOnce(error);
+    fixture.onHandoffSettled.mockImplementation(() => { throw new Error('synthetic presentation failure'); });
+
+    const result = fixture.coordinator.handoffPreparedUpdate();
+    if (failure) await expect(result).rejects.toMatchObject({ cause: error });
+    else await expect(result).resolves.toBeUndefined();
+
+    expect(fixture.currentJournal?.state).toBe(failure ? 'failed' : 'awaitingFirstStart');
+    expect(fixture.onHandoffSettled).toHaveBeenCalledOnce();
+  });
+
   it('retains maintenance and never launches after uncertain graceful shutdown', async () => {
     const fixture = createFixture({ shutdownFails: true });
     await fixture.coordinator.prepareConfirmedUpdate();
@@ -461,6 +512,12 @@ function createFixture(options: {
   const operationCompleted = vi.fn();
   const operationFailed = vi.fn();
   const operationStarted = vi.fn();
+  const onHandoffSettled = vi.fn<(outcome: 'started' | 'failed') => void>();
+  const writeJournal = vi.fn(async (journal: Readonly<UpdateJournal>) => {
+    currentJournal = journal;
+    states.push(journal.state);
+    options.onWrite?.(journal.state);
+  });
   const coordinator = new LocalUpdateHandoffCoordinator({
     cache: {
       async readExpectedPackageIdentity(role) {
@@ -505,13 +562,10 @@ function createFixture(options: {
         return currentJournal;
       },
       readForLiveOwner,
-      async write(journal) {
-        currentJournal = journal;
-        states.push(journal.state);
-        options.onWrite?.(journal.state);
-      },
+      write: writeJournal,
     },
     launchInstaller,
+    onHandoffSettled,
     maintenanceLease,
     now: createClock(),
     observer: {
@@ -532,6 +586,8 @@ function createFixture(options: {
   });
   return {
     coordinator,
+    onHandoffSettled,
+    writeJournal,
     createValidatedPreUpdatePoint,
     beginUpdateMaintenance,
     assertUpdateMaintenance,

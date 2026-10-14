@@ -62,6 +62,7 @@ import { WorkspaceFirstStartMigrationOrchestrator } from '../workspaces/update/w
 import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 import { startDesktopComposition, type StartDesktopCompositionOptions } from './desktopComposition.js';
 import { BackendRequestQuiescence } from './backendRequestQuiescence.js';
+import { createDesktopBeforeQuitHandler } from './desktopBeforeQuit.js';
 import { createRestoreStartupTestLifetime, releaseRestoreStartupTestResources } from './desktopRestoreStartupTestSupport.js';
 
 const electronBoundary = vi.hoisted(() => ({
@@ -150,7 +151,7 @@ beforeEach(() => {
   electronBoundary.reservationReleased.mockReset();
   electronBoundary.removeHandler.mockReset();
   electronBoundary.portClosed.mockReset();
-  vi.mocked(launchWindowsInstallerForUpdate).mockClear();
+  vi.mocked(launchWindowsInstallerForUpdate).mockReset().mockResolvedValue(undefined);
   electronBoundary.fork.mockReset();
   electronBoundary.loadWindow.mockReset().mockResolvedValue(undefined);
   electronBoundary.fetch.mockReset().mockImplementation(async () =>
@@ -1425,6 +1426,131 @@ describe('desktop restore startup composition', () => {
     expect(observed[0]?.stopCount).toBe(0);
     expect(fixture.stop).not.toHaveBeenCalled();
   });
+  it.each(['success', 'spawnFailure', 'dialogFailure'] as const)(
+    'holds the closed-window handoff through installer settlement (%s)', async outcome => {
+      const fixture = await createFixture(originalProfileId, {
+        completeStartup: true, skipRestore: true, update: true,
+      });
+      const readHandoff = prepareUpdateBoundary(fixture.root);
+      const lifecycle = (await fixture.start())!;
+      const handoff = readHandoff();
+      await handoff.prepareConfirmedUpdate();
+      const entered = createCompletionGate();
+      const release = createCompletionGate();
+      vi.mocked(launchWindowsInstallerForUpdate).mockImplementationOnce(async () => {
+        entered.resolve();
+        await release.promise;
+        if (outcome !== 'success') throw new Error('synthetic-private-installer-failure');
+      });
+      const safeError = vi.mocked(updateFoundation.createLocalUpdateFoundationComposition).mock.calls[0]![0].showSafeError;
+      const read = UpdateJournalStore.prototype.write;
+      let lastJournalState = '';
+      vi.spyOn(UpdateJournalStore.prototype, 'write').mockImplementation(async function (this: UpdateJournalStore, journal) {
+        await read.call(this, journal);
+        lastJournalState = journal.state;
+      });
+      const terminal: unknown[] = [];
+      fixture.showErrorBox.mockImplementation(() => {
+        terminal.push({ step: 'error', state: lastJournalState, guarded: lifecycle.isInstallerHandoffPending() });
+        if (outcome === 'dialogFailure') throw new Error('synthetic dialog failure');
+      });
+      fixture.quit.mockImplementation(() => {
+        terminal.push({ step: 'quit', state: lastJournalState, guarded: lifecycle.isInstallerHandoffPending() });
+      });
+      const update = handoff.handoffPreparedUpdate();
+      const result = Promise.allSettled([update]);
+      try {
+        await Promise.race([entered.promise, result.then(() => { throw new Error('HANDOFF_FINISHED_BEFORE_LAUNCH'); })]);
+        expect(fixture.mainWindow.isDestroyed()).toBe(true);
+        expect(lifecycle.isInstallerHandoffPending()).toBe(true);
+        expect(fixture.stopForUpdate).toHaveBeenCalledOnce();
+        expect(fixture.quit).not.toHaveBeenCalled();
+        const quit = vi.fn();
+        const handler = createDesktopBeforeQuitHandler({ readLifecycle: () => lifecycle, quitApplication: quit });
+        const event = { preventDefault: vi.fn() };
+        await handler(event);
+        expect(event.preventDefault).toHaveBeenCalledOnce();
+        expect(quit).not.toHaveBeenCalled();
+      } finally {
+        release.resolve();
+        await result;
+      }
+      expect((await result)[0]!.status).toBe(outcome === 'success' ? 'fulfilled' : 'rejected');
+      const state = outcome === 'success' ? 'awaitingFirstStart' : 'failed';
+      expect(terminal).toEqual([
+        ...(outcome === 'success' ? [] : [{ step: 'error', state, guarded: true }]),
+        { step: 'quit', state, guarded: false },
+      ]);
+      safeError();
+      expect(fixture.showErrorBox).toHaveBeenCalledTimes(outcome === 'success' ? 0 : 1);
+      expect(fixture.showErrorBox.mock.calls.flat().join(' ')).not.toContain('synthetic-private');
+      expect(ProfileSnapshotBrokerClient.prototype.endUpdateMaintenance).not.toHaveBeenCalled();
+      await fixture.assertRegistryUnchanged();
+    },
+  );
+
+  it.each(['throws', 'stillOpen'] as const)('does not launch MSI if window destruction %s', async failure => {
+    const fixture = await createFixture(originalProfileId, { completeStartup: true, skipRestore: true, update: true });
+    const readHandoff = prepareUpdateBoundary(fixture.root);
+    const lifecycle = (await fixture.start())!;
+    await readHandoff().prepareConfirmedUpdate();
+    fixture.mainWindow.destroy.mockImplementation(() => {
+      if (failure === 'throws') throw new Error('synthetic window failure');
+    });
+
+    await expect(readHandoff().handoffPreparedUpdate()).rejects.toThrow();
+
+    expect(launchWindowsInstallerForUpdate).not.toHaveBeenCalled();
+    expect(fixture.showErrorBox).toHaveBeenCalledOnce();
+    expect(fixture.quit).toHaveBeenCalledOnce();
+    expect(lifecycle.isInstallerHandoffPending()).toBe(false);
+    await expect(fixture.updateJournal.readForLiveOwner()).resolves.toMatchObject({ state: 'failed' });
+    expect(ProfileSnapshotBrokerClient.prototype.endUpdateMaintenance).not.toHaveBeenCalled();
+  });
+
+  it.each(['success', 'stopFailure', 'explicitQuitWithStopFailure'] as const)(
+    'defers user quit from strict shutdown through terminal handoff (%s)', async outcome => {
+      const fixture = await createFixture(originalProfileId, { completeStartup: true, skipRestore: true, update: true });
+      const readHandoff = prepareUpdateBoundary(fixture.root);
+      const lifecycle = (await fixture.start())!;
+      await readHandoff().prepareConfirmedUpdate();
+      const entered = createCompletionGate();
+      const release = createCompletionGate();
+      fixture.stopForUpdate.mockImplementation(async () => {
+        entered.resolve();
+        await release.promise;
+        if (outcome !== 'success') throw new BackendShutdownExitError();
+      });
+      const result = Promise.allSettled([readHandoff().handoffPreparedUpdate()]);
+      try {
+        await Promise.race([entered.promise, result.then(() => { throw new Error('HANDOFF_FINISHED_BEFORE_STOP'); })]);
+        expect(lifecycle.isInstallerHandoffPending()).toBe(true);
+        if (outcome !== 'explicitQuitWithStopFailure') fixture.mainWindow.destroy();
+        const quit = vi.fn();
+        const handler = createDesktopBeforeQuitHandler({ readLifecycle: () => lifecycle, quitApplication: quit });
+        const event = { preventDefault: vi.fn() };
+        await handler(event);
+        expect(event.preventDefault).toHaveBeenCalledOnce();
+        expect(quit).not.toHaveBeenCalled();
+        expect(fixture.quit).not.toHaveBeenCalled();
+        expect(launchWindowsInstallerForUpdate).not.toHaveBeenCalled();
+      } finally {
+        release.resolve();
+        await result;
+      }
+      expect((await result)[0]!.status).toBe(outcome === 'success' ? 'fulfilled' : 'rejected');
+      expect(lifecycle.isInstallerHandoffPending()).toBe(false);
+      expect(fixture.mainWindow.destroy).toHaveBeenCalledTimes(outcome === 'explicitQuitWithStopFailure' ? 0 : 1);
+      expect(fixture.quit).toHaveBeenCalledOnce();
+      expect(fixture.showErrorBox).toHaveBeenCalledTimes(outcome === 'success' ? 0 : 1);
+      expect(launchWindowsInstallerForUpdate).toHaveBeenCalledTimes(outcome === 'success' ? 1 : 0);
+      expect(ProfileSnapshotBrokerClient.prototype.endUpdateMaintenance).not.toHaveBeenCalled();
+      await expect(fixture.updateJournal.readForLiveOwner()).resolves.toMatchObject({
+        state: outcome === 'success' ? 'awaitingFirstStart' : 'failed',
+      });
+    },
+  );
+
   it.each(['exited', 'forced'] as const)(
     'marks only a graceful backend shutdown clean after restored startup (%s)',
     async (outcome) => {
@@ -1618,6 +1744,11 @@ describe('desktop restore startup composition', () => {
         realStop.call(this);
       });
       const expectedSuccess = failure === 'none';
+      vi.mocked(launchWindowsInstallerForUpdate).mockImplementationOnce(async () => {
+        expect(fixture.mainWindow.isDestroyed()).toBe(true);
+        expect(fixture.mainWindow.destroy).toHaveBeenCalledOnce();
+        expect(fixture.quit).not.toHaveBeenCalled();
+      });
       if (expectedSuccess) {
         await handoff.handoffPreparedUpdate();
         await lifecycle.shutdown();
@@ -1644,6 +1775,9 @@ describe('desktop restore startup composition', () => {
         failure === 'scheduler' || failure === 'quiescence' ? 0 : 1,
       );
       expect(launchWindowsInstallerForUpdate).toHaveBeenCalledTimes(expectedSuccess ? 1 : 0);
+      expect(fixture.mainWindow.destroy).toHaveBeenCalledTimes(expectedSuccess ? 1 : 0);
+      expect(fixture.quit).toHaveBeenCalledTimes(expectedSuccess ? 1 : 0);
+      expect(lifecycle.isInstallerHandoffPending()).toBe(false);
       await expect(fixture.marker.consume()).resolves.toBe(expectedSuccess ? 'clean' : 'unclean');
       await expect(fixture.updateJournal.read()).resolves.toMatchObject({
         state: expectedSuccess ? 'awaitingFirstStart' : 'failed',
@@ -2070,6 +2204,13 @@ async function createFixture(
 ) {
   const root = await mkdtemp(join(tmpdir(), 'eky-desktop-restore-startup-'));
   (options.ownedRoots ?? roots).push(root);
+  let windowDestroyed = false;
+  const mainWindow = {
+    destroy: vi.fn(() => { windowDestroyed = true; }),
+    isDestroyed: () => windowDestroyed,
+  };
+  const quit = vi.fn();
+  const showErrorBox = vi.fn();
   // This composition fixture has a controlled backend, not a delivered native addon.
   const inspectionContractPath = join(root, 'resources', 'backend', 'dist',
     'database', 'connection', 'profileInspectionNativeContract.js');
@@ -2102,7 +2243,7 @@ async function createFixture(
     });
   }
   if (options.completeStartup) {
-    electronBoundary.createWindow.mockReturnValue({} as BrowserWindow);
+    electronBoundary.createWindow.mockReturnValue(mainWindow as unknown as BrowserWindow);
     const candidateRunner = join(root, 'resources', 'desktop-runtime', 'runtime', 'workspaceCandidateRunner.js');
     await mkdir(dirname(candidateRunner), { recursive: true });
     await writeFile(candidateRunner, '// Synthetic boundary; never executed.\n');
@@ -2324,6 +2465,9 @@ async function createFixture(
     stopForUpdate,
     acceptedBuild: new AcceptedBuildMetadataStore(updatePaths.acceptedBuildMetadataPath),
     updateJournal: new UpdateJournalStore(updatePaths.journalPath),
+    mainWindow,
+    quit,
+    showErrorBox,
     assertRegistryUnchanged,
     async assertOriginalRestored() {
       await expect(readFile(paths.databaseFilePath, 'utf8')).resolves.toBe(originalBytes);
@@ -2360,6 +2504,7 @@ async function createFixture(
       releaseInfo,
       dependencies: {
         createRuntimeSession,
+        showErrorBox,
         async startBackend(input) {
           events.push('backendStarted');
           try {
@@ -2411,7 +2556,7 @@ async function createFixture(
           };
         },
       },
-      quitApplication: vi.fn(),
+      quitApplication: quit,
       relaunchApplication: relaunch,
       resourcesPath: join(root, 'resources'),
       runtimeInstanceId: '33333333-3333-4333-8333-333333333333',
