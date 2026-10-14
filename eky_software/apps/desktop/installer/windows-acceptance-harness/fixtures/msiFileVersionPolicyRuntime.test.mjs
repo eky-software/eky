@@ -287,7 +287,7 @@ test('manual evidence retention requires an explicit exclusive argument', () => 
   }
 });
 
-test('policy install appends verbose output to a unique invocation log without per-line flushing', async t => {
+test('policy install appends and flushes verbose output only to its unique invocation log', async t => {
   const { value, path, directory } = await fixture(t);
   setSystemRoot(t, directory);
   const evidenceRoot = join(directory, 'evidence');
@@ -299,13 +299,13 @@ test('policy install appends verbose output to a unique invocation log without p
       throw new Error('syntheticCommandFailure');
     },
   });
-  const cases = [['source', 'uiDefault'], ['target', 'uiDefault'], ['target', 'uiOverride']];
+  const cases = [['source', 'uiDefault'], ['source', 'uiOverride'], ['target', 'uiDefault'], ['target', 'uiOverride']];
   for (const [index, [role, variant]] of cases.entries()) {
     await assert.rejects(runtime.install(role, variant), error('syntheticCommandFailure'));
     assert.deepEqual(calls[index], [resolve(directory, 'System32', 'msiexec.exe'),
-      ['/i', value[role].installerPath, '/qr', '/norestart', '/l*v+',
+      ['/i', value[role].installerPath, '/qr', '/norestart', '/l*v+!',
         join(evidenceRoot, `${index + 1}-${role}.log`),
-        ...(variant === 'uiOverride' ? ['REINSTALLMODE=omus'] : [])], evidenceRoot]);
+        ...(role === 'target' && variant === 'uiOverride' ? ['REINSTALLMODE=omus'] : [])], evidenceRoot]);
   }
   assert.equal(calls.length, cases.length);
 });

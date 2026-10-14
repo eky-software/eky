@@ -22,21 +22,30 @@ Modulaarinen monoliitti ja
 hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohdan;
 [julkaisusuunnitelma](release-0.3.0-plan.md) omistaa koko 0.3.0:n sisällön.
 
-**Uusin K-jatkamiskohta:** [Virhekeräyksen normaalin PR-kierroksen jatko](#virhekeräyksen-normaalin-pr-kierroksen-jatko)
-erottaa vanhentuneet testikomento-odotukset, palautustestin aikakatkaisun ja
-paketoidun backendin sulkuvirheen. Revision `0ea87a32` normaali PR-kierros
-päättyi: Windowsin asennus-, päivitys-, legacy- ja Electron-jobit läpäisivät,
-mutta core-sarjan sama C-palautustesti aikakatkaisi. Sen alkuperäinen virhe
-on varmennettu puretusta salatusta aineistosta. Seuraava rajaus on nykyisen
-palautustyön ja testisarjojen samanaikaisen kuorman erottaminen. Omistajan
-hyväksymän pakettikokeen peräkkäinen vaihe läpäisi nykyisellä lähteellä.
-Kokeen valmistelu käynnisti myös juuren tavallisen testiskriptin, joten
-tulos ei ole puhdas ajotapojen vertailu tai CI-viiveen syyn todistus.
-Omistaja hyväksyi rajatun core-CI:n ajotavan kytkennän ja yhden normaalin
-PR-kierroksen. Kytkentä, kohdetarkistukset ja rajattu katselmus läpäisivät;
-seuraava hyväksyntä on korjausrevision normaalit PR-portit.
-K ja main-integraatio ovat edelleen hyväksymättä. Alla olevat aiemmat
-kierrokset säilyvät historiana.
+**Uusin K-jatkamiskohta:** PR #303 yhdistettiin 14.10.2026 normaalisti
+mainiin revision `3fb7ad05` hyväksyttyjen PR-porttien jälkeen.
+[PR-checkpoint](https://github.com/eky-software/eky/pull/303#issuecomment-6165741060)
+varmentaa kaikki valitut jobit ja pakolliset vaiheet sekä erillisen
+riippuvuustarkistuksen. Uuden mainin `f2955a06`
+[oma V2-kierros](https://github.com/eky-software/eky/actions/runs/38546187248)
+hylättiin: MSI-tiedostoversiosäännön `uiOverride`-kokeen lähdeasennuksen
+lokitodiste oli puutteellinen, ja laskuhistorian rajatun tapahtumaluennan
+muistinkäyttötesti aikakatkaisi. Kokonaisportin hylkäys seuraa näistä kahdesta
+varsinaisesta hylkäyksestä. Muut 35 jobia läpäisivät; kuusi valinnaista
+diagnostiikkajobia ohitettiin tarkoituksellisesti. Mainin erillinen
+[riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/38546187116)
+läpäisi. K:n integraatio on siksi edelleen avoin: vihreä PR ei korvaa
+mainin omaa hyväksyntää. Aiemmat kierrokset säilyvät historiana.
+
+Omistaja hyväksyi yhden rajatun
+[MSI-lokikokeen](windows-installer-acceptance-harness-v2.md#msi-tiedostoversiosäännön-koe):
+synteettisen fixturen append-lokiin lisätään rivikohtainen flush, ja
+komentorajauksen regressioiden sekä katselmuksen jälkeen ajetaan kerran
+nykyinen nimetty koe. Puuttuva UI-järjestystodiste hylätään edelleen;
+asennuksen onnistumiskoodi ei korvaa sitä. Laskuhistorian timeout tutkitaan
+erikseen nykyisestä testistä ja sen kutsumasta koodista. Näiden perusteella
+ei muuteta tuotannon asennuksia, liiketoimintasääntöjä, aineistomäärää,
+aikarajoja tai hyväksyntäehtoja eikä nimetä aiempia timeout-syitä korjatuiksi.
 
 **Aiempi PR-todennus ja avoin MSI-asennusodotus:**
 [Hyväksytyn testijaon checkpoint](#kn-nykyinen-pr-checkpoint-ja-valmistelukoe).
