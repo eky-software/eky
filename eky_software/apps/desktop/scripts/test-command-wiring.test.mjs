@@ -62,7 +62,7 @@ const REQUIRED_FILES = [
 ];
 const CI_EDGES = [
   { job: 'verify', name: 'Test, typecheck and build', gate: 'verify',
-    step: 'Run tests', run: 'pnpm test' },
+    step: 'Run tests', run: "pnpm --recursive --workspace-concurrency=1 --filter '!eky-software' --stream run test" },
   { job: 'verify', name: 'Test, typecheck and build', gate: 'verify',
     step: 'Prepare Linux inspection Electron runtime', run: 'pnpm --filter @eky/desktop e2e:prepare-electron-runtime' },
   { job: 'verify', name: 'Test, typecheck and build', gate: 'verify',
@@ -306,6 +306,18 @@ for (const [name, change] of [
   ['supervisor build replaced', (f) => { f.desktop.scripts['installer:supervisor:build'] = 'node --version'; }],
 ]) {
   test(`rejects ${name}`, () => rejectsMutation(change));
+}
+
+for (const [name, change] of [
+  ['root scheduler substituted for serial CI', () => 'pnpm test'],
+  ['parallel package suites in core CI', command => command.replace('--workspace-concurrency=1', '--workspace-concurrency=4')],
+  ['root package exclusion missing in core CI', command => command.replace(" --filter '!eky-software'", '')],
+  ['first package failure ignored in core CI', command => command.replace(' run test', ' --no-bail run test')],
+]) {
+  test(`rejects ${name}`, () => rejectsMutation(fixture => {
+    const command = CI_EDGES.find(edge => edge.job === 'verify' && edge.step === 'Run tests').run;
+    fixture.core = fixture.core.replace(`        run: ${command}\n`, `        run: ${change(command)}\n`);
+  }));
 }
 
 for (const edge of CI_EDGES) {

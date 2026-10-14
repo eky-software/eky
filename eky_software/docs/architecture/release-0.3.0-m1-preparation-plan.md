@@ -24,9 +24,17 @@ hyväksytty M1-rajaus säilyvät. Tämä sivu omistaa M1:n nykyisen jatkamiskohd
 
 **Uusin K-jatkamiskohta:** [Virhekeräyksen normaalin PR-kierroksen jatko](#virhekeräyksen-normaalin-pr-kierroksen-jatko)
 erottaa vanhentuneet testikomento-odotukset, palautustestin aikakatkaisun ja
-paketoidun backendin sulkuvirheen. Alkuperäiset virheet on varmennettu
-puretusta salatusta aineistosta. Rajatut korjaukset ja niiden kohdetestit
-läpäisivät; seuraava jäädytetty revisio tarvitsee normaalit PR-portit.
+paketoidun backendin sulkuvirheen. Revision `0ea87a32` normaali PR-kierros
+päättyi: Windowsin asennus-, päivitys-, legacy- ja Electron-jobit läpäisivät,
+mutta core-sarjan sama C-palautustesti aikakatkaisi. Sen alkuperäinen virhe
+on varmennettu puretusta salatusta aineistosta. Seuraava rajaus on nykyisen
+palautustyön ja testisarjojen samanaikaisen kuorman erottaminen. Omistajan
+hyväksymän pakettikokeen peräkkäinen vaihe läpäisi nykyisellä lähteellä.
+Kokeen valmistelu käynnisti myös juuren tavallisen testiskriptin, joten
+tulos ei ole puhdas ajotapojen vertailu tai CI-viiveen syyn todistus.
+Omistaja hyväksyi rajatun core-CI:n ajotavan kytkennän ja yhden normaalin
+PR-kierroksen. Kytkentä, kohdetarkistukset ja rajattu katselmus läpäisivät;
+seuraava hyväksyntä on korjausrevision normaalit PR-portit.
 K ja main-integraatio ovat edelleen hyväksymättä. Alla olevat aiemmat
 kierrokset säilyvät historiana.
 
@@ -210,6 +218,49 @@ sen yksi sallittu erillisajo läpäisi. Ensihylkäys ja avoin syy säilyvät,
 eikä laajaa ajoa kirjata kokonaisläpäisyksi. Testiä, sen aineistoa tai
 aikarajaa ei muutettu. Uuden revision normaalit PR-portit, samaan pakettiin
 sidottu Windows-palautus ja Linux-todennus vaaditaan edelleen ennen mergeä.
+
+**Revision `0ea87a3203afb2585b1f0eb949a25924d49227d0` uusi kierros:**
+[V2](https://github.com/eky-software/eky/actions/runs/38524346602)
+päättyi hylkäykseen: 36 jobia läpäisi, core-jobi ja siitä riippuva
+kokonaisportti hylättiin, kuusi valinnaista jobia ohitettiin. Erillinen
+[riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/38524346682)
+läpäisi. Windowsin installer-, Electron-, upgrade-, workspace- ja
+legacy-portit läpäisivät; tämä ei silti hyväksy koko K:ta.
+
+Core-jobin ensimmäinen virhe on edelleen nimetty C-palautustestin
+aikakatkaisu. Salatun aineiston ajosidonta ja tiivisteet on varmennettu;
+myöhään valmistunut testityö ja sen siivous erotetaan alkuperäisestä
+hylkäyksestä. Muut saman tiedoston hylkäykset johtuvat keskeneräisen työn
+suojasta, jota ei poisteta. Core-jobin myöhemmät build- ja Linux-todennukset
+eivät tämän hylkäyksen jälkeen suorittuneet.
+
+Rajattu lähde- ja riippumaton turvarajojen katselmus ei oikeuta poistamaan
+journalin julkaisu-, poisto-, sisältö- tai omistajuustarkistuksia.
+CI-loki vahvistaa usean paketin testien samanaikaisen ajon, mutta tämä ei
+yksin todista aikakatkaisun syytä. Omistaja hyväksyi yhden pakettikokeen,
+jonka peräkkäisessä vaiheessa desktopin, backendin, webin ja E2E-työkalujen
+nykyiset testiskriptit läpäisivät. Lähde säilyi samana ajon ajan. Kokeen
+valmistelu käynnisti lisäksi juuren tavallisen testiskriptin; sen tulokset
+eivät muodosta toista riippumatonta hyväksyntää eikä päällekkäisiä testejä
+lasketa yhteen. Tämä ei ole puhdas ajotapojen vertailu, hosted-näyttö tai
+alkuperäisen timeoutin syyn todistus.
+
+Omistajan hyväksymä kytkentä rajaa vain core-CI:n testivaiheen pakettisarjat
+peräkkäisiksi ja sulkee juuren orkestroivan skriptin nimenomaisesti pois.
+Pakettien nykyiset testiskriptit, sisäiset työntekijät, pretest-vaiheet,
+reporterit sekä testien ja jobin aikarajat säilyvät. Kytkentä sisältää
+nykyisen ajokytkentätestin ja [testausohjeen](../ai/testing-rules.md#core-cin-pakettisarjojen-ajo)
+päivityksen. Omistaja hyväksyi
+kytkennän ja yhden normaalin PR-kierroksen. Toteutus, kohdetarkistukset ja
+rajattu katselmus läpäisivät: 125 ajokytkentätarkistusta ja 414 CI-sopimustestiä.
+Valintakontrolli todensi nykyiset 11 alipakettia ilman juuren skriptiä.
+Negatiiviset kontrollit hylkäävät rinnakkaisen pakettiajon, juuren
+uudelleenkäynnistyksen, puuttuvan poissulun ja ensimmäisen virheen ohituksen.
+Nykyinen riskiluokitin vaatii kaikista porttiryhmistä normaalin täyden
+PR-kierroksen, kaksi matriisitoistoa ja viisi workspace-fault-skenaariota.
+Aiempi uusinta ei saa uutta kiintiötä
+HTTP-/reporter-korjauksen revisionvaihdosta. PR- ja main-hyväksyntä säilyvät
+avoimina.
 
 | Kohta | Nykyinen lähtötieto |
 | --- | --- |

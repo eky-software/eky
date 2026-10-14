@@ -91,15 +91,28 @@ Desktopin tavallisen `vitest run` -ajon enimmäistyöntekijämäärä on neljä.
 Pienempi nykyinen run-tilan oletus säilyy: raja on
 `min(4, max(availableParallelism() - 1, 1))`. Asetus sijaitsee
 [`apps/desktop/vitest.config.mjs`](../../apps/desktop/vitest.config.mjs):ssä,
-joten normaali työtilan `pnpm test` ja sama CI-komento käyttävät sitä.
-Muiden pakettien rinnakkaisuutta, testivalintaa, eristystä, testiaikarajoja,
-uusintoja tai CI:n kokonaisaikarajaa ei muuteta.
+joten normaali työtilan `pnpm test` sekä core-CI käyttävät sitä.
+Tämä pakettikohtainen raja ei muuta muiden pakettien sisäistä rinnakkaisuutta,
+testivalintaa, eristystä, testiaikarajoja, uusintoja tai CI:n kokonaisaikarajaa.
 
 [Ajokytkennän regressiot](../../apps/desktop/scripts/test-command-wiring.test.mjs)
 tarkistavat vähäydinrajat ja Vitestin todellisen asetuksen lataamisen.
 Rinnakkaisuusraja hallitsee samanaikaista testityötä; sen kanssa onnistunut
 ajo ei yksin todista aiemman aikakatkaisun juurisyytä tai sovellusvirheen
 korjautumista. Aikaisemmat hylkäykset säilytetään erillisinä havaintoina.
+
+## Core-CI:n pakettisarjojen ajo
+
+Core-jobin testivaihe ajaa pakettien nykyiset testiskriptit yksi paketti
+kerrallaan. Pakettien sisäiset työntekijämäärät, testikohtaiset aikarajat,
+pretest-vaiheet, eristys, reporterit ja testivalikoima säilyvät. Juuren
+orkestroiva `eky-software`-skripti suljetaan nimenomaisesti pois, joten
+samoja sarjoja ei käynnistetä sen kautta uudelleen. Riippuvuusjärjestys ja
+ensimmäiseen epäonnistuneeseen pakettiin pysähtyminen säilyvät.
+
+Core-jobin kokonaisaikaraja ja myöhemmät typecheck-, build- ja Linux-
+tarkistukset säilyvät. Ajotavan läpäisy ei yksin todista vanhan timeoutin
+juurisyytä tai muuta ensimmäistä hylkäystä onnistumiseksi.
 
 ## Palautustestin erillinen valmistelu
 
