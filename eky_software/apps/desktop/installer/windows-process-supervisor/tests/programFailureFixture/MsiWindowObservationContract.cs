@@ -13,8 +13,10 @@ internal static class MsiWindowObservationContract
         MsiApplicationListFailure? listFailure = null;
         MsiApplicationListObservation.Read(IntPtr.Zero, 0, () => throw new InvalidOperationException("unexpectedAdmission"),
             () => 1000, 0, 100, out _, failure => listFailure = failure);
+        var preparation = SampleReceipt(new(0, "partial", []), 1000, false,
+            WorkspaceMsiMembership.Owned, new("listProcessId", "budgetExpired"));
         throw FirstSampleFailure(new(0, "partial", []), 0,
-            () => throw new SupervisorFailure("processWaitFailed", 0), () => WorkspaceMsiMembership.Unknown, listFailure);
+            () => throw new SupervisorFailure("processWaitFailed", 0), () => WorkspaceMsiMembership.Unknown, listFailure, preparation);
     }
 
     internal static int Run(string requestPath)
@@ -30,6 +32,7 @@ internal static class MsiWindowObservationContract
         using var own = WindowsJob.Create();
         using var other = WindowsJob.Create();
         var children = new List<(SuspendedWindowsProcess Process, EventWaitHandle Stop)>();
+        object? preparationReceipt = null;
         try
         {
             var normal = Start(own, "normal");
@@ -44,19 +47,67 @@ internal static class MsiWindowObservationContract
             Check("systemImageAdmitted", MsiWindowObservation.IsSystemInstaller(Path.Combine(Environment.SystemDirectory, "msiexec.exe")));
             Check("otherImageRejected", !MsiWindowObservation.IsSystemInstaller(Path.Combine(request.WorkingDirectory, "msiexec.exe")));
             Check("firstSampleIsolatedFromOtherCases", children.Count == 1);
-            var firstCapture = Stopwatch.StartNew();
-            MsiApplicationListFailure? firstListFailure = null;
-            var observed = Observe(own, normal.Process, listFailure: failure => firstListFailure ??= failure);
-            firstCapture.Stop();
-            var titleCaptured = observed.Windows.Any(row => row.Role == "title" && row.Text == "SYNTHETIC MSI WINDOW");
-            if (observed.Status != "observed" || !titleCaptured)
+            var coldTimer = Stopwatch.StartNew();
+            MsiApplicationListFailure? coldFailure = null;
+            var cold = Observe(own, normal.Process, listFailure: failure => coldFailure ??= failure);
+            coldTimer.Stop();
+            var coldExited = ExitState(() => normal.Process.Wait(0));
+            var coldMembership = MembershipState(() => WorkspaceMsiActivityObservation.ObserveHandle(own, normal.Process.Process));
+            if (!PreparationAllowed(cold, coldTimer.ElapsedMilliseconds, coldExited, coldMembership, coldFailure))
             {
-                // Preserve the failed sample's closed classifications in the existing
-                // private fixture stderr. Do not probe again or print window text.
-                throw FirstSampleFailure(observed, firstCapture.ElapsedMilliseconds,
-                    () => normal.Process.Wait(0),
-                    () => WorkspaceMsiActivityObservation.ObserveHandle(own, normal.Process.Process), firstListFailure);
+                throw FirstSampleFailure(cold, coldTimer.ElapsedMilliseconds,
+                    () => coldExited, () => coldMembership, coldFailure);
             }
+            var preparation = SampleReceipt(cold, coldTimer.ElapsedMilliseconds, coldExited, coldMembership, coldFailure);
+            preparationReceipt = preparation;
+            var measuredTimer = Stopwatch.StartNew();
+            MsiApplicationListFailure? measuredFailure = null;
+            var observed = Observe(own, normal.Process, listFailure: failure => measuredFailure ??= failure);
+            measuredTimer.Stop();
+            if (!CompleteSample(observed) || measuredFailure is not null)
+                throw FirstSampleFailure(observed, measuredTimer.ElapsedMilliseconds,
+                    () => normal.Process.Wait(0),
+                    () => WorkspaceMsiActivityObservation.ObserveHandle(own, normal.Process.Process), measuredFailure, preparation);
+            Check("coldSampleRetained", cold.Status is "observed" or "partial");
+            Check("preparedSampleComplete", CompleteSample(observed) && measuredFailure is null);
+            var budgetFailure = new MsiApplicationListFailure("listProcessId", "budgetExpired");
+            var partial = cold with { Status = "partial", Windows = observed.Windows.Where(row => row.Role != "application").ToArray() };
+            var budget = MsiWindowObservation.Contract.SampleTimeoutMilliseconds;
+            Check("preparationAllowsExactBudgetExpiry", PreparationAllowed(partial, budget, false, WorkspaceMsiMembership.Owned, budgetFailure));
+            Check("preparationAllowsCompleteSample", PreparationAllowed(observed, 0, false, WorkspaceMsiMembership.Owned, null));
+            Check("preparationRejectsOtherFailures", new[] {
+                new MsiApplicationListFailure("listProcessId", "providerException", unchecked((int)0x80004005)),
+                new MsiApplicationListFailure("itemProcessId", "budgetExpired"),
+                new MsiApplicationListFailure("listProcessId", "admissionLost"),
+                new MsiApplicationListFailure("listProcessId", "budgetExpired", 1),
+            }.All(failure => !PreparationAllowed(partial, budget, false, WorkspaceMsiMembership.Owned, failure)));
+            Check("preparationRejectsMissingReason", !PreparationAllowed(partial, budget, false, WorkspaceMsiMembership.Owned, null));
+            Check("preparationRejectsEarlyExpiry", !PreparationAllowed(partial, budget - 1, false, WorkspaceMsiMembership.Owned, budgetFailure));
+            Check("preparationRejectsExitedOwner", !PreparationAllowed(partial, budget, true, WorkspaceMsiMembership.Owned, budgetFailure));
+            var unknownExit = ExitState(() => throw new SupervisorFailure("processWaitFailed", 0));
+            Check("preparationRejectsUnknownExit", unknownExit is null &&
+                !PreparationAllowed(partial, budget, unknownExit, WorkspaceMsiMembership.Owned, budgetFailure));
+            using (var receipt = JsonDocument.Parse(FirstSampleFailure(partial, budget,
+                () => unknownExit, () => WorkspaceMsiMembership.Owned, budgetFailure).Message.Split(':', 3)[2]))
+            {
+                var sample = receipt.RootElement.GetProperty("sample");
+                Check("coldExitQueryFailureRetainsSample", sample.GetProperty("status").GetString() == "partial" &&
+                    sample.GetProperty("childExitedAfterCapture").ValueKind == JsonValueKind.Null &&
+                    sample.GetProperty("listFailure").GetProperty("Reason").GetString() == "budgetExpired");
+            }
+            Check("preparationRejectsUnknownOwner", !PreparationAllowed(partial, budget, false, WorkspaceMsiMembership.Unknown, budgetFailure));
+            Check("preparationRejectsFailedOwnershipQuery", !PreparationAllowed(partial, budget, false,
+                MembershipState(() => throw new SupervisorFailure("processWaitFailed", 0)), budgetFailure));
+            Check("preparationRejectsMissingRoles", new[] { "title", "message", "button" }.All(role =>
+                !PreparationAllowed(partial with { Windows = partial.Windows.Where(row => row.Role != role).ToArray() },
+                    budget, false, WorkspaceMsiMembership.Owned, budgetFailure)));
+            Check("preparationRejectsPartialApplications", !PreparationAllowed(observed with { Status = "partial" },
+                budget, false, WorkspaceMsiMembership.Owned, budgetFailure));
+            Check("preparationRejectsUnknownStatus", !PreparationAllowed(partial with { Status = "unavailable" },
+                budget, false, WorkspaceMsiMembership.Owned, budgetFailure));
+            Check("measuredFailureKeepsPreparation", FirstSampleFailure(new(0, "partial", []), 0,
+                () => false, () => WorkspaceMsiMembership.Owned, budgetFailure, preparation).Message.Contains(
+                    "\"preparation\":{", StringComparison.Ordinal));
             Check("titleCaptured", true);
             Check("messageCaptured", observed.Windows.Any(row => row.Role == "message" && MsiWindowObservation.IsApplicationsInUseMessage(row.Text)));
             Check("buttonCaptured", observed.Windows.Any(row => row.Role == "button" && row.Text == "Synthetic cancel"));
@@ -118,7 +169,7 @@ internal static class MsiWindowObservationContract
             Check("allStillRunning", children.All(child => !child.Process.Wait(0)));
 
             var evidence = new MsiWindowEvidence(request);
-            evidence.Publish([observed, blocked], 123, () => false);
+            evidence.Publish([cold, observed, blocked], 123, () => false);
             var first = Path.Combine(Path.GetDirectoryName(request.ResultPath)!, "msi-window-001.private.json");
             Check("firstPublished", File.Exists(first));
             var original = File.ReadAllBytes(first);
@@ -191,7 +242,8 @@ internal static class MsiWindowObservationContract
             foreach (var child in children) { child.Process.Wait(5000); child.Process.Dispose(); child.Stop.Dispose(); }
             Check("cleanupVerified", own.GetActiveProcessCount() == 0 && other.GetActiveProcessCount() == 0);
         }
-        File.WriteAllText(Path.Combine(request.WorkingDirectory, "msi-window-contract.json"), JsonSerializer.Serialize(checks));
+        File.WriteAllText(Path.Combine(request.WorkingDirectory, "msi-window-contract.json"),
+            JsonSerializer.Serialize(new { checks, preparation = preparationReceipt }));
         return 0;
 
         void Check(string name, bool passed)
@@ -221,23 +273,58 @@ internal static class MsiWindowObservationContract
         }
     }
 
-    private static InvalidOperationException FirstSampleFailure(MsiWindowSample observed, long elapsedMilliseconds,
-        Func<bool> hasExited, Func<WorkspaceMsiMembership> membership, MsiApplicationListFailure? listFailure = null)
+    private static bool ExpectedRole(MsiWindowSample sample, string role) => sample.Windows.Any(row => row.Role == role && (role switch
     {
-        bool? childExitedAfterCapture = null;
-        try { childExitedAfterCapture = hasExited(); } catch { }
-        return new InvalidOperationException("msiWindowContractFailed:titleCaptured:" + JsonSerializer.Serialize(new
+        "title" => row.Text == "SYNTHETIC MSI WINDOW",
+        "message" => MsiWindowObservation.IsApplicationsInUseMessage(row.Text),
+        "button" => row.Text == "Synthetic cancel",
+        "application" => row.Text == "SYNTHETIC OWNED APPLICATION",
+        _ => false,
+    }));
+
+    private static bool CompleteSample(MsiWindowSample sample) => sample.Status == "observed" &&
+        new[] { "title", "message", "button", "application" }.All(role => ExpectedRole(sample, role));
+
+    private static bool PreparationAllowed(MsiWindowSample sample, long elapsedMilliseconds, bool? exited,
+        WorkspaceMsiMembership membership, MsiApplicationListFailure? failure) =>
+        exited is false && membership == WorkspaceMsiMembership.Owned &&
+        (CompleteSample(sample) && failure is null || sample.Status == "partial" &&
+            failure == new MsiApplicationListFailure("listProcessId", "budgetExpired") &&
+            elapsedMilliseconds >= MsiWindowObservation.Contract.SampleTimeoutMilliseconds &&
+            new[] { "title", "message", "button" }.All(role => ExpectedRole(sample, role)) &&
+            sample.Windows.All(row => row.Role != "application"));
+
+    private static object SampleReceipt(MsiWindowSample observed, long elapsedMilliseconds, bool? childExitedAfterCapture,
+        WorkspaceMsiMembership membership, MsiApplicationListFailure? listFailure) => new
         {
             status = observed.Status,
-            titleCaptured = observed.Windows.Any(row => row.Role == "title" && row.Text == "SYNTHETIC MSI WINDOW"),
-            messageCaptured = observed.Windows.Any(row => row.Role == "message" && MsiWindowObservation.IsApplicationsInUseMessage(row.Text)),
-            buttonCaptured = observed.Windows.Any(row => row.Role == "button" && row.Text == "Synthetic cancel"),
-            applicationCaptured = observed.Windows.Any(row => row.Role == "application" && row.Text == "SYNTHETIC OWNED APPLICATION"),
+            titleCaptured = ExpectedRole(observed, "title"),
+            messageCaptured = ExpectedRole(observed, "message"),
+            buttonCaptured = ExpectedRole(observed, "button"),
+            applicationCaptured = ExpectedRole(observed, "application"),
             elapsedMilliseconds,
             childExitedAfterCapture,
-            membershipAfterCapture = membership().ToString(),
+            membershipAfterCapture = membership.ToString(),
             listFailure,
-        }));
+        };
+
+    private static bool? ExitState(Func<bool?> hasExited)
+    {
+        try { return hasExited(); } catch { return null; }
+    }
+
+    private static WorkspaceMsiMembership MembershipState(Func<WorkspaceMsiMembership> membership)
+    {
+        try { return membership(); } catch { return WorkspaceMsiMembership.Unknown; }
+    }
+
+    private static InvalidOperationException FirstSampleFailure(MsiWindowSample observed, long elapsedMilliseconds,
+        Func<bool?> hasExited, Func<WorkspaceMsiMembership> membership, MsiApplicationListFailure? listFailure = null,
+        object? preparation = null)
+    {
+        var sample = SampleReceipt(observed, elapsedMilliseconds, ExitState(hasExited), MembershipState(membership), listFailure);
+        return new InvalidOperationException("msiWindowContractFailed:titleCaptured:" +
+            JsonSerializer.Serialize(new { sample, preparation }));
     }
 
     internal static int Child(string inputPath)

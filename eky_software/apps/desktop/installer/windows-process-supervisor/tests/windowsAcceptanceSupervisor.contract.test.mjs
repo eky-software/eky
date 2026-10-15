@@ -61,8 +61,23 @@ test('MSI windows: owned visible captions, bounded reads and interrupted immutab
   const result = await execution.completion;
   assert.equal(result.exitCode, 0);
   assert.doesNotMatch(result.standardOutput + result.standardError, /SYNTHETIC MSI|EXCLUDED INPUT/);
-  const proof = JSON.parse(await readFile(join(context.testRoot, 'msi-window-contract.json'), 'utf8'));
+  const { checks: proof, preparation } = JSON.parse(await readFile(join(context.testRoot, 'msi-window-contract.json'), 'utf8'));
   assert.equal(proof.firstSampleIsolatedFromOtherCases, true);
+  assert.equal(proof.coldSampleRetained, true);
+  assert.equal(proof.preparedSampleComplete, true);
+  assert.equal(proof.preparationAllowsExactBudgetExpiry, true);
+  assert.equal(proof.preparationRejectsOtherFailures, true);
+  assert.equal(proof.preparationRejectsUnknownExit, true);
+  assert.equal(proof.coldExitQueryFailureRetainsSample, true);
+  assert.equal(proof.preparationRejectsFailedOwnershipQuery, true);
+  assert.equal(preparation.childExitedAfterCapture, false);
+  assert.equal(preparation.membershipAfterCapture, 'Owned');
+  if (preparation.status === 'partial') {
+    assert.deepEqual(preparation.listFailure, { Stage: 'listProcessId', Reason: 'budgetExpired', HResult: null });
+  } else {
+    assert.equal(preparation.status, 'observed');
+    assert.equal(preparation.listFailure, null);
+  }
   assert.equal(proof.firstListFailureRetained, true);
   assert.equal(proof.deniedListSkipsProvider, true);
   assert.equal(proof.unresponsiveListCauseRetained, true);
@@ -99,7 +114,7 @@ test('MSI windows: native observation survives exit and interrupted publication 
     const result = await execution.completion;
     assert.equal(result.exitCode, 0);
     assert.doesNotMatch(result.standardOutput + result.standardError, /SYNTHETIC MSI|EXCLUDED INPUT/);
-    const proof = JSON.parse(await readFile(join(scenarioRoot, 'msi-window-contract.json'), 'utf8'));
+    const { checks: proof, preparation } = JSON.parse(await readFile(join(scenarioRoot, 'msi-window-contract.json'), 'utf8'));
     assert.equal(proof.firstSampleIsolatedFromOtherCases, true);
     assert.equal(proof.cleanupVerified, true);
     assert.equal(proof.cancelBeforePublicationRetainsPending, true);
@@ -122,6 +137,12 @@ test('MSI windows: native observation survives exit and interrupted publication 
     assert.equal(record.runNonce, context.runNonce);
     assert.equal(record.artifactDescriptorSha256, context.artifactDescriptorSha256);
     assert.equal(record.sequence, 1);
+    assert.equal(record.clients.length, 3);
+    assert.equal(record.clients[0].status, preparation.status);
+    assert.equal(record.clients[0].processId, record.clients[1].processId);
+    assert.equal(record.clients[1].status, 'observed');
+    assert.equal(record.clients[1].windows.some(row => row.role === 'application' &&
+      row.text === 'SYNTHETIC OWNED APPLICATION'), true);
     assert.equal(record.clients.some(client => client.windows.some(row => row.role === 'application' &&
       row.text === 'SYNTHETIC OWNED APPLICATION')), true);
     assert.equal(record.clients.some(client => client.status === 'partial'), true);
@@ -132,10 +153,14 @@ test('MSI windows: native observation survives exit and interrupted publication 
     assert.equal(failureReceipts.length, 1);
     const receipt = failureReceipts[0].match(/msiWindowContractFailed:titleCaptured:(\{[^\r\n]+\})/);
     assert.ok(receipt);
-    assert.deepEqual(JSON.parse(receipt[1]), { status: 'partial', titleCaptured: false,
+    assert.deepEqual(JSON.parse(receipt[1]), { sample: { status: 'partial', titleCaptured: false,
       messageCaptured: false, buttonCaptured: false, applicationCaptured: false,
       elapsedMilliseconds: 0, childExitedAfterCapture: null, membershipAfterCapture: 'Unknown',
-      listFailure: { Stage: 'admission', Reason: 'outputLimit', HResult: null } });
+      listFailure: { Stage: 'admission', Reason: 'outputLimit', HResult: null } },
+      preparation: { status: 'partial', titleCaptured: false, messageCaptured: false,
+        buttonCaptured: false, applicationCaptured: false, elapsedMilliseconds: 1000,
+        childExitedAfterCapture: false, membershipAfterCapture: 'Owned',
+        listFailure: { Stage: 'listProcessId', Reason: 'budgetExpired', HResult: null } } });
     assert.ok(/MsiWindowObservationContract\.RunFailureReceipt/.test(failureReceipts[0]),
       'MSI_WINDOW_FAILURE_NATIVE_FRAME_MISSING');
     assert.doesNotMatch(JSON.stringify(archive), /EXCLUDED INPUT|window-child-|\.pending/);

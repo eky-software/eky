@@ -68,9 +68,17 @@ ja normaalit uuden PR/main-revision portit ovat seuraavat integraatioesteet.
 Käännöstyökalun todellinen `ETIMEDOUT` säilytetään nyt paketin nykyisessä
 turvallisessa syykoodissa; rajatut regressiot todentavat myös oikean
 aikakatkaisun ja keskeneräisen lokin lukueston. Tämä ei jälkikäteen nimeä
-aiemman käännöksen syytä. Jatko on yksi normaali PR/CI-kierros jäädytetystä
-revisiosta. Legacy-työn aikarajaa ei nosteta eikä valmisteluhylkäystä ohiteta.
-Sovelluskoodi, yksittäiset testirajat ja hyväksyntäehdot säilyvät. Alkuperäiset
+aiemman käännöksen syytä. Revision `22636451` normaalissa V2-ajossa
+`38819009832` MSI-testin kylmä näyte hylättiin nyt täsmällisesti luokkaan
+`listProcessId/budgetExpired`. Omistajan hyväksymä testin valmistelumuutos
+säilyttää kylmän näytteen ja sallii vain tämän tarkasti rajatun osittaisen
+valmistelutuloksen; sen jälkeen vaaditaan yksi täydellinen luetteloluku.
+Muut virheet hylätään edelleen. [Tarkka sopimus ja virhetodisteet](ci-encrypted-evidence.md#asentimen-rajattu-ikkunahavainto)
+erottavat tämän valmistellun providerin kokeen tuotannon valinnaisesta
+havainnosta. Jatko on kohdetodennus, katselmus ja uuden jäädytetyn revision
+normaalit PR/main-portit. Legacy-työn aikarajaa ei nosteta.
+Sovelluskoodi ja yksittäiset testirajat säilyvät. Valmistelun hyväksyntärajan
+muutos ei ole yleinen lupa hyväksyä osittaista havaintoa. Alkuperäiset
 epäonnistumiset säilyvät eikä kohdeläpäisy todista niiden kaikkia syitä.
 
 **Seuraava toiminnallinen työ:** D:n rajattu valmistelu, kun tämän ohjehuollon
