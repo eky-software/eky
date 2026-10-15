@@ -29,15 +29,6 @@ internal static class MsiWindowObservationContract
         try
         {
             var normal = Start(own, "normal");
-            var outsider = Start(other, "normal");
-            var hung = Start(own, "hung");
-            var hidden = Start(own, "hidden");
-            var unrelated = Start(own, "unrelated");
-            var listHung = Start(own, "listHung");
-            var largeList = Start(own, "largeList");
-            var ambiguous = Start(own, "ambiguous");
-            var wrongParent = Start(own, "wrongParent");
-            var changedMessage = Start(own, "changedMessage");
             MsiWindowSample Observe(WindowsJob job, SuspendedWindowsProcess process, Func<bool>? stopped = null,
                 int? characters = null, int? windows = null)
             {
@@ -48,6 +39,7 @@ internal static class MsiWindowObservationContract
             }
             Check("systemImageAdmitted", MsiWindowObservation.IsSystemInstaller(Path.Combine(Environment.SystemDirectory, "msiexec.exe")));
             Check("otherImageRejected", !MsiWindowObservation.IsSystemInstaller(Path.Combine(request.WorkingDirectory, "msiexec.exe")));
+            Check("firstSampleIsolatedFromOtherCases", children.Count == 1);
             var firstCapture = Stopwatch.StartNew();
             var observed = Observe(own, normal.Process);
             firstCapture.Stop();
@@ -64,14 +56,20 @@ internal static class MsiWindowObservationContract
             Check("messageCaptured", observed.Windows.Any(row => row.Role == "message" && MsiWindowObservation.IsApplicationsInUseMessage(row.Text)));
             Check("buttonCaptured", observed.Windows.Any(row => row.Role == "button" && row.Text == "Synthetic cancel"));
             Check("applicationCaptured", observed.Windows.Any(row => row.Role == "application" && row.Text == "SYNTHETIC OWNED APPLICATION"));
+            var unrelated = Start(own, "unrelated");
             Check("unrelatedListExcluded", Observe(own, unrelated.Process).Windows.All(row => row.Role != "application"));
+            var ambiguous = Start(own, "ambiguous");
             Check("ambiguousListsExcluded", Observe(own, ambiguous.Process).Windows.All(row => row.Role != "application"));
+            var wrongParent = Start(own, "wrongParent");
             Check("wrongParentExcluded", Observe(own, wrongParent.Process).Windows.Count == 0);
+            var changedMessage = Start(own, "changedMessage");
             var changed = Observe(own, changedMessage.Process);
             Check("changedMessageExcluded", changed.Status == "partial" && changed.Windows.All(row => row.Role != "application"));
+            var listHung = Start(own, "listHung");
             var listTimer = Stopwatch.StartNew();
             Check("unresponsiveListPartial", Observe(own, listHung.Process).Status == "partial");
             Check("unresponsiveListBounded", listTimer.ElapsedMilliseconds < 2000);
+            var largeList = Start(own, "largeList");
             var large = Observe(own, largeList.Process);
             Check("largeListBounded", large.Status == "partial" &&
                 large.Windows.Any(row => row.Role == "application" && row.Text.Length == MsiWindowObservation.Contract.MaximumTextCharacters) &&
@@ -82,9 +80,12 @@ internal static class MsiWindowObservationContract
                 () => 1000, 0, 100, out var emptyPartial);
             Check("emptyBudgetSkipsProvider", emptyPartial && empty.Count == 0 && admissionCalls == 0);
             Check("editNotRead", observed.Windows.All(row => !row.Text.Contains("EXCLUDED INPUT", StringComparison.Ordinal)));
+            var outsider = Start(other, "normal");
             Check("foreignJobRejected", Observe(own, outsider.Process) is { Status: "unavailable", Windows.Count: 0 });
             Check("otherJobPositiveControl", Observe(other, outsider.Process).Windows.Count > 0);
+            var hidden = Start(own, "hidden");
             Check("hiddenExcluded", Observe(own, hidden.Process) is { Status: "observed", Windows.Count: 0 });
+            var hung = Start(own, "hung");
             var timer = Stopwatch.StartNew();
             var blocked = Observe(own, hung.Process);
             Check("hungReadBounded", timer.ElapsedMilliseconds < 2000);

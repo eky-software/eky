@@ -34,6 +34,17 @@ tässä ohjehuollossa ole tehty korjausta tai uusintaa. Aiempi K-hyväksyntä
 ja uusi hylkäys ovat eri havaintoja; nykytilaa ei kuvata yksiselitteisesti
 vihreäksi. Uuden revision omia hyväksyntäportteja ei ohiteta.
 
+**Ohjehuollon integraation rajattu korjaus:** PR #306:n ensimmäinen V2
+`38795201629` hylättiin; riippuvuustarkistus `38795201470` läpäisi.
+Hyväksytty jatko kattaa vain SQLite-testin täsmällisen tavuvertailun
+ylimääräisen työn poistamisen, MSI-havaintotestin ensimmäisen näytteen
+valmistelueristyksen ja Windows Electron -työn kokonaisrajan muutoksen
+25 minuutista 35 minuuttiin. Kohdetestit, tyyppitarkistus, CI-sopimustestit
+ja rajattu riippumaton katselmus läpäisivät; yksi normaali PR/CI-kierros
+ja sen jälkeiset main-portit ovat vielä tekemättä.
+Sovelluskoodi, yksittäiset testirajat ja hyväksyntäehdot säilyvät. Alkuperäiset
+epäonnistumiset säilyvät eikä kohdeläpäisy todista niiden kaikkia syitä.
+
 **Seuraava toiminnallinen työ:** D:n rajattu valmistelu, kun tämän ohjehuollon
 portit täyttyvät. Oma yritys -lukuvirheen käsittely, salaisuusoperaation
 aikakatkaisun ja myöhäisen valmistumisen sovitus sekä vastaus/audit suhteessa

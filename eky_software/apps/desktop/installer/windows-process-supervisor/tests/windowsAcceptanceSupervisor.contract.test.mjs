@@ -62,6 +62,7 @@ test('MSI windows: owned visible captions, bounded reads and interrupted immutab
   assert.equal(result.exitCode, 0);
   assert.doesNotMatch(result.standardOutput + result.standardError, /SYNTHETIC MSI|EXCLUDED INPUT/);
   const proof = JSON.parse(await readFile(join(context.testRoot, 'msi-window-contract.json'), 'utf8'));
+  assert.equal(proof.firstSampleIsolatedFromOtherCases, true);
   assert.ok(Object.keys(proof).length >= 25);
   assert.ok(Object.values(proof).every(value => value === true));
 });
@@ -95,6 +96,7 @@ test('MSI windows: native observation survives exit and interrupted publication 
     assert.equal(result.exitCode, 0);
     assert.doesNotMatch(result.standardOutput + result.standardError, /SYNTHETIC MSI|EXCLUDED INPUT/);
     const proof = JSON.parse(await readFile(join(scenarioRoot, 'msi-window-contract.json'), 'utf8'));
+    assert.equal(proof.firstSampleIsolatedFromOtherCases, true);
     assert.equal(proof.cleanupVerified, true);
     assert.equal(proof.cancelBeforePublicationRetainsPending, true);
     const failedContext = { ...context, testRoot: join(temporary, 'eky supervisor receipt'),

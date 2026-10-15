@@ -1008,3 +1008,11 @@ vihreä osatulos yksin täytä `V2 acceptance` -porttia. Sen E2E-jobit ovat
 ajaa packaged smoken ja sen jälkeen kriittiset Electron development -testit
 yhdellä workerilla. Endurance-baselineja tai soakia ei ajeta automaattisesti
 CI:ssä.
+
+Windows Electron critical -työn kokonaisraja on 35 minuuttia. Se kattaa
+valmistelun, paketoinnin, packaged-todennuksen ja development-testit, eikä
+pidennä yksittäisen testin, käynnistyksen, palautuksen tai siivouksen rajaa.
+Salatun virheaineiston askeleen oma raja säilyy kolmessa minuutissa; muiden
+core-töiden budjetit eivät muutu. Kokonaisrajan muutos ei osoita aiempia
+yksittäisiä aikakatkaisuja korjatuiksi. Työn rajaus tarkistetaan nykyisessä
+`ciRunAcceptance.test.mjs`-sopimustestissä.

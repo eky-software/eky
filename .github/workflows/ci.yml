@@ -315,7 +315,7 @@ jobs:
     name: Windows Electron critical E2E
     if: (inputs.risk_plan == '' && inputs.electron_diagnostic) || (inputs.risk_plan != '' && fromJSON(inputs.risk_plan).gates.electronCritical)
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
 
     defaults:
       run:
