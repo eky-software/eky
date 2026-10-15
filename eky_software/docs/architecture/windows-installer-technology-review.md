@@ -259,7 +259,17 @@ ensisijainen build-provenance-malli.
 
 ### MSI-authoroinnin turvallisuusrajat
 
-Ensimmäinen prototyyppi todistaa ilman custom actioneita:
+Tämä on ensimmäisen prototyypin historiallinen suositus. Nykyinen
+hyväksytty authorointi käyttää `afterInstallExecute`-ajoitusta ja vain
+nimettyä Type 51 `EkySetReinstallMode` -poikkeusta: `REINSTALLMODE=emus`,
+`NOT Installed AND NOT REINSTALLMODE`, ennen `CostInitialize`-vaihetta
+molemmissa sekvensseissä. Tarkka omistaja on
+[installer-suunnitelma](windows-installer-and-update-plan.md#saman-tiedostoversion-korvaaminen).
+Ei yleisiä custom actioneita, staattista Property-riviä, ICE40-vaimennusta,
+downgrade-poikkeusta tai CI-kiertotietä. Alkuperäinen suositus säilyy alla
+vertailuhistoriana, ei nykyisen ajoituksen ohjeena.
+
+Ensimmäisen prototyypin tavoite ilman custom actioneita oli todistaa:
 
 - `perUser`-scopen ilman elevationia
 - vakaan `UpgradeCode`-arvon sekä julkaisuittain vaihtuvan `ProductCode`-

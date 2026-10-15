@@ -2,6 +2,13 @@
 
 ## Tila
 
+Arkkitehtuurisopimus on hyväksytty. Nykyinen toimitus- ja jatkotila on
+[M1:n Jatka tästä -kohdassa](../architecture/release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Alla oleva toimitustilanne on vaihehistoriaa; ADR:n velvoitteet ja W7:n
+erillinen päätösportti eivät riipu vanhojen checkpointien odotusmerkinnöistä.
+
+### Aiempi toimitustilanne
+
 Hyväksytty arkkitehtuurisopimus. W1-W3:n registry-, creation-, import- ja
 replacement-foundation on toteutettu. W4 on kytkenyt registryyn sidotun
 startupin, legacy-profiilin adoption, workspace-kohtaiset runtime-resurssit
@@ -20,7 +27,7 @@ paikalliseen yritystyötilaan.
 
 ## Päätös
 
-Yksi Eky Local -asennus voi tulevaisuudessa rekisteröidä useita paikallisia
+Yksi Eky Local -asennus voi rekisteröidä useita paikallisia
 yritystyötiloja. Vain yksi työtila saa olla aktiivinen yhdessä desktop-
 runtimessa.
 
@@ -48,7 +55,7 @@ W5 toimitetaan kahtena erillisenä porttina:
   käyttäjälle näkyvän status-, create-, import-as-new-, switch- ja
   rename-hallinnan. Backup-tiedoston valinta ja salasana pysyvät Electron
   mainin omistamissa native-ikkunoissa.
-- W5B.2 lisää myöhemmin aktiivisen exact-lineage-workspacen korvaamisen omalla
+- W5B.2 lisää aktiivisen exact-lineage-workspacen korvaamisen omalla
   hyväksymisportillaan. Workspace-poisto kuuluu vasta W7:ään.
 
 Mainin sisäinen hallintapalvelu saa palauttaa vain rajatun status- ja
@@ -407,15 +414,16 @@ Suljettu järjestys on:
 1. validoi käyttäjän antama workspace-label
 2. varaa installation-scoped maintenance lease tarkoituksella `import`
 3. torju ratkaisematon import-journal ennen uuden backupin käsittelyä
-4. validoi W3:n installation-scoped plaintext-karanteeni ja poista vain sen
-   allowlistatut stale-payloadit
+4. tarkista W3:n installation-scoped plaintext-karanteeni; todistamaton
+   aiempi aineisto estää uuden työn eikä allowlistattu nimi anna poistolupaa
 5. tarkasta ja autentikoi backup vain mainin omistaman yksityisen portin kautta
 6. lue registry ja torju jo rekisteröity lineage
 7. estä aktiivisen työtilan uudet kirjoitukset
 8. sulje backend ja todista kaikkien aktiivisten SQLite-kahvojen sulkeutuminen
 9. todista aktiivisen workspace-runtimen poissaolo
 10. luo satunnaiset operation- ja workspace-tunnisteet
-11. julkaise durable import-journal ennen candidate-juuren luontia
+11. julkaise durable v2-import-journal todetun sulun ja main-varauksen
+    takaisinoton jälkeen ennen candidate-juuren luontia
 12. johda yksityinen, operation-scoped candidate-root vain mainin omista
     tunnisteista
 13. autentikoi ja pura backup candidateen uudelleen
@@ -450,22 +458,31 @@ W3:n decrypt-vaihe saa luoda vain canonical UUID v4 -nimisen, rajatun
 plaintext-payloadin Electron mainin johtamaan installation-scoped
 `workspace-operations/workspace-import-plaintext-quarantine`-juureen. Tämä
 juuri ei ole työtilarekisteri, backup, candidate tai workspace-root. Normaali
-`finally` poistaa payloadin. Prosessikaatumisen jälkeen W3-recovery hankkii
-saman maintenance-leasen ja validoi sekä siivoaa vain allowlistatut stale-
-payloadit myös silloin, kun import-journalia ei ole. Tuntematon nimi,
+`finally` poistaa oman payloadin. Prosessikaatumisen jälkeen C/R18:n
+readonly-admission, build-portti, maintenance-lease, todistettu runtime-
+poissaolo ja main-varauksen takaisinotto edeltävät korjaavaa journal-lukua
+ja hyväksytyn v2-operaation oman karanteenin siivousta. V1, journaliton
+plaintext tai todistamaton vanha omistaja säilyttää aineiston ja estää
+avauksen. Vapaa varaus ei todista vanhan suojaamattoman kirjoittajan
+poissaoloa. Tuntematon nimi,
 tiedostotyyppi, linkki, ylikokoinen payload tai epäselvä juuri pysäyttää
 recoveryn `recoveryRequired`-tilaan; sisältöä ei poisteta arvaamalla.
 
-W3 käyttää omaa exact-key `WorkspaceBackupImportJournalV1`-journalia, jonka
+W3:n alkuperäinen exact-key `WorkspaceBackupImportJournalV1` säilyy
+legacy-lukumuotona. Uudet operaatiot kirjoittavat C/R18:n `formatVersion: 2`
+-muodon; saman operaation versiota ei vaihdeta eikä v1 saa automaattista
+cold-recovery-valtuutta. `-v1`-slottinimet, muut kentät ja kokorajat säilyvät.
+Journalin
 monotoniset tilat ovat `prepared`, `candidateRootCreated`, `backupStaged`,
 `candidateMigrated`, `candidateValidated`, `rootPublished` ja
 `registryPublished`. Journalissa ei ole lähdepolkua, salasanaa, avainta,
 `companyId`:tä, SQL:ää, business-dataa, PDF-nimiä, sessionia eikä raakaa
 virhettä. Lineage voidaan lisätä journaliin vasta täyden validoinnin jälkeen.
 
-Restart-recovery ei tarvitse alkuperäistä backupia tai salasanaa. Se validoi
-ja siivoaa plaintext-karanteenin heti leasen saamisen jälkeen ennen journalin
-ratkaisua tai `nothingToRecover`-tulosta. Ennen
+Restart-recovery ei tarvitse alkuperäistä backupia tai salasanaa. Se noudattaa
+yllä olevaa C/R18-valtuutta ennen plaintext-siivoamista; journalin puutetta
+ei tulkita siivousluvaksi tai turvalliseksi `nothingToRecover`-tulokseksi,
+jos plaintextia on jäljellä. Ennen
 `rootPublished`-tilaa keskeytynyt tuonti sulkee candidate-kahvat ja poistaa tai
 karanteenoi candidate-juuren, eikä jatka tuontia. `rootPublished`-tilassa
 lopullinen root validoidaan uudelleen runtimen poissa ollessa ennen registry-
@@ -498,7 +515,8 @@ edelleen sessionin, backendin käynnistyksen, health-tarkistuksen ja aktiivisen
 profiilin lineage-/sisältövalidoinnin ennen business-käyttöliittymää. Niiden
 epäonnistuminen ei peru jo varmennettua create/import-julkaisua eikä anna
 lupaa avata rikkinäistä runtimea. Ordinary-recovery säilyttää nykyisen aiemman
-runtimen terveystarkistuksensa. Journaliformaatit eivät muutu.
+runtimen terveystarkistuksensa. C-P2:n terminal-päätös ei itsessään muuttanut
+formaattia; myöhempi hyväksytty C/R18:n v2-kirjoitusraja on kuvattu yllä.
 
 Tuotantokytkennän journalien keskinäinen admission, single-instance-/absence-
 todistus ja paketoitu keskeytys/restart-näyttö kuuluvat edelleen

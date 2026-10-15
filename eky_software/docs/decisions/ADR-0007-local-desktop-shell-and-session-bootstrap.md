@@ -215,6 +215,14 @@ automaattisesti release-putkessa.
 
 ### Versiot, allekirjoitus ja supply chain
 
+Alla oleva allekirjoitetun jakelun pääsääntö säilyy. Myöhempi
+[ADR-0010](ADR-0010-windows-installer-and-update-orchestration.md) omistaa
+vain erikseen hyväksytyn `localUnsignedPilot`-poikkeuksen: paikallinen
+media, pilot-kanava ja nimenomainen vahvistus. Se koskee myös pilotin omia
+paketoituja UI-resursseja, ei etäkoodia. Ei `stable`-, verkko-, tausta- tai
+hiljaista päivitystä, publisher trust -väitettä tai käyttöjärjestelmäsuojan
+heikennystä. Muuta allekirjoituspoikkeusta tämä ADR ei anna.
+
 - Electron-version pitää kuulua Electronin virallisesti tukemiin vakaisiin
   julkaisuihin; vanhentunutta Chromium/Node-yhdistelmää ei julkaista
 - Electron- ja paketointiriippuvuudet lukitaan lockfileen ja auditoidaan

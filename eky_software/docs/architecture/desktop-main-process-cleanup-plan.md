@@ -1,8 +1,13 @@
 # Desktop Main Process Cleanup Plan
 
-Tämä dokumentti kuvaa Electron main processin nykyiset vastuut ja
+Tämä dokumentti säilyttää Electron main processin historialliset vastuut ja
 muuttumattomat turvallisuusrajat ennen käyttäytymisen säilyttävää
 rakenteellista jakoa. Auditoinnin baseline on commit `b2e0f0e`.
+
+Nykyisen prosessi-, startup- ja sulkusopimuksen omistaa
+[desktop-toteutussuunnitelma](local-desktop-implementation-plan.md).
+Alla olevat tiedostosijainnit kuvaavat auditointihetkeä, eivät nykyisen
+compositionin omistajuusluetteloa. Auditoinnin turvallisuusrajat säilyvät.
 
 Dokumentti ei muuta preloadia, IPC-kanavia, custom protocolia, safeStoragea,
 backend-runtimea, paketointia tai sovelluksen käyttäytymistä.

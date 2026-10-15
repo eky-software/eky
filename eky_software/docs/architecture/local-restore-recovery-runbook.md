@@ -113,16 +113,21 @@ samaa recovery-required-pysäytyssääntöä.
 ## Keskeytynyt workspace-import
 
 ADR-0011:n W3-import ei käytä aktiivisen profiilin restore-journalia. Sen
-oma `WorkspaceBackupImportJournalV1` ratkaistaan startupissa ennen uuden
-workspace-rootin tai registry-entryn käyttämistä.
+oma import-journal ratkaistaan startupissa ennen uuden workspace-rootin tai
+registry-entryn käyttämistä. Uusi kirjoittaja käyttää `formatVersion: 2`;
+v1 säilyy legacy-lukumuotona ja nykyiset `-v1`-slottinimet säilyvät.
 
-Recovery hankkii ensin installation-scoped `import`-maintenance-leasen.
-Nimenomainen kylmäkäynnistyksen `beforeRuntimeStart`-tila todistaa lisäksi
-runtime-poissaolon ennen journalin tai karanteenin käsittelyä. Sen
-jälkeen se validoi W3:n yksityisen plaintext-karanteenin ja poistaa vain
-canonical UUID v4 -nimiset, rajatut tavalliset stale-payloadit. Tämä tehdään
-ennen import-journalin lukemista ja myös silloin, kun journalia ei ole. Cleanup
-ei avaa SQLitea eikä tarvitse alkuperäistä backupia tai salasanaa.
+Recovery tekee ensin C/R18:n muuttamattoman journal-admissionin ja build-
+tarkistuksen. Installation-scoped `import`-lease, todistettu runtime-
+poissaolo ja mainin takaisin saama prosessivaraus vaaditaan ennen korjaavaa
+lukua tai hyväksytyn v2-operaation oman plaintext-karanteenin siivousta.
+Admission tarkistetaan uudelleen leasen alla poissaolon todistamisen jälkeen.
+V1, journaliton plaintext tai todistamaton vanha omistaja estää automaattisen
+jatkon ja säilyttää aineiston. Vapaa varaus, puuttuva kahva tai kill-kutsun
+paluu ei todista vanhan kirjoittajan poistumista. Cleanup ei avaa SQLitea
+eikä tarvitse alkuperäistä backupia tai salasanaa. Prosessitodisteen omistaa
+[R18 ja käynnistyksen omistajuus](local-desktop-implementation-plan.md#prosessivarauksen-adapteri-r18),
+sisältö- ja poistovaltuuden [backup/restore-sopimus](local-backup-and-restore-plan.md#aktivointi-ja-rollback).
 
 Jos karanteenissa on tuntematon nimi tai tyyppi, linkki, ylikokoinen payload,
 epäselvä containment tai muu kuin W3:n allowlistattu entry, recovery pysähtyy

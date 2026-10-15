@@ -48,10 +48,18 @@ suorituskykybenchmarkin sekä turvallisuusarvion perusteella:
 parametrirajat validoidaan ennen `scrypt`-kutsua ja tuntematon, liian heikko
 tai resurssien käytöllä palvelunestoon pyrkivä arvo torjutaan.
 
-Salasanaa, johdettua avainta tai selväkielistä varmuuskopiosisältöä ei
-tallenneta levylle, lokiin, diagnostiikkaan, tukipakettiin, komentoriville,
-URL:iin tai ympäristömuuttujaan. Selväkielisen datan ja avainmateriaalin
-elinikä prosessimuistissa pidetään mahdollisimman lyhyenä.
+Salasanaa tai johdettua avainta ei tallenneta levylle, lokiin,
+diagnostiikkaan, tukipakettiin, komentoriville, URL:iin tai ympäristömuuttujaan.
+Selväkielistä varmuuskopiosisältöä ei julkaista näihin kanaviin eikä
+tallenneta siirrettävänä backupina tai salaamattomana palautuspisteenä.
+Tämän ADR:n alla hyväksymä uusi staging-profiili, ADR-0011:n nimetty W3-
+karanteeni ja hyväksytyn K:n omistetut työ- ja tarkistuskopiot ovat erillisiä
+työaineistoja, eivät uusi plaintext-backup-poikkeus. Niiden täsmällisen
+omistajuuden, säilytyksen ja siivouksen omistaa
+[backup/restore-suunnitelma](../architecture/local-backup-and-restore-plan.md#private-plaintext-staging).
+Muita selväkielisiä välitallennuksia ei sallita tällä tarkennuksella.
+Selväkielisen datan ja avainmateriaalin elinikä prosessimuistissa pidetään
+mahdollisimman lyhyenä.
 
 Tavallinen application renderer ei saa varmuuskopion salasanaa. Electron main
 avaa salasanan luontia ja syöttämistä varten erillisen kertakäyttöisen
@@ -143,13 +151,12 @@ automaattista reverse-migraatiota vanhempaan schemaan.
 
 ## Yritysprofiilin raja
 
-R0:ssa toisesta asennuksesta tuotu varmuuskopio voidaan palauttaa vain tyhjään
-Eky-asennukseen. Olemassa olevan eri yrityksen profiilin päälle sitä ei
-palauteta.
-
-Myöhemmin mahdollinen multi-profile-tuki voi tarjota toiminnon "palauta uutena
-yritysprofiilina". Se vaatii erillisen profiilirekisterin, lifecycle-säännöt
-ja cross-profile-eristystestit.
+Alkuperäinen yhden profiilin R0-raja salli vieraan yrityksen kopion vain
+tyhjään asennukseen. Nykyisen multi-workspace-mallin omistaa
+[ADR-0011](ADR-0011-local-multi-workspace-company-model.md): eri lineage
+tuodaan uutena työtilana, ei olemassa olevan eri yrityksen profiilin päälle.
+Yksi backup sisältää edelleen yhden profiilin; profiilirekisterin,
+lifecycle-sääntöjen ja cross-profile-eristyksen portit säilyvät.
 
 ## Tausta ja perustelut
 
@@ -195,8 +202,7 @@ Päätös on toteutettu yhden local desktop -profiilin R0-laajuuteen:
 
 - `.ekybackup` container `v1`, AES-256-GCM, canonical header AAD:na ja
   16 tavun authentication tag tiedoston lopussa
-- `scrypt`-profiili `N = 2^17`, `r = 8`, `p = 1`; Windows x64 -benchmarkin
-  mediaani noin 246,4 ms
+- `scrypt`-profiili `N = 2^17`, `r = 8`, `p = 1`
 - maintenance-rajattu SQLite- ja business-artifact-snapshot
 - inspector-before-writer, self-inspection ja no-overwrite
 - `safeStorage`-suojatut recovery pointit sekä rotaatio

@@ -9,6 +9,12 @@ hyväksynnän 29.9.2026 sekä ASAR-testityökalun hyväksynnän 8.10.2026.
 Versiot tarkistetaan uudelleen ennen
 tuotantojulkaisua, allekirjoitusta tai automaattipäivityksen toteutusta.
 
+Nykyinen hyväksyntä- ja jatkotila on
+[M1:n Jatka tästä -kohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Päivättyjen kokeiden odotus- ja hylkäysmerkinnät ovat kyseisen revision
+näyttöä, eivät uusi rinnakkainen nykytilalista. Hyväksytyt riippuvuusrajat ja
+tarkistusajurin toimitussopimus säilyvät normatiivisina.
+
 ## Rajaus
 
 Ensimmäisessä spikessä tarvitaan vain:
@@ -36,7 +42,7 @@ Spikessä käytetään tarkasti lukittuja development-riippuvuuksia vain
 
 | Paketti | Versio | Vastuu |
 | --- | --- | --- |
-| `electron` | `43.7.6` | desktop-runtime ja Windows-binääri; päivityksen todennus kesken |
+| `electron` | `43.7.6` | desktop-runtime ja Windows-binääri; nykyinen hyväksyntätila M1:n Jatka tästä -kohdassa |
 | `@electron/packager` | `20.0.4` | rajattu paketoitu sovellushakemisto |
 | `@electron/fuses` | `2.1.3` | production-fusejen lukitseminen |
 | `@electron/asar` | `4.2.1` | asennetun ASAR-paketin rajattu testiluku ja aidon arkiston testiaineisto |
@@ -319,11 +325,10 @@ joten paketointi ei enää:
 Paketointiputki ratkaisee moduulin paketinhallinnan normaalilla
 resoluutiolla, kopioi tuotantoriippuvuudet hallitusti ja validoi paketoidun
 Windows x64 N-API-binäärin ennen artifactin hyväksymistä. Yhdistelmä on
-varmennettu Electron-runtimessa, oikean paikallisen SQLite-tietokannan
-turvallisella kopiolla, Windows-paketoinnilla, smoke- ja Electron-E2E-testeillä
+varmennettu Electron-runtimessa, Windows-paketoinnilla, smoke- ja Electron-E2E-testeillä
 sekä stressi- ja soak-ajoilla.
 
-Ennen isälle jaettavaa tuotantoversiota pitää edelleen ajaa Windows package-
+Ennen loppukäyttäjälle jaettavaa tuotantoversiota pitää edelleen ajaa Windows package-
 ja smoke-testit sekä riippuvuus- ja turvallisuusaudit aina valituille tarkasti
 lukituille runtimeversioille.
 
@@ -338,15 +343,55 @@ Ainoa tarkoitettu lähdepoikkeama on `SQLITE_DEFAULT_MEMSTATUS=1`;
 muistiseuranta tarvitaan hyväksytyn SQLite-muistirajan todelliseen valvontaan.
 Business-runtimen paketin mukana toimitettu oletusprebuild säilyy ennallaan.
 
-[K-P2:n toimitussopimus](release-0.3.0-m1-preparation-plan.md#k-p2n-tarkistusajurin-toimitusehdotus)
-omistaa lähteen eheyden, eristetyn käännöksen, erillisen resurssin,
-pakollisen ajurivalinnan kaikissa tarkistusyhteyksissä sekä Windows/Linux-
-ja paketoidun palautuksen todisteet. Ei lifecycle-asennusta, prebuild-
-fallbackia, käyttäjän koneella tehtävää käännöstä tai uusia järjestelmätyökaluja.
-Versioiden, tietomallin, backup-formaattien ja muiden resurssirajojen muutos
-ei sisälly tähän poikkeukseen. Toteutuksen keskeneräisyys ei ole toimitushyväksyntä.
+Lähde ja toimitus ovat tämän dokumentin sopimus; M1:n
+[K-P2-päätös](release-0.3.0-m1-preparation-plan.md#k-p2n-tarkistusajurin-toimitusehdotus)
+säilyttää hyväksynnän historian. Käytä lukitun ajuriversion integrityllä
+varmennettua upstream-lähdettä ja hyväksyttyä addon-api-lähdettä erillisessä
+build-juuressa. Lukitse syötteet, rajattu MEMSTATUS-patch, kohdealusta ja
+työkaluketju; tallenna outputin koko ja hash build-todisteeseen.
+Kääntäjämetadata voi erota prebuildistä eikä kaikkien asetusten tai
+binääritavujen samuutta väitetä. Ei pnpm-varaston muokkausta, C++-forkkia,
+lifecycle-asennusta, prebuild-fallbackia, käyttäjän koneella käännöstä tai
+uusien järjestelmätyökalujen asennuslupaa. Puuttuva työkalu vaatii päätöksen.
 
-[V2s:n työpuun kohdenäyttö](release-0.3.0-m1-preparation-plan.md#v2s-tarkistusajurin-erillinen-toimitus)
+Buildin yksityinen työalue on erillään pakkaajan tyhjentämistä kansioista.
+Toimitus on kiinteä kahden tiedoston ajuri-/metadataresurssi, jonka alkuperä,
+alusta, koko, hash ja linkkirajat todennetaan avatusta tiedostosta rajatulla
+luvulla ennen kopiointia ja uudelleen pakkaajan jälkeen. Kasvava tai muuttuva
+lähde hylätään. Epävarmaa build-/kopioaineistoa ei poisteta. Main ratkaisee
+kiinteän entrypointin ja native-polun validoidusta resurssijuuresta;
+tuotu aineisto, renderer tai broker ei valitse ajuria tai käännösasetuksia.
+Resurssi ei korvaa paketin `prebuilds`-tiedostoja.
+
+Kääntäjän vain täsmällisesti tunnettu sisäinen kahden nimen linkkipari
+varmennetaan nimineen ja identiteetteineen ennen ja jälkeen kopioinnin.
+Ennen latausta ja toimitusta vaaditaan erillinen yksilinkkinen tiedosto,
+eri tiedostoidentiteetti ja samat varmennetut tavut. Tuntematon lisälinkki
+tai linkitetty hakemisto hylätään. Build-työkalut, lähdearkisto, profiilit
+ja koetietokannat eivät kuulu toimitukseen.
+
+`nativeBinding` on pakollinen kaikille tarkistusutilityn yhteyksille:
+budjetin muistiyhteys, tuodun kannan readonly-yhteys ja luotetun migration-
+referenssin muistiyhteys. Pelkän ensimmäisen yhteyden vaihto ei riitä.
+Ajurin identiteetti ja muistiseuranta todennetaan ennen tuodun kannan avausta.
+Puuttuva, ristiriitainen tai väärän alustan ajuri hylätään ilman oletus-
+fallbackia. Rajan readback ja aidon ylityksen torjunta ovat eri todisteet.
+[Runtime-budjetit ja exit/reclaim](local-backup-and-restore-plan.md#eristetyn-tarkistuksen-rajat-ja-valtuus)
+säilyvät; natiiviajuri ei yksin todista koko prosessin RSS-kattoa.
+
+Windowsin paketoitu output ja Linux tarvitsevat kumpikin oman
+lähde-/ajuri-/runtime-todisteensa: nykyinen ja tuettu historiallinen
+synteettinen profiili, todellinen muistirajan ylitys ja tavallinen
+readonly-kysely sen jälkeen, omistetut sulut/exit, lähteen muuttumattomuus
+sekä business-oletusajurin ennallaan säilyvä normaali luku/kirjoitus.
+Sama testattu output jatkaa itsenäisinä samoina tavuina pakettiportteihin.
+Native-hash ei ole publisher trust. Kuluttajamatriisi, hardened Windows
+backup -> inspect -> restore -> restart -> compare, katselmus ja
+täsmärevision PR/main-portit säilyvät. Myöhempi ajuri- tai lähdeasetusmuutos
+avaa tämän rajatun todennuksen uudelleen, ei hyväksy muita riippuvuuksia.
+Nykytila on [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+
+**Vaihehistoria:** [V2s:n työpuun kohdenäyttö](release-0.3.0-m1-preparation-plan.md#v2s-tarkistusajurin-erillinen-toimitus)
 kattaa erillisen käännöksen, pakollisen native-valinnan, rajatun tavukopion
 ja resurssin pakkauskytkennän. Business-prebuildin portit säilyvät;
 Linuxin koko runtime-/CI-toimitus ja koko paketin/palautuksen hyväksyntä

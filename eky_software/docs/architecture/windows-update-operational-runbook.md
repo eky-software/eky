@@ -2,11 +2,15 @@
 
 ## Tila
 
-Tämä on C2:ssa toteutettavan Update Coordinatorin runbook. R0:n ensimmäinen
+Tämä on Update Coordinatorin runbook. Nykyinen hyväksyntä- ja jatkotila on
+[M1:n Jatka tästä -kohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Päivätyt C0-C3- ja W4-W6-tulokset ovat vaihehistoriaa, eivät nykyinen
+puuttuvien toimintojen luettelo. R0:n ensimmäinen
 luottamusmalli on ADR-0010:n projektin omistajan hallitsemille
 pilottilaitteille rajattu `localUnsignedPilot`.
-Ensimmäiset `update.*`-eventit lisätään vain C2:n nimeämille valmistelu-,
-shutdown-, handoff- ja first-start-vaiheille. Tapahtumat eivät sisällä polkuja,
+`update.*`-eventtien nykyinen sopimus on
+[tapahtumakatalogissa](r0-observability-event-catalog.md) ja tämän dokumentin
+C3C-kohdassa. Tapahtumat eivät sisällä polkuja,
 paketin tiivisteitä, profiilitunnisteita, sessionia tai installer-outputia.
 
 Pilotissa paketti tulee vain paikallisesta release-arkistosta tai erikseen
@@ -51,11 +55,12 @@ registrystä. Passiivinen validi migration-prefix jää byte-identtiseksi.
 
 Kytkentä on toteutettu 22.8.2026 unit-, integration- ja Electron-E2E-tasolla.
 `DESK-WORKSPACE-FIRST-START-001` todistaa mixed- ja all-current-käynnistykset
-oikealla production-compositionilla. Vain preMigration-palautuspiste saa
-käyttää yhteensopivan historiallisen prefixin politiikkaa; tavalliset
-snapshotit ja portable backup vaativat edelleen täsmälleen nykyisen
-migration manifestin. Passiivisen pending-työtilan aktivointimigraatio ja
-paketoitu multi-workspace W6 -portti ovat vielä avoimia.
+oikealla production-compositionilla. Tavalliset snapshotit ja portable backup
+vaativat täsmälleen nykyisen migration manifestin. Historiallista prefixiä
+käyttää preMigration-palautuspiste sekä vain erikseen hyväksytty
+[C:n historiallinen 038-palautus](windows-installer-and-update-plan.md#historiallisen-038-palautuksen-kapea-c-poikkeus).
+Passiivisen pending-työtilan aktivointimigraation sopimus on alla W6A.3:ssa;
+paketoidun W6-portin nykytila luetaan M1:n Jatka tästä -kohdasta.
 
 Pre-backend inventory- tai plan-failure ei saa muodostaa käynnistyssilmukkaa.
 Koordinoidussa päivityksessä vain update-auktoriteetti siirtää nykyisen
@@ -289,18 +294,25 @@ hyväksynnän tai rollbackin lopputulosta.
 
 ## Error code -runbook
 
+Taulukon käyttöohje ei vapauta päivityksen kirjoitussuojaa. Kun sulku on
+alkanut tai sen, journal-kirjoituksen tai omistajuuden tulos on epävarma,
+business-kirjoitukset pysyvät estettyinä hallittuun restartiin ja turvalliseen
+startup-recoveryyn asti. Ennen sulun alkua vain täsmällisen voimassa olevan
+omistajan varmennettu terminal-kirjoitus ja readback voivat vapauttaa suojan.
+Virhekoodi tai business-tavujen muuttumattomuus ei yksin todista tätä.
+
 | errorCode | Merkitys | Data-impact | Turvallinen retry | Käyttäjän toiminta | Tukitoiminta | Liittyvä vaihe | Käyttö pysäytetään |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `UPDATE_PACKAGE_INVALID` | Manifesti, identity, versio, arkkitehtuuri, koko, hash tai allekirjoitus ei kelpaa | Ei muutosta | Ei samalla paketilla | Valitse virallinen paketti uudelleen | Tarkista julkaisu ja manifesti ilman käyttäjän polkua | package inspection | Ei, nykyistä versiota voi käyttää |
 | `UPDATE_PACKAGE_CHANGED` | Paketti muuttui tarkistuksen jälkeen | Ei muutosta | Vasta uudella inspectillä | Peruuta ja valitse paketti uudelleen | Tutki release-lähde; älä pyydä raakaa tiedostopolkua lokiin | package inspection | Ei |
 | `UPDATE_RECOVERY_POINT_FAILED` | Pakollista pre-update-pistettä ei saatu valmiiksi | Ei installeria eikä skeemamuutosta | Kyllä syyn korjauksen jälkeen | Vapauta levytilaa tai ota yhteys tukeen | Tarkista Profile Protectionin turvallinen tila | pre-update recovery | Ei, nykyistä versiota voi käyttää |
 | `UPDATE_MAINTENANCE_CONFLICT` | Backup, restore tai muu suojattu operaatio on kesken | Ei muutosta | Kyllä myöhemmin | Odota toiminnon valmistumista | Tarkista vain allowlistattu operation state | runtime maintenance | Ei |
-| `UPDATE_SHUTDOWN_TIMEOUT` | Runtime ei sulkeutunut määräajassa | Installeria ei käynnistetä; journal voi vaatia tarkistuksen | Vain hallitun restartin jälkeen | Sulje Eky ja käynnistä uudelleen | Varmista orphan-prosessit turvallisesti | runtime shutdown | Kyllä päivitykseltä, ei välttämättä nykykäytöltä |
-| `UPDATE_INSTALLER_START_FAILED` | Validoitua installeria ei voitu käynnistää | Business data ennallaan | Kyllä syyn korjauksen jälkeen | Käynnistä Eky uudelleen ja yritä virallisella paketilla | Tarkista signing, AV ja exit/spawn-luokka ilman komentoriviä | installer handoff | Ei |
+| `UPDATE_SHUTDOWN_TIMEOUT` | Runtime ei sulkeutunut määräajassa | Installeria ei käynnistetä; journal voi vaatia tarkistuksen | Vain hallitun restartin ja recoveryn jälkeen | Sulje Eky hallitusti ja käynnistä uudelleen | Todista omistettujen prosessien poistuminen; älä päättele sitä kill-paluuarvosta | runtime shutdown | Kyllä, myös business-kirjoitukset |
+| `UPDATE_INSTALLER_START_FAILED` | Validoitua installeria ei voitu käynnistää | Business data ennallaan ei todista käyttövalmiutta | Vasta hallitun restartin ja journal-tarkistuksen jälkeen | Käynnistä Eky uudelleen ja yritä virallisella paketilla vasta recovery-portin jälkeen | Tarkista signing, AV ja exit/spawn-luokka ilman komentoriviä | installer handoff | Kyllä sulun alkamisen jälkeen |
 | `UPDATE_INSTALLER_FAILED` | Installer palautti virheen | Binaarit voivat olla rollbackattu tai tila epäselvä | Ei ennen journalin tarkistusta | Älä käynnistä asennusta uudelleen sokkona | Tarkista installerin tila paikallisesti; stdout/stderr ei tukipakettiin | installer handoff | Kyllä |
 | `UPDATE_FIRST_START_FAILED` | Uusi build ei läpäissyt migration-, integrity-, FK-, readiness- tai health-porttia | Uutta profiilia ei hyväksytä | Ei ennen rollbackia | Älä jatka business-käyttöä | Käynnistä business rollback ja arvioi binary rollback | first-start validation | Kyllä |
 | `UPDATE_BUSINESS_ROLLBACK_FAILED` | Pre-update-profiilia ei saatu palautettua terveeksi | Business-datan käytettävyys epävarma | Ei | Lopeta ohjelman käyttö ja ota yhteys tukeen | Käytä ADR-0009:n recovery-required-menettelyä | business rollback | Kyllä |
-| `UPDATE_BINARY_ROLLBACK_FAILED` | Edellistä binaariversiota ei saatu palautettua | Palautettu business data voi olla kunnossa, mutta sovellus ei ole käyttövalmis | Ei | Lopeta ohjelman käyttö ja ota yhteys tukeen | Asenna journalissa sidottu allekirjoitettu edellinen versio hallitusti | binary rollback | Kyllä |
+| `UPDATE_BINARY_ROLLBACK_FAILED` | Edellistä binaariversiota ei saatu palautettua | Palautettu business data voi olla kunnossa, mutta sovellus ei ole käyttövalmis | Ei | Lopeta ohjelman käyttö ja ota yhteys tukeen | Käytä vain journalissa sidottua, ADR-0010:n täsmällisen trust-policyn hyväksymää rollback-pakettia | binary rollback | Kyllä |
 | `UPDATE_STATE_INCONSISTENT` | Journalin ja runtime/build identityn tila ei täsmää | Vaikutus epäselvä | Ei | Älä jatka käyttöä | Tarkista journalin turvallinen yhteenveto ja recovery pointin tila | mikä tahansa | Kyllä |
 | `UPDATE_DIRECT_SETUP_RECOVERY_REQUIRED` | Suora Setup keskeytyi pending-migraation aikana | Alkuperäinen pre-migration-piste on suojattu | Ei ennen palautusta | Sulje Eky ja käynnistä palautuspolku | Palauta recordissa sidottu piste; älä jatka migraatioita | direct Setup first-start | Kyllä |
 | `UPDATE_INSTALLER_NOT_APPLIED` | MSI peruttiin tai ei vaihtanut hyväksyttyä buildia | Business-data ja vanha build todistettavasti ennallaan | Kyllä uutena käyttäjän vahvistamana yrityksenä | Voit jatkaa vanhan version käyttöä | Säilytä candidate, sulje journal turvallisesti | installer handoff | Ei |

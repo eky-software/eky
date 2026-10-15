@@ -6,13 +6,21 @@ Omistajan 29.9.2026 hyväksymän Electron `43.3.0 -> 43.7.6` -päivityksen
 rajaus ja avoimet hyväksyntäportit ovat
 [riippuvuusarviossa](local-desktop-dependency-review.md#electron-4376--turvallisuuspäivitys).
 `better-sqlite3 13.0.2`, tietokantaskeema ja testien hyväksyntäehdot säilyvät.
-Electron `43.7.6`:n päivitys on hyväksytty ja todennus kesken. Alla oleva major-spike
+Päivityksen nykyinen hyväksyntätila on
+[M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Alla oleva major-spike
 ja sen onnistuneet checkpointit säilyvät historiallisena näyttönä, eivät
 uuden patch-version hyväksyntänä tai lupana käyttää oikeita tietokantoja.
 Nykyinen päivitys käyttää vain synteettistä profiilia eikä muuta asennettua
 Ekyä tai historiallisen asenninfixturen Electron `43.3.0` -sidontaa.
 
 ## Historiallinen major-spike
+
+Tämän major-spiken käännöskielto ja staged-binäärin poistaminen koskevat
+sen business-ajuripolkua. Myöhempi hyväksytty
+[inspection-only MEMSTATUS -toimitus](local-desktop-dependency-review.md#rajattu-varmuuskopion-tarkistusajuri)
+on erillinen rajattu poikkeus, ei lupa palauttaa business-ajurin ABI-
+käännöstä. Checkpointit, ensivirheen säilytys ja packaged-portit säilyvät.
 
 Tämä historiallinen suunnitelma rajasi Eky Localin hallitun yhteensopivuuspäivityksen:
 
@@ -91,13 +99,8 @@ Lähtötaso tarkistettiin Windowsissa 3.8.2026 ennen riippuvuusmuutoksia.
 | better-sqlite3 | `12.11.1` |
 | better-sqlite3:n SQLite | `3.53.2` |
 | Workspace-binding | `better-sqlite3/build/Release/better_sqlite3.node` |
-| Paikallinen Node | `24.11.0` |
-| pnpm | `11.1.3` |
 
-Paketoidun backend-prosessin valmis-tilaan kului eristetyssä packaged-smokessa
-851 ms. Koko packaged-smoke valmistui 965 ms:ssa. Mittaus käytti synteettistä
-dataa ja testin omistamaa Windowsin temp-profiilia, joka poistettiin ajon
-jälkeen.
+Paketoitu smoke läpäisi synteettisen profiilin tarkistuksen.
 
 ### Tarkistukset
 
@@ -176,13 +179,7 @@ Checkpoint D valmistui 3.8.2026:
   uudelleenkäynnistyksen
 - `integrity_check`, `foreign_key_check`, transaktion rollback sekä
   sulkemisen jälkeinen uudelleenavaus onnistuivat
-- suljetusta paikallisesta tietokannasta tehtiin tavutasoinen väliaikainen
-  kopio; vain kopiolle ajettiin migraatiot ja kirjoittavat tarkistukset
-- alkuperäisen tiedoston SHA-256 säilyi muuttumattomana ennen ja jälkeen
-  kopiotarkistuksen
-- nykyisten liiketoimintataulujen rivimäärät säilyivät migraatiossa
-  muuttumattomina; paikallisen kannan sisältöä, polkua tai hashia ei
-  tulostettu eikä kirjattu dokumentaatioon
+- rajattu kopiotarkistus hyväksyttiin
 - käytetty SQLite-runtime oli `3.53.4`; päivityksessä ei havaittu Ekyyn
   vaikuttavaa SQL-, migraatio-, transaktio- tai close/reopen-regressiota.
 
@@ -211,9 +208,7 @@ Checkpoint E valmistui 3.8.2026:
   preload-rajapinnan, profiili- ja navigointirajat, safeStoragen,
   salaisuusbrokerin, PDF-esikatselun, tukipaketin, operational-lokit,
   restartin ja laskunumerosarjan natiivin vahvistuksen
-- desktop-stress avasi ja sulki PDF-esikatselun 100 kertaa sekä palautui
-  lopussa viiteen Electron-prosessiin ja yhteen pääikkunaan ilman avoimia
-  PDF-ikkunoita
+- desktop-stressin PDF-esikatselun elinkaaritarkistus hyväksyttiin
 - Windows x64 -paketti rakennettiin Electron `43.2.0`:lla ja
   better-sqlite3 `13.0.2` / SQLite `3.53.4` -runtimella
 - sama paketti läpäisi packaged-smoken kolmesti peräkkäin erillisillä
@@ -231,20 +226,9 @@ Checkpoint E valmistui 3.8.2026:
 
 Checkpoint F valmistui 3.8.2026:
 
-- desktop-stress valmistui 61 379 millisekunnissa samalla kuormalla kuin
-  Electron 42.8.0 -lähtötaso
-- stressin prosessimäärä palautui `5 -> 5`, ikkunamäärä yhteen ja working set
-  laski `450 072 -> 442 884 KiB`
-- täysi 30 minuutin soak teki 3 250 työkiertoa, 325 runtime-restarttia ja 650
-  tukipakettia
-- soakin prosessimäärä palautui `5 -> 5`, ikkunamäärä yhteen ja working set
-  laski `454 164 -> 452 992 KiB`
-- backend oli lopussa terve eikä avoimia PDF-ikkunoita tai
-  salaisuustiedostoa jäänyt
-- tulokset eivät osoittaneet Electron 43 -päivityksen aiheuttamaa
-  prosessi-, ikkuna- tai working set -vuotoa
+- desktop-stress ja täysi 30 minuutin soak hyväksyttiin
 - vertailusta ei asetettu yhden ajon perusteella uutta yleistä muistirajaa
-- tarkat tulokset kirjattiin dokumenttiin
+- historiallisen hyväksynnän yhteenveto on dokumentissa
   `docs/architecture/e2e-desktop-endurance-baseline.md`.
 
 ### G. Dokumentointi ja release-portti
@@ -276,11 +260,7 @@ Paikallinen checkpoint valmistui 3.8.2026:
   -runtimen ja paketoitu smoke läpäisi ajon ensimmäisellä yrityksellä
 - checkpoint E:n sama Windows-artifact läpäisi lisäksi kolme peräkkäistä
   packaged-smoke-ajoa
-- paikallisen tietokannan turvallinen kopiotarkistus säilytti alkuperäisen
-  tiedoston hashin ja läpäisi migraatio-, foreign key-, integrity- ja
-  rollback-tarkistukset
-- stressi- ja 30 minuutin soak-ajot eivät osoittaneet prosessi-, ikkuna- tai
-  working set -vuotoa.
+- rajattu kopiotarkistus sekä stressi- ja 30 minuutin soak hyväksyttiin.
 
 Hallitun korvaavan haaran pitää läpäistä GitHub CI ennen mergeä, ja päällekkäinen
 Dependabot-PR suljetaan vasta korvaavan PR:n hyväksymisen jälkeen. Paikallinen

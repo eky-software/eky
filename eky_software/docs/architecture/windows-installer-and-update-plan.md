@@ -2,6 +2,14 @@
 
 ## 1. Tila
 
+Nykyinen hyväksyntä- ja jatkotila on
+[M1:n Jatka tästä -kohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Alla olevat checkpointien tilat ovat päivättyä vaihehistoriaa. Tämän
+dokumentin turvallisuus-, omistajuus- ja hyväksyntäsopimukset ovat voimassa;
+vanha avoin-merkintä ei avaa uudelleen hyväksyttyä C/K-päätöstä.
+
+### Aiempi toimitustilanne
+
 Arkkitehtuuripäätös on hyväksytty ADR-0010:ssä. ADR-0009:n salattu
 backup/restore, recovery pointit, aktivointijournal ja Windows packaged
 restore -todistus ovat toteutettu 4.8.2026. Rajattu per-user x64 MSI-
@@ -280,7 +288,8 @@ Ennen ensimmäistä installer-pilottia erotetaan ja todennetaan neljä runtimea:
 - backend/browser-kehityksen `eky-dev.sqlite` tai development `.env` -polku
 - testikohtainen private E2E `eky-e2e.sqlite`
 - vain validoidulla switch+token-parilla aktivoituva packaged smoke tempissä
-- normaali desktop `userData/runtime/data/eky.sqlite` ilman env-fallbackia
+- normaali desktop `<userData>/workspaces/<workspaceId>/runtime/data/eky.sqlite`
+  ilman env-fallbackia; vanha `<userData>/runtime` on vain legacy-adoption lähde
 
 Nykyinen Windows-paketointi inventoi `applicationStage`-, `backendStage`-,
 `desktopRuntimeStage`- ja lopullisen unpacked package -hakemiston. Pakettiin ei
@@ -809,8 +818,9 @@ eikä vapauta update-fenceä. Kuittaamaton tarkistussiivous ja pre-update-
 palautuspisteen todettu cleanup-epävarmuus estävät abort-vapautuksen.
 Myöhäinen siivouskuittaus ei valtuuta päättynyttä kutsua. Jo alkanut
 ordinary-sulku estää uuden handoff-tarkistuksen ja installer-käynnistyksen.
-Kutsujamatriisi ja rajattu näyttö ovat
-[M1:n aktiivivalidoinnin ohjeessa](release-0.3.0-m1-preparation-plan.md#aktiivivalidoinnin-kutsujakohtainen-omistajuus).
+Voimassa oleva [kutsujamatriisi](#cn-tarkistuskutsujien-valtuus) on tässä
+ohjeessa. [Aktiivivalidoinnin checkpoint](release-0.3.0-m1-preparation-plan.md#aktiivivalidoinnin-kutsujakohtainen-omistajuus)
+säilyy historiallisena näyttönä, ei erillisenä nykyohjeena.
 Epävarma journal tai tarkistussiivous, menetetty suoja tai aloitettu runtime-stop säilyttää
 omistuksen uudelleenkäynnistykseen asti. Ordinary backupin vapautus ei muutu.
 
@@ -932,22 +942,24 @@ seuraavia rajoja:
 5. passiivisen työtilan ensimmäinen aktivointi tekee migraation vasta
    workspace-scoped preMigration-pisteen ja installation-scoped
    `WorkspaceMaintenanceLease`-leasen takana
-6. invalidi future-, changed- tai missing-middle-historia estää vain kyseisen
-   passiivisen työtilan avaamisen ja merkitsee sen turvallisesti
-   `recoveryRequired`-tilaan; muita työtiloja ei migroida tai muuteta
+6. schema- tai migraatiohistoriavirhe pysäyttää koko inventaarion; vain jo
+   luotetuksi todistetun rakenteen sisältövirhe voi tuottaa passiivisen
+   työtilan `invalidHistory`-luokituksen ja myöhemmän `recoveryRequired`-
+   siirtymän ilman sen business-datan muuttamista
 7. koko tarkastusketjussa saa olla enintään yksi business-SQLite-owner.
 
 W6A.1:n read-only inventory toteuttaa ennen tätä ketjua vain kaikkien
 `ready`-työtilojen sarjallisen luokittelun. `current` tarkoittaa täsmälleen
 nykyistä migration manifestia ilman pending-migraatioita,
 `compatiblePending` katkeamatonta immutable historiallista prefixiä, jolla on
-pending-migraatioita, ja `invalidHistory` tulevaa, muuttunutta, aukollista,
-duplikaattia, tuntematonta, ristiriitaista tai vioittunutta historiaa.
+pending-migraatioita. Tuleva, muuttunut, aukollinen, duplikaatti tai tuntematon
+migraatiohistoria ei ole passiiviseksi eristettävä sisältövirhe.
 
-`invalidHistory` kuvaa turvallisesti johdetun ja read-only-tilassa avatun
-tietokannan sisältöä. Integrity-, foreign key- tai migration history -virhe,
-mukaan lukien avauksen jälkeen havaittu SQLite-sisällön vioittuminen, voidaan
-luokitella siihen. Puuttuva tai turvaton juuri, puuttuva tai ei-kanoninen
+`invalidHistory` kuvaa vasta luotetuksi todistetun schema/history-rakenteen
+sisältövirhettä, kuten integrity- tai foreign key -hylkäystä. K:n hyväksytty
+raja keskeyttää schema- tai historiavirheessä koko inventaarion ennen
+identity-lukua ja registry-siirtymää; vanha luokittelu ei ohita tätä.
+Puuttuva tai turvaton juuri, puuttuva tai ei-kanoninen
 tietokantatiedosto, avaamaton storage, `profileId`-ristiriita sekä utility-,
 protokolla- tai shutdown-virhe keskeyttävät koko inventaarion fail-closed;
 niitä ei alenneta yhden työtilan `invalidHistory`-entryksi.
@@ -1026,10 +1038,13 @@ rajataan registry-siirtymään ja target-build hyväksytään vasta aktiivisen
 readinessin sekä transitioned registry -todisteen jälkeen. Täsmälleen
 hyväksytyn buildin uudelleenkäynnistys ei inventoi työtiloja uudelleen.
 
-PreMigration-snapshot käyttää ainoana snapshot-tarkoituksena
+PreMigration-snapshot käyttää ennen forward-migraatiota
 `compatibleHistoricalPrefix`-politiikkaa, jotta N-profiilin katkeamaton
 immutable migration-prefix voidaan suojata ennen N+1-migraatiota. Muut
-snapshotit ja portable backup vaativat täsmälleen nykyisen manifestin.
+tavalliset snapshotit ja portable backup vaativat täsmälleen nykyisen
+manifestin. Erillinen C:n rollback-only-tarkistussnapshot on rajattu
+[alla](#historiallisen-038-palautuksen-kapea-c-poikkeus), eikä laajenna
+normaalin backupin politiikkaa.
 Passiivisen yhteensopivan työtilan aktivointimigraatio on toteutettu W6A.3:ssa.
 Koko paketoitu multi-workspace W6 -releaseportti on vielä avoin.
 
@@ -1074,6 +1089,11 @@ eri numeerista fixture-versiota käyttävästä multi-workspace-capable N-
 paketista ja kulkee nykyisen sisäisen update/handoff-polun kautta N+1:een.
 Canonical release-identiteettiä ei muuteta eikä samaa versionumeroa käytetä
 eri build-revisioille.
+
+Seuraavat sisäkkäiset legacy-watchdogit ovat historiallinen rakenne.
+Nykyiset prosessi-, timeout-, cleanup- ja komentorajat omistaa
+[Windows installer -hyväksyntäharness v2](windows-installer-acceptance-harness-v2.md).
+Historialliset kestot eivät korvaa sen nykyisiä budjetteja.
 
 Legacy-acceptance-harnessissa koko komennon omistava Node-prosessi rajaa
 target- ja historical-source-buildit sekä varsinaisen acceptance-ajon yhteen
@@ -1234,6 +1254,78 @@ valita paketin vain Electron mainin omistamalla native-dialogilla. Valittu
 manifesti ja MSI tarkistetaan samoihin journalin identiteetteihin; eri versio,
 build, MSI-identiteetti, hash tai koko torjutaan eikä rollback-yrityslaskuri
 muutu.
+
+### C:n tarkistuskutsujien valtuus
+
+Aktiiviprofiilin eristetty tarkistus lainaa vain kutsujan nimenomaisesti
+antamaa omistajuutta. Kiireinen varaus, globaali fence-tila tai vanha startup-
+tulos ei päätä kutsukontekstia. Backup/restore-suunnitelman
+[prosessi- ja kuittisopimus](local-backup-and-restore-plan.md#eristetyn-tarkistuksen-rajat-ja-valtuus)
+omistaa yhteisen generation-, exit-, reclaim- ja siivousrajan.
+
+| Kutsuja | Valtuus ja säilyvä raja |
+| --- | --- |
+| Tavallinen tai palautuksen jälkeinen startup | Mainin täsmällinen restore-varaus; tarkistin ei vapauta lainaa. Hylkäyksestä rollbackiin säilyy sama omistaja varmennettujen tarkistaja-/backend-sulkujen yli. |
+| Live-päivityksen valmistelu | Koordinaattorin update-varaus sekä elävän instanssin ja aloittamattoman sulun tarkistus. Ennen update-fenceä tarkistuksen snapshot käyttää tavallista snapshot-suojaa; journalin/fencen järjestys ei muutu. |
+| Handoff | Sama update-varaus ja jo voimassa oleva update-fence. Saman operaation uusi snapshot vasta sen aiemman snapshotin todistetun poiston jälkeen. Tarkistin ei vapauta fenceä. |
+| FirstStart | Uuden runtimen oma restore-varaus ja tuore eristetty tarkistus. Startupin aiempi tulos ei hyväksy versiota; salaisuusidentiteetin, tilakohtaisen ketjun, hyväksynnän ja siivouksen järjestys säilyy. |
+| C rollback-only | Täsmällinen alkuperäinen update-journal, sen alkuperäisketju ja kutsun elinikäinen omistajuus. Sama sidonta journalittomassa valmistumisessa ja restore-journalin terminalissa. |
+
+`validateActiveProfileForUpdate` sitoo operaation ja vaiheen
+kutsukohtaiseen siivouskuittaukseen. Puuttuva kuittaus, varmentamaton
+lapsen poistuminen, poistovirhe tai suojan menetys säilyttää omistajuuden.
+Myöhäinen vastaus ei kuittaa päättynyttä kutsua. Siististi päättynyt
+sisältöhylkäys saa nykyisen abort-vapautuksen vain omistetun aineiston
+poiston ja suojan tarkistuksen jälkeen; pre-update-pisteen epävarma
+cleanup estää sen. Tavallisen käynnistyksen jo päättynyt valtuus ei
+lainaudu live-päivitykseen.
+
+#### Historiallisen 038-palautuksen kapea C-poikkeus
+
+Ennen backendin avausta jäädytetään täsmällisen käynnissä olevan targetin
+update-journal. Vain `rollbackRequired`, `businessRollbackStarting` tai
+`businessRollbackCompleted`, säilynyt palautuspisteviite ja alkuperäinen
+migraatioketju sallivat nykyisen `restoreCompatible`-schema-politiikan.
+Eksplisiittinen poissaolo ei adoptoi myöhemmin ilmestyvää operaatiota.
+Sama valinta, palautusomistaja ja hyväksytyn source-buildin
+versio/revisio/kanava varmennetaan W6-valmistelussa ja backendin
+prepare/grant-rajoissa, myös oman restore-journalin tapauksessa.
+Luovutuksen alettua ei vaadita mainin edelleen hallitsemaa lapselle
+siirtyvää varausta; vaihekohtainen omistajuussopimus säilyy.
+
+Tämä poikkeus sallii vain hyväksytyn metadataa vailla olevan 038-ankkurin,
+ei virheellisen metadatan fallbackia tai owned-local hot-journal-recoverya.
+Metadatallisen historiallisen prefixin oma tuki säilyy erillisenä.
+Schema attestoi ennen kirjoitusavausta ja uudelleen samalla yhteydellä.
+Tarkka W6:n rollback-only-poikkeus on yllä: olemassa oleva recovery,
+prepared-journalin build-/registry-hashit ja tuoreet C-portit säilyvät;
+ei uutta forward-inventaariota, registry-siirtymää, target-hyväksyntää,
+forward-migraatiota tai business-UI:ta. Hylkäys ei putoa tavalliseen starttiin.
+
+C:n terminal vaatii olemassa olevan kannan sekä täsmälleen journalin
+`preUpdateMigrationChainIdentity`-arvon. `createRestoredProfileSnapshot`
+vaatii saman restore-operaation ja voimassa olevan kanavan ennen ja jälkeen
+odotuksen. Muodostaja käyttää `compatibleHistoricalPrefix`-arvoa,
+eristetty tarkistin `restoreCompatible`-arvoa ja tarkkaa alkuperäisketjua.
+Tavallinen live-terminal käyttää `exactCurrentManifest`-policya;
+tavallinen snapshot-kutsu ei hyväksy restore-policya tai heikompaa kuittia.
+
+Aktiiviprofiilin ja snapshot-katalogin lukija käyttää palautuksen jo
+hyväksyttyä startup-policya vain `beforeMigrations`-gaten aikana.
+Gaten päättyminen palauttaa tiukan policyn myös virheessä. Portti ei luo
+legacy-metadataa tai aja migraatioita. Policy-nimi, schema-haara ja
+nolla-pending-portti ovat eri ehtoja: eheyden tarkistus ennen migraatioita
+ei avaa normaalia business-runtimea. Nykyiset caller-kohtaiset ehdot ovat
+[database/migration-omistajalla](local-database-implementation-plan.md#varmuuskopion-schema-tarkistin).
+
+C:n valmistumiskutsu tarkistaa koko jäädytetyn journalin ennen ja jälkeen
+profiilivalidoinnin, myös jo valmistuneessa tilassa ilman kirjoitustarvetta.
+Sama operation/tila/revisio ei riitä, jos muu sidottu sisältö muuttui.
+Nykyinen exclusive-store vertaa koko edeltäjää; async- tai reentrant-
+valtuuscallback ei ole synkroninen main-valtuus. Kadonnutta currentia ei
+käsitellä uuden journalin luontina, eikä vierasta next/backupia poisteta.
+Julkaisun tai takaisin siirron virhe säilyttää ensisyyn ja lisävirheet;
+se ei todista durable-siirtymän epäonnistuneen ennen julkaisua.
 
 ## 18. Binary rollback
 
@@ -1431,7 +1523,9 @@ teknistä virhettä. Päivityksen vahvistus kertoo, että sovellus sulkeutuu.
 
 ## 22. Tuleva update-composition
 
-Toteutus jaetaan ilman business-moduulien riippuvuuksia:
+Tämän kohdan tiedostoluettelo ja refaktoroinnin vaiheistus ovat alkuperäinen
+suunnitelma, eivät nykyinen puuttuvien tiedostojen luettelo. Kapeiden porttien
+ja business-moduulien riippumattomuuden sopimus säilyy:
 
 ```text
 apps/desktop/src/update/
