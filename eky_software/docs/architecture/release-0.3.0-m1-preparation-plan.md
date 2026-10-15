@@ -58,10 +58,14 @@ osittainen havainto kuitenkin toistui supervisor- ja legacy-core-töissä.
 Erillinen upgrade-paketin valmistelu epäonnistui `source/backendValidation`-
 vaiheessa; salatussa paketissa ei ollut alkuperäistä syytä. Nämä estävät
 integraation eivätkä kumoa läpäisseitä yksittäisiä tarkistuksia.
-MSI-testin nykyistä yksityistä virhekuittia täydennetään luettelokutsun
-vaiheella ja alkuperäisellä virhekoodilla ennen yhtä rajattua hosted-
-sopimustodennusta. Tämä ei vielä ole luettelovirheen korjaus eikä lupa
-ohittaa valmisteluhylkäystä. Legacy-työn aikarajaa ei nosteta.
+MSI-testin yksityinen virhekuitti säilyttää nyt myös luettelokutsun vaiheen
+ja mahdollisen alkuperäisen virhekoodin. Revision `ef8fd904` rajattu hosted-
+ajo `38817393696` läpäisi molemmat 159 testin sopimussarjat, myös todellisen
+salaus- ja purkuketjun. Alkuperäinen katkos ei toistunut: tämä todentaa
+virhekuittimuutoksen, ei vanhan luettelokatkoksen juurisyytä tai koko PR:ää.
+V2 `38813654917` valmistui hylättynä; upgrade-valmistelun erillinen syy
+ja normaalit uuden PR/main-revision portit ovat seuraavat integraatioesteet.
+Legacy-työn aikarajaa ei nosteta eikä valmisteluhylkäystä ohiteta.
 Sovelluskoodi, yksittäiset testirajat ja hyväksyntäehdot säilyvät. Alkuperäiset
 epäonnistumiset säilyvät eikä kohdeläpäisy todista niiden kaikkia syitä.
 
