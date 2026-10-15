@@ -52,6 +52,25 @@ erillisinä vastuina. Required checkit ovat `V2 acceptance` ja
 asetukset varmennetaan, eikä vanhaa vihreää ajoa käytetä uuden revision
 hyväksyntänä.
 
+### Clean/upgrade-sopimustestien valmistelu
+
+Legacy-matriisin `clean-upgrade-entry` ajaa nykyiset kaksi Node-testitiedostoa
+sekä niiden omistaman .NET-fixturen ilman sovelluksen npm-riippuvuuksia.
+Sen build- ja testikutsu käyttävät samaa versionvarmennettua pnpm:ää
+valinnalla `--config.verify-deps-before-run=false`. Sama valinta kuuluu
+nykyisen feasibility-workflow'n `clean-upgrade-command-diagnostic`-tilaan.
+[pnpm 11:n oletus](https://pnpm.io/blog/releases/11.0) voi muuten aloittaa
+riippuvuusasennuksen jo ennen skriptin ajamista. Tämä ylimääräinen verkkotyö
+ei kuulu kyseisen ryhmän valmisteluun.
+
+Muut viisi legacy-ryhmää säilyttävät `install`-valinnan, sillä esimerkiksi
+`core` käyttää hyväksyttyä ASAR-kirjastoa. Bootstrapin auditointi, eheys- ja
+allekirjoitustarkistus säilyvät ennen kaikkia pnpm-kutsuja. Projektin yleistä
+pnpm-asetusta ei muuteta. Testitiedostot, reporter, yksi testiprosessi kerrallaan,
+kaksi matriisitoistoa ja 10 minuutin työraja säilyvät. Jos clean/upgrade-ryhmään
+myöhemmin lisätään kolmannen osapuolen import, myös sen lukittu valmistelu
+on päivitettävä riippuvuusohjeen mukaisesti.
+
 ### Sovellusosan pakettibudjetti
 
 Omistajan 12.10.2026 hyväksymä K:n rajaus nosti sovellusosan tiedostomäärän

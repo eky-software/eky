@@ -41,7 +41,18 @@ ylimääräisen työn poistamisen, MSI-havaintotestin ensimmäisen näytteen
 valmistelueristyksen ja Windows Electron -työn kokonaisrajan muutoksen
 25 minuutista 35 minuuttiin. Kohdetestit, tyyppitarkistus, CI-sopimustestit
 ja rajattu riippumaton katselmus läpäisivät; yksi normaali PR/CI-kierros
-ja sen jälkeiset main-portit ovat vielä tekemättä.
+on sittemmin ajettu revision `8689abc4` lähteestä. V2 `38804005214`
+hylättiin MSI-havaintotestin osittaisen tuloksen ja erillisen legacy-työn
+10 minuutin kokonaisrajan vuoksi; riippuvuustarkistus `38804005089` läpäisi.
+Electronin 3 paketoitua ja 47 development-testiä läpäisivät. MSI-työn yksi
+kohdennettu uusinta läpäisi 159/159 testiä samalla lähteellä; alkuperäinen
+osittainen havainto säilyy avoimena eikä uusinta yksin ole merge-hyväksyntä.
+Legacy-valmistelun loki osoitti skriptiä edeltävän pnpm-riippuvuusasennuksen
+ja verkkouusinnat. Sen rajattu korjaus poistaa automaattiasennuksen vain
+riippuvuuksia tarvitsemattomasta clean/upgrade-sopimusryhmästä
+[harnessin omistavan valmistelusopimuksen](windows-installer-acceptance-harness-v2.md#cleanupgrade-sopimustestien-valmistelu)
+mukaan. Korjauksen kohdetodennus, katselmus ja uuden revision PR/main-portit
+ovat vielä kesken; legacy-työn aikarajaa ei nosteta.
 Sovelluskoodi, yksittäiset testirajat ja hyväksyntäehdot säilyvät. Alkuperäiset
 epäonnistumiset säilyvät eikä kohdeläpäisy todista niiden kaikkia syitä.
 

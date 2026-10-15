@@ -84,10 +84,10 @@ jobs:
           } | ConvertTo-Json -Compress
 
       - name: Build existing supervisor once
-        run: pnpm installer:supervisor:build
+        run: pnpm --config.verify-deps-before-run=${{ matrix.group == 'clean-upgrade-entry' && 'false' || 'install' }} installer:supervisor:build
 
       - name: Run legacy ${{ matrix.group }} contracts
-        run: pnpm installer:test:windows-supervisor-v2-legacy-${{ matrix.group }}
+        run: pnpm --config.verify-deps-before-run=${{ matrix.group == 'clean-upgrade-entry' && 'false' || 'install' }} installer:test:windows-supervisor-v2-legacy-${{ matrix.group }}
 
       - name: Preserve encrypted CI failure evidence
         if: >-
