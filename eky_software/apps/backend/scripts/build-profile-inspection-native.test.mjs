@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFile, link, lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -8,10 +9,33 @@ import test from 'node:test';
 import {
   createInspectionNativeBuildEnvironment,
   copyInspectionNativeBuildOutput,
+  inspectionNativeCompilationFailure,
   patchInspectionMemoryAccounting,
   verifyInspectionSourceArchive,
 } from './build-profile-inspection-native.mjs';
 import { profileInspectionNativeContract as contract } from '../src/database/connection/profileInspectionNativeContract.ts';
+
+test('a real tool timeout retains its closed code without granting settled log access', () => {
+  const result = spawnSync(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], {
+    timeout: 100, windowsHide: true, shell: false, stdio: 'ignore',
+  });
+  assert.equal(result.error?.code, 'ETIMEDOUT');
+  const failure = inspectionNativeCompilationFailure(result);
+  assert.equal(failure.code, 'ETIMEDOUT');
+  assert.equal(failure.logSettled, false);
+  assert.equal(failure.message, 'PROFILE_INSPECTION_NATIVE_BUILD_FAILED');
+  assert.equal(failure.cause, undefined);
+});
+
+test('other tool failures cannot copy arbitrary error properties into compilation failure', () => {
+  for (const code of ['private code', 'ENOENT', undefined]) {
+    const failure = inspectionNativeCompilationFailure({ status: null, signal: null,
+      error: { code, message: 'private detail', path: 'private path' } });
+    assert.equal(failure.code, undefined);
+    assert.equal(failure.logSettled, false);
+    assert.deepEqual(Object.keys(failure), []);
+  }
+});
 
 test('the only intended source delta is the one memory-accounting define', () => {
   const source = `before\n'${contract.sourceDefine}',\nafter\n`;

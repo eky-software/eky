@@ -65,7 +65,11 @@ salaus- ja purkuketjun. Alkuperäinen katkos ei toistunut: tämä todentaa
 virhekuittimuutoksen, ei vanhan luettelokatkoksen juurisyytä tai koko PR:ää.
 V2 `38813654917` valmistui hylättynä; upgrade-valmistelun erillinen syy
 ja normaalit uuden PR/main-revision portit ovat seuraavat integraatioesteet.
-Legacy-työn aikarajaa ei nosteta eikä valmisteluhylkäystä ohiteta.
+Käännöstyökalun todellinen `ETIMEDOUT` säilytetään nyt paketin nykyisessä
+turvallisessa syykoodissa; rajatut regressiot todentavat myös oikean
+aikakatkaisun ja keskeneräisen lokin lukueston. Tämä ei jälkikäteen nimeä
+aiemman käännöksen syytä. Jatko on yksi normaali PR/CI-kierros jäädytetystä
+revisiosta. Legacy-työn aikarajaa ei nosteta eikä valmisteluhylkäystä ohiteta.
 Sovelluskoodi, yksittäiset testirajat ja hyväksyntäehdot säilyvät. Alkuperäiset
 epäonnistumiset säilyvät eikä kohdeläpäisy todista niiden kaikkia syitä.
 

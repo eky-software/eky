@@ -12,6 +12,7 @@ import {
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import test from 'node:test';
+import { inspectionNativeCompilationFailure } from '../../../backend/scripts/build-profile-inspection-native.mjs';
 
 import { createInstallerProductCode } from '../installerIdentity.mjs';
 import {
@@ -49,6 +50,30 @@ const RELEASE_TEMPLATE = Object.freeze({
   msiProductVersion: '0.2.7',
   platform: 'win32',
   releaseChannel: 'pilot',
+});
+
+test('native compilation timeout reaches the existing package summary without granting raw log access', async context => {
+  const root = await mkdtemp(resolve(tmpdir(), 'eky-v2-native-timeout-'));
+  context.after(() => rm(root, { force: true, recursive: true }));
+  const original = inspectionNativeCompilationFailure({ status: null, signal: 'SIGTERM',
+    error: { code: 'ETIMEDOUT', message: 'private tool detail' } });
+  assert.equal(original.logSettled, false);
+  await assert.rejects(buildStagedInstallerSet({
+    stageRoot: resolve(root, 'stage'),
+    readGitState: async () => BUILD_REVISION,
+    async packageApplication(request) {
+      request.onBuildPhase('backendValidation');
+      throw original;
+    },
+    async buildInstaller() { assert.fail('Installer cannot run after native compilation failure'); },
+  }), error => {
+    assert.equal(error.cause, original);
+    assert.deepEqual(upgradeArtifactBuildFailureSummary(error), {
+      schemaVersion: 1, status: 'failed', errorCode: 'WINDOWS_ACCEPTANCE_UPGRADE_ARTIFACT_BUILD_FAILED',
+      packageRole: 'source', packagePhase: 'backendValidation', failureCode: 'ETIMEDOUT',
+    });
+    return true;
+  });
 });
 
 for (const failedRole of ['source', 'target']) {

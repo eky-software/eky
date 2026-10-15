@@ -370,6 +370,10 @@ eri tiedostoidentiteetti ja samat varmennetut tavut. Tuntematon lisälinkki
 tai linkitetty hakemisto hylätään. Build-työkalut, lähdearkisto, profiilit
 ja koetietokannat eivät kuulu toimitukseen.
 
+Käännöstyökalun todellinen `ETIMEDOUT` säilyy paketin nykyisessä suljetussa
+virhekoodissa. Aikakatkaisu ei anna valmiin käännöslokin lukulupaa eikä
+muuta käännöksen aikarajaa tai onnistuneen paketin vaatimuksia.
+
 `nativeBinding` on pakollinen kaikille tarkistusutilityn yhteyksille:
 budjetin muistiyhteys, tuodun kannan readonly-yhteys ja luotetun migration-
 referenssin muistiyhteys. Pelkän ensimmäisen yhteyden vaihto ei riitä.
