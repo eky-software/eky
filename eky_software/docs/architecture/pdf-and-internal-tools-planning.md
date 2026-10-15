@@ -12,8 +12,12 @@ riippuvuuslinjan mukaisesti.
 
 PDFKit-renderer, `invoice_documents`-metadata, paikallinen storage-adapteri,
 rajatut PDF-reitit, webin ja Electronin PDF-esikatselu sekä PDF:n käyttäminen
-hallittuna laskun sähköpostiliitteenä on toteutettu. PDF muodostetaan edelleen
-vain `ApprovedInvoiceView`-snapshotista.
+hallittuna laskun sähköpostiliitteenä on toteutettu. Nykyinen PDF käyttää
+muuttumatonta täsmärevisiota ja `ApprovedInvoicePdfContent`-tyyppiä.
+[Nykyinen PDF-sopimus](invoice-print-data-foundation-plan.md#revision-pdf-julkaisu-ja-täsmäluku)
+omistaa julkaisu-/tavurajan ja [layout-ohje](approved-invoice-pdf-layout-plan.md)
+rendererin. Seuraavat alkuperäiset vaiheistus- ja spike-osiot ovat historiaa,
+eivät nykyinen PDF:n poistamisen, regeneroinnin tai vain stat-luvun lupa.
 
 Tämän dokumentin vaiheistus on osittain historiallinen. Nykyinen laskun
 toimituspolku kuvataan dokumenteissa `docs/architecture/invoice-delivery-plan.md`,
@@ -22,7 +26,7 @@ toimituspolku kuvataan dokumenteissa `docs/architecture/invoice-delivery-plan.md
 myöhempi vastuunjako on kirjattu dokumenttiin
 `docs/architecture/codebase-cleanup-roadmap.md`.
 
-## Nykyinen Tilanne
+## Historiallinen ensivaiheen tilanne
 
 Laskutuksen ketju on tällä hetkellä:
 
@@ -55,7 +59,7 @@ hyväksytyn laskun snapshot-dataa, ei muuttuvaa Customer- tai Company Settings
 Web-preview on tarkistusnäkymä. Virallinen asiakkaalle lähtevä laskudokumentti
 on hyväksytyn laskun snapshot-datasta muodostettu current PDF.
 
-## PDF-Polun Suositeltu Vaiheistus
+## Historiallinen PDF-polun vaiheistus
 
 Etenemisjärjestys:
 
@@ -85,7 +89,8 @@ apps/backend/storage/invoices/<companyId>/<invoiceId>/approved-invoice.pdf
   -> paikallinen PDF-tiedosto
 ```
 
-`invoice_documents` sisältää yhden voimassa olevan
+**Historiallinen, B:ssä korvattu tallennusmalli:**
+`invoice_documents` sisälsi yhden voimassa olevan
 `approved_invoice_pdf`-dokumentin per yritys ja hyväksytty lasku. Jos
 hyväksytty mutta lähettämätön lasku avataan takaisin muokattavaksi, vanha
 PDF-metadata poistetaan ja paikallinen tiedosto yritetään poistaa. Kun lasku
@@ -116,7 +121,7 @@ ja käyttämällä selaimen tai käyttöjärjestelmän tulostustoimintoa.
 Sähköpostitoimitus käyttää olemassa olevaa current PDF -dokumenttia. Se ei
 muodosta laskun sisältöä uudelleen eikä hae muuttuvaa master-dataa.
 
-## PDF-Rendererin Omistajuus
+## PDF-rendererin omistajuus ja historiallinen spike
 
 Invoicing-moduuli omistaa laskun PDF-sisällön.
 
@@ -140,7 +145,7 @@ Ensimmäinen PDF-spike on kokonaan Invoicing-moduulin sisällä:
 apps/backend/src/modules/invoicing/infrastructure/pdf/
 ```
 
-Rendererin nykyinen rajapinta on:
+Ensimmäisen spiken historiallinen rajapinta oli:
 
 ```ts
 renderApprovedInvoicePdf(invoice: ApprovedInvoiceView): Promise<Uint8Array>
@@ -298,10 +303,10 @@ Suositus: pidä api-clientin yhteisenä HTTP-ytimenä.
 
 Esimerkkejä:
 
-- `packages/api-client/src/approvedInvoices/approvedInvoicesResponse.ts`
-- `packages/api-client/src/invoiceDrafts/invoiceDraftsResponse.ts`
-- `packages/api-client/src/invoiceNumbering/invoiceNumberingResponse.ts`
-- `packages/api-client/src/invoicePaymentSettings/invoicePaymentSettingsResponse.ts`
+- `packages/api-client/src/invoicing/approvedInvoices/approvedInvoicesResponse.ts`
+- `packages/api-client/src/invoicing/invoiceDrafts/invoiceDraftsResponse.ts`
+- `packages/api-client/src/invoicing/invoiceNumbering/invoiceNumberingResponse.ts`
+- `packages/api-client/src/invoicing/invoicePaymentSettings/invoicePaymentSettingsResponse.ts`
 
 Näissä toistuu:
 

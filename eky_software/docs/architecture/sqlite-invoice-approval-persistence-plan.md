@@ -1,5 +1,169 @@
 # SQLite-hyväksyntäpersistenssin rajat
 
+## Nykyinen revisiojulkaisu
+
+Tämä osuus omistaa hyväksytyn B:n SQLite-julkaisu- ja migraatiosopimuksen.
+[Laskuidentiteetti ja täydet 64/18/11-kenttäluettelot](invoice-approval-numbering-plan.md#muuttumaton-sisältörevisio)
+kuuluvat hyväksyntäsopimukseen. Alla avattava vanha rakenteellisen jaon
+auditointi ei määritä nykyistä reopen-poistoa, porttia tai DDL:ää.
+
+Hyväksyntä ja uudelleenhyväksyntä julkaisevat saman validoidun olion nyky-
+projektioon ja historiaan nykyisessä synkronisessa `IMMEDIATE`-transaktiossa:
+numerointi/projektio, revision rivit ja ALV-erittely, **otsikko viimeisenä**,
+current-osoitin, audit ja luonnoslinkki. Reopen vaihtaa laskun tilan, vapauttaa
+luonnoksen, irrottaa currentin ja kirjoittaa auditin atomisesti. Se ei poista
+dokumenttimetatietoja eikä palauta poistettavien PDF:ien polkuja.
+Kaikki käyttötavan luvut ja kirjoitukset käyttävät samaa yhteyttä,
+parametrisoitua SQL:ää ja luotettua company-kontekstia. Ei tiedosto-/verkko-
+`await`-operaatioita transaktioon.
+
+### Täydet DDL-ehdot ja julkaisuportti
+
+Täsmällinen suoritettava DDL, triggerit, indeksit ja legacy-kopio ovat
+[muuttumattomassa migraatiossa 039](../../apps/backend/src/database/migrations/039_add_invoice_content_revisions.sql).
+Se on tämän sopimuksen tarkka SQL-liite, ei lupa korjata historiallista
+migraatiota. Seuraavat ehdot luetaan yhdessä koko SQL-liitteen kanssa
+DDL-/adapterimuutoksessa; pelkkä taulun nimi tai tyyppimääritys ei riitä.
+
+| Taulu | Avaimet ja täydet sidosehdot |
+| --- | --- |
+| `invoice_content_revisions` | Ei-tyhjät id/company/invoice; opaque id PK; origin vain approval/legacySnapshot/validatedLegacySnapshot. UNIQUE(company_id,invoice_id,id) ja sama tuple + invoice_number,invoice_date. FK(company_id,invoice_id) -> invoices(company_id,id), RESTRICT. Hyvityslähteen company/credited_invoice/revision/number/date-tuplen FK saman revision vastaavaan UNIQUE-avaimeen, RESTRICT. |
+| `invoice_revision_lines` | PK(revision_id,line_id), UNIQUE(revision_id,line_order), UNIQUE(company_id,revision_id,line_id). FK(company_id,invoice_id,revision_id) -> revision(company_id,invoice_id,id); lähderivin FK(company_id,source_revision_id,source_invoice_line_id) -> saman yrityksen revision rivi. Molemmat RESTRICT, DEFERRABLE INITIALLY DEFERRED. Ei pelkkää line-ID-pääavainta. |
+| `invoice_revision_vat_breakdown` | PK(revision_id,vat_rate_basis_points), scoped revision-FK RESTRICT, DEFERRABLE INITIALLY DEFERRED; kunkin ryhmän gross = net + vat. |
+| `invoice_current_revisions` | PK(company_id,invoice_id), scoped revision-FK RESTRICT. Vain osoitin on vaihdettava; reopen poistaa sen, ei historiaa. |
+| `invoice_documents` | Säilyvät ID ja vanhat kentät; document_type = approved_invoice_pdf, MIME application/pdf, ei-tyhjä file_name/storage_path, 64-merkkinen hash ja positiivinen koko. UNIQUE-tuplet (company,invoice,id), sama + binding_kind, sama + revision_id, sama + sha256,size_bytes. Scoped invoice-/revision-FK RESTRICT; source-tuplen company/invoice/source_document/hash/size FK alkuperäiseen dokumenttiin RESTRICT. |
+| `invoice_delivery_events` | Säilyvät ID ja viestikentät, ei uutta completion-aikaa. Scoped invoice-FK RESTRICT; kolme erillistä document-FK:ta company/invoice/document + binding_kind, + revision_id sekä + hash/size, kaikki RESTRICT. Nullable revision ei saa poistaa ei-null-documentin yritys-/lasku-/varianttirajaa. |
+
+Snapshot-, revision-line-, VAT-, document- ja event-taulut ovat
+`WITHOUT ROWID`. Current-osoitintaulu ei ole muuttumaton snapshot.
+Kaikki FK-vanhempien UNIQUE-avaimet luodaan ennen riippuvia inserttejä;
+invoices(company_id,id) on eksplisiittinen UNIQUE. Vanha M1:n ehdottama
+pidempi line-UNIQUE ei ole erillinen lisävaatimus: hyväksytty 039 käyttää
+yllä täsmällisesti nimettyä company/revision/line-avainta ja revision
+company/invoice-FK:ta.
+
+Snapshotin CHECK-ehdot:
+
+- `legacySnapshot` <=> `vat_breakdown_state=unavailable`; muut alkuperät
+  vaativat authoritative. Standardilla kaikki neljä credited-lähdekenttää
+  ovat null. Creditillä ne ovat ei-null ja lähdelasku eri kuin oma lasku.
+- Viitenumero ja tyyppi ovat molemmat null tai molemmat ei-null ja tyyppi
+  `finnishDomestic`. Suorituspäivä tai molemmat jakson päät, ei molempia;
+  SQL:n date-tarkistus ja start <= end. Nullable-parit eivät saa läpäistä
+  CHECKiä SQL:n UNKNOWN-tuloksella.
+- sequence_number ja line_order ovat integer 1..9007199254740991.
+  payment_term_days, summat, rivin quantity/unit_price/discount/base/net/vat/gross
+  sekä VAT-ryhmän kanta ja summat ovat integer 0..9007199254740991.
+  reminder_period_days 0..365; late_payment_interest_basis_points 0..100000.
+  Nämä ovat nykyisen DDL:n rajat, eivät uusi korkopäätös.
+- numbering_mode on fiscalYearSequence/calendarYearSequence/plainSequence,
+  price_input_mode net/gross, invoice_kind standard/credit,
+  discount_type none/percentage/fixed ja tax_treatment
+  normalVat/reverseChargeConstruction. line_id ei ole tyhjä,
+  trim(description) ei tyhjä ja trim(unit) pituus 1..8.
+  Rivin nullable verokanta on null tai turvallinen ei-negatiivinen integer.
+- normalVat käyttää tyhjiä tax-label/legal-basis-snapshotteja.
+  reverseChargeConstruction vaatii net-syötön, nollaveron, net=gross ja
+  täsmätekstit `Käännetty verovelvollisuus` sekä `AVL 8 c §`.
+  Muu kuin legacySnapshot vaatii myös otsikolla net+vat=gross.
+- Rivin source_invoice_line_id ja source_revision_id ovat yhtä aikaa null
+  tai ei-null. Otsikon insert varmistaa creditin standard-lähteen ja kaikkien
+  lähderivien saman credited_revision_id:n. Rivien tax-käsittely vastaa otsikkoa.
+- Unavailable ei sisällä VAT-rivejä; uusi authoritative-revisio sisältää
+  laskurivejä. Käännetyllä ALV:lla VAT-erittely on tyhjä ja nollavero/net=gross.
+  NormalVat vaatii erittelyn, kaikkien kolmen ryhmäsumman vastaavuuden otsikkoon
+  sekä rivien/ryhmien verokantojen kattavuuden molempiin suuntiin.
+  Standardin riviverojen summaa ei lisätä uutena ryhmäpyöristyksen ehtona.
+
+Document/event-varianttien CHECK-ehdot:
+
+- revision-dokumentti vaatii revision_id:n ja null source_document_id:n;
+  legacyOriginal kieltää molemmat; preservedLegacy vaatii eri source_document_id:n
+  ja null revision_id:n. Kopion lähde on saman invoice/company-rajan
+  legacyOriginal samalla hashilla/koolla, ei kopion kopio.
+- Uuden dokumentin SHA-256 on 64 pientä hex-merkkiä ja koko integer
+  1..10485760; vanhan legacyOriginal-rivin alkuperäiset sallitut arvot säilyvät.
+  Samaa storage_pathia ei julkaista uudelleen, myöskään vanhan polun päälle.
+- Legacy-eventillä binding_kind=legacyOriginal, revision null,
+  send_mode=legacyUnknown ja hash/size null; vain tämä variantti sallii
+  alkuperäisen null document_id:n. Revision-eventillä revision, document ja
+  hash/size ovat ei-null eikä mode ole legacyUnknown. PreservedLegacy-eventillä
+  revision on null, mode customer ja document/hash/size ei-null.
+- Uusien eventien hash/koko täyttävät dokumentin samat rajat.
+  customer/smtpTest vaatii email+smtp, dryRun email+dryRun,
+  manual manual/print+manual. LegacyUnknown säilyttää vanhat method/provider-
+  arvot niitä arvaamatta.
+- Nykyiset method-arvot ovat email/manual/print/other; provider-arvot
+  dryRun/smtp/gmail/microsoft/manual/other; status prepared/attempted/succeeded/
+  failed/outcomeUnknown. Sallittu enum ei yksin hyväksy uutta provideria.
+- recipient_email ja cc_email enintään 320, subject 200, body_preview 500,
+  nullable provider_message_id ja safe_error_message 500,
+  technical_error_code 120 ja created_by 120 merkkiä. Täyttä bodya, MIMEä,
+  salaisuutta tai tokenia ei lisätä tapahtumaan.
+
+Muuttumattomuus vaatii kaikki insert/update/delete- ja collision-suojat,
+ei vain UPDATE-kieltoa. Otsikon olemassaolo estää uuden lapsirivin/VAT-ryhmän;
+otsikon, rivin ja ryhmän PK-/UNIQUE-törmäykset hylätään ennen REPLACE-reittiä.
+Dokumentti on update/delete-estetty ja suojaa ID:n, revision/source-uniikkiuden
+ja storage-polun törmäyksen. Revision dokumentti vaatii approval- tai
+validatedLegacySnapshot-alkuperän. Eventin ID-, company/invoice/document/binding/
+revision/mode/hash/size-, method/provider-, recipient/cc/subject/body_preview-
+sekä created_at/created_by-kentät ovat muuttumattomat. Legacy-eventin kaikki
+päivitykset ja kaikkien eventien poistot estetään. Vanhaa status/error-tietoa
+ei korjata uutena tulkintana. Runtime ei voi luoda legacyOriginal-dokumenttia,
+legacy-eventtiä tai legacySnapshotia migraation jälkeen.
+Ei historian REPLACE-käskyjä, yleistä seal-palvelua tai recursive_triggers-/
+globaalin deferred-pragman muutosta.
+
+Osittaiset UNIQUE-indeksit sallivat yhden revision PDF:n per
+company/invoice/revision/document_type, yhden alkuperäisen legacy-PDF:n per
+company/invoice/document_type ja yhden kopion per company/invoice/source/document_type.
+Uuden SMTP:n attempted/outcomeUnknown on uniikki company/invoice-rajan sisällä;
+insert- ja update-triggerit suojaavat myös REPLACE-reitin. Vanhoja moninkertaisia
+ratkaisemattomia rivejä ei poisteta indeksin vuoksi: runtime tarkistaa nekin
+[toimitusvarauksessa](sqlite-invoice-delivery-event-persistence-plan.md#nykyinen-varaus-ja-loppukuittaus).
+Pelkkä DDL ei korvaa mapperin liiketoimintavalidointia tai tavujen tarkistusta.
+
+### Migraation ja palautuksen rajat
+
+039 lisää revision, legacy-kopion, current-osoittimen ja document/event-sidokset
+nykyisen runnerin yhdessä transaktiossa. 001-038 ovat muuttumattomia.
+Legacy-kopio nimeää täydet 64/18-kentät ja säilyttää nullit sekä aikaleimat;
+vanhaa ALV-erittelyä, SMTP-moodia tai toimitusrevisiota ei päätellä.
+Väliaikainen invoice -> opaque revision-ID -kartta poistetaan samassa
+transaktiossa. Standardiotsikot julkaistaan ennen riippuvia hyvityksiä.
+Puuttuva vanhempi hylkää migraation, ei katoa sisäliitoksessa.
+Reopened-laskulla ei ole currentia. SQL ei lue tiedostoja, renderöi, soita
+verkkoon tai lisää dokumenttimetatietoja olemattomille uusille tavuille.
+
+Vanhat dokumentit ja tapahtumat kopioidaan ennen uusien legacy-insert-suojien
+asennusta. Vanha tapahtumataulu pudotetaan ennen dokumenttitaulua: parent-first
+voisi aktivoida vanhan ON DELETE SET NULL -säännön. Uudet taulut nimetään ja
+indeksit palautetaan samassa transaktiossa. Kaikki vanhat ID:t, statukset,
+aikaleimat ja alkuperäiset null-viitteet säilyvät; uuden skeeman poisto on
+RESTRICT. Rivi-/schema-/migraatiometadatavirhe peruu koko migraation.
+Runnerin aiempi hyväksytty legacy-metadatan ankkurointi on erillinen transaktio,
+ei osittainen business-julkaisu; kiinteä 038-ankkuri säilyy.
+
+[Invoicingin backup-omistaja](../modules/invoicing.md#backup-artifactien-omistajuus)
+tarkistaa alkuperäisen katalogin ja todelliset PDF-tavut ennen migraatiota
+sekä saman katalogin sen jälkeen ennen materiaalistamista. Katalogin,
+catalog-v1:n, portable-containerin ja no-merge-palautuksen sopimuksia ei
+muuteta. Muutos tarvitsee constraint-/rollback-/samanaikaisuus-/restart-
+näytön ja hardened packaged backup -> inspect -> restore -> restart -> compare
+-portin; pelkkä SQL- tai tyyppikoe ei korvaa niitä.
+
+## Historiallinen rakenneauditointi
+
+Seuraava suljettu osuus säilyttää alkuperäisen refaktorointibaselinen
+täsmälliset SQL- ja vaiheistushavainnot. Sen sanat "nykyinen",
+"säilytettävä" ja "seuraava" viittaavat vain tuohon vanhaan vaiheeseen.
+Erityisesti PDF-poisto, yhden PDF:n rajoite ja vanhat portit eivät ole
+nykyisen työn ohjeita. Niiden nykyiset korvaajat ovat yllä.
+
+<details>
+<summary>Alkuperäinen hyväksyntäpersistenssin auditointi ja toteutushistoria</summary>
+
 Tämä dokumentti kuvaa Invoicing-moduulin nykyisen SQLite-pohjaisen laskun
 hyväksyntäpersistenssin vastuut ja turvallisen pilkkomisjärjestyksen.
 
@@ -313,3 +477,5 @@ paljastaa:
 
 Rakenteellinen pilkkominen ei ole lupa korjata tällaista havaintoa samassa
 commitissa.
+
+</details>

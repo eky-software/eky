@@ -4,15 +4,11 @@ Tämä dokumentti kuvaa laskutusmoduulin.
 
 Laskutus on kriittinen moduuli. Muutokset laskutukseen vaativat erityistä huolellisuutta.
 
-0.3.0:n laskenta-, SMTP- ja lasku/PDF/toimitusrevision korjausten nykyinen
-[B-paketin valmistelu ja päätösportti](../architecture/release-0.3.0-m1-preparation-plan.md#b0-laskun-sisältö-ja-toimitus)
-luetaan ennen näiden polkujen muuttamista. B-P1:n revisiosidonta ja rajatut
-migraatiot on hyväksytty. B-P2:n muokkaamisen säilyttävä toimitushistoria on
-valittu suunnittelusuunnaksi ja B-P3:n rajattu legacy-uudelleenlähetys on
-hyväksytty. B3/B4:n toteutus on työpuussa kohdetodennettu; B5:n paketoitu
-palautus ja koko muutoksen PR/main-hyväksyntä ovat vielä avoinna.
-[M1:n jatkamiskohta](../architecture/release-0.3.0-m1-preparation-plan.md#jatka-tästä)
-erottaa työpuun näytön julkaistun version hyväksynnästä.
+Laskenta-, SMTP- ja revisiokorjausten B-kokonaisuus sekä katalogin K on
+hyväksytty. Nykyisen työn sääntöomistajat ovat alla, eivät M1:n vanhat
+välivaiheiden checkpointit. Hyväksyntähistoria säilyy
+[M1:n näytössä](../architecture/release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Tämä ei hyväksy D:tä, julkaisua tai uuden muutoksen portteja.
 
 ## Tarkoitus
 
@@ -39,16 +35,10 @@ säilyttää laskun alkuperäisen sarjan ja numeron.
 
 Hyväksytyn laskun katselu-, print- ja PDF-polun tarvitsemat data- ja snapshot-valmiudet on kuvattu dokumentissa `docs/architecture/invoice-print-data-foundation-plan.md`.
 
-B3:n sisäinen `InvoiceContentRevisionReader` lukee muuttumatonta laskusisältöä
-yritys-/lasku-/revisioavaimella. Se ei korvaa elävää `ApprovedInvoiceReader`-
-lukumallia, päätä käyttöoikeutta tai laske historiallisia summia uudelleen.
-Legacy-snapshotin tuntematon ALV-erittely pysyy erillään tunnetusta tyhjästä
-erittelystä. Hyväksyntäadapterit palauttavat juuri julkaistun revisioavaimen
-vain backendin sisäiseen käyttöön; HTTP:n eksplisiittinen kenttälista
-säilyttää nykyisen julkisen hyväksyntävastauksen. Asiakas ei valitse avainta.
-PDF-/toimituskäyttäjien kytkentä on työpuussa kohdetodennettu;
-[B3-B5:n toteutusvalmistelu](../architecture/release-0.3.0-m1-preparation-plan.md#b3-b5-toteutusvalmistelu)
-omistaa toteutusnäytön ja jäljellä olevat portit.
+Muuttumaton sisältö, sisäinen täsmärevisiolukija ja täydet 64/18/11-kentät
+kuuluvat [hyväksyntäsopimukseen](../architecture/invoice-approval-numbering-plan.md#muuttumaton-sisältörevisio).
+DDL, header-last-julkaisu ja migraatio kuuluvat
+[SQLite-sopimukseen](../architecture/sqlite-invoice-approval-persistence-plan.md#nykyinen-revisiojulkaisu).
 
 PDF-polun ensimmäinen teknologiakokeilu ja sisäisten PDF-apujen rajaus on
 kuvattu dokumentissa `docs/architecture/pdf-and-internal-tools-planning.md`.
@@ -75,7 +65,7 @@ send-polun auditointiperiaatteet on kuvattu dokumentissa
 
 Toimitetun lasku-PDF:n valinnainen local desktop -arkistokopio on kuvattu
 dokumentissa `docs/architecture/local-invoice-pdf-archive-plan.md`.
-Invoicing jonottaa täsmälliseen delivery eventiin ja current
+Invoicing jonottaa täsmälliseen delivery eventiin ja sen omaan
 PDF-dokumenttiin sidotun tehtävän vasta durableen `succeeded`-tilaan
 viimeistellyn SMTP-, manual- tai print-toimituksen jälkeen. Moduuli ei tunne
 paikallista kansiota, tiedostonimeä, Electronia tai retry-journalia.
@@ -96,7 +86,7 @@ kertakäyttöistä sidottua valtuutusta, Electron main processin vahvistusta,
 pakotettua testivastaanottajaa ja delivery event -auditointia. Testipolku ei
 muuta laskua `sent`-tilaan.
 
-Asiakaslähetys käyttää erillistä prepare/send-polkuansa. B4:n työpuussa molemmat
+Asiakaslähetys käyttää erillistä prepare/send-polkuansa. Molemmat
 SMTP-moodit käyttävät samaa tarkistettua täsmädokumenttia ja revision sisältävää
 kertavaltuutusta. Delivery event varataan atomisesti ennen SMTP-kutsua ja
 loppukuittaus käyttää juuri palautettua varausta. Vain varmasti onnistunut SMTP-toimitus viimeistelee
@@ -105,11 +95,11 @@ Epäonnistunut tai epäselvä toimitus jättää laskun tilan ennalleen.
 Uudelleenlähetys luo uuden eventin mutta ei muuta `sent`-laskun identiteettiä
 tai tilaa. Onnistuneen loppukuittauksen jälkeinen laskun lukuhäiriö ei muuta
 toimituksen onnistumista; erillinen turvallinen virhekoodi erottaa tämän
-tilanteen varsinaisesta lähetysvirheestä. Työpuun UI tunnistaa tämän
+tilanteen varsinaisesta lähetysvirheestä. UI tunnistaa tämän
 täsmällisen virhekoodin ja ohjaa avaamaan laskun uudelleen sekä tarkistamaan
 historian ilman uutta lähetystä. Se ei muuta laskun tilaa paikallisella
-arvauksella eikä julkaise raakavirhettä. Kokonaisuuden B3-B5-portit ovat
-yhä avoinna. Selainkehityksessä käytetään vain dry-run-polkuja ilman
+arvauksella eikä julkaise raakavirhettä. Uuden muutoksen hyväksyntäportit
+säilyvät. Selainkehityksessä käytetään vain dry-run-polkuja ilman
 SMTP-salaisuutta tai DNA-verkkoyhteyttä.
 
 ALV-erikoiskäsittelyjen, ALV-kantojen tuotantopolun, viivästyskoron ja
@@ -325,7 +315,7 @@ Jos hyväksyttyä mutta vielä lähettämätöntä laskua pitää korjata, Invoi
 palauttaa sen hallitusti sisäiseen `reopened_for_edit`-tilaan ja vapauttaa
 alkuperäisen lähdeluonnoksen muokattavaksi. Uudelleenhyväksyntä säilyttää saman
 laskunumeron ja viitenumeron, päivittää nykytilan snapshot-projektion ja kirjaa
-korjauksen audit-tapahtumana. B3-B4:n työpuun revisiomallissa vanha muuttumaton
+korjauksen audit-tapahtumana. Nykyisessä revisiomallissa vanha muuttumaton
 revisio, PDF ja toimitustapahtumat säilyvät; reopen irrottaa vain current-
 osoittimen, ja uudelleenhyväksyntä julkaisee uuden revision. Molempien
 kirjoitustransaktio tarkistaa ensin saman laskun ratkaisemattomat toimitukset.
@@ -336,8 +326,8 @@ säilyvät luettavina, mutta reopen, uusi lähetys ja lähetetyksi merkitseminen
 estetään; vastaanottaja tai aika ei todista vanhaa testimoodia. Turvallinen
 HTTP 409 -koodi on `INVOICE_LEGACY_DELIVERY_REVIEW_REQUIRED`.
 Tämä ei muuta uusien revisioiden muokkaussääntöä tai ehjän vanhan `sent`-
-laskun hyväksyttyä [legacy-uudelleenlähetyspolitiikkaa](../architecture/release-0.3.0-m1-preparation-plan.md#b-p3-turvallisen-uudelleenlähetyksen-vaihtoehto).
-Lähetettyjen laskujen korjaus tehdään myöhemmin
+laskun hyväksyttyä [legacy-uudelleenlähetyspolitiikkaa](../architecture/email-delivery-and-secrets-plan.md#säilytetyn-pdfn-täsmävaltuutus).
+Lähetettyjen laskujen korjaus tehdään
 hyvityslaskulla, ei muokkaamalla lähetettyä laskua.
 
 Lähetetty lasku voidaan kopioida uudeksi laskuluonnokseksi. Kopiointi ei peri
@@ -422,70 +412,16 @@ Webin ensimmäinen hyväksytyn laskun katselunäkymä käyttää tätä
 `ApprovedInvoiceView`-snapshotia. Se on tarkistusnäkymä ennen varsinaista
 print-layoutia, PDF:ää ja lähetyspolkuja.
 
-Työpuun B3-generointikäyttötapa lukee täsmärevision eikä elävää
-`ApprovedInvoiceView`-näkymää. Invoicingin infrastructure-renderer ottaa
-kapean `ApprovedInvoicePdfContent`-sisältösopimuksen ilman tila-/maksudataa
-tai summien uudelleenlaskentaa. Hyväksyntäkoukut välittävät tavallisen laskun
-ja hyvityksen juuri hyväksytyn revisioavaimen PDF:lle. Generointi ja ehdollinen
-julkaisu, nykyesikatselun erillinen lukija ja tapahtumaan sidotun historian
-backend-luku ovat kohdetodennettuja. Historian client/UI/native-kytkentä ja
-toimituskäyttötapaukset ovat vielä kesken.
-[PDF-ohje](../architecture/approved-invoice-pdf-layout-plan.md#renderöintipolku)
-erottaa nämä osat. Ensimmäinen local-MVP:n tuotantopolku tallentaa
-hyväksytyn laskun PDF-metadatan `invoice_documents`-tauluun ja PDF-tiedoston
-paikalliseen tiedostovarastoon.
+Invoicing omistaa muuttumattoman revision PDF:n, ehdollisen julkaisun ja
+varmennetun täsmäluvun. Nykyisen [PDF-sopimuksen](../architecture/invoice-print-data-foundation-plan.md#revision-pdf-julkaisu-ja-täsmäluku)
+vaatimukset korvaavat ensimmäisen version poisto-/regenerointimallin.
+[Toimitustapahtumien sopimus](../architecture/invoice-delivery-events-plan.md)
+omistaa historian projektion; [varaus ja loppukuittaus](../architecture/sqlite-invoice-delivery-event-persistence-plan.md#nykyinen-varaus-ja-loppukuittaus)
+SMTP-, manual- ja dry-run-kirjoitusten atomisuuden. [Sähköpostisopimus](../architecture/email-delivery-and-secrets-plan.md#säilytetyn-pdfn-täsmävaltuutus)
+omistaa legacy-kopion kelpoisuuden, täsmäesikatselun ja native-vahvistuksen.
+Luku ei anna lähetysvaltuutta eikä tekninen dokumenttirevisio tee toista saatavaa.
 
-B3:n työpuun dokumenttiportti korvaa laskukohtaisen tallennuksen ja
-massapoiston täsmärevision julkaisulla sekä erillisellä säilytetyn legacy-
-kopion julkaisulla. Metadatan julkaisu on synkroninen kirjoitustransaktio:
-revision nykykelpoisuus tarkistetaan myös ennen aiemman voittajan palautusta.
-Lukijalla on erikseen revisiohaku ja yritys-/laskurajattu tarkka dokumentti-ID.
-Vanhan dokumentin lukeminen ei myönnä lähetyslupaa. HTTP-metadatavastauksen
-eksplisiittinen kenttälista säilyttää vanhan julkisen sopimuksen ilman
-sisäisiä sidoksia. Tiedostovaraston rajattu toteutus kirjoittaa ehdokkaan
-exclusive-tilassa omaan dokumentti-ID-polkuun ja tarkistaa samasta puskurista
-PDF-tunnisteen, koon ja tiivisteen. Tavallisen yksilinkkisen tiedoston ja
-polkujen tarkistus estää linkkien käytön; siivous koskee vain omaa todetusti
-julkaisemattomaksi jäänyttä ehdokasta, ei epävarman julkaisun aineistoa.
-Generaattori käyttää tätä tallennusporttia ja ehdollista julkaisua.
-Olemassa olevat tavut varmennetaan ennen rajattua, kirjoittamatonta
-nykykelpoisuuslukua; historiallista tai rikkinäistä aineistoa ei poisteta
-tai generoida uudelleen. Julkaisun epävarma lopputulos säilyttää ehdokkaan.
-Tiedosto-, generointi- ja hyväksyntäkoukkutestit ovat kohdetodennettuja.
-Nykyisen PDF:n GET-/metadataluku valitsee yritys-/laskurajatun tarkan
-dokumentin, tarkistaa tavut ja jälkivarmistaa valinnan. Lukeminen säilyttää
-peruutetun laskun PDF:n mutta irrottaa reopened-esikatselun. Eksplisiittinen
-legacy-alkuperäinen ei muutu revision PDF:ksi, eikä vanhaa tiedostoa käytetä
-uuden revision puuttuvan PDF:n tilalla. Eheysvirheen turvallinen
-`invoicePdf.storageFailed`-tapahtuma kulkee myös diagnostiikan lukijoihin.
-Tapahtumaan sidottu backendin historiavalinta sekä atomisen SMTP-varauksen,
-täsmällisen loppukuittauksen ja historian säilyttävän reopenin adapterit
-ovat kohdetodennettuja. Asiakas- ja itselle-SMTP:n application/composition-
-kytkentä on myös kohdetodennettu synteettisellä providerilla. Manual-/dry-run-
-kirjoittajat vaativat nyt täsmärevision ja PDF-sidoksen; yleinen save-portti
-ei hyväksy SMTP:tä tai manual-toimitusta. Manual-finalizer erottaa uuden
-tapahtuman jo lähetetyn laskun idempotentista tuloksesta, eikä jälkimmäinen
-jonota olematonta arkistotapahtumaa. Peruutuksen ja SMTP-varauksen
-backend-järjestys- ja uudelleenavaustestit säilyttävät nykyisen peruutussäännön.
-Erillinen sisäinen `InvoiceLegacyResendReader` valitsee vanhan `sent`-laskun
-alkuperäisen dokumentin ja sen mahdollisen säilytetyn kopion. Valinta,
-kopion julkaisu ja lähetysvaraus käyttävät samaa historian kelpoisuusehtoa.
-`preparePreservedLegacyInvoiceDocument` vaatii `sendInvoices`-oikeuden,
-tarkistaa alkuperäisen tavut ja julkaisee itsenäisen kopion ilman PDF:n
-uudelleenmuodostusta. Julkaistun kopion identiteetti ja tavut säilyvät
-tietokannan uudelleenavauksessa; epäselvä commit-tulos ei poista tiedostoa.
-Valmistelu on kytketty sähköpostilomakkeen esivalmisteluun, mutta se ei ole
-lähetysvaltuutus. Nimetyn säilytetyn kopion erillinen HTTP-luku käyttää
-`readPreservedLegacyInvoiceDocument`-käyttötapausta, ei julkaisu- tai
-generointiporttia. Kytkennän nykytila ja jäljellä oleva vahvistusketju ovat
-[B-P3:n omistavassa suunnitelmassa](../architecture/release-0.3.0-m1-preparation-plan.md#säilytetyn-dokumentin-täsmäluku-ja-vahvistuksen-järjestys).
-Legacy-vahvistus, historian ja uuden virhepalautteen
-client/UI/native-polun sovitus sekä palautusnäyttö ovat vielä kesken;
-osittaista porttimuutosta ei julkaista. Omistava
-[B3-B5-sopimus](../architecture/release-0.3.0-m1-preparation-plan.md#b3-b5-toteutusvalmistelu)
-korvaa alla kuvattujen vanhojen korjaus-/poistopolkujen tavoitekäyttäytymisen.
-
-Ensimmäinen PDF-polku:
+Nykyinen PDF-polku:
 
 - `POST /invoices/:id/pdf` luo tai palauttaa hyväksytyn laskun PDF-metadatan
 - `GET /invoices/:id/pdf` palauttaa paikallisesti tallennetun PDF-tiedoston
@@ -495,10 +431,9 @@ Ensimmäinen PDF-polku:
 - PDF:n luonti ei merkitse laskua lähetetyksi
 - PDF:n luonti ei muuta hyväksytyn laskun snapshot-tietoja
 
-Ennen B3:a: jos PDF-metadata on olemassa mutta paikallinen tiedosto puuttuu, manuaalinen
-`POST /invoices/:id/pdf` saa muodostaa PDF:n uudelleen samasta hyväksytyn laskun
-snapshotista. Tämä on local-MVP:n korjauspolku ennen myöhempää pilvi- ja
-storage-mallia.
+Tallennetun dokumentin puuttuva tai rikkinäinen PDF on eheysvirhe:
+metadataa ei poisteta eikä PDF:ää regeneroida. Uuden authoritative-revision
+ensimmäinen julkaisu on eri toiminto.
 
 Hyväksytyn ja lähetetyn laskun toimitushistoria kuuluu Invoicing-moduulille.
 Historia palauttaa yritysrajatusti vain turvallisen yhteenvedon ajasta,
@@ -511,12 +446,10 @@ Manuaalinen tulostus- tai muu toimitus kirjaa delivery eventin ja
 audit-tapahtuman sekä muuttaa laskun `sent`-tilaan samassa transaktiossa vain,
 kun epäselvää aiempaa toimitustapahtumaa ei ole.
 
-Ennen B3:a hyväksytyllä laskulla saa olla local-MVP:ssä yksi voimassa oleva
-`approved_invoice_pdf`-dokumentti per yritys ja lasku. Jos hyväksytty mutta
-lähettämätön lasku palautetaan muokattavaksi, vanhan PDF:n metadata poistetaan
-ja paikallinen tiedosto yritetään poistaa. Uudelleenhyväksyntä luo uuden PDF:n
-samalle laskunumerolle ja viitenumerolle päivitetystä hyväksytyn laskun
-snapshotista.
+Reopen irrottaa nykyosoittimen ja esikatselun, mutta kaikki julkaistut
+revisiot, dokumentit ja tapahtumat säilyvät. Uudelleenhyväksyntä julkaisee
+uuden revision samalla invoice-ID:llä ja numerolla. Ei uutta historian
+retention- tai poistopolitiikkaa.
 
 ## Viitenumero Ja Maksutiedot
 
@@ -850,7 +783,7 @@ Adapteri säilyttää täsmällisen natiivin `SQLITE_NOMEM`-poikkeuksen
 omistavalle runtimelle; se ei tulkitse resurssivirhettä sisällön vioittumiseksi.
 Tarkistusruntime omistaa turvallisen syykoodin muunnoksen, ei Invoicing.
 Muu revisiokatalogin hylkäys säilyy ennallaan. Katso
-[rajattu syyketjun sopimus](../architecture/release-0.3.0-m1-preparation-plan.md#katalogin-muistivirheen-syyketju).
+[palautuksen omistava sopimus](../architecture/local-backup-and-restore-plan.md).
 Revisiohaara tarkistaa historian, nykyrevision sekä lähde-, dokumentti- ja
 toimitussidokset, myös silloin kun revisiolla ei vielä ole PDF:ää.
 Palautus vaatii saman alkuperäisen katalogin ennen ja jälkeen migraation.
@@ -912,20 +845,73 @@ Legacy-tapahtuman alkuperäinen puuttuva dokumentti ja aikainen paluu säilyvät
 Lukijan sulku yritetään myös virheessä; sulkuvirhe ei peitä ensimmäistä syytä
 eikä yksinään salli onnistumista. Pieni tulosprojektio ei korvaa eristetyn
 prosessin natiivimuisti- tai aikarajaa.
-K:n historian osissa luenta on kytketty katalogiin, mutta
-[hyväksytty toteutusrajaus](../architecture/release-0.3.0-m1-preparation-plan.md#historian-luennan-toteutussopimus)
-ei tarkoita koko katalogin muistinkäytön tai palautusketjun hyväksyntää.
+K:n historian osissa luenta ja rajattu kokonaisuus on hyväksytty.
+Nykyinen sopimus on tässä; hyväksyntähistoria ei vapauta myöhempää muutosta
+natiivi-/palautus- ja PR/main-porteista.
 K:n tarkistusrajaus käyttää portin omistamia nykyisiä katalogi- ja
 tekstirajoja. Adapteri tarkistaa dokumenttimäärän rajatulla SQL-laskennalla
 sekä tekstien tavupituudet ja numerokentän tyypin ennen dokumenttirivien
 materialisointia tai revisiohistorian tarkistusta. Myös lopullinen
 luettelokysely on rajattu. Backup-infrastruktuuri käyttää samoja nimettyjä
 rajoja; formaatti, PDF-tavut ja revisio-/toimitussidosten tarkistukset säilyvät.
-[B5:n näyttö ja avoin paketoitu hyväksyntä](../architecture/release-0.3.0-m1-preparation-plan.md#b5-katalogin-ja-palautuksen-checkpoint)
-eivät muuta catalog-v1-formaattia tai moduulien omistajuutta.
+Hyväksytyt B5 ja K eivät muuta catalog-v1-formaattia tai moduulien omistajuutta.
 
 Puuttuva tietokannan viittaama PDF estää backupin. Tuntematonta orpoa
 storage-tiedostoa ei lisätä backupiin eikä poisteta backup-operaation
 sivuvaikutuksena. Uusi ei-uudelleenmuodostettava Invoicing-artifact vaatii
 catalog-, snapshot-, restore-validator- ja recovery-testipäivityksen ennen
 käyttöönottoa.
+
+### Katalogin säilytettävät sisältöehdot
+
+Katalogi valitsee explicit `legacyDocuments` tai `revisionHistory` -skeeman
+vain varmennetun applied-migraatioprefixin perusteella. Ei optional/default-
+legacyä, sarakkeiden tunnustelua tai SQL-virheestä pääteltyä fallbackia.
+Revision-haaran valitsee nimetty sovellettu 039-migraatio, ei pelkkä lukumäärä,
+pakettiversio tai manifestin viimeinen tiedosto.
+Profiilin edellytyksenä ovat varmennetun prefixin 025-identiteettimigraatio
+ja validoitu identiteettirivi; sen edeltävä 018 dokumenttitaulu seuraa
+jatkuvasta prefixistä. Tyhjä/liian varhainen historia ei valitse katalogia.
+Tämä ei lupaa kaikkien 025-038-julkaisujen backup-tukea. Metadataa vailla oleva
+poikkeus on vain restoreCompatible-polun kiinteä 038-ankkuri; rikkinäinen
+olemassa oleva metadata ei valitse poikkeusta.
+
+Katalogiskeema ja callerin historiapolitiikka ovat eri asioita.
+Aktiivisen business-runtimen nolla-pending-porttia ei siirretä ennen migraatioita
+tehtävään historiallisen profiilin eheystarkistukseen. Caller vaatii oman
+chain-identiteettinsä; validointi ei avaa business-runtimea.
+Snapshot-katalogin rekisteröinti on laiska myös tyhjälle kannalle.
+Valinta tehdään maintenance-rajassa tuoreesta varmennetusta historiasta,
+samalla ratkaistulla migrationsDirectorylla kuin runner.
+Runtime omistaa tämän orkestroinnin, ei Invoicing. Sisäiset migraationimet
+eivät laajenna desktopin strict-startup-viestiä tai backup-manifestia.
+
+Kaikilla laskuilla on historia. Sallitut tilat ovat approved, sent,
+cancelled ja reopened_for_edit; reopenedilla ei ole currentia, muilla on.
+Nykyrevision ja projektiorivien vertailu säilyttää kaikki kentät,
+rivitunnisteen, järjestysnumeron, null-erot ja molempien rivijonojen loppumisen.
+Hyvityslähteen ei tarvitse olla current: yritys, standard-laji, täsmärevisio,
+numero ja päivä tarkistetaan; lähderivin valinnaisuus säilyy.
+ALV-ryhmän kanta ja kolme summaa ovat turvallisia ei-negatiivisia kokonaislukuja;
+ryhmän net+vat=gross tarkistetaan ennen kokonaissummia. Verokantojen kattavuus
+tarkistetaan molempiin suuntiin, ei lasketa historiallista ALV:tä uudelleen.
+Käännetyn ALV:n aikainen haara ja legacy-unavailable säilyvät.
+
+Rajatun luennan tavallinen mapper ja katalogi jakavat säännöt.
+Pelkkä kokonaisen rivin iterate ei rajaa muistia: etenemisavaimet pysyvät
+SQLitessä, myös yhden revision rivit ja ALV-ryhmät käsitellään osissa.
+Kolme BigInt-kertymää nollataan revision vaihtuessa. Ei uusia tunniste-,
+kuvaus-, yksikköwhitespace- tai historiakokorajoja eikä korvaavia tyhjiä olioita.
+Vapaan tekstin UTF-16-muunnos käyttää samaa yhteyttä ja SQLite-tulkintaa;
+muunnos valmistellaan ennen kursoria. Pieni projektio ei yksin todista
+natiivimuistirajaa. Lukijoiden sulku yritetään virheessäkin; ensivirhe säilyy
+erillään eikä aktiiviseksi jäävä kursori salli onnistumista.
+
+Lähteen alkuperäinen katalogi ja kaikki PDF-tavut tarkistetaan ennen
+forward-migraatiota; sama alkuperäinen katalogi tarkistetaan sen jälkeen
+ennen yhdenkään PDF:n materiaalistamista. Revision eheyden tarkistus koskee
+myös PDF:ttömiä revisioita. Väärä source/current/document/event-sidos tai
+muuttunut/puuttuva PDF ei muutu legacy-fallbackiksi.
+Valinnainen toimitusarkisto lukee metadatan ja tavut **toimitustapahtumasta**,
+myös preservedLegacylle, ei nyky-PDF:stä. Arkistovirhe ei peruuta toimitusta,
+eikä arkistokansio korvaa auktoritatiivista backupia.

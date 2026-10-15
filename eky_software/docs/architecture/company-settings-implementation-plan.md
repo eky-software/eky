@@ -1,5 +1,16 @@
 # Company Settings implementation plan
 
+## Historiallinen ensitoteutus
+
+Tämä on ensimmäisen toteutuspalan resepti ja sen aikainen rajaus, ei nykyisen
+moduulin yleinen aloitusohje. Nykyisen työn omistavat [Company Settings](../modules/company-settings.md), erityisesti perustietojen tallennusvastauksen sopimus, ja [sähköposti ja salaisuudet](email-delivery-and-secrets-plan.md).
+Alla olevat kehitysidentiteettiä, puuttuvia adaptereita, testien myöhempää
+lisäämistä ja ensimmäisen näkymän laajuutta koskevat tilaväitteet ovat
+historiaa. Ne eivät syrjäytä nykyisiä tenant-, permission-, audit-,
+testaus-, riippuvuus- tai palautusportteja. Alkuperäiset kenttä- ja
+omistusratkaisut säilyvät taustatietona; ristiriita viedään omistajalle.
+
+
 Tämä dokumentti kuvaa Company Settings / Oma yritys -moduulin ensimmäisen toteutussuunnitelman.
 
 Tämä ei ole vielä koodimuutos. Tavoite on rajata ensimmäinen toteutettava pystysuora pala ennen tietokantamigraatiota, backend-koodia, api-clientiä tai web-näkymää.
@@ -325,7 +336,7 @@ Liiketoimintalogiikka ei kuulu routeen.
 Suunniteltu tiedosto:
 
 ```text
-packages/api-client/src/companySettings.ts
+packages/api-client/src/companySettings/companySettingsClient.ts
 ```
 
 Julkiset kutsut:

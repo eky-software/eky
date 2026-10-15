@@ -13,19 +13,21 @@ Vastuut:
 
 Tämä sovellus ei saa sisältää varsinaista liiketoimintalogiikkaa, tehdä suoria tietokantakutsuja tai kutsua Firebasea suoraan komponenteista.
 
-## Ensimmäinen web-pala
+## Nykyiset lukureitit
 
-Ensimmäinen toteutettu näkymä on rajattu Customer create/list -käyttöön dokumentin `docs/architecture/web-customer-ui-plan.md` mukaisesti.
+Web sisältää Customers-, Company Settings-, Invoicing-, Activity- ja
+Diagnostics-featuret. [Web-rakenne](../../docs/architecture/web-frontend-structure.md)
+omistaa app/features/shared/layout/i18n-rajat;
+[UI-periaatteet](../../docs/design/ui-principles.md) käyttöliittymän.
+Moduulin oma vastuuohje ja soveltuva AGENTS luetaan ennen muutosta.
+Ensimmäinen [Customer create/list -resepti](../../docs/architecture/web-customer-ui-plan.md)
+on historiaa, ei kaikkien web-tehtävien pakollinen aloitusreitti.
 
-Tämä UI on tässä vaiheessa Eky Local UI: selaimessa pyörivä paikallisen ohjelman käyttöliittymä paikalliselle backendille.
-
-Näkymä käyttää `@eky/api-client`-pakettia eikä tee raakaa `fetch`-kutsua React-komponentista.
-
-Ensimmäisessä vaiheessa ei käytetä TanStack Queryä, React Hook Formia, routing-kirjastoa, Zodia, UI-kirjastoa tai `packages/ui`-pakettia.
-
-Käyttöliittymän periaatteet on kuvattu dokumentissa `docs/design/ui-principles.md`.
-
-Webin `app`-, `features`-, `shared`-, `layout`- ja `i18n`-kansioiden vastuut on kuvattu dokumentissa `docs/architecture/web-frontend-structure.md`.
+UI käyttää `@eky/api-client`-pakettia, ei komponenttien raakaa fetchiä.
+Selainkehitys on vain paikallinen autentikoimaton kehityspoikkeus:
+ei verkkonäkyvyyttä, oikeaa asiakasdataa tai SMTP-lähetystä. Electronin
+vahvistettu runtime-session on eri luottamusraja. Uudet riippuvuudet
+vaativat erillisen hyväksynnän, myös historiallisessa reseptissä nimetyt.
 
 ## Local development
 
@@ -33,12 +35,20 @@ Käynnistä ensin backend.
 
 Webin Vite-dev-palvelin proxyaa paikalliseen backendiin osoitteeseen `http://127.0.0.1:3000` ne API-polut, joita web käyttää local development -tilassa:
 
-- `/customers`
+- `/activity`
 - `/company-settings`
+- `/customers`
+- `/diagnostics`
 - `/invoice-drafts`
 - `/invoices`
 - `/invoice-numbering-settings`
+- `/invoice-numbering-series`
 - `/invoice-payment-settings`
+- `/invoice-vat-rates`
+- `/sent-invoice-groups`
+
+Lista seuraa [kehitysproxyn omistavaa konfiguraatiota](src/app/developmentBackendProxy.ts).
+Se ei ole Electronin allowlist tai lupa laajentaa backendin verkkonäkyvyyttä.
 
 Käynnistä web:
 

@@ -8,14 +8,17 @@ Also read the documents required by the task, including at minimum:
 
 - `docs/modules/invoicing.md`
 - `docs/architecture/invoicing-workflow-boundaries.md`
-- `docs/architecture/invoicing-mvp-implementation-plan.md`
 - `docs/architecture/module-boundaries.md`
 - `docs/architecture/dependency-policy.md`
 - `docs/architecture/security-principles.md`
 - `docs/architecture/error-handling-principles.md`
 
 Approval, numbering, snapshot, PDF, delivery and email work also requires the
-corresponding architecture documents named in the root `AGENTS.md`.
+corresponding current architecture owners routed from `docs/modules/invoicing.md`
+and `docs/README.md`. Calculation, draft and rounding changes also read
+`docs/architecture/invoicing-mvp-implementation-plan.md`: its calculation
+rules remain operative even though its first-slice implementation recipe is
+historical. Do not treat a historical M1 checkpoint as the normative owner.
 PDF renderer or layout work also requires the
 [Approved Invoice PDF Layout Plan](../../../../../docs/architecture/approved-invoice-pdf-layout-plan.md).
 It records the `25a0004` audit baseline before the behavior-preserving

@@ -40,7 +40,7 @@ Nykyinen local desktop -MVP tukee perinteistä laskunkirjoitusta.
 Virta:
 
 1. käyttäjä valitsee asiakkaan
-2. käyttäjä valitsee kohteen tarvittaessa
+2. käyttäjä antaa tarvittaessa laskukohtaisen toimitus-/kohdetekstin
 3. käyttäjä lisää laskurivit käsin
 4. järjestelmä laskee summat ja ALV:n
 5. käyttäjä tallentaa laskuluonnoksen
@@ -53,7 +53,9 @@ Virta:
 
 Tämä malli muistuttaa perinteistä laskutusohjelmaa.
 
-Tämä polku toimii ilman Work Orders -moduulia. Kohde voidaan valita tarvittaessa, mutta se ei ole pakollinen.
+Tämä polku toimii ilman Work Orders- tai Sites-moduulia. Nykyinen
+laskukohtainen toimitus-/kohdeteksti ei ole Sites-rekisterin valinta;
+rekisteröidyn kohteen valinta kuuluu myöhempään ERP-polkuun.
 
 ## Laajempi ERP-laskutus
 
@@ -74,7 +76,10 @@ Tarkempi moduulirajaus on kuvattu dokumentissa `docs/architecture/invoicing-work
 
 ## Asiakkaan perustaminen
 
-Avoimet kysymykset:
+Nykyiset kentät, asiakastyypit ja säännöt omistaa [Customers](../modules/customers.md).
+Alla ovat alkuperäiset kartoituskysymykset, eivät nykyisen asiakaskortiston
+ratkaisemattomia toteutusportteja:
+
 
 - mitä tietoja asiakkaasta tarvitaan?
 - voiko asiakas olla yksityishenkilö tai yritys?

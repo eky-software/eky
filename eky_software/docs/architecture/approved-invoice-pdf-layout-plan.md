@@ -15,14 +15,14 @@ valmiit summat ja ALV-erittely, eivät elävä status, maksut tai peruutustiedot
 Renderer luo A4-kokoisen `PDFDocument`-olion, kerää byte-chunkit muistiin, kutsuu
 piirto-orkestrointia ja palauttaa lopuksi yhden `Uint8Array`-arvon.
 
-Keskeneräisessä [B3-sovituksessa](release-0.3.0-m1-preparation-plan.md#b3-b5-toteutusvalmistelu)
+Nykyisessä [revisio- ja PDF-sopimuksessa](invoice-print-data-foundation-plan.md#revision-pdf-julkaisu-ja-täsmäluku)
 `toInvoiceRevisionPdfContent` muuntaa validoidun täsmärevision tähän muotoon
 ilman summien uudelleenlaskentaa. `approval` ja `validatedLegacySnapshot`
 vaativat authoritative-erittelyn; kelvollinen legacy/unavailable-historia
 tuottaa erillisen turvallisen unavailable-virheen eikä lupaa regeneroida.
 Puuttuva hyvityksen viite esitetään tyhjänä, mutta pysyvä null ei muutu.
 
-Työpuun generointikäyttötapa lukee nyt täsmärevision eikä käytä elävää
+Generointikäyttötapa lukee nyt täsmärevision eikä käytä elävää
 `ApprovedInvoiceView`-näkymää tai laske ALV-erittelyä uudelleen. Tavallisen
 laskun ja hyvityksen hyväksyntä välittävät juuri palautuneen revisioavaimen
 PDF-hookille. Manuaalinen generointi valitsee nykyavaimen ja käyttää samaa
@@ -38,8 +38,8 @@ esikatselu irrotetaan ja eksplisiittinen legacy-alkuperäinen säilyttää oman
 provenanssinsa. Tapahtumaan sidotun historian backend-luku varmentaa tarkan
 dokumentin myös nykyrevision vaihtuessa; se ei käytä rendereriä tai
 nykyesikatselun valintaa. Historiallinen null on eri tulos kuin rikkinäinen
-ei-null-viite. Historian client/UI/native-ketju, toimitusketju ja B5:n
-palautusnäyttö ovat vielä kesken.
+ei-null-viite. B-kokonaisuus ja K on hyväksytty; nykyiset muutoskohtaiset
+katselmus-, testaus-, palautus- ja PR/main-portit säilyvät erillisinä.
 Renderer ei lue tietokantaa, Company Settingsiä,
 Customers-moduulia tai laskuluonnosta eikä laske laskun summia uudelleen.
 

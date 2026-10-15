@@ -1,5 +1,16 @@
 # Customer vertical slice plan
 
+## Historiallinen ensitoteutus
+
+Tämä on ensimmäisen toteutuspalan resepti ja sen aikainen rajaus, ei nykyisen
+moduulin yleinen aloitusohje. Nykyisen työn omistavat [Customers](../modules/customers.md), [asiakaskortiston UI](customer-ui-ux-plan.md) ja [asiakkaan koonti](customer-overview-plan.md).
+Alla olevat kehitysidentiteettiä, puuttuvia adaptereita, testien myöhempää
+lisäämistä ja ensimmäisen näkymän laajuutta koskevat tilaväitteet ovat
+historiaa. Ne eivät syrjäytä nykyisiä tenant-, permission-, audit-,
+testaus-, riippuvuus- tai palautusportteja. Alkuperäiset kenttä- ja
+omistusratkaisut säilyvät taustatietona; ristiriita viedään omistajalle.
+
+
 Tämä dokumentti kuvaa ensimmäisen pienen Customer create/list local -pystysuoran palan.
 
 Tämä ei ole koko asiakashallintamoduulin lopullinen suunnitelma. Tämän dokumentin tarkoitus on rajata ensimmäinen toteutusaskel, jolla todistetaan Eky-arkkitehtuurin ensimmäinen oikea local-first dataflow.

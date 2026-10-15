@@ -378,8 +378,8 @@ tallennettu veroton summa, gross-ryhmän tallennettu verollinen summa.
 Tämä ei laske rivejä uudelleen nykyisestä hinnastosta eikä muuta vanhoja
 laskuja tai jo tallennettuja hyvityksiä. Rivien validointi, turvalliset
 kokonaislukurajat ja kumulatiivisten ylitysten estot säilyvät.
-R08-korjauksen integraatiotila on
-[B1/B2-suunnitelmassa](release-0.3.0-m1-preparation-plan.md#b1b2-rajattu-toteutus).
+R08 kuuluu hyväksyttyyn B-kokonaisuuteen; tämän osan ryhmä- ja
+kumulatiiviset laskentasäännöt ovat nykyinen normatiivinen sopimus.
 
 Nykyiselle hyvitykselle kuuluva ryhmän vero tai veroton summa on
 kumulatiivisen tavoitteen ja aiempien ei-peruttujen hyvitysten erotus. Se
@@ -412,8 +412,9 @@ hyvitysriveistä. Niitä ei lasketa uudelleen toisella tavalla.
 Hyväksytyn hyvityksen katselu ja uuden PDF:n syöte käyttävät samaa
 `sumCreditTotals`-summausta kuin hyvitysluonnoksen laskenta, eivät tavallisen
 laskun uutta ryhmäpyöristystä. Lukupolku ei kirjoita tallennettuja loppusummia
-tai olemassa olevia PDF:iä uudelleen. Rajatun korjauksen hyväksyntätila on
-[B3-B5-valmistelussa](release-0.3.0-m1-preparation-plan.md#alv-lukupolun-tarkennus).
+tai olemassa olevia PDF:iä uudelleen. Muuttumattoman revision uusi PDF
+käyttää tallennettua authoritative-erittelyä
+[PDF-sopimuksen](invoice-print-data-foundation-plan.md#revision-pdf-julkaisu-ja-täsmäluku) mukaan.
 
 ## Hyvityksen Hyväksyntä
 
@@ -442,8 +443,9 @@ Kaikki onnistuu tai peruuntuu yhdessä. Transaktion pitää estää kahden
 samanaikaisen hyväksynnän ylittämästä alkuperäisen laskun jäljellä olevaa
 hyvityskapasiteettia.
 
-Revisiosidonnan toteutus ja rajattu testinäyttö kuuluvat
-[B3-B5-valmisteluun](release-0.3.0-m1-preparation-plan.md#tietomallin-katselmointiehdotus).
+Revisiosidonnan kentät omistaa
+[hyväksyntäsopimus](invoice-approval-numbering-plan.md#snapshotin-täydellinen-kenttäsopimus)
+ja täydet DDL-ehdot [SQLite-sopimus](sqlite-invoice-approval-persistence-plan.md#täydet-ddl-ehdot-ja-julkaisuportti).
 Vanhan lähetetyn standardilaskun `legacySnapshot` kelpaa hyvityksen
 lähteeksi, mutta tämä ei varmista sen historiallista PDF:ää tai anna
 uudelleenlähetysoikeutta. Lähdenumero ja -päivämäärä tulevat samasta

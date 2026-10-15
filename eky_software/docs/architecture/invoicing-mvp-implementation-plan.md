@@ -1,5 +1,16 @@
 # Manuaalisen Laskutuksen MVP-Toteutussuunnitelma
 
+## Nykyiset säännöt ja historiallinen vaiheistus
+
+Laskurivien, rahayksiköiden, alennusten, net/gross-laskennan ja pyöristyksen
+säännöt ovat edelleen tämän dokumentin vastuulla. Ensimmäisen MVP:n
+rakennusjärjestys ja silloiset puuttuvat ominaisuudet ovat historiaa.
+Nykyinen hyväksyntä ja revisio kuuluvat [hyväksyntäsopimukseen](invoice-approval-numbering-plan.md),
+toimitus [toimitustapahtumien sopimukseen](invoice-delivery-events-plan.md) ja
+UI:n tallennus [UI-roadmapiin](invoicing-ui-roadmap.md). Lue tämä koko
+laskentasopimus laskentaa tai luonnosta muutettaessa; ensivaiheen rajaus ei
+avaa uudelleen hyväksyttyjä A/B/K-paloja.
+
 Tämä dokumentti kuvaa Eky-laskutuksen ensimmäisen itsenäisen toteutuspolun.
 
 Tavoitteena on toteuttaa manuaalinen laskuluonnos suoraan asiakkaalle ilman kohdetta, työmääräystä, tuntikirjausta, materiaalikirjausta, mobiilisovellusta tai synkronointia.
