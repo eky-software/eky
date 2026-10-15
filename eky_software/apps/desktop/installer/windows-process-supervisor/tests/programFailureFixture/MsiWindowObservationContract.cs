@@ -8,9 +8,13 @@ internal static class MsiWindowObservationContract
 {
     internal static int RunFailureReceipt(string requestPath)
     {
+        if (!OperatingSystem.IsWindows()) return 63;
         SupervisorRequestReader.Read(["--request", requestPath]);
+        MsiApplicationListFailure? listFailure = null;
+        MsiApplicationListObservation.Read(IntPtr.Zero, 0, () => throw new InvalidOperationException("unexpectedAdmission"),
+            () => 1000, 0, 100, out _, failure => listFailure = failure);
         throw FirstSampleFailure(new(0, "partial", []), 0,
-            () => throw new SupervisorFailure("processWaitFailed", 0), () => WorkspaceMsiMembership.Unknown);
+            () => throw new SupervisorFailure("processWaitFailed", 0), () => WorkspaceMsiMembership.Unknown, listFailure);
     }
 
     internal static int Run(string requestPath)
@@ -30,18 +34,19 @@ internal static class MsiWindowObservationContract
         {
             var normal = Start(own, "normal");
             MsiWindowSample Observe(WindowsJob job, SuspendedWindowsProcess process, Func<bool>? stopped = null,
-                int? characters = null, int? windows = null)
+                int? characters = null, int? windows = null, Action<MsiApplicationListFailure>? listFailure = null)
             {
                 var remaining = characters ?? MsiWindowObservation.Contract.MaximumTotalCharacters;
                 var slots = windows ?? MsiWindowObservation.Contract.MaximumWindows;
                 return MsiWindowObservation.Capture(job, process.Process, stopped ?? (() => false),
-                    Stopwatch.StartNew(), ref remaining, ref slots);
+                    Stopwatch.StartNew(), ref remaining, ref slots, listFailure);
             }
             Check("systemImageAdmitted", MsiWindowObservation.IsSystemInstaller(Path.Combine(Environment.SystemDirectory, "msiexec.exe")));
             Check("otherImageRejected", !MsiWindowObservation.IsSystemInstaller(Path.Combine(request.WorkingDirectory, "msiexec.exe")));
             Check("firstSampleIsolatedFromOtherCases", children.Count == 1);
             var firstCapture = Stopwatch.StartNew();
-            var observed = Observe(own, normal.Process);
+            MsiApplicationListFailure? firstListFailure = null;
+            var observed = Observe(own, normal.Process, listFailure: failure => firstListFailure ??= failure);
             firstCapture.Stop();
             var titleCaptured = observed.Windows.Any(row => row.Role == "title" && row.Text == "SYNTHETIC MSI WINDOW");
             if (observed.Status != "observed" || !titleCaptured)
@@ -50,7 +55,7 @@ internal static class MsiWindowObservationContract
                 // private fixture stderr. Do not probe again or print window text.
                 throw FirstSampleFailure(observed, firstCapture.ElapsedMilliseconds,
                     () => normal.Process.Wait(0),
-                    () => WorkspaceMsiActivityObservation.ObserveHandle(own, normal.Process.Process));
+                    () => WorkspaceMsiActivityObservation.ObserveHandle(own, normal.Process.Process), firstListFailure);
             }
             Check("titleCaptured", true);
             Check("messageCaptured", observed.Windows.Any(row => row.Role == "message" && MsiWindowObservation.IsApplicationsInUseMessage(row.Text)));
@@ -63,12 +68,21 @@ internal static class MsiWindowObservationContract
             var wrongParent = Start(own, "wrongParent");
             Check("wrongParentExcluded", Observe(own, wrongParent.Process).Windows.Count == 0);
             var changedMessage = Start(own, "changedMessage");
-            var changed = Observe(own, changedMessage.Process);
+            MsiApplicationListFailure? changedMessageFailure = null;
+            var changed = Observe(own, changedMessage.Process,
+                listFailure: failure => changedMessageFailure ??= failure);
             Check("changedMessageExcluded", changed.Status == "partial" && changed.Windows.All(row => row.Role != "application"));
+            Check("changedMessageCauseRetained", changedMessageFailure is not null);
             var listHung = Start(own, "listHung");
             var listTimer = Stopwatch.StartNew();
-            Check("unresponsiveListPartial", Observe(own, listHung.Process).Status == "partial");
+            MsiApplicationListFailure? hungListFailure = null;
+            Check("unresponsiveListPartial", Observe(own, listHung.Process,
+                listFailure: failure => hungListFailure ??= failure).Status == "partial");
             Check("unresponsiveListBounded", listTimer.ElapsedMilliseconds < 2000);
+            Check("unresponsiveListCauseRetained", hungListFailure is not null &&
+                hungListFailure.Reason is "budgetExpired" or "admissionLost" or "providerException");
+            Check("nativeExceptionCodeRetained", hungListFailure?.Reason != "providerException" ||
+                hungListFailure.HResult is not null);
             var largeList = Start(own, "largeList");
             var large = Observe(own, largeList.Process);
             Check("largeListBounded", large.Status == "partial" &&
@@ -76,9 +90,17 @@ internal static class MsiWindowObservationContract
                 large.Windows.Count <= MsiWindowObservation.Contract.MaximumWindows &&
                 large.Windows.Sum(row => row.Text.Length) <= MsiWindowObservation.Contract.MaximumTotalCharacters);
             var admissionCalls = 0;
+            var reportedFailures = new List<MsiApplicationListFailure>();
             var empty = MsiApplicationListObservation.Read(IntPtr.Zero, 0, () => { admissionCalls++; return true; },
-                () => 1000, 0, 100, out var emptyPartial);
+                () => 1000, 0, 100, out var emptyPartial, reportedFailures.Add);
             Check("emptyBudgetSkipsProvider", emptyPartial && empty.Count == 0 && admissionCalls == 0);
+            Check("firstListFailureRetained", reportedFailures.Count == 1 &&
+                reportedFailures[0] == new MsiApplicationListFailure("admission", "outputLimit"));
+            reportedFailures.Clear();
+            var denied = MsiApplicationListObservation.Read(IntPtr.Zero, 0, () => false,
+                () => throw new InvalidOperationException("unexpectedBudgetQuery"), 1, 100, out var deniedPartial, reportedFailures.Add);
+            Check("deniedListSkipsProvider", deniedPartial && denied.Count == 0 && reportedFailures.Count == 1 &&
+                reportedFailures[0] == new MsiApplicationListFailure("admission", "admissionLost"));
             Check("editNotRead", observed.Windows.All(row => !row.Text.Contains("EXCLUDED INPUT", StringComparison.Ordinal)));
             var outsider = Start(other, "normal");
             Check("foreignJobRejected", Observe(own, outsider.Process) is { Status: "unavailable", Windows.Count: 0 });
@@ -200,7 +222,7 @@ internal static class MsiWindowObservationContract
     }
 
     private static InvalidOperationException FirstSampleFailure(MsiWindowSample observed, long elapsedMilliseconds,
-        Func<bool> hasExited, Func<WorkspaceMsiMembership> membership)
+        Func<bool> hasExited, Func<WorkspaceMsiMembership> membership, MsiApplicationListFailure? listFailure = null)
     {
         bool? childExitedAfterCapture = null;
         try { childExitedAfterCapture = hasExited(); } catch { }
@@ -214,6 +236,7 @@ internal static class MsiWindowObservationContract
             elapsedMilliseconds,
             childExitedAfterCapture,
             membershipAfterCapture = membership().ToString(),
+            listFailure,
         }));
     }
 

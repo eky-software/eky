@@ -51,8 +51,17 @@ Legacy-valmistelun loki osoitti skriptiä edeltävän pnpm-riippuvuusasennuksen
 ja verkkouusinnat. Sen rajattu korjaus poistaa automaattiasennuksen vain
 riippuvuuksia tarvitsemattomasta clean/upgrade-sopimusryhmästä
 [harnessin omistavan valmistelusopimuksen](windows-installer-acceptance-harness-v2.md#cleanupgrade-sopimustestien-valmistelu)
-mukaan. Korjauksen kohdetodennus, katselmus ja uuden revision PR/main-portit
-ovat vielä kesken; legacy-työn aikarajaa ei nosteta.
+mukaan. Revision `0530fd0f` kohdetodennus ja katselmus läpäisivät;
+V2-ajossa `38813654917` clean/upgrade-ryhmän molemmat 54 testin toistot
+läpäisivät. Riippuvuustarkistus `38813654836` läpäisi. MSI-luettelon
+osittainen havainto kuitenkin toistui supervisor- ja legacy-core-töissä.
+Erillinen upgrade-paketin valmistelu epäonnistui `source/backendValidation`-
+vaiheessa; salatussa paketissa ei ollut alkuperäistä syytä. Nämä estävät
+integraation eivätkä kumoa läpäisseitä yksittäisiä tarkistuksia.
+MSI-testin nykyistä yksityistä virhekuittia täydennetään luettelokutsun
+vaiheella ja alkuperäisellä virhekoodilla ennen yhtä rajattua hosted-
+sopimustodennusta. Tämä ei vielä ole luettelovirheen korjaus eikä lupa
+ohittaa valmisteluhylkäystä. Legacy-työn aikarajaa ei nosteta.
 Sovelluskoodi, yksittäiset testirajat ja hyväksyntäehdot säilyvät. Alkuperäiset
 epäonnistumiset säilyvät eikä kohdeläpäisy todista niiden kaikkia syitä.
 

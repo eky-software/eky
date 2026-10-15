@@ -63,6 +63,10 @@ test('MSI windows: owned visible captions, bounded reads and interrupted immutab
   assert.doesNotMatch(result.standardOutput + result.standardError, /SYNTHETIC MSI|EXCLUDED INPUT/);
   const proof = JSON.parse(await readFile(join(context.testRoot, 'msi-window-contract.json'), 'utf8'));
   assert.equal(proof.firstSampleIsolatedFromOtherCases, true);
+  assert.equal(proof.firstListFailureRetained, true);
+  assert.equal(proof.deniedListSkipsProvider, true);
+  assert.equal(proof.unresponsiveListCauseRetained, true);
+  assert.equal(proof.nativeExceptionCodeRetained, true);
   assert.ok(Object.keys(proof).length >= 25);
   assert.ok(Object.values(proof).every(value => value === true));
 });
@@ -130,7 +134,8 @@ test('MSI windows: native observation survives exit and interrupted publication 
     assert.ok(receipt);
     assert.deepEqual(JSON.parse(receipt[1]), { status: 'partial', titleCaptured: false,
       messageCaptured: false, buttonCaptured: false, applicationCaptured: false,
-      elapsedMilliseconds: 0, childExitedAfterCapture: null, membershipAfterCapture: 'Unknown' });
+      elapsedMilliseconds: 0, childExitedAfterCapture: null, membershipAfterCapture: 'Unknown',
+      listFailure: { Stage: 'admission', Reason: 'outputLimit', HResult: null } });
     assert.ok(/MsiWindowObservationContract\.RunFailureReceipt/.test(failureReceipts[0]),
       'MSI_WINDOW_FAILURE_NATIVE_FRAME_MISSING');
     assert.doesNotMatch(JSON.stringify(archive), /EXCLUDED INPUT|window-child-|\.pending/);

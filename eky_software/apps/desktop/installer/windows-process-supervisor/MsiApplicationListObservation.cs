@@ -3,6 +3,8 @@ using System.Runtime.Versioning;
 
 namespace Eky.WindowsProcessSupervisor;
 
+internal sealed record MsiApplicationListFailure(string Stage, string Reason, int? HResult = null);
+
 // Windows' provider owns the returned strings. LB_GETTEXT cannot bound its output
 // buffer if a list item changes between the length query and the text query.
 [SupportedOSPlatform("windows")]
@@ -15,63 +17,98 @@ internal static class MsiApplicationListObservation
     private const int ListItemControlType = 50007;
 
     internal static IReadOnlyList<string> Read(IntPtr window, uint processId,
-        Func<bool> admitted, Func<int> remainingMilliseconds, int maximumItems, int maximumCharacters, out bool partial)
+        Func<bool> admitted, Func<int> remainingMilliseconds, int maximumItems, int maximumCharacters, out bool partial,
+        Action<MsiApplicationListFailure>? failure = null)
     {
         var result = new List<string>();
         partial = false;
+        var stage = "admission";
+        var reported = false;
+        void Report(string reason, int? hResult = null)
+        {
+            if (reported) return;
+            reported = true;
+            failure?.Invoke(new(stage, reason, hResult));
+        }
         object? automationObject = null;
         IElement? root = null;
         IWalker? walker = null;
         IElement? item = null;
         try
         {
-            if (maximumItems <= 0 || maximumCharacters <= 0 || !admitted()) { partial = true; return result; }
+            if (maximumItems <= 0 || maximumCharacters <= 0)
+            { Report("outputLimit"); partial = true; return result; }
+            if (!admitted()) { Report("admissionLost"); partial = true; return result; }
+            stage = "createAutomation";
             automationObject = Activator.CreateInstance(Type.GetTypeFromCLSID(
                 new Guid("e22ad333-b25f-460c-83d0-0581107395c9"), throwOnError: true)!);
             var automation = (IAutomation)automationObject!;
+            stage = "disableAutoFocus";
             automation.SetAutoFocus(false);
             bool Ready()
             {
                 var remaining = remainingMilliseconds();
-                if (remaining <= 0 || !admitted()) return false;
+                if (remaining <= 0) { Report("budgetExpired"); return false; }
+                if (!admitted()) { Report("admissionLost"); return false; }
                 var timeout = (uint)Math.Min(MsiWindowObservation.Contract.MessageTimeoutMilliseconds, remaining);
+                var operation = stage;
+                stage = "connectionTimeout";
                 automation.SetConnectionTimeout(timeout);
+                stage = "transactionTimeout";
                 automation.SetTransactionTimeout(timeout);
-                return admitted();
+                stage = operation;
+                if (admitted()) return true;
+                Report("admissionLost");
+                return false;
             }
+            stage = "elementFromHandle";
             if (!Ready()) { partial = true; return result; }
             root = automation.FromHandle(window);
-            if (!Ready() || root.Property(ProcessIdProperty) is not int owner || (uint)owner != processId ||
-                !Ready() || root.Property(ControlTypeProperty) is not int kind || kind != ListControlType)
-            { partial = true; return result; }
+            stage = "listProcessId";
+            if (!Ready() || root.Property(ProcessIdProperty) is not int owner || (uint)owner != processId)
+            { Report("propertyMismatch"); partial = true; return result; }
+            stage = "listControlType";
+            if (!Ready() || root.Property(ControlTypeProperty) is not int kind || kind != ListControlType)
+            { Report("propertyMismatch"); partial = true; return result; }
+            stage = "rawWalker";
             if (!Ready()) { partial = true; return result; }
             walker = automation.RawWalker();
+            stage = "firstChild";
             if (!Ready()) { partial = true; return result; }
             item = walker.FirstChild(root);
             var remaining = maximumCharacters;
             while (item is not null)
             {
-                if (!admitted() || result.Count >= maximumItems || remaining <= 0)
-                { partial = true; break; }
-                if (!Ready() || item.Property(ProcessIdProperty) is not int itemOwner || (uint)itemOwner != processId ||
-                    !Ready() || item.Property(ControlTypeProperty) is not int itemKind || itemKind != ListItemControlType)
-                { partial = true; break; }
+                if (!admitted()) { Report("admissionLost"); partial = true; break; }
+                if (result.Count >= maximumItems || remaining <= 0)
+                { Report("outputLimit"); partial = true; break; }
+                stage = "itemProcessId";
+                if (!Ready() || item.Property(ProcessIdProperty) is not int itemOwner || (uint)itemOwner != processId)
+                { Report("propertyMismatch"); partial = true; break; }
+                stage = "itemControlType";
+                if (!Ready() || item.Property(ControlTypeProperty) is not int itemKind || itemKind != ListItemControlType)
+                { Report("propertyMismatch"); partial = true; break; }
+                stage = "itemName";
                 if (!Ready()) { partial = true; break; }
                 var name = item.Property(NameProperty) as string;
-                if (!admitted() || name is null) { partial = true; break; }
+                if (!admitted()) { Report("admissionLost"); partial = true; break; }
+                if (name is null) { Report("propertyMismatch"); partial = true; break; }
                 var length = Math.Min(MsiWindowObservation.Contract.MaximumTextCharacters, remaining);
-                if (name.Length > length) { name = name[..length]; partial = true; }
+                if (name.Length > length) { Report("outputLimit"); name = name[..length]; partial = true; }
                 result.Add(name);
                 remaining -= name.Length;
-                if (result.Count >= maximumItems || remaining <= 0 || !Ready()) { partial = true; break; }
+                if (result.Count >= maximumItems || remaining <= 0)
+                { Report("outputLimit"); partial = true; break; }
+                stage = "nextSibling";
+                if (!Ready()) { partial = true; break; }
                 var next = walker.NextSibling(item);
                 Release(item);
                 item = next;
             }
-            if (!admitted()) { partial = true; result.Clear(); }
+            if (!admitted()) { Report("admissionLost"); partial = true; result.Clear(); }
         }
         catch (Exception error) when (error is COMException or InvalidCastException or ArgumentException)
-        { partial = true; result.Clear(); }
+        { Report("providerException", error.HResult); partial = true; result.Clear(); }
         finally { Release(item); Release(walker); Release(root); Release(automationObject); }
         return result;
     }

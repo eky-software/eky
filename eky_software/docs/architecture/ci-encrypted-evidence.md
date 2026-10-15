@@ -162,6 +162,15 @@ eivät testin tai asennuksen uusia aikarajoja. Osittainen havainto säilyttää
 osittaisuutensa; tyhjä lista ei todista odotuksen syytä tai kaikkien
 mahdollisten ikkunoiden poissaoloa.
 
+Luetteloluvun sopimustesti säilyttää ensimmäisen hylkäyksen vaiheen,
+suljetun syyluokan ja mahdollisen alkuperäisen HRESULT-arvon nykyisessä
+yksityisessä native-virhekuitissaan. Budjetin loppuminen, omistajuus- tai
+ilmoitusvalinnan muuttuminen, ominaisuuden ristiriita ja providerin poikkeus
+eivät muutu samaksi päätelmäksi. Kuitti ei sisällä uutta ikkunatekstiä tai
+prosessitunnistetta eikä muuta julkista raporttia tai asennuksen hyväksyntää.
+Sopimustestin tarkoituksellinen hylkäys varmennetaan myös nykyisen
+salaus- ja purkuketjun yli; puuttuvaa havaintoa ei täytetä arvatulla syyllä.
+
 Serialisointi ja tiedostokirjoitus kuuluvat samaan olemassa olevaan yhteen
 taustakyselyyn. Terminal- tai cleanup-polku ei odota niiden valmistumista.
 Jokainen enintään 64 KiB:n valmis näyte julkaistaan yksinomaisesti omana
