@@ -259,6 +259,22 @@ AI-agentit eivät omista liiketoimintadataa.
 
 AI-agentit voivat tulevaisuudessa kutsua palveluita, mutta ne eivät saa ohittaa moduulirajoja.
 
+## Laskun hyväksynnän rajattu snapshot-luku
+
+Invoicingin hyväksyntäadapterin `SqliteInvoiceApprovalSnapshotReader` saa
+lukea `customers`- ja `company_settings`-tauluja suoraan parametrisoidulla,
+`companyId`:llä rajatulla SQL:llä saman hyväksyntätransaktion sisällä.
+Se ei kirjoita lähdemoduulien tauluihin eikä siirrä master-datan omistajuutta.
+Poikkeus säilyttää hyväksynnän snapshotin atomisuuden; se ei anna muille
+lukijoille oikeutta ohittaa moduulien nimettyjä reader-portteja.
+
+Tämä nykyinen persistence-poikkeus arvioidaan erikseen ennen tietokantapinon
+irrottamista, pilvisynkronointia tai moduulien eriyttämistä. Sitä ei muuteta
+composition-siirron tai dokumentaation siivouksen sivuvaikutuksena.
+Alkuperäinen havainto säilyy
+[heinäkuun auditoinnissa](current-module-conformance-audit.md#invoicing)
+päivättynä taustana; tämä osio omistaa voimassa olevan rajauksen.
+
 ## Rajojen rikkominen
 
 Moduulirajan rikkomista ovat esimerkiksi:

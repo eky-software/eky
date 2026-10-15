@@ -2,9 +2,15 @@
 
 ## Tila ja rajaus
 
-Tila: lähdekoodikatselmointi ja synteettinen tarkistus tehty 2026-09-22;
-alla olevia tuotantokorjauksia ei ole vielä toteutettu. Omistajan saman päivän
-päätöksellä tavoitejulkaisu on `0.3.0`. Aiempi työnimi `0.2.9`, tämän
+Lähtöhavainnot ovat 2026-09-22 tehdystä lähdekoodikatselmoinnista ja
+synteettisestä tarkistuksesta. K:n hyväksytty toteutus on sen jälkeen
+kytkenyt workspace-observerin ja turvalliset tarkistussyiden lukuketjut;
+kaikkia alla olevia korjauksia ei siksi kuvata toteuttamattomiksi.
+Diagnostiikan jäljellä oleva työ jakautuu julkaisusuunnitelman mukaan:
+`D029-01` ja `D029-02` kuuluvat G:n tapahtumaketjuun, `D029-03`, `D029-04`
+ja `D029-05` H:n saatavuuteen ja oikeellisuuteen. `D029-*` on historiallinen
+tunniste, ei Company Settingsin D-paketin rajaus eikä toinen työjono.
+Tavoitejulkaisu on `0.3.0`. Aiempi työnimi `0.2.9`, tämän
 tiedoston nimi ja `D029-*`-tunnukset säilyvät historiallisina viitteinä.
 Yhteinen rajaus ja tehtävälista ovat
 [0.3.0-julkaisusuunnitelmassa](release-0.3.0-plan.md).
@@ -27,13 +33,16 @@ Mahdollinen uusi tila-/DTO-sopimus rajataan ja hyväksytään ennen toteutusta.
 
 ### D029-01: Työtilatoiminnon turvallinen virhesyy talteen
 
-**Havainto:** `workspaceManagementComposition.ts` ei anna
-`WorkspaceManagementService`-palvelulle observeria. Palvelun virhepolku
-lisäksi yleistää replacement-virheen ennen havainnointia.
-`WORKSPACE_REPLACEMENT_LINEAGE_MISMATCH` ja `lineageCheck` eivät säily
-yleisessä `WORKSPACE_MANAGEMENT_INVALID`-virheessä.
+**Alkuperäinen havainto:** syyskuun tarkistuksessa workspace-compositionin
+observer puuttui ja replacement-virhe yleistyi ennen havainnointia.
+Nykyinen composition välittää loggerin ja runtime-identiteetin observerille;
+tuonnin ja korvauksen turvallinen ensisyy sekä erillinen cleanup-tapahtuma
+on määritelty [katalogissa](r0-observability-event-catalog.md#tarkistuksen-ensisyy-ja-lukijaketju).
+G rajaa tästä jäljelle jäävän väärän lineagen palautteen sekä
+create/import/replace/switch/rename-kattavuuden. Kytkennän olemassaolo ei
+yksin todista kaikkien näiden käyttötapausten hyväksyntää eikä sulje D029-01:tä.
 
-**Tavoite:** kytketty observer ja rajattu syy-/vaiheluokitus. Käyttäjäviesti
+**Tavoite:** nykyisen observerin rajattu syy-/vaiheluokitus. Käyttäjäviesti
 voi pysyä yleisenä, mutta tekninen tapahtuma erottaa väärän yrityksen
 varmuuskopion muista hylkäyksistä ilman yrityksen nimeä, tunnistetta,
 tiedostopolkua, salasanaa tai raakaa poikkeusta. Samalla tarkistetaan
@@ -55,6 +64,18 @@ strict clientissä. Tukipaketin tapahtumalukija käyttää samaa projektoria.
 
 **Tavoite:** sovittu turvallinen päivitysprojektio koko lukuketjuun.
 Kaikkia writerin kenttiä ei siirretä automaattisesti eteenpäin.
+
+**G:n säilyvät projektiorajaukset:** C2:n jo määritellyt
+`update.operationStarted|operationCompleted|operationFailed` käyttävät
+`preUpdateRecovery|runtimeShutdown|installerHandoff|firstStartValidation`-
+vaiheita. Niiden julkinen sisällytys tai nimetty poissulku kirjataan
+erikseen C3C-perheiden rinnalle; vaiheita tai Completed/Succeeded-tuloksia
+ei muuteta toisikseen päättelemällä. Version näkyvyydessä erotetaan nykyinen
+eventin `appVersion` mahdollisesta uudesta currentVersion/targetVersion/
+releaseChannel-projektiosta. Jälkimmäistä ei hyväksytä yksityisen journalin
+tai writerin kenttien perusteella. Nykyiset suppeat allowlistat säilyvät,
+kunnes G:n omistava toteutus rajaa mahdollisen laajennuksen. Tämä kirjaus
+ei avaa uutta päätöskysymystä dokumentaation siivouksessa.
 
 **Hyväksyntä:** katalogivertailu, jossa jokaiselle tapahtumaperheelle on
 sisällytys tai nimetty poissulku; onnistuvan ja epäonnistuvan päivityksen

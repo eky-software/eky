@@ -1,5 +1,20 @@
 # Nykyisten Moduulien Yhdenmukaisuusauditointi
 
+## Historiallinen tilannekuva
+
+Tämän tiedoston nykytilaa, puutteita ja seuraavia vaiheita kuvaavat kohdat
+koskevat alla nimettyä heinäkuun lähtörevisiota tai myöhempää päivättyä
+checkpointia. Ne eivät muodosta nykyistä työjonoa eivätkä avaa uudelleen
+hyväksyttyjä K-, T/A/B/C- tai C/R18-vaiheita. Alkuperäiset havainnot ja
+ensimmäiset epäonnistumiset säilyvät historiatietona.
+
+Nykyiset vastuut ja sopimukset luetaan
+[moduulien vastuista](../modules/README.md),
+[integraatiomatriisista](module-integration-matrix.md) ja
+[moduulirajoista](module-boundaries.md). Auditoinnin rajattu hyväksynnän
+snapshot-lukupoikkeus säilyy voimassa
+[omistavassa moduulirajaohjeessa](module-boundaries.md#laskun-hyväksynnän-rajattu-snapshot-luku).
+
 Tämä dokumentti kuvaa Customers-, Company Settings- ja Invoicing-moduulien
 nykyisen suhteen Eky-projektin moduuli-, riippuvuus-, turvallisuus- ja
 testausperiaatteisiin. Auditointi tehtiin 22.7.2026 commitin `f7780e8`

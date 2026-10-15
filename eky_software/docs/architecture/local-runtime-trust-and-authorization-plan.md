@@ -107,8 +107,8 @@ lisääminen `packages/permissions`-pakettiin ei saa automaattisesti antaa sitä
 local ownerille.
 
 Nämä permissionit ovat backendin teknisiä toimintokohtaisia portteja. Ne eivät
-vielä tarkoita valmista käyttäjä-, rooli- tai työntekijähallintaa. Isän
-ensimmäisessä yhden käyttäjän local-asennuksessa pysyvä `local-owner` toimii
+vielä tarkoita valmista käyttäjä-, rooli- tai työntekijähallintaa. Ensimmäisessä
+yhden käyttäjän local-asennuksessa pysyvä `local-owner` toimii
 ainoana paikallisena actorina. Tuleva rooli- ja permission-malli, käyttäjä-UI
 sekä yritysjäsenyydet hyväksytään erikseen pilvi- ja monikäyttäjävaiheessa.
 

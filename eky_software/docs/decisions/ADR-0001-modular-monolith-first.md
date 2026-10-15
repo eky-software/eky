@@ -23,7 +23,6 @@ Projektin alkuvaiheessa tärkeintä on saada selkeä, hallittava ja turvallinen 
 Modulaarinen monoliitti valitaan, koska:
 
 - se on helpompi toteuttaa ja ylläpitää alkuvaiheessa
-- se sopii 4 kuukauden harjoittelujaksoon
 - se vähentää infrastruktuurin monimutkaisuutta
 - se mahdollistaa selkeät moduulirajat
 - se antaa mahdollisuuden irrottaa osia myöhemmin erillisiksi palveluiksi

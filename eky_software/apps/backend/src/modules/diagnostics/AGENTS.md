@@ -6,6 +6,8 @@ Always read the repository root `AGENTS.md` first.
 
 Also read:
 
+- `docs/modules/diagnostics.md`
+- `docs/architecture/r0-observability-event-catalog.md`
 - `docs/architecture/observability-and-audit-plan.md`
 - `docs/architecture/operational-log-retention-plan.md`
 - `docs/architecture/support-bundle-plan.md`

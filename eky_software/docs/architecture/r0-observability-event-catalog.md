@@ -239,6 +239,32 @@ Lokikansion capability kirjoittaa vain avatun, epäonnistuneen tai estetyn
 toiminnon tapahtuman. Se ei tallenna absoluuttista polkua tai
 Windows-käyttäjänimeä.
 
+### Tarkistuksen ensisyy ja lukijaketju
+
+K-P3:n suljetut tekniset tarkistussyyt ovat:
+
+- `PROFILE_SCHEMA_UNSUPPORTED`
+- `PROFILE_INSPECTION_LIMIT_EXCEEDED`
+- `PROFILE_INSPECTION_TIMEOUT`
+- `PROFILE_INSPECTION_PROTOCOL_INVALID`
+- `PROFILE_INSPECTION_CLEANUP_UNVERIFIED`
+
+Koodi valitaan vain bounded ensivirhehaarasta. Tuntematon, syklinen, liian
+syvä tai poikkeuksen heittävä ketju säilyttää kuluttajan nykyisen yleiskoodin;
+ordered aggregaten myöhempi cleanup-haara ei korvaa ensisyytä. Pelkästä
+exit-koodista tai vaiheesta ei päätellä OOM:ia, schema-poikkeamaa, onnistunutta
+rollbackia tai sivuvaikutuksettomuutta. Väärän salasanan ja autentikointivirheen
+yhteinen käyttäjäilmoitus pysyy muuttumattomana. Raakaa `Error.cause`-oliota,
+SQL:ää, polkua, profiilitunnistetta tai checksumia ei projisoida eteenpäin.
+
+Omistava runtime kytkee observerin nykyiseen operational-writeriin ja
+runtime-identiteettiin. Todellinen reader -> HTTP -> strict client ->
+Diagnostics sekä sanitoitu tukipaketti vaativat saman tapahtumakohtaisen
+sopimuksen; loggerin yksikkötesti ei todista tätä ketjua. Keskeytynyt
+tarkistus ei tarkoita osittaista palautusta tai oikeutta korvata aktiivista
+yritysdataa. Teknisiä backup-tapahtumia ei lisätä Activityyn tai business-
+auditiin; incident-projektio säilyttää vain nykyisen minimoidun ytimen.
+
 Portable-varmuuskopion tapahtumat sisältävät vain operaation
 korrelaatiotunnisteen, rajatun vaiheen, keston ja turvallisen virhekoodin.
 Niihin ei kirjoiteta kohde- tai lähdepolkua, yritystunnistetta, manifestia,
@@ -250,9 +276,8 @@ resurssiraja, tarkistuksen aikakatkaisu, private-protokollan hylkäys tai
 varmentamaton tarkistusprosessin siivous. Tuntematon syy säilyttää vastaavasti
 `PROFILE_BACKUP_CREATE_FAILED`- tai `PROFILE_BACKUP_INSPECTION_FAILED`-koodin.
 Siivoushaaraa ei nosteta ensisyyksi eikä IPC-virhe sisällä sisäistä syyoliota.
-Syyjoukon tarkat koodit ja rajatun lukuketjun näyttö ovat
-[K-P3:n sopimuksessa](release-0.3.0-m1-preparation-plan.md#kn-tiedostovastuut-ja-turvallinen-palaute)
-ja [V2m:ssä](release-0.3.0-m1-preparation-plan.md#v2m-portable-backupin-turvallinen-lukuketju).
+Syyjoukon ja lukijaketjun nykyisen sopimuksen omistaa tämä osio;
+päivätty hyväksyntänäyttö on [M1:n kautta](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
 Tämä ei muuta tapahtumien `portable`-vaihetta, tasoa, retryable- tai
 side-effect-kenttää. Incident-indeksiin kuuluu error-tason `backup.failed`,
 ei warn-tason `backup.inspectionFailed` tai info-tapahtumia.
@@ -265,8 +290,8 @@ fallbackin; ordered aggregaten lisävirhettä ei nosteta ensisyyksi.
 Ulompi virhe, palautuspisteiden saatavuus ja rollbackin ohjaus eivät muutu.
 `restore.rollbackFailed` ja `restore.recoveryRequired` säilyttävät
 `PROFILE_RESTORE_RECOVERY_REQUIRED`-koodin erillään alkuperäisestä syystä.
-Palvelujen ja todellisen tiedostoketjun rajattu näyttö on
-[V2n:ssä](release-0.3.0-m1-preparation-plan.md#v2n-palautuskuluttajien-turvallinen-ensisyy).
+Sisäisen ensisyyn ja erillisen lisävirheen yhteinen sääntö on
+[virheenkäsittelyohjeessa](error-handling-principles.md#ensisyy-ja-erillinen-lisävirhe).
 
 `restore.acceptanceFailed` kuuluu onnistuneen sisältövalidoinnin jälkeiseen
 hyväksyntään. Omistava palautuspalvelu kirjaa sen kerran ennen virheen
@@ -302,8 +327,12 @@ virhesormenjälki on sallittu nykyisen failure-payloadin mukaan;
 onnistumistapahtuma ei saa virheen tai toisen perheen metadataa.
 Jo valinnaiset duration/retryable/side-effect- ja app/build/runtime-kentät
 säilyvät valinnaisina, mutta activationFailed- ja recoveryRequired-ehtoja
-ei löysennetä. Lukijapariteetin erillinen tiedostonäyttö ja avoimet
-runtime-portit ovat [V2o:ssa](release-0.3.0-m1-preparation-plan.md#v2o-palautustapahtumien-lukijoiden-sopimustarkistus).
+ei löysennetä. Desktopin omistavia event-specejä käytetään sen omissa
+lukijoissa; HTTP-clientin vastevalidointi pysyy riippumattomana backendin
+ja desktopin sisäisistä tyypeistä. Väärä perhe, stage, kind, palautumistila
+tai toisen perheen metadata hylätään. Backend hylkää myös puuttuvan tai
+nykyisen HTTP-rajan ylittävän virhekoodin. Malformed-rivi ei syrjäytä
+kelvollisia tapahtumia; tukipaketin lähteen osittaisuus ilmoitetaan.
 
 Recovery point -tapahtumien sallitut vaiheet ovat `automaticCheck` ja
 `creation`. Luodun pisteen allowlistattu kind on `daily`, `weekly`, `monthly`,
@@ -390,6 +419,19 @@ havaitsijalle; kummankin tapahtuman best-effort-kirjoitus on erillinen eikä
 saa muuttaa hallintatoiminnon palautusta tai peittää ensivirhettä.
 
 ### Local update
+
+ADR-0010 omistaa päivityksen runtime- ja datarajat. C2:n jo määritellyt
+`update.operationStarted`, `update.operationCompleted` ja
+`update.operationFailed` sekä niiden `preUpdateRecovery`, `runtimeShutdown`,
+`installerHandoff` ja `firstStartValidation` -vaiheet omistaa
+[installer-suunnitelman nykyinen C2-sopimus](windows-installer-and-update-plan.md#16-health-ja-hyväksyntä).
+Ne eivät automaattisesti laajenna alla olevaa C3C-sopimusta.
+
+G:n [D029-02](diagnostics-0.2.9-completion-plan.md#d029-02-päivitystapahtumien-katalogikatkos)
+omistaa toteuttamattoman lukijaketjun ja sen perhekohtaisen sisällytys- tai
+poissulkukartan. C2:n julkinen projektio ja mahdollinen kohdeversiotieto
+pysyvät siellä nimettyinä rajauksina; writerin olemassaolo ei hyväksy vientiä.
+Nykyisiä kenttiä tai allowlistoja ei laajenneta dokumentaation siivouksessa.
 
 Paikallisen päivityksen tekniset tapahtumaperheet ovat:
 

@@ -1,19 +1,22 @@
 # Backend app
 
-Tämä sovellus sisältää Eky-järjestelmän backend-rungon.
+Tämä sovellus sisältää Eky-järjestelmän paikallisen backendin.
 
-Backend on tällä hetkellä pieni Hono-pohjainen HTTP-adapteri, joka tarjoaa `/health`-terveystarkistusreitin.
+Hono on ohut HTTP-adapteri Customers-, Company Settings-, Invoicing-,
+Activity- ja Diagnostics-kokonaisuuksille sekä `/health`-terveystarkistukselle.
+Local-session, yrityskonteksti ja profiilinsuojaus noudattavat
+[runtime-luottamussopimusta](../../docs/architecture/local-runtime-trust-and-authorization-plan.md).
 
 Vastuut:
 
 - vastaanottaa API-kutsut
-- tarkistaa myöhemmin autentikointi
+- vahvistaa paikallisen session luottamus ja actor-konteksti
 - tarkistaa käyttöoikeudet ja yritysrajaus
 - validoida syöte
 - kutsua application service -kerrosta
 - käyttää domain-logiikkaa
 - käyttää repository-adaptereita
-- kirjata myöhemmin audit log -tapahtumat
+- kirjata omistavan moduulin audit-tapahtumat ja turvalliset tekniset lokit
 
 Backend on luotettu kerros. Frontend ei saa ohittaa backend- tai service-kerrosta.
 
@@ -21,7 +24,9 @@ Backend on luotettu kerros. Frontend ei saa ohittaa backend- tai service-kerrost
 
 Backend tarvitsee Node.js-version, joka tukee `--env-file-if-exists`-lippua.
 
-Käytännössä kehitysympäristössä käytetään modernia Node-versiota. `@hono/node-server` vaatii Node >= 20.
+Projektin [package.json](../../package.json) omistaa tuetun Node-version
+(`>=24 <25`). Yksittäisen adapterin vähimmäisversio ei korvaa projektin
+runtime- ja native-yhteensopivuusvaatimuksia.
 
 ## Paikallinen ympäristö
 
@@ -67,8 +72,10 @@ Eri ajotilat eivät saa käyttää samaa SQLite-tiedostoa:
   `eky-e2e.sqlite`-tiedoston
 - packaged smoke käyttää vain validoidulla `--desktop-smoke`-kytkimellä ja
   tokenilla muodostettua canonicalisoitua käyttöjärjestelmän temp-juurta
-- normaali paketoitu desktop käyttää
-  `app.getPath('userData')/runtime/data/eky.sqlite`-tiedostoa
+- normaali paketoitu desktop käyttää Electron mainin validoidusta aktiivisen
+  workspacen juuresta johtamaa tietokantapolkua;
+  [workspace-sopimus](../../docs/architecture/local-company-workspace-plan.md)
+  omistaa myös vanhan yhden profiilin polun adoption
 
 Installer-payloadiin tai package-stagingiin ei saa sisällyttää mitään näistä
 tietokannoista. Normaalia desktop-profiilia ei saa johtaa `.env`- tai
@@ -134,12 +141,14 @@ src/database/migrations
 ```
 
 Backendin tuotantodeploy ja desktop-paketointi sisältävät nämä migraatiot.
-`schema_migrations` säilyttää tällä hetkellä vain migraation nimen ja
-ajoajan. Se ei säilytä historiallisesti ajetun SQL-sisällön SHA-256-arvoa.
-Ennen ensimmäistä oikean profiilin N -> N+1 -päivitystä tarvitaan erikseen
-hyväksyttävä migration immutability -portti: nimi, checksum, chain identity,
-release/build identity, append-only-sääntö, mismatch-tarkistus ennen
-schema-kirjoitusta ja validoitu pre-migration-palautuspiste.
+`schema_migrations` säilyttää nimen ja ajoajan. Sen rinnalla
+`schema_migration_metadata` sitoo SQL-checksummin, ketjuidentiteetin,
+applied/legacy-baseline-alkuperän ja release/build-tiedon. Historiallisia
+SQL-tiedostoja ei muokata. Schema/history-portti edeltää sisältöä ja
+kirjoitettavaa avausta; callerin tarkat politiikat omistaa
+[tietokantasopimus](../../docs/architecture/local-database-implementation-plan.md#varmuuskopion-schema-tarkistin).
+Päivityksen pre-migration-palautuspiste ja first-start-hyväksyntä ovat tästä
+erillisiä pakollisia portteja, eivät pelkän migraatiometadatan seuraus.
 
 ## Rajaukset
 

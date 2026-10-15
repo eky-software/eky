@@ -330,6 +330,29 @@ Virheenkäsittelydokumentti ei muuta lokituksen teknologiaa tai auditin
 omistajuutta. Virheketjun kytkentä ja turvallinen näkyvyys tarkistetaan
 `docs/ai/workflow.md`:n toiminnon valmistumisportissa.
 
+## Ensisyy ja erillinen lisävirhe
+
+Runtime- ja palautuskuluttaja säilyttää alkuperäisen poikkeuksen sisäisessä
+`Error.cause`-sidonnassa. Usean virheen `AggregateError` on järjestetty:
+ensivirhe ensin, palautuksen, journalin, sulkemisen ja varauksen vapautuksen
+lisävirheet myöhemmissä haaroissa. Tuntematonta ensisyytä ei muuteta
+myöhemmän tunnetun lisävirheen luokitukseksi. Myöskään aikaisempi tuntematon
+cleanup-syy ei vaihdu myöhemmäksi tunnetuksi syyksi; rikkoutunut ketju ei
+luo cleanup-havaintoa, jota ei ole syntynyt.
+
+Ulompi turvallinen käyttäjä-/IPC-koodi ja käyttötapauksen palautus-,
+omistajuus- ja siivousjärjestys säilyvät. Raakaa syyketjua ei serialisoida
+rendererille, lokiin tai tukipakettiin. Operational-tapahtumaan valitaan vain
+[katalogin](r0-observability-event-catalog.md#tarkistuksen-ensisyy-ja-lukijaketju)
+sallima tekninen ensisyy. Väärän salasanan yhteinen palaute ei tarkennu.
+
+C:n `UpdateBusinessRollbackCoordinator` säilyttää aktivoinnin tai palautetun
+profiilin tarkistuksen ensivirheen myös `failedSafe`-/`recoveryRequired`-
+journalin lisävirheessä. Journalivirhe ei peitä ensisyytä eikä estä turvallisen
+failure-eventin yrittämistä; kirjoituksen epäonnistuminen ei todista durable-
+tilasiirtymää. Update-tapahtuman ulompi yleiskoodi ei muutu. Observerin virhe
+ei muuta onnistuneen palautuksen lopputulosta tai hyväksyntäjärjestystä.
+
 ## Vaiheistus
 
 Seuraava vaiheistus ja sen lopun suositus kuvaavat alkuperäistä

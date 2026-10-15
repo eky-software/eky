@@ -62,12 +62,10 @@ Numerointisarjan seuraava numero ja tilikausi ovat yrityskohtaisia laskutusasetu
 
 Rahasummia ei käsitellä epätarkasti.
 
-Rahasummien tallennustapa päätetään ennen laskutusmoduulin toteutusta.
-
-Suositeltavia vaihtoehtoja:
-
-- tallennus sentteinä kokonaislukuna
-- tarkka decimal-tyyppi tietokannassa
+Nykyinen laskutus käyttää kokonaislukusenttejä, skaalattuja kokonaislukumääriä
+ja prosenteille basis point -esitystä. Tarkat skaalat, rajat ja pyöristykset
+omistaa [laskutus-MVP:n sopimus](invoicing-mvp-implementation-plan.md).
+Tätä ei avata uudelleen yleisenä decimal- tai tietokantatyyppivalintana.
 
 Floating point -tyyppistä epätarkkaa laskentaa vältetään rahassa.
 
@@ -105,13 +103,16 @@ Tarkka ratkaisu päätetään moduulikohtaisesti.
 
 Liiketoimintaolioilla voi olla tiloja.
 
-Esimerkiksi lasku:
+Laskun elinkaaritiloja ovat:
 
 - `draft`
 - `approved`
 - `sent`
-- `paid`
 - `cancelled`
+
+Maksutila on erillinen `paymentState`, ei laskun elinkaaritila. Maksumerkinnät
+ja hyvityslaskun `notApplicable`-maksutila noudattavat
+[maksuseurannan sopimusta](invoice-payment-tracking-plan.md).
 
 Status-siirtymät eivät saa olla satunnaisia merkkijonomuutoksia, vaan niiden pitää noudattaa domain-sääntöjä.
 
@@ -171,9 +172,13 @@ Tiedostojen käyttöoikeudet tarkistetaan backendissä.
 ## Avoimet kysymykset
 
 - Lopullinen ID-malli
-- Laskunumeroinnin toteutus
-- Rahasummien tarkka tallennustapa
-- Audit log -taulun rakenne
+- Tulevan local-cloud-numeroinnin koordinointi; nykyisen hyväksynnän ja
+  numerointisarjojen säännöt omistaa
+  [hyväksyntä- ja numerointisuunnitelma](invoice-approval-numbering-plan.md)
+- Tulevien moduulien rahaesitykset; nykyisen laskutuksen esitystä ei avata
+  uudelleen ilman omistavaa päätöstä
+- Tulevien moduulien audit-taulut nykyisen
+  [audit-omistajuuden](observability-and-audit-plan.md) mukaisesti
 - Soft delete -käytännöt moduuleittain
 - Offline-synkronoinnin tarvitsemat kentät
 - Local-cloud-synkronoinnin konfliktien ratkaisu
