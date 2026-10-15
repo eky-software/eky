@@ -393,7 +393,7 @@ export async function waitForMarker(
 
 // Only for postcompletion inspection, never a replacement for live readiness.
 export async function readCompletedMarker(context, role) {
-  if (!['root', 'grandchild', 'sentinel'].includes(role)) {
+  if (!['root', 'grandchild', 'sentinel', 'output'].includes(role)) {
     throw new Error('WINDOWS_ACCEPTANCE_FIXTURE_MARKER_INVALID');
   }
   let serialized;
@@ -410,10 +410,15 @@ export async function readCompletedMarker(context, role) {
   } catch {
     throw new Error('WINDOWS_ACCEPTANCE_FIXTURE_MARKER_INVALID');
   }
+  const expectedKeys = role === 'output'
+    ? 'errorCode,processId,role,runNonce,schemaVersion,writerBlocked'
+    : 'processId,role,runNonce,schemaVersion';
   if (value === null || typeof value !== 'object' || Array.isArray(value) ||
-      Object.keys(value).sort().join(',') !== 'processId,role,runNonce,schemaVersion' ||
+      Object.keys(value).sort().join(',') !== expectedKeys ||
       value.schemaVersion !== 1 || value.runNonce !== context.runNonce || value.role !== role ||
-      !Number.isSafeInteger(value.processId) || value.processId <= 0) {
+      !Number.isSafeInteger(value.processId) || value.processId <= 0 ||
+      (role === 'output' && (value.writerBlocked !== true ||
+        ![null, 'requestSchemaInvalid'].includes(value.errorCode)))) {
     throw new Error('WINDOWS_ACCEPTANCE_FIXTURE_MARKER_INVALID');
   }
   return value;

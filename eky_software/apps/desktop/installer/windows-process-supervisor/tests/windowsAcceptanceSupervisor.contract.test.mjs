@@ -630,13 +630,39 @@ test('controlled deadline preserves terminal before rejecting missing process pr
   assert.equal(await readFile(context.resultPath, 'utf8'), bytes);
 });
 
-test('deadline diagnostics: completed marker read does not wait for a missing file', async (t) => {
+for (const role of ['root', 'output']) test(`deadline diagnostics: completed ${role} marker read does not wait for a missing file`, async (t) => {
   const context = await diagnosticContext(t);
   t.mock.method(globalThis, 'setTimeout', () => { throw new Error('unexpected readiness wait'); });
-  await assert.rejects(readCompletedMarker(context, 'root'), {
+  await assert.rejects(readCompletedMarker(context, role), {
     message: 'WINDOWS_ACCEPTANCE_FIXTURE_MARKER_MISSING',
   });
 });
+
+for (const errorCode of [null, 'requestSchemaInvalid']) {
+  test(`deadline diagnostics: completed output preserves its blocked-writer evidence (${errorCode})`, async (t) => {
+    const context = await diagnosticContext(t);
+    const marker = { ...fixtureMarker(context, 'output'), writerBlocked: true, errorCode };
+    await writeFile(join(context.runRoot, 'output.ready.json'), JSON.stringify(marker));
+    assert.deepEqual(await readCompletedMarker(context, 'output'), marker);
+  });
+}
+
+for (const [name, changes] of Object.entries({
+  unblocked: { writerBlocked: false },
+  missingBlocked: { writerBlocked: undefined },
+  unknownError: { errorCode: 'synthetic-private' },
+  missingError: { errorCode: undefined },
+  extra: { privateValue: 'synthetic-private' },
+})) {
+  test(`deadline diagnostics: rejects invalid completed output (${name})`, async (t) => {
+    const context = await diagnosticContext(t);
+    const marker = { ...fixtureMarker(context, 'output'), writerBlocked: true, errorCode: null, ...changes };
+    await writeFile(join(context.runRoot, 'output.ready.json'), JSON.stringify(marker));
+    await assert.rejects(readCompletedMarker(context, 'output'), {
+      message: 'WINDOWS_ACCEPTANCE_FIXTURE_MARKER_INVALID',
+    });
+  });
+}
 
 for (const kind of ['malformed', 'null', 'array', 'nonce', 'role', 'schema', 'pid', 'extra']) {
   test(`deadline diagnostics: rejects invalid completed marker (${kind})`, async (t) => {
@@ -1695,10 +1721,6 @@ for (const mode of ['exitZero', 'exitNonZero', 'spawnGrandchildAndHold']) {
         }),
       );
       const execution = startProgramFailureFixture(context, 'blockedEvidence');
-      const blocked = await waitForMarker(context, 'output');
-      assert.equal(blocked.writerBlocked, true);
-      const grandchild = deadlineExpected
-        ? await waitForMarker(context, 'grandchild') : null;
       const { result, completion } = await readCompletedExecution(context, execution);
       assert.equal(completion.exitCode, mode === 'exitZero' ? 0 : 1);
       assert.equal(
@@ -1716,6 +1738,12 @@ for (const mode of ['exitZero', 'exitNonZero', 'spawnGrandchildAndHold']) {
       );
       assert.equal(result.processTreeAbsent, true);
       if (mode === 'exitNonZero') assert.equal(result.childExitCode, 23);
+      // These are postconditions of a completed command, not live readiness waits.
+      const blocked = await readCompletedMarker(context, 'output');
+      assert.equal(blocked.writerBlocked, true);
+      assert.equal(blocked.errorCode, null);
+      const grandchild = deadlineExpected
+        ? await readCompletedMarker(context, 'grandchild') : null;
       assert.equal(isProcessAlive(blocked.processId), false);
       if (grandchild !== null) await waitForProcessAbsent(grandchild.processId);
       assert.equal(isProcessAlive(sentinel.marker.processId), true);

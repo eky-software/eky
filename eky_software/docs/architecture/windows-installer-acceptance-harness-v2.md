@@ -81,6 +81,22 @@ eheysvaatimukset säilyvät. Raja-arvo- ja ylitysregressiot sekä puhtaan
 revision uusi paketti-inventaario vaaditaan. Jaeltavaa artifactia ei rakenneta
 dirty-työpuusta; tutkimuksen sisältö-/kokomittaus ei ole release-hyväksyntä.
 
+### Valmistuneen komennon lokitulostetesti
+
+`blockedEvidence`-sopimustesti lukee prosessin päättymisen ja validoidun
+terminal-tuloksen ennen pakollisia output- ja grandchild-merkkejä.
+Päättyneen komennon merkki luetaan kerran nykyisellä `readCompletedMarker`-
+lukijalla: puuttuminen, virheellinen sisältö ja lukuvirhe ovat erillisiä
+hylkäyksiä. Elävän prosessin readiness-odotus säilyy erillisenä.
+Output-merkki vaatii täsmällisen sidonnan ja estetyn kirjoittajan todisteen.
+Nykyiset prosessi-, tulos-, siivous- ja aikarajaehdot säilyvät.
+
+Tämä toteuttaa aiemman M0.1:n terminal-ensin-säännön myös tähän testiin.
+Se estää jälkikäteisen odotuksen peittymisen testin kokonaisaikakatkaisuun;
+se ei takaa merkkien syntymistä ennen alkuperäistä deadlinea eikä osoita
+historiallisen hylkäyksen tarkkaa syytä. Hallitun kellon käyttöönotto tässä
+testissä ei sisälly muutokseen.
+
 ## M0: Valmiusmerkinnän selvitys
 
 Tila 2026-09-24: omistaja hyväksyi selvityksen ja suunnittelun ennen

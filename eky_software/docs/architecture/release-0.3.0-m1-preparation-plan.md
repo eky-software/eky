@@ -81,6 +81,15 @@ Sovelluskoodi ja yksittäiset testirajat säilyvät. Valmistelun hyväksyntäraj
 muutos ei ole yleinen lupa hyväksyä osittaista havaintoa. Alkuperäiset
 epäonnistumiset säilyvät eikä kohdeläpäisy todista niiden kaikkia syitä.
 
+Revision `9d1d3ddb` normaalissa V2-ajossa `38822790613` MSI-ikkunatestit
+läpäisivät. Legacy-core1:n erillinen `blockedEvidence`-testi aikakatkaisi
+Node-ohjaimessa, vaikka sidottu native-tulos osoitti deadlinen ja
+prosessipuun siivouksen valmistuneen. Nykyinen rajattu testikorjaus käyttää
+[terminal-ensin-järjestystä](windows-installer-acceptance-harness-v2.md#valmistuneen-komennon-lokitulostetesti)
+ja merkkien kertalukua. Pakollinen puuttuva näyttö pysyy hylkäyksenä;
+alkuperäinen ajo ja sen avoin ajoitussyy säilyvät. Integraatio vaatii yhä
+uuden täsmällisen revision omat PR/main-portit.
+
 **Seuraava toiminnallinen työ:** D:n rajattu valmistelu, kun tämän ohjehuollon
 portit täyttyvät. Oma yritys -lukuvirheen käsittely, salaisuusoperaation
 aikakatkaisun ja myöhäisen valmistumisen sovitus sekä vastaus/audit suhteessa
