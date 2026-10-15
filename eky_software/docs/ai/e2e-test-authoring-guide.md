@@ -240,7 +240,8 @@ K:n [Linux-varmuuskopiotarkistus](../architecture/e2e-test-environment.md#linuxi
 on tästä erillinen, nimetty tarkistusprosessin hyväksyntäpolku. Se ei ole
 moduulitestien uusi fixture eikä lupa ajaa Electron-käyttäjäpolkuja Linuxissa.
 Sen nykyinen CI-komento on `pnpm --filter @eky/desktop inspection:proof:linux`;
-todellinen Linux-Electron-todennus on vielä avoin.
+rajatun tarkistuspolun oikea Linux-CI-todennus kuuluu hyväksyttyyn K:hon.
+Se ei korvaa myöhemmän revision omia vaadittuja PR/main-portteja.
 Web-worker hyväksyy vain headless-Chromiumin ilman channel- tai omia
 launchOptions-asetuksia; `DEBUG`, `PWDEBUG` ja `PW_TEST_REUSE_CONTEXT` torjutaan.
 

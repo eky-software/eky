@@ -613,6 +613,20 @@ uutta MSI-asennusta. Vanhan kokeen raakaa vientivirhettä tämä ei palauta.
   tässä luvata. Ennen ikkunaa syntynyt virhe voi näkyä ETL:ssä, mutta tämä
   ei ole täydellinen prosessivedos, verkkokaappaus tai Playwright-trace.
 
+### Historiallisen kertakokeen säilytysraja
+
+Aiemman erikseen hyväksytyn yksityisen kertakokeen seitsemän vuorokauden
+GitHub-säilytys oli vain kyseisen kokeen toimitusraja. Se ei muuta nykyisen
+salatun liitteen yhden vuorokauden säilytystä eikä uusi suljetun kokeen
+käynnistyslupaa. Kokeen ehto oli aineiston viipymätön lataus ja varmennus;
+ETL:n talteenotto ennen jobin loppua oli tavoite, ei toimitustakuu. Paikallinen
+14 vuorokauden tarkistus ei ole automaattinen poistomääräaika. Ratkaistun
+virheen aineisto voidaan poistaa vain hyväksytyn säilytyskäytännön ja
+varmennetun siivouksen mukaisesti. Ratkaisemattoman virheen tai epävarman
+siivouksen ainoa aineisto säilytetään ja jatkosäilytyksestä pyydetään erillinen
+päätös. Turvallinen tulosraportti säilyy; tästä ei synny uutta ajastinta,
+CI-käynnistintä tai testilupaa.
+
 ## Todennus
 
 ### Rajattu toimituskoe

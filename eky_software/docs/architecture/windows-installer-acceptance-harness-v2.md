@@ -1,7 +1,7 @@
 # Windows installer acceptance harness V2
 
 Tämä dokumentti määrittelee Eky-projektin Windows installer -hyväksyntätestien
-ylläpidettävän tavoiterakenteen ja siirtymisen nykyisestä W6B-, W6B.2A- ja
+ylläpidettävän rakenteen sekä historiallisen siirtymisen W6B-, W6B.2A- ja
 W6B.2B-harnessista siihen.
 
 Dokumentti ei muuta tuotantosovelluksen update-, workspace-, backup-, restore-,
@@ -9,15 +9,58 @@ tietokanta-, laskutus- tai Electron-runtime-semanticsia. Se ei myöskään anna
 lupaa uudelle riippuvuudelle, GitHub Actionille, native-helperille,
 versiomuutokselle tai release-artifactille.
 
-Ajantasainen etenemispäätös ja tilataulukko ovat kohdassa
-[Nykyinen päätös](#nykyinen-päätös), jonka testikartta erottaa toteutetut
-vastuut vielä siirtämättömistä. Historialliset checkpointit eivät korvaa
-nykyisen revision hyväksyntää. Tämä on projektin suunnitelma, ei omistajan
+Ajantasainen sopimus ja vanhojen omistajien korvauskartta ovat kohdassa
+[Nykyinen hyväksyntäsopimus](#nykyinen-hyväksyntäsopimus). Alempi
+[päätös- ja testikartta](#nykyinen-päätös) sisältää eri revisioiden
+checkpointit, myös niiden silloiset avoimet kohdat. Historialliset
+checkpointit eivät korvaa nykyisen revision hyväksyntää. Tämä on projektin
+suunnitelma, ei omistajan
 koneen diagnostiikkapäiväkirja. Yksityinen aineisto kuuluu vain Gitistä
 ohitettuihin paikallisiin paikkoihin; epäonnistuneita testituloksia ei kumota.
 
 Asentimen tiedostoversion korvaussäännön rajattu nykyinen testipolku on
 [MSI-tiedostoversiosäännön koe](#msi-tiedostoversiosäännön-koe).
+
+## Nykyinen hyväksyntäsopimus
+
+T1/T2/T3, A/B/C ja K on hyväksytty. Julkaisun nykyinen työjono on
+[M1:n tilassa](release-0.3.0-m1-preparation-plan.md); tämä ei hyväksy
+automaattisesti seuraavaa revisiota tai koko julkaisun muita vaiheita.
+Alempien checkpointien sanat "nykyinen", "seuraava" ja "avoin" koskevat
+niiden omaa revisiota, ellei tässä nykyisessä sopimuksessa toisin todeta.
+Niiden pysyvät turva-, datan säilymis-, prosessi- ja ensivirhe-ehdot säilyvät.
+Vanhaa epäonnistumista tai tuntematonta syytä ei muuteta myöhemmän
+hyväksynnän perusteella ratkaistuksi.
+
+| Aiempi kuvaus | Nykyinen omistaja ja säilyvä ehto |
+| --- | --- |
+| W6-orkestrointi ja poistettujen `runLegacyUpgrade.mjs`, `runWorkspaceSuccess.mjs`, `runWorkspaceFault.mjs` -callereiden vastuu | Kiinteä .NET `AcceptanceCommandProgram`, nykyiset vaiheworkerit ja erillinen pakollinen caller-result-verifier. [Komentoraja](#nykyinen-komentoraja) ja [korvauskartta](#product-komentorajan-korvauspäätös) säilyttävät vanhat invariantit ilman rinnakkaista prosessiomistajaa. |
+| PowerShell/COM-tuotetarkistus | Nykyinen `NativeProductInspection`/`NativeProductQueries` ja `MsiGetProductInfoW`; ei COM-varapolkua. Vanhojen tallenteiden lukutuki ei palauta poistettua ajopolkua. |
+| Viiden legacy-ryhmän ja kymmenen tuloksen checkpoint | Kuusi ryhmää: `core`, `commands`, `legacy-entry`, `clean-upgrade-entry`, `workspace-success-entry`, `workspace-fault-entry`; täydessä portissa kaksi toistoa ja 12 tulosta. |
+| K:n valmistelu tai V2-cutover vielä avoinna | Hyväksytyt integraatiot säilyvät; muuttuneen revision [testauskäytäntö](../ai/testing-rules.md) ja todellinen riskisuunnitelma määräävät uudet PR/main-portit. |
+
+T1/T2-ajokytkentä ja valmistelu sekä T3:n kolme nykyistä fixtureä ja koko
+prosessipuun sopimus ovat [runtime-ohjeessa](e2e-test-environment.md).
+Native-, lifecycle- ja turvallinen CI-raportointi ovat eri havaintokanavia;
+diagnostiikan onnistuminen ei ole siivous- tai testitulos.
+[Salatun aineiston sopimus](ci-encrypted-evidence.md) omistaa toimituksen
+ja säilytyksen. Yksi puu saa yhden timeout-/cleanup-omistajan; root-exit,
+vapaa portti, lokirivi tai onnistunut kill eivät korvaa puun poistumistodistetta.
+Paketointi, scenario, semanttinen postcondition ja fixture-cleanup säilyvät
+erillisinä vastuina. Required checkit ovat `V2 acceptance` ja
+`Audit dependencies`; soveltuvat tapahtumakohtaiset ajot ja nykyiset
+asetukset varmennetaan, eikä vanhaa vihreää ajoa käytetä uuden revision
+hyväksyntänä.
+
+### Sovellusosan pakettibudjetti
+
+Omistajan 12.10.2026 hyväksymä K:n rajaus nosti sovellusosan tiedostomäärän
+352:sta 400:aan sekä kokonaiskoon 2,25:stä 2,75 MiB:iin. Vain täsmällinen
+`resources/app.asar` saa saman laajemman 2,75 MiB:n tiedostokokorajan.
+Muiden tiedostojen, vaiheiden ja artifactien rajat, sallitut sisällöt ja
+eheysvaatimukset säilyvät. Raja-arvo- ja ylitysregressiot sekä puhtaan
+revision uusi paketti-inventaario vaaditaan. Jaeltavaa artifactia ei rakenneta
+dirty-työpuusta; tutkimuksen sisältö-/kokomittaus ei ole release-hyväksyntä.
 
 ## M0: Valmiusmerkinnän selvitys
 
@@ -2031,6 +2074,29 @@ paketin metadata. Uudet revisiot, laskurivit, hyvitysviitteet, nykyrevision
 osoittimet sekä dokumentti- ja tapahtumaprovenanssi tarkistetaan kokonaisina.
 Vanhoja summia tai lähetystarkoituksia ei lasketa tai päätellä uudelleen.
 
+Suljettu schema-odotus sisältää myös constraintit ja SQLite-managed-objektit;
+tuntemattomia objekteja ei ohiteta yleisellä poissulkulistalla. Audit-,
+identiteetti- ja historiataulut kuuluvat samaan arvo-, tyyppi- ja
+monikertavertailuun. Vanhoja ledger-aikoja ei normalisoida. Uuden 039-rivin
+kanoninen aika vastaa metadatan `recorded_at`-arvoa, alkuperä on `applied`,
+ja release-/build-/migraatioketjusidonta vastaa varmennettua pakettia.
+Puuttuva vanha metadata ei ole sallittu poikkeus.
+
+039:n uudet tunnisteet ovat 32 pienaakkosista heksamerkkiä, eivät UUIDv4-
+vaatimus. Kaikki revision sisältö- ja relaatiokentät, hyvityskohdistukset sekä
+current-osoitin tarkistetaan; osoittimen puuttuminen sallitaan vain uudelleen
+avatulle laskulle. Vanhoja ALV-arvoja ei lasketa uudelleen, legacy-revision
+uudet ALV-ryhmät pysyvät tyhjinä ja vanha delivery-purpose säilyy tuntemattomana.
+Ylimääräiset rivit hylätään myös silloin, kun foreign-key-tarkistus läpäisee.
+
+Todiste luetaan vasta hallitun sulun jälkeen readonly-yhteydellä.
+Lukija ei käynnistä sovellusta, migroi, checkpointtaa tai korjaa kantaa.
+Integrity-, foreign-key- ja suljetun katalogin tarkistukset sekä ennen/jälkeen-
+inventaario ovat pakollisia. Ensimmäisen kohdekäynnistyksen ainoa semanttinen
+tavupoikkeus koskee täsmällistä `eky.sqlite`-tiedostoa ja vain todistettua
+038–039-siirtymää; historiallinen lähde, muu data/storage ja PDF:t säilyvät
+tarkassa tavuehdossa.
+
 Runtime-buildin tunnistetiedot luetaan todellisen paketoijan tuottaman
 `resources/app.asar`-arkiston kiinteästä `dist/build-info.json`-jäsenestä
 hyväksytyllä `@electron/asar@4.2.1`-testityökalulla. Tavallista
@@ -2066,12 +2132,22 @@ sen saman inventaarion; myös semanttisesti saman tietokannan tavumuutos
 hylätään. Sama migraatioketju käyttää ensimmäiselläkin kerralla vanhaa
 täyttä tavuehtoa. Tuntematon siirtymä tai puuttuva pakettisidonta estää ajon.
 
+Toinen käynnistys todistaa uuden runtime-sessionin ja saman workspacen sekä
+rekisterin. Erillinen postcondition toistaa sisältötarkistuksen; aiempi
+onnistumisboolean ei korvaa sitä. Regressiot säilyttävät oikean 038–039-
+siirtymän eron vanhaan hash-ehtoon sekä muuttuneen scheman, typed-sisällön,
+ledgerin, pakettisidonnan, uusien viitteiden, PDF-katalogin, keskeneräisen
+journalin ja lukijan kirjoituksen hylkäykset. Windowsin pitkät polut ja
+toisen käynnistyksen byte-ehto kuuluvat samaan suojaan.
+
 Target-evidencen versio 2 sisältää suljetun `databaseProof`-sidonnan.
 Kevyiden tiedostoturvatestien `null`-todiste ei kelpaa oikean workerin tai
 erillisen semanttisen postconditionin hyväksynnäksi. Uudet regressiot kuuluvat
 nykyiseen `installer:test:windows-supervisor-v2-legacy-core`-sarjaan.
-Toteutus ja tämän julkaisun vielä tarvittava paketoitu näyttö ovat
-[M1:n omistavassa suunnitelmassa](release-0.3.0-m1-preparation-plan.md#legacy-testin-038039-migraatiotodisteen-korjausehdotus).
+Tämän testitodisteen nykyinen omistaja on tämä alaluku.
+Hyväksytty integraatiotila ja seuraava työ ovat
+[M1:n tilassa](release-0.3.0-m1-preparation-plan.md); sen päivätyt kokeet
+ovat historiallista näyttöä, eivät rinnakkainen nykyinen testisopimus.
 Tämä testikorjaus ei muuta sovelluksen migraatioita, prosessien omistajuutta,
 aikarajoja, artifact- tai siivousportteja eikä tutkimusaineiston julkaisurajaa.
 
@@ -2419,6 +2495,10 @@ consumerin paketoitu hyväksyntä vielä puuttui. Vanhaa W6B.2A-porttia ei
 poisteta eikä uuden sopimussarjan vihreyttä lasketa packaged-hyväksynnäksi.
 
 ### Worker, caller ja read-only-jälkiehto
+
+Alla oleva caller-kuvaus on Node-sisääntulon checkpoint. Sen pysyvät
+artifact-, lifecycle- ja postcondition-ehdot säilyvät; poistetun callerin
+nykyinen vastuu on [kiinteällä .NET-komennolla](#nykyinen-komentoraja).
 
 `runWorkspaceSuccessWorker.mjs` kytkee lifecycle-portit nykyisiin yksityisiin
 proof- ja profiilinvalmistelusopimuksiin. Se ei rakenna MSI:tä eikä käynnistä
@@ -2969,6 +3049,9 @@ ja kaksi ensimmäisen yrityksen Windows-consumeria todistavat kaikki viisi
 skenaariota samoilla tavuilla. V2.7:n hyväksyntä on edelleen kesken.
 
 ### V2.7:n caller- ja terminal-checkpoint
+
+Tämä on korvatun Node-callerin checkpoint. Nykyinen sisääntulo ja saman
+terminal-invariantin omistaja on [kiinteä .NET-komento](#nykyinen-komentoraja).
 
 `runWorkspaceFault.mjs` on nimetty CLI-entrypoint nykyiseen yhteiseen
 workspace-calleriin, ei uusi prosessivalvoja. Se hyväksyy vain nykyisen
@@ -5362,6 +5445,21 @@ hyväksyntäehtoja.
 
 ### MSI-tiedostoversiosäännön koe
 
+Nykyisen [tuotantosäännön](windows-installer-and-update-plan.md#saman-tiedostoversion-korvaaminen)
+hyväksyntä vaatii valmiin MSI:n tarkastuksen: vain `EkySetReinstallMode`,
+täsmällinen Type 51, `Source=REINSTALLMODE`, `Target=emus` ja ehto
+`NOT Installed AND NOT REINSTALLMODE`. Toiminto on sekä UI- että execute-
+sekvenssissä ennen `CostInitialize`-vaihetta. Property-taulussa ei saa olla
+`REINSTALLMODE`- tai `REINSTALL`-riviä. Ylimääräiset toiminnot, tyyppiliput
+ja muut sekvenssit hylätään. ICE40:tä ei vaimenneta; aiempi ICE91-rajaus
+ei laajene. Tämä korvaa varhaisen Property-tauluun kirjoittavan toteutusvaiheen.
+
+Metadata- tai MSI-istuntokoe ei yksin ole UI-asennusnäyttö. Todellinen
+synteettinen `/qr`-ajo todistaa oletuksen, eksplisiittisen `omus`-ohituksen
+ja uudemman tiedostoversion säilymisen. Huoltoasennuksen ja kutsujan
+eksplisiittisen arvon säilyminen sekä oikean paketin täydellinen payload-,
+repair-, downgrade- ja rollback-portti ovat erillisiä ehtoja.
+
 Omistava toteutus on
 `apps/desktop/installer/windows-acceptance-harness/fixtures/`-hakemiston
 `msiFileVersionPolicy`-perhe. Builder omistaa vain synteettiset paketit,
@@ -5507,6 +5605,11 @@ registry-allekirjoitukset 160/160. Tämä on vihreä välivaiheen baseline,
 ei historiallisen timeoutin korjaus, koko T3:n sulku tai PR/main-hyväksyntä.
 
 ### Ajantasainen testikartta ja avoimet rajat
+
+Alla olevan lähdecheckpointin avoimet integraatiotilat ovat historiallisia.
+[Nykyinen hyväksyntäsopimus](#nykyinen-hyväksyntäsopimus) erottaa hyväksytyt
+T/A/B/C/K-vaiheet uuden revision porteista. Kartan pysyvät vastuu-, timeout-,
+siivous- ja virhetodistevaatimukset eivät muutu tämän tilatäsmennyksen vuoksi.
 
 Kartan lähdekatselmuksen perusta on `08eed10d36781a8a893776282ea18c02e93f9ec3`.
 Se kuvaa toteutusta, ei tämän revision kokonaishyväksyntää. Alla olevat
@@ -6285,7 +6388,7 @@ kokonaishyväksyntää.
 
 ### Nykyinen komentoraja
 
-Nykyinen työ siirtää legacy-, workspace-success- ja workspace-fault-komentojen
+Hyväksytty siirto keskittää legacy-, workspace-success- ja workspace-fault-komentojen
 sisääntulon olemassa olevaan .NET Job -omistajaan. `AcceptanceCommandProgram`
 ajaa suljetun vaihelistan; se ei tulkitse yritysdataa eikä vastaanota workerilta
 uutta komentoa tai riippuvuusgraafia. Paketointi, julkaisun hyväksyntä ja
@@ -6368,14 +6471,15 @@ ei korvaa alkuperäistä testivirhettä. Raakavirheitä tai paikallisia tunniste
 ei lisätä raporttiin.
 
 Kanoninen `installer:test:windows-supervisor-v2-legacy` kääntää nykyisen
-supervisorin kerran ja ajaa viisi ryhmää sarjallisesti: `core`, `commands`,
-`legacy-entry`, `workspace-success-entry` ja `workspace-fault-entry`.
+supervisorin kerran ja ajaa kuusi ryhmää sarjallisesti: `core`, `commands`,
+`legacy-entry`, `clean-upgrade-entry`, `workspace-success-entry` ja
+`workspace-fault-entry`.
 `commands` omistaa yhteiset prosessi- ja vaihejatkumisen sopimukset;
-kolme sisääntuloryhmää käyttävät samaa testirekisteröintiä omalle oikealle
+sisääntuloryhmät käyttävät samaa testirekisteröintiä omalle oikealle
 komennolleen. Uutta ajomoottoria tai fallbackia ei lisätä.
 
 CI ajaa jokaisen ryhmän eristetyssä jobissa samoilla nykyisillä aikarajoilla.
-Täysi portti vaatii kaikki kymmenen ryhmätulosta ennen legacy-produceria.
+Täysi portti vaatii kaikki kaksitoista ryhmätulosta ennen legacy-produceria.
 Kattavuustesti vaatii myös lukitun pakettityökalun valmistelun, buildin ja
 testivaiheen. Tiedosto- ja tapausinventaario todistavat alkuperäisten testien
 säilymisen ilman kaksoissuoritusta. Pakettityökalun lataus on erotettu
@@ -6384,7 +6488,7 @@ Ryhmien jako on työmäärän jakoa, ei jumittuvan operaation lisäaika.
 Uusi hyväksyntä edellyttää lisäksi legacy-producerin ja molempien
 consumerien todellista valmistumista puhtaalta revisiolta.
 
-Korjatun checkpointin kanoninen sopimussarja läpäisi 309/309:
+Historiallisen viiden ryhmän checkpointin kanoninen sopimussarja läpäisi 309/309:
 `core` 227/227, yhteiset komennot 24/24 ja kolme sisääntuloryhmää
 18/18, 20/20 ja 20/20. Kaikki valmistuivat ilman ohituksia tai uusintoja.
 Jaetut workspace-success- ja fault-sopimukset läpäisivät 289/289 ja 279/279;
@@ -7158,6 +7262,10 @@ puhtaalla revisiolla ja siihen sidotuilla artifacteilla.
 
 ### Tuotetarkistuksen diagnoosiraja
 
+Tämä kuvaa korvattua PowerShell/COM-ajopolkua. Nykyinen native-tuotetarkistus
+on nimetty [korvauskartassa](#nykyinen-hyväksyntäsopimus); vanhan tallenteen
+vaiheita ei vaadita uudelta polulta eikä niistä päätellä vanhaa syytä ratkaistuksi.
+
 `inspectSourceBefore` kuuluu nykyisen komentoisännän 35 sekunnin
 vaiherajaan, josta 5 sekuntia on siivousvarausta. Rajan alku ei ole
 PowerShellin tai COM-kutsun alku. Sama Job omistaa koko seuraavan ketjun:
@@ -7664,6 +7772,11 @@ tai nollaa orpoprosessia. Nykyinen vihreä diagnoosi ei korjaa vanhan ajon
 puuttuvaa todistetta.
 
 ### Nykyisten korjausten vastuut
+
+Otsikko kuvaa tämän historiallisen checkpointin korjauksia. Alla mainittu
+`runLegacyUpgrade.mjs` on sittemmin poistettu; sen invariantit säilyvät
+[nykyisessä komentorajassa](#nykyinen-komentoraja). SafeEvidenceWriterin
+ei-estävä tulostus ja erillinen pakollinen tulos säilyvät.
 
 Historiallinen source kirjoittaa smoke-resultin muodossa JSON + LF.
 `legacyUpgradeSourceSmoke` sallii nykyisen tapahtumapolun odottaa tyhjää

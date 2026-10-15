@@ -79,45 +79,18 @@ versionhallinta- tai tuotantodatakansio.
 
 ## Ensimmäinen Windows-vertailu
 
-Ensimmäinen täysi stress-ajo tehtiin Electron 42.8.0:lla Windowsissa
-30.7.2026:
-
-| Mittari | Tulos |
-| --- | ---: |
-| Kesto | 62 615 ms |
-| Prosesseja alussa / lopussa | 5 / 5 |
-| Ikkunoita lopussa | 1 |
-| Working set alussa | 467 348 KiB |
-| Working set lopussa | 456 200 KiB |
-| SQLite | 352 256 B |
-| PDF-dokumentit | 3 290 B |
-| Lokit | 143 956 B |
-
-Yhden minuutin soak-polun validointi teki 133 työkiertoa, 13 restartia ja 26
-tukipakettia. Se todensi keston ohjauksen ja raportoinnin, mutta ei korvaa
-varsinaista 30 minuutin vertailuajoa.
+Ensimmäinen täysi stress-ajo läpäisi 30.7.2026 projektin Electron 42.8.0
+-runtimella yllä kuvatun työkuorman ja lopputilan ehdot. Yhden minuutin
+soak-polun validointi todensi keston ohjauksen ja raportoinnin, mutta ei
+korvannut varsinaista 30 minuutin vertailuajoa.
 
 ## Ensimmäinen 30 minuutin Windows-soak
 
-Ensimmäinen täysi 30 minuutin soak ajettiin commitilla
-`a58718aea394f6007adbe697928523a793bb343f` Electron 42.8.0:lla Windowsissa
-31.7.2026 Suomen aikaa. Ajo tehtiin vasta kahden peräkkäisen vihreän puhtaan
-GitHub Windows Electron critical E2E -ajon jälkeen.
-
-| Mittari | Tulos |
-| --- | ---: |
-| Kesto | 1 800 273 ms |
-| Työkierroksia | 3 282 |
-| Runtime-restartteja | 328 |
-| Tukipaketteja | 656 |
-| Prosesseja alussa / lopussa | 5 / 5 |
-| Ikkunoita lopussa | 1 |
-| Working set alussa | 466 248 KiB |
-| Working set lopussa | 508 276 KiB |
-| SQLite | 2 678 784 B |
-| PDF-dokumentit | 3 290 B |
-| Lokit | 2 574 536 B |
-| Backend lopussa | terve |
+Ensimmäinen täysi 30 minuutin soak läpäisi 31.7.2026 commitilla
+`a58718aea394f6007adbe697928523a793bb343f` ja projektin Electron 42.8.0
+-runtimella. Edeltävät kaksi puhdasta GitHub Windows Electron critical
+-ajoa olivat erillisiä todisteita; niitä ei pidä sekoittaa soak-ajon
+suoritusympäristöön tai myöhemmän revision hyväksyntään.
 
 Yksi vertailuajo ei osoita muistivuotoa tai määritä yleistä muistirajaa.
 Seuraavissa ajoissa arvioidaan erityisesti, palautuvatko prosessi- ja
@@ -125,46 +98,17 @@ ikkunamäärät sekä tasaantuuko working set samanlaisella työkuormalla.
 
 ## Electron 43 -yhteensopivuusvertailu
 
-Electron `43.2.0`- ja better-sqlite3 `13.0.2` -yhteensopivuuspäivityksen
-jälkeinen stress-ajo tehtiin Windowsissa 3.8.2026:
+Projektin Electron `43.2.0`- ja better-sqlite3 `13.0.2`
+-yhteensopivuuspäivityksen stress- ja täysi 30 minuutin soak-vertailu
+läpäisivät 3.8.2026. Stress-työkuorma säilyi samana kuin yllä:
+näkymäsiirtymät, laskun avaukset, PDF-esikatselut, tukipaketit,
+salaisuuskierrot ja runtime-restartit. Lopputilan prosessi-, ikkuna-,
+backend- ja salaisuusehdot täyttyivät.
 
-| Mittari | Electron 42.8.0 | Electron 43.2.0 |
-| --- | ---: | ---: |
-| Kesto | 62 615 ms | 61 379 ms |
-| Prosesseja alussa / lopussa | 5 / 5 | 5 / 5 |
-| Ikkunoita lopussa | 1 | 1 |
-| Working set alussa | 467 348 KiB | 450 072 KiB |
-| Working set lopussa | 456 200 KiB | 442 884 KiB |
-| SQLite | 352 256 B | 401 408 B |
-| PDF-dokumentit | 3 290 B | 3 290 B |
-| Lokit | 143 956 B | 143 954 B |
-
-Työkuorma säilyi samana: 200 moduulisiirtymää, 50 laskun detail-avausta,
-100 PDF-esikatselusykliä, 20 tukipakettia, 30 salaisuuskiertoa ja 20
-runtime-restarttia. Prosessi- ja ikkunamäärät palautuivat lähtötasolle eikä
-PDF-ikkunoita tai salaisuustiedostoa jäänyt avoimeksi.
-
-Täysi Electron `43.2.0` -soak ajettiin samana päivänä:
-
-| Mittari | Electron 42.8.0 | Electron 43.2.0 |
-| --- | ---: | ---: |
-| Kesto | 1 800 273 ms | 1 801 472 ms |
-| Työkierroksia | 3 282 | 3 250 |
-| Runtime-restartteja | 328 | 325 |
-| Tukipaketteja | 656 | 650 |
-| Prosesseja alussa / lopussa | 5 / 5 | 5 / 5 |
-| Ikkunoita lopussa | 1 | 1 |
-| Working set alussa | 466 248 KiB | 454 164 KiB |
-| Working set lopussa | 508 276 KiB | 452 992 KiB |
-| SQLite | 2 678 784 B | 2 723 840 B |
-| PDF-dokumentit | 3 290 B | 3 290 B |
-| Lokit | 2 574 536 B | 2 551 033 B |
-| Backend lopussa | terve | terve |
-
-Kierrosmäärän pieni vaihtelu johtuu aikarajattuun testiin yhden ajon aikana
-mahtuvasta työmäärästä. Yksi vertailu ei muodosta yleistä suorituskyky- tai
-muistirajaa, mutta tässä ajossa ei havaittu prosessi-, ikkuna- tai working
-set -kasvua, joka viittaisi Electron 43 -päivityksen aiheuttamaan vuotoon.
+Nämä ovat rajattuja historiallisia hyväksyntöjä, eivät nykyisen revision
+tuloksia tai yleisiä suorituskyky- ja muistirajoja. Aikarajatussa testissä
+toteutunut kierrosmäärä voi vaihdella; vertailumenetelmä ja työkuorman
+sisältö on säilytettävä samoina.
 
 ## Tulkinta
 

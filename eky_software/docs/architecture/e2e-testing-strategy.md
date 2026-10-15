@@ -160,7 +160,7 @@ asiakasdataa, oikeaa salasanaa tai ulkoista verkkoa.
 
 ## Nykyisten moduulien jäädytetty E2E-perusta
 
-Commit `a58718aea394f6007adbe697928523a793bb343f` jäädyttää Customers-,
+Historiallinen commit `a58718aea394f6007adbe697928523a793bb343f` jäädytti Customers-,
 Company Settings-, Invoicing-, Activity-, Diagnostics- ja Desktop-runtime-
 kokonaisuuksien nykyisen E2E-perustan. GitHub CI run 287:n ensimmäinen ajo ja
 erillisellä puhtaalla Windows-runnerilla tehty toinen Windows Electron
@@ -180,7 +180,8 @@ Jäädytys tarkoittaa, että:
 - löydetty regressio korjataan tuotantokoodissa tai kirjataan rehellisesti
   findingiksi; testiä ei muuteta peittämään regressiota.
 
-Seuraava Customer Overview -ominaisuus rakennetaan tämän perustan päälle eikä
+Customer Overview on sittemmin toteutettu; sen nykyinen kattavuus on
+[testimatriisissa](r0-e2e-test-matrix.md#customers). Uudet ominaisuudet eivät
 avaa nykyisten moduulien valmiita turvarajoja uudelleen ilman todettua syytä.
 
 ## Riippuvuuspäätös

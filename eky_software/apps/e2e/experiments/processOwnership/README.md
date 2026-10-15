@@ -406,6 +406,12 @@ Schemas 1/2 remain historical evidence; do not reinterpret earlier results.
 
 ## T3c-LM managed CI session
 
+The implementation slices below are historical evidence, including their
+then-unverified state. Current fixtures use the managed session; its retained
+permission, identity, transport and cleanup requirements are owned by the
+[current Linux-CI contract](../../../../docs/architecture/e2e-test-environment.md#linux-ci).
+This history grants no new launcher, host-policy or dependency permission.
+
 The owner has approved bounded CI-session management design and implementation
 within the existing Goal. The [owning LM plan](../../../../docs/architecture/e2e-test-environment-history.md#t3c-lm-rajattu-ci-testisession-hallinta)
 replaces the pending design decision, not the failed historical LS evidence.

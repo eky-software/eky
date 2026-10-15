@@ -359,8 +359,8 @@ validoidun riskisuunnitelman mukaan. Vakaa `V2 acceptance` vaatii saman ajon
 ja yrityksen kaikki valitut jobit, toistot ja pakolliset testivaiheet; pelkkä
 matriisin osittainen onnistuminen ei riitä. Main-, ajastettu ja manuaalinen
 release-valmistelun ajo säilyvät täysinä. Feature-push ei toista PR:n V2-matriisia.
-Valmisteltu cutover poistaa korvatut W6-komennot ja niiden suorat CI-jobit.
-`ci.yml` jää saman riskisuunnitelman reusable coreksi; suora feature-push tai
+Hyväksytty cutover poisti korvatut W6-komennot ja niiden suorat CI-jobit.
+`ci.yml` toimii saman riskisuunnitelman reusable corena; suora feature-push tai
 PR ei käynnistä sen rinnalle toista raskasta matriisia. Säilyvät rakentajat,
 fixturet ja turvallisuustarkistukset on nimetty V2-suunnitelman siirtokartassa.
 Katselmoitu V2-integraatio on yhdistetty normaalilla PR-menettelyllä mainiin,
@@ -368,6 +368,30 @@ ja required checkit ovat `V2 acceptance` sekä `Audit dependencies`.
 Strict-ajantasaisuus, PR-vaatimus ja muut suojaukset säilyvät. Merge-commitin
 oma täysi ajo on erillinen julkaisuehto: sen hylkäystä ei korvaa aiempi
 PR-vihreys. Ajantasainen hyväksyntätila on kanonisessa V2-suunnitelmassa.
+
+Dokumentaatiomuutoskaan ei ohita riskiluokitusta. Nykyisen
+[riskiluokittimen](../../../.github/scripts/ciRiskPolicy.mjs) ja
+[controllerin](../../../.github/workflows/ci-cadence-contracts.yml) mukaan:
+
+| Muutos tai tapahtuma | Vaadittu valinta |
+| --- | --- |
+| Tavallinen `eky_software/docs/**/*.md`, pois lukien alla olevat politiikkaohjeet | `verify`, `systemSecurity`, `webCritical`, yksi toisto |
+| Mikä tahansa `AGENTS.md`, `.github/**`, tämä testauskäytäntö tai Windows-harnessin ohje | Kaikki 11 perhettä, kaksi toistoa |
+| `apps/e2e/experiments/processOwnership/README.md` | Compatibility-riski: kaikki 11 perhettä, yksi toisto |
+| Tuntematon polku, puuttuva/epätäydellinen vertailu tai tyhjä muutoslista | Täysi portti, kaksi toistoa |
+| Main-push, ajastettu tai manuaalinen controller-ajo | Täysi portti, kaksi toistoa |
+
+Sekamuutoksessa tiukin luokitus määrää. Nopea portti ajaa oikeat sopimus-,
+build- ja system/web-testit; se ei tarkoita pelkkää dokumenttilinkkien linttiä.
+Täysi portti säilyttää paketti-, palautus-, prosessi- ja fault-vaatimukset.
+[Audit-workflow](../../../.github/workflows/dependency-security.yml) käynnistyy
+jokaisesta mainiin kohdistuvasta PR:stä. Sen main-push on erikseen
+polkusuodatettu: pelkkä dokumenttimuutos ei automaattisesti käynnistä
+Auditia mainissa. Ajastettu tai manuaalinen Audit on oma ajonsa. Puuttuvaa
+ajoa ei merkitä läpäistyksi eikä toisen revision tulosta käytetä uuden
+revision todisteena. Vaaditut PR-tarkistukset ja mainin omat soveltuvat
+portit varmennetaan nykyiselle revisiolle; tämä taulukko ei muuta politiikkaa
+tai GitHubin asetuksia.
 
 V2.5:n omistajan hyväksymä vaihekohtainen ympäristöraja käyttää kahta
 eristettyä Windows CI -consumeria samalle build-once-artifactille kahden
@@ -393,6 +417,11 @@ skenaarioita, toistoja, turvallisuus- tai siivousvaatimuksia ei poisteta.
 Tarkka sopimus, required-check-vaihdon ehdot ja merge-commitin oma portti
 ovat kanonisessa V2-suunnitelmassa; vanhojen ajokierrosten osia ei yhdistetä
 uuden revision hyväksynnäksi.
+
+Edellä kuvattu kahden kokonaiskierroksen ehto koski V2:n alkuperäistä
+käyttöönottoa. Se ei lisää jokaiseen myöhempään dokumentointi-PR:ään kahta
+uutta PR/main-kierrosta. Nykyisen riskisuunnitelman toistot ja saman
+revision PR/main-hyväksyntä säilyvät sellaisinaan.
 
 Testiraportin julkaisuraja määräytyy
 `docs/architecture/security-principles.md`-dokumentista. Omistajan koneen
@@ -579,10 +608,10 @@ CI-testauksen kuin käsin tehty päivitys. Core säilyttää
 -vastuut myös reusable-workflowin prefiksoiduissa jobeissa.
 Electron-, native addon- ja Windows-paketointimuutoksissa ajetaan lisäksi
 `Windows Electron critical E2E`, Windows package sekä packaged smoke sovitun
-testimatriisin mukaan. Käyttöönotossa pakolliset tarkistukset vaihdetaan
-hyväksytyin ehdoin yhdistelmään `V2 acceptance` + `Audit dependencies`;
-koonti todentaa kaikki riskin valitsemat jobit, vaiheet ja toistot. Ennen
-asetusten varmennettua vaihtoa mainin nykyiset required checkit säilyvät.
+testimatriisin mukaan. Hyväksytyn käyttöönoton pakolliset tarkistukset ovat
+`V2 acceptance` + `Audit dependencies`; koonti todentaa kaikki riskin
+valitsemat jobit, vaiheet ja toistot. Dokumentoitu päätös ei korvaa nykyisten
+GitHub-asetusten read-only-varmennusta ennen mergeä.
 
 Dependabot version updates syntyy `.github/dependabot.yml`-tiedoston
 viikkorytmistä eikä niitä mergeytetä automaattisesti. Security updates ei
