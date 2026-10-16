@@ -53,6 +53,67 @@ if (!Number.isInteger(repetitions) || repetitions < 1 || repetitions > 50) {
 
 test.afterEach(async () => cleanupActiveSupervisors());
 
+test('MSI resources: scoped identity, cancellation and real OpenPGP delivery', WINDOWS_ONLY, async t => {
+  const context = await contextFor(t, 'msi-resource-contracts');
+  const temporary = join(context.testRoot, 'temporary');
+  const checkout = join(context.testRoot, 'checkout');
+  const scenarioRoot = join(temporary, 'eky-acceptance-command-' + 'b'.repeat(32), 'scenario');
+  await mkdir(scenarioRoot, { recursive: true });
+  await mkdir(checkout);
+  const foreign = join(context.testRoot, 'foreign');
+  await mkdir(foreign);
+  await writeFile(join(foreign, 'foreign.bin'), 'EXCLUDED FOREIGN CONTENT');
+  await mkdir(join(scenarioRoot, 'payload'));
+  await symlink(foreign, join(scenarioRoot, 'payload', 'junction'), 'junction');
+  context.scenario = 'packagedWorkspaceSuccess';
+  context.requestPath = join(scenarioRoot, 'request.json');
+  context.resultPath = join(scenarioRoot, 'result.json');
+  await writeRequest(context, { ...createRequest(context, 'exitZero'), workingDirectory: scenarioRoot });
+  const crypto = await createOpenPgpTestFixture(fileURLToPath(new URL('../../../../../', import.meta.url)));
+  let completed = false;
+  try {
+    const recipient = await crypto.generate('recipient');
+    await crypto.invokeGpg(recipient.home, ['--pinentry-mode', 'loopback', '--passphrase', '',
+      '--quick-add-key', recipient.fingerprint, 'cv25519', 'encr', '1d']);
+    const publicPath = await crypto.exportKey(recipient, 'public.asc');
+    const env = { ...process.env, GITHUB_ACTIONS: 'true', GITHUB_RUN_ID: '98765', GITHUB_RUN_ATTEMPT: '1',
+      GITHUB_JOB: 'tests', EKY_EVIDENCE_JOB_KEY: 'tests-0', GITHUB_SHA: 'a'.repeat(40),
+      EKY_EVIDENCE_JOB_OUTCOME: 'failure', RUNNER_TEMP: temporary, GITHUB_WORKSPACE: checkout,
+      EKY_DIAGNOSTIC_KEY_FINGERPRINT: recipient.fingerprint,
+      EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: recipient.fingerprint,
+      EKY_DIAGNOSTIC_PUBLIC_KEY: await readFile(publicPath, 'utf8') };
+    const execution = startProgramFailureFixture(context, 'msiResourceContracts', { environment: env });
+    const result = await execution.completion;
+    assert.equal(result.exitCode, 0);
+    assert.doesNotMatch(result.standardOutput, /SYNTHETIC RM|foreign\.bin|startTimeLow|ownedJob/);
+    const proof = JSON.parse(await readFile(join(scenarioRoot, 'msi-resource-contract.json'), 'utf8'));
+    assert.equal(proof.junctionRejected, true);
+    assert.equal(proof.cleanupDoesNotAwaitResourceRead, true);
+    assert.equal(proof.bothTreesAbsent, true);
+    assert.ok(Object.keys(proof).length >= 30);
+    assert.ok(Object.values(proof).every(value => value === true));
+    const collected = await collectJobFailureEvidence(env, { nativeTemp: temporary });
+    await encryptArchive(collected.root, collected);
+    const decrypted = await crypto.invokeGpg(recipient.home, ['--decrypt', join(collected.root, 'evidence.json.gz.gpg')]);
+    const archive = JSON.parse(gunzipSync(decrypted.stdout));
+    const entries = archive.manifest.files.filter(value => value.kind === 'msiWindowObservation' && value.status === 'retained');
+    assert.equal(entries.length, 1);
+    const record = JSON.parse(Buffer.from(archive.files[entries[0].name], 'base64'));
+    assert.equal(record.schemaVersion, 3);
+    assert.equal(record.resources.status, 'observed');
+    assert.equal(record.resources.phase, 'complete');
+    assert.equal(record.resources.nativeCode, 0);
+    assert.equal(record.resources.endSessionCode, 0);
+    assert.equal(record.resources.selectionIdentity, 'a'.repeat(64));
+    assert.ok(record.resources.processes.some(value => value.membership === 'ownedJob' && value.processId > 0 &&
+      (value.startTimeLow !== 0 || value.startTimeHigh !== 0)));
+    assert.equal(JSON.stringify(archive).includes('EXCLUDED FOREIGN CONTENT'), false);
+    assert.equal(archive.manifest.files.some(value => value.source.includes('msi-resource-selection')), false);
+    assert.equal(await readFile(join(foreign, 'foreign.bin'), 'utf8'), 'EXCLUDED FOREIGN CONTENT');
+    completed = true;
+  } finally { await crypto.finish({ completed, failed: !completed }); }
+});
+
 test('MSI windows: owned visible captions, bounded reads and interrupted immutable publication', WINDOWS_ONLY, async t => {
   const context = await contextFor(t, 'msi-window-contracts');
   context.scenario = 'packagedWorkspaceSuccess';

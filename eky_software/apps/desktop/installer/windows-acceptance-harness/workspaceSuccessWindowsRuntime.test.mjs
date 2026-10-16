@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import test from 'node:test';
+import { publishWorkspaceMsiResourceSelection } from './workspaceMsiResourceSelection.mjs';
 
 import { WORKSPACE_SUCCESS_PROFILE_ERRORS, WORKSPACE_SUCCESS_PROOF_ERRORS,
   WORKSPACE_INSTALLATION_INSPECTION_ERRORS as inspectionErrors, workspaceSuccessErrorCode } from './workspaceSuccessContracts.mjs';
@@ -149,7 +150,11 @@ async function fixture(context, changes = {}) {
         localPackagePresent: installed, ownedRegistryExists: true, ekyProcessCount: 0 };
       return changes.productObservation ? changes.productObservation(inspectionRole, result) : result;
     },
-    async inspectPayload() { return changes.payload ?? { identity: 'target' }; },
+    async inspectPayload({ onValidatedFiles }) {
+      if (changes.validatedFiles) onValidatedFiles?.(changes.validatedFiles);
+      return changes.payload ?? { identity: 'target' };
+    },
+    ...(changes.publishResourceSelection ? { publishResourceSelection: changes.publishResourceSelection } : {}),
     async inspectFootprint() { calls.push({ footprint: true });
       return { installRootExists: true, executableExists: true, shortcutExists: true }; },
     async verifyArtifact(value) { calls.push({ artifact: value }); },
@@ -930,6 +935,50 @@ test('payload comparison and byte verification keep both immutable bindings', as
     expectedBuildRevision: value.inputs.request.buildRevision,
     expectedDescriptorSha256: value.inputs.request.artifactDescriptorSha256 });
   assert.equal(value.calls.at(-1).fixture.temporaryRoot, value.root);
+});
+
+test('source resource selection follows matching inventory without awaiting optional publication', async context => {
+  let published;
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const value = await fixture(context, { payload: { identity: 'source' }, validatedFiles: ['Eky.exe'],
+    publishResourceSelection(input) { published = input; return gate; } });
+  try {
+    await value.runtime.validatePayload('source');
+    assert.equal(published.inventory.identity, 'source');
+    assert.deepEqual(published.files, ['Eky.exe']);
+    assert.equal(published.scenario, 'packagedWorkspaceSuccess');
+    assert.equal(published.request.runNonce, value.inputs.request.runNonce);
+    assert.equal(published.directory, value.root);
+    published = null;
+    await value.runtime.validatePayload('source');
+    assert.equal(published, null);
+    await assert.rejects(value.runtime.validatePayload('target'), { message: 'targetStateInvalid' });
+  } finally { release(); }
+});
+
+test('resource selection does not run after mismatching source inventory', async context => {
+  let calls = 0;
+  const value = await fixture(context, { validatedFiles: ['Eky.exe'], publishResourceSelection() { calls++; } });
+  await assert.rejects(value.runtime.validatePayload('source'), { message: 'sourceStateInvalid' });
+  assert.equal(calls, 0);
+});
+
+test('resource selection has bounded relative paths and exclusive private publication', async () => {
+  const input = { directory: resolve('scenario'), root: resolve('installed'),
+    request: { runNonce: 'a'.repeat(64), artifactDescriptorSha256: 'b'.repeat(64) },
+    scenario: 'packagedWorkspaceSuccess', inventory: { identity: 'c'.repeat(64) }, files: ['Eky.exe', 'resources/app.asar'] };
+  const calls = [];
+  const publish = async (...args) => { calls.push(args); };
+  await publishWorkspaceMsiResourceSelection(input, publish);
+  assert.equal(calls.length, 1);
+  const [path, bytes, options] = calls[0];
+  assert.equal(basename(path), 'msi-resource-selection.private.json');
+  assert.deepEqual(options, { flag: 'wx' });
+  assert.deepEqual(JSON.parse(bytes).files, input.files);
+  for (const files of [[], ['../foreign'], ['x:stream'], ['a\\b'], ['a//b'], ['a', 'a'], ['a '.repeat(100)]])
+    await publishWorkspaceMsiResourceSelection({ ...input, files }, publish);
+  assert.equal(calls.length, 1);
 });
 
 test('process environment removes inherited Eky overrides and Node mode case-insensitively', () => {

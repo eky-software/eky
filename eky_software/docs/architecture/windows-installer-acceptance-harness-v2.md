@@ -52,6 +52,16 @@ erillisinä vastuina. Required checkit ovat `V2 acceptance` ja
 asetukset varmennetaan, eikä vanhaa vihreää ajoa käytetä uuden revision
 hyväksyntänä.
 
+Workspace-asentimen sulkemispyynnön tiedostokäyttäjät havaitaan nykyisen
+valinnaisen MSI-kyselyn kautta. Lähdeinventaarion hyväksytyt tiedostot
+rajataan samaan ajoon ennen Restart Manager -kyselyä; PID ja creation
+FILETIME verrataan elävän kahvan Job-jäsenyyteen. Havainto ei sulje
+prosesseja, vastaa ilmoituksiin tai muuta asennuksen hyväksymisehtoja.
+[Keräyssopimus ja sen rajat](ci-encrypted-evidence.md#asentimen-rajattu-ikkunahavainto)
+omistavat myös skeeman 3 lukutuen, osittaisuuden ja salatun toimituksen.
+Pysyvät valinta-, keskeytys- ja oikean OpenPGP-ketjun regressiot ovat nykyisissä
+workspace-runtime-, inventaario-, keräin- ja supervisor-sopimussarjoissa.
+
 ### Clean/upgrade-sopimustestien valmistelu
 
 Legacy-matriisin `clean-upgrade-entry` ajaa nykyiset kaksi Node-testitiedostoa

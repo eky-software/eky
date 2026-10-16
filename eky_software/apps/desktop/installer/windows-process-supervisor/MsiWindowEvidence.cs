@@ -11,7 +11,8 @@ internal sealed class MsiWindowEvidence(SupervisorRequest request, Action? befor
 {
     private int sequence;
 
-    internal string Publish(IReadOnlyList<MsiWindowSample> clients, long elapsedMilliseconds, Func<bool> stopped)
+    internal string Publish(IReadOnlyList<MsiWindowSample> clients, long elapsedMilliseconds, Func<bool> stopped,
+        MsiResourceSample? resources = null)
     {
         if (stopped()) return "cancelled";
         if (sequence >= WorkspaceMsiActivityObservation.MaximumSamples) return "limited";
@@ -25,7 +26,7 @@ internal sealed class MsiWindowEvidence(SupervisorRequest request, Action? befor
                 schemaVersion = MsiWindowObservation.Contract.SchemaVersion,
                 operation = MsiWindowObservation.Contract.Operation,
                 binding, request.RunNonce, request.Scenario, request.ArtifactDescriptorSha256,
-                sequence = number, elapsedMs = Math.Max(0, elapsedMilliseconds), clients,
+                sequence = number, elapsedMs = Math.Max(0, elapsedMilliseconds), clients, resources,
             }, MsiWindowObservation.JsonOptions);
             if (bytes.Length > MsiWindowObservation.Contract.MaximumBytes) return "limited";
             if (stopped()) return "cancelled";

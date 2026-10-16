@@ -228,6 +228,40 @@ sisäistä juurisyytä.
 Skeema 2 nimeää listamerkinnän `application`-rooliksi; vanhan skeeman 1
 rajattu luku säilyy, mutta se ei hyväksy tätä uutta roolia.
 
+Skeema 3 lisää samaan näytteeseen valinnaisen `resources`-havainnon.
+Nykyinen taustakysely käyttää Windowsin Restart Manageria vain testin
+omistaman, sovellusten sulkemista pyytävän MSI-ilmoituksen yhteydessä.
+Rekisteröitävät tiedostopolut tulevat lähdepaketin hyväksytyn inventaarion
+samasta läpikäynnistä. Yksinomaisesti luotu yksityinen valintatiedosto
+sidotaan skenaarioon, nonceen, descriptor-tiivisteeseen ja lähdeinventaarion
+identiteettiin. Lukija vaatii täsmällisen asennusjuuren, rajatut suhteelliset
+polut, tavalliset tiedostot ja reparse-vapaat esi-isät. Valintatiedostoa tai
+sen polkuja ei kopioida virhepakettiin. Valinnan julkaisu ei ole skenaarion
+hyväksymisehto eikä sitä odoteta siivouksessa.
+
+Vain tiedostot rekisteröidään; prosesseja ja palveluja ei rekisteröidä eikä
+Restart Managerin sulkemis- tai käynnistystoimintoja käytetä. Näytteeseen
+tulevat suljettu vaihe ja kattavuustila, alkuperäinen native-koodi,
+erillinen session sulkukoodi, valinnan identiteetti ja määrä sekä enintään
+32 prosessin PID, creation FILETIME ja `ownedJob`/`outsideJob`/`unknown`.
+Jäsenyys tarkistetaan elävän prosessikahvan samalla PID-/aloitusaikasidonnalla
+luvun molemmin puolin. Poistuminen tai identiteettiristiriita jää tuntemattomaksi.
+Koko- ja näyterajat sekä julkiset tulosteluokat säilyvät; skeemojen 1 ja 2
+tiukka lukutuki säilyy.
+
+Tämä on nykyhetken havainto rekisteröidyistä tiedostoista. Se ei todista
+MSI:n aiemman ilmoituksen estäjää, kaikkien lukkojen poissaoloa tai Jobin
+jäsenen roolia sovelluksen pääprosessina. Polkujen tyyppi- ja rajatarkistukset
+ovat hetkittäisiä; havainto ei ole jatkuvan tiedostoidentiteetin tai
+sisältötavujen muuttumattomuuden valtuus. Tarkistus ei pidä asennustiedostoja
+lukittuina MSI:n korvausoperaatioita vastaan. Puuttuva, muuttunut tai
+epävarma valinta ja rajautunut kysely säilyttävät oman tilansa. Native-kutsun
+viive ei siirry terminal-/cleanup-odotukseen: sama yksi valinnainen
+taustakysely ja nykyinen ulompi prosessiraja omistavat sen elinkaaren.
+Regressiot todentavat valinnan rajat, identiteetin vaihtumisen, keskeytyksen
+sekä todellisen keräys-, salaus- ja purkuketjun. Havainnon onnistuminen
+ei hyväksy asennusskenaariota tai korjaa historiallista timeoutia.
+
 Nykyinen `packaged-boundary-diagnostic` käyttää samaa valinnaista salattua
 jälkikeräystä epäonnistuneessa tai perutussa `legacy`- ja `workspace`-kokeessa.
 Tämä ei käynnistä ulkoista jälkitallennusta, muuta hyväksyntää tai laajenna

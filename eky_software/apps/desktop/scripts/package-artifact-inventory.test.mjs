@@ -14,6 +14,24 @@ import { profileInspectionNativeContract as inspectionNative } from '../../backe
 
 const temporaryDirectories = [];
 
+test('validated file observation follows complete admission and cannot alter its result', async () => {
+  const root = await createStageFixture('Eky.exe', 'synthetic executable');
+  await writeFixture(root, 'resources/app.asar', 'synthetic application');
+  let files;
+  const expected = await inspectPackageArtifactInventory({ root, stage: 'packagedApp' });
+  const actual = await inspectPackageArtifactInventory({ root, stage: 'packagedApp', onValidatedFiles(value) {
+    files = value;
+    assert.equal(Object.isFrozen(value), true);
+    throw new Error('optional observation failed');
+  } });
+  assert.deepEqual(actual, expected);
+  assert.deepEqual(files, ['Eky.exe', 'resources/app.asar']);
+  await writeFixture(root, 'private.sqlite', 'excluded');
+  let calls = 0;
+  await assert.rejects(inspectPackageArtifactInventory({ root, stage: 'packagedApp', onValidatedFiles() { calls++; } }), /DATABASE/);
+  assert.equal(calls, 0);
+});
+
 for (const [stage, prefix] of [
   ['profileInspectionNativeStage', ''],
   ['packagedApp', `resources/${inspectionNative.directoryName}/`],

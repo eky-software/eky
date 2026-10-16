@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "operation": "msiWindowObservation",
   "filenamePrefix": "msi-window-",
   "maximumBytes": 65536,
@@ -9,5 +9,12 @@
   "maximumTextCharacters": 1024,
   "maximumTotalCharacters": 4096,
   "messageTimeoutMilliseconds": 100,
-  "sampleTimeoutMilliseconds": 1000
+  "sampleTimeoutMilliseconds": 1000,
+  "resourceSelectionFilename": "msi-resource-selection.private.json",
+  "maximumSelectionBytes": 1048576,
+  "maximumResourceFiles": 2800,
+  "maximumResourcePathBytes": 160,
+  "resourceStatuses": ["observed", "limited", "unavailable", "cancelled"],
+  "resourcePhases": ["selection", "startSession", "registerResources", "queryResources", "membership", "complete"],
+  "resourceMemberships": ["ownedJob", "outsideJob", "unknown"]
 }
