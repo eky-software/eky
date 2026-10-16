@@ -217,6 +217,26 @@ describe('desktop before-quit handler', () => {
       /app\.on\('window-all-closed', \(\) => \{\s*if \(\s*!smokeConfiguration\.enabled &&\s*w6b2ProofConfiguration === undefined &&\s*!desktopLifecycle\?\.isInstallerHandoffPending\(\)/,
     );
   });
+
+  it('wires the same shutdown guard into the Electron E2E entrypoint without a pending-quit bypass', async () => {
+    const source = await readFile(
+      new URL('../../e2e/electronE2eEntrypoint.ts', import.meta.url),
+      'utf8',
+    );
+
+    expect(source).toContain(
+      "import { createDesktopBeforeQuitHandler } from '../src/main/desktopBeforeQuit.js';",
+    );
+    expect(source).toMatch(
+      /const handleBeforeQuit = createDesktopBeforeQuitHandler\(\{\s*readLifecycle: \(\) => lifecycle,\s*quitApplication: \(\) => app\.quit\(\),\s*\}\);/,
+    );
+    expect(source.match(/app\.on\('before-quit'/g)).toHaveLength(1);
+    expect(source).toMatch(
+      /app\.on\('before-quit', \(event\) => \{\s*void handleBeforeQuit\(event\);\s*\}\);/,
+    );
+    expect(source).not.toContain('shutdownStarted');
+    expect(source).toContain("app.on('window-all-closed', () => app.quit());");
+  });
 });
 
 function createEvent() {

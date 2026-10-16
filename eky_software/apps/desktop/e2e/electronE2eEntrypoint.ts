@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 
 import { app, BrowserWindow, protocol, utilityProcess } from 'electron';
 
+import { createDesktopBeforeQuitHandler } from '../src/main/desktopBeforeQuit.js';
 import {
   startDesktopComposition,
   type DesktopLifecycleHandle,
@@ -73,7 +74,6 @@ app.once('browser-window-created', () => {
   startupObservation.record('firstWindowCreated');
 });
 let lifecycle: DesktopLifecycleHandle | undefined;
-let shutdownStarted = false;
 let secondInstanceCount = 0;
 
 async function runFirstStartProof(mode: FirstStartLoadExperimentMode) {
@@ -233,13 +233,12 @@ app.on('second-instance', () => {
   secondInstanceCount += 1;
   lifecycle?.focusApplicationWindow();
 });
+const handleBeforeQuit = createDesktopBeforeQuitHandler({
+  readLifecycle: () => lifecycle,
+  quitApplication: () => app.quit(),
+});
 app.on('before-quit', (event) => {
-  if (lifecycle === undefined || shutdownStarted) {
-    return;
-  }
-  event.preventDefault();
-  shutdownStarted = true;
-  void lifecycle.shutdown().finally(() => app.quit());
+  void handleBeforeQuit(event);
 });
 app.on('window-all-closed', () => app.quit());
 

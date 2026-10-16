@@ -549,6 +549,17 @@ Sovelluksen oman relaunchin jo sulkema kahva käsitellään olemassa olevalla
 suljetun kahvan siivouspolulla vasta havaitun `close`-tapahtuman jälkeen.
 Tapahtuma ei korvaa prosessisiivouksen tai portin vapautumisen tarkistusta.
 
+Electronin E2E-entrypoint käyttää tuotannon `createDesktopBeforeQuitHandler`-
+käsittelijää. Jokainen uusi quit-pyyntö estetään keskeneräisen sammutuksen
+aikana; erillistä `shutdownStarted`-ohitusta ei ylläpidetä. Elinkaari omistaa
+sulkuvirheen raportoinnin, ja viimeinen quit seuraa käsiteltyä lopputulosta.
+Testin Playwright-ohjattu relaunch, native-kutsumäärän tarkistus ja uuden
+runtime-sessionin todistus säilyvät. Relaunchin nykyinen 30 sekunnin odotus
+alkaa ennen operaatiocallbackia: se kattaa myös callbackin tiedosto- ja
+salasanavaiheet, eikä ole pelkän prosessin poistumisajan mittaus.
+`desktopBeforeQuit.test.ts` kattaa jaetun käsittelijän kilpailut ja molempien
+entrypointien kytkennän; todellinen Electron-käyttäjäpolku on erillinen näyttö.
+
 Epäonnistuneen yrityksen `electron-lifecycle`-liite sisältää vain version,
 yritysnumeron, rajatun vaiheluettelon ja erilliset API-, runtime-, portti- ja
 testijuuren siivoustulokset. Se kerätään myös ensimmäisestä yrityksestä,
