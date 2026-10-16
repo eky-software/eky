@@ -519,6 +519,26 @@ function workflowStep(source, name) {
   return section.trimEnd();
 }
 
+test('only the Windows Electron job has the approved 35-minute preparation and execution budget', async () => {
+  const core = await readFile(new URL('../workflows/ci.yml', import.meta.url), 'utf8');
+  const budgets = {
+    verify: 15,
+    'e2e-system-security': 10,
+    'e2e-web-critical': 15,
+    'e2e-electron-windows-critical': 35,
+    'windows-contracts': 15,
+  };
+  for (const [name, minutes] of Object.entries(budgets)) {
+    assert.deepEqual([...workflowJob(core, name).matchAll(/^    timeout-minutes: (\d+)$/gmu)]
+      .map(match => Number(match[1])), [minutes], name);
+  }
+  const electron = workflowJob(core, 'e2e-electron-windows-critical');
+  assert.equal(workflowStep(electron, 'Run critical Electron E2E journeys'),
+    '        run: pnpm test:e2e:electron:critical');
+  assert.match(workflowStep(electron, 'Preserve encrypted CI failure evidence'),
+    /^        timeout-minutes: 3$/mu);
+});
+
 function verifyLinuxDiagnostics(source, definition) {
   const section = workflowJob(source, definition.job);
   assert.match(section, /if: inputs\.risk_plan != '' \|\| \(inputs\.risk_plan == '' && inputs\.linux_consumer_diagnostic == true\)\n    runs-on: ubuntu-latest/u);

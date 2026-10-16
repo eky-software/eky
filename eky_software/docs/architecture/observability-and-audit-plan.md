@@ -358,25 +358,33 @@ Polku, tiedostonimi, manifesti, salasana, avainmateriaali, salt, nonce, tag,
 profiili-, yritys-, lasku-, dokumentti- tai artifact-tunniste, checksum,
 raakavirhe, stack trace tai vapaa metadata hylätään kokonaan.
 
-Update Coordinator omistaa tulevan yhden päivitysyrityksen teknisen
-lifecycle-korrelaation. Update-lifecycle säilyy vielä varattuna
-`update.*`-perheenä ja vaatii oman event catalog-, transaction ownership- ja
-failure behavior -päätöksensä ennen instrumentointia. Se ei kirjoita
-business auditia tai Activity-tapahtumia. Diagnostics saa myöhemmin vain
-turvallisen teknisen projektion ja incident index vain nykyisen politiikan
-mukaisen minimoidun failure/security-havainnon.
+Update Coordinator omistaa päivitysyrityksen teknisen lifecycle-korrelaation
+[ADR-0010:n](../decisions/ADR-0010-windows-installer-and-update-orchestration.md)
+runtime-rajoissa. C2:n `operationStarted|operationCompleted|operationFailed`
+ja C3C:n nimetyt tapahtumaperheet ovat määriteltyjä nykyisiä sopimuksia,
+eivät yleisesti varattu tuleva event-perhe.
+[Update-katalogi](r0-observability-event-catalog.md#local-update) erottaa
+niiden runtime-statuksen, suppeat kentät ja vielä toteuttamattoman
+Diagnostics-/tukipakettilukuketjun. Update ei kirjoita business auditia
+tai Activity-tapahtumia.
 
-Update-eventin sallittu kenttäjoukko on suljettu: korrelaatiotunniste,
-nykyinen versio, kohdeversio, release-kanava, allowlistattu vaihe, kesto,
-turvallinen virhekoodi, `retryable`, `sideEffectState` sekä nykyisen build
-identity -politiikan sallima revision/runtime identity. Raaka polku,
-komentorivi, executable, URL queryineen, installer stdout/stderr, yritys- tai
-asiakasdata, `companyId`, backup/recovery-payload, salaisuus, runtime-session,
-stack ja vapaa metadata ovat kiellettyjä.
+Nykyisen C3C-tapahtuman payload on suljettu: `correlationId`, allowlistattu
+`stage`, `durationMs`, turvallinen `errorCode`, `retryable`,
+`sideEffectState` ja validoitu yhteinen app/build/runtime-identiteetti.
+Yksityisen update-journalin nykyinen/kohdeversio tai release-kanava ei
+itsessään anna lupaa julkaista niitä tapahtumassa tai lukuprojektiossa.
+G:n [D029-02](diagnostics-0.2.9-completion-plan.md#d029-02-päivitystapahtumien-katalogikatkos)
+säilyttää C2-projektion ja version näkyvyyden rajaukset ilman uuden
+vientisopimuksen keksimistä. Failure/security-tason incident-havainto
+minimoidaan nykyisellä retention-/katalogisäännöllä ilman teknisiä
+korrelaatio- tai business-tunnisteita.
 
-Käyttäjä- ja tukitoimien turvallinen runbook on dokumentissa
-`windows-update-operational-runbook.md`. Päivitysjournalia, manifestia tai
-installer-logia ei julkaista Diagnosticsiin sellaisenaan.
+Käyttäjä- ja tukitoimien omistaja on
+`windows-update-operational-runbook.md`. Raaka polku, komentorivi,
+executable, URL queryineen, installer stdout/stderr, yritys-/asiakasdata,
+`companyId`, backup/recovery-payload, salaisuus, runtime-session, stack
+ja vapaa metadata ovat kiellettyjä. Journalia, manifestia tai installer-
+logia ei julkaista sellaisenaan. Writerin virhe ei muuta update-tulosta.
 
 Tapahtumiin ei saa tallentaa backup- tai update-payloadia, salasanaa,
 avainmateriaalia, salt/nonce/tag-arvoja, manifestia, raakaa paikallista

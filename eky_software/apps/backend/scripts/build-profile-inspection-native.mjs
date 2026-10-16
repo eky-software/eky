@@ -25,8 +25,10 @@ export class InspectionNativeCompilationFailure extends Error {
 
 export function inspectionNativeCompilationFailure(result) {
   // Only an observed normal nonzero compiler exit authorizes its settled log.
-  return new InspectionNativeCompilationFailure(!result.error && result.signal === null &&
+  const failure = new InspectionNativeCompilationFailure(!result.error && result.signal === null &&
     Number.isInteger(result.status) && result.status > 0);
+  if (result.error?.code === 'ETIMEDOUT') failure.code = 'ETIMEDOUT';
+  return failure;
 }
 const buildEnvironmentNames = new Set([
   'path', 'systemroot', 'windir', 'comspec', 'os', 'temp', 'tmp', 'tmpdir',

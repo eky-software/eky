@@ -251,7 +251,12 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
 ## Dokumentaatio
 
 - Löytyvätkö vaikutusalueen ohjeet juuri- ja kohdekansion `AGENTS.md`:n
-  lukureiteistä sekä omistavista moduuli-/arkkitehtuuriohjeista?
+  lukureiteistä, [aihehakemistosta](../README.md) sekä omistavista
+  moduuli-/arkkitehtuuriohjeista?
+- Onko muuttuvalla säännöllä yksi omistava lähde, ja erotetaanko nykytila,
+  voimassa oleva sopimus sekä päivätty näyttö toisistaan ilman velvoitteiden
+  tai tuntemattomien syiden häviämistä? Noudatettiinko
+  [ohjeiden huoltokäytäntöä](workflow.md#ohjeiden-ylläpito-ja-jatkaminen)?
 - Tarkistettiinko muuttuneiden ohjeiden linkkien polut ja otsikkoankkurit,
   myös ohjeeseen johtavat viitteet, eikä vain sen oma sisältö?
 - Onko raportista poistettu omistajaan tai hänen koneeseensa liittyvä

@@ -151,9 +151,12 @@ Frontend puhuu aina backendille, ei suoraan tietokannalle.
 
 Synkronointi ei saa perustua raakakopioon paikallisesta tietokannasta pilveen. Pilveen vietävät muutokset kulkevat myöhemmin sync-kerroksen ja cloud backendin validointi-, käyttöoikeus- ja auditointisääntöjen läpi.
 
-## Ensimmäinen pystysuora pala
+## Ensimmäisen pystysuoran palan tausta
 
-Ensimmäinen suunniteltu toiminnallinen pystysuora pala on Customer create/list local.
+Ensimmäiseksi toiminnalliseksi pystysuoraksi palaksi rajattiin Customer
+create/list local. Tämä on perustamisvaiheen tausta, ei nykyinen
+toimintoinventaario; nykyiset moduulit ja portit ovat
+[integraatiomatriisissa](module-integration-matrix.md).
 
 Sen rajaus on kuvattu dokumentissa `docs/architecture/customer-vertical-slice-plan.md`.
 
@@ -204,8 +207,13 @@ Perusvirta:
 
 - Lopullinen backend-ajotapa pilvessä: Cloud Run vai Cloud Functions?
 - Käytetäänkö Firebase SQL Connectia vai suoraa Cloud SQL -yhteyttä?
-- Electron on valittu local-MVP:n paketointisuunnaksi ADR-0007:ssä; tarkka
-  versio, paketointityökalu ja Windows-jakelupolku päätetään toteutusvaiheessa.
+- Electron-valinnan omistaa
+  [ADR-0007](../decisions/ADR-0007-local-desktop-shell-and-session-bootstrap.md)
+  ja Windows-asentimen sekä päivityksen
+  [ADR-0010](../decisions/ADR-0010-windows-installer-and-update-orchestration.md).
+  Nykyiset versio- ja paketointirajat ovat
+  [desktop-riippuvuusarviossa](local-desktop-dependency-review.md);
+  myöhemmät jakelukanavat eivät ole samalla hyväksyttyjä.
 - Miten mobiilin synkronointimalli toteutetaan?
 - Miten local-cloud-synkronoinnin konfliktit ratkaistaan?
 

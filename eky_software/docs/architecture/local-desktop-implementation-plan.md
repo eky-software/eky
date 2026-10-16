@@ -2,15 +2,20 @@
 
 Tämä dokumentti kuvaa ADR-0007:ssä päätetyn Electron-pohjaisen paikallisen
 desktop-runtimen ensimmäisen rajatun toteutus- ja Windows-paketointispiken sekä
-sen toteutustilan.
+sen toteutustilan. Nykyinen hyväksyntä- ja jatkotila on
+[M1:n Jatka tästä -kohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Alla olevat päivätyt spike- ja checkpoint-tulokset ovat vaihehistoriaa, eivät
+nykyinen puuttuvien toimintojen luettelo. Prosessi-, turvallisuus- ja
+hyväksyntäsopimukset pysyvät voimassa omissa kohdissaan.
+
+## Alkuperäisen spiken vaihehistoria
 
 Rajattu tekninen package-spike ja sen ensimmäinen local-session-luottamusraja
 on toteutettu 14.7.2026. Electron `safeStorage` -secret broker on toteutettu
 15.7.2026 synteettisellä paketointismokella. Desktop-sessionilla suojattu
 salaisuuden HTTP-, API-client- ja UI-lifecycle sekä koko polun Windows-smoke on
 toteutettu 15.7.2026. Rajattu DNA SMTP -testiprovider ja sen prepare/send-
-turvallisuuspolku on toteutettu 16.7.2026, ja oikean tilin yhteys on varmennettu
-projektin omistajan testivastaanottajalla. Asiakaslähetyksen ensimmäinen
+turvallisuuspolku on toteutettu 16.7.2026. Asiakaslähetyksen ensimmäinen
 prepare/send-polku ja `sent`-tilasiirtymä on toteutettu 17.7.2026. Toteutus ei
 vielä sisällä tuotantojulkaisun release security gatea, installeria, code
 signingia tai automaattipäivitystä.
@@ -24,8 +29,7 @@ signingia ei ole vielä toteutettu eikä installeriteknologiaa ole valittu.
 
 Electron `43.3.0`- ja better-sqlite3 `13.0.2` -yhdistelmä on varmennettu
 17.8.2026. Tämä on päivitystä edeltävä varmennettu baseline. Omistaja hyväksyi
-29.9.2026 Electron `43.7.6` -patch-päivityksen, jonka todennus on kesken.
-Rajaus, nykyinen testitila ja avoimet hyväksyntäportit ovat
+29.9.2026 Electron `43.7.6` -patch-päivityksen. Sen rajaus ja päivätty näyttö ovat
 [riippuvuusarviossa](local-desktop-dependency-review.md#electron-4376--turvallisuuspäivitys).
 `better-sqlite3 13.0.2`, tietokantaskeema ja testien hyväksyntäehdot säilyvät.
 Paketointi käyttää better-sqlite3:n mukana toimitettua Windows x64
@@ -35,7 +39,7 @@ testinäyttö ei todista uuden Electron-version yhteensopivuutta.
 Paikallisten yritystyötilojen W5B.1-valitsin on toteutettu 20.8.2026. Renderer
 saa vain versionoidut status-, create-, import-as-new-, switch- ja rename-
 capabilityt. Electron main omistaa backup-tiedoston valinnan, salasanaikkunan,
-workspace-lifecyclen ja relaunchin. Active replace jää W5B.2:een, workspace-
+workspace-lifecyclen ja relaunchin. Active replace kuuluu W5B.2:een, workspace-
 poisto W7:ään ja täysi paketoitu multi-workspace-releaseportti W6:een.
 
 Salatun secret-tiedoston kirjoitus ja palautuminen on kovennettu 15.7.2026
@@ -132,7 +136,7 @@ Selainkehitys:
 - käyttää nykyisiä `pnpm`-kehityskomentoja
 - sitoo Viten ja backendin vain `127.0.0.1`-osoitteeseen
 - käyttää vain synteettistä kehitysdataa
-- ei ole isälle toimitettavan local-tuotteen turvallisuusmalli
+- ei ole loppukäyttäjälle toimitettavan local-tuotteen turvallisuusmalli
 - ei saa vastaanottaa oikeaa SMTP-salasanaa tai muuta tuotantosalaisuutta
 - käyttää eksplisiittistä synteettisen datan development trust -profiilia;
   tuotantoprofiili ei käynnisty ilman erikseen annettua runtime trust -mallia
@@ -157,7 +161,7 @@ selainkehitystä kaikissa päivittäisissä UI-tehtävissä.
 
 ### Paketoitu Offline-Tuote
 
-Isälle toimitettava paikallinen versio:
+Loppukäyttäjälle toimitettava paikallinen versio:
 
 - ei tarvitse Vite development -palvelinta
 - lataa vain sovelluksen omat paketoidut ja varmennetut UI-resurssit
@@ -436,7 +440,7 @@ automaattisesti myöhemmässä release-putkessa.
 
 ## Windows-Paketointispiken Hyväksymiskriteerit
 
-Tekninen package-smoke on hyväksytty, mutta isälle jaettava release hyväksytään
+Tekninen package-smoke on hyväksytty, mutta loppukäyttäjän release hyväksytään
 vasta, kun Windows-artifactista on todennettu synteettisellä datalla vähintään:
 
 - sovellus asentuu ja käynnistyy tavallisella Windows-käyttäjällä
@@ -469,10 +473,32 @@ Spikessä käytetään vain synteettistä dataa ja erillistä testitietokantaa.
 
 `apps/desktop/src/runtime/workspaceProcessReservation.ts` omistaa vain
 juurihakemiston tiedostoidentiteetin ja prosessin paikallisen IPC-varauksen.
-Se on osa vielä keskeneräistä tuotannon käynnistysketjua ja
+Se on osa tuotannon käynnistysketjua ja
 [hyväksyttyä R18-sopimusta](release-0.3.0-m1-preparation-plan.md#r18-prosessivarauksen-ja-journal-v2n-sopimusehdotus),
 ei yleinen lukituspalvelu tai todiste vanhan suojaamattoman kirjoittajan
 poistumisesta.
+
+Varaus käyttää nykyistä Node `net` -rajapintaa koko validoidulle `userData`-
+juurelle, ei yksittäiselle profiilille, operaatiolle tai buildille. Windowsin
+nimetty putki ja Linux-kehityspolun abstrakti Unix-socket eivät tarjoa
+komentoja tai TCP-palvelua; yhteys ei anna työoikeutta. Nimi johdetaan yhden
+vakionimiavaruuden ja todellisen `dev`/`ino`-tiedostoidentiteetin (bigint)
+tiivisteestä. Main varmentaa identiteetin ennen siirtoa ja lapsi saman juuren
+yksityisestä kuvauksesta. Puuttuva, muuttunut tai epäluotettava identiteetti,
+nolla-inode, linkkijuuri ja tueton alusta estävät työn; satunnaisnimeen,
+PID:hen tai merkkijonopolkuun ei pudota. Hyväksyttyjen polkualiasien yhteinen
+identiteetti ja eri juurten erillisyys todennetaan nykyisillä runtimeilla.
+Juurta ei siirretä eikä korvata runtimejen aikana. Tämä on yhteistyötä
+noudattavien Eky-prosessien poissulku, ei suoja saman käyttäjätilin hyökkääjää
+vastaan eikä vanhan suojaamattoman prosessin poissaolotodiste.
+
+Mainin single-instance-lukko ja varaus edeltävät yhden nimetyn lapsen
+valmistelua. Työluvan aikana main ei tee ristiriitaista cold-recoveryä,
+profiilinvaihtoa, julkaisua tai poistoa. Varauksen sopimus ei kiellä nykyistä
+loki-/broker-työtä eikä korvaa R04:n fenceä. Business-backend ja candidate-
+factoryn bootstrap, validointi, migraatio ja inventaario osallistuvat samaan
+työlupaketjuun. Application-ready ja migration gate pysyvät sen jälkeisinä
+erillisinä ehtoina.
 
 - `readWorkspaceProcessReservationIdentity(root)` lukee jo olemassa olevan
   validoitavan juuren identiteetin; se ei luo hakemistoa. Identiteetti ei ole
@@ -555,6 +581,16 @@ Tuloksen luku vaatii sekä onnistuneen tavallisen sulun että takaisinoton.
 ei lupa poistaa candidatea tai palautusjournalia. Määräajat perustuvat
 monotoniseen kelloon, eivät Windowsin säädettävään seinäkelloon.
 
+Todetun exitin jälkeinen takaisinotto voi odottaa OS-resurssia vain nykyisen
+sulkumääräajan sisällä. Vain puhtaasti päättyneen `busy`-yrityksen saa uusia
+keskeytettävällä 10 ms:n tahdistuksella; epävarmaa siivousta tai muuta virhettä
+ei uusita. Jokainen yritys tarkistaa omistajuuden, täsmällisen siirtosukupolven
+ja saman juuri-identiteetin; myöhäinen hankinta vapautetaan. Odotus ei anna
+kirjoituslupaa. Aikaraja tai omistajuuden menetys pysyy suljettuna virheenä.
+Ensimmäinen ja cold-start-hankinta eivät käytä odotusta. Windowsin `busy`
+voi sisältää natiivin käyttöoikeusvirheen eikä yksin todista toista omistajaa:
+se voi kuluttaa saman rajatun odotuksen, mutta ei koskaan antaa valtuutta.
+
 **Main-kytkentä on toteutettu rajatuin kohdetestein:** kolme candidate-
 compositionia ja business-backend käyttävät samaa main-varausomistajaa.
 Omistaja hankitaan ennen ensimmäisiä ristiriitaisia työtilan käsittelyjä.
@@ -571,9 +607,10 @@ edeltävät korjaavaa lukua ja siivousta. V1 tai epäselvä journaliton plaintex
 estää avaamisen aineistoa muuttamatta. Cold-terminal ei ohita normaalia
 business-käynnistystä tai terveystarkistusta. Keskeneräinen startup-callback
 mitätöi ulomman sulun, vaikka lapsi olisi jo poistunut ja varaus saatu takaisin;
-varaus säilyy mainin poistumiseen asti. E2E-todennuskutsujat ja koko kytkennän
-katselmus ovat vielä kesken. Tämän välitilan perusteella ei tehdä mergeä
-tai väitetä packaged-ketjua hyväksytyksi. Suojaamatonta oletusta ei lisätä.
+varaus säilyy mainin poistumiseen asti. E2E-todennuskutsujien, kytkennän
+katselmuksen ja packaged-ketjun hyväksyntä luetaan M1:n Jatka tästä -kohdasta.
+Pelkkä tässä kuvattu osatodiste ei riitä mergeen tai packaged-hyväksyntään.
+Suojaamatonta oletusta ei lisätä.
 
 `workspaceProcessReservation.test.ts` testaa identiteetin, virheiden pysyvyyden,
 keskeytykset, sulun ja kilpailut hallitulla rajapinnalla.
@@ -772,8 +809,9 @@ asettaa native-slotin säilytysesteen ennen journal-kirjoitusta, vaatii exact-
 readbackin ja vapauttaa todistetun varauksen tiedostoja poistamatta ennen
 globaalia sulkua. Sekä ready- että pending-startup-kuluttaja on
 development-prosessiketjussa todennettu. Kuluttaja ei saa odottaa omaa
-aktivointiaan tarkistajan drainissa. Offline/cold-valtuus, lopullinen
-startup-hyväksyntä ja hardened-palautus ovat K:n avoimia portteja.
+aktivointiaan tarkistajan drainissa. Offline/cold-valtuuden, lopullisen
+startup-hyväksynnän ja hardened-palautuksen nykytila on M1:n Jatka tästä
+-kohdassa; nämä säilyvät erillisinä hyväksyntävaatimuksina.
 
 Toteutusvaiheessa lisätään riskin mukaan vähintään:
 
@@ -832,8 +870,7 @@ ei saa odottaa jälkikäteen tehtävää backup- tai recovery-korjausta.
     polun paketoitu Windows-smoke on toteutettu synteettisellä arvolla.
 12. Riippuvuudeton SMTP/MIME-kuljetus, kiinteä DNA-testiprofiili,
     backend-only secret reader, prepare/send-kertakäyttövaltuutus ja Electron
-    main processin vahvistus on toteutettu ja oikea DNA-yhteys on varmennettu
-    pakotetulla testivastaanottajalla.
+    main processin vahvistus on toteutettu.
 13. Hyväksytyn laskun PDF-esikatselu käyttää main-prosessin muodostamaa
     `eky://app`-osoitetta, rajattua preload/IPC-toimintoa ja yhtä suojattua
     BrowserWindow-instanssia ilman uutta PDF-riippuvuutta.

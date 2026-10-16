@@ -86,7 +86,7 @@ export class PackageArtifactInventoryError extends Error {
   }
 }
 
-export async function inspectPackageArtifactInventory({ root, stage }) {
+export async function inspectPackageArtifactInventory({ root, stage, onValidatedFiles }) {
   if (!validStages.has(stage)) {
     throw new PackageArtifactInventoryError('STAGE');
   }
@@ -156,6 +156,9 @@ export async function inspectPackageArtifactInventory({ root, stage }) {
     hash.update(lengths).update(pathBytes).update(fileHash, 'hex');
   }
 
+  // Optional test evidence must not change artifact admission or repeat traversal.
+  try { onValidatedFiles?.(Object.freeze(files.map(file => relative(root, file).split(sep).join('/')))); }
+  catch { /* Missing optional evidence is reported by its reader. */ }
   return Object.freeze({
     fileCount: files.length,
     identity: hash.digest('hex'),

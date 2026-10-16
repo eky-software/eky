@@ -260,7 +260,9 @@ Ensimmäinen toteutusaskel:
   PDF-metadata päivitetään erikseen; esikatselun oma polku säilyy.
 - jos PDF:n muodostus epäonnistuu, laskua ei merkitä lähetetyksi
 - toiminto ei vielä lähetä sähköpostia eikä ohjaa tulostinta
-- toiminto ei vielä kirjoita erillistä `invoice_delivery_events`-lokitaulua
+- manual/print-finalizer kirjoittaa toimitustapahtuman, sent-siirtymän ja
+  auditin atomisesti; [toimitustapahtumien sopimus](invoice-delivery-events-plan.md)
+  omistaa täsmärevision ja ratkaisemattoman historian tarkistukset
 - `sent`-tila lukitsee laskun reopen-muokkaukselta
 
 Perussääntö:
@@ -427,7 +429,7 @@ Kevyt käsin testattava lista ennen toimituspolun laajentamista:
 
 - hyväksy lasku -> PDF syntyy
 - avaa PDF
-- reopen approved invoice -> PDF poistuu
+- reopen approved invoice -> nykyesikatselu irtoaa; revisio, PDF ja tapahtumat säilyvät
 - reapprove -> uusi PDF syntyy
 - avaa uusi PDF
 - 1-sivuinen lasku
@@ -436,7 +438,8 @@ Kevyt käsin testattava lista ennen toimituspolun laajentamista:
 - yritysasiakas
 - yksityisasiakas
 - useampi ALV-kanta
-- puuttuva PDF tiedostosta -> `POST /pdf` regeneroi
+- tallennetun PDF:n puuttuminen/rikkoutuminen -> turvallinen eheysvirhe,
+  ei regenerointia; uuden revision ensijulkaisu on eri toiminto
 - lähetettyä laskua ei saa muokata
 - kopioitu lasku saa uuden numeron vasta hyväksynnässä
 - DNA SMTP -lähetystä ei saa testata oikeille asiakkaille ilman dry-run- tai

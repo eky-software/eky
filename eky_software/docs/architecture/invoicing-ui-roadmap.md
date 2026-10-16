@@ -8,13 +8,20 @@ testattavina vaiheina olemassa olevan Invoicing-domainin, backend-reittien ja
 
 ## A-paketin valmistelu
 
-**4.10.2026: A1/A2 ja Oma yritys -korjausten integraatio hyväksytty;
-A3/R06:n toteutus ja todennus käynnissä.**
-[M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
-omistaa hyväksytyn lähtörevision ja portit. R01, R05 ja R06 pidetään
-erillisinä seurattavina kohtina; yhden läpäisy ei sulje koko A-pakettia.
+**A1, A2 ja A3 on hyväksytty; tämä dokumentti omistaa niiden nykyisen
+UI-sopimuksen.** [M1:n checkpoint](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+on hyväksyntänäyttöä, ei rinnakkainen sääntöomistaja. Alla ennen korjausta
+kuvatut puutteet ja toteutusvaiheet ovat historiaa; säilytettävät sopimukset
+ja regressioportit eivät poistu hyväksynnässä. Vanhoja timeout-havaintoja
+ei väitetä korjatuiksi, eikä A:n hyväksyntä sulje D:tä tai julkaisua.
 
 ### A1: Avattavan luonnoksen kohde
+
+Avaussukupolvi ja muokkaussession avain sitovat näkyvät arvot tallennuskohteeseen.
+Vanha success/error/finally tai unmountin jälkeinen vastaus ei muuta uutta
+kohdetta, virhettä tai lataustilaa. StrictModen effect-uusinta säilyttää nykyisen
+asiakaskortilta alkaneen avauksen. Tavallinen tallennus ja ensimmäinen create-
+vastaus eivät vaihda session avainta; A2 omistaa kirjoitusvastauksen.
 
 Korjauksen lähtötilanteessa `useInvoiceDraftEditor.openDraft` julkaisi
 valmistuvan vastauksen, virheen ja loading-tilan ilman nykyisen avauspyynnön
@@ -149,7 +156,7 @@ Vahvistettu lähtötilanne ennen A2-korjausta:
   valmistua ennen vastauksen toimitusta; API ei nykyisellään kohdista
   kadonnutta create-vastausta varmasti alkuperäiseen kirjoitusyritykseen.
 
-Toteutussuunnitelma hyväksytyn A2-tavoitteen sisällä:
+Hyväksytyn A2-toteutuksen säilytettävä sopimus:
 
 1. Yksi feature-kohtainen tallennusomistaja palvelee automaattista ja käsin
    tehtävää tallennusta. Vain yksi kirjoitus on kerrallaan käynnissä;
@@ -163,7 +170,7 @@ Toteutussuunnitelma hyväksytyn A2-tavoitteen sisällä:
    Poistuneen lomakkeen vastaus ei käynnistä uutta tallennusta eikä muuta
    uuden session kohdetta, syötettä, virhettä tai tallennustilaa.
 4. Hyväksynnän UI-portti huomioi keskeneräisen ja tallentamattoman revision.
-   A3:n myöhäisen readiness-vastauksen laajempi sidonta jää erilliseksi.
+   A3:n readiness-vastauksen sidonta on alla oma erillinen sopimuksensa.
    Backendin hyväksyntä, validointi ja transaktio säilyvät auktoriteettina.
 
 Vastuun sijoitus: nykyiset tallennushookit palvelevat vain tätä lomaketta.
@@ -265,7 +272,7 @@ UI-lukutuloksen sivuuttaminen ei lisää business-tapahtumaa, operational-
 lokia, Diagnostics-, Activity-, tukipaketti- tai incident-projektiota.
 Ei uutta riippuvuutta, HTTP-sopimusta, tietomallia, palautusmuutosta,
 backendin kirjoitusperuutusta tai yleistä tilanhallintaratkaisua.
-Toteutuksen portit ja avoimet kohdat kirjataan [M1:n A3-kohtaan](release-0.3.0-m1-preparation-plan.md#a3r06-hyväksyntävalmiuden-vastaussidonta).
+Historiallinen A3:n hyväksyntänäyttö on [M1:n A3-kohdassa](release-0.3.0-m1-preparation-plan.md#a3r06-hyväksyntävalmiuden-vastaussidonta).
 
 Näiden testit kattavat hallitut vastausjärjestykset ja backendin lopputilan.
 A1 ei sulje R05/R06:ta. Jos niiden vaatimaa kytkentää ei voi erottaa A1:stä

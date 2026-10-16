@@ -288,8 +288,12 @@ tarkistus, tilat voidaan varmistaa sillä. Asetuksia ei muuteta automaattisesti
 eikä ilman omistajan erillistä vahvistusta. Ilman tällaista yhteyttä tila
 raportoidaan varmistamattomaksi.
 
-Merge-portteina pidetään vähintään nykyiset `Test, typecheck and build`,
-`System security E2E` ja `Web critical E2E` -tarkistukset.
+Nykyiset required checkit ovat `V2 acceptance` ja `Audit dependencies`
+[testausohjeen](../ai/testing-rules.md) ja
+[V2-harnessin](windows-installer-acceptance-harness-v2.md) mukaisesti.
+Core-testien, tyypintarkistuksen, buildin sekä system-security- ja critical-
+E2E-tarkistusten vastuut säilyvät koostetussa portissa. Strict-ajantasaisuus,
+PR-vaatimus ja merge-commitin omat main-tarkistukset eivät kevene.
 
 ### CI-paketinhallinnan valmistelu
 

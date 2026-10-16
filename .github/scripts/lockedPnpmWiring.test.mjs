@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 
 const read = name => readFileSync(new URL(name, import.meta.url), 'utf8');
 const preparation = '        working-directory: .\n        run: node .github/scripts/prepareLockedPnpm.mjs';
@@ -43,8 +44,15 @@ test('legacy acceptance retains its required preparation step name and ordinary 
   const legacy = read('../workflows/windows-acceptance-v2-legacy-diagnostic.yml');
   const job = legacy.split('  legacy_contracts:')[1].split('  legacy_artifact_producer:')[0];
   assert.ok(job.includes(`      - name: Prepare locked package manager\n${preparation}`));
-  assert.ok(job.includes('run: pnpm installer:supervisor:build'));
-  assert.ok(job.includes('run: pnpm installer:test:windows-supervisor-v2-legacy-${{ matrix.group }}'));
+  const setting = "${{ matrix.group == 'clean-upgrade-entry' && 'false' || 'install' }}";
+  assert.ok(job.includes(`run: pnpm --config.verify-deps-before-run=${setting} installer:supervisor:build`));
+  assert.ok(job.includes(`run: pnpm --config.verify-deps-before-run=${setting} installer:test:windows-supervisor-v2-legacy-` + '${{ matrix.group }}'));
+  assert.equal(job.split('--config.verify-deps-before-run=').length - 1, 2);
+  const expression = setting.slice(4, -3);
+  for (const group of ['core', 'commands', 'legacy-entry', 'clean-upgrade-entry', 'workspace-success-entry', 'workspace-fault-entry']) {
+    assert.equal(runInNewContext(expression, { matrix: { group } }, { timeout: 1000 }),
+      group === 'clean-upgrade-entry' ? 'false' : 'install');
+  }
   assert.match(job, /timeout-minutes: 10/);
 });
 

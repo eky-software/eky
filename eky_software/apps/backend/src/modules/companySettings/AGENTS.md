@@ -7,11 +7,15 @@ Always read the repository root `AGENTS.md` first.
 Also read:
 
 - `docs/modules/company-settings.md`
-- `docs/architecture/company-settings-implementation-plan.md`
 - `docs/architecture/module-boundaries.md`
 - `docs/architecture/dependency-policy.md`
 - `docs/architecture/security-principles.md`
 - `docs/product/glossary.md`
+
+The first-slice `docs/architecture/company-settings-implementation-plan.md` is
+historical context, not a required route for ordinary maintenance. The module
+document owns current settings, permission and save-response rules; email and
+secret work also reads `docs/architecture/email-delivery-and-secrets-plan.md`.
 
 ## Responsibility
 
@@ -57,7 +61,7 @@ setting, not an authoritative invoice calculation rule.
 
 `customer.hourlyRateOverrideCents` belongs to Customers.
 
-Invoicing later owns the used hourly rate snapshot on invoices or invoice lines.
+Invoicing owns the used hourly rate snapshot on invoices or invoice lines.
 
 Do not move customer-specific pricing into Company Settings.
 

@@ -1,5 +1,180 @@
 # SQLite Invoice Delivery Event Persistence Plan
 
+## Nykyinen varaus ja loppukuittaus
+
+Tämä osuus omistaa hyväksytyn B:n atomisen varauksen ja completion-porttien
+sopimuksen. [Toimitustapahtumat](invoice-delivery-events-plan.md) omistavat
+käyttöpolun ja historian projektiot; [SQLite-revisiosopimus](sqlite-invoice-approval-persistence-plan.md#täydet-ddl-ehdot-ja-julkaisuportti)
+omistaa täydet DDL-, variantti-, immutable- ja migraatioehdot.
+Alla säilyvä vanha auditointi ei ole nykyisten yritys-FK:iden,
+SET NULL -käyttäytymisen tai varauskilvan tilaväite.
+
+### Suljetut porttityypit
+
+Alla oleva sisäinen sopimus sitoo moodin dokumenttivarianttiin.
+Scope tulee backendin vahvistamasta kontekstista, ei HTTP-bodysta.
+Tyyppi ei korvaa permission-, sisältö- tai transaktiotarkistusta.
+
+```ts
+type InvoiceScope = Readonly<{ companyId: string; invoiceId: string }>;
+type RevisionKey = InvoiceScope & Readonly<{ revisionId: string }>;
+type RevisionBinding = Readonly<{
+  kind: 'revision'; revisionId: string; sourceDocumentId?: never;
+}>;
+type PreservedLegacyBinding = Readonly<{
+  kind: 'preservedLegacy'; sourceDocumentId: string; revisionId?: never;
+}>;
+type DocumentEvidence = Readonly<{
+  documentId: string; sha256: string; sizeBytes: number;
+}>;
+type RevisionTarget = InvoiceScope & DocumentEvidence & RevisionBinding;
+type PreservedLegacyTarget = InvoiceScope & DocumentEvidence & PreservedLegacyBinding;
+type InvoiceDeliveryReservation =
+  | Readonly<{ eventId: string; mode: 'customer'; target: RevisionTarget | PreservedLegacyTarget }>
+  | Readonly<{ eventId: string; mode: 'smtpTest'; target: RevisionTarget }>;
+
+type ReservedEmailFields = Readonly<{
+  recipientEmail: string;
+  ccEmail: string;
+  subject: string;
+  bodyPreview: string;
+  createdAt: string;
+  createdBy: string;
+}>;
+type ReserveEmailDeliveryInput = InvoiceDeliveryReservation & ReservedEmailFields;
+type ReserveEmailDeliveryResult =
+  | Readonly<{
+      outcome: 'reserved';
+      reservation: InvoiceDeliveryReservation;
+      invoiceStatusAtReservation: 'approved' | 'sent';
+    }>
+  | Readonly<{ outcome: 'conflict' }>;
+type EmailCompletionResult = Readonly<{
+  outcome: 'completed' | 'alreadyCompleted';
+}>;
+type EmailSuccess = Readonly<{
+  status: 'succeeded'; providerMessageId: string | null;
+}>;
+type EmailUnsuccessfulOutcome = Readonly<{
+  status: 'failed' | 'outcomeUnknown';
+  safeErrorMessage: string | null;
+  technicalErrorCode: string | null;
+}>;
+type CustomerEmailCompletionInput = Readonly<{
+  reservation: Extract<InvoiceDeliveryReservation, { mode: 'customer' }>;
+  result: EmailSuccess;
+}>;
+type OtherEmailCompletionInput =
+  | Readonly<{
+      reservation: Extract<InvoiceDeliveryReservation, { mode: 'smtpTest' }>;
+      result: EmailSuccess;
+    }>
+  | Readonly<{
+      reservation: InvoiceDeliveryReservation;
+      result: EmailUnsuccessfulOutcome;
+    }>;
+```
+
+`ReservedEmailFields` on nykyinen pysyvä tapahtumaprojektio, ei täysi viesti,
+salaisuus tai token. Application muodostaa rajatun bodyPreviewn.
+Customer tallentaa todelliset to/cc-arvot; smtpTest pakotetun testiosoitteen
+ja tyhjän cc:n. Provider saa alkuperäisen vahvistetun viestin, ei bodyPreviewta.
+Fingerprint sitoo koko viestin, lähettäjän, aiotun ja todellisen testivastaanottajan
+sekä revision/alkuperän ja tarkistettujen tavujen document-ID/hash/koon.
+
+`InvoiceDeliveryEventRepository.reserveEmailDelivery(input)` palauttaa
+reserved/reservation/invoiceStatusAtReservation tai conflict.
+`completeDeliveryEvent(OtherEmailCompletionInput)` hoitaa testin successin
+sekä molempien moodien failed/outcomeUnknownin.
+`InvoiceEmailDeliveryFinalizer.completeSuccessfulEmailDelivery(CustomerEmailCompletionInput)`
+hoitaa customer-successin. Completion palauttaa completed/alreadyCompleted.
+Nykyinen `SqliteInvoiceDeliveryEventRepository` toteuttaa nämä kapeat vastuut;
+uutta yleistä historia- tai lukituspalvelua ei tarvita.
+
+### Varaus ja kilpailut
+
+Varaus lukee current-revision, invoice-statuksen, täsmädokumentin,
+revision/preservedLegacy-alkuperän, hashin/koon sekä saman invoice/company-rajan
+kaikki unresolved- ja legacy-estot samassa `IMMEDIATE`-transaktiossa.
+Pysyvä attempted-rivi sitoutuu **ennen** provideria. Conflict ei soita verkkoon.
+LegacyOriginal ei ole uuden provider-kutsun varausvariantti.
+PreservedLegacy kuuluu vain customer-moodiin.
+
+Reopenin/peruutuksen voittaessa ennen varausta provideria ei kutsuta.
+Providerin aikana varaus estää reopenin ja peruutuksen niiden omilla
+säännöillä. Reopenin smtpTest-success-poikkeusta ei kopioida canceliin.
+Restart, ajan kuluminen tai uuden in-memory-tokenin luonti ei vapauta
+attempted/outcomeUnknown-historiaa. Vanha legacy-unresolved tarkistetaan
+myös uusien varausten edellä; pelkkä uuden skeeman osittainen UNIQUE ei riitä.
+Automaattista reconciliationia, retryä tai SMTP:n exactly-once-lupausta ei lisätä.
+
+### Completion ja tuloksen auktoriteetti
+
+Completion vertaa event-ID:n lisäksi company/invoice-rajaa, moodia, koko
+revision/document/source-bindingia, tallennettua hashia/kokoa ja normalisoituja
+terminal-tuloskenttiä. Sama terminal-kuittaus on sivuvaikutukseton no-op;
+eri kuittaus on `InvoiceDeliveryConflictError`. Pelkkä event-ID ei riitä.
+Varauksen `created_at` säilyy: callerin uutta sentAt/completion-aikaa ei
+lisätä. Toisto ei muuta updated_at-aikaa, luo toista auditia tai tapahtumaa
+eikä anna lupaa toistaa provider-kutsua.
+
+Vain customer-success tekee sidotun nykyisen laskun sent-siirtymän samassa
+transaktiossa event-/audit-kirjoitusten kanssa. smtpTest-success ei muuta tilaa;
+vanhan saman completionin toisto ei vaikuta uuteen revisioon.
+Audit- tai tilakirjoituksen virhe peruu koko completionin.
+`wasResend` tulee varauksen lukemasta invoiceStatusAtReservation-arvosta,
+ei myöhemmin sent-tilassa olevasta laskusta.
+
+Application käyttää varauksen palauttamaa kohdetta/moodia ja providerille
+täsmälleen samaa varmennettua PDF-puskuria. Tyypittämätön provider-virhe tai
+epäonnistunut completion ei muutu varmennetuksi failed-tulokseksi.
+Jos edes outcomeUnknownin tallennus ei onnistu, attempted säilyy.
+Puskuri tyhjennetään lopuksi; prepare tyhjentää väliaikaiset tavut eikä varaa.
+
+Durablen customer-successin jälkeinen laskun vastausluku on eri vaihe kuin
+toimitus. Sen virhe palauttaa 409/`INVOICE_DELIVERY_COMMITTED_READ_FAILED`;
+pysyvä succeeded, sent ja attemptin onnistuminen säilyvät.
+`invoiceDelivery.finalizationFailed` erottaa stage=read,
+sideEffectState=committed, retryable=false. Sama turvallinen projektio kulkee
+Diagnosticsiin, tukipakettiin ja incident-indeksiin; loggerin virhe ei peitä
+tulosta. **Toimitusonnistumista ei päätellä jälkiluvusta.** Vain täsmällinen
+tyypitetty status/koodipari kertoo UI:lle tämän jo sitoutuneen onnistumisen.
+Yleinen 409, tuntematon/vääräntyyppinen vastaus tai epävarma SMTP-tulos ei
+anna onnistumisilmoitusta tai uutta lähetyslupaa. UI ohjaa historiaan ilman
+uutta valmistelua/lähetystä tai paikallisesti arvattua laskutilaa.
+
+### Manual ja dry-run
+
+Yleinen `recordInvoiceDeliveryEvent/saveDeliveryEvent` hyväksyy vain
+revision PDF:ään sidotun dry-runin succeeded/failed-tuloksen.
+Runtime-adapteri torjuu myös tyypittämättömän SMTP-, manual- ja legacyUnknown-
+kirjoituksen: TypeScript-raja ei yksin riitä.
+Dry-run tarkistaa currentin ja document/hash/koon kirjoitustransaktiossa,
+ei muuta tilaa eikä arkistoi. Myöhäinen tulos cancel/reopen/reapproven jälkeen
+hylätään ilman eventtiä tai arkistointia.
+
+Manual/print käyttää omaa `InvoiceManualDeliveryFinalizer`-vastuuta:
+current, exact binding ja unresolved tarkistetaan IMMEDIATE-transaktiossa,
+jossa event, sent ja audit sitoutuvat. completed ja alreadySent erotetaan;
+jälkimmäinen ei luo uutta tapahtumaa, aikaa tai arkistointia.
+Manual ja dry-run ottavat revisioavaimen ennen elävän vastausmallin lukua
+ja vertaavat sitä PDF:ään. Vanhaa näkymää ei yhdistetä uuteen PDF:ään;
+vaihtunut revisio palauttaa turvallisen 409:n. Pelkkä PDF-ikkuna ei ole toimitus.
+
+Säilytettäviin regressioihin kuuluvat molemmat kilpajärjestykset,
+kaksi SQLite-yhteyttä, todellinen kirjoituslukko, väärä tenant/revisio/
+document/hash/koko, legacy-estot, audit-rollback, restart, completionin
+toisto/ristiriita, kummankin SMTP-moodin kaikki tulokset ja oikea
+composition/HTTP-ketju. Tämä dokumentointisiirto ei väitä testejä uudelleen ajetuiksi.
+
+## Historiallinen persistence-auditointi
+
+Seuraavan baseline-auditoinnin "nykyiset" rajat ovat historiallisia.
+Sen mahdolliset puutteet eivät kumoa yllä olevaa hyväksyttyä varausmallia.
+
+<details>
+<summary>Baseline 786d4a4 ja alkuperäinen rakenteellinen pilkkominen</summary>
+
 Tämä dokumentti kuvaa Invoicing-moduulin nykyisen SQLite-persistenssin portit,
 yritysrajat, tilasiirtymät, transaktiot ja tunnetut
 puolustusrajat. Auditoinnin baseline on commit `786d4a4`.
@@ -323,3 +498,5 @@ Delivery eventin `companyId`-, `invoiceId`- ja `documentId`-suhteen
 persistence-tason vahvistaminen säilyy erillisenä turvallisuuskohteena. Se voi
 vaatia SQL- tai skeemapäätöksen, eikä nykyinen cleanup-työ anna siihen
 toteutuslupaa.
+
+</details>

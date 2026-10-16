@@ -30,7 +30,7 @@ Julkinen tapahtumaprojektio sisältää vain:
 - valinnaisen turvallisen virhekoodin
 - projektion sisäisen tapahtumatunnisteen
 
-Projektio ei sisällä raakaa JSONL-riviä, payload-metadataa, stack tracea,
+Projektio ei sisällä raakaa JSONL-riviä, vapaamuotoista payload-metadataa, stack tracea,
 paikallista polkua, actor-, company- tai entity-tunnistetta,
 liiketoimintasisältöä, yhteystietoja, pankkitietoja eikä salaisuuksia.
 
@@ -71,59 +71,62 @@ Smoke ei yksin todista kaikkien event-katalogien kattavuutta tai jokaisen
 ominaisuuden observer-kytkentää. Niille tarvitaan erilliset sopimus- ja
 composition-testit.
 
-Workspace-varmuuskopion tuonnin ja korvauksen `workspaceBackup.operationFailed`
-sekä erillinen `workspaceBackup.cleanupFailed` kuuluvat tähän tekniseen
-lukuprojektioon ja sanitoituun tukipakettiin. Niiden syy, käyttötapauksen
-vaihe ja kentät tarkistetaan tapahtumakohtaisesti; raw Error, stack,
-tietokantasisältö ja business-tunnisteet ovat kiellettyjä. Tarkka sopimus
-on [tapahtumakatalogissa](../architecture/r0-observability-event-catalog.md#desktop-operational-ja-security).
-Tapahtuman käyttötapaus ei yksin kerro, että palautus on osittain tehty tai
-peruttu onnistuneesti. K:n tämän ketjun kohdenäyttö ja vielä avoimet portit
-erotetaan [M1:n jatkamiskohdassa](../architecture/release-0.3.0-m1-preparation-plan.md#v2k-workspace-varmuuskopion-turvallinen-lukuketju).
+## K:n tarkistushylkäys ja lukuketju
 
-Portable-backupin `backup.failed` ja `backup.inspectionFailed` säilyttävät
-K-P3:n hyväksytyn teknisen ensisyyn nykyisessä `errorCode`-kentässä ennen
-yleistä käyttäjävirhettä. Muut kentät ja incident-poissulut säilyvät
-[tapahtumakatalogin](../architecture/r0-observability-event-catalog.md#desktop-operational-ja-security)
-mukaisina. [V2m:n portable-tiedostoketju](../architecture/release-0.3.0-m1-preparation-plan.md#v2m-portable-backupin-turvallinen-lukuketju)
-ja [V2n:n palautuskuluttajien erillinen näyttö](../architecture/release-0.3.0-m1-preparation-plan.md#v2n-palautuskuluttajien-turvallinen-ensisyy)
-käyttävät nykyisiä palveluja ja oikeita lokitiedostoja synteettisillä porteilla.
-Jälkimmäisessä ensivirhe ja rollbackin selvitystulos säilyvät erillisinä.
-Aktivoinnin epävarma journal-valmistelu tai sulku välittää erikseen myös
-`restore.recoveryRequired`-tilan allowlistatussa `activation`-vaiheessa.
-Sen alkuperäinen syy säilyy edeltävässä `restore.activationFailed`-tapahtumassa;
-tilatapahtuma ei väitä rollbackin alkaneen eikä sisällä journalin raakasisältöä.
-Onnistuneen sisältövalidoinnin jälkeinen `restore.acceptanceFailed`
-erottaa hyväksynnän valmistelun, julkaisun ja loppusiivouksen. Se säilyttää
-turvallisen ensisyyn myös hallittuun uudelleenkäynnistykseen päättyvässä
-haarassa. Vaihe ei todista journalin lopputilaa, eikä tapahtuma muuta
-aiempaa `restore.validationCompleted`-tulosta. Sen pakolliset kentät ja
-suljettu syyjoukko tarkistetaan kaikilla lukurajoilla
-[katalogin mukaan](../architecture/r0-observability-event-catalog.md#desktop-operational-ja-security).
-[V2o:n lukijapariteetti](../architecture/release-0.3.0-m1-preparation-plan.md#v2o-palautustapahtumien-lukijoiden-sopimustarkistus)
-tarkistaa myös API-clientissä ja tukipaketissa tapahtuman perheen, tason,
-lopputuloksen, vaiheen, pakolliset kentät ja sallitun metadatan.
-Kelvollisen vanhan projektion valinnaiset kentät säilyvät valinnaisina.
-Tapahtumakatalogin sallima turvallinen virhesormenjälki säilyy;
-toisen tapahtumaperheen tiedot hylätään. Tämä on kohdetodennettu
-tiedostoketju, ei renderer-IPC:n tai todellisen Electron-mainin/paketoidun
-sovelluksen hyväksyntä. [V2p:n erillinen tuontikoe](../architecture/release-0.3.0-m1-preparation-plan.md#v2p-tuonnin-todellinen-mainipc-lukuketju)
-todentaa import-as-new-polun schema-hylkäyksen oikean mainin ja hallitun
-uudelleenkäynnistyksen kautta samoihin lukijoihin sekä tarkistettuun
-gzip-tukipakettiin. Yksityiskohtainen loki ja minimoitu incident-indeksi
-ovat eri projektioita, eivät saman listan kaksi diagnostiikkatapahtumaa.
-[V2q:n korvauskoe](../architecture/release-0.3.0-m1-preparation-plan.md#v2q-korvauksen-todellinen-mainipc-lukuketju)
-todentaa erikseen saman schema-syyn todellisen main/IPC-, native-vahvistus-,
-uudelleenkäynnistys- ja lukijaketjun aktiivisen yrityksen korvauksessa.
-Varmuuskopion jälkeinen asiakas, lasku, PDF ja yritysrekisteri säilyvät;
-`unknown`-sivuvaikutusluokitus ei muutu tämän jälkivarmennuksen perusteella.
-V2p/V2q ovat rajattuja erillistodisteita. Niitä täydentävät
-[V2r:n pysyvät Electron-testit](../architecture/release-0.3.0-m1-preparation-plan.md#v2r-pysyvät-workspace-schema-hylkäystestit)
-tuonnin ja korvauksen schema-hylkäykselle. Ne käyttävät nykyistä fixtureä,
-todellista main/IPC-ketjua ja samoja tiedostolukijoita; kohdeajo läpäisi,
-mutta normaalin PR/CI-kierroksen hyväksyntä on vielä avoin.
-K3:n muiden kuluttajien todelliset runtime-polut ja paketoidun sovelluksen
-hyväksyntä pysyvät erillisinä avoimina portteina.
+K:n hyväksytty lukuketju on nykyinen sopimus; päivätty integraationäyttö ja
+mahdollinen uusi havainto erotetaan
+[M1:n jatkamiskohdassa](../architecture/release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Vanhojen V2-checkpointien avoimet PR/CI-portit eivät ole nykyinen työjono.
+K:n hyväksyntä ei tarkoita G:n kaikkien diagnostiikkatoiveiden valmistumista.
+
+Workspace-composition välittää operational-loggerin ja runtime-identiteetin
+observerille. Tuonnin ja same-lineage-korvauksen
+`workspaceBackup.operationFailed` sekä todellisen lisävirheen erillinen
+`workspaceBackup.cleanupFailed` kuuluvat tähän tekniseen projektioon ja
+sanitoituun tukipakettiin. `stage: import|replace`, suljettu syy ja
+tapahtumakohtaiset kentät validoidaan kaikilla rajoilla
+[katalogin mukaan](../architecture/r0-observability-event-catalog.md#tarkistuksen-ensisyy-ja-lukijaketju).
+Lisävirhe ei korvaa ensimmäistä syytä. `retryable: false` ja alkuperäinen
+`sideEffectState: unknown` eivät muutu onnistuneen uudelleenkäynnistyksen
+tai jälkivarmennuksen perusteella. Vaihe ei todista sisäistä juurisyytä,
+osittaista palautusta tai onnistunutta rollbackia.
+
+Portable-backupin `backup.failed` ja `backup.inspectionFailed` sekä
+`restore.inspectionFailed`, `restore.stagingFailed`,
+`restore.activationFailed`, `restore.validationFailed` ja
+`recoveryPoint.failed` käyttävät vain katalogin viittä teknistä ensisyytä
+tai kuluttajan nykyistä turvallista fallbackia. Raaka `cause`-olio ei kuulu
+IPC:hen, lokiin tai tukipakettiin. `restore.rollbackFailed` ja
+`restore.recoveryRequired` säilyttävät erillisen
+`PROFILE_RESTORE_RECOVERY_REQUIRED`-selvityskoodin.
+
+Aktivoinnin epävarman journal-valmistelun tai sulun alkuperäinen
+`restore.activationFailed` edeltää erillistä
+`restore.recoveryRequired`-tilaa allowlistatussa `activation`-vaiheessa.
+Tilatapahtuma ei väitä rollbackin alkaneen. Sisältövalidoinnin jälkeinen
+`restore.acceptanceFailed` erottaa `acceptancePreparation`-,
+`acceptanceCommit`- ja `acceptedCleanup`-vaiheet eikä muuta aiempaa
+`restore.validationCompleted`-tulosta. Sen pakolliset correlationId-,
+durationMs-, stage-, errorCode-, retryable- ja sideEffectState-kentät
+säilyvät pakollisina; vaihe ei todista journalin durable-lopputilaa.
+
+API-client ja tukipakettilukija tarkistavat perheen, tason, lopputuloksen,
+vaiheen, kindin, pakolliset kentät ja sallitun metadatan uudelleen.
+Kelvollisen vanhan projektion app/build/runtime- sekä jo valinnaiset
+duration/retryable/side-effect-kentät säilyvät valinnaisina.
+Aktivointi-/recovery-required-/acceptance-failure-sopimuksia ei löysennetä.
+Turvallinen virhesormenjälki säilyy vain katalogin sallimassa yhteydessä;
+onnistumistapahtuma tai toinen perhe ei peri virheen metadataa.
+
+Todellinen main/IPC-, native-vahvistus-, runtime-generationin vaihto ja
+lukijaketju kuuluvat schema-hylkäyksen kuluttajakohtaiseen näyttöön.
+Yksityiskohtainen operational-tapahtuma ja minimoitu incident-indeksi ovat
+eri projektioita, eivät saman listan kaksi tapahtumaa. Incidentissä ei ole
+correlation-, runtime- tai business-tunnisteita. Pelkkä no-op-loggerin
+koostetesti ei todista lukuketjua. Pysyvät tuonti-/korvausregressiot
+säilyttävät asiakas-/laskusisällön, PDF:t, yritysrekisterin ja omistetun
+syötteen; aktiivisen SQLite-tiedoston raakatavujen identtisyyttä normaalin
+WAL-sulkemisen yli ei väitetä.
 
 Lokikansion avaaminen ei hyväksy rendereriltä polkua. Electron main muodostaa
 kiinteän `userData/runtime/logs`-juuren, tarkistaa trusted main frame

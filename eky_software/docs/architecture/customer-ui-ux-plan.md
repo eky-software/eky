@@ -4,6 +4,11 @@ Tämä dokumentti kuvaa customer-moduulin käyttökokemuksen korjauslinjan nykyi
 
 Tavoite ei ole rakentaa koko lopullista asiakashallintaa. Tavoite on muuttaa nykyinen toimiva mutta kömpelö customer UI oikeaksi Eky Local -asiakaskortiston työpöytänäkymäksi.
 
+Nykyisen asiakaskortiston lista-/lomakeperiaatteet säilyvät tässä.
+Taustan ongelmalista ja ensivaiheen rajaus kuvaavat muutosta edeltänyttä
+näkymää; ne eivät rajaa pois [koontinäkymän](customer-overview-plan.md)
+nykyistä laskutusta tai turvallista historiaa.
+
 ## Tausta
 
 Nykyinen customer UI todisti tärkeän teknisen ketjun:
@@ -210,7 +215,8 @@ Tässä UX-korjauslinjassa ei tehdä:
 - asiakkaan poistoa
 - sites-moduulia
 - work orders -moduulia
-- uutta laskua asiakaskortilta
+- uutta laskua asiakaskortilta (tämän ensivaiheen historiallinen rajaus;
+  nykyinen toiminto kuuluu customer-overview-sopimukseen)
 - auth- tai sync-mallin muutosta
 - pysyvää URL-reititystä
 
@@ -234,7 +240,7 @@ React-komponentit eivät kirjoita SQLiteen.
 
 React-komponentit eivät importtaa backendin sisäisiä moduuleja.
 
-UI saa ohjata käyttäjän syötettä, mutta backend tekee lopullisen validoinnin, asiakasnumeron uniikkiustarkistuksen ja myöhemmin käyttöoikeustarkistuksen.
+UI saa ohjata käyttäjän syötettä, mutta backend tekee lopullisen validoinnin, asiakasnumeron uniikkiustarkistuksen ja käyttöoikeustarkistuksen luotetusta ActorContext-kontekstista.
 
 ## Suhde UI-Periaatteisiin
 

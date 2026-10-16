@@ -15,7 +15,8 @@ internal static class MsiWindowObservation
 {
     internal sealed record Limits(int SchemaVersion, string Operation, string FilenamePrefix,
         int MaximumBytes, int MaximumClients, int MaximumSamples, int MaximumWindows, int MaximumTextCharacters, int MaximumTotalCharacters,
-        int MessageTimeoutMilliseconds, int SampleTimeoutMilliseconds);
+        int MessageTimeoutMilliseconds, int SampleTimeoutMilliseconds, string ResourceSelectionFilename,
+        int MaximumSelectionBytes, int MaximumResourceFiles, int MaximumResourcePathBytes);
     internal static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     internal static readonly Limits Contract = ReadContract();
 
@@ -33,7 +34,8 @@ internal static class MsiWindowObservation
         "Seuraavat sovellukset tulee sulkea ennen asennuksen jatkamista:";
 
     internal static MsiWindowSample Capture(WindowsJob job, SafeProcessHandle process, Func<bool> stopped,
-        Stopwatch budget, ref int remainingCharacters, ref int remainingWindows)
+        Stopwatch budget, ref int remainingCharacters, ref int remainingWindows,
+        Action<MsiApplicationListFailure>? listFailure = null)
     {
         var pid = GetProcessId(process);
         var text = new List<MsiWindowText>();
@@ -142,12 +144,22 @@ internal static class MsiWindowObservation
                         return SendMessageTimeout(message.Window, 0x000D, (UIntPtr)value.Capacity, value, 0x0002,
                             timeout, out var ignoredLength) != IntPtr.Zero && SameControl() && value.ToString() == message.Text;
                     }
-                    if (!SameMessage()) { partial = true; break; }
+                    if (!SameMessage())
+                    {
+                        listFailure?.Invoke(new("beforeListRead", "messageValidationFailed"));
+                        partial = true;
+                        break;
+                    }
                     var applications = MsiApplicationListObservation.Read(list, pid, Admitted,
                         () => (int)Math.Max(0, Contract.SampleTimeoutMilliseconds - budget.ElapsedMilliseconds),
-                        slots, characters, out var limited);
+                        slots, characters, out var limited, listFailure);
                     partial |= limited;
-                    if (!SameMessage()) { partial = true; break; }
+                    if (!SameMessage())
+                    {
+                        listFailure?.Invoke(new("afterListRead", "messageValidationFailed"));
+                        partial = true;
+                        break;
+                    }
                     foreach (var application in applications)
                     {
                         text.Add(new("application", application, IsWindowEnabled(list)));

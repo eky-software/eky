@@ -3,26 +3,26 @@
 Tämä dokumentti kirjaa Eky-repositorion riippuvuusturvan tarkastuksen ennen
 heinäkuun 2026 rajattuja tietoturvapäivityksiä.
 
+Tila: historiallinen snapshot ja päivätyt jatkotulokset, ei nykyinen
+haavoittuvuus-, CI- tai repositoryasetusten tarkistus. Nykyiset velvoitteet
+omistavat [riippuvuuspolitiikka](dependency-policy.md) ja
+[testauskäytäntö](../ai/testing-rules.md).
+
 Tarkastettu lähtöcommit on
 `9c47cdf32d60f3cf3d20d48c24ee7d43361c8fad`. Eky-tuoteversio on
 `0.1.0-alpha.1`.
 
 ## Tarkastusympäristö
 
-- Node.js `24.11.0`
-- pnpm `11.1.3`
-- asennus onnistui komennolla `pnpm install --frozen-lockfile`
-- `pnpm audit signatures` varmisti kaikkien 203 asennetun paketin
-  rekisteriallekirjoitukset
-- `pnpm audit --json` löysi kolme advisorya
-- `pnpm audit --prod --json` löysi kaksi tuotantoriippuvuuksiin vaikuttavaa
-  advisorya
-- auditissa ei käytetty `--fix`-komentoa eikä overridea
+Historiallinen tarkastus käytti lukittua asennusta
+(`pnpm install --frozen-lockfile`), rekisteriallekirjoitusten tarkistusta
+(`pnpm audit signatures`) sekä koko puun ja tuotantoriippuvuuksien
+JSON-auditeja. Koko puusta löytyi kolme advisorya, joista kaksi koski
+tuotantoriippuvuuksia. Auditissa ei käytetty `--fix`-komentoa eikä overridea.
 
-pnpm 11.1.0:sta alkaen virallinen `pnpm audit signatures` tarkistaa
-asennettujen pakettien ECDSA-rekisteriallekirjoitukset rekisterien julkaisemilla
-avaimilla. Tarkistus ei korvaa lockfilea, advisory-auditia, release notes
--katselmointia tai paketoidun artifactin testausta.
+Allekirjoitustarkistus ei korvaa lockfilea, advisory-auditia, release notes
+-katselmointia tai paketoidun artifactin testausta. Tämä menetelmäkuvaus
+ei määritä nykyistä työkaluversion valintaa eikä todista nykyistä audit-tilaa.
 
 ## Suorat tarkastetut versiot
 
@@ -184,18 +184,16 @@ vuoksi muutettu.
 
 ## CI- ja repository-asetusten lähtötila
 
-Nykyinen SHA-pinnattu CI sisältää tarkistukset:
+Tarkastushetken SHA-pinnattu CI sisälsi tarkistukset:
 
 - `Test, typecheck and build`
 - `System security E2E`
 - `Web critical E2E`
 
-Repositoryn GitHub Advanced Security -asetusten admin-tasoinen read-only
-varmistus ei ole käytettävissä nykyisellä GitHub-yhteydellä. Siksi Dependency
-graph-, Dependabot alerts- ja Dependabot security updates -tilaa ei väitetä
-varmistetuksi. Omistaja tarkistaa ne repositoryn `Settings` -> `Security` ->
-`Advanced Security` -näkymästä. Asetuksia ei muuteta ilman omistajan erillistä
-vahvistusta.
+Snapshot ei varmista nykyisiä Dependency graph-, Dependabot alerts- tai
+Dependabot security updates -asetuksia. Niiden tarkistus ja muutosten
+päätösraja määräytyvät nykyisestä testauskäytännöstä; historiallinen
+CI-luettelo ei ole nykyinen required-check-luettelo.
 
 ## Rajaukset
 

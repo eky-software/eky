@@ -15,7 +15,11 @@ omistavan moduulin kapeasta catalog-portista.
 
 Paketoidussa desktop-runtimessa aktiivisen profiilin juurena toimii:
 
-`<Electron userData>/runtime`
+`<Electron userData>/workspaces/<workspaceId>/runtime`
+
+Workspace valitaan mainin validoimasta registrystä. Alkuperäinen yhden
+profiilin `<Electron userData>/runtime` on legacy-adoption lähde, ei
+uuden rekisteröidyn työtilan oletus. Yksi backup sisältää yhden profiilin.
 
 Nykyiset auktoritatiiviset business-lähteet ovat:
 
@@ -36,8 +40,8 @@ auktoritatiivinen lähde esimerkiksi:
 - Company Settings -datalle ja sen auditeille
 - Customers-datalle ja sen auditeille
 - Invoicingin asetuksille, luonnoksille, laskuille, riveille, maksuille,
-  hyvityssuhteille, toimitustapahtumille ja auditeille sekä B3-B5:n
-  työpuutoteutuksessa muuttumattomalle revisiohistorialle
+  hyvityssuhteille, toimitustapahtumille ja auditeille sekä hyväksytyn
+  B3-B5-sopimuksen muuttumattomalle revisiohistorialle
 - Activity-read modelin lähteenä käytettäville business-auditeille
 - laskudokumenttien metadatalle
 
@@ -80,9 +84,9 @@ suoraa SQL-pääsyä Invoicingin tauluihin eikä yleistä filesystem-listausta.
 
 ### Revisioiden ja legacy-PDF:ien malli
 
-**B3-B5:n työpuutoteutus, puhtaan revision hyväksyntä ja integraatio avoinna:**
-[Nykyinen B5-checkpoint](release-0.3.0-m1-preparation-plan.md#b5-katalogin-ja-palautuksen-checkpoint)
-erottaa toteutuksen ja alemman tason näytön julkaisuhyväksynnästä.
+Nykyinen hyväksyntätila on [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+[B5-checkpoint](release-0.3.0-m1-preparation-plan.md#b5-katalogin-ja-palautuksen-checkpoint)
+säilyttää vaiheen oman toteutus- ja hyväksyntänäytön.
 Katalogi sisältää nykyrevision PDF:n lisäksi säilytettävät historialliset
 revisio-PDF:t, alkuperäiset legacy-dokumentit ja erikseen säilytetyt
 legacy-kopiot. Se ei muodosta puuttuvaa historiallista PDF:ää uudelleen.
@@ -147,6 +151,109 @@ raportoidaan myöhemmin turvallisella diagnostiikkakoodilla ilman raakaa polkua.
 Restore estyy, jos manifestin dokumentti, palautettu tiedosto ja palautettu
 `invoice_documents`-rivi eivät vastaa toisiaan id:n, tyypin, koon, SHA-256:n
 ja suhteellisen storage-polun osalta.
+
+### Rajattu koko revisiohistorian tarkistus
+
+Hyväksytty K:n luentatapa koskee `revisionHistory`-haaraa, ei tavallisten
+laskumallien muuttamista. Koko historia, myös PDF:ttömät revisiot, otsikot,
+rivit, ALV-erittelyt ja toimitustapahtumat tarkistetaan yhdessä johdonmukaisessa
+lukutransaktiossa. Koko historialle ei lisätä uutta rivi- tai tavumäärärajaa.
+Nykyiset formaatti-, dokumentti-, aika- ja resurssirajat säilyvät; niiden
+sisään mahtuminen ei lupaa rajatonta suoritusaikaa.
+
+`SqliteInvoiceBackupArtifactCatalog` omistaa lukukuvan, schemaan perustuvan
+haaran ja rajatun dokumenttiluettelon. Schema-portti edeltää sisältöä.
+`validateInvoiceRevisionCatalog` käyttää kiinteitä SQL-projektioita ja
+nimettyjä orpo-, historia-, current- ja hyvitysviitetarkistuksia kasvavien
+taulukoiden, karttojen ja joukkojen sijasta. Pelkkä koko rivin `.iterate()`
+ei täytä vaatimusta. Myös yhden laskun tai revision sisäinen työjoukko
+rajataan ennen suurten arvojen materialisointia.
+
+Etenemisavaimet pysyvät SQLitessä: pitkää tunnistetta ei palauteta
+JavaScriptiin sivutuksen vuoksi. `WITHOUT ROWID`-taululle ei oleteta
+numeerista rowidia; yhdistelmä- ja nullable-avaimet eivät saa ohittaa rivejä.
+Natiivin avaimen tai SQL-välituloksen muistinkäyttö ei ole JavaScriptin
+fragmenttikoon perusteella rajattu. Kyselysuunnitelma todistaa indeksoidun
+etenemisen ilman tulosjoukon kokoista välilajittelua; vanha ordinal/OFFSET-
+koe ei ole hyväksytty tuotannon hakuratkaisu.
+
+#### Teksti ja relaatiotunnisteet
+
+Tavallinen mapper ja rajattu tarkistin jakavat nonblank-, yksikön trimmatun
+UTF-16-pituuden, otsikko-, rivi-, ALV- ja loppusäännöt. Null, tyhjä ja
+whitespace-only ovat eri arvoja. Pitkä tunniste, kuvaus tai ympäröivä
+tyhjätila ei saa uutta business-pituusrajaa. Suuria arvoja ei hyväksytä
+vain alkuosan perusteella eikä normalisoida tai korjata.
+
+Virheellisen koodauksen hylkäys koskee vain seuraavia relaatiokenttiä
+(`invoiceHistoryRelationSources`), ei kaikkea tekstiä:
+
+| Taulu | Koodauseston kentät |
+| --- | --- |
+| `invoices` | `id`, `company_id` |
+| `invoice_lines` | `id`, `invoice_id`, `source_invoice_line_id` |
+| `invoice_content_revisions` | `id`, `company_id`, `invoice_id`, `credited_invoice_id`, `credited_revision_id` |
+| `invoice_revision_lines` | `company_id`, `invoice_id`, `revision_id`, `line_id`, `source_revision_id`, `source_invoice_line_id` |
+| `invoice_revision_vat_breakdown` | `company_id`, `invoice_id`, `revision_id` |
+| `invoice_current_revisions` | `company_id`, `invoice_id`, `revision_id` |
+| `invoice_documents` | `id`, `company_id`, `invoice_id`, `revision_id`, `source_document_id` |
+| `invoice_delivery_events` | `id`, `company_id`, `invoice_id`, `revision_id`, `document_id` |
+
+Muut tyyppi- ja null-säännöt säilyvät nykyisillä tarkistimilla.
+Erityisesti `invoices.credited_invoice_id` ei kuulu estoon: sen
+lähdevertailu pysyy dekoodattuna, ei SQL-oikopolkuna. Vapaan tekstin
+UTF-8-/UTF-16-tulkinta vastaa tavallista ajuria. UTF-16-fragmenttien SQLite-
+muunnos valmistellaan samalla yhteydellä ennen kursorin avaamista;
+pelkkä yleinen dekooderi ei säilytä kaikkia virheellisten vapaiden arvojen
+tulkintoja. Ajurin ohittama pariton lopputavu ei tee pienestä vapaasta
+kentästä uuden koodauseston kohdetta. Eri tavumäärä tai fragmenttipituus
+ei yksin todista dekoodatun sisällön eroa.
+
+#### Skalaarit, parivertailu ja tapahtumat
+
+`validateInvoiceRevisionScalars` palauttaa vain kiinteät tyyppi- ja
+viitehavainnot, numerot sekä nykyisen kieliopin rajaamat enum-/päiväarvot,
+ei kokonaisia tunnisteita tai vapaita tekstejä. Schema, relaatiokoodaus
+ja nonblank-/yksikkötarkistus edeltävät sitä samassa lukukuvassa.
+Yhteiset säännöt kattavat provenienssin, kokonaisluvut, tilat, rivisuhteet
+ja summat. Jokainen ALV-kanta ja kolme ryhmäsummaa ovat ei-negatiivisia
+turvallisia kokonaislukuja; ryhmän `net + vat = gross` tarkistetaan ennen
+kokonaissummia. Kolme `BigInt`-kertymää nollataan revision vaihtuessa.
+Verokantajoukot täsmäävät molempiin suuntiin. Historiallista ALV-erittelyä
+ei lasketa uudelleen riveistä. Puuttuvan legacy-erittelyn ja käännetyn
+ALV:n aikaiset haarat säilyvät.
+
+Tallennus ja nykyrevision vertailu käyttävät samaa
+`invoiceContentRevisionPersistenceRows`-kenttäsopimusta ja lähdesääntöä;
+kenttäkohtainen kattavuus estää uuden snapshot-kentän unohtumisen.
+Vertailu kattaa kaikki persisted copy/source -kentät sekä kaikki
+järjestettyjen rivien kentät, myös tunnisteen ja järjestysnumeron.
+Molemmat jonot loppuvat; aukottomia järjestysnumeroita ei vaadita.
+Null-, teksti- ja numeroeroja ei peitetä SQL-muunnoksilla. Maksu-,
+toimitus- tai peruutustila ei muutu immutable-sisällöksi.
+
+Jokaisella laskulla on historia. Sallitut tilat ovat `approved`, `sent`,
+`cancelled` ja `reopened_for_edit`; uudelleenavatulla ei ole current-
+viitettä, muilla on. Hyvityksen lähderevision ei tarvitse olla nykyinen:
+yritys, alkuperäislasku, täsmärevisio, standard-laji, numeron/päivän
+snapshotit ja lähderivin jäsenyys tarkistetaan. Nullable-lähderivistä ei
+tule pakollista.
+
+Toimitustapahtumat luetaan relaatiokoodauksen, revisioiden ja rajattujen
+dokumenttien jälkeen samassa lukukuvassa. Dokumenttisidos jakaa säännön
+tavallisen historian PDF-lukijan kanssa. Legacy-null, aikainen paluu,
+`legacyMissingDocument`, preserved-kopio, yritysrajaus sekä testin ja
+asiakaslähetyksen todiste-ero säilyvät. Kokonainen tapahtumataulukko ja
+ratkaisemattomien lähetysten kasvava joukko eivät jää tuotantoon
+rinnakkaiseksi tarkistimeksi.
+
+Jokainen aloitettu lukija suljetaan myös virheessä; parivertailu yrittää
+molemmat sulut. Ensimmäinen lukuvirhe säilyy sulkuvirheestä erillään.
+Aktiiviseksi jäänyt lukija tai pelkkä sulkuvirhe estää onnistumisen.
+Täsmällinen natiivi `SQLITE_NOMEM` säilyy sisäisessä syyketjussa ja
+luokitellaan omistavassa runtimessa `PROFILE_INSPECTION_LIMIT_EXCEEDED`-
+syyksi. Viestistä tai myöhemmästä cleanup-virheestä ei päätellä
+muistivirhettä; muu katalogihylkäys ei avaa legacy-fallbackia.
 
 ## Muut nykyiset business-artifactit
 
@@ -216,8 +323,9 @@ luo ja tarkastaa salatun backupin, palauttaa profiilin ja vertaa sekä
 tietokannan että katalogissa olevien PDF-tiedostojen SHA-256-tiivisteet
 uudessa prosessissa. Tämä aiempi smoke ei yksin hyväksy B3-B5:n uutta
 revisiohistoriaa. Uuden kehityspaketin moniversioinen/legacy-palautustodistus
-sekä puhtaan revision avoimet portit erotetaan yllä linkitetyssä
-checkpointissa. Jos tuleva audit löytää muun
+sekä sen aikaiset puhtaan revision portit erotetaan yllä linkitetyssä
+historiallisessa checkpointissa; nykytila ei määräydy sen vanhasta
+avoimet-listasta. Jos tuleva audit löytää muun
 ei-uudelleenmuodostettavan business-artifactin, backupin release gate
 avautuu uudelleen, kunnes inventaario ja moduulin owner-portti on päivitetty.
 

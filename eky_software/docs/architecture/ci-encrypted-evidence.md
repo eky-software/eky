@@ -162,6 +162,15 @@ eivät testin tai asennuksen uusia aikarajoja. Osittainen havainto säilyttää
 osittaisuutensa; tyhjä lista ei todista odotuksen syytä tai kaikkien
 mahdollisten ikkunoiden poissaoloa.
 
+Luetteloluvun sopimustesti säilyttää ensimmäisen hylkäyksen vaiheen,
+suljetun syyluokan ja mahdollisen alkuperäisen HRESULT-arvon nykyisessä
+yksityisessä native-virhekuitissaan. Budjetin loppuminen, omistajuus- tai
+ilmoitusvalinnan muuttuminen, ominaisuuden ristiriita ja providerin poikkeus
+eivät muutu samaksi päätelmäksi. Kuitti ei sisällä uutta ikkunatekstiä tai
+prosessitunnistetta eikä muuta julkista raporttia tai asennuksen hyväksyntää.
+Sopimustestin tarkoituksellinen hylkäys varmennetaan myös nykyisen
+salaus- ja purkuketjun yli; puuttuvaa havaintoa ei täytetä arvatulla syyllä.
+
 Serialisointi ja tiedostokirjoitus kuuluvat samaan olemassa olevaan yhteen
 taustakyselyyn. Terminal- tai cleanup-polku ei odota niiden valmistumista.
 Jokainen enintään 64 KiB:n valmis näyte julkaistaan yksinomaisesti omana
@@ -197,7 +206,19 @@ poissulkemisen, listan kokorajat sekä keskeytyneen julkaisun. Sama sarja
 todentaa ilmoituksen sovellusnimen keräimestä oikean OpenPGP-salauksen
 ja testiavainpurun läpi prosessien poistuttua. Se ei asenna MSI:tä tai
 korvaa varsinaista Windows-asennuskokeen näyttöä.
-Ensimmäisen näytteen hylkäys säilyttää nykyisessä yksityisessä stderrissä
+Positiivinen luettelokoe ottaa ensin yhden kylmän valmistelunäytteen.
+Täydellisen näytteen lisäksi valmistelussa hyväksytään vain tarkasti
+`listProcessId/budgetExpired` ilman HRESULT-arvoa: nykyinen työbudjetti on
+täyttynyt, otsikko, ilmoitus ja painike löytyvät, sovellusnimiä ei ole ja
+omistettu prosessi on edelleen elossa. Muut osittaiset tulokset ja virheet
+hylätään. Sen jälkeen otetaan täsmälleen yksi täydellisen luettelon vaativa
+näyte samoilla rajoilla. Kolmatta näytettä, uusintasilmukkaa tai pidempää
+budjettia ei ole. Tämä todentaa valmistellun providerin täydellisen luvun,
+ei takaa ensimmäisen kylmän luvun täydellisyyttä. Kylmä näyte säilyy omalla
+tilallaan salatun koetiedoston ensimmäisenä asiakkaana, mitattu näyte toisena.
+Valmistelun suljettu syy säilyy fixturen yksityisessä tarkistusraportissa;
+mitatun näytteen hylkäys liittää sen myös nykyiseen yksityiseen virhekuittiin.
+Näytteen hylkäys säilyttää nykyisessä yksityisessä stderrissä
 suljetun tulosluokan, odotettujen tekstiroolien löytymisen, keruun keston
 sekä erilliset keruun jälkeiset prosessin poistumis- ja omistajuushavainnot.
 Epäonnistuva lisäkysely ei peitä alkuperäistä hylkäystä. Hallittu native-virhe
@@ -206,6 +227,43 @@ OpenPGP-salauksen ja purun läpi; nämä havainnot eivät yksin nimeä Windowsin
 sisäistä juurisyytä.
 Skeema 2 nimeää listamerkinnän `application`-rooliksi; vanhan skeeman 1
 rajattu luku säilyy, mutta se ei hyväksy tätä uutta roolia.
+
+Skeema 3 lisää samaan näytteeseen valinnaisen `resources`-havainnon.
+Nykyinen taustakysely käyttää Windowsin Restart Manageria vain testin
+omistaman, sovellusten sulkemista pyytävän MSI-ilmoituksen yhteydessä.
+Rekisteröitävät tiedostopolut tulevat lähdepaketin hyväksytyn inventaarion
+samasta läpikäynnistä. Yksinomaisesti luotu yksityinen valintatiedosto
+sidotaan skenaarioon, nonceen, descriptor-tiivisteeseen ja lähdeinventaarion
+identiteettiin. Lukija vaatii täsmällisen asennusjuuren, rajatut suhteelliset
+polut, tavalliset tiedostot ja reparse-vapaat esi-isät. Valintatiedostoa tai
+sen polkuja ei kopioida virhepakettiin. Valinnan julkaisu ei ole skenaarion
+hyväksymisehto eikä sitä odoteta siivouksessa.
+Kiinteän callerin composition välittää supervisorin vaihehakemiston
+worker-runtimen julkaisuun erikseen: materialisoidun työskentelykansion ja
+native-supervisorin request/result-hakemiston ei oleteta olevan samat.
+
+Vain tiedostot rekisteröidään; prosesseja ja palveluja ei rekisteröidä eikä
+Restart Managerin sulkemis- tai käynnistystoimintoja käytetä. Näytteeseen
+tulevat suljettu vaihe ja kattavuustila, alkuperäinen native-koodi,
+erillinen session sulkukoodi, valinnan identiteetti ja määrä sekä enintään
+32 prosessin PID, creation FILETIME ja `ownedJob`/`outsideJob`/`unknown`.
+Jäsenyys tarkistetaan elävän prosessikahvan samalla PID-/aloitusaikasidonnalla
+luvun molemmin puolin. Poistuminen tai identiteettiristiriita jää tuntemattomaksi.
+Koko- ja näyterajat sekä julkiset tulosteluokat säilyvät; skeemojen 1 ja 2
+tiukka lukutuki säilyy.
+
+Tämä on nykyhetken havainto rekisteröidyistä tiedostoista. Se ei todista
+MSI:n aiemman ilmoituksen estäjää, kaikkien lukkojen poissaoloa tai Jobin
+jäsenen roolia sovelluksen pääprosessina. Polkujen tyyppi- ja rajatarkistukset
+ovat hetkittäisiä; havainto ei ole jatkuvan tiedostoidentiteetin tai
+sisältötavujen muuttumattomuuden valtuus. Tarkistus ei pidä asennustiedostoja
+lukittuina MSI:n korvausoperaatioita vastaan. Puuttuva, muuttunut tai
+epävarma valinta ja rajautunut kysely säilyttävät oman tilansa. Native-kutsun
+viive ei siirry terminal-/cleanup-odotukseen: sama yksi valinnainen
+taustakysely ja nykyinen ulompi prosessiraja omistavat sen elinkaaren.
+Regressiot todentavat valinnan rajat, identiteetin vaihtumisen, keskeytyksen
+sekä todellisen keräys-, salaus- ja purkuketjun. Havainnon onnistuminen
+ei hyväksy asennusskenaariota tai korjaa historiallista timeoutia.
 
 Nykyinen `packaged-boundary-diagnostic` käyttää samaa valinnaista salattua
 jälkikeräystä epäonnistuneessa tai perutussa `legacy`- ja `workspace`-kokeessa.
@@ -612,6 +670,20 @@ uutta MSI-asennusta. Vanhan kokeen raakaa vientivirhettä tämä ei palauta.
   ja komennon 25 minuutin raja säilyy; erillistä varmaa toimitusvarausta ei
   tässä luvata. Ennen ikkunaa syntynyt virhe voi näkyä ETL:ssä, mutta tämä
   ei ole täydellinen prosessivedos, verkkokaappaus tai Playwright-trace.
+
+### Historiallisen kertakokeen säilytysraja
+
+Aiemman erikseen hyväksytyn yksityisen kertakokeen seitsemän vuorokauden
+GitHub-säilytys oli vain kyseisen kokeen toimitusraja. Se ei muuta nykyisen
+salatun liitteen yhden vuorokauden säilytystä eikä uusi suljetun kokeen
+käynnistyslupaa. Kokeen ehto oli aineiston viipymätön lataus ja varmennus;
+ETL:n talteenotto ennen jobin loppua oli tavoite, ei toimitustakuu. Paikallinen
+14 vuorokauden tarkistus ei ole automaattinen poistomääräaika. Ratkaistun
+virheen aineisto voidaan poistaa vain hyväksytyn säilytyskäytännön ja
+varmennetun siivouksen mukaisesti. Ratkaisemattoman virheen tai epävarman
+siivouksen ainoa aineisto säilytetään ja jatkosäilytyksestä pyydetään erillinen
+päätös. Turvallinen tulosraportti säilyy; tästä ei synny uutta ajastinta,
+CI-käynnistintä tai testilupaa.
 
 ## Todennus
 

@@ -544,3 +544,96 @@ Tässä kokonaisuudessa ei vielä tehdä:
 - Sites-moduulin toteutusta
 - laajaa party-role-mallia
 - uusia riippuvuuksia
+
+## Revision PDF-julkaisu ja täsmäluku
+
+Tämä osuus omistaa hyväksytyn B:n PDF-sisältö-, tiedosto-, julkaisu- ja
+esikatselusopimuksen. [Hyväksyntäsopimus](invoice-approval-numbering-plan.md#muuttumaton-sisältörevisio)
+omistaa laskuidentiteetin ja snapshot-kentät; [layout](approved-invoice-pdf-layout-plan.md)
+piirtosopimuksen ja [toimitushistoria](invoice-delivery-events-plan.md) tapahtumavalinnan.
+Ensimmäisten foundation-vaiheiden rakentamisjärjestys ei ole uusi toteutuslupa.
+
+### Sisältö ja ehdollinen julkaisu
+
+`ApprovedInvoicePdfContent` sisältää vain piirron snapshotit, rivit ja
+valmiit summat/ALV-erittelyn, ei elävää tila-/maksu-/peruutustietoa.
+`toInvoiceRevisionPdfContent` mapittaa kentät eksplisiittisesti, kopioi
+alirakenteet ja säilyttää hyvityksen lähdenumeron/päivän. Ei master-data-
+hakua tai uudelleenlaskentaa. Approval/validatedLegacySnapshot vaatii
+authoritative-erittelyn. Kelvollinen legacySnapshot/unavailable tuottaa
+`InvoiceRevisionPdfContentUnavailableError`, ei korruptioluokitusta tai
+keksittyä tyhjää erittelyä; ristiriitainen variantti on eheysvirhe.
+
+`generateInvoiceRevisionPdfDocument` käyttää täsmällistä RevisionKeytä.
+Standardin, uudelleenhyväksynnän ja hyvityksen hook saa juuri julkaistun
+avaimen hyväksyntätuloksesta; manuaalinen generointi valitsee current-avaimen
+ja käyttää samaa polkua. Myöhäinen työ ei valitse uudempaa revisiota.
+
+`InvoiceDocumentRepository` erottaa revision julkaisun ja preservedLegacy-
+kopion julkaisun omiksi input-/result-tyypeikseen. Molemmat palauttavat
+published/document, existing/document tai conflict, mutta dokumenttivariantti
+vastaa operaatiota. Ei yhtä valinnaisin kenttin laajennettua generaattoria.
+`publishDocumentIfCurrent` tarkistaa yritys-/laskurajan, currentin,
+approved/sent-tilan ja sallitun alkuperän samassa IMMEDIATE-transaktiossa,
+myös ennen olemassa olevan voittajan palauttamista. PreservedLegacy-julkaisu
+vaatii sent-tilan, tarkan legacyOriginal-lähteen samalla hashilla/koolla sekä
+kaikkia providereita koskevan unresolved-eston ja
+[sähköpostisopimuksen historian kelpoisuuden](email-delivery-and-secrets-plan.md#säilytetyn-pdfn-täsmävaltuutus).
+Julkaisu ei yksin anna lähetysvaltuutta.
+
+`findCurrentDocumentForRevision` on kirjoittamaton kelpoisuuden ja
+dokumentin yhteinen lukutransaktio. Historiallinen
+`findDocumentForRevision(RevisionKey)` ja
+`findDocumentById(InvoiceScope & { documentId })` ovat erillisiä täsmälukuja;
+cachea ei lueta kirjoittavan julkaisuoperaation kautta.
+Vanha yleinen save/massadelete ei kuulu näihin portteihin.
+
+### Tavut ja ehdokkaan omistajuus
+
+`InvoiceDocumentStorage.writeCandidate` kopioi callerin puskurin ennen
+ensimmäistä awaitia ja kirjoittaa exclusive-tilassa oman uuden document-ID:n
+suhteelliseen polkuun. Ei jaettua callerin storagePathia tai hardlink-kloonia.
+Tulos sisältää varmennetun polun/hash/koon sekä vain oman ehdokkaan
+`discard`-sulun. Discard tarkistaa alkuperäisen tiedostoidentiteetin ja tavut;
+vain varmasti julkaisematon hävinnyt ehdokas siivotaan. Epävarma/osittainen
+kirjoitus tai julkaisun commit-poikkeus säilyttää aineiston. Hävinnyt
+kirjoittaja ei poista julkaistua voittajaa.
+
+`readVerifiedDocument` palauttaa yhden enintään 10 MiB:n puskurin:
+tavallinen yksilinkkinen tiedosto, polun sisältävyys, PDF-tunniste,
+metadataa vastaava koko ja SHA-256 vaaditaan. Tämä ei ole täysi PDF-parseri,
+allekirjoitus tai toimitusvaltuutus. Polku-/tavutarkistus kuuluu
+infrastructureen, ei domainiin tai Node-kahvoja paljastavaan porttiin.
+Provider käyttää samaa tarkistettua puskuria, ei uutta polkulukua.
+
+Tallennettu dokumenttirivi on säilytettävää aineistoa. Puuttuva/rikkinäinen
+tiedosto ei salli metadatan poistoa, regenerointia tai latest-fallbackia.
+Uuden authoritative-revision ensimmäinen PDF-julkaisu on eri asia.
+Reopen irrottaa currentin, ei historiaa. Jo sitoutunut hyväksyntä ei peruunnu
+PDF-virheen vuoksi. Vanhentunut POST-julkaisu palauttaa turvallisen 409:n;
+sisäinen siivoustieto ei vuoda vastaukseen. Ensivirhe ja ehdokkaan
+siivousvirhe erotetaan nykyisen PDF-diagnostiikan vaiheina.
+
+### Nykyinen ja historiallinen luku
+
+`InvoiceDocumentPreviewReader` valitsee nykyesikatselun yritys-/laskurajasti.
+`readStoredInvoiceDocument` lukee täsmämetadatan ja varmennetut tavut.
+GET ja metadata jälkitarkistavat saman valinnan tavuluvun jälkeen:
+vaihtuminen 409 ilman automaattista uudelleenhakua; puuttuva valinta 404;
+rikkoutunut valittu ei-null-viite/tiedosto on eheysvirhe. Luku ei generoi,
+korjaa, poista, julkaise tai valtuuta.
+
+Approved/sent/cancelled säilyttävät esikatselun, reopened ei current-esikatselua.
+Eksplisiittinen legacySnapshot/unavailable voi näyttää alkuperäisen legacy-
+PDF:n ilman väitettä revisiosidonnasta. PreservedLegacy-kopiota ei valita
+alkuperäisen tilalle, eikä uuden revision puuttuva PDF palaudu vanhaan.
+HTTP-metadata mapittaa vain nykyiset julkiset kentät, ei sisäisiä sidoksia.
+
+Eheysvirhe käyttää `invoicePdf.storageFailed`-tapahtumaa,
+`INVOICE_PDF_INTEGRITY_FAILED`-koodia, stage=read ja sideEffectState=none.
+Todellinen writer -> Diagnostics -> tukipaketti/incident-lukuketju vaaditaan.
+Projektioissa ei ole business-tunnisteita, PDF-tavuja, hasheja, polkuja tai
+raakavirheitä; loggerin virhe ei korvaa alkuperäistä. Tekninen luku ei tee
+Activity-tapahtumaa. [Tapahtuman PDF-luku](invoice-delivery-events-plan.md#tavoite)
+ja [säilytetyn kopion täsmäluku](email-delivery-and-secrets-plan.md#säilytetyn-pdfn-täsmävaltuutus)
+ovat erillisiä reittejä, eivät nykyesikatselun fallbackeja.

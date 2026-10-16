@@ -1,5 +1,20 @@
 # Initial skeleton plan
 
+## Historiallinen perustamisrajaus
+
+Tämä on ensimmäisen rungon suunnitelma, ei nykyisen toteutuksen inventaario
+tai uusi aloituslupa. Alla olevat ensimmäisen vaiheen rajaukset ja avoimet
+valinnat kuvaavat tuota vaihetta. Nykyiset moduulit ja composition-vastuut
+ovat [integraatiomatriisissa](module-integration-matrix.md), kerrosrajat
+[moduulirajoissa](module-boundaries.md). Riippuvuuksien lisäämisen portti
+säilyy [riippuvuuspolitiikassa](dependency-policy.md).
+
+HTTP-adapterin valinnan omistaa
+[ADR-0005](../decisions/ADR-0005-backend-framework-selection.md), paikallisen
+tietokannan [ADR-0006](../decisions/ADR-0006-local-database-and-query-layer.md)
+ja [tietokannan toteutussopimus](local-database-implementation-plan.md).
+Vanhan rungon myöhemmin päätettävä valinta ei kumoa näitä seuraajia.
+
 Tämä dokumentti kuvaa Eky-projektin ensimmäisen teknisen rungon.
 
 Tavoitteena on luoda pieni, turvallinen ja laajennettava pohja, jonka päälle voidaan myöhemmin rakentaa asiakashallinta, laskutus, paikallinen offline-käyttö, pilviyhteys, mobiilisovellus ja AI-agentit.

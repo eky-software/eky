@@ -155,6 +155,21 @@ polkujen poisto ja PR/main pysyvät avoimina.
 - `covered-existing`: skenaariolla on nykyinen unit-, integraatio- tai
   packaged-smoke-todiste, mutta uusi Playwright E2E puuttuu
 - `implemented-e2e`: skenaario on toteutettu matriisissa nimetyllä E2E-tasolla
+- `implemented-contract`: omistavan rajapinnan sopimustesti on toteutettu;
+  ei yksin oikean prosessin tai paketin hyväksyntä
+- `implemented-integration`: nimetty integraatiopolku on toteutettu
+- `implemented-unit-integration`: unit- ja integraatiosuoja on toteutettu,
+  ei väite käyttäjäpolun E2E-kattavuudesta
+- `implemented-unit`: nimetty unit-suoja on toteutettu
+- `implemented-unit-integration-electron-e2e`: rivillä nimetyt unit-,
+  integraatio- ja Electron development -tasot on toteutettu; packaged-portti
+  on erillinen
+- `implemented-electron-e2e`: Electron development -käyttäjäpolku on toteutettu,
+  ei hardened-paketin hyväksyntä
+- `implemented-packaged`: nimetty paketoitu skenaario on toteutettu;
+  nykyisen revision ajo ja hyväksyntä varmennetaan erikseen
+- `passed-development-package`: nimetty kehityspakettikoe on läpäisty,
+  ei puhtaan releasekandidaatin hyväksyntä
 - `planned`: testitapaus ja tavoite on päätetty, toteutus puuttuu
 - `planned-r0`: R0-release-porttiin päätetty testi, jonka tuotantototeutus ja
   E2E-todiste puuttuvat vielä
@@ -165,6 +180,10 @@ polkujen poisto ja PR/main pysyvät avoimina.
   tuotantokorjausta ei tehdä testicheckpointissa ilman omistajan päätöstä
 
 ## Yhteiset odotukset
+
+Toteutus- ja historialliset läpäisytilat eivät yksin todista nykyisen revision
+vaadittujen PR/main-porttien tulosta. Päivättyä epäonnistumista ei poisteta
+myöhemmän hyväksynnän perusteella.
 
 Jokainen alla oleva rivi perii nämä odotukset, ellei rivillä sanota muuta:
 
@@ -232,6 +251,11 @@ Nykyinen `RUNTIME-EXIT-001` ja rootin lukumäärään perustuva endurance-tarkis
 eivät yksin todista R28:n portittoman jälkeläisen poistumista. Niiden aiempaa
 läpäisyä ei peruta eikä koroteta uudeksi koko puun omistajuustodisteeksi.
 UI-/HTTP-/business-audit-/tukipakettimuutokset eivät kuulu näihin testisopimuksiin.
+
+Seuraavat T3a/T3b/T3c-koevaiheiden tilat ovat historiallisia esivaiheita.
+Nykyinen hyväksytty sopimus on [pysyvässä T3-matriisissa](#t3-prosessipuun-omistajuus)
+ja [runtime-ohjeessa](e2e-test-environment.md#koko-prosessipuun-omistajuus);
+vanha keskeneräisyys ei avaa hyväksyttyä T3:a uudelleen.
 
 Erillinen [T3a-toteutettavuuskoe](e2e-test-environment-history.md#t3an-tulos-ja-jatkopäätös)
 on suoritettu: kolme Node-tapausta ja normaali Electron läpäisivät;
@@ -685,7 +709,7 @@ nykyistä Linux-prosessinomistajaa ja oikeaa main/utility-tarkistusporttia.
 Ehjän kopion hyväksyntä, muutetun rakenteen ja puuttuvan tarkistusajurin
 hylkäykset vaativat lähdetavujen säilymisen, utilityn poistumisen, varauksen
 vapautumisen sekä erillisen puun siivoustodisteen. Sopimus- ja ajokytkentätestit
-on toteutettu; todellinen Linux-Electron-/CI-ajo on avoin. Ei yleinen
+ja oikea rajattu Linux-Electron-/CI-ajo on hyväksytty K:ssa. Ei yleinen
 Linux-Electron-käyttäjäpolku eikä hardened Windows -palautustodiste.
 Ajopolku: [Linuxin rajattu varmuuskopiotarkistus](e2e-test-environment.md#linuxin-rajattu-varmuuskopiotarkistus).
 
@@ -726,9 +750,9 @@ Electron-sulkuhylkäyksen juurisyytä tai korvaa oikeaa Electron-ajoa.
 | DESK-SINGLE-INSTANCE-001 | P0; electron-e2e | Käynnistä toinen instanssi aktiivisen eristetyn runtimen rinnalle | Toinen instanssi poistuu exit 0:lla; yksi pääikkuna ja backend säilyvät | Windowsin toisen instanssin puu suljettu yhteisen omistajan kuitilla ennen paluuta; pääinstanssi käyttää fixturen omistettua bridge-käynnistystä ja cleanupia | Session, config-polku tai ownerin kontrollitiedot | implemented-e2e; Windowsin suoran kuluttajan paikallinen näyttö läpäisty, normaali CI ei sisällä tätä ei-kriittistä testiä |
 | DESK-BOOTFAIL-001 | P0; electron-e2e, fault | Development bootstrap fault | Turvallinen viesti ja hallittu exit 1 | Turvallinen startup failure-event; Windowsin puun/portin/juuren siivous erillään työkuorman exitistä, nykyinen lifecycle-tiedosto ja liite; epävarma juuri säilyy | Stack, paikallinen polku ja ownerin kontrollitiedot | implemented-e2e; Windowsin suoran kuluttajan paikallinen näyttö läpäisty, normaali CI ei sisällä tätä ei-kriittistä testiä |
 | DESK-STARTUP-CONFIG-001 | P0; fixture-contract, critical, fault | Sama runtime-rakentaja oletuksella, `none`-arvolla ja `missingIncidentsDirectory`-valinnalla | Ulompi konfiguraatio pysyy validina; vain fault aiheuttaa backend-readerin aidon `ENOENT`:in | Alkuperäiset polut ja incident-juuri säilyvät; ei prosessin käynnistystä. Mukana `electronRuntime.spec.ts`:n tavallisessa ja kriittisessä ajovalinnassa | Testipolut ja session | covered-existing; rajattu fixture-regressio läpäisty, ei yksin E2E- tai prosessirajan näyttöä |
-| DESK-RUNTIME-002 | P0; electron-e2e, dependency | Käynnistä tarkasti lukittu desktop-runtime | Electron, Node, Chromium, V8 ja N-API vastaavat hyväksyttyä yhteensopivuusmatriisia | Odotettu tuple: Electron 43.7.6, Node 24.21.0, Chromium 150.0.7871.250, V8 15.0.245.31-electron.0 ja N-API 10; ei vielä runtime-havainto | Paikalliset polut ja ympäristömuuttujat | implemented-e2e; 43.7.6-todennus avoin, aiempi 43.3.0-näyttö ei kata päivitystä; [hyväksyntäportit](local-desktop-dependency-review.md#electron-4376--turvallisuuspäivitys) |
+| DESK-RUNTIME-002 | P0; electron-e2e, dependency | Käynnistä tarkasti lukittu desktop-runtime | Electron, Node, Chromium, V8 ja N-API vastaavat hyväksyttyä yhteensopivuusmatriisia | Projektin runtime-tuple: Electron 43.7.6, Node 24.21.0, Chromium 150.0.7871.250, V8 15.0.245.31-electron.0 ja N-API 10; nimetty runtime-tunnistus on todennettu | Paikalliset polut ja ympäristömuuttujat | implemented-e2e; historiallisen 43.7.6-tunnistuksen ja integraation näyttö erotetaan uuden revision porteista; [hyväksyntäportit](local-desktop-dependency-review.md#electron-4376--turvallisuuspäivitys) |
 | DESK-ENDURANCE-001 | P1; electron-e2e, endurance | 200 moduulisiirtymää, 50 laskuavausta, 100 PDF-sykliä, 20 tukipakettia, 30 secret-sykliä ja 20 restartia | Työkuorma valmistuu ja synteettinen mittausraportti syntyy | Lopussa yksi ikkuna, hallittu prosessimäärä, terve backend ja ei secret-jäämää | Oikea data, salaisuus, session ja production-polut | implemented-e2e |
-| DESK-SOAK-001 | P1; electron-e2e, endurance | Manuaalinen 30 minuutin toistuva UI-, PDF-, secret-, support- ja restart-kuorma | Työkuorma säilyy terveenä ja raportoi prosessi-, muisti- ja tiedostomittarit | Electron 42.8.0- ja 43.2.0-baselinet valmiit; uusin ajo: 3 250 kierrosta, 325 restartia, 650 tukipakettia, lopussa 5 prosessia, 1 ikkuna ja terve backend | Oikea data, salaisuus, session ja production-polut | implemented-e2e |
+| DESK-SOAK-001 | P1; electron-e2e, endurance | Manuaalinen 30 minuutin toistuva UI-, PDF-, secret-, support- ja restart-kuorma | Työkuorma säilyy terveenä ja raportoi prosessi-, muisti- ja tiedostomittarit | Historialliset Electron 42.8.0- ja 43.2.0-vertailut läpäisty; työkuorma ja hyväksynnän rajaus [desktop-baselinessa](e2e-desktop-endurance-baseline.md), ei nykyisen revision tulos | Oikea data, salaisuus, session ja production-polut | implemented-e2e |
 | WORKSPACE-STARTUP-ADMISSION-001 | P0; unit, integration, electron-e2e, security, recovery | Käynnistä initial install, exact accepted build, valtuutettu newer build ja update-journalin exact target; yritä sama versio eri revisiolla, downgrade sekä mixed/unknown identity | Vain suljettu hyväksymisluokka etenee workspace-ratkaisuun; muut pysähtyvät ennen adoption sivuvaikutuksia | Torjuttu käynnistys ei luo journalia, candidatea, final-rootia, registryä, runtime-sessionia tai SQLite-owneria | Build storejen sisältö, polut, journal, revision tai paikallinen profiili | implemented-unit-integration; Electron/package W6 pending |
 | WORKSPACE-REGISTRY-001 | P0; unit, integration, security, recovery | Parsii täsmällisen registry v1:n; kokeile unknown field/state/version, path/locator-kenttä, duplicate ID/lineage ja katkaise jokainen atomic write -vaihe | Rekisteri palautuu yhteen kelvolliseen `ready`/`recoveryRequired`-tilaan tai estää käytön | Root johdetaan vain workspaceId + layout v1 -säännöstä; operation-state kuuluu journaliin; renderer ei saa polkua | Storage locator, companyId, lineage, raw registry tai paikallinen polku | planned |
 | WORKSPACE-ADOPTION-001 | P0; integration, electron-e2e, packaged-smoke, migration, recovery | Käynnistä 0.2.6:n yhden työtilan profiililla; keskeytä copy -> validate -> atomic switch eri vaiheissa; jätä erikseen julkaisematon candidate, julkaisematon final tai ei kumpaakaan ja toista käynnistys | Legacy-profiili adoptoidaan kerran; täsmällinen julkaisematon kopio siivotaan ja prosessi relaunchataan ennen uudelleenadoptiota; alkuperäinen säilyy aktiivisena eikä osittaista työtilaa avata | Registry/active-julkaisu, molemmat juuret, muuttunut lähde, unsafe link tai tuntematon jälki estää cleanupin; DB- ja PDF-hashit säilyvät ja lopussa 0 orphan-prosessia | Business-data, PDF-sisältö tai -nimi, hashit, profiilipolku, companyId tai lineage | implemented-unit-integration; Electron/package W6 pending |
@@ -763,8 +787,8 @@ Electron-sulkuhylkäyksen juurisyytä tai korvaa oikeaa Electron-ajoa.
 | RESTORE-STAGE-001 | P0; integration, critical | Inspect, uusi salasana ja private staging | Staging validoituu; aktiivinen profiili ei muutu | Pre-restore-piste syntyy ennen aktivointia | Manifesti, salasana tai staging-polku | covered-existing |
 | RESTORE-LEGACY-METADATA-001 | P0; integration, packaged-smoke, migration | Palauta hyväksytyn 38 migraation ketjun backup, josta `schema_migration_metadata` puuttuu | Staging hyväksyy vain nimetyn legacy-ankkurin ja restart avaa profiilin | Autentikoitu backup-chain, packaged SQL-prefix ja ankkuri täsmäävät; startup luo 38 `legacy_baseline`-riviä; muut metadataa vailla olevat historiat torjutaan | Backupin raakamanifesti, SQL, polku tai business-data | implemented-integration; oikean 4.8.2026 testibackupin staging, artifact-aktivointi ja forward-migraatio todennettu eristetyssä profiilissa 14.8.2026; packaged legacy restore proof vaaditaan yhä ennen R0 |
 | RESTORE-ACTIVATE-001 | P0; integration, packaged-smoke, critical | Aktivoi validoitu staging ja käynnistä uusi prosessi | Palautettu profiili avautuu terveenä | Exact DB ennen backendia ja PDF-hashit restartin jälkeen täsmäävät | Business data tai journal rendererille | covered-existing |
-| RESTORE-BACKEND-STOP-001 | P0; unit, integration, critical | Valmis oikea backend ja exact-operation-restore-suoja; puuttuva, väärä tai mitätöity suoja sekä sulun seuraajat | Vain saman suojan säilyminen ennen ja jälkeen palvelinsulun sallii graceful-exitin; ristiriita pysyy hylkäyksenä | Nykyinen strict-aikaraja, todellinen exit ja main-varauksen palautus; ordinary/update-verrokit säilyvät; synteettinen testibackend hylkää suojatun sulun | Varaustunnisteet, polut, raakavirhe tai business-data | accepted-contract; V2aj/V2ak unit + actual-development-process; hardened K -palautus avoinna |
-| RESTORE-NATIVE-HANDOFF-001 | P0; unit, integration, critical | Native-valmistelu, journalin ACK/rejection/readback ja samanaikainen sulku; ready- ja pending-startup-kuluttajat | Säilytyseste ennen kirjoitusta; epävarmuus säilyttää claimin ja tavut; vain failed write + notPrepared ja tuore valtuus sallii peruutuksen | Exact prepared -> reservation-only release -> inspector shutdown -> proven backend absence -> file mutation; vaihe ei korvaa omistajuutta | Receiptin tiivisteet, profiilitunnisteet, paikalliset polut tai raakavirhe | accepted-contract; V2ak unit + actual-development-process; cold/startup acceptance ja hardened K avoinna |
+| RESTORE-BACKEND-STOP-001 | P0; unit, integration, critical | Valmis oikea backend ja exact-operation-restore-suoja; puuttuva, väärä tai mitätöity suoja sekä sulun seuraajat | Vain saman suojan säilyminen ennen ja jälkeen palvelinsulun sallii graceful-exitin; ristiriita pysyy hylkäyksenä | Nykyinen strict-aikaraja, todellinen exit ja main-varauksen palautus; ordinary/update-verrokit säilyvät; synteettinen testibackend hylkää suojatun sulun | Varaustunnisteet, polut, raakavirhe tai business-data | accepted-contract; historiallinen V2aj/V2ak unit + actual-development-process; myöhempi hardened K -hyväksyntä [M1:n näytössä](release-0.3.0-m1-preparation-plan.md#jatka-tästä), uuden revision portit erikseen |
+| RESTORE-NATIVE-HANDOFF-001 | P0; unit, integration, critical | Native-valmistelu, journalin ACK/rejection/readback ja samanaikainen sulku; ready- ja pending-startup-kuluttajat | Säilytyseste ennen kirjoitusta; epävarmuus säilyttää claimin ja tavut; vain failed write + notPrepared ja tuore valtuus sallii peruutuksen | Exact prepared -> reservation-only release -> inspector shutdown -> proven backend absence -> file mutation; vaihe ei korvaa omistajuutta | Receiptin tiivisteet, profiilitunnisteet, paikalliset polut tai raakavirhe | accepted-contract; historiallinen V2ak unit + actual-development-process; myöhempi cold/startup- ja hardened K -hyväksyntä [M1:n näytössä](release-0.3.0-m1-preparation-plan.md#jatka-tästä), uuden revision portit erikseen |
 | RESTORE-ROLLBACK-001 | P0; integration, fault, recovery | Virhe jokaisen aktivointijournalin vaiheen jälkeen sekä rollbackin, failed-safe-journalin ja startup-palautuksen vikapisteissä | Vanha profiili palautuu terveeksi tai järjestelmä päätyy nimenomaiseen manuaalista palautusta vaativaan tilaan | Journal on idempotentti; osittaista profiilia ei hyväksytä; `restore.activationFailed` ja tarvittaessa `restore.recoveryRequired` sulkevat tapahtumaketjun | Profiilipolku, raw failure, journal tai tunnisteet incident indexiin | covered-existing |
 | RESTORE-SESSION-001 | P0; packaged-smoke, security | Restore ja toinen Electron-prosessi | Uusi runtime-session toimii | Runtime identity vaihtuu; vanhaa sessionia ei siirretä testitilassa | Session tai käynnistysargumentit | covered-existing |
 | RESTORE-CROSS-COMPANY-001 | P0; integration, security | Vieras profiili olemassa olevan datan päälle ja tyhjään asennukseen | Ei-tyhjä torjutaan; tyhjä noudattaa dokumentoitua sääntöä | Active profile ei muutu torjunnassa | Toisen yrityksen data tai olemassaolo | covered-existing |

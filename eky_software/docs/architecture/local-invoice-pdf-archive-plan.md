@@ -156,9 +156,9 @@ virheviestiä.
 
 ## Paikallinen config
 
-Config tallennetaan Electronin `userData`-alueelle:
+Config tallennetaan mainin registrystä valitseman työtilan alle:
 
-`runtime/settings/invoice-pdf-archive-v1.json`
+`<userData>/workspaces/<workspaceId>/runtime/settings/invoice-pdf-archive-v1.json`
 
 Muoto:
 
@@ -194,10 +194,10 @@ Config kirjoitetaan oman config-store-sopimuksensa mukaisesti
 väliaikaistiedoston ja atomisen rename-operaation kautta. Rikkoutunut config
 ei käynnistä arkistointia.
 
-### Tuleva multi-workspace-eristys
+### Multi-workspace-eristys
 
-Nykyinen yhden työtilan config-muoto säilyy ennallaan, kunnes ADR-0011:n W4
-aktivoi multi-workspace-compositionin. Sen jälkeen käyttäjän valitsema
+ADR-0011:n W4 aktivoi workspace-kohtaisen compositionin muuttamatta
+configin kenttäsopimusta. Käyttäjän valitsema
 `directoryPath` tulkitaan arkistojuureksi, ja Electron main muodostaa
 varsinaisen kirjoituskohteen aina muodossa
 `<archiveRoot>/<workspaceId>/`.
@@ -210,9 +210,10 @@ varsinaisen kirjoituskohteen aina muodossa
 - ulkoinen arkistojuuri, config, journal ja kopiot eivät kuulu portable
   backupiin eivätkä ole auktoritatiivisia laskuartifacteja.
 
-Eristys todistetaan `WORKSPACE-ARCHIVE-001`-skenaariolla ennen
-multi-workspace-releasea. W1:n inertti registry-toteutus ei muuta nykyistä
-archive-configia tai käyttäjän valitsemaa hakemistoa.
+Eristyksen hyväksyntä vaatii `WORKSPACE-ARCHIVE-001`-skenaarion ennen
+multi-workspace-releasea. W1:n alkuperäinen inertti registry-vaihe on
+historiaa; nykyisen hyväksynnän reitti on
+[M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
 
 Tavalliset käyttäjän valitsemat paikalliset kansiot, OneDrive-kansiot,
 removable drive -kohteet sekä Windowsin junction/reparse-kohteet sallitaan
@@ -224,7 +225,7 @@ automaattisesti. Renderer ei saa päätellä tai muuttaa kohdepolkua.
 
 Journal tallennetaan:
 
-`runtime/archive/invoice-pdf-archive-journal-v1.json`
+`<userData>/workspaces/<workspaceId>/runtime/archive/invoice-pdf-archive-journal-v1.json`
 
 Task sisältää vain:
 

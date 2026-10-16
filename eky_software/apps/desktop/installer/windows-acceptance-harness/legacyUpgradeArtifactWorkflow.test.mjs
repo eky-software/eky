@@ -711,8 +711,9 @@ test('V2.5 phase acceptance requires all same-revision contract groups before it
   assert.match(contracts, /group: \[core, commands, legacy-entry, clean-upgrade-entry, workspace-success-entry, workspace-fault-entry\]/u);
   assert.ok(contracts.includes('name: V2.5 ${{ matrix.group }} contracts run ${{ matrix.repetition }}'));
   assert.ok(contracts.includes('name: Run legacy ${{ matrix.group }} contracts'));
-  assert.ok(contracts.includes('run: pnpm installer:test:windows-supervisor-v2-legacy-${{ matrix.group }}'));
-  assert.equal(contracts.match(/run: pnpm installer:supervisor:build/gu)?.length, 1);
+  const preparationSetting = "${{ matrix.group == 'clean-upgrade-entry' && 'false' || 'install' }}";
+  assert.ok(contracts.includes(`run: pnpm --config.verify-deps-before-run=${preparationSetting} installer:test:windows-supervisor-v2-legacy-` + '${{ matrix.group }}'));
+  assert.equal(contracts.split(`run: pnpm --config.verify-deps-before-run=${preparationSetting} installer:supervisor:build`).length - 1, 1);
   assert.ok(contracts.indexOf('name: Prepare locked package manager') < contracts.indexOf('name: Build existing supervisor once'));
   const preparation = contracts.split('      - name: Prepare locked package manager\n')[1]?.split('\n      - name:')[0];
   assert.equal(preparation?.trim(), 'working-directory: .\n        run: node .github/scripts/prepareLockedPnpm.mjs');
@@ -868,17 +869,22 @@ for (const [mode, selectedName, commandName, files] of [
     }
     const repetition = source.match(/repetition: \$\{\{ (.+) \}\}/u)[1];
     assert.deepEqual(JSON.parse(JSON.stringify(runInNewContext(repetition, { inputs: { mode }, fromJSON: JSON.parse }))), [1, 2]);
-    const command = selected.match(/run: pnpm (\S+)/u)[1];
-    assert.equal(command, commandName);
-    assert.deepEqual(scripts[command].split(' '), ['node', '--test', '--test-concurrency=1',
+    assert.equal(selected.match(/run: (.+)/u)[1], mode === 'clean-upgrade-command-diagnostic'
+      ? `pnpm --config.verify-deps-before-run=false ${commandName}` : `pnpm ${commandName}`);
+    assert.deepEqual(scripts[commandName].split(' '), ['node', '--test', '--test-concurrency=1',
       '--test-reporter=../../test-reporters/nodeFailureReporter.mjs',
       ...files.map((file) => `installer/windows-acceptance-harness/${file}`)]);
     if (mode === 'clean-upgrade-command-diagnostic') {
+      assert.equal(source.match(/--config\.verify-deps-before-run=/gu)?.length, 2);
       const normal = await readFile(WORKFLOW_URL, 'utf8');
       const normalContracts = normal.slice(normal.indexOf('  legacy_contracts:'), normal.indexOf('  legacy_artifact_producer:'));
       const normalBuild = normalContracts.split('      - name: Build existing supervisor once\n')[1]
         .split('\n      - name:')[0].match(/run: (.+)/u)[1];
-      assert.equal(step('Build existing supervisor for clean and upgrade diagnosis').match(/run: (.+)/u)[1], normalBuild);
+      const effectiveBuild = normalBuild.replace(/\$\{\{ (.+?) \}\}/gu, (_match, expression) =>
+        runInNewContext(expression, { matrix: { group: 'clean-upgrade-entry' } }, { timeout: 1000 }));
+      assert.equal(step('Build existing supervisor for clean and upgrade diagnosis').match(/run: (.+)/u)[1], effectiveBuild);
+      assert.match(effectiveBuild, /^pnpm --config\.verify-deps-before-run=false installer:supervisor:build$/u);
+      assert.match(selected, /run: pnpm --config\.verify-deps-before-run=false installer:test:windows-supervisor-v2-legacy-clean-upgrade-entry\s*$/u);
       assert.equal(enabled(step('Record diagnostic revision and runner image'), mode), true);
       const preparation = ['Prepare locked package manager for diagnostic contracts',
         'Prepare locked package manager before inspection command contracts',

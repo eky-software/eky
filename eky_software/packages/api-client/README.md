@@ -13,7 +13,11 @@ React-komponentit eivät saa tehdä raakaa `fetch`-kutsua suoraan, jos api-clien
 
 ## Rakenne
 
-API-client on jaettu moduulipohjaisiin toiminnallisiin kansioihin:
+API-client on jaettu moduulipohjaisiin toiminnallisiin kansioihin.
+Alla on rakenteen esimerkki, ei täydellinen nykyisten endpointtien luettelo.
+Nykyiset julkiset clientit kokoaa [client.ts](src/client.ts); jokaisen
+moduulin HTTP-/valtuutussopimus säilyy backendin omistuksessa:
+
 
 ```text
 src/

@@ -2,6 +2,14 @@
 
 ## Tila
 
+Nykyinen hyväksyntä- ja jatkotila on
+[M1:n Jatka tästä -kohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Alla oleva tilannekuva ja checkpointien päivätyt tulokset ovat vaihehistoriaa.
+Niiden sopimusrajat säilyvät; vanha odotusmerkintä ei kumoa myöhempää
+hyväksyttyä toimitusta. W7:n erillinen päätösportti pysyy voimassa.
+
+### Alkuperäinen vaihetilanne
+
 Suunniteltu kokonaisuus. W0:n arkkitehtuuri- ja hyväksymissopimus sekä W0.1:n
 lifecycle-tarkennukset on dokumentoitu. W1:n inertti foundation on yhdistetty
 vihreänä `main`-haaraan commitissa `687a424`. W2:n tyhjän työtilan luonnin
@@ -372,6 +380,8 @@ saadun main-varauksen jälkeen. V1 säilyy luettavana legacy-tyyppinä, mutta
 automaattinen cold-recovery hylkää sen ennen korjaavaa lukua. Saman operaation
 versiota ei vaihdeta. Nykyiset `-v1`-slottinimet, muut kentät, kokorajat ja
 slottien etusija säilyvät; versionvaihto ei muuta siirrettävää backup-formaattia.
+Erillistä sidecaria tai valinnaista `guarded`-kenttää ei lisätä. Vanhan
+lukijan V2-hylkäys ilman slottien muutosta pitää todentaa testillä.
 
 Main tekee ensin readonly-admissionin, sitten nykyisen build-tarkistuksen ja
 `recoverWorkspaceManagementBeforeRuntime`-kutsun samalla varauksella ja
@@ -382,6 +392,8 @@ ja avaus estetään; vapaa varaus ei todista vanhaa suojaamatonta kirjoittajaa
 poistuneeksi. Julkaistun kohteen validaattorin poistuminen ja mainin varauksen
 takaisinotto vaaditaan ennen siivousta. Tarkka jatkotyötila varmennetaan ennen
 journalin poistoa, mutta business-terveystarkistus on edelleen erillinen ehto.
+Vanhan keskeytyksen esto ei koske tavallisesti valmistunutta työtilaa tai
+vanhaa laskua pelkän iän perusteella.
 
 **Luottamusraja:** label on käyttäjän syöte; polku ja identiteetit ovat mainin
 luomia. Renderer ei saa päättää initial companyId:tä.
@@ -492,8 +504,9 @@ rendereriin, webiin tai julkiseen backend-HTTP:hen.
 
 Import hankkii installation-scoped `WorkspaceMaintenanceLease('import')`-
 leasen ennen backupin autentikointia. Se torjuu ratkaisemattoman import-
-journalin ja siivoaa W3:n tunnetut stale plaintext-payloadit ennen uuden
-backupin lukemista. Candidate avataan vain saman
+journalin sekä todistamattoman plaintext-aineiston ennen uuden backupin
+lukemista; pelkkä allowlistattu nimi ei anna siivousvaltuutta.
+Candidate avataan vain saman
 `WorkspaceMaintenanceLease`-
 leasen aikana ja aktiivisen business-SQLite-omistajan sulkeutumisen jälkeen.
 Failure sulkee candidate-kahvat ennen aiemman aktiivisen runtimen
@@ -534,21 +547,28 @@ yhden linkin tiedoston, yksityiset oikeudet ja täsmällisen canonical
 containmentin.
 
 Normaali decrypt-polku luo payloadin exclusive-create-säännöllä ja poistaa sen
-odotetussa `finally`-polussa. W3-recovery validoi ja poistaa tunnetut stale-
-payloadit heti maintenance-leasen jälkeen myös ilman import-journalia. Se ei
-avaa SQLitea tätä varten. Tuntematon entry, hakemistoksi naamioitu payload,
+odotetussa `finally`-polussa. Cold-recovery saa siivota vain oman hyväksytyn
+v2-operaationsa karanteenin yllä kuvatun C/R18-admissionin, build-portin,
+leasen, runtime-poissaolon ja palautuneen main-varauksen jälkeen.
+V1 tai journaliton plaintext säilytetään ja avaus estetään; vapaa varaus ei
+todista vanhan suojaamattoman kirjoittajan poissaoloa. Cleanup ei avaa
+SQLitea. Tuntematon entry, hakemistoksi naamioitu payload,
 symlink, reparse point, hardlink, ylikokoinen tiedosto tai epäselvä juuri
 johtaa `recoveryRequired`-tilaan eikä arvaavaan poistoon. Karanteeni ei kuulu
 registryyn, portable backupiin, candidateen tai lopulliseen workspace-rootiin.
 
-Tämä recovery-polku on W3:n inerttiä lähdekoodia. Sitä ei ole vielä kytketty
-production-startupiin, packageen, preloadiin, IPC:hen tai UI:hin.
+W3:n alkuperäinen inertti vaihe on toteutushistoriaa. Nykyinen
+production-järjestys on yllä kohdassa C/R18:n journal-versio ja tuotannon
+järjestys; hyväksyntätila on [M1:ssä](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
 
 ### WorkspaceBackupImportJournalV1
 
-Import-journalin täsmällinen v1-muoto sisältää vain:
+Otsikko säilyttää alkuperäisen v1-sopimuksen viiteankkurin. Nykyinen kirjoittaja
+käyttää `formatVersion: 2`; v1 säilyy erillisenä legacy-lukumuotona eikä sitä
+päivitetä saman operaation sisällä. Muut kentät ja `-v1`-slottinimet säilyvät.
+Täsmällinen kenttäjoukko on:
 
-- `formatVersion: 1`
+- `formatVersion: 2` (legacy-lukumuodossa `1`)
 - `operationId`
 - `workspaceId`
 - validoidun `workspaceLabel`-arvon
@@ -579,8 +599,11 @@ salaisuutta tai raakaa `Error`-arvoa.
 
 ### W3 restart-recovery
 
-- Recovery hankkii `import`-leasen ja ratkaisee plaintext-karanteenin ennen
-  import-journalin lukemista sekä ennen `nothingToRecover`-tulosta.
+- Recovery valitsee journalin ensin muuttamatta sitä. C/R18:n readonly-
+  admission, build-portti, `import`-lease, runtime-poissaolo ja main-varauksen
+  palautuminen edeltävät korjaavaa lukua ja oman v2-karanteenin siivousta.
+  V1, journaliton plaintext tai todistamaton vanha omistaja estää jatkon;
+  aineisto säilyy eikä tulos ole `nothingToRecover`.
 - Ennen `rootPublished`-tilaa keskeytynyt import sulkee mahdolliset private-
   kahvat, poistaa tai fail-closed-karanteenoi candidaten ja poistaa journalin.
   Operaatiota ei jatketa ilman käyttäjän uudelleen valitsemaa backupia ja
@@ -857,6 +880,8 @@ versionoitua capability-kutsua hyväksytään vain tunnetun pääikkunan main
 framesta täsmällisellä argumentti- ja avainsopimuksella. UI ei
 saa polkua, companyId:tä, lineagea, secret refiä tai journalia. Backupin
 valinta ja salasana pysyvät Electron mainin omistamissa native-ikkunoissa.
+Import-pyyntö saa tuoda rendereriltä vain validoidun workspace-labelin,
+ei tiedostoa, polkua tai salasanaa.
 Selainkehitys säilyttää turvallisen yhden workspacen fallbackin ilman
 desktop-capabilitya.
 
@@ -961,7 +986,10 @@ täsmälliseen profiilitiedostoon. Business-kyselyitä, identity-lukua tai
 migraatioita ei tehdä ennen koko scheman/historyn todistusta. Terveen
 tiedoston tarkastus on edelleen vain lukuun; registry ja artifactit eivät
 muutu. Tuonti, snapshot tai palautuskohde ei saa tätä poikkeusta.
-Yksityiskohtainen sopimus ja näyttö ovat [M1:n V2u:ssa](release-0.3.0-m1-preparation-plan.md#v2u-omistetun-paikallisen-työtilan-kaatumispalautus).
+Yksityiskohtaisen sopimuksen omistaa
+[database/migration](local-database-implementation-plan.md#omistetun-paikallisen-työtilan-kaatumispalautus);
+[M1:n V2u](release-0.3.0-m1-preparation-plan.md#v2u-omistetun-paikallisen-työtilan-kaatumispalautus)
+säilyttää päivätyn näytön.
 
 Jokainen tarkastettu työtila luokitellaan vain tilaan `current`,
 `compatiblePending` tai `invalidHistory` ADR-0011:n määritelmien mukaan.
@@ -1071,8 +1099,11 @@ PreMigration-palautuspiste saa validoida katkeamattoman ja muuttumattoman
 historiallisen migration-prefixin tarkoituskohtaisella
 `compatibleHistoricalPrefix`-politiikalla. Kaikki normaalit, manuaaliset,
 preUpdate-, preRestore-, automatic- ja portable backup -snapshotit vaativat
-edelleen täsmälleen nykyisen migration manifestin. Tämä poikkeus ei löysennä
-future-, missing-middle- tai changed-history-torjuntaa.
+edelleen täsmälleen nykyisen migration manifestin. Erillinen C:n
+rollback-only-tarkistussnapshot ja sen beforeMigrations-policy ovat
+[installer/update-omistajan kapea poikkeus](windows-installer-and-update-plan.md#historiallisen-038-palautuksen-kapea-c-poikkeus),
+eivät uuden backup-tarkoituksen lupa. Tämä ei löysennä future-,
+missing-middle- tai changed-history-torjuntaa.
 
 Production-järjestys on:
 
@@ -1097,7 +1128,11 @@ Production-järjestys on:
 
 `development`, `initialInstall` ja `exactAcceptedBuild` eivät aja W6-
 inventaarioa. `authorizedNewerBuild` ja `coordinatedUpdateTarget` ajavat sen
-aina. All-current-update ei luo W6-journalia. Aktiivinen
+normaalissa forward-startupissa. Vain nimenomaisesti valittu C:n
+rollback-only-haara lykkää uutta inventaariota säilyttäen olemassa olevan
+W6-recoveryn, source/target-buildit, active-valinnan ja registry-hashit.
+Se ei anna forward-, registry-, target-hyväksyntä- tai UI-valtuutta.
+All-current-update ei luo W6-journalia. Aktiivinen
 `compatiblePending` vaatii journalin myös silloin, kun passiivisia
 `invalidHistory`-entryjä ei ole ja source- sekä transitioned-registry-hash ovat
 samat. Passiivinen `compatiblePending` pysyy `ready`-tilassa ja byte-
@@ -1271,6 +1306,11 @@ legacy-versiosta multi-workspace-versioon:
 Satunnaista nykyisestä HEADista 0.2.6-versionumerolla rakennettua pakettia ei
 hyväksytä legacy-lähteeksi. Jos hyväksyttyä artifactia tai sen tarkkaa
 source-commitia ei voida todistaa, W6B pysähtyy ennen MSI-ajoa.
+
+Seuraava sisäkkäisten watchdogien kuvaus on legacy-harnessin historiaa.
+Nykyinen prosessiomistajuus, aikarajat, cleanup ja ajokomennot luetaan
+[hyväksyntäharnessin v2-sopimuksesta](windows-installer-acceptance-harness-v2.md);
+vanhaa rakennetta ei palauteta tämän kuvauksen perusteella.
 
 Legacy-hyväksynnän koko Node-komentoa ympäröi ensin 25 minuuttiin rajattu
 omistettu worker-prosessi. Raja kattaa target- ja historical-source-buildit,

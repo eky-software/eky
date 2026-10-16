@@ -29,27 +29,18 @@ ulkoista verkkoliikennettä.
 - kaikkien testin käynnistämien backend- ja web-prosessien päättymisen tarkistus
 
 Playwright tallentaa jokaisen ajon mittaukset tiedostoon
-`apps/e2e/test-results/endurance-baseline.json` ja HTML-raportin
+`apps/e2e/test-results/run-<uuid>/endurance-baseline.json` ja HTML-raportin
 `endurance-baseline`-liitteeseen.
 
 ## Ensimmäinen mitattu ajo
 
-Ensimmäinen vertailuajo tehtiin 29.7.2026 Windows-kehitysympäristössä Node
-24 -runtimea käyttäen.
+Ensimmäinen rajattu vertailuajo läpäisi 29.7.2026 yllä kuvatun synteettisen
+työkuorman ja prosessien siivouksen. Tämä on historiallinen hyväksyntätila,
+ei nykyisen revision testitulos tai väite CI-suoritusympäristöstä.
 
-| Mittaus | Tulos |
-|---|---:|
-| Kokonaiskesto | 29 425 ms |
-| Backend RSS alussa | 93 884 416 tavua |
-| Backend RSS työkuorman jälkeen | 126 046 208 tavua |
-| SQLite-kannan koko | 696 320 tavua |
-| PDF-dokumenttien koko yhteensä | 81 155 tavua |
-| Operational-lokien koko | 2 884 tavua |
-| Avoimia testin hallitsemia prosesseja lopussa | 0 |
-
-Yksittäisen ajon muistilukemasta ei johdeta vielä absoluuttista hyväksymisrajaa.
+Yksittäisen ajon muistilukemasta ei johdeta absoluuttista hyväksymisrajaa.
 Mahdollinen raja päätetään vasta useamman toistettavan ajon ja todellisen
-käyttöprofiilin perusteella. Testi epäonnistuu kuitenkin heti, jos työkuorma,
+käyttöprofiilin perusteella. Testi epäonnistuu heti, jos työkuorma,
 prosessi-cleanup, loopback-raja, PDF-polku, Diagnostics tai tukidata rikkoutuu.
 
 ## Tulkinta
@@ -58,6 +49,7 @@ Vertailuarvoja verrataan saman käyttöjärjestelmän ja vastaavan runtime-versi
 ajoihin. Poikkeama tutkitaan, mutta pelkkä ympäristöstä johtuva lukeman muutos ei
 ole automaattisesti tuotantovirhe.
 
-Desktopin pitkä soak, oikea SMTP, backup/restore ja suuri oikeaa käyttöä
-muistuttava datamäärä eivät kuulu tähän baselineen. Ne pysyvät erillisinä
-suunniteltuina release-tarkistuksina.
+Desktopin [toteutettu stress ja pitkä soak](e2e-desktop-endurance-baseline.md)
+ovat tästä erillisiä tarkistuksia. Oikea SMTP, backup/restore ja suuri
+oikeaa käyttöä muistuttava datamäärä eivät kuulu tähän baselineen;
+niiden omat päätös- ja release-portit säilyvät.

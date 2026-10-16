@@ -6,6 +6,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { setTimeout as pollNextObservation } from 'node:timers/promises';
 
 import { inspectPackageArtifactInventory } from '../../scripts/package-artifact-inventory.mjs';
+import { publishWorkspaceMsiResourceSelection } from './workspaceMsiResourceSelection.mjs';
 import {
   verifyW6b2PackagedSuccessRunFixture, writeW6b2PackagedSuccessPhase,
 } from '../scripts/w6b2PackagedSuccessRunFixture.mjs';
@@ -76,6 +77,7 @@ export function createWorkspaceFaultWindowsRuntime(input, dependencies) {
 
 async function createWorkspaceWindowsRuntime({
   request, artifact, runFixture, temporaryRoot, scenarioRoot, profileRuntime,
+  resourceSelectionDirectory = scenarioRoot,
   proofProtocol, profileProtocol, captureCheckpoint, sessionProof,
 }, {
   environment = process.env,
@@ -89,6 +91,7 @@ async function createWorkspaceWindowsRuntime({
   writeFaultPhase = writeW6b2PackagedFaultPhase,
   removePreviousResult = removeWorkspaceSuccessPreviousResult,
   nextObservation = () => pollNextObservation(250),
+  publishResourceSelection = publishWorkspaceMsiResourceSelection,
 } = {}, faultScenario) {
   if (!environment.APPDATA || !environment.LOCALAPPDATA || !environment.SystemRoot ||
     typeof captureCheckpoint !== 'function' || typeof sessionProof?.start !== 'function') throw new Error('requestInvalid');
@@ -104,6 +107,7 @@ async function createWorkspaceWindowsRuntime({
   const logRoot = resolve(scenarioRoot, 'msi-logs');
   await mkdir(logRoot, { recursive: false });
   let inspectionSequence = 0;
+  let resourceSelectionAttempted = false;
   const sessionPhases = faultScenario === undefined ? undefined
     : proofProtocol.getW6b2PackagedFaultSessionPhases(faultScenario);
 
@@ -206,10 +210,19 @@ async function createWorkspaceWindowsRuntime({
       ['/i', artifact.source.installerPath, '/qn', '/norestart', '/L*v', resolve(logRoot, 'source.log')],
       commandOptions),
     async validatePayload(role) {
-      const inventory = await inspectPayload({ root: installRoot, stage: 'packagedApp' });
+      let files;
+      const inventory = await inspectPayload({ root: installRoot, stage: 'packagedApp',
+        ...(role === 'source' ? { onValidatedFiles: value => { files = value; } } : {}) });
       const expected = artifact[role].payloadInventory;
       if (['stage', 'identity', 'fileCount', 'totalByteSize'].some((key) => inventory[key] !== expected[key])) {
         throw new Error(role === 'source' ? 'sourceStateInvalid' : 'targetStateInvalid');
+      }
+      if (role === 'source' && !resourceSelectionAttempted) {
+        resourceSelectionAttempted = true;
+        // Optional publication is not awaited by scenario admission or cleanup.
+        void Promise.resolve().then(() => publishResourceSelection({ directory: resourceSelectionDirectory, root: installRoot,
+          request, scenario: faultScenario === undefined ? 'packagedWorkspaceSuccess' : 'packagedWorkspaceFaultRollback',
+          inventory, files })).catch(() => {});
       }
     },
     async prepareProfile() {

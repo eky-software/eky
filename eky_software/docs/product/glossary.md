@@ -30,7 +30,9 @@ Käyttäjän yleinen asema järjestelmässä, esimerkiksi admin tai worker.
 
 Englanniksi koodissa: `Permission`
 
-Tarkempi oikeus tehdä jokin toiminto, esimerkiksi `invoices.create`.
+Tarkempi oikeus tehdä jokin toiminto. Nykyisen backendin oikeudet omistaa
+[luottamus- ja valtuutussopimus](../architecture/local-runtime-trust-and-authorization-plan.md);
+sanaston käsite ei määritä permission-avainta tai hyväksy uutta käyttäjäroolia.
 
 ## Asiakkaat ja kohteet
 
@@ -108,7 +110,9 @@ Yksittäinen laskulla oleva rivi.
 
 Englanniksi koodissa: `CreditInvoice`
 
-Lasku, jolla hyvitetään aiempaa laskua. Toteutus päätetään myöhemmin.
+Lasku, jolla hyvitetään aiempaa laskua. Nykyisen koko- ja osahyvityksen,
+kumulatiivisen laskennan ja lähdesidoksen omistaa
+[hyvityssopimus](../architecture/invoice-cancellation-and-credit-note-plan.md).
 
 ### ALV
 

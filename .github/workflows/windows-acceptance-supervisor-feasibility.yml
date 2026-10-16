@@ -500,11 +500,11 @@ jobs:
 
       - name: Build existing supervisor for clean and upgrade diagnosis
         if: inputs.mode == 'clean-upgrade-command-diagnostic'
-        run: pnpm installer:supervisor:build
+        run: pnpm --config.verify-deps-before-run=false installer:supervisor:build
 
       - name: Diagnose existing clean and upgrade command group without MSI
         if: inputs.mode == 'clean-upgrade-command-diagnostic'
-        run: pnpm installer:test:windows-supervisor-v2-legacy-clean-upgrade-entry
+        run: pnpm --config.verify-deps-before-run=false installer:test:windows-supervisor-v2-legacy-clean-upgrade-entry
 
       - name: Diagnose existing product command group without MSI
         if: inputs.mode == 'product-command-diagnostic'

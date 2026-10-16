@@ -102,14 +102,15 @@ Aina luettava:
 
 - `AGENTS.md`
 
-Tehtävän mukaan luettavat dokumentit määritellään `AGENTS.md`-tiedostossa.
+Tehtävän mukaan luettavat dokumentit löytyvät pääohjeen määräämästä
+[aihekohtaisesta lukureitistä](../README.md). Se ei korvaa lähteiden lukemista.
 
 Jos kohdekansiossa on oma `AGENTS.md`, se on luettava ennen muutoksia.
 
 Tämä on jokaisen tehtävän pysyvä aloitusportti, ei julkaisukohtainen tarkistus:
 
 1. Nimeä kosketettavat sovellukset, moduulit, jaetut paketit ja vastuurajat.
-2. Tarkista juuri-`AGENTS.md`:n aihekohtaiset lukureitit ja kohdepolkujen
+2. Tarkista pääohjeen osoittamat aihekohtaiset lukureitit ja kohdepolkujen
    soveltuvat `AGENTS.md`-tiedostot. Lue niiden osoittamat voimassa olevat
    vastuuohjeet, ADR:t ja tehtävän omistava suunnitelma.
 3. Tarkista myös vaikutusalueen testaus-, diagnostiikka-, tietoturva- ja
@@ -239,12 +240,41 @@ runbookia tai sen konekohtaisia havaintoja ei siirretä yhteisiin ohjeisiin.
 
 Kun työ valmistuu, korvaa sen vanhentunut nykytilaväite; älä vain lisää
 uutta onnistumisriviä ristiriitaisen väitteen rinnalle. Roadmap kertoo
-tilan, seuraavan työn ja hyväksyntäviitteen, omistava suunnitelma tarkan
-sopimuksen. Tutkimushistoria säilyy erikseen nimettynä ja sitä luetaan
+julkaisun sisällön ja järjestyksen sekä linkittää aktiivisen työn yhteen
+jatkamiskohtaan. Omistava vastuuohje sisältää tarkan sopimuksen.
+Tutkimushistoria säilyy erikseen nimettynä ja sitä luetaan
 tarvittaessa, ei jokaisen tehtävän pakollisena lähtöaineistona.
 Tiivistämisessä säilytetään vaatimukset, päätökset, todisteviitteet ja
 toimivat lukureitit. Testien, diagnostiikan tai palautuksen kattavuutta ei
 vähennetä ohjeiden lyhentämisen tai tokenisäästön vuoksi.
+
+### Ohjeiden ylläpito ja jatkaminen
+
+- Uusi moduuli lisää vastuukuvauksensa ja viitteensä
+  [moduulihakemistoon](../modules/README.md). Pääohjeeseen ei lisätä pitkää
+  moduulikohtaista lukua; uusi aihe reititetään [ohjehakemistosta](../README.md).
+- Muuttuva sopimus päivitetään sen omistavassa lähteessä ja vaikutusalueen
+  viittauksissa. Paikallinen `AGENTS.md` sisältää vain alueen tarkennukset.
+  Päällekkäistä normia ei luoda toiseen tiedostoon.
+- Julkaisuroadmap omistaa sisällön ja järjestyksen. Aktiivisen työpaketin
+  nykytila on yhdessä omistavassa jatkamiskohdassa: täsmärevisio, vaihe,
+  hyväksyntänäyttö, avoin päätös, seuraava työ ja käytettävissä oleva valtuus.
+  Muut indeksit linkittävät siihen, eivät ylläpidä kilpailevaa tilajonoa.
+- Valmistunut työ päivittää nykytilan. Päivätty tutkimusraportti säilytetään
+  historiana; hyväksyntä sidotaan sen todelliseen revisioon. Avoin vanha syy
+  ei muutu korjatuksi uuden ajon onnistumisella.
+- Uusi pysyvä sääntö lisätään todelliseen tarpeeseen oikean vastuun ohjeeseen.
+  Ohjeen muokkaaminen ei itsessään anna agentille uutta valtuutta.
+- Siirrossa tai yhdistämisessä nimetään vanha ja uusi omistava sijainti,
+  tarkistetaan velvoitteiden säilyminen ja korjataan linkit sekä ankkurit.
+  Iän tai rivimäärän perusteella ei arkistoida voimassa olevaa sääntöä.
+
+Kontekstin tiivistyksen tai uuden istunnon jälkeen lue lyhyt nykytila,
+varmenna Git-juuri, työjuuri, haara, revisio ja työpuu sekä tehtävän ohjeet.
+Tarkista seuraavan operaation valtuus ja nykyinen hyväksyntänäyttö.
+Korvaa vanhentunut nykytila; älä lisää sen perään uutta ”jatka tästä” -lukua.
+Yksityiset työkalukomennot ja tutkimusnäyttö pysyvät paikallisessa runbookissa
+ja sen erillisessä historiassa. Niitä ei kopioida julkiseen jatkamiskohtaan.
 
 Seuraavan sovitun julkaisun sisältö ja jatkotoiveet pidetään yhteisessä
 [0.3.0-tehtävälistassa](../architecture/release-0.3.0-plan.md). Päivitä

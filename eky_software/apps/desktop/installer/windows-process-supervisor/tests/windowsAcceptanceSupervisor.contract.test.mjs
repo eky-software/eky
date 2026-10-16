@@ -9,6 +9,7 @@ import { gunzipSync } from 'node:zlib';
 import { createOpenPgpTestFixture } from '../../windows-acceptance-harness/openPgpTestFixture.mjs';
 import { collectJobFailureEvidence } from '../../windows-acceptance-harness/ciFailureEvidence.mjs';
 import { encryptArchive } from '../../windows-acceptance-harness/workspaceEncryptedEvidence.mjs';
+import { publishWorkspaceMsiResourceSelection } from '../../windows-acceptance-harness/workspaceMsiResourceSelection.mjs';
 import { captureContractOutput, CONTRACT_OUTPUT_LIMIT } from './supervisorContractPrivateEvidence.mjs';
 import {
   cleanupRunContext,
@@ -53,6 +54,70 @@ if (!Number.isInteger(repetitions) || repetitions < 1 || repetitions > 50) {
 
 test.afterEach(async () => cleanupActiveSupervisors());
 
+test('MSI resources: scoped identity, cancellation and real OpenPGP delivery', WINDOWS_ONLY, async t => {
+  const context = await contextFor(t, 'msi-resource-contracts');
+  const temporary = join(context.testRoot, 'temporary');
+  const checkout = join(context.testRoot, 'checkout');
+  const scenarioRoot = join(temporary, 'eky-acceptance-command-' + 'b'.repeat(32), 'scenario');
+  await mkdir(scenarioRoot, { recursive: true });
+  await mkdir(checkout);
+  const foreign = join(context.testRoot, 'foreign');
+  await mkdir(foreign);
+  await writeFile(join(foreign, 'foreign.bin'), 'EXCLUDED FOREIGN CONTENT');
+  await mkdir(join(scenarioRoot, 'payload'));
+  await symlink(foreign, join(scenarioRoot, 'payload', 'junction'), 'junction');
+  context.scenario = 'packagedWorkspaceSuccess';
+  context.requestPath = join(scenarioRoot, 'request.json');
+  context.resultPath = join(scenarioRoot, 'result.json');
+  await writeRequest(context, { ...createRequest(context, 'exitZero'), workingDirectory: scenarioRoot });
+  await publishWorkspaceMsiResourceSelection({ directory: scenarioRoot, root: join(scenarioRoot, 'payload'), request: context,
+    scenario: context.scenario, inventory: { identity: 'a'.repeat(64) }, files: ['unused.bin'] });
+  const crypto = await createOpenPgpTestFixture(fileURLToPath(new URL('../../../../../', import.meta.url)));
+  let completed = false;
+  try {
+    const recipient = await crypto.generate('recipient');
+    await crypto.invokeGpg(recipient.home, ['--pinentry-mode', 'loopback', '--passphrase', '',
+      '--quick-add-key', recipient.fingerprint, 'cv25519', 'encr', '1d']);
+    const publicPath = await crypto.exportKey(recipient, 'public.asc');
+    const env = { ...process.env, GITHUB_ACTIONS: 'true', GITHUB_RUN_ID: '98765', GITHUB_RUN_ATTEMPT: '1',
+      GITHUB_JOB: 'tests', EKY_EVIDENCE_JOB_KEY: 'tests-0', GITHUB_SHA: 'a'.repeat(40),
+      EKY_EVIDENCE_JOB_OUTCOME: 'failure', RUNNER_TEMP: temporary, GITHUB_WORKSPACE: checkout,
+      EKY_DIAGNOSTIC_KEY_FINGERPRINT: recipient.fingerprint,
+      EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: recipient.fingerprint,
+      EKY_DIAGNOSTIC_PUBLIC_KEY: await readFile(publicPath, 'utf8') };
+    const execution = startProgramFailureFixture(context, 'msiResourceContracts', { environment: env });
+    const result = await execution.completion;
+    assert.equal(result.exitCode, 0);
+    assert.doesNotMatch(result.standardOutput, /SYNTHETIC RM|foreign\.bin|startTimeLow|ownedJob/);
+    const proof = JSON.parse(await readFile(join(scenarioRoot, 'msi-resource-contract.json'), 'utf8'));
+    assert.equal(proof.junctionRejected, true);
+    assert.equal(proof.nodePublishedSelectionAdmitted, true);
+    assert.equal(proof.cleanupDoesNotAwaitResourceRead, true);
+    assert.equal(proof.bothTreesAbsent, true);
+    assert.ok(Object.keys(proof).length >= 30);
+    assert.ok(Object.values(proof).every(value => value === true));
+    const collected = await collectJobFailureEvidence(env, { nativeTemp: temporary });
+    await encryptArchive(collected.root, collected);
+    const decrypted = await crypto.invokeGpg(recipient.home, ['--decrypt', join(collected.root, 'evidence.json.gz.gpg')]);
+    const archive = JSON.parse(gunzipSync(decrypted.stdout));
+    const entries = archive.manifest.files.filter(value => value.kind === 'msiWindowObservation' && value.status === 'retained');
+    assert.equal(entries.length, 1);
+    const record = JSON.parse(Buffer.from(archive.files[entries[0].name], 'base64'));
+    assert.equal(record.schemaVersion, 3);
+    assert.equal(record.resources.status, 'observed');
+    assert.equal(record.resources.phase, 'complete');
+    assert.equal(record.resources.nativeCode, 0);
+    assert.equal(record.resources.endSessionCode, 0);
+    assert.equal(record.resources.selectionIdentity, 'a'.repeat(64));
+    assert.ok(record.resources.processes.some(value => value.membership === 'ownedJob' && value.processId > 0 &&
+      (value.startTimeLow !== 0 || value.startTimeHigh !== 0)));
+    assert.equal(JSON.stringify(archive).includes('EXCLUDED FOREIGN CONTENT'), false);
+    assert.equal(archive.manifest.files.some(value => value.source.includes('msi-resource-selection')), false);
+    assert.equal(await readFile(join(foreign, 'foreign.bin'), 'utf8'), 'EXCLUDED FOREIGN CONTENT');
+    completed = true;
+  } finally { await crypto.finish({ completed, failed: !completed }); }
+});
+
 test('MSI windows: owned visible captions, bounded reads and interrupted immutable publication', WINDOWS_ONLY, async t => {
   const context = await contextFor(t, 'msi-window-contracts');
   context.scenario = 'packagedWorkspaceSuccess';
@@ -61,7 +126,27 @@ test('MSI windows: owned visible captions, bounded reads and interrupted immutab
   const result = await execution.completion;
   assert.equal(result.exitCode, 0);
   assert.doesNotMatch(result.standardOutput + result.standardError, /SYNTHETIC MSI|EXCLUDED INPUT/);
-  const proof = JSON.parse(await readFile(join(context.testRoot, 'msi-window-contract.json'), 'utf8'));
+  const { checks: proof, preparation } = JSON.parse(await readFile(join(context.testRoot, 'msi-window-contract.json'), 'utf8'));
+  assert.equal(proof.firstSampleIsolatedFromOtherCases, true);
+  assert.equal(proof.coldSampleRetained, true);
+  assert.equal(proof.preparedSampleComplete, true);
+  assert.equal(proof.preparationAllowsExactBudgetExpiry, true);
+  assert.equal(proof.preparationRejectsOtherFailures, true);
+  assert.equal(proof.preparationRejectsUnknownExit, true);
+  assert.equal(proof.coldExitQueryFailureRetainsSample, true);
+  assert.equal(proof.preparationRejectsFailedOwnershipQuery, true);
+  assert.equal(preparation.childExitedAfterCapture, false);
+  assert.equal(preparation.membershipAfterCapture, 'Owned');
+  if (preparation.status === 'partial') {
+    assert.deepEqual(preparation.listFailure, { Stage: 'listProcessId', Reason: 'budgetExpired', HResult: null });
+  } else {
+    assert.equal(preparation.status, 'observed');
+    assert.equal(preparation.listFailure, null);
+  }
+  assert.equal(proof.firstListFailureRetained, true);
+  assert.equal(proof.deniedListSkipsProvider, true);
+  assert.equal(proof.unresponsiveListCauseRetained, true);
+  assert.equal(proof.nativeExceptionCodeRetained, true);
   assert.ok(Object.keys(proof).length >= 25);
   assert.ok(Object.values(proof).every(value => value === true));
 });
@@ -94,7 +179,8 @@ test('MSI windows: native observation survives exit and interrupted publication 
     const result = await execution.completion;
     assert.equal(result.exitCode, 0);
     assert.doesNotMatch(result.standardOutput + result.standardError, /SYNTHETIC MSI|EXCLUDED INPUT/);
-    const proof = JSON.parse(await readFile(join(scenarioRoot, 'msi-window-contract.json'), 'utf8'));
+    const { checks: proof, preparation } = JSON.parse(await readFile(join(scenarioRoot, 'msi-window-contract.json'), 'utf8'));
+    assert.equal(proof.firstSampleIsolatedFromOtherCases, true);
     assert.equal(proof.cleanupVerified, true);
     assert.equal(proof.cancelBeforePublicationRetainsPending, true);
     const failedContext = { ...context, testRoot: join(temporary, 'eky supervisor receipt'),
@@ -116,6 +202,12 @@ test('MSI windows: native observation survives exit and interrupted publication 
     assert.equal(record.runNonce, context.runNonce);
     assert.equal(record.artifactDescriptorSha256, context.artifactDescriptorSha256);
     assert.equal(record.sequence, 1);
+    assert.equal(record.clients.length, 3);
+    assert.equal(record.clients[0].status, preparation.status);
+    assert.equal(record.clients[0].processId, record.clients[1].processId);
+    assert.equal(record.clients[1].status, 'observed');
+    assert.equal(record.clients[1].windows.some(row => row.role === 'application' &&
+      row.text === 'SYNTHETIC OWNED APPLICATION'), true);
     assert.equal(record.clients.some(client => client.windows.some(row => row.role === 'application' &&
       row.text === 'SYNTHETIC OWNED APPLICATION')), true);
     assert.equal(record.clients.some(client => client.status === 'partial'), true);
@@ -126,9 +218,14 @@ test('MSI windows: native observation survives exit and interrupted publication 
     assert.equal(failureReceipts.length, 1);
     const receipt = failureReceipts[0].match(/msiWindowContractFailed:titleCaptured:(\{[^\r\n]+\})/);
     assert.ok(receipt);
-    assert.deepEqual(JSON.parse(receipt[1]), { status: 'partial', titleCaptured: false,
+    assert.deepEqual(JSON.parse(receipt[1]), { sample: { status: 'partial', titleCaptured: false,
       messageCaptured: false, buttonCaptured: false, applicationCaptured: false,
-      elapsedMilliseconds: 0, childExitedAfterCapture: null, membershipAfterCapture: 'Unknown' });
+      elapsedMilliseconds: 0, childExitedAfterCapture: null, membershipAfterCapture: 'Unknown',
+      listFailure: { Stage: 'admission', Reason: 'outputLimit', HResult: null } },
+      preparation: { status: 'partial', titleCaptured: false, messageCaptured: false,
+        buttonCaptured: false, applicationCaptured: false, elapsedMilliseconds: 1000,
+        childExitedAfterCapture: false, membershipAfterCapture: 'Owned',
+        listFailure: { Stage: 'listProcessId', Reason: 'budgetExpired', HResult: null } } });
     assert.ok(/MsiWindowObservationContract\.RunFailureReceipt/.test(failureReceipts[0]),
       'MSI_WINDOW_FAILURE_NATIVE_FRAME_MISSING');
     assert.doesNotMatch(JSON.stringify(archive), /EXCLUDED INPUT|window-child-|\.pending/);
@@ -598,13 +695,39 @@ test('controlled deadline preserves terminal before rejecting missing process pr
   assert.equal(await readFile(context.resultPath, 'utf8'), bytes);
 });
 
-test('deadline diagnostics: completed marker read does not wait for a missing file', async (t) => {
+for (const role of ['root', 'output']) test(`deadline diagnostics: completed ${role} marker read does not wait for a missing file`, async (t) => {
   const context = await diagnosticContext(t);
   t.mock.method(globalThis, 'setTimeout', () => { throw new Error('unexpected readiness wait'); });
-  await assert.rejects(readCompletedMarker(context, 'root'), {
+  await assert.rejects(readCompletedMarker(context, role), {
     message: 'WINDOWS_ACCEPTANCE_FIXTURE_MARKER_MISSING',
   });
 });
+
+for (const errorCode of [null, 'requestSchemaInvalid']) {
+  test(`deadline diagnostics: completed output preserves its blocked-writer evidence (${errorCode})`, async (t) => {
+    const context = await diagnosticContext(t);
+    const marker = { ...fixtureMarker(context, 'output'), writerBlocked: true, errorCode };
+    await writeFile(join(context.runRoot, 'output.ready.json'), JSON.stringify(marker));
+    assert.deepEqual(await readCompletedMarker(context, 'output'), marker);
+  });
+}
+
+for (const [name, changes] of Object.entries({
+  unblocked: { writerBlocked: false },
+  missingBlocked: { writerBlocked: undefined },
+  unknownError: { errorCode: 'synthetic-private' },
+  missingError: { errorCode: undefined },
+  extra: { privateValue: 'synthetic-private' },
+})) {
+  test(`deadline diagnostics: rejects invalid completed output (${name})`, async (t) => {
+    const context = await diagnosticContext(t);
+    const marker = { ...fixtureMarker(context, 'output'), writerBlocked: true, errorCode: null, ...changes };
+    await writeFile(join(context.runRoot, 'output.ready.json'), JSON.stringify(marker));
+    await assert.rejects(readCompletedMarker(context, 'output'), {
+      message: 'WINDOWS_ACCEPTANCE_FIXTURE_MARKER_INVALID',
+    });
+  });
+}
 
 for (const kind of ['malformed', 'null', 'array', 'nonce', 'role', 'schema', 'pid', 'extra']) {
   test(`deadline diagnostics: rejects invalid completed marker (${kind})`, async (t) => {
@@ -1663,10 +1786,6 @@ for (const mode of ['exitZero', 'exitNonZero', 'spawnGrandchildAndHold']) {
         }),
       );
       const execution = startProgramFailureFixture(context, 'blockedEvidence');
-      const blocked = await waitForMarker(context, 'output');
-      assert.equal(blocked.writerBlocked, true);
-      const grandchild = deadlineExpected
-        ? await waitForMarker(context, 'grandchild') : null;
       const { result, completion } = await readCompletedExecution(context, execution);
       assert.equal(completion.exitCode, mode === 'exitZero' ? 0 : 1);
       assert.equal(
@@ -1684,6 +1803,12 @@ for (const mode of ['exitZero', 'exitNonZero', 'spawnGrandchildAndHold']) {
       );
       assert.equal(result.processTreeAbsent, true);
       if (mode === 'exitNonZero') assert.equal(result.childExitCode, 23);
+      // These are postconditions of a completed command, not live readiness waits.
+      const blocked = await readCompletedMarker(context, 'output');
+      assert.equal(blocked.writerBlocked, true);
+      assert.equal(blocked.errorCode, null);
+      const grandchild = deadlineExpected
+        ? await readCompletedMarker(context, 'grandchild') : null;
       assert.equal(isProcessAlive(blocked.processId), false);
       if (grandchild !== null) await waitForProcessAbsent(grandchild.processId);
       assert.equal(isProcessAlive(sentinel.marker.processId), true);

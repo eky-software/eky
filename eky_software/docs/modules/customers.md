@@ -342,7 +342,13 @@ Backend tarkistaa, että käyttäjällä on oikeus nähdä tai muokata kyseisen 
 
 Käyttöliittymä voi piilottaa toimintoja, mutta backend tekee lopulliset käyttöoikeuspäätökset.
 
-Asiakastietojen muutoksista voidaan myöhemmin kirjata audit log.
+Customers omistaa jo create-, update-, activate- ja deactivate-muutosten
+pakollisen business auditin samassa transaktiossa master-datan kanssa.
+Audit sisältää vain actor/company/customer-tunnisteet, kiinteän toiminnon,
+ajan, tuloksen ja sallitut muuttuneiden kenttien luokat, ei vanhoja tai uusia
+arvoja. Activity näyttää yritysrajatun turvallisen projektion asiakasnumerolla,
+ei nimellä. [Observability-sopimus](../architecture/observability-and-audit-plan.md)
+omistaa lukuketjun ja retentionin yhteiset rajat.
 
 Y-tunnus ja yhteystiedot ovat liiketoimintadataa, jota ei saa vuotaa väärälle yritykselle.
 

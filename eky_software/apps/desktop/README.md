@@ -29,7 +29,8 @@ development/package artifact rather than an automatically updating release.
 
 ## Commands
 
-From the repository root on Windows:
+From the application root `eky_software` (the directory containing the
+workspace `package.json`) on Windows, not its parent Git root:
 
 ```text
 pnpm --filter @eky/desktop package:windows
@@ -162,8 +163,9 @@ The package command:
 
 ## Runtime data isolation
 
-- normal desktop: `%APPDATA%/Eky/runtime/data/eky.sqlite` through Electron's
-  resolved `userData` path
+- normal registered workspace: `<userData>/workspaces/<workspaceId>/runtime/data/eky.sqlite`,
+  selected by Electron main from the validated registry; the old
+  `<userData>/runtime` layout is only a legacy-adoption source
 - packaged smoke: private canonicalized OS temp root, enabled only by the
   smoke switch and valid token
 - browser/backend development: `apps/backend/data/eky-dev.sqlite` or the
@@ -258,3 +260,8 @@ in:
 - `docs/architecture/local-backup-and-restore-plan.md`
 - `docs/decisions/ADR-0010-windows-installer-and-update-orchestration.md`
 - `docs/architecture/windows-installer-and-update-plan.md`
+
+The [main-process cleanup audit](../../docs/architecture/desktop-main-process-cleanup-plan.md)
+is historical background for the structural split, not the current lifecycle
+contract. Current process ownership is in the
+[desktop implementation plan](../../docs/architecture/local-desktop-implementation-plan.md).

@@ -33,9 +33,9 @@ Moduulien välinen kommunikaatio tehdään hallitusti.
 
 Toteutetut moduulit:
 
-- [customers](customers.md)
-- [company-settings](company-settings.md)
-- [invoicing](invoicing.md)
+- [customers](customers.md), [backendin AGENTS.md](../../apps/backend/src/modules/customers/AGENTS.md)
+- [company-settings](company-settings.md), [backendin AGENTS.md](../../apps/backend/src/modules/companySettings/AGENTS.md)
+- [invoicing](invoicing.md), [backendin AGENTS.md](../../apps/backend/src/modules/invoicing/AGENTS.md)
 - [Activity](activity.md), [backendin AGENTS.md](../../apps/backend/src/modules/activity/AGENTS.md)
 - [Diagnostics](diagnostics.md), [backendin AGENTS.md](../../apps/backend/src/modules/diagnostics/AGENTS.md)
 
@@ -57,6 +57,15 @@ Mahdollisia myöhempiä moduuleja:
 - ai-agents
 
 ## Moduulin lisääminen
+
+Lue ennen uuden moduulin, vastuudokumentin tai cross-module-sopimuksen muutosta
+[uuden moduulin tarkistuslista](../architecture/new-module-implementation-checklist.md)
+ja [integraatiomatriisi](../architecture/module-integration-matrix.md).
+Hakemisto reitittää varsinaiseen vastuudokumenttiin, ei korvaa sitä.
+Historiallinen ensimmäisen slicen resepti luetaan sen historian tutkimiseen;
+nykyisen työn vaatimus tulee semanttiselta omistajalta ja lähimmästä AGENTSista.
+Suunnitellut moduulit eivät hyväksy uutta Users/Identity/Membership/Role/Permission-
+vaihetta tai kirjoittavaa mobiili-/AI-toimijaa.
 
 Kun uusi moduuli lisätään:
 

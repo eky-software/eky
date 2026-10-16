@@ -7,9 +7,35 @@ const exact = (value, keys) => value !== null && typeof value === 'object' && !A
   Object.keys(value).sort().join(',') === [...keys].sort().join(',');
 const integer = (value, minimum, maximum) => Number.isSafeInteger(value) && value >= minimum && value <= maximum;
 
+function validateResources(value) {
+  if (value === null) return;
+  if (!exact(value, ['status', 'phase', 'selectionIdentity', 'resourceCount', 'nativeCode', 'endSessionCode', 'processes']) ||
+    !contract.resourceStatuses.includes(value.status) || !contract.resourcePhases.includes(value.phase) ||
+    (value.selectionIdentity !== null && (typeof value.selectionIdentity !== 'string' || value.selectionIdentity.length !== 64 ||
+      !/^[a-f0-9]{64}$/.test(value.selectionIdentity))) ||
+    !integer(value.resourceCount, 0, contract.maximumResourceFiles) ||
+    [value.nativeCode, value.endSessionCode].some(code => code !== null && !integer(code, 0, 0xffffffff)) ||
+    !Array.isArray(value.processes) || value.processes.length > contract.maximumClients ||
+    (['unavailable', 'cancelled'].includes(value.status) && value.processes.length > 0) ||
+    (value.status === 'observed' && (value.nativeCode !== 0 || value.endSessionCode !== 0 ||
+      value.selectionIdentity === null || value.resourceCount < 1))) throw failure();
+  const identities = new Set();
+  for (const process of value.processes) {
+    if (!exact(process, ['processId', 'startTimeLow', 'startTimeHigh', 'membership']) ||
+      !integer(process.processId, 1, 0xffffffff) || !integer(process.startTimeLow, 0, 0xffffffff) ||
+      !integer(process.startTimeHigh, 0, 0xffffffff) || (process.startTimeLow === 0 && process.startTimeHigh === 0) ||
+      !contract.resourceMemberships.includes(process.membership)) throw failure();
+    const identity = `${process.processId}:${process.startTimeLow}:${process.startTimeHigh}`;
+    if (identities.has(identity)) throw failure();
+    identities.add(identity);
+  }
+}
+
 export function validateMsiWindowEvidence(value, binding, sourcePath) {
-  if (!exact(value, ['schemaVersion', 'operation', 'binding', 'runNonce', 'scenario', 'artifactDescriptorSha256',
-    'sequence', 'elapsedMs', 'clients']) || ![1, contract.schemaVersion].includes(value.schemaVersion) || value.operation !== contract.operation ||
+  const keys = ['schemaVersion', 'operation', 'binding', 'runNonce', 'scenario', 'artifactDescriptorSha256',
+    'sequence', 'elapsedMs', 'clients'];
+  if (value?.schemaVersion === contract.schemaVersion) keys.push('resources');
+  if (!exact(value, keys) || ![1, 2, contract.schemaVersion].includes(value.schemaVersion) || value.operation !== contract.operation ||
     !exact(value.binding, ['kind', 'runId', 'attempt', 'job', 'sourceRevision']) || value.binding.kind !== 'github' ||
     ['runId', 'attempt', 'job', 'sourceRevision'].some(key => value.binding[key] !== binding[key]) ||
     !/^[a-f0-9]{64}$/.test(value.runNonce) || !/^[a-f0-9]{64}$/.test(value.artifactDescriptorSha256) ||
@@ -33,5 +59,6 @@ export function validateMsiWindowEvidence(value, binding, sourcePath) {
     }
   }
   if (characters > contract.maximumTotalCharacters || windows > contract.maximumWindows) throw failure();
+  if (value.schemaVersion === contract.schemaVersion) validateResources(value.resources);
   return value;
 }

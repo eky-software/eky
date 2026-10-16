@@ -143,15 +143,15 @@ nykyisessä sanitoidussa eventissä K-P3:n suljetun teknisen ensisyyn tai
 toiminnon nykyisen yleiskoodin, eivät raakaa sisäistä virheketjua.
 Info-tapahtumat eivät kuulu tukipakettiin. Incident-yhteenveto sisältää
 error-tason `backup.failed`-tapahtumat, ei warn-tason tarkistushylkäyksiä.
-[V2m:n portable-tiedostoketju](release-0.3.0-m1-preparation-plan.md#v2m-portable-backupin-turvallinen-lukuketju)
-ja [V2n:n palautus- ja palautuspistekuluttajien erillinen ketju](release-0.3.0-m1-preparation-plan.md#v2n-palautuskuluttajien-turvallinen-ensisyy)
-on kohdetodennettu nykyisillä palveluilla ja synteettisillä porteilla.
+Nykyisen ensisyyn ja kuluttajien sallitut tapahtumat määrittää
+[tapahtumakatalogi](r0-observability-event-catalog.md#tarkistuksen-ensisyy-ja-lukijaketju).
 Ensivirhe ja rollbackin erillinen selvityskoodi säilyvät, mutta vain
-turvallinen projektio viedään tukipakettiin. Tämä ei todista todellista
-Electron-mainia tai paketoitua palautusta.
-[V2o:n erillinen lukijapariteetti](release-0.3.0-m1-preparation-plan.md#v2o-palautustapahtumien-lukijoiden-sopimustarkistus)
-varmentaa backup-/restore-projektion tapahtumakohtaisesti myös
-tukipakettilukijassa. Sallitut vaiheet, pakolliset kentät ja payload ovat
+turvallinen projektio viedään tukipakettiin. Pelkkä palvelu- tai
+projektoritesti ei todista todellista Electron-mainia tai paketoitua
+palautusta. Hyväksytyn K-ketjun tila ja päivätty näyttö ovat
+[M1:n kautta](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Tukipakettilukija tarkistaa backup-/restore-projektion tapahtumakohtaisesti.
+Sallitut vaiheet, pakolliset kentät ja payload ovat
 saman desktop-katalogin mukaisia kuin kirjoittajalla. Valinnaisen vanhan
 tiedon puuttuminen säilyy sallittuna; väärän perheen metadata torjutaan.
 Turvallinen virhesormenjälki kuuluu vain sen sallivaan virhetapahtumaan.

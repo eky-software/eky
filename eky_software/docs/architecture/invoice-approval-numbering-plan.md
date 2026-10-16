@@ -174,25 +174,11 @@ lähetysmerkintä. Local-MVP:ssä PDF:n metadata tallennetaan
 `invoice_documents`-tauluun ja binääritiedosto paikalliseen storage-polkuun.
 PDF muodostetaan vain hyväksytyn laskun snapshotista.
 
-[B3-B5:n revisiosopimus](release-0.3.0-m1-preparation-plan.md#b-p2-toimitusversioiden-historia)
-korvaa vanhan reopen-poistopolun. Työpuun kohdetodennettu reopen irrottaa
-nykyrevision osoittimen mutta säilyttää revision, PDF-metadatan, tiedoston
-ja toimitushistorian. Tila, luonnoksen vapautus, osoitin ja audit muuttuvat
-samassa kirjoitustransaktiossa. Keskeneräinen tai epävarma toimitus estää
-reopenin ja uudelleenhyväksynnän; jälkimmäinen tarkistus koskee myös
-migroitua aiemmin avattua laskua. Onnistunut uuden mallin itselle tehty
-SMTP-testi sallii muokkauksen, onnistunut asiakaslähetys säilyttää `sent`-eston.
-
-Uudelleenhyväksyntä säilyttää laskuidentiteetin, numeron ja viitteen mutta
-julkaisee uuden muuttumattoman revision. Sen PDF muodostetaan tästä
-uudesta snapshotista; vanhaa tiedostoa ei korvata tai käytetä uuden
-puuttuvan PDF:n tilalla. Koko lähetysketjun, UI:n ja palautuksen sovitus on
-vielä kesken. Omistajan 6.10.2026 hyväksymä rajattu selvitysesto koskee
-vanhaa `approved`-laskua, jolla on tarkoitukseltaan tuntematonta legacy-SMTP-
-historiaa. Reopen ja uusi lähetys estetään; laskun ja historian luku säilyy.
-Moodia ei päätellä vastaanottajasta tai ajasta. Uuden mallin onnistuneen
-itselle lähetyksen muokkauslupa ja ehjän vanhan `sent`-laskun erikseen
-vahvistettu uudelleenlähetyspolitiikka säilyvät.
+Nykyinen [sisältörevisiosopimus](#muuttumaton-sisältörevisio) korvaa vanhan
+reopen-poistomallin. Reopen, reapproval ja legacy-siirtymä on määritelty
+[tämän dokumentin omassa kohdassa](#reopen-ja-vanhan-sisällön-siirtymä).
+B:n ketju on hyväksytty; vanhat välivaiheiden puutteet eivät ole nykyisiä
+avoimia toteutuskäskyjä.
 
 ## Tilat Ja Muokkaaminen
 
@@ -202,7 +188,7 @@ Alustava tilamalli:
 draft
   -> approved
     -> sent
-      -> paid / credited myöhemmin
+      -> maksutila ja hyvitykset erillisinä projektioina
 ```
 
 `draft`:
@@ -226,7 +212,7 @@ draft
 - laskun sisältöä ei saa enää muuttaa
 - laskunumero ei muutu
 - laskua ei poisteta
-- virhe korjataan myöhemmin hyvityslaskulla
+- virhe korjataan hyvityslaskulla
 
 Hyväksytyn mutta lähettämättömän laskun muokkaus ei ole vapaa luonnosmuokkaus.
 Se on erillinen hallittu korjaustoiminto.
@@ -265,7 +251,7 @@ Jos lasku on `approved` mutta ei vielä `sent`:
 Jos lasku on `sent`:
 
 - sisältöä ei muuteta
-- virhe korjataan myöhemmin hyvityslaskulla
+- virhe korjataan hyvityslaskulla
 - hyvityslaskua ei toteuteta tässä vaiheessa
 
 ## Laskunumeroinnin Omistajuus Ja UI-Sijainti
@@ -837,3 +823,136 @@ Ei toteuteta tässä vaiheessa:
 - monen laitteen offline-hyväksyntää
 - koko asetuskeskuksen toteutusta
 - usean luonnoksen koottua hyväksyntää
+
+
+## Muuttumaton sisältörevisio
+
+Tämä on hyväksytyn B-kokonaisuuden sisältösopimuksen normatiivinen omistaja.
+Laskun identiteetti, virallinen numero ja sisältörevision opaque tunniste
+ovat eri asioita. Uudelleenhyväksyntä säilyttää lasku-ID:n, numeron,
+viitenumeron ja numerointisnapshotin; uusi revisio ei ole uusi lasku,
+saatava tai listan toinen summa. `updatedAt` tai PDF-hash ei korvaa revisioavainta.
+Maksu-, listaus-, credit-context- ja sent-group-lukijat näyttävät edelleen
+yhden laskuidentiteetin nykytilan ilman revisioiden monistavaa liitosta.
+
+Yksi validoitu sisältöolio julkaistaan nykyprojektioon ja muuttumattomaan
+revisioon saman numerointi-/luonnos-/audit-`IMMEDIATE`-transaktion sisällä.
+Master dataa ei haeta uudelleen revision kirjoittamista varten. Sisäinen
+hyväksyntätulos palauttaa juuri sitoutuneen company/invoice/revision-avaimen
+PDF-hookille; reapproval palauttaa alkuperäisen invoice-ID:n. HTTP:n
+eksplisiittinen mapper säilyttää julkisen vastauksen ilman sisäistä avainta;
+asiakas ei valitse revisiota pyynnössä.
+
+`InvoiceContentRevisionReader.getCurrentRevision(scope)` ja
+`getRevision(key)` lukevat pointerin, otsikon, rivit, ALV-erittelyn ja
+hyvityslähteen samassa lukutransaktiossa. Puuttuva scoped-kohde palauttaa
+`undefined`; rikkoutunut ei-null-viite tai sisältö aiheuttaa
+`InvoiceContentRevisionIntegrityError`-virheen. Ei latest-fallbackia,
+master-data-hakua, korjauskirjoitusta tai historian uudelleenlaskentaa.
+`legacySnapshot/unavailable` palauttaa ALV-erittelyn nullina; se ei ole
+käännetyn ALV:n tunnetusti tyhjä authoritative-erittely.
+
+### Snapshotin täydellinen kenttäsopimus
+
+`InvoiceTable` jakautuu identiteetteihin `id`, `company_id`, alla oleviin
+**64 sisältökenttään** ja **11 pois jätettävään elävään kenttään**.
+Kenttälista on eksplisiittinen, ei `SELECT *` tai API-olion serialisointi.
+Persistence-kopio ja katalogin vertailu käyttävät samaa nimettyä luetteloa;
+kenttäkattavuuden regressio vaaditaan skeeman laajentuessa.
+
+```text
+source_draft_id, invoice_kind, credited_invoice_id, invoice_number,
+reference_number, reference_number_type, series_key, sequence_scope,
+sequence_number, numbering_mode, customer_id,
+customer_number_snapshot, customer_name_snapshot, customer_business_id_snapshot,
+customer_type_snapshot, customer_email_snapshot, customer_phone_snapshot,
+customer_street_address_snapshot, customer_postal_code_snapshot, customer_city_snapshot,
+company_name_snapshot, company_business_id_snapshot, company_vat_number_snapshot,
+company_street_address_snapshot, company_postal_code_snapshot, company_city_snapshot,
+company_email_snapshot, company_phone_snapshot, company_website_snapshot,
+company_iban_snapshot, company_bic_snapshot, company_bank_name_snapshot,
+billing_recipient_customer_id, billing_recipient_customer_number_snapshot,
+billing_recipient_name_snapshot, billing_recipient_business_id_snapshot,
+billing_recipient_customer_type_snapshot, billing_recipient_email_snapshot,
+billing_recipient_phone_snapshot, billing_recipient_street_address_snapshot,
+billing_recipient_postal_code_snapshot, billing_recipient_city_snapshot,
+invoice_date, due_date, payment_term_days, reminder_period_days,
+late_payment_interest_basis_points, price_input_mode, subject, order_number, note,
+delivery_address_text, refund_iban_snapshot, tax_treatment,
+tax_treatment_label_snapshot, tax_legal_basis_snapshot, performance_date,
+performance_period_start, performance_period_end, total_net_cents,
+total_vat_cents, total_gross_cents, created_at, approved_at
+```
+
+Pois jätettävät elävät kentät:
+
+```text
+status, updated_at, cancelled_at, cancelled_by, cancellation_reason,
+payment_state, paid_on, paid_amount_cents, payment_source,
+payment_recorded_at, payment_recorded_by
+```
+
+Kaikki **18 InvoiceLineTable-kenttää** säilytetään, myös API:n ulkopuolinen
+`created_at`; alkuperäinen `id` tallennetaan nimellä `line_id`:
+
+```text
+id, invoice_id, source_invoice_line_id, line_order, code, description,
+quantity_hundredths, unit, unit_price_cents, vat_rate_basis_points,
+discount_type, discount_value, base_cents, discount_cents,
+net_cents, vat_cents, gross_cents, created_at
+```
+
+Nullit eivät muutu API:n tyhjiksi merkkijonoiksi. Uudelleenhyväksyntä säilyttää
+alkuperäisen laskun `created_at`-ajan mutta julkaisee uuden hyväksyntäajan ja
+rivit. Revision omat lisäkentät ovat `origin`, `vat_breakdown_state`,
+`credited_revision_id`, `credited_invoice_number_snapshot` ja
+`credited_invoice_date_snapshot` sekä revision/laskun erilliset identiteetit.
+Riviin lisätään yritys-/revisiosidos ja nullable `source_revision_id`.
+Hyvityksen lähdelasku, revisio, numero ja päivä ovat sama tarkistettu tuple;
+lähderivillinen hyvitys viittaa sen revision riviin, vapaan rivin molemmat
+lähdeviitteet ovat null. Sama line-ID voi esiintyä eri revisioissa.
+
+Standardin net/gross-ryhmäpyöristys, hyvityksen kumulatiiviset allokoidut sentit
+ja käännetyn ALV:n tyhjä erittely säilyvät eri sääntöinä. Hyväksyntä tallentaa
+jo lasketun authoritative-erittelyn ja summat atomisesti; historian luku ei
+laske niitä uudelleen eikä vaadi standardin riviverojen summaa uudeksi
+kokonaissäännöksi. Hyvityksen tarkat laskentasäännöt omistaa
+[hyvityssopimus](invoice-cancellation-and-credit-note-plan.md).
+Vanhan sent-standardilaskun `legacySnapshot` voi olla hyvityksen lähde
+nykyisin yritys-/standard-/sent- ja kapasiteettiehdoin. PDF-julkaisuun vaadittava
+authoritative-alkuperä ei ole hyvityslähteen lisävaatimus. Legacy-lähde ei
+todista vanhaa toimitussisältöä eikä anna uudelleenlähetyslupaa.
+Hyvityslaskulle ei lisätä reopen/reapprove-polkua.
+
+### Reopen ja vanhan sisällön siirtymä
+
+Reopen tarkistaa tilan ja ratkaisemattomat toimitukset samassa
+`IMMEDIATE`-transaktiossa, vapauttaa lähdeluonnoksen, poistaa vain
+current-osoittimen ja kirjaa auditin. Revisiot, dokumenttimetatiedot,
+PDF-tiedostot ja toimitustapahtumat säilyvät. Uudelleenhyväksyntä tarkistaa
+unresolved-historian myös silloin, kun migroidulla laskulla ei ole currentia.
+Onnistunut `smtpTest` sallii approved-standardin reopenin; `attempted` ja
+`outcomeUnknown` estävät sen restartinkin jälkeen. Onnistunut
+asiakaslähetys jättää laskun `sent`-tilaan, jota ei muokata samalla numerolla.
+Peruutuksen erillistä sääntöä ei muuteta: [peruutus](invoice-cancellation-and-credit-note-plan.md)
+ja reopen eivät ole sama operaatio.
+
+Vanhan approved-laskun `InvoiceLegacyRevisionPromoter` on erillinen hallittu
+siirtymä, ei jokaisen luvun fallback. Se vaatii saman yrityksen luotetun
+`ActorContext`-kontekstin ja `sendInvoices`-oikeuden myös PDF-wrapperissa.
+Tarkka vanha current-avain, approved-tila, SMTP-historian puuttuminen,
+unresolved-estot, snapshotin ja nykyprojektion yhtäsuuruus sekä nykyiset
+laskentasäännöt tarkistetaan samassa transaktiossa. Standardirivit validoidaan
+nykyisillä laskureilla; hyvityksen allokoituja senttejä ei hinnoitella uudelleen.
+Vasta sen jälkeen julkaistaan uusi `validatedLegacySnapshot` ja current atomisesti.
+Toimitus käyttää palautettua täsmäavainta ja laskee viestin esitystiedot vasta
+validoinnin jälkeen. Vanhaa revisiota, PDF:ää, summaa, numeroa, maksuja tai
+tapahtumaa ei muuteta eikä lisätä hyväksyntä-/lähetysauditia.
+Ristiriita ei korjaannu hiljaisesti: turvallinen virhe kulkee nykyiseen
+HTTP/Diagnostics/tukipaketti/incident-ketjuun.
+
+Tuntemattoman vanhan SMTP-moodin selvitysesto ja säilytetyn PDF:n lähetys
+omistaa [sähköpostisopimus](email-delivery-and-secrets-plan.md#säilytetyn-pdfn-täsmävaltuutus).
+[SQLite-julkaisusopimus](sqlite-invoice-approval-persistence-plan.md#nykyinen-revisiojulkaisu)
+omistaa DDL:n ja migraation, [PDF-sopimus](invoice-print-data-foundation-plan.md#revision-pdf-julkaisu-ja-täsmäluku)
+tavujen ja julkaisun rajan.

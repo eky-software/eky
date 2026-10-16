@@ -4,6 +4,15 @@
 
 Arkkitehtuuripäätös on hyväksytty ADR-0009:ssä.
 
+Nykyinen hyväksyntä- ja jatkotila on
+[M1:n Jatka tästä -kohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Päivätyt toteutuslistat ja checkpoint-tulokset ovat historiallista näyttöä.
+Nykyiset omistajuus-, salaus-, tarkistus- ja palautusrajat ovat tämän
+dokumentin varsinaisissa sopimusluvuissa; myöhempi C/K-raja tarkentaa vanhan
+checkpointin kuvausta eikä sen historiallista testitulosta.
+
+### Alkuperäinen toteutusnäyttö
+
 Toteutettu 4.8.2026 mennessä:
 
 - backendin yksityinen maintenance- ja snapshot-broker
@@ -61,8 +70,7 @@ business-artifact-rajojen muuttuessa.
 R0:n salatun paikallisen backup/restore-ketjun toteutus on dokumentoitu
 4.8.2026. Portable container on versio `v1`, se käyttää AES-256-GCM:ää,
 16 tavun autentikointitagia ja canonical headeria AAD:na. Lukittu
-`scrypt`-profiili on `N = 2^17`, `r = 8`, `p = 1`; Windows x64 -benchmarkin
-mediaani oli noin 246,4 ms.
+`scrypt`-profiili on `N = 2^17`, `r = 8`, `p = 1`.
 
 Snapshot muodostetaan yhden maintenance-operaation sisällä
 `better-sqlite3` backup API:lla. Invoicing luetteloi erillisellä
@@ -141,12 +149,8 @@ Samalla koodikandidaatilla paikallisesti vihreiksi todettiin:
 - Electron development E2E 27/27 ja Electron critical E2E 21/21 kahdesti
 - Windows package Electron 43.2.0:lla, `better-sqlite3 13.0.2`:lla ja
   SQLite 3.53.4:llä
-- packaged smoke toistettuna kymmenen kertaa eri testirooteilla: 9406, 9088,
-  9345, 9095, 9275, 9053, 9242, 9078, 9249 ja 9184 ms
-- desktop stress: 200 moduulisiirtymää, 50 laskun avausta, 100 PDF-avausta,
-  20 tukipakettia, 30 secret set/remove -sykliä ja 20 backend-restartia
-- 30 minuutin desktop-soak: 3010 sykliä, 301 restartia, 602 tukipakettia,
-  sama prosessi- ja ikkunamäärä lopussa sekä noin 1,6 MiB working set -kasvu
+- packaged smoke toistettuna kymmenen kertaa eri testirooteilla
+- desktop stress ja 30 minuutin desktop-soak
 
 Backup-polun regressiot kattavat salatun containerin ja kiinteän Node 24
 `scrypt`-vektorin, väärän salasanan, header/ciphertext/tag-mutaatiot,
@@ -167,17 +171,9 @@ automaattipäivitys säilyvät ADR-0010:n erillisen distribution-portin takana.
 
 ## Manuaalinen pilot evidence 18.8.2026
 
-Tämä on projektin omistajan raportoima manuaalinen pilot evidence, ei
-automatisoitu testi, tuotantosertifiointi tai yleinen yhteensopivuusväite.
-
-Hallitulla paikallisella testikoneella todennettiin:
-
-- Eky 0.2.6:n puhdas asennus ja ensimmäinen käynnistys
-- Eky 0.2.5:llä luodun salatun `.ekybackup`-varmuuskopion valinta UI:ssa
-- palautuksen valmistelu ja aktivointi Eky 0.2.6:ssa
-- tietokannan hallittu forward-migraatio
-- yritystietojen ja varmuuskopioon kuuluneiden lasku-PDF:ien saatavuus
-- sovelluksen uudelleenkäynnistys palautuksen jälkeen.
+Pilotin rajattu manuaalinen asennus- ja palautustarkistus kirjattiin
+hyväksytyksi. Tämä ei ole automatisoitu testi, tuotantosertifiointi tai
+yleinen yhteensopivuusväite.
 
 Tähän evidenssiin ei kirjata yritys-, henkilö-, lasku-, salasana-, polku- tai
 muuta tunnistavaa tietoa. Se ei korvaa W0:n jälkeen suunniteltua
@@ -256,8 +252,8 @@ palvelujen eikä IPC-capabilityjen omistajuutta.
 - versionoidun manifestin
 - SQLite-tietokannan transaktionaalisesti eheän snapshotin
 - tietokannan schema- ja migration-identiteetin
-- Invoicingin katalogin kaikki säilytettävät lasku-PDF:t; B3-B5:n
-  työpuutoteutuksessa myös aikaisemmat revisiot ja legacy-kopiot
+- Invoicingin katalogin kaikki säilytettävät lasku-PDF:t, myös hyväksytyn
+  B3-B5-sopimuksen aikaisemmat revisiot ja legacy-kopiot
 - muut module ownerin nimeämät auktoritatiiviset business-artifactit, joita
   ei voida luotettavasti muodostaa uudelleen
 - jokaisen osion koon ja SHA-256-checksumin
@@ -352,11 +348,7 @@ Portable container v1 käyttää KDF-profiilia 1:
 - 32 tavun avain
 - eksplisiittinen `maxmem = 256 MiB`
 
-Windows x64 / Node 24 -kehitysympäristössä 4.8.2026 tehty viiden ajon
-benchmark antoi mediaaneiksi `2^15`:lle 55,1 ms, `2^16`:lle 111,3 ms ja
-`2^17`:lle 246,4 ms. Arvioidut scrypt-muistikustannukset olivat vastaavasti
-32, 64 ja 128 MiB. Profiili 1 valittiin vahvimmaksi nykyisellä koneella
-käytännölliseksi osoittautuneeksi vaihtoehdoksi. Valinta on vielä varmennettava
+Profiili 1 on hyväksytty kiinteä KDF-valinta. Valinta on vielä varmennettava
 paketoidussa Electron-main/utility-ajossa pilottilaitetta vastaavalla Windows
 x64 -ympäristöllä ennen R0-release gaten sulkemista.
 
@@ -391,10 +383,12 @@ päätetään toteutusvaiheen turvallisuus- ja käytettävyystestissä.
 
 ## Private plaintext staging
 
-Private plaintext staging sallitaan vain snapshot-, inspect-, restore- tai
-workspace-import-operaation ajaksi Electron mainin omistamassa `userData`-
-alueen yksityisessä runtime-juuressa. Se ei ole käyttäjän
-varmuuskopiotiedosto.
+Selväkielinen työaineisto rajataan ADR-0009:n hyväksyttyyn uuteen
+staging-profiiliin, ADR-0011:n W3-karanteeniin ja K:n omistettuihin
+snapshot-, tarkistus- ja materialisointikopioihin. Kunkin polun oma
+omistajuus-, tavusidonta- ja siivousportti on pakollinen. Tämä ei salli
+selväkielistä siirrettävää backupia, yleistä temp-containeria tai salaamatonta
+palautuspistettä. Salasanaa tai johdettua avainta ei tallenneta levylle.
 
 W3-importin decrypt-vaihe käyttää kapeaa installation-scoped juurta
 `<userData>/workspace-operations/workspace-import-plaintext-quarantine/`.
@@ -406,20 +400,22 @@ rendererille.
 
 Restore-staging sisältää business-profiilidataa, joten siihen sovelletaan samoja
 polku-, käyttöoikeus-, symlink-, reparse point- ja lokitussääntöjä kuin
-aktiiviseen profiiliin. Operaation onnistuminen ja epäonnistuminen siivoavat
-stagingin. W3:n tavallinen `finally` poistaa oman plaintext-payloadin, ja W3-
-recovery hankkii maintenance-leasen sekä validoi ja poistaa kaikki tunnetut
-stale-payloadit ennen journalin ratkaisua tai uuden backupin käsittelyä. Sama
-cleanup tehdään, vaikka import-journalia ei ole. Tuntematon entry tai epäselvä
-filesystem-raja pysäyttää recoveryn; sisältöä ei poisteta arvaamalla.
+aktiiviseen profiiliin. Siivous vaatii todistetun omistajuuden ja päättyneet
+lukijat; epäonnistunut kutsu ei yksin anna poistolupaa. W3:n tavallinen
+`finally` poistaa vain oman payloadin. Cold-recovery vaatii C/R18:n
+readonly-admissionin, build-tarkistuksen, installation-leasen, todistetun
+runtime-poissaolon ja palautuneen main-varauksen ennen korjaavaa lukua tai
+oman v2-operaation karanteenin siivousta. V1, journaliton plaintext tai
+todistamaton vanha omistaja säilyttää aineiston ja estää avauksen.
+Tuntematon entry tai epäselvä filesystem-raja pysäyttää recoveryn.
 Caller-owned pre-update-snapshotin epävarma backend-omistajuus estää sen
 stagingin välittömän poiston; tarkka raja on
 [päivityksen kirjoitussuojan sopimuksessa](#päivityksen-kirjoitussuojan-erillinen-vapautussääntö).
 
-Desktopin production-käynnistys tunnistaa ja siivoaa keskeytyksestä jääneet
-nykyisen yhden työtilan tunnetut temp- ja staging-slotit ennen normaalin
-business-runtimen avaamista. W3:n quarantine-recovery pysyy inerttinä eikä ole
-vielä production-startupissa tai package-payloadissa.
+Production-käynnistys ratkaisee keskeytyneet operaatiot ennen normaalia
+business-runtimea vain niiden omilla recovery-porteilla. W3:n nykyisen
+järjestyksen omistaa [workspace-suunnitelma](local-company-workspace-plan.md#workspacecreationjournalv1);
+slotin nimi, ikä tai vapaa varaus ei todista vanhaa kirjoittajaa poistuneeksi.
 
 ## Null-sääntö
 
@@ -501,6 +497,15 @@ snapshotista päivityksen hallittuun sulkuun; palautuspisteen sisäinen
 finally ei vapauta caller-owned suojaa. Backend tarkistaa voimassaolon
 myös odotusten jälkeen, ei vain ajastimen callbackissa.
 
+Drainin nykyinen raja on 30 sekuntia ja sen jälkeen alkava voimassaolo
+10 minuuttia. Synkroninen assert vaatii päättyneen drainin ja tarkistaa
+monotonisen takarajan. Snapshotin ja validoinnin myöhäinen vastaus tarkistaa
+ennen odotusta kaapatun omistajan; brokerin siivouksessa kadonnut paikallinen
+tunniste ei ohita tätä. Begin, snapshot ja end pysyvät samassa sarjajonossa,
+eikä end ohita keskeneräistä snapshotia. Update-suoja ei salli restore-
+aktivointia. Epävarman snapshotin tai validoinnin siivous vaatii nykyisen
+broker-jonon kuittauksen; ilman sitä staging ja ensivirhe säilyvät.
+
 Palautuspistepalvelun `createPreUpdateWithMaintenance(operationId)` käyttää
 jo drainin läpäissyttä update-suojaa ja samaa tunnistetta snapshotissa sekä
 validoinnissa. Se ei hanki tai vapauta maintenancea. Palvelu tarkistaa suojan
@@ -538,8 +543,9 @@ käyttävät pakollista native-omistajuutta.
 todentaa live-aktivoinnin säilytysesteen, journal-readbackin ja varauksen
 luovutuksen ennen globaalia sulkua kummassakin kuluttajassa. Tavallisen
 backupin vapautussääntö säilyy. [V2ag](release-0.3.0-m1-preparation-plan.md#v2ag-snapshot-muodostajan-eristetty-tarkistusketju)
-poisti muodostajan eristämättömän kopiotarkistuksen; vanha raskas broker
-poistetaan vasta kaikkien korvattavien kuluttajien kattavuuden jälkeen.
+poisti muodostajan eristämättömän kopiotarkistuksen. Broker-v12:n poistettujen
+komentojen nykyinen raja on kohdassa
+[Eristetyn tarkistuksen rajat ja valtuus](#eristetyn-tarkistuksen-rajat-ja-valtuus).
 [V2al:n vaihekohtainen tiedostotarkistus](release-0.3.0-m1-preparation-plan.md#v2al-kylmäpalautuksen-vaihekohtainen-tiedostotarkistus)
 sitoo forward-jatkon samaan journaliin ja strict-slottiläsnäoloon.
 [V2am:n muuttamaton journal-valinta](release-0.3.0-m1-preparation-plan.md#v2am-kylmäpalautuksen-muuttamaton-journal-valinta)
@@ -556,8 +562,8 @@ lukee tietokannan ja PDF:t itsenäisesti valituista lähdesloteista ja antaa
 erillisen cold-receiptin ilman kuviteltua portable-katalogitiedostoa.
 [V2ap:n nimetty prosessiraja](release-0.3.0-m1-preparation-plan.md#v2ap-kylmäsisällön-nimetty-prosessiraja)
 erottaa cold- ja portable-tulokset, sitoo valitun lähdeparin ja vaatii saman
-nykyisen exit-/reclaim-todisteen ennen hyväksyntää. Startup-kuluttaja on
-vielä avoin; receipt ei yksin anna siirtovaltuutta.
+nykyisen exit-/reclaim-todisteen ennen hyväksyntää. Receipt ei yksin anna
+siirtovaltuutta; startup-kuluttajan nykytila luetaan M1:n Jatka tästä -kohdasta.
 [V2aq:n omistettu tarkistuskopio](release-0.3.0-m1-preparation-plan.md#v2aq-kylmäsisältöportin-omistettu-tarkistuskopio)
 käyttää samaa portable/cold-kopio- ja exit-ketjua sekä tuoretta lähdepari- ja
 lineage-tarkistusta. Tämä on sisältöportti, ei journalin tai tavujen tuore
@@ -572,8 +578,8 @@ todellinen kytkentä ennen jokaista siirtoa sekä
 offline-/terminal-valtuus ja koko palautusketju todennetaan ennen K:n
 hyväksyntää; välitilaa ei julkaista.
 
-Toteutuksen nykytila ja vielä avoimet kytkennät löytyvät
-[C:n omistavasta valmistelusuunnitelmasta](release-0.3.0-m1-preparation-plan.md#cn-rajattu-toteutusehdotus).
+Toteutuksen nykytila ja jatkotyö löytyvät
+[M1:n Jatka tästä -kohdasta](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
 Tämä sopimus ei yksin tarkoita koko R04:n tai packaged-porttien hyväksyntää.
 
 Maintenance-lukko ei ole käyttäjäpermissionin korvike. Backendin permission-,
@@ -645,7 +651,9 @@ mutta eri containeria ja avainmallia:
 - palautuspistettä ei voi viedä siirrettävänä backupina
 
 Palautuspisteet sijaitsevat
-`userData/runtime/recovery-points/<profile-id>/`-juuressa. Ne eivät sijaitse
+`<userData>/workspaces/<workspaceId>/runtime/recovery-points/<profile-id>/`-
+juuressa registryn validoimalle työtilalle. Legacy-profiilin vastaava
+`<userData>/runtime`-juuri kuuluu vain hyväksyttyyn adoption-polkuun. Ne eivät sijaitse
 aktiivisen datan, dokumenttien, lokien tai sovelluspaketin juuressa, eikä
 palautuspiste saa koskaan sisältää muita palautuspisteitä.
 
@@ -919,6 +927,80 @@ puutteellinen tai virheellinen metadata ei koskaan muutu legacy-poikkeukseksi.
 Väärä salasana ja muutettu artifacti palauttavat saman turvallisen
 autentikointivirheen. Virhe ei kerro, mikä salauksen osa epäonnistui.
 
+### Eristetyn tarkistuksen rajat ja valtuus
+
+Tämä on hyväksytyn K-P2:n nykyinen runtime-sopimus. Vaihekohtaiset kokeet
+ja niiden hylkäykset jäävät M1:n historiaan; kokonaisuuden nykytila on
+[M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Schema-politiikan ja kutsujakohtaisten pending-ehtojen omistaa
+[database/migration](local-database-implementation-plan.md#varmuuskopion-schema-tarkistin);
+katalogin koko historian luennan omistaa
+[artifact-inventaario](local-backup-artifact-inventory.md#rajattu-koko-revisiohistorian-tarkistus).
+
+Main käynnistää kiinteästä paketoidusta entrypointista lyhytikäisen utilityn.
+Se ei käynnistä HTTP-palvelua, avaa aktiivista profiilia, peri session- tai
+SMTP-salaisuuksia, luo lapsiprosesseja tai aja tuotuja komentoja. Eristys
+suojaa aktiivisen backendin työkuormaa, ei lupaa käyttöjärjestelmäsandboxia.
+
+| Raja | Voimassa oleva sopimus |
+| --- | --- |
+| Rinnakkaisuus | Enintään yksi tarkistusutility installation-omistajaa kohti. Rinnakkainen pyyntö saa busy/unavailable-palautteen; ei rajatonta jonoa. |
+| Työaika | Yksi monotoninen 35 000 ms määräaika pyynnön alusta terminaliin. Luotetun kontekstin haku, spawn ja valmistelu sisältyvät samaan aikaan. Vaihe tai viesti ei nollaa aikaa; decryptin ja candidate-migraation omat rajat säilyvät. |
+| Pysäytys | 3 000 ms hallittu sulku ja 3 000 ms killin jälkeinen exit-odotus ovat siivousta, eivät validointityön jatkoa. Killin paluu tai terminal-viesti ei todista exitiä. |
+| SQLite-muisti | 256 MiB `hard_heap_limit` asetetaan luotetulla muistiyhteydellä ennen tuodun kannan avausta. Readback ja todellinen valvonta vaaditaan erikseen; `MEMSTATUS=0` ei kelpaa readbackin perusteella. `mmap_size=0`, rajattu cache, temp muistissa. Aktiiviseen backendiin ei aseteta prosessiglobaalia heap-rajaa. |
+| JavaScript-muisti | 512 MiB V8 old-space kiinteässä utility-käynnistyksessä. Tämä ja SQLite-raja eivät todista koko prosessin RSS-kattoa; IPC-, Buffer-, katalogi- ja rivirajat vaaditaan lisäksi. |
+| Syöte/tulos | Suljettu versioitu private-protokolla, enintään 4 KiB/viesti. Main omistaa polut ja operation/generation/policy-sidonnan. Vain yhteenveto/kuitti tai turvallinen syy, ei SQL:ää, katalogia, rivejä tai raw-poikkeusta. Yksi terminal; väärä tai ylimääräinen hylätään. |
+| Sisältö | Container 32 GiB, entry 24 GiB, katalogi 64 MiB / 100 000 kohdetta, PDF 10 MiB ja artifactit yhteensä 20 GiB. Hashaus virtana. Formaattirajaan mahtuminen ei lupaa valmistumista resurssibudjetissa. |
+
+Budjettia ei kasvateta läpäisyn saavuttamiseksi. Ajurin toiminta ja
+historiallisten fixturejen hyväksyntä vaativat
+[inspection-only-toimituksen](local-desktop-dependency-review.md#rajattu-varmuuskopion-tarkistusajuri)
+omat Windows-/Linux-, runtime- ja paketoidut todisteet.
+
+Main omistaa kevyen aktiivikontekstin ja tarkistaa sen ennen työtä sekä
+todellisen exitin ja reclaimin jälkeen. Vaihtunut profiili, kanava,
+runtime-generation tai policy hylkää tuloksen, myös samalla profiili-ID:llä.
+Puuttuvaa policya ei korvata oletuksella. Muodostetun snapshotin
+`exactCurrentManifest` tai `compatibleHistoricalPrefix` säilyy mainin
+private-tietueessa; tuotu aineisto käyttää erikseen `restoreCompatible`-
+käytäntöä. Prepare, terminal-parseri ja main vaativat saman valitun policyn.
+C:n muodostajan policy ja tarkistimen policy ovat erilliset alla kuvatun
+alkuperäisketjun sopimuksen mukaan.
+
+Utility saa vain operaation oman yksityisen juuren identiteettiin sidotun
+`acquireWorkspaceProcessReservation`-varauksen, ei aktiivisen asennuksen
+writer-varausta. Prepare/reservationReady/grant sitoo operationin,
+generationin, sessionin ja elävän kanavan; luovutuksen aukko ei valtuuta
+mainin siivousta tai lapsen myöhäistä avausta. Onnistuminen vaatii oikean
+terminalin, onnistuneen todellisen exitin ja mainin takaisin saaman
+varauksen. Pelkkä exit-koodi ei korvaa terminalia tai sulkemiskuittausta.
+Timeout/cancel säilyttää ensisyyn ja käyttää vain yllä olevaa sulkubudjettia.
+
+Kertakopion valmistelu tapahtuu mainin varaaman juuren alla ennen luovutusta.
+Mainin oma receipt sitoo kansion ja vanhemman identiteetit; lapsen polku ei
+anna poistolupaa. Valmistelun callbackien ja prepare/grant-kutsujen on
+päätyttävä ennen siivousta. Epävarma sulkemiskuittaus, journal, vieras
+sisältö, hardlink, korvattu juuri tai ei-tyhjä WAL säilyttää kopion.
+Tyhjän käyttämättömän kansion poisto vaatii erillisen oman tyhjyyden
+todisteen. Keskeytys viimeisen hakemistoluvun aikana estää uuden
+poistokutsun; jo aloitettu tiedosto-operaatio voi silti valmistua.
+
+Hallittu sovellussulku sulkee uuden työn pääsyn synkronisesti ja odottaa
+koko omistettua kuluttajaa, ei vain utilitya. Epävarma exit, takaisinotto
+tai kesken oleva mainin tiedostoluku estää poiston, aktivoinnin ja
+uudelleenkäytön. Parentin kuolema ei todista lapsen poistumista. Startup
+varaa tunnetun staging-juuren ennen sen oman sopimuksen mukaista siivousta;
+busy tai epäselvä juuri säilyy. Vanha staging tarkistetaan uudelleen:
+journal, ikä tai muistista puuttuva receipt ei hyväksy sitä. Tämä ei
+anna W3:n journalittomalle plaintextille tai v1:lle cold-recovery-lupaa.
+
+Private snapshot-brokerin nykyinen versio on 12. Komennot
+`validateProfileSnapshot`, `validateActiveProfile` ja
+`prepareProfileRestoreActivation` sekä niiden vastaukset on poistettu
+tästä brokerista. V9/V10/V11 eivät ole fallbackeja; samanniminen sisäinen
+tarkistusportti ei palauta poistettua broker-komentoa. Julkinen HTTP,
+renderer-capabilityt ja durable-formaatit eivät laajene.
+
 ## Restore staging
 
 Restore tehdään vain täysin suljettuun uuteen staging-profiiliin:
@@ -945,8 +1027,10 @@ hylkää lähteen, jos container on vaihtunut tarkastuksen jälkeen.
 Stagingiin kirjoitetään vain uusiin final-polkujen `next`-tiedostoihin.
 Tiedostot synkronoidaan ennen final-nimeä, olemassa olevaa final-polkuja ei
 korvata ja valmistuneelta tiedostolta vaaditaan tavallinen tiedostotyyppi sekä
-yksi linkki. Epäonnistunut staging poistetaan kokonaan best effort -siivouksen
-sijaan hallitun operaation omasta yksityisestä juuresta.
+yksi linkki. Epäonnistuneen stagingin poistaminen vaatii hallitun operaation
+oman siivousvaltuuden, päättyneet lukijat ja tuoreen juuri-identiteetin.
+Epävarma omistajuus, exit tai siivous säilyttää aineiston ja estää jatkon;
+pelkkä hylätty Promise ei oikeuta poistoon.
 
 Restore ei:
 
@@ -956,6 +1040,104 @@ Restore ei:
 - käynnistä backupista sessionia tai salaisuutta
 - yhdistä kahta profiilia
 - tee best effort -osapalautusta
+
+### Valmistellun palautuksen ja cold-valtuuden tarkennukset
+
+Prepared-slotin yksinomainen claim otetaan synkronisesti ennen ensimmäistä
+odotusta. Valmistelu jäädyttää oman täydellisen `prepared@0`-kuittinsa
+ennen julkaisua ja asettaa tarkistusaineiston retention-esteen ennen
+mahdollista journal-kirjoitusta. Sekä onnistunut että hylätty kirjoitus
+vaatii muuttamattoman `prepared`/`notPrepared`-readbackin kaikkine kenttineen.
+Sama operation-ID ei riitä. Initial-julkaisu vaatii current/next/backup-
+slottien poissaolon myös ilman kutsujan lisäguardia.
+
+Vain hylätyn kirjoituksen todistettu `notPrepared`, recovery-juurten
+poissaolo ja tuore restore-, main- ja native-valtuus sallivat retention-
+esteen perumisen. Fencen vapautuskuittaus ja sen jälkeinen omistajuustarkistus
+kuuluvat samaan seurattuun peruutukseen; este poistuu vasta niiden jälkeen.
+Shutdown ei saa väliin poistaa aineistoa. Ristiriitainen readback,
+onnistumiskuittaus ilman prepared-todistetta tai epävarma varaus säilyttää
+claimin ja aineiston sekä mitätöi jatkovaltuuden. Ensisyy edeltää
+readback-/peruutusvirhettä.
+
+Durable-handoff vapauttaa native-varauksen tiedostoja poistamatta ennen
+inspectorin globaalia sulkua. Säilytetyn journalin jo todistetusti päättyneen
+tarkistuksen varaus voidaan sulkea poistamatta tiedostoja; epävarma prosessi
+tai siivous säilyttää molemmat. Säilytetty operaatio ei kelpaa uudeksi
+tarkistuspyynnöksi, backup-lähteeksi tai tavalliseksi poistokohteeksi.
+Aktivointi ei odota itseään inspectorin drainissa. Ready-backend käyttää
+`stopForRestore(operationId)`-porttia; pending-migraatiokutsuja käyttää
+oman startupinsa `stopStartupRuntime()`-valtuutta, ei ready-only-porttia.
+Tiedostosiirto odottaa todellista backend-exitiä ja mainin reclaimia.
+
+Cold-valinta käyttää laiskaa current -> backup -> next -etusijaa.
+Valitun slotin hylkäys ei avaa alempaa fallbackia. `peek` on muuttamaton;
+korjaava `read` tarvitsee tuoreen erillisen mutaatiovaltuuden. Puuttuvaa
+operaatiojuurta ei luoda vain varauksen hankkimiseksi. DB- ja PDF-slotit
+valitaan erikseen: intent hyväksyy täsmälleen yhden lähteen tai kohteen,
+myös renamen jälkeisessä keskeytyksessä. Puuttuvan slotin ensimmäinen
+olemassa oleva vanhempi tarkistetaan ennen mkdir/chmodia. Failed-juuren
+epävarma aineisto estää forwardin.
+
+Cold- ja original-receipt eivät ole portable-receiptejä. Cold käyttää
+`restoreCompatible`-policya ja kiinteitä työtila-/operaatiolayoutteja,
+ei yleisiä polkuja. Utility sulkee SQLiten ja kirjoittaa omaan
+sukupolvisidonnaiseen kopioon `cold-document-bindings-v1.json`-luettelon
+vain valituista PDF:istä: formatVersion, loogiset ja suhteelliset polut,
+koot ja todelliset SHA-256:t. Luettelo ei ole uusi backup, journal tai
+business-rivien kopio. Receipt sitoo sen koon ja hashin; main johtaa polun
+omasta kopiostaan, lukee vasta exit/reclaimin jälkeen ja tarkistaa tarkat
+kentät, yksiselitteiset suhteelliset viitteet, identiteetit sekä receiptin
+lukumäärän, tavumäärän ja aggregaten. Myös sarjoituksen ennakkoraja on
+64 MiB; muut yllä olevan budjettitaulukon rajat säilyvät.
+
+Ensimmäinen hyväksytty sisältö ja jäädytetyt PDF-sidonnat pysyvät
+vertailuperustana. Slot-vaihto vaatii uuden nimetyn tarkistuksen samaan
+sisältöön; receiptin slotteja ei kirjoiteta uudelleen. Alkuperäinen
+35 000 ms työdeadline ei uusiudu siirrossa. Main tarkistaa vain nimetyt
+tiedostot, ei SQLitea tai arvattua koko hakemistoa. Lähdetavut sidotaan
+uudelleen viimeisten awaited journal/census/owner-tarkistusten jälkeen;
+myöhemmän DB-luvun aikana muuttunut aiempi PDF hylätään.
+
+Original-tarkistus erottaa active/rollback/absent-slotit tuotavasta
+sisällöstä. Dokumentti-absent ei kelpaa katalogin vaatiessa PDF:iä;
+ilman alkuperäiskantaa dokumenttikansio ei todista business-katalogia.
+Ensimmäinen alkuperäiskuitti ei takautuvasti todista journalin syntyhetken
+tavuja. Paikallaan pysyvä ankkuri on valitun operaation
+`failedOperationRoot`: vain sen viimeinen oma tyhjä kansio voidaan
+luoda eksklusiivisesti tuoreen journalin, censuksen, leasen ja lähdejuurten
+native-poissaolon jälkeen. Vierasta kansiota ei omaksuta. Siirtyvän tai
+poistettavan juuren varaus suljetaan vasta päättyneiden lukujen ja
+exit/reclaimin jälkeen juuri ennen nimettyä operaatiota; vanhan polun
+descriptoria ei kirjoiteta uudeksi. Cold-hylkäys ei anna valtuudettoman
+`failedSafe`-kirjoituksen lupaa.
+
+Live-virhehaaran `validationStarting@r` voi edetä vain saman operaation
+`rollbackStarting@r+1` ja `rolledBack@r+2` -tiloihin. Ennen intentiä
+alkuperäiset ovat rollback-slotissa tai todistetusti absent, eivät jo
+siirrettyjä. Lykätty päätös omistetaan heti validoinnin jälkeen ennen
+myöhempiä health/session-tarkistuksia samalla recovery-instanssilla.
+Aloitettu tai epävarma hyväksyntä estää rollbackin; hylätty rollback-valtuus
+estää myös yleisen workspace-recoveryn kautta toisen runtimen avaamisen.
+
+Terminal-census sisältää myös tyhjät kansiot ja sallitut lapsilistat.
+Kompakti vanhempi/nimi-kirjanpito säilyttää 64 MiB / 100 000 PDF:n rajat;
+toistuvia absoluuttisia polkuja ei lasketa uudeksi sisältörajaksi.
+`commitAcceptance` julkaisee ja lukee takaisin jäädytetyn accepted-tilan
+poistamatta juuria; `clearAccepted` siivoaa erikseen saman valinnan.
+Puuttuva accepted-juuri jää puuttuvaksi eikä sitä luoda tai varata.
+Poistettu juuri ei todista journalin poistovaltuutta.
+
+**Hylätty oikopolku pysyy hylättynä:** hyväksyntäjournalin inventaariolukujen
+siirtämistä ei hyväksytty. Myöhäinen muutos saattoi julkaista `accepted`-
+tilan tai poistaa journalin `.backup`-edeltäjän ennen hylkäystä;
+lisä-`peek` ei todistanut kaikkia sivuslotteja. Hyväksytty cold-journalin
+rajattu valmistelu ja enintään neljän PDF-/census-merkinnän eräluku eivät
+poista hyväksyntäjournalin yhdistettyjä tarkistuksia tai poistovartijoita.
+Ensimmäinen census-järjestyksen virhe säilyy, kaikki aloitettu työ päättyy,
+eikä Promise-hylkäys todista käyttöjärjestelmälukupyynnön peruuttamista.
+Saman tilin valtuussopimuksen ulkopuoliseen kirjoittajaan ei luvata
+käyttöjärjestelmätason atomisuutta.
 
 ## Aktivointi ja rollback
 
@@ -971,8 +1153,10 @@ Kun staging-profiili on täysin validoitu:
 8. backend readiness ja health tarkistetaan
 9. käyttöliittymä avataan vasta onnistumisen jälkeen
 
-Epäonnistumisessa uusi runtime suljetaan ja pre-restore-piste palautetaan.
-Rollback hyväksytään vasta, kun vanha profiili käynnistyy terveenä.
+Ennen pysyvää hyväksyntää tapahtuva virhe sulkee uuden runtimen ja käyttää
+alla rajattua rollback-valtuutta. Pelkkä virhe ei oikeuta tiedostomuutoksiin;
+hyväksytyn operaation siivousvirhe ei ole rollback-peruste. Rollback
+hyväksytään vasta, kun vanha profiili käynnistyy terveenä.
 
 Startupin loppuvaihe käyttää [valitun journalin tuoretta sidontaa](release-0.3.0-m1-preparation-plan.md#v2at-loppuvaiheen-journal-sidonta).
 Hyväksyntä, rollback ja siivous eivät vaihda operaatiota uudella korjaavalla
@@ -1022,7 +1206,11 @@ Jo keskeytyneen rollbackin oma sisältövaltuus pysyy erillisenä vaatimuksena.
 
 [Keskeytyneen rollbackin slot-valinta](release-0.3.0-m1-preparation-plan.md#v2au-keskeytyneen-rollbackin-slot-valinta)
 varmentaa lisäksi alkuperäisen aktiivisen/rollback-sijainnin tai journalin
-todistaman alkuperäisen poissaolon sekä säilyneen tuotavan sisällön. Stagingin
+todistaman alkuperäisen poissaolon sekä säilyneen tuotavan sisällön.
+Keskeytyneen rollbackin siirrot jatkuvat dokumentit-ennen-tietokantaa-
+järjestyksessä. Slot-valinta ja census tarkistetaan ennen mutaatiota,
+rename-retryä ja terminal-journalin siivousta; valittu journal ja omistajuus
+pysyvät tuoreina. Stagingin
 koko juuren viimeinen siirto failed-aineistoksi saa tapahtua vasta molempien
 alkuperäisten slottien palautumisen jälkeen. Puuttuva, päällekkäinen tai
 linkitetty slot estää siirrot ja terminal-journalin siivouksen. Tämä
@@ -1096,8 +1284,9 @@ operation-juurten täsmälliset varaukset säilyvät journalin julkaisuun ja
 jokaiseen mutaatioon asti. Async-journal-luku vaatii tämän jälkeen uuden
 valtuustarkistuksen. Accepted-cold-valinta ei siivoa sivuslotteja ennen
 tuoretta validointia. Epävarmuus säilyttää hyväksytyn journalin ja
-kirjoitussuojan; siivousvirhe ei ole rollback-lupa. Koko mainin palautus,
-C-offline-kuluttajan virhehaarat ja muut K:n loppuportit ovat vielä avoimia.
+kirjoitussuojan; siivousvirhe ei ole rollback-lupa. K:n integraation
+hyväksyntänäyttö on [nykytilan omistajalla](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Uusi muutos tarvitsee edelleen oman vaikutusalueensa palautus- ja integraatioportit.
 
 Tavallisen ja palautuksen jälkeisen käynnistyksen aktiivivalidointi lainaa
 mainin omistamaa täsmällistä restore-varausta. Main säilyttää varauksen
@@ -1108,8 +1297,8 @@ ja palauttaa vain metadataa, ei myöhempää mutaatiovaltuutta. Epävarma sulku
 tai kadonnut omistaja säilyttää aineiston ja estää jatkon. Onnistuminen
 vapauttaa varauksen vasta tarkistus-/siivousketjun jälkeen; terminal-vaihe
 hankkii oman tuoreen sisältötodisteensa. Päivityksen erillinen update-varaus
-ja C-konteksti kytketään erikseen
-[omistavan suunnitelman mukaan](release-0.3.0-m1-preparation-plan.md#aktiivivalidoinnin-kutsujakohtainen-omistajuus).
+ja C-konteksti noudattavat
+[asennin- ja update-omistajan kutsujasopimusta](windows-installer-and-update-plan.md#cn-tarkistuskutsujien-valtuus).
 
 [C:n ennen migraatioita toimiva terminal](release-0.3.0-m1-preparation-plan.md#v2bc-cn-alkuperäisketjun-terminal)
 vaatii journalin täsmällisen alkuperäisketjun ja update/restore-operaatioparin
@@ -1189,18 +1378,18 @@ uuteen ajokoodiin.
 
 ### W3:n backup-import uutena työtilana
 
-**Tila:** toteutettu inerttinä foundationina ja todistettu synteettisellä
-nykyversion backupilla, PDF-artifactilla sekä yhteensopivan historiallisen
-migraatioprefixin forward-migraatiolla. Polkua ei ole vielä kytketty
-production-compositioniin tai käyttöliittymään.
+**Vaihehistoria:** W3:n foundation todennettiin ensin synteettisellä
+nykyversion backupilla, PDF-artifactilla ja historiallisella prefixillä.
+Nykyisen tuotantokytkennän omistaa workspace-suunnitelma ja hyväksyntätilan
+[M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
 
 W3 ei käytä aktiivisen profiilin restore-controlleria, preRestore-pistettä,
 activation journalia tai korvaavaa aktivointia. Backup inspector säilyttää
 `.ekybackup`-formaatin omistajuuden, mutta workspace import coordinator käyttää
 sitä kahdessa rajatussa vaiheessa:
 
-1. import-lease, ratkaisematon journal ja stale plaintext-karanteeni
-   ratkaistaan; tämän jälkeen ennen shutdownia container autentikoidaan ja
+1. import-lease hankitaan; ratkaisematon journal tai todistamaton
+   plaintext estää uuden työn. Ennen shutdownia container autentikoidaan ja
    suljettu manifesti tarkastetaan avaamatta SQLitea
 2. shutdownin ja runtime-absence-todisteen jälkeen container autentikoidaan
    uudelleen, puretaan private candidateen ja sen SHA-256, `profileId` sekä
@@ -1223,8 +1412,9 @@ lineagen varalta. Onnistunut W3-import julkaisee uuden `ready`-työtilan,
 mutta ei käynnistä sitä eikä korvaa aktiivista työtilaa.
 
 Abrupt termination voi jättää plaintext-payloadin ilman import-journalia.
-W3-recovery löytää ja poistaa vain allowlistatut partial- ja complete-
-payloadit heti leasen jälkeen. Tuntematon nimi tai tyyppi, symlink/reparse
+Tällöin W3-recovery säilyttää aineiston ja estää avauksen: journalin puute
+ei todista vanhaa omistajaa poistuneeksi. Vain hyväksytyn v2-operaation oma
+siivous noudattaa yllä olevaa C/R18-porttia. Tuntematon nimi tai tyyppi, symlink/reparse
 point, hardlink, ylikokoinen payload tai containment-ristiriita johtaa
 `recoveryRequired`-tilaan ja säilyttää epäselvän sisällön tutkimista varten.
 
@@ -1378,9 +1568,11 @@ kattaa tarkistuksen, stagingin, aktivoinnin, käynnistysvalidoinnin sekä
 palautuspisteiden luonnin ja automaattisen tarkistuksen samalla
 ensisyyhaulla. Rollbackin lisävirhe ja selvitystila pysyvät erillisinä.
 [Lukijoiden erillinen tapahtumapariteetti](release-0.3.0-m1-preparation-plan.md#v2o-palautustapahtumien-lukijoiden-sopimustarkistus)
-on kohdetodennettu API-clientin ja tukipaketin rajoilla nykyisen
-tapahtumakatalogin mukaan. Todellinen Electron-main, tarkistusprosessin
-omistajuus ja paketoitu palautus ovat edelleen avoinna.
+on V2o-vaiheen historiallista kohdenäyttöä API-clientin ja tukipaketin
+rajoilta tapahtumakatalogin mukaan. Tuossa vaiheessa avoinna olleet
+Electron-main, tarkistusprosessin omistajuus ja paketoitu palautus sisältyvät
+myöhempään [K:n hyväksyntään](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Uusi muutos tarvitsee edelleen oman vaikutusalueensa palautusnäytön.
 
 ## Testausportti
 
@@ -1425,8 +1617,11 @@ omistajuus ja paketoitu palautus ovat edelleen avoinna.
 - no-overwrite ja olemassa olevan eri backupin säilyminen
 - temp-finalisoinnin keskeytys jokaisessa vaiheessa
 - W3 plaintext-karanteenin partial/complete crash-jäämä ilman journalia,
-  useat sallitut jäämät, idempotentti cleanup ja tyhjyys ennen recovery-
-  tulosta
+  v1-journal tai todistamaton vanha kirjoittaja: automaattinen recovery
+  estyy ja aineisto säilyy; puuttuvaa omistajuutta ei arvata
+- todistetusti oman v2-import-operaation useat sallitut jäämät:
+  admission/build-, lease-, runtime-poissaolo- ja varauksen palautumisporttien
+  jälkeen idempotentti cleanup ja tyhjyys ennen recovery-tulosta
 - W3-karanteenin unknown entry, directory masquerade, symlink/reparse point,
   hardlink, ylikokoinen payload ja root-containment-ristiriita fail closed
   ilman ulkopuolisen tiedoston tai lähdebackupin muuttamista

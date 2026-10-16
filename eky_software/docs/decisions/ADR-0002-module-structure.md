@@ -92,7 +92,16 @@ Sama sääntö pyritään määrittelemään vain yhdessä paikassa.
 
 Jos dokumentaatio alkaa toistaa itseään, sitä tiivistetään ja vastuutetaan uudelleen.
 
-## Avoimet asiat
+## Päätöshetken avoimet asiat
+
+Seuraavat kysymykset kuuluivat alkuperäiseen päätösvaiheeseen. Monorepon
+perustan omistaa [ADR-0003](ADR-0003-technical-foundation.md), backendin
+HTTP-adapterin [ADR-0005](ADR-0005-backend-framework-selection.md) ja nykyisen
+moduulirakenteen sekä paikalliset ohjeet
+[uuden moduulin tarkistuslista](../architecture/new-module-implementation-checklist.md).
+Ne eivät ole tässä uudelleen avoimia valintoja. Domain-pakettien mahdollinen
+myöhempi jako vaatii edelleen todellisen tarpeen ja omistavan päätöksen.
+Tämä täsmennys ei muuta ADR:n hyväksyntätilaa.
 
 - lopullinen monorepo-työkalu
 - lopullinen backend-kansiorakenne

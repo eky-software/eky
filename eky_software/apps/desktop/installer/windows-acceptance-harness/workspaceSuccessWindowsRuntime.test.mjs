@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import test from 'node:test';
+import { publishWorkspaceMsiResourceSelection } from './workspaceMsiResourceSelection.mjs';
+import { executeWorkspaceCommandPhase } from './workspaceCommandPhase.mjs';
 
 import { WORKSPACE_SUCCESS_PROFILE_ERRORS, WORKSPACE_SUCCESS_PROOF_ERRORS,
   WORKSPACE_INSTALLATION_INSPECTION_ERRORS as inspectionErrors, workspaceSuccessErrorCode } from './workspaceSuccessContracts.mjs';
@@ -94,6 +96,7 @@ async function fixture(context, changes = {}) {
     ...(changes.faultScenario ? { scenario: WORKSPACE_FAULT_SCENARIO, faultScenario: changes.faultScenario } : {}),
     artifactDescriptorSha256: 'c'.repeat(64), fixtureRoot: resolve(root, 'artifact') },
   artifact, temporaryRoot: root, scenarioRoot: root, runFixture: { proofRoot: root, token },
+  ...(changes.resourceSelectionDirectory ? { resourceSelectionDirectory: changes.resourceSelectionDirectory } : {}),
   profileRuntime: { executablePath: resolve(root, 'electron.exe'), applicationPath: resolve(root, 'profile') },
   sessionProof: { async start(value) { calls.push({ sessionStarted: value }); return { nonce: 'd'.repeat(64), async finish(value) {
     calls.push({ sessionFinished: value });
@@ -149,7 +152,11 @@ async function fixture(context, changes = {}) {
         localPackagePresent: installed, ownedRegistryExists: true, ekyProcessCount: 0 };
       return changes.productObservation ? changes.productObservation(inspectionRole, result) : result;
     },
-    async inspectPayload() { return changes.payload ?? { identity: 'target' }; },
+    async inspectPayload({ onValidatedFiles }) {
+      if (changes.validatedFiles) onValidatedFiles?.(changes.validatedFiles);
+      return changes.payload ?? { identity: 'target' };
+    },
+    ...(changes.publishResourceSelection ? { publishResourceSelection: changes.publishResourceSelection } : {}),
     async inspectFootprint() { calls.push({ footprint: true });
       return { installRootExists: true, executableExists: true, shortcutExists: true }; },
     async verifyArtifact(value) { calls.push({ artifact: value }); },
@@ -930,6 +937,90 @@ test('payload comparison and byte verification keep both immutable bindings', as
     expectedBuildRevision: value.inputs.request.buildRevision,
     expectedDescriptorSha256: value.inputs.request.artifactDescriptorSha256 });
   assert.equal(value.calls.at(-1).fixture.temporaryRoot, value.root);
+});
+
+test('source resource selection follows matching inventory without awaiting optional publication', async context => {
+  let published;
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const value = await fixture(context, { payload: { identity: 'source' }, validatedFiles: ['Eky.exe'],
+    publishResourceSelection(input) { published = input; return gate; } });
+  try {
+    await value.runtime.validatePayload('source');
+    assert.equal(published.inventory.identity, 'source');
+    assert.deepEqual(published.files, ['Eky.exe']);
+    assert.equal(published.scenario, 'packagedWorkspaceSuccess');
+    assert.equal(published.request.runNonce, value.inputs.request.runNonce);
+    assert.equal(published.directory, value.root);
+    published = null;
+    await value.runtime.validatePayload('source');
+    assert.equal(published, null);
+    await assert.rejects(value.runtime.validatePayload('target'), { message: 'targetStateInvalid' });
+  } finally { release(); }
+});
+
+test('worker publication can target the owning supervisor directory instead of its separate scenario root', async context => {
+  let published;
+  const selected = resolve('owned-supervisor-phase');
+  const value = await fixture(context, { payload: { identity: 'source' }, validatedFiles: ['Eky.exe'],
+    resourceSelectionDirectory: selected, publishResourceSelection(input) { published = input; } });
+  await value.runtime.validatePayload('source');
+  assert.notEqual(selected, value.root);
+  assert.equal(published.directory, selected);
+});
+
+for (const commandKind of ['workspaceSuccess', 'workspaceFault']) {
+  test(`${commandKind} composes the resource selection directory from the actual outer phase`, async context => {
+    const value = await fixture(context);
+    const outer = resolve(value.root, 'outer', 'scenario');
+    const phase = { phase: 'scenario', phaseRoot: outer, commandKind,
+      scenarioRunNonce: 'a'.repeat(64), state: { runRoot: value.root, artifact: { artifactRoot: resolve(value.root, 'fixture'),
+        source: { manifest: { packageFilename: 'source.msi' } },
+        target: { manifest: { packageFilename: 'target.msi' } } } },
+      callerBinding: { artifactDescriptorSha256: 'b'.repeat(64), buildRevision: 'c'.repeat(40),
+        ...(commandKind === 'workspaceFault' ? { faultScenario: 'acceptanceInterruption' } : {}) } };
+    let selected;
+    const marker = {};
+    const code = await executeWorkspaceCommandPhase(phase, {
+      createRuntime(path, request, artifact, options) {
+        selected = options.resourceSelectionDirectory;
+        assert.notEqual(dirname(path), outer);
+        return marker;
+      },
+      async runScenario(args, options) {
+        assert.equal(await options.createRuntime(args[1], {}, phase.state.artifact), marker);
+        return 0;
+      },
+    });
+    assert.equal(code, 0);
+    assert.equal(selected, outer);
+    const source = await readFile(new URL('./workspaceWorkerRuntime.mjs', import.meta.url), 'utf8');
+    assert.match(source, /\.\.\.context, resourceSelectionDirectory, proofProtocol/);
+  });
+}
+
+test('resource selection does not run after mismatching source inventory', async context => {
+  let calls = 0;
+  const value = await fixture(context, { validatedFiles: ['Eky.exe'], publishResourceSelection() { calls++; } });
+  await assert.rejects(value.runtime.validatePayload('source'), { message: 'sourceStateInvalid' });
+  assert.equal(calls, 0);
+});
+
+test('resource selection has bounded relative paths and exclusive private publication', async () => {
+  const input = { directory: resolve('scenario'), root: resolve('installed'),
+    request: { runNonce: 'a'.repeat(64), artifactDescriptorSha256: 'b'.repeat(64) },
+    scenario: 'packagedWorkspaceSuccess', inventory: { identity: 'c'.repeat(64) }, files: ['Eky.exe', 'resources/app.asar'] };
+  const calls = [];
+  const publish = async (...args) => { calls.push(args); };
+  await publishWorkspaceMsiResourceSelection(input, publish);
+  assert.equal(calls.length, 1);
+  const [path, bytes, options] = calls[0];
+  assert.equal(basename(path), 'msi-resource-selection.private.json');
+  assert.deepEqual(options, { flag: 'wx' });
+  assert.deepEqual(JSON.parse(bytes).files, input.files);
+  for (const files of [[], ['../foreign'], ['x:stream'], ['a\\b'], ['a//b'], ['a', 'a'], ['a '.repeat(100)]])
+    await publishWorkspaceMsiResourceSelection({ ...input, files }, publish);
+  assert.equal(calls.length, 1);
 });
 
 test('process environment removes inherited Eky overrides and Node mode case-insensitively', () => {

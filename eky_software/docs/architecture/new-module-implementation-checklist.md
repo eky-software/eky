@@ -65,8 +65,12 @@ adapterit ja reitit. Moduulien välille annetaan vain kuluttajan tarvitsema kape
 lukusopimus. Repositorya, audit writeria, secret storea tai muuta vapaasti
 käytettävää riippuvuusrekisteriä ei palauteta.
 
-Nykytilan yksityiskohtainen arvio ja hyväksytyt poikkeukset ovat dokumentissa
-`docs/architecture/current-module-conformance-audit.md`.
+Nykyiset vastuut ja integraatiosopimukset ovat moduulien vastuudokumenteissa
+ja `docs/architecture/module-integration-matrix.md`:ssä. Hyväksynnän rajattu
+snapshot-lukupoikkeus on
+[moduulirajaohjeessa](module-boundaries.md#laskun-hyväksynnän-rajattu-snapshot-luku).
+`docs/architecture/current-module-conformance-audit.md` on päivätty
+heinäkuun auditointi myöhempine checkpointineen, ei nykyinen työjono.
 
 ## Backend Ja Data
 
@@ -202,6 +206,6 @@ log ja tukipaketti ovat eri vastuita.
 - `docs/architecture/dependency-policy.md`
 - `docs/architecture/security-principles.md`
 - `docs/architecture/codebase-cleanup-roadmap.md`
-- `docs/architecture/current-module-conformance-audit.md`
+- `docs/architecture/current-module-conformance-audit.md` (historiallinen tausta)
 - `docs/ai/testing-rules.md`
 - `docs/ai/review-checklist.md`

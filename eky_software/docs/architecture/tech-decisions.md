@@ -2,7 +2,15 @@
 
 Tämä dokumentti kokoaa Eky-projektin teknologiapäätökset ja niiden perustelut.
 
-Merkittävät päätökset voidaan myöhemmin siirtää tai täydentää ADR-dokumenteiksi.
+Tämä kooste ei korvaa hyväksyttyjä ADR-päätöksiä tai aiheen omistavaa
+sopimusta. Alkuperäiset perustelut ja tulevat suunnat erotetaan nykyisestä
+toteutusrajauksesta.
+
+Paikallisen backendin Hono-valinnan omistaa
+[ADR-0005](../decisions/ADR-0005-backend-framework-selection.md), SQLite- ja
+SQL-adapterin [ADR-0006](../decisions/ADR-0006-local-database-and-query-layer.md).
+Pilvibackendin ajotapa ja pilven query layer eivät ratkea näillä paikallisilla
+valinnoilla.
 
 ## Päätös: VS Code + Codex
 
@@ -109,7 +117,6 @@ Firebaseä käytetään alustavasti autentikointiin, hostingiin ja mahdollisiin 
 
 Perustelu:
 
-- aiempi osaaminen Firebase-ekosysteemistä
 - Firebase Auth helpottaa kirjautumista
 - Firebase Hosting sopii web-julkaisuihin
 - Firebase SQL / SQL Connect tai Cloud SQL voi toimia PostgreSQL-pilvikantana
@@ -123,7 +130,6 @@ Ensimmäinen backend rakennetaan modulaarisena monoliittina.
 Perustelu:
 
 - helpompi hallita kuin mikropalvelut
-- sopii 4 kuukauden harjoittelujaksoon
 - moduulirajat voidaan silti suunnitella selkeästi
 - osia voidaan irrottaa myöhemmin palveluiksi, jos tarve syntyy
 
@@ -135,7 +141,6 @@ Mobiilisovellus suunnitellaan myöhemmäksi vaiheeksi Kotlin + Jetpack Compose +
 
 Perustelu:
 
-- aiempi osaaminen Satumaa-projektista
 - Room sopii offline-first-käyttöön
 - natiivimobiili on vahva kenttätyön kirjauksiin
 
@@ -151,6 +156,20 @@ Perustelu:
 - englanninkielinen koodi on ammattimaisempi ja yhteensopivampi työkalujen kanssa
 - sanasto ylläpitää yhtenäisiä termejä
 
+## Nykyiset toteutuskohtaiset omistajat
+
+- Paikallisen lasku-PDF:n ja toimituksen nykyinen sopimus:
+  [invoice-delivery-plan](invoice-delivery-plan.md).
+- Sähköpostin nykyinen adapteri- ja salaisuusraja sekä myöhemmät providerit:
+  [email-delivery-and-secrets-plan](email-delivery-and-secrets-plan.md).
+- Operational-lokit, business audit ja sallitut lukuprojektiot:
+  [observability-and-audit-plan](observability-and-audit-plan.md) ja
+  [tapahtumakatalogi](r0-observability-event-catalog.md).
+
+Näitä ei käsitellä kokonaan avoimina teknologiavalintoina. Nykyinen
+toteutus ei silti hyväksy uusia providereita, riippuvuuksia tai
+tuotantokäyttöä ilman niiden omia portteja.
+
 ## Avoimet teknologiapäätökset
 
 - Cloud Run vai Cloud Functions backendille
@@ -158,6 +177,5 @@ Perustelu:
 - käytetäänkö Firebase SQL Connectia vai suoraa PostgreSQL-yhteyttä
 - local-cloud-synkronoinnin malli
 - lopullinen UI-komponenttiratkaisu
-- PDF-laskujen generointitapa
-- sähköposti- tai verkkolaskuratkaisu
-- lokitus- ja audit-ratkaisu
+- myöhemmät sähköpostiproviderit ja verkkolaskuratkaisu
+- pilven lokitus- ja audit-infrastruktuuri nykyisten yhteisten rajojen sisällä

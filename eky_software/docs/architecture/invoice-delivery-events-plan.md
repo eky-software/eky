@@ -4,9 +4,10 @@ Tämä dokumentti määrittää laskun toimitustapahtumien suunnittelulinjan ja
 kuvaa ensimmäisen dry-run-, DNA SMTP -testi- ja asiakaslähetyspolun
 toteutustilan.
 
-Dokumentti on suunnitelma ja toteutuksen rajaus. Ensimmäinen persistence-vaihe
-lisää delivery event -taulun, repository-portin, SQLite-adapterin ja
-application servicen tapahtuman kirjaamiseen.
+Dokumentti omistaa nykyisen toimitustapahtuman ja historian lukusopimuksen.
+Ensimmäisen persistence-vaiheen vaiheistus lopussa on historiaa. B:n revisio-,
+legacy-, native- ja palautuskokonaisuus on hyväksytty; tämä ei sulje uuden
+muutoksen katselmus-, palautus- tai PR/main-portteja.
 
 Dokumentti ei yksinään lisää backend-reittiä, API-clientiä, web-toimintoa,
 SMTP-provideria, sähköpostin lähetystä, tulostinintegraatiota, riippuvuutta tai
@@ -14,8 +15,10 @@ lockfile-muutosta.
 
 ## Tavoite
 
-B3-B5:n [omistava revisiosopimus](release-0.3.0-m1-preparation-plan.md#b-p2-toimitusversioiden-historia)
-tarkentaa alla olevan ensitoteutuksen current-PDF-mallia. Työpuussa on nyt
+[Hyväksynnän revisiosopimus](invoice-approval-numbering-plan.md#muuttumaton-sisältörevisio)
+omistaa sisällön, [atominen varaus](sqlite-invoice-delivery-event-persistence-plan.md#nykyinen-varaus-ja-loppukuittaus)
+completionin ja [PDF-sopimus](invoice-print-data-foundation-plan.md#revision-pdf-julkaisu-ja-täsmäluku)
+tavut. Nykyinen
 yritysrajattu `InvoiceDeliveryEventReader.findEventDocument`: tapahtuman
 tarkka muuttumaton dokumentti, alkuperäinen legacy-null tai ei tapahtumaa.
 Ei-null-viitteen puuttuva tai ristiriitainen kohde on eheysvirhe, ei lupa
@@ -26,7 +29,7 @@ todelliset tavut varmennetaan tallennusportissa.
 Historian lista ja GET `/invoices/:id/delivery-events/:eventId/pdf` vaativat
 `sendInvoices`-oikeuden. Reopened-laskun historia säilyy luettavana ilman
 yleisen approved-lukijan lähetyskelpoisuuden muuttamista. PDF-reitti palauttaa
-onnistumisessa vain tarkistetun PDF:n, puuttuvasta tapahtumasta 404:n,
+onnistumisessa vain tarkistetun PDF:n no-store-vastauksena, puuttuvasta tapahtumasta 404:n,
 alkuperäisestä legacy-nullista 409:n ja eheysvirheestä turvallisen 500:n.
 Odottamaton historian PDF:n repository-lukuvirhe palauttaa yleisen 500:n
 ilman Hono-oletuskäsittelijän raakaa stderr-tulostetta. Nykyinen HTTP-
@@ -42,27 +45,11 @@ Projektio ei sisällä sisäisiä revisio-/dokumenttiavaimia, tiivisteitä tai
 polkuja; luokan näyttäminen ei korvaa tavujen tarkistusta avaamisessa.
 Legacy-luku ei todista jälkikäteen vanhan SMTP-lähetyksen sisältöä.
 
-Vanha `approved`-lasku ilman SMTP-historiaa siirtyy ensimmäisessä nykyisen
-PDF:n tai toimituksen valmistelussa varmennettuun revisioon. Moduulin
-`InvoiceLegacyRevisionPromoter` tarkistaa samassa transaktiossa tarkan
-current-avaimen, tilan, snapshotin vastaavuuden, SMTP-/unresolved-estot ja
-olemassa olevien laskentasääntöjen mukaiset summat. Standardirivit
-tarkistetaan nykyisillä laskureilla; hyvityksen allokoituja senttejä ei
-hinnoitella uudelleen. Ristiriitaa ei korjata hiljaisesti. Uusi
-`validatedLegacySnapshot` ja current-osoitin julkaistaan atomisesti;
-vanhat revisiot, PDF:t, numerointi ja historia säilyvät muuttumattomina.
-
-Myös PDF:n muodostuksen kautta tapahtuva revisiosiirtymä vaatii backendin
-vahvistaman saman yrityksen `ActorContext`-kontekstin ja `sendInvoices`-
-oikeuden. Tavallisen jo varmennetun revision PDF-polun oikeusmalli ei muutu.
-Toimitus käyttää siirtymän palauttamaa täsmäavainta. Sähköpostin valmistelu
-laskee esitystiedot vasta tämän tarkistuksen jälkeen. Ristiriitainen sisältö
-palauttaa turvallisen 500:n ilman raakaa stderr-poikkeusta; nykyinen HTTP-
-operational-ketju välittää virheen Diagnosticsiin, tukipakettiin ja
-incident-yhteenvetoon. Kyseessä ei ole uusi hyväksyntä tai lähetys, joten
-siirtymä ei lisää näiden business-tapahtumia tai Activity-merkintää.
-Jo lähetetty legacy-lasku käyttää edelleen vain erikseen hyväksyttyä
-säilytetyn PDF:n uudelleenlähetyspolkua.
+Vanhan approved-laskun SMTP-historiaton siirtymä validatedLegacySnapshotiin
+kuuluu [hyväksyntäsopimukseen](invoice-approval-numbering-plan.md#reopen-ja-vanhan-sisällön-siirtymä).
+Sent-legacy-laskun rajattu uudelleenlähetys kuuluu
+[sähköpostisopimukseen](email-delivery-and-secrets-plan.md#säilytetyn-pdfn-täsmävaltuutus).
+Historian lukeminen ei tee kumpaakaan siirtymää.
 
 Clientin ja hyväksytyn laskun web-näkymän historia käyttää näitä luokkia
 ja avaa vain valitun tapahtuman PDF:n. Alkuperäiselle puuttuvalle viitteelle
@@ -70,7 +57,9 @@ ei näytetä avauspainiketta. Popupin/native-kutsun epäonnistuminen näyttää
 kiinteän virheen, eikä avaus generoi tai lähetä mitään. Electron käyttää
 tiukkaa `deliveryEvent`-kohdetta ja vain vastaavan GET-reitin sallintaa;
 nykyisen ja säilytetyn PDF:n kohteet säilyvät erillisinä. Laskun ja historian
-vanhat vastaukset eivät saa vaihtaa uuden valinnan sisältöä. SMTP-testin ja
+vanhat success/error/finally-vastaukset eivät saa vaihtaa uuden valinnan
+sisältöä tai odotustilaa. Onnistunut kirjoitus päivittää yhteisen listan,
+vaikka valinta vaihtui; vain vanha valintakohtainen vastaus ohitetaan. SMTP-testin ja
 dry-runin jälkeen historia päivitetään myös ilman laskun tilan muuttumista.
 Reopened-editori lukee identiteetin erillisestä yritysrajatusta GET
 `/invoice-drafts/:id/delivery-history` -projektiosta. Sovelluspalvelu vaatii
@@ -90,9 +79,8 @@ Business-auditia tai Activity-tapahtumaa ei synny pelkästä luvusta.
 Nykyinen HTTP-middleware kirjaa lisäksi yleisen 500-tapahtuman samalla
 korrelaatiolla; se ei ole toinen business-epäonnistuminen. Raakavirheitä,
 liiketoimintatunnisteita tai PDF-sisältöä ei liitetä diagnostiikkaan.
-Koko palautusketjun todennus on edelleen avoin.
 
-Työpuun B4-adapteri varaa SMTP-toimituksen atomisesti täsmärevisiolle ja
+Nykyinen adapteri varaa SMTP-toimituksen atomisesti täsmärevisiolle ja
 dokumentille tai erikseen säilytetylle legacy-kopiolle. `attempted` kirjataan
 saman transaktion sisällä tehdyn kelpoisuus-/unresolved-tarkistuksen jälkeen;
 yleinen save-portti ei salli SMTP-varauksen ohitusta. Loppukuittaus sitoutuu
@@ -111,10 +99,9 @@ muuta onnistunutta toimitusta epäonnistuneeksi: HTTP palauttaa erillisen
 committed-lukuvaiheen SMTP-virheestä. Client/UI kertoo onnistuneesta lähetyksestä
 ja ohjaa tarkistamaan historian lähettämättä uudelleen. Manual-/dry-run-kirjoittajat
 ovat revisiosidottuja ja cancel-kilvan backend-todistus on lisätty.
-Legacy-valmistelun, täsmäesikatselun ja native-vahvistuksen kytkentä on
-työpuussa, mutta oikean legacy-/native-kokonaispolun todistus, palautus ja
-koko B3-B5-hyväksyntä eivät ole valmiita. Alla oleva ensitoteutuksen
-tietomalli ja vanhat current-PDF-kutsut eivät korvaa omistavaa revisiosopimusta.
+Legacy-valmistelu, täsmäesikatselu ja native-vahvistus kuuluvat hyväksyttyyn
+B-kokonaisuuteen. Täsmällinen varaus- ja completion-protokolla luetaan
+[omistavasta persistence-sopimuksesta](sqlite-invoice-delivery-event-persistence-plan.md#nykyinen-varaus-ja-loppukuittaus).
 
 PDF:n tarkistuksen aikainen revision vaihtuminen palauttaa kummankin
 SMTP-moodin prepare/send-reitillä turvallisen 409:n ennen varausta ja
@@ -142,7 +129,7 @@ Invoicing omistaa:
 
 - toimitustapahtuman liiketoimintasäännöt
 - mitä laskua saa toimittaa
-- current PDF -vaatimuksen
+- valitun revision tai erikseen hyväksytyn säilytetyn PDF:n vaatimuksen
 - `sent`-tilaan siirtymisen säännöt
 - delivery event -kirjauksen laskutuksen näkökulmasta
 
@@ -150,7 +137,7 @@ Backend email infrastructure omistaa:
 
 - teknisen sähköpostin lähettämisen
 - dry-run/fake-providerin
-- SMTP/Gmail/Microsoft-providerit myöhemmin
+- nykyisen DNA SMTP -providerin ja erikseen hyväksyttävät tulevat providerit
 - providerin teknisen tuloksen palauttamisen Invoicingille
 
 Email infrastructure ei saa muuttaa laskun tilaa eikä kirjoittaa
@@ -158,7 +145,9 @@ Invoicingin delivery event -tauluihin omin päin.
 
 ## Delivery Event -Tietomalli
 
-Ensimmäinen persistence-vaihe käyttää taulua:
+Nykyinen taulu sisältää alkuperäisten kenttien lisäksi alla nimetyn
+revision/alkuperän ja moodin. Täydet SQL-ehdot omistaa
+[DDL-sopimus](sqlite-invoice-approval-persistence-plan.md#täydet-ddl-ehdot-ja-julkaisuportti):
 
 ```text
 invoice_delivery_events
@@ -178,13 +167,19 @@ invoice_delivery_events
 - technical_error_code
 - created_at
 - created_by
+- binding_kind
+- revision_id
+- send_mode
+- document_sha256
+- document_size_bytes
 ```
 
-Kenttien alustava merkitys:
+Kenttien merkitys:
 
 - `company_id` rajaa tapahtuman aina yritykseen
 - `invoice_id` viittaa hyväksyttyyn tai lähetettyyn laskuun
-- `document_id` viittaa current PDF -dokumenttiin
+- `document_id` viittaa toimituksen täsmädokumenttiin; vain migroidun
+  legacyOriginal-tapahtuman alkuperäinen null-viite saa puuttua
 - `delivery_method` voi olla esimerkiksi `email`, `manual`, `print` tai `other`
 - `provider` voi olla esimerkiksi `dryRun`, `smtp`, `gmail`, `microsoft` tai `manual`
 - `status` voi olla `prepared`, `attempted`, `succeeded`, `failed` tai
@@ -206,11 +201,9 @@ myöhemmin sisältää esimerkiksi SMTP/Gmail/Microsoft-providerin viitetunniste
 joten sitä ei validoida liian tiukalla identifier-säännöllä. Ensimmäinen sääntö:
 trim, enimmäispituus ja ei salaisuuksia tai raakaa provider-debugia.
 
-`document_id` voi MVP:ssä viitata current PDF -dokumenttiin. Kun oikea
-onnistunut sähköpostilähetys toteutetaan, pitää varmistaa, että lähetetyn
-laskun audit-polusta ei katoa tieto käytetystä dokumentista. Tämä voidaan
-ratkaista pitämällä sent-laskun PDF pysyvänä tai tallentamalla delivery eventiin
-riittävä dokumenttisnapshot, kuten tiedostonimi ja hash.
+Dokumenttisidos ei seuraa current-osoitinta. Tapahtuman yritys-/lasku-/document-
+variantti, revisio ja todellisten tavujen hash/koko pysyvät samana myös
+uudelleenhyväksynnän jälkeen. LegacyUnknown ei ole uuden tapahtuman moodi.
 
 ## Ei Salaisuuksia Delivery Eventeihin
 
@@ -240,7 +233,7 @@ vielä yritetä.
 Käyttäjän vahvistama dry-run send kirjataan delivery eventiksi providerilla
 `dryRun`. Se ei lähetä oikeaa sähköpostia eikä saa merkitä laskua `sent`-tilaan.
 
-B4:n työpuussa yleinen `saveDeliveryEvent` ja sitä käyttävä application-palvelu
+Nykyinen yleinen `saveDeliveryEvent` ja sitä käyttävä application-palvelu
 hyväksyvät vain revision PDF:ään sidotun dry-run-tuloksen `succeeded` tai
 `failed`. SMTP ja manual eivät voi kiertää omia atomisia porttejaan tämän
 kirjoittajan kautta. Current-revisio ja tarkka dokumentti/tiiviste/koko
@@ -291,8 +284,11 @@ subject
 body
 ```
 
-Liitettä ei valita frontendissä vapaasti. Backend varmistaa current PDF:n ja
-liittää vain hyväksytyn laskun voimassa olevan PDF-dokumentin.
+Liitettä ei valita frontendissä vapaasti. Backend valitsee revision tai
+hyväksytyn preservedLegacy-kohteen. Customer-prepare/send välittää lisäksi
+backendin esivalmistelun palauttaman tarkan documentTargetin
+[sähköpostisopimuksen](email-delivery-and-secrets-plan.md#säilytetyn-pdfn-täsmävaltuutus)
+mukaisesti; tunniste ei itsessään anna valtuutta.
 
 Frontend ei saa lähettää luotettuna:
 
@@ -310,7 +306,8 @@ Send- ja dry-run-send-käyttötapa:
 1. ottaa `companyId`-arvon luotetusta backend-kontekstista
 2. hakee laskun yritysrajatusti
 3. tarkistaa, että laskun saa toimittaa
-4. varmistaa tai muodostaa current PDF:n backendissä
+4. varmistaa saman täsmärevision PDF:n tai valtuutetun säilytetyn kopion;
+   olemassa olevan tiedoston puuttuminen ei salli regenerointia
 5. validoi vastaanottajan, cc:n, otsikon ja viestirungon
 6. kirjaa oikeassa SMTP-polussa delivery eventin `attempted`-tilaan ennen
    provider-kutsua
@@ -332,14 +329,10 @@ uudelleenlähetys jättää tilan ennalleen.
 
 ## Uudelleenlähetys
 
-**0.3.0:n hyväksytty jatkosuunnitelma, ei vielä toteutettu:**
-[B-P3](release-0.3.0-m1-preparation-plan.md#b-p3-turvallisen-uudelleenlähetyksen-vaihtoehto)
-rajaa vanhan jo lähetetyn laskun tarkistetun, säilyneen PDF:n erikseen
-vahvistettavan uuden lähetyksen ilman regenerointia. Uusi toimitus sidotaan
-tarkkoihin tavuihin; vanhalle toimitukselle ei keksitä puuttuvaa revisiota.
-[B3/B4:n portti- ja migraatiosopimus](release-0.3.0-m1-preparation-plan.md#b3b4-tietomalli-portit-ja-migraatiojärjestys)
-erottaa tämän variantin tavallisesta nykyisen revision lähetyksestä sekä
-historian lukemisesta. Alla on nykyinen current-PDF-käytäntö.
+[Säilytetyn PDF:n sopimus](email-delivery-and-secrets-plan.md#säilytetyn-pdfn-täsmävaltuutus)
+omistaa sent-legacy-laskun erillisen vahvistuksen, tuntemattoman SMTP:n
+selvityseston ja 60 sekunnin kertaluvan. Tavallinen revision resend ja
+historian luku pysyvät eri toimintoina.
 
 `sent`-laskun uudelleenlähetys:
 
@@ -347,7 +340,7 @@ historian lukemisesta. Alla on nykyinen current-PDF-käytäntö.
 - ei muuta laskunumeroa
 - ei muuta viitenumeroa
 - ei muuta laskun sisältöä
-- käyttää samaa current PDF:ää tai backendin varmistamaa current PDF:ää
+- käyttää täsmälleen valtuutettua revision PDF:ää tai säilytettyä legacy-kopiota
 - voi käyttää käyttäjän muokkaamaa vastaanottajaa, cc:tä, otsikkoa ja viestiä
 - vaatii käyttäjän vahvistuksen
 - kirjataan uutena delivery eventinä
@@ -365,7 +358,7 @@ manual-providerin `succeeded`-delivery event, laskun `sent`-siirtymä ja laskun
 audit-tapahtuma tallennetaan samassa SQLite-transaktiossa. Pelkkä PDF:n avaaminen
 tai tulostusikkunan näyttäminen ei tee tätä tilasiirtymää.
 
-B4:n työpuussa manual-finalizer saa täsmällisen revision/dokumentin kohteen.
+Nykyinen manual-finalizer saa täsmällisen revision/dokumentin kohteen.
 Se varmistaa kelpoisuuden, sidoksen ja ratkaisemattoman historian saman
 `IMMEDIATE`-transaktion sisällä. Tulos erottaa uuden `completed`-toimituksen
 idempotentista `alreadySent`-tuloksesta. Vain uusi tapahtuma jonotetaan
@@ -394,7 +387,7 @@ Tarkat nimet päätetään toteutusvaiheessa.
 
 ## Vaiheistus
 
-Suositeltu eteneminen:
+Historiallinen ensitoteutuksen eteneminen, ei nykyisen työn suorituslista:
 
 1. tämä delivery event -suunnitelma
 2. `invoice_delivery_events`-persistence ja repository-portti
@@ -449,3 +442,49 @@ Ei vielä toteuteta:
 - Gmail-provideria
 - Secret Manageria
 - oikean asiakasdatan tuotantovapautusta ennen release security gatea
+
+## Muutoksen säilytettävät hyväksyntäketjut
+
+Hyväksytty B ei ole lupa julkaista puolikasta revisio-/toimituskytkentää.
+Muutoksen vaikutusalueen näyttö säilyttää seuraavat ketjut:
+
+- SMTP-parseri: samat tavut yhdessä chunkissa, riveittäin, tavuittain ja
+  kaikissa kahden osan katkaisukohdissa; CR/LF-, koko-, EOF- ja deadline-
+  vastakontrollit. DATA-250:n jälkeen QUITin sync/async/sulkuvirhe ei muuta
+  tulosta. Kielteinen/kadonnut DATA-kuittaus ei muutu onnistumiseksi.
+- Hyvitys: standardin snapshot -> credit draft -> atominen hyväksyntä;
+  pienet rivit, molempiin suuntiin pyöristysero, net/gross, useat ALV-ryhmät,
+  alennus, viimeiset osahyvityssentit, safe-integer-/kapasiteetti-/tenant-rajat.
+- Revisio A -> smtpTest -> reopen -> muutos -> revisio B -> customer-send B:
+  sama lasku-ID/numero, A:n snapshot ja PDF-tavut säilyvät, vanha token
+  hylätään ja vain B:n lasku muuttuu sentiksi. Maksut/saatavat/listat/
+  hyvityskatot eivät monistu; historia on luettavissa reopened-tilassakin.
+- PDF-julkaisun ja reopen/reapprove/cancelin molemmat järjestykset, kaksi
+  kirjoittajaa, myöhäinen vanha cache-virhe uuden PDF:n julkaisun yli,
+  julkaisuvirhe ja vain oman varmasti julkaisemattoman ehdokkaan siivous.
+  Tarkista todelliset tavut/hash/koko, ei vain metadatan lupaus.
+- Legacy-resendin täsmätavut, katkennut/null-viite, hash-virhe, puuttuva
+  tiedosto ja tunnettu R02/R12-jälkitila; ei regenerointia, arvattua
+  provenanssia tai provider-kutsua estetyssä tapauksessa.
+- Prepare/send-vaihdos, native-peruutus, vanha/käytetty token, rinnakkaiset
+  customer/test/dry-run, finalizer-virhe lopullisen 250:n jälkeen,
+  completionin toisto ja restart ennen/jälkeen providerin.
+- Oikea HTTP/UI/native-composition ja hardened Windows
+  backup -> inspect -> restore -> restart -> compare useilla revisioilla,
+  legacy-artifactilla ja alkuperäisillä PDF-tavuilla. Katkaistu migraatio
+  ei jätä puolikasta historiaa; vanha sallittu null ei löysennä uutta sidosta.
+
+Ajokytkentä, todellinen tulos ja siivous todistetaan erikseen, synteettisellä
+datalla ja fake-providerilla ilman uusia prosessinhallinta- tai testialustoja.
+Ei pelkän UI-viestin perusteella pääteltyä pysyvää tulosta. Nykyinen
+[testauskäytäntö](../ai/testing-rules.md) omistaa ensivirheen, yhden hallitun
+uusinnan ja määräaikaiset poikkeukset; tunnettu sisältö-/tenant-/toimitusvirhe
+ei muutu hyväksytyksi uusinnan läpäisyllä.
+
+Uusi skeema tarvitsee pre-migration-palautuspisteen ja nykyisen profile-
+recoveryn, ei reverse-SQL:ää tai vanhaa binaaria uuden skeeman päälle.
+Palautuspiste ei peru jo lähtenyttä sähköpostia eikä vanha backup tiedä
+myöhempien lähetysten tilaa. Installer/rollback säilyttävät omat porttinsa.
+Muuttuva snapshot/catalog/restore-sopimus päivitetään myös moduuliohjeeseen,
+backup-inventaarioon ja integraatiomatriisiin. Julkaisematon temp-PDF ei ole
+auktoritatiivinen backup; toimitustodiste ei saa jäädä katalogin ulkopuolelle.

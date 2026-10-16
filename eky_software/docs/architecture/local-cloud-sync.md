@@ -109,11 +109,20 @@ Kun data synkronoidaan pilveen, cloud backend tarkistaa oikeudet ja liiketoimint
 
 AI-agentit, mobiilisovellukset ja paikallinen ohjelma eivät saa ohittaa samoja sääntöjä, joita web-käyttöliittymä noudattaa.
 
+## Paikallisen toteutuksen omistajat
+
+Paikallisen paketoinnin omistavat
+[ADR-0007](../decisions/ADR-0007-local-desktop-shell-and-session-bootstrap.md)
+ja [ADR-0010](../decisions/ADR-0010-windows-installer-and-update-orchestration.md).
+SQLite-tiedoston sijainnin ja avauspolitiikan omistavat
+[tietokantasopimus](local-database-implementation-plan.md) ja
+[workspace-suunnitelma](local-company-workspace-plan.md). Paikallisen
+varmuuskopioinnin omistaa
+[backup/restore-sopimus](local-backup-and-restore-plan.md).
+Nämä eivät enää ole synkronointisuunnitelman avoimia teknologiavalintoja.
+
 ## Avoimet kysymykset
 
-- Millä tekniikalla paikallinen ohjelma paketoidaan?
-- Missä paikallinen SQLite-tiedosto säilytetään?
-- Miten paikallinen varmuuskopiointi tehdään?
 - Miten local-cloud-synkronoinnin change log toteutetaan?
 - Miten konfliktit ratkaistaan?
 - Miten laskunumerointi toimii offline- ja cloud-tilassa?

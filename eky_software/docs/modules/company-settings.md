@@ -353,13 +353,24 @@ vanhan UI-vastauksen sivuuttaminen ei ole uusi business- tai diagnostics-event.
 Tilaluvun tekninen virhe kulkee nykyisen turvallisen HTTP-/operational-ketjun
 kautta ilman raakavirhettä, asetusten arvoja tai salaisuutta. Rajattu korjaus
 ei muuta tietomallia, backup-sisältöä tai tietokanta-adapterin transaktiota.
-[M1:n checkpoint](../architecture/release-0.3.0-m1-preparation-plan.md#oma-yritys-rajattu-tallennuskorjaus)
-omistaa toteutus- ja hyväksyntätilan;
+CS-1/CS-2 on hyväksytty PR #293:n ja mainin porteissa; tämä otsikko omistaa
+nykyisen sopimuksen. [M1:n historiallinen checkpoint](../architecture/release-0.3.0-m1-preparation-plan.md#oma-yritys-rajattu-tallennuskorjaus)
+säilyttää hyväksyntänäytön;
 [testimatriisi](../architecture/r0-e2e-test-matrix.md#company-settings) kattavuuden.
+
+## D-valmistelun avoin päätös
+
+CS-1/CS-2 ei sulje D-pakettia. Epäonnistuneen alkuluvun tallennusesto sekä
+salaisuusoperaation timeoutin ja myöhäisen sivuvaikutuksen käsittely ovat
+D:n erillisiä avoimia portteja. Nykyinen pending/terminal-audit ja todellisen
+secret-statuksen vaatimus säilyvät; timeoutista ei saa päätellä, ettei
+ulkoinen sivuvaikutus tapahtunut. Tämä dokumentointikorjaus ei valitse uutta
+aikarajaa, automaattista uusintaa, lukon vapautusta tai reconciliation-politiikkaa.
+Epäselvän lopputuloksen jatkosopimus tarvitsee omistajan päätöksen ennen toteutusta.
 
 ## UI-Ajatus
 
-Sivupalkkiin voidaan myöhemmin lisätä kohta:
+Nykyinen sivupalkin kohta:
 
 ```text
 Oma yritys
@@ -444,7 +455,9 @@ se ei päättele piilossa eri hintaa laskuriville.
 
 Company Settings sisältää yrityksen omaa liiketoimintadataa.
 
-Backend tarkistaa myöhemmin, että vain oikean yrityksen käyttäjä voi nähdä tai muokata näitä tietoja.
+Backend tarkistaa yrityksen vahvistetusta `ActorContext`-kontekstista ja
+muutoksen nimetystä permissionista nykyisen sopimuksen mukaan. Myöhempi
+usean käyttäjän jäsenyysmalli ei korvaa tai siirrä tätä nykyistä rajaa.
 
 Frontend voi piilottaa toimintoja, mutta backend tekee lopullisen käyttöoikeuspäätöksen.
 

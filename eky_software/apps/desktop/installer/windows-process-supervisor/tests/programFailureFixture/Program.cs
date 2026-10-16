@@ -14,6 +14,8 @@ if (
 }
 
 var mode = args[1];
+if (mode == "msiResourceChild") return MsiResourceContract.Child(args[3]);
+if (mode == "msiResourceContracts") return MsiResourceContract.Run(args[3]);
 if (mode == "msiWindowChild") return MsiWindowObservationContract.Child(args[3]);
 if (mode == "msiWindowContracts") return MsiWindowObservationContract.Run(args[3]);
 if (mode == "msiWindowFailureReceipt") return MsiWindowObservationContract.RunFailureReceipt(args[3]);

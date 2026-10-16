@@ -7,13 +7,16 @@ Always read the repository root `AGENTS.md` first.
 Also read:
 
 - `docs/modules/customers.md`
-- `docs/architecture/customer-vertical-slice-plan.md`
 - `docs/architecture/customer-ui-ux-plan.md`
 - `docs/architecture/customer-overview-plan.md`
 - `docs/architecture/module-boundaries.md`
 - `docs/architecture/dependency-policy.md`
 - `docs/architecture/security-principles.md`
 - `docs/product/glossary.md`
+
+The initial `docs/architecture/customer-vertical-slice-plan.md` is historical
+context. Use the module, current UI and overview contracts above for routine
+maintenance; read the initial recipe only when investigating its history.
 
 ## Responsibility
 

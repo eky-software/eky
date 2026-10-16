@@ -85,8 +85,9 @@ describe('runWorkspaceCandidateOperation', () => {
           .rejects.toThrow('WORKSPACE_CANDIDATE_OPERATION_FAILED');
 
         expect.soft(writable).not.toHaveBeenCalled();
-        expect.soft(await readFile(candidate.databaseFilePath)).toEqual(beforeDatabase);
-        expect(await readFile(journalPath)).toEqual(beforeJournal);
+        // Compare every byte without expanding large buffers into object properties.
+        expect.soft((await readFile(candidate.databaseFilePath)).equals(beforeDatabase)).toBe(true);
+        expect((await readFile(journalPath)).equals(beforeJournal)).toBe(true);
       });
 
       it.each(['directory', 'hardLink'] as const)('rejects a %s before opening SQLite', async kind => {

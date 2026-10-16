@@ -149,6 +149,25 @@ vanhentunut tai epäonnistunut valmistelu ei saa käyttää aiempaa buildia
 onnistumisena. Uusi testi lisätään matriisin lisäksi oikeaan ajovalintaan;
 pelkkä tiedoston olemassaolo tai `--list` ei ole testiläpäisy.
 
+T1:n regressiosuoja hylkää puuttuvan testitiedoston, package-kutsun tai
+workflow-kytkennän, väärän ryhmän ja vaaditun sarjallisuuden puutteen.
+Myös ajokytkennän suojatesti itse kuuluu kanoniseen komentoon. Tiedosto-
+inventaarion rinnalla todennetaan oikea testien löytyminen ja suoritus,
+ei vain komentotekstin esiintymistä. Desktopin tavallinen startup sekä
+installerin yksikkö- ja binary-handoff-prosessisopimukset säilyvät omissa
+kanonisissa sarjoissaan; native-valmistelun vaatimaa sarjallisuutta ei poisteta.
+
+T2:n security- ja fault-koonnit käyttävät täyttä Electron-valmistelua ja
+kolmea nykyistä projektia: `system-api`, `web-chromium` ja
+`electron-development`. Molemmat juuritason komennot, todellinen
+Playwright-konfiguraatio ja testien löytyminen kuuluvat
+regressiosuojaan. Puhdas, vanhentunut ja epäonnistunut build/staging ovat
+erilliset todistettavat tapaukset: valmisteluvirhe ei saa käynnistää vanhaa
+artifactia. Tavallinen stress-valinta ei sisällä Electron-stressiä;
+desktop-stress ja 30 minuutin soak pysyvät erillisinä. T1/T2-läpäisy ei
+korvaa T3:n todellista koko prosessipuun ja kuluttajien näyttöä eikä saman
+revision vaadittuja PR/main-portteja.
+
 Käytä [pikaohjeen kanonisia komentoja](../ai/e2e-test-authoring-guide.md).
 Valinnan tai valmistelun muutos päivittää myös sen regressiosuojan.
 Historialliset [T1](e2e-test-environment-history.md#t1-testien-ajokytkentä)- ja
@@ -184,7 +203,7 @@ Tämä ei muuta alla olevaa Windows-only-Electron-rajausta tai T3-omistajuutta.
 | Ympäristö | Nykyinen tuki |
 | --- | --- |
 | Windows | Paikalliset system-, web- ja Electron development -ajot sekä nykyiset Windows-CI-portit. |
-| Hyväksytty Linux-CI | System, Vite ja Chromium hyväksytyn CI-testisession sisällä. K:n erillinen `profileInspection`-hosti on kytketty samaan omistajaan; oikea Electron-/CI-näyttö on vielä avoin. Todelliset mekanismiesiehdot varmennetaan ennen työkuormaa. |
+| Hyväksytty Linux-CI | System, Vite ja Chromium hyväksytyn CI-testisession sisällä. K:n erillinen `profileInspection`-hosti ja sen oikea Linux-CI-tarkistuspolku on hyväksytty; tämä ei avaa yleisiä Electron-käyttäjäpolkuja Linuxiin. Todelliset mekanismiesiehdot varmennetaan ennen työkuormaa. |
 | Paikallinen Linux tai WSL | Ei hyväksyttyä paikallista E2E-prosessinomistajaa. Tämä ei estä muuta kehitystyötä WSL:ssä eikä tarkoita, että Windows-ajo olisi Linux-näyttöä. |
 | Muut Electron-alustat | Electron-E2E hylätään ennen resurssien varausta; tuki on nyt Windows-only. |
 
@@ -275,6 +294,10 @@ säilyttää bridge-omistajan jo ennen Playwright-yhteyden valmistumista.
 Playwrightin bridge-kahva ja todellisen Electron-työkuorman prosessikahva
 ovat eri asioita. Käynnistys käyttää hyväksyttyä rajattua Playwright-patchia;
 patchin versionvaihto tarvitsee sen sopimusten uudelleentodennuksen.
+Rajattu riippuvuuslupa, direct-EXE-valinta, childless-bridgen
+`windowsProcessOnly`-sopimus ja asennetun bundlen regressiot säilyvät
+[hyväksytyssä patch-sopimuksessa](../../apps/e2e/experiments/processOwnership/README.md#approved-t3b-e-dependency-correction).
+Sen päivätyt kokeet eivät ole uuden revision automaattinen hyväksyntä.
 
 ### Linux-CI
 
@@ -294,6 +317,52 @@ Omistavat [käynnistysketju](../../apps/e2e/experiments/processOwnership/linuxSe
 ja [siivousketju](../../apps/e2e/experiments/processOwnership/linuxServiceSession.mjs)
 ovat edelleen kyseisessä lähdepolussa; kansion nimi ei tee nykykuluttajien
 käyttämästä sopimuksesta valinnaista koetta.
+
+Nykyinen rajattu lupa koskee vain hyväksyttyä CI-istuntoa ja sen omaa
+satunnaisesti nimettyä unitia. Se ei salli hostin suojausmuutosta,
+työkalujen asennusta, root-Nodea tai yleistä manager-oikeutta työkuormalle.
+K:n erikseen nimetty sandbox-valmistelu noudattaa yllä kuvattua omaa
+rajaustaan eikä laajenna LM-istunnon valtuuksia.
+Työkuorma ei saa omistajan kontrollikanavaa. Sopimus ei lupaa suojaa
+vihamieliseltä saman UID:n prosessilta. Namespace on mount/PID-eristys,
+ei UID-mappauksen varapolku. Ennen GO:ta tarkistetaan kaikki neljä UID/GID-
+arvoa, tyhjät lisäryhmät ja kaikki viisi capability-joukkoa, myös bounding.
+
+Unitin kiinteät ehdot ovat `Type=exec`, `ExitType=main`,
+`KillMode=control-group`, `Restart=no`, `RemainAfterExit=no` ja
+`CollectMode=inactive`. Tavallisen init/wrapper-polun tarkka
+`failed`/`failed`, `Result=exit-code`, `CLD_EXITED/41` kelpaa vain saman
+`InvocationID`:n ja alkuhetken sidonnalla; sitä ei rekisteröidä yleiseksi
+systemd-onnistumiseksi. Tämä havainto ei yksin todista puun poistumista.
+Namespace-initin ja odottavan wrapperin valmistuminen ovat erillisiä
+ehtoja; `--kill-child` tai credential dropin yli oletettu `PDEATHSIG`
+ei korvaa niitä.
+
+Yksityisen AF_UNIX-kanavan juuri on `0700` ja socket `0600`. Kanoninen
+identiteetti sekä device/inode sidotaan molemmissa päissä; olemassa olevaa
+kohdetta ei poisteta tai käytetä uudelleen. Toinen yhteys, replay,
+odottamaton EOF ja ylimääräiset tavut hylkäävät istunnon. Saman GO-viestin
+perässä tulevat tavut hylätään ennen työkuorman käynnistämistä. Half-open-
+kuljetus säilyttää vastauksen havainnon prosessin sulkuun saakka. Alkuperäinen
+deadline tarkistetaan myös tiedostotarkistuksen ja connectin jälkeen ennen
+READYa; jonoon asetettu launch ei ole READY.
+
+Preflight tarkistaa kiinteät, suojatut kanoniset root-omisteiset polut ja
+cgroup-v2-tiedostojärjestelmän. Vain sudo saa nimetyn setuid-bitin.
+Metadata tai täsmällinen `sudo -n -l` -lupa ei yksin todista mekanismin
+toimintaa. Komennot valitaan suljetuista profiileista, eivät kutsujan
+vapaista argumenteista. Show-vastaus on enintään 8192 tavua, tiukasti
+dekoodattu ja hyväksytään vasta exit 0:n, closen, molempien EOFien ja
+tyhjän stderrin jälkeen alkuperäisessä määräajassa. Kyselyn cleanup
+omistaa vain oman lapsikahvansa, ei tarkasteltavaa unitia.
+
+Session-omistaja sarjallistaa komennot ja tyhjentää jonon ennen lopputulosta.
+Yksi stop vaatii tuoreen saman unit-identiteetin; toistettu stop jakaa
+olemassa olevan lupauksen eikä uusi aikarajaa. Epävarman luonnin jälkeen
+ei käynnistetä retryä, eikä myöhäinen siivous muuta aiempaa epäonnistumista
+onnistumiseksi. [LM:n päivätyt toteutusvaiheet](../../apps/e2e/experiments/processOwnership/README.md#t3c-lm-managed-ci-session)
+säilyvät todisteina; niiden vanha keskeneräisyys tai koebudjetti ei korvaa
+tätä nykyistä sopimusta.
 
 ### Chromiumin worker- ja testikohtainen eristys
 
@@ -479,6 +548,17 @@ sulkemista ennen uuden sukupolven käynnistämistä.
 Sovelluksen oman relaunchin jo sulkema kahva käsitellään olemassa olevalla
 suljetun kahvan siivouspolulla vasta havaitun `close`-tapahtuman jälkeen.
 Tapahtuma ei korvaa prosessisiivouksen tai portin vapautumisen tarkistusta.
+
+Electronin E2E-entrypoint käyttää tuotannon `createDesktopBeforeQuitHandler`-
+käsittelijää. Jokainen uusi quit-pyyntö estetään keskeneräisen sammutuksen
+aikana; erillistä `shutdownStarted`-ohitusta ei ylläpidetä. Elinkaari omistaa
+sulkuvirheen raportoinnin, ja viimeinen quit seuraa käsiteltyä lopputulosta.
+Testin Playwright-ohjattu relaunch, native-kutsumäärän tarkistus ja uuden
+runtime-sessionin todistus säilyvät. Relaunchin nykyinen 30 sekunnin odotus
+alkaa ennen operaatiocallbackia: se kattaa myös callbackin tiedosto- ja
+salasanavaiheet, eikä ole pelkän prosessin poistumisajan mittaus.
+`desktopBeforeQuit.test.ts` kattaa jaetun käsittelijän kilpailut ja molempien
+entrypointien kytkennän; todellinen Electron-käyttäjäpolku on erillinen näyttö.
 
 Epäonnistuneen yrityksen `electron-lifecycle`-liite sisältää vain version,
 yritysnumeron, rajatun vaiheluettelon ja erilliset API-, runtime-, portti- ja
@@ -903,7 +983,7 @@ Tuotantobackendiin ei lisätä mittausendpointia. Mittaus ei sisällä sessionia
 komentoriviä, ympäristömuuttujia tai prosessin muistisisältöä.
 
 Jokainen ajo kirjoittaa synteettisen JSON-raportin tiedostoon
-`apps/e2e/test-results/endurance-baseline.json` ja Playwrightin
+`apps/e2e/test-results/run-<uuid>/endurance-baseline.json` ja Playwrightin
 HTML-raporttiliitteeseen. `test-results` ei ole tuotantodata- tai
 versionhallintakansio. Ensimmäinen dokumentoitu vertailutaso on
 `e2e-endurance-baseline.md`-tiedostossa.
@@ -939,3 +1019,11 @@ vihreä osatulos yksin täytä `V2 acceptance` -porttia. Sen E2E-jobit ovat
 ajaa packaged smoken ja sen jälkeen kriittiset Electron development -testit
 yhdellä workerilla. Endurance-baselineja tai soakia ei ajeta automaattisesti
 CI:ssä.
+
+Windows Electron critical -työn kokonaisraja on 35 minuuttia. Se kattaa
+valmistelun, paketoinnin, packaged-todennuksen ja development-testit, eikä
+pidennä yksittäisen testin, käynnistyksen, palautuksen tai siivouksen rajaa.
+Salatun virheaineiston askeleen oma raja säilyy kolmessa minuutissa; muiden
+core-töiden budjetit eivät muutu. Kokonaisrajan muutos ei osoita aiempia
+yksittäisiä aikakatkaisuja korjatuiksi. Työn rajaus tarkistetaan nykyisessä
+`ciRunAcceptance.test.mjs`-sopimustestissä.

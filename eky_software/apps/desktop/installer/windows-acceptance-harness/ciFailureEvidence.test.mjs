@@ -23,6 +23,222 @@ const run = 'run-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const fingerprint = 'A'.repeat(40);
 const nativeId = 'a'.repeat(32);
 
+const contract = msiWindowEvidenceContract;
+const binding = { kind: 'github', runId: '123', attempt: '1', job: 'synthetic-job', sourceRevision: 'a'.repeat(40) };
+const sourcePath = sequence => `scenario/${contract.filenamePrefix}${String(sequence).padStart(3, '0')}.private.json`;
+const processIdentity = (patch = {}) => ({ processId: 42, startTimeLow: 1, startTimeHigh: 2,
+  membership: 'ownedJob', ...patch });
+const resources = (patch = {}) => ({ status: 'observed', phase: 'complete', selectionIdentity: 'b'.repeat(64), resourceCount: 1,
+  nativeCode: 0, endSessionCode: 0, processes: [processIdentity()], ...patch });
+function record(schemaVersion = contract.schemaVersion, patch = {}) {
+  return { schemaVersion, operation: contract.operation, binding: { ...binding }, runNonce: 'c'.repeat(64),
+    scenario: 'packagedWorkspaceSuccess', artifactDescriptorSha256: 'd'.repeat(64), sequence: 1, elapsedMs: 123,
+    clients: [{ processId: 1234, status: 'observed', windows: [{ role: 'message', text: 'SYNTHETIC WAIT', enabled: true }] }],
+    ...(schemaVersion === contract.schemaVersion ? { resources: resources() } : {}), ...patch };
+}
+const validate = value => validateMsiWindowEvidence(value, binding, sourcePath(value.sequence));
+const rejects = value => assert.throws(() => validate(value), { message: 'MSI_WINDOW_EVIDENCE_INVALID' });
+const rejectsResource = value => rejects(record(contract.schemaVersion, { resources: value }));
+
+test('MSI reader: schema 3 requires resources while legacy schemas 1 and 2 retain their exact roots and roles', () => {
+  assert.equal(contract.schemaVersion, 3);
+  for (const schemaVersion of [1, 2, 3]) {
+    const value = record(schemaVersion);
+    assert.equal(validate(value), value);
+    value.clients[0].windows[0].role = 'application';
+    if (schemaVersion === 1) rejects(value);
+    else assert.equal(validate(value), value);
+  }
+  const missing = record();
+  delete missing.resources;
+  rejects(missing);
+  rejectsResource(undefined);
+  for (const schemaVersion of [1, 2]) {
+    rejects(record(schemaVersion, { resources: null }));
+    rejects(record(schemaVersion, { resources: resources() }));
+  }
+  for (const schemaVersion of [0, 4, '3', null]) rejects(record(schemaVersion));
+});
+
+test('MSI reader: schema 3 accepts null, successful empty queries, all memberships and bounded partial results', () => {
+  for (const value of [null, resources(), resources({ processes: [] }),
+    resources({ resourceCount: contract.maximumResourceFiles, processes: ['ownedJob', 'outsideJob', 'unknown']
+      .map((membership, index) => processIdentity({ processId: index + 1, membership })) }),
+    resources({ status: 'limited', processes: [processIdentity()] }),
+    resources({ status: 'limited', nativeCode: 234, endSessionCode: null, processes: [processIdentity()] }),
+    ...['limited', 'unavailable', 'cancelled'].map(status => resources({ status, selectionIdentity: null,
+      resourceCount: 0, nativeCode: null, endSessionCode: null, processes: [] })),
+    ...['unavailable', 'cancelled'].map(status => resources({ status, nativeCode: 0xffffffff,
+      endSessionCode: 0xffffffff, processes: [] })),
+  ]) {
+    const sample = record(3, { resources: value });
+    assert.equal(validate(sample), sample);
+    assert.deepEqual(validate(JSON.parse(JSON.stringify(sample))), sample);
+  }
+});
+
+test('MSI reader: resource objects require every named field and reject arbitrary raw fields at every level', () => {
+  for (const value of [undefined, false, 0, '', [], 'raw']) rejectsResource(value);
+  for (const key of Object.keys(resources())) {
+    const value = resources();
+    delete value[key];
+    rejectsResource(value);
+  }
+  for (const key of Object.keys(processIdentity())) {
+    const value = processIdentity();
+    delete value[key];
+    rejectsResource(resources({ processes: [value] }));
+  }
+  for (const key of ['raw', 'imagePath', 'commandLine', 'serviceName', 'root', 'files', 'error', 'metadata']) {
+    rejects(record(3, { [key]: 'EXCLUDED SYNTHETIC RAW' }));
+    rejectsResource(resources({ [key]: 'EXCLUDED SYNTHETIC RAW' }));
+    rejectsResource(resources({ processes: [processIdentity({ [key]: 'EXCLUDED SYNTHETIC RAW' })] }));
+  }
+});
+
+test('MSI reader: resource status and selection identity are strictly typed and bounded', () => {
+  for (const status of [undefined, null, false, 0, {}, [], 'partial', 'Observed', ''])
+    rejectsResource(resources({ status }));
+  for (const phase of [undefined, null, false, 0, {}, [], 'raw', '']) rejectsResource(resources({ phase }));
+  for (const selectionIdentity of [undefined, false, 1, {}, [], ['b'.repeat(64)],
+    'b'.repeat(63), 'b'.repeat(65), 'g'.repeat(64), 'B'.repeat(64), 'b'.repeat(64) + '\n'])
+    rejectsResource(resources({ selectionIdentity }));
+});
+
+test('MSI reader: resource counts and native codes enforce inclusive integer bounds without coercion', () => {
+  for (const resourceCount of [-1, contract.maximumResourceFiles + 1, 0.5, '1', null, undefined, true, [], {}, NaN, Infinity])
+    rejectsResource(resources({ resourceCount }));
+  for (const key of ['nativeCode', 'endSessionCode']) {
+    for (const code of [-1, 0x100000000, 0.5, '0', undefined, true, [], {}, NaN, Infinity])
+      rejectsResource(resources({ status: 'limited', [key]: code, processes: [] }));
+    for (const code of [null, 0, 0xffffffff]) {
+      const sample = record(3, { resources: resources({ status: 'limited', [key]: code, processes: [] }) });
+      assert.equal(validate(sample), sample);
+    }
+  }
+});
+
+test('MSI reader: only observed requires complete native success and a nonempty resource selection', () => {
+  for (const patch of [{ nativeCode: null }, { nativeCode: 1 }, { endSessionCode: null },
+    { endSessionCode: 1 }, { selectionIdentity: null }, { resourceCount: 0 }]) rejectsResource(resources(patch));
+  for (const status of ['unavailable', 'cancelled']) rejectsResource(resources({ status }));
+  for (const status of ['observed', 'limited']) {
+    const value = record(3, { resources: resources({ status }) });
+    assert.equal(validate(value), value);
+  }
+});
+
+test('MSI reader: resource process lists enforce capacity even for partial results', () => {
+  for (const processes of [undefined, null, false, 1, {}, 'raw']) rejectsResource(resources({ processes }));
+  const processes = Array.from({ length: contract.maximumClients }, (_, index) => processIdentity({ processId: index + 1 }));
+  for (const status of ['observed', 'limited']) {
+    const value = record(3, { resources: resources({ status, processes }) });
+    assert.equal(validate(value), value);
+    rejectsResource(resources({ status, processes: [...processes, processIdentity({ processId: processes.length + 1 })] }));
+  }
+  for (const value of [null, false, 1, [], 'raw']) rejectsResource(resources({ processes: [value] }));
+});
+
+test('MSI reader: resource process identities enforce positive uint PIDs, uint FILETIME words and closed memberships', () => {
+  for (const key of ['processId', 'startTimeLow', 'startTimeHigh']) {
+    for (const value of [-1, 0x100000000, 0.5, '1', undefined, null, true, [], {}, NaN, Infinity])
+      rejectsResource(resources({ processes: [processIdentity({ [key]: value })] }));
+  }
+  rejectsResource(resources({ processes: [processIdentity({ processId: 0 })] }));
+  rejectsResource(resources({ processes: [processIdentity({ startTimeLow: 0, startTimeHigh: 0 })] }));
+  for (const membership of [undefined, null, false, 1, [], {}, 'owned', 'outside', 'main', 'backend', 'msi'])
+    rejectsResource(resources({ processes: [processIdentity({ membership })] }));
+  for (const patch of [{ processId: 1 }, { processId: 0xffffffff }, { startTimeLow: 0 },
+    { startTimeHigh: 0 }, { startTimeLow: 0xffffffff, startTimeHigh: 0xffffffff }]) {
+    const value = record(3, { resources: resources({ processes: [processIdentity(patch)] }) });
+    assert.equal(validate(value), value);
+  }
+});
+
+test('MSI reader: duplicate PID and creation FILETIME tuples are rejected regardless of membership', () => {
+  for (const status of ['observed', 'limited']) {
+    for (const membership of ['ownedJob', 'outsideJob', 'unknown'])
+      rejectsResource(resources({ status, processes: [processIdentity(), processIdentity({ membership })] }));
+    const value = record(3, { resources: resources({ status, processes: [processIdentity(),
+      processIdentity({ processId: 43 }), processIdentity({ startTimeLow: 3 }), processIdentity({ startTimeHigh: 4 })] }) });
+    assert.equal(validate(value), value);
+  }
+});
+
+test('MSI reader: all supported schemas retain exact root binding, nonce, scenario and filename checks', () => {
+  for (const schemaVersion of [1, 2, 3]) {
+    for (const patch of [{ operation: 'other' }, { extra: 'raw' }, { binding: null },
+      { binding: { ...binding, kind: 'local' } }, { binding: { ...binding, raw: 'EXCLUDED' } },
+      { runNonce: 'x'.repeat(64) }, { artifactDescriptorSha256: 'x'.repeat(64) },
+      { scenario: 'historicalLegacyUpgrade' }, { scenario: null }]) rejects(record(schemaVersion, patch));
+    for (const key of Object.keys(record(schemaVersion))) {
+      const value = record(schemaVersion);
+      delete value[key];
+      assert.throws(() => validateMsiWindowEvidence(value, binding, sourcePath(1)), { message: 'MSI_WINDOW_EVIDENCE_INVALID' });
+    }
+    for (const key of ['runId', 'attempt', 'job', 'sourceRevision']) {
+      rejects(record(schemaVersion, { binding: { ...binding, [key]: 'different' } }));
+      const value = record(schemaVersion);
+      delete value.binding[key];
+      rejects(value);
+    }
+    for (const key of ['runNonce', 'artifactDescriptorSha256']) {
+      for (const value of [null, false, 1, {}, '', 'a'.repeat(63), 'a'.repeat(65), 'A'.repeat(64)])
+        rejects(record(schemaVersion, { [key]: value }));
+    }
+    for (const path of [sourcePath(2), sourcePath(1) + '.pending', 'msi-window-0001.private.json', 'other.private.json'])
+      assert.throws(() => validateMsiWindowEvidence(record(schemaVersion), binding, path), { message: 'MSI_WINDOW_EVIDENCE_INVALID' });
+    const value = record(schemaVersion, { scenario: 'packagedWorkspaceFaultRollback' });
+    assert.equal(validate(value), value);
+  }
+  for (const value of [null, undefined, [], false, 1, 'raw'])
+    assert.throws(() => validateMsiWindowEvidence(value, binding, sourcePath(1)), { message: 'MSI_WINDOW_EVIDENCE_INVALID' });
+});
+
+test('MSI reader: all schemas retain client, window, individual text and aggregate limits', () => {
+  const window = (patch = {}) => ({ role: 'message', text: '', enabled: true, ...patch });
+  const client = (patch = {}) => ({ processId: 1, status: 'observed', windows: [], ...patch });
+  for (const schemaVersion of [1, 2, 3]) {
+    const withClients = clients => record(schemaVersion, { clients });
+    for (const clients of [null, {}, 'raw', Array.from({ length: contract.maximumClients + 1 }, () => client()),
+      [null], [client({ raw: 'EXCLUDED' })], [client({ processId: -1 })], [client({ processId: 0x100000000 })],
+      [client({ processId: '1' })], [client({ status: 'limited' })], [client({ windows: null })],
+      [client({ status: 'unavailable', windows: [window()] })],
+      [client({ windows: [null] })], [client({ windows: [window({ raw: 'EXCLUDED' })] })],
+      [client({ windows: [window({ role: 'edit' })] })], [client({ windows: [window({ text: 1 })] })],
+      [client({ windows: [window({ enabled: 'true' })] })],
+      [client({ windows: [window({ text: 'x'.repeat(contract.maximumTextCharacters + 1) })] })],
+      [client({ windows: Array.from({ length: contract.maximumWindows + 1 }, () => window()) })],
+    ]) rejects(withClients(clients));
+    const fullTextWindows = Array.from({ length: Math.floor(contract.maximumTotalCharacters / contract.maximumTextCharacters) },
+      () => window({ text: 'x'.repeat(contract.maximumTextCharacters) }));
+    const values = [withClients([]), withClients([client({ processId: 0, status: 'unavailable' })]),
+      withClients([client({ processId: 0xffffffff, status: 'partial' })]),
+      withClients(Array.from({ length: contract.maximumClients }, () => client())),
+      withClients([client({ windows: Array.from({ length: contract.maximumWindows }, () => window()) })]),
+      withClients([client({ windows: fullTextWindows })])];
+    for (const value of values) assert.equal(validate(value), value);
+    rejects(withClients([client({ windows: fullTextWindows }), client({ windows: [window({ text: 'x' })] })]));
+    rejects(withClients([client({ windows: Array.from({ length: contract.maximumWindows }, () => window()) }),
+      client({ windows: [window()] })]));
+  }
+});
+
+test('MSI reader: all schemas retain sample sequence and elapsed-time inclusive bounds', () => {
+  for (const schemaVersion of [1, 2, 3]) {
+    for (const sequence of [0, contract.maximumSamples + 1, 1.5, '1', null, undefined])
+      assert.throws(() => validateMsiWindowEvidence(record(schemaVersion, { sequence }), binding, sourcePath(1)),
+        { message: 'MSI_WINDOW_EVIDENCE_INVALID' });
+    for (const elapsedMs of [-1, 14_400_001, 0.5, '1', null, undefined]) rejects(record(schemaVersion, { elapsedMs }));
+    for (const sequence of [1, contract.maximumSamples]) {
+      for (const elapsedMs of [0, 14_400_000]) {
+        const value = record(schemaVersion, { sequence, elapsedMs });
+        assert.equal(validate(value), value);
+      }
+    }
+  }
+});
+
 for (const [family, execute] of [
   ['clean', executeCleanInstallUninstallLifecycle], ['upgrade', executeUpgradeRollbackLifecycle],
   ['legacy', executeLegacyUpgradeLifecycle], ['workspace', executeWorkspaceSuccessLifecycle],

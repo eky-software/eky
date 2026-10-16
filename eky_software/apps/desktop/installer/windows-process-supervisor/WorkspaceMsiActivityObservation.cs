@@ -27,6 +27,7 @@ internal sealed class WorkspaceMsiActivityObservation : IDisposable
     private readonly MsiWindowEvidence? windows;
     private long observedElapsed;
     private string? windowDelivery;
+    private readonly SupervisorRequest? request;
     internal Task? PendingRead => pending;
 
     internal WorkspaceMsiActivityObservation(string scenario, WindowsJob job, SafeEvidenceWriter evidence,
@@ -36,6 +37,7 @@ internal sealed class WorkspaceMsiActivityObservation : IDisposable
         this.job = job;
         this.evidence = evidence;
         this.capture = capture ?? Capture;
+        this.request = request;
         enabled = scenario is "packagedWorkspaceSuccess" or "packagedWorkspaceFaultRollback";
         windows = enabled && request is not null ? new MsiWindowEvidence(request, beforeWindowWrite) : null;
     }
@@ -148,11 +150,24 @@ internal sealed class WorkspaceMsiActivityObservation : IDisposable
                     default: unknown = true; break;
                 }
             }
-            if (windows is not null) windowDelivery = windows.Publish(windowSamples, observedElapsed, () => stopped);
+            var resources = CaptureResources(request, owner, windowSamples, () => !stopped &&
+                windowBudget.ElapsedMilliseconds < MsiWindowObservation.Contract.SampleTimeoutMilliseconds);
+            if (windows is not null) windowDelivery = windows.Publish(windowSamples, observedElapsed, () => stopped, resources);
             return Combine(owned, outside, unknown);
         }
         catch { return WorkspaceMsiMembership.Unknown; }
         finally { foreach (var client in clients) client.Dispose(); }
+    }
+
+    internal static MsiResourceSample? CaptureResources(SupervisorRequest? request, WindowsJob owner,
+        IReadOnlyList<MsiWindowSample> samples, Func<bool> admitted,
+        Func<SupervisorRequest, WindowsJob, Func<bool>, MsiResourceSample>? captureResources = null)
+    {
+        if (request is null || !admitted() || !samples.Any(sample => sample.Status != "unavailable" &&
+            sample.Windows.Any(text => text.Role == "message" && MsiWindowObservation.IsApplicationsInUseMessage(text.Text)))) return null;
+        try { return captureResources is null ? MsiResourceObservation.Capture(request, owner, admitted) :
+            captureResources(request, owner, admitted); }
+        catch { return new("unavailable", null, 0, null, null, []); }
     }
 
     internal static WorkspaceMsiMembership Combine(bool owned, bool outside, bool unknown) =>
