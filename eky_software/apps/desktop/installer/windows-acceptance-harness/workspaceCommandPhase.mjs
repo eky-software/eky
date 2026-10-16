@@ -22,6 +22,7 @@ import { verifyWorkspaceFaultSemanticPostcondition } from './workspaceFaultPostc
 import { verifyWorkspaceFaultSessionEvidence } from './workspaceFaultSessionEvidence.mjs';
 import { runWorkspaceSuccessWorker } from './runWorkspaceSuccessWorker.mjs';
 import { runWorkspaceFaultWorker } from './runWorkspaceFaultWorker.mjs';
+import { createWorkspaceSuccessWorkerRuntime, createWorkspaceFaultWorkerRuntime } from './workspaceWorkerRuntime.mjs';
 import { createNativeFailureEvidence } from './nativeFailureEvidence.mjs';
 import { createClosedDirectoryInventory, inventoriesMatch } from './closedDirectoryInventory.mjs';
 import { inspectLegacyInstallerFootprint } from './legacyUpgradeWindowsRuntime.mjs';
@@ -173,6 +174,9 @@ export async function executeWorkspaceCommandPhase(context, dependencies = {}) {
   } else if (phase === 'scenario') {
     return (dependencies.runScenario ?? (fault ? runWorkspaceFaultWorker : runWorkspaceSuccessWorker))(['--request', runContext(context).requestPath], {
       createFailureEvidence: request => createNativeFailureEvidence(import.meta.url, request),
+      createRuntime: (requestPath, request, artifact) =>
+        (dependencies.createRuntime ?? (fault ? createWorkspaceFaultWorkerRuntime : createWorkspaceSuccessWorkerRuntime))(
+          requestPath, request, artifact, { resourceSelectionDirectory: context.phaseRoot }),
     });
   } else if (phase === 'semantic') {
     await terminalPlan(context, async (runtime) => {

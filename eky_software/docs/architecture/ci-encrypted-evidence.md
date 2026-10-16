@@ -238,6 +238,9 @@ identiteettiin. Lukija vaatii täsmällisen asennusjuuren, rajatut suhteelliset
 polut, tavalliset tiedostot ja reparse-vapaat esi-isät. Valintatiedostoa tai
 sen polkuja ei kopioida virhepakettiin. Valinnan julkaisu ei ole skenaarion
 hyväksymisehto eikä sitä odoteta siivouksessa.
+Kiinteän callerin composition välittää supervisorin vaihehakemiston
+worker-runtimen julkaisuun erikseen: materialisoidun työskentelykansion ja
+native-supervisorin request/result-hakemiston ei oleteta olevan samat.
 
 Vain tiedostot rekisteröidään; prosesseja ja palveluja ei rekisteröidä eikä
 Restart Managerin sulkemis- tai käynnistystoimintoja käytetä. Näytteeseen

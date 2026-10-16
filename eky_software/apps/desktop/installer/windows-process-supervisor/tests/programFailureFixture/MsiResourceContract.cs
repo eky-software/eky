@@ -33,6 +33,9 @@ internal static class MsiResourceContract
         MsiResourceSample? observed = null;
         try
         {
+            var published = MsiResourceSelection.Read(request, () => true, payload);
+            Check("nodePublishedSelectionAdmitted", published is { Files.Length: 1 } && published.Files[0] == Path.Combine(payload, names[2]));
+            File.Delete(selectionPath);
             Check("missingSelectionUnavailable", MsiResourceSelection.Read(request, () => true, payload) is null);
             WriteSelection(names);
             Check("validSelectionAdmitted", MsiResourceSelection.Read(request, () => true, payload)?.Files.Length == 3);

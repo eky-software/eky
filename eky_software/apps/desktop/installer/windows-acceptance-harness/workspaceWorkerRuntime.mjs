@@ -27,6 +27,7 @@ export function createWorkspaceFaultWorkerRuntime(requestPath, request, artifact
 // lifecycle, checkpoint and session contracts differ; ownership stays outside.
 async function createWorkspaceWorkerRuntime(requestPath, request, artifact, {
   resolveElectronRuntime = resolveElectronDevelopmentRuntime,
+  resourceSelectionDirectory,
 } = {}) {
   const fault = Object.hasOwn(request, 'faultScenario');
   const context = workspaceSuccessRunContext(requestPath, request, artifact);
@@ -42,7 +43,7 @@ async function createWorkspaceWorkerRuntime(requestPath, request, artifact, {
     : createWorkspaceSuccessSessionProof(protocol);
   try {
     const runtime = await (fault ? createWorkspaceFaultWindowsRuntime : createWorkspaceSuccessWindowsRuntime)({
-      ...context, proofProtocol, profileProtocol, sessionProof,
+      ...context, resourceSelectionDirectory, proofProtocol, profileProtocol, sessionProof,
       profileRuntime: { executablePath: electron.executablePath, applicationPath: resolve(DESKTOP_ROOT, 'e2e-dist/w6b2-profile') },
       async captureCheckpoint(checkpoint) {
         if (checkpoint === (fault ? 'faultTerminal' : 'rejectedC')) {

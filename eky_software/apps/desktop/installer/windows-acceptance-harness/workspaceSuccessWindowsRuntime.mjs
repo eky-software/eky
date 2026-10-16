@@ -77,6 +77,7 @@ export function createWorkspaceFaultWindowsRuntime(input, dependencies) {
 
 async function createWorkspaceWindowsRuntime({
   request, artifact, runFixture, temporaryRoot, scenarioRoot, profileRuntime,
+  resourceSelectionDirectory = scenarioRoot,
   proofProtocol, profileProtocol, captureCheckpoint, sessionProof,
 }, {
   environment = process.env,
@@ -219,7 +220,7 @@ async function createWorkspaceWindowsRuntime({
       if (role === 'source' && !resourceSelectionAttempted) {
         resourceSelectionAttempted = true;
         // Optional publication is not awaited by scenario admission or cleanup.
-        void Promise.resolve().then(() => publishResourceSelection({ directory: scenarioRoot, root: installRoot,
+        void Promise.resolve().then(() => publishResourceSelection({ directory: resourceSelectionDirectory, root: installRoot,
           request, scenario: faultScenario === undefined ? 'packagedWorkspaceSuccess' : 'packagedWorkspaceFaultRollback',
           inventory, files })).catch(() => {});
       }

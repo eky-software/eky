@@ -6,6 +6,7 @@ import { basename, dirname, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import test from 'node:test';
 import { publishWorkspaceMsiResourceSelection } from './workspaceMsiResourceSelection.mjs';
+import { executeWorkspaceCommandPhase } from './workspaceCommandPhase.mjs';
 
 import { WORKSPACE_SUCCESS_PROFILE_ERRORS, WORKSPACE_SUCCESS_PROOF_ERRORS,
   WORKSPACE_INSTALLATION_INSPECTION_ERRORS as inspectionErrors, workspaceSuccessErrorCode } from './workspaceSuccessContracts.mjs';
@@ -95,6 +96,7 @@ async function fixture(context, changes = {}) {
     ...(changes.faultScenario ? { scenario: WORKSPACE_FAULT_SCENARIO, faultScenario: changes.faultScenario } : {}),
     artifactDescriptorSha256: 'c'.repeat(64), fixtureRoot: resolve(root, 'artifact') },
   artifact, temporaryRoot: root, scenarioRoot: root, runFixture: { proofRoot: root, token },
+  ...(changes.resourceSelectionDirectory ? { resourceSelectionDirectory: changes.resourceSelectionDirectory } : {}),
   profileRuntime: { executablePath: resolve(root, 'electron.exe'), applicationPath: resolve(root, 'profile') },
   sessionProof: { async start(value) { calls.push({ sessionStarted: value }); return { nonce: 'd'.repeat(64), async finish(value) {
     calls.push({ sessionFinished: value });
@@ -956,6 +958,46 @@ test('source resource selection follows matching inventory without awaiting opti
     await assert.rejects(value.runtime.validatePayload('target'), { message: 'targetStateInvalid' });
   } finally { release(); }
 });
+
+test('worker publication can target the owning supervisor directory instead of its separate scenario root', async context => {
+  let published;
+  const selected = resolve('owned-supervisor-phase');
+  const value = await fixture(context, { payload: { identity: 'source' }, validatedFiles: ['Eky.exe'],
+    resourceSelectionDirectory: selected, publishResourceSelection(input) { published = input; } });
+  await value.runtime.validatePayload('source');
+  assert.notEqual(selected, value.root);
+  assert.equal(published.directory, selected);
+});
+
+for (const commandKind of ['workspaceSuccess', 'workspaceFault']) {
+  test(`${commandKind} composes the resource selection directory from the actual outer phase`, async context => {
+    const value = await fixture(context);
+    const outer = resolve(value.root, 'outer', 'scenario');
+    const phase = { phase: 'scenario', phaseRoot: outer, commandKind,
+      scenarioRunNonce: 'a'.repeat(64), state: { runRoot: value.root, artifact: { artifactRoot: resolve(value.root, 'fixture'),
+        source: { manifest: { packageFilename: 'source.msi' } },
+        target: { manifest: { packageFilename: 'target.msi' } } } },
+      callerBinding: { artifactDescriptorSha256: 'b'.repeat(64), buildRevision: 'c'.repeat(40),
+        ...(commandKind === 'workspaceFault' ? { faultScenario: 'acceptanceInterruption' } : {}) } };
+    let selected;
+    const marker = {};
+    const code = await executeWorkspaceCommandPhase(phase, {
+      createRuntime(path, request, artifact, options) {
+        selected = options.resourceSelectionDirectory;
+        assert.notEqual(dirname(path), outer);
+        return marker;
+      },
+      async runScenario(args, options) {
+        assert.equal(await options.createRuntime(args[1], {}, phase.state.artifact), marker);
+        return 0;
+      },
+    });
+    assert.equal(code, 0);
+    assert.equal(selected, outer);
+    const source = await readFile(new URL('./workspaceWorkerRuntime.mjs', import.meta.url), 'utf8');
+    assert.match(source, /\.\.\.context, resourceSelectionDirectory, proofProtocol/);
+  });
+}
 
 test('resource selection does not run after mismatching source inventory', async context => {
   let calls = 0;

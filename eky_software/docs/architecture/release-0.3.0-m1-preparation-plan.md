@@ -17,37 +17,32 @@ ohjehuollon uusiminen. Muuten viimeistele tämä integraatiovaihe. Tämä teksti
 ei itsessään väitä portteja läpäistyiksi, avaa D:n toteutusta, muuta
 CI-politiikkaa tai hyväksy koko I:tä.
 
-**Viimeisin integraatiotilanne (16.10.2026):** PR #306:n head `ca129026`
-ja sen merge-checkout `0fa4cf27` tuottivat V2-ajon `38826570804` hylkäyksen;
-riippuvuustarkistus `38826570746` läpäisi. Supervisor- ja MSI-ikkunan
-sopimustestit läpäisivät. Avoimet esteet ovat workspace success/fault
--asennusodotukset sekä Electronin `DESK-WORKSPACE-IMPORT-SCHEMA-001`-testin
-ensiyrityksen relaunch-aikakatkaisu. Jälkimmäisen automaattinen uusinta
-läpäisi, mutta flaky-tulos ei ole hyväksyntä. MSI-odotuksen estäjän
-prosessi-identiteetti ei selviä säilyneestä aineistosta; pääprosessin
-poistuminen ei yksin todista koko sovelluspuun poistumista.
-Rajattu lähdekatselmus löysi E2E-entrypointin erillisen quit-ohituksen,
-joka voi päästää toisen pyynnön keskeneräisen sammutuksen läpi. Se korvataan
-[tuotannon yhteisellä sulkusuojalla](e2e-test-environment.md#prosessien-elinkaari).
-Kytkentäregressio läpäisee korjauksella ja hylkää vanhan toteutuksen.
-Kohdesarja 12/12, E2E-tyyppitarkistus, puhdas valmistelu sekä Electronin
-restart- ja schema-hylkäyspolut 3/3 läpäisivät ilman uusintoja. Rajattu
-riippumaton katselmus ei löytänyt korjattavaa. Tämä ei todista yön
-aikakatkaisun syytä tai täytä uuden revision PR/main-portteja.
-MSI-jatkon hyväksytty rajattu suunnittelu ja synteettinen koe todensivat
-tiedostoon rajatun prosessitunnisteen ja aloitusajan vertailun nykyiseen
-Job-omistajuuteen. Väärä identiteetti ja kesken tarkistuksen poistunut
-prosessi eivät kelpaa omistajuustodisteeksi. Koe ei tunnista aiemman
-asennusodotuksen estäjää. Omistaja hyväksyi nykyisen valinnaisen havainnon
-rajatun kytkennän, tiedostovalinnan varmennuksen, salatun toimituksen ja
-estymättömän siivouksen regressiot sekä niiden jälkeen yhden nimetyn
-Windows-todennuksen samoilla paketeilla. Kytkentä on toteutettu: inventaarion
-ja workspace-runtimen sarjat läpäisivät 205/205, keräin 59/59 sekä native-
-supervisorin sopimukset 168/168. Lopullisen sopimuksen kohdetarkistus ja
-oikea keräys–salaus–purku-koe läpäisivät. Riippumaton rajattu katselmus ei
-löytänyt estettä. Seuraava portti on nimetty Windows-todennus; tästä ei vielä
-seuraa uutta PR/main-hyväksyntää. Alla olevat aiemmat
-kierrokset säilyvät erillisenä näyttönä.
+**Viimeisin integraatiotilanne (16.10.2026):** PR #306:n aiempi head
+`ca129026` hylättiin V2-ajossa `38826570804`; riippuvuustarkistus läpäisi.
+Ensivirheet ja salattu aineisto säilyvät. MSI-odotusten estäjien identiteetti
+ja Electron-relaunchin alkuperäinen syy jäivät avoimiksi. Niitä ei nimetä
+korjatuiksi myöhempien läpäisyjen perusteella.
+
+E2E-entrypoint käyttää nyt [yhteistä sulkusuojaa](e2e-test-environment.md#prosessien-elinkaari)
+myös toisen quit-pyynnön aikana. Kytkentäregressio, kohdesarja 12/12,
+tyyppitarkistus ja kolme todellista Electron-käyttäjäpolkua läpäisivät.
+MSI:n nykyinen valinnainen kysely säilyttää sulkemispyynnön tiedostokäyttäjän
+PID-/aloitusaikasidonnan ja Job-jäsenyyden nykyisessä salatussa paketissa.
+Inventaarion ja runtimen sarjat 205/205, keräin 59/59 ja native-sopimukset
+168/168 läpäisivät; alkuperäisen havainnon todellinen salaus/purku varmennettiin.
+
+Nimetty [Windows-koe `38926951547`](https://github.com/eky-software/eky/actions/runs/38926951547)
+läpäisi revisiolla `c613eb50` samoilla aiemmilla asennuspaketeilla.
+Komento, pakollinen tulosverifier, siivous ja alkuperäisten pakettitavujen
+jälkivarmennus läpäisivät. Asennusodotus ei toistunut. Tämän jälkeen
+havaittu uuden valintatiedoston hakemistovälitys korjataan erikseen:
+valinta kulkee workerin oman hakemiston sijasta sitä omistavan supervisorin
+vaihehakemistoon. Molempien callerien kytkentä, Node-julkaisun todellinen
+native-luku sekä keräys ja salaus/purku kuuluvat regressioihin.
+Tämä korjaus tarvitsee nykyisen PR-revision omat normaalit portit; edellinen
+nimetty ajo ei ole sen CI-todistus. Rajatut riippumattomat katselmukset
+eivät löytäneet estettä. Seuraava työ on nykyisen PR:n integraatiotodennus,
+sitten uuden mainin omat portit. Alla olevat kierrokset ovat aiempaa näyttöä.
 
 **Ennen ohjehuoltoa hyväksytty lähtö:** `main`-revisio
 `c717406484df0471df23165a7c13db9b3f74c1b6`, K:n

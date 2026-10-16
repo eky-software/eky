@@ -9,6 +9,7 @@ import { gunzipSync } from 'node:zlib';
 import { createOpenPgpTestFixture } from '../../windows-acceptance-harness/openPgpTestFixture.mjs';
 import { collectJobFailureEvidence } from '../../windows-acceptance-harness/ciFailureEvidence.mjs';
 import { encryptArchive } from '../../windows-acceptance-harness/workspaceEncryptedEvidence.mjs';
+import { publishWorkspaceMsiResourceSelection } from '../../windows-acceptance-harness/workspaceMsiResourceSelection.mjs';
 import { captureContractOutput, CONTRACT_OUTPUT_LIMIT } from './supervisorContractPrivateEvidence.mjs';
 import {
   cleanupRunContext,
@@ -69,6 +70,8 @@ test('MSI resources: scoped identity, cancellation and real OpenPGP delivery', W
   context.requestPath = join(scenarioRoot, 'request.json');
   context.resultPath = join(scenarioRoot, 'result.json');
   await writeRequest(context, { ...createRequest(context, 'exitZero'), workingDirectory: scenarioRoot });
+  await publishWorkspaceMsiResourceSelection({ directory: scenarioRoot, root: join(scenarioRoot, 'payload'), request: context,
+    scenario: context.scenario, inventory: { identity: 'a'.repeat(64) }, files: ['unused.bin'] });
   const crypto = await createOpenPgpTestFixture(fileURLToPath(new URL('../../../../../', import.meta.url)));
   let completed = false;
   try {
@@ -88,6 +91,7 @@ test('MSI resources: scoped identity, cancellation and real OpenPGP delivery', W
     assert.doesNotMatch(result.standardOutput, /SYNTHETIC RM|foreign\.bin|startTimeLow|ownedJob/);
     const proof = JSON.parse(await readFile(join(scenarioRoot, 'msi-resource-contract.json'), 'utf8'));
     assert.equal(proof.junctionRejected, true);
+    assert.equal(proof.nodePublishedSelectionAdmitted, true);
     assert.equal(proof.cleanupDoesNotAwaitResourceRead, true);
     assert.equal(proof.bothTreesAbsent, true);
     assert.ok(Object.keys(proof).length >= 30);
