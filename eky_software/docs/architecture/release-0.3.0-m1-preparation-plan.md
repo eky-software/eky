@@ -7,119 +7,51 @@ Päivätyt tutkimusraportit eivät ole rinnakkainen toteutusjono.
 
 ## Jatka tästä
 
-**Nykyinen integraatiovaihe:** I-paketin aikaistettu ohjeverkon ylläpito ennen D:tä.
-Inventaario, sääntöjen siirtokartta, omistavien ohjeiden päivitys ja historian
-erottaminen ovat tämän revision dokumentointityötä. Sen hyväksyntä vaatii
-suunnistuskokeet, riippumattoman katselmuksen ja omat PR/main-portit.
-Varmenna ohjemuutoksen PR:n loppuyhteenveto ja täsmällisen main-revision ajot:
-jos ne on jo hyväksytty, seuraava työ on alla kuvattu D:n valmistelu, ei
-ohjehuollon uusiminen. Muuten viimeistele tämä integraatiovaihe. Tämä teksti
-ei itsessään väitä portteja läpäistyiksi, avaa D:n toteutusta, muuta
-CI-politiikkaa tai hyväksy koko I:tä.
+**Hyväksytty lähtö (16.10.2026):** ohjehuollon PR #306 on yhdistetty
+`main`-revisioon `b289a4344d10cd67127e3ccebcd421cebdbec5d2`.
+Hyväksytty PR-head on `e2f09d7b17494715c406a9ea0cf2cd02a9e06828`;
+mainin puu vastaa sitä ja testattua merge-checkoutia.
+[PR #306:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/306#issuecomment-6221858043)
+kirjaa näiden revisioiden hyväksyntänäytön ja rajatun etenemispäätöksen:
 
-**Viimeisin integraatiotilanne (16.10.2026):** PR #306:n aiempi head
-`ca129026` hylättiin V2-ajossa `38826570804`; riippuvuustarkistus läpäisi.
-Ensivirheet ja salattu aineisto säilyvät. MSI-odotusten estäjien identiteetti
-ja Electron-relaunchin alkuperäinen syy jäivät avoimiksi. Niitä ei nimetä
-korjatuiksi myöhempien läpäisyjen perusteella.
+| Tarkistus | Hyväksytty näyttö |
+| --- | --- |
+| PR:n V2 | [`38928755552`](https://github.com/eky-software/eky/actions/runs/38928755552), toinen suoritusyritys: 38 onnistunutta työtä ja 6 tarkoituksella valitsematonta diagnostiikkatyötä. |
+| PR:n riippuvuustarkistus | [`38928755417`](https://github.com/eky-software/eky/actions/runs/38928755417) läpäisi. |
+| Mainin V2 | [`38939885647`](https://github.com/eky-software/eky/actions/runs/38939885647), ensimmäinen suoritusyritys: 38 onnistunutta työtä ja samat 6 valitsematonta diagnostiikkatyötä. |
+| Mainin riippuvuustarkistus | [`38939885593`](https://github.com/eky-software/eky/actions/runs/38939885593) läpäisi täsmälliselle main-revisiolle. |
 
-E2E-entrypoint käyttää nyt [yhteistä sulkusuojaa](e2e-test-environment.md#prosessien-elinkaari)
-myös toisen quit-pyynnön aikana. Kytkentäregressio, kohdesarja 12/12,
-tyyppitarkistus ja kolme todellista Electron-käyttäjäpolkua läpäisivät.
-MSI:n nykyinen valinnainen kysely säilyttää sulkemispyynnön tiedostokäyttäjän
-PID-/aloitusaikasidonnan ja Job-jäsenyyden nykyisessä salatussa paketissa.
-Inventaarion ja runtimen sarjat 205/205, keräin 59/59 ja native-sopimukset
-168/168 läpäisivät; alkuperäisen havainnon todellinen salaus/purku varmennettiin.
+I-paketin aikaistettu ohjehuolto ja sen hyväksytyt integraatiokorjaukset ovat
+valmiit tässä rajauksessa. T/A/B/C/K säilyvät hyväksyttyinä; niitä tai
+ohjehuoltoa ei toteuteta uudelleen vanhojen keskeneräisyysmerkintöjen vuoksi.
+Tämä ei hyväksy koko I:tä, D:tä tai `0.3.0`-julkaisua. Uuden muutoksen
+omat hyväksyntäportit säilyvät.
 
-Nimetty [Windows-koe `38926951547`](https://github.com/eky-software/eky/actions/runs/38926951547)
-läpäisi revisiolla `c613eb50` samoilla aiemmilla asennuspaketeilla.
-Komento, pakollinen tulosverifier, siivous ja alkuperäisten pakettitavujen
-jälkivarmennus läpäisivät. Asennusodotus ei toistunut. Tämän jälkeen
-havaittu uuden valintatiedoston hakemistovälitys korjataan erikseen:
-valinta kulkee workerin oman hakemiston sijasta sitä omistavan supervisorin
-vaihehakemistoon. Molempien callerien kytkentä, Node-julkaisun todellinen
-native-luku sekä keräys ja salaus/purku kuuluvat regressioihin.
-Tämä korjaus tarvitsee nykyisen PR-revision omat normaalit portit; edellinen
-nimetty ajo ei ole sen CI-todistus. Rajatut riippumattomat katselmukset
-eivät löytäneet estettä. Seuraava työ on nykyisen PR:n integraatiotodennus,
-sitten uuden mainin omat portit. Alla olevat kierrokset ovat aiempaa näyttöä.
+**Avoimet havainnot säilyvät avoimina:**
 
-**Ennen ohjehuoltoa hyväksytty lähtö:** `main`-revisio
-`c717406484df0471df23165a7c13db9b3f74c1b6`, K:n
-[PR #305:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/305#issuecomment-6181885500).
-PR:n V2 `38652135291` ja riippuvuustarkistus `38652135087` sekä mainin omat
-V2 `38655740443` ja riippuvuustarkistus `38655740472` läpäisivät.
-T/A/B/C/K säilyvät hyväksyttyinä omissa rajauksissaan; niitä ei toteuteta
-uudelleen vanhan keskeneräisyysmerkinnän vuoksi. Lähdekoodin hyväksyntä ei
-ole uuden käyttäjäjulkaisun tai myöhemmän buildin hyväksyntä.
+- PR #306:n ensimmäisen V2-yrityksen legacy-toisto peruttiin 37 minuutin
+  työrajalla. Sen oma loki ja salattu virheaineisto eivät valmistuneet;
+  alkuperäinen syy ja siivoustila jäävät tuntemattomiksi. Yksi erikseen
+  hyväksytty rajattu uusinta läpäisi muuttumattomalla lähteellä ja samoilla
+  paketeilla. Se ei muuta alkuperäistä ajoa onnistuneeksi tai korjatuksi,
+  eikä anna lupaa uusiin uusintoihin.
+- Aiempien MSI-odotusten estäjäidentiteetti, Electron-relaunchin alkuperäinen
+  syy, MSI-luettelon alkuperäiset osittaiset havainnot ja
+  `blockedEvidence`-testin alkuperäinen ajoitussyy eivät selvinneet
+  myöhemmistä läpäisyistä tai havaintoketjun korjauksista.
+- Aiemman `recorded`/`timedOut`-hylkäyksen syy, alkuperäisen
+  käännösvirheen puuttuva tuloste ja API-katkoksen syy säilyvät niiden
+  omissa historiallisissa rajauksissa. Uusi `ETIMEDOUT`-luokitus ei
+  jälkikäteen todista vanhan käännöshylkäyksen syytä.
 
-**Erillinen uusi havainto:** saman main-revision ajastettu V2
-`38699658860` epäonnistui salatun virheaineiston oman sopimustestin kohdassa:
-odotettu `recorded`, havaittu `timedOut`. Riippuvuustarkistus `38700163858`
-läpäisi. Ensivirheen salattu aineisto säilyy. Syy ei ole varmistunut, eikä
-tässä ohjehuollossa ole tehty korjausta tai uusintaa. Aiempi K-hyväksyntä
-ja uusi hylkäys ovat eri havaintoja; nykytilaa ei kuvata yksiselitteisesti
-vihreäksi. Uuden revision omia hyväksyntäportteja ei ohiteta.
+[Aiemmat ohjehuollon ajokierrokset ja niiden rajaukset](release-0.3.0-integration-history.md#ohjehuollon-integraatiokierrokset-16102026)
+ovat integraatiohistoriaa, eivät rinnakkainen työjono. Ensivirheiden
+säilytysrajat, puuttuvan aineiston tiedot ja erilliset etenemispäätökset
+säilyvät; tämä dokumentointikorjaus ei hyväksy uusia poikkeuksia.
 
-**Ohjehuollon integraation rajattu korjaus:** PR #306:n ensimmäinen V2
-`38795201629` hylättiin; riippuvuustarkistus `38795201470` läpäisi.
-Hyväksytty jatko kattaa vain SQLite-testin täsmällisen tavuvertailun
-ylimääräisen työn poistamisen, MSI-havaintotestin ensimmäisen näytteen
-valmistelueristyksen ja Windows Electron -työn kokonaisrajan muutoksen
-25 minuutista 35 minuuttiin. Kohdetestit, tyyppitarkistus, CI-sopimustestit
-ja rajattu riippumaton katselmus läpäisivät; yksi normaali PR/CI-kierros
-on sittemmin ajettu revision `8689abc4` lähteestä. V2 `38804005214`
-hylättiin MSI-havaintotestin osittaisen tuloksen ja erillisen legacy-työn
-10 minuutin kokonaisrajan vuoksi; riippuvuustarkistus `38804005089` läpäisi.
-Electronin 3 paketoitua ja 47 development-testiä läpäisivät. MSI-työn yksi
-kohdennettu uusinta läpäisi 159/159 testiä samalla lähteellä; alkuperäinen
-osittainen havainto säilyy avoimena eikä uusinta yksin ole merge-hyväksyntä.
-Legacy-valmistelun loki osoitti skriptiä edeltävän pnpm-riippuvuusasennuksen
-ja verkkouusinnat. Sen rajattu korjaus poistaa automaattiasennuksen vain
-riippuvuuksia tarvitsemattomasta clean/upgrade-sopimusryhmästä
-[harnessin omistavan valmistelusopimuksen](windows-installer-acceptance-harness-v2.md#cleanupgrade-sopimustestien-valmistelu)
-mukaan. Revision `0530fd0f` kohdetodennus ja katselmus läpäisivät;
-V2-ajossa `38813654917` clean/upgrade-ryhmän molemmat 54 testin toistot
-läpäisivät. Riippuvuustarkistus `38813654836` läpäisi. MSI-luettelon
-osittainen havainto kuitenkin toistui supervisor- ja legacy-core-töissä.
-Erillinen upgrade-paketin valmistelu epäonnistui `source/backendValidation`-
-vaiheessa; salatussa paketissa ei ollut alkuperäistä syytä. Nämä estävät
-integraation eivätkä kumoa läpäisseitä yksittäisiä tarkistuksia.
-MSI-testin yksityinen virhekuitti säilyttää nyt myös luettelokutsun vaiheen
-ja mahdollisen alkuperäisen virhekoodin. Revision `ef8fd904` rajattu hosted-
-ajo `38817393696` läpäisi molemmat 159 testin sopimussarjat, myös todellisen
-salaus- ja purkuketjun. Alkuperäinen katkos ei toistunut: tämä todentaa
-virhekuittimuutoksen, ei vanhan luettelokatkoksen juurisyytä tai koko PR:ää.
-V2 `38813654917` valmistui hylättynä; upgrade-valmistelun erillinen syy
-ja normaalit uuden PR/main-revision portit ovat seuraavat integraatioesteet.
-Käännöstyökalun todellinen `ETIMEDOUT` säilytetään nyt paketin nykyisessä
-turvallisessa syykoodissa; rajatut regressiot todentavat myös oikean
-aikakatkaisun ja keskeneräisen lokin lukueston. Tämä ei jälkikäteen nimeä
-aiemman käännöksen syytä. Revision `22636451` normaalissa V2-ajossa
-`38819009832` MSI-testin kylmä näyte hylättiin nyt täsmällisesti luokkaan
-`listProcessId/budgetExpired`. Omistajan hyväksymä testin valmistelumuutos
-säilyttää kylmän näytteen ja sallii vain tämän tarkasti rajatun osittaisen
-valmistelutuloksen; sen jälkeen vaaditaan yksi täydellinen luetteloluku.
-Muut virheet hylätään edelleen. [Tarkka sopimus ja virhetodisteet](ci-encrypted-evidence.md#asentimen-rajattu-ikkunahavainto)
-erottavat tämän valmistellun providerin kokeen tuotannon valinnaisesta
-havainnosta. Jatko on kohdetodennus, katselmus ja uuden jäädytetyn revision
-normaalit PR/main-portit. Legacy-työn aikarajaa ei nosteta.
-Sovelluskoodi ja yksittäiset testirajat säilyvät. Valmistelun hyväksyntärajan
-muutos ei ole yleinen lupa hyväksyä osittaista havaintoa. Alkuperäiset
-epäonnistumiset säilyvät eikä kohdeläpäisy todista niiden kaikkia syitä.
-
-Revision `9d1d3ddb` normaalissa V2-ajossa `38822790613` MSI-ikkunatestit
-läpäisivät. Legacy-core1:n erillinen `blockedEvidence`-testi aikakatkaisi
-Node-ohjaimessa, vaikka sidottu native-tulos osoitti deadlinen ja
-prosessipuun siivouksen valmistuneen. Nykyinen rajattu testikorjaus käyttää
-[terminal-ensin-järjestystä](windows-installer-acceptance-harness-v2.md#valmistuneen-komennon-lokitulostetesti)
-ja merkkien kertalukua. Pakollinen puuttuva näyttö pysyy hylkäyksenä;
-alkuperäinen ajo ja sen avoin ajoitussyy säilyvät. Integraatio vaatii yhä
-uuden täsmällisen revision omat PR/main-portit.
-
-**Seuraava toiminnallinen työ:** D:n rajattu valmistelu, kun tämän ohjehuollon
-portit täyttyvät. Oma yritys -lukuvirheen käsittely, salaisuusoperaation
-aikakatkaisun ja myöhäisen valmistumisen sovitus sekä vastaus/audit suhteessa
+**Seuraava toiminnallinen työ:** D:n rajattu valmistelu. Oma yritys -lukuvirheen
+käsittely, salaisuusoperaation aikakatkaisun ja myöhäisen valmistumisen
+sovitus sekä vastaus/audit suhteessa
 todelliseen tallennukseen tarkennetaan ennen toteutusta. CS-1/CS-2 ovat jo
 hyväksyttyjä; ne eivät yksin sulje D:tä. Avoin ratkaisu ei saa muuttua
 ohjetiivistyksen kautta hyväksytyksi liiketoimintasäännöksi.
