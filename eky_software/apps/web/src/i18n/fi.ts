@@ -449,6 +449,7 @@ export const uiText = {
     customerNotFound: 'Asiakaskorttia ei löytynyt.',
   },
   companySettings: {
+    reload: 'Lataa tiedot uudelleen',
     address: 'Osoite',
     bankDetails: 'Pankkitiedot',
     bankDetailsHelp:

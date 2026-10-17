@@ -7,19 +7,22 @@ Päivätyt tutkimusraportit eivät ole rinnakkainen toteutusjono.
 
 ## Jatka tästä
 
-**Hyväksytty lähtö (16.10.2026):** ohjehuollon PR #306 on yhdistetty
-`main`-revisioon `b289a4344d10cd67127e3ccebcd421cebdbec5d2`.
-Hyväksytty PR-head on `e2f09d7b17494715c406a9ea0cf2cd02a9e06828`;
-mainin puu vastaa sitä ja testattua merge-checkoutia.
-[PR #306:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/306#issuecomment-6221858043)
-kirjaa näiden revisioiden hyväksyntänäytön ja rajatun etenemispäätöksen:
+**Hyväksytty lähtö (17.10.2026):** jatkamissivun dokumentointikorjauksen
+PR #307 on yhdistetty `main`-revisioon
+`da93cf53b7c608f825629d60404dce4c839dcb6a`.
+Hyväksytty PR-head on `5d60ef37d7dba60ccc4b45df0365f613966af803`;
+mainin puu vastaa sitä.
+[PR #307:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/307#issuecomment-6232246050)
+kirjaa erilliset PR- ja main-portit. Ohjehuollon edellinen
+[PR #306:n hyväksyntänäyttö](release-0.3.0-integration-history.md#ohjehuollon-hyväksyntä-16102026)
+säilyy historiassa.
 
 | Tarkistus | Hyväksytty näyttö |
 | --- | --- |
-| PR:n V2 | [`38928755552`](https://github.com/eky-software/eky/actions/runs/38928755552), toinen suoritusyritys: 38 onnistunutta työtä ja 6 tarkoituksella valitsematonta diagnostiikkatyötä. |
-| PR:n riippuvuustarkistus | [`38928755417`](https://github.com/eky-software/eky/actions/runs/38928755417) läpäisi. |
-| Mainin V2 | [`38939885647`](https://github.com/eky-software/eky/actions/runs/38939885647), ensimmäinen suoritusyritys: 38 onnistunutta työtä ja samat 6 valitsematonta diagnostiikkatyötä. |
-| Mainin riippuvuustarkistus | [`38939885593`](https://github.com/eky-software/eky/actions/runs/38939885593) läpäisi täsmälliselle main-revisiolle. |
+| PR:n V2 | [`39017851936`](https://github.com/eky-software/eky/actions/runs/39017851936), ensimmäinen suoritusyritys: dokumenttimuutoksen 7 valittua työtä läpäisivät, 7 jäi tarkoituksella valitsematta. |
+| PR:n riippuvuustarkistus | [`39017851905`](https://github.com/eky-software/eky/actions/runs/39017851905) läpäisi. |
+| Mainin V2 | [`39018548493`](https://github.com/eky-software/eky/actions/runs/39018548493), ensimmäinen suoritusyritys: 38 onnistunutta työtä ja 6 tarkoituksella valitsematonta diagnostiikkatyötä. |
+| Mainin riippuvuustarkistus | [`39018585375`](https://github.com/eky-software/eky/actions/runs/39018585375) läpäisi täsmälliselle main-revisiolle; käynnistettiin erikseen dokumenttimuutoksen polkurajauksen vuoksi. |
 
 I-paketin aikaistettu ohjehuolto ja sen hyväksytyt integraatiokorjaukset ovat
 valmiit tässä rajauksessa. T/A/B/C/K säilyvät hyväksyttyinä; niitä tai
@@ -29,6 +32,11 @@ omat hyväksyntäportit säilyvät.
 
 **Avoimet havainnot säilyvät avoimina:**
 
+- Edeltävän `b289a434`-mainin ajastettu V2 `39012174529` hylkäsi
+  MSI-ikkunahavainnon stderr-sopimustestin ja yhden flakyksi jääneen
+  web-testin. Ensivirheet ja saatavilla oleva salattu aineisto säilyvät.
+  PR #307:n dokumenttimuutos tai uuden mainin läpäisy ei korjannut näiden
+  alkuperäistä syytä. Tämä oli eri ajo kuin PR #306:n hyväksytyt push-portit.
 - PR #306:n ensimmäisen V2-yrityksen legacy-toisto peruttiin 37 minuutin
   työrajalla. Sen oma loki ja salattu virheaineisto eivät valmistuneet;
   alkuperäinen syy ja siivoustila jäävät tuntemattomiksi. Yksi erikseen
@@ -49,12 +57,16 @@ ovat integraatiohistoriaa, eivät rinnakkainen työjono. Ensivirheiden
 säilytysrajat, puuttuvan aineiston tiedot ja erilliset etenemispäätökset
 säilyvät; tämä dokumentointikorjaus ei hyväksy uusia poikkeuksia.
 
-**Seuraava toiminnallinen työ:** D:n rajattu valmistelu. Oma yritys -lukuvirheen
-käsittely, salaisuusoperaation aikakatkaisun ja myöhäisen valmistumisen
-sovitus sekä vastaus/audit suhteessa
-todelliseen tallennukseen tarkennetaan ennen toteutusta. CS-1/CS-2 ovat jo
-hyväksyttyjä; ne eivät yksin sulje D:tä. Avoin ratkaisu ei saa muuttua
-ohjetiivistyksen kautta hyväksytyksi liiketoimintasäännöksi.
+**Nykyinen työ:** [D:n toteutus](release-0.3.0-company-settings-plan.md).
+Omistaja hyväksyi 17.10.2026 D-P1:n epäselvän salaisuusoperaation
+jatkotavan ja D-P2/A:n nykyisen saatavuussäännön säilyttämisen.
+D1:n alkuluvun tallennusesto on toteutettu ja sen rajattu web-,
+selainkomponentti- sekä aiemman tallennus-/audit-polun todennus läpäisi.
+[D1:n kohdenäyttö](release-0.3.0-company-settings-plan.md#d1n-kohdenäyttö-ja-seuraava-työ)
+erottaa tämän koko D:n hyväksynnästä. Seuraava työ on D2:n sopimus- ja
+kilpailukoe; tuotantokytkentää edeltää aktiivisen työn päättymisen todennus.
+CS-1/CS-2 säilyvät hyväksyttyinä; D:n kokonais- ja PR/main-hyväksyntä
+ovat vielä avoinna.
 
 Jatkaja varmentaa ensin työpuun, haaran, HEAD:n ja etätilan. Vanhaa SHA:ta
 ei oleteta uudeksi lähtötilaksi. Tehtävän valtuus, voimassa olevat poikkeukset

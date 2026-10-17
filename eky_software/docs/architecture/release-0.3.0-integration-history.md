@@ -5,6 +5,26 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## Ohjehuollon hyväksyntä 16.10.2026
+
+Seuraava hyväksyntänäyttö oli M1:n jatkamiskohdassa ennen PR #307:n
+dokumentointikorjauksen hyväksyntää. Nykyinen lähtö luetaan M1:stä;
+PR #306:n poikkeuspäätökset ja avoimet havainnot eivät muutu tässä siirrossa.
+
+**Hyväksytty lähtö (16.10.2026):** ohjehuollon PR #306 on yhdistetty
+`main`-revisioon `b289a4344d10cd67127e3ccebcd421cebdbec5d2`.
+Hyväksytty PR-head on `e2f09d7b17494715c406a9ea0cf2cd02a9e06828`;
+mainin puu vastaa sitä ja testattua merge-checkoutia.
+[PR #306:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/306#issuecomment-6221858043)
+kirjaa näiden revisioiden hyväksyntänäytön ja rajatun etenemispäätöksen:
+
+| Tarkistus | Hyväksytty näyttö |
+| --- | --- |
+| PR:n V2 | [`38928755552`](https://github.com/eky-software/eky/actions/runs/38928755552), toinen suoritusyritys: 38 onnistunutta työtä ja 6 tarkoituksella valitsematonta diagnostiikkatyötä. |
+| PR:n riippuvuustarkistus | [`38928755417`](https://github.com/eky-software/eky/actions/runs/38928755417) läpäisi. |
+| Mainin V2 | [`38939885647`](https://github.com/eky-software/eky/actions/runs/38939885647), ensimmäinen suoritusyritys: 38 onnistunutta työtä ja samat 6 valitsematonta diagnostiikkatyötä. |
+| Mainin riippuvuustarkistus | [`38939885593`](https://github.com/eky-software/eky/actions/runs/38939885593) läpäisi täsmälliselle main-revisiolle. |
+
 ## Ohjehuollon integraatiokierrokset 16.10.2026
 
 Seuraava integraatiota edeltävä tilanne siirrettiin muuttamattomana
