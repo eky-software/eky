@@ -173,7 +173,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_WORKSPACE_ARTIFACT_VERIFICATION_FAILED' }
       - name: Upload exact workspace artifact
         id: upload
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ${{ env.EKY_V2_WORKSPACE_ARTIFACT_NAME }}
           path: ${{ runner.temp }}/eky-v2-workspace-artifact
@@ -347,7 +347,7 @@ jobs:
       - name: Upload encrypted workspace evidence only
         if: ${{ always() && steps.evidence_seal.outcome == 'success' && steps.evidence_seal.outputs.sealed == 'true' }}
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: eky-encrypted-workspace-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.repetition }}
           path: ${{ steps.evidence_seal.outputs.ciphertext }}
