@@ -2,7 +2,7 @@
 
 ## Tila ja rajaus
 
-**17.10.2026: D-P1 ja D-P2/A hyväksytty; D1:n kohdetodennus läpäisi.**
+**21.10.2026: D1:n ja D2:n rajattu kohdenäyttö läpäisi; D:n integraatio on avoin.**
 Lähtö on PR #307:n hyväksytty main
 `da93cf53b7c608f825629d60404dce4c839dcb6a`.
 [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
@@ -40,10 +40,121 @@ vuoksi. Ensivirheet säilyvät erillään hyväksytystä kohdeajosta.
 Rajattu riippumaton D1-tuotantokoodin ja päätösten katselmus ei löytänyt
 korjattavaa. Tämä ei korvaa koko D:n loppukatselmusta tai PR/main-portteja.
 
-**20.10.2026: myös rajattu viiden sekunnin sulkukoe läpäisi; kokonaisketjun todennus on avoin.**
-Salaisuuksien brokeria, tallennusta tai auditin lopputulosta ei ole vielä
-muutettu tässä checkpointissa. [Sulkusopimus ja kokeen rajat](#sulkusopimusehdotus-kokeen-jälkeen)
-on hyväksytty toteutuksen pohjaksi; kokonaisketjun hyväksyntä on avoin.
+**21.10.2026: D2:n rajattu toteutus ja kohdetodennus ovat työpuussa; integraatio on avoin.**
+Brokerin sukupolvi-/request-sidonta, jonon sulku, viiden sekunnin drain ja
+epävarmuuden pysyvyys on kytketty nykyisiin omistajiin. Backend erottaa
+vaikutuksettoman virheen epävarmasta lopputuloksesta ja tarkistaa myös
+auditin valmistumisen ennen hyväksyttyä sulkua. Käyttöliittymä ei tulkitse
+epäselvää salasanatilaa puuttuvaksi eikä käytä vanhan session vastauksia.
+Nykyinen salaus, tiedostokirjoittaja ja formaatti ovat muuttumattomat.
+
+Desktopin viimeisimmät 456 kohdetestiä, backendin 151 kohdetestiä, API-clientin 21 ja
+webin 13 kohdetestiä sekä työtilan tyypitys läpäisivät erillisinä ajoina.
+Niitä ei lasketa yhdeksi integraation testimääräksi. Katselmuksen perusteella
+epävarmuus sulkee uuden backend-operaation heti, ja epäonnistunut valmistelu
+yrittää silti kaikki omistetut sulut. Näihin liittyvät vanhat testiodotukset
+päivitettiin uuden sulkusopimuksen mukaisiksi. Adapterin regressiossa
+korjattiin testin `resetModules`-rajan ylittänyt virheluokan identiteetti;
+tuotannon tyyppitarkistusta ei löysennetty. Ensivirheet säilyvät.
+
+Alkuperäisen broker-poikkeuksen koe sekä OpenPGP-salaus/purku läpäisivät.
+Purettu aineisto säilytti alkuperäisen viestin, pinon, syyketjun ja testin
+sidonnan, mutta julkinen tuloste ei sisältänyt niitä. Todistus koskee
+nimettyä synteettistä muunnosrajaa, ei kaikkia adaptereita, pakkokatkaisua
+tai hosted-CI:n latausta. Koe on kytketty nykyisiin CI-testikomentoihin.
+
+Viisi selainkomponentin sessio-/virhe-/kaksoislähetyskoetta läpäisi.
+Nykyinen Electronin salaisuuden tallennus/restart/poisto ja yritysvaihdon
+A -> B -> A -polku läpäisivät: B:n alkuperäinen salaisuuden puuttuminen,
+sen oma tallennus sekä molempien salattujen tiedostojen muuttumattomuus
+palattaessa A:han tarkistettiin. Tämä ei yksin todista vaihdon aikaista
+viivästettyä tiedostotyötä tai SMTP-tunnussidontaa. Työtilan tyypitys ja
+CI-testikomentojen viisi kytkentätarkistusta läpäisivät myös uusien
+selainkokeiden jälkeen.
+
+Rajattu lisäregressio toisti vanhentuneen noEffect-ilmoitustilan. Uuden
+nimenomaisen onnistuneen tallennuksen/poiston jälkeen sitä ei enää näytetä;
+tilaluku tai epävarma tulos ei kuittaa sitä. Ensivirhe säilyy, eikä vanhan
+operaation audit-historiaa muuteta. Sulun ensimmäinen turvallinen syykoodi
+säilyy nyt nykyisen `desktop.shutdownFailed`-tapahtuman
+`secretBrokerDrain`-vaiheessa erillään sulun yleisestä lopputuloksesta.
+Kymmenen havaintoregressiota ja todellisen compositionin JSONL-kirjoitus
+läpäisivät osana desktopin kohdeajoa. Havainto ei odota loggerin valmistumista
+eikä sen oma virhe muuta sulkutulosta. Erillinen kirjoittajarajalta alkava
+system-koe läpäisi: oikea JSONL ja incident-kirjoitus, backendin HTTP-luku,
+API-clientin tarkka parseri, tukipaketin tarkka lukija, gzip ja checksumit
+säilyttävät ensisyyt erillään yleisvirheestä myös backendin restartin yli.
+Incident-projektio pysyy minimoituna. Tämä ei ole uusi Electron-UI- tai
+paketoitu palautustodiste eikä korvaa compositionin havaitsijatestiä.
+Viimeisen kytkennän jälkeen työtilan tyypitys sekä seitsemän alkuperäisen
+virheen, salaus/purun ja CI-ajokytkennän tarkistusta läpäisivät.
+Rajattu riippumaton havaintokytkennän katselmus ei löytänyt korjattavaa.
+Tämä ei korvaa koko D:n loppukatselmusta tai alla olevia avoimia portteja.
+
+D3:n säilyvän saatavuussopimuksen 68 kohdetestiä kolmessa tiedostossa
+läpäisivät. Mukana ovat GETin odottava ja epäonnistunut tilaluku,
+vaikutukseton virhe vastaan epävarman sukupolven esto, PUTin precommit-luku,
+auditrollback sekä tallennettu vastaus ilman uutta tilakyselyä. Uudet
+testit eivät muuttaneet tuotantokoodia tai hyväksyttyä saatavuusrajaa.
+
+Backendin oikean HTTP-sulun ja auditin seitsemän regressiota läpäisivät:
+socketin poistuminen ei todista kesken olevan store- tai audit-työn loppua.
+Katselmuksessa tiukennettiin testin havaittavaa sulkujärjestystä ja kaikkien
+omistettujen resurssien siivousyritystä, ei sovelluksen aikarajoja.
+Erillinen composition-regressio vahvisti raakaa SMTP-readeria koskeneen
+pääsyeston ohituksen. Reader on nyt saman epävarmuus- ja sulkutilan takana;
+ennen omistettua valmistumista havaittu epävarmuus hylkää lukutuloksen,
+mutta jo valmistunutta lukua tai alkanutta SMTP-transportia ei peruta.
+Riippumaton katselmus löysi vielä sisäisen ja omistavan jatkon välisen
+ajoitusaukon. Hallittu regressio toisti sen, ja viimeiseen omistavaan
+jatkoon sijoitettu tarkistus sulki aukon. Tämän kytkennän 73 kohdetestiä
+viidessä tiedostossa läpäisivät,
+mukaan lukien vaikutukseton virhe ja normaali onnistuminen. SMTP-transport
+on synteettinen; tämä ei vielä todista koko Electron-prosessiketjua.
+Ensimmäinen kokeen asetusten puute ja sen jälkeen todennettu readerin
+ohitus säilyvät erillisinä havaintoina. Rajattu jatkokatselmus ei löytänyt
+korjattavaa. Backendin koko testikomento läpäisi tämän jälkeen: Vitest-osassa
+3 827 testiä läpäisi ja viisi oli ohitettu. Ohituksia ei lasketa onnistumisiksi,
+eikä tulos ole koko D:n integraatiohyväksyntä.
+
+Oikean Electronin kaksi kuittausviivekoetta läpäisivät: set/remove-kutsu
+kulki rendererin HTTP-protokollan, utility-backendin, yksityisen brokerin
+ja nykyisen salatun tiedoston kautta. Sulku esti uuden kirjoituksen,
+odotti pidätetyn kuittauksen sekä auditin ja päättyi ennen varmennettua
+restartia. Lopputila ja yksi onnistunut audit-tapahtuma säilyivät.
+Koe viivästää kuittausta, ei levy-I/O:ta. Katselmuksessa korjattu testin
+siivous kirjaa vapautusvirheen erikseen peittämättä ensivirhettä;
+rajattu jatkokatselmus ei löytänyt korjattavaa. Tämä ei korvaa paketoidun
+sovelluksen palautus- tai PR/main-portteja.
+
+Kahden erillisen backendin ja synteettisen SMTP-kuljetuksen lisäregressiot
+läpäisivät: A:n myöhäinen lukutulos ei ohita sen epävarmuusestoa eikä
+muuta B:n puuttuvaa tai omaa salasanaa ja lähettäjätunnusta. B:n toiminta
+säilyy erillisenä. Tämä täydentää oikean Electronin A -> B -> A -näyttöä;
+se ei ole tuotannon samanaikainen kahden yrityksen runtime tai oikea SMTP-ajo.
+Testin alkuperäinen kahden fixture-kytkennän rekursiovirhe korjattiin
+testissä; sitä ei tulkita sovelluksen yrityseristyksen viaksi.
+
+Loppukatselmus havaitsi audit-incomplete-tilan pääsyeston puuttuvan
+broker-clientin jo jonottamilta pyynnöiltä. Rajattu regressio toisti
+puuttuvan kytkennän. Nykyiseen clientiin lisätty synkroninen pääsyn sulku
+säilyttää aktiivisen työn kuittauksen mutta hylkää aloittamattoman työn.
+Oikean compositionin, SQLite-auditin ja clientin yhteinen system-koe
+läpäisi: ensimmäinen operaatio jäi pendingiksi, aktiivinen valmistui
+succeeded-tilaan ja jonotettu jäi vaikutuksettomaksi failed-tulokseksi.
+Korjauksen backendin 66 ja desktopin 133 kohdetestiä, työtilan tyypitys
+sekä kaksi oikean Electronin sulku-/restart-koetta läpäisivät. Riippumaton
+jatkokatselmus ei löytänyt korjattavaa. Testin epäonnistuneen tai
+keskeneräisen aineiston säilytys tarkistettiin lisäksi kuudella
+MessageChannel-tapauksella; tämä ei laajenna salatun keräyksen tietorajaa.
+
+**Seuraava näyttö:** puhtaasta commitista rakennetun saman paketin palautus
+ja nykyiset PR/main-portit. Laajat paikalliset sarjat läpäisivät ennen
+viimeistä jonokorjausta; korjauksen jälkeinen kohdenäyttö ei korvaa uuden
+revision normaaleja kokonaisportteja. Loppukatselmuksen havaittu puute on
+korjattu ja katselmoitu, mutta koko D:n integraatiohyväksyntä on avoin.
+[Sulkusopimus](#sulkusopimusehdotus-kokeen-jälkeen) säilyy hyväksynnän ehtona;
+työpuun kytkentä tai kohdetestit eivät yksin hyväksy D2:ta tai koko D:tä.
 
 ### D2:n lähtötilan näyttö ja avoin sulkupäätös
 
@@ -119,7 +230,9 @@ Viivästetty A:n työ/vastaus ei saa vapauttaa B:n lähetyksiä tai muuttaa
 B:n tilaa. SMTP:n tunnus- ja yrityssidonta todennetaan synteettisellä
 kuljetuksella ilman oikeaa sähköpostilähetystä; salasanoja ei raportoida.
 Nykyinen toisen yrityksen salaisuuden luku-/poistotesti ei yksin todista
-tätä koko vaihto- ja viiveketjua. Näyttö on vielä avoin.
+tätä koko vaihto- ja viiveketjua. Sivun alun kohdenäyttö erottaa nyt oikean
+Electron-vaihdon, IPC-kuittausviiveen ja synteettisen SMTP-eristyksen;
+koko D:n integraatiohyväksyntä on edelleen avoin.
 
 Sulkusopimuksen kutsujatarkistus kuuluu nykyisiin omistajiin:
 
@@ -132,9 +245,9 @@ Sulkusopimuksen kutsujatarkistus kuuluu nykyisiin omistajiin:
 | `backendRunner.ts`: normaali, update- ja restore-shutdown | Salaisuusoperaation ja auditin lopputulos tarkistetaan ennen clientin sulkemista tai SQLite-resurssien vapautusta. Clientin close tyhjentää odottavien joukon, joten sen jälkeinen tyhjyys ei ole todiste. |
 | `desktopBeforeQuit.ts` | Uusi sulkupyyntö odottaa samaa tulosta. Rajattu sulkuvirheen käsittely voi johtaa koko sovelluksen poistumiseen, mutta ei todista hallittua sulkua tai nykytilan eheyttä. |
 
-Kumpaakaan sulkuvaihtoehtoa ei ole tällä kirjauksella kytketty tuotantoon.
-Seuraava todennus koskee valitun korjausehdokkaan jonoa, tulossidontaa ja
-nykyisen lifecycle-omistajan estoa, ei uutta testijärjestelmää.
+Edellä kuvattujen lähtökokeiden aikana sulkuvaihtoehtoja ei ollut kytketty
+tuotantoon. Niiden jälkeen hyväksytty työpuun toteutus ja sen tämänhetkinen
+näyttö on erotettu tämän sivun alussa; lähtökokeet eivät hyväksy kytkentää.
 
 Sulkupäätöksestä erillinen 15 tapauksen jonokoe läpäisi. Koeehdokas käytti
 nykyistä main-brokeria ja tiedostotallennusta: myöhäinen set/remove,
@@ -405,6 +518,10 @@ ja täsmällinen tulos; ei uutta tallennus- tai elinkaarijärjestelmää.
    ei itsestään katoavaa ilmoitusta tai salaisuuden siirtoa kohdeyritykseen.
    Ilmoituksen kuittaus ei ole uusi vaihdon vahvistus eikä kuluta mainin
    työbudjettia. Ilmoituksen epäonnistuminen ei saa johtaa hiljaiseen vaihtoon.
+   Jos käyttäjä on jo tehnyt uuden nimenomaisen onnistuneen tallennuksen tai
+   poiston, aiempaa vaikutuksettoman yrityksen ilmoitusta ei enää näytetä
+   nykytilan virheenä. Pelkkä tilaluku ei kuittaa ilmoitustarvetta, eikä
+   tämä muuta aiemman operaation audit-historiaa tai epävarman sulun estoa.
 7. **Epävarmuus säilyy.** Ajan loppuminen, epäselvä vaikutus, auditin
    keskeneräisyys tai epävarma sulku estää vaarallisen jatkon. Myöhempi
    valmistuminen ei vapauta samaa epäonnistunutta sulkua. Jo suljettua

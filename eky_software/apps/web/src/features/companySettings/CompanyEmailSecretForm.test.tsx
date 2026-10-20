@@ -46,6 +46,14 @@ describe('CompanyEmailSecretForm', () => {
     expect(readAndClearSecretInput(syntheticInput)).toBe('synthetic-password');
     expect(syntheticInput.value).toBe('');
   });
+
+  it('renders unknown status separately from a verified missing password', () => {
+    const html = renderForm({ configured: null, isAvailable: false });
+    expect(html).toContain(uiText.companySettings.emailSecretStatusUnknown);
+    expect(html).not.toContain(uiText.companySettings.emailSecretNotConfigured);
+    expect(html).not.toContain(uiText.companySettings.emailSecretRemove);
+    expect(html).toContain('disabled=""');
+  });
 });
 
 function renderForm(

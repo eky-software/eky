@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { reportElectronE2eBackendFailure } from './electronE2eBackendFailure.js';
 
 import { CompanyEmailSecretBrokerClient } from '../src/secrets/secretBrokerClient.js';
+import { SecretBrokerError } from '../src/secrets/secretBrokerErrors.js';
 import { createUtilitySecretBrokerTransport } from '../src/secrets/electronSecretBrokerTransport.js';
 import { InvoicePdfArchiveBrokerClient } from '../src/invoicePdfArchive/invoicePdfArchiveBrokerClient.js';
 import { createInvoicePdfArchiveBrokerTransport } from '../src/invoicePdfArchive/electronInvoicePdfArchiveBrokerTransport.js';
@@ -32,8 +33,9 @@ interface StartE2eBackend {
   (
     configPath: string,
     options: {
-      companyEmailSecretReader: CompanyEmailSecretBrokerClient;
-      companyEmailSecretStore: CompanyEmailSecretBrokerClient;
+      companyEmailSecretReader: Pick<CompanyEmailSecretBrokerClient, 'getSecret'>;
+      companyEmailSecretStore: Pick<CompanyEmailSecretBrokerClient, 'hasSecret' | 'setSecret' | 'removeSecret'>;
+      sealCompanyEmailSecretAdmission(): void;
       deliveredInvoiceArchiveTaskSink: InvoicePdfArchiveBrokerClient;
       observeStartupLog?: (stage: ElectronE2eBackendLogStage) => void;
       observeMigrationStartup?: (stage: string, phase: string) => void;
@@ -154,6 +156,7 @@ parentPort.on('message', (event) => {
       reportStartupStage(startupStage);
       secretBrokerClient = new CompanyEmailSecretBrokerClient(
         createUtilitySecretBrokerTransport(brokerPort),
+        { generationId: command.config.secretBrokerGenerationId },
       );
       invoicePdfArchiveBrokerClient = new InvoicePdfArchiveBrokerClient(
         createInvoicePdfArchiveBrokerTransport(archiveBrokerPort),
@@ -168,10 +171,19 @@ parentPort.on('message', (event) => {
       writingImportStarted = true;
       const module = (await import(pathToFileURL(modulePath).href)) as {
         startE2eBackend?: StartE2eBackend;
+        CompanyEmailSecretStoreError?: new (effect: 'noEffect' | 'unknown') => Error;
       };
-      if (typeof module.startE2eBackend !== 'function') {
+      if (typeof module.startE2eBackend !== 'function' ||
+          typeof module.CompanyEmailSecretStoreError !== 'function') {
         throw new Error('ELECTRON_E2E_BACKEND_MODULE_INVALID');
       }
+      const SecretStoreError = module.CompanyEmailSecretStoreError;
+      const useSecretBroker = async <Result>(operation: () => Promise<Result>): Promise<Result> => {
+        try { return await operation(); }
+        catch (error) {
+          throw new SecretStoreError(error instanceof SecretBrokerError ? error.effect : 'unknown');
+        }
+      };
       assertCurrent();
       await reservation!.assertOwned();
       assertCurrent();
@@ -179,8 +191,16 @@ parentPort.on('message', (event) => {
       startupStage = 'backendStart';
       reportStartupStage(startupStage);
       const started = await module.startE2eBackend(command.configPath, {
-        companyEmailSecretReader: secretBrokerClient,
-        companyEmailSecretStore: secretBrokerClient,
+        companyEmailSecretReader: {
+          getSecret: companyId => useSecretBroker(() => secretBrokerClient!.getSecret(companyId)),
+        },
+        sealCompanyEmailSecretAdmission: () => secretBrokerClient!.sealAdmission(),
+        companyEmailSecretStore: {
+          hasSecret: companyId => useSecretBroker(() => secretBrokerClient!.hasSecret(companyId)),
+          setSecret: input => useSecretBroker(() => secretBrokerClient!.setSecret(input)),
+          removeSecret: (companyId, operationId) =>
+            useSecretBroker(() => secretBrokerClient!.removeSecret(companyId, operationId)),
+        },
         deliveredInvoiceArchiveTaskSink: invoicePdfArchiveBrokerClient,
         observeStartupLog: reportStartupStage,
         observeMigrationStartup: (stage, phase) => reportElectronE2eMigrationProgress(
@@ -239,6 +259,7 @@ function shutdown(): Promise<void> {
   shutdownTask ??= Promise.resolve().then(async () => {
     if (writingImportStarted) await startupTask?.catch(() => { failed = true; });
     try { await server?.close(); } catch { failed = true; }
+    try { secretBrokerClient?.assertSettled(); } catch { failed = true; }
     for (const broker of [secretBrokerClient, invoicePdfArchiveBrokerClient, profileSnapshotBrokerHandle]) {
       try { broker?.close(); } catch { failed = true; }
     }

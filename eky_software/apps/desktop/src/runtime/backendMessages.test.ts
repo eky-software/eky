@@ -454,6 +454,7 @@ function createValidConfig(
     runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
     runtimeSessionSecret: 'a'.repeat(43),
     verifySmokeSecretBroker: false,
+    secretBrokerGenerationId: '11111111-1111-4111-8111-111111111111',
     ...overrides,
   };
 }

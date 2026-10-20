@@ -542,9 +542,71 @@ konfigurointitilan eivätkä salaista arvoa.
 
 Salaisuuden asettaminen ja poistaminen käyttävät yhden rivin lifecycle-auditia.
 Ennen secret store -operaatiota luodaan `pending`. Sama rivi päivitetään
-`succeeded`- tai `failed`-tilaan. Jos store onnistuu mutta auditin
-loppupäivitys epäonnistuu, rivi jää `pending`-tilaan myöhempää reconciliation-
-tarkistusta varten; sitä ei teeskennellä epäonnistuneeksi.
+`succeeded`-tilaan vasta valmistuneen store-operaation jälkeen. `failed`
+vaatii tyypitetyn, varmasti vaikutuksettoman `noEffect`-tuloksen. Tuntematon
+poikkeus, osittainen muutos tai kadonnut kuittaus jättää rivin `pending`-
+tilaan. Myös auditin loppukirjoituksen virhe säilyttää `pending`-rivin;
+sitä ei teeskennellä epäonnistuneeksi tallennukseksi eikä myöhempi tilaluku
+ratkaise sitä automaattisesti.
+
+### D2:n Sulku ja Epävarma Tulos
+
+Hyväksytty [D2-sulkusopimus](release-0.3.0-company-settings-plan.md#sulkusopimusehdotus-kokeen-jälkeen)
+säilyttää nykyisen salauksen, tiedostomuodon ja `EncryptedSecretFile`-
+kirjoittajan. Sen toteutus ja integraatiohyväksyntä seurataan D-suunnitelmassa.
+Brokerin viesti sidotaan nykyiseen sukupolveen, pyyntöön, operaatioon ja
+backendin vahvistamaan yrityskontekstiin. Mainin pääsyn sulku hylkää uudet
+ja aloittamattomat työt; aktiivisen työn yhteinen monotoninen odotus on
+enintään viisi sekuntia. Clientin kymmenen sekunnin raja ei peruuta jo
+alkanutta tiedostotyötä. Myöhäinen valmistuminen ei poista epävarmuutta.
+
+Mainin työn loppu, backendin vastauksen käsittely, auditin loppukirjaus ja
+prosessin todellinen poistuminen ovat erillisiä jatkoehtoja. Audit-incomplete
+tai epävarma vaikutus sulkee saman ajon uudet salaisuusoperaatiot. HTTP-
+yhteyden päättyminen ei yksin riitä. Virheessäkin yritetään omistetut sulut;
+siivouksen onnistuminen ei muuta ensimmäistä virhettä onnistumiseksi.
+
+Compositionin pääsyn sulku välitetään samassa synkronisessa jatkossa
+nykyiselle broker-clientille (`sealCompanyEmailSecretAdmission` ->
+`sealAdmission`). Jonottavan adapterin runtime-kytkentä antaa tämän portin;
+se ei tee I/O:ta tai odota. Client hylkää lähettämättömät pyynnöt
+vaikutuksettomina ja estää uuden lähetyksen, mutta säilyttää aktiivisen
+pyynnön, sen alkuperäisen määräajan ja kuittauksen auditin loppua varten.
+Pääsyn sulku ei ole transportin close eikä todistus aktiivisen työn lopusta.
+Backendin jo todettu epävarmuus ei poistu myöhemmällä kuittauksella.
+
+Backendin Company Settings -composition omistaa saman ajon pääsyeston myös
+providerille annettavalle `CompanyEmailSecretReader`-portille. `createApp`
+ei anna raakaa reader-adapteria suoraan Invoicingin compositionille.
+Luku kuuluu aktiivisen salaisuustyön laskentaan. Omistajan viimeinen
+odotuksen jälkeinen tarkistus, aktiivisuuslaskurin vähennys ja suoraan
+palautettavan lukulupauksen valmistuminen tapahtuvat ilman uutta odotusta.
+Ennen tätä valmistumista syntynyt epävarmuus estää arvon palauttamisen.
+Valmistuneen lukulupauksen arvoa ei peruta jälkikäteen: tämä ei ole
+SMTP-transportin alkamiseen asti jatkuva atominen valtuutus.
+Vaikutukseltaan tuntematon
+lukupoikkeus sulkee saman ajon uudet operaatiot, mutta todistettu noEffect
+ei yksin tee sitä. Jo SMTP-transportiin edennyttä toimitusta ei peruta tai
+kirjata uudelleen tämän eston perusteella. Reader säilyy backend-only-
+porttina eikä kuulu asetusten HTTP-reiteille. Tavallisen selainkehityksen
+puuttuva adapteri palauttaa edelleen `null` terveessä ajossa.
+
+Epäonnistuva mainin drain välittää ensimmäisen turvallisen syykoodin
+nykyiseen `desktop.shutdownFailed`-tapahtumaan, vaiheena
+`secretBrokerDrain`, `retryable: false` ja `sideEffectState: unknown`.
+Saman sulun havainto syntyy vain kerran, eikä varhainen transport-häiriö
+yksin väitä sulun jo alkaneen. Yleinen sulkulopputulos on erillinen tapahtuma.
+Havaitsijan virhe tai kesken jäävä ilmoitus ei muuta tulosta tai lisää
+kuittausodotusta sulun kriittiseen polkuun. Raakapoikkeus tai salaisuus ei
+kuulu näihin operational-tapahtumiin.
+
+HTTP:n turvalliset tulokset ovat `COMPANY_EMAIL_SECRET_OPERATION_FAILED`,
+`COMPANY_EMAIL_SECRET_OUTCOME_UNKNOWN` ja `COMPANY_EMAIL_SECRET_AUDIT_INCOMPLETE`.
+Käyttöliittymä erottaa tuntemattoman tilan puuttuvasta salasanasta, estää
+automaattisen uusinnan eikä hyväksy vanhan session vastausta uuteen sessioon.
+Vaikutuksettoman muutosvirheen ilmoitus kuitataan ennen yrityksen vaihtoa
+tai muuta sulkuun liittyvää uudelleenkäynnistystä. Epävarmuus estää vaarallisen
+jatkon; nykyinen hallitun uudelleenkäynnistyksen sopimus säilyy.
 
 Auditissa ovat vain operaatiotunniste, toiminto, tila, yritys, toimija,
 aloitus- ja valmistumisaika sekä turvallinen failure code. Audit-tauluun ei

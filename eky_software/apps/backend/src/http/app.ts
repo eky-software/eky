@@ -76,6 +76,8 @@ export interface CreateAppOptions {
   buildDirty?: boolean;
   companyEmailSecretReader?: CompanyEmailSecretReader;
   companyEmailSecretStore?: CompanyEmailSecretStore;
+  sealCompanyEmailSecretAdmission?: () => void;
+  registerCompanyEmailSecretShutdown?: (assertSettled: () => void) => void;
   deliveredInvoiceArchiveTaskSink?: DeliveredInvoiceArchiveTaskSink;
   databaseFilePath?: string;
   electronVersion?: string;
@@ -400,20 +402,24 @@ export async function createApp(
     ...(options.companyEmailSecretStore === undefined
       ? {}
       : { companyEmailSecretStore: options.companyEmailSecretStore }),
+    ...(options.companyEmailSecretReader === undefined
+      ? {}
+      : { companyEmailSecretReader: options.companyEmailSecretReader }),
+    ...(options.sealCompanyEmailSecretAdmission === undefined
+      ? {}
+      : { sealCompanyEmailSecretAdmission: options.sealCompanyEmailSecretAdmission }),
   });
-  const companyEmailSecretReader: CompanyEmailSecretReader =
-    options.companyEmailSecretReader ?? {
-      async getSecret() {
-        return null;
-      },
-    };
+
+  options.registerCompanyEmailSecretShutdown?.(
+    companySettingsComposition.assertEmailSecretOperationsSettled,
+  );
 
   app.route('/', customersComposition.routes);
   app.route('/', companySettingsComposition.routes);
 
   const invoicingComposition = createInvoicingComposition({
     schema: invoiceCatalogSchema,
-    companyEmailSecretReader,
+    companyEmailSecretReader: companySettingsComposition.companyEmailSecretReader,
     customerAccessReader: customersComposition.customerAccessReader,
     deliveredInvoiceArchiveTaskSink:
       options.deliveredInvoiceArchiveTaskSink ??

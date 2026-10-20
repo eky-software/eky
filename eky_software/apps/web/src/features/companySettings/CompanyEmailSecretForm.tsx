@@ -4,7 +4,7 @@ import styles from './CompanyEmailSecretForm.module.css';
 import { uiText } from '../../i18n/fi.js';
 
 interface CompanyEmailSecretFormProps {
-  configured: boolean;
+  configured: boolean | null;
   errorMessage: string | null;
   isAvailable: boolean;
   isSaving: boolean;
@@ -56,7 +56,9 @@ export function CompanyEmailSecretForm({
           {uiText.companySettings.emailSecretStatus}
         </span>
         <span className={configured ? styles.configured : styles.notConfigured}>
-          {configured
+          {configured === null
+            ? uiText.companySettings.emailSecretStatusUnknown
+            : configured
             ? uiText.companySettings.emailSecretConfigured
             : uiText.companySettings.emailSecretNotConfigured}
         </span>

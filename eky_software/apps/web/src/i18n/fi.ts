@@ -492,6 +492,11 @@ export const uiText = {
     emailSecretLoading: 'Tarkistetaan SMTP-salasanan tilaa...',
     emailSecretNewPassword: 'Uusi SMTP-salasana',
     emailSecretNotConfigured: 'Salasanaa ei ole asetettu',
+    emailSecretStatusUnknown: 'Salasanan tila on tuntematon',
+    emailSecretOutcomeUnknown:
+      'Salasanamuutoksen lopputulosta ei voitu varmistaa. Älä toista muutosta tässä ajossa. Sulje Eky ja avaa se uudelleen ennen salasanan tarkistamista tai uudelleensyöttöä.',
+    emailSecretAuditIncomplete:
+      'Salasanamuutoksen tapahtumamerkintää ei voitu viimeistellä. Muutos on voinut tallentua. Sulje Eky ja avaa se uudelleen ennen jatkamista.',
     emailSecretPassword: 'SMTP-salasana',
     emailSecretRemove: 'Poista salasana',
     emailSecretRemoveConfirm:

@@ -42,6 +42,7 @@ describe('E2E backend startup logger wiring', () => {
         if (mode === 'throws') throw new Error('synthetic observer failure');
       });
       const migrationObserver = vi.fn();
+      const sealAdmission = vi.fn();
       vi.mocked(startServer).mockImplementation(async (options) => {
         const logger = options?.appOptions?.operationalLogger;
         const identity = options?.appOptions?.operationalIdentity;
@@ -50,6 +51,10 @@ describe('E2E backend startup logger wiring', () => {
         expect(options?.appOptions?.migrationStartupObserver).toBe(
           mode === 'absent' ? undefined : migrationObserver,
         );
+        expect(options?.appOptions?.sealCompanyEmailSecretAdmission).toBe(
+          mode === 'absent' ? undefined : sealAdmission,
+        );
+        options?.appOptions?.sealCompanyEmailSecretAdmission?.();
         logger!.write(createBackendOperationalEvent({ eventName: 'migration.started' }, identity!));
         logger!.write(createBackendOperationalEvent({ eventName: 'migration.completed' }, identity!));
         logger!.write(createBackendOperationalEvent({
@@ -60,7 +65,9 @@ describe('E2E backend startup logger wiring', () => {
       });
 
       const result = await startE2eBackend(join(root, 'config.json'),
-        mode === 'absent' ? {} : { observeStartupLog: observer, observeMigrationStartup: migrationObserver });
+        mode === 'absent' ? {} : { observeStartupLog: observer, observeMigrationStartup: migrationObserver,
+          sealCompanyEmailSecretAdmission: sealAdmission });
+      expect(sealAdmission).toHaveBeenCalledTimes(mode === 'absent' ? 0 : 1);
       expect(result.server).toBe(server);
       expect(startServer).toHaveBeenCalledTimes(1);
       expect(installE2eDatabaseFault).toHaveBeenCalledAfter(startServer);

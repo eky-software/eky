@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 
-import { app, BrowserWindow, protocol, utilityProcess } from 'electron';
+import { app, BrowserWindow, MessageChannelMain, protocol, utilityProcess } from 'electron';
 
 import { createDesktopBeforeQuitHandler } from '../src/main/desktopBeforeQuit.js';
 import {
@@ -21,6 +21,7 @@ import { createElectronE2eNativeAdapters } from './electronE2eNativeAdapters.js'
 import { readSafeElectronE2eWorkspaceStartupFailureCode } from './electronE2eWorkspaceStartupFailure.js';
 import { createElectronE2eStartupHold } from './electronE2eStartupHold.js';
 import { createElectronE2eStartupObservation } from './electronE2eStartupObservation.js';
+import { createElectronSecretReplyHold } from './electronSecretReplyHold.js';
 import { isElectronPdfPreviewUrl } from './electronPdfPreviewProbe.js';
 import { createFirstStartProofAdmission, createFirstStartProofObserver } from './workspaceFirstStartProofObservation.js';
 import { WorkspaceFirstStartLoadExperiment, type FirstStartLoadExperimentMode } from './workspaceFirstStartLoadExperiment.js';
@@ -75,6 +76,14 @@ app.once('browser-window-created', () => {
 });
 let lifecycle: DesktopLifecycleHandle | undefined;
 let secondInstanceCount = 0;
+let secretReplyHold: ReturnType<typeof createElectronSecretReplyHold> | undefined;
+let secretShutdownProof: Promise<void> | undefined;
+let secretShutdownState: 'notStarted' | 'pending' | 'completed' | 'failed' = 'notStarted';
+
+function requireSecretReplyHold() {
+  if (secretReplyHold === undefined) throw new Error('ELECTRON_SECRET_REPLY_PROOF_UNAVAILABLE');
+  return secretReplyHold;
+}
 
 async function runFirstStartProof(mode: FirstStartLoadExperimentMode) {
   admitFirstStartProof();
@@ -189,9 +198,28 @@ if (hasSingleInstanceLock) {
             if (config.startupMode === 'backendStartFailure') {
               throw new Error('BACKEND_READINESS_TIMEOUT');
             }
-            const handle = await backendController.startBackend(options);
+            const delayedSecretProof = config.scenarioId === 'DESK-SECRET-DRAIN-001' ||
+              config.scenarioId === 'DESK-SECRET-DRAIN-002';
+            if (delayedSecretProof) {
+              if (secretReplyHold !== undefined) throw new Error('ELECTRON_SECRET_REPLY_PROOF_REUSED');
+              const channel = new MessageChannelMain();
+              secretReplyHold = createElectronSecretReplyHold(
+                options.secretBrokerPort, channel.port1, options.config.secretBrokerGenerationId,
+              );
+              options = { ...options, secretBrokerPort: channel.port2 };
+            }
+            let handle;
+            try { handle = await backendController.startBackend(options); }
+            catch (error) { secretReplyHold?.dispose(); throw error; }
             startupObservation.record('backendReady');
-            return handle;
+            if (!delayedSecretProof) return handle;
+            return {
+              ...handle,
+              async stop() {
+                try { return await handle.stop(); }
+                finally { secretReplyHold?.dispose(); }
+              },
+            };
           },
         },
         quitApplication: () => app.quit(),
@@ -244,6 +272,28 @@ app.on('window-all-closed', () => app.quit());
 
 Object.assign(globalThis, {
   __EKY_ELECTRON_E2E__: Object.freeze({
+    secretReplyProof: Object.freeze({
+      arm: (operation: 'setCompanyEmailSecret' | 'removeCompanyEmailSecret') => requireSecretReplyHold().arm(operation),
+      release: () => requireSecretReplyHold().release(),
+      snapshot: () => ({ ...requireSecretReplyHold().snapshot(), shutdown: secretShutdownState,
+        backendRunning: backendController.isRunning() }),
+      beginShutdown() {
+        requireSecretReplyHold();
+        if (lifecycle === undefined || secretShutdownProof !== undefined) {
+          throw new Error('ELECTRON_SECRET_SHUTDOWN_PROOF_INVALID');
+        }
+        secretShutdownState = 'pending';
+        secretShutdownProof = lifecycle.shutdown().then(
+          () => { secretShutdownState = 'completed'; },
+          error => { secretShutdownState = 'failed'; throw error; },
+        );
+        void secretShutdownProof.catch(() => undefined);
+      },
+      async waitForShutdown() {
+        if (secretShutdownProof === undefined) throw new Error('ELECTRON_SECRET_SHUTDOWN_PROOF_INVALID');
+        await secretShutdownProof;
+      },
+    }),
     startupHold: () => startupHold.snapshot(),
     startupObservation: () => startupObservation.snapshot(),
     backendIsRunning: () => backendController.isRunning(),

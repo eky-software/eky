@@ -57,7 +57,7 @@ describe('getCompanyEmailSecretStatus', () => {
       ),
     ).rejects.toEqual(
       expect.objectContaining({
-        code: 'COMPANY_EMAIL_SECRET_OPERATION_FAILED',
+        code: 'COMPANY_EMAIL_SECRET_OUTCOME_UNKNOWN',
         message: 'Email secret operation could not be completed safely.',
       } satisfies Partial<CompanyEmailSecretOperationError>),
     );

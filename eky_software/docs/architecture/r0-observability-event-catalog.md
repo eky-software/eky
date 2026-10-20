@@ -239,6 +239,15 @@ Lokikansion capability kirjoittaa vain avatun, epäonnistuneen tai estetyn
 toiminnon tapahtuman. Se ei tallenna absoluuttista polkua tai
 Windows-käyttäjänimeä.
 
+D2:n main-brokerin sulku käyttää nykyistä `desktop.shutdownFailed`-tapahtumaa
+vaiheella `secretBrokerDrain`. Siihen kuuluu ensimmäinen suljettu brokerin
+syykoodi, `retryable: false` ja `sideEffectState: unknown`. Tämä havainto
+on erillinen sulun yleisestä lopputuloksesta; myöhempi restart ei muuta
+sen tulosta. Diagnostics ja sanitoitu tukipaketti säilyttävät turvallisen
+vaiheen ja syyn. Incident-indeksi säilyttää vain nykyisen minimoidun
+virheyhteenvedon ilman vaihetta tai runtime-tunnistetta. Salaisuus,
+yritystunniste tai alkuperäinen poikkeus ei kuulu näihin projektioihin.
+
 ### Tarkistuksen ensisyy ja lukijaketju
 
 K-P3:n suljetut tekniset tarkistussyyt ovat:

@@ -3,6 +3,7 @@ import type { Socket } from 'node:net';
 
 import { createApp, type CreateAppOptions } from './app.js';
 import type { RuntimeTrust } from './runtimeTrust.js';
+export { CompanyEmailSecretStoreError } from '../modules/companySettings/ports/companyEmailSecretStoreError.js';
 import { createBackendOperationalEvent } from '../observability/createOperationalEvent.js';
 import { createBackendOperationalLogger } from '../observability/infrastructure/createBackendOperationalLogger.js';
 import { resolveOperationalRuntimeIdentity } from '../observability/operationalRuntimeIdentity.js';
@@ -92,7 +93,14 @@ export async function startServer(
     appOptions.runtimeTrust = options.runtimeTrust;
   }
 
-  const app = await createApp(appOptions);
+  let assertEmailSecretOperationsSettled: (() => void) | undefined;
+  const app = await createApp({
+    ...appOptions,
+    registerCompanyEmailSecretShutdown(assertSettled) {
+      assertEmailSecretOperationsSettled = assertSettled;
+      appOptions.registerCompanyEmailSecretShutdown?.(assertSettled);
+    },
+  });
 
   return new Promise((resolveStart, rejectStart) => {
     const unusedConnections = new Set<Socket>();
@@ -128,6 +136,10 @@ export async function startServer(
             // Accepted requests keep the normal graceful-drain behavior.
             for (const socket of unusedConnections) socket.destroy();
             await closed;
+            if (assertEmailSecretOperationsSettled === undefined) {
+              throw new Error('COMPANY_EMAIL_SECRET_SHUTDOWN_UNAVAILABLE');
+            }
+            assertEmailSecretOperationsSettled();
             operationalLogger.write(
               createBackendOperationalEvent(
                 {

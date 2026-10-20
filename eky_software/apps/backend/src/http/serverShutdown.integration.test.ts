@@ -8,12 +8,16 @@ import { startServer } from './server.js';
 
 const boundary = vi.hoisted(() => ({
   fetch: vi.fn<(request: Request) => Response | Promise<Response>>(),
+  assertSecretsSettled: vi.fn<() => void>(),
   server: undefined as Server | undefined,
   sockets: new Set<Socket>(),
 }));
 
 vi.mock('./app.js', () => ({
-  createApp: async () => ({ fetch: boundary.fetch }),
+  createApp: async (options: { registerCompanyEmailSecretShutdown?: (assertSettled: () => void) => void }) => {
+    options.registerCompanyEmailSecretShutdown?.(boundary.assertSecretsSettled);
+    return { fetch: boundary.fetch };
+  },
 }));
 vi.mock('@hono/node-server', async importOriginal => {
   const actual = await importOriginal<typeof import('@hono/node-server')>();
@@ -41,6 +45,7 @@ afterEach(async () => {
   }
   boundary.server = undefined;
   boundary.fetch.mockReset();
+  boundary.assertSecretsSettled.mockReset();
 });
 
 async function connect(port: number): Promise<Socket> {
@@ -72,6 +77,30 @@ function deferred<T>() {
 }
 
 describe('backend HTTP graceful shutdown', () => {
+  it('does not treat a disconnected request as settled application work', async () => {
+    const entered = deferred<void>();
+    const response = deferred<Response>();
+    boundary.fetch.mockImplementation(async () => {
+      entered.resolve();
+      return response.promise;
+    });
+    const unsettled = new Error('synthetic secret operation is still active');
+    boundary.assertSecretsSettled.mockImplementation(() => { throw unsettled; });
+    const server = await startServer({ port: 0 });
+    const client = await connect(server.port);
+    client.on('error', () => undefined);
+    client.write('GET /synthetic HTTP/1.1\r\nHost: localhost\r\n\r\n');
+    try {
+      await entered.promise;
+      const disconnected = once(client, 'close');
+      client.destroy();
+      await disconnected;
+      await expect(server.close()).rejects.toBe(unsettled);
+      expect(boundary.assertSecretsSettled).toHaveBeenCalledOnce();
+    } finally {
+      response.resolve(new Response('synthetic late response'));
+    }
+  });
   it.each(['connected', 'partialHeaders'] as const)(
     'closes a %s connection that has not reached an application request', async state => {
       boundary.fetch.mockResolvedValue(new Response('unused'));

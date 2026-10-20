@@ -20,6 +20,7 @@ import {
 import type { WorkspaceProcessReservationDescriptor } from './workspaceProcessReservationDescriptor.js';
 import { createOwnedLocalDatabaseRecovery, type OwnedLocalDatabaseRecovery } from './ownedLocalDatabaseRecovery.js';
 import { CompanyEmailSecretBrokerClient } from '../secrets/secretBrokerClient.js';
+import { SecretBrokerError } from '../secrets/secretBrokerErrors.js';
 import { createUtilitySecretBrokerTransport } from '../secrets/electronSecretBrokerTransport.js';
 import { InvoicePdfArchiveBrokerClient } from '../invoicePdfArchive/invoicePdfArchiveBrokerClient.js';
 import { createInvoicePdfArchiveBrokerTransport } from '../invoicePdfArchive/electronInvoicePdfArchiveBrokerTransport.js';
@@ -80,10 +81,11 @@ type StartServer = (options: {
     companyEmailSecretReader: {
       getSecret(companyId: string): Promise<string | null>;
     };
+    sealCompanyEmailSecretAdmission(): void;
     companyEmailSecretStore: {
       hasSecret(companyId: string): Promise<boolean>;
-      removeSecret(companyId: string): Promise<void>;
-      setSecret(input: { companyId: string; secret: string }): Promise<void>;
+      removeSecret(companyId: string, operationId?: string): Promise<void>;
+      setSecret(input: { companyId: string; operationId?: string; secret: string }): Promise<void>;
     };
     deliveredInvoiceArchiveTaskSink: {
       queueDeliveredInvoiceArchiveTask(input: {
@@ -348,6 +350,7 @@ async function shutdownBackend(
       }
     }
     await backendServer?.close();
+    secretBrokerClient?.assertSettled();
     if (command.type === 'shutdownForUpdate') {
       profileSnapshotBrokerHandle!.assertUpdateMaintenance(command.operationId);
     } else if (command.type === 'shutdownForRestore') {
@@ -465,6 +468,7 @@ utilityParentPort.on('message', (event) => {
 
       secretBrokerClient = new CompanyEmailSecretBrokerClient(
         createUtilitySecretBrokerTransport(brokerPort),
+        { generationId: command.config.secretBrokerGenerationId },
       );
       failureCode = 'BACKEND_INVOICE_PDF_ARCHIVE_BROKER_FAILED';
       invoicePdfArchiveBrokerClient = new InvoicePdfArchiveBrokerClient(
@@ -477,13 +481,24 @@ utilityParentPort.on('message', (event) => {
       clearTimeout(readinessTimer);
       const serverModule = (await import(
         pathToFileURL(join(command.config.backendRoot, 'dist/http/server.js')).href
-      )) as { startServer?: StartServer };
+      )) as {
+        startServer?: StartServer;
+        CompanyEmailSecretStoreError?: new (effect: 'noEffect' | 'unknown') => Error;
+      };
       await assertReservationOwned();
       assertStartupCurrent();
 
-      if (typeof serverModule.startServer !== 'function') {
+      if (typeof serverModule.startServer !== 'function' ||
+          typeof serverModule.CompanyEmailSecretStoreError !== 'function') {
         throw new Error('Backend start function is unavailable.');
       }
+      const SecretStoreError = serverModule.CompanyEmailSecretStoreError;
+      const useSecretBroker = async <Result>(operation: () => Promise<Result>): Promise<Result> => {
+        try { return await operation(); }
+        catch (error) {
+          throw new SecretStoreError(error instanceof SecretBrokerError ? error.effect : 'unknown');
+        }
+      };
 
       failureCode = 'BACKEND_PROFILE_SNAPSHOT_BROKER_FAILED';
       const maintenanceModule = (await import(
@@ -556,13 +571,14 @@ utilityParentPort.on('message', (event) => {
             failureCode = 'BACKEND_SERVER_START_FAILED';
           },
           companyEmailSecretReader: {
-            getSecret: (companyId) => secretBrokerClient!.getSecret(companyId),
+            getSecret: (companyId) => useSecretBroker(() => secretBrokerClient!.getSecret(companyId)),
           },
+          sealCompanyEmailSecretAdmission: () => secretBrokerClient!.sealAdmission(),
           companyEmailSecretStore: {
-            hasSecret: (companyId) => secretBrokerClient!.hasSecret(companyId),
-            removeSecret: (companyId) =>
-              secretBrokerClient!.removeSecret(companyId),
-            setSecret: (input) => secretBrokerClient!.setSecret(input),
+            hasSecret: (companyId) => useSecretBroker(() => secretBrokerClient!.hasSecret(companyId)),
+            removeSecret: (companyId, operationId) =>
+              useSecretBroker(() => secretBrokerClient!.removeSecret(companyId, operationId)),
+            setSecret: (input) => useSecretBroker(() => secretBrokerClient!.setSecret(input)),
           },
           deliveredInvoiceArchiveTaskSink: {
             queueDeliveredInvoiceArchiveTask: (input) =>

@@ -284,6 +284,16 @@ poikkeusta ei voi palauttaa reporterissa: kyseisen rajan omistaja säilyttää
 alkuperäisen syyn ennen muunnosta. Rajattu sovelluskytkentä toimii vain
 nykyisellä synteettisen käynnistyksen opt-in-valtuudella.
 
+D2:n brokerin synteettinen fixture käyttää samaa liitäntää todellisen
+viestinkäsittelijän `captureOriginalException`-kohdasta ennen koodimuunnosta.
+Fixture säilyttää ensimmäisen syyn muistissa ja toimittaa sen vain
+odottamattomasta testihylkäyksestä; tunnetut testisalaisuudet peitetään.
+Tuotantoprofiilin observer ei saa tätä callbackia. Rajan koe vertaa myös
+kytkemätöntä kontrollia ja todentaa, ettei pelkkä myöhempi assertion sisällä
+alkuperäistä syytä. Salauskoe tarkistaa puretut tavut, tiivisteet, syyketjun
+ja testiyrityksen sidonnan. Tämä ei ole väite hosted-ajon latauksesta tai
+kaikkien alempien adapterien virheiden kattavuudesta.
+
 Yksityiset otteet ovat käyttöjärjestelmän temp-juuren
 `eky-test-errors-<invocation UUID>/`-kansiossa. Yksi invokaatio tallentaa
 enintään 128 otetta, kukin enintään 192 KiB ja nykyisten viesti-/pino-/syyketju-

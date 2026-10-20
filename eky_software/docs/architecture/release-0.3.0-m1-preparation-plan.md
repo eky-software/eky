@@ -74,9 +74,31 @@ läpäisivät. Tämä ei ole Electronin IPC-/audit-ketjun tai tuotantokytkennän
 hyväksyntä. Omistaja hyväksyi tämän jälkeen
 [koko sulkusopimuksen](release-0.3.0-company-settings-plan.md#sulkusopimusehdotus-kokeen-jälkeen)
 rajattuun toteutukseen ja testeihin nykyistä salasanatallennusta muuttamatta.
-Seuraava työ on brokerin, auditin ja sulkukutsujien kytkentä sekä
-alkuperäisen testivirheen säilymisen todistus puretussa salatussa paketissa.
-Tässä checkpointissa D2:n tuotantokoodia ei ole vielä muutettu.
+D2:n brokerin, auditin ja sulkukutsujien rajattu kytkentä on työpuussa.
+Kohderegressiot ja tyypitys läpäisivät; alkuperäinen synteettinen
+broker-poikkeus todennettiin myös puretusta OpenPGP-paketista.
+[D2:n kohdenäyttö ja rajat](release-0.3.0-company-settings-plan.md#d1n-kohdenäyttö-ja-seuraava-työ)
+erottavat tämän varsinaisesta integraatiosta. Viisi selainkomponentin
+sessio-/virhekoetta ja nykyiset Electronin salaisuus- sekä A -> B -> A
+-yritysvaihtopolut läpäisivät. Sulun tarkka turvallinen syy on todennettu
+nykyisen compositionin JSONL-lokiin. Kirjoittajarajalta alkava erillinen
+system-testi todensi HTTP-/API-client-/tukipakettilukuketjun ja syyn
+säilymisen backendin restartissa. D3:n nykyisen saatavuussäännön
+kohderegressiot läpäisivät. Oikean HTTP-sulun ja auditin kohdetestit sekä
+SMTP-readerin yhteisen pääsyeston korjaus läpäisivät rajatun sarjan.
+Kaksi erillistä Electron-koetta todensi viivästetyn set/remove-kuittauksen
+HTTP-/utility-/broker-/tiedosto-/audit-ketjun sekä sulun ja restartin.
+Ne eivät viivästytä levy-I/O:ta tai käytä oikeaa SMTP-verkkotoimitusta.
+Kahden backendin synteettinen SMTP-koe todensi lisäksi A:n myöhäisen
+lukutuloksen eston ja B:n omat tunnukset ilman salaisuuden siirtymistä.
+Se täydentää Electronin yritysvaihtoa, ei korvaa sitä. Loppukatselmuksen
+havaitsema audit-virheen ja jo jonottavan broker-työn pääsyestoraja on
+korjattu nykyiseen clientiin. Yhdistetty composition/SQLite/client-koe,
+backendin ja desktopin kytkentätestit, työtilan tyypitys sekä oikean
+Electronin kaksi sulku-/restart-koetta läpäisivät myös tämän muutoksen
+jälkeen. Rajattu jatkokatselmus ei löytänyt korjattavaa. Seuraavaksi
+puhtaan paketin palautus ja saman revision normaalit PR/main-portit;
+aiemmat laajat paikalliset sarjat eivät korvaa näitä.
 CS-1/CS-2 säilyvät hyväksyttyinä; D:n kokonais- ja PR/main-hyväksyntä
 ovat vielä avoinna.
 

@@ -14,6 +14,8 @@ import { createEmptyCompanySettings } from '../modules/companySettings/domain/co
 import { createCompanySettingsAuditEvent } from '../modules/companySettings/domain/companySettingsAuditEvent.js';
 import { SqliteCompanySettingsRepository } from '../modules/companySettings/infrastructure/sqliteCompanySettingsRepository.js';
 import type { CompanyEmailSecretStore } from '../modules/companySettings/ports/companyEmailSecretStore.js';
+import { CompanyEmailSecretStoreError } from '../modules/companySettings/ports/companyEmailSecretStoreError.js';
+import { SqliteCompanyEmailSecretAuditWriter } from '../modules/companySettings/infrastructure/sqliteCompanyEmailSecretAuditWriter.js';
 import { CompanySettingsAuditWriteError } from '../modules/companySettings/ports/companySettingsAuditWriteError.js';
 import type { OperationalLogger } from '../observability/operationalLogger.js';
 import { createCompanySettingsComposition } from './companySettingsComposition.js';
@@ -45,6 +47,138 @@ describe('Company Settings save composition', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     database.close();
+  });
+
+  it.each(['success', 'noEffect', 'unknown'] as const)('uses the complete application outcome for shutdown: %s', async outcome => {
+    const store = createSecretStore(async () => false);
+    store.removeSecret = async () => {
+      if (outcome !== 'success') throw new CompanyEmailSecretStoreError(outcome);
+    };
+    const { app, composition } = createTestApp({ store,
+      actor: createActorContext({ ...actorContext, permissions: ['manageCompanyEmailSecret'] }),
+    });
+    const response = await app.request('/company-settings/email-secret', { method: 'DELETE' });
+    expect(response.status).toBe(outcome === 'success' ? 200 : 503);
+    const row = database.prepare('SELECT status FROM company_email_secret_audit_events').get();
+    expect(row).toEqual({ status: outcome === 'success' ? 'succeeded' : outcome === 'noEffect' ? 'failed' : 'pending' });
+    if (outcome === 'unknown') {
+      expect(() => composition.assertEmailSecretOperationsSettled()).toThrow();
+      expect(() => composition.assertEmailSecretOperationsSettled()).toThrow();
+    } else {
+      expect(() => composition.assertEmailSecretOperationsSettled()).not.toThrow();
+    }
+  });
+
+  it('does not confuse store completion with audit completion or revive a rejected shutdown', async () => {
+    const entered = createDeferred<void>();
+    const audit = createDeferred<void>();
+    const complete = SqliteCompanyEmailSecretAuditWriter.prototype.completeCompanyEmailSecretAuditOperation;
+    vi.spyOn(SqliteCompanyEmailSecretAuditWriter.prototype, 'completeCompanyEmailSecretAuditOperation')
+      .mockImplementation(async function (this: SqliteCompanyEmailSecretAuditWriter, completion) {
+        entered.resolve();
+        await audit.promise;
+        await complete.call(this, completion);
+      });
+    const { app, composition } = createTestApp({ store: createSecretStore(async () => false),
+      actor: createActorContext({ ...actorContext, permissions: ['manageCompanyEmailSecret'] }),
+    });
+    const request = app.request('/company-settings/email-secret', { method: 'DELETE' });
+    try {
+      await entered.promise;
+      expect(() => composition.assertEmailSecretOperationsSettled()).toThrow();
+      expect(database.prepare('SELECT status FROM company_email_secret_audit_events').get()).toEqual({ status: 'pending' });
+    } finally {
+      audit.resolve();
+      await request;
+    }
+    expect(() => composition.assertEmailSecretOperationsSettled()).toThrow();
+  });
+
+  it('preserves the shutdown fence when the final audit fails after storage succeeds', async () => {
+    vi.spyOn(SqliteCompanyEmailSecretAuditWriter.prototype, 'completeCompanyEmailSecretAuditOperation')
+      .mockRejectedValue(new Error('synthetic audit completion'));
+    const store = createSecretStore(async () => false);
+    const { app, composition } = createTestApp({ store,
+      actor: createActorContext({ ...actorContext, permissions: ['manageCompanyEmailSecret'] }),
+    });
+    expect((await app.request('/company-settings/email-secret', { method: 'DELETE' })).status).toBe(503);
+    // Admission closes before shutdown is requested, not merely when it is checked.
+    const again = await app.request('/company-settings/email-secret', { method: 'DELETE' });
+    expect(again.status).toBe(503);
+    expect(await again.json()).toMatchObject({ code: 'COMPANY_EMAIL_SECRET_OUTCOME_UNKNOWN' });
+    expect(store.removeSecret).toHaveBeenCalledTimes(1);
+    expect(database.prepare('SELECT status FROM company_email_secret_audit_events').all()).toEqual([{ status: 'pending' }]);
+    expect(() => composition.assertEmailSecretOperationsSettled()).toThrow();
+    expect(database.prepare('SELECT status FROM company_email_secret_audit_events').get()).toEqual({ status: 'pending' });
+  });
+
+  it('seals the injected adapter queue before returning an incomplete audit outcome', async () => {
+    vi.spyOn(SqliteCompanyEmailSecretAuditWriter.prototype, 'completeCompanyEmailSecretAuditOperation')
+      .mockRejectedValue(new Error('Synthetic audit completion refused.'));
+    const sealAdmission = vi.fn();
+    const { app, composition } = createTestApp({
+      store: createSecretStore(async () => false), sealAdmission,
+      actor: createActorContext({ ...actorContext, permissions: ['manageCompanyEmailSecret'] }),
+    });
+    const response = await app.request('/company-settings/email-secret', { method: 'DELETE' });
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ code: 'COMPANY_EMAIL_SECRET_AUDIT_INCOMPLETE' });
+    expect(sealAdmission).toHaveBeenCalledTimes(1);
+    expect(() => composition.assertEmailSecretOperationsSettled()).toThrow();
+    expect(sealAdmission).toHaveBeenCalledTimes(1);
+    expect(database.prepare('SELECT status FROM company_email_secret_audit_events').all()).toEqual([{ status: 'pending' }]);
+  });
+
+  it('retains the first audit error and an unsafe shutdown when the adapter seal itself fails', async () => {
+    vi.spyOn(SqliteCompanyEmailSecretAuditWriter.prototype, 'completeCompanyEmailSecretAuditOperation')
+      .mockRejectedValue(new Error('Synthetic audit completion refused.'));
+    const sealAdmission = vi.fn(() => { throw new Error('Synthetic seal failure.'); });
+    const { app, composition } = createTestApp({
+      store: createSecretStore(async () => false), sealAdmission,
+      actor: createActorContext({ ...actorContext, permissions: ['manageCompanyEmailSecret'] }),
+    });
+    const response = await app.request('/company-settings/email-secret', { method: 'DELETE' });
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ code: 'COMPANY_EMAIL_SECRET_AUDIT_INCOMPLETE' });
+    expect(sealAdmission).toHaveBeenCalledTimes(1);
+    expect(() => composition.assertEmailSecretOperationsSettled()).toThrow();
+    expect((await app.request('/company-settings/email-secret', { method: 'DELETE' })).status).toBe(503);
+    expect(database.prepare('SELECT status FROM company_email_secret_audit_events').all()).toEqual([{ status: 'pending' }]);
+  });
+
+  it.each(['success', 'noEffect', 'unknown'] as const)('propagates only an uncertain %s outcome before normal shutdown sealing', async outcome => {
+    const store = createSecretStore(async () => false);
+    store.removeSecret = async () => {
+      if (outcome !== 'success') throw new CompanyEmailSecretStoreError(outcome);
+    };
+    const sealAdmission = vi.fn();
+    const { app, composition } = createTestApp({ store, sealAdmission,
+      actor: createActorContext({ ...actorContext, permissions: ['manageCompanyEmailSecret'] }),
+    });
+    await app.request('/company-settings/email-secret', { method: 'DELETE' });
+    expect(sealAdmission).toHaveBeenCalledTimes(outcome === 'unknown' ? 1 : 0);
+    if (outcome === 'unknown') expect(() => composition.assertEmailSecretOperationsSettled()).toThrow();
+    else expect(() => composition.assertEmailSecretOperationsSettled()).not.toThrow();
+    expect(sealAdmission).toHaveBeenCalledTimes(1);
+  });
+
+  it('checks an active master-data save through its precommit secret lookup', async () => {
+    const entered = createDeferred<void>();
+    const status = createDeferred<boolean>();
+    const { app, composition } = createTestApp({ store: createSecretStore(async () => {
+      entered.resolve();
+      return status.promise;
+    }) });
+    const request = save(app);
+    try {
+      await entered.promise;
+      expect(() => composition.assertEmailSecretOperationsSettled()).toThrow();
+      expect(readState().audit).toEqual([]);
+    } finally {
+      status.resolve(false);
+      await request;
+    }
+    expect(() => composition.assertEmailSecretOperationsSettled()).toThrow();
   });
 
   it.each([false, true])('keeps settings and audit untouched while status is pending (existing: %s)', async (existing) => {
@@ -258,6 +392,76 @@ describe('Company Settings save composition', () => {
     expect(write).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])('waits for the actual GET status without publishing false (existing: %s)', async existing => {
+    if (existing) await seedSettings();
+    const before = readState();
+    const entered = createDeferred<void>();
+    const status = createDeferred<boolean>();
+    const hasSecret = vi.fn(async () => { entered.resolve(); return status.promise; });
+    const { app, write } = createTestApp({ store: createSecretStore(hasSecret) });
+    let completed = false;
+    const request = Promise.resolve(app.request('/company-settings')).then(response => {
+      completed = true;
+      return response;
+    });
+    try {
+      await entered.promise;
+      expect(completed).toBe(false);
+      expect(readState()).toEqual(before);
+      expect(database.inTransaction).toBe(false);
+      status.resolve(true);
+      const response = await request;
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ companySettings: { emailSecretConfigured: true } });
+      expect(hasSecret).toHaveBeenCalledExactlyOnceWith(companyId);
+      expect(readState()).toEqual(before);
+      expect(write).not.toHaveBeenCalled();
+    } finally {
+      status.resolve(true);
+      await request;
+    }
+  });
+
+  it.each(['noEffect', 'unknown'] as const)('keeps failed GET unavailable and preserves the %s admission outcome', async effect => {
+    await seedSettings();
+    const before = readState();
+    const hasSecret = vi.fn<CompanyEmailSecretStore['hasSecret']>()
+      .mockRejectedValueOnce(new CompanyEmailSecretStoreError(effect))
+      .mockResolvedValue(true);
+    const { app, composition, write } = createTestApp({ store: createSecretStore(hasSecret) });
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const failed = await app.request('/company-settings');
+    expect(failed.status).toBe(500);
+    expect(await failed.text()).toBe('Internal Server Error');
+    expect(readState()).toEqual(before);
+    expect(hasSecret).toHaveBeenCalledExactlyOnceWith(companyId);
+    expect(write).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      eventName: 'http.requestFailed', errorCode: 'HTTP_REQUEST_FAILED',
+    }));
+
+    const nextRead = await app.request('/company-settings');
+    const nextWrite = await save(app);
+    if (effect === 'unknown') {
+      expect(nextRead.status).toBe(500);
+      expect(nextWrite.status).toBe(500);
+      expect(await nextRead.text()).toBe('Internal Server Error');
+      expect(await nextWrite.text()).toBe('Internal Server Error');
+      expect(hasSecret).toHaveBeenCalledTimes(1);
+      expect(readState()).toEqual(before);
+      expect(() => composition.assertEmailSecretOperationsSettled()).toThrow();
+    } else {
+      expect(nextRead.status).toBe(200);
+      expect(await nextRead.json()).toMatchObject({ companySettings: { emailSecretConfigured: true } });
+      expect(nextWrite.status).toBe(200);
+      expect(hasSecret).toHaveBeenCalledTimes(3);
+      expect(readState().audit).toHaveLength(before.audit.length + 1);
+      expect(() => composition.assertEmailSecretOperationsSettled()).not.toThrow();
+    }
+    expect(database.prepare('SELECT status FROM company_email_secret_audit_events').all()).toEqual([]);
+    expect(JSON.stringify(write.mock.calls)).not.toContain(companyId);
+  });
+
   async function seedSettings(): Promise<void> {
     const settings = {
       ...createEmptyCompanySettings(companyId),
@@ -282,6 +486,7 @@ describe('Company Settings save composition', () => {
 
   function createTestApp(options: {
     actor?: ActorContext;
+    sealAdmission?: () => void;
     store?: CompanyEmailSecretStore;
     write?: OperationalLogger['write'];
   } = {}) {
@@ -290,6 +495,7 @@ describe('Company Settings save composition', () => {
     const composition = createCompanySettingsComposition({
       database,
       ...logging,
+      ...(options.sealAdmission === undefined ? {} : { sealCompanyEmailSecretAdmission: options.sealAdmission }),
       ...(options.store === undefined ? {} : { companyEmailSecretStore: options.store }),
     });
     const app = new Hono<BackendEnvironment>();
@@ -299,7 +505,7 @@ describe('Company Settings save composition', () => {
       await next();
     });
     app.route('/', composition.routes);
-    return { app, write };
+    return { app, composition, write };
   }
 });
 

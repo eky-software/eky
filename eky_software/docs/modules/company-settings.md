@@ -226,9 +226,11 @@ tarkoitettu `manageCompanyEmailSecret` ei anna oikeutta muuttaa yrityksen
 nimeä, osoitetta, pankkitietoja tai muita Company Settings -kenttiä.
 
 Secret lifecycle -audit käyttää yhtä operaatiokohtaista riviä. Ensin
-tallennetaan `pending`, jonka jälkeen sama rivi päivitetään `succeeded`- tai
-`failed`-tilaan. Jos secret store onnistuu mutta auditin loppupäivitys ei,
-`pending` jää näkyviin myöhempää reconciliation-tarkistusta varten. Auditissa
+tallennetaan `pending`, jonka jälkeen sama rivi päivitetään varmistetun
+onnistumisen perusteella `succeeded`-tilaan tai vain todistetun
+vaikutuksettoman virheen perusteella `failed`-tilaan. Epäselvä vaikutus tai
+auditin loppupäivityksen virhe säilyttää `pending`-rivin; tilaluku tai restart
+ei ratkaise sitä automaattisesti. Auditissa
 ei ole salaista arvoa, hashia, pituutta, `secretRef`-arvoa tai muuta
 salaisuudesta johdettua tietoa.
 
@@ -241,6 +243,12 @@ vain lifecycle-storea ja konfigurointitilaa. Erillinen
 `CompanyEmailSecretReader` on backend-only ja
 varattu myöhemmälle hyväksytylle SMTP-providerille; sitä ei saa antaa HTTP:lle,
 API-clientille, preloadille, rendererille tai web-UI:lle.
+
+Backendin composition kytkee tämän readerin samaan salaisuusoperaatioiden
+pääsy- ja sulkutilaan ennen sen luovuttamista SMTP-providerin compositionille.
+Tämä ei anna asetusten käyttötapauksille oikeutta lukea salaisuutta eikä
+siirrä SMTP-toimituksen omistajuutta. Tarkka lopputulos- ja sulkuraja on
+[D2-sopimuksessa](../architecture/email-delivery-and-secrets-plan.md#d2n-sulku-ja-epävarma-tulos).
 
 ## Asiakaskohtainen Tuntihinta
 

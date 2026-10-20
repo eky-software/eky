@@ -432,11 +432,38 @@ revision omia PR/main-portteja; niiden hyväksyntä on kirjattu erikseen
 
 ## Company Settings
 
+D2:n sulku-, vaikutusluokka-, audit- ja IPC-regressiot sekä alkuperäisen
+virheen salaus/purku-koe ovat nykyisissä testirunnereissa. Niiden
+[kohdenäyttö](release-0.3.0-company-settings-plan.md#d1n-kohdenäyttö-ja-seuraava-työ)
+ei korvaa alla olevaa todellista Electron-polkua, yritysvaihtoa tai
+paketoidun palautuksen hyväksyntää. A -> B -> A -salaisuuseristys tarkistetaan
+nykyisen `DESK-WORKSPACE-UI-001`-polun osana itsenäisistä salatuista tavuista.
+
+`DESK-SECRET-DRAIN-001/002` käyttää samaa Electron-fixtureä ja yksityistä
+testikanavaa yhden set/remove-kuittauksen pidättämiseen. Oikea backend,
+safeStorage ja rendererin protocol-sulku säilyvät. Koe ei pidätä itse
+tiedostotyötä eikä korvaa alempien tasojen osittaisen vaikutuksen näyttöä.
+
+Backendin `companyEmailSecretAdmission.integration.test.ts` täydentää
+yritysvaihtoa kahdella erillisellä `createApp`-/SQLite-identiteetillä ja
+oikealla SMTP-providerilla synteettisen kuljetuksen takana: A:n myöhäinen
+lukutulos hylätään, B:n puuttuvaa salasanaa ei täydennetä ja B:n myöhempi
+lähetys käyttää sen omia tunnuksia. Tämä on integraationäyttöä, ei uusi
+Electron-navigointitesti tai oikea verkkolähetys.
+
 | ID | Riski ja tasot | Lähtö / toiminto / fault | Odotus | Tila ja havainnot | Erityinen vuotokielto | Tila |
 |---|---|---|---|---|---|---|
 | COMPANY-UI-001 | P0; web-e2e | Synteettiset asetukset; muuta yhteys-, pankki- ja ei-salaisia sähköpostitietoja | Tallennus onnistuu ja refresh säilyttää arvot | Master data muuttuu; auditissa vain changed category | Vanhat/uudet arvot auditissa | implemented-e2e |
 | COMPANY-AUDIT-001 | P0; integration, system | Nykyiset asetukset; muuta pankki- ja sähköpostiasetuksia | 2xx ja turvallinen Activity | Arvot kannassa; auditissa vain sallitut kategoriat; tukipaketin poissulku säilyy integraatiotestien todistamana | IBAN, sender email, SMTP username | implemented-e2e |
 | COMPANY-SECRET-001 | P0; integration, electron-e2e, security | Ei testisalaisuutta; aseta, tarkista status, poista ja restart | Renderer näkee vain boolean-tilan | Salaisuus vain safeStorage-testialueella; salattu blob säilyy restartissa ja kaikki slotit poistuvat | Secret, hash, pituus, ref tai plaintext | implemented-e2e |
+| SYS-SECRET-ADMISSION-001 | P0; system, critical, security | Oikea composition/audit-SQLite ja broker-client; ensimmäinen audit epäonnistuu toisen muutoksen ollessa aktiivinen ja kolmannen jonossa | Aloittamaton työ hylätään vaikutuksettomana; aktiivinen kuittaus ja audit säilyvät | Pending/succeeded/failed erillään; uudet pyynnöt ja epävarma sulku estyvät | Salaisuus, IPC-payload tai raaka adapterivirhe julkisesti | implemented-system; kohdeajo läpäisi; hallittu transport, ei Electron- tai levy-I/O-todiste |
+| DESK-SECRET-DRAIN-001 | P0; electron-e2e, security, recovery | Pidätä oikean set-operaation kuittaus; aloita normaali sulku, vapauta kuittaus ja restart | Uusi muutos estyy, vanha pyyntö ja audit valmistuvat ennen onnistunutta sulkua | Salattu tiedosto, yksi onnistunut Activity-tapahtuma, uusi runtime ja varmennettu prosessisiivous | Salaisuus, sidontatunnisteet tai IPC-payload raportissa | implemented-e2e; kohdetodennus läpäisi, PR/main avoin |
+| DESK-SECRET-DRAIN-002 | P0; electron-e2e, security, recovery | Sama kuin 001 mutta olemassa olevan salaisuuden poisto | Sama sulkujärjestys; poistettu salaisuus ei palaa restartissa | Yksi onnistunut poistotapahtuma ja erilliset sulku-/restart-todisteet | Sama kuin 001 | implemented-e2e; kohdetodennus läpäisi, PR/main avoin |
+| COMPANY-SECRET-UI-001 | P0; browser-component integration, fault | Todellinen salaisuuspaneli; client vaihdetaan ja sama client otetaan uudelleen käyttöön, lisäksi remount | Vain nykyisen session alkuluku muuttaa tilaa; vanha success/error/finally ei vapauta uutta näkymää | Nykyinen Vite/Chromium-fixture ja hallitut client-vastaukset | Salaisuus, request body tai vanhan session data | implemented-integration; kohdetodennus läpäisi; ei desktopin eristyksen todiste |
+| COMPANY-SECRET-UI-002 | P0; browser-component integration, fault | Vanha tallennus valmistuu saman clientin uuden session tallennuksen aikana | Uuden työn pending ja palaute säilyvät; vanha finally ei vapauta kaksoislähetystä | Oikea paneli/hook; vain nykyinen vastaus antaa onnistumisen | Salaisuuden syöttö tai tallentaminen testiliitteeseen | implemented-integration; kohdetodennus läpäisi; ei pysyvän tallennuksen todiste |
+| COMPANY-SECRET-UI-003 | P0; browser-component integration, fault | Vanha poisto hylätään uuden session poiston aikana | Vanha virhe ei korvaa uuden session tilaa eikä vapauta sen pending-estoa | Sama rajaus kuin 002 | Salaisuus tai vanhan session virhe uudessa näkymässä | implemented-integration; kohdetodennus läpäisi |
+| COMPANY-SECRET-UI-004 | P0; browser-component integration, fault, recovery | Tallennuksen kaksoislähetys, vaikutukseton hylkäys, käsin tehty uusinta ja epäselvä tulos | Vain yksi keskeneräinen työ; noEffect sallii käsin uusinnan, unknown estää jatkon ja näyttää tuntemattoman tilan | Ei automaattista uusintaa; tyhjät synteettiset form-submitit eivät testaa syötteen validointia | Salaisuus tai tekninen raakavirhe | implemented-integration; kohdetodennus läpäisi |
+| COMPANY-SECRET-UI-005 | P0; browser-component integration, fault, recovery | Poiston kaksoislähetys, vaikutukseton hylkäys, käsin tehty uusinta ja audit-incomplete | NoEffect säilyttää tunnetun tilan; epävarma loppukuittaus estää jatkon eikä väitä salaisuutta puuttuvaksi | Sama rajaus kuin 004 | Salaisuus tai tekninen raakavirhe | implemented-integration; kohdetodennus läpäisi |
 | COMPANY-SAVE-001 | P0; web-e2e | Oikea PUT commitataan, vastaus pidätetään; muokkaa nimeä ja sähköpostia, yritä toista lähetystä | Uudempi lomake säilyy ilman väärää saved-palautetta, vain yksi keskeneräinen kirjoitus | Ensimmäinen arvo ja yksi audit, seuraava käsintallennus ja refresh säilyttävät uudet arvot | Lomakearvot technical logissa | implemented-e2e; kohdetodennus läpäisi |
 | COMPANY-SAVE-002 | P0; web-e2e, fault | Rajattu HTTP-hylkäys ilman kirjoitusta, uudempi syöte odotusaikana | Turvallinen virhe, arvot säilyvät ja käsintallennus vapautuu | Hylkäys ei muuta tietoja/auditia; käyttäjän uusi tallennus onnistuu | Tekninen virhe tai lomakearvot lokissa | implemented-e2e; kohdetodennus läpäisi |
 | COMPANY-SAVE-003 | P1; web-e2e | Tallennusvastaus pidätetään näkymästä poistumisen ja paluun yli | Vanha vastaus ei muuta uuden näkymän arvoja tai palautetta | Uusi käyttäjän tallennus säilyttää nykyisen syötteen | Vanhan session data uudessa näkymässä | implemented-e2e; kohdetodennus läpäisi |
@@ -689,6 +716,7 @@ siksi suunniteltuna [B3-B5:n omistavassa rajauksessa](release-0.3.0-m1-preparati
 | OBS-DIAGNOSTICS-001 | P0; integration, web-e2e | Fake failure; avaa Diagnostics oikeudella | Turvallinen technical event ja build-context | Ei business-muutosta; support-sisällytys katalogin mukaan | Business sisältö, raw stack/path | implemented-e2e |
 | OBS-LOGGER-001 | P0; integration, system, web-e2e, fault | Business-operaatio; operational writer fault | Sovittu business-tulos säilyy | Pakollinen audit säilyy; recursion estyy; safe fallback | Raw error ja payload | implemented-e2e |
 | OBS-JSONL-001 | P1; integration, system, fault, recovery | Validit rivit + katkennut loppurivi | Diagnostics ohittaa rikkinäisen | Muut eventit säilyvät; support ilmoittaa truncationin | Rikkinäinen raw line | implemented-e2e |
+| OBS-SECRET-DRAIN-001 | P0; system, critical, security, recovery | Nykyinen desktop-kirjoittaja tallentaa sulun ensisyyt ja erillisen yleisvirheen; backend restart | HTTP/strict API-client ja tukipaketin strict reader säilyttävät syyn ja unknown-tilan | Gzip/checksum ja minimoitu incident ilman runtime-tunnistetta; ei kuittausta restartista | Salaisuus, yritys-/session-tunniste, polku, raw payload tai pino | implemented-system; kohdeajo läpäisi; alkaa kirjoittajarajalta, ei korvaa compositionin observer-testiä tai packaged-porttia |
 | OBS-SUPPORT-001 | P0; integration, electron-e2e, fault | Synteettiset eventit; luo `.json.gz` | Inspect hyväksyy ja checksumit täsmäävät | Manifest/projektiot oikein; ei business audit -muutosta | Kielletty data ja AppData-polut | covered-existing |
 | OBS-SUPPORT-LIMIT-001 | P1; integration, system, fault | Lähteet lähellä 25 MiB; luo paketti | Valid paketti ja rehellinen truncation | Uusimmat turvalliset eventit säilyvät | Raja-arvon yli vuotava lähde | covered-existing |
 | OBS-RECOVERY-001 | P0; unit, integration, electron-e2e, recovery | Luo recovery point; inspect, stage ja aktivoi restore; validoi restartin jälkeen; injektoi validation- ja logger-virheet | Katalogin lifecycle-eventit syntyvät allowlistatuilla kentillä ja cross-restart-korrelaatio säilyy | Logger-virhe ei muuta operaatiota; rollback raportoidaan; Diagnostics/support näyttävät vain sanitoidun projektion | Polut, profiili-/yritys-/artifact-tunnisteet, journal, manifesti, checksumit, salaisuudet ja raw error | implemented-integration |

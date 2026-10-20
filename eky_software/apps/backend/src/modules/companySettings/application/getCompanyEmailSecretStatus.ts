@@ -2,6 +2,7 @@ import type { ActorContext } from '@eky/auth';
 import { requirePermission } from '@eky/permissions';
 
 import type { CompanyEmailSecretStore } from '../ports/companyEmailSecretStore.js';
+import { CompanyEmailSecretStoreError } from '../ports/companyEmailSecretStoreError.js';
 import {
   createCompanyEmailSecretStatus,
   type CompanyEmailSecretStatus,
@@ -28,9 +29,11 @@ export async function getCompanyEmailSecretStatus(
     configured = await dependencies.companyEmailSecretStore.hasSecret(
       input.actorContext.companyId,
     );
-  } catch {
+  } catch (error) {
     throw new CompanyEmailSecretOperationError(
-      'COMPANY_EMAIL_SECRET_OPERATION_FAILED',
+      error instanceof CompanyEmailSecretStoreError && error.effect === 'noEffect'
+        ? 'COMPANY_EMAIL_SECRET_OPERATION_FAILED'
+        : 'COMPANY_EMAIL_SECRET_OUTCOME_UNKNOWN',
     );
   }
 

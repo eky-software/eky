@@ -6,6 +6,8 @@ import { getCompanyEmailSecretStatus } from '../modules/companySettings/applicat
 import { getCompanySettings } from '../modules/companySettings/application/getCompanySettings.js';
 import { removeCompanyEmailSecret } from '../modules/companySettings/application/removeCompanyEmailSecret.js';
 import { setCompanyEmailSecret } from '../modules/companySettings/application/setCompanyEmailSecret.js';
+import { CompanyEmailSecretOperationError } from '../modules/companySettings/application/executeCompanyEmailSecretOperation.js';
+import { CompanyEmailSecretStoreError } from '../modules/companySettings/ports/companyEmailSecretStoreError.js';
 import { updateCompanySettings } from '../modules/companySettings/application/updateCompanySettings.js';
 import { createCompanyEmailSecretRoutes } from '../modules/companySettings/http/companyEmailSecretRoutes.js';
 import { createCompanySettingsRoutes } from '../modules/companySettings/http/companySettingsRoutes.js';
@@ -14,6 +16,7 @@ import { SqliteCompanySettingsActivityReader } from '../modules/companySettings/
 import { SqliteCompanySettingsRepository } from '../modules/companySettings/infrastructure/sqliteCompanySettingsRepository.js';
 import { CompanySettingsAuditWriteError } from '../modules/companySettings/ports/companySettingsAuditWriteError.js';
 import type { CompanyEmailSecretStore } from '../modules/companySettings/ports/companyEmailSecretStore.js';
+import type { CompanyEmailSecretReader } from '../modules/companySettings/ports/companyEmailSecretReader.js';
 import type { CompanySettingsActivityReader } from '../modules/companySettings/ports/companySettingsActivityReader.js';
 import type { InvoiceEmailSettingsReader } from '../modules/invoicing/ports/invoiceEmailSettingsReader.js';
 import { createBackendOperationalEvent } from '../observability/createOperationalEvent.js';
@@ -21,13 +24,17 @@ import type { OperationalRuntimeIdentity } from '../observability/operationalEve
 import type { OperationalLogger } from '../observability/operationalLogger.js';
 
 interface CompanySettingsCompositionOptions {
+  companyEmailSecretReader?: CompanyEmailSecretReader;
   companyEmailSecretStore?: CompanyEmailSecretStore;
+  sealCompanyEmailSecretAdmission?: () => void;
   database: DatabaseConnection;
   operationalIdentity: Readonly<OperationalRuntimeIdentity>;
   operationalLogger: OperationalLogger;
 }
 
 interface CompanySettingsComposition {
+  assertEmailSecretOperationsSettled(): void;
+  companyEmailSecretReader: CompanyEmailSecretReader;
   companySettingsActivityReader: CompanySettingsActivityReader;
   invoiceEmailSettingsReader: InvoiceEmailSettingsReader;
   routes: Hono<BackendEnvironment>;
@@ -43,6 +50,54 @@ export function createCompanySettingsComposition(
     options.database,
   );
   const routes = new Hono<BackendEnvironment>();
+  let activeSecretOperations = 0;
+  let secretOutcomeUncertain = false;
+  let secretAdmissionClosed = false;
+
+  function sealSecretAdmission(): void {
+    if (secretAdmissionClosed) return;
+    secretAdmissionClosed = true;
+    // The adapter seals its existing queue synchronously, retaining active work.
+    try { options.sealCompanyEmailSecretAdmission?.(); }
+    catch {
+      secretOutcomeUncertain = true;
+      throw new CompanyEmailSecretOperationError('COMPANY_EMAIL_SECRET_OUTCOME_UNKNOWN');
+    }
+  }
+
+  async function withSecretOperation<T>(
+    operation: () => Promise<T>,
+    kind: 'lifecycle' | 'providerRead' = 'lifecycle',
+  ): Promise<T> {
+    if (secretOutcomeUncertain) {
+      throw new CompanyEmailSecretOperationError('COMPANY_EMAIL_SECRET_OUTCOME_UNKNOWN');
+    }
+    if (secretAdmissionClosed) {
+      throw new CompanyEmailSecretStoreError('noEffect');
+    }
+    activeSecretOperations += 1;
+    try {
+      const result = await operation();
+      // Check at owned completion, after every reader continuation has settled.
+      if (kind === 'providerRead' && secretOutcomeUncertain) {
+        throw new CompanyEmailSecretOperationError('COMPANY_EMAIL_SECRET_OUTCOME_UNKNOWN');
+      }
+      return result;
+    } catch (error) {
+      if (
+        (error instanceof CompanyEmailSecretOperationError &&
+          error.code !== 'COMPANY_EMAIL_SECRET_OPERATION_FAILED') ||
+        (error instanceof CompanyEmailSecretStoreError && error.effect === 'unknown')
+      ) {
+        secretOutcomeUncertain = true;
+        try { sealSecretAdmission(); }
+        catch { /* Keep the first operation error; shutdown remains uncertain. */ }
+      }
+      throw error;
+    } finally {
+      activeSecretOperations -= 1;
+    }
+  }
 
   if (options.companyEmailSecretStore !== undefined) {
     const companyEmailSecretAuditWriter =
@@ -53,17 +108,17 @@ export function createCompanySettingsComposition(
       '/',
       createCompanyEmailSecretRoutes({
         getCompanyEmailSecretStatus: (input) =>
-          getCompanyEmailSecretStatus(input, { companyEmailSecretStore }),
+          withSecretOperation(() => getCompanyEmailSecretStatus(input, { companyEmailSecretStore })),
         removeCompanyEmailSecret: (input) =>
-          removeCompanyEmailSecret(input, {
+          withSecretOperation(() => removeCompanyEmailSecret(input, {
             companyEmailSecretAuditWriter,
             companyEmailSecretStore,
-          }),
+          })),
         setCompanyEmailSecret: (input) =>
-          setCompanyEmailSecret(input, {
+          withSecretOperation(() => setCompanyEmailSecret(input, {
             companyEmailSecretAuditWriter,
             companyEmailSecretStore,
-          }),
+          })),
       }),
     );
   }
@@ -71,13 +126,13 @@ export function createCompanySettingsComposition(
   routes.route(
     '/',
     createCompanySettingsRoutes({
-      getCompanySettings: async (input) =>
-        withCompanyEmailSecretStatus(
+      getCompanySettings: (input) =>
+        withSecretOperation(async () => withCompanyEmailSecretStatus(
           await getCompanySettings(input, companySettingsRepository),
           options.companyEmailSecretStore,
-        ),
+        )),
       updateCompanySettings: (input) =>
-        logAuditWriteFailure(
+        withSecretOperation(() => logAuditWriteFailure(
           () =>
             updateCompanySettings(
               input,
@@ -85,7 +140,7 @@ export function createCompanySettingsComposition(
               options.companyEmailSecretStore,
             ),
           options,
-        ),
+        )),
     }),
   );
 
@@ -107,7 +162,30 @@ export function createCompanySettingsComposition(
     },
   };
 
+  // Only the provider receives this port; the value never enters settings routes.
+  const companyEmailSecretReader: CompanyEmailSecretReader = {
+    getSecret: companyId => withSecretOperation(async () => {
+      let secret: string | null;
+      try {
+        secret = await (options.companyEmailSecretReader?.getSecret(companyId) ?? null);
+      } catch (error) {
+        throw error instanceof CompanyEmailSecretStoreError
+          ? error : new CompanyEmailSecretStoreError('unknown');
+      }
+      return secret;
+    }, 'providerRead'),
+  };
+
   return {
+    assertEmailSecretOperationsSettled() {
+      sealSecretAdmission();
+      // A disconnected HTTP client can outlive its socket until audit completion.
+      if (activeSecretOperations !== 0 || secretOutcomeUncertain) {
+        secretOutcomeUncertain = true;
+        throw new CompanyEmailSecretOperationError('COMPANY_EMAIL_SECRET_OUTCOME_UNKNOWN');
+      }
+    },
+    companyEmailSecretReader,
     companySettingsActivityReader,
     invoiceEmailSettingsReader,
     routes,

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { ActorContext } from '@eky/auth';
 
 import type { CompanyEmailSecretAuditWriter } from '../ports/companyEmailSecretAuditWriter.js';
+import { CompanyEmailSecretStoreError } from '../ports/companyEmailSecretStoreError.js';
 import {
   createCompanyEmailSecretAuditCompletion,
   createCompanyEmailSecretAuditOperation,
@@ -13,11 +14,13 @@ const secretOperationFailureCode = 'SECRET_OPERATION_FAILED';
 export class CompanyEmailSecretOperationError extends Error {
   readonly code:
     | 'COMPANY_EMAIL_SECRET_AUDIT_INCOMPLETE'
+    | 'COMPANY_EMAIL_SECRET_OUTCOME_UNKNOWN'
     | 'COMPANY_EMAIL_SECRET_OPERATION_FAILED';
 
   constructor(
     code:
       | 'COMPANY_EMAIL_SECRET_AUDIT_INCOMPLETE'
+      | 'COMPANY_EMAIL_SECRET_OUTCOME_UNKNOWN'
       | 'COMPANY_EMAIL_SECRET_OPERATION_FAILED',
   ) {
     super('Email secret operation could not be completed safely.');
@@ -31,7 +34,7 @@ export async function executeCompanyEmailSecretOperation<Result>(input: {
   actorContext: ActorContext;
   companyEmailSecretAuditWriter: CompanyEmailSecretAuditWriter;
   occurredAt: unknown;
-  operation(): Promise<Result>;
+  operation(operationId: string): Promise<Result>;
 }): Promise<Result> {
   const operationId = randomUUID();
   const pendingOperation = createCompanyEmailSecretAuditOperation({
@@ -49,8 +52,11 @@ export async function executeCompanyEmailSecretOperation<Result>(input: {
   let result: Result;
 
   try {
-    result = await input.operation();
-  } catch {
+    result = await input.operation(operationId);
+  } catch (error) {
+    if (!(error instanceof CompanyEmailSecretStoreError) || error.effect !== 'noEffect') {
+      throw new CompanyEmailSecretOperationError('COMPANY_EMAIL_SECRET_OUTCOME_UNKNOWN');
+    }
     try {
       await input.companyEmailSecretAuditWriter.completeCompanyEmailSecretAuditOperation(
         createCompanyEmailSecretAuditCompletion({
@@ -62,6 +68,7 @@ export async function executeCompanyEmailSecretOperation<Result>(input: {
       );
     } catch {
       // The pending row intentionally remains visible for later reconciliation.
+      throw new CompanyEmailSecretOperationError('COMPANY_EMAIL_SECRET_AUDIT_INCOMPLETE');
     }
 
     throw new CompanyEmailSecretOperationError(

@@ -16,6 +16,12 @@ const runtime = vi.hoisted(() => ({
   assertRestore: vi.fn(),
   assertUpdate: vi.fn(),
   secretClose: vi.fn(),
+  secretAssertSettled: vi.fn(),
+  secretSealAdmission: vi.fn(),
+  secretGet: vi.fn(),
+  secretHas: vi.fn(),
+  secretSet: vi.fn(),
+  secretRemove: vi.fn(),
   serverClose: vi.fn(),
   snapshotClose: vi.fn(),
   snapshotRegistration: vi.fn(),
@@ -30,7 +36,15 @@ vi.mock('./workspaceProcessReservation.js', async importOriginal => ({
 }));
 
 vi.mock('../secrets/secretBrokerClient.js', () => ({
-  CompanyEmailSecretBrokerClient: class { close = runtime.secretClose; },
+  CompanyEmailSecretBrokerClient: class {
+    close = runtime.secretClose;
+    assertSettled = runtime.secretAssertSettled;
+    sealAdmission = runtime.secretSealAdmission;
+    getSecret = runtime.secretGet;
+    hasSecret = runtime.secretHas;
+    setSecret = runtime.secretSet;
+    removeSecret = runtime.secretRemove;
+  },
 }));
 vi.mock('../secrets/electronSecretBrokerTransport.js', () => ({
   createUtilitySecretBrokerTransport: () => ({}),
@@ -88,6 +102,52 @@ afterEach(async () => {
 });
 
 describe('backend runner shutdown command boundary', () => {
+  it('connects backend admission sealing to the existing broker without disposing active work', async () => {
+    const f = await startFixture();
+    const options = runtime.startServer.mock.calls[0]![0] as {
+      appOptions: { sealCompanyEmailSecretAdmission(): void };
+    };
+    options.appOptions.sealCompanyEmailSecretAdmission();
+    expect(runtime.secretSealAdmission).toHaveBeenCalledTimes(1);
+    expect(runtime.secretClose).not.toHaveBeenCalled();
+    f.send({ type: 'shutdown' });
+    await f.expectExit(0);
+  });
+  it.each(['noEffect', 'unknown', 'unclassified'] as const)('maps the secret adapter %s result without leaking its message', async effect => {
+    const fixture = await startFixture();
+    // resetModules reloads the runner; inject the constructor from that same module graph.
+    const { SecretBrokerError } = await import('../secrets/secretBrokerErrors.js');
+    const options = runtime.startServer.mock.calls[0]![0] as {
+      appOptions: {
+        companyEmailSecretReader: { getSecret(companyId: string): Promise<unknown> };
+        companyEmailSecretStore: {
+          hasSecret(companyId: string): Promise<unknown>;
+          setSecret(input: { companyId: string; operationId: string; secret: string }): Promise<void>;
+          removeSecret(companyId: string, operationId: string): Promise<void>;
+        };
+      };
+    };
+    const error = effect === 'unclassified' ? new Error('synthetic-private-adapter-detail')
+      : new SecretBrokerError('SECRET_WRITE_FAILED', effect);
+    for (const method of [runtime.secretGet, runtime.secretHas, runtime.secretSet, runtime.secretRemove]) method.mockRejectedValue(error);
+    const { companyEmailSecretReader: reader, companyEmailSecretStore: store } = options.appOptions;
+    for (const action of [
+      () => reader.getSecret('synthetic-company'),
+      () => store.hasSecret('synthetic-company'),
+      () => store.setSecret({ companyId: 'synthetic-company', operationId, secret: 'synthetic-value' }),
+      () => store.removeSecret('synthetic-company', operationId),
+    ]) {
+      await expect(action()).rejects.toMatchObject({ effect: effect === 'noEffect' ? 'noEffect' : 'unknown',
+        message: 'Secret storage failed.' });
+    }
+    expect(runtime.secretRemove).toHaveBeenCalledExactlyOnceWith('synthetic-company', operationId);
+    expect(runtime.secretSet).toHaveBeenCalledExactlyOnceWith({ companyId: 'synthetic-company', operationId, secret: 'synthetic-value' });
+    fixture.send({ type: 'shutdown' });
+    await fixture.expectExit(0);
+    expect(runtime.serverClose.mock.invocationCallOrder[0]).toBeLessThan(runtime.secretAssertSettled.mock.invocationCallOrder[0]!);
+    expect(runtime.secretAssertSettled.mock.invocationCallOrder[0]).toBeLessThan(runtime.secretClose.mock.invocationCallOrder[0]!);
+  });
+
   it('connects the lightweight context reader only to the registered backend service', async () => {
     const fixture = await startFixture(false);
     const context = { activeProfileId: 'd'.repeat(64), activeProfileIsEmpty: true };
@@ -229,7 +289,7 @@ describe('backend runner shutdown command boundary', () => {
     },
   );
 
-  it.each(['serverClose', 'secretClose', 'archiveClose', 'snapshotClose'] as const)(
+  it.each(['serverClose', 'secretAssertSettled', 'secretClose', 'archiveClose', 'snapshotClose'] as const)(
     'keeps %s failure sticky while attempting all broker closes', async (name) => {
       const fixture = await startFixture();
       runtime[name].mockImplementationOnce(() => {
@@ -393,7 +453,7 @@ describe('backend runner protected restore shutdown', () => {
     fixture.expectBrokerCleanup();
   });
 
-  it.each(['serverClose', 'secretClose', 'archiveClose', 'snapshotClose'] as const)(
+  it.each(['serverClose', 'secretAssertSettled', 'secretClose', 'archiveClose', 'snapshotClose'] as const)(
     'retains %s failure while attempting every owned broker close', async (name) => {
       const fixture = await startFixture();
       runtime[name].mockImplementationOnce(() => {
@@ -623,7 +683,8 @@ async function startFixture(startBackend = true) {
   await writeFile(serverPath,
     `const control = globalThis[${JSON.stringify(fixtureControlKey)}];\n` +
     'await control.onImport();\n' +
-    'export const startServer = (...args) => control.startServer(...args);\n');
+    'export const startServer = (...args) => control.startServer(...args);\n' +
+    'export class CompanyEmailSecretStoreError extends Error { constructor(effect) { super("Secret storage failed."); this.effect = effect; } }\n');
   await writeFile(resolve(maintenanceRoot, 'profileMaintenanceState.js'),
     'export class ProfileMaintenanceState {}\n');
   const steps: string[] = [];
@@ -755,6 +816,7 @@ function startCommand(backendRoot: string) {
       profileSnapshotStagingRoot: resolve(root, 'staging'), runtimeInstanceId: operationId,
       runtimeSessionSecret: 'a'.repeat(43), smokePdfPath: resolve(root, 'smoke.pdf'),
       verifySmokeSecretBroker: false,
+      secretBrokerGenerationId: operationId,
     },
   };
 }

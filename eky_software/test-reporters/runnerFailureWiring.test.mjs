@@ -17,6 +17,10 @@ test('real runner fixtures run after locked dependencies, never in dependency-fr
   const desktop = JSON.parse(await read('apps/desktop/package.json'));
   assert.ok(desktop.scripts['installer:test:encrypted-evidence'].includes('../../test-reporters/runnerFailureReporters.test.mjs'));
   assert.ok(desktop.scripts['installer:test:encrypted-evidence'].includes('installer/windows-acceptance-harness/originalFailureEvidenceOpenPgp.test.mjs'));
+  assert.ok(desktop.scripts['installer:test:encrypted-evidence'].includes('../../test-reporters/tests/d2SecretBrokerFailureEvidenceOpenPgp.test.mjs'));
+  const root = JSON.parse(await read('package.json'));
+  assert.ok(root.scripts['test:ci'].includes('test-reporters/tests/d2SecretBrokerFailureEvidence.test.mjs'));
+  assert.ok(!cadence.includes('test-reporters/tests/d2SecretBrokerFailureEvidence.test.mjs'));
   const workflow = await read('../.github/workflows/windows-acceptance-v2-workspace.yml');
   const install = workflow.indexOf('run: pnpm install --frozen-lockfile');
   const fixture = workflow.indexOf('run: pnpm --filter @eky/desktop installer:test:encrypted-evidence');

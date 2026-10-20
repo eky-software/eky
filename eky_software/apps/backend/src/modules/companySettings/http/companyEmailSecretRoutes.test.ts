@@ -195,13 +195,14 @@ describe('companyEmailSecretRoutes', () => {
     expect(deniedBody).not.toContain('stack');
   });
 
-  it('maps storage failures to a safe unavailable response', async () => {
+  it.each(['COMPANY_EMAIL_SECRET_OPERATION_FAILED', 'COMPANY_EMAIL_SECRET_OUTCOME_UNKNOWN',
+    'COMPANY_EMAIL_SECRET_AUDIT_INCOMPLETE'] as const)('maps %s to a safe unavailable response', async code => {
     const app = createAuthenticatedTestApp(
       createCompanyEmailSecretRoutes(
         createDependencies({
           async setCompanyEmailSecret() {
             throw new CompanyEmailSecretOperationError(
-              'COMPANY_EMAIL_SECRET_OPERATION_FAILED',
+              code,
             );
           },
         }),
@@ -213,7 +214,7 @@ describe('companyEmailSecretRoutes', () => {
 
     expect(response.status).toBe(503);
     expect(responseText).toBe(
-      JSON.stringify({ error: 'Email secret storage is unavailable.' }),
+      JSON.stringify({ error: 'Email secret storage is unavailable.', code }),
     );
     expect(responseText).not.toContain('synthetic-private-value');
     expect(responseText).not.toContain('safeStorage');

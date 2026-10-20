@@ -1,9 +1,13 @@
 import {
   isSecretBrokerErrorCode,
+  SecretBrokerError,
   type SecretBrokerErrorCode,
+  type SecretBrokerEffect,
 } from './secretBrokerErrors.js';
 
-export const secretBrokerProtocolVersion = 1;
+export const secretBrokerProtocolVersion = 2;
+export const secretBrokerRequestTimeoutMilliseconds = 10_000;
+export const secretBrokerDrainTimeoutMilliseconds = 5_000;
 export const maximumSecretCharacters = 1_024;
 export const maximumSecretBytes = 4_096;
 
@@ -19,22 +23,23 @@ export type SecretBrokerOperation =
   | 'removeCompanyEmailSecret'
   | 'setCompanyEmailSecret';
 
-interface SecretBrokerRequestBase {
+export interface SecretBrokerBinding {
   companyId: string;
+  generationId: string;
   operation: SecretBrokerOperation;
   protocolVersion: typeof secretBrokerProtocolVersion;
   requestId: string;
 }
 
 export interface SetCompanyEmailSecretBrokerRequest
-  extends SecretBrokerRequestBase {
+  extends SecretBrokerBinding {
   operation: 'setCompanyEmailSecret';
   secret: string;
 }
 
 export type SecretBrokerRequest =
   | SetCompanyEmailSecretBrokerRequest
-  | (SecretBrokerRequestBase & {
+  | (SecretBrokerBinding & {
       operation:
         | 'hasCompanyEmailSecret'
         | 'readCompanyEmailSecret'
@@ -43,30 +48,29 @@ export type SecretBrokerRequest =
 
 export type SecretBrokerSuccessResult =
   | { configured: boolean }
-  | { secret: string };
+  | { secret: string | null };
 
-export type SecretBrokerResponse =
+export type SecretBrokerResponse = SecretBrokerBinding & (
   | {
+      effect: SecretBrokerEffect;
       errorCode: SecretBrokerErrorCode;
       ok: false;
-      protocolVersion: typeof secretBrokerProtocolVersion;
-      requestId: string;
     }
   | {
       ok: true;
-      protocolVersion: typeof secretBrokerProtocolVersion;
-      requestId: string;
       result: SecretBrokerSuccessResult;
-    };
+    });
 
 export function createSecretBrokerRequest(input: {
   companyId: string;
+  generationId: string;
   operation: SecretBrokerOperation;
   requestId: string;
   secret?: string;
 }): SecretBrokerRequest {
   const candidate = {
     companyId: input.companyId,
+    generationId: input.generationId,
     operation: input.operation,
     protocolVersion: secretBrokerProtocolVersion,
     requestId: input.requestId,
@@ -77,7 +81,7 @@ export function createSecretBrokerRequest(input: {
   const request = parseSecretBrokerRequest(candidate);
 
   if (request === undefined) {
-    throw new Error('Invalid secret broker request.');
+    throw new SecretBrokerError('SECRET_BROKER_REQUEST_INVALID', 'noEffect');
   }
 
   return request;
@@ -95,6 +99,7 @@ export function parseSecretBrokerRequest(
   if (
     value.protocolVersion !== secretBrokerProtocolVersion ||
     !isRequestId(value.requestId) ||
+    !isSecretBrokerGenerationId(value.generationId) ||
     !isCompanyId(value.companyId) ||
     !isSecretBrokerOperation(operation)
   ) {
@@ -102,7 +107,7 @@ export function parseSecretBrokerRequest(
   }
 
   if (operation === 'setCompanyEmailSecret') {
-    if (!hasExactKeys(value, ['companyId', 'operation', 'protocolVersion', 'requestId', 'secret'])) {
+    if (!hasExactKeys(value, [...bindingKeys, 'secret'])) {
       return undefined;
     }
 
@@ -112,6 +117,7 @@ export function parseSecretBrokerRequest(
 
     return {
       companyId: value.companyId,
+      generationId: value.generationId,
       operation,
       protocolVersion: secretBrokerProtocolVersion,
       requestId: value.requestId,
@@ -119,12 +125,13 @@ export function parseSecretBrokerRequest(
     };
   }
 
-  if (!hasExactKeys(value, ['companyId', 'operation', 'protocolVersion', 'requestId'])) {
+  if (!hasExactKeys(value, bindingKeys)) {
     return undefined;
   }
 
   return {
     companyId: value.companyId,
+    generationId: value.generationId,
     operation,
     protocolVersion: secretBrokerProtocolVersion,
     requestId: value.requestId,
@@ -134,10 +141,10 @@ export function parseSecretBrokerRequest(
 export function parseSecretBrokerResponse(
   value: unknown,
 ): SecretBrokerResponse | undefined {
+  const binding = readSecretBrokerBinding(value);
   if (
-    !isRecord(value) ||
-    value.protocolVersion !== secretBrokerProtocolVersion ||
-    !isRequestId(value.requestId) ||
+    binding === undefined || !isRecord(value) ||
+    getSerializedByteLength(value) > maximumRequestBytes ||
     typeof value.ok !== 'boolean'
   ) {
     return undefined;
@@ -145,33 +152,60 @@ export function parseSecretBrokerResponse(
 
   if (value.ok === false) {
     if (
-      !hasExactKeys(value, ['errorCode', 'ok', 'protocolVersion', 'requestId']) ||
-      !isSecretBrokerErrorCode(value.errorCode)
+      !hasExactKeys(value, [...bindingKeys, 'errorCode', 'effect', 'ok']) ||
+      !isSecretBrokerErrorCode(value.errorCode) ||
+      (value.effect !== 'noEffect' && value.effect !== 'unknown')
     ) {
       return undefined;
     }
 
     return {
+      ...binding,
+      effect: value.effect,
       errorCode: value.errorCode,
       ok: false,
-      protocolVersion: secretBrokerProtocolVersion,
-      requestId: value.requestId,
     };
   }
 
   if (
-    !hasExactKeys(value, ['ok', 'protocolVersion', 'requestId', 'result']) ||
-    !isSecretBrokerSuccessResult(value.result)
+    !hasExactKeys(value, [...bindingKeys, 'ok', 'result']) ||
+    !isSecretBrokerSuccessResult(binding.operation, value.result)
   ) {
     return undefined;
   }
 
   return {
+    ...binding,
     ok: true,
+    result: 'secret' in value.result
+      ? { secret: value.result.secret }
+      : { configured: value.result.configured },
+  };
+}
+
+const bindingKeys = ['companyId', 'generationId', 'operation', 'protocolVersion', 'requestId'] as const;
+
+export function readSecretBrokerBinding(value: unknown): SecretBrokerBinding | undefined {
+  if (!isRecord(value) || value.protocolVersion !== secretBrokerProtocolVersion ||
+      !isCompanyId(value.companyId) || !isSecretBrokerGenerationId(value.generationId) ||
+      !isRequestId(value.requestId) || !isSecretBrokerOperation(value.operation)) {
+    return undefined;
+  }
+  return {
+    companyId: value.companyId,
+    generationId: value.generationId,
+    operation: value.operation,
     protocolVersion: secretBrokerProtocolVersion,
     requestId: value.requestId,
-    result: value.result,
   };
+}
+
+export function matchesSecretBrokerBinding(left: SecretBrokerBinding, right: SecretBrokerBinding): boolean {
+  return bindingKeys.every(key => left[key] === right[key]);
+}
+
+export function isSecretBrokerGenerationId(value: unknown): value is string {
+  return isRequestId(value);
 }
 
 export function readValidRequestId(value: unknown): string | undefined {
@@ -212,20 +246,22 @@ function isSecretBrokerOperation(
 }
 
 function isSecretBrokerSuccessResult(
+  operation: SecretBrokerOperation,
   value: unknown,
 ): value is SecretBrokerSuccessResult {
   if (!isRecord(value)) {
     return false;
   }
 
-  if (hasExactKeys(value, ['configured'])) {
-    return typeof value.configured === 'boolean';
+  if (operation === 'readCompanyEmailSecret') {
+    return hasExactKeys(value, ['secret']) && (value.secret === null || isSecret(value.secret));
   }
-
-  return hasExactKeys(value, ['secret']) && isSecret(value.secret);
+  return hasExactKeys(value, ['configured']) && typeof value.configured === 'boolean' &&
+    (operation === 'hasCompanyEmailSecret' ||
+      value.configured === (operation === 'setCompanyEmailSecret'));
 }
 
-function isRequestId(value: unknown): value is string {
+export function isRequestId(value: unknown): value is string {
   return typeof value === 'string' && requestIdPattern.test(value);
 }
 

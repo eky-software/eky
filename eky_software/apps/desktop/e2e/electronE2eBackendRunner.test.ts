@@ -145,6 +145,7 @@ function startCommand(generationId: string) {
       createSmokePdf: false, electronVersion: '43.7.6', migrationStartupPolicy: 'exactCurrentManifest',
       platform: 'win32', runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
       runtimeSessionSecret: 'a'.repeat(43), verifySmokeSecretBroker: false,
+      secretBrokerGenerationId: '22222222-2222-4222-8222-222222222222',
       backendRoot: resolve(root, 'backend'), databaseFilePath: resolve(root, 'data', 'eky.sqlite'),
       invoiceDocumentStorageRoot: resolve(root, 'storage'), migrationsDirectory: resolve(root, 'migrations'),
       operationalLogsRoot: resolve(root, 'logs'), profileSnapshotStagingRoot: resolve(root, 'staging'),

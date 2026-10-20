@@ -417,6 +417,22 @@ ja välittävät update-operaation tunnisteen muuttumattomana.
 
 ## Testikohtainen runtime
 
+D2:n `DESK-SECRET-DRAIN-001/002` kytkee vain testientrypointissa
+[`electronSecretReplyHold`](../../apps/desktop/e2e/electronSecretReplyHold.ts)-välityksen
+nykyisen main-brokerin ja utility-backendin kanavan väliin. Yksi
+onnistunut set/remove-kuittaus pidätetään täsmällisellä sukupolvi-,
+request-, operaatio- ja yrityssidonnalla. Salaisuuspyyntö välitetään
+muuttamatta eikä sen arvoa säilytetä ohjaimen tilassa. Ohjaus on vain
+testin nykyisessä main-yhteydessä, ei rendererissä, preloadissa tai HTTP:ssä.
+Todellinen tallennuspolku, audit ja sulku toimivat normaalisti.
+Koe havainnoi renderer-protokollan uuden kirjoituksen 503-eston ennen
+pidätetyn kuittauksen vapauttamista. Testikanava suljetaan backendin
+pysäytysyrityksen jälkeen; ulompi fixture todistaa edelleen prosessipuun
+ja portin vapautumisen. Valmistunut kuittaus ei yksin todista auditia tai
+poistumista. Tämä on viivästetyn kuittauksen, ei viivästetyn levy-I/O:n koe.
+Nykyiset poikkeusraportoija ja salattu virhekeräys säilyvät; kanavan
+sisältöä tai synteettistäkään salaisuutta ei liitetä raporttiin.
+
 Nykyinen konfiguraatio käyttää yhtä workeria. Testikohtainen runtime saa
 oman juuren; yhteisen Chromium-workerin juuri on tästä erillinen:
 

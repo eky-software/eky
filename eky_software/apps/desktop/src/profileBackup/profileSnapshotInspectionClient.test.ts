@@ -665,6 +665,7 @@ describe('main-owned snapshot inspection client', () => {
     const markCleanShutdown = vi.fn(async () => undefined);
     const workspaceId = validateWorkspaceId('11111111-1111-4111-8111-111111111111');
     const lifecycle = new MainOwnedActiveWorkspaceLifecycle(workspaceId, requestQuiescence, {
+      async sealAndDrainSecrets() {},
       closeBrokers, markCleanShutdown, stopBackend, stopBackendForUpdate: vi.fn(),
       disposeCapabilities: () => f.client.shutdown(), stopRecoveryPointScheduler: stopScheduler,
     }, new DeferredWorkspaceRuntimeRelaunch(vi.fn()));
@@ -699,6 +700,7 @@ describe('main-owned snapshot inspection client', () => {
     const closeBrokers = vi.fn(async () => undefined);
     const workspaceId = validateWorkspaceId('11111111-1111-4111-8111-111111111111');
     const lifecycle = new MainOwnedActiveWorkspaceLifecycle(workspaceId, new BackendRequestQuiescence(), {
+      async sealAndDrainSecrets() {},
       closeBrokers, markCleanShutdown, stopBackend,
       disposeCapabilities: () => f.client.shutdown(),
       stopBackendForUpdate: vi.fn(),

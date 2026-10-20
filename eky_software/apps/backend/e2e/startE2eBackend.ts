@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 import { startServer, type StartedServer } from '../src/http/server.js';
+export { CompanyEmailSecretStoreError } from '../src/modules/companySettings/ports/companyEmailSecretStoreError.js';
 import { resolveOperationalRuntimeIdentity } from '../src/observability/operationalRuntimeIdentity.js';
 import {
   applyE2eBackendRuntimePathOverrides,
@@ -28,8 +29,8 @@ interface E2eBackendSecretReader {
 
 interface E2eBackendSecretStore {
   hasSecret(companyId: string): Promise<boolean>;
-  removeSecret(companyId: string): Promise<void>;
-  setSecret(input: { companyId: string; secret: string }): Promise<void>;
+  removeSecret(companyId: string, operationId?: string): Promise<void>;
+  setSecret(input: { companyId: string; operationId?: string; secret: string }): Promise<void>;
 }
 
 interface E2eDeliveredInvoiceArchiveTaskSink {
@@ -48,6 +49,7 @@ interface E2eDeliveredInvoiceArchiveTaskSink {
 export interface StartE2eBackendOptions {
   companyEmailSecretReader?: E2eBackendSecretReader;
   companyEmailSecretStore?: E2eBackendSecretStore;
+  sealCompanyEmailSecretAdmission?: () => void;
   deliveredInvoiceArchiveTaskSink?: E2eDeliveredInvoiceArchiveTaskSink;
   observeStartupLog?: E2eStartupLogObserver;
   observeMigrationStartup?: MigrationStartupObserver;
@@ -137,6 +139,9 @@ export async function startE2eBackend(
       appVersion: operationalIdentity.appVersion,
       companyEmailSecretReader,
       companyEmailSecretStore,
+      ...(options.sealCompanyEmailSecretAdmission === undefined
+        ? {}
+        : { sealCompanyEmailSecretAdmission: options.sealCompanyEmailSecretAdmission }),
       ...(options.deliveredInvoiceArchiveTaskSink === undefined
         ? {}
         : {

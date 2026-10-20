@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import type { EncryptedSecretFileStore } from './encryptedSecretFile.js';
@@ -7,7 +9,8 @@ import {
   type SecretBrokerObserver,
 } from './secretBrokerMain.js';
 import { handleSecretBrokerMessage } from './secretBrokerMain.js';
-import type { SecretBrokerTransport } from './secretBrokerTransport.js';
+import { secretBrokerProtocolVersion } from './secretBrokerProtocol.js';
+import { createLinkedSecretTransports } from './secretBrokerTestSupport.js';
 import type {
   DecryptedString,
   StringProtector,
@@ -24,16 +27,14 @@ describe('Electron safeStorage secret broker', () => {
       });
 
       await expect(harness.client.hasSecret('example-company')).resolves.toBe(true);
-      await expect(harness.client.getSecret('example-company')).resolves.toBe(
-        '  synthetic-password  ',
-      );
-      expect(harness.file.readRawText()).not.toContain('synthetic-password');
+      expect(await harness.client.getSecret('example-company') === '  synthetic-password  ').toBe(true);
+      expect(harness.file.readRawText().includes('synthetic-password')).toBe(false);
 
       await harness.client.removeSecret('example-company');
       await expect(harness.client.hasSecret('example-company')).resolves.toBe(false);
       await expect(harness.client.getSecret('example-company')).resolves.toBeNull();
     } finally {
-      harness.close();
+      await harness.close();
     }
   });
 
@@ -49,11 +50,9 @@ describe('Electron safeStorage secret broker', () => {
       await expect(harness.client.hasSecret('company-b')).resolves.toBe(false);
       await expect(harness.client.getSecret('company-b')).resolves.toBeNull();
       await harness.client.removeSecret('company-b');
-      await expect(harness.client.getSecret('company-a')).resolves.toBe(
-        'synthetic-company-a-password',
-      );
+      expect(await harness.client.getSecret('company-a') === 'synthetic-company-a-password').toBe(true);
     } finally {
-      harness.close();
+      await harness.close();
     }
   });
 
@@ -86,7 +85,7 @@ describe('Electron safeStorage secret broker', () => {
         'SECRET_STORAGE_UNAVAILABLE',
       );
     } finally {
-      harness.close();
+      await harness.close();
     }
   });
 
@@ -105,11 +104,9 @@ describe('Electron safeStorage secret broker', () => {
         }),
       ]);
 
-      await expect(harness.client.getSecret('example-company')).resolves.toBe(
-        'synthetic-second',
-      );
+      expect(await harness.client.getSecret('example-company') === 'synthetic-second').toBe(true);
     } finally {
-      harness.close();
+      await harness.close();
     }
   });
 
@@ -120,8 +117,9 @@ describe('Electron safeStorage secret broker', () => {
     const response = await handleSecretBrokerMessage(
       {
         companyId: 'example-company',
+        generationId: randomUUID(),
         operation: 'hasCompanyEmailSecret',
-        protocolVersion: 1,
+        protocolVersion: secretBrokerProtocolVersion,
         requestId: '47a8881e-e9b8-4f40-b5c7-8fe2c9f2ed5e',
       },
       {
@@ -150,11 +148,13 @@ describe('Electron safeStorage secret broker', () => {
 
     try {
       const requestId = '47a8881e-e9b8-4f40-b5c7-8fe2c9f2ed5e';
+      const generationId = randomUUID();
       const response = await handleSecretBrokerMessage(
         {
           companyId: 'example-company',
-          operation: 'readArbitrarySecret',
-          protocolVersion: 1,
+          generationId,
+          operation: 'readCompanyEmailSecret',
+          protocolVersion: secretBrokerProtocolVersion,
           requestId,
           technicalPath: 'C:\\private\\secret.dat',
         },
@@ -165,14 +165,15 @@ describe('Electron safeStorage secret broker', () => {
       );
 
       expect(response).toEqual({
+        companyId: 'example-company', generationId, operation: 'readCompanyEmailSecret', effect: 'noEffect',
         errorCode: 'SECRET_BROKER_REQUEST_INVALID',
         ok: false,
-        protocolVersion: 1,
+        protocolVersion: secretBrokerProtocolVersion,
         requestId,
       });
       expect(JSON.stringify(response)).not.toContain('private');
     } finally {
-      harness.close();
+      await harness.close();
     }
   });
 });
@@ -184,13 +185,15 @@ function createBrokerHarness(
   } = {},
 ): {
   client: CompanyEmailSecretBrokerClient;
-  close(): void;
+  close(): Promise<void>;
   file: InMemoryEncryptedSecretFile;
 } {
-  const [clientTransport, mainTransport] = createLinkedTransports();
+  const [clientTransport, mainTransport] = createLinkedSecretTransports();
+  const generationId = randomUUID();
   const file = new InMemoryEncryptedSecretFile();
   const mainHandle = startSecretBrokerMain({
     encryptedSecretFile: file,
+    generationId,
     ...(options.operationFailed === undefined
       ? {}
       : {
@@ -202,14 +205,15 @@ function createBrokerHarness(
     transport: mainTransport,
   });
   const client = new CompanyEmailSecretBrokerClient(clientTransport, {
-    requestTimeoutMilliseconds: 1_000,
+    generationId,
   });
 
   return {
     client,
-    close() {
+    async close() {
+      await mainHandle.sealAndDrain();
       client.close();
-      mainHandle.close();
+      await mainHandle.close();
     },
     file,
   };
@@ -261,44 +265,4 @@ function createXorStringProtector(): StringProtector {
       return Uint8Array.from(Buffer.from(value, 'utf8'), (byte) => byte ^ 0xa5);
     },
   };
-}
-
-function createLinkedTransports(): [
-  SecretBrokerTransport,
-  SecretBrokerTransport,
-] {
-  const leftListeners = new Set<(value: unknown) => void>();
-  const rightListeners = new Set<(value: unknown) => void>();
-  let closed = false;
-
-  const createTransport = (
-    ownListeners: Set<(value: unknown) => void>,
-    peerListeners: Set<(value: unknown) => void>,
-  ): SecretBrokerTransport => ({
-    close() {
-      closed = true;
-      ownListeners.clear();
-    },
-    send(value) {
-      if (closed) {
-        throw new Error('Transport closed.');
-      }
-
-      queueMicrotask(() => {
-        for (const listener of peerListeners) {
-          listener(value);
-        }
-      });
-    },
-    subscribe(listener) {
-      ownListeners.add(listener);
-
-      return () => ownListeners.delete(listener);
-    },
-  });
-
-  return [
-    createTransport(leftListeners, rightListeners),
-    createTransport(rightListeners, leftListeners),
-  ];
 }
