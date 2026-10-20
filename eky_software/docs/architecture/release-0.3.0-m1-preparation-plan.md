@@ -63,8 +63,20 @@ jatkotavan ja D-P2/A:n nykyisen saatavuussäännön säilyttämisen.
 D1:n alkuluvun tallennusesto on toteutettu ja sen rajattu web-,
 selainkomponentti- sekä aiemman tallennus-/audit-polun todennus läpäisi.
 [D1:n kohdenäyttö](release-0.3.0-company-settings-plan.md#d1n-kohdenäyttö-ja-seuraava-työ)
-erottaa tämän koko D:n hyväksynnästä. Seuraava työ on D2:n sopimus- ja
-kilpailukoe; tuotantokytkentää edeltää aktiivisen työn päättymisen todennus.
+erottaa tämän koko D:n hyväksynnästä. D2:n 11 tapauksen lähtökoe toisti
+nykyisen brokerin epäselvän tuloksen ja sulkemisen riskit, ei niiden korjausta.
+Erillinen 15 tapauksen jonokoe läpäisi ilman tuotantokytkentää.
+[Sulkusopimuksen valmistelu](release-0.3.0-company-settings-plan.md#d2n-lähtötilan-näyttö-ja-avoin-sulkupäätös)
+oli valmisteluvaihe. Omistaja hyväksyi 20.10.2026 viisi sekuntia rajatun
+odotuskokeen lähtökohdaksi nykyisen salasanatallennuksen päälle.
+17 tapauksen sulkukoe, sen tyypitys ja erikseen nykyiset 24 salaisuustestiä
+läpäisivät. Tämä ei ole Electronin IPC-/audit-ketjun tai tuotantokytkennän
+hyväksyntä. Omistaja hyväksyi tämän jälkeen
+[koko sulkusopimuksen](release-0.3.0-company-settings-plan.md#sulkusopimusehdotus-kokeen-jälkeen)
+rajattuun toteutukseen ja testeihin nykyistä salasanatallennusta muuttamatta.
+Seuraava työ on brokerin, auditin ja sulkukutsujien kytkentä sekä
+alkuperäisen testivirheen säilymisen todistus puretussa salatussa paketissa.
+Tässä checkpointissa D2:n tuotantokoodia ei ole vielä muutettu.
 CS-1/CS-2 säilyvät hyväksyttyinä; D:n kokonais- ja PR/main-hyväksyntä
 ovat vielä avoinna.
 

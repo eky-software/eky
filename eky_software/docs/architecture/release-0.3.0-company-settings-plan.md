@@ -16,8 +16,9 @@ Alkuperäinen valmistelu perustui lähdehavaintoihin. Alla oleva D1:n
 kohdenäyttö ei vielä ole koko D:n tai uuden revision integraatiohyväksyntä.
 
 Omistaja hyväksyi alla kuvatun D-P1:n ja D-P2:n vaihtoehdon A.
-D2 etenee edelleen ensin rajattuun sopimus- ja kilpailukokeeseen;
-tuotantokytkentä edellyttää alla nimettyä elinkaaritodistusta.
+Omistaja hyväksyi 20.10.2026 myös kokeen jälkeisen D2-sulkusopimuksen
+rajattuun toteutukseen ja testeihin. Tuotantokytkennän hyväksyntä edellyttää
+edelleen alla nimettyä elinkaaritodistusta.
 Toteutuksen, testien ja integraation hyväksyntä on avoin.
 
 ### D1:n kohdenäyttö ja seuraava työ
@@ -39,9 +40,110 @@ vuoksi. Ensivirheet säilyvät erillään hyväksytystä kohdeajosta.
 Rajattu riippumaton D1-tuotantokoodin ja päätösten katselmus ei löytänyt
 korjattavaa. Tämä ei korvaa koko D:n loppukatselmusta tai PR/main-portteja.
 
-**Seuraava työ on D2:n rajattu sopimus- ja kilpailukoe.** Salaisuuksien
-brokeria, tallennusta tai auditin lopputulosta ei ole vielä muutettu.
-Alla oleva elinkaaritodistus vaaditaan ennen niiden tuotantokytkentää.
+**20.10.2026: myös rajattu viiden sekunnin sulkukoe läpäisi; kokonaisketjun todennus on avoin.**
+Salaisuuksien brokeria, tallennusta tai auditin lopputulosta ei ole vielä
+muutettu tässä checkpointissa. [Sulkusopimus ja kokeen rajat](#sulkusopimusehdotus-kokeen-jälkeen)
+on hyväksytty toteutuksen pohjaksi; kokonaisketjun hyväksyntä on avoin.
+
+### D2:n lähtötilan näyttö ja avoin sulkupäätös
+
+Nykyisen clientin, main-brokerin ja salatun tiedoston toteutuksilla tehty
+11 tapauksen synteettinen koe vahvisti seuraavat erot. Koe käytti
+hallittua transportia ja testisuojainta, ei Electronin todellista
+prosessirajaa tai käyttöjärjestelmän salausta. Läpäisy tarkoittaa nykyisen
+käyttäytymisen toistamista, ei vikojen korjaamista.
+
+| Havainto | Korjauksessa vaadittu ero |
+| --- | --- |
+| Viivästetty set/remove voi vaikuttaa clientin timeoutin jälkeen; jonotettu luku ja uusi pyyntö voivat jatkua. | Timeout ei ole peruutus. Epävarmuus estää aloittamattomat ja uudet pyynnöt ennen niiden lähettämistä. |
+| Mainin close voi palautua aktiivisen kirjoituksen päättymättä; clientin close yksin ei estä mainin jonotettua poistoa. | Päättynyt client, suljettu kanava ja päättynyt tiedostotyö todistetaan erikseen. |
+| Read/has voi jatkaa varakappaleen palauttamista sulkemisen jälkeen. | Myös lukujen palautus- ja uudelleensalaustyö kuuluu samaan omistajuuteen. |
+| Tallennuksen kuittaus voi kadota, vaikka uudet tavut ovat jo tiedostossa. | Epäselvä tulos säilyy pendinginä; myöhempi luku ei kuittaa sitä. |
+| Kirjoitus voi epäonnistua uuden currentin julkaisun jälkeen; poisto voi epäonnistua osittaisena. | Yleinen tiedostovirhe ei todista vaikutuksettomuutta. |
+| Ennen tiedostotyötä hylätty salaus säilyttää kaikki slotit; tavallinen set/has/read/remove toimii. | Todistettu vaikutuksettomuus ja normaali onnistuminen säilyvät erillisinä. |
+
+Rajattu riippumaton lähdekatselmus vahvisti, ettei nykyinen backendin
+sulkuraja tai HTTP-kirjoitusten odotusraja kata automaattisesti mainin
+salaisuustyötä. Rajatonta odotusta tai toisen toiminnon aikarajaa ei lisätä
+huomaamatta. Valmistelussa verrattiin välitöntä sulun hylkäystä ja rajattua
+odotusta. Välitön hylkäys olisi pienempi muutos, mutta myös lyhyt aktiivinen
+tilaluku voisi vaatia uudelleenkäynnistyksen. Omistaja hyväksyi jäljempänä
+rajatun odotuskokeen. Kummassakaan vaihtoehdossa ajan loppuminen, työn
+päättyminen ja muutoksen onnistuminen eivät tarkoita samaa asiaa.
+Kokeen jälkeen hyväksytty sulkusopimus on jäljempänä; D-P1:n pending- ja
+restart-ehdot säilyvät.
+
+**Määrittelykeskustelun osapäätös 20.10.2026:** kun käyttäjä on jo
+vahvistanut yrityksen vaihdon, alkanut salaisuusoperaatio valmistuu
+odotusajan sisällä varmennetusti onnistuneena ja kaikki muut sulkemisen ja
+yrityksen vaihdon ehdot täyttyvät, alkuperäinen vaihto jatkuu ilman toista vahvistusta.
+Kyse on saman vahvistetun toiminnon jatkamisesta, ei automaattisesta
+uusinnasta. Vanhentunut tulos, aiempi epävarmuus tai muu sulkuvirhe ei saa
+vapauttaa jatkoa tämän päätöksen perusteella.
+
+**Toinen osapäätös 20.10.2026:** varmasti vaikutukseton sähköpostisalasanan
+tallennusvirhe ei yksin estä jo vahvistettua yrityksen vaihtoa. Työn on
+oltava todistetusti päättynyt ja kaikkien muiden sulkemisen ja vaihdon
+ehtojen täytyttävä. Käyttäjälle näytetään tallennuksen epäonnistumisesta
+ilmoitus, joka ei saa kadota huomaamatta yrityksen vaihdossa. Tallennusta
+ei merkitä onnistuneeksi eikä uusita automaattisesti. Epäselvä tulos,
+keskeneräinen työ tai muu sulkuvirhe ei kuulu tähän jatkolupaan.
+
+**Koelupa 20.10.2026:** omistaja hyväksyi viisi sekuntia rajatun odotuskokeen
+lähtöarvoksi. Nykyinen salasanan asetus-, salaus- ja tallennuspolku säilyy;
+koe koskee jo alkaneen työn sulkemista, ei uutta tallennusjärjestelmää.
+Tyhjä tai aikaisemmin valmistuva työ jatkaa heti. Uusi sulkupyyntö ei aloita
+budjettia uudelleen eikä määräajan täyttyminen todista työn päättymistä.
+Koetulokset, kaikki sulkukutsujat ja koko sulkusopimus esitetään ennen
+tuotantokytkennän päätöstä. Viisi sekuntia ei ole mitattu tuotantoraja eikä
+lupaus yrityksen vaihdon kokonaisajasta.
+
+Nykyisen yrityksen vaihtodialogin käynnissä olevan työn esto on lähtökohta;
+uutta peruutuspolkua ei ole hyväksytty. Kokeen jälkeinen päätös hyväksyy
+viiden sekunnin budjetin ja sulkusopimuksen toteutukseen, ei vielä sen
+tuotantokytkennän todennusta.
+D-P1:n epäselvän tuloksen käsittely säilyy ennallaan.
+
+**Yrityseristyksen täsmennys 20.10.2026:** yrityksen vaihto ei kysy
+sähköpostisalasanaa, tarkista sitä SMTP-palvelimelta tai siirrä edellisen
+työtilan sähköpostiasetuksia ja salaisuutta uuteen työtilaan. Kohteen
+puuttuvaa asetusta tai salasanaa ei täydennetä lähtöyrityksen tiedolla.
+Kohde käyttää omaa tietokantaansa ja salattua storeaan; eristys sidotaan
+työtilaan ja runtime-sukupolveen, ei vain `companyId`-arvoon. Vanhan
+työtilan myöhäinen tulos ei saa muuttaa uuden työtilan tilaa, asetuksia,
+salaisuutta tai lähetyksen tunnuksia.
+
+D2:n todennus kattaa A -> B -> A -vaihdon eri synteettisillä
+sähköpostiasetuksilla sekä B:n puuttuvalla ja omalla salasanalla.
+Viivästetty A:n työ/vastaus ei saa vapauttaa B:n lähetyksiä tai muuttaa
+B:n tilaa. SMTP:n tunnus- ja yrityssidonta todennetaan synteettisellä
+kuljetuksella ilman oikeaa sähköpostilähetystä; salasanoja ei raportoida.
+Nykyinen toisen yrityksen salaisuuden luku-/poistotesti ei yksin todista
+tätä koko vaihto- ja viiveketjua. Näyttö on vielä avoin.
+
+Sulkusopimuksen kutsujatarkistus kuuluu nykyisiin omistajiin:
+
+| Kutsukohta | Ennen kytkentää vaadittu todiste |
+| --- | --- |
+| Mainin tavallinen lifecycle, yrityksen vaihto/create/import/replace ja update-sulku | Sulje salaisuuspyyntöjen pääsy valmistelussa, odota main-työ ennen backendin pysäytystä ja sulje transport vasta lopuksi. Sama ensimmäinen sulkutulos; epävarmuus estää clean-merkin ja jatkon. |
+| `desktopComposition.ts`: live-palautuksen `stopBusinessRuntime` sekä startupin vastaava pysäytys | Nämä eivät saa ohittaa ehtoa kutsumalla backendin pysäytystä suoraan. Tarkistus on ennen profiilin muutosta tai palautusta. |
+| `desktopComposition.ts`: startupin `validateAfterBackend`-kutsujen pysäytyscallbackit | Brokerin päättymistodiste on ennen callbackin jälkeistä rollbackia, ei vasta `relaunchRequired`-haaran lopussa. Tarkista myös ennen migraatioita tehtävä kutsu. |
+| Startupin `relaunchRequired` ja catch/recovery | Ei profiilin muutosta, uuden brokerin käynnistystä tai varauksen vapautusta epävarman main-työn aikana; alkuperäinen virhe säilyy. |
+| `backendRunner.ts`: normaali, update- ja restore-shutdown | Salaisuusoperaation ja auditin lopputulos tarkistetaan ennen clientin sulkemista tai SQLite-resurssien vapautusta. Clientin close tyhjentää odottavien joukon, joten sen jälkeinen tyhjyys ei ole todiste. |
+| `desktopBeforeQuit.ts` | Uusi sulkupyyntö odottaa samaa tulosta. Rajattu sulkuvirheen käsittely voi johtaa koko sovelluksen poistumiseen, mutta ei todista hallittua sulkua tai nykytilan eheyttä. |
+
+Kumpaakaan sulkuvaihtoehtoa ei ole tällä kirjauksella kytketty tuotantoon.
+Seuraava todennus koskee valitun korjausehdokkaan jonoa, tulossidontaa ja
+nykyisen lifecycle-omistajan estoa, ei uutta testijärjestelmää.
+
+Sulkupäätöksestä erillinen 15 tapauksen jonokoe läpäisi. Koeehdokas käytti
+nykyistä main-brokeria ja tiedostotallennusta: myöhäinen set/remove,
+kadonnut kuittaus tai virheellinen vastaus eivät päästäneet seuraavaa
+pyyntöä lähetykseen. Alkuperäinen pyyntöbudjetti säilyi myös jonotuksessa.
+Koe ei vielä todista tuotannon runtime-sukupolvisidontaa, uusia mainin
+tulosluokkia, auditia, Electronin IPC-rajaa tai mainin sulkemista. Nykyisen
+protokollan virhevastaus käsiteltiin kokeessa varovaisesti tuntemattomana;
+sitä ei hyväksytä lopullisen tulosluokituksen korvikkeeksi.
 
 ## Omistajat ja säilytettävät ehdot
 
@@ -202,6 +304,129 @@ Jos nykyisillä omistajilla ja aikarajoilla ei saada tätä todennettua,
 pysähdy täsmälliseen vaihtoehtopäätökseen. Älä laajenna C:tä tai aloita
 uutta yleistä lifecycle-hanketta.
 
+### Kilpailukokeen tarkentama toteutussuunta
+
+Seuraavat kohdat tarkentavat nykyisiin omistajiin rajattua ehdokasta.
+Niiden toteutus- ja integraationäyttö on vielä avoin; sulkupolku riippuu
+[edellä nimetystä päätöksestä](#d2n-lähtötilan-näyttö-ja-avoin-sulkupäätös).
+
+- Ehdokkaassa nykyinen jaettu client lähettää yhden pyynnön kerrallaan. Seuraava ei
+  lähde ennen nykyisen pyynnön identiteetin ja operaatiokohtaisen tuloksen
+  validointia. Pelkkä yleisen vastausrakenteen validointi ei riitä.
+  Nykyinen pyyntöbudjetti alkaa jonoon tulosta eikä käynnisty uudelleen
+  lähetyksessä. Vanhentunut lähettämätön pyyntö ei saa lähteä viivästyneen
+  ajastinkäsittelijän vuoksi.
+- Lähetetyn pyynnön epäselvyys sulkee sukupolven ennen kutsujan kuittausta
+  ja estää kaikki lähettämättömät pyynnöt. Viimeksi mainittujen oma
+  vaikutuksettomuus voidaan todistaa. Main sulkee oman pääsynsä myös
+  epäselvässä tiedostovirheessä tai kuittauksen lähetysvirheessä ennen
+  seuraavan jonotetun työn aloitusta.
+- Pyyntö ja vastaus sidotaan nykyiseen runtime-sukupolveen sekä täsmälliseen
+  requestiin, operaatioon ja yrityskontekstiin. Backendin audit-operaation
+  yhteys tähän kutsuun määritellään eksplisiittisesti. Suljettu tila ei saa
+  nollautua luomalla uutta client-oliota; vanha vastaus ei vapauta sitä.
+  Sisäinen protokollamuutos ei muuta salatun payloadin formaattia.
+- Vaikutusluokitus syntyy mainin omistamassa työssä: ennen ensimmäistä
+  mutatoivaa tiedostokutsua todistettu hylkäys erotetaan sen jälkeisestä
+  epävarmuudesta. Read/hasin confirm ja uudelleensalaus ovat mutaatioita.
+  Vain todistettu vaikutuksettomuus sallii backendin failed-loppukirjauksen.
+- Nykyinen transport tarvitsee päättymishavainnon, joka sulkee pääsyn
+  mutta ei väitä I/O:ta päättyneeksi. Sulkemisen virhe säilyy myös toisella
+  close-kutsulla ja muiden sulkujen suoritus varmistetaan. Startupin
+  recovery-/relaunch-haarassa suoja on oltava ennen profiilitiedostojen
+  muuttamista, ei vasta brokerien loppusiivouksessa.
+
+Kohdekokeen jälkeen todistetaan todellinen yksityinen IPC-raja sekä kaikki
+saman brokerin sulkukutsujat. Pelkkä clientin yksikkötesti tai nykytilan
+lähtökoe ei hyväksy tuotantokytkentää.
+
+### Sulkusopimusehdotus kokeen jälkeen
+
+**20.10.2026: omistajan hyväksymä toteutussopimus; kokonaiskytkennän näyttö on avoin.** Rajattu sulkukoe
+läpäisi 17 tapausta ja tyyppitarkistuksen. Nykyisen muuttumattoman
+salaisuustoteutuksen 24 testiä läpäisivät erikseen. Kokeessa käytettiin
+nykyistä viestinkäsittelijää ja tiedostotallennusta; niiden ympärillä oleva
+jono-/sulkuehdokas ja hallittu kello eivät muuta tuotantokoodia.
+Katselmuksessa tarkennettiin aloittamattoman jonon välitöntä hylkäystä;
+sama 17 tapauksen sarja ja tyypitys läpäisivät tarkennuksen jälkeen.
+Lukumääriä ei lasketa yhteen uudeksi integraatiohyväksynnäksi.
+
+Koe todentaa tyhjän sulun, viivästetyn set/remove-työn, read/has-palautuksen
+ja uudelleensalauksen, ennen vaikutusta syntyvän virheen sekä julkaisemisen
+jälkeisen epävarmuuden. Yhteinen määräaika ei nollaudu toisella sululla,
+ja myöhäinen valmistuminen ei poista aiempaa estoa. Erilliset työtilat
+eivät sekoitu samalla yritystunnisteella. Nykyisen lifecyclen koe osoittaa,
+ettei backendin exit yksin riitä, jos mainin työ jää kesken.
+Se ei vielä todista koko A -> B -> A -vaihtoa.
+
+**Säilyvä toteutus:** backendin nykyinen permission-/audit-käyttötapaus,
+yksityinen broker, mainin salaus ja nykyinen `EncryptedSecretFile` säilyvät
+omistajina. Salasanan formaattia tai varmuuskopioiden sisältöä ei muuteta.
+Nykyisiin omistajiin lisätään vain pääsyn sulku, työn päättymisen seuranta
+ja täsmällinen tulos; ei uutta tallennus- tai elinkaarijärjestelmää.
+
+1. **Pääsy kiinni.** Vahvistetun sulkutoiminnon valmistelussa main sulkee
+   uudet ja aloittamattomat salaisuuspyynnöt heti. Jo alkanut työ säilyy
+   nykyisen omistajan vastuulla. Lähettämätön hylkäys on vaikutukseton,
+   mutta ei todista muun aktiivisen työn vaikutuksettomuutta.
+2. **Yksi odotus.** Main-broker omistaa ensimmäisestä pääsyn sulusta alkavan
+   viiden sekunnin monotonisen määräajan. Tyhjä tai aikaisemmin valmistuva
+   työ jatkaa heti. Sama sulkutulos ja määräaika jaetaan kaikille kutsujille.
+   Kello tarkistetaan myös valmistumisessa: viivästynyt ajastin ei oikeuta
+   myöhäistä onnistumista. Tämä ei ole synkronisen työn pakkokeskeytys.
+3. **Budjetit erillään.** Mainin odotus käynnistyy rinnakkain nykyisen
+   HTTP-kirjoitusten enintään 30 sekunnin rauhoituksen kanssa, ei sen
+   jälkeen lisättävänä odotuksena. Clientin nykyinen 10 sekunnin pyyntöraja
+   ja backendin nykyinen 3 sekunnin hallitun pysäytyksen raja eivät kasva.
+   Viisi sekuntia koskee mainin salaisuustyötä, ei koko yrityksen vaihtoa.
+   GET/HEAD ei kuulu HTTP-kirjoituslaskuriin; esimerkiksi kadonnut tilaluvun
+   vastaus voi edelleen estää turvallisen sulun. Rajat eivät ohita toisiaan.
+4. **Vastaus ja audit loppuun.** Mainin työn päättyminen tai viestin
+   lähetys ei vielä todista backendin vastaanottoa. Vastauskanava pidetään
+   auki backendin nykyisen sulkukäsittelyn ajan. `backendRunner` tarkistaa
+   ennen clientin sulkua koko omistetun salaisuusoperaation päättymisen,
+   sen varmuustilan ja auditin loppukirjauksen. Havainto tulee nykyiseltä
+   Company Settingsin käyttötapauksen omistajalta/compositionilta; uutta
+   pysyvää kuittausjournalia ei lisätä. Pelkkä HTTP-yhteyksien päättyminen,
+   clientin odotusjoukon tyhjeneminen tai store-kutsun valmistuminen ei riitä.
+   Audit-incomplete ja aiempi epävarmuus eivät muutu onnistumiseksi.
+5. **Jatkolupa vasta kokonaisuudesta.** Mainin päättymistodiste, backendin
+   hyväksyttävä lopputulos ja todellinen exit sekä muut nykyiset omistajuus-
+   ja palautusehdot tarvitaan yhdessä. Vasta silloin turvallinen profiilin
+   vaihto/muutos voi edetä. Lopullinen porttien sulku ei korvaa näitä todisteita.
+   Pakkopysäytystä ei tulkita salaisuusoperaation onnistumiseksi. Kaikki
+   omistetut sulut yritetään virheessäkin, mutta ensimmäinen syy säilyy
+   eikä epävarmaa varausta vapauteta tai profiilia siivota tämän perusteella.
+6. **Käyttäjän palaute.** Varmasti onnistunut työ jatkaa alkuperäistä
+   vahvistettua toimintoa kerran. Varmasti vaikutukseton tallennusvirhe
+   sallii turvallisen yrityksen vaihdon muiden ehtojen täyttyessä, mutta
+   epäonnistumisilmoitus näytetään ja kuitataan lähtöyrityksessä ennen
+   uudelleenkäynnistystä. Käytetään nykyistä odotettavaa native-dialogia,
+   ei itsestään katoavaa ilmoitusta tai salaisuuden siirtoa kohdeyritykseen.
+   Ilmoituksen kuittaus ei ole uusi vaihdon vahvistus eikä kuluta mainin
+   työbudjettia. Ilmoituksen epäonnistuminen ei saa johtaa hiljaiseen vaihtoon.
+7. **Epävarmuus säilyy.** Ajan loppuminen, epäselvä vaikutus, auditin
+   keskeneräisyys tai epävarma sulku estää vaarallisen jatkon. Myöhempi
+   valmistuminen ei vapauta samaa epäonnistunutta sulkua. Jo suljettua
+   sukupolvea ei palauteta aktiiviseksi yleisellä HTTP-rajoituksen
+   poistolla. D-P1:n hallittu uusi käynnistys ja vanhan omistajan päättymisen
+   todistus säilyvät; ohjelma ei käynnisty tai lähetä sähköpostia itse uudelleen.
+
+**Viiden sekunnin perustelu ja näytön raja:** se on omistajan hyväksymä
+lähtöarvo lyhyen paikallisen työn odottamiseen ilman välitöntä hylkäystä.
+Hallittu koe osoittaa määräajan semantiikan, ei tuotannon viivejakaumaa tai
+lupausta kaikkien töiden valmistumisesta siinä ajassa. Mahdollinen myöhempi
+budjettimuutos tarvitsee näyttöä ja päätöksen, ei automaattista nostoa.
+
+**Ennen tuotantokytkentää vielä todennettava:** nykyisellä IPC-fixturellä
+viivästetyt muutokset, kadonnut/myöhäinen vastaus ja jo ennen sulkua syntynyt
+timeout; oikean backend-käyttötapauksen audit-virhe/viive ja katkennut HTTP-
+asiakasyhteys; kaikki yllä luetellut sulkukutsujat, myös startup ja live-restore;
+ilmoituksen näkyminen sekä A -> B -> A -eristys. Main-kokeen suora Promise
+ja sen dispose eivät todista transportin oikeaa elinaikaa tai auditia.
+Kytkennän jälkeinen packaged-palautus sekä D:n nykyiset PR/main-portit säilyvät.
+Rajattu riippumaton katselmus vahvisti tämän eron ja kutsujien tarkistuslistan.
+
 ## D3: Perustietojen saatavuus tilapalvelun häiriössä
 
 ### D-P2: Hyväksytty GET-käyttäytyminen
@@ -258,6 +483,12 @@ kohdenäyttö ei korvaa niitä.
   business-tapahtumaksi. Nykyinen retention säilyttää pending-aineiston.
 - Julkiset lokit ja salattu testiaineisto noudattavat nykyisiä rajoja.
   Salaisuuksia, niiden tiivisteitä tai oikeita profiileja ei kerätä.
+- D2:n virhepolkujen alkuperäinen testivirhe säilytetään nykyisellä
+  virhekeräyksellä ennen yleiseksi virhekoodiksi muuntamista. Ennen
+  kytkennän hyväksyntää pakotettu salaisuuksia sisältämätön virhe
+  todennetaan nykyisen CI-keräyksen kautta puretusta salatusta paketista.
+  Puuttuva aineisto tai kesken katkennut keräys raportoidaan sellaisena;
+  salaus ei anna lupaa salaisuuksien tai profiilien keräämiseen.
 - Kukin pala päivittää omistavan sopimuksen, testimatriisin ja lyhyen
   jatkamiskohdan. Korvattu toteutus poistetaan vasta kattavuuden todennuksella;
   rinnakkaista vanhaa ja uutta lifecyclea ei jätetä pysyvästi.
