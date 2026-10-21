@@ -26,6 +26,7 @@ import { isElectronPdfPreviewUrl } from './electronPdfPreviewProbe.js';
 import { createFirstStartProofAdmission, createFirstStartProofObserver } from './workspaceFirstStartProofObservation.js';
 import { WorkspaceFirstStartLoadExperiment, type FirstStartLoadExperimentMode } from './workspaceFirstStartLoadExperiment.js';
 import { assertProofSingleInstanceOwnership } from './workspaceManagementCompositionProofRuntime.js';
+import { shutdownBeforeWorkspaceProof } from './workspaceProofInitialShutdown.js';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -360,7 +361,7 @@ Object.assign(globalThis, {
       if (lifecycle === undefined) {
         throw new Error('WORKSPACE_ACTIVATION_MIGRATION_LIFECYCLE_MISSING');
       }
-      await lifecycle.shutdown();
+      await shutdownBeforeWorkspaceProof(lifecycle);
       if (backendController.isRunning()) {
         throw new Error('WORKSPACE_ACTIVATION_MIGRATION_BACKEND_RUNNING');
       }

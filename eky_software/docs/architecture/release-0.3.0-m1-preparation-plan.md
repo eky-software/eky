@@ -67,8 +67,22 @@ koko testikomento, tyypitys ja rajattu katselmus läpäisivät. Erillinen
 asentimen odotushavainto säilyy avoimena; sitä ei nimetä samalla korjatuksi.
 Omistajan hyväksymä
 rajattu Hono/Vite/Rolldown-päivitys läpäisi auditoinnin ja kohdetestit.
-Seuraavaksi uuden puhtaan paketin todennus ja yksi normaali PR-kierros;
-merge ja main-portit ovat avoinna.
+Puhtaan `fad384a2`-paketin palautusketju läpäisi, samoin sen
+[riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39521078818).
+[Seuraava V2-kierros](https://github.com/eky-software/eky/actions/runs/39521078890)
+hylättiin: 29 työtä läpäisi, viisi hylättiin koonti mukaan lukien,
+kahdeksan jäi valitsematta ja yksi peruttiin kokonaisaikarajaan.
+Omistaja hyväksyi rajatun ikkunahavainnon, supervisorin absoluuttisen
+odotusrajan ja Electronin sulkuvirheen syynvälityksen selvityksen sekä
+kohdekokeet. Näistä ei päätellä, että vika olisi vain testeissä.
+Viimeisen workspace-success-ajon oma loki ja salattu aineisto jäivät
+puuttumaan; sen syy ja siivoustila ovat tuntemattomat. Toisen toiston ja
+molempien fault-toistojen läpäisyt eivät korvaa tätä näyttöä.
+Omistaja hyväksyi tämän jälkeen ikkunatestin täsmällisen kylmän
+provider-aikakatkaisun valmisteluehdon sekä jatkamisen Goalin normaaleihin
+portteihin. Seuraavaksi rajattujen korjausten todennus, katselmus,
+uusi puhdas paketti ja normaali PR-kierros.
+Merge ja main-portit ovat avoinna.
 Ensivirheet säilyvät, eikä uuden korjauksen näyttö selitä vanhoja timeouteja.
 
 Omistaja hyväksyi 17.10.2026 D-P1:n epäselvän salaisuusoperaation

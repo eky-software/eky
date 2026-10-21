@@ -5,6 +5,7 @@ import { access, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:
 import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 import { gunzipSync } from 'node:zlib';
 import { createOpenPgpTestFixture } from '../../windows-acceptance-harness/openPgpTestFixture.mjs';
 import { collectJobFailureEvidence } from '../../windows-acceptance-harness/ciFailureEvidence.mjs';
@@ -118,6 +119,32 @@ test('MSI resources: scoped identity, cancellation and real OpenPGP delivery', W
   } finally { await crypto.finish({ completed, failed: !completed }); }
 });
 
+function assertColdPreparationReason(failure) {
+  const accepted = [
+    { Stage: 'listProcessId', Reason: 'budgetExpired', HResult: null },
+    ...['elementFromHandle', 'firstChild'].map(Stage => ({
+      Stage, Reason: 'providerException', HResult: -2146233083,
+    })),
+  ];
+  assert.ok(accepted.some(value => isDeepStrictEqual(failure, value)), 'MSI_COLD_PREPARATION_REASON_INVALID');
+}
+
+test('MSI windows: preparation reader accepts only exact approved cold failures', () => {
+  for (const Stage of ['elementFromHandle', 'firstChild']) {
+    assert.doesNotThrow(() => assertColdPreparationReason({ Stage, Reason: 'providerException', HResult: -2146233083 }));
+  }
+  assert.doesNotThrow(() => assertColdPreparationReason({ Stage: 'listProcessId', Reason: 'budgetExpired', HResult: null }));
+  for (const failure of [
+    null, undefined, {},
+    { Stage: 'elementFromHandle', Reason: 'providerException', HResult: null },
+    { Stage: 'elementFromHandle', Reason: 'providerException', HResult: -2147467259 },
+    { Stage: 'itemProcessId', Reason: 'providerException', HResult: -2146233083 },
+    { Stage: 'elementFromHandle', Reason: 'admissionLost', HResult: -2146233083 },
+    { Stage: 'listProcessId', Reason: 'budgetExpired', HResult: 1 },
+    { Stage: 'firstChild', Reason: 'providerException', HResult: -2146233083, unexpected: true },
+  ]) assert.throws(() => assertColdPreparationReason(failure), /MSI_COLD_PREPARATION_REASON_INVALID/);
+});
+
 test('MSI windows: owned visible captions, bounded reads and interrupted immutable publication', WINDOWS_ONLY, async t => {
   const context = await contextFor(t, 'msi-window-contracts');
   context.scenario = 'packagedWorkspaceSuccess';
@@ -131,6 +158,8 @@ test('MSI windows: owned visible captions, bounded reads and interrupted immutab
   assert.equal(proof.coldSampleRetained, true);
   assert.equal(proof.preparedSampleComplete, true);
   assert.equal(proof.preparationAllowsExactBudgetExpiry, true);
+  assert.equal(proof.preparationAllowsExactProviderTimeoutelementFromHandle, true);
+  assert.equal(proof.preparationAllowsExactProviderTimeoutfirstChild, true);
   assert.equal(proof.preparationRejectsOtherFailures, true);
   assert.equal(proof.preparationRejectsUnknownExit, true);
   assert.equal(proof.coldExitQueryFailureRetainsSample, true);
@@ -138,7 +167,7 @@ test('MSI windows: owned visible captions, bounded reads and interrupted immutab
   assert.equal(preparation.childExitedAfterCapture, false);
   assert.equal(preparation.membershipAfterCapture, 'Owned');
   if (preparation.status === 'partial') {
-    assert.deepEqual(preparation.listFailure, { Stage: 'listProcessId', Reason: 'budgetExpired', HResult: null });
+    assertColdPreparationReason(preparation.listFailure);
   } else {
     assert.equal(preparation.status, 'observed');
     assert.equal(preparation.listFailure, null);
@@ -1427,6 +1456,8 @@ test('deadline clocks preserve actual task waits and cannot renew cleanup', WIND
     assert.equal(completed.exitCode, 0);
     assert.deepEqual(JSON.parse(await readFile(join(context.testRoot, 'deadline-clock-proof.json'), 'utf8')), {
       schemaVersion: 1, defaultClockPreserved: true, actualTaskCompletion: true,
+      absoluteDeadlineReached: true,
+      earlyWaitCompletionPreserved: true,
       frozenWaitPreserved: true, cleanupCannotReset: true, firstFailurePreserved: true,
     });
   });

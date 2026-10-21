@@ -288,6 +288,10 @@ internal interface ISupervisorDeadline
   `Stopwatch`-oliota kuin nyt. Se ei käynnistä, pysäytä tai nollaa kelloa.
   `WaitForTask` säilyttää nykyisen remaining-laskennan, rajatun
   `Task.WaitAny`-odotuksen ja todellisen `task.IsCompleted`-tuloksen.
+  Suhteellisen odotuksen paluu ei yksin todista absoluuttisen määräajan
+  täyttymistä: keskeneräisen taskin odotus tarkistaa saman monotonisen
+  rajan uudelleen. Sisäinen odotuskutsun testikorvike todentaa aikaisen
+  paluun muuttamatta kellon alkua, määräaikaa tai cleanup-reserviä.
   Faulted/cancelled-taskin virhe käsitellään edelleen omistavassa polussa.
 - Ytimen deadline-laskenta, molemmat creation-odotukset ja worker-resultin
   task-odotus käyttävät samaa rajapintaa. Native process-/Job-odotukset,

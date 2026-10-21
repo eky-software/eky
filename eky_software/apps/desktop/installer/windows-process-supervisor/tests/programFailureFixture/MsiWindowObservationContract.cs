@@ -6,6 +6,7 @@ using Eky.WindowsProcessSupervisor;
 
 internal static class MsiWindowObservationContract
 {
+    private const int ColdProviderTimeoutHResult = unchecked((int)0x80131505);
     internal static int RunFailureReceipt(string requestPath)
     {
         if (!OperatingSystem.IsWindows()) return 63;
@@ -75,8 +76,29 @@ internal static class MsiWindowObservationContract
             var budget = MsiWindowObservation.Contract.SampleTimeoutMilliseconds;
             Check("preparationAllowsExactBudgetExpiry", PreparationAllowed(partial, budget, false, WorkspaceMsiMembership.Owned, budgetFailure));
             Check("preparationAllowsCompleteSample", PreparationAllowed(observed, 0, false, WorkspaceMsiMembership.Owned, null));
+            foreach (var stage in new[] { "elementFromHandle", "firstChild" })
+            {
+                var timeout = new MsiApplicationListFailure(stage, "providerException", ColdProviderTimeoutHResult);
+                Check("preparationAllowsExactProviderTimeout" + stage,
+                    PreparationAllowed(partial, 400, false, WorkspaceMsiMembership.Owned, timeout));
+                Check("providerTimeoutRejectsExitedOwner" + stage,
+                    !PreparationAllowed(partial, 400, true, WorkspaceMsiMembership.Owned, timeout));
+                Check("providerTimeoutRejectsUnknownOwner" + stage,
+                    !PreparationAllowed(partial, 400, false, WorkspaceMsiMembership.Unknown, timeout));
+                Check("providerTimeoutRejectsUnknownExit" + stage,
+                    !PreparationAllowed(partial, 400, null, WorkspaceMsiMembership.Owned, timeout));
+                Check("providerTimeoutRejectsPartialApplications" + stage,
+                    !PreparationAllowed(observed with { Status = "partial" }, 400, false, WorkspaceMsiMembership.Owned, timeout));
+                Check("providerTimeoutRejectsMissingRoles" + stage, new[] { "title", "message", "button" }.All(role =>
+                    !PreparationAllowed(partial with { Windows = partial.Windows.Where(row => row.Role != role).ToArray() },
+                        400, false, WorkspaceMsiMembership.Owned, timeout)));
+            }
             Check("preparationRejectsOtherFailures", new[] {
                 new MsiApplicationListFailure("listProcessId", "providerException", unchecked((int)0x80004005)),
+                new MsiApplicationListFailure("elementFromHandle", "providerException", unchecked((int)0x80004005)),
+                new MsiApplicationListFailure("elementFromHandle", "providerException"),
+                new MsiApplicationListFailure("itemProcessId", "providerException", ColdProviderTimeoutHResult),
+                new MsiApplicationListFailure("elementFromHandle", "admissionLost", ColdProviderTimeoutHResult),
                 new MsiApplicationListFailure("itemProcessId", "budgetExpired"),
                 new MsiApplicationListFailure("listProcessId", "admissionLost"),
                 new MsiApplicationListFailure("listProcessId", "budgetExpired", 1),
@@ -289,8 +311,10 @@ internal static class MsiWindowObservationContract
         WorkspaceMsiMembership membership, MsiApplicationListFailure? failure) =>
         exited is false && membership == WorkspaceMsiMembership.Owned &&
         (CompleteSample(sample) && failure is null || sample.Status == "partial" &&
-            failure == new MsiApplicationListFailure("listProcessId", "budgetExpired") &&
-            elapsedMilliseconds >= MsiWindowObservation.Contract.SampleTimeoutMilliseconds &&
+            (failure == new MsiApplicationListFailure("listProcessId", "budgetExpired") &&
+                elapsedMilliseconds >= MsiWindowObservation.Contract.SampleTimeoutMilliseconds ||
+             failure is { Stage: "elementFromHandle" or "firstChild", Reason: "providerException", HResult: ColdProviderTimeoutHResult } &&
+                elapsedMilliseconds >= 0) &&
             new[] { "title", "message", "button" }.All(role => ExpectedRole(sample, role)) &&
             sample.Windows.All(row => row.Role != "application"));
 

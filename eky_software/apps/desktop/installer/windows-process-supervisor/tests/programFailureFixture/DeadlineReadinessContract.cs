@@ -197,6 +197,10 @@ internal static class DeadlineReadinessContract
             _ = faulted.Exception;
             var never = new TaskCompletionSource();
             Require(!real.WaitForTask(never.Task, 0), "expiredWaitInvalid");
+            var pendingDeadline = real.ElapsedMilliseconds + 100;
+            Require(!real.WaitForTask(never.Task, pendingDeadline), "pendingTaskInvalid");
+            var absoluteDeadlineReached = real.ElapsedMilliseconds >= pendingDeadline;
+            var earlyWaitCompletionPreserved = VerifyEarlyWaitCompletion();
 
             var controlled = new ControlledSupervisorDeadline(1_700);
             var completed = new TaskCompletionSource();
@@ -225,11 +229,37 @@ internal static class DeadlineReadinessContract
             WriteJson(Path.Combine(request.WorkingDirectory, "deadline-clock-proof.json"), new
             {
                 schemaVersion = 1, defaultClockPreserved = true, actualTaskCompletion = true,
+                absoluteDeadlineReached,
+                earlyWaitCompletionPreserved,
                 frozenWaitPreserved = true, cleanupCannotReset = true, firstFailurePreserved = true,
             });
             return 0;
         }
         catch { return 1; }
+    }
+
+    private static bool VerifyEarlyWaitCompletion()
+    {
+        foreach (var status in new[] { TaskStatus.RanToCompletion, TaskStatus.Canceled, TaskStatus.Faulted })
+        {
+            var watch = Stopwatch.StartNew();
+            var completion = new TaskCompletionSource();
+            var calls = 0;
+            var deadline = new StopwatchSupervisorDeadline(watch, (task, remaining) =>
+            {
+                Require(ReferenceEquals(task, completion.Task) && remaining > 0, "waitArgumentsInvalid");
+                calls++;
+                if (calls == 1) return; // A relative wait can end before the absolute deadline.
+                Require(calls == 2, "completedTaskWaitedAgain");
+                if (status == TaskStatus.RanToCompletion) completion.SetResult();
+                else if (status == TaskStatus.Canceled) completion.SetCanceled();
+                else completion.SetException(new InvalidOperationException());
+            });
+            var completed = deadline.WaitForTask(completion.Task, 1_000);
+            if (completion.Task.IsFaulted) _ = completion.Task.Exception;
+            if (!completed || calls != 2 || completion.Task.Status != status) return false;
+        }
+        return true;
     }
 
     private static long WaitForClockProgress(ControlledSupervisorDeadline clock, long previous, Stopwatch guard)

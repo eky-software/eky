@@ -208,9 +208,11 @@ ja testiavainpurun läpi prosessien poistuttua. Se ei asenna MSI:tä tai
 korvaa varsinaista Windows-asennuskokeen näyttöä.
 Positiivinen luettelokoe ottaa ensin yhden kylmän valmistelunäytteen.
 Täydellisen näytteen lisäksi valmistelussa hyväksytään vain tarkasti
-`listProcessId/budgetExpired` ilman HRESULT-arvoa: nykyinen työbudjetti on
-täyttynyt, otsikko, ilmoitus ja painike löytyvät, sovellusnimiä ei ole ja
-omistettu prosessi on edelleen elossa. Muut osittaiset tulokset ja virheet
+`listProcessId/budgetExpired` ilman HRESULT-arvoa, kun nykyinen työbudjetti
+on täyttynyt, tai `providerException` ja täsmällinen `0x80131505`-aikakatkaisu
+`elementFromHandle`- tai `firstChild`-vaiheessa. Molemmissa otsikko,
+ilmoitus ja painike löytyvät, sovellusnimiä ei ole ja omistettu prosessi on
+edelleen todistetusti elossa. Muut osittaiset tulokset ja virheet
 hylätään. Sen jälkeen otetaan täsmälleen yksi täydellisen luettelon vaativa
 näyte samoilla rajoilla. Kolmatta näytettä, uusintasilmukkaa tai pidempää
 budjettia ei ole. Tämä todentaa valmistellun providerin täydellisen luvun,
@@ -293,6 +295,17 @@ kytkemätöntä kontrollia ja todentaa, ettei pelkkä myöhempi assertion sisäl
 alkuperäistä syytä. Salauskoe tarkistaa puretut tavut, tiivisteet, syyketjun
 ja testiyrityksen sidonnan. Tämä ei ole väite hosted-ajon latauksesta tai
 kaikkien alempien adapterien virheiden kattavuudesta.
+
+Electronin migraatioaktivoinnin testivalmistelu säilyttää mainin alkuperäisen
+sulkuvirheen tunnetun vaiheen ja syyluokan testikohtaisen virheen viestissä.
+Ne luetaan elinkaaren omistamasta suljetusta sopimuksesta ennen Playwrightin
+virhesiirtoa, joka ei säilytä rakenteista `cause`-oliota. Muut syyolion
+kentät ja tuntemattomat syyt eivät muutu päätellyiksi tiedoiksi. Nykyinen
+reporter ja salattu keräys käsittelevät tämän viestin; uutta kirjoitinta,
+tiedostolajia tai odotusta ei lisätä. Viestisiirron rajattu kontrollikoe
+vertaa vanhaa yleisvirhettä uuteen syyluokkaan ja tarkistaa puretun paketin.
+Se ei yksin ole oikean Electron-prosessirajan tai hosted-toimituksen todistus
+eikä osoita sulkuvirheen juurisyytä korjatuksi.
 
 Yksityiset otteet ovat käyttöjärjestelmän temp-juuren
 `eky-test-errors-<invocation UUID>/`-kansiossa. Yksi invokaatio tallentaa

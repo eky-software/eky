@@ -2,7 +2,7 @@
 
 ## Tila ja rajaus
 
-**21.10.2026: D:n ensimmäinen PR-kierros hylättiin; rajattu integraatiokorjaus on kesken.**
+**21.10.2026: D:n PR-integraatio on yhä hylätty; rajattu jatkoselvitys on hyväksytty.**
 Lähtö on PR #307:n hyväksytty main
 `da93cf53b7c608f825629d60404dce4c839dcb6a`.
 [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
@@ -29,7 +29,8 @@ composition-kytkentään tehty järjestyskorjaus säilyttää myös virhehaaran
 ensisyyn ja epävarman drainin eston. Sen 118 kohderegressiota ja sama oikean
 Electronin aktivointipolku läpäisivät. Myös desktopin koko testikomento,
 työtilan tyypitys ja rajattu riippumaton katselmus läpäisivät. Uuden puhtaan
-paketin ja PR/main-revision näyttö on vielä avoin.
+paketin palautusketju on sittemmin todennettu `fad384a2`-revisiolla;
+sen PR/main-hyväksyntä on edelleen avoin.
 Tämä ei nimeä kaikkien CI-hylkäysten tai vanhojen timeoutien syytä korjatuksi.
 Toinen fault-toisto pysähtyi jo asentimen vastausta odottavaan ilmoitukseen;
 sen prosessin ja asennuksen siivous varmennettiin, mutta estäjän tarkka
@@ -37,8 +38,39 @@ prosessi-identiteetti jäi avoimeksi. Se ei ole sama migraatioaktivoinnin vika.
 Omistaja hyväksyi erikseen Hono 4.13.11:n, Vite 8.2.4:n ja sen vaatiman
 Rolldown 1.2.4:n nykyisine sidottuine paketteineen. Rajatun lukitusmuutoksen
 auditointi, rekisteriallekirjoitukset ja kohdetestit läpäisivät. Electron,
-SQLite, tietomalli ja hyväksyntäehdot säilyvät. Seuraava normaali PR-kierros
-käyttää vasta katselmoitua, puhdasta korjausrevisiota ja uutta pakettia.
+SQLite, tietomalli ja hyväksyntäehdot säilyvät. `fad384a2`-revision normaali
+PR-kierros valmistui hylättynä. Tuore riippuvuustarkistus läpäisi.
+
+Seuraava rajattu työ erottaa kolme havaintoa: MSI-ikkunatestin ensimmäisen
+luetteloluvun aikakatkaisu, supervisorin ennen absoluuttista työrajaa
+päättynyt odotus ja Electronin alkuvalmistelun sulkuvirhe. Viimeinen syntyi
+ennen migraatioaktivoinnin koetta, ei aiemmassa `compatibleMigration`-vaiheessa.
+Sen automaattinen uusinta läpäisi, mutta alkuperäinen syy on avoin ja
+saman hylkäyksen uusintakiintiö käytetty. Säilyneen syyn puuttuvia osia ei
+arvata; havaintoketjun korjaus ei yksin korjaa sammutusta.
+Erillinen workspace-success-toisto peruttiin työn kokonaisrajaan; oma loki
+ja salattu liite puuttuvat, joten syy ja siivous ovat tuntemattomat.
+Omistaja hyväksyi 21.10.2026 ikkunatestin valmisteluun myös täsmällisen
+todetun provider-aikakatkaisun sekä jatkamisen Goalin normaaleihin portteihin.
+Mitattu luetteloluku vaaditaan edelleen täydellisenä nykyisissä aikarajoissa.
+
+Paikallinen jatkokorjaus tarkistaa supervisorin alkuperäisen absoluuttisen
+määräajan uudelleen suhteellisen odotuksen palattua. Hallittu aikaisen
+paluun regressio hylkäsi vanhan algoritmin ja läpäisi korjauksen;
+nykyinen oikean prosessiluonnin rajakoe läpäisi muuttamattomilla budjeteilla.
+Electronin testivalmistelun korjaus säilyttää tunnetun sulkuvaiheen ja
+syyluokan virhesiirrossa. Kohdetestit, tyypitys, testikomentojen kytkentä
+ja viestisiirron kontrollin salaus/purku läpäisivät. Rajattu katselmus ei
+löytänyt korjattavaa. Tämä ei todista vanhan sammutusvirheen juurisyytä,
+todellista Electron-virhesiirtoa tai uuden revision PR/main-portteja.
+Ikkunatestin hyväksytty valmistelumuutos on toteutettu molempiin lukijoihin.
+Windowsin 168 sopimustestiä läpäisi; katselmuksessa löytyneen JavaScript-
+lukijaehdon korjauksen jälkeen kolme ikkunalukijan, native-ketjun ja
+salaus/purun kohdekoetta läpäisi. Desktopin koko testikomento läpäisi:
+Vitestissä 4 351 onnistunutta ja viisi ohitettua, Node-osassa 412
+onnistunutta ja 12 ohitettua. Erillisiä ajoja ei yhdistetä testisummaksi.
+Jatkokatselmus ei löytänyt korjattavaa. Uusi puhdas paketti ja normaali
+PR-kierros seuraavat ennen mahdollista mergeä.
 
 ### D1:n kohdenäyttö ja seuraava työ
 

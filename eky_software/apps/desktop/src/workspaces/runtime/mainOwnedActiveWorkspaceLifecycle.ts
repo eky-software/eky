@@ -29,9 +29,16 @@ type WorkspaceRuntimeState =
   | 'stopped'
   | 'stopFailed';
 
+export const workspaceRuntimeStopPhases = Object.freeze([
+  'quiescence', 'secrets', 'scheduler', 'capabilities', 'backend', 'brokers', 'cleanMarker',
+] as const);
+export const workspaceRuntimeStopReasons = Object.freeze([
+  'operationFailed', 'gracefulTimeout', 'forcedTimeout', 'unsuccessfulExit', 'notGraceful',
+] as const);
+
 interface WorkspaceRuntimeStopFailure {
-  readonly phase: 'quiescence' | 'secrets' | 'scheduler' | 'capabilities' | 'backend' | 'brokers' | 'cleanMarker';
-  readonly reason: 'operationFailed' | 'gracefulTimeout' | 'forcedTimeout' | 'unsuccessfulExit' | 'notGraceful';
+  readonly phase: (typeof workspaceRuntimeStopPhases)[number];
+  readonly reason: (typeof workspaceRuntimeStopReasons)[number];
 }
 
 export class WorkspaceRuntimeStopError extends Error {

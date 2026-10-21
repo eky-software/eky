@@ -113,6 +113,63 @@ test('original failure evidence: installed runners and packaged ASAR through iso
         assert.equal(value.manifest.cleanup, 'notInferred');
       });
     }
+    await check('workspace initial shutdown reason survives message-only transport and decryption', async () => {
+      const directory = join(root, 'shutdown-reason');
+      const temp = join(directory, 'temporary');
+      const checkout = join(directory, 'checkout');
+      await mkdir(temp, { recursive: true }); await mkdir(checkout);
+      const env = { GITHUB_ACTIONS: 'true', GITHUB_RUN_ID: '98765', GITHUB_RUN_ATTEMPT: '1',
+        GITHUB_JOB: 'tests', EKY_EVIDENCE_JOB_KEY: 'tests-0', GITHUB_SHA: 'a'.repeat(40),
+        EKY_EVIDENCE_JOB_OUTCOME: 'failure', RUNNER_TEMP: temp, GITHUB_WORKSPACE: checkout,
+        TEMP: temp, TMP: temp, TMPDIR: temp, NODE_TEST_CONTEXT: undefined, CI: '1',
+        EKY_DIAGNOSTIC_KEY_FINGERPRINT: recipient.fingerprint,
+        EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: recipient.fingerprint,
+        EKY_DIAGNOSTIC_PUBLIC_KEY: await readFile(publicPath, 'utf8') };
+      const url = path => new URL(path, import.meta.url).href;
+      await writeFile(join(directory, 'fixture.test.mjs'), `
+        import { test } from ${JSON.stringify(url('../../../../node_modules/vitest/dist/index.js'))};
+        import { shutdownBeforeWorkspaceProof } from ${JSON.stringify(url('../../e2e/workspaceProofInitialShutdown.ts'))};
+        import { WorkspaceRuntimeStopError } from ${JSON.stringify(url('../../src/workspaces/runtime/mainOwnedActiveWorkspaceLifecycle.ts'))};
+        for (const corrected of [false, true]) test(corrected ? 'shutdown-corrected' : 'shutdown-control', async () => {
+          const original = new Error('DESKTOP_SHUTDOWN_FAILED', { cause: {
+            runtimeFailure: new WorkspaceRuntimeStopError({ phase: 'backend', reason: 'gracefulTimeout' }),
+            unrelated: 'EXCLUDED-SYNTHETIC-DETAIL', cleanupFailures: [],
+          } });
+          try {
+            const lifecycle = { shutdown: async () => { throw original; } };
+            if (corrected) await shutdownBeforeWorkspaceProof(lifecycle);
+            else await lifecycle.shutdown();
+          } catch (error) {
+            // Reproduce the observed message-only boundary; no Electron launched.
+            throw new Error(error.message);
+          }
+        });`, { flag: 'wx' });
+      const config = join(directory, 'vitest.config.mjs');
+      await writeFile(config, `export default { test: { include: ['fixture.test.mjs'], maxWorkers: 1, retry: 0 } };`, { flag: 'wx' });
+      const child = await run(process.execPath, [join(ROOT, 'node_modules/vitest/vitest.mjs'),
+        'run', '--config', config, '--reporter=default',
+        '--reporter=' + fileURLToPath(new URL('../../../../test-reporters/vitestFailureReporter.mjs', import.meta.url))],
+      30_000, { env, cwd: directory });
+      assert.equal(child.status, 1, 'SHUTDOWN_FAILURE_FIXTURE_EXPECTED');
+      const collected = await collectJobFailureEvidence(env);
+      await encryptArchive(collected.root, collected);
+      const decrypted = await invokeGpg(recipient.home, ['--decrypt', join(collected.root, 'evidence.json.gz.gpg')]);
+      const value = JSON.parse(gunzipSync(decrypted.stdout));
+      const records = value.manifest.files.filter(file => file.kind === 'runnerFailure' && file.status === 'retained')
+        .map(file => {
+          const bytes = Buffer.from(value.files[file.name], 'base64');
+          assert.equal(bytes.length, file.bytes);
+          assert.equal(createHash('sha256').update(bytes).digest('hex') === file.sha256, true);
+          return JSON.parse(bytes);
+        });
+      const control = records.find(record => record.test?.name?.includes('shutdown-control'));
+      const corrected = records.find(record => record.test?.name?.includes('shutdown-corrected'));
+      assert.ok(control && corrected, 'SHUTDOWN_TRANSPORT_RECORD_MISSING');
+      assert.equal(control.exception.chain[0].message, 'DESKTOP_SHUTDOWN_FAILED');
+      assert.equal(corrected.exception.chain[0].message, 'E2E_INITIAL_SHUTDOWN_FAILED: backend/gracefulTimeout');
+      assert.equal(JSON.stringify(records).includes('EXCLUDED-SYNTHETIC-DETAIL'), false);
+      assert.equal(value.manifest.cleanup, 'notInferred');
+    });
     await check('locally caught workspace semantic original survives safe conversion and real decryption', async () => {
       const directory = join(root, 'semantic');
       const temp = join(directory, 'temporary');
