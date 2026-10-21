@@ -301,9 +301,13 @@ T-paketin T1a/T1b, T2 ja T3/R28 on hyväksytty niiden omien
 integraatioiden näytöllä; [T3:n integraatiohyväksyntä](e2e-test-environment-history.md#t3n-integraatiohyväksyntä) ei perustu
 pelkkään historialliseen T3c-W:n 4/4-koetulokseen. A-paketin A1/R01, A2/R05
 ja A3/R06 ovat hyväksyttyjä; viimeisin hyväksyntä on PR #294:n mainissa.
-D/E/F/G/H/I:n kokonaishyväksyntä on edelleen avoin.
-D-paketin Oma yritys -tallennuksen rajatut korjaukset on hyväksytty
-PR #293:n mainissa, mutta D:n muut ehdot ovat avoinna.
+E/F/G/H/I:n kokonaishyväksyntä on edelleen avoin.
+D1-D3 ja niiden rajattu HTTP-sulun jatkokorjaus on hyväksytty PR #308:n
+ja PR #309:n kautta mainissa `286cc3227ffe37dd44417750636ec30d460a61e1`.
+[D:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/309#issuecomment-6324156808)
+kirjaa erilliset PR/main-portit ja avoimiksi jätetyt historialliset havainnot.
+PR #293:n aiemmat CS-1/CS-2-korjaukset säilyvät. Seuraava työ on E:n
+rajattu valmistelu; sitä ei ole vielä toteutettu.
 [D:n rajattu toteutussuunnitelma](release-0.3.0-company-settings-plan.md)
 erottaa säilytettävät CS-1/CS-2-sopimukset, alkuluvun tallennuseston ja
 17.10.2026 hyväksytyt D-P1:n salaisuusoperaation sekä D-P2/A:n saatavuuden ehdot.
