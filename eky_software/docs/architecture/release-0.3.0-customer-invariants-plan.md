@@ -7,10 +7,12 @@ E omistaa roadmapin R09-R11:n toteutuksen ja sen hyväksyntänäytön.
 [M1](release-0.3.0-m1-preparation-plan.md#jatka-tästä) lyhyen jatkamiskohdan.
 Lähtö on hyväksytty main `5e338ae74bb48130620c9db514bbe52a2e787782`
 ([PR #310:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/310#issuecomment-6325552971)).
-R09-R11 on toteutettu ja rajattu suunnitelma- sekä toteutuskatselmus on tehty.
-Alla oleva checkpoint kuvaa integraatiota edeltävää näyttöä, ei E:n lopullista
-hyväksyntää. Puhtaan paketin todistus sekä täsmällisen PR:n ja uuden mainin
-omat portit vaaditaan edelleen.
+R09-R11 on toteutettu ja yhdistetty [PR #311:ssä](https://github.com/eky-software/eky/pull/311)
+mainiin `d03e9a15a5c04e3d9fe56e81a69fda5e795b8e05`.
+PR:n omat portit läpäisivät; mainin erillinen auditointihylkäys ja jäljempänä
+rajattu tietoturvahuolto estävät vielä E-Goalin loppuhyväksynnän.
+Alla oleva päivätty toteutuscheckpoint säilyy integraatiota edeltävänä näyttönä,
+ei koko mainin hyväksyntänä. Korjatun revision omat PR/main-portit vaaditaan.
 
 Customers säilyttää asiakas-master-datan omistajuuden. Laskujen snapshotit,
 revisiot, PDF:t ja toimitushistoria kuuluvat Invoicingille. E ei muuta
@@ -101,6 +103,49 @@ Suunnitelmaa ja toteutusta katselmoidaan rajatusti. Ajot seurataan nykyisen
 ensivirheet ja tuntemattomat historialliset syyt säilyvät erillisinä.
 Mahdollinen yksi uusinta noudattaa nykyistä testauspolitiikkaa.
 E:n valmistuminen ei hyväksy muita roadmap-paketteja tai koko 0.3.0-julkaisua.
+
+## Rajattu integraatiojatko: Vitest 4.1.12
+
+[PR #311:n lähde](https://github.com/eky-software/eky/pull/311#issuecomment-6327288721)
+läpäisi V2:n ja riippuvuustarkistuksen ensimmäisellä suoritusyrityksellä.
+Mainin [erillinen auditointi](https://github.com/eky-software/eky/actions/runs/39681721731)
+hylkäsi nykyisen `@vitest/mocker@4.1.11`-kehitysriippuvuuden kahden kohtalaisen
+haavoittuvuuden vuoksi. Tuotantoauditointi läpäisi; allekirjoitustarkistukseen
+ei päästy. [Ensivirheen rajaus](https://github.com/eky-software/eky/pull/311#issuecomment-6327452232)
+säilyy erillään asiakaskorjauksista ja toimintatestien tuloksista.
+
+Omistaja hyväksyi rajatun Vitest `4.1.11 -> 4.1.12` -päivityksen ja saman
+version seitsemän `@vitest`-apupakettia. Muutos omistetaan tässä jatkossa,
+ei uutena roadmap-pakettina. Vain juuren kehitystyökalun täsmäversio ja sen
+lukitus muuttuvat; uusia pakettinimiä tai browser-/coverage-/UI-plugineja
+ei lisätä. Node, pnpm, Vite, Electron, SQLite, business-koodi ja testiehdot
+säilyvät. Yli vuorokauden vanha korjaus ei tarvitse varoaikapoikkeusta.
+
+Tiedotteet koskevat julkisen mocker-pluginin rekisteröintipolkua
+([lähdekoodin muodostus](https://github.com/advisories/GHSA-qxg6-89mg-rqv8),
+[Windows-polkujen käsittely](https://github.com/advisories/GHSA-xp26-3454-mjgp)).
+Paketti kuuluu nykyiseen Node-testirunneriin; tarkistuksessa ei löytynyt
+kyseisen julkisen pluginin käyttöönottoa EKYn konfiguraatiosta.
+Pakettiosumaa ei siis väitetä todistetuksi sovelluksen hyökkäyspoluksi,
+mutta pakollista auditointia ei ohiteta.
+
+Todennus: nykyisen lukituksen auditointihylkäys ennen päivitystä, korjatun
+lukituksen tuotanto-/kokonaisauditointi ja rekisteriallekirjoitukset,
+nykyisen Vitest-virheraportoinnin ja salatun toimituksen todellinen ketju,
+normaali työtilan testikierros/tyypitys/buildit sekä rajattu riippumaton
+katselmus. Sen jälkeen korjatun puhtaan revision normaalit PR-portit ja
+uuden mainin omat portit. Aiemmat toimintatestien hylkäykset käsitellään
+erikseen eikä päivitystä väitetä niiden korjaukseksi ilman näyttöä.
+
+Integraatiota edeltävä työkaluhuollon checkpoint 22.10.2026:
+nykyisen version auditointihylkäys toistui ennen muutosta; korjatun
+lukituksen tuotanto- ja kokonaisauditointi sekä rekisteriallekirjoitukset
+läpäisivät. Nykyiset 182 virheraportointi-/salausregressiota läpäisivät,
+mukaan lukien todellisen Vitest-virheen löytyminen puretusta paketista.
+Normaali koko työtilan testikierros, tyypitys ja buildit läpäisivät.
+Rajattu riippumaton katselmus ei jättänyt avoimia havaintoja.
+Nämä eivät korvaa korjatun revision vielä vaadittavia PR/main-portteja
+eivätkä sulje vanhan mainin erillistä legacy-testihylkäystä.
 
 ## Toteutuksen checkpoint 22.10.2026
 
