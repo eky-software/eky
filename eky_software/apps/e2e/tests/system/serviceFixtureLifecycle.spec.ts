@@ -84,6 +84,29 @@ test.describe('SYS-SERVICE-FIXTURE-LIFECYCLE-001 @critical @security', () => {
 });
 
 test.describe('SYS-SERVICE-FIXTURE-LIFECYCLE-001 @critical @security completion', () => {
+  test('web selects its port after the backend is ready', async () => {
+    const fixture = completionFixture();
+    try {
+      await fixture.run('web');
+      expect(fixture.calls.filter(call => call === 'reservePort' || call === 'backendReady'))
+        .toEqual(['reservePort', 'backendReady', 'reservePort']);
+    } finally { fixture.remove(); }
+  });
+
+  test('web port selection failure still closes the running backend', async () => {
+    const fixture = completionFixture('webPortSelection');
+    try {
+      await expect(fixture.run('web')).rejects.toBe(fixture.portSelectionError);
+      expect(fixture.calls.filter(call => call === 'backendStop')).toHaveLength(1);
+      expect(fixture.calls).toContain('backendPort');
+      expect(fixture.calls).not.toContain('webPort');
+      expect(fixture.calls).not.toContain('webStop');
+      expect(fixture.calls).not.toContain('body');
+      expect(fixture.cleanup()).toMatchObject({ backend: 'completed', web: 'notStarted', runRoot: 'removed' });
+      expect(existsSync(fixture.marker)).toBe(false);
+    } finally { fixture.remove(); }
+  });
+
   for (const reportFault of ['none', 'write', 'attach', 'cleanupReport'] as const) {
     test(`rejected web owner output reaches post-cleanup reporting with ${reportFault} failure`, async ({}, info) => {
       let original: unknown;
@@ -452,7 +475,7 @@ test.describe('E2E fixture lifetime propagation', () => {
 function completionFixture(fault?:
   'api' | 'apiSync' | 'backendStop' | 'port' | 'artifacts' | 'remove' | 'report' | 'webStop' |
   'webStartup' | 'webStartupVerified' | 'webStartupTreeUnverified' | 'webStartupPortUnverified' |
-  'startupVerified' | 'restart' | 'restartStop' | 'contextClose',
+  'startupVerified' | 'restart' | 'restartStop' | 'contextClose' | 'webPortSelection',
   timing: { containmentTimeoutMilliseconds?: number; now?: () => number; startWeb?: typeof startE2eWebProcess } = {},
 ) {
   const runRoot = createE2eRunRoot();
@@ -465,6 +488,7 @@ function completionFixture(fault?:
   const startupReports: unknown[] = [];
   const bodyError = new Error('PRIVATE_BODY_FAILURE');
   const cleanupError = new Error('PRIVATE_CLEANUP_FAILURE');
+  const portSelectionError = new Error('PRIVATE_WEB_PORT_SELECTION_FAILURE');
   const webError = fault?.startsWith('webStartup') && fault !== 'webStartup'
     ? new E2eWebStartupFailure({ errorCode: 'E2E_WEB_HEALTH_TIMEOUT', spawnObserved: true,
       exitedBeforeCleanup: false, cleanup: {
@@ -498,11 +522,16 @@ function completionFixture(fault?:
       return createE2eFixtureLifetime(timeout, timing.now);
     },
     createE2eRunRoot: () => { calls.push('root'); return runRoot; }, createE2eWorkerPaths,
-    reserveLoopbackPort: async () => 12345 + ports++,
+    reserveLoopbackPort: async () => {
+      calls.push('reservePort');
+      if (fault === 'webPortSelection' && ports === 1) throw portSelectionError;
+      return 12345 + ports++;
+    },
     startE2eBackendProcess: async ({ lifetime }: { lifetime: E2eFixtureLifetime }) => {
       calls.push('backendStart');
       lifetimes.push(lifetime);
       if (fault === 'startupVerified' || (++starts === 2 && fault === 'restart')) throw startupError;
+      calls.push('backendReady');
       return {
         backendOrigin: 'http://127.0.0.1:12345', sessionSecret: 'PRIVATE_SYNTHETIC_SESSION',
         managedProcess: {
@@ -575,7 +604,7 @@ function completionFixture(fault?:
       page: { goto: async () => undefined } as never,
     }, use, testInfo, dependencies);
   return {
-    runRoot, marker, calls, reports, startupReports, testInfo, bodyError, cleanupError, webError, startupError, runBackend, runWith, lifetimes, webLifetimes,
+    runRoot, marker, calls, reports, startupReports, testInfo, bodyError, cleanupError, portSelectionError, webError, startupError, runBackend, runWith, lifetimes, webLifetimes,
     cleanup: () => reports[0]!.cleanup,
     run: (family: 'backend' | 'web', bodyFails = false) => {
       const use = async () => {

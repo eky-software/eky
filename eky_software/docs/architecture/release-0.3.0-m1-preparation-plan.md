@@ -95,6 +95,21 @@ salauksen ja purun läpi; tämä ei vielä selitä alkuperäistä hylkäystä.
 Uuden revision PR-portit, merge ja main-portit ovat avoinna.
 Ensivirheet säilyvät, eikä uuden korjauksen näyttö selitä vanhoja timeouteja.
 
+`b93f4b3c`-revision [V2-kierroksen](https://github.com/eky-software/eky/actions/runs/39547900136)
+molemmat supervisor-toistot läpäisivät. Web-käyttäjätesti hylättiin ennen
+käyttäjäpolun alkua: alkuperäinen salattu prosessituloste osoitti backendin
+ja Viten käyttäneen samaa porttia. Selainfixture valitsi molemmat vapaat
+porttinumerot ennen backendin käynnistystä. Rajattu korjaus valitsee
+web-portin vasta valmiin backendin jälkeen. Hallittu järjestysregressio
+hylkäsi vanhan lähteen; korjauksen 71 elinkaarikoetta ja tyypitys läpäisivät.
+Myös kuusi oikeaa selainpolkua ja rajattu riippumaton katselmus läpäisivät.
+Nykyinen kierros jatkuu; sen muita tuloksia tai uutta korjausrevisiota ei
+tulkita vielä hyväksytyksi. Automaattinen uusinta kulutti tämän web-hylkäyksen
+uusintakiintiön; korjauksen todennus ei ole saman lähteen uusi uusinta.
+Manuaalisen endurance-kuluttajan vastaava porttien ennakkovalinta jäi
+tämän normaalin web-fixturen korjauksen ulkopuolelle erilliseksi jatkotyöksi;
+stress-todennusta ei väitetä tehdyksi.
+
 Omistaja hyväksyi 17.10.2026 D-P1:n epäselvän salaisuusoperaation
 jatkotavan ja D-P2/A:n nykyisen saatavuussäännön säilyttämisen.
 D1:n alkuluvun tallennusesto on toteutettu ja sen rajattu web-,

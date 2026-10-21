@@ -3,6 +3,9 @@ import { expect, test } from '../../src/fixtures/isolatedWebTest.js';
 test('WEB-BOOT-001 @critical renders the customer workspace through the isolated session proxy', async ({
   e2eWeb,
 }) => {
+  expect(new URL(e2eWeb.web.webOrigin).port).not.toBe(
+    new URL(e2eWeb.backend.backendOrigin).port,
+  );
   await expect(
     e2eWeb.page.getByRole('heading', { name: 'Asiakkaat' }),
   ).toBeVisible();

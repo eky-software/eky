@@ -452,6 +452,17 @@ Runtime saa lisäksi omat loopback-portit, runtime-sessionin, synteettisen
 yrityksen, synteettisen käyttäjän ja testikellon vain silloin, kun skenaario
 sitä tarvitsee.
 
+Selainfixture valitsee web-portin vasta backendin onnistuneen
+health-valmiuden jälkeen. `reserveLoopbackPort` palauttaa porttinumeron
+vasta suljettuaan oman koekuuntelijansa, joten kaksi ennen palvelukäynnistystä
+tehtyä valintaa eivät varaa kahta eri porttia. Valmis backend pitää oman
+porttinsa käytössä toisen valinnan aikana. Tämä järjestys ei poista muiden
+prosessien myöhemmän kilpailun mahdollisuutta: käynnistys- ja siivousvirhe
+hylätään edelleen nykyisillä ehdoilla ilman automaattista porttiuusintaa.
+Toisen porttivalinnan virhe sulkee jo käynnistyneen backendin ja säilyttää
+ensivirheen nykyisessä virheraportoinnissa. Testijuuren poisto edellyttää
+edelleen kaikkien omistettujen siivousten onnistumista.
+
 Käynnistys estetään, jos:
 
 - `EKY_E2E` ei ole täsmälleen `1`

@@ -80,6 +80,15 @@ tarkistusta tai aikarajoja. Pakotettu native-virhe todensi otteen nykyisen
 OpenPGP-ketjun läpi. Rajatun muutoksen koko Windows-supervisorin sarja
 läpäisi 169/169; alkuperäinen hylkäyssyy ja integraatio ovat avoinna.
 
+`b93f4b3c`-revision molemmat supervisor-toistot läpäisivät, mutta webin
+asiakaspolku hylättiin jo testivalmistelussa. Salattu alkuperäinen tuloste
+osoitti saman portin päätyneen sekä backendille että Vitelle. Tämä on
+selainfixturen porttivalintajärjestys, ei osoitettu Company Settingsin vika.
+Web-portin valinnan siirto backendin todetun valmiuden jälkeen korjaa tämän
+ristiriidan nykyisillä omistajilla. Hallittu regressio hylkäsi vanhan lähteen;
+71 elinkaarikoetta, tyypitys, kuusi oikeaa selainpolkua ja rajattu
+riippumaton katselmus läpäisivät. Uuden revision normaali integraatio on avoin.
+
 ### D1:n kohdenäyttö ja seuraava työ
 
 D1:n nykyiseen muokkaussessioon ja latausyritykseen sidottu alkuluku,
