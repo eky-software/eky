@@ -58,6 +58,19 @@ säilytysrajat, puuttuvan aineiston tiedot ja erilliset etenemispäätökset
 säilyvät; tämä dokumentointikorjaus ei hyväksy uusia poikkeuksia.
 
 **Nykyinen työ:** [D:n toteutus](release-0.3.0-company-settings-plan.md).
+PR #308:n `a4e14bc3`-revision ensimmäinen
+[V2-kierros](https://github.com/eky-software/eky/actions/runs/39515111216)
+ja [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39515111131)
+hylättiin. Migraatioaktivoinnin hallitun sulun D2-kytkentä on korjattu ja
+todennettu kohdetesteillä sekä samalla oikealla Electron-polulla. Desktopin
+koko testikomento, tyypitys ja rajattu katselmus läpäisivät. Erillinen
+asentimen odotushavainto säilyy avoimena; sitä ei nimetä samalla korjatuksi.
+Omistajan hyväksymä
+rajattu Hono/Vite/Rolldown-päivitys läpäisi auditoinnin ja kohdetestit.
+Seuraavaksi uuden puhtaan paketin todennus ja yksi normaali PR-kierros;
+merge ja main-portit ovat avoinna.
+Ensivirheet säilyvät, eikä uuden korjauksen näyttö selitä vanhoja timeouteja.
+
 Omistaja hyväksyi 17.10.2026 D-P1:n epäselvän salaisuusoperaation
 jatkotavan ja D-P2/A:n nykyisen saatavuussäännön säilyttämisen.
 D1:n alkuluvun tallennusesto on toteutettu ja sen rajattu web-,
@@ -96,9 +109,10 @@ havaitsema audit-virheen ja jo jonottavan broker-työn pääsyestoraja on
 korjattu nykyiseen clientiin. Yhdistetty composition/SQLite/client-koe,
 backendin ja desktopin kytkentätestit, työtilan tyypitys sekä oikean
 Electronin kaksi sulku-/restart-koetta läpäisivät myös tämän muutoksen
-jälkeen. Rajattu jatkokatselmus ei löytänyt korjattavaa. Seuraavaksi
-puhtaan paketin palautus ja saman revision normaalit PR/main-portit;
-aiemmat laajat paikalliset sarjat eivät korvaa näitä.
+jälkeen. Rajattu jatkokatselmus ei löytänyt korjattavaa. Puhtaan
+`a4e14bc3`-paketin palautus läpäisi tämän jälkeen; yllä kuvattu ensimmäinen
+PR-kierros kuitenkin hylättiin. Aiempi kohdenäyttö ei korvaa uuden
+korjausrevision normaaleja kokonaisportteja.
 CS-1/CS-2 säilyvät hyväksyttyinä; D:n kokonais- ja PR/main-hyväksyntä
 ovat vielä avoinna.
 

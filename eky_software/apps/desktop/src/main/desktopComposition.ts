@@ -84,6 +84,7 @@ import {
 } from './applicationWindow.js';
 import { registerApplicationProtocol } from './applicationProtocol.js';
 import { BackendRequestQuiescence } from './backendRequestQuiescence.js';
+import { createSecretSafeMigrationGate } from './secretSafeMigrationGate.js';
 import { readSafeStartupFailureCode } from './earlyStartup.js';
 import { createBackendRequestHeaders } from './protocolPolicy.js';
 import { assertW6b2PackagedUpdateWriteState } from './w6b2PackagedUpdateWriteProbe.js';
@@ -1695,7 +1696,7 @@ async function startDesktopCompositionRuntime({
     backendHandle = await dependencies.startBackend({
       ...startupExceptionObservation,
       reservationTransfer,
-      async beforeMigrations(inspection, control) {
+      beforeMigrations: createSecretSafeMigrationGate(secretBrokerHandle, async (inspection, control) => {
         backendStartupControl = control;
         await profileSnapshotBrokerClient.waitUntilReady();
         if (workspaceActivationMigrationAuthorized) {
@@ -1841,7 +1842,7 @@ async function startDesktopCompositionRuntime({
             : 'update',
         });
         w6b2PackagedFaultInjection?.failActiveWorkspaceFirstStartIfRequested();
-      },
+      }),
       config: {
         appVersion: desktopAppVersion,
         architecture: process.arch,

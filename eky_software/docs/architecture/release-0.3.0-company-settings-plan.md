@@ -2,7 +2,7 @@
 
 ## Tila ja rajaus
 
-**21.10.2026: D1:n ja D2:n rajattu kohdenäyttö läpäisi; D:n integraatio on avoin.**
+**21.10.2026: D:n ensimmäinen PR-kierros hylättiin; rajattu integraatiokorjaus on kesken.**
 Lähtö on PR #307:n hyväksytty main
 `da93cf53b7c608f825629d60404dce4c839dcb6a`.
 [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
@@ -20,6 +20,25 @@ Omistaja hyväksyi 20.10.2026 myös kokeen jälkeisen D2-sulkusopimuksen
 rajattuun toteutukseen ja testeihin. Tuotantokytkennän hyväksyntä edellyttää
 edelleen alla nimettyä elinkaaritodistusta.
 Toteutuksen, testien ja integraation hyväksyntä on avoin.
+
+PR #308:n `a4e14bc3`-revision V2-kierros hylkäsi yrityksen
+migraatioaktivoinnin ja päivityksen virhepalautuksen. Aktivoinnin sama
+virhe toistui kohdekokeessa: hallittu backendin sulku ohitti mainin
+salaisuusbrokerin sulkuvalmistelun. Koko migraatiocallbackin nykyiseen
+composition-kytkentään tehty järjestyskorjaus säilyttää myös virhehaaran
+ensisyyn ja epävarman drainin eston. Sen 118 kohderegressiota ja sama oikean
+Electronin aktivointipolku läpäisivät. Myös desktopin koko testikomento,
+työtilan tyypitys ja rajattu riippumaton katselmus läpäisivät. Uuden puhtaan
+paketin ja PR/main-revision näyttö on vielä avoin.
+Tämä ei nimeä kaikkien CI-hylkäysten tai vanhojen timeoutien syytä korjatuksi.
+Toinen fault-toisto pysähtyi jo asentimen vastausta odottavaan ilmoitukseen;
+sen prosessin ja asennuksen siivous varmennettiin, mutta estäjän tarkka
+prosessi-identiteetti jäi avoimeksi. Se ei ole sama migraatioaktivoinnin vika.
+Omistaja hyväksyi erikseen Hono 4.13.11:n, Vite 8.2.4:n ja sen vaatiman
+Rolldown 1.2.4:n nykyisine sidottuine paketteineen. Rajatun lukitusmuutoksen
+auditointi, rekisteriallekirjoitukset ja kohdetestit läpäisivät. Electron,
+SQLite, tietomalli ja hyväksyntäehdot säilyvät. Seuraava normaali PR-kierros
+käyttää vasta katselmoitua, puhdasta korjausrevisiota ja uutta pakettia.
 
 ### D1:n kohdenäyttö ja seuraava työ
 
@@ -148,8 +167,9 @@ jatkokatselmus ei löytänyt korjattavaa. Testin epäonnistuneen tai
 keskeneräisen aineiston säilytys tarkistettiin lisäksi kuudella
 MessageChannel-tapauksella; tämä ei laajenna salatun keräyksen tietorajaa.
 
-**Seuraava näyttö:** puhtaasta commitista rakennetun saman paketin palautus
-ja nykyiset PR/main-portit. Laajat paikalliset sarjat läpäisivät ennen
+**Aiempi PR-valmistelu:** puhtaasta `a4e14bc3`-commitista rakennetun saman
+paketin palautus läpäisi; ensimmäisen PR-kierroksen hylkäys ja seuraava työ
+ovat tämän sivun alussa. Laajat paikalliset sarjat läpäisivät ennen
 viimeistä jonokorjausta; korjauksen jälkeinen kohdenäyttö ei korvaa uuden
 revision normaaleja kokonaisportteja. Loppukatselmuksen havaittu puute on
 korjattu ja katselmoitu, mutta koko D:n integraatiohyväksyntä on avoin.

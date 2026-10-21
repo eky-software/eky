@@ -661,6 +661,16 @@ exit-odotuksen jälkeen palautetaan senhetkinen muuttumaton havainto ja
 keskeneräinen callback estää rinnakkaisen recoveryn. Aikarajan päättyminen
 ei peruuta callbackin jo aloittamaa työtä.
 
+Composition kytkee koko migraatiovalmistelun `createSecretSafeMigrationGate`-
+adapterin kautta. Myös passiivisen yrityksen aktivointi saa vain controlin,
+jonka `stopStartupRuntime()` odottaa nykyisen main-salaisuusbrokerin jaettua
+drainia ennen backendin pysäyttämistä. Callbackin hylkäyksessä sama drain
+odotetaan ennen hylkäyksen välittämistä backendin abort-haaraan. Alkuperäinen
+poikkeus säilyy; epäonnistunut drain jää brokerin pysyväksi virheeksi ja
+estää compositionin recovery-jatkon. Tavallinen onnistunut callback ei
+sulje brokeria. Odottamattoman transport-katkon turvallisuussääntö ja
+prosessin poistumisen erillinen todistus säilyvät.
+
 Käyttäjäpalaute ja operational-loki käyttävät nykyisiä turvallisia
 startup-/backend-koodeja. Sisäinen omistajuushavainto ei tuo uutta loki-
 tai renderer-rajapintaa; alkuperäinen poikkeus kuuluu vain jo hyväksyttyyn
