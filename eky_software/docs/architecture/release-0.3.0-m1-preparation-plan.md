@@ -20,13 +20,22 @@ PR-headia `33fd0bdb19709329721a87838b3f7d933552d4b9`.
 | PR #309:n portit | [V2](https://github.com/eky-software/eky/actions/runs/39646188806): 27 onnistunutta työtä, kuusi tarkoituksella valitsematonta diagnostiikkatyötä. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39646188607) läpäisi. Molemmat ensimmäisellä suoritusyrityksellä. |
 | Mainin omat portit | [V2](https://github.com/eky-software/eky/actions/runs/39652297393): 38 onnistunutta työtä, kuusi tarkoituksella valitsematonta diagnostiikkatyötä, kaikki 11 porttia ja kaksi vaadittua toistoa. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39653254508) läpäisi; HTTP-muutoksen polkurajauksen vuoksi käynnistettiin yksi erillinen ajo täsmälliselle mainille. Molemmat ensimmäisellä suoritusyrityksellä. |
 
-**Nykyinen työ on E-paketti**, roadmapin R09-R11.
+**Nykyinen työ on E:n rajattu integraatiojatko (22.10.2026).**
+R09-R11 on yhdistetty [PR #311:ssä](https://github.com/eky-software/eky/pull/311)
+mainiin `d03e9a15a5c04e3d9fe56e81a69fda5e795b8e05`.
+PR:n omat portit läpäisivät, mutta mainin erillinen auditointi hylkäsi
+olemassa olevan Vitest-kehitystyökalun. Omistaja hyväksyi rajatun
+Vitest `4.1.11 -> 4.1.12` -korjauksen ja normaalit tarkistukset;
+E:n kokonaishyväksyntä on vielä avoinna. Ensihylkäystä tai erillisiä
+toimintatestihavaintoja ei kuitata korjatuiksi työkalupäivityksellä.
 [Toteutus- ja testisuunnitelma](release-0.3.0-customer-invariants-plan.md)
 kirjaa hyväksytyn R09-eston myös passiivisten taloyhtiöiden viittauksille,
-numeroinnin tarkkuuden ja turvallisen virhepalautteen. Toteutus,
-kohderegressiot ja rajattu katselmus on tehty; päivätty checkpoint erottaa
-ne puhtaan paketin ja PR/main-integraation vielä vaadittavista porteista.
-E:n lopullinen hyväksyntänäyttö kuuluu E:n PR:n loppuyhteenvetoon.
+numeroinnin tarkkuuden, turvallisen virhepalautteen ja auditointiesteen
+rajatun jatkon. Päivätty toteutuscheckpoint ja lopullinen PR/main-readback
+pidetään erillään. Viimeisin kokonaan hyväksytty lähtö säilyy
+[PR #310:n mainissa](https://github.com/eky-software/eky/pull/310#issuecomment-6325552971)
+`5e338ae74bb48130620c9db514bbe52a2e787782`.
+E:n lopullinen hyväksyntänäyttö kirjataan integraation PR-yhteenvetoon.
 T/A/B/C/K/D säilyvät hyväksyttyinä; niitä
 ei avata uudelleen historiallisten keskeneräisyysmerkintöjen perusteella.
 Tämä ei hyväksy muita paketteja tai koko `0.3.0`-julkaisua.
