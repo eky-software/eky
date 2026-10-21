@@ -69,8 +69,16 @@ lukijaehdon korjauksen jälkeen kolme ikkunalukijan, native-ketjun ja
 salaus/purun kohdekoetta läpäisi. Desktopin koko testikomento läpäisi:
 Vitestissä 4 351 onnistunutta ja viisi ohitettua, Node-osassa 412
 onnistunutta ja 12 ohitettua. Erillisiä ajoja ei yhdistetä testisummaksi.
-Jatkokatselmus ei löytänyt korjattavaa. Uusi puhdas paketti ja normaali
-PR-kierros seuraavat ennen mahdollista mergeä.
+Jatkokatselmus ei löytänyt korjattavaa. Puhtaan `bf697a40`-paketin
+palautusketju ja riippuvuustarkistus läpäisivät. Sen normaali PR-kierros
+hylättiin MSI-ikkunafixturen `largeListBounded`-tarkistuksessa ja koonnissa;
+muut 36 työtä läpäisivät ja kuusi diagnostiikkatyötä jäi valitsematta.
+Sovelluksen Electron-, asennus- ja palautuspolut läpäisivät. Alkuperäinen
+salattu aineisto ei sisältänyt hylätyn näytteen tietoja. Nykyisen fixturen
+virhekuittiin lisätään viimeinen havainto ja rajatut määrät muuttamatta
+tarkistusta tai aikarajoja. Pakotettu native-virhe todensi otteen nykyisen
+OpenPGP-ketjun läpi. Rajatun muutoksen koko Windows-supervisorin sarja
+läpäisi 169/169; alkuperäinen hylkäyssyy ja integraatio ovat avoinna.
 
 ### D1:n kohdenäyttö ja seuraava työ
 

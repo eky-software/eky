@@ -212,15 +212,17 @@ test('MSI windows: native observation survives exit and interrupted publication 
     assert.equal(proof.firstSampleIsolatedFromOtherCases, true);
     assert.equal(proof.cleanupVerified, true);
     assert.equal(proof.cancelBeforePublicationRetainsPending, true);
-    const failedContext = { ...context, testRoot: join(temporary, 'eky supervisor receipt'),
-      privateOutputCaptures: [], privateOutputRetention: undefined };
-    await mkdir(failedContext.testRoot);
-    try {
-      const failed = startProgramFailureFixture(failedContext, 'msiWindowFailureReceipt', { environment: env });
-      await assert.rejects(failed.completion, { message: 'WINDOWS_ACCEPTANCE_SUPERVISOR_STDERR_NOT_EMPTY' });
-      assert.equal(Number.isInteger(failed.child.exitCode), true);
-      assert.notEqual(failed.child.exitCode, 0);
-    } finally { await cleanupRunContext(failedContext, { preserveEvidence: true }); }
+    for (const mode of ['msiWindowFailureReceipt', 'msiWindowBoundFailureReceipt']) {
+      const failedContext = { ...context, testRoot: join(temporary, 'eky supervisor receipt' + mode),
+        privateOutputCaptures: [], privateOutputRetention: undefined };
+      await mkdir(failedContext.testRoot);
+      try {
+        const failed = startProgramFailureFixture(failedContext, mode, { environment: env });
+        await assert.rejects(failed.completion, { message: 'WINDOWS_ACCEPTANCE_SUPERVISOR_STDERR_NOT_EMPTY' });
+        assert.equal(Number.isInteger(failed.child.exitCode), true);
+        assert.notEqual(failed.child.exitCode, 0);
+      } finally { await cleanupRunContext(failedContext, { preserveEvidence: true }); }
+    }
     const collected = await collectJobFailureEvidence(env, { nativeTemp: temporary });
     await encryptArchive(collected.root, collected);
     const decrypted = await crypto.invokeGpg(recipient.home, ['--decrypt', join(collected.root, 'evidence.json.gz.gpg')]);
@@ -257,6 +259,21 @@ test('MSI windows: native observation survives exit and interrupted publication 
         listFailure: { Stage: 'listProcessId', Reason: 'budgetExpired', HResult: null } } });
     assert.ok(/MsiWindowObservationContract\.RunFailureReceipt/.test(failureReceipts[0]),
       'MSI_WINDOW_FAILURE_NATIVE_FRAME_MISSING');
+    const boundReceipts = archive.manifest.files
+      .filter(value => value.kind === 'nativeResult' && value.status === 'retained')
+      .map(value => Buffer.from(archive.files[value.name], 'base64').toString('utf8'))
+      .filter(value => value.includes('msiWindowContractFailed:largeListBounded:'));
+    assert.equal(boundReceipts.length, 1);
+    const bound = boundReceipts[0].match(/msiWindowContractFailed:largeListBounded:(\{[^\r\n]+\})/);
+    assert.ok(bound);
+    assert.deepEqual(JSON.parse(bound[1]), { lastObservation: {
+      sample: { status: 'partial', titleCaptured: false, messageCaptured: false,
+        buttonCaptured: false, applicationCaptured: false, elapsedMilliseconds: 400,
+        childExitedAfterCapture: false, membershipAfterCapture: 'Owned',
+        listFailure: { Stage: 'firstChild', Reason: 'providerException', HResult: -2146233083 } },
+      windowCount: 0, maximumApplicationCharacters: 0, totalCharacters: 0,
+    } });
+    assert.match(boundReceipts[0], /MsiWindowObservationContract\.RunBoundFailureReceipt/);
     assert.doesNotMatch(JSON.stringify(archive), /EXCLUDED INPUT|window-child-|\.pending/);
     assert.equal(archive.manifest.jobOutcome, 'failure');
     assert.equal(archive.manifest.cleanup, 'notInferred');

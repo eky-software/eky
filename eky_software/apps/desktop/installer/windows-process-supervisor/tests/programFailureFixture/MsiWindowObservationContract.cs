@@ -20,11 +20,27 @@ internal static class MsiWindowObservationContract
             () => throw new SupervisorFailure("processWaitFailed", 0), () => WorkspaceMsiMembership.Unknown, listFailure, preparation);
     }
 
+    internal static int RunBoundFailureReceipt(string requestPath)
+    {
+        if (!OperatingSystem.IsWindows()) return 63;
+        SupervisorRequestReader.Read(["--request", requestPath]);
+        throw CheckFailure("largeListBounded", () => new
+        {
+            sample = SampleReceipt(new(0, "partial", []), 400, false, WorkspaceMsiMembership.Owned,
+                new("firstChild", "providerException", ColdProviderTimeoutHResult)),
+            windowCount = 0, maximumApplicationCharacters = 0, totalCharacters = 0,
+        });
+    }
+
     internal static int Run(string requestPath)
     {
         if (!OperatingSystem.IsWindows()) return 63;
         var request = SupervisorRequestReader.Read(["--request", requestPath]);
         var checks = new Dictionary<string, bool>();
+        Func<object>? lastObservation = null;
+        Check("checkObservationFailurePreservesName", CheckFailure("largeListBounded",
+            () => throw new InvalidOperationException("unavailable observation")).Message ==
+            "msiWindowContractFailed:largeListBounded:{\"lastObservation\":null}");
         var failedReceipt = FirstSampleFailure(new(0, "partial", []), 0,
             () => throw new SupervisorFailure("processWaitFailed", 0), () => WorkspaceMsiMembership.Unknown);
         Check("sampleFailurePreservedWhenExitQueryFails", failedReceipt.Message.StartsWith(
@@ -42,8 +58,21 @@ internal static class MsiWindowObservationContract
             {
                 var remaining = characters ?? MsiWindowObservation.Contract.MaximumTotalCharacters;
                 var slots = windows ?? MsiWindowObservation.Contract.MaximumWindows;
-                return MsiWindowObservation.Capture(job, process.Process, stopped ?? (() => false),
-                    Stopwatch.StartNew(), ref remaining, ref slots, listFailure);
+                var timer = Stopwatch.StartNew();
+                MsiApplicationListFailure? firstFailure = null;
+                var sample = MsiWindowObservation.Capture(job, process.Process, stopped ?? (() => false),
+                    timer, ref remaining, ref slots, failure => { firstFailure ??= failure; listFailure?.Invoke(failure); });
+                timer.Stop();
+                lastObservation = () => new
+                {
+                    sample = SampleReceipt(sample, timer.ElapsedMilliseconds, ExitState(() => process.Wait(0)),
+                        MembershipState(() => WorkspaceMsiActivityObservation.ObserveHandle(job, process.Process)), firstFailure),
+                    windowCount = sample.Windows.Count,
+                    maximumApplicationCharacters = sample.Windows.Where(row => row.Role == "application")
+                        .Select(row => row.Text.Length).DefaultIfEmpty(0).Max(),
+                    totalCharacters = sample.Windows.Sum(row => row.Text.Length),
+                };
+                return sample;
             }
             Check("systemImageAdmitted", MsiWindowObservation.IsSystemInstaller(Path.Combine(Environment.SystemDirectory, "msiexec.exe")));
             Check("otherImageRejected", !MsiWindowObservation.IsSystemInstaller(Path.Combine(request.WorkingDirectory, "msiexec.exe")));
@@ -271,7 +300,7 @@ internal static class MsiWindowObservationContract
         void Check(string name, bool passed)
         {
             checks.Add(name, passed);
-            if (!passed) throw new InvalidOperationException("msiWindowContractFailed:" + name);
+            if (!passed) throw CheckFailure(name, lastObservation);
         }
         (SuspendedWindowsProcess Process, EventWaitHandle Stop) Start(WindowsJob job, string behavior)
         {
@@ -293,6 +322,14 @@ internal static class MsiWindowObservationContract
             Check("childReady" + children.Count, ready.WaitOne(5000));
             return (process, stop);
         }
+    }
+
+    private static InvalidOperationException CheckFailure(string name, Func<object>? observe)
+    {
+        object? lastObservation = null;
+        try { lastObservation = observe?.Invoke(); } catch { }
+        return new InvalidOperationException("msiWindowContractFailed:" + name + ":" +
+            JsonSerializer.Serialize(new { lastObservation }));
     }
 
     private static bool ExpectedRole(MsiWindowSample sample, string role) => sample.Windows.Any(row => row.Role == role && (role switch

@@ -80,9 +80,19 @@ puuttumaan; sen syy ja siivoustila ovat tuntemattomat. Toisen toiston ja
 molempien fault-toistojen läpäisyt eivät korvaa tätä näyttöä.
 Omistaja hyväksyi tämän jälkeen ikkunatestin täsmällisen kylmän
 provider-aikakatkaisun valmisteluehdon sekä jatkamisen Goalin normaaleihin
-portteihin. Seuraavaksi rajattujen korjausten todennus, katselmus,
-uusi puhdas paketti ja normaali PR-kierros.
-Merge ja main-portit ovat avoinna.
+portteihin. Näiden korjausten puhdas `bf697a40`-paketti ja sen palautusketju
+läpäisivät. Revision [V2-kierros](https://github.com/eky-software/eky/actions/runs/39543955790)
+valmistui: 36 työtä läpäisi, kaksi hylättiin koonti mukaan lukien ja kuusi
+diagnostiikkatyötä jäi tarkoituksella valitsematta.
+[Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39543955762)
+läpäisi. Sovelluksen Electron-, asennus-, päivitys- ja palautustyöt läpäisivät;
+supervisorin ensimmäinen toisto hylkäsi MSI-ikkunafixturen
+`largeListBounded`-tarkistuksen. Alkuperäinen salattu aineisto säilyi,
+mutta siinä oli vain tarkistuksen nimi, ei hylätyn näytteen tietoja.
+Seuraava rajattu muutos säilyttää viimeisen havainnon nykyisessä
+virhekuittiketjussa. Pakotettu native-virhe todensi lisäotteen oikean
+salauksen ja purun läpi; tämä ei vielä selitä alkuperäistä hylkäystä.
+Uuden revision PR-portit, merge ja main-portit ovat avoinna.
 Ensivirheet säilyvät, eikä uuden korjauksen näyttö selitä vanhoja timeouteja.
 
 Omistaja hyväksyi 17.10.2026 D-P1:n epäselvän salaisuusoperaation

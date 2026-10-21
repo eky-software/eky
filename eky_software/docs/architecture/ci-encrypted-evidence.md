@@ -223,6 +223,12 @@ mitatun näytteen hylkäys liittää sen myös nykyiseen yksityiseen virhekuitti
 Näytteen hylkäys säilyttää nykyisessä yksityisessä stderrissä
 suljetun tulosluokan, odotettujen tekstiroolien löytymisen, keruun keston
 sekä erilliset keruun jälkeiset prosessin poistumis- ja omistajuushavainnot.
+Myös saman ikkunafixturen myöhempi tarkistushylkäys säilyttää viimeisen
+luennan tämän otteen sekä ikkunoiden määrän, pisimmän sovellustekstin
+merkkimäärän ja yhteenlasketun merkkimäärän. Viimeinen havainto ei ole
+väite hylkäyksen juurisyystä. Lisäote ei sisällä tekstejä tai PID:tä;
+epäonnistuva havaintokysely jättää tarkistuksen alkuperäisen nimen voimaan.
+Pakotettu native-hylkäys todentaa lisäotteen nykyisen salauksen ja purun läpi.
 Epäonnistuva lisäkysely ei peitä alkuperäistä hylkäystä. Hallittu native-virhe
 todentaa saman merkinnän ja kutsupinon nykyisen tulostekeräyksen sekä oikean
 OpenPGP-salauksen ja purun läpi; nämä havainnot eivät yksin nimeä Windowsin
