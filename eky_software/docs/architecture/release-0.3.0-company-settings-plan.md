@@ -88,6 +88,11 @@ Web-portin valinnan siirto backendin todetun valmiuden jälkeen korjaa tämän
 ristiriidan nykyisillä omistajilla. Hallittu regressio hylkäsi vanhan lähteen;
 71 elinkaarikoetta, tyypitys, kuusi oikeaa selainpolkua ja rajattu
 riippumaton katselmus läpäisivät. Uuden revision normaali integraatio on avoin.
+Saman PR-kierroksen toinen workspace-fault-toisto hylättiin erikseen
+`binaryRollbackFailure`-määräaikaan. Säilynyt ikkunahavainto osoitti asentimen
+odottavan sulkemispyyntöön vastausta, mutta täsmällinen estäjäomistajuus jäi
+avoimeksi. Siivous varmennettiin; skenaarion sisältöhyväksyntää ei saatu.
+Tätä ei korjata tai ohiteta web-fixturen porttijärjestyksen muutoksella.
 
 ### D1:n kohdenäyttö ja seuraava työ
 

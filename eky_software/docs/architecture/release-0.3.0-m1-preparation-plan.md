@@ -103,8 +103,15 @@ porttinumerot ennen backendin käynnistystä. Rajattu korjaus valitsee
 web-portin vasta valmiin backendin jälkeen. Hallittu järjestysregressio
 hylkäsi vanhan lähteen; korjauksen 71 elinkaarikoetta ja tyypitys läpäisivät.
 Myös kuusi oikeaa selainpolkua ja rajattu riippumaton katselmus läpäisivät.
-Nykyinen kierros jatkuu; sen muita tuloksia tai uutta korjausrevisiota ei
-tulkita vielä hyväksytyksi. Automaattinen uusinta kulutti tämän web-hylkäyksen
+Kierros päättyi 35 onnistuneeseen työhön, kolmeen hylkäykseen koonti mukaan
+lukien ja kuuteen valitsemattomaan diagnostiikkatyöhön. Toinen hylkäys oli
+workspace-fault-toiston `binaryRollbackFailure`-skenaarion määräaika:
+asentimen sulkemispyyntö odotti vastausta. Ikkunahavainto säilyi, mutta
+estäjäprosessin täsmällinen omistajuus jäi varmistamatta. Prosessipuun ja
+asennusjälkien siivous varmennettiin; skenaarion sisältöhyväksyntä jäi
+tarkistamatta. Tätä MSI-havaintoa ei nimetä web-porttikorjauksen korjaamaksi.
+Uuden korjausrevision normaali PR/main-hyväksyntä on avoin.
+Automaattinen uusinta kulutti tämän web-hylkäyksen
 uusintakiintiön; korjauksen todennus ei ole saman lähteen uusi uusinta.
 Manuaalisen endurance-kuluttajan vastaava porttien ennakkovalinta jäi
 tämän normaalin web-fixturen korjauksen ulkopuolelle erilliseksi jatkotyöksi;
