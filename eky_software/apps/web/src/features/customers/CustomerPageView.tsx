@@ -439,7 +439,7 @@ export function CustomerPage({
 
 function getSafeErrorMessage(error: unknown, fallbackMessage: string): string {
   if (error instanceof EkyApiError) {
-    return getFinnishApiErrorMessage(error.message);
+    return getFinnishApiErrorMessage(error.message, fallbackMessage);
   }
 
   if (error instanceof Error && error.message === 'Invalid hourly rate.') {

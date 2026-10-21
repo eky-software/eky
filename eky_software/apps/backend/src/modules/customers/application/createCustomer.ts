@@ -5,7 +5,7 @@ import type { ActorContext } from '@eky/auth';
 import { createCustomerRecord, type Customer } from '../domain/customer.js';
 import { createCustomerCreatedAuditEvent } from '../domain/customerAuditEvent.js';
 import {
-  CustomerValidationError,
+  assertPropertyManagerReference,
   normalizeCustomerComment,
   normalizeCustomerName,
   normalizeCustomerNumber,
@@ -49,6 +49,7 @@ export async function createCustomer(
       : normalizeCustomerNumber(input.customerNumber ?? '');
   const customerType = parseCustomerType(input.customerType);
   const managedByCustomerId = normalizeManagedByCustomerId(input.managedByCustomerId, customerType);
+  const customerId = randomUUID();
 
   if (managedByCustomerId.length > 0) {
     const propertyManager = await customerRepository.findById(
@@ -56,13 +57,11 @@ export async function createCustomer(
       managedByCustomerId,
     );
 
-    if (propertyManager?.customerType !== 'propertyManager') {
-      throw new CustomerValidationError('Managed by customer must be a property manager.');
-    }
+    assertPropertyManagerReference(customerId, managedByCustomerId, propertyManager?.customerType);
   }
 
   const customer = createCustomerRecord({
-    id: randomUUID(),
+    id: customerId,
     businessId: normalizeOptionalCustomerField(input.businessId, 'Customer business id'),
     city: normalizeOptionalCustomerField(input.city, 'Customer city'),
     comment: normalizeCustomerComment(input.comment),

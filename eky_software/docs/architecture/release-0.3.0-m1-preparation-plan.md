@@ -20,8 +20,14 @@ PR-headia `33fd0bdb19709329721a87838b3f7d933552d4b9`.
 | PR #309:n portit | [V2](https://github.com/eky-software/eky/actions/runs/39646188806): 27 onnistunutta työtä, kuusi tarkoituksella valitsematonta diagnostiikkatyötä. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39646188607) läpäisi. Molemmat ensimmäisellä suoritusyrityksellä. |
 | Mainin omat portit | [V2](https://github.com/eky-software/eky/actions/runs/39652297393): 38 onnistunutta työtä, kuusi tarkoituksella valitsematonta diagnostiikkatyötä, kaikki 11 porttia ja kaksi vaadittua toistoa. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39653254508) läpäisi; HTTP-muutoksen polkurajauksen vuoksi käynnistettiin yksi erillinen ajo täsmälliselle mainille. Molemmat ensimmäisellä suoritusyrityksellä. |
 
-**Seuraava työ on E-paketin rajattu valmistelu** roadmapin R09-R11:n mukaan.
-E:n toteutusta ei ole aloitettu. T/A/B/C/K/D säilyvät hyväksyttyinä; niitä
+**Nykyinen työ on E-paketti**, roadmapin R09-R11.
+[Toteutus- ja testisuunnitelma](release-0.3.0-customer-invariants-plan.md)
+kirjaa hyväksytyn R09-eston myös passiivisten taloyhtiöiden viittauksille,
+numeroinnin tarkkuuden ja turvallisen virhepalautteen. Toteutus,
+kohderegressiot ja rajattu katselmus on tehty; päivätty checkpoint erottaa
+ne puhtaan paketin ja PR/main-integraation vielä vaadittavista porteista.
+E:n lopullinen hyväksyntänäyttö kuuluu E:n PR:n loppuyhteenvetoon.
+T/A/B/C/K/D säilyvät hyväksyttyinä; niitä
 ei avata uudelleen historiallisten keskeneräisyysmerkintöjen perusteella.
 Tämä ei hyväksy muita paketteja tai koko `0.3.0`-julkaisua.
 

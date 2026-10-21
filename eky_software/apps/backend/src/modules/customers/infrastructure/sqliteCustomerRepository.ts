@@ -1,11 +1,16 @@
 import type { DatabaseConnection } from '../../../database/connection/createDatabaseConnection.js';
 import type { CustomerRow, NewCustomerRow } from '../../../database/schema.js';
-import type { Customer } from '../domain/customer.js';
+import type { Customer, CustomerType } from '../domain/customer.js';
 import type {
   CustomerAuditEvent,
   CustomerChangedFieldCategory,
 } from '../domain/customerAuditEvent.js';
-import { CustomerValidationError } from '../domain/customerRules.js';
+import {
+  assertCustomerTypeChangeAllowed,
+  assertPropertyManagerReference,
+  calculateNextCustomerNumber,
+  CustomerValidationError,
+} from '../domain/customerRules.js';
 import { CustomerAuditWriteError } from '../ports/customerAuditWriteError.js';
 import type { CustomerRepository } from '../ports/customerRepository.js';
 
@@ -125,6 +130,7 @@ export class SqliteCustomerRepository implements CustomerRepository {
 
     try {
       this.database.transaction(() => {
+        this.assertCurrentPropertyManagerReference(customer);
         this.insertCustomer(row);
         this.insertAuditEvent(auditEvent);
       })();
@@ -212,15 +218,7 @@ export class SqliteCustomerRepository implements CustomerRepository {
         `,
       )
       .all(companyId);
-    const highestNumber = rows.reduce((currentHighestNumber, row) => {
-      if (!/^\d+$/.test(row.customer_number)) {
-        return currentHighestNumber;
-      }
-
-      return Math.max(currentHighestNumber, Number(row.customer_number));
-    }, 1000);
-
-    return String(highestNumber + 1);
+    return calculateNextCustomerNumber(rows.map((row) => row.customer_number));
   }
 
   async update(
@@ -232,6 +230,23 @@ export class SqliteCustomerRepository implements CustomerRepository {
 
     try {
       this.database.transaction(() => {
+        const current = this.database
+          .prepare<[string, string], { customer_type: CustomerType }>(
+            'SELECT customer_type FROM customers WHERE company_id = ? AND id = ?',
+          )
+          .get(customer.companyId, customer.id);
+        if (current === undefined) {
+          throw new CustomerValidationError('Customer not found.');
+        }
+        const hasManagedHousingCompanies = current.customer_type === 'propertyManager' &&
+          customer.customerType !== 'propertyManager' &&
+          this.database.prepare<[string, string], { present: number }>(
+            `SELECT 1 AS present FROM customers
+             WHERE company_id = ? AND managed_by_customer_id = ? AND customer_type = 'housingCompany'
+             LIMIT 1`,
+          ).get(customer.companyId, customer.id) !== undefined;
+        assertCustomerTypeChangeAllowed(current.customer_type, customer.customerType, hasManagedHousingCompanies);
+        this.assertCurrentPropertyManagerReference(customer);
         this.updateCustomer(row);
         this.insertAuditEvent(auditEvent);
       })();
@@ -244,6 +259,16 @@ export class SqliteCustomerRepository implements CustomerRepository {
     }
 
     return customer;
+  }
+
+  private assertCurrentPropertyManagerReference(customer: Customer): void {
+    if (customer.managedByCustomerId.length === 0) return;
+    const manager = this.database
+      .prepare<[string, string], { customer_type: CustomerType }>(
+        'SELECT customer_type FROM customers WHERE company_id = ? AND id = ?',
+      )
+      .get(customer.companyId, customer.managedByCustomerId);
+    assertPropertyManagerReference(customer.id, customer.managedByCustomerId, manager?.customer_type);
   }
 
   private insertAuditEvent(auditEvent: CustomerAuditEvent): void {

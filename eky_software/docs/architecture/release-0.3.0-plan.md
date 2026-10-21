@@ -307,7 +307,8 @@ ja PR #309:n kautta mainissa `286cc3227ffe37dd44417750636ec30d460a61e1`.
 [D:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/309#issuecomment-6324156808)
 kirjaa erilliset PR/main-portit ja avoimiksi jätetyt historialliset havainnot.
 PR #293:n aiemmat CS-1/CS-2-korjaukset säilyvät. Seuraava työ on E:n
-rajattu valmistelu; sitä ei ole vielä toteutettu.
+rajattu valmistelu ja toteutus [asiakasinvarianttien suunnitelman](release-0.3.0-customer-invariants-plan.md)
+mukaan; sen hyväksyntä on avoinna.
 [D:n rajattu toteutussuunnitelma](release-0.3.0-company-settings-plan.md)
 erottaa säilytettävät CS-1/CS-2-sopimukset, alkuluvun tallennuseston ja
 17.10.2026 hyväksytyt D-P1:n salaisuusoperaation sekä D-P2/A:n saatavuuden ehdot.
