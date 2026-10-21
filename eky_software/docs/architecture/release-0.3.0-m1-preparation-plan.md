@@ -64,8 +64,11 @@ Täsmällinen estäjäidentiteetti on avoin. Omistaja hyväksyi 21.10.2026 vain
 nykyisen tiedostokäyttäjähavainnon 1 -> 10 sekunnin työbudjetin,
 kohderegressiot, todellisen salaus/purku-ketjun ja yhden nimetyn
 Windows-kokeen samoilla asennuspaketeilla. Keruukorjauksen kohdetestit,
-oikea OpenPGP-ketju ja rajattu katselmus läpäisivät. Seuraava portti on
-nimetty Windows-koe; D:n integraatio ja vanhan odotuksen syy ovat avoinna.
+oikea OpenPGP-ketju ja rajattu katselmus läpäisivät. Revision `3d48ac1c`
+[nimetty Windows-koe](https://github.com/eky-software/eky/actions/runs/39586937937)
+läpäisi samoilla asennuspaketeilla, pakollisella tulosvarmennuksella ja
+siivoustodisteella. Seuraavaksi vaaditaan nykyisen PR-revision normaalit
+portit ja mergen jälkeen mainin omat portit. Vanha estäjäidentiteetti pysyy avoimena.
 
 PR #308:n `a4e14bc3`-revision ensimmäinen
 [V2-kierros](https://github.com/eky-software/eky/actions/runs/39515111216)

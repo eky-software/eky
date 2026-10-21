@@ -33,8 +33,12 @@ synteettisen käyttäjäprosessin identiteetin keräyksestä OpenPGP-purkuun.
 Budjetin loppuminen ja muuttunut tiedostovalinta hylkäsivät muuten
 havaittavan identiteetin sekä sulkivat Restart Manager -session.
 Rajattu riippumaton katselmus ja sen vaatima positiivisen kontrollin
-täsmennys on käsitelty. Nimetty Windows-koe ja uuden revision portit ovat
-vielä avoinna; paikallinen näyttö ei tunnista historiallisen MSI-odotuksen estäjää.
+täsmennys on käsitelty. Revision `3d48ac1c`
+[nimetty Windows-koe](https://github.com/eky-software/eky/actions/runs/39586937937)
+läpäisi samoilla asennuspaketeilla. Komento, pakollinen tulosvarmennus,
+prosessipuun ja testiasennuksen siivous sekä artifactin jälkivarmennus
+läpäisivät. Tämä ei tunnista historiallisen MSI-odotuksen estäjää.
+Seuraava portti on tämän toteutuksen normaali PR/main-integraatio.
 
 PR #308:n `a4e14bc3`-revision V2-kierros hylkäsi yrityksen
 migraatioaktivoinnin ja päivityksen virhepalautuksen. Aktivoinnin sama
