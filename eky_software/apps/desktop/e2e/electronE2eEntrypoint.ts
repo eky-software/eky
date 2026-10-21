@@ -96,7 +96,7 @@ async function runFirstStartProof(mode: FirstStartLoadExperimentMode) {
     if (lifecycle === undefined) {
       throw new Error('WORKSPACE_FIRST_START_MIGRATION_LIFECYCLE_MISSING');
     }
-    await lifecycle.shutdown();
+    await shutdownBeforeWorkspaceProof(lifecycle);
     if (backendController.isRunning()) {
       throw new Error('WORKSPACE_FIRST_START_MIGRATION_BACKEND_RUNNING');
     }

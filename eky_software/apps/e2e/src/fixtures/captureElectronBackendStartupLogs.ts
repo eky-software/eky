@@ -67,7 +67,7 @@ class CaptureFailure extends Error {
   }
 }
 
-// The fixture calls once on startup failure, before its cleanup. Missing events
+// The fixture captures the first launch/body failure before cleanup. Missing events
 // remain unknown: the writer is best effort and this is not an atomic snapshot.
 export function captureElectronBackendStartupLogs(
   input: ElectronBackendStartupLogsCaptureInput,

@@ -464,6 +464,13 @@ export const test = base.extend<
       await finishIsolatedElectronTest({
         failure,
         testAlreadyFailed: testInfo.errors.length > 0,
+        captureFailureBeforeCleanup() {
+          launchFailureCapture.captureBackendFailure({
+            runRoot,
+            userDataPath: runtime.userDataPath,
+            runtimeInstanceId: runtime.runtimeInstanceId,
+          });
+        },
         disposeApi: async () => {
           await api?.dispose();
         },
@@ -565,6 +572,7 @@ export async function prepareElectronFixture<T>(input: {
 export async function finishIsolatedElectronTest(input: {
   failure: { error: unknown } | undefined;
   testAlreadyFailed: boolean;
+  captureFailureBeforeCleanup?(): void;
   disposeApi(): Promise<void>;
   closeRuntime(): Promise<void>;
   releasePort(): Promise<void>;
@@ -579,6 +587,18 @@ export async function finishIsolatedElectronTest(input: {
     port: 'released',
     runRoot: 'retained',
   };
+  const reportEvidenceFailure = (kind: 'captureFailed' | 'reportFailed'): void => {
+    try { input.reportEvidenceFailure?.(kind); } catch {
+      // Secondary metadata cannot replace the original failure.
+    }
+  };
+  let captureFailed = false;
+  if (input.failure !== undefined || input.testAlreadyFailed) {
+    try { input.captureFailureBeforeCleanup?.(); } catch {
+      captureFailed = true;
+      reportEvidenceFailure('captureFailed');
+    }
+  }
   try {
     await input.disposeApi();
   } catch {
@@ -598,12 +618,6 @@ export async function finishIsolatedElectronTest(input: {
     result.api === 'completed' &&
     result.runtime === 'completed' &&
     result.port === 'released';
-  const reportEvidenceFailure = (kind: 'captureFailed' | 'reportFailed'): void => {
-    try { input.reportEvidenceFailure?.(kind); } catch {
-      // Secondary metadata cannot replace the original failure.
-    }
-  };
-  let captureFailed = false;
   try { input.captureEvidence?.(); } catch {
     captureFailed = true;
     reportEvidenceFailure('captureFailed');

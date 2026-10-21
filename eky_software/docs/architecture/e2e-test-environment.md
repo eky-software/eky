@@ -617,6 +617,16 @@ Playwrightin `attempt` erottaa testin suoritusyritykset; mikään näistä ei ol
 asiakasyrityksen tai runtime-sessionin tunniste. Onnistuva käynnistys ei
 käynnistä virheen lisähavaintoa.
 
+Jos käynnistys onnistuu mutta setup tai testirunko epäonnistuu myöhemmin,
+fixture lukee saman rajatun backend-lokiotteen ennen API:n tai runtimen
+siivousta. Aiempi launch-virheen otos säilyy ensisijaisena. Ote sisältää vain
+nykyisen runtime-sukupolven olemassa olevat startup-/shutdown-tapahtumanimet,
+tulokset ja lukemisen saatavuuden; uusia kenttiä tai raakalokeja ei kerätä.
+Siivouksen myöhemmin kirjoittama valmistumistapahtuma ei täydennä ensivirheen
+otosta. Lukupoikkeus ei estä omistettuja sulkuja eikä korvaa testivirhettä.
+Tavallinen onnistunut testirunko ei käynnistä tätä lukua. Puuttuva tapahtuma
+ei todista tekemätöntä vaihetta, koska alkuperäinen lokikirjoitus on best effort.
+
 Ketjun rajattu oikeaprosessikoe käyttää vain Electron-fixturen
 `e2eBackendStartupFault: 'missingIncidentsDirectory'` -valintaa. Se muuttaa
 backendin testikonfiguraation incident-polun olemattomaan alihakemistoon

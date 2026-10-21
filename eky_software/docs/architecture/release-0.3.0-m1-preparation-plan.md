@@ -58,7 +58,31 @@ säilytysrajat, puuttuvan aineiston tiedot ja erilliset etenemispäätökset
 säilyvät; tämä dokumentointikorjaus ei hyväksy uusia poikkeuksia.
 
 **Nykyinen työ:** [D:n toteutus](release-0.3.0-company-settings-plan.md).
-Viimeisin `02a93d71`-revision [V2-kierros](https://github.com/eky-software/eky/actions/runs/39552315208)
+PR #308:n `8c25d9b2`-revision
+[V2-kierros](https://github.com/eky-software/eky/actions/runs/39588909072)
+päättyi hylättynä: 35 onnistunutta työtä, kolme hylkäystä koonti mukaan
+lukien ja kuusi tarkoituksella valitsematonta diagnostiikkatyötä.
+[Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39588908925)
+läpäisi. Electronin kaksi alkuvalmistelun sulkua hylättiin ensimmäisellä
+yrityksellä; automaattiset uusinnat läpäisivät, mutta työ jäi flakyksi.
+Erillinen workspace-success-toisto pysähtyi asentimen sulkemispyyntöön.
+Prosessipuun ja asennusjälkien siivous varmennettiin, mutta asennuksen
+sisältöhyväksyntä jäi tekemättä. Keruun työbudjetti ei enää loppunut;
+valituille tiedostoille ei havaittu käyttäjäprosessia. Estäjän identiteetti
+ja Electronin alkuperäisen sulkuviiveen syy säilyvät avoimina.
+
+Rajattu jatkokorjaus käyttää myös ensikäynnistyskokeessa nykyistä sulkuvirheen
+syysiirtoa sekä ottaa ensimmäisen setup-/testirunkovirheen backend-vaiheotteen
+ennen siivousta. Aiempi käynnistysvirheen ote ei korvaudu. Keräys käyttää
+nykyistä rajattua lukijaa ja salattua toimitusta; sovelluksen sulkua,
+hyväksyntäehtoja tai aikarajoja ei muuteta. Kohderegressiot, tyypitys,
+oikea salaus/purku ja molemmat nimetyt Electron-polut läpäisivät.
+Tämä todistaa keräyskorjauksen, ei historiallisten viiveiden korjausta.
+Seuraavaksi vaaditaan tämän korjauksen katselmuksen jälkeen uuden täsmällisen
+PR-headin normaalit portit ja vasta niiden hyväksynnän jälkeen merge sekä
+mainin omat portit. D:tä ei ole hyväksytty eikä PR:ää yhdistetty.
+
+**Edeltävien kierrosten näyttö:** `02a93d71`-revision [V2-kierros](https://github.com/eky-software/eky/actions/runs/39552315208)
 hylättiin asentimen sulkemispyynnön odotukseen; riippuvuustarkistus läpäisi.
 Täsmällinen estäjäidentiteetti on avoin. Omistaja hyväksyi 21.10.2026 vain
 nykyisen tiedostokäyttäjähavainnon 1 -> 10 sekunnin työbudjetin,

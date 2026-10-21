@@ -44,6 +44,11 @@ export function createElectronLaunchFailureCapture() {
   let firstLaunchFailure: Readonly<ElectronFirstLaunchFailure> | null = null;
 
   return {
+    captureBackendFailure(runtime: Parameters<typeof captureElectronBackendStartupLogs>[0]): void {
+      // Keep an earlier launch snapshot; teardown must not rewrite its cause.
+      if (backendStartupLogs.status !== 'notRequested') return;
+      backendStartupLogs = captureElectronBackendStartupLogs(runtime);
+    },
     observe(
       observation: ElectronLaunchObservation,
       runtime: Parameters<typeof captureElectronBackendStartupLogs>[0] & {

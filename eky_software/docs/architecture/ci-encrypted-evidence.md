@@ -312,7 +312,7 @@ alkuperäistä syytä. Salauskoe tarkistaa puretut tavut, tiivisteet, syyketjun
 ja testiyrityksen sidonnan. Tämä ei ole väite hosted-ajon latauksesta tai
 kaikkien alempien adapterien virheiden kattavuudesta.
 
-Electronin migraatioaktivoinnin testivalmistelu säilyttää mainin alkuperäisen
+Electronin ensikäynnistyksen ja migraatioaktivoinnin testivalmistelu säilyttää mainin alkuperäisen
 sulkuvirheen tunnetun vaiheen ja syyluokan testikohtaisen virheen viestissä.
 Ne luetaan elinkaaren omistamasta suljetusta sopimuksesta ennen Playwrightin
 virhesiirtoa, joka ei säilytä rakenteista `cause`-oliota. Muut syyolion

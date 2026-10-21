@@ -313,6 +313,7 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
       expect(mainReads).toBe(1);
       await expect(finishIsolatedElectronTest({
         failure, testAlreadyFailed: false,
+        captureFailureBeforeCleanup() { capture.captureBackendFailure(runtime); },
         async disposeApi() {},
         async closeRuntime() {
           write('backend.started');
@@ -340,6 +341,95 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
       expect(text).not.toMatch(/backend\.started|backend\.shutdownStarted|private|11111111|22222222|desktop-user-data/);
       expect(testInfo.attachments.some((item) => item.name === 'electron-lifecycle')).toBe(true);
     } finally { await removeE2eRunRootIfPresent(root); }
+  });
+
+  for (const boundary of ['setup', 'body'] as const) {
+    test(`${boundary} failure retains backend shutdown evidence before cleanup can add completion`, async ({}, testInfo) => {
+      const root = createE2eRunRoot();
+      const runtime = { runRoot: root, userDataPath: join(root, 'worker', 'desktop-user-data'),
+        runtimeInstanceId: '11111111-1111-4111-8111-111111111111' };
+      mkdirSync(runtime.userDataPath, { recursive: true });
+      const identity = { appVersion: '0.0.0-e2e', buildRevision: 'development',
+        runtimeInstanceId: runtime.runtimeInstanceId };
+      const logger = createBackendOperationalLogger(join(runtime.userDataPath, 'runtime', 'logs'), identity);
+      const write = (eventName: 'backend.starting' | 'backend.shutdownStarted' | 'backend.shutdownCompleted') =>
+        logger.write(createBackendOperationalEvent({ eventName }, identity));
+      const capture = createElectronLaunchFailureCapture();
+      const original = new Error('E2E_INITIAL_SHUTDOWN_FAILED: backend/notGraceful');
+      const calls: string[] = [];
+      try {
+        write('backend.starting');
+        write('backend.shutdownStarted');
+        const finish = finishIsolatedElectronTest({
+          failure: boundary === 'setup' ? { error: original } : undefined,
+          testAlreadyFailed: boundary === 'body',
+          captureFailureBeforeCleanup() {
+            calls.push('capture');
+            capture.captureBackendFailure(runtime);
+          },
+          async disposeApi() { calls.push('api'); },
+          async closeRuntime() {
+            calls.push('runtime');
+            write('backend.shutdownCompleted');
+          },
+          async releasePort() { calls.push('port'); },
+          captureEvidence() { capture.captureBackendFailure(runtime); },
+          removeRoot: () => removeE2eRunRoot(root),
+          report: cleanup => reportElectronLifecycleEvidence(testInfo, {
+            launch: [], observationsTruncated: false, cleanup, ...capture.finish(),
+          }),
+        });
+        if (boundary === 'setup') await expect(finish).rejects.toBe(original);
+        else await expect(finish).resolves.toBeUndefined();
+        expect(calls).toEqual(['capture', 'api', 'runtime', 'port']);
+        expect(existsSync(root)).toBe(true);
+        const bytes = readFileSync(testInfo.outputPath('electron-lifecycle.json'));
+        const evidence = JSON.parse(bytes.toString('utf8'));
+        expect(evidence.backendStartupLogs).toEqual({
+          status: 'captured', issues: [],
+          startup: [{ eventName: 'backend.starting', outcome: 'success' }],
+          shutdown: [{ eventName: 'backend.shutdownStarted', outcome: 'success' }],
+        });
+        expect(evidence.startupCapture).toEqual({ status: 'notRequested' });
+        expect(evidence.firstLaunchFailure).toBeNull();
+        expect(evidence.cleanup).toEqual({ api: 'completed', runtime: 'completed', port: 'released', runRoot: 'retained' });
+        expect(bytes.toString('utf8')).not.toMatch(/shutdownCompleted|11111111|desktop-user-data|runtimeInstanceId/);
+        const attachment = testInfo.attachments.find(item => item.name === 'electron-lifecycle')!;
+        expect(attachment.body).toEqual(bytes);
+        expect(projectElectronLifecycle({ retry: testInfo.retry, attachments: [{ ...attachment, body: bytes }] }))
+          .toMatchObject({ status: 'captured', cleanup: evidence.cleanup });
+      } finally { await removeE2eRunRootIfPresent(root); }
+    });
+  }
+
+  test('a pre-cleanup capture exception preserves the failure and still attempts every cleanup', async () => {
+    const original = new Error('original failure');
+    const calls: string[] = [];
+    const failures: string[] = [];
+    await expect(finishIsolatedElectronTest({
+      failure: { error: original }, testAlreadyFailed: false,
+      captureFailureBeforeCleanup() { calls.push('capture'); throw new Error('capture failure'); },
+      async disposeApi() { calls.push('api'); },
+      async closeRuntime() { calls.push('runtime'); },
+      async releasePort() { calls.push('port'); },
+      async removeRoot() { throw new Error('must retain evidence'); },
+      async report(result) { expect(result.runRoot).toBe('retained'); calls.push('report'); },
+      reportEvidenceFailure(kind) { failures.push(kind); },
+    })).rejects.toBe(original);
+    expect(calls).toEqual(['capture', 'api', 'runtime', 'port', 'report']);
+    expect(failures).toEqual(['captureFailed']);
+  });
+
+  test('a successful body does not invoke the failure-only log reader', async () => {
+    const calls: string[] = [];
+    await finishIsolatedElectronTest({
+      failure: undefined, testAlreadyFailed: false,
+      captureFailureBeforeCleanup() { calls.push('unexpected'); },
+      async disposeApi() {}, async closeRuntime() {}, async releasePort() {},
+      async removeRoot() { calls.push('remove'); },
+      async report(result) { expect(result.runRoot).toBe('removed'); },
+    });
+    expect(calls).toEqual(['remove']);
   });
 
   test('startup memory keeps only bounded immutable checkpoint observations', () => {

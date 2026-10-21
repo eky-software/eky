@@ -21,7 +21,33 @@ rajattuun toteutukseen ja testeihin. Tuotantokytkennän hyväksyntä edellyttä�
 edelleen alla nimettyä elinkaaritodistusta.
 Toteutuksen, testien ja integraation hyväksyntä on avoin.
 
-Nykyinen rajattu jatko: `02a93d71`-revision MSI-odotuksen estäjä on vielä
+Nykyinen rajattu jatko koskee `8c25d9b2`-revision
+[V2-hylkäystä](https://github.com/eky-software/eky/actions/runs/39588909072).
+Electronin ensikäynnistys- ja aktivointikokeiden alkuvalmistelun sulku
+epäonnistui ensimmäisellä yrityksellä; automaattiset uusinnat läpäisivät.
+Aktivoinnissa alisyy oli backendin hallitun sulun puuttuminen.
+Ensikäynnistyspolun yleinen virhe ei yksin todista samaa alisyytä.
+Sovelluksen migraatiokoe ei vielä alkanut.
+Nykyisen sulkuvirhesiirron kytkentä ensikäynnistykseen ja olemassa olevan
+backend-lokilukijan käyttö ennen virhesiivousta korjaavat kaksi todettua
+keräysaukkoa. Aiempi launch-ote säilyy, eikä myöhempi siivous muuta sitä.
+Kohdetodennus läpäisi erillisinä sarjoina: 12 sulkuvirheregressiota,
+91 fixture-/lukijakoetta, E2E-tyypitys, yhdeksän alkuperäisen virheen
+OpenPGP-koetta sekä kahden todellisen fixture-tulosotteen salaus ja purku
+muuttumattomiksi tavuiksi. Molemmat nimetyt oikean Electronin polut
+läpäisivät ilman uusintaa. Salauskoe ei ole GitHub-toimituksen todiste,
+eikä onnistunut Electron-polku todista aikaisemman sulkuviiveen syytä.
+Rajattu toteutuskatselmus ei löytänyt korjattavaa; uuden revision normaalit
+PR/main-portit ovat avoinna.
+
+Saman kierroksen erillinen workspace-success-hylkäys odotti MSI:n
+sulkemispyyntöön vastausta. Tiedostokäyttäjähavainto valmistui ilman
+käyttäjäprosessia, joten estäjäidentiteetti jäi avoimeksi. Prosessipuun ja
+asennusjälkien siivous varmennettiin; asennuksen sisältöhyväksyntä jäi
+tekemättä. Nykyistä sovelluksen elinkaarta tai asennustapaa ei muuteta
+tämän puuttuvan identiteetin perusteella.
+
+**Edeltävä keruukorjaus:** `02a93d71`-revision MSI-odotuksen estäjä on vielä
 tunnistamatta. Omistaja hyväksyi 21.10.2026 nykyisen tiedostokäyttäjähavainnon
 työbudjetin noston 1 -> 10 sekuntiin, kohderegressiot, salaus/purku-todennuksen
 ja yhden nimetyn Windows-kokeen samoilla pakettitavuilla. Yhteinen

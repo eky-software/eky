@@ -56,16 +56,21 @@ describe('workspace proof initial shutdown evidence', () => {
     expect(read).not.toHaveBeenCalled();
   });
 
-  it('is wired before the activation proof and backend-absence check', async () => {
+  it.each([
+    ['async function runFirstStartProof(', 'const { runWorkspaceFirstStartMigrationProof }'],
+    ['async runWorkspaceActivationMigrationProof()', 'return runWorkspaceActivationMigrationProof('],
+  ])('is wired before the backend-absence check in %s', async (entry, proofCall) => {
     const source = await readFile(new URL('./electronE2eEntrypoint.ts', import.meta.url), 'utf8');
-    const start = source.indexOf('async runWorkspaceActivationMigrationProof()');
-    const end = source.indexOf('async runWorkspaceStartupRecoveryProof()', start);
+    const start = source.indexOf(entry);
+    const end = source.indexOf(proofCall, start) + proofCall.length;
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
     const body = source.slice(start, end);
     expect(body).toContain('await shutdownBeforeWorkspaceProof(lifecycle);');
     expect(body).not.toContain('await lifecycle.shutdown();');
     expect(body.indexOf('shutdownBeforeWorkspaceProof(lifecycle)'))
       .toBeLessThan(body.indexOf('backendController.isRunning()'));
     expect(body.indexOf('backendController.isRunning()'))
-      .toBeLessThan(body.indexOf('return runWorkspaceActivationMigrationProof('));
+      .toBeLessThan(body.indexOf(proofCall));
   });
 });
