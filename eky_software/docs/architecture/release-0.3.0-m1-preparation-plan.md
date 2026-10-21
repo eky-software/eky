@@ -58,7 +58,29 @@ säilytysrajat, puuttuvan aineiston tiedot ja erilliset etenemispäätökset
 säilyvät; tämä dokumentointikorjaus ei hyväksy uusia poikkeuksia.
 
 **Nykyinen työ:** [D:n toteutus](release-0.3.0-company-settings-plan.md).
-PR #308:n `8c25d9b2`-revision
+PR #308:n `a5899a84`-head läpäisi [V2:n](https://github.com/eky-software/eky/actions/runs/39631941135)
+(38 onnistunutta työtä, kuusi tarkoituksella valitsematonta diagnostiikkatyötä)
+ja [riippuvuustarkistuksen](https://github.com/eky-software/eky/actions/runs/39631941030).
+[Normaalin mergen hyväksyntä](https://github.com/eky-software/eky/pull/308#issuecomment-6321513979)
+koskee täsmällistä PR-headia, ei automaattisesti uutta mainia `597cc8cf`.
+Mainin [oma V2](https://github.com/eky-software/eky/actions/runs/39638415671)
+hylkäsi Electronin ensikäynnistyksen alkuvalmistelun ensimmäisen yrityksen;
+uusinta läpäisi, mutta työ jäi flakyksi. [Mainin riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39638415424)
+läpäisi. D:n integraatio pysyy avoimena.
+
+Uusi keräys säilytti ennen siivousta backendin sulun aloituksen sekä
+alkuperäisen `backend/notGraceful`-syyn salattuun pakettiin. Rajattu
+HTTP-regressio toisti sulun jälkeen joutilaaksi muuttuvan keep-alive-yhteyden
+viiveen. Nykyisen HTTP-adapterin korjaus sulkee vain käyttämättömät yhteydet
+vastauksen valmistumisen jälkeen; aktiivinen työ ja auditin portti säilyvät.
+Vaikutusalueen regressiot, koko työtilan testit ja tyypitys, molemmat nimetyt
+Electron-polut ilman uusintoja sekä rajattu katselmus läpäisivät. Seuraavaksi
+vaaditaan saman puhtaan paketin palautustodennus ja uuden revision normaalit
+PR/main-portit.
+Historiallista MSI-estäjää tai mainin täsmällistä sulkuviiveen syytä ei vielä
+merkitä ratkaistuksi tämän paikallisen löydön perusteella.
+
+**Edeltävä keräyskorjaus ja sen lähtöhylkäys:** PR #308:n `8c25d9b2`-revision
 [V2-kierros](https://github.com/eky-software/eky/actions/runs/39588909072)
 päättyi hylättynä: 35 onnistunutta työtä, kolme hylkäystä koonti mukaan
 lukien ja kuusi tarkoituksella valitsematonta diagnostiikkatyötä.
@@ -78,9 +100,8 @@ nykyistä rajattua lukijaa ja salattua toimitusta; sovelluksen sulkua,
 hyväksyntäehtoja tai aikarajoja ei muuteta. Kohderegressiot, tyypitys,
 oikea salaus/purku ja molemmat nimetyt Electron-polut läpäisivät.
 Tämä todistaa keräyskorjauksen, ei historiallisten viiveiden korjausta.
-Seuraavaksi vaaditaan tämän korjauksen katselmuksen jälkeen uuden täsmällisen
-PR-headin normaalit portit ja vasta niiden hyväksynnän jälkeen merge sekä
-mainin omat portit. D:tä ei ole hyväksytty eikä PR:ää yhdistetty.
+Tämän keräyskorjauksen PR-portit ja merge valmistuivat yllä kuvatusti;
+mainin oma hylkäys pitää D:n hyväksynnän avoimena.
 
 **Edeltävien kierrosten näyttö:** `02a93d71`-revision [V2-kierros](https://github.com/eky-software/eky/actions/runs/39552315208)
 hylättiin asentimen sulkemispyynnön odotukseen; riippuvuustarkistus läpäisi.

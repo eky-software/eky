@@ -89,7 +89,12 @@ Backendin HTTP-adapteri lopettaa kuuntelun ja sulkee yhteydet, joilta ei ole
 vielä hyväksytty ensimmäistä HTTP-pyyntöä. Pelkkä TCP-yhteys tai keskeneräiset
 otsakkeet eivät saa pitää sammutusta odottamassa. Pyynnön vastaanotto
 merkitään ennen sovelluskäsittelijää: aloitettu vastaus ja keskeneräinen
-POST-runko saavat valmistua normaalisti. Yhteyksiä ei katkaista yleisesti
+POST-runko saavat valmistua normaalisti. Sulkemisen aikana valmistuvan
+vastauksen `finish`-tapahtuma pyytää HTTP-palvelinta sulkemaan vain sillä
+hetkellä käyttämättömät yhteydet. Näin alkuperäisen sulkukutsun aikana
+aktiivinen keep-alive-yhteys ei jää odottamaan erillistä joutoaikarajaa.
+Muut keskeneräiset pyynnöt, myös saman yhteyden jonotetut vastaukset,
+säilyvät normaalissa käsittelyssä. Yhteyksiä ei katkaista yleisesti
 kesken käsittelyn. Desktopin hyväksymä hallittu sammutus edellyttää edelleen
 backend-prosessin onnistunutta poistumista nykyisessä aikarajassa;
 HTTP-yhteyden sulku ei yksin ole prosessin poissaolon todiste.

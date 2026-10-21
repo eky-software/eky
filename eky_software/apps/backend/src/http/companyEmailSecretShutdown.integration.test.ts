@@ -70,10 +70,12 @@ describe('real HTTP secret mutation and audit shutdown', () => {
     },
   );
 
-  it.each(['success', 'noEffect', 'unknown'] as const)(
-    'keeps a connected request and its actual %s outcome during shutdown', async outcome => {
+  it.each((['success', 'noEffect', 'unknown'] as const).flatMap(outcome =>
+    (['close', 'keep-alive'] as const).map(connection => [outcome, connection] as const),
+  ))(
+    'keeps the actual %s outcome for a %s request during shutdown', async (outcome, connection) => {
       const f = await fixture('store', outcome);
-      const socket = await f.send('set');
+      const socket = await f.send('set', connection);
       const chunks: Buffer[] = [];
       socket.on('data', chunk => chunks.push(chunk));
       const disconnected = once(socket, 'close');
@@ -224,14 +226,14 @@ async function fixture(hold: 'store' | 'audit', outcome: Outcome) {
       expect(calls).toEqual([{ companyId: rows[0]!.company_id, operationId: rows[0]!.operation_id }]);
       return rows.map(({ action, status }) => ({ action, status }));
     },
-    async send(action: Action) {
+    async send(action: Action, connection: 'close' | 'keep-alive' = 'close') {
       const socket = connect({ host: '127.0.0.1', port: server!.port });
       sockets.push(socket);
       await once(socket, 'connect');
       const body = action === 'set' ? JSON.stringify({ secret: 'synthetic-http-secret' }) : '';
       socket.write([
         `${action === 'set' ? 'PUT' : 'DELETE'} /company-settings/email-secret HTTP/1.1`,
-        'Host: localhost', 'Connection: close', 'Content-Type: application/json',
+        'Host: localhost', `Connection: ${connection}`, 'Content-Type: application/json',
         `x-eky-local-session: ${session}`, `Content-Length: ${Buffer.byteLength(body)}`, '', body,
       ].join('\r\n'));
       return socket;
