@@ -52,9 +52,13 @@ interface CompanySettingsPageProps {
   profileProtectionCapability?: ProfileProtectionCapability;
 }
 
+type CompanySettingsLoadStatus = 'loading' | 'ready' | 'failed';
+
 interface CompanySettingsEditSession {
   apiClient: CompanySettingsPageClient;
   editRevision: number;
+  loadAttempt: object | null;
+  loadStatus: CompanySettingsLoadStatus;
   savePending: boolean;
 }
 
@@ -71,14 +75,22 @@ export function CompanySettingsPage({
   const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loadStatus, setLoadStatus] = useState<CompanySettingsLoadStatus>('loading');
+  const [reloadRevision, setReloadRevision] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const editSession = useRef<CompanySettingsEditSession | null>(null);
 
   useLayoutEffect(() => {
-    editSession.current = { apiClient, editRevision: 0, savePending: false };
+    editSession.current = {
+      apiClient,
+      editRevision: 0,
+      loadAttempt: null,
+      loadStatus: 'loading',
+      savePending: false,
+    };
     setIsSaving(false);
-    setIsLoading(true);
+    setLoadStatus('loading');
+    setLoadErrorMessage(null);
     setSaveErrorMessage(null);
     setSuccessMessage(null);
 
@@ -88,39 +100,64 @@ export function CompanySettingsPage({
   }, [apiClient]);
 
   useEffect(() => {
-    let isActive = true;
+    const session = editSession.current;
+    if (!session || session.apiClient !== apiClient) {
+      return;
+    }
+    const attempt = {};
+    session.loadAttempt = attempt;
+    session.loadStatus = 'loading';
 
-    async function loadCompanySettings(): Promise<void> {
-      setIsLoading(true);
+    const isCurrentAttempt = (): boolean =>
+      editSession.current === session && session.loadAttempt === attempt;
+
+    const loadCompanySettings = async (): Promise<void> => {
+      setLoadStatus('loading');
       setLoadErrorMessage(null);
 
       try {
         const companySettings = await apiClient.getCompanySettings();
 
-        if (isActive) {
+        if (isCurrentAttempt()) {
           setForm(toCompanySettingsForm(companySettings));
+          session.loadStatus = 'ready';
+          setLoadStatus('ready');
         }
       } catch (error) {
-        if (isActive) {
+        if (isCurrentAttempt()) {
+          session.loadStatus = 'failed';
           setLoadErrorMessage(getErrorMessage(error));
-        }
-      } finally {
-        if (isActive) {
-          setIsLoading(false);
+          setLoadStatus('failed');
         }
       }
-    }
+    };
 
     void loadCompanySettings();
 
     return () => {
-      isActive = false;
+      if (session.loadAttempt === attempt) {
+        session.loadAttempt = null;
+      }
     };
-  }, [apiClient]);
+  }, [apiClient, reloadRevision]);
+
+  function handleReload(): void {
+    const session = editSession.current;
+    if (!session || session.apiClient !== apiClient || session.loadStatus !== 'failed') {
+      return;
+    }
+    session.loadStatus = 'loading';
+    setLoadStatus('loading');
+    setLoadErrorMessage(null);
+    setReloadRevision((currentRevision) => currentRevision + 1);
+  }
 
   async function handleSave(): Promise<void> {
     const session = editSession.current;
-    if (!session || session.apiClient !== apiClient || session.savePending || isLoading) {
+    if (
+      !session || session.apiClient !== apiClient ||
+      session.savePending || session.loadStatus !== 'ready'
+    ) {
       return;
     }
 
@@ -153,9 +190,11 @@ export function CompanySettingsPage({
   }
 
   function handleFieldChange(fieldName: keyof CompanySettingsFormModel, value: string): void {
-    if (editSession.current) {
-      editSession.current.editRevision += 1;
+    const session = editSession.current;
+    if (!session || session.apiClient !== apiClient || session.loadStatus !== 'ready') {
+      return;
     }
+    session.editRevision += 1;
     setSuccessMessage(null);
     setForm((currentForm) => {
       if (fieldName === 'emailSenderAddress') {
@@ -187,14 +226,22 @@ export function CompanySettingsPage({
       {successMessage ? (
         <MessageBanner variant="success">{successMessage}</MessageBanner>
       ) : null}
-      {isLoading ? (
+      {loadStatus === 'loading' ? (
         <MessageBanner variant="info">
           {uiText.companySettings.loading}
         </MessageBanner>
       ) : null}
 
-      {!isLoading ? (
-        <div className={styles.viewGrid}>
+      {loadStatus === 'failed' ? (
+        <div>
+          <button className="ghost-button" onClick={handleReload} type="button">
+            {uiText.companySettings.reload}
+          </button>
+        </div>
+      ) : null}
+
+      <div className={styles.viewGrid}>
+        {loadStatus === 'ready' ? (
           <CompanySettingsForm
             errorMessage={saveErrorMessage}
             form={form}
@@ -202,31 +249,31 @@ export function CompanySettingsPage({
             onFieldChange={handleFieldChange}
             onSubmit={() => void handleSave()}
           />
-          {isEmailSecretManagementAvailable ? (
-            <CompanyEmailSecretPanel apiClient={apiClient} />
-          ) : null}
-          <InvoiceVatRatesPanel apiClient={apiClient} />
-          <InvoiceNumberingSettingsPanel apiClient={apiClient} />
-          <InvoicePaymentSettingsPanel apiClient={apiClient} />
-          <InvoicePdfArchivePanel
-            {...(invoicePdfArchiveCapability === undefined
-              ? {}
-              : { capability: invoicePdfArchiveCapability })}
-          />
-          <ProfileBackupPanel
-            {...(profileProtectionCapability === undefined
-              ? {}
-              : { capability: profileProtectionCapability })}
-          />
-          <CompanyOperationsPanel
-            {...(localUpdateCapability === undefined
-              ? {}
-              : { localUpdateCapability })}
-            onOpenActivity={onOpenActivity}
-            onOpenDiagnostics={onOpenDiagnostics}
-          />
-        </div>
-      ) : null}
+        ) : null}
+        {isEmailSecretManagementAvailable ? (
+          <CompanyEmailSecretPanel apiClient={apiClient} />
+        ) : null}
+        <InvoiceVatRatesPanel apiClient={apiClient} />
+        <InvoiceNumberingSettingsPanel apiClient={apiClient} />
+        <InvoicePaymentSettingsPanel apiClient={apiClient} />
+        <InvoicePdfArchivePanel
+          {...(invoicePdfArchiveCapability === undefined
+            ? {}
+            : { capability: invoicePdfArchiveCapability })}
+        />
+        <ProfileBackupPanel
+          {...(profileProtectionCapability === undefined
+            ? {}
+            : { capability: profileProtectionCapability })}
+        />
+        <CompanyOperationsPanel
+          {...(localUpdateCapability === undefined
+            ? {}
+            : { localUpdateCapability })}
+          onOpenActivity={onOpenActivity}
+          onOpenDiagnostics={onOpenDiagnostics}
+        />
+      </div>
     </div>
   );
 }

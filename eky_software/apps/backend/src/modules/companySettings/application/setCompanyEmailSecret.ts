@@ -37,8 +37,8 @@ export async function setCompanyEmailSecret(
     companyEmailSecretAuditWriter:
       dependencies.companyEmailSecretAuditWriter,
     occurredAt: input.occurredAt,
-    async operation() {
-      await dependencies.companyEmailSecretStore.setSecret(secretInput);
+    async operation(operationId) {
+      await dependencies.companyEmailSecretStore.setSecret({ ...secretInput, operationId });
 
       return createCompanyEmailSecretStatus(true);
     },

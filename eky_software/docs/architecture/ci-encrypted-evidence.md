@@ -208,9 +208,11 @@ ja testiavainpurun läpi prosessien poistuttua. Se ei asenna MSI:tä tai
 korvaa varsinaista Windows-asennuskokeen näyttöä.
 Positiivinen luettelokoe ottaa ensin yhden kylmän valmistelunäytteen.
 Täydellisen näytteen lisäksi valmistelussa hyväksytään vain tarkasti
-`listProcessId/budgetExpired` ilman HRESULT-arvoa: nykyinen työbudjetti on
-täyttynyt, otsikko, ilmoitus ja painike löytyvät, sovellusnimiä ei ole ja
-omistettu prosessi on edelleen elossa. Muut osittaiset tulokset ja virheet
+`listProcessId/budgetExpired` ilman HRESULT-arvoa, kun nykyinen työbudjetti
+on täyttynyt, tai `providerException` ja täsmällinen `0x80131505`-aikakatkaisu
+`elementFromHandle`- tai `firstChild`-vaiheessa. Molemmissa otsikko,
+ilmoitus ja painike löytyvät, sovellusnimiä ei ole ja omistettu prosessi on
+edelleen todistetusti elossa. Muut osittaiset tulokset ja virheet
 hylätään. Sen jälkeen otetaan täsmälleen yksi täydellisen luettelon vaativa
 näyte samoilla rajoilla. Kolmatta näytettä, uusintasilmukkaa tai pidempää
 budjettia ei ole. Tämä todentaa valmistellun providerin täydellisen luvun,
@@ -221,6 +223,12 @@ mitatun näytteen hylkäys liittää sen myös nykyiseen yksityiseen virhekuitti
 Näytteen hylkäys säilyttää nykyisessä yksityisessä stderrissä
 suljetun tulosluokan, odotettujen tekstiroolien löytymisen, keruun keston
 sekä erilliset keruun jälkeiset prosessin poistumis- ja omistajuushavainnot.
+Myös saman ikkunafixturen myöhempi tarkistushylkäys säilyttää viimeisen
+luennan tämän otteen sekä ikkunoiden määrän, pisimmän sovellustekstin
+merkkimäärän ja yhteenlasketun merkkimäärän. Viimeinen havainto ei ole
+väite hylkäyksen juurisyystä. Lisäote ei sisällä tekstejä tai PID:tä;
+epäonnistuva havaintokysely jättää tarkistuksen alkuperäisen nimen voimaan.
+Pakotettu native-hylkäys todentaa lisäotteen nykyisen salauksen ja purun läpi.
 Epäonnistuva lisäkysely ei peitä alkuperäistä hylkäystä. Hallittu native-virhe
 todentaa saman merkinnän ja kutsupinon nykyisen tulostekeräyksen sekä oikean
 OpenPGP-salauksen ja purun läpi; nämä havainnot eivät yksin nimeä Windowsin
@@ -241,6 +249,16 @@ hyväksymisehto eikä sitä odoteta siivouksessa.
 Kiinteän callerin composition välittää supervisorin vaihehakemiston
 worker-runtimen julkaisuun erikseen: materialisoidun työskentelykansion ja
 native-supervisorin request/result-hakemiston ei oleteta olevan samat.
+
+Omistajan 21.10.2026 hyväksymä tiedostokäyttäjähavainnon työbudjetti on
+10 000 ms saman näytteen alkuperäisestä monotonisesta kellosta. Tekstinäytteen
+1 000 ms:n ja viestikyselyn 100 ms:n rajat säilyvät. Tiedostokysely ei aloita
+omaa uutta kelloa tekstiluennan jälkeen. Pysäytys sulkee sen pääsyn heti;
+myös kyselyn jälkeinen valintatarkistus vaatii jäljellä olevan budjetin.
+Valinnainen taustakysely ja julkaisun järjestys säilyvät; terminal/cleanup-polku
+ei odota kyselyä. Native-kutsu voi ylittää havainnointibudjetin; budjetti ei
+katkaise käyttöjärjestelmäkutsua eikä takaa täydellistä havaintoa. Testin,
+asennuksen ja työn määräajat eivät muutu.
 
 Vain tiedostot rekisteröidään; prosesseja ja palveluja ei rekisteröidä eikä
 Restart Managerin sulkemis- tai käynnistystoimintoja käytetä. Näytteeseen
@@ -283,6 +301,27 @@ Sisäisen palvelun aiemmin korvaamaa
 poikkeusta ei voi palauttaa reporterissa: kyseisen rajan omistaja säilyttää
 alkuperäisen syyn ennen muunnosta. Rajattu sovelluskytkentä toimii vain
 nykyisellä synteettisen käynnistyksen opt-in-valtuudella.
+
+D2:n brokerin synteettinen fixture käyttää samaa liitäntää todellisen
+viestinkäsittelijän `captureOriginalException`-kohdasta ennen koodimuunnosta.
+Fixture säilyttää ensimmäisen syyn muistissa ja toimittaa sen vain
+odottamattomasta testihylkäyksestä; tunnetut testisalaisuudet peitetään.
+Tuotantoprofiilin observer ei saa tätä callbackia. Rajan koe vertaa myös
+kytkemätöntä kontrollia ja todentaa, ettei pelkkä myöhempi assertion sisällä
+alkuperäistä syytä. Salauskoe tarkistaa puretut tavut, tiivisteet, syyketjun
+ja testiyrityksen sidonnan. Tämä ei ole väite hosted-ajon latauksesta tai
+kaikkien alempien adapterien virheiden kattavuudesta.
+
+Electronin ensikäynnistyksen ja migraatioaktivoinnin testivalmistelu säilyttää mainin alkuperäisen
+sulkuvirheen tunnetun vaiheen ja syyluokan testikohtaisen virheen viestissä.
+Ne luetaan elinkaaren omistamasta suljetusta sopimuksesta ennen Playwrightin
+virhesiirtoa, joka ei säilytä rakenteista `cause`-oliota. Muut syyolion
+kentät ja tuntemattomat syyt eivät muutu päätellyiksi tiedoiksi. Nykyinen
+reporter ja salattu keräys käsittelevät tämän viestin; uutta kirjoitinta,
+tiedostolajia tai odotusta ei lisätä. Viestisiirron rajattu kontrollikoe
+vertaa vanhaa yleisvirhettä uuteen syyluokkaan ja tarkistaa puretun paketin.
+Se ei yksin ole oikean Electron-prosessirajan tai hosted-toimituksen todistus
+eikä osoita sulkuvirheen juurisyytä korjatuksi.
 
 Yksityiset otteet ovat käyttöjärjestelmän temp-juuren
 `eky-test-errors-<invocation UUID>/`-kansiossa. Yksi invokaatio tallentaa

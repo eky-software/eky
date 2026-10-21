@@ -153,3 +153,4 @@ export type {
   InvoiceVatRatesView,
   UpdateInvoiceVatRatesRequest,
 } from './invoicing/invoiceVatRates/index.js';
+export { getCompanyEmailSecretErrorCode, type CompanyEmailSecretErrorCode } from './companySettings/companyEmailSecretError.js';

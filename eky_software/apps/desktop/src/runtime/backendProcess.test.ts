@@ -765,6 +765,7 @@ async function createStartingFixture(options: Partial<Pick<StartDesktopBackendOp
       runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
       runtimeSessionSecret: 'a'.repeat(64),
       smokePdfPath: resolve(root, 'smoke.pdf'), verifySmokeSecretBroker: false,
+      secretBrokerGenerationId: '11111111-1111-4111-8111-111111111111',
     },
     invoicePdfArchiveBrokerPort: {} as MessagePortMain,
     operationalIdentity: {

@@ -140,7 +140,7 @@ function mapCompanyEmailSecretError(
 
   if (error instanceof CompanyEmailSecretOperationError) {
     return context.json(
-      { error: 'Email secret storage is unavailable.' },
+      { error: 'Email secret storage is unavailable.', code: error.code },
       503,
     );
   }

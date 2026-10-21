@@ -15,7 +15,7 @@ internal static class MsiWindowObservation
 {
     internal sealed record Limits(int SchemaVersion, string Operation, string FilenamePrefix,
         int MaximumBytes, int MaximumClients, int MaximumSamples, int MaximumWindows, int MaximumTextCharacters, int MaximumTotalCharacters,
-        int MessageTimeoutMilliseconds, int SampleTimeoutMilliseconds, string ResourceSelectionFilename,
+        int MessageTimeoutMilliseconds, int SampleTimeoutMilliseconds, int ResourceTimeoutMilliseconds, string ResourceSelectionFilename,
         int MaximumSelectionBytes, int MaximumResourceFiles, int MaximumResourcePathBytes);
     internal static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     internal static readonly Limits Contract = ReadContract();

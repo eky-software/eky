@@ -308,6 +308,12 @@ jäljelle jäänyttä prosessipuuta. Vastaavasti `processTreeAbsent` ei muuta
 epäonnistunutta julkista sulkua hyväksytyksi. Vanhan liitteen puuttuva kenttä
 on näyttöaukko, ei jälkikäteen arvattava syy.
 
+Jos testi epäonnistuu käynnistymisen jälkeen, sama lifecycle-liitteen
+`backendStartupLogs` säilyttää nykyisen runtime-sukupolven rajatut
+käynnistys- ja sulkutapahtumat ennen fixturen siivousta. Tarkista myös lukutila
+ja osittaisuuden syyt: puuttuva `shutdownCompleted` ei yksin todista,
+mihin backend jäi odottamaan. Siivouksen myöhempi onnistuminen ei muuta otosta.
+
 | Testipolku | Nykyinen todiste ja rajaus |
 | --- | --- |
 | Selain / `web-chromium` | Playwright omistaa testin contextin ja pagen. Rajattu `--trace=retain-on-failure` voi tallentaa jo ensiyrityksen jäljen; tavallinen contextin sulkeminen viimeistelee sen. Ennen käyttöä tarkista alla oleva salaisuusraja. |

@@ -304,6 +304,9 @@ ja A3/R06 ovat hyväksyttyjä; viimeisin hyväksyntä on PR #294:n mainissa.
 D/E/F/G/H/I:n kokonaishyväksyntä on edelleen avoin.
 D-paketin Oma yritys -tallennuksen rajatut korjaukset on hyväksytty
 PR #293:n mainissa, mutta D:n muut ehdot ovat avoinna.
+[D:n rajattu toteutussuunnitelma](release-0.3.0-company-settings-plan.md)
+erottaa säilytettävät CS-1/CS-2-sopimukset, alkuluvun tallennuseston ja
+17.10.2026 hyväksytyt D-P1:n salaisuusoperaation sekä D-P2/A:n saatavuuden ehdot.
 B1/B2, niiden sulku-/keräysjatkot ja B3-B5 integraatiojatkoineen ovat
 hyväksyttyjä. C on hyväksytty PR #299:n ja K PR #305:n mainissa.
 Hyväksyntänäytön ja nykyisen jatkotyön tilan omistaa

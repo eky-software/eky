@@ -47,6 +47,15 @@ describe('company email secret operations', () => {
 });
 
 describe('company email secret error messages', () => {
+  it.each([
+    ['COMPANY_EMAIL_SECRET_OUTCOME_UNKNOWN', uiText.companySettings.emailSecretOutcomeUnknown],
+    ['COMPANY_EMAIL_SECRET_AUDIT_INCOMPLETE', uiText.companySettings.emailSecretAuditIncomplete],
+  ])('distinguishes the safe %s status without rendering response details', (code, expected) => {
+    expect(getCompanyEmailSecretLoadErrorMessage(new EkyApiError('Email secret storage is unavailable.', {
+      status: 503, responseBody: { error: 'Email secret storage is unavailable.', code },
+    }))).toBe(expected);
+  });
+
   it('explains that browser development cannot manage a desktop secret', () => {
     expect(
       getCompanyEmailSecretLoadErrorMessage(

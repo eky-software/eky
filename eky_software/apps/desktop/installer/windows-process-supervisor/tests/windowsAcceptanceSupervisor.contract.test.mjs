@@ -5,6 +5,7 @@ import { access, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:
 import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 import { gunzipSync } from 'node:zlib';
 import { createOpenPgpTestFixture } from '../../windows-acceptance-harness/openPgpTestFixture.mjs';
 import { collectJobFailureEvidence } from '../../windows-acceptance-harness/ciFailureEvidence.mjs';
@@ -93,6 +94,11 @@ test('MSI resources: scoped identity, cancellation and real OpenPGP delivery', W
     assert.equal(proof.junctionRejected, true);
     assert.equal(proof.nodePublishedSelectionAdmitted, true);
     assert.equal(proof.cleanupDoesNotAwaitResourceRead, true);
+    for (const check of ['textBudgetUnchanged', 'messageBudgetUnchanged', 'resourceBudgetNamed',
+      'textExpiryLeavesResourceTime', 'resourceAdmittedBeforeBoundary', 'resourceRejectedAtBoundary',
+      'resourceRejectedAfterBoundary', 'stopOverridesRemainingResourceTime', 'postQueryExpiryDropsIdentities',
+      'postQuerySelectionChangeDropsIdentities', 'postQueryFailureHasLivePositiveControl',
+      'largeFreshSelectionObserved']) assert.equal(proof[check], true);
     assert.equal(proof.bothTreesAbsent, true);
     assert.ok(Object.keys(proof).length >= 30);
     assert.ok(Object.values(proof).every(value => value === true));
@@ -109,6 +115,7 @@ test('MSI resources: scoped identity, cancellation and real OpenPGP delivery', W
     assert.equal(record.resources.nativeCode, 0);
     assert.equal(record.resources.endSessionCode, 0);
     assert.equal(record.resources.selectionIdentity, 'a'.repeat(64));
+    assert.equal(record.resources.resourceCount, 2550);
     assert.ok(record.resources.processes.some(value => value.membership === 'ownedJob' && value.processId > 0 &&
       (value.startTimeLow !== 0 || value.startTimeHigh !== 0)));
     assert.equal(JSON.stringify(archive).includes('EXCLUDED FOREIGN CONTENT'), false);
@@ -116,6 +123,32 @@ test('MSI resources: scoped identity, cancellation and real OpenPGP delivery', W
     assert.equal(await readFile(join(foreign, 'foreign.bin'), 'utf8'), 'EXCLUDED FOREIGN CONTENT');
     completed = true;
   } finally { await crypto.finish({ completed, failed: !completed }); }
+});
+
+function assertColdPreparationReason(failure) {
+  const accepted = [
+    { Stage: 'listProcessId', Reason: 'budgetExpired', HResult: null },
+    ...['elementFromHandle', 'firstChild'].map(Stage => ({
+      Stage, Reason: 'providerException', HResult: -2146233083,
+    })),
+  ];
+  assert.ok(accepted.some(value => isDeepStrictEqual(failure, value)), 'MSI_COLD_PREPARATION_REASON_INVALID');
+}
+
+test('MSI windows: preparation reader accepts only exact approved cold failures', () => {
+  for (const Stage of ['elementFromHandle', 'firstChild']) {
+    assert.doesNotThrow(() => assertColdPreparationReason({ Stage, Reason: 'providerException', HResult: -2146233083 }));
+  }
+  assert.doesNotThrow(() => assertColdPreparationReason({ Stage: 'listProcessId', Reason: 'budgetExpired', HResult: null }));
+  for (const failure of [
+    null, undefined, {},
+    { Stage: 'elementFromHandle', Reason: 'providerException', HResult: null },
+    { Stage: 'elementFromHandle', Reason: 'providerException', HResult: -2147467259 },
+    { Stage: 'itemProcessId', Reason: 'providerException', HResult: -2146233083 },
+    { Stage: 'elementFromHandle', Reason: 'admissionLost', HResult: -2146233083 },
+    { Stage: 'listProcessId', Reason: 'budgetExpired', HResult: 1 },
+    { Stage: 'firstChild', Reason: 'providerException', HResult: -2146233083, unexpected: true },
+  ]) assert.throws(() => assertColdPreparationReason(failure), /MSI_COLD_PREPARATION_REASON_INVALID/);
 });
 
 test('MSI windows: owned visible captions, bounded reads and interrupted immutable publication', WINDOWS_ONLY, async t => {
@@ -131,6 +164,8 @@ test('MSI windows: owned visible captions, bounded reads and interrupted immutab
   assert.equal(proof.coldSampleRetained, true);
   assert.equal(proof.preparedSampleComplete, true);
   assert.equal(proof.preparationAllowsExactBudgetExpiry, true);
+  assert.equal(proof.preparationAllowsExactProviderTimeoutelementFromHandle, true);
+  assert.equal(proof.preparationAllowsExactProviderTimeoutfirstChild, true);
   assert.equal(proof.preparationRejectsOtherFailures, true);
   assert.equal(proof.preparationRejectsUnknownExit, true);
   assert.equal(proof.coldExitQueryFailureRetainsSample, true);
@@ -138,7 +173,7 @@ test('MSI windows: owned visible captions, bounded reads and interrupted immutab
   assert.equal(preparation.childExitedAfterCapture, false);
   assert.equal(preparation.membershipAfterCapture, 'Owned');
   if (preparation.status === 'partial') {
-    assert.deepEqual(preparation.listFailure, { Stage: 'listProcessId', Reason: 'budgetExpired', HResult: null });
+    assertColdPreparationReason(preparation.listFailure);
   } else {
     assert.equal(preparation.status, 'observed');
     assert.equal(preparation.listFailure, null);
@@ -183,15 +218,17 @@ test('MSI windows: native observation survives exit and interrupted publication 
     assert.equal(proof.firstSampleIsolatedFromOtherCases, true);
     assert.equal(proof.cleanupVerified, true);
     assert.equal(proof.cancelBeforePublicationRetainsPending, true);
-    const failedContext = { ...context, testRoot: join(temporary, 'eky supervisor receipt'),
-      privateOutputCaptures: [], privateOutputRetention: undefined };
-    await mkdir(failedContext.testRoot);
-    try {
-      const failed = startProgramFailureFixture(failedContext, 'msiWindowFailureReceipt', { environment: env });
-      await assert.rejects(failed.completion, { message: 'WINDOWS_ACCEPTANCE_SUPERVISOR_STDERR_NOT_EMPTY' });
-      assert.equal(Number.isInteger(failed.child.exitCode), true);
-      assert.notEqual(failed.child.exitCode, 0);
-    } finally { await cleanupRunContext(failedContext, { preserveEvidence: true }); }
+    for (const mode of ['msiWindowFailureReceipt', 'msiWindowBoundFailureReceipt']) {
+      const failedContext = { ...context, testRoot: join(temporary, 'eky supervisor receipt' + mode),
+        privateOutputCaptures: [], privateOutputRetention: undefined };
+      await mkdir(failedContext.testRoot);
+      try {
+        const failed = startProgramFailureFixture(failedContext, mode, { environment: env });
+        await assert.rejects(failed.completion, { message: 'WINDOWS_ACCEPTANCE_SUPERVISOR_STDERR_NOT_EMPTY' });
+        assert.equal(Number.isInteger(failed.child.exitCode), true);
+        assert.notEqual(failed.child.exitCode, 0);
+      } finally { await cleanupRunContext(failedContext, { preserveEvidence: true }); }
+    }
     const collected = await collectJobFailureEvidence(env, { nativeTemp: temporary });
     await encryptArchive(collected.root, collected);
     const decrypted = await crypto.invokeGpg(recipient.home, ['--decrypt', join(collected.root, 'evidence.json.gz.gpg')]);
@@ -228,6 +265,21 @@ test('MSI windows: native observation survives exit and interrupted publication 
         listFailure: { Stage: 'listProcessId', Reason: 'budgetExpired', HResult: null } } });
     assert.ok(/MsiWindowObservationContract\.RunFailureReceipt/.test(failureReceipts[0]),
       'MSI_WINDOW_FAILURE_NATIVE_FRAME_MISSING');
+    const boundReceipts = archive.manifest.files
+      .filter(value => value.kind === 'nativeResult' && value.status === 'retained')
+      .map(value => Buffer.from(archive.files[value.name], 'base64').toString('utf8'))
+      .filter(value => value.includes('msiWindowContractFailed:largeListBounded:'));
+    assert.equal(boundReceipts.length, 1);
+    const bound = boundReceipts[0].match(/msiWindowContractFailed:largeListBounded:(\{[^\r\n]+\})/);
+    assert.ok(bound);
+    assert.deepEqual(JSON.parse(bound[1]), { lastObservation: {
+      sample: { status: 'partial', titleCaptured: false, messageCaptured: false,
+        buttonCaptured: false, applicationCaptured: false, elapsedMilliseconds: 400,
+        childExitedAfterCapture: false, membershipAfterCapture: 'Owned',
+        listFailure: { Stage: 'firstChild', Reason: 'providerException', HResult: -2146233083 } },
+      windowCount: 0, maximumApplicationCharacters: 0, totalCharacters: 0,
+    } });
+    assert.match(boundReceipts[0], /MsiWindowObservationContract\.RunBoundFailureReceipt/);
     assert.doesNotMatch(JSON.stringify(archive), /EXCLUDED INPUT|window-child-|\.pending/);
     assert.equal(archive.manifest.jobOutcome, 'failure');
     assert.equal(archive.manifest.cleanup, 'notInferred');
@@ -1427,6 +1479,8 @@ test('deadline clocks preserve actual task waits and cannot renew cleanup', WIND
     assert.equal(completed.exitCode, 0);
     assert.deepEqual(JSON.parse(await readFile(join(context.testRoot, 'deadline-clock-proof.json'), 'utf8')), {
       schemaVersion: 1, defaultClockPreserved: true, actualTaskCompletion: true,
+      absoluteDeadlineReached: true,
+      earlyWaitCompletionPreserved: true,
       frozenWaitPreserved: true, cleanupCannotReset: true, firstFailurePreserved: true,
     });
   });

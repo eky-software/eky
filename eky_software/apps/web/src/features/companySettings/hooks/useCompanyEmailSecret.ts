@@ -1,9 +1,10 @@
 import {
   EkyApiError,
+  getCompanyEmailSecretErrorCode,
   type CompanyEmailSecretStatus,
   type EkyApiClient,
 } from '@eky/api-client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { getFinnishApiErrorMessage, uiText } from '../../../i18n/fi.js';
 
@@ -15,7 +16,7 @@ type CompanyEmailSecretClient = Pick<
 >;
 
 export interface CompanyEmailSecretState {
-  configured: boolean;
+  configured: boolean | null;
   errorMessage: string | null;
   isAvailable: boolean;
   isLoading: boolean;
@@ -28,33 +29,53 @@ export interface CompanyEmailSecretState {
 export function useCompanyEmailSecret(
   apiClient: CompanyEmailSecretClient,
 ): CompanyEmailSecretState {
-  const [status, setStatus] = useState<CompanyEmailSecretStatus>({
-    configured: false,
-  });
+  const [status, setStatus] = useState<CompanyEmailSecretStatus | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [isAvailable, setIsAvailable] = useState(true);
+  const [isAvailable, setIsAvailable] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const sessionRef = useRef<{
+    client: CompanyEmailSecretClient;
+    available: boolean;
+    pending: boolean;
+  } | null>(null);
+
+  useLayoutEffect(() => {
+    sessionRef.current = { client: apiClient, available: false, pending: false };
+    setStatus(null);
+    setIsAvailable(false);
+    setIsLoading(true);
+    setIsSaving(false);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    return () => { sessionRef.current = null; };
+  }, [apiClient]);
 
   useEffect(() => {
+    const session = sessionRef.current;
+    if (session === null || session.client !== apiClient) return;
     let isActive = true;
+    const isCurrent = () => isActive && sessionRef.current === session;
 
     void loadCompanyEmailSecretStatus(apiClient)
       .then((loadedStatus) => {
-        if (isActive) {
+        if (isCurrent()) {
+          session.available = true;
           setStatus(loadedStatus);
           setIsAvailable(true);
         }
       })
       .catch((error: unknown) => {
-        if (isActive) {
+        if (isCurrent()) {
+          session.available = false;
+          setStatus(null);
           setErrorMessage(getCompanyEmailSecretLoadErrorMessage(error));
-          setIsAvailable(!isUnavailableInCurrentRuntime(error));
+          setIsAvailable(false);
         }
       })
       .finally(() => {
-        if (isActive) {
+        if (isCurrent()) {
           setIsLoading(false);
         }
       });
@@ -64,61 +85,59 @@ export function useCompanyEmailSecret(
     };
   }, [apiClient]);
 
-  const save = useCallback(
-    async (secret: string): Promise<boolean> => {
-      if (isSaving || !isAvailable) {
+  const changeSecret = useCallback(
+    async (operation: 'save' | 'remove', secret?: string): Promise<boolean> => {
+      const session = sessionRef.current;
+      if (session === null || session.client !== apiClient || session.pending || !session.available) {
         return false;
       }
-
+      session.pending = true;
+      const isCurrent = () => sessionRef.current === session;
       setIsSaving(true);
       setErrorMessage(null);
       setSuccessMessage(null);
 
       try {
-        const updatedStatus = await saveCompanyEmailSecret(apiClient, secret);
-
+        const updatedStatus = operation === 'save'
+          ? await saveCompanyEmailSecret(apiClient, secret!)
+          : await removeCompanyEmailSecret(apiClient);
+        if (!isCurrent()) return false;
         setStatus(updatedStatus);
-        setSuccessMessage(uiText.companySettings.emailSecretSaveSuccess);
+        setSuccessMessage(operation === 'save'
+          ? uiText.companySettings.emailSecretSaveSuccess
+          : uiText.companySettings.emailSecretRemoveSuccess);
 
         return true;
       } catch (error) {
-        setErrorMessage(getCompanyEmailSecretSaveErrorMessage(error));
-
+        if (!isCurrent()) return false;
+        if (!isKnownUnaffectedSecretFailure(error)) {
+          session.available = false;
+          setIsAvailable(false);
+          setStatus(null);
+          setErrorMessage(getCompanyEmailSecretErrorCode(error) === 'COMPANY_EMAIL_SECRET_AUDIT_INCOMPLETE'
+            ? uiText.companySettings.emailSecretAuditIncomplete
+            : uiText.companySettings.emailSecretOutcomeUnknown);
+        } else {
+          setErrorMessage(operation === 'save'
+            ? getCompanyEmailSecretSaveErrorMessage(error)
+            : getCompanyEmailSecretRemoveErrorMessage(error));
+        }
         return false;
       } finally {
-        setIsSaving(false);
+        if (isCurrent()) {
+          session.pending = false;
+          setIsSaving(false);
+        }
       }
     },
-    [apiClient, isAvailable, isSaving],
+    [apiClient],
   );
 
-  const remove = useCallback(async (): Promise<boolean> => {
-    if (isSaving || !isAvailable) {
-      return false;
-    }
-
-    setIsSaving(true);
-    setErrorMessage(null);
-    setSuccessMessage(null);
-
-    try {
-      const updatedStatus = await removeCompanyEmailSecret(apiClient);
-
-      setStatus(updatedStatus);
-      setSuccessMessage(uiText.companySettings.emailSecretRemoveSuccess);
-
-      return true;
-    } catch (error) {
-      setErrorMessage(getCompanyEmailSecretRemoveErrorMessage(error));
-
-      return false;
-    } finally {
-      setIsSaving(false);
-    }
-  }, [apiClient, isAvailable, isSaving]);
+  const save = useCallback((secret: string) => changeSecret('save', secret), [changeSecret]);
+  const remove = useCallback(() => changeSecret('remove'), [changeSecret]);
 
   return {
-    configured: status.configured,
+    configured: status?.configured ?? null,
     errorMessage,
     isAvailable,
     isLoading,
@@ -127,6 +146,11 @@ export function useCompanyEmailSecret(
     save,
     successMessage,
   };
+}
+
+function isKnownUnaffectedSecretFailure(error: unknown): boolean {
+  return getCompanyEmailSecretErrorCode(error) === 'COMPANY_EMAIL_SECRET_OPERATION_FAILED' ||
+    (error instanceof EkyApiError && (error.status === 400 || error.status === 403 || error.status === 413));
 }
 
 export function loadCompanyEmailSecretStatus(
@@ -152,6 +176,9 @@ export function getCompanyEmailSecretLoadErrorMessage(error: unknown): string {
   if (isUnavailableInCurrentRuntime(error)) {
     return uiText.companySettings.emailSecretDesktopOnly;
   }
+  const code = getCompanyEmailSecretErrorCode(error);
+  if (code === 'COMPANY_EMAIL_SECRET_OUTCOME_UNKNOWN') return uiText.companySettings.emailSecretOutcomeUnknown;
+  if (code === 'COMPANY_EMAIL_SECRET_AUDIT_INCOMPLETE') return uiText.companySettings.emailSecretAuditIncomplete;
 
   return getSafeCompanyEmailSecretErrorMessage(
     error,

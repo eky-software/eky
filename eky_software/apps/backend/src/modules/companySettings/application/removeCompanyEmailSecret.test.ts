@@ -3,6 +3,7 @@ import { AuthorizationError } from '@eky/permissions';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { CompanyEmailSecretStore } from '../ports/companyEmailSecretStore.js';
+import { CompanyEmailSecretStoreError } from '../ports/companyEmailSecretStoreError.js';
 import type { CompanyEmailSecretAuditWriter } from '../ports/companyEmailSecretAuditWriter.js';
 import { removeCompanyEmailSecret } from './removeCompanyEmailSecret.js';
 
@@ -21,7 +22,7 @@ describe('removeCompanyEmailSecret', () => {
       },
     );
 
-    expect(removeSecret).toHaveBeenCalledWith('example-company');
+    expect(removeSecret).toHaveBeenCalledWith('example-company', expect.any(String));
     expect(auditWriter.startCompanyEmailSecretAuditOperation).toHaveBeenCalledWith({
       action: 'remove',
       actorId: 'local-user',
@@ -35,6 +36,7 @@ describe('removeCompanyEmailSecret', () => {
     const operationId = vi.mocked(
       auditWriter.startCompanyEmailSecretAuditOperation,
     ).mock.calls[0]?.[0].operationId;
+    expect(removeSecret.mock.calls[0]?.[1]).toBe(operationId);
     expect(auditWriter.completeCompanyEmailSecretAuditOperation).toHaveBeenCalledWith({
       completedAt: '2026-07-14T20:00:00.000Z',
       failureCode: null,
@@ -70,10 +72,10 @@ describe('removeCompanyEmailSecret', () => {
     expect(auditWriter.startCompanyEmailSecretAuditOperation).not.toHaveBeenCalled();
   });
 
-  it('marks the pending audit failed with a safe code when removal fails', async () => {
+  it('marks the pending audit failed only for a proven no-effect removal', async () => {
     const removeSecret = vi.fn<CompanyEmailSecretStore['removeSecret']>(
       async () => {
-        throw new Error('Synthetic secret store failure with private details.');
+        throw new CompanyEmailSecretStoreError('noEffect');
       },
     );
     const auditWriter = createAuditWriter();

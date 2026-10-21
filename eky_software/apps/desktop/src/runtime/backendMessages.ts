@@ -1,6 +1,7 @@
 import { isAbsolute } from 'node:path';
 
 import { isDesktopRuntimeSession } from './runtimeSession.js';
+import { isSecretBrokerGenerationId } from '../secrets/secretBrokerProtocol.js';
 import { isOperationId } from '../profileBackup/profileSnapshotBrokerProtocol.js';
 import { parseOwnedLocalDatabaseRecoverySelection, type OwnedLocalDatabaseRecoverySelection } from './ownedLocalDatabaseRecovery.js';
 import {
@@ -43,6 +44,7 @@ export interface DesktopBackendStartMessage {
     profileSnapshotStagingRoot: string;
     runtimeInstanceId: string;
     runtimeSessionSecret: string;
+    secretBrokerGenerationId: string;
     smokePdfPath: string;
     verifySmokeSecretBroker: boolean;
   };
@@ -219,7 +221,7 @@ export function parseDesktopBackendCommand(
       'electronVersion', 'invoiceDocumentStorageRoot', 'migrationsDirectory',
       'migrationStartupPolicy', 'operationalLogsRoot', 'platform',
       'profileSnapshotStagingRoot', 'runtimeInstanceId', 'runtimeSessionSecret',
-      'smokePdfPath', 'verifySmokeSecretBroker',
+      'secretBrokerGenerationId', 'smokePdfPath', 'verifySmokeSecretBroker',
       ...(hasLocalRecovery ? ['ownedLocalDatabaseRecovery'] : []),
     ]) ||
     (hasLocalRecovery && (ownedLocalDatabaseRecovery === undefined
@@ -242,6 +244,7 @@ export function parseDesktopBackendCommand(
     typeof config.runtimeInstanceId !== 'string' ||
     !runtimeInstanceIdPattern.test(config.runtimeInstanceId) ||
     !isDesktopRuntimeSession(config.runtimeSessionSecret) ||
+    !isSecretBrokerGenerationId(config.secretBrokerGenerationId) ||
     typeof config.verifySmokeSecretBroker !== 'boolean' ||
     pathKeys.some((key) => !isSafeAbsolutePath(config[key]))
   ) {
@@ -270,6 +273,7 @@ export function parseDesktopBackendCommand(
         config.profileSnapshotStagingRoot as string,
       runtimeInstanceId: config.runtimeInstanceId,
       runtimeSessionSecret: config.runtimeSessionSecret,
+      secretBrokerGenerationId: config.secretBrokerGenerationId,
       smokePdfPath: config.smokePdfPath as string,
       verifySmokeSecretBroker: config.verifySmokeSecretBroker,
     },

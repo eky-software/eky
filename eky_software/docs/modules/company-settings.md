@@ -226,9 +226,11 @@ tarkoitettu `manageCompanyEmailSecret` ei anna oikeutta muuttaa yrityksen
 nimeä, osoitetta, pankkitietoja tai muita Company Settings -kenttiä.
 
 Secret lifecycle -audit käyttää yhtä operaatiokohtaista riviä. Ensin
-tallennetaan `pending`, jonka jälkeen sama rivi päivitetään `succeeded`- tai
-`failed`-tilaan. Jos secret store onnistuu mutta auditin loppupäivitys ei,
-`pending` jää näkyviin myöhempää reconciliation-tarkistusta varten. Auditissa
+tallennetaan `pending`, jonka jälkeen sama rivi päivitetään varmistetun
+onnistumisen perusteella `succeeded`-tilaan tai vain todistetun
+vaikutuksettoman virheen perusteella `failed`-tilaan. Epäselvä vaikutus tai
+auditin loppupäivityksen virhe säilyttää `pending`-rivin; tilaluku tai restart
+ei ratkaise sitä automaattisesti. Auditissa
 ei ole salaista arvoa, hashia, pituutta, `secretRef`-arvoa tai muuta
 salaisuudesta johdettua tietoa.
 
@@ -241,6 +243,12 @@ vain lifecycle-storea ja konfigurointitilaa. Erillinen
 `CompanyEmailSecretReader` on backend-only ja
 varattu myöhemmälle hyväksytylle SMTP-providerille; sitä ei saa antaa HTTP:lle,
 API-clientille, preloadille, rendererille tai web-UI:lle.
+
+Backendin composition kytkee tämän readerin samaan salaisuusoperaatioiden
+pääsy- ja sulkutilaan ennen sen luovuttamista SMTP-providerin compositionille.
+Tämä ei anna asetusten käyttötapauksille oikeutta lukea salaisuutta eikä
+siirrä SMTP-toimituksen omistajuutta. Tarkka lopputulos- ja sulkuraja on
+[D2-sopimuksessa](../architecture/email-delivery-and-secrets-plan.md#d2n-sulku-ja-epävarma-tulos).
 
 ## Asiakaskohtainen Tuntihinta
 
@@ -358,15 +366,44 @@ nykyisen sopimuksen. [M1:n historiallinen checkpoint](../architecture/release-0.
 säilyttää hyväksyntänäytön;
 [testimatriisi](../architecture/r0-e2e-test-matrix.md#company-settings) kattavuuden.
 
-## D-valmistelun avoin päätös
+<a id="d-valmistelun-avoin-päätös"></a>
 
-CS-1/CS-2 ei sulje D-pakettia. Epäonnistuneen alkuluvun tallennusesto sekä
-salaisuusoperaation timeoutin ja myöhäisen sivuvaikutuksen käsittely ovat
-D:n erillisiä avoimia portteja. Nykyinen pending/terminal-audit ja todellisen
-secret-statuksen vaatimus säilyvät; timeoutista ei saa päätellä, ettei
-ulkoinen sivuvaikutus tapahtunut. Tämä dokumentointikorjaus ei valitse uutta
-aikarajaa, automaattista uusintaa, lukon vapautusta tai reconciliation-politiikkaa.
-Epäselvän lopputuloksen jatkosopimus tarvitsee omistajan päätöksen ennen toteutusta.
+## D-paketin hyväksytyt toteutusrajat
+
+CS-1/CS-2 ei sulje D-pakettia. D1:n alkuluvun tallennusesto on toteutettu
+ja kohdetodennettu; salaisuusoperaation timeoutin ja myöhäisen
+sivuvaikutuksen käsittely sekä D:n integraatio ovat edelleen avoimia.
+Omistaja hyväksyi 17.10.2026 seuraavat rajat:
+
+- D1 vaatii saman muokkaussession onnistuneen, validoidun alkuluvun ennen
+  perustietolomakkeen muokkausta ja tallennusta. Virheessä tarjotaan käsin
+  tehtävä uusi luku; onnistunut tyhjä vastaus säilyy normaalina ensikäyttönä.
+- D-P1 säilyttää vaikutuksiltaan epäselvän salaisuusoperaation pendinginä
+  ja estää uudet sekä aloittamattomat broker-operaatiot epävarmassa
+  runtime-sukupolvessa. Hallittu uudelleenkäynnistys edellyttää vanhan
+  omistajan työn päättymisen todistusta ja nykytilan validointia. Vanhakin
+  salaisuus voi palautua; uusi käyttäjän vahvistama lähetys saa käyttää
+  validoitua nykytilaa. Vanha pending ei silti muutu ratkaistuksi.
+- D-P2/A säilyttää salaisuuspalvelun tilahäiriössä GETin ja PUTin eston.
+  CS-1:n precommit-tilaluku ja CS-2:n muokkausten suoja säilyvät.
+
+Ei automaattista restartia, tallennuksen uusintaa tai myöhäisen auditin
+taustasovitusta. Jo alkanutta SMTP-toimitusta ei väitetä perutuksi.
+Nykytilan tilaluku ei yksin todista aiemman operaation lopputulosta.
+
+D1:n esto koskee vain perustietolomaketta. Erilliset backup-, diagnostiikka-
+ja muiden asetusten paneelit säilyvät käytettävissä. Vanhan session tai
+latausyrityksen vastaus ei avaa nykyistä lomaketta, muuta sen arvoja tai
+näytä vanhaa virhettä. Vain käyttäjän nimenomainen tallennus tekee PUTin.
+Vanhan vastauksen sivuuttaminen ja latausvalmius eivät tuota uutta audit-
+tai diagnostiikkatapahtumaa; nykyiset kirjoitusten audit ja turvalliset
+API-virheet säilyvät. Synteettisen selainvastauksen hylkäys ei todista
+aidon backend-virheen operational-kirjausta.
+
+[D:n toteutussuunnitelma](../architecture/release-0.3.0-company-settings-plan.md)
+nimeää nykyiset kutsujat, rajatut työpalat, hyväksytyt päätökset ja testit.
+Nykyiset käyttöoikeudet ja yritysrajaus säilyvät. Suunnitelman vaihtoehdot
+B/C tai laajempi pysyvä kuittausjärjestelmä eivät kuulu hyväksyttyyn toteutukseen.
 
 ## UI-Ajatus
 

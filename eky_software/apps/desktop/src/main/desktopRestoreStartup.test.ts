@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type TestContext } fro
 import { ProfileSnapshotBrokerClient } from '../profileBackup/profileSnapshotBrokerClient.js';
 import * as snapshotInspection from '../profileBackup/runProfileSnapshotInspection.js';
 import * as profileBackupComposition from '../profileBackup/profileBackupComposition.js';
+import * as secretBrokerMain from '../secrets/secretBrokerMain.js';
 import { createProfileSnapshotRuntimePaths } from '../profileBackup/profileSnapshotRuntimePaths.js';
 import { RecoveryPointScheduler } from '../profileBackup/recoveryPoint/recoveryPointScheduler.js';
 import { RecoveryPointCleanShutdownMarker } from '../profileBackup/recoveryPoint/recoveryPointCleanShutdownMarker.js';
@@ -1559,7 +1560,11 @@ describe('desktop restore startup composition', () => {
       const lifecycle = await fixture.start();
       expect(lifecycle).toBeDefined();
 
-      await lifecycle!.shutdown();
+      if (outcome === 'exited') await lifecycle!.shutdown();
+      else await expect(lifecycle!.shutdown()).rejects.toMatchObject({
+        message: 'DESKTOP_SHUTDOWN_FAILED',
+        cause: { runtimeFailure: { firstFailure: { phase: 'backend', reason: 'notGraceful' } } },
+      });
 
       expect(fixture.stop).toHaveBeenCalledOnce();
       await expect(fixture.marker.consume()).resolves.toBe(
@@ -1592,6 +1597,41 @@ describe('desktop restore startup composition', () => {
     expect(ProfileSnapshotBrokerClient.prototype.endUpdateMaintenance).not.toHaveBeenCalled();
     expect(launchWindowsInstallerForUpdate).toHaveBeenCalledOnce();
     await lifecycle.shutdown();
+  });
+
+  it.each([false, true])('D2 update awaits the source password-failure notice and never bypasses its failure: %s', async noticeFails => {
+    const fixture = await createFixture(originalProfileId, { completeStartup: true, skipRestore: true, update: true });
+    const realStart = secretBrokerMain.startSecretBrokerMain;
+    vi.spyOn(secretBrokerMain, 'startSecretBrokerMain').mockImplementation(options => ({
+      ...realStart(options), hasFailedMutation: () => true,
+    }));
+    const readHandoff = prepareUpdateBoundary(fixture.root);
+    const acknowledged = createCompletionGate();
+    const noticeEntered = createCompletionGate();
+    fixture.showMessageBox.mockImplementation(async () => {
+      noticeEntered.resolve();
+      await acknowledged.promise;
+      if (noticeFails) throw new Error('SYNTHETIC_NOTICE_FAILED');
+      return { response: 0, checkboxChecked: false };
+    });
+    const lifecycle = (await fixture.start())!;
+    await readHandoff().prepareConfirmedUpdate();
+    const handoff = Promise.allSettled([readHandoff().handoffPreparedUpdate()]);
+    try {
+      await Promise.race([noticeEntered.promise, handoff.then(() => { throw new Error('D2_NOTICE_NOT_REACHED'); })]);
+      expect(fixture.stopForUpdate).toHaveBeenCalledOnce();
+      expect(launchWindowsInstallerForUpdate).not.toHaveBeenCalled();
+      expect(fixture.showMessageBox).toHaveBeenCalledWith(fixture.mainWindow, expect.objectContaining({
+        message: 'Sähköpostisalasanan muutos ei tallentunut.', type: 'warning', buttons: ['Selvä'],
+      }));
+    } finally {
+      acknowledged.resolve();
+      await handoff;
+    }
+    expect((await handoff)[0]!.status).toBe(noticeFails ? 'rejected' : 'fulfilled');
+    expect(launchWindowsInstallerForUpdate).toHaveBeenCalledTimes(noticeFails ? 0 : 1);
+    if (noticeFails) await expect(lifecycle.shutdown()).rejects.toThrow('DESKTOP_SHUTDOWN_FAILED');
+    else await lifecycle.shutdown();
   });
 
   it.each(['preparation', 'handoff'] as const)('retains the real update owner after uncertain %s inspection', async stage => {
@@ -1712,6 +1752,40 @@ describe('desktop restore startup composition', () => {
     await fixture.assertRegistryUnchanged();
   });
 
+  it('writes the real secret drain failure to JSONL only on shutdown, separately from the aggregate', async () => {
+    const fixture = await createFixture(originalProfileId, { completeStartup: true, skipRestore: true });
+    const realStart = secretBrokerMain.startSecretBrokerMain;
+    let closeSecretTransport: (() => void) | undefined;
+    vi.spyOn(secretBrokerMain, 'startSecretBrokerMain').mockImplementation(options => {
+      closeSecretTransport = () => options.transport.close();
+      return realStart(options);
+    });
+    const lifecycle = (await fixture.start())!;
+    expect(closeSecretTransport).toBeDefined();
+    closeSecretTransport!();
+    expect((await readRestoreDiagnosticEvents(fixture.root))
+      .filter(event => event.eventName === 'desktop.shutdownFailed')).toEqual([]);
+
+    await expect(lifecycle.shutdown()).rejects.toThrow('DESKTOP_SHUTDOWN_FAILED');
+    await expect(lifecycle.shutdown()).rejects.toThrow('DESKTOP_SHUTDOWN_FAILED');
+    const failures = (await readRestoreDiagnosticEvents(fixture.root))
+      .filter(event => event.eventName === 'desktop.shutdownFailed');
+    expect(failures.filter(event => event.stage === 'secretBrokerDrain')).toEqual([{
+      appVersion: '0.2.8', buildRevision: 'a'.repeat(12),
+      category: 'runtime', component: 'desktop',
+      errorCode: 'SECRET_BROKER_TRANSPORT_FAILED', eventId: expect.any(String),
+      eventName: 'desktop.shutdownFailed', level: 'error', outcome: 'failure',
+      retryable: false, runtimeInstanceId: '33333333-3333-4333-8333-333333333333',
+      schemaVersion: 1, sideEffectState: 'unknown', stage: 'secretBrokerDrain',
+      timestamp: expect.any(String),
+    }]);
+    expect(failures.filter(event => event.stage === 'shutdown')).toEqual([
+      expect.objectContaining({ errorCode: 'DESKTOP_SHUTDOWN_FAILED' }),
+    ]);
+    expect(fixture.stop).toHaveBeenCalledOnce();
+    await expect(fixture.marker.consume()).resolves.toBe('unclean');
+  });
+
   it.each(['none', 'backend', 'backendAndBroker', 'capability', 'broker', 'scheduler', 'quiescence'] as const)(
     'uses the real update handoff with strict shutdown (failure: %s)', async failure => {
       const fixture = await createFixture(originalProfileId, {
@@ -1770,9 +1844,8 @@ describe('desktop restore startup composition', () => {
       }
 
       expect(fixture.stop).not.toHaveBeenCalled();
-      expect(fixture.stopForUpdate).toHaveBeenCalledTimes(
-        failure === 'scheduler' || failure === 'quiescence' ? 0 : 1,
-      );
+      // Preparation failure still closes the owned backend, without authorizing handoff.
+      expect(fixture.stopForUpdate).toHaveBeenCalledTimes(1);
       expect(launchWindowsInstallerForUpdate).toHaveBeenCalledTimes(expectedSuccess ? 1 : 0);
       expect(fixture.mainWindow.destroy).toHaveBeenCalledTimes(expectedSuccess ? 1 : 0);
       expect(fixture.quit).toHaveBeenCalledTimes(expectedSuccess ? 1 : 0);
@@ -1829,7 +1902,7 @@ describe('desktop restore startup composition', () => {
         await expect(fixture.updateJournal.readForLiveOwner()).resolves.toMatchObject({ state: 'recoveryPointValidated' });
       } finally { release.resolve(); }
       expect((await results).map(result => result.status)).toEqual([
-        'fulfilled', 'rejected',
+        outcome === 'exited' ? 'fulfilled' : 'rejected', 'rejected',
       ]);
       expect(fixture.stop).toHaveBeenCalledOnce();
       expect(fixture.stopForUpdate).not.toHaveBeenCalled();
@@ -2429,6 +2502,7 @@ async function createFixture(
   });
   const relaunch = vi.fn();
   const assertSingleInstanceOwnership = vi.fn();
+  const showMessageBox = vi.fn(async () => ({ response: 0, checkboxChecked: false }));
   const stopForUpdate = vi.fn(async () => undefined);
   const createRuntimeSession = options.update
     ? vi.fn(() => 'e'.repeat(64)).mockReturnValueOnce('d'.repeat(64))
@@ -2448,6 +2522,7 @@ async function createFixture(
     pdfPath,
     relaunch,
     assertSingleInstanceOwnership,
+    showMessageBox,
     restoredBytes,
     originalBytes,
     stop,
@@ -2494,6 +2569,7 @@ async function createFixture(
       dependencies: {
         createRuntimeSession,
         showErrorBox,
+        showMessageBox,
         async startBackend(input) {
           events.push('backendStarted');
           try {

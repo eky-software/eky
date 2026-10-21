@@ -99,9 +99,10 @@ Email secret lifecycle application services must take the company only from a
 validated `ActorContext`, require `manageCompanyEmailSecret`, and return only
 secret configuration status. HTTP input must never choose the secret's company.
 Setting and removing a secret must create one `pending` audit operation before
-the secret store call and complete the same row as `succeeded` or `failed`.
-If the store succeeds but audit completion fails, the row remains `pending` for
-later reconciliation. The row contains only operation metadata, actor, company,
+the secret store call. Complete the same row as `succeeded` for confirmed success
+or `failed` only for a proven no-effect failure. Unknown effects and failed audit
+completion remain `pending`; a later read or restart does not reconcile them.
+The row contains only operation metadata, actor, company,
 action, lifecycle timestamps, status, and a safe failure code. Never audit the
 secret, secret hash, secret length, secret reference, or another derived value.
 
@@ -113,6 +114,11 @@ calendar-year cutoff.
 `CompanyEmailSecretReader` is backend-only and reserved for an approved email
 delivery provider. It must not be injected into Company Settings HTTP routes,
 the API client, preload, renderer, or web UI.
+The backend composition guards this reader with the same runtime admission and
+operation-settlement state as secret lifecycle requests. It must not expose the
+raw adapter to the provider, release a late value after uncertainty, or cancel
+an SMTP transport that has already started. Follow the owning email/secrets
+document's D2 contract; do not add another lifecycle owner.
 
 ## Business Audit And Logs
 

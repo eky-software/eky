@@ -7,19 +7,22 @@ Päivätyt tutkimusraportit eivät ole rinnakkainen toteutusjono.
 
 ## Jatka tästä
 
-**Hyväksytty lähtö (16.10.2026):** ohjehuollon PR #306 on yhdistetty
-`main`-revisioon `b289a4344d10cd67127e3ccebcd421cebdbec5d2`.
-Hyväksytty PR-head on `e2f09d7b17494715c406a9ea0cf2cd02a9e06828`;
-mainin puu vastaa sitä ja testattua merge-checkoutia.
-[PR #306:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/306#issuecomment-6221858043)
-kirjaa näiden revisioiden hyväksyntänäytön ja rajatun etenemispäätöksen:
+**Hyväksytty lähtö (17.10.2026):** jatkamissivun dokumentointikorjauksen
+PR #307 on yhdistetty `main`-revisioon
+`da93cf53b7c608f825629d60404dce4c839dcb6a`.
+Hyväksytty PR-head on `5d60ef37d7dba60ccc4b45df0365f613966af803`;
+mainin puu vastaa sitä.
+[PR #307:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/307#issuecomment-6232246050)
+kirjaa erilliset PR- ja main-portit. Ohjehuollon edellinen
+[PR #306:n hyväksyntänäyttö](release-0.3.0-integration-history.md#ohjehuollon-hyväksyntä-16102026)
+säilyy historiassa.
 
 | Tarkistus | Hyväksytty näyttö |
 | --- | --- |
-| PR:n V2 | [`38928755552`](https://github.com/eky-software/eky/actions/runs/38928755552), toinen suoritusyritys: 38 onnistunutta työtä ja 6 tarkoituksella valitsematonta diagnostiikkatyötä. |
-| PR:n riippuvuustarkistus | [`38928755417`](https://github.com/eky-software/eky/actions/runs/38928755417) läpäisi. |
-| Mainin V2 | [`38939885647`](https://github.com/eky-software/eky/actions/runs/38939885647), ensimmäinen suoritusyritys: 38 onnistunutta työtä ja samat 6 valitsematonta diagnostiikkatyötä. |
-| Mainin riippuvuustarkistus | [`38939885593`](https://github.com/eky-software/eky/actions/runs/38939885593) läpäisi täsmälliselle main-revisiolle. |
+| PR:n V2 | [`39017851936`](https://github.com/eky-software/eky/actions/runs/39017851936), ensimmäinen suoritusyritys: dokumenttimuutoksen 7 valittua työtä läpäisivät, 7 jäi tarkoituksella valitsematta. |
+| PR:n riippuvuustarkistus | [`39017851905`](https://github.com/eky-software/eky/actions/runs/39017851905) läpäisi. |
+| Mainin V2 | [`39018548493`](https://github.com/eky-software/eky/actions/runs/39018548493), ensimmäinen suoritusyritys: 38 onnistunutta työtä ja 6 tarkoituksella valitsematonta diagnostiikkatyötä. |
+| Mainin riippuvuustarkistus | [`39018585375`](https://github.com/eky-software/eky/actions/runs/39018585375) läpäisi täsmälliselle main-revisiolle; käynnistettiin erikseen dokumenttimuutoksen polkurajauksen vuoksi. |
 
 I-paketin aikaistettu ohjehuolto ja sen hyväksytyt integraatiokorjaukset ovat
 valmiit tässä rajauksessa. T/A/B/C/K säilyvät hyväksyttyinä; niitä tai
@@ -29,6 +32,11 @@ omat hyväksyntäportit säilyvät.
 
 **Avoimet havainnot säilyvät avoimina:**
 
+- Edeltävän `b289a434`-mainin ajastettu V2 `39012174529` hylkäsi
+  MSI-ikkunahavainnon stderr-sopimustestin ja yhden flakyksi jääneen
+  web-testin. Ensivirheet ja saatavilla oleva salattu aineisto säilyvät.
+  PR #307:n dokumenttimuutos tai uuden mainin läpäisy ei korjannut näiden
+  alkuperäistä syytä. Tämä oli eri ajo kuin PR #306:n hyväksytyt push-portit.
 - PR #306:n ensimmäisen V2-yrityksen legacy-toisto peruttiin 37 minuutin
   työrajalla. Sen oma loki ja salattu virheaineisto eivät valmistuneet;
   alkuperäinen syy ja siivoustila jäävät tuntemattomiksi. Yksi erikseen
@@ -49,12 +57,146 @@ ovat integraatiohistoriaa, eivät rinnakkainen työjono. Ensivirheiden
 säilytysrajat, puuttuvan aineiston tiedot ja erilliset etenemispäätökset
 säilyvät; tämä dokumentointikorjaus ei hyväksy uusia poikkeuksia.
 
-**Seuraava toiminnallinen työ:** D:n rajattu valmistelu. Oma yritys -lukuvirheen
-käsittely, salaisuusoperaation aikakatkaisun ja myöhäisen valmistumisen
-sovitus sekä vastaus/audit suhteessa
-todelliseen tallennukseen tarkennetaan ennen toteutusta. CS-1/CS-2 ovat jo
-hyväksyttyjä; ne eivät yksin sulje D:tä. Avoin ratkaisu ei saa muuttua
-ohjetiivistyksen kautta hyväksytyksi liiketoimintasäännöksi.
+**Nykyinen työ:** [D:n toteutus](release-0.3.0-company-settings-plan.md).
+PR #308:n `8c25d9b2`-revision
+[V2-kierros](https://github.com/eky-software/eky/actions/runs/39588909072)
+päättyi hylättynä: 35 onnistunutta työtä, kolme hylkäystä koonti mukaan
+lukien ja kuusi tarkoituksella valitsematonta diagnostiikkatyötä.
+[Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39588908925)
+läpäisi. Electronin kaksi alkuvalmistelun sulkua hylättiin ensimmäisellä
+yrityksellä; automaattiset uusinnat läpäisivät, mutta työ jäi flakyksi.
+Erillinen workspace-success-toisto pysähtyi asentimen sulkemispyyntöön.
+Prosessipuun ja asennusjälkien siivous varmennettiin, mutta asennuksen
+sisältöhyväksyntä jäi tekemättä. Keruun työbudjetti ei enää loppunut;
+valituille tiedostoille ei havaittu käyttäjäprosessia. Estäjän identiteetti
+ja Electronin alkuperäisen sulkuviiveen syy säilyvät avoimina.
+
+Rajattu jatkokorjaus käyttää myös ensikäynnistyskokeessa nykyistä sulkuvirheen
+syysiirtoa sekä ottaa ensimmäisen setup-/testirunkovirheen backend-vaiheotteen
+ennen siivousta. Aiempi käynnistysvirheen ote ei korvaudu. Keräys käyttää
+nykyistä rajattua lukijaa ja salattua toimitusta; sovelluksen sulkua,
+hyväksyntäehtoja tai aikarajoja ei muuteta. Kohderegressiot, tyypitys,
+oikea salaus/purku ja molemmat nimetyt Electron-polut läpäisivät.
+Tämä todistaa keräyskorjauksen, ei historiallisten viiveiden korjausta.
+Seuraavaksi vaaditaan tämän korjauksen katselmuksen jälkeen uuden täsmällisen
+PR-headin normaalit portit ja vasta niiden hyväksynnän jälkeen merge sekä
+mainin omat portit. D:tä ei ole hyväksytty eikä PR:ää yhdistetty.
+
+**Edeltävien kierrosten näyttö:** `02a93d71`-revision [V2-kierros](https://github.com/eky-software/eky/actions/runs/39552315208)
+hylättiin asentimen sulkemispyynnön odotukseen; riippuvuustarkistus läpäisi.
+Täsmällinen estäjäidentiteetti on avoin. Omistaja hyväksyi 21.10.2026 vain
+nykyisen tiedostokäyttäjähavainnon 1 -> 10 sekunnin työbudjetin,
+kohderegressiot, todellisen salaus/purku-ketjun ja yhden nimetyn
+Windows-kokeen samoilla asennuspaketeilla. Keruukorjauksen kohdetestit,
+oikea OpenPGP-ketju ja rajattu katselmus läpäisivät. Revision `3d48ac1c`
+[nimetty Windows-koe](https://github.com/eky-software/eky/actions/runs/39586937937)
+läpäisi samoilla asennuspaketeilla, pakollisella tulosvarmennuksella ja
+siivoustodisteella. Seuraavaksi vaaditaan nykyisen PR-revision normaalit
+portit ja mergen jälkeen mainin omat portit. Vanha estäjäidentiteetti pysyy avoimena.
+
+PR #308:n `a4e14bc3`-revision ensimmäinen
+[V2-kierros](https://github.com/eky-software/eky/actions/runs/39515111216)
+ja [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39515111131)
+hylättiin. Migraatioaktivoinnin hallitun sulun D2-kytkentä on korjattu ja
+todennettu kohdetesteillä sekä samalla oikealla Electron-polulla. Desktopin
+koko testikomento, tyypitys ja rajattu katselmus läpäisivät. Erillinen
+asentimen odotushavainto säilyy avoimena; sitä ei nimetä samalla korjatuksi.
+Omistajan hyväksymä
+rajattu Hono/Vite/Rolldown-päivitys läpäisi auditoinnin ja kohdetestit.
+Puhtaan `fad384a2`-paketin palautusketju läpäisi, samoin sen
+[riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39521078818).
+[Seuraava V2-kierros](https://github.com/eky-software/eky/actions/runs/39521078890)
+hylättiin: 29 työtä läpäisi, viisi hylättiin koonti mukaan lukien,
+kahdeksan jäi valitsematta ja yksi peruttiin kokonaisaikarajaan.
+Omistaja hyväksyi rajatun ikkunahavainnon, supervisorin absoluuttisen
+odotusrajan ja Electronin sulkuvirheen syynvälityksen selvityksen sekä
+kohdekokeet. Näistä ei päätellä, että vika olisi vain testeissä.
+Viimeisen workspace-success-ajon oma loki ja salattu aineisto jäivät
+puuttumaan; sen syy ja siivoustila ovat tuntemattomat. Toisen toiston ja
+molempien fault-toistojen läpäisyt eivät korvaa tätä näyttöä.
+Omistaja hyväksyi tämän jälkeen ikkunatestin täsmällisen kylmän
+provider-aikakatkaisun valmisteluehdon sekä jatkamisen Goalin normaaleihin
+portteihin. Näiden korjausten puhdas `bf697a40`-paketti ja sen palautusketju
+läpäisivät. Revision [V2-kierros](https://github.com/eky-software/eky/actions/runs/39543955790)
+valmistui: 36 työtä läpäisi, kaksi hylättiin koonti mukaan lukien ja kuusi
+diagnostiikkatyötä jäi tarkoituksella valitsematta.
+[Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39543955762)
+läpäisi. Sovelluksen Electron-, asennus-, päivitys- ja palautustyöt läpäisivät;
+supervisorin ensimmäinen toisto hylkäsi MSI-ikkunafixturen
+`largeListBounded`-tarkistuksen. Alkuperäinen salattu aineisto säilyi,
+mutta siinä oli vain tarkistuksen nimi, ei hylätyn näytteen tietoja.
+Seuraava rajattu muutos säilyttää viimeisen havainnon nykyisessä
+virhekuittiketjussa. Pakotettu native-virhe todensi lisäotteen oikean
+salauksen ja purun läpi; tämä ei vielä selitä alkuperäistä hylkäystä.
+Uuden revision PR-portit, merge ja main-portit ovat avoinna.
+Ensivirheet säilyvät, eikä uuden korjauksen näyttö selitä vanhoja timeouteja.
+
+`b93f4b3c`-revision [V2-kierroksen](https://github.com/eky-software/eky/actions/runs/39547900136)
+molemmat supervisor-toistot läpäisivät. Web-käyttäjätesti hylättiin ennen
+käyttäjäpolun alkua: alkuperäinen salattu prosessituloste osoitti backendin
+ja Viten käyttäneen samaa porttia. Selainfixture valitsi molemmat vapaat
+porttinumerot ennen backendin käynnistystä. Rajattu korjaus valitsee
+web-portin vasta valmiin backendin jälkeen. Hallittu järjestysregressio
+hylkäsi vanhan lähteen; korjauksen 71 elinkaarikoetta ja tyypitys läpäisivät.
+Myös kuusi oikeaa selainpolkua ja rajattu riippumaton katselmus läpäisivät.
+Kierros päättyi 35 onnistuneeseen työhön, kolmeen hylkäykseen koonti mukaan
+lukien ja kuuteen valitsemattomaan diagnostiikkatyöhön. Toinen hylkäys oli
+workspace-fault-toiston `binaryRollbackFailure`-skenaarion määräaika:
+asentimen sulkemispyyntö odotti vastausta. Ikkunahavainto säilyi, mutta
+estäjäprosessin täsmällinen omistajuus jäi varmistamatta. Prosessipuun ja
+asennusjälkien siivous varmennettiin; skenaarion sisältöhyväksyntä jäi
+tarkistamatta. Tätä MSI-havaintoa ei nimetä web-porttikorjauksen korjaamaksi.
+Uuden korjausrevision normaali PR/main-hyväksyntä on avoin.
+Automaattinen uusinta kulutti tämän web-hylkäyksen
+uusintakiintiön; korjauksen todennus ei ole saman lähteen uusi uusinta.
+Manuaalisen endurance-kuluttajan vastaava porttien ennakkovalinta jäi
+tämän normaalin web-fixturen korjauksen ulkopuolelle erilliseksi jatkotyöksi;
+stress-todennusta ei väitetä tehdyksi.
+
+Omistaja hyväksyi 17.10.2026 D-P1:n epäselvän salaisuusoperaation
+jatkotavan ja D-P2/A:n nykyisen saatavuussäännön säilyttämisen.
+D1:n alkuluvun tallennusesto on toteutettu ja sen rajattu web-,
+selainkomponentti- sekä aiemman tallennus-/audit-polun todennus läpäisi.
+[D1:n kohdenäyttö](release-0.3.0-company-settings-plan.md#d1n-kohdenäyttö-ja-seuraava-työ)
+erottaa tämän koko D:n hyväksynnästä. D2:n 11 tapauksen lähtökoe toisti
+nykyisen brokerin epäselvän tuloksen ja sulkemisen riskit, ei niiden korjausta.
+Erillinen 15 tapauksen jonokoe läpäisi ilman tuotantokytkentää.
+[Sulkusopimuksen valmistelu](release-0.3.0-company-settings-plan.md#d2n-lähtötilan-näyttö-ja-avoin-sulkupäätös)
+oli valmisteluvaihe. Omistaja hyväksyi 20.10.2026 viisi sekuntia rajatun
+odotuskokeen lähtökohdaksi nykyisen salasanatallennuksen päälle.
+17 tapauksen sulkukoe, sen tyypitys ja erikseen nykyiset 24 salaisuustestiä
+läpäisivät. Tämä ei ole Electronin IPC-/audit-ketjun tai tuotantokytkennän
+hyväksyntä. Omistaja hyväksyi tämän jälkeen
+[koko sulkusopimuksen](release-0.3.0-company-settings-plan.md#sulkusopimusehdotus-kokeen-jälkeen)
+rajattuun toteutukseen ja testeihin nykyistä salasanatallennusta muuttamatta.
+D2:n brokerin, auditin ja sulkukutsujien rajattu kytkentä on työpuussa.
+Kohderegressiot ja tyypitys läpäisivät; alkuperäinen synteettinen
+broker-poikkeus todennettiin myös puretusta OpenPGP-paketista.
+[D2:n kohdenäyttö ja rajat](release-0.3.0-company-settings-plan.md#d1n-kohdenäyttö-ja-seuraava-työ)
+erottavat tämän varsinaisesta integraatiosta. Viisi selainkomponentin
+sessio-/virhekoetta ja nykyiset Electronin salaisuus- sekä A -> B -> A
+-yritysvaihtopolut läpäisivät. Sulun tarkka turvallinen syy on todennettu
+nykyisen compositionin JSONL-lokiin. Kirjoittajarajalta alkava erillinen
+system-testi todensi HTTP-/API-client-/tukipakettilukuketjun ja syyn
+säilymisen backendin restartissa. D3:n nykyisen saatavuussäännön
+kohderegressiot läpäisivät. Oikean HTTP-sulun ja auditin kohdetestit sekä
+SMTP-readerin yhteisen pääsyeston korjaus läpäisivät rajatun sarjan.
+Kaksi erillistä Electron-koetta todensi viivästetyn set/remove-kuittauksen
+HTTP-/utility-/broker-/tiedosto-/audit-ketjun sekä sulun ja restartin.
+Ne eivät viivästytä levy-I/O:ta tai käytä oikeaa SMTP-verkkotoimitusta.
+Kahden backendin synteettinen SMTP-koe todensi lisäksi A:n myöhäisen
+lukutuloksen eston ja B:n omat tunnukset ilman salaisuuden siirtymistä.
+Se täydentää Electronin yritysvaihtoa, ei korvaa sitä. Loppukatselmuksen
+havaitsema audit-virheen ja jo jonottavan broker-työn pääsyestoraja on
+korjattu nykyiseen clientiin. Yhdistetty composition/SQLite/client-koe,
+backendin ja desktopin kytkentätestit, työtilan tyypitys sekä oikean
+Electronin kaksi sulku-/restart-koetta läpäisivät myös tämän muutoksen
+jälkeen. Rajattu jatkokatselmus ei löytänyt korjattavaa. Puhtaan
+`a4e14bc3`-paketin palautus läpäisi tämän jälkeen; yllä kuvattu ensimmäinen
+PR-kierros kuitenkin hylättiin. Aiempi kohdenäyttö ei korvaa uuden
+korjausrevision normaaleja kokonaisportteja.
+CS-1/CS-2 säilyvät hyväksyttyinä; D:n kokonais- ja PR/main-hyväksyntä
+ovat vielä avoinna.
 
 Jatkaja varmentaa ensin työpuun, haaran, HEAD:n ja etätilan. Vanhaa SHA:ta
 ei oleteta uudeksi lähtötilaksi. Tehtävän valtuus, voimassa olevat poikkeukset

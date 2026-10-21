@@ -31,9 +31,10 @@ export async function removeCompanyEmailSecret(
     companyEmailSecretAuditWriter:
       dependencies.companyEmailSecretAuditWriter,
     occurredAt: input.occurredAt,
-    async operation() {
+    async operation(operationId) {
       await dependencies.companyEmailSecretStore.removeSecret(
         input.actorContext.companyId,
+        operationId,
       );
 
       return createCompanyEmailSecretStatus(false);

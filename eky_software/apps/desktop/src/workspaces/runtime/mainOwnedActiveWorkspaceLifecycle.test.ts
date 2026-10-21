@@ -13,6 +13,125 @@ const workspaceId = validateWorkspaceId(
 afterEach(() => vi.useRealTimers());
 
 describe('MainOwnedActiveWorkspaceLifecycle', () => {
+  it('starts secret drain alongside an active HTTP mutation and shares preparation', async () => {
+    const fixture = createStopFixture();
+    const gate = deferred();
+    fixture.resources.sealAndDrainSecrets.mockImplementation(() => gate.promise);
+    const mutation = fixture.admission.begin('POST');
+    const first = fixture.lifecycle.quiesceWrites(workspaceId);
+    const second = fixture.lifecycle.quiesceWrites(workspaceId);
+    await Promise.resolve();
+    expect(fixture.resources.sealAndDrainSecrets).toHaveBeenCalledOnce();
+    expect(fixture.admission.begin('POST')).toBeUndefined();
+    expect(fixture.resources.stopRecoveryPointScheduler).not.toHaveBeenCalled();
+    mutation?.release();
+    await Promise.resolve();
+    expect(fixture.resources.stopRecoveryPointScheduler).not.toHaveBeenCalled();
+    gate.resolve();
+    await Promise.all([first, second]);
+    expect(fixture.resources.stopRecoveryPointScheduler).toHaveBeenCalledOnce();
+    await fixture.lifecycle.stopAndProveHandlesClosed(workspaceId);
+    expect(fixture.resources.markCleanShutdown).toHaveBeenCalledOnce();
+  });
+
+  it('does not turn a failed secret drain into safe profile mutation or restart', async () => {
+    const fixture = createStopFixture();
+    const entered = deferred();
+    const gate = deferred();
+    const mutation = fixture.admission.begin('POST');
+    const resume = vi.spyOn(fixture.admission, 'resume');
+    fixture.resources.stopBackend.mockImplementation(async () => {
+      entered.resolve();
+      await gate.promise;
+      return 'exited';
+    });
+    fixture.resources.sealAndDrainSecrets.mockRejectedValue(new Error('synthetic drain uncertainty'));
+    const quiescing = fixture.lifecycle.quiesceWrites(workspaceId);
+    const failureResult = quiescing.catch(error => error);
+    await entered.promise;
+    expect(fixture.lifecycle.readState()).toBe('stopFailed');
+    expect(fixture.admission.begin('GET')).toBeUndefined();
+    await expect(fixture.lifecycle.assertNoActiveWorkspaceRuntime()).rejects.toThrow();
+    await expect(fixture.lifecycle.ensurePreviousWorkspaceRunning(workspaceId)).rejects.toThrow();
+    expect(fixture.resources.closeBrokers).not.toHaveBeenCalled();
+    const stopping = fixture.lifecycle.stopAndProveHandlesClosed(workspaceId);
+    const stopFailure = stopping.catch(error => error);
+    mutation?.release();
+    gate.resolve();
+    const failure = await failureResult;
+    expect(failure).toMatchObject({
+      firstFailure: { phase: 'secrets', reason: 'operationFailed' },
+      cleanupFailures: [],
+    });
+    expect(await stopFailure).toBe(failure);
+    fixture.resources.sealAndDrainSecrets.mockResolvedValue(undefined);
+    await expect(fixture.lifecycle.quiesceWrites(workspaceId)).rejects.toBe(failure);
+    await expect(fixture.lifecycle.stopAndProveHandlesClosed(workspaceId)).rejects.toBe(failure);
+    await expect(fixture.lifecycle.assertNoActiveWorkspaceRuntime()).rejects.toThrow();
+    await expect(fixture.lifecycle.ensurePreviousWorkspaceRunning(workspaceId)).rejects.toThrow();
+    expect(fixture.lifecycle.readState()).toBe('stopFailed');
+    expect(fixture.admission.begin('GET')).toBeUndefined();
+    expect(fixture.resources.sealAndDrainSecrets).toHaveBeenCalledOnce();
+    expect(fixture.resources.stopRecoveryPointScheduler).toHaveBeenCalledOnce();
+    expect(fixture.resources.disposeCapabilities).toHaveBeenCalledOnce();
+    expect(fixture.resources.stopBackend).toHaveBeenCalledOnce();
+    expect(fixture.resources.closeBrokers).toHaveBeenCalledOnce();
+    expect(fixture.resources.stopBackendForUpdate).not.toHaveBeenCalled();
+    expect(fixture.resources.markCleanShutdown).not.toHaveBeenCalled();
+    expect(resume).not.toHaveBeenCalled();
+  });
+
+  it('attempts every owned shutdown after failed quiescence and preserves its first cause', async () => {
+    const fixture = createStopFixture();
+    fixture.resources.sealAndDrainSecrets.mockRejectedValue(new Error('synthetic private drain'));
+    fixture.resources.stopRecoveryPointScheduler.mockRejectedValue(new Error('synthetic private scheduler'));
+    fixture.resources.disposeCapabilities.mockRejectedValue(new Error('synthetic private capabilities'));
+    fixture.resources.stopBackend.mockRejectedValue(new BackendGracefulShutdownTimeoutError());
+    fixture.resources.closeBrokers.mockRejectedValue(new Error('synthetic private brokers'));
+    const result = fixture.lifecycle.quiesceWrites(workspaceId);
+    await expect(result).rejects.toMatchObject({
+      message: 'WORKSPACE_RUNTIME_QUIESCE_FAILED',
+      firstFailure: { phase: 'secrets', reason: 'operationFailed' },
+      cleanupFailures: [
+        { phase: 'scheduler', reason: 'operationFailed' },
+        { phase: 'capabilities', reason: 'operationFailed' },
+        { phase: 'backend', reason: 'gracefulTimeout' },
+        { phase: 'brokers', reason: 'operationFailed' },
+      ],
+    });
+    const failure = await result.catch(error => error);
+    expect(JSON.stringify(failure)).not.toContain('synthetic private');
+    await expect(fixture.lifecycle.quiesceWrites(workspaceId)).rejects.toBe(failure);
+    await expect(fixture.lifecycle.stopAndProveHandlesClosed(workspaceId)).rejects.toBe(failure);
+    await expect(fixture.lifecycle.assertNoActiveWorkspaceRuntime()).rejects.toThrow();
+    await expect(fixture.lifecycle.ensurePreviousWorkspaceRunning(workspaceId)).rejects.toThrow();
+    expect(fixture.lifecycle.readState()).toBe('stopFailed');
+    expect(fixture.resources.stopRecoveryPointScheduler).toHaveBeenCalledOnce();
+    expect(fixture.resources.disposeCapabilities).toHaveBeenCalledOnce();
+    expect(fixture.resources.stopBackend).toHaveBeenCalledOnce();
+    expect(fixture.resources.closeBrokers).toHaveBeenCalledOnce();
+    expect(fixture.resources.markCleanShutdown).not.toHaveBeenCalled();
+  });
+
+  it('awaits final broker closure before reporting absence or a clean shutdown', async () => {
+    const fixture = createStopFixture();
+    const entered = deferred();
+    const gate = deferred();
+    fixture.resources.closeBrokers.mockImplementation(async () => {
+      entered.resolve();
+      await gate.promise;
+    });
+    await fixture.lifecycle.quiesceWrites(workspaceId);
+    const stop = fixture.lifecycle.stopAndProveHandlesClosed(workspaceId);
+    await entered.promise;
+    await expect(fixture.lifecycle.assertNoActiveWorkspaceRuntime()).rejects.toThrow();
+    expect(fixture.resources.markCleanShutdown).not.toHaveBeenCalled();
+    gate.resolve();
+    await stop;
+    await fixture.lifecycle.assertNoActiveWorkspaceRuntime();
+    expect(fixture.resources.markCleanShutdown).toHaveBeenCalledOnce();
+  });
+
   it('quiesces writes and closes every workspace-owned resource in order', async () => {
     const events: string[] = [];
     const requestQuiescence = new BackendRequestQuiescence();
@@ -80,7 +199,8 @@ describe('MainOwnedActiveWorkspaceLifecycle', () => {
     expect(events).toEqual(['scheduler']);
   });
 
-  it('resumes write admission after a bounded quiescence failure', async () => {
+  it('does not reopen a sealed generation after a bounded quiescence failure', async () => {
+    vi.useFakeTimers();
     const events: string[] = [];
     const requestQuiescence = new BackendRequestQuiescence({
       timeoutMilliseconds: 5,
@@ -93,23 +213,29 @@ describe('MainOwnedActiveWorkspaceLifecycle', () => {
       new DeferredWorkspaceRuntimeRelaunch(() => events.push('relaunch')),
     );
 
-    await expect(lifecycle.quiesceWrites(workspaceId)).rejects.toThrow(
-      'WORKSPACE_RUNTIME_QUIESCE_FAILED',
-    );
+    const result = expect(lifecycle.quiesceWrites(workspaceId)).rejects.toMatchObject({
+      firstFailure: { phase: 'quiescence', reason: 'operationFailed' },
+      cleanupFailures: [],
+    });
+    await vi.advanceTimersByTimeAsync(5);
+    await result;
 
-    expect(lifecycle.readState()).toBe('active');
-    expect(requestQuiescence.readState()).toBe('active');
-    expect(events).toEqual([]);
+    expect(lifecycle.readState()).toBe('stopFailed');
+    expect(requestQuiescence.readState()).toBe('stopped');
+    expect(events).toEqual(['scheduler', 'capabilities', 'backend', 'brokers']);
     const admittedAfterFailure = requestQuiescence.begin('PATCH');
-    expect(admittedAfterFailure).toBeDefined();
+    expect(admittedAfterFailure).toBeUndefined();
 
     activeMutation?.release();
     admittedAfterFailure?.release();
-    await expect(lifecycle.quiesceWrites(workspaceId)).resolves.toBeUndefined();
-    expect(events).toEqual(['scheduler']);
+    await expect(lifecycle.quiesceWrites(workspaceId)).rejects.toThrow('WORKSPACE_RUNTIME_QUIESCE_FAILED');
+    await expect(lifecycle.stopAndProveHandlesClosed(workspaceId)).rejects.toThrow('WORKSPACE_RUNTIME_QUIESCE_FAILED');
+    await expect(lifecycle.assertNoActiveWorkspaceRuntime()).rejects.toThrow();
+    await expect(lifecycle.ensurePreviousWorkspaceRunning(workspaceId)).rejects.toThrow();
+    expect(events).toEqual(['scheduler', 'capabilities', 'backend', 'brokers']);
   });
 
-  it('resumes write admission when stopping the recovery scheduler fails', async () => {
+  it('keeps the sealed generation closed when stopping the recovery scheduler fails', async () => {
     const requestQuiescence = new BackendRequestQuiescence();
     const lifecycle = new MainOwnedActiveWorkspaceLifecycle(
       workspaceId,
@@ -127,12 +253,12 @@ describe('MainOwnedActiveWorkspaceLifecycle', () => {
       'WORKSPACE_RUNTIME_QUIESCE_FAILED',
     );
 
-    expect(lifecycle.readState()).toBe('active');
-    expect(requestQuiescence.readState()).toBe('active');
-    expect(requestQuiescence.begin('POST')).toBeDefined();
+    expect(lifecycle.readState()).toBe('stopFailed');
+    expect(requestQuiescence.readState()).toBe('stopped');
+    expect(requestQuiescence.begin('POST')).toBeUndefined();
   });
 
-  it('requires recovery when write admission cannot be resumed', async () => {
+  it('never calls general resume after starting secret shutdown', async () => {
     class ResumeFailingRequestQuiescence extends BackendRequestQuiescence {
       override resume(): void {
         throw new Error('private resume failure');
@@ -151,7 +277,7 @@ describe('MainOwnedActiveWorkspaceLifecycle', () => {
     );
 
     await expect(lifecycle.quiesceWrites(workspaceId)).rejects.toThrow(
-      'WORKSPACE_RUNTIME_RECOVERY_REQUIRED',
+      'WORKSPACE_RUNTIME_QUIESCE_FAILED',
     );
     activeMutation?.release();
   });
@@ -216,14 +342,14 @@ describe('MainOwnedActiveWorkspaceLifecycle', () => {
       const results = Promise.allSettled([ordinary, update]);
       gate.resolve();
       expect((await results).map(result => result.status)).toEqual(
-        outcome === 'unknown' ? ['rejected', 'rejected'] : ['fulfilled', 'rejected'],
+        outcome === 'exited' ? ['fulfilled', 'rejected'] : ['rejected', 'rejected'],
       );
       await expect(fixture.lifecycle.stopForUpdate(workspaceId, '11111111-1111-4111-8111-111111111111'))
         .rejects.toThrow('WORKSPACE_RUNTIME_STOP_FAILED');
       expect(fixture.resources.stopBackend).toHaveBeenCalledOnce();
       expect(fixture.resources.stopBackendForUpdate).not.toHaveBeenCalled();
       expect(fixture.resources.markCleanShutdown).toHaveBeenCalledTimes(outcome === 'exited' ? 1 : 0);
-      if (outcome === 'unknown') {
+      if (outcome !== 'exited') {
         await expect(fixture.lifecycle.assertNoActiveWorkspaceRuntime()).rejects.toThrow();
       } else {
         await fixture.lifecycle.assertNoActiveWorkspaceRuntime();
@@ -273,25 +399,40 @@ describe('MainOwnedActiveWorkspaceLifecycle', () => {
     expect(fixture.resources.stopBackend).not.toHaveBeenCalled();
   });
 
-  it.each(['quiescence', 'scheduler'] as const)(
-    'keeps update admission closed after a preparation failure (%s)', async mode => {
+  it.each(['quiescence', 'secrets', 'scheduler'] as const)(
+    'attempts strict cleanup and keeps update admission closed after a preparation failure (%s)', async mode => {
       vi.useFakeTimers();
       const fixture = createStopFixture();
       const mutation = mode === 'quiescence' ? fixture.admission.begin('POST') : undefined;
+      if (mode === 'secrets') fixture.resources.sealAndDrainSecrets
+        .mockRejectedValue(new Error('synthetic private drain'));
       if (mode === 'scheduler') fixture.resources.stopRecoveryPointScheduler
         .mockRejectedValue(new Error('synthetic private scheduler'));
-      const result = expect(fixture.lifecycle.stopForUpdate(workspaceId, '11111111-1111-4111-8111-111111111111'))
-        .rejects.toThrow('WORKSPACE_RUNTIME_QUIESCE_FAILED');
+      const stopping = fixture.lifecycle.stopForUpdate(workspaceId, '11111111-1111-4111-8111-111111111111');
+      const result = expect(stopping).rejects.toMatchObject({
+        firstFailure: { phase: mode, reason: 'operationFailed' },
+        cleanupFailures: [],
+      });
       await vi.runAllTimersAsync();
       await result;
+      const failure = await stopping.catch(error => error);
       mutation?.release();
       expect(fixture.admission.begin('POST')).toBeUndefined();
       expect(fixture.admission.begin('GET')).toBeUndefined();
       expect(fixture.resources.stopBackend).not.toHaveBeenCalled();
-      expect(fixture.resources.stopBackendForUpdate).not.toHaveBeenCalled();
       expect(fixture.resources.markCleanShutdown).not.toHaveBeenCalled();
       await expect(fixture.lifecycle.assertNoActiveWorkspaceRuntime()).rejects.toThrow();
-      await expect(fixture.lifecycle.stopForUpdate(workspaceId, '11111111-1111-4111-8111-111111111111')).rejects.toThrow();
+      await expect(fixture.lifecycle.ensurePreviousWorkspaceRunning(workspaceId)).rejects.toThrow();
+      await expect(fixture.lifecycle.stopForUpdate(workspaceId, '11111111-1111-4111-8111-111111111111'))
+        .rejects.toBe(failure);
+      await expect(fixture.lifecycle.stopAndProveHandlesClosed(workspaceId)).rejects.toBe(failure);
+      expect(fixture.lifecycle.readState()).toBe('stopFailed');
+      expect(fixture.resources.sealAndDrainSecrets).toHaveBeenCalledOnce();
+      expect(fixture.resources.stopRecoveryPointScheduler).toHaveBeenCalledOnce();
+      expect(fixture.resources.disposeCapabilities).toHaveBeenCalledOnce();
+      expect(fixture.resources.stopBackendForUpdate)
+        .toHaveBeenCalledExactlyOnceWith('11111111-1111-4111-8111-111111111111');
+      expect(fixture.resources.closeBrokers).toHaveBeenCalledOnce();
     },
   );
 
@@ -382,6 +523,7 @@ function deferred() {
 
 function createStopFixture() {
   const resources = {
+    sealAndDrainSecrets: vi.fn(async (): Promise<void> => undefined),
     closeBrokers: vi.fn(async () => undefined),
     disposeCapabilities: vi.fn(async () => undefined),
     markCleanShutdown: vi.fn(async () => undefined),
@@ -398,6 +540,7 @@ function createStopFixture() {
 
 function createResources(events: string[]) {
   return {
+    async sealAndDrainSecrets() {},
     async closeBrokers() {
       events.push('brokers');
     },

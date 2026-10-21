@@ -44,6 +44,15 @@ jatkotyön rajaus ovat [M1:n nykytilassa](release-0.3.0-m1-preparation-plan.md);
 päivätyn B5-checkpointin avoimet portit eivät muodosta uutta hyväksyntäjonoa.
 Tämä ei poista myöhemmän revision omia katselmus-, PR- ja main-portteja.
 
+**Company Settings -> Invoicing, D2:** backendin Company Settings -composition
+tarjoaa providerille nykyisen `CompanyEmailSecretReader`-portin saman
+salaisuusoperaatioiden pääsy- ja sulkutilan kautta. Invoicingin composition
+kuluttaa tätä suojattua readeria, ei raakaa store-adapteria. Salainen arvo
+ei kuulu asetusten reiteille eikä Invoicingin domainiin; SMTP-provider on
+edelleen ainoa kuluttaja. Jo alkanut SMTP-toimitus säilyy erillisenä työnä.
+[Email/secrets-sopimus](email-delivery-and-secrets-plan.md#d2n-sulku-ja-epävarma-tulos)
+omistaa rajan; D:n integraatiohyväksyntä on edelleen avoin.
+
 ## Platform- Ja Infrastructure-Kyvykkyydet
 
 | Kyvykkyys | Status | Omistaa | Ei nimenomaisesti omista | Composition root | Tarjoaa julkisesti | Kuluttaa julkisesti | Cross-module-luvut | Cross-module-komennot / kirjoitukset | Permissionit | Business audit | Operational / security -eventit | Activity-projektio | Diagnostics-projektio | Support bundle | Incident index | Backup inclusion / exclusion | Artifact catalog | Restore-validator ja yhteensopivuus | Web / desktop / mobile -adapteri | Kriittinen cross-module E2E-näyttö |

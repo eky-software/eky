@@ -114,7 +114,6 @@ export async function runIsolatedWebTest(
 
   try {
     backendPort = await reserveLoopbackPort();
-    webPort = await reserveLoopbackPort();
     try {
       backend = await startE2eBackendProcess({
         backendPort, faultPlan: e2eFaultPlan, lifetime, paths, runRoot, scenarioId,
@@ -126,6 +125,8 @@ export async function runIsolatedWebTest(
         error.evidence.cleanup.port === 'released');
       throw error;
     }
+    // The probe releases its socket; keep the backend bound before the next selection.
+    webPort = await reserveLoopbackPort();
     api = await requestFactory.newContext({
       baseURL: backend.backendOrigin,
       extraHTTPHeaders: {

@@ -15,8 +15,23 @@ describe('desktop first-start boundaries', () => {
     expect(backend).toBeGreaterThan(firstStart);
     expect(source.slice(firstStart, source.indexOf('profileProtection:', firstStart)))
       .toContain('...startupExceptionObservation');
-    expect(source.slice(backend, source.indexOf('async beforeMigrations', backend)))
+    expect(source.slice(backend, source.indexOf('beforeMigrations:', backend)))
       .toContain('...startupExceptionObservation');
+  });
+
+  it('wraps the whole migration callback and stores only the secret-safe startup control', async () => {
+    const source = await readFile(join(sourceRoot, 'main', 'desktopComposition.ts'), 'utf8');
+    const backend = source.indexOf('backendHandle = await dependencies.startBackend({');
+    const gate = source.indexOf('beforeMigrations: createSecretSafeMigrationGate(secretBrokerHandle, async (inspection, control) => {', backend);
+    const config = source.indexOf('      config: {', gate);
+    expect(gate).toBeGreaterThan(backend);
+    expect(config).toBeGreaterThan(gate);
+    const callback = source.slice(gate, config);
+    expect(callback).toContain('backendStartupControl = control;');
+    expect(callback).toContain('await profileSnapshotBrokerClient.waitUntilReady();');
+    expect(callback).toMatch(/workspaceActivationMigration!\.beforeMigrations\(\s*inspection,\s*control,/);
+    expect(callback).toContain('w6b2PackagedFaultInjection?.failActiveWorkspaceFirstStartIfRequested();');
+    expect(callback.trimEnd().endsWith('}),')).toBe(true);
   });
 
   it('admits the packaged build before resolving or adopting a workspace', async () => {

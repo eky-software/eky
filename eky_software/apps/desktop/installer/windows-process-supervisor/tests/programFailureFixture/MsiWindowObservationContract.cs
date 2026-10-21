@@ -6,6 +6,7 @@ using Eky.WindowsProcessSupervisor;
 
 internal static class MsiWindowObservationContract
 {
+    private const int ColdProviderTimeoutHResult = unchecked((int)0x80131505);
     internal static int RunFailureReceipt(string requestPath)
     {
         if (!OperatingSystem.IsWindows()) return 63;
@@ -19,11 +20,27 @@ internal static class MsiWindowObservationContract
             () => throw new SupervisorFailure("processWaitFailed", 0), () => WorkspaceMsiMembership.Unknown, listFailure, preparation);
     }
 
+    internal static int RunBoundFailureReceipt(string requestPath)
+    {
+        if (!OperatingSystem.IsWindows()) return 63;
+        SupervisorRequestReader.Read(["--request", requestPath]);
+        throw CheckFailure("largeListBounded", () => new
+        {
+            sample = SampleReceipt(new(0, "partial", []), 400, false, WorkspaceMsiMembership.Owned,
+                new("firstChild", "providerException", ColdProviderTimeoutHResult)),
+            windowCount = 0, maximumApplicationCharacters = 0, totalCharacters = 0,
+        });
+    }
+
     internal static int Run(string requestPath)
     {
         if (!OperatingSystem.IsWindows()) return 63;
         var request = SupervisorRequestReader.Read(["--request", requestPath]);
         var checks = new Dictionary<string, bool>();
+        Func<object>? lastObservation = null;
+        Check("checkObservationFailurePreservesName", CheckFailure("largeListBounded",
+            () => throw new InvalidOperationException("unavailable observation")).Message ==
+            "msiWindowContractFailed:largeListBounded:{\"lastObservation\":null}");
         var failedReceipt = FirstSampleFailure(new(0, "partial", []), 0,
             () => throw new SupervisorFailure("processWaitFailed", 0), () => WorkspaceMsiMembership.Unknown);
         Check("sampleFailurePreservedWhenExitQueryFails", failedReceipt.Message.StartsWith(
@@ -41,8 +58,21 @@ internal static class MsiWindowObservationContract
             {
                 var remaining = characters ?? MsiWindowObservation.Contract.MaximumTotalCharacters;
                 var slots = windows ?? MsiWindowObservation.Contract.MaximumWindows;
-                return MsiWindowObservation.Capture(job, process.Process, stopped ?? (() => false),
-                    Stopwatch.StartNew(), ref remaining, ref slots, listFailure);
+                var timer = Stopwatch.StartNew();
+                MsiApplicationListFailure? firstFailure = null;
+                var sample = MsiWindowObservation.Capture(job, process.Process, stopped ?? (() => false),
+                    timer, ref remaining, ref slots, failure => { firstFailure ??= failure; listFailure?.Invoke(failure); });
+                timer.Stop();
+                lastObservation = () => new
+                {
+                    sample = SampleReceipt(sample, timer.ElapsedMilliseconds, ExitState(() => process.Wait(0)),
+                        MembershipState(() => WorkspaceMsiActivityObservation.ObserveHandle(job, process.Process)), firstFailure),
+                    windowCount = sample.Windows.Count,
+                    maximumApplicationCharacters = sample.Windows.Where(row => row.Role == "application")
+                        .Select(row => row.Text.Length).DefaultIfEmpty(0).Max(),
+                    totalCharacters = sample.Windows.Sum(row => row.Text.Length),
+                };
+                return sample;
             }
             Check("systemImageAdmitted", MsiWindowObservation.IsSystemInstaller(Path.Combine(Environment.SystemDirectory, "msiexec.exe")));
             Check("otherImageRejected", !MsiWindowObservation.IsSystemInstaller(Path.Combine(request.WorkingDirectory, "msiexec.exe")));
@@ -75,8 +105,29 @@ internal static class MsiWindowObservationContract
             var budget = MsiWindowObservation.Contract.SampleTimeoutMilliseconds;
             Check("preparationAllowsExactBudgetExpiry", PreparationAllowed(partial, budget, false, WorkspaceMsiMembership.Owned, budgetFailure));
             Check("preparationAllowsCompleteSample", PreparationAllowed(observed, 0, false, WorkspaceMsiMembership.Owned, null));
+            foreach (var stage in new[] { "elementFromHandle", "firstChild" })
+            {
+                var timeout = new MsiApplicationListFailure(stage, "providerException", ColdProviderTimeoutHResult);
+                Check("preparationAllowsExactProviderTimeout" + stage,
+                    PreparationAllowed(partial, 400, false, WorkspaceMsiMembership.Owned, timeout));
+                Check("providerTimeoutRejectsExitedOwner" + stage,
+                    !PreparationAllowed(partial, 400, true, WorkspaceMsiMembership.Owned, timeout));
+                Check("providerTimeoutRejectsUnknownOwner" + stage,
+                    !PreparationAllowed(partial, 400, false, WorkspaceMsiMembership.Unknown, timeout));
+                Check("providerTimeoutRejectsUnknownExit" + stage,
+                    !PreparationAllowed(partial, 400, null, WorkspaceMsiMembership.Owned, timeout));
+                Check("providerTimeoutRejectsPartialApplications" + stage,
+                    !PreparationAllowed(observed with { Status = "partial" }, 400, false, WorkspaceMsiMembership.Owned, timeout));
+                Check("providerTimeoutRejectsMissingRoles" + stage, new[] { "title", "message", "button" }.All(role =>
+                    !PreparationAllowed(partial with { Windows = partial.Windows.Where(row => row.Role != role).ToArray() },
+                        400, false, WorkspaceMsiMembership.Owned, timeout)));
+            }
             Check("preparationRejectsOtherFailures", new[] {
                 new MsiApplicationListFailure("listProcessId", "providerException", unchecked((int)0x80004005)),
+                new MsiApplicationListFailure("elementFromHandle", "providerException", unchecked((int)0x80004005)),
+                new MsiApplicationListFailure("elementFromHandle", "providerException"),
+                new MsiApplicationListFailure("itemProcessId", "providerException", ColdProviderTimeoutHResult),
+                new MsiApplicationListFailure("elementFromHandle", "admissionLost", ColdProviderTimeoutHResult),
                 new MsiApplicationListFailure("itemProcessId", "budgetExpired"),
                 new MsiApplicationListFailure("listProcessId", "admissionLost"),
                 new MsiApplicationListFailure("listProcessId", "budgetExpired", 1),
@@ -249,7 +300,7 @@ internal static class MsiWindowObservationContract
         void Check(string name, bool passed)
         {
             checks.Add(name, passed);
-            if (!passed) throw new InvalidOperationException("msiWindowContractFailed:" + name);
+            if (!passed) throw CheckFailure(name, lastObservation);
         }
         (SuspendedWindowsProcess Process, EventWaitHandle Stop) Start(WindowsJob job, string behavior)
         {
@@ -273,6 +324,14 @@ internal static class MsiWindowObservationContract
         }
     }
 
+    private static InvalidOperationException CheckFailure(string name, Func<object>? observe)
+    {
+        object? lastObservation = null;
+        try { lastObservation = observe?.Invoke(); } catch { }
+        return new InvalidOperationException("msiWindowContractFailed:" + name + ":" +
+            JsonSerializer.Serialize(new { lastObservation }));
+    }
+
     private static bool ExpectedRole(MsiWindowSample sample, string role) => sample.Windows.Any(row => row.Role == role && (role switch
     {
         "title" => row.Text == "SYNTHETIC MSI WINDOW",
@@ -289,8 +348,10 @@ internal static class MsiWindowObservationContract
         WorkspaceMsiMembership membership, MsiApplicationListFailure? failure) =>
         exited is false && membership == WorkspaceMsiMembership.Owned &&
         (CompleteSample(sample) && failure is null || sample.Status == "partial" &&
-            failure == new MsiApplicationListFailure("listProcessId", "budgetExpired") &&
-            elapsedMilliseconds >= MsiWindowObservation.Contract.SampleTimeoutMilliseconds &&
+            (failure == new MsiApplicationListFailure("listProcessId", "budgetExpired") &&
+                elapsedMilliseconds >= MsiWindowObservation.Contract.SampleTimeoutMilliseconds ||
+             failure is { Stage: "elementFromHandle" or "firstChild", Reason: "providerException", HResult: ColdProviderTimeoutHResult } &&
+                elapsedMilliseconds >= 0) &&
             new[] { "title", "message", "button" }.All(role => ExpectedRole(sample, role)) &&
             sample.Windows.All(row => row.Role != "application"));
 

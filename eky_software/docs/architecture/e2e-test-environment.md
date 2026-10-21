@@ -417,6 +417,22 @@ ja välittävät update-operaation tunnisteen muuttumattomana.
 
 ## Testikohtainen runtime
 
+D2:n `DESK-SECRET-DRAIN-001/002` kytkee vain testientrypointissa
+[`electronSecretReplyHold`](../../apps/desktop/e2e/electronSecretReplyHold.ts)-välityksen
+nykyisen main-brokerin ja utility-backendin kanavan väliin. Yksi
+onnistunut set/remove-kuittaus pidätetään täsmällisellä sukupolvi-,
+request-, operaatio- ja yrityssidonnalla. Salaisuuspyyntö välitetään
+muuttamatta eikä sen arvoa säilytetä ohjaimen tilassa. Ohjaus on vain
+testin nykyisessä main-yhteydessä, ei rendererissä, preloadissa tai HTTP:ssä.
+Todellinen tallennuspolku, audit ja sulku toimivat normaalisti.
+Koe havainnoi renderer-protokollan uuden kirjoituksen 503-eston ennen
+pidätetyn kuittauksen vapauttamista. Testikanava suljetaan backendin
+pysäytysyrityksen jälkeen; ulompi fixture todistaa edelleen prosessipuun
+ja portin vapautumisen. Valmistunut kuittaus ei yksin todista auditia tai
+poistumista. Tämä on viivästetyn kuittauksen, ei viivästetyn levy-I/O:n koe.
+Nykyiset poikkeusraportoija ja salattu virhekeräys säilyvät; kanavan
+sisältöä tai synteettistäkään salaisuutta ei liitetä raporttiin.
+
 Nykyinen konfiguraatio käyttää yhtä workeria. Testikohtainen runtime saa
 oman juuren; yhteisen Chromium-workerin juuri on tästä erillinen:
 
@@ -435,6 +451,17 @@ oman juuren; yhteisen Chromium-workerin juuri on tästä erillinen:
 Runtime saa lisäksi omat loopback-portit, runtime-sessionin, synteettisen
 yrityksen, synteettisen käyttäjän ja testikellon vain silloin, kun skenaario
 sitä tarvitsee.
+
+Selainfixture valitsee web-portin vasta backendin onnistuneen
+health-valmiuden jälkeen. `reserveLoopbackPort` palauttaa porttinumeron
+vasta suljettuaan oman koekuuntelijansa, joten kaksi ennen palvelukäynnistystä
+tehtyä valintaa eivät varaa kahta eri porttia. Valmis backend pitää oman
+porttinsa käytössä toisen valinnan aikana. Tämä järjestys ei poista muiden
+prosessien myöhemmän kilpailun mahdollisuutta: käynnistys- ja siivousvirhe
+hylätään edelleen nykyisillä ehdoilla ilman automaattista porttiuusintaa.
+Toisen porttivalinnan virhe sulkee jo käynnistyneen backendin ja säilyttää
+ensivirheen nykyisessä virheraportoinnissa. Testijuuren poisto edellyttää
+edelleen kaikkien omistettujen siivousten onnistumista.
 
 Käynnistys estetään, jos:
 
@@ -589,6 +616,16 @@ vaiheluettelon täyttymisestä. Puuttuva sukupolvi on `null`, ei arvattu numero.
 Playwrightin `attempt` erottaa testin suoritusyritykset; mikään näistä ei ole
 asiakasyrityksen tai runtime-sessionin tunniste. Onnistuva käynnistys ei
 käynnistä virheen lisähavaintoa.
+
+Jos käynnistys onnistuu mutta setup tai testirunko epäonnistuu myöhemmin,
+fixture lukee saman rajatun backend-lokiotteen ennen API:n tai runtimen
+siivousta. Aiempi launch-virheen otos säilyy ensisijaisena. Ote sisältää vain
+nykyisen runtime-sukupolven olemassa olevat startup-/shutdown-tapahtumanimet,
+tulokset ja lukemisen saatavuuden; uusia kenttiä tai raakalokeja ei kerätä.
+Siivouksen myöhemmin kirjoittama valmistumistapahtuma ei täydennä ensivirheen
+otosta. Lukupoikkeus ei estä omistettuja sulkuja eikä korvaa testivirhettä.
+Tavallinen onnistunut testirunko ei käynnistä tätä lukua. Puuttuva tapahtuma
+ei todista tekemätöntä vaihetta, koska alkuperäinen lokikirjoitus on best effort.
 
 Ketjun rajattu oikeaprosessikoe käyttää vain Electron-fixturen
 `e2eBackendStartupFault: 'missingIncidentsDirectory'` -valintaa. Se muuttaa

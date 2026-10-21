@@ -84,6 +84,7 @@ import {
 } from './applicationWindow.js';
 import { registerApplicationProtocol } from './applicationProtocol.js';
 import { BackendRequestQuiescence } from './backendRequestQuiescence.js';
+import { createSecretSafeMigrationGate } from './secretSafeMigrationGate.js';
 import { readSafeStartupFailureCode } from './earlyStartup.js';
 import { createBackendRequestHeaders } from './protocolPolicy.js';
 import { assertW6b2PackagedUpdateWriteState } from './w6b2PackagedUpdateWriteProbe.js';
@@ -965,6 +966,7 @@ async function startDesktopCompositionRuntime({
         )
       : undefined;
   const secretBrokerChannel = new MessageChannelMain();
+  const secretBrokerGenerationId = randomUUID();
   const invoicePdfArchiveBrokerChannel = new MessageChannelMain();
   const profileSnapshotBrokerChannel = new MessageChannelMain();
   const profileSnapshotBrokerClient = new ProfileSnapshotBrokerClient(
@@ -1139,6 +1141,7 @@ async function startDesktopCompositionRuntime({
           throw new Error('UPDATE_ROLLBACK_RUNTIME_UNAVAILABLE');
         }
         profileSnapshotInspectionClient.closeAdmission();
+        await secretBrokerHandle.sealAndDrain();
         await recoveryPointScheduler.stopChecks();
         await profileSnapshotInspectionClient.shutdown();
         await profileSnapshotBrokerClient.assertRestoreMaintenance(operationId);
@@ -1551,7 +1554,22 @@ async function startDesktopCompositionRuntime({
 
   const secretBrokerHandle = startSecretBrokerMain({
     encryptedSecretFile,
+    generationId: secretBrokerGenerationId,
     observer: {
+      drainFailed(errorCode) {
+        desktopOperationalLogger.write(
+          createDesktopOperationalEvent(
+            {
+              errorCode,
+              eventName: 'desktop.shutdownFailed',
+              retryable: false,
+              sideEffectState: 'unknown',
+              stage: 'secretBrokerDrain',
+            },
+            desktopOperationalIdentity,
+          ),
+        );
+      },
       operationFailed(operation, errorCode) {
         const isReadOperation =
           operation === 'readCompanyEmailSecret' ||
@@ -1678,7 +1696,7 @@ async function startDesktopCompositionRuntime({
     backendHandle = await dependencies.startBackend({
       ...startupExceptionObservation,
       reservationTransfer,
-      async beforeMigrations(inspection, control) {
+      beforeMigrations: createSecretSafeMigrationGate(secretBrokerHandle, async (inspection, control) => {
         backendStartupControl = control;
         await profileSnapshotBrokerClient.waitUntilReady();
         if (workspaceActivationMigrationAuthorized) {
@@ -1718,7 +1736,10 @@ async function startDesktopCompositionRuntime({
           const restoreResult =
             await activeProfileRestoreStartupRecovery.validateAfterBackend({
               mode: profileRestoreStartupMode,
-              stopBackend: control.stopStartupRuntime,
+              async stopBackend() {
+                await secretBrokerHandle.sealAndDrain();
+                await control.stopStartupRuntime();
+              },
               async validateActiveProfile() {
                 await updateProfileProtection.validateActiveProfileForRollback(updateRollbackTerminalValidation!);
               },
@@ -1774,6 +1795,7 @@ async function startDesktopCompositionRuntime({
                 ? pendingUpdateJournal! : rollbackJournal,
               assertAuthority: assertStartupAuthority,
             });
+          await secretBrokerHandle.sealAndDrain();
           await control.stopStartupRuntime();
           let binaryRollback: 'launched' | 'notRequired';
           try {
@@ -1820,7 +1842,7 @@ async function startDesktopCompositionRuntime({
             : 'update',
         });
         w6b2PackagedFaultInjection?.failActiveWorkspaceFirstStartIfRequested();
-      },
+      }),
       config: {
         appVersion: desktopAppVersion,
         architecture: process.arch,
@@ -1849,6 +1871,7 @@ async function startDesktopCompositionRuntime({
         profileSnapshotStagingRoot: profileSnapshotPaths.stagingRoot,
         runtimeInstanceId: options.runtimeInstanceId,
         runtimeSessionSecret,
+        secretBrokerGenerationId,
         smokePdfPath,
         verifySmokeSecretBroker:
           smokeMode && options.smokeConfiguration.phase === 'initial',
@@ -1875,7 +1898,10 @@ async function startDesktopCompositionRuntime({
           : {}),
         mode: profileRestoreStartupMode,
         async stopBackend() {
-          await backendHandle!.stop();
+          await secretBrokerHandle.sealAndDrain();
+          if (await backendHandle!.stop() !== 'exited') {
+            throw new Error('WORKSPACE_RUNTIME_STOP_FAILED');
+          }
         },
         async validateActiveProfile() {
           activeProfileValidation = await validateStartupActiveProfile(() => assertBackendHealth(
@@ -1899,7 +1925,7 @@ async function startDesktopCompositionRuntime({
       await profileSnapshotInspectionClient.shutdown();
       profileSnapshotBrokerClient.close();
       invoicePdfArchiveBrokerHandle.close();
-      secretBrokerHandle.close();
+      await secretBrokerHandle.close();
       options.relaunchApplication();
       return undefined;
     }
@@ -1938,6 +1964,7 @@ async function startDesktopCompositionRuntime({
   } catch (error) {
     try { options.observeStartupException?.(error, 'runtimeStartup', [runtimeSessionSecret]); } catch { /* Optional private evidence. */ }
     profileSnapshotInspectionClient.closeAdmission();
+    const secretsSettled = await secretBrokerHandle.sealAndDrain().then(() => true, () => false);
     await recoveryPointScheduler.stopChecks().catch(() => undefined);
     let inspectionCleanupFailed = false;
     try { await profileSnapshotInspectionClient.shutdown(); }
@@ -1947,17 +1974,17 @@ async function startDesktopCompositionRuntime({
       ? !backendStartAttempted || (error instanceof DesktopBackendStartupError &&
           error.ownership.processState === 'absent' && error.ownership.migrationGateSettled &&
           error.ownership.reservationReclaimed)
-      : await Promise.resolve().then(() => startedBackend.stop()).then(() => true, () => false);
+      : await Promise.resolve().then(() => startedBackend.stop()).then(outcome => outcome === 'exited', () => false);
     // Unsettled startup work must retain ownership even if broker cleanup fails.
-    if (!backendStopped || inspectionCleanupFailed) workspaceReservation.invalidate();
-    let brokerCleanupFailed = inspectionCleanupFailed;
+    if (!backendStopped || inspectionCleanupFailed || !secretsSettled) workspaceReservation.invalidate();
+    let brokerCleanupFailed = inspectionCleanupFailed || !secretsSettled;
     for (const broker of [
       profileSnapshotBrokerClient,
       invoicePdfArchiveBrokerHandle,
       secretBrokerHandle,
     ]) {
       try {
-        broker.close();
+        await broker.close();
       } catch {
         brokerCleanupFailed = true;
       }
@@ -2317,9 +2344,34 @@ async function startDesktopCompositionRuntime({
       },
       async stopBusinessRuntime(operationId) {
         profileSnapshotInspectionClient.closeAdmission();
+        try {
+          await Promise.all([
+            secretBrokerHandle.sealAndDrain(),
+            backendRequestQuiescence.quiesceAndWait(),
+          ]);
+        } catch (error) {
+          backendRequestQuiescence.stop();
+          const cleanupFailures: unknown[] = [];
+          // Preserve the failed transition while still attempting every owned close.
+          for (const close of [
+            () => recoveryPointScheduler.stopChecks(),
+            () => disposeWorkspaceRuntimeCapabilities(),
+            () => backendHandle!.stop(),
+            () => closeWorkspaceRuntimeBrokers(),
+          ]) {
+            try { await close(); } catch (cleanupError) { cleanupFailures.push(cleanupError); }
+          }
+          if (cleanupFailures.length !== 0) {
+            throw new Error('PROFILE_RESTORE_RECOVERY_REQUIRED', { cause: {
+              firstFailure: error, cleanupFailures,
+            } });
+          }
+          throw error;
+        }
         await recoveryPointScheduler.stopChecks();
         await profileSnapshotInspectionClient.shutdown();
         await backendHandle!.stopForRestore(operationId);
+        await acknowledgeFailedSecretMutation();
       },
       async assertRestoreRuntimeAuthority(runtimeStopped) {
         const assertActive = () => {
@@ -2404,7 +2456,7 @@ async function startDesktopCompositionRuntime({
   };
   let closeBrokersTask: Promise<void> | undefined;
   const closeWorkspaceRuntimeBrokers = (): Promise<void> => {
-    closeBrokersTask ??= Promise.resolve().then(() => {
+    closeBrokersTask ??= Promise.resolve().then(async () => {
       let failed = false;
       for (const broker of [
         profileSnapshotBrokerClient,
@@ -2412,7 +2464,7 @@ async function startDesktopCompositionRuntime({
         secretBrokerHandle,
       ]) {
         try {
-          broker.close();
+          await broker.close();
         } catch {
           failed = true;
         }
@@ -2422,6 +2474,25 @@ async function startDesktopCompositionRuntime({
     return closeBrokersTask;
   };
   let backendStopAttempted = false;
+  let secretFailureAcknowledgement: Promise<void> | undefined;
+  const acknowledgeFailedSecretMutation = (): Promise<void> => {
+    if (!secretBrokerHandle.hasFailedMutation()) return Promise.resolve();
+    secretFailureAcknowledgement ??= Promise.resolve().then(async () => {
+      if (mainWindow.isDestroyed()) throw new Error('WORKSPACE_RUNTIME_STOP_FAILED');
+      const result = await deliveryDialogAdapter.showMessageBox(mainWindow, {
+        buttons: ['Selvä'],
+        cancelId: 0,
+        defaultId: 0,
+        message: 'Sähköpostisalasanan muutos ei tallentunut.',
+        detail: 'Nykyisen yrityksen aiempi salasana säilyi. Valittu toiminto jatkuu kuittauksen jälkeen. Salasanaa ei siirretä toiseen yritykseen.',
+        noLink: true,
+        title: 'Sähköpostisalasanan tallennus',
+        type: 'warning',
+      });
+      if (result.response !== 0) throw new Error('WORKSPACE_RUNTIME_STOP_FAILED');
+    });
+    return secretFailureAcknowledgement;
+  };
   const activeWorkspaceLifecycle = new MainOwnedActiveWorkspaceLifecycle(
     activeWorkspace.workspaceId,
     backendRequestQuiescence,
@@ -2429,6 +2500,7 @@ async function startDesktopCompositionRuntime({
       closeBrokers: closeWorkspaceRuntimeBrokers,
       disposeCapabilities: disposeWorkspaceRuntimeCapabilities,
       markCleanShutdown: () => recoveryPointScheduler.markCleanShutdown(),
+      sealAndDrainSecrets: () => secretBrokerHandle.sealAndDrain(),
       async stopBackend() {
         backendStopAttempted = true;
         return backendHandle.stop();
@@ -2436,6 +2508,7 @@ async function startDesktopCompositionRuntime({
       async stopBackendForUpdate(operationId) {
         backendStopAttempted = true;
         await backendHandle.stopForUpdate(operationId);
+        await acknowledgeFailedSecretMutation();
       },
       stopRecoveryPointScheduler() {
         return recoveryPointScheduler.stopChecks();
@@ -2453,6 +2526,7 @@ async function startDesktopCompositionRuntime({
         async stopAndProveHandlesClosed(workspaceId) {
           const stopped = await activeWorkspaceLifecycle.stopAndProveHandlesClosed(workspaceId);
           await workspaceReservation.assertMainOwned();
+          await acknowledgeFailedSecretMutation();
           return stopped;
         },
         async ensurePreviousWorkspaceRunning(workspaceId) {

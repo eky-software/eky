@@ -171,6 +171,15 @@ muunnosta. Yhteinen raportointi hoitaa testiperheen muut testit; jokaiseen
 testitapaukseen ei lisätä omaa keräyskutsua. Uuden muunnosrajan mukana
 todennetaan myös havaitsijan kytkentä, ei vain virhekoodi.
 
+D2:n salaisuusbrokerin nykyinen synteettinen fixture kytkee alkuperäisen
+poikkeuksen havaitsijan ennen turvallista koodimuunnosta. Ote toimitetaan
+vain odottamattomasta testihylkäyksestä nykyisellä runner-liitännällä;
+odotettu virhetesti ei tuota uutta virheraporttia. Sama virheketju todistetaan
+`test:ci`-regressiolla ja `installer:test:encrypted-evidence`-komennon
+OpenPGP-purkukokeella. Tavalliseen käyttäjäprofiiliin ei kytketä raakakeräystä.
+Tämä ei todista alempien adapterien jo hävittämän syyn tai pakkokatkaisun
+talteenottoa: keräyksen kattavuus ilmoitetaan todennetun rajan mukaan.
+
 Julkisen testiraportoinnin hyväksyttyä sisältöä ei laajenneta.
 Käyttöliittymä ja tuotannon diagnostiikka käyttävät edelleen turvallisia
 koodeja. Tämä oletus ei hyväksy kokonaisten

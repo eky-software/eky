@@ -104,6 +104,58 @@ internal static class MsiResourceContract
             Console.SetOut(output);
             var evidence = new SafeEvidenceWriter(request.Scenario, Stopwatch.StartNew());
             Console.SetOut(prior);
+            using (var budget = new WorkspaceMsiActivityObservation(request.Scenario, own, evidence))
+            {
+                long elapsed = 0;
+                var admitted = budget.ResourceAdmission(() => elapsed);
+                Check("textBudgetUnchanged", MsiWindowObservation.Contract.SampleTimeoutMilliseconds == 1000);
+                Check("messageBudgetUnchanged", MsiWindowObservation.Contract.MessageTimeoutMilliseconds == 100);
+                Check("resourceBudgetNamed", MsiWindowObservation.Contract.ResourceTimeoutMilliseconds == 10000);
+                elapsed = MsiWindowObservation.Contract.SampleTimeoutMilliseconds;
+                Check("textExpiryLeavesResourceTime", admitted());
+                elapsed = 9999;
+                Check("resourceAdmittedBeforeBoundary", admitted());
+                elapsed = 10000;
+                Check("resourceRejectedAtBoundary", !admitted());
+                elapsed = 10001;
+                Check("resourceRejectedAfterBoundary", !admitted());
+                elapsed = 0;
+                budget.Dispose();
+                Check("stopOverridesRemainingResourceTime", !admitted());
+            }
+            using (var budget = new WorkspaceMsiActivityObservation(request.Scenario, own, evidence))
+            {
+                long elapsed = 0;
+                WriteSelection([names[1], names[2]]);
+                var positive = MsiResourceObservation.Capture(request, own, budget.ResourceAdmission(() => elapsed), payload);
+                Check("postQueryFailureHasLivePositiveControl", positive.Status == "observed" && positive.Processes.Any(row =>
+                    row.ProcessId == bIdentity.Pid && row.StartTimeLow == bIdentity.Low && row.StartTimeHigh == bIdentity.High));
+                var expired = MsiResourceObservation.Capture(request, own, budget.ResourceAdmission(() => elapsed),
+                    payload, () => elapsed = MsiWindowObservation.Contract.ResourceTimeoutMilliseconds);
+                Check("postQueryExpiryDropsIdentities", expired.Status == "limited" && expired.Phase == "selection" &&
+                    expired.Processes.Count == 0 && expired.NativeCode == 0 && expired.EndSessionCode == 0);
+                var changedFile = Path.Combine(payload, names[2]);
+                var preservedFile = changedFile + ".preserved";
+                MsiResourceSample changed;
+                try
+                {
+                    changed = MsiResourceObservation.Capture(request, own, () => true, payload, () =>
+                    {
+                        File.Move(changedFile, preservedFile);
+                        Directory.CreateDirectory(changedFile);
+                    });
+                }
+                finally
+                {
+                    if (File.Exists(preservedFile))
+                    {
+                        Directory.Delete(changedFile);
+                        File.Move(preservedFile, changedFile);
+                    }
+                }
+                Check("postQuerySelectionChangeDropsIdentities", changed.Status == "limited" && changed.Phase == "selection" &&
+                    changed.Processes.Count == 0 && changed.EndSessionCode == 0);
+            }
             using (var observation = new WorkspaceMsiActivityObservation(request.Scenario, own, evidence, _ =>
             {
                 WorkspaceMsiActivityObservation.CaptureResources(request, own, prompt, () => true, (_, _, _) =>
@@ -125,6 +177,22 @@ internal static class MsiResourceContract
             }
             evidence.CompleteWithinRequestBudget(5000);
             Check("noRawPublicOutput", !output.ToString().Contains("EXCLUDED", StringComparison.Ordinal));
+            var bulk = Enumerable.Range(0, 2550).Select(index => $"bulk/file{index:D4}.bin").ToArray();
+            Directory.CreateDirectory(Path.Combine(payload, "bulk"));
+            foreach (var name in bulk) File.WriteAllBytes(Path.Combine(payload, name), "SYNTHETIC RM RESOURCE"u8.ToArray());
+            var holder = Start(own, bulk[0]);
+            var holderIdentity = Identity(holder.Process);
+            WriteSelection(bulk);
+            using (var budget = new WorkspaceMsiActivityObservation(request.Scenario, own, evidence))
+            {
+                var clock = Stopwatch.StartNew();
+                observed = WorkspaceMsiActivityObservation.CaptureResources(request, own, prompt,
+                    budget.ResourceAdmission(() => clock.ElapsedMilliseconds),
+                    (input, job, admitted) => MsiResourceObservation.Capture(input, job, admitted, payload));
+            }
+            Check("largeFreshSelectionObserved", observed is { Status: "observed", Phase: "complete", ResourceCount: 2550,
+                NativeCode: 0, EndSessionCode: 0 } && observed.Processes.Any(row => row.ProcessId == holderIdentity.Pid &&
+                row.StartTimeLow == holderIdentity.Low && row.StartTimeHigh == holderIdentity.High && row.Membership == "ownedJob"));
             Check("resourceEvidenceRecorded", new MsiWindowEvidence(request).Publish(prompt, 0, () => false, observed) == "recorded");
         }
         finally

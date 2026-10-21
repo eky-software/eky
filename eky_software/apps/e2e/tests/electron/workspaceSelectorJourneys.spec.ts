@@ -41,6 +41,12 @@ test('DESK-WORKSPACE-UI-001 @critical @recovery keeps workspace data isolated th
     e2eElectron,
     originalInvoice.invoiceId,
   );
+  const secretRoute = '/company-settings/email-secret';
+  expect((await e2eElectron.api.put(secretRoute, {
+    data: { secret: 'synthetic-workspace-a-secret' },
+  })).status()).toBe(200);
+  const originalSecretPath = readElectronE2eActiveWorkspace(e2eElectron.runtime.userDataPath).emailSecretFilePath;
+  const originalSecretBytes = readFileSync(originalSecretPath);
 
   await assertSingleHealthyDesktopRuntime(e2eElectron);
   await expectWorkspaceBrand(e2eElectron.page, originalWorkspaceLabel);
@@ -96,6 +102,17 @@ test('DESK-WORKSPACE-UI-001 @critical @recovery keeps workspace data isolated th
 
   await assertSingleHealthyDesktopRuntime(e2eElectron);
   await expectWorkspaceBrand(e2eElectron.page, createdWorkspaceLabel);
+  await expect((await e2eElectron.api.get(secretRoute)).json()).resolves.toEqual({
+    emailSecretStatus: { configured: false },
+  });
+  const createdSecretPath = readElectronE2eActiveWorkspace(e2eElectron.runtime.userDataPath).emailSecretFilePath;
+  expect(createdSecretPath === originalSecretPath).toBe(false);
+  expect(existsSync(createdSecretPath)).toBe(false);
+  expect((await e2eElectron.api.put(secretRoute, {
+    data: { secret: 'synthetic-workspace-b-secret' },
+  })).status()).toBe(200);
+  const createdSecretBytes = readFileSync(createdSecretPath);
+  expect(createdSecretBytes.equals(originalSecretBytes)).toBe(false);
   await expectCustomerVisibility(
     e2eElectron.api,
     originalCustomerName,
@@ -135,6 +152,12 @@ test('DESK-WORKSPACE-UI-001 @critical @recovery keeps workspace data isolated th
   await assertSingleHealthyDesktopRuntime(e2eElectron);
   await expectWorkspaceBrand(e2eElectron.page, originalWorkspaceLabel);
   await expectCustomerVisibility(e2eElectron.api, originalCustomerName, true);
+  await expect((await e2eElectron.api.get(secretRoute)).json()).resolves.toEqual({
+    emailSecretStatus: { configured: true },
+  });
+  expect(readElectronE2eActiveWorkspace(e2eElectron.runtime.userDataPath).emailSecretFilePath === originalSecretPath).toBe(true);
+  expect(readFileSync(originalSecretPath).equals(originalSecretBytes)).toBe(true);
+  expect(readFileSync(createdSecretPath).equals(createdSecretBytes)).toBe(true);
   expect(
     (await e2eElectron.api.get(`/invoices/${originalInvoice.invoiceId}`)).status(),
   ).toBe(200);

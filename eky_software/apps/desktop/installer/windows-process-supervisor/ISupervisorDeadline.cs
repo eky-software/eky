@@ -9,15 +9,23 @@ internal interface ISupervisorDeadline
     void OnCleanupStarting();
 }
 
-internal sealed class StopwatchSupervisorDeadline(Stopwatch stopwatch) : ISupervisorDeadline
+internal sealed class StopwatchSupervisorDeadline(
+    Stopwatch stopwatch, Action<Task, int>? waitForTask = null
+) : ISupervisorDeadline
 {
     public long ElapsedMilliseconds => stopwatch.ElapsedMilliseconds;
 
     public bool WaitForTask(Task task, long deadlineMilliseconds)
     {
-        var remaining = deadlineMilliseconds - stopwatch.ElapsedMilliseconds;
-        if (!task.IsCompleted && remaining > 0)
-            Task.WaitAny([task], (int)Math.Min(int.MaxValue, remaining));
+        while (!task.IsCompleted)
+        {
+            var remaining = deadlineMilliseconds - stopwatch.ElapsedMilliseconds;
+            if (remaining <= 0) break;
+            // A relative wait returning does not prove the absolute deadline has elapsed.
+            var timeout = (int)Math.Min(int.MaxValue, remaining);
+            if (waitForTask is null) Task.WaitAny([task], timeout);
+            else waitForTask(task, timeout);
+        }
         return task.IsCompleted;
     }
 
