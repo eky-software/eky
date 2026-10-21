@@ -164,8 +164,14 @@ export async function startServer(
       unusedConnections.add(socket);
       socket.once('close', () => unusedConnections.delete(socket));
     });
-    server.prependListener('request', request => {
+    server.prependListener('request', (request, response) => {
       unusedConnections.delete(request.socket);
+      response.once('finish', () => {
+        // A request active at close() may become idle only after that first sweep.
+        if (closing && 'closeIdleConnections' in server) {
+          server.closeIdleConnections();
+        }
+      });
     });
     server.once('error', rejectStart);
   });

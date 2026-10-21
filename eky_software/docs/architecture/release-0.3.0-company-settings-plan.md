@@ -2,7 +2,7 @@
 
 ## Tila ja rajaus
 
-**21.10.2026: D:n PR-integraatio on yhä hylätty; rajattu jatkoselvitys on hyväksytty.**
+**21.10.2026: PR #308 on yhdistetty, mutta uuden mainin Electron-portti hylättiin. D ei ole vielä hyväksytty.**
 Lähtö on PR #307:n hyväksytty main
 `da93cf53b7c608f825629d60404dce4c839dcb6a`.
 [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
@@ -21,8 +21,29 @@ rajattuun toteutukseen ja testeihin. Tuotantokytkennän hyväksyntä edellyttä�
 edelleen alla nimettyä elinkaaritodistusta.
 Toteutuksen, testien ja integraation hyväksyntä on avoin.
 
-Nykyinen rajattu jatko koskee `8c25d9b2`-revision
-[V2-hylkäystä](https://github.com/eky-software/eky/actions/runs/39588909072).
+PR #308:n `a5899a84`-head läpäisi omat normaalit porttinsa ja yhdistettiin
+mainiin `597cc8cf`. Mainin [V2-kierroksen](https://github.com/eky-software/eky/actions/runs/39638415671)
+Electron-työ jäi flakyksi: ensikäynnistyspolun ensimmäinen yritys hylättiin
+backendin hallitun sulun puuttumiseen. Uusi ennen siivousta otettu ote
+säilytti `backend.shutdownStarted`-tapahtuman mutta ei valmistumistapahtumaa.
+Alkuperäinen virhe ja ote todennettiin puretusta salatusta paketista.
+Mainin riippuvuustarkistus läpäisi erikseen; tämä ei hyväksy D:tä.
+
+Rajattu HTTP-regressio toisti puutteen: sulun aikana valmistuva keep-alive-
+pyyntö saattoi jättää jo valmistuneen yhteyden odottamaan joutoaikarajaa.
+Korjaus kuuluu nykyiseen [HTTP-sulkuun](local-desktop-implementation-plan.md#http-palvelimen-hallittu-sulku):
+vastauksen valmistuttua suljetaan vain käyttämättömät yhteydet, ei aktiivista
+työtä. Testit todentavat myös keskeneräisen POST-rungon, rinnakkaiset ja
+samalla yhteydellä jonotetut vastaukset sekä salaisuusoperaation auditin.
+Tämä toistettu sovelluspuute ei yksin todista GitHub-ajon hylkäyksen täsmällistä
+juurisyytä. Vaikutusalueen 41 regressiota, koko työtilan testit ja tyypitys
+sekä nimetyt Electronin ensikäynnistys- ja aktivointipolut ilman uusintoja
+läpäisivät. Katselmuksen kaksi kattavuustarkennusta lisättiin, ja lopputarkistus
+ei löytänyt korjattavaa. Paketoitu palautus ja uuden revision PR/main-portit
+ovat vielä avoinna. Aikarajat ja hyväksyntäehdot eivät muutu.
+
+**Edeltävä keräyskorjaus:** `8c25d9b2`-revision
+[V2-hylkäys](https://github.com/eky-software/eky/actions/runs/39588909072).
 Electronin ensikäynnistys- ja aktivointikokeiden alkuvalmistelun sulku
 epäonnistui ensimmäisellä yrityksellä; automaattiset uusinnat läpäisivät.
 Aktivoinnissa alisyy oli backendin hallitun sulun puuttuminen.

@@ -1,5 +1,5 @@
 import { once } from 'node:events';
-import type { Server } from 'node:http';
+import { get, type Server } from 'node:http';
 import { createConnection, type Socket } from 'node:net';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -62,7 +62,7 @@ async function expectClosed(close: Promise<void>): Promise<void> {
     await Promise.race([
       close,
       new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error('Server close still waits for an unused connection')), 1_000);
+        timer = setTimeout(() => reject(new Error('Server close still waits after connection work settled')), 1_000);
       }),
     ]);
   } finally {
@@ -119,7 +119,7 @@ describe('backend HTTP graceful shutdown', () => {
     },
   );
 
-  it('keeps an accepted request alive until its response finishes', async () => {
+  it.each(['close', 'keep-alive'] as const)('drains an accepted %s request and then closes its connection', async connection => {
     const entered = deferred<void>();
     const response = deferred<Response>();
     boundary.fetch.mockImplementation(async () => {
@@ -131,7 +131,7 @@ describe('backend HTTP graceful shutdown', () => {
     const chunks: Buffer[] = [];
     client.on('data', chunk => chunks.push(chunk));
     const clientClosed = once(client, 'close');
-    client.write('GET /synthetic HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n');
+    client.write(`GET /synthetic HTTP/1.1\r\nHost: localhost\r\nConnection: ${connection}\r\n\r\n`);
     await entered.promise;
     const unused = await connect(server.port);
     unused.resume();
@@ -157,7 +157,7 @@ describe('backend HTTP graceful shutdown', () => {
     }
   });
 
-  it('finishes an accepted POST body before closing without discarding the write', async () => {
+  it.each(['close', 'keep-alive'] as const)('finishes an accepted %s POST body without discarding the write', async connection => {
     const entered = deferred<void>();
     const writes: string[] = [];
     boundary.fetch.mockImplementation(async request => {
@@ -170,7 +170,7 @@ describe('backend HTTP graceful shutdown', () => {
     const chunks: Buffer[] = [];
     client.on('data', chunk => chunks.push(chunk));
     const clientClosed = once(client, 'close');
-    client.write('POST /synthetic HTTP/1.1\r\nHost: localhost\r\nContent-Length: 4\r\nConnection: close\r\n\r\na');
+    client.write(`POST /synthetic HTTP/1.1\r\nHost: localhost\r\nContent-Length: 4\r\nConnection: ${connection}\r\n\r\na`);
     await entered.promise;
     let closed = false;
     const closing = server.close().then(() => { closed = true; });
@@ -183,6 +183,152 @@ describe('backend HTTP graceful shutdown', () => {
     await clientClosed;
     expect(writes).toEqual(['abcd']);
     expect(Buffer.concat(chunks).toString()).toContain('write completed');
+  });
+
+  it.each(['separate', 'pipelined'] as const)('does not close another accepted %s request when a draining response finishes', async mode => {
+    const entered = [deferred<void>(), deferred<void>()];
+    const responses = [deferred<Response>(), deferred<Response>()];
+    let requests = 0;
+    boundary.fetch.mockImplementation(() => {
+      const index = requests++;
+      entered[index]!.resolve();
+      return responses[index]!.promise;
+    });
+    const server = await startServer({ port: 0 });
+    const first = await connect(server.port);
+    const second = mode === 'pipelined' ? first : await connect(server.port);
+    const firstChunks: Buffer[] = [];
+    const secondChunks: Buffer[] = [];
+    first.on('data', chunk => firstChunks.push(chunk));
+    second.on('data', chunk => secondChunks.push(chunk));
+    const firstClosed = once(first, 'close');
+    const secondClosed = once(second, 'close');
+    first.write('GET /first HTTP/1.1\r\nHost: localhost\r\n\r\n');
+    await entered[0]!.promise;
+    second.write('GET /second HTTP/1.1\r\nHost: localhost\r\n\r\n');
+    await entered[1]!.promise;
+    let closed = false;
+    const closing = server.close().then(() => { closed = true; });
+    try {
+      responses[0]!.resolve(new Response('first completed'));
+      if (mode === 'separate') {
+        await expectClosed(firstClosed.then(() => undefined));
+      } else {
+        await new Promise<void>(resolve => {
+          const received = () => {
+            if (Buffer.concat(firstChunks).toString().includes('first completed')) {
+              first.off('data', received);
+              resolve();
+            }
+          };
+          first.on('data', received);
+          received();
+        });
+      }
+      expect(closed).toBe(false);
+      expect(second.destroyed).toBe(false);
+      expect(boundary.assertSecretsSettled).not.toHaveBeenCalled();
+      responses[1]!.resolve(new Response('second completed'));
+      await expectClosed(closing);
+      await secondClosed;
+      expect(Buffer.concat(firstChunks).toString()).toContain('first completed');
+      expect(Buffer.concat(secondChunks).toString()).toContain('second completed');
+      expect(boundary.fetch).toHaveBeenCalledTimes(2);
+      expect(boundary.assertSecretsSettled).toHaveBeenCalledOnce();
+    } finally {
+      responses[0]!.resolve(new Response('first completed'));
+      responses[1]!.resolve(new Response('second completed'));
+    }
+  });
+
+  it.each(['separate', 'pipelined'] as const)('preserves an incomplete %s POST while another response finishes', async mode => {
+    const firstEntered = deferred<void>();
+    const postEntered = deferred<void>();
+    const firstResponse = deferred<Response>();
+    const writes: string[] = [];
+    boundary.fetch.mockImplementation(async request => {
+      if (request.method === 'POST') {
+        postEntered.resolve();
+        writes.push(await request.text());
+        return new Response('write preserved');
+      }
+      firstEntered.resolve();
+      return firstResponse.promise;
+    });
+    const server = await startServer({ port: 0 });
+    const first = await connect(server.port);
+    const second = mode === 'pipelined' ? first : await connect(server.port);
+    const firstChunks: Buffer[] = [];
+    const secondChunks: Buffer[] = [];
+    const firstReceived = deferred<void>();
+    first.on('data', chunk => {
+      firstChunks.push(chunk);
+      if (Buffer.concat(firstChunks).toString().includes('first completed')) firstReceived.resolve();
+    });
+    second.on('data', chunk => secondChunks.push(chunk));
+    const secondClosed = once(second, 'close');
+    first.write('GET /first HTTP/1.1\r\nHost: localhost\r\n\r\n');
+    await firstEntered.promise;
+    second.write('POST /second HTTP/1.1\r\nHost: localhost\r\nContent-Length: 4\r\n\r\na');
+    await postEntered.promise;
+    let closed = false;
+    const closing = server.close().then(() => { closed = true; });
+    try {
+      firstResponse.resolve(new Response('first completed'));
+      await firstReceived.promise;
+      expect(closed).toBe(false);
+      expect(second.destroyed).toBe(false);
+      expect(writes).toEqual([]);
+      expect(boundary.assertSecretsSettled).not.toHaveBeenCalled();
+      second.write('bcd');
+      await expectClosed(closing);
+      await secondClosed;
+      expect(writes).toEqual(['abcd']);
+      expect(Buffer.concat(secondChunks).toString()).toContain('write preserved');
+      expect(boundary.assertSecretsSettled).toHaveBeenCalledOnce();
+    } finally {
+      firstResponse.resolve(new Response('first completed'));
+    }
+  });
+
+  it('preserves every byte of a streaming response when shutdown overlaps a paused reader', async () => {
+    const body = Buffer.alloc(2 * 1024 * 1024, 0x61);
+    body[body.length - 1] = 0x7a;
+    const release = deferred<void>();
+    boundary.fetch.mockImplementation(() => new Response(new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(body.subarray(0, 65536)); },
+      async pull(controller) {
+        await release.promise;
+        controller.enqueue(body.subarray(65536));
+        controller.close();
+      },
+    }), { headers: { 'Content-Length': String(body.length) } }));
+    const server = await startServer({ port: 0 });
+    const request = get({ host: '127.0.0.1', port: server.port, path: '/stream', agent: false,
+      headers: { Connection: 'keep-alive' } });
+    request.on('socket', socket => clients.add(socket));
+    const [response] = await once(request, 'response');
+    response.pause();
+    const chunks: Buffer[] = [];
+    response.on('data', (chunk: Buffer) => chunks.push(chunk));
+    const received = once(response, 'end');
+    let closed = false;
+    const closing = server.close().then(() => { closed = true; });
+    try {
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(closed).toBe(false);
+      expect(chunks).toEqual([]);
+      release.resolve();
+      response.resume();
+      await received;
+      await expectClosed(closing);
+      expect(Buffer.concat(chunks).equals(body)).toBe(true);
+      expect(boundary.assertSecretsSettled).toHaveBeenCalledOnce();
+    } finally {
+      release.resolve();
+      response.destroy();
+      request.destroy();
+    }
   });
 
   it('closes a completed keep-alive connection through normal HTTP shutdown', async () => {
