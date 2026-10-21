@@ -1512,6 +1512,10 @@ export const uiText = {
       'Asiakkaan nimi saa olla enintään 200 merkkiä.',
     'Customer number is required.': 'Asiakasnumero on pakollinen.',
     'Customer number already exists.': 'Asiakasnumero on jo käytössä.',
+    'Customer number range is exhausted.':
+      'Automaattisen asiakasnumeroinnin enimmäispituus on saavutettu. Anna vapaa asiakasnumero käsin.',
+    'Referenced property manager type cannot be changed.':
+      'Isännöitsijätoimiston tyyppiä ei voi muuttaa, koska siihen on liitetty taloyhtiöitä. Vaihda tai poista ensin taloyhtiöiden isännöitsijäsuhteet.',
     'Customer number mode is invalid.': 'Asiakasnumeron valintatapa on virheellinen.',
     'Customer number must be 50 characters or less.':
       'Asiakasnumero saa olla enintään 50 merkkiä.',
@@ -1621,6 +1625,8 @@ export const uiText = {
   },
 } as const;
 
-export function getFinnishApiErrorMessage(message: string): string {
-  return uiText.apiErrors[message as keyof typeof uiText.apiErrors] ?? message;
+export function getFinnishApiErrorMessage(message: string, fallbackMessage = message): string {
+  return Object.hasOwn(uiText.apiErrors, message)
+    ? uiText.apiErrors[message as keyof typeof uiText.apiErrors]
+    : fallbackMessage;
 }

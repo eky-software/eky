@@ -136,6 +136,13 @@ Ensimmäinen toteutusmalli:
 
 Backend tarkistaa, että `managedByCustomerId` viittaa saman yrityksen asiakkaaseen, jonka tyyppi on `propertyManager`.
 
+Isännöitsijätoimiston tyyppiä ei saa muuttaa toiseksi, jos saman yrityksen
+aktiivinen tai passiivinen taloyhtiö viittaa siihen. Muut perustiedot ja tila
+säilyvät muokattavina. Käyttäjä voi ensin poistaa tai siirtää suhteet
+taloyhtiöiden omilta asiakaskorteilta. Suhteita ei muuteta automaattisesti.
+Suhteen kelpoisuus ja tyypinmuutoksen esto varmennetaan kirjoitushetkellä
+samassa transaktiossa asiakkaan ja auditin kanssa.
+
 Jos asiakas ei ole taloyhtiö, `managedByCustomerId` pidetään tyhjänä.
 
 Tämä suhde kuuluu asiakasrekisterin master-dataan. Se ei vielä päätä:
@@ -203,6 +210,13 @@ Ensimmäinen automaattisen numeroinnin sääntö:
 - seuraava automaattinen numero on suurin numeerinen asiakasnumero + 1
 - jos numeerisia asiakasnumeroita ei vielä ole, ensimmäinen automaattinen numero on `1001`
 - manuaaliset ei-numeeriset asiakasnumerot eivät vaikuta automaattiseen juoksevaan numerointiin
+
+Laskenta käyttää täsmällisiä kokonaislukuja; asiakasnumero säilyy tallennuksessa
+ja rajapinnoissa merkkijonona. Nykyinen 50 merkin raja koskee myös
+automaattista tulosta. Rajan täyttyessä automaattinen luonti hylätään ilman
+kirjoitusta, ja käyttäjä voi antaa vapaan manuaalisen numeron. Nykyisiä
+numeroita tai etunollia ei muuteta. Asiakasinvarianttien korjausten ja
+testien rajaus on [E-suunnitelmassa](../architecture/release-0.3.0-customer-invariants-plan.md).
 
 ## Status
 

@@ -190,6 +190,9 @@ Jos työ koskee SQL-kyselyitä tai repository-adaptereita, noudata lisäksi [arc
 
 ### Asiakkaat ja web
 
+0.3.0:n asiakassuhteen tyypinmuutosta, numeroinnin tarkkuutta ja turvallista
+virhepalautetta koskeva työ lukee myös [E-paketin suunnitelman](architecture/release-0.3.0-customer-invariants-plan.md).
+
 Jos työ koskee ensimmäistä customer-slicea, asiakasmoduulin toteutusta, customer-reittejä, customer repository -portteja tai customer-tietomallia, lue myös [architecture/customer-vertical-slice-plan.md](architecture/customer-vertical-slice-plan.md).
 
 Jos työ koskee ensimmäistä web customer UI -palaa, React customer -näkymää, `apps/web`-toteutusta tai customer-kutsuja webistä, lue myös [architecture/web-customer-ui-plan.md](architecture/web-customer-ui-plan.md).

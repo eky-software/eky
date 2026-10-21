@@ -4,6 +4,7 @@ import type { Customer } from '../domain/customer.js';
 import { createCustomerUpdatedAuditEvent } from '../domain/customerAuditEvent.js';
 import {
   CustomerValidationError,
+  assertPropertyManagerReference,
   normalizeCustomerComment,
   normalizeCustomerName,
   normalizeCustomerNumber,
@@ -50,18 +51,12 @@ export async function updateCustomer(
   const managedByCustomerId = normalizeManagedByCustomerId(input.managedByCustomerId, customerType);
 
   if (managedByCustomerId.length > 0) {
-    if (managedByCustomerId === existingCustomer.id) {
-      throw new CustomerValidationError('Customer cannot manage itself.');
-    }
-
     const propertyManager = await customerRepository.findById(
       input.actorContext.companyId,
       managedByCustomerId,
     );
 
-    if (propertyManager?.customerType !== 'propertyManager') {
-      throw new CustomerValidationError('Managed by customer must be a property manager.');
-    }
+    assertPropertyManagerReference(existingCustomer.id, managedByCustomerId, propertyManager?.customerType);
   }
 
   const customer: Customer = {

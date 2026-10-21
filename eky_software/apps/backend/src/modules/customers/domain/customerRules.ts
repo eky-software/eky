@@ -1,5 +1,7 @@
 import type { CustomerNumberMode, CustomerStatus, CustomerType } from './customer.js';
 
+export const customerNumberMaximumLength = 50;
+
 export class CustomerValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -64,11 +66,50 @@ export function normalizeCustomerNumber(customerNumber: string): string {
     throw new CustomerValidationError('Customer number is required.');
   }
 
-  if (normalizedCustomerNumber.length > 50) {
-    throw new CustomerValidationError('Customer number must be 50 characters or less.');
+  if (normalizedCustomerNumber.length > customerNumberMaximumLength) {
+    throw new CustomerValidationError(`Customer number must be ${customerNumberMaximumLength} characters or less.`);
   }
 
   return normalizedCustomerNumber;
+}
+
+export function calculateNextCustomerNumber(currentNumbers: Iterable<string>): string {
+  let highestNumber = 1000n;
+  for (const currentNumber of currentNumbers) {
+    if (/^\d+$/.test(currentNumber)) {
+      const numericValue = BigInt(currentNumber);
+      if (numericValue > highestNumber) highestNumber = numericValue;
+    }
+  }
+  const nextNumber = String(highestNumber + 1n);
+  if (nextNumber.length > customerNumberMaximumLength) {
+    throw new CustomerValidationError('Customer number range is exhausted.');
+  }
+  return nextNumber;
+}
+
+export function assertCustomerTypeChangeAllowed(
+  currentType: CustomerType,
+  nextType: CustomerType,
+  hasManagedHousingCompanies: boolean,
+): void {
+  if (currentType === 'propertyManager' && nextType !== 'propertyManager' && hasManagedHousingCompanies) {
+    throw new CustomerValidationError('Referenced property manager type cannot be changed.');
+  }
+}
+
+export function assertPropertyManagerReference(
+  customerId: string,
+  managedByCustomerId: string,
+  propertyManagerType: CustomerType | undefined,
+): void {
+  if (managedByCustomerId.length === 0) return;
+  if (managedByCustomerId === customerId) {
+    throw new CustomerValidationError('Customer cannot manage itself.');
+  }
+  if (propertyManagerType !== 'propertyManager') {
+    throw new CustomerValidationError('Managed by customer must be a property manager.');
+  }
 }
 
 export function normalizeManagedByCustomerId(
