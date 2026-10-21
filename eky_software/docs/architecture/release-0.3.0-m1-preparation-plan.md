@@ -58,6 +58,15 @@ säilytysrajat, puuttuvan aineiston tiedot ja erilliset etenemispäätökset
 säilyvät; tämä dokumentointikorjaus ei hyväksy uusia poikkeuksia.
 
 **Nykyinen työ:** [D:n toteutus](release-0.3.0-company-settings-plan.md).
+Viimeisin `02a93d71`-revision [V2-kierros](https://github.com/eky-software/eky/actions/runs/39552315208)
+hylättiin asentimen sulkemispyynnön odotukseen; riippuvuustarkistus läpäisi.
+Täsmällinen estäjäidentiteetti on avoin. Omistaja hyväksyi 21.10.2026 vain
+nykyisen tiedostokäyttäjähavainnon 1 -> 10 sekunnin työbudjetin,
+kohderegressiot, todellisen salaus/purku-ketjun ja yhden nimetyn
+Windows-kokeen samoilla asennuspaketeilla. Keruukorjauksen kohdetestit,
+oikea OpenPGP-ketju ja rajattu katselmus läpäisivät. Seuraava portti on
+nimetty Windows-koe; D:n integraatio ja vanhan odotuksen syy ovat avoinna.
+
 PR #308:n `a4e14bc3`-revision ensimmäinen
 [V2-kierros](https://github.com/eky-software/eky/actions/runs/39515111216)
 ja [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39515111131)

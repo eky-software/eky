@@ -150,14 +150,17 @@ internal sealed class WorkspaceMsiActivityObservation : IDisposable
                     default: unknown = true; break;
                 }
             }
-            var resources = CaptureResources(request, owner, windowSamples, () => !stopped &&
-                windowBudget.ElapsedMilliseconds < MsiWindowObservation.Contract.SampleTimeoutMilliseconds);
+            var resources = CaptureResources(request, owner, windowSamples,
+                ResourceAdmission(() => windowBudget.ElapsedMilliseconds));
             if (windows is not null) windowDelivery = windows.Publish(windowSamples, observedElapsed, () => stopped, resources);
             return Combine(owned, outside, unknown);
         }
         catch { return WorkspaceMsiMembership.Unknown; }
         finally { foreach (var client in clients) client.Dispose(); }
     }
+
+    internal Func<bool> ResourceAdmission(Func<long> elapsedMilliseconds) =>
+        () => !stopped && elapsedMilliseconds() < MsiWindowObservation.Contract.ResourceTimeoutMilliseconds;
 
     internal static MsiResourceSample? CaptureResources(SupervisorRequest? request, WindowsJob owner,
         IReadOnlyList<MsiWindowSample> samples, Func<bool> admitted,

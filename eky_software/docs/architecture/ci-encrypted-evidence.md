@@ -250,6 +250,16 @@ Kiinteän callerin composition välittää supervisorin vaihehakemiston
 worker-runtimen julkaisuun erikseen: materialisoidun työskentelykansion ja
 native-supervisorin request/result-hakemiston ei oleteta olevan samat.
 
+Omistajan 21.10.2026 hyväksymä tiedostokäyttäjähavainnon työbudjetti on
+10 000 ms saman näytteen alkuperäisestä monotonisesta kellosta. Tekstinäytteen
+1 000 ms:n ja viestikyselyn 100 ms:n rajat säilyvät. Tiedostokysely ei aloita
+omaa uutta kelloa tekstiluennan jälkeen. Pysäytys sulkee sen pääsyn heti;
+myös kyselyn jälkeinen valintatarkistus vaatii jäljellä olevan budjetin.
+Valinnainen taustakysely ja julkaisun järjestys säilyvät; terminal/cleanup-polku
+ei odota kyselyä. Native-kutsu voi ylittää havainnointibudjetin; budjetti ei
+katkaise käyttöjärjestelmäkutsua eikä takaa täydellistä havaintoa. Testin,
+asennuksen ja työn määräajat eivät muutu.
+
 Vain tiedostot rekisteröidään; prosesseja ja palveluja ei rekisteröidä eikä
 Restart Managerin sulkemis- tai käynnistystoimintoja käytetä. Näytteeseen
 tulevat suljettu vaihe ja kattavuustila, alkuperäinen native-koodi,

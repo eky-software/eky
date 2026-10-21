@@ -21,6 +21,21 @@ rajattuun toteutukseen ja testeihin. Tuotantokytkennän hyväksyntä edellyttä�
 edelleen alla nimettyä elinkaaritodistusta.
 Toteutuksen, testien ja integraation hyväksyntä on avoin.
 
+Nykyinen rajattu jatko: `02a93d71`-revision MSI-odotuksen estäjä on vielä
+tunnistamatta. Omistaja hyväksyi 21.10.2026 nykyisen tiedostokäyttäjähavainnon
+työbudjetin noston 1 -> 10 sekuntiin, kohderegressiot, salaus/purku-todennuksen
+ja yhden nimetyn Windows-kokeen samoilla pakettitavuilla. Yhteinen
+[keräyssopimus](ci-encrypted-evidence.md#asentimen-rajattu-ikkunahavainto)
+omistaa rajan; D:n liiketoiminta-, sulku- ja hyväksyntäehdot säilyvät.
+Keruun 169 supervisor-sopimustestiä ja 200 nykyisen lukijan/runtime-ketjun
+testiä läpäisivät erillisinä sarjoina. Oikea 2 550 tiedoston kysely säilytti
+synteettisen käyttäjäprosessin identiteetin keräyksestä OpenPGP-purkuun.
+Budjetin loppuminen ja muuttunut tiedostovalinta hylkäsivät muuten
+havaittavan identiteetin sekä sulkivat Restart Manager -session.
+Rajattu riippumaton katselmus ja sen vaatima positiivisen kontrollin
+täsmennys on käsitelty. Nimetty Windows-koe ja uuden revision portit ovat
+vielä avoinna; paikallinen näyttö ei tunnista historiallisen MSI-odotuksen estäjää.
+
 PR #308:n `a4e14bc3`-revision V2-kierros hylkäsi yrityksen
 migraatioaktivoinnin ja päivityksen virhepalautuksen. Aktivoinnin sama
 virhe toistui kohdekokeessa: hallittu backendin sulku ohitti mainin

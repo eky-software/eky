@@ -94,6 +94,11 @@ test('MSI resources: scoped identity, cancellation and real OpenPGP delivery', W
     assert.equal(proof.junctionRejected, true);
     assert.equal(proof.nodePublishedSelectionAdmitted, true);
     assert.equal(proof.cleanupDoesNotAwaitResourceRead, true);
+    for (const check of ['textBudgetUnchanged', 'messageBudgetUnchanged', 'resourceBudgetNamed',
+      'textExpiryLeavesResourceTime', 'resourceAdmittedBeforeBoundary', 'resourceRejectedAtBoundary',
+      'resourceRejectedAfterBoundary', 'stopOverridesRemainingResourceTime', 'postQueryExpiryDropsIdentities',
+      'postQuerySelectionChangeDropsIdentities', 'postQueryFailureHasLivePositiveControl',
+      'largeFreshSelectionObserved']) assert.equal(proof[check], true);
     assert.equal(proof.bothTreesAbsent, true);
     assert.ok(Object.keys(proof).length >= 30);
     assert.ok(Object.values(proof).every(value => value === true));
@@ -110,6 +115,7 @@ test('MSI resources: scoped identity, cancellation and real OpenPGP delivery', W
     assert.equal(record.resources.nativeCode, 0);
     assert.equal(record.resources.endSessionCode, 0);
     assert.equal(record.resources.selectionIdentity, 'a'.repeat(64));
+    assert.equal(record.resources.resourceCount, 2550);
     assert.ok(record.resources.processes.some(value => value.membership === 'ownedJob' && value.processId > 0 &&
       (value.startTimeLow !== 0 || value.startTimeHigh !== 0)));
     assert.equal(JSON.stringify(archive).includes('EXCLUDED FOREIGN CONTENT'), false);

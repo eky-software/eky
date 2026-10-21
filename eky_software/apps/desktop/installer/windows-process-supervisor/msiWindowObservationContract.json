@@ -10,6 +10,7 @@
   "maximumTotalCharacters": 4096,
   "messageTimeoutMilliseconds": 100,
   "sampleTimeoutMilliseconds": 1000,
+  "resourceTimeoutMilliseconds": 10000,
   "resourceSelectionFilename": "msi-resource-selection.private.json",
   "maximumSelectionBytes": 1048576,
   "maximumResourceFiles": 2800,
