@@ -2,13 +2,26 @@
 
 ## Tila ja rajaus
 
-**21.10.2026: PR #308 on yhdistetty, mutta uuden mainin Electron-portti hylättiin. D ei ole vielä hyväksytty.**
-Lähtö on PR #307:n hyväksytty main
+**21.10.2026: D1-D3 on hyväksytty mainissa
+`286cc3227ffe37dd44417750636ec30d460a61e1`.**
+[PR #309:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/309#issuecomment-6324156808)
+kirjaa D-toteutuksen, rajatun HTTP-sulkukorjauksen sekä erilliset PR- ja
+main-portit. Puhtaan paketin palautustodennus ja mainin kaikki nykyiset portit
+läpäisivät. Alkuperäisen main-hylkäyksen ja historiallisten MSI-odotusten
+täsmällisiä syitä ei merkitä jälkikäteen ratkaistuiksi.
+
+Alkuperäinen lähtö oli PR #307:n hyväksytty main
 `da93cf53b7c608f825629d60404dce4c839dcb6a`.
 [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
 omistaa ajantasaisen integraatiotilan; tämä tiedosto tarkentaa vain
 [roadmapin D-paketin](release-0.3.0-plan.md#m3-muut-invariantit-diagnostiikka-ja-ylläpidettävyys)
 R07/R14/R16-korjausten työjärjestyksen ja hyväksynnän. Se ei ole uusi roadmap.
+
+### Hyväksyntää edeltävät checkpointit
+
+Seuraavat päivätysten, kokeiden ja aiempien revisioiden avoimet portit ovat
+historiaa. Ne eivät avaa hyväksyttyä D:tä uudelleen. Alempana määritellyt
+toiminta-, sulku- ja turvallisuussopimukset säilyvät voimassa.
 
 T/A/B/C/K ja CS-1/CS-2 säilyvät hyväksyttyinä. Historiallisia timeout-syitä
 ei selvitetä uudelleen ilman tähän muutokseen kohdistuvaa näyttöä.
@@ -725,8 +738,9 @@ tyyppitarkistuksia. Kokonaisportteina säilyvät `pnpm --filter @eky/backend tes
 `pnpm --filter @eky/web test` sekä vaikutusalueen buildit ja nykyiset
 `pnpm test:e2e:critical` / `pnpm test:e2e:electron:critical`-ajot.
 Valmistelut, native-ajuri ja paikalliset komentopolut varmistetaan nykyisestä
-runbookista. Koko D:n portit ovat edelleen avoimia; yllä mainittu D1:n
-kohdenäyttö ei korvaa niitä.
+runbookista. D:n toteutuksen loppuhyväksyntä on kirjattu tämän tiedoston
+alkuun; D1:n kohdenäyttö yksin ei korvaa koko hyväksyntää. Uuden muutoksen
+omat vaikutusalueen portit vaaditaan edelleen.
 
 ## Palaute, diagnostiikka ja valmistuminen
 

@@ -7,6 +7,36 @@ Päivätyt tutkimusraportit eivät ole rinnakkainen toteutusjono.
 
 ## Jatka tästä
 
+**Hyväksytty lähtö (21.10.2026):** D1-D3 ja niiden rajattu HTTP-sulun
+jatkokorjaus on hyväksytty PR #308:n ja PR #309:n kautta mainiin
+`286cc3227ffe37dd44417750636ec30d460a61e1`.
+[D:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/309#issuecomment-6324156808)
+erottaa alkuperäisen main-hylkäyksen, toistetun sovelluspuutteen korjauksen
+sekä uuden revision omat hyväksytyt portit. Mainin puu vastaa hyväksyttyä
+PR-headia `33fd0bdb19709329721a87838b3f7d933552d4b9`.
+
+| Tarkistus | Hyväksytty näyttö |
+| --- | --- |
+| PR #309:n portit | [V2](https://github.com/eky-software/eky/actions/runs/39646188806): 27 onnistunutta työtä, kuusi tarkoituksella valitsematonta diagnostiikkatyötä. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39646188607) läpäisi. Molemmat ensimmäisellä suoritusyrityksellä. |
+| Mainin omat portit | [V2](https://github.com/eky-software/eky/actions/runs/39652297393): 38 onnistunutta työtä, kuusi tarkoituksella valitsematonta diagnostiikkatyötä, kaikki 11 porttia ja kaksi vaadittua toistoa. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39653254508) läpäisi; HTTP-muutoksen polkurajauksen vuoksi käynnistettiin yksi erillinen ajo täsmälliselle mainille. Molemmat ensimmäisellä suoritusyrityksellä. |
+
+**Seuraava työ on E-paketin rajattu valmistelu** roadmapin R09-R11:n mukaan.
+E:n toteutusta ei ole aloitettu. T/A/B/C/K/D säilyvät hyväksyttyinä; niitä
+ei avata uudelleen historiallisten keskeneräisyysmerkintöjen perusteella.
+Tämä ei hyväksy muita paketteja tai koko `0.3.0`-julkaisua.
+
+**Avoimet havainnot:** aiempien MSI-odotusten estäjät ja vanhojen
+sulkuviiveiden täsmälliset syyt jäävät avoimiksi. Ensivirheet, puuttuva
+aineisto ja tuntemattomat siivoustilat säilyvät alla kuvattuina. Dependabotin
+hälytykset 33-37 olivat loppulukemisessa vielä avoimia, vaikka main käyttää
+niiden ilmoittamia korjattuja Hono 4.13.11- ja Vite 8.2.4 -versioita ja
+auditointi läpäisi. Hälytysten sulkeutumista ei ole vahvistettu.
+
+### Edeltävien integraatioiden historia
+
+Alla olevat keskeneräisyys- ja seuraavan työn merkinnät kuvaavat aiempia
+revisioita, eivät nykyistä työjonoa. Sopimukset ja avoimet havainnot säilyvät.
+
 **Hyväksytty lähtö (17.10.2026):** jatkamissivun dokumentointikorjauksen
 PR #307 on yhdistetty `main`-revisioon
 `da93cf53b7c608f825629d60404dce4c839dcb6a`.
@@ -57,7 +87,7 @@ ovat integraatiohistoriaa, eivät rinnakkainen työjono. Ensivirheiden
 säilytysrajat, puuttuvan aineiston tiedot ja erilliset etenemispäätökset
 säilyvät; tämä dokumentointikorjaus ei hyväksy uusia poikkeuksia.
 
-**Nykyinen työ:** [D:n toteutus](release-0.3.0-company-settings-plan.md).
+**D:n hyväksyntää edeltävä integraatiotilanne:** [D:n toteutus](release-0.3.0-company-settings-plan.md).
 PR #308:n `a5899a84`-head läpäisi [V2:n](https://github.com/eky-software/eky/actions/runs/39631941135)
 (38 onnistunutta työtä, kuusi tarkoituksella valitsematonta diagnostiikkatyötä)
 ja [riippuvuustarkistuksen](https://github.com/eky-software/eky/actions/runs/39631941030).
