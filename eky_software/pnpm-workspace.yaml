@@ -8,6 +8,7 @@ allowBuilds:
 overrides:
   "@xmldom/xmldom": "0.9.12"
   "source-map-js": "1.2.2"
+  "vite@8.2.4>rolldown": "1.2.4"
 patchedDependencies:
   playwright-core@1.62.1: patches/playwright-core@1.62.1.patch
 minimumReleaseAgeExclude:
