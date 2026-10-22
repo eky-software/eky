@@ -9,10 +9,13 @@ Lähtö on hyväksytty main `5e338ae74bb48130620c9db514bbe52a2e787782`
 ([PR #310:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/310#issuecomment-6325552971)).
 R09-R11 on toteutettu ja yhdistetty [PR #311:ssä](https://github.com/eky-software/eky/pull/311)
 mainiin `d03e9a15a5c04e3d9fe56e81a69fda5e795b8e05`.
-PR:n omat portit läpäisivät; mainin erillinen auditointihylkäys ja jäljempänä
-rajattu tietoturvahuolto estävät vielä E-Goalin loppuhyväksynnän.
-Alla oleva päivätty toteutuscheckpoint säilyy integraatiota edeltävänä näyttönä,
-ei koko mainin hyväksyntänä. Korjatun revision omat PR/main-portit vaaditaan.
+Ensimmäisen mainin auditointihylkäys käsiteltiin rajatulla Vitest-
+tietoturvahuollolla PR #312:ssa. E:n loppuhyväksyntä on mainissa
+`d0d08bd182500c463fa06300978f06c295f3cac2`;
+[lopullinen PR/main-näyttö](https://github.com/eky-software/eky/pull/312#issuecomment-6329634460)
+kirjaa myös alkuperäisen MSI-ikkunahylkäyksen, yhden hyväksytyn uusinnan ja
+avoimeksi jäävän syyn. Alemmat päivätyt checkpointit säilyvät historiana,
+eivät uutena E-työjonona. Nykyisen jatkamiskohdan omistaa M1.
 
 Customers säilyttää asiakas-master-datan omistajuuden. Laskujen snapshotit,
 revisiot, PDF:t ja toimitushistoria kuuluvat Invoicingille. E ei muuta

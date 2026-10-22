@@ -32,6 +32,7 @@ export interface BackendEnvironment {
   Variables: {
     actorContext: ActorContext;
     correlationId: string;
+    httpHandlerFailed?: boolean;
     httpRequestOperationalContext?: HttpRequestOperationalContext;
   };
 }

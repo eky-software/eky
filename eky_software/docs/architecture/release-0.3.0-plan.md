@@ -227,9 +227,10 @@ niiden rajattu sulkukorjaus ja salatun keräyksen jatko ovat hyväksyttyjä
 Myös B3-B5 on hyväksytty [PR #298:n mainissa](https://github.com/eky-software/eky/pull/298#issuecomment-6050339146).
 Myös C on hyväksytty [PR #299:n mainissa](https://github.com/eky-software/eky/pull/299#issuecomment-6081351779)
 ja K [PR #305:n mainissa](https://github.com/eky-software/eky/pull/305#issuecomment-6181885500).
-Ennen D:tä tehdään I:n hyväksytty dokumentaatio-osuus; sen nykytila on
+I:n aikaistettu dokumentaatio-osuus sekä D ja E ovat myös hyväksyttyjä;
+nykyinen rajattu toteutus on F/R15. Täsmällinen näyttö ja nykytila ovat
 [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
-T/A/B/C/K:ta ei avata uudelleen ilman niiden omaa todennettua regressiota.
+T/A/B/C/K/D/E:tä ei avata uudelleen ilman niiden omaa todennettua regressiota.
 Vanhat sulkuaikakatkaisut eivät
 muutu korjatuiksi tämän integraation perusteella. B0:ssa tarkistettiin alkuperäiset
 turvallisuushavainnot, B1-B5-toteutusjärjestys ja
@@ -301,16 +302,18 @@ T-paketin T1a/T1b, T2 ja T3/R28 on hyväksytty niiden omien
 integraatioiden näytöllä; [T3:n integraatiohyväksyntä](e2e-test-environment-history.md#t3n-integraatiohyväksyntä) ei perustu
 pelkkään historialliseen T3c-W:n 4/4-koetulokseen. A-paketin A1/R01, A2/R05
 ja A3/R06 ovat hyväksyttyjä; viimeisin hyväksyntä on PR #294:n mainissa.
-E/F/G/H/I:n kokonaishyväksyntä on edelleen avoin.
+F/G/H/I:n kokonaishyväksyntä on edelleen avoin.
 D1-D3 ja niiden rajattu HTTP-sulun jatkokorjaus on hyväksytty PR #308:n
 ja PR #309:n kautta mainissa `286cc3227ffe37dd44417750636ec30d460a61e1`.
 [D:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/309#issuecomment-6324156808)
 kirjaa erilliset PR/main-portit ja avoimiksi jätetyt historialliset havainnot.
-PR #293:n aiemmat CS-1/CS-2-korjaukset säilyvät. E:n R09-R11 on yhdistetty
-PR #311:ssä, mutta mainin auditointiesteen rajattu Vitest-korjaus ja
-korjatun revision hyväksyntä ovat vielä avoinna.
+PR #293:n aiemmat CS-1/CS-2-korjaukset säilyvät. E:n R09-R11 ja rajattu
+Vitest-tietoturvahuolto on hyväksytty PR #311:n ja PR #312:n kautta;
+[E:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/312#issuecomment-6329634460)
+erottaa korjatun revision PR/main-portit avoimista historiallisista syistä.
 [Asiakasinvarianttien suunnitelma](release-0.3.0-customer-invariants-plan.md)
-omistaa tämän integraatiojatkon; F:ää ei aloiteta sen rinnalla.
+säilyttää E:n sopimukset. Seuraava työ on
+[F:n hyväksytty rajattu toteutus](release-0.3.0-m1-preparation-plan.md#f--frameworkin-virheketjun-rajattu-suunnitelma).
 [D:n rajattu toteutussuunnitelma](release-0.3.0-company-settings-plan.md)
 erottaa säilytettävät CS-1/CS-2-sopimukset, alkuluvun tallennuseston ja
 17.10.2026 hyväksytyt D-P1:n salaisuusoperaation sekä D-P2/A:n saatavuuden ehdot.
@@ -388,8 +391,9 @@ riippuvuustiedot kuuluvat loppukatselmuksen kattavuuslistaan.
 ### Päätökset ennen niiden vaikutusalueen toteutusta
 
 K:n ja B:n alla luetellut päätökset ovat hyväksyttyjä, säilyviä sopimuksia,
-eivät uusi valmistelujono. D/E/G/H/W7:n avoimet päätökset ratkaistaan ennen
-niiden toteutusta. Uusi sopimusmuutos tarvitsee oman vaikutusarvionsa.
+eivät uusi valmistelujono. D/E:n päätökset säilyvät niiden hyväksytyissä
+sopimuksissa; G/H/W7:n avoimet päätökset ratkaistaan ennen niiden toteutusta.
+Uusi sopimusmuutos tarvitsee oman vaikutusarvionsa.
 
 - K: versionmukaisen schema-attestoinnin omistaja ja kanonisointi,
   historiallinen yhteensopivuus sekä kertakäyttöisen backend-utilityn
