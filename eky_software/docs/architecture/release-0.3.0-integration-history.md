@@ -5,6 +5,45 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## F:n valmistelua edeltävä jatkamiskohta 22.10.2026
+
+Seuraava E:n hyväksyntään perustuva F-valmistelun checkpoint siirrettiin
+M1:stä G-valmistelun alkaessa. Se kuvaa F:n loppuhyväksyntää edeltävää
+tilannetta, ei avaa F:ää uudelleen. Nykyinen hyväksytty lähtö ja G:n päätökset
+ovat M1:n alussa; alla säilyvät myös alkuperäiset avoimet havainnot.
+
+**Hyväksytty lähtö (22.10.2026):** E:n R09-R11 ja rajattu Vitest-
+tietoturvahuolto on hyväksytty PR #311:n ja PR #312:n kautta mainiin
+`d0d08bd182500c463fa06300978f06c295f3cac2`.
+[E:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/312#issuecomment-6329634460)
+erottaa PR:n ensimmäisen hylkäyksen, yhden hyväksytyn kohdeuusinnan sekä
+uuden mainin omat hyväksytyt portit. Mainin puu vastaa katselmoitua
+PR-headia `613a00c73f133e321beb7546126aebff74c5661a`.
+
+| Tarkistus | Hyväksytty näyttö |
+| --- | --- |
+| PR #312 | [V2](https://github.com/eky-software/eky/actions/runs/39685614769): 38 onnistunutta työtä ja kuusi tarkoituksella valitsematonta diagnostiikkatyötä yhden rajatun legacy-core-uusinnan jälkeen. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39685614678) läpäisi. |
+| Mainin omat portit | [V2](https://github.com/eky-software/eky/actions/runs/39693887305): 38 onnistunutta työtä ja kuusi tarkoituksella valitsematonta diagnostiikkatyötä. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39693887157) läpäisi. Molemmat ensimmäisellä suoritusyrityksellä. |
+| Erillinen hälytystilan loppulukeminen | Dependabotissa ei ollut avoimia hälytyksiä 22.10.2026. Tämä on päivätty havainto, ei tulevien revisioiden auditointitodiste. |
+
+**Nykyinen työ:** F/R15:n rajattu toteutus ja testit hyväksytyn sopimuksen
+[mukaan](release-0.3.0-m1-preparation-plan.md#f--frameworkin-virheketjun-rajattu-suunnitelma). Omistaja hyväksyi
+rajauksen 22.10.2026. [F:n integraatio on PR #313:ssa](https://github.com/eky-software/eky/pull/313).
+Seuraa sen viimeisimmän revision portteja ja loppuhyväksyntää ennen seuraavaa
+työpakettia; vanha toteutuscheckpoint ei ole uusi F-työjono.
+F:n toteutus ja paikallinen todennus ovat valmiit. Integraation lopullinen
+tila tarkistetaan PR #313:n loppuhyväksynnästä: ilman hyväksyttyjä PR/main-
+portteja F on kesken; niiden jälkeen seuraava työ valitaan roadmapista.
+T/A/B/C/K/D/E säilyvät hyväksyttyinä; G/H/I:n loppuosa ja M4/M5 odottavat.
+
+**Avoimet havainnot:** PR #312:n ensimmäisen MSI-ikkunan luetteloluennan
+viiveen syy ja sitä edeltävän mainin supervisor-havainnon puute jäävät
+avoimiksi. Alkuperäinen virheaineisto säilytetään; hyväksytty uusinta tai
+Vitest-päivitys ei todista niiden korjausta. Myös aikaisemmat MSI-odotukset,
+sulkuviiveet, puuttuvat aineistot ja tuntemattomat siivoustilat säilyvät
+historiallisissa rajauksissaan. Vanha Dependabot-tilanne erotetaan yllä
+olevasta uudemmasta loppulukemisesta.
+
 ## Ohjehuollon hyväksyntä 16.10.2026
 
 Seuraava hyväksyntänäyttö oli M1:n jatkamiskohdassa ennen PR #307:n

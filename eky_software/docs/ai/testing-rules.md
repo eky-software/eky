@@ -116,21 +116,32 @@ juurisyytä tai muuta ensimmäistä hylkäystä onnistumiseksi.
 
 ## Palautustestin erillinen valmistelu
 
-Omistajan hyväksymä rajaus koskee vain
-[`desktopRestoreStartup.test.ts`](../../apps/desktop/src/main/desktopRestoreStartup.test.ts)-tapausta
-`uses fresh original authority after C pre-migration validation fails`:
-aineiston valmistelu saa enintään viisi sekuntia ja palautus tarkistuksineen
-edelleen enintään viisi sekuntia. Näiden vaiheiden yhteisbudjetti on siten
-enintään kymmenen sekuntia. Muiden testien tai CI:n kokonaisaikarajat eivät
-muutu; tämä ei ole yleinen lupa siirtää valmistelua testin aikarajan ulkopuolelle.
+Omistajan hyväksymä pysyvä aikabudjetti koskee vain
+[`desktopRestoreStartup.test.ts`](../../apps/desktop/src/main/desktopRestoreStartup.test.ts)-tiedoston
+kolmea nimettyä yhdistelmätestiä:
+
+- `does not replace a C selection changed during completion validation`
+  saa kummallekin variantille (`revision` ja `package`) enintään kymmenen
+  sekuntia. Näissä valmistelu sisältyy samaan testirungon aikarajaan.
+- `uses fresh original authority after C pre-migration validation fails`
+  säilyttää erillisen enintään viiden sekunnin valmistelun. Palautus
+  tarkistuksineen saa enintään kymmenen sekuntia; vaiheiden yhteisbudjetti
+  on siten enintään viisitoista sekuntia.
+
+Testirunkojen yhteinen nimetty raja on `restoreStartupCompositionTimeoutMs`.
+Muiden testien, sovelluksen operaatioiden tai CI:n kokonaisaikarajat eivät
+muutu. Tämä ei ole yleinen lupa siirtää valmistelua testin aikarajan
+ulkopuolelle tai kasvattaa aikarajoja.
 
 Molempia vaiheita seuraa sama nykyinen testikohtainen elinkaarituki. Pelkkä
 valmistelun onnistuminen ei oikeuta aineiston poistamista. Valmistelun tai
 testirungon aikakatkaisun jälkeen yhteiset resurssit vapautetaan vasta työn
 todella päätyttyä, ja epäonnistumisen sekä myöhäisen työn tiedostot säilytetään.
-Oikeat journal-luennat, sisältö- ja omistajuustarkistukset säilyvät. Jaon
-läpäisy ei yksin osoita aiemman aikakatkaisun juurisyytä korjatuksi.
-Hyväksyntänäyttöä ylläpidetään [M1-suunnitelman nykyisessä checkpointissa](../architecture/release-0.3.0-m1-preparation-plan.md#kn-nykyinen-pr-checkpoint-ja-valmistelukoe).
+Oikeat journal-luennat, sisältö- ja omistajuustarkistukset säilyvät.
+Testi valmistuu niiden toteutuessa, ei odotusajan täyttyessä. Jaon tai
+uuden aikabudjetin läpäisy ei yksin osoita aiemman aikakatkaisun juurisyytä
+korjatuksi. Hyväksyntänäyttöä ylläpidetään
+[M1-suunnitelman jatkamiskohdassa](../architecture/release-0.3.0-m1-preparation-plan.md#jatka-tästä).
 
 ## Ensivirhe, uusinta ja rajattu poikkeus
 

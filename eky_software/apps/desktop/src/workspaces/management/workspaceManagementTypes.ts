@@ -42,7 +42,7 @@ export interface WorkspaceManagementOperationEvent {
   readonly outcome: 'succeeded' | 'failed';
   readonly retryable?: boolean;
   readonly sideEffectState?: 'none' | 'completed' | 'unknown';
-  readonly stage: 'admission' | 'operation' | 'status';
+  readonly stage: 'admission' | 'operation' | 'lineageCheck' | 'status';
 }
 
 export interface WorkspaceManagementObserver {

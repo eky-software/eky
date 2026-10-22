@@ -104,6 +104,7 @@ interface RunPackagedSmokeCheckOptions {
   buildRevision: string;
   databaseFilePath: string;
   mainWindow: BrowserWindow;
+  observeFailure?(error: unknown): void;
   invoicePdfArchiveDirectoryPath: string;
   invoicePdfArchiveService: Pick<
     InvoicePdfArchiveService,
@@ -116,7 +117,7 @@ interface RunPackagedSmokeCheckOptions {
   secretFilePath: string;
   smokePdfPath: string;
   supportBundlePath: string;
-  writeBackupDiagnosticFixture(): void;
+  writeDiagnosticFixture(): Promise<void>;
   reportStage(stage: PackagedSmokeStage): Promise<void>;
 }
 
@@ -339,7 +340,7 @@ export async function runPackagedSmokeCheck(
 
   await assertPackagedDeleteTransport(options.mainWindow, deleteDraftId);
 
-  options.writeBackupDiagnosticFixture();
+  await options.writeDiagnosticFixture();
   await options.reportStage('diagnostics');
   await assertPackagedDiagnostics(
     options.mainWindow,
@@ -361,6 +362,7 @@ export async function runPackagedSmokeCheck(
     appVersion: options.appVersion,
     buildRevision: options.buildRevision,
     mainWindow: options.mainWindow,
+    ...(options.observeFailure === undefined ? {} : { observeFailure: options.observeFailure }),
     runtimeSessionSecret: options.runtimeSessionSecret,
     supportBundlePath: options.supportBundlePath,
   });
@@ -648,7 +650,9 @@ async function assertPackagedDiagnostics(
         eventName === 'backend.started' ||
         eventName === 'businessAudit.retentionCompleted',
     ) ||
-    !diagnosticEvents.includes('backup.completed')
+    ['backup.completed', 'invoicePdfArchive.queueFailed', 'invoicePdfArchive.copyFailed',
+      'update.packageInspectionFailed', 'update.businessRollbackSucceeded', 'update.accepted',
+      'workspaceManagement.operationFailed'].some(name => !diagnosticEvents.includes(name))
   ) {
     throw new Error('DESKTOP_SMOKE_DIAGNOSTICS_EVENT_FAILED');
   }
@@ -677,16 +681,22 @@ async function assertPackagedDiagnostics(
       );
       const eventVisible = await waitFor(() => {
         const text = document.body.textContent ?? '';
-        return text.includes('backup.completed');
+        return ['backup.completed', 'invoicePdfArchive.queueFailed', 'invoicePdfArchive.copyFailed',
+          'update.packageInspectionFailed', 'update.businessRollbackSucceeded', 'update.accepted',
+          'workspaceManagement.operationFailed'].every(name => text.includes(name));
       });
       const loadError = (document.body.textContent ?? '').includes(
         'Diagnostiikkaa ei voitu ladata',
       );
       const text = document.body.textContent ?? '';
+      const succeededUpdateVisible = ['update.accepted', 'update.businessRollbackSucceeded'].every(name =>
+        [...document.querySelectorAll('tbody tr')].some(row =>
+          row.querySelector('code')?.textContent === name && row.children[3]?.textContent === 'Onnistui'));
       return {
         eventVisible: Boolean(eventVisible),
         heading,
         loadError,
+        succeededUpdateVisible,
         revisionVisible: text.includes(${JSON.stringify(expectedIdentity.buildRevision)}),
         versionVisible: text.includes(${JSON.stringify(expectedIdentity.appVersion)}),
       };
@@ -699,6 +709,7 @@ async function assertPackagedDiagnostics(
     uiResult.heading !== 'Diagnostiikka' ||
     uiResult.eventVisible !== true ||
     uiResult.loadError !== false ||
+    uiResult.succeededUpdateVisible !== true ||
     uiResult.revisionVisible !== true ||
     uiResult.versionVisible !== true
   ) {

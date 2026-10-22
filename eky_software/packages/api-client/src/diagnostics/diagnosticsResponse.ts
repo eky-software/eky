@@ -1,5 +1,8 @@
 import { EkyApiError, isRecord } from '../http.js';
 import { isProfileRecoveryProjection } from './diagnosticRecoveryProjection.js';
+import { isInvoiceArchiveProjection } from './diagnosticInvoiceArchiveProjection.js';
+import { isUpdateProjection } from './diagnosticUpdateProjection.js';
+import { isWorkspaceManagementProjection } from './diagnosticWorkspaceManagementProjection.js';
 import {
   diagnosticEventNames,
   type DiagnosticEventComponent,
@@ -172,7 +175,10 @@ function readDiagnosticEvent(value: unknown): DiagnosticEventItem {
     !isOptionalTlsVersion(value.tlsVersion) ||
     !isNullableSafeIdentifier(value.errorCode, 120) ||
     !isWorkspaceBackupFailureProjection(value) ||
-    !isProfileRecoveryProjection(value)
+    !isProfileRecoveryProjection(value) ||
+    !isInvoiceArchiveProjection(value) ||
+    !isUpdateProjection(value) ||
+    !isWorkspaceManagementProjection(value)
   ) {
     throw invalidResponse(value);
   }

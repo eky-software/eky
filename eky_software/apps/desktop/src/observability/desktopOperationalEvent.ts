@@ -1,4 +1,5 @@
 import { profileInspectionFailureCauses } from '../runtime/profileInspectionFailure.js';
+import type { WorkspaceManagementOperationId } from './workspaceManagementFailureContext.js';
 
 export const restoreAcceptanceFailureCodes: readonly string[] = Object.freeze([
   ...profileInspectionFailureCauses, 'PROFILE_RESTORE_RECOVERY_REQUIRED',
@@ -71,6 +72,15 @@ export type UpdateOperationalStage =
   (typeof updateOperationalStages)[number];
 
 export interface DesktopOperationalEventPayloadMap {
+  'workspaceManagement.operationFailed': {
+    correlationId: string;
+    durationMs: number;
+    errorCode: string;
+    operationId: WorkspaceManagementOperationId;
+    retryable: boolean;
+    sideEffectState: 'none' | 'unknown';
+    stage: 'admission' | 'operation' | 'lineageCheck';
+  };
   'desktop.starting': Record<never, never>;
   'desktop.started': { durationMs?: number };
   'desktop.bootstrapFailed': FailureFields;
@@ -490,6 +500,9 @@ const failureFields = [
 const workspaceBackupFailureFields = Object.freeze([
   'correlationId', 'durationMs', 'errorCode', 'retryable', 'sideEffectState', 'stage',
 ]);
+const workspaceManagementFailureFields = Object.freeze([
+  ...workspaceBackupFailureFields, 'operationId',
+]);
 
 const updateStartedFields = Object.freeze(['correlationId', 'stage']);
 const updateSucceededFields = Object.freeze([
@@ -507,6 +520,7 @@ const updateFailedFields = Object.freeze([
 ]);
 
 export const desktopOperationalEventSpecs = Object.freeze({
+  'workspaceManagement.operationFailed': spec('workspaceManagement', 'error', 'failure', workspaceManagementFailureFields),
   'workspaceBackup.operationFailed': spec('backup', 'error', 'failure', workspaceBackupFailureFields),
   'workspaceBackup.cleanupFailed': spec('backup', 'error', 'failure', workspaceBackupFailureFields),
   'desktop.starting': spec('runtime', 'info', 'success'),
@@ -828,6 +842,7 @@ export const desktopOperationalEventSpecs = Object.freeze({
 } satisfies Record<DesktopOperationalEventName, DesktopOperationalEventSpec>);
 
 export const desktopRequiredPayloadFields = Object.freeze({
+  'workspaceManagement.operationFailed': workspaceManagementFailureFields,
   'workspaceBackup.operationFailed': workspaceBackupFailureFields,
   'workspaceBackup.cleanupFailed': workspaceBackupFailureFields,
   'desktop.starting': [],

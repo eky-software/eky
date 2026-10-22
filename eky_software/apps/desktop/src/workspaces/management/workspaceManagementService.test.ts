@@ -1,21 +1,66 @@
-import { describe, expect, it, vi } from 'vitest';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { InMemoryWorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
 import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
 import { WorkspaceManagementError } from './workspaceManagementError.js';
 import { WorkspaceManagementRecoveryRequiredError } from './workspaceManagementOperationGuard.js';
 import { WorkspaceManagementService } from './workspaceManagementService.js';
+import { WorkspaceBackupImportError } from '../import/workspaceBackupImportError.js';
+import { WorkspaceBackupReplacementError } from '../replacement/workspaceBackupReplacementError.js';
+import { createWorkspaceBackupReplacementFixture, TEST_REPLACEMENT_WORKSPACE_ID } from '../replacement/workspaceBackupReplacementTestSupport.js';
+import { JsonLineDesktopOperationalLogger } from '../../observability/infrastructure/jsonLineDesktopOperationalLogger.js';
+import { createWorkspaceBackupOperationalObserver } from './workspaceBackupOperationalObserver.js';
 
 const activeId = '00000000-0000-4000-8000-000000000001' as WorkspaceId;
+const logRoots: string[] = [];
+afterEach(async () => {
+  for (const root of logRoots.splice(0)) await rm(root, { recursive: true, force: true });
+});
 
 describe('workspace management service', () => {
+  it('writes the real wrong-lineage rejection before any lease, shutdown or profile mutation', async () => {
+    const f = createWorkspaceBackupReplacementFixture({ profileId: 'f'.repeat(64) });
+    const before = f.registry.value;
+    const logsRoot = await mkdtemp(join(tmpdir(), 'eky-workspace-failure-'));
+    logRoots.push(logsRoot);
+    const input = { containerPath: 'synthetic-private-path', password: 'synthetic-private-password',
+      targetWorkspaceId: TEST_REPLACEMENT_WORKSPACE_ID };
+    const service = createService({ replace: async () => f.coordinator.replace(input),
+      observer: createWorkspaceBackupOperationalObserver({
+        operationalIdentity: { appVersion: '0.2.81', buildRevision: 'development',
+          runtimeInstanceId: '11111111-1111-4111-8111-111111111111' },
+        operationalLogger: new JsonLineDesktopOperationalLogger({ logsRoot }),
+      }),
+    });
+    await expect(service.replaceActiveFromBackup(input)).rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_INVALID' });
+    expect(f.registry.value).toBe(before);
+    expect(f.events).toEqual(['guard.assert', 'registry.read', 'activationFactory.create', 'activationJournal.read', 'backup.inspect']);
+    expect(f.preRestore.calls).toBe(0);
+    expect(f.rootStore.prepared).toBe(false);
+    const files = await readdir(join(logsRoot, 'desktop'));
+    expect(files).toHaveLength(1);
+    const lines = (await readFile(join(logsRoot, 'desktop', files[0]!), 'utf8')).trim().split('\n');
+    expect(lines).toHaveLength(1);
+    const event = JSON.parse(lines[0]!);
+    expect(event).toMatchObject({ eventName: 'workspaceManagement.operationFailed',
+      errorCode: 'WORKSPACE_REPLACEMENT_LINEAGE_MISMATCH', operationId: 'workspace.replace',
+      stage: 'lineageCheck', retryable: false, sideEffectState: 'none', outcome: 'failure' });
+    expect(lines[0]).not.toMatch(/synthetic-private|workspaceId|profileId|password|message|stack/);
+  });
+
   it.each(['import', 'replace'] as const)(
     'records the %s first cause separately from recovery without changing its public code', async operation => {
       const events: unknown[] = [];
-      const failure = new AggregateError([
+      const original = new AggregateError([
         new Error('synthetic private detail'),
         new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED'),
       ]);
+      const failure = operation === 'import'
+        ? new WorkspaceBackupImportError('WORKSPACE_IMPORT_VALIDATION_FAILED', 'candidateValidation', { cause: original })
+        : new WorkspaceBackupReplacementError('WORKSPACE_REPLACEMENT_VALIDATION_FAILED', 'candidateValidation', { cause: original });
       const fail = async () => { throw failure; };
       const service = createService({ events, importBackup: fail, replace: fail });
       const result = operation === 'import'
@@ -33,6 +78,52 @@ describe('workspace management service', () => {
       expect(JSON.stringify(events)).not.toMatch(/private|password|AggregateError|stack/);
     },
   );
+
+  it('records exact typed lineage before public mapping and leaves the original cause intact', async () => {
+    const events: unknown[] = [];
+    const original = new WorkspaceBackupReplacementError('WORKSPACE_REPLACEMENT_LINEAGE_MISMATCH', 'lineageCheck');
+    const service = createService({ events, replace: async () => { throw original; } });
+    await expect(service.replaceActiveFromBackup({ containerPath: 'private-path',
+      password: 'private-password', targetWorkspaceId: activeId })).rejects.toMatchObject({
+      code: 'WORKSPACE_MANAGEMENT_INVALID', cause: original,
+    });
+    expect(events).toEqual([expect.objectContaining({ errorCode: original.code,
+      stage: 'lineageCheck', operationKind: 'replace', sideEffectState: 'none', retryable: false })]);
+    expect(events[0]).not.toHaveProperty('inspectionCauseCode');
+  });
+
+  it.each(['import', 'replace'] as const)('does not guess inspection provenance for an unknown %s failure', async operation => {
+    const events: unknown[] = [];
+    const fail = async () => { throw new AggregateError([
+      new Error('synthetic private detail'), new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED'),
+    ]); };
+    const service = createService({ events, importBackup: fail, replace: fail });
+    const result = operation === 'import'
+      ? service.importBackupAsNew({ containerPath: 'private-path', password: 'private-password', workspaceLabel: 'Synthetic' })
+      : service.replaceActiveFromBackup({ containerPath: 'private-path', password: 'private-password', targetWorkspaceId: activeId });
+    await expect(result).rejects.toBeInstanceOf(WorkspaceManagementError);
+    expect(events).toEqual([expect.objectContaining({ stage: 'operation', operationKind: operation,
+      cleanupCauseCode: 'PROFILE_INSPECTION_CLEANUP_UNVERIFIED', sideEffectState: 'unknown' })]);
+    expect(events[0]).not.toHaveProperty('inspectionCauseCode');
+  });
+
+  it.each(['import', 'replace'] as const)('does not attribute a prior guard error to the unstarted %s inspector', async operation => {
+    const events: unknown[] = [];
+    const execute = vi.fn();
+    const service = createService({ events, importBackup: execute, replace: execute,
+      assertNoUnresolvedOperations: async () => {
+        const failure = new WorkspaceManagementRecoveryRequiredError();
+        failure.cause = new Error('PROFILE_SCHEMA_UNSUPPORTED');
+        throw failure;
+      } });
+    const result = operation === 'import'
+      ? service.importBackupAsNew({ containerPath: 'private-path', password: 'private-password', workspaceLabel: 'Synthetic' })
+      : service.replaceActiveFromBackup({ containerPath: 'private-path', password: 'private-password', targetWorkspaceId: activeId });
+    await expect(result).rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED' });
+    expect(execute).not.toHaveBeenCalled();
+    expect(events).toEqual([expect.objectContaining({ stage: 'operation', errorCode: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED' })]);
+    expect(events[0]).not.toHaveProperty('inspectionCauseCode');
+  });
 
   it('returns the safe registry status and delegates each command', async () => {
     const create = vi.fn(async () => ({

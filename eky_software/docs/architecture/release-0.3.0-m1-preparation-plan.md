@@ -7,49 +7,274 @@ Päivätyt tutkimusraportit eivät ole rinnakkainen toteutusjono.
 
 ## Jatka tästä
 
-**Hyväksytty lähtö (22.10.2026):** E:n R09-R11 ja rajattu Vitest-
-tietoturvahuolto on hyväksytty PR #311:n ja PR #312:n kautta mainiin
-`d0d08bd182500c463fa06300978f06c295f3cac2`.
-[E:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/312#issuecomment-6329634460)
-erottaa PR:n ensimmäisen hylkäyksen, yhden hyväksytyn kohdeuusinnan sekä
-uuden mainin omat hyväksytyt portit. Mainin puu vastaa katselmoitua
-PR-headia `613a00c73f133e321beb7546126aebff74c5661a`.
+**Hyväksytty lähtö (22.10.2026):** F/R15 on hyväksytty PR #313:n kautta
+mainiin `96b62944087bec64970e6233e57a730ab31ec1ea`.
+[F:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/313#issuecomment-6339105977)
+erottaa korjatun PR-headin, yhden hyväksytyn valmistelun kohdeuusinnan ja
+uuden mainin omat portit. Mainin puu vastaa hyväksyttyä PR-headia
+`04f7a0f6d5ed56cca9cc95ba6e7f788c723f6d26`.
 
 | Tarkistus | Hyväksytty näyttö |
 | --- | --- |
-| PR #312 | [V2](https://github.com/eky-software/eky/actions/runs/39685614769): 38 onnistunutta työtä ja kuusi tarkoituksella valitsematonta diagnostiikkatyötä yhden rajatun legacy-core-uusinnan jälkeen. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39685614678) läpäisi. |
-| Mainin omat portit | [V2](https://github.com/eky-software/eky/actions/runs/39693887305): 38 onnistunutta työtä ja kuusi tarkoituksella valitsematonta diagnostiikkatyötä. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39693887157) läpäisi. Molemmat ensimmäisellä suoritusyrityksellä. |
-| Erillinen hälytystilan loppulukeminen | Dependabotissa ei ollut avoimia hälytyksiä 22.10.2026. Tämä on päivätty havainto, ei tulevien revisioiden auditointitodiste. |
+| PR #313 | [V2, suoritusyritys 2](https://github.com/eky-software/eky/actions/runs/39739184364/attempts/2): 38 onnistunutta työtä ja kuusi tarkoituksella valitsematonta diagnostiikkatyötä. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39739184332) läpäisi. |
+| Mainin omat portit | [V2](https://github.com/eky-software/eky/actions/runs/39761715390): 38 onnistunutta työtä ja kuusi tarkoituksella valitsematonta diagnostiikkatyötä. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39761715368) läpäisi. Molemmat ensimmäisellä suoritusyrityksellä. |
 
-**Nykyinen työ:** F/R15:n rajattu toteutus ja testit hyväksytyn sopimuksen
-[mukaan](#f--frameworkin-virheketjun-rajattu-suunnitelma). Omistaja hyväksyi
-rajauksen 22.10.2026. [F:n integraatio on PR #313:ssa](https://github.com/eky-software/eky/pull/313).
-Seuraa sen viimeisimmän revision portteja ja loppuhyväksyntää ennen seuraavaa
-työpakettia; vanha toteutuscheckpoint ei ole uusi F-työjono.
-F:n toteutus ja paikallinen todennus ovat valmiit. Integraation lopullinen
-tila tarkistetaan PR #313:n loppuhyväksynnästä: ilman hyväksyttyjä PR/main-
-portteja F on kesken; niiden jälkeen seuraava työ valitaan roadmapista.
-T/A/B/C/K/D/E säilyvät hyväksyttyinä; G/H/I:n loppuosa ja M4/M5 odottavat.
+**Nykyinen työ:** G/R20/R23:n rajattu toteutus
+[alla olevan sopimuksen mukaan](#g--diagnostiikan-tapahtumaketjun-suunnitelma).
+Omistaja hyväksyi G-P1/G-P2:n rajauksen, toteutuksen ja testit 22.10.2026.
+G1-G3:n paikalliset projektiot ja kohdetestit ovat työpuussa. G4:n
+writer -> HTTP -> strict-client -> tuotettu tukipaketti -system-testi
+läpäisi. Packaged-smoken G-fixture, UI:n onnistumistilan tarkistus ja
+kaikkien G-rivien semanttinen tarkistus ovat toteutettuina; niiden
+kohderegressiot ja tyypitys läpäisivät. Alkuperäisen synteettisen
+smoke-virheen säilyminen nykyisessä salaus/purku-ketjussa on todennettu.
+Normaali desktop-sarja ja vaikutusalueen neljän paketin tyypitys läpäisivät.
+Seuraava portti on saman puhtaan Windows-paketin käyttöliittymä-/
+tukipaketti-/palautustodennus. Sitä ei korvaa system-testi.
+Sitä edeltävä rajattu palautustestin aikabudjettimuutos on hyväksytty
+ja paikallisesti todennettu alla kuvatulla rajauksella.
+Backendin ja API-clientin laajat sarjat läpäisivät. Desktopin
+muuttumattomassa `desktopRestoreStartup.test.ts`:ssä yksi aikakatkaisu
+johti seuraavien tapausten `PREVIOUS_WORK_UNSETTLED`-suojaestoihin.
+Yksi sallittu kohdeuusinta aikakatkaisi saman palautusketjun toisen
+tapauksen. Ensivirheet, osittaiseksi rajautunut raportointi ja epävarma
+siivoustila säilytetään; niitä ei merkitä korjatuiksi tai läpäisyiksi.
+Juurisyytä tai yhteyttä G-muutokseen ei ole vielä todistettu.
+Omistajan hyväksymä kolmen tapauksen rajattu aikarajakoe läpäisi.
+Sen jälkeen omistaja hyväksyi pysyvän, vain näihin kolmeen testiin
+rajatun kymmenen sekunnin testirajan sekä yhden normaalin desktop-sarjan.
+Ennen migraatiota tehtävän tapauksen erillinen valmisteluraja säilyy
+viidessä sekunnissa. Tarkka rajaus on
+[testausohjeessa](../ai/testing-rules.md#palautustestin-erillinen-valmistelu).
+Muutos on paikallisessa työpuussa. Yksi normaali desktop-sarja läpäisi
+molemmat osansa: Vitest 282 tiedostoa ja 4 378 testiä, Node-testit 412 testiä.
+Erikseen ohitetut 5 ja 12 tapausta eivät ole läpäisyjä.
+Sarjan jälkeen tyypitys osoitti parametrisoidun testin aikarajakutsussa
+tyyppivirheen. Kutsu korjattiin nykyisen rajapinnan asetusobjektimuotoon;
+lopullisen muodon desktop-tyypitys ja kaikki kolme kohdetapausta läpäisivät.
+G4:n toteutuksen jälkeen normaali desktop-sarja läpäisi myös tällä
+kutsumuodolla: 283 tiedostoa ja 4 402 Vitest-testiä sekä 412 Node-testiä;
+erikseen ohitetut 5 ja 12 tapausta eivät ole läpäisyjä.
+Tämä näyttö ei korvaa aiempia hylkäyksiä eikä todista vanhan viiveen syytä
+korjatuksi. Sovelluskoodi ja CI:n kokonaisrajat eivät muuttuneet tässä korjauksessa.
+G:lle ei vielä ole toteutus- tai
+PR/main-hyväksyntää. T/A/B/C/K/D/E/F säilyvät hyväksyttyinä;
+H/I:n loppuosa ja M4/M5 odottavat.
 
 **Avoimet havainnot:** PR #312:n ensimmäisen MSI-ikkunan luetteloluennan
 viiveen syy ja sitä edeltävän mainin supervisor-havainnon puute jäävät
 avoimiksi. Alkuperäinen virheaineisto säilytetään; hyväksytty uusinta tai
 Vitest-päivitys ei todista niiden korjausta. Myös aikaisemmat MSI-odotukset,
 sulkuviiveet, puuttuvat aineistot ja tuntemattomat siivoustilat säilyvät
-historiallisissa rajauksissaan. Vanha Dependabot-tilanne erotetaan yllä
-olevasta uudemmasta loppulukemisesta.
+historiallisissa rajauksissaan. PR #313:n ensimmäisen valmisteluhylkäyksen
+alkuperäinen npm-alisyy jää myös tuntemattomaksi; onnistunut kohdeuusinta
+ei todista sen korjausta. E:n hälytystilan loppulukeminen on päivätty
+historiatieto, ei G-revision auditointitodiste. Edeltävä jatkamiskohta on
+[integraatiohistoriassa](release-0.3.0-integration-history.md#fn-valmistelua-edeltävä-jatkamiskohta-22102026).
+
+### G / Diagnostiikan tapahtumaketjun suunnitelma
+
+**Tila:** G-P1/G-P2:n rajaus ja toteutus hyväksytty 22.10.2026;
+toteutus ja sen hyväksyntänäyttö kesken.
+[Roadmapin G](release-0.3.0-plan.md#m3-muut-invariantit-diagnostiikka-ja-ylläpidettävyys)
+omistaa R20/R23:n ja D029-01/02:n rajauksen. Tavoite on täydentää nykyinen
+turvallinen lukuketju, ei muuttaa laskutusta, päivitystä tai palautusta.
+H:n saatavuus, retention, osittaisuus, writer-fallback ja uusimpien valinta
+sekä M4:n historian selaus eivät kuulu tähän toteutukseen.
+
+Rajattu riippumaton downstream-katselmus on tehty. Sen kaksi sopimuspuutetta
+korjattiin suunnitelmaan: uuden workspace-eventin suljettu vastaanottotaulukko
+ja G-eventtien/incidentien läsnäolon sekä semantiikan packaged-todistus.
+Korjatuissa kohdissa ei jäänyt suunnitelmaestettä. Tämä on lähde- ja
+suunnitelmakatselmus, ei omistajapäätös tai toteutuksen hyväksyntä.
+
+Käänteinen katselmus etenee UI:sta ja tukipaketista strict-clientin,
+HTTP:n ja tiedostolukijan kautta todelliseen writeriin/compositioniin.
+R20:n archive/update-katalogierot ovat nykyisessä lähteessä edelleen.
+R23:n observer on jo kytketty K:ssa; sitä ei toteuteta uudelleen.
+Lineage-hylkäyksen tarkka luokka ei kuulu nykyiseen candidate-syylistaan,
+ja nykyinen observer rajaa muut kuin import/replace-virheet pois.
+Lähdehavainto ei vielä ole korjauksen runtime-hyväksyntä.
+
+#### G-P1: Hyväksytty projektiorajaus
+
+Alla `D` tarkoittaa permission-suojattua Diagnostics-projektiota, `S`
+sanitoitua tukipakettia. Alla oleva rajaus on hyväksytty toteutettavaksi.
+S säilyttää nykyisen 30 päivän warn/error/security-valinnan, ei infoa.
+Warn-tason onnistunut rollback-vaihe ei muutu failureksi eikä katoa vain
+outcomen perusteella. Incident-indeksin nykyinen minimointi säilyy;
+Activityyn tai business auditiin ei lisätä teknisiä tapahtumia.
+
+| Perhe / nykyinen omistaja | D | S | Turvallinen sisältö ja nimetty poissulku |
+| --- | --- | --- | --- |
+| Backendin `invoicePdfArchive.queueFailed` / Invoicingin queue-failure-reporter | Kyllä | Kyllä | Nykyinen `INVOICE_PDF_ARCHIVE_QUEUE_FAILED`, `stage=queue`, `retryable=true`, `sideEffectState=none`; nykyinen runtime/build-konteksti. Ei business- tai dokumenttiviitteitä. |
+| Desktopin `invoicePdfArchive.taskQueued` / archive-observer | Kyllä | Ei, info | Vain peruskentät ja nykyinen runtime/build-konteksti. Ei toimituksen tai kopion onnistumisväitettä. |
+| Desktopin `invoicePdfArchive.copySucceeded` / archive-observer | Kyllä | Ei, info | Nykyinen kesto; detailed-lokin `attemptCount` tarkistetaan lähteessä mutta jätetään pois DTO:sta. Ei polkua tai PDF:n tiivistettä. |
+| Desktopin `invoicePdfArchive.copyFailed` / archive-observer | Kyllä | Kyllä, warn | Nykyinen turvallinen koodi, kesto, retryable ja side-effect-state; `attemptCount` ei siirry DTO:hon. Ei muutosta laskutoimituksen tulokseen. |
+| Desktopin `invoicePdfArchive.configurationChanged` / capability-callback | Kyllä | Ei, info | Vain `stage=enabled|disabled`; ei hakemiston nimeä tai polkua. |
+| C2:n `update.operationStarted|operationCompleted|operationFailed` / historiallinen C2-sopimus | Kyllä | Nykyisen tason mukaan | Nimi ja `preUpdateRecovery|runtimeShutdown|installerHandoff|firstStartValidation` säilyvät; ei muunnosta C3C:n Succeeded-eventiksi eikä uutta rinnakkaista kirjoitusta. |
+| C3C:n nimetyt Started/Succeeded/Failed-perheet / update-observer | Kyllä | Nykyisen tason mukaan | Alla nimetyt perheet, tapahtumakohtainen stage, nykyinen korrelaatio/kesto/koodi/retryable/side-effect-state. Ei journalista johdettua lisämetadataa. |
+| `update.accepted|installerNotApplied|recoveryRequired` / update-state-observer | Kyllä | Nykyisen tason mukaan | Aidot nykyiset tilat; installer-exit tai handoff ei synnytä accepted-tulosta. |
+| K:n `workspaceBackup.operationFailed|cleanupFailed` / workspace-observer | Säilyy | Säilyy | Nykyinen import/replace-sopimus ja ensisyyn/lisävirheen erottelu säilyvät; ei tuplakirjausta G:n vuoksi. |
+| G-P2:n uusi `workspaceManagement.operationFailed` / nykyinen management-palvelu ja observer | Kyllä | Kyllä, error | Vain G-P2:ssa nimetty tekninen toiminto, vaihe ja syykoodi. Ei työtilan tunnistetta, labelia tai varmuuskopion nimeä. |
+
+C3C:n täsmälliset perheet ovat `packageInspection`, `packageStaging`,
+`currentPackageRegistration`, `candidateDiscard`, `confirmation`,
+`recoveryPoint`, `runtimeShutdown`, `installerHandoff`,
+`firstStartValidation`, `businessRollback`, `binaryRollback` ja
+`restoreCompatibility`, kussakin nykyiset Started/Succeeded/Failed-nimet.
+Nykyisen eventin `appVersion` säilyy. `currentVersion`, `targetVersion`,
+`releaseChannel`, vapaa metadata, polut, journalit, manifestit, prosessien
+argumentit ja raakavirheet rajataan pois. Uusia DTO-kenttiä tai
+tukipakettiformaattia ei tarvita tämän rajauksen vuoksi.
+
+#### G-P2: Hyväksytty workspace-virheen omistajuus
+
+K:n inspection-virhe käyttää edelleen nykyistä workspaceBackup-perhettä.
+Muu create/import/replace/switch/rename-hylkäys käyttää yhtä uutta
+`workspaceManagement.operationFailed`-päätetapahtumaa, ei sen rinnalla
+toista yleistä ensivirhettä. Tunnistettu lineage-hylkäys luokitellaan
+ennen yleistä käyttäjävirhettä; käyttäjän viesti ja palautuksen esto säilyvät.
+Todellinen erillinen cleanup-virhe kirjataan edelleen erikseen, ei ensisyyn
+tilalle. Ennen toteutusta lukitaan haaravalinta testeillä myös silloin,
+kun alkuperäinen syy on `unknown` tai operation guard estää työn.
+
+Hyväksytty tapahtuma käyttää nykyisiä projektion kenttiä:
+
+- `operationId` on suljetusti `workspace.create`, `workspace.import`,
+  `workspace.replace`, `workspace.switch` tai `workspace.rename`, ei
+  satunnainen business-ID tai työtilan tunniste.
+- `stage` on `admission|operation|lineageCheck`. Viimeinen sallitaan vain
+  alkuperäisen tyypitetyn replacement-lineage-hylkäyksen yhteydessä.
+- `errorCode` on nykyinen `WorkspaceManagementErrorCode` tai täsmällinen
+  `WORKSPACE_REPLACEMENT_LINEAGE_MISMATCH`, ei poikkeuksen vapaa code/message.
+  Koodi, toiminto ja vaihe tarkistetaan yhdessä; status-polling ei kuulu perheeseen.
+- Korrelaatio, kesto ja build/runtime-konteksti käyttävät nykyisiä rajoja.
+  Retryable ja sivuvaikutus eivät vahvistu jälkikäteen; epävarma tila pysyy
+  epävarmana. Tunnistamatonta sisäistä syytä ei arvata tarkemmaksi.
+
+Uuden tapahtuman vastaanottosopimus on suljettu:
+
+| Kenttä / yhdistelmä | Hyväksytty täsmällinen sääntö |
+| --- | --- |
+| Kiinteät arvot | `eventName=workspaceManagement.operationFailed`, `component=desktop`, `category=workspaceManagement`, `level=error`, `outcome=failure`. |
+| Pakollinen payload | UUID-`correlationId`, kokonaisluku `durationMs >= 0`, yllä nimetty `operationId`, `stage`, `errorCode`, boolean-`retryable` ja `sideEffectState=none|unknown`. |
+| Busy | `WORKSPACE_MANAGEMENT_BUSY`, mikä tahansa viidestä toiminnosta, `stage=admission|operation`, `retryable=true`. |
+| Invalid / recovery required | `WORKSPACE_MANAGEMENT_INVALID|WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED`, mikä tahansa viidestä toiminnosta, `stage=operation`, `retryable=false`. |
+| Toimintokohtainen yleisvirhe | `WORKSPACE_MANAGEMENT_CREATE_FAILED`, `WORKSPACE_MANAGEMENT_IMPORT_FAILED`, `WORKSPACE_MANAGEMENT_REPLACE_FAILED`, `WORKSPACE_MANAGEMENT_SWITCH_FAILED` tai `WORKSPACE_MANAGEMENT_RENAME_FAILED`; vain vastaavalle `workspace.*`-toiminnolle, `stage=operation`, `retryable=false`. |
+| Väärä lineage | Vain `WORKSPACE_REPLACEMENT_LINEAGE_MISMATCH` + `operationId=workspace.replace` + `stage=lineageCheck`, `retryable=false`. |
+| Sivuvaikutuksen muunnos | Vain havaittu `none` säilyy `none`:na. Muu epävarma virhetila on `unknown`; sisäistä onnistumisen `completed`-arvoa ei muunneta `committed`-arvoksi. Valmis onnistumistapahtuma ei kuulu perheeseen. Vastaanottaja torjuu `completed`, `committed` ja `rolledBack`. |
+| Valinnaiset yhteiskentät | Nykyisen projektion validoidut `appVersion`, `buildRevision`, `runtimeInstanceId`; lähteen writer-identiteettivaatimus säilyy. Uusi perhe ei salli fingerprintiä, entity-kenttiä tai toisen perheen metadataa. |
+| Tapahtuman peruskentät | Nykyiset validoidut tapahtumatunniste ja UTC-aika säilyvät; ei vapaata payload-objektia tai uusia yksilöiviä kenttiä. |
+
+Backend-projektori, strict-client ja mainin tukipakettivastaanotin
+tarkistavat saman tapahtumakohtaisen sopimuksen. Niiden regressiot
+torjuvat väärän komponentin, kategorian, tason, outcomen, koodi/toiminto/
+vaihe-yhdistelmän, puuttuvan pakollisen kentän ja väärän sivuvaikutuksen.
+
+Management-toimintojen uusien aloitus- ja onnistumistapahtumien julkinen
+projektointi rajataan pois tästä toteutuksesta; normaalin onnistumisen
+toimivuus ja observerin vaikutuksettomuus silti testataan. Uusi perhe ei
+ole uusi palvelu, journal tai logger. Mahdollinen observerin nimikorjaus
+tehdään nykyisen omistajan sisällä vasta korvaavan kattavuuden kanssa.
+
+#### G:n tiedostot ja toteutusjärjestys
+
+**Toteutuscheckpoint (22.10.2026):** G1:n archive-projektio on paikallisessa
+työpuussa. Backendin, strict-clientin ja mainin kohderegressiot sekä kolmen
+paketin tyyppitarkistus läpäisivät. Oikea laskutoimitus -> queue-failure-
+writer -> tiedostolukija -> Diagnostics-/tukipaketti-HTTP todennettiin myös
+loggerin virheessä; toimitustulos säilyi. Rajattu riippumaton G1-katselmus
+ei löytänyt korjattavaa. Myös G2:n update-projektio, kenttämatriisit,
+tyypitys ja rajattu katselmus läpäisivät paikallisesti. G3:n haaravalinta,
+kolmen vastaanottorajan kenttämatriisit, management-/K-regressiot ja tyypitys
+läpäisivät; myös rajattu G3-katselmus päättyi ilman korjattavaa. Oikean replacement-coordinatorin
+lineage-hylkäys tuottaa yhden tapahtuman lokitiedostoon ennen leasea,
+sulkua tai profiilimuutosta. G4:n system-lukuketju, tuotetun artifactin
+tiukka semantiikka ja alkuperäisen synteettisen smoke-virheen salaus/purku
+läpäisivät kohdetodennuksen 23.10.2026. Rajattu katselmus havaitsi yhden
+info-poissulun testidatan puutteen; muuten kelvollinen info-rivi korvasi sen
+ja regressio läpäisi. Paketoidun käyttöliittymän ja palautuksen näyttö on
+vielä avoinna. Nämä eivät ole G:n tai PR/mainin hyväksyntä.
+Edeltävien palautustestien aikakatkaisujen syyt ja epävarma siivoustila
+säilyvät avoimina; hyväksytyn rajatun testibudjetin näyttö on yllä.
+
+| Pala | Nykyiset omistajat / suunniteltu muutos | Todennus |
+| --- | --- | --- |
+| G0 | Tämä M1-suunnitelma, roadmap ja diagnostiikan täydennyssuunnitelman lukureitti | G-P1/P2:n päätös, rajattu riippumaton käänteinen katselmus ja linkit; ei tuotantomuutosta. |
+| G1 | Backendin `diagnosticOperationalEventProjector.ts`, api-clientin `diagnosticsTypes.ts`/`diagnosticsResponse.ts`, mainin `supportBundleBackendData.ts`; tarvittaessa vastuun sisäiset projektiotiedostot | Writerin oikeista archive-tapahtumista HTTP/UI- ja tukipakettiketju; queueFailed ei enää kaada koko strict-vastausta. Ei yleistä validointiohitusta. |
+| G2 | Samat lukijat ja nykyinen update-observer/catalog | Jokainen yllä nimetty update-perhe, oikea taso/outcome/stage ja pakolliset kentät; C2/C3C pidetään erillisinä. |
+| G3 | `workspaceManagementService.ts`, `workspaceManagementTypes.ts`, nykyinen observer/composition ja event-/projektiovalidaattorit | Oikean koostamisen lineage-hylkäys ennen leasea/sulkua/kirjoituksia, yksi ensivirhe, erillinen cleanup, normaalit toiminnot ja writerin häiriö. |
+| G4 | Nykyinen tukipakettivastaanotin, virallinen tarkastin, Diagnostics-UI ja nykyiset E2E/packaged-fixturet | Aidosti tuotettu artifacti sisältää nimetyt G-tapaukset; tarkistetaan jokainen G-event ja soveltuva G-incident-yhteenveto, ei vain vanhaa smoke-sentineliä tai tyhjää G-joukkoa. |
+
+Kenttäsäännön omistaja pysyy nykyisessä moduulissa. Backend, API-client ja
+desktop eivät importoi toistensa sisäisiä runtime-tyyppejä oikopolkuna.
+Katalogitestissä jokaisella tarkoitetulla tapahtumalla on hyväksytty
+projektio tai nimetty poissulku; tuntematon tapahtuma ei läpäise strict-clientiä.
+Kenttämatriisi testataan alhaalla ja edustava oikea ketju korkeammalla;
+kaikkia käyttötapauksia ei toisteta jokaisella testitasolla.
+
+Packaged-todennus vaatii edustavat archive queue/copy-failure-, update-
+failure- ja väärän lineagen workspace-failure-rivit tuotetusta artifactista
+sekä vähintään yhden error-tason G-incident-yhteenvedon. Diagnosticsissa
+todennetaan myös sovittu update-success. Info-eventtien ja kielletyn
+metadatan poissulut tarkistetaan nimenomaisesti; puuttuva G-aineisto ei ole
+onnistuminen. Negatiivisessa kontrollissa kelvolliset vanhat sentinelit
+säilyvät, mutta G-event tai G-incident muutetaan virheelliseksi ja checksumit
+lasketaan uudelleen. G:n semanttisen packaged-tarkistuksen on silti hylättävä
+artifacti ilman raakasisällön tulostamista. Tämä ei muuta virallisen
+tarkastimen alla erotettua säiliösopimusta.
+
+G4 jatkaa nykyisiä kytkentöjä. `packagedSmoke.ts` kirjoittaa nimetyt
+lukuketjun fixture-tapahtumat ennen Diagnostics-näkymää ja tukipakettia.
+`packagedSupportBundleSmoke.ts` säilyttää vanhat sentinelit ja checksumit,
+mutta käyttää lisäksi nykyistä strict-vastaanotinta jokaiseen riviin ja
+vaatii G-incidentille vastaavan error-tapahtuman. UI:n tarkistus vaatii
+`update.accepted`- ja warn-tason `update.businessRollbackSucceeded`-riveille
+onnistumistekstin. System-testin `OBS-DIAGNOSTIC-CHAIN-001` nykyiset backend-
+ja desktop-kirjoittajat kulkevat oikean HTTP:n ja gzip-tuotannon kautta.
+Packaged-fixturen backend-rivi on suora tiedostosyöte, ei uusi mainin
+backend-importti. Näitä kirjoittaja-/lukuketjun todisteita ei nimetä
+käyttötapauksen tuotantokytkennän todisteiksi; G1:n ja G3:n composition-
+testit sekä paketoidun UI:n näyttö säilyvät erillisinä. Ei uutta testialustaa.
+
+Testit kattavat myös vanhat kelvolliset eventit, puuttuvan oikeuden,
+virheellisen kenttätyypin, väärän perheen payloadin, symlink/polkurajan sekä
+salaisuuksien, yritystunnisteiden, raakavirheiden ja PDF-sisällön poissulun.
+K:n palautus- ja F:n HTTP-regressiot säilyvät; niitä ei korvata G-testeillä.
+Mahdollisen uuden virhemuunnosrajan testihavaitsija kytketään ennen
+muunnosta nykyiseen ensivirhekeräykseen, ja odottamattoman hylkäyksen syy
+varmennetaan oikealla salaus/purku-kokeella. Odotettu virhetesti ei luo
+uutta virheraporttia eikä tuotantoon lisätä raakakeräystä.
+
+Virallisen `support:inspect`-tarkastimen nykyinen säiliö-/checksum-sopimus
+ja historiallisten pakettien lukuyhteensopivuus erotetaan G:n tuottajan
+tapahtumakohtaisesta hyväksynnästä. Checksum ei todista eventin semantiikkaa
+tai tietojen minimointia. Tarkastimen mahdollinen tiukennus arvioidaan
+erikseen ennen vanhojen pakettien hyväksymiskäytöksen muuttamista.
+
+Valmistuminen vaatii kohderegressiot, vaikutusalueen testit, tyyppi/build-
+tarkistukset, todellisen lukuketjun ja riskin mukaisen Windows packaged-
+näytön. Backup/lifecycle-/profiilirajaan koskettaessa root-ohjeen
+backup -> inspect -> restore -> restart -> compare säilyy; installerin
+portti on siitä erillinen. Lopuksi rajattu riippumaton katselmus,
+julkaisuyksityisyys, saman jäädytetyn PR-headin nykyiset portit ja auditointi,
+normaali suojattu merge sekä uuden mainin omat portit. Uusi riippuvuus,
+formaatin/retentionin muutos tai hyväksyntäehtojen lievennys ei kuulu lupaan.
 
 ### F / Frameworkin virheketjun rajattu suunnitelma
 
-**Tila:** rajattu toteutus ja testit hyväksytty 22.10.2026. F:n lopullinen
-hyväksyntä vaatii revision omat PR/main-portit; toteutunut näyttö kirjataan
-[PR #313:n loppuhyväksyntään](https://github.com/eky-software/eky/pull/313).
+**Tila:** hyväksytty PR #313:n ja uuden mainin omilla porteilla 22.10.2026.
+Näyttö on [F:n loppuhyväksynnässä](https://github.com/eky-software/eky/pull/313#issuecomment-6339105977).
+Alla säilyy F:n omistava toteutussopimus ja sitä edeltävä todennushistoria,
+ei uusi toteutusjono.
 Paikallinen HTTP-korjaus, oikean `createApp`-kytkennän Diagnostics-/
 tukipakettiluku sekä alkuperäisen testivirheen OpenPGP-purku on todennettu.
 Koko työtilan testit ja tyypitys, backend-build, auditointi ja CI-ajokytkennän
 regressiot läpäisivät. Riippumattoman katselmuksen finalisointiaukko toistettiin
 ja korjattiin; lopullinen backend-sarja ja tyypitys läpäisivät.
-Tämä ei ole PR- tai main-hyväksyntä.
+Paikalliset tarkistukset eivät yksin olleet PR- tai main-hyväksyntä;
+revision omien porttien erillinen loppuhyväksyntä on yllä.
 
 Ensimmäisen PR-kierroksen kaksi web-virhepolkua odottivat vanhaa
 virheellisen JSON-vastauksen ilmoitusta. F:n kiinteä JSON 500 kulkee nykyisen

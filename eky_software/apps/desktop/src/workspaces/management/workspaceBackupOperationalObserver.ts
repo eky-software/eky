@@ -1,6 +1,7 @@
 import { createDesktopOperationalEvent } from '../../observability/createDesktopOperationalEvent.js';
 import type { DesktopOperationalIdentity } from '../../observability/desktopOperationalEvent.js';
 import type { DesktopOperationalLogger } from '../../observability/desktopOperationalLogger.js';
+import { workspaceManagementOperationIds } from '../../observability/workspaceManagementFailureContext.js';
 import type {
   WorkspaceManagementObserver,
   WorkspaceManagementOperationEvent,
@@ -43,10 +44,25 @@ export function createWorkspaceBackupOperationalObserver(options: {
 
   return Object.freeze({
     record(event: Readonly<WorkspaceManagementOperationEvent>): void {
-      if (event.outcome !== 'failed' || event.inspectionCauseCode === undefined) {
+      if (event.outcome !== 'failed' || event.operationKind === 'status') {
         return;
       }
-      recordFailure(event, 'workspaceBackup.operationFailed', event.inspectionCauseCode);
+      if (event.inspectionCauseCode !== undefined) {
+        recordFailure(event, 'workspaceBackup.operationFailed', event.inspectionCauseCode);
+      } else if (event.stage !== 'status' && event.errorCode !== undefined) {
+        try {
+          options.operationalLogger.write(createDesktopOperationalEvent({
+            eventName: 'workspaceManagement.operationFailed', correlationId: event.correlationId,
+            durationMs: event.durationMs, errorCode: event.errorCode,
+            operationId: workspaceManagementOperationIds[event.operationKind],
+            retryable: event.retryable ?? false,
+            sideEffectState: event.sideEffectState === 'none' ? 'none' : 'unknown',
+            stage: event.stage,
+          }, options.operationalIdentity));
+        } catch {
+          // A failed primary projection must not suppress a separate cleanup event.
+        }
+      }
       if (event.cleanupCauseCode !== undefined) {
         recordFailure(event, 'workspaceBackup.cleanupFailed', event.cleanupCauseCode);
       }

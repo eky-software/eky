@@ -228,7 +228,10 @@ Myös B3-B5 on hyväksytty [PR #298:n mainissa](https://github.com/eky-software/
 Myös C on hyväksytty [PR #299:n mainissa](https://github.com/eky-software/eky/pull/299#issuecomment-6081351779)
 ja K [PR #305:n mainissa](https://github.com/eky-software/eky/pull/305#issuecomment-6181885500).
 I:n aikaistettu dokumentaatio-osuus sekä D ja E ovat myös hyväksyttyjä;
-nykyinen rajattu toteutus on F/R15. Täsmällinen näyttö ja nykytila ovat
+F/R15 on hyväksytty PR #313:n omilla PR/main-porteilla. Nykyinen työ on
+G/R20/R23:n rajattu toteutus. Omistaja hyväksyi G-P1/G-P2:n rajauksen,
+toteutuksen ja testit 22.10.2026; integraatiohyväksyntä on vielä avoin.
+Täsmällinen näyttö ja nykytila ovat
 [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
 T/A/B/C/K/D/E:tä ei avata uudelleen ilman niiden omaa todennettua regressiota.
 Vanhat sulkuaikakatkaisut eivät
@@ -302,7 +305,8 @@ T-paketin T1a/T1b, T2 ja T3/R28 on hyväksytty niiden omien
 integraatioiden näytöllä; [T3:n integraatiohyväksyntä](e2e-test-environment-history.md#t3n-integraatiohyväksyntä) ei perustu
 pelkkään historialliseen T3c-W:n 4/4-koetulokseen. A-paketin A1/R01, A2/R05
 ja A3/R06 ovat hyväksyttyjä; viimeisin hyväksyntä on PR #294:n mainissa.
-F/G/H/I:n kokonaishyväksyntä on edelleen avoin.
+F/R15 on hyväksytty [PR #313:n loppuhyväksynnällä](https://github.com/eky-software/eky/pull/313#issuecomment-6339105977).
+G/H/I:n kokonaishyväksyntä on edelleen avoin.
 D1-D3 ja niiden rajattu HTTP-sulun jatkokorjaus on hyväksytty PR #308:n
 ja PR #309:n kautta mainissa `286cc3227ffe37dd44417750636ec30d460a61e1`.
 [D:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/309#issuecomment-6324156808)
@@ -312,8 +316,10 @@ Vitest-tietoturvahuolto on hyväksytty PR #311:n ja PR #312:n kautta;
 [E:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/312#issuecomment-6329634460)
 erottaa korjatun revision PR/main-portit avoimista historiallisista syistä.
 [Asiakasinvarianttien suunnitelma](release-0.3.0-customer-invariants-plan.md)
-säilyttää E:n sopimukset. Seuraava työ on
-[F:n hyväksytty rajattu toteutus](release-0.3.0-m1-preparation-plan.md#f--frameworkin-virheketjun-rajattu-suunnitelma).
+säilyttää E:n sopimukset. Nykyinen työ on
+[G:n rajattu suunnittelu](release-0.3.0-m1-preparation-plan.md#g--diagnostiikan-tapahtumaketjun-suunnitelma).
+G:n uudet tapahtumaprojektiopäätökset hyväksytään ennen tuotantokytkentää;
+sen valmistelu ei avaa H/I:n tai M4:n työtä.
 [D:n rajattu toteutussuunnitelma](release-0.3.0-company-settings-plan.md)
 erottaa säilytettävät CS-1/CS-2-sopimukset, alkuluvun tallennuseston ja
 17.10.2026 hyväksytyt D-P1:n salaisuusoperaation sekä D-P2/A:n saatavuuden ehdot.

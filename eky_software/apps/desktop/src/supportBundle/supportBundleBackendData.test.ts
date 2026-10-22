@@ -2,10 +2,154 @@ import { describe, expect, it } from 'vitest';
 
 import { workspaceCandidateFailureCauses } from '../runtime/workspaceCandidateMessages.js';
 import { desktopOperationalEventSpecs } from '../observability/desktopOperationalEvent.js';
+import { updateOperationalStages, type DesktopOperationalEvent } from '../observability/desktopOperationalEvent.js';
+import { createUpdateOperationalObserver } from '../update/updateOperationalObserver.js';
+import { createDesktopOperationalEvent } from '../observability/createDesktopOperationalEvent.js';
+import { workspaceManagementOperationIds } from '../observability/workspaceManagementFailureContext.js';
 import { desktopRecoveryEventStages } from '../observability/desktopOperationalEventValidator.js';
 import { readSupportBundleBackendData } from './supportBundleBackendData.js';
 
 describe('readSupportBundleBackendData', () => {
+  it('revalidates every management failure combination using the real source validator', () => {
+    const cases = Object.values(workspaceManagementOperationIds).flatMap(operationId => [
+      { operationId, errorCode: `WORKSPACE_MANAGEMENT_${operationId.slice('workspace.'.length).toUpperCase()}_FAILED`, stage: 'operation' as const, retryable: false },
+      { operationId, errorCode: 'WORKSPACE_MANAGEMENT_INVALID', stage: 'operation' as const, retryable: false },
+      { operationId, errorCode: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', stage: 'operation' as const, retryable: false },
+      { operationId, errorCode: 'WORKSPACE_MANAGEMENT_BUSY', stage: 'operation' as const, retryable: true },
+      { operationId, errorCode: 'WORKSPACE_MANAGEMENT_BUSY', stage: 'admission' as const, retryable: true },
+    ]);
+    const lineage = { operationId: 'workspace.replace' as const, errorCode: 'WORKSPACE_REPLACEMENT_LINEAGE_MISMATCH', stage: 'lineageCheck' as const, retryable: false };
+    const read = (value: unknown) => readSupportBundleBackendData({ ...createValidData(), diagnosticEvents: [value] }).diagnosticEvents;
+    for (const entry of [...cases, lineage]) {
+      const source = createDesktopOperationalEvent({
+        ...entry, eventName: 'workspaceManagement.operationFailed',
+        correlationId: '22222222-2222-4222-8222-222222222222', durationMs: 2, sideEffectState: 'unknown',
+      }, { appVersion: '0.2.81', buildRevision: 'development', runtimeInstanceId: '11111111-1111-4111-8111-111111111111' });
+      const { eventId, timestamp, schemaVersion: _schemaVersion, ...fields } = source;
+      const event = { ...fields, id: `desktop:${eventId}`, occurredAt: timestamp };
+      expect(read(event)).toEqual([event]);
+      for (const change of [
+        { component: 'backend' }, { category: 'backup' }, { level: 'warn' }, { outcome: 'success' },
+        { correlationId: undefined }, { durationMs: undefined }, { operationId: undefined },
+        { operationId: 'workspace.status' }, { operationId: 'synthetic-workspace-id' },
+        { errorCode: 'unknown' }, { errorCode: 'PROFILE_SCHEMA_UNSUPPORTED' },
+        { retryable: !entry.retryable }, { stage: 'status' }, { sideEffectState: 'completed' },
+        { sideEffectState: 'committed' }, { sideEffectState: 'rolledBack' }, { sideEffectState: undefined },
+        { fingerprint: 'synthetic-fingerprint' }, { cipherName: 'synthetic-cipher' },
+        { recoveryPointKind: 'daily' }, { smtpProfile: 'dnaSmtp' }, { companyId: 'synthetic-company' },
+        { rawError: 'synthetic-private' }, { path: '/synthetic/private' },
+        ...(entry.errorCode.endsWith('_FAILED') || entry.stage === 'lineageCheck'
+          ? [{ operationId: entry.operationId === 'workspace.create' ? 'workspace.replace' : 'workspace.create' }, { stage: 'admission' }] : []),
+      ]) expect(() => read({ ...event, ...change })).toThrow('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
+    }
+  });
+
+  it('revalidates every current update writer event and keeps warn-success rollback observations', () => {
+    const written: DesktopOperationalEvent[] = [];
+    const observer = createUpdateOperationalObserver({
+      identity: { appVersion: '0.2.81', buildRevision: 'development',
+        runtimeInstanceId: '11111111-1111-4111-8111-111111111111' },
+      logger: { write(event) { written.push(event); } },
+    });
+    const correlationId = '22222222-2222-4222-8222-222222222222';
+    for (const stage of updateOperationalStages) {
+      observer.operationStarted({ correlationId, stage });
+      observer.operationCompleted({ correlationId, stage, durationMs: 2 });
+      observer.operationFailed({ correlationId, stage, durationMs: 2,
+        errorCode: 'UPDATE_RUNTIME_SHUTDOWN_FAILED', retryable: false, sideEffectState: 'unknown' });
+      observer.operationStateChanged?.({ correlationId, stage, state: 'recoveryRequired' });
+    }
+    observer.operationStateChanged?.({ correlationId, stage: 'firstStartValidation', state: 'accepted' });
+    observer.operationStateChanged?.({ correlationId, stage: 'firstStartValidation', state: 'installerNotApplied' });
+    expect(written).toHaveLength(50);
+    const names = Object.keys(desktopOperationalEventSpecs).filter(name => name.startsWith('update.'));
+    expect(names).toHaveLength(42);
+    expect(new Set(written.map(event => event.eventName))).toEqual(new Set(names.filter(name => !name.startsWith('update.operation'))));
+    const read = (value: unknown) => readSupportBundleBackendData({
+      ...createValidData(), diagnosticEvents: [value],
+    }).diagnosticEvents;
+    for (const event of written) {
+      const { eventId, timestamp, schemaVersion: _schemaVersion, ...fields } = event;
+      const projected = { ...fields, errorCode: 'errorCode' in event ? event.errorCode : null,
+        id: `desktop:${eventId}`, occurredAt: timestamp };
+      if (event.level === 'info') {
+        expect(() => read(projected)).toThrow('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
+        continue;
+      }
+      expect(read(projected)).toEqual([projected]);
+      for (const change of [
+        { component: 'backend' }, { category: 'restore' }, { outcome: 'unknown' },
+        { level: 'info' }, { stage: 'preUpdateRecovery' }, { correlationId: undefined },
+        { targetVersion: '0.3.0' }, { currentVersion: '0.2.81' }, { releaseChannel: 'pilot' },
+        { operationId: 'synthetic-private' }, { fingerprint: 'synthetic-private' },
+        { cipherName: 'synthetic-cipher' }, { recoveryPointKind: 'preUpdate' },
+        { companyId: 'synthetic-company' }, { path: '/synthetic/private' }, { rawError: 'synthetic-private' },
+        ...(event.outcome === 'failure'
+          ? [{ errorCode: null }, { durationMs: undefined }, { retryable: undefined }, { sideEffectState: undefined }]
+          : [{ errorCode: 'UPDATE_RUNTIME_SHUTDOWN_FAILED' }, { retryable: false }, { sideEffectState: 'none' }]),
+        ...(event.eventName === 'update.recoveryRequired'
+          ? [{ errorCode: 'UPDATE_RUNTIME_SHUTDOWN_FAILED' }, { retryable: true }, { sideEffectState: 'none' }] : []),
+      ]) expect(() => read({ ...projected, ...change })).toThrow('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
+    }
+  });
+
+  it.each(['preUpdateRecovery', 'runtimeShutdown', 'installerHandoff', 'firstStartValidation'])(
+    'retains historical generic update failure at %s without renaming it', stage => {
+      const event = {
+        category: 'update', component: 'desktop', correlationId: '22222222-2222-4222-8222-222222222222',
+        id: 'desktop:synthetic-generic-update', occurredAt: '2026-10-22T10:00:00.000Z',
+        eventName: 'update.operationFailed', level: 'error', outcome: 'failure', stage,
+        errorCode: 'UPDATE_RUNTIME_SHUTDOWN_FAILED', durationMs: 2, retryable: false, sideEffectState: 'unknown',
+      };
+      const read = (value: unknown) => readSupportBundleBackendData({ ...createValidData(), diagnosticEvents: [value] });
+      expect(read(event).diagnosticEvents).toEqual([event]);
+      expect(() => read({ ...event, stage: 'packageStaging' })).toThrow('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
+      for (const suffix of ['Started', 'Completed']) {
+        expect(() => read({ ...event, eventName: `update.operation${suffix}`,
+          errorCode: null, level: 'info', outcome: 'success' })).toThrow('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
+      }
+    },
+  );
+
+  it.each([
+    { eventName: 'invoicePdfArchive.queueFailed', component: 'backend', level: 'warn',
+      outcome: 'failure', errorCode: 'INVOICE_PDF_ARCHIVE_QUEUE_FAILED', stage: 'queue',
+      retryable: true, sideEffectState: 'none' },
+    { eventName: 'invoicePdfArchive.copyFailed', component: 'desktop', level: 'warn', outcome: 'failure', errorCode: 'ARCHIVE_REQUEST_FAILED', durationMs: 1, retryable: true, sideEffectState: 'none' },
+  ])('revalidates the minimized $eventName projection', payload => {
+    const event = { category: 'invoicePdfArchive', id: 'synthetic-archive', occurredAt: '2026-10-22T10:00:00.000Z', ...payload };
+    const read = (value: unknown) => readSupportBundleBackendData({
+      ...createValidData(), diagnosticEvents: [value],
+    }).diagnosticEvents;
+    expect(read(event)).toEqual([event]);
+    for (const change of [
+      { category: 'smtp' }, { component: event.component === 'backend' ? 'desktop' : 'backend' },
+      { level: 'error' }, { outcome: 'unknown' }, { eventName: 'invoicePdfArchive.unknown' },
+      { attemptCount: 1 }, { fingerprint: 'synthetic-fingerprint' },
+      { operationId: 'synthetic-invoice' }, { recoveryPointKind: 'daily' },
+      { cipherName: 'synthetic-cipher' }, { rawError: 'synthetic-private' },
+      { path: '/synthetic/private.pdf' }, { companyId: 'synthetic-company' },
+      { errorCode: event.errorCode === null ? 'ARCHIVE_REQUEST_FAILED' : null },
+      ...(payload.eventName === 'invoicePdfArchive.queueFailed'
+        ? [{ stage: undefined }, { stage: 'copy' }, { retryable: false },
+          { sideEffectState: 'unknown' }, { errorCode: 'ARCHIVE_REQUEST_FAILED' }] : []),
+    ]) expect(() => read({ ...event, ...change })).toThrow('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
+  });
+
+  it.each([
+    { eventName: 'invoicePdfArchive.taskQueued' },
+    { eventName: 'invoicePdfArchive.copySucceeded', durationMs: 1 },
+    { eventName: 'invoicePdfArchive.configurationChanged', stage: 'enabled' },
+  ])('excludes archive info event $eventName from the support receiver', payload => {
+    expect(() => readSupportBundleBackendData({
+      ...createValidData(), diagnosticEvents: [{
+        ...payload, category: 'invoicePdfArchive', component: 'desktop',
+        id: 'synthetic-archive', occurredAt: '2026-10-22T10:00:00.000Z',
+        level: 'info', outcome: 'success', errorCode: null,
+      }],
+    })).toThrow('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
+  });
+
   const profileRecoveryCases = Object.entries(desktopRecoveryEventStages)
     .filter(([eventName]) => !eventName.startsWith('workspaceBackup.'))
     .flatMap(([eventName, stages]) => stages.map(stage => ({

@@ -139,6 +139,7 @@ const operationId = '22222222-2222-4222-8222-222222222222';
 const originalProfileId = 'a'.repeat(64);
 const foreignProfileId = 'b'.repeat(64);
 const windowBoundary = 'DESKTOP_SMOKE_TEST_WINDOW_BOUNDARY';
+const restoreStartupCompositionTimeoutMs = 10_000;
 
 beforeEach(() => {
   // Do not reset shared spies while a timed-out tracked body can still use them.
@@ -492,7 +493,9 @@ describe('desktop restore startup composition', () => {
     },
   );
 
-  it.for(['revision', 'package'] as const)('does not replace a C selection changed during completion validation (%s)', async (change, context) => {
+  it.for(['revision', 'package'] as const)('does not replace a C selection changed during completion validation (%s)', {
+    timeout: restoreStartupCompositionTimeoutMs,
+  }, async (change, context) => {
     const lifetime = beginTrackedStartupTest(context);
     await lifetime.run(async () => {
       const fixture = await lifetime.step('fixturePreparation', async () => {
@@ -582,7 +585,7 @@ describe('desktop restore startup composition', () => {
           await expect(fixture.updateJournal.read()).resolves.toMatchObject({ state: 'businessRollbackStarting' });
         });
       });
-    }, phaseTimeoutMs);
+    }, restoreStartupCompositionTimeoutMs);
   });
 
   it.each(['inspectorExit', 'backendStop'] as const)('retains C recovery evidence when %s is unverified', async stage => {

@@ -1,4 +1,13 @@
+import { diagnosticUpdateEventNames } from './diagnosticUpdateProjection.js';
+
 export const diagnosticEventNames = Object.freeze([
+  'workspaceManagement.operationFailed',
+  ...diagnosticUpdateEventNames,
+  'invoicePdfArchive.queueFailed',
+  'invoicePdfArchive.taskQueued',
+  'invoicePdfArchive.copySucceeded',
+  'invoicePdfArchive.copyFailed',
+  'invoicePdfArchive.configurationChanged',
   'workspaceBackup.operationFailed',
   'workspaceBackup.cleanupFailed',
   'applicationWindow.loadFailed',

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { writePackagedDiagnosticFixture } from './packagedDiagnosticFixture.js';
 import type { StartupExceptionStage } from './startupExceptionEvidence.js';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -2926,6 +2927,9 @@ async function startDesktopCompositionRuntime({
           ),
           invoicePdfArchiveService,
           mainWindow,
+          observeFailure(error) {
+            options.observeStartupException?.(error, 'packagedSmoke', [runtimeSessionSecret]);
+          },
           pdfPreviewController,
           requiresPilotAcceptance: options.releaseInfo !== undefined,
           runtimeSessionSecret,
@@ -2935,18 +2939,12 @@ async function startDesktopCompositionRuntime({
           supportBundlePath: requireSmokeSupportBundlePath(
             smokeSupportBundlePath,
           ),
-          writeBackupDiagnosticFixture() {
-            desktopOperationalLogger.write(
-              createDesktopOperationalEvent(
-                {
-                  correlationId: randomUUID(),
-                  durationMs: 1,
-                  eventName: 'backup.completed',
-                  stage: 'portable',
-                },
-                desktopOperationalIdentity,
-              ),
-            );
+          writeDiagnosticFixture() {
+            return writePackagedDiagnosticFixture({
+              identity: desktopOperationalIdentity,
+              logger: desktopOperationalLogger,
+              logsRoot: operationalLogsRoot,
+            });
           },
           reportStage: options.reportSmokeStage,
         });
