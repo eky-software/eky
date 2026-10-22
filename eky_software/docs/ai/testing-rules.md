@@ -180,6 +180,16 @@ OpenPGP-purkukokeella. Tavalliseen käyttäjäprofiiliin ei kytketä raakakeräy
 Tämä ei todista alempien adapterien jo hävittämän syyn tai pakkokatkaisun
 talteenottoa: keräyksen kattavuus ilmoitetaan todennetun rajan mukaan.
 
+HTTP:n F/R15-raja käyttää `createHttpRequestFailureCapture`-testifixtureä
+ennen Honon turvallista muunnosta. Anna fixture nykyisen testin kontekstista
+`createApp`-option `httpRequestFailureObserver`-kenttään tai saman HTTP-rajan
+kohdetestiin. Se toimittaa ensimmäisen syyn vain testin epäonnistuessa.
+`fHttpFailureEvidence`-regressiot vertaavat kytkemätöntä kontrollia, odotettua
+virhettä, havaitsijan häiriötä ja puuttuvaa tallennusta; OpenPGP-koe tarkistaa
+puretut alkuperäiset tavut sekä testin ja suoritusyrityksen sidonnan.
+Heitetyn merkkijonon sisältö kulkee nykyisessä rajatussa viestikentässä;
+puuttuvaa pinoa tai syyketjua ei keksitä. Tuotanto ei kytke tätä fixtureä.
+
 Julkisen testiraportoinnin hyväksyttyä sisältöä ei laajenneta.
 Käyttöliittymä ja tuotannon diagnostiikka käyttävät edelleen turvallisia
 koodeja. Tämä oletus ei hyväksy kokonaisten

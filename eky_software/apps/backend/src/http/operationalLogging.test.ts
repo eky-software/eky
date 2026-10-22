@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { BackendOperationalEvent } from '../observability/operationalEvent.js';
+import { handleUnexpectedHttpError } from './handleUnexpectedHttpError.js';
 import {
   setHttpRequestFailure,
   setHttpRequestOperation,
@@ -33,6 +34,7 @@ describe('operational HTTP logging', () => {
   it('returns the correlation id on a failed response without request data', async () => {
     const events: BackendOperationalEvent[] = [];
     const app = new Hono<BackendEnvironment>();
+    app.onError(handleUnexpectedHttpError);
     app.use(
       '*',
       createOperationalLoggingMiddleware({
@@ -74,6 +76,7 @@ describe('operational HTTP logging', () => {
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
     const app = new Hono<BackendEnvironment>();
+    app.onError(handleUnexpectedHttpError);
     app.use(
       '*',
       createOperationalLoggingMiddleware({
@@ -103,6 +106,7 @@ describe('operational HTTP logging', () => {
         headers: { 'Content-Type': 'application/json' },
         method: 'POST',
       });
+      expect(consoleError).not.toHaveBeenCalled();
     } finally {
       consoleError.mockRestore();
     }
@@ -110,7 +114,7 @@ describe('operational HTTP logging', () => {
     expect(response.status).toBe(500);
     expect(write).toHaveBeenCalledWith(
       expect.objectContaining({
-        errorCode: 'HTTP_REQUEST_FAILED',
+        errorCode: 'HTTP_HANDLER_FAILED',
         eventName: 'http.requestFailed',
         operationId: 'invoiceDraft.create',
         stage: 'requestValidation',
@@ -221,6 +225,7 @@ function createTestApp(
   events: BackendOperationalEvent[],
 ): Hono<BackendEnvironment> {
   const app = new Hono<BackendEnvironment>();
+  app.onError(handleUnexpectedHttpError);
   app.use(
     '*',
     createOperationalLoggingMiddleware({

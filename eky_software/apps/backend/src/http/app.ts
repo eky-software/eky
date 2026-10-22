@@ -52,7 +52,12 @@ import {
 import {
   createOperationalLoggingMiddleware,
   logUnknownRoute,
+  writeHttpOperationalEvent,
 } from './operationalLogging.js';
+import {
+  handleUnexpectedHttpError,
+  type HttpRequestFailureObserver,
+} from './handleUnexpectedHttpError.js';
 import { SqliteCompanySettingsAuditRetention } from '../modules/companySettings/infrastructure/sqliteCompanySettingsAuditRetention.js';
 import { SqliteCustomerAuditRetention } from '../modules/customers/infrastructure/sqliteCustomerAuditRetention.js';
 import { SqliteInvoiceSettingsAuditRetention } from '../modules/invoicing/infrastructure/sqliteInvoiceSettingsAuditRetention.js';
@@ -80,6 +85,7 @@ export interface CreateAppOptions {
   registerCompanyEmailSecretShutdown?: (assertSettled: () => void) => void;
   deliveredInvoiceArchiveTaskSink?: DeliveredInvoiceArchiveTaskSink;
   databaseFilePath?: string;
+  httpRequestFailureObserver?: HttpRequestFailureObserver;
   electronVersion?: string;
   invoiceDocumentStorageRoot?: string;
   invoicingInfrastructureAdapters?: InvoicingInfrastructureAdapters;
@@ -345,10 +351,16 @@ export async function createApp(
 
   const localRuntimeIdentity = readLocalRuntimeIdentity(database);
   const app = new Hono<BackendEnvironment>();
+  app.onError((error, context) =>
+    handleUnexpectedHttpError(error, context, options.httpRequestFailureObserver),
+  );
 
   app.use(
     '*',
     createOperationalLoggingMiddleware({
+      ...(options.httpRequestFailureObserver === undefined
+        ? {}
+        : { httpRequestFailureObserver: options.httpRequestFailureObserver }),
       operationalIdentity,
       operationalLogger,
     }),
@@ -360,25 +372,15 @@ export async function createApp(
       localRuntimeIdentity,
       {
         invalidSession(correlationId) {
-          operationalLogger.write(
-            createBackendOperationalEvent(
-              {
-                correlationId,
-                eventName: 'runtimeSession.invalid',
-              },
-              operationalIdentity,
-            ),
+          writeHttpOperationalEvent(
+            { correlationId, eventName: 'runtimeSession.invalid' },
+            { operationalIdentity, operationalLogger },
           );
         },
         missingSession(correlationId) {
-          operationalLogger.write(
-            createBackendOperationalEvent(
-              {
-                correlationId,
-                eventName: 'runtimeSession.missing',
-              },
-              operationalIdentity,
-            ),
+          writeHttpOperationalEvent(
+            { correlationId, eventName: 'runtimeSession.missing' },
+            { operationalIdentity, operationalLogger },
           );
         },
       },

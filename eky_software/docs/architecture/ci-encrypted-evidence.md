@@ -312,6 +312,18 @@ alkuperäistä syytä. Salauskoe tarkistaa puretut tavut, tiivisteet, syyketjun
 ja testiyrityksen sidonnan. Tämä ei ole väite hosted-ajon latauksesta tai
 kaikkien alempien adapterien virheiden kattavuudesta.
 
+F/R15:n HTTP-rajan synteettinen fixture käyttää samaa runner-liitäntää
+`httpHandlerCatch`-vaiheella. Hono-käsittelijä tai non-Error-arvon vastaanottava
+middleware tarjoaa alkuperäisen arvon ennen turvallista vastausmuunnosta.
+Testifixture säilyttää vain ensimmäisen syyn muistissa ja toimittaa sen vain
+odottamattomasta testihylkäyksestä. Heitetty merkkijono säilyy nykyisen
+projektion rajatussa `message`-kentässä; sille ei muodosteta tekaistua pinoa.
+Tavalliseen backend-käynnistykseen ei kytketä havaitsijaa. Rajatut regressiot
+ja OpenPGP-purkukoe kuuluvat nykyisiin `test:ci`- ja
+`installer:test:encrypted-evidence`-komentoihin. Ne todistavat muunnosrajan
+ja salatut tavut, eivät alempien adapterien jo hävittämää syytä tai hosted-
+artifactin latausta.
+
 Electronin ensikäynnistyksen ja migraatioaktivoinnin testivalmistelu säilyttää mainin alkuperäisen
 sulkuvirheen tunnetun vaiheen ja syyluokan testikohtaisen virheen viestissä.
 Ne luetaan elinkaaren omistamasta suljetusta sopimuksesta ennen Playwrightin

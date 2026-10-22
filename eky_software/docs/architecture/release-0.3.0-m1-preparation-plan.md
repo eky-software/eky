@@ -7,6 +7,140 @@ Päivätyt tutkimusraportit eivät ole rinnakkainen toteutusjono.
 
 ## Jatka tästä
 
+**Hyväksytty lähtö (22.10.2026):** E:n R09-R11 ja rajattu Vitest-
+tietoturvahuolto on hyväksytty PR #311:n ja PR #312:n kautta mainiin
+`d0d08bd182500c463fa06300978f06c295f3cac2`.
+[E:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/312#issuecomment-6329634460)
+erottaa PR:n ensimmäisen hylkäyksen, yhden hyväksytyn kohdeuusinnan sekä
+uuden mainin omat hyväksytyt portit. Mainin puu vastaa katselmoitua
+PR-headia `613a00c73f133e321beb7546126aebff74c5661a`.
+
+| Tarkistus | Hyväksytty näyttö |
+| --- | --- |
+| PR #312 | [V2](https://github.com/eky-software/eky/actions/runs/39685614769): 38 onnistunutta työtä ja kuusi tarkoituksella valitsematonta diagnostiikkatyötä yhden rajatun legacy-core-uusinnan jälkeen. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39685614678) läpäisi. |
+| Mainin omat portit | [V2](https://github.com/eky-software/eky/actions/runs/39693887305): 38 onnistunutta työtä ja kuusi tarkoituksella valitsematonta diagnostiikkatyötä. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39693887157) läpäisi. Molemmat ensimmäisellä suoritusyrityksellä. |
+| Erillinen hälytystilan loppulukeminen | Dependabotissa ei ollut avoimia hälytyksiä 22.10.2026. Tämä on päivätty havainto, ei tulevien revisioiden auditointitodiste. |
+
+**Nykyinen työ:** F/R15:n rajattu toteutus ja testit hyväksytyn sopimuksen
+[mukaan](#f--frameworkin-virheketjun-rajattu-suunnitelma). Omistaja hyväksyi
+rajauksen 22.10.2026. [F:n integraatio on PR #313:ssa](https://github.com/eky-software/eky/pull/313).
+Seuraa sen viimeisimmän revision portteja ja loppuhyväksyntää ennen seuraavaa
+työpakettia; vanha toteutuscheckpoint ei ole uusi F-työjono.
+F:n toteutus ja paikallinen todennus ovat valmiit. Integraation lopullinen
+tila tarkistetaan PR #313:n loppuhyväksynnästä: ilman hyväksyttyjä PR/main-
+portteja F on kesken; niiden jälkeen seuraava työ valitaan roadmapista.
+T/A/B/C/K/D/E säilyvät hyväksyttyinä; G/H/I:n loppuosa ja M4/M5 odottavat.
+
+**Avoimet havainnot:** PR #312:n ensimmäisen MSI-ikkunan luetteloluennan
+viiveen syy ja sitä edeltävän mainin supervisor-havainnon puute jäävät
+avoimiksi. Alkuperäinen virheaineisto säilytetään; hyväksytty uusinta tai
+Vitest-päivitys ei todista niiden korjausta. Myös aikaisemmat MSI-odotukset,
+sulkuviiveet, puuttuvat aineistot ja tuntemattomat siivoustilat säilyvät
+historiallisissa rajauksissaan. Vanha Dependabot-tilanne erotetaan yllä
+olevasta uudemmasta loppulukemisesta.
+
+### F / Frameworkin virheketjun rajattu suunnitelma
+
+**Tila:** rajattu toteutus ja testit hyväksytty 22.10.2026. F:n lopullinen
+hyväksyntä vaatii revision omat PR/main-portit; toteutunut näyttö kirjataan
+[PR #313:n loppuhyväksyntään](https://github.com/eky-software/eky/pull/313).
+Paikallinen HTTP-korjaus, oikean `createApp`-kytkennän Diagnostics-/
+tukipakettiluku sekä alkuperäisen testivirheen OpenPGP-purku on todennettu.
+Koko työtilan testit ja tyypitys, backend-build, auditointi ja CI-ajokytkennän
+regressiot läpäisivät. Riippumattoman katselmuksen finalisointiaukko toistettiin
+ja korjattiin; lopullinen backend-sarja ja tyypitys läpäisivät.
+Tämä ei ole PR- tai main-hyväksyntä.
+
+Ensimmäisen PR-kierroksen kaksi web-virhepolkua odottivat vanhaa
+virheellisen JSON-vastauksen ilmoitusta. F:n kiinteä JSON 500 kulkee nykyisen
+API-clientin kautta toimintokohtaiseen turvalliseen suomenkieliseen
+virheeseen. Korjaus tarkistaa sekä täsmällisen turvallisen JSONin että tämän
+palautteen; PDF-metadatan, hyväksynnän rollbackin ja lokien ehdot säilyvät.
+Ensihylkäystä ei hyväksytä uusinnalla, vaan muuttuneet testiodotukset
+todennetaan uudella revisiolla.
+R15:n lähtörevision lähdekoodi ja
+rajattu synteettinen Hono-ketju vahvistavat, että frameworkin oletuskäsittelijä
+saa alkuperäisen poikkeuksen konsoliin ennen EKYn middleware-catchia.
+Turvallinen HTTP-vastaus ja operational-event eivät yksin sulje tätä vuotoa.
+Kokeen onnistuminen todistaa puutteen, ei tuotantokorjausta.
+
+Omistaja on backendin HTTP-adapteri, ei domain, moduulien application-kerros
+tai uusi lokitusjärjestelmä. Sopimukset luetaan [virheperiaatteista](error-handling-principles.md),
+[observability-ohjeesta](observability-and-audit-plan.md),
+[HTTP-tapahtumakatalogista](r0-observability-event-catalog.md#http-ja-authorization)
+sekä ADR-[0004](../decisions/ADR-0004-local-backend-runtime.md)/[0005](../decisions/ADR-0005-backend-framework-selection.md):stä.
+
+Hyväksytty toteutussopimus:
+
+1. `apps/backend/src/http/app.ts` kytkee nykyiseen Hono-instanssiin rajatun
+   oman `onError`-käsittelijän ennen reittien kokoamista. Odottamaton poikkeus
+   palauttaa kiinteän HTTP 500 / `{ error: "Internal server error." }`
+   -vastauksen. Raakaa poikkeusta, sen `getResponse`-metodia, viestiä, pinoa,
+   syyketjua tai otsakkeita ei kopioida vastaukseen eikä konsoliin.
+2. `operationalLogging.ts` säilyy pyynnön operational-tapahtuman omistajana.
+   Se erottaa frameworkin käsittelemän poikkeuksen normaalisti palautetusta
+   5xx-vastauksesta nykyisillä `HTTP_HANDLER_FAILED`-/`HTTP_REQUEST_FAILED`-
+   luokilla, säilyttää validoidun korrelaation ja sallitun toiminto-/vaihetiedon
+   sekä yrittää kirjata enintään yhden `http.requestFailed`-tapahtuman.
+   Myös muu kuin `Error`-olio päättyy samaan turvalliseen vastausrajaan.
+   Ilman vastausta päättyvä käsittelijä tunnistetaan ennen middlewaren
+   poistumista, jotta myöhempi frameworkin finalisointivirhe ei ohita
+   korrelaatiota tai tapahtumaa.
+3. HTTP-tapahtuman kirjoituksen virhe ei käynnistä rekursiivista kirjausta,
+   palauta raakaa virhettä tai muuta jo valittua business-vastausta.
+   Rajaus kattaa myös `logUnknownRoute`-kutsun ja `createApp`-kytkennän
+   `invalidSession`-/`missingSession`-callbackit: lokituksen häiriö ei saa
+   muuttaa niiden 404- tai session-estovastausta. Kirjoituksen epäselvää
+   lopputulosta ei korjata uudella kirjoitusyrityksellä.
+   Nykyinen writerin häiriöreitti säilyy; G/H:n yleistä fallback- tai
+   kattavuustyötä ei toteuteta F:n sivutyönä.
+4. Moduulien jo turvallisiksi vastauksiksi muunnetut 400/401/403/404/409/413/415-
+   ja 5xx-polut sekä onnistuneet vastaukset säilyvät. Muutos ei keskitä niiden
+   liiketoimintavirheiden tulkintaa. Nykyisessä tuotantolähteessä ei löytynyt
+   tarkoituksellista `HTTPException`-käyttöä; sitä ei lisätä oikopoluksi.
+
+Testit ja valmistumisportti:
+
+- `operationalLogging.test.ts`: oikea Hono-dispatch, tavallinen ja async-
+  poikkeus sekä heitetty merkkijono, objekti, `null` ja `undefined`.
+  Käsittelemätön poikkeus tuottaa toimivalla writerilla yhden
+  `HTTP_HANDLER_FAILED`-tapahtuman; turvalliseksi vastaukseksi jo muunnettu
+  5xx tuottaa vain `HTTP_REQUEST_FAILED`-tapahtuman. Tarkista korrelaatio,
+  konsolin kutsujen sisältö ja se, ettei poikkeuksen `getResponse`-metodia
+  kutsuta. Pelkkä `console.error`-vaimennus ei ole hyväksyntä.
+- Writerin poikkeus ennen tallennusta ja sen jälkeen: vastaus säilyy eikä
+  uutta kirjoitusyritystä, rekursiota tai raakakonsolitulostetta synny.
+  Häiriötestit kattavat myös 404- ja session-kirjaukset.
+- `apps/backend/src/http/`-alueen composition-testi käyttää oikeaa
+  `createApp`-kytkentää ja synteettistä aineistoa. Käsittelemätön poikkeus
+  viedään tämän kytkennän läpi ilman testin omaa korvaavaa `onError`-
+  rekisteröintiä. Tunnetut virheet, session-esto, 404 ja onnistuminen
+  säilyvät ilman uusia tuotannon testireittejä.
+- Käytä nykyistä JSONL-writeria ja tarkoitettuja Diagnostics-/tukipakettilukijoita
+  edustavan HTTP-eventin todentamiseen. Kenttäsopimuksia ei laajenneta;
+  Activityyn tai business auditiin ei lisätä teknistä virhettä.
+- Synteettinen alkuperäinen virhe tarjotaan nykyiselle yksityiselle
+  testihavaitsijalle ennen turvallista muunnosta. Kytkentä ja oikea
+  salaus/purku todennetaan nykyisen [testausohjeen](../ai/testing-rules.md#alkuperäinen-testivirhe-oletuksena)
+  ja [salatun aineiston sopimuksen](ci-encrypted-evidence.md) rajoissa;
+  tavalliseen käyttäjäajoon ei avata raakakeräystä. Havaitsijan oma virhe
+  ei muuta vastausta; odotettu virhetesti ei tuota virheraporttia.
+  Odottamattoman hylkäyksen purettu aineisto todistaa alkuperäisen syyn
+  sidonnan testitapaukseen, suoritusyritykseen ja käynnistyssukupolveen.
+- Kohderegressiot, vaikutusalueen testit, tyypitys ja build, riippumaton
+  rajattu katselmus sekä täsmällisen revision nykyiset PR/main-portit ja
+  auditointi vaaditaan ennen F:n hyväksyntää. CI-riskiluokitusta ei muuteta.
+
+Toteutus pysyy tässä rajauksessa. Ei uusia riippuvuuksia,
+tietokanta-/backup-muutoksia, yleistä error-manageria, testialustaa,
+salaisuuksia, oikeaa asiakasdataa, verkon avaamista tai aikarajamuutoksia.
+Mahdollinen uusi luottamusraja tai tulossopimus tuodaan erikseen päätettäväksi.
+
+### Edeltävien integraatioiden historia
+
+Alla olevat keskeneräisyys- ja seuraavan työn merkinnät kuvaavat aiempia
+revisioita, eivät nykyistä työjonoa. Sopimukset ja avoimet havainnot säilyvät.
+
 **Hyväksytty lähtö (21.10.2026):** D1-D3 ja niiden rajattu HTTP-sulun
 jatkokorjaus on hyväksytty PR #308:n ja PR #309:n kautta mainiin
 `286cc3227ffe37dd44417750636ec30d460a61e1`.
@@ -46,11 +180,6 @@ aineisto ja tuntemattomat siivoustilat säilyvät alla kuvattuina. Dependabotin
 hälytykset 33-37 olivat loppulukemisessa vielä avoimia, vaikka main käyttää
 niiden ilmoittamia korjattuja Hono 4.13.11- ja Vite 8.2.4 -versioita ja
 auditointi läpäisi. Hälytysten sulkeutumista ei ole vahvistettu.
-
-### Edeltävien integraatioiden historia
-
-Alla olevat keskeneräisyys- ja seuraavan työn merkinnät kuvaavat aiempia
-revisioita, eivät nykyistä työjonoa. Sopimukset ja avoimet havainnot säilyvät.
 
 **Hyväksytty lähtö (17.10.2026):** jatkamissivun dokumentointikorjauksen
 PR #307 on yhdistetty `main`-revisioon

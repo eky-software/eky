@@ -167,8 +167,24 @@ Mapper:
 - käsittelee vain HTTP-esitysmuodon
 
 Tuntemattoman virheen käyttäjävastaus on geneerinen `internal_error` /
-HTTP 500. Tekninen virhe voidaan kirjata myöhemmin turvalliseen
-tuotantolokitukseen.
+HTTP 500. Nykyinen `createApp` rekisteröi Honon oman `onError`-käsittelijän
+ja palauttaa `{ error: "Internal server error." }`. Frameworkin
+oletuskonsolia tai poikkeuksen `getResponse`-metodia ei käytetä.
+`Error`-poikkeuksen ja muun heitetyn arvon yhteinen HTTP-raja säilyttää
+turvallisen vastauksen ja yhden `http.requestFailed`-tapahtuman nykyisessä
+operational-lokituksessa. Käsittelemätön poikkeus luokitellaan
+`HTTP_HANDLER_FAILED`-koodilla; moduulin valmiiksi turvallinen 5xx-vastaus
+säilyttää sisältönsä ja käyttää `HTTP_REQUEST_FAILED`-koodia.
+Myös ilman vastausta päättyvä reitti havaitaan ennen HTTP-middlewaren
+poistumista, jotta korrelaatio ja tapahtuma säilyvät.
+
+HTTP-kirjaus, myös session-esto ja tuntematon reitti, on best effort.
+Kirjoituksen virhe ei muuta vastauksen statusta tai sisältöä, käynnistä
+uutta kirjoitusyritystä tai vuoda konsoliin. Nykyinen writer omistaa oman
+häiriöilmoituksensa. Tämä raja ei muuta business auditin transaktiosääntöä.
+Synteettinen testi voi antaa alkuperäisen poikkeuksen havaitsijan ennen
+muunnosta [nykyiseen yksityiseen keräykseen](ci-encrypted-evidence.md#yhteinen-alkuperäisen-testivirheen-liitäntä).
+Tavallinen tuotantokytkentä ei anna tätä havaitsijaa.
 
 ## HTTP-virhesopimus
 
