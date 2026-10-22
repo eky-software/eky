@@ -53,11 +53,13 @@ test.describe('PDF storage fault', () => {
       /\/invoices\/[^/]+\/pdf$/,
     );
     await e2eWeb.page.getByRole('button', { name: 'Luo PDF' }).click();
-    expect((await pdfResponsePromise).status()).toBe(500);
+    const pdfResponse = await pdfResponsePromise;
+    expect(pdfResponse.status()).toBe(500);
+    expect(await pdfResponse.json()).toEqual({ error: 'Internal server error.' });
     await expect(
       e2eWeb.page
         .getByRole('alert')
-        .getByText('Palvelimen vastaus oli virheellinen.'),
+        .getByText('PDF-tiedostoa ei voitu luoda tai avata. Yritä hetken kuluttua uudelleen.'),
     ).toBeVisible();
 
     await expectSafeDiagnosticEvidence(e2eWeb, [
@@ -203,10 +205,11 @@ test.describe('invoice approval database fault', () => {
       e2eWeb.page,
     );
     expect(failedApproval.status()).toBe(500);
+    expect(await failedApproval.json()).toEqual({ error: 'Internal server error.' });
     await expect(
       e2eWeb.page
         .getByRole('alert')
-        .getByText('Palvelimen vastaus oli virheellinen.'),
+        .getByText('Laskua ei voitu hyväksyä. Tarkista laskun tiedot ja yritä uudelleen.'),
     ).toBeVisible();
 
     expect(

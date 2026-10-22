@@ -23,7 +23,10 @@ PR-headia `613a00c73f133e321beb7546126aebff74c5661a`.
 
 **Nykyinen työ:** F/R15:n rajattu toteutus ja testit hyväksytyn sopimuksen
 [mukaan](#f--frameworkin-virheketjun-rajattu-suunnitelma). Omistaja hyväksyi
-rajauksen 22.10.2026. Seuraavana ovat jäädytetyn revision normaalit PR-portit.
+rajauksen 22.10.2026. [F:n integraatio on PR #313:ssa](https://github.com/eky-software/eky/pull/313).
+Seuraa sen viimeisimmän revision portteja ja loppuhyväksyntää ennen seuraavaa
+työpakettia; vanha toteutuscheckpoint ei ole uusi F-työjono.
+Seuraavana ovat korjatun revision normaalit PR-portit.
 F:n mergeä ei ole vielä tehty. T/A/B/C/K/D/E säilyvät
 hyväksyttyinä; G/H/I:n loppuosa ja M4/M5 odottavat roadmapin mukaista työtä.
 
@@ -45,6 +48,14 @@ Koko työtilan testit ja tyypitys, backend-build, auditointi ja CI-ajokytkennän
 regressiot läpäisivät. Riippumattoman katselmuksen finalisointiaukko toistettiin
 ja korjattiin; lopullinen backend-sarja ja tyypitys läpäisivät.
 Tämä ei ole PR- tai main-hyväksyntä.
+
+Ensimmäisen PR-kierroksen kaksi web-virhepolkua odottivat vanhaa
+virheellisen JSON-vastauksen ilmoitusta. F:n kiinteä JSON 500 kulkee nykyisen
+API-clientin kautta toimintokohtaiseen turvalliseen suomenkieliseen
+virheeseen. Korjaus tarkistaa sekä täsmällisen turvallisen JSONin että tämän
+palautteen; PDF-metadatan, hyväksynnän rollbackin ja lokien ehdot säilyvät.
+Ensihylkäystä ei hyväksytä uusinnalla, vaan muuttuneet testiodotukset
+todennetaan uudella revisiolla.
 R15:n lähtörevision lähdekoodi ja
 rajattu synteettinen Hono-ketju vahvistavat, että frameworkin oletuskäsittelijä
 saa alkuperäisen poikkeuksen konsoliin ennen EKYn middleware-catchia.
