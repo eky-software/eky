@@ -26,9 +26,10 @@ PR-headia `613a00c73f133e321beb7546126aebff74c5661a`.
 rajauksen 22.10.2026. [F:n integraatio on PR #313:ssa](https://github.com/eky-software/eky/pull/313).
 Seuraa sen viimeisimmän revision portteja ja loppuhyväksyntää ennen seuraavaa
 työpakettia; vanha toteutuscheckpoint ei ole uusi F-työjono.
-Seuraavana ovat korjatun revision normaalit PR-portit.
-F:n mergeä ei ole vielä tehty. T/A/B/C/K/D/E säilyvät
-hyväksyttyinä; G/H/I:n loppuosa ja M4/M5 odottavat roadmapin mukaista työtä.
+F:n toteutus ja paikallinen todennus ovat valmiit. Integraation lopullinen
+tila tarkistetaan PR #313:n loppuhyväksynnästä: ilman hyväksyttyjä PR/main-
+portteja F on kesken; niiden jälkeen seuraava työ valitaan roadmapista.
+T/A/B/C/K/D/E säilyvät hyväksyttyinä; G/H/I:n loppuosa ja M4/M5 odottavat.
 
 **Avoimet havainnot:** PR #312:n ensimmäisen MSI-ikkunan luetteloluennan
 viiveen syy ja sitä edeltävän mainin supervisor-havainnon puute jäävät
@@ -40,8 +41,9 @@ olevasta uudemmasta loppulukemisesta.
 
 ### F / Frameworkin virheketjun rajattu suunnitelma
 
-**Tila:** rajattu toteutus ja testit hyväksytty 22.10.2026; F:n lopullinen
-hyväksyntä odottaa revision omia PR/main-portteja.
+**Tila:** rajattu toteutus ja testit hyväksytty 22.10.2026. F:n lopullinen
+hyväksyntä vaatii revision omat PR/main-portit; toteutunut näyttö kirjataan
+[PR #313:n loppuhyväksyntään](https://github.com/eky-software/eky/pull/313).
 Paikallinen HTTP-korjaus, oikean `createApp`-kytkennän Diagnostics-/
 tukipakettiluku sekä alkuperäisen testivirheen OpenPGP-purku on todennettu.
 Koko työtilan testit ja tyypitys, backend-build, auditointi ja CI-ajokytkennän
