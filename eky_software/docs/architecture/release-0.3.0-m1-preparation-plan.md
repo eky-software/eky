@@ -29,8 +29,12 @@ kaikkien G-rivien semanttinen tarkistus ovat toteutettuina; niiden
 kohderegressiot ja tyypitys läpäisivät. Alkuperäisen synteettisen
 smoke-virheen säilyminen nykyisessä salaus/purku-ketjussa on todennettu.
 Normaali desktop-sarja ja vaikutusalueen neljän paketin tyypitys läpäisivät.
-Seuraava portti on saman puhtaan Windows-paketin käyttöliittymä-/
-tukipaketti-/palautustodennus. Sitä ei korvaa system-testi.
+Puhtaan revision `ab53bf706db75351eb21cdc22a74487cfc94fd50` Windows-paketin
+käyttöliittymä-, tukipaketti- ja backup -> inspect -> restore -> restart ->
+compare -todennus läpäisi. Rajattu riippumaton loppukatselmus ei löytänyt
+korjattavaa ja riippuvuusauditointi läpäisi. Seuraava portti on jäädytetyn
+PR-headin normaalit tarkistukset ja niiden jälkeen uuden mainin omat portit.
+Tämä paikallinen näyttö ei vielä ole G:n integraatiohyväksyntä.
 Sitä edeltävä rajattu palautustestin aikabudjettimuutos on hyväksytty
 ja paikallisesti todennettu alla kuvatulla rajauksella.
 Backendin ja API-clientin laajat sarjat läpäisivät. Desktopin
@@ -194,8 +198,9 @@ sulkua tai profiilimuutosta. G4:n system-lukuketju, tuotetun artifactin
 tiukka semantiikka ja alkuperäisen synteettisen smoke-virheen salaus/purku
 läpäisivät kohdetodennuksen 23.10.2026. Rajattu katselmus havaitsi yhden
 info-poissulun testidatan puutteen; muuten kelvollinen info-rivi korvasi sen
-ja regressio läpäisi. Paketoidun käyttöliittymän ja palautuksen näyttö on
-vielä avoinna. Nämä eivät ole G:n tai PR/mainin hyväksyntä.
+ja regressio läpäisi. Myös paketoidun käyttöliittymän ja palautuksen
+todennus sekä rajattu loppukatselmus läpäisivät yllä nimetyllä revisiolla.
+Nämä eivät vielä ole G:n PR/main-hyväksyntä.
 Edeltävien palautustestien aikakatkaisujen syyt ja epävarma siivoustila
 säilyvät avoimina; hyväksytyn rajatun testibudjetin näyttö on yllä.
 
