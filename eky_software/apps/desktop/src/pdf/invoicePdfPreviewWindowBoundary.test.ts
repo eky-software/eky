@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { Script } from 'node:vm';
+import type { BrowserWindow } from 'electron';
 
 import { ModuleKind, ScriptTarget, transpileModule } from 'typescript';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -29,6 +30,7 @@ vi.mock('electron', () => ({
 import { registerApplicationProtocol } from '../main/applicationProtocol.js';
 import { registerElectronPermissionPolicy } from '../security/electronPermissionPolicy.js';
 import { invoicePdfPreviewIpcChannel } from './invoicePdfPreviewTypes.js';
+import { createInvoicePdfPreviewWindowController } from './invoicePdfPreviewWindow.js';
 
 const preservedPdfUrl =
   'eky://app/invoices/invoice-1/preserved-documents/document-1/pdf';
@@ -62,6 +64,33 @@ beforeEach(() => {
 });
 
 describe('invoice PDF preview desktop boundaries', () => {
+  it('runs the packaged bridge guard against the actual preload surface and rejects every changed method', async () => {
+    const api = electronBoundary.exposeInMainWorld.mock.calls[0]![1];
+    let bridge: unknown = api;
+    const executeJavaScript = vi.fn(async (source: string) =>
+      new Script(source).runInNewContext({ window: { ekyDesktop: bridge } }));
+    const controller = createInvoicePdfPreviewWindowController({
+      createWindow() { throw new Error('Synthetic bridge test must not open a window.'); },
+      ipcMain: { handle: vi.fn(), removeHandler: vi.fn() },
+      mainWindow: { webContents: { executeJavaScript } } as unknown as BrowserWindow,
+      restoreMainWindowFocus: vi.fn(), showSafeError: vi.fn(),
+      verifyPdfAvailable: vi.fn(async () => false),
+    });
+
+    expect(await controller.hasRendererBridgeForSmoke()).toBe(true);
+    for (const key of Object.keys(api)) {
+      const missing = { ...api };
+      Reflect.deleteProperty(missing, key);
+      bridge = missing;
+      expect(await controller.hasRendererBridgeForSmoke()).toBe(false);
+      bridge = { ...api, [key]: 'not a function' };
+      expect(await controller.hasRendererBridgeForSmoke()).toBe(false);
+    }
+    bridge = { ...api, unexpectedCapability() {} };
+    expect(await controller.hasRendererBridgeForSmoke()).toBe(false);
+    controller.dispose();
+  });
+
   it('extends the existing preload capability without changing its default invocation', async () => {
     const [name, api] = electronBoundary.exposeInMainWorld.mock.calls[0]!;
 

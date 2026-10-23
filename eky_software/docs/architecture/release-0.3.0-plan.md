@@ -28,8 +28,8 @@ Tämä roadmap omistaa julkaisun sisällön ja työjärjestyksen.
 | R030-03 | Yrityksen nimi mukaan käyttäjän tallentaman varmuuskopion ehdotettuun tiedostonimeen päivämäärän lisäksi. | Suunniteltu; nimen lähde ja turvallinen nimeämissääntö päätettävä. |
 | D029-01 | Työtilatoiminnon tarkka turvallinen virhesyy lokiin, esimerkiksi väärän yrityksen varmuuskopion hylkäys. | K:n syyketju ja G:n täydentävä kattavuus hyväksytty. G:n rajaus ja erilliset PR/main-portit: PR #314:n loppuhyväksyntä M1:n kautta. |
 | D029-02 | Päivitystapahtumat kulkemaan sovitusti diagnostiikan ja tukipaketin koko lukuketjussa. | G:n sovitut perhekohtaiset projektiot ja poissulut hyväksytty PR #314:n PR/main-porteilla. Ei yleinen lupa julkaista writerin kaikkea metadataa. |
-| D029-03 | Tukipaketin uusimpien tapahtumien valinta ajan mukaan eri lokilähteistä. | Puute todettu; korjaus tekemättä. |
-| D029-04 | Tyhjä, osittainen ja epäonnistunut lokin luku eroteltaviksi. | Puute todettu; tila- ja kattavuussopimus päätettävä ennen korjausta. |
+| D029-03 | Tukipaketin uusimpien tapahtumien valinta ajan mukaan eri lokilähteistä. | H3:n korjaus paikallisesti todennettu; H:n paketti-/integraatioportit avoinna M1:n mukaan. |
+| D029-04 | Tyhjä, osittainen ja epäonnistunut lokin luku eroteltaviksi. | H-P1:n sopimus hyväksytty ja H4:n lukuketju paikallisesti todennettu; H:n integraatio avoinna. |
 | D029-05 | Desktopin lokikirjoituksen häiriö näkyväksi turvallisesti. | H-P2:n sovellusilmoitus hyväksytty; toteutuksen ja integraation näyttö M1:ssä. |
 | R030-04 | Käyttäjäilmoitusten tarkennus, erityisesti odotetut estot ja saman version päivitysyrityksen palaute. | Tarkistettava ja rajattava; saman version torjunta ei itsessään ole vika. |
 | R030-05 | Muuttuvien toimintojen ohjeet ja lyhyt virhetilanteen tukiohje ajan tasalle. | Suunniteltu; tarkistetaan toteutusten yhteydessä. |

@@ -288,6 +288,16 @@ kutsua ja koe vaatii tilauksen ensin; molemmat selainkokeet läpäisivät
 uudella tarkistuksella. Rajattu uudelleenkatselmus ei löytänyt avoimia
 korjattavia havaintoja. Riippuvuusauditointi läpäisi; riippuvuuksia ei muutettu.
 
+Ensimmäinen puhdas H5-paketti hylättiin palautussmoken preload-
+pintatarkistuksessa: nykyinen `hasRendererBridgeForSmoke` odotti edelleen
+23 metodia, vaikka hyväksytty H5-pinta sisältää 25. Uusi regressio suorittaa
+oikean tarkistuslausekkeen todellista transpiloitua preload-pintaa vasten ja
+toisti puutteen ennen korjausta. Guard vaatii nyt molemmat H5-metodit ja
+täsmälleen 25 avainta; jokaisen metodin puuttuminen, väärä tyyppi ja vieras
+lisämetodi hylätään. Rajattu kolmen tiedoston sarja läpäisi 64 testiä eikä
+uudelleenkatselmukseen jäänyt havaintoja. Ensihylkäyksen paketti ja aineisto
+säilyvät; korjattu revisio tarvitsee uuden puhtaan paketti-/palautustodisteen.
+
 #### H:n säilyvät rajat ja valmistumisportti
 
 Diagnostics säilyy read-only-projektiona. Kiinteä lokijuuri, backendin
