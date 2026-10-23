@@ -31,6 +31,9 @@ on korjattu ja H5:n hyväksytty sovellusilmoitus on paikallisesti todennettu
 main/preload/UI-ketjussa. Vaikutusalueen paikalliset loppusarjat, tyypitys,
 auditointi ja katselmus ovat läpäisseet. Korjatun puhtaan revision
 pakettitodistus on läpäissyt; seuraavaksi tehdään H:n PR/main-integraatio.
+PR #315:n ensimmäinen kierros hylkäsi itsenäisen virheaineistofixturen
+valmistelun; rajattu testikorjaus ja uusi täsmärevision kierros ovat kesken
+[alla olevan checkpointin mukaan](#hn-pr-integraation-rajattu-jatko).
 Uudet käyttäytymis-, turvallisuus-
 tai muut erilliset päätökset ratkaistaan ennen niiden vaikutusalueen kytkentää;
 samoja H-P1/H-P2-periaatteita ei kysytä uudelleen. Toteutus ja sen portit
@@ -308,6 +311,31 @@ Ensimmäinen hylätty paketti ja sen aineisto säilyvät erillisinä.
 Tätä lähdettä seuraava checkpoint-muutos on vain dokumentaatiota; normaalit
 PR-portit vaaditaan silti täsmälliselle PR-headille ja mergen jälkeiselle
 mainille. H ei ole vielä integraatiohyväksytty.
+
+#### H:n PR-integraation rajattu jatko
+
+[PR #315:n ensimmäinen V2-kierros](https://github.com/eky-software/eky/actions/runs/39916113813)
+hylkäsi kolme HTTP-/diagnostiikka-/desktop-writerin salauskoetta tunnuksella
+`F_ORIGINAL_CAPTURE_MISSING`. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39916113723)
+läpäisi. V2:n hylätyn valmistelun vuoksi suorittamatta jääneet jatkot eivät
+ole läpäisyjä. Alkuperäinen loki ja salattu paketti säilytettiin; purun,
+run/attempt/job-sidonnan, todellisen checkout-puun ja tiedostotiivisteiden
+tarkistus läpäisi. Paketti sisältää parent-testien väitteet, ei sisemmän
+koeprosessin alkuperäistä import-virhettä.
+
+Lähdeanalyysi osoitti fixturen uuden `listDiagnosticEvents`-tuonnin hakevan
+`@eky/permissions`-paketin build-exporttia, jota tämä itsenäinen CI-askel ei
+valmista. Hallittu paikallinen koe toisti puuttuvan kaappauksen ja yksilöi
+permission-tuonnin: käännettyjen työtilapakettien estäminen pysäytti testin
+ennen sen runkoa. Fixturen täsmällinen lähdealias poistaa build-riippuvuuden;
+sama estoregressio, tavalliset kontrollit ja kaikki kolme OpenPGP-ketjua
+läpäisivät neljän parent-testin sarjana. Tämä paikallinen syynäyttö erotetaan
+alkuperäisessä CI-paketissa säilyneestä tiedosta.
+
+Korjaus koskee vain nykyistä testifixtureä ja sen regressiota, ei sovellusta,
+CI-askelten sisältöä, salauksen rajoja tai hyväksyntäehtoja. Korjattu head
+tarvitsee normaalit PR-portit. Hyväksyttyä puhdasta pakettia ei korvata
+toisilla tavuilla pelkän testiapurikorjauksen vuoksi.
 
 #### H:n säilyvät rajat ja valmistumisportti
 

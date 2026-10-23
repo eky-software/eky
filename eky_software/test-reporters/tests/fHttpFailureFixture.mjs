@@ -11,16 +11,25 @@ export const F_CAUSE_MARKER = 'F_HTTP_CAUSE_MARKER';
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const TEST_NAME = 'F HTTP original exception at the production conversion boundary';
 const moduleUrl = path => new URL(path, import.meta.url).href;
+const permissionsSource = fileURLToPath(new URL('../../packages/permissions/src/index.ts', import.meta.url));
 
 export async function runFWorker(parent, name, {
   mode = 'unexpected', observe = true, missingStorage = false, binding = {},
+  rejectWorkspacePackageExports = false,
 } = {}) {
   const directory = join(parent, name);
   await mkdir(join(directory, 'temporary'), { recursive: true });
   const temp = await realpath(join(directory, 'temporary'));
   const file = join(directory, 'http-error.test.mjs');
   const config = join(directory, 'vitest.config.mjs');
-  await writeFile(config, `export default { test: {
+  await writeFile(config, `export default {
+    resolve: { alias: [{ find: /^@eky[/]permissions$/, replacement: ${JSON.stringify(permissionsSource)} }] },
+    plugins: ${rejectWorkspacePackageExports ? `[{ name: 'synthetic-unbuilt-workspace', enforce: 'pre',
+      resolveId(id) {
+        if (id.startsWith('@eky/')) throw new Error('F_WORKSPACE_RUNTIME_BUILD_UNAVAILABLE');
+      },
+    }]` : '[]'},
+    test: {
     include: ['http-error.test.mjs'], maxWorkers: 1, fileParallelism: false,
     retry: 0, testTimeout: 5000, hookTimeout: 2000, includeTaskLocation: true,
   } };`, { flag: 'wx', mode: 0o600 });

@@ -15,6 +15,7 @@ test('F HTTP evidence preserves the first exception and expected outcomes', { ti
   assert.equal(baseline.child.status, 1);
   assert.equal(JSON.stringify(baseline.records).includes(F_ORIGINAL_MARKER), false, 'F_CONTROL_RETAINED_ORIGINAL');
   assertFOriginalProof(await runFWorker(root, 'with-observation'));
+  assertFOriginalProof(await runFWorker(root, 'unbuilt-workspace', { rejectWorkspacePackageExports: true }));
   assertFOriginalProof(await runFWorker(root, 'non-error', { mode: 'non-error' }), undefined, { nonError: true });
   const brokenObserver = await runFWorker(root, 'broken-observer', { mode: 'capture-throws' });
   assert.equal(brokenObserver.child.status, 1);
