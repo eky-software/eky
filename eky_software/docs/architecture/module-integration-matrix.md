@@ -69,6 +69,15 @@ omistaa rajan; D:n integraatiohyväksyntä on edelleen avoin.
 | Mobile Sync | planned | open | Ei saa ohittaa module application-, permission- tai tenant-rajoja | open | open | open | open | open | open | open | open | open | open | open | open | open | open | open | mobile planned | open |
 | AI Agent Coordination | planned | Agenttien rajattu toimijuus ja jäljitettävä orchestration päätetään myöhemmin | Ei saa ohittaa domain-, permission-, tenant-, audit- tai API-rajoja | open | open | open | open | Vain omistavan moduulin application-sopimusten kautta | open | open | open | open | open | open | open | open | open | open | backend/cloud planned | open |
 
+Desktopin H5-häiriöilmoitus ei muuta Diagnosticsin omistajuutta:
+mainin nykyinen failure sink omistaa prosessikohtaisen häiriöhavainnon ja
+minimoidun incident-yrityksen; App-kuori näyttää vain turvallisen boolean-
+projektion. Backendin permission-suojattu tekninen lukuketju ja business-
+toimintojen tulokset säilyvät erillisinä. Tarkka
+[sopimus](observability-and-audit-plan.md#desktopin-lokikirjoituksen-häiriöpalaute)
+ja [H:n hyväksyntätila](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+erottavat paikallisen näytön lopullisesta integraatiosta.
+
 ### Local Workspace W2.1 -checkpoint
 
 Seuraavat W2-W6-kohdat säilyttävät vaiheiden alkuperäisen työnjaon ja

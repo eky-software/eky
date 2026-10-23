@@ -10,6 +10,10 @@ const openOperationalLogFolderIpcChannel =
   'eky:diagnostics:open-operational-log-folder';
 const createSupportBundleIpcChannel =
   'eky:diagnostics:create-support-bundle';
+const getOperationalLogFailureStatusIpcChannel =
+  'eky:diagnostics:get-operational-log-failure-status';
+const operationalLogFailureObservedIpcChannel =
+  'eky:diagnostics:operational-log-failure-observed';
 const getInvoicePdfArchiveStatusIpcChannel =
   'eky:invoice-pdf-archive:get-status';
 const chooseInvoicePdfArchiveDirectoryIpcChannel =
@@ -46,6 +50,8 @@ const switchWorkspaceIpcChannel = 'eky:workspace-management:v1:switch';
 const renameWorkspaceIpcChannel = 'eky:workspace-management:v1:rename';
 
 interface EkyDesktopApi extends InvoicePdfPreviewApi {
+  getOperationalLogFailureStatus(): Promise<unknown>;
+  onOperationalLogFailure(callback: () => void): () => void;
   chooseInvoicePdfArchiveDirectory(): Promise<unknown>;
   createEncryptedProfileBackup(): Promise<unknown>;
   createManualRecoveryPoint(): Promise<unknown>;
@@ -76,6 +82,19 @@ interface EkyDesktopApi extends InvoicePdfPreviewApi {
 }
 
 const ekyDesktopApi: EkyDesktopApi = Object.freeze({
+  getOperationalLogFailureStatus() {
+    return ipcRenderer.invoke(getOperationalLogFailureStatusIpcChannel);
+  },
+  onOperationalLogFailure(callback: () => void) {
+    if (typeof callback !== 'function') throw new Error('OPERATIONAL_LOG_FAILURE_LISTENER_INVALID');
+    const listener = (_event: unknown, ...args: unknown[]) => {
+      if (args.length !== 0) return;
+      try { callback(); }
+      catch { /* A renderer callback cannot break notification delivery. */ }
+    };
+    ipcRenderer.on(operationalLogFailureObservedIpcChannel, listener);
+    return () => { ipcRenderer.removeListener(operationalLogFailureObservedIpcChannel, listener); };
+  },
   chooseInvoicePdfArchiveDirectory() {
     return ipcRenderer.invoke(chooseInvoicePdfArchiveDirectoryIpcChannel);
   },

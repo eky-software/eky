@@ -407,6 +407,37 @@ rollback-operaation tulosta.
 
 ## Testaus ja failure behavior
 
+### Desktopin lokikirjoituksen häiriöpalaute
+
+Mainin nykyinen operational-writer käyttää `DesktopLogFailureSink`-porttia.
+Senkään info-kirjoituksen virhe ei jää vain ulomman incident-projektion
+varaan. `LOG_WRITE_FAILED` ja `LOG_CAPACITY_REACHED` deduplikoidaan kolmen
+desktop-virran kanssa prosessin sisällä: enintään kuusi minimoitua
+incident-yritystä, ei rekursiivista detailed-kirjoitusta. Sama levy ei ole
+varma varakanava. Incident- tai ilmoitusvirhe ei muuta business-tulosta.
+
+Ensimmäinen havainto asettaa mainin monotonisen `failureObserved`-arvon ja
+yrittää yhtä muutosilmoitusta. Pääikkunan trusted-main-frame-capability
+tarjoaa nolla-argumenttisen `getOperationalLogFailureStatus()`-alkuluvun
+ja payloadittoman `onOperationalLogFailure(callback)`-tilauksen.
+Capability suljetaan nykyisessä sulkuryhmässä. Arvo ei ole writerin
+terveystodistus eikä business-audit; uudessa main-prosessissa se alkaa alusta.
+
+Sovelluksen yhteinen ei-estävä ilmoituspalkki tilaa ennen alkulukua, joten
+myöhäinen `false` ei poista jo havaittua häiriötä. Ilmoitus säilyy näkymää
+vaihdettaessa saman käynnistyksen ajan. Se ei avaa ikkunoita, paljasta
+polkuja tai raakavirheitä eikä estä liiketoimintatyötä. Selain ilman
+desktop-capabilityä säilyy ennallaan; pollaus- tai uusintapalvelua ei lisätä.
+Diagnosticsin permission-suojattu lukuprojektio säilyy tästä erillisenä.
+
+Regressiot kattavat writerin, incidentin ja ilmoituksen virheet, suljetun
+main/preload-rajan, todellisen main-koostamisen sekä React-/Electron-ketjun.
+Vain synteettinen testikoostaminen voi välittää alkuperäisen I/O-poikkeuksen
+nykyiseen yksityiseen virhehavaitsijaan ennen turvallista koodimuunnosta;
+tuotannon main ei kytke havaitsijaa. Salaus/purku todennetaan erikseen.
+
+### Yhteiset vaatimukset
+
 - Business audit -virhe rollbackaa saman transaktion kriittisen muutoksen.
 - Operational- tai security-writerin virhe ei kaada business-polkua eikä
   peitä alkuperäistä turvallista käyttäjävirhettä.

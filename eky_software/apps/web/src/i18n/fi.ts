@@ -18,6 +18,8 @@ export const uiText = {
     expandSidebar: 'Avaa päävalikko',
     localBackend: 'Paikallinen backend',
     modules: 'Moduulit',
+    operationalLogFailure:
+      'Lokituksessa havaittiin häiriö. Osa teknisistä tapahtumista voi puuttua.',
     primaryNavigation: 'Päätoiminnot',
   },
   modules: {

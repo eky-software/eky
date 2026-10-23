@@ -30,7 +30,7 @@ Tämä roadmap omistaa julkaisun sisällön ja työjärjestyksen.
 | D029-02 | Päivitystapahtumat kulkemaan sovitusti diagnostiikan ja tukipaketin koko lukuketjussa. | G:n sovitut perhekohtaiset projektiot ja poissulut hyväksytty PR #314:n PR/main-porteilla. Ei yleinen lupa julkaista writerin kaikkea metadataa. |
 | D029-03 | Tukipaketin uusimpien tapahtumien valinta ajan mukaan eri lokilähteistä. | Puute todettu; korjaus tekemättä. |
 | D029-04 | Tyhjä, osittainen ja epäonnistunut lokin luku eroteltaviksi. | Puute todettu; tila- ja kattavuussopimus päätettävä ennen korjausta. |
-| D029-05 | Desktopin lokikirjoituksen häiriö näkyväksi turvallisesti. | Puute todettu; häiriöilmoituksen sopimus päätettävä ennen korjausta. |
+| D029-05 | Desktopin lokikirjoituksen häiriö näkyväksi turvallisesti. | H-P2:n sovellusilmoitus hyväksytty; toteutuksen ja integraation näyttö M1:ssä. |
 | R030-04 | Käyttäjäilmoitusten tarkennus, erityisesti odotetut estot ja saman version päivitysyrityksen palaute. | Tarkistettava ja rajattava; saman version torjunta ei itsessään ole vika. |
 | R030-05 | Muuttuvien toimintojen ohjeet ja lyhyt virhetilanteen tukiohje ajan tasalle. | Suunniteltu; tarkistetaan toteutusten yhteydessä. |
 | R030-08 | Diagnostiikan vanhempien tapahtumien selaaminen nykyisen yhden otoksen ulkopuolelle sekä paluu uudempiin tapahtumiin. Näytettävä aikaväli, jatkon saatavuus ja mahdolliset lukurajat näkyviin. | Mukaan sovittu 2026-09-22; sivutuksen käyttöliittymä ja turvallinen lukusopimus suunniteltava ennen toteutusta. |
@@ -230,7 +230,7 @@ ja K [PR #305:n mainissa](https://github.com/eky-software/eky/pull/305#issuecomm
 I:n aikaistettu dokumentaatio-osuus sekä D ja E ovat myös hyväksyttyjä;
 F/R15 on hyväksytty PR #313:n omilla PR/main-porteilla. Myös G/R20/R23 ja
 D029-01/02 on hyväksytty PR #314:n omilla PR/main-porteilla.
-Nykyinen työ on H/R21/R22/R24/R25/R26:n rajattu suunnittelu;
+Nykyinen työ on H/R21/R22/R24/R25/R26:n rajattu toteutus;
 H-P1:n lukutilan ja H-P2:n häiriöpalautteen periaatteet sekä H:n toteutus
 Goalina on hyväksytty 23.10.2026; täsmällinen kytkentä ja sen näyttö ovat kesken.
 Täsmällinen näyttö ja nykytila ovat

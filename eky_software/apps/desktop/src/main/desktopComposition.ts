@@ -62,6 +62,8 @@ import { maintainDesktopIncidentIndex } from '../observability/infrastructure/de
 import { maintainDesktopOperationalLogs } from '../observability/infrastructure/desktopOperationalLogRetention.js';
 import { DesktopIncidentIndexingOperationalLogger } from '../observability/infrastructure/jsonLineDesktopIncidentIndex.js';
 import { JsonLineDesktopOperationalLogger } from '../observability/infrastructure/jsonLineDesktopOperationalLogger.js';
+import { IncidentIndexDesktopLogFailureSink } from '../observability/infrastructure/incidentIndexDesktopLogFailureSink.js';
+import { createOperationalLogFailureCapability } from '../diagnostics/operationalLogFailureCapability.js';
 import { createMainSecretBrokerTransport } from '../secrets/electronSecretBrokerTransport.js';
 import { startSecretBrokerMain } from '../secrets/secretBrokerMain.js';
 import { SafeStorageStringProtector } from '../secrets/safeStorageStringProtector.js';
@@ -520,13 +522,6 @@ export async function startDesktopComposition(
     logsRoot: operationalLogsRoot,
   });
   maintainDesktopIncidentIndex({ logsRoot: operationalLogsRoot });
-  const desktopOperationalLogger =
-    new DesktopIncidentIndexingOperationalLogger(
-      new JsonLineDesktopOperationalLogger({
-        logsRoot: operationalLogsRoot,
-      }),
-      operationalLogsRoot,
-    );
   const desktopStartedAt = Date.now();
   const desktopAppVersion = options.appVersion;
   const desktopOperationalIdentity = {
@@ -534,6 +529,15 @@ export async function startDesktopComposition(
     buildRevision: options.buildInfo.buildRevision,
     runtimeInstanceId: options.runtimeInstanceId,
   } as const;
+  const operationalLogFailureSink = new IncidentIndexDesktopLogFailureSink({
+    logsRoot: operationalLogsRoot,
+    operationalIdentity: desktopOperationalIdentity,
+  });
+  const desktopOperationalLogger = new DesktopIncidentIndexingOperationalLogger(
+    new JsonLineDesktopOperationalLogger({ logsRoot: operationalLogsRoot,
+      failureSink: operationalLogFailureSink }),
+    operationalLogsRoot,
+  );
 
   let startupSessionSecret: string | undefined;
   let reservation: DesktopWorkspaceReservation | undefined;
@@ -701,6 +705,7 @@ export async function startDesktopComposition(
       desktopAppVersion,
       desktopOperationalIdentity,
       desktopOperationalLogger,
+      operationalLogFailureSink,
       desktopStartedAt,
       installationRuntimeRoot,
       installationUpdateState,
@@ -782,6 +787,7 @@ interface DesktopCompositionRuntimeOptions {
   desktopAppVersion: string;
   desktopOperationalIdentity: DesktopOperationalIdentity;
   desktopOperationalLogger: DesktopOperationalLogger;
+  operationalLogFailureSink: IncidentIndexDesktopLogFailureSink;
   desktopStartedAt: number;
   dependencies: DesktopCompositionDependencies;
   installationRuntimeRoot: string;
@@ -851,6 +857,7 @@ async function startDesktopCompositionRuntime({
   desktopAppVersion,
   desktopOperationalIdentity,
   desktopOperationalLogger,
+  operationalLogFailureSink,
   desktopStartedAt,
   dependencies,
   installationRuntimeRoot,
@@ -1257,6 +1264,7 @@ async function startDesktopCompositionRuntime({
   let operationalLogFolderCapability:
     | OperationalLogFolderCapability
     | undefined;
+  let operationalLogFailureCapability: ReturnType<typeof createOperationalLogFailureCapability> | undefined;
   let invoicePdfArchiveCapability:
     | InvoicePdfArchiveCapability
     | undefined;
@@ -2154,6 +2162,9 @@ async function startDesktopCompositionRuntime({
     },
   );
   const mainWindow = applicationWindow;
+  operationalLogFailureCapability = createOperationalLogFailureCapability({
+    ipcMain, mainWindow, failureSink: operationalLogFailureSink,
+  });
   operationalLogFolderCapability = createOperationalLogFolderCapability({
     ipcMain,
     mainWindow,
@@ -2426,6 +2437,7 @@ async function startDesktopCompositionRuntime({
         workspaceManagementCapability,
         pdfPreviewController,
         operationalLogFolderCapability,
+        operationalLogFailureCapability,
         invoicePdfArchiveCapability,
         supportBundleCapability,
         localUpdateSelectionCapability,
@@ -2436,6 +2448,7 @@ async function startDesktopCompositionRuntime({
       workspaceManagementCapability = undefined;
       pdfPreviewController = undefined;
       operationalLogFolderCapability = undefined;
+      operationalLogFailureCapability = undefined;
       invoicePdfArchiveCapability = undefined;
       supportBundleCapability = undefined;
       localUpdateSelectionCapability = undefined;

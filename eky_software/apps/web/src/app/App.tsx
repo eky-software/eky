@@ -12,6 +12,7 @@ import {
   activateAppView,
   initialAppNavigationState,
 } from './appNavigation.js';
+import { DesktopOperationalLogNotice } from './DesktopOperationalLogNotice.js';
 import {
   getDesktopInvoicePdfPreview,
   getDesktopInvoicePdfArchive,
@@ -52,6 +53,7 @@ export function App({ apiClient }: AppProps): React.JSX.Element {
         ? {}
         : { workspaceManagementCapability })}
     >
+      <DesktopOperationalLogNotice />
       {activeView === 'customers' ? (
         <CustomerPage
           apiClient={apiClient}

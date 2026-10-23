@@ -70,6 +70,7 @@ const electronBoundary = vi.hoisted(() => ({
   fetch: vi.fn(),
   createWindow: vi.fn(),
   loadWindow: vi.fn(async () => undefined),
+  handle: vi.fn(),
   fork: vi.fn(),
   removeHandler: vi.fn(),
   portClosed: vi.fn(),
@@ -109,7 +110,7 @@ vi.mock('electron', async () => {
       port2 = new Port();
     },
     dialog: {},
-    ipcMain: { handle: vi.fn(), removeHandler: electronBoundary.removeHandler },
+    ipcMain: { handle: electronBoundary.handle, removeHandler: electronBoundary.removeHandler },
     net: { fetch: electronBoundary.fetch },
     safeStorage: {},
     session: { defaultSession: {} },
@@ -169,6 +170,7 @@ beforeEach(() => {
   electronBoundary.reservationAcquired.mockReset();
   electronBoundary.reservationReleased.mockReset();
   electronBoundary.removeHandler.mockReset();
+  electronBoundary.handle.mockReset();
   electronBoundary.portClosed.mockReset();
   vi.mocked(launchWindowsInstallerForUpdate).mockReset().mockResolvedValue(undefined);
   electronBoundary.fork.mockReset();
@@ -213,6 +215,39 @@ function beginTrackedStartupTest(context: TestContext) {
 }
 
 describe('desktop restore startup composition', () => {
+  it.each([false, true])('retains a real startup log failure through the production capability (incident blocked: %s)', async blockIncident => {
+    const fixture = await createFixture(originalProfileId, { skipRestore: true, completeStartup: true });
+    const logsRoot = join(createDesktopProfilePaths(fixture.root).runtimeRoot, 'logs');
+    await mkdir(logsRoot, { recursive: true });
+    await writeFile(join(logsRoot, 'desktop'), 'synthetic detail obstruction');
+    if (blockIncident) await writeFile(join(logsRoot, 'incident-index'), 'preserved incident obstruction');
+    const lifecycle = await fixture.start();
+    try {
+      expect(lifecycle).toBeDefined();
+      const registration = electronBoundary.handle.mock.calls.find(call =>
+        call[0] === 'eky:diagnostics:get-operational-log-failure-status');
+      expect(registration).toBeDefined();
+      const readStatus = registration![1] as (event: unknown) => { failureObserved: boolean };
+      expect(readStatus({ sender: fixture.mainWindow.webContents,
+        senderFrame: fixture.mainWindow.webContents.mainFrame })).toEqual({ failureObserved: true });
+      expect(electronBoundary.loadWindow).toHaveBeenCalledOnce();
+      expect(fixture.mainWindow.webContents.send).not.toHaveBeenCalled();
+      if (blockIncident) {
+        expect(await readFile(join(logsRoot, 'incident-index'), 'utf8')).toBe('preserved incident obstruction');
+      } else {
+        const bytes = await readFile(join(logsRoot, 'incident-index',
+          `desktop-incident-index-${new Date().getUTCFullYear()}.jsonl`), 'utf8');
+        const incidents = bytes.trim().split('\n').map(line => JSON.parse(line));
+        expect(incidents.filter(entry => entry.fingerprint === 'LOG_WRITE_FAILED:desktop-info')).toHaveLength(1);
+        expect(bytes).not.toContain('33333333-3333-4333-8333-333333333333');
+        expect(bytes).not.toContain(fixture.root);
+      }
+    } finally {
+      await lifecycle?.shutdown();
+    }
+    expect(electronBoundary.removeHandler).toHaveBeenCalledWith('eky:diagnostics:get-operational-log-failure-status');
+  });
+
   it.each(['desktop', 'incident-index'])('preserves ordinary startup when %s log listing fails', async directory => {
     const fixture = await createFixture(originalProfileId, { skipRestore: true, completeStartup: true });
     const logsRoot = join(createDesktopProfilePaths(fixture.root).runtimeRoot, 'logs');
@@ -2315,6 +2350,7 @@ async function createFixture(
   const mainWindow = {
     destroy: vi.fn(() => { windowDestroyed = true; }),
     isDestroyed: () => windowDestroyed,
+    webContents: { mainFrame: {}, send: vi.fn(), isDestroyed: () => windowDestroyed },
   };
   const quit = vi.fn();
   const showErrorBox = vi.fn();

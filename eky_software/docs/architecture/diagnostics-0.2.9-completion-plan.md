@@ -134,7 +134,7 @@ rajojen katkaisemalle aineistolle. UI ei esitä puuttuvaa tietoa
 
 ### D029-05: Desktopin lokikirjoituksen häiriö näkyväksi
 
-**Havainto:** `JsonLineDesktopOperationalLogger` tukee failure sinkiä,
+**Lähtöhavainto:** `JsonLineDesktopOperationalLogger` tukee failure sinkiä,
 mutta `desktopComposition.ts` ei anna sitä. Oletus on no-op. Ulompi
 `DesktopIncidentIndexingOperationalLogger` kirjaa alkuperäisiä error- ja
 security-tapahtumia, ei sisemmän writerin virhettä. Synteettinen
@@ -149,8 +149,12 @@ rikkinäiseen lokiin.
 **Hyväksyntä:** production composition -testi; kirjoitusesto ja täysi
 budjetti eivät muuta varsinaisen toiminnon tulosta. Myös varailmoituksen
 epäonnistuminen käsitellään rajatusti. Saman levyn incident-tiedostoa ei
-väitetä varmaksi fallbackiksi levyvirheessä; näkyvän häiriötilan sopimus
-päätetään erikseen. Ei ilmoitustulvaa tai salaisia tiedostopolkuja.
+väitetä varmaksi fallbackiksi levyvirheessä. Omistaja hyväksyi H-P2:ssa
+saman käynnistyksen ei-estävän sovellusilmoituksen. Tarkka
+[toimitussopimus](observability-and-audit-plan.md#desktopin-lokikirjoituksen-häiriöpalaute)
+ja [M1:n hyväksyntätila](release-0.3.0-m1-preparation-plan.md#h-p2-hyväksytty-writer-häiriön-palaute)
+erottavat paikallisen toteutuksen integraatiohyväksynnästä.
+Ei ilmoitustulvaa tai salaisia tiedostopolkuja.
 
 ## Käytettävyysparannukset
 

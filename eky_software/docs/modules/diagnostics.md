@@ -103,6 +103,13 @@ Tukipaketin erillinen projektio omistetaan
 Lokikansion avaaminen ja tukipaketin tallennus toteutetaan erillisinä Electron
 mainin omistamina, käyttäjän käynnistäminä capabilityina.
 
+Desktopin lokikirjoituksen häiriöpalkki kuuluu mainin failure sinkille ja
+sovelluksen yhteiselle kuorelle, ei Diagnosticsin luku-API:lle. Se välittää
+vain tämän käynnistyksen `failureObserved`-tiedon, näkyy myös muissa näkymissä
+eikä anna pääsyä diagnostiikkatapahtumiin. Permission-suojattu lista ja
+yhteenveto säilyvät erillisinä. Toimitus-, deduplikointi- ja elinkaarisopimus
+on [observability-ohjeessa](../architecture/observability-and-audit-plan.md#desktopin-lokikirjoituksen-häiriöpalaute).
+
 Paketoidun desktopin smoke todentaa edustavan julkisen diagnostiikkaketjun
 JSONL-readerista HTTP-projektioon, API-clientin strict parseriin ja oikeaan
 paketoituun Diagnostiikka-näkymään. Tuntematon vanha JSONL-event voidaan

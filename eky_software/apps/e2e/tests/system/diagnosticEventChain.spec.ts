@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
-import { writeFile } from 'node:fs/promises';
+import { rename, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { createDiagnosticsApi } from '../../../../packages/api-client/src/diagnostics/diagnosticsClient.js';
@@ -10,6 +10,7 @@ import { createBackendOperationalEvent } from '../../../backend/src/observabilit
 import { createBackendOperationalLogger } from '../../../backend/src/observability/infrastructure/createBackendOperationalLogger.js';
 import { createDesktopOperationalEvent } from '../../../desktop/src/observability/createDesktopOperationalEvent.js';
 import type { DesktopOperationalEvent } from '../../../desktop/src/observability/desktopOperationalEvent.js';
+import { IncidentIndexDesktopLogFailureSink } from '../../../desktop/src/observability/infrastructure/incidentIndexDesktopLogFailureSink.js';
 import { DesktopIncidentIndexingOperationalLogger } from '../../../desktop/src/observability/infrastructure/jsonLineDesktopIncidentIndex.js';
 import { JsonLineDesktopOperationalLogger } from '../../../desktop/src/observability/infrastructure/jsonLineDesktopOperationalLogger.js';
 import { createSupportBundleArchive } from '../../../desktop/src/supportBundle/supportBundleArchive.js';
@@ -80,6 +81,23 @@ test('OBS-DIAGNOSTIC-CHAIN-001 @critical @security carries G events through HTTP
     taskQueued, copySuccess, configurationChanged, updateSuccess, legacyFailure];
   for (const event of written) logger.write(event);
 
+  const desktopRoot = join(e2eBackend.paths.logsRoot, 'desktop');
+  const heldDesktopRoot = join(e2eBackend.paths.logsRoot, 'h5-preserved-desktop');
+  await rename(desktopRoot, heldDesktopRoot);
+  await writeFile(desktopRoot, 'synthetic H5 writer obstruction', { flag: 'wx' });
+  const failureSink = new IncidentIndexDesktopLogFailureSink({
+    logsRoot: e2eBackend.paths.logsRoot, operationalIdentity: identity,
+  });
+  const blockedLogger = new JsonLineDesktopOperationalLogger({
+    logsRoot: e2eBackend.paths.logsRoot, failureSink,
+  });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    blockedLogger.write(createDesktopOperationalEvent({ eventName: 'desktop.started' }, identity));
+  }
+  expect(failureSink.failureObserved).toBe(true);
+  await unlink(desktopRoot);
+  await rename(heldDesktopRoot, desktopRoot);
+
   const expectedSupportEvents = [
     projection(archiveFailure, { durationMs: 7, retryable: true, sideEffectState: 'none' }),
     projection(updateFailure, { correlationId: updateCorrelationId, stage: 'runtimeShutdown',
@@ -136,6 +154,15 @@ test('OBS-DIAGNOSTIC-CHAIN-001 @critical @security carries G events through HTTP
   const incidents = support.incidentSummaries.filter(event => names.has(event.eventName));
   expect(incidents).toHaveLength(3);
   expect(incidents).not.toContainEqual(expect.objectContaining({ eventName: queueFailure.eventName }));
+  const logFailures = support.incidentSummaries.filter(event => event.eventName === 'operationalLog.writeFailed');
+  expect(logFailures).toHaveLength(1);
+  expect(logFailures[0]).toMatchObject({
+    appVersion: identity.appVersion, buildRevision: identity.buildRevision,
+    count: 1, errorCode: 'LOG_WRITE_FAILED', fingerprint: 'LOG_WRITE_FAILED:desktop-info',
+    outcome: 'failure',
+  });
+  expect(logFailures[0]?.firstOccurredAt).toBe(logFailures[0]?.lastOccurredAt);
+  expect(events.some(event => event.eventName === 'operationalLog.writeFailed')).toBe(false);
   for (const event of [updateFailure, lineageFailure, legacyFailure]) {
     expect(incidents).toContainEqual({
       appVersion: identity.appVersion, buildRevision: identity.buildRevision, count: 1,

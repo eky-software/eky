@@ -24,13 +24,16 @@ export class JsonLineDesktopOperationalLogger
 {
   readonly #failureSink: DesktopLogFailureSink;
   readonly #logsRoot: string;
+  readonly #failureObserver: { captureOriginalException(error: unknown): void } | undefined;
 
   constructor(options: {
     failureSink?: DesktopLogFailureSink;
     logsRoot: string;
+    failureObserver?: { captureOriginalException(error: unknown): void };
   }) {
     this.#failureSink = options.failureSink ?? noOpFailureSink;
     this.#logsRoot = options.logsRoot;
+    this.#failureObserver = options.failureObserver;
   }
 
   write(event: DesktopOperationalEvent): void {
@@ -57,7 +60,9 @@ export class JsonLineDesktopOperationalLogger
         flag: 'a',
         mode: 0o600,
       });
-    } catch {
+    } catch (error) {
+      try { this.#failureObserver?.captureOriginalException(error); }
+      catch { /* The optional private test observer never changes runtime behavior. */ }
       this.#recordFailureSafely('LOG_WRITE_FAILED', stream);
     }
   }

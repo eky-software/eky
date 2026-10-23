@@ -12,6 +12,7 @@ export interface EkyDesktopApi {
   cancelLocalUpdate(): Promise<unknown>;
   getLocalUpdateStatus(): Promise<unknown>;
   getInvoicePdfArchiveStatus(): Promise<unknown>;
+  getOperationalLogFailureStatus?(): Promise<unknown>;
   getProfileBackupStatus(): Promise<unknown>;
   getWorkspaceManagementStatus(): Promise<unknown>;
   inspectEncryptedProfileBackup(): Promise<unknown>;
@@ -26,6 +27,7 @@ export interface EkyDesktopApi {
   ): Promise<void>;
   openInvoicePdfArchiveDirectory(): Promise<void>;
   openOperationalLogFolder(): Promise<void>;
+  onOperationalLogFailure?(callback: () => void): () => void;
   retryPendingInvoicePdfArchiveTasks(): Promise<unknown>;
   renameWorkspace(input: {
     workspaceId: string;
@@ -318,6 +320,53 @@ function isSafeBuildRevision(value: unknown): boolean {
 }
 
 export type OpenOperationalLogFolder = () => Promise<void>;
+
+export interface OperationalLogFailureStatus {
+  failureObserved: boolean;
+}
+
+export interface OperationalLogFailureCapability {
+  getStatus(): Promise<OperationalLogFailureStatus>;
+  subscribe(callback: () => void): () => void;
+}
+
+export function getDesktopOperationalLogFailure(
+  target: Pick<Window, 'ekyDesktop'> = window,
+): OperationalLogFailureCapability | undefined {
+  const getOperationalLogFailureStatus =
+    target.ekyDesktop?.getOperationalLogFailureStatus;
+  const onOperationalLogFailure = target.ekyDesktop?.onOperationalLogFailure;
+
+  if (
+    typeof getOperationalLogFailureStatus !== 'function' ||
+    typeof onOperationalLogFailure !== 'function'
+  ) {
+    return undefined;
+  }
+
+  return {
+    async getStatus() {
+      const value = await getOperationalLogFailureStatus();
+      if (!isRecord(value)) {
+        throw new Error('Invalid operational log failure status.');
+      }
+
+      const keys = Reflect.ownKeys(value);
+      const failureObserved = value.failureObserved;
+      if (
+        keys.length !== 1 || keys[0] !== 'failureObserved' ||
+        typeof failureObserved !== 'boolean'
+      ) {
+        throw new Error('Invalid operational log failure status.');
+      }
+
+      return { failureObserved };
+    },
+    subscribe(callback) {
+      return onOperationalLogFailure(() => callback());
+    },
+  };
+}
 
 export function getDesktopOperationalLogFolder(
   target: Pick<Window, 'ekyDesktop'> = window,

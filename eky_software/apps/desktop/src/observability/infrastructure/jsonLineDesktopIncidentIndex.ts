@@ -12,6 +12,18 @@ import {
   maintainDesktopIncidentIndex,
 } from './desktopIncidentIndexRetention.js';
 
+export interface DesktopIncidentIndexEntry {
+  schemaVersion: 1;
+  appVersion: string;
+  buildRevision: string;
+  component: 'desktop';
+  errorCode: string;
+  eventName: string;
+  fingerprint: string;
+  outcome: DesktopOperationalEvent['outcome'];
+  timestamp: string;
+}
+
 export class DesktopIncidentIndexingOperationalLogger
   implements DesktopOperationalLogger
 {
@@ -33,59 +45,61 @@ export class DesktopIncidentIndexingOperationalLogger
       return;
     }
 
-    try {
-      const directory = join(this.#logsRoot, 'incident-index');
-      mkdirSync(directory, { mode: 0o700, recursive: true });
-      const directoryStats = lstatSync(directory);
-      if (!directoryStats.isDirectory() || directoryStats.isSymbolicLink()) {
-        return;
-      }
+    const errorCode = 'errorCode' in event
+      ? event.errorCode : 'DESKTOP_SECURITY_EVENT_BLOCKED';
+    writeDesktopIncidentIndexEntry(this.#logsRoot, {
+      schemaVersion: 1,
+      appVersion: event.appVersion,
+      buildRevision: event.buildRevision,
+      component: 'desktop',
+      errorCode,
+      eventName: event.eventName,
+      fingerprint: 'fingerprint' in event && event.fingerprint !== undefined
+        ? event.fingerprint : `${event.eventName}:${errorCode}`,
+      outcome: event.outcome,
+      timestamp: event.timestamp,
+    });
+  }
+}
 
-      const errorCode =
-        'errorCode' in event
-          ? event.errorCode
-          : 'DESKTOP_SECURITY_EVENT_BLOCKED';
-      const fingerprint =
-        'fingerprint' in event && event.fingerprint !== undefined
-          ? event.fingerprint
-          : `${event.eventName}:${errorCode}`;
-      const entry = {
-        schemaVersion: 1,
-        appVersion: event.appVersion,
-        buildRevision: event.buildRevision,
-        component: 'desktop',
-        errorCode,
-        eventName: event.eventName,
-        fingerprint,
-        outcome: event.outcome,
-        timestamp: event.timestamp,
-      };
-      const line = `${JSON.stringify(entry)}\n`;
-      const year = Number(event.timestamp.slice(0, 4));
-      const maintenance = maintainDesktopIncidentIndex({
-        activeYear: year,
-        logsRoot: this.#logsRoot,
-      });
-
-      if (
-        maintenance.totalByteCount +
-          Buffer.byteLength(line, 'utf8') >
-        desktopIncidentIndexBudgetBytes
-      ) {
-        return;
-      }
-
-      appendFileSync(
-        join(
-          directory,
-          `desktop-incident-index-${event.timestamp.slice(0, 4)}.jsonl`,
-        ),
-        line,
-        { encoding: 'utf8', flag: 'a', mode: 0o600 },
-      );
-    } catch {
-      // The minimal incident index must never change runtime behavior.
+// Shared only by normal incident projection and the nonrecursive writer fallback.
+export function writeDesktopIncidentIndexEntry(
+  logsRoot: string,
+  entry: DesktopIncidentIndexEntry,
+): void {
+  try {
+    const directory = join(logsRoot, 'incident-index');
+    mkdirSync(directory, { mode: 0o700, recursive: true });
+    const directoryStats = lstatSync(directory);
+    if (!directoryStats.isDirectory() || directoryStats.isSymbolicLink()) {
+      return;
     }
+
+    const line = `${JSON.stringify(entry)}\n`;
+    const year = Number(entry.timestamp.slice(0, 4));
+    const maintenance = maintainDesktopIncidentIndex({
+      activeYear: year,
+      logsRoot,
+    });
+
+    if (
+      maintenance.totalByteCount +
+        Buffer.byteLength(line, 'utf8') >
+      desktopIncidentIndexBudgetBytes
+    ) {
+      return;
+    }
+
+    appendFileSync(
+      join(
+        directory,
+        `desktop-incident-index-${entry.timestamp.slice(0, 4)}.jsonl`,
+      ),
+      line,
+      { encoding: 'utf8', flag: 'a', mode: 0o600 },
+    );
+  } catch {
+    // The minimal incident index must never change runtime behavior.
   }
 }
 

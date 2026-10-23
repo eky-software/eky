@@ -14,7 +14,7 @@ import { createOpenPgpTestFixture } from '../../apps/desktop/installer/windows-a
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
-for (const mode of ['unexpected', 'diagnostic-read']) {
+for (const mode of ['unexpected', 'diagnostic-read', 'desktop-log-write']) {
 test(`HTTP evidence survives OpenPGP encryption and private decryption: ${mode}`, {
   skip: !['win32', 'linux'].includes(process.platform), timeout: 240_000,
 }, async () => {

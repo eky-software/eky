@@ -26,8 +26,11 @@ Omistaja hyväksyi 23.10.2026 H-P1:n kolmen lukutilan suunnan sekä H-P2:n
 ei-estävän, deduplikoidun häiriöpalautteen ja koko H:n loppuunviennin Goalina.
 H1-H3:n paikallinen korjauscheckpoint on tallennettu. H4:n lukutila kulkee
 nykyisistä lukijoista HTTP:n ja strict-clientin kautta käyttöliittymään;
-kohde-, selain- ja tukipakettiketjun näyttö on alla. Seuraavaksi viimeistellään
-H4:n katselmus ja H5:n näkyvän ilmoituksen toimitus omistajan valinnan jälkeen.
+kohde-, selain- ja tukipakettiketjun näyttö on alla. H4:n katselmushavainto
+on korjattu ja H5:n hyväksytty sovellusilmoitus on paikallisesti todennettu
+main/preload/UI-ketjussa. Vaikutusalueen paikalliset loppusarjat, tyypitys,
+auditointi ja katselmus ovat läpäisseet. Seuraavaksi tehdään puhdas
+pakettitodistus ja H:n integraatio.
 Uudet käyttäytymis-, turvallisuus-
 tai muut erilliset päätökset ratkaistaan ennen niiden vaikutusalueen kytkentää;
 samoja H-P1/H-P2-periaatteita ei kysytä uudelleen. Toteutus ja sen portit
@@ -54,8 +57,8 @@ korjatuksi.
 ### H / Diagnostiikan saatavuuden ja oikeellisuuden suunnitelma
 
 **Tila 23.10.2026:** H-P1/H-P2:n suositukset ja H:n toteutus Goalina hyväksytty.
-H1-H4:n korjaukset ovat paikallisesti toteutettuja ja rajatusti todennettuja;
-H5:n ilmoitusvalinta, loppukatselmus ja paketti-/PR-/main-portit ovat avoimia.
+H1-H5:n korjaukset ovat paikallisesti toteutettuja ja rajatusti todennettuja;
+pakettinäyttö ja PR-/main-portit ovat avoimia.
 Alkuperäiset R21/R22/R24/R25/R26
 on verrattu hyväksytyn G-mainin lähteeseen; taulukko kuvaa lähtöpuutteet,
 korjausvastuut ja niiden todistusvaatimukset. R24/R25/R26 vastaavat D029-03/04/05:tä,
@@ -89,7 +92,7 @@ mukaan lukien ristiriitaisen saman tunnisteen valinta ja saman luetun
 aineiston uudelleenlaskennan sekä incidentin täsmällisen aikaleimaformaatin
 säilymisen todistus. Riippumaton H1-H3:n adapteri- ja
 lukijakatselmus ei löytänyt korjattavaa; viimeiset käynnistystestit eivät
-kuuluneet sen tarkistushetkeen. H4:n näyttö on alla; H5, loppukatselmus,
+kuuluneet sen tarkistushetkeen. H4/H5:n näyttö on alla; loppusarjat,
 pakettinäyttö ja H:n integraatiohyväksyntä ovat edelleen kesken.
 H3 hyödyntää nykyistä `boundedJsonlSourceReader`-primitiiviä; projektio,
 incident-ryhmittely ja budjetit säilyvät omissa adaptereissaan. Lopullinen
@@ -207,11 +210,83 @@ suunnitelmalla. Myös varailmoituksen oma virhe käsitellään ilman rekursiota,
 odotussilmukkaa tai varmaa toimitusväitettä. Backendin nykyinen fallback
 säilyy, eikä permission-rajaa ohiteta mainin ilmoituksen vuoksi.
 
-Näyttötavan täsmennys on omistajalla: suositus on nykyiseen desktop-siltaan
-rajattu sovelluksen ei-estävä ilmoituspalkki, ei käyttöjärjestelmän
-ilmoitusasetuksista riippuva popup. Palkki säilyttäisi vain tiedon tässä
-käynnistyksessä havaitusta lokitushäiriöstä, ei raakaa syytä, polkua tai
-yritystietoa. Tätä UI-/välityskytkentää ei vielä toteuteta ennen valintaa.
+Omistaja hyväksyi sovelluksen ei-estävän ilmoituspalkin, joka näkyy myös
+Diagnostiikan ulkopuolella. Se säilyttää vain tiedon tässä käynnistyksessä
+havaitusta lokitushäiriöstä, ei raakaa syytä, polkua tai yritystietoa.
+Ei käyttöjärjestelmäilmoitusta, modaalista ikkunaa tai business-estoa.
+
+H5:n rajattu kytkentäsopimus nykyisissä omistajissa:
+
+- Nykyisen detailed-writerin failure-sink deduplikoi kaksi turvallista
+  syykoodia ja kolme desktop-virtaa, enintään kuusi yhdistelmää prosessissa.
+  Sama virhe ei käynnistä uutta kirjoitus- tai ilmoitusyritystä. Vain nykyinen
+  minimoitu incident-kirjoitus on fallback-yritys, ei lupaus saman levyn
+  toimivuudesta; sitä ei ohjata detailed-writerin kautta.
+- Main säilyttää monotonisen `failureObserved`-booleanin muistissa tämän
+  käynnistyksen ajan. Se ei ole writerin terveystodistus, kuittaus tai
+  business-audit. Incident- tai ilmoitusadapterin virhe ei muuta tätä
+  havaintoa tai alkuperäistä business-tulosta eikä toista operaatiota.
+- Nykyiseen desktop-siltaan lisätään nolla-argumenttinen
+  `getOperationalLogFailureStatus()` ja rajattu
+  `onOperationalLogFailure(callback)`-tilaus. Snapshotin ainoa kenttä on
+  boolean `failureObserved`; muutosilmoitus ei sisällä syytä tai muita
+  arvoja. Main hyväksyy vain nykyisen pääikkunan pääframen, ja dispose
+  poistaa handlerin sekä mainin tilauksen nykyisessä sulkuryhmässä.
+- Preload ei paljasta Electron-tapahtumaoliota tai yleistä kanavanvalintaa.
+  App-kerros validoi snapshotin täsmällisesti. UI tilaa ensin, lukee sitten
+  alkutilan ja säilyttää jo havaitun true-tilan myös myöhäisen false-vastauksen
+  yli. Tilaus poistetaan unmountissa; uusia ajastimia tai kyselysilmukoita
+  ei lisätä. Selain ilman capabilityä säilyy ennallaan.
+- Ilmoitusteksti kertoo vain, että lokituksessa havaittiin häiriö ja osa
+  teknisistä tapahtumista voi puuttua. Se ei tarjoa automaattista uusintaa,
+  väitä lokituksen korjaantuneen tai ohita Diagnosticsin permission-rajaa.
+  Ilmoituksen oma epäonnistuminen käsitellään ilman rekursiivista lokitusta;
+  näkyvyyttä ei väitetä varmaksi, jos sekä toimitus että alkuluku epäonnistuvat.
+
+Regressiot todentavat writerin I/O:n, kapasiteetin, deduplikoinnin,
+incident- ja ilmoitusvirheen, väärän senderin/framen/argumentit, alkutilan,
+tilaus-/vastauskilpailun sekä nykyisen main/preload/UI-ketjun. Uutta
+yleistä loggeria, tilapalvelua tai ilmoituskehystä ei rakenneta.
+
+H5:n rajattu katselmus ei löytänyt korjattavaa. Writerin, incidentin,
+capabilityn, preloadin ja viereisten rajojen 62 kohdetestiä sekä mainin
+nykyisen käynnistys-/palautustiedoston 158 testiä läpäisivät. Webin
+silta-/ilmoitus-/diagnostiikkakohdesarja läpäisi 69 testiä; ilmoituksen
+kopiotesti ei yksin todista React-elinkaarta. Kaksi oikean Appin selainkoetta
+todentavat tilaus-/alkulukukilpailun ja tilausvirheen turvallisen käsittelyn.
+Määrät ovat osittain päällekkäisiä, eivät yksi kokonaisajon tulos.
+
+Nimetty Windowsin development-Electron-ajo läpäisi viisi testiä yhdellä
+suoritusyrityksellä. Mukana ovat nykyisen runtimen ja preload-rajan kontrollit
+sekä kaksi todellista lokikirjoituksen main/preload/UI-virheketjua. Ilmoitus
+säilyy näkymänvaihdossa, asiakkaan luonti onnistuu ja uuden main-prosessin
+alkutila on false myös incident-yrityksen epäonnistumisen jälkeen. Tämä ei
+vielä ole paketoidun sovelluksen palautus- tai PR/main-hyväksyntä.
+
+Nykyisen salaus/purku-kokeen kolme tapausta läpäisivät: H5:n oikea
+tiedostovirhe säilyy rajattuine alkuperäisine viesteineen ja writerin
+kutsupinoineen puretussa salatussa paketissa. Olematonta syyketjua ei
+keksitä, eikä julkinen tuloste sisällä alkuperäistä poikkeusta. Ensimmäiset
+testivalmistelun hylkäykset säilytetään erillään onnistuneesta todennuksesta.
+Normaalin tuotantomainin havaitsijaa ei kytketä tämän testin perusteella.
+
+H5:n koko web-sarja läpäisi 996 testiä. Desktopin normaali skripti läpäisi
+4 468 Vitest- ja 412 Node-testiä; viisi ja 12 nykyistä ohitusta eivät ole
+läpäisyjä. Koko backendin sarja läpäisi 4 070 testiä ja viisi nykyistä
+ohitusta. Viimeinen koko työtilan tyypitys läpäisi. HTTP-virhehavaitsijan
+nykyiset onnistumis-, odotettu hylkäys- ja havaitsijavirheen kontrollit
+läpäisivät muutetulla testiapurilla.
+H5:n todellinen writer -> minimoitu incident -> HTTP -> strict support-
+vastaanotin -> gzip -> nykyinen tarkastin -koe läpäisi. Sama häiriö ei
+monistanut incidentiä, eikä incidentistä keksitty detailed-tapahtumaa.
+Nämä ovat paikallisia revision työpuuhun sidottuja näyttöjä, eivät H:n
+lopullinen PR/main-hyväksyntä.
+
+Loppukatselmus löysi yhden testiaukon: selainkoe ei lukinnut tilauksen ja
+alkuluvun todellista kutsujärjestystä. Testisilta tallentaa nyt nämä kaksi
+kutsua ja koe vaatii tilauksen ensin; molemmat selainkokeet läpäisivät
+uudella tarkistuksella. Rajattu uudelleenkatselmus ei löytänyt avoimia
+korjattavia havaintoja. Riippuvuusauditointi läpäisi; riippuvuuksia ei muutettu.
 
 #### H:n säilyvät rajat ja valmistumisportti
 
@@ -239,7 +314,8 @@ koskettaessa vaaditaan sama puhdas hardened Windows
 backup -> inspect -> restore -> restart -> compare -paketti; installer on
 erillinen portti. Jäädytetty PR-head ja mergen jälkeinen main tarvitsevat
 omat nykyiset hyväksyntäporttinsa ja auditoinnin. Paikallinen koe ei sulje
-H:ta. Tuotantokytkentä odottaa sovittua hyväksyntää.
+H:ta. H:n integraatio odottaa näitä portteja; hyväksyttyä H-P2:n
+ilmoituskytkentää ei tulkita koko H:n hyväksynnäksi.
 
 R030-08:n historian selaus, D029-06:n erikseen päätettävä päivitystoiminto,
 W7, I, M5:n syväkatselmus/Deep Scan sekä pilvi/mobiili jäävät erilleen.

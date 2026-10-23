@@ -25,11 +25,15 @@ export async function runFWorker(parent, name, {
     retry: 0, testTimeout: 5000, hookTimeout: 2000, includeTaskLocation: true,
   } };`, { flag: 'wx', mode: 0o600 });
   await writeFile(file, `import { join } from 'node:path';
+import { writeFileSync } from 'node:fs';
 import { test, expect, vi } from ${JSON.stringify(moduleUrl('../../node_modules/vitest/dist/index.js'))};
 import { Hono } from ${JSON.stringify(moduleUrl('../../apps/backend/node_modules/hono/dist/index.js'))};
 import { handleUnexpectedHttpError } from ${JSON.stringify(moduleUrl('../../apps/backend/src/http/handleUnexpectedHttpError.ts'))};
 import { createOperationalLoggingMiddleware } from ${JSON.stringify(moduleUrl('../../apps/backend/src/http/operationalLogging.ts'))};
 import { listDiagnosticEvents } from ${JSON.stringify(moduleUrl('../../apps/backend/src/modules/diagnostics/application/listDiagnosticEvents.ts'))};
+import { JsonLineDesktopOperationalLogger } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/observability/infrastructure/jsonLineDesktopOperationalLogger.ts'))};
+import { IncidentIndexDesktopLogFailureSink } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/observability/infrastructure/incidentIndexDesktopLogFailureSink.ts'))};
+import { createDesktopOperationalEvent } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/observability/createDesktopOperationalEvent.ts'))};
 import { createRunnerFailureSink } from ${JSON.stringify(moduleUrl('../runnerFailureEvidence.mjs'))};
 import { createHttpRequestFailureCapture } from ${JSON.stringify(moduleUrl('../httpRequestFailureCapture.mjs'))};
 
@@ -58,6 +62,17 @@ test(${JSON.stringify(TEST_NAME)}, { fails: ${mode === 'expected-failure'} }, as
     operationalLogger: { write }, httpRequestFailureObserver: selected,
   }));
   app.get('/synthetic', async context => {
+    if (${mode === 'desktop-log-write'}) {
+      const operationalIdentity = { appVersion: '0.0.0', buildRevision: 'development',
+        runtimeInstanceId: '11111111-1111-4111-8111-111111111111' };
+      const logsRoot = join(process.env.TMPDIR, ${JSON.stringify(F_ORIGINAL_MARKER)});
+      writeFileSync(logsRoot, 'synthetic log root obstruction');
+      const failureSink = new IncidentIndexDesktopLogFailureSink({ logsRoot, operationalIdentity });
+      const logger = new JsonLineDesktopOperationalLogger({ logsRoot, failureSink,
+        ...(selected === undefined ? {} : { failureObserver: selected }) });
+      logger.write(createDesktopOperationalEvent({ eventName: 'desktop.started' }, operationalIdentity));
+      return context.json({ failureObserved: failureSink.failureObserved });
+    }
     if (${mode === 'diagnostic-read'}) {
       const result = await listDiagnosticEvents({ actorContext: {
         actorId: 'synthetic-actor', authenticationMode: 'local', companyId: 'synthetic-company',
@@ -69,6 +84,15 @@ test(${JSON.stringify(TEST_NAME)}, { fails: ${mode === 'expected-failure'} }, as
     throw original;
   });
   const response = await app.request('/synthetic');
+  if (${mode === 'desktop-log-write'}) {
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toEqual({ failureObserved: true });
+    expect(order).toEqual(${JSON.stringify(observe ? ['original'] : [])});
+    expect(write).not.toHaveBeenCalled();
+    expect(body.failureObserved, 'H5_EXPECTED_NO_LOG_FAILURE').toBe(false);
+    return;
+  }
   if (${mode === 'diagnostic-read'}) {
     expect(response.status).toBe(200);
     const body = await response.json();
@@ -122,7 +146,7 @@ test(${JSON.stringify(TEST_NAME)}, { fails: ${mode === 'expected-failure'} }, as
       records.push({ bytes, record, source: `temporary/${directory}/${filename}` });
     }
   }
-  return { child, publicOutput, env, temp, file, records };
+  return { child, publicOutput, env, temp, file, records, mode };
 }
 
 export function assertFOriginalProof(worker, records = worker.records, { nonError = false } = {}) {
@@ -132,8 +156,13 @@ export function assertFOriginalProof(worker, records = worker.records, { nonErro
   const original = originals[0].record;
   assert.equal(original.exception.chain[0].message?.includes(F_ORIGINAL_MARKER), true, 'F_ORIGINAL_MESSAGE_MISSING');
   if (!nonError) {
-    assert.equal(original.exception.chain[0].stack?.includes('createOriginalFailure'), true, 'F_ORIGINAL_STACK_MISSING');
-    assert.equal(original.exception.chain[1].message?.includes(F_CAUSE_MARKER), true, 'F_ORIGINAL_CAUSE_MISSING');
+    if (worker.mode === 'desktop-log-write') {
+      assert.equal(original.exception.chain[0].stack?.includes('JsonLineDesktopOperationalLogger.write'), true, 'H5_ORIGINAL_STACK_MISSING');
+      assert.equal(original.exception.chain.length, 1, 'H5_ORIGINAL_CAUSE_WAS_INVENTED');
+    } else {
+      assert.equal(original.exception.chain[0].stack?.includes('createOriginalFailure'), true, 'F_ORIGINAL_STACK_MISSING');
+      assert.equal(original.exception.chain[1].message?.includes(F_CAUSE_MARKER), true, 'F_ORIGINAL_CAUSE_MISSING');
+    }
   }
   assert.equal(isDeepStrictEqual(original.binding, runnerFailureBinding(worker.env)), true, 'F_BINDING_MISMATCH');
   assert.equal(original.test.name === TEST_NAME && resolve(original.test.file) === resolve(worker.file), true, 'F_TEST_BINDING_MISMATCH');

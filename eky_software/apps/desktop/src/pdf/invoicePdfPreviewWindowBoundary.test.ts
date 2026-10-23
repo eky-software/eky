@@ -66,7 +66,7 @@ describe('invoice PDF preview desktop boundaries', () => {
     const [name, api] = electronBoundary.exposeInMainWorld.mock.calls[0]!;
 
     expect(name).toBe('ekyDesktop');
-    expect(Object.keys(api)).toHaveLength(23);
+    expect(Object.keys(api)).toHaveLength(25);
     expect(Object.isFrozen(api)).toBe(true);
     await api.openInvoicePdf('invoice-1');
     await api.openInvoicePdf('invoice-1', undefined);
